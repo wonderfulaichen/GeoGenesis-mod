@@ -27,6 +27,14 @@ credentials.json
 1.md
 2.md
 
+# Project documents (not mod source code)
+DEV_REPORT.md
+GeoGenesis_技术设计文档_*.md
+MC地形mod河流侵蚀问题.md
+
+# Standalone test tool (not mod source code)
+erosion-test-tool/
+
 # External references
 参考/
 
