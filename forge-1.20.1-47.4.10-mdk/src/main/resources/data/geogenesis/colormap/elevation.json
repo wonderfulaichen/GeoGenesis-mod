@@ -1,0 +1,31 @@
+{
+  "name": "geogenesis:elevation",
+  "min": -64,
+  "max": 320,
+  "stops": [
+    {"pos": 0.0, "color": "#1a4a6a"},
+    {"pos": 0.05, "color": "#2a6a9a"},
+    {"pos": 0.10, "color": "#4a9aca"},
+    {"pos": 0.15, "color": "#6bb5d6"},
+    {"pos": 0.20, "color": "#4a8a3a"},
+    {"pos": 0.25, "color": "#5a9a4a"},
+    {"pos": 0.30, "color": "#6aaa5a"},
+    {"pos": 0.35, "color": "#7aba6a"},
+    {"pos": 0.40, "color": "#8bc47a"},
+    {"pos": 0.45, "color": "#a8cc7a"},
+    {"pos": 0.50, "color": "#c4c87a"},
+    {"pos": 0.55, "color": "#d4b85a"},
+    {"pos": 0.60, "color": "#d4a84a"},
+    {"pos": 0.65, "color": "#c8943a"},
+    {"pos": 0.70, "color": "#b88030"},
+    {"pos": 0.75, "color": "#b06c2a"},
+    {"pos": 0.80, "color": "#a0582a"},
+    {"pos": 0.85, "color": "#8c4a2a"},
+    {"pos": 0.88, "color": "#7a3c2a"},
+    {"pos": 0.90, "color": "#9a8a7a"},
+    {"pos": 0.92, "color": "#b8a898"},
+    {"pos": 0.95, "color": "#c8bcb0"},
+    {"pos": 0.975, "color": "#e0d8d0"},
+    {"pos": 1.0, "color": "#f0ede8"}
+  ]
+}

@@ -1,0 +1,24 @@
+# Gradle
+forge-1.20.1-47.4.10-mdk/.gradle/
+forge-1.20.1-47.4.10-mdk/build/
+forge-1.20.1-47.4.10-mdk/out/
+forge-1.20.1-47.4.10-mdk/logs/
+forge-1.20.1-47.4.10-mdk/run/
+forge-1.20.1-47.4.10-mdk/.idea/
+forge-1.20.1-47.4.10-mdk/*.iml
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Sensitive
+*.env
+credentials.json
