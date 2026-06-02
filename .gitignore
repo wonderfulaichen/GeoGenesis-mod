@@ -39,3 +39,7 @@ forge-1.20.1-47.4.10-mdk/err.txt
 
 # IDE workspace config
 forge-1.20.1-47.4.10-mdk/.trae/
+
+# Research notes / work notes
+docs/
+.workbuddy/
