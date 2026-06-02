@@ -22,3 +22,20 @@ Thumbs.db
 # Sensitive
 *.env
 credentials.json
+
+# AI conversation dumps
+1.md
+2.md
+
+# External references
+参考/
+
+# Empty / temp
+对话/
+
+# Forge runtime data
+forge-1.20.1-47.4.10-mdk/run-data/
+forge-1.20.1-47.4.10-mdk/err.txt
+
+# IDE workspace config
+forge-1.20.1-47.4.10-mdk/.trae/
