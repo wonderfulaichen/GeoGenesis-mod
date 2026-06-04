@@ -653,9 +653,9 @@ public class RiverBrushSystem {
     }
 
     private float riverWidth(float accum) {
-        float base = 4f;
-        float main = (float) Math.pow(accum, 0.35f) * 8f;
-        float cap = 80f;
+        float base = 3f;
+        float main = (float) Math.pow(accum, 0.35f) * 5f;
+        float cap = 40f;
         return Math.min(base + main, cap);
     }
 
@@ -792,29 +792,29 @@ public class RiverBrushSystem {
 
         float valleyRadius(float t) {
             float r = radius(t);
-            if (isLake) return r * 3.5f;
-            if (isConfluence) return r * 4.0f;
-            return r * 5.0f;
+            if (isLake) return r * 2.5f;
+            if (isConfluence) return r * 2.5f;
+            return r * 3.0f;
         }
 
         float bankRadius(float t) {
             float r = radius(t);
-            if (isLake) return r * 1.8f;
-            if (isConfluence) return r * 2.0f;
-            return r * 2.2f;
+            if (isLake) return r * 1.2f;
+            if (isConfluence) return r * 1.3f;
+            return r * 1.4f;
         }
 
         float bedRadius(float t) {
             float r = radius(t);
-            if (isLake) return r * 0.7f;
-            return r * 0.45f;
+            if (isLake) return r * 0.6f;
+            return r * 0.4f;
         }
 
         float maxRadius() {
             float r = Math.max(ar, br);
-            if (isLake) return r * 3.5f;
-            if (isConfluence) return r * 4.0f;
-            return r * 5.0f;
+            if (isLake) return r * 2.5f;
+            if (isConfluence) return r * 2.5f;
+            return r * 3.0f;
         }
 
         float maxRadiusSq() { float r = maxRadius(); return r * r; }
