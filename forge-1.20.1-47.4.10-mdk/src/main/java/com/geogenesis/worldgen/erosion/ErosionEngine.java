@@ -28,6 +28,12 @@ public class ErosionEngine {
      *
      * 性能提升：7700粒子 → ~1700粒子（每chunk 350×7chunks）
      */
+    /**
+     * 双层侵蚀（反向：先小纹理 → 后大尺度）。
+     * 
+     * 执行顺序：先小纹理（形成细沟导流槽）→ 后大尺度（沿细沟冲深冲宽）。
+     * 物理上更正确：先下雨形成小沟，再汇聚成大河。
+     */
     public void applyErosionNormalized(float[][] heights, int size, int ox, int oz,
                                         float seaNorm, float strength,
                                         boolean[][] locked) {
@@ -35,10 +41,7 @@ public class ErosionEngine {
 
         float configDropsMul = (float)GeoGenesisConfig.COMMON.erosionDropsMul.get().doubleValue();
 
-        // TerraForged 风格参数：单层 + 共享笔刷
         // === 第一层：大尺度侵蚀（大沟壑、峡谷） ===
-        // 高惯性 → 粒子沿坡面长距离流动 → 形成大沟壑
-        // 大笔刷 → 侵蚀范围宽 → 天山式大型切割地貌
         int radiusLarge = 6;
         int dropsPerChunkLarge = (int)(80 * configDropsMul);
         int lifetimeLarge = 50;
@@ -66,7 +69,8 @@ public class ErosionEngine {
 
         int pad = radius + 2;
         int bufSize = size + pad * 2;
-        float[] flat = new float[bufSize * bufSize];
+        int flatSize = bufSize * bufSize;
+        float[] flat = new float[flatSize];
 
         // 填充 + clamp padding
         for (int z = 0; z < bufSize; z++)
@@ -75,6 +79,15 @@ public class ErosionEngine {
                 int sx = Math.max(0, Math.min(size - 1, x - pad));
                 flat[z * bufSize + x] = heights[sz][sx];
             }
+
+        // 海洋快速路径：中心区域全为海洋则跳过侵蚀
+        if (locked == null) {
+            boolean allOcean = true;
+            for (int z = 0; z < size && allOcean; z++)
+                for (int x = 0; x < size && allOcean; x++)
+                    if (heights[z][x] > 0.02f) allOcean = false;
+            if (allOcean) return;
+        }
 
         // 保存锁定区域高度
         float[][] savedLocked = null;
@@ -85,61 +98,24 @@ public class ErosionEngine {
                     if (locked[z][x]) savedLocked[z][x] = heights[z][x];
         }
 
-        // 共享笔刷偏移 — 第二层（细节）
-        int r2 = radius * radius;
-        int maxB = (2*radius+1)*(2*radius+1);
-        int[] bOff = new int[maxB]; float[] bWgt = new float[maxB];
-        int bn = 0;
-        for (int dy = -radius; dy <= radius; dy++)
-            for (int dx = -radius; dx <= radius; dx++) {
-                float d2 = dx*dx + dy*dy;
-                if (d2 < r2) { bOff[bn] = dy*bufSize+dx; bWgt[bn] = 1f-(float)Math.sqrt(d2)/radius; bn++; }
-            }
-        { float s=0; for(int i=0;i<bn;i++)s+=bWgt[i]; for(int i=0;i<bn;i++)bWgt[i]/=s; }
+        // 预计算逐像素笔刷索引（TerraForged 模式：消除内循环 idx+bOff[b] 计算和边界检查）
+        int[][] brushIdxL = new int[flatSize][];
+        float[][] brushWgtL = new float[flatSize][];
+        precomputeBrushes(brushIdxL, brushWgtL, bufSize, radiusLarge);
 
-        // 共享笔刷偏移 — 第一层（大尺度）
-        int r2L = radiusLarge * radiusLarge;
-        int maxBL = (2*radiusLarge+1)*(2*radiusLarge+1);
-        int[] bOffL = new int[maxBL]; float[] bWgtL = new float[maxBL];
-        int bnL = 0;
-        for (int dy = -radiusLarge; dy <= radiusLarge; dy++)
-            for (int dx = -radiusLarge; dx <= radiusLarge; dx++) {
-                float d2 = dx*dx + dy*dy;
-                if (d2 < r2L) { bOffL[bnL] = dy*bufSize+dx; bWgtL[bnL] = 1f-(float)Math.sqrt(d2)/radiusLarge; bnL++; }
-            }
-        { float s=0; for(int i=0;i<bnL;i++)s+=bWgtL[i]; for(int i=0;i<bnL;i++)bWgtL[i]/=s; }
+        int[][] brushIdx = new int[flatSize][];
+        float[][] brushWgt = new float[flatSize][];
+        precomputeBrushes(brushIdx, brushWgt, bufSize, radius);
 
         // 按 chunk 分组生成粒子（TerraForged 方式）
         int chunksX = size / 16;
         int chunksZ = size / 16;
-        // 使用 worldSeed 固定随机序列，不依赖 tile 原点。
-        // 噪声高度是确定性的 → 重叠区域侵蚀结果一致 → 消除 tile 间接缝
         Random rng = new Random(worldSeed);
 
-        // === 第一层：大尺度侵蚀（先执行，形成大沟壑骨架） ===
-        for (int cz = 0; cz < chunksZ; cz++) {
-            int relZ = cz << 4;
-            for (int cx = 0; cx < chunksX; cx++) {
-                int relX = cx << 4;
-                for (int d = 0; d < dropsPerChunkLarge; d++) {
-                    int px = pad + relX + rng.nextInt(16);
-                    int py = pad + relZ + rng.nextInt(16);
-                    px = Math.max(pad + 1, Math.min(pad + size - 2, px));
-                    py = Math.max(pad + 1, Math.min(pad + size - 2, py));
-                    int idx = py * bufSize + px;
-                    if (flat[idx] <= 0.02f) continue;
-                    if (locked != null && locked[py - pad][px - pad]) continue;
+        // === 反向双层：先小纹理（形成细沟导流槽）→ 后大尺度（沿细沟冲深冲宽） ===
+        // 物理上更正确：先下雨形成小沟，再汇聚成大河
 
-                    simulateDropTF(flat, bufSize, px + 0.5f, py + 0.5f,
-                        inertiaLarge, gravityLarge, capFactorLarge, minCapLarge, evaporateLarge,
-                        fallOffLarge, erodeSpeedLarge, depositSpeedLarge, strength, lifetimeLarge,
-                        bOffL, bWgtL, bnL, locked, pad, size);
-                }
-            }
-        }
-
-        // === 第二层：细节侵蚀（在大沟壑基础上添加小纹理） ===
-
+        // 第一层（先执行）：细节侵蚀 — 形成细沟导流槽
         for (int cz = 0; cz < chunksZ; cz++) {
             int relZ = cz << 4;
             for (int cx = 0; cx < chunksX; cx++) {
@@ -156,7 +132,29 @@ public class ErosionEngine {
                     simulateDropTF(flat, bufSize, px + 0.5f, py + 0.5f,
                         inertia, gravity, capFactor, minCap, evaporate,
                         fallOff, erodeSpeed, depositSpeed, strength, lifetime,
-                        bOff, bWgt, bn, locked, pad, size);
+                        brushIdx, brushWgt, locked, pad, size);
+                }
+            }
+        }
+
+        // 第二层（后执行）：大尺度侵蚀 — 沿细沟冲深冲宽，形成大沟壑
+        for (int cz = 0; cz < chunksZ; cz++) {
+            int relZ = cz << 4;
+            for (int cx = 0; cx < chunksX; cx++) {
+                int relX = cx << 4;
+                for (int d = 0; d < dropsPerChunkLarge; d++) {
+                    int px = pad + relX + rng.nextInt(16);
+                    int py = pad + relZ + rng.nextInt(16);
+                    px = Math.max(pad + 1, Math.min(pad + size - 2, px));
+                    py = Math.max(pad + 1, Math.min(pad + size - 2, py));
+                    int idx = py * bufSize + px;
+                    if (flat[idx] <= 0.02f) continue;
+                    if (locked != null && locked[py - pad][px - pad]) continue;
+
+                    simulateDropTF(flat, bufSize, px + 0.5f, py + 0.5f,
+                        inertiaLarge, gravityLarge, capFactorLarge, minCapLarge, evaporateLarge,
+                        fallOffLarge, erodeSpeedLarge, depositSpeedLarge, strength, lifetimeLarge,
+                        brushIdxL, brushWgtL, locked, pad, size);
                 }
             }
         }
@@ -180,14 +178,15 @@ public class ErosionEngine {
     }
 
     /**
-     * TerraForged 风格粒子模拟
-     * 关键差异：高惯性(0.05)、高度衰减(0.4)、低蒸发(0.01)、共享笔刷
+     * TerraForged 风格粒子模拟。
+     * 使用预计算逐像素笔刷索引，消除内循环的 idx+bOff[b] 计算和边界检查。
+     * 双层侵蚀（大沟壑+小纹理）不变，核心侵蚀逻辑不变。
      */
     private void simulateDropTF(float[] flat, int bufSize, float posX, float posY,
                                  float inertia, float gravity, float capFactor, float minCap,
                                  float evaporate, float fallOff, float erodeSpeed, float depositSpeed,
                                  float strength, int lifetime,
-                                 int[] bOff, float[] bWgt, int bn,
+                                 int[][] brushIdx, float[][] brushWgt,
                                  boolean[][] locked, int pad, int baseSize) {
         float dirX = 0, dirY = 0, sediment = 0;
         float speed = 1f, water = 1f;
@@ -196,6 +195,7 @@ public class ErosionEngine {
             int nodeX = (int) posX, nodeY = (int) posY;
             if (nodeX < 1 || nodeX >= bufSize - 2 || nodeY < 1 || nodeY >= bufSize - 2) return;
             int dropletIndex = nodeY * bufSize + nodeX;
+
             float cellOffX = posX - nodeX, cellOffY = posY - nodeY;
 
             // 双线性插值计算高度和梯度
@@ -241,22 +241,29 @@ public class ErosionEngine {
                 flat[dropletIndex + bufSize] += amountToDeposit * (1-cellOffX) * cellOffY;
                 flat[dropletIndex + bufSize + 1] += amountToDeposit * cellOffX * cellOffY;
             } else {
-                // 侵蚀（共享笔刷）
+                // 侵蚀（预计算逐像素笔刷索引：直接数组查找，无加法+边界检查）
                 float amountToErode = Math.min((sedimentCapacity - sediment) * erodeSpeed, -deltaHeight);
-                for (int b = 0; b < bn; b++) {
-                    int bi = dropletIndex + bOff[b];
-                    if (bi >= 0 && bi < bufSize * bufSize) {
-                        // 检查锁定
-                        if (locked != null) {
+                int[] indices = brushIdx[dropletIndex];
+                float[] weights = brushWgt[dropletIndex];
+                if (indices != null) {
+                    if (locked != null) {
+                        for (int b = 0; b < indices.length; b++) {
+                            int bi = indices[b];
                             int bz = bi / bufSize, bx = bi % bufSize;
                             int bzLocal = bz - pad, bxLocal = bx - pad;
                             if (bzLocal >= 0 && bzLocal < baseSize && bxLocal >= 0 && bxLocal < baseSize
                                 && locked[bzLocal][bxLocal]) continue;
+                            float delta = Math.min(flat[bi], amountToErode * weights[b]);
+                            flat[bi] -= delta;
+                            sediment += delta;
                         }
-                        float weighedErodeAmount = amountToErode * bWgt[b];
-                        float deltaSediment = Math.min(flat[bi], weighedErodeAmount);
-                        flat[bi] -= deltaSediment;
-                        sediment += deltaSediment;
+                    } else {
+                        for (int b = 0; b < indices.length; b++) {
+                            int bi = indices[b];
+                            float delta = Math.min(flat[bi], amountToErode * weights[b]);
+                            flat[bi] -= delta;
+                            sediment += delta;
+                        }
                     }
                 }
             }
@@ -270,7 +277,64 @@ public class ErosionEngine {
     }
 
     /**
-     * Tile模式直接侵蚀：TerraForged 风格，单层 + 少粒子 + 高惯性
+     * 预计算逐像素笔刷索引（TerraForged 模式）。
+     * 每个像素预存储其笔刷半径内所有目标像素的绝对索引和权重。
+     * 消除粒子模拟内循环中的 idx+bOff[b] 加法计算和边界检查。
+     */
+    private static void precomputeBrushes(int[][] brushIdx, float[][] brushWgt, int bufSize, int radius) {
+        int r2 = radius * radius;
+        int maxB = (2*radius+1)*(2*radius+1);
+        int[] xOff = new int[maxB];
+        int[] yOff = new int[maxB];
+        float[] weights = new float[maxB];
+        int bn = 0;
+        // 计算相对偏移（仅一次，所有像素复用偏移模式）
+        for (int dy = -radius; dy <= radius; dy++)
+            for (int dx = -radius; dx <= radius; dx++) {
+                float d2 = dx*dx + dy*dy;
+                if (d2 < r2) {
+                    xOff[bn] = dx; yOff[bn] = dy;
+                    weights[bn] = 1f - (float)Math.sqrt(d2) / radius;
+                    bn++;
+                }
+            }
+        // 归一化权重
+        float wSum = 0;
+        for (int i = 0; i < bn; i++) wSum += weights[i];
+        for (int i = 0; i < bn; i++) weights[i] /= wSum;
+
+        // 为每个像素构建绝对索引数组（边界处裁剪到有效范围）
+        for (int y = 0; y < bufSize; y++) {
+            for (int x = 0; x < bufSize; x++) {
+                int idx = y * bufSize + x;
+                // 统计有效笔刷点数量
+                int count = 0;
+                for (int b = 0; b < bn; b++) {
+                    int bx = x + xOff[b], by = y + yOff[b];
+                    if (bx >= 0 && bx < bufSize && by >= 0 && by < bufSize) count++;
+                }
+                brushIdx[idx] = new int[count];
+                brushWgt[idx] = new float[count];
+                int ci = 0;
+                float wLocalSum = 0;
+                for (int b = 0; b < bn; b++) {
+                    int bx = x + xOff[b], by = y + yOff[b];
+                    if (bx >= 0 && bx < bufSize && by >= 0 && by < bufSize) {
+                        brushIdx[idx][ci] = by * bufSize + bx;
+                        brushWgt[idx][ci] = weights[b];
+                        wLocalSum += weights[b];
+                        ci++;
+                    }
+                }
+                // 重新归一化（边界处被裁剪的权重需要重新分配）
+                if (wLocalSum > 0 && Math.abs(wLocalSum - 1f) > 0.001f) {
+                    for (int b = 0; b < count; b++) brushWgt[idx][b] /= wLocalSum;
+                }
+            }
+        }
+    }
+
+    /**
      * 直接在buf上操作，无padding/mirror。
      */
     public void applyErosionDirect(float[][] buf, int size, int ox, int oz, float strength) {
@@ -290,22 +354,16 @@ public class ErosionEngine {
         int margin = radius + 2;
 
         // 一维化
-        float[] flat = new float[size * size];
+        int flatSize = size * size;
+        float[] flat = new float[flatSize];
         for (int z = 0; z < size; z++)
             for (int x = 0; x < size; x++)
                 flat[z * size + x] = buf[z][x];
 
-        // 共享笔刷
-        int r2 = radius * radius;
-        int maxB = (2*radius+1)*(2*radius+1);
-        int[] bOff = new int[maxB]; float[] bWgt = new float[maxB];
-        int bn = 0;
-        for (int dy = -radius; dy <= radius; dy++)
-            for (int dx = -radius; dx <= radius; dx++) {
-                float d2 = dx*dx + dy*dy;
-                if (d2 < r2) { bOff[bn] = dy*size+dx; bWgt[bn] = 1f-(float)Math.sqrt(d2)/radius; bn++; }
-            }
-        { float s=0; for(int i=0;i<bn;i++)s+=bWgt[i]; for(int i=0;i<bn;i++)bWgt[i]/=s; }
+        // 预计算逐像素笔刷索引
+        int[][] brushIdx = new int[flatSize][];
+        float[][] brushWgt = new float[flatSize][];
+        precomputeBrushes(brushIdx, brushWgt, size, radius);
 
         // 按 chunk 分组生成粒子
         int chunksX = size / 16;
@@ -327,7 +385,7 @@ public class ErosionEngine {
                     simulateDropTFDirect(flat, size, px + 0.5f, py + 0.5f,
                         inertia, gravity, capFactor, minCap, evaporate,
                         fallOff, erodeSpeed, depositSpeed, strength, lifetime,
-                        bOff, bWgt, bn);
+                        brushIdx, brushWgt);
                 }
             }
         }
@@ -338,12 +396,12 @@ public class ErosionEngine {
                 buf[z][x] = clamp(flat[z * size + x], 0f, 1f);
     }
 
-    /** TerraForged 风格粒子模拟（无锁定掩码版，用于 Direct 模式）*/
+    /** TerraForged 风格粒子模拟（无锁定掩码版，用于 Direct 模式，预计算笔刷索引）*/
     private void simulateDropTFDirect(float[] flat, int size, float posX, float posY,
                                        float inertia, float gravity, float capFactor, float minCap,
                                        float evaporate, float fallOff, float erodeSpeed, float depositSpeed,
                                        float strength, int lifetime,
-                                       int[] bOff, float[] bWgt, int bn) {
+                                       int[][] brushIdx, float[][] brushWgt) {
         float dirX = 0, dirY = 0, sediment = 0;
         float speed = 1f, water = 1f;
 
@@ -390,13 +448,14 @@ public class ErosionEngine {
                 flat[dropletIndex + size + 1] += amountToDeposit * cellOffX * cellOffY;
             } else {
                 float amountToErode = Math.min((sedimentCapacity - sediment) * erodeSpeed, -deltaHeight);
-                for (int b = 0; b < bn; b++) {
-                    int bi = dropletIndex + bOff[b];
-                    if (bi >= 0 && bi < size * size) {
-                        float weighedErodeAmount = amountToErode * bWgt[b];
-                        float deltaSediment = Math.min(flat[bi], weighedErodeAmount);
-                        flat[bi] -= deltaSediment;
-                        sediment += deltaSediment;
+                int[] indices = brushIdx[dropletIndex];
+                float[] weights = brushWgt[dropletIndex];
+                if (indices != null) {
+                    for (int b = 0; b < indices.length; b++) {
+                        int bi = indices[b];
+                        float delta = Math.min(flat[bi], amountToErode * weights[b]);
+                        flat[bi] -= delta;
+                        sediment += delta;
                     }
                 }
             }
