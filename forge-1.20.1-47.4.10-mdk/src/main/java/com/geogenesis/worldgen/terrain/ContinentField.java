@@ -3,10 +3,11 @@ package com.geogenesis.worldgen.terrain;
 import com.geogenesis.worldgen.noise.*;
 
 /**
- * 大陆场生成器：低频 Simplex + Warp → 连续大陆性 c ∈ [0,1]。
+ * 大陆场生成器：低频 Simplex + Warp → 连续大陆性 c ∈ [-1,1]。
  *
  * 范式：单个 Simplex 经 Frequency 缩放（1/continentScale）→ Warp 域扭曲 →
- * 归一化到 [0,1]。无需 Voronoi 细胞点。
+ * 直接返回原始噪声值（[-1,1]），对齐 MC 原版 Continentalness。
+ * 负=海洋、正=陆地、0=海岸锚点。无需 Voronoi 细胞点。
  *
  * 用法：
  *   field.seed(worldSeed); // 播种所有 Seeded 节点
@@ -40,19 +41,17 @@ public final class ContinentField {
     }
 
     /**
-     * 采样大陆性 c ∈ [0,1]（深海→内陆）。
+     * 采样大陆性 c ∈ [-1,1]（负=海洋、正=陆地、0=海岸锚点），对齐 MC 原版 Continentalness。
      * @param wx 世界 X 坐标
      * @param wz 世界 Z 坐标
-     * @return 连续大陆性，≈0=深海，≈1=内陆
+     * @return 连续大陆性，≈-1=深海，≈0=海岸，≈+1=内陆核心
      */
     public double sample(double wx, double wz) {
-        // 经 Warp 的噪声 ∈ [-1,1]
-        double raw = root.compute(wx, wz);
-        // 归一化到 [0,1]
-        return NoiseUtil.clamp((raw + 1.0) * 0.5, 0.0, 1.0);
+        // 经 Warp 的噪声 ∈ [-1,1]；直接返回，不做归一化（对齐 MC 原版区间）
+        return root.compute(wx, wz);
     }
 
-    /** 海陆布尔判定 */
+    /** 海陆布尔判定（c≥threshold→陆地；[-1,1]区间 threshold 默认 0.0，即 c≥0 为陆、c<0 为海） */
     public boolean isLand(double c) {
         return c >= threshold;
     }

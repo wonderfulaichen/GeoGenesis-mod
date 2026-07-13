@@ -14,7 +14,6 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
-import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
 import java.util.List;
@@ -60,37 +59,40 @@ public class GeoGenesisBiomeSource extends BiomeSource {
         Biomes.DESERT, Biomes.MEADOW
     );
 
-    // 回退群系（plains）惰性解析，避免类加载期访问可能尚未冻结的注册表。
-    private static Holder<Biome> fallback;
-
-    // 首次成功解析时缓存 biome 注册表（来自当前服务器 RegistryAccess），后续复用，避免重复查找与时机依赖。
-    private static net.minecraft.core.Registry<Biome> biomeRegistry;
+    // 回退群系（plains）惰性解析，运行时一旦解析即永久缓存；确保永远非 null。
+    private static volatile Holder<Biome> fallback;
 
     /**
-     * 按 ResourceKey&lt;Biome&gt; 解析 Holder&lt;Biome&gt;。
-     * 群系是 dynamic 注册表，ForgeRegistries.BIOMES 在世界生成初期尚未同步；
-     * 必须用当前服务器的 RegistryAccess（Forge 在 MinecraftServer 构造期即 setCurrentServer，
-     * 故 createBiomes 时已就绪，其 dynamic biome 注册表完整）。
+     * 按 ResourceKey&lt;Biome&gt; 解析 Holder&lt;Biome&gt;，每次从当前服务器的 RegistryAccess 实时查找。
+     * <p>
+     * <b>修复（2026-07-14）</b>：旧版静态缓存 {@code biomeRegistry} 在两次世界加载间
+     * 引用已关闭服务器的死 Registry → getHolder() 返空 → fallback 为 null →
+     * getNoiseBiome 返 null → biome palette 序列化 id=-1 → 客户端解码崩溃。
+     * 新方案：每次实时解析（server.registryAccess() 是 O(1) thread-local 访问，极轻量）。
+     * </p>
      */
     private static Holder<Biome> resolveBiome(ResourceKey<Biome> key) {
-        if (biomeRegistry == null) {
-            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-            if (server != null) {
-                biomeRegistry = server.registryAccess().registryOrThrow(Registries.BIOME);
-            }
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            return server.registryAccess()
+                .registryOrThrow(Registries.BIOME)
+                .getHolder(key).orElse(null);
         }
-        if (biomeRegistry != null) {
-            return biomeRegistry.getHolder(key).orElse(null);
-        }
-        // 兜底：无服务器（极端情况）时尝试 ForgeRegistries。
-        return ForgeRegistries.BIOMES.getHolder(key).orElse(null);
+        return null;
     }
 
+    /** 回退群系 — 必须永远非 null。第一次成功解析后永久缓存。 */
     private static Holder<Biome> fallbackBiome() {
-        if (fallback == null) {
-            fallback = resolveBiome(Biomes.PLAINS);
+        Holder<Biome> h = fallback;
+        if (h != null) return h;
+        h = resolveBiome(Biomes.PLAINS);
+        if (h != null) {
+            fallback = h;
+            return h;
         }
-        return fallback;
+        // 终极兜底（理论上只在 server 未启动时走到，但此时 getNoiseBiome 不会被调用）
+        throw new IllegalStateException(
+            "Cannot resolve PLAINS biome — server not available?");
     }
 
     /** 地形引擎注入点（由 GeoGenesisGenerator.ensureEngine 调用，供群系按 Cell 数据分类）。 */

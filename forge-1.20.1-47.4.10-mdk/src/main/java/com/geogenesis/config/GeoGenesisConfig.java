@@ -80,17 +80,17 @@ public final class GeoGenesisConfig {
             .defineInRange("continentScale", 1500.0, 200.0, 10000.0);
         continentWarp = builder.comment("Domain warp intensity.")
             .defineInRange("continentWarp", 0.2, 0.0, 1.0);
-        continentThreshold = builder.comment("Reference continentality c value. NOT the coastline; coastline = e=0 natural crossing (see terrain-rebuild §1.4).")
-            .defineInRange("continentThreshold", 0.5, 0.0, 1.0);
+        continentThreshold = builder.comment("Reference continentality c value ∈ [-1,1]. NOT the coastline; coastline = e=0 natural crossing (see terrain-rebuild §1.4). 0=coast anchor, negative=ocean, positive=land — aligned with vanilla Continentalness.")
+            .defineInRange("continentThreshold", 0.0, -1.0, 1.0);
         continentBias = builder.comment("Land/ocean ratio bias. Positive = more ocean, negative = more land.")
             .defineInRange("continentBias", 0.0, -0.5, 0.5);
         builder.pop();
 
         builder.push("Ocean Spline Control Points");
-        deepOceanLoc = builder.defineInRange("deepOceanLoc", 0.10, 0.0, 1.0);
-        shelfLoc = builder.defineInRange("shelfLoc", 0.25, 0.0, 1.0);
-        shallowLoc = builder.defineInRange("shallowLoc", 0.42, 0.0, 1.0);
-        coastLoc = builder.defineInRange("coastLoc", 0.48, 0.0, 1.0);
+        deepOceanLoc = builder.defineInRange("deepOceanLoc", -0.80, -1.0, 1.0);
+        shelfLoc = builder.defineInRange("shelfLoc", -0.50, -1.0, 1.0);
+        shallowLoc = builder.defineInRange("shallowLoc", -0.16, -1.0, 1.0);
+        coastLoc = builder.defineInRange("coastLoc", -0.04, -1.0, 1.0);
         deepOceanDepth = builder.defineInRange("deepOceanDepth", -0.85, -1.0, 0.0);
         shelfDepth = builder.defineInRange("shelfDepth", -0.25, -1.0, 0.0);
         shallowDepth = builder.defineInRange("shallowDepth", -0.06, -1.0, 0.0);
