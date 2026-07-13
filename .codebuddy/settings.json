@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "algorithmic-art@codebuddy-plugins-official": true,
+    "code-simplifier@codebuddy-plugins-official": true,
+    "code-refactoring@codebuddy-plugins-official": true
+  }
+}
