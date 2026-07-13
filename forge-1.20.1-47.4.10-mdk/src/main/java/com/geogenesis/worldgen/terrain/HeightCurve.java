@@ -5,8 +5,8 @@ import com.geogenesis.worldgen.noise.NoiseUtil;
 /**
  * 海洋深度样条（offset.json 式 cubic Hermite）。
  *
- * 大陆性 c 仅作 x 坐标，深度/高度 e 完全由控制点 value 决定。
- * 样条覆盖 e ∈ [-1, +1]（深海→高空），海洋侧为负、陆地侧为正。
+ * 大陆性 c ∈ [-1,1] 仅作 x 坐标，深度/高度 e 完全由控制点 value 决定。
+ * 样条覆盖 e ∈ [-1, +1]（深海→高空），海洋侧为负（c<0）、陆地侧为正（c>0），c=0 为海岸锚点。对齐 MC 原版 Continentalness。
  *
  * 提供 {@code eFromHeightF} 的单调二分逆解（MC 用）。
  */
@@ -31,9 +31,9 @@ public final class HeightCurve {
     }
 
     /**
-     * 由大陆性 c ∈ [0,1] 映射到归一化高度 e ∈ [-1,1]。
-     * 海洋侧（c < coastLoc）e ≈ 负值（深度由值决定）；
-     * 陆地侧 e = c 但仅作 blendE 坐标，最终 e 由 eLand 决定。
+     * 由大陆性 c ∈ [-1,1] 映射到归一化高度 e ∈ [-1,1]。
+     * 海洋侧（c < coastLoc≈-0.04）e ≈ 负值（深度由值决定）；
+     * 陆地侧 c>0 最终 e 由 eLand 决定。
      */
     public double eFromC(double c) {
         return SplineUtil.splint(locations, values, derivatives, c);

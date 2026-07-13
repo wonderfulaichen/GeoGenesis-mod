@@ -7,7 +7,7 @@ import com.geogenesis.worldgen.river.HeightProvider;
  * 单格地形装配中枢 —— 统一连续场 e(x,z)。
  *
  * 流程：
- *   ContinentField.sample → c ∈ [0,1]（单一连续噪声场）
+ *   ContinentField.sample → c ∈ [-1,1]（单一连续噪声场，负=海洋、正=陆地、0=海岸锚点，对齐 MC 原版 Continentalness）
  *   ├─ continentBias 偏置整体平移海陆占比
  *   ├─ HeightCurve.eFromC(c) → eOcean ∈ [ -1,0 ]（海洋基面，深海负、近岸≈0）
  *   ├─ LandShape.sample(...) → eLand ∈ [0,1]（陆地形态，连续噪声自然合成、无硬边界）
@@ -75,7 +75,8 @@ public final class CellGenerator implements HeightProvider {
         cell.continent = c;
 
         // 1.5 应用 continentBias 偏置（正=更多海，负=更多陆）
-        double cBiased = NoiseUtil.clamp(c - continentBias, 0.0, 1.0);
+        // c∈[-1,1]；不 clamp，样条在 [-1,1] 全段有效
+        double cBiased = c - continentBias;
 
         // 2. 海洋基面 eOcean（c 轴样条 + 海床细节，深海为负、近岸≈0）
         double seabed = seabedAmp * seaBed.sample(wx, wz);
@@ -128,17 +129,27 @@ public final class CellGenerator implements HeightProvider {
             return e < -0.4 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
 
-        // 陆地
-        double wBelt = weights[1], wPlateau = weights[2];
+        // === 陆地 ===
+        // 策略：PLAIN/HILLS 优先于 MOUNTAINS（最常见类型不判山），
+        // MOUNTAINS/PEAK/SNOW 收紧阈值，PLATEAU 独立门控。
+        double wBelt = weights[1], wPlateau = weights[2], wBasin = weights[3];
 
-        if (e > 0.90 && wBelt > 0.45) return TerrainClass.SNOW;   // 最高雪峰核（雪线以上雪盖）
-        if (e > 0.85 && wBelt > 0.4)  return TerrainClass.PEAK;
-        if (e > 0.60 && wBelt > 0.3)  return TerrainClass.MOUNTAINS;
-        if (wPlateau > 0.3 && eLand > 0.5)  return TerrainClass.PLATEAU;  // 放宽：高原省识
-        if (eLand < 0.08 && weights[3] > 0.5) return TerrainClass.BASIN;
-        if (eLand < 0.12) return TerrainClass.PLAIN;
-        if (eLand < 0.30) return TerrainClass.HILLS;
-        return TerrainClass.MOUNTAINS;
+        // 盆地（极少数，极低 eLand + 盆地省占优）
+        if (eLand < 0.06 && wBasin > 0.5)  return TerrainClass.BASIN;
+
+        // PLAIN/HILLS 优先于 MOUNTAINS（最常见，覆盖约 45% 陆地格子）
+        if (eLand < 0.10)  return TerrainClass.PLAIN;
+        if (eLand < 0.28)  return TerrainClass.HILLS;
+
+        // 高原（独立门控，不依赖 e>0.6；eLand≈0.30–0.35 高原才命中）
+        if (wPlateau > 0.35 && eLand > 0.30) return TerrainClass.PLATEAU;
+
+        // 山脉（收紧阈值：仅高 e + 造山带占优时出现）
+        if (e > 0.90 && wBelt > 0.6)  return TerrainClass.SNOW;
+        if (e > 0.80 && wBelt > 0.5)  return TerrainClass.PEAK;
+        if (e > 0.70 && wBelt > 0.35) return TerrainClass.MOUNTAINS;
+
+        return TerrainClass.HILLS;  // 兜底 HILLS（不再判为 MOUNTAINS）
     }
 
     /** 采样大陆性快捷接口（海洋→landShape 可跳过） */

@@ -14,7 +14,7 @@ public class Cell {
     /** 世界高度 (Y) */
     public double height;
 
-    /** 大陆性 c ∈ [0,1]（深海→内陆） */
+    /** 大陆性 c ∈ [-1,1]（负=海洋、正=陆地、0=海岸锚点，对齐 MC 原版 Continentalness） */
     public double continent;
 
     /** 归一化高度/深度 e ∈ [-1,1]（用于 HeightCurve 映射） */

@@ -9,9 +9,10 @@
 
 ### 最终范式（用户拍板）
 - **统一连续高度场**：单一 `e(x,z)` 海洋/陆地同一场，大陆性 `c` 单一连续噪声场
+- **大陆性 c ∈ [-1,1]**：对齐 MC 原版 Continentalness（负=海洋、正=陆地、0=海岸锚点），兼容群系模组（TerraBlender/BYG 等）。2026-07-14 用户拍板从 [0,1] 切换
 - **样条控制点=噪声层基面**：mixer 编辑基准，侵蚀后允许偏移
 - **实测海平面定海陆**：`e<0` 海洋、`e≥0` 陆地（非 `c<threshold`）
-- **continentBias 单滑块**：正=海多、负=陆多，默认 0.0
+- **continentBias 单滑块**：正=海多、负=陆多，默认 0.0（c ∈ [-1,1] 空间）
 - **多营力局部侵蚀 v1**：Hydraulic + Coastal + Thermal（局部算子，气候门控）
 - **权威设计文档**：`docs/01-架构设计/01-地形重建设计-terrain-rebuild.md`
 
@@ -22,7 +23,8 @@
 - ⏳ **阶段 4**：mixer 重绑 + River/Erosion 进 Forge Config 6 处同步
 - ⏳ **阶段 5**：runClient/runPreview 目检 + 文档终校
 
-### 关键技术决策（2026-07-13）
+### 关键技术决策（2026-07-13/14）
+- **大陆性 c 区间：[-1,1]（2026-07-14 用户拍板）**：对齐 MC 原版 Continentalness（负=海洋、正=陆地、0=海岸锚点），兼容群系模组。ContinentField 不再做 (raw+1)*0.5 归一化，直接返回 raw∈[-1,1]；样条控制点 x 坐标同步映射；blendE 不再 clamp cBiased 到 [0,1]。参数映射表见设计文档 §1.5
 - **海岸宽度调试**：移除两处 `×1.5` 硬编码，改加法模型 `e=eOcean+eLand`
 - **coastWidth 默认值**：0.30 → 0.08 → 0.15（c-space，同步 3 处）
 - **材质修复**：`fillTerrainColumn` 用 `floor(height)` 确保草/泥土层正确放置
@@ -51,7 +53,7 @@
 
 ### 注册与编解码
 - **biome 是动态(datapack)注册表**：`BiomeSource` 解析 `Holder<Biome>` 必须在 CODEC 解码期用 `RegistryOps.retrieveGetter(Registries.BIOME)`
-- **⚠️ Forge 1.20.1：dynamic 注册表（biome）解析须用 `ServerLifecycleHooks.getCurrentServer().registryAccess()`**（非 `BuiltInRegistries.BIOME`/`ForgeRegistries.BIOMES`）。群系是 dynamic(datapack) 注册表，已从 `BuiltInRegistries` 移除；`ForgeRegistries.BIOMES` 是 Forge 静态包装，在 `createLevels`→`createBiomes`（世界生成初期）尚未从当前世界同步 → `getHolder(plains)` 返回 empty。正确做法：`server.registryAccess().registryOrThrow(Registries.BIOME).getHolder(key)`（Forge 在 `MinecraftServer` 构造期即 `setCurrentServer`，早于 `createLevels`，故 RegistryAccess 完整）。首次成功时缓存 `Registry<Biome>` 静态字段复用。`getNoiseBiome` 返回 null 会让 null Holder 进 biome palette → 玩家加入世界时 `LinearPalette.getSerializedSize`→`Registry.asHolderIdMap().getId(null)` 空指针崩溃（`Couldn't place player in world`）。
+- **⚠️ Forge 1.20.1：dynamic 注册表（biome）解析须用 `ServerLifecycleHooks.getCurrentServer().registryAccess()`**（非 `BuiltInRegistries.BIOME`/`ForgeRegistries.BIOMES`）。群系是 dynamic(datapack) 注册表，已从 `BuiltInRegistries` 移除；`ForgeRegistries.BIOMES` 是 Forge 静态包装，在 `createLevels`→`createBiomes`（世界生成初期）尚未从当前世界同步 → `getHolder(plains)` 返回 empty。正确做法：`server.registryAccess().registryOrThrow(Registries.BIOME).getHolder(key)`（Forge 在 `MinecraftServer` 构造期即 `setCurrentServer`，早于 `createLevels`，故 RegistryAccess 完整）。<b>禁止缓存 `Registry<Biome>` 到静态字段</b>（2026-07-14 已修复：跨世界加载时旧 Registry 引用失效，导致 `getNoiseBiome` 返 null → biome palette id=-1 → 客户端解码崩溃）。每次 call 实时解析（O(1) thread-local）。
 - **自定义 fieldless CODEC 必须用 `RecordCodecBuilder.create`**：禁止 `Codec.unit(x).stable()` 作 dispatch 元素
 - CODEC 用 `DeferredRegister.create(Registries.CHUNK_GENERATOR, MODID)`
 - **⚠️ 自定义 ChunkGenerator/BiomeSource 的叶子 CODEC 禁止 `.stable()`/`.withLifecycle()`**：`MapCodec.stable()`→`withLifecycle()` 会把 `MapCodec` 包成**非 `MapCodecCodec` 的匿名子类**；而 `ChunkGenerator.CODEC`/`BiomeSource.CODEC` 是 `byNameCodec().dispatchStable(...)`（即 `KeyDispatchCodec`，`assumeMap=false`），派发解码时要求叶子 codec `c instanceof MapCodecCodec`（否则走 `input.get("value")` 分支，字段不存在 → `c.decode(ops, null)` → `getMap(null)` → **"Not a JSON object: null"** → world_preset 解析失败抛 "Missing overworld dimension" → 创建世界崩溃）。`RecordCodecBuilder.create(...)` 直接返回 `MapCodecCodec`，所以叶子 codec **不要加 `.stable()`**。`GeoGenesisBiomeSource.CODEC` 曾因末尾 `.stable()` 导致创建世界崩溃，已修复（2026-07-13）。
@@ -100,7 +102,9 @@
 - **植被装饰恢复**：用户明确"后续再恢复"
 
 ## 已知问题
-- **runPreview 目检海岸异质性待做**：平原应缓岸、山脉应陡贴海（由海洋样条斜率 × 陆地起伏自然决定，无 global 海岸旋钮）
+- **c 区间代码已切换到 [-1,1]（2026-07-14）**：`ContinentField.sample` 移除归一化直接返回 raw∈[-1,1]；`CellGenerator.sample` 移除 cBiased clamp；`TerrainParams`/`GeoGenesisConfig`/toml 3 处默认值同步。编译通过。runPreview 目检待做。
+- **classify 判断顺序已重排（2026-07-14）**：PLAIN/HILLS 优先于 MOUNTAINS；收紧 MOUNTAINS/PEAK/SNOW 阈值；PLATEAU 独立门控修复永远不命中。兜底改为 HILLS。
+- **runPreview 目检海陆比异常**：修复已编码（A1+A2），runPreview 目检验证待做
 - **陆海比校准待做**：移除 coastFactor 后 eLand 正偏置使海岸线外推（海洋占比或下降），可能需下压 `shallowDepth`/`shelfDepth` 或略降 `hillsHigh`/`plainRough`
 - 植被装饰是否完全抑制待验证（`applyBiomeDecoration` 仍空操作）
 - 侵蚀/河流系统待地形完善后恢复并调试（当前 `generateChunk` 中已注释）

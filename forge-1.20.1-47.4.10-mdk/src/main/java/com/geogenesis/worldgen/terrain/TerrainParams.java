@@ -17,17 +17,17 @@ public record TerrainParams(
     double continentScale,
     /** 域扭曲强度，默认 0.2 */
     double continentWarp,
-    /** 海陆阈值 c 值，默认 0.5 */
+    /** 海陆参考阈值 c 值（[-1,1] 区间），默认 0.0 */
     double continentThreshold,
     /** 海陆占比偏置（正=更多海、负=更多陆），默认 0.0 */
     double continentBias,
 
     // ===== 海洋样条控制点（offset.json 式 cubic Hermite） =====
-    // c-space 位置（深海→海洋→浅海→海岸）
-    double deepOceanLoc,   // 默认 0.10; 深海起点
-    double shelfLoc,       // 默认 0.25; 大陆架
-    double shallowLoc,     // 默认 0.42; 浅海
-    double coastLoc,       // 默认 0.48; 海岸线
+    // c-space 位置（c∈[-1,1]：深海→大陆架→浅海→海岸）
+    double deepOceanLoc,   // 默认 -0.80; 深海起点（最深洋盆）
+    double shelfLoc,       // 默认 -0.50; 大陆架外缘
+    double shallowLoc,     // 默认 -0.16; 浅海
+    double coastLoc,       // 默认 -0.04; 海岸线（样条锚定 e=0）
 
     // e-space 深度（控制点 value）
     double deepOceanDepth, // 默认 -0.85; 深海深度
@@ -108,9 +108,9 @@ public record TerrainParams(
     public static TerrainParams defaults() {
         return new TerrainParams(
             // continent
-            1500.0, 0.2, 0.5, 0.0,
-            // ocean spline locations
-            0.10, 0.25, 0.42, 0.48,
+            1500.0, 0.2, 0.0, 0.0,
+            // ocean spline locations (c∈[-1,1]; 负=深海、0=海岸锚点)
+            -0.80, -0.50, -0.16, -0.04,
             // ocean spline values
             -0.85, -0.25, -0.06,
             // ocean spline derivatives

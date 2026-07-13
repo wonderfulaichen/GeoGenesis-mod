@@ -14,10 +14,10 @@
 |------|------|--------|------|
 | `preview/` | 预览增强（图层系统 + 配色中枢） | 4 | ✅ 全完成 |
 | `biome/` | 群系分类重构（BiomeClassifier 按地形×气候） | 3 | ⏳ 未完成 |
-| `terrain/` | 地形重建（地质过程范式） | 2 | ⏳ 未完成 |
+| `terrain/` | 地形重建（地质过程范式） | 6 | ⏳ 未完成 |
 | `river/droplet/` | 河流 droplet 物理化（已落地方案） | 2 | 1✅ / 1⏳ |
 | `river/explore/` | 河流探索/竞争方案（未落地） | 5 | ⏳ 未完成 |
-| `fix/` | Bug 修复 + 侵蚀修复 | 4 | ⏳ 未完成 |
+| `fix/` | Bug 修复 + 侵蚀修复（含 `coast/` 子目录） | 22 | ⏳ 未完成 |
 | `meta/` | 元计划（文档整理 / 气候群系接线） | 2 | ✅ 完成 |
 
 ## 文件明细
@@ -42,6 +42,10 @@
 |------|------|------|------|
 | `terrain-shape-redesign_78b32ae8(未完成).md` | ⏳ 草稿 | 旧 | edgeFade + TerrainType 形态带；**被 real-terrain-rebuild 取代** |
 | `real-terrain-rebuild_a53e50cb(未完成).md` | ⏳ 草稿 | 新（已落地） | 地质过程范式重建，即当前 `StructuralField`+`TerrainBlender` 方案 |
+| `GeoGenesis_地形整体重构方案_e008ca51(未完成).md` | ⏳ 草稿 | — | 地形整体重构方案（TerraForged 0.3.x 对齐） |
+| `geogenesis_terrain_bugfix_v2_d019ca3a.md` | ⏳ 草稿 | — | 地形bug修复方案v2 |
+| `fix-terrain-bugs-2026-07-11_5ded1b08(未完成).md` | ⏳ 草稿 | — | 修复2026-07-11地形bug方案 |
+| `fix-terrain-bugs-2026-07-11_8fa4806b(未完成).md` | ⏳ 草稿 | — | 修复2026-07-11地形bug方案（另一版本） |
 
 ### `river/droplet/`（河流 droplet 物理化）
 | 文件 | 状态 | 继承 | 备注 |
@@ -65,7 +69,7 @@
 | `fix-params-page-layout_480f7629(未完成).md` | ⏳ 草稿 | — | 参数页布局（WorldHeightBar / 空白 / scissor） |
 | `fix-region-transpose-seam_db9e5329(未完成).md` | ⏳ 草稿 | — | X/Z 转置导致 512-block 棋盘断裂 |
 | `hydraulic-erosion-fix-v2_054ae2ae(未完成).md` | ⏳ 草稿 | v1 | 5 根因 bug 修复 + 接通侵蚀 |
-| `hydraulic-erosion-parallel-fragment-fix_3f9aa345(未完成).md` | ⏳ 草稿 | v2（重叠） | 平行沟壑 / 碎片化修复；与 fix-v2 **高度重叠** |
+| **`fix/coast/`** | ⏳ 子目录 | — | 海岸/海洋相关修复（19个文件），详见子目录 |
 
 ### `meta/`（元计划，✅ 完成）
 | 文件 | 状态 | 继承 | 备注 |
