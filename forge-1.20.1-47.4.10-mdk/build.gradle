@@ -82,8 +82,7 @@ minecraft {
         }
 
         client {
-            // 限制游戏内存防止卡死
-            jvmArgs '-Xmx4G', '-Xms1G', '-XX:+UseG1GC', '-XX:MaxGCPauseMillis=200'
+            // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             property 'forge.enabledGameTestNamespaces', mod_id
         }
 
@@ -113,12 +112,7 @@ minecraft {
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 repositories {
-    // 国内镜像加速（阿里云 + 华为云）
-    maven { url = 'https://maven.aliyun.com/repository/public' }
-    maven { url = 'https://maven.aliyun.com/repository/forge' }
-    maven { url = 'https://repo.huaweicloud.com/repository/maven' }
-    mavenCentral()
-
+    // Put repositories for dependencies here
     // ForgeGradle automatically adds the Forge maven and Maven Central for you
 
     // If you have mod jar dependencies in ./libs, you can declare them as a repository like so.
@@ -210,4 +204,18 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+    // 抑制 forRemoval 弃用 API 的报错（如 ResourceLocation 构造、ModLoadingContext.get() 等），
+    // 避免重构过渡期整模块编译失败；发布前再统一迁移这些 API。
+    options.compilerArgs << '-Xlint:-removal'
+}
+
+// Standalone terrain preview window (no Minecraft launch required).
+// Runs the pure-Java GeoGenesisTerrain through a Swing heatmap.
+// Usage: gradlew runPreview            (default seed)
+//        gradlew runPreview --args=98765
+task runPreview(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.client.preview.TerrainPreview'
+    // Optional: pass seed via command line args
+    // args = ['12345']
 }
