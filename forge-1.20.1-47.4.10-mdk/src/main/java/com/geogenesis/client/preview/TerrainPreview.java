@@ -52,7 +52,65 @@ public final class TerrainPreview {
 
     private Cell[][] cachedCells;
     private int cachedOriginX = Integer.MAX_VALUE, cachedOriginZ = Integer.MAX_VALUE, cachedCellsX = -1, cachedCellsZ = -1;
-    private volatile boolean computing = false;
+    private volatile Thread computeThread = null;
+
+    private void render(Graphics2D g) {
+        int originBlockX = (int) Math.floor(originX);
+        int originBlockZ = (int) Math.floor(originZ);
+        int cellsX = Math.max(1, (int) Math.ceil((double) (PANEL * scale) / horizontalScale));
+        int cellsZ = Math.max(1, (int) Math.ceil((double) (PANEL * scale) / horizontalScale));
+
+        boolean needsCompute = cachedCells == null || cachedOriginX != originBlockX || cachedOriginZ != originBlockZ
+                || cachedCellsX != cellsX || cachedCellsZ != cellsZ;
+
+        if (needsCompute) {
+            scheduleCompute(originBlockX, originBlockZ, cellsX, cellsZ);
+            // 新数据未就绪：显示变换后的旧帧（AffineTransform 瞬间完成，不卡）
+            if (lastFrame != null) {
+                g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL);
+                double sx = lastScale / scale, tx = (lastOriginX - originX) / scale, ty = (lastOriginZ - originZ) / scale;
+                AffineTransform at = new AffineTransform(); at.translate(tx, ty); at.scale(sx, sx);
+                g.drawImage(lastFrame, at, null);
+            } else {
+                g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL);
+                g.setColor(Color.WHITE); g.drawString("计算中... (seed=" + seed + ")", 10, 30);
+            }
+            return;
+        }
+
+        // 拍快照：避免后台线程更新 cachedCells 时渲染读到的数组尺寸不匹配
+        Cell[][] cells = cachedCells;
+        if (cells == null) return;
+
+        try {
+            int res = PANEL / QUALITY[qualityIdx];
+            BufferedImage img = new BufferedImage(res, res, BufferedImage.TYPE_INT_RGB);
+            GeoPalette.PreviewLayer layer = GeoPalette.PreviewLayer.values()[layerIndex];
+            for (int py = 0; py < res; py++) {
+                double wz = originZ + (py * scale * QUALITY[qualityIdx]);
+                for (int px = 0; px < res; px++) {
+                    double wx = originX + (px * scale * QUALITY[qualityIdx]);
+                    int cellX = Math.max(0, Math.min(cells.length - 1, (int) Math.floor((wx - originBlockX) / horizontalScale)));
+                    int cellZ = Math.max(0, Math.min(cells[0].length - 1, (int) Math.floor((wz - originBlockZ) / horizontalScale)));
+                    Cell cell = cells[cellX][cellZ];
+                    int rgb = GeoPalette.color(layer, cell, (int) Math.round(wx), (int) Math.round(wz), minY, maxY, hydrology);
+                    img.setRGB(px, py, rgb);
+                }
+            }
+            g.drawImage(img, 0, 0, PANEL, PANEL, null);
+            lastFrame = img; lastOriginX = originX; lastOriginZ = originZ; lastScale = scale;
+
+            drawLegend(g, layer);
+            drawTooltip(g, layer);
+            info.setText(String.format("seed=%d  scale=%.2f  layer=%s hydro=%s  res=%dx%d  q=%d  [1-9/0]图层 [ ]切换 [R]河 [X]分辨率 [/]搜索 [Esc]退出搜索",
+                    seed, scale, GeoPalette.englishLabel(layer.labelKey), hydrology ? "ON" : "OFF", res, res, QUALITY[qualityIdx]));
+        } catch (Throwable t) {
+            t.printStackTrace();
+            if (lastFrame != null) g.drawImage(lastFrame, 0, 0, null);
+            else { g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL); }
+            g.setColor(Color.RED); g.drawString("渲染错误: " + t.getMessage(), 10, 30);
+        }
+    }
 
     private final JFrame frame;
     private final JPanel canvas;
@@ -69,15 +127,15 @@ public final class TerrainPreview {
         gen.seed(seed);
         this.terrain = new GeoGenesisTerrain(gen);
         this.seaLevel = params.seaLevel();
-        this.snowLine = (int) params.snowLine();
+        this.snowLine = (int) new com.geogenesis.worldgen.terrain.HeightCurve(params, params.minY(), params.maxY()).heightFromE(params.snowLine());
         this.maxY = params.maxY();
         this.minY = params.minY();
         this.horizontalScale = (int) params.horizontalScale();
         this.mountainCap = params.mountainCap();
         this.trenchDepth = params.trenchDepth();
-        // 高程色带按「实际地形高度范围」归一化（海床最深 → 山脊最高），
-        // 这样无论 MAX_Y 设多大，高山始终映射到色带顶部，不会因留白天空而显得像平原。
-        GeoPalette.setElevationRange(seaLevel - trenchDepth, mountainCap);
+        // 高程色带按世界全高度范围归一化（minY 到 mountainCap），
+        // 使深海（Y=minY）到山脊（Y=mountainCap）的颜色层次可见
+        GeoPalette.setElevationRange(minY, mountainCap);
 
         frame = new JFrame("GeoGenesis Terrain Preview");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -151,79 +209,34 @@ public final class TerrainPreview {
 
     private int lastX, lastY;
 
-    private void render(Graphics2D g) {
-        int regionWidth = (int) Math.ceil(PANEL * scale);
-        int regionHeight = (int) Math.ceil(PANEL * scale);
-        int cellsX = Math.max(1, (int) Math.ceil((double) regionWidth / horizontalScale));
-        int cellsZ = Math.max(1, (int) Math.ceil((double) regionHeight / horizontalScale));
-        int originBlockX = (int) Math.floor(originX);
-        int originBlockZ = (int) Math.floor(originZ);
-
-        boolean needsCompute = cachedCells == null || cachedOriginX != originBlockX || cachedOriginZ != originBlockZ
-                || cachedCellsX != cellsX || cachedCellsZ != cellsZ;
-        if (needsCompute) {
-            cachedCells = null;
-            if (lastFrame != null) {
-                g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL);
-                double sx = lastScale / scale, tx = (lastOriginX - originX) / scale, ty = (lastOriginZ - originZ) / scale;
-                AffineTransform at = new AffineTransform(); at.translate(tx, ty); at.scale(sx, sx);
-                g.drawImage(lastFrame, at, null);
-                g.setColor(Color.WHITE); g.drawString("加载新区域...", 8, 16);
-            } else {
-                g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL);
-                g.setColor(Color.WHITE); g.drawString("计算中... (seed=" + seed + ")", 10, 30);
-            }
-            scheduleCompute(originBlockX, originBlockZ, cellsX, cellsZ);
-            return;
-        }
-
-        try {
-            int res = PANEL / QUALITY[qualityIdx];
-            BufferedImage img = new BufferedImage(res, res, BufferedImage.TYPE_INT_RGB);
-            GeoPalette.PreviewLayer layer = GeoPalette.PreviewLayer.values()[layerIndex];
-            for (int py = 0; py < res; py++) {
-                double wz = originZ + (py * scale * QUALITY[qualityIdx]);
-                for (int px = 0; px < res; px++) {
-                    double wx = originX + (px * scale * QUALITY[qualityIdx]);
-                    int cellX = cellIndex(wx, originBlockX, cellsX);
-                    int cellZ = cellIndex(wz, originBlockZ, cellsZ);
-                    Cell cell = cachedCells[cellX][cellZ];
-                    int rgb = GeoPalette.color(layer, cell, (int) Math.round(wx), (int) Math.round(wz), minY, maxY, hydrology);
-                    img.setRGB(px, py, rgb);
-                }
-            }
-            g.drawImage(img, 0, 0, PANEL, PANEL, null);
-            lastFrame = img; lastOriginX = originX; lastOriginZ = originZ; lastScale = scale;
-
-            drawLegend(g, layer);
-            drawTooltip(g, layer);
-
-            String name = layer.labelKey;
-            info.setText(String.format("seed=%d  scale=%.2f  layer=%s  hydro=%s  res=%dx%d  q=%d  [1-9/0]图层 [ ]切换 [R]河 [X]分辨率 [/]搜索 [Esc]退出搜索",
-                    seed, scale, name, hydrology ? "ON" : "OFF", res, res, QUALITY[qualityIdx]));
-        } catch (Throwable t) {
-            t.printStackTrace();
-            if (lastFrame != null) g.drawImage(lastFrame, 0, 0, null);
-            else { g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL); }
-            g.setColor(Color.RED); g.drawString("渲染错误: " + t.getMessage(), 10, 30);
-        }
-    }
-
     private int cellIndex(double worldCoord, int originBlock, int cells) {
         int idx = (int) Math.floor((worldCoord - originBlock) / horizontalScale);
         return Math.max(0, Math.min(cells - 1, idx));
     }
 
+    /**
+     * 调度后台计算：最多 1 个计算线程运行。
+     * 新请求 → 中断旧线程（getRegionCells 每格检查 Thread.interrupted() → 快速退出）
+     * → 启动新线程。线程最低优先级，避免 EDT 饿死。
+     */
     private void scheduleCompute(int obx, int obz, int cellsX, int cellsZ) {
-        if (computing) return;
-        computing = true;
-        new Thread(() -> {
+        // 中断正在计算的旧线程（若存在）
+        Thread old = computeThread;
+        if (old != null) old.interrupt();
+
+        int fx = obx, fz = obz, fcX = cellsX, fcZ = cellsZ;
+        Thread t = new Thread(() -> {
             try {
-                cachedCells = terrain.getRegionCells(obx, obz, cellsX, cellsZ);
-                cachedOriginX = obx; cachedOriginZ = obz; cachedCellsX = cellsX; cachedCellsZ = cellsZ;
-            } catch (Throwable t) { t.printStackTrace(); }
-            finally { computing = false; SwingUtilities.invokeLater(() -> canvas.repaint()); }
-        }, "TerrainPreview-Compute").start();
+                Cell[][] result = terrain.getRegionCells(fx, fz, fcX, fcZ);
+                if (result == null) return; // 被中断（新请求已取代）
+                if (Thread.currentThread().isInterrupted()) return; // 硬防竞态
+                cachedCells = result;
+                cachedOriginX = fx; cachedOriginZ = fz; cachedCellsX = fcX; cachedCellsZ = fcZ;
+                SwingUtilities.invokeLater(() -> canvas.repaint());
+            } catch (Throwable ex) { ex.printStackTrace(); }
+        }, "TerrainPreview-Compute");
+        computeThread = t;
+        t.start();
     }
 
     private void drawLegend(Graphics2D g, GeoPalette.PreviewLayer layer) {
@@ -262,14 +275,15 @@ public final class TerrainPreview {
     }
 
     private void drawTooltip(Graphics2D g, GeoPalette.PreviewLayer layer) {
-        if (hoverPx < 0 || hoverPy < 0 || cachedCells == null) return;
+        Cell[][] cells = cachedCells; // 拍快照
+        if (hoverPx < 0 || hoverPy < 0 || cells == null) return;
         if (hoverPx >= PANEL || hoverPy >= PANEL) return;
         int originBlockX = (int) Math.floor(originX);
         int originBlockZ = (int) Math.floor(originZ);
-        int cellsX = Math.max(1, (int) Math.ceil((double) (PANEL * scale) / horizontalScale));
-        int cellsZ = Math.max(1, (int) Math.ceil((double) (PANEL * scale) / horizontalScale));
         double wx = originX + hoverPx * scale, wz = originZ + hoverPy * scale;
-        Cell cell = cachedCells[cellIndex(wx, originBlockX, cellsX)][cellIndex(wz, originBlockZ, cellsZ)];
+        int cx = Math.max(0, Math.min(cells.length - 1, (int) Math.floor((wx - originBlockX) / horizontalScale)));
+        int cz = Math.max(0, Math.min(cells[0].length - 1, (int) Math.floor((wz - originBlockZ) / horizontalScale)));
+        Cell cell = cells[cx][cz];
         String water;
         if (cell.riverIsWaterfall) water = "瀑布";
         else if (cell.riverSourceType == 3) water = "源头湖";

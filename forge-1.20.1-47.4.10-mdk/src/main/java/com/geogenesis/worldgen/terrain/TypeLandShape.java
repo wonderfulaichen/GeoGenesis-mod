@@ -47,39 +47,33 @@ public final class TypeLandShape {
 
     /**
      * 利用预计算的 blend 结果采样 eLand ∈ [0,1]。
-     * <p>
-     * v6 核心改进：eLand 级别混合（参考 ReTerraForged RegionLerper）。
-     * 旧方案在噪声空间混合（先混 noise+lo/hi，再 eLand=lo+range×base），
-     * 类型边界处 lo/hi 跳变导致 1 格高度断裂。
-     * 新方案：每个类型独立计算完整 eLand，再按 typeWeights 加权混合。
+     * 每类型的噪声按 typeWeights 加权混合 — 在 cell 边界处连续过渡。
      */
     public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz) {
-        // eLand 级别混合：每个类型独立计算完整 eLand，再加权平均
-        double blendedELand = 0;
+        // 1. 按 typeWeights 混合各类型的独立噪声
+        double blendedNoise = 0;
         double totalW = 0;
         for (TerrainClass tc : TypeNoiseProvider.LAND_TYPES) {
             double w = blend.typeWeights[tc.ordinal()];
-            if (w < 0.001) continue;
-
-            double noise = typeNoise.computeNoise(tc, wx, wz);
-            double lo = TypeGenerators.getTypeLo(tc);
-            double hi = TypeGenerators.getTypeHi(tc);
-
-            // 直接在各类型内部计算完整 eLand
-            double typeELand;
-            if (tc == TerrainClass.BASIN) {
-                // BASIN：反转噪声后映射
-                double basinNoise = TypeGenerators.basinModulate(noise);
-                typeELand = lo + (hi - lo) * basinNoise;
-            } else {
-                typeELand = lo + (hi - lo) * noise;
+            if (w > 0.001) {
+                blendedNoise += w * typeNoise.computeNoise(tc, wx, wz);
+                totalW += w;
             }
+        }
+        double base = totalW > 0 ? blendedNoise / totalW : 0.5;
 
-            blendedELand += w * typeELand;
-            totalW += w;
+        // 2. 盆地连续调制（保留，增强了 BASIN 反转效果）
+        double basinW = blend.typeWeights[TerrainClass.BASIN.ordinal()];
+        if (basinW > 0.01) {
+            double basinBase = TypeGenerators.basinModulate(base);
+            base = base * (1.0 - basinW) + basinBase * basinW;
         }
 
-        double eLand = totalW > 0 ? blendedELand / totalW : 0.0;
+        // 3. 映射到混合范围
+        double range = blend.hi - blend.lo;
+        double eLand = blend.lo + range * base;
+
+        // 4. 钳制
         return eLand < 0 ? 0 : (eLand > 1 ? 1 : eLand);
     }
 
