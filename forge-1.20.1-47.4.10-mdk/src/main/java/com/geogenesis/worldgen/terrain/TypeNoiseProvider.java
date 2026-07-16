@@ -33,18 +33,19 @@ public final class TypeNoiseProvider {
         Noise pWarped = new Warp(pSimplex, pWarpX, pWarpZ, 60.0);
         this.plainNoise = new Map(pWarped, -1.0, 1.0, 0.42, 0.58);
 
-        // --- HILLS v6.3: 2 层低频 Simplex 叠加（高频会放大断裂） ---
-        // v6.0 根因：Multiply(Perlin, Power(Billow, 0.5)) 在 Billow 零交叉点产生尖刺（89.7 块）
-        // v6.1 修复：纯 Add + Warp 但仍有 51 块
-        // v6.2 修复：3 层 Simplex（600/250/100）→ 4.8 块（最高频 1/100 仍是元凶）
-        // v6.3 修复：2 层低频（800/300）→ 理论 max Δe ≈ 0.005（2 块）
-        Noise hLow       = new Boost(new Frequency(new Simplex(412), 1.0 / 800.0), 0.7);
-        Noise hMid       = new Boost(new Frequency(new Simplex(413), 1.0 / 300.0), 0.3);
-        Noise hBase      = new Add(hLow, hMid);                              // [-1, 1] 平滑
-        // 单次小距离 Warp（distance=40，freq=1/250）让边缘略不规则
-        Noise hWX        = new Frequency(new Simplex(415), 1.0 / 250.0);
-        Noise hWZ        = new Frequency(new Simplex(416), 1.0 / 250.0);
-        Noise hWarped    = new Warp(hBase, hWX, hWZ, 40.0);
+        // --- HILLS v7.5: 两大主频 + 小 Warp，MC 正确尺度 ---
+        // FIX 1: 删除 1/80+1/40 细节（太碎产生"粗糙地面"非丘陵）
+        // 主频 1/400（25 chunks）：丘陵主体隆起
+        // 次频 1/120（7.5 chunks）：次级起伏
+        // 总振幅 ~1.5 确保 Map(-1,1,0,1) 输出接近全 [0,1] 范围
+        Noise hMain      = new Frequency(new Simplex(412), 1.0 / 400.0);
+        Noise hSub       = new Boost(new Frequency(new Simplex(413), 1.0 / 120.0), 0.5);
+        Noise hBase      = new Add(hMain, hSub);       // [-1.5, 1.5], 典型 [-0.75, 0.75]
+        // 小距离 Warp（distance=25，freq=1/80）— 仅做局部不规则，不做大距离扭曲
+        // 参考 TF hills_1.json: Warp(distance=20) 打散圆润感但不产生"拉面"蜿蜒
+        Noise hWX        = new Frequency(new Simplex(415), 1.0 / 80.0);
+        Noise hWZ        = new Frequency(new Simplex(416), 1.0 / 80.0);
+        Noise hWarped    = new Warp(hBase, hWX, hWZ, 25.0);
         this.hillsNoise  = new Map(hWarped, -1.0, 1.0, 0.0, 1.0);
 
         // --- MOUNTAINS: 浅山脊骨架(1/1500) + 主脊线(1/480) + 次脊线(1/180) ---
@@ -141,17 +142,41 @@ public final class TypeNoiseProvider {
         return result < 0 ? 0 : (result > 1 ? 1 : result);
     }
 
+    /**
+     * v7 (Phase 1.5)：三级形态山地公式。
+     * <p>
+     * 旧公式（v6）：v = shape*0.5 + shape*ridge*0.5，shape 为平滑 blob 直接做高度主体，
+     * 导致"快升到中→慢爬到顶"的曲线（中等 shape 区域占比最大，峰顶变化缓慢）。
+     * <p>
+     * 新公式：shape→山脉存在度(presence)，三级形态自动涌现：
+     * <pre>
+     *   1. 谷底（presence→0）：valleyFloor（0.12–0.40），缓坡
+     *   2. 陡升（presence 0.3→0.7）：presence² 加速上升
+     *   3. 脊线（presence→1）：ridge+detail 主导，ridgeBoost 调制
+     * </pre>
+     */
     private double computeMountain(double wx, double wz) {
         double angle = mountDirAngle.compute(wx, wz) * Math.PI;
-        double jx = mountDirJitterX.compute(wx, wz) * 40.0;
-        double jz = mountDirJitterZ.compute(wx, wz) * 40.0;
-        double rwx = wx + Math.cos(angle) * 120.0 + jx;
-        double rwz = wz + Math.sin(angle) * 120.0 + jz;
+        double jx = mountDirJitterX.compute(wx, wz) * 15.0;
+        double jz = mountDirJitterZ.compute(wx, wz) * 15.0;
+        double rwx = wx + Math.cos(angle) * 50.0 + jx;
+        double rwz = wz + Math.sin(angle) * 50.0 + jz;
 
-        double shape = mountShape.compute(rwx, rwz);
+        double shape = mountShape.compute(rwx, rwz);               // [0.20, 0.95] blob
         double ridgeRaw = mountRidge.compute(rwx, rwz);
-        double ridge = Math.max(0, (ridgeRaw - 0.4) / 0.6);
-        double v = shape * 0.7 + shape * ridge * 0.25;
+        double ridge = Math.max(0, (ridgeRaw - 0.4) / 0.6);        // [0, 1]
+        double detail = mountDetail.compute(rwx, rwz);             // [0, 0.2]
+        double valleyFloor = mountValleyFloor.compute(rwx, rwz);   // [0.12, 0.40]
+
+        // shape → presence（smoothstep from [0.20, 0.95] to [0, 1]）
+        double t = (shape - 0.20) / 0.75;
+        t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        double presence = t * t * (3.0 - 2.0 * t);                 // smoothstep
+
+        // 三级形态：谷底 + presence² 加速上升 → 脊线目标
+        double rise = presence * presence;                         // 二次加速
+        double ridgeTarget = 0.30 + Math.min(0.70, ridge * 0.7 + detail * 0.3);
+        double v = valleyFloor * (1.0 - rise) + rise * ridgeTarget;
 
         if (ridgeNetwork != null) {
             double boost = ridgeNetwork.ridgeBoost(wx, wz);

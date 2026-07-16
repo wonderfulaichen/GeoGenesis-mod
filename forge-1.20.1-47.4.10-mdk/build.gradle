@@ -220,14 +220,19 @@ task runPreview(type: JavaExec) {
     // args = ['12345']
 }
 
-// Temporary quantitative terrain diagnostic (A-stage). Deletes after use.
-task runDiag(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiag'
-}
-
-// v6.0 per-layer discontinuity diagnostic
+// v7.5 per-layer discontinuity diagnostic + height distribution stats
 task runProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.DiscontinuityProbe'
+}
+
+task runProfile(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.MountainProfileProbe'
+}
+
+// Comprehensive terrain diagnostic
+task runDiag(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiagnostic'
 }

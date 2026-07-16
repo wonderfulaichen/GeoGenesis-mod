@@ -5,17 +5,20 @@ import com.geogenesis.worldgen.noise.*;
 /**
  * Voronoi 区域驱动的陆地形态生成器。
  * <p>
- * v5 核心改进：每种地形类型使用独立噪声配方（而非共享 FBM），
- * 产生视觉上截然不同的地形形态：
+ * v7 (Phase 1)：差异调制 — 在共享噪声基底上叠加 per-type 专属噪声偏差，
+ * 各类型噪声形态真正不同（Ridge 脊线、平滑高原边缘等），
+ * 而断裂风险通过零均值加权混合 + typeWeights 平滑过渡控制。
+ * <p>
+ * 地形类型（v6 继承）：
  * <ul>
  *   <li>PLAIN — 极平坦</li>
  *   <li>HILLS — 圆润起伏</li>
- *   <li>MOUNTAINS — 尖锐脊线</li>
- *   <li>PLATEAU — 阶地台地</li>
- *   <li>BASIN — 凹陷盆地</li>
+ *   <li>MOUNTAINS — 尖锐脊线 + 脊线网络</li>
+ *   <li>PLATEAU — 平顶 + smoothstep 边缘渐变</li>
+ *   <li>BASIN — 反转凹陷</li>
  * </ul>
- * 在 cell 边界处按 typeWeights 加权混合各类型的独立噪声，
- * 保证连续过渡。
+ * 在 cell 边界处按 typeWeights 加权混合各类型的独立噪声偏差，
+ * 保证跨 cell 连续过渡（详见证断裂分析 §Phase1）。
  */
 public final class TypeLandShape {
 
@@ -46,30 +49,46 @@ public final class TypeLandShape {
     }
 
     /**
-     * 利用预计算的 blend 结果采样 eLand ∈ [0,1]。
-     * v6.5: 回归 v5.2 公式（仅共享噪声），per-type 噪声仅用于 biome 分类（不参与高度）：
-     *   eLand = blend.lo + (blend.hi − blend.lo) × sharedNoise
+     * v7.5：类型噪声直接主导 eLand（Fix 2）。
      * <p>
-     * 决策依据（v6.4 vs v5.2 诊断对比）：
-     * - v5.2 (本版): eLand max Δe = 2.2 块 ✅ 通过
-     * - v6.4 (per-type 30%): eLand max Δe = 7.1 块 ❌ 严重超阈值
-     * - 根因：cell type hash-based → typeWeights 1 块跳变 10%
-     *   → blend.lo 1 块跳变 4.6 块（无法通过 noise 改变修复）
+     * 旧公式（Phase 1 差异调制）：
+     *   base = lo + range×sharedNoise
+     *   diff = Σw×(typeNoise − sharedNoise)
+     *   eLand = base + morphStrength×diff×range
+     * 问题：typeNoise 和 sharedNoise 都是 [0,1] 噪声，差值幅值小（±0.15），
+     * 类型噪声对高度贡献仅 ±8 块。丘陵失去可见起伏。
      * <p>
-     * 类型视觉差异通过其他方式实现：
-     * - HILLS/PLAIN/MOUNTAINS 等分类用 TypeClass.dominantType
-     * - biome 表面用 BiomeClassifier 决定
-     * - 装饰用 per-type 噪声（不进入高度）
+     * 新公式（v7.5）：
+     *   typeWeighted = Σ w×typeNoise / Σw  ← 类型噪声直接混合
+     *   eLand = lo + range × typeWeighted   ← 类型噪声主导
+     * 在纯 HILLS cell 中：eLand = lo + range × hillsNoise ∈ [0.07, 0.37] 全范围。
+     * 连续性由 typeWeights 高斯平滑过渡保障（v5 已验证 Δe < 0.01）。
      */
     public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz) {
-        // 1. 共享噪声（v5.2 4 频率 FBM）
-        double sharedNoise = generators.computeSharedNoise(wx, wz);
+        double[] tw = blend.typeWeights;
+        double typeWeighted = 0;
+        double totalW = 0;
+        if (tw != null) {
+            for (TerrainClass type : TypeNoiseProvider.LAND_TYPES) {
+                double w = tw[type.ordinal()];
+                if (w > 0.001) {
+                    double typeVal = typeNoise.computeNoise(type, wx, wz);
+                    typeWeighted += w * typeVal;
+                    totalW += w;
+                }
+            }
+        }
+        // fallback: typeWeights 耗尽时（不应发生）用 shared noise 兜底
+        if (totalW <= 0) {
+            typeWeighted = generators.computeSharedNoise(wx, wz);
+        } else {
+            typeWeighted /= totalW;
+        }
 
-        // 2. v5.2 公式：eLand = lo + (hi - lo) × sharedNoise
         double range = blend.hi - blend.lo;
-        double eLand = blend.lo + range * sharedNoise;
+        double eLand = blend.lo + range * typeWeighted;
 
-        // 3. 钳制
+        // 钳制
         return eLand < 0 ? 0 : (eLand > 1 ? 1 : eLand);
     }
 

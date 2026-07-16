@@ -34,12 +34,15 @@ public final class VoronoiRegionField {
     private static final double SIGMA = 100.0;
 
     // ===== 地形类型阈值（按 typeField 值划分） =====
-    // v6.5: cell type 从 hash 改为低频噪声 typeField 决定，让 typeWeights 在 1 块距离内变化平滑
-    // 阈值匹配原 hash 比例：PLAIN 30%, HILLS 25%, MOUNTAINS 20%, PLATEAU 15%, BASIN 10%
-    private static final double TYPE_THRESH_PLAIN     = 0.30;
-    private static final double TYPE_THRESH_HILLS     = 0.55;
-    private static final double TYPE_THRESH_MOUNTAINS = 0.75;
-    private static final double TYPE_THRESH_PLATEAU   = 0.90;
+    // v7.8 (Fix): HILLS 带宽从 0.25→0.37 (+48%)，降低相邻 cell 跳过 HILLS 带的风险。
+    // 同时 MOUNTAINS→PLAIN 直接相邻时 MOUNTAINS 降级为 HILLS（见地理约束）。
+    // 旧：PLAIN<0.35, HILLS<0.60, MOUNTAINS<0.75, PLATEAU<0.90, BASIN>=0.90
+    // 新：PLAIN<0.28, HILLS<0.65, MOUNTAINS<0.78, PLATEAU<0.92, BASIN>=0.92
+    // 预期最终分类：PLAIN~17%, HILLS~37%, MOUNTAINS~16%, PLATEAU~13%, BASIN~5%
+    private static final double TYPE_THRESH_PLAIN     = 0.28;
+    private static final double TYPE_THRESH_HILLS     = 0.65;
+    private static final double TYPE_THRESH_MOUNTAINS = 0.78;
+    private static final double TYPE_THRESH_PLATEAU   = 0.92;
     // 旧 hash-based type（保留作为后备，但实际用 typeField）
     private static final int[] TYPE_WEIGHTS = {30, 25, 20, 15, 10};
     private static final TerrainClass[] TYPE_BY_WEIGHT = buildTypeByWeight();
@@ -81,8 +84,9 @@ public final class VoronoiRegionField {
     public VoronoiRegionField() {
         this.warpX = new Frequency(new Simplex(310), 1.0 / 800.0);
         this.warpZ = new Frequency(new Simplex(311), 1.0 / 800.0);
-        // v6.5: typeField 频率 1/1500（极低频），让相邻 cell 的 type 平滑过渡
-        this.typeField = new Map(new Frequency(new Simplex(312), 1.0 / 1500.0), -1.0, 1.0, 0.0, 1.0);
+        // v7.5: typeField 频率 1/500，兼顾平滑过渡 + 合理采样窗口内出现所有类型
+        // 原 1/1500 导致 800×800 窗口内只有~2 个 cell，typeField 几乎恒定→无 PLATEAU
+        this.typeField = new Map(new Frequency(new Simplex(312), 1.0 / 500.0), -1.0, 1.0, 0.0, 1.0);
     }
 
     public void seed(long worldSeed) {
@@ -214,11 +218,90 @@ public final class VoronoiRegionField {
     }
 
     private TerrainClass cellType(int cx, int cz) {
-        // v6.6: 回到 hash-based（v5.2 时代）
-        long h = hash(cx, cz);
-        int idx = (int) ((h >> 32) & 0x7FFFFFFF);
-        idx = Math.floorMod(idx, TYPE_BY_WEIGHT.length);
-        return TYPE_BY_WEIGHT[idx];
+        // v7 (Phase 2): 采样低频 typeField 于 cell 中心 → 空间聚集的类型分布
+        double centerX = cellCenterX(cx, cz);
+        double centerZ = cellCenterZ(cx, cz);
+        double v = typeField.compute(centerX, centerZ); // ∈ [0,1]
+        TerrainClass tc;
+        if (v < TYPE_THRESH_PLAIN)         tc = TerrainClass.PLAIN;
+        else if (v < TYPE_THRESH_HILLS)    tc = TerrainClass.HILLS;
+        else if (v < TYPE_THRESH_MOUNTAINS) tc = TerrainClass.MOUNTAINS;
+        else if (v < TYPE_THRESH_PLATEAU)  tc = TerrainClass.PLATEAU;
+        else                               tc = TerrainClass.BASIN;
+
+        // v7.5 (Fix 3): PLATEAU 地理约束 — 周围无 MOUNTAINS → 降级为 HILLS
+        // 防止"平原直跳高原"的不合理地理序列
+        if (tc == TerrainClass.PLATEAU && !hasMountainNeighbor(cx, cz)) {
+            tc = TerrainClass.HILLS;
+        }
+
+        // v7.8: MOUNTAINS 地理约束 — 与 PLAIN 相邻时必须有 HILLS 缓冲
+        // 防止"山脉直接挨着平原"的不合理地理序列（跳过丘陵过渡）
+        if (tc == TerrainClass.MOUNTAINS && hasPlainNeighbor(cx, cz) && !hasHillsNeighbor(cx, cz)) {
+            tc = TerrainClass.HILLS;
+        }
+        return tc;
+    }
+
+    /**
+     * 检查 3×3 邻居窗口中是否有 MOUNTAINS 细胞。
+     * 用于 PLATEAU 地理约束：只在 MOUNTAINS 附近生成 PLATEAU。
+     * v7.8: 修复阈值范围——MOUNTAINS 在 [THRESH_HILLS, THRESH_MOUNTAINS)，旧版误用了 PLATEAU 范围。
+     */
+    private boolean hasMountainNeighbor(int cx, int cz) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                double nx = cellCenterX(cx + dx, cz + dz);
+                double nz = cellCenterZ(cx + dx, cz + dz);
+                double nv = typeField.compute(nx, nz);
+                // 邻居是 MOUNTAINS?（v ∈ [THRESH_HILLS, THRESH_MOUNTAINS)）
+                if (nv >= TYPE_THRESH_HILLS && nv < TYPE_THRESH_MOUNTAINS) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * v7.8: 检查 3×3 邻居窗口中是否有 HILLS 细胞。
+     * 用于 MOUNTAINS 地理约束：MOUNTAINS 与 PLAIN 相邻时必须有 HILLS 缓冲。
+     */
+    private boolean hasHillsNeighbor(int cx, int cz) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                double nx = cellCenterX(cx + dx, cz + dz);
+                double nz = cellCenterZ(cx + dx, cz + dz);
+                double nv = typeField.compute(nx, nz);
+                // 邻居是 HILLS?（v ∈ [THRESH_PLAIN, THRESH_HILLS)）
+                if (nv >= TYPE_THRESH_PLAIN && nv < TYPE_THRESH_HILLS) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * v7.8: 检查 3×3 邻居窗口中是否有 PLAIN 细胞。
+     * 用于 MOUNTAINS 地理约束。
+     */
+    private boolean hasPlainNeighbor(int cx, int cz) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                double nx = cellCenterX(cx + dx, cz + dz);
+                double nz = cellCenterZ(cx + dx, cz + dz);
+                double nv = typeField.compute(nx, nz);
+                // 邻居是 PLAIN?（v < THRESH_PLAIN）
+                if (nv < TYPE_THRESH_PLAIN) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private long hash(int cx, int cz) {

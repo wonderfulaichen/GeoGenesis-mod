@@ -17,19 +17,19 @@ public final class TypeGenerators {
 
     // ===== 各类型 eLand 输出范围 =====
     // 基于 MC 模组高度 Y = 63 + eLand × 257
+    // v7 (Phase 2)：MOUNT_LO 0.45→0.25；PLATEAU [0.20,0.45]→[0.15,0.32] 拉开山地-高原差距
     static final double PLAIN_LO  = 0.015, PLAIN_HI = 0.06;
-    static final double HILLS_LO  = 0.06,  HILLS_HI = 0.25;
-    static final double MOUNT_LO  = 0.45,  MOUNT_HI = 0.95;   // 山脉从高原顶部开始
-    static final double PLAT_LO   = 0.20,  PLAT_HI  = 0.45;   // 高原降低，不与山脉重叠
+    static final double HILLS_LO  = 0.07,  HILLS_HI = 0.37;   // B3: [0.06,0.25]→[0.07,0.37] 扩展带宽
+    static final double MOUNT_LO  = 0.25,  MOUNT_HI = 0.95;
+    static final double PLAT_LO   = 0.18,  PLAT_HI  = 0.48;   // v7.6: [0.15,0.55]→[0.18,0.48] 抬高 lo（分离 HILLS）+降低 hi（分离 MOUNTAINS）
     static final double BASIN_LO  = 0.015, BASIN_HI = 0.08;
 
-    // v6.0: CENTER + HALF_RANGE 模式 — 每种类型的 eLand = center + halfRange×(2×noise-1)
-    // 用于 TypeLandShape 按 typeWeights 直接加权混合各类型独立 eLand，消除 cell 边界离散跳变
-    // CENTER = (LO+HI)/2, HALF_RANGE = (HI-LO)/2
+    // v6.0: CENTER + HALF_RANGE 模式
+    // v7：PLAT_CENTER 0.325→0.235, HALF_RANGE 0.125→0.085
     static final double PLAIN_CENTER  = 0.0375, PLAIN_HALF_RANGE = 0.0225;
-    static final double HILLS_CENTER  = 0.18,   HILLS_HALF_RANGE = 0.12;   // v6.1 +20%（0.155→0.18, 0.095→0.12, max 0.25→0.30）
-    static final double MOUNT_CENTER  = 0.70,   MOUNT_HALF_RANGE = 0.25;
-    static final double PLAT_CENTER   = 0.325,  PLAT_HALF_RANGE  = 0.125;
+    static final double HILLS_CENTER  = 0.22,   HILLS_HALF_RANGE = 0.15;   // B3: 0.18/0.12→0.22/0.15
+    static final double MOUNT_CENTER  = 0.60,   MOUNT_HALF_RANGE = 0.35;
+    static final double PLAT_CENTER   = 0.33,   PLAT_HALF_RANGE  = 0.15;   // v7.6: [0.18,0.48]
     static final double BASIN_CENTER  = 0.0475, BASIN_HALF_RANGE = 0.0325;
 
     public static double getTypeLo(TerrainClass tc) {
