@@ -26,6 +26,9 @@ public class Cell {
     /** 地形类型（连续形态分类） */
     public TerrainClass terrainType = TerrainClass.OCEAN;
 
+    /** 地形类型连续权重（5 类型：PLAIN/HILLS/MOUNTAINS/PLATEAU/BASIN，和=1），由 Voronoi 高斯加权混合产生 */
+    public double[] typeWeights;
+
     // === 气候 ===
     /** 气候（温度+湿度） */
     public Climate climate = Climate.DEFAULT;
@@ -87,6 +90,4 @@ public class Cell {
         return e < 0.0;
     }
 
-    /** 省权重（仅陆地有效，4 分量对应 craton/belt/plateau/basin） */
-    public double[] provinceWeights = new double[]{0.25, 0.25, 0.25, 0.25};
 }

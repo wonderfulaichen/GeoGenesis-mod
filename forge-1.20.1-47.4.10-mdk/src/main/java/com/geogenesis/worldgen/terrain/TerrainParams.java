@@ -21,6 +21,8 @@ public record TerrainParams(
     double continentThreshold,
     /** 海陆占比偏置（正=更多海、负=更多陆），默认 0.0 */
     double continentBias,
+    /** 大陆场 warp 省噪声坐标幅度（块）。用大陆性 c 偏移省噪声采样坐标，使每大陆获得独特且连贯的地质组合（确定性、无随机），默认 2000.0 */
+    double continentProvinceWarp,
 
     // ===== 海洋样条控制点（offset.json 式 cubic Hermite） =====
     // c-space 位置（c∈[-1,1]：深海→大陆架→浅海→海岸）
@@ -88,12 +90,48 @@ public record TerrainParams(
     /** 盆地基底 eLand，默认 0.02 */
     double basinBase,
 
+    // ===== 地形起伏振幅（每省固有属性，侵蚀前基础地形的局部起伏场） =====
+    /** 克拉通起伏振幅（e 单位），默认 0.10（保 HILLS 分类；密集感靠频率放大消除，非砍振幅） */
+    double cratonReliefAmp,
+    /** 造山带起伏振幅，默认 0.22（保 MOUNTAINS 分类；原 0.30，适度下调，指纹感靠 LandShape 频率放大解决） */
+    double beltReliefAmp,
+    /** 高原起伏振幅，默认 0.03（平顶台地，低起伏） */
+    double plateauReliefAmp,
+    /** 盆地起伏振幅，默认 0.05 */
+    double basinReliefAmp,
+
+    // ===== 省场形态曲线（每省独立 shapeᵢ(rᵢ)，零中心噪声 rᵢ∈[-1,1]；shapeᵢ(0)=0 谷底=噪声真零 rᵢ=0，shapeᵢ(1)=1 峰顶=|rᵢ|=1；禁用零交叉脊） =====
+    /** 造山带尖钝度（pow exponent on zero-centered noise |r|^k），默认 1.3（>1 尖峰、=1 圆顶、<1 宽缓）。用于 belt pow(|r|,beltSharpness) + warp。 */
+    double beltSharpness,
+    /** 造山带域扭曲幅度（世界坐标空间位移，块），默认 120.0。warp 产生蜿蜒山岭，禁用零交叉脊函数。 */
+    double beltWarpAmp,
+    /** 省混合锐化指数（softmax 权重幂次），默认 2.5。>1 让主导省占更大权重、完整表达其 |r|=1 峰 / r=0 谷形态，省边界仍平滑过渡。 */
+    double provMixSharpness,
+
+    // ===== 分层叠加新增（对标 TerraForged） =====
+    /** 山脉遮罩噪声尺度（块），maskNoise 频率 = 1/mountainMaskScale，默认 2200。低频团块限定山脉区域（带状/团块分布，真实感关键）。 */
+    double mountainMaskScale,
+    /** 表面纹理噪声尺度（块），microDetail 频率 = 1/microDetailScale，默认 450。大周期极小振幅，表面舒展非密纹。 */
+    double microDetailScale,
+    /** 表面纹理振幅（e 单位），默认 0.025。微小值（<0.03），纹理级而非地形级。 */
+    double microDetailAmp,
+
+    // ===== 分类阈值 + 雪线 =====
+    /** 高海拔阈值（elevation），默认 0.25。不再用于 Voronoi 类型分配（气候色板替代），保留占位。 */
+    double elevHigh,
+    /** 高起伏阈值（|relief|），默认 0.04。不再用于 Voronoi 类型分配，保留占位。 */
+    double reliefHigh,
+    /** 峰阈值（elevation），默认 0.82。不再用于 Voronoi 类型分配，保留占位。 */
+    double peakE,
+    /** 雪线纬度耦合强度，默认 0.25 */
+    double snowLatitudeInfluence,
+
     // ===== 预览/旧 API 兼容参数 =====
     /** 水平缩放（预览用），默认 1 */
     double horizontalScale,
     /** 海平面 Y（预览/旧 API），默认 63 */
     int seaLevel,
-    /** 雪线温度阈值，默认 0.3 */
+    /** 雪线海拔（e 单位，高海拔侧积雪覆盖），默认 0.70 */
     double snowLine,
     /** 世界最小 Y，默认 -64 */
     int minY,
@@ -107,8 +145,8 @@ public record TerrainParams(
     /** 生产级默认值（校准于非对称映射 e=0 → Y=63） */
     public static TerrainParams defaults() {
         return new TerrainParams(
-            // continent
-            1500.0, 0.2, 0.0, 0.0,
+            // continent（continentProvinceWarp 默认 0=禁用，域扭曲实验结论见 CellGenerator）
+            4000.0, 0.2, 0.0, 0.0, 0.0,
             // ocean spline locations (c∈[-1,1]; 负=深海、0=海岸锚点)
             -0.80, -0.50, -0.16, -0.04,
             // ocean spline values
@@ -118,14 +156,24 @@ public record TerrainParams(
             // seabed
             0.03,
             // province
-            2000.0, 1.0, 1.0, 1.0, 0.8,
+            4000.0, 1.0, 1.0, 1.0, 0.8,
             // land（校准于新映射：e→[seaLevel,maxY] 线性）
-            0.01, 0.03, 0.07, 0.20,   // plainBase,plainRough,hillsLow,hillsHigh
-            1.5, 0.10, 0.60,           // ridgePower,foothill,peak
-            0.20, 0.35, 4, 0.7,        // platBase,platTop,steps,stepStrength
+            0.01, 0.03, 0.10, 0.25,   // plainBase,plainRough,hillsLow,hillsHigh
+            1.5, 0.15, 0.95,           // ridgePower,foothill,peak
+            0.55, 0.72, 4, 0.7,        // platBase,platTop,steps,stepStrength
             0.02,                       // basinBase
-            // preview compat
-            1.0, 63, 0.3, -64, 320, 256, -48
+            // relief amplitudes（每省固有起伏，侵蚀前基础地形）
+            // 振幅只适度下调（保 MOUNTAINS/HILLS 分类需 relief≥0.1）；"噪声太小"主要靠 LandShape 频率放大周期消除
+            0.10, 0.22, 0.03, 0.05,    // cratonReliefAmp,beltReliefAmp,plateauReliefAmp,basinReliefAmp
+            // province shape curves（每省独立 shapeᵢ(rᵢ)：零中心 r，谷在 r=0、峰在 |r|=1）
+            1.5, 120.0, 2.5,            // beltSharpness,beltWarpAmp,provMixSharpness
+            // layered overlay params（分层叠加新增，对标 TerraForged）
+            2200.0, 450.0, 0.025,       // mountainMaskScale,microDetailScale,microDetailAmp
+            // classification thresholds + snow latitude coupling
+            0.25, 0.04, 0.82, 0.25,    // elevHigh↑0.25,reliefHigh↑0.04,peakE,snowLatitudeInfluence
+
+            // preview compat（加大 horizontalScale 减少 preview 计算量）
+            4.0, 63, 0.70, -64, 320, 256, -48
         );
     }
 
