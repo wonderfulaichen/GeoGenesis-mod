@@ -82,13 +82,13 @@ public class PreviewDisplay extends AbstractWidget {
         this.seed = seed;
         this.horizontalScale = (int) params.horizontalScale();
         this.seaLevel = params.seaLevel();
-        this.snowLine = (int) params.snowLine();
+        this.snowLine = (int) new com.geogenesis.worldgen.terrain.HeightCurve(params, params.minY(), params.maxY()).heightFromE(params.snowLine());
         this.maxY = params.maxY();
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
         this.trenchDepth = params.trenchDepth();
         // 高程色带按实际地形高度范围归一化，使高山始终映射到色带顶部
-        GeoPalette.setElevationRange(seaLevel - trenchDepth, mountainCap);
+        GeoPalette.setElevationRange(minY, mountainCap);
         this.texW = texSize;
         this.texH = Math.max(1, (int) Math.round(texSize * (double) height / width));
         this.image = new NativeImage(NativeImage.Format.RGBA, texW, texH, false);
@@ -103,12 +103,12 @@ public class PreviewDisplay extends AbstractWidget {
         this.seed = seed;
         this.horizontalScale = (int) params.horizontalScale();
         this.seaLevel = params.seaLevel();
-        this.snowLine = (int) params.snowLine();
+        this.snowLine = (int) new com.geogenesis.worldgen.terrain.HeightCurve(params, params.minY(), params.maxY()).heightFromE(params.snowLine());
         this.maxY = params.maxY();
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
         this.trenchDepth = params.trenchDepth();
-        GeoPalette.setElevationRange(seaLevel - trenchDepth, mountainCap);
+        GeoPalette.setElevationRange(minY, mountainCap);
         requestResample();
     }
 

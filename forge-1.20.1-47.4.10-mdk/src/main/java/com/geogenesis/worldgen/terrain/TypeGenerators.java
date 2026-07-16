@@ -17,12 +17,11 @@ public final class TypeGenerators {
 
     // ===== 各类型 eLand 输出范围 =====
     // 基于 MC 模组高度 Y = 63 + eLand × 257
-    // v6 调整：PLAIN < HILLS < PLATEAU < MOUNTAINS，无重叠
-    static final double PLAIN_LO  = 0.015, PLAIN_HI = 0.06;    // Y 67-78（低平原）
-    static final double HILLS_LO  = 0.06,  HILLS_HI = 0.18;    // Y 78-109（丘陵）
-    static final double PLAT_LO   = 0.18,  PLAT_HI  = 0.38;    // Y 109-161（高原，低于山脉）
-    static final double MOUNT_LO  = 0.38,  MOUNT_HI = 0.92;    // Y 161-299（山脉，从高原顶部开始）
-    static final double BASIN_LO  = 0.015, BASIN_HI = 0.08;    // Y 67-83（盆地，略低于平原）
+    static final double PLAIN_LO  = 0.015, PLAIN_HI = 0.06;
+    static final double HILLS_LO  = 0.06,  HILLS_HI = 0.25;
+    static final double MOUNT_LO  = 0.45,  MOUNT_HI = 0.95;   // 山脉从高原顶部开始
+    static final double PLAT_LO   = 0.20,  PLAT_HI  = 0.45;   // 高原降低，不与山脉重叠
+    static final double BASIN_LO  = 0.015, BASIN_HI = 0.08;
 
     public static double getTypeLo(TerrainClass tc) {
         return switch (tc) {
