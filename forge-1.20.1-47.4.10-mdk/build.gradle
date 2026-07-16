@@ -219,3 +219,9 @@ task runPreview(type: JavaExec) {
     // Optional: pass seed via command line args
     // args = ['12345']
 }
+
+// Temporary quantitative terrain diagnostic (A-stage). Deletes after use.
+task runDiag(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiag'
+}

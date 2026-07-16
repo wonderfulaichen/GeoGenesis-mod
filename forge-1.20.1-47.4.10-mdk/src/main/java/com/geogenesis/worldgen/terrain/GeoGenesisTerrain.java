@@ -89,11 +89,13 @@ public final class GeoGenesisTerrain {
         }
     }
 
-    /** 旧 API 兼容：按 block 网格返回 Cell 二维数组（cx/cz 为 block 索引） */
+    /** 旧 API 兼容：按 block 网格返回 Cell 二维数组（cx/cz 为 block 索引）。
+     * 支持中断：线程被 interrupt() 时返回 null（后台计算可被新请求快速取代，避免卡死）。 */
     public Cell[][] getRegionCells(int originBlockX, int originBlockZ, int cellCountX, int cellCountZ) {
         Cell[][] region = new Cell[cellCountX][cellCountZ];
         for (int bx = 0; bx < cellCountX; bx++) {
             for (int bz = 0; bz < cellCountZ; bz++) {
+                if (Thread.interrupted()) return null; // 线程被中断（新请求已到达），放弃剩余计算
                 region[bx][bz] = sampleCell(originBlockX + bx, originBlockZ + bz);
             }
         }
@@ -139,8 +141,8 @@ public final class GeoGenesisTerrain {
                 c.e = ne;
                 c.height = curve.heightFromE(ne);
                 if (c.terrainType != TerrainClass.RIVER) {
-                    c.terrainType = generator.classify(
-                        c.continent, ne, c.eLand, c.provinceWeights);
+                    c.terrainType = CellGenerator.classifyTerrain(
+                        ne, c.eLand, c.terrainType, c.temperature, c.typeWeights);
                 }
             }
         }
