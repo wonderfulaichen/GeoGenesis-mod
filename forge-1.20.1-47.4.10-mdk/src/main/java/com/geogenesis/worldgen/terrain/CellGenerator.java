@@ -13,9 +13,9 @@ import com.geogenesis.worldgen.river.HeightProvider;
  *   ├─ TypeLandShape.sample → eLand（独立类型噪声配方）
  *   └─ 统一混：e = clamp(eOcean + eLand, -1, 1)
  *
- * 气候（v5.10）：
- *   温度 = sin(z/freq)^2 + noise warp（纬度正弦模型）
- *   湿度 = 独立 Simplex 噪声（非大陆性驱动）
+ * 气候（v2 增强模型）：
+ *   温度 = sin²(z) 纬度基值 × 海洋性修正 − 海拔递减率 + 噪声
+ *   湿度 = 大陆性距海 + 山地雨影 + 噪声
  */
 public final class CellGenerator implements HeightProvider {
 
@@ -107,23 +107,38 @@ public final class CellGenerator implements HeightProvider {
         cell.e = e;
         cell.height = heightCurve.heightFromE(e);
 
-        // 8. 分类
-        cell.terrainType = classify(c, e, eLand, cellType, wx, wz);
-
-        // 9. 气候（v5.10）：
-        //    温度：sin(z/freq)^2 + noise warp（正弦纬度模型，参考 TF/RTF）
-        //    湿度：独立 Simplex 噪声（非大陆性驱动，参考 TF moisture）
+        // 8. 气候（增强模型 v2）
+        //    温度：纬度基值 + 海拔递减率 + 海洋性修正 + 噪声
+        //    湿度：大陆性距海 + 山区雨影 + 噪声
         double sinVal = Math.sin(wz * TEMP_FREQ);
-        double temp = sinVal * sinVal * 2.0 - 1.0; // [0,1]*2-1 = [-1,1]
-        temp += tempWarp.compute(wx, wz) * 0.08;
+        double temp = sinVal * sinVal * 2.0 - 1.0; // 纬度基值 [-1, 1]
+        // 海洋性修正：海岸（c≈0）温差小，内陆（c>0.5）温差大
+        double continentFactor = clamp(c * 1.5, 0.0, 1.0);
+        temp = temp * (0.85 + 0.15 * continentFactor);
+        // 海拔递减率：每 eLand 冷 0.15（山顶比山脚冷约 0.1 = ~5.8°C）
+        temp -= eLand * 0.15;
+        // 噪声扰动
+        temp += tempWarp.compute(wx, wz) * 0.10;
         temp = clamp(temp, -1.0, 1.0);
 
-        double hum = humidityNoise.compute(wx, wz); // [-1, 1]
+        // 湿度模型 v2：大陆性距海 + 山区雨影 + 噪声
+        double montW = cellBlend.typeWeights != null && cellBlend.typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
+            ? cellBlend.typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
+        // 海岸（c≈0）湿 -> 内陆（c>0.8）干
+        double humBase = 1.0 - clamp(c * 1.25, 0.0, 1.0);
+        double hum = humBase * 2.0 - 1.0; // map [0,1]→[-1,1]
+        // 山地雨影：山脉区域降低湿度（简化处理）
+        hum -= montW * 0.3;
+        // 噪声扰动
+        hum += humidityNoise.compute(wx, wz) * 0.25;
         hum = clamp(hum, -1.0, 1.0);
 
         cell.climate = new com.geogenesis.worldgen.climate.Climate(temp, hum);
         cell.temperature = temp;
         cell.humidity = hum;
+
+        // 9. 分类（使用连续 typeWeights + 已计算的温度/湿度）
+        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, temp);
         cell.continentNoise = c;
         cell.shape = eLand * 2.0 - 1.0;
 
@@ -131,23 +146,25 @@ public final class CellGenerator implements HeightProvider {
     }
 
     /**
-     * 连续形态分类。
+     * 连续形态分类（使用 typeWeights 连续权重替代离散 argmax）。
      */
     public TerrainClass classify(double c, double e, double eLand,
-                                  TerrainClass cellType, double wx, double wz) {
+                                  TerrainClass cellType, double[] typeWeights,
+                                  double temperature) {
         if (e < 0.0) {
             return e < -0.4 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
         if (e < 0.03) return TerrainClass.BEACH;
-        if (cellType == TerrainClass.MOUNTAINS && eLand > 0.60) {
+
+        // 取 MOUNTAINS 连续权重（而非离散 cellType == MOUNTAINS）
+        double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
+            ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
+
+        if (mountW > 0.35 && eLand > 0.60) {
             return TerrainClass.PEAK;
         }
-        if (eLand > 0.45) {
-            double sinVal = Math.sin(wz * TEMP_FREQ);
-            double temp = sinVal * sinVal * 2.0 - 1.0;
-            temp += tempWarp.compute(wx, wz) * 0.08;
-            temp = clamp(temp, -1.0, 1.0);
-            if (temp < -0.1) return TerrainClass.SNOW;
+        if (eLand > 0.45 && temperature < -0.1) {
+            return TerrainClass.SNOW;
         }
         return cellType;
     }
@@ -163,6 +180,7 @@ public final class CellGenerator implements HeightProvider {
 
     /**
      * 静态分类方法（带连续类型权重）。
+     * PEAK/SNOW 使用 typeWeights 连续阈值，避免离散 argmax 跳变。
      */
     public static TerrainClass classifyTerrain(double ne, double eLand,
                                                 TerrainClass cellType,
@@ -170,7 +188,12 @@ public final class CellGenerator implements HeightProvider {
                                                 double[] typeWeights) {
         if (ne < 0.0) return ne < -0.4 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         if (ne < 0.03) return TerrainClass.BEACH;
-        if (cellType == TerrainClass.MOUNTAINS && eLand > 0.60) return TerrainClass.PEAK;
+
+        // 使用连续 typeWeights 判断 PEAK
+        double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
+            ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
+        if (mountW > 0.35 && eLand > 0.60) return TerrainClass.PEAK;
+
         if (eLand > 0.45 && temperature < -0.1) return TerrainClass.SNOW;
         if (typeWeights != null && typeWeights.length >= TerrainClass.COUNT) {
             return TypeLandShape.dominantFromWeights(typeWeights);
