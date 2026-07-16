@@ -52,11 +52,11 @@ public final class BiomeClassifier {
                 ? Biomes.SNOWY_PLAINS
                 : climate.isDry() ? Biomes.SAVANNA_PLATEAU : Biomes.BIRCH_FOREST;
 
-            case MOUNTAINS -> climate.isCold()
+            case MOUNTAINS -> cell.isSnow
                 ? Biomes.STONY_PEAKS
                 : Biomes.JUNGLE;
 
-            case PEAK -> climate.isCold()
+            case PEAK -> cell.isSnow
                 ? Biomes.FROZEN_PEAKS
                 : Biomes.JAGGED_PEAKS;
 

@@ -23,6 +23,15 @@ public final class TypeGenerators {
     static final double PLAT_LO   = 0.20,  PLAT_HI  = 0.45;   // 高原降低，不与山脉重叠
     static final double BASIN_LO  = 0.015, BASIN_HI = 0.08;
 
+    // v6.0: CENTER + HALF_RANGE 模式 — 每种类型的 eLand = center + halfRange×(2×noise-1)
+    // 用于 TypeLandShape 按 typeWeights 直接加权混合各类型独立 eLand，消除 cell 边界离散跳变
+    // CENTER = (LO+HI)/2, HALF_RANGE = (HI-LO)/2
+    static final double PLAIN_CENTER  = 0.0375, PLAIN_HALF_RANGE = 0.0225;
+    static final double HILLS_CENTER  = 0.18,   HILLS_HALF_RANGE = 0.12;   // v6.1 +20%（0.155→0.18, 0.095→0.12, max 0.25→0.30）
+    static final double MOUNT_CENTER  = 0.70,   MOUNT_HALF_RANGE = 0.25;
+    static final double PLAT_CENTER   = 0.325,  PLAT_HALF_RANGE  = 0.125;
+    static final double BASIN_CENTER  = 0.0475, BASIN_HALF_RANGE = 0.0325;
+
     public static double getTypeLo(TerrainClass tc) {
         return switch (tc) {
             case PLAIN     -> PLAIN_LO;
@@ -41,6 +50,30 @@ public final class TypeGenerators {
             case MOUNTAINS -> MOUNT_HI;
             case PLATEAU   -> PLAT_HI;
             case BASIN     -> BASIN_HI;
+            default        -> 0.0;
+        };
+    }
+
+    /** v6.0: 类型的 eLand 中心值 */
+    public static double getTypeCenter(TerrainClass tc) {
+        return switch (tc) {
+            case PLAIN     -> PLAIN_CENTER;
+            case HILLS     -> HILLS_CENTER;
+            case MOUNTAINS -> MOUNT_CENTER;
+            case PLATEAU   -> PLAT_CENTER;
+            case BASIN     -> BASIN_CENTER;
+            default        -> 0.0;
+        };
+    }
+
+    /** v6.0: 类型的 eLand 半范围（输出 = center ± halfRange） */
+    public static double getTypeHalfRange(TerrainClass tc) {
+        return switch (tc) {
+            case PLAIN     -> PLAIN_HALF_RANGE;
+            case HILLS     -> HILLS_HALF_RANGE;
+            case MOUNTAINS -> MOUNT_HALF_RANGE;
+            case PLATEAU   -> PLAT_HALF_RANGE;
+            case BASIN     -> BASIN_HALF_RANGE;
             default        -> 0.0;
         };
     }

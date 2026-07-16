@@ -7,33 +7,40 @@ import com.geogenesis.worldgen.noise.*;
  * <p>
  * v4 关键修复：消除"细胞状规则亮点"。
  * v5：SEARCH_RADIUS + typeWeights 连续权重。
- * v5.2：SIGMA=CELL_SPACING/4=100 取代 CELL_SPACING/2=200。
+ * v5.2：SIGMA=CELL_SPACING/4=100。
+ * v6.1：SIGMA=150 修复 v6.0 per-type eLand 加权后 cell 边界 typeWeights 跳变。
  * <p>
- * <b>sigma 变更理由（v5.2）</b>：旧 SIGMA=200 导致 cell 中心邻居合计权重 52%，
- * 类型噪声被严重稀释为"五不像的大杂烩"。SIGMA=100 后 cell 中心主导类型
- * 权重 99.7%，噪声纯度高。配合 3×3 搜索窗口（边缘 cell 权重 0.0003），
- * 搜索窗口边界切换无跳变（前一轮的 SEARCH_RADIUS=2 可以降回 1）。
+ * <b>v6.1 SIGMA=150 变更理由</b>：v6.0 用 per-type eLand 加权混合（TypeLandShape.sample），
+ * typeWeights 锐利变化（最近 cell 主导 99.7%）会直接放大为 eLand 跳变（17 块）。
+ * SIGMA=150 让 200 块距离的 cell 权重从 0.135 升到 0.26，边界过渡更平滑。
  */
 public final class VoronoiRegionField {
 
     // ===== 细胞网格参数 =====
     /** Cell 间距（块）。TerraForged 默认 400 */
     public static final double CELL_SPACING = 400.0;
-    /** 邻近搜索 cell 半径（1 = 3×3 = 9 cells）。SIGMA=100 使边缘 cell 权重 exp(-8)=0.0003，可忽略 */
-    private static final int SEARCH_RADIUS = 1;
+    /** 邻近搜索 cell 半径。v6.2: 1→2，5×5=25 cells 让 typeWeights 在 cell 边界更平滑 */
+    private static final int SEARCH_RADIUS = 2;
     /** 距离场域扭曲幅度（块）。> CELL_SPACING/2 才能打散网格感 */
     private static final double WARP_AMP = 250.0;
     /**
-     * 高斯权重 σ（块）。CELL_SPACING/4 = 100：
+     * 高斯权重 σ（块）。v6.1: 100→150，让 cell 边界 typeWeights 过渡更平滑：
      * <ul>
-     *   <li>cell 中心：主导类型权重 99.7%（邻居 0.3%）→ 干净的类型区域</li>
-     *   <li>cell 边界：2 个最近 cell 各 50% → 平滑过渡</li>
-     *   <li>3×3 窗口边缘（距中心 ~400 块）：exp(-8)=0.0003 → 可忽略</li>
+     *   <li>cell 中心：主导类型权重 ≈ 80%（邻居 20% 共担）→ 仍清晰但不过锐利</li>
+     *   <li>cell 边界（200 块距离）：最近两个 cell 各 ~30% → 平滑过渡</li>
+     *   <li>3×3 窗口边缘（400 块距离）：exp(-7.1)=0.0008 → 可忽略</li>
      * </ul>
      */
     private static final double SIGMA = 100.0;
 
-    // ===== 地形类型权重分布（合计 100） =====
+    // ===== 地形类型阈值（按 typeField 值划分） =====
+    // v6.5: cell type 从 hash 改为低频噪声 typeField 决定，让 typeWeights 在 1 块距离内变化平滑
+    // 阈值匹配原 hash 比例：PLAIN 30%, HILLS 25%, MOUNTAINS 20%, PLATEAU 15%, BASIN 10%
+    private static final double TYPE_THRESH_PLAIN     = 0.30;
+    private static final double TYPE_THRESH_HILLS     = 0.55;
+    private static final double TYPE_THRESH_MOUNTAINS = 0.75;
+    private static final double TYPE_THRESH_PLATEAU   = 0.90;
+    // 旧 hash-based type（保留作为后备，但实际用 typeField）
     private static final int[] TYPE_WEIGHTS = {30, 25, 20, 15, 10};
     private static final TerrainClass[] TYPE_BY_WEIGHT = buildTypeByWeight();
 
@@ -68,16 +75,21 @@ public final class VoronoiRegionField {
     // ===== 状态 =====
     private long worldSeed;
     private final Noise warpX, warpZ; // 域扭曲噪声
+    // v6.5: typeField — 低频噪声决定 cell type（取代 hash），让 typeWeights 在空间平滑
+    private final Noise typeField;
 
     public VoronoiRegionField() {
         this.warpX = new Frequency(new Simplex(310), 1.0 / 800.0);
         this.warpZ = new Frequency(new Simplex(311), 1.0 / 800.0);
+        // v6.5: typeField 频率 1/1500（极低频），让相邻 cell 的 type 平滑过渡
+        this.typeField = new Map(new Frequency(new Simplex(312), 1.0 / 1500.0), -1.0, 1.0, 0.0, 1.0);
     }
 
     public void seed(long worldSeed) {
         this.worldSeed = worldSeed;
         Noises.seedAll(warpX, worldSeed, 0);
         Noises.seedAll(warpZ, worldSeed, 0);
+        Noises.seedAll(typeField, worldSeed, 0);
     }
 
     // ===== 公开 API =====
@@ -202,6 +214,7 @@ public final class VoronoiRegionField {
     }
 
     private TerrainClass cellType(int cx, int cz) {
+        // v6.6: 回到 hash-based（v5.2 时代）
         long h = hash(cx, cz);
         int idx = (int) ((h >> 32) & 0x7FFFFFFF);
         idx = Math.floorMod(idx, TYPE_BY_WEIGHT.length);

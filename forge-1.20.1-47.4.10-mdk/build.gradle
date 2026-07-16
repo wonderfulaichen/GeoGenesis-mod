@@ -225,3 +225,9 @@ task runDiag(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiag'
 }
+
+// v6.0 per-layer discontinuity diagnostic
+task runProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.DiscontinuityProbe'
+}

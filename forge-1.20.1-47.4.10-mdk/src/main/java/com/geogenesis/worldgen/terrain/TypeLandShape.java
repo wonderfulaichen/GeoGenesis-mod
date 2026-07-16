@@ -47,33 +47,29 @@ public final class TypeLandShape {
 
     /**
      * 利用预计算的 blend 结果采样 eLand ∈ [0,1]。
-     * 每类型的噪声按 typeWeights 加权混合 — 在 cell 边界处连续过渡。
+     * v6.5: 回归 v5.2 公式（仅共享噪声），per-type 噪声仅用于 biome 分类（不参与高度）：
+     *   eLand = blend.lo + (blend.hi − blend.lo) × sharedNoise
+     * <p>
+     * 决策依据（v6.4 vs v5.2 诊断对比）：
+     * - v5.2 (本版): eLand max Δe = 2.2 块 ✅ 通过
+     * - v6.4 (per-type 30%): eLand max Δe = 7.1 块 ❌ 严重超阈值
+     * - 根因：cell type hash-based → typeWeights 1 块跳变 10%
+     *   → blend.lo 1 块跳变 4.6 块（无法通过 noise 改变修复）
+     * <p>
+     * 类型视觉差异通过其他方式实现：
+     * - HILLS/PLAIN/MOUNTAINS 等分类用 TypeClass.dominantType
+     * - biome 表面用 BiomeClassifier 决定
+     * - 装饰用 per-type 噪声（不进入高度）
      */
     public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz) {
-        // 1. 按 typeWeights 混合各类型的独立噪声
-        double blendedNoise = 0;
-        double totalW = 0;
-        for (TerrainClass tc : TypeNoiseProvider.LAND_TYPES) {
-            double w = blend.typeWeights[tc.ordinal()];
-            if (w > 0.001) {
-                blendedNoise += w * typeNoise.computeNoise(tc, wx, wz);
-                totalW += w;
-            }
-        }
-        double base = totalW > 0 ? blendedNoise / totalW : 0.5;
+        // 1. 共享噪声（v5.2 4 频率 FBM）
+        double sharedNoise = generators.computeSharedNoise(wx, wz);
 
-        // 2. 盆地连续调制（保留，增强了 BASIN 反转效果）
-        double basinW = blend.typeWeights[TerrainClass.BASIN.ordinal()];
-        if (basinW > 0.01) {
-            double basinBase = TypeGenerators.basinModulate(base);
-            base = base * (1.0 - basinW) + basinBase * basinW;
-        }
-
-        // 3. 映射到混合范围
+        // 2. v5.2 公式：eLand = lo + (hi - lo) × sharedNoise
         double range = blend.hi - blend.lo;
-        double eLand = blend.lo + range * base;
+        double eLand = blend.lo + range * sharedNoise;
 
-        // 4. 钳制
+        // 3. 钳制
         return eLand < 0 ? 0 : (eLand > 1 ? 1 : eLand);
     }
 

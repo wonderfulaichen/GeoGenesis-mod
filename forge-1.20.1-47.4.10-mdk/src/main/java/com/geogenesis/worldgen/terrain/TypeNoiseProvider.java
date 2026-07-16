@@ -5,6 +5,8 @@ import com.geogenesis.worldgen.noise.*;
 public final class TypeNoiseProvider {
 
     private final Noise plainNoise;
+
+    // v6.0: HILLS — 参考 TF hills_1.json 双层 Warp + Perlin×Billow^0.5
     private final Noise hillsNoise;
 
     private final Noise mountShape;
@@ -16,6 +18,8 @@ public final class TypeNoiseProvider {
     private final Noise mountDirJitterZ;
 
     private final Noise platNoise;
+    // v6.0: PLATEAU shape mask — 大尺度噪声控制高原分布 + 边缘渐变
+    private final Noise platShapeNoise;
     private final Noise basinNoise;
 
     private MountainRidgeNetwork ridgeNetwork;
@@ -29,15 +33,19 @@ public final class TypeNoiseProvider {
         Noise pWarped = new Warp(pSimplex, pWarpX, pWarpZ, 60.0);
         this.plainNoise = new Map(pWarped, -1.0, 1.0, 0.42, 0.58);
 
-        // --- HILLS: 3 八度 Billow（1/700 + 1/420 + 1/140）+ 弱 warp，宽大起伏 ---
-        Noise hBillow1 = new Billow(new Frequency(new Simplex(412), 1.0 / 420.0));
-        Noise hBillow2 = new Boost(new Billow(new Frequency(new Simplex(413), 1.0 / 140.0)), 0.35);
-        Noise hBillow3 = new Boost(new Billow(new Frequency(new Simplex(435), 1.0 / 700.0)), 0.5);
-        Noise hBase = new Add(new Add(hBillow1, hBillow2), hBillow3);
-        Noise hWarpX = new Frequency(new Simplex(414), 1.0 / 700.0);
-        Noise hWarpZ = new Frequency(new Simplex(415), 1.0 / 700.0);
-        Noise hWarped = new Warp(hBase, hWarpX, hWarpZ, 120.0);
-        this.hillsNoise = new Map(hWarped, -2.5, 2.5, 0.0, 1.0);
+        // --- HILLS v6.3: 2 层低频 Simplex 叠加（高频会放大断裂） ---
+        // v6.0 根因：Multiply(Perlin, Power(Billow, 0.5)) 在 Billow 零交叉点产生尖刺（89.7 块）
+        // v6.1 修复：纯 Add + Warp 但仍有 51 块
+        // v6.2 修复：3 层 Simplex（600/250/100）→ 4.8 块（最高频 1/100 仍是元凶）
+        // v6.3 修复：2 层低频（800/300）→ 理论 max Δe ≈ 0.005（2 块）
+        Noise hLow       = new Boost(new Frequency(new Simplex(412), 1.0 / 800.0), 0.7);
+        Noise hMid       = new Boost(new Frequency(new Simplex(413), 1.0 / 300.0), 0.3);
+        Noise hBase      = new Add(hLow, hMid);                              // [-1, 1] 平滑
+        // 单次小距离 Warp（distance=40，freq=1/250）让边缘略不规则
+        Noise hWX        = new Frequency(new Simplex(415), 1.0 / 250.0);
+        Noise hWZ        = new Frequency(new Simplex(416), 1.0 / 250.0);
+        Noise hWarped    = new Warp(hBase, hWX, hWZ, 40.0);
+        this.hillsNoise  = new Map(hWarped, -1.0, 1.0, 0.0, 1.0);
 
         // --- MOUNTAINS: 浅山脊骨架(1/1500) + 主脊线(1/480) + 次脊线(1/180) ---
         Noise mRSkel = new Boost(new Ridge(new Frequency(new Simplex(436), 1.0 / 1500.0), 1.0), 0.25);
@@ -66,11 +74,15 @@ public final class TypeNoiseProvider {
         this.mountDirJitterX = new Frequency(new Simplex(431), 1.0 / 400.0);
         this.mountDirJitterZ = new Frequency(new Simplex(432), 1.0 / 400.0);
 
-        // --- PLATEAU ---
+        // --- PLATEAU v6.0: 3 层 Simplex + shape mask 边缘渐变 ---
+        // 参考 TF: ramp_height=0.35 — 高原边缘 35% 平滑过渡
         Noise platOct1 = new Frequency(new Simplex(422), 1.0 / 500.0);
         Noise platOct2 = new Boost(new Frequency(new Simplex(423), 1.0 / 200.0), 0.25);
         Noise platOct3 = new Boost(new Frequency(new Simplex(424), 1.0 / 60.0), 0.08);
         this.platNoise = new Map(new Add(new Add(platOct1, platOct2), platOct3), -1.5, 1.5, 0.30, 0.70);
+        // 大尺度 shape mask：控制高原分布区域 + 边缘渐变
+        this.platShapeNoise = new Map(
+            new Frequency(new Simplex(437), 1.0 / 1000.0), -1.0, 1.0, 0.0, 1.0);
 
         // --- BASIN：修复与 shape 同 seed 问题 ---
         Noise bOct1 = new Frequency(new Simplex(428), 1.0 / 300.0);
@@ -91,6 +103,7 @@ public final class TypeNoiseProvider {
         Noises.seedAll(mountDirJitterX, worldSeed, 2);
         Noises.seedAll(mountDirJitterZ, worldSeed, 2);
         Noises.seedAll(platNoise,  worldSeed, 3);
+        Noises.seedAll(platShapeNoise, worldSeed, 5);
         Noises.seedAll(basinNoise, worldSeed, 4);
 
         if (ridgeNetwork == null || lastSeed != worldSeed) {
@@ -104,10 +117,28 @@ public final class TypeNoiseProvider {
             case PLAIN     -> plainNoise.compute(wx, wz);
             case HILLS     -> hillsNoise.compute(wx, wz);
             case MOUNTAINS -> computeMountain(wx, wz);
-            case PLATEAU   -> platNoise.compute(wx, wz);
+            case PLATEAU   -> computePlateau(wx, wz);
             case BASIN     -> basinNoise.compute(wx, wz);
             default        -> 0.5;
         };
+    }
+
+    /**
+     * v6.0: PLATEAU 边缘渐变（参考 TF ramp_height=0.35）。
+     * shape ∈ [0,1]：低值=无高原、高值=全高原。
+     * edge = smoothstep(0.15, 0.40, shape)：在边缘 0.15–0.40 之间平滑过渡。
+     * 输出：noise×edge + 0.08×(1−edge)，边缘降至 0.08（近平原）。
+     */
+    private double computePlateau(double wx, double wz) {
+        double noise = platNoise.compute(wx, wz);
+        double shape = platShapeNoise.compute(wx, wz);    // [0, 1]
+        // smooth edge ramp: shape<0.15→0, shape>0.40→1
+        double t = (shape - 0.15) / 0.25;                   // [−0.6, 3.4]
+        t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        double edge = t * t * (3.0 - 2.0 * t);              // smoothstep
+        // 混合：边缘低地 0.08，中心全高原高度
+        double result = noise * edge + 0.08 * (1.0 - edge);
+        return result < 0 ? 0 : (result > 1 ? 1 : result);
     }
 
     private double computeMountain(double wx, double wz) {
