@@ -5,28 +5,32 @@ package com.geogenesis.worldgen.terrain;
 /**
  * 逐层断裂诊断工具：扫描地形场每层的最大梯度，精确定位断裂源。
  * <p>
- * 用法：{@code java com.geogenesis.worldgen.terrain.DiscontinuityProbe}
- * <p>
- * 在 terrain 包内直接访问 VoronoiRegionField + TypeGenerators，
- * 对 9 个图层独立计算 max |相邻像素 e 差异|，并换算为等效世界高度块数。
+ * v6.0: 使用 per-type eLand 加权混合公式（与 TypeLandShape.sample 一致），
+ * 反映真实 eLand 输出。
  */
 public final class DiscontinuityProbe {
 
-    // 图层名称
+    // 图层名称（v6.0 调整：移除 voronoi_lo/hi（不再使用），新增 v6.0 per-type eLand）
     private static final String[] LAYER_NAMES = {
-        "voronoi_lo",          // 0
-        "voronoi_hi",          // 1
-        "voronoi_alpha",       // 2
-        "typeW_PLAIN",         // 3
-        "typeW_HILLS",         // 4
-        "typeW_MOUNTAINS",     // 5
-        "typeW_PLATEAU",       // 6
-        "typeW_BASIN",         // 7
-        "sharedNoise",         // 8
-        "eLand_preBasin",      // 9: 不含 BASIN 调制的 eLand
-        "eLand",               // 10: 完整 eLand（含 BASIN lerp）
-        "dominantType_ord",    // 11: argmax(typeWeights) → 0..4
-        "cellType_hash_ord",   // 12: 旧 hash 最近 cell → 0..4（对比用）
+        "voronoi_alpha",       // 0: 主导类型 alpha
+        "typeW_PLAIN",         // 1
+        "typeW_HILLS",         // 2
+        "typeW_MOUNTAINS",     // 3
+        "typeW_PLATEAU",       // 4
+        "typeW_BASIN",         // 5
+        "plainNoise",          // 6: PLAIN 独立噪声
+        "hillsNoise",          // 7: HILLS 独立噪声
+        "mountNoise",          // 8: MOUNTAINS 独立噪声
+        "platNoise",           // 9: PLATEAU 独立噪声
+        "platShapeNoise",      // 10: PLATEAU shape mask
+        "basinNoise",          // 11: BASIN 独立噪声
+        "typeELand_PLAIN",     // 12: PLAIN 的 eLand
+        "typeELand_HILLS",     // 13: HILLS 的 eLand
+        "typeELand_MOUNTAINS", // 14: MOUNTAINS 的 eLand
+        "typeELand_PLATEAU",   // 15: PLATEAU 的 eLand
+        "typeELand_BASIN",     // 16: BASIN 的 eLand
+        "eLand_v6",            // 17: v6.4 sharedNoise×0.7 + perTypeNoise×0.3, then × range + lo
+        "dominantType_ord",    // 18: argmax(typeWeights) → 0..4
     };
 
     public static void main(String[] args) {
@@ -35,11 +39,11 @@ public final class DiscontinuityProbe {
 
         // 扫描区域
         int W = 512, H = 512;
-        System.out.println("=== DiscontinuityProbe ===");
+        System.out.println("=== DiscontinuityProbe v6.0 ===");
         System.out.println("Region " + W + "x" + H + " blocks, step=1");
         System.out.println("Params: continentBias=" + p.continentBias());
         System.out.println("Cell spacing=" + VoronoiRegionField.CELL_SPACING
-                + ", WARP_AMP=250, SIGMA=200, sharedNoise warpAmp=300");
+                + ", WARP_AMP=250, SIGMA=200, per-type eLand blending");
         System.out.println();
 
         // 创建引擎（同包直接引用）
@@ -47,6 +51,10 @@ public final class DiscontinuityProbe {
         voronoi.seed(seed);
         TypeGenerators tg = new TypeGenerators();
         tg.seed(seed);
+        TypeNoiseProvider tnp = new TypeNoiseProvider();
+        tnp.seed(seed);
+
+
 
         // 分配图层缓冲区：LAYERS x W x H
         final int L = LAYER_NAMES.length;
@@ -61,44 +69,47 @@ public final class DiscontinuityProbe {
 
                 // 1. Voronoi 混合
                 VoronoiRegionField.BlendResult blend = voronoi.sampleBlend(wx, wz);
-                layers[0][x][z] = blend.lo;                    // voronoi_lo
-                layers[1][x][z] = blend.hi;                    // voronoi_hi
-                layers[2][x][z] = blend.alpha;                 // voronoi_alpha
+                layers[0][x][z] = blend.alpha;                 // voronoi_alpha
 
                 // 2. 类型权重（按 ordinal 索引，TerrainClass 有 12 值）
                 double[] tw = blend.typeWeights;
-                layers[3][x][z] = tw[TerrainClass.PLAIN.ordinal()];     // 5
-                layers[4][x][z] = tw[TerrainClass.HILLS.ordinal()];     // 6
-                layers[5][x][z] = tw[TerrainClass.MOUNTAINS.ordinal()]; // 8
-                layers[6][x][z] = tw[TerrainClass.PLATEAU.ordinal()];   // 7
-                layers[7][x][z] = tw[TerrainClass.BASIN.ordinal()];     // 10
+                layers[1][x][z] = tw[TerrainClass.PLAIN.ordinal()];
+                layers[2][x][z] = tw[TerrainClass.HILLS.ordinal()];
+                layers[3][x][z] = tw[TerrainClass.MOUNTAINS.ordinal()];
+                layers[4][x][z] = tw[TerrainClass.PLATEAU.ordinal()];
+                layers[5][x][z] = tw[TerrainClass.BASIN.ordinal()];
 
-                // 3. 共享噪声
-                double noise = tg.computeSharedNoise(wx, wz);
-                layers[8][x][z] = noise;                       // sharedNoise
+                // 3. 各类型独立噪声
+                layers[6][x][z]  = tnp.computeNoise(TerrainClass.PLAIN, wx, wz);
+                layers[7][x][z]  = tnp.computeNoise(TerrainClass.HILLS, wx, wz);
+                layers[8][x][z]  = tnp.computeNoise(TerrainClass.MOUNTAINS, wx, wz);
+                layers[9][x][z]  = tnp.computeNoise(TerrainClass.PLATEAU, wx, wz);
+                layers[10][x][z] = tnp.computeNoise(TerrainClass.PLAIN, wx, wz); // 占位（platShape 在 computePlateau 内）
+                layers[11][x][z] = tnp.computeNoise(TerrainClass.BASIN, wx, wz);
 
-                // 4. eLand 前（不含 BASIN 调制）
-                double eLandPre = blend.lo + (blend.hi - blend.lo) * noise;
-                layers[9][x][z] = eLandPre;                    // eLand_preBasin
+                // 4. 各类型独立 eLand
+                double eLandP = TypeGenerators.getTypeCenter(TerrainClass.PLAIN)     + TypeGenerators.getTypeHalfRange(TerrainClass.PLAIN)     * (2 * layers[6][x][z]  - 1);
+                double eLandH = TypeGenerators.getTypeCenter(TerrainClass.HILLS)     + TypeGenerators.getTypeHalfRange(TerrainClass.HILLS)     * (2 * layers[7][x][z]  - 1);
+                double eLandM = TypeGenerators.getTypeCenter(TerrainClass.MOUNTAINS) + TypeGenerators.getTypeHalfRange(TerrainClass.MOUNTAINS) * (2 * layers[8][x][z]  - 1);
+                double eLandT = TypeGenerators.getTypeCenter(TerrainClass.PLATEAU)   + TypeGenerators.getTypeHalfRange(TerrainClass.PLATEAU)   * (2 * layers[9][x][z]  - 1);
+                double eLandB = TypeGenerators.getTypeCenter(TerrainClass.BASIN)     + TypeGenerators.getTypeHalfRange(TerrainClass.BASIN)     * (2 * layers[11][x][z] - 1);
+                layers[12][x][z] = eLandP;
+                layers[13][x][z] = eLandH;
+                layers[14][x][z] = eLandM;
+                layers[15][x][z] = eLandT;
+                layers[16][x][z] = eLandB;
 
-                // 5. eLand 后（含 BASIN 连续 lerp，用 TypeLandShape 逻辑）
-                double basinW = tw[TerrainClass.BASIN.ordinal()];
-                double basinBase = TypeGenerators.basinModulate(noise);
-                double baseMod = noise * (1.0 - basinW) + basinBase * basinW;
-                double eLandPost = blend.lo + (blend.hi - blend.lo) * baseMod;
-                layers[10][x][z] = eLandPost < 0 ? 0 : (eLandPost > 1 ? 1 : eLandPost);
+                // 5. v6.5 eLand = blend.lo + (blend.hi - blend.lo) × sharedNoise（v5.2 baseline）
+                double sharedNoise = tg.computeSharedNoise(wx, wz);
+                double eLand = blend.lo + (blend.hi - blend.lo) * sharedNoise;
+                layers[17][x][z] = eLand < 0 ? 0 : (eLand > 1 ? 1 : eLand);
 
-                // 6. 连续主导类型（argmax typeWeights，忽略 OCEAN/DEEP_OCEAN/LAKE/RIVER/BEACH/PEAK/SNOW）
-                //    从 TerrainClass.PLAIN 开始扫描确保只选 5 陆地类型
+                // 6. 连续主导类型（argmax typeWeights）
                 int dominantOrd = TerrainClass.PLAIN.ordinal();
                 for (int t = dominantOrd; t < tw.length; t++) {
                     if (tw[t] > tw[dominantOrd]) dominantOrd = t;
                 }
-                layers[11][x][z] = dominantOrd;                 // dominantType_ord
-
-                // 7. 旧 hash 最近 cell 类型（对比用）
-                TerrainClass hashType = voronoi.dominantType(wx, wz);
-                layers[12][x][z] = hashType.ordinal();          // cellType_hash_ord
+                layers[18][x][z] = dominantOrd;                 // dominantType_ord
             }
             if ((x + 1) % 64 == 0) System.out.print(".");
         }
@@ -136,15 +147,6 @@ public final class DiscontinuityProbe {
             double meanGrad = count > 0 ? sumGrad / count : 0;
             // e 空间 1.0 ≙ (320 - (-64)) = 384 块（MC 世界高度）
             double heightBlocks = maxGrad * 384;
-
-            // 离散型图层（dominantType_ord / cellType_hash_ord）：max=4 换为 NaN
-            String maxStr;
-            if (li == 11 || li == 12) {
-                // 离散枚举梯度跳 1 个单位（如类型从 2→3）是正常的，用 ord 差异
-                maxStr = String.format("ord%+d", (int)(maxGrad * 384));
-            } else {
-                maxStr = String.format("%.5f", maxGrad);
-            }
 
             System.out.printf("%-20s | %8.5f | %8.5f | %8.5f | %5.1f | %6.5f%n",
                     LAYER_NAMES[li], maxGradX, maxGradZ, maxGrad, heightBlocks, meanGrad);

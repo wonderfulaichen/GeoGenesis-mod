@@ -1,0 +1,114 @@
+# 地形断裂逐层诊断 + 修复方案
+
+## 用户反馈
+
+用户截图显示地形**呈线状硬边**（红色椭圆标出），是**比"细胞亮点"更严重的完全不连续**问题。
+
+## 我的代码分析（先报告再修）
+
+### 找到的疑似根因（基于代码逻辑）
+
+`TypeLandShape.sample` 第 54-56 行：
+```java
+if (blend.dominantType == TerrainClass.BASIN && blend.alpha > 0.6) {
+    base = TypeGenerators.basinModulate(base);  // ← 0.85 - 0.7*base
+}
+```
+
+`blend.dominantType` 是 `VoronoiRegionField.sampleBlend` 第 137 行的 `cellType(bestIdx)`——**整数 hash → TerrainClass 枚举，离散突变**。
+
+**当采样点跨越 cell 边界时：**
+- `dominantType` 从 `PLAIN`（hash=a）突变到 `BASIN`（hash=b）——一个像素跳变
+- `basinModulate(base)` 突然被应用：`0.85 - 0.7*base` vs `base` —— **高度差最大 0.7 eLand（≈ 180 块）**
+- 跨过边界再切回 `PLAIN`，`basinModulate` 突然取消
+
+**这正好对应用户截图中红色椭圆标出的"线状硬边"**——BASIN cell 边界处的高度跳变。
+
+`CellGenerator.classify` 也用 `cellType` 决定 `terrainType`：
+```java
+return cellType;  // 直接返回离散 cell 类型
+```
+所以 cell 边界处 `terrainType` 也跳变（PLAIN → BASIN → PLAIN）。
+
+### 验证计划：先诊断，再修复
+
+按用户建议"每层都加个断裂诊断"——先写诊断工具验证我的根因假设，再做精准修复。
+
+## 技术方案
+
+### 第 1 步：逐层断裂诊断工具
+
+新建 `DiscontinuityProbe.java`，与 `TerrainDiag.java` 同目录。
+
+**核心方法**：
+- 跑 1024×1024 网格（每像素 1 块，1024×1024 块）
+- 对每一层单独采样并计算 max|d/dx|、max|d/dz|
+- 输出：
+  1. 每层最大断裂值 + 位置 + 周围 4 像素差值
+  2. PNG 灰度图（白色=断裂大，黑色=平滑），用户可直接在预览/外部查看
+
+**测试层（按"流水线"顺序）**：
+| 层 | 输出 | 期望连续 |
+|----|------|----------|
+| L1 | VoronoiRegionField.sampleBlend().lo | 连续 |
+| L2 | VoronoiRegionField.sampleBlend().hi | 连续 |
+| L3 | VoronoiRegionField.sampleBlend().alpha | 连续 |
+| L4 | TypeGenerators.computeSharedNoise | 连续 |
+| L5 | basinModulate(base)（无 BASIN 开关时） | 连续 |
+| L6 | basinModulate(base)（有 BASIN 开关时） | **可能不连续** |
+| L7 | TypeLandShape.sample 的 eLand | **可能不连续** |
+| L8 | CellGenerator.sample 完整 eLand | 可能不连续 |
+
+### 第 2 步：基于诊断结果修复
+
+**确认根因后**（最可能是 L6 / L7），修复：
+
+**方案 A**（最简单）：`basinModulate` 改为**连续调制**而非开关
+```java
+// 旧
+if (blend.dominantType == TerrainClass.BASIN && blend.alpha > 0.6) {
+    base = TypeGenerators.basinModulate(base);
+}
+
+// 新：用 typeWeights[BASIN] 连续加权
+double basinW = blend.typeWeights[BASIN_IDX];
+double baseFromBasin = TypeGenerators.basinModulate(base);
+base = base * (1 - basinW) + baseFromBasin * basinW;
+```
+
+**方案 B**（彻底）：`VoronoiRegionField` 改为返回**类型权重分布**
+```java
+public static final class BlendResult {
+    public double lo, hi, alpha;
+    public double[] typeWeights; // 5 个类型的连续权重（按距离加权）
+    public TerrainClass dominantType() { /* argmax(typeWeights) */ }
+}
+```
+
+`TypeLandShape` 和 `CellGenerator.classify` 都改用 `typeWeights`。
+
+### 第 3 步：再次诊断确认
+
+修完后再跑 DiscontinuityProbe，验证每层最大断裂 < 阈值（如 0.05 eLand/像素）。
+
+## 实现步骤
+
+1. **创建** `DiscontinuityProbe.java`（独立可执行 main）—— 100 行
+2. **运行** 现状诊断 → 输出报告（用户能看到哪一层断）
+3. **改** `VoronoiRegionField.BlendResult` 加 `typeWeights[5]` 字段
+4. **改** `TypeLandShape.sample` 用连续 basin 权重
+5. **改** `CellGenerator.classify` 用连续 dominantType 计算
+6. **再诊断** 验证每层连续
+
+## 修改文件
+
+- 新建 `terrain/DiscontinuityProbe.java`（诊断工具）
+- 修改 `terrain/VoronoiRegionField.java`（加 typeWeights）
+- 修改 `terrain/TypeLandShape.java`（连续 basin 调制）
+- 修改 `terrain/CellGenerator.java`（classify 改用连续类型）
+
+## 验证
+
+- `gradlew compileJava --rerun-tasks`
+- `gradlew runDiag`（如果注册了 main）或直接 `java DiscontinuityProbe`
+- 输出每层最大断裂值，预期 < 0.05 eLand/像素
