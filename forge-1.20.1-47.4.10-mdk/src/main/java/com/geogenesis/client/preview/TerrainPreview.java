@@ -40,7 +40,7 @@ public final class TerrainPreview {
     private static final int[] QUALITY = {1, 2, 4}; // 渲染降采样（分辨率切换）
 
     private final GeoGenesisTerrain terrain;
-    private final int seaLevel, snowLine, maxY, minY, horizontalScale, mountainCap, trenchDepth;
+    private final int seaLevel, snowLine, maxY, minY, horizontalScale, mountainCap;
     private final long seed;
 
     private double originX = 0.0, originZ = 0.0;
@@ -132,10 +132,10 @@ public final class TerrainPreview {
         this.minY = params.minY();
         this.horizontalScale = (int) params.horizontalScale();
         this.mountainCap = params.mountainCap();
-        this.trenchDepth = params.trenchDepth();
         // 高程色带按世界全高度范围归一化（minY 到 mountainCap），
         // 使深海（Y=minY）到山脊（Y=mountainCap）的颜色层次可见
         GeoPalette.setElevationRange(minY, mountainCap);
+        GeoPalette.setSeaLevel(seaLevel);
 
         frame = new JFrame("GeoGenesis Terrain Preview");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -266,9 +266,9 @@ public final class TerrainPreview {
                 g.fillRect(bx, by + i, bw, 1);
             }
             g.setColor(Color.WHITE); g.drawRect(bx, by, bw, bh);
-            // 高程图层显示真实 Y 范围（海床最深 → 山脊最高），其余连续图层显示 0/1
+            // 高程图层显示真实 Y 范围（minY → 山脊最高），其余连续图层显示 0/1
             String topLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + mountainCap) : "1.0";
-            String botLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + (seaLevel - trenchDepth)) : "0.0";
+            String botLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + minY) : "0.0";
             g.drawString(topLabel, bx - 40, by + 8);
             g.drawString(botLabel, bx - 40, by + bh);
         }
@@ -299,6 +299,7 @@ public final class TerrainPreview {
                 String.format("x=%d  z=%d", (int) Math.round(wx), (int) Math.round(wz)),
                 "图层: " + layer.labelKey,
                 "高度: Y=" + (int) Math.round(cell.height),
+                String.format("地形: %s  e=%.3f", englishTerrainType(cell), cell.e),
                 String.format("温度=%.2f 湿度=%.2f 大陆=%.2f", cell.temperature, cell.humidity, cell.continentNoise),
                 String.format("纬度=%.2f 起伏=%.2f", Latitude.latitude01((int) Math.round(wz)), (cell.shape + 1) * 0.5),
                 "水: " + water,
@@ -331,6 +332,28 @@ public final class TerrainPreview {
     }
 
     public void showWindow() { frame.setVisible(true); }
+
+    /** tooltip 中显示地形类型英文名 */
+    private static String englishTerrainType(Cell c) {
+        if (c.riverMask) return "River";
+        if (c.lakeMask) return "Lake";
+        int id = c.terrainType.ordinal();
+        return switch (id) {
+            case 0 -> "Ocean";
+            case 1 -> "Deep Ocean";
+            case 2 -> "Lake";
+            case 3 -> "River";
+            case 4 -> "Beach";
+            case 5 -> "Plain";
+            case 6 -> "Hills";
+            case 7 -> "Plateau";
+            case 8 -> "Mountains";
+            case 9 -> "Peak";
+            case 10 -> "Basin";
+            case 11 -> "Snow";
+            default -> "???";
+        };
+    }
 
     public static void main(String[] args) {
         long seed = (args != null && args.length > 0) ? Long.parseLong(args[0]) : 12345L;

@@ -46,7 +46,7 @@ public class PreviewDisplay extends AbstractWidget {
     private GeoGenesisTerrain terrain;
     private long seed;
     private int horizontalScale;
-    private int seaLevel, snowLine, maxY, minY, mountainCap, trenchDepth;
+    private int seaLevel, snowLine, maxY, minY, mountainCap;
     private int mode = 0;
     private boolean hydrology = false;
     private boolean showLegend = true;
@@ -86,9 +86,9 @@ public class PreviewDisplay extends AbstractWidget {
         this.maxY = params.maxY();
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
-        this.trenchDepth = params.trenchDepth();
         // 高程色带按实际地形高度范围归一化，使高山始终映射到色带顶部
         GeoPalette.setElevationRange(minY, mountainCap);
+        GeoPalette.setSeaLevel(seaLevel);
         this.texW = texSize;
         this.texH = Math.max(1, (int) Math.round(texSize * (double) height / width));
         this.image = new NativeImage(NativeImage.Format.RGBA, texW, texH, false);
@@ -107,8 +107,8 @@ public class PreviewDisplay extends AbstractWidget {
         this.maxY = params.maxY();
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
-        this.trenchDepth = params.trenchDepth();
         GeoPalette.setElevationRange(minY, mountainCap);
+        GeoPalette.setSeaLevel(seaLevel);
         requestResample();
     }
 
@@ -423,7 +423,7 @@ public class PreviewDisplay extends AbstractWidget {
                 g.fill(bx, by + i, bx + bw, by + i + 1, GeoPalette.toABGR(rgb));
             }
             String topLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + mountainCap) : "1.0";
-            String botLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + (seaLevel - trenchDepth)) : "0.0";
+            String botLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + minY) : "0.0";
             g.drawString(mc.font, topLabel, bx - 28, by, 0xCCCCCC);
             g.drawString(mc.font, botLabel, bx - 28, by + bh - 8, 0xCCCCCC);
             g.drawString(mc.font, I18n.get(layer.labelKey), lx, ly, 0x66CCFF);
@@ -462,9 +462,11 @@ public class PreviewDisplay extends AbstractWidget {
 
     private static String typeLine(Cell c) {
         switch (c.terrainType) {
-            // SHALLOW_OCEAN/CONTINENTAL_SHELF removed — merged into OCEAN/DEEP_OCEAN
-            // (Handled by existing OCEAN/DEEP_OCEAN cases above)
-            case DEEP_OCEAN:        return I18n.get("geogenesis.preview.type.deep_ocean");
+            case OCEAN:              return I18n.get("geogenesis.preview.type.ocean");
+            case DEEP_OCEAN:         return I18n.get("geogenesis.preview.type.deep_ocean");
+            case CONTINENTAL_SHELF:  return I18n.get("geogenesis.preview.type.continental_shelf");
+            case SUBMARINE_RIDGE:    return I18n.get("geogenesis.preview.type.submarine_ridge");
+            case SEAMOUNT:           return I18n.get("geogenesis.preview.type.seamount");
             case BEACH:      return I18n.get("geogenesis.preview.type.beach");
             case PLAIN:      return c.isSnow ? I18n.get("geogenesis.preview.type.snow") : I18n.get("geogenesis.preview.type.plain");
             case HILLS:      return c.isSnow ? I18n.get("geogenesis.preview.type.snow") : I18n.get("geogenesis.preview.type.hills");

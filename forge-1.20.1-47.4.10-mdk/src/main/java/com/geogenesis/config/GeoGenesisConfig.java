@@ -118,11 +118,13 @@ public final class GeoGenesisConfig {
         shelfLoc = builder.defineInRange("shelfLoc", -0.50, -1.0, 1.0);
         shallowLoc = builder.defineInRange("shallowLoc", -0.16, -1.0, 1.0);
         coastLoc = builder.defineInRange("coastLoc", -0.04, -1.0, 1.0);
-        deepOceanDepth = builder.defineInRange("deepOceanDepth", -0.85, -1.0, 0.0);
+        deepOceanDepth = builder.comment("Deep ocean depth (e units). -0.35 ≈ y=19 floor, adjust for gameplay depth taste.")
+            .defineInRange("deepOceanDepth", -0.35, -1.0, 0.0);
         shelfDepth = builder.defineInRange("shelfDepth", -0.25, -1.0, 0.0);
         shallowDepth = builder.defineInRange("shallowDepth", -0.06, -1.0, 0.0);
         deepOceanDeriv = builder.defineInRange("deepOceanDeriv", 0.0, -10.0, 10.0);
-        shelfDeriv = builder.defineInRange("shelfDeriv", 0.0, -10.0, 10.0);
+        shelfDeriv = builder.comment("Shelf derivative steepness: higher = steeper continental slope. Default 0.8.")
+            .defineInRange("shelfDeriv", 0.8, -10.0, 10.0);
         shallowDeriv = builder.defineInRange("shallowDeriv", 0.0, -10.0, 10.0);
         coastDeriv = builder.defineInRange("coastDeriv", 0.0, -10.0, 10.0);
         builder.pop();

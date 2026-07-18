@@ -23,6 +23,7 @@ public final class CellGenerator implements HeightProvider {
     private final HeightCurve heightCurve;
     private final TypeLandShape typeLandShape;
     private final SeaBedDetail seaBed;
+    private final OceanFeatures oceanFeatures;
     private final double continentBias;
     private final double seabedAmp;
 
@@ -40,6 +41,7 @@ public final class CellGenerator implements HeightProvider {
         this.heightCurve = new HeightCurve(p, minWorldY, maxWorldY);
         this.typeLandShape = new TypeLandShape();
         this.seaBed = new SeaBedDetail(p);
+        this.oceanFeatures = new OceanFeatures();
         this.continentBias = p.continentBias();
         this.seabedAmp = p.seabedDetail();
 
@@ -48,11 +50,23 @@ public final class CellGenerator implements HeightProvider {
         this.humidityNoise = new Frequency(new Simplex(502), 1.0 / 800.0);
     }
 
-    /** 一次性播种所有噪声节点 */
+    /** 一次性播种所有噪声节点 + 设置海山中心水深检查器 */
     public void seed(long worldSeed) {
         continent.seed(worldSeed);
         typeLandShape.seed(worldSeed);
         seaBed.seed(worldSeed);
+        // 海山中心水深检查：计算中心点的真实 eOcean（含 seabed，不含海山增量）
+        // 仅在 eOcean_at_center < -0.20（足够深）时才允许生成海山
+        oceanFeatures.setSeamountDepthChecker((wx, wz) -> {
+            double c = continent.sample(wx, wz);
+            double cBiased = c - continentBias;
+            double eBase = heightCurve.eFromC(cBiased);
+            double depthMod = 0.6 + smoothstep(-0.2, -0.6, eBase) * 1.2;
+            double seabed = seabedAmp * depthMod * seaBed.sample(wx, wz);
+            double eOcean = eBase + seabed;
+            return Math.min(eOcean, 0.0);
+        });
+        oceanFeatures.seed(worldSeed);
         Noises.seedAll(tempWarp, worldSeed, 0);
         Noises.seedAll(humidityNoise, worldSeed, 0);
     }
@@ -80,10 +94,17 @@ public final class CellGenerator implements HeightProvider {
         double cBiased = c - continentBias;
 
         // 2. 海洋基面 eOcean
-        double seabed = seabedAmp * seaBed.sample(wx, wz);
-        double eOcean = heightCurve.eFromC(cBiased) + seabed;
+        double eBase = heightCurve.eFromC(cBiased);
+        // 海床振幅按深度分区：深海盆崎岖、浅海平坦
+        double depthMod = 0.6 + smoothstep(-0.2, -0.6, eBase) * 1.2;
+        double seabed = seabedAmp * depthMod * seaBed.sample(wx, wz);
+        double eOcean = eBase + seabed;
         eOcean = Math.min(eOcean, 0.0);
         eOcean = clamp(eOcean, -1.0, 0.0);
+
+        // 2b. 海洋特征（洋中脊、海山）— 分离分量供分类用
+        OceanFeatures.FeatureResult oceanFeat = oceanFeatures.compute(wx, wz, eOcean, cBiased);
+        eOcean = clamp(eOcean + oceanFeat.total, -1.0, 0.0);
 
         // 3. Voronoi 混合结果
         VoronoiRegionField.BlendResult cellBlend = typeLandShape.sampleBlend(wx, wz);
@@ -137,8 +158,8 @@ public final class CellGenerator implements HeightProvider {
         cell.temperature = temp;
         cell.humidity = hum;
 
-        // 9. 分类（使用连续 typeWeights + 已计算的温度/湿度）
-        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, temp);
+        // 9. 分类（使用连续 typeWeights + 已计算的温度/湿度 + 海洋特征）
+        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, temp, oceanFeat);
         cell.continentNoise = c;
         cell.shape = eLand * 2.0 - 1.0;
 
@@ -147,15 +168,27 @@ public final class CellGenerator implements HeightProvider {
 
     /**
      * 连续形态分类（使用 typeWeights 连续权重替代离散 argmax）。
+     * 海洋区域按特征分量细分：大陆架 / 洋中脊 / 海山 / 海洋 / 深海。
      */
     public TerrainClass classify(double c, double e, double eLand,
                                   TerrainClass cellType, double[] typeWeights,
-                                  double temperature) {
+                                  double temperature,
+                                  OceanFeatures.FeatureResult oceanFeat) {
         if (e < 0.0) {
-            return e < -0.4 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
+            // 海洋地形细分
+            double ridgeAmp = oceanFeat != null ? oceanFeat.ridge : 0;
+            double seamountAmp = oceanFeat != null ? oceanFeat.seamount : 0;
+            // SUBMARINE_RIDGE / SEAMOUNT 仅在大陆架以下（e < -0.08）的较深水域分类
+            // 避免浅水/近岸被误判为海山
+            if (ridgeAmp > 0.03 && e < -0.08) return TerrainClass.SUBMARINE_RIDGE;
+            if (seamountAmp > 0.02 && e < -0.08) return TerrainClass.SEAMOUNT;
+            if (e > -0.08) return TerrainClass.CONTINENTAL_SHELF;
+            return e < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
-        if (e < 0.03) return TerrainClass.BEACH;
-
+        // BEACH 分类暂不在此处处理——旧版 classifyTerrain（静默化侵蚀后重分类）中有。
+        // 此处直接交给 cellType（Voronoi 主导类型），避免 e=0.03 硬阈值处
+        // BEACH(SAND) ↔ PLAIN/GRASS 的材质突变。
+        
         // 取 MOUNTAINS 连续权重（而非离散 cellType == MOUNTAINS）
         double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
             ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
@@ -181,12 +214,16 @@ public final class CellGenerator implements HeightProvider {
     /**
      * 静态分类方法（带连续类型权重）。
      * PEAK/SNOW 使用 typeWeights 连续阈值，避免离散 argmax 跳变。
+     * 海洋区域按深度细分：大陆架 / 海洋 / 深海（无特征分量，仅靠 e）。
      */
     public static TerrainClass classifyTerrain(double ne, double eLand,
                                                 TerrainClass cellType,
                                                 double temperature,
                                                 double[] typeWeights) {
-        if (ne < 0.0) return ne < -0.4 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
+        if (ne < 0.0) {
+            if (ne > -0.08) return TerrainClass.CONTINENTAL_SHELF;
+            return ne < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
+        }
         if (ne < 0.03) return TerrainClass.BEACH;
 
         // 使用连续 typeWeights 判断 PEAK
@@ -207,6 +244,10 @@ public final class CellGenerator implements HeightProvider {
     }
     private static double saturate(double v) {
         return v < 0 ? 0 : (v > 1 ? 1 : v);
+    }
+    private static double smoothstep(double edge0, double edge1, double x) {
+        double t = saturate((x - edge0) / (edge1 - edge0));
+        return t * t * (3.0 - 2.0 * t);
     }
 
     /** 采样大陆性快捷接口 */

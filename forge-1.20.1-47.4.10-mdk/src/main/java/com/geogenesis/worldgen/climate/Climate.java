@@ -14,6 +14,16 @@ public record Climate(double temperature, double humidity) {
         return temperature < -0.2;
     }
 
+    /** 严寒判断（冰冻海洋） */
+    public boolean isFrozen() {
+        return temperature < -0.6;
+    }
+
+    /** 高温判断（暖洋） */
+    public boolean isHot() {
+        return temperature > 0.5;
+    }
+
     /** 干燥判断 */
     public boolean isDry() {
         return humidity < -0.3;

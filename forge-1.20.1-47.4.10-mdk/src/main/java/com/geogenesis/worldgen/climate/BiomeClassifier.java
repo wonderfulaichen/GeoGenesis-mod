@@ -32,8 +32,37 @@ public final class BiomeClassifier {
         Climate climate = cell.climate;
 
         return switch (terrain) {
-            case DEEP_OCEAN -> Biomes.DEEP_COLD_OCEAN;
-            case OCEAN     -> climate.isCold() ? Biomes.COLD_OCEAN : Biomes.OCEAN;
+            case DEEP_OCEAN -> {
+                if (climate.isFrozen()) yield Biomes.DEEP_FROZEN_OCEAN;
+                if (climate.isCold()) yield Biomes.DEEP_COLD_OCEAN;
+                // MC 没有 DEEP_WARM_OCEAN，热深海也归 LUKEWARM
+                if (climate.isHot()) yield Biomes.LUKEWARM_OCEAN;
+                yield Biomes.DEEP_LUKEWARM_OCEAN;
+            }
+            case OCEAN -> {
+                if (climate.isFrozen()) yield Biomes.FROZEN_OCEAN;
+                if (climate.isCold()) yield Biomes.COLD_OCEAN;
+                if (climate.isHot()) yield Biomes.WARM_OCEAN;
+                yield Biomes.LUKEWARM_OCEAN;
+            }
+            case CONTINENTAL_SHELF -> {
+                if (climate.isFrozen()) yield Biomes.FROZEN_OCEAN;
+                if (climate.isCold()) yield Biomes.COLD_OCEAN;
+                if (climate.isHot()) yield Biomes.WARM_OCEAN;
+                yield Biomes.LUKEWARM_OCEAN;
+            }
+            case SUBMARINE_RIDGE -> {
+                if (climate.isFrozen()) yield Biomes.DEEP_FROZEN_OCEAN;
+                if (climate.isCold()) yield Biomes.DEEP_COLD_OCEAN;
+                if (climate.isHot()) yield Biomes.LUKEWARM_OCEAN;
+                yield Biomes.DEEP_LUKEWARM_OCEAN;
+            }
+            case SEAMOUNT -> {
+                if (climate.isFrozen()) yield Biomes.DEEP_FROZEN_OCEAN;
+                if (climate.isCold()) yield Biomes.DEEP_COLD_OCEAN;
+                if (climate.isHot()) yield Biomes.LUKEWARM_OCEAN;
+                yield Biomes.DEEP_LUKEWARM_OCEAN;
+            }
             case LAKE      -> Biomes.SWAMP;
             case RIVER     -> Biomes.RIVER;
 
@@ -77,6 +106,9 @@ public final class BiomeClassifier {
         return switch (cell.terrainType) {
             case DEEP_OCEAN -> BiomeClass.DEEP_OCEAN;
             case OCEAN     -> BiomeClass.OCEAN;
+            case CONTINENTAL_SHELF -> BiomeClass.OCEAN;
+            case SUBMARINE_RIDGE   -> BiomeClass.OCEAN;
+            case SEAMOUNT          -> BiomeClass.OCEAN;
             case LAKE      -> BiomeClass.LAKE;
             case RIVER     -> BiomeClass.RIVER;
             case BEACH    -> BiomeClass.BEACH;
