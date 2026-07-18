@@ -236,3 +236,11 @@ task runDiag(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiagnostic'
 }
+
+// Terrain discontinuity probe (straight + curved line diagnostic)
+task runDiscontinuityProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiscontinuityProbe'
+}
+
+

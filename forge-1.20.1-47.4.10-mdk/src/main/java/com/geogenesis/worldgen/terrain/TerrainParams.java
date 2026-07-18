@@ -32,7 +32,7 @@ public record TerrainParams(
     double coastLoc,       // 默认 -0.04; 海岸线（样条锚定 e=0）
 
     // e-space 深度（控制点 value）
-    double deepOceanDepth, // 默认 -0.85; 深海深度
+    double deepOceanDepth, // 默认 -0.35; 深海深度（适配 MC 游戏性，≈ y=19 海床）
     double shelfDepth,     // 默认 -0.25; 大陆架深度
     double shallowDepth,   // 默认 -0.06; 浅海深度
 
@@ -149,10 +149,10 @@ public record TerrainParams(
             4000.0, 0.2, 0.0, 0.0, 0.0,
             // ocean spline locations (c∈[-1,1]; 负=深海、0=海岸锚点)
             -0.80, -0.50, -0.16, -0.04,
-            // ocean spline values
-            -0.85, -0.25, -0.06,
-            // ocean spline derivatives
-            0.0, 0.0, 0.0, 0.0,
+            // ocean spline values（deepOcean depth 从 -0.85 减至 -0.35，适配 MC 游戏性不宜太深）
+            -0.35, -0.25, -0.06,
+            // ocean spline derivatives（shelfDeriv 从 1.5 降至 0.8，配合浅化海洋）
+            0.0, 0.8, 0.0, 0.0,
             // seabed
             0.03,
             // province

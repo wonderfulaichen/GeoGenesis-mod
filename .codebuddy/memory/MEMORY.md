@@ -104,6 +104,27 @@ TypeLandShape.sample(blend, wx, wz):
 ### 编译验证
 BUILD SUCCESSFUL in 13s（2026-07-16晚）
 
+## 2026-07-19 海洋特征 & OceanFeatures 重构
+
+### OceanFeatures.java 变更
+- 移除 per-cell eOcean gate（旧 eOcean < -0.30 太严格）
+- 新增 `seamountCenterDepthCheck`（DoubleBinaryOperator 回调）
+- 海山中心水深校验：eOcean_at_center > -0.20 → 跳过
+- 振幅 0.12-0.25 → 0.08-0.16
+- `seamountCompute` 签名取消 eOcean 参数
+
+### CellGenerator.java 变更
+- seed() 中注入 depthChecker 回调（复用 continent / heightCurve / seaBed）
+
+### TerrainClass 海洋类型
+新增 CONTINENTAL_SHELF、SUBMARINE_RIDGE、SEAMOUNT（均位于 OCEAN/DEEP_OCEAN 之后）
+
+### 海洋地形类型（共 7 水域类）
+OCEAN、DEEP_OCEAN、CONTINENTAL_SHELF、SUBMARINE_RIDGE、SEAMOUNT、RIVER、LAKE
+
+### 诊断清理
+OceanFeatureProbe.java 已于 07-19 删除，probe_ocean_*.txt 已清理
+
 ### 待办
 - BASIN 尚未集成到阈值链（需 moisture 二级分类支持，待后续迭代）
 - 类型参数化：TypeLandShape 的阈值和 TypeGenerators 的噪声参数需从 TerrainParams 注入

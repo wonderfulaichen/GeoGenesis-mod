@@ -92,12 +92,13 @@ public final class GeoPalette {
     // ============================================================
 
     private static final float[][] S_ELEVATION = {
-            {0.00f, 0.07f, 0.16f, 0.36f},
-            {0.30f, 0.23f, 0.49f, 0.66f},
-            {0.45f, 0.45f, 0.63f, 0.36f},
-            {0.65f, 0.55f, 0.49f, 0.31f},
-            {0.85f, 0.62f, 0.55f, 0.46f},
-            {1.00f, 0.96f, 0.96f, 0.96f},
+            {0.00f, 0.07f, 0.16f, 0.36f},   // 最深洋盆 (Y=-64)
+            {0.18f, 0.14f, 0.32f, 0.50f},   // 深海 (Y≈-6，适配新深度，增强海洋对比)
+            {0.30f, 0.23f, 0.49f, 0.66f},   // 大陆坡 (Y=32)
+            {0.45f, 0.45f, 0.63f, 0.36f},   // 海岸/低地 (Y=80)
+            {0.65f, 0.55f, 0.49f, 0.31f},   // 丘陵 (Y=144)
+            {0.85f, 0.62f, 0.55f, 0.46f},   // 山地 (Y=208)
+            {1.00f, 0.96f, 0.96f, 0.96f},   // 雪峰 (Y=256)
     };
     private static final float[][] S_TEMPERATURE = {
             {0.00f, 0.20f, 0.40f, 0.85f},
@@ -133,6 +134,15 @@ public final class GeoPalette {
             {1.00f, 0.32f, 0.82f, 1.00f},  // 河心：亮青
     };
 
+    // 海洋深度色带（用于预览看清海底地貌）
+    private static final float[][] S_OCEAN_DEPTH = {
+            {0.00f, 0.02f, 0.06f, 0.18f},  // 最深洋盆
+            {0.30f, 0.05f, 0.15f, 0.35f},  // 深海
+            {0.55f, 0.10f, 0.28f, 0.52f},  // 大陆坡
+            {0.80f, 0.18f, 0.45f, 0.65f},  // 浅海
+            {1.00f, 0.40f, 0.72f, 0.85f},  // 海岸
+    };
+
     // 科学色带（用于高程/任意连续图层的可切换色带）
     private static final float[][] S_INFERNO = {
             {0.00f, 0.001f, 0.000f, 0.014f}, {0.20f, 0.270f, 0.010f, 0.330f},
@@ -164,7 +174,7 @@ public final class GeoPalette {
 
     private static final Map<String, ColorMap> COLORMAPS = new HashMap<>();
     private static final List<String> SCIENTIFIC = Arrays.asList(
-            "inferno", "viridis", "plasma", "magma", "cividis", "grayscale");
+            "inferno", "viridis", "plasma", "magma", "cividis", "grayscale", "ocean_depth");
 
     static {
         register("elevation", S_ELEVATION);
@@ -181,6 +191,7 @@ public final class GeoPalette {
         register("magma", S_MAGMA);
         register("cividis", S_CIVIDIS);
         register("grayscale", S_GRAYSCALE);
+        register("ocean_depth", S_OCEAN_DEPTH);
         for (ColorMap cm : COLORMAPS.values()) cm.bake(256);
     }
 
@@ -209,10 +220,17 @@ public final class GeoPalette {
 
     private static int elevMin = Integer.MIN_VALUE;
     private static int elevMax = Integer.MIN_VALUE;
+    /** 海平面 Y，用于海洋区域 ocean_depth 色带独立映射。 */
+    private static int seaLevel = 63;
 
     public static void setElevationRange(int min, int max) {
         elevMin = min;
         elevMax = max;
+    }
+
+    /** 设置海平面 Y，海洋区域用 ocean_depth 色带展示海底地貌。 */
+    public static void setSeaLevel(int sl) {
+        seaLevel = sl;
     }
 
     public static void clearElevationRange() {
@@ -224,22 +242,25 @@ public final class GeoPalette {
     // ============================================================
 
     // TERRAIN_TYPE id 与 TerrainClass.ordinal() 严格对齐（顺序/数量必须一致！）：
-    // 0 OCEAN,1 DEEP_OCEAN,2 LAKE,3 RIVER,4 BEACH,5 PLAIN,6 HILLS,
-    // 7 PLATEAU,8 MOUNTAINS,9 PEAK,10 BASIN,11 SNOW
-    // （旧 SHALLOW_OCEAN / CONTINENTAL_SHELF 已合并入 OCEAN / DEEP_OCEAN，见 PreviewDisplay）
+    // 0 OCEAN,1 DEEP_OCEAN,2 CONTINENTAL_SHELF,3 SUBMARINE_RIDGE,4 SEAMOUNT,
+    // 5 LAKE,6 RIVER,7 BEACH,8 PLAIN,9 HILLS,10 PLATEAU,11 MOUNTAINS,
+    // 12 PEAK,13 BASIN,14 SNOW
     private static final int[] T_TERRAIN_TYPE = {
-            0x2E5C8A, // OCEAN 中蓝
-            0x1B3F6B, // DEEP_OCEAN 深蓝
-            0x34B4D6, // LAKE 青蓝
-            0x2E6FD6, // RIVER 浅蓝
-            0xD9C18A, // BEACH 沙黄
-            0x6FA84B, // PLAIN 草绿
-            0x9BBF5A, // HILLS 黄绿
-            0xC2A04A, // PLATEAU 赭黄
-            0x8A7A66, // MOUNTAINS 棕
-            0xDDE6EE, // PEAK 灰白
-            0x7A6FA0, // BASIN 紫灰
-            0xFFFFFF, // SNOW 白
+            0x2E5C8A, // 0  OCEAN 中蓝
+            0x1B3F6B, // 1  DEEP_OCEAN 深蓝
+            0x5A9EC8, // 2  CONTINENTAL_SHELF 浅蓝
+            0x4A8A6A, // 3  SUBMARINE_RIDGE 青绿
+            0x6A7A6A, // 4  SEAMOUNT 暗灰绿
+            0x34B4D6, // 5  LAKE 青蓝
+            0x2E6FD6, // 6  RIVER 浅蓝
+            0xD9C18A, // 7  BEACH 沙黄
+            0x6FA84B, // 8  PLAIN 草绿
+            0x9BBF5A, // 9  HILLS 黄绿
+            0xC2A04A, // 10 PLATEAU 赭黄
+            0x8A7A66, // 11 MOUNTAINS 棕
+            0xDDE6EE, // 12 PEAK 灰白
+            0x7A6FA0, // 13 BASIN 紫灰
+            0xFFFFFF, // 14 SNOW 白
     };
     // LAND_OCEAN id: 0 OCEAN,1 LAND,2 LAKE,3 RIVER
     private static final int[] T_LAND_OCEAN = {
@@ -312,19 +333,32 @@ public final class GeoPalette {
         return 0xFF00FF; // 缺失映射：品红
     }
 
+    /** 简单工具：夹持 double 至 [lo, hi]。 */
+    private static double clamp(double v, double lo, double hi) {
+        return (v < lo) ? lo : (Math.min(v, hi));
+    }
+
     /** 统一入口：根据图层类型，从 Cell 计算连续位置或离散 id → RGB。 */
     public static int color(PreviewLayer layer, Cell c, int worldX, int worldZ, int minY, int maxY) {
-        int base;
+        int base = 0;
         if (layer.kind == Kind.DISCRETE) {
             base = discrete(layer, discreteId(layer, c));
         } else {
-            double pos;
+            double pos = 0.0;
+            boolean oceanElev = (layer == PreviewLayer.ELEVATION && c.terrainType.isOcean());
             switch (layer) {
                 case ELEVATION: {
                     int lo = (elevMin != Integer.MIN_VALUE) ? elevMin : minY;
                     int hi = (elevMax != Integer.MIN_VALUE) ? elevMax : maxY;
-                    double span = Math.max(1.0, hi - lo);
-                    pos = (c.height - lo) / span;
+                    if (oceanElev) {
+                        // 海洋区域：用 ocean_depth 色带 + 单独映射范围 [lo, seaLevel] → [0, 1]
+                        double oceanSpan = Math.max(1.0, seaLevel - lo);
+                        double p = clamp((c.height - lo) / oceanSpan, 0.0, 1.0);
+                        ColorMap cm = COLORMAPS.get("ocean_depth");
+                        base = (cm != null) ? cm.getRGB((float) p) : 0x000000;
+                    } else {
+                        pos = (c.height - lo) / Math.max(1.0, hi - lo);
+                    }
                     break;
                 }
                 case TEMPERATURE: pos = (c.temperature + 1.0) * 0.5; break;  // [-1,1] → [0,1]
@@ -340,10 +374,12 @@ public final class GeoPalette {
                 }
                 default: pos = 0.0;
             }
-            base = continuous(layer, pos);
-            // RIVER_NETWORK：溢出河段（木桶短板被突破）→ 洪泛黄高亮
-            if (layer == PreviewLayer.RIVER_NETWORK && c.riverNetOverflow && pos > 0.0) {
-                base = blendRGB(base, 0xE0B050, 0.6);
+            if (!oceanElev) {
+                base = continuous(layer, pos);
+                // RIVER_NETWORK：溢出河段（木桶短板被突破）→ 洪泛黄高亮
+                if (layer == PreviewLayer.RIVER_NETWORK && c.riverNetOverflow && pos > 0.0) {
+                    base = blendRGB(base, 0xE0B050, 0.6);
+                }
             }
         }
         // 气候连续图层叠加地形/海陆轮廓，避免看起来像纯噪声色块
@@ -359,11 +395,11 @@ public final class GeoPalette {
         return base;
     }
 
-    /** 把气候颜色叠到地形上：海洋显示为海蓝色以突出海岸线，陆地加明显地形明暗。 */
+    /** 把气候颜色叠到地形上：海洋/陆地都浅叠气候数据自身，不淹没问题。 */
     private static int overlayTerrain(int climateRGB, Cell c, int worldX, int worldZ, int minY, int maxY) {
         int terrainRGB = color(PreviewLayer.ELEVATION, c, worldX, worldZ, minY, maxY);
         if (c.terrainType.isOcean()) {
-            return blendRGB(climateRGB, terrainRGB, 0.75);
+            return blendRGB(climateRGB, terrainRGB, 0.35); // 海洋只取 35% 地形色，气候可见
         } else {
             return blendRGB(climateRGB, terrainRGB, 0.35);
         }
@@ -485,8 +521,9 @@ public final class GeoPalette {
     }
 
     private static final String[] TERRAIN_TYPE_NAMES = {
-            "OCEAN", "DEEP_OCEAN", "LAKE", "RIVER", "BEACH",
-            "PLAIN", "HILLS", "PLATEAU", "MOUNTAINS", "PEAK", "BASIN", "SNOW"
+            "OCEAN", "DEEP_OCEAN", "CONTINENTAL_SHELF", "SUBMARINE_RIDGE", "SEAMOUNT",
+            "LAKE", "RIVER", "BEACH", "PLAIN", "HILLS", "PLATEAU",
+            "MOUNTAINS", "PEAK", "BASIN", "SNOW"
     };
     private static final String[] LAND_OCEAN_NAMES = {"OCEAN", "LAND", "LAKE", "RIVER"};
 
@@ -497,6 +534,20 @@ public final class GeoPalette {
 
     private static final Map<String, String> ENGLISH = new HashMap<>();
     static {
+        // 图层标题
+        ENGLISH.put("geogenesis.layer.elevation", "Elevation");
+        ENGLISH.put("geogenesis.layer.temperature", "Temperature");
+        ENGLISH.put("geogenesis.layer.humidity", "Humidity");
+        ENGLISH.put("geogenesis.layer.continentality", "Continentality");
+        ENGLISH.put("geogenesis.layer.relief", "Relief");
+        ENGLISH.put("geogenesis.layer.drainage", "Drainage");
+        ENGLISH.put("geogenesis.layer.latitude", "Latitude");
+        ENGLISH.put("geogenesis.layer.climate_zone", "Climate Zone");
+        ENGLISH.put("geogenesis.layer.biome", "Biome");
+        ENGLISH.put("geogenesis.layer.terrain_type", "Terrain Type");
+        ENGLISH.put("geogenesis.layer.land_ocean", "Land / Ocean");
+        ENGLISH.put("geogenesis.layer.river_network", "River Network");
+        // 气候带
         ENGLISH.put("geogenesis.zone.TROPICAL", "Tropical (A)");
         ENGLISH.put("geogenesis.zone.ARID", "Arid (B)");
         ENGLISH.put("geogenesis.zone.TEMPERATE", "Temperate (C)");
@@ -504,6 +555,9 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.zone.POLAR", "Polar (E)");
         ENGLISH.put("geogenesis.terrain_type.OCEAN", "Ocean");
         ENGLISH.put("geogenesis.terrain_type.DEEP_OCEAN", "Deep Ocean");
+        ENGLISH.put("geogenesis.terrain_type.CONTINENTAL_SHELF", "Continental Shelf");
+        ENGLISH.put("geogenesis.terrain_type.SUBMARINE_RIDGE", "Mid-Ocean Ridge");
+        ENGLISH.put("geogenesis.terrain_type.SEAMOUNT", "Seamount");
         ENGLISH.put("geogenesis.terrain_type.LAKE", "Lake");
         ENGLISH.put("geogenesis.terrain_type.RIVER", "River");
         ENGLISH.put("geogenesis.terrain_type.BEACH", "Beach");
