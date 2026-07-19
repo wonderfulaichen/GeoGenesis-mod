@@ -3,79 +3,97 @@ package com.geogenesis.worldgen.terrain;
 import com.geogenesis.worldgen.noise.*;
 
 /**
- * 多频率共享噪声基底（消除 PLAIN 等窄范围 cell 内的视觉平坦问题）。
- * <p>
- * 设计要点：
- * <ul>
- *   <li>所有类型共享同一噪声场 → 无断裂</li>
- *   <li>4 个频率叠加：低频（地形骨架）、中频（中等起伏）、高频（小细节）、超高频（岩石级纹理）</li>
- *   <li>噪声值 ∈ [0,1] 在所有 cell 都有充分变化，避免 PLAIN 看起来"平"</li>
- *   <li>Voronoi cell 仅决定映射目标范围（lo, hi），不决定噪声结构</li>
- * </ul>
+ * 多频率共享噪声基底 + 类型高度范围（由 TerrainParams 注入）。
+ * 
+ * Phase 1：支持统一样条（2 层嵌套：大陆性 c → 内层样条 lo/hi）。
  */
 public final class TypeGenerators {
 
-    // ===== 各类型 eLand 输出范围 =====
-    // 基于 MC 模组高度 Y = 63 + eLand × 257
-    // v7 (Phase 2)：MOUNT_LO 0.45→0.25；PLATEAU [0.20,0.45]→[0.15,0.32] 拉开山地-高原差距
-    static final double PLAIN_LO  = 0.015, PLAIN_HI = 0.06;
-    static final double HILLS_LO  = 0.07,  HILLS_HI = 0.37;   // B3: [0.06,0.25]→[0.07,0.37] 扩展带宽
-    static final double MOUNT_LO  = 0.25,  MOUNT_HI = 0.95;
-    static final double PLAT_LO   = 0.18,  PLAT_HI  = 0.48;   // v7.6: [0.15,0.55]→[0.18,0.48] 抬高 lo（分离 HILLS）+降低 hi（分离 MOUNTAINS）
-    static final double BASIN_LO  = 0.015, BASIN_HI = 0.08;
+    // ===== 类型 eLand 高度范围（从 TerrainParams 注入，非硬编码） =====
+    private final double[] lo = new double[TerrainClass.COUNT];
+    private final double[] hi = new double[TerrainClass.COUNT];
 
-    // v6.0: CENTER + HALF_RANGE 模式
-    // v7：PLAT_CENTER 0.325→0.235, HALF_RANGE 0.125→0.085
-    static final double PLAIN_CENTER  = 0.0375, PLAIN_HALF_RANGE = 0.0225;
-    static final double HILLS_CENTER  = 0.22,   HILLS_HALF_RANGE = 0.15;   // B3: 0.18/0.12→0.22/0.15
-    static final double MOUNT_CENTER  = 0.60,   MOUNT_HALF_RANGE = 0.35;
-    static final double PLAT_CENTER   = 0.33,   PLAT_HALF_RANGE  = 0.15;   // v7.6: [0.18,0.48]
-    static final double BASIN_CENTER  = 0.0475, BASIN_HALF_RANGE = 0.0325;
+    // ===== Phase 1：统一样条 =====
+    private final UnifiedSpline unifiedSpline;
+    private final boolean useUnifiedSpline;
 
-    public static double getTypeLo(TerrainClass tc) {
-        return switch (tc) {
-            case PLAIN     -> PLAIN_LO;
-            case HILLS     -> HILLS_LO;
-            case MOUNTAINS -> MOUNT_LO;
-            case PLATEAU   -> PLAT_LO;
-            case BASIN     -> BASIN_LO;
-            default        -> 0.0;
-        };
+    public TypeGenerators(TerrainParams p) {
+        // Phase 1：构建统一样条
+        this.unifiedSpline = p.buildUnifiedSpline();
+        this.useUnifiedSpline = false; // 2026-07-20: 关闭样条路径，恢复旧的 typeWeights 加权系统
+        
+        // 向后兼容：保留旧的 center ± halfRange
+        setRange(TerrainClass.PLAIN,     p.plainCenter(), p.plainHalfRange());
+        setRange(TerrainClass.HILLS,     p.hillsCenter(), p.hillsHalfRange());
+        setRange(TerrainClass.MOUNTAINS, p.mountainsCenter(), p.mountainsHalfRange());
+        setRange(TerrainClass.PLATEAU,   p.plateauCenter(), p.plateauHalfRange());
+        setRange(TerrainClass.BASIN,     p.basinCenter(), p.basinHalfRange());
+
+        // low/high init same as before
+        this.lowFreq  = new Frequency(new Simplex(300), 1.0 / 1200.0);
+        this.midFreq  = new Frequency(new Simplex(301), 1.0 / 400.0);
+        this.highFreq = new Frequency(new Simplex(302), 1.0 / 150.0);
+        this.detailFreq = new Frequency(new Simplex(303), 1.0 / 50.0);
+        this.warpA = new Frequency(new Simplex(320), 1.0 / 800.0);
+        this.warpB = new Frequency(new Simplex(321), 1.0 / 800.0);
+        this.warpAmp = 300.0;
+        this.wLow = 0.45; this.wMid = 0.30; this.wHigh = 0.18; this.wDetail = 0.07;
     }
 
-    public static double getTypeHi(TerrainClass tc) {
-        return switch (tc) {
-            case PLAIN     -> PLAIN_HI;
-            case HILLS     -> HILLS_HI;
-            case MOUNTAINS -> MOUNT_HI;
-            case PLATEAU   -> PLAT_HI;
-            case BASIN     -> BASIN_HI;
-            default        -> 0.0;
-        };
+    private void setRange(TerrainClass tc, double center, double halfRange) {
+        int idx = tc.ordinal();
+        lo[idx] = center - halfRange;
+        hi[idx] = center + halfRange;
     }
 
-    /** v6.0: 类型的 eLand 中心值 */
-    public static double getTypeCenter(TerrainClass tc) {
-        return switch (tc) {
-            case PLAIN     -> PLAIN_CENTER;
-            case HILLS     -> HILLS_CENTER;
-            case MOUNTAINS -> MOUNT_CENTER;
-            case PLATEAU   -> PLAT_CENTER;
-            case BASIN     -> BASIN_CENTER;
-            default        -> 0.0;
-        };
+    public double getTypeLo(TerrainClass tc) { return lo[tc.ordinal()]; }
+    public double getTypeHi(TerrainClass tc) { return hi[tc.ordinal()]; }
+    public double getTypeCenter(TerrainClass tc) { return (lo[tc.ordinal()] + hi[tc.ordinal()]) * 0.5; }
+    public double getTypeHalfRange(TerrainClass tc) { return (hi[tc.ordinal()] - lo[tc.ordinal()]) * 0.5; }
+
+    /**
+     * Phase 1：通过 2 层嵌套样条计算 eLand。
+     * 
+     * @param c 大陆性值（-1.0 到 1.0）
+     * @param noiseValue 地形类型噪声值（0.0 到 1.0）
+     * @return eLand 值
+     */
+    public double sampleFromSpline(double c, double noiseValue) {
+        if (useUnifiedSpline && unifiedSpline != null) {
+            return unifiedSpline.sample(c, noiseValue);
+        }
+        // fallback：使用旧的 center ± halfRange
+        return 0.0;
     }
 
-    /** v6.0: 类型的 eLand 半范围（输出 = center ± halfRange） */
-    public static double getTypeHalfRange(TerrainClass tc) {
-        return switch (tc) {
-            case PLAIN     -> PLAIN_HALF_RANGE;
-            case HILLS     -> HILLS_HALF_RANGE;
-            case MOUNTAINS -> MOUNT_HALF_RANGE;
-            case PLATEAU   -> PLAT_HALF_RANGE;
-            case BASIN     -> BASIN_HALF_RANGE;
-            default        -> 0.0;
-        };
+    /**
+     * Phase 2：通过 3 层嵌套样条计算 eLand。
+     * 
+     * @param c 大陆性值（-1.0 到 1.0）
+     * @param typePosition 类型在类型轴上的位置（0.0 到 1.0）
+     * @param noiseValue 地形类型噪声值（0.0 到 1.0）
+     * @return eLand 值
+     */
+    public double sampleFromSpline(double c, double typePosition, double noiseValue) {
+        if (useUnifiedSpline && unifiedSpline != null) {
+            return unifiedSpline.sample(c, typePosition, noiseValue);
+        }
+        // fallback：使用旧的 center ± halfRange
+        return 0.0;
+    }
+
+    /**
+     * Phase 1：获取统一样条（供 TypeLandShape 使用）。
+     */
+    public UnifiedSpline getUnifiedSpline() {
+        return unifiedSpline;
+    }
+
+    /**
+     * 是否使用统一样条。
+     */
+    public boolean isUsingUnifiedSpline() {
+        return useUnifiedSpline && unifiedSpline != null;
     }
 
     // ===== 多频率共享噪声 =====
@@ -88,27 +106,6 @@ public final class TypeGenerators {
     private final double warpAmp;
     // 各频率权重（和为 1.0）
     private final double wLow, wMid, wHigh, wDetail;
-
-    public TypeGenerators() {
-        // 极低频：地形骨架，~1/1200（每 1200 块一个完整波）
-        this.lowFreq  = new Frequency(new Simplex(300), 1.0 / 1200.0);
-        // 中频：~1/400
-        this.midFreq  = new Frequency(new Simplex(301), 1.0 / 400.0);
-        // 高频：~1/150
-        this.highFreq = new Frequency(new Simplex(302), 1.0 / 150.0);
-        // 超高频：~1/50（让所有 cell 都有可见细节）
-        this.detailFreq = new Frequency(new Simplex(303), 1.0 / 50.0);
-        // 域扭曲：低频 1/800 + 高强度 warpAmp=300（> cell 间距 400 的一半）
-        // 关键：足够强的 warp 才能让 cell 中心的锐利峰消失
-        this.warpA = new Frequency(new Simplex(320), 1.0 / 800.0);
-        this.warpB = new Frequency(new Simplex(321), 1.0 / 800.0);
-
-        this.warpAmp = 300.0;
-        this.wLow = 0.45;
-        this.wMid = 0.30;
-        this.wHigh = 0.18;
-        this.wDetail = 0.07;
-    }
 
     public void seed(long worldSeed) {
         Noises.seedAll(lowFreq, worldSeed, 0);

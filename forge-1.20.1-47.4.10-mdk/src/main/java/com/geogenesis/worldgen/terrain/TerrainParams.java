@@ -140,7 +140,32 @@ public record TerrainParams(
     /** 山峰高度上限 Y，默认 256 */
     int mountainCap,
     /** 海沟深度下限 Y，默认 -48 */
-    int trenchDepth
+    int trenchDepth,
+
+    // ===== 地形类型 eLand 高度范围（CENTER + HALF_RANGE） =====
+    /** 平原中心 eLand，默认 0.0375 */
+    double plainCenter,
+    /** 平原半范围，默认 0.0225 */
+    double plainHalfRange,
+    /** 丘陵中心 eLand，默认 0.22 */
+    double hillsCenter,
+    /** 丘陵半范围，默认 0.15 */
+    double hillsHalfRange,
+    /** 山脉中心 eLand，默认 0.60 */
+    double mountainsCenter,
+    /** 山脉半范围，默认 0.35 */
+    double mountainsHalfRange,
+    /** 高原中心 eLand，默认 0.33 */
+    double plateauCenter,
+    /** 高原半范围，默认 0.15 */
+    double plateauHalfRange,
+    /** 盆地中心 eLand，默认 0.0475 */
+    double basinCenter,
+    /** 盆地半范围，默认 0.0325 */
+    double basinHalfRange,
+
+    // ===== Phase 1：统一样条配置（独立 record，避免参数过多）=====
+    SplineConfig splineConfig
 ) {
     /** 生产级默认值（校准于非对称映射 e=0 → Y=63） */
     public static TerrainParams defaults() {
@@ -173,7 +198,16 @@ public record TerrainParams(
             0.25, 0.04, 0.82, 0.25,    // elevHigh↑0.25,reliefHigh↑0.04,peakE,snowLatitudeInfluence
 
             // preview compat（加大 horizontalScale 减少 preview 计算量）
-            4.0, 63, 0.70, -64, 320, 256, -48
+            4.0, 63, 0.70, -64, 320, 256, -48,
+            // type elevation ranges (center, halfRange)
+            0.0375, 0.0225,  // PLAIN
+            0.22, 0.15,      // HILLS
+            0.60, 0.35,      // MOUNTAINS
+            0.33, 0.15,      // PLATEAU
+            0.0475, 0.0325,  // BASIN
+
+            // Phase 1: unified spline config
+            SplineConfig.defaults()
         );
     }
 
@@ -197,5 +231,23 @@ public record TerrainParams(
     /** softmax 省权重 */
     public double[] provinceSoftmaxWeights() {
         return new double[]{cratonWeight, beltWeight, plateauWeight, basinWeight};
+    }
+
+    // ===== Phase 1：统一样条构建方法 =====
+
+    /**
+     * 构建统一样条（Phase 1：2 层嵌套）。
+     */
+    public UnifiedSpline buildUnifiedSpline() {
+        return splineConfig.build();
+    }
+
+    /**
+     * 从旧的 center ± halfRange 配置构建统一样条（向后兼容）。
+     */
+    public UnifiedSpline buildLegacyUnifiedSpline() {
+        double[] centers = {plainCenter, hillsCenter, mountainsCenter, plateauCenter, basinCenter};
+        double[] halfRanges = {plainHalfRange, hillsHalfRange, mountainsHalfRange, plateauHalfRange, basinHalfRange};
+        return UnifiedSpline.fromLegacyConfig(centers, halfRanges);
     }
 }

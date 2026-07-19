@@ -40,7 +40,7 @@ public final class DiscontinuityProbe {
         System.out.println();
 
         // 创建真实地形引擎
-        TypeLandShape landShape = new TypeLandShape();
+        TypeLandShape landShape = new TypeLandShape(p);
         landShape.seed(seed);
 
         ContinentField continent = new ContinentField(p);

@@ -39,7 +39,7 @@ public final class CellGenerator implements HeightProvider {
     public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY) {
         this.continent = new ContinentField(p);
         this.heightCurve = new HeightCurve(p, minWorldY, maxWorldY);
-        this.typeLandShape = new TypeLandShape();
+        this.typeLandShape = new TypeLandShape(p);
         this.seaBed = new SeaBedDetail(p);
         this.oceanFeatures = new OceanFeatures();
         this.continentBias = p.continentBias();

@@ -31,6 +31,7 @@ public class ParamSlider extends AbstractSliderButton {
     private double defaultValue;
     private Component tooltip = null;
     private Runnable onReset = null;
+    private Runnable onValueCommitted = null;
 
     /** 重置按钮宽度（在滑块外部右侧） */
     public static final int RESET_BTN_W = 18;
@@ -72,6 +73,9 @@ public class ParamSlider extends AbstractSliderButton {
         updateMessage();
     }
 
+    /** 获取当前值 */
+    public double getCurrentValue() { return current; }
+
     /** 设置悬停说明文本（null 表示无） */
     public void setTooltipText(String text) {
         this.tooltip = (text == null) ? null : Component.literal(text);
@@ -82,6 +86,7 @@ public class ParamSlider extends AbstractSliderButton {
     public void setDefaultValue(double v) { this.defaultValue = v; }
 
     public void setOnReset(Runnable r) { this.onReset = r; }
+    public void setOnValueCommitted(Runnable r) { this.onValueCommitted = r; }
 
     /** 重置到默认值，同时触发 onChange 以回写配置/后端状态 */
     public void resetToDefault() {
@@ -106,6 +111,9 @@ public class ParamSlider extends AbstractSliderButton {
         if (this.isFocused()) {
             // 利用已有的 onClick/setValueFromMouse 逻辑，直接用鼠标 X 坐标更新值
             this.onClick(mouseX, mouseY);
+            // MC 的 AbstractSliderButton.onClick 只设 value 字段，不调 applyValue
+            // 必须显式调 applyValue 才能让 onChange 每帧触发（实时联动图表）
+            this.applyValue();
             return true;
         }
         return false;
@@ -115,6 +123,7 @@ public class ParamSlider extends AbstractSliderButton {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (this.isFocused()) {
             this.setFocused(false);
+            if (onValueCommitted != null) onValueCommitted.run();
         }
         return super.mouseReleased(mouseX, mouseY, button);
     }
