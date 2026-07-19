@@ -9,6 +9,8 @@ import com.geogenesis.worldgen.noise.*;
  * 各类型噪声形态真正不同（Ridge 脊线、平滑高原边缘等），
  * 而断裂风险通过零均值加权混合 + typeWeights 平滑过渡控制。
  * <p>
+ * Phase 1：支持统一样条（2 层嵌套：大陆性 c → 内层样条 lo/hi）。
+ * <p>
  * 地形类型（v6 继承）：
  * <ul>
  *   <li>PLAIN — 极平坦</li>
@@ -24,20 +26,25 @@ public final class TypeLandShape {
 
     private final VoronoiRegionField regions;
     private final TypeNoiseProvider typeNoise;
-    private final TypeGenerators generators;   // 保留：lo/hi 范围 + basinModulate
+    private final TypeGenerators generators;   // lo/hi 范围 + basinModulate
     private final Noise moistureNoise;
+    private final ContinentField continent;    // Phase 1：用于计算大陆性 c
+    private final double continentBias;        // Phase 1：大陆性偏置
 
-    public TypeLandShape() {
-        this.regions = new VoronoiRegionField();
+    public TypeLandShape(TerrainParams p) {
+        this.generators = new TypeGenerators(p);
+        this.regions = new VoronoiRegionField(generators);
         this.typeNoise = new TypeNoiseProvider();
-        this.generators = new TypeGenerators();
         this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
+        this.continent = new ContinentField(p);
+        this.continentBias = p.continentBias();
     }
 
     public void seed(long worldSeed) {
         regions.seed(worldSeed);
         typeNoise.seed(worldSeed);
         generators.seed(worldSeed);
+        continent.seed(worldSeed);
         Noises.seedAll(moistureNoise, worldSeed, 0);
     }
 
@@ -50,6 +57,8 @@ public final class TypeLandShape {
 
     /**
      * v7.5：类型噪声直接主导 eLand（Fix 2）。
+     * <p>
+     * Phase 1：支持统一样条（2 层嵌套：大陆性 c → 内层样条 lo/hi）。
      * <p>
      * 旧公式（Phase 1 差异调制）：
      *   base = lo + range×sharedNoise
@@ -65,6 +74,76 @@ public final class TypeLandShape {
      * 连续性由 typeWeights 高斯平滑过渡保障（v5 已验证 Δe < 0.01）。
      */
     public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz) {
+        // Phase 1：使用统一样条（如果启用）
+        if (generators.isUsingUnifiedSpline()) {
+            return sampleFromUnifiedSpline(blend, wx, wz);
+        }
+        
+        // fallback：旧的 typeWeights 方法
+        return sampleFromTypeWeights(blend, wx, wz);
+    }
+
+    /**
+     * Phase 2：通过 3 层嵌套样条计算 eLand。
+     * 
+     * 1. 计算大陆性 c
+     * 2. 计算类型位置（typePosition）
+     * 3. 计算类型噪声值（noiseValue）
+     * 4. 通过 3 层样条计算 eLand
+     */
+    private double sampleFromUnifiedSpline(VoronoiRegionField.BlendResult blend, double wx, double wz) {
+        // 1. 计算大陆性 c
+        double c = continent.sample(wx, wz);
+        double cBiased = c - continentBias;
+        
+        // 2. 计算类型位置（typePosition）
+        // 使用 typeWeights 的加权平均位置
+        double[] tw = blend.typeWeights;
+        double typePosition = 0;
+        double totalW = 0;
+        if (tw != null) {
+            for (int i = 0; i < tw.length && i < TerrainClass.COUNT; i++) {
+                double w = tw[i];
+                if (w > 0.001) {
+                    // 类型位置：PLAIN=0.0, HILLS=0.25, MOUNTAINS=0.5, PLATEAU=0.75, BASIN=1.0
+                    double typePos = (double) i / (TerrainClass.COUNT - 1);
+                    typePosition += w * typePos;
+                    totalW += w;
+                }
+            }
+        }
+        if (totalW > 0) {
+            typePosition /= totalW;
+        }
+        
+        // 3. 计算类型噪声值（noiseValue）
+        double noiseValue = 0;
+        double totalW2 = 0;
+        if (tw != null) {
+            for (TerrainClass type : TypeNoiseProvider.LAND_TYPES) {
+                double w = tw[type.ordinal()];
+                if (w > 0.001) {
+                    double typeVal = typeNoise.computeNoise(type, wx, wz);
+                    noiseValue += w * typeVal;
+                    totalW2 += w;
+                }
+            }
+        }
+        // fallback: typeWeights 耗尽时用 shared noise 兜底
+        if (totalW2 <= 0) {
+            noiseValue = generators.computeSharedNoise(wx, wz);
+        } else {
+            noiseValue /= totalW2;
+        }
+        
+        // 4. 通过 3 层样条计算 eLand
+        return generators.sampleFromSpline(cBiased, typePosition, noiseValue);
+    }
+
+    /**
+     * 旧方法：通过 typeWeights 计算 eLand（向后兼容）。
+     */
+    private double sampleFromTypeWeights(VoronoiRegionField.BlendResult blend, double wx, double wz) {
         double[] tw = blend.typeWeights;
         double typeWeighted = 0;
         double totalW = 0;

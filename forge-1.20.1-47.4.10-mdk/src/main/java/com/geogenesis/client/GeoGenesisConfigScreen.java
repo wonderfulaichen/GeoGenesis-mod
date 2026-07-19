@@ -1,94 +1,64 @@
 package com.geogenesis.client;
 
+import com.geogenesis.client.preview.ClimateConfigPanel;
+import com.geogenesis.client.preview.ParameterConfigPanel;
+import com.geogenesis.client.preview.PreviewDisplay;
+import com.geogenesis.client.preview.TerrainConfigPanel;
+import com.geogenesis.client.preview.GeoPalette;
 import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
 import com.geogenesis.worldgen.terrain.TerrainParams;
-import com.geogenesis.client.preview.PreviewDisplay;
-import com.geogenesis.client.preview.GeoPalette;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraftforge.common.ForgeConfigSpec;
-import org.apache.commons.lang3.tuple.Pair;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
 /**
- * GeoGenesis 配置屏（最小可用版）。
+ * GeoGenesis 配置屏（三页签面板版）。
  *
- * <p>把侵蚀前基础地形（海拔×起伏 地质过程模型）的全部关键参数暴露为可配置 UI：
- * 左侧分页 [地形]/[参数] 承载 ParamSlider 滑块组，右侧内嵌 PreviewDisplay 实时地图
- * （默认地形类型图层），顶部种子输入，底部 [保存]/[重置]。
- *
- * <p>滑块拖动实时回写 GeoGenesisConfig.INSTANCE（运行期生效），并用本地副本
- * buildParams() 防抖重建预览；[保存] 经 SPEC.save() 落盘 toml，[重置] 回退到打开时快照。
+ * <p>左侧三页签面板（地形/气候/参数）+ 右侧预览地图。
+ * 面板内部通过 scrollOffset 自适配滚动（不依赖 GuiGraphics translate）。
  */
 public class GeoGenesisConfigScreen extends Screen {
 
-    /** GeoPalette.PreviewLayer.TERRAIN_TYPE 的枚举序数（11 图层：0=ELEVATION … 9=TERRAIN_TYPE …） */
     private static final int TERRAIN_TYPE_LAYER = 9;
 
     private final Screen parent;
     private long seed = (long) (Math.random() * Long.MAX_VALUE);
 
-    // 分页：0=地形，1=参数
     private int tab = 0;
-    private final String[] TAB_NAMES = {"地形", "参数"};
+    private static final String[] TAB_NAMES = {"地形", "气候", "参数"};
 
-    /** 滑块描述 */
-    private static final class Spec {
-        final ForgeConfigSpec.DoubleValue value;
-        final String label;
-        final double min, max;
-        final String tip;
-        Spec(ForgeConfigSpec.DoubleValue value, String label, double min, double max, String tip) {
-            this.value = value; this.label = label; this.min = min; this.max = max; this.tip = tip;
-        }
-    }
-
-    private final List<Spec> terrainSpecs = new ArrayList<>();
-    private final List<Spec> paramSpecs = new ArrayList<>();
-    private final Map<ForgeConfigSpec.DoubleValue, Double> snapshot = new HashMap<>();
-
-    private final List<ParamSlider> sliders = new ArrayList<>();
+    private final TerrainConfigPanel terrainPanel = new TerrainConfigPanel();
+    private final ClimateConfigPanel climatePanel = new ClimateConfigPanel();
+    private final ParameterConfigPanel paramPanel = new ParameterConfigPanel();
 
     private PreviewDisplay preview;
     private EditBox seedBox;
     private Button saveBtn, resetBtn, tabBtns[], layerPrev, layerNext, hydroBtn;
     private int currentMode = TERRAIN_TYPE_LAYER;
 
-    // 布局
-    private int panelX, panelW, headerY, listTop, listBottom, rowH = 26;
+    private int panelX, panelW, headerY, listTop, listBottom;
     private int previewX, previewY, previewW, previewH;
-
-    private int scroll = 0;
-    private boolean dirty = false;
-    private boolean saved = true;
-    private int debounce = 0;
+    private int scroll;
+    private boolean dirty, saved;
+    private int debounce;
 
     public GeoGenesisConfigScreen(Screen parent) {
         super(Component.literal("GeoGenesis 配置"));
         this.parent = parent;
     }
-
     public GeoGenesisConfigScreen() { this(null); }
 
     @Override
     protected void init() {
         super.init();
-        int w = this.width, h = this.height;
-
+        int w = width, h = height;
         panelX = 10;
-        panelW = (w - 40) / 2;
+        panelW = (w - 40) * 5 / 9;
         headerY = 64;
         listTop = headerY + 26;
         listBottom = h - 44;
@@ -97,35 +67,40 @@ public class GeoGenesisConfigScreen extends Screen {
         previewW = w - previewX - 10;
         previewH = listBottom - previewY;
 
-        buildSpecs();
-
-        // 种子输入框
-        seedBox = new EditBox(Minecraft.getInstance().font, panelX, 36, panelW, 18,
-            Component.literal("Seed"));
-        seedBox.setResponder(s -> {
-            try { seed = Long.parseLong(s.trim()); } catch (NumberFormatException ignored) {}
-        });
+        seedBox = new EditBox(Minecraft.getInstance().font, panelX, 36, panelW, 18, Component.literal("Seed"));
+        seedBox.setResponder(s -> { try { seed = Long.parseLong(s.trim()); } catch (NumberFormatException ignored) {} });
         seedBox.setValue(String.valueOf(seed));
         addRenderableWidget(seedBox);
 
-        // 分页标签按钮
-        tabBtns = new Button[2];
-        for (int i = 0; i < 2; i++) {
+        tabBtns = new Button[3];
+        int tabW = Math.max(60, (panelW - 8) / 3);
+        for (int i = 0; i < 3; i++) {
             final int ti = i;
-            tabBtns[i] = Button.builder(Component.literal(TAB_NAMES[i]), b -> { tab = ti; rebuildSliders(); })
-                .pos(panelX + i * 90, headerY).size(84, 20).build();
+            tabBtns[i] = Button.builder(Component.literal(TAB_NAMES[i]), b -> {
+                tab = ti; scroll = 0;
+                pushScrollToPanels();
+            }).pos(panelX + i * (tabW + 4), headerY).size(tabW, 20).build();
             addRenderableWidget(tabBtns[i]);
         }
 
-        // 底部保存/重置
+        Runnable markDirty = () -> { dirty = true; saved = false; debounce = 8; };
+        terrainPanel.setOnMarkDirty(markDirty);
+        terrainPanel.setBounds(panelX + 4, listTop, panelW - 8);
+        terrainPanel.buildFromConfig();
+        climatePanel.setOnMarkDirty(markDirty);
+        climatePanel.setBounds(panelX + 4, listTop, panelW - 8);
+        climatePanel.buildClimateFactors();
+        paramPanel.setOnMarkDirty(markDirty);
+        paramPanel.setBounds(panelX + 4, listTop, panelW - 8);
+        paramPanel.buildFromConfig();
+
         saveBtn = Button.builder(Component.literal("保存"), b -> doSave())
-            .pos(panelX, listBottom + 6).size(90, 20).build();
+            .pos(panelX, listBottom + 6).size(80, 20).build();
         resetBtn = Button.builder(Component.literal("重置"), b -> doReset())
-            .pos(panelX + 100, listBottom + 6).size(90, 20).build();
+            .pos(panelX + 90, listBottom + 6).size(80, 20).build();
         addRenderableWidget(saveBtn);
         addRenderableWidget(resetBtn);
 
-        // 预览工具栏：图层切换 + 水文
         layerPrev = Button.builder(Component.literal("◀ 图层"), b -> cycleLayer(-1))
             .pos(previewX, previewY - 28).size(70, 20).build();
         layerNext = Button.builder(Component.literal("图层 ▶"), b -> cycleLayer(1))
@@ -136,79 +111,19 @@ public class GeoGenesisConfigScreen extends Screen {
         addRenderableWidget(layerNext);
         addRenderableWidget(hydroBtn);
 
-        rebuildPreview();      // 构建预览（同时建 terrain）
-        rebuildSliders();      // 构建当前分页滑块
+        rebuildPreview();
+        pushScrollToPanels();
     }
 
-    // ===== 参数定义（六处同步铁律：与 GeoGenesisConfig / TerrainParams / toml 一致） =====
-    private void buildSpecs() {
-        GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
-        // 地形页：省权重 + 省海拔剖面 + 起伏振幅
-        terrainSpecs.add(new Spec(c.cratonWeight, "克拉通权重", 0, 5, "平原/丘陵省占比"));
-        terrainSpecs.add(new Spec(c.beltWeight, "造山带权重", 0, 5, "山脉省占比（高→崎岖山脉主导）"));
-        terrainSpecs.add(new Spec(c.plateauWeight, "高原权重", 0, 5, "高原省占比"));
-        terrainSpecs.add(new Spec(c.basinWeight, "盆地权重", 0, 5, "盆地省占比"));
-        terrainSpecs.add(new Spec(c.plainBase, "平原基底", 0, 0.3, "克拉通平均海拔基面"));
-        terrainSpecs.add(new Spec(c.hillsLow, "丘陵低", 0, 0.5, "丘陵低段海拔"));
-        terrainSpecs.add(new Spec(c.hillsHigh, "丘陵高", 0, 0.7, "丘陵高段海拔"));
-        terrainSpecs.add(new Spec(c.beltFoothill, "山麓", 0, 0.5, "山脉 foothill 海拔"));
-        terrainSpecs.add(new Spec(c.beltPeak, "山峰", 0, 1.0, "山峰极限海拔（≈世界顶）"));
-        terrainSpecs.add(new Spec(c.plateauBase, "高原基底", 0, 1.0, "高原低缘海拔"));
-        terrainSpecs.add(new Spec(c.plateauTop, "高原顶", 0, 1.0, "高原平顶海拔"));
-        terrainSpecs.add(new Spec(c.basinBase, "盆地基底", 0, 0.3, "盆地低洼海拔"));
-        terrainSpecs.add(new Spec(c.cratonReliefAmp, "克拉通起伏", 0, 0.6, "平原/丘陵局部起伏"));
-        terrainSpecs.add(new Spec(c.beltReliefAmp, "山脉起伏", 0, 0.6, "山脉崎岖度"));
-        terrainSpecs.add(new Spec(c.plateauReliefAmp, "高原起伏", 0, 0.6, "高原平顶（低起伏）"));
-        terrainSpecs.add(new Spec(c.basinReliefAmp, "盆地起伏", 0, 0.6, "盆地局部起伏"));
-        terrainSpecs.add(new Spec(c.beltSharpness, "山脉尖钝", 0.5, 5.0, "pow(n,k)：>1尖峰、=1圆、<1宽缓"));
-        terrainSpecs.add(new Spec(c.beltWarpAmp, "山脉扭曲", 0, 500.0, "warp蜿蜒度（0=无扭曲）"));
-        terrainSpecs.add(new Spec(c.provMixSharpness, "省混合锐化", 1.0, 5.0, "省权重幂次：>1主导省占优、完整表达峰/谷"));
-        terrainSpecs.add(new Spec(c.mountainMaskScale, "山脉区域尺度", 400, 8000, "低频团块限定山脉分布（真实感关键）"));
-        terrainSpecs.add(new Spec(c.microDetailScale, "纹理尺度", 200, 2000, "表面纹理周期（大周期舒展）"));
-        terrainSpecs.add(new Spec(c.microDetailAmp, "纹理振幅", 0.0, 0.08, "表面纹理振幅（<0.03纹理级）"));
-
-        // 参数页：省尺度 + 分类阈值 + 雪线 + 海陆
-        paramSpecs.add(new Spec(c.provinceScale, "省尺度", 500, 10000, "地质省噪声尺度（块）"));
-        paramSpecs.add(new Spec(c.elevHigh, "高海拔阈值", 0, 1.0, "海拔×起伏：高海拔分界"));
-        paramSpecs.add(new Spec(c.reliefHigh, "高起伏阈值", 0, 0.6, "海拔×起伏：崎岖分界"));
-        paramSpecs.add(new Spec(c.peakE, "峰阈值", 0, 1.0, "峰（山脉子型）海拔分界"));
-        paramSpecs.add(new Spec(c.snowLine, "雪线海拔", 0, 1.0, "高海拔积雪起始（e 单位）"));
-        paramSpecs.add(new Spec(c.snowLatitudeInfluence, "雪线纬度耦合", 0, 0.6, "暖端雪线抬升量"));
-        paramSpecs.add(new Spec(c.continentScale, "大陆尺度", 200, 10000, "大陆性噪声尺度"));
-        paramSpecs.add(new Spec(c.continentBias, "海陆偏置", -0.6, 0.6, "正=海多，负=陆多"));
-        paramSpecs.add(new Spec(c.seabedDetail, "海床细节", 0, 0.2, "海床起伏振幅"));
-
-        // 快照（打开时所有可配值）
-        for (Spec s : allSpecs()) snapshot.put(s.value, s.value.get());
+    /** 把当前 scroll 值同步到活动面板 */
+    private void pushScrollToPanels() {
+        terrainPanel.setScrollOffset(tab == 0 ? scroll : 0);
+        climatePanel.setScrollOffset(tab == 1 ? scroll : 0);
+        paramPanel.setScrollOffset(tab == 2 ? scroll : 0);
     }
 
-    private List<Spec> allSpecs() {
-        List<Spec> all = new ArrayList<>(terrainSpecs);
-        all.addAll(paramSpecs);
-        return all;
-    }
+    // ---- 预览 ----
 
-    private List<Spec> activeSpecs() { return tab == 0 ? terrainSpecs : paramSpecs; }
-
-    // ===== 滑块构建（当前分页） =====
-    private void rebuildSliders() {
-        sliders.clear();
-        int innerW = panelW - (ParamSlider.RESET_BTN_W + ParamSlider.RESET_GAP) - 6;
-        Consumer<Double> onChange = v -> { dirty = true; saved = false; debounce = 8; };
-        Function<Double, String> fmt = v -> String.format("%.2f", v);
-        int i = 0;
-        for (Spec s : activeSpecs()) {
-            int sy = listTop + i * rowH - scroll;
-            ParamSlider ps = new ParamSlider(panelX, sy, innerW, s.min, s.max,
-                s.value.get(), onChange, fmt);
-            ps.setTooltipText(s.label + "：" + s.tip);
-            ps.setDefaultValue(snapshot.get(s.value));
-            sliders.add(ps);
-            i++;
-        }
-    }
-
-    // ===== 预览构建（防抖） =====
     private void rebuildPreview() {
         TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
         CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
@@ -229,68 +144,56 @@ public class GeoGenesisConfigScreen extends Screen {
         currentMode = (currentMode + d + GeoPalette.PreviewLayer.values().length) % GeoPalette.PreviewLayer.values().length;
         if (preview != null) preview.setMode(currentMode);
     }
-
     private void toggleHydro() {
         if (preview == null) return;
         preview.setHydrology(!preview.isHydrology());
         hydroBtn.setMessage(Component.literal("水文: " + (preview.isHydrology() ? "开" : "关")));
     }
-
-    private void doSave() {
-        GeoGenesisConfig.SPEC.save();
-        saved = true;
-        dirty = false;
-    }
-
-    private void doReset() {
-        for (Spec s : allSpecs()) s.value.set(snapshot.get(s.value));
-        rebuildSliders();
-        rebuildPreview();
-        saved = false;
-        dirty = false;
-    }
-
-    private void restoreSnapshot() {
-        for (Spec s : allSpecs()) s.value.set(snapshot.get(s.value));
-    }
+    private void doSave() { GeoGenesisConfig.SPEC.save(); saved = true; dirty = false; }
+    private void doReset() { Minecraft.getInstance().setScreen(new GeoGenesisConfigScreen(parent)); }
 
     @Override
     public void tick() {
         super.tick();
-        if (dirty && debounce > 0) {
-            debounce--;
-            if (debounce <= 0) rebuildPreview();
-        }
+        if (dirty && debounce > 0) { debounce--; if (debounce <= 0) rebuildPreview(); }
     }
 
-    // ===== 渲染 =====
+    // ---- 渲染（不依赖 translate，面板内部 scrollOffset 自适配） ----
+
+    @Override
+    public void renderBackground(GuiGraphics g) {
+        // 自定义深色背景，避免原版 dirt 背景
+        g.fill(0, 0, this.width, this.height, 0xFF0e1218);
+        g.fill(0, 0, this.width, 1, 0xFF2a2f3a);
+        g.fill(0, this.height - 1, this.width, this.height, 0xFF2a2f3a);
+    }
+
     @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
         this.renderBackground(g);
-        int w = this.width;
-
-        // 标题
-        g.drawCenteredString(this.font, "GeoGenesis 地形配置", w / 2, 12, 0xFFFFFF);
+        g.drawCenteredString(this.font, "GeoGenesis 地形配置", width / 2, 12, 0xFFFFFF);
         g.drawString(this.font, "种子:", panelX, 22, 0xAAAAAA);
 
-        // 分页激活态高亮
-        for (int i = 0; i < 2; i++) {
+        int tabW = Math.max(60, (panelW - 8) / 3);
+        for (int i = 0; i < 3; i++) {
             boolean on = tab == i;
-            int bx = panelX + i * 90;
-            g.fill(bx, headerY, bx + 84, headerY + 20, on ? 0x2a3340 : 0x1a1f28);
-            g.fill(bx, headerY, bx + 84, headerY + 1, on ? 0x00c896 : 0x444444);
+            int bx = panelX + i * (tabW + 4);
+            g.fill(bx, headerY, bx + tabW, headerY + 20, on ? 0x2a3340 : 0x1a1f28);
+            g.fill(bx, headerY, bx + tabW, headerY + 1, on ? 0x00c896 : 0x444444);
         }
 
-        // 当前图层名
         String layerName = I18nSafe(GeoPalette.PreviewLayer.values()[currentMode].labelKey);
         g.drawString(this.font, "图层: " + layerName, previewX, previewY - 6, 0xAAAAAA);
 
-        // 左栏滑块（裁剪）
+        // 左栏面板：裁剪区 + 直接渲染（无 translate）
         g.enableScissor(panelX, listTop, panelX + panelW, listBottom);
-        for (ParamSlider s : sliders) s.render(g, mx, my, pt);
+        if (tab == 0) {
+            terrainPanel.render(g, mx, my);
+            terrainPanel.renderHeaderTooltip(g, mx, my);
+        }
+        else if (tab == 1) climatePanel.render(g, mx, my);
+        else paramPanel.render(g, mx, my);
         g.disableScissor();
-        // tooltip 覆盖层
-        for (ParamSlider s : sliders) s.renderTooltip(g, mx, my);
 
         super.render(g, mx, my, pt);
     }
@@ -300,38 +203,44 @@ public class GeoGenesisConfigScreen extends Screen {
         return v.equals(key) ? key : v;
     }
 
-    // ===== 鼠标转发（滑块在 scissor 内手动渲染，需手动转发交互） =====
+    // ---- 鼠标（直接传递原始坐标，面板内部做 scroll 偏移） ----
+
     @Override
     public boolean mouseClicked(double mx, double my, int b) {
         if (mx >= panelX && mx <= panelX + panelW && my >= listTop && my <= listBottom) {
-            for (ParamSlider s : sliders) {
-                if (s.isHoveringReset((int) mx, (int) my)) { s.resetToDefault(); dirty = true; saved = false; debounce = 8; return true; }
-                if (s.isMouseOver(mx, my)) { return s.mouseClicked(mx, my, b); }
-            }
+            if (tab == 0) { if (terrainPanel.mouseClicked(mx, my, b)) return true; }
+            else if (tab == 1) { if (climatePanel.mouseClicked(mx, my, b)) return true; }
+            else { if (paramPanel.mouseClicked(mx, my, b)) return true; }
         }
         return super.mouseClicked(mx, my, b);
     }
 
     @Override
     public boolean mouseReleased(double mx, double my, int b) {
-        for (ParamSlider s : sliders) if (s.isFocused()) s.mouseReleased(mx, my, b);
+        if (tab == 0) terrainPanel.mouseReleased(mx, my, b);
+        else if (tab == 1) climatePanel.mouseReleased(mx, my, b);
+        else paramPanel.mouseReleased(mx, my, b);
         return super.mouseReleased(mx, my, b);
     }
 
     @Override
     public boolean mouseDragged(double mx, double my, int b, double dx, double dy) {
-        for (ParamSlider s : sliders) if (s.isFocused()) { s.mouseDragged(mx, my, b, dx, dy); return true; }
+        if (tab == 0) { if (terrainPanel.mouseDragged(mx, my, b, dx, dy)) return true; }
+        else if (tab == 1) { if (climatePanel.mouseDragged(mx, my, b, dx, dy)) return true; }
+        else { if (paramPanel.mouseDragged(mx, my, b, dx, dy)) return true; }
         return super.mouseDragged(mx, my, b, dx, dy);
     }
 
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
         if (mx >= panelX && mx <= panelX + panelW) {
-            int contentH = activeSpecs().size() * rowH;
+            int contentH = tab == 0 ? terrainPanel.getHeight()
+                         : tab == 1 ? climatePanel.getHeight()
+                         : paramPanel.getHeight();
             int visibleH = listBottom - listTop;
             int maxScroll = Math.max(0, contentH - visibleH);
             scroll = Math.max(0, Math.min(maxScroll, scroll - (int) (delta * 20)));
-            rebuildSliders();
+            pushScrollToPanels();
             return true;
         }
         return super.mouseScrolled(mx, my, delta);
@@ -339,15 +248,10 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (dirty && !saved) restoreSnapshot();
+        if (dirty && !saved) Minecraft.getInstance().setScreen(new GeoGenesisConfigScreen(parent));
         super.onClose();
     }
+    @Override public boolean isPauseScreen() { return false; }
 
-    @Override
-    public boolean isPauseScreen() { return false; }
-
-    /** 用于 ConfigScreenHandler 注册的工厂 */
-    public static Screen create(Minecraft mc, Screen parent) {
-        return new GeoGenesisConfigScreen();
-    }
+    public static Screen create(Minecraft mc, Screen parent) { return new GeoGenesisConfigScreen(); }
 }

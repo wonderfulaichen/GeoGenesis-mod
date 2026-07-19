@@ -77,11 +77,13 @@ public final class VoronoiRegionField {
 
     // ===== 状态 =====
     private long worldSeed;
+    private final TypeGenerators generators; // 类型高度范围（非静态）
     private final Noise warpX, warpZ; // 域扭曲噪声
     // v6.5: typeField — 低频噪声决定 cell type（取代 hash），让 typeWeights 在空间平滑
     private final Noise typeField;
 
-    public VoronoiRegionField() {
+    public VoronoiRegionField(TypeGenerators generators) {
+        this.generators = generators;
         this.warpX = new Frequency(new Simplex(310), 1.0 / 800.0);
         this.warpZ = new Frequency(new Simplex(311), 1.0 / 800.0);
         // v7.5: typeField 频率 1/500，兼顾平滑过渡 + 合理采样窗口内出现所有类型
@@ -137,8 +139,8 @@ public final class VoronoiRegionField {
             CellInfo ci = candidates[i];
             double w = Math.exp(-ci.distSq * inv2Sigma2);
             TerrainClass tc = cellType(ci.cx, ci.cz);
-            weightedLo += w * TypeGenerators.getTypeLo(tc);
-            weightedHi += w * TypeGenerators.getTypeHi(tc);
+            weightedLo += w * generators.getTypeLo(tc);
+            weightedHi += w * generators.getTypeHi(tc);
             twSum[tc.ordinal()] += w;
             totalWeight += w;
             if (ci.distSq < bestDist) {

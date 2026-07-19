@@ -125,7 +125,51 @@ OCEAN、DEEP_OCEAN、CONTINENTAL_SHELF、SUBMARINE_RIDGE、SEAMOUNT、RIVER、LA
 ### 诊断清理
 OceanFeatureProbe.java 已于 07-19 删除，probe_ocean_*.txt 已清理
 
+## 2026-07-20 统一嵌套样条系统（Phase 1）
+
+### 设计理念
+对标 MC 原版 `offset.json`，整个地形系统是一个统一的嵌套样条树，海陆都在同一个样条内部。
+
+### 三层嵌套结构（目标）
+```
+外层样条：大陆性 c（-1=深海, 0=海岸, 1=内陆）
+├─ 中层样条：地形类型分布
+│   └─ 内层样条：lo/hi 形状控制
+```
+
+### Phase 1 已完成（2 层嵌套）
+- 外层样条：7 个大陆性 c 控制点（14 字段）
+- 内层样条：5 个核心陆地类型的 lo/hi 样条（60 字段）
+- **总计 74 字段**，封装在 `SplineConfig` record 中
+
+### Phase 2 已完成（3 层嵌套）
+- 中层样条：7 个外层节点 × 12 个类型 × 3 字段 = **252 字段**（实际 105，因陆地 5 类型 + 海洋 7 类型）
+- 类型位置：PLAIN=0.0, HILLS=0.25, MOUNTAINS=0.5, PLATEAU=0.75, BASIN=1.0
+
+### Phase 3 已完成（海洋/水域类型）
+- 海洋/水域内层样条：7 类型 × 12 字段 = **84 字段**，封装在 `OceanSplineConfig` record 中
+
+### 关键文件
+- `UnifiedSpline.java` — 统一样条树（OuterNode + MidSpline + MidNode + InnerSpline + Spline）
+- `SplineConfig.java` — 样条配置 record（74 字段 + OceanSplineConfig + MidSplineConfig）
+- `MidSplineConfig.java` — 中层样条配置 record（105 字段）
+- `OceanSplineConfig.java` — 海洋/水域内层样条配置 record（84 字段）
+- `TypeGenerators.java` — 新增 `sampleFromSpline(c, typePosition, noiseValue)` 方法
+- `TypeLandShape.java` — `sample()` 分为样条路径和旧路径 fallback
+
+### 工程陷阱
+- Java record 参数过多限制：74 字段使 TerrainParams 总参数 ~154，编译失败。解法：提取为 `SplineConfig` 独立 record
+- SplineConfig 参数过多限制：84 海洋字段使 SplineConfig 总参数 ~159，编译失败。解法：提取为 `OceanSplineConfig` 独立 record
+- GeoGenesisConfig 保留独立 ForgeConfigSpec 字段（TOML 需要），通过辅助方法组装为 SplineConfig
+- MidSplineConfig/OceanSplineConfig 不暴露到 TOML 配置（太多字段），从 defaults 初始化
+
+### 预览验证
+- `runPreview --args=12345` 运行成功（BUILD SUCCESSFUL in 7m 40s）✅
+- 地形生成正常，预览窗口已启动
+
 ### 待办
+- UI：调音台面板改造支持样条编辑（较大的 UI 改造任务）
+- runClient 目检游戏内地形
 - BASIN 尚未集成到阈值链（需 moisture 二级分类支持，待后续迭代）
 - 类型参数化：TypeLandShape 的阈值和 TypeGenerators 的噪声参数需从 TerrainParams 注入
 - GeoGenesisConfigScreen 的省滑块需替换为类型滑块
