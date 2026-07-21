@@ -92,16 +92,18 @@ public class TerrainConfigPanel {
 
     public void buildFromConfig() {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
-        int seaLevel = c.seaLevel.get();
-        int maxY = c.maxY.get();
-        int minY = c.minY.get();
-        chart.setYWorldRange(minY, maxY);
+        chart.setYWorldRange(c.minY.get(), c.maxY.get());
         // 与 HeightCurve.heightFromE() 一致：e≤0 用 (seaLevel - minY)，e>0 用 (maxY - seaLevel)
+        // 使用 live config 读取（非局部变量快照），世界高度变化时自动适配
         chart.setEToWorldY(e -> {
+            GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+            int sl = cfg.seaLevel.get();
+            int my = cfg.maxY.get();
+            int mny = cfg.minY.get();
             if (e <= 0.0) {
-                return seaLevel - (-e) * (seaLevel - minY);
+                return sl - (-e) * (sl - mny);
             } else {
-                return seaLevel + e * (maxY - seaLevel);
+                return sl + e * (my - sl);
             }
         });
 
@@ -195,6 +197,14 @@ public class TerrainConfigPanel {
             loSliders.get(i).setTooltipText(name + " 下限（地形 e-space 最低值，低于此值不留该类型）");
             hiSliders.get(i).setTooltipText(name + " 上限（地形 e-space 最高值，高于此值不留该类型）");
         }
+    }
+
+    /** 世界高度变化后刷新 Y 范围（由参数页高度滑块 onChange 调用） */
+    public void refreshWorldHeightFromConfig() {
+        GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
+        chart.setYWorldRange(c.minY.get(), c.maxY.get());
+        // eToWorldY 已使用 live config 读取，无需重建 lambda
+        chart.refreshFromConfig();
     }
 
     /** 创建带联动钩子的 ParamSlider：onChange 实时同步 chart 自身+钳制 lo≤hi，onValueCommitted 写配置 */
