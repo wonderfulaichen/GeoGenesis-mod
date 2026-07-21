@@ -126,7 +126,7 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue continentNearOceanThreshold;
     /** 大陆性阈值：沿海/过渡分界，默认 -0.10 */
     public final ForgeConfigSpec.DoubleValue continentCoastThreshold;
-    /** 大陆性阈值：过渡/近内陆分界，默认 0.10 */
+    /** 大陆性阈值：近岸/近内陆分界，默认 0.10 */
     public final ForgeConfigSpec.DoubleValue continentTransitionalThreshold;
     /** 大陆性阈值：近内陆/内陆分界，默认 0.35 */
     public final ForgeConfigSpec.DoubleValue continentNearInlandThreshold;
