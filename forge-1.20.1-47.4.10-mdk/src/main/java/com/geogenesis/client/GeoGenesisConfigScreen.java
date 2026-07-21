@@ -103,7 +103,6 @@ public class GeoGenesisConfigScreen extends Screen {
         climatePanel.setBounds(panelX + 4, listTop, panelW - 8);
         climatePanel.buildClimateFactors();
         paramPanel.setOnMarkDirty(markDirty);
-        paramPanel.setOnWorldHeightChanged(() -> terrainPanel.refreshWorldHeightFromConfig());
         paramPanel.setBounds(panelX + 4, listTop, panelW - 8);
         paramPanel.buildFromConfig();
 
@@ -224,9 +223,6 @@ public class GeoGenesisConfigScreen extends Screen {
         g.disableScissor();
 
         super.render(g, mx, my, pt);
-
-        // 确认框覆盖层（在 super.render 之后，确保在最顶层）
-        paramPanel.renderConfirmDialog(g, mx, my, this.width, this.height);
     }
 
     private String I18nSafe(String key) {
@@ -238,10 +234,6 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int b) {
-        // 确认框优先拦截所有点击
-        if (paramPanel.hasConfirmDialog()) {
-            return paramPanel.handleConfirmClick((int) mx, (int) my, b);
-        }
         if (mx >= panelX && mx <= panelX + panelW && my >= listTop && my <= listBottom) {
             if (tab == 0) { if (terrainPanel.mouseClicked(mx, my, b)) return true; }
             else if (tab == 1) { if (climatePanel.mouseClicked(mx, my, b)) return true; }
