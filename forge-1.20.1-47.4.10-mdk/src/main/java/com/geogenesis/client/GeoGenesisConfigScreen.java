@@ -16,6 +16,9 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * GeoGenesis 配置屏（三页签面板版）。
  *
@@ -30,7 +33,11 @@ public class GeoGenesisConfigScreen extends Screen {
     private long seed = (long) (Math.random() * Long.MAX_VALUE);
 
     private int tab = 0;
-    private static final String[] TAB_NAMES = {"地形", "气候", "参数"};
+    /** 标签页名：上游→下游排列。页签0=世界参数（最上游），页签1=气候，页签2=地形（含雪线） */
+    private static final String[] TAB_NAMES = {"世界参数", "气候", "地形"};
+
+    /** 确认对话框 */
+    private final ConfirmDialog confirmDialog = new ConfirmDialog();
 
     private final TerrainConfigPanel terrainPanel = new TerrainConfigPanel();
     private final ClimateConfigPanel climatePanel = new ClimateConfigPanel();
@@ -90,6 +97,10 @@ public class GeoGenesisConfigScreen extends Screen {
             final int ti = i;
             tabBtns[i] = Button.builder(Component.literal(TAB_NAMES[i]), b -> {
                 tab = ti; scroll = 0;
+                // 切到地形页时刷新高度依赖（雪线Y范围、地形图e→Y映射）
+                if (ti == 2) {
+                    terrainPanel.refreshHeightDependent();
+                }
                 pushScrollToPanels();
             }).pos(panelX + i * (tabW + 4), headerY).size(tabW, 20).build();
             addRenderableWidget(tabBtns[i]);
@@ -103,6 +114,9 @@ public class GeoGenesisConfigScreen extends Screen {
         climatePanel.setBounds(panelX + 4, listTop, panelW - 8);
         climatePanel.buildClimateFactors();
         paramPanel.setOnMarkDirty(markDirty);
+        paramPanel.setOnShowConfirm((title, msg, affected, onCncl, onCnfrm) -> {
+            confirmDialog.show(title, msg, affected, onCnfrm, onCncl);
+        });
         paramPanel.setBounds(panelX + 4, listTop, panelW - 8);
         paramPanel.buildFromConfig();
 
@@ -213,16 +227,22 @@ public class GeoGenesisConfigScreen extends Screen {
         g.drawString(this.font, "图层: " + layerName, previewX, previewY - 6, 0xAAAAAA);
 
         // 左栏面板：裁剪区 + 直接渲染（无 translate）
+        // tab 0=世界参数(paramPanel), 1=气候(climatePanel), 2=地形(terrainPanel)
         g.enableScissor(panelX, listTop, panelX + panelW, listBottom);
-        if (tab == 0) {
+        if (tab == 0) paramPanel.render(g, mx, my);
+        else if (tab == 1) climatePanel.render(g, mx, my);
+        else {
             terrainPanel.render(g, mx, my);
             terrainPanel.renderHeaderTooltip(g, mx, my);
         }
-        else if (tab == 1) climatePanel.render(g, mx, my);
-        else paramPanel.render(g, mx, my);
         g.disableScissor();
 
         super.render(g, mx, my, pt);
+
+        // 确认对话框（最上层）
+        if (confirmDialog.isShowing()) {
+            confirmDialog.render(g, mx, my);
+        }
     }
 
     private String I18nSafe(String key) {
@@ -234,36 +254,40 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int b) {
+        if (confirmDialog.isShowing()) return confirmDialog.mouseClicked(mx, my, b);
         if (mx >= panelX && mx <= panelX + panelW && my >= listTop && my <= listBottom) {
-            if (tab == 0) { if (terrainPanel.mouseClicked(mx, my, b)) return true; }
+            if (tab == 0) { if (paramPanel.mouseClicked(mx, my, b)) return true; }
             else if (tab == 1) { if (climatePanel.mouseClicked(mx, my, b)) return true; }
-            else { if (paramPanel.mouseClicked(mx, my, b)) return true; }
+            else { if (terrainPanel.mouseClicked(mx, my, b)) return true; }
         }
         return super.mouseClicked(mx, my, b);
     }
 
     @Override
     public boolean mouseReleased(double mx, double my, int b) {
-        if (tab == 0) terrainPanel.mouseReleased(mx, my, b);
+        if (confirmDialog.isShowing()) return true;
+        if (tab == 0) paramPanel.mouseReleased(mx, my, b);
         else if (tab == 1) climatePanel.mouseReleased(mx, my, b);
-        else paramPanel.mouseReleased(mx, my, b);
+        else terrainPanel.mouseReleased(mx, my, b);
         return super.mouseReleased(mx, my, b);
     }
 
     @Override
     public boolean mouseDragged(double mx, double my, int b, double dx, double dy) {
-        if (tab == 0) { if (terrainPanel.mouseDragged(mx, my, b, dx, dy)) return true; }
+        if (confirmDialog.isShowing()) return true;
+        if (tab == 0) { if (paramPanel.mouseDragged(mx, my, b, dx, dy)) return true; }
         else if (tab == 1) { if (climatePanel.mouseDragged(mx, my, b, dx, dy)) return true; }
-        else { if (paramPanel.mouseDragged(mx, my, b, dx, dy)) return true; }
+        else { if (terrainPanel.mouseDragged(mx, my, b, dx, dy)) return true; }
         return super.mouseDragged(mx, my, b, dx, dy);
     }
 
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
+        if (confirmDialog.isShowing()) return true;
         if (mx >= panelX && mx <= panelX + panelW) {
-            int contentH = tab == 0 ? terrainPanel.getHeight()
+            int contentH = tab == 0 ? paramPanel.getHeight()
                          : tab == 1 ? climatePanel.getHeight()
-                         : paramPanel.getHeight();
+                         : terrainPanel.getHeight();
             int visibleH = listBottom - listTop;
             int maxScroll = Math.max(0, contentH - visibleH);
             scroll = Math.max(0, Math.min(maxScroll, scroll - (int) (delta * 20)));

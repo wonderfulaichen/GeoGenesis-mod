@@ -32,6 +32,7 @@ public class ParamSlider extends AbstractSliderButton {
     private Component tooltip = null;
     private Runnable onReset = null;
     private Runnable onValueCommitted = null;
+    private Runnable onDragStart = null;
     /** 是否渲染数值文本（默认true；紧凑布局可设为false，由父面板统一渲染） */
     private boolean showValueText = true;
     /** 是否渲染重置按钮（默认true；紧凑布局可设为false） */
@@ -97,6 +98,7 @@ public class ParamSlider extends AbstractSliderButton {
 
     public void setOnReset(Runnable r) { this.onReset = r; }
     public void setOnValueCommitted(Runnable r) { this.onValueCommitted = r; }
+    public void setOnDragStart(Runnable r) { this.onDragStart = r; }
 
     /** 重置到默认值，同时触发 onChange 以回写配置/后端状态 */
     public void resetToDefault() {
@@ -113,6 +115,7 @@ public class ParamSlider extends AbstractSliderButton {
         boolean handled = super.mouseClicked(mouseX, mouseY, button);
         if (handled) {
             this.setFocused(true);
+            if (onDragStart != null) onDragStart.run();
         }
         return handled;
     }

@@ -1,7 +1,10 @@
 package com.geogenesis.client.preview;
 
 import com.geogenesis.client.ParamSlider;
+import com.geogenesis.client.preview.mixer.ControlPoint;
 import com.geogenesis.client.preview.mixer.DualRangeChart;
+import com.geogenesis.client.preview.mixer.MixerPanel;
+import com.geogenesis.client.preview.mixer.SnowLineChart;
 import com.geogenesis.config.GeoGenesisConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -9,6 +12,7 @@ import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
@@ -37,6 +41,11 @@ public class TerrainConfigPanel {
 
     private boolean collapsed = false;
 
+    // 雪线
+    private final SnowLineChart snowChart = new SnowLineChart();
+    private final List<ParamSlider> snowSliders = new ArrayList<>();
+    private final MixerPanel snowPanel = new MixerPanel("雪线");
+
     private static final int ROW_H = 16;
     private static final int CHART_H = 130;
     private static final int HEADER_H = 18;
@@ -46,6 +55,7 @@ public class TerrainConfigPanel {
     private static final int SIDE_PAD = 8;
 
     public TerrainConfigPanel() {
+        snowPanel.setContentHeight(182);
         chart.setOnMarkDirty(() -> { if (onMarkDirty != null) onMarkDirty.run(); });
         // 控制点拖动每帧：实时同步当前滑块（不写 config，不触发 markDirty）
         chart.setOnValueChanged(() -> {
@@ -92,6 +102,7 @@ public class TerrainConfigPanel {
 
     public void buildFromConfig() {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
+        Consumer<Double> onChange = v -> { if (onMarkDirty != null) onMarkDirty.run(); };
         int seaLevel = c.seaLevel.get();
         int maxY = c.maxY.get();
         int minY = c.minY.get();
@@ -195,6 +206,120 @@ public class TerrainConfigPanel {
             loSliders.get(i).setTooltipText(name + " 下限（地形 e-space 最低值，低于此值不留该类型）");
             hiSliders.get(i).setTooltipText(name + " 上限（地形 e-space 最高值，高于此值不留该类型）");
         }
+
+        // ===== 雪线（双曲线：温度×湿度） =====
+        buildSnowSection(c, onChange);
+    }
+
+    private void buildSnowSection(GeoGenesisConfig c, Consumer<Double> onChange) {
+        snowChart.setXRange(-1.0, 1.0);
+        snowChart.setYRange(c.minY.get(), c.maxY.get());
+        snowChart.setSeaLevel(c.seaLevel.get());
+        snowChart.setConfigBindings(
+            () -> c.snowLine.get(), v -> { c.snowLine.set(v); onChange.accept(0.0); },
+            () -> c.snowLatitudeInfluence.get(), v -> { c.snowLatitudeInfluence.set(v); onChange.accept(0.0); },
+            () -> c.snowHumidityInfluence.get(), v -> { c.snowHumidityInfluence.set(v); onChange.accept(0.0); }
+        );
+        final int finalSnowMinY = c.minY.get();
+        final int finalSnowMaxY = c.maxY.get();
+        snowChart.setOnPointsChanged(v -> {
+            if (snowSliders.size() >= 6) {
+                snowSliders.get(0).setCurrentValue(v[0]);
+                snowSliders.get(1).setCurrentValue(v[1]);
+                snowSliders.get(2).setCurrentValue(v[2]);
+                snowSliders.get(3).setCurrentValue(v[3]);
+                snowSliders.get(4).setCurrentValue(v[4]);
+                snowSliders.get(5).setCurrentValue(v[5]);
+            }
+        });
+
+        snowSliders.clear();
+
+        // 冷端中点（温度=-1 时的中曲线雪线高度）
+        ParameterConfigPanel.addYSlider(snowSliders, "寒带中心",
+            () -> (snowChart.eval(-1.0, 0.0)),
+            v -> {
+                double warmCenter = snowChart.eval(1.0, 0.0);
+                double seaLevelY = c.seaLevel.get();
+                double landRange = (double)(finalSnowMaxY - seaLevelY);
+                double ratioCold = Math.max(0, Math.min(1, (v - seaLevelY) / landRange));
+                double ratioWarm = Math.max(0, Math.min(1, (warmCenter - seaLevelY) / landRange));
+                c.snowLine.set((ratioCold + ratioWarm) / 2);
+                c.snowLatitudeInfluence.set(Math.max(0, Math.min(0.6, ratioWarm - ratioCold)));
+                snowChart.refreshPoints();
+                onChange.accept(0.0);
+            },
+            finalSnowMinY, finalSnowMaxY, v -> String.format("%.0f", v));
+
+        // 暖端中点（温度=+1 时的中曲线雪线高度）
+        ParameterConfigPanel.addYSlider(snowSliders, "暖带中心",
+            () -> (snowChart.eval(1.0, 0.0)),
+            v -> {
+                double coldCenter = snowChart.eval(-1.0, 0.0);
+                double seaLevelY = c.seaLevel.get();
+                double landRange = (double)(finalSnowMaxY - seaLevelY);
+                double ratioCold = Math.max(0, Math.min(1, (coldCenter - seaLevelY) / landRange));
+                double ratioWarm = Math.max(0, Math.min(1, (v - seaLevelY) / landRange));
+                c.snowLine.set((ratioCold + ratioWarm) / 2);
+                c.snowLatitudeInfluence.set(Math.max(0, Math.min(0.6, ratioWarm - ratioCold)));
+                snowChart.refreshPoints();
+                onChange.accept(0.0);
+            },
+            finalSnowMinY, finalSnowMaxY, v -> String.format("%.0f", v));
+
+        // 湿度带宽（干燥-湿润曲线之间的高度差）
+        ParameterConfigPanel.addYSlider(snowSliders, "湿度带宽",
+            () -> (snowChart.eval(-1.0, -1.0) - snowChart.eval(-1.0, 1.0)),
+            v -> {
+                double seaLevelY = c.seaLevel.get();
+                double landRange = (double)(finalSnowMaxY - seaLevelY);
+                double bwRatio = Math.max(0, Math.min(0.5, v / landRange));
+                c.snowHumidityInfluence.set(bwRatio);
+                snowChart.refreshPoints();
+                onChange.accept(0.0);
+            },
+            0, finalSnowMaxY - finalSnowMinY, v -> String.format("%.0f", v));
+
+        double seaLev = c.seaLevel.getDefault();
+        double landRange = (double)(finalSnowMaxY - seaLev);
+        for (int i = 0; i < 3; i++) {
+            snowSliders.get(i).setTooltipText(i == 0 ? "寒带中心（温度=-1，湿度=0 时的雪线高度）" :
+                i == 1 ? "暖带中心（温度=+1，湿度=0 时的雪线高度）" :
+                "湿度带宽（干燥-湿润曲线之间的高度差）");
+            snowSliders.get(i).setDefaultValue(c.snowLine.getDefault() * landRange + seaLev);
+        }
+        // 雪线滑块重置时恢复全部三个配置字段
+        for (ParamSlider s : snowSliders) {
+            s.setOnReset(() -> {
+                c.snowLine.set(c.snowLine.getDefault());
+                c.snowLatitudeInfluence.set(c.snowLatitudeInfluence.getDefault());
+                c.snowHumidityInfluence.set(c.snowHumidityInfluence.getDefault());
+                snowChart.refreshPoints();
+                onChange.accept(0.0);
+            });
+        }
+        snowChart.refreshPoints();
+    }
+
+    /** 刷新技术含量相关图表（雪线Y范围、地形图e→Y映射）。由 GeoGenesisConfigScreen tab 切换时调用 */
+    public void refreshHeightDependent() {
+        GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
+        int seaLevel = c.seaLevel.get();
+        int maxY = c.maxY.get();
+        int minY = c.minY.get();
+
+        // 地形图 e→Y 映射
+        chart.setYWorldRange(minY, maxY);
+        chart.setEToWorldY(e -> {
+            if (e <= 0.0) return seaLevel - (-e) * (seaLevel - minY);
+            else return seaLevel + e * (maxY - seaLevel);
+        });
+        chart.refreshFromConfig();
+
+        // 雪线图 Y 范围
+        snowChart.setYRange(minY, maxY);
+        snowChart.setSeaLevel(seaLevel);
+        snowChart.refreshPoints();
     }
 
     /** 创建带联动钩子的 ParamSlider：onChange 实时同步 chart 自身+钳制 lo≤hi，onValueCommitted 写配置 */
@@ -322,8 +447,14 @@ public class TerrainConfigPanel {
     }
 
     public int getHeight() {
-        if (collapsed) return HEADER_H + 2;
-        return HEADER_H + 2 + CHART_H + 6 + loSliders.size() * (ROW_H + 1) + 4;
+        int h = 0;
+        if (!collapsed) {
+            h = HEADER_H + 2 + CHART_H + 6 + loSliders.size() * (ROW_H + 1) + 4;
+        } else {
+            h = HEADER_H + 2;
+        }
+        h += snowPanel.getFullHeight() + 4;
+        return h;
     }
 
     // ===== 渲染 =====
@@ -383,9 +514,35 @@ public class TerrainConfigPanel {
             int hiColor = ro ? 0xFF887755 : 0xFFFFCC88;
             g.drawString(f, "↑" + signed(hiWy), hiValX, nameY, hiColor);
         }
+
+        // 雪线段
+        int snowTop = ty + HEADER_H + 2 + (collapsed ? 0 : (CHART_H + 6 + loSliders.size() * (ROW_H + 1) + 4));
+        renderSection(g, mx, my, snowPanel, snowTop, () -> {
+            snowChart.setBounds(x + 4, snowPanel.getY() + 16, w - 8, 100);
+            snowChart.refreshPoints();
+            snowChart.render(g, mx, my);
+            snowChart.renderTooltips(g, mx, my);
+            int sy = snowPanel.getY() + 16 + snowChart.getHeight() + 4;
+            int snowSlW = w - 70;
+            for (int i = 0; i < snowSliders.size(); i++) {
+                ParamSlider ps = snowSliders.get(i);
+                ps.setX(x + 12); ps.setY(sy + i * (CHART_SLIDER_H + 2)); ps.setWidth(snowSlW);
+                ps.render(g, mx, my, 0);
+                ps.renderTooltip(g, mx, my);
+            }
+        });
     }
 
+    private static final int CHART_SLIDER_H = 20;
     private static String signed(int v) { return v >= 0 ? "+" + v : String.valueOf(v); }
+
+    private void renderSection(GuiGraphics g, int mx, int my, MixerPanel panel, int py,
+                               Runnable contentRenderer) {
+        panel.setBounds(x + 4, py, w - 8);
+        panel.renderHeader(g, mx, my);
+        if (!panel.isCollapsed()) contentRenderer.run();
+        panel.renderTooltip(g, mx, my);
+    }
 
     // ===== 鼠标 =====
 
@@ -423,18 +580,41 @@ public class TerrainConfigPanel {
             if (hi.isHoveringReset((int) mx, (int) my)) { hi.resetToDefault(); chart.refreshFromConfig(); return true; }
             if (hi.isMouseOver(mx, my)) return hi.mouseClicked(mx, my, btn);
         }
+        // 雪线面板
+        int snowTop = ty + HEADER_H + 2 + (collapsed ? 0 : (CHART_H + 6 + loSliders.size() * (ROW_H + 1) + 4));
+        snowPanel.setBounds(x + 4, snowTop, w - 8);
+        if (snowPanel.hitTestHeader((int) mx, (int) my)) return snowPanel.mouseClicked(mx, my, btn);
+        if (!snowPanel.isCollapsed()) {
+            if (snowChart.mouseClicked(mx, my, btn)) return true;
+            int snowSlW = w - 70;
+            int sy = snowTop + 16 + snowChart.getHeight() + 4;
+            for (int i = 0; i < snowSliders.size(); i++) {
+                ParamSlider ps = snowSliders.get(i);
+                ps.setX(x + 12); ps.setY(sy + i * (CHART_SLIDER_H + 2)); ps.setWidth(snowSlW);
+                if (ps.isHoveringReset((int) mx, (int) my)) { ps.resetToDefault(); return true; }
+                if (ps.isMouseOver(mx, my)) return ps.mouseClicked(mx, my, btn);
+            }
+        }
         return false;
     }
     public boolean mouseDragged(double mx, double my, int btn, double dx, double dy) {
         if (chart.mouseDragged(mx, my, btn, dx, dy)) return true;
         for (ParamSlider s : loSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
         for (ParamSlider s : hiSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
+        if (!snowPanel.isCollapsed()) {
+            if (snowChart.mouseDragged(mx, my, btn, dx, dy)) return true;
+            for (ParamSlider s : snowSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
+        }
         return false;
     }
     public boolean mouseReleased(double mx, double my, int btn) {
         if (chart.mouseReleased(mx, my, btn)) return true;
         for (ParamSlider s : loSliders) if (s.isFocused()) s.mouseReleased(mx, my, btn);
         for (ParamSlider s : hiSliders) if (s.isFocused()) s.mouseReleased(mx, my, btn);
+        if (!snowPanel.isCollapsed()) {
+            snowChart.mouseReleased(mx, my, btn);
+            for (ParamSlider s : snowSliders) if (s.isFocused()) s.mouseReleased(mx, my, btn);
+        }
         return false;
     }
 

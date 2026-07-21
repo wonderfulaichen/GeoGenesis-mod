@@ -1,10 +1,8 @@
 package com.geogenesis.client.preview;
 
 import com.geogenesis.client.ParamSlider;
-import com.geogenesis.client.preview.mixer.ControlPoint;
 import com.geogenesis.client.preview.mixer.MixerPanel;
 import com.geogenesis.client.preview.mixer.ScalePreview;
-import com.geogenesis.client.preview.mixer.SnowLineChart;
 import com.geogenesis.client.preview.mixer.WorldHeightBar;
 import com.geogenesis.config.GeoGenesisConfig;
 import net.minecraft.client.Minecraft;
@@ -12,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -31,6 +30,14 @@ public class ParameterConfigPanel {
     private int scrollOffset;
     private Runnable onMarkDirty = () -> {};
 
+    /** 确认对话框回调：由 GeoGenesisConfigScreen 注入，重要参数松手时触发 */
+    @FunctionalInterface
+    public interface ShowConfirmCallback {
+        void show(String title, String message, List<String> affected, Runnable onCancel, Runnable onConfirm);
+    }
+    private ShowConfirmCallback onShowConfirm = null;
+    public void setOnShowConfirm(ShowConfirmCallback cb) { this.onShowConfirm = cb; }
+
     private static class BasicSpec {
         final String label;
         final String description;
@@ -45,16 +52,13 @@ public class ParameterConfigPanel {
 
     // 图表
     private final WorldHeightBar heightBar = new WorldHeightBar();
-    private final SnowLineChart snowChart = new SnowLineChart();
     private final ScalePreview scalePrev = new ScalePreview();
 
     // 图表关联滑块
     private final List<ParamSlider> heightSliders = new ArrayList<>();
-    private final List<ParamSlider> snowSliders = new ArrayList<>();
     private ParamSlider scaleSlider;
 
     private final MixerPanel heightPanel = new MixerPanel("▸ 世界高度");
-    private final MixerPanel snowPanel = new MixerPanel("雪线"); // 折叠图标由 MixerPanel 自己渲染
     private final MixerPanel scalePanel = new MixerPanel("尺度预览");
 
     private static final int BASIC_ROW_H = 20;
@@ -64,13 +68,10 @@ public class ParameterConfigPanel {
 
     public ParameterConfigPanel() {
         heightBar.setOnMarkDirty(() -> { if (onMarkDirty != null) onMarkDirty.run(); });
-        snowChart.setOnMarkDirty(() -> { if (onMarkDirty != null) onMarkDirty.run(); });
         scalePrev.setOnMarkDirty(() -> { if (onMarkDirty != null) onMarkDirty.run(); });
         // 预设内容高度
         // heightPanel: heightBar(100) + gap(16) + 3 sliders(22×2+18=62) = 178 → 180 含底部 padding
         heightPanel.setContentHeight(180);
-        // snowPanel: chart(100) + buffer(4) + 3 sliders(22×2+18=62) = 166 → 182
-        snowPanel.setContentHeight(182);
         scalePanel.setContentHeight(110 + CHART_SLIDER_H);
     }
 
@@ -84,12 +85,9 @@ public class ParameterConfigPanel {
         Consumer<Double> onChange = v -> { if (onMarkDirty != null) onMarkDirty.run(); };
         Function<Double, String> fmt = v -> String.format("%.3f", v);
         specs.clear(); basicSliders.clear();
-        heightSliders.clear(); snowSliders.clear();
+        heightSliders.clear();
 
         // 基础参数（只保留独立功能的参数）
-        // 移除：大陆尺度（由尺度预览 HS 参数控制）
-        // 移除：雪线海拔、雪线纬度（由雪线图表控制点控制）
-        // 移除：省尺度（省系统已被地形类型系统取代，新引擎不读取）
         addSpec("海陆偏置", "大陆性噪声偏置。正值→陆地更多更宽；负值→海洋更多，陆地收缩。影响海陆整体比例。", c.continentBias, -0.6, 0.6);
         addSpec("海床细节", "海床微地形振幅。越大→海床起伏越明显（海山、海沟等特征）。", c.seabedDetail, 0, 0.2);
         addSpec("高海拔阈值", "海拔分类阈值。低于此值为平原/丘陵，高于为高地（山脉+高原+雪峰）。值越低→更多区域划入高地。", c.elevHigh, 0, 1.0);
@@ -111,116 +109,20 @@ public class ParameterConfigPanel {
             new WorldHeightBar.Mark("世界底", 0xFF888888, () -> c.minY.get(), v -> { c.minY.set(v); onChange.accept(0.0); })
         ));
         // 滑块范围：支持自定义高度（-512 到 1024）
-        addYSlider(heightSliders, "最高", c.maxY, -512, 1024, c);
+        // 重要标记：世界高度滑块松手时触发确认框
+        addYSlider(heightSliders, "最高", c.maxY, -512, 1024, c, true,
+            "雪线Y区间", "地形图高度映射", "尺度预览范围");
         heightSliders.get(heightSliders.size()-1).setTooltipText("世界高度上限（最高点Y坐标）。影响总生成高度范围，决定地形的最高堆叠高度。");
-        addYSlider(heightSliders, "海面", c.seaLevel, -512, 1024, c);
+        addYSlider(heightSliders, "海面", c.seaLevel, -512, 1024, c, true,
+            "雪线Y基准", "地形图高度映射");
         heightSliders.get(heightSliders.size()-1).setTooltipText("海平面Y坐标。e=0 的锚定点，决定海洋与陆地的分界高度，也影响雪线Y轴计算基准。");
-        addYSlider(heightSliders, "底", c.minY, -512, 1024, c);
+        addYSlider(heightSliders, "底", c.minY, -512, 1024, c, true,
+            "雪线Y区间", "地形图高度映射");
         heightSliders.get(heightSliders.size()-1).setTooltipText("世界高度下限（基岩层Y坐标）。影响总生成高度范围，决定地形的底部基准。");
         // 高度滑块重置时同步刷新 WorldHeightBar
         for (ParamSlider s : heightSliders) {
             s.setOnReset(() -> heightBar.refreshFromConfig());
         }
-
-        // 雪线（X=温度[-1,1]，Y=雪线高度[世界高度Y坐标]）
-        // 双曲线：干燥（橙）和湿润（蓝），受温度×湿度共同影响
-        int snowMinY = c.minY.get();
-        int snowMaxY = c.maxY.get();
-        snowChart.setXRange(-1.0, 1.0);
-        snowChart.setYRange(snowMinY, snowMaxY);
-        snowChart.setSeaLevel(c.seaLevel.get());
-        snowChart.setConfigBindings(
-            () -> c.snowLine.get(), v -> { c.snowLine.set(v); onChange.accept(0.0); },
-            () -> c.snowLatitudeInfluence.get(), v -> { c.snowLatitudeInfluence.set(v); onChange.accept(0.0); },
-            () -> c.snowHumidityInfluence.get(), v -> { c.snowHumidityInfluence.set(v); onChange.accept(0.0); }
-        );
-        final int finalSnowMinY = snowMinY;
-        final int finalSnowMaxY = snowMaxY;
-        snowChart.setOnPointsChanged(v -> {
-            // v = [coldCenterY, warmCenterY, dryColdY, dryWarmY, wetColdY, wetWarmY]
-            if (snowSliders.size() >= 6) {
-                snowSliders.get(0).setCurrentValue(v[0]); // coldCenter
-                snowSliders.get(1).setCurrentValue(v[1]); // warmCenter
-                snowSliders.get(2).setCurrentValue(v[2]); // dryCold
-                snowSliders.get(3).setCurrentValue(v[3]); // dryWarm
-                snowSliders.get(4).setCurrentValue(v[4]); // wetCold
-                snowSliders.get(5).setCurrentValue(v[5]); // wetWarm
-            }
-        });
-
-        // 5 个滑块：冷端中点、暖端中点、干燥冷端、干燥暖端、湿润冷端、湿润暖端
-        // 前两个滑块通过 onChange 写配置 + 刷新图表，后四个滑块只显示值不可拖拽（或只读）
-        // 实际上我们只需要 3 个驱动滑块（寒带中心、暖带中心、湿度带宽），其余用于显示
-        snowSliders.clear();
-
-        // 冷端中点（温度=-1 时的中曲线雪线高度）
-        addYSlider(snowSliders, "寒带中心",
-            () -> (snowChart.eval(-1.0, 0.0)),
-            v -> {
-                double warmCenter = snowChart.eval(1.0, 0.0);
-                double seaLevelY = c.seaLevel.get();
-                double landRange = (double)(finalSnowMaxY - seaLevelY);
-                double ratioCold = Math.max(0, Math.min(1, (v - seaLevelY) / landRange));
-                double ratioWarm = Math.max(0, Math.min(1, (warmCenter - seaLevelY) / landRange));
-                c.snowLine.set((ratioCold + ratioWarm) / 2);
-                c.snowLatitudeInfluence.set(Math.max(0, Math.min(0.6, ratioWarm - ratioCold)));
-                snowChart.refreshPoints();
-                onChange.accept(0.0);
-            },
-            finalSnowMinY, finalSnowMaxY, v -> String.format("%.0f", v));
-
-        // 暖端中点（温度=+1 时的中曲线雪线高度）
-        addYSlider(snowSliders, "暖带中心",
-            () -> (snowChart.eval(1.0, 0.0)),
-            v -> {
-                double coldCenter = snowChart.eval(-1.0, 0.0);
-                double seaLevelY = c.seaLevel.get();
-                double landRange = (double)(finalSnowMaxY - seaLevelY);
-                double ratioCold = Math.max(0, Math.min(1, (coldCenter - seaLevelY) / landRange));
-                double ratioWarm = Math.max(0, Math.min(1, (v - seaLevelY) / landRange));
-                c.snowLine.set((ratioCold + ratioWarm) / 2);
-                c.snowLatitudeInfluence.set(Math.max(0, Math.min(0.6, ratioWarm - ratioCold)));
-                snowChart.refreshPoints();
-                onChange.accept(0.0);
-            },
-            finalSnowMinY, finalSnowMaxY, v -> String.format("%.0f", v));
-
-        // 湿度带宽（干燥-湿润曲线之间的高度差）
-        addYSlider(snowSliders, "湿度带宽",
-            () -> (snowChart.eval(-1.0, -1.0) - snowChart.eval(-1.0, 1.0)),
-            v -> {
-                double seaLevelY = c.seaLevel.get();
-                double landRange = (double)(finalSnowMaxY - seaLevelY);
-                double bwRatio = Math.max(0, Math.min(0.5, v / landRange));
-                c.snowHumidityInfluence.set(bwRatio);
-                snowChart.refreshPoints();
-                onChange.accept(0.0);
-            },
-            0, finalSnowMaxY - finalSnowMinY, v -> String.format("%.0f", v));
-
-        // 后 3 个只读滑块（干燥冷端、干燥暖端、湿润冷端、湿润暖端）用于显示当前控制点高度
-        // 添加 3 个补充只读滑块（干燥冷端、湿润冷端、干燥暖端）→ 实际上我们添加所有 6 个
-        // 但只让前 3 个可交互，后 3 个只读显示
-        double seaLev = c.seaLevel.get();
-        double landRange = (double)(finalSnowMaxY - seaLev);
-        for (int i = 0; i < 3; i++) {
-            snowSliders.get(i).setTooltipText(i == 0 ? "寒带中心（温度=-1，湿度=0 时的雪线高度）" :
-                i == 1 ? "暖带中心（温度=+1，湿度=0 时的雪线高度）" :
-                "湿度带宽（干燥-湿润曲线之间的高度差）");
-            // 默认值：snowLine.getDefault (ratio) → 海平面锚定世界高度
-            snowSliders.get(i).setDefaultValue(c.snowLine.getDefault() * landRange + seaLev);
-        }
-        // 雪线滑块重置时：恢复全部三个配置字段到真默认值（覆盖 onChange 写入的错误值），再刷新图表
-        for (ParamSlider s : snowSliders) {
-            s.setOnReset(() -> {
-                c.snowLine.set(c.snowLine.getDefault());
-                c.snowLatitudeInfluence.set(c.snowLatitudeInfluence.getDefault());
-                c.snowHumidityInfluence.set(c.snowHumidityInfluence.getDefault());
-                snowChart.refreshPoints();
-                onChange.accept(0.0);
-            });
-        }
-        snowChart.refreshPoints();
 
         // 尺度预览（直接拖拽刻度尺标记调整，不需要额外滑块）
         scalePrev.setHorizontalScale(c.continentScale.get() / 1000.0);
@@ -239,54 +141,77 @@ public class ParameterConfigPanel {
         specs.add(new BasicSpec(label, description, cfg, min, max));
     }
 
+    /** 世界高度 Y 滑块，可选是否显示确认对话框 */
     private void addYSlider(List<ParamSlider> list, String label,
                              ForgeConfigSpec.IntValue cfg, int min, int max,
-                             GeoGenesisConfig cc) {
+                             GeoGenesisConfig cc, boolean important,
+                             String... affectedItems) {
         // 使用 holder 模式解决 lambda 中引用 ps 的初始化顺序问题
         final ParamSlider[] psHolder = new ParamSlider[1];
+        final int[] beforeValue = { cfg.get() }; // 确认回滚用
         psHolder[0] = new ParamSlider(0, 0, 100, min, max, cfg.get(), v -> {
             int val = (int) Math.round(v);
             // 高度顺序约束：最高点 > 海平面 > 世界底
-            // 通过 cfg 字段引用识别滑块（避免 size() 在所有滑块添加完成后才取值的 bug）
             if (list == heightSliders) {
                 if (cfg == cc.maxY) {
-                    // 最高点：必须 > 海平面
                     val = Math.max(cc.seaLevel.get() + 1, val);
                 } else if (cfg == cc.seaLevel) {
-                    // 海平面：必须 > 世界底 且 < 最高点
                     val = Math.max(cc.minY.get() + 1, Math.min(cc.maxY.get() - 1, val));
                 } else if (cfg == cc.minY) {
-                    // 世界底：必须 < 海平面
                     val = Math.min(cc.seaLevel.get() - 1, val);
                 }
             }
             cfg.set(val);
-            // 同步滑块视觉位置到钳制后的值（否则滑块拇指会停在鼠标位置而实际值已被钳制）
             psHolder[0].setCurrentValue(val);
             if (onMarkDirty != null) onMarkDirty.run();
         }, v -> String.format("%d", (int) Math.round(v)));
         psHolder[0].setDefaultValue(cfg.getDefault());
         psHolder[0].setTooltipText(label + "（Y）");
+        // 重要滑块：松手时触发确认框
+        if (important && onShowConfirm != null) {
+            psHolder[0].setOnDragStart(() -> { beforeValue[0] = cfg.get(); });
+            psHolder[0].setOnValueCommitted(() -> {
+                int newVal = cfg.get();
+                if (newVal != beforeValue[0]) {
+                    final int rollbackVal = beforeValue[0];
+                    List<String> affected = Arrays.asList(affectedItems);
+                    onShowConfirm.show(label,
+                        beforeValue[0] + " → " + newVal,
+                        affected,
+                        () -> { // onCancel: 回滚到旧值
+                            cfg.set(rollbackVal);
+                            psHolder[0].setCurrentValue(rollbackVal);
+                            if (onMarkDirty != null) onMarkDirty.run();
+                        },
+                        () -> { /* onConfirm: 什么也不做，值已写入 */ }
+                    );
+                }
+            });
+        }
         list.add(psHolder[0]);
     }
 
-    private void addYSlider(List<ParamSlider> list, String label,
-                             java.util.function.DoubleSupplier getter,
-                             java.util.function.DoubleConsumer setter,
-                             double min, double max, Function<Double, String> fmt) {
+    /** 雪线滑块（getter/setter 模式），static 供 TerrainConfigPanel 复用 */
+    static void addYSlider(List<ParamSlider> list, String label,
+                           java.util.function.DoubleSupplier getter,
+                           java.util.function.DoubleConsumer setter,
+                           double min, double max, Function<Double, String> fmt) {
         ParamSlider ps = new ParamSlider(0, 0, 100, min, max, getter.getAsDouble(), v -> {
-            setter.accept(v); if (onMarkDirty != null) onMarkDirty.run();
+            setter.accept(v);
         }, fmt);
         ps.setTooltipText(label);
         list.add(ps);
     }
 
-    // 删除 refreshSnowPoints — SnowLineChart 内部管理控制点
+    /** 刷新世界高度依赖的下游组件（柱状图、尺度预览）。被 GeoGenesisConfigScreen 在 tab 切换时调用 */
+    public void refreshHeightDependent() {
+        heightBar.refreshFromConfig();
+        // 尺度预览：如果 scalePrev 有刷新方法则调用
+    }
 
     public int getHeight() {
         int h = 14 + basicSliders.size() * BASIC_ROW_H + 8;
-        h += heightPanel.getFullHeight() + 4; // 世界高度 + 尺度预览（已整合）
-        h += snowPanel.getFullHeight() + 4;
+        h += heightPanel.getFullHeight() + 4;
         return h;
     }
 
@@ -324,12 +249,11 @@ public class ParameterConfigPanel {
             heightBar.render(g, mx, my);
             heightBar.renderTooltips(g, mx, my);
             // 右侧：尺度预览（垂直柱+水平滑块）
-            // 调整 y 坐标，使其底部与世界高度图底部对齐
             int scaleStartX = x + heightBarW + 30;
             scalePrev.setBounds(scaleStartX, panelContentY + 4, w - scaleStartX - 4, 100);
             scalePrev.render(g, mx, my);
             // 下方：所有滑块 - 在两个图表下方
-            int sy = panelContentY + 116; // 为图表预留足够空间
+            int sy = panelContentY + 116;
             int slW = w - 70;
             for (int i = 0; i < heightSliders.size(); i++) {
                 ParamSlider ps = heightSliders.get(i);
@@ -339,24 +263,6 @@ public class ParameterConfigPanel {
             }
         });
         sectionTop += heightPanel.getFullHeight() + 4;
-
-        // 雪线
-        renderSection(g, mx, my, snowPanel, sectionTop, () -> {
-            snowChart.setBounds(x + 4, snowPanel.getY() + 16, w - 8, 100);
-            snowChart.refreshPoints(); // setBounds 后必须刷新控制点位置
-            snowChart.render(g, mx, my);
-            snowChart.renderTooltips(g, mx, my);
-            int sy = snowPanel.getY() + 16 + snowChart.getHeight() + 4;
-            // 滑块宽度：面板宽度 - 重置按钮(24) - 数值标签(30) - 间距(8) = 面板宽度 - 62
-            int slW = w - 70;
-            for (int i = 0; i < snowSliders.size(); i++) {
-                ParamSlider ps = snowSliders.get(i);
-                ps.setX(x + 12); ps.setY(sy + i * (CHART_SLIDER_H + 2)); ps.setWidth(slW);
-                ps.render(g, mx, my, 0);
-                ps.renderTooltip(g, mx, my);
-            }
-        });
-        sectionTop += snowPanel.getFullHeight() + 4;
 
     }
 
@@ -389,11 +295,9 @@ public class ParameterConfigPanel {
             if (s.isHoveringReset((int) mx, (int) my)) { s.resetToDefault(); return true; }
             if (s.isMouseOver(mx, my)) return s.mouseClicked(mx, my, btn);
         }
-        // 折叠段
+        // 折叠段（仅剩世界高度）
         int curY = basicTop + basicSliders.size() * BASIC_ROW_H + 8;
         if (trySectionClick(mx, my, btn, curY, heightPanel, heightSliders, heightBar, 132)) return true;
-        curY += heightPanel.getFullHeight() + 4;
-        if (trySectionClick(mx, my, btn, curY, snowPanel, snowSliders, snowChart, 120)) return true;
         return false;
     }
 
@@ -409,8 +313,6 @@ public class ParameterConfigPanel {
         // 点击图表
         if (chartObj instanceof WorldHeightBar) {
             if (((WorldHeightBar) chartObj).mouseClicked(mx, my, btn)) return true;
-        } else if (chartObj instanceof SnowLineChart) {
-            if (((SnowLineChart) chartObj).mouseClicked(mx, my, btn)) return true;
         }
         // 点击尺度预览
         if (chartObj instanceof WorldHeightBar && scalePrev != null) {
@@ -439,24 +341,20 @@ public class ParameterConfigPanel {
     public boolean mouseDragged(double mx, double my, int btn, double dx, double dy) {
         for (ParamSlider s : basicSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
         for (ParamSlider s : heightSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
-        for (ParamSlider s : snowSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
         if (!heightPanel.isCollapsed()) {
             if (heightBar.mouseDragged(mx, my, btn, dx, dy)) return true;
             if (scalePrev.mouseDragged(mx, my, btn, dx, dy)) return true;
         }
-        if (!snowPanel.isCollapsed() && snowChart.mouseDragged(mx, my, btn, dx, dy)) return true;
         return false;
     }
 
     public boolean mouseReleased(double mx, double my, int btn) {
         for (ParamSlider s : basicSliders) if (s.isFocused()) s.mouseReleased(mx, my, btn);
         for (ParamSlider s : heightSliders) if (s.isFocused()) s.mouseReleased(mx, my, btn);
-        for (ParamSlider s : snowSliders) if (s.isFocused()) s.mouseReleased(mx, my, btn);
         if (!heightPanel.isCollapsed()) {
             heightBar.mouseReleased(mx, my, btn);
             scalePrev.mouseReleased(mx, my, btn);
         }
-        if (!snowPanel.isCollapsed()) snowChart.mouseReleased(mx, my, btn);
         return false;
     }
 }
