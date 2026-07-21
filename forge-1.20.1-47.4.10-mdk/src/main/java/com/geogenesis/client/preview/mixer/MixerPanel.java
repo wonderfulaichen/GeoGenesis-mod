@@ -26,9 +26,6 @@ public class MixerPanel {
     /** 点击折叠标题栏后的回调 */
     private Runnable onCollapseChanged = () -> {};
 
-    /** 依赖标签（如 "⬑ 世界高度"），在标题右侧显示灰色小字 */
-    private String dependencyLabel = "";
-
     /** 内部各段的高度（由外部在渲染前 setBounds 时指定） */
     private int x, y, w;
     /** 内容区域高度（图表模板 + 滑块总高，不包括标题栏） */
@@ -44,8 +41,6 @@ public class MixerPanel {
     public void setOnCollapseChanged(Runnable r) { this.onCollapseChanged = r; }
     public boolean isCollapsed() { return collapsed; }
     public void setCollapsed(boolean v) { collapsed = v; }
-    /** 设置依赖标签，如 "⬑ 世界高度"（灰色小字，显示在标题右侧） */
-    public void setDependencyLabel(String label) { this.dependencyLabel = label; }
 
     /** 设置内容区高度（由外部在布局图表模板 + 滑块后调用） */
     public void setContentHeight(int h) { this.contentH = h; }
@@ -80,11 +75,6 @@ public class MixerPanel {
 
         // 标题
         g.drawString(f, title, x + 16, y + 3, titleColor);
-        // 依赖标签（灰色小字，标题右侧）
-        if (dependencyLabel != null && !dependencyLabel.isEmpty()) {
-            int titleEnd = x + 16 + f.width(title) + 8;
-            g.drawString(f, dependencyLabel, titleEnd, y + 3, 0xFF666688);
-        }
     }
 
     /** 点击检测：返回 true 如果点中了标题栏（基于 this.y） */
