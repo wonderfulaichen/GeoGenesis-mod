@@ -75,7 +75,7 @@ public class ClimateConfigPanel {
         // 大陆性（7段，6个边界）
         factors.add(createFactor("大陆性",
                 new int[]{0xFF1A4D80, 0xFF3070A0, 0xFF66CCFF, 0xFF88AA44, 0xFFBB8833, 0xFFCC6644, 0xFF884422},
-                new String[]{"深海", "近海", "沿海", "过渡", "近内陆", "内陆", "深内陆"},
+                new String[]{"深海", "近海", "沿海", "近岸", "近内陆", "内陆", "深内陆"},
                 new ForgeConfigSpec.DoubleValue[]{
                     c.continentDeepOceanThreshold, c.continentNearOceanThreshold,
                     c.continentCoastThreshold, c.continentTransitionalThreshold,
@@ -83,7 +83,7 @@ public class ClimateConfigPanel {
                 },
                 c.continentInfluence));
         factors.get(factors.size() - 1).influence.setTooltipText(
-            "大陆性（距海远近）对群系分类的影响权重。值越大→大陆性差异对生物群系的影响越显著。");
+            "大陆性（距海远近）对生物群系分类的影响权重。注意：此参数不影响海陆面积/海岸线位置（那由参数标签的「海陆偏置」控制）。值越大→大陆性差异对生物群系的影响越显著。");
     }
 
     private FactorSection createFactor(String title,
