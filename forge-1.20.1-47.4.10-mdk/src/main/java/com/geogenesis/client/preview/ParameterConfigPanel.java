@@ -221,7 +221,7 @@ public class ParameterConfigPanel {
         var f = Minecraft.getInstance().font;
         int ty = top();
 
-        g.drawString(f, "▸ 基础参数", x + 6, ty + 4, 0xFF66CCFF);
+        g.drawString(f, "■ 基础参数", x + 6, ty + 4, 0xFF66CCFF);
         int basicTop = ty + 18;
         for (int i = 0; i < basicSliders.size(); i++) {
             BasicSpec s = specs.get(i);
