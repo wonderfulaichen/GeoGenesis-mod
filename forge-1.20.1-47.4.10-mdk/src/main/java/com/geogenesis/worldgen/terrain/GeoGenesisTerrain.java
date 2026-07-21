@@ -142,7 +142,7 @@ public final class GeoGenesisTerrain {
                 c.height = curve.heightFromE(ne);
                 if (c.terrainType != TerrainClass.RIVER) {
                     c.terrainType = CellGenerator.classifyTerrain(
-                        ne, c.eLand, c.terrainType, c.temperature, c.typeWeights);
+                        ne, c.eLand, c.terrainType, c.temperature, c.humidity, c.typeWeights);
                 }
             }
         }

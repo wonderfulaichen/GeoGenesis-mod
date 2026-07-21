@@ -9,169 +9,197 @@ import java.util.List;
 /**
  * 模板E：尺度预览（Scale Preview）。
  *
- * <p>对比垂直尺度（山脉/丘陵/平原/海洋段）+ 水平采样尺度波纹。
- * 段间边界可拖拽调整各类型高度比例。
+ * <p>显示垂直缩放比例和水平缩放比例（HS参数），控制世界的缩放方式。
+ * 使用水平刻度尺样式，更直观。
  * 标题由父容器绘制，避免重复。
  */
 public class ScalePreview {
 
     private Runnable onMarkDirty = () -> {};
 
-    private int baseX, baseY, colW = 40, colH = 80, rowH = 24;
+    private int baseX, baseY, baseW = 200, baseH = 80;
 
-    private double horizontalScaleValue = 4.0;
+    private double verticalScaleValue = 1.0;   // 垂直缩放比例（1-8，与水平一致）
+    private double horizontalScaleValue = 4.0; // HS参数（1-8）
 
-    // 段间比例 [0,1]（从底到顶累积），最后一项恒为 1.0
-    private final double[] segments = {0.05, 0.15, 0.35, 0.70, 1.0};
-    private final int[] segColors = {0xFF446688, 0xFF44AA66, 0xFF88CC44, 0xFFCC8844, 0xFF884422};
-    private final String[] segNames = {"海洋", "平原", "丘陵", "高原", "山脉"};
+    // 默认值
+    private double defaultVerticalScale = 1.0;
+    private double defaultHorizontalScale = 4.0;
 
-    // 可拖拽边界（位于段间）
-    private final List<SegBoundary> boundaries = new ArrayList<>();
-    private SegBoundary dragging;
+    // 标记位置
+    private int vsMarkerY, hsMarkerX;
 
-    public ScalePreview() {
-        // 初始化 4 个边界
-        for (int i = 0; i < segments.length - 1; i++) {
-            boundaries.add(new SegBoundary(i, segments[i]));
-        }
-    }
+    // 重置按钮
+    private static final int RESET_BTN_W = 18;
+    private static final int RESET_BTN_H = 14;
+    private static final int RESET_BG = 0xFF2a2f3a;
+    private static final int RESET_HOVER_BG = 0xFF3a4050;
+    private static final int RESET_BORDER = 0xFF4a5060;
+    private boolean resetHovered = false;
+
+    public ScalePreview() {}
 
     public void setOnMarkDirty(Runnable r) { this.onMarkDirty = r; }
-    public void setHorizontalScale(double v) { this.horizontalScaleValue = v; }
+    public void setVerticalScale(double v) { this.verticalScaleValue = Math.max(1.0, Math.min(8.0, v)); }
+    public double getVerticalScale() { return verticalScaleValue; }
+    public void setHorizontalScale(double v) { this.horizontalScaleValue = Math.max(1.0, Math.min(8.0, v)); }
     public double getHorizontalScale() { return horizontalScaleValue; }
+    public void setDefaultVerticalScale(double v) { this.defaultVerticalScale = v; }
+    public void setDefaultHorizontalScale(double v) { this.defaultHorizontalScale = v; }
+    
+    /** 重置到默认值 */
+    public void resetToDefaults() {
+        this.verticalScaleValue = defaultVerticalScale;
+        this.horizontalScaleValue = defaultHorizontalScale;
+        if (onMarkDirty != null) onMarkDirty.run();
+    }
 
     public void setBounds(int x, int y, int w, int h) {
         baseX = x + 4;
-        baseY = y + 8;
-        colW = Math.max(30, Math.min(60, (w - 8) / 4));
-        colH = Math.max(50, h - 60);
-        rowH = 18;
-        layoutBoundaries();
+        baseY = y + 4;
+        baseW = Math.max(120, w - 8);
+        baseH = Math.max(40, h - 20);
     }
-    public int getHeight() { return colH + 50; }
+    public int getHeight() { return baseH + 20; }
 
-    private void layoutBoundaries() {
-        for (SegBoundary b : boundaries) {
-            double frac = b.value / segments[segments.length - 1];
-            b.screenY = baseY + colH - (int) (frac * colH);
-            b.screenX = baseX + colW;
-        }
+    /** 垂直缩放值到屏幕Y坐标（竖直柱） */
+    private int vsScaleToY(double val, int yTop, int height) {
+        double frac = (val - 1.0) / 7.0; // 统一范围：1 到 8 → 0 到 1
+        return yTop + height - (int)(frac * height); // 顶部=大值，底部=小值
     }
-
-    // 从边界值重建 segments[]
-    private void rebuildSegments() {
-        for (int i = 0; i < boundaries.size(); i++) {
-            segments[i] = boundaries.get(i).value;
-        }
-    }
-
-    // 钳制边界不越界（相邻边界之间）
-    private void clampBoundary(int idx) {
-        if (idx < 0 || idx >= boundaries.size()) return;
-        double lo = (idx > 0) ? boundaries.get(idx - 1).value + 0.005 : 0.005;
-        double hi = (idx < boundaries.size() - 1) ? boundaries.get(idx + 1).value - 0.005 : 0.995;
-        boundaries.get(idx).value = Math.max(lo, Math.min(hi, boundaries.get(idx).value));
+    /** 水平HS值到屏幕X坐标（水平滑块） */
+    private int hsScaleToX(double val, int xLeft, int width) {
+        double frac = (val - 1.0) / 7.0; // 统一范围：1 到 8 → 0 到 1
+        return xLeft + (int)(frac * width);
     }
 
     public void render(GuiGraphics g, int mx, int my) {
         var f = Minecraft.getInstance().font;
 
-        // ── 垂直柱（类型高度比例） ──
-        int colX = baseX;
-        int curY = baseY + colH;
-        for (int i = segments.length - 1; i >= 0; i--) {
-            double prevH = (i == 0) ? 0 : segments[i - 1];
-            double hFrac = (i == 0) ? segments[0] : segments[i] - segments[i - 1];
-            int segH = (int) (colH * hFrac);
-            int segY = curY - segH;
-            g.fill(colX, segY, colX + colW, curY, segColors[i]);
-            g.fill(colX, segY, colX + colW, segY + 1, 0xFF555555);
-            g.drawString(f, segNames[i], colX + colW + 4, segY + segH / 2 - 4, segColors[i]);
-            curY = segY;
-        }
-        // 当前列高数值
-        g.drawString(f, "Y" + (int)(colH * 0.8), colX + colW + 4, baseY - 4, 0xFF66CCFF);
+        // 统一布局参数
+        int vsX = baseX;
+        int vsW = 24;
+        int hsX = vsX + vsW + 60;
+        int hsW = baseW - vsW - 60;
+        int hsY = baseY;
+        int hsH = 16;
 
-        // ── 可拖拽段间边界（菱形标记） ──
-        for (SegBoundary b : boundaries) {
-            boolean sel = dragging == b;
-            b.hovered = Math.abs(mx - b.screenX) <= 6 && Math.abs(my - b.screenY) <= 6;
-            // 横线
-            g.fill(colX - 2, b.screenY, colX + colW + 2, b.screenY + 1, sel ? 0xFFFFFFFF : 0xAAFFFFFF);
-            // 菱形标记
-            int cx = colX + colW / 2;
-            int cy = b.screenY;
-            int rs = 4;
-            for (int dy = -rs; dy <= rs; dy++) {
-                for (int dx = -rs; dx <= rs; dx++) {
-                    if (Math.abs(dx) + Math.abs(dy) <= rs)
-                        g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, sel ? 0xFFFFFF88 : 0xFFFFCC44);
-                }
-            }
-            // 值标签
-            String label = String.format("%.0f%%", b.value * 100);
-            g.drawString(f, label, colX + colW + 50, b.screenY - 4, 0xFFCCCCCC);
+        // ── 垂直缩放柱（竖直方向） ──
+        int vsH = baseH;
+        // 柱背景
+        g.fill(vsX, hsY, vsX + vsW, hsY + vsH, 0xFF1a1f28);
+        g.fill(vsX, hsY, vsX + 1, hsY + vsH, 0xFF333344);
+        g.fill(vsX + vsW - 1, hsY, vsX + vsW, hsY + vsH, 0xFF333344);
+        g.fill(vsX, hsY, vsX + vsW, hsY + 1, 0xFF333344);
+        g.fill(vsX, hsY + vsH - 1, vsX + vsW, hsY + vsH, 0xFF333344);
+        // 标题（统一位置）
+        g.drawString(f, "垂直", vsX + vsW / 2 - 8, hsY - 2, 0xFF888888);
+        // 刻度（统一范围：1 到 8，与水平滑块一致）
+        for (int i = 1; i <= 8; i++) {
+            int tickY = vsScaleToY((double) i, hsY, vsH);
+            g.fill(vsX - 2, tickY, vsX, tickY + 1, 0xFF888888);
+            g.drawString(f, String.valueOf(i), vsX + vsW + 3, tickY - 4, 0xFF888888);
         }
+        // 当前标记（水平条）
+        vsMarkerY = vsScaleToY(verticalScaleValue, hsY, vsH);
+        g.fill(vsX - 2, vsMarkerY - 1, vsX + vsW + 2, vsMarkerY + 2, 0xFF44AA66);
+        // 当前值（显示在垂直柱下方，与水平滑块的值位置一致）
+        g.drawString(f, String.format("×%.1f", verticalScaleValue), vsX, hsY + vsH + 4, 0xFF44AA66);
 
-        // ── 水平尺度可视化（波纹图） ──
-        int waveX = baseX + colW + 80;
-        int waveY = baseY;
-        int waveW = Math.max(60, baseX + 250 - waveX);
-        int waveH = colH;
-        g.fill(waveX, waveY, waveX + waveW, waveY + waveH, 0xFF1a1f28);
-        int waves = Math.max(1, (int)(8 / horizontalScaleValue));
-        for (int w = 0; w < waves; w++) {
-            int wy = waveY + 4 + w * (waveH - 8) / waves + (waveH - 8) / waves / 2;
-            int amp = Math.max(2, (int)(6 / horizontalScaleValue));
-            for (int px = 0; px < waveW; px += 2) {
-                int py = wy + (int)(amp * Math.sin((px + w * 10) * 0.3));
-                g.fill(waveX + px, py, waveX + px + 2, py + 1, 0xFF66CCFF);
-            }
+        // ── 水平缩放滑块（水平方向） ──
+        // 滑块背景
+        g.fill(hsX, hsY, hsX + hsW, hsY + hsH, 0xFF1a1f28);
+        g.fill(hsX, hsY, hsX + hsW, hsY + 1, 0xFF333344);
+        g.fill(hsX, hsY + hsH - 1, hsX + hsW, hsY + hsH, 0xFF333344);
+        g.fill(hsX, hsY, hsX + 1, hsY + hsH, 0xFF333344);
+        g.fill(hsX + hsW - 1, hsY, hsX + hsW, hsY + hsH, 0xFF333344);
+        // 标题（统一位置）
+        g.drawString(f, "水平 HS", hsX, hsY - 2, 0xFF888888);
+        // 刻度（1到8）
+        for (int i = 1; i <= 8; i++) {
+            int tickX = hsScaleToX(i, hsX, hsW);
+            g.fill(tickX, hsY, tickX + 1, hsY + hsH, 0xFF888888);
+            g.drawString(f, String.valueOf(i), tickX - 3, hsY + hsH + 2, 0xFF888888);
         }
-        g.drawString(f, String.format("×%.1f", horizontalScaleValue), waveX, waveY + waveH + 4, 0xFF66CCFF);
+        // 当前标记（竖直条）
+        hsMarkerX = hsScaleToX(horizontalScaleValue, hsX, hsW);
+        g.fill(hsMarkerX - 1, hsY - 2, hsMarkerX + 2, hsY + hsH + 2, 0xFF66CCFF);
+        // 当前值（统一位置：显示在滑块下方）
+        g.drawString(f, String.format("×%.1f", horizontalScaleValue), hsX, hsY + hsH + 12, 0xFF66CCFF);
+        
+        // 重置按钮（水平 HS 下方右侧空白处）
+        int rbX = baseX + baseW - RESET_BTN_W - 4;
+        int rbY = hsY + hsH + 22;
+        resetHovered = mx >= rbX && mx <= rbX + RESET_BTN_W && my >= rbY && my <= rbY + RESET_BTN_H;
+        int rbBg = resetHovered ? RESET_HOVER_BG : RESET_BG;
+        g.fill(rbX, rbY, rbX + RESET_BTN_W, rbY + RESET_BTN_H, rbBg);
+        g.fill(rbX, rbY, rbX + 1, rbY + RESET_BTN_H, RESET_BORDER);
+        g.fill(rbX + RESET_BTN_W - 1, rbY, rbX + RESET_BTN_W, rbY + RESET_BTN_H, RESET_BORDER);
+        String resetIcon = "↩";
+        var f2 = Minecraft.getInstance().font;
+        int iconW = f2.width(resetIcon);
+        int iconX = rbX + (RESET_BTN_W - iconW) / 2;
+        int iconY = rbY + (RESET_BTN_H - 8) / 2;
+        g.drawString(f2, resetIcon, iconX, iconY, resetHovered ? 0xFF00c896 : 0xFF999999);
     }
 
     // ---- 鼠标 ----
 
     public boolean mouseClicked(double mx, double my, int btn) {
         if (btn != 0) return false;
-        for (SegBoundary b : boundaries) {
-            if (Math.abs(mx - b.screenX) <= 6 && Math.abs(my - b.screenY) <= 6) {
-                dragging = b; return true;
-            }
+        int vsX = baseX;
+        int vsW = 24;
+        int hsX = vsX + vsW + 60;
+        int hsW = baseW - vsW - 60;
+        int hsY = baseY;
+        int hsH = 16;
+        // 检测重置按钮点击（与 render 中位置一致：水平 HS 下方右侧空白处）
+        int rbX = baseX + baseW - RESET_BTN_W - 4;
+        int rbY = hsY + hsH + 22;
+        if (mx >= rbX && mx <= rbX + RESET_BTN_W && my >= rbY && my <= rbY + RESET_BTN_H) {
+            resetToDefaults();
+            return true;
+        }
+        // 检测垂直缩放标记（水平条）
+        if (Math.abs(mx - (vsX + vsW / 2)) <= vsW / 2 + 4 && Math.abs(my - vsMarkerY) <= 6) {
+            return true;
+        }
+        // 检测水平缩放标记（竖直条）
+        if (Math.abs(mx - hsMarkerX) <= 6 && my >= hsY - 4 && my <= hsY + hsH + 4) {
+            return true;
         }
         return false;
     }
 
     public boolean mouseDragged(double mx, double my, int btn, double dx, double dy) {
-        if (dragging != null) {
-            int ny = Math.max(baseY, Math.min(baseY + colH, (int) my));
-            dragging.screenY = ny;
-            double frac = 1.0 - (double) (ny - baseY) / colH;
-            dragging.value = frac * segments[segments.length - 1];
-            int idx = boundaries.indexOf(dragging);
-            clampBoundary(idx);
-            layoutBoundaries();
-            rebuildSegments();
+        int vsX = baseX;
+        int vsW = 24;
+        int hsX = vsX + vsW + 60;
+        int hsW = baseW - vsW - 60;
+        int hsY = baseY;
+        int hsH = 16;
+        int vsH = baseH; // 直接使用 baseH，与 render 方法一致
+        int sy = Math.max(baseY, Math.min(baseY + vsH, (int) my));
+        // 垂直缩放：1 到 8（与水平一致）
+        if (Math.abs(mx - (vsX + vsW / 2)) <= vsW / 2 + 4) {
+            double frac = 1.0 - (double)(sy - baseY) / vsH;
+            verticalScaleValue = 1.0 + frac * 7.0;
+            verticalScaleValue = Math.max(1.0, Math.min(8.0, verticalScaleValue));
+            return true;
+        }
+        // 水平缩放：1 到 8
+        int sx = Math.max(hsX, Math.min(hsX + hsW, (int) mx));
+        if (my >= hsY - 4 && my <= hsY + hsH + 4) {
+            double frac = (double)(sx - hsX) / hsW;
+            horizontalScaleValue = 1.0 + frac * 7.0;
+            horizontalScaleValue = Math.max(1.0, Math.min(8.0, horizontalScaleValue));
             return true;
         }
         return false;
     }
 
     public boolean mouseReleased(double mx, double my, int btn) {
-        if (dragging != null) { dragging = null; if (onMarkDirty != null) onMarkDirty.run(); return true; }
+        if (onMarkDirty != null) onMarkDirty.run();
         return false;
-    }
-
-    // ---- 段间边界 ----
-
-    private static class SegBoundary {
-        final int segIdx;
-        double value;        // 累积段底比例 [0,1]
-        int screenX, screenY;
-        boolean hovered;
-
-        SegBoundary(int idx, double val) { this.segIdx = idx; this.value = val; }
     }
 }

@@ -54,63 +54,78 @@ public final class UnifiedSpline {
         }
         
         /**
-         * 根据类型位置采样内层样条。
+         * 根据类型位置采样内层样条（线性插值）。
+         * <p>
+         * 在相邻类型节点间做线性插值，确保类型边界处连续过渡。
          * 
          * @param typePosition 类型在类型轴上的位置（0.0 到 1.0）
-         * @return 内层样条（lo/hi 形状）
+         * @return 内层样条（lo/hi 形状），如果需要插值则返回 null（调用方需用 sampleRangeInterpolated）
          */
         public InnerSpline sampleInner(double typePosition) {
             if (nodes.length == 0) return null;
             if (nodes.length == 1) return nodes[0].innerSpline;
             
-            // 二分查找最近的控制点
-            int lo2 = 0, hi2 = nodes.length - 1;
-            while (lo2 < hi2) {
-                int mid = (lo2 + hi2) >>> 1;
-                if (nodes[mid].location < typePosition) lo2 = mid + 1;
-                else hi2 = mid;
-            }
-            int i = lo2;
-            
-            // 边界处理
-            if (i <= 0) return nodes[0].innerSpline;
-            if (i >= nodes.length) return nodes[nodes.length - 1].innerSpline;
-            
-            // 返回最近的控制点（Phase 2 简化：不插值）
-            double distLeft = typePosition - nodes[i - 1].location;
-            double distRight = nodes[i].location - typePosition;
-            
-            return distLeft <= distRight ? nodes[i - 1].innerSpline : nodes[i].innerSpline;
+            int idx = findBracketIndex(nodes, typePosition);
+            if (idx <= 0) return nodes[0].innerSpline;
+            if (idx >= nodes.length) return nodes[nodes.length - 1].innerSpline;
+            return nodes[idx].innerSpline;
         }
         
         /**
-         * 根据类型位置采样类型权重。
+         * 根据类型位置采样插值后的 lo/hi 范围（跨类型节点线性插值）。
+         * <p>
+         * 这是保证连续性的核心方法：在相邻类型节点间对 lo/hi 值做线性插值。
          * 
-         * @param typePosition 类型在类型轴上的位置（0.0 到 1.0）
-         * @return 类型权重（0.0 到 1.0）
+         * @param typePosition 类型位置（0.0 到 1.0）
+         * @param noiseValue 噪声值（0.0 到 1.0）
+         * @return [lo, hi] 插值后的范围
+         */
+        public double[] sampleRangeInterpolated(double typePosition, double noiseValue) {
+            if (nodes.length == 0) return new double[]{0.0, 0.0};
+            if (nodes.length == 1) return nodes[0].innerSpline.sampleRange(noiseValue);
+            
+            int idx = findBracketIndex(nodes, typePosition);
+            if (idx <= 0) return nodes[0].innerSpline.sampleRange(noiseValue);
+            if (idx >= nodes.length) return nodes[nodes.length - 1].innerSpline.sampleRange(noiseValue);
+            
+            // 线性插值两个相邻节点的 lo/hi
+            double locL = nodes[idx - 1].location, locR = nodes[idx].location;
+            double t = (locR > locL) ? (typePosition - locL) / (locR - locL) : 0.0;
+            
+            double[] rangeL = nodes[idx - 1].innerSpline.sampleRange(noiseValue);
+            double[] rangeR = nodes[idx].innerSpline.sampleRange(noiseValue);
+            
+            return new double[]{
+                rangeL[0] + (rangeR[0] - rangeL[0]) * t,
+                rangeL[1] + (rangeR[1] - rangeL[1]) * t
+            };
+        }
+        
+        /**
+         * 根据类型位置采样类型权重（线性插值）。
          */
         public double sampleWeight(double typePosition) {
             if (nodes.length == 0) return 0.0;
             if (nodes.length == 1) return nodes[0].weight;
             
-            // 二分查找最近的控制点
-            int lo2 = 0, hi2 = nodes.length - 1;
-            while (lo2 < hi2) {
-                int mid = (lo2 + hi2) >>> 1;
-                if (nodes[mid].location < typePosition) lo2 = mid + 1;
-                else hi2 = mid;
+            int idx = findBracketIndex(nodes, typePosition);
+            if (idx <= 0) return nodes[0].weight;
+            if (idx >= nodes.length) return nodes[nodes.length - 1].weight;
+            
+            double locL = nodes[idx - 1].location, locR = nodes[idx].location;
+            double t = (locR > locL) ? (typePosition - locL) / (locR - locL) : 0.0;
+            return nodes[idx - 1].weight + (nodes[idx].weight - nodes[idx - 1].weight) * t;
+        }
+        
+        /** 二分查找：返回第一个 location > position 的节点索引 */
+        private static int findBracketIndex(MidNode[] nodes, double position) {
+            int lo = 0, hi = nodes.length;
+            while (lo < hi) {
+                int mid = (lo + hi) >>> 1;
+                if (nodes[mid].location <= position) lo = mid + 1;
+                else hi = mid;
             }
-            int i = lo2;
-            
-            // 边界处理
-            if (i <= 0) return nodes[0].weight;
-            if (i >= nodes.length) return nodes[nodes.length - 1].weight;
-            
-            // 返回最近的控制点（Phase 2 简化：不插值）
-            double distLeft = typePosition - nodes[i - 1].location;
-            double distRight = nodes[i].location - typePosition;
-            
-            return distLeft <= distRight ? nodes[i - 1].weight : nodes[i].weight;
+            return lo;
         }
     }
     
@@ -180,7 +195,10 @@ public final class UnifiedSpline {
     }
     
     /**
-     * Phase 2：通过 3 层嵌套样条计算 eLand。
+     * Phase 2：通过 3 层嵌套样条计算 eLand（每层线性插值）。
+     * <p>
+     * 外层（c）→ 中层（typePosition）→ 内层（noiseValue）→ eLand，
+     * 每层在相邻控制点间做线性插值，确保三层都是 C0 连续。
      * 
      * @param c 大陆性值（-1.0 到 1.0）
      * @param typePosition 类型在类型轴上的位置（0.0 到 1.0）
@@ -188,90 +206,103 @@ public final class UnifiedSpline {
      * @return eLand 值
      */
     public double sample(double c, double typePosition, double noiseValue) {
-        // 1. 通过外层样条找到当前 c 值对应的中层样条
-        MidSpline midSpline = sampleOuter(c);
-        if (midSpline == null) {
-            return 0.0; // fallback
+        if (outerNodes.length == 0) return 0.0;
+        if (outerNodes.length == 1) return sampleMid(outerNodes[0].midSpline, typePosition, noiseValue);
+        
+        // 外层：找到 c 值两侧的 bracketing 节点
+        int outerIdx = findOuterBracket(c);
+        
+        if (outerIdx <= 0) {
+            return sampleMid(outerNodes[0].midSpline, typePosition, noiseValue);
+        }
+        if (outerIdx >= outerNodes.length) {
+            return sampleMid(outerNodes[outerNodes.length - 1].midSpline, typePosition, noiseValue);
         }
         
-        // 2. 通过中层样条找到当前类型位置对应的内层样条
-        InnerSpline innerSpline = midSpline.sampleInner(typePosition);
-        if (innerSpline == null) {
-            return 0.0; // fallback
-        }
+        // 外层线性插值
+        double cL = outerNodes[outerIdx - 1].location, cR = outerNodes[outerIdx].location;
+        double tOuter = (cR > cL) ? (c - cL) / (cR - cL) : 0.0;
         
-        // 3. 通过内层样条计算 lo/hi
-        double[] range = innerSpline.sampleRange(noiseValue);
-        double lo = range[0];
-        double hi = range[1];
+        double eLandL = sampleMid(outerNodes[outerIdx - 1].midSpline, typePosition, noiseValue);
+        double eLandR = sampleMid(outerNodes[outerIdx].midSpline, typePosition, noiseValue);
         
-        // 4. 噪声值映射到 [lo, hi] 范围
-        double eLand = lo + (hi - lo) * noiseValue;
-        
-        // 5. 钳制
-        return eLand < -1.0 ? -1.0 : (eLand > 1.0 ? 1.0 : eLand);
+        return clamp(eLandL + (eLandR - eLandL) * tOuter, -1.0, 1.0);
     }
     
     /**
-     * Phase 1 兼容：通过 2 层嵌套样条计算 eLand。
+     * Phase 1 兼容：通过 2 层嵌套样条计算 eLand（外层线性插值，内层用第一个类型节点）。
      * 
      * @param c 大陆性值（-1.0 到 1.0）
      * @param noiseValue 地形类型噪声值（0.0 到 1.0）
      * @return eLand 值
      */
     public double sample(double c, double noiseValue) {
-        // Phase 1：使用第一个中层节点的内层样条
-        MidSpline midSpline = sampleOuter(c);
-        if (midSpline == null || midSpline.nodes.length == 0) {
-            return 0.0;
+        if (outerNodes.length == 0) return 0.0;
+        
+        // 使用第一个中层节点的内层样条（Phase 1 兼容）
+        if (outerNodes.length == 1) {
+            return computeELand(firstInner(outerNodes[0]), noiseValue);
         }
         
-        // 使用第一个中层节点的内层样条
-        InnerSpline innerSpline = midSpline.nodes[0].innerSpline;
-        if (innerSpline == null) {
-            return 0.0;
+        int outerIdx = findOuterBracket(c);
+        
+        if (outerIdx <= 0) {
+            return computeELand(firstInner(outerNodes[0]), noiseValue);
+        }
+        if (outerIdx >= outerNodes.length) {
+            return computeELand(firstInner(outerNodes[outerNodes.length - 1]), noiseValue);
         }
         
-        // 通过内层样条计算 lo/hi
-        double[] range = innerSpline.sampleRange(noiseValue);
-        double lo = range[0];
-        double hi = range[1];
+        double cL = outerNodes[outerIdx - 1].location, cR = outerNodes[outerIdx].location;
+        double t = (cR > cL) ? (c - cL) / (cR - cL) : 0.0;
         
-        // 噪声值映射到 [lo, hi] 范围
-        double eLand = lo + (hi - lo) * noiseValue;
+        double eL = computeELand(firstInner(outerNodes[outerIdx - 1]), noiseValue);
+        double eR = computeELand(firstInner(outerNodes[outerIdx]), noiseValue);
         
-        // 钳制
-        return eLand < -1.0 ? -1.0 : (eLand > 1.0 ? 1.0 : eLand);
+        return clamp(eL + (eR - eL) * t, -1.0, 1.0);
+    }
+    
+    /** 获取外层节点的第一个中层内层样条（Phase 1 兼容） */
+    private static InnerSpline firstInner(OuterNode node) {
+        if (node.midSpline == null || node.midSpline.nodes.length == 0) return null;
+        return node.midSpline.nodes[0].innerSpline;
     }
     
     /**
-     * 通过外层样条采样中层样条。
-     * 
-     * @param c 大陆性值（-1.0 到 1.0）
-     * @return 中层样条（地形类型分布）
+     * 中层样条采样：在类型节点间线性插值 lo/hi → eLand。
      */
-    private MidSpline sampleOuter(double c) {
-        if (outerNodes.length == 0) return null;
-        if (outerNodes.length == 1) return outerNodes[0].midSpline;
+    private double sampleMid(MidSpline midSpline, double typePosition, double noiseValue) {
+        if (midSpline == null || midSpline.nodes.length == 0) return 0.0;
+        if (midSpline.nodes.length == 1) return computeELand(midSpline.nodes[0].innerSpline, noiseValue);
         
-        // 二分查找最近的控制点
-        int lo2 = 0, hi2 = outerNodes.length - 1;
-        while (lo2 < hi2) {
-            int mid = (lo2 + hi2) >>> 1;
-            if (outerNodes[mid].location < c) lo2 = mid + 1;
-            else hi2 = mid;
+        // 中层线性插值 lo/hi
+        double[] range = midSpline.sampleRangeInterpolated(typePosition, noiseValue);
+        double lo = range[0], hi = range[1];
+        double eLand = lo + (hi - lo) * noiseValue;
+        return clamp(eLand, -1.0, 1.0);
+    }
+    
+    /** 内层样条 → eLand */
+    private static double computeELand(InnerSpline innerSpline, double noiseValue) {
+        if (innerSpline == null) return 0.0;
+        double[] range = innerSpline.sampleRange(noiseValue);
+        double eLand = range[0] + (range[1] - range[0]) * noiseValue;
+        return eLand < -1.0 ? -1.0 : (eLand > 1.0 ? 1.0 : eLand);
+    }
+    
+    /** 外层二分查找：返回第一个 location > c 的节点索引 */
+    private int findOuterBracket(double c) {
+        int lo = 0, hi = outerNodes.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (outerNodes[mid].location <= c) lo = mid + 1;
+            else hi = mid;
         }
-        int i = lo2;
-        
-        // 边界处理
-        if (i <= 0) return outerNodes[0].midSpline;
-        if (i >= outerNodes.length) return outerNodes[outerNodes.length - 1].midSpline;
-        
-        // 返回最近的控制点（Phase 2 简化：不插值）
-        double distLeft = c - outerNodes[i - 1].location;
-        double distRight = outerNodes[i].location - c;
-        
-        return distLeft <= distRight ? outerNodes[i - 1].midSpline : outerNodes[i].midSpline;
+        return lo;
+    }
+    
+    private static double clamp(double v, double min, double max) {
+        return v < min ? min : (v > max ? max : v);
     }
     
     /**

@@ -37,6 +37,22 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue shallowDeriv;
     public final ForgeConfigSpec.DoubleValue coastDeriv;
 
+    // ===== 海洋类型独立 lo/hi（与陆地类型一致的独立控制） =====
+    public final ForgeConfigSpec.DoubleValue oceanLo;
+    public final ForgeConfigSpec.DoubleValue oceanHi;
+    public final ForgeConfigSpec.DoubleValue deepOceanLo;
+    public final ForgeConfigSpec.DoubleValue deepOceanHi;
+    public final ForgeConfigSpec.DoubleValue shelfLo;
+    public final ForgeConfigSpec.DoubleValue shelfHi;
+    public final ForgeConfigSpec.DoubleValue subRidgeLo;
+    public final ForgeConfigSpec.DoubleValue subRidgeHi;
+    public final ForgeConfigSpec.DoubleValue seamountLo;
+    public final ForgeConfigSpec.DoubleValue seamountHi;
+    public final ForgeConfigSpec.DoubleValue lakeLo;
+    public final ForgeConfigSpec.DoubleValue lakeHi;
+    public final ForgeConfigSpec.DoubleValue riverLo;
+    public final ForgeConfigSpec.DoubleValue riverHi;
+
     // ===== 海床 =====
     public final ForgeConfigSpec.DoubleValue seabedDetail;
 
@@ -84,11 +100,54 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue peakE;
     public final ForgeConfigSpec.DoubleValue snowLine;
     public final ForgeConfigSpec.DoubleValue snowLatitudeInfluence;
+    /** 雪线湿度耦合强度（干燥→雪线升高，湿润→雪线降低），默认 0.15 */
+    public final ForgeConfigSpec.DoubleValue snowHumidityInfluence;
+
+    // ===== 气候阈值（温度/湿度/大陆性边界 + 影响权重） =====
+    /** 温度阈值：极寒/寒冷分界，默认 -0.6 */
+    public final ForgeConfigSpec.DoubleValue tempFrozenThreshold;
+    /** 温度阈值：寒冷/温和分界，默认 -0.2 */
+    public final ForgeConfigSpec.DoubleValue tempColdThreshold;
+    /** 温度阈值：温和/温暖分界，默认 0.2 */
+    public final ForgeConfigSpec.DoubleValue tempWarmThreshold;
+    /** 温度阈值：温暖/炎热分界，默认 0.5 */
+    public final ForgeConfigSpec.DoubleValue tempHotThreshold;
+
+    /** 湿度阈值：干旱/半干旱分界，默认 -0.3 */
+    public final ForgeConfigSpec.DoubleValue humidityDryThreshold;
+    /** 湿度阈值：半干旱/湿润分界，默认 0.0 */
+    public final ForgeConfigSpec.DoubleValue humiditySemiThreshold;
+    /** 湿度阈值：湿润/潮湿分界，默认 0.3 */
+    public final ForgeConfigSpec.DoubleValue humidityWetThreshold;
+
+    /** 大陆性阈值：深海/近海分界，默认 -0.60 */
+    public final ForgeConfigSpec.DoubleValue continentDeepOceanThreshold;
+    /** 大陆性阈值：近海/沿海分界，默认 -0.30 */
+    public final ForgeConfigSpec.DoubleValue continentNearOceanThreshold;
+    /** 大陆性阈值：沿海/过渡分界，默认 -0.10 */
+    public final ForgeConfigSpec.DoubleValue continentCoastThreshold;
+    /** 大陆性阈值：过渡/近内陆分界，默认 0.10 */
+    public final ForgeConfigSpec.DoubleValue continentTransitionalThreshold;
+    /** 大陆性阈值：近内陆/内陆分界，默认 0.35 */
+    public final ForgeConfigSpec.DoubleValue continentNearInlandThreshold;
+    /** 大陆性阈值：内陆/深内陆分界，默认 0.65 */
+    public final ForgeConfigSpec.DoubleValue continentInlandThreshold;
+
+    /** 温度对群系分布的影响程度（0-1），默认 0.5 */
+    public final ForgeConfigSpec.DoubleValue tempInfluence;
+    /** 湿度对群系分布的影响程度（0-1），默认 0.5 */
+    public final ForgeConfigSpec.DoubleValue humidityInfluence;
+    /** 大陆性对群系分布的影响程度（0-1），默认 0.5 */
+    public final ForgeConfigSpec.DoubleValue continentInfluence;
 
     // ===== 世界高度 =====
     public final ForgeConfigSpec.IntValue seaLevel;
     public final ForgeConfigSpec.IntValue minY;
     public final ForgeConfigSpec.IntValue maxY;
+
+    // ===== 垂直缩放 =====
+    /** 垂直缩放比例（1-8），用于预览和地形高度夸张 */
+    public final ForgeConfigSpec.DoubleValue verticalScale;
 
     // ===== 地形类型 eLand 高度范围 =====
     public final ForgeConfigSpec.DoubleValue plainCenter;
@@ -206,8 +265,8 @@ public final class GeoGenesisConfig {
         builder.push("GeoGenesis Terrain Generation");
 
         builder.push("Continent Field");
-        continentScale = builder.comment("Continent noise scale (blocks). Frequency = 1/scale.")
-            .defineInRange("continentScale", 4000.0, 200.0, 10000.0);
+        continentScale = builder.comment("Continent noise scale (blocks). Frequency = 1/scale. HS parameter: HS = continentScale/1000. Range: 1-8 (HS) = 1000-8000.")
+            .defineInRange("continentScale", 4000.0, 1000.0, 8000.0);
         continentWarp = builder.comment("Domain warp intensity.")
             .defineInRange("continentWarp", 0.2, 0.0, 1.0);
         continentThreshold = builder.comment("Reference continentality c value ∈ [-1,1]. NOT the coastline; coastline = e=0 natural crossing (see terrain-rebuild §1.4). 0=coast anchor, negative=ocean, positive=land — aligned with vanilla Continentalness.")
@@ -232,6 +291,38 @@ public final class GeoGenesisConfig {
             .defineInRange("shelfDeriv", 0.8, -10.0, 10.0);
         shallowDeriv = builder.defineInRange("shallowDeriv", 0.0, -10.0, 10.0);
         coastDeriv = builder.defineInRange("coastDeriv", 0.0, -10.0, 10.0);
+        builder.pop();
+
+        // 海洋类型独立 lo/hi（与陆地类型一致的独立控制）
+        builder.push("Ocean Type Ranges");
+        oceanLo = builder.comment("OCEAN lo (bottom of ocean layer).")
+            .defineInRange("oceanLo", -0.35, -1.0, 0.0);
+        oceanHi = builder.comment("OCEAN hi (top of ocean layer).")
+            .defineInRange("oceanHi", -0.06, -1.0, 0.0);
+        deepOceanLo = builder.comment("DEEP_OCEAN lo.")
+            .defineInRange("deepOceanLo", -0.50, -1.0, 0.0);
+        deepOceanHi = builder.comment("DEEP_OCEAN hi.")
+            .defineInRange("deepOceanHi", -0.35, -1.0, 0.0);
+        shelfLo = builder.comment("CONTINENTAL_SHELF lo.")
+            .defineInRange("shelfLo", -0.25, -1.0, 0.0);
+        shelfHi = builder.comment("CONTINENTAL_SHELF hi.")
+            .defineInRange("shelfHi", -0.08, -1.0, 0.0);
+        subRidgeLo = builder.comment("SUBMARINE_RIDGE lo.")
+            .defineInRange("subRidgeLo", -0.20, -1.0, 0.0);
+        subRidgeHi = builder.comment("SUBMARINE_RIDGE hi.")
+            .defineInRange("subRidgeHi", -0.05, -1.0, 0.0);
+        seamountLo = builder.comment("SEAMOUNT lo.")
+            .defineInRange("seamountLo", -0.15, -1.0, 0.0);
+        seamountHi = builder.comment("SEAMOUNT hi.")
+            .defineInRange("seamountHi", -0.02, -1.0, 0.0);
+        lakeLo = builder.comment("LAKE lo.")
+            .defineInRange("lakeLo", -0.02, -1.0, 0.0);
+        lakeHi = builder.comment("LAKE hi.")
+            .defineInRange("lakeHi", 0.01, -1.0, 0.0);
+        riverLo = builder.comment("RIVER lo.")
+            .defineInRange("riverLo", -0.03, -1.0, 0.0);
+        riverHi = builder.comment("RIVER hi.")
+            .defineInRange("riverHi", 0.00, -1.0, 0.0);
         builder.pop();
 
         builder.push("Seabed");
@@ -298,8 +389,49 @@ public final class GeoGenesisConfig {
             .defineInRange("peakE", 0.82, 0.0, 1.0);
         snowLine = builder.comment("Snow line elevation (e units). High-elevation terrain above this (modulated by latitude) gets snow cover.")
             .defineInRange("snowLine", 0.70, 0.0, 1.0);
-        snowLatitudeInfluence = builder.comment("Snow line latitude coupling: snow line rises toward the warm end (e units per half-range).")
+        snowLatitudeInfluence = builder.comment("Snow line temperature coupling: snow line rises toward the warm end (e units per half-range).")
             .defineInRange("snowLatitudeInfluence", 0.25, 0.0, 0.6);
+        snowHumidityInfluence = builder.comment("Snow line humidity coupling: dry areas shift snow line UP, humid areas shift it DOWN (e units per full humidity range).")
+            .defineInRange("snowHumidityInfluence", 0.15, 0.0, 0.5);
+        builder.pop();
+
+        builder.push("Climate Thresholds");
+        // 温度阈值（4个边界，5段：极寒/寒冷/温和/温暖/炎热）
+        tempFrozenThreshold = builder.comment("Temperature threshold: frozen/cold boundary.")
+            .defineInRange("tempFrozenThreshold", -0.6, -1.0, 1.0);
+        tempColdThreshold = builder.comment("Temperature threshold: cold/warm boundary.")
+            .defineInRange("tempColdThreshold", -0.2, -1.0, 1.0);
+        tempWarmThreshold = builder.comment("Temperature threshold: warm/hot boundary.")
+            .defineInRange("tempWarmThreshold", 0.2, -1.0, 1.0);
+        tempHotThreshold = builder.comment("Temperature threshold: hot/very hot boundary.")
+            .defineInRange("tempHotThreshold", 0.5, -1.0, 1.0);
+        // 湿度阈值（3个边界，4段：干旱/半干旱/湿润/潮湿）
+        humidityDryThreshold = builder.comment("Humidity threshold: dry/semi-dry boundary.")
+            .defineInRange("humidityDryThreshold", -0.3, -1.0, 1.0);
+        humiditySemiThreshold = builder.comment("Humidity threshold: semi-dry/wet boundary.")
+            .defineInRange("humiditySemiThreshold", 0.0, -1.0, 1.0);
+        humidityWetThreshold = builder.comment("Humidity threshold: wet/humid boundary.")
+            .defineInRange("humidityWetThreshold", 0.3, -1.0, 1.0);
+        // 大陆性阈值（6个边界，7段：深海/近海/沿海/过渡/近内陆/内陆/深内陆）
+        continentDeepOceanThreshold = builder.comment("Continentality threshold: deep ocean/near ocean boundary.")
+            .defineInRange("continentDeepOceanThreshold", -0.60, -1.0, 1.0);
+        continentNearOceanThreshold = builder.comment("Continentality threshold: near ocean/coastal boundary.")
+            .defineInRange("continentNearOceanThreshold", -0.30, -1.0, 1.0);
+        continentCoastThreshold = builder.comment("Continentality threshold: coastal/transitional boundary.")
+            .defineInRange("continentCoastThreshold", -0.10, -1.0, 1.0);
+        continentTransitionalThreshold = builder.comment("Continentality threshold: transitional/near inland boundary.")
+            .defineInRange("continentTransitionalThreshold", 0.10, -1.0, 1.0);
+        continentNearInlandThreshold = builder.comment("Continentality threshold: near inland/inland boundary.")
+            .defineInRange("continentNearInlandThreshold", 0.35, -1.0, 1.0);
+        continentInlandThreshold = builder.comment("Continentality threshold: inland/deep inland boundary.")
+            .defineInRange("continentInlandThreshold", 0.65, -1.0, 1.0);
+        // 影响权重（3个）
+        tempInfluence = builder.comment("Temperature influence on biome distribution (0-1).")
+            .defineInRange("tempInfluence", 0.5, 0.0, 1.0);
+        humidityInfluence = builder.comment("Humidity influence on biome distribution (0-1).")
+            .defineInRange("humidityInfluence", 0.5, 0.0, 1.0);
+        continentInfluence = builder.comment("Continentality influence on biome distribution (0-1).")
+            .defineInRange("continentInfluence", 0.5, 0.0, 1.0);
         builder.pop();
 
 
@@ -311,6 +443,11 @@ public final class GeoGenesisConfig {
             .defineInRange("minY", -64, -512, 512);
         maxY = builder.comment("Maximum world Y.")
             .defineInRange("maxY", 320, -512, 1024);
+        builder.pop();
+
+        builder.push("Scale");
+        verticalScale = builder.comment("Vertical scale multiplier (1-8). Used for preview vertical exaggeration.")
+            .defineInRange("verticalScale", 1.0, 1.0, 8.0);
         builder.pop();
 
         builder.push("Type Elevation Ranges");
@@ -469,6 +606,14 @@ public final class GeoGenesisConfig {
             deepOceanLoc.get(), shelfLoc.get(), shallowLoc.get(), coastLoc.get(),
             deepOceanDepth.get(), shelfDepth.get(), shallowDepth.get(),
             deepOceanDeriv.get(), shelfDeriv.get(), shallowDeriv.get(), coastDeriv.get(),
+            // 海洋类型独立 lo/hi
+            oceanLo.get(), oceanHi.get(),
+            deepOceanLo.get(), deepOceanHi.get(),
+            shelfLo.get(), shelfHi.get(),
+            subRidgeLo.get(), subRidgeHi.get(),
+            seamountLo.get(), seamountHi.get(),
+            lakeLo.get(), lakeHi.get(),
+            riverLo.get(), riverHi.get(),
             seabedDetail.get(),
             provinceScale.get(), cratonWeight.get(), beltWeight.get(),
             plateauWeight.get(), basinWeight.get(),
@@ -479,11 +624,12 @@ public final class GeoGenesisConfig {
             cratonReliefAmp.get(), beltReliefAmp.get(), plateauReliefAmp.get(), basinReliefAmp.get(),
             beltSharpness.get(), beltWarpAmp.get(), provMixSharpness.get(),
             mountainMaskScale.get(), microDetailScale.get(), microDetailAmp.get(),
-            elevHigh.get(), reliefHigh.get(), peakE.get(), snowLatitudeInfluence.get(),
+            elevHigh.get(), reliefHigh.get(), peakE.get(), snowLatitudeInfluence.get(), snowHumidityInfluence.get(),
 
             // preview compat defaults
             1.0, seaLevel.get(), snowLine.get(), minY.get(),
             maxY.get(), (int)(maxY.get() * 0.8), (int)(minY.get() * 0.75),
+            verticalScale.get(),
             // type elevation ranges
             plainCenter.get(), plainHalfRange.get(),
             hillsCenter.get(), hillsHalfRange.get(),
@@ -494,6 +640,132 @@ public final class GeoGenesisConfig {
             // Phase 1: unified spline config (built from individual fields)
             buildSplineConfig()
         );
+    }
+
+    /** 重置所有配置字段到默认值 */
+    public void resetToDefault() {
+        // 大陆场
+        continentScale.set(continentScale.getDefault());
+        continentWarp.set(continentWarp.getDefault());
+        continentThreshold.set(continentThreshold.getDefault());
+        continentBias.set(continentBias.getDefault());
+        continentProvinceWarp.set(continentProvinceWarp.getDefault());
+        
+        // 海洋样条控制点
+        deepOceanLoc.set(deepOceanLoc.getDefault());
+        shelfLoc.set(shelfLoc.getDefault());
+        shallowLoc.set(shallowLoc.getDefault());
+        coastLoc.set(coastLoc.getDefault());
+        deepOceanDepth.set(deepOceanDepth.getDefault());
+        shelfDepth.set(shelfDepth.getDefault());
+        shallowDepth.set(shallowDepth.getDefault());
+        deepOceanDeriv.set(deepOceanDeriv.getDefault());
+        shelfDeriv.set(shelfDeriv.getDefault());
+        shallowDeriv.set(shallowDeriv.getDefault());
+        coastDeriv.set(coastDeriv.getDefault());
+        
+        // 海洋类型独立 lo/hi
+        oceanLo.set(oceanLo.getDefault());
+        oceanHi.set(oceanHi.getDefault());
+        deepOceanLo.set(deepOceanLo.getDefault());
+        deepOceanHi.set(deepOceanHi.getDefault());
+        shelfLo.set(shelfLo.getDefault());
+        shelfHi.set(shelfHi.getDefault());
+        subRidgeLo.set(subRidgeLo.getDefault());
+        subRidgeHi.set(subRidgeHi.getDefault());
+        seamountLo.set(seamountLo.getDefault());
+        seamountHi.set(seamountHi.getDefault());
+        lakeLo.set(lakeLo.getDefault());
+        lakeHi.set(lakeHi.getDefault());
+        riverLo.set(riverLo.getDefault());
+        riverHi.set(riverHi.getDefault());
+        
+        // 海床
+        seabedDetail.set(seabedDetail.getDefault());
+        
+        // [已废弃] 省权重
+        provinceScale.set(provinceScale.getDefault());
+        cratonWeight.set(cratonWeight.getDefault());
+        beltWeight.set(beltWeight.getDefault());
+        plateauWeight.set(plateauWeight.getDefault());
+        basinWeight.set(basinWeight.getDefault());
+        
+        // [已废弃] 陆地过程形态
+        plainBase.set(plainBase.getDefault());
+        plainRough.set(plainRough.getDefault());
+        hillsLow.set(hillsLow.getDefault());
+        hillsHigh.set(hillsHigh.getDefault());
+        beltRidgePower.set(beltRidgePower.getDefault());
+        beltFoothill.set(beltFoothill.getDefault());
+        beltPeak.set(beltPeak.getDefault());
+        plateauBase.set(plateauBase.getDefault());
+        plateauTop.set(plateauTop.getDefault());
+        plateauSteps.set(plateauSteps.getDefault());
+        plateauStepStrength.set(plateauStepStrength.getDefault());
+        basinBase.set(basinBase.getDefault());
+        
+        // 地形起伏振幅
+        cratonReliefAmp.set(cratonReliefAmp.getDefault());
+        beltReliefAmp.set(beltReliefAmp.getDefault());
+        plateauReliefAmp.set(plateauReliefAmp.getDefault());
+        basinReliefAmp.set(basinReliefAmp.getDefault());
+        
+        // 省场形态曲线
+        beltSharpness.set(beltSharpness.getDefault());
+        beltWarpAmp.set(beltWarpAmp.getDefault());
+        provMixSharpness.set(provMixSharpness.getDefault());
+        mountainMaskScale.set(mountainMaskScale.getDefault());
+        microDetailScale.set(microDetailScale.getDefault());
+        microDetailAmp.set(microDetailAmp.getDefault());
+        
+        // 分类阈值 + 雪线
+        elevHigh.set(elevHigh.getDefault());
+        reliefHigh.set(reliefHigh.getDefault());
+        peakE.set(peakE.getDefault());
+        snowLatitudeInfluence.set(snowLatitudeInfluence.getDefault());
+        snowHumidityInfluence.set(snowHumidityInfluence.getDefault());
+        
+        // 预览参数
+        seaLevel.set(seaLevel.getDefault());
+        snowLine.set(snowLine.getDefault());
+        minY.set(minY.getDefault());
+        maxY.set(maxY.getDefault());
+        verticalScale.set(verticalScale.getDefault());
+        
+        // 类型高度范围
+        plainCenter.set(plainCenter.getDefault());
+        plainHalfRange.set(plainHalfRange.getDefault());
+        hillsCenter.set(hillsCenter.getDefault());
+        hillsHalfRange.set(hillsHalfRange.getDefault());
+        mountainsCenter.set(mountainsCenter.getDefault());
+        mountainsHalfRange.set(mountainsHalfRange.getDefault());
+        plateauCenter.set(plateauCenter.getDefault());
+        plateauHalfRange.set(plateauHalfRange.getDefault());
+        basinCenter.set(basinCenter.getDefault());
+        basinHalfRange.set(basinHalfRange.getDefault());
+        
+        // 气候阈值
+        tempFrozenThreshold.set(tempFrozenThreshold.getDefault());
+        tempColdThreshold.set(tempColdThreshold.getDefault());
+        tempWarmThreshold.set(tempWarmThreshold.getDefault());
+        tempHotThreshold.set(tempHotThreshold.getDefault());
+        humidityDryThreshold.set(humidityDryThreshold.getDefault());
+        humiditySemiThreshold.set(humiditySemiThreshold.getDefault());
+        humidityWetThreshold.set(humidityWetThreshold.getDefault());
+        continentDeepOceanThreshold.set(continentDeepOceanThreshold.getDefault());
+        continentNearOceanThreshold.set(continentNearOceanThreshold.getDefault());
+        continentCoastThreshold.set(continentCoastThreshold.getDefault());
+        continentTransitionalThreshold.set(continentTransitionalThreshold.getDefault());
+        continentNearInlandThreshold.set(continentNearInlandThreshold.getDefault());
+        continentInlandThreshold.set(continentInlandThreshold.getDefault());
+        
+        // 影响权重
+        tempInfluence.set(tempInfluence.getDefault());
+        humidityInfluence.set(humidityInfluence.getDefault());
+        continentInfluence.set(continentInfluence.getDefault());
+        
+        // 样条配置（Phase 1/2/3）使用默认值
+        // 注意：样条配置是从独立字段构建的，所以重置独立字段即可
     }
 
     /** 从独立配置字段构建 SplineConfig（Phase 3：含海洋/水域类型） */
@@ -526,8 +798,8 @@ public final class GeoGenesisConfig {
             basinLoLoc1.get(), basinLoVal1.get(), basinLoDeriv1.get(),
             basinHiLoc0.get(), basinHiVal0.get(), basinHiDeriv0.get(),
             basinHiLoc1.get(), basinHiVal1.get(), basinHiDeriv1.get(),
-            // Phase 3: ocean/water type inner splines (use defaults)
-            com.geogenesis.worldgen.terrain.OceanSplineConfig.defaults(),
+            // Phase 3: ocean/water type inner splines (use independent lo/hi from config)
+            buildOceanSplineConfig(),
             // Phase 2: mid spline config
             midSplineConfig
         );
@@ -549,6 +821,14 @@ public final class GeoGenesisConfig {
             deepOceanLoc.getDefault(), shelfLoc.getDefault(), shallowLoc.getDefault(), coastLoc.getDefault(),
             deepOceanDepth.getDefault(), shelfDepth.getDefault(), shallowDepth.getDefault(),
             deepOceanDeriv.getDefault(), shelfDeriv.getDefault(), shallowDeriv.getDefault(), coastDeriv.getDefault(),
+            // 海洋类型独立 lo/hi
+            oceanLo.getDefault(), oceanHi.getDefault(),
+            deepOceanLo.getDefault(), deepOceanHi.getDefault(),
+            shelfLo.getDefault(), shelfHi.getDefault(),
+            subRidgeLo.getDefault(), subRidgeHi.getDefault(),
+            seamountLo.getDefault(), seamountHi.getDefault(),
+            lakeLo.getDefault(), lakeHi.getDefault(),
+            riverLo.getDefault(), riverHi.getDefault(),
             seabedDetail.getDefault(),
             provinceScale.getDefault(), cratonWeight.getDefault(), beltWeight.getDefault(),
             plateauWeight.getDefault(), basinWeight.getDefault(),
@@ -559,11 +839,12 @@ public final class GeoGenesisConfig {
             cratonReliefAmp.getDefault(), beltReliefAmp.getDefault(), plateauReliefAmp.getDefault(), basinReliefAmp.getDefault(),
             beltSharpness.getDefault(), beltWarpAmp.getDefault(), provMixSharpness.getDefault(),
             mountainMaskScale.getDefault(), microDetailScale.getDefault(), microDetailAmp.getDefault(),
-            elevHigh.getDefault(), reliefHigh.getDefault(), peakE.getDefault(), snowLatitudeInfluence.getDefault(),
+            elevHigh.getDefault(), reliefHigh.getDefault(), peakE.getDefault(), snowLatitudeInfluence.getDefault(), snowHumidityInfluence.getDefault(),
 
             // preview compat defaults
             1.0, seaLevel.getDefault(), snowLine.getDefault(), minY.getDefault(),
             maxY.getDefault(), (int)(maxY.getDefault() * 0.8), (int)(minY.getDefault() * 0.75),
+            verticalScale.getDefault(),
             // type elevation ranges
             plainCenter.getDefault(), plainHalfRange.getDefault(),
             hillsCenter.getDefault(), hillsHalfRange.getDefault(),
@@ -573,6 +854,33 @@ public final class GeoGenesisConfig {
 
             // Phase 1: unified spline config (built from default values)
             buildDefaultSplineConfig()
+        );
+    }
+
+    /** 从配置字段构建 OceanSplineConfig（使用独立的 lo/hi 值） */
+    private com.geogenesis.worldgen.terrain.OceanSplineConfig buildOceanSplineConfig() {
+        return new com.geogenesis.worldgen.terrain.OceanSplineConfig(
+            // OCEAN
+            0.0, oceanLo.get(), 0.0, 1.0, oceanLo.get(), 0.0,
+            0.0, oceanHi.get(), 0.0, 1.0, oceanHi.get(), 0.0,
+            // DEEP_OCEAN
+            0.0, deepOceanLo.get(), 0.0, 1.0, deepOceanLo.get(), 0.0,
+            0.0, deepOceanHi.get(), 0.0, 1.0, deepOceanHi.get(), 0.0,
+            // CONTINENTAL_SHELF
+            0.0, shelfLo.get(), 0.0, 1.0, shelfLo.get(), 0.0,
+            0.0, shelfHi.get(), 0.0, 1.0, shelfHi.get(), 0.0,
+            // SUBMARINE_RIDGE
+            0.0, subRidgeLo.get(), 0.0, 1.0, subRidgeLo.get(), 0.0,
+            0.0, subRidgeHi.get(), 0.0, 1.0, subRidgeHi.get(), 0.0,
+            // SEAMOUNT
+            0.0, seamountLo.get(), 0.0, 1.0, seamountLo.get(), 0.0,
+            0.0, seamountHi.get(), 0.0, 1.0, seamountHi.get(), 0.0,
+            // LAKE
+            0.0, lakeLo.get(), 0.0, 1.0, lakeLo.get(), 0.0,
+            0.0, lakeHi.get(), 0.0, 1.0, lakeHi.get(), 0.0,
+            // RIVER
+            0.0, riverLo.get(), 0.0, 1.0, riverLo.get(), 0.0,
+            0.0, riverHi.get(), 0.0, 1.0, riverHi.get(), 0.0
         );
     }
 

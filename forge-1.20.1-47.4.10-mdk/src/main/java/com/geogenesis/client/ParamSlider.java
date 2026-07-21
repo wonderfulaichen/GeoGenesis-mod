@@ -32,6 +32,10 @@ public class ParamSlider extends AbstractSliderButton {
     private Component tooltip = null;
     private Runnable onReset = null;
     private Runnable onValueCommitted = null;
+    /** 是否渲染数值文本（默认true；紧凑布局可设为false，由父面板统一渲染） */
+    private boolean showValueText = true;
+    /** 是否渲染重置按钮（默认true；紧凑布局可设为false） */
+    private boolean showResetButton = true;
 
     /** 重置按钮宽度（在滑块外部右侧） */
     public static final int RESET_BTN_W = 18;
@@ -85,6 +89,12 @@ public class ParamSlider extends AbstractSliderButton {
 
     public void setDefaultValue(double v) { this.defaultValue = v; }
 
+    /** 设置是否渲染数值文本（紧凑布局设为 false，由父面板统一渲染） */
+    public void setShowValueText(boolean v) { this.showValueText = v; }
+
+    /** 设置是否渲染重置按钮（紧凑布局设为 false） */
+    public void setShowResetButton(boolean v) { this.showResetButton = v; }
+
     public void setOnReset(Runnable r) { this.onReset = r; }
     public void setOnValueCommitted(Runnable r) { this.onValueCommitted = r; }
 
@@ -95,6 +105,7 @@ public class ParamSlider extends AbstractSliderButton {
         updateMessage();
         if (onChange != null) onChange.accept(defaultValue);
         if (onReset != null) onReset.run();
+        if (onValueCommitted != null) onValueCommitted.run();
     }
 
     @Override
@@ -151,32 +162,38 @@ public class ParamSlider extends AbstractSliderButton {
         g.fill(btnX, btnY, btnX + btnW, btnY + btnH, 0xFFe0e0e0);
 
         // ── 数值文本（左对齐，在滑轨上方避免与拖拽手柄重叠导致重影） ──
-        var f = Minecraft.getInstance().font;
-        String text = this.getMessage().getString();
-        int textX = getX() + 4;
-        int textY = getY() - 2;
-        g.drawString(f, text, textX, textY, TEXT_COLOR);
+        if (showValueText) {
+            var f = Minecraft.getInstance().font;
+            String text = this.getMessage().getString();
+            int textX = getX() + 4;
+            int textY = getY() - 2;
+            g.drawString(f, text, textX, textY, TEXT_COLOR);
+        }
 
         // ── 重置按钮（在滑块外部右侧，有间距） ──
-        int rbX = getX() + getWidth() + RESET_GAP;
-        int rbY = getY() + 2;
-        int rbH = getHeight() - 4;
-        boolean hoverReset = mouseX >= rbX && mouseX <= rbX + RESET_BTN_W && mouseY >= rbY && mouseY <= rbY + rbH;
-        // 背景
-        int rbBg = hoverReset ? RESET_HOVER_BG : RESET_BG;
-        g.fill(rbX, rbY, rbX + RESET_BTN_W, rbY + rbH, rbBg);
-        g.fill(rbX, rbY, rbX + 1, rbY + rbH, RESET_BORDER);        // 左边框
-        g.fill(rbX + RESET_BTN_W - 1, rbY, rbX + RESET_BTN_W, rbY + rbH, RESET_BORDER); // 右边框
-        // 图标文字
-        String resetIcon = "↩";
-        int iconW = f.width(resetIcon);
-        int iconX = rbX + (RESET_BTN_W - iconW) / 2;
-        int iconY = rbY + (rbH - 8) / 2;
-        g.drawString(f, resetIcon, iconX, iconY, hoverReset ? 0xFF00c896 : 0xFF999999);
+        if (showResetButton) {
+            int rbX = getX() + getWidth() + RESET_GAP;
+            int rbY = getY() + 2;
+            int rbH = getHeight() - 4;
+            boolean hoverReset = mouseX >= rbX && mouseX <= rbX + RESET_BTN_W && mouseY >= rbY && mouseY <= rbY + rbH;
+            // 背景
+            int rbBg = hoverReset ? RESET_HOVER_BG : RESET_BG;
+            g.fill(rbX, rbY, rbX + RESET_BTN_W, rbY + rbH, rbBg);
+            g.fill(rbX, rbY, rbX + 1, rbY + rbH, RESET_BORDER);        // 左边框
+            g.fill(rbX + RESET_BTN_W - 1, rbY, rbX + RESET_BTN_W, rbY + rbH, RESET_BORDER); // 右边框
+            // 图标文字
+            String resetIcon = "↩";
+            var f2 = Minecraft.getInstance().font;
+            int iconW = f2.width(resetIcon);
+            int iconX = rbX + (RESET_BTN_W - iconW) / 2;
+            int iconY = rbY + (rbH - 8) / 2;
+            g.drawString(f2, resetIcon, iconX, iconY, hoverReset ? 0xFF00c896 : 0xFF999999);
+        }
     }
 
     /** 悬停在重置按钮上时返回 true */
     public boolean isHoveringReset(int mouseX, int mouseY) {
+        if (!showResetButton) return false;
         int rbX = getX() + getWidth() + RESET_GAP;
         int rbY = getY() + 2;
         int rbH = getHeight() - 4;

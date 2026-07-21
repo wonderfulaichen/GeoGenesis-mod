@@ -20,7 +20,7 @@ public final class TypeGenerators {
     public TypeGenerators(TerrainParams p) {
         // Phase 1：构建统一样条
         this.unifiedSpline = p.buildUnifiedSpline();
-        this.useUnifiedSpline = false; // 2026-07-20: 关闭样条路径，恢复旧的 typeWeights 加权系统
+        this.useUnifiedSpline = true; // 2026-07-20: 修复后重新启用（location 修正 + 线性插值）
         
         // 向后兼容：保留旧的 center ± halfRange
         setRange(TerrainClass.PLAIN,     p.plainCenter(), p.plainHalfRange());

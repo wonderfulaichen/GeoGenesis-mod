@@ -67,16 +67,47 @@ public class SingleCurveChart {
     public void render(GuiGraphics g, int mx, int my) {
         var f = Minecraft.getInstance().font;
         // 标题由父容器绘制（避免重复）
+        // 背景 + 边框（与 DualRangeChart 一致）
         g.fill(cx, cy, cx + cw, cy + ch, 0xFF1a1f28);
-        for (double x = xMin; x <= xMax; x += (xMax - xMin) / 4) {
-            int gx = xToScreen(x); g.fill(gx, cy, gx + 1, cy + ch, 0xFF2a2f3a);
-            g.drawString(f, String.format("%.1f", x), gx - 6, cy + ch + 2, 0xFF888888);
+        g.fill(cx, cy, cx + cw, cy + 1, 0xFF333344);
+        g.fill(cx, cy + ch - 1, cx + cw, cy + ch, 0xFF333344);
+        g.fill(cx, cy, cx + 1, cy + ch, 0xFF333344);
+        g.fill(cx + cw - 1, cy, cx + cw, cy + ch, 0xFF333344);
+        // Y 轴网格 + 标签（与 DualRangeChart 一致）
+        int ySteps = 5;
+        for (int i = 0; i <= ySteps; i++) {
+            double frac = (double) i / ySteps;
+            double yVal = yMin + frac * (yMax - yMin);
+            int gy = yToScreen(yVal);
+            int gridColor = (i == 0 || i == ySteps) ? 0xFF333344 : 0xFF222730;
+            g.fill(cx, gy, cx + cw, gy + 1, gridColor);
+            g.drawString(f, String.format("%.1f", yVal), cx - 28, gy - 4, 0xFF888888);
         }
-        for (double y = yMin; y <= yMax; y += (yMax - yMin) / 4) {
-            int gy = yToScreen(y); g.fill(cx, gy, cx + cw, gy + 1, 0xFF2a2f3a);
-            g.drawString(f, String.format("%.1f", y), cx - 28, gy - 4, 0xFF888888);
+        // X 轴网格 + 标签（与 DualRangeChart 一致）
+        int xSteps = 4;
+        for (int i = 0; i <= xSteps; i++) {
+            double frac = (double) i / xSteps;
+            double xVal = xMin + frac * (xMax - xMin);
+            int gx = xToScreen(xVal);
+            int gridColor = (i == 0 || i == xSteps) ? 0xFF333344 : 0xFF222730;
+            g.fill(gx, cy, gx + 1, cy + ch, gridColor);
+            g.drawString(f, String.format("%.1f", xVal), gx - 6, cy + ch + 2, 0xFF888888);
         }
+        // 填充区域（曲线下方到X轴，半透明，与 DualRangeChart 一致）
         int segs = Math.max(2, cw);
+        int baseY = yToScreen(yMin); // X 轴 Y 坐标
+        for (int s = 0; s < segs; s++) {
+            double t0 = (double)s / segs, t1 = (double)(s + 1) / segs;
+            double x0 = xMin + t0 * (xMax - xMin), x1 = xMin + t1 * (xMax - xMin);
+            double y0 = curveFn.applyAsDouble(x0), y1 = curveFn.applyAsDouble(x1);
+            int sx0 = xToScreen(x0), sx1 = xToScreen(x1);
+            int sy0 = yToScreen(y0), sy1 = yToScreen(y1);
+            int top = Math.min(sy0, sy1);
+            int bottom = Math.max(sy0, sy1);
+            // 半透明填充区域
+            g.fill(sx0, top, sx1, baseY, 0x3344CCFF);
+        }
+        // 曲线（与 DualRangeChart 一致的虚线）
         for (int s = 0; s < segs; s++) {
             double t0 = (double)s / segs, t1 = (double)(s + 1) / segs;
             double x0 = xMin + t0 * (xMax - xMin), x1 = xMin + t1 * (xMax - xMin);
@@ -85,6 +116,7 @@ public class SingleCurveChart {
             int sx1 = xToScreen(x1), sy1 = yToScreen(y1);
             int steps = Math.max(Math.abs(sx1 - sx0), Math.abs(sy1 - sy0));
             for (int i = 0; i <= steps; i++) {
+                if ((i / 3) % 2 != 0) continue; // 虚线（与 DualRangeChart 一致）
                 double t = steps > 0 ? (double)i / steps : 0;
                 g.fill((int)(sx0 + (sx1 - sx0) * t), (int)(sy0 + (sy1 - sy0) * t),
                        (int)(sx0 + (sx1 - sx0) * t) + 1, (int)(sy0 + (sy1 - sy0) * t) + 1, 0xFF44CCFF);

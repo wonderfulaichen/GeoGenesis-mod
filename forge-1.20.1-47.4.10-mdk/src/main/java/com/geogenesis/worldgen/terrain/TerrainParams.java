@@ -42,6 +42,22 @@ public record TerrainParams(
     double shallowDeriv,
     double coastDeriv,
 
+    // ===== 海洋类型独立 lo/hi（与陆地类型一致的独立控制） =====
+    double oceanLo,      // OCEAN lo
+    double oceanHi,      // OCEAN hi
+    double deepOceanLo,  // DEEP_OCEAN lo
+    double deepOceanHi,  // DEEP_OCEAN hi
+    double shelfLo,      // CONTINENTAL_SHELF lo
+    double shelfHi,      // CONTINENTAL_SHELF hi
+    double subRidgeLo,   // SUBMARINE_RIDGE lo
+    double subRidgeHi,   // SUBMARINE_RIDGE hi
+    double seamountLo,   // SEAMOUNT lo
+    double seamountHi,   // SEAMOUNT hi
+    double lakeLo,       // LAKE lo
+    double lakeHi,       // LAKE hi
+    double riverLo,      // RIVER lo
+    double riverHi,      // RIVER hi
+
     // ===== 海床细节 =====
     /** 海床细节振幅（e 单位），默认 0.03 */
     double seabedDetail,
@@ -123,8 +139,10 @@ public record TerrainParams(
     double reliefHigh,
     /** 峰阈值（elevation），默认 0.82。不再用于 Voronoi 类型分配，保留占位。 */
     double peakE,
-    /** 雪线纬度耦合强度，默认 0.25 */
+    /** 雪线温度耦合强度（与旧 snowLatitudeInfluence 同名，但用于温度调制），默认 0.25 */
     double snowLatitudeInfluence,
+    /** 雪线湿度耦合强度（干燥→雪线升高，湿润→雪线降低），默认 0.15 */
+    double snowHumidityInfluence,
 
     // ===== 预览/旧 API 兼容参数 =====
     /** 水平缩放（预览用），默认 1 */
@@ -141,6 +159,8 @@ public record TerrainParams(
     int mountainCap,
     /** 海沟深度下限 Y，默认 -48 */
     int trenchDepth,
+    /** 垂直缩放比例（1-8），预览用，默认 1.0 */
+    double verticalScale,
 
     // ===== 地形类型 eLand 高度范围（CENTER + HALF_RANGE） =====
     /** 平原中心 eLand，默认 0.0375 */
@@ -180,6 +200,14 @@ public record TerrainParams(
             0.0, 0.8, 0.0, 0.0,
             // seabed
             0.03,
+            // 海洋类型独立 lo/hi（默认值）
+            -0.35, -0.06,  // OCEAN
+            -0.50, -0.35,  // DEEP_OCEAN
+            -0.25, -0.08,  // CONTINENTAL_SHELF
+            -0.20, -0.05,  // SUBMARINE_RIDGE
+            -0.15, -0.02,  // SEAMOUNT
+            -0.02,  0.01,  // LAKE
+            -0.03,  0.00,  // RIVER
             // province
             4000.0, 1.0, 1.0, 1.0, 0.8,
             // land（校准于新映射：e→[seaLevel,maxY] 线性）
@@ -195,10 +223,11 @@ public record TerrainParams(
             // layered overlay params（分层叠加新增，对标 TerraForged）
             2200.0, 450.0, 0.025,       // mountainMaskScale,microDetailScale,microDetailAmp
             // classification thresholds + snow latitude coupling
-            0.25, 0.04, 0.82, 0.25,    // elevHigh↑0.25,reliefHigh↑0.04,peakE,snowLatitudeInfluence
+            0.25, 0.04, 0.82, 0.25, 0.15,  // elevHigh↑0.25,reliefHigh↑0.04,peakE,snowLatitudeInfluence,snowHumidityInfluence
 
             // preview compat（加大 horizontalScale 减少 preview 计算量）
             4.0, 63, 0.70, -64, 320, 256, -48,
+            1.0,  // verticalScale
             // type elevation ranges (center, halfRange)
             0.0375, 0.0225,  // PLAIN
             0.22, 0.15,      // HILLS
@@ -218,9 +247,9 @@ public record TerrainParams(
         return new double[]{deepOceanLoc, shelfLoc, shallowLoc, coastLoc};
     }
 
-    /** 海洋样条深度值 */
+    /** 海洋样条深度值（使用新的独立 lo/hi 配置字段） */
     public double[] oceanValues() {
-        return new double[]{deepOceanDepth, shelfDepth, shallowDepth, 0.0};
+        return new double[]{deepOceanHi, shelfHi, oceanHi, 0.0};
     }
 
     /** 海洋样条导数 */

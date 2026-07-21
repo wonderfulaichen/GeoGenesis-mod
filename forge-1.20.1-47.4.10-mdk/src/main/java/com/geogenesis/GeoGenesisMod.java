@@ -42,6 +42,10 @@ public class GeoGenesisMod {
 
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, GeoGenesisConfig.SPEC);
 
+        // 加载气候阈值配置
+        com.geogenesis.worldgen.climate.Climate.loadFromConfig();
+        com.geogenesis.worldgen.climate.ClimateZone.loadFromConfig();
+
         var bus = net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext.get().getModEventBus();
         GENERATORS.register(bus);
         BIOME_SOURCES.register(bus);

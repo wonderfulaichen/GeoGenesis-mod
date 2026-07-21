@@ -12,7 +12,8 @@ import java.util.function.IntSupplier;
  * 模板D：世界高度柱状图（World Height Bar）。
  *
  * <p>显示世界垂直范围参数（最高点/海平面/世界底），
- * 以水平彩色标记在竖轴上的位置表示，可拖拽。
+ * 以竖直分层高度带图表表示，可拖拽调整各层级高度。
+ * 参考 MC 原版世界生成 UI 设计。
  */
 public class WorldHeightBar {
 
@@ -23,7 +24,17 @@ public class WorldHeightBar {
     private Runnable onMarkDirty = () -> {};
     private MarkHandle dragging;
 
+    // 分层颜色（从高到低）：山脊、陆地、浅海、深海
+    private static final int COLOR_PEAK     = 0xFFFF4444; // 红色（最高点）
+    private static final int COLOR_LAND     = 0xFFFF8844; // 橙色（陆地）
+    private static final int COLOR_SEA      = 0xFF4488FF; // 蓝色（海洋）
+    private static final int COLOR_DEEP     = 0xFF2a3a4a; // 深蓝（深海）
+    private static final int COLOR_BG       = 0xFF1a1f28; // 背景色
+    private static final int COLOR_BORDER   = 0xFF333333; // 边框色
+    private static final int COLOR_SEA_LINE = 0x880088FF; // 海平面线
+
     private int barX, barY, barW = 24, barH = 200;
+    private static final int MARK_SIZE = 6;
 
     public WorldHeightBar() {}
 
@@ -54,37 +65,88 @@ public class WorldHeightBar {
     }
 
     public void setBounds(int x, int y, int w, int h) {
-        barX = x + 50; barY = y + 10;
-        barW = Math.max(16, w - 70); barH = Math.max(60, h - 30);
+        // 标签在右侧，预留空间；y 应为标题栏下方位置
+        barX = x + 4; barY = y + 12; // 增加偏移确保在标题栏下方
+        barW = Math.max(20, w - 60); barH = Math.max(80, h - 28);
         layoutHandles();
     }
-    public int getHeight() { return barH + 30; }
+    public int getHeight() { return barH + 20; }
     public void refreshFromConfig() { layoutHandles(); }
+
+    /** 将世界 Y 坐标转换为屏幕 Y 坐标 */
+    private int worldYToScreen(int worldY) {
+        int yTop = marks.get(0).getter().getAsInt();
+        int yBot = marks.get(marks.size() - 1).getter().getAsInt();
+        double frac = (double)(yTop - worldY) / Math.max(1, yTop - yBot);
+        return barY + (int)(frac * barH);
+    }
+
+    /** 将屏幕 Y 坐标转换为世界 Y 坐标 */
+    private int screenYToWorld(int screenY) {
+        int yTop = marks.get(0).getter().getAsInt();
+        int yBot = marks.get(marks.size() - 1).getter().getAsInt();
+        double frac = (double)(screenY - barY) / barH;
+        return (int)Math.round(yTop - frac * (yTop - yBot));
+    }
 
     public void render(GuiGraphics g, int mx, int my) {
         var f = Minecraft.getInstance().font;
-        g.fill(barX, barY, barX + barW, barY + barH, 0xFF1a1f28);
-        g.fill(barX, barY, barX + barW, barY + 1, 0xFF333333);
-        g.fill(barX, barY + barH - 1, barX + barW, barY + barH, 0xFF333333);
 
-        if (marks.size() >= 2) {
-            int seaY = handles.get(1).getY();
-            g.fill(barX, seaY, barX + barW, seaY + 1, 0x880088FF);
-        }
+        // 1. 背景
+        g.fill(barX, barY, barX + barW, barY + barH, COLOR_BG);
+        g.fill(barX, barY, barX + barW, barY + 1, COLOR_BORDER);
+        g.fill(barX, barY + barH - 1, barX + barW, barY + barH, COLOR_BORDER);
+
+        if (marks.size() < 3) return;
+
+        int maxY = marks.get(0).getter().getAsInt();  // 最高点
+        int seaLevel = marks.get(1).getter().getAsInt(); // 海平面
+        int minY = marks.get(2).getter().getAsInt();  // 世界底
+
+        // 2. 分层颜色带（从上到下）
+        int seaScreenY = worldYToScreen(seaLevel);
+        int maxScreenY = worldYToScreen(maxY);
+        int minScreenY = worldYToScreen(minY);
+
+        // 深海（世界底到海平面）
+        g.fill(barX, seaScreenY, barX + barW, minScreenY, COLOR_DEEP);
+        // 浅海（海平面向下20%处到海平面）
+        int shallowEnd = seaScreenY + (minScreenY - seaScreenY) / 5;
+        g.fill(barX, seaScreenY, barX + barW, shallowEnd, COLOR_SEA);
+        // 海平面线
+        g.fill(barX, seaScreenY - 1, barX + barW, seaScreenY + 2, COLOR_SEA_LINE);
+        // 陆地（最高点到海平面）
+        g.fill(barX, maxScreenY, barX + barW, seaScreenY, COLOR_LAND);
+        // 山脊（最高点向上20%处到最高点）
+        int peakStart = maxScreenY - (seaScreenY - maxScreenY) / 5;
+        g.fill(barX, peakStart, barX + barW, maxScreenY, COLOR_PEAK);
+
+        // 3. 标记（菱形）
         for (MarkHandle h : handles) {
             boolean sel = dragging == h;
             h.hovered = h.hitTest(mx, my);
-            g.fill(barX, h.getY() - 1, barX + barW, h.getY() + 2, h.mark.color());
-            int cx = h.getX(), cy = h.getY();
-            int rx = 6, ry = 6;
-            for (int dy = -ry; dy <= ry; dy++) {
-                for (int dx = -rx; dx <= rx; dx++) {
-                    if (Math.abs(dx) + Math.abs(dy) <= Math.max(rx, ry))
-                        g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, sel ? 0xFFFFFFFF : h.mark.color());
-                }
-            }
+            drawDiamond(g, h.getX(), h.getY(), MARK_SIZE, sel ? 0xFFFFFFFF : h.mark.color());
+            // 右侧标签
             String label = h.mark.name() + "=" + h.mark.getter().getAsInt();
-            g.drawString(f, label, barX + barW + 6, h.getY() - 4, h.mark.color());
+            g.drawString(f, label, barX + barW + 4, h.getY() - 4, h.mark.color());
+        }
+
+        // 4. 刻度标记（在柱内居中显示）
+        String maxStr = String.valueOf(maxY);
+        String seaStr = String.valueOf(seaLevel);
+        String minStr = String.valueOf(minY);
+        g.drawString(f, maxStr, barX + (barW - f.width(maxStr)) / 2, maxScreenY - 4, 0xFF888888);
+        g.drawString(f, seaStr, barX + (barW - f.width(seaStr)) / 2, seaScreenY - 4, 0xFF888888);
+        g.drawString(f, minStr, barX + (barW - f.width(minStr)) / 2, minScreenY - 4, 0xFF888888);
+    }
+
+    /** 绘制菱形 */
+    private void drawDiamond(GuiGraphics g, int cx, int cy, int size, int color) {
+        for (int dy = -size; dy <= size; dy++) {
+            int halfW = size - Math.abs(dy);
+            if (halfW > 0) {
+                g.fill(cx - halfW, cy + dy, cx + halfW + 1, cy + dy + 1, color);
+            }
         }
     }
 
@@ -120,11 +182,23 @@ public class WorldHeightBar {
     public boolean mouseReleased(double mx, double my, int btn) {
         if (dragging != null) {
             // 松手时根据最终位置计算值并写入配置
-            int yTop = marks.get(0).getter().getAsInt();
-            int yBot = marks.get(marks.size() - 1).getter().getAsInt();
-            double frac = (double)(dragging.getY() - barY) / barH;
-            int newVal = (int)Math.round(yTop - frac * (yTop - yBot));
-            newVal = Math.max(yBot, Math.min(yTop, newVal));
+            int newVal = screenYToWorld(dragging.getY());
+            int idx = handles.indexOf(dragging);
+            // 高度顺序约束：最高点 > 海平面 > 世界底
+            if (idx == 0) {
+                // 最高点：必须 > 海平面
+                int seaLevel = marks.get(1).getter().getAsInt();
+                newVal = Math.max(seaLevel + 1, newVal);
+            } else if (idx == 1) {
+                // 海平面：必须 > 世界底 且 < 最高点
+                int minY = marks.get(2).getter().getAsInt();
+                int maxY = marks.get(0).getter().getAsInt();
+                newVal = Math.max(minY + 1, Math.min(maxY - 1, newVal));
+            } else if (idx == 2) {
+                // 世界底：必须 < 海平面
+                int seaLevel = marks.get(1).getter().getAsInt();
+                newVal = Math.min(seaLevel - 1, newVal);
+            }
             dragging.mark.setter().accept(newVal);
             dragging = null;
             if (onMarkDirty != null) onMarkDirty.run();
@@ -141,7 +215,7 @@ public class WorldHeightBar {
         public void setPosition(int x, int y) { px = x; py = y; }
         public int getX() { return px; }
         public int getY() { return py; }
-        @Override public boolean hitTest(int mx, int my) { return Math.abs(mx - px) <= 10 && Math.abs(my - py) <= 8; }
+        @Override public boolean hitTest(int mx, int my) { return Math.abs(mx - px) <= MARK_SIZE && Math.abs(my - py) <= MARK_SIZE; }
         @Override public void render(GuiGraphics g, int mx, int my, boolean selected) {}
         @Override public void renderTooltip(GuiGraphics g, int mx, int my) {}
     }
