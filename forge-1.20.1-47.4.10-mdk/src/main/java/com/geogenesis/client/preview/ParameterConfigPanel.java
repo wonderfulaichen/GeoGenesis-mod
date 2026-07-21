@@ -58,7 +58,7 @@ public class ParameterConfigPanel {
     private final List<ParamSlider> heightSliders = new ArrayList<>();
     private ParamSlider scaleSlider;
 
-    private final MixerPanel heightPanel = new MixerPanel("▸ 世界高度");
+    private final MixerPanel heightPanel = new MixerPanel("世界高度");
     private final MixerPanel scalePanel = new MixerPanel("尺度预览");
 
     private static final int BASIC_ROW_H = 20;
