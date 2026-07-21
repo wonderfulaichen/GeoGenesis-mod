@@ -1,5 +1,7 @@
 package com.geogenesis.worldgen.terrain;
 
+import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.worldgen.climate.ClimateSpline;
 import com.geogenesis.worldgen.noise.*;
 import com.geogenesis.worldgen.river.HeightProvider;
 
@@ -26,6 +28,7 @@ public final class CellGenerator implements HeightProvider {
     private final OceanFeatures oceanFeatures;
     private final double continentBias;
     private final double seabedAmp;
+    private final TerrainParams params;
 
     // 温度参数（v5.10 正弦纬度模型，参考 TF/RTF）
     private static final double TEMP_FREQ = 1.0 / 6000.0; // 6000 块一个完整温度周期
@@ -44,6 +47,7 @@ public final class CellGenerator implements HeightProvider {
         this.oceanFeatures = new OceanFeatures();
         this.continentBias = p.continentBias();
         this.seabedAmp = p.seabedDetail();
+        this.params = p;
 
         // 气候噪声
         this.tempWarp = new Frequency(new Simplex(501), 1.0 / 1500.0);
@@ -159,7 +163,7 @@ public final class CellGenerator implements HeightProvider {
         cell.humidity = hum;
 
         // 9. 分类（使用连续 typeWeights + 已计算的温度/湿度 + 海洋特征）
-        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, temp, oceanFeat);
+        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, temp, hum, oceanFeat);
         cell.continentNoise = c;
         cell.shape = eLand * 2.0 - 1.0;
 
@@ -172,7 +176,7 @@ public final class CellGenerator implements HeightProvider {
      */
     public TerrainClass classify(double c, double e, double eLand,
                                   TerrainClass cellType, double[] typeWeights,
-                                  double temperature,
+                                  double temperature, double humidity,
                                   OceanFeatures.FeatureResult oceanFeat) {
         if (e < 0.0) {
             // 海洋地形细分
@@ -196,7 +200,17 @@ public final class CellGenerator implements HeightProvider {
         if (mountW > 0.35 && eLand > 0.60) {
             return TerrainClass.PEAK;
         }
-        if (eLand > 0.45 && temperature < -0.1) {
+        // SNOW 判定：高海拔 + 寒冷温度 + 湿度条件
+        // 双曲线模型：cold+wet → 雪线低（容易积雪），cold+dry → 雪线高（难积雪）
+        // 使用实例化 params 而非静态温度样条
+        double snowBase = params.snowLine();
+        double snowTempInf = params.snowLatitudeInfluence();
+        double snowHumInf = params.snowHumidityInfluence();
+        double tNorm = (temperature + 1.0) / 2.0;  // [0,1], cold=0, hot=1
+        double hNorm = (humidity + 1.0) / 2.0;     // [0,1], dry=0, wet=1
+        double effectiveSnowElev = snowBase + (tNorm - 0.5) * snowTempInf - (hNorm - 0.5) * snowHumInf;
+        effectiveSnowElev = Math.max(0.02, Math.min(1.0, effectiveSnowElev));
+        if (eLand > effectiveSnowElev && eLand > 0.15) {
             return TerrainClass.SNOW;
         }
         return cellType;
@@ -207,8 +221,8 @@ public final class CellGenerator implements HeightProvider {
      */
     public static TerrainClass classifyTerrain(double ne, double eLand,
                                                 TerrainClass cellType,
-                                                double temperature) {
-        return classifyTerrain(ne, eLand, cellType, temperature, null);
+                                                double temperature, double humidity) {
+        return classifyTerrain(ne, eLand, cellType, temperature, humidity, null);
     }
 
     /**
@@ -219,6 +233,7 @@ public final class CellGenerator implements HeightProvider {
     public static TerrainClass classifyTerrain(double ne, double eLand,
                                                 TerrainClass cellType,
                                                 double temperature,
+                                                double humidity,
                                                 double[] typeWeights) {
         if (ne < 0.0) {
             if (ne > -0.08) return TerrainClass.CONTINENTAL_SHELF;
@@ -231,7 +246,16 @@ public final class CellGenerator implements HeightProvider {
             ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
         if (mountW > 0.35 && eLand > 0.60) return TerrainClass.PEAK;
 
-        if (eLand > 0.45 && temperature < -0.1) return TerrainClass.SNOW;
+        // SNOW 判定：高海拔 + 寒冷温度 + 湿度（双曲线模型）
+        GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+        double snowBase = cfg != null ? cfg.snowLine.get() : 0.70;
+        double snowTempInf = cfg != null ? cfg.snowLatitudeInfluence.get() : 0.25;
+        double snowHumInf = cfg != null ? cfg.snowHumidityInfluence.get() : 0.15;
+        double tNorm = (temperature + 1.0) / 2.0;
+        double hNorm = (humidity + 1.0) / 2.0;
+        double effectiveSnowElev = snowBase + (tNorm - 0.5) * snowTempInf - (hNorm - 0.5) * snowHumInf;
+        effectiveSnowElev = Math.max(0.02, Math.min(1.0, effectiveSnowElev));
+        if (eLand > effectiveSnowElev && eLand > 0.15) return TerrainClass.SNOW;
         if (typeWeights != null && typeWeights.length >= TerrainClass.COUNT) {
             return TypeLandShape.dominantFromWeights(typeWeights);
         }
@@ -239,6 +263,28 @@ public final class CellGenerator implements HeightProvider {
     }
 
     // ===== 内联工具 =====
+
+    /**
+     * 计算温度的"寒冷权重"（样条连续值）。
+     * 综合 frozenWeight + coldWeight，用于 SNOW/冰雪判定。
+     * 在温度阈值附近平滑过渡，避免硬边界跳变。
+     */
+    private static double temperatureColdWeight(double temperature) {
+        GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+        if (cfg != null) {
+            ClimateSpline spl = ClimateSpline.temperature(
+                cfg.tempFrozenThreshold.get(),
+                cfg.tempColdThreshold.get(),
+                cfg.tempWarmThreshold.get(),
+                cfg.tempHotThreshold.get());
+            // frozen + cold 区域权重之和
+            return spl.zoneWeight(temperature, ClimateSpline.TEMP_FROZEN)
+                 + spl.zoneWeight(temperature, ClimateSpline.TEMP_COLD);
+        }
+        // 默认：简单线性插值
+        return temperature < -0.6 ? 1.0 : temperature < -0.2 ? (-0.2 - temperature) / 0.4 : 0.0;
+    }
+
     private static double clamp(double v, double lo, double hi) {
         return v < lo ? lo : (v > hi ? hi : v);
     }

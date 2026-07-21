@@ -61,7 +61,7 @@ public class ControlPoint extends ClickableRegion {
     @Override
     public void onDrag(int dx, int dy) {
         cx += dx; cy += dy;
-        if (onValueChanged != null) onValueChanged.run();
+        // 注意：不在拖动时触发 onValueChanged，只在释放时触发，避免频繁写入配置文件
     }
 
     @Override

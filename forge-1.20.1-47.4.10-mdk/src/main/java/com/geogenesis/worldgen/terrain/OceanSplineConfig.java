@@ -75,6 +75,39 @@ public record OceanSplineConfig(
         );
     }
 
+    /**
+     * 从 TerrainParams 构建 OceanSplineConfig（使用独立的 lo/hi 值）。
+     * <p>
+     * 每个海洋类型使用独立的 lo/hi 配置，与陆地类型一致。
+     */
+    public static OceanSplineConfig fromTerrainParams(TerrainParams p) {
+        // 为每个类型构建简单的2 点样条（lo 和 hi 各自恒定）
+        // 格式：loc0, val0, deriv0, loc1, val1, deriv1
+        return new OceanSplineConfig(
+            // OCEAN
+            0.0, p.oceanLo(), 0.0, 1.0, p.oceanLo(), 0.0,
+            0.0, p.oceanHi(), 0.0, 1.0, p.oceanHi(), 0.0,
+            // DEEP_OCEAN
+            0.0, p.deepOceanLo(), 0.0, 1.0, p.deepOceanLo(), 0.0,
+            0.0, p.deepOceanHi(), 0.0, 1.0, p.deepOceanHi(), 0.0,
+            // CONTINENTAL_SHELF
+            0.0, p.shelfLo(), 0.0, 1.0, p.shelfLo(), 0.0,
+            0.0, p.shelfHi(), 0.0, 1.0, p.shelfHi(), 0.0,
+            // SUBMARINE_RIDGE
+            0.0, p.subRidgeLo(), 0.0, 1.0, p.subRidgeLo(), 0.0,
+            0.0, p.subRidgeHi(), 0.0, 1.0, p.subRidgeHi(), 0.0,
+            // SEAMOUNT
+            0.0, p.seamountLo(), 0.0, 1.0, p.seamountLo(), 0.0,
+            0.0, p.seamountHi(), 0.0, 1.0, p.seamountHi(), 0.0,
+            // LAKE
+            0.0, p.lakeLo(), 0.0, 1.0, p.lakeLo(), 0.0,
+            0.0, p.lakeHi(), 0.0, 1.0, p.lakeHi(), 0.0,
+            // RIVER
+            0.0, p.riverLo(), 0.0, 1.0, p.riverLo(), 0.0,
+            0.0, p.riverHi(), 0.0, 1.0, p.riverHi(), 0.0
+        );
+    }
+
     /** 构建 OCEAN 内层样条 */
     public UnifiedSpline.InnerSpline buildOceanInner() {
         return new UnifiedSpline.InnerSpline(

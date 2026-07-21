@@ -47,7 +47,7 @@ public class TerrainConfigPanel {
 
     public TerrainConfigPanel() {
         chart.setOnMarkDirty(() -> { if (onMarkDirty != null) onMarkDirty.run(); });
-        // 控制点拖动每帧：实时同步相关滑块 + 图表耦合控制点（不写 config，不触发 markDirty）
+        // 控制点拖动每帧：实时同步当前滑块（不写 config，不触发 markDirty）
         chart.setOnValueChanged(() -> {
             int idx = chart.getDraggingSlotIndex();
             if (idx < 0) return;
@@ -56,19 +56,7 @@ public class TerrainConfigPanel {
             // 更新当前拖动滑块
             if (isHi) hiSliders.get(idx).setCurrentValue(e);
             else loSliders.get(idx).setCurrentValue(e);
-            // 海洋耦合：相邻 slot 共享同一深度值，实时同步滑块 + 图表控制点
-            // 深海 hi (idx=0, hi) ↔ 浅海 lo (idx=1, lo)
-            // 浅海 hi (idx=1, hi) ↔ 大陆架 lo (idx=2, lo)
-            // 大陆架 hi (idx=2, hi) ↔ 海岸 lo (idx=3, lo)
-            if (idx < 4) {
-                if (isHi && idx + 1 < 4) {
-                    loSliders.get(idx + 1).setCurrentValue(e);
-                    chart.updateControlPoint(idx + 1, false, e);
-                } else if (!isHi && idx > 0) {
-                    hiSliders.get(idx - 1).setCurrentValue(e);
-                    chart.updateControlPoint(idx - 1, true, e);
-                }
-            }
+            // 注意：海洋类型独立控制，不耦合相邻 slot
         });
         // 控制点 release → 同步所有滑块 + 触发预览重建
         chart.setOnControlPointCommitted(() -> {
@@ -108,25 +96,68 @@ public class TerrainConfigPanel {
         int maxY = c.maxY.get();
         int minY = c.minY.get();
         chart.setYWorldRange(minY, maxY);
-        chart.setEToWorldY(e -> seaLevel + e * (maxY - seaLevel));
+        // 与 HeightCurve.heightFromE() 一致：e≤0 用 (seaLevel - minY)，e>0 用 (maxY - seaLevel)
+        chart.setEToWorldY(e -> {
+            if (e <= 0.0) {
+                return seaLevel - (-e) * (seaLevel - minY);
+            } else {
+                return seaLevel + e * (maxY - seaLevel);
+            }
+        });
 
         slots.clear();
         loSliders.clear();
         hiSliders.clear();
+        
+        // 存储每个 slot 的默认值
+        List<Double> defaultLoValues = new ArrayList<>();
+        List<Double> defaultHiValues = new ArrayList<>();
 
-        // 海洋类型（可调，lo = 上一个类型的 depth，hi = 当前类型的 depth）
-        // 深海 lo=-1 固定，hi=deepOceanDepth；浅海 lo=deepOceanDepth → 同步深海 hi
-        slots.add(oceanSlot("深海", 0xFF1A4D80, null, c.deepOceanDepth));
-        slots.add(oceanSlot("浅海", 0xFF3070A0, c.deepOceanDepth, c.shelfDepth));
-        slots.add(oceanSlot("大陆架", 0xFF5A8FB0, c.shelfDepth, c.shallowDepth));
-        slots.add(oceanSlot("海岸", 0xFF8AB0CC, c.shallowDepth, null));
+        // 海洋类型（独立 lo/hi，与陆地类型一致）
+        slots.add(oceanIndependentSlot("深海", 0xFF1A4D80, c.deepOceanLo, c.deepOceanHi));
+        defaultLoValues.add(c.deepOceanLo.getDefault());
+        defaultHiValues.add(c.deepOceanHi.getDefault());
+        
+        slots.add(oceanIndependentSlot("大陆架", 0xFF3070A0, c.shelfLo, c.shelfHi));
+        defaultLoValues.add(c.shelfLo.getDefault());
+        defaultHiValues.add(c.shelfHi.getDefault());
+        
+        slots.add(oceanIndependentSlot("洋中脊", 0xFF5A8FB0, c.subRidgeLo, c.subRidgeHi));
+        defaultLoValues.add(c.subRidgeLo.getDefault());
+        defaultHiValues.add(c.subRidgeHi.getDefault());
+        
+        slots.add(oceanIndependentSlot("海山", 0xFF4A90B0, c.seamountLo, c.seamountHi));
+        defaultLoValues.add(c.seamountLo.getDefault());
+        defaultHiValues.add(c.seamountHi.getDefault());
+        
+        slots.add(oceanIndependentSlot("湖泊", 0xFF2080D0, c.lakeLo, c.lakeHi));
+        defaultLoValues.add(c.lakeLo.getDefault());
+        defaultHiValues.add(c.lakeHi.getDefault());
+        
+        slots.add(oceanIndependentSlot("河流", 0xFF3090E0, c.riverLo, c.riverHi));
+        defaultLoValues.add(c.riverLo.getDefault());
+        defaultHiValues.add(c.riverHi.getDefault());
 
         // 陆地类型（交互式，center±halfRange）
         slots.add(interactiveSlot("平原", 0xFF44AA66, c.plainCenter, c.plainHalfRange));
+        defaultLoValues.add(c.plainCenter.getDefault() - c.plainHalfRange.getDefault());
+        defaultHiValues.add(c.plainCenter.getDefault() + c.plainHalfRange.getDefault());
+        
         slots.add(interactiveSlot("丘陵", 0xFF88CC44, c.hillsCenter, c.hillsHalfRange));
+        defaultLoValues.add(c.hillsCenter.getDefault() - c.hillsHalfRange.getDefault());
+        defaultHiValues.add(c.hillsCenter.getDefault() + c.hillsHalfRange.getDefault());
+        
         slots.add(interactiveSlot("山脉", 0xFF884422, c.mountainsCenter, c.mountainsHalfRange));
+        defaultLoValues.add(c.mountainsCenter.getDefault() - c.mountainsHalfRange.getDefault());
+        defaultHiValues.add(c.mountainsCenter.getDefault() + c.mountainsHalfRange.getDefault());
+        
         slots.add(interactiveSlot("高原", 0xFFCC8844, c.plateauCenter, c.plateauHalfRange));
+        defaultLoValues.add(c.plateauCenter.getDefault() - c.plateauHalfRange.getDefault());
+        defaultHiValues.add(c.plateauCenter.getDefault() + c.plateauHalfRange.getDefault());
+        
         slots.add(interactiveSlot("盆地", 0xFFAA6644, c.basinCenter, c.basinHalfRange));
+        defaultLoValues.add(c.basinCenter.getDefault() - c.basinHalfRange.getDefault());
+        defaultHiValues.add(c.basinCenter.getDefault() + c.basinHalfRange.getDefault());
 
         chart.setSlots(slots);
 
@@ -145,37 +176,51 @@ public class TerrainConfigPanel {
 
             double slMax = (i < 4) ? 0.0 : 1.0;  // 海洋滑块上限 0.0，陆地保持 1.0
             ParamSlider lo = makeSlider(loVal, -1.0, slMax, formatter, s.loSetter(), false, i, false);
+            lo.setDefaultValue(defaultLoValues.get(i));
             lo.active = !loRo;
             loSliders.add(lo);
 
             ParamSlider hi = makeSlider(hiVal, -1.0, slMax, formatter, s.hiSetter(), false, i, true);
+            hi.setDefaultValue(defaultHiValues.get(i));
             hi.active = !hiRo;
             hiSliders.add(hi);
         }
+        // 设置地形类型滑块 tooltip
+        String[] typeTooltips = {
+            "深海", "大陆架", "洋中脊", "海山", "湖泊", "河流",
+            "平原", "丘陵", "山脉", "高原", "盆地"
+        };
+        for (int i = 0; i < loSliders.size() && i < typeTooltips.length; i++) {
+            String name = typeTooltips[i];
+            loSliders.get(i).setTooltipText(name + " 下限（地形 e-space 最低值，低于此值不留该类型）");
+            hiSliders.get(i).setTooltipText(name + " 上限（地形 e-space 最高值，高于此值不留该类型）");
+        }
     }
 
-    /** 创建带联动钩子的 ParamSlider：onChange 实时同步 chart 自身+海洋耦合点，onValueCommitted 写配置 */
+    /** 创建带联动钩子的 ParamSlider：onChange 实时同步 chart 自身+钳制 lo≤hi，onValueCommitted 写配置 */
     private ParamSlider makeSlider(double val, double min, double max,
                                     Function<Double, String> fmt,
                                     DoubleConsumer setter, boolean qmark,
                                     int slotIdx, boolean isHi) {
-        // onChange: 拖动时实时同步 chart 对应控制点 + 海洋耦合点（不写 config，避免文件锁）
-        ParamSlider ps = new ParamSlider(0, 0, 100, min, max, val, v -> {
-            chart.updateControlPoint(slotIdx, isHi, v);
-            // 海洋耦合：相邻 slot 共享同一深度值
-            if (slotIdx < 4) {
-                if (isHi && slotIdx + 1 < 4) {
-                    chart.updateControlPoint(slotIdx + 1, false, v);
-                    if (slotIdx + 1 < loSliders.size()) loSliders.get(slotIdx + 1).setCurrentValue(v);
-                } else if (!isHi && slotIdx > 0) {
-                    chart.updateControlPoint(slotIdx - 1, true, v);
-                    if (slotIdx - 1 < hiSliders.size()) hiSliders.get(slotIdx - 1).setCurrentValue(v);
-                }
+        ParamSlider[] holder = new ParamSlider[1];
+        // onChange: 拖动时实时同步 chart 对应控制点 + 钳制 lo ≤ hi 不翻转（不写 config）
+        holder[0] = new ParamSlider(0, 0, 100, min, max, val, v -> {
+            // 实时钳制 lo ≤ hi
+            DualRangeChart.Slot slot = slots.get(slotIdx);
+            if (!isHi) {
+                // 拖动 lo：不能超过当前 hi
+                double hiVal = slot.hiGetter().getAsDouble();
+                if (v > hiVal) { v = hiVal; holder[0].setCurrentValue(v); }
+            } else {
+                // 拖动 hi：不能低于当前 lo
+                double loVal = slot.loGetter().getAsDouble();
+                if (v < loVal) { v = loVal; holder[0].setCurrentValue(v); }
             }
+            chart.updateControlPoint(slotIdx, isHi, v);
         }, fmt);
         // onValueCommitted: release 时写 config + 触发预览
         if (setter != null) {
-            ps.setOnValueCommitted(() -> {
+            holder[0].setOnValueCommitted(() -> {
                 // 诊断：记录滑块提交前所有槽位值
                 StringBuilder sb = new StringBuilder("SLIDER_COMMIT [");
                 for (int i = 0; i < slots.size(); i++) {
@@ -188,12 +233,12 @@ public class TerrainConfigPanel {
                 sb.append("]");
                 System.out.println(sb.toString());
 
-                setter.accept(ps.getCurrentValue());
+                setter.accept(holder[0].getCurrentValue());
                 chart.refreshFromConfig();
                 if (onMarkDirty != null) onMarkDirty.run();
             });
         }
-        return ps;
+        return holder[0];
     }
 
     /** 海洋 slot：lo = prevDepth（null 表示固定 -1），hi = depth（null 表示固定 0.02） */
@@ -225,6 +270,24 @@ public class TerrainConfigPanel {
     /** 海洋 hi setter 写入：clamp 到 [lower, 0]，保证 hi ≥ lower (即当前 slot hi ≥ 当前 slot lo) */
     private static double clampOceanHi(double v, double lower) {
         return Math.max(lower, Math.min(0.0, v));
+    }
+
+    /** 海洋类型独立 slot：使用独立的 lo/hi 配置字段（与陆地类型一致） */
+    private static DualRangeChart.Slot oceanIndependentSlot(String name, int color,
+        ForgeConfigSpec.DoubleValue loCfg, ForgeConfigSpec.DoubleValue hiCfg) {
+        double loVal = loCfg.get();
+        double hiVal = hiCfg.get();
+        // loSetter：clamp 到 [-1, current hi]，保证 lo ≤ hi
+        DoubleConsumer loSet = v -> {
+            double upper = hiCfg.get();
+            loCfg.set(clampOceanLo(v, upper));
+        };
+        // hiSetter：clamp 到 [current lo, 0]，保证 hi ≥ lo
+        DoubleConsumer hiSet = v -> {
+            double lower = loCfg.get();
+            hiCfg.set(clampOceanHi(v, lower));
+        };
+        return new DualRangeChart.Slot(name, color, loVal, hiVal, loSet, hiSet, loCfg::get, hiCfg::get);
     }
 
     /** 陆地区域 slot：lo = center - halfRange, hi = center + halfRange */

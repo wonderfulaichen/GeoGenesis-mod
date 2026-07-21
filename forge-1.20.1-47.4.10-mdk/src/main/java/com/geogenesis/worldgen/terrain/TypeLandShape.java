@@ -85,28 +85,36 @@ public final class TypeLandShape {
 
     /**
      * Phase 2：通过 3 层嵌套样条计算 eLand。
-     * 
-     * 1. 计算大陆性 c
-     * 2. 计算类型位置（typePosition）
-     * 3. 计算类型噪声值（noiseValue）
-     * 4. 通过 3 层样条计算 eLand
+     * <p>
+     * 海洋/水域类型：使用旧路径（generators.getTypeLo/Hi + typeWeights 加权），
+     * 因为中层样条只有陆地类型节点，海洋内层样条未集成。
+     * <p>
+     * 陆地类型：使用 3 层样条（c → typePosition → noiseValue → eLand）。
      */
     private double sampleFromUnifiedSpline(VoronoiRegionField.BlendResult blend, double wx, double wz) {
+        // 检查主导类型是否为海洋/水域
+        TerrainClass dominant = dominantFromWeights(blend.typeWeights);
+        if (dominant.isWater()) {
+            // 海洋/水域类型：使用旧路径（正确使用 generators.getTypeLo/Hi）
+            return sampleFromTypeWeights(blend, wx, wz);
+        }
+        
+        // 陆地类型：使用 3 层样条
         // 1. 计算大陆性 c
         double c = continent.sample(wx, wz);
         double cBiased = c - continentBias;
         
         // 2. 计算类型位置（typePosition）
-        // 使用 typeWeights 的加权平均位置
+        // 只用陆地类型的权重计算（海洋类型不参与中层样条）
         double[] tw = blend.typeWeights;
         double typePosition = 0;
         double totalW = 0;
         if (tw != null) {
-            for (int i = 0; i < tw.length && i < TerrainClass.COUNT; i++) {
-                double w = tw[i];
+            for (TerrainClass type : TypeNoiseProvider.LAND_TYPES) {
+                double w = tw[type.ordinal()];
                 if (w > 0.001) {
                     // 类型位置：PLAIN=0.0, HILLS=0.25, MOUNTAINS=0.5, PLATEAU=0.75, BASIN=1.0
-                    double typePos = (double) i / (TerrainClass.COUNT - 1);
+                    double typePos = (double) type.ordinal() / (TerrainClass.COUNT - 1);
                     typePosition += w * typePos;
                     totalW += w;
                 }

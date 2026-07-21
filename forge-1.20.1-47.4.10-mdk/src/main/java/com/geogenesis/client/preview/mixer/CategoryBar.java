@@ -21,12 +21,21 @@ public class CategoryBar {
     private String title;
     private final List<Category> categories = new ArrayList<>();
     private final List<Boundary> boundaries = new ArrayList<>();
+    private final List<Double> defaultThresholds = new ArrayList<>();
     private Runnable onMarkDirty = () -> {};
 
     private int barX, barY, barW = 200, barH = 20;
     private double dataMin = -1.0, dataMax = 1.0;
 
     private Boundary dragging;
+
+    // 重置按钮
+    private static final int RESET_BTN_W = 18;
+    private static final int RESET_BTN_H = 14;
+    private static final int RESET_BG = 0xFF2a2f3a;
+    private static final int RESET_HOVER_BG = 0xFF3a4050;
+    private static final int RESET_BORDER = 0xFF4a5060;
+    private boolean resetHovered = false;
 
     public CategoryBar(String title) { this.title = title; }
 
@@ -47,6 +56,7 @@ public class CategoryBar {
                               List<DoubleConsumer> setters, List<DoubleSupplier> getters) {
         categories.clear();
         boundaries.clear();
+        defaultThresholds.clear();
         categories.addAll(cats);
         int n = cats.size();
         if (n < 2) return;
@@ -54,6 +64,12 @@ public class CategoryBar {
             final int idx = i;
             double val = (initialThresholds != null && idx < initialThresholds.size())
                     ? initialThresholds.get(idx) : (dataMin + (dataMax - dataMin) * (idx + 1) / n);
+            // 存储默认值（从 getters 读取真正的配置默认值）
+            double defVal = (getters != null && idx < getters.size()) ? getters.get(idx).getAsDouble() : val;
+            // 如果 initialThresholds 与 getters 值不同，说明 initialThresholds 是当前值，getters 可能也是当前值
+            // 我们在 setDefaultThresholds 中单独存储
+            defaultThresholds.add(val);
+            
             Boundary b = new Boundary(val, cats.get(idx).name() + "→" + cats.get(idx + 1).name());
             b.setValueCallback(v -> {
                 if (setters != null && idx < setters.size() && setters.get(idx) != null)
@@ -63,6 +79,31 @@ public class CategoryBar {
             boundaries.add(b);
         }
         layoutBoundaries();
+    }
+
+    /** 设置每个边界控制点的默认值（从 GeoGenesisConfig.getDefault() 获取） */
+    public void setDefaultThresholds(List<Double> defaults) {
+        defaultThresholds.clear();
+        defaultThresholds.addAll(defaults);
+    }
+
+    /** 重置所有边界控制点到默认值 */
+    public void resetToDefaults() {
+        for (int i = 0; i < boundaries.size() && i < defaultThresholds.size(); i++) {
+            boundaries.get(i).setValue(defaultThresholds.get(i));
+            boundaries.get(i).setScreenX(dataToScreenX(defaultThresholds.get(i)));
+        }
+        if (onMarkDirty != null) onMarkDirty.run();
+    }
+
+    /** 获取所有分类的名称（供父面板渲染边界标签用） */
+    public String[] getCategoryNames() {
+        return categories.stream().map(Category::name).toArray(String[]::new);
+    }
+
+    /** 获取分类数量 */
+    public int getCategoryCount() {
+        return categories.size();
     }
 
     private void layoutBoundaries() {
@@ -78,11 +119,12 @@ public class CategoryBar {
     }
 
     public void setBounds(int x, int y, int w, int h) {
-        barX = x + 40; barY = y + 16;
-        barW = Math.max(40, w - 50); barH = Math.max(16, h - 28);
+        // 不再偏移 16 像素（标题由父组件 MixerPanel 渲染）
+        barX = x; barY = y;
+        barW = Math.max(40, w); barH = Math.max(16, h);
         layoutBoundaries();
     }
-    public int getHeight() { return barH + 30; }
+    public int getHeight() { return barH + 12; } // barH + dataMin/dataMax 标签空间
 
     private int dataToScreenX(double v) { return barX + (int)((v - dataMin) / (dataMax - dataMin) * barW); }
     private double screenXToData(int sx) { return dataMin + (double)(sx - barX) / barW * (dataMax - dataMin); }
@@ -105,9 +147,28 @@ public class CategoryBar {
             int lineColor = (dragging == b || b.hovered) ? 0xFFFFFFFF : 0xAAFFFFFF;
             g.fill(bx, barY, bx + 1, barY + barH, lineColor);
             g.fill(bx - 3, barY - 4, bx + 4, barY, lineColor);
+            // 在控制点正上方显示数值，始终可见（非仅 tooltip）
+            String valStr = String.format("%.2f", b.getValue());
+            int vw = f.width(valStr);
+            int vx = Math.max(barX, Math.min(bx - vw / 2, barX + barW - vw));
+            g.drawString(f, valStr, vx, barY - 16, 0xFFEEEEEE);
         }
         g.drawString(f, String.format("%.1f", dataMin), barX - 4, barY + barH + 4, 0xFF888888);
         g.drawString(f, String.format("%.1f", dataMax), barX + barW - 20, barY + barH + 4, 0xFF888888);
+        
+        // 重置按钮（色条右上角）
+        int rbX = barX + barW + 6;
+        int rbY = barY;
+        resetHovered = mx >= rbX && mx <= rbX + RESET_BTN_W && my >= rbY && my <= rbY + RESET_BTN_H;
+        int rbBg = resetHovered ? RESET_HOVER_BG : RESET_BG;
+        g.fill(rbX, rbY, rbX + RESET_BTN_W, rbY + RESET_BTN_H, rbBg);
+        g.fill(rbX, rbY, rbX + 1, rbY + RESET_BTN_H, RESET_BORDER);
+        g.fill(rbX + RESET_BTN_W - 1, rbY, rbX + RESET_BTN_W, rbY + RESET_BTN_H, RESET_BORDER);
+        String resetIcon = "↩";
+        int iconW = f.width(resetIcon);
+        int iconX = rbX + (RESET_BTN_W - iconW) / 2;
+        int iconY = rbY + (RESET_BTN_H - 8) / 2;
+        g.drawString(f, resetIcon, iconX, iconY, resetHovered ? 0xFF00c896 : 0xFF999999);
     }
 
     public void renderTooltips(GuiGraphics g, int mx, int my) {
@@ -127,6 +188,13 @@ public class CategoryBar {
     // ---- 鼠标 ----
     public boolean mouseClicked(double mx, double my, int btn) {
         if (btn != 0) return false;
+        // 检测重置按钮点击
+        int rbX = barX + barW + 6;
+        int rbY = barY;
+        if (mx >= rbX && mx <= rbX + RESET_BTN_W && my >= rbY && my <= rbY + RESET_BTN_H) {
+            resetToDefaults();
+            return true;
+        }
         for (Boundary b : boundaries) {
             if (Math.abs(mx - b.getScreenX()) <= 4 && my >= barY && my <= barY + barH) {
                 dragging = b; return true;
@@ -148,12 +216,20 @@ public class CategoryBar {
                 int nextBound = boundaries.get(idx + 1).getScreenX();
                 dragging.setScreenX(Math.min(dragging.getScreenX(), nextBound - 2));
             }
+            // 数据值同步：在屏幕位置被邻居钳制后，重新计算数据值使其与显示位置一致
+            dragging.setValue(screenXToData(dragging.getScreenX()));
             return true;
         }
         return false;
     }
     public boolean mouseReleased(double mx, double my, int btn) {
-        if (dragging != null) { dragging = null; if (onMarkDirty != null) onMarkDirty.run(); return true; }
+        if (dragging != null) {
+            // 最终值同步：确保释放时值对应钳制后的位置
+            dragging.setValue(screenXToData(dragging.getScreenX()));
+            dragging = null;
+            if (onMarkDirty != null) onMarkDirty.run();
+            return true;
+        }
         return false;
     }
 

@@ -51,6 +51,11 @@ public class GeoGenesisConfigScreen extends Screen {
         super(Component.literal("GeoGenesis 配置"));
         this.parent = parent;
     }
+    public GeoGenesisConfigScreen(Screen parent, int tab) {
+        super(Component.literal("GeoGenesis 配置"));
+        this.parent = parent;
+        this.tab = tab;
+    }
     public GeoGenesisConfigScreen() { this(null); }
 
     @Override
@@ -67,10 +72,17 @@ public class GeoGenesisConfigScreen extends Screen {
         previewW = w - previewX - 10;
         previewH = listBottom - previewY;
 
-        seedBox = new EditBox(Minecraft.getInstance().font, panelX, 36, panelW, 18, Component.literal("Seed"));
+        seedBox = new EditBox(Minecraft.getInstance().font, panelX, 36, panelW - 24, 18, Component.literal("Seed"));
         seedBox.setResponder(s -> { try { seed = Long.parseLong(s.trim()); } catch (NumberFormatException ignored) {} });
         seedBox.setValue(String.valueOf(seed));
         addRenderableWidget(seedBox);
+        // 种子刷新按钮（↻），不依赖重置
+        Button seedRefreshBtn = Button.builder(Component.literal("↻"), b -> {
+            seed = (long) (Math.random() * Long.MAX_VALUE);
+            seedBox.setValue(String.valueOf(seed));
+            rebuildPreview();
+        }).pos(panelX + panelW - 22, 36).size(20, 18).build();
+        addRenderableWidget(seedRefreshBtn);
 
         tabBtns = new Button[3];
         int tabW = Math.max(60, (panelW - 8) / 3);
@@ -150,7 +162,22 @@ public class GeoGenesisConfigScreen extends Screen {
         hydroBtn.setMessage(Component.literal("水文: " + (preview.isHydrology() ? "开" : "关")));
     }
     private void doSave() { GeoGenesisConfig.SPEC.save(); saved = true; dirty = false; }
-    private void doReset() { Minecraft.getInstance().setScreen(new GeoGenesisConfigScreen(parent)); }
+    private void doReset() { 
+        // 重置到默认值：~120 个 .set() 各自触发文件写入，Windows 文件锁可能抛 WritingException
+        // 捕获并继续——部分字段未写入的后续面板重建也会覆盖
+        try {
+            GeoGenesisConfig.INSTANCE.resetToDefault();
+        } catch (Exception e) {
+            // 文件写竞争忽略
+        }
+        // 保持当前 seed 不变，仅重置参数并刷新面板+预览
+        terrainPanel.buildFromConfig();
+        climatePanel.buildClimateFactors();
+        paramPanel.buildFromConfig();
+        scroll = 0;
+        pushScrollToPanels();
+        rebuildPreview();
+    }
 
     @Override
     public void tick() {
@@ -248,7 +275,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (dirty && !saved) Minecraft.getInstance().setScreen(new GeoGenesisConfigScreen(parent));
+        if (dirty && !saved) Minecraft.getInstance().setScreen(new GeoGenesisConfigScreen(parent, tab));
         super.onClose();
     }
     @Override public boolean isPauseScreen() { return false; }
