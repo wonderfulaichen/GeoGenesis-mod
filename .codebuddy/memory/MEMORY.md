@@ -4,67 +4,66 @@
 - 参考模组先读透再提方案；严格先案后码；模块化/单一职责
 - 知识沉淀必须做；每完成一次任务/对话做记录
 
-## 🚨 地形类型核心原则（2026-07-16 深夜更新 v6.0）
-
-**域扭曲空间距离场 + 高斯权重 + 独立类型噪声 + 按 typeWeights 加权混合 eLand（非 lo/hi）= 无断裂无网格无悬崖**
+## 地形类型核心原则（v6.0）
+**域扭曲空间距离场 + 高斯权重 + 独立类型噪声 + 按 typeWeights 加权混合 eLand = 无断裂无网格无悬崖**
 
 ### 六层消除机制
-1. **域扭曲空间距离**（v4）
-2. **高斯权重**（v4）：`w = exp(-d²/2σ²)`，σ=CELL_SPACING/4=100
-3. **SEARCH_RADIUS=1**（v5.2，因 SIGMA=100 使边缘 cell 权重 0.0003 可忽略）
-4. **连续类型权重**（v5）
-5. **独立噪声配方**（v5，每类型专属噪声节点树）
-6. **v6.0：按 typeWeights 加权混合各类型独立 eLand（非 lo/hi）** —— 根除 cell 边界 1 块高度离散跳变。每类型 `eLand_i = center + halfRange×(2×noise−1)`，按 typeWeights 加权混合。
-
-### v5 诊断验证
-- 创建 `DiscontinuityProbe.java`（13 层梯度诊断，512×512，纯 Java 无 MC 依赖）
-- SEARCH_RADIUS=1→2 后所有连续层 max Δe 从 0.09→0.004（21× 改善）
-- eLand max Δe = 0.0058（2.2 块），远低于阈值 0.01（3.8 块）
+1. 域扭曲空间距离（v4）
+2. 高斯权重（v4）：`w = exp(-d²/2σ²)`，σ=CELL_SPACING/4=100
+3. SEARCH_RADIUS=2（v5.2，5×5 = 25 cells）
+4. 连续类型权重（v5）
+5. 独立噪声配方（v5，每类型专属噪声节点树）
+6. v6.0：按 typeWeights 加权混合各类型独立 eLand（非 lo/hi）
 
 ### 关键参数
-| 参数 | 值 | 说明 |
-|------|------|------|
-| CELL_SPACING | 400 块 | cell 间距 |
-| WARP_AMP（Voronoi） | 250 | 距离场域扭曲（> cell 间距/2 = 200）|
-| WARP_AMP（共享噪声） | 300 | 共享噪声域扭曲 |
-| SIGMA | 200 | 高斯权重 σ = cell 间距/2 |
-| SEARCH_RADIUS | **2** | **5×5 = 25 cells（v5 修复）**|
+- CELL_SPACING: 400 块
+- WARP_AMP（Voronoi）: 250
+- WARP_AMP（共享噪声）: 300
+- SIGMA: 200
+- SEARCH_RADIUS: **2**
 
 ### 各类型范围参数（v6.0 CENTER+RANGE 模式）
-| 类型 | CENTER | HALF_RANGE | 输出 range | 说明 |
-|------|--------|-----------|-----------|------|
-| PLAIN | 0.0375 | 0.0225 | [0.015, 0.06] | 低平温和 |
-| HILLS | 0.155 | 0.095 | [0.06, 0.25] | 圆润起伏（v6.0 双层Warp+Perlin×Billow^0.5）|
-| MOUNTAINS | 0.70 | 0.25 | [0.45, 0.95] | 尖锐脊线 |
-| PLATEAU | 0.325 | 0.125 | [0.20, 0.45] | v6.0 加 smoothstep 边缘渐变（shape mask）|
-| BASIN | 0.0475 | 0.0325 | [0.015, 0.08] | 凹陷盆地 |
+- PLAIN: [0.015, 0.06] 低平温和
+- HILLS: [0.06, 0.25] 圆润起伏（双层Warp+Perlin×Billow^0.5）
+- MOUNTAINS: [0.45, 0.95] 尖锐脊线
+- PLATEAU: [0.20, 0.45] 边缘 smoothstep 渐变
+- BASIN: [0.015, 0.08] 凹陷盆地
 
 ### 关键文件
-- `VoronoiRegionField.java` — 域扭曲空间距离场 + 高斯权重 + 5×5 搜索 + typeWeights
-- `TypeGenerators.java` — 类型范围常量 (lo/hi) + basinModulate（被 Voronoi 引用）
-- **`TypeNoiseProvider.java`** （2026-07-16 新增）— **每种类型独立噪声配方**
-- `TypeLandShape.java` — 编排层：typeWeights 加权混合各类型独立噪声 → eLand
-- `DiscontinuityProbe.java` — 13 层梯度诊断工具
+- `VoronoiRegionField.java` — 域扭曲空间距离场 + 高斯权重
+- `TypeGenerators.java` — 类型范围常量 + basinModulate
+- `TypeNoiseProvider.java` — 每种类型独立噪声配方
+- `TypeLandShape.java` — typeWeights 加权混合 → eLand
+- `DiscontinuityProbe.java` — 梯度诊断工具
 
-### 各类型独立噪声配方（v6.0 更新）
+## 条件系统架构（2026-07-21）
 
-| 类型 | 噪声配方 | 视觉特征 | 参考来源 |
-|------|---------|---------|---------|
-| PLAIN | `Map(Warp(Simplex(1/800), 60), [−1,1]→[0.42,0.58])` | 极平坦，微小起伏 | TF: Scale(0.08~0.15)×Perlin |
-| HILLS | `Clamp(Boost(Warp(Warp(Multiply(Perlin(1/500), Power(Billow(1/300),0.5)), 20, 1/30), 200, 1/333), 0.6)+0.02, 0, 1)` | 圆润不规则丘陵（v6.0 双层 warp） | TF hills_1.json: Perlin×Billow^0.5 + 双 warp |
-| MOUNTAINS | `Warp(Ridge(1/400,p=1.2), 200) + 0.3×Ridge(1/120)` | 尖锐脊线+蜿蜒 | TF: Ridge+Valley+DomainWarp |
-| PLATEAU | `3Simplex(1/500+1/200+1/60)→[0.30,0.70] × smoothstep(shape(1/1000), 0.15, 0.40)` | v6.0 边缘 smoothstep 渐变 + shape mask | TF: ramp_height=0.35 |
-| BASIN | `Map(Invert(2Simplex(1/300+1/100)), [−1.5,1.5]→[0,0.6])` | 凹陷盆地 | TF: Invert(Perlin) |
+### 三维度条件体系
+- **温度**：5段（极寒/寒冷/温和/温暖/炎热），阈值字段：`tempFrozenThreshold`, `tempColdThreshold`, `tempWarmThreshold`, `tempHotThreshold`
+- **湿度**：4段（干旱/半干旱/湿润/潮湿），阈值字段：`humidityDryThreshold`, `humiditySemiThreshold`, `humidityWetThreshold`
+- **大陆性**：7段（深海/近海/沿海/过渡/近内陆/内陆/深内陆），阈值字段：`continentDeepOceanThreshold`~`continentInlandThreshold`
 
-### 新噪声流水线
-```
-TypeLandShape.sample(blend, wx, wz):
-  for each LAND_TYPE with weight>0.001:
-    noise += weight × TypeNoiseProvider.computeNoise(type, wx, wz)
-  base = noise / totalWeight
-  basinW > 0.01 → lerp(base, basinModulate(base), basinW)
-  eLand = lo + (hi-lo) × base
-```
+### 后端实现方式（样条化）
+- `ClimateSpline` 用 Cubic Hermite 样条将原始值映射为连续区域权重
+- 阈值作为样条控制点，tent 函数产生各区域权重（和=1）
+- boolean 方法（`isFrozen/isCold/isHot/isDry`）保留兼容，内部委托给样条权重
+
+### 条件在各子系统中的使用
+1. **群系分类**：温度 `isFrozen/isCold/isHot` + 湿度 `isDry`
+2. **地形分类**：温度样条权重参与 SNOW 类型判定（双曲线模型：`snowLine + (tNorm-0.5)×tempInf - (hNorm-0.5)×humInf`，冷+湿→雪线低易积雪）
+3. **地形生成**：大陆性 `c` 用于大陆坡度 + 温度海洋性修正
+4. **气候计算**：大陆性影响温度/湿度，海拔影响温度递减率
+5. **雪线图表（双曲线，2026-07-22）**：X=温度[-1,1]，Y=雪线世界高度。
+   干燥曲线（橙，湿度=-1）+ 湿润曲线（蓝，湿度=+1），两线之间渐变填充。
+   4 个控制点（干燥冷/暖端、湿润冷/暖端），配对交互：拖干燥点调中线+温度敏感度，拖湿润点调湿度带宽。
+   后端公式：`effectiveSnowElev = snowLine + (tNorm-0.5)×snowTempInfluence - (hNorm-0.5)×snowHumidityInfluence`
+   CellGenerator.classify 和 classifyTerrain 均已接入双曲线模型。
+
+### 影响权重（尚未接入后端）
+- `tempInfluence`, `humidityInfluence`, `continentInfluence` 仅在气候页UI显示
+
+### 样条统一决策（2026-07-21）
+保持地形样条和气候样条分开，不统一。理由：语义不同（地形输出直接是高度值，气候输出是中间索引再转权重）、共享已通过SplineUtil实现、3层嵌套不适合气候需求。条件因素的联合是其他内容需要的。
 
 ## 配置同步铁律
 增删字段须同步 **6 处**：
@@ -89,89 +88,61 @@ TypeLandShape.sample(blend, wx, wz):
 - 用户报"地形没变"时，先查 class 文件时间是否比源文件新 + `run/mods/` 是否被手放 jar
 - 编译后必须 `gradlew compileJava --rerun-tasks` 验证全量编译
 
-## 2026-07-16 类型系统重构
+## 重要重构历史
 
-### 核心变更
-用地形类型系统取代省系统（craton/belt/plateau/basin），每个类型有自己的噪声配方，类型间用样条嵌入噪声对象过渡。
+### 2026-07-16 类型系统重构
+用地形类型系统取代省系统，每个类型有自己的噪声配方，类型间用样条嵌入噪声对象过渡。
+- 新文件：`TypeGenerators.java`, `TypeLandShape.java`
+- 删除：`LandShape.java`, `TypeMorphology.java`, `TerrainComposer.java`, `ClimateWeights.java`
 
-### 新文件
-- `TypeGenerators.java` — 类型专属噪声生成器（8 个类型，独立噪声节点）
-- `TypeLandShape.java` — 类型驱动地形形态生成器（baseElev + 样条嵌入噪声对象）
+### 2026-07-19 海洋特征 & OceanFeatures 重构
+- 移除 per-cell eOcean gate，新增海山中心水深校验
+- 海洋类型新增：CONTINENTAL_SHELF, SUBMARINE_RIDGE, SEAMOUNT
+- 海洋地形类型共 7 水域类
 
-### 删除文件
-- `LandShape.java` / `TypeMorphology.java` / `TerrainComposer.java` / `ClimateWeights.java`
+### 2026-07-20 统一嵌套样条系统
+对标 MC 原版 `offset.json`，整个地形系统是一个统一的嵌套样条树。
+- 三层嵌套：外层大陆性 c → 中层地形类型分布 → 内层 lo/hi 形状控制
+- 关键文件：`UnifiedSpline.java`, `SplineConfig.java`, `MidSplineConfig.java`, `OceanSplineConfig.java`
+- 修复：三层线性插值、海洋类型独立控制、海洋类型跨类型影响
 
-### 编译验证
-BUILD SUCCESSFUL in 13s（2026-07-16晚）
+### 2026-07-21 气候样条系统实现
+将离散阈值 boolean 判断替换为样条连续映射。
+- 新增 `ClimateSpline.java`（Cubic Hermite 样条）
+- 修改 `Climate.java`, `ClimateZone.java`, `CellGenerator.java`
+- 纬度融入：样条操作的是最终温度值，已包含纬度基值
 
-## 2026-07-19 海洋特征 & OceanFeatures 重构
+### 2026-07-22 双曲线雪线模型（温度×湿度）
+新增 `SnowLineChart.java`（双曲线图表组件），SNOW 分类接入湿度条件。
+- TerrainParams/GeoGenesisConfig 新增 `snowHumidityInfluence` 字段（默认0.15，范围[0,0.5]）
+- ParameterConfigPanel 用 SnowLineChart 替换旧 SingleCurveChart
+- CellGenerator.classify/classifyTerrain 加 humidity 参数，双曲线模型判定 SNOW
+- **Y 轴公式**：SnowLineChart 使用 HeightCurve 海平面锚定公式 `seaLevel + ratio × (maxY - seaLevel)`，区别于旧线性 `yMin + ratio × (yMax - yMin)`。滑块反算公式 `/` 控制点配置同步全部对齐 seaLevel 锚定。
+- charContentTop 对齐修复：雪线段从 104→120（差16px，对齐渲染起始 Y=panel.getY()+16+chartHeight+4）
+- 编译 BUILD SUCCESSFUL
 
-### OceanFeatures.java 变更
-- 移除 per-cell eOcean gate（旧 eOcean < -0.30 太严格）
-- 新增 `seamountCenterDepthCheck`（DoubleBinaryOperator 回调）
-- 海山中心水深校验：eOcean_at_center > -0.20 → 跳过
-- 振幅 0.12-0.25 → 0.08-0.16
-- `seamountCompute` 签名取消 eOcean 参数
-
-### CellGenerator.java 变更
-- seed() 中注入 depthChecker 回调（复用 continent / heightCurve / seaBed）
-
-### TerrainClass 海洋类型
-新增 CONTINENTAL_SHELF、SUBMARINE_RIDGE、SEAMOUNT（均位于 OCEAN/DEEP_OCEAN 之后）
-
-### 海洋地形类型（共 7 水域类）
-OCEAN、DEEP_OCEAN、CONTINENTAL_SHELF、SUBMARINE_RIDGE、SEAMOUNT、RIVER、LAKE
-
-### 诊断清理
-OceanFeatureProbe.java 已于 07-19 删除，probe_ocean_*.txt 已清理
-
-## 2026-07-20 统一嵌套样条系统（Phase 1）
-
-### 设计理念
-对标 MC 原版 `offset.json`，整个地形系统是一个统一的嵌套样条树，海陆都在同一个样条内部。
-
-### 三层嵌套结构（目标）
-```
-外层样条：大陆性 c（-1=深海, 0=海岸, 1=内陆）
-├─ 中层样条：地形类型分布
-│   └─ 内层样条：lo/hi 形状控制
-```
-
-### Phase 1 已完成（2 层嵌套）
-- 外层样条：7 个大陆性 c 控制点（14 字段）
-- 内层样条：5 个核心陆地类型的 lo/hi 样条（60 字段）
-- **总计 74 字段**，封装在 `SplineConfig` record 中
-
-### Phase 2 已完成（3 层嵌套）
-- 中层样条：7 个外层节点 × 12 个类型 × 3 字段 = **252 字段**（实际 105，因陆地 5 类型 + 海洋 7 类型）
-- 类型位置：PLAIN=0.0, HILLS=0.25, MOUNTAINS=0.5, PLATEAU=0.75, BASIN=1.0
-
-### Phase 3 已完成（海洋/水域类型）
-- 海洋/水域内层样条：7 类型 × 12 字段 = **84 字段**，封装在 `OceanSplineConfig` record 中
-
-### 关键文件
-- `UnifiedSpline.java` — 统一样条树（OuterNode + MidSpline + MidNode + InnerSpline + Spline）
-- `SplineConfig.java` — 样条配置 record（74 字段 + OceanSplineConfig + MidSplineConfig）
-- `MidSplineConfig.java` — 中层样条配置 record（105 字段）
-- `OceanSplineConfig.java` — 海洋/水域内层样条配置 record（84 字段）
-- `TypeGenerators.java` — 新增 `sampleFromSpline(c, typePosition, noiseValue)` 方法
-- `TypeLandShape.java` — `sample()` 分为样条路径和旧路径 fallback
-
-### 工程陷阱
-- Java record 参数过多限制：74 字段使 TerrainParams 总参数 ~154，编译失败。解法：提取为 `SplineConfig` 独立 record
-- SplineConfig 参数过多限制：84 海洋字段使 SplineConfig 总参数 ~159，编译失败。解法：提取为 `OceanSplineConfig` 独立 record
-- GeoGenesisConfig 保留独立 ForgeConfigSpec 字段（TOML 需要），通过辅助方法组装为 SplineConfig
-- MidSplineConfig/OceanSplineConfig 不暴露到 TOML 配置（太多字段），从 defaults 初始化
-
-### 预览验证
-- `runPreview --args=12345` 运行成功（BUILD SUCCESSFUL in 7m 40s）✅
-- 地形生成正常，预览窗口已启动
-
-### 待办
-- UI：调音台面板改造支持样条编辑（较大的 UI 改造任务）
+## 待办事项
 - runClient 目检游戏内地形
-- BASIN 尚未集成到阈值链（需 moisture 二级分类支持，待后续迭代）
+- BASIN 尚未集成到阈值链
 - 类型参数化：TypeLandShape 的阈值和 TypeGenerators 的噪声参数需从 TerrainParams 注入
 - GeoGenesisConfigScreen 的省滑块需替换为类型滑块
-- runClient 目检游戏内地形
+
+## 配置屏标签页结构（2026-07-22）
+**三页签按上游→下游排列：**
+- 页签0「世界参数」：基础参数（海陆偏置/海床细节/分类阈值）+ 世界高度（柱状图+三个滑杆+尺度预览）
+- 页签1「气候」：温度/湿度/大陆性 分类色条 + 影响滑块（不变）
+- 页签2「地形」：类型 lo/hi 控制点图 + 雪线双曲线图（从参数页迁入）
+
+## 确认对话框系统（2026-07-22）
+- `ConfirmDialog.java`（`client/` 包）：通用覆盖层，半透明遮罩 + 深色绿边对话框
+- 世界高度三个滑杆（最高/海面/底）已标记为 important：拖动松手弹确认框
+- `ParamSlider` 新增 `onDragStart` 回调（拖动开始捕获旧值用于取消回滚）
+- 取消→ `cfg.set(rollbackVal)` + `slider.setCurrentValue(rollbackVal)`
+- 用 `ParameterConfigPanel.ShowConfirmCallback` 回调桥接到 Screen
+- 确认框打开时阻断所有面板鼠标/滚轮事件
+
+## 高度同步联动（2026-07-22）
+- `TerrainConfigPanel.refreshHeightDependent()`：刷新地形图 e→Y 映射 + 雪线图 Y 范围/海平面
+- `ParameterConfigPanel.refreshHeightDependent()`：刷新柱状图
+- tab 切到地形页（tab=2）时自动调用 `terrainPanel.refreshHeightDependent()`
 - mixer 面板重绑到新类型参数
