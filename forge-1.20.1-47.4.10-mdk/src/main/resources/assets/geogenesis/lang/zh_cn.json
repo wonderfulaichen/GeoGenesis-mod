@@ -12,6 +12,7 @@
   "geogenesis.hydro.on": "水文叠加：开",
   "geogenesis.hydro.off": "水文叠加：关",
   "geogenesis.preview.computing": "计算中... 种子=%d",
+  "geogenesis.preview.coords_copied": "已复制坐标: %s",
   "geogenesis.preview.river": "河流",
   "geogenesis.preview.valley": "河谷",
   "geogenesis.preview.lake": "湖泊",

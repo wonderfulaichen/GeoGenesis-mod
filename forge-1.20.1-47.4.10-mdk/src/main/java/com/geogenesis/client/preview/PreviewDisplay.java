@@ -3,6 +3,7 @@ package com.geogenesis.client.preview;
 import com.geogenesis.client.preview.chunk.CellCache;
 import com.geogenesis.client.preview.chunk.TerrainPool;
 import com.geogenesis.client.preview.chunk.TerrainQueue;
+import com.geogenesis.worldgen.climate.BiomeClassifier;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
 import com.geogenesis.worldgen.terrain.TerrainClass;
@@ -15,15 +16,20 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.lwjgl.glfw.GLFW;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Queue;
 
 /**
  * 地形预览（参考 World-Preview-TFC 重构版）。
@@ -49,9 +55,7 @@ public class PreviewDisplay extends AbstractWidget {
     /** 每纹理像素对应的世界块数。越大越缩。 */
     public int scaleBlockPos = 1;
     /** blockStride：每个 chunk 采样的步长。16=1 sample/chunk（最快），4=16 samples/chunk（精细） */
-    public int blockStride = 16;
-    /** 基础纹理分辨率：texSize = BASE_RES / scaleBlockPos（保证 chunk 数恒定 ~256） */
-    private static final int BASE_RES = 256;
+    public int blockStride;
 
     // ====== 视口 ======
     /** 视口中心世界坐标 */
@@ -75,6 +79,16 @@ public class PreviewDisplay extends AbstractWidget {
     private boolean legendExpanded = true;
     private int hoverX = -1, hoverZ = -1;
 
+    // ====== 交互增强 ======
+    /** 帧时间统计（最近 30 帧的毫秒数） */
+    private final Queue<Long> frameTimes = new ArrayDeque<>();
+    /** 右键复制坐标的消息（非 null 时显示） */
+    private Component copiedToastMsg = null;
+    /** 右键复制消息的创建时间 */
+    private Instant copiedToastTime = null;
+    /** 群系高亮选中 id（-1=未选中） */
+    private int selectedBiomeId = -1;
+
     // ====== 数据 ======
     private long seed;
     private int seaLevel, maxY, minY, mountainCap;
@@ -88,6 +102,16 @@ public class PreviewDisplay extends AbstractWidget {
     public PreviewDisplay(int x, int y, int w, int h,
                           GeoGenesisTerrain terrain, long seed,
                           TerrainParams params, int mode) {
+        this(x, y, w, h, terrain, seed, params, mode, 16);
+    }
+
+    /**
+     * 完整构造函数，允许指定采样步长。
+     * @param blockStride 采样步长：16=每chunk 1次采样(最快), 4=每chunk 16次(精细)
+     */
+    public PreviewDisplay(int x, int y, int w, int h,
+                          GeoGenesisTerrain terrain, long seed,
+                          TerrainParams params, int mode, int blockStride) {
         super(x, y, w, h, Component.literal("GeoGenesis Preview"));
         this.terrain = terrain;
         this.seed = seed;
@@ -96,39 +120,22 @@ public class PreviewDisplay extends AbstractWidget {
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
         this.maxY = params.maxY();
+        this.blockStride = Math.max(1, Math.min(16, blockStride));
         // 图例色带范围使用世界高度上限 maxY（默认 320），而非 mountainCap（256），
         // 否则 256-307 之间的地形全部被裁剪成白色
         GeoPalette.setElevationRange(minY, maxY);
         GeoPalette.setSeaLevel(seaLevel);
-        texW = BASE_RES;
-        texH = BASE_RES;
+        // 高分辨率纹理：widget_width × gui_scale，硬件自动下采样到 widget 大小
+        texW = Math.max(1, (int)(this.width * mc.getWindow().getGuiScale()));
+        texH = Math.max(1, (int)(this.height * mc.getWindow().getGuiScale()));
         image = new NativeImage(NativeImage.Format.RGBA, texW, texH, false);
         texture = new DynamicTexture(image);
         texLoc = ResourceLocation.tryParse("geogenesis:preview_" + System.nanoTime());
         mc.getTextureManager().register(texLoc, texture);
 
-        this.queue = new TerrainQueue(cellCache, pool, terrain, 16);
-        this.blockStride = 16;
-        resizeTextureForScale();
+        this.queue = new TerrainQueue(cellCache, pool, terrain, this.blockStride);
         this.activeLayer = GeoPalette.PreviewLayer.values()[
             Math.max(0, Math.min(GeoPalette.PreviewLayer.values().length - 1, mode))];
-    }
-
-    /**
-     * 缩放只改 scaleBlockPos，不重建纹理。
-     * 纹理固定 256×256（BASE_RES），scaleBlockPos 决定世界覆盖范围。
-     * 缩放视为"图片缩放"：旧内容在 cellCache 中，下一次 paint 会被绘制。
-     */
-    public void resizeTextureForScale() {
-        needsClear = true;
-        if (queue != null) queue.resetViewport();
-        // 确保纹理已创建（构造器如果还没调 texture.upload 的话）
-        if (texture == null && texW > 0 && texH > 0) {
-            image = new NativeImage(NativeImage.Format.RGBA, texW, texH, false);
-            texture = new DynamicTexture(image);
-            texLoc = ResourceLocation.tryParse("geogenesis:preview_" + System.nanoTime());
-            mc.getTextureManager().register(texLoc, texture);
-        }
     }
 
     // ================================================================
@@ -137,6 +144,7 @@ public class PreviewDisplay extends AbstractWidget {
 
     @Override
     public void renderWidget(GuiGraphics g, int mx, int my, float pt) {
+        long frameStart = System.nanoTime();
         int x = getX(), y = getY(), w = width, h = height;
         g.fill(x, y, x + w, y + h, 0xFF1a1a2a);
 
@@ -154,13 +162,17 @@ public class PreviewDisplay extends AbstractWidget {
         int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
         paintAvailableChunks(originWx, originWz, blocksWide, blocksHigh);
 
-        // 坡度阴影：仅当 1:1（每像素1块）时有效。>1 时相邻像素覆盖多块，块边界高度跳变不可避免→网格。
-        if (slopeShading && activeLayer == GeoPalette.PreviewLayer.ELEVATION && scaleBlockPos == 1) {
+        // 坡度阴影：后处理，对所有 scaleBlockPos 级别生效。
+        if (slopeShading && activeLayer == GeoPalette.PreviewLayer.ELEVATION) {
             applySlopeShading(image, originWx, originWz);
         }
 
         texture.upload();
         g.blit(texLoc, x, y, w, h, 0, 0, texW, texH, texW, texH);
+
+        // 出生点标记
+        drawSpawnMarker(g);
+        // 结构/玩家图标（占位，后续实现）
 
         // 参考项目：1px 边框线
         g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
@@ -173,8 +185,19 @@ public class PreviewDisplay extends AbstractWidget {
         g.fill(x + w - mc.font.width(zoomTxt) - 8, y + h - 14, x + w - 2, y + h - 2, 0x88000000);
         g.drawString(mc.font, zoomTxt, x + w - mc.font.width(zoomTxt) - 5, y + h - 12, 0xCCCCCCCC);
 
+        // 帧时间显示：右上角
+        drawFrameTime(g, x + w, y);
+
+        // 右键复制坐标消息
+        drawCopiedToast(g, x, y, w, h);
+
         if (showLegend) drawLegend(g, mx, my);
         drawHoverInfo(g, mx, my);
+
+        // 帧时间统计
+        long elapsed = (System.nanoTime() - frameStart) / 1_000_000L; // ms
+        frameTimes.add(elapsed);
+        if (frameTimes.size() > 30) frameTimes.poll();
     }
 
     /** 坡度阴影后处理。
@@ -245,8 +268,6 @@ public class PreviewDisplay extends AbstractWidget {
         }
     }
 
-    private long renderFrameCount = 0;
-
     /** 从 CellCache 读取可见区内已缓存的 chunk 并写入纹理。
      *  自适应纹理：scaleBlockPos 决定 chunk 在 tex 中的大小（texSize = BASE_RES / scaleBlockPos）。
      *  blockStride=16 → 1 sample/chunk：每个 chunk 一次 fillRect。
@@ -268,10 +289,8 @@ public class PreviewDisplay extends AbstractWidget {
                 Cell[] cells = cellCache.get(cx, cz);
                 if (cells == null) continue;
 
-                int baseTx = (cx << 4) - originWx;  // 单位：世界 block / scaleBlockPos
-                if (scaleBlockPos > 1) baseTx /= scaleBlockPos;
-                int baseTz = (cz << 4) - originWz;
-                if (scaleBlockPos > 1) baseTz /= scaleBlockPos;
+                int baseTx = ((cx << 4) - originWx) / scaleBlockPos;
+                int baseTz = ((cz << 4) - originWz) / scaleBlockPos;
                 if (baseTx + chunkTexSize <= 0 || baseTx < 0 || baseTx >= texW
                         || baseTz + chunkTexSize <= 0 || baseTz < 0 || baseTz >= texH) continue;
 
@@ -341,10 +360,15 @@ public class PreviewDisplay extends AbstractWidget {
         if (legendSearchActive) legendSearchActive = false;
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            mc.keyboardHandler.setClipboard(String.format("%d, %d", hoverX, hoverZ));
+            // 右键复制坐标 + 8秒渐隐消息
+            String coords = String.format("%d, %d", hoverX, hoverZ);
+            mc.keyboardHandler.setClipboard(coords);
+            copiedToastMsg = Component.translatable("geogenesis.preview.coords_copied", coords);
+            copiedToastTime = Instant.now();
             return true;
         }
 
+        // 左键：记录起始位置用于拖拽/点击判断
         totalDragX = 0;
         totalDragZ = 0;
         return true;
@@ -355,14 +379,39 @@ public class PreviewDisplay extends AbstractWidget {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
         double absX = Math.abs(totalDragX), absZ = Math.abs(totalDragZ);
         if (absX > 4.0 || absZ > 4.0) {
+            // 拖拽结束 → 提交偏移
             centerX += (int) Math.round(totalDragX);
             centerZ += (int) Math.round(totalDragZ);
             needsClear = true;
             queue.resetViewport();
+        } else if (hoverX != -1 && hoverZ != -1) {
+            // 点击（非拖拽）→ 尝试选中群系
+            handleBiomeClick(mx, my);
         }
         totalDragX = 0;
         totalDragZ = 0;
         return true;
+    }
+
+    /** 处理左键点击：选中 hover 位置的群系 */
+    private void handleBiomeClick(double mx, double my) {
+        if (!isMouseOver(mx, my) || terrain == null) return;
+        Cell c = sampleHoverCell(hoverX, hoverZ);
+        if (c == null) return;
+        // 仅在 BIOME 图层启用选中
+        if (activeLayer == GeoPalette.PreviewLayer.BIOME) {
+            BiomeClassifier.BiomeClass biome = BiomeClassifier.classify(c);
+            if (biome != null) {
+                int id = biome.ordinal();
+                if (selectedBiomeId == id) {
+                    selectedBiomeId = -1;  // 取消选中
+                } else {
+                    selectedBiomeId = id;
+                }
+            }
+        } else {
+            selectedBiomeId = -1;  // 非 BIOME 图层取消选中
+        }
     }
 
     @Override
@@ -407,7 +456,7 @@ public class PreviewDisplay extends AbstractWidget {
         }
         if (next != current) {
             scaleBlockPos = next;
-            resizeTextureForScale();
+            needsClear = true;
             queue.resetViewport();
         }
         return true;
@@ -468,8 +517,88 @@ public class PreviewDisplay extends AbstractWidget {
         this.setY(y);
         this.width = w;
         this.height = h;
+        int newTexW = Math.max(1, (int)(w * mc.getWindow().getGuiScale()));
+        int newTexH = Math.max(1, (int)(h * mc.getWindow().getGuiScale()));
+        if (newTexW != texW || newTexH != texH) {
+            texW = newTexW;
+            texH = newTexH;
+            // 重建纹理
+            mc.getTextureManager().release(texLoc);
+            image = new NativeImage(NativeImage.Format.RGBA, texW, texH, false);
+            texture = new DynamicTexture(image);
+            texLoc = ResourceLocation.tryParse("geogenesis:preview_" + System.nanoTime());
+            mc.getTextureManager().register(texLoc, texture);
+        }
         needsClear = true;
         queue.resetViewport();
+    }
+
+    // ================================================================
+    //  交互增强
+    // ================================================================
+
+    /** 绘制世界出生点标记（金色罗盘 + 白色双圆范围框） */
+    private void drawSpawnMarker(GuiGraphics g) {
+        if (mc.level == null) return;
+        BlockPos spawn = mc.level.getSharedSpawnPos();
+        if (spawn == null) return;
+        // 计算出生点在纹理中的坐标
+        int blocksWide = texW * scaleBlockPos;
+        int blocksHigh = texH * scaleBlockPos;
+        int originWx = centerX + (int) totalDragX - blocksWide / 2;
+        int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
+        int sx = spawn.getX(), sz = spawn.getZ();
+        int texSx = (sx - originWx) / scaleBlockPos;
+        int texSz = (sz - originWz) / scaleBlockPos;
+        if (texSx < 0 || texSx >= texW || texSz < 0 || texSz >= texH) return;
+
+        // 映射到屏幕坐标
+        int x = getX(), y = getY(), w = width, h = height;
+        int screenSx = x + (int)((double)texSx / texW * w);
+        int screenSz = y + (int)((double)texSz / texH * h);
+        int markerSize = 6;
+
+        // 金色 X 形罗盘标记
+        int gold = 0xFFFFAA00;
+        g.fill(screenSx - markerSize, screenSz - 1, screenSx - 1, screenSz + 1, gold);
+        g.fill(screenSx + 1, screenSz - 1, screenSx + markerSize, screenSz + 1, gold);
+        g.fill(screenSx - 1, screenSz - markerSize, screenSx + 1, screenSz - 1, gold);
+        g.fill(screenSx - 1, screenSz + 1, screenSx + 1, screenSz + markerSize, gold);
+        border(g, screenSx - markerSize - 1, screenSz - markerSize - 1, screenSx + markerSize + 1, screenSz + markerSize + 1, 0x44FFFFFF, 1);
+    }
+
+    /** 绘制帧时间（右上角） */
+    private void drawFrameTime(GuiGraphics g, int rightX, int topY) {
+        if (frameTimes.isEmpty()) return;
+        long sum = 0;
+        for (long t : frameTimes) sum += t;
+        long avg = sum / frameTimes.size();
+        int color;
+        if (avg < 16) color = 0xFF44CC44;      // 绿：流畅
+        else if (avg < 33) color = 0xFFFFAA00;  // 黄：可接受
+        else color = 0xFFFF5555;                 // 红：卡顿
+        String txt = avg + " ms";
+        g.fill(rightX - mc.font.width(txt) - 8, topY + 2, rightX - 2, topY + 12, 0x88000000);
+        g.drawString(mc.font, txt, rightX - mc.font.width(txt) - 5, topY + 3, color);
+    }
+
+    /** 绘制右键复制坐标消息（8 秒渐隐） */
+    private void drawCopiedToast(GuiGraphics g, int px, int py, int pw, int ph) {
+        if (copiedToastMsg == null || copiedToastTime == null) return;
+        long elapsed = Duration.between(copiedToastTime, Instant.now()).toMillis();
+        if (elapsed >= 8000) {
+            copiedToastMsg = null;
+            copiedToastTime = null;
+            return;
+        }
+        int alpha = Math.max(0, Math.min(255, 220 - (int)(elapsed * 220 / 8000)));
+        if (alpha <= 0) return;
+        // 绘制居中底栏消息
+        int textW = mc.font.width(copiedToastMsg);
+        int bx = px + (pw - textW) / 2 - 4;
+        int by = py + ph - 32;
+        g.fill(bx, by, bx + textW + 8, by + 12, (alpha << 24) | 0x101418);
+        g.drawString(mc.font, copiedToastMsg, bx + 4, by + 2, (alpha << 24) | 0xFFFFFF);
     }
 
     // ================================================================
@@ -588,23 +717,40 @@ public class PreviewDisplay extends AbstractWidget {
         Cell c = sampleHoverCell(hoverX, hoverZ);
         if (c == null) return;
 
-        int lx = getX() + 6, ly = getY() + height - 72;
-        String[] lines = {
-            String.format("X=%d  Z=%d  Y=%d", hoverX, hoverZ, (int) Math.round(c.height)),
-            typeLine(c),
-            String.format("temp=%.2f  hum=%.2f  cont=%.2f", c.temperature, c.humidity, c.continentNoise),
-            String.format("lat=%.2f  relief=%.2f",
-                com.geogenesis.worldgen.climate.Latitude.latitude01(hoverZ),
-                (c.shape + 1) * 0.5),
-            c.riverIsWaterfall ? I18n.get("geogenesis.preview.waterfall")
-                : (c.riverSourceType == 3 ? I18n.get("geogenesis.preview.sourceLake")
-                : (c.riverSourceType == 2 ? I18n.get("geogenesis.preview.spring")
-                : (c.riverSourceType == 1 ? I18n.get("geogenesis.preview.creek")
-                : (c.riverMask ? I18n.get("geogenesis.preview.river")
-                : (c.riverDistance < 0.15 ? I18n.get("geogenesis.preview.valley")
-                : (c.lakeMask ? I18n.get("geogenesis.preview.lake") : "—"))))))
-        };
-        g.fill(lx, ly, lx + 180, ly + 72, 0xAA000000);
+        int lx = getX() + 6, ly = getY() + height - 85;
+        // 第一行：坐标 + 高度
+        String line0 = String.format("X=%d  Z=%d  Y=%d", hoverX, hoverZ, (int) Math.round(c.height));
+        // 第二行：群系名 + 地形类型
+        BiomeClassifier.BiomeClass biome = BiomeClassifier.classify(c);
+        String biomeName = "—";
+        if (biome != null) {
+            String key = "geogenesis.biome." + biome.name();
+            String localized = I18n.get(key);
+            biomeName = localized.equals(key) ? biome.name() : localized;
+        }
+        String line1 = biomeName + "  " + typeLine(c);
+        // 第三行：温度/湿度/大陆性
+        String line2 = String.format("temp=%.2f  hum=%.2f  cont=%.2f", c.temperature, c.humidity, c.continentNoise);
+        // 第四行：纬度 + 地形起伏
+        String line3 = String.format("lat=%.2f  relief=%.2f",
+            com.geogenesis.worldgen.climate.Latitude.latitude01(hoverZ),
+            (c.shape + 1) * 0.5);
+        // 第五行：水文信息
+        String line4 = c.riverIsWaterfall ? I18n.get("geogenesis.preview.waterfall")
+            : (c.riverSourceType == 3 ? I18n.get("geogenesis.preview.sourceLake")
+            : (c.riverSourceType == 2 ? I18n.get("geogenesis.preview.spring")
+            : (c.riverSourceType == 1 ? I18n.get("geogenesis.preview.creek")
+            : (c.riverMask ? I18n.get("geogenesis.preview.river")
+            : (c.riverDistance < 0.15 ? I18n.get("geogenesis.preview.valley")
+            : (c.lakeMask ? I18n.get("geogenesis.preview.lake") : "—"))))));
+
+        String[] lines = {line0, line1, line2, line3, line4};
+        // 自动计算面板宽度
+        int maxW = 0;
+        for (String l : lines) maxW = Math.max(maxW, mc.font.width(l));
+        maxW = Math.max(maxW, 160);
+        int panelH = lines.length * 13 + 4;
+        g.fill(lx, ly, lx + maxW + 10, ly + panelH, 0xAA000000);
         for (int i = 0; i < lines.length; i++)
             g.drawString(mc.font, lines[i], lx + 4, ly + 4 + i * 13, 0xFFFFFF);
     }
@@ -679,6 +825,14 @@ public class PreviewDisplay extends AbstractWidget {
     @Override
     protected void updateWidgetNarration(NarrationElementOutput out) {
         out.add(NarratedElementType.TITLE, Component.literal("GeoGenesis terrain preview"));
+    }
+
+    /** 1px 边框绘制（Gf 无直接 border，用 4 条线模拟） */
+    private static void border(GuiGraphics g, int x1, int y1, int x2, int y2, int color, int width) {
+        g.fill(x1, y1, x2, y1 + width, color);
+        g.fill(x1, y2 - width, x2, y2, color);
+        g.fill(x1, y1 + width, x1 + width, y2 - width, color);
+        g.fill(x2 - width, y1 + width, x2, y2 - width, color);
     }
 
     public void close() {

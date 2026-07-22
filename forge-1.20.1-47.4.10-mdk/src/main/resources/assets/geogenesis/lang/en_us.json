@@ -11,6 +11,7 @@
   "geogenesis.hydro.on": "Hydrology: ON",
   "geogenesis.hydro.off": "Hydrology: OFF",
   "geogenesis.preview.computing": "Computing... seed=%d",
+  "geogenesis.preview.coords_copied": "Copied: %s",
   "geogenesis.preview.river": "River",
   "geogenesis.preview.valley": "Valley",
   "geogenesis.preview.lake": "Lake",

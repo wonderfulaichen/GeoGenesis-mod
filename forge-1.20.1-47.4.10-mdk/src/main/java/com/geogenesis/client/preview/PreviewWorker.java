@@ -16,7 +16,12 @@ import org.apache.logging.log4j.Logger;
  * <p>
  * 单线程 ExecutorService + Future.cancel(true) 支持中断。
  * 提供多级分辨率渐进式渲染（先低分再高分）和坡度阴影后处理。
+ *
+ * @deprecated 已被 {@code chunk/} 包的 CellCache + TerrainQueue + TerrainPool 架构取代。
+ * PreviewDisplay 现在直接通过 TerrainQueue 调度 ChunkWorkUnit，
+ * 不再使用 PreviewWorker + PreviewCache 模式。此类保留仅用于参考。
  */
+@Deprecated
 public final class PreviewWorker {
 
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
