@@ -67,8 +67,14 @@
 
 ## 配置同步铁律
 增删字段须同步 **6 处**：
-`GeoGenesisConfig`(定义+BUILDER+buildParams+defaultParams) + `TerrainParams`(record+defaults) + `GeoGenesisConfigScreen.buildParams` + `run/config/geogenesis-common.toml`
+`GeoGenesisConfig`(定义+BUILDER+buildParams+defaultParams) + `TerrainParams`(record+defaults) + `ParameterConfigPanel.buildFromConfig`(addSpec) + `run/config/geogenesis-common.toml`
 改默认值后必须同步已存在的 toml。
+
+## 海洋深度乘数（oceanDepthFactor, 2026-07-22）
+新增参数解决海陆比控制问题。根因：旧地形引擎 eLand 均值 ~0.046，新引擎 eLand 均值 ~0.45（10倍），而 eOcean 最大深度仅 -0.35，导致 continentBias 再大也无法突破 ~26% 海洋硬上限。
+修复：oceanDepthFactor 直接乘到 eOcean（负值），>1=更深(海洋面积扩大)，<1=更浅(陆地扩大)。默认 1.0，范围 [0.5, 3.0]。
+测试验证：factor=2.0,bias=0.4 → ~51% 海洋（50/50）；factor=1.5,bias=0.4 → ~31% 海洋；factor=0.5 → 全陆地。
+影响 5 文件：TerrainParams(字段+defaults), GeoGenesisConfig(定义+builder+buildParams+defaultParams+reset), CellGenerator(sample+seed), ParameterConfigPanel(addSpec)。
 
 ## 关键工程陷阱
 
