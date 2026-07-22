@@ -26,6 +26,14 @@ public final class BiomeClassifier {
 
     /**
      * 根据 Cell 的地形类型和气候选择原版群系 ResourceKey。
+     *
+     * <p>v3（2026-07-22）：加入大陆性分支判断。
+     * 大陆性通过 Climate.isCoastal() / isInland() 参与群系选择：
+     * <ul>
+     *   <li>沿海（c~0）：海洋调节，温度温和、湿度高 → 丛林/沼泽/森林等湿润群系</li>
+     *   <li>内陆（c>0.5）：气候极端，干燥/昼夜温差大 → 沙漠/稀树草原等干燥群系</li>
+     * </ul>
+     * 对应现实地理：西海岸温带雨林 vs 内陆大陆性草原/沙漠。
      */
     public static ResourceKey<Biome> pickKey(Cell cell) {
         TerrainClass terrain = cell.terrainType;
@@ -35,7 +43,6 @@ public final class BiomeClassifier {
             case DEEP_OCEAN -> {
                 if (climate.isFrozen()) yield Biomes.DEEP_FROZEN_OCEAN;
                 if (climate.isCold()) yield Biomes.DEEP_COLD_OCEAN;
-                // MC 没有 DEEP_WARM_OCEAN，热深海也归 LUKEWARM
                 if (climate.isHot()) yield Biomes.LUKEWARM_OCEAN;
                 yield Biomes.DEEP_LUKEWARM_OCEAN;
             }
@@ -69,21 +76,88 @@ public final class BiomeClassifier {
             case BEACH -> climate.isCold()
                 ? Biomes.SNOWY_BEACH : Biomes.BEACH;
 
-            case PLAIN -> climate.isCold()
-                ? Biomes.SNOWY_PLAINS
-                : climate.isDry() ? Biomes.SAVANNA : Biomes.PLAINS;
+            // === 陆地地形：大陆性参与群系分化 ===
 
-            case HILLS -> climate.isCold()
-                ? Biomes.WINDSWEPT_HILLS
-                : climate.isDry() ? Biomes.WINDSWEPT_SAVANNA : Biomes.FOREST;
+            case PLAIN -> {
+                if (climate.isCold()) {
+                    yield Biomes.SNOWY_PLAINS;
+                }
+                // 沿海湿热 → 热带雨林（亚马逊/刚果盆地）
+                if (climate.isHot() && climate.isCoastal() && climate.isWet()) {
+                    yield Biomes.JUNGLE;
+                }
+                // 内陆干热 → 大陆性沙漠（戈壁/阿拉伯半岛）
+                if (climate.isInland() && climate.isDry() && climate.isHot()) {
+                    yield Biomes.DESERT;
+                }
+                // 内陆干旱 → 稀树草原（非洲萨赫勒/中亚草原）
+                if (climate.isInland() && climate.isDry()) {
+                    yield Biomes.SAVANNA;
+                }
+                // 沿海温湿 → 温带森林（西欧/北美东海岸）
+                if (climate.isCoastal() && climate.isWet()) {
+                    yield Biomes.FOREST;
+                }
+                yield Biomes.PLAINS;
+            }
 
-            case PLATEAU -> climate.isCold()
-                ? Biomes.SNOWY_PLAINS
-                : climate.isDry() ? Biomes.SAVANNA_PLATEAU : Biomes.BIRCH_FOREST;
+            case HILLS -> {
+                if (climate.isCold()) {
+                    yield Biomes.WINDSWEPT_HILLS;
+                }
+                // 沿海湿热丘陵 → 热带雨林山地
+                if (climate.isHot() && climate.isCoastal() && climate.isWet()) {
+                    yield Biomes.JUNGLE;
+                }
+                // 内陆干旱丘陵 → 干燥稀树草原丘陵
+                if (climate.isInland() && climate.isDry()) {
+                    yield Biomes.WINDSWEPT_SAVANNA;
+                }
+                // 沿海温湿丘陵 → 针叶林（北欧/阿拉斯加沿海）
+                if (climate.isCoastal() && climate.isWet()) {
+                    yield Biomes.TAIGA;
+                }
+                yield Biomes.FOREST;
+            }
 
-            case MOUNTAINS -> cell.isSnow
-                ? Biomes.STONY_PEAKS
-                : Biomes.JUNGLE;
+            case PLATEAU -> {
+                if (climate.isCold()) {
+                    yield Biomes.SNOWY_PLAINS;
+                }
+                // 内陆干燥高原 → 稀树草原高地（东非高原/青藏高原南麓）
+                if (climate.isInland() && climate.isDry()) {
+                    yield Biomes.SAVANNA_PLATEAU;
+                }
+                // 沿海湿润高原 → 桦木森林（云贵高原/阿巴拉契亚）
+                if (climate.isCoastal() && climate.isWet()) {
+                    yield Biomes.BIRCH_FOREST;
+                }
+                yield Biomes.WINDSWEPT_SAVANNA;
+            }
+
+            case MOUNTAINS -> {
+                if (cell.isSnow) {
+                    yield Biomes.STONY_PEAKS;
+                }
+                // 热带湿润山地 → 云林/热带山地雨林（安第斯东麓/喜马拉雅南麓）
+                if (climate.isHot() && climate.isWet()) {
+                    yield Biomes.JUNGLE;
+                }
+                // 热带干旱山地 → 干燥山地（安第斯西麓/兴都库什）
+                if (climate.isHot() && climate.isDry()) {
+                    yield Biomes.SAVANNA;
+                }
+                // 寒温带山地 → 针叶林（落基山/阿尔卑斯）
+                if (climate.isCold()) {
+                    yield Biomes.TAIGA;
+                }
+                // 内陆干燥山地 → 稀树草原
+                if (climate.isInland() && climate.isDry()) {
+                    yield Biomes.SAVANNA;
+                }
+                // 温带山地 → 森林（默认）
+                yield Biomes.FOREST;
+            }
 
             case PEAK -> cell.isSnow
                 ? Biomes.FROZEN_PEAKS

@@ -55,6 +55,8 @@ public final class GeoGenesisConfig {
 
     // ===== 海床 =====
     public final ForgeConfigSpec.DoubleValue seabedDetail;
+    /** 海洋深度缩放因子（e 单位乘数），>1=更深（海洋面积扩大），<1=更浅（陆地扩大），默认 1.0 */
+    public final ForgeConfigSpec.DoubleValue oceanDepthFactor;
 
     // ===== [已废弃] 省权重 =====
     // 省系统已被地形类型系统取代（TypeLandShape + TypeGenerators）。
@@ -271,8 +273,8 @@ public final class GeoGenesisConfig {
             .defineInRange("continentWarp", 0.2, 0.0, 1.0);
         continentThreshold = builder.comment("Reference continentality c value ∈ [-1,1]. NOT the coastline; coastline = e=0 natural crossing (see terrain-rebuild §1.4). 0=coast anchor, negative=ocean, positive=land — aligned with vanilla Continentalness.")
             .defineInRange("continentThreshold", 0.0, -1.0, 1.0);
-        continentBias = builder.comment("Land/ocean ratio bias. Positive = more ocean, negative = more land.")
-            .defineInRange("continentBias", 0.4, -0.6, 0.6);
+        continentBias = builder.comment("Land/ocean ratio bias. Positive = more ocean, negative = more land. Range expanded v2: land eLand now ~10x higher, need larger bias to compensate.")
+            .defineInRange("continentBias", 0.4, -0.6, 1.5);
         continentProvinceWarp = builder.comment("Continent field warp amplitude for province sampling (blocks). EXPERIMENTAL: warping by c biases mountain ridge direction toward the c gradient (see GeoGenesisMod discussion). Safe default 0 = disable. Enable only if you understand the directional bias.")
             .defineInRange("continentProvinceWarp", 0.0, 0.0, 8000.0);
         builder.pop();
@@ -328,6 +330,8 @@ public final class GeoGenesisConfig {
         builder.push("Seabed");
         seabedDetail = builder.comment("Seabed detail amplitude (e units).")
             .defineInRange("seabedDetail", 0.03, 0.0, 0.2);
+        oceanDepthFactor = builder.comment("Ocean depth multiplier (e units). >1 = deeper (more ocean area), <1 = shallower (more land area). Direct land/ocean ratio control.")
+            .defineInRange("oceanDepthFactor", 1.0, 0.5, 3.0);
         builder.pop();
 
         builder.push("Province Weights");
@@ -614,7 +618,7 @@ public final class GeoGenesisConfig {
             seamountLo.get(), seamountHi.get(),
             lakeLo.get(), lakeHi.get(),
             riverLo.get(), riverHi.get(),
-            seabedDetail.get(),
+            seabedDetail.get(), oceanDepthFactor.get(),
             provinceScale.get(), cratonWeight.get(), beltWeight.get(),
             plateauWeight.get(), basinWeight.get(),
             plainBase.get(), plainRough.get(), hillsLow.get(), hillsHigh.get(),
@@ -682,6 +686,7 @@ public final class GeoGenesisConfig {
         
         // 海床
         seabedDetail.set(seabedDetail.getDefault());
+        oceanDepthFactor.set(oceanDepthFactor.getDefault());
         
         // [已废弃] 省权重
         provinceScale.set(provinceScale.getDefault());
@@ -829,7 +834,7 @@ public final class GeoGenesisConfig {
             seamountLo.getDefault(), seamountHi.getDefault(),
             lakeLo.getDefault(), lakeHi.getDefault(),
             riverLo.getDefault(), riverHi.getDefault(),
-            seabedDetail.getDefault(),
+            seabedDetail.getDefault(), oceanDepthFactor.getDefault(),
             provinceScale.getDefault(), cratonWeight.getDefault(), beltWeight.getDefault(),
             plateauWeight.getDefault(), basinWeight.getDefault(),
             plainBase.getDefault(), plainRough.getDefault(), hillsLow.getDefault(), hillsHigh.getDefault(),

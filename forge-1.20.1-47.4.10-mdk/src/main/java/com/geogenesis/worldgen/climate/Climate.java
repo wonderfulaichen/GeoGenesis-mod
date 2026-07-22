@@ -5,18 +5,18 @@ import com.geogenesis.config.GeoGenesisConfig;
 /**
  * 气候容器（零依赖，不持颜色）。
  *
- * <p>temperature ∈ [-1,1]（冷→热）、humidity ∈ [-1,1]（干→湿）。
+ * <p>temperature ∈ [-1,1]（冷→热）、humidity ∈ [-1,1]（干→湿）、
+ * continentality ∈ [-1,1]（海洋→内陆，= MC 原版 Continentalness）。
  *
  * <p>v2 重构（2026-07-21）：阈值从离散 boolean 判断升级为样条控制点。
- * 每个条件维度（温度/湿度）有一条 Cubic Hermite 样条，阈值作为控制点，
+ * 每个条件维度（温度/湿度/大陆性）有一条 Cubic Hermite 样条，阈值作为控制点，
  * 输出连续区域权重（tent 函数），实现平滑过渡而非硬边界跳变。
  *
- * <p>向下兼容：保留 isFrozen()/isCold()/isHot()/isDry() boolean 方法，
- * 内部委托给样条权重（权重 > 0.5 视为 true）。
+ * <p>v3（2026-07-22）：加入 continentality 字段，用于群系大陆性分支判断。
  */
-public record Climate(double temperature, double humidity) {
+public record Climate(double temperature, double humidity, double continentality) {
 
-    public static final Climate DEFAULT = new Climate(0.0, 0.0);
+    public static final Climate DEFAULT = new Climate(0.0, 0.0, 0.0);
 
     /** 从 GeoGenesisConfig 加载阈值（在 mod 初始化时调用，兼容旧代码） */
     public static void loadFromConfig() {
@@ -119,6 +119,86 @@ public record Climate(double temperature, double humidity) {
      */
     public double[] humWeights() {
         return humSpline().zoneWeights(humidity);
+    }
+
+    // ===== 大陆性样条方法 =====
+
+    /**
+     * 获取大陆性样条（从配置构建）。
+     */
+    private static ClimateSpline contSpline() {
+        GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+        if (cfg != null) {
+            return ClimateSpline.continentality(
+                cfg.continentDeepOceanThreshold.get(),
+                cfg.continentNearOceanThreshold.get(),
+                cfg.continentCoastThreshold.get(),
+                cfg.continentTransitionalThreshold.get(),
+                cfg.continentNearInlandThreshold.get(),
+                cfg.continentInlandThreshold.get());
+        }
+        return ClimateSpline.continentality(-0.8, -0.4, -0.1, 0.15, 0.4, 0.7);
+    }
+
+    /** 深海区域权重 [0,1] */
+    public double deepOceanWeight() {
+        return contSpline().zoneWeight(continentality, ClimateSpline.CONT_DEEP_OCEAN);
+    }
+
+    /** 近海区域权重 [0,1] */
+    public double nearOceanWeight() {
+        return contSpline().zoneWeight(continentality, ClimateSpline.CONT_NEAR_OCEAN);
+    }
+
+    /** 沿海区域权重 [0,1] */
+    public double coastalWeight() {
+        return contSpline().zoneWeight(continentality, ClimateSpline.CONT_COASTAL);
+    }
+
+    /** 过渡区域权重 [0,1] */
+    public double transitionalWeight() {
+        return contSpline().zoneWeight(continentality, ClimateSpline.CONT_TRANSITIONAL);
+    }
+
+    /** 近内陆区域权重 [0,1] */
+    public double nearInlandWeight() {
+        return contSpline().zoneWeight(continentality, ClimateSpline.CONT_NEAR_INLAND);
+    }
+
+    /** 内陆区域权重 [0,1] */
+    public double inlandWeight() {
+        return contSpline().zoneWeight(continentality, ClimateSpline.CONT_INLAND);
+    }
+
+    /** 深内陆区域权重 [0,1] */
+    public double deepInlandWeight() {
+        return contSpline().zoneWeight(continentality, ClimateSpline.CONT_DEEP_INLAND);
+    }
+
+    /**
+     * 大陆性区域权重数组（长度 7）。
+     * 索引对应：[深海, 近海, 沿海, 过渡, 近内陆, 内陆, 深内陆]。
+     */
+    public double[] contWeights() {
+        return contSpline().zoneWeights(continentality);
+    }
+
+    /** 沿海/过渡权重和 > 0.5 → 判断为沿海区域 */
+    public boolean isCoastal() {
+        GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+        if (cfg != null) {
+            return coastalWeight() + transitionalWeight() > 0.5;
+        }
+        return continentality > 0.0 && continentality < 0.4;
+    }
+
+    /** 近内陆/内陆/深内陆权重和 > 0.5 → 判断为内陆区域 */
+    public boolean isInland() {
+        GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+        if (cfg != null) {
+            return nearInlandWeight() + inlandWeight() + deepInlandWeight() > 0.5;
+        }
+        return continentality > 0.6;
     }
 
     // ===== 兼容旧 API（boolean 方法，委托给样条权重） =====

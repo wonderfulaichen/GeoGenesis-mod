@@ -28,6 +28,7 @@ public final class CellGenerator implements HeightProvider {
     private final OceanFeatures oceanFeatures;
     private final double continentBias;
     private final double seabedAmp;
+    private final double oceanDepthFactor;
     private final TerrainParams params;
 
     // 温度参数（v5.10 正弦纬度模型，参考 TF/RTF）
@@ -47,6 +48,7 @@ public final class CellGenerator implements HeightProvider {
         this.oceanFeatures = new OceanFeatures();
         this.continentBias = p.continentBias();
         this.seabedAmp = p.seabedDetail();
+        this.oceanDepthFactor = p.oceanDepthFactor();
         this.params = p;
 
         // 气候噪声
@@ -67,7 +69,7 @@ public final class CellGenerator implements HeightProvider {
             double eBase = heightCurve.eFromC(cBiased);
             double depthMod = 0.6 + smoothstep(-0.2, -0.6, eBase) * 1.2;
             double seabed = seabedAmp * depthMod * seaBed.sample(wx, wz);
-            double eOcean = eBase + seabed;
+            double eOcean = (eBase + seabed) * oceanDepthFactor;
             return Math.min(eOcean, 0.0);
         });
         oceanFeatures.seed(worldSeed);
@@ -103,6 +105,7 @@ public final class CellGenerator implements HeightProvider {
         double depthMod = 0.6 + smoothstep(-0.2, -0.6, eBase) * 1.2;
         double seabed = seabedAmp * depthMod * seaBed.sample(wx, wz);
         double eOcean = eBase + seabed;
+        eOcean = eOcean * oceanDepthFactor;  // 海洋深度缩放：>1→更深(海洋面积扩大)，<1→更浅(陆地扩大)
         eOcean = Math.min(eOcean, 0.0);
         eOcean = clamp(eOcean, -1.0, 0.0);
 
@@ -158,7 +161,7 @@ public final class CellGenerator implements HeightProvider {
         hum += humidityNoise.compute(wx, wz) * 0.25;
         hum = clamp(hum, -1.0, 1.0);
 
-        cell.climate = new com.geogenesis.worldgen.climate.Climate(temp, hum);
+        cell.climate = new com.geogenesis.worldgen.climate.Climate(temp, hum, c);
         cell.temperature = temp;
         cell.humidity = hum;
 
