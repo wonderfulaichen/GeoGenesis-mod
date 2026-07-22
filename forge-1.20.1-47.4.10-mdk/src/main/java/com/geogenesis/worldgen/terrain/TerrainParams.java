@@ -7,6 +7,7 @@ package com.geogenesis.worldgen.terrain;
  * - 大陆场：continentScale、warp、threshold
  * - 海洋样条：c-space 控制点位置 + e-space 深度 + 导数
  * - 海床细节：seabedDetail
+ * - 海洋深度缩放：oceanDepthFactor
  * - 海陆占比：continentBias
  * - 陆地省权重：provinceScale、四省软权重
  * - 地形过程形态：平原/丘陵/山脉/高原/盆地参数
@@ -61,6 +62,8 @@ public record TerrainParams(
     // ===== 海床细节 =====
     /** 海床细节振幅（e 单位），默认 0.03 */
     double seabedDetail,
+    /** 海洋深度缩放因子（e 单位乘数），>1=更深(海洋面积扩大)，<1=更浅(陆地扩大)，默认 1.0 */
+    double oceanDepthFactor,
 
     // ===== 陆地省权重 =====
     /** 省场噪声尺度（块），默认 2000 */
@@ -191,7 +194,7 @@ public record TerrainParams(
     public static TerrainParams defaults() {
         return new TerrainParams(
             // continent（continentProvinceWarp 默认 0=禁用，域扭曲实验结论见 CellGenerator）
-            4000.0, 0.2, 0.0, 0.0, 0.0,
+            4000.0, 0.2, 0.0, 0.4, 0.0,
             // ocean spline locations (c∈[-1,1]; 负=深海、0=海岸锚点)
             -0.80, -0.50, -0.16, -0.04,
             // ocean spline values（deepOcean depth 从 -0.85 减至 -0.35，适配 MC 游戏性不宜太深）
@@ -200,6 +203,8 @@ public record TerrainParams(
             0.0, 0.8, 0.0, 0.0,
             // seabed
             0.03,
+            // oceanDepthFactor
+            1.0,
             // 海洋类型独立 lo/hi（默认值）
             -0.35, -0.06,  // OCEAN
             -0.50, -0.35,  // DEEP_OCEAN
