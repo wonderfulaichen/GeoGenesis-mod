@@ -21,7 +21,7 @@ import java.util.Map;
  * <ul>
  *   <li>{@link PreviewLayer} 注册表：每个图层携带元数据（连续/离散、本地化 key、默认色带、分组、图例/默认可见）。</li>
  *   <li>内置多套色带（elevation/temperature/... + 科学色带 inferno/viridis/...），Lab 插值 {@link ColorMap} 烘焙 LUT。</li>
- *   <li>离散映射：climateZone / biome / terrainType / landOcean 的 id→颜色。</li>
+ *   <li>离散映射：climateZone / biome / terrainType 的 id→颜色。</li>
  *   <li>MC 侧可经 {@link #setLayerColormap}/{@link #setDiscreteColors} 覆盖默认（来自 JSON 资源 / 用户文件）。</li>
  * </ul>
  *
@@ -46,13 +46,15 @@ public final class GeoPalette {
         HUMIDITY(Kind.CONTINUOUS, "geogenesis.layer.humidity", "humidity", Group.CLIMATE, true, true),
         CONTINENTALITY(Kind.CONTINUOUS, "geogenesis.layer.continentality", "continentality", Group.CLIMATE, false, false),
         RELIEF(Kind.CONTINUOUS, "geogenesis.layer.relief", "relief", Group.TERRAIN, false, false),
-        DRAINAGE(Kind.CONTINUOUS, "geogenesis.layer.drainage", "drainage", Group.WATER, false, false),
         LATITUDE(Kind.CONTINUOUS, "geogenesis.layer.latitude", "latitude", Group.CLIMATE, false, false),
         CLIMATE_ZONE(Kind.DISCRETE, "geogenesis.layer.climate_zone", "climateZone", Group.CLIMATE, true, true),
         BIOME(Kind.DISCRETE, "geogenesis.layer.biome", "biome", Group.BASE, true, true),
         TERRAIN_TYPE(Kind.DISCRETE, "geogenesis.layer.terrain_type", "terrainType", Group.TERRAIN, true, true),
-        LAND_OCEAN(Kind.DISCRETE, "geogenesis.layer.land_ocean", "landOcean", Group.BASE, true, true),
-        RIVER_NETWORK(Kind.CONTINUOUS, "geogenesis.layer.river_network", "river_network", Group.WATER, true, true);
+        RIVER_NETWORK(Kind.CONTINUOUS, "geogenesis.layer.river_network", "river_network", Group.WATER, true, true),
+        BIOME_REAL(Kind.DISCRETE, "geogenesis.layer.biome_real", "biomeReal", Group.BASE, true, true),
+        ROCK_LAYER(Kind.DISCRETE, "geogenesis.layer.rock_layer", "rockLayer", Group.TERRAIN, false, false),
+        ROCK_TYPE(Kind.DISCRETE, "geogenesis.layer.rock_type", "rockType", Group.TERRAIN, false, false),
+        VEIN_MAP(Kind.DISCRETE, "geogenesis.layer.vein_map", "veinMap", Group.TERRAIN, false, false);
 
         public final Kind kind;
         public final String labelKey;
@@ -92,12 +94,12 @@ public final class GeoPalette {
     // ============================================================
 
     private static final float[][] S_ELEVATION = {
-            {0.00f, 0.07f, 0.16f, 0.36f},   // 最深洋盆 (Y=-64)
-            {0.18f, 0.14f, 0.32f, 0.50f},   // 深海 (Y≈-6，适配新深度，增强海洋对比)
-            {0.30f, 0.23f, 0.49f, 0.66f},   // 大陆坡 (Y=32)
-            {0.45f, 0.45f, 0.63f, 0.36f},   // 海岸/低地 (Y=80)
-            {0.65f, 0.55f, 0.49f, 0.31f},   // 丘陵 (Y=144)
-            {0.85f, 0.62f, 0.55f, 0.46f},   // 山地 (Y=208)
+            {0.00f, 0.18f, 0.30f, 0.55f},   // 最深洋盆 (Y=-64) — 明显蓝紫
+            {0.18f, 0.22f, 0.40f, 0.68f},   // 深海 (Y≈-6)
+            {0.30f, 0.30f, 0.55f, 0.78f},   // 大陆坡 (Y=32)
+            {0.45f, 0.50f, 0.65f, 0.42f},   // 海岸/低地 (Y=80)
+            {0.65f, 0.60f, 0.55f, 0.36f},   // 丘陵 (Y=144)
+            {0.85f, 0.68f, 0.58f, 0.50f},   // 山地 (Y=208)
             {1.00f, 0.96f, 0.96f, 0.96f},   // 雪峰 (Y=256)
     };
     private static final float[][] S_TEMPERATURE = {
@@ -118,29 +120,24 @@ public final class GeoPalette {
             {0.00f, 0.12f, 0.12f, 0.14f},
             {1.00f, 0.95f, 0.85f, 0.60f},
     };
-    private static final float[][] S_DRAINAGE = {
-            {0.00f, 0.20f, 0.45f, 0.85f},
-            {0.50f, 0.55f, 0.72f, 0.78f},
-            {1.00f, 0.78f, 0.72f, 0.55f},
-    };
     private static final float[][] S_LATITUDE = {
             {0.00f, 0.30f, 0.62f, 0.35f},
             {0.50f, 0.85f, 0.82f, 0.55f},
             {1.00f, 0.95f, 0.97f, 1.00f},
     };
     private static final float[][] S_RIVER_NETWORK = {
-            {0.00f, 0.10f, 0.11f, 0.14f},  // 非河：近黑灰（底）
-            {0.55f, 0.08f, 0.28f, 0.52f},  // 近河：深蓝
-            {1.00f, 0.32f, 0.82f, 1.00f},  // 河心：亮青
+            {0.00f, 0.30f, 0.32f, 0.36f},  // 非河：浅灰（底，比背景亮）
+            {0.55f, 0.18f, 0.45f, 0.75f},  // 近河：亮蓝
+            {1.00f, 0.40f, 0.90f, 1.00f},  // 河心：亮青
     };
 
     // 海洋深度色带（用于预览看清海底地貌）
     private static final float[][] S_OCEAN_DEPTH = {
-            {0.00f, 0.02f, 0.06f, 0.18f},  // 最深洋盆
-            {0.30f, 0.05f, 0.15f, 0.35f},  // 深海
-            {0.55f, 0.10f, 0.28f, 0.52f},  // 大陆坡
-            {0.80f, 0.18f, 0.45f, 0.65f},  // 浅海
-            {1.00f, 0.40f, 0.72f, 0.85f},  // 海岸
+            {0.00f, 0.10f, 0.18f, 0.40f},  // 最深洋盆 — 蓝紫，明显亮于背景
+            {0.30f, 0.12f, 0.25f, 0.55f},  // 深海
+            {0.55f, 0.18f, 0.40f, 0.72f},  // 大陆坡
+            {0.80f, 0.28f, 0.55f, 0.82f},  // 浅海
+            {1.00f, 0.50f, 0.78f, 0.92f},  // 海岸
     };
 
     // 科学色带（用于高程/任意连续图层的可切换色带）
@@ -182,7 +179,6 @@ public final class GeoPalette {
         register("humidity", S_HUMIDITY);
         register("continentality", S_CONTINENTALITY);
         register("relief", S_RELIEF);
-        register("drainage", S_DRAINAGE);
         register("latitude", S_LATITUDE);
         register("river_network", S_RIVER_NETWORK);
         register("inferno", S_INFERNO);
@@ -262,10 +258,6 @@ public final class GeoPalette {
             0x7A6FA0, // 13 BASIN 紫灰
             0xFFFFFF, // 14 SNOW 白
     };
-    // LAND_OCEAN id: 0 OCEAN,1 LAND,2 LAKE,3 RIVER
-    private static final int[] T_LAND_OCEAN = {
-            0x2E5C8A, 0x6FA84B, 0x34B4D6, 0x2E6FD6,
-    };
     // CLIMATE_ZONE id: 与 Zone.ordinal() 对齐
     private static final int[] T_CLIMATE_ZONE = {
             0xC0413B, // TROPICAL A
@@ -307,9 +299,9 @@ public final class GeoPalette {
 
     static {
         discreteDefaults.put(PreviewLayer.TERRAIN_TYPE, T_TERRAIN_TYPE);
-        discreteDefaults.put(PreviewLayer.LAND_OCEAN, T_LAND_OCEAN);
         discreteDefaults.put(PreviewLayer.CLIMATE_ZONE, T_CLIMATE_ZONE);
         discreteDefaults.put(PreviewLayer.BIOME, T_BIOME);
+        // BIOME_REAL/ROCK_LAYER/ROCK_TYPE/VEIN_MAP 无默认色——由 MC 侧或未来地质系统填充
     }
 
     // ============================================================
@@ -365,7 +357,6 @@ public final class GeoPalette {
                 case HUMIDITY:    pos = (c.humidity + 1.0) * 0.5; break;     // [-1,1] → [0,1]
                 case CONTINENTALITY: pos = (c.continentNoise + 1.0) * 0.5; break;
                 case RELIEF:      pos = (c.shape + 1.0) * 0.5; break;
-                case DRAINAGE:    pos = 1.0 - c.riverNetDist; break;  // 河心亮、远暗
                 case LATITUDE:    pos = Latitude.latitude01(worldZ); break;
                 case RIVER_NETWORK: {
                     double d = c.riverNetDist;                 // 0=河心,1=谷缘
@@ -464,9 +455,6 @@ public final class GeoPalette {
             case TERRAIN_TYPE:
                 for (int i = 0; i < TERRAIN_TYPE_NAMES.length; i++) if (TERRAIN_TYPE_NAMES[i].equals(name)) return i;
                 return -1;
-            case LAND_OCEAN:
-                for (int i = 0; i < LAND_OCEAN_NAMES.length; i++) if (LAND_OCEAN_NAMES[i].equals(name)) return i;
-                return -1;
             default:
                 return -1;
         }
@@ -498,7 +486,7 @@ public final class GeoPalette {
             case CLIMATE_ZONE -> Zone.values().length;
             case BIOME -> BiomeClass.values().length;
             case TERRAIN_TYPE -> TERRAIN_TYPE_NAMES.length;
-            case LAND_OCEAN -> LAND_OCEAN_NAMES.length;
+            case BIOME_REAL -> 0; // 由 MC Biome Registry 动态决定，无固定标签列表
             default -> Integer.MAX_VALUE;
         };
     }
@@ -515,7 +503,7 @@ public final class GeoPalette {
             case CLIMATE_ZONE: return "geogenesis.zone." + Zone.values()[id].name();
             case BIOME:        return "geogenesis.biome." + BiomeClass.values()[id].name();
             case TERRAIN_TYPE: return "geogenesis.terrain_type." + TERRAIN_TYPE_NAMES[id];
-            case LAND_OCEAN:   return "geogenesis.land_ocean." + LAND_OCEAN_NAMES[id];
+            case BIOME_REAL:   return "geogenesis.biome_real." + id;
             default: return layer.labelKey + "." + id;
         }
     }
@@ -525,7 +513,6 @@ public final class GeoPalette {
             "LAKE", "RIVER", "BEACH", "PLAIN", "HILLS", "PLATEAU",
             "MOUNTAINS", "PEAK", "BASIN", "SNOW"
     };
-    private static final String[] LAND_OCEAN_NAMES = {"OCEAN", "LAND", "LAKE", "RIVER"};
 
     /** Swing 端图例英文回退（避免缺失翻译时显示 key）。 */
     public static String englishLabel(String labelKey) {
@@ -540,13 +527,12 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.humidity", "Humidity");
         ENGLISH.put("geogenesis.layer.continentality", "Continentality");
         ENGLISH.put("geogenesis.layer.relief", "Relief");
-        ENGLISH.put("geogenesis.layer.drainage", "Drainage");
         ENGLISH.put("geogenesis.layer.latitude", "Latitude");
         ENGLISH.put("geogenesis.layer.climate_zone", "Climate Zone");
         ENGLISH.put("geogenesis.layer.biome", "Biome");
         ENGLISH.put("geogenesis.layer.terrain_type", "Terrain Type");
-        ENGLISH.put("geogenesis.layer.land_ocean", "Land / Ocean");
         ENGLISH.put("geogenesis.layer.river_network", "River Network");
+        ENGLISH.put("geogenesis.layer.biome_real", "Biome (Real)");
         // 气候带
         ENGLISH.put("geogenesis.zone.TROPICAL", "Tropical (A)");
         ENGLISH.put("geogenesis.zone.ARID", "Arid (B)");
@@ -568,10 +554,10 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.terrain_type.PEAK", "Peak");
         ENGLISH.put("geogenesis.terrain_type.BASIN", "Basin");
         ENGLISH.put("geogenesis.terrain_type.SNOW", "Snow");
-        ENGLISH.put("geogenesis.land_ocean.OCEAN", "Ocean");
-        ENGLISH.put("geogenesis.land_ocean.LAND", "Land");
-        ENGLISH.put("geogenesis.land_ocean.LAKE", "Lake");
-        ENGLISH.put("geogenesis.land_ocean.RIVER", "River");
+        // 地质图层（预留）
+        ENGLISH.put("geogenesis.layer.rock_layer", "Rock Layer");
+        ENGLISH.put("geogenesis.layer.rock_type", "Rock Type");
+        ENGLISH.put("geogenesis.layer.vein_map", "Vein Map");
         ENGLISH.put("geogenesis.biome.OCEAN", "Ocean");
         ENGLISH.put("geogenesis.biome.DEEP_OCEAN", "Deep Ocean");
         ENGLISH.put("geogenesis.biome.COLD_OCEAN", "Cold Ocean");
@@ -611,7 +597,6 @@ public final class GeoPalette {
             case CLIMATE_ZONE: return ClimateZone.classify(c).ordinal();
             case BIOME:        return BiomeClassifier.classify(c).ordinal();
             case TERRAIN_TYPE: return terrainTypeId(c);
-            case LAND_OCEAN:   return landOceanId(c);
             default: return 0;
         }
     }
@@ -625,14 +610,6 @@ public final class GeoPalette {
             return TerrainClass.SNOW.ordinal();
         }
         return c.terrainType.ordinal();
-    }
-
-    // LAND_OCEAN id: 0 OCEAN,1 LAND,2 LAKE,3 RIVER
-    private static int landOceanId(Cell c) {
-        if (c.lakeMask) return 2;
-        if (c.riverMask) return 3;
-        if (c.terrainType.isOcean()) return 0;
-        return 1;
     }
 
     // ============================================================

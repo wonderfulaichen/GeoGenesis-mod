@@ -18,6 +18,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.Arrays;
 import java.util.List;
+import com.geogenesis.client.SeedManager.SeedEntry;
 
 /**
  * GeoGenesis 配置屏（三页签面板版）。
@@ -45,7 +46,9 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private PreviewDisplay preview;
     private EditBox seedBox;
-    private Button saveBtn, resetBtn, tabBtns[], layerPrev, layerNext, hydroBtn;
+    private Button saveBtn, resetBtn, tabBtns[], layerPrev, layerNext, hydroBtn, slopeBtn, favBtn;
+    /** 种子收藏列表（点击切换） */
+    private List<Button> seedFavButtons = List.of();
     private int currentMode = TERRAIN_TYPE_LAYER;
 
     private int panelX, panelW, headerY, listTop, listBottom;
@@ -53,6 +56,10 @@ public class GeoGenesisConfigScreen extends Screen {
     private int scroll;
     private boolean dirty, saved;
     private int debounce;
+    /** 上次已应用参数快照。比较 hash 决定是否真正需要 rebuild。
+     *  解决"点击空白区域就刷新"——面板 slider 在 click 不改变值时也会触发 markDirty。 */
+    private TerrainParams lastAppliedParams = null;
+    private long lastAppliedSeed = -1;
 
     public GeoGenesisConfigScreen(Screen parent) {
         super(Component.literal("GeoGenesis 配置"));
@@ -75,7 +82,7 @@ public class GeoGenesisConfigScreen extends Screen {
         listTop = headerY + 26;
         listBottom = h - 44;
         previewX = panelX + panelW + 20;
-        previewY = 70;
+        previewY = 90;
         previewW = w - previewX - 10;
         previewH = listBottom - previewY;
 
@@ -90,6 +97,19 @@ public class GeoGenesisConfigScreen extends Screen {
             rebuildPreview();
         }).pos(panelX + panelW - 22, 36).size(20, 18).build();
         addRenderableWidget(seedRefreshBtn);
+
+        // 收藏切换按钮
+        SeedManager sm = SeedManager.getInstance();
+        favBtn = Button.builder(Component.literal("☆"), b -> {
+            if (sm.isFavorite(seed)) {
+                sm.removeFavorite(seed);
+            } else {
+                sm.addFavorite(seed, "Seed " + seed);
+            }
+            rebuildSeedFavButtons(sm);
+        }).pos(panelX + panelW - 44, 36).size(20, 18).build();
+        addRenderableWidget(favBtn);
+        rebuildSeedFavButtons(sm);
 
         tabBtns = new Button[3];
         int tabW = Math.max(60, (panelW - 8) / 3);
@@ -127,15 +147,19 @@ public class GeoGenesisConfigScreen extends Screen {
         addRenderableWidget(saveBtn);
         addRenderableWidget(resetBtn);
 
+        // 按钮在 widget 上方留出 4px 间隙
         layerPrev = Button.builder(Component.literal("◀ 图层"), b -> cycleLayer(-1))
-            .pos(previewX, previewY - 28).size(70, 20).build();
+            .pos(previewX, previewY - 24).size(70, 20).build();
         layerNext = Button.builder(Component.literal("图层 ▶"), b -> cycleLayer(1))
-            .pos(previewX + previewW - 70, previewY - 28).size(70, 20).build();
-        hydroBtn = Button.builder(Component.literal("水文: 关"), b -> toggleHydro())
-            .pos(previewX + previewW / 2 - 45, previewY - 28).size(90, 20).build();
+            .pos(previewX + previewW - 70, previewY - 24).size(70, 20).build();
+        hydroBtn = Button.builder(Component.literal("水文"), b -> toggleHydro())
+            .pos(previewX + previewW / 2 - 48, previewY - 24).size(40, 20).build();
+        slopeBtn = Button.builder(Component.literal("阴影"), b -> toggleSlope())
+            .pos(previewX + previewW / 2 - 6, previewY - 24).size(40, 20).build();
         addRenderableWidget(layerPrev);
         addRenderableWidget(layerNext);
         addRenderableWidget(hydroBtn);
+        addRenderableWidget(slopeBtn);
 
         rebuildPreview();
         pushScrollToPanels();
@@ -156,14 +180,47 @@ public class GeoGenesisConfigScreen extends Screen {
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
         if (preview == null) {
-            preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p);
-            preview.setMode(currentMode);
+            // ★ 直接传 mode，构造器内设好 activeLayer + requestResample，无需 setMode
+            preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p, currentMode);
             addRenderableWidget(preview);
         } else {
             preview.setTerrain(terrain, seed, p);
             preview.setMode(currentMode);
         }
+        // 记录已应用参数（避免下次相同 markDirty 触发重建）
+        lastAppliedParams = p;
+        lastAppliedSeed = seed;
         dirty = false;
+    }
+
+    /** 重建种子收藏按钮列表 */
+    private void rebuildSeedFavButtons(SeedManager sm) {
+        // 移除旧按钮
+        for (Button b : seedFavButtons) removeWidget(b);
+        List<SeedEntry> favs = sm.getFavorites();
+        List<Button> btns = new java.util.ArrayList<>();
+        favBtn.setMessage(Component.literal(sm.isFavorite(seed) ? "★" : "☆"));
+        // 只显示最近 5 个
+        int count = Math.min(favs.size(), 5);
+        for (int i = 0; i < count; i++) {
+            SeedEntry e = favs.get(favs.size() - 1 - i);
+            boolean active = e.seed() == seed;
+            Button b = Button.builder(
+                Component.literal(active ? "▶ " + e.name() : e.name()),
+                btn -> {
+                    seed = e.seed();
+                    seedBox.setValue(String.valueOf(seed));
+                    rebuildPreview();
+                    rebuildSeedFavButtons(sm);
+                })
+                .pos(panelX, 58 + i * 14)
+                .size(panelW - 8, 12)
+                .build();
+            b.active = !active;
+            addRenderableWidget(b);
+            btns.add(b);
+        }
+        seedFavButtons = btns;
     }
 
     private void cycleLayer(int d) {
@@ -173,10 +230,17 @@ public class GeoGenesisConfigScreen extends Screen {
     private void toggleHydro() {
         if (preview == null) return;
         preview.setHydrology(!preview.isHydrology());
-        hydroBtn.setMessage(Component.literal("水文: " + (preview.isHydrology() ? "开" : "关")));
+        hydroBtn.setMessage(Component.literal("水文" + (preview.isHydrology() ? "✓" : "")));
     }
+
+    private void toggleSlope() {
+        if (preview == null) return;
+        preview.setSlopeShading(!preview.isSlopeShading());
+        slopeBtn.setMessage(Component.literal("阴影" + (preview.isSlopeShading() ? "✓" : "")));
+    }
+
     private void doSave() { GeoGenesisConfig.SPEC.save(); saved = true; dirty = false; }
-    private void doReset() { 
+    private void doReset() {
         // 重置到默认值：~120 个 .set() 各自触发文件写入，Windows 文件锁可能抛 WritingException
         // 捕获并继续——部分字段未写入的后续面板重建也会覆盖
         try {
@@ -190,13 +254,29 @@ public class GeoGenesisConfigScreen extends Screen {
         paramPanel.buildFromConfig();
         scroll = 0;
         pushScrollToPanels();
+        lastAppliedParams = null; // 强制下次 rebuild
         rebuildPreview();
     }
 
     @Override
     public void tick() {
         super.tick();
-        if (dirty && debounce > 0) { debounce--; if (debounce <= 0) rebuildPreview(); }
+        if (dirty && debounce > 0) { debounce--; if (debounce <= 0) rebuildPreviewIfChanged(); }
+    }
+
+    /** 只在参数真的变化时才重建预览（解决"点击空白也刷新"问题） */
+    private void rebuildPreviewIfChanged() {
+        TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
+        if (lastAppliedParams != null
+                && lastAppliedParams.equals(p)
+                && lastAppliedSeed == seed) {
+            // 参数和种子都没变 → 跳过 rebuild
+            dirty = false;
+            return;
+        }
+        lastAppliedParams = p;
+        lastAppliedSeed = seed;
+        rebuildPreview();
     }
 
     // ---- 渲染（不依赖 translate，面板内部 scrollOffset 自适配） ----
@@ -223,8 +303,7 @@ public class GeoGenesisConfigScreen extends Screen {
             g.fill(bx, headerY, bx + tabW, headerY + 1, on ? 0x00c896 : 0x444444);
         }
 
-        String layerName = I18nSafe(GeoPalette.PreviewLayer.values()[currentMode].labelKey);
-        g.drawString(this.font, "图层: " + layerName, previewX, previewY - 6, 0xAAAAAA);
+        // 图层名由 widget 内部图例显示，此处不重复绘制（避免与按钮重叠）
 
         // 左栏面板：裁剪区 + 直接渲染（无 translate）
         // tab 0=世界参数(paramPanel), 1=气候(climatePanel), 2=地形(terrainPanel)
@@ -266,9 +345,10 @@ public class GeoGenesisConfigScreen extends Screen {
     @Override
     public boolean mouseReleased(double mx, double my, int b) {
         if (confirmDialog.isShowing()) return true;
-        if (tab == 0) paramPanel.mouseReleased(mx, my, b);
-        else if (tab == 1) climatePanel.mouseReleased(mx, my, b);
-        else terrainPanel.mouseReleased(mx, my, b);
+        // ★ 修复：面板处理了就不传给 super，防止预览被误触
+        if (tab == 0) { if (paramPanel.mouseReleased(mx, my, b)) return true; }
+        else if (tab == 1) { if (climatePanel.mouseReleased(mx, my, b)) return true; }
+        else { if (terrainPanel.mouseReleased(mx, my, b)) return true; }
         return super.mouseReleased(mx, my, b);
     }
 

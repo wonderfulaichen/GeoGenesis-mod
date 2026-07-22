@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class GeoGenesisTerrain {
 
-    private static final int CACHE_SIZE = 256;
+    private static final int CACHE_SIZE = 4096;
     private static final int CHUNK_SHIFT = 4; // 16 blocks per chunk
 
     private final CellGenerator generator;
@@ -155,11 +155,12 @@ public final class GeoGenesisTerrain {
         return cells;
     }
 
-    /** 简单 LRU 淘汰（在 computeIfAbsent 外部调用，避免 ConcurrentHashMap 死锁）。 */
+    /** 简单 LRU 淘汰（在 computeIfAbsent 外部调用，避免 ConcurrentHashMap 死锁）。
+     *  淘汰 1/8（而非 1/2）以保留最近生成的大区域 chunk，让 QUARTER→FULL 跨相位共享 chunk。 */
     private void pruneIfNeeded() {
         if (cache.size() > CACHE_SIZE) {
             var it = cache.keySet().iterator();
-            int toRemove = cache.size() / 2;
+            int toRemove = Math.max(1, cache.size() / 8);
             for (int i = 0; i < toRemove && it.hasNext(); i++) {
                 it.next();
                 it.remove();
