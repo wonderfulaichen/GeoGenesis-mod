@@ -467,6 +467,39 @@ public final class GeoPalette {
     }
 
     // ============================================================
+    //  设置屏 API（colormap 列表 + 选中 + 群系色）
+    // ============================================================
+
+    /** 色带条目，供 {@link com.geogenesis.client.settings.HeightmapTab} 使用 */
+    public record ColormapEntry(String name, ColorMap colormap) {}
+
+    /** 获取所有可用色带条目列表 */
+    public static List<ColormapEntry> getColormapEntries() {
+        List<ColormapEntry> list = new ArrayList<>();
+        for (Map.Entry<String, ColorMap> e : COLORMAPS.entrySet()) {
+            list.add(new ColormapEntry(e.getKey(), e.getValue()));
+        }
+        return list;
+    }
+
+    /** 获取当前激活的色带条目 */
+    public static ColormapEntry getActiveColormap() {
+        ColorMap cm = COLORMAPS.get(elevationColormapName);
+        return new ColormapEntry(elevationColormapName, cm);
+    }
+
+    /** 设置为激活色带（Elevation 图层） */
+    public static void setActiveColormap(ColormapEntry entry) {
+        elevationColormapName = entry.name();
+    }
+
+    /** 获取 BiomeClass 的离散颜色（BIOME 图层） */
+    public static int colorForBiome(int biomeId) {
+        if (biomeId >= 0 && biomeId < T_BIOME.length) return T_BIOME[biomeId];
+        return 0x888888;
+    }
+
+    // ============================================================
     // 图例
     // ============================================================
 
