@@ -22,7 +22,12 @@ import org.apache.logging.log4j.Logger;
  * 4=RELIEF, 5=LATITUDE, 6=CLIMATE_ZONE, 7=BIOME,
  * 8=TERRAIN_TYPE, 9=RIVER_NETWORK, 10=BIOME_REAL,
  * 11=ROCK_LAYER(预留), 12=ROCK_TYPE(预留), 13=VEIN_MAP(预留)
+ *
+ * @deprecated 已被 {@code chunk/} 包的 CellCache 取代。
+ * PreviewDisplay 现在直接读写 CellCache，不再使用 PreviewCache。
+ * 此类保留仅用于参考。
  */
+@Deprecated
 public final class PreviewCache {
 
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
