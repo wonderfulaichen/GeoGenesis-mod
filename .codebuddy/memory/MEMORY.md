@@ -89,10 +89,14 @@
 - `e→Y` 映射必须非对称（e=0→seaLevel=63）
 - 独立预览用 `GeoGenesisConfig.defaultParams()` 而非 `buildParams()`
 - 离散图层颜色数组必须与枚举同序同数
+- **预览采样密度** `PreviewWorker.TARGET_SAMPLES = 144`（12×12 网格）；RIVER_NETWORK 等稀疏信号图层建议 ≥200
 
 ### 诊断经验
 - 用户报"地形没变"时，先查 class 文件时间是否比源文件新 + `run/mods/` 是否被手放 jar
 - 编译后必须 `gradlew compileJava --rerun-tasks` 验证全量编译
+- **预览"看不到画面"调试三步**：1) 确认 widget 渲染（加可视边框/状态行） 2) 确认纹理上传（hasTexture / log pixel） 3) **对比像素值和背景色的 RGB 距离**（关键！色带最暗端 + 暗背景 = 隐形）
+- 预览最暗端色带必须与背景色有 ≥30 的 RGB 距离（建议调色前算一下）
+- 纹理上传直接写入构造时创建的 `NativeImage` + `texture.upload()`，不要反复创建/释放 `DynamicTexture`
 
 ## 重要重构历史
 

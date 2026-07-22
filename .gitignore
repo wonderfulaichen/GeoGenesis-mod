@@ -51,3 +51,32 @@ forge-1.20.1-47.4.10-mdk/.trae/
 # Research notes / work notes
 docs/
 .workbuddy/
+
+# Build artifacts / diagnostics
+forge-1.20.1-47.4.10-mdk/*.txt
+forge-1.20.1-47.4.10-mdk/*.log
+forge-1.20.1-47.4.10-mdk/terrain-dumps/
+forge-1.20.1-47.4.10-mdk/build-log.txt
+forge-1.20.1-47.4.10-mdk/META-INF/
+
+# Gradle cache
+.gradle/
+
+# Game logs
+logs/
+
+# Test tools
+erosion-test-tool-backup-v5-river-fixed/
+river_check/
+sca_smoke/
+backups/
+
+# Temp recovery files
+temp_*.txt
+build_output.txt
+ocean_probe_output.txt
+preview_run.log
+
+# CodeBuddy internal data
+.codebuddy/plans/
+0.45*
