@@ -42,7 +42,6 @@ public class PreviewDisplay extends AbstractWidget {
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
 
     // ====== 存储 & 采样 ======
-    private final CellCache cellCache = new CellCache();
     private final TerrainPool pool = new TerrainPool(4);
     private TerrainQueue queue;
     private GeoGenesisTerrain terrain;
@@ -88,6 +87,18 @@ public class PreviewDisplay extends AbstractWidget {
     private Instant copiedToastTime = null;
     /** 群系高亮选中 id（-1=未选中） */
     private int selectedBiomeId = -1;
+
+    // ====== 设置（共 SettingsScreen 读写） ======
+    /** 显示控制提示 */
+    public boolean showControlsHint = true;
+    /** 显示帧时间 */
+    public boolean showFrameTime = true;
+    /** 显示玩家位置标记 */
+    public boolean showPlayerMarkers = true;
+    /** 缓存是否启用 */
+    public boolean cacheEnabled = true;
+    /** 公开 CellCache 引用，供外部清除缓存 */
+    public CellCache cellCache = new CellCache();
 
     // ====== 数据 ======
     private long seed;
@@ -171,8 +182,10 @@ public class PreviewDisplay extends AbstractWidget {
         g.blit(texLoc, x, y, w, h, 0, 0, texW, texH, texW, texH);
 
         // 出生点标记
-        drawSpawnMarker(g);
-        // 结构/玩家图标（占位，后续实现）
+            drawSpawnMarker(g);
+            // 玩家位置标记
+            if (showPlayerMarkers) drawPlayerMarker(g);
+            // 结构/玩家图标（占位，后续实现）
 
         // 参考项目：1px 边框线
         g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
@@ -186,7 +199,7 @@ public class PreviewDisplay extends AbstractWidget {
         g.drawString(mc.font, zoomTxt, x + w - mc.font.width(zoomTxt) - 5, y + h - 12, 0xCCCCCCCC);
 
         // 帧时间显示：右上角
-        drawFrameTime(g, x + w, y);
+        if (showFrameTime) drawFrameTime(g, x + w, y);
 
         // 右键复制坐标消息
         drawCopiedToast(g, x, y, w, h);
@@ -533,6 +546,27 @@ public class PreviewDisplay extends AbstractWidget {
         queue.resetViewport();
     }
 
+    /** 更改采样步长并重建队列 */
+    public void resetBlockStride(int stride) {
+        this.blockStride = Math.max(1, Math.min(32, stride));
+        this.queue = new TerrainQueue(cellCache, pool, terrain, this.blockStride);
+        needsClear = true;
+        queue.resetViewport();
+    }
+
+    /** 强制刷新预览（清除缓存 + 重绘） */
+    public void forceRefresh() {
+        needsClear = true;
+        queue.resetViewport();
+    }
+
+    /** 重置高度边界到默认值 */
+    public void resetHeightBounds() {
+        // 高度边界由 GeoGenesisConfig 管理，仅触发重绘
+        needsClear = true;
+        queue.resetViewport();
+    }
+
     // ================================================================
     //  交互增强
     // ================================================================
@@ -580,6 +614,11 @@ public class PreviewDisplay extends AbstractWidget {
         String txt = avg + " ms";
         g.fill(rightX - mc.font.width(txt) - 8, topY + 2, rightX - 2, topY + 12, 0x88000000);
         g.drawString(mc.font, txt, rightX - mc.font.width(txt) - 5, topY + 3, color);
+    }
+
+    /** 绘制玩家位置标记（占位，后续实现） */
+    private void drawPlayerMarker(GuiGraphics g) {
+        // 待 MC 玩家位置读取逻辑
     }
 
     /** 绘制右键复制坐标消息（8 秒渐隐） */

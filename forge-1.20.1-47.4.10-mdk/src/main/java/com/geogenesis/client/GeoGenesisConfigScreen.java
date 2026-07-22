@@ -19,6 +19,7 @@ import net.minecraft.network.chat.Component;
 import java.util.Arrays;
 import java.util.List;
 import com.geogenesis.client.SeedManager.SeedEntry;
+import com.geogenesis.client.settings.SettingsScreen;
 
 /**
  * GeoGenesis 配置屏（三页签面板版）。
@@ -141,11 +142,15 @@ public class GeoGenesisConfigScreen extends Screen {
         paramPanel.buildFromConfig();
 
         saveBtn = Button.builder(Component.literal("保存"), b -> doSave())
-            .pos(panelX, listBottom + 6).size(80, 20).build();
+            .pos(panelX, listBottom + 6).size(60, 20).build();
         resetBtn = Button.builder(Component.literal("重置"), b -> doReset())
-            .pos(panelX + 90, listBottom + 6).size(80, 20).build();
+            .pos(panelX + 64, listBottom + 6).size(60, 20).build();
+        Button settingsBtn = Button.builder(Component.literal("设置"), b ->
+            Minecraft.getInstance().setScreen(new SettingsScreen(this, preview))
+        ).pos(panelX + 128, listBottom + 6).size(60, 20).build();
         addRenderableWidget(saveBtn);
         addRenderableWidget(resetBtn);
+        addRenderableWidget(settingsBtn);
 
         // 按钮在 widget 上方留出 4px 间隙
         layerPrev = Button.builder(Component.literal("◀ 图层"), b -> cycleLayer(-1))
