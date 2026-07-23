@@ -549,7 +549,7 @@ public final class GeoPalette {
     //  设置屏 API（colormap 列表 + 选中 + 群系色）
     // ============================================================
 
-    /** 色带条目，供 {@link com.geogenesis.client.settings.HeightmapTab} 使用 */
+    /** 色带条目，供 {@link com.geogenesis.client.preview.ColormapPanel} 使用 */
     public record ColormapEntry(String name, ColorMap colormap) {}
 
     /** 获取所有可用色带条目列表 */
@@ -711,6 +711,11 @@ public final class GeoPalette {
             case TERRAIN_TYPE: return terrainTypeId(c);
             default: return 0;
         }
+    }
+
+    /** 公开：计算 Cell 在指定离散图层的离散条目 id（供预览选中高亮与图例点击对齐，保证置灰与图例同 id）。 */
+    public static int discreteIdForCell(PreviewLayer layer, Cell c) {
+        return discreteId(layer, c);
     }
 
     // TERRAIN_TYPE id 与 TerrainClass.ordinal() 对齐；水文/雪覆盖作 override（mirror BiomeClassifier）
