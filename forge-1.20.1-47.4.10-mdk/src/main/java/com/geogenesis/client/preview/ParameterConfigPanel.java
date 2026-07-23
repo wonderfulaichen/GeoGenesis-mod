@@ -24,11 +24,7 @@ import java.util.function.Function;
  * - renderSection 不再传 baseY，panel.renderHeader() 用自身 y
  * - 鼠标事件：统一用 curY 迭代，与 render 的布局逻辑完全一致
  */
-public class ParameterConfigPanel {
-
-    private int x, baseY, w;
-    private int scrollOffset;
-    private Runnable onMarkDirty = () -> {};
+public class ParameterConfigPanel extends ConfigPanel {
 
     /** 确认对话框回调：由 GeoGenesisConfigScreen 注入，重要参数松手时触发 */
     @FunctionalInterface
@@ -74,11 +70,6 @@ public class ParameterConfigPanel {
         heightPanel.setContentHeight(180);
         scalePanel.setContentHeight(110 + CHART_SLIDER_H);
     }
-
-    public void setOnMarkDirty(Runnable r) { this.onMarkDirty = r; }
-    public void setBounds(int x, int y, int w) { this.x = x; this.baseY = y; this.w = w; }
-    public void setScrollOffset(int off) { this.scrollOffset = off; }
-    private int top() { return baseY - scrollOffset; }
 
     public void buildFromConfig() {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;

@@ -26,12 +26,9 @@ import java.util.function.Function;
  * - 大陆性从 3 段扩展为 7 段（深海/近海/沿海/过渡/近内陆/内陆/深内陆）
  * - 拖拽色条边界或滑动影响滑块时实时写入配置
  */
-public class ClimateConfigPanel {
+public class ClimateConfigPanel extends ConfigPanel {
 
-    private int x, baseY, w;
-    private int scrollOffset;
     private final List<FactorSection> factors = new ArrayList<>();
-    private Runnable onMarkDirty = () -> {};
 
     private static final int SECTION_GAP = 4;
     private static final int INFLUENCE_W = 64;
@@ -40,11 +37,6 @@ public class ClimateConfigPanel {
     private static final int DATA_LABEL_GAP = 12; // dataMin/dataMax 标签占用的下方空间
 
     public ClimateConfigPanel() {}
-
-    public void setOnMarkDirty(Runnable r) { this.onMarkDirty = r; }
-    public void setBounds(int x, int y, int w) { this.x = x; this.baseY = y; this.w = w; }
-    public void setScrollOffset(int off) { this.scrollOffset = off; }
-    private int top() { return baseY - scrollOffset; }
 
     public void buildClimateFactors() {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;

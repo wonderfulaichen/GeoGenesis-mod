@@ -29,15 +29,12 @@ import java.util.function.Function;
  * - 陆地 lo = center - halfRange，hi = center + halfRange
  * - 滑块 ↔ 控制点双向同步
  */
-public class TerrainConfigPanel {
+public class TerrainConfigPanel extends ConfigPanel {
 
-    private int x, baseY, w;
-    private int scrollOffset;
     private final DualRangeChart chart = new DualRangeChart();
     private final List<ParamSlider> loSliders = new ArrayList<>();
     private final List<ParamSlider> hiSliders = new ArrayList<>();
     private final List<DualRangeChart.Slot> slots = new ArrayList<>();
-    private Runnable onMarkDirty = () -> {};
 
     private boolean collapsed = false;
 
@@ -93,10 +90,7 @@ public class TerrainConfigPanel {
         });
     }
 
-    public void setOnMarkDirty(Runnable r) { this.onMarkDirty = r; }
-    public void setBounds(int x, int y, int w) { this.x = x; this.baseY = y; this.w = w; }
     public int getY() { return baseY; }
-    public void setScrollOffset(int off) { this.scrollOffset = off; }
     public boolean isCollapsed() { return collapsed; }
     public void setCollapsed(boolean v) { this.collapsed = v; }
 
@@ -435,7 +429,7 @@ public class TerrainConfigPanel {
                 () -> centerCfg.get() + halfRangeCfg.get());
     }
 
-    private int top() { return baseY - scrollOffset; }
+
 
     /** 计算单个滑块宽度 */
     private int sliderWidth() {

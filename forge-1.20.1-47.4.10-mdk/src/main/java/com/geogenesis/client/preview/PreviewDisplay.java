@@ -87,10 +87,12 @@ public class PreviewDisplay extends AbstractWidget {
     private Component copiedToastMsg = null;
     /** 右键复制消息的创建时间 */
     private Instant copiedToastTime = null;
-    /** 群系高亮选中 id（-1=未选中） */
-    private int selectedBiomeId = -1;
+    /** 离散图层选中（通用）：选中图层 + 离散 id（-1=未选中）。
+     *  用于点击地图/图例/列表高亮该色块、其余置灰，与参考项目选中行为一致。 */
+    private GeoPalette.PreviewLayer selectedLayer = null;
+    private int selectedId = -1;
 
-    // ====== 设置（共 SettingsScreen 读写） ======
+    // ====== 设置（显示类运行时状态，由 GeoGenesisConfigScreen 各设置页签面板读写） ======
     /** 显示帧时间 */
     public boolean showFrameTime = true;
     /** 显示玩家位置标记 */
@@ -105,8 +107,6 @@ public class PreviewDisplay extends AbstractWidget {
     private int seaLevel, maxY, minY, mountainCap;
     /** 高程色阶映射的 e 区间（地形实际可达范围），供图例 Y 标签换算。 */
     private double elevEMin = -1.0, elevEMax = 1.0;
-    private boolean hydrology = false;
-    private boolean slopeShading = false;
     /** 视口变化标记：需要清除纹理重新填充。pan/zoom/seed 变时设 true */
     public boolean needsClear = true;
 
@@ -170,6 +170,18 @@ public class PreviewDisplay extends AbstractWidget {
         int x = getX(), y = getY(), w = width, h = height;
         g.fill(x, y, x + w, y + h, 0xFF1a1a2a);
 
+        // 每帧直接用鼠标屏幕坐标反算世界坐标（参考项目 updateTooltip 做法），
+        // 不依赖 mouseMoved 回调（Forge Screen 默认不向子 widget 转发 mouseMoved，
+        // 否则 hoverX/hoverZ 永远为 -1、悬浮提示永不触发）。
+        if (isMouseOver(mx, my)) {
+            int originWx = centerX + (int) totalDragX - texW * scaleBlockPos / 2;
+            int originWz = centerZ + (int) totalDragZ - texH * scaleBlockPos / 2;
+            hoverX = originWx + (int) ((mx - getX()) / (double) width * texW) * scaleBlockPos;
+            hoverZ = originWz + (int) ((my - getY()) / (double) height * texH) * scaleBlockPos;
+        } else {
+            hoverX = -1; hoverZ = -1;
+        }
+
         // ★ 参考项目方式：只在视口变化时清除。正常帧保留旧数据，新 chunk 只覆盖其区域
         if (needsClear) {
             image.fillRect(0, 0, texW, texH, 0);
@@ -184,10 +196,9 @@ public class PreviewDisplay extends AbstractWidget {
         int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
         paintAvailableChunks(originWx, originWz, blocksWide, blocksHigh);
 
-        // 真实坡度阴影（逐像素高度梯度法线 · 光源点乘）：SHADE 模式对所有图层生效，
-        // 使气候数据「披」在真实地形明暗之上；保留旧 slopeShading 开关对 ELEVATION 的单独控制。
-        if (GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE
-                || (slopeShading && activeLayer == GeoPalette.PreviewLayer.ELEVATION)) {
+        // 真实性地形阴影（逐像素高度梯度法线 · 光源点乘）：由 TerrainUnderlay 全局控制，
+        // 对图层无关（气候/地形数据均可披真实地形明暗）。
+        if (GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE) {
             applySlopeShading(image, originWx, originWz);
         }
 
@@ -344,7 +355,13 @@ public class PreviewDisplay extends AbstractWidget {
                         if (tx < 0 || tx >= texW || tz < 0 || tz >= texH) continue;
                         Cell cell = cells[lz * 16 + lx];
                         if (cell == null) continue;
-                        int color = GeoPalette.color(activeLayer, cell, wx, wz, minY, maxY, hydrology);
+                        int color = GeoPalette.color(activeLayer, cell, wx, wz, minY, maxY, false);
+                        // 离散图层选中高亮：选中的色块保持原色，其余转灰（每帧重绘，实时生效）
+                        if (selectedLayer == activeLayer && selectedId >= 0
+                                && activeLayer.kind == GeoPalette.Kind.DISCRETE) {
+                            int id = GeoPalette.discreteIdForCell(activeLayer, cell);
+                            if (id != selectedId) color = grayTint(color);
+                        }
                         image.setPixelRGBA(tx, tz, GeoPalette.toABGR(color));
                         paintedCount++;
                     }
@@ -392,6 +409,14 @@ public class PreviewDisplay extends AbstractWidget {
                 if (!legendSearchQuery.isEmpty()) legendSearchQuery = "";
                 return true;
             }
+            // 点击图例条目：选中对应离散色块（再次点取消）
+            int hit = legendHitEntry(my);
+            if (hit >= 0) {
+                List<GeoPalette.LegendEntry> entries = visibleLegendEntries();
+                GeoPalette.LegendEntry e = entries.get(hit);
+                setSelected(activeLayer, e.id);
+                return true;
+            }
             // 点击图例其他区域：退出搜索
             if (legendSearchActive) legendSearchActive = false;
             return true;
@@ -426,33 +451,48 @@ public class PreviewDisplay extends AbstractWidget {
             needsClear = true;
             queue.resetViewport();
         } else if (hoverX != -1 && hoverZ != -1) {
-            // 点击（非拖拽）→ 尝试选中群系
-            handleBiomeClick(mx, my);
+            // 点击（非拖拽）→ 尝试在离散图层选中对应色块
+            handleMapClick(mx, my);
         }
         totalDragX = 0;
         totalDragZ = 0;
         return true;
     }
 
-    /** 处理左键点击：选中 hover 位置的群系 */
-    private void handleBiomeClick(double mx, double my) {
+    /** 处理左键点击：在离散图层选中 hover 位置对应的色块（再次点同一项取消）。 */
+    private void handleMapClick(double mx, double my) {
         if (!isMouseOver(mx, my) || terrain == null) return;
+        if (activeLayer.kind != GeoPalette.Kind.DISCRETE) {
+            selectedLayer = null; selectedId = -1;  // 连续图层点击不选中
+            return;
+        }
         Cell c = sampleHoverCell(hoverX, hoverZ);
         if (c == null) return;
-        // 仅在 BIOME 图层启用选中
-        if (activeLayer == GeoPalette.PreviewLayer.BIOME) {
-            BiomeClassifier.BiomeClass biome = BiomeClassifier.classify(c);
-            if (biome != null) {
-                int id = biome.ordinal();
-                if (selectedBiomeId == id) {
-                    selectedBiomeId = -1;  // 取消选中
-                } else {
-                    selectedBiomeId = id;
-                }
-            }
+        int id = GeoPalette.discreteIdForCell(activeLayer, c);
+        if (id < 0) return;
+        setSelected(activeLayer, id);
+    }
+
+    /** 设置/切换离散图层选中（点同一项取消）。 */
+    public void setSelected(GeoPalette.PreviewLayer layer, int id) {
+        if (layer == null || layer.kind != GeoPalette.Kind.DISCRETE) return;
+        if (selectedLayer == layer && selectedId == id) {
+            selectedLayer = null; selectedId = -1;  // 取消选中
         } else {
-            selectedBiomeId = -1;  // 非 BIOME 图层取消选中
+            selectedLayer = layer; selectedId = id;
         }
+        needsClear = true;
+    }
+
+    public GeoPalette.PreviewLayer getSelectedLayer() { return selectedLayer; }
+    public int getSelectedId() { return selectedId; }
+
+    /** 选中色块高亮时，将非选中颜色去饱和为灰（保留亮度对比，不纯黑）。 */
+    private static int grayTint(int rgb) {
+        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+        int gray = (r * 30 + g * 59 + b * 11) / 100;
+        gray = Math.max(48, Math.min(200, gray));
+        return 0xFF000000 | (gray << 16) | (gray << 8) | gray;
     }
 
     @Override
@@ -504,16 +544,6 @@ public class PreviewDisplay extends AbstractWidget {
         return true;
     }
 
-    @Override
-    public void mouseMoved(double mx, double my) {
-        if (isMouseOver(mx, my)) {
-            int originWx = centerX + (int) totalDragX - texW * scaleBlockPos / 2;
-            int originWz = centerZ + (int) totalDragZ - texH * scaleBlockPos / 2;
-            hoverX = originWx + (int) ((mx - getX()) / (double) width * texW) * scaleBlockPos;
-            hoverZ = originWz + (int) ((my - getY()) / (double) height * texH) * scaleBlockPos;
-        }
-    }
-
     // ================================================================
     //  公共配置
     // ================================================================
@@ -532,7 +562,9 @@ public class PreviewDisplay extends AbstractWidget {
         GeoPalette.setSeaLevel(seaLevel);
         cellCache.invalidateAll();
         pool.cancelAll();
-        queue.resetViewport();
+        // ★ 重建队列：TerrainQueue.terrain 是构造时传入的 final 字段，setTerrain 只更新了
+        //   PreviewDisplay.this.terrain，不重建队列则 ChunkWorkUnit 仍用旧 terrain 采样。
+        rebuildQueue();
         centerX = 0; centerZ = 0;
         totalDragX = 0; totalDragZ = 0;
         needsClear = true;
@@ -548,11 +580,7 @@ public class PreviewDisplay extends AbstractWidget {
 
     public int getMode() { return activeLayer.ordinal(); }
     public GeoPalette.PreviewLayer getLayer() { return activeLayer; }
-    public void setHydrology(boolean on) { this.hydrology = on; }
-    public boolean isHydrology() { return hydrology; }
     public void toggleLegend() { showLegend = !showLegend; }
-    public boolean isSlopeShading() { return slopeShading; }
-    public void setSlopeShading(boolean enabled) { this.slopeShading = enabled; }
     public void queueResetViewport() { queue.resetViewport(); }
 
     /** e→世界高度 Y（与 HeightCurve.heightFromE 一致的非对称映射：e=0→海平面）。 */
@@ -653,13 +681,12 @@ public class PreviewDisplay extends AbstractWidget {
         int screenSz = y + (int)((double)texSz / texH * h);
         int markerSize = 6;
 
-        // 金色 X 形罗盘标记
+        // 金色 X 形罗盘标记（移除白边框方框，避免与正常方块误判）
         int gold = 0xFFFFAA00;
         g.fill(screenSx - markerSize, screenSz - 1, screenSx - 1, screenSz + 1, gold);
         g.fill(screenSx + 1, screenSz - 1, screenSx + markerSize, screenSz + 1, gold);
         g.fill(screenSx - 1, screenSz - markerSize, screenSx + 1, screenSz - 1, gold);
         g.fill(screenSx - 1, screenSz + 1, screenSx + 1, screenSz + markerSize, gold);
-        border(g, screenSx - markerSize - 1, screenSz - markerSize - 1, screenSx + markerSize + 1, screenSz + markerSize + 1, 0x44FFFFFF, 1);
     }
 
     /** 绘制帧时间（右上角） */
@@ -826,7 +853,11 @@ public class PreviewDisplay extends AbstractWidget {
         Cell c = sampleHoverCell(hoverX, hoverZ);
         if (c == null) return;
 
-        int lx = getX() + 6, ly = getY() + height - 85;
+        // 跟随光标 tooltip（偏移 14px，夹取在屏幕内避免越界）
+        int screenW = mc.getWindow().getGuiScaledWidth();
+        int screenH = mc.getWindow().getGuiScaledHeight();
+        int lx = (int) mx + 14;
+        int ly = (int) my + 14;
         // 第一行：坐标 + 高度
         String line0 = String.format("X=%d  Z=%d  Y=%d", hoverX, hoverZ, (int) Math.round(c.height));
         // 第二行：群系名 + 地形类型
@@ -853,15 +884,24 @@ public class PreviewDisplay extends AbstractWidget {
             : (c.riverDistance < 0.15 ? I18n.get("geogenesis.preview.valley")
             : (c.lakeMask ? I18n.get("geogenesis.preview.lake") : "—"))))));
 
-        String[] lines = {line0, line1, line2, line3, line4};
+        String line5 = activeLayer.kind == GeoPalette.Kind.DISCRETE
+            ? "左键选中色块 · 右键复制坐标"
+            : "右键复制坐标";
+        String[] lines = {line0, line1, line2, line3, line4, line5};
         // 自动计算面板宽度
         int maxW = 0;
         for (String l : lines) maxW = Math.max(maxW, mc.font.width(l));
         maxW = Math.max(maxW, 160);
         int panelH = lines.length * 13 + 4;
-        g.fill(lx, ly, lx + maxW + 10, ly + panelH, 0xAA000000);
-        for (int i = 0; i < lines.length; i++)
-            g.drawString(mc.font, lines[i], lx + 4, ly + 4 + i * 13, 0xFFFFFF);
+        if (lx + maxW + 10 > screenW) lx = (int) mx - maxW - 18;
+        if (ly + panelH > screenH) ly = (int) my - panelH - 14;
+        lx = Math.max(2, lx);
+        ly = Math.max(2, ly);
+        g.fill(lx, ly, lx + maxW + 10, ly + panelH, 0xCC000000);
+        for (int i = 0; i < lines.length; i++) {
+            int col = (i == lines.length - 1) ? 0xFF88CCAA : 0xFFFFFF;
+            g.drawString(mc.font, lines[i], lx + 4, ly + 4 + i * 13, col);
+        }
     }
 
     private List<GeoPalette.LegendEntry> getSortedEntries(GeoPalette.PreviewLayer layer) {
@@ -876,6 +916,50 @@ public class PreviewDisplay extends AbstractWidget {
             default -> entries.sort(Comparator.comparingInt(e -> e.id));
         }
         return entries;
+    }
+
+    /** 当前过滤（搜索 + 排序）后的图例条目列表，供图例点击命中索引对齐。 */
+    private List<GeoPalette.LegendEntry> visibleLegendEntries() {
+        GeoPalette.PreviewLayer layer = getLayer();
+        List<GeoPalette.LegendEntry> all = getSortedEntries(layer);
+        boolean hasSearch = legendSearchQuery.length() > 0;
+        if (!hasSearch) return all;
+        String q = legendSearchQuery.toLowerCase();
+        List<GeoPalette.LegendEntry> filtered = new ArrayList<>();
+        for (GeoPalette.LegendEntry e : all) {
+            String name = I18n.get(e.labelKey);
+            if (name.equals(e.labelKey)) name = GeoPalette.englishLabel(e.labelKey);
+            if (name.toLowerCase().contains(q)) filtered.add(e);
+        }
+        return filtered;
+    }
+
+    /** 返回鼠标 y 命中的图例条目在 {@link #visibleLegendEntries()} 中的索引；未命中返回 -1。
+     *  布局须与 {@link #drawLegend} 严格一致（标题/排序/搜索行高度 + 滚动偏移 + 条目行高）。 */
+    private int legendHitEntry(double my) {
+        if (!legendExpanded) return -1;
+        GeoPalette.PreviewLayer layer = getLayer();
+        if (!layer.legendable || layer.kind != GeoPalette.Kind.DISCRETE) return -1;
+        int ly = getY() + 8;
+        int titleH = 14, modeH = 14, searchH = 14;
+        boolean showSearch = legendSearchActive || legendSearchQuery.length() > 0;
+        int topBarH = titleH + modeH + (showSearch ? searchH : 0);
+        int entryY = ly + topBarH;
+        List<GeoPalette.LegendEntry> entries = visibleLegendEntries();
+        int maxVisibleH = getHeight() - 40;
+        int rowH = 14;
+        int panelH = Math.min(topBarH + entries.size() * rowH + 6, maxVisibleH);
+        int entryMaxH = panelH - topBarH - 6;
+
+        double rel = my - entryY + legendScrollOffset;
+        if (rel < 0) return -1;
+        int idx = (int) (rel / rowH);
+        if (idx < 0 || idx >= entries.size()) return -1;
+        int cy = entryY - legendScrollOffset + idx * rowH;
+        if (my < cy || my > cy + rowH) return -1;
+        // 必须落在 scissor 裁剪可见区内
+        if (cy < entryY - rowH || cy > entryY + entryMaxH + rowH) return -1;
+        return idx;
     }
 
     private boolean isOverLegend(double mx, double my) {
