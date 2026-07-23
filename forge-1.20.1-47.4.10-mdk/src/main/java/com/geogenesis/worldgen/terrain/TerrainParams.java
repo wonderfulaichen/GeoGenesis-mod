@@ -262,6 +262,23 @@ public record TerrainParams(
         return new double[]{deepOceanDeriv, shelfDeriv, shallowDeriv, coastDeriv};
     }
 
+    /**
+     * 地形实际可达的归一化高程 e 区间 [min, max]，供预览色阶跟随地形真实高度渲染。
+     * 注意 e 只是 HeightCurve 的坐标：实际高度由曲线/生成的控制点值决定，而非地形类型分类阈值。
+     *  - 海洋最深处 = HeightCurve 海洋样条最深的「深度控制点值」deepOceanDepth（≈-0.35，含海床噪声），
+     *    不是海洋类型分类阈值 deepOceanLo（≈-0.50，仅分类用、地形实际达不到那么深）。
+     *  - 陆地最高处 = 各地形类型 e 上限最大者（MOUNTAINS center+range = 0.95），再加大陆斜升（≤0.15）逼近 clamp 上限 1.0。
+     */
+    public double[] elevationERange() {
+        double eMax = Math.max(
+            Math.max(plainCenter + plainHalfRange, hillsCenter + hillsHalfRange),
+            Math.max(mountainsCenter + mountainsHalfRange,
+                     Math.max(plateauCenter + plateauHalfRange, basinCenter + basinHalfRange)));
+        // 海洋最深取样条深度控制点值（实际海床），而非分类阈值
+        double eMin = deepOceanDepth;
+        return new double[]{eMin, eMax};
+    }
+
     /** softmax 省权重 */
     public double[] provinceSoftmaxWeights() {
         return new double[]{cratonWeight, beltWeight, plateauWeight, basinWeight};

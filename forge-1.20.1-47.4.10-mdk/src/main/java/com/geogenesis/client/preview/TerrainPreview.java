@@ -43,6 +43,8 @@ public final class TerrainPreview {
 
     private final GeoGenesisTerrain terrain;
     private final int seaLevel, snowLine, maxY, minY, horizontalScale, mountainCap;
+    /** 高程色阶映射的 e 区间（地形实际可达范围），供图例 Y 标签换算。 */
+    private double elevEMin = -1.0, elevEMax = 1.0;
     private final long seed;
 
     private double originX = 0.0, originZ = 0.0;
@@ -78,12 +80,15 @@ public final class TerrainPreview {
         this.minY = params.minY();
         this.horizontalScale = (int) params.horizontalScale();
         this.mountainCap = params.mountainCap();
-        GeoPalette.setElevationRange(minY, mountainCap);
+        double[] er = params.elevationERange();
+        this.elevEMin = er[0]; this.elevEMax = er[1];
+        GeoPalette.setElevationERange(er[0], er[1]);
         GeoPalette.setSeaLevel(seaLevel);
 
         // 初始化缓存引擎（回调在 canvas 创建后设置）
         this.worker = new PreviewWorker(terrain, cache);
         worker.setHeightRange(minY, mountainCap);
+        worker.setSeaLevel(seaLevel);
         worker.setHydrology(hydrology);
 
         frame = new JFrame("GeoGenesis Terrain Preview");
@@ -295,15 +300,26 @@ public final class TerrainPreview {
             int bx = PANEL - 28, by = 12, bh = 220, bw = 14;
             for (int i = 0; i < bh; i++) {
                 double p = 1.0 - (double) i / (bh - 1);
-                g.setColor(new Color(GeoPalette.continuous(layer, p)));
+                g.setColor(new Color(GeoPalette.continuous(layer, GeoPalette.legendGradientPos(layer, p))));
                 g.fillRect(bx, by + i, bw, 1);
             }
             g.setColor(Color.WHITE); g.drawRect(bx, by, bw, bh);
-            String topLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + mountainCap) : "1.0";
-            String botLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + minY) : "0.0";
-            g.drawString(topLabel, bx - 40, by + 8);
-            g.drawString(botLabel, bx - 40, by + bh);
+            String[] lbl;
+            if (layer == GeoPalette.PreviewLayer.ELEVATION) {
+                lbl = new String[]{"Y=" + (int) Math.round(heightFromE(elevEMax)),
+                                   "Y=" + (int) Math.round(heightFromE(elevEMin))};
+            } else {
+                lbl = GeoPalette.continuousLegendLabels(layer);
+            }
+            g.drawString(lbl[0], bx - 40, by + 8);
+            g.drawString(lbl[1], bx - 40, by + bh);
         }
+    }
+
+    /** e→世界高度 Y（与 HeightCurve.heightFromE 一致的非对称映射：e=0→海平面）。 */
+    private double heightFromE(double e) {
+        if (e <= 0.0) return seaLevel - (-e) * (seaLevel - minY);
+        return seaLevel + e * (maxY - seaLevel);
     }
 
     // ============================================================

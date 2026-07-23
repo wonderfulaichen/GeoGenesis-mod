@@ -93,42 +93,62 @@ public final class GeoPalette {
     // 内置色带（停靠点 [pos,r,g,b]∈[0,1]）
     // ============================================================
 
+    // 停靠点按地形归一化 e 映射：[eMin,eMax]=[-0.35,0.95]（见 TerrainParams.elevationERange）。
+    // 海岸线 e=0 落在 pos≈0.269，故在该位置放蓝→绿过渡，保证平原(e≈0.04→pos≈0.30)显绿而非蓝。
     private static final float[][] S_ELEVATION = {
-            {0.00f, 0.18f, 0.30f, 0.55f},   // 最深洋盆 (Y=-64) — 明显蓝紫
-            {0.18f, 0.22f, 0.40f, 0.68f},   // 深海 (Y≈-6)
-            {0.30f, 0.30f, 0.55f, 0.78f},   // 大陆坡 (Y=32)
-            {0.45f, 0.50f, 0.65f, 0.42f},   // 海岸/低地 (Y=80)
-            {0.65f, 0.60f, 0.55f, 0.36f},   // 丘陵 (Y=144)
-            {0.85f, 0.68f, 0.58f, 0.50f},   // 山地 (Y=208)
-            {1.00f, 0.96f, 0.96f, 0.96f},   // 雪峰 (Y=256)
+            {0.000f, 0.06f, 0.10f, 0.30f},   // 深海盆 (e=-0.35) — 深暗蓝紫
+            {0.130f, 0.10f, 0.24f, 0.52f},   // 深海 — 蓝
+            {0.230f, 0.16f, 0.42f, 0.60f},   // 大陆架 — 浅蓝
+            {0.269f, 0.20f, 0.52f, 0.52f},   // 海岸线 e=0 — 青绿过渡（海陆分界）
+            {0.320f, 0.30f, 0.58f, 0.32f},   // 低地/海滩 — 绿
+            {0.450f, 0.48f, 0.60f, 0.28f},   // 平原/丘陵 — 黄绿
+            {0.580f, 0.58f, 0.55f, 0.30f},   // 丘陵 — 橄榄
+            {0.720f, 0.60f, 0.48f, 0.36f},   // 山地 — 棕
+            {0.880f, 0.74f, 0.68f, 0.58f},   // 高山 — 浅棕灰
+            {1.000f, 0.96f, 0.96f, 0.96f},   // 雪峰 — 白
     };
+    // 高对比渐变色带：相邻色阶明显区分（用户反馈「相近色阶变化不明显」）。
     private static final float[][] S_TEMPERATURE = {
-            {0.00f, 0.20f, 0.40f, 0.85f},
-            {0.50f, 0.95f, 0.90f, 0.40f},
-            {1.00f, 0.85f, 0.20f, 0.15f},
+            {0.00f, 0.13f, 0.22f, 0.58f},  // 极冷 深蓝
+            {0.20f, 0.20f, 0.55f, 0.85f},  // 冷 蓝
+            {0.40f, 0.22f, 0.80f, 0.68f},  // 凉 青绿
+            {0.55f, 0.45f, 0.82f, 0.30f},  // 温 绿
+            {0.70f, 0.95f, 0.85f, 0.22f},  // 暖 黄
+            {0.85f, 0.96f, 0.55f, 0.14f},  // 热 橙
+            {1.00f, 0.86f, 0.18f, 0.14f},  // 极热 红
     };
     private static final float[][] S_HUMIDITY = {
-            {0.00f, 0.76f, 0.66f, 0.40f},
-            {0.50f, 0.45f, 0.66f, 0.35f},
-            {1.00f, 0.25f, 0.55f, 0.80f},
+            {0.00f, 0.80f, 0.62f, 0.30f},  // 干旱 土黄
+            {0.25f, 0.62f, 0.72f, 0.28f},  // 半干 黄绿
+            {0.50f, 0.38f, 0.70f, 0.34f},  // 湿润 绿
+            {0.75f, 0.22f, 0.60f, 0.72f},  // 潮湿 青
+            {1.00f, 0.18f, 0.42f, 0.85f},  // 极湿 蓝
     };
+    // 大陆性：c<0 海洋 → c>0 内陆。深蓝（海洋）→ 青（近海）→ 橄榄（内陆）→ 棕（深内陆）。
     private static final float[][] S_CONTINENTALITY = {
-            {0.00f, 0.20f, 0.20f, 0.22f},
-            {1.00f, 0.85f, 0.85f, 0.88f},
+            {0.00f, 0.10f, 0.30f, 0.65f},  // 海洋 深蓝
+            {0.40f, 0.28f, 0.60f, 0.62f},  // 近海 青
+            {0.70f, 0.60f, 0.66f, 0.38f},  // 内陆 橄榄
+            {1.00f, 0.78f, 0.54f, 0.28f},  // 深内陆 棕
     };
     private static final float[][] S_RELIEF = {
-            {0.00f, 0.12f, 0.12f, 0.14f},
-            {1.00f, 0.95f, 0.85f, 0.60f},
+            {0.00f, 0.18f, 0.30f, 0.22f},  // 平 深绿
+            {0.30f, 0.35f, 0.55f, 0.28f},  // 缓起伏 绿
+            {0.55f, 0.70f, 0.68f, 0.32f},  // 中起伏 黄绿
+            {0.78f, 0.85f, 0.60f, 0.30f},  // 强起伏 橙棕
+            {1.00f, 0.90f, 0.88f, 0.82f},  // 极强 浅灰白
     };
     private static final float[][] S_LATITUDE = {
-            {0.00f, 0.30f, 0.62f, 0.35f},
-            {0.50f, 0.85f, 0.82f, 0.55f},
-            {1.00f, 0.95f, 0.97f, 1.00f},
+            {0.00f, 0.40f, 0.70f, 0.35f},  // 赤道 绿
+            {0.35f, 0.80f, 0.82f, 0.40f},  // 亚热带 浅黄绿
+            {0.65f, 0.88f, 0.70f, 0.55f},  // 寒带 浅棕
+            {1.00f, 0.93f, 0.96f, 0.99f},  // 极地 白
     };
     private static final float[][] S_RIVER_NETWORK = {
-            {0.00f, 0.30f, 0.32f, 0.36f},  // 非河：浅灰（底，比背景亮）
-            {0.55f, 0.18f, 0.45f, 0.75f},  // 近河：亮蓝
-            {1.00f, 0.40f, 0.90f, 1.00f},  // 河心：亮青
+            {0.00f, 0.22f, 0.25f, 0.28f},  // 远 深灰
+            {0.40f, 0.35f, 0.46f, 0.56f},  // 近河 灰蓝
+            {0.70f, 0.20f, 0.56f, 0.86f},  // 河岸 蓝
+            {1.00f, 0.45f, 0.92f, 1.00f},  // 河心 亮青
     };
 
     // 海洋深度色带（用于预览看清海底地貌）
@@ -211,26 +231,83 @@ public final class GeoPalette {
     }
 
     // ============================================================
-    // 高程缩放（setElevationRange 自动缩放；未设置时用传入 minY/maxY）
+    // 高程色阶映射：直接按地形归一化高程 e ∈ [eMin, eMax] 映射，
+    // [eMin, eMax] 取地形实际可达 e 区间（由地形类型 e 界限换算，见 TerrainParams.elevationERange）。
+    // 这样地形最高处触顶雪白、最深触底深蓝，且不依赖世界绝对高度上下限。
     // ============================================================
 
-    private static int elevMin = Integer.MIN_VALUE;
-    private static int elevMax = Integer.MIN_VALUE;
-    /** 海平面 Y，用于海洋区域 ocean_depth 色带独立映射。 */
+    private static double eMin = -1.0;
+    private static double eMax = 1.0;
+    /** 海平面 Y，用于图例海陆分界标注。 */
     private static int seaLevel = 63;
 
-    public static void setElevationRange(int min, int max) {
-        elevMin = min;
-        elevMax = max;
+    /** 设置高程色阶的 e 范围（地形实际可达区间）。默认 [-1,1]（世界 e 绝对范围）。 */
+    public static void setElevationERange(double minE, double maxE) {
+        if (maxE > minE) { eMin = minE; eMax = maxE; }
     }
 
-    /** 设置海平面 Y，海洋区域用 ocean_depth 色带展示海底地貌。 */
+    /** 设置海平面 Y，用于图例海陆分界标注。 */
     public static void setSeaLevel(int sl) {
         seaLevel = sl;
     }
 
-    public static void clearElevationRange() {
-        elevMin = elevMax = Integer.MIN_VALUE;
+    // ============================================================
+    // 气候图层地形底图模式（数据披地形的表现方式）
+    // ============================================================
+
+    /** OFF=纯数据色带；TINT=混入高程彩色带（旧，海洋带蓝绿调）；SHADE=仅按海拔/起伏调亮度，保留数据色相。 */
+    public enum TerrainUnderlay { OFF, TINT, SHADE }
+    /** 默认采用地形阴影（保留数据色相 + 地形阴影），比 TINT 染色底图更干净，属推荐优化项。 */
+    private static TerrainUnderlay terrainUnderlay = TerrainUnderlay.SHADE;
+
+    public static void setTerrainUnderlay(TerrainUnderlay m) { if (m != null) terrainUnderlay = m; }
+    public static TerrainUnderlay getTerrainUnderlay() { return terrainUnderlay; }
+    public static void cycleTerrainUnderlay() {
+        if (terrainUnderlay == TerrainUnderlay.OFF) terrainUnderlay = TerrainUnderlay.TINT;
+        else if (terrainUnderlay == TerrainUnderlay.TINT) terrainUnderlay = TerrainUnderlay.SHADE;
+        else terrainUnderlay = TerrainUnderlay.OFF;
+    }
+    public static String terrainUnderlayLabel() {
+        if (terrainUnderlay == TerrainUnderlay.OFF) return "关闭";
+        if (terrainUnderlay == TerrainUnderlay.TINT) return "染色底图";
+        return "地形阴影";
+    }
+
+    /**
+     * 连续图层图例的顶/底语义标签（供 MC PreviewDisplay 与 Swing TerrainPreview 共用）。
+     * 图例渐变顶部对应 pos=1、底部对应 pos=0；对多数图层 pos=(值+1)/2，故顶=+1、底=-1。
+     * ELEVATION 图层由 UI 自行换算 Y 高度，不在此处理。
+     */
+    public static String[] continuousLegendLabels(PreviewLayer layer) {
+        if (layer == PreviewLayer.TEMPERATURE) return new String[]{"热 +1", "冷 -1"};
+        if (layer == PreviewLayer.HUMIDITY) return new String[]{"湿 +1", "干 -1"};
+        if (layer == PreviewLayer.CONTINENTALITY) return new String[]{"内陆 +1", "海洋 -1"};
+        if (layer == PreviewLayer.RELIEF) return new String[]{"起伏高", "起伏低"};
+        if (layer == PreviewLayer.LATITUDE) return new String[]{"北", "南"};
+        if (layer == PreviewLayer.RIVER_NETWORK) return new String[]{"河心", "远"};
+        return new String[]{"1.0", "0.0"};
+    }
+
+    /**
+     * 形态起伏数据→pos 映射：bulk 地形 shape≈0 聚在中灰，signed-gamma(g<1) 拉伸低起伏端，
+     * 使平缓丘陵与平原区分更明显，同时保持单调与 0 对称（正=高、负=低）。
+     */
+    public static double reliefPos(double shape) {
+        double g = 0.65;
+        double s = Math.signum(shape) * Math.pow(Math.abs(shape), g);
+        return clamp(0.5 + 0.5 * s, 0.0, 1.0);
+    }
+
+    /**
+     * 连续图层图例渐变采样位置：默认线性 p；RELIEF 改为按 shape 扫描并应用 {@link #reliefPos}，
+     * 使图例颜色与地图（同 shape→同色、图例位置对应 shape）完全一致。
+     */
+    public static double legendGradientPos(PreviewLayer layer, double p) {
+        if (layer == PreviewLayer.RELIEF) {
+            double shape = -1.0 + 2.0 * p;   // p=0→shape -1(低,底), p=1→shape +1(高,顶)
+            return reliefPos(shape);
+        }
+        return p;
     }
 
     // ============================================================
@@ -308,13 +385,13 @@ public final class GeoPalette {
     // 颜色查询
     // ============================================================
 
-    /** 连续图层单点查询：pos∈[0,1] → RGB(0xRRGGBB)。 */
-    public static int continuous(PreviewLayer layer, double pos) {
-        String key = (layer == PreviewLayer.ELEVATION) ? elevationColormapName : layer.colormapKey;
-        ColorMap cm = COLORMAPS.get(key);
-        if (cm == null) cm = COLORMAPS.get("grayscale");
-        return cm.getRGB((float) pos);
-    }
+        /** 连续图层单点查询：pos∈[0,1] → RGB(0xRRGGBB)。 */
+        public static int continuous(PreviewLayer layer, double pos) {
+            String key = (layer == PreviewLayer.ELEVATION) ? elevationColormapName : layer.colormapKey;
+            ColorMap cm = COLORMAPS.get(key);
+            if (cm == null) cm = COLORMAPS.get("grayscale");
+            return cm.getRGB((float) pos);
+        }
 
     /** 离散图层按 id 查询 → RGB(0xRRGGBB)。覆盖优先于默认。 */
     public static int discrete(PreviewLayer layer, int id) {
@@ -337,26 +414,18 @@ public final class GeoPalette {
             base = discrete(layer, discreteId(layer, c));
         } else {
             double pos = 0.0;
-            boolean oceanElev = (layer == PreviewLayer.ELEVATION && c.terrainType.isOcean());
             switch (layer) {
                 case ELEVATION: {
-                    int lo = (elevMin != Integer.MIN_VALUE) ? elevMin : minY;
-                    int hi = (elevMax != Integer.MIN_VALUE) ? elevMax : maxY;
-                    if (oceanElev) {
-                        // 海洋区域：用 ocean_depth 色带 + 单独映射范围 [lo, seaLevel] → [0, 1]
-                        double oceanSpan = Math.max(1.0, seaLevel - lo);
-                        double p = clamp((c.height - lo) / oceanSpan, 0.0, 1.0);
-                        ColorMap cm = COLORMAPS.get("ocean_depth");
-                        base = (cm != null) ? cm.getRGB((float) p) : 0x000000;
-                    } else {
-                        pos = (c.height - lo) / Math.max(1.0, hi - lo);
-                    }
+                    // 直接按地形归一化高程 e 映射（HeightCurve 本征坐标），
+                    // 范围取地形实际可达 e 区间 [eMin, eMax]，使地形最高触顶雪白、最深触底深蓝。
+                    // 海陆边界靠色带蓝→绿渐变 + BEACH 高亮体现，图例与像素完全一致。
+                    pos = clamp((c.e - eMin) / Math.max(1e-6, eMax - eMin), 0.0, 1.0);
                     break;
                 }
                 case TEMPERATURE: pos = (c.temperature + 1.0) * 0.5; break;  // [-1,1] → [0,1]
                 case HUMIDITY:    pos = (c.humidity + 1.0) * 0.5; break;     // [-1,1] → [0,1]
                 case CONTINENTALITY: pos = (c.continentNoise + 1.0) * 0.5; break;
-                case RELIEF:      pos = (c.shape + 1.0) * 0.5; break;
+                case RELIEF:      pos = reliefPos(c.shape); break;
                 case LATITUDE:    pos = Latitude.latitude01(worldZ); break;
                 case RIVER_NETWORK: {
                     double d = c.riverNetDist;                 // 0=河心,1=谷缘
@@ -365,15 +434,19 @@ public final class GeoPalette {
                 }
                 default: pos = 0.0;
             }
-            if (!oceanElev) {
-                base = continuous(layer, pos);
-                // RIVER_NETWORK：溢出河段（木桶短板被突破）→ 洪泛黄高亮
-                if (layer == PreviewLayer.RIVER_NETWORK && c.riverNetOverflow && pos > 0.0) {
-                    base = blendRGB(base, 0xE0B050, 0.6);
-                }
+            base = continuous(layer, pos);
+            // RIVER_NETWORK：溢出河段（木桶短板被突破）→ 洪泛黄高亮
+            if (layer == PreviewLayer.RIVER_NETWORK && c.riverNetOverflow && pos > 0.0) {
+                base = blendRGB(base, 0xE0B050, 0.6);
+            }
+            // 海岸高亮：BEACH 地形叠加热带沙色，增强海陆分界视觉
+            if (layer == PreviewLayer.ELEVATION && c.terrainType == TerrainClass.BEACH) {
+                base = blendRGB(base, 0xE8D090, 0.30);
             }
         }
-        // 气候连续图层叠加地形/海陆轮廓，避免看起来像纯噪声色块
+        // 气候连续图层叠加地形底图（数据披在地形之上，地理图常见表现手法）。
+        // 注：图例仍显示纯数据色带（continuous），地形叠加是地图侧的视觉底层，
+        // 与 ELEVATION 的色带错配属不同性质——后者是两套色带互不一致（真 bug）。
         if (layer.kind == Kind.CONTINUOUS && layer.group == Group.CLIMATE) {
             base = overlayTerrain(base, c, worldX, worldZ, minY, maxY);
         }
@@ -386,17 +459,23 @@ public final class GeoPalette {
         return base;
     }
 
-    /** 把气候颜色叠到地形上：海洋/陆地都浅叠气候数据自身，不淹没问题。 */
+    /**
+     * 气候图层地形底图：把数据披在地形之上。三种模式（见 {@link TerrainUnderlay}）：
+     *  - OFF  : 纯数据色带（图例与地图完全一致）
+     *  - TINT : 混入 35% 高程彩色带（旧行为，海洋会带蓝绿色调）
+     *  - SHADE: 仅按高程/起伏调制亮度，保留数据色相，呈现干净的地形阴影观感
+     */
     private static int overlayTerrain(int climateRGB, Cell c, int worldX, int worldZ, int minY, int maxY) {
-        int terrainRGB = color(PreviewLayer.ELEVATION, c, worldX, worldZ, minY, maxY);
-        if (c.terrainType.isOcean()) {
-            return blendRGB(climateRGB, terrainRGB, 0.35); // 海洋只取 35% 地形色，气候可见
-        } else {
-            return blendRGB(climateRGB, terrainRGB, 0.35);
+        if (terrainUnderlay == TerrainUnderlay.OFF) return climateRGB;
+        if (terrainUnderlay == TerrainUnderlay.SHADE) {
+            // SHADE 模式：GeoPalette 只返回纯数据色；真实地形阴影由渲染器在像素级
+            // 依据高度梯度（applySlopeShading）计算，避免「按高程值假明暗」造成的描边/网格感。
+            return climateRGB;
         }
+        // TINT：混入 35% 高程彩色带（数据色披在地形彩色之上）
+        int terrainRGB = color(PreviewLayer.ELEVATION, c, worldX, worldZ, minY, maxY);
+        return blendRGB(climateRGB, terrainRGB, 0.35);
     }
-
-
 
     /** 水文叠加：在任意图层上叠加河/湖掩码。 */
     public static int applyHydrology(int baseRGB, Cell c) {
@@ -655,6 +734,14 @@ public final class GeoPalette {
         int g = (rgb >> 8) & 0xFF;
         int b = rgb & 0xFF;
         return 0xFF000000 | (b << 16) | (g << 8) | r;
+    }
+
+    /** RGB(0xRRGGBB) → ARGB(0xAARRGGBB)，供 GuiGraphics.fill() 使用（MC 图形层）。 */
+    public static int toARGB(int rgb) {
+        int r = (rgb >> 16) & 0xFF;
+        int g = (rgb >> 8) & 0xFF;
+        int b = rgb & 0xFF;
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     /** ABGR(0xAABBGGRR) → RGB(0xRRGGBB)。 */

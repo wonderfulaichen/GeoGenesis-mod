@@ -80,13 +80,23 @@ public class SettingsScreen extends Screen {
     }
 
     @Override
+    public void renderBackground(GuiGraphics g) {
+        // 强制不透明背景覆盖，避免旧屏幕 widget 透过来
+        g.fill(0, 0, this.width, this.height, 0xFF101418);
+    }
+
+    @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
+        // 本构建 Screen.render() 不会自动调用 renderBackground()，
+        // 故在 super.render 前手动填充不透明背景，盖住旧屏幕。
+        this.renderBackground(g);
+        super.render(g, mx, my, pt);
+        // 底部分隔线
         g.blit(
             net.minecraft.resources.ResourceLocation.parse("textures/gui/footer_separator.png"),
             0, Mth.roundToward(this.height - 36 - 2, 2),
             0.0F, 0.0F, this.width, 2, 32, 2
         );
-        super.render(g, mx, my, pt);
     }
 
     @Override
