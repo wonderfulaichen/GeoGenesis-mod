@@ -11,11 +11,16 @@ import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import com.geogenesis.client.SeedManager.SeedEntry;
@@ -29,6 +34,7 @@ import com.geogenesis.client.settings.SettingsScreen;
  */
 public class GeoGenesisConfigScreen extends Screen {
 
+    private static final Logger LOGGER = LogManager.getLogger("geogenesis");
     private static final int TERRAIN_TYPE_LAYER = 9;
 
     private final Screen parent;
@@ -47,9 +53,11 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private PreviewDisplay preview;
     private EditBox seedBox;
-    private Button saveBtn, resetBtn, tabBtns[], layerPrev, layerNext, hydroBtn, slopeBtn, favBtn;
-    /** 种子收藏列表（点击切换） */
-    private List<Button> seedFavButtons = List.of();
+    private Button saveBtn, resetBtn, tabBtns[], layerPrev, layerNext, hydroBtn, slopeBtn, favBtn, favDropdownBtn;
+    /** 种子收藏下拉浮层状态 */
+    private boolean favOpen = false;
+    private int favDropdownH = 0;
+    private final List<AbstractWidget> favDropdownWidgets = new ArrayList<>();
     private int currentMode = TERRAIN_TYPE_LAYER;
 
     private int panelX, panelW, headerY, listTop, listBottom;
@@ -57,6 +65,10 @@ public class GeoGenesisConfigScreen extends Screen {
     private int scroll;
     private boolean dirty, saved;
     private int debounce;
+    /** 一次性诊断标记：渲染首帧打印 preview 是否仍在 widget 列表（排查"返回后预览消失"） */
+    private boolean diagFirstFrame = true;
+    /** 跟踪 preview 是否已登记进当前屏幕的 widget 列表（clearWidgets 后会置 false） */
+    private boolean previewRegistered = false;
     /** 上次已应用参数快照。比较 hash 决定是否真正需要 rebuild。
      *  解决"点击空白区域就刷新"——面板 slider 在 click 不改变值时也会触发 markDirty。 */
     private TerrainParams lastAppliedParams = null;
@@ -76,6 +88,13 @@ public class GeoGenesisConfigScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        // 重新进入（如从设置屏返回）时清掉旧 widget，避免重复累积；
+        // 同时保证 preview 在 rebuildPreview 中被重新登记进列表（修复"返回后预览消失"）。
+        this.clearWidgets();
+        closeFavDropdown();
+        diagFirstFrame = true;
+        previewRegistered = false;
+        LOGGER.info("DIAG-GCS: init enter, preview==null={}, previewRegistered={}", preview == null, previewRegistered);
         int w = width, h = height;
         panelX = 10;
         panelW = (w - 40) * 5 / 9;
@@ -87,7 +106,7 @@ public class GeoGenesisConfigScreen extends Screen {
         previewW = w - previewX - 10;
         previewH = listBottom - previewY;
 
-        seedBox = new EditBox(Minecraft.getInstance().font, panelX, 36, panelW - 24, 18, Component.literal("Seed"));
+        seedBox = new EditBox(Minecraft.getInstance().font, panelX, 36, panelW - 70, 18, Component.literal("Seed"));
         seedBox.setResponder(s -> { try { seed = Long.parseLong(s.trim()); } catch (NumberFormatException ignored) {} });
         seedBox.setValue(String.valueOf(seed));
         addRenderableWidget(seedBox);
@@ -99,18 +118,22 @@ public class GeoGenesisConfigScreen extends Screen {
         }).pos(panelX + panelW - 22, 36).size(20, 18).build();
         addRenderableWidget(seedRefreshBtn);
 
-        // 收藏切换按钮
+        // 收藏切换按钮（★/☆ 添加或移除当前种子）
         SeedManager sm = SeedManager.getInstance();
-        favBtn = Button.builder(Component.literal("☆"), b -> {
-            if (sm.isFavorite(seed)) {
-                sm.removeFavorite(seed);
-            } else {
-                sm.addFavorite(seed, "Seed " + seed);
-            }
-            rebuildSeedFavButtons(sm);
+        favBtn = Button.builder(Component.literal(sm.isFavorite(seed) ? "★" : "☆"), btn -> {
+            if (sm.isFavorite(seed)) sm.removeFavorite(seed);
+            else sm.addFavorite(seed, "Seed " + seed);
+            // 显式引用 favBtn，确保按钮消息被刷新
+            favBtn.setMessage(Component.literal(sm.isFavorite(seed) ? "★" : "☆"));
+            if (favOpen) openFavDropdown();
         }).pos(panelX + panelW - 44, 36).size(20, 18).build();
         addRenderableWidget(favBtn);
-        rebuildSeedFavButtons(sm);
+
+        // 收藏下拉按钮（▾ 展开/收起收藏列表 + 重命名 + 删除）
+        favDropdownBtn = Button.builder(Component.literal("▾"), b -> {
+            if (favOpen) closeFavDropdown(); else openFavDropdown();
+        }).pos(panelX + panelW - 66, 36).size(20, 18).build();
+        addRenderableWidget(favDropdownBtn);
 
         tabBtns = new Button[3];
         int tabW = Math.max(60, (panelW - 8) / 3);
@@ -166,8 +189,21 @@ public class GeoGenesisConfigScreen extends Screen {
         addRenderableWidget(hydroBtn);
         addRenderableWidget(slopeBtn);
 
-        rebuildPreview();
+        // 始终重新登记 preview widget（clearWidgets 后必须重建，否则返回后预览消失）。
+        // 思路对齐参考项目 World-Preview-TFC：preview 实例跨屏持久复用，init() 仅「重加同一实例」而非重建，
+        // 其内部纹理与采样缓存保留，返回设置屏后无缝衔接。
+        if (preview != null) {
+            preview.setPosition(previewX, previewY, previewW, previewH);
+            if (!previewRegistered) {
+                addRenderableWidget(preview);
+                previewRegistered = true;
+            }
+        }
+        // 首次(preview==null)创建实例；重入后仅当参数/种子真变化才重建采样缓存，
+        // 否则跳过 invalidateAll + 视图重置（避免棋盘/错位重载闪）。
+        rebuildPreviewIfChanged();
         pushScrollToPanels();
+        LOGGER.info("DIAG-GCS: init done, previewRegistered={}", previewRegistered);
     }
 
     /** 把当前 scroll 值同步到活动面板 */
@@ -187,10 +223,15 @@ public class GeoGenesisConfigScreen extends Screen {
         if (preview == null) {
             // ★ 直接传 mode，构造器内设好 activeLayer + requestResample，无需 setMode
             preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p, currentMode);
-            addRenderableWidget(preview);
         } else {
             preview.setTerrain(terrain, seed, p);
             preview.setMode(currentMode);
+        }
+        // 每次都同步几何位置（重入 init 后坐标可能变化），并确保已登记进 widget 列表
+        preview.setPosition(previewX, previewY, previewW, previewH);
+        if (!previewRegistered) {
+            addRenderableWidget(preview);
+            previewRegistered = true;
         }
         // 记录已应用参数（避免下次相同 markDirty 触发重建）
         lastAppliedParams = p;
@@ -198,34 +239,71 @@ public class GeoGenesisConfigScreen extends Screen {
         dirty = false;
     }
 
-    /** 重建种子收藏按钮列表 */
-    private void rebuildSeedFavButtons(SeedManager sm) {
-        // 移除旧按钮
-        for (Button b : seedFavButtons) removeWidget(b);
-        List<SeedEntry> favs = sm.getFavorites();
-        List<Button> btns = new java.util.ArrayList<>();
-        favBtn.setMessage(Component.literal(sm.isFavorite(seed) ? "★" : "☆"));
-        // 只显示最近 5 个
-        int count = Math.min(favs.size(), 5);
-        for (int i = 0; i < count; i++) {
-            SeedEntry e = favs.get(favs.size() - 1 - i);
-            boolean active = e.seed() == seed;
-            Button b = Button.builder(
-                Component.literal(active ? "▶ " + e.name() : e.name()),
-                btn -> {
-                    seed = e.seed();
-                    seedBox.setValue(String.valueOf(seed));
-                    rebuildPreview();
-                    rebuildSeedFavButtons(sm);
-                })
-                .pos(panelX, 58 + i * 14)
-                .size(panelW - 8, 12)
-                .build();
-            b.active = !active;
-            addRenderableWidget(b);
-            btns.add(b);
+    /** 打开收藏下拉浮层：重命名框（当前种子为收藏时）+ 全部收藏列表 + 单条删除 */
+    private void openFavDropdown() {
+        closeFavDropdown();
+        SeedManager sm = SeedManager.getInstance();
+        int x = panelX + 4, y = 58, w = panelW - 8;
+
+        // 背景填充控件（不可交互，置于最底，遮挡面板内容）
+        AbstractWidget bg = new AbstractWidget(x - 2, y - 2, w + 4, 0, Component.empty()) {
+            @Override protected void renderWidget(GuiGraphics g, int mx, int my, float pt) {
+                g.fill(getX(), getY(), getX() + getWidth(), getY() + getHeight(), 0xEE15191F);
+                g.fill(getX(), getY(), getX() + getWidth(), getY() + 1, 0xFF2a3340);
+            }
+            @Override public boolean mouseClicked(double a, double b, int c) { return false; }
+            @Override protected void updateWidgetNarration(NarrationElementOutput o) {}
+        };
+        favDropdownWidgets.add(bg);
+        addRenderableWidget(bg);
+
+        int headerH = 0;
+        if (sm.isFavorite(seed)) {
+            EditBox rename = new EditBox(Minecraft.getInstance().font, x, y, w - 44, 16, Component.literal("名称"));
+            rename.setValue(sm.getName(seed));
+            rename.setResponder(s -> sm.rename(seed, s.trim().isEmpty() ? "Seed " + seed : s.trim()));
+            addRenderableWidget(rename); favDropdownWidgets.add(rename);
+            Button del = Button.builder(Component.literal("✕"), b -> {
+                sm.removeFavorite(seed);
+                // 同步刷新主收藏按钮的星标状态
+                favBtn.setMessage(Component.literal("☆"));
+                closeFavDropdown();
+            })
+                .pos(x + w - 40, y).size(36, 16).build();
+            addRenderableWidget(del); favDropdownWidgets.add(del);
+            y += 20; headerH = 20;
         }
-        seedFavButtons = btns;
+        List<SeedEntry> favs = sm.getFavorites();
+        for (int i = 0; i < favs.size(); i++) {
+            SeedEntry e = favs.get(i);
+            boolean active = e.seed() == seed;
+            Button load = Button.builder(Component.literal((active ? "▶ " : "") + e.name()),
+                b -> { seed = e.seed(); seedBox.setValue(String.valueOf(seed)); rebuildPreview(); openFavDropdown(); })
+                .pos(x, y).size(w - 24, 16).build();
+            load.active = !active;
+            addRenderableWidget(load); favDropdownWidgets.add(load);
+            Button del = Button.builder(Component.literal("✕"),
+                b -> {
+                    sm.removeFavorite(e.seed());
+                    // 若删除的是当前种子，同步刷新主收藏按钮星标
+                    if (e.seed() == seed) favBtn.setMessage(Component.literal("☆"));
+                    openFavDropdown();
+                })
+                .pos(x + w - 22, y).size(20, 16).build();
+            addRenderableWidget(del); favDropdownWidgets.add(del);
+            y += 18;
+        }
+        favDropdownH = headerH + favs.size() * 18 + 4;
+        bg.setHeight(favDropdownH + 4);
+        favOpen = true;
+    }
+
+    /** 关闭并移除下拉浮层控件 */
+    private void closeFavDropdown() {
+        for (AbstractWidget w : favDropdownWidgets) removeWidget(w);
+        favDropdownWidgets.clear();
+        favOpen = false;
+        favDropdownH = 0;
     }
 
     private void cycleLayer(int d) {
@@ -323,6 +401,17 @@ public class GeoGenesisConfigScreen extends Screen {
 
         super.render(g, mx, my, pt);
 
+        // 一次性诊断：确认 preview 已登记且坐标有效
+        if (diagFirstFrame) {
+            diagFirstFrame = false;
+            LOGGER.info("DIAG-GCS: render first-frame, previewRegistered={}, x={} y={} w={} h={}",
+                previewRegistered,
+                preview == null ? "-" : preview.getX(),
+                preview == null ? "-" : preview.getY(),
+                preview == null ? "-" : preview.getWidth(),
+                preview == null ? "-" : preview.getHeight());
+        }
+
         // 确认对话框（最上层）
         if (confirmDialog.isShowing()) {
             confirmDialog.render(g, mx, my);
@@ -339,6 +428,13 @@ public class GeoGenesisConfigScreen extends Screen {
     @Override
     public boolean mouseClicked(double mx, double my, int b) {
         if (confirmDialog.isShowing()) return confirmDialog.mouseClicked(mx, my, b);
+        // 下拉浮层：点击浮层外区域则收起并消费事件
+        if (favOpen) {
+            int x0 = panelX + 2, x1 = panelX + panelW - 2;
+            int y0 = 56, y1 = 56 + favDropdownH + 4;
+            boolean inside = mx >= x0 && mx <= x1 && my >= y0 && my <= y1;
+            if (!inside) { closeFavDropdown(); return true; }
+        }
         if (mx >= panelX && mx <= panelX + panelW && my >= listTop && my <= listBottom) {
             if (tab == 0) { if (paramPanel.mouseClicked(mx, my, b)) return true; }
             else if (tab == 1) { if (climatePanel.mouseClicked(mx, my, b)) return true; }

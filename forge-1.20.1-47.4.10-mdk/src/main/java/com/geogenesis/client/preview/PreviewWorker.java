@@ -50,6 +50,8 @@ public final class PreviewWorker {
     private boolean hydrology;
     private int minY;
     private int maxY;
+    /** 海平面世界 Y（坡度阴影中水域以该高度参与梯度，避免海岸伪阴影悬崖）。 */
+    private int seaLevel = 63;
     /** 每像素对应的世界块数 = viewportWorldWidth / texW。由 setPixelToWorldScale 设置。 */
     private double pixelToWorldScale = 1.0;
     /** 当前视口的世界坐标原点（采样时设置，供 computeLayer/fillLayerPixels 计算世界坐标）。 */
@@ -82,6 +84,9 @@ public final class PreviewWorker {
         this.minY = minY;
         this.maxY = maxY;
     }
+
+    /** 设置海平面世界 Y（坡度阴影用）。 */
+    public void setSeaLevel(int seaLevel) { this.seaLevel = seaLevel; }
 
     /** 设置每像素对应的世界块数。由 PreviewDisplay.requestResample 在视口变化时更新。
      *  上限 4.0：超过此值时 CellGenerator.sample 会触发上千个 chunk 生成（Voronoi 噪声 + 缓存抖动），
@@ -129,7 +134,10 @@ public final class PreviewWorker {
                 } else {
                     fillLayerPixels(pixels, layer, grid, texW, texH,
                             1, currentOriginX, currentOriginZ, pixelToWorldScale);
-                    if (layer == GeoPalette.PreviewLayer.ELEVATION && slopeShading) {
+                    // 真实坡度阴影：SHADE 模式对所有图层生效（气候数据披真实地形明暗）；
+                    // 保留 slopeShading 开关对 ELEVATION 的单独控制。
+                    if (GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE
+                            || (slopeShading && layer == GeoPalette.PreviewLayer.ELEVATION)) {
                         applySlopeShading(pixels, grid, texW, texH);
                     }
                 }
@@ -175,7 +183,8 @@ public final class PreviewWorker {
         } else {
             fillLayerPixels(pixels, layer, grid, texW, texH,
                     1, currentOriginX, currentOriginZ, pixelToWorldScale);
-            if (layer == GeoPalette.PreviewLayer.ELEVATION && slopeShading) {
+            if (GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE
+                    || (slopeShading && layer == GeoPalette.PreviewLayer.ELEVATION)) {
                 applySlopeShading(pixels, grid, texW, texH);
             }
         }
@@ -349,24 +358,30 @@ public final class PreviewWorker {
 
     /** 坡度阴影后处理：计算相邻像素高度差产生法线，与光源方向点乘得亮度乘数。 */
     private void applySlopeShading(int[] pixels, Cell[][] grid, int w, int h) {
-        // 光源方向（左上→右下）
-        float lx = 0.5f, ly = 1.0f, lz = 0.3f;
+        // 光源方向（屏幕左上方，与 MC PreviewDisplay 一致，避免"陆地凹陷/海洋突出"错觉）
+        float lx = -0.5f, ly = 1.0f, lz = -0.3f;
         float len = (float) Math.sqrt(lx * lx + ly * ly + lz * lz);
         lx /= len; ly /= len; lz /= len;
 
-        int[] heights = new int[w * h];
+        int[] effH = new int[w * h];       // 有效高度：水域填海平面，陆地填 worldY
+        boolean[] water = new boolean[w * h];
         for (int py = 0; py < h; py++) {
             for (int px = 0; px < w; px++) {
                 Cell c = (px < grid.length && py < grid[0].length) ? grid[px][py] : null;
-                heights[py * w + px] = (c != null) ? (int) c.height : 0;
+                boolean isWater = (c != null) && c.e < 0.0;
+                water[py * w + px] = isWater;
+                // 水域用海平面高度代替海床：海岸处 陆地(≈seaLevel)−水域(seaLevel)≈0，
+                // 消除海底深度在海岸线陆地投下的伪阴影"悬崖"（海岸阴影截断）。
+                effH[py * w + px] = isWater ? seaLevel : (c != null ? (int) c.height : 0);
             }
         }
 
         for (int py = 1; py < h - 1; py++) {
             for (int px = 1; px < w - 1; px++) {
                 int idx = py * w + px;
-                float dhdx = (heights[py * w + px + 1] - heights[py * w + px - 1]) * 0.5f;
-                float dhdz = (heights[(py + 1) * w + px] - heights[(py - 1) * w + px]) * 0.5f;
+                if (water[idx]) continue;  // 海洋保持平涂，消除海底浮雕错觉
+                float dhdx = (effH[py * w + px + 1] - effH[py * w + px - 1]) * 0.5f;
+                float dhdz = (effH[(py + 1) * w + px] - effH[(py - 1) * w + px]) * 0.5f;
                 // 法线 N = normalize(-dhdx, 1, -dhdz)
                 float nx = -dhdx, ny = 1.0f, nz = -dhdz;
                 float nLen = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);

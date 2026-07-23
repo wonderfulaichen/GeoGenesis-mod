@@ -79,4 +79,10 @@ preview_run.log
 
 # CodeBuddy internal data
 .codebuddy/plans/
+.codebuddy/memory/
 0.45*
+
+# Build artifacts / diagnostics (compiled test classes, run logs, temp scripts)
+forge-1.20.1-47.4.10-mdk/*.class
+forge-1.20.1-47.4.10-mdk/*.err
+symcheck.ps1

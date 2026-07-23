@@ -2,8 +2,7 @@ package com.geogenesis.client;
 
 import com.geogenesis.GeoGenesisMod;
 import com.geogenesis.client.GeoGenesisConfigScreen;
-// Stage 1: color reload listener temporarily disabled (will restore in Stage 3)
-// import com.geogenesis.client.preview.GeoGenesisColorReloadListener;
+import com.geogenesis.client.preview.GeoGenesisColorReloadListener;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.JsonOps;
@@ -17,15 +16,15 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.ReloadableResourceManager;
 import net.minecraft.world.level.levelgen.presets.WorldPreset;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.ConfigScreenHandler;
+import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
 import net.minecraftforge.client.event.RegisterPresetEditorsEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -46,11 +45,14 @@ public final class GeoGenesisClient {
         FMLJavaModLoadingContext.get().registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
                 () -> new ConfigScreenHandler.ConfigScreenFactory(
                         (Screen parent) -> new GeoGenesisConfigScreen(parent)));
-        // Stage 1: color reload listener temporarily disabled (will restore in Stage 3)
-        // ((ReloadableResourceManager) Minecraft.getInstance().getResourceManager())
-        //         .registerReloadListener(new GeoGenesisColorReloadListener());
 
         decodeWorldPresetDiag();
+    }
+
+    @SubscribeEvent
+    public static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
+        // Forge 推荐方式：在资源加载阶段就注册 reload listener
+        event.registerReloadListener(new GeoGenesisColorReloadListener());
     }
 
     private static void decodeWorldPresetDiag() {

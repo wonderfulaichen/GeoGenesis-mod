@@ -22,16 +22,6 @@ public class CacheTab extends GridLayoutTab {
             Component.translatable("geogenesis.settings.cache.desc")));
 
         row.addChild(Button.builder(
-            Component.translatable("geogenesis.settings.cache.enable"),
-            b -> {
-                preview.cacheEnabled = !preview.cacheEnabled;
-                if (!preview.cacheEnabled) {
-                    preview.cellCache.invalidateAll();
-                }
-            }
-        ).width(320).build());
-
-        row.addChild(Button.builder(
             Component.translatable("geogenesis.settings.cache.clear"),
             b -> {
                 preview.cellCache.invalidateAll();

@@ -11,26 +11,26 @@ import net.minecraft.network.chat.Component;
 import java.util.function.IntConsumer;
 
 /**
- * 采样设置分页：blockStride 选择（4/8/16/32）。
+ * 采样设置分页：纹理超采样倍率选择（1×/2×/3×/4×）。
  * <p>
- * blockStride 控制每 chunk 的采样步长。
- * 16 = 每 chunk 1 次采样（最快），4 = 每 chunk 16 次采样（最精细）。
+ * 渲染分辨率 = 预览窗口显示分辨率 × 倍率（显示器模型：屏幕按自身分辨率渲染，GPU 负责 DPI 上采样）。
+ * 1× = 最快（纹理=窗口逻辑像素）；2/3/4× = 更锐利但更慢。缩放（1:1…1:16）不影响采样总数。
  */
 public class SamplingTab extends GridLayoutTab {
 
     private static final Component HEAD = Component.translatable("geogenesis.settings.sampling.head");
-    private static final int[] STRIDE_OPTIONS = {4, 8, 16, 32};
-    private static final Component[] STRIDE_LABELS = {
-        Component.translatable("geogenesis.settings.sampling.stride_4"),
-        Component.translatable("geogenesis.settings.sampling.stride_8"),
-        Component.translatable("geogenesis.settings.sampling.stride_16"),
-        Component.translatable("geogenesis.settings.sampling.stride_32")
+    private static final int[] SCALE_OPTIONS = {1, 2, 3, 4};
+    private static final Component[] SCALE_LABELS = {
+        Component.translatable("geogenesis.settings.sampling.scale_1"),
+        Component.translatable("geogenesis.settings.sampling.scale_2"),
+        Component.translatable("geogenesis.settings.sampling.scale_3"),
+        Component.translatable("geogenesis.settings.sampling.scale_4")
     };
-    private static final Component[] STRIDE_TOOLTIPS = {
-        Component.translatable("geogenesis.settings.sampling.stride_4.tooltip"),
-        Component.translatable("geogenesis.settings.sampling.stride_8.tooltip"),
-        Component.translatable("geogenesis.settings.sampling.stride_16.tooltip"),
-        Component.translatable("geogenesis.settings.sampling.stride_32.tooltip")
+    private static final Component[] SCALE_TOOLTIPS = {
+        Component.translatable("geogenesis.settings.sampling.scale_1.tooltip"),
+        Component.translatable("geogenesis.settings.sampling.scale_2.tooltip"),
+        Component.translatable("geogenesis.settings.sampling.scale_3.tooltip"),
+        Component.translatable("geogenesis.settings.sampling.scale_4.tooltip")
     };
 
     public SamplingTab(Minecraft mc, PreviewDisplay preview) {
@@ -40,18 +40,17 @@ public class SamplingTab extends GridLayoutTab {
 
         row.addChild(new CenteredLabel(mc.font, 320, 20, HEAD), 2);
 
-        for (int i = 0; i < STRIDE_OPTIONS.length; i++) {
-            final int stride = STRIDE_OPTIONS[i];
-            Button btn = Button.builder(STRIDE_LABELS[i], b -> {
-                preview.blockStride = stride;
-                // 重建 TerrainQueue 以使用新步长
-                preview.resetBlockStride(stride);
+        for (int i = 0; i < SCALE_OPTIONS.length; i++) {
+            final int scale = SCALE_OPTIONS[i];
+            Button btn = Button.builder(SCALE_LABELS[i], b -> {
+                // 设置纹理超采样倍率并重建纹理 + 队列
+                preview.setRenderScale(scale);
             })
-                .tooltip(Tooltip.create(STRIDE_TOOLTIPS[i]))
+                .tooltip(Tooltip.create(SCALE_TOOLTIPS[i]))
                 .width(150)
                 .build();
             // 高亮当前选中
-            if (stride == preview.blockStride) {
+            if (scale == preview.renderScale) {
                 btn.active = false;
             }
             row.addChild(btn);

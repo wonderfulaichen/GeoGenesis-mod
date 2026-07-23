@@ -101,6 +101,22 @@ public class SeedManager {
         return favorites.stream().anyMatch(e -> e.seed == seed);
     }
 
+    /** 取收藏名称，未收藏则返回默认名 */
+    public String getName(long seed) {
+        return favorites.stream().filter(e -> e.seed == seed)
+            .map(SeedEntry::name).findFirst().orElse("Seed " + seed);
+    }
+
+    /** 重命名收藏（非收藏时忽略） */
+    public void rename(long seed, String name) {
+        favorites.stream().filter(e -> e.seed == seed).findFirst().ifPresent(e -> {
+            favorites.remove(e);
+            favorites.add(new SeedEntry(seed, name));
+            dirty = true;
+            save();
+        });
+    }
+
     /** 上次使用的种子 */
     public long getLastSeed() { return lastSeed; }
     public void setLastSeed(long seed) {

@@ -1,5 +1,6 @@
 package com.geogenesis.client.preview;
 
+import com.geogenesis.client.StructureIconOverlay;
 import com.geogenesis.client.preview.chunk.CellCache;
 import com.geogenesis.client.preview.chunk.TerrainPool;
 import com.geogenesis.client.preview.chunk.TerrainQueue;
@@ -53,8 +54,9 @@ public class PreviewDisplay extends AbstractWidget {
     private int texW, texH;
     /** 每纹理像素对应的世界块数。越大越缩。 */
     public int scaleBlockPos = 1;
-    /** blockStride：每个 chunk 采样的步长。16=1 sample/chunk（最快），4=16 samples/chunk（精细） */
-    public int blockStride;
+    /** 纹理超采样倍率（渲染分辨率 = 预览窗口逻辑分辨率 × renderScale）。
+     *  1=显示器模型（纹理=窗口逻辑像素，GPU 负责 DPI 上采样，最快）；2/3/4=更锐利但更慢。 */
+    public int renderScale = 1;
 
     // ====== 视口 ======
     /** 视口中心世界坐标 */
@@ -89,20 +91,20 @@ public class PreviewDisplay extends AbstractWidget {
     private int selectedBiomeId = -1;
 
     // ====== 设置（共 SettingsScreen 读写） ======
-    /** 显示控制提示 */
-    public boolean showControlsHint = true;
     /** 显示帧时间 */
     public boolean showFrameTime = true;
     /** 显示玩家位置标记 */
     public boolean showPlayerMarkers = true;
-    /** 缓存是否启用 */
-    public boolean cacheEnabled = true;
     /** 公开 CellCache 引用，供外部清除缓存 */
     public CellCache cellCache = new CellCache();
+    /** 结构图标叠加层（可选 JSON，无数据则跳过） */
+    private final StructureIconOverlay structureOverlay = new StructureIconOverlay();
 
     // ====== 数据 ======
     private long seed;
     private int seaLevel, maxY, minY, mountainCap;
+    /** 高程色阶映射的 e 区间（地形实际可达范围），供图例 Y 标签换算。 */
+    private double elevEMin = -1.0, elevEMax = 1.0;
     private boolean hydrology = false;
     private boolean slopeShading = false;
     /** 视口变化标记：需要清除纹理重新填充。pan/zoom/seed 变时设 true */
@@ -113,16 +115,21 @@ public class PreviewDisplay extends AbstractWidget {
     public PreviewDisplay(int x, int y, int w, int h,
                           GeoGenesisTerrain terrain, long seed,
                           TerrainParams params, int mode) {
-        this(x, y, w, h, terrain, seed, params, mode, 16);
+        this(x, y, w, h, terrain, seed, params, mode, 1);
     }
 
     /**
-     * 完整构造函数，允许指定采样步长。
-     * @param blockStride 采样步长：16=每chunk 1次采样(最快), 4=每chunk 16次(精细)
+     * @param renderScale 纹理超采样倍率（1=显示器模型，纹理=窗口逻辑像素）。
+     */
+
+    /**
+     * 完整构造函数，允许指定纹理超采样倍率。
+     * @param renderScale 纹理超采样倍率（1=显示器模型，纹理=窗口逻辑像素，GPU 负责 DPI 上采样）。
+     *                    渲染分辨率恒等于预览窗口显示分辨率，与缩放无关、不过采样。
      */
     public PreviewDisplay(int x, int y, int w, int h,
                           GeoGenesisTerrain terrain, long seed,
-                          TerrainParams params, int mode, int blockStride) {
+                          TerrainParams params, int mode, int renderScale) {
         super(x, y, w, h, Component.literal("GeoGenesis Preview"));
         this.terrain = terrain;
         this.seed = seed;
@@ -131,20 +138,24 @@ public class PreviewDisplay extends AbstractWidget {
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
         this.maxY = params.maxY();
-        this.blockStride = Math.max(1, Math.min(16, blockStride));
-        // 图例色带范围使用世界高度上限 maxY（默认 320），而非 mountainCap（256），
-        // 否则 256-307 之间的地形全部被裁剪成白色
-        GeoPalette.setElevationRange(minY, maxY);
+        this.renderScale = Math.max(1, Math.min(4, renderScale));
+        // 高程色阶范围跟随地形实际可达 e 区间（由地形类型 e 界限换算），
+        // 使地形最高处触顶雪白、最深触底深蓝，而非世界的绝对高度上下限。
+        double[] er = params.elevationERange();
+        this.elevEMin = er[0]; this.elevEMax = er[1];
+        GeoPalette.setElevationERange(er[0], er[1]);
         GeoPalette.setSeaLevel(seaLevel);
-        // 高分辨率纹理：widget_width × gui_scale，硬件自动下采样到 widget 大小
-        texW = Math.max(1, (int)(this.width * mc.getWindow().getGuiScale()));
-        texH = Math.max(1, (int)(this.height * mc.getWindow().getGuiScale()));
+        // 渲染分辨率 = 预览窗口显示分辨率（逻辑像素 × renderScale），类比电脑显示器：
+        // 无论源地形多精细，屏幕只按自身分辨率渲染，GPU 负责 DPI/超采样上采样，
+        // 避免按物理像素（gui_scale）超采样造成的 4× 浪费。
+        texW = Math.max(1, (int)(this.width * this.renderScale));
+        texH = Math.max(1, (int)(this.height * this.renderScale));
         image = new NativeImage(NativeImage.Format.RGBA, texW, texH, false);
         texture = new DynamicTexture(image);
         texLoc = ResourceLocation.tryParse("geogenesis:preview_" + System.nanoTime());
         mc.getTextureManager().register(texLoc, texture);
 
-        this.queue = new TerrainQueue(cellCache, pool, terrain, this.blockStride);
+        this.queue = new TerrainQueue(cellCache, pool, terrain, effectiveStride());
         this.activeLayer = GeoPalette.PreviewLayer.values()[
             Math.max(0, Math.min(GeoPalette.PreviewLayer.values().length - 1, mode))];
     }
@@ -173,8 +184,10 @@ public class PreviewDisplay extends AbstractWidget {
         int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
         paintAvailableChunks(originWx, originWz, blocksWide, blocksHigh);
 
-        // 坡度阴影：后处理，对所有 scaleBlockPos 级别生效。
-        if (slopeShading && activeLayer == GeoPalette.PreviewLayer.ELEVATION) {
+        // 真实坡度阴影（逐像素高度梯度法线 · 光源点乘）：SHADE 模式对所有图层生效，
+        // 使气候数据「披」在真实地形明暗之上；保留旧 slopeShading 开关对 ELEVATION 的单独控制。
+        if (GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE
+                || (slopeShading && activeLayer == GeoPalette.PreviewLayer.ELEVATION)) {
             applySlopeShading(image, originWx, originWz);
         }
 
@@ -185,7 +198,14 @@ public class PreviewDisplay extends AbstractWidget {
             drawSpawnMarker(g);
             // 玩家位置标记
             if (showPlayerMarkers) drawPlayerMarker(g);
-            // 结构/玩家图标（占位，后续实现）
+            // 结构图标叠加（可选 JSON，无数据则跳过；返回悬停名）
+            String markerHover = structureOverlay.render(g, x, y, w, h,
+                originWx, originWz, blocksWide, blocksHigh, mx, my);
+            if (markerHover != null) {
+                int tw = mc.font.width(markerHover);
+                g.fill(mx + 10, my + 8, mx + 14 + tw, my + 20, 0xCC000000);
+                g.drawString(mc.font, markerHover, mx + 13, my + 10, 0xFFFFFF);
+            }
 
         // 参考项目：1px 边框线
         g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
@@ -219,29 +239,43 @@ public class PreviewDisplay extends AbstractWidget {
      *     我们用模糊再算 slope 来避免黑线。）
      */
     private void applySlopeShading(NativeImage img, int originWx, int originWz) {
-        float lx = 0.5f, ly = 1.0f, lz = 0.3f;
+        // 标准地图学光源：屏幕左上方（lx<0 左、lz<0 屏幕上方），符合人眼"光从左上来"的直觉，
+        // 避免旧 (0.5,1,0.3)=右下方光源造成的"陆地凹陷/海洋突出"错觉。
+        float lx = -0.5f, ly = 1.0f, lz = -0.3f;
         float len = (float) Math.sqrt(lx * lx + ly * ly + lz * lz);
         lx /= len; ly /= len; lz /= len;
 
         int w = img.getWidth(), h = img.getHeight();
         int total = w * h;
-        int[] heights = new int[total];
+        int[] effH = new int[total];       // 有效高度：水域填海平面，陆地填 worldY
         boolean[] valid = new boolean[total];
+        // 水下掩码：e<0 为海平面以下（海洋）。水面是平的，海底起伏不应被 hillshade 雕出浮雕，
+        // 否则在左上方光源下仍会显"海洋突出"的错觉。水域像素保留纯色带（按深度渐变），不做明暗调制。
+        boolean[] water = new boolean[total];
 
-        // 1. 提取高度
+        // 1. 提取高度（必须与着色层同一世界坐标映射：纹理像素 px → 世界块 originWx + px*scaleBlockPos，
+        //    否则缩放后阴影层相对着色层产生线性位移 → 视差/剪切错位）
         for (int py = 0; py < h; py++) {
             for (int px = 0; px < w; px++) {
-                int wx = originWx + px;
-                int wz = originWz + py;
+                int wx = originWx + px * scaleBlockPos;
+                int wz = originWz + py * scaleBlockPos;
                 int cx = wx >> 4, cz = wz >> 4;
                 int lx2 = wx & 15, lz2 = wz & 15;
                 Cell c = cellCache.getCell(cx, cz, lx2, lz2);
-                if (c != null) { heights[py * w + px] = (int) c.height; valid[py * w + px] = true; }
+                if (c != null) {
+                    boolean isWater = c.e < 0.0;
+                    water[py * w + px] = isWater;
+                    // 水域用海平面高度代替海床：海岸处 陆地(≈seaLevel)−水域(seaLevel)≈0，
+                    // 消除海底深度在海岸线陆地投下的伪阴影"悬崖"（海岸阴影截断）。
+                    effH[py * w + px] = isWater ? seaLevel : (int) c.height;
+                    valid[py * w + px] = true;
+                }
             }
         }
 
-        // 2. 3×3 盒型平滑（消除块边界跳变）
-        int[] smooth = heights.clone();
+        // 2. 3×3 盒型平滑（消除块边界跳变）；水域以 effH=seaLevel 参与模糊，
+        //    使海岸处 陆地(≈seaLevel)−水域(seaLevel)≈0，海岸阴影从岸边平滑过渡到内陆起伏（不再截断）。
+        int[] smooth = effH.clone();
         for (int py = 1; py < h - 1; py++) {
             for (int px = 1; px < w - 1; px++) {
                 if (!valid[py * w + px]) continue;
@@ -249,21 +283,24 @@ public class PreviewDisplay extends AbstractWidget {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dx = -1; dx <= 1; dx++) {
                         int idx = (py + dy) * w + (px + dx);
-                        if (valid[idx]) { sum += heights[idx]; cnt++; }
+                        if (valid[idx]) { sum += effH[idx]; cnt++; }
                     }
                 }
                 if (cnt >= 3) smooth[py * w + px] = (int) (sum / cnt);
             }
         }
 
-        // 3. 坡度计算 + 亮度修正
+        // 3. 坡度计算 + 亮度修正（跳过水域像素，海面保持平涂）
         for (int py = 1; py < h - 1; py++) {
             for (int px = 1; px < w - 1; px++) {
                 int idx = py * w + px;
-                if (!valid[idx] || !valid[idx - 1] || !valid[idx + 1]
+                if (water[idx] || !valid[idx] || !valid[idx - 1] || !valid[idx + 1]
                         || !valid[idx - w] || !valid[idx + w]) continue;
-                float dhdx = (smooth[idx + 1] - smooth[idx - 1]) * 0.5f;
-                float dhdz = (smooth[idx + w] - smooth[idx - w]) * 0.5f;
+                // 斜率按 scaleBlockPos 归一化到「每世界块」，使缩放各级阴影强度一致
+                // （相邻纹理像素实际间隔 scaleBlockPos 个世界块）
+                float inv = 0.5f / scaleBlockPos;
+                float dhdx = (smooth[idx + 1] - smooth[idx - 1]) * inv;
+                float dhdz = (smooth[idx + w] - smooth[idx - w]) * inv;
                 float nx = -dhdx, ny = 1.0f, nz = -dhdz;
                 float nLen = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
                 if (nLen < 0.001f) continue;
@@ -281,45 +318,36 @@ public class PreviewDisplay extends AbstractWidget {
         }
     }
 
-    /** 从 CellCache 读取可见区内已缓存的 chunk 并写入纹理。
-     *  自适应纹理：scaleBlockPos 决定 chunk 在 tex 中的大小（texSize = BASE_RES / scaleBlockPos）。
-     *  blockStride=16 → 1 sample/chunk：每个 chunk 一次 fillRect。
-     *  边界 clamp：fillRect size 截断到纹理边（参考项目方式）。 */
+    /** 从 CellCache 读取可见区内已缓存的 chunk 并逐块写入纹理。
+     *  逐块采样（cells[lz*16+lx]），每个块映射到其纹理像素，消除「每 chunk 单 Cell 平涂」造成的网格。
+     *  采样步长 = scaleBlockPos：每块纹理像素对应一个世界块，缓存分辨率（effectiveStride）≥ 此值，
+     *  故任何缩放下均 1 像素=1 采样，无内部网格。 */
     private int paintAvailableChunks(int originWx, int originWz, int blocksWide, int blocksHigh) {
-        // chunksWide = texW * scaleBlockPos / 16 = (BASE_RES/scale) * scale / 16 = BASE_RES/16 = 16 ✓
         int minCX = originWx >> 4;
         int maxCX = (originWx + blocksWide) >> 4;
         int minCZ = originWz >> 4;
         int maxCZ = (originWz + blocksHigh) >> 4;
 
-        int chunkTexSize = 16 / scaleBlockPos;
-        if (chunkTexSize < 1) chunkTexSize = 1;
-        if (chunkTexSize < 1) chunkTexSize = 1;
-
+        int step = Math.min(16, Math.max(1, scaleBlockPos));
         int paintedCount = 0;
         for (int cx = minCX; cx <= maxCX; cx++) {
             for (int cz = minCZ; cz <= maxCZ; cz++) {
                 Cell[] cells = cellCache.get(cx, cz);
                 if (cells == null) continue;
 
-                int baseTx = ((cx << 4) - originWx) / scaleBlockPos;
-                int baseTz = ((cz << 4) - originWz) / scaleBlockPos;
-                if (baseTx + chunkTexSize <= 0 || baseTx < 0 || baseTx >= texW
-                        || baseTz + chunkTexSize <= 0 || baseTz < 0 || baseTz >= texH) continue;
-
-                paintedCount++;
-                // 单点采样：cells[0] = (0,0) 位置，覆盖整个 chunk
-                Cell cell = cells[0];
-                if (cell == null) continue;
-
-                int color = GeoPalette.color(activeLayer, cell,
-                        cx << 4, cz << 4, minY, maxY, hydrology);
-                int abgr = GeoPalette.toABGR(color);
-                // 边界 clamp：fillRect 不超过纹理边
-                int w = Math.min(chunkTexSize, texW - baseTx);
-                int h = Math.min(chunkTexSize, texH - baseTz);
-                if (w > 0 && h > 0) {
-                    image.fillRect(baseTx, baseTz, w, h, abgr);
+                for (int lx = 0; lx < 16; lx += step) {
+                    for (int lz = 0; lz < 16; lz += step) {
+                        int wx = (cx << 4) + lx;
+                        int wz = (cz << 4) + lz;
+                        int tx = (wx - originWx) / scaleBlockPos;
+                        int tz = (wz - originWz) / scaleBlockPos;
+                        if (tx < 0 || tx >= texW || tz < 0 || tz >= texH) continue;
+                        Cell cell = cells[lz * 16 + lx];
+                        if (cell == null) continue;
+                        int color = GeoPalette.color(activeLayer, cell, wx, wz, minY, maxY, hydrology);
+                        image.setPixelRGBA(tx, tz, GeoPalette.toABGR(color));
+                        paintedCount++;
+                    }
                 }
             }
         }
@@ -470,7 +498,8 @@ public class PreviewDisplay extends AbstractWidget {
         if (next != current) {
             scaleBlockPos = next;
             needsClear = true;
-            queue.resetViewport();
+            // 重建队列以应用新的有效采样步长（scaleBlockPos / renderScale），避免缩放后网格。
+            rebuildQueue();
         }
         return true;
     }
@@ -497,7 +526,9 @@ public class PreviewDisplay extends AbstractWidget {
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
         this.maxY = params.maxY();
-        GeoPalette.setElevationRange(minY, maxY);
+        double[] er = params.elevationERange();
+        this.elevEMin = er[0]; this.elevEMax = er[1];
+        GeoPalette.setElevationERange(er[0], er[1]);
         GeoPalette.setSeaLevel(seaLevel);
         cellCache.invalidateAll();
         pool.cancelAll();
@@ -523,6 +554,12 @@ public class PreviewDisplay extends AbstractWidget {
     public boolean isSlopeShading() { return slopeShading; }
     public void setSlopeShading(boolean enabled) { this.slopeShading = enabled; }
     public void queueResetViewport() { queue.resetViewport(); }
+
+    /** e→世界高度 Y（与 HeightCurve.heightFromE 一致的非对称映射：e=0→海平面）。 */
+    private double heightFromE(double e) {
+        if (e <= 0.0) return seaLevel - (-e) * (seaLevel - minY);
+        return seaLevel + e * (maxY - seaLevel);
+    }
     public void setElevationColormap(String name) { GeoPalette.setElevationColormap(name); }
 
     public void setPosition(int x, int y, int w, int h) {
@@ -530,8 +567,8 @@ public class PreviewDisplay extends AbstractWidget {
         this.setY(y);
         this.width = w;
         this.height = h;
-        int newTexW = Math.max(1, (int)(w * mc.getWindow().getGuiScale()));
-        int newTexH = Math.max(1, (int)(h * mc.getWindow().getGuiScale()));
+        int newTexW = Math.max(1, (int)(w * this.renderScale));
+        int newTexH = Math.max(1, (int)(h * this.renderScale));
         if (newTexW != texW || newTexH != texH) {
             texW = newTexW;
             texH = newTexH;
@@ -546,12 +583,36 @@ public class PreviewDisplay extends AbstractWidget {
         queue.resetViewport();
     }
 
-    /** 更改采样步长并重建队列 */
-    public void resetBlockStride(int stride) {
-        this.blockStride = Math.max(1, Math.min(32, stride));
-        this.queue = new TerrainQueue(cellCache, pool, terrain, this.blockStride);
+    /** 有效采样步长 = 纹理分辨率（屏幕像素 / 每像素覆盖块数）。
+     *  恒等于「每屏幕像素 1 次采样」，即渲染分辨率 = 预览窗口显示分辨率 × renderScale，
+     *  与缩放无关、不过采样：1:1 与 1:16 采样 cell 总数相同（均为 texW×texH）。 */
+    private int effectiveStride() {
+        return Math.max(1, Math.min(16, this.scaleBlockPos / Math.max(1, this.renderScale)));
+    }
+
+    /** 重建采样队列（缩放/超采样变化时调用，纹理尺寸不变则不重建纹理）。 */
+    private void rebuildQueue() {
+        this.queue = new TerrainQueue(cellCache, pool, terrain, effectiveStride());
         needsClear = true;
         queue.resetViewport();
+    }
+
+    /** 设置纹理超采样倍率并重建纹理 + 队列。 */
+    public void setRenderScale(int scale) {
+        int newScale = Math.max(1, Math.min(4, scale));
+        if (newScale == this.renderScale) return;
+        this.renderScale = newScale;
+        int newW = Math.max(1, (int)(this.width * this.renderScale));
+        int newH = Math.max(1, (int)(this.height * this.renderScale));
+        if (newW != texW || newH != texH) {
+            texW = newW; texH = newH;
+            mc.getTextureManager().release(texLoc);
+            image = new NativeImage(NativeImage.Format.RGBA, texW, texH, false);
+            texture = new DynamicTexture(image);
+            texLoc = ResourceLocation.tryParse("geogenesis:preview_" + System.nanoTime());
+            mc.getTextureManager().register(texLoc, texture);
+        }
+        rebuildQueue();
     }
 
     /** 强制刷新预览（清除缓存 + 重绘） */
@@ -706,7 +767,7 @@ public class PreviewDisplay extends AbstractWidget {
             int cy = entryY - legendScrollOffset;
             for (GeoPalette.LegendEntry e : entries) {
                 if (cy + rowH > entryY - rowH && cy < entryY + entryMaxH + rowH) {
-                    g.fill(lx, cy, lx + 10, cy + 10, GeoPalette.toABGR(e.color));
+                    g.fill(lx, cy, lx + 10, cy + 10, GeoPalette.toARGB(e.color));
                     String name = I18n.get(e.labelKey);
                     if (name.equals(e.labelKey)) name = GeoPalette.englishLabel(e.labelKey);
                     if (mc.font.width(name) > panelW - 18) {
@@ -726,17 +787,26 @@ public class PreviewDisplay extends AbstractWidget {
                 g.fill(lx + panelW - 3, barY, lx + panelW - 1, barY + barH, 0xFF00c896);
             }
         } else {
-            int bx = getX() + width - 22, by = getY() + 24, bh = 200, bw = 12;
-            // 全范围渐变 [0, 1]：底→深蓝(洋) → 绿(陆) → 棕(山) → 白(雪峰)
+            int bx = getX() + width - 22, by = getY() + 24;
+            // 自适应高度：占 widget 可用高度的 80%，最小 100，最大 500
+            int bh = Math.max(100, Math.min(500, (int)(height * 0.8)));
+            int bw = 12;
+            // 使用已烘焙 LUT 每像素采样，避免运行期 getRGB 开销
+            // LUT 256 级，200px → 每像素约 1.28 LUT 级，足够平滑
             for (int i = 0; i < bh; i++) {
                 double p = 1.0 - (double) i / (bh - 1);
-                int rgb = GeoPalette.continuous(layer, p);
-                g.fill(bx, by + i, bx + bw, by + i + 1, GeoPalette.toABGR(rgb));
+                int rgb = GeoPalette.continuous(layer, GeoPalette.legendGradientPos(layer, p));
+                g.fill(bx, by + i, bx + bw, by + i + 1, GeoPalette.toARGB(rgb));
             }
-            String topLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + maxY) : "1.0";
-            String botLabel = (layer == GeoPalette.PreviewLayer.ELEVATION) ? ("Y=" + minY) : "0.0";
-            g.drawString(mc.font, topLabel, bx - 28, by, 0xCCCCCC);
-            g.drawString(mc.font, botLabel, bx - 28, by + bh - 8, 0xCCCCCC);
+            String[] lbl;
+            if (layer == GeoPalette.PreviewLayer.ELEVATION) {
+                lbl = new String[]{"Y=" + (int) Math.round(heightFromE(elevEMax)),
+                                   "Y=" + (int) Math.round(heightFromE(elevEMin))};
+            } else {
+                lbl = GeoPalette.continuousLegendLabels(layer);
+            }
+            g.drawString(mc.font, lbl[0], bx - 28, by, 0xCCCCCC);
+            g.drawString(mc.font, lbl[1], bx - 28, by + bh - 8, 0xCCCCCC);
             g.drawString(mc.font, I18n.get(layer.labelKey), lx, ly, 0x66CCFF);
         }
     }
