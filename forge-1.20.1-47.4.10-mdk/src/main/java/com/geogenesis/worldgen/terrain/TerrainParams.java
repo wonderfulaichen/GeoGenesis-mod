@@ -186,6 +186,10 @@ public record TerrainParams(
     double basinCenter,
     /** 盆地半范围，默认 0.0325 */
     double basinHalfRange,
+    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 1.5。0=无 c 效应（类型分布不随大陆性变化），越大越偏内陆聚集/海岸低地。 */
+    double cAffinityStrength,
+    /** Voronoi 区域场域扭曲幅度（块），打散网格对齐伪影、使区域边界蜿蜒不显网格，默认 250.0 */
+    double voronoiWarpAmp,
 
     // ===== Phase 1：统一样条配置（独立 record，避免参数过多）=====
     SplineConfig splineConfig
@@ -237,8 +241,9 @@ public record TerrainParams(
             0.0375, 0.0225,  // PLAIN
             0.22, 0.15,      // HILLS
             0.60, 0.35,      // MOUNTAINS
-            0.33, 0.15,      // PLATEAU
-            0.0475, 0.0325,  // BASIN
+            0.58, 0.08,      // PLATEAU
+            -0.03, 0.05,      // BASIN (真凹陷洼地：center=-0.03, halfRange=0.05 → lo=-0.08, hi=0.02)
+            1.5, 250.0,       // cAffinityStrength, voronoiWarpAmp
 
             // Phase 1: unified spline config
             SplineConfig.defaults()
@@ -291,14 +296,5 @@ public record TerrainParams(
      */
     public UnifiedSpline buildUnifiedSpline() {
         return splineConfig.build();
-    }
-
-    /**
-     * 从旧的 center ± halfRange 配置构建统一样条（向后兼容）。
-     */
-    public UnifiedSpline buildLegacyUnifiedSpline() {
-        double[] centers = {plainCenter, hillsCenter, mountainsCenter, plateauCenter, basinCenter};
-        double[] halfRanges = {plainHalfRange, hillsHalfRange, mountainsHalfRange, plateauHalfRange, basinHalfRange};
-        return UnifiedSpline.fromLegacyConfig(centers, halfRanges);
     }
 }

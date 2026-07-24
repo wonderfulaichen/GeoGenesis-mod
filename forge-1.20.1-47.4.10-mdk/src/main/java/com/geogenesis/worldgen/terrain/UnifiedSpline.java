@@ -230,6 +230,66 @@ public final class UnifiedSpline {
     }
     
     /**
+     * Phase 1 (WIE)：取指定类型自己独立求值的内层样条 eLand，与类型轴位置无关。
+     * <p>
+     * 用于按 typeWeights 加权混合各类型独立高度，根治 typePosition 轴插值
+     * （高原↔丘陵过渡经 MOUNTAINS 节点）导致的尖环。
+     *
+     * @param c 大陆性值（-1.0 到 1.0），用于选取外层节点（内层样条当前跨外层共享）
+     * @param typeIndex 类型索引，与 LAND_TYPES / midSpline.nodes 顺序一致（0=PLAIN…4=BASIN）
+     * @param noiseValue 该类型的独立噪声值（0.0 到 1.0）
+     * @return eLand 值
+     */
+    public double sampleByType(double c, int typeIndex, double noiseValue) {
+        if (outerNodes.length == 0) return 0.0;
+        OuterNode node = selectOuterNode(c);
+        if (node == null || node.midSpline == null) return 0.0;
+        if (typeIndex < 0 || typeIndex >= node.midSpline.nodes.length) return 0.0;
+        return computeELand(node.midSpline.nodes[typeIndex].innerSpline, noiseValue);
+    }
+
+    /**
+     * Phase 2：类型对大陆性的语义亲和度 cAffinity_t(c)。
+     * <p>
+     * 直接复用已建样条中每层 {@code MidNode.weight}（即 MidSplineConfig 每类型 c 响应曲线），
+     * 跨外层节点线性插值得到类型 t 在 c 处的权重。性质：对任意 c，{@code Σ_t cAffinity_t(c) ≡ 1}
+     * （每个外层节点的 5 类权重之和恒为 1，线性插值保持此守恒）。
+     *
+     * @param c 大陆性值（-1.0 到 1.0）
+     * @param typeIndex 类型索引，与 LAND_TYPES / midSpline.nodes 顺序一致
+     * @return 亲和度权重 ∈ [0,1]
+     */
+    public double typeAffinity(double c, int typeIndex) {
+        if (outerNodes.length == 0) return 0.0;
+        if (outerNodes.length == 1) return weightAt(0, typeIndex);
+        int oi = findOuterBracket(c);
+        if (oi <= 0) return weightAt(0, typeIndex);
+        if (oi >= outerNodes.length) return weightAt(outerNodes.length - 1, typeIndex);
+        double cL = outerNodes[oi - 1].location, cR = outerNodes[oi].location;
+        double t = (cR > cL) ? (c - cL) / (cR - cL) : 0.0;
+        double wL = weightAt(oi - 1, typeIndex);
+        double wR = weightAt(oi, typeIndex);
+        return wL + (wR - wL) * t;
+    }
+
+    /** 取指定外层节点的第 typeIndex 个中层节点权重（越界返回 0） */
+    private double weightAt(int oi, int typeIndex) {
+        OuterNode n = outerNodes[oi];
+        if (n.midSpline == null || typeIndex < 0 || typeIndex >= n.midSpline.nodes.length) return 0.0;
+        return n.midSpline.nodes[typeIndex].weight;
+    }
+
+    /** 根据 c 选取最近的外层节点（与 sample 外层插值端点一致） */
+    private OuterNode selectOuterNode(double c) {
+        if (outerNodes.length == 1) return outerNodes[0];
+        int oi = findOuterBracket(c);
+        if (oi <= 0) return outerNodes[0];
+        if (oi >= outerNodes.length) return outerNodes[outerNodes.length - 1];
+        double cL = outerNodes[oi - 1].location, cR = outerNodes[oi].location;
+        return (c - cL) <= (cR - c) ? outerNodes[oi - 1] : outerNodes[oi];
+    }
+
+    /**
      * Phase 1 兼容：通过 2 层嵌套样条计算 eLand（外层线性插值，内层用第一个类型节点）。
      * 
      * @param c 大陆性值（-1.0 到 1.0）
@@ -314,42 +374,4 @@ public final class UnifiedSpline {
         return new UnifiedSpline(new OuterNode[0]);
     }
     
-    /**
-     * 从旧的 center ± halfRange 转换为样条（向后兼容）。
-     */
-    public static UnifiedSpline fromLegacyConfig(double[] centers, double[] halfRanges) {
-        if (centers.length != halfRanges.length || centers.length == 0) {
-            return new UnifiedSpline(new OuterNode[0]);
-        }
-        
-        OuterNode[] nodes = new OuterNode[centers.length];
-        for (int i = 0; i < centers.length; i++) {
-            double lo = centers[i] - halfRanges[i];
-            double hi = centers[i] + halfRanges[i];
-            
-            // lo 样条：常量 = lo
-            Spline loSpline = new Spline(
-                new double[]{0.0, 1.0},
-                new double[]{lo, lo},
-                new double[]{0.0, 0.0}
-            );
-            
-            // hi 样条：常量 = hi
-            Spline hiSpline = new Spline(
-                new double[]{0.0, 1.0},
-                new double[]{hi, hi},
-                new double[]{0.0, 0.0}
-            );
-            
-            InnerSpline innerSpline = new InnerSpline(loSpline, hiSpline);
-            
-            // Phase 2：创建中层样条（单节点，权重=1.0）
-            MidNode midNode = new MidNode(0.0, 1.0, innerSpline, 0.0);
-            MidSpline midSpline = new MidSpline(new MidNode[]{midNode});
-            
-            nodes[i] = new OuterNode(centers[i], midSpline, 0.0);
-        }
-        
-        return new UnifiedSpline(nodes);
-    }
 }

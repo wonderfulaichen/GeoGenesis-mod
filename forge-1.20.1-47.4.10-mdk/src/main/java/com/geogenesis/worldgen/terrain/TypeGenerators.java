@@ -48,8 +48,6 @@ public final class TypeGenerators {
 
     public double getTypeLo(TerrainClass tc) { return lo[tc.ordinal()]; }
     public double getTypeHi(TerrainClass tc) { return hi[tc.ordinal()]; }
-    public double getTypeCenter(TerrainClass tc) { return (lo[tc.ordinal()] + hi[tc.ordinal()]) * 0.5; }
-    public double getTypeHalfRange(TerrainClass tc) { return (hi[tc.ordinal()] - lo[tc.ordinal()]) * 0.5; }
 
     /**
      * Phase 1：通过 2 层嵌套样条计算 eLand。
@@ -79,6 +77,28 @@ public final class TypeGenerators {
             return unifiedSpline.sample(c, typePosition, noiseValue);
         }
         // fallback：使用旧的 center ± halfRange
+        return 0.0;
+    }
+
+    /**
+     * Phase 1 (WIE)：取指定类型自己独立求值的内层样条 eLand。
+     * @param typeIndex 类型索引，与 LAND_TYPES / midSpline.nodes 顺序一致
+     */
+    public double sampleByType(double c, int typeIndex, double noiseValue) {
+        if (useUnifiedSpline && unifiedSpline != null) {
+            return unifiedSpline.sampleByType(c, typeIndex, noiseValue);
+        }
+        return 0.0;
+    }
+
+    /**
+     * Phase 2：类型对大陆性的语义亲和度（复用已建样条 MidNode.weight 曲线）。
+     * @param typeIndex 类型索引，与 LAND_TYPES / midSpline.nodes 顺序一致
+     */
+    public double typeAffinity(double c, int typeIndex) {
+        if (useUnifiedSpline && unifiedSpline != null) {
+            return unifiedSpline.typeAffinity(c, typeIndex);
+        }
         return 0.0;
     }
 
@@ -136,16 +156,6 @@ public final class TypeGenerators {
         // 加权混合
         double combined = wLow * nLow + wMid * nMid + wHigh * nHigh + wDetail * nDet;
         return clamp01(combined);
-    }
-
-    /**
-     * 盆地噪声调制：反转 + 中心低
-     */
-    public static double basinModulate(double base) {
-        // 反转：base 高 → 输出低；base 低 → 输出高
-        // 但保留正向偏移以避免最低过 0
-        double inv = 0.85 - 0.7 * base;
-        return inv < 0 ? 0 : (inv > 1 ? 1 : inv);
     }
 
     // ===== 工具 =====
