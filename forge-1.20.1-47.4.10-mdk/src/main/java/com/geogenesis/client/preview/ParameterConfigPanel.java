@@ -52,7 +52,6 @@ public class ParameterConfigPanel extends ConfigPanel {
 
     // 图表关联滑块
     private final List<ParamSlider> heightSliders = new ArrayList<>();
-    private ParamSlider scaleSlider;
 
     private final MixerPanel heightPanel = new MixerPanel("世界高度");
     private final MixerPanel scalePanel = new MixerPanel("尺度预览");
@@ -322,12 +321,6 @@ public class ParameterConfigPanel extends ConfigPanel {
         for (ParamSlider s : sliders) {
             if (s.isHoveringReset((int) mx, (int) my)) { s.resetToDefault(); return true; }
             if (s.isMouseOver(mx, my)) return s.mouseClicked(mx, my, btn);
-        }
-        // 点击尺度滑块（整合在世界高度面板）
-        if (chartObj instanceof WorldHeightBar && scaleSlider != null) {
-            scaleSlider.setY(yBase + sliders.size() * (CHART_SLIDER_H + 2));
-            if (scaleSlider.isHoveringReset((int) mx, (int) my)) { scaleSlider.resetToDefault(); return true; }
-            if (scaleSlider.isMouseOver(mx, my)) return scaleSlider.mouseClicked(mx, my, btn);
         }
         return false;
     }

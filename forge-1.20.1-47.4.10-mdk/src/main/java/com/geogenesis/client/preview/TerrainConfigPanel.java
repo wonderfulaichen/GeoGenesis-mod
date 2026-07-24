@@ -6,7 +6,6 @@ import com.geogenesis.client.preview.mixer.DualRangeChart;
 import com.geogenesis.client.preview.mixer.MixerPanel;
 import com.geogenesis.client.preview.mixer.SnowLineChart;
 import com.geogenesis.config.GeoGenesisConfig;
-import com.geogenesis.worldgen.terrain.SplineConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraftforge.common.ForgeConfigSpec;
@@ -144,27 +143,26 @@ public class TerrainConfigPanel extends ConfigPanel {
         defaultLoValues.add(c.riverLo.getDefault());
         defaultHiValues.add(c.riverHi.getDefault());
 
-        // 陆地类型（只读展示：真实 lo/hi 由 SplineConfig 统一派生，非用户可配）
-        double[][] land = SplineConfig.defaults().landTypeBounds();
-        slots.add(readOnlySlot("平原", 0xFF44AA66, land[0][0], land[0][1]));
-        defaultLoValues.add(land[0][0]);
-        defaultHiValues.add(land[0][1]);
+        // 陆地类型（可编辑：绑定真实 spline 控制点字段，拖动真正影响地形）
+        slots.add(landSplineSlot("平原", 0xFF44AA66, c.plainLoVal0, c.plainHiVal0));
+        defaultLoValues.add(c.plainLoVal0.getDefault());
+        defaultHiValues.add(c.plainHiVal0.getDefault());
 
-        slots.add(readOnlySlot("丘陵", 0xFF88CC44, land[1][0], land[1][1]));
-        defaultLoValues.add(land[1][0]);
-        defaultHiValues.add(land[1][1]);
+        slots.add(landSplineSlot("丘陵", 0xFF88CC44, c.hillsLoVal0, c.hillsHiVal0));
+        defaultLoValues.add(c.hillsLoVal0.getDefault());
+        defaultHiValues.add(c.hillsHiVal0.getDefault());
 
-        slots.add(readOnlySlot("山脉", 0xFF884422, land[2][0], land[2][1]));
-        defaultLoValues.add(land[2][0]);
-        defaultHiValues.add(land[2][1]);
+        slots.add(landSplineSlot("山脉", 0xFF884422, c.mountLoVal0, c.mountHiVal0));
+        defaultLoValues.add(c.mountLoVal0.getDefault());
+        defaultHiValues.add(c.mountHiVal0.getDefault());
 
-        slots.add(readOnlySlot("高原", 0xFFCC8844, land[3][0], land[3][1]));
-        defaultLoValues.add(land[3][0]);
-        defaultHiValues.add(land[3][1]);
+        slots.add(landSplineSlot("高原", 0xFFCC8844, c.platLoVal0, c.platHiVal0));
+        defaultLoValues.add(c.platLoVal0.getDefault());
+        defaultHiValues.add(c.platHiVal0.getDefault());
 
-        slots.add(readOnlySlot("盆地", 0xFFAA6644, land[4][0], land[4][1]));
-        defaultLoValues.add(land[4][0]);
-        defaultHiValues.add(land[4][1]);
+        slots.add(landSplineSlot("盆地", 0xFFAA6644, c.basinLoVal0, c.basinHiVal0));
+        defaultLoValues.add(c.basinLoVal0.getDefault());
+        defaultHiValues.add(c.basinHiVal0.getDefault());
 
         chart.setSlots(slots);
 
@@ -411,9 +409,14 @@ public class TerrainConfigPanel extends ConfigPanel {
         return new DualRangeChart.Slot(name, color, loVal, hiVal, loSet, hiSet, loCfg::get, hiCfg::get);
     }
 
-    /** 只读 slot：展示真实 lo/hi（由 SplineConfig 统一派生，不可编辑） */
-    private static DualRangeChart.Slot readOnlySlot(String name, int color, double lo, double hi) {
-        return new DualRangeChart.Slot(name, color, lo, hi, null, null, () -> lo, () -> hi);
+    /** 陆地类型可编辑 slot：绑定 spline 控制点配置字段（lo/hi 各 Val0），拖动真正影响地形 */
+    private static DualRangeChart.Slot landSplineSlot(String name, int color,
+        ForgeConfigSpec.DoubleValue loCfg, ForgeConfigSpec.DoubleValue hiCfg) {
+        double loVal = loCfg.get();
+        double hiVal = hiCfg.get();
+        // 实时钳制 lo ≤ hi 由 makeSlider.onChange 负责；setter 直接写 config，
+        // onMarkDirty 在 slider onValueCommitted 中统一触发预览重建（buildParams 重算 spline）
+        return new DualRangeChart.Slot(name, color, loVal, hiVal, loCfg::set, hiCfg::set, loCfg::get, hiCfg::get);
     }
 
 
