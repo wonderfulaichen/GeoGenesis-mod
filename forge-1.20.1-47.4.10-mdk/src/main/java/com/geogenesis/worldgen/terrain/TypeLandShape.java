@@ -35,7 +35,7 @@ public final class TypeLandShape {
     public TypeLandShape(TerrainParams p) {
         this.params = p;
         this.generators = new TypeGenerators(p);
-        this.regions = new VoronoiRegionField(generators, p.voronoiWarpAmp());
+        this.regions = new VoronoiRegionField(p.voronoiWarpAmp());
         this.typeNoise = new TypeNoiseProvider();
         this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
         this.continent = new ContinentField(p);
@@ -76,31 +76,17 @@ public final class TypeLandShape {
      * 连续性由 typeWeights 高斯平滑过渡保障（v5 已验证 Δe < 0.01）。
      */
     public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz) {
-        // Phase 1：使用统一样条（如果启用）
-        if (generators.isUsingUnifiedSpline()) {
-            return sampleFromUnifiedSpline(blend, wx, wz);
-        }
-        
-        // fallback：旧的 typeWeights 方法
-        return sampleFromTypeWeights(blend, wx, wz);
+        // 统一使用 3 层嵌套样条（统一样条恒启用，旧 typeWeights 路径已移除）
+        return sampleFromUnifiedSpline(blend, wx, wz);
     }
 
     /**
-     * Phase 2：通过 3 层嵌套样条计算 eLand。
+     * Phase 2：通过 3 层嵌套样条计算 eLand（陆地类型，WIE 加权混合）。
      * <p>
-     * 海洋/水域类型：使用旧路径（generators.getTypeLo/Hi + typeWeights 加权），
-     * 因为中层样条只有陆地类型节点，海洋内层样条未集成。
-     * <p>
-     * 陆地类型：使用 3 层样条（c → typePosition → noiseValue → eLand）。
+     * 海洋/水域类型由 CellGenerator 经 HeightCurve 单独处理，不走 Voronoi 类型系统，
+     * 故此处 typeWeights 仅含陆地类型，无需 isWater 分支。
      */
     private double sampleFromUnifiedSpline(VoronoiRegionField.BlendResult blend, double wx, double wz) {
-        // 检查主导类型是否为海洋/水域
-        TerrainClass dominant = dominantFromWeights(blend.typeWeights);
-        if (dominant.isWater()) {
-            // 海洋/水域类型：使用旧路径（正确使用 generators.getTypeLo/Hi）
-            return sampleFromTypeWeights(blend, wx, wz);
-        }
-        
         // Phase 1 (WIE)：按 typeWeights 加权混合各类型「自己」独立求值的内层样条，
         // 彻底移除 typePosition 类型轴插值 —— 高原↔丘陵混合只取各自 H_t，
         // 绝不引入 MOUNTAINS 节点高度（尖环根因）。c 当前不进高度（与旧行为一致）。
@@ -109,7 +95,8 @@ public final class TypeLandShape {
 
         double[] tw = blend.typeWeights;
         if (tw == null) {
-            return clamp01(generators.computeSharedNoise(wx, wz));
+            double s = generators.computeSharedNoise(wx, wz);
+            return s < ELAND_MIN ? ELAND_MIN : (s > 1.0 ? 1.0 : s);
         }
 
         // Phase 2: 语义亲和度 —— 用大陆性 c 偏置各类型空间权重（cAffinity_t(c)）。
@@ -152,42 +139,6 @@ public final class TypeLandShape {
 
     /** 陆地 e 允许下探到海洋深度地板（盆地凹陷可低于海平面成湖） */
     private static final double ELAND_MIN = -0.35;
-
-    /** 钳制到 [0,1]（fallback 路径仍使用） */
-    private static double clamp01(double v) {
-        return v < 0 ? 0 : (v > 1 ? 1 : v);
-    }
-
-    /**
-     * 旧方法：通过 typeWeights 计算 eLand（向后兼容）。
-     */
-    private double sampleFromTypeWeights(VoronoiRegionField.BlendResult blend, double wx, double wz) {
-        double[] tw = blend.typeWeights;
-        double typeWeighted = 0;
-        double totalW = 0;
-        if (tw != null) {
-            for (TerrainClass type : TypeNoiseProvider.LAND_TYPES) {
-                double w = tw[type.ordinal()];
-                if (w > 0.001) {
-                    double typeVal = typeNoise.computeNoise(type, wx, wz);
-                    typeWeighted += w * typeVal;
-                    totalW += w;
-                }
-            }
-        }
-        // fallback: typeWeights 耗尽时（不应发生）用 shared noise 兜底
-        if (totalW <= 0) {
-            typeWeighted = generators.computeSharedNoise(wx, wz);
-        } else {
-            typeWeighted /= totalW;
-        }
-
-        double range = blend.hi - blend.lo;
-        double eLand = blend.lo + range * typeWeighted;
-
-        // 钳制
-        return eLand < 0 ? 0 : (eLand > 1 ? 1 : eLand);
-    }
 
     /**
      * 采样 eLand（完整流程）。

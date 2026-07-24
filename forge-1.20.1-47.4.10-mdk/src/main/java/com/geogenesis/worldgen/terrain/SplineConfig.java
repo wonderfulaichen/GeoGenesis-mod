@@ -151,6 +151,28 @@ public record SplineConfig(
         );
     }
 
+    /** 陆地类型内层样条 e 上限最大值（供预览色阶 eMax）。顺序取 5 陆地类型 hiVal0。 */
+    public double maxLandHi() {
+        return Math.max(
+            Math.max(plainHiVal0, hillsHiVal0),
+            Math.max(mountHiVal0, Math.max(platHiVal0, basinHiVal0)));
+    }
+
+    /**
+     * 5 陆地类型 [lo, hi]，顺序与 {@code TypeNoiseProvider.LAND_TYPES}
+     * （PLAIN / HILLS / MOUNTAINS / PLATEAU / BASIN）严格一致。
+     * 用于配置屏只读展示类型真实高度范围。
+     */
+    public double[][] landTypeBounds() {
+        return new double[][] {
+            {plainLoVal0, plainHiVal0},   // PLAIN
+            {hillsLoVal0, hillsHiVal0},   // HILLS
+            {mountLoVal0, mountHiVal0},   // MOUNTAINS
+            {platLoVal0,  platHiVal0},    // PLATEAU
+            {basinLoVal0, basinHiVal0}    // BASIN
+        };
+    }
+
     /** 构建 BASIN 内层样条 */
     public UnifiedSpline.InnerSpline buildBasinInner() {
         return new UnifiedSpline.InnerSpline(
