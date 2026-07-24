@@ -9,25 +9,14 @@ import com.geogenesis.worldgen.noise.*;
  */
 public final class TypeGenerators {
 
-    // ===== 类型 eLand 高度范围（从 TerrainParams 注入，非硬编码） =====
-    private final double[] lo = new double[TerrainClass.COUNT];
-    private final double[] hi = new double[TerrainClass.COUNT];
-
-    // ===== Phase 1：统一样条 =====
+    // ===== Phase 1：统一样条（陆地类型 e 范围由 SplineConfig 统一派生） =====
     private final UnifiedSpline unifiedSpline;
     private final boolean useUnifiedSpline;
 
     public TypeGenerators(TerrainParams p) {
-        // Phase 1：构建统一样条
+        // Phase 1：构建统一样条（陆地类型 e 范围现统一从 SplineConfig 派生）
         this.unifiedSpline = p.buildUnifiedSpline();
         this.useUnifiedSpline = true; // 2026-07-20: 修复后重新启用（location 修正 + 线性插值）
-        
-        // 向后兼容：保留旧的 center ± halfRange
-        setRange(TerrainClass.PLAIN,     p.plainCenter(), p.plainHalfRange());
-        setRange(TerrainClass.HILLS,     p.hillsCenter(), p.hillsHalfRange());
-        setRange(TerrainClass.MOUNTAINS, p.mountainsCenter(), p.mountainsHalfRange());
-        setRange(TerrainClass.PLATEAU,   p.plateauCenter(), p.plateauHalfRange());
-        setRange(TerrainClass.BASIN,     p.basinCenter(), p.basinHalfRange());
 
         // low/high init same as before
         this.lowFreq  = new Frequency(new Simplex(300), 1.0 / 1200.0);
@@ -39,15 +28,6 @@ public final class TypeGenerators {
         this.warpAmp = 300.0;
         this.wLow = 0.45; this.wMid = 0.30; this.wHigh = 0.18; this.wDetail = 0.07;
     }
-
-    private void setRange(TerrainClass tc, double center, double halfRange) {
-        int idx = tc.ordinal();
-        lo[idx] = center - halfRange;
-        hi[idx] = center + halfRange;
-    }
-
-    public double getTypeLo(TerrainClass tc) { return lo[tc.ordinal()]; }
-    public double getTypeHi(TerrainClass tc) { return hi[tc.ordinal()]; }
 
     /**
      * Phase 1：通过 2 层嵌套样条计算 eLand。

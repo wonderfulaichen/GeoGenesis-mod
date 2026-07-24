@@ -151,17 +151,7 @@ public final class GeoGenesisConfig {
     /** 垂直缩放比例（1-8），用于预览和地形高度夸张 */
     public final ForgeConfigSpec.DoubleValue verticalScale;
 
-    // ===== 地形类型 eLand 高度范围 =====
-    public final ForgeConfigSpec.DoubleValue plainCenter;
-    public final ForgeConfigSpec.DoubleValue plainHalfRange;
-    public final ForgeConfigSpec.DoubleValue hillsCenter;
-    public final ForgeConfigSpec.DoubleValue hillsHalfRange;
-    public final ForgeConfigSpec.DoubleValue mountainsCenter;
-    public final ForgeConfigSpec.DoubleValue mountainsHalfRange;
-    public final ForgeConfigSpec.DoubleValue plateauCenter;
-    public final ForgeConfigSpec.DoubleValue plateauHalfRange;
-    public final ForgeConfigSpec.DoubleValue basinCenter;
-    public final ForgeConfigSpec.DoubleValue basinHalfRange;
+    // ===== 大陆性语义亲和度 + Voronoi 域扭曲 =====
     /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 1.5 */
     public final ForgeConfigSpec.DoubleValue cAffinityStrength;
     /** Voronoi 区域场域扭曲幅度（块），默认 250.0 */
@@ -458,27 +448,7 @@ public final class GeoGenesisConfig {
             .defineInRange("verticalScale", 1.0, 1.0, 8.0);
         builder.pop();
 
-        builder.push("Type Elevation Ranges");
-        plainCenter = builder.comment("PLAIN center eLand value.")
-            .defineInRange("plainCenter", 0.0375, 0.0, 1.0);
-        plainHalfRange = builder.comment("PLAIN half-range eLand (output = center ± halfRange).")
-            .defineInRange("plainHalfRange", 0.0225, 0.0, 0.5);
-        hillsCenter = builder.comment("HILLS center eLand value.")
-            .defineInRange("hillsCenter", 0.22, 0.0, 1.0);
-        hillsHalfRange = builder.comment("HILLS half-range eLand.")
-            .defineInRange("hillsHalfRange", 0.15, 0.0, 0.5);
-        mountainsCenter = builder.comment("MOUNTAINS center eLand value.")
-            .defineInRange("mountainsCenter", 0.60, 0.0, 1.0);
-        mountainsHalfRange = builder.comment("MOUNTAINS half-range eLand.")
-            .defineInRange("mountainsHalfRange", 0.35, 0.0, 0.5);
-        plateauCenter = builder.comment("PLATEAU center eLand value.")
-            .defineInRange("plateauCenter", 0.58, 0.0, 1.0);
-        plateauHalfRange = builder.comment("PLATEAU half-range eLand.")
-            .defineInRange("plateauHalfRange", 0.08, 0.0, 0.5);
-        basinCenter = builder.comment("BASIN center eLand value (negative = depression below plain, can form lakes).")
-            .defineInRange("basinCenter", -0.03, -1.0, 1.0);
-        basinHalfRange = builder.comment("BASIN half-range eLand.")
-            .defineInRange("basinHalfRange", 0.05, 0.0, 0.5);
+        builder.push("Semantic Affinity & Voronoi");
         // Phase 2.2: 语义适配旋钮
         cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。0=无 c 效应，越大越偏内陆聚集/海岸低地。默认 1.5。")
             .defineInRange("cAffinityStrength", 1.5, 0.0, 4.0);
@@ -643,12 +613,6 @@ public final class GeoGenesisConfig {
             1.0, seaLevel.get(), snowLine.get(), minY.get(),
             maxY.get(), (int)(maxY.get() * 0.8), (int)(minY.get() * 0.75),
             verticalScale.get(),
-            // type elevation ranges
-            plainCenter.get(), plainHalfRange.get(),
-            hillsCenter.get(), hillsHalfRange.get(),
-            mountainsCenter.get(), mountainsHalfRange.get(),
-            plateauCenter.get(), plateauHalfRange.get(),
-            basinCenter.get(), basinHalfRange.get(),
             cAffinityStrength.get(), voronoiWarpAmp.get(),
 
             // Phase 1: unified spline config (built from individual fields)
@@ -746,18 +710,6 @@ public final class GeoGenesisConfig {
         minY.set(minY.getDefault());
         maxY.set(maxY.getDefault());
         verticalScale.set(verticalScale.getDefault());
-        
-        // 类型高度范围
-        plainCenter.set(plainCenter.getDefault());
-        plainHalfRange.set(plainHalfRange.getDefault());
-        hillsCenter.set(hillsCenter.getDefault());
-        hillsHalfRange.set(hillsHalfRange.getDefault());
-        mountainsCenter.set(mountainsCenter.getDefault());
-        mountainsHalfRange.set(mountainsHalfRange.getDefault());
-        plateauCenter.set(plateauCenter.getDefault());
-        plateauHalfRange.set(plateauHalfRange.getDefault());
-        basinCenter.set(basinCenter.getDefault());
-        basinHalfRange.set(basinHalfRange.getDefault());
         cAffinityStrength.set(cAffinityStrength.getDefault());
         voronoiWarpAmp.set(voronoiWarpAmp.getDefault());
         
@@ -862,12 +814,6 @@ public final class GeoGenesisConfig {
             1.0, seaLevel.getDefault(), snowLine.getDefault(), minY.getDefault(),
             maxY.getDefault(), (int)(maxY.getDefault() * 0.8), (int)(minY.getDefault() * 0.75),
             verticalScale.getDefault(),
-            // type elevation ranges
-            plainCenter.getDefault(), plainHalfRange.getDefault(),
-            hillsCenter.getDefault(), hillsHalfRange.getDefault(),
-            mountainsCenter.getDefault(), mountainsHalfRange.getDefault(),
-            plateauCenter.getDefault(), plateauHalfRange.getDefault(),
-            basinCenter.getDefault(), basinHalfRange.getDefault(),
             cAffinityStrength.getDefault(), voronoiWarpAmp.getDefault(),
 
             // Phase 1: unified spline config (built from default values)

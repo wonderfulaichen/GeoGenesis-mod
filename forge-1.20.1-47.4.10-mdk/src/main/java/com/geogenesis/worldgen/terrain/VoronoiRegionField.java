@@ -77,13 +77,11 @@ public final class VoronoiRegionField {
 
     // ===== 状态 =====
     private long worldSeed;
-    private final TypeGenerators generators; // 类型高度范围（非静态）
     private final Noise warpX, warpZ; // 域扭曲噪声
     // v6.5: typeField — 低频噪声决定 cell type（取代 hash），让 typeWeights 在空间平滑
     private final Noise typeField;
 
-    public VoronoiRegionField(TypeGenerators generators, double warpAmp) {
-        this.generators = generators;
+    public VoronoiRegionField(double warpAmp) {
         this.WARP_AMP = warpAmp;
         this.warpX = new Frequency(new Simplex(310), 1.0 / 800.0);
         this.warpZ = new Frequency(new Simplex(311), 1.0 / 800.0);
@@ -130,8 +128,6 @@ public final class VoronoiRegionField {
         // 3. 高斯权重 + 类型权重累积
         final double inv2Sigma2 = 1.0 / (2.0 * SIGMA * SIGMA);
         double totalWeight = 0;
-        double weightedLo = 0;
-        double weightedHi = 0;
         int bestIdx = 0;
         double bestDist = candidates[0].distSq;
         double[] twSum = new double[TerrainClass.COUNT];
@@ -140,8 +136,6 @@ public final class VoronoiRegionField {
             CellInfo ci = candidates[i];
             double w = Math.exp(-ci.distSq * inv2Sigma2);
             TerrainClass tc = cellType(ci.cx, ci.cz);
-            weightedLo += w * generators.getTypeLo(tc);
-            weightedHi += w * generators.getTypeHi(tc);
             twSum[tc.ordinal()] += w;
             totalWeight += w;
             if (ci.distSq < bestDist) {
@@ -151,8 +145,8 @@ public final class VoronoiRegionField {
         }
 
         BlendResult result = new BlendResult();
-        result.lo = weightedLo / totalWeight;
-        result.hi = weightedHi / totalWeight;
+        // 注：blend.lo/hi 不再计算（类型高度范围统一由 SplineConfig 派生，见 TypeLandShape）。
+        // 保留字段仅供 DiscontinuityProbe 诊断兼容，恒为 0.0。
         result.dominantType = cellType(candidates[bestIdx].cx, candidates[bestIdx].cz);
 
         // alpha：最近 cell 权重占比（找真正的 2 个最近 cell）

@@ -6,6 +6,7 @@ import com.geogenesis.client.preview.mixer.DualRangeChart;
 import com.geogenesis.client.preview.mixer.MixerPanel;
 import com.geogenesis.client.preview.mixer.SnowLineChart;
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.worldgen.terrain.SplineConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraftforge.common.ForgeConfigSpec;
@@ -143,26 +144,27 @@ public class TerrainConfigPanel extends ConfigPanel {
         defaultLoValues.add(c.riverLo.getDefault());
         defaultHiValues.add(c.riverHi.getDefault());
 
-        // 陆地类型（交互式，center±halfRange）
-        slots.add(interactiveSlot("平原", 0xFF44AA66, c.plainCenter, c.plainHalfRange));
-        defaultLoValues.add(c.plainCenter.getDefault() - c.plainHalfRange.getDefault());
-        defaultHiValues.add(c.plainCenter.getDefault() + c.plainHalfRange.getDefault());
-        
-        slots.add(interactiveSlot("丘陵", 0xFF88CC44, c.hillsCenter, c.hillsHalfRange));
-        defaultLoValues.add(c.hillsCenter.getDefault() - c.hillsHalfRange.getDefault());
-        defaultHiValues.add(c.hillsCenter.getDefault() + c.hillsHalfRange.getDefault());
-        
-        slots.add(interactiveSlot("山脉", 0xFF884422, c.mountainsCenter, c.mountainsHalfRange));
-        defaultLoValues.add(c.mountainsCenter.getDefault() - c.mountainsHalfRange.getDefault());
-        defaultHiValues.add(c.mountainsCenter.getDefault() + c.mountainsHalfRange.getDefault());
-        
-        slots.add(interactiveSlot("高原", 0xFFCC8844, c.plateauCenter, c.plateauHalfRange));
-        defaultLoValues.add(c.plateauCenter.getDefault() - c.plateauHalfRange.getDefault());
-        defaultHiValues.add(c.plateauCenter.getDefault() + c.plateauHalfRange.getDefault());
-        
-        slots.add(interactiveSlot("盆地", 0xFFAA6644, c.basinCenter, c.basinHalfRange));
-        defaultLoValues.add(c.basinCenter.getDefault() - c.basinHalfRange.getDefault());
-        defaultHiValues.add(c.basinCenter.getDefault() + c.basinHalfRange.getDefault());
+        // 陆地类型（只读展示：真实 lo/hi 由 SplineConfig 统一派生，非用户可配）
+        double[][] land = SplineConfig.defaults().landTypeBounds();
+        slots.add(readOnlySlot("平原", 0xFF44AA66, land[0][0], land[0][1]));
+        defaultLoValues.add(land[0][0]);
+        defaultHiValues.add(land[0][1]);
+
+        slots.add(readOnlySlot("丘陵", 0xFF88CC44, land[1][0], land[1][1]));
+        defaultLoValues.add(land[1][0]);
+        defaultHiValues.add(land[1][1]);
+
+        slots.add(readOnlySlot("山脉", 0xFF884422, land[2][0], land[2][1]));
+        defaultLoValues.add(land[2][0]);
+        defaultHiValues.add(land[2][1]);
+
+        slots.add(readOnlySlot("高原", 0xFFCC8844, land[3][0], land[3][1]));
+        defaultLoValues.add(land[3][0]);
+        defaultHiValues.add(land[3][1]);
+
+        slots.add(readOnlySlot("盆地", 0xFFAA6644, land[4][0], land[4][1]));
+        defaultLoValues.add(land[4][0]);
+        defaultHiValues.add(land[4][1]);
 
         chart.setSlots(slots);
 
@@ -409,24 +411,9 @@ public class TerrainConfigPanel extends ConfigPanel {
         return new DualRangeChart.Slot(name, color, loVal, hiVal, loSet, hiSet, loCfg::get, hiCfg::get);
     }
 
-    /** 陆地区域 slot：lo = center - halfRange, hi = center + halfRange */
-    private static DualRangeChart.Slot interactiveSlot(String name, int color,
-                                                       ForgeConfigSpec.DoubleValue centerCfg,
-                                                       ForgeConfigSpec.DoubleValue halfRangeCfg) {
-        return new DualRangeChart.Slot(name, color,
-                centerCfg.get() - halfRangeCfg.get(), centerCfg.get() + halfRangeCfg.get(),
-                v -> { double hi = centerCfg.get() + halfRangeCfg.get();
-                       double mid = (v + hi) / 2;
-                       double newHr = Math.abs(hi - v) / 2;
-                       System.out.println("  " + name + ".loSetter: v=" + String.format("%.4f", v) + " hi=" + String.format("%.4f", hi) + " → center=" + String.format("%.4f", mid) + " halfRange=" + String.format("%.4f", newHr));
-                       centerCfg.set(mid); halfRangeCfg.set(newHr); },
-                v -> { double lo = centerCfg.get() - halfRangeCfg.get();
-                       double mid = (lo + v) / 2;
-                       double newHr = Math.abs(v - lo) / 2;
-                       System.out.println("  " + name + ".hiSetter: v=" + String.format("%.4f", v) + " lo=" + String.format("%.4f", lo) + " → center=" + String.format("%.4f", mid) + " halfRange=" + String.format("%.4f", newHr));
-                       centerCfg.set(mid); halfRangeCfg.set(newHr); },
-                () -> centerCfg.get() - halfRangeCfg.get(),
-                () -> centerCfg.get() + halfRangeCfg.get());
+    /** 只读 slot：展示真实 lo/hi（由 SplineConfig 统一派生，不可编辑） */
+    private static DualRangeChart.Slot readOnlySlot(String name, int color, double lo, double hi) {
+        return new DualRangeChart.Slot(name, color, lo, hi, null, null, () -> lo, () -> hi);
     }
 
 

@@ -165,27 +165,7 @@ public record TerrainParams(
     /** 垂直缩放比例（1-8），预览用，默认 1.0 */
     double verticalScale,
 
-    // ===== 地形类型 eLand 高度范围（CENTER + HALF_RANGE） =====
-    /** 平原中心 eLand，默认 0.0375 */
-    double plainCenter,
-    /** 平原半范围，默认 0.0225 */
-    double plainHalfRange,
-    /** 丘陵中心 eLand，默认 0.22 */
-    double hillsCenter,
-    /** 丘陵半范围，默认 0.15 */
-    double hillsHalfRange,
-    /** 山脉中心 eLand，默认 0.60 */
-    double mountainsCenter,
-    /** 山脉半范围，默认 0.35 */
-    double mountainsHalfRange,
-    /** 高原中心 eLand，默认 0.33 */
-    double plateauCenter,
-    /** 高原半范围，默认 0.15 */
-    double plateauHalfRange,
-    /** 盆地中心 eLand，默认 0.0475 */
-    double basinCenter,
-    /** 盆地半范围，默认 0.0325 */
-    double basinHalfRange,
+    // ===== 大陆性语义亲和度 + Voronoi 域扭曲（注入 TypeLandShape） =====
     /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 1.5。0=无 c 效应（类型分布不随大陆性变化），越大越偏内陆聚集/海岸低地。 */
     double cAffinityStrength,
     /** Voronoi 区域场域扭曲幅度（块），打散网格对齐伪影、使区域边界蜿蜒不显网格，默认 250.0 */
@@ -237,12 +217,6 @@ public record TerrainParams(
             // preview compat（加大 horizontalScale 减少 preview 计算量）
             4.0, 63, 0.70, -64, 320, 256, -48,
             1.0,  // verticalScale
-            // type elevation ranges (center, halfRange)
-            0.0375, 0.0225,  // PLAIN
-            0.22, 0.15,      // HILLS
-            0.60, 0.35,      // MOUNTAINS
-            0.58, 0.08,      // PLATEAU
-            -0.03, 0.05,      // BASIN (真凹陷洼地：center=-0.03, halfRange=0.05 → lo=-0.08, hi=0.02)
             1.5, 250.0,       // cAffinityStrength, voronoiWarpAmp
 
             // Phase 1: unified spline config
@@ -272,13 +246,12 @@ public record TerrainParams(
      * 注意 e 只是 HeightCurve 的坐标：实际高度由曲线/生成的控制点值决定，而非地形类型分类阈值。
      *  - 海洋最深处 = HeightCurve 海洋样条最深的「深度控制点值」deepOceanDepth（≈-0.35，含海床噪声），
      *    不是海洋类型分类阈值 deepOceanLo（≈-0.50，仅分类用、地形实际达不到那么深）。
-     *  - 陆地最高处 = 各地形类型 e 上限最大者（MOUNTAINS center+range = 0.95），再加大陆斜升（≤0.15）逼近 clamp 上限 1.0。
+     *  - 陆地最高处 = 各地形类型内层样条 e 上限最大者（SplineConfig.maxLandHi()，MOUNTAINS hi = 0.95），
+     *    再加大陆斜升（≤0.15）逼近 clamp 上限 1.0。统一从 SplineConfig 派生，消除与 TerrainParams 冗余字段的不一致。
      */
     public double[] elevationERange() {
-        double eMax = Math.max(
-            Math.max(plainCenter + plainHalfRange, hillsCenter + hillsHalfRange),
-            Math.max(mountainsCenter + mountainsHalfRange,
-                     Math.max(plateauCenter + plateauHalfRange, basinCenter + basinHalfRange)));
+        // 陆地 e 上限统一从 SplineConfig 陆地内层样条 hi 最大值派生（替代已删除的 *Center/*HalfRange）。
+        double eMax = splineConfig.maxLandHi();
         // 海洋最深取样条深度控制点值（实际海床），而非分类阈值
         double eMin = deepOceanDepth;
         return new double[]{eMin, eMax};
