@@ -424,12 +424,12 @@ public final class GeoGenesisConfig {
         continentInlandThreshold = builder.comment("Continentality threshold: inland/deep inland boundary.")
             .defineInRange("continentInlandThreshold", 0.65, -1.0, 1.0);
         // 影响权重（3个）
-        tempInfluence = builder.comment("Temperature influence on biome distribution (0-1).")
-            .defineInRange("tempInfluence", 0.5, 0.0, 1.0);
-        humidityInfluence = builder.comment("Humidity influence on biome distribution (0-1).")
-            .defineInRange("humidityInfluence", 0.5, 0.0, 1.0);
-        continentInfluence = builder.comment("Continentality influence on biome distribution (0-1).")
-            .defineInRange("continentInfluence", 0.5, 0.0, 1.0);
+        tempInfluence = builder.comment("Temperature influence on biome distribution (0-1). 1.0=full effect, 0.0=neutral.")
+            .defineInRange("tempInfluence", 1.0, 0.0, 1.0);
+        humidityInfluence = builder.comment("Humidity influence on biome distribution (0-1). 1.0=full effect, 0.0=neutral.")
+            .defineInRange("humidityInfluence", 1.0, 0.0, 1.0);
+        continentInfluence = builder.comment("Continentality influence on biome distribution (0-1). 1.0=full effect, 0.0=neutral.")
+            .defineInRange("continentInfluence", 1.0, 0.0, 1.0);
         builder.pop();
 
 
@@ -554,7 +554,7 @@ public final class GeoGenesisConfig {
         // BASIN inner spline (12 fields)
         builder.push("BASIN");
         basinLoLoc0 = builder.defineInRange("basinLoLoc0", 0.0, 0.0, 1.0);
-        basinLoVal0 = builder.defineInRange("basinLoVal0", 0.015, -1.0, 1.0);
+        basinLoVal0 = builder.defineInRange("basinLoVal0", -0.08, -1.0, 1.0);
         basinLoDeriv0 = builder.defineInRange("basinLoDeriv0", 0.0, -10.0, 10.0);
         basinLoLoc1 = builder.defineInRange("basinLoLoc1", 1.0, 0.0, 1.0);
         basinLoVal1 = builder.defineInRange("basinLoVal1", 0.015, -1.0, 1.0);

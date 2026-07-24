@@ -161,12 +161,24 @@ public final class CellGenerator implements HeightProvider {
         hum += humidityNoise.compute(wx, wz) * 0.25;
         hum = clamp(hum, -1.0, 1.0);
 
-        cell.climate = new com.geogenesis.worldgen.climate.Climate(temp, hum, c);
-        cell.temperature = temp;
-        cell.humidity = hum;
+        // 气候影响权重（tempInfluence / humidityInfluence / continentInfluence）：
+        // 缩放原始气候值，使该维度对「群系分类 + 雪线」的影响可在配置屏调节。
+        //   =1.0 完全生效（默认，行为同旧版）；=0.0 退化为中性（温和/平均）；=0.5 折半。
+        //   同时作用于 BiomeClassifier 的 isX() 判定与 classify 的雪线计算。
+        GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+        double tempInf = cfg != null ? cfg.tempInfluence.get() : 1.0;
+        double humInf = cfg != null ? cfg.humidityInfluence.get() : 1.0;
+        double contInf = cfg != null ? cfg.continentInfluence.get() : 1.0;
+        double tempE = clamp(temp * tempInf, -1.0, 1.0);
+        double humE = clamp(hum * humInf, -1.0, 1.0);
+        double contE = clamp(c * contInf, -1.0, 1.0);
+
+        cell.climate = new com.geogenesis.worldgen.climate.Climate(tempE, humE, contE);
+        cell.temperature = tempE;
+        cell.humidity = humE;
 
         // 9. 分类（使用连续 typeWeights + 已计算的温度/湿度 + 海洋特征）
-        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, temp, hum, oceanFeat);
+        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, tempE, humE, oceanFeat);
         cell.continentNoise = c;
         cell.shape = eLand * 2.0 - 1.0;
 
