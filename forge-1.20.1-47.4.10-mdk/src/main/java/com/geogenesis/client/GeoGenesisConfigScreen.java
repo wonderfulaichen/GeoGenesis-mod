@@ -146,7 +146,7 @@ public class GeoGenesisConfigScreen extends Screen {
         paramPanel.setBounds(panelX + 4, listTop, panelW - 8);
         paramPanel.buildFromConfig();
 
-        saveBtn = Button.builder(Component.literal("保存"), b -> doSave())
+        saveBtn = Button.builder(Component.literal("应用"), b -> doSave())
             .pos(panelX, listBottom + 6).size(60, 20).build();
         resetBtn = Button.builder(Component.literal("重置"), b -> doReset())
             .pos(panelX + 64, listBottom + 6).size(60, 20).build();

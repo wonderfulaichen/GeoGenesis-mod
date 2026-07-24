@@ -21,6 +21,7 @@
 
 ## 配置同步铁律
 增删字段须同步 6 处：`GeoGenesisConfig`(定义+BUILDER+buildParams+defaultParams) + `TerrainParams`(record+defaults) + `ParameterConfigPanel.buildFromConfig`(addSpec) + `run/config/geogenesis-common.toml`；改默认值后必须同步已存在 toml。
+- **`resetToDefault()` 已反射自动化（2026-07-24）**：改为 `getFields()` 遍历所有 `ForgeConfigSpec.ConfigValue` 字段统一 `set(getDefault())`，新增字段**自动覆盖**，不再需要手工在 reset 里逐字段补 `.set()`。因此"增删字段须同步 resetToDefault"这一约束已废弃；但 `defaultParams()`（预览默认）与 `buildParams()`（引擎注入）仍需随字段同步。`SPEC`/`INSTANCE`(非 ConfigValue) 与 private `midSplineConfig` 会被自动跳过。
 - **滑块 reset 默认标记铁律（2026-07-24）**：`ParamSlider.setDefaultValue(...)` 必须填 `cfg.getDefault()`（代码默认值），**严禁填 `cfg.get()`**（config 当前/持久化值）。`resetToDefault()` 把滑块归位到该标记；若误用 `get()`，一旦当前值被拖动或 toml 持久化为低位，点重置就会把滑块拉到最低而非代码默认。诊断同类 bug 的方法是：枚举全仓所有 `setDefaultValue` 调用，核对每个是否用 `getDefault()`。
 
 ## 关键参数/陷阱

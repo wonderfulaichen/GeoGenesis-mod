@@ -3,6 +3,8 @@ package com.geogenesis.config;
 import net.minecraftforge.common.ForgeConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.lang.reflect.Field;
+
 /**
  * GeoGenesis Forge COMMON 配置。
  *
@@ -620,121 +622,29 @@ public final class GeoGenesisConfig {
         );
     }
 
-    /** 重置所有配置字段到默认值 */
+    /**
+     * 重置所有配置字段到默认值。
+     *
+     * 反射遍历本类所有 public 的 {@code ConfigValue} 字段（DoubleValue/IntValue 等），
+     * 统一调用 {@code set(getDefault())}。相比手写的逐字段 .set()，此方式能自动覆盖
+     * 新增字段，彻底杜绝「在 reset 中漏写某字段」类 bug（曾导致地形类型范围/外层样条
+     * 不被重置）。{@code SPEC}/{@code INSTANCE}（非 ConfigValue）与 private 的
+     * {@code midSplineConfig} 会被自动跳过；样条由独立字段重建，重置字段即足够。
+     */
     public void resetToDefault() {
-        // 大陆场
-        continentScale.set(continentScale.getDefault());
-        continentWarp.set(continentWarp.getDefault());
-        continentThreshold.set(continentThreshold.getDefault());
-        continentBias.set(continentBias.getDefault());
-        continentProvinceWarp.set(continentProvinceWarp.getDefault());
-        
-        // 海洋样条控制点
-        deepOceanLoc.set(deepOceanLoc.getDefault());
-        shelfLoc.set(shelfLoc.getDefault());
-        shallowLoc.set(shallowLoc.getDefault());
-        coastLoc.set(coastLoc.getDefault());
-        deepOceanDepth.set(deepOceanDepth.getDefault());
-        shelfDepth.set(shelfDepth.getDefault());
-        shallowDepth.set(shallowDepth.getDefault());
-        deepOceanDeriv.set(deepOceanDeriv.getDefault());
-        shelfDeriv.set(shelfDeriv.getDefault());
-        shallowDeriv.set(shallowDeriv.getDefault());
-        coastDeriv.set(coastDeriv.getDefault());
-        
-        // 海洋类型独立 lo/hi
-        oceanLo.set(oceanLo.getDefault());
-        oceanHi.set(oceanHi.getDefault());
-        deepOceanLo.set(deepOceanLo.getDefault());
-        deepOceanHi.set(deepOceanHi.getDefault());
-        shelfLo.set(shelfLo.getDefault());
-        shelfHi.set(shelfHi.getDefault());
-        subRidgeLo.set(subRidgeLo.getDefault());
-        subRidgeHi.set(subRidgeHi.getDefault());
-        seamountLo.set(seamountLo.getDefault());
-        seamountHi.set(seamountHi.getDefault());
-        lakeLo.set(lakeLo.getDefault());
-        lakeHi.set(lakeHi.getDefault());
-        riverLo.set(riverLo.getDefault());
-        riverHi.set(riverHi.getDefault());
-        
-        // 海床
-        seabedDetail.set(seabedDetail.getDefault());
-        oceanDepthFactor.set(oceanDepthFactor.getDefault());
-        
-        // [已废弃] 省权重
-        provinceScale.set(provinceScale.getDefault());
-        cratonWeight.set(cratonWeight.getDefault());
-        beltWeight.set(beltWeight.getDefault());
-        plateauWeight.set(plateauWeight.getDefault());
-        basinWeight.set(basinWeight.getDefault());
-        
-        // [已废弃] 陆地过程形态
-        plainBase.set(plainBase.getDefault());
-        plainRough.set(plainRough.getDefault());
-        hillsLow.set(hillsLow.getDefault());
-        hillsHigh.set(hillsHigh.getDefault());
-        beltRidgePower.set(beltRidgePower.getDefault());
-        beltFoothill.set(beltFoothill.getDefault());
-        beltPeak.set(beltPeak.getDefault());
-        plateauBase.set(plateauBase.getDefault());
-        plateauTop.set(plateauTop.getDefault());
-        plateauSteps.set(plateauSteps.getDefault());
-        plateauStepStrength.set(plateauStepStrength.getDefault());
-        basinBase.set(basinBase.getDefault());
-        
-        // 地形起伏振幅
-        cratonReliefAmp.set(cratonReliefAmp.getDefault());
-        beltReliefAmp.set(beltReliefAmp.getDefault());
-        plateauReliefAmp.set(plateauReliefAmp.getDefault());
-        basinReliefAmp.set(basinReliefAmp.getDefault());
-        
-        // 省场形态曲线
-        beltSharpness.set(beltSharpness.getDefault());
-        beltWarpAmp.set(beltWarpAmp.getDefault());
-        provMixSharpness.set(provMixSharpness.getDefault());
-        mountainMaskScale.set(mountainMaskScale.getDefault());
-        microDetailScale.set(microDetailScale.getDefault());
-        microDetailAmp.set(microDetailAmp.getDefault());
-        
-        // 分类阈值 + 雪线
-        elevHigh.set(elevHigh.getDefault());
-        reliefHigh.set(reliefHigh.getDefault());
-        peakE.set(peakE.getDefault());
-        snowLatitudeInfluence.set(snowLatitudeInfluence.getDefault());
-        snowHumidityInfluence.set(snowHumidityInfluence.getDefault());
-        
-        // 预览参数
-        seaLevel.set(seaLevel.getDefault());
-        snowLine.set(snowLine.getDefault());
-        minY.set(minY.getDefault());
-        maxY.set(maxY.getDefault());
-        verticalScale.set(verticalScale.getDefault());
-        cAffinityStrength.set(cAffinityStrength.getDefault());
-        voronoiWarpAmp.set(voronoiWarpAmp.getDefault());
-        
-        // 气候阈值
-        tempFrozenThreshold.set(tempFrozenThreshold.getDefault());
-        tempColdThreshold.set(tempColdThreshold.getDefault());
-        tempWarmThreshold.set(tempWarmThreshold.getDefault());
-        tempHotThreshold.set(tempHotThreshold.getDefault());
-        humidityDryThreshold.set(humidityDryThreshold.getDefault());
-        humiditySemiThreshold.set(humiditySemiThreshold.getDefault());
-        humidityWetThreshold.set(humidityWetThreshold.getDefault());
-        continentDeepOceanThreshold.set(continentDeepOceanThreshold.getDefault());
-        continentNearOceanThreshold.set(continentNearOceanThreshold.getDefault());
-        continentCoastThreshold.set(continentCoastThreshold.getDefault());
-        continentTransitionalThreshold.set(continentTransitionalThreshold.getDefault());
-        continentNearInlandThreshold.set(continentNearInlandThreshold.getDefault());
-        continentInlandThreshold.set(continentInlandThreshold.getDefault());
-        
-        // 影响权重
-        tempInfluence.set(tempInfluence.getDefault());
-        humidityInfluence.set(humidityInfluence.getDefault());
-        continentInfluence.set(continentInfluence.getDefault());
-        
-        // 样条配置（Phase 1/2/3）使用默认值
-        // 注意：样条配置是从独立字段构建的，所以重置独立字段即可
+        for (Field f : GeoGenesisConfig.class.getFields()) {
+            try {
+                Object v = f.get(this);
+                if (v instanceof ForgeConfigSpec.ConfigValue) {
+                    // 用原始类型调用：规避通配符捕获推导问题（getDefault()/set() 在原始类型下退化为 Object）
+                    @SuppressWarnings("unchecked")
+                    ForgeConfigSpec.ConfigValue<Object> cv = (ForgeConfigSpec.ConfigValue<Object>) v;
+                    cv.set(cv.getDefault());
+                }
+            } catch (Exception ignored) {
+                // 反射访问异常或单个字段写入竞争（Windows 文件锁）忽略，继续重置其余字段
+            }
+        }
     }
 
     /** 从独立配置字段构建 SplineConfig（Phase 3：含海洋/水域类型） */
