@@ -26,14 +26,16 @@ public final class TypeLandShape {
 
     private final VoronoiRegionField regions;
     private final TypeNoiseProvider typeNoise;
-    private final TypeGenerators generators;   // lo/hi 范围 + basinModulate
+    private final TypeGenerators generators;   // lo/hi 类型内层样条（eLand 范围）
     private final Noise moistureNoise;
     private final ContinentField continent;    // Phase 1：用于计算大陆性 c
     private final double continentBias;        // Phase 1：大陆性偏置
+    private final TerrainParams params;        // Phase 2.2：语义适配强度等可调旋钮
 
     public TypeLandShape(TerrainParams p) {
+        this.params = p;
         this.generators = new TypeGenerators(p);
-        this.regions = new VoronoiRegionField(generators);
+        this.regions = new VoronoiRegionField(generators, p.voronoiWarpAmp());
         this.typeNoise = new TypeNoiseProvider();
         this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
         this.continent = new ContinentField(p);
@@ -99,53 +101,61 @@ public final class TypeLandShape {
             return sampleFromTypeWeights(blend, wx, wz);
         }
         
-        // 陆地类型：使用 3 层样条
-        // 1. 计算大陆性 c
+        // Phase 1 (WIE)：按 typeWeights 加权混合各类型「自己」独立求值的内层样条，
+        // 彻底移除 typePosition 类型轴插值 —— 高原↔丘陵混合只取各自 H_t，
+        // 绝不引入 MOUNTAINS 节点高度（尖环根因）。c 当前不进高度（与旧行为一致）。
         double c = continent.sample(wx, wz);
         double cBiased = c - continentBias;
-        
-        // 2. 计算类型位置（typePosition）
-        // 只用陆地类型的权重计算（海洋类型不参与中层样条）
+
         double[] tw = blend.typeWeights;
-        double typePosition = 0;
-        double totalW = 0;
-        if (tw != null) {
-            for (TerrainClass type : TypeNoiseProvider.LAND_TYPES) {
-                double w = tw[type.ordinal()];
-                if (w > 0.001) {
-                    // 类型位置：PLAIN=0.0, HILLS=0.25, MOUNTAINS=0.5, PLATEAU=0.75, BASIN=1.0
-                    double typePos = (double) type.ordinal() / (TerrainClass.COUNT - 1);
-                    typePosition += w * typePos;
-                    totalW += w;
-                }
-            }
+        if (tw == null) {
+            return clamp01(generators.computeSharedNoise(wx, wz));
         }
-        if (totalW > 0) {
-            typePosition /= totalW;
+
+        // Phase 2: 语义亲和度 —— 用大陆性 c 偏置各类型空间权重（cAffinity_t(c)）。
+        // 复用已建样条 MidNode.weight 曲线（=每类型 c 响应，Σ_t aff_t(c) ≡ 1，故均值=0.2）。
+        // 采用「加法偏置」而非贝叶斯乘积：eff = spatial × (1 + β·(aff − 0.2))。
+        // 理由：乘积会把少数类型（高原/盆地先验低）双重压制到永不主导；加法偏置因子恒 > 0，
+        // 保留空间主导性（纯类型 cell 不变），仅按 c 偏置混合，不消灭任何类型。
+        // 就地修改 tw（=blend.typeWeights 同一对象），使分类(argmax)/湿度(montW)/PEAK 判定
+        // 与高度 WIE 共用同一调制后权重，保持高度↔类型一致。
+        // β 为语义亲和度强度，现由 TerrainParams.cAffinityStrength 配置（Phase 2.2 可调旋钮）。
+        final double CAFFINITY_BETA = params.cAffinityStrength();
+        final double MEAN_AFF = 0.2; // Σ aff_t(c) ≡ 1 over 5 land types
+        TerrainClass[] lands = TypeNoiseProvider.LAND_TYPES;
+        for (int i = 0; i < lands.length; i++) {
+            double aff = generators.typeAffinity(cBiased, i);
+            double factor = 1.0 + CAFFINITY_BETA * (aff - MEAN_AFF);
+            if (factor < 0.01) factor = 0.01;
+            tw[lands[i].ordinal()] *= factor;
         }
-        
-        // 3. 计算类型噪声值（noiseValue）
-        double noiseValue = 0;
-        double totalW2 = 0;
-        if (tw != null) {
-            for (TerrainClass type : TypeNoiseProvider.LAND_TYPES) {
-                double w = tw[type.ordinal()];
-                if (w > 0.001) {
-                    double typeVal = typeNoise.computeNoise(type, wx, wz);
-                    noiseValue += w * typeVal;
-                    totalW2 += w;
-                }
-            }
+
+        double eLand = 0.0, sumW = 0.0;
+        for (int i = 0; i < lands.length; i++) {
+            double w = tw[lands[i].ordinal()];
+            if (w <= 0.001) continue;
+            double typeVal = typeNoise.computeNoise(lands[i], wx, wz);  // 该类型自己的噪声
+            double e_t = generators.sampleByType(cBiased, i, typeVal);  // 该类型自己的高度
+            eLand += w * e_t;
+            sumW += w;
         }
-        // fallback: typeWeights 耗尽时用 shared noise 兜底
-        if (totalW2 <= 0) {
-            noiseValue = generators.computeSharedNoise(wx, wz);
+        if (sumW <= 0) {
+            eLand = generators.computeSharedNoise(wx, wz);
         } else {
-            noiseValue /= totalW2;
+            eLand /= sumW;
         }
-        
-        // 4. 通过 3 层样条计算 eLand
-        return generators.sampleFromSpline(cBiased, typePosition, noiseValue);
+        // 放开下限到海平面以下：盆地等类型的内层样条可为负（e<0 → HeightCurve 映射为低于海平面
+        // → 积水成湖/洼地）。下限取海洋深度地板 ELAND_MIN，避免异常配置产生过深空洞；上限仍封 1.0。
+        // 注意：原 clamp01 把 eLand 钳到 [0,1]，会抹平盆地凹陷（内部全压成 0 平盘），现已修正。
+        return eLand < ELAND_MIN ? ELAND_MIN : (eLand > 1.0 ? 1.0 : eLand);
+    }
+
+    /** 陆地 e 允许下探到海洋深度地板（盆地凹陷可低于海平面成湖） */
+    private static final double ELAND_MIN = -0.35;
+
+    /** 钳制到 [0,1]（fallback 路径仍使用） */
+    private static double clamp01(double v) {
+        return v < 0 ? 0 : (v > 1 ? 1 : v);
     }
 
     /**

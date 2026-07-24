@@ -85,6 +85,8 @@ public class ParameterConfigPanel extends ConfigPanel {
         addSpec("高海拔阈值", "海拔分类阈值。低于此值为平原/丘陵，高于为高地（山脉+高原+雪峰）。值越低→更多区域划入高地。", c.elevHigh, 0, 1.0);
         addSpec("高起伏阈值", "起伏度分类阈值。低于此值为丘陵，高于为山脉。值越低→更多区域划入山脉类型。", c.reliefHigh, 0, 0.6);
         addSpec("峰阈值", "山峰阈值。高海拔区域中 e 值超过此阈值为 PEAK（雪峰亚型）。值越低→更多山峰。", c.peakE, 0, 1.0);
+        addSpec("语义适配强度", "大陆性语义亲和度强度 β：调制大陆性 c 对各类型空间权重的偏置幅度。0=无 c 效应（类型分布不随大陆性变化），越大越偏内陆聚集/海岸低地。默认1.5。", c.cAffinityStrength, 0.0, 4.0);
+        addSpec("域扭曲幅度", "Voronoi 区域场域扭曲幅度（块）：打散网格对齐伪影，使区域边界蜿蜒不显网格。越大越自然。默认250.0。", c.voronoiWarpAmp, 0.0, 600.0);
         for (BasicSpec s : specs) {
             ParamSlider ps = new ParamSlider(0, 0, 100, s.min, s.max, s.cfg.get(), v -> {
                 s.cfg.set(v); onChange.accept(v);

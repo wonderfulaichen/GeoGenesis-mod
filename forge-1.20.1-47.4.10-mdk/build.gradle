@@ -231,6 +231,12 @@ task runProfile(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.MountainProfileProbe'
 }
 
+// Plateau crater diagnostic
+task runPlateauProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.PlateauProfileProbe'
+}
+
 // Comprehensive terrain diagnostic
 task runDiag(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

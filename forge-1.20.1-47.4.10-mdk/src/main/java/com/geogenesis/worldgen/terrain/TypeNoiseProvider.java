@@ -18,8 +18,6 @@ public final class TypeNoiseProvider {
     private final Noise mountDirJitterZ;
 
     private final Noise platNoise;
-    // v6.0: PLATEAU shape mask — 大尺度噪声控制高原分布 + 边缘渐变
-    private final Noise platShapeNoise;
     private final Noise basinNoise;
 
     private MountainRidgeNetwork ridgeNetwork;
@@ -81,9 +79,6 @@ public final class TypeNoiseProvider {
         Noise platOct2 = new Boost(new Frequency(new Simplex(423), 1.0 / 200.0), 0.25);
         Noise platOct3 = new Boost(new Frequency(new Simplex(424), 1.0 / 60.0), 0.08);
         this.platNoise = new Map(new Add(new Add(platOct1, platOct2), platOct3), -1.5, 1.5, 0.30, 0.70);
-        // 大尺度 shape mask：控制高原分布区域 + 边缘渐变
-        this.platShapeNoise = new Map(
-            new Frequency(new Simplex(437), 1.0 / 1000.0), -1.0, 1.0, 0.0, 1.0);
 
         // --- BASIN：修复与 shape 同 seed 问题 ---
         Noise bOct1 = new Frequency(new Simplex(428), 1.0 / 300.0);
@@ -104,7 +99,6 @@ public final class TypeNoiseProvider {
         Noises.seedAll(mountDirJitterX, worldSeed, 2);
         Noises.seedAll(mountDirJitterZ, worldSeed, 2);
         Noises.seedAll(platNoise,  worldSeed, 3);
-        Noises.seedAll(platShapeNoise, worldSeed, 5);
         Noises.seedAll(basinNoise, worldSeed, 4);
 
         if (ridgeNetwork == null || lastSeed != worldSeed) {
@@ -125,21 +119,17 @@ public final class TypeNoiseProvider {
     }
 
     /**
-     * v6.0: PLATEAU 边缘渐变（参考 TF ramp_height=0.35）。
-     * shape ∈ [0,1]：低值=无高原、高值=全高原。
-     * edge = smoothstep(0.15, 0.40, shape)：在边缘 0.15–0.40 之间平滑过渡。
-     * 输出：noise×edge + 0.08×(1−edge)，边缘降至 0.08（近平原）。
+     * v6.0→fix: PLATEAU 形状直接由 platNoise 决定，与 typeWeights 同源
+     * （Voronoi 类型场，频率 1/500）驱动。
+     * <p>
+     * 移除旧的大尺度 shape mask（platShapeNoise，频率 1/1000）后，高原主体高度由
+     * typeWeights[PLATEAU] 在类型场中心自动取全值、在 Voronoi 边界向 PLAIN/HILLS 平滑过渡，
+     * 不再出现「分类中心恰好落在 shape 低谷 → 中间凹陷、周围雪峰环绕」的环形山伪形。
+     * platNoise 自身为 [0.30, 0.70] 的中频起伏，保留高原台地应有的内部起伏。
      */
     private double computePlateau(double wx, double wz) {
-        double noise = platNoise.compute(wx, wz);
-        double shape = platShapeNoise.compute(wx, wz);    // [0, 1]
-        // smooth edge ramp: shape<0.15→0, shape>0.40→1
-        double t = (shape - 0.15) / 0.25;                   // [−0.6, 3.4]
-        t = t < 0 ? 0 : (t > 1 ? 1 : t);
-        double edge = t * t * (3.0 - 2.0 * t);              // smoothstep
-        // 混合：边缘低地 0.08，中心全高原高度
-        double result = noise * edge + 0.08 * (1.0 - edge);
-        return result < 0 ? 0 : (result > 1 ? 1 : result);
+        double noise = platNoise.compute(wx, wz);    // [0.30, 0.70] 高原台地起伏
+        return noise < 0 ? 0 : (noise > 1 ? 1 : noise);
     }
 
     /**

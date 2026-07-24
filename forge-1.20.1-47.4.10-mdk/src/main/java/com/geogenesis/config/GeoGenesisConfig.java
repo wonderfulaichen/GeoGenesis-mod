@@ -162,6 +162,10 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue plateauHalfRange;
     public final ForgeConfigSpec.DoubleValue basinCenter;
     public final ForgeConfigSpec.DoubleValue basinHalfRange;
+    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 1.5 */
+    public final ForgeConfigSpec.DoubleValue cAffinityStrength;
+    /** Voronoi 区域场域扭曲幅度（块），默认 250.0 */
+    public final ForgeConfigSpec.DoubleValue voronoiWarpAmp;
 
     // ===== Phase 1: Unified Spline Config (74 fields) =====
     // --- Outer spline: continentality c control points (7 × 2 = 14) ---
@@ -468,13 +472,18 @@ public final class GeoGenesisConfig {
         mountainsHalfRange = builder.comment("MOUNTAINS half-range eLand.")
             .defineInRange("mountainsHalfRange", 0.35, 0.0, 0.5);
         plateauCenter = builder.comment("PLATEAU center eLand value.")
-            .defineInRange("plateauCenter", 0.33, 0.0, 1.0);
+            .defineInRange("plateauCenter", 0.58, 0.0, 1.0);
         plateauHalfRange = builder.comment("PLATEAU half-range eLand.")
-            .defineInRange("plateauHalfRange", 0.15, 0.0, 0.5);
-        basinCenter = builder.comment("BASIN center eLand value.")
-            .defineInRange("basinCenter", 0.0475, 0.0, 1.0);
+            .defineInRange("plateauHalfRange", 0.08, 0.0, 0.5);
+        basinCenter = builder.comment("BASIN center eLand value (negative = depression below plain, can form lakes).")
+            .defineInRange("basinCenter", -0.03, -1.0, 1.0);
         basinHalfRange = builder.comment("BASIN half-range eLand.")
-            .defineInRange("basinHalfRange", 0.0325, 0.0, 0.5);
+            .defineInRange("basinHalfRange", 0.05, 0.0, 0.5);
+        // Phase 2.2: 语义适配旋钮
+        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。0=无 c 效应，越大越偏内陆聚集/海岸低地。默认 1.5。")
+            .defineInRange("cAffinityStrength", 1.5, 0.0, 4.0);
+        voronoiWarpAmp = builder.comment("Voronoi 区域场域扭曲幅度（块），打散网格对齐伪影。默认 250.0。")
+            .defineInRange("voronoiWarpAmp", 250.0, 0.0, 600.0);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");
@@ -559,16 +568,16 @@ public final class GeoGenesisConfig {
         // PLATEAU inner spline (12 fields)
         builder.push("PLATEAU");
         platLoLoc0 = builder.defineInRange("platLoLoc0", 0.0, 0.0, 1.0);
-        platLoVal0 = builder.defineInRange("platLoVal0", 0.20, -1.0, 1.0);
+        platLoVal0 = builder.defineInRange("platLoVal0", 0.50, -1.0, 1.0);
         platLoDeriv0 = builder.defineInRange("platLoDeriv0", 0.0, -10.0, 10.0);
         platLoLoc1 = builder.defineInRange("platLoLoc1", 1.0, 0.0, 1.0);
-        platLoVal1 = builder.defineInRange("platLoVal1", 0.20, -1.0, 1.0);
+        platLoVal1 = builder.defineInRange("platLoVal1", 0.50, -1.0, 1.0);
         platLoDeriv1 = builder.defineInRange("platLoDeriv1", 0.0, -10.0, 10.0);
         platHiLoc0 = builder.defineInRange("platHiLoc0", 0.0, 0.0, 1.0);
-        platHiVal0 = builder.defineInRange("platHiVal0", 0.45, -1.0, 1.0);
+        platHiVal0 = builder.defineInRange("platHiVal0", 0.66, -1.0, 1.0);
         platHiDeriv0 = builder.defineInRange("platHiDeriv0", 0.0, -10.0, 10.0);
         platHiLoc1 = builder.defineInRange("platHiLoc1", 1.0, 0.0, 1.0);
-        platHiVal1 = builder.defineInRange("platHiVal1", 0.45, -1.0, 1.0);
+        platHiVal1 = builder.defineInRange("platHiVal1", 0.66, -1.0, 1.0);
         platHiDeriv1 = builder.defineInRange("platHiDeriv1", 0.0, -10.0, 10.0);
         builder.pop();
 
@@ -640,6 +649,7 @@ public final class GeoGenesisConfig {
             mountainsCenter.get(), mountainsHalfRange.get(),
             plateauCenter.get(), plateauHalfRange.get(),
             basinCenter.get(), basinHalfRange.get(),
+            cAffinityStrength.get(), voronoiWarpAmp.get(),
 
             // Phase 1: unified spline config (built from individual fields)
             buildSplineConfig()
@@ -748,6 +758,8 @@ public final class GeoGenesisConfig {
         plateauHalfRange.set(plateauHalfRange.getDefault());
         basinCenter.set(basinCenter.getDefault());
         basinHalfRange.set(basinHalfRange.getDefault());
+        cAffinityStrength.set(cAffinityStrength.getDefault());
+        voronoiWarpAmp.set(voronoiWarpAmp.getDefault());
         
         // 气候阈值
         tempFrozenThreshold.set(tempFrozenThreshold.getDefault());
@@ -856,6 +868,7 @@ public final class GeoGenesisConfig {
             mountainsCenter.getDefault(), mountainsHalfRange.getDefault(),
             plateauCenter.getDefault(), plateauHalfRange.getDefault(),
             basinCenter.getDefault(), basinHalfRange.getDefault(),
+            cAffinityStrength.getDefault(), voronoiWarpAmp.getDefault(),
 
             // Phase 1: unified spline config (built from default values)
             buildDefaultSplineConfig()

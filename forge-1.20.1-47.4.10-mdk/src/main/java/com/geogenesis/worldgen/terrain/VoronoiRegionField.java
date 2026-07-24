@@ -21,8 +21,8 @@ public final class VoronoiRegionField {
     public static final double CELL_SPACING = 400.0;
     /** 邻近搜索 cell 半径。v6.2: 1→2，5×5=25 cells 让 typeWeights 在 cell 边界更平滑 */
     private static final int SEARCH_RADIUS = 2;
-    /** 距离场域扭曲幅度（块）。> CELL_SPACING/2 才能打散网格感 */
-    private static final double WARP_AMP = 250.0;
+    /** 距离场域扭曲幅度（块）。> CELL_SPACING/2 才能打散网格感。Phase 2.2：改为实例字段，由 TerrainParams.voronoiWarpAmp 注入（默认 250.0） */
+    private final double WARP_AMP;
     /**
      * 高斯权重 σ（块）。v6.1: 100→150，让 cell 边界 typeWeights 过渡更平滑：
      * <ul>
@@ -82,8 +82,9 @@ public final class VoronoiRegionField {
     // v6.5: typeField — 低频噪声决定 cell type（取代 hash），让 typeWeights 在空间平滑
     private final Noise typeField;
 
-    public VoronoiRegionField(TypeGenerators generators) {
+    public VoronoiRegionField(TypeGenerators generators, double warpAmp) {
         this.generators = generators;
+        this.WARP_AMP = warpAmp;
         this.warpX = new Frequency(new Simplex(310), 1.0 / 800.0);
         this.warpZ = new Frequency(new Simplex(311), 1.0 / 800.0);
         // v7.5: typeField 频率 1/500，兼顾平滑过渡 + 合理采样窗口内出现所有类型
@@ -231,9 +232,10 @@ public final class VoronoiRegionField {
         else if (v < TYPE_THRESH_PLATEAU)  tc = TerrainClass.PLATEAU;
         else                               tc = TerrainClass.BASIN;
 
-        // v7.5 (Fix 3): PLATEAU 地理约束 — 周围无 MOUNTAINS → 降级为 HILLS
-        // 防止"平原直跳高原"的不合理地理序列
-        if (tc == TerrainClass.PLATEAU && !hasMountainNeighbor(cx, cz)) {
+        // 高原地理约束：周围无高地（HILLS/MOUNTAINS/PLATEAU）→ 降级为 HILLS
+        // v7.5(Fix3) 原仅要求邻 MOUNTAINS，导致高原永远被更高雪山环抱呈火山口伪形；
+        // 放宽到邻丘陵即可，使高原能作为独立桌山矗立丘陵之上、向四周陡降。仍禁止"平原直跳高原"。
+        if (tc == TerrainClass.PLATEAU && !hasHighlandNeighbor(cx, cz)) {
             tc = TerrainClass.HILLS;
         }
 
@@ -246,19 +248,19 @@ public final class VoronoiRegionField {
     }
 
     /**
-     * 检查 3×3 邻居窗口中是否有 MOUNTAINS 细胞。
-     * 用于 PLATEAU 地理约束：只在 MOUNTAINS 附近生成 PLATEAU。
-     * v7.8: 修复阈值范围——MOUNTAINS 在 [THRESH_HILLS, THRESH_MOUNTAINS)，旧版误用了 PLATEAU 范围。
+     * 检查 3×3 邻居窗口中是否有高地细胞（HILLS / MOUNTAINS / PLATEAU）。
+     * 用于 PLATEAU 地理约束：只在高地附近生成 PLATEAU（禁止"平原直跳高原"），
+     * 但允许邻丘陵，使高原可作为独立桌山矗立于丘陵之上（修复火山口伪形）。
      */
-    private boolean hasMountainNeighbor(int cx, int cz) {
+    private boolean hasHighlandNeighbor(int cx, int cz) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 if (dx == 0 && dz == 0) continue;
                 double nx = cellCenterX(cx + dx, cz + dz);
                 double nz = cellCenterZ(cx + dx, cz + dz);
                 double nv = typeField.compute(nx, nz);
-                // 邻居是 MOUNTAINS?（v ∈ [THRESH_HILLS, THRESH_MOUNTAINS)）
-                if (nv >= TYPE_THRESH_HILLS && nv < TYPE_THRESH_MOUNTAINS) {
+                // 邻居是高于平原的高地?（v >= THRESH_PLAIN）
+                if (nv >= TYPE_THRESH_PLAIN) {
                     return true;
                 }
             }
