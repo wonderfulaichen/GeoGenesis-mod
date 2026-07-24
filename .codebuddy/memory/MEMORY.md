@@ -51,6 +51,8 @@
 
 ## 配置屏（2026-07-23 单屏 8 标签，常驻预览）
 页签0世界参数 / 1气候 / 2地形(lo/hi图+雪线双曲线) / 3显示 / 4采样 / 5色带 / 6缓存 / 7群系。标签条手写仿制（深绿主题）。ConfirmDialog 用于世界高度三滑杆松手确认。
+- **按钮语义（2026-07-24 续10）**：三按钮 [应用][保存][重置]。**应用**=`SPEC.save()`(全局 toml 持久化)+`setScreen(parent)` 返回创建界面（世界即用此配置）；**保存**=弹 `NameInputDialog` 把当前完整配置存为命名自定义预设到 `config/geogenesis/user_presets.json`(`UserPresetsStore` 单例 Gson)；**重置**=`resetToDefault()`。**onClose 不再困住用户**（直接返回父屏，未提交改动丢弃，契合"应用才提交"）。`create(Minecraft,parent)` 已改为传 parent 使 Mods 菜单配置也能返回。自定义预设与内建 `PresetLibrary` 并存；PresetsPanel 第三节"我的预设"可加载(→`applyUserPreset`:reset+applyNamedValues+重建面板+rebuildPreview+save)/删除。
+- `GeoGenesisConfig` 反射三件套：`resetToDefault()`(set 默认) / `captureAllValues()`(字段名→当前值) / `applyNamedValues(Map<String,String>)`(按名字 set，parseByType 按运行时类型解析)。`SPEC`/`INSTANCE` 与 private `midSplineConfig` 自动跳过。
 
 ## 待办
 - runClient 目检地形；BASIN 未集成阈值链；TypeLandShape 阈值/TypeGenerators 噪声参数需从 TerrainParams 注入；配置屏省滑块→类型滑块；mixer 面板重绑新类型参数；toml→JSON 迁移规划（阶段3）。

@@ -67,6 +67,8 @@ public class GeoGenesisConfigScreen extends Screen {
 
     /** 确认对话框 */
     private final ConfirmDialog confirmDialog = new ConfirmDialog();
+    /** 命名输入对话框（保存为预设时输入预设名） */
+    private final NameInputDialog nameDialog = new NameInputDialog();
 
     private final TerrainConfigPanel terrainPanel = new TerrainConfigPanel();
     private final ClimateConfigPanel climatePanel = new ClimateConfigPanel();
@@ -82,7 +84,7 @@ public class GeoGenesisConfigScreen extends Screen {
     private ConfigPanel[] panels;
 
     private PreviewDisplay preview;
-    private Button saveBtn, resetBtn, layerPrev, layerNext;
+    private Button applyBtn, savePresetBtn, resetBtn, layerPrev, layerNext;
     private int currentMode = TERRAIN_TYPE_LAYER;
 
     private int panelX, panelW, headerY, listTop, listBottom;
@@ -146,11 +148,14 @@ public class GeoGenesisConfigScreen extends Screen {
         paramPanel.setBounds(panelX + 4, listTop, panelW - 8);
         paramPanel.buildFromConfig();
 
-        saveBtn = Button.builder(Component.literal("应用"), b -> doSave())
+        applyBtn = Button.builder(Component.literal("应用"), b -> doApply())
             .pos(panelX, listBottom + 6).size(60, 20).build();
-        resetBtn = Button.builder(Component.literal("重置"), b -> doReset())
+        savePresetBtn = Button.builder(Component.literal("保存"), b -> onSavePreset())
             .pos(panelX + 64, listBottom + 6).size(60, 20).build();
-        addRenderableWidget(saveBtn);
+        resetBtn = Button.builder(Component.literal("重置"), b -> doReset())
+            .pos(panelX + 128, listBottom + 6).size(60, 20).build();
+        addRenderableWidget(applyBtn);
+        addRenderableWidget(savePresetBtn);
         addRenderableWidget(resetBtn);
 
         // 按钮在 widget 上方留出 4px 间隙
@@ -181,7 +186,8 @@ public class GeoGenesisConfigScreen extends Screen {
             s -> { seed = s; rebuildPreview(); },
             () -> { seed = (long) (Math.random() * Long.MAX_VALUE); rebuildPreview(); },
             this::showApplyPresetConfirm,
-            this::addRenderableWidget);
+            this::addRenderableWidget,
+            this::applyUserPreset);
         if (displayPanel == null) displayPanel = new DisplayPanel(preview);
         if (samplingPanel == null) samplingPanel = new SamplingPanel(preview);
         if (colormapPanel == null) colormapPanel = new ColormapPanel(preview);
@@ -259,7 +265,38 @@ public class GeoGenesisConfigScreen extends Screen {
         currentMode = (currentMode + d + GeoPalette.PreviewLayer.values().length) % GeoPalette.PreviewLayer.values().length;
         if (preview != null) preview.setMode(currentMode);
     }
-    private void doSave() { GeoGenesisConfig.SPEC.save(); saved = true; dirty = false; }
+    private void doApply() {
+        // 应用 = 当前配置持久化到全局 toml，并关屏返回创建界面（世界即用此配置）
+        GeoGenesisConfig.SPEC.save();
+        saved = true;
+        dirty = false;
+        Minecraft.getInstance().setScreen(parent);
+    }
+
+    /** 保存 = 把当前完整配置存为命名自定义预设到 user_presets.json，并刷新预设列表 */
+    private void onSavePreset() {
+        nameDialog.show("保存为预设", "为当前配置输入预设名称：",
+            name -> {
+                UserPresetsStore.getInstance().savePreset(name, GeoGenesisConfig.INSTANCE.captureAllValues());
+                if (presetsPanel != null) presetsPanel.refreshUserPresets();
+                LOGGER.info("Saved current config as user preset '{}'", name);
+            },
+            () -> {});
+    }
+
+    /** 加载自定义预设：回默认 → 还原命名值 → 重建各面板 UI → 重建预览 → 持久化 */
+    private void applyUserPreset(UserPresetsStore.UserPreset p) {
+        GeoGenesisConfig.INSTANCE.resetToDefault();
+        GeoGenesisConfig.INSTANCE.applyNamedValues(p.values());
+        terrainPanel.buildFromConfig();
+        climatePanel.buildClimateFactors();
+        paramPanel.buildFromConfig();
+        scroll = 0;
+        pushScrollToPanels();
+        lastAppliedParams = null; // 强制下次 rebuild
+        rebuildPreview();
+        try { GeoGenesisConfig.SPEC.save(); } catch (Exception ignored) { /* 文件写竞争忽略 */ }
+    }
     private void doReset() {
         // 重置到默认值：~120 个 .set() 各自触发文件写入，Windows 文件锁可能抛 WritingException
         // 捕获并继续——部分字段未写入的后续面板重建也会覆盖
@@ -395,6 +432,11 @@ public class GeoGenesisConfigScreen extends Screen {
         if (confirmDialog.isShowing()) {
             confirmDialog.render(g, mx, my);
         }
+
+        // 命名输入对话框（最上层，覆盖确认框之上）
+        if (nameDialog.isShowing()) {
+            nameDialog.render(g, mx, my);
+        }
     }
 
     private String I18nSafe(String key) {
@@ -406,6 +448,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int b) {
+        if (nameDialog.isShowing()) return nameDialog.mouseClicked(mx, my, b);
         if (confirmDialog.isShowing()) return confirmDialog.mouseClicked(mx, my, b);
         // 标签页点击（命中标签条区域切换页签）
         if (mx >= panelX && mx <= panelX + panelW && my >= headerY && my <= headerY + TAB_H) {
@@ -430,6 +473,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mx, double my, int b) {
+        if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
         // ★ 修复：面板处理了就不传给 super，防止预览被误触
         if (panels != null && panels[tab].mouseReleased(mx, my, b)) return true;
@@ -438,6 +482,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mx, double my, int b, double dx, double dy) {
+        if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
         if (panels != null && panels[tab].mouseDragged(mx, my, b, dx, dy)) return true;
         return super.mouseDragged(mx, my, b, dx, dy);
@@ -445,6 +490,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
+        if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
         if (mx >= panelX && mx <= panelX + panelW) {
             // 先给当前面板机会处理内部滚动（如色带/群系列表）
@@ -468,10 +514,22 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (dirty && !saved) Minecraft.getInstance().setScreen(new GeoGenesisConfigScreen(parent, tab));
+        // 不再把未保存的困在屏里：直接返回父屏（未提交的改动丢弃，契合「应用才提交」语义）
         super.onClose();
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (nameDialog.isShowing()) return nameDialog.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (nameDialog.isShowing()) return nameDialog.charTyped(codePoint, modifiers);
+        return super.charTyped(codePoint, modifiers);
     }
     @Override public boolean isPauseScreen() { return false; }
 
-    public static Screen create(Minecraft mc, Screen parent) { return new GeoGenesisConfigScreen(); }
+    public static Screen create(Minecraft mc, Screen parent) { return new GeoGenesisConfigScreen(parent); }
 }
