@@ -1,6 +1,7 @@
 package com.geogenesis.client.preview;
 
 import com.geogenesis.client.SeedManager;
+import com.geogenesis.client.UserPresetsStore;
 import com.geogenesis.client.preview.mixer.MixerPanel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -48,12 +49,14 @@ public class PresetsPanel extends ConfigPanel {
 
     private static final int FAV_SCROLL_H = 160;
     private static final int CARD_SCROLL_H = 230;
+    private static final int USER_SCROLL_H = 200;
 
     private final List<Preset> presets = PresetLibrary.all();
     private final LongSupplier getSeed;
     private final Consumer<Long> setSeed;
     private final Runnable onRefresh;
     private final Consumer<Preset> onApply;
+    private final Consumer<UserPresetsStore.UserPreset> onApplyUser;
     private final Consumer<AbstractWidget> addWidget;
 
     private final EditBox seedBox;
@@ -68,13 +71,22 @@ public class PresetsPanel extends ConfigPanel {
     /** 收藏种子折叠面板 */
     private final MixerPanel favSection = new MixerPanel("收藏种子");
 
+    /** 用户自定义预设（从 user_presets.json 加载，可加载/删除） */
+    private final List<UserPresetsStore.UserPreset> userPresets = new ArrayList<>();
+    private final List<Integer> userCardY = new ArrayList<>();
+    private final List<String> userCardId = new ArrayList<>();
+    private int innerScrollY_user = 0;
+
     public PresetsPanel(LongSupplier getSeed, Consumer<Long> setSeed, Runnable onRefresh,
-                        Consumer<Preset> onApply, Consumer<AbstractWidget> addWidget) {
+                        Consumer<Preset> onApply, Consumer<AbstractWidget> addWidget,
+                        Consumer<UserPresetsStore.UserPreset> onApplyUser) {
         this.getSeed = getSeed;
         this.setSeed = setSeed;
         this.onRefresh = onRefresh;
         this.onApply = onApply;
         this.addWidget = addWidget;
+        this.onApplyUser = onApplyUser;
+        refreshUserPresets();
         Font font = Minecraft.getInstance().font;
         SeedManager sm = SeedManager.getInstance();
 
@@ -125,7 +137,8 @@ public class PresetsPanel extends ConfigPanel {
     public int getHeight() {
         return HEADER_H + GAP_S + SEED_ROW_H + GAP_M
              + favSection.getFullHeight() + GAP_M
-             + CARD_SCROLL_H + GAP_M + 12;
+             + CARD_SCROLL_H + GAP_M
+             + USER_SCROLL_H + GAP_M + 12;
     }
 
     // 所有 y 用 top()（随主屏外滚移动）
@@ -138,9 +151,18 @@ public class PresetsPanel extends ConfigPanel {
     private int pinnedCardTitleY()          { return pinnedFavTopY() + favSection.getFullHeight() + GAP_M; }
     private int pinnedCardScrollTopY()      { return pinnedCardTitleY() + 16; }  // MixerPanel.TITLE_H=16
     private int pinnedCardScrollBotY()      { return pinnedCardScrollTopY() + CARD_SCROLL_H; }
+    private int pinnedUserTitleY()          { return pinnedCardScrollBotY() + GAP_M; }
+    private int pinnedUserScrollTopY()      { return pinnedUserTitleY() + 16; }
+    private int pinnedUserScrollBotY()      { return pinnedUserScrollTopY() + USER_SCROLL_H; }
 
     public int getScrollTopY() { return pinnedFavScrollTopY(); }
     public void setViewportHeight(int h) { /* 保留兼容 */ }
+
+    /** 从 UserPresetsStore 重新加载用户预设列表（保存/删除后调用刷新） */
+    public void refreshUserPresets() {
+        userPresets.clear();
+        userPresets.addAll(UserPresetsStore.getInstance().list());
+    }
 
     private int favContentH() {
         int favCount = SeedManager.getInstance().getFavorites().size();
@@ -149,6 +171,11 @@ public class PresetsPanel extends ConfigPanel {
     }
     private int cardContentH() {
         int n = presets.size();
+        if (n == 0) return 0;
+        return n * (CARD_H + CARD_GAP) - CARD_GAP;
+    }
+    private int userContentH() {
+        int n = userPresets.size();
         if (n == 0) return 0;
         return n * (CARD_H + CARD_GAP) - CARD_GAP;
     }
@@ -184,7 +211,7 @@ public class PresetsPanel extends ConfigPanel {
         favSection.setBounds(x, pinnedFavTopY(), w);
         favSection.renderHeader(g, mx, my);
         // ★ 每帧清除命中区缓存（在 drawScrollRegion 之前），防止累积+避免互相清空
-        favRowY.clear(); favRowSeed.clear(); cardY.clear();
+        favRowY.clear(); favRowSeed.clear(); cardY.clear(); userCardY.clear(); userCardId.clear();
         if (!favSection.isCollapsed()) {
             int favTop = pinnedFavScrollTopY();
             int favBot = pinnedFavScrollBotY();
@@ -205,6 +232,18 @@ public class PresetsPanel extends ConfigPanel {
         g.fill(x + 2, cardTop, x + w - 2, cardBot, 0xFF15191F);
         g.enableScissor(x, cardTop, x + w, cardBot);
         drawScrollRegion(g, mx, my, cardTop, cardBot, curSeed, sm, false);
+        g.disableScissor();
+
+        // —— 用户预设标题 ——
+        int uty = pinnedUserTitleY();
+        g.drawString(font(), "我的预设（点击加载 · ✕ 删除）", x, uty, C_TEXT_DIM);
+
+        // ============ 滚动区 C：用户自定义预设（带 scissor 严格裁剪到区域）============
+        int userTop = pinnedUserScrollTopY();
+        int userBot = pinnedUserScrollBotY();
+        g.fill(x + 2, userTop, x + w - 2, userBot, 0xFF15191F);
+        g.enableScissor(x, userTop, x + w, userBot);
+        drawUserRegion(g, mx, my, userTop, userBot);
         g.disableScissor();
     }
 
@@ -271,6 +310,43 @@ public class PresetsPanel extends ConfigPanel {
         }
     }
 
+    /** 用户预设滚动区渲染（与卡片区同构，每行带 ✕ 删除） */
+    private void drawUserRegion(GuiGraphics g, int mx, int my, int top, int bottom) {
+        int sTop = top, sBot = bottom;
+        int y = sTop;
+        if (userPresets.isEmpty()) {
+            int ry = y - innerScrollY_user;
+            if (ry < sBot && ry + ROW_H > sTop)
+                g.drawString(font(), "（暂无 · 用左下「保存」按钮存为预设）",
+                    x + 12, ry + (ROW_H - font().lineHeight) / 2, C_TEXT_DIM);
+        } else {
+            for (UserPresetsStore.UserPreset p : userPresets) {
+                int py = y - innerScrollY_user;
+                if (py < sBot && py + CARD_H > sTop) {
+                    boolean hover = mx >= x && mx <= x + w && my >= py && my <= py + CARD_H;
+                    g.fill(x + 2, py, x + w - 2, py + CARD_H, hover ? C_HOVER : C_BG_ROW);
+                    g.fill(x + 2, py, x + 4, py + CARD_H, C_ACCENT);
+                    g.drawString(font(), p.name(), x + 10, py + 8, C_TEXT);
+                    String meta = "（" + p.values().size() + " 项参数）";
+                    g.drawString(font(), meta, x + 10, py + 28, C_TEXT_DIM);
+                    int delX = x + w - 18;
+                    boolean delHover = mx >= delX - 4 && mx <= delX + 14 && my >= py && my <= py + CARD_H;
+                    g.drawString(font(), "✕", delX, py + (CARD_H - font().lineHeight) / 2,
+                        delHover ? 0xFFFF7777 : C_TEXT_DIM);
+                    userCardY.add(py); userCardId.add(p.id());
+                }
+                y += CARD_H + CARD_GAP;
+            }
+            int contentH = userContentH();
+            int maxScroll = Math.max(0, contentH - (sBot - sTop));
+            if (maxScroll > 0) {
+                int barH = Math.max(14, (sBot - sTop) * (sBot - sTop) / Math.max(1, contentH));
+                int barY = sTop + innerScrollY_user * ((sBot - sTop) - barH) / maxScroll;
+                g.fill(x + w - 3, barY, x + w - 1, barY + barH, 0xFF00c896);
+            }
+        }
+    }
+
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
         // 收藏折叠面板头点击（展开/折叠切换）
@@ -283,6 +359,28 @@ public class PresetsPanel extends ConfigPanel {
                 onApply.accept(presets.get(i));
                 playClick();
                 return true;
+            }
+        }
+        // 用户预设卡片点击（✕ 删除，其余加载）
+        if (!userCardY.isEmpty()) {
+            int delX = x + w - 18;
+            for (int i = 0; i < userCardY.size(); i++) {
+                if (hit(x, userCardY.get(i), w, CARD_H, mx, my)) {
+                    String id = userCardId.get(i);
+                    if (mx >= delX - 4 && mx <= delX + 14) {
+                        UserPresetsStore.getInstance().delete(id);
+                        refreshUserPresets();
+                        playClick();
+                    } else {
+                        UserPresetsStore.UserPreset p = userPresets.stream()
+                            .filter(q -> q.id().equals(id)).findFirst().orElse(null);
+                        if (p != null) {
+                            onApplyUser.accept(p);
+                            playClick();
+                        }
+                    }
+                    return true;
+                }
             }
         }
         // 收藏行点击（仅在展开时有效）
@@ -307,6 +405,13 @@ public class PresetsPanel extends ConfigPanel {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
+        // 用户预设区：内部滚动
+        if (my >= pinnedUserScrollTopY() && my < pinnedUserScrollBotY()) {
+            int maxScroll = Math.max(0, userContentH() - USER_SCROLL_H);
+            if (maxScroll <= 0) return false;
+            innerScrollY_user = Clamp(innerScrollY_user - (int)(delta * 20), 0, maxScroll);
+            return true;
+        }
         // 卡片区：内部滚动
         if (my >= pinnedCardScrollTopY() && my < pinnedCardScrollBotY()) {
             int maxScroll = Math.max(0, cardContentH() - CARD_SCROLL_H);

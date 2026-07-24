@@ -4,6 +4,8 @@ import net.minecraftforge.common.ForgeConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * GeoGenesis Forge COMMON 配置。
@@ -645,6 +647,65 @@ public final class GeoGenesisConfig {
                 // 反射访问异常或单个字段写入竞争（Windows 文件锁）忽略，继续重置其余字段
             }
         }
+    }
+
+    /**
+     * 捕获所有 ConfigValue 字段的当前值，key=字段名，value=字段当前值（保留 Double/Integer
+     * /Boolean/String/Enum 原始类型）。供「保存为自定义预设」对当前全局配置拍快照。
+     * SPEC/INSTANCE（非 ConfigValue）与 private midSplineConfig 会被自动跳过。
+     */
+    public Map<String, Object> captureAllValues() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Field f : GeoGenesisConfig.class.getFields()) {
+            try {
+                Object v = f.get(this);
+                if (v instanceof ForgeConfigSpec.ConfigValue) {
+                    ForgeConfigSpec.ConfigValue<Object> cv = (ForgeConfigSpec.ConfigValue<Object>) v;
+                    out.put(f.getName(), cv.get());
+                }
+            } catch (Exception ignored) {
+                // 反射访问异常忽略，继续捕获其余字段
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 按字段名把命名值（以字符串存储）应用回配置：先 resetToDefault 再 set，未知字段忽略。
+     * 值按字段当前值的运行时类型解析（Double/Integer/Boolean/String 直转，Enum 用 valueOf）。
+     * 供「加载自定义预设」把存档快照还原到全局配置。
+     */
+    public void applyNamedValues(Map<String, String> values) {
+        for (Map.Entry<String, String> e : values.entrySet()) {
+            try {
+                Field f = GeoGenesisConfig.class.getField(e.getKey());
+                Object v = f.get(this);
+                if (!(v instanceof ForgeConfigSpec.ConfigValue)) continue;
+                ForgeConfigSpec.ConfigValue<Object> cv = (ForgeConfigSpec.ConfigValue<Object>) v;
+                Object parsed = parseByType(cv.get(), e.getValue());
+                if (parsed != null) cv.set(parsed);
+            } catch (Exception ignored) {
+                // 字段不存在或类型解析失败忽略，继续应用其余字段
+            }
+        }
+    }
+
+    /** 按当前字段值的运行时类型把字符串解析回对应对象；无法解析返回 null。 */
+    private static Object parseByType(Object cur, String s) {
+        try {
+            if (cur instanceof Double) return Double.parseDouble(s);
+            if (cur instanceof Integer) return Integer.parseInt(s);
+            if (cur instanceof Boolean) return Boolean.parseBoolean(s);
+            if (cur instanceof String) return s;
+            if (cur instanceof Enum) {
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                Class<? extends Enum> ec = (Class<? extends Enum>) cur.getClass();
+                return Enum.valueOf(ec, s);
+            }
+        } catch (Exception ignored) {
+            // 解析失败返回 null，由调用方跳过该字段
+        }
+        return null;
     }
 
     /** 从独立配置字段构建 SplineConfig（Phase 3：含海洋/水域类型） */
