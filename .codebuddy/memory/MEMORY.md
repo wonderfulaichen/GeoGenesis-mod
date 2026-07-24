@@ -21,6 +21,7 @@
 
 ## 配置同步铁律
 增删字段须同步 6 处：`GeoGenesisConfig`(定义+BUILDER+buildParams+defaultParams) + `TerrainParams`(record+defaults) + `ParameterConfigPanel.buildFromConfig`(addSpec) + `run/config/geogenesis-common.toml`；改默认值后必须同步已存在 toml。
+- **滑块 reset 默认标记铁律（2026-07-24）**：`ParamSlider.setDefaultValue(...)` 必须填 `cfg.getDefault()`（代码默认值），**严禁填 `cfg.get()`**（config 当前/持久化值）。`resetToDefault()` 把滑块归位到该标记；若误用 `get()`，一旦当前值被拖动或 toml 持久化为低位，点重置就会把滑块拉到最低而非代码默认。诊断同类 bug 的方法是：枚举全仓所有 `setDefaultValue` 调用，核对每个是否用 `getDefault()`。
 
 ## 关键参数/陷阱
 - **oceanDepthFactor**（2026-07-22）：乘到 eOcean，>1 更深(海洋扩大) <1 更浅。默认1.0 [0.5,3.0]。解决海陆比硬上限。
@@ -45,7 +46,7 @@
 - 阶段2（语义亲和度接入）：空间权重 × `cAffinity_t(c)`（来自 MidSplineConfig 每类型 c 曲线）→ 山脉偏内陆/盆地深海+内陆；暴露 cPref/cSigma 或曲线到 UI；WARP_AMP 提为 TerrainParams 可配(默认~180)；消除双轨(TerrainParams *Center/*HalfRange 删，预览色阶从 spec lo/hi 派生)【**2026-07-24 已完成**】。
 - 阶段3（类型增删零代码）：TerrainTypeSpec(JSON)+Registry 加载 config/geogenesis/terrain_types.json（资源包可覆盖）；引擎 LAND_TYPES/buildXxxInner/cellType 硬编码阈值改遍历 registry；relativeWeight 取代 TYPE_THRESH_*（保留地理约束：PLATEAU 需高地邻/MOUNTAINS 需 HILLS 缓冲/BASIN 非高地，重实现为抽样偏置）；BiomeClassifier 也数据驱动。
 **死代码清理（阶段2/3 明确删除）**：UnifiedSpline 3 层 + SplineConfig.build + MidSplineConfig 整条（fromTerrainParams 已是桩 line311-315）；TypeLandShape `dominant.isWater()` 死分支删（typeWeights 只含陆地）。
-- **【2026-07-24 完成】双轨死链删除**：TerrainParams 删 10 个 `*Center/*HalfRange` 字段 + defaults 实参 + `elevationERange()` 改读 `SplineConfig.maxLandHi()`；TypeGenerators 删 `lo/hi` 数组/`setRange`/`getTypeLo/Hi`；VoronoiRegionField 删 `generators` 字段+参数+lo/hi 计算（保留 `BlendResult.lo/hi` 字段=0 供 DiscontinuityProbe 兼容）；TypeLandShape 删 `sampleFromTypeWeights` + 简化 `sample()`；GeoGenesisConfig 删 10 字段/builder/buildParams/defaultParams/reset；TerrainConfigPanel 陆地 5 slot 改只读（读 `SplineConfig.landTypeBounds()`）；toml 删 10 key。**发现 PresetLibrary.java 5 个预设大量引用已删的 `*Center/*HalfRange`（这些预设项本是死链，从未影响地形），已改为仅保留仍生效字段（continentBias/oceanDepthFactor/*ReliefAmp/elevHigh/reliefHigh/snowLine/peakE）**。`compileJava --rerun-tasks` BUILD SUCCESSFUL。
+- **【2026-07-24 完成】双轨死链删除**：TerrainParams 删 10 个 `*Center/*HalfRange` 字段 + defaults 实参 + `elevationERange()` 改读 `SplineConfig.maxLandHi()`；TypeGenerators 删 `lo/hi` 数组/`setRange`/`getTypeLo/Hi`；VoronoiRegionField 删 `generators` 字段+参数+lo/hi 计算（保留 `BlendResult.lo/hi` 字段=0 供 DiscontinuityProbe 兼容）；TypeLandShape 删 `sampleFromTypeWeights` + 简化 `sample()`；GeoGenesisConfig 删 10 字段/builder/buildParams/defaultParams/reset；TerrainConfigPanel 陆地 5 slot 实为**可编辑**（`landSplineSlot` lo+hi 带 `loCfg::set` setter，非只读）；其 reset 默认标记此前误用 `get()`（见滑块 reset 铁律），2026-07-24 已改为 `getDefault()` 与海洋一致；toml 删 10 key。**发现 PresetLibrary.java 5 个预设大量引用已删的 `*Center/*HalfRange`（这些预设项本是死链，从未影响地形），已改为仅保留仍生效字段（continentBias/oceanDepthFactor/*ReliefAmp/elevHigh/reliefHigh/snowLine/peakE）**。`compileJava --rerun-tasks` BUILD SUCCESSFUL。
 
 ## 配置屏（2026-07-23 单屏 8 标签，常驻预览）
 页签0世界参数 / 1气候 / 2地形(lo/hi图+雪线双曲线) / 3显示 / 4采样 / 5色带 / 6缓存 / 7群系。标签条手写仿制（深绿主题）。ConfirmDialog 用于世界高度三滑杆松手确认。
