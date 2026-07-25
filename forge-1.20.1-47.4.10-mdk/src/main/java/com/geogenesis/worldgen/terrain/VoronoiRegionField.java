@@ -31,18 +31,17 @@ public final class VoronoiRegionField {
      *   <li>3×3 窗口边缘（400 块距离）：exp(-7.1)=0.0008 → 可忽略</li>
      * </ul>
      */
-    private static final double SIGMA = 100.0;
+    private static final double SIGMA = 150.0;
 
     // ===== 地形类型阈值（按 typeField 值划分） =====
-    // v7.8 (Fix): HILLS 带宽从 0.25→0.37 (+48%)，降低相邻 cell 跳过 HILLS 带的风险。
-    // 同时 MOUNTAINS→PLAIN 直接相邻时 MOUNTAINS 降级为 HILLS（见地理约束）。
-    // 旧：PLAIN<0.35, HILLS<0.60, MOUNTAINS<0.75, PLATEAU<0.90, BASIN>=0.90
-    // 新：PLAIN<0.28, HILLS<0.65, MOUNTAINS<0.78, PLATEAU<0.92, BASIN>=0.92
-    // 预期最终分类：PLAIN~17%, HILLS~37%, MOUNTAINS~16%, PLATEAU~13%, BASIN~5%
-    private static final double TYPE_THRESH_PLAIN     = 0.28;
-    private static final double TYPE_THRESH_HILLS     = 0.65;
+    // v7.9 (Fix): 重新平衡各类型带宽（HILLS 从 37%→20% 抑制过度主导）。
+    // 带宽分布：PLAIN 35% → HILLS 20% → MOUNTAINS 23% → PLATEAU 17% → BASIN 5%
+    // 经地理约束 + c-affinity 后，预期最终：PLAIN~28%, HILLS~35%, MOUNTAINS~17%,
+    // PLATEAU~12%, BASIN~3%, 其余为 PEAK/SNOW/BEACH。
+    private static final double TYPE_THRESH_PLAIN     = 0.35;
+    private static final double TYPE_THRESH_HILLS     = 0.55;
     private static final double TYPE_THRESH_MOUNTAINS = 0.78;
-    private static final double TYPE_THRESH_PLATEAU   = 0.92;
+    private static final double TYPE_THRESH_PLATEAU   = 0.95;
     // 旧 hash-based type（保留作为后备，但实际用 typeField）
     private static final int[] TYPE_WEIGHTS = {30, 25, 20, 15, 10};
     private static final TerrainClass[] TYPE_BY_WEIGHT = buildTypeByWeight();
@@ -83,8 +82,14 @@ public final class VoronoiRegionField {
 
     public VoronoiRegionField(double warpAmp) {
         this.WARP_AMP = warpAmp;
-        this.warpX = new Frequency(new Simplex(310), 1.0 / 800.0);
-        this.warpZ = new Frequency(new Simplex(311), 1.0 / 800.0);
+        // 双频 warp（仿海岸线 FBM）：主频 1/800 + 次频 1/260（权重 0.4），归一化到 [-1,1]，
+        // 让 Voronoi 细胞边界像海岸线一样多尺度蜿蜒（而非直 Voronoi 边），类型过渡更自然。
+        Noise wX1 = new Frequency(new Simplex(310), 1.0 / 800.0);
+        Noise wX2 = new Frequency(new Simplex(5310), 1.0 / 260.0);
+        this.warpX = new Map(new Add(wX1, new Boost(wX2, 0.4)), -1.4, 1.4, -1.0, 1.0);
+        Noise wZ1 = new Frequency(new Simplex(311), 1.0 / 800.0);
+        Noise wZ2 = new Frequency(new Simplex(5311), 1.0 / 260.0);
+        this.warpZ = new Map(new Add(wZ1, new Boost(wZ2, 0.4)), -1.4, 1.4, -1.0, 1.0);
         // v7.5: typeField 频率 1/500，兼顾平滑过渡 + 合理采样窗口内出现所有类型
         // 原 1/1500 导致 800×800 窗口内只有~2 个 cell，typeField 几乎恒定→无 PLATEAU
         this.typeField = new Map(new Frequency(new Simplex(312), 1.0 / 500.0), -1.0, 1.0, 0.0, 1.0);

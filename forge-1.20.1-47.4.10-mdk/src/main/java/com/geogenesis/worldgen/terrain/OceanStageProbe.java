@@ -21,7 +21,7 @@ public final class OceanStageProbe {
         "seamount",          // 6: OceanFeatures seamount
         "eOcean_postFeature",// 7: eOcean + features
         "eLand",             // 8: TypeLandShape.sample()
-        "eFull",             // 9: clamp(eOcean + eLand, -1, 1)
+        "eFull(v8 twoStage)",// 9: two-stage blend (eOcean fade + eLand ramp)
     };
 
     public static void main(String[] args) {
@@ -109,9 +109,15 @@ public final class OceanStageProbe {
                 double eLand = landShape.sample(blend, wx, wz);
                 stages[8][x][z] = eLand;
 
-                // 9. eFull
-                double eFull = eOceanFinal + eLand;
-                eFull = eFull < -1.0 ? -1.0 : (eFull > 1.0 ? 1.0 : eFull);
+                // 9. eFull (v8 two-stage blend)
+                double oceanFadeStart = p.oceanFadeStart();
+                double coastLoc = p.coastLoc();
+                double landRampEnd = p.landRampEnd();
+                double t1 = smoothstep(oceanFadeStart, coastLoc, cBiased);
+                double eOceanStage = eOceanFinal * (1.0 - t1);
+                double t2 = smoothstep(coastLoc, landRampEnd, cBiased);
+                double eLandStage = eLand * t2;
+                double eFull = eOceanStage + eLandStage;
                 stages[9][x][z] = eFull;
 
                 if (eLand > 0) landCount++;

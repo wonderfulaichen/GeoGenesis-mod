@@ -23,7 +23,7 @@ public final class DiscontinuityProbe {
         "eLand_v7.5",              // 9: lo + range x typeWeighted
         "continent(c)",            // 10: 大陆性 [-1,1]
         "eOcean",                  // 11: c falls to eFromC
-        "eFull(eOcean+eLand)",     // 12: clamp(eOcean+eLand, -1, 1)
+        "eFull(v8_twoStage)",      // 12: two-stage blend (eOcean fade + eLand ramp)
         "dominant_argmax",         // 13: argmax(PLAIN..BASIN weights) ordinal 5,6,8,7,10
     };
 
@@ -42,6 +42,8 @@ public final class DiscontinuityProbe {
         // 创建真实地形引擎
         TypeLandShape landShape = new TypeLandShape(p);
         landShape.seed(seed);
+        CoastlineField coastline = new CoastlineField(p);
+        coastline.seed(seed);
 
         ContinentField continent = new ContinentField(p);
         continent.seed(seed);
@@ -73,19 +75,20 @@ public final class DiscontinuityProbe {
                 layers[6][x][z] = tw[TerrainClass.PLATEAU.ordinal()];
                 layers[7][x][z] = tw[TerrainClass.BASIN.ordinal()];
 
-                // 3. TypeLandShape.sample() — 真实 v7.5 公式
-                double eLand = landShape.sample(blend, wx, wz);
-                layers[9][x][z] = eLand;
-
-                // 4. 提取 typeWeighted（by inverting formula: tw = (eLand-lo)/range）
-                double range = blend.hi - blend.lo;
-                double typeWeighted = (range > 1e-10) ? (eLand - blend.lo) / range : 0.5;
-                layers[8][x][z] = typeWeighted;
-
-                // 5. 大陆性 c
+                // 3. 大陆性 c（需在 CoastlineField 之前计算）
                 double c = continent.sample(wx, wz);
                 double cBiased = c - continentBias;
                 layers[10][x][z] = c;
+
+                // 4. TypeLandShape.sample() — 使用海岸线位移后的有效 c（v8）
+                double cEdge = cBiased + coastline.warpDisplacement(wx, wz, cBiased);
+                double eLand = landShape.sample(blend, wx, wz, cEdge);
+                layers[9][x][z] = eLand;
+
+                // 5. 提取 typeWeighted（by inverting formula: tw = (eLand-lo)/range）
+                double range = blend.hi - blend.lo;
+                double typeWeighted = (range > 1e-10) ? (eLand - blend.lo) / range : 0.5;
+                layers[8][x][z] = typeWeighted;
 
                 // 6. eOcean
                 double eOcean = curve.eFromC(cBiased);
@@ -93,9 +96,15 @@ public final class DiscontinuityProbe {
                 eOcean = eOcean < -1 ? -1 : eOcean;
                 layers[11][x][z] = eOcean;
 
-                // 7. eFull
-                double eFull = eOcean + eLand;
-                eFull = eFull < -1 ? -1 : (eFull > 1 ? 1 : eFull);
+                // 7. eFull (v8 two-stage blend + coastline warp)
+                double oceanFadeStart = p.oceanFadeStart();
+                double coastLoc = p.coastLoc();
+                double landRampEnd = p.landRampEnd();
+                double t1 = smoothstep(oceanFadeStart, coastLoc, cEdge);
+                double eOceanStage = eOcean * (1.0 - t1);
+                double t2 = smoothstep(coastLoc, landRampEnd, cEdge);
+                double eLandStage = eLand * t2;
+                double eFull = eOceanStage + eLandStage;
                 layers[12][x][z] = eFull;
 
                 // 8. dominant argmax
@@ -285,5 +294,14 @@ public final class DiscontinuityProbe {
         System.out.println("Note: MC Y = 63 + eLand x 257. e=1.0 approx 320.");
         System.out.println("maxDelta > 0.01 (~3.8 blocks) needs watch, >0.05 (~19 blocks) severe.");
         System.out.println("=== DiscontinuityProbe v7.5 done ===");
+    }
+
+    // ===== 内联工具 =====
+    private static double saturate(double v) {
+        return v < 0 ? 0 : (v > 1 ? 1 : v);
+    }
+    private static double smoothstep(double edge0, double edge1, double x) {
+        double t = saturate((x - edge0) / (edge1 - edge0));
+        return t * t * (3.0 - 2.0 * t);
     }
 }

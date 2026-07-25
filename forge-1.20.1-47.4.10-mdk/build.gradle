@@ -231,6 +231,12 @@ task runProfile(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.MountainProfileProbe'
 }
 
+// Type distribution diagnostic (percentages of each terrain type)
+task runTypeDist(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TypeDistributionProbe'
+}
+
 // Plateau crater diagnostic
 task runPlateauProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

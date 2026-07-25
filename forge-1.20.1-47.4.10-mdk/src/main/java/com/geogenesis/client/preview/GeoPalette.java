@@ -93,19 +93,21 @@ public final class GeoPalette {
     // 内置色带（停靠点 [pos,r,g,b]∈[0,1]）
     // ============================================================
 
-    // 停靠点按地形归一化 e 映射：[eMin,eMax]=[-0.35,0.95]（见 TerrainParams.elevationERange）。
-    // 海岸线 e=0 落在 pos≈0.269，故在该位置放蓝→绿过渡，保证平原(e≈0.04→pos≈0.30)显绿而非蓝。
-    private static final float[][] S_ELEVATION = {
-            {0.000f, 0.06f, 0.10f, 0.30f},   // 深海盆 (e=-0.35) — 深暗蓝紫
-            {0.130f, 0.10f, 0.24f, 0.52f},   // 深海 — 蓝
-            {0.230f, 0.16f, 0.42f, 0.60f},   // 大陆架 — 浅蓝
-            {0.269f, 0.20f, 0.52f, 0.52f},   // 海岸线 e=0 — 青绿过渡（海陆分界）
-            {0.320f, 0.30f, 0.58f, 0.32f},   // 低地/海滩 — 绿
-            {0.450f, 0.48f, 0.60f, 0.28f},   // 平原/丘陵 — 黄绿
-            {0.580f, 0.58f, 0.55f, 0.30f},   // 丘陵 — 橄榄
-            {0.720f, 0.60f, 0.48f, 0.36f},   // 山地 — 棕
-            {0.880f, 0.74f, 0.68f, 0.58f},   // 高山 — 浅棕灰
-            {1.000f, 0.96f, 0.96f, 0.96f},   // 雪峰 — 白
+    // 高程色带按「语义 e 锚点」定义（非硬编码 pos）：e = HeightCurve 本征坐标，0 = 海平面。
+    // 运行时 buildElevationColormap(eMin, eMax) 把每个锚点的 e 换算为 pos = (e - eMin) / (eMax - eMin)，
+    // 使色带随地形配置（海床深度 = eMin / 最高峰 = eMax / 海平面 = e=0）自动适配，永不因范围变化而错位。
+    // 海平面 e=0 始终是蓝→绿分界，陆地（e>0）立刻显绿、海滩/平原不再泛蓝。
+    // 首锚点 e 取极小（≤任何 eMin）拉到 pos 0，末锚点 e 取极大（≥任何 eMax）拉到 pos 1。
+    private static final float[][] S_ELEVATION_E = {
+            {-1.20f, 0.04f, 0.08f, 0.26f},   // 海床最深处（拉到 pos 0）— 深暗蓝
+            {-0.35f, 0.10f, 0.24f, 0.52f},   // 深海 — 蓝
+            {-0.15f, 0.22f, 0.46f, 0.62f},   // 大陆架 — 浅蓝（海洋末端）
+            { 0.00f, 0.34f, 0.60f, 0.34f},   // 海平面 e=0 — 绿（海陆分界，始终对齐 e=0）
+            { 0.06f, 0.46f, 0.64f, 0.30f},   // 平原/海滩 — 黄绿
+            { 0.25f, 0.58f, 0.58f, 0.32f},   // 丘陵 — 橄榄绿
+            { 0.50f, 0.62f, 0.50f, 0.36f},   // 低山 — 棕绿
+            { 0.75f, 0.70f, 0.62f, 0.52f},   // 高山 — 浅棕
+            { 1.20f, 0.97f, 0.97f, 0.97f},   // 雪峰（拉到 pos 1）— 白
     };
     // 高对比渐变色带：相邻色阶明显区分（用户反馈「相近色阶变化不明显」）。
     private static final float[][] S_TEMPERATURE = {
@@ -193,8 +195,13 @@ public final class GeoPalette {
     private static final List<String> SCIENTIFIC = Arrays.asList(
             "inferno", "viridis", "plasma", "magma", "cividis", "grayscale", "ocean_depth");
 
+    private static double eMin = -0.35;
+    private static double eMax = 0.95;
     static {
-        register("elevation", S_ELEVATION);
+        // 高程色带按语义 e 锚点 + 默认范围 [-0.35,0.95] 构建；
+        // 运行时 setElevationERange 会以其传入范围重建，自动适配地形配置（海床/最高峰/海平面）。
+        eMin = -0.35; eMax = 0.95;
+        buildElevationColormap(eMin, eMax);
         register("temperature", S_TEMPERATURE);
         register("humidity", S_HUMIDITY);
         register("continentality", S_CONTINENTALITY);
@@ -236,14 +243,37 @@ public final class GeoPalette {
     // 这样地形最高处触顶雪白、最深触底深蓝，且不依赖世界绝对高度上下限。
     // ============================================================
 
-    private static double eMin = -1.0;
-    private static double eMax = 1.0;
     /** 海平面 Y，用于图例海陆分界标注。 */
     private static int seaLevel = 63;
 
-    /** 设置高程色阶的 e 范围（地形实际可达区间）。默认 [-1,1]（世界 e 绝对范围）。 */
+    /**
+     * 用语义 e 锚点（S_ELEVATION_E）构建高程色带，并按当前 eMin/eMax 把每个锚点换算为 pos。
+     * 这样海平面(e=0)、海床(eMin)、最高峰(eMax) 随地形配置自动适配，色带永不因范围变化而错位。
+     */
+    private static void buildElevationColormap(double emin, double emax) {
+        double span = Math.max(1e-6, emax - emin);
+        float[][] stops = new float[S_ELEVATION_E.length][4];
+        for (int i = 0; i < S_ELEVATION_E.length; i++) {
+            double e = S_ELEVATION_E[i][0];
+            double pos = Math.max(0.0, Math.min(1.0, (e - emin) / span));
+            stops[i][0] = (float) pos;
+            stops[i][1] = S_ELEVATION_E[i][1];
+            stops[i][2] = S_ELEVATION_E[i][2];
+            stops[i][3] = S_ELEVATION_E[i][3];
+        }
+        ColorMap cm = new ColorMap("elevation", stops);
+        cm.bake(256);
+        COLORMAPS.put("elevation", cm);
+    }
+
+    /** 设置高程色阶的 e 范围（地形实际可达区间，见 TerrainParams.elevationERange）。
+     *  同时按新范围重建高程色带，使其随海床深度/最高峰/海平面自动适配。默认 [-0.35,0.95]。 */
     public static void setElevationERange(double minE, double maxE) {
-        if (maxE > minE) { eMin = minE; eMax = maxE; }
+        if (maxE > minE) {
+            eMin = minE;
+            eMax = maxE;
+            buildElevationColormap(eMin, eMax);
+        }
     }
 
     /** 设置海平面 Y，用于图例海陆分界标注。 */
@@ -317,7 +347,7 @@ public final class GeoPalette {
     // TERRAIN_TYPE id 与 TerrainClass.ordinal() 严格对齐（顺序/数量必须一致！）：
     // 0 OCEAN,1 DEEP_OCEAN,2 CONTINENTAL_SHELF,3 SUBMARINE_RIDGE,4 SEAMOUNT,
     // 5 LAKE,6 RIVER,7 BEACH,8 PLAIN,9 HILLS,10 PLATEAU,11 MOUNTAINS,
-    // 12 PEAK,13 BASIN,14 SNOW
+    // 12 PEAK,13 BASIN,14 SNOW,15 VOLCANO,16 VOLCANIC_FIELD
     private static final int[] T_TERRAIN_TYPE = {
             0x2E5C8A, // 0  OCEAN 中蓝
             0x1B3F6B, // 1  DEEP_OCEAN 深蓝
@@ -334,6 +364,8 @@ public final class GeoPalette {
             0xDDE6EE, // 12 PEAK 灰白
             0x7A6FA0, // 13 BASIN 紫灰
             0xFFFFFF, // 14 SNOW 白
+            0xE0703C, // 15 VOLCANO 火山橙红（熔岩）
+            0xC2603A, // 16 VOLCANIC_FIELD 火山群暗红褐
     };
     // CLIMATE_ZONE id: 与 Zone.ordinal() 对齐
     private static final int[] T_CLIMATE_ZONE = {
@@ -418,7 +450,7 @@ public final class GeoPalette {
                 case ELEVATION: {
                     // 直接按地形归一化高程 e 映射（HeightCurve 本征坐标），
                     // 范围取地形实际可达 e 区间 [eMin, eMax]，使地形最高触顶雪白、最深触底深蓝。
-                    // 海陆边界靠色带蓝→绿渐变 + BEACH 高亮体现，图例与像素完全一致。
+                    // 海陆边界靠色带蓝→绿分界（e=0 处）体现，图例与像素完全一致。
                     pos = clamp((c.e - eMin) / Math.max(1e-6, eMax - eMin), 0.0, 1.0);
                     break;
                 }
@@ -438,10 +470,6 @@ public final class GeoPalette {
             // RIVER_NETWORK：溢出河段（木桶短板被突破）→ 洪泛黄高亮
             if (layer == PreviewLayer.RIVER_NETWORK && c.riverNetOverflow && pos > 0.0) {
                 base = blendRGB(base, 0xE0B050, 0.6);
-            }
-            // 海岸高亮：BEACH 地形叠加热带沙色，增强海陆分界视觉
-            if (layer == PreviewLayer.ELEVATION && c.terrainType == TerrainClass.BEACH) {
-                base = blendRGB(base, 0xE8D090, 0.30);
             }
         }
         // 气候连续图层叠加地形底图（数据披在地形之上，地理图常见表现手法）。

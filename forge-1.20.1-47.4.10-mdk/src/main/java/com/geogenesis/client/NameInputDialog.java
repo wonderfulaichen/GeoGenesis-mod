@@ -73,7 +73,8 @@ public class NameInputDialog {
         int dx = dx();
         int dy = dy();
 
-        g.fill(0, 0, sw, sh, 0x88000000);
+        // 全屏遮罩：接近不透明(0xE0≈88%)，彻底压住背后配置屏密集文字，避免其透过遮罩浮在弹窗前面
+        g.fill(0, 0, sw, sh, 0xE0000000);
 
         g.fill(dx, dy, dx + DIALOG_W, dy + DIALOG_H, 0xFF1a1f28);
         g.fill(dx, dy, dx + DIALOG_W, dy + 1, 0xFF00c896);
@@ -84,6 +85,14 @@ public class NameInputDialog {
         var f = Minecraft.getInstance().font;
         g.drawString(f, title, dx + 10, dy + 8, 0xFFFFAA00);
         g.drawString(f, prompt, dx + 10, dy + 28, 0xFFCCCCCC);
+
+        // EditBox 区域显式边框 + 提亮底，确保它清晰可辨（避免背景透出造成"空框"错觉）
+        int boxX = dx + 12, boxY = dy + 52, boxW = DIALOG_W - 24, boxH = 18;
+        g.fill(boxX, boxY, boxX + boxW, boxY + boxH, 0xFF252a33);
+        g.fill(boxX, boxY, boxX + boxW, boxY + 1, 0xFF00c896);
+        g.fill(boxX, boxY + boxH - 1, boxX + boxW, boxY + boxH, 0xFF00c896);
+        g.fill(boxX, boxY, boxX + 1, boxY + boxH, 0xFF00c896);
+        g.fill(boxX + boxW - 1, boxY, boxX + boxW, boxY + boxH, 0xFF00c896);
 
         nameBox.render(g, mx, my, 0);
 

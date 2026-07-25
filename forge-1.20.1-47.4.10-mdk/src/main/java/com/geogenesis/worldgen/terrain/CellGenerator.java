@@ -8,12 +8,19 @@ import com.geogenesis.worldgen.river.HeightProvider;
 /**
  * 单格地形装配中枢 —— 统一连续场 e(x,z)。
  *
- * 流程：
+ * 流程（v8.3 连续混合海岸线）：
  *   ContinentField.sample → c ∈ [-1,1]
- *   ├─ HeightCurve.eFromC(c) → eOcean（海洋基面，负值）
- *   ├─ 大陆斜升：cBiased>0 时陆地随大陆性升高
- *   ├─ TypeLandShape.sample → eLand（独立类型噪声配方）
- *   └─ 统一混：e = clamp(eOcean + eLand, -1, 1)
+ *   ├─ HeightCurve.eFromC(c) → eOcean（海洋地形噪声场，含 seabed 细节，负值）
+ *   ├─ TypeLandShape.sample → eLand（陆地地形噪声场，独立类型噪声配方）
+ *   ├─ 大陆性 c 只决定「类型」与「海陆 mask」（海陆位置），绝不直接进高度
+ *   └─ 连续混合（恢复早期 e=eOcean+eLand 的自然混合，带平滑 gating）：
+ *         cont = smoothstep(oceanFadeStart, landRampEnd, cEdge)   // 0 纯海 → 1 纯陆
+ *         e    = (1-cont)·eOcean + cont·eLand
+ *       · cEdge < oceanFadeStart: cont=0 → e=eOcean（深海，陆地噪声完全淡出）
+ *       · cEdge > landRampEnd:    cont=1 → e=eLand（内陆，海深完全淡出）
+ *       · 过渡带内: 真实海岸线 = e=0 等值线，落在 (1-cont)·eOcean+cont·eLand=0
+ *         即 cont=−eOcean/(eLand−eOcean)，由两侧地形噪声共同决定 → 自然岬角/海湾
+ *         （早期 v8 两阶段把 e 硬锚在 coastLoc 是回归，已废除）
  *
  * 气候（v2 增强模型）：
  *   温度 = sin²(z) 纬度基值 × 海洋性修正 − 海拔递减率 + 噪声
@@ -26,19 +33,23 @@ public final class CellGenerator implements HeightProvider {
     private final TypeLandShape typeLandShape;
     private final SeaBedDetail seaBed;
     private final OceanFeatures oceanFeatures;
+    private final LandFeatures landFeatures;
+    private final CoastlineField coastline;
     private final double continentBias;
     private final double seabedAmp;
     private final double oceanDepthFactor;
+    /** 海洋淡出起点（cBiased），在此以上海洋深度开始衰减到 0 */
+    private final double oceanFadeStart;
+    /** 陆地高度终点（cBiased），在此达到全量陆地高度 */
+    private final double landRampEnd;
+    /** coastLoc 保留为过渡带中心概念（配置/向后兼容），v8.3 已不再硬锚 e=0 */
+    private final double coastLoc;
     private final TerrainParams params;
 
     // 温度参数（v5.10 正弦纬度模型，参考 TF/RTF）
-    private static final double TEMP_FREQ = 1.0 / 6000.0; // 6000 块一个完整温度周期
+    private final double tempFreq;    // 温度纬度角频率 = 1/latitudeScale（由 TerrainParams 注入，可配置）
     private final Noise tempWarp;     // 温度噪声扰动
     private final Noise humidityNoise; // 独立湿度噪声
-
-    // 大陆斜升参数（v5.10 参考 RTF continentRise）
-    private static final double CONTINENT_SLOPE_FACTOR = 0.08; // 每单位 cBiased 斜升
-    private static final double CONTINENT_SLOPE_MAX = 0.15;    // 最大斜升 e
 
     public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY) {
         this.continent = new ContinentField(p);
@@ -46,14 +57,20 @@ public final class CellGenerator implements HeightProvider {
         this.typeLandShape = new TypeLandShape(p);
         this.seaBed = new SeaBedDetail(p);
         this.oceanFeatures = new OceanFeatures();
+        this.landFeatures = new LandFeatures();
+        this.coastline = new CoastlineField(p);
         this.continentBias = p.continentBias();
         this.seabedAmp = p.seabedDetail();
         this.oceanDepthFactor = p.oceanDepthFactor();
+        this.oceanFadeStart = p.oceanFadeStart();
+        this.landRampEnd = p.landRampEnd();
+        this.coastLoc = p.coastLoc(); // 复用已有 coastLoc 作为两段分界
         this.params = p;
+        this.tempFreq = 1.0 / p.latitudeScale();   // 纬度缩放可配置
 
-        // 气候噪声
-        this.tempWarp = new Frequency(new Simplex(501), 1.0 / 1500.0);
-        this.humidityNoise = new Frequency(new Simplex(502), 1.0 / 800.0);
+        // 气候噪声（xz 缩放可配置）
+        this.tempWarp = new Frequency(new Simplex(501), 1.0 / p.tempWarpScale());
+        this.humidityNoise = new Frequency(new Simplex(502), 1.0 / p.humidityScale());
     }
 
     /** 一次性播种所有噪声节点 + 设置海山中心水深检查器 */
@@ -72,7 +89,9 @@ public final class CellGenerator implements HeightProvider {
             double eOcean = (eBase + seabed) * oceanDepthFactor;
             return Math.min(eOcean, 0.0);
         });
+        coastline.seed(worldSeed);
         oceanFeatures.seed(worldSeed);
+        landFeatures.seed(worldSeed);
         Noises.seedAll(tempWarp, worldSeed, 0);
         Noises.seedAll(humidityNoise, worldSeed, 0);
     }
@@ -99,46 +118,55 @@ public final class CellGenerator implements HeightProvider {
         cell.continent = c;
         double cBiased = c - continentBias;
 
-        // 2. 海洋基面 eOcean
+        // 2. 海洋基面 eOcean（不 clamp 到 0——陆地区域 eBase 为正，自然地增高）
         double eBase = heightCurve.eFromC(cBiased);
-        // 海床振幅按深度分区：深海盆崎岖、浅海平坦
         double depthMod = 0.6 + smoothstep(-0.2, -0.6, eBase) * 1.2;
         double seabed = seabedAmp * depthMod * seaBed.sample(wx, wz);
         double eOcean = eBase + seabed;
-        eOcean = eOcean * oceanDepthFactor;  // 海洋深度缩放：>1→更深(海洋面积扩大)，<1→更浅(陆地扩大)
-        eOcean = Math.min(eOcean, 0.0);
-        eOcean = clamp(eOcean, -1.0, 0.0);
-
-        // 2b. 海洋特征（洋中脊、海山）— 分离分量供分类用
-        OceanFeatures.FeatureResult oceanFeat = oceanFeatures.compute(wx, wz, eOcean, cBiased);
-        eOcean = clamp(eOcean + oceanFeat.total, -1.0, 0.0);
+        eOcean = eOcean * oceanDepthFactor;
+        // 海洋特征：计算洋中脊/海山增量，叠加到 eOcean 使海床产生实际地形。
+        OceanFeatures.FeatureResult oceanFeat = oceanFeatures.compute(wx, wz, Math.min(eOcean, 0.0), cBiased);
+        eOcean += oceanFeat.total; // 海山/洋中脊抬升海床（仅海洋侧生效，陆地侧 blend 天然淡出）
 
         // 3. Voronoi 混合结果
         VoronoiRegionField.BlendResult cellBlend = typeLandShape.sampleBlend(wx, wz);
         cell.typeWeights = cellBlend.typeWeights;
 
-        // 4. 陆地形态 eLand
-        double eLand = typeLandShape.sample(cellBlend, wx, wz);
+        // 4. 海岸线域扭曲（v8 CoastlineField）— 在海岸过渡带施加 c-space 噪声位移。
+        //    得到唯一的有效岸线坐标 cEdge，同时用于 eLand 计算和 blend 门控，
+        //    保证一致性（避免 eLand 算在位置A、blend 用位置B 的不匹配问题）。
+        double cEdge = cBiased + coastline.warpDisplacement(wx, wz, cBiased);
 
-        // 5. 大陆斜升（v5.10）：内陆随大陆性升高
-        //    参考 RTF: continentRise = clamp(cBiased * 10, 0, 0.5)
-        //    我们用更温和的系数，保持海岸平坦
-        double continentalSlope = clamp(cBiased * CONTINENT_SLOPE_FACTOR, 0.0, CONTINENT_SLOPE_MAX);
-        eLand += continentalSlope;
+        // 5. 陆地形态 eLand — 用有效岸线坐标 cEdge（替代原始 cBiased），
+        //    使山地/高原在位移后的海岸处正确升高（真岬角/悬崖）。
+        double eLand = typeLandShape.sample(cellBlend, wx, wz, cEdge);
+
+        // 6. 陆地火山特征（c 不再参与陆地高度——地形高度全权由类型噪声决定）
+        LandFeatures.FeatureResult landFeat = landFeatures.compute(wx, wz);
+        eLand += landFeat.total;
+
         cell.eLand = eLand;
 
-        // 6. 连续主导类型
+        // 7. 连续主导类型
         TerrainClass cellType = TypeLandShape.dominantFromWeights(cellBlend.typeWeights);
 
-        // 7. 统一连续场
-        double e = clamp(eOcean + eLand, -1.0, 1.0);
+        // 8. 连续混合（v8.3）：海陆地形 = 海洋噪声场 与 陆地噪声场 的平滑插值。
+        //    真实海岸线 = 插值结果 e=0 的等值线，由两噪声场实际数值共同决定，
+        //    不再硬锚 coastLoc。cEdge 仅作软权重，决定两场各占多少。
+        //    · cEdge < oceanFadeStart: cont=0  → e = eOcean（深海，陆地噪声完全淡出）
+        //    · cEdge > landRampEnd:    cont=1  → e = eLand（内陆，海深完全淡出）
+        //    · 过渡带内: e=0 落在 (1-cont)·eOcean + cont·eLand = 0 处
+        //        ⟹ cont = −eOcean/(eLand−eOcean)，由两侧地形噪声游走 → 自然岬角/海湾
+        double cont = smoothstep(oceanFadeStart, landRampEnd, cEdge); // 0(纯海)→1(纯陆)
+        double e = (1.0 - cont) * eOcean + cont * eLand;
         cell.e = e;
         cell.height = heightCurve.heightFromE(e);
+        cell.coastCoord = cEdge;
 
         // 8. 气候（增强模型 v2）
         //    温度：纬度基值 + 海拔递减率 + 海洋性修正 + 噪声
         //    湿度：大陆性距海 + 山区雨影 + 噪声
-        double sinVal = Math.sin(wz * TEMP_FREQ);
+        double sinVal = Math.sin(wz * tempFreq);
         double temp = sinVal * sinVal * 2.0 - 1.0; // 纬度基值 [-1, 1]
         // 海洋性修正：海岸（c≈0）温差小，内陆（c>0.5）温差大
         double continentFactor = clamp(c * 1.5, 0.0, 1.0);
@@ -166,9 +194,9 @@ public final class CellGenerator implements HeightProvider {
         //   =1.0 完全生效（默认，行为同旧版）；=0.0 退化为中性（温和/平均）；=0.5 折半。
         //   同时作用于 BiomeClassifier 的 isX() 判定与 classify 的雪线计算。
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
-        double tempInf = cfg != null ? cfg.tempInfluence.get() : 1.0;
-        double humInf = cfg != null ? cfg.humidityInfluence.get() : 1.0;
-        double contInf = cfg != null ? cfg.continentInfluence.get() : 1.0;
+        double tempInf = cfg != null ? cfgDbl(cfg.tempInfluence, 1.0) : 1.0;
+        double humInf = cfg != null ? cfgDbl(cfg.humidityInfluence, 1.0) : 1.0;
+        double contInf = cfg != null ? cfgDbl(cfg.continentInfluence, 1.0) : 1.0;
         double tempE = clamp(temp * tempInf, -1.0, 1.0);
         double humE = clamp(hum * humInf, -1.0, 1.0);
         double contE = clamp(c * contInf, -1.0, 1.0);
@@ -178,7 +206,7 @@ public final class CellGenerator implements HeightProvider {
         cell.humidity = humE;
 
         // 9. 分类（使用连续 typeWeights + 已计算的温度/湿度 + 海洋特征）
-        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, tempE, humE, oceanFeat);
+        cell.terrainType = classify(c, e, eLand, cellType, cellBlend.typeWeights, tempE, humE, oceanFeat, landFeat, cEdge);
         cell.continentNoise = c;
         cell.shape = eLand * 2.0 - 1.0;
 
@@ -192,7 +220,9 @@ public final class CellGenerator implements HeightProvider {
     public TerrainClass classify(double c, double e, double eLand,
                                   TerrainClass cellType, double[] typeWeights,
                                   double temperature, double humidity,
-                                  OceanFeatures.FeatureResult oceanFeat) {
+                                  OceanFeatures.FeatureResult oceanFeat,
+                                  LandFeatures.FeatureResult landFeat,
+                                  double cEdge) {
         if (e < 0.0) {
             // 海洋地形细分
             double ridgeAmp = oceanFeat != null ? oceanFeat.ridge : 0;
@@ -204,15 +234,26 @@ public final class CellGenerator implements HeightProvider {
             if (e > -0.08) return TerrainClass.CONTINENTAL_SHELF;
             return e < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
-        // BEACH 分类暂不在此处处理——旧版 classifyTerrain（静默化侵蚀后重分类）中有。
-        // 此处直接交给 cellType（Voronoi 主导类型），避免 e=0.03 硬阈值处
-        // BEACH(SAND) ↔ PLAIN/GRASS 的材质突变。
-        
+        // BEACH：贴真实海岸线（e≈0 的陆地侧窄条）+ 位于海陆过渡带（cEdge 在 fade..ramp 内）。
+        // 用有效岸线坐标 cEdge 判定，使沙滩跟随 e=0 等值线游走，而非钉在固定 c 阈值；
+        // 过渡带约束排除内陆低地（盆地/平原）误判为沙滩。
+        if (e < 0.04 && e > -0.03 && cEdge > oceanFadeStart && cEdge < landRampEnd) {
+            return TerrainClass.BEACH;
+        }
+
+        // 火山优先（可见特征，用户核心诉求：陆地需有火山地形）。
+        if (landFeat != null) {
+            if (landFeat.single > 0.05) return TerrainClass.VOLCANO;
+            if (landFeat.field > 0.04) return TerrainClass.VOLCANIC_FIELD;
+        }
+
         // 取 MOUNTAINS 连续权重（而非离散 cellType == MOUNTAINS）
         double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
             ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
 
-        if (mountW > 0.35 && eLand > 0.60) {
+        // PEAK/SNOW 使用 post-blend e（而非预 blend eLand），
+        // 确保海岸过渡带不被误标为雪峰材质（用户反馈：海岸边 SNOW 贴图硬切下降）。
+        if (mountW > 0.35 && e > 0.60) {
             return TerrainClass.PEAK;
         }
         // SNOW 判定：高海拔 + 寒冷温度 + 湿度条件
@@ -225,7 +266,7 @@ public final class CellGenerator implements HeightProvider {
         double hNorm = (humidity + 1.0) / 2.0;     // [0,1], dry=0, wet=1
         double effectiveSnowElev = snowBase + (tNorm - 0.5) * snowTempInf - (hNorm - 0.5) * snowHumInf;
         effectiveSnowElev = Math.max(0.02, Math.min(1.0, effectiveSnowElev));
-        if (eLand > effectiveSnowElev && eLand > 0.15) {
+        if (e > effectiveSnowElev && e > 0.15) {
             return TerrainClass.SNOW;
         }
         return cellType;
@@ -237,11 +278,11 @@ public final class CellGenerator implements HeightProvider {
     public static TerrainClass classifyTerrain(double ne, double eLand,
                                                 TerrainClass cellType,
                                                 double temperature, double humidity) {
-        return classifyTerrain(ne, eLand, cellType, temperature, humidity, null);
+        return classifyTerrain(ne, eLand, cellType, temperature, humidity, null, 0.0);
     }
 
     /**
-     * 静态分类方法（带连续类型权重）。
+     * 静态分类方法（带连续类型权重 + coastCoord 海岸约束）。
      * PEAK/SNOW 使用 typeWeights 连续阈值，避免离散 argmax 跳变。
      * 海洋区域按深度细分：大陆架 / 海洋 / 深海（无特征分量，仅靠 e）。
      */
@@ -249,28 +290,33 @@ public final class CellGenerator implements HeightProvider {
                                                 TerrainClass cellType,
                                                 double temperature,
                                                 double humidity,
-                                                double[] typeWeights) {
+                                                double[] typeWeights,
+                                                double coastCoord) {
         if (ne < 0.0) {
             if (ne > -0.08) return TerrainClass.CONTINENTAL_SHELF;
             return ne < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
-        if (ne < 0.03) return TerrainClass.BEACH;
+        // BEACH：贴真实海岸线（ne≈0 陆地侧窄条）+ 位于海陆过渡带（coastCoord 在 fade..ramp 内）。
+        // coastCoord ≈ cEdge；过渡带约束排除内陆低地误判为沙滩。
+        if (ne > -0.03 && ne < 0.04 && coastCoord > 0.0 && coastCoord < 0.08) {
+            return TerrainClass.BEACH;
+        }
 
-        // 使用连续 typeWeights 判断 PEAK
+        // 使用连续 typeWeights 判断 PEAK（用 ne 替代 eLand，与主 classify 一致）
         double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
             ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
-        if (mountW > 0.35 && eLand > 0.60) return TerrainClass.PEAK;
+        if (mountW > 0.35 && ne > 0.60) return TerrainClass.PEAK;
 
         // SNOW 判定：高海拔 + 寒冷温度 + 湿度（双曲线模型）
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
-        double snowBase = cfg != null ? cfg.snowLine.get() : 0.70;
-        double snowTempInf = cfg != null ? cfg.snowLatitudeInfluence.get() : 0.25;
-        double snowHumInf = cfg != null ? cfg.snowHumidityInfluence.get() : 0.15;
+        double snowBase = cfg != null ? cfgDbl(cfg.snowLine, 0.70) : 0.70;
+        double snowTempInf = cfg != null ? cfgDbl(cfg.snowLatitudeInfluence, 0.25) : 0.25;
+        double snowHumInf = cfg != null ? cfgDbl(cfg.snowHumidityInfluence, 0.15) : 0.15;
         double tNorm = (temperature + 1.0) / 2.0;
         double hNorm = (humidity + 1.0) / 2.0;
         double effectiveSnowElev = snowBase + (tNorm - 0.5) * snowTempInf - (hNorm - 0.5) * snowHumInf;
         effectiveSnowElev = Math.max(0.02, Math.min(1.0, effectiveSnowElev));
-        if (eLand > effectiveSnowElev && eLand > 0.15) return TerrainClass.SNOW;
+        if (ne > effectiveSnowElev && ne > 0.15) return TerrainClass.SNOW;
         if (typeWeights != null && typeWeights.length >= TerrainClass.COUNT) {
             return TypeLandShape.dominantFromWeights(typeWeights);
         }
@@ -309,6 +355,20 @@ public final class CellGenerator implements HeightProvider {
     private static double smoothstep(double edge0, double edge1, double x) {
         double t = saturate((x - edge0) / (edge1 - edge0));
         return t * t * (3.0 - 2.0 * t);
+    }
+
+    /**
+     * 安全读取 Forge 配置值。
+     * 游戏内（config 已加载）→ 正常返回 toml 值；独立预览/探针（config 未加载运行时）
+     * 的 {@code ConfigValue.get()} 会抛 IllegalStateException，此时回退到代码默认值。
+     * 仅在配置未加载时改变行为，不影响游戏内结果。
+     */
+    private static double cfgDbl(net.minecraftforge.common.ForgeConfigSpec.DoubleValue v, double fallback) {
+        try {
+            return v.get();
+        } catch (IllegalStateException ex) {
+            return fallback;
+        }
     }
 
     /** 采样大陆性快捷接口 */

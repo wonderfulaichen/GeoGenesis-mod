@@ -19,7 +19,9 @@ public enum TerrainClass {
     MOUNTAINS,          // 山地
     PEAK,               // 山峰
     BASIN,              // 盆地
-    SNOW;               // 雪原（温度驱动）
+    SNOW,               // 雪原（温度驱动）
+    VOLCANO,            // 火山（单体，含火山口）
+    VOLCANIC_FIELD;     // 火山群/火山区（散布小火山锥）
 
     /** 总类型数 */
     public static final int COUNT = values().length;
