@@ -109,8 +109,14 @@ public final class CellGenerator implements HeightProvider {
 
     /**
      * 采样单格完整数据 — 统一连续场 e(x,z)。
+     * 水平缩放：所有噪声坐标除以 horizontalScale（HS），实现统一 XZ 等比缩放。
      */
     public Cell sample(double wx, double wz) {
+        double hs = params.horizontalScale();
+        if (hs > 0.01 && hs != 1.0) {
+            wx = wx / hs;
+            wz = wz / hs;
+        }
         Cell cell = new Cell();
 
         // 1. 大陆性 c

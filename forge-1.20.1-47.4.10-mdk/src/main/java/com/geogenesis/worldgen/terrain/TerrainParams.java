@@ -257,8 +257,8 @@ public record TerrainParams(
             // classification thresholds + snow latitude coupling
             0.25, 0.04, 0.82, 0.25, 0.15,  // elevHigh↑0.25,reliefHigh↑0.04,peakE,snowLatitudeInfluence,snowHumidityInfluence
 
-            // preview compat（加大 horizontalScale 减少 preview 计算量）
-            4.0, 63, 0.70, -64, 320, 256, -48,
+            // preview compat（HS=1 默认 1:1 缩放，无畸变）
+            1.0, 63, 0.70, -64, 320, 256, -48,
             1.0,  // verticalScale
             5.0,              // cAffinityStrength
             // coastline diversification

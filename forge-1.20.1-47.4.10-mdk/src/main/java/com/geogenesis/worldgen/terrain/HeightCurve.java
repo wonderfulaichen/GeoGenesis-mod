@@ -20,11 +20,13 @@ public final class HeightCurve {
     private final double minY;
     private final double maxY;
     private final double seaLevelY;
+    private final double verticalScale;
 
     public HeightCurve(TerrainParams p, double minWorldY, double maxWorldY) {
         this.minY = minWorldY;
         this.maxY = maxWorldY;
         this.seaLevelY = p.seaLevel();
+        this.verticalScale = p.verticalScale();
         this.locations = p.oceanLocations();
         this.values = p.oceanValues();
         this.derivatives = p.oceanDerivatives();
@@ -58,15 +60,16 @@ public final class HeightCurve {
     }
 
     /**
-     * 由 e 映射到世界高度 Y（非对称映射）。
+     * 由 e 映射到世界高度 Y（非对称映射，带垂直缩放）。
      * e ∈ [-1,0] → [minY, seaLevel]; e ∈ [0,+1] → [seaLevel, maxY]。
+     * 海洋侧（e≤0）不受 VS 影响，陆地侧 e 乘以 VS 后钳位到 [0,1] — 类似 3D 建模 Y 轴等比缩放。
      */
     public double heightFromE(double e) {
         if (e <= 0.0) {
             double t = NoiseUtil.clamp(-e, 0.0, 1.0); // 0→海平面, 1→世界底
             return seaLevelY - t * (seaLevelY - minY);
         } else {
-            double t = NoiseUtil.clamp(e, 0.0, 1.0);   // 0→海平面, 1→世界顶
+            double t = NoiseUtil.clamp(e * verticalScale, 0.0, 1.0);
             return seaLevelY + t * (maxY - seaLevelY);
         }
     }

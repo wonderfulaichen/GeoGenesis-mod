@@ -46,7 +46,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private static final int TERRAIN_TYPE_LAYER = 9;
 
     private final Screen parent;
-    private long seed = (long) (Math.random() * Long.MAX_VALUE);
+    /** 预览种子。固定默认值 12345L，用户可通过预设面板的 ★ 按钮手动随机化。 */
+    private long seed = 12345L;
 
     private int tab = 0;
     /** 标签页名：上游→下游排列。页签0=世界参数（最上游），页签1=气候，页签2=地形（含雪线） */
@@ -104,6 +105,12 @@ public class GeoGenesisConfigScreen extends Screen {
     public GeoGenesisConfigScreen(Screen parent) {
         super(Component.literal("GeoGenesis 配置"));
         this.parent = parent;
+    }
+    /** 带种子的构造器：创建世界时传随机种子，游戏中传当前世界种子。 */
+    public GeoGenesisConfigScreen(Screen parent, long seed) {
+        super(Component.literal("GeoGenesis 配置"));
+        this.parent = parent;
+        this.seed = seed;
     }
     public GeoGenesisConfigScreen(Screen parent, int tab) {
         super(Component.literal("GeoGenesis 配置"));
