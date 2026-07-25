@@ -3,39 +3,29 @@ package com.geogenesis.worldgen.terrain;
 import com.geogenesis.worldgen.noise.*;
 
 /**
- * Voronoi 区域驱动的陆地形态生成器。
+ * 连续性格场驱动的陆地形态生成器。
  * <p>
- * v7 (Phase 1)：差异调制 — 在共享噪声基底上叠加 per-type 专属噪声偏差，
- * 各类型噪声形态真正不同（Ridge 脊线、平滑高原边缘等），
- * 而断裂风险通过零均值加权混合 + typeWeights 平滑过渡控制。
+ * 用 {@link TerrainCharacterField} 的连续噪声场 + softmax 取代 Voronoi 细胞网格，
+ * 实现任意尺度连续类型区域（如北美中部平原）。
  * <p>
- * Phase 1：支持统一样条（2 层嵌套：大陆性 c → 内层样条 lo/hi）。
- * <p>
- * 地形类型（v6 继承）：
- * <ul>
- *   <li>PLAIN — 极平坦</li>
- *   <li>HILLS — 圆润起伏</li>
- *   <li>MOUNTAINS — 尖锐脊线 + 脊线网络</li>
- *   <li>PLATEAU — 平顶 + smoothstep 边缘渐变</li>
- *   <li>BASIN — 反转凹陷</li>
- * </ul>
- * 在 cell 边界处按 typeWeights 加权混合各类型的独立噪声偏差，
- * 保证跨 cell 连续过渡（详见证断裂分析 §Phase1）。
+ * 各类型的地形噪声形态（PLAIN 超平坦、MOUNTAINS Ridge 脊线、PLATEAU 平顶边缘等）
+ * 完全独立且不同——由 {@link TypeNoiseProvider} 各自配方实现。类型权重仅决定
+ * 各类型在空间上的主导区域大小和过渡位置。
  */
 public final class TypeLandShape {
 
-    private final VoronoiRegionField regions;
+    private final TerrainCharacterField character;
     private final TypeNoiseProvider typeNoise;
-    private final TypeGenerators generators;   // lo/hi 类型内层样条（eLand 范围）
+    private final TypeGenerators generators;
     private final Noise moistureNoise;
-    private final ContinentField continent;    // Phase 1：用于计算大陆性 c
-    private final double continentBias;        // Phase 1：大陆性偏置
-    private final TerrainParams params;        // Phase 2.2：语义适配强度等可调旋钮
+    private final ContinentField continent;
+    private final double continentBias;
+    private final TerrainParams params;
 
     public TypeLandShape(TerrainParams p) {
         this.params = p;
         this.generators = new TypeGenerators(p);
-        this.regions = new VoronoiRegionField(p.voronoiWarpAmp());
+        this.character = new TerrainCharacterField();
         this.typeNoise = new TypeNoiseProvider(p.beltReliefAmp());
         this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
         this.continent = new ContinentField(p);
@@ -43,7 +33,7 @@ public final class TypeLandShape {
     }
 
     public void seed(long worldSeed) {
-        regions.seed(worldSeed);
+        character.seed(worldSeed);
         typeNoise.seed(worldSeed);
         generators.seed(worldSeed);
         continent.seed(worldSeed);
@@ -52,30 +42,25 @@ public final class TypeLandShape {
 
     public TypeGenerators typeGenerators() { return generators; }
 
-    /** 返回 Voronoi 混合结果（含连续类型权重），供 CellGenerator 避免双重计算 */
-    public VoronoiRegionField.BlendResult sampleBlend(double wx, double wz) {
-        return regions.sampleBlend(wx, wz);
+    /** 返回连续类型权重混合结果 */
+    public TerrainCharacterField.BlendResult sampleBlend(double wx, double wz) {
+        return character.sampleBlend(wx, wz);
     }
 
     /**
-     * v7.5：类型噪声直接主导 eLand（Fix 2）。
-     * <p>
-     * 默认使用内部计算的 cBiased（向后兼容）。
+     * 采样 eLand，默认使用内部计算的 cBiased。
      */
-    public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz) {
+    public double sample(TerrainCharacterField.BlendResult blend, double wx, double wz) {
         double c = continent.sample(wx, wz);
         double cBiased = c - continentBias;
         return sampleFromUnifiedSpline(blend, wx, wz, cBiased);
     }
 
     /**
-     * v8：带有效岸线坐标的 sample 重载。
-     * <p>
-     * 由 CellGenerator 传入经 CoastlineField warp 位移后的 {@code effectiveCBiased}，
-     * 替代内部重新采样 continent，使地形类型高度在海陆位移后的"有效岸线坐标"处正确升高，
-     * 实现真正的地形岬角/悬崖（而非低矮平地）。
+     * 带有效岸线坐标的 sample 重载。
+     * 由 CellGenerator 传入经 CoastlineField warp 位移后的 effectiveCBiased。
      */
-    public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz, double effectiveCBiased) {
+    public double sample(TerrainCharacterField.BlendResult blend, double wx, double wz, double effectiveCBiased) {
         return sampleFromUnifiedSpline(blend, wx, wz, effectiveCBiased);
     }
 
@@ -85,10 +70,10 @@ public final class TypeLandShape {
      * v8：接受外部传入的 {@code effectiveCBiased}（经 CoastlineField warp 位移后的有效岸线坐标），
      * 替代内部重新采样 continent，使地形类型在位移后的海岸处正确升高。
      * <p>
-     * 海洋/水域类型由 CellGenerator 经 HeightCurve 单独处理，不走 Voronoi 类型系统，
-     * 故此处 typeWeights 仅含陆地类型，无需 isWater 分支。
+     * 海洋/水域类型由 CellGenerator 经 HeightCurve 单独处理，
+     * 故此处 typeWeights 仅含陆地类型。
      */
-    private double sampleFromUnifiedSpline(VoronoiRegionField.BlendResult blend, double wx, double wz, double effectiveCBiased) {
+    private double sampleFromUnifiedSpline(TerrainCharacterField.BlendResult blend, double wx, double wz, double effectiveCBiased) {
         double[] tw = blend.typeWeights;
         if (tw == null) {
             double s = generators.computeSharedNoise(wx, wz);
@@ -169,7 +154,7 @@ public final class TypeLandShape {
      * 采样 eLand（完整流程）。
      */
     public double sample(double wx, double wz) {
-        VoronoiRegionField.BlendResult blend = regions.sampleBlend(wx, wz);
+        TerrainCharacterField.BlendResult blend = character.sampleBlend(wx, wz);
         return sample(blend, wx, wz);
     }
 
@@ -177,7 +162,7 @@ public final class TypeLandShape {
      * 连续主导类型：argmax(typeWeights)。
      */
     public TerrainClass dominantType(double wx, double wz) {
-        VoronoiRegionField.BlendResult blend = regions.sampleBlend(wx, wz);
+        TerrainCharacterField.BlendResult blend = character.sampleBlend(wx, wz);
         return dominantFromWeights(blend.typeWeights);
     }
 

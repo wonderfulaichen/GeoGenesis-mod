@@ -128,8 +128,8 @@ public final class CellGenerator implements HeightProvider {
         OceanFeatures.FeatureResult oceanFeat = oceanFeatures.compute(wx, wz, Math.min(eOcean, 0.0), cBiased);
         eOcean += oceanFeat.total; // 海山/洋中脊抬升海床（仅海洋侧生效，陆地侧 blend 天然淡出）
 
-        // 3. Voronoi 混合结果
-        VoronoiRegionField.BlendResult cellBlend = typeLandShape.sampleBlend(wx, wz);
+        // 3. 连续类型混合结果
+        TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(wx, wz);
         cell.typeWeights = cellBlend.typeWeights;
 
         // 4. 海岸线域扭曲（v8 CoastlineField）— 在海岸过渡带施加 c-space 噪声位移。

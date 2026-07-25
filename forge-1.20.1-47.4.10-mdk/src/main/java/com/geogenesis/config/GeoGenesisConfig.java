@@ -173,11 +173,9 @@ public final class GeoGenesisConfig {
     /** 垂直缩放比例（1-8），用于预览和地形高度夸张 */
     public final ForgeConfigSpec.DoubleValue verticalScale;
 
-    // ===== 大陆性语义亲和度 + Voronoi 域扭曲 =====
+    // ===== 大陆性语义亲和度 =====
     /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 5.0 */
     public final ForgeConfigSpec.DoubleValue cAffinityStrength;
-    /** Voronoi 区域场域扭曲幅度（块），默认 250.0 */
-    public final ForgeConfigSpec.DoubleValue voronoiWarpAmp;
 
     // ===== 海岸线多样化（CoastlineField 输入） =====
     /** 海岸线 warp 振幅（c 空间单位），默认 0.03 */
@@ -512,12 +510,10 @@ public final class GeoGenesisConfig {
             .defineInRange("verticalScale", 1.0, 1.0, 8.0);
         builder.pop();
 
-        builder.push("Semantic Affinity & Voronoi");
+        builder.push("Semantic Affinity");
         // Phase 2.2: 语义适配旋钮
         cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。v14+ 恢复：共享噪声公式数学保证连续，因此 cAffinity 恢复非零是安全的（权重偏置不影响 eLand 连续性）。3.0=中等强度，山脉偏内陆、盆地偏海岸/深海。0=纯空间 Voronoi 类型分布。范围 [0,10]。")
             .defineInRange("cAffinityStrength", 3.0, 0.0, 10.0);
-        voronoiWarpAmp = builder.comment("Voronoi 区域场域扭曲幅度（块），打散网格对齐伪影。默认 250.0。")
-            .defineInRange("voronoiWarpAmp", 250.0, 0.0, 600.0);
         builder.pop();
 
         builder.push("Coastline Diversification");
@@ -577,16 +573,16 @@ public final class GeoGenesisConfig {
         // PLAIN inner spline (12 fields)
         builder.push("PLAIN");
         plainLoLoc0 = builder.defineInRange("plainLoLoc0", 0.0, 0.0, 1.0);
-        plainLoVal0 = builder.defineInRange("plainLoVal0", 0.015, -1.0, 1.0);
+        plainLoVal0 = builder.defineInRange("plainLoVal0", 0.005, -1.0, 1.0);
         plainLoDeriv0 = builder.defineInRange("plainLoDeriv0", 0.0, -10.0, 10.0);
         plainLoLoc1 = builder.defineInRange("plainLoLoc1", 1.0, 0.0, 1.0);
-        plainLoVal1 = builder.defineInRange("plainLoVal1", 0.015, -1.0, 1.0);
+        plainLoVal1 = builder.defineInRange("plainLoVal1", 0.005, -1.0, 1.0);
         plainLoDeriv1 = builder.defineInRange("plainLoDeriv1", 0.0, -10.0, 10.0);
         plainHiLoc0 = builder.defineInRange("plainHiLoc0", 0.0, 0.0, 1.0);
-        plainHiVal0 = builder.defineInRange("plainHiVal0", 0.06, -1.0, 1.0);
+        plainHiVal0 = builder.defineInRange("plainHiVal0", 0.03, -1.0, 1.0);
         plainHiDeriv0 = builder.defineInRange("plainHiDeriv0", 0.0, -10.0, 10.0);
         plainHiLoc1 = builder.defineInRange("plainHiLoc1", 1.0, 0.0, 1.0);
-        plainHiVal1 = builder.defineInRange("plainHiVal1", 0.06, -1.0, 1.0);
+        plainHiVal1 = builder.defineInRange("plainHiVal1", 0.03, -1.0, 1.0);
         plainHiDeriv1 = builder.defineInRange("plainHiDeriv1", 0.0, -10.0, 10.0);
         builder.pop();
 
@@ -599,10 +595,10 @@ public final class GeoGenesisConfig {
         hillsLoVal1 = builder.defineInRange("hillsLoVal1", 0.06, -1.0, 1.0);
         hillsLoDeriv1 = builder.defineInRange("hillsLoDeriv1", 0.0, -10.0, 10.0);
         hillsHiLoc0 = builder.defineInRange("hillsHiLoc0", 0.0, 0.0, 1.0);
-        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.25, -1.0, 1.0);
+        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.35, -1.0, 1.0);
         hillsHiDeriv0 = builder.defineInRange("hillsHiDeriv0", 0.0, -10.0, 10.0);
         hillsHiLoc1 = builder.defineInRange("hillsHiLoc1", 1.0, 0.0, 1.0);
-        hillsHiVal1 = builder.defineInRange("hillsHiVal1", 0.25, -1.0, 1.0);
+        hillsHiVal1 = builder.defineInRange("hillsHiVal1", 0.35, -1.0, 1.0);
         hillsHiDeriv1 = builder.defineInRange("hillsHiDeriv1", 0.0, -10.0, 10.0);
         builder.pop();
 
@@ -625,16 +621,16 @@ public final class GeoGenesisConfig {
         // PLATEAU inner spline (12 fields)
         builder.push("PLATEAU");
         platLoLoc0 = builder.defineInRange("platLoLoc0", 0.0, 0.0, 1.0);
-        platLoVal0 = builder.defineInRange("platLoVal0", 0.50, -1.0, 1.0);
+        platLoVal0 = builder.defineInRange("platLoVal0", 0.60, -1.0, 1.0);
         platLoDeriv0 = builder.defineInRange("platLoDeriv0", 0.0, -10.0, 10.0);
         platLoLoc1 = builder.defineInRange("platLoLoc1", 1.0, 0.0, 1.0);
-        platLoVal1 = builder.defineInRange("platLoVal1", 0.50, -1.0, 1.0);
+        platLoVal1 = builder.defineInRange("platLoVal1", 0.60, -1.0, 1.0);
         platLoDeriv1 = builder.defineInRange("platLoDeriv1", 0.0, -10.0, 10.0);
         platHiLoc0 = builder.defineInRange("platHiLoc0", 0.0, 0.0, 1.0);
-        platHiVal0 = builder.defineInRange("platHiVal0", 0.66, -1.0, 1.0);
+        platHiVal0 = builder.defineInRange("platHiVal0", 0.75, -1.0, 1.0);
         platHiDeriv0 = builder.defineInRange("platHiDeriv0", 0.0, -10.0, 10.0);
         platHiLoc1 = builder.defineInRange("platHiLoc1", 1.0, 0.0, 1.0);
-        platHiVal1 = builder.defineInRange("platHiVal1", 0.66, -1.0, 1.0);
+        platHiVal1 = builder.defineInRange("platHiVal1", 0.75, -1.0, 1.0);
         platHiDeriv1 = builder.defineInRange("platHiDeriv1", 0.0, -10.0, 10.0);
         builder.pop();
 
@@ -702,7 +698,7 @@ public final class GeoGenesisConfig {
             1.0, seaLevel.get(), snowLine.get(), minY.get(),
             maxY.get(), (int)(maxY.get() * 0.8), (int)(minY.get() * 0.75),
             verticalScale.get(),
-            cAffinityStrength.get(), voronoiWarpAmp.get(),
+            cAffinityStrength.get(),
             // coastline diversification
             coastlineWarpAmp.get(), coastlineWarpScale.get(), coastlineWarpOctaves.get(), coastlineWarpLacunarity.get(), coastlineWarpPersistence.get(), coastTerrainInfluence.get(),
             archipelagoBand.get(), archipelagoDensity.get(), archipelagoScale.get(), archipelagoHeight.get(),
@@ -876,7 +872,7 @@ public final class GeoGenesisConfig {
             1.0, seaLevel.getDefault(), snowLine.getDefault(), minY.getDefault(),
             maxY.getDefault(), (int)(maxY.getDefault() * 0.8), (int)(minY.getDefault() * 0.75),
             verticalScale.getDefault(),
-            cAffinityStrength.getDefault(), voronoiWarpAmp.getDefault(),
+            cAffinityStrength.getDefault(),
             // coastline diversification
             coastlineWarpAmp.getDefault(), coastlineWarpScale.getDefault(), coastlineWarpOctaves.getDefault(), coastlineWarpLacunarity.getDefault(), coastlineWarpPersistence.getDefault(), coastTerrainInfluence.getDefault(),
             archipelagoBand.getDefault(), archipelagoDensity.getDefault(), archipelagoScale.getDefault(), archipelagoHeight.getDefault(),

@@ -97,7 +97,6 @@ public class ParameterConfigPanel extends ConfigPanel {
         addSpec("高起伏阈值", "起伏度分类阈值。低于此值为丘陵，高于为山脉。值越低→更多区域划入山脉类型。", c.reliefHigh, 0, 0.6);
         addSpec("峰阈值", "山峰阈值。高海拔区域中 e 值超过此阈值为 PEAK（雪峰亚型）。值越低→更多山峰。", c.peakE, 0, 1.0);
         addSpec("语义适配强度", "大陆性语义亲和度强度 β：调制大陆性 c 对各类型空间权重的偏置幅度。0=无 c 效应（类型分布不随大陆性变化），越大越偏内陆聚集/海岸低地。默认1.5。", c.cAffinityStrength, 0.0, 4.0);
-        addSpec("域扭曲幅度", "Voronoi 区域场域扭曲幅度（块）：打散网格对齐伪影，使区域边界蜿蜒不显网格。越大越自然。默认250.0。", c.voronoiWarpAmp, 0.0, 600.0);
         // 大陆 FBM（值叠加，对标参考项目 fbm 海岸线）
         addIntSpec("大陆FBM倍频", "大陆性 c 场由多倍频 FBM 值叠加（每倍频频率倍增 lacunarity、振幅乘 persistence）。海岸线 = c=0 等值线，FBM 多尺度细节直接刻进海岸线 → 自然犬牙交错。默认 6（严格对齐参考项目）。", c.continentFbmOctaves, 1, 10);
         addSpec("FBM频率倍增", "大陆 FBM 频率倍增（lacunarity）：每倍频频率×该值，越大细节尺度越密（海岸线破碎更细）。默认 2.0。", c.continentFbmLacunarity, 1.5, 3.0);
