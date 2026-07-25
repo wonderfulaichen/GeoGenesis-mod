@@ -19,6 +19,16 @@
 - 大陆性 7 段阈值字段：`continentDeepOceanThreshold`~`continentInlandThreshold`
 - 雪线双曲线（2026-07-22）：`effectiveSnowElev = snowLine + (tNorm-0.5)×snowTempInfluence - (hNorm-0.5)×snowHumidityInfluence`，Y 轴用 `seaLevel + ratio×(maxY-seaLevel)` 锚定
 
+## 类型过渡原则（2026-07-25 v10 钉死）
+- **无细胞格子，无高斯窗口，无 smoothstep**：`VoronoiRegionField` v10 彻底删除了 CELL_SPACING/SEARCH_RADIUS/SIGMA/TYPEOV
+- **类型中心线性内插**：在每个 (wx,wz) 直接采样 typeField，然后在相邻两个类型中心之间线性内插权重
+  - 中心位置：BASIN=0.03, PLAIN=0.12, HILLS=0.35, PLATEAU=0.58, MOUNTAINS=0.72
+  - 过渡完全由 typeField 自身的梯度自然决定，无任何人为过渡带参数
+- xz 坐标（域扭曲）只用来让类型边界蜿蜒，**不产生跳变**
+- 各类型的高度由各自的密度函数（高度 e）自然决定如何衔接——两边的连续运动轨迹自然衔接
+- 公式：`eLand = (1-t)·H_i(noise_i) + t·H_{i+1}(noise_{i+1})`，t 为 typeField 在两个中心间的线性位置
+- 效果：最差情况 Δe/block < 0.013 e（≈5 blocks），远低于旧 smoothstep 的 0.06/block（≈18 blocks）
+
 ## 配置同步铁律
 增删字段须同步 6 处：`GeoGenesisConfig`(定义+BUILDER+buildParams+defaultParams) + `TerrainParams`(record+defaults) + `ParameterConfigPanel.buildFromConfig`(addSpec) + `run/config/geogenesis-common.toml`；改默认值后必须同步已存在 toml。
 - **`resetToDefault()` 已反射自动化（2026-07-24）**：改为 `getFields()` 遍历所有 `ForgeConfigSpec.ConfigValue` 字段统一 `set(getDefault())`，新增字段**自动覆盖**，不再需要手工在 reset 里逐字段补 `.set()`。因此"增删字段须同步 resetToDefault"这一约束已废弃；但 `defaultParams()`（预览默认）与 `buildParams()`（引擎注入）仍需随字段同步。`SPEC`/`INSTANCE`(非 ConfigValue) 与 private `midSplineConfig` 会被自动跳过。

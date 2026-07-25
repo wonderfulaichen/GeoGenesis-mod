@@ -160,6 +160,8 @@ public final class CellGenerator implements HeightProvider {
         double cont = smoothstep(oceanFadeStart, landRampEnd, cEdge); // 0(纯海)→1(纯陆)
         double e = (1.0 - cont) * eOcean + cont * eLand;
         cell.e = e;
+        cell.eOcean = eOcean;
+        cell.blendCont = cont;
         cell.height = heightCurve.heightFromE(e);
         cell.coastCoord = cEdge;
 

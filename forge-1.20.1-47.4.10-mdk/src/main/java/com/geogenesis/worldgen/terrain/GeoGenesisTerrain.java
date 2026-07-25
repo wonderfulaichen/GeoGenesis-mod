@@ -5,6 +5,9 @@ import com.geogenesis.worldgen.river.RiverSettings;
 import com.geogenesis.worldgen.erosion.ErosionSystem;
 import com.geogenesis.worldgen.erosion.ErosionSettings;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -27,6 +30,12 @@ public final class GeoGenesisTerrain {
 
     /** chunk 周边 pad（供侵蚀局部算子读取邻域，不写回，无接缝） */
     private static final int ERODE_PAD = 2;
+
+    /** 诊断日志记录器 */
+    private static final Logger DLOG = LogManager.getLogger("geogenesis/diag");
+
+    /** 诊断阈值：e 的相邻块断裂超过此值即打日志（≈4 块） */
+    private static final double DIAG_THRESHOLD = 0.01;
 
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
@@ -113,6 +122,45 @@ public final class GeoGenesisTerrain {
                 cells[lx * 16 + lz] = generator.sample(
                     baseX + lx, baseZ + lz);
             }
+        }
+
+        // 诊断：扫描 chunk 内相邻块断裂，超过阈值即记录到日志
+        double maxEDeltaX = 0, maxEDeltaZ = 0;
+        double maxEOceanDX = 0, maxContDX = 0;
+        double maxELandDX = 0;
+        int peX = 0, peZ = 0;
+        for (int lz = 0; lz < 16; lz++) {
+            for (int lx = 0; lx < 15; lx++) {
+                int i0 = lx * 16 + lz, i1 = (lx + 1) * 16 + lz;
+                double dx = Math.abs(cells[i0].e - cells[i1].e);
+                if (dx > maxEDeltaX) { maxEDeltaX = dx; peX = lx; peZ = lz; }
+                double dl = Math.abs(cells[i0].eLand - cells[i1].eLand);
+                if (dl > maxELandDX) maxELandDX = dl;
+                double doc = Math.abs(cells[i0].eOcean - cells[i1].eOcean);
+                if (doc > maxEOceanDX) maxEOceanDX = doc;
+                double dc = Math.abs(cells[i0].blendCont - cells[i1].blendCont);
+                if (dc > maxContDX) maxContDX = dc;
+            }
+        }
+        for (int lz = 0; lz < 15; lz++) {
+            for (int lx = 0; lx < 16; lx++) {
+                int i0 = lx * 16 + lz, i1 = lx * 16 + lz + 1;
+                double dz = Math.abs(cells[i0].e - cells[i1].e);
+                if (dz > maxEDeltaZ) maxEDeltaZ = dz;
+            }
+        }
+        double maxEDelta = Math.max(maxEDeltaX, maxEDeltaZ);
+        if (maxEDelta > DIAG_THRESHOLD) {
+            Cell c = cells[peX * 16 + peZ];
+            double blk = maxEDelta * 384;
+            DLOG.warn("[DIAG] chunk({},{}): maxFe={}({}blk) at({},{}), type={},"
+                + "eLand={}, eOcean={}, cont={}, eLandMaxF={}, eOceanMaxF={}, contMaxF={}",
+                cx, cz, String.format("%.4f", maxEDelta), String.format("%.0f", blk),
+                peX, peZ, c.terrainType,
+                String.format("%.4f", c.eLand), String.format("%.4f", c.eOcean),
+                String.format("%.4f", c.blendCont),
+                String.format("%.4f", maxELandDX), String.format("%.4f", maxEOceanDX),
+                String.format("%.4f", maxContDX));
         }
 
         // ===== 临时关闭：侵蚀 + 河流刻蚀 =====

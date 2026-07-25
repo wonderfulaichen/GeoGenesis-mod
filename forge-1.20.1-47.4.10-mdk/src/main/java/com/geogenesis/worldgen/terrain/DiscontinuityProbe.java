@@ -35,8 +35,7 @@ public final class DiscontinuityProbe {
         int W = 800, H = 800;
         System.out.println("=== DiscontinuityProbe v7.5 (typeWeighted formula) ===");
         System.out.println("Region " + W + "x" + H + " blocks, step=1");
-        System.out.println("Cell spacing=" + VoronoiRegionField.CELL_SPACING);
-        System.out.println("Formula: typeWeighted = Sigma w x typeNoise / Sigma w, eLand = lo + range x typeWeighted");
+        System.out.println("Formula: linear interpolation between type centers (no cell grid)");
         System.out.println();
 
         // 创建真实地形引擎
