@@ -60,8 +60,8 @@ public final class DiscontinuityProbe {
             for (int z = 0; z < H; z++) {
                 double wx = x, wz = z;
 
-                // 1. Voronoi 混合
-                VoronoiRegionField.BlendResult blend = landShape.sampleBlend(wx, wz);
+                // 1. 连续类型混合
+                TerrainCharacterField.BlendResult blend = landShape.sampleBlend(wx, wz);
                 layers[0][x][z] = blend.lo;
                 layers[1][x][z] = blend.hi;
                 layers[2][x][z] = blend.alpha;

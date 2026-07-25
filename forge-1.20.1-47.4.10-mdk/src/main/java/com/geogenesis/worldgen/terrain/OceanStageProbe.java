@@ -105,7 +105,7 @@ public final class OceanStageProbe {
                 stages[7][x][z] = eOceanFinal;
 
                 // 8. eLand
-                VoronoiRegionField.BlendResult blend = landShape.sampleBlend(wx, wz);
+                TerrainCharacterField.BlendResult blend = landShape.sampleBlend(wx, wz);
                 double eLand = landShape.sample(blend, wx, wz);
                 stages[8][x][z] = eLand;
 

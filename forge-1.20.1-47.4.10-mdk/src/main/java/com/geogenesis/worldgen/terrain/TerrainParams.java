@@ -177,11 +177,9 @@ public record TerrainParams(
     /** 垂直缩放比例（1-8），预览用，默认 1.0 */
     double verticalScale,
 
-    // ===== 大陆性语义亲和度 + Voronoi 域扭曲（注入 TypeLandShape） =====
+    // ===== 大陆性语义亲和度（注入 TypeLandShape） =====
     /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 5.0。0=无 c 效应，越大海洋区域越倾向平原/盆地（低地形），陆地保留正常类型多样性。5.0 时海洋中 MOUNTAINS/HILLS 权重归零。 */
     double cAffinityStrength,
-    /** Voronoi 区域场域扭曲幅度（块），打散网格对齐伪影、使区域边界蜿蜒不显网格，默认 250.0 */
-    double voronoiWarpAmp,
 
     // ===== 海岸线多样化（CoastlineField 输入） =====
     /** 多尺度分形 warp 总振幅（c 空间单位）。海岸线在 c 上的位移幅度，默认 0.03 */
@@ -262,7 +260,7 @@ public record TerrainParams(
             // preview compat（加大 horizontalScale 减少 preview 计算量）
             4.0, 63, 0.70, -64, 320, 256, -48,
             1.0,  // verticalScale
-            5.0, 250.0,       // cAffinityStrength, voronoiWarpAmp
+            5.0,              // cAffinityStrength
             // coastline diversification
             0.03, 300.0, 5, 2.0, 0.5,  // coastlineWarpAmp, coastlineWarpScale, octaves, lacunarity, persistence
             0.08,               // coastTerrainInfluence

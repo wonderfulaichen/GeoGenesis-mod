@@ -82,7 +82,7 @@ public final class TypeNoiseProvider {
         Noise platOct1 = new Frequency(new Simplex(422), 1.0 / 500.0);
         Noise platOct2 = new Boost(new Frequency(new Simplex(423), 1.0 / 200.0), 0.25);
         Noise platOct3 = new Boost(new Frequency(new Simplex(424), 1.0 / 60.0), 0.08);
-        this.platNoise = new Map(new Add(new Add(platOct1, platOct2), platOct3), -1.5, 1.5, 0.30, 0.70);
+        this.platNoise = new Map(new Add(new Add(platOct1, platOct2), platOct3), -1.5, 1.5, 0.40, 0.60);
 
         // --- BASIN：修复与 shape 同 seed 问题 ---
         Noise bOct1 = new Frequency(new Simplex(428), 1.0 / 300.0);
