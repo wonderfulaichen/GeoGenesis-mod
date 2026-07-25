@@ -16,11 +16,17 @@ public record TerrainParams(
     // ===== 大陆场 =====
     /** 大陆噪声尺度（块），频率 = 1/scale，默认 1500 */
     double continentScale,
-    /** 域扭曲强度，默认 0.2 */
+    /** 域扭曲强度（占大陆尺度的比例系数），默认 0.25 */
     double continentWarp,
+    /** 大陆 FBM 倍频数（octaves）：大陆性 c 场由多倍频 FBM 值叠加，每倍频频率×lacunarity、振幅×persistence。海岸线 = c=0 等值线，FBM 多尺度细节直接刻进海岸线 → 犬牙交错。默认 6（严格对齐参考项目 procedural-island-generator） */
+    int continentFbmOctaves,
+    /** 大陆 FBM 频率倍增（lacunarity），每倍频频率×该值，默认 2.0 */
+    double continentFbmLacunarity,
+    /** 大陆 FBM 振幅衰减（persistence），每倍频振幅×该值，越大高频细节越强、海岸越破碎，默认 0.6 */
+    double continentFbmPersistence,
     /** 海陆参考阈值 c 值（[-1,1] 区间），默认 0.0 */
     double continentThreshold,
-    /** 海陆占比偏置（正=更多海、负=更多陆），默认 0.0 */
+    /** 海陆占比偏置（正=更多海、负=更多陆），默认 0.31（RMS 归一化 FBM 使 c 集中近 0，故偏置远低于旧单 simplex 的 0.82；经 TerrainAreaProbe 用真实 CellGenerator.sample() 管线标定≈35% 陆地/65% 海洋；旧简化公式 c+eFromC(c-bias) 标定出的 0.64 因未计入两阶段 blend+eLand+seabed 而偏置过大） */
     double continentBias,
     /** 大陆场 warp 省噪声坐标幅度（块）。用大陆性 c 偏移省噪声采样坐标，使每大陆获得独特且连贯的地质组合（确定性、无随机），默认 2000.0 */
     double continentProvinceWarp,
@@ -42,6 +48,12 @@ public record TerrainParams(
     double shelfDeriv,
     double shallowDeriv,
     double coastDeriv,
+
+    // ===== 海岸线过渡区（两阶段 blend，参考 TerraForged） =====
+    /** 海洋淡出起点（cBiased 空间）：大陆性在此值以上，海洋深度开始衰减到 0，默认 -0.15 */
+    double oceanFadeStart,
+    /** 陆地高度终点（cBiased 空间）：大陆性达到此值时全量陆地高度，默认 0.08 */
+    double landRampEnd,
 
     // ===== 海洋类型独立 lo/hi（与陆地类型一致的独立控制） =====
     double oceanLo,      // OCEAN lo
@@ -166,10 +178,40 @@ public record TerrainParams(
     double verticalScale,
 
     // ===== 大陆性语义亲和度 + Voronoi 域扭曲（注入 TypeLandShape） =====
-    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 1.5。0=无 c 效应（类型分布不随大陆性变化），越大越偏内陆聚集/海岸低地。 */
+    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 5.0。0=无 c 效应，越大海洋区域越倾向平原/盆地（低地形），陆地保留正常类型多样性。5.0 时海洋中 MOUNTAINS/HILLS 权重归零。 */
     double cAffinityStrength,
     /** Voronoi 区域场域扭曲幅度（块），打散网格对齐伪影、使区域边界蜿蜒不显网格，默认 250.0 */
     double voronoiWarpAmp,
+
+    // ===== 海岸线多样化（CoastlineField 输入） =====
+    /** 多尺度分形 warp 总振幅（c 空间单位）。海岸线在 c 上的位移幅度，默认 0.03 */
+    double coastlineWarpAmp,
+    /** 多尺度分形 warp 基频世界坐标尺度（块），默认 300。越大海岸线变化越平缓 */
+    double coastlineWarpScale,
+    /** 多尺度分形 warp 倍频数（octaves），控制海岸线细节尺度层级数，默认 5。越大细节越丰富（自相似分形犬牙交错） */
+    int coastlineWarpOctaves,
+    /** FBM 频率倍增系数（lacunarity），每倍频频率×该值，默认 2.0 */
+    double coastlineWarpLacunarity,
+    /** FBM 振幅衰减系数（persistence），每倍频振幅×该值，默认 0.5 */
+    double coastlineWarpPersistence,
+    /** 地形类型调制强度（c 空间单位）。山地权重高→推岸出海成岬角，平原/盆地→拉岸内凹成海湾，默认 0.08 */
+    double coastTerrainInfluence,
+    /** 离岸群岛带宽度（c 空间单位，从 coastLoc 向海侧延伸），默认 0.10 */
+    double archipelagoBand,
+    /** 离岸群岛密度阈值（噪声值 0-1），超过此阈值生成岛屿，默认 0.30 */
+    double archipelagoDensity,
+    /** 离岸群岛噪声尺度（块），默认 120 */
+    double archipelagoScale,
+    /** 离岸群岛最大高度（e 单位），默认 0.035 */
+    double archipelagoHeight,
+
+    // ===== 气候/纬度 xz 缩放（注入 CellGenerator 气候模型）=====
+    /** 纬度缩放（温度随 z 变化的周期，块）。越大→温度带越宽（纬度变化越慢），默认 6000 */
+    double latitudeScale,
+    /** 温度噪声 xz 缩放（块），温度扰动场频率 = 1/tempWarpScale，默认 1500 */
+    double tempWarpScale,
+    /** 湿度噪声 xz 缩放（块），湿度场频率 = 1/humidityScale，默认 800 */
+    double humidityScale,
 
     // ===== Phase 1：统一样条配置（独立 record，避免参数过多）=====
     SplineConfig splineConfig
@@ -178,17 +220,16 @@ public record TerrainParams(
     public static TerrainParams defaults() {
         return new TerrainParams(
             // continent（continentProvinceWarp 默认 0=禁用，域扭曲实验结论见 CellGenerator）
-            4000.0, 0.2, 0.0, 0.4, 0.0,
+            // 大陆 FBM：scale=4000, warp=0（纯 FBM，去域扭曲避免平行条带）, octaves=6（严格对齐参考项目）, lac=2.0, per=0.6；bias=0.31（真实 CellGenerator.sample() 管线标定≈35% 陆地/65% 海洋；旧简化公式标定的 0.64 实际只产出 ~13% 陆地）
+            4000.0, 0.0, 6, 2.0, 0.6, 0.0, 0.31, 0.0,
             // ocean spline locations (c∈[-1,1]; 负=深海、0=海岸锚点)
             -0.80, -0.50, -0.16, -0.04,
             // ocean spline values（deepOcean depth 从 -0.85 减至 -0.35，适配 MC 游戏性不宜太深）
             -0.35, -0.25, -0.06,
-            // ocean spline derivatives（shelfDeriv 从 1.5 降至 0.8，配合浅化海洋）
-            0.0, 0.8, 0.0, 0.0,
-            // seabed
-            0.03,
-            // oceanDepthFactor
-            1.0,
+            // ocean spline derivatives（shelfDeriv 0.8；shallowDeriv 0.5 保持浅水带单调递减斜率，消除平涂浅蓝平台）
+            0.0, 0.8, 0.5, 0.0,
+            // coastline transition (two-stage blend after TerraForged)
+            -0.15, 0.08,
             // 海洋类型独立 lo/hi（默认值）
             -0.35, -0.06,  // OCEAN
             -0.50, -0.35,  // DEEP_OCEAN
@@ -197,6 +238,10 @@ public record TerrainParams(
             -0.15, -0.02,  // SEAMOUNT
             -0.02,  0.01,  // LAKE
             -0.03,  0.00,  // RIVER
+            // seabed（必须在海洋 lo/hi 之后，对齐 record 字段顺序）
+            0.03,
+            // oceanDepthFactor（record 第 37 字段）
+            1.0,
             // province
             4000.0, 1.0, 1.0, 1.0, 0.8,
             // land（校准于新映射：e→[seaLevel,maxY] 线性）
@@ -206,7 +251,7 @@ public record TerrainParams(
             0.02,                       // basinBase
             // relief amplitudes（每省固有起伏，侵蚀前基础地形）
             // 振幅只适度下调（保 MOUNTAINS/HILLS 分类需 relief≥0.1）；"噪声太小"主要靠 LandShape 频率放大周期消除
-            0.10, 0.22, 0.03, 0.05,    // cratonReliefAmp,beltReliefAmp,plateauReliefAmp,basinReliefAmp
+            0.10, 0.35, 0.03, 0.05,    // cratonReliefAmp,beltReliefAmp,plateauReliefAmp,basinReliefAmp
             // province shape curves（每省独立 shapeᵢ(rᵢ)：零中心 r，谷在 r=0、峰在 |r|=1）
             1.5, 120.0, 2.5,            // beltSharpness,beltWarpAmp,provMixSharpness
             // layered overlay params（分层叠加新增，对标 TerraForged）
@@ -217,7 +262,15 @@ public record TerrainParams(
             // preview compat（加大 horizontalScale 减少 preview 计算量）
             4.0, 63, 0.70, -64, 320, 256, -48,
             1.0,  // verticalScale
-            1.5, 250.0,       // cAffinityStrength, voronoiWarpAmp
+            5.0, 250.0,       // cAffinityStrength, voronoiWarpAmp
+            // coastline diversification
+            0.03, 300.0, 5, 2.0, 0.5,  // coastlineWarpAmp, coastlineWarpScale, octaves, lacunarity, persistence
+            0.08,               // coastTerrainInfluence
+            0.10, 0.30, 120.0,  // archipelagoBand, archipelagoDensity, archipelagoScale
+            0.035,              // archipelagoHeight
+
+            // climate / latitude xz scales (injected into CellGenerator)
+            6000.0, 1500.0, 800.0,   // latitudeScale, tempWarpScale, humidityScale
 
             // Phase 1: unified spline config
             SplineConfig.defaults()
@@ -231,9 +284,9 @@ public record TerrainParams(
         return new double[]{deepOceanLoc, shelfLoc, shallowLoc, coastLoc};
     }
 
-    /** 海洋样条深度值（使用新的独立 lo/hi 配置字段） */
+    /** 海洋样条深度值（使用真正的海洋深度控制点：深海/大陆架/浅海/海岸锚点=0） */
     public double[] oceanValues() {
-        return new double[]{deepOceanHi, shelfHi, oceanHi, 0.0};
+        return new double[]{deepOceanDepth, shelfDepth, shallowDepth, 0.0};
     }
 
     /** 海洋样条导数 */

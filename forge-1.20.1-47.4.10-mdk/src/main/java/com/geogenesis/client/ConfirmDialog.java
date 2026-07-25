@@ -49,8 +49,8 @@ public class ConfirmDialog {
         int dx = (sw - DIALOG_W) / 2;
         int dy = (sh - DIALOG_H) / 2;
 
-        // 半透明背景遮罩
-        g.fill(0, 0, sw, sh, 0x88000000);
+        // 半透明背景遮罩：接近不透明(0xE0≈88%)，彻底压住背后配置屏文字，避免其浮在弹窗前面
+        g.fill(0, 0, sw, sh, 0xE0000000);
 
         // 对话框背景
         g.fill(dx, dy, dx + DIALOG_W, dy + DIALOG_H, 0xFF1a1f28);

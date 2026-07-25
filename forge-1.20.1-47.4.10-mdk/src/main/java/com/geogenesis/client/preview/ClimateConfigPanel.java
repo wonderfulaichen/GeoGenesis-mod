@@ -30,11 +30,19 @@ public class ClimateConfigPanel extends ConfigPanel {
 
     private final List<FactorSection> factors = new ArrayList<>();
 
+    /** 气候缩放区块（纬度/温度/湿度 xz 缩放），独立于分类因素，用普通滑块呈现 */
+    private final MixerPanel scalePanel = new MixerPanel("气候缩放");
+    private final List<ScaleSpec> scaleSpecs = new ArrayList<>();
+    private final List<ParamSlider> scaleSliders = new ArrayList<>();
+
     private static final int SECTION_GAP = 4;
     private static final int INFLUENCE_W = 64;
     private static final int HEADER_H = 16; // 对齐 MixerPanel.TITLE_H
     private static final int BAR_H = 22;
     private static final int DATA_LABEL_GAP = 12; // dataMin/dataMax 标签占用的下方空间
+    private static final int SCALE_ROW_H = 20;
+    private static final int SCALE_LABEL_W = 60;
+    private static final int SCALE_VAL_W = 38;
 
     public ClimateConfigPanel() {}
 
@@ -76,6 +84,31 @@ public class ClimateConfigPanel extends ConfigPanel {
                 c.continentInfluence));
         factors.get(factors.size() - 1).influence.setTooltipText(
             "大陆性（距海远近）对生物群系分类的影响权重。注意：此参数不影响海陆面积/海岸线位置（那由参数标签的「海陆偏置」控制）。值越大→大陆性差异对生物群系的影响越显著。");
+
+        // 气候缩放（纬度/温度/湿度 xz 坐标缩放）
+        buildScaleSliders(c);
+        scalePanel.setContentHeight(scaleSpecs.size() * SCALE_ROW_H + 2);
+    }
+
+    /** 构建气候缩放滑块（纬度/温度/湿度 xz 缩放），独立于分类色条 */
+    private void buildScaleSliders(GeoGenesisConfig c) {
+        scaleSpecs.clear(); scaleSliders.clear();
+        addScale("纬度缩放", "温度随 z 变化的周期（块）。越大→温度带越宽（纬度变化越慢），默认 6000。影响气候带的南北宽度。", c.latitudeScale, 500.0, 30000.0);
+        addScale("温度缩放", "温度扰动场 xz 缩放（块）。温度场频率 = 1/tempWarpScale，越大→温度空间变化越平缓、大尺度渐变越强，默认 1500。", c.tempWarpScale, 100.0, 8000.0);
+        addScale("湿度缩放", "湿度场 xz 缩放（块）。湿度场频率 = 1/humidityScale，越大→湿度空间变化越平缓、大尺度渐变越强，默认 800。", c.humidityScale, 100.0, 8000.0);
+        Function<Double, String> fmt = v -> String.format("%.0f", v);
+        for (ScaleSpec s : scaleSpecs) {
+            ParamSlider ps = new ParamSlider(0, 0, 100, s.min, s.max, s.cfg.get(), v -> {
+                s.cfg.set(v); onMarkDirty.run();
+            }, fmt);
+            ps.setDefaultValue(s.cfg.getDefault());
+            ps.setTooltipText(s.description);
+            scaleSliders.add(ps);
+        }
+    }
+
+    private void addScale(String label, String description, ForgeConfigSpec.DoubleValue cfg, double min, double max) {
+        scaleSpecs.add(new ScaleSpec(label, description, cfg, min, max));
     }
 
     private FactorSection createFactor(String title,
@@ -121,6 +154,7 @@ public class ClimateConfigPanel extends ConfigPanel {
     public int getHeight() {
         int h = 4;
         for (FactorSection f : factors) h += f.panel.getFullHeight() + SECTION_GAP;
+        h += scalePanel.getFullHeight() + SECTION_GAP;
         return h;
     }
 
@@ -164,6 +198,28 @@ public class ClimateConfigPanel extends ConfigPanel {
             sec.panel.renderTooltip(g, mx, my);
             curY += sec.panel.getFullHeight() + SECTION_GAP;
         }
+
+        // 气候缩放区块（普通滑块，无分类色条）
+        scalePanel.setBounds(x + 4, curY, w - 8);
+        scalePanel.renderHeader(g, mx, my);
+        if (!scalePanel.isCollapsed()) {
+            int contentLeft = x + 4;
+            int slW = w - 16 - SCALE_LABEL_W - SCALE_VAL_W - 8;
+            int panelContentY = scalePanel.getY() + HEADER_H; // 标题栏下方
+            for (int i = 0; i < scaleSliders.size(); i++) {
+                String label = scaleSpecs.get(i).label;
+                ParamSlider ps = scaleSliders.get(i);
+                int rowY = panelContentY + i * SCALE_ROW_H;
+                if (i % 2 == 0) g.fill(contentLeft, rowY, x + w - 8, rowY + SCALE_ROW_H, 0x12FFFFFF);
+                g.drawString(f, label, contentLeft + 2, rowY + (SCALE_ROW_H - 8) / 2, 0xFFCCCCCC);
+                int slX = contentLeft + SCALE_LABEL_W;
+                ps.setX(slX); ps.setY(rowY + 2); ps.setWidth(slW);
+                ps.render(g, mx, my, 0);
+            }
+        }
+        scalePanel.renderTooltip(g, mx, my);
+        curY += scalePanel.getFullHeight() + SECTION_GAP;
+        for (ParamSlider ps : scaleSliders) ps.renderTooltip(g, mx, my);
     }
 
     // ---- 鼠标 ----
@@ -203,6 +259,25 @@ public class ClimateConfigPanel extends ConfigPanel {
             }
             curY += sec.panel.getFullHeight() + SECTION_GAP;
         }
+
+        // 气候缩放区块点击
+        scalePanel.setBounds(x + 4, curY, w - 8);
+        if (scalePanel.hitTestHeader((int) mx, (int) my)) {
+            return scalePanel.mouseClicked(mx, my, btn);
+        }
+        if (!scalePanel.isCollapsed()) {
+            int slW = w - 16 - SCALE_LABEL_W - SCALE_VAL_W - 8;
+            int panelContentY = scalePanel.getY() + HEADER_H;
+            for (int i = 0; i < scaleSliders.size(); i++) {
+                ParamSlider ps = scaleSliders.get(i);
+                int rowY = panelContentY + i * SCALE_ROW_H;
+                ps.setX(x + 4 + SCALE_LABEL_W); ps.setY(rowY + 2); ps.setWidth(slW);
+            }
+            for (ParamSlider s : scaleSliders) {
+                if (s.isHoveringReset((int) mx, (int) my)) { s.resetToDefault(); return true; }
+                if (s.isMouseOver(mx, my)) return s.mouseClicked(mx, my, btn);
+            }
+        }
         return false;
     }
 
@@ -211,6 +286,7 @@ public class ClimateConfigPanel extends ConfigPanel {
             if (sec.bar.mouseDragged(mx, my, btn, dx, dy)) return true;
             if (sec.influence.isFocused()) { sec.influence.mouseDragged(mx, my, btn, dx, dy); return true; }
         }
+        for (ParamSlider s : scaleSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
         return false;
     }
 
@@ -219,6 +295,7 @@ public class ClimateConfigPanel extends ConfigPanel {
             sec.bar.mouseReleased(mx, my, btn);
             if (sec.influence.isFocused()) sec.influence.mouseReleased(mx, my, btn);
         }
+        for (ParamSlider s : scaleSliders) if (s.isFocused()) s.mouseReleased(mx, my, btn);
         return false;
     }
 
@@ -231,6 +308,17 @@ public class ClimateConfigPanel extends ConfigPanel {
         final MixerPanel panel;
         FactorSection(String title, CategoryBar bar, ParamSlider influence, MixerPanel panel) {
             this.title = title; this.bar = bar; this.influence = influence; this.panel = panel;
+        }
+    }
+
+    /** 气候缩放滑块规格（普通滑块，无分类色条） */
+    private static class ScaleSpec {
+        final String label;
+        final String description;
+        final ForgeConfigSpec.DoubleValue cfg;
+        final double min, max;
+        ScaleSpec(String label, String description, ForgeConfigSpec.DoubleValue cfg, double min, double max) {
+            this.label = label; this.description = description; this.cfg = cfg; this.min = min; this.max = max;
         }
     }
 }

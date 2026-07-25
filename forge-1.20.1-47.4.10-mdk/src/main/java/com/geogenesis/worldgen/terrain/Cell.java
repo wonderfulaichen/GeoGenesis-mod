@@ -29,6 +29,9 @@ public class Cell {
     /** 地形类型连续权重（5 类型：PLAIN/HILLS/MOUNTAINS/PLATEAU/BASIN，和=1），由 Voronoi 高斯加权混合产生 */
     public double[] typeWeights;
 
+    /** 有效岸线坐标（cEdge = cBiased + warpDisplacement），供 classifyTerrain 做 BEACH 带约束 */
+    public double coastCoord;
+
     // === 气候 ===
     /** 气候（温度+湿度） */
     public Climate climate = Climate.DEFAULT;

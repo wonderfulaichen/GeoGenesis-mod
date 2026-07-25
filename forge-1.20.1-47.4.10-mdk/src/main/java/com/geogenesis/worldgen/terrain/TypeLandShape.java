@@ -36,7 +36,7 @@ public final class TypeLandShape {
         this.params = p;
         this.generators = new TypeGenerators(p);
         this.regions = new VoronoiRegionField(p.voronoiWarpAmp());
-        this.typeNoise = new TypeNoiseProvider();
+        this.typeNoise = new TypeNoiseProvider(p.beltReliefAmp());
         this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
         this.continent = new ContinentField(p);
         this.continentBias = p.continentBias();
@@ -60,39 +60,35 @@ public final class TypeLandShape {
     /**
      * v7.5：类型噪声直接主导 eLand（Fix 2）。
      * <p>
-     * Phase 1：支持统一样条（2 层嵌套：大陆性 c → 内层样条 lo/hi）。
-     * <p>
-     * 旧公式（Phase 1 差异调制）：
-     *   base = lo + range×sharedNoise
-     *   diff = Σw×(typeNoise − sharedNoise)
-     *   eLand = base + morphStrength×diff×range
-     * 问题：typeNoise 和 sharedNoise 都是 [0,1] 噪声，差值幅值小（±0.15），
-     * 类型噪声对高度贡献仅 ±8 块。丘陵失去可见起伏。
-     * <p>
-     * 新公式（v7.5）：
-     *   typeWeighted = Σ w×typeNoise / Σw  ← 类型噪声直接混合
-     *   eLand = lo + range × typeWeighted   ← 类型噪声主导
-     * 在纯 HILLS cell 中：eLand = lo + range × hillsNoise ∈ [0.07, 0.37] 全范围。
-     * 连续性由 typeWeights 高斯平滑过渡保障（v5 已验证 Δe < 0.01）。
+     * 默认使用内部计算的 cBiased（向后兼容）。
      */
     public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz) {
-        // 统一使用 3 层嵌套样条（统一样条恒启用，旧 typeWeights 路径已移除）
-        return sampleFromUnifiedSpline(blend, wx, wz);
+        double c = continent.sample(wx, wz);
+        double cBiased = c - continentBias;
+        return sampleFromUnifiedSpline(blend, wx, wz, cBiased);
+    }
+
+    /**
+     * v8：带有效岸线坐标的 sample 重载。
+     * <p>
+     * 由 CellGenerator 传入经 CoastlineField warp 位移后的 {@code effectiveCBiased}，
+     * 替代内部重新采样 continent，使地形类型高度在海陆位移后的"有效岸线坐标"处正确升高，
+     * 实现真正的地形岬角/悬崖（而非低矮平地）。
+     */
+    public double sample(VoronoiRegionField.BlendResult blend, double wx, double wz, double effectiveCBiased) {
+        return sampleFromUnifiedSpline(blend, wx, wz, effectiveCBiased);
     }
 
     /**
      * Phase 2：通过 3 层嵌套样条计算 eLand（陆地类型，WIE 加权混合）。
      * <p>
+     * v8：接受外部传入的 {@code effectiveCBiased}（经 CoastlineField warp 位移后的有效岸线坐标），
+     * 替代内部重新采样 continent，使地形类型在位移后的海岸处正确升高。
+     * <p>
      * 海洋/水域类型由 CellGenerator 经 HeightCurve 单独处理，不走 Voronoi 类型系统，
      * 故此处 typeWeights 仅含陆地类型，无需 isWater 分支。
      */
-    private double sampleFromUnifiedSpline(VoronoiRegionField.BlendResult blend, double wx, double wz) {
-        // Phase 1 (WIE)：按 typeWeights 加权混合各类型「自己」独立求值的内层样条，
-        // 彻底移除 typePosition 类型轴插值 —— 高原↔丘陵混合只取各自 H_t，
-        // 绝不引入 MOUNTAINS 节点高度（尖环根因）。c 当前不进高度（与旧行为一致）。
-        double c = continent.sample(wx, wz);
-        double cBiased = c - continentBias;
-
+    private double sampleFromUnifiedSpline(VoronoiRegionField.BlendResult blend, double wx, double wz, double effectiveCBiased) {
         double[] tw = blend.typeWeights;
         if (tw == null) {
             double s = generators.computeSharedNoise(wx, wz);
@@ -111,7 +107,7 @@ public final class TypeLandShape {
         final double MEAN_AFF = 0.2; // Σ aff_t(c) ≡ 1 over 5 land types
         TerrainClass[] lands = TypeNoiseProvider.LAND_TYPES;
         for (int i = 0; i < lands.length; i++) {
-            double aff = generators.typeAffinity(cBiased, i);
+            double aff = generators.typeAffinity(effectiveCBiased, i);
             double factor = 1.0 + CAFFINITY_BETA * (aff - MEAN_AFF);
             if (factor < 0.01) factor = 0.01;
             tw[lands[i].ordinal()] *= factor;
@@ -122,12 +118,12 @@ public final class TypeLandShape {
             double w = tw[lands[i].ordinal()];
             if (w <= 0.001) continue;
             double typeVal = typeNoise.computeNoise(lands[i], wx, wz);  // 该类型自己的噪声
-            double e_t = generators.sampleByType(cBiased, i, typeVal);  // 该类型自己的高度
+            double e_t = generators.sampleByType(effectiveCBiased, i, typeVal);  // 该类型自己的高度
             eLand += w * e_t;
             sumW += w;
         }
         if (sumW <= 0) {
-            eLand = generators.computeSharedNoise(wx, wz);
+            eLand = 0.0; // 所有类型被 cAffinity 压制→仅 eOcean 贡献深度（海洋）
         } else {
             eLand /= sumW;
         }

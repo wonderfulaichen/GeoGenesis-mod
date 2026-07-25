@@ -24,6 +24,10 @@ public final class GeoGenesisConfig {
     // ===== 大陆场 =====
     public final ForgeConfigSpec.DoubleValue continentScale;
     public final ForgeConfigSpec.DoubleValue continentWarp;
+    // ===== 大陆 FBM（值叠加，对标参考项目 procedural-island-generator 的 fbm 海岸线） =====
+    public final ForgeConfigSpec.IntValue continentFbmOctaves;
+    public final ForgeConfigSpec.DoubleValue continentFbmLacunarity;
+    public final ForgeConfigSpec.DoubleValue continentFbmPersistence;
     public final ForgeConfigSpec.DoubleValue continentThreshold;
     public final ForgeConfigSpec.DoubleValue continentBias;
     public final ForgeConfigSpec.DoubleValue continentProvinceWarp;
@@ -40,6 +44,12 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue shelfDeriv;
     public final ForgeConfigSpec.DoubleValue shallowDeriv;
     public final ForgeConfigSpec.DoubleValue coastDeriv;
+
+    // ===== 海岸线过渡区（两阶段 blend，参考 TerraForged） =====
+    /** 海洋淡出起点（cBiased 空间），默认 -0.15 */
+    public final ForgeConfigSpec.DoubleValue oceanFadeStart;
+    /** 陆地高度终点（cBiased 空间），默认 0.08 */
+    public final ForgeConfigSpec.DoubleValue landRampEnd;
 
     // ===== 海洋类型独立 lo/hi（与陆地类型一致的独立控制） =====
     public final ForgeConfigSpec.DoubleValue oceanLo;
@@ -139,12 +149,20 @@ public final class GeoGenesisConfig {
     /** 大陆性阈值：内陆/深内陆分界，默认 0.65 */
     public final ForgeConfigSpec.DoubleValue continentInlandThreshold;
 
-    /** 温度对群系分布的影响程度（0-1），默认 0.5 */
+    /** 温度对群系分布的影响程度（0-1），默认 1.0 */
     public final ForgeConfigSpec.DoubleValue tempInfluence;
-    /** 湿度对群系分布的影响程度（0-1），默认 0.5 */
+    /** 湿度对群系分布的影响程度（0-1），默认 1.0 */
     public final ForgeConfigSpec.DoubleValue humidityInfluence;
-    /** 大陆性对群系分布的影响程度（0-1），默认 0.5 */
+    /** 大陆性对群系分布的影响程度（0-1），默认 1.0 */
     public final ForgeConfigSpec.DoubleValue continentInfluence;
+
+    // ===== 气候/纬度 xz 缩放 =====
+    /** 纬度缩放（温度随 z 变化的周期，块）。越大→温度带越宽（纬度变化越慢），默认 6000 */
+    public final ForgeConfigSpec.DoubleValue latitudeScale;
+    /** 温度噪声 xz 缩放（块），温度扰动场频率 = 1/tempWarpScale，默认 1500 */
+    public final ForgeConfigSpec.DoubleValue tempWarpScale;
+    /** 湿度噪声 xz 缩放（块），湿度场频率 = 1/humidityScale，默认 800 */
+    public final ForgeConfigSpec.DoubleValue humidityScale;
 
     // ===== 世界高度 =====
     public final ForgeConfigSpec.IntValue seaLevel;
@@ -156,10 +174,32 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue verticalScale;
 
     // ===== 大陆性语义亲和度 + Voronoi 域扭曲 =====
-    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 1.5 */
+    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 5.0 */
     public final ForgeConfigSpec.DoubleValue cAffinityStrength;
     /** Voronoi 区域场域扭曲幅度（块），默认 250.0 */
     public final ForgeConfigSpec.DoubleValue voronoiWarpAmp;
+
+    // ===== 海岸线多样化（CoastlineField 输入） =====
+    /** 海岸线 warp 振幅（c 空间单位），默认 0.03 */
+    public final ForgeConfigSpec.DoubleValue coastlineWarpAmp;
+    /** 海岸线 warp 基频世界坐标尺度（块），默认 300。越大变化越平缓 */
+    public final ForgeConfigSpec.DoubleValue coastlineWarpScale;
+    /** 海岸线 warp 倍频数（octaves），控制分形细节层级数，默认 5，范围 [1, 8] */
+    public final ForgeConfigSpec.IntValue coastlineWarpOctaves;
+    /** FBM 频率倍增系数（lacunarity），每倍频频率×该值，默认 2.0，范围 [1.5, 3.0] */
+    public final ForgeConfigSpec.DoubleValue coastlineWarpLacunarity;
+    /** FBM 振幅衰减系数（persistence），每倍频振幅×该值，默认 0.5，范围 [0.25, 0.8] */
+    public final ForgeConfigSpec.DoubleValue coastlineWarpPersistence;
+    /** 地形类型调制强度（c 空间单位），默认 0.08 */
+    public final ForgeConfigSpec.DoubleValue coastTerrainInfluence;
+    /** 离岸群岛带宽度（c 空间单位），默认 0.10 */
+    public final ForgeConfigSpec.DoubleValue archipelagoBand;
+    /** 离岸群岛密度阈值，默认 0.30 */
+    public final ForgeConfigSpec.DoubleValue archipelagoDensity;
+    /** 离岸群岛噪声尺度（块），默认 120 */
+    public final ForgeConfigSpec.DoubleValue archipelagoScale;
+    /** 离岸群岛最大高度（e 单位），默认 0.035 */
+    public final ForgeConfigSpec.DoubleValue archipelagoHeight;
 
     // ===== Phase 1: Unified Spline Config (74 fields) =====
     // --- Outer spline: continentality c control points (7 × 2 = 14) ---
@@ -267,12 +307,18 @@ public final class GeoGenesisConfig {
         builder.push("Continent Field");
         continentScale = builder.comment("Continent noise scale (blocks). Frequency = 1/scale. HS parameter: HS = continentScale/1000. Range: 1-8 (HS) = 1000-8000.")
             .defineInRange("continentScale", 4000.0, 1000.0, 8000.0);
-        continentWarp = builder.comment("Domain warp intensity.")
-            .defineInRange("continentWarp", 0.2, 0.0, 1.0);
+        continentWarp = builder.comment("Domain warp intensity as fraction of continentScale (applied to the FBM continent field). 0=disabled (pure FBM, recommended — FBM octaves already provide natural continent shape; warping fine FBM detail creates parallel banding). Raise only if you want extra large-scale continent bending. Default 0.0, range [0,1].")
+            .defineInRange("continentWarp", 0.0, 0.0, 1.0);
+        continentFbmOctaves = builder.comment("Continent FBM octaves: continentality c field is a multi-octave FBM value stack (each octave freq×lacunarity, amp×persistence). Coastline = c=0 iso-line, so FBM multi-scale detail carves the coast directly → natural fractal shoreline (ref procedural-island-generator). Default 6, range [1,10].")
+            .defineInRange("continentFbmOctaves", 6, 1, 10);
+        continentFbmLacunarity = builder.comment("Continent FBM frequency multiplier (lacunarity): each octave freq×this. Default 2.0, range [1.5,3.0].")
+            .defineInRange("continentFbmLacunarity", 2.0, 1.5, 3.0);
+        continentFbmPersistence = builder.comment("Continent FBM amplitude decay (persistence): each octave amp×this; higher = stronger high-freq detail = more jagged coast. Default 0.6, range [0.3,0.85].")
+            .defineInRange("continentFbmPersistence", 0.6, 0.3, 0.85);
         continentThreshold = builder.comment("Reference continentality c value ∈ [-1,1]. NOT the coastline; coastline = e=0 natural crossing (see terrain-rebuild §1.4). 0=coast anchor, negative=ocean, positive=land — aligned with vanilla Continentalness.")
             .defineInRange("continentThreshold", 0.0, -1.0, 1.0);
-        continentBias = builder.comment("Land/ocean ratio bias. Positive = more ocean, negative = more land. Range expanded v2: land eLand now ~10x higher, need larger bias to compensate.")
-            .defineInRange("continentBias", 0.4, -0.6, 1.5);
+        continentBias = builder.comment("Land/ocean ratio bias (FBM continent field). Positive = more ocean, negative = more land. RMS-normalized FBM concentrates c near 0, so the bias is much lower than the old single-simplex 0.82. Default 0.31 yields ~35% land / 65% ocean (calibrated against the REAL CellGenerator.sample() pipeline via TerrainAreaProbe: the prior simplified c+eFromC formula was wrong).")
+            .defineInRange("continentBias", 0.31, -0.6, 1.5);
         continentProvinceWarp = builder.comment("Continent field warp amplitude for province sampling (blocks). EXPERIMENTAL: warping by c biases mountain ridge direction toward the c gradient (see GeoGenesisMod discussion). Safe default 0 = disable. Enable only if you understand the directional bias.")
             .defineInRange("continentProvinceWarp", 0.0, 0.0, 8000.0);
         builder.pop();
@@ -289,8 +335,15 @@ public final class GeoGenesisConfig {
         deepOceanDeriv = builder.defineInRange("deepOceanDeriv", 0.0, -10.0, 10.0);
         shelfDeriv = builder.comment("Shelf derivative steepness: higher = steeper continental slope. Default 0.8.")
             .defineInRange("shelfDeriv", 0.8, -10.0, 10.0);
-        shallowDeriv = builder.defineInRange("shallowDeriv", 0.0, -10.0, 10.0);
+        shallowDeriv = builder.defineInRange("shallowDeriv", 0.5, -10.0, 10.0);
         coastDeriv = builder.defineInRange("coastDeriv", 0.0, -10.0, 10.0);
+        builder.pop();
+
+        builder.push("Coastline Transition");
+        oceanFadeStart = builder.comment("Ocean fade start (cBiased space). Ocean depth begins fading to 0 at this continentality. More negative = wider continental shelf before beach. Default -0.15, range [-0.5, 0.0].")
+            .defineInRange("oceanFadeStart", -0.15, -0.5, 0.0);
+        landRampEnd = builder.comment("Land ramp end (cBiased space). Full land height is reached at this continentality. Higher = wider beach zone before full terrain appears. Default 0.08, range [0.0, 0.5].")
+            .defineInRange("landRampEnd", 0.08, 0.0, 0.5);
         builder.pop();
 
         // 海洋类型独立 lo/hi（与陆地类型一致的独立控制）
@@ -328,7 +381,7 @@ public final class GeoGenesisConfig {
         builder.push("Seabed");
         seabedDetail = builder.comment("Seabed detail amplitude (e units).")
             .defineInRange("seabedDetail", 0.03, 0.0, 0.2);
-        oceanDepthFactor = builder.comment("Ocean depth multiplier (e units). >1 = deeper (more ocean area), <1 = shallower (more land area). Direct land/ocean ratio control.")
+        oceanDepthFactor = builder.comment("Ocean depth multiplier (e units). >1 = deeper ocean, <1 = shallower ocean. Does NOT change land/ocean ratio (ratio controlled by continentBias + continentWarp).")
             .defineInRange("oceanDepthFactor", 1.0, 0.5, 3.0);
         builder.pop();
 
@@ -360,7 +413,7 @@ public final class GeoGenesisConfig {
         cratonReliefAmp = builder.comment("Craton local relief amplitude (e units). Plains/low hills. Kept moderate so HILLS class still forms; denseness is fixed via LandShape frequency, not by killing amplitude.")
             .defineInRange("cratonReliefAmp", 0.10, 0.0, 0.6);
         beltReliefAmp = builder.comment("Orogenic belt relief amplitude (e units). Rugged mountains. Moderate value preserves MOUNTAINS class; fingerprint look fixed by larger detail frequency in LandShape.")
-            .defineInRange("beltReliefAmp", 0.22, 0.0, 0.6);
+            .defineInRange("beltReliefAmp", 0.35, 0.0, 0.6);
         plateauReliefAmp = builder.comment("Plateau relief amplitude (e units). Flat-topped, low relief.")
             .defineInRange("plateauReliefAmp", 0.03, 0.0, 0.6);
         basinReliefAmp = builder.comment("Basin relief amplitude (e units).")
@@ -434,6 +487,13 @@ public final class GeoGenesisConfig {
             .defineInRange("humidityInfluence", 1.0, 0.0, 1.0);
         continentInfluence = builder.comment("Continentality influence on biome distribution (0-1). 1.0=full effect, 0.0=neutral.")
             .defineInRange("continentInfluence", 1.0, 0.0, 1.0);
+        // 气候/纬度 xz 缩放
+        latitudeScale = builder.comment("Latitude scale (blocks per temperature cycle). Larger = wider climate bands (slower latitude change with z). Default 6000.")
+            .defineInRange("latitudeScale", 6000.0, 500.0, 30000.0);
+        tempWarpScale = builder.comment("Temperature noise xz scale (blocks). Temperature perturbation field frequency = 1/tempWarpScale. Default 1500.")
+            .defineInRange("tempWarpScale", 1500.0, 100.0, 8000.0);
+        humidityScale = builder.comment("Humidity noise xz scale (blocks). Humidity field frequency = 1/humidityScale. Default 800.")
+            .defineInRange("humidityScale", 800.0, 100.0, 8000.0);
         builder.pop();
 
 
@@ -454,10 +514,33 @@ public final class GeoGenesisConfig {
 
         builder.push("Semantic Affinity & Voronoi");
         // Phase 2.2: 语义适配旋钮
-        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。0=无 c 效应，越大越偏内陆聚集/海岸低地。默认 1.5。")
-            .defineInRange("cAffinityStrength", 1.5, 0.0, 4.0);
+        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。0=无 c 效应，5.0 时海洋中 MOUNTAINS/HILLS 权重归零（类型自动分化为海洋/陆地）。默认 5.0。")
+            .defineInRange("cAffinityStrength", 5.0, 0.0, 10.0);
         voronoiWarpAmp = builder.comment("Voronoi 区域场域扭曲幅度（块），打散网格对齐伪影。默认 250.0。")
             .defineInRange("voronoiWarpAmp", 250.0, 0.0, 600.0);
+        builder.pop();
+
+        builder.push("Coastline Diversification");
+        coastlineWarpAmp = builder.comment("海岸线 warp 振幅（c 空间单位）。注意：大陆性 c 场现已是 FBM（多尺度细节直接刻进海岸线），此 warp 是在 c 上的额外位移补丁，默认 0（禁用，避免与 FBM 重复叠加）。如需额外海岸线扭曲可调大，范围 [0, 0.3]。")
+            .defineInRange("coastlineWarpAmp", 0.0, 0.0, 0.3);
+        coastlineWarpScale = builder.comment("海岸线 warp 基频世界坐标尺度（块）。越大变化越平缓。默认 300，范围 [50, 800]。")
+            .defineInRange("coastlineWarpScale", 300.0, 50.0, 800.0);
+        coastlineWarpOctaves = builder.comment("海岸线 warp 倍频数（octaves）：控制分形细节尺度层级数。越大海岸线越多尺度（自相似犬牙交错），越小越平滑。默认 5，范围 [1, 8]。")
+            .defineInRange("coastlineWarpOctaves", 5, 1, 8);
+        coastlineWarpLacunarity = builder.comment("FBM 频率倍增系数（lacunarity）：每倍频频率×该值。默认 2.0，范围 [1.5, 3.0]。")
+            .defineInRange("coastlineWarpLacunarity", 2.0, 1.5, 3.0);
+        coastlineWarpPersistence = builder.comment("FBM 振幅衰减系数（persistence）：每倍频振幅×该值。默认 0.5，范围 [0.25, 0.8]。")
+            .defineInRange("coastlineWarpPersistence", 0.5, 0.25, 0.8);
+        coastTerrainInfluence = builder.comment("地形类型调制强度（c 空间单位）。山地权重高→推岸出海成岬角/悬崖，平原→拉岸内凹成海湾。默认 0.08，范围 [0, 0.3]。")
+            .defineInRange("coastTerrainInfluence", 0.08, 0.0, 0.3);
+        archipelagoBand = builder.comment("离岸群岛带宽度（c 空间单位，从 coastLoc 向海侧延伸）。越大群岛可出现的海域范围越宽。默认 0.10，范围 [0, 0.3]。")
+            .defineInRange("archipelagoBand", 0.10, 0.0, 0.3);
+        archipelagoDensity = builder.comment("离岸群岛密度阈值（噪声 0-1）。超过此阈值才生成岛屿。越低→岛屿越多越密集。默认 0.30，范围 [0, 1]。")
+            .defineInRange("archipelagoDensity", 0.30, 0.0, 1.0);
+        archipelagoScale = builder.comment("离岸群岛噪声尺度（块）。越大→岛屿团块越大越稀疏。默认 120，范围 [30, 500]。")
+            .defineInRange("archipelagoScale", 120.0, 30.0, 500.0);
+        archipelagoHeight = builder.comment("离岸群岛最大高度（e 单位）。岛屿在地形 e 上的高度上限。默认 0.035，范围 [0, 0.15]。")
+            .defineInRange("archipelagoHeight", 0.035, 0.0, 0.15);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");
@@ -589,10 +672,12 @@ public final class GeoGenesisConfig {
      */
     public com.geogenesis.worldgen.terrain.TerrainParams buildParams() {
         return new com.geogenesis.worldgen.terrain.TerrainParams(
-            continentScale.get(), continentWarp.get(), continentThreshold.get(), continentBias.get(), continentProvinceWarp.get(),
+            continentScale.get(), continentWarp.get(), continentFbmOctaves.get(), continentFbmLacunarity.get(), continentFbmPersistence.get(), continentThreshold.get(), continentBias.get(), continentProvinceWarp.get(),
             deepOceanLoc.get(), shelfLoc.get(), shallowLoc.get(), coastLoc.get(),
             deepOceanDepth.get(), shelfDepth.get(), shallowDepth.get(),
             deepOceanDeriv.get(), shelfDeriv.get(), shallowDeriv.get(), coastDeriv.get(),
+            // coastline transition
+            oceanFadeStart.get(), landRampEnd.get(),
             // 海洋类型独立 lo/hi
             oceanLo.get(), oceanHi.get(),
             deepOceanLo.get(), deepOceanHi.get(),
@@ -618,6 +703,10 @@ public final class GeoGenesisConfig {
             maxY.get(), (int)(maxY.get() * 0.8), (int)(minY.get() * 0.75),
             verticalScale.get(),
             cAffinityStrength.get(), voronoiWarpAmp.get(),
+            // coastline diversification
+            coastlineWarpAmp.get(), coastlineWarpScale.get(), coastlineWarpOctaves.get(), coastlineWarpLacunarity.get(), coastlineWarpPersistence.get(), coastTerrainInfluence.get(),
+            archipelagoBand.get(), archipelagoDensity.get(), archipelagoScale.get(), archipelagoHeight.get(),
+            latitudeScale.get(), tempWarpScale.get(), humidityScale.get(),
 
             // Phase 1: unified spline config (built from individual fields)
             buildSplineConfig()
@@ -757,10 +846,12 @@ public final class GeoGenesisConfig {
      */
     public com.geogenesis.worldgen.terrain.TerrainParams defaultParams() {
         return new com.geogenesis.worldgen.terrain.TerrainParams(
-            continentScale.getDefault(), continentWarp.getDefault(), continentThreshold.getDefault(), continentBias.getDefault(), continentProvinceWarp.getDefault(),
+            continentScale.getDefault(), continentWarp.getDefault(), continentFbmOctaves.getDefault(), continentFbmLacunarity.getDefault(), continentFbmPersistence.getDefault(), continentThreshold.getDefault(), continentBias.getDefault(), continentProvinceWarp.getDefault(),
             deepOceanLoc.getDefault(), shelfLoc.getDefault(), shallowLoc.getDefault(), coastLoc.getDefault(),
             deepOceanDepth.getDefault(), shelfDepth.getDefault(), shallowDepth.getDefault(),
             deepOceanDeriv.getDefault(), shelfDeriv.getDefault(), shallowDeriv.getDefault(), coastDeriv.getDefault(),
+            // coastline transition
+            oceanFadeStart.getDefault(), landRampEnd.getDefault(),
             // 海洋类型独立 lo/hi
             oceanLo.getDefault(), oceanHi.getDefault(),
             deepOceanLo.getDefault(), deepOceanHi.getDefault(),
@@ -786,6 +877,10 @@ public final class GeoGenesisConfig {
             maxY.getDefault(), (int)(maxY.getDefault() * 0.8), (int)(minY.getDefault() * 0.75),
             verticalScale.getDefault(),
             cAffinityStrength.getDefault(), voronoiWarpAmp.getDefault(),
+            // coastline diversification
+            coastlineWarpAmp.getDefault(), coastlineWarpScale.getDefault(), coastlineWarpOctaves.getDefault(), coastlineWarpLacunarity.getDefault(), coastlineWarpPersistence.getDefault(), coastTerrainInfluence.getDefault(),
+            archipelagoBand.getDefault(), archipelagoDensity.getDefault(), archipelagoScale.getDefault(), archipelagoHeight.getDefault(),
+            latitudeScale.getDefault(), tempWarpScale.getDefault(), humidityScale.getDefault(),
 
             // Phase 1: unified spline config (built from default values)
             buildDefaultSplineConfig()

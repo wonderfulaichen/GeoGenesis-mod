@@ -43,7 +43,17 @@ public class ParameterConfigPanel extends ConfigPanel {
             this.label = label; this.description = description; this.cfg = cfg; this.min = min; this.max = max;
         }
     }
+    private static class BasicIntSpec {
+        final String label;
+        final String description;
+        final ForgeConfigSpec.IntValue cfg;
+        final int min, max;
+        BasicIntSpec(String label, String description, ForgeConfigSpec.IntValue cfg, int min, int max) {
+            this.label = label; this.description = description; this.cfg = cfg; this.min = min; this.max = max;
+        }
+    }
     private final List<BasicSpec> specs = new ArrayList<>();
+    private final List<BasicIntSpec> intSpecs = new ArrayList<>();
     private final List<ParamSlider> basicSliders = new ArrayList<>();
 
     // 图表
@@ -74,18 +84,36 @@ public class ParameterConfigPanel extends ConfigPanel {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
         Consumer<Double> onChange = v -> { if (onMarkDirty != null) onMarkDirty.run(); };
         Function<Double, String> fmt = v -> String.format("%.3f", v);
-        specs.clear(); basicSliders.clear();
+        specs.clear(); intSpecs.clear(); basicSliders.clear();
         heightSliders.clear();
 
         // 基础参数（只保留独立功能的参数）
         addSpec("海陆偏置", "大陆性噪声偏置：正值→海洋面积增加（陆地减少），负值→陆地面积增加（海洋减少）。影响海陆整体比例。公式：cBiased = c - bias，偏置越大海洋越多。", c.continentBias, -0.6, 1.5);
         addSpec("海洋深度乘数", "海洋深度缩放因子。>1→海洋更深（海洋面积扩大），<1→海洋更浅（陆地面积扩大）。直接控制海陆面积比例。默认1.0。", c.oceanDepthFactor, 0.5, 3.0);
+        addSpec("海洋淡出起点", "海洋深度淡出起点（cBiased 空间）。大陆性在此值以上，海洋深度开始衰减到海平面。越负→大陆架越宽。默认-0.15。", c.oceanFadeStart, -0.5, 0.0);
+        addSpec("陆地高度终点", "陆地高度升起终点（cBiased 空间）。大陆性达到此值时陆地高度完全露出。越高→海滩带越宽。默认0.08。", c.landRampEnd, 0.0, 0.5);
         addSpec("海床细节", "海床微地形振幅。越大→海床起伏越明显（海山、海沟等特征）。", c.seabedDetail, 0, 0.2);
         addSpec("高海拔阈值", "海拔分类阈值。低于此值为平原/丘陵，高于为高地（山脉+高原+雪峰）。值越低→更多区域划入高地。", c.elevHigh, 0, 1.0);
         addSpec("高起伏阈值", "起伏度分类阈值。低于此值为丘陵，高于为山脉。值越低→更多区域划入山脉类型。", c.reliefHigh, 0, 0.6);
         addSpec("峰阈值", "山峰阈值。高海拔区域中 e 值超过此阈值为 PEAK（雪峰亚型）。值越低→更多山峰。", c.peakE, 0, 1.0);
         addSpec("语义适配强度", "大陆性语义亲和度强度 β：调制大陆性 c 对各类型空间权重的偏置幅度。0=无 c 效应（类型分布不随大陆性变化），越大越偏内陆聚集/海岸低地。默认1.5。", c.cAffinityStrength, 0.0, 4.0);
         addSpec("域扭曲幅度", "Voronoi 区域场域扭曲幅度（块）：打散网格对齐伪影，使区域边界蜿蜒不显网格。越大越自然。默认250.0。", c.voronoiWarpAmp, 0.0, 600.0);
+        // 大陆 FBM（值叠加，对标参考项目 fbm 海岸线）
+        addIntSpec("大陆FBM倍频", "大陆性 c 场由多倍频 FBM 值叠加（每倍频频率倍增 lacunarity、振幅乘 persistence）。海岸线 = c=0 等值线，FBM 多尺度细节直接刻进海岸线 → 自然犬牙交错。默认 6（严格对齐参考项目）。", c.continentFbmOctaves, 1, 10);
+        addSpec("FBM频率倍增", "大陆 FBM 频率倍增（lacunarity）：每倍频频率×该值，越大细节尺度越密（海岸线破碎更细）。默认 2.0。", c.continentFbmLacunarity, 1.5, 3.0);
+        addSpec("FBM振幅衰减", "大陆 FBM 振幅衰减（persistence）：每倍频振幅×该值，越大高频细节越强、海岸线越破碎。默认 0.6。", c.continentFbmPersistence, 0.3, 0.85);
+        // 海岸线多样化
+        addSpec("海岸线位移", "海岸线 warp 振幅（c 空间单位）。海岸线在 c 上的位移幅度，越大海岸线越蜿蜒。默认 0.03。", c.coastlineWarpAmp, 0.0, 0.3);
+        addSpec("位移尺度", "海岸线 warp 基频世界坐标尺度（块）。越大变化越平缓。默认 300。", c.coastlineWarpScale, 50.0, 800.0);
+        addSpec("地形调制", "地形类型调制强度（c 空间单位）。山地→岬角/悬崖，平原/盆地→海湾。默认 0.08。", c.coastTerrainInfluence, 0.0, 0.3);
+        addSpec("群岛带宽", "离岸群岛带宽度（c 空间单位，从 coastLoc 向海侧延伸）。越大群岛范围越宽。默认 0.10。", c.archipelagoBand, 0.0, 0.3);
+        addSpec("群岛密度", "离岸群岛密度阈值（0-1）。超过此阈值才生成岛屿，越低→岛屿越多。默认 0.30。", c.archipelagoDensity, 0.0, 1.0);
+        addSpec("群岛尺度", "离岸群岛噪声尺度（块）。越大→岛屿团块越大越稀疏。默认 120。", c.archipelagoScale, 30.0, 500.0);
+        addSpec("群岛高度", "离岸群岛最大高度（e 单位）。越低→岛屿越扁平。默认 0.035。", c.archipelagoHeight, 0.0, 0.15);
+        // 海岸线 FBM 分形参数
+        addIntSpec("Warp倍频", "海岸线 warp 倍频数（octaves）：分形细节尺度层级数。越大海岸线越多尺度（自相似犬牙交错），越小越平滑。默认 5。", c.coastlineWarpOctaves, 1, 8);
+        addSpec("Warp频率倍增", "FBM 频率倍增系数（lacunarity）：每倍频频率×该值。默认 2.0。", c.coastlineWarpLacunarity, 1.5, 3.0);
+        addSpec("Warp振幅衰减", "FBM 振幅衰减系数（persistence）：每倍频振幅×该值。默认 0.5。", c.coastlineWarpPersistence, 0.25, 0.8);
         for (BasicSpec s : specs) {
             ParamSlider ps = new ParamSlider(0, 0, 100, s.min, s.max, s.cfg.get(), v -> {
                 s.cfg.set(v); onChange.accept(v);
@@ -93,6 +121,19 @@ public class ParameterConfigPanel extends ConfigPanel {
             ps.setDefaultValue(s.cfg.getDefault());
             ps.setTooltipText(s.description);
             basicSliders.add(ps);
+        }
+        // 整数滑块（如 warp 倍频）
+        for (BasicIntSpec s : intSpecs) {
+            final ParamSlider[] psHolder = new ParamSlider[1];
+            psHolder[0] = new ParamSlider(0, 0, 100, s.min, s.max, s.cfg.get(), v -> {
+                int val = (int) Math.round(v);
+                s.cfg.set(val);
+                psHolder[0].setCurrentValue(val);
+                onChange.accept(0.0);
+            }, v -> String.format("%d", (int) Math.round(v)));
+            psHolder[0].setDefaultValue(s.cfg.getDefault());
+            psHolder[0].setTooltipText(s.description);
+            basicSliders.add(psHolder[0]);
         }
 
         // 世界高度（支持自定义高度：原版/512/1024等）
@@ -132,6 +173,10 @@ public class ParameterConfigPanel extends ConfigPanel {
 
     private void addSpec(String label, String description, ForgeConfigSpec.DoubleValue cfg, double min, double max) {
         specs.add(new BasicSpec(label, description, cfg, min, max));
+    }
+
+    private void addIntSpec(String label, String description, ForgeConfigSpec.IntValue cfg, int min, int max) {
+        intSpecs.add(new BasicIntSpec(label, description, cfg, min, max));
     }
 
     /** 世界高度 Y 滑块，可选是否显示确认对话框 */
@@ -217,11 +262,12 @@ public class ParameterConfigPanel extends ConfigPanel {
         g.drawString(f, "■ 基础参数", x + 6, ty + 4, 0xFF66CCFF);
         int basicTop = ty + 18;
         for (int i = 0; i < basicSliders.size(); i++) {
-            BasicSpec s = specs.get(i);
+            // basicSliders 混合了 specs(浮点) 与 intSpecs(整数) 两类滑块，须按索引区分标签来源
+            String label = (i < specs.size()) ? specs.get(i).label : intSpecs.get(i - specs.size()).label;
             ParamSlider ps = basicSliders.get(i);
             int rowY = basicTop + i * BASIC_ROW_H;
             if (i % 2 == 0) g.fill(x + 4, rowY, x + w - 8, rowY + BASIC_ROW_H, 0x12FFFFFF);
-            g.drawString(f, s.label, x + 6, rowY + (BASIC_ROW_H - 8) / 2, 0xFFCCCCCC);
+            g.drawString(f, label, x + 6, rowY + (BASIC_ROW_H - 8) / 2, 0xFFCCCCCC);
             int slX = x + 4 + BASIC_LABEL_W;
             int slW = w - 8 - BASIC_LABEL_W - BASIC_VAL_W - 8;
             ps.setX(slX); ps.setY(rowY + 2); ps.setWidth(slW);

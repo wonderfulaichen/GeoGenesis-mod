@@ -25,6 +25,12 @@
 - **滑块 reset 默认标记铁律（2026-07-24）**：`ParamSlider.setDefaultValue(...)` 必须填 `cfg.getDefault()`（代码默认值），**严禁填 `cfg.get()`**（config 当前/持久化值）。`resetToDefault()` 把滑块归位到该标记；若误用 `get()`，一旦当前值被拖动或 toml 持久化为低位，点重置就会把滑块拉到最低而非代码默认。诊断同类 bug 的方法是：枚举全仓所有 `setDefaultValue` 调用，核对每个是否用 `getDefault()`。
 
 ## 关键参数/陷阱
+- **【铁律·大陆性 c 只作条件因素，绝不控制地形高度】**（2026-07-25 用户反复纠正后钉死）：
+  - 大陆性 `c` **只做两件事**：(1) 决定 (x,z) 出现什么类型（Voronoi 区域→typeWeights）；(2) 决定海陆位置关系（c<0=海洋域、c>0=陆地域，即海陆 mask）。
+  - **地形高度由类型各自的独立噪声全权决定**：陆地 `eLand = Σ w_t·H_t(noise_t)`（TypeLandShape），海洋深度由"离海岸距离的位置函数"单调推导（对齐旧范式 `computeOceanDepth`，非 c 直射）。
+  - **海岸线 = e 场自然穿过 0 的等值线**，由 blend mask 平滑过渡，不绑定 c 的硬阈值锚点。
+  - **反复踩的坑（已修）**：① `eBase = heightCurve.eFromC(cBiased)` 的海洋样条 `shallowDeriv=0.0` 局部水平→浅蓝平涂平台（CONTINENTAL_SHELF），已改默认 0.5 消除；② `continentalSlope = clamp(cEdge*0.08,0,0.15)` 把 c 直接加进陆地高度（"大陆按 c 斜升"），已整体删除。
+  - **引入任何新功能时自查**：若逻辑是 `if c > X then e = f(c)` 或 `e += g(c)`，即违规。c 只能进海陆 mask（smoothstep 阈值）与类型选择，绝不进高度。
 - **oceanDepthFactor**（2026-07-22）：乘到 eOcean，>1 更深(海洋扩大) <1 更浅。默认1.0 [0.5,3.0]。解决海陆比硬上限。
 - `e→Y` 必须非对称（e=0→seaLevel=63）；独立预览用 `defaultParams()` 非 `buildParams()`
 - Forge 1.20.1：`sourceSets.main` 运行，**禁止**把 reobf jar 拷进 `run/mods/`；`f_/m_` NoSuchFieldError → 删 `run/mods/` jar；biome 注册表用 `registryAccess()` 禁止缓存到静态；叶子 CODEC 禁 `.stable()`

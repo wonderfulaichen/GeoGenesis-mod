@@ -6,14 +6,16 @@ import java.util.function.DoubleBinaryOperator;
 /**
  * 海洋特征计算器 — 在深海区域叠加地质特征（洋中脊、海山等）。
  *
- * 在 CellGenerator.sample() 中 eOcean 计算后、eOcean+eLand 合并前调用。
+ * <p>在 CellGenerator.sample() 中 eOcean 计算后、eOcean+eLand 合并前调用。
  * 只返回 delta（≥0，仅抬升海床），由调用方叠加到 eOcean 并 clamp。
  * 仅在 eOcean < 0 时生效，不触及陆地。
  *
- * <p>海山中心水深检查（v2 新增）：
- * 每个潜在海山在生成前会检查中心点的真实 eOcean（不含海山增量）。
- * 若中心点水深不足（eOcean > -0.20），则跳过该海山。
- * 这确保海山只出现在真正深水的区域，不会落在陆地上或浅滩中。
+ * <p>海山中心水深检查（v2 新增）：每个潜在海山在生成前检查中心点的真实 eOcean
+ * （不含海山增量）。若中心点水深不足（eOcean > -0.20），则跳过该海山。
+ *
+ * <p>海山形状（去圆化重构）：改用共享 VolcanicShape 库，含域扭曲 + 各向异性 +
+ * 三种剖面（锥形 / 平顶 guyot / 环状 caldera）。修复旧 48 位哈希截断导致
+ * radius 恒为 70、amp 与 chance 位重叠污染的 bug（形状 / 几何改用独立 64 位哈希）。
  */
 public final class OceanFeatures {
 
@@ -21,11 +23,12 @@ public final class OceanFeatures {
     private final Noise ridgeNoise;
     private final Noise ridgeMask; // 低频掩码 [0,1]，避免全球都有中脊
 
-    // ===== 海山/海底火山：粗格点高斯鼓包 =====
+    // ===== 海山/海底火山：粗格点高斯鼓包 + 域扭曲去圆化 =====
+    private final Noise seamountWarpX, seamountWarpZ; // 海山域扭曲 @1/200
     /** 粗格点间距（块）。每个格子约 40% 概率生成一座海山。 */
     private static final double SEAMOUNT_GRID = 500.0;
     /** 海山生成概率（0~65535 阈值） */
-    private static final int SEAMOUNT_CHANCE = (int)(0.40 * 65536);
+    private static final int SEAMOUNT_CHANCE = (int) (0.40 * 65536);
     /** 海山半径范围 [min, max) */
     private static final double SEAMOUNT_RADIUS_MIN = 70.0;
     private static final double SEAMOUNT_RADIUS_RANGE = 80.0; // 70~150
@@ -53,6 +56,9 @@ public final class OceanFeatures {
         // 低频掩码：Simplex(1/2000) → [0,1]
         Noise maskBase = new Frequency(new Simplex(704), 1.0 / 2000.0);
         this.ridgeMask = new Map(maskBase, -1.0, 1.0, 0.0, 1.0);
+        // 海山域扭曲（去圆化）：低频 Simplex @1/200，幅度由每座 radius 缩放
+        this.seamountWarpX = new Frequency(new Simplex(705), 1.0 / 200.0);
+        this.seamountWarpZ = new Frequency(new Simplex(706), 1.0 / 200.0);
         // 默认：无检查（向后兼容）
         this.seamountCenterDepthCheck = null;
     }
@@ -81,6 +87,8 @@ public final class OceanFeatures {
     public void seed(long worldSeed) {
         Noises.seedAll(ridgeNoise, worldSeed, 0);
         Noises.seedAll(ridgeMask, worldSeed, 0);
+        Noises.seedAll(seamountWarpX, worldSeed, 0);
+        Noises.seedAll(seamountWarpZ, worldSeed, 0);
         this.seamountSeed = worldSeed + 987654321L;
     }
 
@@ -110,49 +118,52 @@ public final class OceanFeatures {
             }
         }
 
-        // 2. 海山/海底火山
-        //    移除 per-cell gate（旧 eOcean >= -0.30 太严格），
-        //    改为 seamount 中心点水深检查（仅深水中心才生成）
+        // 2. 海山/海底火山（域扭曲去圆化 + 共享 VolcanicShape 形状）
         seamountDelta = seamountCompute(wx, wz);
 
         return new FeatureResult(ridgeDelta + seamountDelta, ridgeDelta, seamountDelta);
     }
 
     /**
-     * 海山场：粗格点确定性高斯鼓包。
-     * 每个 500×500 格子约 40% 概率含一座海山，
-     * 搜索邻域 3×3 格子叠加贡献。
-     *
-     * <p>关键设计（v2）：
-     * - 移除 per-cell eOcean gate（之前为 eOcean < -0.30）
-     * - 改为检查海山中心的真实 eOcean（通过 depthChecker）
-     * - 若中心水深不足（eOcean > -0.20）→ 跳过该海山
-     * - 这确保海山不会"长在陆地上"，同时深水海山能被正确识别
+     * 海山场：粗格点确定性鼓包，域扭曲去圆化 + 各向异性 + 三剖面。
+     * 搜索邻域 3×3 格子叠加贡献；海山中心深水检查（仅深水中心才生成）。
      */
     private double seamountCompute(double wx, double wz) {
-        long cx = (long)Math.floor(wx / SEAMOUNT_GRID);
-        long cz = (long)Math.floor(wz / SEAMOUNT_GRID);
+        long cx = (long) Math.floor(wx / SEAMOUNT_GRID);
+        long cz = (long) Math.floor(wz / SEAMOUNT_GRID);
 
         double total = 0.0;
         for (long dx = -1; dx <= 1; dx++) {
             for (long dz = -1; dz <= 1; dz++) {
                 long h = hashCell(cx + dx, cz + dz);
-                if ((h & 0xFFFF) < SEAMOUNT_CHANCE) {
-                    double centerX = cellCenter(cx + dx, (h >> 16) & 0xFFFF);
-                    double centerZ = cellCenter(cz + dz, (h >> 32) & 0xFFFF);
+                if ((h & 0xFFFF) >= SEAMOUNT_CHANCE) continue;
+                double centerX = cellCenter(cx + dx, (h >>> 16) & 0xFFFF);
+                double centerZ = cellCenter(cz + dz, (h >>> 32) & 0xFFFF);
 
-                    // v2: 检查海山中心的水深 —— 只有深水中心才允许生成
-                    if (seamountCenterDepthCheck != null) {
-                        double eOceanAtCenter = seamountCenterDepthCheck.applyAsDouble(centerX, centerZ);
-                        if (eOceanAtCenter > -0.20) continue;
-                    }
-
-                    double radius = SEAMOUNT_RADIUS_MIN + ((h >> 48) & 0xFFFF) * (SEAMOUNT_RADIUS_RANGE / 65536.0);
-                    double amp = SEAMOUNT_AMP_MIN + ((h >> 8) & 0xFF) * (SEAMOUNT_AMP_RANGE / 256.0);
-
-                    double d2 = (wx - centerX) * (wx - centerX) + (wz - centerZ) * (wz - centerZ);
-                    total += amp * Math.exp(-d2 / (2.0 * radius * radius));
+                // 海山中心水深检查：只有深水中心才允许生成
+                if (seamountCenterDepthCheck != null) {
+                    double eOceanAtCenter = seamountCenterDepthCheck.applyAsDouble(centerX, centerZ);
+                    if (eOceanAtCenter > -0.20) continue;
                 }
+
+                // 形状 / 几何：独立 64 位哈希（修复旧 48 位截断 radius 恒 70 的 bug）
+                long hg = hashCell64(cx + dx, cz + dz, seamountSeed + 9001L);
+                int shapeType = (int) (hg & 0x3) % 3; // 0 CONE, 1 GUYOT, 2 CALDERA
+                double ang = ((hg >>> 2) & 0x3FF) / 1024.0 * Math.PI;
+                double asx = 0.6 + ((hg >>> 12) & 0xFF) / 255.0 * 0.8;
+                double asz = 0.6 + ((hg >>> 20) & 0xFF) / 255.0 * 0.8;
+                double radius = SEAMOUNT_RADIUS_MIN + ((hg >>> 28) & 0xFFFF) / 65536.0 * SEAMOUNT_RADIUS_RANGE;
+                double amp = SEAMOUNT_AMP_MIN + ((hg >>> 44) & 0xFF) / 255.0 * SEAMOUNT_AMP_RANGE;
+
+                // 域扭曲（幅度正比 radius，频率固定 1/200 防 Jacobian 折叠）
+                double wamp = radius * 0.4;
+                double wx2 = wx + seamountWarpX.compute(wx, wz) * wamp;
+                double wz2 = wz + seamountWarpZ.compute(wx, wz) * wamp;
+                double[] local = VolcanicShape.anisoRotate(wx2 - centerX, wz2 - centerZ, ang, asx, asz);
+                double d = Math.hypot(local[0], local[1]) / radius;
+                if (d >= 1.0) continue;
+                double contrib = VolcanicShape.profile(shapeType, d, amp); // caldera 已 clamp≥0
+                if (contrib > 0.0) total += contrib;
             }
         }
         return total;
@@ -169,12 +180,21 @@ public final class OceanFeatures {
         return t * t * (3.0 - 2.0 * t);
     }
 
-    /** 确定性哈希（混合世界种子，不同世界不同分布） */
+    /** 确定性哈希（48 位，混合世界种子；仅用于 chance/center，行为保持旧分布） */
     private long hashCell(long cx, long cz) {
         long h = seamountSeed + cx * 374761393L + cz * 668265263L;
         h = h ^ (h >>> 13);
         h = h * 1274126177L;
         h = h ^ (h >>> 16);
-        return h & 0x0000FFFFFFFFFFFFL; // 48 bits
+        return h & 0x0000FFFFFFFFFFFFL;
+    }
+
+    /** 确定性 64 位哈希（独立 salt，供形状 / 几何，无截断） */
+    private static long hashCell64(long cx, long cz, long salt) {
+        long h = salt + cx * 374761393L + cz * 668265263L;
+        h = h ^ (h >>> 13);
+        h = h * 1274126177L;
+        h = h ^ (h >>> 16);
+        return h;
     }
 }

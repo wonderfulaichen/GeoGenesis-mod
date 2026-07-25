@@ -166,6 +166,19 @@ public final class BiomeClassifier {
             case BASIN -> climate.isDry()
                 ? Biomes.DESERT : Biomes.MEADOW;
 
+            case VOLCANO -> {
+                // 火山 = 岩石山地形态，复用岩石群系（未来可换黑曜石/玄武岩地表）
+                if (cell.isSnow) yield Biomes.FROZEN_PEAKS;
+                if (climate.isHot() && climate.isWet()) yield Biomes.JUNGLE;
+                if (climate.isCold()) yield Biomes.TAIGA;
+                yield Biomes.JAGGED_PEAKS;
+            }
+            case VOLCANIC_FIELD -> {
+                // 火山群 = 低矮岩石丘陵，复用丘陵群系
+                if (climate.isCold()) yield Biomes.WINDSWEPT_HILLS;
+                if (climate.isCoastal() && climate.isWet()) yield Biomes.TAIGA;
+                yield Biomes.WINDSWEPT_HILLS;
+            }
             case SNOW -> Biomes.SNOWY_PLAINS;
         };
     }
@@ -193,6 +206,8 @@ public final class BiomeClassifier {
             case PEAK     -> BiomeClass.PEAK;
             case BASIN    -> BiomeClass.BASIN;
             case SNOW     -> BiomeClass.SNOW;
+            case VOLCANO  -> BiomeClass.MOUNTAINS;
+            case VOLCANIC_FIELD -> BiomeClass.HILLS;
         };
     }
 }

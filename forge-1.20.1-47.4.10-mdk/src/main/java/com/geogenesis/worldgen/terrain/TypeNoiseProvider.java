@@ -23,7 +23,11 @@ public final class TypeNoiseProvider {
     private MountainRidgeNetwork ridgeNetwork;
     private long lastSeed = 0L;
 
-    public TypeNoiseProvider() {
+    // 造山带起伏振幅（e 单位），由 TerrainParams.beltReliefAmp 注入；缩放山脉脊线相对高度，让山脉起伏可调（复活死参数）
+    private final double beltReliefAmp;
+
+    public TypeNoiseProvider(double beltReliefAmp) {
+        this.beltReliefAmp = beltReliefAmp;
         // --- PLAIN: 1/800 单频 + 极弱 warp，真正平坦 ---
         Noise pSimplex = new Frequency(new Simplex(410), 1.0 / 800.0);
         Noise pWarpX = new Frequency(new Simplex(433), 1.0 / 500.0);
@@ -49,7 +53,7 @@ public final class TypeNoiseProvider {
         // --- MOUNTAINS: 浅山脊骨架(1/1500) + 主脊线(1/480) + 次脊线(1/180) ---
         Noise mRSkel = new Boost(new Ridge(new Frequency(new Simplex(436), 1.0 / 1500.0), 1.0), 0.25);
         Noise mR1 = new Ridge(new Frequency(new Simplex(416), 1.0 / 480.0), 1.0);
-        Noise mR2 = new Boost(new Ridge(new Frequency(new Simplex(417), 1.0 / 180.0), 1.0), 0.4);
+        Noise mR2 = new Boost(new Ridge(new Frequency(new Simplex(417), 1.0 / 180.0), 1.0), 0.25);
         Noise mRSum = new Add(new Add(mRSkel, mR1), mR2);
         Noise mRCombined = new Map(mRSum, 0.0, 1.8, 0.0, 1.0);
         this.mountRidge = mRCombined;
@@ -60,13 +64,13 @@ public final class TypeNoiseProvider {
         Noise sOct3 = new Boost(new Frequency(new Simplex(427), 1.0 / 150.0), 0.2);
         this.mountShape = new Map(new Add(new Add(sOct1, sOct2), sOct3), -1.6, 1.6, 0.20, 0.95);
 
-        // Valley 谷底基线
+        // Valley 谷底基线（B：0.12-0.40 → 0.04-0.18，谷底更低，山脉相对落差更大、更陡）
         Noise mValley = new Frequency(new Simplex(420), 1.0 / 250.0);
-        this.mountValleyFloor = new Map(mValley, -1.0, 1.0, 0.12, 0.40);
+        this.mountValleyFloor = new Map(mValley, -1.0, 1.0, 0.04, 0.18);
 
         // 高频细节
         Noise mDetR = new Ridge(new Frequency(new Simplex(421), 1.0 / 80.0), 1.0);
-        this.mountDetail = new Boost(mDetR, 0.2);
+        this.mountDetail = new Boost(mDetR, 0.1);
 
         // 方向扭曲
         this.mountDirAngle = new Frequency(new Simplex(430), 1.0 / 600.0);
@@ -154,7 +158,7 @@ public final class TypeNoiseProvider {
 
         double shape = mountShape.compute(rwx, rwz);               // [0.20, 0.95] blob
         double ridgeRaw = mountRidge.compute(rwx, rwz);
-        double ridge = Math.max(0, (ridgeRaw - 0.4) / 0.6);        // [0, 1]
+        double ridge = Math.max(0, (ridgeRaw - 0.15) / 0.85);        // [0, 1]（降脊线门控→脊线结构在更大范围出现，山地更崎岖、与丘陵拉开落差）
         double detail = mountDetail.compute(rwx, rwz);             // [0, 0.2]
         double valleyFloor = mountValleyFloor.compute(rwx, rwz);   // [0.12, 0.40]
 
@@ -163,9 +167,12 @@ public final class TypeNoiseProvider {
         t = t < 0 ? 0 : (t > 1 ? 1 : t);
         double presence = t * t * (3.0 - 2.0 * t);                 // smoothstep
 
-        // 三级形态：谷底 + presence² 加速上升 → 脊线目标
-        double rise = presence * presence;                         // 二次加速
-        double ridgeTarget = 0.30 + Math.min(0.70, ridge * 0.7 + detail * 0.3);
+        // 三级形态：谷底 → 线性上升 → 脊线目标
+        // B1 修复：取消 presence² 二次压平——presence≈0.5 时 rise 由 0.25 提到 0.5，山腰中段直接获得脊线高度，整片山坡起伏明显。
+        double rise = presence;                                     // 线性，避免中段被压平导致"山地不明显"
+        // 脊线目标高度由 beltReliefAmp 调制：reliefScale 默认(0.22)→1.0 行为不变；调高→山脉脊线更高更陡（复活死参数）
+        double reliefScale = beltReliefAmp / 0.22;
+        double ridgeTarget = 0.30 + Math.min(0.70, (ridge * 0.7 + detail * 0.3) * reliefScale);
         double v = valleyFloor * (1.0 - rise) + rise * ridgeTarget;
 
         if (ridgeNetwork != null) {
