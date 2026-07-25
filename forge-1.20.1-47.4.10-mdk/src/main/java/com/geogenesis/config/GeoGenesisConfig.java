@@ -514,8 +514,8 @@ public final class GeoGenesisConfig {
 
         builder.push("Semantic Affinity & Voronoi");
         // Phase 2.2: 语义适配旋钮
-        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。0=无 c 效应，5.0 时海洋中 MOUNTAINS/HILLS 权重归零（类型自动分化为海洋/陆地）。默认 5.0。")
-            .defineInRange("cAffinityStrength", 5.0, 0.0, 10.0);
+        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。v14 修复：默认 5.0→0.0，关闭 c→权重放大（per-type 噪声已被共享噪声替代，c 调制会引入额外断裂）。0=纯空间 Voronoi 类型分布，越大越偏内陆聚集/海岸低地。")
+            .defineInRange("cAffinityStrength", 0.0, 0.0, 10.0);
         voronoiWarpAmp = builder.comment("Voronoi 区域场域扭曲幅度（块），打散网格对齐伪影。默认 250.0。")
             .defineInRange("voronoiWarpAmp", 250.0, 0.0, 600.0);
         builder.pop();

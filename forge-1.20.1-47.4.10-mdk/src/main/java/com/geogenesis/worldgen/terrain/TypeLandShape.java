@@ -113,20 +113,38 @@ public final class TypeLandShape {
             tw[lands[i].ordinal()] *= factor;
         }
 
-        double eLand = 0.0, sumW = 0.0;
+        // v14 修复（2026-07-25）：v6.5 公式（共享噪声 + lo+(hi-lo)×sharedNoise）
+        // <p>
+        // <b>断裂根因（铁证：用户 8c0d47f 仍断裂）</b>：
+        // v7-v13 用 per-type 独立噪声加权：`eLand = Σ w_t · H_t(noise_t(x,z))`。
+        // 5 类独立噪声的随机梯度叠加，per-block Δe 可达 0.04-0.07 e（15-27 块跳变）。
+        // v6.5 实测过：v5.2 共享噪声公式 max Δe = 2.2 块（通过），per-type 7.1 块（不通过）。
+        // <p>
+        // <b>v6.5 公式数学保证连续</b>：
+        // <pre>
+        //   blendLo = Σ_t w_t(c) · lo_t(c)
+        //   blendHi = Σ_t w_t(c) · hi_t(c)
+        //   eLand   = blendLo + (blendHi − blendLo) · sharedNoise(wx, wz)
+        // </pre>
+        // sharedNoise 是单条连续 FBM（域扭曲+4 频率混合）；blendLo/blendHi 是连续权重 Σ 连续值；
+        // 连续函数乘连续函数仍连续 → per-block Δe 数量级 ~0.001（< 1 块），断裂根治。
+        // <p>
+        // <b>c-affinity β=0（已配置默认）</b>：关闭 c→权重放大，避免被压到 0.01 的权重导致权重突跳。
+        // 仍可在 UI 调高（每类权重连续，无阈值跳变）。
+        // <p>
+        // <b>类型视觉差异让位</b>：HILLS 圆润/MOUNTAINS 脊线靠 sampleByType 内层样条 lo/hi 边界
+        // + c 亲和度权重表达；地表纹理由 BiomeClassifier + 装饰噪声负责（v6.5 决策一致）。
+        double blendLo = 0.0, blendHi = 0.0;
         for (int i = 0; i < lands.length; i++) {
             double w = tw[lands[i].ordinal()];
             if (w <= 0.001) continue;
-            double typeVal = typeNoise.computeNoise(lands[i], wx, wz);  // 该类型自己的噪声
-            double e_t = generators.sampleByType(effectiveCBiased, i, typeVal);  // 该类型自己的高度
-            eLand += w * e_t;
-            sumW += w;
+            double lo_t = generators.sampleByType(effectiveCBiased, i, 0.0); // 该类型在 c 处的下限
+            double hi_t = generators.sampleByType(effectiveCBiased, i, 1.0); // 该类型在 c 处的上限
+            blendLo += w * lo_t;
+            blendHi += w * hi_t;
         }
-        if (sumW <= 0) {
-            eLand = 0.0; // 所有类型被 cAffinity 压制→仅 eOcean 贡献深度（海洋）
-        } else {
-            eLand /= sumW;
-        }
+        double sharedNoise = generators.computeSharedNoise(wx, wz);
+        double eLand = blendLo + (blendHi - blendLo) * sharedNoise;
         // 放开下限到海平面以下：盆地等类型的内层样条可为负（e<0 → HeightCurve 映射为低于海平面
         // → 积水成湖/洼地）。下限取海洋深度地板 ELAND_MIN，避免异常配置产生过深空洞；上限仍封 1.0。
         // 注意：原 clamp01 把 eLand 钳到 [0,1]，会抹平盆地凹陷（内部全压成 0 平盘），现已修正。

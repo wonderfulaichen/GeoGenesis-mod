@@ -20,6 +20,12 @@ public class Cell {
     /** 归一化高度/深度 e ∈ [-1,1]（用于 HeightCurve 映射） */
     public double e;
 
+    /** 纯海洋深度分量（不含 blend 前），诊断用 */
+    public double eOcean;
+
+    /** 平滑过渡权重 cont=[0,1]，诊断用 */
+    public double blendCont;
+
     /** 连续 eLand ∈ [0,1]（纯陆地形态，不含海岸混合） */
     public double eLand;
 
