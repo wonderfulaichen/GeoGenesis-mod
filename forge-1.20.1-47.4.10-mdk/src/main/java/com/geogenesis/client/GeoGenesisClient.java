@@ -91,7 +91,7 @@ public final class GeoGenesisClient {
         ResourceKey<net.minecraft.world.level.levelgen.presets.WorldPreset> key =
                 ResourceKey.create(Registries.WORLD_PRESET, new ResourceLocation(GeoGenesisMod.MODID + ":geogenesis"));
         event.register(key, (CreateWorldScreen screen, WorldCreationContext ctx) ->
-                new GeoGenesisConfigScreen(screen));
+                new GeoGenesisConfigScreen(screen, (long)(Math.random() * Long.MAX_VALUE)));
     }
 
     private GeoGenesisClient() {}

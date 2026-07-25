@@ -20,13 +20,19 @@ import org.lwjgl.glfw.GLFW;
 @Mod.EventBusSubscriber(modid = GeoGenesisMod.MODID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GeoGenesisForgeEvents {
 
-    /** 按 G 键在游戏内外打开地形配置/预览屏。 */
+    /** 按 G 键在游戏内外打开地形配置/预览屏。游戏中传当前世界种子，创建世界时传随机种子。 */
     @SubscribeEvent
     public static void onKey(InputEvent.Key event) {
         if (event.getAction() == GLFW.GLFW_PRESS && event.getKey() == GLFW.GLFW_KEY_G) {
             Minecraft mc = Minecraft.getInstance();
             if (mc.screen == null) {
-                mc.setScreen(new GeoGenesisConfigScreen(mc.screen));
+                long seed;
+                if (mc.getSingleplayerServer() != null) {
+                    seed = mc.getSingleplayerServer().overworld().getSeed();
+                } else {
+                    seed = (long)(Math.random() * Long.MAX_VALUE);
+                }
+                mc.setScreen(new GeoGenesisConfigScreen(mc.screen, seed));
             }
         }
     }

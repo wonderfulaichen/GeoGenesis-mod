@@ -157,14 +157,14 @@ public class ParameterConfigPanel extends ConfigPanel {
             s.setOnReset(() -> heightBar.refreshFromConfig());
         }
 
-        // 尺度预览（直接拖拽刻度尺标记调整，不需要额外滑块）
-        scalePrev.setHorizontalScale(c.continentScale.get() / 1000.0);
+        // 尺度缩放（HS = 水平 XZ 等比缩放，VS = 垂直 Y 等比缩放）
+        scalePrev.setHorizontalScale(c.horizontalScale.get());
         scalePrev.setVerticalScale(c.verticalScale.get());
-        scalePrev.setDefaultHorizontalScale(c.continentScale.getDefault() / 1000.0);
+        scalePrev.setDefaultHorizontalScale(c.horizontalScale.getDefault());
         scalePrev.setDefaultVerticalScale(c.verticalScale.getDefault());
         scalePrev.setOnMarkDirty(() -> {
             // 拖拽后更新配置
-            c.continentScale.set(scalePrev.getHorizontalScale() * 1000);
+            c.horizontalScale.set(scalePrev.getHorizontalScale());
             c.verticalScale.set(scalePrev.getVerticalScale());
             onChange.accept(0.0);
         });

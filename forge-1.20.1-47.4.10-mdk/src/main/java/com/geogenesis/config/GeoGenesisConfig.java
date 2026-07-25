@@ -172,6 +172,8 @@ public final class GeoGenesisConfig {
     // ===== 垂直缩放 =====
     /** 垂直缩放比例（1-8），用于预览和地形高度夸张 */
     public final ForgeConfigSpec.DoubleValue verticalScale;
+    /** 水平缩放比例（0.5-8），所有噪声坐标除以此值 = 地形 XZ 等比缩放，默认 1.0（1:1） */
+    public final ForgeConfigSpec.DoubleValue horizontalScale;
 
     // ===== 大陆性语义亲和度 =====
     /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 5.0 */
@@ -506,7 +508,9 @@ public final class GeoGenesisConfig {
         builder.pop();
 
         builder.push("Scale");
-        verticalScale = builder.comment("Vertical scale multiplier (1-8). Used for preview vertical exaggeration.")
+        horizontalScale = builder.comment("Horizontal scale (0.5-8.0). All noise coordinates divided by this = uniform XZ scaling of all terrain features. Default 1.0 = 1:1.")
+            .defineInRange("horizontalScale", 1.0, 0.5, 8.0);
+        verticalScale = builder.comment("Vertical scale multiplier (1-8). Applied to e->Y height mapping. 1=default, 2=twice as tall.")
             .defineInRange("verticalScale", 1.0, 1.0, 8.0);
         builder.pop();
 
@@ -695,7 +699,7 @@ public final class GeoGenesisConfig {
             elevHigh.get(), reliefHigh.get(), peakE.get(), snowLatitudeInfluence.get(), snowHumidityInfluence.get(),
 
             // preview compat defaults
-            1.0, seaLevel.get(), snowLine.get(), minY.get(),
+            horizontalScale.get(), seaLevel.get(), snowLine.get(), minY.get(),
             maxY.get(), (int)(maxY.get() * 0.8), (int)(minY.get() * 0.75),
             verticalScale.get(),
             cAffinityStrength.get(),
@@ -869,7 +873,7 @@ public final class GeoGenesisConfig {
             elevHigh.getDefault(), reliefHigh.getDefault(), peakE.getDefault(), snowLatitudeInfluence.getDefault(), snowHumidityInfluence.getDefault(),
 
             // preview compat defaults
-            1.0, seaLevel.getDefault(), snowLine.getDefault(), minY.getDefault(),
+            horizontalScale.getDefault(), seaLevel.getDefault(), snowLine.getDefault(), minY.getDefault(),
             maxY.getDefault(), (int)(maxY.getDefault() * 0.8), (int)(minY.getDefault() * 0.75),
             verticalScale.getDefault(),
             cAffinityStrength.getDefault(),

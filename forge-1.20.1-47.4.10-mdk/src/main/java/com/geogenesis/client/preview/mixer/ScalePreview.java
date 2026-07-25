@@ -19,12 +19,12 @@ public class ScalePreview {
 
     private int baseX, baseY, baseW = 200, baseH = 80;
 
-    private double verticalScaleValue = 1.0;   // 垂直缩放比例（1-8，与水平一致）
-    private double horizontalScaleValue = 4.0; // HS参数（1-8）
+    private double verticalScaleValue = 1.0;   // 垂直缩放比例（1-8）
+    private double horizontalScaleValue = 1.0; // HS参数（0.5-8，默认1=1:1）
 
     // 默认值
     private double defaultVerticalScale = 1.0;
-    private double defaultHorizontalScale = 4.0;
+    private double defaultHorizontalScale = 1.0;
 
     // 标记位置
     private int vsMarkerY, hsMarkerX;
@@ -42,7 +42,7 @@ public class ScalePreview {
     public void setOnMarkDirty(Runnable r) { this.onMarkDirty = r; }
     public void setVerticalScale(double v) { this.verticalScaleValue = Math.max(1.0, Math.min(8.0, v)); }
     public double getVerticalScale() { return verticalScaleValue; }
-    public void setHorizontalScale(double v) { this.horizontalScaleValue = Math.max(1.0, Math.min(8.0, v)); }
+    public void setHorizontalScale(double v) { this.horizontalScaleValue = Math.max(0.5, Math.min(8.0, v)); }
     public double getHorizontalScale() { return horizontalScaleValue; }
     public void setDefaultVerticalScale(double v) { this.defaultVerticalScale = v; }
     public void setDefaultHorizontalScale(double v) { this.defaultHorizontalScale = v; }
@@ -67,9 +67,9 @@ public class ScalePreview {
         double frac = (val - 1.0) / 7.0; // 统一范围：1 到 8 → 0 到 1
         return yTop + height - (int)(frac * height); // 顶部=大值，底部=小值
     }
-    /** 水平HS值到屏幕X坐标（水平滑块） */
+    /** 水平HS值到屏幕X坐标（水平滑块），范围 0.5-8.0 */
     private int hsScaleToX(double val, int xLeft, int width) {
-        double frac = (val - 1.0) / 7.0; // 统一范围：1 到 8 → 0 到 1
+        double frac = (val - 0.5) / 7.5; // 0.5 → 0, 8.0 → 1
         return xLeft + (int)(frac * width);
     }
 
@@ -187,12 +187,12 @@ public class ScalePreview {
             verticalScaleValue = Math.max(1.0, Math.min(8.0, verticalScaleValue));
             return true;
         }
-        // 水平缩放：1 到 8
+        // 水平缩放：0.5 到 8.0
         int sx = Math.max(hsX, Math.min(hsX + hsW, (int) mx));
         if (my >= hsY - 4 && my <= hsY + hsH + 4) {
             double frac = (double)(sx - hsX) / hsW;
-            horizontalScaleValue = 1.0 + frac * 7.0;
-            horizontalScaleValue = Math.max(1.0, Math.min(8.0, horizontalScaleValue));
+            horizontalScaleValue = 0.5 + frac * 7.5;
+            horizontalScaleValue = Math.max(0.5, Math.min(8.0, horizontalScaleValue));
             return true;
         }
         return false;
