@@ -113,27 +113,26 @@ public final class TypeLandShape {
             tw[lands[i].ordinal()] *= factor;
         }
 
-        // v14 修复（2026-07-25）：v6.5 公式（共享噪声 + lo+(hi-lo)×sharedNoise）
+        // v14+ 差异调制：以共享噪声为基底（保证连续），叠加有限的 per-type 噪声特征
         // <p>
-        // <b>断裂根因（铁证：用户 8c0d47f 仍断裂）</b>：
-        // v7-v13 用 per-type 独立噪声加权：`eLand = Σ w_t · H_t(noise_t(x,z))`。
-        // 5 类独立噪声的随机梯度叠加，per-block Δe 可达 0.04-0.07 e（15-27 块跳变）。
-        // v6.5 实测过：v5.2 共享噪声公式 max Δe = 2.2 块（通过），per-type 7.1 块（不通过）。
+        // <b>断裂根因回顾</b>：v7-v13 用 per-type 独立噪声全量加权：
+        // `eLand = Σ w_t · H_t(noise_t(x,z))`，5 类独立噪声随机梯度叠加
+        // → per-block Δe 可达 0.04-0.07 e。
         // <p>
-        // <b>v6.5 公式数学保证连续</b>：
+        // <b>差异调制公式</b>：
         // <pre>
-        //   blendLo = Σ_t w_t(c) · lo_t(c)
-        //   blendHi = Σ_t w_t(c) · hi_t(c)
-        //   eLand   = blendLo + (blendHi − blendLo) · sharedNoise(wx, wz)
+        //   blendLo    = Σ_t w_t(c) · lo_t(c)
+        //   blendHi    = Σ_t w_t(c) · hi_t(c)
+        //   shared     = computeSharedNoise(wx, wz)           // 单条连续 FBM
+        //   perTypeAvg = Σ_t w_t · typeNoise_t / Σ w_t        // 类型加权平均噪声
+        //   modulated  = shared + STRENGTH · (perTypeAvg − shared)  // 零均值偏差
+        //   eLand      = blendLo + (blendHi − blendLo) · modulated
         // </pre>
-        // sharedNoise 是单条连续 FBM（域扭曲+4 频率混合）；blendLo/blendHi 是连续权重 Σ 连续值；
-        // 连续函数乘连续函数仍连续 → per-block Δe 数量级 ~0.001（< 1 块），断裂根治。
-        // <p>
-        // <b>c-affinity β=0（已配置默认）</b>：关闭 c→权重放大，避免被压到 0.01 的权重导致权重突跳。
-        // 仍可在 UI 调高（每类权重连续，无阈值跳变）。
-        // <p>
-        // <b>类型视觉差异让位</b>：HILLS 圆润/MOUNTAINS 脊线靠 sampleByType 内层样条 lo/hi 边界
-        // + c 亲和度权重表达；地表纹理由 BiomeClassifier + 装饰噪声负责（v6.5 决策一致）。
+        // shared 是连续函数；perTypeAvg - shared 是零均值小幅偏差，梯度幅值受限
+        // （~0.003/block，×STRENGTH 0.4 → 贡献 Δe ~0.001/block），不引起断裂。
+        // 同时 PLATEAU 的平顶边缘/MOUNTAINS 脊线等特征通过 per-type 噪声自然表达。
+        // STRENGTH=0 → 纯共享（无类型特征），=1 → 纯 per-type（断裂风险）。
+        final double MORPH_STRENGTH = 0.4;
         double blendLo = 0.0, blendHi = 0.0;
         for (int i = 0; i < lands.length; i++) {
             double w = tw[lands[i].ordinal()];
@@ -143,8 +142,20 @@ public final class TypeLandShape {
             blendLo += w * lo_t;
             blendHi += w * hi_t;
         }
-        double sharedNoise = generators.computeSharedNoise(wx, wz);
-        double eLand = blendLo + (blendHi - blendLo) * sharedNoise;
+        double shared = generators.computeSharedNoise(wx, wz);
+        // 类型加权平均噪声（用于差异调制）
+        double perTypeSum = 0, sumW = 0;
+        for (int i = 0; i < lands.length; i++) {
+            double w = tw[lands[i].ordinal()];
+            if (w <= 0.001) continue;
+            perTypeSum += w * typeNoise.computeNoise(lands[i], wx, wz);
+            sumW += w;
+        }
+        double perTypeAvg = sumW > 0 ? perTypeSum / sumW : shared;
+        double modulated = shared + MORPH_STRENGTH * (perTypeAvg - shared);
+        if (modulated < 0.0) modulated = 0.0;
+        else if (modulated > 1.0) modulated = 1.0;
+        double eLand = blendLo + (blendHi - blendLo) * modulated;
         // 放开下限到海平面以下：盆地等类型的内层样条可为负（e<0 → HeightCurve 映射为低于海平面
         // → 积水成湖/洼地）。下限取海洋深度地板 ELAND_MIN，避免异常配置产生过深空洞；上限仍封 1.0。
         // 注意：原 clamp01 把 eLand 钳到 [0,1]，会抹平盆地凹陷（内部全压成 0 平盘），现已修正。
