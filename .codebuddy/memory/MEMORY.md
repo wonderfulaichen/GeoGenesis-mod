@@ -5,14 +5,17 @@
 - 知识沉淀必须做；每完成一次任务/对话做记录
 - 关键决策点用提问确认（不打断则默认授权"你决定"）
 
-## 地形类型核心原则（v6.0，WIE）
-**域扭曲空间距离场 + 高斯权重 + 独立类型噪声 + 按 typeWeights 加权混合各类型独立 eLand = 无断裂无网格无悬崖**
-- 公式：`eLand = Σ_t w_t·H_t(noise_t) / Σw_t`，`H_t` = 类型 t **自己的**内层样条 lo/hi
-- **绝不经"类型轴位置 typePosition"插值高度**（那是尖环根因）
-- 六层消除机制：域扭曲 / 高斯权重 σ=CELL_SPACING/4 / SEARCH_RADIUS=2(5×5) / 连续权重 / 独立噪声 / 加权混合
-- 关键参数：CELL_SPACING=400, WARP_AMP(Voronoi)=250, WARP_AMP(共享)=300, SIGMA=200, SEARCH_RADIUS=2
+## v14 修复核心原则（2026-07-25 钉死）
+**TypeLandShape 使用共享噪声公式（非 per-type 独立噪声）**
+- 公式：`eLand = blendLo + (blendHi-blendLo)·sharedNoise` 其中
+  - `blendLo = Σ_t w_t(c)·lo_t(c)`，`blendHi = Σ_t w_t(c)·hi_t(c)`
+  - `sharedNoise` 是单条连续 FBM（域扭曲+4 频率混合）
+- **数学保证连续**：连续权重 Σ 连续值 × 单条连续噪声 = 连续，per-block Δe ~0.001（<1 块）
+- **断裂根因**：v7-v13 的 per-type 独立噪声加权 `eLand = Σ w_t·H_t(noise_t)`，5 类独立噪声随机梯度叠加 → Δe 可达 0.04-0.07 e（15-27 块跳变）
+- **cAffinityStrength 默认 0.0**：关闭 c→权重放大（消除权重被压制到 0.01 的突跳风险；可在 UI 调高）
+- **类型差异**：HILLS 圆润/MOUNTAINS 脊线由 sampleByType 内层样条 lo/hi 边界 + c 亲和度权重表达；地表纹理由 BiomeClassifier + 装饰噪声负责
+- 关键参数：CELL_SPACING=400, WARP_AMP(Voronoi)=250, SIGMA=150, SEARCH_RADIUS=2
 - 类型范围：PLAIN[0.015,0.06] HILLS[0.06,0.25] MOUNTAINS[0.45,0.95] PLATEAU[0.50,0.66] BASIN[0.015,0.08]
-- `LAND_TYPES=[PLAIN,HILLS,MOUNTAINS,PLATEAU,BASIN]` 顺序 == `midSpline.nodes` 构建顺序（对齐 sampleByType 索引）
 
 ## 条件系统（2026-07-21）
 - 温度(5段)/湿度(4段)/大陆性(7段)，后端用 `ClimateSpline`(Cubic Hermite) 连续映射，boolean 方法委托样条权重
@@ -71,4 +74,7 @@
 - `GeoGenesisConfig` 反射三件套：`resetToDefault()`(set 默认) / `captureAllValues()`(字段名→当前值) / `applyNamedValues(Map<String,String>)`(按名字 set，parseByType 按运行时类型解析)。`SPEC`/`INSTANCE` 与 private `midSplineConfig` 自动跳过。
 
 ## 待办
-- runClient 目检地形；BASIN 未集成阈值链；TypeLandShape 阈值/TypeGenerators 噪声参数需从 TerrainParams 注入；配置屏省滑块→类型滑块；mixer 面板重绑新类型参数；toml→JSON 迁移规划（阶段3）。
+- **[DONE] v14 修复**：TypeLandShape 回归 v6.5 共享噪声公式 + cAffinityStrength 默认 0.0。用户目测无断裂，诊断日志 maxFe=0.010-0.021（4-8 块）。已提交 33bae42。
+- [PENDING] 恢复侵蚀/河流刻蚀代码注释（GeoGenesisTerrain.generateChunk 注释块内），待用户确认进入侵蚀/河流阶段。
+- [PENDING] 测试 cAffinityStrength 设回非零值是否安全。
+- [PENDING] BASIN 类型曲线检查；mixer 面板重绑新类型参数；toml→JSON 迁移规划（阶段3）。
