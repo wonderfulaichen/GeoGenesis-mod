@@ -86,11 +86,18 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         if (sharedTerrain == null) {
             synchronized (GeoGenesisGenerator.class) {
                 if (sharedTerrain == null) {
+                    long t0 = System.nanoTime();
                     TerrainParams params = GeoGenesisConfig.INSTANCE.buildParams();
+                    long t1 = System.nanoTime();
                     CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y);
+                    long t2 = System.nanoTime();
                     gen.seed(worldSeed);
+                    long t3 = System.nanoTime();
                     sharedTerrain = new GeoGenesisTerrain(gen);
-                    LOGGER.info("GeoGenesis terrain engine initialized (seed={})", worldSeed);
+                    long t4 = System.nanoTime();
+                    LOGGER.info("GeoGenesis terrain engine initialized (seed={}) [buildParams={}ms ctor={}ms seed={}ms terrain={}ms]",
+                        worldSeed,
+                        (t1-t0)/1000000, (t2-t1)/1000000, (t3-t2)/1000000, (t4-t3)/1000000);
                 }
             }
         }
@@ -131,13 +138,17 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             StructureManager structureManager,
             ChunkAccess chunk
     ) {
+        long t0 = System.nanoTime();
         ensureEngine(worldSeed);
+        long t1 = System.nanoTime();
 
         ChunkPos pos = chunk.getPos();
         int baseX = pos.getMinBlockX();
         int baseZ = pos.getMinBlockZ();
 
+        long t2 = System.nanoTime();
         Cell[] cells = terrain.getChunkCells(pos.x, pos.z);
+        long t3 = System.nanoTime();
 
         BlockPos.MutableBlockPos mPos = new BlockPos.MutableBlockPos();
         for (int lz = 0; lz < 16; lz++) {
@@ -152,6 +163,13 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
                 fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell);
             }
+        }
+        long t4 = System.nanoTime();
+
+        if ((t3 - t2) > 100000000L || (t4 - t3) > 100000000L) {
+            LOGGER.info("[PERF] fillFromNoise chunk({},{}): ensure={}ms cells={}ms place={}ms total={}ms",
+                pos.x, pos.z,
+                (t1-t0)/1000000, (t3-t2)/1000000, (t4-t3)/1000000, (t4-t0)/1000000);
         }
 
         return CompletableFuture.completedFuture(chunk);

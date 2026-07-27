@@ -29,6 +29,11 @@ public class Cell {
     /** 连续 eLand ∈ [0,1]（纯陆地形态，不含海岸混合） */
     public double eLand;
 
+    /** 海洋特征计算结果（sampleCore 填充，classify 使用，避免重复 compute） */
+    public OceanFeatures.FeatureResult oceanFeat;
+    /** 陆地特征计算结果（sampleCore 填充，classify 使用，避免重复 compute） */
+    public LandFeatures.FeatureResult landFeat;
+
     /** 地形类型（连续形态分类） */
     public TerrainClass terrainType = TerrainClass.OCEAN;
 

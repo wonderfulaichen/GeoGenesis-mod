@@ -19,8 +19,8 @@ public final class TerrainCharacterField {
     /** 网格间距（块单位），400 = 25 chunks，细胞区域感鲜明 */
     private static final int CELL_SPACING = 400;
 
-    /** 搜索半径：2 → 5×5 搜索窗口 */
-    private static final int SEARCH_RADIUS = 2;
+    /** 搜索半径：1 → 3×3 搜索窗口（ring 2 在 σ=150, spacing=400 时权重 < 0.00034，可安全忽略） */
+    private static final int SEARCH_RADIUS = 1;
 
     /** 高斯 σ：150 → 细胞边缘权重 ~0.4（在 200 块边界处），平滑过渡 */
     private static final double SIGMA = 150.0;
@@ -105,12 +105,6 @@ public final class TerrainCharacterField {
                 double dz2 = wzw - centerZ;
                 double dist2 = dx2 * dx2 + dz2 * dz2;
                 double gaussian = Math.exp(-dist2 * INV_2SIGMA2);
-
-                // 边缘格点压制：消除搜索窗口进出跳变
-                int ring = Math.max(Math.abs(dx), Math.abs(dz));
-                if (ring == SEARCH_RADIUS) {
-                    gaussian *= 1e-7;
-                }
 
                 int ord = getCellType(cx, cz);
                 weights[ord] += gaussian;

@@ -7,14 +7,17 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.biome.Climate;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.server.ServerLifecycleHooks;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 import java.util.Objects;
@@ -39,6 +42,7 @@ import java.util.stream.Stream;
 public class GeoGenesisBiomeSource extends BiomeSource {
 
     public static final String CODEC_ID = "geogenesis:biomesource";
+    private static final Logger LOGGER = LogManager.getLogger(CODEC_ID);
     public static final Codec<GeoGenesisBiomeSource> CODEC =
         RecordCodecBuilder.<GeoGenesisBiomeSource>create(instance ->
             instance.group(
@@ -98,6 +102,15 @@ public class GeoGenesisBiomeSource extends BiomeSource {
     /** 地形引擎注入点（由 GeoGenesisGenerator.ensureEngine 调用，供群系按 Cell 数据分类）。 */
     private GeoGenesisTerrain terrain;
 
+    // ---- 直接哈希映射缓存（MC 出生点搜索查几千次 quart 位置，避免重复全管线采样） ----
+    private static final int BIOME_CACHE_SIZE = 512;
+    private final long[] biomeCacheKeys = new long[BIOME_CACHE_SIZE];
+    private final Holder<Biome>[] biomeCacheValues = new Holder[BIOME_CACHE_SIZE];
+
+    private static int biomeCacheSlot(int qx, int qz) {
+        return (qx * 66883 + qz * 51749) & (BIOME_CACHE_SIZE - 1);
+    }
+
     public GeoGenesisBiomeSource() {
     }
 
@@ -118,23 +131,53 @@ public class GeoGenesisBiomeSource extends BiomeSource {
         return possibleBiomes();
     }
 
+    private static boolean biomeInitLogged = false;
+
     @Override
     public Holder<Biome> getNoiseBiome(int x, int y, int z,
                                         Climate.Sampler sampler) {
-        // x/z 为 quart 坐标（1 quart = 4 block），转回世界方块坐标采样地形。
+        // 1) 查缓存
+        int slot = biomeCacheSlot(x, z);
+        if (biomeCacheKeys[slot] == ((long)x << 32 | (z & 0xFFFFFFFFL)) && biomeCacheValues[slot] != null) {
+            return biomeCacheValues[slot];
+        }
+
+        // 2) 地形未初始化时：出生点搜索阶段，快速返回（避免 172ms 全管线初始化阻塞数千次查询）
         if (terrain == null) {
+            // quart 坐标 256×256 = 块坐标 1024×1024 = 64 chunk × 64 chunk 出生区域
+            if (x >= -256 && x <= 256 && z >= -256 && z <= 256) {
+                Holder<Biome> plains = resolveBiome(Biomes.PLAINS);
+                if (plains != null) {
+                    biomeCacheKeys[slot] = ((long)x << 32 | (z & 0xFFFFFFFFL));
+                    biomeCacheValues[slot] = plains;
+                    return plains;
+                }
+            }
+            // 超出出生区域 → 正常初始化
+            long t0 = System.nanoTime();
             terrain = GeoGenesisGenerator.getOrInitTerrain();
+            if (!biomeInitLogged) {
+                biomeInitLogged = true;
+                long dt = (System.nanoTime() - t0) / 1000000;
+                LOGGER.info("[PERF] BiomeSource.getNoiseBiome first call: getOrInitTerrain={}ms at quart({},{})",
+                    dt, x, z);
+            }
         }
         if (terrain == null) {
             return fallbackBiome();
         }
+
+        // 3) 采样 Cell + 分类
         Cell cell = terrain.sampleCell(QuartPos.toBlock(x), QuartPos.toBlock(z));
-        if (cell == null) {
-            return fallbackBiome();
-        }
-        ResourceKey<Biome> key = BiomeClassifier.pickKey(cell);
-        Holder<Biome> h = resolveBiome(key);
-        return h != null ? h : fallbackBiome();
+        ResourceKey<Biome> keyB = cell != null ? BiomeClassifier.pickKey(cell) : null;
+        Holder<Biome> h = keyB != null ? resolveBiome(keyB) : null;
+        if (h == null) h = fallbackBiome();
+
+        // 4) 写入缓存
+        biomeCacheKeys[slot] = ((long)x << 32 | (z & 0xFFFFFFFFL));
+        biomeCacheValues[slot] = h;
+
+        return h;
     }
 
     @Override
