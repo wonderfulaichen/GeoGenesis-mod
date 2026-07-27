@@ -201,6 +201,34 @@ public final class GeoGenesisConfig {
     /** 离岸群岛最大高度（e 单位），默认 0.035 */
     public final ForgeConfigSpec.DoubleValue archipelagoHeight;
 
+    // ===== 河流 + 侵蚀（SH 统一水力引擎：侵蚀与河网同源同趟，放电量场涌现物理河流） =====
+    /** 河流总开关（false=不标记任何河流/旱谷） */
+    public final ForgeConfigSpec.BooleanValue riverEnabled;
+    /** (legacy) 河道半宽（世界块）——SH 模式由放电量场自然决定河谷宽度，本参数保留供将来细调 */
+    public final ForgeConfigSpec.DoubleValue riverWidth;
+    /** (legacy) 河谷下切深度（e 单位）——SH 模式由侵蚀自然刻蚀，本参数保留供将来细调 */
+    public final ForgeConfigSpec.DoubleValue riverValleyDepth;
+    /** (legacy) 河谷剖面形状 [0,1]——SH 模式由粒子物理决定，本参数保留 */
+    public final ForgeConfigSpec.DoubleValue riverShape;
+    /** 河道是否灌水（false=旱谷，仅显形为凹槽地形、不填水） */
+    public final ForgeConfigSpec.BooleanValue riverWater;
+    /** 源湖/湖密度（河流节点场用） */
+    public final ForgeConfigSpec.DoubleValue lakeDensity;
+    /** 是否启用本地粒子侵蚀 */
+    public final ForgeConfigSpec.BooleanValue erosionEnabled;
+    /** 侵蚀强度倍率 */
+    public final ForgeConfigSpec.DoubleValue erosionStrength;
+    /** 侵蚀水滴数量倍率 */
+    public final ForgeConfigSpec.DoubleValue erosionDropsMul;
+    /** 侵蚀速率倍率 */
+    public final ForgeConfigSpec.DoubleValue erosionErodeMul;
+    /** localCharge 正反馈权重（α）。每粒子累计高差放大侵蚀能力：0=关闭正反馈，越大主流雕越深。默认 1.0，范围 [0, 5] */
+    public final ForgeConfigSpec.DoubleValue erosionLocalChargeWeight;
+    /** 局部 cascade 级联强度。侵蚀后按高度差向最低邻居 settling，平滑河床底部。0=关闭，默认 0.3，范围 [0, 1] */
+    public final ForgeConfigSpec.DoubleValue erosionCascadeStrength;
+    /** SH 放电量场河网阈值：放电量 > 此值即视为河流（越低=越细的溪流也显形）。默认 0.02，范围 [0.001, 0.3] */
+    public final ForgeConfigSpec.DoubleValue riverDischargeThreshold;
+
     // ===== Phase 1: Unified Spline Config (74 fields) =====
     // --- Outer spline: continentality c control points (7 × 2 = 14) ---
     public final ForgeConfigSpec.DoubleValue splineOuterLoc0;
@@ -541,6 +569,35 @@ public final class GeoGenesisConfig {
             .defineInRange("archipelagoScale", 120.0, 30.0, 500.0);
         archipelagoHeight = builder.comment("离岸群岛最大高度（e 单位）。岛屿在地形 e 上的高度上限。默认 0.035，范围 [0, 0.15]。")
             .defineInRange("archipelagoHeight", 0.035, 0.0, 0.15);
+        builder.pop();
+
+        builder.push("River & Erosion");
+        riverEnabled = builder.comment("Enable rivers (TF-style node distance-field valley carving). Default true.")
+            .define("riverEnabled", true);
+        riverWidth = builder.comment("River valley outer radius (world blocks). Controls the outermost valley width (~TF valleyWidth). Default 80, range [30, 200].")
+            .defineInRange("riverWidth", 80.0, 30.0, 200.0);
+        riverValleyDepth = builder.comment("River bed incision depth (e units). Deeper = more incised valley. Default 0.01 (~4 blocks), range [0.0, 0.06].")
+            .defineInRange("riverValleyDepth", 0.01, 0.0, 0.06);
+        riverShape = builder.comment("River valley profile shape [0,1]: 0=V-shaped (steep), 1=U-shaped (broad). Default 0.5, range [0, 1].")
+            .defineInRange("riverShape", 0.5, 0.0, 1.0);
+        riverWater = builder.comment("Fill river channels with water (false = dry valleys, terrain notch only). Default true.")
+            .define("riverWater", true);
+        lakeDensity = builder.comment("Source-lake / lake density for river node field. Default 0.15, range [0, 1].")
+            .defineInRange("lakeDensity", 0.15, 0.0, 1.0);
+        erosionEnabled = builder.comment("Enable local particle erosion (seamless, margin-filled with true neighbour heights). Default true.")
+            .define("erosionEnabled", true);
+        erosionStrength = builder.comment("Erosion strength multiplier. Default 1.0, range [0, 4].")
+            .defineInRange("erosionStrength", 1.0, 0.0, 4.0);
+        erosionDropsMul = builder.comment("Erosion droplet count multiplier. Lower = faster (preview). Default 1.0, range [0.1, 4].")
+            .defineInRange("erosionDropsMul", 1.0, 0.1, 4.0);
+        erosionErodeMul = builder.comment("Erosion erode-rate multiplier. Default 1.0, range [0.1, 4].")
+                .defineInRange("erosionErodeMul", 1.0, 0.1, 4.0);
+        erosionLocalChargeWeight = builder.comment("localCharge positive feedback weight α. Each droplet's cumulative desc ent amplifies capacity: 0=off, higher=main valleys cut deeper vs tributaries. Default 1.0, range [0, 5].")
+                .defineInRange("erosionLocalChargeWeight", 1.0, 0.0, 5.0);
+        erosionCascadeStrength = builder.comment("Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.3, range [0, 1].")
+                .defineInRange("erosionCascadeStrength", 0.3, 0.0, 1.0);
+        riverDischargeThreshold = builder.comment("SH discharge-field river threshold: discharge > this = river. Lower = thinner source streams shown. Default 0.02, range [0.001, 0.3].")
+                .defineInRange("riverDischargeThreshold", 0.02, 0.001, 0.3);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");

@@ -1,10 +1,5 @@
 package com.geogenesis.worldgen.terrain;
 
-import com.geogenesis.worldgen.river.RiverField;
-import com.geogenesis.worldgen.river.RiverSettings;
-import com.geogenesis.worldgen.erosion.ErosionSystem;
-import com.geogenesis.worldgen.erosion.ErosionSettings;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,12 +19,7 @@ public final class GeoGenesisTerrain {
 
     private final CellGenerator generator;
     private final HeightCurve curve;
-    private final RiverField riverField;
-    private final ErosionSystem erosion;
     private final Map<Long, Cell[]> cache = new ConcurrentHashMap<>(CACHE_SIZE);
-
-    /** chunk 周边 pad（供侵蚀局部算子读取邻域，不写回，无接缝） */
-    private static final int ERODE_PAD = 2;
 
     /** 诊断日志记录器 */
     private static final Logger DLOG = LogManager.getLogger("geogenesis/diag");
@@ -40,8 +30,6 @@ public final class GeoGenesisTerrain {
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
         this.curve = generator.heightCurve();
-        this.riverField = new RiverField(generator, curve, RiverSettings.defaults());
-        this.erosion = new ErosionSystem(ErosionSettings.defaults());
     }
 
     /** 播种所有噪声节点（每个世界种子调用一次） */
@@ -124,6 +112,11 @@ public final class GeoGenesisTerrain {
             }
         }
 
+        // 水文 + 侵蚀 tile 管线：80×80 共享 cache（含 border 重叠）→ 提取 16×16 填 cell。
+        // 仅做地形场改写，不进入 sample 纯函数（保持每格确定性）。
+        float[][] tile = generator.getErosionTile(cx, cz);
+        generator.extractFromTile(tile, cells, cx, cz);
+
         // 诊断：扫描 chunk 内相邻块断裂，超过阈值即记录到日志
         double maxEDeltaX = 0, maxEDeltaZ = 0;
         double maxEOceanDX = 0, maxContDX = 0;
@@ -163,43 +156,33 @@ public final class GeoGenesisTerrain {
                 String.format("%.4f", maxContDX));
         }
 
-        // ===== 临时关闭：侵蚀 + 河流刻蚀 =====
-        // 仅跑 generator.sample 的原始地形，排查"地形断裂"根因。
-        // 恢复时取消下方注释即可。
-        /*
-        int pad = ERODE_PAD;
-        int size = 16 + 2 * pad;
-        double[][] e = new double[size][size];
-        for (int lj = 0; lj < size; lj++) {
-            for (int li = 0; li < size; li++) {
-                int wx = baseX + li - pad;
-                int wz = baseZ + lj - pad;
-                if (li >= pad && li < size - pad && lj >= pad && lj < size - pad) {
-                    e[li][lj] = cells[(li - pad) * 16 + (lj - pad)].e;
-                } else {
-                    e[li][lj] = generator.sample(wx, wz).e;
-                }
+        // 跨区块接缝诊断：比较本 chunk 右/下边缘与相邻 chunk 左/上边缘。
+        // 仅当相邻 chunk 已在缓存中才比较（cache.get 不触发额外生成），避免递归生成拖慢。
+        // 捕捉侵蚀 delta 竞态（整块塔）与 D∞ 汇水 per-chunk 截断（河流边界墙）造成的区块级台阶。
+        double maxInterX = 0, maxInterZ = 0;
+        Cell[] nbX = cache.get(pack(cx + 1, cz));
+        if (nbX != null) {
+            for (int lz = 0; lz < 16; lz++) {
+                double d = Math.abs(cells[15 * 16 + lz].e - nbX[0 * 16 + lz].e);
+                if (d > maxInterX) maxInterX = d;
             }
         }
-        erosion.apply(e, size, pad);
-        for (int lz = 0; lz < 16; lz++) {
+        Cell[] nbZ = cache.get(pack(cx, cz + 1));
+        if (nbZ != null) {
             for (int lx = 0; lx < 16; lx++) {
-                Cell c = cells[lx * 16 + lz];
-                double ne = e[lx + pad][lz + pad];
-                c.e = ne;
-                c.height = curve.heightFromE(ne);
-                if (c.terrainType != TerrainClass.RIVER) {
-                    c.terrainType = CellGenerator.classifyTerrain(
-                        ne, c.eLand, c.terrainType, c.temperature, c.humidity, c.typeWeights, c.coastCoord);
-                }
+                double d = Math.abs(cells[lx * 16 + 15].e - nbZ[lx * 16 + 0].e);
+                if (d > maxInterZ) maxInterZ = d;
             }
         }
-        for (int lz = 0; lz < 16; lz++) {
-            for (int lx = 0; lx < 16; lx++) {
-                riverField.apply(cells[lx * 16 + lz], baseX + lx, baseZ + lz);
-            }
+        double maxInter = Math.max(maxInterX, maxInterZ);
+        if (maxInter > DIAG_THRESHOLD) {
+            DLOG.warn("[DIAG-INTER] chunk({},{}): maxInterFe={}({}blk) interX={}({}blk) interZ={}({}blk)",
+                cx, cz,
+                String.format("%.4f", maxInter), String.format("%.0f", maxInter * 384),
+                String.format("%.4f", maxInterX), String.format("%.0f", maxInterX * 384),
+                String.format("%.4f", maxInterZ), String.format("%.0f", maxInterZ * 384));
         }
-        */
+
         return cells;
     }
 
