@@ -255,4 +255,11 @@ task runDiscontinuityProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiscontinuityProbe'
 }
 
+// Erosion tile pipeline multi-stage diagnostic (Tile Context Chain)
+task runErosionTileProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ErosionTileProbe'
+    // Optional: args = ['12345']  (seed)
+}
+
 

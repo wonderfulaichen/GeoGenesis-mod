@@ -155,8 +155,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
 
-                if (cell.riverMask && cell.terrainType ==
-                        com.geogenesis.worldgen.terrain.TerrainClass.RIVER) {
+                if (cell.riverMask) {
                     fillRiverColumn(chunk, mPos, baseX + lx, baseZ + lz, cell);
                     continue;
                 }
@@ -231,11 +230,28 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      */
     private void fillRiverColumn(ChunkAccess chunk, BlockPos.MutableBlockPos mPos,
                                  int wx, int wz, Cell cell) {
-        int floorY = (int) Math.round(cell.riverFloorY);
-        int surfY = (int) Math.round(cell.riverSurfaceY);
+        int floorY = (int) Math.floor(cell.riverFloorY);
+        int surfY = (int) Math.floor(cell.riverSurfaceY);
         int maxDepth = 24;
         if (surfY - floorY > maxDepth) surfY = floorY + maxDepth;
-        if (surfY < floorY) surfY = floorY;
+        // 关键修复：round(62.5)=63 让 floorY==surfY → 没水空间。
+        // 改为 floor() + 保证至少 1 块水深
+        if (surfY <= floorY) surfY = floorY + 1;
+
+        // 河岸顶：河面以上的地形必须填上（之前只到 surfY 上面全 AIR → 空气孔）
+        int terrainTopY = (int) Math.floor(cell.height);
+        if (terrainTopY < surfY + 1) terrainTopY = surfY + 1;
+
+        // 表层方块：若河岸在海平面附近则用沙（沙滩/河岸），否则草+土
+        boolean beach = terrainTopY <= SEA_LEVEL + 2;
+        BlockState top, fill;
+        if (beach) {
+            top = SAND;
+            fill = SAND;
+        } else {
+            top = GRASS;
+            fill = DIRT;
+        }
 
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
@@ -249,6 +265,12 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 chunk.setBlockState(mPos, (floorY > SEA_LEVEL - 3) ? SAND : GRAVEL, false);
             } else if (y <= surfY) {
                 chunk.setBlockState(mPos, WATER, false);
+            } else if (y < terrainTopY - 2) {
+                chunk.setBlockState(mPos, fill, false);    // 河岸内部：土/沙
+            } else if (y < terrainTopY) {
+                chunk.setBlockState(mPos, fill, false);    // 上 2 层：fill
+            } else if (y == terrainTopY) {
+                chunk.setBlockState(mPos, top, false);     // 最顶层：草/沙
             } else {
                 chunk.setBlockState(mPos, AIR, false);
             }

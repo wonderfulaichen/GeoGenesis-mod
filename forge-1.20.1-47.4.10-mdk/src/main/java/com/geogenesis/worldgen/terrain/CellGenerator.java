@@ -4,6 +4,7 @@ import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.climate.ClimateSpline;
 import com.geogenesis.worldgen.erosion.ErosionEngine;
 import com.geogenesis.worldgen.noise.*;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -50,6 +51,8 @@ public final class CellGenerator {
     // ===== 侵蚀（物理液滴侵蚀，恢复自「物理侵蚀-基本无断裂」基线） =====
     /** 物理侵蚀引擎（在 80×80 tile 上跑确定性侵蚀，仅提取中心 16×16，border 作上下文） */
     private final ErosionEngine erosion;
+    /** 河流系统开关（诊断时关闭以隔离变量） */
+    private boolean riversEnabled = true;
     /** 世界种子（区域确定性侵蚀，保证缓存一致、无闪烁） */
     private long worldSeed = 12345L;
 
@@ -79,6 +82,7 @@ public final class CellGenerator {
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         double erosionDropsMul = cfg != null ? cfgDbl(cfg.erosionDropsMul, 1.0) : 1.0;
         this.erosion = new ErosionEngine(erosionDropsMul, 12345);
+        this.riversEnabled = cfg == null || cfgBool(cfg.riversEnabled, true);
 
         this.tempFreq = 1.0 / p.latitudeScale();   // 纬度缩放可配置
 
@@ -107,6 +111,7 @@ public final class CellGenerator {
         oceanFeatures.seed(worldSeed);
         landFeatures.seed(worldSeed);
         erosionTileCache.clear();
+        riverTileCache.clear();
         this.worldSeed = worldSeed;
         Noises.seedAll(tempWarp, worldSeed, 0);
         Noises.seedAll(humidityNoise, worldSeed, 0);
@@ -255,48 +260,73 @@ public final class CellGenerator {
     private static final int ERODE_TILE_BORDER = 40;
     /** tile 总边长：3×16 + 40×2 = 128（与 6 月备份的 generateTile 一致） */
     private static final int ERODE_TILE_SIZE = ERODE_TILE_CHUNKS * 16 + ERODE_TILE_BORDER * 2;
-    /** 粗采间距（仿旧版 spacing=4：128/4=32×32=1024 次 terrainE 替换 6400 次） */
+    /** 粗采间距（spacing=4：128/4=32×32=1024 次 terrainE） */
     private static final int ERODE_SAMPLING_SPACING = 4;
     /** 低分辨率网格边长 */
     private static final int ERODE_LOW_RES = ERODE_TILE_SIZE / ERODE_SAMPLING_SPACING;
     /** 缓存条目数（256 条目 ≈ 全部出生区域 tiles 常驻，无 LRU 驱逐） */
     private static final int ERODE_TILE_CACHE_SIZE = 256;
 
-    private final ConcurrentHashMap<Long, float[][]> erosionTileCache = new ConcurrentHashMap<>(ERODE_TILE_CACHE_SIZE);
+    private final ConcurrentHashMap<Long, ErosionTileResult> erosionTileCache = new ConcurrentHashMap<>(ERODE_TILE_CACHE_SIZE);
+
+    // ===== 河流（D8 流量累积 + V形河谷雕刻，纯局部无边界断裂） =====
+
+    /** 每侵蚀 tile 的河流元数据（配合 ERODE_TILE_SIZE，128×128 格） */
+    static class RiverTileData {
+        boolean[][] riverMask = new boolean[ERODE_TILE_SIZE][ERODE_TILE_SIZE];
+        float[][] discharge = new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE];
+        int[][] flowDir = new int[ERODE_TILE_SIZE][ERODE_TILE_SIZE]; // D8 流向编码 0-7, -1=无流出
+    }
+
+    /** 侵蚀 tile 结果：delta（叠加量）+ postErosion（侵蚀后全高度）+ tile 元数据 */
+    static class ErosionTileResult {
+        float[][] delta;
+        float[][] postErosion;
+        int tileCX, tileCZ;
+        int originX, originZ;
+    }
+
+    private final ConcurrentHashMap<Long, RiverTileData> riverTileCache = new ConcurrentHashMap<>(ERODE_TILE_CACHE_SIZE);
 
     /**
-     * 获取或生成侵蚀 tile。接受 chunk 坐标，内部自动分组为 3×3 tile。
+     * 获取或生成侵蚀 tile delta。接受 chunk 坐标，内部自动分组为 3×3 tile。
      *
-     * <p>仿 6 月备份 70cd037 架构：spacing=4 粗采 → Catmull-Rom 双三次插值升采样到 ERODE_TILE_SIZE
-     * → 物理液滴侵蚀 → delta 缓存。</p>
+     * <p>获取时递归确保左/上邻居 tile 先存在（游程顺序: 左→右, 上→下）。
+     * 返回 delta（侵蚀后 − 侵蚀前），以保持 extractFromTile 向后兼容。</p>
      */
     public float[][] getErosionTile(int chunkX, int chunkZ) {
-        // chunk 坐标分组为 tile 坐标（lambda 需要 effectively final 变量）
         int tileCX = Math.floorDiv(chunkX, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
         int tileCZ = Math.floorDiv(chunkZ, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
 
-        // 侵蚀关闭时返回零增量 tile，彻底跳过 terrainE 采样
+        // 侵蚀关闭时返回零增量 tile
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         boolean erosionOn = cfg != null ? cfgBool(cfg.erosionEnabled, true) : true;
         if (!erosionOn) {
-            return new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE]; // 全零 = 无增量
+            return new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE];
         }
 
-        long key = ((long) tileCX << 32) | (tileCZ & 0xFFFFFFFFL);
-        float[][] tile = erosionTileCache.get(key);
-        if (tile == null) {
-            tile = erosionTileCache.computeIfAbsent(key, k -> generateErosionTile(tileCX, tileCZ));
+        long key = tileKey(tileCX, tileCZ);
+        if (!erosionTileCache.containsKey(key)) {
+            // 递归确保左/上邻居先存在（Tile Context Chain）
+            ensureErosionTile(tileCX - ERODE_TILE_CHUNKS, tileCZ); // 左邻居
+            ensureErosionTile(tileCX, tileCZ - ERODE_TILE_CHUNKS); // 上邻居
         }
-        // 无 LRU 驱逐（缓存 ≥ 256，出生区域 tiles 常驻不会触发）
-        return tile;
+        ErosionTileResult result = erosionTileCache.computeIfAbsent(key, k -> generateErosionTile(tileCX, tileCZ));
+        return result.delta;
+    }
+
+    /** 确保指定 tile 已存在于缓存（若不存在则递归生成）。 */
+    private void ensureErosionTile(int tileCX, int tileCZ) {
+        long key = tileKey(tileCX, tileCZ);
+        erosionTileCache.computeIfAbsent(key, k -> generateErosionTile(tileCX, tileCZ));
     }
 
     /**
-     * 生成侵蚀 tile：spacing=4 粗采 → 全局对齐 Catmull-Rom 双三次插值升采样 → 侵蚀 → delta。
-     *
-     * <p>256 条目缓存无 LRU 驱逐，出生区域 tiles 常驻。</p>
+     * 生成侵蚀 tile：spacing=4 粗采 → 全局对齐 Catmull-Rom 双三次插值升采样
+     * → 三区制 flat 缓冲区初始化（左/上邻居 postErosion + 其余 terrainE）
+     * → 物理液滴侵蚀 → delta + postErosion 缓存。
      */
-    private float[][] generateErosionTile(int tileCX, int tileCZ) {
+    private ErosionTileResult generateErosionTile(int tileCX, int tileCZ) {
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         boolean erosionOn = cfg != null ? cfgBool(cfg.erosionEnabled, true) : true;
         double erosionStr = cfg != null ? cfgDbl(cfg.erosionStrength, 1.0) : 1.0;
@@ -304,15 +334,17 @@ public final class CellGenerator {
         int originX = tileCX * 16 - ERODE_TILE_BORDER;
         int originZ = tileCZ * 16 - ERODE_TILE_BORDER;
 
-        // 1) spacing=4 粗采（全局对齐网格）
+        // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
         int spacing = ERODE_SAMPLING_SPACING;
-        int lowRes = ERODE_LOW_RES;
-        int alignedStartX = Math.floorDiv(originX, spacing) * spacing;
-        int alignedStartZ = Math.floorDiv(originZ, spacing) * spacing;
+        int lowRes = ERODE_LOW_RES; // = 32
+        int gridExtra = 2;
+        int extendedLowRes = lowRes + gridExtra * 2; // = 36
+        int alignedStartX = Math.floorDiv(originX, spacing) * spacing - gridExtra * spacing;
+        int alignedStartZ = Math.floorDiv(originZ, spacing) * spacing - gridExtra * spacing;
 
-        float[][] lowResBuf = new float[lowRes][lowRes];
-        for (int tz = 0; tz < lowRes; tz++) {
-            for (int tx = 0; tx < lowRes; tx++) {
+        float[][] lowResBuf = new float[extendedLowRes][extendedLowRes];
+        for (int tz = 0; tz < extendedLowRes; tz++) {
+            for (int tx = 0; tx < extendedLowRes; tx++) {
                 int wx = alignedStartX + tx * spacing;
                 int wz = alignedStartZ + tz * spacing;
                 lowResBuf[tz][tx] = (float) Math.max(terrainE(wx, wz), -0.05);
@@ -321,7 +353,7 @@ public final class CellGenerator {
 
         // 2) Catmull-Rom 双三次插值升采样到全分辨率
         int N = ERODE_TILE_SIZE;
-        float[][] tile = bicubicUpsampleAligned(lowResBuf, lowRes, spacing,
+        float[][] tile = bicubicUpsampleAligned(lowResBuf, extendedLowRes, spacing,
             alignedStartX, alignedStartZ, originX, originZ, N);
 
         // 3) 保存插值原貌（用于算 delta）
@@ -329,18 +361,184 @@ public final class CellGenerator {
         for (int z = 0; z < N; z++)
             System.arraycopy(tile[z], 0, base[z], 0, N);
 
-        // 4) 物理侵蚀（在全分辨率插值场上跑）
-        if (erosionOn) {
-            double seaE = heightCurve.seaE();
-            erosion.applyErosionNormalized(tile, N, originX, originZ, (float) seaE, (float) erosionStr);
+        // 3.5) D8 流量累积（解析流功率侵蚀需要 flowDir + discharge，无论 riversEnabled 与否）
+        long rkey = tileKey(tileCX, tileCZ);
+        RiverTileData rd = computeRivers(tile, N);
+        if (riversEnabled) {
+            riverTileCache.put(rkey, rd);
         }
 
-        // 5) delta 缓存
+        // 4) 液滴侵蚀（单轮）+ 3-zone flat 边界上下文（用邻居 postErosion 消断差）
+        if (erosionOn) {
+            double seaE = heightCurve.seaE();
+            int pad = 9;
+            int bufSize = N + pad * 2;
+
+            float[] flat = new float[bufSize * bufSize];
+            for (int fz = 0; fz < bufSize; fz++) {
+                for (int fx = 0; fx < bufSize; fx++) {
+                    int worldX = originX + fx - pad;
+                    int worldZ = originZ + fz - pad;
+                    float val;
+                    if (worldX >= originX && worldX < originX + N &&
+                        worldZ >= originZ && worldZ < originZ + N) {
+                        val = tile[worldZ - originZ][worldX - originX];
+                    } else {
+                        val = readFlatBorder(tileCX, tileCZ, worldX, worldZ, originX, originZ);
+                    }
+                    flat[fz * bufSize + fx] = val;
+                }
+            }
+            float[] flatPre = flat.clone();
+
+            erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,
+                (float) seaE, (float) erosionStr);
+
+            for (int z = 0; z < N; z++)
+                for (int x = 0; x < N; x++)
+                    tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
+        }
+
+        // 5) 计算 delta + postErosion，构造 ErosionTileResult
+        ErosionTileResult res = new ErosionTileResult();
+        res.delta = new float[N][N];
+        res.postErosion = new float[N][N];
+        for (int z = 0; z < N; z++) {
+            for (int x = 0; x < N; x++) {
+                res.postErosion[z][x] = tile[z][x];
+                res.delta[z][x] = tile[z][x] - base[z][x];
+            }
+        }
+        res.tileCX = tileCX;
+        res.tileCZ = tileCZ;
+        res.originX = originX;
+        res.originZ = originZ;
+        return res;
+    }
+
+    /**
+     * 读取 tile 边界外的 flat 填充值。
+     * 优先级：左邻居 postErosion > 上邻居 postErosion > terrainE 直接采样。
+     */
+    private float readFlatBorder(int tileCX, int tileCZ,
+                                  int worldX, int worldZ,
+                                  int originX, int originZ) {
+        // 左邻居（worldX < originX）
+        if (worldX < originX) {
+            ErosionTileResult left = erosionTileCache.get(
+                tileKey(tileCX - ERODE_TILE_CHUNKS, tileCZ));
+            if (left != null) {
+                int nx = worldX - left.originX;
+                int nz = worldZ - left.originZ;
+                if (nx >= 0 && nx < ERODE_TILE_SIZE && nz >= 0 && nz < ERODE_TILE_SIZE)
+                    return left.postErosion[nz][nx];
+            }
+        }
+        // 上邻居（worldZ < originZ）
+        if (worldZ < originZ) {
+            ErosionTileResult top = erosionTileCache.get(
+                tileKey(tileCX, tileCZ - ERODE_TILE_CHUNKS));
+            if (top != null) {
+                int nx = worldX - top.originX;
+                int nz = worldZ - top.originZ;
+                if (nx >= 0 && nx < ERODE_TILE_SIZE && nz >= 0 && nz < ERODE_TILE_SIZE)
+                    return top.postErosion[nz][nx];
+            }
+        }
+        // 回退：直接 terrainE 采样（与 step 1 的粗采同源，值域一致）
+        return (float) Math.max(terrainE(worldX, worldZ), -0.05);
+    }
+
+    /**
+     * 从邻居 tile 缓存读取 postErosion（辅助方法，需传入 tileCX/CZ）。
+     */
+    private float readNeighborHeight(int ncx, int ncz, int worldX, int worldZ) {
+        ErosionTileResult nr = erosionTileCache.get(tileKey(ncx, ncz));
+        if (nr == null) return Float.NaN;
+        int lx = worldX - nr.originX;
+        int lz = worldZ - nr.originZ;
+        if (lx >= 0 && lx < ERODE_TILE_SIZE && lz >= 0 && lz < ERODE_TILE_SIZE) {
+            return nr.postErosion[lz][lx];
+        }
+        return Float.NaN;
+    }
+
+    private static long tileKey(int tileCX, int tileCZ) {
+        return ((long) tileCX << 32) | (tileCZ & 0xFFFFFFFFL);
+    }
+
+/** D∞ 流量累积 + 河网检测（纯检测，不修改 tile 高度）。
+     *
+     * <p>不做河谷雕刻：雕刻会改 tile 高度，但 D8 流方向在 tile 边界不一致，
+     * 导致边界两侧雕刻不同的格 → 断裂加剧。河道高度由侵蚀液滴自然塑造，
+     * 河道填水由 fillRiverColumn 在 output 阶段处理，不影响地形连续性。</p>
+     */
+    private RiverTileData computeRivers(float[][] tile, int N) {
+        RiverTileData rd = new RiverTileData();
+        int[][] dir8 = {{0,-1},{1,0},{0,1},{-1,0},{1,-1},{1,1},{-1,1},{-1,-1}};
+        float[] w8 = {1f, 1f, 1f, 1f, 0.7071f, 0.7071f, 0.7071f, 0.7071f};
+        int total = N * N;
+
+        int[] flowDir = new int[total];
+        for (int z = 0; z < N; z++)
+            for (int x = 0; x < N; x++) {
+                float h = tile[z][x];
+                float bestSlope = 0f;
+                int bestD = -1;
+                for (int d = 0; d < 8; d++) {
+                    int nx = x + dir8[d][0], nz = z + dir8[d][1];
+                    if (nx < 0 || nx >= N || nz < 0 || nz >= N) continue;
+                    float slope = (h - tile[nz][nx]) * w8[d];
+                    if (slope > bestSlope) { bestSlope = slope; bestD = d; }
+                }
+                flowDir[z * N + x] = bestD;
+            }
+
+        Integer[] order = new Integer[total];
+        for (int i = 0; i < total; i++) order[i] = i;
+        Arrays.sort(order, (a, b) -> Float.compare(tile[b / N][b % N], tile[a / N][a % N]));
+
+        float[][] dis = rd.discharge;
+        float maxQ = 0f;
+        for (int i = 0; i < total; i++) {
+            int idx = order[i], cx = idx % N, cz = idx / N;
+            float q = dis[cz][cx] + 1.0f;
+            dis[cz][cx] = q;
+            if (q > maxQ) maxQ = q;
+            int d = flowDir[idx];
+            if (d >= 0) dis[cz + dir8[d][1]][cx + dir8[d][0]] += q;
+        }
+
+        boolean[][] mask = rd.riverMask;
+        float thr = Math.max(8.0f, maxQ * 0.02f);
         for (int z = 0; z < N; z++)
             for (int x = 0; x < N; x++)
-                tile[z][x] = tile[z][x] - base[z][x];
+                if (dis[z][x] >= thr) mask[z][x] = true;
 
-        return tile;
+        // 3×3 膨胀
+        boolean[][] src = new boolean[N][N];
+        for (int z = 0; z < N; z++) System.arraycopy(mask[z], 0, src[z], 0, N);
+        for (int z = 0; z < N; z++)
+            for (int x = 0; x < N; x++) {
+                if (!src[z][x]) continue;
+                for (int dz = -1; dz <= 1; dz++) {
+                    int nz = z + dz;
+                    if (nz < 0 || nz >= N) continue;
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int nx = x + dx;
+                        if (nx < 0 || nx >= N) continue;
+                        mask[nz][nx] = true;
+                        dis[nz][nx] = Math.max(dis[nz][nx], dis[z][x]);
+                    }
+                }
+            }
+
+        // 保存流向（D8 编码：0=N 1=E 2=S 3=W 4=NE 5=SE 6=SW 7=NW，-1=无流出）
+        for (int z = 0; z < N; z++)
+            for (int x = 0; x < N; x++)
+                rd.flowDir[z][x] = flowDir[z * N + x];
+
+        return rd;
     }
 
     // ===== Catmull-Rom 双三次插值（全局对齐版，从 6 月备份 70cd037 GeoGenesisGenerator.java 移植） =====
@@ -435,12 +633,40 @@ public final class CellGenerator {
                         cell.humidity, cell.typeWeights, cell.coastCoord);
                 }
 
-                cell.isRiver = false;
-                cell.riverMask = false;
-                cell.riverWetness = 0.0;
-                cell.riverDistance = 1.0;
-                cell.riverFloorY = 0.0;
-                cell.riverSurfaceY = 0.0;
+                // 河流数据：从 river tile cache 读（河流关闭时重置为默认）
+                if (riversEnabled) {
+                    long tileKey = ((long) tileCX << 32) | (tileCZ & 0xFFFFFFFFL);
+                    RiverTileData rd = riverTileCache.get(tileKey);
+                    if (rd != null && rd.riverMask[offsetZ + lz][offsetX + lx]) {
+                        cell.isRiver = true;
+                        cell.riverWetness = 1.0;
+                        cell.riverDistance = 0.0;
+                        if (cell.height <= seaLevel() + 1.0) {
+                            cell.riverMask = true;
+                            cell.riverFloorY = cell.height - 0.5;
+                            cell.riverSurfaceY = seaLevel();
+                        } else {
+                            cell.riverMask = false;
+                            cell.riverFloorY = 0.0;
+                            cell.riverSurfaceY = 0.0;
+                        }
+                        cell.riverNetDischarge = rd.discharge[offsetZ + lz][offsetX + lx];
+                    } else {
+                        cell.isRiver = false;
+                        cell.riverMask = false;
+                        cell.riverWetness = 0.0;
+                        cell.riverDistance = 1.0;
+                        cell.riverFloorY = 0.0;
+                        cell.riverSurfaceY = 0.0;
+                    }
+                } else {
+                    cell.isRiver = false;
+                    cell.riverMask = false;
+                    cell.riverWetness = 0.0;
+                    cell.riverDistance = 1.0;
+                    cell.riverFloorY = 0.0;
+                    cell.riverSurfaceY = 0.0;
+                }
             }
         }
     }
@@ -621,4 +847,17 @@ public final class CellGenerator {
 
     /** TypeLandShape 引用 */
     public TypeLandShape typeLandShape() { return typeLandShape; }
+
+    // ===== 诊断访问器 =====
+
+    /** 包级私有：获取缓存的侵蚀 tile 结果（用于 ErosionTileProbe 诊断）。返回 null 若 tile 未生成。 */
+    ErosionTileResult getTileResult(int tileCX, int tileCZ) {
+        return erosionTileCache.get(tileKey(tileCX, tileCZ));
+    }
+
+    /** 设置河流系统开关（诊断时关闭以隔离变量）。 */
+    void setRiversEnabled(boolean enabled) {
+        this.riversEnabled = enabled;
+        if (!enabled) riverTileCache.clear(); // 关闭时清理已缓存的河网数据
+    }
 }

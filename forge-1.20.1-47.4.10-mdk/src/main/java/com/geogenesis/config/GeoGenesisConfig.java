@@ -214,6 +214,8 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.BooleanValue riverWater;
     /** 源湖/湖密度（河流节点场用） */
     public final ForgeConfigSpec.DoubleValue lakeDensity;
+    /** 是否启用河流系统（false = 关闭河网检测和河道填水，独立于侵蚀） */
+    public final ForgeConfigSpec.BooleanValue riversEnabled;
     /** 是否启用本地粒子侵蚀 */
     public final ForgeConfigSpec.BooleanValue erosionEnabled;
     /** 侵蚀强度倍率 */
@@ -584,6 +586,8 @@ public final class GeoGenesisConfig {
             .define("riverWater", true);
         lakeDensity = builder.comment("Source-lake / lake density for river node field. Default 0.15, range [0, 1].")
             .defineInRange("lakeDensity", 0.15, 0.0, 1.0);
+        riversEnabled = builder.comment("Enable river system (D8 flow detection + river channel filling). Set false to isolate erosion testing. Default true.")
+            .define("riversEnabled", true);
         erosionEnabled = builder.comment("Enable local particle erosion (seamless, margin-filled with true neighbour heights). Default true.")
             .define("erosionEnabled", true);
         erosionStrength = builder.comment("Erosion strength multiplier. Default 1.0, range [0, 4].")

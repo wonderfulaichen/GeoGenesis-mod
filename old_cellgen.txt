@@ -1,0 +1,8 @@
+git : fatal: path 'forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java' exists on
+ disk, but not in 'f0ae620'
+所在位置 行:1 字符: 265
++ ... nesis-mod"; git show f0ae620:forge-1.20.1-47.4.10-mdk/src/main/java/c ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (fatal: path 'fo...ot in 'f0ae620':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

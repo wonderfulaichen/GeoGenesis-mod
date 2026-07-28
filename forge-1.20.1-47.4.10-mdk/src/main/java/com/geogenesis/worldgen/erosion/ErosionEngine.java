@@ -2,6 +2,8 @@ package com.geogenesis.worldgen.erosion;
 
 import com.geogenesis.config.GeoGenesisConfig;
 import net.minecraftforge.common.ForgeConfigSpec;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,6 +30,11 @@ import java.util.List;
  */
 public class ErosionEngine {
 
+    private static final Logger LOGGER = LogManager.getLogger("geogenesis/erosion");
+    /** 诊断计数器（每 N 次调用打印一次） */
+    private static int erosionDiagCounter = 0;
+    private static final int EROSION_DIAG_INTERVAL = 10;
+
     private static final float INERTIA = 0.005f, GRAVITY = 2.5f, EVAP_RATE = 0.001f;
     private static final float ENTRAINMENT = 10f;
     /** 动量传递：1.0 对齐 SH 原版（原 0.6 导致河流不会自我增强） */
@@ -39,19 +46,19 @@ public class ErosionEngine {
     private static final int CASCADE_INTERVAL = 3;
     private static final float CASCADE_MAXDIFF = 0.01f;
 
-    // ===== 三尺度配置 (v2 - 可见侵蚀) =====
-    // 提升逻辑：spacing=4 双三次插值场比真实 terrainE 平滑很多 → 坡度 slp 变小 → 容量 cap 变小 → 需更大参数补偿。
-    // C 尺度 (宏观河谷/山谷)：笔刷半径 7 覆盖 (2*7+1)²=225 邻域，DROPS_C=80 每区块约 0.3 滴/格，寿命 40 步
-    private static final int R_C = 7, DROPS_C = 80, LIFE_C = 40;
-    private static final float ERODE_C = 0.060f, DEPOSIT_C = 0.015f;
+    // ===== 三尺度配置 (v3 - 强侵蚀 + 河谷协同) =====
+    // 提升：spacing=4 插值场平滑度高，需要更大参数。河网雕刻后侵蚀液滴沿河谷走廊进一步增强。
+    // C 尺度 (宏观山谷/山脉脊线)：笔刷半径 7 覆盖 225 邻域，DROPS_C=120 每区块约 0.5 滴/格，寿命 60 步
+    private static final int R_C = 7, DROPS_C = 120, LIFE_C = 60;
+    private static final float ERODE_C = 0.100f, DEPOSIT_C = 0.010f;
 
-    // M 尺度 (中脊/山沟)：半径 4，(2*4+1)²=81 邻域，寿命 25 步
-    private static final int R_M = 4, DROPS_M = 50, LIFE_M = 25;
-    private static final float ERODE_M = 0.080f, DEPOSIT_M = 0.020f;
+    // M 尺度 (中脊/冲沟)：半径 4，(2*4+1)²=81 邻域，寿命 30 步
+    private static final int R_M = 4, DROPS_M = 60, LIFE_M = 30;
+    private static final float ERODE_M = 0.120f, DEPOSIT_M = 0.015f;
 
-    // F 尺度 (细沟/微冲沟)：半径 2，(2*2+1)²=25 邻域，寿命 15 步
-    private static final int R_F = 2, DROPS_F = 30, LIFE_F = 15;
-    private static final float ERODE_F = 0.100f, DEPOSIT_F = 0.025f;
+    // F 尺度 (细沟/微沟壑)：半径 2，(2*2+1)²=25 邻域，寿命 20 步
+    private static final int R_F = 2, DROPS_F = 40, LIFE_F = 20;
+    private static final float ERODE_F = 0.150f, DEPOSIT_F = 0.020f;
 
     /** 最大笔刷半径（pad = R_MAX + 2 = 9），相邻 tile 各 pad 9 + 中心区域重叠 2*9=18 块无缝 */
     private static final int R_MAX = Math.max(R_C, Math.max(R_M, R_F)); // =7
@@ -71,16 +78,10 @@ public class ErosionEngine {
                                         float seaNorm, float str, boolean[][] locked) {
         if (sz < 16 || str <= 0) return;
 
-        double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);
-        double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);
-        double lcWeight  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionLocalChargeWeight, 1.0);
-        double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);
-        float strE       = (float) Math.max(0.1, str) * (float) erodeMul;
-
         int pad = R_MAX + 2;
         int bufSize = sz + pad * 2;
-        float[] dis = new float[bufSize * bufSize];
 
+        // 构建 flat 缓冲区（镜像填充 -> 向后兼容）
         float[] flat = new float[bufSize * bufSize];
         for (int z = 0; z < bufSize; z++)
             for (int x = 0; x < bufSize; x++) {
@@ -89,6 +90,54 @@ public class ErosionEngine {
                 flat[z * bufSize + x] = h[srcZ][srcX];
             }
         float[] flatPre = flat.clone();
+
+        // 运行侵蚀引擎主循环
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked);
+
+        // ===== 写回 =====
+        for (int z = 0; z < sz; z++)
+            for (int x = 0; x < sz; x++) {
+                float v = flat[(z + pad) * bufSize + (x + pad)];
+                h[z][x] = (Float.isNaN(v) || Float.isInfinite(v)) ? 0.5f : clampF(v, -1, 1);
+            }
+
+        if (locked != null) {
+            // locked 的恢复在 runErosionOnFlat 内已处理，无需重复
+        }
+    }
+
+    /**
+     * 在预填充的 flat/flatPre 缓冲区上运行侵蚀引擎主循环。
+     * flat 和 flatPre 由调用方提供；flatPre 是 flat 的初始快照（用于沉积平滑参考）。
+     * 侵蚀后结果留在 flat[] 中，调用方从 flat 中心读取。
+     *
+     * @param flat     高度缓冲区（侵蚀原地修改）
+     * @param flatPre  flat 初始快照
+     * @param bufSize  flat 缓冲区边长
+     * @param sz       本 tile 有效数据边长（输出到 h[sz][sz]）
+     * @param ox/oz    tile 原点（世界坐标）
+     * @param seaNorm  海平面归一化高度
+     * @param str      侵蚀强度乘数
+     */
+    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                  int sz, int ox, int oz,
+                                  float seaNorm, float str) {
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null);
+    }
+
+    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                   int sz, int ox, int oz,
+                                   float seaNorm, float str, boolean[][] locked) {
+        if (sz < 16 || str <= 0) return;
+
+        double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);
+        double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);
+        double lcWeight  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionLocalChargeWeight, 1.0);
+        double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);
+        float strE       = (float) Math.max(0.1, str) * (float) erodeMul;
+
+        int pad = R_MAX + 2;
+        float[] dis = new float[bufSize * bufSize];
 
         // ===== 构建三层笔刷 =====
         int r2C = R_C * R_C;
@@ -111,7 +160,7 @@ public class ErosionEngine {
             savedLocked = new float[sz][sz];
             for (int z = 0; z < sz; z++)
                 for (int x = 0; x < sz; x++)
-                    if (locked[z][x]) savedLocked[z][x] = h[z][x];
+                    if (locked[z][x]) savedLocked[z][x] = flat[(z + pad) * bufSize + (x + pad)];
         }
 
         // ===== 确定性逐区块播种 =====
@@ -130,7 +179,7 @@ public class ErosionEngine {
 
         int maxD = (int) (Math.max(DROPS_C, Math.max(DROPS_M, DROPS_F)) * dropsMul);
 
-        // ===== 三尺度液滴模拟（interleaved，与旧双尺度结构相同） =====
+        // ===== 三尺度液滴模拟（interleaved） =====
         for (int d = 0; d < maxD; d++) {
             for (long[] ck : chunkList) {
                 int wcx = (int) ck[0], wcz = (int) ck[1];
@@ -162,19 +211,12 @@ public class ErosionEngine {
         smoothErosionResult(flat, bufSize, pad, sz, seaNorm);
         smoothDepositionZones(flat, flatPre, bufSize, pad, sz);
 
-        // ===== 写回 =====
-        // 输出范围 [-1, 1]：海床负值（-0.5~0）和陆地正值（0~1）都保留
-        // 让海洋也能被侵蚀（深海洋虽平坦但仍可微雕，海山/海沟/海渠在 -0.5 范围）
-        for (int z = 0; z < sz; z++)
-            for (int x = 0; x < sz; x++) {
-                float v = flat[(z + pad) * bufSize + (x + pad)];
-                h[z][x] = (Float.isNaN(v) || Float.isInfinite(v)) ? 0.5f : clampF(v, -1, 1);
-            }
-
+        // ===== 恢复 locked 格点 =====
         if (savedLocked != null) {
             for (int z = 0; z < sz; z++)
                 for (int x = 0; x < sz; x++)
-                    if (locked[z][x]) h[z][x] = savedLocked[z][x];
+                    if (locked[z][x])
+                        flat[(z + pad) * bufSize + (x + pad)] = savedLocked[z][x];
         }
     }
 
@@ -296,7 +338,7 @@ public class ErosionEngine {
             //       深水 (>50块): 显著（~5块/液滴寿命）
             float dh = nH0 - h0;          // 保留供 NaN 守卫（line 340）使用
             float erfVal = 1f - (float) Math.exp(-0.16f * ld * ld);
-            float depthBoost = Math.max(0f, -h0) * 0.01f;  // 水深贡献的"等效下坡高度差"
+            float depthBoost = Math.max(0f, -h0) * 0.03f;  // 水深贡献的"等效下坡高度差"（3%/e, ≈ 7.7 块/100e 深度）
             float heightDrop = Math.max(0f, -dh) + depthBoost;
             float c_eq = (1f + ENTRAINMENT * erfVal) * heightDrop;  // 平衡浓度
             float effD = 0.1f;                       // 松弛率 = depositionRate(=0.1)
@@ -467,6 +509,156 @@ public class ErosionEngine {
             }
         }
         System.arraycopy(smoothed, 0, flat, 0, flat.length);
+    }
+
+    // ===== 解析流功率侵蚀（替代 droplet 模拟，天然连续无缝） =====
+
+    /**
+     * 世界坐标高度查询接口：当前 tile 内取 h[][]，越界时读邻居 postErosion 或 terrainE 回退。
+     */
+    @FunctionalInterface
+    public interface HeightQuery {
+        float getHeight(int worldX, int worldZ);
+    }
+
+    /**
+     * 解析流功率侵蚀 + 热力扩散（替代 droplet 模拟，带边界高度查询）。
+     *
+     * <p>此重载接受 {@link HeightQuery}，用于 tile 边界 cell 读取隔壁 tile 的侵蚀后高度，
+     * 消除因越界跳过边界 cell 导致的断层。</p>
+     *
+     * @see #applyStreamPower(float[][], int, int[][], float[][], float, float, double, double, double, double)
+     */
+    public void applyStreamPower(float[][] h, int N, int[][] flowDir, float[][] discharge,
+                                  float seaNorm, float str,
+                                  double K, double m, double n, double Kd) {
+        applyStreamPower(h, N, flowDir, discharge, seaNorm, str, K, m, n, Kd, null, null);
+    }
+
+    public void applyStreamPower(float[][] h, int N, int[][] flowDir, float[][] discharge,
+                                  float seaNorm, float str,
+                                  double K, double m, double n, double Kd,
+                                  HeightQuery heightQuery) {
+        applyStreamPower(h, N, flowDir, discharge, seaNorm, str, K, m, n, Kd, heightQuery, null);
+    }
+
+    /**
+     * 解析流功率侵蚀 + 热力扩散（全参重载，heightLookup 支持越界查询）。
+     *
+     * <p>核心公式（Stream Power Law, Braun & Willett 2013, Schott et al. 2024）：
+     * <pre>
+     *   Δh = -K · A^m · |∇h|^n
+     * </pre>
+     * 其中 A = D8 流量累积（discharge），∇h = 到下游坡度。
+     *
+     * @param h           全分辨率高度场（N×N，原位读写）
+     * @param N           tile 边长
+     * @param flowDir     D8 流向矩阵（0-7，-1 无流出）
+     * @param discharge   D8 流量累积矩阵
+     * @param seaNorm     海平面归一化高度
+     * @param str         侵蚀强度乘数
+     * @param K           erosivity 系数
+     * @param m           面积指数（默认 0.5）
+     * @param n           坡度指数（默认 1.0）
+     * @param Kd          热力扩散系数，0=关闭
+     * @param heightQuery 越界高度查询（null = 跳过越界 cell，等同于原行为）
+     * @param origin      tile 原点（世界坐标），与 heightQuery 配合使用；null = 跳过越界
+     */
+    public void applyStreamPower(float[][] h, int N, int[][] flowDir, float[][] discharge,
+                                  float seaNorm, float str,
+                                  double K, double m, double n, double Kd,
+                                  HeightQuery heightQuery, int[] origin) {
+        // ========== 局部最低点下蚀（替代流功率公式）==========
+        // 核心：每个 cell 在 5×5 窗口内找最小高度，按 (h - local_min) 比例下蚀。
+        // - 谷底几乎不变（已经是局部最低）
+        // - 远谷底处的 cell 下蚀最多
+        // - 形成 V 形谷（dh 越大、下蚀越多）
+        //
+        // 多趟迭代：每趟下蚀一点，地形渐渐接近新的局部最低。
+        // K 控下蚀速率；Kd 控热力扩散（让 V 谷底部变圆 U 谷）。
+        //
+        // 之前的流功率公式 dh * alpha/(1+alpha) 在 bicubic 平滑的地形上 dh 全近似
+        // → 形成"剥皮"（均匀下蚀），无 V 形。新方法直接以局地最低为参照，保留 V 形。
+
+        int winR = 5; // 5x5 窗口半径 2
+        int winHalf = winR / 2;
+        int nIters = 6;
+        float Klocal = (float) Math.max(0.05, K * 0.5); // 转换为 0.025-0.5 范围
+
+        double maxEro = 0, sumEro = 0;
+        int erodedCount = 0, totalCount = 0;
+
+        // 完全跳过边界 2 圈（5×5 窗口半径=2，跨界的窗口会引发 bicubic vs terrainE 不一致）
+        // 提取的 chunk 在 tile 中心（offset 40-87），远在 [2, N-2] 内，不受影响
+        int margin = winHalf; // = 2
+        for (int iter = 0; iter < nIters; iter++) {
+            for (int z = margin; z < N - margin; z++) {
+                for (int x = margin; x < N - margin; x++) {
+                    float h0 = h[z][x];
+                    if (h0 <= seaNorm) continue;
+
+                    // 在 5×5 窗口内找局地最低（窗口完全在 tile 内，不会跨界）
+                    float localMin = h0;
+                    for (int dz = -winHalf; dz <= winHalf; dz++) {
+                        int nz = z + dz;
+                        for (int dx = -winHalf; dx <= winHalf; dx++) {
+                            int nx = x + dx;
+                            if (h[nz][nx] < localMin) localMin = h[nz][nx];
+                        }
+                    }
+
+                    float dh = h0 - localMin;
+                    if (dh <= 1e-6f) continue;
+
+                    double erosion = Math.min(Klocal * dh, 0.10);
+                    if (erosion <= 1e-6) continue;
+
+                    if (iter == nIters - 1) {
+                        maxEro = Math.max(maxEro, erosion);
+                        sumEro += erosion;
+                        erodedCount++;
+                    }
+                    totalCount++;
+                    h[z][x] = h0 - (float) erosion;
+                }
+            }
+        }
+
+        // 诊断日志
+        erosionDiagCounter++;
+        if (erosionDiagCounter % EROSION_DIAG_INTERVAL == 0) {
+            double avgEro = erodedCount > 0 ? sumEro / erodedCount : 0;
+            LOGGER.info("[LOCAL-MIN EROSION] tile " + N + "x" + N + " x" + nIters + "iters"
+                + " | eroded=" + erodedCount + "/" + totalCount
+                + " | maxEro=" + String.format("%.6f", maxEro) + " e (~" + String.format("%.1f", maxEro * 384) + " blk)"
+                + " | avgEro=" + String.format("%.6f", avgEro) + " e"
+                + " | K=" + String.format("%.3f", Klocal));
+        }
+
+        // ---- Phase 2: 热力扩散（让 V 谷底部变圆 → U 谷） ----
+        if (Kd > 0) {
+            thermalDiffuse(h, N, (float) Kd, seaNorm);
+        }
+
+        // ---- Phase 3: 末尾 clamp ----
+        for (int z = 0; z < N; z++)
+            for (int x = 0; x < N; x++)
+                h[z][x] = clampF(h[z][x], -1, 1);
+    }
+
+    /** 热力扩散（山坡平滑，Laplacian 局部算子）。 */
+    private static void thermalDiffuse(float[][] h, int N, float Kd, float seaNorm) {
+        float KdClamp = Math.min(Kd, 0.25f);
+        float[][] copy = new float[N][N];
+        for (int z = 0; z < N; z++) System.arraycopy(h[z], 0, copy[z], 0, N);
+
+        for (int z = 1; z < N - 1; z++)
+            for (int x = 1; x < N - 1; x++) {
+                if (h[z][x] <= seaNorm) continue; // 水下不扩散
+                float lap = copy[z - 1][x] + copy[z + 1][x] + copy[z][x - 1] + copy[z][x + 1]
+                          - 4f * copy[z][x];
+                h[z][x] += KdClamp * lap;
+            }
     }
 
     // ===== 工具 =====
