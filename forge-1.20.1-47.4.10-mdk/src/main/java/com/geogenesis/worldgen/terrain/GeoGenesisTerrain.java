@@ -24,8 +24,10 @@ public final class GeoGenesisTerrain {
     /** 诊断日志记录器 */
     private static final Logger DLOG = LogManager.getLogger("geogenesis/diag");
 
-    /** 诊断阈值：e 的相邻块断裂超过此值即打日志（≈4 块） */
-    private static final double DIAG_THRESHOLD = 0.01;
+    /** 诊断阈值：e 的相邻块断裂超过此值即打日志（原 0.01≈4 块，降为 0.003≈1 块以捕捉微断裂） */
+    private static final double DIAG_THRESHOLD = 0.003;
+    /** 诊断阈值（跨 chunk）：与 DIAG_THRESHOLD 相同，捕捉 tile 边界微断裂 */
+    private static final double INTER_THRESHOLD = 0.003;
 
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
@@ -146,10 +148,12 @@ public final class GeoGenesisTerrain {
         if (maxEDelta > DIAG_THRESHOLD) {
             Cell c = cells[peX * 16 + peZ];
             double blk = maxEDelta * 384;
-            DLOG.warn("[DIAG] chunk({},{}): maxFe={}({}blk) at({},{}), type={},"
-                + "eLand={}, eOcean={}, cont={}, eLandMaxF={}, eOceanMaxF={}, contMaxF={}",
+            int wx = baseX + peX, wz = baseZ + peZ;
+            DLOG.warn("[DIAG] chunk({},{}): maxFe={}({}blk) at(local={},{} world=({},{}))"
+                + " type={}, eLand={}, eOcean={}, cont={},"
+                + " eLandMaxF={}, eOceanMaxF={}, contMaxF={}",
                 cx, cz, String.format("%.4f", maxEDelta), String.format("%.0f", blk),
-                peX, peZ, c.terrainType,
+                peX, peZ, wx, wz, c.terrainType,
                 String.format("%.4f", c.eLand), String.format("%.4f", c.eOcean),
                 String.format("%.4f", c.blendCont),
                 String.format("%.4f", maxELandDX), String.format("%.4f", maxEOceanDX),
@@ -157,9 +161,9 @@ public final class GeoGenesisTerrain {
         }
 
         // 跨区块接缝诊断：比较本 chunk 右/下边缘与相邻 chunk 左/上边缘。
-        // 仅当相邻 chunk 已在缓存中才比较（cache.get 不触发额外生成），避免递归生成拖慢。
-        // 捕捉侵蚀 delta 竞态（整块塔）与 D∞ 汇水 per-chunk 截断（河流边界墙）造成的区块级台阶。
         double maxInterX = 0, maxInterZ = 0;
+        int tileCX = Math.floorDiv(cx, 3) * 3, tileCZ = Math.floorDiv(cz, 3) * 3;
+        int nTileCX = Math.floorDiv(cx + 1, 3) * 3, nTileCZ = Math.floorDiv(cz, 3) * 3;
         Cell[] nbX = cache.get(pack(cx + 1, cz));
         if (nbX != null) {
             for (int lz = 0; lz < 16; lz++) {
@@ -175,12 +179,34 @@ public final class GeoGenesisTerrain {
             }
         }
         double maxInter = Math.max(maxInterX, maxInterZ);
-        if (maxInter > DIAG_THRESHOLD) {
-            DLOG.warn("[DIAG-INTER] chunk({},{}): maxInterFe={}({}blk) interX={}({}blk) interZ={}({}blk)",
+        if (maxInter > INTER_THRESHOLD) {
+            // 获取两边 tile 的版本号（诊断是否是 tile 边界断裂）
+            int myTileRound = 0, nbrTileRoundX = 0, nbrTileRoundZ = 0;
+            CellGenerator.ErosionTileResult myTile = generator.getTileResult(tileCX, tileCZ);
+            if (myTile != null) myTileRound = myTile.erosionRound;
+            CellGenerator.ErosionTileResult nbrX = generator.getTileResult(nTileCX, nTileCZ);
+            if (nbrX != null) nbrTileRoundX = nbrX.erosionRound;
+            CellGenerator.ErosionTileResult nbrZ = generator.getTileResult(tileCX, nTileCZ);
+            if (nbrZ != null) nbrTileRoundZ = nbrZ.erosionRound;
+
+            boolean sameTileX = (tileCX == nTileCX); // X 相邻 chunk 是否同 tile
+            boolean sameTileZ = (tileCZ == nTileCZ); // Z 相邻 chunk 是否同 tile
+
+            DLOG.warn("[DIAG-INTER] chunk({},{}): maxFe={}({}blk)"
+                + " world=({},{})({},{})"
+                + " interX={}({}blk,{},tCX={}/{},rd={}/{})"
+                + " interZ={}({}blk,{},tCZ={}/{},rd={}/{})",
                 cx, cz,
                 String.format("%.4f", maxInter), String.format("%.0f", maxInter * 384),
+                baseX + 15, baseZ, baseX + 16, baseZ,
                 String.format("%.4f", maxInterX), String.format("%.0f", maxInterX * 384),
-                String.format("%.4f", maxInterZ), String.format("%.0f", maxInterZ * 384));
+                sameTileX ? "same" : "DIFF",
+                tileCX, nTileCX,
+                myTileRound, nbrTileRoundX,
+                String.format("%.4f", maxInterZ), String.format("%.0f", maxInterZ * 384),
+                sameTileZ ? "same" : "DIFF",
+                tileCZ, nTileCZ,
+                myTileRound, nbrTileRoundZ);
         }
 
         return cells;

@@ -179,7 +179,7 @@ public class ErosionEngine {
 
         int maxD = (int) (Math.max(DROPS_C, Math.max(DROPS_M, DROPS_F)) * dropsMul);
 
-        // ===== 三尺度液滴模拟（interleaved） =====
+        // ===== 原始三尺度液滴模拟（interleaved） =====
         for (int d = 0; d < maxD; d++) {
             for (long[] ck : chunkList) {
                 int wcx = (int) ck[0], wcz = (int) ck[1];
