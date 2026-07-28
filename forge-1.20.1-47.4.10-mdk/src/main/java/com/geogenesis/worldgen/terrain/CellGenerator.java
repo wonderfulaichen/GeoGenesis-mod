@@ -4,6 +4,8 @@ import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.climate.ClimateSpline;
 import com.geogenesis.worldgen.erosion.ErosionEngine;
 import com.geogenesis.worldgen.noise.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -30,6 +32,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class CellGenerator {
 
+    private static final Logger DLOG = LogManager.getLogger("geogenesis/diag");
+    /** 诊断限频 */
+    private static int diagCount = 0;
+
     private final ContinentField continent;
     private final HeightCurve heightCurve;
     private final TypeLandShape typeLandShape;
@@ -55,6 +61,8 @@ public final class CellGenerator {
     private boolean riversEnabled = true;
     /** 世界种子（区域确定性侵蚀，保证缓存一致、无闪烁） */
     private long worldSeed = 12345L;
+    /** 全 tile 版本号计数器（滑窗收敛用：每生成一次 tile 递增） */
+    private int erosionRoundCounter = 0;
 
     // 温度参数（v5.10 正弦纬度模型，参考 TF/RTF）
     private final double tempFreq;    // 温度纬度角频率 = 1/latitudeScale（由 TerrainParams 注入，可配置）
@@ -284,6 +292,7 @@ public final class CellGenerator {
         float[][] postErosion;
         int tileCX, tileCZ;
         int originX, originZ;
+        int erosionRound; // 版本号，用于滑窗收敛：邻居新则 self 重生成
     }
 
     private final ConcurrentHashMap<Long, RiverTileData> riverTileCache = new ConcurrentHashMap<>(ERODE_TILE_CACHE_SIZE);
@@ -298,7 +307,6 @@ public final class CellGenerator {
         int tileCX = Math.floorDiv(chunkX, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
         int tileCZ = Math.floorDiv(chunkZ, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
 
-        // 侵蚀关闭时返回零增量 tile
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         boolean erosionOn = cfg != null ? cfgBool(cfg.erosionEnabled, true) : true;
         if (!erosionOn) {
@@ -306,13 +314,48 @@ public final class CellGenerator {
         }
 
         long key = tileKey(tileCX, tileCZ);
-        if (!erosionTileCache.containsKey(key)) {
-            // 递归确保左/上邻居先存在（Tile Context Chain）
-            ensureErosionTile(tileCX - ERODE_TILE_CHUNKS, tileCZ); // 左邻居
-            ensureErosionTile(tileCX, tileCZ - ERODE_TILE_CHUNKS); // 上邻居
+        int MAX_ROUNDS = 3; // 3 轮收敛足够了（game 里逐块生成收敛更快）
+        int dcx[] = {-ERODE_TILE_CHUNKS, ERODE_TILE_CHUNKS, 0, 0};
+        int dcz[] = {0, 0, -ERODE_TILE_CHUNKS, ERODE_TILE_CHUNKS};
+
+        for (int conv = 0; conv < MAX_ROUNDS; conv++) {
+            // 首轮必须确保 4 方向邻居存在（之前只保证了左/上，漏了右/下！）
+            if (conv == 0) {
+                ensureErosionTile(tileCX - ERODE_TILE_CHUNKS, tileCZ);
+                ensureErosionTile(tileCX + ERODE_TILE_CHUNKS, tileCZ);
+                ensureErosionTile(tileCX, tileCZ - ERODE_TILE_CHUNKS);
+                ensureErosionTile(tileCX, tileCZ + ERODE_TILE_CHUNKS);
+            }
+
+            // 生成或取出缓存
+            ErosionTileResult result = erosionTileCache.get(key);
+            if (result == null) {
+                result = generateErosionTile(tileCX, tileCZ);
+                erosionTileCache.put(key, result);
+            }
+
+            // 最后一轮直接返回
+            if (conv == MAX_ROUNDS - 1) return result.delta;
+
+            // 检查全部 4 方向邻居版本号（之前只检查左/上，漏了右/下！）
+            int maxNbrRound = result.erosionRound;
+            for (int d = 0; d < 4; d++) {
+                ErosionTileResult nbr = erosionTileCache.get(tileKey(tileCX + dcx[d], tileCZ + dcz[d]));
+                if (nbr != null && nbr.erosionRound > maxNbrRound) maxNbrRound = nbr.erosionRound;
+            }
+
+            if (maxNbrRound > result.erosionRound) {
+                // 邻居更新了 → 本 tile 需用新数据重生成
+                erosionTileCache.remove(key);
+                // 重新确保全部 4 方向邻居
+                for (int d = 0; d < 4; d++) {
+                    ensureErosionTile(tileCX + dcx[d], tileCZ + dcz[d]);
+                }
+            } else {
+                return result.delta; // 收敛
+            }
         }
-        ErosionTileResult result = erosionTileCache.computeIfAbsent(key, k -> generateErosionTile(tileCX, tileCZ));
-        return result.delta;
+        return erosionTileCache.get(key).delta;
     }
 
     /** 确保指定 tile 已存在于缓存（若不存在则递归生成）。 */
@@ -350,6 +393,22 @@ public final class CellGenerator {
                 lowResBuf[tz][tx] = (float) Math.max(terrainE(wx, wz), -0.05);
             }
         }
+
+        // 1.5) 粗网格 Gaussian 低通滤波：消除控制点对齐噪声
+        //     kernel = [1,2,1; 2,4,2; 1,2,1] / 16（σ≈0.85 grid cells ≈ 3.4 blocks）
+        //     保留最外层 1 格作为 bicubic 边界条件（扩展带原值）
+        float[][] smoothBuf = new float[extendedLowRes][extendedLowRes];
+        for (int tz = 0; tz < extendedLowRes; tz++)
+            System.arraycopy(lowResBuf[tz], 0, smoothBuf[tz], 0, extendedLowRes);
+        for (int tz = 1; tz < extendedLowRes - 1; tz++) {
+            for (int tx = 1; tx < extendedLowRes - 1; tx++) {
+                float sum = lowResBuf[tz-1][tx-1] + lowResBuf[tz-1][tx]*2 + lowResBuf[tz-1][tx+1]
+                          + lowResBuf[tz][tx-1]*2   + lowResBuf[tz][tx]*4 + lowResBuf[tz][tx+1]*2
+                          + lowResBuf[tz+1][tx-1] + lowResBuf[tz+1][tx]*2 + lowResBuf[tz+1][tx+1];
+                smoothBuf[tz][tx] = sum / 16f;
+            }
+        }
+        lowResBuf = smoothBuf;
 
         // 2) Catmull-Rom 双三次插值升采样到全分辨率
         int N = ERODE_TILE_SIZE;
@@ -397,10 +456,45 @@ public final class CellGenerator {
             for (int z = 0; z < N; z++)
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
+
+            // 5) chunk 边界 + 跨 tile 边界混叠（5 点 Gaussian [1,4,6,4,1]/16，消除残余 chunk 边界断裂）
+            int[] boundaries = {40, 56, 72, 88};
+            // Z 方向（行边界）
+            for (int bz : boundaries) {
+                for (int x = 3; x < N - 3; x++) {
+                    if (bz < 3 || bz >= N - 3) continue;
+                    tile[bz-1][x] = (tile[bz-3][x] + tile[bz-2][x]*4 + tile[bz-1][x]*6 + tile[bz][x]*4 + tile[bz+1][x]) / 16f;
+                    tile[bz][x]   = (tile[bz-2][x] + tile[bz-1][x]*4 + tile[bz][x]*6 + tile[bz+1][x]*4 + tile[bz+2][x]) / 16f;
+                }
+            }
+            // X 方向（列边界）
+            for (int bx : boundaries) {
+                for (int z = 3; z < N - 3; z++) {
+                    if (bx < 3 || bx >= N - 3) continue;
+                    tile[z][bx-1] = (tile[z][bx-3] + tile[z][bx-2]*4 + tile[z][bx-1]*6 + tile[z][bx]*4 + tile[z][bx+1]) / 16f;
+                    tile[z][bx]   = (tile[z][bx-2] + tile[z][bx-1]*4 + tile[z][bx]*6 + tile[z][bx+1]*4 + tile[z][bx+2]) / 16f;
+                }
+            }
+
+            // 5.5) delta 相等化：强制 chunk 边界两侧的 postErosion 高度完全一致。
+            //      tile delta 对 cell.e 是加法，插值场（base）与 sampleCore 的微小错位通过此相等化消除。
+            for (int bz : boundaries) {
+                for (int x = 0; x < N; x++) {
+                    float avg = (tile[bz-1][x] + tile[bz][x]) * 0.5f;
+                    tile[bz-1][x] = avg; tile[bz][x] = avg;
+                }
+            }
+            for (int bx : boundaries) {
+                for (int z = 0; z < N; z++) {
+                    float avg = (tile[z][bx-1] + tile[z][bx]) * 0.5f;
+                    tile[z][bx-1] = avg; tile[z][bx] = avg;
+                }
+            }
         }
 
-        // 5) 计算 delta + postErosion，构造 ErosionTileResult
+        // 6) 计算 delta + postErosion，构造 ErosionTileResult
         ErosionTileResult res = new ErosionTileResult();
+        res.erosionRound = ++erosionRoundCounter;
         res.delta = new float[N][N];
         res.postErosion = new float[N][N];
         for (int z = 0; z < N; z++) {
@@ -577,22 +671,26 @@ public final class CellGenerator {
                 int x0 = Math.max(0, ix - 1), x1 = Math.min(lrLast, ix),
                     x2 = Math.min(lrLast, ix + 1), x3 = Math.min(lrLast, ix + 2);
 
-                float r0 = catmullRom(lowRes[z0][x0], lowRes[z0][x1], lowRes[z0][x2], lowRes[z0][x3], tx);
-                float r1 = catmullRom(lowRes[z1][x0], lowRes[z1][x1], lowRes[z1][x2], lowRes[z1][x3], tx);
-                float r2 = catmullRom(lowRes[z2][x0], lowRes[z2][x1], lowRes[z2][x2], lowRes[z2][x3], tx);
-                float r3 = catmullRom(lowRes[z3][x0], lowRes[z3][x1], lowRes[z3][x2], lowRes[z3][x3], tx);
+                float r0 = bspline(lowRes[z0][x0], lowRes[z0][x1], lowRes[z0][x2], lowRes[z0][x3], tx);
+                float r1 = bspline(lowRes[z1][x0], lowRes[z1][x1], lowRes[z1][x2], lowRes[z1][x3], tx);
+                float r2 = bspline(lowRes[z2][x0], lowRes[z2][x1], lowRes[z2][x2], lowRes[z2][x3], tx);
+                float r3 = bspline(lowRes[z3][x0], lowRes[z3][x1], lowRes[z3][x2], lowRes[z3][x3], tx);
 
-                out[fz][fx] = catmullRom(r0, r1, r2, r3, tz);
+                out[fz][fx] = bspline(r0, r1, r2, r3, tz);
             }
         }
         return out;
     }
 
-    /** Catmull-Rom 样条插值核：4 个控制点 + 参数 t ∈ [0,1] */
-    private static float catmullRom(float p0, float p1, float p2, float p3, float t) {
+    /** 三次 B-spline 样条插值核：4 个控制点 + 参数 t ∈ [0,1]。
+     *  B-spline 是 C2 连续，无 Catmull-Rom 的 overshoot（控制点处过冲伪影），
+     *  适合地形插值——平滑且不会产生 chunk 边界周期性阶梯。 */
+    private static float bspline(float p0, float p1, float p2, float p3, float t) {
         float t2 = t * t, t3 = t2 * t;
-        return 0.5f * ((2f * p1) + (-p0 + p2) * t + (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2
-            + (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
+        return ((-p0 + 3f*p1 - 3f*p2 + p3) * t3
+               + (3f*p0 - 6f*p1 + 3f*p2) * t2
+               + (-3f*p0 + 3f*p2) * t
+               + (p0 + 4f*p1 + p2)) * (1f/6f);
     }
 
     /**
@@ -668,6 +766,35 @@ public final class CellGenerator {
                     cell.riverSurfaceY = 0.0;
                 }
             }
+        }
+
+        // 诊断：右边缘 delta 值（用于追踪 tile 边界断裂）。每10次记录一次以降低日志噪声。
+        diagCount++;
+        if (diagCount % 10 == 0) {
+            double minD = 1, maxD = -1, avgD = 0;
+            double reMin = 1, reMax = -1;
+            for (int lz = 0; lz < 16; lz++) {
+                for (int lx = 0; lx < 16; lx++) {
+                    double d = (double) tile[offsetZ + lz][offsetX + lx];
+                    if (d < minD) minD = d;
+                    if (d > maxD) maxD = d;
+                    avgD += d;
+                }
+                double re = (double) tile[offsetZ + lz][offsetX + 15];
+                if (re < reMin) reMin = re;
+                if (re > reMax) reMax = re;
+            }
+            avgD /= 256;
+            boolean atTileXEdge = (chunkX % ERODE_TILE_CHUNKS == 2); // 本 chunk 在 tile 右边缘（与下个 tile 交界）
+            boolean atTileZEdge = (chunkZ % ERODE_TILE_CHUNKS == 2);
+            DLOG.info("[DIAG-EXT] c({},{}): world=({},{}) tile=({},{}){} {}"
+                + " delta min={} max={} avg={} | reMin={} reMax={}",
+                chunkX, chunkZ, chunkX * 16, chunkZ * 16,
+                tileCX, tileCZ,
+                atTileXEdge ? " RIGHT-EDGE" : "",
+                atTileZEdge ? " BOTTOM-EDGE" : "",
+                String.format("%.4f", minD), String.format("%.4f", maxD), String.format("%.4f", avgD),
+                String.format("%.4f", reMin), String.format("%.4f", reMax));
         }
     }
 
