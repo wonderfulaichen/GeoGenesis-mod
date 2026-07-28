@@ -1,0 +1,23 @@
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\main\java\com\geogenesis\worldgen\erosion\ErosionEngine.java:299: 错误: 找不到符号
+            float heightDrop = Math.max(0f, -dh);   // 下坡高度差（正=下坡, 0=平坦/上坡）
+                                             ^
+  符号:   变量 dh
+  位置: 类 ErosionEngine
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\main\java\com\geogenesis\worldgen\erosion\ErosionEngine.java:331: 错误: 找不到符号
+            float speedSq = spd * spd + dh * GRAVITY;
+                                        ^
+  符号:   变量 dh
+  位置: 类 ErosionEngine
+2 个错误
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 15s

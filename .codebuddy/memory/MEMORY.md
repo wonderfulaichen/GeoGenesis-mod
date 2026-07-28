@@ -1,80 +1,114 @@
 # GeoGenesis 长期记忆
 
 ## 用户方法论偏好
-- 参考模组先读透再提方案；严格先案后码（复杂功能先出方案待确认再码）；模块化/单一职责
-- 知识沉淀必须做；每完成一次任务/对话做记录
-- 关键决策点用提问确认（不打断则默认授权"你决定"）
+- 参考模组先读透再提方案；严格**先案后码**（复杂功能先出方案待确认再码）；模块化/单一职责
+- 知识沉淀必须做；每完成一次任务/对话做记录；docs 新文档需更新 INDEX
+- 关键决策点用提问确认（不打断则默认授权"你决定"）；微小细节可先用合理默认值并标注
 
-## v14 修复核心原则（2026-07-25 钉死）
-**TypeLandShape 使用共享噪声公式（非 per-type 独立噪声）**
-- 公式：`eLand = blendLo + (blendHi-blendLo)·sharedNoise` 其中
-  - `blendLo = Σ_t w_t(c)·lo_t(c)`，`blendHi = Σ_t w_t(c)·hi_t(c)`
-  - `sharedNoise` 是单条连续 FBM（域扭曲+4 频率混合）
-- **数学保证连续**：连续权重 Σ 连续值 × 单条连续噪声 = 连续，per-block Δe ~0.001（<1 块）
-- **断裂根因**：v7-v13 的 per-type 独立噪声加权 `eLand = Σ w_t·H_t(noise_t)`，5 类独立噪声随机梯度叠加 → Δe 可达 0.04-0.07 e（15-27 块跳变）
-- **cAffinityStrength 默认 0.0**：关闭 c→权重放大（消除权重被压制到 0.01 的突跳风险；可在 UI 调高）
-- **类型差异**：HILLS 圆润/MOUNTAINS 脊线由 sampleByType 内层样条 lo/hi 边界 + c 亲和度权重表达；地表纹理由 BiomeClassifier + 装饰噪声负责
-- 关键参数：CELL_SPACING=400, WARP_AMP(Voronoi)=250, SIGMA=150, SEARCH_RADIUS=2
-- 类型范围：PLAIN[0.015,0.06] HILLS[0.06,0.25] MOUNTAINS[0.45,0.95] PLATEAU[0.50,0.66] BASIN[0.015,0.08]
-
-## 条件系统（2026-07-21）
-- 温度(5段)/湿度(4段)/大陆性(7段)，后端用 `ClimateSpline`(Cubic Hermite) 连续映射，boolean 方法委托样条权重
-- 大陆性 7 段阈值字段：`continentDeepOceanThreshold`~`continentInlandThreshold`
-- 雪线双曲线（2026-07-22）：`effectiveSnowElev = snowLine + (tNorm-0.5)×snowTempInfluence - (hNorm-0.5)×snowHumidityInfluence`，Y 轴用 `seaLevel + ratio×(maxY-seaLevel)` 锚定
-
-## 类型过渡原则（2026-07-25 v10 钉死）
-- **无细胞格子，无高斯窗口，无 smoothstep**：`VoronoiRegionField` v10 彻底删除了 CELL_SPACING/SEARCH_RADIUS/SIGMA/TYPEOV
-- **类型中心线性内插**：在每个 (wx,wz) 直接采样 typeField，然后在相邻两个类型中心之间线性内插权重
-  - 中心位置：BASIN=0.03, PLAIN=0.12, HILLS=0.35, PLATEAU=0.58, MOUNTAINS=0.72
-  - 过渡完全由 typeField 自身的梯度自然决定，无任何人为过渡带参数
-- xz 坐标（域扭曲）只用来让类型边界蜿蜒，**不产生跳变**
-- 各类型的高度由各自的密度函数（高度 e）自然决定如何衔接——两边的连续运动轨迹自然衔接
-- 公式：`eLand = (1-t)·H_i(noise_i) + t·H_{i+1}(noise_{i+1})`，t 为 typeField 在两个中心间的线性位置
-- 效果：最差情况 Δe/block < 0.013 e（≈5 blocks），远低于旧 smoothstep 的 0.06/block（≈18 blocks）
+## 地形引擎核心原则（钉死）
+- **e(x,z) 单一连续场**：大陆性 `c∈[0,1]` 单一连续噪声，海陆仅条件切分；海岸 = e 场自然穿过 0 的等值线（smoothstep 过渡），不绑定 c 硬阈值锚点。
+- **【铁律·c 绝不控制地形高度】**：c 只做两件事——(1) 决定 (x,z) 出现什么类型；(2) 决定海陆 mask（c<0 海洋域 / c>0 陆地域）。地形高度由类型各自的独立噪声全权决定。自查：若 `if c>X then e=f(c)` 或 `e+=g(c)` 即违规。
+- **差异调制（v14，连续无断裂）**：`shared=computeSharedNoise` + `perTypeAvg=Σw_t·typeNoise_t/Σw_t` + `modulated=shared+0.4·(perTypeAvg-shared)`，零均值偏差保障 C0 连续。旧 v7-v13 用 per-type 独立噪声全量加权 → Δe 0.04-0.07 断裂。
+- **类型过渡 = Voronoi 高斯距离权重**（2026-07-25）：`CELL_SPACING=400`，5×5 窗口 σ=150，边缘权重 ×1e-7 消除窗口跳变；任意类型可邻接任意类型。`cAffinityStrength` 乘法偏置叠加（默认 3.0，恢复山脉偏内陆语义）。
+- **条件系统（2026-07-21）**：温度(5段)/湿度(4段)/大陆性(7段) 用 `ClimateSpline`(Cubic Hermite) 连续映射；雪线双曲线（2026-07-22）锚定 seaLevel~maxY。
+- **oceanDepthFactor**（2026-07-22）：乘 eOcean，>1 更深 <1 更浅，默认 1.0 [0.5,3.0]。`e→Y` 必须非对称（e=0→seaLevel=63）。
 
 ## 配置同步铁律
-增删字段须同步 6 处：`GeoGenesisConfig`(定义+BUILDER+buildParams+defaultParams) + `TerrainParams`(record+defaults) + `ParameterConfigPanel.buildFromConfig`(addSpec) + `run/config/geogenesis-common.toml`；改默认值后必须同步已存在 toml。
-- **`resetToDefault()` 已反射自动化（2026-07-24）**：改为 `getFields()` 遍历所有 `ForgeConfigSpec.ConfigValue` 字段统一 `set(getDefault())`，新增字段**自动覆盖**，不再需要手工在 reset 里逐字段补 `.set()`。因此"增删字段须同步 resetToDefault"这一约束已废弃；但 `defaultParams()`（预览默认）与 `buildParams()`（引擎注入）仍需随字段同步。`SPEC`/`INSTANCE`(非 ConfigValue) 与 private `midSplineConfig` 会被自动跳过。
-- **滑块 reset 默认标记铁律（2026-07-24）**：`ParamSlider.setDefaultValue(...)` 必须填 `cfg.getDefault()`（代码默认值），**严禁填 `cfg.get()`**（config 当前/持久化值）。`resetToDefault()` 把滑块归位到该标记；若误用 `get()`，一旦当前值被拖动或 toml 持久化为低位，点重置就会把滑块拉到最低而非代码默认。诊断同类 bug 的方法是：枚举全仓所有 `setDefaultValue` 调用，核对每个是否用 `getDefault()`。
-
-## 关键参数/陷阱
-- **【铁律·大陆性 c 只作条件因素，绝不控制地形高度】**（2026-07-25 用户反复纠正后钉死）：
-  - 大陆性 `c` **只做两件事**：(1) 决定 (x,z) 出现什么类型（Voronoi 区域→typeWeights）；(2) 决定海陆位置关系（c<0=海洋域、c>0=陆地域，即海陆 mask）。
-  - **地形高度由类型各自的独立噪声全权决定**：陆地 `eLand = Σ w_t·H_t(noise_t)`（TypeLandShape），海洋深度由"离海岸距离的位置函数"单调推导（对齐旧范式 `computeOceanDepth`，非 c 直射）。
-  - **海岸线 = e 场自然穿过 0 的等值线**，由 blend mask 平滑过渡，不绑定 c 的硬阈值锚点。
-  - **反复踩的坑（已修）**：① `eBase = heightCurve.eFromC(cBiased)` 的海洋样条 `shallowDeriv=0.0` 局部水平→浅蓝平涂平台（CONTINENTAL_SHELF），已改默认 0.5 消除；② `continentalSlope = clamp(cEdge*0.08,0,0.15)` 把 c 直接加进陆地高度（"大陆按 c 斜升"），已整体删除。
-  - **引入任何新功能时自查**：若逻辑是 `if c > X then e = f(c)` 或 `e += g(c)`，即违规。c 只能进海陆 mask（smoothstep 阈值）与类型选择，绝不进高度。
-- **oceanDepthFactor**（2026-07-22）：乘到 eOcean，>1 更深(海洋扩大) <1 更浅。默认1.0 [0.5,3.0]。解决海陆比硬上限。
-- `e→Y` 必须非对称（e=0→seaLevel=63）；独立预览用 `defaultParams()` 非 `buildParams()`
-- Forge 1.20.1：`sourceSets.main` 运行，**禁止**把 reobf jar 拷进 `run/mods/`；`f_/m_` NoSuchFieldError → 删 `run/mods/` jar；biome 注册表用 `registryAccess()` 禁止缓存到静态；叶子 CODEC 禁 `.stable()`
-- `Screen.mouseMoved` 不向子 widget 转发 → hover 应在 `renderWidget` 内每帧用 `mx,my` 反算
-- 预览最暗端色带与背景 RGB 距离 ≥30；纹理上传写构造时 NativeImage+`texture.upload()` 勿反复创建
-- 编译后 `gradlew compileJava --rerun-tasks` 全量验证
+- 增删字段须同步：`GeoGenesisConfig`(定义+BUILDER+buildParams+defaultParams) + `TerrainParams`(record+defaults) + `ParameterConfigPanel.addSpec` + toml；改默认值须同步已存在 toml。
+- **`resetToDefault()` 已反射自动化**（遍历 ConfigValue 字段 set 默认），新增字段自动覆盖；但 `defaultParams()`/`buildParams()` 仍需随字段同步。
+- **滑块 reset 铁律**：`ParamSlider.setDefaultValue` 必须填 `cfg.getDefault()`，**严禁填 `cfg.get()`**（否则重置拉到最低而非代码默认）。
+- Forge 1.20.1：禁止 reobf jar 拷进 `run/mods/`；biome 注册表用 `registryAccess()` 禁静态缓存；叶子 CODEC 禁 `.stable()`。
 
 ## 重要重构历史
-- 2026-07-16 类型系统取代省系统（TypeGenerators/TypeLandShape）
-- 2026-07-20 统一嵌套样条（UnifiedSpline/SplineConfig/MidSplineConfig/OceanSplineConfig，3 层 c→类型→lo/hi）
-- 2026-07-21 气候样条化；2026-07-22 双曲线雪线
-
-## 完全自定义架构（层次 B，2026-07-24 决策）
-**目标**：类型集合/噪声配方/lo-hi/位置/权重全 JSON 描述，增删类型零代码。
-**中层建模决策 = 语义亲和度**：每类型声明 c 响应（用现有 MidSplineConfig 每类型 7 点 c 曲线表达，非单高斯——BASIN 双峰证明单高斯不够）+ 后期 relativeWeight。
-**尖环根因（已钉死）**：`TypeLandShape.sampleFromUnifiedSpline` 用 typePosition 轴插值 lo/hi，高原↔丘陵过渡经 MOUNTAINS 节点(0.5)污染出 [0.45,0.95]。且 `UnifiedSpline` 内层样条跨外层节点共享 → c 当前对类型高度**无作用**，中层权重是死字段。
-**修正方案（WIE 还原 v6.0）**：`eLand = Σ_t w_t·H_t(noise_t)/Σw_t`，`H_t` 取类型 t 自己内层样条，删 typePosition 轴 → 尖环根治且行为近似现状（纯类型 cell 完全一致）。
-**阶段划分**：
-- 阶段1（即时、低风险、行为保持）：TypeLandShape 改 WIE + UnifiedSpline 加 `sampleByType(c,typeIndex,noise)`；仅修复尖环，不引入 c 亲和度。
-- 阶段2（语义亲和度接入）：空间权重 × `cAffinity_t(c)`（来自 MidSplineConfig 每类型 c 曲线）→ 山脉偏内陆/盆地深海+内陆；暴露 cPref/cSigma 或曲线到 UI；WARP_AMP 提为 TerrainParams 可配(默认~180)；消除双轨(TerrainParams *Center/*HalfRange 删，预览色阶从 spec lo/hi 派生)【**2026-07-24 已完成**】。
-- 阶段3（类型增删零代码）：TerrainTypeSpec(JSON)+Registry 加载 config/geogenesis/terrain_types.json（资源包可覆盖）；引擎 LAND_TYPES/buildXxxInner/cellType 硬编码阈值改遍历 registry；relativeWeight 取代 TYPE_THRESH_*（保留地理约束：PLATEAU 需高地邻/MOUNTAINS 需 HILLS 缓冲/BASIN 非高地，重实现为抽样偏置）；BiomeClassifier 也数据驱动。
-**死代码清理（阶段2/3 明确删除）**：UnifiedSpline 3 层 + SplineConfig.build + MidSplineConfig 整条（fromTerrainParams 已是桩 line311-315）；TypeLandShape `dominant.isWater()` 死分支删（typeWeights 只含陆地）。
-- **【2026-07-24 完成】双轨死链删除**：TerrainParams 删 10 个 `*Center/*HalfRange` 字段 + defaults 实参 + `elevationERange()` 改读 `SplineConfig.maxLandHi()`；TypeGenerators 删 `lo/hi` 数组/`setRange`/`getTypeLo/Hi`；VoronoiRegionField 删 `generators` 字段+参数+lo/hi 计算（保留 `BlendResult.lo/hi` 字段=0 供 DiscontinuityProbe 兼容）；TypeLandShape 删 `sampleFromTypeWeights` + 简化 `sample()`；GeoGenesisConfig 删 10 字段/builder/buildParams/defaultParams/reset；TerrainConfigPanel 陆地 5 slot 实为**可编辑**（`landSplineSlot` lo+hi 带 `loCfg::set` setter，非只读）；其 reset 默认标记此前误用 `get()`（见滑块 reset 铁律），2026-07-24 已改为 `getDefault()` 与海洋一致；toml 删 10 key。**发现 PresetLibrary.java 5 个预设大量引用已删的 `*Center/*HalfRange`（这些预设项本是死链，从未影响地形），已改为仅保留仍生效字段（continentBias/oceanDepthFactor/*ReliefAmp/elevHigh/reliefHigh/snowLine/peakE）**。`compileJava --rerun-tasks` BUILD SUCCESSFUL。
+- 2026-07-16 类型系统取代省系统；07-20 统一嵌套样条；07-21 气候样条化；07-22 双曲线雪线；07-24 阶段2 语义亲和度接入 + 双轨死链删除（TerrainParams 删 10 个 `*Center/*HalfRange`，compileJava BUILD SUCCESSFUL）。
+- 2026-07-25 类型过渡恢复 Voronoi 高斯权重（否决双线性）；v14 差异调制钉死 + c 铁律。
+- 完全自定义架构（阶段3 待做）：TerrainTypeSpec(JSON)+Registry 加载 `config/geogenesis/terrain_types.json` 增删类型零代码；BiomeClassifier 数据驱动。
 
 ## 配置屏（2026-07-23 单屏 8 标签，常驻预览）
-页签0世界参数 / 1气候 / 2地形(lo/hi图+雪线双曲线) / 3显示 / 4采样 / 5色带 / 6缓存 / 7群系。标签条手写仿制（深绿主题）。ConfirmDialog 用于世界高度三滑杆松手确认。
-- **按钮语义（2026-07-24 续10）**：三按钮 [应用][保存][重置]。**应用**=`SPEC.save()`(全局 toml 持久化)+`setScreen(parent)` 返回创建界面（世界即用此配置）；**保存**=弹 `NameInputDialog` 把当前完整配置存为命名自定义预设到 `config/geogenesis/user_presets.json`(`UserPresetsStore` 单例 Gson)；**重置**=`resetToDefault()`。**onClose 不再困住用户**（直接返回父屏，未提交改动丢弃，契合"应用才提交"）。`create(Minecraft,parent)` 已改为传 parent 使 Mods 菜单配置也能返回。自定义预设与内建 `PresetLibrary` 并存；PresetsPanel 第三节"我的预设"可加载(→`applyUserPreset`:reset+applyNamedValues+重建面板+rebuildPreview+save)/删除。
-- `GeoGenesisConfig` 反射三件套：`resetToDefault()`(set 默认) / `captureAllValues()`(字段名→当前值) / `applyNamedValues(Map<String,String>)`(按名字 set，parseByType 按运行时类型解析)。`SPEC`/`INSTANCE` 与 private `midSplineConfig` 自动跳过。
+页签 0世界参数/1气候/2地形/3显示/4采样/5色带/6缓存/7群系。三按钮 [应用]（`SPEC.save()`+返回父屏）[保存]（命名预设→`user_presets.json`）[重置]（`resetToDefault()`）。`GeoGenesisConfig` 反射三件套：`resetToDefault/captureAllValues/applyNamedValues`。
+
+## 侵蚀引擎（2026-07-28 Tile Context Chain）
+
+### 引擎特性（不变）
+- **本地确定性液滴引擎**：3 尺度（R_C=12/R_M=6/R_F=3），SH 原版参数对齐
+- erf 放电反馈、per-step cascade、片流、水下延伸、BASELINE_ERODE=0.0012、双平滑
+
+### 超分辨率 tile 架构（2026-07-27 晚重写，仿 6 月备份 70cd037）
+- **采样改为 spacing=4 粗采 + Catmull-Rom 双三次插值**：32×32=1024 次 `terrainE()` 替代原来的 6400 次
+- **侵蚀跑在插值场上**（不是真实 `terrainE`），插值场保大尺度特征即可，侵蚀自己雕刻细节
+- **每 tile 输出 3×3=9 个 chunk**（`ERODE_TILE_CHUNKS=3`），替代原 1 chunk/tile
+- **缓存 256 条目**，无 LRU 驱逐，出生区域 tiles 常驻
+- tile 边长 128（`3*16 + 40*2`），center 3 chunk 分别提取，offset 兼容
+
+### Tile Context Chain（2026-07-28 新增，Phase 1）
+- **根因**：flat 缓冲区边缘镜像填充导致液滴在 tile 边界附近轨迹不连续 → 侵蚀结果断裂
+- **方案**：相邻 tile 共享侵蚀后全高度场作为 flat 缓冲区上下文
+- **ErosionEngine**：新增 `runErosionOnFlat(flat, flatPre, bufSize, ...)` 公共方法（接受外部预填充 flat，跳过内部镜像填充）
+- **ErosionTileResult**：每个 tile 缓存存储 `delta`（叠加量）+ `postErosion[128][128]`（侵蚀后全高度）+ tile 元数据
+- **三区制 flat 初始化**：
+  - 区 1（本 tile 内）：插值场直接拷贝
+  - 区 2a（左邻域 worldX < originX）：读左邻居 postErosion
+  - 区 2b（上邻域 worldZ < originZ）：读上邻居 postErosion
+  - 区 3（右/下/角隅无邻居）：terrainE() 直接采样回退
+- **依赖顺序**：`getErosionTile` 递归调用 `ensureErosionTile` 保证左/上邻居先完成（游程: 左→右, 上→下）
+- 缓存类型从 `ConcurrentHashMap<Long, float[][]>` → `ConcurrentHashMap<Long, ErosionTileResult>`
+- `getErosionTile` 返回 `result.delta` 保持 `extractFromTile` 向后兼容
+
+### 效率对比
+- 旧架构（无超分辨率）：900 chunk × 6400 terrainE = 5.76M 次 `terrainE()`
+- 新架构（spacing=4）：900 chunk / 9 × 1024 = 0.1M 次 `terrainE()`
+- 减少了约 **57 倍**的 `terrainE()` 调用量
+
+### 状态
+- 代码已合并到 `main`，`erosionEnabled` 默认 false（需手动开）
+- 全局对齐的双三次插值保证相邻 tile 连续（共用低分辨率控制点网格）
+- Tile Context Chain Phase 1 编译通过 BUILD SUCCESSFUL
+
+### 河流系统开关（2026-07-28 新增）
+- `CellGenerator.riversEnabled` 字段（默认 true），构造时从 `GeoGenesisConfig.riversEnabled` 读取
+- `computeRivers` 与 `extractFromTile` 守卫：关闭时跳过河网计算/读取
+- `GeoGenesisConfig` 加 `riversEnabled` 配置项；`run/config/geogenesis-common.toml` 设 `false` 即可在游戏里关闭河流
+- 用于隔离侵蚀测试：之前用户看到的"树状沙纹"是河流 bug，不是侵蚀
+
+### ErosionTileProbe 诊断（2026-07-28）
+6 阶段诊断探针，输出到 `runErosionTileProbe`：
+- Stage 1: terrainE 一致性
+- Stage 2: bicubic base 连续性（修复后 0.000000）
+- Stage 3/4: 侵蚀后高度 / delta 连续性
+- Stage 5: 边界横截面
+- Stage 6a: 液滴覆盖不对称；Stage 6b: delta vs 距离
+
+### 隐式流功率侵蚀（2026-07-28，**未完成**）
+- **参考论文**：Braun & Willett 2013 (O(n) 隐式流功率), Schott et al. 2024 SIGGRAPH (Analytical Terrains), Landlab FastscapeEroder
+- **公式**：`h_new = (h_old + alpha*h_receiver)/(1+alpha)`，n=1 闭合解，无 Brent
+- **ErosionEngine** 新增 `HeightQuery` 接口（`applyStreamPower(... HeightQuery, int[] origin)`），越界时读 `terrainE` 同源
+- **多档尝试**：K=0.1/0.15/0.3/0.5/3.0 + nIters=3/10/12 + 暴力 sqrt(A) 公式 + 局部最低下蚀 (5×5)
+- **结果**：连续性可达 0.009（13 块 PASS），但视觉上全是"剥皮"——所有 cell 同比例下剥
+- **真根因**：bicubic 在 32×32→128×128 平滑掉了原始 sampleCore 的深谷 → dh 全近似 → 均匀下剥
+- **真解法（未实施）**：放弃 bicubic，扩展 tile 为 5×5 chunk 区域直接用 sampleCore 全分辨率做 D8 流量累积+流功率
+
+### 液滴模拟回退（v1.7.0，2026-07-28）
+- 用户反馈"分析公式全是剥皮"后回退到液滴（`runErosionOnFlat`）
+- 单轮（去多轮）+ 3-zone flat 缓冲区（left/top 邻居 postErosion + terrainE 回退）
+- **配置调参（避免剥皮）**：`erosionStrength=0.3, erosionDropsMul=0.4, erosionErodeMul=0.4`（约 12% 默认强度）
+- 性能：单轮 580K ops/tile（vs 多轮 1.7M，3× 加速）
+- 已知问题：跨 tile 边界仍有轻微视觉阶梯（待全分辨率方案解决）
+
+## BiomeSource 性能修正（2026-07-27 → 2026-07-27 末更正）
+- **初始误判**：认为 87s 世界创建慢的原因是 `BiomeSource` + `CellGenerator.sample()` 全管线
+- **实际根因**：**侵蚀 tile 管线**（`erosionEnabled=true` 默认运行）。每区块 6400 次 `terrainE()` (=全 `sampleCore()` 调用) = chunk 格点采样的 **26 倍工作量**
+- **修复前优化尝试**：FeatureResult 去重（-6-10%）、SEARCH_RADIUS 2→1（-25-30%）均被侵蚀淹没，用户反馈"无效"
+- **最终解决**：`run/config/geogenesis-common.toml` `erosionEnabled = false`
+- **BiomeSource 出生区域快速路径**（terrain==null 时返 plains）保留有效，解决的是首次初始化阻塞，非 87s 主因
+
+## 清理记录（2026-07-27）
+- 已删除 `RiverNodeField.java` + `RiverCarver.java`（旧河流残留，编译错误链式遗存）
+- 旧 `ErosionEngine.java` 备份式回滚文档已过时
 
 ## 待办
-- **[DONE] v14 修复**：TypeLandShape 回归 v6.5 共享噪声公式 + cAffinityStrength 默认 0.0。用户目测无断裂，诊断日志 maxFe=0.010-0.021（4-8 块）。已提交 33bae42。
-- [PENDING] 恢复侵蚀/河流刻蚀代码注释（GeoGenesisTerrain.generateChunk 注释块内），待用户确认进入侵蚀/河流阶段。
-- [PENDING] 测试 cAffinityStrength 设回非零值是否安全。
-- [PENDING] BASIN 类型曲线检查；mixer 面板重绑新类型参数；toml→JSON 迁移规划（阶段3）。
+- [DONE] v14 修复（共享噪声公式 + cAffinity 默认 0.0，maxFe=0.010-0.021/4-8块）。
+- [DONE] 性能优化（FeatureResult 去重 + SEARCH_RADIUS 2→1 + 侵蚀 tile 超分辨率采样 spacing=4）。
+- [DONE] 侵蚀 tile 架构重写（仿 6 月备份 70cd037，spacing=4 粗采 + bicubic upsample + 3×3 chunk/tile）。
+- [PENDING] **测试侵蚀可运行性**：设 `erosionEnabled=true` 后 `runClient` 验证性能和效果。
+- [PENDING] 河流重接（待侵蚀确认可用后再做）。
+- [PENDING] 测试 cAffinityStrength 设回非零值安全性；BASIN 曲线检查；mixer 面板重绑新类型参数；toml→JSON 迁移（阶段3）。
