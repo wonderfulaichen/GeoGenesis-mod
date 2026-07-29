@@ -476,20 +476,6 @@ public final class CellGenerator {
                 }
             }
 
-            // 5.5) delta 相等化：强制 chunk 边界两侧的 postErosion 高度完全一致。
-            //      tile delta 对 cell.e 是加法，插值场（base）与 sampleCore 的微小错位通过此相等化消除。
-            for (int bz : boundaries) {
-                for (int x = 0; x < N; x++) {
-                    float avg = (tile[bz-1][x] + tile[bz][x]) * 0.5f;
-                    tile[bz-1][x] = avg; tile[bz][x] = avg;
-                }
-            }
-            for (int bx : boundaries) {
-                for (int z = 0; z < N; z++) {
-                    float avg = (tile[z][bx-1] + tile[z][bx]) * 0.5f;
-                    tile[z][bx-1] = avg; tile[z][bx] = avg;
-                }
-            }
         }
 
         // 6) 计算 delta + postErosion，构造 ErosionTileResult
