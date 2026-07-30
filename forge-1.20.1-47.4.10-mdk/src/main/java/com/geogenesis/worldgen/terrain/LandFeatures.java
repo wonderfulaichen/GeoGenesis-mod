@@ -102,9 +102,12 @@ public final class LandFeatures {
     }
 
     private double fieldCompute(double wx, double wz) {
-        // 先判断是否落在火山区内（低频掩码圈域）
+        // 先判断是否落在火山区内（低频掩码圈域）。
+        // 修复：原版 `if (mask < THRESHOLD) return 0` 是硬阈值，在 mask=0.72 的等值线上产生跳变，
+        // 幅值最高 0.12 e ≈ 30 blocks → 大断裂面。改用 smoothstep 平滑淡入，保证地形连续。
         double mask = fieldMask.compute(wx, wz) * 0.5 + 0.5; // [-1,1] → [0,1]
-        if (mask < FIELD_MASK_THRESHOLD) return 0.0;
+        double fade = smoothstep(FIELD_MASK_THRESHOLD - 0.05, FIELD_MASK_THRESHOLD + 0.05, mask);
+        if (fade <= 0.0) return 0.0;
         long cx = (long) Math.floor(wx / FIELD_GRID);
         long cz = (long) Math.floor(wz / FIELD_GRID);
         double total = 0.0;
@@ -131,7 +134,13 @@ public final class LandFeatures {
                 if (contrib > 0.0) total += contrib;
             }
         }
-        return total;
+        return total * fade;
+    }
+
+    /** smoothstep 平滑过渡：x 在 [edge0, edge1] 间做 Hermite 插值 */
+    private static double smoothstep(double edge0, double edge1, double x) {
+        double t = x <= edge0 ? 0.0 : (x >= edge1 ? 1.0 : (x - edge0) / (edge1 - edge0));
+        return t * t * (3.0 - 2.0 * t);
     }
 
     /** 格子内中心位置抖动（±30% 格子范围） */
