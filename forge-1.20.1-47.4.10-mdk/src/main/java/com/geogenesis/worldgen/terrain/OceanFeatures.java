@@ -102,7 +102,11 @@ public final class OceanFeatures {
      * @return FeatureResult 包含 total / ridge / seamount 分量
      */
     public FeatureResult compute(double wx, double wz, double eOcean, double cBiased) {
-        if (eOcean >= 0) return new FeatureResult(0, 0, 0);
+        // 修复：原版 `if (eOcean >= 0) return 0` 是硬阈值，在 eOcean=0 的海岸线产生跳变
+        // （火山贡献最高 0.16 e ≈ 41 blocks → 大断裂面）。改用 smoothstep 淡入，
+        // 保证海陆过渡带地形连续。海岸线上 eOcean=0 → fade=0，仍无海山贡献。
+        double fade = eOcean < 0 ? smoothstep(0.0, -0.05, eOcean) : 0.0;
+        if (fade <= 0.0) return new FeatureResult(0, 0, 0);
 
         double ridgeDelta = 0.0;
         double seamountDelta = 0.0;
@@ -121,7 +125,8 @@ public final class OceanFeatures {
         // 2. 海山/海底火山（域扭曲去圆化 + 共享 VolcanicShape 形状）
         seamountDelta = seamountCompute(wx, wz);
 
-        return new FeatureResult(ridgeDelta + seamountDelta, ridgeDelta, seamountDelta);
+        double total = (ridgeDelta + seamountDelta) * fade;
+        return new FeatureResult(total, ridgeDelta * fade, seamountDelta * fade);
     }
 
     /**
