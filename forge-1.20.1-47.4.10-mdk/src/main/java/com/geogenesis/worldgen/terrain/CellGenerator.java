@@ -698,6 +698,43 @@ public final class CellGenerator {
                 Cell cell = cells[lx * 16 + lz];
                 double delta = (double) tile[offsetZ + lz][offsetX + lx];
 
+                // 跨 tile 边界 delta 收敛：用邻 tile 在同一世界坐标的 delta 做加权平均，
+                // 消除 tile 边缘因独立侵蚀产生的 delta 跳变（斜向/水平断裂面）。
+                // 边界格(lx=15/lx=0) 100% 收敛到邻 tile delta，向内 3 格 smoothstep 过渡。
+                int cr = chunkX - tileCX; // 本 chunk 在 tile 内的序号 (0/1/2)
+                if (cr == 2 && lx >= 12) {
+                    // 右边缘：向右邻 tile 读同一位置的 delta
+                    ErosionTileResult nr = erosionTileCache.get(tileKey(tileCX + ERODE_TILE_CHUNKS, tileCZ));
+                    if (nr != null) {
+                        int worldX = chunkX * 16 + lx;
+                        int worldZ = chunkZ * 16 + lz;
+                        int nlx = worldX - nr.originX;
+                        int nlz = worldZ - nr.originZ;
+                        if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
+                            double nd = nr.delta[nlz][nlx];
+                            double b = (lx - 12) / 3.0; // 0→1
+                            double blend = b * b * (3.0 - 2.0 * b); // smoothstep
+                            delta = delta * (1.0 - blend) + nd * blend;
+                        }
+                    }
+                }
+                if (cr == 0 && lx <= 3) {
+                    // 左边缘：向左邻 tile 读同一位置的 delta
+                    ErosionTileResult nl = erosionTileCache.get(tileKey(tileCX - ERODE_TILE_CHUNKS, tileCZ));
+                    if (nl != null) {
+                        int worldX = chunkX * 16 + lx;
+                        int worldZ = chunkZ * 16 + lz;
+                        int nlx = worldX - nl.originX;
+                        int nlz = worldZ - nl.originZ;
+                        if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
+                            double nd = nl.delta[nlz][nlx];
+                            double b = (4 - lx) / 3.0; // 0→1
+                            double blend = b * b * (3.0 - 2.0 * b); // smoothstep
+                            delta = delta * (1.0 - blend) + nd * blend;
+                        }
+                    }
+                }
+
                 // 对全地形施加侵蚀增量（**含海洋**）。
                 // 原先用 `delta * cell.blendCont` 保护海洋侧（blendCont=0 → delta=0），
                 // 但这导致**水下完全没有侵蚀**——河谷/水下峡谷被擦除，河口三角洲也异常平整。
