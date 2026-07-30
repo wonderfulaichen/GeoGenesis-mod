@@ -478,7 +478,17 @@ public final class CellGenerator {
 
         }
 
-        // 6) 计算 delta + postErosion，构造 ErosionTileResult
+        // 6) delta 软限幅：限制每个 cell 的 |delta| 在 -0.10 ~ +0.10，消除单 cell 暴切跳变
+        float maxDeltaPerCell = 0.10f;
+        for (int z = 0; z < N; z++) {
+            for (int x = 0; x < N; x++) {
+                float val = tile[z][x] - base[z][x];
+                if (val > maxDeltaPerCell) tile[z][x] = base[z][x] + maxDeltaPerCell;
+                else if (val < -maxDeltaPerCell) tile[z][x] = base[z][x] - maxDeltaPerCell;
+            }
+        }
+
+        // 7) 计算 delta + postErosion，构造 ErosionTileResult
         ErosionTileResult res = new ErosionTileResult();
         res.erosionRound = ++erosionRoundCounter;
         res.delta = new float[N][N];
