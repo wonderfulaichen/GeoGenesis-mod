@@ -457,8 +457,8 @@ public final class CellGenerator {
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
 
-            // 5) chunk 边界 + 跨 tile 边界混叠（5 点 Gaussian [1,4,6,4,1]/16，消除残余 chunk 边界断裂）
-            int[] boundaries = {40, 56, 72, 88};
+            // 5) 加密边界 Gaussian 平滑（边界间距从 16 缩到 8，覆盖整个 content 区域）
+            int[] boundaries = {40, 48, 56, 64, 72, 80, 88};
             // Z 方向（行边界）
             for (int bz : boundaries) {
                 for (int x = 3; x < N - 3; x++) {
