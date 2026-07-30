@@ -262,4 +262,18 @@ task runErosionTileProbe(type: JavaExec) {
     // Optional: args = ['12345']  (seed)
 }
 
+// Mountain footprint H/D diagnostic (checks base footprint vs height, Guilin-style detection)
+task runFootprintProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.MountainFootprintProbe'
+    // Optional: args = ['12345']  (seed)
+}
+
+// Coarse ridge-valley skeleton A/B validation (carve multi-peaks vs peel)
+task runRidgeABProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.RidgeValleyABProbe'
+    // Optional: args = ['98765,12345']  (comma/space separated seeds)
+}
+
 
