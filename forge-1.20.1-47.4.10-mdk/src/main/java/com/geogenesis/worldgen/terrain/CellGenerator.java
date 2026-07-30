@@ -184,12 +184,8 @@ public final class CellGenerator {
         TerrainClass cellType = TypeLandShape.dominantFromWeights(cellBlend.typeWeights);
 
         // 8. 连续混合（v8.3）：海陆地形 = 海洋噪声场 与 陆地噪声场 的平滑插值。
-        //     修复：陆地侧（cont>0）eOcean 被 seabed 高频噪声污染（eBase=0→eOcean=纯seabed噪声
-        //     at 1/80 频率）。此噪声混入 4 格 bicubic 插值→欠采样→海滩处微振荡→1-3块台阶。
-        //     解决：混合时把陆地侧 eOcean 截断到 ≤0，纯 seabed 噪声只在纯海洋域生效。
         double cont = smoothstep(oceanFadeStart, landRampEnd, cEdge); // 0(纯海)→1(纯陆)
-        double eOceanBlend = cont > 0.001 ? Math.min(eOcean, 0.0) : eOcean;
-        double e = (1.0 - cont) * eOceanBlend + cont * eLand;
+        double e = (1.0 - cont) * eOcean + cont * eLand;
         cell.e = e;
         cell.eOcean = eOcean;
         cell.blendCont = cont;
@@ -266,13 +262,13 @@ public final class CellGenerator {
 
     // ===== 侵蚀 tile 缓存（超分辨率架构：spacing=4 粗采 + 双三次插值升采样，仿 6 月备份 70cd037） =====
 
-    /** 每 tile 覆盖 chunk 数 = 1（每 tile 一个 chunk，消除 tile 内 16-block 周期边界） */
-    private static final int ERODE_TILE_CHUNKS = 1;
+    /** 每 tile 覆盖 chunk 数（3×3=9 chunk/tile，如 6 月备份 generateTileWithHydrology） */
+    private static final int ERODE_TILE_CHUNKS = 3;
     /** 边缘填充块数（侵蚀 brush 上下文 + 接缝消除） */
-    private static final int ERODE_TILE_BORDER = 32;
-    /** tile 总边长：1×16 + 32×2 = 80 */
+    private static final int ERODE_TILE_BORDER = 40;
+    /** tile 总边长：3×16 + 40×2 = 128（与 6 月备份的 generateTile 一致） */
     private static final int ERODE_TILE_SIZE = ERODE_TILE_CHUNKS * 16 + ERODE_TILE_BORDER * 2;
-    /** 粗采间距（spacing=4：80/4=20×20=400 次 terrainE） */
+    /** 粗采间距（spacing=4：128/4=32×32=1024 次 terrainE） */
     private static final int ERODE_SAMPLING_SPACING = 4;
     /** 低分辨率网格边长 */
     private static final int ERODE_LOW_RES = ERODE_TILE_SIZE / ERODE_SAMPLING_SPACING;
@@ -383,9 +379,9 @@ public final class CellGenerator {
 
         // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
         int spacing = ERODE_SAMPLING_SPACING;
-        int lowRes = ERODE_LOW_RES; // = 20
+        int lowRes = ERODE_LOW_RES; // = 32
         int gridExtra = 2;
-        int extendedLowRes = lowRes + gridExtra * 2; // = 24
+        int extendedLowRes = lowRes + gridExtra * 2; // = 36
         int alignedStartX = Math.floorDiv(originX, spacing) * spacing - gridExtra * spacing;
         int alignedStartZ = Math.floorDiv(originZ, spacing) * spacing - gridExtra * spacing;
 
@@ -461,55 +457,25 @@ public final class CellGenerator {
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
 
-            // 5) 全 content 区域 Gaussian 平滑（7 点 [1,6,15,20,15,6,1]/64）
-            //    ERODE_TILE_CHUNKS=1 → content 在 offsets [32..48)
-            int[] boundaries = {32, 36, 40, 44, 48};
+            // 5) chunk 边界 + 跨 tile 边界混叠（5 点 Gaussian [1,4,6,4,1]/16，消除残余 chunk 边界断裂）
+            int[] boundaries = {40, 56, 72, 88};
             // Z 方向（行边界）
             for (int bz : boundaries) {
                 for (int x = 3; x < N - 3; x++) {
                     if (bz < 3 || bz >= N - 3) continue;
-                    float a = tile[bz-3][x];
-                    float b2 = tile[bz-2][x] * 6f;
-                    float c = tile[bz-1][x] * 15f;
-                    float d = tile[bz][x] * 20f;
-                    float e = tile[bz+1][x] * 15f;
-                    float f = tile[bz+2][x] * 6f;
-                    float g = tile[bz+3][x];
-                    float sum1 = a + b2 + c + d + e + f + g;
-                    tile[bz-3][x] = (tile[bz-6][x] + tile[bz-5][x]*6f + tile[bz-4][x]*15f + tile[bz-3][x]*20f
-                                   + tile[bz-2][x]*15f + tile[bz-1][x]*6f + tile[bz][x]) / 64f;
-                    tile[bz-2][x] = (tile[bz-5][x] + tile[bz-4][x]*6f + tile[bz-3][x]*15f + tile[bz-2][x]*20f
-                                   + tile[bz-1][x]*15f + tile[bz][x]*6f + tile[bz+1][x]) / 64f;
-                    tile[bz-1][x] = (tile[bz-4][x] + tile[bz-3][x]*6f + tile[bz-2][x]*15f + tile[bz-1][x]*20f
-                                   + tile[bz][x]*15f + tile[bz+1][x]*6f + tile[bz+2][x]) / 64f;
-                    tile[bz][x]   = (tile[bz-3][x] + tile[bz-2][x]*6f + tile[bz-1][x]*15f + tile[bz][x]*20f
-                                   + tile[bz+1][x]*15f + tile[bz+2][x]*6f + tile[bz+3][x]) / 64f;
+                    tile[bz-1][x] = (tile[bz-3][x] + tile[bz-2][x]*4 + tile[bz-1][x]*6 + tile[bz][x]*4 + tile[bz+1][x]) / 16f;
+                    tile[bz][x]   = (tile[bz-2][x] + tile[bz-1][x]*4 + tile[bz][x]*6 + tile[bz+1][x]*4 + tile[bz+2][x]) / 16f;
                 }
             }
             // X 方向（列边界）
             for (int bx : boundaries) {
                 for (int z = 3; z < N - 3; z++) {
                     if (bx < 3 || bx >= N - 3) continue;
-                    tile[z][bx-3] = (tile[z][bx-6] + tile[z][bx-5]*6f + tile[z][bx-4]*15f + tile[z][bx-3]*20f
-                                     + tile[z][bx-2]*15f + tile[z][bx-1]*6f + tile[z][bx]) / 64f;
-                    tile[z][bx-2] = (tile[z][bx-5] + tile[z][bx-4]*6f + tile[z][bx-3]*15f + tile[z][bx-2]*20f
-                                     + tile[z][bx-1]*15f + tile[z][bx]*6f + tile[z][bx+1]) / 64f;
-                    tile[z][bx-1] = (tile[z][bx-4] + tile[z][bx-3]*6f + tile[z][bx-2]*15f + tile[z][bx-1]*20f
-                                     + tile[z][bx]*15f + tile[z][bx+1]*6f + tile[z][bx+2]) / 64f;
-                    tile[z][bx]   = (tile[z][bx-3] + tile[z][bx-2]*6f + tile[z][bx-1]*15f + tile[z][bx]*20f
-                                     + tile[z][bx+1]*15f + tile[z][bx+2]*6f + tile[z][bx+3]) / 64f;
+                    tile[z][bx-1] = (tile[z][bx-3] + tile[z][bx-2]*4 + tile[z][bx-1]*6 + tile[z][bx]*4 + tile[z][bx+1]) / 16f;
+                    tile[z][bx]   = (tile[z][bx-2] + tile[z][bx-1]*4 + tile[z][bx]*6 + tile[z][bx+1]*4 + tile[z][bx+2]) / 16f;
                 }
             }
 
-            // 6) delta 软限幅（per-cell 局部算子，避免单 cell 灾难性下切）
-            float maxDeltaPerCell = 0.15f;
-            for (int z = 0; z < N; z++) {
-                for (int x = 0; x < N; x++) {
-                    float val = tile[z][x] - base[z][x];
-                    if (val > maxDeltaPerCell) tile[z][x] = base[z][x] + maxDeltaPerCell;
-                    else if (val < -maxDeltaPerCell) tile[z][x] = base[z][x] - maxDeltaPerCell;
-                }
-            }
         }
 
         // 6) 计算 delta + postErosion，构造 ErosionTileResult
@@ -722,21 +688,23 @@ public final class CellGenerator {
      * 海底地形也会被沉积/剥蚀。</p>
      */
     public void extractFromTile(float[][] tile, Cell[] cells, int chunkX, int chunkZ) {
-        // ERODE_TILE_CHUNKS=1 → tileCX = chunkX，每个 tile 只覆盖 1 个 chunk
-        int tileCX = chunkX;
-        int tileCZ = chunkZ;
-        int offsetX = ERODE_TILE_BORDER;
-        int offsetZ = ERODE_TILE_BORDER;
+        int tileCX = Math.floorDiv(chunkX, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
+        int tileCZ = Math.floorDiv(chunkZ, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
+        int offsetX = (chunkX - tileCX) * 16 + ERODE_TILE_BORDER;
+        int offsetZ = (chunkZ - tileCZ) * 16 + ERODE_TILE_BORDER;
 
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
                 double delta = (double) tile[offsetZ + lz][offsetX + lx];
 
-                // 跨 tile 边界 delta 收敛（ERODE_TILE_CHUNKS=1 → 每个 chunk 左右都是 tile 边界）
-                if (lx >= 12) {
+                // 跨 tile 边界 delta 收敛：用邻 tile 在同一世界坐标的 delta 做加权平均，
+                // 消除 tile 边缘因独立侵蚀产生的 delta 跳变（斜向/水平断裂面）。
+                // 边界格(lx=15/lx=0) 100% 收敛到邻 tile delta，向内 3 格 smoothstep 过渡。
+                int cr = chunkX - tileCX; // 本 chunk 在 tile 内的序号 (0/1/2)
+                if (cr == 2 && lx >= 12) {
                     // 右边缘：向右邻 tile 读同一位置的 delta
-                    ErosionTileResult nr = erosionTileCache.get(tileKey(tileCX + 1, tileCZ));
+                    ErosionTileResult nr = erosionTileCache.get(tileKey(tileCX + ERODE_TILE_CHUNKS, tileCZ));
                     if (nr != null) {
                         int worldX = chunkX * 16 + lx;
                         int worldZ = chunkZ * 16 + lz;
@@ -744,15 +712,15 @@ public final class CellGenerator {
                         int nlz = worldZ - nr.originZ;
                         if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
                             double nd = nr.delta[nlz][nlx];
-                            double b = (lx - 12) / 3.0;
-                            double blend = b * b * (3.0 - 2.0 * b);
+                            double b = (lx - 12) / 3.0; // 0→1
+                            double blend = b * b * (3.0 - 2.0 * b); // smoothstep
                             delta = delta * (1.0 - blend) + nd * blend;
                         }
                     }
                 }
-                if (lx <= 3) {
+                if (cr == 0 && lx <= 3) {
                     // 左边缘：向左邻 tile 读同一位置的 delta
-                    ErosionTileResult nl = erosionTileCache.get(tileKey(tileCX - 1, tileCZ));
+                    ErosionTileResult nl = erosionTileCache.get(tileKey(tileCX - ERODE_TILE_CHUNKS, tileCZ));
                     if (nl != null) {
                         int worldX = chunkX * 16 + lx;
                         int worldZ = chunkZ * 16 + lz;
@@ -760,8 +728,8 @@ public final class CellGenerator {
                         int nlz = worldZ - nl.originZ;
                         if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
                             double nd = nl.delta[nlz][nlx];
-                            double b = (4 - lx) / 3.0;
-                            double blend = b * b * (3.0 - 2.0 * b);
+                            double b = (4 - lx) / 3.0; // 0→1
+                            double blend = b * b * (3.0 - 2.0 * b); // smoothstep
                             delta = delta * (1.0 - blend) + nd * blend;
                         }
                     }
@@ -840,8 +808,8 @@ public final class CellGenerator {
                 if (re > reMax) reMax = re;
             }
             avgD /= 256;
-            boolean atTileXEdge = true; // ERODE_TILE_CHUNKS=1 → 每个 chunk 都是 tile 边缘
-            boolean atTileZEdge = true;
+            boolean atTileXEdge = (chunkX % ERODE_TILE_CHUNKS == 2); // 本 chunk 在 tile 右边缘（与下个 tile 交界）
+            boolean atTileZEdge = (chunkZ % ERODE_TILE_CHUNKS == 2);
             DLOG.info("[DIAG-EXT] c({},{}): world=({},{}) tile=({},{}){} {}"
                 + " delta min={} max={} avg={} | reMin={} reMax={}",
                 chunkX, chunkZ, chunkX * 16, chunkZ * 16,

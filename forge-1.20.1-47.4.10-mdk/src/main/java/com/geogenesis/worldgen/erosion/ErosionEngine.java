@@ -36,33 +36,29 @@ public class ErosionEngine {
     private static final int EROSION_DIAG_INTERVAL = 10;
 
     private static final float INERTIA = 0.005f, GRAVITY = 2.5f, EVAP_RATE = 0.001f;
-    /** 放电反馈强度：10.0 对齐 SH 原版，汇聚处 ~11x 反馈雕切峡谷山脊线。
-     *  早前提至 2.5 是为防灾难性汇聚，但灾难实际来自当时 ERODE=0.80+DROPS=600 的组合，
-     *  非 ENTRAINMENT 本身。恢复 10.0 以产生真正的河谷/山脊地貌。 */
-    private static final float ENTRAINMENT = 10.0f;
-    /** 动量传递：1.0 对齐 SH 原版，让液滴顺势汇聚增强输运链 */
+    private static final float ENTRAINMENT = 10f;
+    /** 动量传递：1.0 对齐 SH 原版（原 0.6 导致河流不会自我增强） */
     private static final float MOMENTUM = 1.0f;
     private static final float DEPOSIT_SPEED = 0.02f;
-    /** 平衡浓度公式的松弛率（1/(1+ENTRAINMENT) 数量级，控制侵蚀收敛速度） */
-    private static final float RELAX_RATE = 0.4f;
-    /** cascade 局部每 N 步执行 */
+    /** SimpleHydrology 型统一松弛率（原 depositionRate=0.1），高度差驱动的平衡浓度 → 侵蚀/沉积双向 */
+    private static final float RELAX_RATE = 0.1f;
+    /** cascade 局部每 N 步执行（原版每步，此处每 3 步平衡性能） */
     private static final int CASCADE_INTERVAL = 3;
     private static final float CASCADE_MAXDIFF = 0.01f;
 
-    // ===== 三尺度配置 (v4 - 安全强侵蚀，避免汇聚灾难) =====
-    // 教训：单纯提高 ERODE + DROPS 会让 localCharge 反馈处灾难性爆发。
-    // 备份无 localCharge 反馈所以 ERODE=1.0 安全，我们有反馈就必须小一些。
-    // C 尺度 (宏观)：半径 7，长命→形成从高山到海岸的完整河谷
-    private static final int R_C = 7, DROPS_C = 220, LIFE_C = 60;
-    private static final float ERODE_C = 0.30f, DEPOSIT_C = 0.005f;
+    // ===== 三尺度配置 (v3 - 强侵蚀 + 河谷协同) =====
+    // 提升：spacing=4 插值场平滑度高，需要更大参数。河网雕刻后侵蚀液滴沿河谷走廊进一步增强。
+    // C 尺度 (宏观山谷/山脉脊线)：笔刷半径 7 覆盖 225 邻域，DROPS_C=120 每区块约 0.5 滴/格，寿命 60 步
+    private static final int R_C = 7, DROPS_C = 120, LIFE_C = 60;
+    private static final float ERODE_C = 0.100f, DEPOSIT_C = 0.010f;
 
-    // M 尺度 (中尺度)
-    private static final int R_M = 4, DROPS_M = 110, LIFE_M = 30;
-    private static final float ERODE_M = 0.22f, DEPOSIT_M = 0.008f;
+    // M 尺度 (中脊/冲沟)：半径 4，(2*4+1)²=81 邻域，寿命 30 步
+    private static final int R_M = 4, DROPS_M = 60, LIFE_M = 30;
+    private static final float ERODE_M = 0.120f, DEPOSIT_M = 0.015f;
 
-    // F 尺度 (细沟)
-    private static final int R_F = 2, DROPS_F = 70, LIFE_F = 15;
-    private static final float ERODE_F = 0.18f, DEPOSIT_F = 0.012f;
+    // F 尺度 (细沟/微沟壑)：半径 2，(2*2+1)²=25 邻域，寿命 20 步
+    private static final int R_F = 2, DROPS_F = 40, LIFE_F = 20;
+    private static final float ERODE_F = 0.150f, DEPOSIT_F = 0.020f;
 
     /** 最大笔刷半径（pad = R_MAX + 2 = 9），相邻 tile 各 pad 9 + 中心区域重叠 2*9=18 块无缝 */
     private static final int R_MAX = Math.max(R_C, Math.max(R_M, R_F)); // =7
@@ -261,7 +257,6 @@ public class ErosionEngine {
         int px = pad + relX + offX;
         int py = pad + relZ + offZ;
         if (px < 1 || px >= bufSize - 1 || py < 1 || py >= bufSize - 1) return;
-        // 不设高度门控——保留全范围（含海洋）侵蚀以塑造水下地形
         if (locked != null) {
             int lz = py - pad, lx = px - pad;
             if (lz >= 0 && lz < baseSize && lx >= 0 && lx < baseSize && locked[lz][lx]) return;
@@ -346,8 +341,7 @@ public class ErosionEngine {
             float depthBoost = Math.max(0f, -h0) * 0.03f;  // 水深贡献的"等效下坡高度差"（3%/e, ≈ 7.7 块/100e 深度）
             float heightDrop = Math.max(0f, -dh) + depthBoost;
             float c_eq = (1f + ENTRAINMENT * erfVal) * heightDrop;  // 平衡浓度
-            // 松弛率 = SH 原始值 0.1（与 ENTRAINMENT=10.0 匹配）
-            float effD = 0.1f;
+            float effD = 0.1f;                       // 松弛率 = depositionRate(=0.1)
             float delta = effD * (c_eq - sed);       // >0=侵蚀, <0=沉积
 
             // 笔刷邻域分布：权重须对正负通用
