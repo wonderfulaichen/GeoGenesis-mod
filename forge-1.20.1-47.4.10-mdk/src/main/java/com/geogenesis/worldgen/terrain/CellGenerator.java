@@ -457,9 +457,9 @@ public final class CellGenerator {
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
 
-            // 5) 全 content 区域 Gaussian 平滑（边界间距 4，7 点核，3 遍全覆盖所有位置）
+            // 5) 全 content 区域 Gaussian 平滑（边界间距 4，7 点核，5 遍全覆盖所有位置）
             int[] boundaries = {40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88};
-            for (int pass = 0; pass < 3; pass++) {
+            for (int pass = 0; pass < 5; pass++) {
                 for (int bz : boundaries) {
                     for (int x = 3; x < N - 3; x++) {
                         if (bz < 3 || bz >= N - 3) continue;
