@@ -461,9 +461,9 @@ public final class CellGenerator {
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
 
-            // 5) 保留高斯（3 遍，边界 4 间距，7 点核），防剧烈振荡不消脊线
+            // 5) 边界 4 间距 5 点 Gaussian，5 遍平滑剩余 9-block 内部跳动
             int[] boundaries = {40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88};
-            for (int pass = 0; pass < 3; pass++) {
+            for (int pass = 0; pass < 5; pass++) {
                 for (int bz : boundaries) {
                     for (int x = 3; x < N - 3; x++) {
                         if (bz < 3 || bz >= N - 3) continue;
