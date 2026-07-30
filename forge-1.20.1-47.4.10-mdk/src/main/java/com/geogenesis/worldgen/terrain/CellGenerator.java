@@ -415,10 +415,11 @@ public final class CellGenerator {
         float[][] tile = bicubicUpsampleAligned(lowResBuf, extendedLowRes, spacing,
             alignedStartX, alignedStartZ, originX, originZ, N);
 
-        // 3) 保存插值原貌（用于算 delta）
+        // 3) 保存 terrainE 原貌（用于算 delta）：同源保证相邻 tile delta 一致
         float[][] base = new float[N][N];
         for (int z = 0; z < N; z++)
-            System.arraycopy(tile[z], 0, base[z], 0, N);
+            for (int x = 0; x < N; x++)
+                base[z][x] = (float) Math.max(terrainE(originX + x, originZ + z), -0.05);
 
         // 3.5) D8 流量累积（解析流功率侵蚀需要 flowDir + discharge，无论 riversEnabled 与否）
         long rkey = tileKey(tileCX, tileCZ);
