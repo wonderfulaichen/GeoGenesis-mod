@@ -50,27 +50,32 @@ public final class TypeNoiseProvider {
         Noise hWarped    = new Warp(hBase, hWX, hWZ, 25.0);
         this.hillsNoise  = new Map(hWarped, -1.0, 1.0, 0.0, 1.0);
 
-        // --- MOUNTAINS: 浅山脊骨架(1/1500) + 主脊线(1/480) + 次脊线(1/180) ---
+        // --- MOUNTAINS: 浅山脊骨架(1/1500) + 主脊线(1/480) + 次脊线(1/180) + 高频脊(1/90) ---
+        // 新增 1/90 高频脊倍频(boost 0.3)做脊线锯齿化（"加频率"去圆润，不压高度）。
         Noise mRSkel = new Boost(new Ridge(new Frequency(new Simplex(436), 1.0 / 1500.0), 1.0), 0.25);
         Noise mR1 = new Ridge(new Frequency(new Simplex(416), 1.0 / 480.0), 1.0);
         Noise mR2 = new Boost(new Ridge(new Frequency(new Simplex(417), 1.0 / 180.0), 1.0), 0.25);
-        Noise mRSum = new Add(new Add(mRSkel, mR1), mR2);
+        Noise mR3 = new Boost(new Ridge(new Frequency(new Simplex(442), 1.0 / 90.0), 1.0), 0.3);
+        Noise mRSum = new Add(new Add(new Add(mRSkel, mR1), mR2), mR3);
         Noise mRCombined = new Map(mRSum, 0.0, 1.8, 0.0, 1.0);
         this.mountRidge = mRCombined;
 
-        // Shape mask（蒙山形状）
+        // Shape mask（蒙山形状）：原 3 大尺度(1/800·1/400·1/150) + 2 高频倍频(1/70·1/35)
+        // 做山体表面崎岖化——"加频率"而非压高度，不缩短山体、去圆润。
         Noise sOct1 = new Frequency(new Simplex(425), 1.0 / 800.0);
         Noise sOct2 = new Boost(new Frequency(new Simplex(426), 1.0 / 400.0), 0.4);
         Noise sOct3 = new Boost(new Frequency(new Simplex(427), 1.0 / 150.0), 0.2);
-        this.mountShape = new Map(new Add(new Add(sOct1, sOct2), sOct3), -1.6, 1.6, 0.20, 0.95);
+        Noise sOct4 = new Boost(new Frequency(new Simplex(440), 1.0 / 70.0), 0.15);
+        Noise sOct5 = new Boost(new Frequency(new Simplex(441), 1.0 / 35.0), 0.08);
+        this.mountShape = new Map(new Add(new Add(new Add(new Add(sOct1, sOct2), sOct3), sOct4), sOct5), -2.0, 2.0, 0.20, 0.95);
 
         // Valley 谷底基线（B：0.12-0.40 → 0.04-0.18，谷底更低，山脉相对落差更大、更陡）
         Noise mValley = new Frequency(new Simplex(420), 1.0 / 250.0);
         this.mountValleyFloor = new Map(mValley, -1.0, 1.0, 0.04, 0.18);
 
-        // 高频细节
-        Noise mDetR = new Ridge(new Frequency(new Simplex(421), 1.0 / 80.0), 1.0);
-        this.mountDetail = new Boost(mDetR, 0.1);
+        // 高频细节（峰顶/山坡锯齿）：频率 1/80→1/55、振幅 0.1→0.25，去圆润。
+        Noise mDetR = new Ridge(new Frequency(new Simplex(421), 1.0 / 55.0), 1.0);
+        this.mountDetail = new Boost(mDetR, 0.25);
 
         // 方向扭曲
         this.mountDirAngle = new Frequency(new Simplex(430), 1.0 / 600.0);
