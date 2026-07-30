@@ -457,22 +457,36 @@ public final class CellGenerator {
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
 
-            // 5) 加密边界 Gaussian 平滑（边界间距从 16 缩到 8，覆盖整个 content 区域）
+            // 5) Z 方向行边界（7 点 Gaussian 9 次过，核宽 ~15 cells）
             int[] boundaries = {40, 48, 56, 64, 72, 80, 88};
-            // Z 方向（行边界）
-            for (int bz : boundaries) {
-                for (int x = 3; x < N - 3; x++) {
-                    if (bz < 3 || bz >= N - 3) continue;
-                    tile[bz-1][x] = (tile[bz-3][x] + tile[bz-2][x]*4 + tile[bz-1][x]*6 + tile[bz][x]*4 + tile[bz+1][x]) / 16f;
-                    tile[bz][x]   = (tile[bz-2][x] + tile[bz-1][x]*4 + tile[bz][x]*6 + tile[bz+1][x]*4 + tile[bz+2][x]) / 16f;
+            for (int pass = 0; pass < 3; pass++) {
+                for (int bz : boundaries) {
+                    for (int x = 3; x < N - 3; x++) {
+                        if (bz < 3 || bz >= N - 3) continue;
+                        // 7 点 [1,6,15,20,15,6,1]/64
+                        tile[bz-3][x] = (tile[bz-6][x] + tile[bz-5][x]*6f + tile[bz-4][x]*15f + tile[bz-3][x]*20f
+                                       + tile[bz-2][x]*15f + tile[bz-1][x]*6f + tile[bz][x]) / 64f;
+                        tile[bz-2][x] = (tile[bz-5][x] + tile[bz-4][x]*6f + tile[bz-3][x]*15f + tile[bz-2][x]*20f
+                                       + tile[bz-1][x]*15f + tile[bz][x]*6f + tile[bz+1][x]) / 64f;
+                        tile[bz-1][x] = (tile[bz-4][x] + tile[bz-3][x]*6f + tile[bz-2][x]*15f + tile[bz-1][x]*20f
+                                       + tile[bz][x]*15f + tile[bz+1][x]*6f + tile[bz+2][x]) / 64f;
+                        tile[bz][x]   = (tile[bz-3][x] + tile[bz-2][x]*6f + tile[bz-1][x]*15f + tile[bz][x]*20f
+                                       + tile[bz+1][x]*15f + tile[bz+2][x]*6f + tile[bz+3][x]) / 64f;
+                    }
                 }
-            }
-            // X 方向（列边界）
-            for (int bx : boundaries) {
-                for (int z = 3; z < N - 3; z++) {
-                    if (bx < 3 || bx >= N - 3) continue;
-                    tile[z][bx-1] = (tile[z][bx-3] + tile[z][bx-2]*4 + tile[z][bx-1]*6 + tile[z][bx]*4 + tile[z][bx+1]) / 16f;
-                    tile[z][bx]   = (tile[z][bx-2] + tile[z][bx-1]*4 + tile[z][bx]*6 + tile[z][bx+1]*4 + tile[z][bx+2]) / 16f;
+                // X 方向（列边界）
+                for (int bx : boundaries) {
+                    for (int z = 3; z < N - 3; z++) {
+                        if (bx < 3 || bx >= N - 3) continue;
+                        tile[z][bx-3] = (tile[z][bx-6] + tile[z][bx-5]*6f + tile[z][bx-4]*15f + tile[z][bx-3]*20f
+                                         + tile[z][bx-2]*15f + tile[z][bx-1]*6f + tile[z][bx]) / 64f;
+                        tile[z][bx-2] = (tile[z][bx-5] + tile[z][bx-4]*6f + tile[z][bx-3]*15f + tile[z][bx-2]*20f
+                                         + tile[z][bx-1]*15f + tile[z][bx]*6f + tile[z][bx+1]) / 64f;
+                        tile[z][bx-1] = (tile[z][bx-4] + tile[z][bx-3]*6f + tile[z][bx-2]*15f + tile[z][bx-1]*20f
+                                         + tile[z][bx]*15f + tile[z][bx+1]*6f + tile[z][bx+2]) / 64f;
+                        tile[z][bx]   = (tile[z][bx-3] + tile[z][bx-2]*6f + tile[z][bx-1]*15f + tile[z][bx]*20f
+                                         + tile[z][bx+1]*15f + tile[z][bx+2]*6f + tile[z][bx+3]) / 64f;
+                    }
                 }
             }
 
