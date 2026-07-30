@@ -501,6 +501,6 @@ public final class ErosionTileProbe {
     }
 
     // ===== 常量复制 =====
-    private static final int ERODE_TILE_CHUNKS = 1;
-    private static final int ERODE_TILE_SIZE = 80;
+    private static final int ERODE_TILE_CHUNKS = 3;
+    private static final int ERODE_TILE_SIZE = 128;
 }

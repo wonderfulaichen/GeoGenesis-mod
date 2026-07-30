@@ -162,8 +162,8 @@ public final class GeoGenesisTerrain {
 
         // 跨区块接缝诊断：比较本 chunk 右/下边缘与相邻 chunk 左/上边缘。
         double maxInterX = 0, maxInterZ = 0;
-        int tileCX = cx, tileCZ = cz;
-        int nTileCX = cx + 1, nTileCZ = cz;
+        int tileCX = Math.floorDiv(cx, 3) * 3, tileCZ = Math.floorDiv(cz, 3) * 3;
+        int nTileCX = Math.floorDiv(cx + 1, 3) * 3, nTileCZ = Math.floorDiv(cz, 3) * 3;
         Cell[] nbX = cache.get(pack(cx + 1, cz));
         if (nbX != null) {
             for (int lz = 0; lz < 16; lz++) {
