@@ -433,6 +433,8 @@ public final class CellGenerator {
             int pad = 9;
             int bufSize = N + pad * 2;
 
+            // flat 缓冲区直接用 terrainE（同源），替代 bicubic 插值场使相邻 tile 的
+            // 侵蚀一致 → 消除 tile 边界上下文断裂。pad 区用 neighbor postErosion。
             float[] flat = new float[bufSize * bufSize];
             for (int fz = 0; fz < bufSize; fz++) {
                 for (int fx = 0; fx < bufSize; fx++) {
@@ -441,7 +443,8 @@ public final class CellGenerator {
                     float val;
                     if (worldX >= originX && worldX < originX + N &&
                         worldZ >= originZ && worldZ < originZ + N) {
-                        val = tile[worldZ - originZ][worldX - originX];
+                        // 关键：用 terrainE 而非 tile（bicubic），保证相邻 tile 同源
+                        val = (float) Math.max(terrainE(worldX, worldZ), -0.05);
                     } else {
                         val = readFlatBorder(tileCX, tileCZ, worldX, worldZ, originX, originZ);
                     }
@@ -457,35 +460,21 @@ public final class CellGenerator {
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
 
-            // 5) 全 content 区域 Gaussian 平滑（边界间距 4，7 点核，5 遍全覆盖所有位置）
+            // 5) 保留高斯（3 遍，边界 4 间距，7 点核），防剧烈振荡不消脊线
             int[] boundaries = {40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88};
-            for (int pass = 0; pass < 5; pass++) {
+            for (int pass = 0; pass < 3; pass++) {
                 for (int bz : boundaries) {
                     for (int x = 3; x < N - 3; x++) {
                         if (bz < 3 || bz >= N - 3) continue;
-                        // 7 点 [1,6,15,20,15,6,1]/64
-                        tile[bz-3][x] = (tile[bz-6][x] + tile[bz-5][x]*6f + tile[bz-4][x]*15f + tile[bz-3][x]*20f
-                                       + tile[bz-2][x]*15f + tile[bz-1][x]*6f + tile[bz][x]) / 64f;
-                        tile[bz-2][x] = (tile[bz-5][x] + tile[bz-4][x]*6f + tile[bz-3][x]*15f + tile[bz-2][x]*20f
-                                       + tile[bz-1][x]*15f + tile[bz][x]*6f + tile[bz+1][x]) / 64f;
-                        tile[bz-1][x] = (tile[bz-4][x] + tile[bz-3][x]*6f + tile[bz-2][x]*15f + tile[bz-1][x]*20f
-                                       + tile[bz][x]*15f + tile[bz+1][x]*6f + tile[bz+2][x]) / 64f;
-                        tile[bz][x]   = (tile[bz-3][x] + tile[bz-2][x]*6f + tile[bz-1][x]*15f + tile[bz][x]*20f
-                                       + tile[bz+1][x]*15f + tile[bz+2][x]*6f + tile[bz+3][x]) / 64f;
+                        tile[bz-1][x] = (tile[bz-3][x] + tile[bz-2][x]*4f + tile[bz-1][x]*6f + tile[bz][x]*4f + tile[bz+1][x]) / 16f;
+                        tile[bz][x]   = (tile[bz-2][x] + tile[bz-1][x]*4f + tile[bz][x]*6f + tile[bz+1][x]*4f + tile[bz+2][x]) / 16f;
                     }
                 }
-                // X 方向（列边界）
                 for (int bx : boundaries) {
                     for (int z = 3; z < N - 3; z++) {
                         if (bx < 3 || bx >= N - 3) continue;
-                        tile[z][bx-3] = (tile[z][bx-6] + tile[z][bx-5]*6f + tile[z][bx-4]*15f + tile[z][bx-3]*20f
-                                         + tile[z][bx-2]*15f + tile[z][bx-1]*6f + tile[z][bx]) / 64f;
-                        tile[z][bx-2] = (tile[z][bx-5] + tile[z][bx-4]*6f + tile[z][bx-3]*15f + tile[z][bx-2]*20f
-                                         + tile[z][bx-1]*15f + tile[z][bx]*6f + tile[z][bx+1]) / 64f;
-                        tile[z][bx-1] = (tile[z][bx-4] + tile[z][bx-3]*6f + tile[z][bx-2]*15f + tile[z][bx-1]*20f
-                                         + tile[z][bx]*15f + tile[z][bx+1]*6f + tile[z][bx+2]) / 64f;
-                        tile[z][bx]   = (tile[z][bx-3] + tile[z][bx-2]*6f + tile[z][bx-1]*15f + tile[z][bx]*20f
-                                         + tile[z][bx+1]*15f + tile[z][bx+2]*6f + tile[z][bx+3]) / 64f;
+                        tile[z][bx-1] = (tile[z][bx-3] + tile[z][bx-2]*4f + tile[z][bx-1]*6f + tile[z][bx]*4f + tile[z][bx+1]) / 16f;
+                        tile[z][bx]   = (tile[z][bx-2] + tile[z][bx-1]*4f + tile[z][bx]*6f + tile[z][bx+1]*4f + tile[z][bx+2]) / 16f;
                     }
                 }
             }
