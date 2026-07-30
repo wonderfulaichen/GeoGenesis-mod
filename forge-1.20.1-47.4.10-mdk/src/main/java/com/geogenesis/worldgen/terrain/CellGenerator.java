@@ -708,28 +708,12 @@ public final class CellGenerator {
                 Cell cell = cells[lx * 16 + lz];
                 double delta = (double) tile[offsetZ + lz][offsetX + lx];
 
-                // 跨 tile 边界 delta 收敛：用邻 tile 在同一世界坐标的 delta 做加权平均，
-                // 消除 tile 边缘因独立侵蚀产生的 delta 跳变（斜向/水平断裂面）。
-                // 边界格(lx=15/lx=0) 100% 收敛到邻 tile delta，向内 3 格 smoothstep 过渡。
+                // 跨 tile 边界 delta 收敛：相邻 tile 同源保证连续
+                // cr=2（左 tile 右边界）：自 tile delta（保证两侧用同一左 tile 的数据）
+                // cr=0（右 tile 左边界）：读左邻 tile 的 delta（与左 tile 同源，同时向内 blend 过渡）
                 int cr = chunkX - tileCX; // 本 chunk 在 tile 内的序号 (0/1/2)
-                if (cr == 2 && lx >= 12) {
-                    // 右边缘：向右邻 tile 读同一位置的 delta
-                    ErosionTileResult nr = erosionTileCache.get(tileKey(tileCX + ERODE_TILE_CHUNKS, tileCZ));
-                    if (nr != null) {
-                        int worldX = chunkX * 16 + lx;
-                        int worldZ = chunkZ * 16 + lz;
-                        int nlx = worldX - nr.originX;
-                        int nlz = worldZ - nr.originZ;
-                        if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
-                            double nd = nr.delta[nlz][nlx];
-                            double b = (lx - 12) / 3.0; // 0→1
-                            double blend = b * b * (3.0 - 2.0 * b); // smoothstep
-                            delta = delta * (1.0 - blend) + nd * blend;
-                        }
-                    }
-                }
                 if (cr == 0 && lx <= 3) {
-                    // 左边缘：向左邻 tile 读同一位置的 delta
+                    // 左边缘：向左邻 tile 读等同于本位置的 delta（与左 tile 同源）
                     ErosionTileResult nl = erosionTileCache.get(tileKey(tileCX - ERODE_TILE_CHUNKS, tileCZ));
                     if (nl != null) {
                         int worldX = chunkX * 16 + lx;
@@ -738,8 +722,8 @@ public final class CellGenerator {
                         int nlz = worldZ - nl.originZ;
                         if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
                             double nd = nl.delta[nlz][nlx];
-                            double b = (4 - lx) / 3.0; // 0→1
-                            double blend = b * b * (3.0 - 2.0 * b); // smoothstep
+                            double b = (3 - lx) / 3.0; // lx=0→1, lx=3→0 ✓
+                            double blend = b * b * (3.0 - 2.0 * b);
                             delta = delta * (1.0 - blend) + nd * blend;
                         }
                     }
