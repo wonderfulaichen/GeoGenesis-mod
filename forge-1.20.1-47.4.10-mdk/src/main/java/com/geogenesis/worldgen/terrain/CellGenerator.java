@@ -461,21 +461,25 @@ public final class CellGenerator {
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
 
-            // 5) 边界 4 间距 5 点 Gaussian，5 遍平滑剩余 9-block 内部跳动
-            int[] boundaries = {40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88};
-            for (int pass = 0; pass < 5; pass++) {
-                for (int bz : boundaries) {
+            // 5) 7 点 kernel 全覆盖（每边界写 4 格），3 遍
+            int[] bnd = {40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88};
+            for (int pass = 0; pass < 3; pass++) {
+                for (int bz : bnd) {
                     for (int x = 3; x < N - 3; x++) {
                         if (bz < 3 || bz >= N - 3) continue;
-                        tile[bz-1][x] = (tile[bz-3][x] + tile[bz-2][x]*4f + tile[bz-1][x]*6f + tile[bz][x]*4f + tile[bz+1][x]) / 16f;
-                        tile[bz][x]   = (tile[bz-2][x] + tile[bz-1][x]*4f + tile[bz][x]*6f + tile[bz+1][x]*4f + tile[bz+2][x]) / 16f;
+                        tile[bz-3][x] = (tile[bz-6][x] + tile[bz-5][x]*6f + tile[bz-4][x]*15f + tile[bz-3][x]*20f + tile[bz-2][x]*15f + tile[bz-1][x]*6f + tile[bz][x]) / 64f;
+                        tile[bz-2][x] = (tile[bz-5][x] + tile[bz-4][x]*6f + tile[bz-3][x]*15f + tile[bz-2][x]*20f + tile[bz-1][x]*15f + tile[bz][x]*6f + tile[bz+1][x]) / 64f;
+                        tile[bz-1][x] = (tile[bz-4][x] + tile[bz-3][x]*6f + tile[bz-2][x]*15f + tile[bz-1][x]*20f + tile[bz][x]*15f + tile[bz+1][x]*6f + tile[bz+2][x]) / 64f;
+                        tile[bz][x]   = (tile[bz-3][x] + tile[bz-2][x]*6f + tile[bz-1][x]*15f + tile[bz][x]*20f + tile[bz+1][x]*15f + tile[bz+2][x]*6f + tile[bz+3][x]) / 64f;
                     }
                 }
-                for (int bx : boundaries) {
+                for (int bx : bnd) {
                     for (int z = 3; z < N - 3; z++) {
                         if (bx < 3 || bx >= N - 3) continue;
-                        tile[z][bx-1] = (tile[z][bx-3] + tile[z][bx-2]*4f + tile[z][bx-1]*6f + tile[z][bx]*4f + tile[z][bx+1]) / 16f;
-                        tile[z][bx]   = (tile[z][bx-2] + tile[z][bx-1]*4f + tile[z][bx]*6f + tile[z][bx+1]*4f + tile[z][bx+2]) / 16f;
+                        tile[z][bx-3] = (tile[z][bx-6] + tile[z][bx-5]*6f + tile[z][bx-4]*15f + tile[z][bx-3]*20f + tile[z][bx-2]*15f + tile[z][bx-1]*6f + tile[z][bx]) / 64f;
+                        tile[z][bx-2] = (tile[z][bx-5] + tile[z][bx-4]*6f + tile[z][bx-3]*15f + tile[z][bx-2]*20f + tile[z][bx-1]*15f + tile[z][bx]*6f + tile[z][bx+1]) / 64f;
+                        tile[z][bx-1] = (tile[z][bx-4] + tile[z][bx-3]*6f + tile[z][bx-2]*15f + tile[z][bx-1]*20f + tile[z][bx]*15f + tile[z][bx+1]*6f + tile[z][bx+2]) / 64f;
+                        tile[z][bx]   = (tile[z][bx-3] + tile[z][bx-2]*6f + tile[z][bx-1]*15f + tile[z][bx]*20f + tile[z][bx+1]*15f + tile[z][bx+2]*6f + tile[z][bx+3]) / 64f;
                     }
                 }
             }
