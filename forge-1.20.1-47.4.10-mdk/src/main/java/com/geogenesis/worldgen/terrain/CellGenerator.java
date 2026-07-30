@@ -3,6 +3,7 @@ package com.geogenesis.worldgen.terrain;
 import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.climate.ClimateSpline;
 import com.geogenesis.worldgen.erosion.ErosionEngine;
+import com.geogenesis.worldgen.erosion.RidgeValleyErosion;
 import com.geogenesis.worldgen.noise.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -394,6 +395,11 @@ public final class CellGenerator {
             }
         }
 
+        // 备份未平滑副本 B（粗侵蚀骨架作用于真实地形，不走 step1.5 平滑）
+        float[][] rawLowRes = new float[extendedLowRes][extendedLowRes];
+        for (int i = 0; i < extendedLowRes; i++)
+            System.arraycopy(lowResBuf[i], 0, rawLowRes[i], 0, extendedLowRes);
+
         // 1.5) 粗网格 Gaussian 低通滤波：消除控制点对齐噪声
         //     kernel = [1,2,1; 2,4,2; 1,2,1] / 16（σ≈0.85 grid cells ≈ 3.4 blocks）
         //     保留最外层 1 格作为 bicubic 边界条件（扩展带原值）
@@ -414,6 +420,21 @@ public final class CellGenerator {
         int N = ERODE_TILE_SIZE;
         float[][] tile = bicubicUpsampleAligned(lowResBuf, extendedLowRes, spacing,
             alignedStartX, alignedStartZ, originX, originZ, N);
+
+        // 2.5) 粗侵蚀骨架（脊-谷条纹滤镜）作用于未平滑副本 rawLowRes，升采样后注入 flat
+        //      纯局部算子 → 无 tile 边界缝；陆地 mask 保护海洋深度一致性。
+        float[][] coarseDeltaUp = null;
+        float[][] coarseDeltaLR = null; // 保留 LR 网格供 pad 回退时采样
+        if (erosionOn) {
+            RidgeValleyErosion.RidgeConfig rcfg = RidgeValleyErosion.RidgeConfig.fromConfig(cfg);
+            if (rcfg.enabled) {
+                double seaE = heightCurve.seaE();
+                coarseDeltaLR = RidgeValleyErosion.computeCoarseDelta(
+                        rawLowRes, extendedLowRes, spacing, alignedStartX, alignedStartZ, (float) seaE, rcfg);
+                coarseDeltaUp = bilinearUpsample(coarseDeltaLR, extendedLowRes, spacing,
+                        alignedStartX, alignedStartZ, N, originX, originZ);
+            }
+        }
 
         // 3) 保存 terrainE 原貌（用于算 delta）：同源保证相邻 tile delta 一致
         float[][] base = new float[N][N];
@@ -446,8 +467,20 @@ public final class CellGenerator {
                         worldZ >= originZ && worldZ < originZ + N) {
                         // 关键：用 terrainE 而非 tile（bicubic），保证相邻 tile 同源
                         val = (float) Math.max(terrainE(worldX, worldZ), -0.05);
+                        if (coarseDeltaUp != null) {
+                            int lx = worldX - originX, lz = worldZ - originZ;
+                            val += coarseDeltaUp[lz][lx];
+                        }
                     } else {
                         val = readFlatBorder(tileCX, tileCZ, worldX, worldZ, originX, originZ);
+                        if (Float.isNaN(val)) {
+                            // 无邻居 postErosion 可用 → terrainE + coarseDelta（与 interior 同源，消除 pad 高度跳变）
+                            val = (float) Math.max(terrainE(worldX, worldZ), -0.05);
+                            if (coarseDeltaLR != null) {
+                                val += sampleBilinear(coarseDeltaLR, extendedLowRes, spacing,
+                                        alignedStartX, alignedStartZ, worldX, worldZ);
+                            }
+                        }
                     }
                     flat[fz * bufSize + fx] = val;
                 }
@@ -461,32 +494,32 @@ public final class CellGenerator {
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
 
-            // 5) 轻量 Gaussian（5 点，1 遍，保留地形细节）
-            int[] bnd = {40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88};
-            for (int bz : bnd) {
-                for (int x = 3; x < N - 3; x++) {
-                    if (bz < 3 || bz >= N - 3) continue;
-                    tile[bz-1][x] = (tile[bz-3][x] + tile[bz-2][x]*4f + tile[bz-1][x]*6f + tile[bz][x]*4f + tile[bz+1][x]) / 16f;
-                    tile[bz][x]   = (tile[bz-2][x] + tile[bz-1][x]*4f + tile[bz][x]*6f + tile[bz+1][x]*4f + tile[bz+2][x]) / 16f;
-                }
-            }
-            for (int bx : bnd) {
-                for (int z = 3; z < N - 3; z++) {
-                    if (bx < 3 || bx >= N - 3) continue;
-                    tile[z][bx-1] = (tile[z][bx-3] + tile[z][bx-2]*4f + tile[z][bx-1]*6f + tile[z][bx]*4f + tile[z][bx+1]) / 16f;
-                    tile[z][bx]   = (tile[z][bx-2] + tile[z][bx-1]*4f + tile[z][bx]*6f + tile[z][bx+1]*4f + tile[z][bx+2]) / 16f;
-                }
-            }
+            // 5) 轻量 Gaussian 已移除：原 bnd 列表 {40,44,48,...,88} 在 tile 内部每 4 块做一次
+            //    5 点平滑，形成可见「网格条带」伪影（用户反馈 2026-07-31）。删除以恢复平滑地形。
 
         }
 
-        // 6) delta 软限幅：限制每个 cell 的 |delta| 在 -0.10 ~ +0.10，消除单 cell 暴切跳变
-        float maxDeltaPerCell = 0.10f;
+        // 6) delta 软限幅：防止侵蚀把任何 cell 推到超出其地形类型的自然 e 上限。
+        //    根据当前 e 推断类型，正 delta 受限于该类型到下一类型的剩余余量。
+        //    阈值：BEACH 0.04 / PLAINS 0.25 / HILLS 0.45 / MOUNTAINS 0.75 / PEAK~0.88
+        float maxDeltaPerCell = 0.15f;
         for (int z = 0; z < N; z++) {
             for (int x = 0; x < N; x++) {
                 float val = tile[z][x] - base[z][x];
-                if (val > maxDeltaPerCell) tile[z][x] = base[z][x] + maxDeltaPerCell;
-                else if (val < -maxDeltaPerCell) tile[z][x] = base[z][x] - maxDeltaPerCell;
+                float maxAbs = maxDeltaPerCell;
+                if (val > 0 && base[z][x] > 0) {
+                    float be = base[z][x];
+                    float typeMax;
+                    if      (be < 0.03f) typeMax = 0.04f;   // BEACH → 不超沙滩
+                    else if (be < 0.25f) typeMax = 0.25f;   // PLAINS → 不超平原
+                    else if (be < 0.45f) typeMax = 0.45f;   // HILLS → 不超丘陵
+                    else if (be < 0.75f) typeMax = 0.75f;   // MOUNTAINS → 不超山地
+                    else                 typeMax = 0.88f;   // PEAK/SNOW → 留少量余量
+                    float remaining = Math.max(0f, typeMax - be);
+                    maxAbs = Math.min(maxAbs, remaining);
+                }
+                if (val > maxAbs) tile[z][x] = base[z][x] + maxAbs;
+                else if (val < -maxAbs) tile[z][x] = base[z][x] - maxAbs;
             }
         }
 
@@ -509,8 +542,8 @@ public final class CellGenerator {
     }
 
     /**
-     * 读取 tile 边界外的 flat 填充值。
-     * 优先级：左邻居 postErosion > 上邻居 postErosion > terrainE 直接采样。
+     * 读取 tile 边界外的 flat 填充值。返回 Float.NaN 表示无邻居可用（调用方应回退采样）。
+     * 优先级：左邻居 postErosion > 上邻居 postErosion > NaN（调用方回退）。
      */
     private float readFlatBorder(int tileCX, int tileCZ,
                                   int worldX, int worldZ,
@@ -537,8 +570,7 @@ public final class CellGenerator {
                     return top.postErosion[nz][nx];
             }
         }
-        // 回退：直接 terrainE 采样（与 step 1 的粗采同源，值域一致）
-        return (float) Math.max(terrainE(worldX, worldZ), -0.05);
+        return Float.NaN; // 无邻居可用，调用方回退采样
     }
 
     /**
@@ -647,6 +679,49 @@ public final class CellGenerator {
      * @param tileStartZ 当前 tile 起始 Z（世界坐标）
      * @param tileSize 当前 tile 边长（世界单位）
      */
+    /** 双线性升采样粗侵蚀 delta：lowRes[extLR×extLR]（世界间距 spacing，网格起点 alignedStart）→ N×N（tile 起点 origin）。 */
+    private static float[][] bilinearUpsample(float[][] lowRes, int extLR, int spacing,
+                                              int alignedStartX, int alignedStartZ,
+                                              int N, int originX, int originZ) {
+        float[][] out = new float[N][N];
+        int last = extLR - 1;
+        for (int z = 0; z < N; z++) {
+            float lz = (float) (originZ + z - alignedStartZ) / spacing;
+            int iz0 = Math.max(0, Math.min(last - 1, (int) Math.floor(lz)));
+            int iz1 = Math.min(last, iz0 + 1);
+            float fz = lz - iz0;
+            for (int x = 0; x < N; x++) {
+                float lx = (float) (originX + x - alignedStartX) / spacing;
+                int ix0 = Math.max(0, Math.min(last - 1, (int) Math.floor(lx)));
+                int ix1 = Math.min(last, ix0 + 1);
+                float fx = lx - ix0;
+                float v00 = lowRes[iz0][ix0], v10 = lowRes[iz0][ix1];
+                float v01 = lowRes[iz1][ix0], v11 = lowRes[iz1][ix1];
+                float top = v00 + (v10 - v00) * fx;
+                float bot = v01 + (v11 - v01) * fx;
+                out[z][x] = top + (bot - top) * fz;
+            }
+        }
+        return out;
+    }
+
+    /** 从粗网格低分场采样单个世界坐标的双线性插值（用于 pad 回退，保持与 interior 同源）。 */
+    private static float sampleBilinear(float[][] grid, int extLR, int spacing,
+                                         int stX, int stZ, int worldX, int worldZ) {
+        float lx = (float) (worldX - stX) / spacing;
+        float lz = (float) (worldZ - stZ) / spacing;
+        int last = extLR - 1;
+        int ix = (int) Math.floor(lx);
+        int iz = (int) Math.floor(lz);
+        if (ix < 0 || ix >= last || iz < 0 || iz >= last) return 0f;
+        float fx = lx - ix, fz = lz - iz;
+        float v00 = grid[iz][ix], v10 = grid[iz][ix + 1];
+        float v01 = grid[iz + 1][ix], v11 = grid[iz + 1][ix + 1];
+        float top = v00 + (v10 - v00) * fx;
+        float bot = v01 + (v11 - v01) * fx;
+        return top + (bot - top) * fz;
+    }
+
     private static float[][] bicubicUpsampleAligned(float[][] lowRes, int lowResSize, int spacing,
                                                      int alignedStartX, int alignedStartZ,
                                                      int tileStartX, int tileStartZ, int tileSize) {

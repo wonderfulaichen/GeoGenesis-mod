@@ -228,6 +228,22 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue erosionLocalChargeWeight;
     /** 局部 cascade 级联强度。侵蚀后按高度差向最低邻居 settling，平滑河床底部。0=关闭，默认 0.3，范围 [0, 1] */
     public final ForgeConfigSpec.DoubleValue erosionCascadeStrength;
+    /** 粗侵蚀（脊-谷条纹滤镜）骨架层开关。开启时先造大山脊基本型，再由粒子侵蚀做细节。默认 true。 */
+    public final ForgeConfigSpec.BooleanValue erosionRidgeEnabled;
+    /** 粗侵蚀强度（骨架层）。默认 0.10，范围 [0, 0.5] */
+    public final ForgeConfigSpec.DoubleValue erosionRidgeStrength;
+    /** 粗侵蚀特征尺度（世界块）= 条纹细胞世界尺寸，越大脊越宽。默认 280，范围 [50, 800] */
+    public final ForgeConfigSpec.DoubleValue erosionRidgeScale;
+    /** 粗侵蚀细胞内条纹频率（脊-谷密度）。默认 0.6，范围 [0.2, 2.0] */
+    public final ForgeConfigSpec.DoubleValue erosionRidgeCellScale;
+    /** 粗侵蚀 octave 数（骨架只造主脊，1-2 足够）。默认 2，范围 [1, 5] */
+    public final ForgeConfigSpec.IntValue erosionRidgeOctaves;
+    /** 粗侵蚀坡度累积权重（脊-谷锐度）。默认 0.5，范围 [0, 1] */
+    public final ForgeConfigSpec.DoubleValue erosionRidgeGullyWeight;
+    /** 粗侵蚀脊线圆润度（0=尖锐 V 形，0.5=原版默认，1=圆滑 U 形）。默认 0.5，范围 [0, 1] */
+    public final ForgeConfigSpec.DoubleValue erosionRidgeRounding;
+    /** 粗侵蚀细节密度（PowInv 指数，越低=小沟越密，越高=主脊越干净）。默认 1.5，范围 [0.7, 3.0] */
+    public final ForgeConfigSpec.DoubleValue erosionRidgeDetail;
     /** SH 放电量场河网阈值：放电量 > 此值即视为河流（越低=越细的溪流也显形）。默认 0.02，范围 [0.001, 0.3] */
     public final ForgeConfigSpec.DoubleValue riverDischargeThreshold;
 
@@ -602,6 +618,23 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionCascadeStrength", 0.3, 0.0, 1.0);
         riverDischargeThreshold = builder.comment("SH discharge-field river threshold: discharge > this = river. Lower = thinner source streams shown. Default 0.02, range [0.001, 0.3].")
                 .defineInRange("riverDischargeThreshold", 0.02, 0.001, 0.3);
+        // ===== 粗侵蚀骨架层（脊-谷条纹滤镜，Rune Skovbo Johansen 2026 + Luke Mitchell Burst C#）=====
+        erosionRidgeEnabled = builder.comment("Coarse ridge-valley skeleton layer (gradient-aligned stripe filter). Builds mountain-ridge basic form before particle detail erosion. Default true.")
+                .define("erosionRidgeEnabled", true);
+        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 0.04, range [0, 0.5].")
+                .defineInRange("erosionRidgeStrength", 0.04, 0.0, 0.5);
+        erosionRidgeScale = builder.comment("Coarse skeleton feature size (world blocks) = stripe cell world size; larger = wider ridges. Default 100, range [50, 800].")
+                .defineInRange("erosionRidgeScale", 100.0, 50.0, 800.0);
+        erosionRidgeCellScale = builder.comment("Coarse skeleton in-cell stripe frequency (ridge-valley density). Default 0.6, range [0.2, 2.0].")
+                .defineInRange("erosionRidgeCellScale", 0.6, 0.2, 2.0);
+        erosionRidgeOctaves = builder.comment("Coarse skeleton octaves (main ridges only; 1-2 enough). Default 2, range [1, 5].")
+                .defineInRange("erosionRidgeOctaves", 2, 1, 5);
+        erosionRidgeGullyWeight = builder.comment("Coarse skeleton slope-accumulation weight (ridge-valley sharpness). Default 0.5, range [0, 1].")
+                .defineInRange("erosionRidgeGullyWeight", 0.5, 0.0, 1.0);
+        erosionRidgeRounding = builder.comment("Ridge profile rounding (0=sharp V-cut, 0.5=default balanced, 1=max rounded U-shape). Default 0.5, range [0, 1].")
+                .defineInRange("erosionRidgeRounding", 0.5, 0.0, 1.0);
+        erosionRidgeDetail = builder.comment("Gully detail density (PowInv exponent; lower=finer gullies everywhere, higher=cleaner main ridges). Default 1.5, range [0.7, 3.0].")
+                .defineInRange("erosionRidgeDetail", 1.5, 0.7, 3.0);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");
