@@ -691,13 +691,13 @@ public final class GeoGenesisConfig {
         // HILLS inner spline (12 fields)
         builder.push("HILLS");
         hillsLoLoc0 = builder.defineInRange("hillsLoLoc0", 0.0, 0.0, 1.0);
-        hillsLoVal0 = builder.defineInRange("hillsLoVal0", 0.06, -1.0, 1.0);
+        hillsLoVal0 = builder.defineInRange("hillsLoVal0", 0.08, -1.0, 1.0);
         hillsLoDeriv0 = builder.defineInRange("hillsLoDeriv0", 0.0, -10.0, 10.0);
         hillsLoLoc1 = builder.defineInRange("hillsLoLoc1", 1.0, 0.0, 1.0);
         hillsLoVal1 = builder.defineInRange("hillsLoVal1", 0.06, -1.0, 1.0);
         hillsLoDeriv1 = builder.defineInRange("hillsLoDeriv1", 0.0, -10.0, 10.0);
         hillsHiLoc0 = builder.defineInRange("hillsHiLoc0", 0.0, 0.0, 1.0);
-        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.35, -1.0, 1.0);
+        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.40, -1.0, 1.0);
         hillsHiDeriv0 = builder.defineInRange("hillsHiDeriv0", 0.0, -10.0, 10.0);
         hillsHiLoc1 = builder.defineInRange("hillsHiLoc1", 1.0, 0.0, 1.0);
         hillsHiVal1 = builder.defineInRange("hillsHiVal1", 0.35, -1.0, 1.0);
@@ -707,7 +707,7 @@ public final class GeoGenesisConfig {
         // MOUNTAINS inner spline (12 fields)
         builder.push("MOUNTAINS");
         mountLoLoc0 = builder.defineInRange("mountLoLoc0", 0.0, 0.0, 1.0);
-        mountLoVal0 = builder.defineInRange("mountLoVal0", 0.45, -1.0, 1.0);
+        mountLoVal0 = builder.defineInRange("mountLoVal0", 0.55, -1.0, 1.0);
         mountLoDeriv0 = builder.defineInRange("mountLoDeriv0", 0.0, -10.0, 10.0);
         mountLoLoc1 = builder.defineInRange("mountLoLoc1", 1.0, 0.0, 1.0);
         mountLoVal1 = builder.defineInRange("mountLoVal1", 0.45, -1.0, 1.0);
@@ -723,13 +723,13 @@ public final class GeoGenesisConfig {
         // PLATEAU inner spline (12 fields)
         builder.push("PLATEAU");
         platLoLoc0 = builder.defineInRange("platLoLoc0", 0.0, 0.0, 1.0);
-        platLoVal0 = builder.defineInRange("platLoVal0", 0.60, -1.0, 1.0);
+        platLoVal0 = builder.defineInRange("platLoVal0", 0.40, -1.0, 1.0);
         platLoDeriv0 = builder.defineInRange("platLoDeriv0", 0.0, -10.0, 10.0);
         platLoLoc1 = builder.defineInRange("platLoLoc1", 1.0, 0.0, 1.0);
         platLoVal1 = builder.defineInRange("platLoVal1", 0.60, -1.0, 1.0);
         platLoDeriv1 = builder.defineInRange("platLoDeriv1", 0.0, -10.0, 10.0);
         platHiLoc0 = builder.defineInRange("platHiLoc0", 0.0, 0.0, 1.0);
-        platHiVal0 = builder.defineInRange("platHiVal0", 0.75, -1.0, 1.0);
+        platHiVal0 = builder.defineInRange("platHiVal0", 0.50, -1.0, 1.0);
         platHiDeriv0 = builder.defineInRange("platHiDeriv0", 0.0, -10.0, 10.0);
         platHiLoc1 = builder.defineInRange("platHiLoc1", 1.0, 0.0, 1.0);
         platHiVal1 = builder.defineInRange("platHiVal1", 0.75, -1.0, 1.0);
