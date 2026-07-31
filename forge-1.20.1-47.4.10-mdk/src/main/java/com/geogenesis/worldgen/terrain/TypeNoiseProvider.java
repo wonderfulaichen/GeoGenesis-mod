@@ -118,11 +118,13 @@ public final class TypeNoiseProvider {
     }
 
     /**
-     * 三角波折叠（用户方案 2026-08-01）：1-|2n-1| 把普通噪声的"谷"翻成"丘"、频率翻倍
-     * → 丘陵变成密集圆丘（无独立深谷）；线性折叠保持均匀分布（高度分布不变），连续无断裂。
+     * 绝对值折叠（用户方案 2026-08-01，修正版）：|2n-1| —— 原谷底（n→0）翻成峰、原峰顶
+     * （n→1）保持峰、原中位（0.5）折叠成窄 V 沟 → 密集圆丘夹细沟，频率翻倍。
+     * 注意：初版误用 1-|2n-1|（反相）把原峰顶翻成谷底（用户指出"包反成谷"），已修正。
+     * 线性折叠保持均匀分布（高度分布不变），连续无断裂。
      */
     private static double foldHills(double n) {
-        return 1.0 - Math.abs(2.0 * n - 1.0);
+        return Math.abs(2.0 * n - 1.0);
     }
 
     public double computeNoise(TerrainClass type, double wx, double wz) {
