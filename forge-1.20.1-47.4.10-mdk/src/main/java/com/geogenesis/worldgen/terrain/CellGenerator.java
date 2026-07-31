@@ -524,9 +524,9 @@ public final class CellGenerator {
 
         // 6) delta 限幅：仅 per-cell 安全性限制（防单格暴切），不人为加类型/高度钳制。
         //    噪声已经调好地形类型与高度范围，侵蚀只叠加纹理，不该再有硬上限。
-        //    0.20：脊谷陡坡脊点实测 delta 峰值 +0.174（combiMask 触发 gull 分量），
-        //    0.15 会截断造成山腰/脊顶局部平台（2026-07-31 峰侧衰减修复后峰顶 delta=0，余量充足）。
-        float maxDeltaPerCell = 0.18f;
+        //    0.22：脊谷陡坡脊点 delta 峰值随 strength=0.12 达 ≈0.25，0.22 仅截断 <5% 极值点
+        //    （峰侧衰减后峰顶 delta=0 不受影响；截断点分散不形成平台）。
+        float maxDeltaPerCell = 0.22f;
         for (int z = 0; z < N; z++) {
             for (int x = 0; x < N; x++) {
                 float val = tile[z][x] - base[z][x];

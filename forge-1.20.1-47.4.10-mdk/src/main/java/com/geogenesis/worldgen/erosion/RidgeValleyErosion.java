@@ -26,7 +26,7 @@ public final class RidgeValleyErosion {
     // ===== 骨架层配置（从 GeoGenesisConfig 读取覆盖；stylistic 参数用代码常量初值）=====
     public static class RidgeConfig {
         public boolean enabled = true;
-        public float strength = 0.08f;        // 单 octave 侵蚀强度（直接，不乘 scale；≤0.09 避免 maxDeltaPerCell=0.15 截断）
+        public float strength = 0.12f;        // 单 octave 侵蚀强度（直接，不乘 scale；峰值 delta≈0.25 需 maxDeltaPerCell≥0.22）
         public float cellWorldSize = 100f;    // 骨架特征尺度（世界块）= 条纹细胞世界尺寸
         public float stripeFreq = 1.2f;       // 细胞内条纹频率（sideDir 幅度，↑密度）
         public int octaves = 4;               // gully 层级（主脊+次级脊+细沟，spacing=2 下不混叠）
@@ -45,7 +45,7 @@ public final class RidgeValleyErosion {
             RidgeConfig c = new RidgeConfig();
             if (cfg != null) {
                 c.enabled = cfgBool(cfg.erosionRidgeEnabled, true);
-                c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 0.10);
+                c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 0.12);
                 c.cellWorldSize = (float) cfgDbl(cfg.erosionRidgeScale, 100.0);
                 c.stripeFreq = (float) cfgDbl(cfg.erosionRidgeCellScale, 1.2);
                 c.octaves = cfgInt(cfg.erosionRidgeOctaves, 4);
