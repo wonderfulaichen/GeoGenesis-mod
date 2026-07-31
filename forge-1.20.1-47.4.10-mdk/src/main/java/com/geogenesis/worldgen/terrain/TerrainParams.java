@@ -181,7 +181,10 @@ public record TerrainParams(
     double verticalScale,
 
     // ===== 大陆性语义亲和度（注入 TypeLandShape） =====
-    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 5.0。0=无 c 效应，越大海洋区域越倾向平原/盆地（低地形），陆地保留正常类型多样性。5.0 时海洋中 MOUNTAINS/HILLS 权重归零。 */
+    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 1.0。0=无 c 效应，越大海洋区域越倾向平原/盆地（低地形）。
+     *  【2026-07-31】5.0→1.0：β 过大（factor=1+β(aff-0.2) ∈ [0,5]）使 PLAIN 权重在 60% 区域 argmax
+     *  （丘陵/过渡区被归为平原，其高度带掺山脉 → "平原太高"：mean Y 145 vs 配置定义 67~77）。
+     *  β=1.0（factor ∈ [0.8,1.8] 温和偏置）：PLAIN 占比回到 ~30%、mean Y 74（符合 plainHiVal0=0.06）。 */
     double cAffinityStrength,
 
     // ===== 海岸线多样化（CoastlineField 输入） =====
@@ -263,7 +266,7 @@ public record TerrainParams(
             // preview compat（HS=1 默认 1:1 缩放，无畸变）
             1.0, 63, 0.70, -64, 320, 0.92, (int) Math.round(63 + (320 - 63) * 0.92 * 0.95), -48,
             1.0,  // verticalScale
-            5.0,              // cAffinityStrength
+            1.0,              // cAffinityStrength（5.0 会让 PLAIN 在 60% 区域 argmax → 平原过高）
             // coastline diversification
             0.03, 300.0, 5, 2.0, 0.5,  // coastlineWarpAmp, coastlineWarpScale, octaves, lacunarity, persistence
             0.08,               // coastTerrainInfluence
