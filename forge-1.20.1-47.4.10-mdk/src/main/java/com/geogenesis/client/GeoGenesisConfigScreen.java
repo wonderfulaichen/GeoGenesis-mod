@@ -183,9 +183,10 @@ public class GeoGenesisConfigScreen extends Screen {
                 previewRegistered = true;
             }
         }
-        // 首次(preview==null)创建实例；重入后仅当参数/种子真变化才重建采样缓存，
-        // 否则跳过 invalidateAll + 视图重置（避免棋盘/错位重载闪）。
-        rebuildPreviewIfChanged();
+        // 每次进入配置屏无条件重建预览（消除旧参数/旧缓存残留——2026-07-31 用户反馈
+        // "游戏内预览没变化"：原 rebuildPreviewIfChanged 在参数未变时跳过，若上次会话
+        // 状态残留则永远显示旧画面）。tick 路径仍用 IfChanged 防拖动闪。
+        rebuildPreview();
 
         // 设置类页签面板（运行时显示状态，懒构造一次以保留列表滚动位置）
         if (presetsPanel == null) presetsPanel = new PresetsPanel(
@@ -219,6 +220,16 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private void rebuildPreview() {
         TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
+        // TEMP-DIAG（2026-07-31 预览参数验证，随后删除）
+        try {
+            LOGGER.info("DIAG-RB: seed={} cAff={} hillsHi0={} platLo0={} platHi0={} mountLo0={} maxLandHi={}",
+                seed, p.cAffinityStrength(),
+                p.splineConfig().buildHillsInner().sampleRange(1.0)[1],
+                p.splineConfig().buildPlateauInner().sampleRange(0.0)[0],
+                p.splineConfig().buildPlateauInner().sampleRange(1.0)[1],
+                p.splineConfig().buildMountainsInner().sampleRange(0.0)[0],
+                p.splineConfig().maxLandHi());
+        } catch (Exception e) { LOGGER.warn("DIAG-RB failed", e); }
         CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
