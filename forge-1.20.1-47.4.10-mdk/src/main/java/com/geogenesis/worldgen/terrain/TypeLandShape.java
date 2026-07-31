@@ -151,10 +151,11 @@ public final class TypeLandShape {
         double mountW = tw[TerrainClass.MOUNTAINS.ordinal()];
         double platW = tw[TerrainClass.PLATEAU.ordinal()];
         double plainW = tw[TerrainClass.PLAIN.ordinal()];
-        // 台座抬升 0.10（线性 0.15 起抬 / 0.65 满）：高原高于丘陵即可（2026-08-01 0.15→0.10，
-        // 用户要求高原适当放低，让山脉有更高相对落差；且避免顶部越过雪线被 SNOW 覆盖）。
+        // 台座抬升 0.10（线性 0.05 起抬 / 0.35 满，2026-08-01 收紧）：argmax 标记为高原的
+        // 区域（platW≥~0.35）即抬满台面——旧窗口 0.15~0.65 只让细胞中心抬满，边缘一半（platW
+        // 0.3~0.5）半抬 → 高原一半落在过渡坡上（用户反馈）。收紧后过渡坡变为台地陡缘。
         // 山体抬升 0.05：山地靠样条 hi=0.95 已最高，抬升仅补充过渡带区分（0.12 会吃掉余量触顶）。
-        double platRaise = 0.10 * clamp01((platW - 0.15) / 0.50);
+        double platRaise = 0.10 * clamp01((platW - 0.05) / 0.30);
         double mountRaise = 0.05 * smoothstep(0.50, 0.80, mountW) * (1.0 - 0.8 * platW);
         // 平原压平（2026-08-01）：PLAIN 样条 hi=0.03 但 blend 混合被其他类型抬到 mean 118
         // （与 HILLS 121 几乎同高）——核心平原（plainW 0.7）已低（87~93），高的是边缘样本。
