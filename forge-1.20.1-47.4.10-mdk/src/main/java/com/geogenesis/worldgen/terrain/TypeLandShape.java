@@ -123,18 +123,24 @@ public final class TypeLandShape {
         // 同时 PLATEAU 的平顶边缘/MOUNTAINS 脊线等特征通过 per-type 噪声自然表达。
         // STRENGTH=0 → 纯共享（无类型特征），=1 → 纯 per-type（断裂风险）。
         final double MORPH_STRENGTH = 0.4;
-        // 【2026-07-31 修复】blendLo/blendHi 用修改前连续权重 wOrig 并按权重归一化（÷Σw）：
+        // 【2026-07-31 修复】blendLo/blendHi 用修改前连续权重 wOrig 的【幂次加权】（w³）归一化：
         // ① 归一化修复高度塌缩（原未归一化 Σw×lo 在陆地边缘缩水 80% → 类型带消失）；
-        // ② 用 wOrig 消除 cAffinity factor 突变的断裂（c 不控制高度铁律）。
+        // ② 用 wOrig 消除 cAffinity factor 突变的断裂（c 不控制高度铁律）；
+        // ③ 幂次加强：主导类型决定高度带，抑制类型带渗透——否则 PLAIN 主导区(权重 0.6)仍掺
+        //    40% 其他类型（MOUNTAINS lo=0.45），blendLo 被拉到 0.13 → 平原产出 4~10 倍于
+        //    配置定义（plainHiVal0=0.06 → 实际 mean 0.24/Y125、max 0.61/Y221）。
+        //    纯平原带 blendLo≈0.03/blendHi≈0.09（p=3），山脉带 lo 抬至 0.42（更陡更高）。
+        //    幂次是连续函数 → 过渡带平滑（无断裂），仅混合更锐。
         double blendLo = 0.0, blendHi = 0.0, wSum = 0.0;
         for (int i = 0; i < lands.length; i++) {
             double w = wOrig[lands[i].ordinal()];
             if (w <= 0.001) continue;
+            double w3 = w * w * w; // 幂次加强：高度带由主导类型决定
             double lo_t = generators.sampleByType(effectiveCBiased, i, 0.0); // 该类型在 c 处的下限
             double hi_t = generators.sampleByType(effectiveCBiased, i, 1.0); // 该类型在 c 处的上限
-            blendLo += w * lo_t;
-            blendHi += w * hi_t;
-            wSum += w;
+            blendLo += w3 * lo_t;
+            blendHi += w3 * hi_t;
+            wSum += w3;
         }
         if (wSum > 1e-9) { blendLo /= wSum; blendHi /= wSum; }
         double shared = generators.computeSharedNoise(wx, wz);
@@ -159,6 +165,8 @@ public final class TypeLandShape {
 
     /** 陆地 e 允许下探到海洋深度地板（盆地凹陷可低于海平面成湖） */
     private static final double ELAND_MIN = -0.35;
+
+
 
 
 

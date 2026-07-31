@@ -566,8 +566,8 @@ public final class GeoGenesisConfig {
 
         builder.push("Semantic Affinity");
         // Phase 2.2: 语义适配旋钮
-        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。v14+ 恢复：共享噪声公式数学保证连续，因此 cAffinity 恢复非零是安全的（权重偏置不影响 eLand 连续性）。3.0=中等强度，山脉偏内陆、盆地偏海岸/深海。0=纯空间 Voronoi 类型分布。范围 [0,10]。")
-            .defineInRange("cAffinityStrength", 3.0, 0.0, 10.0);
+        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。【2026-07-31 5.0→1.0】β 过大会让 PLAIN 权重在 60% 区域 argmax（丘陵/过渡区被归为平原 → 平原 mean Y 145 远超配置定义 67~77）。1.0=温和偏置（factor ∈ [0.8,1.8]），山脉偏内陆、盆地偏海岸/深海。0=纯空间 Voronoi 类型分布。范围 [0,10]。")
+            .defineInRange("cAffinityStrength", 1.0, 0.0, 10.0);
         builder.pop();
 
         builder.push("Coastline Diversification");
