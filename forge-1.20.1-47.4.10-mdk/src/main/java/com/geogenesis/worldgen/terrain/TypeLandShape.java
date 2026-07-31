@@ -150,12 +150,17 @@ public final class TypeLandShape {
         // 抬升用平滑连续权重场 → 无缝；softCap 兜底脊谷叠加超限（极少陡坡尖）。
         double mountW = tw[TerrainClass.MOUNTAINS.ordinal()];
         double platW = tw[TerrainClass.PLATEAU.ordinal()];
+        double plainW = tw[TerrainClass.PLAIN.ordinal()];
         // 台座抬升 0.10（线性 0.15 起抬 / 0.65 满）：高原高于丘陵即可（2026-08-01 0.15→0.10，
         // 用户要求高原适当放低，让山脉有更高相对落差；且避免顶部越过雪线被 SNOW 覆盖）。
         // 山体抬升 0.05：山地靠样条 hi=0.95 已最高，抬升仅补充过渡带区分（0.12 会吃掉余量触顶）。
         double platRaise = 0.10 * clamp01((platW - 0.15) / 0.50);
         double mountRaise = 0.05 * smoothstep(0.50, 0.80, mountW) * (1.0 - 0.8 * platW);
-        eLand += platRaise + mountRaise;
+        // 平原压平（2026-08-01）：PLAIN 样条 hi=0.03 但 blend 混合被其他类型抬到 mean 118
+        // （与 HILLS 121 几乎同高）——核心平原（plainW 0.7）已低（87~93），高的是边缘样本。
+        // 显式压平按 plainW 主导度施加，让平原与丘陵拉开 ~15 格。
+        double plainLower = 0.10 * clamp01((plainW - 0.30) / 0.45);
+        eLand += platRaise + mountRaise - plainLower;
         // 放开下限到海平面以下：盆地等类型的内层样条可为负（e<0 → HeightCurve 映射为低于海平面
         // → 积水成湖/洼地）。下限取海洋深度地板 ELAND_MIN，避免异常配置产生过深空洞；上限仍封 1.0。
         // 注意：原 clamp01 把 eLand 钳到 [0,1]，会抹平盆地凹陷（内部全压成 0 平盘），现已修正。
