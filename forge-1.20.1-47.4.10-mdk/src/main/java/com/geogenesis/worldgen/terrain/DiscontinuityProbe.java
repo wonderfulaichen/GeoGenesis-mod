@@ -30,11 +30,16 @@ public final class DiscontinuityProbe {
     public static void main(String[] args) {
         TerrainParams p = TerrainParams.defaults();
         long seed = 12345L;
+        int x0 = 0, z0 = 0;
+        String[] a = args.length > 0 && args[0].contains(",") ? args[0].split(",") : args;
+        if (a.length > 0) seed = Long.parseLong(a[0]);
+        if (a.length > 1) x0 = Integer.parseInt(a[1]);
+        if (a.length > 2) z0 = Integer.parseInt(a[2]);
 
-        // 扫描区域 — 扩大以覆盖更多完整 cell
-        int W = 800, H = 800;
+        // 扫描区域 — 2000×2000 覆盖 5×5 类型 cell（CELL_SPACING=400），全类型样本
+        int W = 2000, H = 2000;
         System.out.println("=== DiscontinuityProbe v7.5 (typeWeighted formula) ===");
-        System.out.println("Region " + W + "x" + H + " blocks, step=1");
+        System.out.println("Region " + W + "x" + H + " blocks at origin (" + x0 + "," + z0 + "), step=1");
         System.out.println("Formula: linear interpolation between type centers (no cell grid)");
         System.out.println();
 
@@ -58,7 +63,7 @@ public final class DiscontinuityProbe {
 
         for (int x = 0; x < W; x++) {
             for (int z = 0; z < H; z++) {
-                double wx = x, wz = z;
+                double wx = x0 + x, wz = z0 + z;
 
                 // 1. 连续类型混合
                 TerrainCharacterField.BlendResult blend = landShape.sampleBlend(wx, wz);
@@ -203,6 +208,8 @@ public final class DiscontinuityProbe {
 
         for (int x = 0; x < W; x++) {
             for (int z = 0; z < H; z++) {
+                double c = layers[10][x][z];      // continent(c)
+                if (c < 0.45) continue;           // 仅内陆样本（c 低处样条随 c 压低，eLand 无类型区分度）
                 double eLand = layers[9][x][z];
                 if (eLand <= 0) continue;
                 int domType = (int) layers[13][x][z];

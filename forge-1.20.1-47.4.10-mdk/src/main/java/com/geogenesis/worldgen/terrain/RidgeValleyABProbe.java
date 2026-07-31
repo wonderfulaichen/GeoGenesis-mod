@@ -153,9 +153,10 @@ public final class RidgeValleyABProbe {
                     for (int gx = 0; gx < GRID; gx++)
                         if (land[gz][gx] && typeGrid[gz][gx] == k) { va[n] = A[gz][gx]; vb[n] = B[gz][gx]; n++; }
                 if (n >= 8) {
+                    double mA = mean(va, n), mB = mean(vb, n);
                     double sA = std(va, n), sB = std(vb, n);
-                    System.out.printf("   type %-9s n=%-6d stdA=%.4f stdB=%.4f stdR=%.2fx%n",
-                            T5[k], n, sA, sB, sB / Math.max(1e-9, sA));
+                    System.out.printf("   type %-9s n=%-6d meanA=%.3f meanB=%.3f stdA=%.4f stdB=%.4f stdR=%.2fx%n",
+                            T5[k], n, mA, mB, sA, sB, sB / Math.max(1e-9, sA));
                 }
             }
         }
@@ -204,12 +205,17 @@ public final class RidgeValleyABProbe {
 
     /** 标准差（n 个有效元素） */
     private static double std(double[] v, int n) {
-        double m = 0;
-        for (int i = 0; i < n; i++) m += v[i];
-        m /= n;
+        double m = mean(v, n);
         double s = 0;
         for (int i = 0; i < n; i++) s += (v[i] - m) * (v[i] - m);
         return Math.sqrt(s / n);
+    }
+
+    /** 均值（n 个有效元素） */
+    private static double mean(double[] v, int n) {
+        double m = 0;
+        for (int i = 0; i < n; i++) m += v[i];
+        return m / n;
     }
 
     private static Stats stats(float[][] g, boolean[][] land, double seaE) {

@@ -138,7 +138,10 @@ public final class TypeNoiseProvider {
      */
     private double computePlateau(double wx, double wz) {
         double noise = platNoise.compute(wx, wz);    // [0.30, 0.70] 高原台地起伏
-        return noise < 0 ? 0 : (noise > 1 ? 1 : noise);
+        // 台地化：内部起伏压缩 60%（×0.4 收向中位 0.50）→ 平顶感；
+        // 边缘陡降由 eLand 处的 platW 台座抬升（smoothstep 过渡）提供。
+        double flat = 0.50 + (noise - 0.50) * 0.4;
+        return flat < 0 ? 0 : (flat > 1 ? 1 : flat);
     }
 
     /**
