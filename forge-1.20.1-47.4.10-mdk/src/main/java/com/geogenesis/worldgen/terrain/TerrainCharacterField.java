@@ -161,16 +161,17 @@ public final class TerrainCharacterField {
     }
 
     /**
-     * 确定性哈希 + c 分带：(cx, cz) + cell 中心大陆性 → 5 种陆地类型。
-     * 【2026-07-31 c 分带布局 v2】按 cell 中心大陆性 cBiased 分带（与海陆 mask 同空间）：
-     *   c<0.35  近岸-中内陆：PLAIN 主导 + HILLS（平原面积足，无 PLATEAU/MOUNTAINS）
-     *   c∈[0.35,0.60) 内陆过渡：HILLS 缓冲 + MOUNTAINS/PLATEAU 起步（丘陵作平原→山地过渡带）
-     *   c≥0.60  深远内陆：MOUNTAINS/PLATEAU 主导
-     * v1（c<0.22 才 PLAIN）→ PLAIN 仅 5.7%（近岸带面积小）；v2 平原带放宽到 c<0.35。
-     * PLATEAU 只在 c≥0.35（概率 0.25）→ 与 PLAIN（c<0.35）之间隔着 0.35-0.60 过渡带
-     * （HILLS/MOUNTAINS/PLATEAU 混合）→ 平原旁不再直接高原。
-     * 带内哈希随机（空间变化），带界由 c 场等值线（不规则自然形状），cell 类型只依赖 (cx,cz)
-     * → 确定性 + 无缝。
+     * 确定性哈希 + 软 c 调制：(cx, cz) + cell 中心大陆性 → 5 种陆地类型。
+     * 【2026-07-31 软调制 v3】v1/v2 硬分带（PLAIN 只靠海）→ 用户反馈"无法实现随机生成的
+     * 陆地中部平原"（北美中部大平原/西伯利亚平原都是内陆平原）。v3 恢复随机布局，
+     * c 只调制类型概率（软，不清零）：
+     *   - PLAIN：0.30 → 内陆 0.18（中部平原保留 ✓）
+     *   - HILLS：0.26 恒定（全带缓冲）
+     *   - MOUNTAINS：0.036 → 0.18（海岸少量、内陆多）
+     *   - PLATEAU：0 → 0.14（海岸无高原——"高原旁平原"的突兀源，内陆正常）
+     *   - BASIN：0.12 恒定
+     * 内陆任意类型随机出现（布局随机 ✓），海岸无高原（过渡自然 ✓）。
+     * cell 类型只依赖 (cx,cz) → 确定性 + 无缝。
      */
     private int getCellType(int cx, int cz) {
         long h = (long) cx * 374761393L + (long) cz * 668265263L;
@@ -179,18 +180,18 @@ public final class TerrainCharacterField {
         h ^= (h >>> 16);
         double r = (h & Long.MAX_VALUE) / (double) Long.MAX_VALUE;
         double c = continent.sample((cx + 0.5) * CELL_SPACING, (cz + 0.5) * CELL_SPACING) + continentBias;
-        if (c < -0.05) {
-            return r < 0.5 ? TerrainClass.BASIN.ordinal() : TerrainClass.PLAIN.ordinal();
-        } else if (c < 0.35) {
-            return r < 0.60 ? TerrainClass.PLAIN.ordinal()
-                : (r < 0.95 ? TerrainClass.HILLS.ordinal() : TerrainClass.BASIN.ordinal());
-        } else if (c < 0.60) {
-            return r < 0.35 ? TerrainClass.HILLS.ordinal()
-                : (r < 0.55 ? TerrainClass.MOUNTAINS.ordinal()
-                : (r < 0.80 ? TerrainClass.PLATEAU.ordinal() : TerrainClass.PLAIN.ordinal()));
-        } else {
-            return r < 0.45 ? TerrainClass.MOUNTAINS.ordinal()
-                : (r < 0.75 ? TerrainClass.PLATEAU.ordinal() : TerrainClass.HILLS.ordinal());
-        }
+        double t = c < -0.1 ? 0.0 : (c > 0.6 ? 1.0 : (c + 0.1) / 0.7); // 海岸→内陆 0~1
+        double wP = 0.30 * (1.0 - 0.4 * t);                       // 内陆 0.18
+        double wH = 0.26;
+        double wM = 0.18 * (0.2 + 0.8 * t);                       // 海岸 0.036、内陆 0.18
+        double wPl = 0.14 * Math.max(0.0, (t - 0.25) / 0.75);     // 海岸 0、内陆 0.14
+        double wB = 0.12;
+        double sum = wP + wH + wM + wPl + wB;
+        double acc = 0;
+        if (r < (acc += wP) / sum) return TerrainClass.PLAIN.ordinal();
+        if (r < (acc += wH) / sum) return TerrainClass.HILLS.ordinal();
+        if (r < (acc += wM) / sum) return TerrainClass.MOUNTAINS.ordinal();
+        if (r < (acc += wPl) / sum) return TerrainClass.PLATEAU.ordinal();
+        return TerrainClass.BASIN.ordinal();
     }
 }
