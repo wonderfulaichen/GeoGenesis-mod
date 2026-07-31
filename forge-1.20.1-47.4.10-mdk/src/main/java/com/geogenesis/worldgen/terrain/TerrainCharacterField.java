@@ -151,14 +151,20 @@ public final class TerrainCharacterField {
 
     /**
      * 确定性哈希：(cx, cz) → 5 种陆地类型之一。
-     * 64 位混合确保均匀分布。
+     * 【2026-07-31 加权分配】原哈希均匀 20%，叠加 Voronoi 权重场扩围后 MOUNTAINS+PLATEAU 占
+     * 陆地 63.7%（平原/丘陵被挤压、高原嵌在山脉带内）。权重改为：
+     * PLAIN 28 / HILLS 24 / PLATEAU 18 / MOUNTAINS 18 / BASIN 12（山地高原回落、平原丘陵回升）。
      */
     private static int getCellType(int cx, int cz) {
         long h = (long) cx * 374761393L + (long) cz * 668265263L;
         h = h * 1274126177L ^ (h >>> 16);
         h = h * 709369L ^ (h >>> 13);
         h ^= (h >>> 16);
-        int idx = (int) ((h & Long.MAX_VALUE) % LAND_ORDINALS.length);
-        return LAND_ORDINALS[idx];
+        double r = (h & Long.MAX_VALUE) / (double) Long.MAX_VALUE;
+        if (r < 0.28) return TerrainClass.PLAIN.ordinal();
+        if (r < 0.52) return TerrainClass.HILLS.ordinal();
+        if (r < 0.70) return TerrainClass.PLATEAU.ordinal();
+        if (r < 0.88) return TerrainClass.MOUNTAINS.ordinal();
+        return TerrainClass.BASIN.ordinal();
     }
 }

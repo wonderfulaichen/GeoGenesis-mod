@@ -78,10 +78,11 @@ public final class RidgeValleyErosion {
         float cellGridFreq = 1.0f / Math.max(1f, cfg.cellWorldSize); // 条纹细胞世界尺寸 = cellWorldSize
         // 【全局对称参考面】源码 fadeTarget = inverse_lerp(valleyAlt, peakAlt, h)*2-1，
         // 跨真实高程对称映射（谷=-1、峰=+1），脊-谷下切/抬升幅度对称。
-        // 【2026-07-31】类型带修复后陆地 mean eLand ≈0.39，评估过 0.25/0.30/0.38：
-        //   0.30/0.38 使海岸带 fadeTarget 更负（下切过凶）→ 液滴边界列梯度放大（Stage7 FAIL 26-41 块）；
-        //   0.25 边界最稳（Stage7 PASS 4-6 块），且 fadeTarget 偏正（中位 +0.56）使丘陵/山地被
-        //   脊谷整体抬升 +0.11e——在新类型带下反而加强差异化（平原 h<0.25 fadeTarget<0 下切不受影响）。
+        // 【2026-07-31 定稿】LAND_REF=0.25（丘陵带 [0.08,0.40] 中值附近）：
+        //   评估 0.40：丘陵高端(0.3-0.4)fadeTarget<0 也被下切 → 丘陵整体下压、落差小（用户反馈）；
+        //   0.25：丘陵低端(0.08-0.15)有陆地掩码保护（h<0.10 淡出）+ 中高端抬升(+0.03~0.1)
+        //   → 丘陵 [0.08,0.50] 落差 0.42（160 块）；PLATEAU [0.40,0.50] 抬至 [0.50,0.67]、
+        //   MOUNTAINS [0.55,0.95] 抬至 [0.72,0.93] → 高原/山脉分离 0.05 以上 ✓。
         //   - 全局常数 → 所有 tile 的 fadeTarget 一致 → 无 tile 边界跳变 → 无缝。
         //   - 低地 fadeTarget<0 → valley rounding 生效（尖谷）；高地>0 → ridge rounding（圆脊），山形更自然。
         final float LAND_REF = 0.25f;
