@@ -74,6 +74,7 @@ public final class TerrainCharacterField {
     public void seed(long worldSeed) {
         Noises.seedAll(warpX, worldSeed, 0);
         Noises.seedAll(warpZ, worldSeed, 0);
+        cellTypeCache.clear(); // cell 类型依赖 seed（continent 场）
     }
 
     // ===== 公开 API =====
@@ -160,20 +161,67 @@ public final class TerrainCharacterField {
         return v < i ? i - 1 : i;
     }
 
+    /** cell 类型缓存（cell 类型只依赖 (cx,cz)，seed 时清空；避免邻接检查重复计算 continent） */
+    private final java.util.HashMap<Long, Integer> cellTypeCache = new java.util.HashMap<>();
+
     /**
-     * 确定性哈希 + 软 c 调制：(cx, cz) + cell 中心大陆性 → 5 种陆地类型。
-     * 【2026-07-31 软调制 v3】v1/v2 硬分带（PLAIN 只靠海）→ 用户反馈"无法实现随机生成的
-     * 陆地中部平原"（北美中部大平原/西伯利亚平原都是内陆平原）。v3 恢复随机布局，
-     * c 只调制类型概率（软，不清零）：
-     *   - PLAIN：0.30 → 内陆 0.18（中部平原保留 ✓）
-     *   - HILLS：0.26 恒定（全带缓冲）
-     *   - MOUNTAINS：0.036 → 0.18（海岸少量、内陆多）
-     *   - PLATEAU：0 → 0.14（海岸无高原——"高原旁平原"的突兀源，内陆正常）
-     *   - BASIN：0.12 恒定
-     * 内陆任意类型随机出现（布局随机 ✓），海岸无高原（过渡自然 ✓）。
+     * 确定性哈希 + 软 c 调制 + 邻接约束：(cx, cz) + cell 中心大陆性 → 5 种陆地类型。
+     * 【2026-07-31 软调制 v4】：
+     * ① 软 c 调制（v3）：随机布局为体、c 概率调制为用（PLAIN 0.30→内陆 0.18 中部平原保留、
+     *    PLATEAU 海岸 0、内陆 0.14——用户要求"随机生成的陆地中部平原"）；
+     * ② 邻接约束（用户反馈"高原旁边不应该是平原"）：PLATEAU cell 若 3×3 邻域内有
+     *    PLAIN cell（按无约束 baseType 判定，避免递归）→ 降级为 HILLS（缓冲）
+     *    → 高原永远不与平原直接相邻（内陆随机布局保留）。
      * cell 类型只依赖 (cx,cz) → 确定性 + 无缝。
      */
     private int getCellType(int cx, int cz) {
+        long key = ((long) cx << 32) | (cz & 0xFFFFFFFFL);
+        Integer v = cellTypeCache.get(key);
+        if (v != null) return v;
+        int t = computeCellType(cx, cz);
+        cellTypeCache.put(key, t);
+        return t;
+    }
+
+    private int computeCellType(int cx, int cz) {
+        int base = baseType(cx, cz);
+        // 邻接约束：仅降级「孤立高原」——邻 PLAIN 且邻域无 MOUNTAINS/PLATEAU。
+        // 山地群中的高原（邻山地）保留（高原旁无平原 ✓）；孤立高原（被平原包围）降级 HILLS 缓冲。
+        // v4 全降级教训：8 邻内 PLAIN 概率 78% → PLATEAU 仅剩 1.4%（高原灭绝）。
+        if (base == TerrainClass.PLATEAU.ordinal()
+                && hasPlainNeighbor(cx, cz) && !hasMountainNeighbor(cx, cz)) {
+            return TerrainClass.HILLS.ordinal();
+        }
+        return base;
+    }
+
+    /** 3×3 邻域内是否有 PLAIN（用无约束 baseType，避免递归） */
+    private boolean hasPlainNeighbor(int cx, int cz) {
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dz == 0) continue;
+                if (baseType(cx + dx, cz + dz) == TerrainClass.PLAIN.ordinal()) return true;
+            }
+        }
+        return false;
+    }
+
+    /** 3×3 邻域内是否有 MOUNTAINS/PLATEAU（山地群判定） */
+    private boolean hasMountainNeighbor(int cx, int cz) {
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dz == 0) continue;
+                int n = baseType(cx + dx, cz + dz);
+                if (n == TerrainClass.MOUNTAINS.ordinal() || n == TerrainClass.PLATEAU.ordinal()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 无约束概率选择（软 c 调制） */
+    private int baseType(int cx, int cz) {
         long h = (long) cx * 374761393L + (long) cz * 668265263L;
         h = h * 1274126177L ^ (h >>> 16);
         h = h * 709369L ^ (h >>> 13);
