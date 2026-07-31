@@ -98,6 +98,12 @@ public final class ErosionTileProbe {
         // ---- Stage 4: delta 连续性 ----
         stageDelta(tileA, tileB, overlapX0, overlapX1, overlapZ0, overlapZ1, ow, oh, N);
 
+        // ---- Stage 7: chunk 边界应用后连续性（世界无缝真度量） ----
+        // Stage 3/4 比较 tile 间重叠区（双写区：A 超区 vs B chunk 区），数据差异是架构固有，
+        // 不代表世界接缝。世界最终值 = chunk 应用各自 tile delta：右/下缘 4 块渐变读邻居场、
+        // 左/上缘用自己（= 左邻已渐变到本场）→ chunk 边界两侧同场 → 差 ≈ 场梯度（应很小）。
+        stageChunkBoundary(tileA, tileB, overlapZ0, overlapZ1, N);
+
         // ---- Stage 5: 边界截面 ----
         if (dcx != 0) {
             stageBoundaryX(tileA, tileB, overlapZ0, overlapZ1, N);
@@ -296,6 +302,57 @@ public final class ErosionTileProbe {
             System.out.println("  Verdict: " + (maxDiff < 0.01 ? "PASS ✅" : (maxDiff < 0.05 ? "WARN ⚠" : "FAIL ❌")));
         } else {
             System.out.println("  No valid overlap samples");
+        }
+        System.out.println();
+    }
+
+    // ---- Stage 7: chunk 边界应用后连续性（世界无缝真度量） ----
+
+    private static void stageChunkBoundary(CellGenerator.ErosionTileResult tileA,
+                                           CellGenerator.ErosionTileResult tileB,
+                                           int oz0, int oz1, int N) {
+        System.out.println("=== Stage 7: Chunk-boundary applied continuity (world seam truth) ===");
+        int boundX = (tileA.tileCX + ERODE_TILE_CHUNKS) * 16; // chunk 边界（A 的 chunk 区右缘）
+        System.out.println("  Chunk boundary at worldX=" + boundX
+            + ": left col (A chunk, blends to right-neighbor B) vs right col (B chunk, own field)");
+        System.out.println("  Both from B's field → diff ≈ field gradient (small).");
+        System.out.println("  Format: [wz] d_left(B)[applied] d_right(B)[applied] | diff");
+
+        double maxDiff = 0, sumDiff = 0, p99Diff = 0;
+        long count = 0;
+        int worstZ = 0;
+        double[] allDiffs = new double[oz1 - oz0];
+        int di = 0;
+
+        int leftX = boundX - 1;                     // A chunk 右缘 lx=15 → blend b=1 → 全右邻居 B
+        int bxL = leftX - tileB.originX;            // B.delta 局部列（A 应用的来源）
+        int bxR = boundX - tileB.originX;           // B 自己（B chunk 左缘 lx=0 用自己场）
+        for (int wz = oz0; wz < oz1; wz++) {
+            int bz = wz - tileB.originZ;
+            if (bz < 0 || bz >= N) continue;
+            if (bxL < 0 || bxL >= N || bxR < 0 || bxR >= N) continue;
+            double dL = tileB.delta[bz][bxL];
+            double dR = tileB.delta[bz][bxR];
+            double diff = Math.abs(dL - dR);
+            if (diff > maxDiff) { maxDiff = diff; worstZ = wz; }
+            sumDiff += diff;
+            allDiffs[di++] = diff;
+            count++;
+        }
+
+        if (count > 0) {
+            double meanDiff = sumDiff / count;
+            java.util.Arrays.sort(allDiffs, 0, (int) count);
+            p99Diff = allDiffs[(int) (count * 0.99)];
+            System.out.println("  Max diff: " + String.format("%.6f", maxDiff)
+                + " (~" + String.format("%.1f", maxDiff * 384) + " blocks) at wz=" + worstZ);
+            System.out.println("  Mean diff: " + String.format("%.6f", meanDiff));
+            System.out.println("  p99 diff: " + String.format("%.6f", p99Diff));
+            System.out.println("  Samples: " + count);
+            System.out.println("  Verdict: " + (maxDiff < 0.02 ? "PASS (same field, gradient only) ✅"
+                : (maxDiff < 0.05 ? "WARN ⚠" : "FAIL ❌")));
+        } else {
+            System.out.println("  No valid samples");
         }
         System.out.println();
     }

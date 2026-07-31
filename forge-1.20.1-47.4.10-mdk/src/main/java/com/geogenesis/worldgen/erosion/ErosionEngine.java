@@ -60,6 +60,10 @@ public class ErosionEngine {
     /** 最大笔刷半径（pad = R_MAX + 2 = 9），相邻 tile 各 pad 9 + 中心区域重叠 2*9=18 块无缝 */
     private static final int R_MAX = Math.max(R_C, Math.max(R_M, R_F)); // =7
 
+    /**
+     * 液滴跑满整个 tile（含两侧超区）——超区是相邻 tile 的 blend 数据源（extractFromTile 四边缘
+     * 对称读邻居 delta 渐变），不能裁剪。跨 tile 连续性由 extractFromTile 的边缘 blend 保证。
+     */
     public ErosionEngine(double dropsMul, int seed) {
         // dropsMul / seed 由 CellGenerator 从配置解析后传入；实际放大倍率运行时仍读配置，
         // 此处仅保留兼容签名。
