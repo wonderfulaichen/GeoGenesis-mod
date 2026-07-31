@@ -134,7 +134,7 @@ public final class TypeLandShape {
         for (int i = 0; i < lands.length; i++) {
             double w = wOrig[lands[i].ordinal()];
             if (w <= 0.001) continue;
-            double p = (lands[i] == TerrainClass.PLATEAU) ? 3.0 : 2.0; // 2026-08-01 2.5/3.5→2.0/3.0：过渡更宽（配合 σ=300）
+            double p = (lands[i] == TerrainClass.PLATEAU) ? 3.0 : 2.0; // 2026-08-01 σ=300 + 高度带连续衔接：过渡宽而自然（PLATEAU 边缘略陡保留崖壁特征）
             double wp = Math.pow(w, p);
             double lo_t = generators.sampleByType(effectiveCBiased, i, 0.0); // 该类型在 c 处的下限
             double hi_t = generators.sampleByType(effectiveCBiased, i, 1.0); // 该类型在 c 处的上限
