@@ -499,27 +499,14 @@ public final class CellGenerator {
 
         }
 
-        // 6) delta 软限幅：防止侵蚀把任何 cell 推到超出其地形类型的自然 e 上限。
-        //    根据当前 e 推断类型，正 delta 受限于该类型到下一类型的剩余余量。
-        //    阈值：BEACH 0.04 / PLAINS 0.25 / HILLS 0.45 / MOUNTAINS 0.75 / PEAK~0.88
+        // 6) delta 限幅：仅 per-cell 安全性限制（防单格暴切），不人为加类型/高度钳制。
+        //    噪声已经调好地形类型与高度范围，侵蚀只叠加纹理，不该再有硬上限。
         float maxDeltaPerCell = 0.15f;
         for (int z = 0; z < N; z++) {
             for (int x = 0; x < N; x++) {
                 float val = tile[z][x] - base[z][x];
-                float maxAbs = maxDeltaPerCell;
-                if (val > 0 && base[z][x] > 0) {
-                    float be = base[z][x];
-                    float typeMax;
-                    if      (be < 0.03f) typeMax = 0.04f;   // BEACH → 不超沙滩
-                    else if (be < 0.25f) typeMax = 0.25f;   // PLAINS → 不超平原
-                    else if (be < 0.45f) typeMax = 0.45f;   // HILLS → 不超丘陵
-                    else if (be < 0.75f) typeMax = 0.75f;   // MOUNTAINS → 不超山地
-                    else                 typeMax = 0.88f;   // PEAK/SNOW → 留少量余量
-                    float remaining = Math.max(0f, typeMax - be);
-                    maxAbs = Math.min(maxAbs, remaining);
-                }
-                if (val > maxAbs) tile[z][x] = base[z][x] + maxAbs;
-                else if (val < -maxAbs) tile[z][x] = base[z][x] - maxAbs;
+                if (val > maxDeltaPerCell) tile[z][x] = base[z][x] + maxDeltaPerCell;
+                else if (val < -maxDeltaPerCell) tile[z][x] = base[z][x] - maxDeltaPerCell;
             }
         }
 
