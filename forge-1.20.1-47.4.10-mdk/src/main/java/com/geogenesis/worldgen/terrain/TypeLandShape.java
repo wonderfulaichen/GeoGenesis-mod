@@ -25,11 +25,11 @@ public final class TypeLandShape {
     public TypeLandShape(TerrainParams p) {
         this.params = p;
         this.generators = new TypeGenerators(p);
-        this.character = new TerrainCharacterField();
-        this.typeNoise = new TypeNoiseProvider(p.beltReliefAmp());
-        this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
         this.continent = new ContinentField(p);
         this.continentBias = p.continentBias();
+        this.character = new TerrainCharacterField(continent, continentBias);
+        this.typeNoise = new TypeNoiseProvider(p.beltReliefAmp());
+        this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
     }
 
     public void seed(long worldSeed) {
