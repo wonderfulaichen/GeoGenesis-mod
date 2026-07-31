@@ -157,6 +157,9 @@ public class ParameterConfigPanel extends ConfigPanel {
             s.setOnReset(() -> heightBar.refreshFromConfig());
         }
 
+        // 峰高比例：实际山峰高度占 maxY 的比例，留余量避免触顶世界构建上限（替代有 bug 的钳制）
+        addSpec("峰高比例", "实际山峰高度占 maxY 的比例。默认 0.92（留 8% 余量，避免山峰触顶世界构建上限被钳平成平顶）。调高→山更高（接近 maxY），调低→山峰更矮。", c.peakHeightFraction, 0.5, 1.0);
+
         // 尺度缩放（HS = 水平 XZ 等比缩放，VS = 垂直 Y 等比缩放）
         scalePrev.setHorizontalScale(c.horizontalScale.get());
         scalePrev.setVerticalScale(c.verticalScale.get());

@@ -168,6 +168,8 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.IntValue seaLevel;
     public final ForgeConfigSpec.IntValue minY;
     public final ForgeConfigSpec.IntValue maxY;
+    /** 实际峰顶高度占 maxY 的比例（余量避免触顶世界构建上限）。默认 0.92，范围 [0.5, 1.0] */
+    public final ForgeConfigSpec.DoubleValue peakHeightFraction;
 
     // ===== 垂直缩放 =====
     /** 垂直缩放比例（1-8），用于预览和地形高度夸张 */
@@ -230,19 +232,19 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue erosionCascadeStrength;
     /** 粗侵蚀（脊-谷条纹滤镜）骨架层开关。开启时先造大山脊基本型，再由粒子侵蚀做细节。默认 true。 */
     public final ForgeConfigSpec.BooleanValue erosionRidgeEnabled;
-    /** 粗侵蚀强度（骨架层）。默认 0.10，范围 [0, 0.5] */
+    /** 粗侵蚀强度（骨架层）。默认 0.08，范围 [0, 0.5] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeStrength;
-    /** 粗侵蚀特征尺度（世界块）= 条纹细胞世界尺寸，越大脊越宽。默认 280，范围 [50, 800] */
+    /** 粗侵蚀特征尺度（世界块）= 条纹细胞世界尺寸，越大脊越宽。默认 100，范围 [50, 800] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeScale;
-    /** 粗侵蚀细胞内条纹频率（脊-谷密度）。默认 0.6，范围 [0.2, 2.0] */
+    /** 粗侵蚀细胞内条纹频率（脊-谷密度）。默认 1.2，范围 [0.2, 2.0] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeCellScale;
-    /** 粗侵蚀 octave 数（骨架只造主脊，1-2 足够）。默认 2，范围 [1, 5] */
+    /** 粗侵蚀 octave 数（主脊+次级脊+细沟，4 更密）。默认 4，范围 [1, 5] */
     public final ForgeConfigSpec.IntValue erosionRidgeOctaves;
     /** 粗侵蚀坡度累积权重（脊-谷锐度）。默认 0.5，范围 [0, 1] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeGullyWeight;
     /** 粗侵蚀脊线圆润度（0=尖锐 V 形，0.5=原版默认，1=圆滑 U 形）。默认 0.5，范围 [0, 1] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeRounding;
-    /** 粗侵蚀细节密度（PowInv 指数，越低=小沟越密，越高=主脊越干净）。默认 1.5，范围 [0.7, 3.0] */
+    /** 粗侵蚀细节密度（PowInv 指数，越低=小沟越密，越高=主脊越干净）。默认 1.0，范围 [0.7, 3.0] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeDetail;
     /** SH 放电量场河网阈值：放电量 > 此值即视为河流（越低=越细的溪流也显形）。默认 0.02，范围 [0.001, 0.3] */
     public final ForgeConfigSpec.DoubleValue riverDischargeThreshold;
@@ -551,6 +553,8 @@ public final class GeoGenesisConfig {
             .defineInRange("minY", -64, -512, 512);
         maxY = builder.comment("Maximum world Y.")
             .defineInRange("maxY", 320, -512, 1024);
+        peakHeightFraction = builder.comment("Actual peak height as fraction of maxY (headroom so peaks don't hit the world build ceiling). Default 0.92, range [0.5, 1.0].")
+            .defineInRange("peakHeightFraction", 0.92, 0.5, 1.0);
         builder.pop();
 
         builder.push("Scale");
@@ -621,20 +625,20 @@ public final class GeoGenesisConfig {
         // ===== 粗侵蚀骨架层（脊-谷条纹滤镜，Rune Skovbo Johansen 2026 + Luke Mitchell Burst C#）=====
         erosionRidgeEnabled = builder.comment("Coarse ridge-valley skeleton layer (gradient-aligned stripe filter). Builds mountain-ridge basic form before particle detail erosion. Default true.")
                 .define("erosionRidgeEnabled", true);
-        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 0.04, range [0, 0.5].")
-                .defineInRange("erosionRidgeStrength", 0.04, 0.0, 0.5);
+        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 0.08, range [0, 0.5].")
+                .defineInRange("erosionRidgeStrength", 0.08, 0.0, 0.5);
         erosionRidgeScale = builder.comment("Coarse skeleton feature size (world blocks) = stripe cell world size; larger = wider ridges. Default 100, range [50, 800].")
                 .defineInRange("erosionRidgeScale", 100.0, 50.0, 800.0);
-        erosionRidgeCellScale = builder.comment("Coarse skeleton in-cell stripe frequency (ridge-valley density). Default 0.6, range [0.2, 2.0].")
-                .defineInRange("erosionRidgeCellScale", 0.6, 0.2, 2.0);
-        erosionRidgeOctaves = builder.comment("Coarse skeleton octaves (main ridges only; 1-2 enough). Default 2, range [1, 5].")
-                .defineInRange("erosionRidgeOctaves", 2, 1, 5);
+        erosionRidgeCellScale = builder.comment("Coarse skeleton in-cell stripe frequency (ridge-valley density). Default 1.2, range [0.2, 2.0].")
+                .defineInRange("erosionRidgeCellScale", 1.2, 0.2, 2.0);
+        erosionRidgeOctaves = builder.comment("Coarse skeleton octaves (main + secondary + fine gullies; 4 at spacing=2 no aliasing). Default 4, range [1, 5].")
+                .defineInRange("erosionRidgeOctaves", 4, 1, 5);
         erosionRidgeGullyWeight = builder.comment("Coarse skeleton slope-accumulation weight (ridge-valley sharpness). Default 0.5, range [0, 1].")
                 .defineInRange("erosionRidgeGullyWeight", 0.5, 0.0, 1.0);
         erosionRidgeRounding = builder.comment("Ridge profile rounding (0=sharp V-cut, 0.5=default balanced, 1=max rounded U-shape). Default 0.5, range [0, 1].")
                 .defineInRange("erosionRidgeRounding", 0.5, 0.0, 1.0);
-        erosionRidgeDetail = builder.comment("Gully detail density (PowInv exponent; lower=finer gullies everywhere, higher=cleaner main ridges). Default 1.5, range [0.7, 3.0].")
-                .defineInRange("erosionRidgeDetail", 1.5, 0.7, 3.0);
+        erosionRidgeDetail = builder.comment("Gully detail density (PowInv exponent; lower=finer gullies everywhere, higher=cleaner main ridges). Default 1.0, range [0.7, 3.0].")
+                .defineInRange("erosionRidgeDetail", 1.0, 0.7, 3.0);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");
@@ -765,6 +769,9 @@ public final class GeoGenesisConfig {
      * 仅供游戏运行时调用：依赖 Forge 配置已 load()，通过 {@code ConfigValue.get()} 取实时值。
      */
     public com.geogenesis.worldgen.terrain.TerrainParams buildParams() {
+        // 理论峰顶 = 最高陆地类型 e 上限（maxLandHi）× 高度范围 × 峰高比例 + 海平面（mountainCap）
+        double landHi = Math.max(Math.max(plainHiVal0.get(), hillsHiVal0.get()),
+                Math.max(mountHiVal0.get(), Math.max(platHiVal0.get(), basinHiVal0.get())));
         return new com.geogenesis.worldgen.terrain.TerrainParams(
             continentScale.get(), continentWarp.get(), continentFbmOctaves.get(), continentFbmLacunarity.get(), continentFbmPersistence.get(), continentThreshold.get(), continentBias.get(), continentProvinceWarp.get(),
             deepOceanLoc.get(), shelfLoc.get(), shallowLoc.get(), coastLoc.get(),
@@ -794,7 +801,7 @@ public final class GeoGenesisConfig {
 
             // preview compat defaults
             horizontalScale.get(), seaLevel.get(), snowLine.get(), minY.get(),
-            maxY.get(), (int)(maxY.get() * 0.8), (int)(minY.get() * 0.75),
+            maxY.get(), peakHeightFraction.get(), (int) Math.round(seaLevel.get() + (maxY.get() - seaLevel.get()) * peakHeightFraction.get() * landHi), (int)(minY.get() * 0.75),
             verticalScale.get(),
             cAffinityStrength.get(),
             // coastline diversification
@@ -939,6 +946,9 @@ public final class GeoGenesisConfig {
      * {@code TerrainParams.defaults()} 那样的硬编码副本再次漂移。
      */
     public com.geogenesis.worldgen.terrain.TerrainParams defaultParams() {
+        // 理论峰顶 = maxLandHi × 高度范围 × 峰高比例 + 海平面（mountainCap，独立预览路径）
+        double landHi = Math.max(Math.max(plainHiVal0.getDefault(), hillsHiVal0.getDefault()),
+                Math.max(mountHiVal0.getDefault(), Math.max(platHiVal0.getDefault(), basinHiVal0.getDefault())));
         return new com.geogenesis.worldgen.terrain.TerrainParams(
             continentScale.getDefault(), continentWarp.getDefault(), continentFbmOctaves.getDefault(), continentFbmLacunarity.getDefault(), continentFbmPersistence.getDefault(), continentThreshold.getDefault(), continentBias.getDefault(), continentProvinceWarp.getDefault(),
             deepOceanLoc.getDefault(), shelfLoc.getDefault(), shallowLoc.getDefault(), coastLoc.getDefault(),
@@ -968,7 +978,7 @@ public final class GeoGenesisConfig {
 
             // preview compat defaults
             horizontalScale.getDefault(), seaLevel.getDefault(), snowLine.getDefault(), minY.getDefault(),
-            maxY.getDefault(), (int)(maxY.getDefault() * 0.8), (int)(minY.getDefault() * 0.75),
+            maxY.getDefault(), 0.92, (int) Math.round(seaLevel.getDefault() + (maxY.getDefault() - seaLevel.getDefault()) * 0.92 * landHi), (int)(minY.getDefault() * 0.75),
             verticalScale.getDefault(),
             cAffinityStrength.getDefault(),
             // coastline diversification

@@ -18,8 +18,8 @@ import com.geogenesis.worldgen.erosion.RidgeValleyErosion;
  */
 public final class RidgeValleyABProbe {
 
-    private static final int SPACING = 4;       // 与 ERODE_SAMPLING_SPACING 一致
-    private static final int GRID = 200;        // 200×200 粗网格 = 800×800 block 区域
+    private static final int SPACING = 2;       // 骨架层采样间距（RIDGE_SKELETON_SPACING=2），恢复坡度使 combiMask 触发
+    private static final int GRID = 200;        // 200×200 粗网格 = 400×400 block 区域
     private static final int REGION = GRID * SPACING;
 
     public static void main(String[] args) {
@@ -35,7 +35,7 @@ public final class RidgeValleyABProbe {
         TerrainParams p = TerrainParams.defaults();
         HeightCurve curve = new HeightCurve(p, -64, 320);
         double seaE = curve.seaE();
-        RidgeValleyErosion.RidgeConfig rcfg = RidgeValleyErosion.RidgeConfig.fromConfig(GeoGenesisConfig.INSTANCE);
+        RidgeValleyErosion.RidgeConfig rcfg = new RidgeValleyErosion.RidgeConfig(); // 强制代码默认（新参数），绕过 toml/INSTANCE 干扰
 
         System.out.println("=== RidgeValleyABProbe ===");
         System.out.println("GRID=" + GRID + "  SPACING=" + SPACING + "  REGION=" + REGION + "x" + REGION);
@@ -89,6 +89,7 @@ public final class RidgeValleyABProbe {
             Stats sb = stats(B, land, seaE);
             DeltaStat ds = deltaStat(delta, land);
             DeltaStat dsAll = deltaStat(delta, landAll);
+            PeakDeltaStat peak = peakDeltaStat(delta, A, land);
 
             int landCnt = 0;
             for (int gz = 0; gz < GRID; gz++)
@@ -112,6 +113,8 @@ public final class RidgeValleyABProbe {
                     ds.mean, ds.rms, ds.min, ds.max);
             System.out.printf("   delta(all land):       mean=%+.4f rms=%+.4f min=%+.4f max=%+.4f%n",
                     dsAll.mean, dsAll.rms, dsAll.min, dsAll.max);
+            System.out.printf("   delta(peak h>0.75):    mean=%+.4f max=%+.4f clip@0.15=%5.2f%%%n",
+                    peak.mean, peak.max, 100.0 * peak.clipCnt / Math.max(1, peak.n));
         }
 
         System.out.println("-".repeat(hdr.length()));
@@ -127,6 +130,28 @@ public final class RidgeValleyABProbe {
         System.out.println("  delta.mean≈0 且 stdH↑ → 加性脊-谷条纹（零均值），非均匀下剥 ✓");
         System.out.println("  delta.mean 显著 <0 且 max|grad|≈ → 均匀下剥（剥皮）✗");
         System.out.println("  B.meanH 显著 > A 且 stdH 不变 → 仅整体抬升未造脊（需调参）");
+        System.out.println("  peak.mean≈0 且 clip%≈0 → 峰顶不再被 fadeTarget 均匀抬升（无平台）✓；否则峰顶仍被推高截断（压平）✗");
+    }
+
+    /** 峰顶（h>0.75）delta 统计：验证峰侧衰减后峰顶不再被均匀抬升（无平台/无截断）。 */
+    private static PeakDeltaStat peakDeltaStat(float[][] delta, float[][] h, boolean[][] land) {
+        PeakDeltaStat s = new PeakDeltaStat();
+        for (int z = 0; z < GRID; z++)
+            for (int x = 0; x < GRID; x++)
+                if (land[z][x] && h[z][x] > 0.75f) {
+                    float d = delta[z][x];
+                    s.n++; s.sum += d;
+                    s.max = Math.max(s.max, d);
+                    if (d >= 0.149f) s.clipCnt++; // maxDeltaPerCell=0.15 截断临界点
+                }
+        if (s.n > 0) s.mean = s.sum / s.n;
+        return s;
+    }
+
+    private static final class PeakDeltaStat {
+        int n, clipCnt;
+        double sum, mean;
+        float max;
     }
 
     private static final class Stats {

@@ -26,12 +26,12 @@ public final class RidgeValleyErosion {
     // ===== 骨架层配置（从 GeoGenesisConfig 读取覆盖；stylistic 参数用代码常量初值）=====
     public static class RidgeConfig {
         public boolean enabled = true;
-        public float strength = 0.04f;        // 单 octave 侵蚀强度（直接，不乘 scale）
+        public float strength = 0.08f;        // 单 octave 侵蚀强度（直接，不乘 scale；≤0.09 避免 maxDeltaPerCell=0.15 截断）
         public float cellWorldSize = 100f;    // 骨架特征尺度（世界块）= 条纹细胞世界尺寸
-        public float stripeFreq = 0.6f;       // 细胞内条纹频率（sideDir 幅度）
-        public int octaves = 2;               // gully 层级（骨架只造主脊，细沟留给液滴）
+        public float stripeFreq = 1.2f;       // 细胞内条纹频率（sideDir 幅度，↑密度）
+        public int octaves = 4;               // gully 层级（主脊+次级脊+细沟，spacing=2 下不混叠）
         public float gullyWeight = 0.5f;      // 坡度累积权重
-        public float detail = 1.5f;           // 堆叠淡出幂次（PowInv power）
+        public float detail = 1.0f;           // 堆叠淡出幂次（PowInv power，↓更密小沟）
         public float normalization = 0.5f;    // 条纹幅度归一化度
         public float gain = 0.6f;             // 每 octave 强度衰减
         public float lacunarity = 2.0f;       // 每 octave 频率倍增
@@ -45,17 +45,17 @@ public final class RidgeValleyErosion {
             RidgeConfig c = new RidgeConfig();
             if (cfg != null) {
                 c.enabled = cfgBool(cfg.erosionRidgeEnabled, true);
-                c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 0.04);
+                c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 0.10);
                 c.cellWorldSize = (float) cfgDbl(cfg.erosionRidgeScale, 100.0);
-                c.stripeFreq = (float) cfgDbl(cfg.erosionRidgeCellScale, 0.6);
-                c.octaves = cfgInt(cfg.erosionRidgeOctaves, 2);
+                c.stripeFreq = (float) cfgDbl(cfg.erosionRidgeCellScale, 1.2);
+                c.octaves = cfgInt(cfg.erosionRidgeOctaves, 4);
                 c.gullyWeight = (float) cfgDbl(cfg.erosionRidgeGullyWeight, 0.5);
                 // 脊线软硬（0=尖锐 V 形，0.5=默认，1=圆滑 U 形）
                 double softness = cfgDbl(cfg.erosionRidgeRounding, 0.5);
                 c.rounding[0] = (float) (0.02 + softness * 0.18);  // ridge rounding
                 c.rounding[1] = (float) (softness * 0.12);          // crease (valley) rounding
                 // 细节密度（high=主脊干净，low=满布小沟）
-                c.detail = (float) cfgDbl(cfg.erosionRidgeDetail, 1.5);
+                c.detail = (float) cfgDbl(cfg.erosionRidgeDetail, 1.0);
             }
             return c;
         }
@@ -76,19 +76,25 @@ public final class RidgeValleyErosion {
                                                 float seaE, RidgeConfig cfg) {
         float[][] delta = new float[extLR][extLR];
         float cellGridFreq = 1.0f / Math.max(1f, cfg.cellWorldSize); // 条纹细胞世界尺寸 = cellWorldSize
-        // 【全局常量参考面】源码 fadeTarget = n.x/(amp*0.6)，n.x 是带符号、零均值基面高度。
-        // 本项目 h=terrainE∈[0,1] 在陆地上恒正 → 直接 h/0.6 → fadeTarget 恒正 → delta 单向抬升
-        // （实测 = 陆地 ×1.27 均匀缩放 = 剥皮同类失败）。
-        // 用**全局固定参考 LAND_REF=0.20**（典型陆地平均高度）替代原【per-tile 均值】：
-        //   - 全局常数 → 所有 tile 的 fadeTarget 一致 → 无 tile 边界 DC 跳变 → 无网格伪影。
-        //   - 残余偏置是全局常数（非 per-tile），不引入空间周期结构，可接受。
-        final float LAND_REF = 0.20f;
+        // 【全局对称参考面】源码 fadeTarget = inverse_lerp(valleyAlt, peakAlt, h)*2-1，
+        // 跨真实高程对称映射（谷=-1、峰=+1），脊-谷下切/抬升幅度对称。
+        // 本项目 h=terrainE∈[0,0.9]，用**全局固定中点 LAND_REF=0.30** + 半幅 LAND_HALF=0.30：
+        //   (h-0.30)/0.30 → e=0(谷底)→-1, e=0.30→0, e=0.6+(峰)→+1，陆地全覆盖且对称。
+        //   - 全局常数 → 所有 tile 的 fadeTarget 一致 → 无 tile 边界跳变 → 无缝。
+        //   - 低地 fadeTarget<0 → valley rounding 生效（尖谷）；高地>0 → ridge rounding（圆脊），山形更自然。
+        final float LAND_REF = 0.25f;
+        final float LAND_HALF = 0.25f;
         for (int tz = 0; tz < extLR; tz++) {
             for (int tx = 0; tx < extLR; tx++) {
                 float h = rawLowRes[tz][tx];
                 float gx = gradX(rawLowRes, tx, tz, extLR, spacing);
                 float gz = gradZ(rawLowRes, tx, tz, extLR, spacing);
-                float fadeTarget = clamp((h - LAND_REF) / 0.6f, -1f, 1f);
+                // 峰侧衰减：fadeTarget 正侧（抬升）在峰尖衰减——否则 h>0.5 全部饱和 +1，
+                // 峰顶被每 octave 均匀抬升（4 oct × 0.08 ≈ +0.17e）→ 触 delta 限幅/softCap → 平顶。
+                // 谷侧（负值）不受影响，山谷照常下切；山体中下部仍抬升成脊线。
+                // 窗口收窄到 0.72~0.92（只作用峰尖）：减少 flat 场形态改变，控制液滴 tile 边界差异。
+                float fadeTarget = clamp((h - LAND_REF) / LAND_HALF, -1f, 1f);
+                if (fadeTarget > 0f) fadeTarget *= 1f - smoothstep(0.72f, 0.92f, h);
                 float hs = (h - LAND_REF) * 0.5f + 0.5f;
                 float gxs = gx * 0.5f, gzs = gz * 0.5f;
                 float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,

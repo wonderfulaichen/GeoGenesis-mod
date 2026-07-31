@@ -43,6 +43,7 @@ public final class TerrainPreview {
 
     private final GeoGenesisTerrain terrain;
     private final int seaLevel, snowLine, maxY, minY, horizontalScale, mountainCap;
+    private final double peakFraction, verticalScale;
     /** 高程色阶映射的 e 区间（地形实际可达范围），供图例 Y 标签换算。 */
     private double elevEMin = -1.0, elevEMax = 1.0;
     private final long seed;
@@ -78,6 +79,8 @@ public final class TerrainPreview {
         this.snowLine = (int) new com.geogenesis.worldgen.terrain.HeightCurve(params, params.minY(), params.maxY()).heightFromE(params.snowLine());
         this.maxY = params.maxY();
         this.minY = params.minY();
+        this.peakFraction = params.peakHeightFraction();
+        this.verticalScale = params.verticalScale();
         this.horizontalScale = (int) params.horizontalScale();
         this.mountainCap = params.mountainCap();
         double[] er = params.elevationERange();
@@ -319,7 +322,8 @@ public final class TerrainPreview {
     /** e→世界高度 Y（与 HeightCurve.heightFromE 一致的非对称映射：e=0→海平面）。 */
     private double heightFromE(double e) {
         if (e <= 0.0) return seaLevel - (-e) * (seaLevel - minY);
-        return seaLevel + e * (maxY - seaLevel);
+        double t = Math.max(0.0, Math.min(1.0, e * verticalScale));
+        return seaLevel + t * (maxY - seaLevel) * peakFraction;
     }
 
     // ============================================================

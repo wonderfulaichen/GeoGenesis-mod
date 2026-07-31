@@ -178,6 +178,10 @@ public final class CellGenerator {
         // 6. 陆地火山特征（c 不再参与陆地高度——地形高度全权由类型噪声决定）
         LandFeatures.FeatureResult landFeat = landFeatures.compute(sx, sz);
         eLand += landFeat.total;
+        // 基础地形留余量：整体 ×0.9，使类型高端（maxLandHi=0.95 → 0.855）低于理论上限，
+        // 为脊谷抬升（≈0.17）与液滴沉积留出空间，实际 e 恒 < maxLandHi，softCap 仅作保险。
+        // 线性缩放（峰谷对比不变），非平方（不违反"[0,1] 高度项严禁直接平方"铁律）。
+        eLand *= 0.90;
         cell.eLand = eLand;
         cell.landFeat = landFeat; // 缓存供 classify 使用，避免 sample() 重复 compute
 
@@ -186,7 +190,7 @@ public final class CellGenerator {
 
         // 8. 连续混合（v8.3）：海陆地形 = 海洋噪声场 与 陆地噪声场 的平滑插值。
         double cont = smoothstep(oceanFadeStart, landRampEnd, cEdge); // 0(纯海)→1(纯陆)
-        double e = (1.0 - cont) * eOcean + cont * eLand;
+        double e = softCapLandE((1.0 - cont) * eOcean + cont * eLand);
         cell.e = e;
         cell.eOcean = eOcean;
         cell.blendCont = cont;
@@ -269,10 +273,12 @@ public final class CellGenerator {
     private static final int ERODE_TILE_BORDER = 40;
     /** tile 总边长：3×16 + 40×2 = 128（与 6 月备份的 generateTile 一致） */
     private static final int ERODE_TILE_SIZE = ERODE_TILE_CHUNKS * 16 + ERODE_TILE_BORDER * 2;
-    /** 粗采间距（spacing=4：128/4=32×32=1024 次 terrainE） */
-    private static final int ERODE_SAMPLING_SPACING = 4;
-    /** 低分辨率网格边长 */
-    private static final int ERODE_LOW_RES = ERODE_TILE_SIZE / ERODE_SAMPLING_SPACING;
+        /** 粗采间距（spacing=4：128/4=32×32=1024 次 terrainE） */
+        private static final int ERODE_SAMPLING_SPACING = 4;
+        /** 骨架层（脊-谷条纹）采样间距：比主 bicubic 流程更密(2)，恢复被低分辨率稀释的坡度 → combiMask 正常触发 */
+        private static final int RIDGE_SKELETON_SPACING = 2;
+        /** 低分辨率网格边长 */
+        private static final int ERODE_LOW_RES = ERODE_TILE_SIZE / ERODE_SAMPLING_SPACING;
     /** 缓存条目数（256 条目 ≈ 全部出生区域 tiles 常驻，无 LRU 驱逐） */
     private static final int ERODE_TILE_CACHE_SIZE = 256;
 
@@ -421,18 +427,35 @@ public final class CellGenerator {
         float[][] tile = bicubicUpsampleAligned(lowResBuf, extendedLowRes, spacing,
             alignedStartX, alignedStartZ, originX, originZ, N);
 
-        // 2.5) 粗侵蚀骨架（脊-谷条纹滤镜）作用于未平滑副本 rawLowRes，升采样后注入 flat
-        //      纯局部算子 → 无 tile 边界缝；陆地 mask 保护海洋深度一致性。
+        // 2.5) 粗侵蚀骨架（脊-谷条纹滤镜）—— 作用于独立更密网格（RIDGE_SKELETON_SPACING=2）
+        //       根因：主 bicubic 流程 spacing=4 把地形坡度稀释成 Δe/16，远低于 combiMask 阈值
+        //       (rounding·onset≈0.0125) → combiMask 恒≈0 → 条纹被完全淡出（山谷不可见）。
+        //       用 spacing=2 采样真实地形恢复坡度 → combiMask 在真实陡坡正常触发 → 脊-谷骨架成形。
+        //       纯局部算子（每点独立 evaluate，世界坐标对齐）→ 跨 tile 无缝；陆地 mask 保护海洋深度一致性。
         float[][] coarseDeltaUp = null;
         float[][] coarseDeltaLR = null; // 保留 LR 网格供 pad 回退时采样
+        int skelSpacing = RIDGE_SKELETON_SPACING;
+        int skelExtra = 4;
+        int skelCover = ERODE_TILE_SIZE + 2 * (ERODE_TILE_BORDER + skelExtra * skelSpacing);
+        int skelExtLR = (int) Math.ceil((double) skelCover / skelSpacing) + 1;
+        int skelStartX = Math.floorDiv(originX - skelExtra * skelSpacing, skelSpacing) * skelSpacing;
+        int skelStartZ = Math.floorDiv(originZ - skelExtra * skelSpacing, skelSpacing) * skelSpacing;
         if (erosionOn) {
             RidgeValleyErosion.RidgeConfig rcfg = RidgeValleyErosion.RidgeConfig.fromConfig(cfg);
             if (rcfg.enabled) {
                 double seaE = heightCurve.seaE();
+                float[][] skelGrid = new float[skelExtLR][skelExtLR];
+                for (int tz = 0; tz < skelExtLR; tz++) {
+                    for (int tx = 0; tx < skelExtLR; tx++) {
+                        int wx = skelStartX + tx * skelSpacing;
+                        int wz = skelStartZ + tz * skelSpacing;
+                        skelGrid[tz][tx] = (float) Math.max(terrainE(wx, wz), -0.05);
+                    }
+                }
                 coarseDeltaLR = RidgeValleyErosion.computeCoarseDelta(
-                        rawLowRes, extendedLowRes, spacing, alignedStartX, alignedStartZ, (float) seaE, rcfg);
-                coarseDeltaUp = bilinearUpsample(coarseDeltaLR, extendedLowRes, spacing,
-                        alignedStartX, alignedStartZ, N, originX, originZ);
+                        skelGrid, skelExtLR, skelSpacing, skelStartX, skelStartZ, (float) seaE, rcfg);
+                coarseDeltaUp = bilinearUpsample(coarseDeltaLR, skelExtLR, skelSpacing,
+                        skelStartX, skelStartZ, N, originX, originZ);
             }
         }
 
@@ -477,8 +500,8 @@ public final class CellGenerator {
                             // 无邻居 postErosion 可用 → terrainE + coarseDelta（与 interior 同源，消除 pad 高度跳变）
                             val = (float) Math.max(terrainE(worldX, worldZ), -0.05);
                             if (coarseDeltaLR != null) {
-                                val += sampleBilinear(coarseDeltaLR, extendedLowRes, spacing,
-                                        alignedStartX, alignedStartZ, worldX, worldZ);
+                                val += sampleBilinear(coarseDeltaLR, skelExtLR, skelSpacing,
+                                        skelStartX, skelStartZ, worldX, worldZ);
                             }
                         }
                     }
@@ -501,7 +524,9 @@ public final class CellGenerator {
 
         // 6) delta 限幅：仅 per-cell 安全性限制（防单格暴切），不人为加类型/高度钳制。
         //    噪声已经调好地形类型与高度范围，侵蚀只叠加纹理，不该再有硬上限。
-        float maxDeltaPerCell = 0.15f;
+        //    0.20：脊谷陡坡脊点实测 delta 峰值 +0.174（combiMask 触发 gull 分量），
+        //    0.15 会截断造成山腰/脊顶局部平台（2026-07-31 峰侧衰减修复后峰顶 delta=0，余量充足）。
+        float maxDeltaPerCell = 0.18f;
         for (int z = 0; z < N; z++) {
             for (int x = 0; x < N; x++) {
                 float val = tile[z][x] - base[z][x];
@@ -801,7 +826,7 @@ public final class CellGenerator {
                 // NaN/Inf 守卫：避免 fillTerrainColumn 因 (int)Math.floor(NaN)→0 把全列铺到世界底。
                 double newE = cell.e + delta;
                 if (Double.isNaN(newE) || Double.isInfinite(newE)) newE = cell.e;
-                double e = clamp(newE, -1.0, 1.0);
+                double e = softCapLandE(newE);
                 cell.e = e;
                 cell.height = heightCurve.heightFromE(e);
 
@@ -1014,6 +1039,22 @@ public final class CellGenerator {
 
     private static double clamp(double v, double lo, double hi) {
         return v < lo ? lo : (v > hi ? hi : v);
+    }
+
+    /**
+     * 陆地 e 软钳制（实际地形 < 理论峰顶铁律）：
+     * 类型高端 maxLandHi（默认 0.95 → 理论峰顶 Y≈288）之上渐近压缩、永不触顶，
+     * 实际 e 恒低于 maxLandHi，HeightCurve 的 clamp(e×verticalScale,0,1) 永不触发 → 无压平山尖、
+     * 不超配置地形图表的理论最高高度。海洋侧（e≤0）不受影响（clamp 下界 -1 保底）。
+     */
+    private double softCapLandE(double e) {
+        if (e <= 0.0) return Math.max(-1.0, e);
+        double maxLandHi = params.splineConfig().maxLandHi();
+        double softStart = maxLandHi * 0.92; // 基础地形 ×0.9 后峰顶 0.855 < 0.874 → 正常地形不触发，仅液滴极端叠加兜底
+        if (e <= softStart) return e;
+        double cap = maxLandHi * 0.98;       // 实际天花板（默认 0.931），低于理论 0.95
+        double span = cap - softStart;
+        return softStart + span * (1.0 - 1.0 / (1.0 + (e - softStart) / span));
     }
     private static double saturate(double v) {
         return v < 0 ? 0 : (v > 1 ? 1 : v);

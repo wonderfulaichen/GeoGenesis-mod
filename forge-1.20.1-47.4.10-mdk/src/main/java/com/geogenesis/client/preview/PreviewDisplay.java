@@ -105,6 +105,7 @@ public class PreviewDisplay extends AbstractWidget {
     // ====== 数据 ======
     private long seed;
     private int seaLevel, maxY, minY, mountainCap;
+    private double peakFraction, verticalScale;
     /** 高程色阶映射的 e 区间（地形实际可达范围），供图例 Y 标签换算。 */
     private double elevEMin = -1.0, elevEMax = 1.0;
     /** 视口变化标记：需要清除纹理重新填充。pan/zoom/seed 变时设 true */
@@ -138,6 +139,8 @@ public class PreviewDisplay extends AbstractWidget {
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
         this.maxY = params.maxY();
+        this.peakFraction = params.peakHeightFraction();
+        this.verticalScale = params.verticalScale();
         this.renderScale = Math.max(1, Math.min(4, renderScale));
         // 高程色阶范围跟随地形实际可达 e 区间（由地形类型 e 界限换算），
         // 使地形最高处触顶雪白、最深触底深蓝，而非世界的绝对高度上下限。
@@ -556,6 +559,8 @@ public class PreviewDisplay extends AbstractWidget {
         this.minY = params.minY();
         this.mountainCap = params.mountainCap();
         this.maxY = params.maxY();
+        this.peakFraction = params.peakHeightFraction();
+        this.verticalScale = params.verticalScale();
         double[] er = params.elevationERange();
         this.elevEMin = er[0]; this.elevEMax = er[1];
         GeoPalette.setElevationERange(er[0], er[1]);
@@ -586,7 +591,8 @@ public class PreviewDisplay extends AbstractWidget {
     /** e→世界高度 Y（与 HeightCurve.heightFromE 一致的非对称映射：e=0→海平面）。 */
     private double heightFromE(double e) {
         if (e <= 0.0) return seaLevel - (-e) * (seaLevel - minY);
-        return seaLevel + e * (maxY - seaLevel);
+        double t = Math.max(0.0, Math.min(1.0, e * verticalScale));
+        return seaLevel + t * (maxY - seaLevel) * peakFraction;
     }
     public void setElevationColormap(String name) { GeoPalette.setElevationColormap(name); }
 
