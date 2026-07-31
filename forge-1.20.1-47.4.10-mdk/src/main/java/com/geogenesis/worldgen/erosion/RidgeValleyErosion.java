@@ -35,7 +35,7 @@ public final class RidgeValleyErosion {
         public float normalization = 0.5f;    // 条纹幅度归一化度
         public float gain = 0.6f;             // 每 octave 强度衰减
         public float lacunarity = 2.0f;       // 每 octave 频率倍增
-        public float[] rounding = {0.1f, 0.15f, 0.1f, 2.0f};   // [1]=crease 谷底圆化（0→0.15，U 形谷）
+        public float[] rounding = {0.1f, 0.12f, 0.1f, 2.0f};   // [1]=crease 谷底圆化（0→0.12，U 形谷，用户定 0.12 比 0.15 合适）
         public float[] onset = {0.9f, 1.25f, 2.8f, 1.5f};      // [0]=combiMask 主阈值（1.25→0.9，谷壁进入削切）
         public float[] assumedSlope = {0.7f, 1.0f};
         public int seed = 1337;
@@ -53,7 +53,7 @@ public final class RidgeValleyErosion {
                 // 脊线软硬（0=尖锐 V 形，0.5=默认，1=圆滑 U 形）
                 double softness = cfgDbl(cfg.erosionRidgeRounding, 0.5);
                 c.rounding[0] = (float) (0.02 + softness * 0.18);  // ridge rounding
-                c.rounding[1] = (float) (softness * 0.30);          // crease (valley) rounding（0.12→0.30：谷底圆化，U 形谷）
+                c.rounding[1] = (float) (softness * 0.24);          // crease (valley) rounding（softness 0.5→0.12，U 形谷，用户定）
                 // 细节密度（high=主脊干净，low=满布小沟）
                 c.detail = (float) cfgDbl(cfg.erosionRidgeDetail, 1.0);
             }
