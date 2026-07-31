@@ -53,7 +53,18 @@ public final class TerrainCharacterField {
         public double[] typeWeights;  // [TerrainClass.COUNT]，仅陆地类型非零
     }
 
-    public TerrainCharacterField() {
+    /** c 场（cell 中心大陆性采样，c 分带类型布局用） */
+    private final ContinentField continent;
+    private final double continentBias;
+
+    /**
+     * 【2026-07-31】cell 类型按 c 分带（平原靠海、丘陵缓冲、山地高原内陆）：
+     * 原纯哈希均匀分配（28/24/18/18/12）→ 任意类型随机邻接（PLATEAU cell 可落在海岸，
+     * 与 PLAIN 直接相邻 → 用户反馈"高原旁边是平原"）。
+     */
+    public TerrainCharacterField(ContinentField continent, double continentBias) {
+        this.continent = continent;
+        this.continentBias = continentBias;
         Noise wX = new Frequency(new Simplex(310), WARP_FREQ);
         this.warpX = new Map(wX, -1.0, 1.0, -1.0, 1.0);
         Noise wZ = new Frequency(new Simplex(311), WARP_FREQ);
@@ -150,21 +161,36 @@ public final class TerrainCharacterField {
     }
 
     /**
-     * 确定性哈希：(cx, cz) → 5 种陆地类型之一。
-     * 【2026-07-31 加权分配】原哈希均匀 20%，叠加 Voronoi 权重场扩围后 MOUNTAINS+PLATEAU 占
-     * 陆地 63.7%（平原/丘陵被挤压、高原嵌在山脉带内）。权重改为：
-     * PLAIN 28 / HILLS 24 / PLATEAU 18 / MOUNTAINS 18 / BASIN 12（山地高原回落、平原丘陵回升）。
+     * 确定性哈希 + c 分带：(cx, cz) + cell 中心大陆性 → 5 种陆地类型。
+     * 【2026-07-31 c 分带布局 v2】按 cell 中心大陆性 cBiased 分带（与海陆 mask 同空间）：
+     *   c<0.35  近岸-中内陆：PLAIN 主导 + HILLS（平原面积足，无 PLATEAU/MOUNTAINS）
+     *   c∈[0.35,0.60) 内陆过渡：HILLS 缓冲 + MOUNTAINS/PLATEAU 起步（丘陵作平原→山地过渡带）
+     *   c≥0.60  深远内陆：MOUNTAINS/PLATEAU 主导
+     * v1（c<0.22 才 PLAIN）→ PLAIN 仅 5.7%（近岸带面积小）；v2 平原带放宽到 c<0.35。
+     * PLATEAU 只在 c≥0.35（概率 0.25）→ 与 PLAIN（c<0.35）之间隔着 0.35-0.60 过渡带
+     * （HILLS/MOUNTAINS/PLATEAU 混合）→ 平原旁不再直接高原。
+     * 带内哈希随机（空间变化），带界由 c 场等值线（不规则自然形状），cell 类型只依赖 (cx,cz)
+     * → 确定性 + 无缝。
      */
-    private static int getCellType(int cx, int cz) {
+    private int getCellType(int cx, int cz) {
         long h = (long) cx * 374761393L + (long) cz * 668265263L;
         h = h * 1274126177L ^ (h >>> 16);
         h = h * 709369L ^ (h >>> 13);
         h ^= (h >>> 16);
         double r = (h & Long.MAX_VALUE) / (double) Long.MAX_VALUE;
-        if (r < 0.28) return TerrainClass.PLAIN.ordinal();
-        if (r < 0.52) return TerrainClass.HILLS.ordinal();
-        if (r < 0.70) return TerrainClass.PLATEAU.ordinal();
-        if (r < 0.88) return TerrainClass.MOUNTAINS.ordinal();
-        return TerrainClass.BASIN.ordinal();
+        double c = continent.sample((cx + 0.5) * CELL_SPACING, (cz + 0.5) * CELL_SPACING) + continentBias;
+        if (c < -0.05) {
+            return r < 0.5 ? TerrainClass.BASIN.ordinal() : TerrainClass.PLAIN.ordinal();
+        } else if (c < 0.35) {
+            return r < 0.60 ? TerrainClass.PLAIN.ordinal()
+                : (r < 0.95 ? TerrainClass.HILLS.ordinal() : TerrainClass.BASIN.ordinal());
+        } else if (c < 0.60) {
+            return r < 0.35 ? TerrainClass.HILLS.ordinal()
+                : (r < 0.55 ? TerrainClass.MOUNTAINS.ordinal()
+                : (r < 0.80 ? TerrainClass.PLATEAU.ordinal() : TerrainClass.PLAIN.ordinal()));
+        } else {
+            return r < 0.45 ? TerrainClass.MOUNTAINS.ordinal()
+                : (r < 0.75 ? TerrainClass.PLATEAU.ordinal() : TerrainClass.HILLS.ordinal());
+        }
     }
 }
