@@ -566,7 +566,7 @@ public final class GeoGenesisConfig {
 
         builder.push("Semantic Affinity");
         // Phase 2.2: 语义适配旋钮
-        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。【2026-07-31 5.0→1.0】β 过大会让 PLAIN 权重在 60% 区域 argmax（丘陵/过渡区被归为平原 → 平原 mean Y 145 远超配置定义 67~77）。1.0=温和偏置（factor ∈ [0.8,1.8]），山脉偏内陆、盆地偏海岸/深海。0=纯空间 Voronoi 类型分布。范围 [0,10]。")
+        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。【2026-07-31】MidSpline 权重曲线已把 PLAIN 收窄到海岸、HILLS 作过渡带；β=1（factor∈[0.8,1.8]）平衡序列与分布（β=2 过度收敛 → MOUNTAINS 在低 c 区消失）。0=纯空间 Voronoi 类型分布。范围 [0,10]。")
             .defineInRange("cAffinityStrength", 1.0, 0.0, 10.0);
         builder.pop();
 
@@ -691,13 +691,13 @@ public final class GeoGenesisConfig {
         // HILLS inner spline (12 fields)
         builder.push("HILLS");
         hillsLoLoc0 = builder.defineInRange("hillsLoLoc0", 0.0, 0.0, 1.0);
-        hillsLoVal0 = builder.defineInRange("hillsLoVal0", 0.08, -1.0, 1.0);
+        hillsLoVal0 = builder.defineInRange("hillsLoVal0", 0.12, -1.0, 1.0);
         hillsLoDeriv0 = builder.defineInRange("hillsLoDeriv0", 0.0, -10.0, 10.0);
         hillsLoLoc1 = builder.defineInRange("hillsLoLoc1", 1.0, 0.0, 1.0);
         hillsLoVal1 = builder.defineInRange("hillsLoVal1", 0.06, -1.0, 1.0);
         hillsLoDeriv1 = builder.defineInRange("hillsLoDeriv1", 0.0, -10.0, 10.0);
         hillsHiLoc0 = builder.defineInRange("hillsHiLoc0", 0.0, 0.0, 1.0);
-        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.40, -1.0, 1.0);
+        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.34, -1.0, 1.0);
         hillsHiDeriv0 = builder.defineInRange("hillsHiDeriv0", 0.0, -10.0, 10.0);
         hillsHiLoc1 = builder.defineInRange("hillsHiLoc1", 1.0, 0.0, 1.0);
         hillsHiVal1 = builder.defineInRange("hillsHiVal1", 0.35, -1.0, 1.0);

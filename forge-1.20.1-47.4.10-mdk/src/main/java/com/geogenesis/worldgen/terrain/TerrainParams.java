@@ -266,7 +266,7 @@ public record TerrainParams(
             // preview compat（HS=1 默认 1:1 缩放，无畸变）
             1.0, 63, 0.70, -64, 320, 0.92, (int) Math.round(63 + (320 - 63) * 0.92 * 0.95), -48,
             1.0,  // verticalScale
-            1.0,              // cAffinityStrength（5.0 会让 PLAIN 在 60% 区域 argmax → 平原过高）
+            1.0,              // cAffinityStrength（β=2 + 收窄曲线过度收敛：探针区域 MOUNTAINS 0 样本；β=1 平衡序列与分布）
             // coastline diversification
             0.03, 300.0, 5, 2.0, 0.5,  // coastlineWarpAmp, coastlineWarpScale, octaves, lacunarity, persistence
             0.08,               // coastTerrainInfluence
