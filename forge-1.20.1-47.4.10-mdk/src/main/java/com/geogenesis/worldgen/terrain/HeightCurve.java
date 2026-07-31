@@ -21,12 +21,15 @@ public final class HeightCurve {
     private final double maxY;
     private final double seaLevelY;
     private final double verticalScale;
+    /** 实际峰顶占 maxY 的比例（余量避免触顶世界构建上限） */
+    private final double peakFraction;
 
     public HeightCurve(TerrainParams p, double minWorldY, double maxWorldY) {
         this.minY = minWorldY;
         this.maxY = maxWorldY;
         this.seaLevelY = p.seaLevel();
         this.verticalScale = p.verticalScale();
+        this.peakFraction = p.peakHeightFraction();
         this.locations = p.oceanLocations();
         this.values = p.oceanValues();
         this.derivatives = p.oceanDerivatives();
@@ -70,7 +73,8 @@ public final class HeightCurve {
             return seaLevelY - t * (seaLevelY - minY);
         } else {
             double t = NoiseUtil.clamp(e * verticalScale, 0.0, 1.0);
-            return seaLevelY + t * (maxY - seaLevelY);
+            // peakFraction：实际峰顶 = 海平面 + 比例×(maxY−海平面)，留余量避免触顶世界构建上限（不靠有 bug 的钳制）
+            return seaLevelY + t * (maxY - seaLevelY) * peakFraction;
         }
     }
 

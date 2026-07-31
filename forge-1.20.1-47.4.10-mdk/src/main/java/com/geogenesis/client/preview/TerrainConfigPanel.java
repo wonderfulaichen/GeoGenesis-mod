@@ -100,13 +100,14 @@ public class TerrainConfigPanel extends ConfigPanel {
         int seaLevel = c.seaLevel.get();
         int maxY = c.maxY.get();
         int minY = c.minY.get();
+        double peakFrac = c.peakHeightFraction.get();
         chart.setYWorldRange(minY, maxY);
-        // 与 HeightCurve.heightFromE() 一致：e≤0 用 (seaLevel - minY)，e>0 用 (maxY - seaLevel)
+        // 与 HeightCurve.heightFromE() 一致：e≤0 用 (seaLevel - minY)，e>0 用 (maxY - seaLevel) × peakFraction
         chart.setEToWorldY(e -> {
             if (e <= 0.0) {
                 return seaLevel - (-e) * (seaLevel - minY);
             } else {
-                return seaLevel + e * (maxY - seaLevel);
+                return seaLevel + e * (maxY - seaLevel) * peakFrac;
             }
         });
 
@@ -301,12 +302,13 @@ public class TerrainConfigPanel extends ConfigPanel {
         int seaLevel = c.seaLevel.get();
         int maxY = c.maxY.get();
         int minY = c.minY.get();
+        double peakFrac = c.peakHeightFraction.get();
 
-        // 地形图 e→Y 映射
+        // 地形图 e→Y 映射（与 HeightCurve.heightFromE 一致，陆地侧乘 peakFraction）
         chart.setYWorldRange(minY, maxY);
         chart.setEToWorldY(e -> {
             if (e <= 0.0) return seaLevel - (-e) * (seaLevel - minY);
-            else return seaLevel + e * (maxY - seaLevel);
+            else return seaLevel + e * (maxY - seaLevel) * peakFrac;
         });
         chart.refreshFromConfig();
 

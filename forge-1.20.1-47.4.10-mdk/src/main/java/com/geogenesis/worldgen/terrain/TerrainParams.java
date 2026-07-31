@@ -170,7 +170,10 @@ public record TerrainParams(
     int minY,
     /** 世界最大 Y，默认 320 */
     int maxY,
-    /** 山峰高度上限 Y，默认 256 */
+    /** 实际峰顶占 maxY 的比例（余量避免触顶世界构建上限），默认 0.92 */
+    double peakHeightFraction,
+    /** 理论峰顶高度 Y（= HeightCurve.heightFromE(maxLandHi) = seaLevel + maxLandHi*(maxY-seaLevel)*peakHeightFraction，默认 288）。
+     *  实际地形经 CellGenerator.softCapLandE 软钳制后恒低于此值（默认最高 ≈281），永不触 clamp 被切平。同时作为预览高程色阶 Y 上限。 */
     int mountainCap,
     /** 海沟深度下限 Y，默认 -48 */
     int trenchDepth,
@@ -258,7 +261,7 @@ public record TerrainParams(
             0.25, 0.04, 0.82, 0.25, 0.15,  // elevHigh↑0.25,reliefHigh↑0.04,peakE,snowLatitudeInfluence,snowHumidityInfluence
 
             // preview compat（HS=1 默认 1:1 缩放，无畸变）
-            1.0, 63, 0.70, -64, 320, 256, -48,
+            1.0, 63, 0.70, -64, 320, 0.92, (int) Math.round(63 + (320 - 63) * 0.92 * 0.95), -48,
             1.0,  // verticalScale
             5.0,              // cAffinityStrength
             // coastline diversification

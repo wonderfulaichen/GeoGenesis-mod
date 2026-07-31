@@ -34,11 +34,11 @@
 - `erosionEnabled` 默认 false（游戏内手动开，否则世界创建慢）；`riversEnabled` 默认 true（隔离侵蚀测试可关）。
 
 ### 两级侵蚀
-- **粗级（骨架）= 脊-谷条纹滤镜** `RidgeValleyErosion`（纯局部算子，无 tile 边界缝）：低分辨率 32×32 跑 `computeCoarseDelta`（gradient 对齐 PhacelleNoise 条纹，octave 累积 gullySlope，combiMask 堆叠淡出）→ bilinear 升采样 → `flat = terrainE + coarseDeltaUp`。陆地 mask（smoothstep around seaE）保护海洋深度。
+- **粗级（骨架）= 脊-谷条纹滤镜** `RidgeValleyErosion`（纯局部算子，无 tile 边界缝）：在**独立更密网格（RIDGE_SKELETON_SPACING=2，区别于主 bicubic 的 spacing=4）**采样真实地形跑 `computeCoarseDelta`（gradient 对齐 PhacelleNoise 条纹，octave 累积 gullySlope，combiMask 堆叠淡出）→ bilinear 升采样 → `flat = terrainE + coarseDeltaUp`。陆地 mask（smoothstep around seaE）保护海洋深度。
   - 溯源：Rune Skovbo Johansen 2026-03 博客 + Luke Mitchell Burst C# `lpmitchell/AdvancedTerrainErosion`(MPL-2.0+MIT)。技术笔记 `docs/05-分析诊断/03-脊谷条纹侵蚀骨架-ridge-valley-erosion.md`。
-  - 配置（GeoGenesisConfig，仅声明+defineInRange+toml，不在 TerrainParams）：erosionRidgeEnabled=true / Strength=0.10[0,0.5] / Scale=280[50,800] / CellScale=0.6[0.2,2.0] / Octaves=2[1,5] / GullyWeight=0.5[0,1]。
-  - **已实现并编译通过（2026-07-31）**：RidgeValleyErosion.java + CellGenerator 接线（step 2.5 computeCoarseDelta → bilinearUpsample → flat init 加 coarseDeltaUp；maxDeltaPerCell 0.10→0.15）。
-  - **A/B 验证（RidgeValleyABProbe，2026-07-31）**：初版 `fadeTarget=h/0.6` 用 terrainE∈[0,1] 恒正 → delta 单向抬升，实测 = 陆地高度 ×1.27 均匀缩放（std/mean/grad 全 1.27×）= **剥皮同类失败**（用户明确否决）。**修复**：① fadeTarget 改为相对陆地均值 `(h-meanLandH)/0.6` 居中；② 末道 DC 偏置去除（陆地 delta 减均值再乘 land mask）。**修复后**：whole-land delta mean≈+0.005（≈0，非剥皮）✓；stdH↑1.27×、mean|grad|↑1.27×、max|grad|↑、严格局部峰 12→21(+75%) → **真·切多峰** ✓。探针 `runRidgeABProbe --args="seed1,seed2"`；full-mask 子集 delta 仍 +0.02（仅脊侧，谷侧在近岸抵消，属正确脊-谷行为）。
+  - 配置（GeoGenesisConfig，仅声明+defineInRange+toml，不在 TerrainParams）：erosionRidgeEnabled=true / **Strength=0.08[0,0.5]** / Scale=100[50,800] / **CellScale=1.2[0.2,2.0]** / **Octaves=4[1,5]** / GullyWeight=0.5[0,1]。
+  - **【2026-07-31 关键根因+修复】山谷不明显根因**：`combiMask = easeOut(smoothStart(slopeLen*onset, rounding*onset))`，slopeLen 用真实梯度 Δe/16（spacing=4 稀释），远低于阈值 rounding*onset≈0.0125 → **combiMask 恒≈0.004 → 条纹被完全淡出**（fGx≈fadeTarget，仅微弱线性偏移）。**修复=骨架层独立 spacing=2 网格采样真实地形恢复坡度**（combiMask 在真实陡坡正常触发）。配套：fadeTarget 对称化 `(h-0.25)/0.25`（谷=-1、峰=+1，LAND_REF=0.25 匹配陆地中值→delta.mean≈0 非剥皮）；strength 0.04→0.08（≤0.09 避免 >maxDeltaPerCell=0.15 截断）；octaves 2→4；CellScale 0.6→1.2（更密谷）。**配置同步铁律**：字段初始 / GeoGenesisConfig BUILDER / fromConfig 回退 三处必须一致（漏 fromConfig 回退曾导致探针走旧默认 0.04）。
+  - **A/B 验证（RidgeValleyABProbe，2026-07-31，spacing=2）**：seed12345 陆地 10.9% → stdH 0.118→0.198（**stdR=1.68x**）、mean|grad| 0.0060→0.0100（**mgR=1.67x**）、maxGrad +68%；delta(full-land) mean=+0.0089≈0（**非剥皮**✓）；B.meanH−A.meanH=+0.009（山抬升、谷下切对称）。极少数点 max=0.174 略超 0.15（<5% 截断，正侧脊略平，可接受）。结论：**脊-谷骨架真正成形，山谷明显**。
 - **细级（打磨）= 液滴侵蚀** `ErosionEngine.runErosionOnFlat`：单轮 + 3-zone flat；调参约 12% 默认强度（erosionStrength=0.3, dropsMul=0.4, erodeMul=0.4）。只做细节，不造大骨架。
 - **否决方案**：① D8 流功率（flow-accumulation 必致 tile 边界缝，旧 bug 复活；且 bicubic 平滑深谷→"剥皮"匀质下剥，已验证失败）；② 局部脊-谷锐化（曲率调制只能锐化已有起伏，不能在圆噪声造新脊线）。
 
