@@ -80,22 +80,6 @@ public final class RidgeValleyABProbe {
             float[][] delta = RidgeValleyErosion.computeCoarseDelta(
                     A, GRID, SPACING, 0, 0, (float) seaE, rcfg);
 
-            // 细节脊谷层（与 CellGenerator 叠加一致）：细条纹次级沟壑
-            RidgeValleyErosion.RidgeConfig dcfg = new RidgeValleyErosion.RidgeConfig();
-            dcfg.enabled = true;
-            dcfg.strength = 0.04f;
-            dcfg.cellWorldSize = rcfg.cellWorldSize;
-            dcfg.stripeFreq = 4.0f;
-            dcfg.octaves = 3;
-            dcfg.gullyWeight = 0.5f;
-            dcfg.detail = 1.5f;
-            dcfg.seed = 777;
-            float[][] detail = RidgeValleyErosion.computeCoarseDelta(
-                    A, GRID, SPACING, 0, 0, (float) seaE, dcfg);
-            for (int dz = 0; dz < GRID; dz++)
-                for (int dx = 0; dx < GRID; dx++)
-                    delta[dz][dx] += detail[dz][dx];
-
             float[][] B = new float[GRID][GRID];
             for (int gz = 0; gz < GRID; gz++)
                 for (int gx = 0; gx < GRID; gx++)
