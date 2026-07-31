@@ -150,11 +150,12 @@ public final class TypeLandShape {
         // 抬升用平滑连续权重场 → 无缝；softCap 兜底脊谷叠加超限（极少陡坡尖）。
         double mountW = tw[TerrainClass.MOUNTAINS.ordinal()];
         double platW = tw[TerrainClass.PLATEAU.ordinal()];
-        // 台座抬升 0.25（线性 0.15 起抬 / 0.65 满）：高原明显高于丘陵；边缘过渡带自然成台地陡缘。
-        // 注：Voronoi 高斯衰减快，argmax 样本平均权重仅 ~0.34（实测 PLATEAU mean 只 +0.015@0.16 抬升）
-        // → 窗口必须下探到 0.15 才能覆盖多数样本。高权重核心区抬满 → 台面；softCap 兜底 c 高端。
-        double platRaise = 0.25 * clamp01((platW - 0.15) / 0.50);
-        double mountRaise = 0.12 * smoothstep(0.50, 0.80, mountW) * (1.0 - 0.8 * platW);
+        // 台座抬升 0.15（线性 0.15 起抬 / 0.65 满）：高原高于丘陵即可，避免顶部越过雪线
+        // （0.70）被 SNOW 覆盖导致高原面积缩小（实测 0.25 抬升 PLATEAU max 0.84 → 顶部变雪）。
+        // 山体抬升 0.05：山地靠样条 hi=0.95 已最高，抬升仅补充过渡带区分；0.12 会让山地核心
+        // 0.97+ 吃掉 eLand×0.9 余量 → 触 softCap 窄带（山峰普遍碰上限，用户反馈）。
+        double platRaise = 0.15 * clamp01((platW - 0.15) / 0.50);
+        double mountRaise = 0.05 * smoothstep(0.50, 0.80, mountW) * (1.0 - 0.8 * platW);
         eLand += platRaise + mountRaise;
         // 放开下限到海平面以下：盆地等类型的内层样条可为负（e<0 → HeightCurve 映射为低于海平面
         // → 积水成湖/洼地）。下限取海洋深度地板 ELAND_MIN，避免异常配置产生过深空洞；上限仍封 1.0。
