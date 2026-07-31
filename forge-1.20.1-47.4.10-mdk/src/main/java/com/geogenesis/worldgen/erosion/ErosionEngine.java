@@ -39,8 +39,8 @@ public class ErosionEngine {
     private static final float DEPOSIT_SPEED = 0.02f;
     /** SimpleHydrology 型统一松弛率（原 depositionRate=0.1），高度差驱动的平衡浓度 → 侵蚀/沉积双向 */
     private static final float RELAX_RATE = 0.1f;
-    /** cascade 局部每 N 步执行（原版每步，此处每 3 步平衡性能） */
-    private static final int CASCADE_INTERVAL = 3;
+    /** cascade 局部每 N 步执行（2026-08-01 对齐原版每步，河床平滑更充分；8 邻居小邻域性能可控） */
+    private static final int CASCADE_INTERVAL = 1;
     private static final float CASCADE_MAXDIFF = 0.01f;
 
     // ===== 三尺度配置 (v3 - 强侵蚀 + 河谷协同) =====
@@ -254,9 +254,15 @@ public class ErosionEngine {
             float hSW = flat[idx + bufSize], hSE = flat[idx + bufSize + 1];
             float h0 = hNW * (1 - fx) * (1 - fy) + hNE * fx * (1 - fy)
                      + hSW * (1 - fx) * fy + hSE * fx * fy;
-            // ---- 方向（含片流：梯度≈0 时确定性噪声驱动） ----
-            float gx = (hNE - hNW) * (1 - fy) + (hSE - hSW) * fy;
-            float gy = (hSW - hNW) * (1 - fx) + (hSE - hNE) * fx;
+            // ---- 方向（3D 法线，3×3 Sobel 邻域，对齐 SH 抗噪法线语义） ----
+            // 原 2×2 双线性梯度对单格尖峰敏感（粒子被噪声点弹开、轨迹抖动）；
+            // 3×3 Sobel（对角+边加权）平滑噪声 → 侵蚀方向更自然稳定。
+            float hN = flat[idx - bufSize], hS = flat[idx + bufSize];
+            float hW = flat[idx - 1], hE = flat[idx + 1];
+            float hNW2 = flat[idx - bufSize - 1], hNE2 = flat[idx - bufSize + 1];
+            float hSW2 = flat[idx + bufSize - 1], hSE2 = flat[idx + bufSize + 1];
+            float gx = (hSE2 + 2 * hE + hNE2 - hSW2 - 2 * hW - hNW2) / 8f;
+            float gy = (hSW2 + 2 * hS + hSE2 - hNW2 - 2 * hN - hNE2) / 8f;
             float glen = (float) Math.sqrt(gx * gx + gy * gy);
 
             if (glen < 1e-12f) {
