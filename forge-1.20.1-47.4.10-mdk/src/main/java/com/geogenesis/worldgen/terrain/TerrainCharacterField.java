@@ -19,11 +19,13 @@ public final class TerrainCharacterField {
     /** 网格间距（块单位），400 = 25 chunks，细胞区域感鲜明 */
     private static final int CELL_SPACING = 400;
 
-    /** 搜索半径：1 → 3×3 搜索窗口（ring 2 在 σ=150, spacing=400 时权重 < 0.00034，可安全忽略） */
-    private static final int SEARCH_RADIUS = 1;
+    /** 搜索半径：2 → 5×5 搜索窗口（ring 2 在 σ=300, spacing=400 时权重 e^-1.39≈0.25，参与混合更宽） */
+    private static final int SEARCH_RADIUS = 2;
 
-    /** 高斯 σ：150 → 细胞边缘权重 ~0.4（在 200 块边界处），平滑过渡 */
-    private static final double SIGMA = 150.0;
+    /** 高斯 σ：300 → 过渡核心（权重 0.6→0.4）约 81 块宽（每 5 块升 1 块），自然缓坡。
+     *  【2026-08-01】σ=150 时过渡核心仅 41 块（每 2.4 块升 1 块）→ 用户反馈"平原到丘陵台阶边"；
+     *  加大到 300（类型带分离 + 宽过渡兼顾：差异化保留、过渡自然）。 */
+    private static final double SIGMA = 300.0;
     private static final double INV_2SIGMA2 = 1.0 / (2.0 * SIGMA * SIGMA);
 
     /** 5 种陆地类型的 ordinal 映射（顺序与 TypeNoiseProvider.LAND_TYPES 无关） */
