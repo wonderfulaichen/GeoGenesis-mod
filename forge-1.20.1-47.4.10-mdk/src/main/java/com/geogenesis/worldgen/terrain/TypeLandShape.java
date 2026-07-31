@@ -114,10 +114,11 @@ public final class TypeLandShape {
         //   eLand      = blendLo + (blendHi − blendLo) · modulated
         // </pre>
         // shared 是连续函数；perTypeAvg - shared 是零均值小幅偏差，梯度幅值受限
-        // （~0.003/block，×STRENGTH 0.4 → 贡献 Δe ~0.001/block），不引起断裂。
+        // （~0.003/block，×STRENGTH 0.55 → 贡献 Δe ~0.0016/block），不引起断裂。
         // 同时 PLATEAU 的平顶边缘/MOUNTAINS 脊线等特征通过 per-type 噪声自然表达。
         // STRENGTH=0 → 纯共享（无类型特征），=1 → 纯 per-type（断裂风险）。
-        final double MORPH_STRENGTH = 0.4;
+        // 0.55：0.4 时类型形态特征被压得太弱（山地脊线/高原起伏 40% 贡献 → 各类型趋同）。
+        final double MORPH_STRENGTH = 0.55;
         double blendLo = 0.0, blendHi = 0.0;
         for (int i = 0; i < lands.length; i++) {
             double w = tw[lands[i].ordinal()];
@@ -141,6 +142,20 @@ public final class TypeLandShape {
         if (modulated < 0.0) modulated = 0.0;
         else if (modulated > 1.0) modulated = 1.0;
         double eLand = blendLo + (blendHi - blendLo) * modulated;
+        // 类型显式特征（台座/山体抬升）：加权混合把类型区间拉向平均（Voronoi σ=150 主导区只占 ~70%
+        // 权重，MOUNTAINS 区间 [0.45,0.95] 混合后中位仅 0.63，与 PLATEAU 0.615 几乎同高 → 山地不
+        // 高、高原不台）。按主导权重显式抬升恢复类型高度区分度：
+        //   - platRaise：高原台座（边缘由 smoothstep 过渡 → 台地陡缘）
+        //   - mountRaise：山地抬升（高原区不抬，避免重叠区双抬）
+        // 抬升用平滑连续权重场 → 无缝；softCap 兜底脊谷叠加超限（极少陡坡尖）。
+        double mountW = tw[TerrainClass.MOUNTAINS.ordinal()];
+        double platW = tw[TerrainClass.PLATEAU.ordinal()];
+        // 台座抬升 0.25（线性 0.15 起抬 / 0.65 满）：高原明显高于丘陵；边缘过渡带自然成台地陡缘。
+        // 注：Voronoi 高斯衰减快，argmax 样本平均权重仅 ~0.34（实测 PLATEAU mean 只 +0.015@0.16 抬升）
+        // → 窗口必须下探到 0.15 才能覆盖多数样本。高权重核心区抬满 → 台面；softCap 兜底 c 高端。
+        double platRaise = 0.25 * clamp01((platW - 0.15) / 0.50);
+        double mountRaise = 0.12 * smoothstep(0.50, 0.80, mountW) * (1.0 - 0.8 * platW);
+        eLand += platRaise + mountRaise;
         // 放开下限到海平面以下：盆地等类型的内层样条可为负（e<0 → HeightCurve 映射为低于海平面
         // → 积水成湖/洼地）。下限取海洋深度地板 ELAND_MIN，避免异常配置产生过深空洞；上限仍封 1.0。
         // 注意：原 clamp01 把 eLand 钳到 [0,1]，会抹平盆地凹陷（内部全压成 0 平盘），现已修正。
@@ -149,6 +164,15 @@ public final class TypeLandShape {
 
     /** 陆地 e 允许下探到海洋深度地板（盆地凹陷可低于海平面成湖） */
     private static final double ELAND_MIN = -0.35;
+
+    /** smoothstep（0→1 平滑过渡），用于类型台座/抬升的权重渐变 */
+    private static double smoothstep(double e0, double e1, double x) {
+        double t = (x - e0) / (e1 - e0);
+        t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    private static double clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
     /**
      * 采样 eLand（完整流程）。
