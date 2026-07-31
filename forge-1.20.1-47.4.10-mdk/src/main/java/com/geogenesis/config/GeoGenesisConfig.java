@@ -691,16 +691,16 @@ public final class GeoGenesisConfig {
         // HILLS inner spline (12 fields)
         builder.push("HILLS");
         hillsLoLoc0 = builder.defineInRange("hillsLoLoc0", 0.0, 0.0, 1.0);
-        hillsLoVal0 = builder.defineInRange("hillsLoVal0", 0.02, -1.0, 1.0);
+        hillsLoVal0 = builder.defineInRange("hillsLoVal0", 0.06, -1.0, 1.0);
         hillsLoDeriv0 = builder.defineInRange("hillsLoDeriv0", 0.0, -10.0, 10.0);
         hillsLoLoc1 = builder.defineInRange("hillsLoLoc1", 1.0, 0.0, 1.0);
-        hillsLoVal1 = builder.defineInRange("hillsLoVal1", 0.02, -1.0, 1.0);
+        hillsLoVal1 = builder.defineInRange("hillsLoVal1", 0.06, -1.0, 1.0);
         hillsLoDeriv1 = builder.defineInRange("hillsLoDeriv1", 0.0, -10.0, 10.0);
         hillsHiLoc0 = builder.defineInRange("hillsHiLoc0", 0.0, 0.0, 1.0);
-        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.12, -1.0, 1.0);
+        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.18, -1.0, 1.0);
         hillsHiDeriv0 = builder.defineInRange("hillsHiDeriv0", 0.0, -10.0, 10.0);
         hillsHiLoc1 = builder.defineInRange("hillsHiLoc1", 1.0, 0.0, 1.0);
-        hillsHiVal1 = builder.defineInRange("hillsHiVal1", 0.12, -1.0, 1.0);
+        hillsHiVal1 = builder.defineInRange("hillsHiVal1", 0.18, -1.0, 1.0);
         hillsHiDeriv1 = builder.defineInRange("hillsHiDeriv1", 0.0, -10.0, 10.0);
         builder.pop();
 
