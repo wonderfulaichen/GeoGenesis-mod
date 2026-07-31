@@ -456,6 +456,25 @@ public final class CellGenerator {
                         skelGrid, skelExtLR, skelSpacing, skelStartX, skelStartZ, (float) seaE, rcfg);
                 coarseDeltaUp = bilinearUpsample(coarseDeltaLR, skelExtLR, skelSpacing,
                         skelStartX, skelStartZ, N, originX, originZ);
+                // 细节脊谷层（细 octave 小条纹，文档 §4 两级设计）：同一 skelGrid 复用采样，
+                // 更高 stripeFreq + 少 octave + 独立 seed 雕山体表面次级沟壑（液滴"平地不动"的盲区）。
+                // 峰侧衰减同样生效（峰顶 delta=0），强度小（峰值 ≈0.07）不触 maxDeltaPerCell。
+                RidgeValleyErosion.RidgeConfig dcfg = new RidgeValleyErosion.RidgeConfig();
+                dcfg.enabled = true;
+                dcfg.strength = 0.04f;
+                dcfg.cellWorldSize = rcfg.cellWorldSize;
+                dcfg.stripeFreq = 4.0f;   // 更密条纹（骨架 1.2 → 细节 4.0）
+                dcfg.octaves = 3;
+                dcfg.gullyWeight = 0.5f;
+                dcfg.detail = 1.5f;       // 主细节干净，防小噪点抹掉骨架
+                dcfg.seed = 777;
+                float[][] detailLR = RidgeValleyErosion.computeCoarseDelta(
+                        skelGrid, skelExtLR, skelSpacing, skelStartX, skelStartZ, (float) seaE, dcfg);
+                float[][] detailUp = bilinearUpsample(detailLR, skelExtLR, skelSpacing,
+                        skelStartX, skelStartZ, N, originX, originZ);
+                for (int z = 0; z < N; z++)
+                    for (int x = 0; x < N; x++)
+                        coarseDeltaUp[z][x] += detailUp[z][x];
             }
         }
 
