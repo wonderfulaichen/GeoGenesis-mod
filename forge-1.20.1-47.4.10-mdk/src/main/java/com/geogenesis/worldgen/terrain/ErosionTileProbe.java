@@ -327,10 +327,6 @@ public final class ErosionTileProbe {
         int leftX = boundX - 1;                     // A chunk 右缘 lx=15 → blend b=1 → 全右邻居 B
         int bxL = leftX - tileB.originX;            // B.delta 局部列（A 应用的来源）
         int bxR = boundX - tileB.originX;           // B 自己（B chunk 左缘 lx=0 用自己场）
-        // 内部对照列（同一 B 场远离边界的相邻列）：区分「接缝」与「地形本身陡」
-        int ixL = bxR - 8, ixR = ixL + 1;
-        double iMax = 0, iSum = 0;
-        long iCnt = 0;
         for (int wz = oz0; wz < oz1; wz++) {
             int bz = wz - tileB.originZ;
             if (bz < 0 || bz >= N) continue;
@@ -342,17 +338,10 @@ public final class ErosionTileProbe {
             sumDiff += diff;
             allDiffs[di++] = diff;
             count++;
-            if (ixL >= 0 && ixR < N) {
-                double id = Math.abs(tileB.delta[bz][ixR] - tileB.delta[bz][ixL]);
-                iMax = Math.max(iMax, id);
-                iSum += id;
-                iCnt++;
-            }
         }
 
         if (count > 0) {
             double meanDiff = sumDiff / count;
-            double iMean = iCnt > 0 ? iSum / iCnt : 0;
             java.util.Arrays.sort(allDiffs, 0, (int) count);
             p99Diff = allDiffs[(int) (count * 0.99)];
             System.out.println("  Max diff: " + String.format("%.6f", maxDiff)
@@ -360,10 +349,7 @@ public final class ErosionTileProbe {
             System.out.println("  Mean diff: " + String.format("%.6f", meanDiff));
             System.out.println("  p99 diff: " + String.format("%.6f", p99Diff));
             System.out.println("  Samples: " + count);
-            // 边界列差 vs 内部相邻列差（同一 B 场）：若同量级 → 地形本身陡（非接缝）
-            System.out.println("  Internal col diff (B field, far from seam): max=" + String.format("%.6f", iMax)
-                + " mean=" + String.format("%.6f", iMean));
-            System.out.println("  Verdict: " + (maxDiff < iMax * 1.6 + 0.01 ? "PASS (seam ≈ terrain gradient) ✅"
+            System.out.println("  Verdict: " + (maxDiff < 0.02 ? "PASS (same field, gradient only) ✅"
                 : (maxDiff < 0.05 ? "WARN ⚠" : "FAIL ❌")));
         } else {
             System.out.println("  No valid samples");

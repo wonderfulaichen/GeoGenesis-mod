@@ -265,6 +265,9 @@ public final class CellGenerator {
     /** 纯陆地形态 eLand（侵蚀边际采样用，不含气候/分类）。 */
     public double landE(double wx, double wz) { return sampleCore(wx, wz).eLand; }
 
+    /** 地形类型连续权重（诊断探针按类型分桶统计用）。 */
+    public double[] typeWeightsAt(double wx, double wz) { return sampleCore(wx, wz).typeWeights; }
+
     // ===== 侵蚀 tile 缓存（超分辨率架构：spacing=4 粗采 + 双三次插值升采样，仿 6 月备份 70cd037） =====
 
     /** 每 tile 覆盖 chunk 数（3×3=9 chunk/tile，如 6 月备份 generateTileWithHydrology） */
@@ -445,15 +448,40 @@ public final class CellGenerator {
             if (rcfg.enabled) {
                 double seaE = heightCurve.seaE();
                 float[][] skelGrid = new float[skelExtLR][skelExtLR];
+                // 类型权重同步采样：脊谷强度按类型调制（平原/高原少切保平坦，山地/丘陵强化崎岖）
+                double[][] skelW = new double[skelExtLR][];
                 for (int tz = 0; tz < skelExtLR; tz++) {
                     for (int tx = 0; tx < skelExtLR; tx++) {
                         int wx = skelStartX + tx * skelSpacing;
                         int wz = skelStartZ + tz * skelSpacing;
-                        skelGrid[tz][tx] = (float) Math.max(terrainE(wx, wz), -0.05);
+                        Cell c = sampleCore(wx, wz);
+                        skelGrid[tz][tx] = (float) Math.max(c.e, -0.05);
+                        if (skelW[tz] == null) skelW[tz] = new double[skelExtLR * 5];
+                        double[] w = c.typeWeights;
+                        if (w != null) {
+                            skelW[tz][tx * 5] = w[TerrainClass.PLAIN.ordinal()];
+                            skelW[tz][tx * 5 + 1] = w[TerrainClass.HILLS.ordinal()];
+                            skelW[tz][tx * 5 + 2] = w[TerrainClass.MOUNTAINS.ordinal()];
+                            skelW[tz][tx * 5 + 3] = w[TerrainClass.PLATEAU.ordinal()];
+                            skelW[tz][tx * 5 + 4] = w[TerrainClass.BASIN.ordinal()];
+                        }
                     }
                 }
                 coarseDeltaLR = RidgeValleyErosion.computeCoarseDelta(
                         skelGrid, skelExtLR, skelSpacing, skelStartX, skelStartZ, (float) seaE, rcfg);
+                // 类型差异化调制：平原/盆地 0.3、丘陵 ~0.65、山地 1.0、高原 ×(1-0.6×platW) 保平顶。
+                // 连续权重场 → 调制连续 → 跨 tile 无缝。低地切谷减少还顺带改善海岸负偏。
+                for (int tz = 0; tz < skelExtLR; tz++) {
+                    if (skelW[tz] == null) continue;
+                    for (int tx = 0; tx < skelExtLR; tx++) {
+                        double mountW = skelW[tz][tx * 5 + 2];
+                        double hillsW = skelW[tz][tx * 5 + 1];
+                        double platW = skelW[tz][tx * 5 + 3];
+                        double gain = Math.min(1.0, mountW + 0.5 * hillsW);
+                        float typeMod = (float) ((0.30 + 0.70 * gain) * (1.0 - 0.6 * platW));
+                        coarseDeltaLR[tz][tx] *= typeMod;
+                    }
+                }
                 coarseDeltaUp = bilinearUpsample(coarseDeltaLR, skelExtLR, skelSpacing,
                         skelStartX, skelStartZ, N, originX, originZ);
             }

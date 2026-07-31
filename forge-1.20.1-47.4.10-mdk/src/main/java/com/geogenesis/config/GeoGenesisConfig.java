@@ -566,8 +566,8 @@ public final class GeoGenesisConfig {
 
         builder.push("Semantic Affinity");
         // Phase 2.2: 语义适配旋钮
-        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。【2026-07-31】MidSpline 权重曲线已把 PLAIN 收窄到海岸、HILLS 作过渡带；β=1（factor∈[0.8,1.8]）平衡序列与分布（β=2 过度收敛 → MOUNTAINS 在低 c 区消失）。0=纯空间 Voronoi 类型分布。范围 [0,10]。")
-            .defineInRange("cAffinityStrength", 1.0, 0.0, 10.0);
+        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。v14+ 恢复：共享噪声公式数学保证连续，因此 cAffinity 恢复非零是安全的（权重偏置不影响 eLand 连续性）。3.0=中等强度，山脉偏内陆、盆地偏海岸/深海。0=纯空间 Voronoi 类型分布。范围 [0,10]。")
+            .defineInRange("cAffinityStrength", 3.0, 0.0, 10.0);
         builder.pop();
 
         builder.push("Coastline Diversification");
@@ -707,10 +707,10 @@ public final class GeoGenesisConfig {
         // MOUNTAINS inner spline (12 fields)
         builder.push("MOUNTAINS");
         mountLoLoc0 = builder.defineInRange("mountLoLoc0", 0.0, 0.0, 1.0);
-        mountLoVal0 = builder.defineInRange("mountLoVal0", 0.50, -1.0, 1.0);
+        mountLoVal0 = builder.defineInRange("mountLoVal0", 0.45, -1.0, 1.0);
         mountLoDeriv0 = builder.defineInRange("mountLoDeriv0", 0.0, -10.0, 10.0);
         mountLoLoc1 = builder.defineInRange("mountLoLoc1", 1.0, 0.0, 1.0);
-        mountLoVal1 = builder.defineInRange("mountLoVal1", 0.50, -1.0, 1.0);
+        mountLoVal1 = builder.defineInRange("mountLoVal1", 0.45, -1.0, 1.0);
         mountLoDeriv1 = builder.defineInRange("mountLoDeriv1", 0.0, -10.0, 10.0);
         mountHiLoc0 = builder.defineInRange("mountHiLoc0", 0.0, 0.0, 1.0);
         mountHiVal0 = builder.defineInRange("mountHiVal0", 0.95, -1.0, 1.0);
@@ -723,16 +723,16 @@ public final class GeoGenesisConfig {
         // PLATEAU inner spline (12 fields)
         builder.push("PLATEAU");
         platLoLoc0 = builder.defineInRange("platLoLoc0", 0.0, 0.0, 1.0);
-        platLoVal0 = builder.defineInRange("platLoVal0", 0.35, -1.0, 1.0);
+        platLoVal0 = builder.defineInRange("platLoVal0", 0.60, -1.0, 1.0);
         platLoDeriv0 = builder.defineInRange("platLoDeriv0", 0.0, -10.0, 10.0);
         platLoLoc1 = builder.defineInRange("platLoLoc1", 1.0, 0.0, 1.0);
-        platLoVal1 = builder.defineInRange("platLoVal1", 0.35, -1.0, 1.0);
+        platLoVal1 = builder.defineInRange("platLoVal1", 0.60, -1.0, 1.0);
         platLoDeriv1 = builder.defineInRange("platLoDeriv1", 0.0, -10.0, 10.0);
         platHiLoc0 = builder.defineInRange("platHiLoc0", 0.0, 0.0, 1.0);
-        platHiVal0 = builder.defineInRange("platHiVal0", 0.50, -1.0, 1.0);
+        platHiVal0 = builder.defineInRange("platHiVal0", 0.75, -1.0, 1.0);
         platHiDeriv0 = builder.defineInRange("platHiDeriv0", 0.0, -10.0, 10.0);
         platHiLoc1 = builder.defineInRange("platHiLoc1", 1.0, 0.0, 1.0);
-        platHiVal1 = builder.defineInRange("platHiVal1", 0.50, -1.0, 1.0);
+        platHiVal1 = builder.defineInRange("platHiVal1", 0.75, -1.0, 1.0);
         platHiDeriv1 = builder.defineInRange("platHiDeriv1", 0.0, -10.0, 10.0);
         builder.pop();
 

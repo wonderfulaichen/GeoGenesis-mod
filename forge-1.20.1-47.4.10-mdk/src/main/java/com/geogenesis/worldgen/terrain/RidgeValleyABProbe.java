@@ -18,6 +18,14 @@ import com.geogenesis.worldgen.erosion.RidgeValleyErosion;
  */
 public final class RidgeValleyABProbe {
 
+    /** 5 陆地类型 ordinal（枚举不连续，PEAK 夹在 MOUNTAINS/BASIN 之间） */
+    private static final int[] ORD5 = {
+        TerrainClass.PLAIN.ordinal(), TerrainClass.HILLS.ordinal(),
+        TerrainClass.MOUNTAINS.ordinal(), TerrainClass.PLATEAU.ordinal(),
+        TerrainClass.BASIN.ordinal()
+    };
+    private static final String[] T5 = {"PLAIN", "HILLS", "MOUNTAINS", "PLATEAU", "BASIN"};
+
     private static final int SPACING = 2;       // 骨架层采样间距（RIDGE_SKELETON_SPACING=2），恢复坡度使 combiMask 触发
     private static final int GRID = 200;        // 200×200 粗网格 = 400×400 block 区域
     private static final int REGION = GRID * SPACING;
@@ -67,6 +75,10 @@ public final class RidgeValleyABProbe {
             float[][] A = new float[GRID][GRID];
             boolean[][] land = new boolean[GRID][GRID];       // 全掩码陆地 (h>seaE+0.10)，用于 A/B 高度统计
             boolean[][] landAll = new boolean[GRID][GRID];    // 全部陆地 (h>seaE)，含近岸谷地，用于 delta 零均值验证
+            int[][] typeGrid = new int[GRID][GRID];           // 类型 argmax（5 陆地类型，类型调制验证）
+            float[][] wMount = new float[GRID][GRID];         // 类型权重（模拟 CellGenerator 的类型调制）
+            float[][] wHills = new float[GRID][GRID];
+            float[][] wPlat = new float[GRID][GRID];
             for (int gz = 0; gz < GRID; gz++) {
                 for (int gx = 0; gx < GRID; gx++) {
                     int wx = gx * SPACING, wz = gz * SPACING;
@@ -74,16 +86,34 @@ public final class RidgeValleyABProbe {
                     A[gz][gx] = h;
                     land[gz][gx] = h > seaE + 0.10f;
                     landAll[gz][gx] = h > seaE;
+                    double[] tw = gen.typeWeightsAt(wx, wz);
+                    int ti = -1;
+                    if (tw != null) {
+                        double best = -1;
+                        for (int k = 0; k < 5; k++) {
+                            double v = tw[ORD5[k]];
+                            if (v > best) { best = v; ti = k; }
+                        }
+                        wMount[gz][gx] = (float) tw[TerrainClass.MOUNTAINS.ordinal()];
+                        wHills[gz][gx] = (float) tw[TerrainClass.HILLS.ordinal()];
+                        wPlat[gz][gx] = (float) tw[TerrainClass.PLATEAU.ordinal()];
+                    }
+                    typeGrid[gz][gx] = ti;
                 }
             }
 
             float[][] delta = RidgeValleyErosion.computeCoarseDelta(
                     A, GRID, SPACING, 0, 0, (float) seaE, rcfg);
 
+            // 模拟 CellGenerator.generateErosionTile 的类型调制（与生产一致）
             float[][] B = new float[GRID][GRID];
-            for (int gz = 0; gz < GRID; gz++)
-                for (int gx = 0; gx < GRID; gx++)
-                    B[gz][gx] = A[gz][gx] + delta[gz][gx];
+            for (int gz = 0; gz < GRID; gz++) {
+                for (int gx = 0; gx < GRID; gx++) {
+                    double gain = Math.min(1.0, wMount[gz][gx] + 0.5 * wHills[gz][gx]);
+                    float typeMod = (float) ((0.30 + 0.70 * gain) * (1.0 - 0.6 * wPlat[gz][gx]));
+                    B[gz][gx] = A[gz][gx] + delta[gz][gx] * typeMod;
+                }
+            }
 
             Stats sa = stats(A, land, seaE);
             Stats sb = stats(B, land, seaE);
@@ -115,6 +145,19 @@ public final class RidgeValleyABProbe {
                     dsAll.mean, dsAll.rms, dsAll.min, dsAll.max);
             System.out.printf("   delta(peak h>0.75):    mean=%+.4f max=%+.4f clip@0.15=%5.2f%%%n",
                     peak.mean, peak.max, 100.0 * peak.clipCnt / Math.max(1, peak.n));
+            // 类型分桶 stdH（差异化验证：平原应保平坦 Δstd 小，山地应崎岖 Δstd 大）
+            for (int k = 0; k < 5; k++) {
+                double[] va = new double[GRID * GRID], vb = new double[GRID * GRID];
+                int n = 0;
+                for (int gz = 0; gz < GRID; gz++)
+                    for (int gx = 0; gx < GRID; gx++)
+                        if (land[gz][gx] && typeGrid[gz][gx] == k) { va[n] = A[gz][gx]; vb[n] = B[gz][gx]; n++; }
+                if (n >= 8) {
+                    double sA = std(va, n), sB = std(vb, n);
+                    System.out.printf("   type %-9s n=%-6d stdA=%.4f stdB=%.4f stdR=%.2fx%n",
+                            T5[k], n, sA, sB, sB / Math.max(1e-9, sA));
+                }
+            }
         }
 
         System.out.println("-".repeat(hdr.length()));
@@ -157,6 +200,16 @@ public final class RidgeValleyABProbe {
     private static final class Stats {
         double meanH, stdH, meanGrad, maxGrad;
         int nMaxima;
+    }
+
+    /** 标准差（n 个有效元素） */
+    private static double std(double[] v, int n) {
+        double m = 0;
+        for (int i = 0; i < n; i++) m += v[i];
+        m /= n;
+        double s = 0;
+        for (int i = 0; i < n; i++) s += (v[i] - m) * (v[i] - m);
+        return Math.sqrt(s / n);
     }
 
     private static Stats stats(float[][] g, boolean[][] land, double seaE) {
