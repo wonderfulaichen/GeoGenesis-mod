@@ -25,11 +25,11 @@ public final class TypeLandShape {
     public TypeLandShape(TerrainParams p) {
         this.params = p;
         this.generators = new TypeGenerators(p);
-        this.continent = new ContinentField(p);
-        this.continentBias = p.continentBias();
-        this.character = new TerrainCharacterField(continent, continentBias);
+        this.character = new TerrainCharacterField();
         this.typeNoise = new TypeNoiseProvider(p.beltReliefAmp());
         this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
+        this.continent = new ContinentField(p);
+        this.continentBias = p.continentBias();
     }
 
     public void seed(long worldSeed) {
@@ -91,11 +91,6 @@ public final class TypeLandShape {
         final double CAFFINITY_BETA = params.cAffinityStrength();
         final double MEAN_AFF = 0.2; // Σ aff_t(c) ≡ 1 over 5 land types
         TerrainClass[] lands = TypeNoiseProvider.LAND_TYPES;
-        // 【2026-07-31】高度带用修改前的连续高斯权重（wOrig）：cAffinity 的 factor=1+β(aff−0.2)
-        // 在 aff 快速变化区（外层节点边界）斜率极大 → 修改后 w 突变 → blendLo 归一化后 eLand 跳变
-        // （实测相邻块 Δe≈0.065 = 25 块悬崖）。铁律「c 绝不控制地形高度」：高度带只能由
-        // 类型样条 + 连续权重决定；cAffinity 仅保留对分类(argmax)/湿度/PEAK 的偏置作用。
-        double[] wOrig = tw.clone();
         for (int i = 0; i < lands.length; i++) {
             double aff = generators.typeAffinity(effectiveCBiased, i);
             double factor = 1.0 + CAFFINITY_BETA * (aff - MEAN_AFF);
@@ -123,31 +118,20 @@ public final class TypeLandShape {
         // 同时 PLATEAU 的平顶边缘/MOUNTAINS 脊线等特征通过 per-type 噪声自然表达。
         // STRENGTH=0 → 纯共享（无类型特征），=1 → 纯 per-type（断裂风险）。
         final double MORPH_STRENGTH = 0.4;
-        // 【2026-07-31 per-type 连续幂次混合】blendLo/blendHi 用修改前连续权重 wOrig：
-        // ① 归一化（修复 cAffinity 后 Σw≈0.2 缩水 80% 的高度塌缩）；
-        // ② 用 wOrig（消除 cAffinity factor 突变断裂，c 不控制高度铁律）；
-        // ③ 连续幂次 w^p（p 常数 → 无离散 domIdx 断裂；soft-argmax 的 domIdx 切换曾致 163 块断裂）：
-        //    - p=2.5（其他类型）：过渡比 w³ 宽（0.7/0.3 → 89/11 vs 96/4），消除台阶感；
-        //      核心区渗透仍小（PLAIN 区 blendLo≈0.045/Y75 接近配置 0.03）
-        //    - p=3.5（PLATEAU）：边缘更陡 → 高原崖壁特征（用户要求"高原边缘可短"）
-        double blendLo = 0.0, blendHi = 0.0, wSum = 0.0;
+        double blendLo = 0.0, blendHi = 0.0;
         for (int i = 0; i < lands.length; i++) {
-            double w = wOrig[lands[i].ordinal()];
+            double w = tw[lands[i].ordinal()];
             if (w <= 0.001) continue;
-            double p = (lands[i] == TerrainClass.PLATEAU) ? 3.0 : 2.0; // 2026-08-01 σ=300 + 高度带连续衔接：过渡宽而自然（PLATEAU 边缘略陡保留崖壁特征）
-            double wp = Math.pow(w, p);
             double lo_t = generators.sampleByType(effectiveCBiased, i, 0.0); // 该类型在 c 处的下限
             double hi_t = generators.sampleByType(effectiveCBiased, i, 1.0); // 该类型在 c 处的上限
-            blendLo += wp * lo_t;
-            blendHi += wp * hi_t;
-            wSum += wp;
+            blendLo += w * lo_t;
+            blendHi += w * hi_t;
         }
-        if (wSum > 1e-9) { blendLo /= wSum; blendHi /= wSum; }
         double shared = generators.computeSharedNoise(wx, wz);
-        // 类型加权平均噪声（用于差异调制，同样用 wOrig 保持连续）
+        // 类型加权平均噪声（用于差异调制）
         double perTypeSum = 0, sumW = 0;
         for (int i = 0; i < lands.length; i++) {
-            double w = wOrig[lands[i].ordinal()];
+            double w = tw[lands[i].ordinal()];
             if (w <= 0.001) continue;
             perTypeSum += w * typeNoise.computeNoise(lands[i], wx, wz);
             sumW += w;
@@ -165,10 +149,6 @@ public final class TypeLandShape {
 
     /** 陆地 e 允许下探到海洋深度地板（盆地凹陷可低于海平面成湖） */
     private static final double ELAND_MIN = -0.35;
-
-
-
-
 
     /**
      * 采样 eLand（完整流程）。
