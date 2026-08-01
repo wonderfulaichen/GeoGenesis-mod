@@ -276,4 +276,10 @@ task runRidgeABProbe(type: JavaExec) {
     // Optional: args = ['98765,12345']  (comma/space separated seeds)
 }
 
+// River cross-tile seam diagnostics (L1 staged pipeline; multi-seed positive control)
+task runRiverSeamProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.RiverSeamProbe'
+    // Optional: args = ['12345']  (seed; default tries 12345/777/999/2024)
+}
 

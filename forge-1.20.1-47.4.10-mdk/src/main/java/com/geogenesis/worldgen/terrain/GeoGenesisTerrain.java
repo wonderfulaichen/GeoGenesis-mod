@@ -24,10 +24,10 @@ public final class GeoGenesisTerrain {
     /** 诊断日志记录器 */
     private static final Logger DLOG = LogManager.getLogger("geogenesis/diag");
 
-    /** 诊断阈值：e 的相邻块断裂超过此值即打日志（原 0.01≈4 块，降为 0.003≈1 块以捕捉微断裂） */
-    private static final double DIAG_THRESHOLD = 0.003;
-    /** 诊断阈值（跨 chunk）：与 DIAG_THRESHOLD 相同，捕捉 tile 边界微断裂 */
-    private static final double INTER_THRESHOLD = 0.003;
+    /** 诊断阈值：e 的相邻块断裂超过此值即打日志（0.01≈4 块合格线，2026-08-01 从 0.003 还原——低阈值刷屏 950+ 条/次运行且无实义） */
+    private static final double DIAG_THRESHOLD = 0.01;
+    /** 诊断阈值（跨 chunk）：与 DIAG_THRESHOLD 相同，只报超过合格线的真实断裂 */
+    private static final double INTER_THRESHOLD = 0.01;
 
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
