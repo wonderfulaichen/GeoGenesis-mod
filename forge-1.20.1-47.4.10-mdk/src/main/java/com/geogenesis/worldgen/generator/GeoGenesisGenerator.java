@@ -155,11 +155,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
 
-                if (cell.riverMask) {
-                    fillRiverColumn(chunk, mPos, baseX + lx, baseZ + lz, cell);
-                    continue;
-                }
-
+                // 2026-08-01 用户指令：河流先不填水。河谷刻蚀保留在 cell.height（干河床凹槽可见），
+                // 全部走 fillTerrainColumn 普通填充；fillRiverColumn 待后续启用。
                 fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell);
             }
         }
@@ -225,33 +222,29 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     /**
      * 河流列填充：按河谷刻蚀后的河床 / 水面高度灌水。
-     * 水面≈谷壁高度（riverSurfaceY），河床为刻蚀底（riverFloorY），
-     * 二者之间填水，使河流在 MC 中可见（含水岸高于海平面处的高山河谷）。
+     * 水面≈雕刻前地面（riverSurfaceY = heightFromE(e+carve)），河床为刻蚀底（riverFloorY），
+     * 二者之间填水。峡谷壁（岸坡）在相邻的非河道格，由 fillTerrainColumn 填充。
+     *
+     * <p>2026-08-01 修复（用户反馈三明治/海面替换）：</p>
+     * <ul>
+     *   <li>仅"真河床"（水深 &gt; 1 块）走此填充；无雕刻的河岸边缘格（水深 ≤ 1）
+     *       委托 fillTerrainColumn——消除"沙+1 格水+草顶"三明治</li>
+     *   <li>水面以上全 AIR：旧版 terrainTopY=surfY+1 在河床格水面之上填草/沙（悬浮草皮）</li>
+     *   <li>水下河道格（isWater）由 fillFromNoise 分流走 fillTerrainColumn，不在此处理</li>
+     * </ul>
      */
     private void fillRiverColumn(ChunkAccess chunk, BlockPos.MutableBlockPos mPos,
                                  int wx, int wz, Cell cell) {
         int floorY = (int) Math.floor(cell.riverFloorY);
         int surfY = (int) Math.floor(cell.riverSurfaceY);
+        if (surfY - floorY <= 1) {
+            // 无有效河床（雕刻≈0 的河岸边缘格）→ 普通地形（避免 1 格水三明治）
+            fillTerrainColumn(chunk, mPos, wx, wz, cell);
+            return;
+        }
         int maxDepth = 24;
         if (surfY - floorY > maxDepth) surfY = floorY + maxDepth;
-        // 关键修复：round(62.5)=63 让 floorY==surfY → 没水空间。
-        // 改为 floor() + 保证至少 1 块水深
         if (surfY <= floorY) surfY = floorY + 1;
-
-        // 河岸顶：河面以上的地形必须填上（之前只到 surfY 上面全 AIR → 空气孔）
-        int terrainTopY = (int) Math.floor(cell.height);
-        if (terrainTopY < surfY + 1) terrainTopY = surfY + 1;
-
-        // 表层方块：若河岸在海平面附近则用沙（沙滩/河岸），否则草+土
-        boolean beach = terrainTopY <= SEA_LEVEL + 2;
-        BlockState top, fill;
-        if (beach) {
-            top = SAND;
-            fill = SAND;
-        } else {
-            top = GRASS;
-            fill = DIRT;
-        }
 
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
@@ -265,14 +258,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 chunk.setBlockState(mPos, (floorY > SEA_LEVEL - 3) ? SAND : GRAVEL, false);
             } else if (y <= surfY) {
                 chunk.setBlockState(mPos, WATER, false);
-            } else if (y < terrainTopY - 2) {
-                chunk.setBlockState(mPos, fill, false);    // 河岸内部：土/沙
-            } else if (y < terrainTopY) {
-                chunk.setBlockState(mPos, fill, false);    // 上 2 层：fill
-            } else if (y == terrainTopY) {
-                chunk.setBlockState(mPos, top, false);     // 最顶层：草/沙
             } else {
-                chunk.setBlockState(mPos, AIR, false);
+                chunk.setBlockState(mPos, AIR, false);   // 水面以上：峡谷壁在邻格（普通填充）
             }
         }
     }

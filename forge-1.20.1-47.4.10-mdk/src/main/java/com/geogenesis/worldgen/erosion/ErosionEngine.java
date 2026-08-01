@@ -5,6 +5,7 @@ import net.minecraftforge.common.ForgeConfigSpec;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -16,6 +17,9 @@ import java.util.List;
  *   <li><b>localCharge 正反馈</b>：每粒子携带自起点累计高差 localCharge，容量公式乘以
  *       {@code (1 + α·localCharge)}，使长程深流粒子雕得深、短程浅流雕得浅 → 主流深支流浅，
  *       几何涌现尺度多样性，不依赖全局统计（完全本地确定 → 天然无缝）。</li>
+ *   <li><b>河流粒子状态机（2026-08-01）</b>：粒子按双闸门（lc 累计落差 × 路径放电量）平滑切换
+ *       到河流模式——强侵蚀 × 弱堆积（沉积×0.2）× 蒸发抑制 × 流速放宽，主流道涌现深窄 V 形槽，
+ *       坡度变缓处集中沉积 → 河口冲积扇。阈值/强度全配置化（erosionRiver* 系列）。</li>
  *   <li><b>局部 cascade 级联</b>：侵蚀后对 8 邻居按高度差做 settling，平滑河床底部。
  *       SH 真实感的第二个来源。</li>
  *   <li>其余无缝机制（本地算子 + 确定性逐区块播种 + 双平滑抹微断裂）全部保留。</li>
@@ -34,7 +38,7 @@ public class ErosionEngine {
 
     private static final float INERTIA = 0.005f, GRAVITY = 2.5f, EVAP_RATE = 0.001f;
     private static final float ENTRAINMENT = 10f;
-    /** 动量传递：1.0 对齐 SH 原版（原 0.6 导致河流不会自我增强） */
+    /** 放电量偏置系数（旧动量偏置 a = MOMENTUM·ld/(ld+10)，沿梯度加速，保留） */
     private static final float MOMENTUM = 1.0f;
     private static final float DEPOSIT_SPEED = 0.02f;
     /** SimpleHydrology 型统一松弛率（原 depositionRate=0.1），高度差驱动的平衡浓度 → 侵蚀/沉积双向 */
@@ -87,22 +91,46 @@ public class ErosionEngine {
     public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
                                   int sz, int ox, int oz,
                                   float seaNorm, float str) {
-        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null);
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, (boolean[][]) null);
+    }
+
+    /** 带稳态放电量场输出的入口（河网层复用 discharge 场做 riverMask，取代 D8 流量累积）。 */
+    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                  int sz, int ox, int oz,
+                                  float seaNorm, float str, float[] dischargeOut) {
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut);
     }
 
     private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
                                    int sz, int ox, int oz,
                                    float seaNorm, float str, boolean[][] locked) {
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null);
+    }
+
+    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                   int sz, int ox, int oz,
+                                   float seaNorm, float str, boolean[][] locked,
+                                   float[] dischargeOut) {
         if (sz < 16 || str <= 0) return;
 
         double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);
         double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);
-        double lcWeight  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionLocalChargeWeight, 1.0);
         double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);
         float strE       = (float) Math.max(0.1, str) * (float) erodeMul;
+        // 2026-08-01 两套粒子系统：河流粒子（StreamTracer）与液滴侵蚀彻底分离，
+        // 液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）
+        // SH 三件套（2026-08-01）：动量场正反馈 + 多轮迭代 + lrate 场平滑
+        float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);
+        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 3);
+        float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);
 
         int pad = R_MAX + 2;
-        float[] dis = new float[bufSize * bufSize];
+        float[] dis = new float[bufSize * bufSize];   // 稳态放电量场（跨轮累积）
+        float[] momX = new float[bufSize * bufSize];  // 稳态动量场 X
+        float[] momY = new float[bufSize * bufSize];  // 稳态动量场 Y
+        float[] disT = new float[bufSize * bufSize];  // 本轮 track：放电量
+        float[] momXT = new float[bufSize * bufSize]; // 本轮 track：动量 X
+        float[] momYT = new float[bufSize * bufSize]; // 本轮 track：动量 Y
 
         // ===== 构建三层笔刷 =====
         int r2C = R_C * R_C;
@@ -144,35 +172,51 @@ public class ErosionEngine {
 
         int maxD = (int) (Math.max(DROPS_C, Math.max(DROPS_M, DROPS_F)) * dropsMul);
 
-        // ===== 原始三尺度液滴模拟（interleaved） =====
-        for (int d = 0; d < maxD; d++) {
-            for (long[] ck : chunkList) {
-                int wcx = (int) ck[0], wcz = (int) ck[1];
-                int relX = wcx * 16 - ox;
-                int relZ = wcz * 16 - oz;
+        // ===== SH 多轮迭代：每轮清 track → 重撒全部液滴 → 轮末 lrate 平滑进稳态场 =====
+        for (int it = 0; it < iterations; it++) {
+            Arrays.fill(disT, 0f);
+            Arrays.fill(momXT, 0f);
+            Arrays.fill(momYT, 0f);
 
-                if (d < (int) (DROPS_C * dropsMul)) {
-                    spawnAndSim(flat, bufSize, wcx, wcz, d, relX, relZ, pad,
-                                bOffC, bWgtC, bnC, locked, sz, dis,
-                                ERODE_C * strE, DEPOSIT_C, LIFE_C, ox, oz,
-                                (float) lcWeight, (float) casStr);
+            for (int d = 0; d < maxD; d++) {
+                for (long[] ck : chunkList) {
+                    int wcx = (int) ck[0], wcz = (int) ck[1];
+                    int relX = wcx * 16 - ox;
+                    int relZ = wcz * 16 - oz;
+
+                    if (d < (int) (DROPS_C * dropsMul)) {
+                        spawnAndSim(flat, bufSize, wcx, wcz, d, relX, relZ, pad,
+                                    bOffC, bWgtC, bnC, locked, sz, dis, disT,
+                                    momX, momY, momXT, momYT, momTransfer,
+                                    ERODE_C * strE, DEPOSIT_C, LIFE_C, ox, oz,
+                                    (float) casStr);
+                    }
+                    if (d < (int) (DROPS_M * dropsMul)) {
+                        spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 1, relX, relZ, pad,
+                                    bOffM, bWgtM, bnM, locked, sz, dis, disT,
+                                    momX, momY, momXT, momYT, momTransfer,
+                                    ERODE_M * strE, DEPOSIT_M, LIFE_M, ox, oz,
+                                    (float) casStr);
+                    }
+                    if (d < (int) (DROPS_F * dropsMul)) {
+                        spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 2, relX, relZ, pad,
+                                    bOffF, bWgtF, bnF, locked, sz, dis, disT,
+                                    momX, momY, momXT, momYT, momTransfer,
+                                    ERODE_F * strE, DEPOSIT_F, LIFE_F, ox, oz,
+                                    (float) casStr);
+                    }
                 }
-                if (d < (int) (DROPS_M * dropsMul)) {
-                    spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 1, relX, relZ, pad,
-                                bOffM, bWgtM, bnM, locked, sz, dis,
-                                ERODE_M * strE, DEPOSIT_M, LIFE_M, ox, oz,
-                                (float) lcWeight, (float) casStr);
-                }
-                if (d < (int) (DROPS_F * dropsMul)) {
-                    spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 2, relX, relZ, pad,
-                                bOffF, bWgtF, bnF, locked, sz, dis,
-                                ERODE_F * strE, DEPOSIT_F, LIFE_F, ox, oz,
-                                (float) lcWeight, (float) casStr);
-                }
+            }
+
+            // ===== SH 场平滑（world.h:80-86）：(1-lrate)·old + lrate·track =====
+            for (int i = 0; i < bufSize * bufSize; i++) {
+                dis[i] = (1f - lrate) * dis[i] + lrate * disT[i];
+                momX[i] = (1f - lrate) * momX[i] + lrate * momXT[i];
+                momY[i] = (1f - lrate) * momY[i] + lrate * momYT[i];
             }
         }
 
-        // ===== 双平滑 =====
+        // ===== 双平滑（仅全部迭代完成后做一次） =====
         smoothErosionResult(flat, bufSize, pad, sz, seaNorm);
         smoothDepositionZones(flat, flatPre, bufSize, pad, sz);
 
@@ -183,6 +227,10 @@ public class ErosionEngine {
                     if (locked[z][x])
                         flat[(z + pad) * bufSize + (x + pad)] = savedLocked[z][x];
         }
+
+        // ===== 导出稳态放电量场（河网层 riverMask 用） =====
+        if (dischargeOut != null)
+            System.arraycopy(dis, 0, dischargeOut, 0, dis.length);
     }
 
     // ===== 笔刷构建工具 =====
@@ -211,8 +259,11 @@ public class ErosionEngine {
                              int relX, int relZ, int pad,
                              int[] bOff, float[] bWgt, int bn,
                              boolean[][] locked, int baseSize,
-                             float[] dis, float erodeSpeed, float depositSpeed, int lifetime,
-                             int ox, int oz, float localChargeWeight, float cascadeStrength) {
+                             float[] dis, float[] disT,
+                             float[] momX, float[] momY, float[] momXT, float[] momYT,
+                             float momTransfer,
+                             float erodeSpeed, float depositSpeed, int lifetime,
+                             int ox, int oz, float cascadeStrength) {
         long chunkSeed = hash(worldCX * 31 + 7, worldCZ * 73 + 13);
         int cs = (int) (chunkSeed ^ (chunkSeed >>> 32));
         long ps1 = hash(cs + d * 17, d * 31 + cs);
@@ -227,18 +278,22 @@ public class ErosionEngine {
             if (lz >= 0 && lz < baseSize && lx >= 0 && lx < baseSize && locked[lz][lx]) return;
         }
         simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
-                     bOff, bWgt, bn, locked, pad, baseSize, dis,
+                     bOff, bWgt, bn, locked, pad, baseSize,
+                     dis, disT, momX, momY, momXT, momYT, momTransfer,
                      erodeSpeed, depositSpeed, lifetime, ox, oz,
-                     localChargeWeight, cascadeStrength);
+                     cascadeStrength);
     }
 
-    /** SH 对齐液滴下落。关键改进：erf 放电反馈 + 局部 cascade + 片流 + 水下 */
+    /** SH 对齐液滴下落。关键改进：动量场正反馈 + erf 放电反馈 + 局部 cascade + 片流 + 水下 */
     private void simulateDrop(float[] flat, int bufSize, float posX, float posY,
                               int[] bOff, float[] bWgt, int bn,
                               boolean[][] locked, int pad, int baseSize,
-                              float[] dis, float erodeSpeed, float depositSpeed, int lifetime,
-                              int ox, int oz,
-                              float localChargeWeight, float cascadeStrength) {
+                              float[] dis, float[] disT,
+                              float[] momX, float[] momY, float[] momXT, float[] momYT,
+                              float momTransfer,
+                             float erodeSpeed, float depositSpeed, int lifetime,
+                             int ox, int oz,
+                             float cascadeStrength) {
         float dirX = 0, dirY = 0, sed = 0, spd = 1f, wat = 1f;
 
         int spawnIx = (int) posX, spawnIy = (int) posY;
@@ -268,7 +323,10 @@ public class ErosionEngine {
             if (glen < 1e-12f) {
                 // 片流模式：梯度≈0 → 噪声驱动方向（确定性、无缝）
                 if (dirX == 0 && dirY == 0 && st > 2) {
-                    long nh = hash(ix * 31 + 7, iy * 73 + 13);
+                    // 2026-08-02：片流 hash 用世界坐标（ox+ix-pad）——旧局部坐标导致
+                    // 相邻 tile 重叠区同一世界坐标的液滴方向不同 → postErosion 重叠区
+                    // 逐格不一致 → StreamTracer 两侧追踪场不同 → 提取区 seam 断流。
+                    long nh = hash((ox + ix - pad) * 31 + 7, (oz + iy - pad) * 73 + 13);
                     dirX = ((float)(nh & 0xFFFF) / 65536f) * 0.6f - 0.3f;
                     dirY = ((float)((nh >>> 16) & 0xFFFF) / 65536f) * 0.6f - 0.3f;
                 } else if (dirX == 0 && dirY == 0) return;
@@ -285,13 +343,25 @@ public class ErosionEngine {
                 dirX += a * gx; dirY += a * gy;
             }
 
+            // ---- 动量场正反馈（SH water.h:97-99） ----
+            // speed += lodsize·momentumTransfer·dot(normalize(fspeed),normalize(speed))/(volume+discharge)·fspeed
+            // 本地近似：当前移动方向 ≈ normalize(speed)，叠加后统一重新归一化。
+            float fmx = momX[idx], fmy = momY[idx];
+            float flen = (float) Math.sqrt(fmx * fmx + fmy * fmy);
+            if (flen > 1e-12f && momTransfer > 0f) {
+                float k = momTransfer * (fmx * dirX + fmy * dirY) / flen / (wat + ld);
+                dirX += k * fmx;
+                dirY += k * fmy;
+            }
+
             float dlen = (float) Math.sqrt(dirX * dirX + dirY * dirY);
             if (dlen < 1e-12f) return;
             dirX /= dlen; dirY /= dlen;
 
             spd = (float) Math.sqrt(spd + Math.abs(flat[idx] - h0) * GRAVITY);
-            posX += dirX * Math.min(spd, 1.5f);
-            posY += dirY * Math.min(spd, 1.5f);
+            float spdCap = 1.5f;
+            posX += dirX * Math.min(spd, spdCap);
+            posY += dirY * Math.min(spd, spdCap);
             if (posX < 1 || posX >= bufSize - 2 || posY < 1 || posY >= bufSize - 2) return;
 
             // ---- 新位置 ---- 
@@ -311,6 +381,7 @@ public class ErosionEngine {
             float erfVal = 1f - (float) Math.exp(-0.16f * ld * ld);
             float depthBoost = Math.max(0f, -h0) * 0.03f;  // 水深贡献的"等效下坡高度差"（3%/e, ≈ 7.7 块/100e 深度）
             float heightDrop = Math.max(0f, -dh) + depthBoost;
+            // 2026-08-01 两套粒子系统：液滴回归纯 SH 平衡浓度公式（河流职责移交 StreamTracer）
             float c_eq = (1f + ENTRAINMENT * erfVal) * heightDrop;  // 平衡浓度
             float effD = 0.1f;                       // 松弛率 = depositionRate(=0.1)
             float delta = effD * (c_eq - sed);       // >0=侵蚀, <0=沉积
@@ -332,8 +403,11 @@ public class ErosionEngine {
                 sed += weigh;
             }
 
-            // ---- 放电量累积 ----
-            dis[idx] += wat;
+            // ---- track 累积（SH water.h:113-117：本轮 discharge + 动量 volume·speed） ----
+            // 2026-08-01：discharge 场不再导出给河网（StreamTracer 独立追踪），保留动量场正反馈
+            disT[idx] += wat;
+            momXT[idx] += wat * dirX * Math.min(spd, spdCap);
+            momYT[idx] += wat * dirY * Math.min(spd, spdCap);
 
             // ---- 局部 cascade（每 CASCADE_INTERVAL 步执行，对齐 SH 每步语义） ----
             if (cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
@@ -488,6 +562,10 @@ public class ErosionEngine {
     // ===== 工具 =====
 
     private static double cfgDbl(ForgeConfigSpec.DoubleValue v, double fallback) {
+        try { return v.get(); } catch (IllegalStateException e) { return fallback; }
+    }
+
+    private static int cfgInt(ForgeConfigSpec.IntValue v, int fallback) {
         try { return v.get(); } catch (IllegalStateException e) { return fallback; }
     }
 

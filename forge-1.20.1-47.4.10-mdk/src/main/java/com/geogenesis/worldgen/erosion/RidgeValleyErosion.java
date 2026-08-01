@@ -26,6 +26,9 @@ public final class RidgeValleyErosion {
     // ===== 骨架层配置（从 GeoGenesisConfig 读取覆盖；stylistic 参数用代码常量初值）=====
     public static class RidgeConfig {
         public boolean enabled = true;
+        /** fadeTarget 参考面（对称中点，e 单位）。默认 0.15 匹配陆地中值（PLAIN meanElev≈0.154）；
+         *  旧固定 0.25 在低地世界（eLand 0.10~0.18）恒负 → 平坦区被骨架整体下削（DIAG-EXT 全负 delta 根因）。 */
+        public float landRef = 0.15f;
         public float strength = 0.12f;        // 单 octave 侵蚀强度（直接，不乘 scale；峰值 delta≈0.25 需 maxDeltaPerCell≥0.22）
         public float cellWorldSize = 100f;    // 骨架特征尺度（世界块）= 条纹细胞世界尺寸
         public float stripeFreq = 1.2f;       // 细胞内条纹频率（sideDir 幅度，↑密度）
@@ -45,6 +48,7 @@ public final class RidgeValleyErosion {
             RidgeConfig c = new RidgeConfig();
             if (cfg != null) {
                 c.enabled = cfgBool(cfg.erosionRidgeEnabled, true);
+                c.landRef = (float) cfgDbl(cfg.erosionRidgeLandRef, 0.15);
                 c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 0.12);
                 c.cellWorldSize = (float) cfgDbl(cfg.erosionRidgeScale, 100.0);
                 c.stripeFreq = (float) cfgDbl(cfg.erosionRidgeCellScale, 1.2);
@@ -78,11 +82,12 @@ public final class RidgeValleyErosion {
         float cellGridFreq = 1.0f / Math.max(1f, cfg.cellWorldSize); // 条纹细胞世界尺寸 = cellWorldSize
         // 【全局对称参考面】源码 fadeTarget = inverse_lerp(valleyAlt, peakAlt, h)*2-1，
         // 跨真实高程对称映射（谷=-1、峰=+1），脊-谷下切/抬升幅度对称。
-        // 本项目 h=terrainE∈[0,0.9]，用**全局固定中点 LAND_REF=0.30** + 半幅 LAND_HALF=0.30：
-        //   (h-0.30)/0.30 → e=0(谷底)→-1, e=0.30→0, e=0.6+(峰)→+1，陆地全覆盖且对称。
-        //   - 全局常数 → 所有 tile 的 fadeTarget 一致 → 无 tile 边界跳变 → 无缝。
+        // 本项目 h=terrainE∈[0,0.9]，用**配置化中点 cfg.landRef（默认 0.15）** + 半幅 LAND_HALF=0.25：
+        //   (h-landRef)/0.25 → e=0(谷底)→-0.6, e=landRef→0, e=landRef+0.25→+1，陆地全覆盖且对称。
+        //   - 全局常数（所有 tile 一致）→ fadeTarget 无 tile 边界跳变 → 无缝。
         //   - 低地 fadeTarget<0 → valley rounding 生效（尖谷）；高地>0 → ridge rounding（圆脊），山形更自然。
-        final float LAND_REF = 0.25f;
+        //   - 2026-08-01：LAND_REF 0.25→cfg.landRef 0.15（低地世界 eLand 0.10~0.18 恒负 → 平坦区整体下削，
+        //     DIAG-EXT delta 全负 avg -0.012~-0.028（4~11 块）根因；0.15 与 PLAIN meanElev≈0.154 对齐）。
         final float LAND_HALF = 0.25f;
         for (int tz = 0; tz < extLR; tz++) {
             for (int tx = 0; tx < extLR; tx++) {
@@ -93,9 +98,9 @@ public final class RidgeValleyErosion {
                 // 峰顶被每 octave 均匀抬升（4 oct × 0.08 ≈ +0.17e）→ 触 delta 限幅/softCap → 平顶。
                 // 谷侧（负值）不受影响，山谷照常下切；山体中下部仍抬升成脊线。
                 // 窗口收窄到 0.72~0.92（只作用峰尖）：减少 flat 场形态改变，控制液滴 tile 边界差异。
-                float fadeTarget = clamp((h - LAND_REF) / LAND_HALF, -1f, 1f);
+                float fadeTarget = clamp((h - cfg.landRef) / LAND_HALF, -1f, 1f);
                 if (fadeTarget > 0f) fadeTarget *= 1f - smoothstep(0.72f, 0.92f, h);
-                float hs = (h - LAND_REF) * 0.5f + 0.5f;
+                float hs = (h - cfg.landRef) * 0.5f + 0.5f;
                 float gxs = gx * 0.5f, gzs = gz * 0.5f;
                 float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,
                         hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
