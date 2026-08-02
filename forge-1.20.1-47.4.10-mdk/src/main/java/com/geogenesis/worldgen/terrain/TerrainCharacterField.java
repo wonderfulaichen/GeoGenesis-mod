@@ -22,8 +22,8 @@ public final class TerrainCharacterField {
     /** 搜索半径：1 → 3×3 搜索窗口（ring 2 在 σ=150, spacing=400 时权重 < 0.00034，可安全忽略） */
     private static final int SEARCH_RADIUS = 1;
 
-    /** 高斯 σ：150 → 细胞边缘权重 ~0.4（在 200 块边界处），平滑过渡 */
-    private static final double SIGMA = 150.0;
+    /** 高斯 σ：150→200（2026-08-02：类型过渡带拉宽，配合 WARP 缩小 → 边缘悬崖坡度下降） */
+    private static final double SIGMA = 200.0;
     private static final double INV_2SIGMA2 = 1.0 / (2.0 * SIGMA * SIGMA);
 
     /** 5 种陆地类型的 ordinal 映射（顺序与 TypeNoiseProvider.LAND_TYPES 无关） */
@@ -41,7 +41,9 @@ public final class TerrainCharacterField {
 
     // ===== 域扭曲（打散网格规则感） =====
     private final Noise warpX, warpZ;
-    private static final double WARP_AMP = 250.0;
+    // 2026-08-02：250→80（原位移 ±250 超过半格 200，查询点频繁跨细胞 →
+    // mountW 快速切换 → blendLo/Hi 悬崖「平坦缓坡一下子转陡坡」；实测 120 时悬崖 45°→31°）
+    private static final double WARP_AMP = 80.0;
     private static final double WARP_FREQ = 1.0 / 500.0;
 
     // ===== 混合结果 =====
