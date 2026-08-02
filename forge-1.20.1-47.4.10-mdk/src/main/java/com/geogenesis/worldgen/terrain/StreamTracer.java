@@ -7,8 +7,9 @@ import java.util.HashSet;
  *
  * <p>与液滴侵蚀彻底分离：本类不改地形，只追踪河道。</p>
  * <ol>
- *   <li><b>源头</b>：世界坐标粗网格（SOURCE_GRID=56 块）+ 确定性抖动，陆地（e≥SOURCE_MIN_E）
- *       且 hash 通过（SOURCE_DENSITY=0.30）→ 源头天然稀疏（~每 56 块一条）。</li>
+ *   <li><b>源头</b>：侵蚀粒子汇聚升级（2026-08-02）——液滴路径汇聚场（discharge）达标格
+ *       = "该段具备形成河流的条件"；达标区内取上游端点（8 邻达标格无更小 = 流域最上游）
+ *       作源头，不再随机撒。陆地门槛 e≥SOURCE_MIN_E。</li>
  *   <li><b>追踪</b>：移动机制与液滴侵蚀（ErosionEngine.simulateDrop）<b>同源</b>——连续坐标、
  *       3×3 Sobel 梯度方向 + INERTIA 惯性、平坦区 hash 片流漫游、重力速度步进（≤1.5 格）。
  *       每格标 riverCore + discharge++（=上游源头数）。与液滴唯一区别：<b>不衰减</b>
@@ -25,14 +26,12 @@ import java.util.HashSet;
  */
 public final class StreamTracer {
 
-    /** 源头粗网格间距（世界块）：调大 → 河更稀 */
-    static final int SOURCE_GRID = 56;
-    /** 每源头格成为河源的概率：调小 → 河更稀 */
-    static final float SOURCE_DENSITY = 0.30f;
     /** 源头最低陆地高度（e，seaE=0）：低于此不产生源头 */
     static final float SOURCE_MIN_E = 0.12f;
     /** 单条河最大步数（防死循环；正常路径几十~几百步） */
     static final int MAX_STEPS = 4096;
+    /** 源头判定区外扩（数据区 ± 此值）：消除相邻 tile 判定区差集内的源头不对称断裂 */
+    static final int SOURCE_PAD = 128;
 
     // 移动常数与 ErosionEngine.simulateDrop 对齐（改动必须两边同步）：
     /** 方向惯性（越小越贴梯度；液滴同款 0.005） */
@@ -57,42 +56,95 @@ public final class StreamTracer {
      * @param originX  tile 原点世界 X
      * @param originZ  tile 原点世界 Z
      * @param seaE     海平面 e（低于此 = 入海终止）
+     * @param chainThr 源头达标链长（上游集水链 ≥ 此值 = 具备形成河流的条件；绝对阈值
+     *                 保证跨 tile 判定一致——相对统计（mean/max）随 tile 区域不同会分叉）
      * @return 河流元数据（无河 → maxDischarge=0 → 上游不雕刻）
      */
     public static CellGenerator.RiverTileData trace(float[][] tile, int N, int originX, int originZ,
-                                                    float seaE, WorldHeight worldHeight) {
+                                                    float seaE, WorldHeight worldHeight, int chainThr) {
         CellGenerator.RiverTileData rd = new CellGenerator.RiverTileData();
         boolean[][] core = rd.riverCore;
         float[][] dis = rd.discharge;
         float maxQ = 0f;
 
-        // 源头格范围覆盖 tile 全域 + 5×SOURCE_GRID（2026-08-02：源头集合不对称 =
-        // 相邻 tile 追踪的源头范围不同 → 差异区源头（距对方提取区 ≤K×56−168 块）的
-        // 河穿越 seam 时对方提取区无标记 → 断流（探针实测：K=2→42 格 core 差异、
-        // K=3→32 格，K 越大差异越小）。K=5 时差异源头距对方提取区 ≥336 块——
-        // 河长超过 336 块才可能断（入海长河尾部），实机几乎不可见。
-        // 覆盖扩大会让同一源头被多个 tile 追踪——各自只标记自己数据区 →
-        // 重叠区一致（确定性），无双写冲突。源头格数 (128+560)/56≈12 → ~150 格
-        // ×0.3 密度 ≈ 45 源头/tile（数组读为主，性能无压力）。
-        int gx0 = Math.floorDiv(originX - 5 * SOURCE_GRID, SOURCE_GRID);
-        int gx1 = Math.floorDiv(originX + N - 1 + 5 * SOURCE_GRID, SOURCE_GRID);
-        int gz0 = Math.floorDiv(originZ - 5 * SOURCE_GRID, SOURCE_GRID);
-        int gz1 = Math.floorDiv(originZ + N - 1 + 5 * SOURCE_GRID, SOURCE_GRID);
-
-        for (int gz = gz0; gz <= gz1; gz++) {
-            for (int gx = gx0; gx <= gx1; gx++) {
-                long gh = hash(gx * 31 + 7, gz * 73 + 13);
-                if ((gh & 0xFFFF) / 65536f >= SOURCE_DENSITY) continue;   // 概率过滤
-                // 格心 = 网格原点 + 确定性抖动（±35% 打散网格对齐伪影）
-                int cx = gx * SOURCE_GRID + (int) (((gh >>> 16) & 0xFFFF) / 65536f * SOURCE_GRID * 0.7f);
-                int cz = gz * SOURCE_GRID + (int) (((gh >>> 32) & 0xFFFF) / 65536f * SOURCE_GRID * 0.7f);
-                int tx = cx - originX, tz = cz - originZ;
-                // 源头高度：界内读数组、界外查高度函数（覆盖范围内源头全追踪，位置不限 tile 内
-                // → 长河上游段所在 tile 也能追踪，根治"河在 tile 提取区交界断流"）
-                float h = (tx >= 0 && tx < N && tz >= 0 && tz < N)
-                        ? tile[tz][tx] : worldHeight.heightAt(cx, cz);
-                if (h < SOURCE_MIN_E) continue;
-                traceOne(tile, N, originX, originZ, cx, cz, seaE, worldHeight, core, dis);
+        // 源头 = 汇聚升级（2026-08-02）：不再随机撒源头。先算确定性汇聚场——
+        // 每格 D8 流方向（8 邻最低，出界走 worldHeight）→ 沿"上游链"回溯到流域顶点，
+        // 链长 L = 该格上游集水规模（液滴汇聚的确定性等价物：液滴也是沿地形下坡流，
+        // 其路径覆盖 ≈ 上游集水；但液滴场每 tile 独立模拟 → 重叠区不一致，作源头
+        // 判定必断裂——链长场纯世界坐标函数 → 跨 tile 完全一致）。
+        // 判定区 = 数据区 + SOURCE_PAD 外扩（相邻 tile 差集内的源头也参与判定，
+        // 消除"对方提取区缺河"断裂；外扩区链段出界回溯用 worldHeight，与数据区
+        // base 同值 → 任何 tile 计算结果相同）。
+        // 达标格 L ≥ chainThr（绝对阈值，避免每 tile 相对统计分叉）= "该段具备形成
+        // 河流的条件"；达标区内取上游端点（8 邻达标格无更小 L = 流域最上游）作源头。
+        if (chainThr > 0) {
+            int pad = SOURCE_PAD;
+            int W = N + 2 * pad;
+            // 1) 流方向（-1 = 局部最低/无下游；方向与高度单调递减 → 无环）
+            byte[] flow = new byte[W * W];
+            for (int z = 0; z < W; z++) {
+                for (int x = 0; x < W; x++) {
+                    int wx = originX + x - pad, wz = originZ + z - pad;
+                    float h = heightAtWorld(tile, N, originX, originZ, worldHeight, wx, wz);
+                    byte best = -1;
+                    float bestH = h;
+                    for (int dz = -1; dz <= 1; dz++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dz == 0) continue;
+                            float nh = heightAtWorld(tile, N, originX, originZ, worldHeight,
+                                    wx + dx, wz + dz);
+                            if (nh < bestH) { bestH = nh; best = (byte) ((dz + 1) * 3 + (dx + 1)); }
+                        }
+                    }
+                    flow[z * W + x] = best;
+                }
+            }
+            // 2) 上游链长 L（回溯到顶点；出界链段用 worldHeight 采样 → 跨 tile 一致）
+            int[] chainLen = new int[W * W];
+            for (int z = 0; z < W; z++) {
+                for (int x = 0; x < W; x++) {
+                    int l = 0, cz = z, cx = x;
+                    while (l < 1024) {
+                        int upZ = -1, upX = -1;
+                        for (int dz = -1; dz <= 1 && upZ < 0; dz++) {
+                            for (int dx = -1; dx <= 1; dx++) {
+                                if (dx == 0 && dz == 0) continue;
+                                int nz = cz + dz, nx = cx + dx;
+                                byte f = flowOf(flow, nz, nx, W, tile, N, originX, originZ, worldHeight);
+                                // 邻格流向 (cz,cx) → (dz,dx) 的反方向 = (-dz,-dx)
+                                if (f == (byte) ((1 - dz) * 3 + (1 - dx))) { upZ = nz; upX = nx; break; }
+                            }
+                        }
+                        if (upZ < 0) break;   // 流域顶点（无上游来水）
+                        cz = upZ; cx = upX;
+                        l++;
+                    }
+                    chainLen[z * W + x] = l;
+                }
+            }
+            // 3) 达标 + 上游端点 → 追踪（世界坐标起点，出界段由 traceOne 的 worldHeight 流）
+            for (int z = 0; z < W; z++) {
+                for (int x = 0; x < W; x++) {
+                    int l = chainLen[z * W + x];
+                    if (l < chainThr) continue;
+                    int wx = originX + x - pad, wz = originZ + z - pad;
+                    if (heightAtWorld(tile, N, originX, originZ, worldHeight, wx, wz) < SOURCE_MIN_E) continue;
+                    boolean endpoint = true;
+                    for (int dz = -1; dz <= 1 && endpoint; dz++) {
+                        int nz = z + dz;
+                        if (nz < 0 || nz >= W) continue;
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dz == 0) continue;
+                            int nx = x + dx;
+                            if (nx < 0 || nx >= W) continue;
+                            int nl = chainLen[nz * W + nx];
+                            if (nl >= chainThr && nl < l) { endpoint = false; break; }
+                        }
+                    }
+                    if (endpoint) {
+                        traceOne(tile, N, originX, originZ, wx, wz, seaE, worldHeight, core, dis);
+                    }
+                }
             }
         }
         // 全网格单次扫描求最大流量（V 形雕刻深度归一化用）
@@ -194,6 +246,24 @@ public final class StreamTracer {
             if (spd <= 0f) break;
             posX = npx; posY = npy;
         }
+    }
+
+    /** 判定区格点流方向：判定区内读数组（快），超出判定区现算（8 邻最低，worldHeight 采样）→ 跨 tile 一致。 */
+    private static byte flowOf(byte[] flow, int z, int x, int W, float[][] tile, int N,
+                               int originX, int originZ, WorldHeight wh) {
+        if (z >= 0 && z < W && x >= 0 && x < W) return flow[z * W + x];
+        int wx = originX + x - SOURCE_PAD, wz = originZ + z - SOURCE_PAD;
+        float h = wh.heightAt(wx, wz);
+        byte best = -1;
+        float bestH = h;
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dz == 0) continue;
+                float nh = wh.heightAt(wx + dx, wz + dz);
+                if (nh < bestH) { bestH = nh; best = (byte) ((dz + 1) * 3 + (dx + 1)); }
+            }
+        }
+        return best;
     }
 
     /** 世界坐标格点高度：数据区内读数组（快路径），出界走高度函数。 */
