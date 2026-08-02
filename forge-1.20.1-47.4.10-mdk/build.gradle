@@ -283,3 +283,17 @@ task runRiverSeamProbe(type: JavaExec) {
     // Optional: args = ['12345']  (seed; default tries 12345/777/999/2024)
 }
 
+// Slope distribution diagnostic (steepness share; L1 terrain form check)
+task runSlopeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.SlopeDistributionProbe'
+    // Optional: args = ['12345']
+}
+
+// Continent scale diagnostic (HS effect on continentalness field)
+task runContScaleProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ContinentScaleProbe'
+    // Optional: args = ['12345']
+}
+

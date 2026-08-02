@@ -53,6 +53,9 @@ public final class TypeNoiseProvider {
         // --- MOUNTAINS: 浅山脊骨架(1/750) + 主脊线(1/240) + 次脊线(1/90) + 高频脊(1/45) ---
         // 2026-08-01 全频减半：用户反馈山块太宽（2 个山峰显示不完，陆地仅 ~20% 需更密山块）。
         // 波长减半 → 山块/山峰密度翻倍；Map 振幅范围不变（只改频率不改幅值）。
+        // 2026-08-02 悬崖修复复盘：主因是类型过渡带（TerrainCharacterField WARP 250 跨细胞
+        // + SIGMA 150 过渡窄）→「平坦缓坡一下子转陡坡」；已在 TerrainCharacterField 修复
+        // （WARP 80 + SIGMA 200）。本层振幅恢复原值（实验证明非主因，恢复山体崎岖感与山峰高度）。
         Noise mRSkel = new Boost(new Ridge(new Frequency(new Simplex(436), 1.0 / 750.0), 1.0), 0.25);
         Noise mR1 = new Ridge(new Frequency(new Simplex(416), 1.0 / 240.0), 1.0);
         Noise mR2 = new Boost(new Ridge(new Frequency(new Simplex(417), 1.0 / 90.0), 1.0), 0.25);
@@ -63,6 +66,7 @@ public final class TypeNoiseProvider {
 
         // Shape mask（蒙山形状）：3 大尺度减半(1/400·1/200·1/75) + 2 高频倍频(1/70·1/35)
         // 做山体表面崎岖化——"加频率"而非压高度，不缩短山体、去圆润。
+        // 2026-08-02 悬崖修复后恢复原振幅（非主因；保持山体崎岖感）。
         Noise sOct1 = new Frequency(new Simplex(425), 1.0 / 400.0);
         Noise sOct2 = new Boost(new Frequency(new Simplex(426), 1.0 / 200.0), 0.4);
         Noise sOct3 = new Boost(new Frequency(new Simplex(427), 1.0 / 75.0), 0.2);
@@ -75,6 +79,7 @@ public final class TypeNoiseProvider {
         this.mountValleyFloor = new Map(mValley, -1.0, 1.0, 0.04, 0.18);
 
         // 高频细节（峰顶/山坡锯齿）：频率 1/80→1/55、振幅 0.1→0.25，去圆润。
+        // 2026-08-02 悬崖修复后恢复原振幅（非主因；保持山体崎岖感）。
         Noise mDetR = new Ridge(new Frequency(new Simplex(421), 1.0 / 55.0), 1.0);
         this.mountDetail = new Boost(mDetR, 0.25);
 

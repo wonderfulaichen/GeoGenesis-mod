@@ -260,8 +260,9 @@ public record TerrainParams(
             // classification thresholds + snow latitude coupling
             0.25, 0.04, 0.82, 0.25, 0.15,  // elevHigh↑0.25,reliefHigh↑0.04,peakE,snowLatitudeInfluence,snowHumidityInfluence
 
-            // preview compat（HS=1 默认 1:1 缩放，无畸变）
-            1.0, 63, 0.70, -64, 320, 0.92, (int) Math.round(63 + (320 - 63) * 0.92 * 0.95), -48,
+            // preview compat（HS=2.0 默认：2026-08-02 整体倍频变宽 ×2 修复地形过陡；
+            // 坡度探针 A/B：平均坡度 30.9°→16.8°、>45° 37%→3.7%）
+            2.0, 63, 0.70, -64, 320, 0.92, (int) Math.round(63 + (320 - 63) * 0.92 * 0.95), -48,
             1.0,  // verticalScale
             5.0,              // cAffinityStrength
             // coastline diversification

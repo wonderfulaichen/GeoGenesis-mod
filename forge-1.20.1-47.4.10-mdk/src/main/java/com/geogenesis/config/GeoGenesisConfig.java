@@ -250,8 +250,6 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue erosionRidgeDetail;
     /** 河流阈值（背景~峰值间比例）：调大→河网更稀疏（只剩主干）。默认 0.02，范围 [0.001, 0.3]。配合汇聚加权（仅河流粒子累计 discharge）使用 */
     public final ForgeConfigSpec.DoubleValue riverDischargeThreshold;
-    /** 河流源头达标链长：上游集水链 ≥ 此值 = 具备形成河流的条件（绝对阈值保证跨 tile 判定一致）。默认 64，范围 [8, 512] */
-    public final ForgeConfigSpec.IntValue riverSourceChainLen;
     /** 河流粒子模式：lc（累计落差）资格下限。lc 超过后粒子开始进入河流模式。默认 0.05，范围 [0.005, 1.0] */
     public final ForgeConfigSpec.DoubleValue erosionRiverLcLo;
     /** 河流粒子模式：lc 资格上限（超过即完全河流模式）。默认 0.15，范围 [0.01, 2.0] */
@@ -578,8 +576,8 @@ public final class GeoGenesisConfig {
         builder.pop();
 
         builder.push("Scale");
-        horizontalScale = builder.comment("Horizontal scale (0.5-8.0). All noise coordinates divided by this = uniform XZ scaling of all terrain features. Default 1.0 = 1:1.")
-            .defineInRange("horizontalScale", 1.0, 0.5, 8.0);
+        horizontalScale = builder.comment("Horizontal scale (0.5-8.0). All noise coordinates divided by this = uniform XZ scaling of all terrain features. Default 2.0 (2026-08-02: terrain was too steep H/W, overall frequency widening x2 restores normal slopes).")
+            .defineInRange("horizontalScale", 2.0, 0.5, 8.0);
         verticalScale = builder.comment("Vertical scale multiplier (1-8). Applied to e->Y height mapping. 1=default, 2=twice as tall.")
             .defineInRange("verticalScale", 1.0, 1.0, 8.0);
         builder.pop();
@@ -642,8 +640,6 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionCascadeStrength", 0.3, 0.0, 1.0);
         riverDischargeThreshold = builder.comment("River threshold (background-to-peak ratio): larger = sparser network (main trunk only). Default 0.02, range [0.001, 0.3]. Works with convergence weighting (only river-mode droplets accumulate discharge).")
                 .defineInRange("riverDischargeThreshold", 0.02, 0.001, 0.3);
-        riverSourceChainLen = builder.comment("River source eligibility chain length: upstream catchment chain >= this = the segment qualifies as a river source (absolute threshold keeps cross-tile judgement consistent). Default 64, range [8, 512].")
-                .defineInRange("riverSourceChainLen", 64, 8, 512);
         erosionRiverLcLo = builder.comment("River-particle mode: cumulative-drop (lc) eligibility low threshold. Droplets exceeding lc begin transitioning toward river mode (strong erosion + weak deposition). Default 0.05, range [0.005, 1.0].")
                 .defineInRange("erosionRiverLcLo", 0.05, 0.005, 1.0);
         erosionRiverLcHi = builder.comment("River-particle mode: lc eligibility high threshold (full river mode above). Default 0.15, range [0.01, 2.0].")

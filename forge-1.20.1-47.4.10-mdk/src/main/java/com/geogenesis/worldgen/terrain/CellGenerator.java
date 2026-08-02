@@ -312,7 +312,7 @@ public final class CellGenerator {
         float[][] base;
         float[][] delta;
         float[][] postErosion;
-        float[][] discharge; // 液滴路径汇聚场（L3 稳态 dis，2026-08-02 源头升级判定用）
+        float[][] discharge; // 液滴汇聚场（粒子路径重叠计数；2026-08-02 河流源头资格用）
         int tileCX, tileCZ;
         int originX, originZ;
         int erosionRound; // 版本号（保留字段，诊断用）
@@ -387,11 +387,8 @@ public final class CellGenerator {
         // 小于槽宽 8 格）→ 视觉可接受。出界统一 terrainE（两侧同源，无缓存时序依赖）。
         float[][] base = res.base;
         StreamTracer.WorldHeight wh = (wx, wz) -> (float) Math.max(terrainE(wx, wz), -0.05);
-        // 源头达标链长（riverSourceChainLen，默认 64：上游集水链 ≥64 格 = 具备形成河流的条件；
-        // 绝对阈值（非每 tile 相对统计）保证跨 tile 判定一致）
-        int chainThr = cfg != null ? cfgInt(cfg.riverSourceChainLen, 64) : 64;
         RiverTileData rd = StreamTracer.trace(base, N, res.originX, res.originZ,
-                (float) heightCurve.seaE(), wh, chainThr);
+                (float) heightCurve.seaE(), wh);
         computeDistanceField(rd, N);
         // 雕刻：postErosion 副本（L3 定稿不动），增量写回 delta
         float[][] carved = new float[N][N];
@@ -416,8 +413,6 @@ public final class CellGenerator {
 
         int originX = tileCX * 16 - ERODE_TILE_BORDER;
         int originZ = tileCZ * 16 - ERODE_TILE_BORDER;
-
-        float[][] resD = null; // 液滴汇聚场提取目标（L3 内填充，第 7 步挂到 res）
 
         // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
         int spacing = ERODE_SAMPLING_SPACING;
@@ -523,6 +518,7 @@ public final class CellGenerator {
                 base[z][x] = (float) Math.max(terrainE(originX + x, originZ + z), -0.05);
 
         // 4) 液滴侵蚀（SH 多轮迭代）+ flat 全源（terrainE + 粗骨架，确定性）
+        float[][] dischargeNxN = null; // 液滴汇聚场（粒子路径重叠计数）
         if (erosionOn) {
             double seaE = heightCurve.seaE();
             int pad = 9;
@@ -546,20 +542,19 @@ public final class CellGenerator {
             }
             float[] flatPre = flat.clone();
 
-            // 2026-08-02：导出液滴路径汇聚场（discharge）——StreamTracer 源头升级判定用
-            //（侵蚀粒子汇聚达标 → 该格具备形成河流的条件 → 河流源头）
+            // 2026-08-02 恢复 discharge 导出：液滴路径重叠计数 = 粒子汇聚数量
+            // （河流源头资格；2026-08-01 曾因两套粒子系统停用）
             float[] dischargeBuf = new float[bufSize * bufSize];
-            if (resD == null) resD = new float[N][N];
             erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,
                 (float) seaE, (float) erosionStr, dischargeBuf);
-            // 提取中心 N×N（与 tile/postErosion 同对齐）
-            for (int z = 0; z < N; z++)
-                for (int x = 0; x < N; x++)
-                    resD[z][x] = dischargeBuf[(z + pad) * bufSize + (x + pad)];
 
             for (int z = 0; z < N; z++)
                 for (int x = 0; x < N; x++)
                     tile[z][x] = flat[(z + pad) * bufSize + (x + pad)];
+            dischargeNxN = new float[N][N];
+            for (int z = 0; z < N; z++)
+                for (int x = 0; x < N; x++)
+                    dischargeNxN[z][x] = dischargeBuf[(z + pad) * bufSize + (x + pad)];
 
             // 5) 轻量 Gaussian 已移除：原 bnd 列表 {40,44,48,...,88} 在 tile 内部每 4 块做一次
             //    5 点平滑，形成可见「网格条带」伪影（用户反馈 2026-07-31）。删除以恢复平滑地形。
@@ -590,13 +585,13 @@ public final class CellGenerator {
         res.base = base;
         res.delta = new float[N][N];
         res.postErosion = new float[N][N];
-        res.discharge = resD;
         for (int z = 0; z < N; z++) {
             for (int x = 0; x < N; x++) {
                 res.postErosion[z][x] = tile[z][x];
                 res.delta[z][x] = tile[z][x] - base[z][x];
             }
         }
+        res.discharge = dischargeNxN;
         res.tileCX = tileCX;
         res.tileCZ = tileCZ;
         res.originX = originX;
@@ -1079,14 +1074,6 @@ public final class CellGenerator {
     }
 
     private static boolean cfgBool(net.minecraftforge.common.ForgeConfigSpec.BooleanValue v, boolean fallback) {
-        try {
-            return v.get();
-        } catch (IllegalStateException ex) {
-            return fallback;
-        }
-    }
-
-    private static int cfgInt(net.minecraftforge.common.ForgeConfigSpec.IntValue v, int fallback) {
         try {
             return v.get();
         } catch (IllegalStateException ex) {
