@@ -3,18 +3,20 @@ package com.geogenesis.worldgen.terrain;
 /**
  * 河流跨 tile 无缝诊断探针（2026-08-02，分级流水线 L1 验证）。
  *
- * <p>验证 StreamTracer 分级改造后的关键属性：<b>相邻 tile 重叠区（世界坐标对齐列/行），
- * 河道标记逐格一致</b>（用户报告"河走着走着停"的断流根因）。</p>
- * <ul>
- *   <li>同列/同行比较：A.local lxA ↔ B.local lxA−48（同一世界坐标；A.origin=16tcx−40，
- *       B.origin=16(tcx+3)−40，同 world x → lxB = lxA − 48）</li>
- *   <li>断裂点 = 同世界坐标的 riverMask 不一致（真断裂）。旧版把 A 列 335 与 B 列 336
- *       （相邻列）配对，河在 335 天然终止被误报为断流——已修正</li>
- * </ul>
- * <p>同时输出提取区河网规模（riverCore 格数 / maxQ），间接验证平原不衰减
- * （河应更长、更完整，而不是走几步就停）。</p>
+ * <p>验证 StreamTracer 的关键属性：<b>相邻 tile 重叠区（世界坐标对齐），河道中心线
+ * riverCore 逐格一致</b>（用户报告"河走着走着停"的断流根因）。</p>
  *
- * <p>正控扫描：先轻量预筛（terrainE 采样）找陆地占比 ≥25% 的 tile 再触发侵蚀+河流，
+ * <p><b>判定用 riverCore 而非 riverMask</b>：mask 是 3×3 膨胀，在 tile 数据区边界截断
+ * （A 最后一行/列缺数据区外 core 的膨胀、B 有）→ 数组边缘 mask 比较产生假断裂；
+ * core 由 markCell/markSegment 界内判定写入，无边界截断，比较安全。</p>
+ *
+ * <p>比较范围 = 两 tile 数据区重叠（世界坐标对齐，A.local ↔ B.local 差 48）：
+ * <ul>
+ *   <li>X-seam：world x ∈ [B.originX, A.originX+128) ↔ A.local [48,128) / B.local [0,80)</li>
+ *   <li>Z-seam：world z ∈ [B.originZ, A.originZ+128) ↔ A.local [48,128) / B.local [0,80)</li>
+ * </ul></p>
+ *
+ * <p>正控扫描：轻量预筛（terrainE 采样）找陆地占比 ≥25% 的 tile 再触发侵蚀+河流，
  * 取第一个提取区含 riverCore 的 tile 做双轴接缝测量。低地世界（eLand 中值 0.10~0.18）
  * 中 SOURCE_MIN_E=0.12 会滤掉大半源头 → 某些种子全区域无河（空测无意义），
  * main 默认依次尝试 12345/777/999/2024 直到找到含河种子。</p>
@@ -78,14 +80,13 @@ public final class RiverSeamProbe {
         probeZSeam(gen, foundX, foundZ);
 
         System.out.println("=== RiverSeamProbe done ===");
-        System.out.println("断裂 > 0：同世界坐标列/行的河道标记不一致（真断裂）");
+        System.out.println("断裂 > 0：同世界坐标的河道中心线不一致（真断裂）");
         return true;
     }
 
-    /** 右邻交界：A=(tcx,tcz) ↔ B=(tcx+3,tcz)。提取区 = 数据区中心 48 块。 */
+    /** 右邻交界：A=(tcx,tcz) ↔ B=(tcx+3,tcz)。重叠区 world x ∈ [B.originX, A.originX+128)。 */
     private static void probeXSeam(CellGenerator gen, int tcx, int tcz) {
         int tcxB = tcx + ERODE_TILE_CHUNKS;
-        // 触发 L3+L1：tile 坐标 (t) 覆盖 chunk [t, t+2]，用 t+1 触发
         gen.getErosionTile(tcx + 1, tcz + 1);
         gen.getErosionTile(tcxB + 1, tcz + 1);
 
@@ -96,20 +97,15 @@ public final class RiverSeamProbe {
             System.out.println("  SKIP: river tile not in cache");
             return;
         }
-        // 同世界坐标列比较（2026-08-02 修正）：A.local lxA ↔ B.local lxA−48（同 world x）。
-        // 旧判定把 A 列 335 与 B 列 336（相邻列）配对 → "河在 335 天然终止"被误报断流
-        // （core 重叠区 0 差异证明两侧追踪完全一致，河终止于同一点）。
-        int seamA = ERODE_TILE_BORDER + ERODE_TILE_CHUNKS * 16 - 1;
-        int seamB = ERODE_TILE_BORDER;
-        int z0 = ERODE_TILE_BORDER, z1 = ERODE_TILE_BORDER + ERODE_TILE_CHUNKS * 16;
+        // core 同列比较：A.local lxA ∈ [48,128) ↔ B.local lxA−48（同 world x，重叠区全覆盖）
         int a2b = 0, b2a = 0, both = 0, none = 0;
         int worstZ = -1;
+        int z0 = ERODE_TILE_BORDER, z1 = ERODE_TILE_BORDER + ERODE_TILE_CHUNKS * 16;
         for (int lz = z0; lz < z1; lz++) {
-            for (int lxA = seamA; lxA < ERODE_TILE_SIZE; lxA++) {
+            for (int lxA = ERODE_TILE_CHUNKS * 16; lxA < ERODE_TILE_SIZE; lxA++) {
                 int lxB = lxA - ERODE_TILE_CHUNKS * 16;
-                if (lxB < 0 || lxB >= ERODE_TILE_SIZE) continue;
-                boolean a = rdA.riverMask[lz][lxA];
-                boolean b = rdB.riverMask[lz][lxB];
+                boolean a = rdA.riverCore[lz][lxA];
+                boolean b = rdB.riverCore[lz][lxB];
                 if (a && b) both++;
                 else if (!a && !b) none++;
                 else if (a) { a2b++; worstZ = lz; }
@@ -117,14 +113,14 @@ public final class RiverSeamProbe {
             }
         }
         System.out.println(String.format(
-            "  seam 同列: 两侧一致 both=%d none=%d | 断裂 A→B=%d B→A=%d (worst local z=%d)",
+            "  seam 同列(core): 两侧一致 both=%d none=%d | 断裂 A→B=%d B→A=%d (worst local z=%d)",
             both, none, a2b, b2a, worstZ));
-        dumpStats(rdA, "A", seamA, seamB);
-        dumpStats(rdB, "B", seamA, seamB);
+        dumpStats(rdA, "A", 0, 0);
+        dumpStats(rdB, "B", 0, 0);
         System.out.println();
     }
 
-    /** 下邻交界：A=(tcx,tcz) ↔ B=(tcx,tcz+3)，交界 world z = 48。 */
+    /** 下邻交界：A=(tcx,tcz) ↔ B=(tcx,tcz+3)。重叠区 world z ∈ [B.originZ, A.originZ+128)。 */
     private static void probeZSeam(CellGenerator gen, int tcx, int tcz) {
         int tczB = tcz + ERODE_TILE_CHUNKS;
         gen.getErosionTile(tcx + 1, tcz + 1);
@@ -137,18 +133,15 @@ public final class RiverSeamProbe {
             System.out.println("  SKIP: river tile not in cache");
             return;
         }
-        // 同世界坐标行比较：A.local lzA ↔ B.local lzA−48（同 world z）
-        int seamA = ERODE_TILE_BORDER + ERODE_TILE_CHUNKS * 16 - 1;
-        int seamB = ERODE_TILE_BORDER;
-        int x0 = ERODE_TILE_BORDER, x1 = ERODE_TILE_BORDER + ERODE_TILE_CHUNKS * 16;
+        // core 同行比较：A.local lzA ∈ [48,128) ↔ B.local lzA−48（同 world z，重叠区全覆盖）
         int a2b = 0, b2a = 0, both = 0, none = 0;
         int worstX = -1;
+        int x0 = ERODE_TILE_BORDER, x1 = ERODE_TILE_BORDER + ERODE_TILE_CHUNKS * 16;
         for (int lx = x0; lx < x1; lx++) {
-            for (int lzA = seamA; lzA < ERODE_TILE_SIZE; lzA++) {
+            for (int lzA = ERODE_TILE_CHUNKS * 16; lzA < ERODE_TILE_SIZE; lzA++) {
                 int lzB = lzA - ERODE_TILE_CHUNKS * 16;
-                if (lzB < 0 || lzB >= ERODE_TILE_SIZE) continue;
-                boolean a = rdA.riverMask[lzA][lx];
-                boolean b = rdB.riverMask[lzB][lx];
+                boolean a = rdA.riverCore[lzA][lx];
+                boolean b = rdB.riverCore[lzB][lx];
                 if (a && b) both++;
                 else if (!a && !b) none++;
                 else if (a) { a2b++; worstX = lx; }
@@ -156,10 +149,10 @@ public final class RiverSeamProbe {
             }
         }
         System.out.println(String.format(
-            "  seam 同行: 两侧一致 both=%d none=%d | 断裂 A→B=%d B→A=%d (worst local x=%d)",
+            "  seam 同行(core): 两侧一致 both=%d none=%d | 断裂 A→B=%d B→A=%d (worst local x=%d)",
             both, none, a2b, b2a, worstX));
-        dumpStats(rdA, "A", seamA, seamB);
-        dumpStats(rdB, "B", seamA, seamB);
+        dumpStats(rdA, "A", 0, 0);
+        dumpStats(rdB, "B", 0, 0);
         System.out.println();
     }
 

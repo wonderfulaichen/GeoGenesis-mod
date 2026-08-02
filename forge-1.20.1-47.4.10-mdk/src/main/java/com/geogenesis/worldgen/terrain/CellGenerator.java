@@ -312,6 +312,7 @@ public final class CellGenerator {
         float[][] base;
         float[][] delta;
         float[][] postErosion;
+        float[][] discharge; // 液滴路径汇聚场（L3 稳态 dis，2026-08-02 源头升级判定用）
         int tileCX, tileCZ;
         int originX, originZ;
         int erosionRound; // 版本号（保留字段，诊断用）
@@ -386,8 +387,11 @@ public final class CellGenerator {
         // 小于槽宽 8 格）→ 视觉可接受。出界统一 terrainE（两侧同源，无缓存时序依赖）。
         float[][] base = res.base;
         StreamTracer.WorldHeight wh = (wx, wz) -> (float) Math.max(terrainE(wx, wz), -0.05);
+        // 源头达标链长（riverSourceChainLen，默认 64：上游集水链 ≥64 格 = 具备形成河流的条件；
+        // 绝对阈值（非每 tile 相对统计）保证跨 tile 判定一致）
+        int chainThr = cfg != null ? cfgInt(cfg.riverSourceChainLen, 64) : 64;
         RiverTileData rd = StreamTracer.trace(base, N, res.originX, res.originZ,
-                (float) heightCurve.seaE(), wh);
+                (float) heightCurve.seaE(), wh, chainThr);
         computeDistanceField(rd, N);
         // 雕刻：postErosion 副本（L3 定稿不动），增量写回 delta
         float[][] carved = new float[N][N];
@@ -412,6 +416,8 @@ public final class CellGenerator {
 
         int originX = tileCX * 16 - ERODE_TILE_BORDER;
         int originZ = tileCZ * 16 - ERODE_TILE_BORDER;
+
+        float[][] resD = null; // 液滴汇聚场提取目标（L3 内填充，第 7 步挂到 res）
 
         // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
         int spacing = ERODE_SAMPLING_SPACING;
@@ -540,9 +546,16 @@ public final class CellGenerator {
             }
             float[] flatPre = flat.clone();
 
-            // 2026-08-01 两套粒子系统：液滴侵蚀纯微刻，不再导出 discharge（河网由 StreamTracer 独立追踪）
+            // 2026-08-02：导出液滴路径汇聚场（discharge）——StreamTracer 源头升级判定用
+            //（侵蚀粒子汇聚达标 → 该格具备形成河流的条件 → 河流源头）
+            float[] dischargeBuf = new float[bufSize * bufSize];
+            if (resD == null) resD = new float[N][N];
             erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,
-                (float) seaE, (float) erosionStr, null);
+                (float) seaE, (float) erosionStr, dischargeBuf);
+            // 提取中心 N×N（与 tile/postErosion 同对齐）
+            for (int z = 0; z < N; z++)
+                for (int x = 0; x < N; x++)
+                    resD[z][x] = dischargeBuf[(z + pad) * bufSize + (x + pad)];
 
             for (int z = 0; z < N; z++)
                 for (int x = 0; x < N; x++)
@@ -577,6 +590,7 @@ public final class CellGenerator {
         res.base = base;
         res.delta = new float[N][N];
         res.postErosion = new float[N][N];
+        res.discharge = resD;
         for (int z = 0; z < N; z++) {
             for (int x = 0; x < N; x++) {
                 res.postErosion[z][x] = tile[z][x];
@@ -1065,6 +1079,14 @@ public final class CellGenerator {
     }
 
     private static boolean cfgBool(net.minecraftforge.common.ForgeConfigSpec.BooleanValue v, boolean fallback) {
+        try {
+            return v.get();
+        } catch (IllegalStateException ex) {
+            return fallback;
+        }
+    }
+
+    private static int cfgInt(net.minecraftforge.common.ForgeConfigSpec.IntValue v, int fallback) {
         try {
             return v.get();
         } catch (IllegalStateException ex) {
