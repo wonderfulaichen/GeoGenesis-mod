@@ -38,6 +38,11 @@ public class TerrainQueue {
     private int lastMaxCX = Integer.MAX_VALUE, lastMaxCZ = Integer.MAX_VALUE;
     private boolean firstQueue = true;
 
+    // ===== 防抖：避免拖动/缩放时每帧都 cancel+submit（无声崩溃根因） =====
+    /** 两次入队之间最小间隔（毫秒）。无条件防抖——快速滑动时每帧视口变 ≥16 块，条件跳过会失效。 */
+    private static final long DEBOUNCE_MS = 200;
+    private long lastQueueMs = 0;
+
     public TerrainQueue(CellCache cellCache, TerrainPool pool,
                         GeoGenesisTerrain terrain, int blockStride) {
         this.cellCache = cellCache;
@@ -55,6 +60,15 @@ public class TerrainQueue {
      */
     public void queueGeneration(int centerX, int centerZ,
                                  int blocksWide, int blocksHigh) {
+        // 防抖：无论视口怎么变，200ms 内最多入队一次
+        // 避免拖动/缩放时每帧都 cancel+submit worker 线程（无声崩溃根因）
+        // 条件防抖（viewChanged 绕过）在快速拖动时会失效——center 每帧移动 ≥16 块即每帧都触发
+        long now = System.currentTimeMillis();
+        if (!firstQueue && (now - lastQueueMs) < DEBOUNCE_MS) {
+            return;
+        }
+        lastQueueMs = now;
+
         int halfW = blocksWide / 2;
         int halfH = blocksHigh / 2;
         int minCX = (centerX - halfW) >> 4;
@@ -128,5 +142,6 @@ public class TerrainQueue {
     public void resetViewport() {
         firstQueue = true;
         lastMinCX = lastMinCZ = lastMaxCX = lastMaxCZ = Integer.MAX_VALUE;
+        lastQueueMs = 0;
     }
 }

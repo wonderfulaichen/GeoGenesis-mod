@@ -84,6 +84,8 @@ minecraft {
         client {
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             property 'forge.enabledGameTestNamespaces', mod_id
+            // 2026-08-02/03：dev 环境堆内存提高（飞行/大视距生成 tile 缓存需要）
+            jvmArgs '-Xmx6G'
         }
 
         server {
@@ -253,6 +255,13 @@ task runDiag(type: JavaExec) {
 task runDiscontinuityProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiscontinuityProbe'
+}
+
+// Cell boundary 精准验证（typeWeights/eLand 是否在 400 整数倍处突变）
+task runCellBoundaryProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.CellBoundaryProbe'
+    // Optional: args = ['12345']  (seed)
 }
 
 // Erosion tile pipeline multi-stage diagnostic (Tile Context Chain)

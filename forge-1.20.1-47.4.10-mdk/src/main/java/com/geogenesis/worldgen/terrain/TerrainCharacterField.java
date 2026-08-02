@@ -9,9 +9,9 @@ import com.geogenesis.worldgen.noise.*;
  * <ul>
  *   <li>400 块间距的稀疏网格，每格点哈希独立分配 5 种陆地类型之一</li>
  *   <li>任意类型可邻接任意类型（BASIN 可紧邻 PLATEAU / MOUNTAINS）</li>
- *   <li>最近格点高斯距离权重主导（σ=150），类型边界平滑过渡</li>
- *   <li>5×5 搜索窗口 + 边缘权重压制 → 零窗口进出跳变</li>
- *   <li>域扭曲打散网格规则感</li>
+ *   <li>最近格点高斯距离权重主导（σ=200），类型边界平滑过渡</li>
+ *   <li>7×7 搜索窗口（SEARCH_RADIUS=3）：进出格点距离≥1000 → 权重自然衰减到 3.7e-6，零窗口进出跳变</li>
+ *   <li>域扭曲打散网格规则感（WARP_AMP=0，保留字段可恢复）</li>
  * </ul>
  */
 public final class TerrainCharacterField {
@@ -19,8 +19,20 @@ public final class TerrainCharacterField {
     /** 网格间距（块单位），400 = 25 chunks，细胞区域感鲜明 */
     private static final int CELL_SPACING = 400;
 
-    /** 搜索半径：1 → 3×3 搜索窗口（ring 2 在 σ=150, spacing=400 时权重 < 0.00034，可安全忽略） */
-    private static final int SEARCH_RADIUS = 1;
+    /**
+     * 搜索半径：3 → 7×7 搜索窗口。
+     * <p>
+     * 2026-08-03 修复：原 3×3 窗口 + SIGMA=200 时，窗口进出的是 ring 1 格点
+     * （跨边界瞬间距离 = 1.5×SPACING = 600 块 → 权重 exp(-4.5)≈0.011 不可忽略），
+     * 移出/移入格点类型不同 → typeWeights 在 1 格内突变 ~0.022 → argmax 临界处
+     * 翻转 dominantType → eLand 突变 → 1 格断裂线（CellBoundaryProbe 实测 @X=400/800）。
+     * <p>
+     * 方案：窗口扩为 7×7（SEARCH_RADIUS=3），窗口进出格点距离 ≥2.5×SPACING=1000 块
+     * → 权重 exp(-1000²/80000)≈3.7e-6 → 进出跳变 <0.0015 块，不可见。
+     * 注意：不能使用「边缘硬压制 ×1e-7」（v5 σ=150 时代的方案）——σ=200 下 ring 1
+     * 边界权重 0.011 太大，同一格点从 ring 1 滑到 ring 2 时权重骤降 1e7 倍反而制造新跳变。
+     */
+    private static final int SEARCH_RADIUS = 3;
 
     /** 高斯 σ：150→200（2026-08-02：类型过渡带拉宽，配合 WARP 缩小 → 边缘悬崖坡度下降） */
     private static final double SIGMA = 200.0;
@@ -41,9 +53,9 @@ public final class TerrainCharacterField {
 
     // ===== 域扭曲（打散网格规则感） =====
     private final Noise warpX, warpZ;
-    // 2026-08-02：250→80（原位移 ±250 超过半格 200，查询点频繁跨细胞 →
-    // mountW 快速切换 → blendLo/Hi 悬崖「平坦缓坡一下子转陡坡」；实测 120 时悬崖 45°→31°）
-    private static final double WARP_AMP = 80.0;
+    // 2026-08-03：80→0（用户实测确认——类型权重查格点 ±80 块平移让主导沿细胞边界跳跃，
+    // 产生 1 格宽断裂伪影；纯噪声 + 侵蚀已足够丰富，warp 纯属冗余。保留字段供未来恢复）。
+    private static final double WARP_AMP = 0.0;
     private static final double WARP_FREQ = 1.0 / 500.0;
 
     // ===== 混合结果 =====
@@ -93,7 +105,7 @@ public final class TerrainCharacterField {
         double bestW = 0;
         final double invSpacing = 1.0 / CELL_SPACING;
 
-        // 3. 5×5 搜索窗口
+        // 3. 5×5 搜索窗口（ring 2 格点 ×EDGE_WEIGHT，进出无跳变）
         for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
             for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
                 int cx = baseX + dx;
