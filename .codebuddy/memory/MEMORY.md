@@ -9,7 +9,8 @@
 - **e(x,z) 单一连续场**：大陆性 `c∈[0,1]` 单一连续噪声，海陆仅条件切分；海岸 = e 场自然穿过 0 的等值线（smoothstep 过渡），不绑定 c 硬阈值锚点。
 - **【铁律·c 绝不控制地形高度】**：c 只决定类型 + 海陆 mask。地形高度由类型各自独立噪声决定。自查：若 `if c>X then e=f(c)` 或 `e+=g(c)` 即违规。
 - **差异调制（v14，连续无断裂）**：`shared + 0.4·(perTypeAvg-shared)` 零均值偏差保障 C0 连续。
-- **类型过渡 = Voronoi 高斯距离权重**（CELL_SPACING=400，σ=150，边缘 ×1e-7）；`cAffinityStrength` 乘法偏置（默认 3.0）。
+- **类型过渡 = Voronoi 高斯距离权重**（CELL_SPACING=400，σ=200，SEARCH_RADIUS=3/7×7 窗口）；`cAffinityStrength` 乘法偏置（默认 3.0）。
+- **【铁律·窗口半径 ≥3】σ=200 时窗口半径必须 ≥3（7×7）**：3×3 窗口进出的是 ring 1 格点（跨边界距离 600 → 权重 0.011 不可忽略）→ cell 边界 typeWeights 1 格突变 ~0.022 → argmax 翻转 → 1 格断裂线（2026-08-03 实锤）。**禁用边缘硬压制 ×1e-7**（仅小 σ 适用，σ=200 下同一格点滑出 ring 1→ring 2 权重骤降 1e7 倍反而制造新跳变），正解 = 扩窗让权重自然衰减。
 - **条件系统**：温度/湿度/大陆性用 `ClimateSpline`(Cubic Hermite)；雪线双曲线锚定 seaLevel~maxY。
 - **oceanDepthFactor**（乘 eOcean，默认 1.0 [0.5,3.0]）；`e→Y` 必须非对称（e=0→seaLevel=63）。
 

@@ -33,10 +33,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class CellGenerator {
 
-    private static final Logger DLOG = LogManager.getLogger("geogenesis/diag");
-    /** 诊断限频 */
-    private static int diagCount = 0;
-
     private final ContinentField continent;
     private final HeightCurve heightCurve;
     private final TypeLandShape typeLandShape;
@@ -344,12 +340,18 @@ public final class CellGenerator {
             return new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE];
         }
 
-        // L3：预生成 1 环邻居侵蚀（先邻居后自己，全部顶层 computeIfAbsent）
+        // L3：预生成 1 环邻居侵蚀（先邻居后自己）。
+        // 2026-08-03 死锁修复（回退版本重放）：原 computeIfAbsent 与 GeoGenesisTerrain.getChunkCells
+        // 的 computeIfAbsent 形成嵌套锁（26 线程并发偶发死锁）。改 get + putIfAbsent。
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {
                 int ncx = tileCX + dx * ERODE_TILE_CHUNKS;
                 int ncz = tileCZ + dz * ERODE_TILE_CHUNKS;
-                erosionTileCache.computeIfAbsent(tileKey(ncx, ncz), k -> generateErosionTile(ncx, ncz));
+                long nk = tileKey(ncx, ncz);
+                if (!erosionTileCache.containsKey(nk)) {
+                    ErosionTileResult nr = generateErosionTile(ncx, ncz);
+                    erosionTileCache.putIfAbsent(nk, nr); // 并发重复生成时结果确定性相同
+                }
             }
         }
         // L1：本 tile 河流 + 雕刻（1 环侵蚀场已定稿）
@@ -865,34 +867,6 @@ public final class CellGenerator {
             }
         }
 
-        // 诊断：右边缘 delta 值（用于追踪 tile 边界断裂）。每10次记录一次以降低日志噪声。
-        diagCount++;
-        if (diagCount % 10 == 0) {
-            double minD = 1, maxD = -1, avgD = 0;
-            double reMin = 1, reMax = -1;
-            for (int lz = 0; lz < 16; lz++) {
-                for (int lx = 0; lx < 16; lx++) {
-                    double d = (double) tile[offsetZ + lz][offsetX + lx];
-                    if (d < minD) minD = d;
-                    if (d > maxD) maxD = d;
-                    avgD += d;
-                }
-                double re = (double) tile[offsetZ + lz][offsetX + 15];
-                if (re < reMin) reMin = re;
-                if (re > reMax) reMax = re;
-            }
-            avgD /= 256;
-            boolean atTileXEdge = (chunkX % ERODE_TILE_CHUNKS == 2); // 本 chunk 在 tile 右边缘（与下个 tile 交界）
-            boolean atTileZEdge = (chunkZ % ERODE_TILE_CHUNKS == 2);
-            DLOG.info("[DIAG-EXT] c({},{}): world=({},{}) tile=({},{}){} {}"
-                + " delta min={} max={} avg={} | reMin={} reMax={}",
-                chunkX, chunkZ, chunkX * 16, chunkZ * 16,
-                tileCX, tileCZ,
-                atTileXEdge ? " RIGHT-EDGE" : "",
-                atTileZEdge ? " BOTTOM-EDGE" : "",
-                String.format("%.4f", minD), String.format("%.4f", maxD), String.format("%.4f", avgD),
-                String.format("%.4f", reMin), String.format("%.4f", reMax));
-        }
     }
 
     /**
