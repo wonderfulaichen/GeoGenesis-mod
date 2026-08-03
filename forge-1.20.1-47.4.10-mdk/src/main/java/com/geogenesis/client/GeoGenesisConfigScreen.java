@@ -101,6 +101,9 @@ public class GeoGenesisConfigScreen extends Screen {
      *  解决"点击空白区域就刷新"——面板 slider 在 click 不改变值时也会触发 markDirty。 */
     private TerrainParams lastAppliedParams = null;
     private long lastAppliedSeed = -1;
+    /** 创建世界上下文（结构自动检测用）：创建世界界面传入，游戏内/Mods 入口为 null */
+    // 可空：创建世界界面传入，游戏内/Mods 入口为 null（结构检测自动降级）
+    private net.minecraft.client.gui.screens.worldselection.WorldCreationContext worldCtx;
 
     public GeoGenesisConfigScreen(Screen parent) {
         super(Component.literal("GeoGenesis 配置"));
@@ -108,9 +111,15 @@ public class GeoGenesisConfigScreen extends Screen {
     }
     /** 带种子的构造器：创建世界时传随机种子，游戏中传当前世界种子。 */
     public GeoGenesisConfigScreen(Screen parent, long seed) {
+        this(parent, seed, null);
+    }
+    /** 带种子 + 创建世界上下文（结构自动检测用）：创建世界界面传 ctx，游戏内传 null。 */
+    public GeoGenesisConfigScreen(Screen parent, long seed,
+                                  net.minecraft.client.gui.screens.worldselection.WorldCreationContext ctx) {
         super(Component.literal("GeoGenesis 配置"));
         this.parent = parent;
         this.seed = seed;
+        this.worldCtx = ctx;
     }
     public GeoGenesisConfigScreen(Screen parent, int tab) {
         super(Component.literal("GeoGenesis 配置"));
@@ -229,6 +238,15 @@ public class GeoGenesisConfigScreen extends Screen {
             preview.setTerrain(terrain, seed, p);
             preview.setMode(currentMode);
         }
+        // 结构自动检测上下文：创建世界界面用 WorldCreationContext（反射取 registry/generator，
+        //   1.20.1 方法名因映射可能不同）；游戏内单机用集成服务端 overworld 的 generator；
+        // 都没有（Mods 配置入口/联机）→ null（预览无结构标记，不崩）
+        Minecraft mc = Minecraft.getInstance();
+        preview.setStructureContext(
+            worldCtx != null ? ctxRegistry(worldCtx)
+                    : (mc.level != null ? mc.level.registryAccess() : null),
+            worldCtx != null ? ctxGenerator(worldCtx) : currentGenerator(mc),
+            seed);
         // 每次都同步几何位置（重入 init 后坐标可能变化），并确保已登记进 widget 列表
         preview.setPosition(previewX, previewY, previewW, previewH);
         if (!previewRegistered) {
@@ -277,6 +295,11 @@ public class GeoGenesisConfigScreen extends Screen {
         GeoGenesisConfig.SPEC.save();
         saved = true;
         dirty = false;
+        // ★ 种子同步：从创建世界界面打开时，把配置面板的种子写回 MC 创建界面，
+        //   否则"创建的世界种子 ≠ 配置面板种子"（用户实锤）。
+        if (parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen cws) {
+            com.geogenesis.client.GeoGenesisClient.writeSeedToCreateWorld(cws, seed);
+        }
         Minecraft.getInstance().setScreen(parent);
     }
 
@@ -352,18 +375,63 @@ public class GeoGenesisConfigScreen extends Screen {
         if (dirty && debounce > 0) { debounce--; if (debounce <= 0) rebuildPreviewIfChanged(); }
     }
 
+    /** 侵蚀/河流开关指纹：开关不在 TerrainParams 里，rebuild 判断必须单独比较，
+     *  否则点击开关只改 TOML、预览永不重算（"点击没反应"实锤根因）。 */
+    private int lastToggleBits = -1;
+    private int toggleBits() {
+        GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
+        int b = 0;
+        if (c.erosionEnabled != null && c.erosionEnabled.get()) b |= 1;
+        if (c.erosionRidgeEnabled != null && c.erosionRidgeEnabled.get()) b |= 2;
+        if (c.riversEnabled != null && c.riversEnabled.get()) b |= 4;
+        if (c.riverWater != null && c.riverWater.get()) b |= 8;
+        if (c.riverEnabled != null && c.riverEnabled.get()) b |= 16;
+        return b;
+    }
+
+    /** 游戏内单机：从集成服务端 overworld 拿 ChunkGenerator（ClientChunkCache 无 getGenerator）。 */
+    private static net.minecraft.world.level.chunk.ChunkGenerator currentGenerator(Minecraft mc) {
+        try {
+            var server = mc.getSingleplayerServer();
+            if (server != null) {
+                var lvl = server.overworld();
+                if (lvl != null) return lvl.getChunkSource().getGenerator();
+            }
+        } catch (Throwable ignore) { /* 非单机/异常 → null */ }
+        return null;
+    }
+
+    /** 反射读 WorldCreationContext.registryAccess()（1.20.1 方法名映射差异兜底）。 */
+    private static net.minecraft.core.RegistryAccess ctxRegistry(net.minecraft.client.gui.screens.worldselection.WorldCreationContext ctx) {
+        try {
+            var m = ctx.getClass().getMethod("registryAccess");
+            return (net.minecraft.core.RegistryAccess) m.invoke(ctx);
+        } catch (Throwable t) { return null; }
+    }
+
+    /** 反射读 WorldCreationContext.generator()。 */
+    private static net.minecraft.world.level.chunk.ChunkGenerator ctxGenerator(net.minecraft.client.gui.screens.worldselection.WorldCreationContext ctx) {
+        try {
+            var m = ctx.getClass().getMethod("generator");
+            return (net.minecraft.world.level.chunk.ChunkGenerator) m.invoke(ctx);
+        } catch (Throwable t) { return null; }
+    }
+
     /** 只在参数真的变化时才重建预览（解决"点击空白也刷新"问题） */
     private void rebuildPreviewIfChanged() {
         TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
+        int tb = toggleBits();
         if (lastAppliedParams != null
                 && lastAppliedParams.equals(p)
-                && lastAppliedSeed == seed) {
-            // 参数和种子都没变 → 跳过 rebuild
+                && lastAppliedSeed == seed
+                && tb == lastToggleBits) {
+            // 参数、种子、开关都没变 → 跳过 rebuild
             dirty = false;
             return;
         }
         lastAppliedParams = p;
         lastAppliedSeed = seed;
+        lastToggleBits = tb;
         rebuildPreview();
     }
 
@@ -399,29 +467,34 @@ public class GeoGenesisConfigScreen extends Screen {
 
         // 图层名由 widget 内部图例显示，此处不重复绘制（避免与按钮重叠）
 
-        // 左栏面板：裁剪区 + 直接渲染（无 translate），按 tab 索引分发
-        g.enableScissor(panelX, listTop, panelX + panelW, listBottom);
-        if (panels != null) {
-            // 群系面板需要知道面板底 y 才能填满整个区域（消除底部空白）
-            if (panels[tab] == biomesPanel) biomesPanel.setPanelBottom(listBottom);
-            panels[tab].render(g, mx, my);
-            if (tab == 3) terrainPanel.renderHeaderTooltip(g, mx, my);
-        }
-        g.disableScissor();
+        // 对话框显示时跳过面板/widgets 渲染：避免 ParamSlider ↩ 重置按钮穿透遮罩显示
+        boolean dialogActive = nameDialog.isShowing() || confirmDialog.isShowing();
 
-        // 预设面板的种子栏 widgets 仅在预设标签可见（其他标签隐藏，避免覆盖气候/地形等面板内容）
-        if (presetsPanel != null) {
-            presetsPanel.setWidgetsVisible(tab == 0);
-            // 同步滚动区视口高度（listBottom - 滚动顶），保证 maxScroll 用真实视口
-            presetsPanel.setViewportHeight(listBottom - presetsPanel.getScrollTopY());
-        }
+        if (!dialogActive) {
+            // 左栏面板：裁剪区 + 直接渲染（无 translate），按 tab 索引分发
+            g.enableScissor(panelX, listTop, panelX + panelW, listBottom);
+            if (panels != null) {
+                // 群系面板需要知道面板底 y 才能填满整个区域（消除底部空白）
+                if (panels[tab] == biomesPanel) biomesPanel.setPanelBottom(listBottom);
+                panels[tab].render(g, mx, my);
+                if (tab == 3) terrainPanel.renderHeaderTooltip(g, mx, my);
+            }
+            g.disableScissor();
 
-        super.render(g, mx, my, pt);
+            // 预设面板的种子栏 widgets 仅在预设标签可见（其他标签隐藏，避免覆盖气候/地形等面板内容）
+            if (presetsPanel != null) {
+                presetsPanel.setWidgetsVisible(tab == 0);
+                // 同步滚动区视口高度（listBottom - 滚动顶），保证 maxScroll 用真实视口
+                presetsPanel.setViewportHeight(listBottom - presetsPanel.getScrollTopY());
+            }
 
-        // 悬停 tooltip（在 scissor 外、对话框下层绘制）
-        if (panels != null) {
-            Component tip = panels[tab].consumeHoverTooltip();
-            if (tip != null) g.renderTooltip(font, tip, mx, my);
+            super.render(g, mx, my, pt);
+
+            // 悬停 tooltip（在 scissor 外、对话框下层绘制）
+            if (panels != null) {
+                Component tip = panels[tab].consumeHoverTooltip();
+                if (tip != null) g.renderTooltip(font, tip, mx, my);
+            }
         }
 
         // 一次性诊断：确认 preview 已登记且坐标有效
@@ -491,7 +564,12 @@ public class GeoGenesisConfigScreen extends Screen {
     public boolean mouseDragged(double mx, double my, int b, double dx, double dy) {
         if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
-        if (panels != null && panels[tab].mouseDragged(mx, my, b, dx, dy)) return true;
+        // ★ 对齐 mouseClicked：只在鼠标位于面板区域内才转发 panels 拖拽。
+        //   原无条件转发 → 用户在预览窗口拖动时误触左侧参数面板（HS 2→8 实锤链路之二）。
+        if (panels != null && mx >= panelX && mx <= panelX + panelW
+                && my >= listTop && my <= listBottom) {
+            if (panels[tab].mouseDragged(mx, my, b, dx, dy)) return true;
+        }
         return super.mouseDragged(mx, my, b, dx, dy);
     }
 

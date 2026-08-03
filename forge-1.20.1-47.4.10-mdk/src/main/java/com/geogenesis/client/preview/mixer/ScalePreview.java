@@ -188,8 +188,10 @@ public class ScalePreview {
             return true;
         }
         // 水平缩放：0.5 到 8.0
+        // ★ 必须加 X 范围检查：原只查 Y（my 在条高度内）→ 用户在预览窗口拖动、
+        //   鼠标 Y 恰好经过 HS 条高度时被误命中（HS 被错误改写，2→8 实锤）。
         int sx = Math.max(hsX, Math.min(hsX + hsW, (int) mx));
-        if (my >= hsY - 4 && my <= hsY + hsH + 4) {
+        if (mx >= hsX && mx <= hsX + hsW && my >= hsY - 4 && my <= hsY + hsH + 4) {
             double frac = (double)(sx - hsX) / hsW;
             horizontalScaleValue = 0.5 + frac * 7.5;
             horizontalScaleValue = Math.max(0.5, Math.min(8.0, horizontalScaleValue));

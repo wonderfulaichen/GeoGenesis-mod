@@ -20,7 +20,7 @@ public class DisplayPanel extends ConfigPanel {
     private int toggleY(int idx) { return top() + 30 + idx * (ROW_H + GAP); }
 
     @Override
-    public int getHeight() { return 220; }
+    public int getHeight() { return 340; }
 
     @Override
     public void render(GuiGraphics g, int mx, int my) {
@@ -38,6 +38,24 @@ public class DisplayPanel extends ConfigPanel {
             "气候地形底图: " + GeoPalette.terrainUnderlayLabel(), false, mx, my);
         if (hb) hoverTooltip = Component.literal(
             "气候/纬度等图层的数据披在地形之上的表现方式：关闭=纯数据；染色底图=混入高程彩色；地形阴影=仅按海拔调亮度");
+
+        boolean h3 = drawToggleRow(g, x, toggleY(3), w, ROW_H,
+            "细胞边界叠加", preview.showCellBorders, mx, my);
+        if (h3) hoverTooltip = Component.literal(
+            "诊断子图层：相邻格主导地形类型不同处画深色线，用于检查 Voronoi 类型混合是否生硬/断裂");
+
+        boolean h4 = drawToggleRow(g, x, toggleY(4), w, ROW_H,
+            "拖动时简化视图", preview.dragSimplify, mx, my);
+        if (h4) hoverTooltip = Component.literal(
+            "拖动预览时跳过坡度阴影保证流畅（松手后补画）。关闭 = 拖动也画完整阴影，帧率可能下降");
+
+        boolean h5 = drawToggleRow(g, x, toggleY(5), w, ROW_H,
+            "类型过滤模式", preview.filterMode, mx, my);
+        if (h5) hoverTooltip = Component.literal(
+            "离散图层多选过滤：开启后点击图例/地图勾选类型（可多选），未勾选类型压暗显示。关闭 = 单选高亮");
+
+        boolean h6 = drawButton(g, x, toggleY(6), w, ROW_H, "定位出生点", false, mx, my);
+        if (h6) hoverTooltip = Component.literal("视口中心跳转到出生点（无出生点时回到 0,0）");
     }
 
     @Override
@@ -49,7 +67,31 @@ public class DisplayPanel extends ConfigPanel {
             preview.showPlayerMarkers = !preview.showPlayerMarkers; playClick(); return true;
         }
         if (hit(x, toggleY(2), w, ROW_H, mx, my)) {
-            GeoPalette.cycleTerrainUnderlay(); playClick(); return true;
+            GeoPalette.cycleTerrainUnderlay();
+            // ★ 必须强制重画：脏检查不感知 TerrainUnderlay 变化（不是视口/数据/图层变化），
+            //   否则切换后画面不变（"切换阴影失效"实锤根因）。
+            preview.needsClear = true;
+            playClick(); return true;
+        }
+        if (hit(x, toggleY(3), w, ROW_H, mx, my)) {
+            preview.showCellBorders = !preview.showCellBorders;
+            preview.needsClear = true;  // 叠加开关 → 强制重画
+            playClick(); return true;
+        }
+        if (hit(x, toggleY(4), w, ROW_H, mx, my)) {
+            preview.dragSimplify = !preview.dragSimplify;
+            preview.needsClear = true;
+            playClick(); return true;
+        }
+        if (hit(x, toggleY(5), w, ROW_H, mx, my)) {
+            preview.filterMode = !preview.filterMode;
+            preview.filterIds.clear();  // 切换模式时清空勾选，避免残留
+            preview.needsClear = true;
+            playClick(); return true;
+        }
+        if (hit(x, toggleY(6), w, ROW_H, mx, my)) {
+            preview.centerOnSpawn();
+            playClick(); return true;
         }
         return false;
     }

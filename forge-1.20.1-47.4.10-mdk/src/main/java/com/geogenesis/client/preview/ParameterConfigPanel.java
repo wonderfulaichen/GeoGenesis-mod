@@ -7,6 +7,7 @@ import com.geogenesis.client.preview.mixer.WorldHeightBar;
 import com.geogenesis.config.GeoGenesisConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.util.ArrayList;
@@ -56,6 +57,21 @@ public class ParameterConfigPanel extends ConfigPanel {
     private final List<BasicIntSpec> intSpecs = new ArrayList<>();
     private final List<ParamSlider> basicSliders = new ArrayList<>();
 
+    /** 开关行（侵蚀/河流等布尔配置，原来只能手改 TOML） */
+    private static class ToggleSpec {
+        final String label;
+        final String description;
+        final java.util.function.BooleanSupplier getter;
+        final java.util.function.Consumer<Boolean> setter;
+        ToggleSpec(String label, String description,
+                   java.util.function.BooleanSupplier getter,
+                   java.util.function.Consumer<Boolean> setter) {
+            this.label = label; this.description = description;
+            this.getter = getter; this.setter = setter;
+        }
+    }
+    private final List<ToggleSpec> toggles = new ArrayList<>();
+
     // 图表
     private final WorldHeightBar heightBar = new WorldHeightBar();
     private final ScalePreview scalePrev = new ScalePreview();
@@ -85,6 +101,7 @@ public class ParameterConfigPanel extends ConfigPanel {
         Consumer<Double> onChange = v -> { if (onMarkDirty != null) onMarkDirty.run(); };
         Function<Double, String> fmt = v -> String.format("%.3f", v);
         specs.clear(); intSpecs.clear(); basicSliders.clear();
+        toggles.clear();
         heightSliders.clear();
 
         // 基础参数（只保留独立功能的参数）
@@ -135,6 +152,18 @@ public class ParameterConfigPanel extends ConfigPanel {
             basicSliders.add(psHolder[0]);
         }
 
+        // ★ 侵蚀与河流开关（原来只能手改 TOML，现写入面板）
+        addToggle("液滴粒子侵蚀", "本地粒子侵蚀（液滴微刻细节）。关闭则只有骨架脊谷，地形更平缓。",
+                () -> c.erosionEnabled.get(), v -> c.erosionEnabled.set(v));
+        addToggle("骨架模拟侵蚀", "粗侵蚀（脊-谷条纹滤镜）骨架层。开启时先造大山脊基本型，再由粒子侵蚀做细节。",
+                () -> c.erosionRidgeEnabled.get(), v -> c.erosionRidgeEnabled.set(v));
+        addToggle("河流系统", "河网检测 + 河道填水（独立于侵蚀）。关闭 = 无河流。",
+                () -> c.riversEnabled.get(), v -> c.riversEnabled.set(v));
+        addToggle("河道灌水", "河道是否灌水。关闭 = 旱谷（仅显形为凹槽地形，不填水）。",
+                () -> c.riverWater.get(), v -> c.riverWater.set(v));
+        addToggle("河流总开关", "河流总开关。关闭 = 不标记任何河流/旱谷。",
+                () -> c.riverEnabled.get(), v -> c.riverEnabled.set(v));
+
         // 世界高度（支持自定义高度：原版/512/1024等）
         heightBar.setMarks(List.of(
             new WorldHeightBar.Mark("最高点", 0xFFFF4444, () -> c.maxY.get(), v -> { c.maxY.set(v); onChange.accept(0.0); }),
@@ -179,6 +208,12 @@ public class ParameterConfigPanel extends ConfigPanel {
 
     private void addIntSpec(String label, String description, ForgeConfigSpec.IntValue cfg, int min, int max) {
         intSpecs.add(new BasicIntSpec(label, description, cfg, min, max));
+    }
+
+    private void addToggle(String label, String description,
+                           java.util.function.BooleanSupplier getter,
+                           java.util.function.Consumer<Boolean> setter) {
+        toggles.add(new ToggleSpec(label, description, getter, setter));
     }
 
     /** 世界高度 Y 滑块，可选是否显示确认对话框 */
@@ -251,6 +286,7 @@ public class ParameterConfigPanel extends ConfigPanel {
 
     public int getHeight() {
         int h = 14 + basicSliders.size() * BASIC_ROW_H + 8;
+        h += toggles.size() * BASIC_ROW_H + 22;  // 侵蚀与河流开关小节
         h += heightPanel.getFullHeight() + 4;
         return h;
     }
@@ -279,7 +315,19 @@ public class ParameterConfigPanel extends ConfigPanel {
         }
         for (ParamSlider ps : basicSliders) ps.renderTooltip(g, mx, my);
 
-        int sectionTop = basicTop + basicSliders.size() * BASIC_ROW_H + 8;
+        // ★ 侵蚀与河流开关小节
+        int toggleTop = basicTop + basicSliders.size() * BASIC_ROW_H + 8;
+        g.drawString(f, "■ 侵蚀与河流", x + 6, toggleTop + 4, 0xFF66CCFF);
+        int toggleRowY = toggleTop + 18;
+        for (int i = 0; i < toggles.size(); i++) {
+            ToggleSpec ts = toggles.get(i);
+            int rowY = toggleRowY + i * BASIC_ROW_H;
+            boolean hover = drawToggleRow(g, x + 4, rowY, w - 8, BASIC_ROW_H - 2,
+                    ts.label, ts.getter.getAsBoolean(), mx, my);
+            if (hover) hoverTooltip = Component.literal(ts.description);
+        }
+
+        int sectionTop = toggleRowY + toggles.size() * BASIC_ROW_H + 8;
 
         // 世界高度 + 尺度预览（整合在同一个面板）
         renderSection(g, mx, my, heightPanel, sectionTop, () -> {
@@ -336,8 +384,20 @@ public class ParameterConfigPanel extends ConfigPanel {
             if (s.isHoveringReset((int) mx, (int) my)) { s.resetToDefault(); return true; }
             if (s.isMouseOver(mx, my)) return s.mouseClicked(mx, my, btn);
         }
+        // ★ 侵蚀与河流开关
+        int toggleRowY = basicTop + basicSliders.size() * BASIC_ROW_H + 8 + 18;
+        for (int i = 0; i < toggles.size(); i++) {
+            ToggleSpec ts = toggles.get(i);
+            int rowY = toggleRowY + i * BASIC_ROW_H;
+            if (hit(x + 4, rowY, w - 8, BASIC_ROW_H - 2, mx, my)) {
+                ts.setter.accept(!ts.getter.getAsBoolean());
+                if (onMarkDirty != null) onMarkDirty.run();
+                playClick();
+                return true;
+            }
+        }
         // 折叠段（仅剩世界高度）
-        int curY = basicTop + basicSliders.size() * BASIC_ROW_H + 8;
+        int curY = toggleRowY + toggles.size() * BASIC_ROW_H + 8;
         if (trySectionClick(mx, my, btn, curY, heightPanel, heightSliders, heightBar, 132)) return true;
         return false;
     }
@@ -376,7 +436,9 @@ public class ParameterConfigPanel extends ConfigPanel {
     public boolean mouseDragged(double mx, double my, int btn, double dx, double dy) {
         for (ParamSlider s : basicSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
         for (ParamSlider s : heightSliders) if (s.isFocused()) { s.mouseDragged(mx, my, btn, dx, dy); return true; }
-        if (!heightPanel.isCollapsed()) {
+        // ★ 只转发"鼠标在面板区域内"的拖拽：原无条件转发 → 用户在预览窗口拖动、
+        //   鼠标移到左侧参数面板上方时误触 scalePrev/heightBar（HS 2→8 实锤链路之一）。
+        if (!heightPanel.isCollapsed() && mx >= x && mx <= x + w && my >= top() && my <= top() + getHeight()) {
             if (heightBar.mouseDragged(mx, my, btn, dx, dy)) return true;
             if (scalePrev.mouseDragged(mx, my, btn, dx, dy)) return true;
         }

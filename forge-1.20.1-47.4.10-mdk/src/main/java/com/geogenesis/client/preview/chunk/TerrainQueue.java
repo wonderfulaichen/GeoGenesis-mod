@@ -38,6 +38,8 @@ public class TerrainQueue {
     private final GeoGenesisTerrain terrain;
     /** 采样步长：1=全分辨率, 4=每 quart 一个, 16=单点 */
     private final int blockStride;
+    /** 结构扫描器（可 null） */
+    private final StructureScanner structureScanner;
 
     /** 上次入队的视口（视口未变 → 跳过）。resetViewport/缩放重建时会设为 MAX_VALUE 强制下一帧入队。 */
     private int lastMinCX = Integer.MAX_VALUE, lastMinCZ = Integer.MAX_VALUE;
@@ -46,10 +48,17 @@ public class TerrainQueue {
 
     public TerrainQueue(CellCache cellCache, TerrainPool pool,
                         GeoGenesisTerrain terrain, int blockStride) {
+        this(cellCache, pool, terrain, blockStride, null);
+    }
+
+    public TerrainQueue(CellCache cellCache, TerrainPool pool,
+                        GeoGenesisTerrain terrain, int blockStride,
+                        StructureScanner structureScanner) {
         this.cellCache = cellCache;
         this.pool = pool;
         this.terrain = terrain;
         this.blockStride = blockStride;
+        this.structureScanner = structureScanner;
     }
 
     /**
@@ -120,7 +129,7 @@ public class TerrainQueue {
             int end = Math.min(i + MAX_BATCH_SIZE, submitCount);
             List<ChunkWorkUnit> units = new ArrayList<>();
             for (int j = i; j < end; j++) {
-                units.add(new ChunkWorkUnit(pending.get(j), terrain, cellCache, blockStride));
+                units.add(new ChunkWorkUnit(pending.get(j), terrain, cellCache, blockStride, structureScanner));
             }
             batches.add(new WorkBatch(new ArrayList<>(units)));
         }

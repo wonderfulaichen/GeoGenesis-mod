@@ -39,6 +39,8 @@ import org.apache.logging.log4j.Logger;
 @Mod.EventBusSubscriber(modid = GeoGenesisMod.MODID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class GeoGenesisClient {
 
+    private static final Logger LOGGER = LogManager.getLogger(GeoGenesisMod.MODID);
+
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         // Mods → Config 按钮
@@ -91,7 +93,51 @@ public final class GeoGenesisClient {
         ResourceKey<net.minecraft.world.level.levelgen.presets.WorldPreset> key =
                 ResourceKey.create(Registries.WORLD_PRESET, new ResourceLocation(GeoGenesisMod.MODID + ":geogenesis"));
         event.register(key, (CreateWorldScreen screen, WorldCreationContext ctx) ->
-                new GeoGenesisConfigScreen(screen, (long)(Math.random() * Long.MAX_VALUE)));
+                // ★ 读 MC 创建世界界面的种子（用户输入的或随机的），不再硬编码随机：
+                //   否则"配置面板种子 ≠ MC 设置种子"（用户实锤：应用后 MC 设置种子仍为空）
+                // ★ ctx 传给配置屏：结构自动检测需要 registryAccess + generator
+                new GeoGenesisConfigScreen(screen, readSeedFromCreateWorld(screen), ctx));
+    }
+
+    /**
+     * 从创建世界界面读取当前种子。
+     * 1.20.1 结构：CreateWorldScreen.worldGenSettingsComponent.worldGenOptionsComponent.getSeed()。
+     */
+    public static long readSeedFromCreateWorld(CreateWorldScreen screen) {
+        try {
+            java.lang.reflect.Field f = CreateWorldScreen.class.getDeclaredField("worldGenSettingsComponent");
+            f.setAccessible(true);
+            Object wgsc = f.get(screen);
+            java.lang.reflect.Field f2 = wgsc.getClass().getDeclaredField("worldGenOptionsComponent");
+            f2.setAccessible(true);
+            Object wgoc = f2.get(wgsc);
+            java.lang.reflect.Method m = wgoc.getClass().getMethod("getSeed");
+            String s = (String) m.invoke(wgoc);
+            if (s != null && !s.isBlank()) return Long.parseLong(s.trim());
+        } catch (Exception e) {
+            LOGGER.debug("readSeedFromCreateWorld failed: {}", e.toString());
+        }
+        return (long) (Math.random() * Long.MAX_VALUE);
+    }
+
+    /** 把种子写回创建世界界面（反射 seedEdit.setValue）——[应用] 后 MC 设置种子与配置面板同步。 */
+    public static void writeSeedToCreateWorld(CreateWorldScreen screen, long seed) {
+        try {
+            java.lang.reflect.Field f = CreateWorldScreen.class.getDeclaredField("worldGenSettingsComponent");
+            f.setAccessible(true);
+            Object wgsc = f.get(screen);
+            java.lang.reflect.Field f2 = wgsc.getClass().getDeclaredField("worldGenOptionsComponent");
+            f2.setAccessible(true);
+            Object wgoc = f2.get(wgsc);
+            java.lang.reflect.Field f3 = wgoc.getClass().getDeclaredField("seedEdit");
+            f3.setAccessible(true);
+            Object edit = f3.get(wgoc);
+            if (edit instanceof net.minecraft.client.gui.components.EditBox eb) {
+                eb.setValue(String.valueOf(seed));
+            }
+        } catch (Exception e) {
+            LOGGER.warn("writeSeedToCreateWorld failed: {}", e.toString());
+        }
     }
 
     private GeoGenesisClient() {}

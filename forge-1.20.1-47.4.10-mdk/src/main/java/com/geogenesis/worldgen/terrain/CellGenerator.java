@@ -890,12 +890,8 @@ public final class CellGenerator {
             if (e > -0.08) return TerrainClass.CONTINENTAL_SHELF;
             return e < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
-        // BEACH：贴真实海岸线（e≈0 的陆地侧窄条）+ 位于海陆过渡带（cEdge 在 fade..ramp 内）。
-        // 用有效岸线坐标 cEdge 判定，使沙滩跟随 e=0 等值线游走，而非钉在固定 c 阈值；
-        // 过渡带约束排除内陆低地（盆地/平原）误判为沙滩。
-        if (e < 0.04 && e > -0.03 && cEdge > oceanFadeStart && cEdge < landRampEnd) {
-            return TerrainClass.BEACH;
-        }
+        // 【2026-08-03 用户决策】BEACH 不再作为独立地形类型（沙滩是海岸过渡带而非地形形态）：
+        // 海岸窄条自然落入后续陆地类型（PLAIN/HILLS 等），群系层面仍由 BiomeClassifier 按气候映射。
 
         // 火山优先（可见特征，用户核心诉求：陆地需有火山地形）。
         if (landFeat != null) {
@@ -907,24 +903,14 @@ public final class CellGenerator {
         double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
             ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
 
-        // PEAK/SNOW 使用 post-blend e（而非预 blend eLand），
+        // PEAK 使用 post-blend e（而非预 blend eLand），
         // 确保海岸过渡带不被误标为雪峰材质（用户反馈：海岸边 SNOW 贴图硬切下降）。
         if (mountW > 0.35 && e > 0.60) {
             return TerrainClass.PEAK;
         }
-        // SNOW 判定：高海拔 + 寒冷温度 + 湿度条件
-        // 双曲线模型：cold+wet → 雪线低（容易积雪），cold+dry → 雪线高（难积雪）
-        // 使用实例化 params 而非静态温度样条
-        double snowBase = params.snowLine();
-        double snowTempInf = params.snowLatitudeInfluence();
-        double snowHumInf = params.snowHumidityInfluence();
-        double tNorm = (temperature + 1.0) / 2.0;  // [0,1], cold=0, hot=1
-        double hNorm = (humidity + 1.0) / 2.0;     // [0,1], dry=0, wet=1
-        double effectiveSnowElev = snowBase + (tNorm - 0.5) * snowTempInf - (hNorm - 0.5) * snowHumInf;
-        effectiveSnowElev = Math.max(0.02, Math.min(1.0, effectiveSnowElev));
-        if (e > effectiveSnowElev && e > 0.15) {
-            return TerrainClass.SNOW;
-        }
+        // 【2026-08-03 用户决策】SNOW 不再作为独立地形类型（雪是气候/海拔覆盖状态而非地形形态）：
+        // 高海拔区域落入 PEAK / MOUNTAINS / PLATEAU（typeWeights dominant），
+        // 雪原群系仍由 BiomeClassifier 按低温+地形映射，不丢失。
         return cellType;
     }
 
@@ -952,27 +938,12 @@ public final class CellGenerator {
             if (ne > -0.08) return TerrainClass.CONTINENTAL_SHELF;
             return ne < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
-        // BEACH：贴真实海岸线（ne≈0 陆地侧窄条）+ 位于海陆过渡带（coastCoord 在 fade..ramp 内）。
-        // coastCoord ≈ cEdge；过渡带约束排除内陆低地误判为沙滩。
-        if (ne > -0.03 && ne < 0.04 && coastCoord > 0.0 && coastCoord < 0.08) {
-            return TerrainClass.BEACH;
-        }
-
+        // 【2026-08-03 用户决策】BEACH/SNOW 不再作为独立地形类型（见主 classify 注释）。
         // 使用连续 typeWeights 判断 PEAK（用 ne 替代 eLand，与主 classify 一致）
         double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
             ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
         if (mountW > 0.35 && ne > 0.60) return TerrainClass.PEAK;
 
-        // SNOW 判定：高海拔 + 寒冷温度 + 湿度（双曲线模型）
-        GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
-        double snowBase = cfg != null ? cfgDbl(cfg.snowLine, 0.70) : 0.70;
-        double snowTempInf = cfg != null ? cfgDbl(cfg.snowLatitudeInfluence, 0.25) : 0.25;
-        double snowHumInf = cfg != null ? cfgDbl(cfg.snowHumidityInfluence, 0.15) : 0.15;
-        double tNorm = (temperature + 1.0) / 2.0;
-        double hNorm = (humidity + 1.0) / 2.0;
-        double effectiveSnowElev = snowBase + (tNorm - 0.5) * snowTempInf - (hNorm - 0.5) * snowHumInf;
-        effectiveSnowElev = Math.max(0.02, Math.min(1.0, effectiveSnowElev));
-        if (ne > effectiveSnowElev && ne > 0.15) return TerrainClass.SNOW;
         if (typeWeights != null && typeWeights.length >= TerrainClass.COUNT) {
             return TypeLandShape.dominantFromWeights(typeWeights);
         }

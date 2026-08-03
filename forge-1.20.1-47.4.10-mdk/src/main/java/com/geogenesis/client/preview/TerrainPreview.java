@@ -413,7 +413,6 @@ public final class TerrainPreview {
             case 8 -> "Mountains";
             case 9 -> "Peak";
             case 10 -> "Basin";
-            case 11 -> "Snow";
             default -> "???";
         };
     }

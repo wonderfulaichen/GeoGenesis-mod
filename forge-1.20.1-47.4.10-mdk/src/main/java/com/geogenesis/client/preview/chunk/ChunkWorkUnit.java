@@ -17,14 +17,23 @@ public class ChunkWorkUnit {
     private final CellCache cellCache;
     /** 采样步长（block 数）：1=全分辨率, 4=每 quart 一个, 16=单点 */
     private final int blockStride;
+    /** 结构扫描器（可 null，创建世界界面才有 registry；null = 跳过结构检测） */
+    private final StructureScanner structureScanner;
     private volatile boolean canceled = false;
 
     public ChunkWorkUnit(ChunkPos chunkPos, GeoGenesisTerrain terrain,
                          CellCache cellCache, int blockStride) {
+        this(chunkPos, terrain, cellCache, blockStride, null);
+    }
+
+    public ChunkWorkUnit(ChunkPos chunkPos, GeoGenesisTerrain terrain,
+                         CellCache cellCache, int blockStride,
+                         StructureScanner structureScanner) {
         this.chunkPos = chunkPos;
         this.terrain = terrain;
         this.cellCache = cellCache;
         this.blockStride = Math.max(1, Math.min(16, blockStride));
+        this.structureScanner = structureScanner;
     }
 
     /** 执行采样。返回 true=成功, false=取消/失败 */
@@ -56,6 +65,11 @@ public class ChunkWorkUnit {
                     }
                 }
             }
+        }
+
+        // ★ 顺带检测结构（Worker 线程，不卡主线程）：placement 哈希判定 + 会话内缓存
+        if (!canceled && structureScanner != null && !structureScanner.isScanned(chunkPos.x, chunkPos.z)) {
+            structureScanner.scan(chunkPos.x, chunkPos.z);
         }
 
         if (!canceled) {
