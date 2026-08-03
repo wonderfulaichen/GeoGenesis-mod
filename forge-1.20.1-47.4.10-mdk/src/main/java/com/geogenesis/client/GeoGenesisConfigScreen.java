@@ -43,7 +43,7 @@ import com.geogenesis.client.SeedManager.SeedEntry;
 public class GeoGenesisConfigScreen extends Screen {
 
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
-    private static final int TERRAIN_TYPE_LAYER = 9;
+    private static final int DEFAULT_PREVIEW_LAYER = GeoPalette.PreviewLayer.ELEVATION.ordinal();
 
     private final Screen parent;
     /** 预览种子。固定默认值 12345L，用户可通过预设面板的 ★ 按钮手动随机化。 */
@@ -86,7 +86,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private PreviewDisplay preview;
     private Button applyBtn, savePresetBtn, resetBtn, layerPrev, layerNext;
-    private int currentMode = TERRAIN_TYPE_LAYER;
+    private int currentMode = DEFAULT_PREVIEW_LAYER;
 
     private int panelX, panelW, headerY, listTop, listBottom;
     private int previewX, previewY, previewW, previewH;

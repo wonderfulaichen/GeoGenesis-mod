@@ -34,7 +34,8 @@ import java.util.concurrent.CompletableFuture;
  * GeoGenesis 地形生成器（Forge 1.20.1 ChunkGenerator）。
  *
  * 大地形管线：GeoGenesisTerrain（缓存 Cell 网格）→ fillFromNoise（逐格填方块）。
- * CODEC 为 biome_source + settings，settings 由 configSpec.generateHoldingCodec 或自定义。
+ * CODEC 仅序列化 biome_source；地形参数走按存档级 {@code GeoGenesisWorldData}（不进 level.dat 生成器 Codec），
+ * 运行时由 resolveParams() 解析（存档优先，缺失回退全局 toml 默认模板）。
  */
 public class GeoGenesisGenerator extends ChunkGenerator {
 
@@ -64,69 +65,64 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     private static final BlockState SAND      = Blocks.SAND.defaultBlockState();
     private static final BlockState GRAVEL    = Blocks.GRAVEL.defaultBlockState();
 
-    // 地形引擎（全局共享）
+    // 地形引擎（每生成器实例一份）。参数来自当前世界存档，种子来自 LevelEvent.Load。
     private GeoGenesisTerrain terrain;
 
-    // 跨 BiomeSource / Generator 共享的地形引擎：
-    // ChunkStatus.BIOMES 会在 fillFromNoise 之前调用 BiomeSource.getNoiseBiome，
-    // 因此地形引擎必须能在 biome 采样时按需初始化（而非等到 fillFromNoise）。
-    private static volatile GeoGenesisTerrain sharedTerrain;
+    /**
+     * 当前世界的地形参数（按存档级）。由 {@link com.geogenesis.GeoGenesisServerEvents} 在主世界加载时注入；
+     * 为 null 时运行时回退到全局 toml 默认模板（{@link GeoGenesisConfig#INSTANCE}）。
+     * <p>
+     * 用静态持有：单 JVM 同一时刻只有一个主世界，与现有 {@code worldSeed} 静态方案一致。
+     */
+    private static volatile TerrainParams currentWorldParams = null;
+
+    /** 注入当前世界参数（来自 WorldSavedData；null = 用全局 toml 默认）。 */
+    public static void setCurrentWorldParams(TerrainParams p) {
+        currentWorldParams = p;
+    }
+
+    /** 解析当前世界参数：存档优先，缺失回退全局 toml。 */
+    public static TerrainParams resolveParams() {
+        return currentWorldParams != null ? currentWorldParams : GeoGenesisConfig.INSTANCE.buildParams();
+    }
+
+    /**
+     * 用给定参数 + 当前世界种子构建（已播种）地形引擎。
+     * 生成器与群系源各自按需构建；二者参数 + 种子一致 → 结果确定性相同。
+     */
+    public static GeoGenesisTerrain buildTerrain(TerrainParams params) {
+        CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y);
+        gen.seed(worldSeed);
+        return new GeoGenesisTerrain(gen);
+    }
 
     public GeoGenesisGenerator(BiomeSource biomeSource) {
         super(biomeSource);
     }
 
-    // ===== 初始化（在 first call 或 seed-aware 调用时初始化 terrain） =====
+    // ===== 初始化 =====
 
     /**
-     * 惰性初始化（或返回）共享地形引擎。BiomeSource 与 Generator 共用同一实例，
-     * 保证 biome 采样与方块填充基于同一确定性地形场。使用静态 {@code worldSeed} 播种。
-     */
-    static GeoGenesisTerrain getOrInitTerrain() {
-        if (sharedTerrain == null) {
-            synchronized (GeoGenesisGenerator.class) {
-                if (sharedTerrain == null) {
-                    long t0 = System.nanoTime();
-                    TerrainParams params = GeoGenesisConfig.INSTANCE.buildParams();
-                    long t1 = System.nanoTime();
-                    CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y);
-                    long t2 = System.nanoTime();
-                    gen.seed(worldSeed);
-                    long t3 = System.nanoTime();
-                    sharedTerrain = new GeoGenesisTerrain(gen);
-                    long t4 = System.nanoTime();
-                    LOGGER.info("GeoGenesis terrain engine initialized (seed={}) [buildParams={}ms ctor={}ms seed={}ms terrain={}ms]",
-                        worldSeed,
-                        (t1-t0)/1000000, (t2-t1)/1000000, (t3-t2)/1000000, (t4-t3)/1000000);
-                }
-            }
-        }
-        return sharedTerrain;
-    }
-
-    /**
-     * 创建或重新初始化地形引擎（供 fillFromNoise 调用），并把引擎注入 BiomeSource。
+     * 惰性初始化地形引擎并注入 BiomeSource，保证 biome 采样与方块填充基于同一地形场。
      */
     private void ensureEngine(long seed) {
         if (terrain == null) {
-            terrain = getOrInitTerrain();
+            terrain = buildTerrain(resolveParams());
             // inject terrain into BiomeSource so it can classify biomes by Cell data
             if (biomeSource instanceof GeoGenesisBiomeSource gbs) {
                 gbs.setTerrain(terrain);
-                LOGGER.info("GeoGenesis terrain injected into BiomeSource");
+                LOGGER.info("GeoGenesis terrain injected into BiomeSource (seed={})", seed);
             }
         }
     }
 
     // ===== 核心：fillFromNoise =====
 
-    // TODO: get actual world seed (need world-load event hook)
+    // 当前世界种子（由 GeoGenesisServerEvents.LevelEvent.Load 注入）
     private static volatile long worldSeed = 12345L;
 
     public static void setWorldSeed(long seed) {
         worldSeed = seed;
-        // 种子变更：下次访问重建共享引擎（BiomeSource / Generator 共用）
-        sharedTerrain = null;
         LOGGER.info("GeoGenesis world seed set to {}", seed);
     }
 

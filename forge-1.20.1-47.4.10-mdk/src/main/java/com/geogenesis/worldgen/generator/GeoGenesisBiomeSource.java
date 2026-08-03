@@ -155,11 +155,11 @@ public class GeoGenesisBiomeSource extends BiomeSource {
             }
             // 超出出生区域 → 正常初始化
             long t0 = System.nanoTime();
-            terrain = GeoGenesisGenerator.getOrInitTerrain();
+            terrain = GeoGenesisGenerator.buildTerrain(GeoGenesisGenerator.resolveParams());
             if (!biomeInitLogged) {
                 biomeInitLogged = true;
                 long dt = (System.nanoTime() - t0) / 1000000;
-                LOGGER.info("[PERF] BiomeSource.getNoiseBiome first call: getOrInitTerrain={}ms at quart({},{})",
+                LOGGER.info("[PERF] BiomeSource.getNoiseBiome first call: buildTerrain={}ms at quart({},{})",
                     dt, x, z);
             }
         }
