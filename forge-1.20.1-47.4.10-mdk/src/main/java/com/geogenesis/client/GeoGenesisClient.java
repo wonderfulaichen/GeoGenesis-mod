@@ -101,18 +101,12 @@ public final class GeoGenesisClient {
 
     /**
      * 从创建世界界面读取当前种子。
-     * 1.20.1 结构：CreateWorldScreen.worldGenSettingsComponent.worldGenOptionsComponent.getSeed()。
+     * 1.20.1 公开 API：CreateWorldScreen.getUiState().getSeed()。
+     * （旧反射路径 worldGenSettingsComponent 是 1.19.x 结构，1.20.1 已重构为 WorldCreationUiState）
      */
     public static long readSeedFromCreateWorld(CreateWorldScreen screen) {
         try {
-            java.lang.reflect.Field f = CreateWorldScreen.class.getDeclaredField("worldGenSettingsComponent");
-            f.setAccessible(true);
-            Object wgsc = f.get(screen);
-            java.lang.reflect.Field f2 = wgsc.getClass().getDeclaredField("worldGenOptionsComponent");
-            f2.setAccessible(true);
-            Object wgoc = f2.get(wgsc);
-            java.lang.reflect.Method m = wgoc.getClass().getMethod("getSeed");
-            String s = (String) m.invoke(wgoc);
+            String s = screen.getUiState().getSeed();
             if (s != null && !s.isBlank()) return Long.parseLong(s.trim());
         } catch (Exception e) {
             LOGGER.debug("readSeedFromCreateWorld failed: {}", e.toString());
@@ -120,21 +114,10 @@ public final class GeoGenesisClient {
         return (long) (Math.random() * Long.MAX_VALUE);
     }
 
-    /** 把种子写回创建世界界面（反射 seedEdit.setValue）——[应用] 后 MC 设置种子与配置面板同步。 */
+    /** 把种子写回创建世界界面（公开 API setSeed）——[应用] 后 MC 设置种子与配置面板同步。 */
     public static void writeSeedToCreateWorld(CreateWorldScreen screen, long seed) {
         try {
-            java.lang.reflect.Field f = CreateWorldScreen.class.getDeclaredField("worldGenSettingsComponent");
-            f.setAccessible(true);
-            Object wgsc = f.get(screen);
-            java.lang.reflect.Field f2 = wgsc.getClass().getDeclaredField("worldGenOptionsComponent");
-            f2.setAccessible(true);
-            Object wgoc = f2.get(wgsc);
-            java.lang.reflect.Field f3 = wgoc.getClass().getDeclaredField("seedEdit");
-            f3.setAccessible(true);
-            Object edit = f3.get(wgoc);
-            if (edit instanceof net.minecraft.client.gui.components.EditBox eb) {
-                eb.setValue(String.valueOf(seed));
-            }
+            screen.getUiState().setSeed(String.valueOf(seed));
         } catch (Exception e) {
             LOGGER.warn("writeSeedToCreateWorld failed: {}", e.toString());
         }
