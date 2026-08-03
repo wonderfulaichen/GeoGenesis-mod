@@ -1,5 +1,7 @@
 package com.geogenesis;
 
+import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.worldgen.GeoGenesisWorldData;
 import com.geogenesis.worldgen.generator.GeoGenesisGenerator;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -24,6 +26,13 @@ public final class GeoGenesisServerEvents {
     public static void onLevelLoad(LevelEvent.Load event) {
         if (event.getLevel() instanceof ServerLevel s && s.dimension() == Level.OVERWORLD) {
             GeoGenesisGenerator.setWorldSeed(s.getSeed());
+            // 按存档级地形参数：读取（或首次冻结）当前世界参数，注入生成器/群系源。
+            GeoGenesisWorldData data = GeoGenesisWorldData.get(s);
+            if (data.getParams() == null) {
+                // 首次加载且尚无存档参数：把当前全局 toml 模板冻结进存档，实现 per-save 隔离。
+                data.setParams(GeoGenesisConfig.INSTANCE.buildParams());
+            }
+            GeoGenesisGenerator.setCurrentWorldParams(data.getParams());
         }
     }
 
