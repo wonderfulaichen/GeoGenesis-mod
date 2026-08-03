@@ -17,10 +17,18 @@ public class WorkBatch {
     }
 
     public void process() {
-        if (canceled) return;
-        for (ChunkWorkUnit unit : units) {
-            if (canceled) return;
-            unit.work();
+        try {
+            // 同时检查自身标志和线程中断：pool.cancelAll() 的 f.cancel(true) 会设置中断，
+            // 若不响应中断，正在运行的 batch 会跑完整个批次，快速滑动时任务无限堆积（OOM 根因）
+            if (canceled || Thread.currentThread().isInterrupted()) return;
+            for (ChunkWorkUnit unit : units) {
+                if (canceled || Thread.currentThread().isInterrupted()) return;
+                unit.work();
+            }
+        } finally {
+            // ★ 消费线程中断标志：f.cancel(true) 设置的中断位若不消费（isInterrupted 只读不清除），
+            //   线程池线程后续所有任务第一行检查都会直接 return → 4 线程永久罢工，预览永远空白
+            Thread.interrupted();
         }
     }
 

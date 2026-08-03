@@ -46,6 +46,9 @@ public class PreviewDisplay extends AbstractWidget {
     private final TerrainPool pool = new TerrainPool(4);
     private TerrainQueue queue;
     private GeoGenesisTerrain terrain;
+    /** 磁盘持久化：seed 变更时重建；close() 时保存（"已加载的地图被记录"） */
+    private long diskSeed = Long.MIN_VALUE;
+    private long diskConfigHash = Long.MIN_VALUE;
 
     // ====== 纹理 ======
     private NativeImage image;
@@ -63,6 +66,17 @@ public class PreviewDisplay extends AbstractWidget {
     private int centerX = 0, centerZ = 0;
     /** 拖拽累积偏移（松手后并入 center） */
     private double totalDragX = 0, totalDragZ = 0;
+    /** 拖拽中标志：拖拽时跳过最贵的坡度阴影（松手后一次性补画），保证拖动流畅 */
+    private boolean dragging = false;
+
+    // ====== 渲染脏检查（避免静止帧无谓重画/重传，消除"渲染打架"） ======
+    /** 上帧已画进纹理的视口原点（对齐 scale 后），未变 → 视口未动 */
+    private long lastOriginWx = Long.MIN_VALUE, lastOriginWz = Long.MIN_VALUE;
+    /** 上帧已画进纹理的 CellCache 版本号，未变 → 无新数据 */
+    private long lastCacheVersion = -1;
+    /** 上帧已画进纹理的图层，未变 → 颜色无需重算 */
+    private int lastLayerOrdinal = -1;
+    private int lastSelectedLayerOrdinal = -1, lastSelectedId = -1;
 
     // ====== 图层 ======
     private GeoPalette.PreviewLayer activeLayer = GeoPalette.PreviewLayer.ELEVATION;
@@ -161,6 +175,27 @@ public class PreviewDisplay extends AbstractWidget {
         this.queue = new TerrainQueue(cellCache, pool, terrain, effectiveStride());
         this.activeLayer = GeoPalette.PreviewLayer.values()[
             Math.max(0, Math.min(GeoPalette.PreviewLayer.values().length - 1, mode))];
+        // ★ 磁盘持久化：打开预览即加载历史（同一 seed 之前浏览过的位置秒显，不重采样）
+        diskSeed = seed;
+        diskConfigHash = params.hashCode();
+        loadDiskHistory();
+    }
+
+    /** 从磁盘加载历史数据到 CellCache 历史层（滑回/缩放需要时自动回填渲染层，不重新采样）。
+     *  直接放入历史层而非渲染层：内存 = 紧凑采样点（≈磁盘文件量级），且当前视口
+     *  经 queueGeneration → needsResample 命中历史层回填 → 首帧秒显。 */
+    private void loadDiskHistory() {
+        try {
+            var chunks = com.geogenesis.client.preview.chunk.PreviewDiskCache.load(diskSeed, diskConfigHash);
+            for (var e : chunks.entrySet()) {
+                cellCache.importHistory(e.getKey(), e.getValue());
+            }
+            if (!chunks.isEmpty()) {
+                LOGGER.info("[PreviewCache] loaded {} chunks from disk for seed {}", chunks.size(), diskSeed);
+            }
+        } catch (Throwable t) {
+            LOGGER.warn("[PreviewCache] disk load failed, ignoring", t);
+        }
     }
 
     // ================================================================
@@ -173,39 +208,61 @@ public class PreviewDisplay extends AbstractWidget {
         int x = getX(), y = getY(), w = width, h = height;
         g.fill(x, y, x + w, y + h, 0xFF1a1a2a);
 
+        int scale = scaleBlockPos;
+        int blocksWide = texW * scale;
+        int blocksHigh = texH * scale;
+        // ★ 统一视口原点，并对齐到 scale 倍数（floorDiv）：
+        //   paint 里 tx=(wx-originWx)/scale 才能整除 → chunk 像素无缝、无重叠/缝隙/重影。
+        //   hover / 出生点标记 / 阴影全部复用同一个对齐原点，杜绝"两层图错位打架"。
+        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scale);
+        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scale);
+
         // 每帧直接用鼠标屏幕坐标反算世界坐标（参考项目 updateTooltip 做法），
         // 不依赖 mouseMoved 回调（Forge Screen 默认不向子 widget 转发 mouseMoved，
         // 否则 hoverX/hoverZ 永远为 -1、悬浮提示永不触发）。
         if (isMouseOver(mx, my)) {
-            int originWx = centerX + (int) totalDragX - texW * scaleBlockPos / 2;
-            int originWz = centerZ + (int) totalDragZ - texH * scaleBlockPos / 2;
-            hoverX = originWx + (int) ((mx - getX()) / (double) width * texW) * scaleBlockPos;
-            hoverZ = originWz + (int) ((my - getY()) / (double) height * texH) * scaleBlockPos;
+            hoverX = originWx + (int) ((mx - getX()) / (double) width * texW) * scale;
+            hoverZ = originWz + (int) ((my - getY()) / (double) height * texH) * scale;
         } else {
             hoverX = -1; hoverZ = -1;
         }
 
-        // ★ 参考项目方式：只在视口变化时清除。正常帧保留旧数据，新 chunk 只覆盖其区域
-        if (needsClear) {
-            image.fillRect(0, 0, texW, texH, 0);
-            needsClear = false;
-        }
-        int blocksWide = texW * scaleBlockPos;
-        int blocksHigh = texH * scaleBlockPos;
         queue.queueGeneration(centerX + (int) totalDragX,
                 centerZ + (int) totalDragZ, blocksWide, blocksHigh);
 
-        int originWx = centerX + (int) totalDragX - blocksWide / 2;
-        int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
-        paintAvailableChunks(originWx, originWz, blocksWide, blocksHigh);
+        // ★ 脏检查：只有视口移动 / 新数据到位 / 图层或选中变化 / 显式 needsClear 才重画+重传。
+        //   静止帧（无拖拽、无新 chunk）直接 blit GPU 旧纹理 → 0 CPU 重画，消除"打架/撕裂"。
+        boolean viewportMoved = originWx != lastOriginWx || originWz != lastOriginWz;
+        boolean dataChanged = cellCache.version() != lastCacheVersion;
+        boolean layerChanged = activeLayer.ordinal() != lastLayerOrdinal
+                || (selectedLayer == null ? -1 : selectedLayer.ordinal()) != lastSelectedLayerOrdinal
+                || selectedId != lastSelectedId;
+        boolean dirty = needsClear || viewportMoved || dataChanged || layerChanged;
 
-        // 真实性地形阴影（逐像素高度梯度法线 · 光源点乘）：由 TerrainUnderlay 全局控制，
-        // 对图层无关（气候/地形数据均可披真实地形明暗）。
-        if (GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE) {
-            applySlopeShading(image, originWx, originWz);
+        if (dirty) {
+            // ★ 无条件 fillRect：脏帧总是从干净状态重画。
+            //   原"只在 needsClear 时清"逻辑有 bug——缩放/拖拽后第一帧 viewportMoved=true 触发 dirty，
+            //   但 needsClear 已在 mouseScrolled/mouseReleased 处被清成 false，导致第二帧跳过 fillRect，
+            //   image 残留旧视口像素（用户截图左侧 50px 竖条就是缩放前视口左边缘数据）。
+            //   dirty 本身已被视口移动/新数据/图层变化严格门控，多一次 fillRect（O(texW×texH)≈1ms）安全。
+            image.fillRect(0, 0, texW, texH, 0);
+            needsClear = false;
+            paintAvailableChunks(originWx, originWz, blocksWide, blocksHigh);
+
+            // 真实性地形阴影（逐像素高度梯度法线 · 光源点乘）：由 TerrainUnderlay 全局控制，
+            // 对图层无关（气候/地形数据均可披真实地形明暗）。
+            // 拖拽中跳过（最贵的一步：全图 3 遍 + 每像素缓存查找），松手后 needsClear 补画。
+            if (!dragging && GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE) {
+                applySlopeShading(image, originWx, originWz);
+            }
+
+            texture.upload();
+            lastOriginWx = originWx; lastOriginWz = originWz;
+            lastCacheVersion = cellCache.version();
+            lastLayerOrdinal = activeLayer.ordinal();
+            lastSelectedLayerOrdinal = (selectedLayer == null ? -1 : selectedLayer.ordinal());
+            lastSelectedId = selectedId;
         }
-
-        texture.upload();
         g.blit(texLoc, x, y, w, h, 0, 0, texW, texH, texW, texH);
 
         // 出生点标记
@@ -446,13 +503,16 @@ public class PreviewDisplay extends AbstractWidget {
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+        dragging = false;
         double absX = Math.abs(totalDragX), absZ = Math.abs(totalDragZ);
         if (absX > 4.0 || absZ > 4.0) {
-            // 拖拽结束 → 提交偏移
+            // 拖拽结束 → 提交偏移 + 立即取消旧批（对齐参考模组 queueRangeReal 的 cancel+await），
+            //   否则新视口边缘 chunks 要等旧批（按旧视口）跑完才能补 → 用户截图的黑块。
             centerX += (int) Math.round(totalDragX);
             centerZ += (int) Math.round(totalDragZ);
             needsClear = true;
-            queue.resetViewport();
+            pool.cancelAll();  // 立即中断旧批（已写入 cache 的保留，未完成的丢弃）
+            queue.resetViewport();  // firstQueue=true → 下帧绕过视口比较强制入队
         } else if (hoverX != -1 && hoverZ != -1) {
             // 点击（非拖拽）→ 尝试在离散图层选中对应色块
             handleMapClick(mx, my);
@@ -504,6 +564,7 @@ public class PreviewDisplay extends AbstractWidget {
         double guiScale = mc.getWindow().getGuiScale();
         totalDragX -= dx * guiScale * scaleBlockPos;
         totalDragZ -= dy * guiScale * scaleBlockPos;
+        dragging = true;
         needsClear = true;  // 拖拽时每帧清纹理，避免旧位置数据残留（拖影）
         return true;
     }
@@ -567,6 +628,13 @@ public class PreviewDisplay extends AbstractWidget {
         GeoPalette.setSeaLevel(seaLevel);
         cellCache.invalidateAll();
         pool.cancelAll();
+        // ★ 磁盘持久化：seed 或参数变化时重新加载历史（否则保持当前内存缓存）
+        long newHash = params.hashCode();
+        if (seed != diskSeed || newHash != diskConfigHash) {
+            diskSeed = seed;
+            diskConfigHash = newHash;
+            loadDiskHistory();
+        }
         // ★ 重建队列：TerrainQueue.terrain 是构造时传入的 final 字段，setTerrain 只更新了
         //   PreviewDisplay.this.terrain，不重建队列则 ChunkWorkUnit 仍用旧 terrain 采样。
         rebuildQueue();
@@ -581,6 +649,7 @@ public class PreviewDisplay extends AbstractWidget {
         if (newLayer == activeLayer) return;
         this.activeLayer = newLayer;
         legendScrollOffset = 0;
+        needsClear = true;  // 脏检查下切图层必须显式触发重绘（颜色来自 activeLayer）
     }
 
     public int getMode() { return activeLayer.ordinal(); }
@@ -588,13 +657,23 @@ public class PreviewDisplay extends AbstractWidget {
     public void toggleLegend() { showLegend = !showLegend; }
     public void queueResetViewport() { queue.resetViewport(); }
 
+    /** 向下对齐到 scale 的倍数（负数也用 floorDiv 正确处理）。
+     *  <p>视口原点对齐后，paint 的像素坐标 (wx-originWx)/scale 恒整除，
+     *  chunk 采样点精确映射到纹理像素，无缝隙/重叠/重影（"渲染打架"根因之一）。 */
+    private static int alignDown(int v, int scale) {
+        return Math.floorDiv(v, scale) * scale;
+    }
+
     /** e→世界高度 Y（与 HeightCurve.heightFromE 一致的非对称映射：e=0→海平面）。 */
     private double heightFromE(double e) {
         if (e <= 0.0) return seaLevel - (-e) * (seaLevel - minY);
         double t = Math.max(0.0, Math.min(1.0, e * verticalScale));
         return seaLevel + t * (maxY - seaLevel) * peakFraction;
     }
-    public void setElevationColormap(String name) { GeoPalette.setElevationColormap(name); }
+    public void setElevationColormap(String name) {
+        GeoPalette.setElevationColormap(name);
+        needsClear = true;  // 色带变化 → 脏检查下必须显式触发重绘
+    }
 
     public void setPosition(int x, int y, int w, int h) {
         this.setX(x);
@@ -626,6 +705,11 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 重建采样队列（缩放/超采样变化时调用，纹理尺寸不变则不重建纹理）。 */
     private void rebuildQueue() {
+        // ★ 缩放 = 采样步长语义变化（对齐参考模组 onResolutionChanged→restartExecutors）：
+        //   必须立即取消所有旧任务，否则新队列首个 queueGeneration 见 pool.isBusy()=true
+        //   （旧 stride 任务还在跑，stride=1 时可能几十秒）→ 一直 return → 画面空白转圈。
+        //   cancelAll 已实现 batch.cancel + 中断消费，安全无泄漏。
+        pool.cancelAll();
         this.queue = new TerrainQueue(cellCache, pool, terrain, effectiveStride());
         needsClear = true;
         queue.resetViewport();
@@ -655,6 +739,15 @@ public class PreviewDisplay extends AbstractWidget {
         queue.resetViewport();
     }
 
+    /** 清除全部缓存（运行时 + 当前 seed 的磁盘缓存），对齐参考模组 clearCache。 */
+    public void clearAllCaches() {
+        cellCache.invalidateAll();
+        if (diskSeed != Long.MIN_VALUE) {
+            com.geogenesis.client.preview.chunk.PreviewDiskCache.clearFor(diskSeed);
+        }
+        forceRefresh();
+    }
+
     /** 重置高度边界到默认值 */
     public void resetHeightBounds() {
         // 高度边界由 GeoGenesisConfig 管理，仅触发重绘
@@ -671,11 +764,11 @@ public class PreviewDisplay extends AbstractWidget {
         if (mc.level == null) return;
         BlockPos spawn = mc.level.getSharedSpawnPos();
         if (spawn == null) return;
-        // 计算出生点在纹理中的坐标
+        // 计算出生点在纹理中的坐标（与渲染同源：对齐后的统一原点）
         int blocksWide = texW * scaleBlockPos;
         int blocksHigh = texH * scaleBlockPos;
-        int originWx = centerX + (int) totalDragX - blocksWide / 2;
-        int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
+        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scaleBlockPos);
+        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scaleBlockPos);
         int sx = spawn.getX(), sz = spawn.getZ();
         int texSx = (sx - originWx) / scaleBlockPos;
         int texSz = (sz - originWz) / scaleBlockPos;
@@ -844,14 +937,12 @@ public class PreviewDisplay extends AbstractWidget {
         }
     }
 
-    /** 读取 hover 位置 Cell（优先用 cellCache，避免触发 chunk 生成） */
+    /** 读取 hover 位置 Cell（只读缓存，绝不触发地形采样——主线程采样会卡死渲染）。 */
     private Cell sampleHoverCell(int wx, int wz) {
         int cx = wx >> 4, cz = wz >> 4;
         int lx = wx & 15, lz = wz & 15;
-        Cell c = cellCache.getCell(cx, cz, lx, lz);
-        if (c != null) return c;
-        // 缓存 miss → 回退 terrain（会触发 chunk 生成）
-        try { return terrain.sampleCell(wx, wz); } catch (Exception e) { return null; }
+        // 缓存 miss → 返回 null（tooltip 不显示）。地形采样一律交给后台 Worker。
+        return cellCache.getCell(cx, cz, lx, lz);
     }
 
     private void drawHoverInfo(GuiGraphics g, int mx, int my) {
@@ -1038,5 +1129,15 @@ public class PreviewDisplay extends AbstractWidget {
         pool.shutdown();
         mc.getTextureManager().release(texLoc);
         texture.close();
+        // ★ 磁盘持久化：关屏保存全部历史（后台线程 + tmp 原子写，不阻塞 UI）。
+        //   保存历史层（紧凑数据，含本次会话所有采样 + 磁盘加载的），跨会话完整保留。
+        long seedSnapshot = diskSeed;
+        long hashSnapshot = diskConfigHash;
+        var history = cellCache.historyEntries();
+        if (seedSnapshot != Long.MIN_VALUE && !history.isEmpty()) {
+            java.util.concurrent.CompletableFuture.runAsync(() ->
+                    com.geogenesis.client.preview.chunk.PreviewDiskCache.save(
+                            seedSnapshot, hashSnapshot, history));
+        }
     }
 }

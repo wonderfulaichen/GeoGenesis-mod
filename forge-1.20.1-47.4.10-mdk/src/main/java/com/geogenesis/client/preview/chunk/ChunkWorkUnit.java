@@ -59,7 +59,7 @@ public class ChunkWorkUnit {
         }
 
         if (!canceled) {
-            cellCache.put(chunkPos.x, chunkPos.z, cells);
+            cellCache.put(chunkPos.x, chunkPos.z, cells, blockStride);
         }
     }
 

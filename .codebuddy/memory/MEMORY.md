@@ -20,6 +20,12 @@
 - **滑块 reset 铁律**：`ParamSlider.setDefaultValue` 必须填 `cfg.getDefault()`，**严禁填 `cfg.get()`**。
 - Forge 1.20.1：禁 reobf jar 进 `run/mods/`；biome 注册表用 `registryAccess()` 禁静态缓存；叶子 CODEC 禁 `.stable()`。
 
+## 并发/队列铁律（2026-08-03 预览 OOM 实锤）
+- **computeIfAbsent 的 mapping 内严禁嵌套任何 CHM 的 computeIfAbsent**（跨 map 也会死锁）；缓存写入统一 `get → 计算 → putIfAbsent`。
+- **f.cancel(true) 只对"未开始"任务有效**：正在运行的 Runnable 若不检查 `Thread.interrupted()` 会跑完整个任务 → 取消必须"batch.cancel() 标志 + 线程中断检查"双通道（TerrainPool 保存 batch 引用，cancelAll 先 b.cancel() 再 f.cancel(true)）。
+- **队列型架构必须设单次提交硬顶**（预览 TerrainQueue.MAX_CHUNKS_PER_SCAN=1024：全视口扫描收集 + 洗牌后只提交前 N，其余下轮再扫）；防抖只能限频不能限规模。
+- **无上限 ConcurrentHashMap 缓存必配容量兜底**（CellCache.MAX_ENTRIES=4096 + trimTo 按距中心距离淘汰）。
+
 ## 重要重构历史（摘要）
 - 07-16 类型系统取代省系统；07-20 统一嵌套样条；07-21 气候样条化；07-22 双曲线雪线；07-24 语义亲和度 + 删 10 个 `*Center/*HalfRange`；07-25 Voronoi 高斯权重 + v14 差异调制钉死。
 - 完全自定义架构（阶段3 待做）：`config/geogenesis/terrain_types.json` 增删类型零代码；BiomeClassifier 数据驱动。

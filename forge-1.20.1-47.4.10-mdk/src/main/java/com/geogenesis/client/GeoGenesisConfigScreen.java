@@ -521,6 +521,11 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public void onClose() {
+        // 预览磁盘缓存：关屏前保存已采样的地图数据（"已加载的记录"）
+        if (preview != null) {
+            preview.close();
+            preview = null;
+        }
         // 不再把未保存的困在屏里：直接返回父屏（未提交的改动丢弃，契合「应用才提交」语义）
         super.onClose();
     }
