@@ -51,7 +51,6 @@ public final class GeoPalette {
         BIOME(Kind.DISCRETE, "geogenesis.layer.biome", "biome", Group.BASE, true, true),
         TERRAIN_TYPE(Kind.DISCRETE, "geogenesis.layer.terrain_type", "terrainType", Group.TERRAIN, true, true),
         RIVER_NETWORK(Kind.CONTINUOUS, "geogenesis.layer.river_network", "river_network", Group.WATER, true, true),
-        BIOME_REAL(Kind.DISCRETE, "geogenesis.layer.biome_real", "biomeReal", Group.BASE, true, true),
         ROCK_LAYER(Kind.DISCRETE, "geogenesis.layer.rock_layer", "rockLayer", Group.TERRAIN, false, false),
         ROCK_TYPE(Kind.DISCRETE, "geogenesis.layer.rock_type", "rockType", Group.TERRAIN, false, false),
         VEIN_MAP(Kind.DISCRETE, "geogenesis.layer.vein_map", "veinMap", Group.TERRAIN, false, false);
@@ -249,12 +248,21 @@ public final class GeoPalette {
     /**
      * 用语义 e 锚点（S_ELEVATION_E）构建高程色带，并按当前 eMin/eMax 把每个锚点换算为 pos。
      * 这样海平面(e=0)、海床(eMin)、最高峰(eMax) 随地形配置自动适配，色带永不因范围变化而错位。
+     * <p>【瑕疵修复 2026-08-03】两端锚点动态化：原固定 e=-1.2/1.2，当实际范围 eMin=-0.35
+     * （eMax≈0.95）时两端锚点被 clamp 到 pos 0/1 → 最深的「深暗蓝」与「深海蓝」在 pos 上
+     * 重合（永远只显示深海蓝）、雪白提前触顶 → 海底层次丢失、表现力不足。
+     * 现首锚点 e 取 emin（深暗蓝在海底最深处开始渐变）、末锚点 e 取 emax（雪白在最高峰），
+     * 色带全范围利用，海底深度层次完整恢复。
      */
     private static void buildElevationColormap(double emin, double emax) {
         double span = Math.max(1e-6, emax - emin);
         float[][] stops = new float[S_ELEVATION_E.length][4];
         for (int i = 0; i < S_ELEVATION_E.length; i++) {
-            double e = S_ELEVATION_E[i][0];
+            // 两端锚点动态注入实际范围（i==0 → emin，i==last → emax），中间锚点保持语义 e 换算
+            double e;
+            if (i == 0) e = emin;
+            else if (i == S_ELEVATION_E.length - 1) e = emax;
+            else e = S_ELEVATION_E[i][0];
             double pos = Math.max(0.0, Math.min(1.0, (e - emin) / span));
             stops[i][0] = (float) pos;
             stops[i][1] = S_ELEVATION_E[i][1];
@@ -347,7 +355,7 @@ public final class GeoPalette {
     // TERRAIN_TYPE id 与 TerrainClass.ordinal() 严格对齐（顺序/数量必须一致！）：
     // 0 OCEAN,1 DEEP_OCEAN,2 CONTINENTAL_SHELF,3 SUBMARINE_RIDGE,4 SEAMOUNT,
     // 5 LAKE,6 RIVER,7 BEACH,8 PLAIN,9 HILLS,10 PLATEAU,11 MOUNTAINS,
-    // 12 PEAK,13 BASIN,14 SNOW,15 VOLCANO,16 VOLCANIC_FIELD
+    // 12 PEAK,13 BASIN,14 SNOW(已从图例移除但仍保留颜色对齐),15 VOLCANO,16 VOLCANIC_FIELD
     private static final int[] T_TERRAIN_TYPE = {
             0x2E5C8A, // 0  OCEAN 中蓝
             0x1B3F6B, // 1  DEEP_OCEAN 深蓝
@@ -410,7 +418,7 @@ public final class GeoPalette {
         discreteDefaults.put(PreviewLayer.TERRAIN_TYPE, T_TERRAIN_TYPE);
         discreteDefaults.put(PreviewLayer.CLIMATE_ZONE, T_CLIMATE_ZONE);
         discreteDefaults.put(PreviewLayer.BIOME, T_BIOME);
-        // BIOME_REAL/ROCK_LAYER/ROCK_TYPE/VEIN_MAP 无默认色——由 MC 侧或未来地质系统填充
+        // ROCK_LAYER/ROCK_TYPE/VEIN_MAP 无默认色——由 MC 侧或未来地质系统填充
     }
 
     // ============================================================
@@ -615,6 +623,10 @@ public final class GeoPalette {
         // 防御：图例数量以「标签枚举/名称数组」为准，避免颜色数组与枚举数量漂移时整窗崩溃。
         int count = Math.min(countIds(layer), labelCount(layer));
         for (int i = 0; i < count; i++) {
+            // 【2026-08-03 用户决策】BEACH 不再作为独立地形类型 → 图例隐藏
+            if (layer == PreviewLayer.TERRAIN_TYPE && i == TerrainClass.BEACH.ordinal()) {
+                continue;
+            }
             out.add(new LegendEntry(i, discrete(layer, i), discreteLabelKey(layer, i)));
         }
         return out;
@@ -626,7 +638,6 @@ public final class GeoPalette {
             case CLIMATE_ZONE -> Zone.values().length;
             case BIOME -> BiomeClass.values().length;
             case TERRAIN_TYPE -> TERRAIN_TYPE_NAMES.length;
-            case BIOME_REAL -> 0; // 由 MC Biome Registry 动态决定，无固定标签列表
             default -> Integer.MAX_VALUE;
         };
     }
@@ -643,7 +654,6 @@ public final class GeoPalette {
             case CLIMATE_ZONE: return "geogenesis.zone." + Zone.values()[id].name();
             case BIOME:        return "geogenesis.biome." + BiomeClass.values()[id].name();
             case TERRAIN_TYPE: return "geogenesis.terrain_type." + TERRAIN_TYPE_NAMES[id];
-            case BIOME_REAL:   return "geogenesis.biome_real." + id;
             default: return layer.labelKey + "." + id;
         }
     }
@@ -651,7 +661,7 @@ public final class GeoPalette {
     private static final String[] TERRAIN_TYPE_NAMES = {
             "OCEAN", "DEEP_OCEAN", "CONTINENTAL_SHELF", "SUBMARINE_RIDGE", "SEAMOUNT",
             "LAKE", "RIVER", "BEACH", "PLAIN", "HILLS", "PLATEAU",
-            "MOUNTAINS", "PEAK", "BASIN", "SNOW"
+            "MOUNTAINS", "PEAK", "BASIN"
     };
 
     /** Swing 端图例英文回退（避免缺失翻译时显示 key）。 */
@@ -672,7 +682,6 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.biome", "Biome");
         ENGLISH.put("geogenesis.layer.terrain_type", "Terrain Type");
         ENGLISH.put("geogenesis.layer.river_network", "River Network");
-        ENGLISH.put("geogenesis.layer.biome_real", "Biome (Real)");
         // 气候带
         ENGLISH.put("geogenesis.zone.TROPICAL", "Tropical (A)");
         ENGLISH.put("geogenesis.zone.ARID", "Arid (B)");
@@ -693,7 +702,9 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.terrain_type.MOUNTAINS", "Mountains");
         ENGLISH.put("geogenesis.terrain_type.PEAK", "Peak");
         ENGLISH.put("geogenesis.terrain_type.BASIN", "Basin");
-        ENGLISH.put("geogenesis.terrain_type.SNOW", "Snow");
+        ENGLISH.put("geogenesis.terrain_type.CONTINENTAL_SHELF", "Continental Shelf");
+        ENGLISH.put("geogenesis.terrain_type.SUBMARINE_RIDGE", "Mid-Ocean Ridge");
+        ENGLISH.put("geogenesis.terrain_type.SEAMOUNT", "Seamount");
         // 地质图层（预留）
         ENGLISH.put("geogenesis.layer.rock_layer", "Rock Layer");
         ENGLISH.put("geogenesis.layer.rock_type", "Rock Type");
@@ -746,14 +757,10 @@ public final class GeoPalette {
         return discreteId(layer, c);
     }
 
-    // TERRAIN_TYPE id 与 TerrainClass.ordinal() 对齐；水文/雪覆盖作 override（mirror BiomeClassifier）
+    // TERRAIN_TYPE id 与 TerrainClass.ordinal() 对齐；水文 override（mirror BiomeClassifier）
     private static int terrainTypeId(Cell c) {
         if (c.riverMask) return TerrainClass.RIVER.ordinal();
         if (c.lakeMask) return TerrainClass.LAKE.ordinal();
-        // 雪覆盖：仅压盖低起伏地形（PLAIN/HILLS/PLATEAU/BASIN），保留 MOUNTAINS/PEAK 独立身份
-        if (c.isSnow && c.terrainType != TerrainClass.MOUNTAINS && c.terrainType != TerrainClass.PEAK) {
-            return TerrainClass.SNOW.ordinal();
-        }
         return c.terrainType.ordinal();
     }
 

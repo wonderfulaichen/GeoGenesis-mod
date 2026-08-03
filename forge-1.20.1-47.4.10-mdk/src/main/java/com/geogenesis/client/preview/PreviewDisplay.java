@@ -46,6 +46,10 @@ public class PreviewDisplay extends AbstractWidget {
     private final TerrainPool pool = new TerrainPool(4);
     private TerrainQueue queue;
     private GeoGenesisTerrain terrain;
+    /** 结构扫描器（创建世界界面传入 registry 后可用；null = 预览无结构标记） */
+    private com.geogenesis.client.preview.chunk.StructureScanner structureScanner;
+    /** 显示结构标记 */
+    public boolean showStructures = true;
     /** 磁盘持久化：seed 变更时重建；close() 时保存（"已加载的地图被记录"） */
     private long diskSeed = Long.MIN_VALUE;
     private long diskConfigHash = Long.MIN_VALUE;
@@ -105,12 +109,20 @@ public class PreviewDisplay extends AbstractWidget {
      *  用于点击地图/图例/列表高亮该色块、其余置灰，与参考项目选中行为一致。 */
     private GeoPalette.PreviewLayer selectedLayer = null;
     private int selectedId = -1;
+    /** 过滤模式（对齐参考模组 BiomeCheckboxList 思路）：开启后图例/地图点击切换勾选集合，
+     *  未勾选的类型在地图上压暗显示；关闭 = 单选高亮。 */
+    public boolean filterMode = false;
+    public final java.util.Set<Integer> filterIds = new java.util.HashSet<>();
 
     // ====== 设置（显示类运行时状态，由 GeoGenesisConfigScreen 各设置页签面板读写） ======
     /** 显示帧时间 */
     public boolean showFrameTime = true;
     /** 显示玩家位置标记 */
     public boolean showPlayerMarkers = true;
+    /** 显示 Voronoi 细胞边界（相邻格主导地形类型不同处画深色线，诊断类型混合用） */
+    public boolean showCellBorders = false;
+    /** 拖动时简化视图（跳过最贵的坡度阴影保证 60fps；松手后第一帧补画）。false = 拖动也画完整阴影 */
+    public boolean dragSimplify = true;
     /** 公开 CellCache 引用，供外部清除缓存 */
     public CellCache cellCache = new CellCache();
     /** 结构图标叠加层（可选 JSON，无数据则跳过） */
@@ -172,13 +184,22 @@ public class PreviewDisplay extends AbstractWidget {
         texLoc = ResourceLocation.tryParse("geogenesis:preview_" + System.nanoTime());
         mc.getTextureManager().register(texLoc, texture);
 
-        this.queue = new TerrainQueue(cellCache, pool, terrain, effectiveStride());
+        this.queue = new TerrainQueue(cellCache, pool, terrain, effectiveStride(), structureScanner);
         this.activeLayer = GeoPalette.PreviewLayer.values()[
             Math.max(0, Math.min(GeoPalette.PreviewLayer.values().length - 1, mode))];
         // ★ 磁盘持久化：打开预览即加载历史（同一 seed 之前浏览过的位置秒显，不重采样）
         diskSeed = seed;
-        diskConfigHash = params.hashCode();
+        diskConfigHash = cacheSchemaHash(params);
         loadDiskHistory();
+    }
+
+    /**
+     * 缓存键 = 地形参数 hash × 分类版本号：分类/渲染逻辑变更（如 BEACH/SNOW 移除）时
+     * 递增版本 → 旧磁盘缓存自动失效重采，无需用户手动清缓存。
+     */
+    private static final int CACHE_SCHEMA_VERSION = 2;
+    private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
+        return params.hashCode() * 31L + CACHE_SCHEMA_VERSION;
     }
 
     /** 从磁盘加载历史数据到 CellCache 历史层（滑回/缩放需要时自动回填渲染层，不重新采样）。
@@ -251,8 +272,10 @@ public class PreviewDisplay extends AbstractWidget {
 
             // 真实性地形阴影（逐像素高度梯度法线 · 光源点乘）：由 TerrainUnderlay 全局控制，
             // 对图层无关（气候/地形数据均可披真实地形明暗）。
-            // 拖拽中跳过（最贵的一步：全图 3 遍 + 每像素缓存查找），松手后 needsClear 补画。
-            if (!dragging && GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE) {
+            // 拖拽中按 dragSimplify 开关跳过（最贵的一步：全图 3 遍 + 每像素缓存查找），
+            // 松手后 needsClear 补画。false = 拖动也画完整阴影（接受掉帧）。
+            if ((!dragging || !dragSimplify)
+                    && GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE) {
                 applySlopeShading(image, originWx, originWz);
             }
 
@@ -269,6 +292,8 @@ public class PreviewDisplay extends AbstractWidget {
             drawSpawnMarker(g);
             // 玩家位置标记
             if (showPlayerMarkers) drawPlayerMarker(g);
+            // 自动结构标记（Worker 检测结果；无 scanner 或未命中则跳过）
+            if (showStructures && structureScanner != null) drawStructureMarkers(g, mx, my);
             // 结构图标叠加（可选 JSON，无数据则跳过；返回悬停名）
             String markerHover = structureOverlay.render(g, x, y, w, h,
                 originWx, originWz, blocksWide, blocksHigh, mx, my);
@@ -416,11 +441,31 @@ public class PreviewDisplay extends AbstractWidget {
                         Cell cell = cells[lz * 16 + lx];
                         if (cell == null) continue;
                         int color = GeoPalette.color(activeLayer, cell, wx, wz, minY, maxY, false);
-                        // 离散图层选中高亮：选中的色块保持原色，其余转灰（每帧重绘，实时生效）
-                        if (selectedLayer == activeLayer && selectedId >= 0
-                                && activeLayer.kind == GeoPalette.Kind.DISCRETE) {
+                        // 离散图层：过滤模式 → 未勾选压暗；否则选中高亮其余压暗（每帧重绘，实时生效）
+                        if (activeLayer.kind == GeoPalette.Kind.DISCRETE) {
                             int id = GeoPalette.discreteIdForCell(activeLayer, cell);
-                            if (id != selectedId) color = grayTint(color);
+                            if (filterMode) {
+                                if (!filterIds.contains(id)) color = grayTint(color);
+                            } else if (selectedLayer == activeLayer && selectedId >= 0 && id != selectedId) {
+                                color = grayTint(color);
+                            }
+                        }
+                        // ★ 细胞边界叠加（诊断子图层）：与左/上邻居主导地形类型不同处画深色线。
+                        //   对齐阴影等叠加层的表现方式——不改变数据色，仅压暗边界像素。
+                        if (showCellBorders) {
+                            int cxc = wx >> 4, czc = wz >> 4;
+                            int lxc = wx & 15, lzc = wz & 15;
+                            Cell left = (lxc > 0) ? cells[lzc * 16 + (lxc - 1)]
+                                    : cellCache.getCell(cxc - 1, czc, 15, lzc);
+                            Cell up = (lzc > 0) ? cells[(lzc - 1) * 16 + lxc]
+                                    : cellCache.getCell(cxc, czc - 1, lxc, 15);
+                            boolean leftDiff = left != null && left.terrainType != cell.terrainType;
+                            boolean upDiff = up != null && up.terrainType != cell.terrainType;
+                            if (leftDiff || upDiff) {
+                                int r = (color >> 16) & 0xFF, gg = (color >> 8) & 0xFF, b = color & 0xFF;
+                                r = r * 3 / 10; gg = gg * 3 / 10; b = b * 3 / 10;
+                                color = (r << 16) | (gg << 8) | b;
+                            }
                         }
                         image.setPixelRGBA(tx, tz, GeoPalette.toABGR(color));
                         paintedCount++;
@@ -536,10 +581,14 @@ public class PreviewDisplay extends AbstractWidget {
         setSelected(activeLayer, id);
     }
 
-    /** 设置/切换离散图层选中（点同一项取消）。 */
+    /** 设置/切换离散图层选中（点同一项取消）。过滤模式下改为多选勾选集合。 */
     public void setSelected(GeoPalette.PreviewLayer layer, int id) {
         if (layer == null || layer.kind != GeoPalette.Kind.DISCRETE) return;
-        if (selectedLayer == layer && selectedId == id) {
+        if (filterMode) {
+            // 多选过滤：切换勾选状态（集合中的去掉，不在的加入）
+            if (!filterIds.remove(id)) filterIds.add(id);
+            selectedLayer = null; selectedId = -1;
+        } else if (selectedLayer == layer && selectedId == id) {
             selectedLayer = null; selectedId = -1;  // 取消选中
         } else {
             selectedLayer = layer; selectedId = id;
@@ -629,7 +678,7 @@ public class PreviewDisplay extends AbstractWidget {
         cellCache.invalidateAll();
         pool.cancelAll();
         // ★ 磁盘持久化：seed 或参数变化时重新加载历史（否则保持当前内存缓存）
-        long newHash = params.hashCode();
+        long newHash = cacheSchemaHash(params);
         if (seed != diskSeed || newHash != diskConfigHash) {
             diskSeed = seed;
             diskConfigHash = newHash;
@@ -710,7 +759,7 @@ public class PreviewDisplay extends AbstractWidget {
         //   （旧 stride 任务还在跑，stride=1 时可能几十秒）→ 一直 return → 画面空白转圈。
         //   cancelAll 已实现 batch.cancel + 中断消费，安全无泄漏。
         pool.cancelAll();
-        this.queue = new TerrainQueue(cellCache, pool, terrain, effectiveStride());
+        this.queue = new TerrainQueue(cellCache, pool, terrain, effectiveStride(), structureScanner);
         needsClear = true;
         queue.resetViewport();
     }
@@ -746,6 +795,34 @@ public class PreviewDisplay extends AbstractWidget {
             com.geogenesis.client.preview.chunk.PreviewDiskCache.clearFor(diskSeed);
         }
         forceRefresh();
+    }
+
+    /** 一键回到出生点/0,0（对齐参考模组 RenderSettings.resetCenter）。 */
+    public void centerOnSpawn() {
+        if (mc.level != null) {
+            BlockPos spawn = mc.level.getSharedSpawnPos();
+            if (spawn != null) {
+                centerX = spawn.getX();
+                centerZ = spawn.getZ();
+            } else {
+                centerX = 0; centerZ = 0;
+            }
+        } else {
+            centerX = 0; centerZ = 0;
+        }
+        totalDragX = 0; totalDragZ = 0;
+        needsClear = true;
+        queue.resetViewport();
+    }
+
+    /**
+     * 注入结构检测上下文（创建世界界面：WorldCreationContext；游戏内：mc.level）。
+     * seed 变化时由 setTerrain 重建 scanner。无法创建 → null（无结构标记，不崩）。
+     */
+    public void setStructureContext(net.minecraft.core.RegistryAccess registryAccess,
+                                    net.minecraft.world.level.chunk.ChunkGenerator generator,
+                                    long seed) {
+        this.structureScanner = com.geogenesis.client.preview.chunk.StructureScanner.create(registryAccess, generator, seed);
     }
 
     /** 重置高度边界到默认值 */
@@ -803,9 +880,102 @@ public class PreviewDisplay extends AbstractWidget {
         g.drawString(mc.font, txt, rightX - mc.font.width(txt) - 5, topY + 3, color);
     }
 
-    /** 绘制玩家位置标记（占位，后续实现） */
+    /** 绘制玩家位置标记：白圆点 + 深色描边 + 姓名标签（与出生点金色 X 区分）。 */
     private void drawPlayerMarker(GuiGraphics g) {
-        // 待 MC 玩家位置读取逻辑
+        if (mc.player == null) return;  // 非游戏世界（无玩家）不画
+        double px = mc.player.getX();
+        double pz = mc.player.getZ();
+        int blocksWide = texW * scaleBlockPos;
+        int blocksHigh = texH * scaleBlockPos;
+        // 与渲染同源：统一对齐原点
+        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scaleBlockPos);
+        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scaleBlockPos);
+        int texX = (int) ((px - originWx) / scaleBlockPos);
+        int texZ = (int) ((pz - originWz) / scaleBlockPos);
+        if (texX < 0 || texX >= texW || texZ < 0 || texZ >= texH) return;  // 玩家在视口外
+
+        int x = getX(), y = getY(), w = width, h = height;
+        int sx = x + (int) ((double) texX / texW * w);
+        int sy = y + (int) ((double) texZ / texH * h);
+
+        // 深色描边（5×5 圆环） + 白色中心（3×3 圆点）
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                int d2 = dx * dx + dy * dy;
+                if (d2 <= 4) {
+                    int col = (d2 <= 1) ? 0xFFFFFFFF : 0xFF1a1a2a;
+                    g.fill(sx + dx, sy + dy, sx + dx + 1, sy + dy + 1, col);
+                }
+            }
+        }
+        // 姓名标签（顶部）
+        String name = mc.player.getGameProfile().getName();
+        int tw = mc.font.width(name);
+        g.fill(sx - tw / 2 - 2, sy - 14, sx + tw / 2 + 2, sy - 3, 0xAA000000);
+        g.drawString(mc.font, name, sx - tw / 2, sy - 12, 0xFFFFFF);
+    }
+
+    /** 绘制自动检测的结构标记：彩色方块 + 白色中心点，悬停显示全名。 */
+    private void drawStructureMarkers(GuiGraphics g, int mx, int my) {
+        int blocksWide = texW * scaleBlockPos;
+        int blocksHigh = texH * scaleBlockPos;
+        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scaleBlockPos);
+        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scaleBlockPos);
+        int x = getX(), y = getY(), w = width, h = height;
+        // 悬停命中检测
+        String hoverName = null;
+        for (var entry : structureScanner.allHits()) {
+            for (var hit : entry.getValue()) {
+                int wx = (hit.chunkX() << 4) + 8;
+                int wz = (hit.chunkZ() << 4) + 8;
+                int texX = (wx - originWx) / scaleBlockPos;
+                int texZ = (wz - originWz) / scaleBlockPos;
+                if (texX < 0 || texX >= texW || texZ < 0 || texZ >= texH) continue;
+                int sx = x + (int) ((double) texX / texW * w);
+                int sy = y + (int) ((double) texZ / texH * h);
+                int color = structureColor(hit.id());
+                g.fill(sx - 2, sy - 2, sx + 2, sy + 2, color);
+                g.fill(sx - 1, sy - 1, sx + 1, sy + 1, 0xFFFFFFFF);
+                if (mx >= sx - 3 && mx <= sx + 3 && my >= sy - 3 && my <= sy + 3) {
+                    hoverName = structureName(hit.id());
+                }
+            }
+        }
+        if (hoverName != null) {
+            int tw = mc.font.width(hoverName);
+            g.fill(mx + 10, my + 8, mx + 14 + tw, my + 20, 0xCC000000);
+            g.drawString(mc.font, hoverName, mx + 13, my + 10, 0xFFFFFF);
+        }
+    }
+
+    /** 结构类型 → 标记色（按结构名粗分类，简单可辨） */
+    private static int structureColor(net.minecraft.resources.ResourceLocation id) {
+        if (id == null) return 0xFFFFAA00;
+        String s = id.getPath();
+        if (s.contains("village")) return 0xFF00FF88;      // 村庄绿
+        if (s.contains("stronghold")) return 0xFF8844FF;   // 要塞紫
+        if (s.contains("ancient_city")) return 0xFF00CCFF; // 古城青
+        if (s.contains("mineshaft")) return 0xFF888888;    // 矿井灰
+        if (s.contains("ruined")) return 0xFFCC8844;      // 遗迹棕
+        if (s.contains("ocean_ruin")) return 0xFF2266AA;   // 海底遗迹蓝
+        if (s.contains("shipwreck")) return 0xFFCC6644;    // 沉船橙
+        if (s.contains("desert_pyramid")) return 0xFFFFCC44; // 沙漠神殿黄
+        if (s.contains("jungle_pyramid")) return 0xFF33CC66; // 丛林神殿绿
+        if (s.contains("igloo")) return 0xFFAAEEFF;        // 冰屋浅蓝
+        if (s.contains("pillager")) return 0xFFCC5555;     // 掠夺者红
+        if (s.contains("monument")) return 0xFF22AAAA;     // 海底神殿青
+        if (s.contains("fortress")) return 0xFFAA4444;     // 下界要塞红
+        if (s.contains("bastion")) return 0xFF883333;      // 猪灵堡垒棕
+        if (s.contains("trail")) return 0xFFBBBB88;        // 古迹灰黄
+        return 0xFF00AAFF;                                  // 其他蓝
+    }
+
+    private static String structureName(net.minecraft.resources.ResourceLocation id) {
+        if (id == null) return "结构";
+        // 转换 minecraft:village_plains → Village Plains
+        String p = id.getPath().replace('_', ' ');
+        if (p.isEmpty()) return id.toString();
+        return Character.toUpperCase(p.charAt(0)) + p.substring(1);
     }
 
     /** 绘制右键复制坐标消息（8 秒渐隐） */
@@ -1075,15 +1245,14 @@ public class PreviewDisplay extends AbstractWidget {
             case SUBMARINE_RIDGE -> I18n.get("geogenesis.preview.type.submarine_ridge");
             case SEAMOUNT -> I18n.get("geogenesis.preview.type.seamount");
             case BEACH -> I18n.get("geogenesis.preview.type.beach");
-            case PLAIN -> c.isSnow ? I18n.get("geogenesis.preview.type.snow") : I18n.get("geogenesis.preview.type.plain");
-            case HILLS -> c.isSnow ? I18n.get("geogenesis.preview.type.snow") : I18n.get("geogenesis.preview.type.hills");
-            case PLATEAU -> c.isSnow ? I18n.get("geogenesis.preview.type.snow") : I18n.get("geogenesis.preview.type.plateau");
-            case MOUNTAINS -> c.isSnow ? I18n.get("geogenesis.preview.type.snowy_slopes") : I18n.get("geogenesis.preview.type.mountains");
-            case PEAK -> c.isSnow ? I18n.get("geogenesis.preview.type.snow") : I18n.get("geogenesis.preview.type.peak");
+            case PLAIN -> I18n.get("geogenesis.preview.type.plain");
+            case HILLS -> I18n.get("geogenesis.preview.type.hills");
+            case PLATEAU -> I18n.get("geogenesis.preview.type.plateau");
+            case MOUNTAINS -> I18n.get("geogenesis.preview.type.mountains");
+            case PEAK -> I18n.get("geogenesis.preview.type.peak");
             case BASIN -> I18n.get("geogenesis.preview.type.basin");
             case RIVER -> I18n.get("geogenesis.preview.type.river");
             case LAKE -> I18n.get("geogenesis.preview.type.lake");
-            case SNOW -> I18n.get("geogenesis.preview.type.snow");
             default -> I18n.get("geogenesis.preview.type.land");
         };
     }

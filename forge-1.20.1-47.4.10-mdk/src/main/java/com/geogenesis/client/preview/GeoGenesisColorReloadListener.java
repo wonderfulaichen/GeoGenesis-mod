@@ -30,37 +30,6 @@ public class GeoGenesisColorReloadListener implements ResourceManagerReloadListe
     public void onResourceManagerReload(ResourceManager rm) {
         loadColormaps(rm);
         loadDiscrete(rm);
-        loadBiomeReal();
-    }
-
-    /** 从 MC Biome Registry 读取真实群系颜色 → 填充 BIOME_REAL 图层 */
-    private void loadBiomeReal() {
-        try {
-            var biomeRegistry = net.minecraftforge.registries.ForgeRegistries.BIOMES;
-            if (biomeRegistry == null) return;
-            Map<String, int[]> colors = new HashMap<>();
-            for (var entry : biomeRegistry.getEntries()) {
-                ResourceLocation key = entry.getKey().location();
-                var biome = entry.getValue();
-                // 1.20.1 API: getWaterColor, getFoliageColorOverride (OptionalInt), getGrassColorOverride (OptionalInt)
-                var effects = biome.getSpecialEffects();
-                int waterColor = effects.getWaterColor();
-                int foliageOpt = effects.getFoliageColorOverride().orElse(-1);
-                int grassOpt = effects.getGrassColorOverride().orElse(-1);
-                int color;
-                if (grassOpt != -1) color = grassOpt;
-                else if (foliageOpt != -1) color = foliageOpt;
-                else if (key.getPath().contains("ocean") || key.getPath().contains("river")) color = waterColor;
-                else color = 0x5B8731; // 默认绿
-                colors.put(key.getPath(), new int[]{(color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF});
-            }
-            if (!colors.isEmpty()) {
-                GeoPalette.setDiscreteColorsByName(GeoPalette.PreviewLayer.BIOME_REAL, colors);
-                LOGGER.info("Loaded {} real biome colors from MC registry", colors.size());
-            }
-        } catch (Exception e) {
-            LOGGER.warn("Failed to load real biome colors: {}", e.getMessage());
-        }
     }
 
     private void loadColormaps(ResourceManager rm) {
