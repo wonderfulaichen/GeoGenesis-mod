@@ -61,8 +61,8 @@ public class CachePanel extends ConfigPanel {
     public boolean mouseClicked(double mx, double my, int btn) {
         int by = top() + 26 + BTN_OFF;
         if (hit(x, by, Math.min(320, w), BTN_H, mx, my)) {
-            preview.cellCache.invalidateAll();
-            preview.forceRefresh();
+            // 清除运行时 + 磁盘缓存（对齐参考模组 clearCache）
+            preview.clearAllCaches();
             playClick();
             return true;
         }
