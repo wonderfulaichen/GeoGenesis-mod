@@ -9,19 +9,13 @@ public final class TypeNoiseProvider {
     // v6.0: HILLS — 参考 TF hills_1.json 双层 Warp + Perlin×Billow^0.5
     private final Noise hillsNoise;
 
-    private final Noise mountShape;
-    private final Noise mountRidge;
-    private final Noise mountValleyFloor;
-    private final Noise mountDetail;
-    private final Noise mountDirAngle;
-    private final Noise mountDirJitterX;
-    private final Noise mountDirJitterZ;
+    // v8c (2026-08-06)：山脉改丘陵式多频叠加配方（参考 HILLS），移除脊线网络+折叠细节
+    // v8b 的 foldHills(1/50) 35% 在实机上产生规律性条纹/沙丘状图案（高频折叠线主导），且山体过小；
+    // v8c 只用平滑多频主体（无折叠）→ 丘陵式大圆润山体，1/700 主频 = 山体远大于丘陵
+    private final Noise mountNoise;
 
     private final Noise platNoise;
     private final Noise basinNoise;
-
-    private MountainRidgeNetwork ridgeNetwork;
-    private long lastSeed = 0L;
 
     // 造山带起伏振幅（e 单位），由 TerrainParams.beltReliefAmp 注入；缩放山脉脊线相对高度，让山脉起伏可调（复活死参数）
     private final double beltReliefAmp;
@@ -50,43 +44,23 @@ public final class TypeNoiseProvider {
         Noise hWarped    = new Warp(hBase, hWX, hWZ, 25.0);
         this.hillsNoise  = new Map(hWarped, -1.0, 1.0, 0.0, 1.0);
 
-        // --- MOUNTAINS: 浅山脊骨架(1/750) + 主脊线(1/240) + 次脊线(1/90) + 高频脊(1/45) ---
-        // 2026-08-01 全频减半：用户反馈山块太宽（2 个山峰显示不完，陆地仅 ~20% 需更密山块）。
-        // 波长减半 → 山块/山峰密度翻倍；Map 振幅范围不变（只改频率不改幅值）。
-        // 2026-08-02 悬崖修复复盘：主因是类型过渡带（TerrainCharacterField WARP 250 跨细胞
-        // + SIGMA 150 过渡窄）→「平坦缓坡一下子转陡坡」；已在 TerrainCharacterField 修复
-        // （WARP 80 + SIGMA 200）。本层振幅恢复原值（实验证明非主因，恢复山体崎岖感与山峰高度）。
-        Noise mRSkel = new Boost(new Ridge(new Frequency(new Simplex(436), 1.0 / 750.0), 1.0), 0.25);
-        Noise mR1 = new Ridge(new Frequency(new Simplex(416), 1.0 / 240.0), 1.0);
-        Noise mR2 = new Boost(new Ridge(new Frequency(new Simplex(417), 1.0 / 90.0), 1.0), 0.25);
-        Noise mR3 = new Boost(new Ridge(new Frequency(new Simplex(442), 1.0 / 45.0), 1.0), 0.3);
-        Noise mRSum = new Add(new Add(new Add(mRSkel, mR1), mR2), mR3);
-        Noise mRCombined = new Map(mRSum, 0.0, 1.8, 0.0, 1.0);
-        this.mountRidge = mRCombined;
-
-        // Shape mask（蒙山形状）：3 大尺度减半(1/400·1/200·1/75) + 2 高频倍频(1/70·1/35)
-        // 做山体表面崎岖化——"加频率"而非压高度，不缩短山体、去圆润。
-        // 2026-08-02 悬崖修复后恢复原振幅（非主因；保持山体崎岖感）。
-        Noise sOct1 = new Frequency(new Simplex(425), 1.0 / 400.0);
-        Noise sOct2 = new Boost(new Frequency(new Simplex(426), 1.0 / 200.0), 0.4);
-        Noise sOct3 = new Boost(new Frequency(new Simplex(427), 1.0 / 75.0), 0.2);
-        Noise sOct4 = new Boost(new Frequency(new Simplex(440), 1.0 / 70.0), 0.15);
-        Noise sOct5 = new Boost(new Frequency(new Simplex(441), 1.0 / 35.0), 0.08);
-        this.mountShape = new Map(new Add(new Add(new Add(new Add(sOct1, sOct2), sOct3), sOct4), sOct5), -2.0, 2.0, 0.20, 0.95);
-
-        // Valley 谷底基线（B：0.12-0.40 → 0.04-0.18，谷底更低，山脉相对落差更大、更陡）
-        Noise mValley = new Frequency(new Simplex(420), 1.0 / 250.0);
-        this.mountValleyFloor = new Map(mValley, -1.0, 1.0, 0.04, 0.18);
-
-        // 高频细节（峰顶/山坡锯齿）：频率 1/80→1/55、振幅 0.1→0.25，去圆润。
-        // 2026-08-02 悬崖修复后恢复原振幅（非主因；保持山体崎岖感）。
-        Noise mDetR = new Ridge(new Frequency(new Simplex(421), 1.0 / 55.0), 1.0);
-        this.mountDetail = new Boost(mDetR, 0.25);
-
-        // 方向扭曲
-        this.mountDirAngle = new Frequency(new Simplex(430), 1.0 / 600.0);
-        this.mountDirJitterX = new Frequency(new Simplex(431), 1.0 / 400.0);
-        this.mountDirJitterZ = new Frequency(new Simplex(432), 1.0 / 400.0);
+        // --- MOUNTAINS v8（2026-08-06 用户决策：参考丘陵配方）---
+        // 旧版（v7）：MountainRidgeNetwork 脊线乘数 + 三级形态（谷底/陡升/脊线目标）+ 方向扭曲。
+        // 弃因：脊线网络仅覆盖 ±4000 块，且脊线段之间空白区 ridgeBoost=0 → 山体 ×(0.35+0.65×0)=×0.35
+        // 塌矮 65% → 山脉被切割成条状、大片塌陷、网络边界突变（用户反馈"山脉地形不行"）。
+        // 新版：丘陵式多频叠加（与 HILLS 同风格，自然连贯），尺度放大（主频 1/700 山体更大）+ 细节
+        // 破碎度（1/80）+ warp(30)。beltReliefAmp 调制次/细节振幅。
+        // 次/细节振幅 0.7/0.45：首版 0.5/0.25 localStd 0.0394 < HILLS 0.0410（山脉不再最崎岖）。
+        double ampScale = 0.7 + beltReliefAmp * 0.85; // beltReliefAmp=0.35 → 1.0（默认行为）
+        Noise mMain   = new Frequency(new Simplex(436), 1.0 / 700.0);
+        Noise mSub    = new Boost(new Frequency(new Simplex(417), 1.0 / 220.0), 0.7 * ampScale);
+        Noise mDet    = new Boost(new Frequency(new Simplex(442), 1.0 / 80.0), 0.45 * ampScale);
+        Noise mBase   = new Add(new Add(mMain, mSub), mDet);   // 典型 [-2.15, 2.15]
+        Noise mWX     = new Frequency(new Simplex(430), 1.0 / 150.0);
+        Noise mWZ     = new Frequency(new Simplex(431), 1.0 / 150.0);
+        Noise mWarped = new Warp(mBase, mWX, mWZ, 30.0);
+        this.mountNoise = new Map(mWarped, -2.15, 2.15, 0.0, 1.0);
+        // v8c：已移除 foldHills(1/50) 折叠细节——实机显示规律性条纹图案（高频折叠线主导），且山体过小
 
         // --- PLATEAU v6.0: 3 层 Simplex + shape mask 边缘渐变 ---
         // 参考 TF: ramp_height=0.35 — 高原边缘 35% 平滑过渡
@@ -106,20 +80,9 @@ public final class TypeNoiseProvider {
     public void seed(long worldSeed) {
         Noises.seedAll(plainNoise, worldSeed, 0);
         Noises.seedAll(hillsNoise, worldSeed, 1);
-        Noises.seedAll(mountShape, worldSeed, 2);
-        Noises.seedAll(mountRidge, worldSeed, 2);
-        Noises.seedAll(mountValleyFloor, worldSeed, 2);
-        Noises.seedAll(mountDetail, worldSeed, 2);
-        Noises.seedAll(mountDirAngle, worldSeed, 2);
-        Noises.seedAll(mountDirJitterX, worldSeed, 2);
-        Noises.seedAll(mountDirJitterZ, worldSeed, 2);
+        Noises.seedAll(mountNoise, worldSeed, 2);
         Noises.seedAll(platNoise,  worldSeed, 3);
         Noises.seedAll(basinNoise, worldSeed, 4);
-
-        if (ridgeNetwork == null || lastSeed != worldSeed) {
-            ridgeNetwork = new MountainRidgeNetwork(worldSeed);
-            lastSeed = worldSeed;
-        }
     }
 
     /**
@@ -161,49 +124,13 @@ public final class TypeNoiseProvider {
     }
 
     /**
-     * v7 (Phase 1.5)：三级形态山地公式。
-     * <p>
-     * 旧公式（v6）：v = shape*0.5 + shape*ridge*0.5，shape 为平滑 blob 直接做高度主体，
-     * 导致"快升到中→慢爬到顶"的曲线（中等 shape 区域占比最大，峰顶变化缓慢）。
-     * <p>
-     * 新公式：shape→山脉存在度(presence)，三级形态自动涌现：
-     * <pre>
-     *   1. 谷底（presence→0）：valleyFloor（0.12–0.40），缓坡
-     *   2. 陡升（presence 0.3→0.7）：presence² 加速上升
-     *   3. 脊线（presence→1）：ridge+detail 主导，ridgeBoost 调制
-     * </pre>
+     * v8（2026-08-06 用户决策：参考丘陵配方）：山脉 = 多频叠加 + warp + foldHills 折叠。
+     * 与 HILLS 同风格（自然连贯），尺度更大（主频 1/700）+ 细节破碎度（1/80）。
+     * 已移除旧 MountainRidgeNetwork 脊线乘数（脊线外塌矮 65%、条状切割、±4000 边界突变）。
      */
     private double computeMountain(double wx, double wz) {
-        double angle = mountDirAngle.compute(wx, wz) * Math.PI;
-        double jx = mountDirJitterX.compute(wx, wz) * 15.0;
-        double jz = mountDirJitterZ.compute(wx, wz) * 15.0;
-        double rwx = wx + Math.cos(angle) * 50.0 + jx;
-        double rwz = wz + Math.sin(angle) * 50.0 + jz;
-
-        double shape = mountShape.compute(rwx, rwz);               // [0.20, 0.95] blob
-        double ridgeRaw = mountRidge.compute(rwx, rwz);
-        double ridge = Math.max(0, (ridgeRaw - 0.15) / 0.85);        // [0, 1]（降脊线门控→脊线结构在更大范围出现，山地更崎岖、与丘陵拉开落差）
-        double detail = mountDetail.compute(rwx, rwz);             // [0, 0.2]
-        double valleyFloor = mountValleyFloor.compute(rwx, rwz);   // [0.12, 0.40]
-
-        // shape → presence（smoothstep from [0.20, 0.95] to [0, 1]）
-        double t = (shape - 0.20) / 0.75;
-        t = t < 0 ? 0 : (t > 1 ? 1 : t);
-        double presence = t * t * (3.0 - 2.0 * t);                 // smoothstep
-
-        // 三级形态：谷底 → 线性上升 → 脊线目标
-        // B1 修复：取消 presence² 二次压平——presence≈0.5 时 rise 由 0.25 提到 0.5，山腰中段直接获得脊线高度，整片山坡起伏明显。
-        double rise = presence;                                     // 线性，避免中段被压平导致"山地不明显"
-        // 脊线目标高度由 beltReliefAmp 调制：reliefScale 默认(0.22)→1.0 行为不变；调高→山脉脊线更高更陡（复活死参数）
-        double reliefScale = beltReliefAmp / 0.22;
-        double ridgeTarget = 0.30 + Math.min(0.70, (ridge * 0.7 + detail * 0.3) * reliefScale);
-        double v = valleyFloor * (1.0 - rise) + rise * ridgeTarget;
-
-        if (ridgeNetwork != null) {
-            double boost = ridgeNetwork.ridgeBoost(wx, wz);
-            v *= (0.35 + 0.65 * boost);
-        }
-        return v < 0 ? 0 : (v > 1 ? 1 : v);
+        // v8c：直接使用平滑多频噪声（无折叠）——丘陵式大圆润山体，1/700 主频 >> 丘陵 1/400
+        return mountNoise.compute(wx, wz);
     }
 
     public static final TerrainClass[] LAND_TYPES = {
