@@ -319,3 +319,9 @@ task runQuickGradient(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.QuickGradientProbe'
 }
 
+// Ocean type distribution probe (temporary)
+task runOceanTypeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.OceanTypeProbe'
+}
+
