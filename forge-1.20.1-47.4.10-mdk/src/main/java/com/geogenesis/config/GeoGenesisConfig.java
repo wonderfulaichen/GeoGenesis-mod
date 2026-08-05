@@ -113,7 +113,6 @@ public final class GeoGenesisConfig {
     // ===== 分类阈值 + 雪线 =====
     public final ForgeConfigSpec.DoubleValue elevHigh;
     public final ForgeConfigSpec.DoubleValue reliefHigh;
-    public final ForgeConfigSpec.DoubleValue peakE;
     public final ForgeConfigSpec.DoubleValue snowLine;
     public final ForgeConfigSpec.DoubleValue snowLatitudeInfluence;
     /** 雪线湿度耦合强度（干燥→雪线升高，湿润→雪线降低），默认 0.15 */
@@ -506,8 +505,6 @@ public final class GeoGenesisConfig {
             .defineInRange("elevHigh", 0.25, 0.0, 1.0);
         reliefHigh = builder.comment("Elevation×Relief classification: high-relief threshold (|relief| e). Low=plain only truly flat.")
             .defineInRange("reliefHigh", 0.04, 0.0, 0.6);
-        peakE = builder.comment("Elevation×Relief classification: peak threshold (elevation e); PEAK = MOUNTAINS sub-type.")
-            .defineInRange("peakE", 0.82, 0.0, 1.0);
         snowLine = builder.comment("Snow line elevation (e units). High-elevation terrain above this (modulated by latitude) gets snow cover.")
             .defineInRange("snowLine", 0.70, 0.0, 1.0);
         snowLatitudeInfluence = builder.comment("Snow line temperature coupling: snow line rises toward the warm end (e units per half-range).")
@@ -733,10 +730,10 @@ public final class GeoGenesisConfig {
         hillsLoVal1 = builder.defineInRange("hillsLoVal1", 0.06, -1.0, 1.0);
         hillsLoDeriv1 = builder.defineInRange("hillsLoDeriv1", 0.0, -10.0, 10.0);
         hillsHiLoc0 = builder.defineInRange("hillsHiLoc0", 0.0, 0.0, 1.0);
-        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.18, -1.0, 1.0);
+        hillsHiVal0 = builder.defineInRange("hillsHiVal0", 0.368, -1.0, 1.0);
         hillsHiDeriv0 = builder.defineInRange("hillsHiDeriv0", 0.0, -10.0, 10.0);
         hillsHiLoc1 = builder.defineInRange("hillsHiLoc1", 1.0, 0.0, 1.0);
-        hillsHiVal1 = builder.defineInRange("hillsHiVal1", 0.18, -1.0, 1.0);
+        hillsHiVal1 = builder.defineInRange("hillsHiVal1", 0.368, -1.0, 1.0);
         hillsHiDeriv1 = builder.defineInRange("hillsHiDeriv1", 0.0, -10.0, 10.0);
         builder.pop();
 
@@ -759,16 +756,16 @@ public final class GeoGenesisConfig {
         // PLATEAU inner spline (12 fields)
         builder.push("PLATEAU");
         platLoLoc0 = builder.defineInRange("platLoLoc0", 0.0, 0.0, 1.0);
-        platLoVal0 = builder.defineInRange("platLoVal0", 0.60, -1.0, 1.0);
+        platLoVal0 = builder.defineInRange("platLoVal0", 0.41, -1.0, 1.0);
         platLoDeriv0 = builder.defineInRange("platLoDeriv0", 0.0, -10.0, 10.0);
         platLoLoc1 = builder.defineInRange("platLoLoc1", 1.0, 0.0, 1.0);
-        platLoVal1 = builder.defineInRange("platLoVal1", 0.60, -1.0, 1.0);
+        platLoVal1 = builder.defineInRange("platLoVal1", 0.41, -1.0, 1.0);
         platLoDeriv1 = builder.defineInRange("platLoDeriv1", 0.0, -10.0, 10.0);
         platHiLoc0 = builder.defineInRange("platHiLoc0", 0.0, 0.0, 1.0);
-        platHiVal0 = builder.defineInRange("platHiVal0", 0.75, -1.0, 1.0);
+        platHiVal0 = builder.defineInRange("platHiVal0", 0.706, -1.0, 1.0);
         platHiDeriv0 = builder.defineInRange("platHiDeriv0", 0.0, -10.0, 10.0);
         platHiLoc1 = builder.defineInRange("platHiLoc1", 1.0, 0.0, 1.0);
-        platHiVal1 = builder.defineInRange("platHiVal1", 0.75, -1.0, 1.0);
+        platHiVal1 = builder.defineInRange("platHiVal1", 0.706, -1.0, 1.0);
         platHiDeriv1 = builder.defineInRange("platHiDeriv1", 0.0, -10.0, 10.0);
         builder.pop();
 
@@ -833,7 +830,7 @@ public final class GeoGenesisConfig {
             cratonReliefAmp.get(), beltReliefAmp.get(), plateauReliefAmp.get(), basinReliefAmp.get(),
             beltSharpness.get(), beltWarpAmp.get(), provMixSharpness.get(),
             mountainMaskScale.get(), microDetailScale.get(), microDetailAmp.get(),
-            elevHigh.get(), reliefHigh.get(), peakE.get(), snowLatitudeInfluence.get(), snowHumidityInfluence.get(),
+            elevHigh.get(), reliefHigh.get(), snowLatitudeInfluence.get(), snowHumidityInfluence.get(),
 
             // preview compat defaults
             horizontalScale.get(), seaLevel.get(), snowLine.get(), minY.get(),
@@ -1010,7 +1007,7 @@ public final class GeoGenesisConfig {
             cratonReliefAmp.getDefault(), beltReliefAmp.getDefault(), plateauReliefAmp.getDefault(), basinReliefAmp.getDefault(),
             beltSharpness.getDefault(), beltWarpAmp.getDefault(), provMixSharpness.getDefault(),
             mountainMaskScale.getDefault(), microDetailScale.getDefault(), microDetailAmp.getDefault(),
-            elevHigh.getDefault(), reliefHigh.getDefault(), peakE.getDefault(), snowLatitudeInfluence.getDefault(), snowHumidityInfluence.getDefault(),
+            elevHigh.getDefault(), reliefHigh.getDefault(), snowLatitudeInfluence.getDefault(), snowHumidityInfluence.getDefault(),
 
             // preview compat defaults
             horizontalScale.getDefault(), seaLevel.getDefault(), snowLine.getDefault(), minY.getDefault(),

@@ -152,8 +152,6 @@ public record TerrainParams(
     double elevHigh,
     /** 高起伏阈值（|relief|），默认 0.04。不再用于 Voronoi 类型分配，保留占位。 */
     double reliefHigh,
-    /** 峰阈值（elevation），默认 0.82。不再用于 Voronoi 类型分配，保留占位。 */
-    double peakE,
     /** 雪线温度耦合强度（与旧 snowLatitudeInfluence 同名，但用于温度调制），默认 0.25 */
     double snowLatitudeInfluence,
     /** 雪线湿度耦合强度（干燥→雪线升高，湿润→雪线降低），默认 0.15 */
@@ -258,7 +256,7 @@ public record TerrainParams(
             // layered overlay params（分层叠加新增，对标 TerraForged）
             2200.0, 450.0, 0.025,       // mountainMaskScale,microDetailScale,microDetailAmp
             // classification thresholds + snow latitude coupling
-            0.25, 0.04, 0.82, 0.25, 0.15,  // elevHigh↑0.25,reliefHigh↑0.04,peakE,snowLatitudeInfluence,snowHumidityInfluence
+            0.25, 0.04, 0.25, 0.15,  // elevHigh↑0.25,reliefHigh↑0.04,snowLatitudeInfluence,snowHumidityInfluence（peakE 已移除 2026-08-05）
 
             // preview compat（HS=2.0 默认：2026-08-02 整体倍频变宽 ×2 修复地形过陡；
             // 坡度探针 A/B：平均坡度 30.9°→16.8°、>45° 37%→3.7%）

@@ -118,67 +118,67 @@ public final class TypeLandShape {
         // 同时 PLATEAU 的平顶边缘/MOUNTAINS 脊线等特征通过 per-type 噪声自然表达。
         // STRENGTH=0 → 纯共享（无类型特征），=1 → 纯 per-type（断裂风险）。
         // 0.55：0.4 时类型形态特征被压得太弱（山地脊线/高原起伏 40% 贡献 → 各类型趋同）。
-        final double MORPH_STRENGTH = 0.55;
+        // 2026-08-05 定稿 0.75：用户反馈类型内部高度差不明显。0.55→0.75 让类型噪声更多参与调制
+        // （HILLS localStd 0.0394→0.0437、MOUNTAINS 0.0384→0.0408，探针 seed=12345）；
+        // 0.85 会使山脉边缘出现海平面洼地（min 0.000），0.75 是落差与形态的平衡点。
+        final double MORPH_STRENGTH = 0.75;
+        // 类型高度混合权重锐化（BLEND_SHARPEN）：
+        // 主导类型在 5 类 Voronoi 近平局中权重常仅 ~0.25，其他 4 类 lo/hi 把高度拉向均值
+        // → 山脉主导区 eLand 仅 ~0.28（应 ~0.70）、高原几乎不出现（"山脉不像山脉、
+        // 高原不像高原、类型混合不自然"的根因）。对高度混合权重做 power 锐化并归一化，
+        // 使主导类型回归自身 lo/hi 区间，恢复地形辨识度。锐化是连续权重场的连续函数
+        // → 保持 C0 连续，不引入过渡带断裂（与 SEARCH_RADIUS 截断造成的 1 格断裂无关）。
+        // 仅作用于高度混合；argmax 分类 / mountW / platW / plainW（原始 tw）不受影响。
+        // 2026-08-06 定稿 3.0：4.0 实测 max 0.742 无提升（blendHi 已近顶），且使山脉 min 0.000（海平面洼地）。
+        final double BLEND_SHARPEN = 3.0;
+        double sumSharp = 0.0;
+        double[] sharpW = new double[lands.length];
+        for (int i = 0; i < lands.length; i++) {
+            double w = tw[lands[i].ordinal()];
+            double s = w <= 0.001 ? 0.0 : Math.pow(w, BLEND_SHARPEN);
+            sharpW[i] = s;
+            sumSharp += s;
+        }
+        if (sumSharp <= 1e-6) sumSharp = 1.0; // 退化兜底（不锐化）
         double blendLo = 0.0, blendHi = 0.0;
         for (int i = 0; i < lands.length; i++) {
-            double w = tw[lands[i].ordinal()];
-            if (w <= 0.001) continue;
+            double wn = sharpW[i] / sumSharp;
             double lo_t = generators.sampleByType(effectiveCBiased, i, 0.0); // 该类型在 c 处的下限
             double hi_t = generators.sampleByType(effectiveCBiased, i, 1.0); // 该类型在 c 处的上限
-            blendLo += w * lo_t;
-            blendHi += w * hi_t;
+            blendLo += wn * lo_t;
+            blendHi += wn * hi_t;
         }
         double shared = generators.computeSharedNoise(wx, wz);
-        // 类型加权平均噪声（用于差异调制）
-        double perTypeSum = 0, sumW = 0;
+        // 类型加权平均噪声（用于差异调制，按锐化权重归一化）
+        double perTypeSum = 0;
         for (int i = 0; i < lands.length; i++) {
-            double w = tw[lands[i].ordinal()];
-            if (w <= 0.001) continue;
-            perTypeSum += w * typeNoise.computeNoise(lands[i], wx, wz);
-            sumW += w;
+            double wn = sharpW[i] / sumSharp;
+            perTypeSum += wn * typeNoise.computeNoise(lands[i], wx, wz);
         }
-        double perTypeAvg = sumW > 0 ? perTypeSum / sumW : shared;
+        double perTypeAvg = perTypeSum; // 已归一化 → ∈[0,1]
         double modulated = shared + MORPH_STRENGTH * (perTypeAvg - shared);
         if (modulated < 0.0) modulated = 0.0;
         else if (modulated > 1.0) modulated = 1.0;
+        // 2026-08-06 定稿：对比度拉伸 k=1.5。根因：modulated 均值 0.5、高尾 ~0.75 → 实际峰值
+        // （0.742≈236 格）接近不了样条 hi（0.95→288 格）。线性拉伸放大高/低尾（连续单调无断裂，
+        // 低尾 <0.167 钳 0 平台 ~0.2%）。实测 MOUNTAINS max 0.789≈250 格（用户目标）、
+        // min 0.245 正常、maxDeltaY=8.65 无断裂。
+        modulated = 0.5 + 1.5 * (modulated - 0.5);
+        if (modulated < 0.0) modulated = 0.0;
+        else if (modulated > 1.0) modulated = 1.0;
         double eLand = blendLo + (blendHi - blendLo) * modulated;
-        // 类型显式特征（台座/山体抬升）：加权混合把类型区间拉向平均（Voronoi σ=150 主导区只占 ~70%
-        // 权重，MOUNTAINS 区间 [0.45,0.95] 混合后中位仅 0.63，与 PLATEAU 0.615 几乎同高 → 山地不
-        // 高、高原不台）。按主导权重显式抬升恢复类型高度区分度：
-        //   - platRaise：高原台座（边缘由 smoothstep 过渡 → 台地陡缘）
-        //   - mountRaise：山地抬升（高原区不抬，避免重叠区双抬）
-        // 抬升用平滑连续权重场 → 无缝；softCap 兜底脊谷叠加超限（极少陡坡尖）。
-        double mountW = tw[TerrainClass.MOUNTAINS.ordinal()];
-        double platW = tw[TerrainClass.PLATEAU.ordinal()];
-        double plainW = tw[TerrainClass.PLAIN.ordinal()];
-        // 台座抬升 0.10（线性 0.05 起抬 / 0.35 满，2026-08-01 收紧）：argmax 标记为高原的
-        // 区域（platW≥~0.35）即抬满台面——旧窗口 0.15~0.65 只让细胞中心抬满，边缘一半（platW
-        // 0.3~0.5）半抬 → 高原一半落在过渡坡上（用户反馈）。收紧后过渡坡变为台地陡缘。
-        // 山体抬升 0.05：山地靠样条 hi=0.95 已最高，抬升仅补充过渡带区分（0.12 会吃掉余量触顶）。
-        double platRaise = 0.10 * clamp01((platW - 0.05) / 0.30);
-        double mountRaise = 0.05 * smoothstep(0.50, 0.80, mountW) * (1.0 - 0.8 * platW);
-        // 平原压平（2026-08-01）：PLAIN 样条 hi=0.03 但 blend 混合被其他类型抬到 mean 118
-        // （与 HILLS 121 几乎同高）——核心平原（plainW 0.7）已低（87~93），高的是边缘样本。
-        // 显式压平按 plainW 主导度施加，让平原与丘陵拉开 ~15 格。
-        double plainLower = 0.10 * clamp01((plainW - 0.30) / 0.45);
-        eLand += platRaise + mountRaise - plainLower;
+        // 2026-08-05 定稿：移除旧显式抬升（platRaise/mountRaise/plainLower）。
+        // 旧显式项在样条之外叠加高度（纯高原 +0.10e≈24 格），使"滑块设的最高"超限
+        // （用户反馈：拉到 150 实际 197）。BLEND_SHARPEN 锐化后主导区已回归自身 lo/hi
+        // 区间（A/B 实测：PLATEAU 0.572→0.490 仍高台且更平、MOUNTAINS 0.543→0.534 不变、
+        // PLAIN -0.004→0.034 仍低平），样条现为唯一高度来源 → 滑块 lo/hi = 实际地形区间。
         // 放开下限到海平面以下：盆地等类型的内层样条可为负（e<0 → HeightCurve 映射为低于海平面
         // → 积水成湖/洼地）。下限取海洋深度地板 ELAND_MIN，避免异常配置产生过深空洞；上限仍封 1.0。
-        // 注意：原 clamp01 把 eLand 钳到 [0,1]，会抹平盆地凹陷（内部全压成 0 平盘），现已修正。
         return eLand < ELAND_MIN ? ELAND_MIN : (eLand > 1.0 ? 1.0 : eLand);
     }
 
     /** 陆地 e 允许下探到海洋深度地板（盆地凹陷可低于海平面成湖） */
     private static final double ELAND_MIN = -0.35;
-
-    /** smoothstep（0→1 平滑过渡），用于类型台座/抬升的权重渐变 */
-    private static double smoothstep(double e0, double e1, double x) {
-        double t = (x - e0) / (e1 - e0);
-        t = t < 0 ? 0 : (t > 1 ? 1 : t);
-        return t * t * (3.0 - 2.0 * t);
-    }
-
-    private static double clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
     /**
      * 采样 eLand（完整流程）。

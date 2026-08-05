@@ -112,7 +112,7 @@ public class ParameterConfigPanel extends ConfigPanel {
         addSpec("海床细节", "海床微地形振幅。越大→海床起伏越明显（海山、海沟等特征）。", c.seabedDetail, 0, 0.2);
         addSpec("高海拔阈值", "海拔分类阈值。低于此值为平原/丘陵，高于为高地（山脉+高原+雪峰）。值越低→更多区域划入高地。", c.elevHigh, 0, 1.0);
         addSpec("高起伏阈值", "起伏度分类阈值。低于此值为丘陵，高于为山脉。值越低→更多区域划入山脉类型。", c.reliefHigh, 0, 0.6);
-        addSpec("峰阈值", "山峰阈值。高海拔区域中 e 值超过此阈值为 PEAK（雪峰亚型）。值越低→更多山峰。", c.peakE, 0, 1.0);
+        // 2026-08-05：peakE 配置已彻底移除（PEAK 并入 MOUNTAINS），不再有峰阈值滑块
         addSpec("语义适配强度", "大陆性语义亲和度强度 β：调制大陆性 c 对各类型空间权重的偏置幅度。0=无 c 效应（类型分布不随大陆性变化），越大越偏内陆聚集/海岸低地。默认1.5。", c.cAffinityStrength, 0.0, 4.0);
         // 大陆 FBM（值叠加，对标参考项目 fbm 海岸线）
         addIntSpec("大陆FBM倍频", "大陆性 c 场由多倍频 FBM 值叠加（每倍频频率倍增 lacunarity、振幅乘 persistence）。海岸线 = c=0 等值线，FBM 多尺度细节直接刻进海岸线 → 自然犬牙交错。默认 6（严格对齐参考项目）。", c.continentFbmOctaves, 1, 10);

@@ -136,6 +136,11 @@ public final class BiomeClassifier {
             }
 
             case MOUNTAINS -> {
+                // 【2026-08-05 用户决策】PEAK 不再独立分类 → 雪峰/尖峰群系并入高海拔山地：
+                // e>0.60（与原 PEAK 判定一致）的山顶区用 FROZEN/JAGGED_PEAKS，其余山地按气候映射。
+                if (cell.e > 0.60) {
+                    yield cell.isSnow ? Biomes.FROZEN_PEAKS : Biomes.JAGGED_PEAKS;
+                }
                 if (cell.isSnow) {
                     yield Biomes.STONY_PEAKS;
                 }
@@ -159,10 +164,6 @@ public final class BiomeClassifier {
                 yield Biomes.FOREST;
             }
 
-            case PEAK -> cell.isSnow
-                ? Biomes.FROZEN_PEAKS
-                : Biomes.JAGGED_PEAKS;
-
             case BASIN -> climate.isDry()
                 ? Biomes.DESERT : Biomes.MEADOW;
 
@@ -179,6 +180,7 @@ public final class BiomeClassifier {
                 if (climate.isCoastal() && climate.isWet()) yield Biomes.TAIGA;
                 yield Biomes.WINDSWEPT_HILLS;
             }
+            case PEAK -> Biomes.JAGGED_PEAKS; // 不应命中（2026-08-05 分类不再产出），保持 switch 穷举
             case SNOW -> Biomes.SNOWY_PLAINS;
         };
     }

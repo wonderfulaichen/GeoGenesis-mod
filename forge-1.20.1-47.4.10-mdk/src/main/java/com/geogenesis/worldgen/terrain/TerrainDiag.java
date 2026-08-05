@@ -26,7 +26,7 @@ public final class TerrainDiag {
         System.out.println("=== GeoGenesis Terrain Quantitative Diagnosis ===");
         System.out.println("Region=" + N + "x" + N + " blocks, step=" + step + " => " + M + "x" + M + " = " + total + " samples");
         System.out.println("Params: continentBias=" + p.continentBias()
-                + ", elevHigh=" + p.elevHigh() + ", reliefHigh=" + p.reliefHigh() + ", peakE=" + p.peakE());
+                + ", elevHigh=" + p.elevHigh() + ", reliefHigh=" + p.reliefHigh());
         System.out.println();
 
         TerrainClass[] TCV = TerrainClass.values();
