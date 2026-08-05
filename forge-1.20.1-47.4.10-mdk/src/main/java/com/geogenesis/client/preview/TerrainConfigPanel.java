@@ -144,24 +144,24 @@ public class TerrainConfigPanel extends ConfigPanel {
         defaultLoValues.add(c.riverLo.getDefault());
         defaultHiValues.add(c.riverHi.getDefault());
 
-        // 陆地类型（可编辑：绑定真实 spline 控制点字段，拖动真正影响地形）
-        slots.add(landSplineSlot("平原", 0xFF44AA66, c.plainLoVal0, c.plainHiVal0));
+        // 陆地类型（可编辑：绑定 spline 控制点字段 Val0+Val1，同步写保持水平线，拖动真正影响地形）
+        slots.add(landSplineSlot("平原", 0xFF44AA66, c.plainLoVal0, c.plainLoVal1, c.plainHiVal0, c.plainHiVal1));
         defaultLoValues.add(c.plainLoVal0.getDefault());
         defaultHiValues.add(c.plainHiVal0.getDefault());
 
-        slots.add(landSplineSlot("丘陵", 0xFF88CC44, c.hillsLoVal0, c.hillsHiVal0));
+        slots.add(landSplineSlot("丘陵", 0xFF88CC44, c.hillsLoVal0, c.hillsLoVal1, c.hillsHiVal0, c.hillsHiVal1));
         defaultLoValues.add(c.hillsLoVal0.getDefault());
         defaultHiValues.add(c.hillsHiVal0.getDefault());
 
-        slots.add(landSplineSlot("山脉", 0xFF884422, c.mountLoVal0, c.mountHiVal0));
+        slots.add(landSplineSlot("山脉", 0xFF884422, c.mountLoVal0, c.mountLoVal1, c.mountHiVal0, c.mountHiVal1));
         defaultLoValues.add(c.mountLoVal0.getDefault());
         defaultHiValues.add(c.mountHiVal0.getDefault());
 
-        slots.add(landSplineSlot("高原", 0xFFCC8844, c.platLoVal0, c.platHiVal0));
+        slots.add(landSplineSlot("高原", 0xFFCC8844, c.platLoVal0, c.platLoVal1, c.platHiVal0, c.platHiVal1));
         defaultLoValues.add(c.platLoVal0.getDefault());
         defaultHiValues.add(c.platHiVal0.getDefault());
 
-        slots.add(landSplineSlot("盆地", 0xFFAA6644, c.basinLoVal0, c.basinHiVal0));
+        slots.add(landSplineSlot("盆地", 0xFFAA6644, c.basinLoVal0, c.basinLoVal1, c.basinHiVal0, c.basinHiVal1));
         defaultLoValues.add(c.basinLoVal0.getDefault());
         defaultHiValues.add(c.basinHiVal0.getDefault());
 
@@ -411,14 +411,25 @@ public class TerrainConfigPanel extends ConfigPanel {
         return new DualRangeChart.Slot(name, color, loVal, hiVal, loSet, hiSet, loCfg::get, hiCfg::get);
     }
 
-    /** 陆地类型可编辑 slot：绑定 spline 控制点配置字段（lo/hi 各 Val0），拖动真正影响地形 */
+    /**
+     * 陆地类型可编辑 slot：绑定 spline 控制点配置字段（lo/hi 各 Val0+Val1）。
+     * <p>
+     * 2026-08-05 修复：原仅写 Val0，但 TypeLandShape 高度混合的
+     * {@code hi_t = sampleByType(c, i, 1.0)} 读取 hiSpline.sample(1.0) = <b>Val1</b>
+     * （loc1=1.0 控制点）→ 滑块设的"最高"不参与高度计算（blendHi 上限仍是默认 hiVal1，
+     * 实机表现为"拉到 150 实际 197"）。修复：setter 同步写 Val0+Val1，样条恒为水平线
+     * （常数区间语义），blendHi / maxLandHi / 图例 / softCap 全部一致。
+     */
     private static DualRangeChart.Slot landSplineSlot(String name, int color,
-        ForgeConfigSpec.DoubleValue loCfg, ForgeConfigSpec.DoubleValue hiCfg) {
-        double loVal = loCfg.get();
-        double hiVal = hiCfg.get();
-        // 实时钳制 lo ≤ hi 由 makeSlider.onChange 负责；setter 直接写 config，
-        // onMarkDirty 在 slider onValueCommitted 中统一触发预览重建（buildParams 重算 spline）
-        return new DualRangeChart.Slot(name, color, loVal, hiVal, loCfg::set, hiCfg::set, loCfg::get, hiCfg::get);
+        ForgeConfigSpec.DoubleValue loVal0Cfg, ForgeConfigSpec.DoubleValue loVal1Cfg,
+        ForgeConfigSpec.DoubleValue hiVal0Cfg, ForgeConfigSpec.DoubleValue hiVal1Cfg) {
+        double loVal = loVal0Cfg.get();
+        double hiVal = hiVal0Cfg.get();
+        // 实时钳制 lo ≤ hi 由 makeSlider.onChange 负责；setter 同步写 Val0+Val1 并触发预览重建
+        DoubleConsumer loSet = v -> { loVal0Cfg.set(v); loVal1Cfg.set(v); };
+        DoubleConsumer hiSet = v -> { hiVal0Cfg.set(v); hiVal1Cfg.set(v); };
+        return new DualRangeChart.Slot(name, color, loVal, hiVal, loSet, hiSet,
+            loVal0Cfg::get, hiVal0Cfg::get);
     }
 
 
