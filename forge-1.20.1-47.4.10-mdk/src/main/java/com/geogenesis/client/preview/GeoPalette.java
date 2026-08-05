@@ -624,7 +624,10 @@ public final class GeoPalette {
         int count = Math.min(countIds(layer), labelCount(layer));
         for (int i = 0; i < count; i++) {
             // 【2026-08-03 用户决策】BEACH 不再作为独立地形类型 → 图例隐藏
-            if (layer == PreviewLayer.TERRAIN_TYPE && i == TerrainClass.BEACH.ordinal()) {
+            // 【2026-08-05 用户决策】PEAK 不再独立分类 → 图例隐藏；RIVER/LAKE 是水文状态非形态 → 图例隐藏（颜色均保留对齐）
+            if (layer == PreviewLayer.TERRAIN_TYPE
+                    && (i == TerrainClass.BEACH.ordinal() || i == TerrainClass.PEAK.ordinal()
+                    || i == TerrainClass.LAKE.ordinal() || i == TerrainClass.RIVER.ordinal())) {
                 continue;
             }
             out.add(new LegendEntry(i, discrete(layer, i), discreteLabelKey(layer, i)));
@@ -757,10 +760,10 @@ public final class GeoPalette {
         return discreteId(layer, c);
     }
 
-    // TERRAIN_TYPE id 与 TerrainClass.ordinal() 对齐；水文 override（mirror BiomeClassifier）
+    // TERRAIN_TYPE id 与 TerrainClass.ordinal() 对齐
+    // 【2026-08-05 用户决策】河流/湖泊是水文状态而非地形形态：不再用 riverMask/lakeMask
+    // 覆盖显示（看水文请用 RIVER_NETWORK 图层）；游戏灌水/群系走独立字段，不受影响。
     private static int terrainTypeId(Cell c) {
-        if (c.riverMask) return TerrainClass.RIVER.ordinal();
-        if (c.lakeMask) return TerrainClass.LAKE.ordinal();
         return c.terrainType.ordinal();
     }
 

@@ -49,7 +49,7 @@ public final class PresetLibrary {
                 map(c.continentBias, 0.3, c.oceanDepthFactor, 1.1,
                     c.beltReliefAmp, 0.45, c.cratonReliefAmp, 0.12,
                     c.plateauReliefAmp, 0.04,
-                    c.elevHigh, 0.20, c.reliefHigh, 0.06, c.snowLine, 0.60, c.peakE, 0.75)),
+                    c.elevHigh, 0.20, c.reliefHigh, 0.06, c.snowLine, 0.60)),
 
             // 温和丘陵：整体低起伏、圆润丘陵、温和气候
             new Preset("hills", "温和丘陵",
@@ -66,7 +66,7 @@ public final class PresetLibrary {
                     c.beltReliefAmp, 0.50, c.cratonReliefAmp, 0.15,
                     c.plateauReliefAmp, 0.05,
                     c.basinReliefAmp, 0.08,
-                    c.elevHigh, 0.18, c.reliefHigh, 0.08, c.snowLine, 0.65, c.peakE, 0.70))
+                    c.elevHigh, 0.18, c.reliefHigh, 0.08, c.snowLine, 0.65))
         );
     }
 }

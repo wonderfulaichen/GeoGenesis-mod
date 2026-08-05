@@ -899,18 +899,9 @@ public final class CellGenerator {
             if (landFeat.field > 0.04) return TerrainClass.VOLCANIC_FIELD;
         }
 
-        // 取 MOUNTAINS 连续权重（而非离散 cellType == MOUNTAINS）
-        double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
-            ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
-
-        // PEAK 使用 post-blend e（而非预 blend eLand），
-        // 确保海岸过渡带不被误标为雪峰材质（用户反馈：海岸边 SNOW 贴图硬切下降）。
-        if (mountW > 0.35 && e > 0.60) {
-            return TerrainClass.PEAK;
-        }
-        // 【2026-08-03 用户决策】SNOW 不再作为独立地形类型（雪是气候/海拔覆盖状态而非地形形态）：
-        // 高海拔区域落入 PEAK / MOUNTAINS / PLATEAU（typeWeights dominant），
-        // 雪原群系仍由 BiomeClassifier 按低温+地形映射，不丢失。
+        // 【2026-08-05 用户决策】PEAK 不再作为独立地形类型（山峰=山脉的高海拔部分，
+        // 与 BEACH/SNOW 同为状态/过渡而非独立形态）：高海拔山地直接落入 MOUNTAINS
+        // （typeWeights dominant），雪峰/尖峰群系由 BiomeClassifier 按 cell.e>0.60 映射，不丢失。
         return cellType;
     }
 
@@ -939,11 +930,8 @@ public final class CellGenerator {
             return ne < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
         // 【2026-08-03 用户决策】BEACH/SNOW 不再作为独立地形类型（见主 classify 注释）。
-        // 使用连续 typeWeights 判断 PEAK（用 ne 替代 eLand，与主 classify 一致）
-        double mountW = typeWeights != null && typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
-            ? typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
-        if (mountW > 0.35 && ne > 0.60) return TerrainClass.PEAK;
-
+        // 【2026-08-05 用户决策】PEAK 不再独立分类（山峰=山脉高海拔部分，群系由
+        // BiomeClassifier 按 cell.e 阈值映射），此处直接取 typeWeights 主导类型。
         if (typeWeights != null && typeWeights.length >= TerrainClass.COUNT) {
             return TypeLandShape.dominantFromWeights(typeWeights);
         }
