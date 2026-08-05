@@ -107,7 +107,9 @@ public final class CellGenerator {
             double c = continent.sample(wx, wz);
             double cBiased = c - continentBias;
             double eBase = heightCurve.eFromC(cBiased);
-            double depthMod = 0.6 + smoothstep(-0.2, -0.6, eBase) * 1.2;
+            // 2026-08-06 修复：depthMod 语义 = "深海加深 / 浅海不变"（x 越低值越大）→
+            // 1-smoothstep(-0.6,-0.2,eBase)。原实现方向反（浅海 1.8/深海 0.6）。
+            double depthMod = 0.6 + (1.0 - smoothstep(-0.6, -0.2, eBase)) * 1.2;
             double seabed = seabedAmp * depthMod * seaBed.sample(wx, wz);
             double eOcean = (eBase + seabed) * oceanDepthFactor;
             return Math.min(eOcean, 0.0);
@@ -152,7 +154,8 @@ public final class CellGenerator {
 
         // 2. 海洋基面 eOcean（不 clamp 到 0——陆地区域 eBase 为正，自然地增高）
         double eBase = heightCurve.eFromC(cBiased);
-        double depthMod = 0.6 + smoothstep(-0.2, -0.6, eBase) * 1.2;
+        // 2026-08-06 修复：depthMod = "深海加深/浅海不变" → 1-smoothstep(-0.6,-0.2,eBase)
+        double depthMod = 0.6 + (1.0 - smoothstep(-0.6, -0.2, eBase)) * 1.2;
         double seabed = seabedAmp * depthMod * seaBed.sample(sx, sz);
         double eOcean = eBase + seabed;
         eOcean = eOcean * oceanDepthFactor;
@@ -881,14 +884,18 @@ public final class CellGenerator {
                                   double cEdge) {
         if (e < 0.0) {
             // 海洋地形细分
+            double baseE = oceanFeat != null ? oceanFeat.baseE : e;
             double ridgeAmp = oceanFeat != null ? oceanFeat.ridge : 0;
             double seamountAmp = oceanFeat != null ? oceanFeat.seamount : 0;
-            // SUBMARINE_RIDGE / SEAMOUNT 仅在大陆架以下（e < -0.08）的较深水域分类
-            // 避免浅水/近岸被误判为海山
-            if (ridgeAmp > 0.03 && e < -0.08) return TerrainClass.SUBMARINE_RIDGE;
-            if (seamountAmp > 0.02 && e < -0.08) return TerrainClass.SEAMOUNT;
-            if (e > -0.08) return TerrainClass.CONTINENTAL_SHELF;
-            return e < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
+            // 【2026-08-06 修复】深度判定改用基面 e（不含特征增量）：海山/洋中脊把 e 抬升后
+            // 原 "e < -0.08" 自相矛盾（海山顶峰 e>-0.08 → 被判 SHELF，探针实测 SEAMOUNT 仅 11 个）。
+            // SEAMOUNT 判定优先于 RIDGE（海山独立特征，避免被洋中脊抢走）。
+            if (seamountAmp > 0.02 && baseE < -0.08) return TerrainClass.SEAMOUNT;
+            // 2026-08-06 调稀洋中脊：阈值 0.03→0.05（用户反馈"洋中脊有点多"）——边缘弱贡献区
+            // 归入 OCEAN/DEEP_OCEAN，仅脊线主体保留 RIDGE 类型（地形抬升不受影响）。
+            if (ridgeAmp > 0.05 && baseE < -0.08) return TerrainClass.SUBMARINE_RIDGE;
+            if (baseE > -0.08) return TerrainClass.CONTINENTAL_SHELF;
+            return baseE < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
         // 【2026-08-03 用户决策】BEACH 不再作为独立地形类型（沙滩是海岸过渡带而非地形形态）：
         // 海岸窄条自然落入后续陆地类型（PLAIN/HILLS 等），群系层面仍由 BiomeClassifier 按气候映射。

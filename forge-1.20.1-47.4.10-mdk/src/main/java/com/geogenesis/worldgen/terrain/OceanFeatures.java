@@ -25,10 +25,13 @@ public final class OceanFeatures {
 
     // ===== 海山/海底火山：粗格点高斯鼓包 + 域扭曲去圆化 =====
     private final Noise seamountWarpX, seamountWarpZ; // 海山域扭曲 @1/200
-    /** 粗格点间距（块）。每个格子约 40% 概率生成一座海山。 */
+    /** 粗格点间距（块）。每个格子约 20% 概率生成一座海山。
+     *  2026-08-06 调稀：用户反馈海山太多。网格保持 500（相位/深度过滤不变），概率 40%→20%
+     *  → 数量线性降为原来的 52%。曾试 800/650 网格（相位漂移+深度区重合不确定）与 15%
+     *  （4096 区域期望 <1 座、波动到 0）——20% 为"少一半且可见"的平衡点。 */
     private static final double SEAMOUNT_GRID = 500.0;
     /** 海山生成概率（0~65535 阈值） */
-    private static final int SEAMOUNT_CHANCE = (int) (0.40 * 65536);
+    private static final int SEAMOUNT_CHANCE = (int) (0.20 * 65536);
     /** 海山半径范围 [min, max) */
     private static final double SEAMOUNT_RADIUS_MIN = 70.0;
     private static final double SEAMOUNT_RADIUS_RANGE = 80.0; // 70~150
@@ -76,10 +79,12 @@ public final class OceanFeatures {
         public final double total;     // 总增量
         public final double ridge;     // 洋中脊增量
         public final double seamount;  // 海山增量
-        public FeatureResult(double total, double ridge, double seamount) {
+        public final double baseE;     // 预特征基面 e（分类深度判定用，避免特征抬升自相矛盾）
+        public FeatureResult(double total, double ridge, double seamount, double baseE) {
             this.total = total;
             this.ridge = ridge;
             this.seamount = seamount;
+            this.baseE = baseE;
         }
     }
 
@@ -105,14 +110,19 @@ public final class OceanFeatures {
         // 修复：原版 `if (eOcean >= 0) return 0` 是硬阈值，在 eOcean=0 的海岸线产生跳变
         // （火山贡献最高 0.16 e ≈ 41 blocks → 大断裂面）。改用 smoothstep 淡入，
         // 保证海陆过渡带地形连续。海岸线上 eOcean=0 → fade=0，仍无海山贡献。
-        double fade = eOcean < 0 ? smoothstep(0.0, -0.05, eOcean) : 0.0;
-        if (fade <= 0.0) return new FeatureResult(0, 0, 0);
+        // 2026-08-06 修复：fade 语义 = "深海 1 / 近岸 0"（x 越低值越大）→ 必须 1-smoothstep(low,high,x)。
+        // 原 smoothstep(0,-0.05,...) 区间反转与平滑版（无 1-）都会使 fade 恒 0，海山/洋中脊从未生成
+        // （探针实测 maxSeamountAmp=0）。
+        double fade = eOcean < 0 ? 1.0 - smoothstep(-0.05, 0.0, eOcean) : 0.0;
+        if (fade <= 0.0) return new FeatureResult(0, 0, 0, eOcean);
 
         double ridgeDelta = 0.0;
         double seamountDelta = 0.0;
 
         // 1. 洋中脊：smoothstep 平滑淡入（eOcean ≥ -0.08 无脊，≤ -0.25 全幅）
-        double ridgeFade = eOcean < -0.08 ? smoothstep(-0.08, -0.25, eOcean) : 0.0;
+        // 2026-08-06 修复：ridgeFade 语义 = "深海 1 / 浅海 0" → 1-smoothstep(-0.25,-0.08,eOcean)。
+        // 原实现（区间反转 / 无 1-）ridgeFade 恒 0，洋中脊从未生效。
+        double ridgeFade = eOcean < -0.08 ? 1.0 - smoothstep(-0.25, -0.08, eOcean) : 0.0;
         if (ridgeFade > 0) {
             double mask = ridgeMask.compute(wx, wz); // [0, 1]
             if (mask > 0.3) {
@@ -126,7 +136,7 @@ public final class OceanFeatures {
         seamountDelta = seamountCompute(wx, wz);
 
         double total = (ridgeDelta + seamountDelta) * fade;
-        return new FeatureResult(total, ridgeDelta * fade, seamountDelta * fade);
+        return new FeatureResult(total, ridgeDelta * fade, seamountDelta * fade, eOcean);
     }
 
     /**
