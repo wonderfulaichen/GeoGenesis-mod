@@ -687,8 +687,8 @@ public class PreviewDisplay extends AbstractWidget {
         // ★ 重建队列：TerrainQueue.terrain 是构造时传入的 final 字段，setTerrain 只更新了
         //   PreviewDisplay.this.terrain，不重建队列则 ChunkWorkUnit 仍用旧 terrain 采样。
         rebuildQueue();
-        centerX = 0; centerZ = 0;
-        totalDragX = 0; totalDragZ = 0;
+        // 2026-08-05 修复：不再重置视口（center/totalDrag）——配置改动只应刷新画面内容，
+        // 保留用户当前位置与缩放（回出生点请用 resetCenter 按钮）。
         needsClear = true;
     }
 

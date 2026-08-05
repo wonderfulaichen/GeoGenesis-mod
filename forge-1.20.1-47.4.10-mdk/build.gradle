@@ -306,3 +306,16 @@ task runContScaleProbe(type: JavaExec) {
     // Optional: args = ['12345']
 }
 
+// Terrain shape diagnostic (per-type eLand distribution + local roughness)
+task runShapeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TerrainShapeProbe'
+    // Optional: args = ['12345']
+}
+
+// Quick gradient probe (actual engine 1-block gradient check; temporary)
+task runQuickGradient(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.QuickGradientProbe'
+}
+
