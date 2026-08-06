@@ -396,7 +396,8 @@ public final class GeoGenesisConfig {
         deepOceanDepth = builder.comment("Deep ocean depth (e units). -0.35 ≈ y=19 floor, adjust for gameplay depth taste.")
             .defineInRange("deepOceanDepth", -0.35, -1.0, 0.0);
         shelfDepth = builder.defineInRange("shelfDepth", -0.25, -1.0, 0.0);
-        shallowDepth = builder.defineInRange("shallowDepth", -0.06, -1.0, 0.0);
+        // 2026-08-06: -0.06→-0.09→-0.14（海岸带 eOcean 加深，e=0 穿越点 cont 提升 → eLand 参与海岸线定位）
+        shallowDepth = builder.defineInRange("shallowDepth", -0.14, -1.0, 0.0);
         deepOceanDeriv = builder.defineInRange("deepOceanDeriv", 0.0, -10.0, 10.0);
         shelfDeriv = builder.comment("Shelf derivative steepness: higher = steeper continental slope. Default 0.8.")
             .defineInRange("shelfDeriv", 0.8, -10.0, 10.0);
@@ -405,10 +406,12 @@ public final class GeoGenesisConfig {
         builder.pop();
 
         builder.push("Coastline Transition");
-        oceanFadeStart = builder.comment("Ocean fade start (cBiased space). Ocean depth begins fading to 0 at this continentality. More negative = wider continental shelf before beach. Default -0.15, range [-0.5, 0.0].")
-            .defineInRange("oceanFadeStart", -0.15, -0.5, 0.0);
-        landRampEnd = builder.comment("Land ramp end (cBiased space). Full land height is reached at this continentality. Higher = wider beach zone before full terrain appears. Default 0.08, range [0.0, 0.5].")
-            .defineInRange("landRampEnd", 0.08, 0.0, 0.5);
+        // 2026-08-06 二次修正: -0.07→-0.13（过渡带向海侧扩展，e=0 穿越点移到过渡带中部 cont≈0.25~0.4，
+        // eLand 参与海岸线定位——用户铁律"海岸线由地形斜率自然决定"）
+        oceanFadeStart = builder.comment("Ocean fade start (cBiased space). Ocean depth begins fading to 0 at this continentality. More negative = wider coastal transition (eLand joins coastline positioning). Default -0.13 (2026-08-06), range [-0.5, 0.0].")
+            .defineInRange("oceanFadeStart", -0.13, -0.5, 0.0);
+        landRampEnd = builder.comment("Land ramp end (cBiased space). Full land height is reached at this continentality. Higher = wider beach zone before full terrain appears. Default 0.05 (2026-08-06), range [0.0, 0.5].")
+            .defineInRange("landRampEnd", 0.05, 0.0, 0.5);
         builder.pop();
 
         // 海洋类型独立 lo/hi（与陆地类型一致的独立控制）
@@ -581,21 +584,21 @@ public final class GeoGenesisConfig {
 
         builder.push("Semantic Affinity");
         // Phase 2.2: 语义适配旋钮
-        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。v14+ 恢复：共享噪声公式数学保证连续，因此 cAffinity 恢复非零是安全的（权重偏置不影响 eLand 连续性）。3.0=中等强度，山脉偏内陆、盆地偏海岸/深海。0=纯空间 Voronoi 类型分布。范围 [0,10]。")
-            .defineInRange("cAffinityStrength", 3.0, 0.0, 10.0);
+        cAffinityStrength = builder.comment("大陆性语义亲和度强度 β（调制 c 对各类型空间权重的偏置幅度）。2026-08-06 默认 0 禁用：factor=1+β(aff-0.2) 跨 c 变化 100~200 倍 + BLEND_SHARPEN 放大 → 类型过渡带突变（弧形硬边，用户反馈）。0=纯空间 Voronoi 类型分布（自然过渡）。范围 [0,10]。")
+            .defineInRange("cAffinityStrength", 0.0, 0.0, 10.0);
         builder.pop();
 
         builder.push("Coastline Diversification");
-        coastlineWarpAmp = builder.comment("海岸线 warp 振幅（c 空间单位）。注意：大陆性 c 场现已是 FBM（多尺度细节直接刻进海岸线），此 warp 是在 c 上的额外位移补丁，默认 0（禁用，避免与 FBM 重复叠加）。如需额外海岸线扭曲可调大，范围 [0, 0.3]。")
-            .defineInRange("coastlineWarpAmp", 0.0, 0.0, 0.3);
-        coastlineWarpScale = builder.comment("海岸线 warp 基频世界坐标尺度（块）。越大变化越平缓。默认 300，范围 [50, 800]。")
-            .defineInRange("coastlineWarpScale", 300.0, 50.0, 800.0);
-        coastlineWarpOctaves = builder.comment("海岸线 warp 倍频数（octaves）：控制分形细节尺度层级数。越大海岸线越多尺度（自相似犬牙交错），越小越平滑。默认 5，范围 [1, 8]。")
-            .defineInRange("coastlineWarpOctaves", 5, 1, 8);
+        coastlineWarpAmp = builder.comment("海岸线 warp 振幅（c 空间单位）。注意：大陆性 c 场现已是 FBM（多尺度细节直接刻进海岸线），此 warp 是在 c 上的额外位移补丁。默认 0.15（2026-08-06 破圆弧：0.05 位移仅 ~57 块不可见），范围 [0, 0.3]。")
+            .defineInRange("coastlineWarpAmp", 0.15, 0.0, 0.3);
+        coastlineWarpScale = builder.comment("海岸线 warp 基频世界坐标尺度（块）。越大变化越平缓。默认 1200（2026-08-06：300 波长在大俯视图不可见，1200 产生半岛/海湾级弯曲），范围 [50, 2000]。")
+            .defineInRange("coastlineWarpScale", 1200.0, 50.0, 2000.0);
+        coastlineWarpOctaves = builder.comment("海岸线 warp 倍频数（octaves）：控制分形细节尺度层级数。越大海岸线越多尺度（自相似犬牙交错），越小越平滑。默认 6，范围 [1, 8]。")
+            .defineInRange("coastlineWarpOctaves", 6, 1, 8);
         coastlineWarpLacunarity = builder.comment("FBM 频率倍增系数（lacunarity）：每倍频频率×该值。默认 2.0，范围 [1.5, 3.0]。")
             .defineInRange("coastlineWarpLacunarity", 2.0, 1.5, 3.0);
-        coastlineWarpPersistence = builder.comment("FBM 振幅衰减系数（persistence）：每倍频振幅×该值。默认 0.5，范围 [0.25, 0.8]。")
-            .defineInRange("coastlineWarpPersistence", 0.5, 0.25, 0.8);
+        coastlineWarpPersistence = builder.comment("FBM 振幅衰减系数（persistence）：每倍频振幅×该值。默认 0.6（2026-08-06 0.5→0.6 增强高频细齿），范围 [0.25, 0.8]。")
+            .defineInRange("coastlineWarpPersistence", 0.6, 0.25, 0.8);
         coastTerrainInfluence = builder.comment("地形类型调制强度（c 空间单位）。山地权重高→推岸出海成岬角/悬崖，平原→拉岸内凹成海湾。默认 0.08，范围 [0, 0.3]。")
             .defineInRange("coastTerrainInfluence", 0.08, 0.0, 0.3);
         archipelagoBand = builder.comment("离岸群岛带宽度（c 空间单位，从 coastLoc 向海侧延伸）。越大群岛可出现的海域范围越宽。默认 0.10，范围 [0, 0.3]。")
@@ -656,16 +659,16 @@ public final class GeoGenesisConfig {
         // ===== 粗侵蚀骨架层（脊-谷条纹滤镜，Rune Skovbo Johansen 2026 + Luke Mitchell Burst C#）=====
         erosionRidgeEnabled = builder.comment("Coarse ridge-valley skeleton layer (gradient-aligned stripe filter). Builds mountain-ridge basic form before particle detail erosion. Default true.")
                 .define("erosionRidgeEnabled", true);
-        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 0.08, range [0, 0.5].")
-                .defineInRange("erosionRidgeStrength", 0.08, 0.0, 0.5);
+        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 0.5 (2026-08-06: 0.35 delta ±0.03e 仍不明显), range [0, 0.75].")
+                .defineInRange("erosionRidgeStrength", 0.5, 0.0, 0.75);
         erosionRidgeScale = builder.comment("Coarse skeleton feature size (world blocks) = stripe cell world size; larger = wider ridges. Default 100, range [50, 800].")
                 .defineInRange("erosionRidgeScale", 100.0, 50.0, 800.0);
         erosionRidgeCellScale = builder.comment("Coarse skeleton in-cell stripe frequency (ridge-valley density). Default 1.2, range [0.2, 2.0].")
                 .defineInRange("erosionRidgeCellScale", 1.2, 0.2, 2.0);
         erosionRidgeOctaves = builder.comment("Coarse skeleton octaves (main + secondary + fine gullies; 4 at spacing=2 no aliasing). Default 4, range [1, 5].")
                 .defineInRange("erosionRidgeOctaves", 4, 1, 5);
-        erosionRidgeGullyWeight = builder.comment("Coarse skeleton slope-accumulation weight (ridge-valley sharpness). Default 0.5, range [0, 1].")
-                .defineInRange("erosionRidgeGullyWeight", 0.5, 0.0, 1.0);
+        erosionRidgeGullyWeight = builder.comment("Coarse skeleton slope-accumulation weight (ridge-valley sharpness). Default 0.65 (2026-08-06: 0.5→0.65 加强条纹), range [0, 1].")
+                .defineInRange("erosionRidgeGullyWeight", 0.65, 0.0, 1.0);
         erosionRidgeRounding = builder.comment("Ridge profile rounding (0=sharp V-cut, 0.5=default balanced, 1=max rounded U-shape). Default 0.5, range [0, 1].")
                 .defineInRange("erosionRidgeRounding", 0.5, 0.0, 1.0);
         erosionRidgeLandRef = builder.comment("Coarse skeleton fadeTarget reference (land median, e units). Default 0.15 matches land median; old fixed 0.25 caused uniform 4~11-block downcutting on low-elevation worlds. Range [0.02, 0.5].")
@@ -794,6 +797,40 @@ public final class GeoGenesisConfig {
         this.midSplineConfig = com.geogenesis.worldgen.terrain.MidSplineConfig.defaults();
 
         builder.pop(); // GeoGenesis Terrain Generation
+    }
+
+    /**
+     * 侵蚀/河流运行时配置指纹。
+     * 2026-08-06 新增：侵蚀 tile 缓存与预览磁盘缓存的失效依据——配置改动（开/关骨架、
+     * 侵蚀/河流参数）后旧缓存自动失效，避免"改配置没变化"。显式字段（编译期检查）。
+     */
+    public static long configFingerprint() {
+        if (INSTANCE == null) return 0L;
+        try {
+            long h = 1;
+            h = h * 31 + (INSTANCE.riversEnabled.get() ? 1 : 0);
+            h = h * 31 + (INSTANCE.erosionEnabled.get() ? 1 : 0);
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionStrength.get());
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionDropsMul.get());
+            h = h * 31 + (INSTANCE.erosionRidgeEnabled.get() ? 1 : 0);
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeStrength.get());
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeScale.get());
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeCellScale.get());
+            h = h * 31 + INSTANCE.erosionRidgeOctaves.get();
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeGullyWeight.get());
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeRounding.get());
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeLandRef.get());
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeDetail.get());
+            // 2026-08-06：海岸线 warp 参数（侵蚀采样依赖地形含海岸线，改动须清侵蚀 tile 缓存）
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.coastlineWarpAmp.get());
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.coastlineWarpScale.get());
+            h = h * 31 + INSTANCE.coastlineWarpOctaves.get();
+            h = h * 31 + Double.doubleToLongBits(INSTANCE.coastlineWarpPersistence.get());
+            return h;
+        } catch (IllegalStateException e) {
+            // Forge 配置未加载（探针/独立预览等非 MC 环境）→ 返回 0（无指纹，缓存不失效）
+            return 0L;
+        }
     }
 
     /**

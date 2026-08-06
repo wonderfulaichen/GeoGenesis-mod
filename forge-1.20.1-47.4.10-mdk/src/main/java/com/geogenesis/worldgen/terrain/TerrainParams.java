@@ -179,7 +179,9 @@ public record TerrainParams(
     double verticalScale,
 
     // ===== 大陆性语义亲和度（注入 TypeLandShape） =====
-    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 5.0。0=无 c 效应，越大海洋区域越倾向平原/盆地（低地形），陆地保留正常类型多样性。5.0 时海洋中 MOUNTAINS/HILLS 权重归零。 */
+    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 0.0（禁用）。
+     * 2026-08-06 用户决策：factor=1+β(aff-0.2) 跨 c 变化 100~200 倍 + BLEND_SHARPEN 放大 →
+     * 类型过渡带突变（弧形硬边）。禁用恢复纯 Voronoi 自然过渡。0=无 c 效应。 */
     double cAffinityStrength,
 
     // ===== 海岸线多样化（CoastlineField 输入） =====
@@ -224,11 +226,18 @@ public record TerrainParams(
             // ocean spline locations (c∈[-1,1]; 负=深海、0=海岸锚点)
             -0.80, -0.50, -0.16, -0.04,
             // ocean spline values（deepOcean depth 从 -0.85 减至 -0.35，适配 MC 游戏性不宜太深）
-            -0.35, -0.25, -0.06,
+            // 2026-08-06: shallowDepth -0.06→-0.09→-0.14（海岸带 eOcean 加深 → e=0 穿越点 cont 提升，
+            // eLand 参与海岸线定位；配合 oceanFadeStart -0.07→-0.13 过渡带向海侧扩展）
+            -0.35, -0.25, -0.14,
             // ocean spline derivatives（shelfDeriv 0.8；shallowDeriv 0.5 保持浅水带单调递减斜率，消除平涂浅蓝平台）
             0.0, 0.8, 0.5, 0.0,
             // coastline transition (two-stage blend after TerraForged)
-            -0.15, 0.08,
+            // 2026-08-06 二次修正：过渡带向海侧扩展（-0.07→-0.13），使 e=0 穿越点（eOcean 归 0 处）
+            // 从紧贴 oceanFadeStart（cont<0.1，eLand 参与<10% → 海岸线=c 低频等值线=完美圆弧）
+            // 移到过渡带中部（cont≈0.25~0.4）→ eLand 真正参与海岸线定位（用户铁律：海岸线由
+            // 地形斜率自然决定，与地形类型之间过渡一致）。配套 shallowDepth -0.06→-0.09 控制
+            // 大陆架冒岛量。landRampEnd 保持 0.05。
+            -0.13, 0.05,
             // 海洋类型独立 lo/hi（默认值）
             -0.35, -0.06,  // OCEAN
             -0.50, -0.35,  // DEEP_OCEAN
@@ -262,9 +271,13 @@ public record TerrainParams(
             // 坡度探针 A/B：平均坡度 30.9°→16.8°、>45° 37%→3.7%）
             2.0, 63, 0.70, -64, 320, 0.92, (int) Math.round(63 + (320 - 63) * 0.92 * 0.95), -48,
             1.0,  // verticalScale
-            5.0,              // cAffinityStrength
+            0.0,              // cAffinityStrength（2026-08-06 默认 0 禁用：防类型过渡带硬边）
             // coastline diversification
-            0.03, 300.0, 5, 2.0, 0.5,  // coastlineWarpAmp, coastlineWarpScale, octaves, lacunarity, persistence
+            // 2026-08-06: warp 振幅 0.05→0.15、基频 300→1200、octaves 5→6、per 0.5→0.6
+            // 破圆弧实锤：穿越点 cont<0.1（eLand 参与<10%）→ 海岸线=c 等值线（4000 块波长大弧）；
+            // 旧 warp 位移仅 ~57 块@300 波长 → 大俯视图不可见。1200 块基频 → 半岛/海湾级弯曲
+            // （位移 ~120 块），octave 覆盖 600/300/150/75/37 多尺度锯齿。
+            0.15, 1200.0, 6, 2.0, 0.6,  // coastlineWarpAmp, coastlineWarpScale, octaves, lacunarity, persistence
             0.08,               // coastTerrainInfluence
             0.10, 0.30, 120.0,  // archipelagoBand, archipelagoDensity, archipelagoScale
             0.035,              // archipelagoHeight

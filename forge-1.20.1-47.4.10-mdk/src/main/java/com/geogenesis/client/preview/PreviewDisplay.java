@@ -197,9 +197,13 @@ public class PreviewDisplay extends AbstractWidget {
      * 缓存键 = 地形参数 hash × 分类版本号：分类/渲染逻辑变更（如 BEACH/SNOW 移除）时
      * 递增版本 → 旧磁盘缓存自动失效重采，无需用户手动清缓存。
      */
-    private static final int CACHE_SCHEMA_VERSION = 2;
+    // 2026-08-06 → 3：骨架算法变更（SLOPE_BOOST=8 坡度放大 + fadeTarget 只下切），旧磁盘缓存 bin 作废
+    // 2026-08-06 → 4：海陆类型化（OCEAN/DEEP_OCEAN 入类型场，e=类型权重混合），旧缓存 bin 作废
+    private static final int CACHE_SCHEMA_VERSION = 4;
+    /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
-        return params.hashCode() * 31L + CACHE_SCHEMA_VERSION;
+        long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
+        return (params.hashCode() * 31L + cfg) * 31L + CACHE_SCHEMA_VERSION;
     }
 
     /** 从磁盘加载历史数据到 CellCache 历史层（滑回/缩放需要时自动回填渲染层，不重新采样）。

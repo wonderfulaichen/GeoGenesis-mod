@@ -325,3 +325,15 @@ task runOceanTypeProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.OceanTypeProbe'
 }
 
+// Coastline smoothness probe (diagnose "perfect arc" issue)
+task runCoastlineSmoothnessProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.CoastlineSmoothnessProbe'
+}
+
+// Coastline profile probe (e=0 crossing diagnostics)
+task runCoastlineProfileProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.CoastlineProfileProbe'
+}
+

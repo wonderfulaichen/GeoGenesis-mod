@@ -98,15 +98,27 @@ public final class RidgeValleyErosion {
                 // 峰顶被每 octave 均匀抬升（4 oct × 0.08 ≈ +0.17e）→ 触 delta 限幅/softCap → 平顶。
                 // 谷侧（负值）不受影响，山谷照常下切；山体中下部仍抬升成脊线。
                 // 窗口收窄到 0.72~0.92（只作用峰尖）：减少 flat 场形态改变，控制液滴 tile 边界差异。
-                float fadeTarget = clamp((h - cfg.landRef) / LAND_HALF, -1f, 1f);
-                if (fadeTarget > 0f) fadeTarget *= 1f - smoothstep(0.72f, 0.92f, h);
+                // 2026-08-06 用户决策（最终版）：fadeTarget 直接归 0。
+                // 原因链：fadeTarget 按高度空间变化 → 低地下切量不均匀 → 高程图产生人工等值线纹理
+                // （第二张截图的弯曲线）。砍掉正半后只剩下切 → 更明显。完全归 0 后：
+                // - delta 纯由 combiMask×gullies 条纹提供（正负交替 = 沟壑+脊线）
+                // - 低地无条纹（combiMask≈0 → delta≈0）
+                // - 山地有条纹（combiMask 触发）→ 坡度自然控制，无类型/高度约束
+                float fadeTarget = 0f;
                 float hs = (h - cfg.landRef) * 0.5f + 0.5f;
-                float gxs = gx * 0.5f, gzs = gz * 0.5f;
+                // 2026-08-06 修复：坡度放大 SLOPE_BOOST × 海岸带保护。
+                // SLOPE_BOOST 让真实陡坡进入 combiMask 触发区 → 脊谷条纹成形。
+                // 保护语义（用户决策："侵蚀必须入海，不加上海洋不是完整地形"）：
+                //   仅海平面附近（|h-seaE|<0.15）抑制坡度放大（防海岸人造弧线）；
+                //   内陆与深海（水下海底）同样参与骨架侵蚀 → 海底峡谷/水下河谷。
+                float coastDist = Math.abs(h - seaE);
+                float landMask = Math.min(1f, coastDist / 0.15f);
+                final float SLOPE_BOOST = 8f;
+                float gxs = gx * SLOPE_BOOST * landMask, gzs = gz * SLOPE_BOOST * landMask;
                 float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,
                         hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
-                // land mask：仅陆地施加骨架（seaE→seaE+0.10 平滑），保护海洋深度一致性
-                float land = smoothstep(seaE, seaE + 0.10f, h);
-                delta[tz][tx] = d * land;
+                // 海岸带保护：仅海平面附近抑制 delta（防弧线），内陆/深海全幅（侵蚀入海）
+                delta[tz][tx] = d * landMask;
             }
         }
         return delta;
@@ -202,12 +214,15 @@ public final class RidgeValleyErosion {
     }
 
     // ===== Hash2（确定性细胞 pivot，返回 [-1,1]²）=====
+    // 2026-08-06 修复（对照 catto/Rune 原版 Java 直译）：y 维乘子原误写为 k1(1/PI)，
+    // 应为 k2(e^-1)——两维用相同乘子使格点偏移 x/z 高度相关 → PhacelleNoise 细胞网格
+    // 方向分布异常 → 条纹网格对齐伪影（用户反馈侵蚀骨架实测有 bug）。
     private static float[] hash2(float x, float y, int seed) {
         float k1 = 1f / (float) Math.PI;       // 1/PI
         float k2 = (float) Math.exp(-1.0);     // e^-1
         float sx = seed * 0.06711056f, sy = seed * 0.00583715f;
-        float xx = (x + sx) * k1 + k2;         // (x + seedOffset) * k + (k.y, k.x)
-        float yy = (y + sy) * k1 + k1;
+        float xx = (x + sx) * k1 + k2;         // x 维：1/PI 乘子 + e^-1 偏移
+        float yy = (y + sy) * k2 + k1;         // y 维：e^-1 乘子 + 1/PI 偏移（交叉，对齐原版）
         float t = frac(xx * yy * (xx + yy));
         float inner1 = 16f * k1 * t;
         float inner2 = 16f * k2 * t;
