@@ -13,19 +13,15 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 单格地形装配中枢 —— 统一连续场 e(x,z)。
  *
- * 流程（v8.3 连续混合海岸线）：
+ * 流程（v8.4 海陆类型化，2026-08-06 用户铁律："海陆就是 2 个大地形类型"）：
  *   ContinentField.sample → c ∈ [-1,1]
- *   ├─ HeightCurve.eFromC(c) → eOcean（海洋地形噪声场，含 seabed 细节，负值）
- *   ├─ TypeLandShape.sample → eLand（陆地地形噪声场，独立类型噪声配方）
- *   ├─ 大陆性 c 只决定「类型」与「海陆 mask」（海陆位置），绝不直接进高度
- *   └─ 连续混合（恢复早期 e=eOcean+eLand 的自然混合，带平滑 gating）：
- *         cont = smoothstep(oceanFadeStart, landRampEnd, cEdge)   // 0 纯海 → 1 纯陆
- *         e    = (1-cont)·eOcean + cont·eLand
- *       · cEdge < oceanFadeStart: cont=0 → e=eOcean（深海，陆地噪声完全淡出）
- *       · cEdge > landRampEnd:    cont=1 → e=eLand（内陆，海深完全淡出）
- *       · 过渡带内: 真实海岸线 = e=0 等值线，落在 (1-cont)·eOcean+cont·eLand=0
- *         即 cont=−eOcean/(eLand−eOcean)，由两侧地形噪声共同决定 → 自然岬角/海湾
- *         （早期 v8 两阶段把 e 硬锚在 coastLoc 是回归，已废除）
+ *   ├─ 类型场 TerrainCharacterField：OCEAN/DEEP_OCEAN 与 5 陆地类型共同参与 Voronoi 细胞竞争，
+ *   │    细胞类型概率由 c 调制（c 低→海洋细胞多，c 高→陆地细胞多；过渡带概率对半）
+ *   ├─ TypeLandShape.sample → e = Σw·lo + Σw·(hi-lo)·modulated（全类型混合）：
+ *   │    陆地类型 lo/hi = 类型样条区间；海洋类型 lo=hi=深度样条+seabed
+ *   ├─ e 自然连续穿过 0 → 海陆边界 = Voronoi 类型竞争（400 块折线），
+ *   │    与地形类型过渡（PLAIN↔MOUNTAINS）完全同构——海岸线由地形场自然决定
+ *   └─ 大陆性 c 只做：细胞概率偏置 + 海洋深度样条 + 气候（湿度/温度），不直接决定海陆边界
  *
  * 气候（v2 增强模型）：
  *   温度 = sin²(z) 纬度基值 × 海洋性修正 − 海拔递减率 + 噪声
@@ -168,31 +164,35 @@ public final class CellGenerator {
         TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(sx, sz);
         cell.typeWeights = cellBlend.typeWeights;
 
-        // 4. 海岸线域扭曲（v8 CoastlineField）— 在海岸过渡带施加 c-space 噪声位移。
+        // 4. 海岸线域扭曲（v8 CoastlineField）— 海洋深度/类型样条用的 c 空间位移（保留轻量扰动）。
         double cEdge = cBiased + coastline.warpDisplacement(sx, sz, cBiased);
 
-        // 5. 陆地形态 eLand — 用有效岸线坐标 cEdge
+        // 5. 全类型混合 e（2026-08-06 海陆类型化）：OCEAN/DEEP_OCEAN 已是类型场成员，
+        //    e = Σw·lo + Σw·(hi-lo)·modulated → e 自然连续穿过 0，海陆边界 = Voronoi 类型竞争。
         double eLand = typeLandShape.sample(cellBlend, sx, sz, cEdge);
 
-        // 6. 陆地火山特征（c 不再参与陆地高度——地形高度全权由类型噪声决定）
+        // 6. 特征增量按类型权重调制（海洋特征→海洋权重；陆地火山→陆地权重），
+        //    保证深海不被火山抬出海面、陆地不被海山垫高。
         LandFeatures.FeatureResult landFeat = landFeatures.compute(sx, sz);
-        eLand += landFeat.total;
-        // 基础地形留余量：整体 ×0.9，使类型高端（maxLandHi=0.95 → 0.855）低于理论上限，
-        // 为脊谷抬升（≈0.17）与液滴沉积留出空间，实际 e 恒 < maxLandHi，softCap 仅作保险。
-        // 线性缩放（峰谷对比不变），非平方（不违反"[0,1] 高度项严禁直接平方"铁律）。
-        eLand *= 0.90;
+        double oceanW = (cellBlend.typeWeights[TerrainClass.OCEAN.ordinal()]
+            + cellBlend.typeWeights[TerrainClass.DEEP_OCEAN.ordinal()]);
+        double landW = 1.0 - oceanW;
+        eLand += landFeat.total * landW;
+        // 2026-08-06 修复：移除整体 ×0.9 余量缩放。该设计为旧显式脊谷抬升（+0.17e）预留空间，
+        // 显式抬升 2026-08-05 已全部移除 → ×0.9 只是无谓压低整个地形 10%
+        // （用户反馈"有什么在限制着"；山脉 hi 0.95 实际仅 0.855）。softCapLandE（>0.9215 才压缩）
+        // 仍是保险。样条/滑块设置的高度现在如实生效。
         cell.eLand = eLand;
         cell.landFeat = landFeat; // 缓存供 classify 使用，避免 sample() 重复 compute
 
-        // 7. 连续主导类型
+        // 7. 连续主导类型（可能为 OCEAN/DEEP_OCEAN）
         TerrainClass cellType = TypeLandShape.dominantFromWeights(cellBlend.typeWeights);
 
-        // 8. 连续混合（v8.3）：海陆地形 = 海洋噪声场 与 陆地噪声场 的平滑插值。
-        double cont = smoothstep(oceanFadeStart, landRampEnd, cEdge); // 0(纯海)→1(纯陆)
-        double e = softCapLandE((1.0 - cont) * eOcean + cont * eLand);
+        // 8. 海陆统一 e = 类型混合 + 海洋特征增量（海山/洋中脊按海洋权重平滑淡入）
+        double e = softCapLandE(eLand + oceanFeat.total * oceanW);
         cell.e = e;
-        cell.eOcean = eOcean;
-        cell.blendCont = cont;
+        cell.eOcean = eOcean;      // 海洋基面（预特征，分类/诊断用）
+        cell.blendCont = oceanW;   // 语义（2026-08-06）：海洋类型权重和（原 cont 已废除）
         cell.height = heightCurve.heightFromE(e);
         cell.coastCoord = cEdge;
         cell.shape = eLand * 2.0 - 1.0;
@@ -284,7 +284,12 @@ public final class CellGenerator {
     /** 缓存条目数（256 条目 ≈ 全部出生区域 tiles 常驻，无 LRU 驱逐） */
     private static final int ERODE_TILE_CACHE_SIZE = 256;
 
+    /** 诊断日志（[ErosionDIAG] 前缀，latest.log 可查） */
+    private static final Logger LOGGER = LogManager.getLogger("geogenesis");
+
     private final ConcurrentHashMap<Long, ErosionTileResult> erosionTileCache = new ConcurrentHashMap<>(ERODE_TILE_CACHE_SIZE);
+    /** 侵蚀配置指纹快照（2026-08-06）：配置改动 → 侵蚀/河流 tile 缓存失效，避免旧配置结果被复用 */
+    private long lastCfgFingerprint = Long.MIN_VALUE;
 
     // ===== 河流（D8 流量累积 + V形河谷雕刻，纯局部无边界断裂） =====
 
@@ -338,8 +343,19 @@ public final class CellGenerator {
         int tileCZ = Math.floorDiv(chunkZ, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
 
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+        // 2026-08-06 修复：侵蚀 tile 缓存随配置失效——原只在 seed() 时 clear()，配置改动
+        // （开/关骨架、侵蚀/河流参数）后旧 tile 仍被复用 → "实测没变化"实锤根因。
+        long fg = cfg != null ? GeoGenesisConfig.configFingerprint() : 0L;
+        if (fg != lastCfgFingerprint) {
+            erosionTileCache.clear();
+            riverTileCache.clear();
+            lastCfgFingerprint = fg;
+        }
         boolean erosionOn = cfg != null ? cfgBool(cfg.erosionEnabled, true) : true;
-        if (!erosionOn) {
+        // 2026-08-06 修复：骨架（脊-谷条纹）与液滴侵蚀解耦——仅开骨架(erosionRidgeEnabled)
+        // 而 erosionEnabled=false 时，骨架也必须生效（原门控连带跳过 → 地形零变化）。
+        boolean ridgeOn = cfg != null ? cfgBool(cfg.erosionRidgeEnabled, true) : true;
+        if (!erosionOn && !ridgeOn) {
             return new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE];
         }
 
@@ -415,6 +431,11 @@ public final class CellGenerator {
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         boolean erosionOn = cfg != null ? cfgBool(cfg.erosionEnabled, true) : true;
         double erosionStr = cfg != null ? cfgDbl(cfg.erosionStrength, 1.0) : 1.0;
+        // 骨架开关独立于液滴（2026-08-06：仅开骨架时也要生效）
+        RidgeValleyErosion.RidgeConfig rcfg = cfg != null
+            ? RidgeValleyErosion.RidgeConfig.fromConfig(cfg)
+            : new RidgeValleyErosion.RidgeConfig();
+        boolean ridgeOn = rcfg.enabled;
 
         int originX = tileCX * 16 - ERODE_TILE_BORDER;
         int originZ = tileCZ * 16 - ERODE_TILE_BORDER;
@@ -474,45 +495,25 @@ public final class CellGenerator {
         int skelExtLR = (int) Math.ceil((double) skelCover / skelSpacing) + 1;
         int skelStartX = Math.floorDiv(originX - skelExtra * skelSpacing, skelSpacing) * skelSpacing;
         int skelStartZ = Math.floorDiv(originZ - skelExtra * skelSpacing, skelSpacing) * skelSpacing;
-        if (erosionOn) {
-            RidgeValleyErosion.RidgeConfig rcfg = RidgeValleyErosion.RidgeConfig.fromConfig(cfg);
-            if (rcfg.enabled) {
+        // 2026-08-06 修复：骨架计算不再被液滴开关(erosionOn)门控，仅开骨架也生效
+        if (erosionOn || ridgeOn) {
+            if (ridgeOn) {
                 double seaE = heightCurve.seaE();
                 float[][] skelGrid = new float[skelExtLR][skelExtLR];
-                // 类型权重同步采样：脊谷强度按类型调制（平原/高原少切保平坦，山地/丘陵强化崎岖）
-                double[][] skelW = new double[skelExtLR][];
+                // 2026-08-06 用户决策：骨架完全无类型限制（纯噪声地形上直接雕刻）。
+                // 移除 typeMod 类型调制——原按类型权重在过渡带连续渐变 → 类型过渡带出现
+                // 人为强度渐变带（用户反馈"骨架与地形类型打架，过渡带变明显"）。
+                // 平原条纹弱由坡度自然控制（combiMask 坡度触发，平原坡度小→条纹弱），无需人工调制。
                 for (int tz = 0; tz < skelExtLR; tz++) {
                     for (int tx = 0; tx < skelExtLR; tx++) {
                         int wx = skelStartX + tx * skelSpacing;
                         int wz = skelStartZ + tz * skelSpacing;
                         Cell c = sampleCore(wx, wz);
                         skelGrid[tz][tx] = (float) Math.max(c.e, -0.05);
-                        if (skelW[tz] == null) skelW[tz] = new double[skelExtLR * 5];
-                        double[] w = c.typeWeights;
-                        if (w != null) {
-                            skelW[tz][tx * 5] = w[TerrainClass.PLAIN.ordinal()];
-                            skelW[tz][tx * 5 + 1] = w[TerrainClass.HILLS.ordinal()];
-                            skelW[tz][tx * 5 + 2] = w[TerrainClass.MOUNTAINS.ordinal()];
-                            skelW[tz][tx * 5 + 3] = w[TerrainClass.PLATEAU.ordinal()];
-                            skelW[tz][tx * 5 + 4] = w[TerrainClass.BASIN.ordinal()];
-                        }
                     }
                 }
                 coarseDeltaLR = RidgeValleyErosion.computeCoarseDelta(
                         skelGrid, skelExtLR, skelSpacing, skelStartX, skelStartZ, (float) seaE, rcfg);
-                // 类型差异化调制：平原/盆地 0.3、丘陵 ~0.65、山地 1.0、高原 ×(1-0.6×platW) 保平顶。
-                // 连续权重场 → 调制连续 → 跨 tile 无缝。低地切谷减少还顺带改善海岸负偏。
-                for (int tz = 0; tz < skelExtLR; tz++) {
-                    if (skelW[tz] == null) continue;
-                    for (int tx = 0; tx < skelExtLR; tx++) {
-                        double mountW = skelW[tz][tx * 5 + 2];
-                        double hillsW = skelW[tz][tx * 5 + 1];
-                        double platW = skelW[tz][tx * 5 + 3];
-                        double gain = Math.min(1.0, mountW + 0.5 * hillsW);
-                        float typeMod = (float) ((0.30 + 0.70 * gain) * (1.0 - 0.6 * platW));
-                        coarseDeltaLR[tz][tx] *= typeMod;
-                    }
-                }
             }
         }
 
@@ -564,6 +565,15 @@ public final class CellGenerator {
             // 5) 轻量 Gaussian 已移除：原 bnd 列表 {40,44,48,...,88} 在 tile 内部每 4 块做一次
             //    5 点平滑，形成可见「网格条带」伪影（用户反馈 2026-07-31）。删除以恢复平滑地形。
 
+        } else if (ridgeOn && coarseDeltaLR != null) {
+            // 仅骨架模式（液滴关）：tile = base + 骨架 delta（双线性采样，世界坐标对齐）
+            for (int z = 0; z < N; z++) {
+                for (int x = 0; x < N; x++) {
+                    float d = sampleBilinear(coarseDeltaLR, skelExtLR, skelSpacing,
+                        skelStartX, skelStartZ, originX + x, originZ + z);
+                    tile[z][x] = base[z][x] + d;
+                }
+            }
         }
 
         // 6) delta 限幅：仅 per-cell 安全性限制（防单格暴切），不人为加类型/高度钳制。

@@ -119,8 +119,8 @@ public class ParameterConfigPanel extends ConfigPanel {
         addSpec("FBM频率倍增", "大陆 FBM 频率倍增（lacunarity）：每倍频频率×该值，越大细节尺度越密（海岸线破碎更细）。默认 2.0。", c.continentFbmLacunarity, 1.5, 3.0);
         addSpec("FBM振幅衰减", "大陆 FBM 振幅衰减（persistence）：每倍频振幅×该值，越大高频细节越强、海岸线越破碎。默认 0.6。", c.continentFbmPersistence, 0.3, 0.85);
         // 海岸线多样化
-        addSpec("海岸线位移", "海岸线 warp 振幅（c 空间单位）。海岸线在 c 上的位移幅度，越大海岸线越蜿蜒。默认 0.03。", c.coastlineWarpAmp, 0.0, 0.3);
-        addSpec("位移尺度", "海岸线 warp 基频世界坐标尺度（块）。越大变化越平缓。默认 300。", c.coastlineWarpScale, 50.0, 800.0);
+        addSpec("海岸线位移", "海岸线 warp 振幅（c 空间单位）。海岸线在 c 上的位移幅度，越大海岸线越蜿蜒。默认 0.15。", c.coastlineWarpAmp, 0.0, 0.3);
+        addSpec("位移尺度", "海岸线 warp 基频世界坐标尺度（块）。越大变化越平缓。默认 1200。", c.coastlineWarpScale, 50.0, 2000.0);
         addSpec("地形调制", "地形类型调制强度（c 空间单位）。山地→岬角/悬崖，平原/盆地→海湾。默认 0.08。", c.coastTerrainInfluence, 0.0, 0.3);
         addSpec("群岛带宽", "离岸群岛带宽度（c 空间单位，从 coastLoc 向海侧延伸）。越大群岛范围越宽。默认 0.10。", c.archipelagoBand, 0.0, 0.3);
         addSpec("群岛密度", "离岸群岛密度阈值（0-1）。超过此阈值才生成岛屿，越低→岛屿越多。默认 0.30。", c.archipelagoDensity, 0.0, 1.0);
@@ -214,6 +214,11 @@ public class ParameterConfigPanel extends ConfigPanel {
                            java.util.function.BooleanSupplier getter,
                            java.util.function.Consumer<Boolean> setter) {
         toggles.add(new ToggleSpec(label, description, getter, setter));
+    }
+
+    /** 开关持久化（Windows 文件锁可能抛 WritingException，静默忽略） */
+    private static void saveQuietly() {
+        try { GeoGenesisConfig.SPEC.save(); } catch (Exception ignored) { /* 文件写竞争忽略 */ }
     }
 
     /** 世界高度 Y 滑块，可选是否显示确认对话框 */

@@ -7,8 +7,11 @@ import com.geogenesis.worldgen.noise.*;
  * <p>
  * 核心设计：
  * <ul>
- *   <li>400 块间距的稀疏网格，每格点哈希独立分配 5 种陆地类型之一</li>
- *   <li>任意类型可邻接任意类型（BASIN 可紧邻 PLATEAU / MOUNTAINS）</li>
+ *   <li>400 块间距的稀疏网格，每格点哈希独立分配类型之一（2026-08-06：海陆=2 大地形类型，
+ *       OCEAN/DEEP_OCEAN 与 5 陆地类型共同参与细胞竞争）</li>
+ *   <li>海洋细胞概率由大陆性 c 调制（c 低→大概率海洋，c 高→陆地；过渡带概率对半）——
+ *       保留大陆大尺度结构，但海陆边界 = Voronoi 细胞竞争（400 块折线），与类型边界同构</li>
+ *   <li>任意类型可邻接任意类型（OCEAN 可紧邻 MOUNTAINS）</li>
  *   <li>最近格点高斯距离权重主导（σ=200），类型边界平滑过渡</li>
  *   <li>7×7 搜索窗口（SEARCH_RADIUS=3）：进出格点距离≥1000 → 权重自然衰减到 3.7e-6，零窗口进出跳变</li>
  *   <li>域扭曲打散网格规则感（WARP_AMP=0，保留字段可恢复）</li>
@@ -51,6 +54,16 @@ public final class TerrainCharacterField {
         };
     }
 
+    // ===== 海洋类型参与细胞竞争（2026-08-06：海陆=2 大地形类型） =====
+    private static final int OCEAN_ORD = TerrainClass.OCEAN.ordinal();
+    private static final int DEEP_OCEAN_ORD = TerrainClass.DEEP_OCEAN.ordinal();
+
+    /** 海洋细胞概率调制半宽（cBiased 空间）：cBiased∈[-OCEAN_RAMP, +OCEAN_RAMP] 内概率 1→0 线性 */
+    private static final double OCEAN_RAMP = 0.33;
+
+    private final ContinentField continent;
+    private final double continentBias;
+
     // ===== 域扭曲（打散网格规则感） =====
     private final Noise warpX, warpZ;
     // 2026-08-03：80→0（用户实测确认——类型权重查格点 ±80 块平移让主导沿细胞边界跳跃，
@@ -67,7 +80,9 @@ public final class TerrainCharacterField {
         public double[] typeWeights;  // [TerrainClass.COUNT]，仅陆地类型非零
     }
 
-    public TerrainCharacterField() {
+    public TerrainCharacterField(ContinentField continent, double continentBias) {
+        this.continent = continent;
+        this.continentBias = continentBias;
         Noise wX = new Frequency(new Simplex(310), WARP_FREQ);
         this.warpX = new Map(wX, -1.0, 1.0, -1.0, 1.0);
         Noise wZ = new Frequency(new Simplex(311), WARP_FREQ);
@@ -164,15 +179,35 @@ public final class TerrainCharacterField {
     }
 
     /**
-     * 确定性哈希：(cx, cz) → 5 种陆地类型之一。
-     * 64 位混合确保均匀分布。
+     * 确定性哈希 + 大陆性概率调制：(cx, cz) → 海洋（OCEAN/DEEP_OCEAN）或 5 陆地类型之一。
+     * <p>
+     * 2026-08-06 海陆类型化：c 低（海洋区）细胞大概率分到海洋类型，c 高（陆地区）分到陆地类型，
+     * 过渡带概率对半 → 海陆边界 = Voronoi 细胞竞争（400 块折线），与地形类型边界同构；
+     * 大尺度大陆结构仍由 c 概率场保证。
      */
-    private static int getCellType(int cx, int cz) {
+    private int getCellType(int cx, int cz) {
         long h = (long) cx * 374761393L + (long) cz * 668265263L;
         h = h * 1274126177L ^ (h >>> 16);
         h = h * 709369L ^ (h >>> 13);
         h ^= (h >>> 16);
-        int idx = (int) ((h & Long.MAX_VALUE) % LAND_ORDINALS.length);
+
+        // 细胞中心的大陆性 cBiased（用于海洋/陆地细胞概率）
+        double cBiased = continent.sample((cx + 0.5) * CELL_SPACING, (cz + 0.5) * CELL_SPACING) - continentBias;
+        double pOcean = oceanCellProbability(cBiased);
+        double r1 = (h & 0xFFFFFFFFL) / 4294967296.0;
+        if (r1 < pOcean) {
+            // 海洋细分：c 越低越可能深海
+            double pDeep = oceanCellProbability(cBiased * 0.75);
+            double r2 = ((h >>> 32) & 0xFFFFFFFFL) / 4294967296.0;
+            return r2 < pDeep ? DEEP_OCEAN_ORD : OCEAN_ORD;
+        }
+        int idx = (int) ((h >>> 8) % LAND_ORDINALS.length);
         return LAND_ORDINALS[idx];
+    }
+
+    /** 海洋细胞概率：cBiased=-OCEAN_RAMP→1（纯海），0→0.5，+OCEAN_RAMP→0（纯陆），线性夹紧 */
+    private static double oceanCellProbability(double cBiased) {
+        double t = 0.5 - cBiased / (2.0 * OCEAN_RAMP);
+        return t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
     }
 }

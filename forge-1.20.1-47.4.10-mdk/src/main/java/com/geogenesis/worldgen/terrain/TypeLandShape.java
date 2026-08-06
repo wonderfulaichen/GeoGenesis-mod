@@ -22,14 +22,30 @@ public final class TypeLandShape {
     private final double continentBias;
     private final TerrainParams params;
 
+    // ===== 海洋类型高度（2026-08-06 海陆类型化：海洋 = 类型场成员，lo=hi=深度样条+seabed） =====
+    private final double[] oceanLoc;
+    private final double[] oceanVal;
+    private final double[] oceanDeriv;
+    private final SeaBedDetail seaBed;
+    private final double seabedAmp;
+    private final double oceanDepthFactor;
+    private static final int OCEAN_ORD = TerrainClass.OCEAN.ordinal();
+    private static final int DEEP_OCEAN_ORD = TerrainClass.DEEP_OCEAN.ordinal();
+
     public TypeLandShape(TerrainParams p) {
         this.params = p;
         this.generators = new TypeGenerators(p);
-        this.character = new TerrainCharacterField();
+        this.continent = new ContinentField(p);
+        this.character = new TerrainCharacterField(continent, p.continentBias());
         this.typeNoise = new TypeNoiseProvider(p.beltReliefAmp());
         this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
-        this.continent = new ContinentField(p);
         this.continentBias = p.continentBias();
+        this.oceanLoc = p.oceanLocations();
+        this.oceanVal = p.oceanValues();
+        this.oceanDeriv = p.oceanDerivatives();
+        this.seaBed = new SeaBedDetail(p);
+        this.seabedAmp = p.seabedDetail();
+        this.oceanDepthFactor = p.oceanDepthFactor();
     }
 
     public void seed(long worldSeed) {
@@ -37,7 +53,24 @@ public final class TypeLandShape {
         typeNoise.seed(worldSeed);
         generators.seed(worldSeed);
         continent.seed(worldSeed);
+        seaBed.seed(worldSeed);
         Noises.seedAll(moistureNoise, worldSeed, 0);
+    }
+
+    /** 海洋类型基面高度：c 深度样条 + seabed 起伏（负值，海洋类型 lo=hi） */
+    private double oceanBaseE(double cBiased, double wx, double wz) {
+        double eBase = SplineUtil.splint(oceanLoc, oceanVal, oceanDeriv, cBiased);
+        double depthMod = 0.6 + (1.0 - smoothstep(-0.6, -0.2, eBase)) * 1.2;
+        double seabed = seabedAmp * depthMod * seaBed.sample(wx, wz);
+        double e = (eBase + seabed) * oceanDepthFactor;
+        return Math.min(e, 0.0);
+    }
+
+    private static double smoothstep(double edge0, double edge1, double x) {
+        if (x <= edge0) return 0.0;
+        if (x >= edge1) return 1.0;
+        double t = (x - edge0) / (edge1 - edge0);
+        return t * t * (3.0 - 2.0 * t);
     }
 
     public TypeGenerators typeGenerators() { return generators; }
@@ -87,7 +120,11 @@ public final class TypeLandShape {
         // 保留空间主导性（纯类型 cell 不变），仅按 c 偏置混合，不消灭任何类型。
         // 就地修改 tw（=blend.typeWeights 同一对象），使分类(argmax)/湿度(montW)/PEAK 判定
         // 与高度 WIE 共用同一调制后权重，保持高度↔类型一致。
-        // β 为语义亲和度强度，现由 TerrainParams.cAffinityStrength 配置（Phase 2.2 可调旋钮）。
+        // β 为语义亲和度强度，现由 TerrainParams.cAffinityStrength 配置。
+        // 2026-08-06 用户决策：默认 0（禁用）——cAffinity 按大陆性调制权重，factor=1+β(aff-0.2)
+        // 跨 c 变化 100~200 倍（β=3~5 时 aff≈0 的类型 ×0.01、aff 高的 ×2）→ 叠加 BLEND_SHARPEN
+        // 归一化放大 → c 梯度大处类型过渡带突变 = 弧形硬边（用户反馈"不要人为过渡"）。
+        // 纯 Voronoi 自然过渡（用户要求）。
         final double CAFFINITY_BETA = params.cAffinityStrength();
         final double MEAN_AFF = 0.2; // Σ aff_t(c) ≡ 1 over 5 land types
         TerrainClass[] lands = TypeNoiseProvider.LAND_TYPES;
@@ -129,18 +166,29 @@ public final class TypeLandShape {
         // 使主导类型回归自身 lo/hi 区间，恢复地形辨识度。锐化是连续权重场的连续函数
         // → 保持 C0 连续，不引入过渡带断裂（与 SEARCH_RADIUS 截断造成的 1 格断裂无关）。
         // 仅作用于高度混合；argmax 分类 / mountW / platW / plainW（原始 tw）不受影响。
-        // 2026-08-06 定稿 3.0：4.0 实测 max 0.742 无提升（blendHi 已近顶），且使山脉 min 0.000（海平面洼地）。
-        final double BLEND_SHARPEN = 3.0;
+        // 2026-08-06 修复：3.0→1.5。用户反馈类型过渡带高度断裂（山脉/丘陵硬阶梯）。
+        // 根因：BLEND_SHARPEN 让主导类型权重≈0.95 → blendLo/blendHi 近乎纯主导类型区间
+        // → 过渡带从 Voronoi 的 ~200 格渐变压缩到极窄 → 高度阶梯。用户要求"根据噪声
+        // 斜率自然过渡连接"→ 放宽锐化让过渡带恢复 Voronoi 连续渐变。
+        final double BLEND_SHARPEN = 1.5;
+        // 2026-08-06 海陆类型化：类型池 = 5 陆地 + OCEAN/DEEP_OCEAN（海洋 lo=hi=深度样条，
+        // 不参与调制；e = Σw·lo + Σw·(hi-lo)·modulated 统一公式，海洋项恒为自身深度 → e 连续穿过 0，
+        // 海陆边界 = Voronoi 类型竞争自然结果）
         double sumSharp = 0.0;
-        double[] sharpW = new double[lands.length];
+        double[] sharpW = new double[lands.length + 2];
         for (int i = 0; i < lands.length; i++) {
             double w = tw[lands[i].ordinal()];
             double s = w <= 0.001 ? 0.0 : Math.pow(w, BLEND_SHARPEN);
             sharpW[i] = s;
             sumSharp += s;
         }
+        int oi = lands.length;
+        sharpW[oi] = tw[OCEAN_ORD] <= 0.001 ? 0.0 : Math.pow(tw[OCEAN_ORD], BLEND_SHARPEN);
+        sharpW[oi + 1] = tw[DEEP_OCEAN_ORD] <= 0.001 ? 0.0 : Math.pow(tw[DEEP_OCEAN_ORD], BLEND_SHARPEN);
+        sumSharp += sharpW[oi] + sharpW[oi + 1];
         if (sumSharp <= 1e-6) sumSharp = 1.0; // 退化兜底（不锐化）
         double blendLo = 0.0, blendHi = 0.0;
+        double oceanE = oceanBaseE(effectiveCBiased, wx, wz);
         for (int i = 0; i < lands.length; i++) {
             double wn = sharpW[i] / sumSharp;
             double lo_t = generators.sampleByType(effectiveCBiased, i, 0.0); // 该类型在 c 处的下限
@@ -148,8 +196,13 @@ public final class TypeLandShape {
             blendLo += wn * lo_t;
             blendHi += wn * hi_t;
         }
+        // 海洋类型：lo=hi=oceanE（深度），只拉低混合，不参与调制
+        blendLo += (sharpW[oi] / sumSharp) * oceanE;
+        blendHi += (sharpW[oi] / sumSharp) * oceanE;
+        blendLo += (sharpW[oi + 1] / sumSharp) * oceanE;
+        blendHi += (sharpW[oi + 1] / sumSharp) * oceanE;
         double shared = generators.computeSharedNoise(wx, wz);
-        // 类型加权平均噪声（用于差异调制，按锐化权重归一化）
+        // 类型加权平均噪声（用于差异调制，按锐化权重归一化；海洋类型无专属噪声，贡献 0）
         double perTypeSum = 0;
         for (int i = 0; i < lands.length; i++) {
             double wn = sharpW[i] / sumSharp;
