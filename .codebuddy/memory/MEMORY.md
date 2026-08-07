@@ -11,14 +11,27 @@
 - **差异调制（v14）**：`shared + 0.4·(perTypeAvg-shared)` 零均值偏差保障 C0 连续。
 - **类型过渡 = Voronoi 高斯距离权重**（CELL_SPACING=400，σ=200，SEARCH_RADIUS≥3 即 7×7）；`cAffinityStrength` 乘法偏置（默认 3.0）。
 - **【窗口半径 ≥3】σ=200 时窗口半径必须 ≥3（7×7）**：3×3 进出 ring1 格点（跨界 600→权重 0.011）→ typeWeights 1 格突变 ~0.022 → argmax 翻转 → 1 格断裂线。**禁用边缘硬压制 ×1e-7**（σ=200 下格点滑出 ring1→ring2 权重骤降 1e7 倍反而造新跳变），正解 = 扩窗自然衰减。
+- **【海岸线圆弧实锤·2026-08-06】**：e=0 穿越点 `cont=-eOcean/(eLand-eOcean)` 恒 <0.1（eOcean 穿越点仅 -0.005~-0.02）→ 海岸线=c 低频等值线（c 主波长 4000 块）=完美圆弧。勿凭过渡带宽度推断 cont。
+- **【海陆类型化铁律·2026-08-06 v8.4】**：用户定案"**海陆=2 个大地形类型**"——OCEAN/DEEP_OCEAN 入 Voronoi 类型场（细胞概率 `pOcean=clamp(0.5-c/0.66,0,1)` 按 c 调制），海陆边界=类型权重竞争（穿越点 oceanW≈0.5~0.9、dom 翻转），与类型过渡同构。**c 门控混合（cont=smoothstep(oceanFadeStart,landRampEnd,cEdge)）整体废弃**。e=Σw·lo+Σw·(hi-lo)·modulated 统一公式，海洋 lo=hi=深度样条+seabed。cell.blendCont 语义=oceanW。内陆湖自然涌现（BASIN+海洋权重 e<0）。c 等值线补丁路线（warp 加强/浅海加深/过渡带移动）用户已否决，勿回退。
+- **【衔接陡缓铁律·2026-08-06 v8.4.1】**：用户"自然≠平滑，类型间根据自身斜率衔接"——**海洋权重独立锐化 OCEAN_SHARP=5.0**（陆地 BLEND_SHARPEN=1.5 不动）：过渡带 ~90 块，e 落差由类型自身高度差决定（山地入海陡/水下山脉、平原入海缓、PLATEAU 台地边缘保留）。OCEAN_SHARP 是代码常量不在 TerrainParams.hashCode → **改动必须 bump CACHE_SCHEMA_VERSION（当前=5）**。SHELF 占比 ≠ 过渡带宽度（SHELF 大部分由 c 样条深度决定）。
 - **条件系统**：温度/湿度/大陆性用 `ClimateSpline`(Cubic Hermite)；雪线双曲线锚定 seaLevel~maxY。
 - **oceanDepthFactor**（乘 eOcean，默认 1.0 [0.5,3.0]）；`e→Y` 必须非对称（e=0→seaLevel=63）。
+- **【侵蚀骨架无类型限制·2026-08-08】**：侵蚀骨架（RidgeValleyErosion）只在海岸带 landMask 有保护，无类型限制、无平顶保护、无高度基准约束（用户否决 flatMask）。
+- **【"参考 X 配方"铁律·2026-08-08】**：必须逐行对照 X 完整链路，不能只对齐主频凭记忆写（v7 教训）。
+- **【代码常量配方 bump CACHE_SCHEMA_VERSION·2026-08-08】**：改任何代码常量配方必须 bump CACHE_SCHEMA_VERSION（不限于 TerrainParams 参数）。
+- **【队列型架构硬顶·2026-08-08】**：队列型架构必须设单次提交硬顶（TerrainQueue.MAX_CHUNKS_PER_SCAN=1024）。
+- **【compute mapping 禁嵌套 CHM·2026-08-08】**：computeIfAbsent 的 mapping 内严禁嵌套任何 CHM 的 computeIfAbsent（跨 map 也死锁）。
+- **【自然≠平滑·2026-08-08】**：类型间根据自身斜率衔接（海洋锐化 OCEAN_SHARP=5.0 的依据）。
+- **【高原 v8 同构丘陵·2026-08-08】**：高原彻底同构丘陵（foldHills → perTypeAvg → modulated → blendLo/blendHi×modulated），移除所有类型特殊覆盖层。
 
 ## 配置同步铁律
 - 增删字段须同步：`GeoGenesisConfig`(定义+BUILDER) + `TerrainParams`(record+defaults) + `ParameterConfigPanel.addSpec` + toml。
 - `resetToDefault()` 反射自动化；但 `defaultParams()`/`buildParams()` 仍需随字段同步。
 - **滑块 reset 铁律**：`ParamSlider.setDefaultValue` 必须填 `cfg.getDefault()`，严禁填 `cfg.get()`。
 - Forge 1.20.1：禁 reobf jar 进 `run/mods/`；biome 注册表用 `registryAccess()` 禁静态缓存；叶子 CODEC 禁 `.stable()`。
+
+## Git 提交铁律
+- **Windows PowerShell 中文提交信息**：避免使用 `git commit -m "中文"`，改用 `-F` 参数从 UTF-8 文件读取（如 `git commit -F message.txt`）。PowerShell 终端编码可能导致中文乱码。
 
 ## 并发/队列铁律
 - **computeIfAbsent 的 mapping 内严禁嵌套任何 CHM 的 computeIfAbsent**（跨 map 也死锁）；缓存写入统一 `get → 计算 → putIfAbsent`。
@@ -52,3 +65,5 @@
 ## 待办
 - [DONE] v14 修复；性能优化；侵蚀 tile 架构；两级侵蚀骨架整合；脊-谷骨架 A/B 验证（stdR/mgR≈1.7x，非剥皮）。
 - [PENDING] `erosionEnabled=true` 后 runClient 验证；河流重接验证；V 形河谷无缝实测；cAffinityStrength 非零安全；BASIN 曲线；mixer 面板重绑新类型参数；toml→JSON 迁移（阶段3）；**地形参数存档级（per-save）方案待实施**。
+- [NEW] 预览折痕 smoothClamp 修复目检确认（用户尚未确认）。
+- [NEW] 交接总结待办7项（折痕目检、侵蚀验证、BASIN曲线、mixer重绑、toml迁移、存档方案等）。

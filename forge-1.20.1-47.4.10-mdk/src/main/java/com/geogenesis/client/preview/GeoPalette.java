@@ -468,7 +468,7 @@ public final class GeoPalette {
                 case RELIEF:      pos = reliefPos(c.shape); break;
                 case LATITUDE:    pos = Latitude.latitude01(worldZ); break;
                 case RIVER_NETWORK: {
-                    double d = c.riverNetDist;                 // 0=河心,1=谷缘
+                    double d = c.riverDistance;                 // 0=河心,1=谷缘（改用 riverDistance，与水文叠加一致）
                     pos = (d >= 1.0) ? 0.0 : (1.0 - d);  // 河心亮、远暗
                     break;
                 }

@@ -851,6 +851,7 @@ public final class CellGenerator {
                         cell.isRiver = true;
                         cell.riverWetness = 1.0;
                         cell.riverDistance = 0.0;
+                        cell.riverNetDist = 0.0;  // 同步设置河网距离（RIVER_NETWORK 图层使用）
                         // 2026-08-01：去掉高度限制（高山河道也灌水）；低地 clamp 到海平面与海连通。
                         // 水面 = 雕刻前地面高度（e 域恢复：carveDepth 是 e 单位，用 heightFromE 精确转 Y，
                         // 禁止 e 直接加 Y——曾导致水面≈槽底+0.5 的"1 格浅水三明治"）。
@@ -866,6 +867,7 @@ public final class CellGenerator {
                         cell.riverMask = false;
                         cell.riverWetness = 0.0;
                         cell.riverDistance = 1.0;
+                        cell.riverNetDist = 1.0;  // 同步设置河网距离（RIVER_NETWORK 图层使用）
                         cell.riverFloorY = 0.0;
                         cell.riverSurfaceY = 0.0;
                     }
@@ -874,6 +876,7 @@ public final class CellGenerator {
                     cell.riverMask = false;
                     cell.riverWetness = 0.0;
                     cell.riverDistance = 1.0;
+                    cell.riverNetDist = 1.0;  // 同步设置河网距离（RIVER_NETWORK 图层使用）
                     cell.riverFloorY = 0.0;
                     cell.riverSurfaceY = 0.0;
                 }

@@ -208,7 +208,8 @@ public class PreviewDisplay extends AbstractWidget {
     // platMod 1.5 倍收敛——高原丘沟完整保留
     // 2026-08-07 → 10：v8 彻底参考丘陵：移除 platMix/platMod/platE 全部覆盖层，旧缓存 bin 作废
     // 2026-08-07 → 11：PLATEAU v8 配方 + 骨架 flatMask（用户否决——侵蚀必须无限制，已撤销）留档
-    private static final int CACHE_SCHEMA_VERSION = 12;
+    // 2026-08-08 → 13：河流图层修复（RIVER_NETWORK 改用 riverDistance，CellGenerator 同步设置 riverNetDist）
+    private static final int CACHE_SCHEMA_VERSION = 13;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
