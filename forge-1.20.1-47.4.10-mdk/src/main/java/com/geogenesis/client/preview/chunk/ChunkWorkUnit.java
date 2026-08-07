@@ -49,23 +49,10 @@ public class ChunkWorkUnit {
     }
 
     private void doWork() {
-        Cell[] cells = new Cell[256];
-        int baseX = chunkPos.getMinBlockX();
-        int baseZ = chunkPos.getMinBlockZ();
-
-        for (int lx = 0; lx < 16 && !canceled; lx += blockStride) {
-            for (int lz = 0; lz < 16 && !canceled; lz += blockStride) {
-                Cell c = terrain.sampleCell(baseX + lx, baseZ + lz);
-                // 展开到 16×16 网格
-                int endX = Math.min(lx + blockStride, 16);
-                int endZ = Math.min(lz + blockStride, 16);
-                for (int ex = lx; ex < endX; ex++) {
-                    for (int ez = lz; ez < endZ; ez++) {
-                        cells[ez * 16 + ex] = c;
-                    }
-                }
-            }
-        }
+        // ★ stride 感知：按 blockStride 一次生成整个 chunk Cell[256]。
+        //   stride=16 → 1 次 sampleCore + 展开（旧代码 256 次 → 现在 1 次）。
+        //   stride=1 → 全分辨率含侵蚀（等价于旧 generateChunk，行为不变）。
+        Cell[] cells = terrain.getChunkCells(chunkPos.x, chunkPos.z, blockStride);
 
         // ★ 顺带检测结构（Worker 线程，不卡主线程）：placement 哈希判定 + 会话内缓存
         if (!canceled && structureScanner != null && !structureScanner.isScanned(chunkPos.x, chunkPos.z)) {
