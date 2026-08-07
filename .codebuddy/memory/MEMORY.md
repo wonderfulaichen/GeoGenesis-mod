@@ -54,6 +54,11 @@
 - **否决方案**：① D8 流功率（tile 边界缝+剥皮）② 局部脊-谷锐化（不能造新脊线）。
 - 诊断工具：`ErosionTileProbe`/`MountainFootprintProbe`/`MountainProfileProbe`/`SharpnessABProbe`。
 
+## 预览河流渲染修复（2026-08-08）
+- **根因**：`RIVER_NETWORK` 图层读 `Cell.riverNetDist`（默认 1.0=远），但 `CellGenerator` 从未设置该字段。
+- **修复**：`CellGenerator` 同步设置 `riverNetDist = riverDistance`；`GeoPalette` RIVER_NETWORK 图层改用 `riverDistance`；`CACHE_SCHEMA_VERSION` 12→13。
+- **教训**：预览图层读取的 Cell 字段必须在数据生产端（CellGenerator）有对应赋值。
+
 ## BiomeSource 性能
 - 87s 世界创建慢根因是侵蚀 tile 管线；设 `erosionEnabled=false` 解决。BiomeSource 出生快速路径（terrain==null 返 plains）解首次初始化阻塞。
 
