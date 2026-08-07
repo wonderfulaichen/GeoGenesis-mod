@@ -62,12 +62,16 @@ public final class TypeNoiseProvider {
         this.mountNoise = new Map(mWarped, -2.15, 2.15, 0.0, 1.0);
         // v8c：已移除 foldHills(1/50) 折叠细节——实机显示规律性条纹图案（高频折叠线主导），且山体过小
 
-        // --- PLATEAU v6.0: 3 层 Simplex + shape mask 边缘渐变 ---
-        // 参考 TF: ramp_height=0.35 — 高原边缘 35% 平滑过渡
-        Noise platOct1 = new Frequency(new Simplex(422), 1.0 / 500.0);
-        Noise platOct2 = new Boost(new Frequency(new Simplex(423), 1.0 / 200.0), 0.25);
-        Noise platOct3 = new Boost(new Frequency(new Simplex(424), 1.0 / 60.0), 0.08);
-        this.platNoise = new Map(new Add(new Add(platOct1, platOct2), platOct3), -1.5, 1.5, 0.40, 0.60);
+        // --- PLATEAU v8（2026-08-07 用户："你到底有没有认真看丘陵代码"）---
+        // v7/v7.1/v7.2 迭代都是错层打转。真正参考丘陵：频率只比丘陵宽一点（1.25x），
+        // 完全同结构（foldHills 全幅、Map(-1,1,0,1)），高原 vs 丘陵只在频率和 lo/hi。
+        Noise pMain      = new Frequency(new Simplex(422), 1.0 / 500.0);
+        Noise pSub       = new Boost(new Frequency(new Simplex(423), 1.0 / 150.0), 0.5);
+        Noise pBase      = new Add(pMain, pSub);
+        Noise pWX        = new Frequency(new Simplex(425), 1.0 / 100.0);
+        Noise pWZ        = new Frequency(new Simplex(426), 1.0 / 100.0);
+        Noise platWarped = new Warp(pBase, pWX, pWZ, 31.0);
+        this.platNoise   = new Map(platWarped, -1.0, 1.0, 0.0, 1.0);
 
         // --- BASIN：修复与 shape 同 seed 问题 ---
         Noise bOct1 = new Frequency(new Simplex(428), 1.0 / 300.0);
@@ -107,20 +111,19 @@ public final class TypeNoiseProvider {
     }
 
     /**
-     * v6.0→fix: PLATEAU 形状直接由 platNoise 决定，与 typeWeights 同源
-     * （Voronoi 类型场，频率 1/500）驱动。
+     * v7（2026-08-06 用户方案，严格对照 HILLS）：PLATEAU = foldHills 丘链 + 顶部削平。
      * <p>
-     * 移除旧的大尺度 shape mask（platShapeNoise，频率 1/1000）后，高原主体高度由
-     * typeWeights[PLATEAU] 在类型场中心自动取全值、在 Voronoi 边界向 PLAIN/HILLS 平滑过渡，
-     * 不再出现「分类中心恰好落在 shape 低谷 → 中间凹陷、周围雪峰环绕」的环形山伪形。
-     * platNoise 自身为 [0.30, 0.70] 的中频起伏，保留高原台地应有的内部起伏。
+     * 与 HILLS 同链路：foldHills(|2n-1|) 产生丘谷交替（密集圆丘夹细沟），倍频放宽
+     * （主频 1/1000 vs 丘陵 1/400）→ 丘体开阔；压缩 80%（×0.2 收向中位 0.50）→ 顶部削平，
+     * 台地内部 ±0.1e 微起伏 = "丘陵倍频放宽 + 顶部平" 的高原特征。
      */
+    // v7.2（2026-08-07 用户反馈"丘陵比高原自然"，要求"参考丘陵写法"）：
+    // 直接返回 foldHills 全幅输出（与 HILLS 完全同结构），不压缩——丘沟结构完整保留。
+    // 高原 vs 丘陵的差异只在频率（1/1000 vs 1/400 → 波长更长 → 视觉上丘沟更"缓"）+
+    // platMod 轻微收敛（1.5 倍，比丘陵的无收敛略平）。"顶部平一点"由倍频放宽实现
+    //（丘沟波长 200 块 vs 丘陵 80 块 → 相同振幅但斜率更低 = 更平缓）。
     private double computePlateau(double wx, double wz) {
-        double noise = platNoise.compute(wx, wz);    // [0.30, 0.70] 高原台地起伏
-        // 台地化：内部起伏压缩 60%（×0.4 收向中位 0.50）→ 平顶感；
-        // 边缘陡降由 eLand 处的 platW 台座抬升（smoothstep 过渡）提供。
-        double flat = 0.50 + (noise - 0.50) * 0.4;
-        return flat < 0 ? 0 : (flat > 1 ? 1 : flat);
+        return foldHills(platNoise.compute(wx, wz)); // 全幅丘沟，不压缩——与 HILLS 同链路
     }
 
     /**
