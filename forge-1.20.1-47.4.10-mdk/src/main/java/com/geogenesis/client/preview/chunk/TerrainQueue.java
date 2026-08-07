@@ -56,6 +56,10 @@ public class TerrainQueue {
     private int lastMaxCX = Integer.MAX_VALUE, lastMaxCZ = Integer.MAX_VALUE;
     private boolean firstQueue = true;
 
+    /** pool 上一帧是否 busy：busy→idle 转换时强制重扫（修复：大视口首次提交 1024 后剩余 chunks
+     *  永远不被重扫，需移动窗口才继续加载的 bug）。 */
+    private boolean poolWasBusy = false;
+
     public TerrainQueue(CellCache cellCache, TerrainPool pool,
                         GeoGenesisTerrain terrain, int blockStride) {
         this(cellCache, pool, terrain, blockStride, null);
@@ -90,7 +94,12 @@ public class TerrainQueue {
         // ★ 对齐参考项目 WorkManager.queueRange：视口未变 → 整个流程跳过（firstQueue 除外）。
         //   这是"不雷达闪动"的关键——任务跑完后不会主动重扫，避免 4 线程批量完成一"环"
         //   立即被 paint 出来的视觉副作用。视口下次变化（或 resetViewport/缩放）才再次入队。
-        if (!firstQueue
+        //
+        //   例外：pool 从 busy→idle（上一轮任务刚完成）时强制重扫——修复大视口首次提交
+        //   MAX_CHUNKS_PER_SCAN 后剩余 chunks 永远不被重扫、需移动窗口才继续加载的 bug。
+        boolean poolJustFinished = poolWasBusy && !pool.isBusy();
+        poolWasBusy = pool.isBusy();
+        if (!firstQueue && !poolJustFinished
                 && minCX == lastMinCX && maxCX == lastMaxCX
                 && minCZ == lastMinCZ && maxCZ == lastMaxCZ) {
             return;
@@ -100,8 +109,8 @@ public class TerrainQueue {
         lastMaxCX = maxCX; lastMaxCZ = maxCZ;
 
         // ★ isBusy 串行化：上一轮任务未完成时直接返回（不 cancel、不重提）。
-        //   让任务自然跑完写入缓存。任务完成后下帧再走此函数时视口若已变 → 入队；
-        //   若视口未变 → 上面"视口未变跳过"接住，永不重复入队。
+        //   让任务自然跑完写入缓存。任务完成后下帧 poolJustFinished=true 绕过视口比较，
+        //   重新扫描并提交剩余 pending chunks。
         if (pool.isBusy()) {
             return;
         }
