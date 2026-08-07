@@ -118,6 +118,8 @@ public final class RidgeValleyErosion {
                 float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,
                         hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
                 // 海岸带保护：仅海平面附近抑制 delta（防弧线），内陆/深海全幅（侵蚀入海）
+                // 2026-08-07 用户否决 flatMask（平顶保护）——"侵蚀必须无限制自然形成"，
+                // 高原折痕靠高原 v8 丘沟纹理自然融合骨架条纹解决，不限制侵蚀本身。
                 delta[tz][tx] = d * landMask;
             }
         }

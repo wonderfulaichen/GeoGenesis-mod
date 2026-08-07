@@ -199,7 +199,16 @@ public class PreviewDisplay extends AbstractWidget {
      */
     // 2026-08-06 → 3：骨架算法变更（SLOPE_BOOST=8 坡度放大 + fadeTarget 只下切），旧磁盘缓存 bin 作废
     // 2026-08-06 → 4：海陆类型化（OCEAN/DEEP_OCEAN 入类型场，e=类型权重混合），旧缓存 bin 作废
-    private static final int CACHE_SCHEMA_VERSION = 4;
+    // 2026-08-06 → 5：海洋权重高次锐化 OCEAN_SHARP=5（海陆过渡带收窄，类型形态保持到海岸线），旧缓存 bin 作废
+    // 2026-08-06 → 6：PLATEAU v7 丘陵式配方（foldHills+倍频放宽 2.5x+顶部削平 80%），旧缓存 bin 作废
+    // 2026-08-06 → 7：PLATEAU 台地 mix（破权重包络圆包），旧缓存 bin 作废
+    // 2026-08-07 → 8：PLATEAU v7.2 丘沟保留（computePlateau 压缩 80%→40% + platMod 收敛 4→2 倍），
+    // 用户反馈"丘陵比高原自然"，旧缓存 bin 作废
+    // 2026-08-07 → 9：v7.2 修正：computePlateau 不压缩（foldHills 全幅），
+    // platMod 1.5 倍收敛——高原丘沟完整保留
+    // 2026-08-07 → 10：v8 彻底参考丘陵：移除 platMix/platMod/platE 全部覆盖层，旧缓存 bin 作废
+    // 2026-08-07 → 11：PLATEAU v8 配方 + 骨架 flatMask（用户否决——侵蚀必须无限制，已撤销）留档
+    private static final int CACHE_SCHEMA_VERSION = 12;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

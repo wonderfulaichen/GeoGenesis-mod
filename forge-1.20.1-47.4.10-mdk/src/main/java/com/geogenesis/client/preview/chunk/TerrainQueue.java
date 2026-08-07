@@ -33,6 +33,16 @@ public class TerrainQueue {
     /** 每批最大 chunk 数（对齐参考模组 maxBatchSize，4 线程顺序消费）。 */
     private static final int MAX_BATCH_SIZE = 64;
 
+    // 2026-08-07 OOM 修复（用户预览崩溃：363×318 视口排队 10 万 chunk → 堆爆炸无 crash report）：
+    // 1) 单次提交硬顶——记忆铁律"队列型架构必须设单次提交硬顶"。旧实现"一次全提无上限"
+    //    （注释估 21 万 chunks≈1GB 安全）在低 stride 大视口下不成立；洗牌后取前 1024，
+    //    超出的 chunk 由 isBusy 串行 + 视口未变再扫自然渐进补采（随机渐进，无圆圈/条状）。
+    private static final int MAX_CHUNKS_PER_SCAN = 1024;
+    /** 2) CellCache 容量兜底封顶：trimToRect 的 trimCap 不能再"随视口无上限增长"
+     *    （363×318=11.5 万条目 OOM）；超出部分边缘 chunk 会被淘汰，缩放回看时
+     *    needsResample 自动重采补上（渐进填充语义不变）。 */
+    private static final int MAX_CACHE_ENTRIES_CAP = 32000;
+
     private final CellCache cellCache;
     private final TerrainPool pool;
     private final GeoGenesisTerrain terrain;
@@ -114,15 +124,14 @@ public class TerrainQueue {
         //   无"环状"（距离优先）/无"条状"（扫描顺序）填充伪影——参考模组就是这样做的。
         Collections.shuffle(pending);
 
-        // ★ 一次提交全部 pending（对齐参考模组：queueRangeReal 无单次上限，全量分批提交）。
-        //   多轮分批是"刷新圆圈/雷达闪动"感知的来源之一——一轮全提后 isBusy 串行 + 视口未变跳过
-        //   自然终止，不再有"任务跑完→再扫→又刷新"的多轮闪烁。内存：stride=16 超大视口
-        //   每 chunk 仅 1 Cell + 2KB 数组，21 万 chunks ≈ 1GB 峰值，6GB 堆安全；
-        //   trimTo 矩形淘汰保证缓存只增到视口规模（拖拽时旧视口被淘汰）。
+        // ★ 单次提交硬顶（2026-08-07 OOM 修复）：洗牌后取前 MAX_CHUNKS_PER_SCAN 个。
+        //   超出的 pending 由"isBusy 串行 + 视口未变再扫"自然渐进补采（每轮 1024，4 线程
+        //   处理完 → 哨兵 → 下轮再扫剩余）→ 随机渐进填充语义不变，但内存峰值可控
+        //   （旧实现 363×318 视口一次提交 10 万 chunk → 堆爆炸 OOM 无 crash report）。
         int chunksWide = maxCX - minCX + 1;
         int chunksHigh = maxCZ - minCZ + 1;
         int viewportChunks = chunksWide * chunksHigh;
-        int submitCount = pending.size();
+        int submitCount = Math.min(pending.size(), MAX_CHUNKS_PER_SCAN);
 
         List<WorkBatch> batches = new ArrayList<>();
         for (int i = 0; i < submitCount; i += MAX_BATCH_SIZE) {
@@ -136,11 +145,11 @@ public class TerrainQueue {
 
         pool.submit(batches);
 
-        // ★ 容量兜底改为"矩形窗口淘汰"：视口矩形内数据永不淘汰（拖拽/缩放历史保留），
-        //   只淘汰矩形外最远的 chunk（拖到新位置后旧视口自然回收）。
-        //   原"按距中心点距离"淘汰保留的是圆形区域 → 渲染时形成"刷新圆圈"（用户截图实锤）。
-        //   矩形淘汰 + 视口内全保留 → 无圆圈、无大半屏黑（视口全部可填充）。
-        int trimCap = Math.max(CellCache.MAX_ENTRIES, viewportChunks);
+        // ★ 容量兜底：视口矩形内数据优先保留（拖拽/缩放历史），只淘汰矩形外最远的 chunk，
+        //   但 trimCap 封顶（2026-08-07：旧 max() 随视口无上限 → 11.5 万条目 OOM）。
+        //   超出封顶的视口边缘 chunk 被淘汰 → 缩放回看 needsResample 自动重采补上。
+        int trimCap = Math.max(CellCache.MAX_ENTRIES,
+                Math.min(viewportChunks, MAX_CACHE_ENTRIES_CAP));
         cellCache.trimToRect(trimCap, minCX, minCZ, maxCX, maxCZ);
 
         LOGGER.info("[DIAG Queue] queued {} chunks in {} batches (viewport {}x{} chunks, pending {})",

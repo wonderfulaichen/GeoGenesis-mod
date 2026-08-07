@@ -73,6 +73,17 @@ public final class TypeLandShape {
         return t * t * (3.0 - 2.0 * t);
     }
 
+    /**
+     * 平滑钳制：在 [lo,hi] 边界处用 smoothstep 渐入/渐出，
+     * 保证 C1 连续（边界处导数=0），消除硬 clamp 的折点。
+     */
+    private static double smoothClamp(double v, double lo, double hi) {
+        if (v <= lo) return lo;
+        if (v >= hi) return hi;
+        double t = (v - lo) / (hi - lo);  // (0,1) 开区间
+        return lo + (hi - lo) * t * t * (3.0 - 2.0 * t);
+    }
+
     public TypeGenerators typeGenerators() { return generators; }
 
     /** 返回连续类型权重混合结果 */
@@ -174,6 +185,17 @@ public final class TypeLandShape {
         // 2026-08-06 海陆类型化：类型池 = 5 陆地 + OCEAN/DEEP_OCEAN（海洋 lo=hi=深度样条，
         // 不参与调制；e = Σw·lo + Σw·(hi-lo)·modulated 统一公式，海洋项恒为自身深度 → e 连续穿过 0，
         // 海陆边界 = Voronoi 类型竞争自然结果）
+        // 2026-08-06 v8.4.1 用户反馈："自然不等于平滑，地形类型之间根据自身斜率衔接"——
+        // 海洋权重单独高次锐化（OCEAN_SHARP=5 → 海陆过渡带 ~200/√5≈90 块）：山脉/高原形态
+        // 保持到海岸线（高度差大的衔接陡），平原平缓入海（高度差小自然缓），由类型自身高度
+        // 差决定衔接陡缓。陆地类型间保持 BLEND_SHARPEN=1.5（Voronoi 自然渐变，勿动）。
+        final double OCEAN_SHARP = 5.0;
+        // 2026-08-06 v7.1 教训：PLATEAU 权重高次锐化是反效果——Voronoi 归一化权重恒 <1，
+        // w^4 把 0.3 压到 0.008（邻类 w^1.5=0.16），PLATEAU 混合占比暴跌（mean 0.283→0.055）。
+        // "圆形山"真根因 = 权重包络：PLATEAU 中心权重仅 ~0.5 → blendLo≈0.23（0.5×0.41+0.5×0.06）
+        // → 中心高边缘低 = 圆包；配方噪声只影响 ±0.1e 内部起伏动不了包络。
+        // 正解 = 高度域"台地 mix"（见 eLand 计算后）：PLATEAU 混合占比高时 eLand 回归
+        // PLATEAU 自身样条区间（不被邻类型 lo 拉低）→ 平顶台地，边缘由占比平滑过渡 = 台地崖。
         double sumSharp = 0.0;
         double[] sharpW = new double[lands.length + 2];
         for (int i = 0; i < lands.length; i++) {
@@ -183,8 +205,8 @@ public final class TypeLandShape {
             sumSharp += s;
         }
         int oi = lands.length;
-        sharpW[oi] = tw[OCEAN_ORD] <= 0.001 ? 0.0 : Math.pow(tw[OCEAN_ORD], BLEND_SHARPEN);
-        sharpW[oi + 1] = tw[DEEP_OCEAN_ORD] <= 0.001 ? 0.0 : Math.pow(tw[DEEP_OCEAN_ORD], BLEND_SHARPEN);
+        sharpW[oi] = tw[OCEAN_ORD] <= 0.001 ? 0.0 : Math.pow(tw[OCEAN_ORD], OCEAN_SHARP);
+        sharpW[oi + 1] = tw[DEEP_OCEAN_ORD] <= 0.001 ? 0.0 : Math.pow(tw[DEEP_OCEAN_ORD], OCEAN_SHARP);
         sumSharp += sharpW[oi] + sharpW[oi + 1];
         if (sumSharp <= 1e-6) sumSharp = 1.0; // 退化兜底（不锐化）
         double blendLo = 0.0, blendHi = 0.0;
@@ -217,10 +239,13 @@ public final class TypeLandShape {
         // 低尾 <0.167 钳 0 平台 ~0.2%）。实测 MOUNTAINS max 0.789≈250 格（用户目标）、
         // min 0.245 正常、maxDeltaY=8.65 无断裂。
         modulated = 0.5 + 1.5 * (modulated - 0.5);
-        if (modulated < 0.0) modulated = 0.0;
-        else if (modulated > 1.0) modulated = 1.0;
+        modulated = smoothClamp(modulated, 0.0, 1.0);
         double eLand = blendLo + (blendHi - blendLo) * modulated;
-        // 2026-08-05 定稿：移除旧显式抬升（platRaise/mountRaise/plainLower）。
+        // 2026-08-07 v8：移除旧 platMix/platMod/platE 覆盖层（v7.1-v7.2 反复迭代都是错层打转）。
+        // "圆形山"根因 = platMod 收敛丘沟 + platShare 阈值太高导致覆盖层失效。
+        // 正解：高原直接走标准路径（与丘陵完全同构）——foldHills → perTypeAvg → modulated →
+        // blendLo/blendHi×modulated。高原 vs 丘陵只在：① platNoise 频率稍宽（1.25x）
+        // ② lo/hi 更高（0.41/0.71 vs 0.06/0.18）。
         // 旧显式项在样条之外叠加高度（纯高原 +0.10e≈24 格），使"滑块设的最高"超限
         // （用户反馈：拉到 150 实际 197）。BLEND_SHARPEN 锐化后主导区已回归自身 lo/hi
         // 区间（A/B 实测：PLATEAU 0.572→0.490 仍高台且更平、MOUNTAINS 0.543→0.534 不变、
