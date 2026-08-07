@@ -38,6 +38,7 @@
 - **f.cancel(true) 只对"未开始"任务有效** → 取消须"batch.cancel() 标志 + 线程中断检查"双通道。
 - **队列型架构必须设单次提交硬顶**（预览 TerrainQueue.MAX_CHUNKS_PER_SCAN=1024）；防抖只能限频不能限规模。
 - **无上限 CHM 缓存必配容量兜底**（CellCache.MAX_ENTRIES=4096 + trimTo 按距中心淘汰）。
+- **队列型架构 busy→idle 必须重扫**：单次提交硬顶 + 视口未变跳过 = 剩余 chunks 永不重扫（2026-08-08 bug）。修正：poolWasBusy 追踪，busy→idle 时跳过视口比较强制重扫。
 
 ## 配置屏（单屏 8 标签，常驻预览）
 页签 0世界参数/1气候/2地形/3显示/4采样/5色带/6缓存/7群系。按钮 [应用]SPEC.save()[保存]user_presets.json[重置]resetToDefault()。反射三件套：resetToDefault/captureAllValues/applyNamedValues。
@@ -70,5 +71,7 @@
 ## 待办
 - [DONE] v14 修复；性能优化；侵蚀 tile 架构；两级侵蚀骨架整合；脊-谷骨架 A/B 验证（stdR/mgR≈1.7x，非剥皮）。
 - [PENDING] `erosionEnabled=true` 后 runClient 验证；河流重接验证；V 形河谷无缝实测；cAffinityStrength 非零安全；BASIN 曲线；mixer 面板重绑新类型参数；toml→JSON 迁移（阶段3）；**地形参数存档级（per-save）方案待实施**。
-- [NEW] 预览折痕 smoothClamp 修复目检确认（用户尚未确认）。
-- [NEW] 交接总结待办7项（折痕目检、侵蚀验证、BASIN曲线、mixer重绑、toml迁移、存档方案等）。
+- [DONE] RIVER_NETWORK 图层修复（riverNetDist→riverDistance，CACHE_SCHEMA_VERSION 12→13）
+- [DONE] 预览加载卡顿修复（poolWasBusy 强制重扫剩余 chunks）
+- [NEW] 预览折痕 smoothClamp 修复目检确认（用户尚未确认）
+- [NEW] 交接总结待办7项（折痕目检、侵蚀验证、BASIN曲线、mixer重绑、toml迁移、存档方案等）
