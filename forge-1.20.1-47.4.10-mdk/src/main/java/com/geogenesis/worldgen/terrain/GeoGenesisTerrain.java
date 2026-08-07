@@ -20,6 +20,8 @@ public final class GeoGenesisTerrain {
     private final CellGenerator generator;
     private final HeightCurve curve;
     private final Map<Long, Cell[]> cache = new ConcurrentHashMap<>(CACHE_SIZE);
+    /** 每 chunk 的采样 stride（1=全分辨率；4=每 4 块 1 采样；16=单点）。预览低分辨率请求用。 */
+    private final Map<Long, Integer> strides = new ConcurrentHashMap<>(CACHE_SIZE);
 
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
@@ -30,6 +32,7 @@ public final class GeoGenesisTerrain {
     public void seed(long worldSeed) {
         generator.seed(worldSeed);
         cache.clear();
+        strides.clear();
     }
 
     /** 海平面 Y */
@@ -60,7 +63,8 @@ public final class GeoGenesisTerrain {
     }
 
     /**
-     * 获取 chunk 内所有 Cell（用于 fillFromNoise 逐格遍历）。
+     * 获取 chunk 内所有 Cell（全分辨率，用于 fillFromNoise 逐格遍历）。
+     * 等价于 getChunkCells(chunkX, chunkZ, 1)。
      *
      * <p>2026-08-03 死锁修复（回退版本重放）：原 computeIfAbsent 的 mapping（generateChunk）
      * 内部会嵌套 CellGenerator.getErosionTile 的 computeIfAbsent（另一个 ConcurrentHashMap）——
@@ -68,12 +72,27 @@ public final class GeoGenesisTerrain {
      * 并发时可能重复生成同 chunk（确定性结果相同），putIfAbsent 只留一个。</p>
      */
     public Cell[] getChunkCells(int chunkX, int chunkZ) {
+        return getChunkCells(chunkX, chunkZ, 1);
+    }
+
+    /**
+     * 获取 chunk 内 Cell（按所需 stride 采样）。
+     * <ul>
+     *   <li>缓存已有更细数据（stride ≤ required）→ 直接复用（更细可当粗用）</li>
+     *   <li>缓存无 / 更粗 → 按 required stride 重新生成覆盖（确定性结果相同，put 覆盖无妨）</li>
+     * </ul>
+     * 预览低分辨率（stride=4/8/16）只采样 (16/stride)² 个点，非采样格浅拷贝最近采样点 →
+     * 单 chunk 成本从 256 次 sample 降到 (16/stride)² 次（1:16 视图 = 1 次，256 倍加速）。
+     */
+    public Cell[] getChunkCells(int chunkX, int chunkZ, int stride) {
+        int s = Math.max(1, Math.min(16, stride));
         long key = pack(chunkX, chunkZ);
         Cell[] cells = cache.get(key);
-        if (cells == null) {
-            cells = generateChunk(chunkX, chunkZ);
-            Cell[] prev = cache.putIfAbsent(key, cells);
-            if (prev != null) cells = prev; // 并发者胜出，丢弃自己的
+        Integer have = strides.get(key);
+        if (cells == null || have == null || have > s) {
+            cells = generateChunk(chunkX, chunkZ, s);
+            cache.put(key, cells);
+            strides.put(key, s);
         }
         pruneIfNeeded();
         return cells;
@@ -103,23 +122,92 @@ public final class GeoGenesisTerrain {
 
     // === 内部 ===
 
-    private Cell[] generateChunk(int cx, int cz) {
+    /**
+     * 生成 chunk 的 256 格 Cell 数组（含侵蚀/河流改写）。
+     * stride=1：每格独立采样（游戏全分辨率）。stride>1：仅采样点处独立采样，
+     * 采样点块内其余格浅拷贝（预览低分辨率 → 256 次 sample 降至 (16/stride)² 次）。
+     */
+    private Cell[] generateChunk(int cx, int cz, int stride) {
         Cell[] cells = new Cell[16 * 16];
         int baseX = cx << CHUNK_SHIFT;
         int baseZ = cz << CHUNK_SHIFT;
-        for (int lz = 0; lz < 16; lz++) {
-            for (int lx = 0; lx < 16; lx++) {
-                cells[lx * 16 + lz] = generator.sample(
-                    baseX + lx, baseZ + lz);
+        int step = Math.max(1, Math.min(16, stride));
+        for (int lz = 0; lz < 16; lz += step) {
+            for (int lx = 0; lx < 16; lx += step) {
+                Cell sampled = generator.sample(baseX + lx, baseZ + lz);
+                int endX = Math.min(lx + step, 16);
+                int endZ = Math.min(lz + step, 16);
+                for (int ex = lx; ex < endX; ex++) {
+                    for (int ez = lz; ez < endZ; ez++) {
+                        cells[ex * 16 + ez] = sampled;
+                    }
+                }
             }
         }
+        // 采样点共享同一 Cell 引用，extractFromTile 原地修改会互相污染 → 先展开浅拷贝
+        if (step > 1) expandCopies(cells, step);
 
-        // 水文 + 侵蚀 tile 管线：80×80 共享 cache（含 border 重叠）→ 提取 16×16 填 cell。
+        // 水文 + 侵蚀 tile 管线：共享 cache（含 border 重叠）→ 提取 16×16 填 cell。
         // 仅做地形场改写，不进入 sample 纯函数（保持每格确定性）。
         float[][] tile = generator.getErosionTile(cx, cz);
         generator.extractFromTile(tile, cells, cx, cz);
 
         return cells;
+    }
+
+    /** 把采样点块的浅拷贝展开到块内所有格（extractFromTile 每格独立应用 delta，禁止共享引用）。 */
+    private static void expandCopies(Cell[] cells, int step) {
+        for (int lz = 0; lz < 16; lz += step) {
+            for (int lx = 0; lx < 16; lx += step) {
+                Cell src = cells[lx * 16 + lz];
+                int endX = Math.min(lx + step, 16);
+                int endZ = Math.min(lz + step, 16);
+                for (int ex = lx; ex < endX; ex++) {
+                    for (int ez = lz; ez < endZ; ez++) {
+                        if (ex != lx || ez != lz) {
+                            cells[ex * 16 + ez] = copyCell(src);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Cell 浅拷贝（Cell 无嵌套可变结构，字段直接复制即可）。 */
+    private static Cell copyCell(Cell src) {
+        Cell c = new Cell();
+        c.height = src.height;
+        c.continent = src.continent;
+        c.e = src.e;
+        c.eOcean = src.eOcean;
+        c.blendCont = src.blendCont;
+        c.eLand = src.eLand;
+        c.oceanFeat = src.oceanFeat;
+        c.landFeat = src.landFeat;
+        c.terrainType = src.terrainType;
+        c.typeWeights = src.typeWeights;
+        c.coastCoord = src.coastCoord;
+        c.climate = src.climate;
+        c.temperature = src.temperature;
+        c.humidity = src.humidity;
+        c.continentNoise = src.continentNoise;
+        c.isRiver = src.isRiver;
+        c.riverWetness = src.riverWetness;
+        c.isLake = src.isLake;
+        c.riverMask = src.riverMask;
+        c.lakeMask = src.lakeMask;
+        c.riverDistance = src.riverDistance;
+        c.riverIsWaterfall = src.riverIsWaterfall;
+        c.riverSourceType = src.riverSourceType;
+        c.riverFloorY = src.riverFloorY;
+        c.riverSurfaceY = src.riverSurfaceY;
+        c.erosionMask = src.erosionMask;
+        c.riverNetDist = src.riverNetDist;
+        c.riverNetDischarge = src.riverNetDischarge;
+        c.riverNetOverflow = src.riverNetOverflow;
+        c.shape = src.shape;
+        c.isSnow = src.isSnow;
+        return c;
     }
 
     /** 简单 LRU 淘汰（在 computeIfAbsent 外部调用，避免 ConcurrentHashMap 死锁）。
@@ -132,6 +220,8 @@ public final class GeoGenesisTerrain {
                 it.next();
                 it.remove();
             }
+            // strides 同步裁剪（只保留仍在 cache 的 key）
+            strides.keySet().removeIf(k -> !cache.containsKey(k));
         }
     }
 
