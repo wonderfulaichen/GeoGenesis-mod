@@ -261,6 +261,46 @@ public final class CellGenerator {
     /** 排水高程（真实地表 e，含海陆混合）。河流节点场用它做下坡汇流，海洋侧 e<0 → 不接河。 */
     public double terrainE(double wx, double wz) { return sampleCore(wx, wz).e; }
 
+    /** 轻量地形 e（跳过气候/分类/height 映射/shape 赋值）。供侵蚀 tile 粗采/flat 用，
+     *  省去温度/湿度噪声 + 分类 switch + heightFromE 样条 ≈ 省 30% 每次采样。 */
+    public double terrainEQuick(double wx, double wz) {
+        double hs = params.horizontalScale();
+        double sx = wx, sz = wz;
+        if (hs > 0.01 && hs != 1.0) { sx = wx / hs; sz = wz / hs; }
+
+        // 1. 大陆性 c
+        double c = continent.sample(sx, sz);
+        double cBiased = c - continentBias;
+
+        // 2. 海洋基面
+        double eBase = heightCurve.eFromC(cBiased);
+        double depthMod = 0.6 + (1.0 - smoothstep(-0.6, -0.2, eBase)) * 1.2;
+        double seabed = seabedAmp * depthMod * seaBed.sample(sx, sz);
+        double eOcean = (eBase + seabed) * oceanDepthFactor;
+
+        // 3. 海洋特征
+        OceanFeatures.FeatureResult oceanFeat = oceanFeatures.compute(sx, sz, Math.min(eOcean, 0.0), cBiased);
+        eOcean += oceanFeat.total;
+
+        // 4. 类型混合（Voronoi 场）
+        TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(sx, sz);
+
+        // 5. 海岸线扭曲
+        double cEdge = cBiased + coastline.warpDisplacement(sx, sz, cBiased);
+
+        // 6. 全类型混合 e
+        double eLand = typeLandShape.sample(cellBlend, sx, sz, cEdge);
+
+        // 7. 特征增量
+        LandFeatures.FeatureResult landFeat = landFeatures.compute(sx, sz);
+        double oceanW = cellBlend.typeWeights[TerrainClass.OCEAN.ordinal()]
+            + cellBlend.typeWeights[TerrainClass.DEEP_OCEAN.ordinal()];
+        eLand += landFeat.total * (1.0 - oceanW);
+
+        // 8. 海陆统一 e
+        return softCapLandE(eLand + oceanFeat.total * oceanW);
+    }
+
     /** 纯陆地形态 eLand（侵蚀边际采样用，不含气候/分类）。 */
     public double landE(double wx, double wz) { return sampleCore(wx, wz).eLand; }
 
@@ -407,7 +447,7 @@ public final class CellGenerator {
         // 代价：河沿"侵蚀前场"追踪，槽刻在侵蚀后场，偏移 ≈ 液滴侵蚀量（<0.01e ≈ 3 块，
         // 小于槽宽 8 格）→ 视觉可接受。出界统一 terrainE（两侧同源，无缓存时序依赖）。
         float[][] base = res.base;
-        StreamTracer.WorldHeight wh = (wx, wz) -> (float) Math.max(terrainE(wx, wz), -0.05);
+        StreamTracer.WorldHeight wh = (wx, wz) -> (float) Math.max(terrainEQuick(wx, wz), -0.05);
         RiverTileData rd = StreamTracer.trace(base, N, res.originX, res.originZ,
                 (float) heightCurve.seaE(), wh);
         computeDistanceField(rd, N);
@@ -453,7 +493,7 @@ public final class CellGenerator {
             for (int tx = 0; tx < extendedLowRes; tx++) {
                 int wx = alignedStartX + tx * spacing;
                 int wz = alignedStartZ + tz * spacing;
-                lowResBuf[tz][tx] = (float) Math.max(terrainE(wx, wz), -0.05);
+                lowResBuf[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
             }
         }
 
@@ -508,8 +548,7 @@ public final class CellGenerator {
                     for (int tx = 0; tx < skelExtLR; tx++) {
                         int wx = skelStartX + tx * skelSpacing;
                         int wz = skelStartZ + tz * skelSpacing;
-                        Cell c = sampleCore(wx, wz);
-                        skelGrid[tz][tx] = (float) Math.max(c.e, -0.05);
+                        skelGrid[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
                     }
                 }
                 coarseDeltaLR = RidgeValleyErosion.computeCoarseDelta(
@@ -521,7 +560,7 @@ public final class CellGenerator {
         float[][] base = new float[N][N];
         for (int z = 0; z < N; z++)
             for (int x = 0; x < N; x++)
-                base[z][x] = (float) Math.max(terrainE(originX + x, originZ + z), -0.05);
+                base[z][x] = (float) Math.max(terrainEQuick(originX + x, originZ + z), -0.05);
 
         // 4) 液滴侵蚀（SH 多轮迭代）+ flat 全源（terrainE + 粗骨架，确定性）
         float[][] dischargeNxN = null; // 液滴汇聚场（粒子路径重叠计数）
@@ -530,15 +569,25 @@ public final class CellGenerator {
             int pad = 9;
             int bufSize = N + pad * 2;
 
-            // flat 缓冲区全源：terrainE + 粗骨架（双线性插值，世界坐标对齐）。
+            // flat 缓冲区全源：terrainEQuick + 粗骨架（双线性插值，世界坐标对齐）。
             // 2026-08-01 确定性化：去掉三区制（邻居 postErosion 依赖）→ tile 结果只
             // 依赖世界坐标，缓存淘汰后重建结果不变 → 相邻 chunk 无缝；收敛循环随之删除。
+            // 2026-08-08 优化：内部区域（与 base 重叠）直接复用 base 值，仅 border 调 terrainEQuick。
             float[] flat = new float[bufSize * bufSize];
             for (int fz = 0; fz < bufSize; fz++) {
                 for (int fx = 0; fx < bufSize; fx++) {
                     int worldX = originX + fx - pad;
                     int worldZ = originZ + fz - pad;
-                    float val = (float) Math.max(terrainE(worldX, worldZ), -0.05);
+                    int baseX = fx - pad;
+                    int baseZ = fz - pad;
+                    float val;
+                    if (baseX >= 0 && baseX < N && baseZ >= 0 && baseZ < N) {
+                        // 内部区域：直接复用 base 数组（省 terrainEQuick 调用）
+                        val = base[baseZ][baseX];
+                    } else {
+                        // border 区域：必须采样 worldX/worldZ
+                        val = (float) Math.max(terrainEQuick(worldX, worldZ), -0.05);
+                    }
                     if (coarseDeltaLR != null) {
                         val += sampleBilinear(coarseDeltaLR, skelExtLR, skelSpacing,
                                 skelStartX, skelStartZ, worldX, worldZ);

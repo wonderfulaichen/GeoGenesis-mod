@@ -19,7 +19,10 @@ public final class GeoGenesisTerrain {
 
     private final CellGenerator generator;
     private final HeightCurve curve;
+    /** 渲染层 cache：chunk key → Cell[256]。游戏内全分辨率（stride=1）写入此层。 */
     private final Map<Long, Cell[]> cache = new ConcurrentHashMap<>(CACHE_SIZE);
+    /** 渲染层每 chunk 的采样 stride（越小越精细；预览用）。 */
+    private final Map<Long, Integer> cacheStrides = new ConcurrentHashMap<>(CACHE_SIZE);
 
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
@@ -30,6 +33,7 @@ public final class GeoGenesisTerrain {
     public void seed(long worldSeed) {
         generator.seed(worldSeed);
         cache.clear();
+        cacheStrides.clear();
     }
 
     /** 海平面 Y */
@@ -73,8 +77,34 @@ public final class GeoGenesisTerrain {
         if (cells == null) {
             cells = generateChunk(chunkX, chunkZ);
             Cell[] prev = cache.putIfAbsent(key, cells);
-            if (prev != null) cells = prev;
+            if (prev != null) cells = prev; // 并发者胜出，丢弃自己的
+            cacheStrides.put(key, 1); // 全分辨率
         }
+        pruneIfNeeded();
+        return cells;
+    }
+
+    /**
+     * 按指定 stride 获取 chunk 内 Cell 数据（预览优化入口）。
+     * <ul>
+     *   <li>stride=1：等价于 getChunkCells(cx, cz)，全分辨率含侵蚀。</li>
+     *   <li>stride≥2：按 (16/stride)² 采样点展开填充 Cell[256]，跳过侵蚀 tile（太贵）。</li>
+     *   <li>缓存命中条件：已有 stride ≤ 请求 stride（已有数据够细）。</li>
+     *   <li>更细请求（stride 更小）→ 覆盖写入。</li>
+     * </ul>
+     */
+    public Cell[] getChunkCells(int chunkX, int chunkZ, int stride) {
+        if (stride <= 1) return getChunkCells(chunkX, chunkZ);
+        long key = pack(chunkX, chunkZ);
+        Cell[] cells = cache.get(key);
+        Integer haveStride = cacheStrides.get(key);
+        if (cells != null && haveStride != null && haveStride <= stride) {
+            return cells; // 已有够细的数据
+        }
+        // 按 stride 生成
+        cells = generateChunk(chunkX, chunkZ, stride);
+        cache.put(key, cells);
+        cacheStrides.put(key, stride);
         pruneIfNeeded();
         return cells;
     }
@@ -122,6 +152,67 @@ public final class GeoGenesisTerrain {
         return cells;
     }
 
+    /**
+     * 按 stride 生成 chunk Cell[256]（预览低分辨率路径）。
+     * 只采样 (16/stride)² 个点，每个展开到 stride×stride 区域。
+     * 跳过侵蚀 tile 管线（低分辨率下视觉差异可忽略，成本过高）。
+     */
+    private Cell[] generateChunk(int cx, int cz, int stride) {
+        Cell[] cells = new Cell[16 * 16];
+        int baseX = cx << CHUNK_SHIFT;
+        int baseZ = cz << CHUNK_SHIFT;
+        stride = Math.max(1, Math.min(16, stride));
+        int step = stride;
+        for (int lz = 0; lz < 16; lz += step) {
+            for (int lx = 0; lx < 16; lx += step) {
+                Cell c = generator.sample(baseX + lx, baseZ + lz);
+                int endX = Math.min(lx + step, 16);
+                int endZ = Math.min(lz + step, 16);
+                for (int ex = lx; ex < endX; ex++) {
+                    for (int ez = lz; ez < endZ; ez++) {
+                        cells[ez * 16 + ex] = copyCell(c);
+                    }
+                }
+            }
+        }
+        return cells;
+    }
+
+    /** 轻量 Cell 副本（防止下游代码修改共享引用） */
+    private static Cell copyCell(Cell src) {
+        Cell c = new Cell();
+        c.height = src.height;
+        c.continent = src.continent;
+        c.e = src.e;
+        c.eOcean = src.eOcean;
+        c.blendCont = src.blendCont;
+        c.eLand = src.eLand;
+        c.oceanFeat = src.oceanFeat;
+        c.landFeat = src.landFeat;
+        c.terrainType = src.terrainType;
+        c.typeWeights = src.typeWeights;  // 数组只读共享（下游不修改）
+        c.coastCoord = src.coastCoord;
+        c.climate = src.climate;
+        c.temperature = src.temperature;
+        c.humidity = src.humidity;
+        c.continentNoise = src.continentNoise;
+        c.isRiver = src.isRiver;
+        c.riverWetness = src.riverWetness;
+        c.isLake = src.isLake;
+        c.riverMask = src.riverMask;
+        c.lakeMask = src.lakeMask;
+        c.riverDistance = src.riverDistance;
+        c.riverIsWaterfall = src.riverIsWaterfall;
+        c.riverSourceType = src.riverSourceType;
+        c.riverFloorY = src.riverFloorY;
+        c.riverSurfaceY = src.riverSurfaceY;
+        c.erosionMask = src.erosionMask;
+        c.riverNetDist = src.riverNetDist;
+        c.shape = src.shape;
+        c.isSnow = src.isSnow;
+        return c;
+    }
+
     /** 简单 LRU 淘汰（在 computeIfAbsent 外部调用，避免 ConcurrentHashMap 死锁）。
      *  淘汰 1/8（而非 1/2）以保留最近生成的大区域 chunk，让 QUARTER→FULL 跨相位共享 chunk。 */
     private void pruneIfNeeded() {
@@ -129,8 +220,9 @@ public final class GeoGenesisTerrain {
             var it = cache.keySet().iterator();
             int toRemove = Math.max(1, cache.size() / 8);
             for (int i = 0; i < toRemove && it.hasNext(); i++) {
-                it.next();
+                long k = it.next();
                 it.remove();
+                cacheStrides.remove(k);
             }
         }
     }
