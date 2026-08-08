@@ -74,6 +74,6 @@
 - [PENDING] `erosionEnabled=true` 后 runClient 验证；河流重接验证；V 形河谷无缝实测；cAffinityStrength 非零安全；BASIN 曲线；mixer 面板重绑新类型参数；toml→JSON 迁移（阶段3）；**地形参数存档级（per-save）方案待实施**。
 - [DONE] RIVER_NETWORK 图层修复（riverNetDist→riverDistance，CACHE_SCHEMA_VERSION 12→13）
 - [DONE] 预览加载卡顿修复（poolWasBusy 强制重扫剩余 chunks）
-- [DONE] 预览性能优化（stride 感知生成 + terrainEQuick + flat base 复用）
+- [DONE] 预览性能优化（terrainEQuick + flat base 复用 + previewMode 跳过侵蚀 tile）
 - [DONE] 预览折痕 smoothClamp 修复目检确认（用户已确认"差不多了"）
 - [NEW] 交接总结待办7项（折痕目检、侵蚀验证、BASIN曲线、mixer重绑、toml迁移、存档方案等）
