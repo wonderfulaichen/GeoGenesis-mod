@@ -57,20 +57,24 @@ public final class PreviewDiskCache {
      */
     public record DiskChunk(int chunkX, int chunkZ, int stride, Cell[] samples) {
 
-        /** 从 16×16 展开数组提取紧凑采样点。 */
+        /**
+         * 从 16×16 展开数组提取紧凑采样点。
+         * ★ 2026-08-08：统一 X 主序（cells[lx*16+lz]，与 GeoGenesisTerrain 一致）。
+         *   此前 Z 主序读 + Z 主序展开 → 历史层回填渲染层时数据转置 → 16 块间距网格。
+         */
         public static DiskChunk compact(int cx, int cz, int stride, Cell[] cells256) {
             int s = Math.max(1, stride);
             Cell[] samples = new Cell[(16 / s) * (16 / s)];
             int idx = 0;
             for (int lz = 0; lz < 16; lz += s) {
                 for (int lx = 0; lx < 16; lx += s) {
-                    samples[idx++] = cells256[lz * 16 + lx];
+                    samples[idx++] = cells256[lx * 16 + lz];
                 }
             }
             return new DiskChunk(cx, cz, s, samples);
         }
 
-        /** 展开为 16×16 Cell 数组（每个采样点覆盖 stride×stride 格）。 */
+        /** 展开为 16×16 Cell 数组（每个采样点覆盖 stride×stride 格，X 主序）。 */
         public Cell[] cells() {
             int s = stride;
             Cell[] out = new Cell[256];
@@ -82,7 +86,7 @@ public final class PreviewDiskCache {
                     int endZ = Math.min(lz + s, 16);
                     for (int ez = lz; ez < endZ; ez++) {
                         for (int ex = lx; ex < endX; ex++) {
-                            out[ez * 16 + ex] = c;
+                            out[ex * 16 + ez] = c;
                         }
                     }
                 }
