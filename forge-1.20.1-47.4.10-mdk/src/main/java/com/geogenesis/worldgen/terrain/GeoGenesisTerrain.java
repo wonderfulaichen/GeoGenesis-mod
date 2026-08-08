@@ -55,6 +55,16 @@ public final class GeoGenesisTerrain {
     }
 
     /**
+     * 轻量采样（★ 2026-08-09 无伤优化）：直接调 generator.sample() 纯 e 场 + 气候 + 分类，
+     * 不触发 getChunkCells/侵蚀 tile。BiomeSource 群系分类只用 terrainType/climate/e（均在
+     * sample() 内设置）→ 出生点搜索/BIOMES stage 零 tile 生成（世界创建 9 分钟 → 秒级）。
+     * 地形高度仍由 fillFromNoise 走完整管线（sampleCell），不受影响。
+     */
+    public Cell sampleCellLight(double wx, double wz) {
+        return generator.sample(wx, wz);
+    }
+
+    /**
      * 获取 chunk 内所有 Cell（用于 fillFromNoise 逐格遍历）。
      */
     public Cell[] getChunkCells(int chunkX, int chunkZ) {

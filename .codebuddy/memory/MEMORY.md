@@ -79,7 +79,7 @@
 - [DONE] 液滴侵蚀汇聚门控 flowGate=ld/(ld+4)（ErosionEngine，源头弱化待目检）
 - [DONE] 网格伪影真正根因修复：**索引转置**——预览层 4 处 Z 主序读取（paint/showCellBorders/getCell/DiskChunk.compact+cells）与 generateChunk 的 X 主序（cells[lx*16+lz]）不一致 → 16 块间距网格。全部统一 X 主序 + CACHE_SCHEMA_VERSION=14。铁律：数组索引约定必须全链路一致；回退提交后必须检查所有消费方
 - [DONE] 海洋坑洞修复：**spawn 陆地门控**（对齐原版 SH world.h:71-72 `height<0.1 continue`）——`startH < seaNorm return`，海底粒子不再生成。水下路径保留（峡湾/河口不回归）。实测跳过 10 万+ 海底粒子
-- [PENDING] 转置修复后 runClient 目检确认
-- [PENDING] 海洋坑洞修复后 runClient 目检确认
+- [DONE] 世界创建慢无伤优化：①base 提前+粗采/骨架复用（省 ~5,249 次采样/tile）②fillFromNoise 高度裁剪（地表/水面以上 AIR 跳过写入，省 40-83% setBlockState）。探针验证输出一致
+- [PENDING] 优化后 runClient 实测世界创建速度
 - [PENDING] 侵蚀诊断代码清理（disProbe/deltaProbe/DisFlowProbe.java/build.gradle task）待目检后执行
 - [NEW] 交接总结待办7项（折痕目检、侵蚀验证、BASIN曲线、mixer重绑、toml迁移、存档方案等）

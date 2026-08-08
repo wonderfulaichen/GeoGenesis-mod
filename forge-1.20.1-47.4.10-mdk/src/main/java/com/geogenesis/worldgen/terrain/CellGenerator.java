@@ -471,6 +471,7 @@ public final class CellGenerator {
      * → 物理液滴侵蚀 → delta + postErosion 缓存。
      */
     private ErosionTileResult generateErosionTile(int tileCX, int tileCZ) {
+        long tStart = System.nanoTime();   // PERF 诊断（2026-08-09，优化后保留观察）
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         boolean erosionOn = cfg != null ? cfgBool(cfg.erosionEnabled, true) : true;
         double erosionStr = cfg != null ? cfgDbl(cfg.erosionStrength, 1.0) : 1.0;
@@ -482,6 +483,17 @@ public final class CellGenerator {
 
         int originX = tileCX * 16 - ERODE_TILE_BORDER;
         int originZ = tileCZ * 16 - ERODE_TILE_BORDER;
+
+        // 0) base 提前计算（2026-08-09 无伤优化：原第 3 步移前，粗采/骨架/骨架 flat 复用）
+        //    保存 terrainE 原貌（用于算 delta）：同源保证相邻 tile delta 一致。
+        //    提前后粗采（第 1 步）与骨架（第 2.5 步）在 base 覆盖区直接复用同值数组，
+        //    省 ~5,249 次 terrainEQuick/tile（16,384+1,296+12,769 → 16,384+272+8,544）。
+        //    值恒等式：base[x][z] = max(terrainEQuick, -0.05)，与粗采/骨架旧逻辑完全一致 → 输出不变。
+        int N0 = ERODE_TILE_SIZE;
+        float[][] base = new float[N0][N0];
+        for (int z = 0; z < N0; z++)
+            for (int x = 0; x < N0; x++)
+                base[z][x] = (float) Math.max(terrainEQuick(originX + x, originZ + z), -0.05);
 
         // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
         int spacing = ERODE_SAMPLING_SPACING;
@@ -496,7 +508,12 @@ public final class CellGenerator {
             for (int tx = 0; tx < extendedLowRes; tx++) {
                 int wx = alignedStartX + tx * spacing;
                 int wz = alignedStartZ + tz * spacing;
-                lowResBuf[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
+                // base 覆盖区内复用（值恒等：max(terrainEQuick,-0.05)），边界扩展带走原采样
+                if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
+                    lowResBuf[tz][tx] = base[wz - originZ][wx - originX];
+                } else {
+                    lowResBuf[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
+                }
             }
         }
 
@@ -551,7 +568,12 @@ public final class CellGenerator {
                     for (int tx = 0; tx < skelExtLR; tx++) {
                         int wx = skelStartX + tx * skelSpacing;
                         int wz = skelStartZ + tz * skelSpacing;
-                        skelGrid[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
+                        // base 覆盖区内复用（值恒等：max(terrainEQuick,-0.05)），skelExtra 扩展带走原采样
+                        if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
+                            skelGrid[tz][tx] = base[wz - originZ][wx - originX];
+                        } else {
+                            skelGrid[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
+                        }
                     }
                 }
                 coarseDeltaLR = RidgeValleyErosion.computeCoarseDelta(
@@ -559,11 +581,7 @@ public final class CellGenerator {
             }
         }
 
-        // 3) 保存 terrainE 原貌（用于算 delta）：同源保证相邻 tile delta 一致
-        float[][] base = new float[N][N];
-        for (int z = 0; z < N; z++)
-            for (int x = 0; x < N; x++)
-                base[z][x] = (float) Math.max(terrainEQuick(originX + x, originZ + z), -0.05);
+        // 3) （已移至第 0 步提前计算 base——粗采/骨架/骨架 flat 复用，省 ~5,249 次 terrainEQuick/tile）
 
         // 4) 液滴侵蚀（SH 多轮迭代）+ flat 全源（terrainE + 粗骨架，确定性）
         float[][] dischargeNxN = null; // 液滴汇聚场（粒子路径重叠计数）
@@ -663,8 +681,18 @@ public final class CellGenerator {
         res.tileCZ = tileCZ;
         res.originX = originX;
         res.originZ = originZ;
+        if (++perfTileCount % 8 == 1) {
+            double ms = (System.nanoTime() - tStart) / 1e6;
+            LOGGER.info("[PERF] erosion tile ({},{}) took {}ms (erosionOn={}, ridgeOn={})",
+                tileCX, tileCZ, String.format("%.0f", ms), erosionOn, ridgeOn);
+            System.out.println("[PERF] erosion tile (" + tileCX + "," + tileCZ + ") took "
+                + String.format("%.0f", ms) + "ms");
+        }
         return res;
     }
+
+    /** PERF 诊断：侵蚀 tile 耗时打印计数（每 8 个 tile 打印一次，诊断后删除） */
+    private static int perfTileCount = 0;
 
     private static long tileKey(int tileCX, int tileCZ) {
         return ((long) tileCX << 32) | (tileCZ & 0xFFFFFFFFL);
