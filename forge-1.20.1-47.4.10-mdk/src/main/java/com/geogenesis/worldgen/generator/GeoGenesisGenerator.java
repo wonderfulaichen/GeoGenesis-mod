@@ -196,6 +196,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             fill = DIRT;
         }
 
+        // ★ 2026-08-09 无伤优化（对齐 ReTerraForged 高度裁剪）：地表/水面以上全 AIR，
+        //   chunk 未生成区默认 AIR（vanilla 约定）→ 跳过写入直接 break。
+        //   世界创建时每 chunk 256 列 × 384 格全写 → 只写到 surfaceY/SEA_LEVEL，省 40-83% setBlockState。
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
             BlockState state;
@@ -210,7 +213,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             } else if (water && y <= SEA_LEVEL) {
                 state = WATER;                                    // 水柱（海平面以下）
             } else {
-                state = AIR;
+                break;                                            // 地表/水面以上：默认 AIR，跳过
             }
             chunk.setBlockState(mPos, state, false);
         }
@@ -242,6 +245,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         if (surfY - floorY > maxDepth) surfY = floorY + maxDepth;
         if (surfY <= floorY) surfY = floorY + 1;
 
+        // ★ 2026-08-09 无伤优化：水面以上默认 AIR 跳过写入（同 fillTerrainColumn）
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
             if (y == WORLD_MIN_Y) {
@@ -255,7 +259,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             } else if (y <= surfY) {
                 chunk.setBlockState(mPos, WATER, false);
             } else {
-                chunk.setBlockState(mPos, AIR, false);   // 水面以上：峡谷壁在邻格（普通填充）
+                break;   // 水面以上：默认 AIR（峡谷壁在邻格普通填充），跳过
             }
         }
     }

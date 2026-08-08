@@ -103,7 +103,10 @@ public class GeoGenesisBiomeSource extends BiomeSource {
     private GeoGenesisTerrain terrain;
 
     // ---- 直接哈希映射缓存（MC 出生点搜索查几千次 quart 位置，避免重复全管线采样） ----
-    private static final int BIOME_CACHE_SIZE = 512;
+    // ★ 2026-08-09：512 → 65536。出生点搜索/预生成范围可达 ±1000+ chunks（= 4096×4096 quart），
+    //   512 条目命中率极低 → 每次 miss 都触发完整 sampleCell（含侵蚀 tile 800ms）→ 世界创建 7.5 分钟。
+    //   65536 条目（~1MB）覆盖 256×256 quart = 1024×1024 块，命中率大幅提升。
+    private static final int BIOME_CACHE_SIZE = 65536;
     private final long[] biomeCacheKeys = new long[BIOME_CACHE_SIZE];
     private final Holder<Biome>[] biomeCacheValues = new Holder[BIOME_CACHE_SIZE];
 
@@ -168,7 +171,10 @@ public class GeoGenesisBiomeSource extends BiomeSource {
         }
 
         // 3) 采样 Cell + 分类
-        Cell cell = terrain.sampleCell(QuartPos.toBlock(x), QuartPos.toBlock(z));
+        // ★ 2026-08-09 无伤优化：sampleCellLight（纯 e 场+气候+分类，无侵蚀）替代 sampleCell。
+        //   群系分类只用 terrainType/climate（sample() 内已算），侵蚀只改高度细节不影响分类。
+        //   根治：出生点搜索/BIOMES stage 零 tile 生成（800ms/tile → ~10μs/次）。
+        Cell cell = terrain.sampleCellLight(QuartPos.toBlock(x), QuartPos.toBlock(z));
         ResourceKey<Biome> keyB = cell != null ? BiomeClassifier.pickKey(cell) : null;
         Holder<Biome> h = keyB != null ? resolveBiome(keyB) : null;
         if (h == null) h = fallbackBiome();
