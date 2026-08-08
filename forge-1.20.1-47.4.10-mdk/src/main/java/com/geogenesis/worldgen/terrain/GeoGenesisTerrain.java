@@ -154,62 +154,109 @@ public final class GeoGenesisTerrain {
 
     /**
      * 按 stride 生成 chunk Cell[256]（预览低分辨率路径）。
-     * 只采样 (16/stride)² 个点，每个展开到 stride×stride 区域。
-     * 跳过侵蚀 tile 管线（低分辨率下视觉差异可忽略，成本过高）。
+     * 第一遍在 stride 网格点采样，第二遍双线性插值填充——连续值（e/height/temp/humidity）平滑过渡，
+     * 离散值（terrainType/isRiver）用最近邻。跳过侵蚀 tile（低分辨率下差异可忽略）。
      */
     private Cell[] generateChunk(int cx, int cz, int stride) {
         Cell[] cells = new Cell[16 * 16];
         int baseX = cx << CHUNK_SHIFT;
         int baseZ = cz << CHUNK_SHIFT;
         stride = Math.max(1, Math.min(16, stride));
-        int step = stride;
-        for (int lz = 0; lz < 16; lz += step) {
-            for (int lx = 0; lx < 16; lx += step) {
-                Cell c = generator.sample(baseX + lx, baseZ + lz);
-                int endX = Math.min(lx + step, 16);
-                int endZ = Math.min(lz + step, 16);
-                for (int ex = lx; ex < endX; ex++) {
-                    for (int ez = lz; ez < endZ; ez++) {
-                        cells[ez * 16 + ex] = copyCell(c);
-                    }
+
+        if (stride <= 1) {
+            // 全分辨率：逐格采样
+            for (int lz = 0; lz < 16; lz++) {
+                for (int lx = 0; lx < 16; lx++) {
+                    cells[lz * 16 + lx] = generator.sample(baseX + lx, baseZ + lz);
                 }
+            }
+            return cells;
+        }
+
+        // 第一遍：在 stride 网格点采样
+        int gridW = (16 + stride - 1) / stride + 1; // 覆盖 16 边界
+        Cell[][] samples = new Cell[gridW][gridW];
+        for (int gz = 0; gz < gridW; gz++) {
+            for (int gx = 0; gx < gridW; gx++) {
+                int lx = gx * stride;
+                int lz = gz * stride;
+                if (lx < 16 && lz < 16) {
+                    samples[gz][gx] = generator.sample(baseX + lx, baseZ + lz);
+                }
+            }
+        }
+
+        // 第二遍：双线性插值填充
+        for (int lz = 0; lz < 16; lz++) {
+            for (int lx = 0; lx < 16; lx++) {
+                // 在采样网格中的浮点坐标
+                float fx = (float) lx / stride;
+                float fz = (float) lz / stride;
+                int gx0 = (int) fx;
+                int gz0 = (int) fz;
+                float tx = fx - gx0;
+                float tz = fz - gz0;
+                int gx1 = Math.min(gx0 + 1, gridW - 1);
+                int gz1 = Math.min(gz0 + 1, gridW - 1);
+
+                Cell s00 = samples[gz0][gx0];
+                Cell s10 = samples[gz0][gx1];
+                Cell s01 = samples[gz1][gx0];
+                Cell s11 = samples[gz1][gx1];
+                if (s00 == null) s00 = generator.sample(baseX + lx, baseZ + lz);
+
+                // 最近邻取离散值的"锚点"（权重最大的那个）
+                Cell anchor = s00;
+                float w00 = (1 - tx) * (1 - tz), w10 = tx * (1 - tz);
+                float w01 = (1 - tx) * tz, w11 = tx * tz;
+                if (w10 >= w00 && w10 >= w01 && w10 >= w11 && s10 != null) anchor = s10;
+                else if (w01 >= w00 && w01 >= w10 && w01 >= w11 && s01 != null) anchor = s01;
+                else if (w11 >= w00 && w11 >= w10 && w11 >= w01 && s11 != null) anchor = s11;
+
+                cells[lz * 16 + lx] = lerpCell(s00, s10, s01, s11, tx, tz, anchor);
             }
         }
         return cells;
     }
 
-    /** 轻量 Cell 副本（防止下游代码修改共享引用） */
-    private static Cell copyCell(Cell src) {
+    /** 双线性插值 Cell：连续值（e/height/temperature/humidity/continent/eLand/riverDistance）插值，
+     *  离散值（terrainType/isRiver/isLake/riverMask/...）取最近邻 anchor。 */
+    private static Cell lerpCell(Cell s00, Cell s10, Cell s01, Cell s11,
+                                  float tx, float tz, Cell anchor) {
+        float w00 = (1 - tx) * (1 - tz), w10 = tx * (1 - tz);
+        float w01 = (1 - tx) * tz, w11 = tx * tz;
         Cell c = new Cell();
-        c.height = src.height;
-        c.continent = src.continent;
-        c.e = src.e;
-        c.eOcean = src.eOcean;
-        c.blendCont = src.blendCont;
-        c.eLand = src.eLand;
-        c.oceanFeat = src.oceanFeat;
-        c.landFeat = src.landFeat;
-        c.terrainType = src.terrainType;
-        c.typeWeights = src.typeWeights;  // 数组只读共享（下游不修改）
-        c.coastCoord = src.coastCoord;
-        c.climate = src.climate;
-        c.temperature = src.temperature;
-        c.humidity = src.humidity;
-        c.continentNoise = src.continentNoise;
-        c.isRiver = src.isRiver;
-        c.riverWetness = src.riverWetness;
-        c.isLake = src.isLake;
-        c.riverMask = src.riverMask;
-        c.lakeMask = src.lakeMask;
-        c.riverDistance = src.riverDistance;
-        c.riverIsWaterfall = src.riverIsWaterfall;
-        c.riverSourceType = src.riverSourceType;
-        c.riverFloorY = src.riverFloorY;
-        c.riverSurfaceY = src.riverSurfaceY;
-        c.erosionMask = src.erosionMask;
-        c.riverNetDist = src.riverNetDist;
-        c.shape = src.shape;
-        c.isSnow = src.isSnow;
+        // 连续值：双线性
+        c.e = w00 * s00.e + w10 * s10.e + w01 * s01.e + w11 * s11.e;
+        c.height = w00 * s00.height + w10 * s10.height + w01 * s01.height + w11 * s11.height;
+        c.eLand = w00 * s00.eLand + w10 * s10.eLand + w01 * s01.eLand + w11 * s11.eLand;
+        c.eOcean = w00 * s00.eOcean + w10 * s10.eOcean + w01 * s01.eOcean + w11 * s11.eOcean;
+        c.blendCont = w00 * s00.blendCont + w10 * s10.blendCont + w01 * s01.blendCont + w11 * s11.blendCont;
+        c.continent = w00 * s00.continent + w10 * s10.continent + w01 * s01.continent + w11 * s11.continent;
+        c.temperature = w00 * s00.temperature + w10 * s10.temperature + w01 * s01.temperature + w11 * s11.temperature;
+        c.humidity = w00 * s00.humidity + w10 * s10.humidity + w01 * s01.humidity + w11 * s11.humidity;
+        c.continentNoise = c.continent;
+        c.riverDistance = w00 * s00.riverDistance + w10 * s10.riverDistance + w01 * s01.riverDistance + w11 * s11.riverDistance;
+        c.riverNetDist = w00 * s00.riverNetDist + w10 * s10.riverNetDist + w01 * s01.riverNetDist + w11 * s11.riverNetDist;
+        c.riverWetness = w00 * s00.riverWetness + w10 * s10.riverWetness + w01 * s01.riverWetness + w11 * s11.riverWetness;
+        c.shape = w00 * s00.shape + w10 * s10.shape + w01 * s01.shape + w11 * s11.shape;
+        // 离散值：最近邻
+        c.terrainType = anchor.terrainType;
+        c.typeWeights = anchor.typeWeights;
+        c.coastCoord = anchor.coastCoord;
+        c.climate = anchor.climate;
+        c.isRiver = anchor.isRiver;
+        c.isLake = anchor.isLake;
+        c.riverMask = anchor.riverMask;
+        c.lakeMask = anchor.lakeMask;
+        c.riverIsWaterfall = anchor.riverIsWaterfall;
+        c.riverSourceType = anchor.riverSourceType;
+        c.riverFloorY = anchor.riverFloorY;
+        c.riverSurfaceY = anchor.riverSurfaceY;
+        c.erosionMask = anchor.erosionMask;
+        c.isSnow = anchor.isSnow;
+        c.oceanFeat = anchor.oceanFeat;
+        c.landFeat = anchor.landFeat;
         return c;
     }
 
