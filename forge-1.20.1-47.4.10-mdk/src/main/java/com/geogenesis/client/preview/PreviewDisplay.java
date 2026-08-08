@@ -209,7 +209,11 @@ public class PreviewDisplay extends AbstractWidget {
     // 2026-08-07 → 10：v8 彻底参考丘陵：移除 platMix/platMod/platE 全部覆盖层，旧缓存 bin 作废
     // 2026-08-07 → 11：PLATEAU v8 配方 + 骨架 flatMask（用户否决——侵蚀必须无限制，已撤销）留档
     // 2026-08-08 → 13：河流图层修复（RIVER_NETWORK 改用 riverDistance，CellGenerator 同步设置 riverNetDist）
-    private static final int CACHE_SCHEMA_VERSION = 13;
+    // 2026-08-08 → 14：索引转置修复——paint/getCell/showCellBorders/DiskChunk.compact/cells 统一 X 主序
+    //   （cells[lx*16+lz]，与 GeoGenesisTerrain.generateChunk 一致）。此前预览层用 Z 主序读取 X 主序数据
+    //   → 16 块间距网格。磁盘格式语义变化（DiskChunk 存储约定）→ 旧缓存必须失效。
+    //   注意：WIP stash 恢复曾把此值改回 13 导致伪影复现（6c30272）——本值禁止回退到 13。
+    private static final int CACHE_SCHEMA_VERSION = 14;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
@@ -429,9 +433,11 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /** 从 CellCache 读取可见区内已缓存的 chunk 并逐块写入纹理。
-     *  逐块采样（cells[lz*16+lx]），每个块映射到其纹理像素，消除「每 chunk 单 Cell 平涂」造成的网格。
-     *  采样步长 = scaleBlockPos：每块纹理像素对应一个世界块，缓存分辨率（effectiveStride）≥ 此值，
-     *  故任何缩放下均 1 像素=1 采样，无内部网格。 */
+     *  逐块采样（cells[lx*16+lz]，X 主序与 generateChunk 一致），每个块映射到其纹理像素。
+     *  ★ 2026-08-08：1) 修复索引转置（Z 主序→X 主序，16 块间距网格根因，勿回退）；
+     *    2) step=scaleBlockPos 稀疏采样（每纹理像素 1 采样点：16/step × 16/step 点恰好覆盖
+     *       chunk 在纹理中的 scaleBlockPos² 像素区，无漏画无网格）。此前临时 step=1 全采样
+     *       使拖拽每帧绘制量暴涨 16 倍 → 移动卡顿（用户反馈），已恢复稀疏。 */
     private int paintAvailableChunks(int originWx, int originWz, int blocksWide, int blocksHigh) {
         int minCX = originWx >> 4;
         int maxCX = (originWx + blocksWide) >> 4;
@@ -452,7 +458,9 @@ public class PreviewDisplay extends AbstractWidget {
                         int tx = (wx - originWx) / scaleBlockPos;
                         int tz = (wz - originWz) / scaleBlockPos;
                         if (tx < 0 || tx >= texW || tz < 0 || tz >= texH) continue;
-                        Cell cell = cells[lz * 16 + lx];
+                        // ★ 2026-08-08：修复索引转置——generateChunk 写 cells[lx*16+lz]（X 行 Z 列），
+                        //   此处必须同约定读，否则 chunk 内 X/Z 交换 → 16 块间距网格（19df17e 后引入）。
+                        Cell cell = cells[lx * 16 + lz];
                         if (cell == null) continue;
                         int color = GeoPalette.color(activeLayer, cell, wx, wz, minY, maxY, false);
                         // 离散图层：过滤模式 → 未勾选压暗；否则选中高亮其余压暗（每帧重绘，实时生效）
@@ -469,9 +477,10 @@ public class PreviewDisplay extends AbstractWidget {
                         if (showCellBorders) {
                             int cxc = wx >> 4, czc = wz >> 4;
                             int lxc = wx & 15, lzc = wz & 15;
-                            Cell left = (lxc > 0) ? cells[lzc * 16 + (lxc - 1)]
+                            // X 主序：cells[lx*16+lz]（与 generateChunk 一致）
+                            Cell left = (lxc > 0) ? cells[(lxc - 1) * 16 + lzc]
                                     : cellCache.getCell(cxc - 1, czc, 15, lzc);
-                            Cell up = (lzc > 0) ? cells[(lzc - 1) * 16 + lxc]
+                            Cell up = (lzc > 0) ? cells[lxc * 16 + (lzc - 1)]
                                     : cellCache.getCell(cxc, czc - 1, lxc, 15);
                             boolean leftDiff = left != null && left.terrainType != cell.terrainType;
                             boolean upDiff = up != null && up.terrainType != cell.terrainType;

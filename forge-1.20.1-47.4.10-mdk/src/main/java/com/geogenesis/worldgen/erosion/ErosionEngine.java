@@ -38,6 +38,10 @@ public class ErosionEngine {
 
     private static final float INERTIA = 0.005f, GRAVITY = 2.5f, EVAP_RATE = 0.001f;
     private static final float ENTRAINMENT = 10f;
+    /** 汇聚门控尺度：flowGate = ld/(ld+FLOW_SCALE)。基于实测 dis 分布（非零93%、主质量2-8）定 4，
+     *  源头(ld<2)弱、汇聚(ld≥8)全强。仅改侵蚀公式（ErosionEngine），不影响预览磁盘缓存
+     *  （勿 bump CACHE_SCHEMA_VERSION——15 曾导致磁盘缓存失效 → QUARTER-only 网格伪影暴露）。 */
+    private static final float FLOW_SCALE = 4f;
     /** 放电量偏置系数（旧动量偏置 a = MOMENTUM·ld/(ld+10)，沿梯度加速，保留） */
     private static final float MOMENTUM = 1.0f;
     private static final float DEPOSIT_SPEED = 0.02f;
@@ -378,11 +382,16 @@ public class ErosionEngine {
             //       中等水 (~25块): 略微提升（~0.25块/液滴寿命）
             //       深水 (>50块): 显著（~5块/液滴寿命）
             float dh = nH0 - h0;          // 保留供 NaN 守卫（line 340）使用
-            float erfVal = 1f - (float) Math.exp(-0.16f * ld * ld);
+            // 2026-08-08 汇聚门控：erfVal(1-exp(-0.16·ld²),饱和点ld≈6) → flowGate(ld/(ld+4),线性无饱和)
+            //   实测 dis 分布（seed=12345,真实toml）：非零93%、主质量2-8、≥32仅5%
+            //   旧 erfVal：ld=2→0.47、ld≥6 全饱和 → 源头与河道等强（源头坡度大反而更深）
+            //   新 flowGate：ld=0.5→0.11、2→0.33、4→0.5、8→0.67、32→0.89
+            //   源头/汇聚侵蚀系数比 = 2.1:9.9 ≈ 4.7x，恢复"汇聚后才强"的水文特征
+            float flowGate = ld / (ld + FLOW_SCALE);
             float depthBoost = Math.max(0f, -h0) * 0.03f;  // 水深贡献的"等效下坡高度差"（3%/e, ≈ 7.7 块/100e 深度）
             float heightDrop = Math.max(0f, -dh) + depthBoost;
             // 2026-08-01 两套粒子系统：液滴回归纯 SH 平衡浓度公式（河流职责移交 StreamTracer）
-            float c_eq = (1f + ENTRAINMENT * erfVal) * heightDrop;  // 平衡浓度
+            float c_eq = (1f + ENTRAINMENT * flowGate) * heightDrop;  // 平衡浓度
             float effD = 0.1f;                       // 松弛率 = depositionRate(=0.1)
             float delta = effD * (c_eq - sed);       // >0=侵蚀, <0=沉积
 

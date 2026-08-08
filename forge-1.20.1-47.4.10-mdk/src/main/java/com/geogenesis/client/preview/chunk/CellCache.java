@@ -116,11 +116,13 @@ public class CellCache {
     /**
      * 快速读写：以 (chunkX, chunkZ, localX, localZ) 索引一个 Cell
      * @return 该位置的 Cell，或 null（未缓存/超出范围）
+     * ★ 2026-08-08：统一 X 主序（cells[lx*16+lz]，与 GeoGenesisTerrain.generateChunk/sampleCell 一致）。
+     *   此前 Z 主序导致预览层转置读取 → 16 块间距网格（19df17e 的 ChunkWorkUnit 展开写 Z 主序掩盖了它）。
      */
     public Cell getCell(int chunkX, int chunkZ, int localX, int localZ) {
         Cell[] arr = map.get(key(chunkX, chunkZ));
         if (arr == null) return null;
-        return arr[localZ * 16 + localX];
+        return arr[localX * 16 + localZ];
     }
 
     /**
