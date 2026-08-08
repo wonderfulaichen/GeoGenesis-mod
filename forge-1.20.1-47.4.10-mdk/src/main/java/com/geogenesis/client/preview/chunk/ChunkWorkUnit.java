@@ -49,10 +49,9 @@ public class ChunkWorkUnit {
     }
 
     private void doWork() {
-        // ★ stride 感知：按 blockStride 一次生成整个 chunk Cell[256]。
-        //   stride=16 → 1 次 sampleCore + 展开（旧代码 256 次 → 现在 1 次）。
-        //   stride=1 → 全分辨率含侵蚀（等价于旧 generateChunk，行为不变）。
-        Cell[] cells = terrain.getChunkCells(chunkPos.x, chunkPos.z, blockStride);
+        // ★ 全分辨率采样：始终生成 16×16=256 个 Cell，不做 stride 展开。
+        // 视觉分辨率由渲染层 paintAvailableChunks 的 step 控制。
+        Cell[] cells = terrain.getChunkCells(chunkPos.x, chunkPos.z);
 
         // ★ 顺带检测结构（Worker 线程，不卡主线程）：placement 哈希判定 + 会话内缓存
         if (!canceled && structureScanner != null && !structureScanner.isScanned(chunkPos.x, chunkPos.z)) {
