@@ -59,8 +59,8 @@ public class PreviewDisplay extends AbstractWidget {
     private DynamicTexture texture;
     private ResourceLocation texLoc;
     private int texW, texH;
-    /** 每纹理像素对应的世界块数。越大越缩。 */
-    public int scaleBlockPos = 1;
+    /** 每纹理像素对应的世界块数。越大越缩。初始 4（低分辨率快速加载，X 键放大看细节）。 */
+    public int scaleBlockPos = 4;
     /** 纹理超采样倍率（渲染分辨率 = 预览窗口逻辑分辨率 × renderScale）。
      *  1=显示器模型（纹理=窗口逻辑像素，GPU 负责 DPI 上采样，最快）；2/3/4=更锐利但更慢。 */
     public int renderScale = 1;

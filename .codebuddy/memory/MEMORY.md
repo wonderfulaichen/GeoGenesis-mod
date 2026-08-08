@@ -39,7 +39,7 @@
 - **队列型架构必须设单次提交硬顶**（预览 TerrainQueue.MAX_CHUNKS_PER_SCAN=1024）；防抖只能限频不能限规模。
 - **无上限 CHM 缓存必配容量兜底**（CellCache.MAX_ENTRIES=4096 + trimTo 按距中心淘汰）。
 - **队列型架构 busy→idle 必须重扫**：单次提交硬顶 + 视口未变跳过 = 剩余 chunks 永不重扫（2026-08-08 bug）。修正：poolWasBusy 追踪，busy→idle 时跳过视口比较强制重扫。
-- **stride 优化禁止浅拷贝共享**：展开时必须 `copyCell` 独立副本（非引用共享），否则下游 `extractFromTile` 修改 `terrainType` → 同块内所有格类型相同 → 网格伪影。203e786 被 revert 的教训。
+- **stride 优化两次被否**：203e786（最近邻+浅拷贝共享→网格伪影）被 revert；本次尝试 copyCell+lerpCell 双线性插值仍不理想（chunk 边界不连续 + 复杂度高）。**结论：stride 采样不适合我们的架构**——16×16 chunk 是原子单位，跨 chunk 的分辨率差异产生不可接受的接缝。性能优化路径 = terrainEQuick（侵蚀 tile ~50%）+ CellCache。
 
 ## 配置屏（单屏 8 标签，常驻预览）
 页签 0世界参数/1气候/2地形/3显示/4采样/5色带/6缓存/7群系。按钮 [应用]SPEC.save()[保存]user_presets.json[重置]resetToDefault()。反射三件套：resetToDefault/captureAllValues/applyNamedValues。
