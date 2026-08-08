@@ -245,6 +245,13 @@ task runPlateauProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.PlateauProfileProbe'
 }
 
+// dis field distribution (loads real toml via SPEC.setConfig)
+task runDisFlowProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.DisFlowProbe'
+    workingDir = project.projectDir
+}
+
 // Comprehensive terrain diagnostic
 task runDiag(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
