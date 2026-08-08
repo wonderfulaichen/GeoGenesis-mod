@@ -193,21 +193,21 @@ public class ErosionEngine {
                                     bOffC, bWgtC, bnC, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
                                     ERODE_C * strE, DEPOSIT_C, LIFE_C, ox, oz,
-                                    (float) casStr);
+                                    (float) casStr, seaNorm);
                     }
                     if (d < (int) (DROPS_M * dropsMul)) {
                         spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 1, relX, relZ, pad,
                                     bOffM, bWgtM, bnM, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
                                     ERODE_M * strE, DEPOSIT_M, LIFE_M, ox, oz,
-                                    (float) casStr);
+                                    (float) casStr, seaNorm);
                     }
                     if (d < (int) (DROPS_F * dropsMul)) {
                         spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 2, relX, relZ, pad,
                                     bOffF, bWgtF, bnF, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
                                     ERODE_F * strE, DEPOSIT_F, LIFE_F, ox, oz,
-                                    (float) casStr);
+                                    (float) casStr, seaNorm);
                     }
                 }
             }
@@ -267,7 +267,7 @@ public class ErosionEngine {
                              float[] momX, float[] momY, float[] momXT, float[] momYT,
                              float momTransfer,
                              float erodeSpeed, float depositSpeed, int lifetime,
-                             int ox, int oz, float cascadeStrength) {
+                             int ox, int oz, float cascadeStrength, float seaNorm) {
         long chunkSeed = hash(worldCX * 31 + 7, worldCZ * 73 + 13);
         int cs = (int) (chunkSeed ^ (chunkSeed >>> 32));
         long ps1 = hash(cs + d * 17, d * 31 + cs);
@@ -281,6 +281,12 @@ public class ErosionEngine {
             int lz = py - pad, lx = px - pad;
             if (lz >= 0 && lz < baseSize && lx >= 0 && lx < baseSize && locked[lz][lx]) return;
         }
+        // ★ 2026-08-09 spawn 陆地门控（对齐原版 SH world.h:71-72 "height<0.1 continue"）：
+        //   海平面以下不生成粒子。根因：海底 flat 被钳到 -0.05 后液滴在平底随机游走
+        //   产生微侵蚀/沉积 → 坑洞。陆地出发的粒子仍可流入海底（水下路径保留，峡湾/河口不回归）。
+        //   实测验证（seed=12345, 64 tiles）：跳过 10 万+ 海底粒子，陆地粒子正常侵蚀。
+        float startH = flat[py * bufSize + px];
+        if (startH < seaNorm) return;
         simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
                      bOff, bWgt, bn, locked, pad, baseSize,
                      dis, disT, momX, momY, momXT, momYT, momTransfer,
@@ -382,11 +388,9 @@ public class ErosionEngine {
             //       中等水 (~25块): 略微提升（~0.25块/液滴寿命）
             //       深水 (>50块): 显著（~5块/液滴寿命）
             float dh = nH0 - h0;          // 保留供 NaN 守卫（line 340）使用
-            // 2026-08-08 汇聚门控：erfVal(1-exp(-0.16·ld²),饱和点ld≈6) → flowGate(ld/(ld+4),线性无饱和)
-            //   实测 dis 分布（seed=12345,真实toml）：非零93%、主质量2-8、≥32仅5%
-            //   旧 erfVal：ld=2→0.47、ld≥6 全饱和 → 源头与河道等强（源头坡度大反而更深）
-            //   新 flowGate：ld=0.5→0.11、2→0.33、4→0.5、8→0.67、32→0.89
-            //   源头/汇聚侵蚀系数比 = 2.1:9.9 ≈ 4.7x，恢复"汇聚后才强"的水文特征
+            // 2026-08-09 汇聚门控（最终形态）：纯 flowGate = ld/(ld+4)，线性无饱和。
+            //   源头弱化（ld<2 弱、汇聚 ld≥8 全强）；水下坑洞由 spawn 陆地门控解决
+            //   （spawnAndSim startH<seaNorm return），不再需要公式侧混合。
             float flowGate = ld / (ld + FLOW_SCALE);
             float depthBoost = Math.max(0f, -h0) * 0.03f;  // 水深贡献的"等效下坡高度差"（3%/e, ≈ 7.7 块/100e 深度）
             float heightDrop = Math.max(0f, -dh) + depthBoost;
