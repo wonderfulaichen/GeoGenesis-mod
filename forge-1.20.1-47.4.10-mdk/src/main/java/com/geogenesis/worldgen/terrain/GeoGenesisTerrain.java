@@ -17,6 +17,8 @@ public final class GeoGenesisTerrain {
     private final CellGenerator generator;
     private final HeightCurve curve;
     private final Map<Long, Cell[]> cache = new ConcurrentHashMap<>(CACHE_SIZE);
+    /** 预览模式：跳过侵蚀 tile 管线（~50× 加速），预览不需要侵蚀后地形。 */
+    private boolean previewMode = false;
 
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
@@ -28,6 +30,10 @@ public final class GeoGenesisTerrain {
         generator.seed(worldSeed);
         cache.clear();
     }
+
+    /** 预览模式：跳过侵蚀 tile（加速预览加载，不影响游戏内地形）。 */
+    public void setPreviewMode(boolean on) { this.previewMode = on; }
+    public boolean isPreviewMode() { return previewMode; }
 
     /** 海平面 Y */
     public double seaLevel() { return generator.seaLevel(); }
@@ -104,8 +110,12 @@ public final class GeoGenesisTerrain {
         }
 
         // 水文 + 侵蚀 tile 管线
-        float[][] tile = generator.getErosionTile(cx, cz);
-        generator.extractFromTile(tile, cells, cx, cz);
+        // ★ 预览模式跳过：侵蚀 tile 生成是加载最大瓶颈（~50 tile × 41K 采样/tile），
+        //   预览仅需显示原始地形形态（侵蚀是游戏内效果，不影响参数调节）。
+        if (!previewMode) {
+            float[][] tile = generator.getErosionTile(cx, cz);
+            generator.extractFromTile(tile, cells, cx, cz);
+        }
 
         return cells;
     }

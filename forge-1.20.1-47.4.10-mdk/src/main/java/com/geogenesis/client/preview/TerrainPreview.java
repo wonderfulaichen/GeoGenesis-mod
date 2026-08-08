@@ -75,6 +75,7 @@ public final class TerrainPreview {
             new com.geogenesis.worldgen.terrain.CellGenerator(params, params.minY(), params.maxY());
         gen.seed(seed);
         this.terrain = new GeoGenesisTerrain(gen);
+        this.terrain.setPreviewMode(true);  // 预览跳过侵蚀 tile
         this.seaLevel = params.seaLevel();
         this.snowLine = (int) new com.geogenesis.worldgen.terrain.HeightCurve(params, params.minY(), params.maxY()).heightFromE(params.snowLine());
         this.maxY = params.maxY();

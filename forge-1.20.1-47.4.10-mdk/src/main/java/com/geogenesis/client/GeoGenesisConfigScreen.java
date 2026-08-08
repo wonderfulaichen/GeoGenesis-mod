@@ -231,6 +231,7 @@ public class GeoGenesisConfigScreen extends Screen {
         CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
+        terrain.setPreviewMode(true);  // 预览跳过侵蚀 tile（~50× 加速）
         if (preview == null) {
             // ★ 直接传 mode，构造器内设好 activeLayer + requestResample，无需 setMode
             preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p, currentMode);
