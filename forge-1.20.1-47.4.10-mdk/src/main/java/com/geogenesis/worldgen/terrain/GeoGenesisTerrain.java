@@ -1,8 +1,5 @@
 package com.geogenesis.worldgen.terrain;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,10 +16,7 @@ public final class GeoGenesisTerrain {
 
     private final CellGenerator generator;
     private final HeightCurve curve;
-    /** 渲染层 cache：chunk key → Cell[256]。游戏内全分辨率（stride=1）写入此层。 */
     private final Map<Long, Cell[]> cache = new ConcurrentHashMap<>(CACHE_SIZE);
-    /** 渲染层每 chunk 的采样 stride（越小越精细；预览用）。 */
-    private final Map<Long, Integer> cacheStrides = new ConcurrentHashMap<>(CACHE_SIZE);
 
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
@@ -33,7 +27,6 @@ public final class GeoGenesisTerrain {
     public void seed(long worldSeed) {
         generator.seed(worldSeed);
         cache.clear();
-        cacheStrides.clear();
     }
 
     /** 海平面 Y */
@@ -44,8 +37,6 @@ public final class GeoGenesisTerrain {
 
     /**
      * 采样世界高度。
-     * @param wx 世界 X 坐标
-     * @param wz 世界 Z 坐标
      */
     public double sampleHeight(double wx, double wz) {
         Cell cell = sampleCell(wx, wz);
@@ -65,11 +56,6 @@ public final class GeoGenesisTerrain {
 
     /**
      * 获取 chunk 内所有 Cell（用于 fillFromNoise 逐格遍历）。
-     *
-     * <p>2026-08-03 死锁修复（回退版本重放）：原 computeIfAbsent 的 mapping（generateChunk）
-     * 内部会嵌套 CellGenerator.getErosionTile 的 computeIfAbsent（另一个 ConcurrentHashMap）——
-     * 26 个 Worker 线程并发时偶发死锁（spawn 准备阶段卡死实锤）。改 get + putIfAbsent：
-     * 并发时可能重复生成同 chunk（确定性结果相同），putIfAbsent 只留一个。</p>
      */
     public Cell[] getChunkCells(int chunkX, int chunkZ) {
         long key = pack(chunkX, chunkZ);
@@ -77,39 +63,13 @@ public final class GeoGenesisTerrain {
         if (cells == null) {
             cells = generateChunk(chunkX, chunkZ);
             Cell[] prev = cache.putIfAbsent(key, cells);
-            if (prev != null) cells = prev; // 并发者胜出，丢弃自己的
-            cacheStrides.put(key, 1); // 全分辨率
+            if (prev != null) cells = prev;
         }
         pruneIfNeeded();
         return cells;
     }
 
-    /**
-     * 按指定 stride 获取 chunk 内 Cell 数据（预览优化入口）。
-     * <ul>
-     *   <li>stride=1：等价于 getChunkCells(cx, cz)，全分辨率含侵蚀。</li>
-     *   <li>stride≥2：按 (16/stride)² 采样点展开填充 Cell[256]，跳过侵蚀 tile（太贵）。</li>
-     *   <li>缓存命中条件：已有 stride ≤ 请求 stride（已有数据够细）。</li>
-     *   <li>更细请求（stride 更小）→ 覆盖写入。</li>
-     * </ul>
-     */
-    public Cell[] getChunkCells(int chunkX, int chunkZ, int stride) {
-        if (stride <= 1) return getChunkCells(chunkX, chunkZ);
-        long key = pack(chunkX, chunkZ);
-        Cell[] cells = cache.get(key);
-        Integer haveStride = cacheStrides.get(key);
-        if (cells != null && haveStride != null && haveStride <= stride) {
-            return cells; // 已有够细的数据
-        }
-        // 按 stride 生成
-        cells = generateChunk(chunkX, chunkZ, stride);
-        cache.put(key, cells);
-        cacheStrides.put(key, stride);
-        pruneIfNeeded();
-        return cells;
-    }
-
-    /** 预载周边 chunk（可选，减少首次采样冻帧） */
+    /** 预载周边 chunk */
     public void preloadAround(int centerCX, int centerCZ, int radius) {
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
@@ -118,13 +78,12 @@ public final class GeoGenesisTerrain {
         }
     }
 
-    /** 旧 API 兼容：按 block 网格返回 Cell 二维数组（cx/cz 为 block 索引）。
-     * 支持中断：线程被 interrupt() 时返回 null（后台计算可被新请求快速取代，避免卡死）。 */
+    /** 旧 API 兼容：按 block 网格返回 Cell 二维数组。支持中断。 */
     public Cell[][] getRegionCells(int originBlockX, int originBlockZ, int cellCountX, int cellCountZ) {
         Cell[][] region = new Cell[cellCountX][cellCountZ];
         for (int bx = 0; bx < cellCountX; bx++) {
             for (int bz = 0; bz < cellCountZ; bz++) {
-                if (Thread.interrupted()) return null; // 线程被中断（新请求已到达），放弃剩余计算
+                if (Thread.interrupted()) return null;
                 region[bx][bz] = sampleCell(originBlockX + bx, originBlockZ + bz);
             }
         }
@@ -144,132 +103,21 @@ public final class GeoGenesisTerrain {
             }
         }
 
-        // 水文 + 侵蚀 tile 管线：80×80 共享 cache（含 border 重叠）→ 提取 16×16 填 cell。
-        // 仅做地形场改写，不进入 sample 纯函数（保持每格确定性）。
+        // 水文 + 侵蚀 tile 管线
         float[][] tile = generator.getErosionTile(cx, cz);
         generator.extractFromTile(tile, cells, cx, cz);
 
         return cells;
     }
 
-    /**
-     * 按 stride 生成 chunk Cell[256]（预览低分辨率路径）。
-     * 第一遍在 stride 网格点采样，第二遍双线性插值填充——连续值（e/height/temp/humidity）平滑过渡，
-     * 离散值（terrainType/isRiver）用最近邻。跳过侵蚀 tile（低分辨率下差异可忽略）。
-     */
-    private Cell[] generateChunk(int cx, int cz, int stride) {
-        Cell[] cells = new Cell[16 * 16];
-        int baseX = cx << CHUNK_SHIFT;
-        int baseZ = cz << CHUNK_SHIFT;
-        stride = Math.max(1, Math.min(16, stride));
-
-        if (stride <= 1) {
-            // 全分辨率：逐格采样
-            for (int lz = 0; lz < 16; lz++) {
-                for (int lx = 0; lx < 16; lx++) {
-                    cells[lz * 16 + lx] = generator.sample(baseX + lx, baseZ + lz);
-                }
-            }
-            return cells;
-        }
-
-        // 第一遍：在 stride 网格点采样
-        int gridW = (16 + stride - 1) / stride + 1; // 覆盖 16 边界
-        Cell[][] samples = new Cell[gridW][gridW];
-        for (int gz = 0; gz < gridW; gz++) {
-            for (int gx = 0; gx < gridW; gx++) {
-                int lx = gx * stride;
-                int lz = gz * stride;
-                if (lx < 16 && lz < 16) {
-                    samples[gz][gx] = generator.sample(baseX + lx, baseZ + lz);
-                }
-            }
-        }
-
-        // 第二遍：双线性插值填充
-        for (int lz = 0; lz < 16; lz++) {
-            for (int lx = 0; lx < 16; lx++) {
-                // 在采样网格中的浮点坐标
-                float fx = (float) lx / stride;
-                float fz = (float) lz / stride;
-                int gx0 = (int) fx;
-                int gz0 = (int) fz;
-                float tx = fx - gx0;
-                float tz = fz - gz0;
-                int gx1 = Math.min(gx0 + 1, gridW - 1);
-                int gz1 = Math.min(gz0 + 1, gridW - 1);
-
-                Cell s00 = samples[gz0][gx0];
-                Cell s10 = samples[gz0][gx1];
-                Cell s01 = samples[gz1][gx0];
-                Cell s11 = samples[gz1][gx1];
-                if (s00 == null) s00 = generator.sample(baseX + lx, baseZ + lz);
-
-                // 最近邻取离散值的"锚点"（权重最大的那个）
-                Cell anchor = s00;
-                float w00 = (1 - tx) * (1 - tz), w10 = tx * (1 - tz);
-                float w01 = (1 - tx) * tz, w11 = tx * tz;
-                if (w10 >= w00 && w10 >= w01 && w10 >= w11 && s10 != null) anchor = s10;
-                else if (w01 >= w00 && w01 >= w10 && w01 >= w11 && s01 != null) anchor = s01;
-                else if (w11 >= w00 && w11 >= w10 && w11 >= w01 && s11 != null) anchor = s11;
-
-                cells[lz * 16 + lx] = lerpCell(s00, s10, s01, s11, tx, tz, anchor);
-            }
-        }
-        return cells;
-    }
-
-    /** 双线性插值 Cell：连续值（e/height/temperature/humidity/continent/eLand/riverDistance）插值，
-     *  离散值（terrainType/isRiver/isLake/riverMask/...）取最近邻 anchor。 */
-    private static Cell lerpCell(Cell s00, Cell s10, Cell s01, Cell s11,
-                                  float tx, float tz, Cell anchor) {
-        float w00 = (1 - tx) * (1 - tz), w10 = tx * (1 - tz);
-        float w01 = (1 - tx) * tz, w11 = tx * tz;
-        Cell c = new Cell();
-        // 连续值：双线性
-        c.e = w00 * s00.e + w10 * s10.e + w01 * s01.e + w11 * s11.e;
-        c.height = w00 * s00.height + w10 * s10.height + w01 * s01.height + w11 * s11.height;
-        c.eLand = w00 * s00.eLand + w10 * s10.eLand + w01 * s01.eLand + w11 * s11.eLand;
-        c.eOcean = w00 * s00.eOcean + w10 * s10.eOcean + w01 * s01.eOcean + w11 * s11.eOcean;
-        c.blendCont = w00 * s00.blendCont + w10 * s10.blendCont + w01 * s01.blendCont + w11 * s11.blendCont;
-        c.continent = w00 * s00.continent + w10 * s10.continent + w01 * s01.continent + w11 * s11.continent;
-        c.temperature = w00 * s00.temperature + w10 * s10.temperature + w01 * s01.temperature + w11 * s11.temperature;
-        c.humidity = w00 * s00.humidity + w10 * s10.humidity + w01 * s01.humidity + w11 * s11.humidity;
-        c.continentNoise = c.continent;
-        c.riverDistance = w00 * s00.riverDistance + w10 * s10.riverDistance + w01 * s01.riverDistance + w11 * s11.riverDistance;
-        c.riverNetDist = w00 * s00.riverNetDist + w10 * s10.riverNetDist + w01 * s01.riverNetDist + w11 * s11.riverNetDist;
-        c.riverWetness = w00 * s00.riverWetness + w10 * s10.riverWetness + w01 * s01.riverWetness + w11 * s11.riverWetness;
-        c.shape = w00 * s00.shape + w10 * s10.shape + w01 * s01.shape + w11 * s11.shape;
-        // 离散值：最近邻
-        c.terrainType = anchor.terrainType;
-        c.typeWeights = anchor.typeWeights;
-        c.coastCoord = anchor.coastCoord;
-        c.climate = anchor.climate;
-        c.isRiver = anchor.isRiver;
-        c.isLake = anchor.isLake;
-        c.riverMask = anchor.riverMask;
-        c.lakeMask = anchor.lakeMask;
-        c.riverIsWaterfall = anchor.riverIsWaterfall;
-        c.riverSourceType = anchor.riverSourceType;
-        c.riverFloorY = anchor.riverFloorY;
-        c.riverSurfaceY = anchor.riverSurfaceY;
-        c.erosionMask = anchor.erosionMask;
-        c.isSnow = anchor.isSnow;
-        c.oceanFeat = anchor.oceanFeat;
-        c.landFeat = anchor.landFeat;
-        return c;
-    }
-
-    /** 简单 LRU 淘汰（在 computeIfAbsent 外部调用，避免 ConcurrentHashMap 死锁）。
-     *  淘汰 1/8（而非 1/2）以保留最近生成的大区域 chunk，让 QUARTER→FULL 跨相位共享 chunk。 */
+    /** 简单 LRU 淘汰 */
     private void pruneIfNeeded() {
         if (cache.size() > CACHE_SIZE) {
             var it = cache.keySet().iterator();
             int toRemove = Math.max(1, cache.size() / 8);
             for (int i = 0; i < toRemove && it.hasNext(); i++) {
-                long k = it.next();
+                it.next();
                 it.remove();
-                cacheStrides.remove(k);
             }
         }
     }
@@ -280,7 +128,7 @@ public final class GeoGenesisTerrain {
 
     private static int localCoord(double world) {
         int v = (int) Math.floor(world) & 15;
-        return v < 0 ? v + 16 : v; // 处理负坐标
+        return v < 0 ? v + 16 : v;
     }
 
     private static long pack(int cx, int cz) {
