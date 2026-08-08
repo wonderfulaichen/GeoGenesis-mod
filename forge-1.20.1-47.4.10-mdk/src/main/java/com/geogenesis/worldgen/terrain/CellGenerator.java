@@ -323,6 +323,9 @@ public final class CellGenerator {
         private static final int ERODE_LOW_RES = ERODE_TILE_SIZE / ERODE_SAMPLING_SPACING;
     /** 缓存条目数（256 条目 ≈ 全部出生区域 tiles 常驻，无 LRU 驱逐） */
     private static final int ERODE_TILE_CACHE_SIZE = 256;
+    /** tile 边界 blend 起始列/行（chunk 内部）。16-BLEND_START=10 块 blend 范围（原 4 块太窄，
+     *  独立粒子模拟 delta 差异大时 smoothstep 不够 → 网格感）。 */
+    private static final int BLEND_START = 6;
 
     /** 诊断日志（[ErosionDIAG] 前缀，latest.log 可查） */
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
@@ -835,38 +838,39 @@ public final class CellGenerator {
                 Cell cell = cells[lx * 16 + lz];
                 double delta = (double) tile[offsetZ + lz][offsetX + lx];
 
-                // 跨 tile 边界 delta 收敛（单向渐变）：相邻 tile 的液滴场独立（种子不同）→ 场不同。
-                // chunk 右/下缘 4 块渐变读右/下邻 tile 的 delta（lx=13 全自己 → lx=15 全邻居场），
-                // 而左/上缘用本 tile 自己的 delta（= 左/上邻 tile 的右/下缘已渐变到本场，两侧同场无缝）。
-                // 邻居 delta 覆盖对应区域（其 tile 全尺寸含超区），同源有效。
-                int cr = chunkX - tileCX; // 本 chunk 在 tile 内的序号 (0/1/2)
+                // 2026-08-09 重写：tile 边界 blend（双方向独立+角块双 blend）
+                //   原实现用 else if 导致角块只做右 blend 跳过下 blend；
+                //   blend 范围 4 块太窄（独立粒子模拟的 delta 差异大时 4 块 smoothstep 不够）→ 网格感。
+                //   新实现：right/bottom 独立计算，角块两次 blend 叠加（先右后下，两次 smoothstep
+                //   在角区形成双线性过渡，消除角块不连续）。
+                int worldX = chunkX * 16 + lx;
+                int worldZ = chunkZ * 16 + lz;
+                int cr = chunkX - tileCX;
                 int crz = chunkZ - tileCZ;
-                if (cr == 2 && lx >= 12) {
-                    // 右边缘：渐变读右邻 tile 的 delta（lx=12 全自己 → lx=15 全邻居场，边界列同场无缝）
+
+                // 右边缘 blend：cr==2 且 lx >= BLEND_START 时渐变到右邻 tile
+                if (cr == 2 && lx >= BLEND_START) {
                     ErosionTileResult nr = erosionTileCache.get(tileKey(tileCX + ERODE_TILE_CHUNKS, tileCZ));
                     if (nr != null) {
-                        int worldX = chunkX * 16 + lx;
-                        int worldZ = chunkZ * 16 + lz;
                         int nlx = worldX - nr.originX;
                         int nlz = worldZ - nr.originZ;
                         if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
                             double nd = nr.delta[nlz][nlx];
-                            double b = (lx - 12) / 3.0; // lx=12→0, lx=15→1 ✓
+                            double b = (double)(lx - BLEND_START) / (16 - BLEND_START);
                             double blend = b * b * (3.0 - 2.0 * b);
                             delta = delta * (1.0 - blend) + nd * blend;
                         }
                     }
-                } else if (crz == 2 && lz >= 12) {
-                    // 下边缘：渐变读下邻 tile 的 delta（lz=12 全自己 → lz=15 全邻居场）
+                }
+                // 下边缘 blend：crz==2 且 lz >= BLEND_START 时渐变到下邻 tile（不再 else if）
+                if (crz == 2 && lz >= BLEND_START) {
                     ErosionTileResult nb = erosionTileCache.get(tileKey(tileCX, tileCZ + ERODE_TILE_CHUNKS));
                     if (nb != null) {
-                        int worldX = chunkX * 16 + lx;
-                        int worldZ = chunkZ * 16 + lz;
                         int nlx = worldX - nb.originX;
                         int nlz = worldZ - nb.originZ;
                         if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
                             double nd = nb.delta[nlz][nlx];
-                            double b = (lz - 12) / 3.0; // lz=12→0, lz=15→1 ✓
+                            double b = (double)(lz - BLEND_START) / (16 - BLEND_START);
                             double blend = b * b * (3.0 - 2.0 * b);
                             delta = delta * (1.0 - blend) + nd * blend;
                         }
