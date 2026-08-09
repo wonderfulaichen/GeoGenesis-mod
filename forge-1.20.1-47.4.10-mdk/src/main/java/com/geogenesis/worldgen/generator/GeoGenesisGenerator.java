@@ -136,6 +136,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     ) {
         long t0 = System.nanoTime();
         ensureEngine(worldSeed);
+        // ★ 2026-08-09 优化：出生点周边异步预热（首次 fillFromNoise 触发一次，后台池）
+        terrain.preloadSpawnAsync();
         long t1 = System.nanoTime();
 
         ChunkPos pos = chunk.getPos();

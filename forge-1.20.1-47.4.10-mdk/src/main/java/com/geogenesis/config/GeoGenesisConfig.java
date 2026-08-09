@@ -261,7 +261,7 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue erosionRiverStrength;
     /** SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2] */
     public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;
-    /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 3，范围 [1, 16] */
+    /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16] */
     public final ForgeConfigSpec.IntValue erosionIterations;
     /** SH 场平滑率 lrate：每轮 track 平滑进稳态场的比例（0.1 对齐 SH 原版）。范围 [0.01, 0.5] */
     public final ForgeConfigSpec.DoubleValue erosionLrate;
@@ -650,8 +650,8 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionRiverDisHi", 1.5, 0.5, 200.0);
         erosionMomentumTransfer = builder.comment("SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].")
                 .defineInRange("erosionMomentumTransfer", 1.0, 0.0, 2.0);
-        erosionIterations = builder.comment("SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 3, range [1, 16].")
-                .defineInRange("erosionIterations", 3, 1, 16);
+        erosionIterations = builder.comment("SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 2 (2026-08-09 perf opt: 3->2, drops -33%, revert to 3 if texture too light), range [1, 16].")
+                .defineInRange("erosionIterations", 2, 1, 16);
         erosionLrate = builder.comment("SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].")
                 .defineInRange("erosionLrate", 0.1, 0.01, 0.5);
         erosionRiverStrength = builder.comment("River-particle mode total strength: 0=off (legacy behaviour), 1=strongest (erode x3, deposit x0.2, evaporate x0.1). Default 0.6, range [0, 1].")

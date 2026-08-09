@@ -119,18 +119,45 @@ public final class StreamTracer {
         int gz0 = Math.floorDiv(originZ - 5 * SOURCE_GRID, SOURCE_GRID);
         int gz1 = Math.floorDiv(originZ + N - 1 + 5 * SOURCE_GRID, SOURCE_GRID);
 
+        // ★ 2026-08-09 无伤优化：源头候选预筛并行化——isLocalHigh 只读世界坐标高度函数
+        //   （纯确定性），每格独立 → 并行写入 boolean[]；合并（近距去重）+ traceOne 保持
+        //   主线程串行、循环顺序固定 → 结果与串行逐点一致。
+        int gridW = gx1 - gx0 + 1;
+        int gridH = gz1 - gz0 + 1;
+        int gridCount = gridW * gridH;
+        boolean[] localHigh = new boolean[gridCount];
+        int lhRowsPerTask = Math.max(1, gridH / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);
+        int lhTasks = (gridH + lhRowsPerTask - 1) / lhRowsPerTask;
+        java.util.concurrent.CountDownLatch lhLatch = new java.util.concurrent.CountDownLatch(lhTasks);
+        for (int lt = 0; lt < lhTasks; lt++) {
+            final int lz0 = lt * lhRowsPerTask, lz1 = Math.min(gridH, lz0 + lhRowsPerTask);
+            com.geogenesis.worldgen.terrain.CellGenerator.TILE_SAMPLER.execute(() -> {
+                try {
+                    for (int gz = gz0 + lz0; gz < gz0 + lz1; gz++) {
+                        for (int gx = gx0; gx <= gx1; gx++) {
+                            long gh = hash(gx * 31 + 7, gz * 73 + 13);
+                            int cx = gx * SOURCE_GRID + (int) (((gh >>> 16) & 0xFFFF) / 65536f * SOURCE_GRID * 0.7f);
+                            int cz = gz * SOURCE_GRID + (int) (((gh >>> 32) & 0xFFFF) / 65536f * SOURCE_GRID * 0.7f);
+                            localHigh[(gz - gz0) * gridW + (gx - gx0)] = isLocalHigh(worldHeight, cx, cz);
+                        }
+                    }
+                } finally {
+                    lhLatch.countDown();
+                }
+            });
+        }
+        try { lhLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+
         // 已选源头（世界坐标）——近距合并（2026-08-02：抖动碰撞的源头两两距离可近至 12 块；
         // 合并判定纯世界坐标 + 循环顺序固定 → 跨 tile 一致）
         int[] selX = new int[512], selZ = new int[512];
         int selN = 0;
         for (int gz = gz0; gz <= gz1; gz++) {
             for (int gx = gx0; gx <= gx1; gx++) {
+                if (!localHigh[(gz - gz0) * gridW + (gx - gx0)]) continue;
                 long gh = hash(gx * 31 + 7, gz * 73 + 13);
-                // 格心 = 网格原点 + 确定性抖动（0~0.7×GRID 打散网格对齐伪影；世界坐标 hash → 跨 tile 一致）
                 int cx = gx * SOURCE_GRID + (int) (((gh >>> 16) & 0xFFFF) / 65536f * SOURCE_GRID * 0.7f);
                 int cz = gz * SOURCE_GRID + (int) (((gh >>> 32) & 0xFFFF) / 65536f * SOURCE_GRID * 0.7f);
-                // 局部高点判定：只用世界坐标高度函数（terrainE），不读 tile 数组 → 跨 tile 逐格一致
-                if (!isLocalHigh(worldHeight, cx, cz)) continue;
                 boolean dup = false;
                 for (int i = 0; i < selN; i++) {
                     int dx = cx - selX[i], dz = cz - selZ[i];
