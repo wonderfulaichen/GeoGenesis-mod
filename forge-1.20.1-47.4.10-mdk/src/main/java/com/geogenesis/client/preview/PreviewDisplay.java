@@ -213,7 +213,11 @@ public class PreviewDisplay extends AbstractWidget {
     //   （cells[lx*16+lz]，与 GeoGenesisTerrain.generateChunk 一致）。此前预览层用 Z 主序读取 X 主序数据
     //   → 16 块间距网格。磁盘格式语义变化（DiskChunk 存储约定）→ 旧缓存必须失效。
     //   注意：WIP stash 恢复曾把此值改回 13 导致伪影复现（6c30272）——本值禁止回退到 13。
-    private static final int CACHE_SCHEMA_VERSION = 14;
+    //   2026-08-10 wu 化：侵蚀 tile 网格/坐标语义变更 → 旧磁盘缓存必须失效（15）。
+    //   2026-08-10 骨架抬升衰减（高原平顶假峰修复）：地形产出变化 → 16。
+    //   2026-08-10 骨架梯度 hs 换算（wu 化坡度漂移修复）：HS≠1 产出变化 → 17。
+    //   2026-08-10 液滴 SLOPE_MIN_SKIP/CASCADE_MAXDIFF ×hs（wu 化阈值漂移修复）：HS≠1 产出变化 → 18。
+    private static final int CACHE_SCHEMA_VERSION = 18;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

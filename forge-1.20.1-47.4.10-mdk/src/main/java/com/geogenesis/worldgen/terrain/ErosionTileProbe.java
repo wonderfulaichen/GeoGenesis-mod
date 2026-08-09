@@ -12,6 +12,8 @@ package com.geogenesis.worldgen.terrain;
  *   <li><b>跨边界截面抽样</b> — 沿 tile 边界线的值对比热力图</li>
  * </ol>
  */
+// TODO(2026-08-10 wu 化)：本探针内部复制的 ERODE_TILE_CHUNKS=3 与新 ERODE_TILE_CENTER=48 语义不一致，
+// HS≠1 时 tile 定位漂移（诊断工具，HS=1 仍逐位等价）。
 public final class ErosionTileProbe {
 
     private static final String SEP = "  ";

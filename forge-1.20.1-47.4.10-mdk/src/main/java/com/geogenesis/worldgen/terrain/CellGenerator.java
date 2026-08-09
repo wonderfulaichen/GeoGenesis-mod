@@ -148,15 +148,19 @@ public final class CellGenerator {
         return heightCurve.heightFromE(heightCurve.seaE());
     }
 
+    /** TerrainParams 访问器（门面做块→wu 换算需要）。 */
+    public TerrainParams params() { return params; }
+
     /**
      * 采样单格地形场（不含气候与分类）。供 {@link #sample} 与 {@link #terrainE}/{@link #landE} 复用。
      * 返回已设置 e/eLand/eOcean/blendCont/coastCoord/typeWeights/height/shape 的 Cell。
-     * 水平缩放：所有噪声坐标除以 horizontalScale（HS）。
+     *
+     * <p><b>2026-08-10 wu 化（尺度解耦）</b>：坐标语义 = <b>wu（world unit）</b>，不再感知 MC 块。
+     * 块→wu 换算只在 MC 门面 {@code GeoGenesisTerrain}（/horizontalScale）。噪声频率常量
+     * 数值不变（语义块→wu），HS=1 时与旧实现逐位等价。</p>
      */
     private Cell sampleCore(double wx, double wz) {
-        double hs = params.horizontalScale();
         double sx = wx, sz = wz;
-        if (hs > 0.01 && hs != 1.0) { sx = wx / hs; sz = wz / hs; }
 
         Cell cell = new Cell();
 
@@ -218,14 +222,11 @@ public final class CellGenerator {
 
     /**
      * 采样单格完整数据 — 统一连续场 e(x,z)，叠加气候与分类。
-     * 水平缩放：所有噪声坐标除以 horizontalScale（HS），实现统一 XZ 等比缩放。
+     * 坐标语义 = wu（2026-08-10 wu 化，见 {@link #sampleCore}）。
      */
     public Cell sample(double wx, double wz) {
         Cell cell = sampleCore(wx, wz);
-
-        double hs = params.horizontalScale();
         double sx = wx, sz = wz;
-        if (hs > 0.01 && hs != 1.0) { sx = wx / hs; sz = wz / hs; }
 
         // 8. 气候（增强模型 v2）
         //    温度：纬度基值 + 海拔递减率 + 海洋性修正 + 噪声
@@ -279,11 +280,10 @@ public final class CellGenerator {
     public double terrainE(double wx, double wz) { return sampleCore(wx, wz).e; }
 
     /** 轻量地形 e（跳过气候/分类/height 映射/shape 赋值）。供侵蚀 tile 粗采/flat 用，
-     *  省去温度/湿度噪声 + 分类 switch + heightFromE 样条 ≈ 省 30% 每次采样。 */
+     *  省去温度/湿度噪声 + 分类 switch + heightFromE 样条 ≈ 省 30% 每次采样。
+     *  坐标语义 = wu（2026-08-10 wu 化，见 {@link #sampleCore}）。 */
     public double terrainEQuick(double wx, double wz) {
-        double hs = params.horizontalScale();
         double sx = wx, sz = wz;
-        if (hs > 0.01 && hs != 1.0) { sx = wx / hs; sz = wz / hs; }
 
         // 1. 大陆性 c
         double c = continent.sample(sx, sz);
@@ -326,12 +326,13 @@ public final class CellGenerator {
 
     // ===== 侵蚀 tile 缓存（超分辨率架构：spacing=4 粗采 + 双三次插值升采样，仿 6 月备份 70cd037） =====
 
-    /** 每 tile 覆盖 chunk 数（3×3=9 chunk/tile，如 6 月备份 generateTileWithHydrology） */
-    private static final int ERODE_TILE_CHUNKS = 3;
-    /** 边缘填充块数（侵蚀 brush 上下文 + 接缝消除） */
+    /** 每 tile 中心有效区边长（wu）。2026-08-10 wu 化：原 3×16 块（3 chunk 绑定）→ 48 wu 独立网格，
+     *  chunk 覆盖数由 horizontalScale 决定（HS=1 → 3 chunk，HS=2 → 6 chunk），引擎不再感知块。 */
+    private static final int ERODE_TILE_CENTER = 48;
+    /** 边缘填充（wu，侵蚀 brush 上下文 + 接缝消除；数值保持 40 不变） */
     private static final int ERODE_TILE_BORDER = 40;
-    /** tile 总边长：3×16 + 40×2 = 128（与 6 月备份的 generateTile 一致） */
-    private static final int ERODE_TILE_SIZE = ERODE_TILE_CHUNKS * 16 + ERODE_TILE_BORDER * 2;
+    /** tile 总边长（wu）：48 + 40×2 = 128（数值与 6 月备份一致） */
+    private static final int ERODE_TILE_SIZE = ERODE_TILE_CENTER + ERODE_TILE_BORDER * 2;
         /** 粗采间距（spacing=4：128/4=32×32=1024 次 terrainE） */
         private static final int ERODE_SAMPLING_SPACING = 4;
         /** 骨架层（脊-谷条纹）采样间距：比主 bicubic 流程更密(2)，恢复被低分辨率稀释的坡度 → combiMask 正常触发 */
@@ -361,6 +362,7 @@ public final class CellGenerator {
         float[][] carveDepth = new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE]; // V 形河谷累计雕刻深度（水面计算用）
         float[][] distance = new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE]; // 到河道中心线距离场（TF-style 剖面用）
         float maxDischarge; // 全 tile 最大流量（雕刻深度归一化用）
+        int originX, originZ; // tile 原点（wu 坐标；extractFromTile 插值定位用）
     }
 
     /**
@@ -398,9 +400,13 @@ public final class CellGenerator {
      * <p>StreamTracer 自包含：界内读本 tile postErosion，出界统一 terrainEQuick（纯世界坐标函数），
      * 雕刻全在 tile 内 → L1 无邻居缓存依赖 → 任意生成时序下结果一致，无断裂。</p>
      */
-    public float[][] getErosionTile(int chunkX, int chunkZ) {
-        int tileCX = Math.floorDiv(chunkX, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
-        int tileCZ = Math.floorDiv(chunkZ, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
+    /**
+     * 取侵蚀 tile（wu 坐标语义，2026-08-10 wu 化）。入参为 wu 坐标（MC 门面已 ÷horizontalScale）。
+     * tile 网格 = 48 wu 中心区对齐（floorDiv → 与 HS 无关的固定 wu 网格，HS=1 时与旧 3-chunk 网格一致）。
+     */
+    public float[][] getErosionTile(int wuX, int wuZ) {
+        int tileCX = Math.floorDiv(wuX, ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int tileCZ = Math.floorDiv(wuZ, ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
 
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         // 2026-08-06 修复：侵蚀 tile 缓存随配置失效——原只在 seed() 时 clear()，配置改动
@@ -429,14 +435,18 @@ public final class CellGenerator {
         for (int dz : dirs) {
             for (int dx : dirs) {
                 if (dx == 0 && dz == 0) continue; // 自己 → 下方同步计算
-                int ncx = tileCX + dx * ERODE_TILE_CHUNKS;
-                int ncz = tileCZ + dz * ERODE_TILE_CHUNKS;
+                int ncx = tileCX + dx * ERODE_TILE_CENTER;
+                int ncz = tileCZ + dz * ERODE_TILE_CENTER;
                 long nk = tileKey(ncx, ncz);
                 if (erosionTileCache.containsKey(nk)) continue;
                 // fire-and-forget：不 await，后台补全（putIfAbsent 去重，结果确定性相同）
                 TILE_SAMPLER.execute(() -> {
-                    ErosionTileResult nr = generateErosionTile(ncx, ncz);
-                    erosionTileCache.putIfAbsent(nk, nr);
+                    try {
+                        ErosionTileResult nr = generateErosionTile(ncx, ncz);
+                        erosionTileCache.putIfAbsent(nk, nr);
+                    } catch (CancellationException ce) {
+                        Thread.currentThread().interrupt(); // 池线程被中断 → 静默放弃
+                    }
                 });
             }
         }
@@ -494,7 +504,8 @@ public final class CellGenerator {
                 } finally { dLatch.countDown(); }
             });
         }
-        try { dLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try { dLatch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
+        rd.originX = res.originX; rd.originZ = res.originZ; // wu 原点（extractFromTile 插值定位）
         riverTileCache.put(tileKey(res.tileCX, res.tileCZ), rd);
     }
 
@@ -517,8 +528,9 @@ public final class CellGenerator {
         long tBaseEnd = System.nanoTime();  // PERF：base 采样结束
         long tStage3 = System.nanoTime();   // PERF：液滴阶段开始标记（防未进入 if 分支）
         long tStage4 = System.nanoTime();   // PERF：液滴阶段结束标记（防未进入 if 分支）
-        int originX = tileCX * 16 - ERODE_TILE_BORDER;
-        int originZ = tileCZ * 16 - ERODE_TILE_BORDER;
+        // tileCX 已是 48 对齐 wu 坐标（wu 化后不再 ×16 换算）
+        int originX = tileCX - ERODE_TILE_BORDER;
+        int originZ = tileCZ - ERODE_TILE_BORDER;
 
         // 0) base 提前计算（2026-08-09 无伤优化：原第 3 步移前，粗采/骨架/骨架 flat 复用）
         //    保存 terrainE 原貌（用于算 delta）：同源保证相邻 tile delta 一致。
@@ -543,7 +555,7 @@ public final class CellGenerator {
                 }
             });
         }
-        try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
         tBaseEnd = System.nanoTime();   // PERF：base 采样结束
 
         // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
@@ -581,7 +593,7 @@ public final class CellGenerator {
                 }
             });
         }
-        try { lrLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try { lrLatch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
 
         // 备份未平滑副本 B（粗侵蚀骨架作用于真实地形，不走 step1.5 平滑）
         float[][] rawLowRes = new float[extendedLowRes][extendedLowRes];
@@ -617,7 +629,9 @@ public final class CellGenerator {
         //       纯局部算子（每点独立 evaluate，世界坐标对齐）→ 跨 tile 无缝；陆地 mask 保护海洋深度一致性。
         float[][] coarseDeltaLR = null; // 低分辨率骨架网格（flat 全源双线性采样用）
         int skelSpacing = RIDGE_SKELETON_SPACING;
-        int skelExtra = 4;
+        // 2026-08-10: 4→8——骨架 evaluateCell 新增局部窗口抬升衰减（LIFT_WINDOW_R=8 格），
+        // 扩展区必须容纳窗口使 flat 采样区内所有点的窗口读取落在已填充网格内（clamp 兜底）。
+        int skelExtra = 8;
         int skelCover = ERODE_TILE_SIZE + 2 * (ERODE_TILE_BORDER + skelExtra * skelSpacing);
         int skelExtLR = (int) Math.ceil((double) skelCover / skelSpacing) + 1;
         int skelStartX = Math.floorDiv(originX - skelExtra * skelSpacing, skelSpacing) * skelSpacing;
@@ -675,7 +689,7 @@ public final class CellGenerator {
                         } finally { cdLatch.countDown(); }
                     });
                 }
-                try { cdLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                try { cdLatch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
                 coarseDeltaLR = deltaLR;
             }
         }
@@ -731,7 +745,7 @@ public final class CellGenerator {
                     }
                 });
             }
-            try { flatLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            try { flatLatch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
             float[] flatPre = flat.clone();
 
             // 2026-08-02 恢复 discharge 导出：液滴路径重叠计数 = 粒子汇聚数量
@@ -907,7 +921,7 @@ public final class CellGenerator {
                 }
             });
         }
-        try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
     }
 
     // ===== Catmull-Rom 双三次插值（全局对齐版，从 6 月备份 70cd037 GeoGenesisGenerator.java 移植） =====
@@ -985,7 +999,7 @@ public final class CellGenerator {
                 }
             });
         }
-        try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
         return out;
     }
 
@@ -1008,95 +1022,34 @@ public final class CellGenerator {
      * ErosionEngine 通过 spawn 门控在浅海大陆架和近岸水下自然侵蚀，
      * 海底地形也会被沉积/剥蚀。</p>
      */
-    public void extractFromTile(float[][] tile, Cell[] cells, int chunkX, int chunkZ) {
-        int tileCX = Math.floorDiv(chunkX, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
-        int tileCZ = Math.floorDiv(chunkZ, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
-        int offsetX = (chunkX - tileCX) * 16 + ERODE_TILE_BORDER;
-        int offsetZ = (chunkZ - tileCZ) * 16 + ERODE_TILE_BORDER;
+    /**
+     * 从侵蚀 tile 提取并填充 16×16 chunk cell（wu 插值版，2026-08-10）。
+     *
+     * <p><b>wu 化核心</b>：块坐标 (bx,bz) → wu (bx/hs, bz/hs) → 落在 tile 网格（48wu 对齐）格点间
+     * → 双线性插值读 delta/河数据。HS=1 时 wu=块整数 → 插值退化为直接索引，与旧实现逐位等价。</p>
+     *
+     * <p>仅把侵蚀增量（侵蚀后 − 侵蚀前）叠加到最终 e，不重写 eLand。海洋侧不跳过侵蚀
+     * （插值场含海洋真实深度，ErosionEngine spawn 门控自行处理浅海/近岸）。</p>
+     */
+    public void extractFromTile(Cell[] cells, int chunkX, int chunkZ) {
+        double hs = params.horizontalScale();
+        double invHs = (hs > 0.01 && hs != 1.0) ? 1.0 / hs : 1.0;
 
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
-                double delta = (double) tile[offsetZ + lz][offsetX + lx];
+                int bx = chunkX * 16 + lx, bz = chunkZ * 16 + lz;
+                double wuX = bx * invHs, wuZ = bz * invHs;
+                applyTileDelta(cell, wuX, wuZ); // 含侵蚀增量 + height 重算 + 陆地重分类
 
-                // 2026-08-09 重写：tile 边界 blend（双方向独立+角块双 blend）
-                //   原实现用 else if 导致角块只做右 blend 跳过下 blend；
-                //   blend 范围 4 块太窄（独立粒子模拟的 delta 差异大时 4 块 smoothstep 不够）→ 网格感。
-                //   新实现：right/bottom 独立计算，角块两次 blend 叠加（先右后下，两次 smoothstep
-                //   在角区形成双线性过渡，消除角块不连续）。
-                int worldX = chunkX * 16 + lx;
-                int worldZ = chunkZ * 16 + lz;
-                int cr = chunkX - tileCX;
-                int crz = chunkZ - tileCZ;
-
-                // 右边缘 blend：cr==2 且 lx >= BLEND_START 时渐变到右邻 tile
-                // ★ 2026-08-09 懒生成：邻居未缓存（异步补全未完成）时同步生成该邻居
-                //   （只算需要的 1-2 个，非 L3 的 8 个）→ 无同步等待链，冷启动大幅加速。
-                //   并发安全：get + putIfAbsent（铁律#6），重复生成确定性相同，浪费可接受。
-                //   2026-08-09 修复：generateErosionTile 现含 L1 → 懒生成 delta 也是终态
-                //   （侵蚀+雕刻），与邻居中心 chunk 读到的一致 → blend 无断裂。
-                if (cr == 2 && lx >= BLEND_START) {
-                    long nkey = tileKey(tileCX + ERODE_TILE_CHUNKS, tileCZ);
-                    ErosionTileResult nr = erosionTileCache.get(nkey);
-                    if (nr == null) {
-                        nr = generateErosionTile(tileCX + ERODE_TILE_CHUNKS, tileCZ);
-                        erosionTileCache.putIfAbsent(nkey, nr);
-                    }
-                    if (nr != null) {
-                        int nlx = worldX - nr.originX;
-                        int nlz = worldZ - nr.originZ;
-                        if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
-                            double nd = nr.delta[nlz][nlx];
-                            double b = (double)(lx - BLEND_START) / (16 - BLEND_START);
-                            double blend = b * b * (3.0 - 2.0 * b);
-                            delta = delta * (1.0 - blend) + nd * blend;
-                        }
-                    }
-                }
-                // 下边缘 blend：crz==2 且 lz >= BLEND_START 时渐变到下邻 tile（不再 else if）
-                if (crz == 2 && lz >= BLEND_START) {
-                    long nkey = tileKey(tileCX, tileCZ + ERODE_TILE_CHUNKS);
-                    ErosionTileResult nb = erosionTileCache.get(nkey);
-                    if (nb == null) {
-                        nb = generateErosionTile(tileCX, tileCZ + ERODE_TILE_CHUNKS);
-                        erosionTileCache.putIfAbsent(nkey, nb);
-                    }
-                    if (nb != null) {
-                        int nlx = worldX - nb.originX;
-                        int nlz = worldZ - nb.originZ;
-                        if (nlx >= 0 && nlx < ERODE_TILE_SIZE && nlz >= 0 && nlz < ERODE_TILE_SIZE) {
-                            double nd = nb.delta[nlz][nlx];
-                            double b = (double)(lz - BLEND_START) / (16 - BLEND_START);
-                            double blend = b * b * (3.0 - 2.0 * b);
-                            delta = delta * (1.0 - blend) + nd * blend;
-                        }
-                    }
-                }
-
-                // 对全地形施加侵蚀增量（**含海洋**）。
-                // 原先用 `delta * cell.blendCont` 保护海洋侧（blendCont=0 → delta=0），
-                // 但这导致**水下完全没有侵蚀**——河谷/水下峡谷被擦除，河口三角洲也异常平整。
-                // 现已废除：ErosionEngine 自身已有 NaN/Inf 守卫（spd sqrt 处 + 末尾 clampF(-1,1)），
-                // 不会再产生柱子伪影。delta 直接施加给所有地形（含海洋/陆架/深海）。
-                // NaN/Inf 守卫：避免 fillTerrainColumn 因 (int)Math.floor(NaN)→0 把全列铺到世界底。
-                double newE = cell.e + delta;
-                if (Double.isNaN(newE) || Double.isInfinite(newE)) newE = cell.e;
-                double e = softCapLandE(newE);
-                cell.e = e;
-                cell.height = heightCurve.heightFromE(e);
-
-                // 重分类：仅陆地侧（e>=0），避免海洋的 12 类细分被破坏
-                if (e >= 0) {
-                    TerrainClass ct = TypeLandShape.dominantFromWeights(cell.typeWeights);
-                    cell.terrainType = classifyTerrain(e, cell.eLand, ct, cell.temperature,
-                        cell.humidity, cell.typeWeights, cell.coastCoord);
-                }
-
-                // 河流数据：从 river tile cache 读（河流关闭时重置为默认）
+                // 河流数据：从 river tile cache 读（wu 插值版；河流关闭时重置为默认）
                 if (riversEnabled) {
-                    long tileKey = ((long) tileCX << 32) | (tileCZ & 0xFFFFFFFFL);
-                    RiverTileData rd = riverTileCache.get(tileKey);
-                    if (rd != null && rd.riverMask[offsetZ + lz][offsetX + lx]) {
+                    int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+                    int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+                    RiverTileData rd = riverTileCache.get(tileKey(tileCX, tileCZ));
+                    // riverMask 布尔 → 四邻任一为河则该格近河（HS=1 退化为直接索引）
+                    boolean river = rd != null && sampleTileMask(rd.riverMask, rd.originX, rd.originZ, wuX, wuZ);
+                    if (river) {
                         cell.isRiver = true;
                         cell.riverWetness = 1.0;
                         cell.riverDistance = 0.0;
@@ -1107,10 +1060,10 @@ public final class CellGenerator {
                         // 河道中心格 cell.height 是侵蚀后槽底（StreamTracer 已在侵蚀后场追踪）。
                         cell.riverMask = true;
                         cell.riverFloorY = cell.height - 0.5;
-                        float carve = rd.carveDepth[offsetZ + lz][offsetX + lx];
+                        float carve = sampleTileField(rd.carveDepth, rd.originX, rd.originZ, wuX, wuZ);
                         double surfE = Math.min(1.0, cell.e + carve); // 雕前 e ≈ 原地面
                         cell.riverSurfaceY = Math.max(seaLevel(), heightCurve.heightFromE(surfE) + 0.5);
-                        cell.riverNetDischarge = rd.discharge[offsetZ + lz][offsetX + lx];
+                        cell.riverNetDischarge = sampleTileField(rd.discharge, rd.originX, rd.originZ, wuX, wuZ);
                     } else {
                         cell.isRiver = false;
                         cell.riverMask = false;
@@ -1132,6 +1085,123 @@ public final class CellGenerator {
             }
         }
 
+    }
+
+    /**
+     * 对 Cell 施加 wu 坐标处的侵蚀增量（含 tile 边界 blend），并重算 height/重分类。
+     * extractFromTile 与 sampleWu 共用的公共逻辑。
+     */
+    private void applyTileDelta(Cell cell, double wuX, double wuZ) {
+        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
+        if (res == null) return; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
+        double delta = sampleTileField(res.delta, res.originX, res.originZ, wuX, wuZ);
+
+        // tile 边界 blend（双方向独立+角块双 blend）：距中心区右/下缘 ≤10 wu 时渐变到邻 tile。
+        // HS=1 时与旧判定（cr==2 && lx>=BLEND_START ⇔ 距右缘 ≤16-BLEND_START=10 块）逐位等价；
+        // 懒生成邻居 + putIfAbsent 语义保留。
+        double rightEdge = tileCX + (double) ERODE_TILE_CENTER;
+        double bottomEdge = tileCZ + (double) ERODE_TILE_CENTER;
+        // blend b=0→当前 tile，b=1→邻居 tile；距边缘越近 b 越大。
+        if (rightEdge - wuX <= (16 - BLEND_START)) {
+            ErosionTileResult nr = getOrGenTile(tileCX + ERODE_TILE_CENTER, tileCZ);
+            double nd = sampleTileField(nr.delta, nr.originX, nr.originZ, wuX, wuZ);
+            double b = 1.0 - (rightEdge - wuX) / (16 - BLEND_START);
+            double blend = b * b * (3.0 - 2.0 * b);
+            delta = delta * (1.0 - blend) + nd * blend;
+        }
+        if (bottomEdge - wuZ <= (16 - BLEND_START)) {
+            ErosionTileResult nb = getOrGenTile(tileCX, tileCZ + ERODE_TILE_CENTER);
+            double nd = sampleTileField(nb.delta, nb.originX, nb.originZ, wuX, wuZ);
+            double b = 1.0 - (bottomEdge - wuZ) / (16 - BLEND_START);
+            double blend = b * b * (3.0 - 2.0 * b);
+            delta = delta * (1.0 - blend) + nd * blend;
+        }
+
+        // 对全地形施加侵蚀增量（**含海洋**）。
+        // 原先用 `delta * cell.blendCont` 保护海洋侧（blendCont=0 → delta=0），
+        // 但这导致**水下完全没有侵蚀**——河谷/水下峡谷被擦除，河口三角洲也异常平整。
+        // 现已废除：ErosionEngine 自身已有 NaN/Inf 守卫（spd sqrt 处 + 末尾 clampF(-1,1)），
+        // 不会再产生柱子伪影。delta 直接施加给所有地形（含海洋/陆架/深海）。
+        // NaN/Inf 守卫：避免 fillTerrainColumn 因 (int)Math.floor(NaN)→0 把全列铺到世界底。
+        double newE = cell.e + delta;
+        if (Double.isNaN(newE) || Double.isInfinite(newE)) newE = cell.e;
+        double e = softCapLandE(newE);
+        cell.e = e;
+        cell.height = heightCurve.heightFromE(e);
+
+        // 重分类：仅陆地侧（e>=0），避免海洋的 12 类细分被破坏
+        if (e >= 0) {
+            TerrainClass ct = TypeLandShape.dominantFromWeights(cell.typeWeights);
+            cell.terrainType = classifyTerrain(e, cell.eLand, ct, cell.temperature,
+                cell.humidity, cell.typeWeights, cell.coastCoord);
+        }
+    }
+
+    /**
+     * wu 语义完整采样（含侵蚀 tile delta 叠加；SpikeLocateProbe 诊断用）。
+     * 基础 sample + {@link #applyTileDelta}，与 extractFromTile 同源。
+     */
+    public Cell sampleWu(double wuX, double wuZ) {
+        Cell cell = sample(wuX, wuZ);
+        applyTileDelta(cell, wuX, wuZ);
+        return cell;
+    }
+
+    /**
+     * 取 tile 结果（缓存命中优先，缺失则同步生成——blend 懒邻居语义保留，并发安全 putIfAbsent）。
+     *
+     * <p><b>2026-08-10 中断安全（v2，修正过严缓存）</b>：预览拖动 cancelAll → Worker 线程中断 →
+     * generateErosionTile 的 latch.await 抛 CancellationException（绝不"恢复标志后继续用未完成数据"）
+     * → 此处返回 null，半成品不入缓存（永久污染 → 方块伪影）。
+     * <b>但成功返回的 tile 无条件入缓存</b>——生成结果确定性完整，即使线程随后被 cancel(true)
+     * 置了中断位也应缓存（否则拖动取消 → 已完成 tile 反复重算 → 面板卡顿）。
+     * 注意：InterruptedException 抛出时中断位已被 JVM 清除，无需（也禁止）重新 interrupt()——
+     * 重新置位会让后续任务的 isInterrupted() 检查误判，且不参与取消语义（取消判据 = canceled 标志）。</p>
+     */
+    private ErosionTileResult getOrGenTile(int tileCX, int tileCZ) {
+        long k = tileKey(tileCX, tileCZ);
+        ErosionTileResult r = erosionTileCache.get(k);
+        if (r == null) {
+            try {
+                r = generateErosionTile(tileCX, tileCZ);
+            } catch (CancellationException e) {
+                return null; // 半成品（中断中止）不入缓存；InterruptedException 抛出时中断位已被清除
+            }
+            erosionTileCache.putIfAbsent(k, r); // 成功 = 完整 = 无条件缓存
+        }
+        return r;
+    }
+
+    /**
+     * 从 tile 网格按 wu 坐标双线性插值读字段。HS=1 时 wu 为整数 → 直接索引（逐位等价旧实现）。
+     * 越界返回 0（border 外无数据，delta=0 语义）。
+     */
+    private static float sampleTileField(float[][] field, int originX, int originZ, double wuX, double wuZ) {
+        double lx = wuX - originX, lz = wuZ - originZ;
+        int ix = (int) Math.floor(lx), iz = (int) Math.floor(lz);
+        if (ix < 0 || ix >= ERODE_TILE_SIZE - 1 || iz < 0 || iz >= ERODE_TILE_SIZE - 1) {
+            if (ix >= 0 && ix < ERODE_TILE_SIZE && iz >= 0 && iz < ERODE_TILE_SIZE) return field[iz][ix];
+            return 0f;
+        }
+        float fx = (float) (lx - ix), fz = (float) (lz - iz);
+        float v00 = field[iz][ix], v10 = field[iz][ix + 1];
+        float v01 = field[iz + 1][ix], v11 = field[iz + 1][ix + 1];
+        float top = v00 + (v10 - v00) * fx;
+        float bot = v01 + (v11 - v01) * fx;
+        return top + (bot - top) * fz;
+    }
+
+    /** 布尔 mask 插值：四邻任一 true → true（HS=1 退化为直接索引）。 */
+    private static boolean sampleTileMask(boolean[][] mask, int originX, int originZ, double wuX, double wuZ) {
+        double lx = wuX - originX, lz = wuZ - originZ;
+        int ix = (int) Math.floor(lx), iz = (int) Math.floor(lz);
+        if (ix >= 0 && ix < ERODE_TILE_SIZE && iz >= 0 && iz < ERODE_TILE_SIZE && mask[iz][ix]) return true;
+        if (ix >= 0 && ix < ERODE_TILE_SIZE - 1 && iz >= 0 && iz < ERODE_TILE_SIZE && mask[iz][ix + 1]) return true;
+        if (ix >= 0 && ix < ERODE_TILE_SIZE && iz >= 0 && iz < ERODE_TILE_SIZE - 1 && mask[iz + 1][ix]) return true;
+        if (ix >= 0 && ix < ERODE_TILE_SIZE - 1 && iz >= 0 && iz < ERODE_TILE_SIZE - 1 && mask[iz + 1][ix + 1]) return true;
+        return false;
     }
 
     /**

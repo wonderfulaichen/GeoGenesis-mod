@@ -22,8 +22,8 @@ public final class SlopeDistributionProbe {
 
     public static void main(String[] args) {
         long seed = (args.length > 0) ? Long.parseLong(args[0]) : 12345L;
-        // args[1] = 等效 horizontalScale（整体倍频变宽 A/B，2026-08-02）。
-        // 采样坐标 ÷hs（内部 sample 再 ÷1.0）≡ horizontalScale=hs 的世界；物理间距仍 STEP。
+        // args[1] = 等效 horizontalScale（A/B）。2026-08-10 wu 化：引擎坐标=wu，外部等价缩放
+        // 改为 args[1]>1 时采样坐标 ÷hs（模拟放大世界），与 horizontalScale 语义解耦。
         double hs = (args.length > 1) ? Double.parseDouble(args[1]) : 1.0;
         TerrainParams p = TerrainParams.defaults();
         CellGenerator gen = new CellGenerator(p, -64, 320);

@@ -576,7 +576,7 @@ public final class GeoGenesisConfig {
         builder.pop();
 
         builder.push("Scale");
-        horizontalScale = builder.comment("Horizontal scale (0.5-8.0). All noise coordinates divided by this = uniform XZ scaling of all terrain features. Default 2.0 (2026-08-02: terrain was too steep H/W, overall frequency widening x2 restores normal slopes).")
+        horizontalScale = builder.comment("Horizontal scale (0.5-8.0). Block->wu mapping (DEM resample concept): MC blocks divided by this = engine world-units. All terrain features (macro noise + erosion brushes + river carving + source grid) scale uniformly. Default 2.0 (2026-08-02: terrain was too steep H/W, overall frequency widening x2 restores normal slopes; 2026-08-10: wu-ized - engine never knows blocks, mapping happens at GeoGenesisTerrain facade only).")
             .defineInRange("horizontalScale", 2.0, 0.5, 8.0);
         verticalScale = builder.comment("Vertical scale multiplier (1-8). Applied to e->Y height mapping. 1=default, 2=twice as tall.")
             .defineInRange("verticalScale", 1.0, 1.0, 8.0);

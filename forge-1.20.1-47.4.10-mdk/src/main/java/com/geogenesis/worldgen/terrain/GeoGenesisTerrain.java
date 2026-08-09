@@ -41,7 +41,7 @@ public final class GeoGenesisTerrain {
     public HeightCurve heightCurve() { return generator.heightCurve(); }
 
     /**
-     * 采样世界高度。
+     * 采样世界高度（入参 = MC 块坐标，内部 ÷horizontalScale 转 wu）。
      */
     public double sampleHeight(double wx, double wz) {
         Cell cell = sampleCell(wx, wz);
@@ -49,11 +49,10 @@ public final class GeoGenesisTerrain {
     }
 
     /**
-     * 采样完整 Cell 数据（带缓存）。
+     * 采样完整 Cell 数据（带缓存）。入参 = MC 块坐标 → wu 换算由 {@link #toWu} 完成。
      */
     public Cell sampleCell(double wx, double wz) {
         int cx = chunkCoord(wx), cz = chunkCoord(wz);
-        long key = pack(cx, cz);
         Cell[] cells = getChunkCells(cx, cz);
         int lx = localCoord(wx), lz = localCoord(wz);
         return cells[lx * 16 + lz];
@@ -64,9 +63,10 @@ public final class GeoGenesisTerrain {
      * 不触发 getChunkCells/侵蚀 tile。BiomeSource 群系分类只用 terrainType/climate/e（均在
      * sample() 内设置）→ 出生点搜索/BIOMES stage 零 tile 生成（世界创建 9 分钟 → 秒级）。
      * 地形高度仍由 fillFromNoise 走完整管线（sampleCell），不受影响。
+     * 入参 = MC 块坐标 → wu 换算。
      */
     public Cell sampleCellLight(double wx, double wz) {
-        return generator.sample(wx, wz);
+        return generator.sample(toWu(wx), toWu(wz));
     }
 
     /**
@@ -132,16 +132,22 @@ public final class GeoGenesisTerrain {
         int baseZ = cz << CHUNK_SHIFT;
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
+                // 2026-08-10 wu 化：块坐标 → wu（÷horizontalScale）交给引擎
                 cells[lx * 16 + lz] = generator.sample(
-                    baseX + lx, baseZ + lz);
+                    toWu(baseX + lx), toWu(baseZ + lz));
             }
         }
 
-        // 水文 + 侵蚀 tile 管线
-        float[][] tile = generator.getErosionTile(cx, cz);
-        generator.extractFromTile(tile, cells, cx, cz);
+        // 水文 + 侵蚀 tile 管线（wu 坐标定位 tile；extractFromTile 内部按块→wu 插值读取）
+        generator.extractFromTile(cells, cx, cz);
 
         return cells;
+    }
+
+    /** 块坐标 → wu（水平映射层，对齐 NovoAtlas horizontalScale 语义；HS=1 恒等）。 */
+    private double toWu(double block) {
+        double hs = generator.params().horizontalScale();
+        return (hs > 0.01 && hs != 1.0) ? block / hs : block;
     }
 
     /** 简单 LRU 淘汰 */
