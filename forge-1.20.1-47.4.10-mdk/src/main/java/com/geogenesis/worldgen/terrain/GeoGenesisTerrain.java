@@ -1,7 +1,11 @@
 package com.geogenesis.worldgen.terrain;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 地形引擎对外接口：带缓存的 Cell 网格采样。
@@ -11,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class GeoGenesisTerrain {
 
+    private static final Logger LOGGER = LogManager.getLogger("geogenesis");
     private static final int CACHE_SIZE = 4096;
     private static final int CHUNK_SHIFT = 4; // 16 blocks per chunk
 
@@ -86,6 +91,25 @@ public final class GeoGenesisTerrain {
                 getChunkCells(centerCX + dx, centerCZ + dz);
             }
         }
+    }
+
+    private final AtomicBoolean preloadSpawnScheduled = new AtomicBoolean(false);
+
+    /**
+     * ★ 2026-08-09 优化：出生点周边异步预热（光追"先投浅路径"类比——把可能马上要用的
+     *   tiles 提前在后台算好，玩家进入时缓存命中，冷启动观感丝滑）。
+     *   只执行一次（AtomicBoolean），提交到 TILE_SAMPLER 后台池，不阻塞服务器线程。
+     *   围绕 (0,0) 半径 3 → 7×7=49 chunk，覆盖 3×3 tiles 全量 + 1 圈边（含懒生成热点）。
+     */
+    public void preloadSpawnAsync() {
+        if (!preloadSpawnScheduled.compareAndSet(false, true)) return;
+        CellGenerator.TILE_SAMPLER.execute(() -> {
+            try {
+                preloadAround(0, 0, 3);
+            } catch (Exception e) {
+                LOGGER.warn("spawn preload failed", e);
+            }
+        });
     }
 
     /** 旧 API 兼容：按 block 网格返回 Cell 二维数组。支持中断。 */

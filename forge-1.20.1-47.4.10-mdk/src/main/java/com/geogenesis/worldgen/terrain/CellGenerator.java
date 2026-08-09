@@ -66,8 +66,9 @@ public final class CellGenerator {
     //   原生内存 mmap 失败崩溃（hs_err_pid48068: "Native memory allocation (mmap) failed"）。
     //   有界池 + CallerRunsPolicy：队满时提交者自己跑（等价串行，天然反压，绝不排队饿死），
     //   线程数硬顶 16 → 内存可控。
-    private static final int TILE_PARALLELISM = 4;
-    private static final ExecutorService TILE_SAMPLER = new ThreadPoolExecutor(
+    // ★ 2026-08-09 优化：4→8（20 核机器，冷启动 tile 排队吞吐 ×1.5-2；daemon 池不阻塞主线程）
+    public static final int TILE_PARALLELISM = 8;
+    public static final ExecutorService TILE_SAMPLER = new ThreadPoolExecutor(
         TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(64),
         r -> { Thread t = new Thread(r, "GeoGenesis-TileSampler"); t.setDaemon(true); return t; },
@@ -439,15 +440,12 @@ public final class CellGenerator {
                 });
             }
         }
-        // 本 tile：同步生成（终态 delta = 侵蚀+雕刻，一次写入永不再变）。
-        // 双重计算安全：get → null 时才生成，putIfAbsent 去重，重复生成确定性相同。
+        // 本 tile：computeIfAbsent 原子生成（终态 delta = 侵蚀+雕刻，一次写入永不再变）。
+        // ★ 2026-08-09 优化：原 get→putIfAbsent 非原子，两线程并发时重复生成（日志实锤
+        //   (-6,6) 700ms 级两次）；computeIfAbsent 让后到线程阻塞等待第一个完成 → 零重复。
+        //   映射函数只读写局部对象 + riverTileCache（不同 map），无同 map 重入 → 安全。
         long key = tileKey(tileCX, tileCZ);
-        ErosionTileResult res = erosionTileCache.get(key);
-        if (res == null) {
-            ErosionTileResult nr = generateErosionTile(tileCX, tileCZ);
-            res = erosionTileCache.putIfAbsent(key, nr);
-            if (res == null) res = nr;
-        }
+        ErosionTileResult res = erosionTileCache.computeIfAbsent(key, k -> generateErosionTile(tileCX, tileCZ));
         return res.delta;
     }
 
@@ -482,9 +480,21 @@ public final class CellGenerator {
         float[][] post = res.postErosion;
         for (int z = 0; z < N; z++) System.arraycopy(post[z], 0, carved[z], 0, N);
         carveRiverValleys(carved, N, rd);
-        for (int z = 0; z < N; z++)
-            for (int x = 0; x < N; x++)
-                res.delta[z][x] = carved[z][x] - res.base[z][x];
+        // ★ 2026-08-09 无伤优化：delta 计算按行并行化（每格独立 → 输出逐点一致）
+        int dRowsPerTask = Math.max(1, N / TILE_PARALLELISM);
+        int dTasks = (N + dRowsPerTask - 1) / dRowsPerTask;
+        CountDownLatch dLatch = new CountDownLatch(dTasks);
+        for (int dt = 0; dt < dTasks; dt++) {
+            final int dz0 = dt * dRowsPerTask, dz1 = Math.min(N, dz0 + dRowsPerTask);
+            TILE_SAMPLER.execute(() -> {
+                try {
+                    for (int z = dz0; z < dz1; z++)
+                        for (int x = 0; x < N; x++)
+                            res.delta[z][x] = carved[z][x] - res.base[z][x];
+                } finally { dLatch.countDown(); }
+            });
+        }
+        try { dLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         riverTileCache.put(tileKey(res.tileCX, res.tileCZ), rd);
     }
 
@@ -504,6 +514,7 @@ public final class CellGenerator {
             : new RidgeValleyErosion.RidgeConfig();
         boolean ridgeOn = rcfg.enabled;
 
+        long tBaseEnd = System.nanoTime();  // PERF：base 采样结束
         long tStage3 = System.nanoTime();   // PERF：液滴阶段开始标记（防未进入 if 分支）
         long tStage4 = System.nanoTime();   // PERF：液滴阶段结束标记（防未进入 if 分支）
         int originX = tileCX * 16 - ERODE_TILE_BORDER;
@@ -533,6 +544,7 @@ public final class CellGenerator {
             });
         }
         try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        tBaseEnd = System.nanoTime();   // PERF：base 采样结束
 
         // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
         int spacing = ERODE_SAMPLING_SPACING;
@@ -542,19 +554,34 @@ public final class CellGenerator {
         int alignedStartX = Math.floorDiv(originX, spacing) * spacing - gridExtra * spacing;
         int alignedStartZ = Math.floorDiv(originZ, spacing) * spacing - gridExtra * spacing;
 
+        // ★ 2026-08-09 优化：低分采样并行化（每行独立只读 base/noise，输出与串行逐点一致）
         float[][] lowResBuf = new float[extendedLowRes][extendedLowRes];
-        for (int tz = 0; tz < extendedLowRes; tz++) {
-            for (int tx = 0; tx < extendedLowRes; tx++) {
-                int wx = alignedStartX + tx * spacing;
-                int wz = alignedStartZ + tz * spacing;
-                // base 覆盖区内复用（值恒等：max(terrainEQuick,-0.05)），边界扩展带走原采样
-                if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
-                    lowResBuf[tz][tx] = base[wz - originZ][wx - originX];
-                } else {
-                    lowResBuf[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
+        final float[][] lrb = lowResBuf; // lambda 捕获 final 引用（lowResBuf 后续会被重赋值）
+        int lrRowsPerTask = Math.max(1, extendedLowRes / TILE_PARALLELISM);
+        int lrTasks = (extendedLowRes + lrRowsPerTask - 1) / lrRowsPerTask;
+        CountDownLatch lrLatch = new CountDownLatch(lrTasks);
+        for (int lt = 0; lt < lrTasks; lt++) {
+            final int lz0 = lt * lrRowsPerTask, lz1 = Math.min(extendedLowRes, lz0 + lrRowsPerTask);
+            TILE_SAMPLER.execute(() -> {
+                try {
+                    for (int tz = lz0; tz < lz1; tz++) {
+                        for (int tx = 0; tx < extendedLowRes; tx++) {
+                            int wx = alignedStartX + tx * spacing;
+                            int wz = alignedStartZ + tz * spacing;
+                            // base 覆盖区内复用（值恒等：max(terrainEQuick,-0.05)），边界扩展带走原采样
+                            if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
+                                lrb[tz][tx] = base[wz - originZ][wx - originX];
+                            } else {
+                                lrb[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
+                            }
+                        }
+                    }
+                } finally {
+                    lrLatch.countDown();
                 }
-            }
+            });
         }
+        try { lrLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
         // 备份未平滑副本 B（粗侵蚀骨架作用于真实地形，不走 step1.5 平滑）
         float[][] rawLowRes = new float[extendedLowRes][extendedLowRes];
@@ -667,28 +694,44 @@ public final class CellGenerator {
             // 2026-08-01 确定性化：去掉三区制（邻居 postErosion 依赖）→ tile 结果只
             // 依赖世界坐标，缓存淘汰后重建结果不变 → 相邻 chunk 无缝；收敛循环随之删除。
             // 2026-08-08 优化：内部区域（与 base 重叠）直接复用 base 值，仅 border 调 terrainEQuick。
+            // ★ 2026-08-09 无伤优化：flat 构建并行化（每行独立只读 base/terrainEQuick/骨架，
+            //   写 flat 私有行 → 输出与串行逐点一致）
             float[] flat = new float[bufSize * bufSize];
-            for (int fz = 0; fz < bufSize; fz++) {
-                for (int fx = 0; fx < bufSize; fx++) {
-                    int worldX = originX + fx - pad;
-                    int worldZ = originZ + fz - pad;
-                    int baseX = fx - pad;
-                    int baseZ = fz - pad;
-                    float val;
-                    if (baseX >= 0 && baseX < N && baseZ >= 0 && baseZ < N) {
-                        // 内部区域：直接复用 base 数组（省 terrainEQuick 调用）
-                        val = base[baseZ][baseX];
-                    } else {
-                        // border 区域：必须采样 worldX/worldZ
-                        val = (float) Math.max(terrainEQuick(worldX, worldZ), -0.05);
+            final float[][] cdLR = coarseDeltaLR; // lambda 捕获 final 引用（coarseDeltaLR 后续重赋值）
+            int flatRowsPerTask = Math.max(1, bufSize / TILE_PARALLELISM);
+            int flatTasks = (bufSize + flatRowsPerTask - 1) / flatRowsPerTask;
+            CountDownLatch flatLatch = new CountDownLatch(flatTasks);
+            for (int ft = 0; ft < flatTasks; ft++) {
+                final int fz0 = ft * flatRowsPerTask, fz1 = Math.min(bufSize, fz0 + flatRowsPerTask);
+                TILE_SAMPLER.execute(() -> {
+                    try {
+                        for (int fz = fz0; fz < fz1; fz++) {
+                            for (int fx = 0; fx < bufSize; fx++) {
+                                int worldX = originX + fx - pad;
+                                int worldZ = originZ + fz - pad;
+                                int baseX = fx - pad;
+                                int baseZ = fz - pad;
+                                float val;
+                                if (baseX >= 0 && baseX < N && baseZ >= 0 && baseZ < N) {
+                                    // 内部区域：直接复用 base 数组（省 terrainEQuick 调用）
+                                    val = base[baseZ][baseX];
+                                } else {
+                                    // border 区域：必须采样 worldX/worldZ
+                                    val = (float) Math.max(terrainEQuick(worldX, worldZ), -0.05);
+                                }
+                                if (cdLR != null) {
+                                    val += sampleBilinear(cdLR, skelExtLR, skelSpacing,
+                                            skelStartX, skelStartZ, worldX, worldZ);
+                                }
+                                flat[fz * bufSize + fx] = val;
+                            }
+                        }
+                    } finally {
+                        flatLatch.countDown();
                     }
-                    if (coarseDeltaLR != null) {
-                        val += sampleBilinear(coarseDeltaLR, skelExtLR, skelSpacing,
-                                skelStartX, skelStartZ, worldX, worldZ);
-                    }
-                    flat[fz * bufSize + fx] = val;
-                }
+                });
             }
+            try { flatLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             float[] flatPre = flat.clone();
 
             // 2026-08-02 恢复 discharge 导出：液滴路径重叠计数 = 粒子汇聚数量
@@ -759,11 +802,13 @@ public final class CellGenerator {
         applyRiverCarving(res);
         if (++perfTileCount % 8 == 1) {
             double ms = (System.nanoTime() - tStart) / 1e6;
-            double dMs = (tStage4 - tStage3) / 1e6;  // 液滴阶段
-            double sMs = (tStage3 - tStage2) / 1e6;  // 骨架阶段
-            double bMs = (tStage2 - tStage1) / 1e6;  // base+粗采
-            String perf = String.format("[PERF] erosion tile (%d,%d) took %.0fms [base=%.0f skeleton=%.0f drops=%.0f]",
-                tileCX, tileCZ, ms, bMs, sMs, dMs);
+            double bMs = (tBaseEnd - tStart) / 1e6;      // base 采样
+            double bicMs = (tStage1 - tBaseEnd) / 1e6;   // 粗采+平滑+bicubic 插值
+            double skMs = (tStage2 - tStage1) / 1e6;     // 骨架
+            double dMs = (tStage4 - tStage3) / 1e6;      // flat+液滴+平滑
+            double rivMs = (System.nanoTime() - tStage4) / 1e6; // 河流+delta
+            String perf = String.format("[PERF] erosion tile (%d,%d) took %.0fms [base=%.0f bicubic=%.0f skeleton=%.0f drops=%.0f river=%.0f]",
+                tileCX, tileCZ, ms, bMs, bicMs, skMs, dMs, rivMs);
             LOGGER.info(perf);
             System.out.println(perf);
         }
@@ -833,22 +878,36 @@ public final class CellGenerator {
         float[][] dist = rd.distance;
         float bedWidth = 1.5f;    // 河床半径（平底水面 3 格宽）
         float bankWidth = 4.0f;   // 岸坡半径（V 形斜坡区）
-        for (int z = 0; z < N; z++) {
-            for (int x = 0; x < N; x++) {
-                float d = dist[z][x];
-                if (d >= bankWidth) continue;
-                float base = tile[z][x];
-                float riverAlpha = (d - bedWidth) / (bankWidth - bedWidth);
-                riverAlpha = riverAlpha < 0f ? 0f : (riverAlpha > 1f ? 1f : riverAlpha);
-                if (riverAlpha >= 1f) continue;
-                float q = rd.discharge[z][x];
-                float depth = 0.02f + (q / rd.maxDischarge) * 0.03f;
-                float bedLevel = base - depth;
-                float nh = bedLevel + (base - bedLevel) * riverAlpha;
-                tile[z][x] = nh;
-                carve[z][x] += base - nh;
-            }
+        // ★ 2026-08-09 无伤优化：雕刻按行并行化（每格独立只读 dist/discharge，写 tile/carve 私有格 → 输出逐点一致）
+        int rowsPerTask = Math.max(1, N / CellGenerator.TILE_PARALLELISM);
+        int tasks = (N + rowsPerTask - 1) / rowsPerTask;
+        CountDownLatch latch = new CountDownLatch(tasks);
+        for (int t = 0; t < tasks; t++) {
+            final int z0 = t * rowsPerTask, z1 = Math.min(N, z0 + rowsPerTask);
+            TILE_SAMPLER.execute(() -> {
+                try {
+                    for (int z = z0; z < z1; z++) {
+                        for (int x = 0; x < N; x++) {
+                            float d = dist[z][x];
+                            if (d >= bankWidth) continue;
+                            float base = tile[z][x];
+                            float riverAlpha = (d - bedWidth) / (bankWidth - bedWidth);
+                            riverAlpha = riverAlpha < 0f ? 0f : (riverAlpha > 1f ? 1f : riverAlpha);
+                            if (riverAlpha >= 1f) continue;
+                            float q = rd.discharge[z][x];
+                            float depth = 0.02f + (q / rd.maxDischarge) * 0.03f;
+                            float bedLevel = base - depth;
+                            float nh = bedLevel + (base - bedLevel) * riverAlpha;
+                            tile[z][x] = nh;
+                            carve[z][x] += base - nh;
+                        }
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            });
         }
+        try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
     // ===== Catmull-Rom 双三次插值（全局对齐版，从 6 月备份 70cd037 GeoGenesisGenerator.java 移植） =====
@@ -885,33 +944,48 @@ public final class CellGenerator {
     private static float[][] bicubicUpsampleAligned(float[][] lowRes, int lowResSize, int spacing,
                                                      int alignedStartX, int alignedStartZ,
                                                      int tileStartX, int tileStartZ, int tileSize) {
+        // ★ 2026-08-09 无伤优化：bicubic 升采样并行化（每行只读 lowRes 固定 4×4 邻域，
+        //   写 out[fz] 私有行 → 输出与串行逐点一致）
         float[][] out = new float[tileSize][tileSize];
         int lrLast = lowResSize - 1;
 
-        for (int fz = 0; fz < tileSize; fz++) {
-            int worldZ = tileStartZ + fz;
-            float lz = (float) (worldZ - alignedStartZ) / spacing;
-            int iz = (int) lz;
-            float tz = lz - iz;
-            int z0 = Math.max(0, iz - 1), z1 = Math.min(lrLast, iz),
-                z2 = Math.min(lrLast, iz + 1), z3 = Math.min(lrLast, iz + 2);
+        int rowsPerTask = Math.max(1, tileSize / TILE_PARALLELISM);
+        int tasks = (tileSize + rowsPerTask - 1) / rowsPerTask;
+        CountDownLatch latch = new CountDownLatch(tasks);
+        for (int t = 0; t < tasks; t++) {
+            final int z0b = t * rowsPerTask, z1b = Math.min(tileSize, z0b + rowsPerTask);
+            TILE_SAMPLER.execute(() -> {
+                try {
+                    for (int fz = z0b; fz < z1b; fz++) {
+                        int worldZ = tileStartZ + fz;
+                        float lz = (float) (worldZ - alignedStartZ) / spacing;
+                        int iz = (int) lz;
+                        float tz = lz - iz;
+                        int z0 = Math.max(0, iz - 1), z1 = Math.min(lrLast, iz),
+                            z2 = Math.min(lrLast, iz + 1), z3 = Math.min(lrLast, iz + 2);
 
-            for (int fx = 0; fx < tileSize; fx++) {
-                int worldX = tileStartX + fx;
-                float lx = (float) (worldX - alignedStartX) / spacing;
-                int ix = (int) lx;
-                float tx = lx - ix;
-                int x0 = Math.max(0, ix - 1), x1 = Math.min(lrLast, ix),
-                    x2 = Math.min(lrLast, ix + 1), x3 = Math.min(lrLast, ix + 2);
+                        for (int fx = 0; fx < tileSize; fx++) {
+                            int worldX = tileStartX + fx;
+                            float lx = (float) (worldX - alignedStartX) / spacing;
+                            int ix = (int) lx;
+                            float tx = lx - ix;
+                            int x0 = Math.max(0, ix - 1), x1 = Math.min(lrLast, ix),
+                                x2 = Math.min(lrLast, ix + 1), x3 = Math.min(lrLast, ix + 2);
 
-                float r0 = bspline(lowRes[z0][x0], lowRes[z0][x1], lowRes[z0][x2], lowRes[z0][x3], tx);
-                float r1 = bspline(lowRes[z1][x0], lowRes[z1][x1], lowRes[z1][x2], lowRes[z1][x3], tx);
-                float r2 = bspline(lowRes[z2][x0], lowRes[z2][x1], lowRes[z2][x2], lowRes[z2][x3], tx);
-                float r3 = bspline(lowRes[z3][x0], lowRes[z3][x1], lowRes[z3][x2], lowRes[z3][x3], tx);
+                            float r0 = bspline(lowRes[z0][x0], lowRes[z0][x1], lowRes[z0][x2], lowRes[z0][x3], tx);
+                            float r1 = bspline(lowRes[z1][x0], lowRes[z1][x1], lowRes[z1][x2], lowRes[z1][x3], tx);
+                            float r2 = bspline(lowRes[z2][x0], lowRes[z2][x1], lowRes[z2][x2], lowRes[z2][x3], tx);
+                            float r3 = bspline(lowRes[z3][x0], lowRes[z3][x1], lowRes[z3][x2], lowRes[z3][x3], tx);
 
-                out[fz][fx] = bspline(r0, r1, r2, r3, tz);
-            }
+                            out[fz][fx] = bspline(r0, r1, r2, r3, tz);
+                        }
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            });
         }
+        try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         return out;
     }
 

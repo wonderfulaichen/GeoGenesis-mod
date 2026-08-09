@@ -68,6 +68,16 @@ public class ErosionEngine {
     /** 最大笔刷半径（pad = R_MAX + 2 = 9），相邻 tile 各 pad 9 + 中心区域重叠 2*9=18 块无缝 */
     private static final int R_MAX = Math.max(R_C, Math.max(R_M, R_F)); // =7
 
+    // ★ 2026-08-09 优化（光追 RIS 式重要性重采样 / Russian roulette 剪枝）：
+    //   SLOPE_MIN_SKIP — 撒点前 1 格差分坡度阈值：低于则跳过该液滴（平坦区侵蚀≈0，纯无效功）。
+    //     确定性：坡度是 flat 世界坐标场的确定性函数 → 跳过集合固定 → 无缝保持。
+    //     阈值保守：0.002e/格 ≈ 0.5 块/格，只跳过绝对平坦区（海洋平原/谷底），陡坡全量。
+    private static final float SLOPE_MIN_SKIP = 0.002f;
+    /** 平衡态判定：spd 低于该值 且 单步笔刷增量低于该值，连续 STALL_MAX 步 → 提前终止 */
+    private static final float STALL_SPEED = 0.3f;
+    private static final float STALL_DELTA = 1e-4f;
+    private static final int STALL_MAX = 8;
+
     /**
      * 液滴跑满整个 tile（含两侧超区）——超区是相邻 tile 的 blend 数据源（extractFromTile 四边缘
      * 对称读邻居 delta 渐变），不能裁剪。跨 tile 连续性由 extractFromTile 的边缘 blend 保证。
@@ -125,7 +135,7 @@ public class ErosionEngine {
         // 液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）
         // SH 三件套（2026-08-01）：动量场正反馈 + 多轮迭代 + lrate 场平滑
         float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);
-        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 3);
+        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）
         float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);
 
         int pad = R_MAX + 2;
@@ -287,6 +297,13 @@ public class ErosionEngine {
         //   实测验证（seed=12345, 64 tiles）：跳过 10 万+ 海底粒子，陆地粒子正常侵蚀。
         float startH = flat[py * bufSize + px];
         if (startH < seaNorm) return;
+        // ★ 2026-08-09 优化：坡度稀疏化（RIS 式重要性重采样）——平坦区液滴侵蚀≈0（无效功）。
+        //   1 格差分坡度（比 3×3 Sobel 便宜），世界坐标确定性函数 → 无缝保持。
+        //   px/py 已由上方边界检查保证 ∈ [1, bufSize-2] → ±1 采样安全。
+        float slope = Math.max(
+            Math.abs(flat[(py + 1) * bufSize + px] - flat[(py - 1) * bufSize + px]),
+            Math.abs(flat[py * bufSize + px + 1] - flat[py * bufSize + px - 1]));
+        if (slope < SLOPE_MIN_SKIP) return;
         simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
                      bOff, bWgt, bn, locked, pad, baseSize,
                      dis, disT, momX, momY, momXT, momYT, momTransfer,
@@ -309,6 +326,10 @@ public class ErosionEngine {
         int spawnIx = (int) posX, spawnIy = (int) posY;
         float startH = flat[spawnIy * bufSize + spawnIx];
 
+        // ★ 2026-08-09 优化：平衡态 early-exit（Russian roulette 剪枝）——平坦/平衡区液滴
+        //   速度与笔刷增量双双趋于 0（对地形无贡献），连续 STALL_MAX 步后提前终止。
+        //   确定性：判定条件是确定性函数的单调收敛 → 同一世界坐标液滴终止点固定 → 无缝保持。
+        int stall = 0;
         for (int st = 0; st < lifetime; st++) {
             int ix = (int) posX, iy = (int) posY;
             if (ix < 1 || ix >= bufSize - 2 || iy < 1 || iy >= bufSize - 2) return;
@@ -398,6 +419,7 @@ public class ErosionEngine {
             float c_eq = (1f + ENTRAINMENT * flowGate) * heightDrop;  // 平衡浓度
             float effD = 0.1f;                       // 松弛率 = depositionRate(=0.1)
             float delta = effD * (c_eq - sed);       // >0=侵蚀, <0=沉积
+            float brushDelta = delta;                // 笔刷前增量快照（early-exit 判定用）
 
             // 笔刷邻域分布：权重须对正负通用
             // delta>0: 从邻域取材料（侵蚀）→ flat[bi] 减小, sed 增大
@@ -432,6 +454,12 @@ public class ErosionEngine {
             float speedSq = spd * spd + dh * GRAVITY;
             spd = speedSq > 1e-12f ? (float) Math.sqrt(speedSq) : 0.1f;
             if (spd <= 0) return;
+            // early-exit：低速 + 近零增量连续 STALL_MAX 步 → 平衡态，对地形已无贡献
+            if (spd < STALL_SPEED && Math.abs(brushDelta) < STALL_DELTA) {
+                if (++stall >= STALL_MAX) return;
+            } else {
+                stall = 0;
+            }
             wat *= (1 - EVAP_RATE);
         }
     }
@@ -501,37 +529,51 @@ public class ErosionEngine {
 
         for (int pass = 0; pass < passes; pass++) {
             float[] smoothed = flat.clone();
-            for (int z = start; z < end; z++) {
-                for (int x = start; x < end; x++) {
-                    int idx = z * bufSize + x;
-                    float h = flat[idx];
-                    float heightModifier;
-                    if (h <= seaNorm) heightModifier = 0.0f;   // 水下不平滑——保留侵蚀痕迹（沟壑/水下峡谷）
-                    else if (h >= seaNorm + 0.25f) heightModifier = 0.0f;
-                    else heightModifier = 1.0f - (h - seaNorm) / 0.25f;
-                    if (heightModifier <= 0.01f) continue;
+            // ★ 2026-08-09 无伤优化：平滑并行化（每行只读 flat、写 smoothed 私有行 → 输出逐点一致）
+            int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);
+            int tasks = (end - start + rowsPerTask - 1) / rowsPerTask;
+            java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(tasks);
+            for (int t = 0; t < tasks; t++) {
+                final int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
+                com.geogenesis.worldgen.terrain.CellGenerator.TILE_SAMPLER.execute(() -> {
+                    try {
+                        for (int z = z0; z < z1; z++) {
+                            for (int x = start; x < end; x++) {
+                                int idx = z * bufSize + x;
+                                float h = flat[idx];
+                                float heightModifier;
+                                if (h <= seaNorm) heightModifier = 0.0f;   // 水下不平滑——保留侵蚀痕迹（沟壑/水下峡谷）
+                                else if (h >= seaNorm + 0.25f) heightModifier = 0.0f;
+                                else heightModifier = 1.0f - (h - seaNorm) / 0.25f;
+                                if (heightModifier <= 0.01f) continue;
 
-                    float total = 0, weights = 0;
-                    for (int dz = -radius; dz <= radius; dz++) {
-                        for (int dx = -radius; dx <= radius; dx++) {
-                            float dist2 = dx * dx + dz * dz;
-                            if (dist2 <= radiusSq) {
-                                int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
-                                int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
-                                int ni = ni_z * bufSize + ni_x;
-                                float weight = 1.0f - dist2 / radiusSq;
-                                total += flat[ni] * weight;
-                                weights += weight;
+                                float total = 0, weights = 0;
+                                for (int dz = -radius; dz <= radius; dz++) {
+                                    for (int dx = -radius; dx <= radius; dx++) {
+                                        float dist2 = dx * dx + dz * dz;
+                                        if (dist2 <= radiusSq) {
+                                            int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
+                                            int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
+                                            int ni = ni_z * bufSize + ni_x;
+                                            float weight = 1.0f - dist2 / radiusSq;
+                                            total += flat[ni] * weight;
+                                            weights += weight;
+                                        }
+                                    }
+                                }
+                                if (weights > 0) {
+                                    float avg = total / weights;
+                                    float diff = h - avg;
+                                    smoothed[idx] = h - diff * smoothingRate * heightModifier;
+                                }
                             }
                         }
+                    } finally {
+                        latch.countDown();
                     }
-                    if (weights > 0) {
-                        float avg = total / weights;
-                        float diff = h - avg;
-                        smoothed[idx] = h - diff * smoothingRate * heightModifier;
-                    }
-                }
+                });
             }
+            try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             System.arraycopy(smoothed, 0, flat, 0, flat.length);
         }
     }
@@ -540,32 +582,46 @@ public class ErosionEngine {
         int start = pad + 1;
         int end = pad + sz - 1;
         float[] smoothed = flat.clone();
-        for (int z = start; z < end; z++) {
-            for (int x = start; x < end; x++) {
-                int idx = z * bufSize + x;
-                float h = flat[idx];
-                float hPre = flatPre[idx];
-                if (h <= 0.05f) continue;
-                float deposition = h - hPre;
-                if (deposition <= 0.005f) continue;
-                float sum = 0;
-                int count = 0;
-                for (int dz = -1; dz <= 1; dz++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        if (dx == 0 && dz == 0) continue;
-                        int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
-                        int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
-                        int ni = ni_z * bufSize + ni_x;
-                        sum += flat[ni];
-                        count++;
+        // ★ 2026-08-09 无伤优化：沉积区平滑并行化（每行只读 flat/flatPre、写 smoothed 私有行 → 输出逐点一致）
+        int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);
+        int tasks = (end - start + rowsPerTask - 1) / rowsPerTask;
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(tasks);
+        for (int t = 0; t < tasks; t++) {
+            final int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
+            com.geogenesis.worldgen.terrain.CellGenerator.TILE_SAMPLER.execute(() -> {
+                try {
+                    for (int z = z0; z < z1; z++) {
+                        for (int x = start; x < end; x++) {
+                            int idx = z * bufSize + x;
+                            float h = flat[idx];
+                            float hPre = flatPre[idx];
+                            if (h <= 0.05f) continue;
+                            float deposition = h - hPre;
+                            if (deposition <= 0.005f) continue;
+                            float sum = 0;
+                            int count = 0;
+                            for (int dz = -1; dz <= 1; dz++) {
+                                for (int dx = -1; dx <= 1; dx++) {
+                                    if (dx == 0 && dz == 0) continue;
+                                    int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
+                                    int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
+                                    int ni = ni_z * bufSize + ni_x;
+                                    sum += flat[ni];
+                                    count++;
+                                }
+                            }
+                            float avg = sum / count;
+                            float diff = h - avg;
+                            float blend = Math.min(diff * 3.0f, 0.6f);
+                            smoothed[idx] = h * (1f - blend) + avg * blend;
+                        }
                     }
+                } finally {
+                    latch.countDown();
                 }
-                float avg = sum / count;
-                float diff = h - avg;
-                float blend = Math.min(diff * 3.0f, 0.6f);
-                smoothed[idx] = h * (1f - blend) + avg * blend;
-            }
+            });
         }
+        try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         System.arraycopy(smoothed, 0, flat, 0, flat.length);
     }
 
