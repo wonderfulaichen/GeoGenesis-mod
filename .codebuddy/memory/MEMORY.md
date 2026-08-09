@@ -6,6 +6,7 @@
 - 关键决策点用提问确认（不打断则默认授权"你决定"）；微小细节可先用合理默认值并标注
 
 ## 地形引擎核心铁律（钉死）
+- **【wu 化铁律·2026-08-10】**：引擎坐标语义 = **wu（world unit）**，永不感知 MC 块（用户定案："MC 地形只是精度映射层，地形在纯 Java 计算层"）。**块→wu 换算只在 GeoGenesisTerrain 门面**（`toWu=块÷horizontalScale`，入口 generateChunk/sampleCellLight）；引擎内 sample/sampleCore/terrainEQuick/侵蚀/河流/雕刻全 wu。侵蚀 tile 网格 = `ERODE_TILE_CENTER=48wu`（floorDiv 48 对齐，不再绑 chunk；HS=1 与旧 3-chunk 网格逐位等价）。`extractFromTile` 块→wu 双线性插值读 delta/河数据（HS=1 退化为直接索引）。**新增微观几何常量一律 wu 语义，禁止以"块/chunk"为单位**；改引擎常量无需碰映射层。验证探针 HSABProbe（runHSABProbe）三恒等式 ALL PASS。
 - **e(x,z) 单一连续场**：大陆性 `c∈[0,1]` 单一连续噪声，海陆仅条件切分；海岸 = e 场自然穿过 0 的等值线（smoothstep），不绑定 c 硬阈值。
 - **【c 绝不控制地形高度】**：c 只决定类型 + 海陆 mask；高度由类型各自独立噪声决定（自查 `if c>X then e=f(c)` 即违规）。
 - **差异调制（v14）**：`shared + 0.4·(perTypeAvg-shared)` 零均值偏差保障 C0 连续。

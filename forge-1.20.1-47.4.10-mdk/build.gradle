@@ -265,6 +265,20 @@ task runDiag(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiagnostic'
 }
 
+// Spike locate probe (wu-ized sampling, 2026-08-10): gradlew runSpikeLocateProbe [seed]
+task runSpikeLocateProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.SpikeLocateProbe'
+    args = project.hasProperty('probeArgs') ? probeArgs.split('\\s+') : []
+}
+
+// HS wu-ization A/B probe (2026-08-10): gradlew runHSABProbe [seed]
+task runHSABProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.HSABProbe'
+    args = project.hasProperty('probeArgs') ? probeArgs.split('\\s+') : []
+}
+
 // Terrain discontinuity probe (straight + curved line diagnostic)
 task runDiscontinuityProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

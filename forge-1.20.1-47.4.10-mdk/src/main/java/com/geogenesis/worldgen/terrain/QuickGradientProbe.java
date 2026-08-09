@@ -4,6 +4,7 @@ package com.geogenesis.worldgen.terrain;
  * 临时诊断：用实际引擎（CellGenerator.sample）按 1 格步长扫描，
  * 验证 eLand 相邻格最大梯度（断裂）。验证后删除。
  */
+// TODO(2026-08-10 wu 化)：探针按块坐标采样引擎 API，HS≠1 时扫描尺度 ×hs（诊断工具，HS=1 仍逐位等价）。
 public final class QuickGradientProbe {
 
     public static void main(String[] args) {

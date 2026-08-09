@@ -23,6 +23,20 @@ public final class RidgeValleyErosion {
 
     private static final float TAU = (float) (2.0 * Math.PI);
 
+    // ===== 2026-08-10 高原平顶假峰修复：局部窗口抬升衰减 =====
+    // 根因：eLand 被类型加权上限 blendHi 夹成平顶（PLATEAU hi=0.71，平台≈0.49），但骨架是
+    // "纯高度场"工具不知道类型上限——SLOPE_BOOST=8 放大平台微丘坡度 → combiMask 触发 →
+    // 抬升 delta 把 e 顶出 blendHi → 平台面上凸出"抬升一段然后下降"的假山脊峰。
+    // 修复：抬升（delta>0）按"局部窗口最高点余量"衰减——局部已高于周围（平顶/丘顶/山顶）→
+    // 抬升衰减至 0（平台不长峰、山脉山顶不再被无脑抬高成平顶）；坡面中段 headroom 大 → 脊线
+    // 照常成形并在接近坡顶处自然收束。下切（delta<0）完全不衰减（河谷/沟壑照常，不违反
+    // 2026-08-08"侵蚀无类型/高度限制"决策——抬升衰减只是上限物理化，非侵蚀限制）。
+    // 局部窗口（16 块 < 条纹半周期 25-50 块）→ 不产生全局高度等值线（区别于已否决的 fadeTarget）。
+    /** 局部窗口半径（骨架网格格数，spacing=2 → 8 格 = 16 块） */
+    private static final int LIFT_WINDOW_R = 8;
+    /** headroom 达到该值（e 单位）后抬升全量恢复（≈0.05e≈12 块余量） */
+    private static final float LIFT_HEADROOM_FULL = 0.05f;
+
     // ===== 骨架层配置（从 GeoGenesisConfig 读取覆盖；stylistic 参数用代码常量初值）=====
     public static class RidgeConfig {
         public boolean enabled = true;
@@ -42,6 +56,10 @@ public final class RidgeValleyErosion {
         public float[] onset = {0.9f, 1.25f, 2.8f, 1.5f};      // [0]=combiMask 主阈值（1.25→0.9，谷壁进入削切）
         public float[] assumedSlope = {0.7f, 1.0f};
         public int seed = 1337;
+        /** 水平缩放（块→wu 映射）：梯度换算用。骨架标定的坡度是"每块"（物理坡度），
+         *  2026-08-10 wu 化后骨架网格间距为 wu → gradX/gradZ 必须 ×hs 还原物理坡度，
+         *  否则 HS>1 时坡度被除以 hs → combiMask 触发弱 → 骨架条纹削弱（用户对比发现漂移）。 */
+        public float horizontalScale = 1f;
 
         /** 从 Forge 配置读取骨架参数（字段缺失时回退默认值）。 */
         public static RidgeConfig fromConfig(GeoGenesisConfig cfg) {
@@ -60,6 +78,7 @@ public final class RidgeValleyErosion {
                 c.rounding[1] = (float) (softness * 0.24);          // crease (valley) rounding（softness 0.5→0.12，U 形谷，用户定）
                 // 细节密度（high=主脊干净，low=满布小沟）
                 c.detail = (float) cfgDbl(cfg.erosionRidgeDetail, 1.0);
+                c.horizontalScale = (float) cfgDbl(cfg.horizontalScale, 1.0);
             }
             return c;
         }
@@ -106,8 +125,8 @@ public final class RidgeValleyErosion {
                                      int spacing, int startX, int startZ, float seaE, RidgeConfig cfg) {
         float cellGridFreq = 1.0f / Math.max(1f, cfg.cellWorldSize); // 条纹细胞世界尺寸 = cellWorldSize
         float h = rawLowRes[tz][tx];
-        float gx = gradX(rawLowRes, tx, tz, extLR, spacing);
-        float gz = gradZ(rawLowRes, tx, tz, extLR, spacing);
+        float gx = gradX(rawLowRes, tx, tz, extLR, spacing, cfg.horizontalScale);
+        float gz = gradZ(rawLowRes, tx, tz, extLR, spacing, cfg.horizontalScale);
         // 峰侧衰减：fadeTarget 正侧（抬升）在峰尖衰减——否则 h>0.5 全部饱和 +1，
         // 峰顶被每 octave 均匀抬升（4 oct × 0.08 ≈ +0.17e）→ 触 delta 限幅/softCap → 平顶。
         // 谷侧（负值）不受影响，山谷照常下切；山体中下部仍抬升成脊线。
@@ -131,10 +150,37 @@ public final class RidgeValleyErosion {
         float gxs = gx * SLOPE_BOOST * landMask, gzs = gz * SLOPE_BOOST * landMask;
         float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,
                 hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
+        // 2026-08-10 局部窗口抬升衰减（高原平顶假峰修复）：只衰减抬升（d>0），下切完全不受影响。
+        // 局部最高点余量 headroom = localMax − h；平顶/丘顶/山顶 headroom≈0 → 抬升平滑衰减到 0，
+        // 坡面中段 headroom 大 → 抬升全量。窗口读取越界 clamp 到网格边缘（skelExtra=8 已保证
+        // flat 采样区窗口完整，越界仅发生在骨架网格自身边界外圈，无实际影响）。
+        if (d > 0f) {
+            float lm = localWindowMax(rawLowRes, tx, tz, extLR, LIFT_WINDOW_R);
+            float headroom = lm - h;
+            if (headroom < LIFT_HEADROOM_FULL) {
+                float t = headroom / LIFT_HEADROOM_FULL; // 0..1（>1 已跳过）
+                d *= t * t * (3f - 2f * t);
+            }
+        }
         // 海岸带保护：仅海平面附近抑制 delta（防弧线），内陆/深海全幅（侵蚀入海）
         // 2026-08-07 用户否决 flatMask（平顶保护）——"侵蚀必须无限制自然形成"，
         // 高原折痕靠高原 v8 丘沟纹理自然融合骨架条纹解决，不限制侵蚀本身。
         return d * landMask;
+    }
+
+    /** 局部窗口最高点（含自身；越界 clamp 到网格边缘）。 */
+    private static float localWindowMax(float[][] g, int tx, int tz, int n, int r) {
+        int z0 = Math.max(0, tz - r), z1 = Math.min(n - 1, tz + r);
+        int x0 = Math.max(0, tx - r), x1 = Math.min(n - 1, tx + r);
+        float m = Float.NEGATIVE_INFINITY;
+        for (int z = z0; z <= z1; z++) {
+            float[] row = g[z];
+            for (int x = x0; x <= x1; x++) {
+                float v = row[x];
+                if (v > m) m = v;
+            }
+        }
+        return m;
     }
 
     // ===== ErosionFilter（octave 循环 + 堆叠掩码）=====
@@ -244,17 +290,24 @@ public final class RidgeValleyErosion {
 
     // ===== 工具 =====
 
-    private static float gradX(float[][] g, int tx, int tz, int n, int spacing) {
+    /**
+     * 梯度（返回"每块"物理坡度，2026-08-10 wu 化修正）：网格间距为 wu，需 ×horizontalScale
+     * 换算回块——骨架 SLOPE_BOOST/combiMask 按物理坡度（e/块）标定，HS≠1 时保持不变。
+     * HS=1（或独立预览默认）时 hs=1 → 行为与 wu 化前逐位一致。
+     */
+    private static float gradX(float[][] g, int tx, int tz, int n, int spacing, float hs) {
         int xm = Math.max(0, tx - 1), xp = Math.min(n - 1, tx + 1);
         float d = (g[tz][xp] - g[tz][xm]);
-        int denom = (xp - xm) * spacing;
+        float denom = (float) ((xp - xm) * spacing);
+        if (hs > 0.01f && hs != 1f) denom *= hs;
         return denom > 0 ? d / denom : 0f;
     }
 
-    private static float gradZ(float[][] g, int tx, int tz, int n, int spacing) {
+    private static float gradZ(float[][] g, int tx, int tz, int n, int spacing, float hs) {
         int zm = Math.max(0, tz - 1), zp = Math.min(n - 1, tz + 1);
         float d = (g[zp][tx] - g[zm][tx]);
-        int denom = (zp - zm) * spacing;
+        float denom = (float) ((zp - zm) * spacing);
+        if (hs > 0.01f && hs != 1f) denom *= hs;
         return denom > 0 ? d / denom : 0f;
     }
 

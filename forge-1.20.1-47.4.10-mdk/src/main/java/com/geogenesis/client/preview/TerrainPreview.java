@@ -42,8 +42,8 @@ public final class TerrainPreview {
     private static final int[] QUALITY = {1, 2, 4}; // 渲染降采样（分辨率切换）
 
     private final GeoGenesisTerrain terrain;
-    private final int seaLevel, snowLine, maxY, minY, horizontalScale, mountainCap;
-    private final double peakFraction, verticalScale;
+    private final int seaLevel, snowLine, maxY, minY, mountainCap;
+    private final double peakFraction, verticalScale, horizontalScale;
     /** 高程色阶映射的 e 区间（地形实际可达范围），供图例 Y 标签换算。 */
     private double elevEMin = -1.0, elevEMax = 1.0;
     private final long seed;
@@ -81,7 +81,7 @@ public final class TerrainPreview {
         this.minY = params.minY();
         this.peakFraction = params.peakHeightFraction();
         this.verticalScale = params.verticalScale();
-        this.horizontalScale = (int) params.horizontalScale();
+        this.horizontalScale = params.horizontalScale(); // 2026-08-10 修复：去掉 (int) 强转（HS 非整数被截断）
         this.mountainCap = params.mountainCap();
         double[] er = params.elevationERange();
         this.elevEMin = er[0]; this.elevEMax = er[1];
@@ -337,8 +337,10 @@ public final class TerrainPreview {
         int originBlockX = (int) Math.floor(originX);
         int originBlockZ = (int) Math.floor(originZ);
         double wx = originX + hoverPx * scale, wz = originZ + hoverPy * scale;
-        int cx = Math.max(0, Math.min(cells.length - 1, (int) Math.floor((wx - originBlockX) / horizontalScale)));
-        int cz = Math.max(0, Math.min(cells[0].length - 1, (int) Math.floor((wz - originBlockZ) / horizontalScale)));
+        // 2026-08-10 修正：预览采样网格间距 = scale（块/像素），非 horizontalScale（wu 映射无关）——
+        // 原写法 HS≠1 时 hover 索引错格。采样 API 用块坐标，一格 = scale 块。
+        int cx = Math.max(0, Math.min(cells.length - 1, (int) Math.floor((wx - originBlockX) / scale)));
+        int cz = Math.max(0, Math.min(cells[0].length - 1, (int) Math.floor((wz - originBlockZ) / scale)));
         Cell cell = cells[cx][cz];
         String water;
         if (cell.riverIsWaterfall) water = "瀑布";

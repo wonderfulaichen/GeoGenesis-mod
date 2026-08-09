@@ -7,6 +7,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 
 /**
  * 本地确定性液滴侵蚀引擎 —— 三尺度层叠 + localCharge 正反馈 + 局部 cascade 级联。
@@ -130,6 +131,11 @@ public class ErosionEngine {
         double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);
         double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);
         double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);
+        // 2026-08-10 wu 化修正：坡度/距离阈值按"物理块"标定，wu 空间必须 ×hs 还原
+        // （与 RidgeValleyErosion.gradX/gradZ 同型 bug，见 SLOPE_MIN_SKIP / CASCADE_MAXDIFF）。
+        // HS=1（或独立预览默认）时 hs=1 → 与 wu 化前逐位一致。
+        double hsD = cfgDbl(GeoGenesisConfig.INSTANCE.horizontalScale, 1.0);
+        float hs = (float) (hsD > 0.01 && hsD != 1.0 ? hsD : 1.0);
         float strE       = (float) Math.max(0.1, str) * (float) erodeMul;
         // 2026-08-01 两套粒子系统：河流粒子（StreamTracer）与液滴侵蚀彻底分离，
         // 液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）
@@ -203,21 +209,21 @@ public class ErosionEngine {
                                     bOffC, bWgtC, bnC, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
                                     ERODE_C * strE, DEPOSIT_C, LIFE_C, ox, oz,
-                                    (float) casStr, seaNorm);
+                                    (float) casStr, seaNorm, hs);
                     }
                     if (d < (int) (DROPS_M * dropsMul)) {
                         spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 1, relX, relZ, pad,
                                     bOffM, bWgtM, bnM, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
                                     ERODE_M * strE, DEPOSIT_M, LIFE_M, ox, oz,
-                                    (float) casStr, seaNorm);
+                                    (float) casStr, seaNorm, hs);
                     }
                     if (d < (int) (DROPS_F * dropsMul)) {
                         spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 2, relX, relZ, pad,
                                     bOffF, bWgtF, bnF, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
                                     ERODE_F * strE, DEPOSIT_F, LIFE_F, ox, oz,
-                                    (float) casStr, seaNorm);
+                                    (float) casStr, seaNorm, hs);
                     }
                 }
             }
@@ -277,7 +283,7 @@ public class ErosionEngine {
                              float[] momX, float[] momY, float[] momXT, float[] momYT,
                              float momTransfer,
                              float erodeSpeed, float depositSpeed, int lifetime,
-                             int ox, int oz, float cascadeStrength, float seaNorm) {
+                             int ox, int oz, float cascadeStrength, float seaNorm, float hs) {
         long chunkSeed = hash(worldCX * 31 + 7, worldCZ * 73 + 13);
         int cs = (int) (chunkSeed ^ (chunkSeed >>> 32));
         long ps1 = hash(cs + d * 17, d * 31 + cs);
@@ -303,12 +309,13 @@ public class ErosionEngine {
         float slope = Math.max(
             Math.abs(flat[(py + 1) * bufSize + px] - flat[(py - 1) * bufSize + px]),
             Math.abs(flat[py * bufSize + px + 1] - flat[py * bufSize + px - 1]));
-        if (slope < SLOPE_MIN_SKIP) return;
+        // 2026-08-10 wu 化修正：1 格差分坡度 = e/wu，×hs 还原物理坡度（e/块）再比阈值
+        if (slope * hs < SLOPE_MIN_SKIP) return;
         simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
                      bOff, bWgt, bn, locked, pad, baseSize,
                      dis, disT, momX, momY, momXT, momYT, momTransfer,
                      erodeSpeed, depositSpeed, lifetime, ox, oz,
-                     cascadeStrength);
+                     cascadeStrength, hs);
     }
 
     /** SH 对齐液滴下落。关键改进：动量场正反馈 + erf 放电反馈 + 局部 cascade + 片流 + 水下 */
@@ -320,7 +327,7 @@ public class ErosionEngine {
                               float momTransfer,
                              float erodeSpeed, float depositSpeed, int lifetime,
                              int ox, int oz,
-                             float cascadeStrength) {
+                             float cascadeStrength, float hs) {
         float dirX = 0, dirY = 0, sed = 0, spd = 1f, wat = 1f;
 
         int spawnIx = (int) posX, spawnIy = (int) posY;
@@ -446,7 +453,7 @@ public class ErosionEngine {
 
             // ---- 局部 cascade（每 CASCADE_INTERVAL 步执行，对齐 SH 每步语义） ----
             if (cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
-                cascadeLocal(flat, bufSize, nix, niy, cascadeStrength);
+                cascadeLocal(flat, bufSize, nix, niy, cascadeStrength, hs);
             }
 
             // NaN/Inf 守卫：陡峭下坡（dh 很负）可能导致 spd² + dh*GRAVITY < 0 → sqrt(NaN)
@@ -464,8 +471,9 @@ public class ErosionEngine {
         }
     }
 
-    /** 局部 cascade：8 邻居按高度排序 + 距离加权 settling（SH 原版语义）。 */
-    private void cascadeLocal(float[] flat, int bufSize, int cx, int cz, float strength) {
+    /** 局部 cascade：8 邻居按高度排序 + 距离加权 settling（SH 原版语义）。
+     *  hs：wu→块 换算（dist 为 wu 格距，×hs 还原块距离，2026-08-10 wu 化）。 */
+    private void cascadeLocal(float[] flat, int bufSize, int cx, int cz, float strength, float hs) {
         // 收集 8 邻居
         float[] nh = new float[8];
         int[] ni = new int[8];
@@ -500,7 +508,8 @@ public class ErosionEngine {
             float dist = (float) Math.sqrt(ddx * ddx + ddz * ddz);
 
             // SH 公式：excess = |diff| - dist * maxdiff
-            float excess = Math.abs(diff) - dist * CASCADE_MAXDIFF;
+            // 2026-08-10 wu 化修正：dist 为 wu 格距，×hs 还原"块"距离 → 阈值不随 HS 漂移
+            float excess = Math.abs(diff) - dist * CASCADE_MAXDIFF * hs;
             if (excess <= 0) continue;
 
             // SH 公式：transfer = settling * excess / 2 (capped at 40% of diff)
@@ -573,7 +582,7 @@ public class ErosionEngine {
                     }
                 });
             }
-            try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("erosion aborted"); }
             System.arraycopy(smoothed, 0, flat, 0, flat.length);
         }
     }
@@ -621,7 +630,7 @@ public class ErosionEngine {
                 }
             });
         }
-        try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("erosion aborted"); }
         System.arraycopy(smoothed, 0, flat, 0, flat.length);
     }
 

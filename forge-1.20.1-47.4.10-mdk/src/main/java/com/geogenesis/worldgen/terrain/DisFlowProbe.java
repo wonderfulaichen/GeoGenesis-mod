@@ -16,6 +16,8 @@ import java.io.File;
  * {@code GeoGenesisConfig.INSTANCE.xxx.get()} 返回游戏内实际值（erosionIterations、
  * erosionLrate、erosionDropsMul、erosionRidgeEnabled 等），完全对齐游戏窗口。
  */
+// TODO(2026-08-10 wu 化)：探针以旧"块坐标触发 tile"调用 getErosionTile，HS≠1 时 tile 定位漂移
+// （诊断工具，HS=1 仍逐位等价）。
 public final class DisFlowProbe {
 
     public static void main(String[] args) {

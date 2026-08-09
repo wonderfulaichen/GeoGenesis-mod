@@ -25,6 +25,8 @@ import java.util.Set;
  * 中 SOURCE_MIN_E 会滤掉部分低地源头、凸起地形少的种子可能无河（空测无意义），
  * main 默认依次尝试 12345/777/999/2024 直到找到含河种子。</p>
  */
+// TODO(2026-08-10 wu 化)：探针以旧"块坐标触发 tile"调用 getErosionTile，HS≠1 时 tile 定位漂移
+// （诊断工具，HS=1 仍逐位等价）。
 public final class RiverSeamProbe {
 
     // 常量复制（与 CellGenerator 一致；探针独立运行不 import 私有成员）
