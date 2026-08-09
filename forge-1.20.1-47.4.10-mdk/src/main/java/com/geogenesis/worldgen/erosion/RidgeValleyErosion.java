@@ -91,39 +91,50 @@ public final class RidgeValleyErosion {
         final float LAND_HALF = 0.25f;
         for (int tz = 0; tz < extLR; tz++) {
             for (int tx = 0; tx < extLR; tx++) {
-                float h = rawLowRes[tz][tx];
-                float gx = gradX(rawLowRes, tx, tz, extLR, spacing);
-                float gz = gradZ(rawLowRes, tx, tz, extLR, spacing);
-                // 峰侧衰减：fadeTarget 正侧（抬升）在峰尖衰减——否则 h>0.5 全部饱和 +1，
-                // 峰顶被每 octave 均匀抬升（4 oct × 0.08 ≈ +0.17e）→ 触 delta 限幅/softCap → 平顶。
-                // 谷侧（负值）不受影响，山谷照常下切；山体中下部仍抬升成脊线。
-                // 窗口收窄到 0.72~0.92（只作用峰尖）：减少 flat 场形态改变，控制液滴 tile 边界差异。
-                // 2026-08-06 用户决策（最终版）：fadeTarget 直接归 0。
-                // 原因链：fadeTarget 按高度空间变化 → 低地下切量不均匀 → 高程图产生人工等值线纹理
-                // （第二张截图的弯曲线）。砍掉正半后只剩下切 → 更明显。完全归 0 后：
-                // - delta 纯由 combiMask×gullies 条纹提供（正负交替 = 沟壑+脊线）
-                // - 低地无条纹（combiMask≈0 → delta≈0）
-                // - 山地有条纹（combiMask 触发）→ 坡度自然控制，无类型/高度约束
-                float fadeTarget = 0f;
-                float hs = (h - cfg.landRef) * 0.5f + 0.5f;
-                // 2026-08-06 修复：坡度放大 SLOPE_BOOST × 海岸带保护。
-                // SLOPE_BOOST 让真实陡坡进入 combiMask 触发区 → 脊谷条纹成形。
-                // 保护语义（用户决策："侵蚀必须入海，不加上海洋不是完整地形"）：
-                //   仅海平面附近（|h-seaE|<0.15）抑制坡度放大（防海岸人造弧线）；
-                //   内陆与深海（水下海底）同样参与骨架侵蚀 → 海底峡谷/水下河谷。
-                float coastDist = Math.abs(h - seaE);
-                float landMask = Math.min(1f, coastDist / 0.15f);
-                final float SLOPE_BOOST = 8f;
-                float gxs = gx * SLOPE_BOOST * landMask, gzs = gz * SLOPE_BOOST * landMask;
-                float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,
-                        hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
-                // 海岸带保护：仅海平面附近抑制 delta（防弧线），内陆/深海全幅（侵蚀入海）
-                // 2026-08-07 用户否决 flatMask（平顶保护）——"侵蚀必须无限制自然形成"，
-                // 高原折痕靠高原 v8 丘沟纹理自然融合骨架条纹解决，不限制侵蚀本身。
-                delta[tz][tx] = d * landMask;
+                delta[tz][tx] = evaluateCell(rawLowRes, tx, tz, extLR, spacing,
+                    startX, startZ, seaE, cfg);
             }
         }
         return delta;
+    }
+
+    /**
+     * 单点骨架 delta 计算（★ 2026-08-09 提取自 computeCoarseDelta 内层循环，供并行分片复用）。
+     * 纯局部计算：gradX/gradZ 只读邻居、erosionFilter 纯函数 → 任意线程安全，输出与串行逐点一致。
+     */
+    public static float evaluateCell(float[][] rawLowRes, int tx, int tz, int extLR,
+                                     int spacing, int startX, int startZ, float seaE, RidgeConfig cfg) {
+        float cellGridFreq = 1.0f / Math.max(1f, cfg.cellWorldSize); // 条纹细胞世界尺寸 = cellWorldSize
+        float h = rawLowRes[tz][tx];
+        float gx = gradX(rawLowRes, tx, tz, extLR, spacing);
+        float gz = gradZ(rawLowRes, tx, tz, extLR, spacing);
+        // 峰侧衰减：fadeTarget 正侧（抬升）在峰尖衰减——否则 h>0.5 全部饱和 +1，
+        // 峰顶被每 octave 均匀抬升（4 oct × 0.08 ≈ +0.17e）→ 触 delta 限幅/softCap → 平顶。
+        // 谷侧（负值）不受影响，山谷照常下切；山体中下部仍抬升成脊线。
+        // 窗口收窄到 0.72~0.92（只作用峰尖）：减少 flat 场形态改变，控制液滴 tile 边界差异。
+        // 2026-08-06 用户决策（最终版）：fadeTarget 直接归 0。
+        // 原因链：fadeTarget 按高度空间变化 → 低地下切量不均匀 → 高程图产生人工等值线纹理
+        // （第二张截图的弯曲线）。砍掉正半后只剩下切 → 更明显。完全归 0 后：
+        // - delta 纯由 combiMask×gullies 条纹提供（正负交替 = 沟壑+脊线）
+        // - 低地无条纹（combiMask≈0 → delta≈0）
+        // - 山地有条纹（combiMask 触发）→ 坡度自然控制，无类型/高度约束
+        float fadeTarget = 0f;
+        float hs = (h - cfg.landRef) * 0.5f + 0.5f;
+        // 2026-08-06 修复：坡度放大 SLOPE_BOOST × 海岸带保护。
+        // SLOPE_BOOST 让真实陡坡进入 combiMask 触发区 → 脊谷条纹成形。
+        // 保护语义（用户决策："侵蚀必须入海，不加上海洋不是完整地形"）：
+        //   仅海平面附近（|h-seaE|<0.15）抑制坡度放大（防海岸人造弧线）；
+        //   内陆与深海（水下海底）同样参与骨架侵蚀 → 海底峡谷/水下河谷。
+        float coastDist = Math.abs(h - seaE);
+        float landMask = Math.min(1f, coastDist / 0.15f);
+        final float SLOPE_BOOST = 8f;
+        float gxs = gx * SLOPE_BOOST * landMask, gzs = gz * SLOPE_BOOST * landMask;
+        float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,
+                hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
+        // 海岸带保护：仅海平面附近抑制 delta（防弧线），内陆/深海全幅（侵蚀入海）
+        // 2026-08-07 用户否决 flatMask（平顶保护）——"侵蚀必须无限制自然形成"，
+        // 高原折痕靠高原 v8 丘沟纹理自然融合骨架条纹解决，不限制侵蚀本身。
+        return d * landMask;
     }
 
     // ===== ErosionFilter（octave 循环 + 堆叠掩码）=====

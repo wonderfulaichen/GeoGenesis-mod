@@ -252,6 +252,13 @@ task runDisFlowProbe(type: JavaExec) {
     workingDir = project.projectDir
 }
 
+// micro-benchmark: serial vs parallel terrainEQuick sampling
+task runBench(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.BenchTest'
+    workingDir = project.projectDir
+}
+
 // Comprehensive terrain diagnostic
 task runDiag(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
