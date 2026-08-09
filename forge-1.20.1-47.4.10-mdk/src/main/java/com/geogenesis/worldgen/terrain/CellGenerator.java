@@ -8,7 +8,8 @@ import com.geogenesis.worldgen.noise.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 
 /**
  * 单格地形装配中枢 —— 统一连续场 e(x,z)。
@@ -56,6 +57,21 @@ public final class CellGenerator {
     private long worldSeed = 12345L;
     /** 全 tile 版本号计数器（滑窗收敛用：每生成一次 tile 递增） */
     private int erosionRoundCounter = 0;
+
+    // ===== 侵蚀 tile 采样并行（2026-08-09 无伤优化） =====
+    // 线程安全依据：terrainEQuick 只读 final noise 实例 + 局部变量，无共享可变状态
+    // （预览 TerrainPool 已多线程跑同一 CellGenerator，验证无竞态）。
+    // ★ 池演进：fixed(4) → cached(无界) → ThreadPoolExecutor(有界, 2026-08-09 OOM 修复)。
+    //   cached 无限线程 + 每线程 1MB 原生栈 + L3 递归提交 → 世界创建高峰期线程爆炸 → 
+    //   原生内存 mmap 失败崩溃（hs_err_pid48068: "Native memory allocation (mmap) failed"）。
+    //   有界池 + CallerRunsPolicy：队满时提交者自己跑（等价串行，天然反压，绝不排队饿死），
+    //   线程数硬顶 16 → 内存可控。
+    private static final int TILE_PARALLELISM = 4;
+    private static final ExecutorService TILE_SAMPLER = new ThreadPoolExecutor(
+        TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(64),
+        r -> { Thread t = new Thread(r, "GeoGenesis-TileSampler"); t.setDaemon(true); return t; },
+        new ThreadPoolExecutor.CallerRunsPolicy());
 
     // 温度参数（v5.10 正弦纬度模型，参考 TF/RTF）
     private final double tempFreq;    // 温度纬度角频率 = 1/latitudeScale（由 TerrainParams 注入，可配置）
@@ -347,12 +363,13 @@ public final class CellGenerator {
     }
 
     /**
-     * 侵蚀 tile 结果（2026-08-02 分级流水线）：
+     * 侵蚀 tile 结果（2026-08-02 分级流水线，2026-08-09 L1 内联终态发布）：
      * <ul>
      *   <li>base — 侵蚀前原貌（bicubic 插值场，L3 定稿；L1 雕刻后重算 delta 用）</li>
      *   <li>postErosion — 侵蚀后、雕刻前快照（L3 定稿，<b>永不改变</b>；本 tile L1 河流
      *       追踪界内采样场；出界采样统一 terrainE → 跨 tile 确定性完备）</li>
-     *   <li>delta — 叠加量（L3 = 侵蚀增量；L1 后 = 侵蚀+雕刻增量，extractFromTile 用）</li>
+     *   <li>delta — 叠加量（<b>终态 = 侵蚀+雕刻增量</b>，generateErosionTile 内一次写全，
+     *       发布后永不再变；extractFromTile 读它 → 任意时序一致，无断裂）</li>
      * </ul>
      */
     static class ErosionTileResult {
@@ -368,18 +385,17 @@ public final class CellGenerator {
     private final ConcurrentHashMap<Long, RiverTileData> riverTileCache = new ConcurrentHashMap<>(ERODE_TILE_CACHE_SIZE);
 
     /**
-     * 获取或生成侵蚀 tile delta（分级流水线 L3→L1，2026-08-02）。接受 chunk 坐标，内部自动分组为 3×3 tile。
+     * 获取或生成侵蚀 tile delta（终态 = 侵蚀 + 河流雕刻，2026-08-09 重构）。接受 chunk 坐标，内部自动分组为 3×3 tile。
      *
      * <p><b>确定性生成（2026-08-01）</b>：flat 全源 terrainE + 粗骨架（无邻居依赖）→
      * tile 结果只与自身世界坐标有关，缓存淘汰后重建结果不变 → 相邻 chunk 无缝。</p>
      *
-     * <p><b>分级调度（2026-08-02）</b>：
-     * <ul>
-     *   <li>L3 侵蚀：预生成 1 环邻居 tile（9 个 computeIfAbsent 顶层循环，避免嵌套递归异常）</li>
-     *   <li>L1 河流：本 tile 追踪河流 + 河谷雕刻——此时 1 环邻居侵蚀已定稿，
-     *       StreamTracer 出界采样读到的邻居场永远是确定值 → 河永远生成在确定完成的地形上</li>
-     * </ul>
-     * 返回 delta（L1 后 = 侵蚀+雕刻增量），以保持 extractFromTile 向后兼容。</p>
+     * <p><b>终态发布（2026-08-09）</b>：L1 河流已内联进 {@link #generateErosionTile}，
+     * delta 一次写全（侵蚀+雕刻）后永不再变。本 tile 同步生成（调用线程直接算，绝不返回空），
+     * 邻居 fire-and-forget 后台补全 + extractFromTile 消费时懒生成（终态安全，结果确定相同）。</p>
+     *
+     * <p>StreamTracer 自包含：界内读本 tile postErosion，出界统一 terrainEQuick（纯世界坐标函数），
+     * 雕刻全在 tile 内 → L1 无邻居缓存依赖 → 任意生成时序下结果一致，无断裂。</p>
      */
     public float[][] getErosionTile(int chunkX, int chunkZ) {
         int tileCX = Math.floorDiv(chunkX, ERODE_TILE_CHUNKS) * ERODE_TILE_CHUNKS;
@@ -402,45 +418,52 @@ public final class CellGenerator {
             return new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE];
         }
 
-        // L3：预生成 1 环邻居侵蚀（先邻居后自己）。
-        // 2026-08-03 死锁修复（回退版本重放）：原 computeIfAbsent 与 GeoGenesisTerrain.getChunkCells
-        // 的 computeIfAbsent 形成嵌套锁（26 线程并发偶发死锁）。改 get + putIfAbsent。
-        for (int dz = -1; dz <= 1; dz++) {
-            for (int dx = -1; dx <= 1; dx++) {
+        // L3+L1：邻居惰性化 + 本 tile 同步（2026-08-09 深夜 3 重构 + 同日修复）。
+        // 原实现：同步 await 8 邻居完成（串行/并行都锁死并行度——chunk(0,0) 冷启动 7s 实锤）。
+        // 重构：1) 邻居 fire-and-forget 提交后台池（putIfAbsent 去重，幂等，跳过自己）
+        //       2) 本 tile 直接同步计算（含 L1 河流，终态发布）→ 调用方立即拿到真 delta
+        //       3) blend 阶段（extractFromTile）读邻居 null 时 → 同步懒生成该邻居（只算需要的 1-2 个）
+        // 效果：chunk(0,0) 7s → 本 tile ~0.7s + 消费时懒邻居 ~0.7-1.4s
+        int[] dirs = {-1, 0, 1};
+        for (int dz : dirs) {
+            for (int dx : dirs) {
+                if (dx == 0 && dz == 0) continue; // 自己 → 下方同步计算
                 int ncx = tileCX + dx * ERODE_TILE_CHUNKS;
                 int ncz = tileCZ + dz * ERODE_TILE_CHUNKS;
                 long nk = tileKey(ncx, ncz);
-                if (!erosionTileCache.containsKey(nk)) {
+                if (erosionTileCache.containsKey(nk)) continue;
+                // fire-and-forget：不 await，后台补全（putIfAbsent 去重，结果确定性相同）
+                TILE_SAMPLER.execute(() -> {
                     ErosionTileResult nr = generateErosionTile(ncx, ncz);
-                    erosionTileCache.putIfAbsent(nk, nr); // 并发重复生成时结果确定性相同
-                }
+                    erosionTileCache.putIfAbsent(nk, nr);
+                });
             }
         }
-        // L1：本 tile 河流 + 雕刻（1 环侵蚀场已定稿）
+        // 本 tile：同步生成（终态 delta = 侵蚀+雕刻，一次写入永不再变）。
+        // 双重计算安全：get → null 时才生成，putIfAbsent 去重，重复生成确定性相同。
         long key = tileKey(tileCX, tileCZ);
         ErosionTileResult res = erosionTileCache.get(key);
-        if (res != null) ensureRiverTile(tileCX, tileCZ);
-        return res != null ? res.delta : new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE];
+        if (res == null) {
+            ErosionTileResult nr = generateErosionTile(tileCX, tileCZ);
+            res = erosionTileCache.putIfAbsent(key, nr);
+            if (res == null) res = nr;
+        }
+        return res.delta;
     }
 
     /**
-     * L1 河流段（分级流水线）：本 tile 追踪河流（StreamTracer）+ 河谷雕刻，只执行一次。
-     * 前提：本 tile 与 1 环邻居的 L3 侵蚀均已定稿（getErosionTile 保证）。
+     * L1 河流段（2026-08-09 内联进 generateErosionTile，终态发布）：追踪河流（StreamTracer）
+     * + 河谷雕刻。在 postErosion 副本上做——postErosion 保持 L3 定稿不变（邻居出界采样场），
+     * 雕刻增量写回 delta（extractFromTile 读它 → 最终地形含河谷）。
      *
-     * <p>雕刻在 postErosion 副本上做——postErosion 保持 L3 定稿不变（邻居出界采样场），
-     * 雕刻增量写回 delta（extractFromTile 读它 → 最终地形含河谷）。</p>
+     * <p>自包含性（无断裂依据）：StreamTracer 界内读本 tile base/postErosion，出界统一
+     * terrainEQuick（纯世界坐标函数）→ 不依赖任何邻居 tile 缓存 → 任意生成时序结果一致。
+     * delta 在本方法内一次写全（侵蚀+雕刻），调用后永不再变 → 跨 chunk 读取确定性一致。</p>
      */
-    private void ensureRiverTile(int tileCX, int tileCZ) {
-        long rkey = tileKey(tileCX, tileCZ);
-        if (riverTileCache.containsKey(rkey)) return; // 已 L1，幂等
-        ErosionTileResult res = erosionTileCache.get(rkey);
-        if (res == null) return; // 理论不触发（getErosionTile 先 L3）
+    private void applyRiverCarving(ErosionTileResult res) {
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         boolean erosionOn = cfg != null ? cfgBool(cfg.erosionEnabled, true) : true;
-        if (!riversEnabled || !erosionOn) {
-            riverTileCache.put(rkey, new RiverTileData());
-            return;
-        }
+        if (!riversEnabled || !erosionOn) return;   // 河流/侵蚀关闭 → 纯 L3 delta（或全零）
         int N = ERODE_TILE_SIZE;
         // 追踪场 = base（侵蚀前 = terrainE + 骨架，纯世界坐标对齐、重叠区逐格一致）。
         // 2026-08-02 关键结论：postErosion（液滴侵蚀后）在 tile 重叠区天然不一致
@@ -462,7 +485,7 @@ public final class CellGenerator {
         for (int z = 0; z < N; z++)
             for (int x = 0; x < N; x++)
                 res.delta[z][x] = carved[z][x] - res.base[z][x];
-        riverTileCache.put(rkey, rd);
+        riverTileCache.put(tileKey(res.tileCX, res.tileCZ), rd);
     }
 
     /**
@@ -481,6 +504,8 @@ public final class CellGenerator {
             : new RidgeValleyErosion.RidgeConfig();
         boolean ridgeOn = rcfg.enabled;
 
+        long tStage3 = System.nanoTime();   // PERF：液滴阶段开始标记（防未进入 if 分支）
+        long tStage4 = System.nanoTime();   // PERF：液滴阶段结束标记（防未进入 if 分支）
         int originX = tileCX * 16 - ERODE_TILE_BORDER;
         int originZ = tileCZ * 16 - ERODE_TILE_BORDER;
 
@@ -491,9 +516,23 @@ public final class CellGenerator {
         //    值恒等式：base[x][z] = max(terrainEQuick, -0.05)，与粗采/骨架旧逻辑完全一致 → 输出不变。
         int N0 = ERODE_TILE_SIZE;
         float[][] base = new float[N0][N0];
-        for (int z = 0; z < N0; z++)
-            for (int x = 0; x < N0; x++)
-                base[z][x] = (float) Math.max(terrainEQuick(originX + x, originZ + z), -0.05);
+        // 并行采样（无伤：每点独立、只读 noise，输出与串行完全一致）
+        int rowsPerTask = Math.max(1, N0 / TILE_PARALLELISM);
+        int nTasks = (N0 + rowsPerTask - 1) / rowsPerTask;
+        CountDownLatch latch = new CountDownLatch(nTasks);
+        for (int t = 0; t < nTasks; t++) {
+            final int z0 = t * rowsPerTask, z1 = Math.min(N0, z0 + rowsPerTask);
+            TILE_SAMPLER.execute(() -> {
+                try {
+                    for (int z = z0; z < z1; z++)
+                        for (int x = 0; x < N0; x++)
+                            base[z][x] = (float) Math.max(terrainEQuick(originX + x, originZ + z), -0.05);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        try { latch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
         // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
         int spacing = ERODE_SAMPLING_SPACING;
@@ -543,6 +582,7 @@ public final class CellGenerator {
         float[][] tile = bicubicUpsampleAligned(lowResBuf, extendedLowRes, spacing,
             alignedStartX, alignedStartZ, originX, originZ, N);
 
+        long tStage1 = System.nanoTime();   // PERF：base+粗采+升采样结束
         // 2.5) 粗侵蚀骨架（脊-谷条纹滤镜）—— 作用于独立更密网格（RIDGE_SKELETON_SPACING=2）
         //       根因：主 bicubic 流程 spacing=4 把地形坡度稀释成 Δe/16，远低于 combiMask 阈值
         //       (rounding·onset≈0.0125) → combiMask 恒≈0 → 条纹被完全淡出（山谷不可见）。
@@ -564,24 +604,57 @@ public final class CellGenerator {
                 // 移除 typeMod 类型调制——原按类型权重在过渡带连续渐变 → 类型过渡带出现
                 // 人为强度渐变带（用户反馈"骨架与地形类型打架，过渡带变明显"）。
                 // 平原条纹弱由坡度自然控制（combiMask 坡度触发，平原坡度小→条纹弱），无需人工调制。
-                for (int tz = 0; tz < skelExtLR; tz++) {
-                    for (int tx = 0; tx < skelExtLR; tx++) {
-                        int wx = skelStartX + tx * skelSpacing;
-                        int wz = skelStartZ + tz * skelSpacing;
-                        // base 覆盖区内复用（值恒等：max(terrainEQuick,-0.05)），skelExtra 扩展带走原采样
-                        if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
-                            skelGrid[tz][tx] = base[wz - originZ][wx - originX];
-                        } else {
-                            skelGrid[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
+                // 并行采样（无伤：每点独立，输出与串行一致）
+                int skelRowsPerTask = Math.max(1, skelExtLR / TILE_PARALLELISM);
+                int skelTasks = (skelExtLR + skelRowsPerTask - 1) / skelRowsPerTask;
+                CountDownLatch skelLatch = new CountDownLatch(skelTasks);
+                for (int st = 0; st < skelTasks; st++) {
+                    final int sz0 = st * skelRowsPerTask, sz1 = Math.min(skelExtLR, sz0 + skelRowsPerTask);
+                    TILE_SAMPLER.execute(() -> {
+                        try {
+                            for (int tz = sz0; tz < sz1; tz++) {
+                                for (int tx = 0; tx < skelExtLR; tx++) {
+                                    int wx = skelStartX + tx * skelSpacing;
+                                    int wz = skelStartZ + tz * skelSpacing;
+                                    // base 覆盖区内复用（值恒等：max(terrainEQuick,-0.05)），skelExtra 扩展带走原采样
+                                    if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
+                                        skelGrid[tz][tx] = base[wz - originZ][wx - originX];
+                                    } else {
+                                        skelGrid[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
+                                    }
+                                }
+                            }
+                        } finally {
+                            skelLatch.countDown();
                         }
-                    }
+                    });
                 }
-                coarseDeltaLR = RidgeValleyErosion.computeCoarseDelta(
-                        skelGrid, skelExtLR, skelSpacing, skelStartX, skelStartZ, (float) seaE, rcfg);
+                try { skelLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                // computeCoarseDelta 并行（无伤：每点独立纯局部计算，gradX/gradZ 只读 skelGrid 邻居，
+                // 任务写 delta 不同行；输出与串行逐点一致）
+                final float[][] deltaLR = new float[skelExtLR][skelExtLR];
+                int cdRowsPerTask = Math.max(1, skelExtLR / TILE_PARALLELISM);
+                int cdTasks = (skelExtLR + cdRowsPerTask - 1) / cdRowsPerTask;
+                CountDownLatch cdLatch = new CountDownLatch(cdTasks);
+                for (int ct = 0; ct < cdTasks; ct++) {
+                    final int cz0 = ct * cdRowsPerTask, cz1 = Math.min(skelExtLR, cz0 + cdRowsPerTask);
+                    TILE_SAMPLER.execute(() -> {
+                        try {
+                            for (int tz = cz0; tz < cz1; tz++)
+                                for (int tx = 0; tx < skelExtLR; tx++)
+                                    deltaLR[tz][tx] = RidgeValleyErosion.evaluateCell(
+                                        skelGrid, tx, tz, skelExtLR, skelSpacing, skelStartX, skelStartZ,
+                                        (float) seaE, rcfg);
+                        } finally { cdLatch.countDown(); }
+                    });
+                }
+                try { cdLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                coarseDeltaLR = deltaLR;
             }
         }
 
         // 3) （已移至第 0 步提前计算 base——粗采/骨架/骨架 flat 复用，省 ~5,249 次 terrainEQuick/tile）
+        long tStage2 = System.nanoTime();   // PERF：骨架阶段结束
 
         // 4) 液滴侵蚀（SH 多轮迭代）+ flat 全源（terrainE + 粗骨架，确定性）
         float[][] dischargeNxN = null; // 液滴汇聚场（粒子路径重叠计数）
@@ -621,8 +694,10 @@ public final class CellGenerator {
             // 2026-08-02 恢复 discharge 导出：液滴路径重叠计数 = 粒子汇聚数量
             // （河流源头资格；2026-08-01 曾因两套粒子系统停用）
             float[] dischargeBuf = new float[bufSize * bufSize];
+            tStage3 = System.nanoTime();   // PERF：液滴阶段开始
             erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,
                 (float) seaE, (float) erosionStr, dischargeBuf);
+            tStage4 = System.nanoTime();        // PERF：液滴阶段结束
 
             for (int z = 0; z < N; z++)
                 for (int x = 0; x < N; x++)
@@ -659,12 +734,11 @@ public final class CellGenerator {
             }
         }
 
-        // 6.5/6.6) 河流追踪 + 河谷雕刻已移至 L1（ensureRiverTile，2026-08-02 分级流水线）：
-        //   本 tile 升 L1 前，1 环邻居侵蚀先定稿（getErosionTile 预生成）；StreamTracer
-        //   出界采样统一 terrainE（纯世界坐标函数）→ 任意 tile 追踪结果一致。本方法
-        //   只做 L3（侵蚀），postErosion 保持雕刻前快照。
+        // 6.5/6.6) 河流追踪 + 河谷雕刻（L1）：2026-08-09 内联进本方法 → delta 终态发布。
+        //   StreamTracer 出界采样统一 terrainEQuick（纯世界坐标函数）→ 任意 tile 追踪结果
+        //   一致、无邻居缓存依赖 → 任意生成时序下 delta 相同 → 跨 tile/chunk 无缝。
 
-        // 7) 计算 delta + postErosion（雕刻前快照；雕刻增量由 L1 更新 delta），构造 ErosionTileResult
+        // 7) 计算 delta + postErosion（雕刻前快照），构造 ErosionTileResult
         ErosionTileResult res = new ErosionTileResult();
         res.erosionRound = ++erosionRoundCounter;
         res.base = base;
@@ -681,12 +755,17 @@ public final class CellGenerator {
         res.tileCZ = tileCZ;
         res.originX = originX;
         res.originZ = originZ;
+        // L1 河流（终态发布）：delta 写全 = 侵蚀 + 雕刻，此后永不再变。
+        applyRiverCarving(res);
         if (++perfTileCount % 8 == 1) {
             double ms = (System.nanoTime() - tStart) / 1e6;
-            LOGGER.info("[PERF] erosion tile ({},{}) took {}ms (erosionOn={}, ridgeOn={})",
-                tileCX, tileCZ, String.format("%.0f", ms), erosionOn, ridgeOn);
-            System.out.println("[PERF] erosion tile (" + tileCX + "," + tileCZ + ") took "
-                + String.format("%.0f", ms) + "ms");
+            double dMs = (tStage4 - tStage3) / 1e6;  // 液滴阶段
+            double sMs = (tStage3 - tStage2) / 1e6;  // 骨架阶段
+            double bMs = (tStage2 - tStage1) / 1e6;  // base+粗采
+            String perf = String.format("[PERF] erosion tile (%d,%d) took %.0fms [base=%.0f skeleton=%.0f drops=%.0f]",
+                tileCX, tileCZ, ms, bMs, sMs, dMs);
+            LOGGER.info(perf);
+            System.out.println(perf);
         }
         return res;
     }
@@ -877,8 +956,18 @@ public final class CellGenerator {
                 int crz = chunkZ - tileCZ;
 
                 // 右边缘 blend：cr==2 且 lx >= BLEND_START 时渐变到右邻 tile
+                // ★ 2026-08-09 懒生成：邻居未缓存（异步补全未完成）时同步生成该邻居
+                //   （只算需要的 1-2 个，非 L3 的 8 个）→ 无同步等待链，冷启动大幅加速。
+                //   并发安全：get + putIfAbsent（铁律#6），重复生成确定性相同，浪费可接受。
+                //   2026-08-09 修复：generateErosionTile 现含 L1 → 懒生成 delta 也是终态
+                //   （侵蚀+雕刻），与邻居中心 chunk 读到的一致 → blend 无断裂。
                 if (cr == 2 && lx >= BLEND_START) {
-                    ErosionTileResult nr = erosionTileCache.get(tileKey(tileCX + ERODE_TILE_CHUNKS, tileCZ));
+                    long nkey = tileKey(tileCX + ERODE_TILE_CHUNKS, tileCZ);
+                    ErosionTileResult nr = erosionTileCache.get(nkey);
+                    if (nr == null) {
+                        nr = generateErosionTile(tileCX + ERODE_TILE_CHUNKS, tileCZ);
+                        erosionTileCache.putIfAbsent(nkey, nr);
+                    }
                     if (nr != null) {
                         int nlx = worldX - nr.originX;
                         int nlz = worldZ - nr.originZ;
@@ -892,7 +981,12 @@ public final class CellGenerator {
                 }
                 // 下边缘 blend：crz==2 且 lz >= BLEND_START 时渐变到下邻 tile（不再 else if）
                 if (crz == 2 && lz >= BLEND_START) {
-                    ErosionTileResult nb = erosionTileCache.get(tileKey(tileCX, tileCZ + ERODE_TILE_CHUNKS));
+                    long nkey = tileKey(tileCX, tileCZ + ERODE_TILE_CHUNKS);
+                    ErosionTileResult nb = erosionTileCache.get(nkey);
+                    if (nb == null) {
+                        nb = generateErosionTile(tileCX, tileCZ + ERODE_TILE_CHUNKS);
+                        erosionTileCache.putIfAbsent(nkey, nb);
+                    }
                     if (nb != null) {
                         int nlx = worldX - nb.originX;
                         int nlz = worldZ - nb.originZ;
