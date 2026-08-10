@@ -636,8 +636,8 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionErodeMul", 1.0, 0.1, 4.0);
         erosionLocalChargeWeight = builder.comment("localCharge positive feedback weight α. Each droplet's cumulative desc ent amplifies capacity: 0=off, higher=main valleys cut deeper vs tributaries. Default 1.0, range [0, 5].")
                 .defineInRange("erosionLocalChargeWeight", 1.0, 0.0, 5.0);
-        erosionCascadeStrength = builder.comment("Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.3, range [0, 1].")
-                .defineInRange("erosionCascadeStrength", 0.3, 0.0, 1.0);
+        erosionCascadeStrength = builder.comment("Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.5 (2026-08-10: 0.3->0.5, sharper gully edges), range [0, 1].")
+                .defineInRange("erosionCascadeStrength", 0.5, 0.0, 1.0);
         riverDischargeThreshold = builder.comment("River threshold (background-to-peak ratio): larger = sparser network (main trunk only). Default 0.02, range [0.001, 0.3]. Works with convergence weighting (only river-mode droplets accumulate discharge).")
                 .defineInRange("riverDischargeThreshold", 0.02, 0.001, 0.3);
         erosionRiverLcLo = builder.comment("River-particle mode: cumulative-drop (lc) eligibility low threshold. Droplets exceeding lc begin transitioning toward river mode (strong erosion + weak deposition). Default 0.05, range [0.005, 1.0].")
@@ -650,8 +650,9 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionRiverDisHi", 1.5, 0.5, 200.0);
         erosionMomentumTransfer = builder.comment("SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].")
                 .defineInRange("erosionMomentumTransfer", 1.0, 0.0, 2.0);
-        erosionIterations = builder.comment("SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 2 (2026-08-09 perf opt: 3->2, drops -33%, revert to 3 if texture too light), range [1, 16].")
-                .defineInRange("erosionIterations", 2, 1, 16);
+        erosionIterations = builder.comment("SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 5 (2026-08-10: 2->5, plain discharge needs more passes to accumulate; SimpleHydrology ref uses 30), range [1, 16].")
+                .defineInRange("erosionIterations", 5, 1, 16);
+        // NOTE(2026-08-10): toml 旧值 2 会覆盖代码默认——修改默认后必须同步 run/config/geogenesis-common.toml
         erosionLrate = builder.comment("SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].")
                 .defineInRange("erosionLrate", 0.1, 0.01, 0.5);
         erosionRiverStrength = builder.comment("River-particle mode total strength: 0=off (legacy behaviour), 1=strongest (erode x3, deposit x0.2, evaporate x0.1). Default 0.6, range [0, 1].")

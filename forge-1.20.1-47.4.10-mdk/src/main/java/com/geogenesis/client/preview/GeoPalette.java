@@ -322,7 +322,7 @@ public final class GeoPalette {
         if (layer == PreviewLayer.CONTINENTALITY) return new String[]{"内陆 +1", "海洋 -1"};
         if (layer == PreviewLayer.RELIEF) return new String[]{"起伏高", "起伏低"};
         if (layer == PreviewLayer.LATITUDE) return new String[]{"北", "南"};
-        if (layer == PreviewLayer.RIVER_NETWORK) return new String[]{"河心", "远"};
+        if (layer == PreviewLayer.RIVER_NETWORK) return new String[]{"高流量", "低流量"};
         return new String[]{"1.0", "0.0"};
     }
 
@@ -468,8 +468,11 @@ public final class GeoPalette {
                 case RELIEF:      pos = reliefPos(c.shape); break;
                 case LATITUDE:    pos = Latitude.latitude01(worldZ); break;
                 case RIVER_NETWORK: {
-                    double d = c.riverDistance;                 // 0=河心,1=谷缘（改用 riverDistance，与水文叠加一致）
-                    pos = (d >= 1.0) ? 0.0 : (1.0 - d);  // 河心亮、远暗
+                    // 2026-08-10 改为 discharge 累积场（用户定案：河流应在群系图层显示，
+                    // 本图层改为累积场——显示上游流量累积，河网结构清晰可见）。
+                    // riverNetDischarge 范围 [0, +∞)，用 log 压缩归一化到 [0, 1]。
+                    double dis = c.riverNetDischarge;
+                    pos = dis > 0 ? Math.min(1.0, Math.log1p(dis) / 6.0) : 0.0; // log(1+dis)/6，dis≈400→1
                     break;
                 }
                 default: pos = 0.0;
@@ -684,7 +687,7 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.climate_zone", "Climate Zone");
         ENGLISH.put("geogenesis.layer.biome", "Biome");
         ENGLISH.put("geogenesis.layer.terrain_type", "Terrain Type");
-        ENGLISH.put("geogenesis.layer.river_network", "River Network");
+        ENGLISH.put("geogenesis.layer.river_network", "Flow Accumulation");
         // 气候带
         ENGLISH.put("geogenesis.zone.TROPICAL", "Tropical (A)");
         ENGLISH.put("geogenesis.zone.ARID", "Arid (B)");

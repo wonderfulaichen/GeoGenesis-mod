@@ -71,6 +71,9 @@ public class ParameterConfigPanel extends ConfigPanel {
         }
     }
     private final List<ToggleSpec> toggles = new ArrayList<>();
+    /** 只读模式（游戏内打开时禁用开关，防止配置修改导致地形断裂） */
+    private boolean readOnly = false;
+    public void setReadOnly(boolean ro) { this.readOnly = ro; }
 
     // 图表
     private final WorldHeightBar heightBar = new WorldHeightBar();
@@ -389,12 +392,12 @@ public class ParameterConfigPanel extends ConfigPanel {
             if (s.isHoveringReset((int) mx, (int) my)) { s.resetToDefault(); return true; }
             if (s.isMouseOver(mx, my)) return s.mouseClicked(mx, my, btn);
         }
-        // ★ 侵蚀与河流开关
+        // ★ 侵蚀与河流开关（游戏内只读：禁用点击，防止配置修改导致已生成地形断裂）
         int toggleRowY = basicTop + basicSliders.size() * BASIC_ROW_H + 8 + 18;
         for (int i = 0; i < toggles.size(); i++) {
             ToggleSpec ts = toggles.get(i);
             int rowY = toggleRowY + i * BASIC_ROW_H;
-            if (hit(x + 4, rowY, w - 8, BASIC_ROW_H - 2, mx, my)) {
+            if (!readOnly && hit(x + 4, rowY, w - 8, BASIC_ROW_H - 2, mx, my)) {
                 ts.setter.accept(!ts.getter.getAsBoolean());
                 if (onMarkDirty != null) onMarkDirty.run();
                 playClick();

@@ -1064,6 +1064,8 @@ public final class CellGenerator {
                         double surfE = Math.min(1.0, cell.e + carve); // 雕前 e ≈ 原地面
                         cell.riverSurfaceY = Math.max(seaLevel(), heightCurve.heightFromE(surfE) + 0.5);
                         cell.riverNetDischarge = sampleTileField(rd.discharge, rd.originX, rd.originZ, wuX, wuZ);
+                        // 2026-08-10：河流格覆盖 terrainType → BiomeClassifier 显示 RIVER 群系
+                        if (cell.e >= 0) cell.terrainType = TerrainClass.RIVER;
                     } else {
                         cell.isRiver = false;
                         cell.riverMask = false;
@@ -1097,6 +1099,9 @@ public final class CellGenerator {
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
         if (res == null) return; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
         double delta = sampleTileField(res.delta, res.originX, res.originZ, wuX, wuZ);
+        // 2026-08-10：累积场对所有格设置（液滴路径重叠计数，不仅是河道）→ 流量累积图层可见
+        if (res.discharge != null)
+            cell.riverNetDischarge = sampleTileField(res.discharge, res.originX, res.originZ, wuX, wuZ);
 
         // tile 边界 blend（双方向独立+角块双 blend）：距中心区右/下缘 ≤10 wu 时渐变到邻 tile。
         // HS=1 时与旧判定（cr==2 && lx>=BLEND_START ⇔ 距右缘 ≤16-BLEND_START=10 块）逐位等价；

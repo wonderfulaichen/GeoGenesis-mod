@@ -48,7 +48,7 @@
   "geogenesis.layer.climate_zone": "气候带",
   "geogenesis.layer.biome": "群系",
   "geogenesis.layer.terrain_type": "地形类型",
-  "geogenesis.layer.river_network": "河流网络",
+  "geogenesis.layer.river_network": "流量累积",
   "geogenesis.layer.rock_layer": "岩层",
   "geogenesis.layer.rock_type": "岩石类型",
   "geogenesis.layer.vein_map": "矿脉图",
