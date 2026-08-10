@@ -46,6 +46,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private static final int DEFAULT_PREVIEW_LAYER = GeoPalette.PreviewLayer.ELEVATION.ordinal();
 
     private final Screen parent;
+    /** 游戏内打开时只读：禁用配置开关，防止修改导致已生成地形断裂（2026-08-10）。 */
+    private final boolean readOnly;
     /** 预览种子。固定默认值 12345L，用户可通过预设面板的 ★ 按钮手动随机化。 */
     private long seed = 12345L;
 
@@ -108,6 +110,8 @@ public class GeoGenesisConfigScreen extends Screen {
     public GeoGenesisConfigScreen(Screen parent) {
         super(Component.literal("GeoGenesis 配置"));
         this.parent = parent;
+        // 游戏内打开（parent 不是创建世界界面）→ 只读模式
+        this.readOnly = !(parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen);
     }
     /** 带种子的构造器：创建世界时传随机种子，游戏中传当前世界种子。 */
     public GeoGenesisConfigScreen(Screen parent, long seed) {
@@ -120,11 +124,13 @@ public class GeoGenesisConfigScreen extends Screen {
         this.parent = parent;
         this.seed = seed;
         this.worldCtx = ctx;
+        this.readOnly = !(parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen);
     }
     public GeoGenesisConfigScreen(Screen parent, int tab) {
         super(Component.literal("GeoGenesis 配置"));
         this.parent = parent;
         this.tab = tab;
+        this.readOnly = !(parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen);
     }
     public GeoGenesisConfigScreen() { this(null); }
 
@@ -162,14 +168,16 @@ public class GeoGenesisConfigScreen extends Screen {
             confirmDialog.show(title, msg, affected, onCnfrm, onCncl);
         });
         paramPanel.setBounds(panelX + 4, listTop, panelW - 8);
+        paramPanel.setReadOnly(readOnly);
         paramPanel.buildFromConfig();
 
-        applyBtn = Button.builder(Component.literal("应用"), b -> doApply())
+        applyBtn = Button.builder(Component.literal(readOnly ? "只读" : "应用"), b -> doApply())
             .pos(panelX, listBottom + 6).size(60, 20).build();
         savePresetBtn = Button.builder(Component.literal("保存"), b -> onSavePreset())
             .pos(panelX + 64, listBottom + 6).size(60, 20).build();
-        resetBtn = Button.builder(Component.literal("重置"), b -> doReset())
+        resetBtn = Button.builder(Component.literal(readOnly ? "只读" : "重置"), b -> doReset())
             .pos(panelX + 128, listBottom + 6).size(60, 20).build();
+        if (readOnly) { applyBtn.active = false; resetBtn.active = false; }
         addRenderableWidget(applyBtn);
         addRenderableWidget(savePresetBtn);
         addRenderableWidget(resetBtn);
@@ -314,8 +322,15 @@ public class GeoGenesisConfigScreen extends Screen {
             () -> {});
     }
 
-    /** 加载自定义预设：回默认 → 还原命名值 → 重建各面板 UI → 重建预览 → 持久化 */
+    /** 加载自定义预设：回默认 → 还原命名值 → 重建各面板 UI → 重建预览 → 持久化。游戏内只读时拒绝。 */
     private void applyUserPreset(UserPresetsStore.UserPreset p) {
+        if (readOnly) {
+            confirmDialog.show("只读模式",
+                "游戏内不能修改地形配置（会导致已生成地形断裂）。",
+                List.of("请退出世界后在创建世界界面修改配置"),
+                () -> {}, () -> {});
+            return;
+        }
         GeoGenesisConfig.INSTANCE.resetToDefault();
         GeoGenesisConfig.INSTANCE.applyNamedValues(p.values());
         terrainPanel.buildFromConfig();
@@ -328,6 +343,7 @@ public class GeoGenesisConfigScreen extends Screen {
         try { GeoGenesisConfig.SPEC.save(); } catch (Exception ignored) { /* 文件写竞争忽略 */ }
     }
     private void doReset() {
+        if (readOnly) return; // 游戏内只读：按钮已禁用，防御性检查
         // 重置到默认值：~120 个 .set() 各自触发文件写入，Windows 文件锁可能抛 WritingException
         // 捕获并继续——部分字段未写入的后续面板重建也会覆盖
         try {
@@ -345,8 +361,15 @@ public class GeoGenesisConfigScreen extends Screen {
         rebuildPreview();
     }
 
-    /** 点击预设卡片 → 弹确认框（覆盖全部参数前需用户确认） */
+    /** 点击预设卡片 → 弹确认框（覆盖全部参数前需用户确认）。游戏内只读时拒绝。 */
     private void showApplyPresetConfirm(Preset p) {
+        if (readOnly) {
+            confirmDialog.show("只读模式",
+                "游戏内不能修改地形配置（会导致已生成地形断裂）。",
+                List.of("请退出世界后在创建世界界面修改配置"),
+                () -> {}, () -> {});
+            return;
+        }
         confirmDialog.show("应用预设：" + p.name,
             "将用预设「" + p.name + "」覆盖当前全部地形 / 气候参数。",
             List.of("海陆偏置、海深、地形类型范围、起伏振幅、气候阈值等全部参数"),

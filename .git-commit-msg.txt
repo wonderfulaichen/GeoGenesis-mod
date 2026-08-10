@@ -1,26 +1,21 @@
-wu化: 引擎坐标与MC块解耦 + 修复4个wu化单位漂移bug
+侵蚀对齐 SimpleHydrology + 预览图层修正 + 游戏内配置只读
 
-架构（对齐 NovoAtlas horizontalScale 范式）:
-- 引擎全部坐标语义改为 wu(world unit), 永不感知MC块;
-  块→wu换算(÷horizontalScale)只在GeoGenesisTerrain门面
-- 侵蚀tile网格: ERODE_TILE_CHUNKS=3(chunk绑定)→ERODE_TILE_CENTER=48(wu网格),
-  HS=1时与旧3-chunk网格逐位等价
-- extractFromTile重写为块→wu双线性插值(sampleTileField/sampleTileMask),
-  边界blend抽为公共applyTileDelta; RiverTileData加originX/originZ
-- 新增 sampleWu()/params(); 新增 HSABProbe 验证(引擎纯wu恒等式+门面等比放大, ALL PASS)
-- TerrainPreview (int)horizontalScale 强转 bug 修复
+侵蚀调优（对齐 SH 参考）:
+- SLOPE_MIN_SKIP 0.002→0.0001: 平原液滴不再被跳过, 冲刷痕迹出现
+- erosionIterations 2→5 (toml+代码双同步): 平原 discharge 多轮累积, 汇聚沟壑出现
+- erosionCascadeStrength 0.3→0.5: 沟壑边缘更锐利
+- effD 0.1→0.15: 侵蚀 1.5× 补偿平原 (初提 0.3 与 ENTRAINMENT=10 叠加致 16.5× 挖坑→小坑, 回退到 0.15)
+- R_F 2→3: 小坑修复 (笔刷 5 格→7 格)
+- 海底 cascade 免阈值 (SH world.h:144-148): curH<seaNorm 时 excess=|diff| 全量沉降, 海床平滑无棱角
 
-修复 wu 化单位漂移(4处, 均为"每格物理量须×hs还原"模式):
-- RidgeValleyErosion gradX/gradZ: e/wu→e/块(×hs), 骨架标定不随HS漂移
-- ErosionEngine SLOPE_MIN_SKIP: 液滴跳过坡度阈值×hs
-- ErosionEngine CASCADE_MAXDIFF: 级联沉降距离阈值×hs (hs经runErosionOnFlat→spawnAndSim→simulateDrop→cascadeLocal传参)
-- 高原平顶假峰: 骨架局部窗口抬升衰减(LIFT_WINDOW_R=8, 只衰减delta>0, 下切不受影响)
+预览修正:
+- 群系图层显示河流: extractFromTile 河流格覆盖 terrainType=RIVER (classifyTerrain 原不检查 isRiver)
+- 流量累积图层: RIVER_NETWORK 从 riverDistance 改 riverNetDischarge (log 压缩), 所有格赋值累积场
+- 图层名: 中文"流量累积"/英文"Flow Accumulation"
 
-修复预览渲染问题:
-- tile边界blend方向反了(b=1.0-d/h 而非 d/h) → 方块伪影
-- 线程中断竞态: latch.await中断→抛CancellationException(不再恢复标志继续),
-  半成品tile不入缓存(否则永久污染→方块伪影); 成功tile无条件入缓存(防反复重算卡顿)
-- TerrainPreview.drawTooltip hover索引/scale 修正
+游戏内配置只读 (防地形断裂):
+- GeoGenesisConfigScreen 判断 parent 是否 CreateWorldScreen → 游戏内只读
+- 开关禁用, 应用/重置按钮灰置, 预设应用弹提示
+- ParameterConfigPanel setReadOnly
 
-探针: HSABProbe新增; RiverSeam/ErosionTile/QuickGradient/DisFlow探针头标注wu化失真TODO
-CACHE_SCHEMA_VERSION 14→18
+清理: 删除误提交的 .git-commit-msg.txt

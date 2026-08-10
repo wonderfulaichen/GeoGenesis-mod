@@ -62,18 +62,21 @@ public class ErosionEngine {
     private static final int R_M = 4, DROPS_M = 60, LIFE_M = 30;
     private static final float ERODE_M = 0.120f, DEPOSIT_M = 0.015f;
 
-    // F 尺度 (细沟/微沟壑)：半径 2，(2*2+1)²=25 邻域，寿命 20 步
-    private static final int R_F = 2, DROPS_F = 40, LIFE_F = 20;
+    // F 尺度 (细沟/微沟壑)：半径 3，(2*3+1)²=49 邻域，寿命 20 步
+    // 2026-08-10: R_F 2→3——原 2（直径 5 格）太窄，片流液滴在 ≤5 格区域反复侵蚀 → 小坑。
+    // 3（直径 7 格）与 wu 化后特征尺度匹配更好，坑变浅槽。
+    private static final int R_F = 3, DROPS_F = 40, LIFE_F = 20;
     private static final float ERODE_F = 0.150f, DEPOSIT_F = 0.020f;
 
     /** 最大笔刷半径（pad = R_MAX + 2 = 9），相邻 tile 各 pad 9 + 中心区域重叠 2*9=18 块无缝 */
     private static final int R_MAX = Math.max(R_C, Math.max(R_M, R_F)); // =7
 
     // ★ 2026-08-09 优化（光追 RIS 式重要性重采样 / Russian roulette 剪枝）：
-    //   SLOPE_MIN_SKIP — 撒点前 1 格差分坡度阈值：低于则跳过该液滴（平坦区侵蚀≈0，纯无效功）。
+    //   SLOPE_MIN_SKIP — 撒点前 1 格差分坡度阈值：低于则跳过该液滴（绝对平坦区侵蚀≈0，纯无效功）。
     //     确定性：坡度是 flat 世界坐标场的确定性函数 → 跳过集合固定 → 无缝保持。
-    //     阈值保守：0.002e/格 ≈ 0.5 块/格，只跳过绝对平坦区（海洋平原/谷底），陡坡全量。
-    private static final float SLOPE_MIN_SKIP = 0.002f;
+    //     2026-08-10 从 0.002 降到 0.0001：SimpleHydrology 参考无此阈值，平原微小坡度（e/wu ≈ 0.0003）
+    //     被原阈值跳过 → 无侵蚀冲刷痕迹。新阈值 0.0001 ≈ 0.025 块/格，只跳过绝对平坦区。
+    private static final float SLOPE_MIN_SKIP = 0.0001f;
     /** 平衡态判定：spd 低于该值 且 单步笔刷增量低于该值，连续 STALL_MAX 步 → 提前终止 */
     private static final float STALL_SPEED = 0.3f;
     private static final float STALL_DELTA = 1e-4f;
@@ -141,7 +144,9 @@ public class ErosionEngine {
         // 液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）
         // SH 三件套（2026-08-01）：动量场正反馈 + 多轮迭代 + lrate 场平滑
         float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);
-        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）
+        // 2026-08-10：2→5——平原 discharge 累积需要更多轮（SLOPE_MIN_SKIP=0.0001 后平原液滴
+        // 被允许通过，但源头 ld≈0 需要多轮累积才能让 flowGate 显著；SimpleHydrology 默认 30 轮）。
+        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 5);
         float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);
 
         int pad = R_MAX + 2;
@@ -315,7 +320,7 @@ public class ErosionEngine {
                      bOff, bWgt, bn, locked, pad, baseSize,
                      dis, disT, momX, momY, momXT, momYT, momTransfer,
                      erodeSpeed, depositSpeed, lifetime, ox, oz,
-                     cascadeStrength, hs);
+                     cascadeStrength, seaNorm, hs);
     }
 
     /** SH 对齐液滴下落。关键改进：动量场正反馈 + erf 放电反馈 + 局部 cascade + 片流 + 水下 */
@@ -327,7 +332,7 @@ public class ErosionEngine {
                               float momTransfer,
                              float erodeSpeed, float depositSpeed, int lifetime,
                              int ox, int oz,
-                             float cascadeStrength, float hs) {
+                             float cascadeStrength, float seaNorm, float hs) {
         float dirX = 0, dirY = 0, sed = 0, spd = 1f, wat = 1f;
 
         int spawnIx = (int) posX, spawnIy = (int) posY;
@@ -424,7 +429,9 @@ public class ErosionEngine {
             float heightDrop = Math.max(0f, -dh) + depthBoost;
             // 2026-08-01 两套粒子系统：液滴回归纯 SH 平衡浓度公式（河流职责移交 StreamTracer）
             float c_eq = (1f + ENTRAINMENT * flowGate) * heightDrop;  // 平衡浓度
-            float effD = 0.1f;                       // 松弛率 = depositionRate(=0.1)
+            // 2026-08-10: 0.1→0.15——最初提到 0.3 与 ENTRAINMENT=10 叠加 → 汇聚处 16.5× 挖坑（小坑复现）。
+            // 0.15 = 1.5×（保留平原增强，减半挖坑力度）。若小坑仍明显再降回 0.1。
+            float effD = 0.15f;
             float delta = effD * (c_eq - sed);       // >0=侵蚀, <0=沉积
             float brushDelta = delta;                // 笔刷前增量快照（early-exit 判定用）
 
@@ -453,7 +460,7 @@ public class ErosionEngine {
 
             // ---- 局部 cascade（每 CASCADE_INTERVAL 步执行，对齐 SH 每步语义） ----
             if (cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
-                cascadeLocal(flat, bufSize, nix, niy, cascadeStrength, hs);
+                cascadeLocal(flat, bufSize, nix, niy, cascadeStrength, seaNorm, hs);
             }
 
             // NaN/Inf 守卫：陡峭下坡（dh 很负）可能导致 spd² + dh*GRAVITY < 0 → sqrt(NaN)
@@ -472,8 +479,10 @@ public class ErosionEngine {
     }
 
     /** 局部 cascade：8 邻居按高度排序 + 距离加权 settling（SH 原版语义）。
-     *  hs：wu→块 换算（dist 为 wu 格距，×hs 还原块距离，2026-08-10 wu 化）。 */
-    private void cascadeLocal(float[] flat, int bufSize, int cx, int cz, float strength, float hs) {
+     *  hs：wu→块 换算（dist 为 wu 格距，×hs 还原块距离，2026-08-10 wu 化）。
+     *  seaNorm：海底免阈值（对齐 SH world.h:144-148 "h<0.1 时 excess=|diff| 无 maxdiff"）——
+     *  海平面以下全量沉降，消除海床/水下峡谷的锐利棱角。 */
+    private void cascadeLocal(float[] flat, int bufSize, int cx, int cz, float strength, float seaNorm, float hs) {
         // 收集 8 邻居
         float[] nh = new float[8];
         int[] ni = new int[8];
@@ -509,7 +518,14 @@ public class ErosionEngine {
 
             // SH 公式：excess = |diff| - dist * maxdiff
             // 2026-08-10 wu 化修正：dist 为 wu 格距，×hs 还原"块"距离 → 阈值不随 HS 漂移
-            float excess = Math.abs(diff) - dist * CASCADE_MAXDIFF * hs;
+            // 2026-08-10 海底免阈值（对齐 SH world.h:144-148）：当前格低于海平面时 excess=|diff|
+            // 全量沉降 → 海床平滑，水下峡谷不产生棱角锯齿
+            float excess;
+            if (curH < seaNorm) {
+                excess = Math.abs(diff);
+            } else {
+                excess = Math.abs(diff) - dist * CASCADE_MAXDIFF * hs;
+            }
             if (excess <= 0) continue;
 
             // SH 公式：transfer = settling * excess / 2 (capped at 40% of diff)
