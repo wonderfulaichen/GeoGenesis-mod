@@ -37,7 +37,11 @@ public class ErosionEngine {
 
     private static final Logger LOGGER = LogManager.getLogger("geogenesis/erosion");
 
-    private static final float INERTIA = 0.005f, GRAVITY = 2.5f, EVAP_RATE = 0.001f;
+    // ★ 2026-08-11 对齐 SH Erosion.cs 原文（深沟壑修复）：
+    //   INERTIA 0.005→0.05（SH inertia=.05f "At zero, water will instantly change direction
+    //     to flow downhill"）——液滴保留 5% 惯性，不再死钉梯度线反复挖同一道 → 沟壑变宽变浅
+    //   EVAP_RATE 0.001→0.01（SH evaporateSpeed=.01f）——水量 1%/步衰减，寿命后半侵蚀收敛
+    private static final float INERTIA = 0.05f, GRAVITY = 2.5f, EVAP_RATE = 0.01f;
     private static final float ENTRAINMENT = 10f;
     /** 汇聚门控尺度：flowGate = ld/(ld+FLOW_SCALE)。基于实测 dis 分布（非零93%、主质量2-8）定 4，
      *  源头(ld<2)弱、汇聚(ld≥8)全强。仅改侵蚀公式（ErosionEngine），不影响预览磁盘缓存
@@ -45,9 +49,8 @@ public class ErosionEngine {
     private static final float FLOW_SCALE = 4f;
     /** 放电量偏置系数（旧动量偏置 a = MOMENTUM·ld/(ld+10)，沿梯度加速，保留） */
     private static final float MOMENTUM = 1.0f;
-    private static final float DEPOSIT_SPEED = 0.02f;
-    /** SimpleHydrology 型统一松弛率（原 depositionRate=0.1），高度差驱动的平衡浓度 → 侵蚀/沉积双向 */
-    private static final float RELAX_RATE = 0.1f;
+    // NOTE(2026-08-11): RELAX_RATE=0.1 / DEPOSIT_SPEED=0.02 死常量已删除——
+    // 统一松弛率被接线的 erodeSpeed/depositSpeed 参数取代（三尺度 ERODE_*/DEPOSIT_* 生效）
     /** cascade 局部每 N 步执行（2026-08-01 对齐原版每步，河床平滑更充分；8 邻居小邻域性能可控） */
     private static final int CASCADE_INTERVAL = 1;
     private static final float CASCADE_MAXDIFF = 0.01f;
@@ -429,27 +432,57 @@ public class ErosionEngine {
             float heightDrop = Math.max(0f, -dh) + depthBoost;
             // 2026-08-01 两套粒子系统：液滴回归纯 SH 平衡浓度公式（河流职责移交 StreamTracer）
             float c_eq = (1f + ENTRAINMENT * flowGate) * heightDrop;  // 平衡浓度
-            // 2026-08-10: 0.1→0.15——最初提到 0.3 与 ENTRAINMENT=10 叠加 → 汇聚处 16.5× 挖坑（小坑复现）。
-            // 0.15 = 1.5×（保留平原增强，减半挖坑力度）。若小坑仍明显再降回 0.1。
-            float effD = 0.15f;
-            float delta = effD * (c_eq - sed);       // >0=侵蚀, <0=沉积
+            // ★ 2026-08-11 接线 erodeSpeed/depositSpeed（自 b34ebe7 SH 重构起成为死参数，
+            //    effD 硬编码 0.15 双向）——恢复两速率语义（对照 SH Erosion.cs:88-107 原文）：
+            //   · 侵蚀：delta = erodeSpeed·(c_eq−sed)，钳制上限 = max(0,-dh) + depthBoost
+            //   · 沉积：上坡 dh>0 → 填平 Min(dh, sed)；否则超载比例 depositSpeed·(c_eq−sed)
+            float delta;
+            if (c_eq > sed) {
+                delta = erodeSpeed * (c_eq - sed);
+                // SH 原文 "Clamp the erosion to the change in height so that it doesn't dig a hole"
+                // ★ 2026-08-11 修：上限含 depthBoost——旧上限 max(0,-dh) 把水下深度增强驱动
+                //   的侵蚀全砍 → 坑底低于海平面后 -dh≈0 → 侵蚀归零 → "坑遇海平面冻结"
+                //   （SH 无海平面概念，水下侵蚀由 -deltaHeight 照常驱动，不存在冻结）。
+                delta = Math.min(delta, Math.max(0f, -dh) + depthBoost);
+            } else if (dh > 0f) {
+                // SH 原文 "If moving uphill (deltaHeight > 0) try fill up to the current height"
+                // ★ 2026-08-11 补上坡填平分支——旧实现只有超载比例，坑底液滴爬坡时不填坑
+                //   → 坑壁猛挖、坑底不填 → 坑越挖越深（"局部产坑"根因）。填平高度差。
+                delta = -Math.min(dh, sed);
+            } else {
+                delta = depositSpeed * (c_eq - sed);          // <0=沉积（超载比例）
+            }
             float brushDelta = delta;                // 笔刷前增量快照（early-exit 判定用）
 
-            // 笔刷邻域分布：权重须对正负通用
-            // delta>0: 从邻域取材料（侵蚀）→ flat[bi] 减小, sed 增大
-            // delta<0: 向邻域加材料（沉积）→ flat[bi] 增大, sed 减小
-            for (int b = 0; b < bn; b++) {
-                int bi = idx + bOff[b];
-                if (bi < 0 || bi >= flat.length) continue;
-                int bz = bi / bufSize, bx = bi % bufSize;
-                if (locked != null) {
-                    int bzL = bz - pad, bxL = bx - pad;
-                    if (bzL >= 0 && bzL < baseSize && bxL >= 0 && bxL < baseSize && locked[bzL][bxL]) continue;
+            // ★ 2026-08-11 沉积分布改 4 邻双线性（TF ErosionFilter.java:147-152 注释原文：
+            //   "Deposition is not distributed over a radius (like erosion) so that it can
+            //   fill small pits"）——沉积只落当前子像素单元 4 角节点，不再用笔刷半径摊开；
+            //   笔刷摊开 = 单点材料抹平到整圈 → 隆起成山包（用户实测"堆积"问题）。
+            //   侵蚀仍用笔刷（TF 语义：侵蚀半径取料、沉积单格填坑）。
+            if (delta > 0f) {
+                // ---- 侵蚀：笔刷邻域取材料 ----
+                for (int b = 0; b < bn; b++) {
+                    int bi = idx + bOff[b];
+                    if (bi < 0 || bi >= flat.length) continue;
+                    int bz = bi / bufSize, bx = bi % bufSize;
+                    if (locked != null) {
+                        int bzL = bz - pad, bxL = bx - pad;
+                        if (bzL >= 0 && bzL < baseSize && bxL >= 0 && bxL < baseSize && locked[bzL][bxL]) continue;
+                    }
+                    float weigh = delta * bWgt[b];
+                    if (weigh == 0f) continue;
+                    flat[bi] -= weigh;
+                    sed += weigh;
                 }
-                float weigh = delta * bWgt[b];
-                if (weigh == 0f) continue;
-                flat[bi] -= weigh;
-                sed += weigh;
+            } else if (delta < 0f) {
+                // ---- 沉积：当前单元 4 节点双线性（NW/NE/SW/SE；ix/iy ∈ [1, bufSize-2] 已保证 4 节点越界安全） ----
+                float amount = -delta;
+                float settled = 0f;
+                settled += depositNode(flat, bufSize, idx,         amount * (1f - fx) * (1f - fy), pad, baseSize, locked);
+                settled += depositNode(flat, bufSize, idx + 1,     amount * fx        * (1f - fy), pad, baseSize, locked);
+                settled += depositNode(flat, bufSize, idx + bufSize,     amount * (1f - fx) * fy,        pad, baseSize, locked);
+                settled += depositNode(flat, bufSize, idx + bufSize + 1, amount * fx        * fy,        pad, baseSize, locked);
+                sed -= settled;
             }
 
             // ---- track 累积（SH water.h:113-117：本轮 discharge + 动量 volume·speed） ----
@@ -476,6 +509,22 @@ public class ErosionEngine {
             }
             wat *= (1 - EVAP_RATE);
         }
+    }
+
+    /**
+     * 沉积到单节点（TF 4 邻双线性沉积的节点落地）。返回实际沉积量（locked 跳过 → 0）。
+     * 与侵蚀笔刷的 locked 语义一致：locked 格既不改 flat 也不扣 sed。
+     */
+    private static float depositNode(float[] flat, int bufSize, int bi, float amount,
+                                     int pad, int baseSize, boolean[][] locked) {
+        if (amount == 0f) return 0f;
+        int bz = bi / bufSize, bx = bi % bufSize;
+        if (locked != null) {
+            int bzL = bz - pad, bxL = bx - pad;
+            if (bzL >= 0 && bzL < baseSize && bxL >= 0 && bxL < baseSize && locked[bzL][bxL]) return 0f;
+        }
+        flat[bi] += amount;
+        return amount;
     }
 
     /** 局部 cascade：8 邻居按高度排序 + 距离加权 settling（SH 原版语义）。
@@ -508,7 +557,13 @@ public class ErosionEngine {
                 }
 
         float curH = flat[cz * bufSize + cx];
+        // ★ 2026-08-11 过冲修复：总转移上限 = curH − 最低邻居（沉降到最低邻居即停）。
+        //   根因：8 邻居各自 cap 40% 但累积无上限——单次 cascade 可抽走 8×0.16 → 过冲到
+        //   -0.88 → 多液滴 × 5 轮 → 爆炸 ±394 → NaN（规则破碎图案根因）。
+        float minN = nh[0];           // 已排序 → 最低邻居
+        float budget = Math.max(0f, curH - minN);
         for (int i = 0; i < num; i++) {
+            if (budget <= 0f) break;
             float diff = curH - nh[i];
             if (Math.abs(diff) < 0.001f) continue;
 
@@ -531,6 +586,8 @@ public class ErosionEngine {
             // SH 公式：transfer = settling * excess / 2 (capped at 40% of diff)
             float transfer = strength * excess * 0.5f;
             transfer = Math.min(transfer, Math.abs(diff) * 0.4f);
+            // 2026-08-11 过冲修复：总转移不超过 budget（curH−最低邻居）
+            transfer = Math.min(transfer, budget);
 
             if (diff > 0) {
                 flat[cz * bufSize + cx] -= transfer;
@@ -539,6 +596,7 @@ public class ErosionEngine {
                 flat[cz * bufSize + cx] += transfer;
                 flat[ni[i]] -= transfer;
             }
+            budget -= transfer;
         }
     }
 

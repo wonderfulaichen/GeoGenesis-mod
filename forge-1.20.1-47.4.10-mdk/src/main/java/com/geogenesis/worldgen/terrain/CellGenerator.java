@@ -1154,6 +1154,17 @@ public final class CellGenerator {
         return cell;
     }
 
+    /** 探针专用：直接生成/取 tile 结果（ErosionPeriodProbe 用，不经 getOrGenTile 的中断捕获）。 */
+    public ErosionTileResult getErosionTileResultForProbe(int tileCX, int tileCZ) {
+        long k = tileKey(tileCX, tileCZ);
+        ErosionTileResult r = erosionTileCache.get(k);
+        if (r == null) {
+            r = generateErosionTile(tileCX, tileCZ);
+            erosionTileCache.putIfAbsent(k, r);
+        }
+        return r;
+    }
+
     /**
      * 取 tile 结果（缓存命中优先，缺失则同步生成——blend 懒邻居语义保留，并发安全 putIfAbsent）。
      *

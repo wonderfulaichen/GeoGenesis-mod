@@ -41,7 +41,7 @@ public final class GeoGenesisTerrain {
     public HeightCurve heightCurve() { return generator.heightCurve(); }
 
     /**
-     * 采样世界高度（入参 = MC 块坐标，内部 ÷horizontalScale 转 wu）。
+     * 采样世界高度。
      */
     public double sampleHeight(double wx, double wz) {
         Cell cell = sampleCell(wx, wz);
@@ -49,10 +49,11 @@ public final class GeoGenesisTerrain {
     }
 
     /**
-     * 采样完整 Cell 数据（带缓存）。入参 = MC 块坐标 → wu 换算由 {@link #toWu} 完成。
+     * 采样完整 Cell 数据（带缓存）。
      */
     public Cell sampleCell(double wx, double wz) {
         int cx = chunkCoord(wx), cz = chunkCoord(wz);
+        long key = pack(cx, cz);
         Cell[] cells = getChunkCells(cx, cz);
         int lx = localCoord(wx), lz = localCoord(wz);
         return cells[lx * 16 + lz];
@@ -124,6 +125,14 @@ public final class GeoGenesisTerrain {
         return region;
     }
 
+    // === wu 化映射层 ===
+
+    /** 块坐标 → wu（水平映射层，对齐 NovoAtlas horizontalScale 语义；HS=1 恒等）。 */
+    private double toWu(double block) {
+        double hs = generator.params().horizontalScale();
+        return (hs > 0.01 && hs != 1.0) ? block / hs : block;
+    }
+
     // === 内部 ===
 
     private Cell[] generateChunk(int cx, int cz) {
@@ -142,12 +151,6 @@ public final class GeoGenesisTerrain {
         generator.extractFromTile(cells, cx, cz);
 
         return cells;
-    }
-
-    /** 块坐标 → wu（水平映射层，对齐 NovoAtlas horizontalScale 语义；HS=1 恒等）。 */
-    private double toWu(double block) {
-        double hs = generator.params().horizontalScale();
-        return (hs > 0.01 && hs != 1.0) ? block / hs : block;
     }
 
     /** 简单 LRU 淘汰 */
