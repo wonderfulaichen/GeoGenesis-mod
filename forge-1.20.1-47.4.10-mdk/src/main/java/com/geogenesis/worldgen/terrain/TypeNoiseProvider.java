@@ -12,7 +12,11 @@ public final class TypeNoiseProvider {
     // v8c (2026-08-06)：山脉改丘陵式多频叠加配方（参考 HILLS），移除脊线网络+折叠细节
     // v8b 的 foldHills(1/50) 35% 在实机上产生规律性条纹/沙丘状图案（高频折叠线主导），且山体过小；
     // v8c 只用平滑多频主体（无折叠）→ 丘陵式大圆润山体，1/700 主频 = 山体远大于丘陵
-    private final Noise mountNoise;
+    // ★ 2026-08-12 P0 重写：引入 RWG terrainMountain 三招（二次放大+高度相关细节+高度帽），
+    //   解决"山的宽高不真实"——山脚宽缓、峰体突出、越高越崎岖、峰顶不捅天。
+    private final Noise mountMain;   // 1/700 主体
+    private final Noise mountSub;    // 1/220 中频细节
+    private final Noise mountDet;    // 1/80 破碎细节
 
     private final Noise platNoise;
     private final Noise basinNoise;
@@ -50,7 +54,7 @@ public final class TypeNoiseProvider {
         // 塌矮 65% → 山脉被切割成条状、大片塌陷、网络边界突变（用户反馈"山脉地形不行"）。
         // 新版：丘陵式多频叠加（与 HILLS 同风格，自然连贯），尺度放大（主频 1/700 山体更大）+ 细节
         // 破碎度（1/80）+ warp(30)。beltReliefAmp 调制次/细节振幅。
-        // 次/细节振幅 0.7/0.45：首版 0.5/0.25 localStd 0.0394 < HILLS 0.0410（山脉不再最崎岖）。
+        // ★ 2026-08-12：三频独立字段（mountMain/mountSub/mountDet），供 computeMountain RWG 三招使用
         double ampScale = 0.7 + beltReliefAmp * 0.85; // beltReliefAmp=0.35 → 1.0（默认行为）
         Noise mMain   = new Frequency(new Simplex(436), 1.0 / 700.0);
         Noise mSub    = new Boost(new Frequency(new Simplex(417), 1.0 / 220.0), 0.7 * ampScale);
@@ -59,8 +63,10 @@ public final class TypeNoiseProvider {
         Noise mWX     = new Frequency(new Simplex(430), 1.0 / 150.0);
         Noise mWZ     = new Frequency(new Simplex(431), 1.0 / 150.0);
         Noise mWarped = new Warp(mBase, mWX, mWZ, 30.0);
-        this.mountNoise = new Map(mWarped, -2.15, 2.15, 0.0, 1.0);
-        // v8c：已移除 foldHills(1/50) 折叠细节——实机显示规律性条纹图案（高频折叠线主导），且山体过小
+        // ★ 2026-08-12 P0 重写：三频独立字段 + 主体 warp 后保存
+        this.mountMain = new Map(mWarped, -2.15, 2.15, 0.0, 1.0);  // warp 后主体 [0,1]
+        this.mountSub  = new Map(mSub, -1.5, 1.5, 0.0, 1.0);       // 中频细节 [0,1]
+        this.mountDet  = new Map(mDet, -1.0, 1.0, 0.0, 1.0);       // 破碎细节 [0,1]
 
         // --- PLATEAU v8（2026-08-07 用户："你到底有没有认真看丘陵代码"）---
         // v7/v7.1/v7.2 迭代都是错层打转。真正参考丘陵：频率只比丘陵宽一点（1.25x），
@@ -84,7 +90,7 @@ public final class TypeNoiseProvider {
     public void seed(long worldSeed) {
         Noises.seedAll(plainNoise, worldSeed, 0);
         Noises.seedAll(hillsNoise, worldSeed, 1);
-        Noises.seedAll(mountNoise, worldSeed, 2);
+        Noises.seedAll(mountMain, worldSeed, 2);  // 遍历整棵树（含 mountSub/mountDet 共享节点）
         Noises.seedAll(platNoise,  worldSeed, 3);
         Noises.seedAll(basinNoise, worldSeed, 4);
     }
@@ -127,13 +133,58 @@ public final class TypeNoiseProvider {
     }
 
     /**
-     * v8（2026-08-06 用户决策：参考丘陵配方）：山脉 = 多频叠加 + warp + foldHills 折叠。
-     * 与 HILLS 同风格（自然连贯），尺度更大（主频 1/700）+ 细节破碎度（1/80）。
-     * 已移除旧 MountainRidgeNetwork 脊线乘数（脊线外塌矮 65%、条状切割、±4000 边界突变）。
+     * ★ 2026-08-12 P0 重写：山脉配方借鉴 RWG terrainMountain（ted80 移植）三招。
+     * <p>
+     * 参考：RTG-Community TerrainBase.terrainMountain (630-654行)
+     * <pre>
+     *   float h = simplex(x/300)*135*river;
+     *   h *= h/32;                           // ① 二次放大：小值塌缩、大值爆炸
+     *   if (h > 10) h += simplex(x/15)*5;   // ② 高度相关中频：越高越崎岖
+     *   if (h > 35) h += cell(x/12)*15;     // ③ 高度相关破碎：cellular 碎裂
+     *   if (h > 160) h -= (h-160)*0.75;     // ④ 高度帽：峰顶不捅天
+     * </pre>
+     * 三招的效果：
+     * - 二次放大：山脚（base<0.5）塌缩为缓坡（h<0.25），山腰-山顶（base>0.7）爆炸为陡峭峰体
+     * - 高度相关细节：h>0.3 才加中频（山脚保持宽缓），h>0.5 才加破碎（低山坡面不碎）
+     * - 高度帽：>0.85 折减 50%（峰顶自然收尖，不捅天花板）
+     * <p>
+     * 我们的映射（e 空间 [0,1]）：
+     * - base = mountMain.compute(wx, wz)  // 三频+warp 主体 [0,1]
+     * - h = base²                         // 二次放大（RWG h*=h/32 语义）
+     * - h += mid·0.15 (h>0.3)            // 高度相关中频
+     * - h += det·0.10 (h>0.5)            // 高度相关破碎
+     * - h = cap(h, 0.85)                 // 高度帽
      */
     private double computeMountain(double wx, double wz) {
-        // v8c：直接使用平滑多频噪声（无折叠）——丘陵式大圆润山体，1/700 主频 >> 丘陵 1/400
-        return mountNoise.compute(wx, wz);
+        double base = mountMain.compute(wx, wz);  // 三频+warp 主体 [0,1]
+        // ① 二次放大（RWG h*=h/32 语义）：山脚塌缩、峰体爆炸
+        //   base=0.3→h=0.09（山脚极缓），base=0.5→h=0.25（山腰），base=0.8→h=0.64（峰体），base=1→h=1
+        double h = base * base;
+
+        // ② 高度相关中频细节（h>0.3 才激活，山脚保持宽缓）
+        //   RWG: if (h>10) h += simplex(x/15)*5 —— 中频起伏只在山腰以上出现
+        if (h > 0.3) {
+            double midScale = Math.min((h - 0.3) * 1.5, 1.0);  // 0.3→0, 0.5→0.3, 0.97→1
+            double mid = mountSub.compute(wx, wz);  // 1/220 中频 [0,1]
+            // 将 mid 从 [0,1] 映射到 [-0.5,0.5] 再乘振幅
+            h += (mid - 0.5) * 0.15 * midScale;
+        }
+
+        // ③ 高度相关破碎细节（h>0.5 才激活，低山坡面不碎）
+        //   RWG: if (h>35) h += cell(x/12)*15 —— cellular 碎裂只在高山出现
+        if (h > 0.5) {
+            double detScale = Math.min((h - 0.5) * 2.0, 1.0);  // 0.5→0, 1.0→1
+            double det = mountDet.compute(wx, wz);  // 1/80 破碎细节 [0,1]
+            h += (det - 0.5) * 0.10 * detScale;
+        }
+
+        // ④ 高度帽（RWG: if (h>160) h -= (h-160)*0.75）
+        //   峰顶自然收尖，不捅天花板——h>0.85 时折减 50%
+        if (h > 0.85) {
+            h = 0.85 + (h - 0.85) * 0.5;
+        }
+
+        return h;
     }
 
     public static final TerrainClass[] LAND_TYPES = {

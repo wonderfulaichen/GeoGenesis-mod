@@ -219,7 +219,7 @@ public class PreviewDisplay extends AbstractWidget {
     //   2026-08-10 液滴 SLOPE_MIN_SKIP/CASCADE_MAXDIFF ×hs（wu 化阈值漂移修复）：HS≠1 产出变化 → 18。
     //   2026-08-11 引擎回退到 78bf8bc（用户认可版）+ cascade budget 修复（真 NaN 修复）：
     //   TF 对齐版（23）废弃；回退版产出 ≠ 18（带 budget）→ 19 强制重算。
-    private static final int CACHE_SCHEMA_VERSION = 22;   // 2026-08-11: INERTIA=0.05/EVAP=0.01 对齐 SH + iterations 2 + cascade 0.3（深沟壑修复）
+    private static final int CACHE_SCHEMA_VERSION = 23;   // 2026-08-12: 山脉配方重写（RWG 三招：二次放大+高度相关细节+高度帽）——地形形态改变
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

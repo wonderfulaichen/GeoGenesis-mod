@@ -45,17 +45,19 @@
 ## 配置屏（单屏 8 标签，常驻预览）
 页签 0世界参数/1气候/2地形/3显示/4采样/5色带/6缓存/7群系。按钮 [应用]SPEC.save()[保存]user_presets.json[重置]resetToDefault()。反射三件套：resetToDefault/captureAllValues/applyNamedValues。
 
-## 侵蚀引擎（两级架构，已编译验证 2026-07-31）
+## 侵蚀引擎（两级架构，已回退到 7a127f6 基线 · 2026-08-12 定案）
 - **Tile 架构**：spacing=4 粗采 + Catmull-Rom 双三次插值（1024 次 terrainE/tile）；每 tile 输出 3×3=9 chunk（ERODE_TILE_CHUNKS=3），边长 128，缓存 256 条目。
 - `erosionEnabled` 默认 false（手动开，否则世界创建慢）；`riversEnabled` 默认 true。
 - **粗级骨架 = 脊-谷条纹滤镜** `RidgeValleyErosion`（纯局部算子，无 tile 缝）：独立更密网格（RIDGE_SKELETON_SPACING=2）采样真实地形跑 `computeCoarseDelta` → bilinear 升采样。配置（GeoGenesisConfig 声明+defineInRange+toml，不在 TerrainParams）：erosionRidgeEnabled=true / Strength=0.08[0,0.5] / Scale=100[50,800] / CellScale=1.2[0.2,2.0] / Octaves=4[1,5] / GullyWeight=0.5[0,1] / landRef=0.15[0.02,0.5]。**配置同步三处一致：字段初始/BUILDER/fromConfig 回退**（漏回退曾致探针走旧默认）。
-- **细级 = 液滴侵蚀** `ErosionEngine.runErosionOnFlat`：单轮 + 3-zone flat；默认强度 ~12%（erosionStrength=0.3, dropsMul=0.4, erodeMul=0.4）。
-- **河流粒子状态机**：simulateDrop 双闸门 riverMix=smoothstep(lcLo,lcHi,lc)×smoothstep(disLo,disHi,dis)，按 riverMix 插值侵蚀/蒸发/速度。
+- **细级 = 液滴侵蚀** `ErosionEngine.runErosionOnFlat`：三尺度笔刷（C r7/M r4/F r2），SLOPE_MIN_SKIP=0.002，INERTIA=0.005，GRAVITY=2.5，EVAP=0.001，RELAX_RATE=0.1，DEPOSIT_SPEED=0.02，effD=0.15 双向，iterations=2，cascade=0.3（toml）。
+- **回退历史**：78bf8bc（08-10 调优 5 处视觉参数）→ 用户"堆积成山包"；bf54f02（08-11 修复 102 行）→ 用户"拖尾堆"；两版均否决。**7a127f6 = 两者之前、08-08 确认后基线**——探针 mean=-0.00754、max=+0.0001（几乎零堆积）、NaN=0。**禁止调参回退到 78bf8bc/bf54f02。**
+- **已读参考**：SimpleHydrology（weigert）、SebLague Erosion.cs（Unity SH）、TerraForged ErosionFilter、RTG SurfaceBase/calcCliff。侵蚀调参需参考基线。
 - **tile 确定性铁律**：tile 只依赖自身世界坐标；提取期右/下缘 4 块渐变 blend（extractFromTile lx/lz≥12）是唯一跨 tile 平滑机制。已删邻居 postErosion 收敛链。
 - **V 形河谷雕刻**：TF-style 距离场剖面（bedWidth=1.5/bankWidth=4，depth=0.02+(q/maxQ)×0.03）。**水面铁律：e 单位禁止加 Y 单位**（riverSurfaceY=heightFromE(cell.e+carve)+0.5）。
 - **softCapLandE** 起点 0.97×maxLandHi（0.922）；峰尖自然分布不被压平。
 - **否决方案**：① D8 流功率（tile 边界缝+剥皮）② 局部脊-谷锐化（不能造新脊线）。
 - 诊断工具：`ErosionTileProbe`/`MountainFootprintProbe`/`MountainProfileProbe`/`SharpnessABProbe`。
+- **探针铁律**：① cfgDbl 回退默认必须 = GeoGenesisConfig 定义默认 = toml（08-12 翻车教训）② 必须验证"液滴密集的山区 tile"（非低地）③ 游戏无河流时用 `noriver` 模式④ 禁止只看均值——必须看 max（堆积峰值）+按坡度分带
 
 ## 预览河流渲染修复（2026-08-08）
 - **根因**：`RIVER_NETWORK` 图层读 `Cell.riverNetDist`（默认 1.0=远），但 `CellGenerator` 从未设置该字段。
