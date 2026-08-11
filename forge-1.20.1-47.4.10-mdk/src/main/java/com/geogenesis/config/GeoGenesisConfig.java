@@ -660,8 +660,8 @@ public final class GeoGenesisConfig {
         // ===== 粗侵蚀骨架层（脊-谷条纹滤镜，Rune Skovbo Johansen 2026 + Luke Mitchell Burst C#）=====
         erosionRidgeEnabled = builder.comment("Coarse ridge-valley skeleton layer (gradient-aligned stripe filter). Builds mountain-ridge basic form before particle detail erosion. Default true.")
                 .define("erosionRidgeEnabled", true);
-        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 0.5 (2026-08-06: 0.35 delta ±0.03e 仍不明显), range [0, 0.75].")
-                .defineInRange("erosionRidgeStrength", 0.5, 0.0, 0.75);
+        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 0.8 (2026-08-12: 0.5→0.8 塑性增强，配合 LIFT_HEADROOM_FULL 0.02 让脊线抬升恢复), range [0, 1.2].")
+                .defineInRange("erosionRidgeStrength", 0.8, 0.0, 1.2);
         erosionRidgeScale = builder.comment("Coarse skeleton feature size (world blocks) = stripe cell world size; larger = wider ridges. Default 100, range [50, 800].")
                 .defineInRange("erosionRidgeScale", 100.0, 50.0, 800.0);
         erosionRidgeCellScale = builder.comment("Coarse skeleton in-cell stripe frequency (ridge-valley density). Default 1.2, range [0.2, 2.0].")

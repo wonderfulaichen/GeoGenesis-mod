@@ -25,6 +25,14 @@
 - **【自然≠平滑·2026-08-08】**：类型间根据自身斜率衔接（海洋锐化 OCEAN_SHARP=5.0 的依据）。
 - **【高原 v8 同构丘陵·2026-08-08】**：高原彻底同构丘陵（foldHills → perTypeAvg → modulated → blendLo/blendHi×modulated），移除所有类型特殊覆盖层。
 
+## 山脉配方（P0 已完成 2026-08-12）
+- **现状**：`TypeNoiseProvider.computeMountain` 已重写为 RWG 三招（借鉴 RTG-Community terrainMountain）
+- **三招**：① 二次放大 h=base²（山脚塌缩、峰体爆炸）② 高度相关细节（h>0.3 加中频、h>0.5 加破碎）③ 高度帽（h>0.85 折减 50%）
+- **三字段**：mountMain（1/700 主体 warp 后）、mountSub（1/220 中频）、mountDet（1/80 破碎）
+- **诊断**：73% 集中 [0.1-0.4]（山脚-山腰），0.4% 达 0.7+（峰体稀少），max=0.7984 < 0.925（帽下）
+- **参数**：全部代码常量（不加滑块），避免配置同步负担
+- **CACHE_SCHEMA_VERSION**：23（地形形态改变）
+
 ## 配置同步铁律
 - 增删字段须同步：`GeoGenesisConfig`(定义+BUILDER) + `TerrainParams`(record+defaults) + `ParameterConfigPanel.addSpec` + toml。
 - `resetToDefault()` 反射自动化；但 `defaultParams()`/`buildParams()` 仍需随字段同步。

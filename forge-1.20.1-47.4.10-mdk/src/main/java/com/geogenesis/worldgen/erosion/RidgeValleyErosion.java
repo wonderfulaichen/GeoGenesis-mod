@@ -34,8 +34,11 @@ public final class RidgeValleyErosion {
     // 局部窗口（16 块 < 条纹半周期 25-50 块）→ 不产生全局高度等值线（区别于已否决的 fadeTarget）。
     /** 局部窗口半径（骨架网格格数，spacing=2 → 8 格 = 16 块） */
     private static final int LIFT_WINDOW_R = 8;
-    /** headroom 达到该值（e 单位）后抬升全量恢复（≈0.05e≈12 块余量） */
-    private static final float LIFT_HEADROOM_FULL = 0.05f;
+    /** ★ 2026-08-12 塑性修复：headroom 阈值 0.05→0.02（≈5 块余量）——
+     *  旧 0.05 把山脊线（本身是局部最高，headroom≈0.02-0.05）的抬升也衰减掉 →
+     *  只有谷下切、脊抬不起 → 塑性不足。0.02 只压"平台微丘/绝对平顶"（headroom<0.02），
+     *  脊线（headroom 0.02-0.05）恢复抬升成脊。 */
+    private static final float LIFT_HEADROOM_FULL = 0.02f;
 
     // ===== 骨架层配置（从 GeoGenesisConfig 读取覆盖；stylistic 参数用代码常量初值）=====
     public static class RidgeConfig {
@@ -43,7 +46,7 @@ public final class RidgeValleyErosion {
         /** fadeTarget 参考面（对称中点，e 单位）。默认 0.15 匹配陆地中值（PLAIN meanElev≈0.154）；
          *  旧固定 0.25 在低地世界（eLand 0.10~0.18）恒负 → 平坦区被骨架整体下削（DIAG-EXT 全负 delta 根因）。 */
         public float landRef = 0.15f;
-        public float strength = 0.12f;        // 单 octave 侵蚀强度（直接，不乘 scale；峰值 delta≈0.25 需 maxDeltaPerCell≥0.22）
+        public float strength = 0.8f;         // 单 octave 侵蚀强度（2026-08-12: 0.12→0.8 塑性增强，对齐 GeoGenesisConfig 默认）
         public float cellWorldSize = 100f;    // 骨架特征尺度（世界块）= 条纹细胞世界尺寸
         public float stripeFreq = 1.2f;       // 细胞内条纹频率（sideDir 幅度，↑密度）
         public int octaves = 4;               // gully 层级（主脊+次级脊+细沟，spacing=2 下不混叠）
@@ -67,7 +70,8 @@ public final class RidgeValleyErosion {
             if (cfg != null) {
                 c.enabled = cfgBool(cfg.erosionRidgeEnabled, true);
                 c.landRef = (float) cfgDbl(cfg.erosionRidgeLandRef, 0.15);
-                c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 0.12);
+                // ★ 2026-08-12 回退默认 0.12→0.8 对齐 GeoGenesisConfig 默认（配置铁律：三处一致）
+                c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 0.8);
                 c.cellWorldSize = (float) cfgDbl(cfg.erosionRidgeScale, 100.0);
                 c.stripeFreq = (float) cfgDbl(cfg.erosionRidgeCellScale, 1.2);
                 c.octaves = cfgInt(cfg.erosionRidgeOctaves, 4);
