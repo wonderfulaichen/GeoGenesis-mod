@@ -650,8 +650,8 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionRiverDisHi", 1.5, 0.5, 200.0);
         erosionMomentumTransfer = builder.comment("SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].")
                 .defineInRange("erosionMomentumTransfer", 1.0, 0.0, 2.0);
-        erosionIterations = builder.comment("SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 5 (2026-08-10: 2->5, plain discharge needs more passes to accumulate; SimpleHydrology ref uses 30), range [1, 16].")
-                .defineInRange("erosionIterations", 5, 1, 16);
+        erosionIterations = builder.comment("SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 2 (2026-08-11: 5->2, deep-gully fix; SH Erosion.cs numIterations=1, 2 keeps momentum field accumulation), range [1, 16].")
+                .defineInRange("erosionIterations", 2, 1, 16);
         // NOTE(2026-08-10): toml 旧值 2 会覆盖代码默认——修改默认后必须同步 run/config/geogenesis-common.toml
         erosionLrate = builder.comment("SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].")
                 .defineInRange("erosionLrate", 0.1, 0.01, 0.5);
