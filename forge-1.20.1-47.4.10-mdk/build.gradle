@@ -286,6 +286,7 @@ task runErosionPeriodProbe(type: JavaExec) {
     args = project.hasProperty('probeArgs') ? probeArgs.split('\\s+') : []
 }
 
+
 // Terrain discontinuity probe (straight + curved line diagnostic)
 task runDiscontinuityProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
