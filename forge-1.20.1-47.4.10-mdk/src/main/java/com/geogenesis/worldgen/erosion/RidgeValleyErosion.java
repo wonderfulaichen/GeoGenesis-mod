@@ -34,11 +34,19 @@ public final class RidgeValleyErosion {
     // 局部窗口（16 块 < 条纹半周期 25-50 块）→ 不产生全局高度等值线（区别于已否决的 fadeTarget）。
     /** 局部窗口半径（骨架网格格数，spacing=2 → 8 格 = 16 块） */
     private static final int LIFT_WINDOW_R = 8;
-    /** ★ 2026-08-12 塑性修复：headroom 阈值 0.05→0.02（≈5 块余量）——
-     *  旧 0.05 把山脊线（本身是局部最高，headroom≈0.02-0.05）的抬升也衰减掉 →
-     *  只有谷下切、脊抬不起 → 塑性不足。0.02 只压"平台微丘/绝对平顶"（headroom<0.02），
-     *  脊线（headroom 0.02-0.05）恢复抬升成脊。 */
-    private static final float LIFT_HEADROOM_FULL = 0.02f;
+    /** ★ 2026-08-12 修复：headroom 阈值恢复 0.05（原 2026-08-10 语义）——
+     *  塑性恢复靠"平台区分"（PLATEAU_THRESHOLD），不再靠收紧 headroom。
+     *  山脊线 headroom≈0 但窗口落差大 → 不衰减；平顶 headroom≈0 且窗口全平 → 衰减。 */
+    private static final float LIFT_HEADROOM_FULL = 0.05f;
+    /** ★ 2026-08-12 平台区分阈值：窗口最高点与均值差 < 0.03e（≈7.6 块）判定为"平台"（平顶/高原），
+     *  此时抬升衰减（2026-08-10 高原平顶修复目的）；山脊线窗口落差 >0.03e → 不衰减（塑性恢复）。 */
+    private static final float PLATEAU_THRESHOLD = 0.03f;
+    /** ★ 2026-08-12 fadeTarget 项单独缩放（fadeHeight=true 时）：
+     *   fadeTarget 是"峰顶/谷底淡出目标"，原版 catto strength 仅 0.02-0.05 所以直接使用；
+     *   我们 strength=0.8（条纹时代调参，fadeTarget=0）→ fadeTarget 项必须压缩 10 倍才不爆炸
+     *   （低地 fadeTarget=0.17·0.8·2.5≈0.34e 抬升 → ×0.1 后 0.034e 温和）。
+     *   条纹（gullX·gw）不受影响——沟壑/脊线雕刻保持。 */
+    private static final float FADE_TARGET_SCALE = 0.1f;
 
     // ===== 骨架层配置（从 GeoGenesisConfig 读取覆盖；stylistic 参数用代码常量初值）=====
     public static class RidgeConfig {
@@ -46,6 +54,10 @@ public final class RidgeValleyErosion {
         /** fadeTarget 参考面（对称中点，e 单位）。默认 0.15 匹配陆地中值（PLAIN meanElev≈0.154）；
          *  旧固定 0.25 在低地世界（eLand 0.10~0.18）恒负 → 平坦区被骨架整体下削（DIAG-EXT 全负 delta 根因）。 */
         public float landRef = 0.15f;
+        /** ★ 2026-08-12 恢复原版 fadeTarget 高度映射开关（catto Erosion.java: fadeTarget=clamp(h/0.6,-1,1)）：
+         *  true=谷黑峰白高度域塑形（原版比例，塑性更强）；false=固定 0（2026-08-06 用户决策，
+         *  消除人工等值线纹理）。默认 false——等值线风险可回退，用户 A/B 实测后定案。 */
+        public boolean fadeHeight = false;
         public float strength = 0.8f;         // 单 octave 侵蚀强度（2026-08-12: 0.12→0.8 塑性增强，对齐 GeoGenesisConfig 默认）
         public float cellWorldSize = 100f;    // 骨架特征尺度（世界块）= 条纹细胞世界尺寸
         public float stripeFreq = 1.2f;       // 细胞内条纹频率（sideDir 幅度，↑密度）
@@ -72,6 +84,8 @@ public final class RidgeValleyErosion {
                 c.landRef = (float) cfgDbl(cfg.erosionRidgeLandRef, 0.15);
                 // ★ 2026-08-12 回退默认 0.12→0.8 对齐 GeoGenesisConfig 默认（配置铁律：三处一致）
                 c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 0.8);
+                // ★ 2026-08-12 fadeHeight 开关（回退默认 false = 2026-08-06 用户决策）
+                c.fadeHeight = cfgBool(cfg.erosionRidgeFadeHeight, false);
                 c.cellWorldSize = (float) cfgDbl(cfg.erosionRidgeScale, 100.0);
                 c.stripeFreq = (float) cfgDbl(cfg.erosionRidgeCellScale, 1.2);
                 c.octaves = cfgInt(cfg.erosionRidgeOctaves, 4);
@@ -141,7 +155,25 @@ public final class RidgeValleyErosion {
         // - delta 纯由 combiMask×gullies 条纹提供（正负交替 = 沟壑+脊线）
         // - 低地无条纹（combiMask≈0 → delta≈0）
         // - 山地有条纹（combiMask 触发）→ 坡度自然控制，无类型/高度约束
-        float fadeTarget = 0f;
+        // ★ 2026-08-12 fadeTarget 修复（第四轮，对照 catto Erosion.java + Rune 博客原文）：
+        //   博客原文：fadeTarget = inverse_lerp(valleyAlt, peakAlt, h)×2−1 —— fadeTarget 是
+        //   "条纹淡出目标"：当坡度≈0（峰顶/谷底）时地形向该目标靠拢（峰抬升/谷下切）。
+        //   三轮教训：①零点=landRef+strength 0.8 → 低地爆炸下切（圆坑）；
+        //   ②零点=seaE+strength 0.8 → 低地爆炸抬升(+0.15e)；③strength×0.1 后 landRef 零点 →
+        //   低地仍下切 -0.018e、山区抬升 7 块无下切。
+        //   **根因：平原（坡度≈0）也被 fadeTarget 直接抬升/下切**——原版 strength 小（0.02-0.05）
+        //   平原抬升无碍，我们 strength 再小也破坏地形。
+        //   定案：fadeTarget ×"起伏门控"（fadeGate）——局部窗口内落差大（峰/谷/山脊，plateau 大）
+        //   → fadeTarget 全量塑形；窗口内全平（平原/高原，plateau 小）→ fadeTarget→0（不动地形）。
+        //   零点=seaE（谷=-1、峰=+1，对齐 catto h/0.6 语义）。
+        float lm = localWindowMax(rawLowRes, tx, tz, extLR, LIFT_WINDOW_R);
+        float plateau = lm - localWindowAvg(rawLowRes, tx, tz, extLR, LIFT_WINDOW_R);
+        // ★ 2026-08-12 起伏门控：平原（窗口内全平，plateau<0.005）fadeTarget→0（不动地形），
+        //   峰/谷/山脊（plateau>0.04）全量塑形。按实测 plateau 分布（0-0.05 集中）标定。
+        float fadeGate = smoothstep(0.005f, 0.04f, plateau);
+        float fadeTarget = cfg.fadeHeight
+            ? Math.max(-1f, Math.min(1f, (h - seaE) / 0.6f)) * fadeGate
+            : 0f;
         float hs = (h - cfg.landRef) * 0.5f + 0.5f;
         // 2026-08-06 修复：坡度放大 SLOPE_BOOST × 海岸带保护。
         // SLOPE_BOOST 让真实陡坡进入 combiMask 触发区 → 脊谷条纹成形。
@@ -154,16 +186,19 @@ public final class RidgeValleyErosion {
         float gxs = gx * SLOPE_BOOST * landMask, gzs = gz * SLOPE_BOOST * landMask;
         float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,
                 hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
-        // 2026-08-10 局部窗口抬升衰减（高原平顶假峰修复）：只衰减抬升（d>0），下切完全不受影响。
-        // 局部最高点余量 headroom = localMax − h；平顶/丘顶/山顶 headroom≈0 → 抬升平滑衰减到 0，
-        // 坡面中段 headroom 大 → 抬升全量。窗口读取越界 clamp 到网格边缘（skelExtra=8 已保证
-        // flat 采样区窗口完整，越界仅发生在骨架网格自身边界外圈，无实际影响）。
+        // ★ 2026-08-12 修复：LIFT 抬升衰减改"平台区分"——原版衰减杀死所有脊线抬升：
+        //   localWindowMax 取窗口最高点，而山脊线本身就是窗口最高 → headroom 恒≈0 →
+        //   抬升恒被平滑衰减到 0 → 只有谷下切、脊抬不起（探针：max +0.0088 vs min -0.0389 不对称）。
+        //   修复：同时要求"平台"（窗口最高点与均值差 < PLATEAU_THRESHOLD）才衰减——
+        //   山脊线 headroom≈0 但窗口落差大（plateau 大）→ 不衰减，脊线恢复抬升；
+        //   高原平顶 headroom≈0 且窗口内全平（plateau 小）→ 仍衰减（2026-08-10 原目的保留）。
         if (d > 0f) {
-            float lm = localWindowMax(rawLowRes, tx, tz, extLR, LIFT_WINDOW_R);
             float headroom = lm - h;
             if (headroom < LIFT_HEADROOM_FULL) {
-                float t = headroom / LIFT_HEADROOM_FULL; // 0..1（>1 已跳过）
-                d *= t * t * (3f - 2f * t);
+                if (plateau < PLATEAU_THRESHOLD) {
+                    float t = headroom / LIFT_HEADROOM_FULL; // 0..1（>1 已跳过）
+                    d *= t * t * (3f - 2f * t);
+                }
             }
         }
         // 海岸带保护：仅海平面附近抑制 delta（防弧线），内陆/深海全幅（侵蚀入海）
@@ -187,6 +222,22 @@ public final class RidgeValleyErosion {
         return m;
     }
 
+    /** ★ 2026-08-12 局部窗口均值（平台区分用：lm−avg 大 = 脊线/峰体，小 = 平顶/高原）。 */
+    private static float localWindowAvg(float[][] g, int tx, int tz, int n, int r) {
+        int z0 = Math.max(0, tz - r), z1 = Math.min(n - 1, tz + r);
+        int x0 = Math.max(0, tx - r), x1 = Math.min(n - 1, tx + r);
+        float sum = 0;
+        int cnt = 0;
+        for (int z = z0; z <= z1; z++) {
+            float[] row = g[z];
+            for (int x = x0; x <= x1; x++) {
+                sum += row[x];
+                cnt++;
+            }
+        }
+        return cnt > 0 ? sum / cnt : 0f;
+    }
+
     // ===== ErosionFilter（octave 循环 + 堆叠掩码）=====
     private static float erosionFilter(float px, float pz, float h0, float gx, float gz,
                                         float fadeTarget, float cellGridFreq, RidgeConfig cfg) {
@@ -204,6 +255,10 @@ public final class RidgeValleyErosion {
         float gsx = lerp(gx, ngsx * cfg.assumedSlope[0], cfg.assumedSlope[1]);
         float gsz = lerp(gz, ngsz * cfg.assumedSlope[0], cfg.assumedSlope[1]);
 
+        // ★ 2026-08-12 修复（第五轮）：fadeTarget 项单独缩放（不缩小条纹 strength）——
+        //   第四轮 FADE_STRENGTH_SCALE 把整个 strength 缩小 → 条纹下切也变弱 →
+        //   山区只剩 fadeTarget 正抬升（min=0 无下切）。正解：strength 恢复 0.8（条纹保持），
+        //   fadeTarget 项在 fGx 内单独 ×FADE_TARGET_SCALE（见下）。
         float strength = cfg.strength;
         float freq = cellGridFreq;
         float roundingMult = 1f;
@@ -221,7 +276,10 @@ public final class RidgeValleyErosion {
             float gullYx = phy * sdx;
             float gullYz = phy * sdz;
             // fadedGullies = lerp((fadeTarget,0,0), gullies*gullyWeight, combiMask)
-            float fGx = lerp(fadeTarget, gullX * cfg.gullyWeight, combiMask);
+            // ★ 2026-08-12 第五轮：fadeTarget 项单独 ×FADE_TARGET_SCALE（条纹 gullX 不受影响）——
+            //   fadeTarget 是"峰顶/谷底淡出目标"，原版 strength 小所以直接使用；
+            //   我们 strength=0.8（条纹时代调参）→ fadeTarget 必须压缩才不爆炸。
+            float fGx = lerp(fadeTarget * FADE_TARGET_SCALE, gullX * cfg.gullyWeight, combiMask);
             float fGyX = lerp(0f, gullYx * cfg.gullyWeight, combiMask);
             float fGyZ = lerp(0f, gullYz * cfg.gullyWeight, combiMask);
             h0 += fGx * strength;
