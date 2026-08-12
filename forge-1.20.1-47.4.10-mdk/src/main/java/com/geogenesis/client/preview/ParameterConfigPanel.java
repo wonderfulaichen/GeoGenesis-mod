@@ -160,6 +160,8 @@ public class ParameterConfigPanel extends ConfigPanel {
                 () -> c.erosionEnabled.get(), v -> c.erosionEnabled.set(v));
         addToggle("骨架模拟侵蚀", "粗侵蚀（脊-谷条纹滤镜）骨架层。开启时先造大山脊基本型，再由粒子侵蚀做细节。",
                 () -> c.erosionRidgeEnabled.get(), v -> c.erosionRidgeEnabled.set(v));
+        addToggle("细纹理微侵蚀", "XS 微笔刷（r1wu 十字笔刷）在陡坡加 1-2 块级微纹理。默认关闭——实测会加剧 chunk 边界脊（约 +1.6 块）。",
+                () -> c.erosionXSEnabled.get(), v -> c.erosionXSEnabled.set(v));
         addToggle("河流系统", "河网检测 + 河道填水（独立于侵蚀）。关闭 = 无河流。",
                 () -> c.riversEnabled.get(), v -> c.riversEnabled.set(v));
         addToggle("河道灌水", "河道是否灌水。关闭 = 旱谷（仅显形为凹槽地形，不填水）。",

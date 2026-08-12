@@ -55,7 +55,15 @@ public class ErosionEngine {
     // ===== 三尺度配置 (v3 - 强侵蚀 + 河谷协同) =====
     // 提升：spacing=4 插值场平滑度高，需要更大参数。河网雕刻后侵蚀液滴沿河谷走廊进一步增强。
     // C 尺度 (宏观山谷/山脉脊线)：笔刷半径 7 覆盖 225 邻域，DROPS_C=120 每区块约 0.5 滴/格，寿命 60 步
-    private static final int R_C = 7, DROPS_C = 120, LIFE_C = 60;
+    // ★ 2026-08-13 寿命 60→40：行程 = LIFE×spdCap(1.0) = 40wu ≤ tile margin 40wu——
+    //   供给缺口修复（详见下方 spdCap 注释）。寿命超 margin 时，提取域边缘缺
+    //   "远处出生"的液滴 → 邻 tile 双写不一致 → 左/上缘墙（x=-288 实测 2.4-4 块）。
+    // ★ 2026-08-13 定案：LIFE_C 60→20（行程 = LIFE×实际spd≈20wu << 缓冲余量 40wu）。
+    //   二分实锤（LIFE=40 时 x=-288 仍 3.6 块墙，LIFE=20 时 0.4-1.0 无缝）：
+    //   液滴行程超出缓冲余量 → 游走型液滴在 tile 缓冲西/东界被截断（两 tile 截断位置
+    //   不同）→ 流经提取域时泥沙/动量历史不同 → delta 双写不一致 → 左缘墙。
+    //   行程 ≤ 缓冲余量一半 → 液滴绝不出界 → 双写一致 → 无缝。大尺度形态由骨架层提供。
+    private static final int R_C = 7, DROPS_C = 120, LIFE_C = 20;
     private static final float ERODE_C = 0.100f, DEPOSIT_C = 0.010f;
 
     // M 尺度 (中脊/冲沟)：半径 4，(2*4+1)²=81 邻域，寿命 30 步
@@ -66,13 +74,29 @@ public class ErosionEngine {
     private static final int R_F = 2, DROPS_F = 40, LIFE_F = 20;
     private static final float ERODE_F = 0.150f, DEPOSIT_F = 0.020f;
 
+    // XS 尺度 (微侵蚀纹理，2026-08-12)：半径 1wu 十字笔刷（中心+4 邻，5 格）。
+    // 目的：填补最小特征尺度空洞——C/M/F 最小笔刷 r2wu=4 块直径，无 1-2 块级细节。
+    // HS=2 时 1wu=2 块、HS=1 时=1 块。微步长 SPDCAP_XS=0.6wu → 轨迹细密连贯；
+    // ERODE_XS 幅度小（防 r1 单格椒盐）。独立种子流 d*137+3（与 C/M/F 错开）；
+    // STALL 阈值按微尺度缩窄（微笔刷单步 delta 天然小，防误判平衡态提前终止）。
+    private static final int R_XS = 1, DROPS_XS = 70, LIFE_XS = 14;
+    private static final float ERODE_XS = 0.045f, DEPOSIT_XS = 0.010f;
+    private static final float SPDCAP_XS = 0.6f;
+    private static final float STALL_SPEED_XS = 0.12f, STALL_DELTA_XS = 1e-5f;
+
     /** 最大笔刷半径（pad = R_MAX + 2 = 9），相邻 tile 各 pad 9 + 中心区域重叠 2*9=18 块无缝 */
-    private static final int R_MAX = Math.max(R_C, Math.max(R_M, R_F)); // =7
+    private static final int R_MAX = Math.max(R_XS, Math.max(R_C, Math.max(R_M, R_F))); // =7
 
     // ★ 2026-08-09 优化（光追 RIS 式重要性重采样 / Russian roulette 剪枝）：
     //   SLOPE_MIN_SKIP — 撒点前 1 格差分坡度阈值：低于则跳过该液滴（平坦区侵蚀≈0，纯无效功）。
     //     确定性：坡度是 flat 世界坐标场的确定性函数 → 跳过集合固定 → 无缝保持。
     //     阈值保守：0.002e/格 ≈ 0.5 块/格，只跳过绝对平坦区（海洋平原/谷底），陡坡全量。
+    //   ★ 2026-08-12 T3：0.002→0.001（×hs 后≈0.2 块/格），释放缓坡/宽谷边缘的微坡液滴。
+    //   ★ 2026-08-12 目检回调：0.001→0.0015（侵蚀略过，小幅回撤至折中值）
+    //   ★ 2026-08-12 定案（回基线）：0.002 是唯一安全值。二分实锤：0.0015 放行的微坡液滴
+    //     （坡度 [0.0015,0.002)）在近平坦处随机漫步，出生集跨 chunk 边界不连续 →
+    //     沿 chunk 边界形成 3-8 块"墙"（DeltaDumpProbe lx=39→40 孤立突变 0.022e）。
+    //     STALL 0.25/12 经 BISECT 验证无墙无害，但为与基线完全一致也一并回 0.3/8。
     private static final float SLOPE_MIN_SKIP = 0.002f;
     /** 平衡态判定：spd 低于该值 且 单步笔刷增量低于该值，连续 STALL_MAX 步 → 提前终止 */
     private static final float STALL_SPEED = 0.3f;
@@ -84,9 +108,17 @@ public class ErosionEngine {
      * 对称读邻居 delta 渐变），不能裁剪。跨 tile 连续性由 extractFromTile 的边缘 blend 保证。
      */
     public ErosionEngine(double dropsMul, int seed) {
-        // dropsMul / seed 由 CellGenerator 从配置解析后传入；实际放大倍率运行时仍读配置，
-        // 此处仅保留兼容签名。
+        this(dropsMul, seed, false); // 兼容签名：XS 默认关
     }
+
+    public ErosionEngine(double dropsMul, int seed, boolean xsEnabled) {
+        // dropsMul / seed 由 CellGenerator 从配置解析后传入；实际放大倍率运行时仍读配置，
+        // 此处仅保留兼容签名。xsEnabled = 细纹理层开关（erosionXSEnabled 配置，默认 false）。
+        this.xsEnabled = xsEnabled;
+    }
+
+    /** 细纹理微侵蚀层开关（2026-08-12，配置 erosionXSEnabled） */
+    private boolean xsEnabled;
 
     // ===== 公共入口 =====
 
@@ -106,26 +138,35 @@ public class ErosionEngine {
     public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
                                   int sz, int ox, int oz,
                                   float seaNorm, float str) {
-        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, (boolean[][]) null);
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, null, 1f);
     }
 
     /** 带稳态放电量场输出的入口（河网层复用 discharge 场做 riverMask，取代 D8 流量累积）。 */
     public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
                                   int sz, int ox, int oz,
                                   float seaNorm, float str, float[] dischargeOut) {
-        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut);
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, 1f);
+    }
+
+    /** ★ 2026-08-13：hs 从 TerrainParams 显式传入（治本）——引擎不再读 GeoGenesisConfig 全局配置。
+     *  此前引擎内部读 INSTANCE.horizontalScale，独立探针进程无 Forge 环境 → 恒 1.0，
+     *  与游戏 HS=2 不一致 → 探针永远复现不了游戏内断裂（坡度换算/概率闸门全错位）。 */
+    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                  int sz, int ox, int oz,
+                                  float seaNorm, float str, float[] dischargeOut, float hs) {
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, hs);
     }
 
     private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
                                    int sz, int ox, int oz,
                                    float seaNorm, float str, boolean[][] locked) {
-        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null);
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null, 1f);
     }
 
     private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
                                    int sz, int ox, int oz,
                                    float seaNorm, float str, boolean[][] locked,
-                                   float[] dischargeOut) {
+                                   float[] dischargeOut, float hs) {
         if (sz < 16 || str <= 0) return;
 
         double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);
@@ -133,9 +174,8 @@ public class ErosionEngine {
         double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);
         // 2026-08-10 wu 化修正：坡度/距离阈值按"物理块"标定，wu 空间必须 ×hs 还原
         // （与 RidgeValleyErosion.gradX/gradZ 同型 bug，见 SLOPE_MIN_SKIP / CASCADE_MAXDIFF）。
-        // HS=1（或独立预览默认）时 hs=1 → 与 wu 化前逐位一致。
-        double hsD = cfgDbl(GeoGenesisConfig.INSTANCE.horizontalScale, 1.0);
-        float hs = (float) (hsD > 0.01 && hsD != 1.0 ? hsD : 1.0);
+        // 2026-08-13：hs 由 TerrainParams 传入（上方重载），不再读全局配置。
+        if (!(hs > 0.01f && hs != 1.0f)) hs = 1f;
         float strE       = (float) Math.max(0.1, str) * (float) erodeMul;
         // 2026-08-01 两套粒子系统：河流粒子（StreamTracer）与液滴侵蚀彻底分离，
         // 液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）
@@ -168,6 +208,10 @@ public class ErosionEngine {
         int[] bOffF = new int[maxBF]; float[] bWgtF = new float[maxBF];
         int bnF = buildBrush(bOffF, bWgtF, R_F, r2F, bufSize);
 
+        // XS 微笔刷（中心+十字 4 邻，d2≤1，独立构建——不动 C/M/F 笔刷的 d2<r2 语义）
+        int[] bOffXS = new int[5]; float[] bWgtXS = new float[5];
+        int bnXS = buildMicroBrush(bOffXS, bWgtXS, bufSize);
+
         float[][] savedLocked = null;
         if (locked != null) {
             savedLocked = new float[sz][sz];
@@ -176,21 +220,19 @@ public class ErosionEngine {
                     if (locked[z][x]) savedLocked[z][x] = flat[(z + pad) * bufSize + (x + pad)];
         }
 
-        // ===== 确定性逐区块播种 =====
-        int wcmX = Math.floorDiv(ox, 16);
-        int wcMX = Math.floorDiv(ox + sz - 1, 16);
-        int wcmZ = Math.floorDiv(oz, 16);
-        int wcMZ = Math.floorDiv(oz + sz - 1, 16);
-        List<long[]> chunkList = new ArrayList<>();
-        for (int cz = wcmZ; cz <= wcMZ; cz++)
-            for (int cx = wcmX; cx <= wcMX; cx++)
-                chunkList.add(new long[]{cx, cz});
-        chunkList.sort((a, b) -> {
-            if (a[1] != b[1]) return Long.compare(a[1], b[1]);
-            return Long.compare(a[0], b[0]);
-        });
-
-        int maxD = (int) (Math.max(DROPS_C, Math.max(DROPS_M, DROPS_F)) * dropsMul);
+        // ===== 确定性播种（2026-08-13 重写：世界坐标连续化，治本消除边界墙）=====
+        // 旧方案按 chunk 分组播种（每 chunk 独立 hash + offX/offZ∈[0,16) 整数离散）：
+        // 液滴出生集合依赖 chunk 对齐 → delta 场在 chunk 边界突变（lx=39→40 实测 3 块墙，
+        // 用户截图 x=-288 即 tile∩chunk 边界）。
+        // 新方案：1wu 出生单元网格（全局整数坐标对齐，不依赖任何 tile/chunk 原点），
+        // 每单元按世界坐标 hash 判定出生 + 单元内连续偏移 → 任何 tile 看到同一区域 =
+        // 同一出生集合 → delta 场全局连续，无缝。密度对齐旧值：每 chunk 256wu² 撒
+        // DROPS 个 → 每 wu² 密度 = DROPS/256。
+        // 四个尺度用不同 hash 盐错开（C/M/F/XS 独立出生集合）。
+        final float densC = DROPS_C / 256f * (float) dropsMul;
+        final float densM = DROPS_M / 256f * (float) dropsMul;
+        final float densF = DROPS_F / 256f * (float) dropsMul;
+        final float densXS = DROPS_XS / 256f * (float) dropsMul;
 
         // ===== SH 多轮迭代：每轮清 track → 重撒全部液滴 → 轮末 lrate 平滑进稳态场 =====
         for (int it = 0; it < iterations; it++) {
@@ -198,32 +240,49 @@ public class ErosionEngine {
             Arrays.fill(momXT, 0f);
             Arrays.fill(momYT, 0f);
 
-            for (int d = 0; d < maxD; d++) {
-                for (long[] ck : chunkList) {
-                    int wcx = (int) ck[0], wcz = (int) ck[1];
-                    int relX = wcx * 16 - ox;
-                    int relZ = wcz * 16 - oz;
-
-                    if (d < (int) (DROPS_C * dropsMul)) {
-                        spawnAndSim(flat, bufSize, wcx, wcz, d, relX, relZ, pad,
-                                    bOffC, bWgtC, bnC, locked, sz, dis, disT,
-                                    momX, momY, momXT, momYT, momTransfer,
-                                    ERODE_C * strE, DEPOSIT_C, LIFE_C, ox, oz,
-                                    (float) casStr, seaNorm, hs);
+            for (int gz = oz; gz < oz + sz; gz++) {
+                for (int gx = ox; gx < ox + sz; gx++) {
+                    long hC = hash(gx * 131 + 7, gz * 131 + 11);
+                    if (((hC >>> 16) & 0xFFFF) / 65536f < densC) {
+                        spawnAt(flat, bufSize,
+                                pad + (gx - ox) + ((hC >>> 32) & 0xFFFF) / 65536f,
+                                pad + (gz - oz) + ((hC >>> 48) & 0xFFFF) / 65536f,
+                                pad, gx, gz, bOffC, bWgtC, bnC, locked, sz, dis, disT,
+                                momX, momY, momXT, momYT, momTransfer,
+                                ERODE_C * strE, DEPOSIT_C, LIFE_C, ox, oz,
+                                (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
-                    if (d < (int) (DROPS_M * dropsMul)) {
-                        spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 1, relX, relZ, pad,
-                                    bOffM, bWgtM, bnM, locked, sz, dis, disT,
-                                    momX, momY, momXT, momYT, momTransfer,
-                                    ERODE_M * strE, DEPOSIT_M, LIFE_M, ox, oz,
-                                    (float) casStr, seaNorm, hs);
+                    long hM = hash(gx * 131 + 7, gz * 131 + 11) * 31L + 17L;
+                    if (((hM >>> 16) & 0xFFFF) / 65536f < densM) {
+                        spawnAt(flat, bufSize,
+                                pad + (gx - ox) + ((hM >>> 32) & 0xFFFF) / 65536f,
+                                pad + (gz - oz) + ((hM >>> 48) & 0xFFFF) / 65536f,
+                                pad, gx, gz, bOffM, bWgtM, bnM, locked, sz, dis, disT,
+                                momX, momY, momXT, momYT, momTransfer,
+                                ERODE_M * strE, DEPOSIT_M, LIFE_M, ox, oz,
+                                (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
-                    if (d < (int) (DROPS_F * dropsMul)) {
-                        spawnAndSim(flat, bufSize, wcx, wcz, d * 137 + 2, relX, relZ, pad,
-                                    bOffF, bWgtF, bnF, locked, sz, dis, disT,
+                    long hF = hash(gx * 131 + 7, gz * 131 + 11) * 97L + 23L;
+                    if (((hF >>> 16) & 0xFFFF) / 65536f < densF) {
+                        spawnAt(flat, bufSize,
+                                pad + (gx - ox) + ((hF >>> 32) & 0xFFFF) / 65536f,
+                                pad + (gz - oz) + ((hF >>> 48) & 0xFFFF) / 65536f,
+                                pad, gx, gz, bOffF, bWgtF, bnF, locked, sz, dis, disT,
+                                momX, momY, momXT, momYT, momTransfer,
+                                ERODE_F * strE, DEPOSIT_F, LIFE_F, ox, oz,
+                                (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
+                    }
+                    if (xsEnabled) {
+                        long hXS = hash(gx * 131 + 7, gz * 131 + 11) * 131L + 41L;
+                        if (((hXS >>> 16) & 0xFFFF) / 65536f < densXS) {
+                            spawnAt(flat, bufSize,
+                                    pad + (gx - ox) + ((hXS >>> 32) & 0xFFFF) / 65536f,
+                                    pad + (gz - oz) + ((hXS >>> 48) & 0xFFFF) / 65536f,
+                                    pad, gx, gz, bOffXS, bWgtXS, bnXS, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
-                                    ERODE_F * strE, DEPOSIT_F, LIFE_F, ox, oz,
-                                    (float) casStr, seaNorm, hs);
+                                    ERODE_XS * strE, DEPOSIT_XS, LIFE_XS, ox, oz,
+                                    (float) casStr, seaNorm, hs, SPDCAP_XS, STALL_SPEED_XS, STALL_DELTA_XS);
+                        }
                     }
                 }
             }
@@ -273,49 +332,85 @@ public class ErosionEngine {
         return bn;
     }
 
+    /** XS 微笔刷（2026-08-12）：中心 + 十字 4 邻（d2≤1，5 格），权重线性 1-d，归一化。
+     *  r=1wu 给 1-2 块级微侵蚀纹理；独立构建——不动 C/M/F 笔刷的 d2<r2 圆内语义。 */
+    private static int buildMicroBrush(int[] bOff, float[] bWgt, int bufSize) {
+        int bn = 0;
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++) {
+                float d2 = dx * dx + dy * dy;
+                if (d2 <= 1f) {
+                    bOff[bn] = dy * bufSize + dx;
+                    bWgt[bn] = 1f - (float) Math.sqrt(d2);
+                    bn++;
+                }
+            }
+        float s = 0;
+        for (int i = 0; i < bn; i++) s += bWgt[i];
+        for (int i = 0; i < bn; i++) bWgt[i] /= s;
+        return bn;
+    }
+
     // ===== 播种与下落 =====
 
-    private void spawnAndSim(float[] flat, int bufSize, int worldCX, int worldCZ, int d,
-                             int relX, int relZ, int pad,
-                             int[] bOff, float[] bWgt, int bn,
-                             boolean[][] locked, int baseSize,
-                             float[] dis, float[] disT,
-                             float[] momX, float[] momY, float[] momXT, float[] momYT,
-                             float momTransfer,
-                             float erodeSpeed, float depositSpeed, int lifetime,
-                             int ox, int oz, float cascadeStrength, float seaNorm, float hs) {
-        long chunkSeed = hash(worldCX * 31 + 7, worldCZ * 73 + 13);
-        int cs = (int) (chunkSeed ^ (chunkSeed >>> 32));
-        long ps1 = hash(cs + d * 17, d * 31 + cs);
-        long ps2 = hash(d * 53 + cs, cs + d * 79);
-        int offX = (int) ((ps1 & 0xFFFF) / 65536f * 16);
-        int offZ = (int) ((ps2 & 0xFFFF) / 65536f * 16);
-        int px = pad + relX + offX;
-        int py = pad + relZ + offZ;
+    /** 世界坐标连续播种的单滴入口（2026-08-13 重写）。
+     *  出生位置 (px,py) 为缓冲坐标（小数），由调用方按 1wu 出生单元 hash 决定
+     *  （单元内连续偏移）→ 出生集合不依赖 chunk/tile 对齐 → delta 场全局连续。 */
+    private void spawnAt(float[] flat, int bufSize, float px, float py,
+                         int pad, int gx, int gz,
+                         int[] bOff, float[] bWgt, int bn,
+                         boolean[][] locked, int baseSize,
+                         float[] dis, float[] disT,
+                         float[] momX, float[] momY, float[] momXT, float[] momYT,
+                         float momTransfer,
+                         float erodeSpeed, float depositSpeed, int lifetime,
+                         int ox, int oz, float cascadeStrength, float seaNorm, float hs,
+                         float spdCap, float stallSpeed, float stallDelta) {
         if (px < 1 || px >= bufSize - 1 || py < 1 || py >= bufSize - 1) return;
         if (locked != null) {
-            int lz = py - pad, lx = px - pad;
+            int lz = (int) (py - pad), lx = (int) (px - pad);
             if (lz >= 0 && lz < baseSize && lx >= 0 && lx < baseSize && locked[lz][lx]) return;
         }
         // ★ 2026-08-09 spawn 陆地门控（对齐原版 SH world.h:71-72 "height<0.1 continue"）：
         //   海平面以下不生成粒子。根因：海底 flat 被钳到 -0.05 后液滴在平底随机游走
         //   产生微侵蚀/沉积 → 坑洞。陆地出发的粒子仍可流入海底（水下路径保留，峡湾/河口不回归）。
         //   实测验证（seed=12345, 64 tiles）：跳过 10 万+ 海底粒子，陆地粒子正常侵蚀。
-        float startH = flat[py * bufSize + px];
+        int ix = (int) px, iy = (int) py;
+        float startH = flat[iy * bufSize + ix];
         if (startH < seaNorm) return;
         // ★ 2026-08-09 优化：坡度稀疏化（RIS 式重要性重采样）——平坦区液滴侵蚀≈0（无效功）。
         //   1 格差分坡度（比 3×3 Sobel 便宜），世界坐标确定性函数 → 无缝保持。
         //   px/py 已由上方边界检查保证 ∈ [1, bufSize-2] → ±1 采样安全。
         float slope = Math.max(
-            Math.abs(flat[(py + 1) * bufSize + px] - flat[(py - 1) * bufSize + px]),
-            Math.abs(flat[py * bufSize + px + 1] - flat[py * bufSize + px - 1]));
+            Math.abs(flat[(iy + 1) * bufSize + ix] - flat[(iy - 1) * bufSize + ix]),
+            Math.abs(flat[iy * bufSize + ix + 1] - flat[iy * bufSize + ix - 1]));
         // 2026-08-10 wu 化修正：1 格差分坡度 = e/wu，×hs 还原物理坡度（e/块）再比阈值
-        if (slope * hs < SLOPE_MIN_SKIP) return;
+        // ★ 2026-08-13 平滑概率闸门：硬阈值（slope<h 全跳）在坡度恰卡阈值处 → 1 块内
+        //   出生 0/1 跳变 → delta 场突变（游戏内 x=-288 实测 2.6 块墙，基础场完全连续）。
+        //   改为 smoothstep(0.5h, 1.5h) 概率出生（出生单元 hash 确定性随机）→ 出生密度
+        //   随坡度平滑过渡 → delta 场连续。陡坡（>1.5h）全量出生，行为不变。
+        float slopeE = slope * hs;
+        float sLo = SLOPE_MIN_SKIP * 0.5f, sHi = SLOPE_MIN_SKIP * 1.5f;
+        float prob;
+        if (slopeE <= sLo) prob = 0f;
+        else if (slopeE >= sHi) prob = 1f;
+        else {
+            float t = (slopeE - sLo) / (sHi - sLo);
+            prob = t * t * (3f - 2f * t);
+        }
+        if (prob < 1f) {
+            // ★ 2026-08-13 修复：概率闸门 hash 必须用世界坐标（gx,gz），不能用缓冲坐标
+            //   （ix=px-pad+ox）。同一世界坐标在两个 tile 的缓冲坐标不同 → hash 不同 →
+            //   出生集合跨 tile 不一致 → delta 双写断裂（x=-288 实测 3.8 块，骨架层 0.1 块无罪）。
+            //   出生判定 hash(gx,gz)（上方 spawn 循环）已是世界坐标，这里必须一致。
+            long sh = hash(gx * 131 + 7, gz * 131 + 11);
+            if (((sh >>> 32) & 0xFFFF) / 65536f >= prob) return;
+        }
         simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
                      bOff, bWgt, bn, locked, pad, baseSize,
                      dis, disT, momX, momY, momXT, momYT, momTransfer,
                      erodeSpeed, depositSpeed, lifetime, ox, oz,
-                     cascadeStrength, hs);
+                     cascadeStrength, hs, spdCap, stallSpeed, stallDelta);
     }
 
     /** SH 对齐液滴下落。关键改进：动量场正反馈 + erf 放电反馈 + 局部 cascade + 片流 + 水下 */
@@ -327,7 +422,8 @@ public class ErosionEngine {
                               float momTransfer,
                              float erodeSpeed, float depositSpeed, int lifetime,
                              int ox, int oz,
-                             float cascadeStrength, float hs) {
+                             float cascadeStrength, float hs,
+                             float spdCap, float stallSpeed, float stallDelta) {
         float dirX = 0, dirY = 0, sed = 0, spd = 1f, wat = 1f;
 
         int spawnIx = (int) posX, spawnIy = (int) posY;
@@ -397,7 +493,6 @@ public class ErosionEngine {
             dirX /= dlen; dirY /= dlen;
 
             spd = (float) Math.sqrt(spd + Math.abs(flat[idx] - h0) * GRAVITY);
-            float spdCap = 1.5f;
             posX += dirX * Math.min(spd, spdCap);
             posY += dirY * Math.min(spd, spdCap);
             if (posX < 1 || posX >= bufSize - 2 || posY < 1 || posY >= bufSize - 2) return;
@@ -462,7 +557,8 @@ public class ErosionEngine {
             spd = speedSq > 1e-12f ? (float) Math.sqrt(speedSq) : 0.1f;
             if (spd <= 0) return;
             // early-exit：低速 + 近零增量连续 STALL_MAX 步 → 平衡态，对地形已无贡献
-            if (spd < STALL_SPEED && Math.abs(brushDelta) < STALL_DELTA) {
+            // 2026-08-12：阈值参数化（XS 微笔刷单步 delta 天然小，用缩窄阈值防误判）
+            if (spd < stallSpeed && Math.abs(brushDelta) < stallDelta) {
                 if (++stall >= STALL_MAX) return;
             } else {
                 stall = 0;
@@ -621,7 +717,10 @@ public class ErosionEngine {
                             }
                             float avg = sum / count;
                             float diff = h - avg;
-                            float blend = Math.min(diff * 3.0f, 0.6f);
+                            // ★ 2026-08-12 T3：只削明显孤峰（突出 >0.003e≈1 块），
+                            // 保留 1-3 块级沉积微纹理（旧版无条件平均会抹掉细节）
+                            if (diff <= 0.003f) continue;
+                            float blend = Math.min((diff - 0.003f) * 3.0f, 0.6f);
                             smoothed[idx] = h * (1f - blend) + avg * blend;
                         }
                     }

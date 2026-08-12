@@ -219,6 +219,8 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.BooleanValue riversEnabled;
     /** 是否启用本地粒子侵蚀 */
     public final ForgeConfigSpec.BooleanValue erosionEnabled;
+    /** 细纹理微侵蚀层（XS r1wu 十字笔刷，2026-08-12；默认关——实测加剧 chunk 边界脊） */
+    public final ForgeConfigSpec.BooleanValue erosionXSEnabled;
     /** 侵蚀强度倍率 */
     public final ForgeConfigSpec.DoubleValue erosionStrength;
     /** 侵蚀水滴数量倍率 */
@@ -628,6 +630,8 @@ public final class GeoGenesisConfig {
             .define("riversEnabled", true);
         erosionEnabled = builder.comment("Enable local particle erosion (seamless, margin-filled with true neighbour heights). Default true.")
             .define("erosionEnabled", true);
+        erosionXSEnabled = builder.comment("Extra-fine (XS, r1wu cross-brush) micro-erosion detail layer. Adds 1-2 block textures on slopes, but amplifies cross-chunk birth-set discreteness into visible ridges near chunk borders (measured +1.6 blocks at tile borders). Default false (conservative).")
+            .define("erosionXSEnabled", false);
         erosionStrength = builder.comment("Erosion strength multiplier. Default 1.0, range [0, 4].")
             .defineInRange("erosionStrength", 1.0, 0.0, 4.0);
         erosionDropsMul = builder.comment("Erosion droplet count multiplier. Lower = faster (preview). Default 1.0, range [0.1, 4].")

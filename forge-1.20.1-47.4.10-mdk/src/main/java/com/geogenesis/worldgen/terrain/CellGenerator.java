@@ -99,7 +99,8 @@ public final class CellGenerator {
         // 独立预览（config 未 load）时回退默认值。
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         double erosionDropsMul = cfg != null ? cfgDbl(cfg.erosionDropsMul, 1.0) : 1.0;
-        this.erosion = new ErosionEngine(erosionDropsMul, 12345);
+        boolean xsEnabled = cfg != null && cfgBool(cfg.erosionXSEnabled, false); // 细纹理层开关（默认关：实测加剧 chunk 边界脊）
+        this.erosion = new ErosionEngine(erosionDropsMul, 12345, xsEnabled);
         this.riversEnabled = cfg == null || cfgBool(cfg.riversEnabled, true);
 
         this.tempFreq = 1.0 / p.latitudeScale();   // 纬度缩放可配置
@@ -521,9 +522,13 @@ public final class CellGenerator {
         if (PROBE_SKELETON_ONLY) erosionOn = false;   // ★ 2026-08-12 探针诊断：只跑骨架（分离液滴贡献）
         double erosionStr = cfg != null ? cfgDbl(cfg.erosionStrength, 1.0) : 1.0;
         // 骨架开关独立于液滴（2026-08-06：仅开骨架时也要生效）
-        RidgeValleyErosion.RidgeConfig rcfg = cfg != null
+        RidgeValleyErosion.RidgeConfig rcfg0 = cfg != null
             ? RidgeValleyErosion.RidgeConfig.fromConfig(cfg)
             : new RidgeValleyErosion.RidgeConfig();
+        // 2026-08-13：hs 以 TerrainParams 为准覆盖（fromConfig 读全局配置，探针进程为 null→1.0）
+        rcfg0.horizontalScale = (float) params.horizontalScale();
+        // 2026-08-13：探针/测试可覆盖骨架参数（无 Forge 环境时对齐 toml 真实配置）
+        final RidgeValleyErosion.RidgeConfig rcfg = probeRidgeConfig != null ? probeRidgeConfig : rcfg0;
         boolean ridgeOn = rcfg.enabled;
 
         long tBaseEnd = System.nanoTime();  // PERF：base 采样结束
@@ -753,8 +758,10 @@ public final class CellGenerator {
             // （河流源头资格；2026-08-01 曾因两套粒子系统停用）
             float[] dischargeBuf = new float[bufSize * bufSize];
             tStage3 = System.nanoTime();   // PERF：液滴阶段开始
+            // 2026-08-13：hs 从 TerrainParams 显式传入（引擎不再读全局配置——探针进程无 Forge
+            // 环境时 INSTANCE=null→hs 恒 1.0，与游戏 HS=2 不一致）
             erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,
-                (float) seaE, (float) erosionStr, dischargeBuf);
+                (float) seaE, (float) erosionStr, dischargeBuf, (float) params.horizontalScale());
             tStage4 = System.nanoTime();        // PERF：液滴阶段结束
 
             for (int z = 0; z < N; z++)
@@ -835,6 +842,13 @@ public final class CellGenerator {
 
     /** ★ 2026-08-12 探针诊断开关：true 时只跑骨架（分离液滴贡献） */
     public static volatile boolean PROBE_SKELETON_ONLY = false;
+    /** 探针诊断：覆盖骨架配置（无 Forge 环境时对齐游戏 toml 参数，2026-08-13） */
+    public static volatile RidgeValleyErosion.RidgeConfig probeRidgeConfig = null;
+
+    /** 设置探针骨架配置覆盖（仅探针用，游戏不调用） */
+    public void setRidgeConfig(RidgeValleyErosion.RidgeConfig rcfg) {
+        probeRidgeConfig = rcfg;
+    }
 
     private static long tileKey(int tileCX, int tileCZ) {
         return ((long) tileCX << 32) | (tileCZ & 0xFFFFFFFFL);
@@ -1098,6 +1112,8 @@ public final class CellGenerator {
      * extractFromTile 与 sampleWu 共用的公共逻辑。
      */
     private void applyTileDelta(Cell cell, double wuX, double wuZ) {
+        // ★ 2026-08-12 回退（半开归属方案经实测否决——48k+24 线引入新墙，且最初断崖根因是
+        // SLOPE 0.0015 微坡墙而非 blend；恢复基线 floorDiv(wu,48) + 右/下缘 blend）
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
@@ -1107,25 +1123,46 @@ public final class CellGenerator {
         if (res.discharge != null)
             cell.riverNetDischarge = sampleTileField(res.discharge, res.originX, res.originZ, wuX, wuZ);
 
-        // tile 边界 blend（双方向独立+角块双 blend）：距中心区右/下缘 ≤10 wu 时渐变到邻 tile。
-        // HS=1 时与旧判定（cr==2 && lx>=BLEND_START ⇔ 距右缘 ≤16-BLEND_START=10 块）逐位等价；
-        // 懒生成邻居 + putIfAbsent 语义保留。
+        // tile 边界对称 4 向 blend + 角块双线性（2026-08-13 重新启用——上次试验参数未对齐
+        // 作废：探针 ridge=2.0 vs 游戏 toml 0.75，hs 未参数化；现已全部对齐）。
+        // 依据：液滴 delta 场在 tile 左缘（= 模拟域西界，液滴出生/截断不对称）固有突变
+        // （x=-288 实测 3.6 块台阶，基础场 0.1 块连续）→ 需要 blend 吸收，单侧 10wu 不够。
+        // X/Z 方向独立 smoothstep 因子 + 4 tile 双线性组合（不顺序覆盖，角块正确）。
+        double w = 16 - BLEND_START;
         double rightEdge = tileCX + (double) ERODE_TILE_CENTER;
         double bottomEdge = tileCZ + (double) ERODE_TILE_CENTER;
-        // blend b=0→当前 tile，b=1→邻居 tile；距边缘越近 b 越大。
-        if (rightEdge - wuX <= (16 - BLEND_START)) {
-            ErosionTileResult nr = getOrGenTile(tileCX + ERODE_TILE_CENTER, tileCZ);
-            double nd = sampleTileField(nr.delta, nr.originX, nr.originZ, wuX, wuZ);
-            double b = 1.0 - (rightEdge - wuX) / (16 - BLEND_START);
-            double blend = b * b * (3.0 - 2.0 * b);
-            delta = delta * (1.0 - blend) + nd * blend;
+        double fx = 0; int ncx = tileCX;
+        if (rightEdge - wuX <= w) {
+            double b = 1.0 - (rightEdge - wuX) / w;
+            fx = b * b * (3.0 - 2.0 * b);
+            ncx = tileCX + ERODE_TILE_CENTER;
+        } else if (wuX - tileCX < w) {
+            double b = 1.0 - (wuX - tileCX) / w;
+            fx = b * b * (3.0 - 2.0 * b);
+            ncx = tileCX - ERODE_TILE_CENTER;
         }
-        if (bottomEdge - wuZ <= (16 - BLEND_START)) {
-            ErosionTileResult nb = getOrGenTile(tileCX, tileCZ + ERODE_TILE_CENTER);
-            double nd = sampleTileField(nb.delta, nb.originX, nb.originZ, wuX, wuZ);
-            double b = 1.0 - (bottomEdge - wuZ) / (16 - BLEND_START);
-            double blend = b * b * (3.0 - 2.0 * b);
-            delta = delta * (1.0 - blend) + nd * blend;
+        double fz = 0; int ncz = tileCZ;
+        if (bottomEdge - wuZ <= w) {
+            double b = 1.0 - (bottomEdge - wuZ) / w;
+            fz = b * b * (3.0 - 2.0 * b);
+            ncz = tileCZ + ERODE_TILE_CENTER;
+        } else if (wuZ - tileCZ < w) {
+            double b = 1.0 - (wuZ - tileCZ) / w;
+            fz = b * b * (3.0 - 2.0 * b);
+            ncz = tileCZ - ERODE_TILE_CENTER;
+        }
+        if (fx > 0 || fz > 0) {
+            ErosionTileResult tx = getOrGenTile(ncx, tileCZ);
+            ErosionTileResult tz = getOrGenTile(tileCX, ncz);
+            ErosionTileResult txz = getOrGenTile(ncx, ncz);
+            double d00 = delta;
+            double d10 = tx != null ? sampleTileField(tx.delta, tx.originX, tx.originZ, wuX, wuZ) : d00;
+            double d01 = tz != null ? sampleTileField(tz.delta, tz.originX, tz.originZ, wuX, wuZ) : d00;
+            double d11 = txz != null ? sampleTileField(txz.delta, txz.originX, txz.originZ, wuX, wuZ) : d00;
+            delta = d00 * (1 - fx) * (1 - fz)
+                  + d10 * fx * (1 - fz)
+                  + d01 * (1 - fx) * fz
+                  + d11 * fx * fz;
         }
 
         // 对全地形施加侵蚀增量（**含海洋**）。

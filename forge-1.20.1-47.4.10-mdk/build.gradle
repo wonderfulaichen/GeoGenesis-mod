@@ -228,6 +228,14 @@ task runProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.DiscontinuityProbe'
 }
 
+task runChunkBorderProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ChunkBorderProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 task runProfile(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.MountainProfileProbe'
@@ -269,21 +277,27 @@ task runDiag(type: JavaExec) {
 task runSpikeLocateProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.SpikeLocateProbe'
-    args = project.hasProperty('probeArgs') ? probeArgs.split('\\s+') : []
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
 }
 
 // HS wu-ization A/B probe (2026-08-10): gradlew runHSABProbe [seed]
 task runHSABProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.HSABProbe'
-    args = project.hasProperty('probeArgs') ? probeArgs.split('\\s+') : []
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
 }
 
 // Erosion delta periodicity probe (2026-08-11): gradlew runErosionPeriodProbe [seed] [tileCX] [tileCZ]
 task runErosionPeriodProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.ErosionPeriodProbe'
-    args = project.hasProperty('probeArgs') ? probeArgs.split('\\s+') : []
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
 }
 
 
@@ -372,4 +386,6 @@ task runCoastlineProfileProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.CoastlineProfileProbe'
 }
+
+
 

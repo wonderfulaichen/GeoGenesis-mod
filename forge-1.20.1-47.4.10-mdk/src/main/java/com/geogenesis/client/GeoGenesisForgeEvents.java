@@ -35,6 +35,13 @@ public final class GeoGenesisForgeEvents {
                 mc.setScreen(new GeoGenesisConfigScreen(mc.screen, seed));
             }
         }
+        // 按 B 键扫描周围 ±3 chunk 的边界断裂（异步，结果写 latest.log + 聊天框摘要）
+        if (event.getAction() == GLFW.GLFW_PRESS && event.getKey() == GLFW.GLFW_KEY_B) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen == null && mc.player != null) {
+                InGameSeamScanner.scan(mc);
+            }
+        }
     }
 
     private GeoGenesisForgeEvents() {}
