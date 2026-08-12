@@ -160,8 +160,6 @@ public class ParameterConfigPanel extends ConfigPanel {
                 () -> c.erosionEnabled.get(), v -> c.erosionEnabled.set(v));
         addToggle("骨架模拟侵蚀", "粗侵蚀（脊-谷条纹滤镜）骨架层。开启时先造大山脊基本型，再由粒子侵蚀做细节。",
                 () -> c.erosionRidgeEnabled.get(), v -> c.erosionRidgeEnabled.set(v));
-        addToggle("高度域塑形", "骨架 fadeTarget 恢复原版高度映射（catto Erosion.java: clamp(h/0.6,-1,1)）：谷黑峰白、高度域塑形（塑性更强）。关=固定 0（消除等值线纹理）。默认关，A/B 测试。",
-                () -> c.erosionRidgeFadeHeight.get(), v -> c.erosionRidgeFadeHeight.set(v));
         addToggle("河流系统", "河网检测 + 河道填水（独立于侵蚀）。关闭 = 无河流。",
                 () -> c.riversEnabled.get(), v -> c.riversEnabled.set(v));
         addToggle("河道灌水", "河道是否灌水。关闭 = 旱谷（仅显形为凹槽地形，不填水）。",

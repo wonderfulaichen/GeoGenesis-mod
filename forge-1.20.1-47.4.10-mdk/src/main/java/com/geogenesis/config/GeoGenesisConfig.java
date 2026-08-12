@@ -245,10 +245,6 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue erosionRidgeRounding;
     /** 粗侵蚀骨架 fadeTarget 参考面（陆地中值，e 单位）。默认 0.15 匹配陆地中值；旧 0.25 在低地世界恒负 → 全体下削 4~11 块。范围 [0.02, 0.5] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeLandRef;
-    /** ★ 2026-08-12 恢复原版 fadeTarget 高度映射（catto Erosion.java: fadeTarget=clamp(h/0.6,-1,1)）：
-     *  true=谷黑峰白高度域塑形（原版比例，塑性更强）；false=固定 0（2026-08-06 用户决策消除等值线纹理）。
-     *  默认 false，用户 A/B 实测后定案。 */
-    public final ForgeConfigSpec.BooleanValue erosionRidgeFadeHeight;
     /** 粗侵蚀细节密度（PowInv 指数，越低=小沟越密，越高=主脊越干净）。默认 1.0，范围 [0.7, 3.0] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeDetail;
     /** 河流阈值（背景~峰值间比例）：调大→河网更稀疏（只剩主干）。默认 0.02，范围 [0.001, 0.3]。配合汇聚加权（仅河流粒子累计 discharge）使用 */
@@ -664,8 +660,8 @@ public final class GeoGenesisConfig {
         // ===== 粗侵蚀骨架层（脊-谷条纹滤镜，Rune Skovbo Johansen 2026 + Luke Mitchell Burst C#）=====
         erosionRidgeEnabled = builder.comment("Coarse ridge-valley skeleton layer (gradient-aligned stripe filter). Builds mountain-ridge basic form before particle detail erosion. Default true.")
                 .define("erosionRidgeEnabled", true);
-        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 0.8 (2026-08-12: 0.5→0.8 塑性增强，配合 LIFT_HEADROOM_FULL 0.02 让脊线抬升恢复), range [0, 1.2].")
-                .defineInRange("erosionRidgeStrength", 0.8, 0.0, 1.2);
+        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 2.0 (2026-08-12: 3.0 用户实测过头，回调 2.0 约 ±2.5 块), range [0, 5.0].")
+                .defineInRange("erosionRidgeStrength", 2.0, 0.0, 5.0);
         erosionRidgeScale = builder.comment("Coarse skeleton feature size (world blocks) = stripe cell world size; larger = wider ridges. Default 100, range [50, 800].")
                 .defineInRange("erosionRidgeScale", 100.0, 50.0, 800.0);
         erosionRidgeCellScale = builder.comment("Coarse skeleton in-cell stripe frequency (ridge-valley density). Default 1.2, range [0.2, 2.0].")
@@ -678,8 +674,6 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionRidgeRounding", 0.5, 0.0, 1.0);
         erosionRidgeLandRef = builder.comment("Coarse skeleton fadeTarget reference (land median, e units). Default 0.15 matches land median; old fixed 0.25 caused uniform 4~11-block downcutting on low-elevation worlds. Range [0.02, 0.5].")
                 .defineInRange("erosionRidgeLandRef", 0.15, 0.02, 0.5);
-        erosionRidgeFadeHeight = builder.comment("Restore original fadeTarget height mapping (catto Erosion.java: fadeTarget=clamp(h/0.6,-1,1)): true=height-domain shaping valley-dark/peak-bright (original ratio, more plasticity); false=fixed 0 (2026-08-06 user decision to remove contour artifacts). Default false, user A/B test pending.")
-                .define("erosionRidgeFadeHeight", false);
         erosionRidgeDetail = builder.comment("Gully detail density (PowInv exponent; lower=finer gullies everywhere, higher=cleaner main ridges). Default 1.0, range [0.7, 3.0].")
                 .defineInRange("erosionRidgeDetail", 1.0, 0.7, 3.0);
         builder.pop();
@@ -827,7 +821,6 @@ public final class GeoGenesisConfig {
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeGullyWeight.get());
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeRounding.get());
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeLandRef.get());
-            h = h * 31 + (INSTANCE.erosionRidgeFadeHeight.get() ? 1 : 0);
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeDetail.get());
             // 2026-08-06：海岸线 warp 参数（侵蚀采样依赖地形含海岸线，改动须清侵蚀 tile 缓存）
             h = h * 31 + Double.doubleToLongBits(INSTANCE.coastlineWarpAmp.get());

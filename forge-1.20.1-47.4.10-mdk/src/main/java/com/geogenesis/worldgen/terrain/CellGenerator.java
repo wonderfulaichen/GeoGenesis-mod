@@ -518,12 +518,12 @@ public final class CellGenerator {
         long tStart = System.nanoTime();   // PERF 诊断（2026-08-09，优化后保留观察）
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         boolean erosionOn = cfg != null ? cfgBool(cfg.erosionEnabled, true) : true;
+        if (PROBE_SKELETON_ONLY) erosionOn = false;   // ★ 2026-08-12 探针诊断：只跑骨架（分离液滴贡献）
         double erosionStr = cfg != null ? cfgDbl(cfg.erosionStrength, 1.0) : 1.0;
         // 骨架开关独立于液滴（2026-08-06：仅开骨架时也要生效）
         RidgeValleyErosion.RidgeConfig rcfg = cfg != null
             ? RidgeValleyErosion.RidgeConfig.fromConfig(cfg)
             : new RidgeValleyErosion.RidgeConfig();
-        if (PROBE_FADE_HEIGHT) rcfg.fadeHeight = true;   // ★ 2026-08-12 探针诊断：模拟 fadeHeight 开启
         boolean ridgeOn = rcfg.enabled;
 
         long tBaseEnd = System.nanoTime();  // PERF：base 采样结束
@@ -833,8 +833,8 @@ public final class CellGenerator {
     /** PERF 诊断：侵蚀 tile 耗时打印计数（每 8 个 tile 打印一次，诊断后删除） */
     private static int perfTileCount = 0;
 
-    /** ★ 2026-08-12 探针诊断开关：true 时强制骨架 fadeHeight=true（对照 catto 原版塑形） */
-    public static volatile boolean PROBE_FADE_HEIGHT = false;
+    /** ★ 2026-08-12 探针诊断开关：true 时只跑骨架（分离液滴贡献） */
+    public static volatile boolean PROBE_SKELETON_ONLY = false;
 
     private static long tileKey(int tileCX, int tileCZ) {
         return ((long) tileCX << 32) | (tileCZ & 0xFFFFFFFFL);
