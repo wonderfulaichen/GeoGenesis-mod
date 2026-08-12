@@ -16,8 +16,8 @@ public final class ErosionPeriodProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         int tileCX = args.length > 1 ? Integer.parseInt(args[1]) : 48;
         int tileCZ = args.length > 2 ? Integer.parseInt(args[2]) : 48;
-        // ★ 2026-08-12 诊断：--args="seed tileCX tileCZ fade" 强制骨架 fadeHeight=true
-        if (args.length > 3 && args[3].equals("fade")) CellGenerator.PROBE_FADE_HEIGHT = true;
+        // ★ 2026-08-12 诊断：--args="seed tileCX tileCZ skel" 骨架单独（分离液滴贡献）
+        if (args.length > 3 && args[3].equals("skel")) CellGenerator.PROBE_SKELETON_ONLY = true;
 
         for (double hs : new double[]{1.0, 2.0}) {
             TerrainParams p = withHs(TerrainParams.defaults(), hs);
