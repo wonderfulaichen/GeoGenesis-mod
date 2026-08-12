@@ -34,11 +34,12 @@ public final class ErosionTileProbe {
         gen.setRiversEnabled(false); // 关闭河流，隔离侵蚀变量
         gen.seed(seed);
 
-        // 右侧邻居：tile (0,0) ↔ (3,0)
-        probePair(gen, 0, 0, ERODE_TILE_CHUNKS, 0, "right neighbor");
+        // 右侧邻居：tile (0,0) ↔ (48,0)（2026-08-12 修正：新 48wu 网格，tile 网格坐标 = wu 倍数；
+        // 旧 ERODE_TILE_CHUNKS=3 是 3-chunk 组语义 → 触发/重叠/getTileResult key 全错 → SKIP）
+        probePair(gen, 0, 0, ERODE_TILE_CENTER, 0, "right neighbor");
 
-        // 下侧邻居：tile (0,0) ↔ (0,3)
-        probePair(gen, 0, 0, 0, ERODE_TILE_CHUNKS, "bottom neighbor");
+        // 下侧邻居：tile (0,0) ↔ (0,48)
+        probePair(gen, 0, 0, 0, ERODE_TILE_CENTER, "bottom neighbor");
 
         System.out.println("=== ErosionTileProbe done ===");
         System.out.println("Threshold: delta > 0.01 (~4 blocks) needs watch, >0.05 (~19 blocks) severe.");
@@ -59,9 +60,9 @@ public final class ErosionTileProbe {
         int tcxA = cxa, tczA = cza;
         int tcxB = cxa + dcx, tczB = cza + dcz;
 
-        // 触发第一个 tile 生成（用内部任意 chunk 坐标触发）
-        gen.getErosionTile(cxa * 16 / 16 + 1, cza * 16 / 16 + 1);
-        gen.getErosionTile(tcxB * 16 / 16 + 1, tczB * 16 / 16 + 1);
+        // 触发两个 tile 生成（2026-08-12：触发坐标按 48wu 网格定位，旧 chunk 组坐标触发错 tile → SKIP）
+        gen.getErosionTile(cxa * ERODE_TILE_CENTER + 1, cza * ERODE_TILE_CENTER + 1);
+        gen.getErosionTile(tcxB * ERODE_TILE_CENTER + 1, tczB * ERODE_TILE_CENTER + 1);
 
         CellGenerator.ErosionTileResult tileA = gen.getTileResult(tcxA, tczA);
         CellGenerator.ErosionTileResult tileB = gen.getTileResult(tcxB, tczB);
@@ -314,7 +315,7 @@ public final class ErosionTileProbe {
                                            CellGenerator.ErosionTileResult tileB,
                                            int oz0, int oz1, int N) {
         System.out.println("=== Stage 7: Chunk-boundary applied continuity (world seam truth) ===");
-        int boundX = (tileA.tileCX + ERODE_TILE_CHUNKS) * 16; // chunk 边界（A 的 chunk 区右缘）
+        int boundX = tileA.tileCX + ERODE_TILE_CENTER; // 48wu 网格边界（2026-08-12：旧 3-chunk 语义 → 48wu 一格）
         System.out.println("  Chunk boundary at worldX=" + boundX
             + ": left col (A chunk, blends to right-neighbor B) vs right col (B chunk, own field)");
         System.out.println("  Both from B's field → diff ≈ field gradient (small).");
@@ -560,6 +561,6 @@ public final class ErosionTileProbe {
     }
 
     // ===== 常量复制 =====
-    private static final int ERODE_TILE_CHUNKS = 3;
+    private static final int ERODE_TILE_CENTER = 48; // 2026-08-12：旧 ERODE_TILE_CHUNKS=3（3-chunk 组）→ 新 48wu 网格
     private static final int ERODE_TILE_SIZE = 128;
 }
