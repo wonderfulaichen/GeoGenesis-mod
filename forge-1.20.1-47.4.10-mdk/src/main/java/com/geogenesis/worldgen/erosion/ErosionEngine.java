@@ -79,9 +79,14 @@ public class ErosionEngine {
     // HS=2 时 1wu=2 块、HS=1 时=1 块。微步长 SPDCAP_XS=0.6wu → 轨迹细密连贯；
     // ERODE_XS 幅度小（防 r1 单格椒盐）。独立种子流 d*137+3（与 C/M/F 错开）；
     // STALL 阈值按微尺度缩窄（微笔刷单步 delta 天然小，防误判平衡态提前终止）。
-    private static final int R_XS = 1, DROPS_XS = 70, LIFE_XS = 14;
-    private static final float ERODE_XS = 0.045f, DEPOSIT_XS = 0.010f;
-    private static final float SPDCAP_XS = 0.6f;
+    // ★ 2026-08-13 目检回调：小圆坑（用户反馈）——微步长让液滴在 r1 五格内反复打转，
+    //   单点重复侵蚀挖出直径 2-4 块浅坑。修复：ERODE_XS 0.045→0.02（挖得浅）、
+    //   DEPOSIT_XS 0.01→0.015（填得快，比 4.5:1 → 1.3:1）、DROPS_XS 70→40（覆盖稀疏）。
+    // ★ 2026-08-13 二次回调：用户目检"还行"，要求侵蚀略强一点 → ERODE_XS 0.02→0.03；
+    //   SPDCAP_XS 0.6→0.8（步长略增，减少原地打转概率，纹理略粗但更自然）。
+    private static final int R_XS = 1, DROPS_XS = 40, LIFE_XS = 14;
+    private static final float ERODE_XS = 0.030f, DEPOSIT_XS = 0.015f;
+    private static final float SPDCAP_XS = 0.8f;
     private static final float STALL_SPEED_XS = 0.12f, STALL_DELTA_XS = 1e-5f;
 
     /** 最大笔刷半径（pad = R_MAX + 2 = 9），相邻 tile 各 pad 9 + 中心区域重叠 2*9=18 块无缝 */
@@ -332,8 +337,11 @@ public class ErosionEngine {
         return bn;
     }
 
-    /** XS 微笔刷（2026-08-12）：中心 + 十字 4 邻（d2≤1，5 格），权重线性 1-d，归一化。
-     *  r=1wu 给 1-2 块级微侵蚀纹理；独立构建——不动 C/M/F 笔刷的 d2<r2 圆内语义。 */
+    /** XS 微笔刷（2026-08-12，2026-08-13 圆化）：中心 + 十字 4 邻（d2≤1，5 格），
+     *  权重二次曲线 w = 1 - d2/2（中心 1.0、十字邻 0.5），归一化后中心≈0.4、十字各≈0.15。
+     *  ★ 2026-08-13 修复：旧权重 1-d 使十字邻权重=0（归一化后纯单格笔刷）→ 液滴打转时
+     *  单点反复侵蚀挖尖坑（用户反馈"尖笔刷"）。圆化后侵蚀向 5 格扩散，单点权重降 60%，
+     *  尖坑变平滑微凹。r=1wu 给 1-2 块级微侵蚀纹理；独立构建——不动 C/M/F 的 d2<r2 语义。 */
     private static int buildMicroBrush(int[] bOff, float[] bWgt, int bufSize) {
         int bn = 0;
         for (int dy = -1; dy <= 1; dy++)
@@ -341,7 +349,7 @@ public class ErosionEngine {
                 float d2 = dx * dx + dy * dy;
                 if (d2 <= 1f) {
                     bOff[bn] = dy * bufSize + dx;
-                    bWgt[bn] = 1f - (float) Math.sqrt(d2);
+                    bWgt[bn] = 1f - d2 * 0.5f;
                     bn++;
                 }
             }
