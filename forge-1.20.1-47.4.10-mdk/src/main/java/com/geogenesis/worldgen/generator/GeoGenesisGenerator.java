@@ -153,8 +153,6 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
 
-                // 2026-08-01 用户指令：河流先不填水。河谷刻蚀保留在 cell.height（干河床凹槽可见），
-                // 全部走 fillTerrainColumn 普通填充；fillRiverColumn 待后续启用。
                 fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell);
             }
         }
@@ -218,51 +216,6 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 break;                                            // 地表/水面以上：默认 AIR，跳过
             }
             chunk.setBlockState(mPos, state, false);
-        }
-    }
-
-    /**
-     * 河流列填充：按河谷刻蚀后的河床 / 水面高度灌水。
-     * 水面≈雕刻前地面（riverSurfaceY = heightFromE(e+carve)），河床为刻蚀底（riverFloorY），
-     * 二者之间填水。峡谷壁（岸坡）在相邻的非河道格，由 fillTerrainColumn 填充。
-     *
-     * <p>2026-08-01 修复（用户反馈三明治/海面替换）：</p>
-     * <ul>
-     *   <li>仅"真河床"（水深 &gt; 1 块）走此填充；无雕刻的河岸边缘格（水深 ≤ 1）
-     *       委托 fillTerrainColumn——消除"沙+1 格水+草顶"三明治</li>
-     *   <li>水面以上全 AIR：旧版 terrainTopY=surfY+1 在河床格水面之上填草/沙（悬浮草皮）</li>
-     *   <li>水下河道格（isWater）由 fillFromNoise 分流走 fillTerrainColumn，不在此处理</li>
-     * </ul>
-     */
-    private void fillRiverColumn(ChunkAccess chunk, BlockPos.MutableBlockPos mPos,
-                                 int wx, int wz, Cell cell) {
-        int floorY = (int) Math.floor(cell.riverFloorY);
-        int surfY = (int) Math.floor(cell.riverSurfaceY);
-        if (surfY - floorY <= 1) {
-            // 无有效河床（雕刻≈0 的河岸边缘格）→ 普通地形（避免 1 格水三明治）
-            fillTerrainColumn(chunk, mPos, wx, wz, cell);
-            return;
-        }
-        int maxDepth = 24;
-        if (surfY - floorY > maxDepth) surfY = floorY + maxDepth;
-        if (surfY <= floorY) surfY = floorY + 1;
-
-        // ★ 2026-08-09 无伤优化：水面以上默认 AIR 跳过写入（同 fillTerrainColumn）
-        for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
-            mPos.set(wx, y, wz);
-            if (y == WORLD_MIN_Y) {
-                chunk.setBlockState(mPos, BEDROCK, false);
-            } else if (y < floorY - 5) {
-                chunk.setBlockState(mPos, y < 0 ? DEEPSLATE : STONE, false);
-            } else if (y < floorY) {
-                chunk.setBlockState(mPos, STONE, false);
-            } else if (y == floorY) {
-                chunk.setBlockState(mPos, (floorY > SEA_LEVEL - 3) ? SAND : GRAVEL, false);
-            } else if (y <= surfY) {
-                chunk.setBlockState(mPos, WATER, false);
-            } else {
-                break;   // 水面以上：默认 AIR（峡谷壁在邻格普通填充），跳过
-            }
         }
     }
 

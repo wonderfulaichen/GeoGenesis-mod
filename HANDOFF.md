@@ -1,61 +1,59 @@
-# GeoGenesis 交接文档（2026-08-11）
+# GeoGenesis 交接文档（2026-08-13 深夜）
 
-> 本会话结束，换新对话前交接。上一交接点：git commit `bf54f02`（main 分支，领先 origin/main 4 个提交，未 push）。
+> 会话转移。上一交接点：git commit `cb27135`（main，已 push 同步）。本会话在 `cb27135` 之后做了大量**未提交**改动（侵蚀无缝化 + 河流重写），工作区有改动未提交，**先看清 git status 再动手**。
 
-## 一、本次会话完成的工作
+## 〇、当前 git 状态（最重要）
 
-### 侵蚀引擎修复系列（对照 SebLague/Hydraulic-Erosion `Erosion.cs` 原文逐项核对）
+- HEAD = `cb27135`（XS 微侵蚀调优，已推送）
+- 工作区**未提交**改动：`ErosionEngine.java` / `CellGenerator.java` / `StreamTracer.java` / `GeoGenesisGenerator.java` / `build.gradle` / `RiverProfileProbe.java` / `DischargeFieldProbe.java`（新增）/ `GeoGenesisForgeEvents.java` / `InGameSeamScanner.java`（新增）等
+- **河流重写未定案**，改动是否保留待用户实机确认后决定
 
-问题链路：堆积成山包 → 局部产坑 + 坑遇海平面冻结 → 深沟壑遍布。全部在 `forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java` 的 `simulateDrop`/`cascadeLocal`：
+## 一、本会话完成并已验证的（侵蚀无缝化，推荐保留）
 
-1. **接线 `erodeSpeed/depositSpeed` 死参数**：旧代码 `effD=0.15` 硬编码双向（自 b34ebe7 SH 重构起失效）。现在侵蚀 `delta = erodeSpeed·(c_eq−sed)`、沉积 `delta = depositSpeed·(c_eq−sed)`，三尺度 `ERODE_C/M/F`、`DEPOSIT_C/M/F` 常量真正生效。
-2. **侵蚀钳制上限含 depthBoost**：`min(delta, max(0,-dh) + depthBoost)`——修复"坑遇海平面冻结"（旧钳制 `max(0,-dh)` 把水下深度增强驱动的侵蚀全砍）。
-3. **沉积分支补上坡填平**：`dh > 0 → delta = -min(dh, sed)`（SH 原文 "If moving uphill, try fill up to the current height"）——修复"只挖不填产坑"。
-4. **沉积改 4 邻双线性**（`depositNode` helper）：SH 原文 "Deposition is not distributed over a radius (like erosion) so that it can fill small pits"——修复"堆积成山包"。
-5. **`INERTIA` 0.005→0.05、`EVAP_RATE` 0.001→0.01**：对齐 SH `inertia=.05f` / `evaporateSpeed=.01f`——液滴保留惯性不钉死梯度线、水量衰减侵蚀收敛（深沟壑主修复之一）。
-6. **`erosionIterations` 默认 5→2**（`GeoGenesisConfig` + `run/config/geogenesis-common.toml` 已同步）、**`erosionCascadeStrength` 0.5→0.3**（toml 已同步）：深沟壑修复（SH `numIterations=1` 折中；回退 08-10 "沟壁锐化"调参）。
-7. 删除死常量 `RELAX_RATE=0.1`、`DEPOSIT_SPEED=0.02`。
-8. **`CACHE_SCHEMA_VERSION` 19→22**（`PreviewDisplay.java`）：侵蚀公式多次改变，磁盘缓存失效重采。
+1. **液滴行程 ≤ tile 缓冲余量**（治侵蚀断裂根本）：`LIFE_C 60→20`、`spdCap 1.5→1.0`——行程 20wu ≤ 缓冲 40wu → 液滴不出界 → 双写一致 → 无缝
+2. **世界坐标连续播种**（ErosionEngine 播种重写）：1wu 出生单元网格 + hash 密度 + 单元内连续偏移 → 任何 tile 看到同一区域 = 同一出生集合
+3. **平滑概率闸门**：SLOPE 硬阈值 → smoothstep(0.5h,1.5h) 概率出生（hash 世界坐标）→ 消除坡度卡阈值处的 0/1 跳变
+4. **hs 参数化**：引擎不再读 `GeoGenesisConfig.INSTANCE.horizontalScale`（探针进程无 Forge 环境恒 1.0 与游戏 2.0 不符，导致探针永远复现不了游戏），改从 `TerrainParams` 传入
+5. **探针工具**：`ChunkBorderProbe`（toml 参数解析 + HS=2 + GeoGenesisTerrain 门面调用链，复现游戏环境）、`InGameSeamScanner`（B 键游戏内扫描，双剖面取证）、`ErosionTileProbe` 修 48wu 网格坐标
+6. **XS 微侵蚀调优**：圆化笔刷（1-d²/2 权重）+ 侵蚀/沉积平衡 + `erosionXSEnabled` 开关（默认关，ParameterConfigPanel 有 toggle）
 
-### 探针工具
+**验证**：ErosionPeriodProbe NaN=0、max=0.0000 零堆积、覆盖率 100%；ChunkBorderProbe 用户实测断裂处 z=-392..-385 从 3.7 → 0.1-0.3 块。
 
-- 新增 `worldgen/terrain/ErosionPeriodProbe.java`（untracked 时已随提交入库）+ `build.gradle` task：`gradlew runErosionPeriodProbe [seed] [tileCX] [tileCZ]`——打印 NaN 数、32×32 窗口覆盖率、侵蚀前后均值、相邻跳变谱、tile 耗时。**回归验证用**。
+## 二、河流重写（本会话主战场，未定案）
 
-### 验证结果（最后状态，seed 12345）
+### 历史（别重蹈覆辙）
 
-- `compileJava` BUILD SUCCESSFUL
-- 探针：NaN=0/2304（base 与 postErosion 双份）、覆盖率 100%、postErosion mean **-0.0254 → -0.0207**（侵蚀量 -19%）、短尺度跳变 d=1~8 回落 6-8%（细沟壑密度下降）
-- 未跑 `runClient` 实测（本会话结束点）——**下一步第一优先：实测确认深沟壑/坑/断裂是否改善**
+- 用户反馈链：StreamTracer 几何追踪"太假" → 液滴 discharge 阈值切河道"自然但断流" → 连续播种+脊线检测"太卡" → 降密度
+- **根因链**：侵蚀无缝需要液滴短行程（LIFE_C=20）→ 但流量累积需要长行程（到入海）→ 断流。用户点醒：粒子侵蚀无缝 ≠ 河流系统无缝；流量累积不该复用侵蚀液滴的短行程
 
-## 二、待办 / 下一步
+### 当前实现（未定案）
 
-1. **`runClient` 实测**（或预览）确认：沟壑是否变自然宽浅、坑是否收敛、水下峡谷是否正常、区块断裂是否存在。
-2. 若沟壑仍深：`erosionIterations` 2→1（完全 SH 语义）→ 再不行降 `ERODE_C/M/F` 20-30%。
-3. **"区块断裂"尚未定位**：code-explorer 核对过 `extractFromTile` blend 全链路（`CellGenerator.applyTileDelta`，smoothstep、border 40 wu > blend 10 wu、邻居懒生成线程安全）——无结构性 bug，疑似深沟壑方块化阶梯的视觉误判。若实测断裂真实存在，优先查 `sampleTileField` 插值与 river carve 交接处，需要用户提供坐标。
-4. 最近 4 个本地提交未 push（含 bf54f02），需要时 `git push`。
+- `StreamTracer` 源头改**连续播种**（FLOW_GRID=8、FLOW_DENSITY=0.4、FLOW_MARGIN=48）——液滴走到入海（出界用 `terrainEQuick` 世界坐标），dis = 集水面积连续不断流
+- core 标记改**脊线检测**（dis 是面状场，阈值切不出线状河道）：Sobel 梯度（连续方向非 D8）→ 垂直流向采样两侧 dis → 中心高 = 脊。`ridgeThreshold = maxQ×0.08`
+- 水面棘轮（`computeRiverSurfaces`）保留：discharge 降序 + 河口锚海平面 + 落差标瀑布 + BFS 岸坡传播
+- 宽度/深度随流量渐变保留（bedWidth=1+3·qFrac²、bankWidth=3+5·qFrac、depth=0.015+0.05·qFrac^0.7）
+- `GeoGenesisGenerator.fillFromNoise` 已恢复 `riverMask → fillRiverColumn` 填水
 
-## 三、关键机制索引（新对话速览）
+### 性能（用户"非常卡"已缓解）
 
-| 文件 | 职责 |
-|---|---|
-| `worldgen/erosion/ErosionEngine.java` | 液滴侵蚀引擎（三尺度层叠 + 动量场 + cascade），本次全部改动在此 |
-| `worldgen/terrain/CellGenerator.java` | tile 管线：`extractFromTile`（1034 行）/`applyTileDelta`（1096 行，含边缘 blend）/`carveRiverValleys`（889 行）/`ERODE_TILE_*` 常量（331 行） |
-| `worldgen/terrain/GeoGenesisTerrain.java` | 地形主入口（149-154 行调 extractFromTile） |
-| `worldgen/terrain/StreamTracer.java` | 河流粒子追踪（不改造地形，与侵蚀引擎无公式同步需求） |
-| `config/GeoGenesisConfig.java` | 配置（`erosion*` 系列 225-267 行；改默认必须同步 toml，铁律） |
-| `client/preview/PreviewDisplay.java` | 预览 + 磁盘缓存（`CACHE_SCHEMA_VERSION`，公式改动必须 bump） |
-| `run/config/geogenesis-common.toml` | 运行时配置（**未被 git 跟踪**，本地生效） |
+- FLOW_GRID 4→8、MARGIN 96→48、密度 0.5→0.4 → 单 tile 河流追踪 ~0.5s
+- **再卡的话优先降 FLOW_DENSITY**（0.4→0.3）
 
-## 四、项目铁律（已与用户确认）
+### 参考（用户点名）
 
-1. **改 Forge 配置默认值必须同步 `run/config/geogenesis-common.toml`**（toml 旧值会覆盖代码默认）。
-2. **侵蚀公式/产出改动必须 bump `CACHE_SCHEMA_VERSION`**（否则预览读到旧缓存，出伪影且难排查；15 曾踩坑）。
-3. **先源码级参考再改**：动侵蚀行为先对照 SH `Erosion.cs` / TF 原文，不要凭感觉乱调。
-4. 确定性与无缝性：所有侵蚀参数必须是世界坐标确定性函数（哈希播种、无全局随机）；改参数不许破坏确定性。
-5. `StreamTracer` 只追踪不侵蚀，改侵蚀公式无需双同步。
-6. `.codebuddy` 目录是项目数据，不要删。
+- `参考/sources/SimpleHydrology`：**地形与河流一体**——液滴同时侵蚀 + 累积流量（maxAge=500、单 map 全局）。我们拆成"侵蚀液滴 + 流量液滴"两套是重复计算，**一体化大重构是可能的正确方向**（大工程，先确认用户意愿）
+- `参考/Farseek-Mods`（Streams 1.0）：**单独河流**——chunk 级图搜索（Basin 网格），非长液滴。水面棘轮/谷肩/瀑布 V 形脊参考自 Streams 旧版（`参考/Streams`）
 
-## 五、工作记忆位置
+### 下一步（新会话）
 
-- `d:\Office software\Development Project\GeoGenesis-mod\.codebuddy\memory\2026-08-11.md`：本日详细记录（三次修复的根因、SH 原文对照、量级结论）
-- 新对话开始建议先读该文件 + MEMORY.md
+1. **runClient 目检**：加载速度 + 河网形态（线状/支流/曲流/入海/边缘断裂）
+2. 若形态 OK：清理死代码（CONFLUENCE_THRESHOLD/isLocalHigh/SOURCE_GRID 旧常量）+ 提交
+3. 若形态差：评估 SimpleHydrology 式"一体液滴"大重构（侵蚀+流量合并）
+
+## 三、其他记住的
+
+- **探针铁律**：改侵蚀/河流必须跑 ErosionPeriodProbe（数值）+ ChunkBorderProbe（hs=2 + toml 参数，复现游戏）+ RiverProfileProbe（水面单调）
+- **`getErosionTile` 会 fire-and-forget 生成 8 邻居 tile** → 探针慢到数分钟；必须用 `getErosionTileResultForProbe`（单 tile 直取）
+- **toml 用户配置 ≠ 探针默认**：用户配置屏调过 `erosionRidgeStrength=0.75` 等，探针要解析 `run/config/geogenesis-common.toml`
+- 游戏崩溃 OOM = 系统内存耗尽（hs_err 无 Java 异常），跑游戏关本地 AI
+- Windows 中文提交：`git commit -F file.txt`（UTF-8）

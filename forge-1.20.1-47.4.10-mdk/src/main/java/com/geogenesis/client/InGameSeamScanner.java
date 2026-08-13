@@ -55,11 +55,10 @@ public final class InGameSeamScanner {
             try {
                 TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
                 // 参数取证：与独立探针 defaults 对比定位引擎差异
-                LOGGER.info("[SeamScan] 引擎参数: hs={} erosionStrength={} dropsMul={} riversEnabled={}",
+                LOGGER.info("[SeamScan] 引擎参数: hs={} erosionStrength={} dropsMul={}",
                     p.horizontalScale(),
                     GeoGenesisConfig.INSTANCE.erosionStrength.get(),
-                    GeoGenesisConfig.INSTANCE.erosionDropsMul.get(),
-                    GeoGenesisConfig.INSTANCE.riversEnabled.get());
+                    GeoGenesisConfig.INSTANCE.erosionDropsMul.get());
                 CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
                 gen.seed(seed);
                 GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);

@@ -44,12 +44,9 @@ public final class PreviewDiskCache {
     private static final int VERSION = 1;
     private static final Path CACHE_DIR = Path.of("config/geogenesis/preview_cache");
 
-    private static final int FLAG_RIVER_MASK = 1;
     private static final int FLAG_LAKE_MASK = 2;
     private static final int FLAG_SNOW = 4;
-    private static final int FLAG_WATERFALL = 8;
     private static final int FLAG_EROSION = 16;
-    private static final int FLAG_OVERFLOW = 32;
 
     /**
      * 一 chunk 的紧凑数据：只存 (16/stride)² 个采样点（stride=16 时 1 个），
@@ -187,19 +184,11 @@ public final class PreviewDiskCache {
         out.writeFloat((float) c.humidity);
         out.writeFloat((float) c.continentNoise);
         out.writeFloat((float) c.shape);
-        out.writeFloat((float) c.riverNetDist);
-        out.writeFloat((float) c.riverNetDischarge);
-        out.writeFloat((float) c.riverDistance);
-        out.writeFloat((float) c.riverWetness);
         out.writeByte(c.terrainType == null ? 0 : c.terrainType.ordinal());
-        out.writeByte(c.riverSourceType);
         int flags = 0;
-        if (c.riverMask) flags |= FLAG_RIVER_MASK;
         if (c.lakeMask) flags |= FLAG_LAKE_MASK;
         if (c.isSnow) flags |= FLAG_SNOW;
-        if (c.riverIsWaterfall) flags |= FLAG_WATERFALL;
         if (c.erosionMask) flags |= FLAG_EROSION;
-        if (c.riverNetOverflow) flags |= FLAG_OVERFLOW;
         out.writeByte(flags);
     }
 
@@ -211,23 +200,14 @@ public final class PreviewDiskCache {
         c.humidity = in.readFloat();
         c.continentNoise = in.readFloat();
         c.shape = in.readFloat();
-        c.riverNetDist = in.readFloat();
-        c.riverNetDischarge = in.readFloat();
-        c.riverDistance = in.readFloat();
-        c.riverWetness = in.readFloat();
         int tIdx = in.readByte();
         TerrainClass[] tcs = TerrainClass.values();
         c.terrainType = (tIdx >= 0 && tIdx < tcs.length) ? tcs[tIdx] : TerrainClass.OCEAN;
-        c.riverSourceType = in.readByte();
         int flags = in.readByte();
-        c.riverMask = (flags & FLAG_RIVER_MASK) != 0;
         c.lakeMask = (flags & FLAG_LAKE_MASK) != 0;
         c.isSnow = (flags & FLAG_SNOW) != 0;
-        c.riverIsWaterfall = (flags & FLAG_WATERFALL) != 0;
         c.erosionMask = (flags & FLAG_EROSION) != 0;
-        c.riverNetOverflow = (flags & FLAG_OVERFLOW) != 0;
         // 兼容旧 API：同步别名字段
-        c.isRiver = c.riverMask;
         c.isLake = c.lakeMask;
         c.continent = c.continentNoise;
         return c;

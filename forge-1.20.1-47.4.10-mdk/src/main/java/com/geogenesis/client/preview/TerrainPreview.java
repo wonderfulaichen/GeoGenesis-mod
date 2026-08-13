@@ -342,17 +342,7 @@ public final class TerrainPreview {
         int cx = Math.max(0, Math.min(cells.length - 1, (int) Math.floor((wx - originBlockX) / scale)));
         int cz = Math.max(0, Math.min(cells[0].length - 1, (int) Math.floor((wz - originBlockZ) / scale)));
         Cell cell = cells[cx][cz];
-        String water;
-        if (cell.riverIsWaterfall) water = "瀑布";
-        else if (cell.riverSourceType == 3) water = "源头湖";
-        else if (cell.riverSourceType == 2) water = "山泉";
-        else if (cell.riverSourceType == 1) water = "溪源";
-        else if (cell.lakeMask) water = "湖泊";
-        else if (cell.riverMask) water = "河流";
-        else if (cell.riverDistance < 0.1) water = "河谷";
-        else water = "无";
-        String net = cell.riverNetOverflow ? "溢出泛洪"
-                : (cell.riverNetDist < 0.35 ? "河网" : (cell.riverNetDist < 1.0 ? "河谷" : "无"));
+        String water = cell.lakeMask ? "湖泊" : "无";   // 河流系统已清除，仅湖泊
         String[] lines = {
                 String.format("x=%d  z=%d", (int) Math.round(wx), (int) Math.round(wz)),
                 "图层: " + layer.labelKey,
@@ -361,7 +351,6 @@ public final class TerrainPreview {
                 String.format("温度=%.2f 湿度=%.2f 大陆=%.2f", cell.temperature, cell.humidity, cell.continentNoise),
                 String.format("纬度=%.2f 起伏=%.2f", Latitude.latitude01((int) Math.round(wz)), (cell.shape + 1) * 0.5),
                 "水: " + water,
-                "河网: " + net + (cell.riverNetDischarge > 0 ? String.format(" 流量=%.0f", cell.riverNetDischarge) : ""),
         };
         int pad = 6, lh = 15, boxW = 0;
         g.setFont(g.getFont().deriveFont(11f));
@@ -400,7 +389,6 @@ public final class TerrainPreview {
     // ============================================================
 
     private static String englishTerrainType(Cell c) {
-        if (c.riverMask) return "River";
         if (c.lakeMask) return "Lake";
         int id = c.terrainType.ordinal();
         return switch (id) {

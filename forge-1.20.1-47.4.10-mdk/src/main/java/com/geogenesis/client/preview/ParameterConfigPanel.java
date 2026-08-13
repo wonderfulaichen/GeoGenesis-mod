@@ -162,13 +162,6 @@ public class ParameterConfigPanel extends ConfigPanel {
                 () -> c.erosionRidgeEnabled.get(), v -> c.erosionRidgeEnabled.set(v));
         addToggle("细纹理微侵蚀", "XS 微笔刷（r1wu 十字笔刷）在陡坡加 1-2 块级微纹理。默认关闭——实测会加剧 chunk 边界脊（约 +1.6 块）。",
                 () -> c.erosionXSEnabled.get(), v -> c.erosionXSEnabled.set(v));
-        addToggle("河流系统", "河网检测 + 河道填水（独立于侵蚀）。关闭 = 无河流。",
-                () -> c.riversEnabled.get(), v -> c.riversEnabled.set(v));
-        addToggle("河道灌水", "河道是否灌水。关闭 = 旱谷（仅显形为凹槽地形，不填水）。",
-                () -> c.riverWater.get(), v -> c.riverWater.set(v));
-        addToggle("河流总开关", "河流总开关。关闭 = 不标记任何河流/旱谷。",
-                () -> c.riverEnabled.get(), v -> c.riverEnabled.set(v));
-
         // 世界高度（支持自定义高度：原版/512/1024等）
         heightBar.setMarks(List.of(
             new WorldHeightBar.Mark("最高点", 0xFFFF4444, () -> c.maxY.get(), v -> { c.maxY.set(v); onChange.accept(0.0); }),
