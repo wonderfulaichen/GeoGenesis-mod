@@ -219,7 +219,7 @@ public class PreviewDisplay extends AbstractWidget {
     //   2026-08-10 液滴 SLOPE_MIN_SKIP/CASCADE_MAXDIFF ×hs（wu 化阈值漂移修复）：HS≠1 产出变化 → 18。
     //   2026-08-11 引擎回退到 78bf8bc（用户认可版）+ cascade budget 修复（真 NaN 修复）：
     //   TF 对齐版（23）废弃；回退版产出 ≠ 18（带 budget）→ 19 强制重算。
-    private static final int CACHE_SCHEMA_VERSION = 23;   // 2026-08-12: 山脉配方重写（RWG 三招：二次放大+高度相关细节+高度帽）——地形形态改变
+    private static final int CACHE_SCHEMA_VERSION = 24;   // 2026-08-14: 河流系统整体清除（PreviewDiskCache 序列化格式变更）
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
@@ -1171,14 +1171,8 @@ public class PreviewDisplay extends AbstractWidget {
         String line3 = String.format("lat=%.2f  relief=%.2f",
             com.geogenesis.worldgen.climate.Latitude.latitude01(hoverZ),
             (c.shape + 1) * 0.5);
-        // 第五行：水文信息
-        String line4 = c.riverIsWaterfall ? I18n.get("geogenesis.preview.waterfall")
-            : (c.riverSourceType == 3 ? I18n.get("geogenesis.preview.sourceLake")
-            : (c.riverSourceType == 2 ? I18n.get("geogenesis.preview.spring")
-            : (c.riverSourceType == 1 ? I18n.get("geogenesis.preview.creek")
-            : (c.riverMask ? I18n.get("geogenesis.preview.river")
-            : (c.riverDistance < 0.15 ? I18n.get("geogenesis.preview.valley")
-            : (c.lakeMask ? I18n.get("geogenesis.preview.lake") : "—"))))));
+        // 第五行：水文信息（河流系统已清除，仅保留湖泊）
+        String line4 = c.lakeMask ? I18n.get("geogenesis.preview.lake") : "—";
 
         String line5 = activeLayer.kind == GeoPalette.Kind.DISCRETE
             ? "左键选中色块 · 右键复制坐标"

@@ -467,21 +467,12 @@ public final class GeoPalette {
                 case CONTINENTALITY: pos = (c.continentNoise + 1.0) * 0.5; break;
                 case RELIEF:      pos = reliefPos(c.shape); break;
                 case LATITUDE:    pos = Latitude.latitude01(worldZ); break;
-                case RIVER_NETWORK: {
-                    // 2026-08-10 改为 discharge 累积场（用户定案：河流应在群系图层显示，
-                    // 本图层改为累积场——显示上游流量累积，河网结构清晰可见）。
-                    // riverNetDischarge 范围 [0, +∞)，用 log 压缩归一化到 [0, 1]。
-                    double dis = c.riverNetDischarge;
-                    pos = dis > 0 ? Math.min(1.0, Math.log1p(dis) / 6.0) : 0.0; // log(1+dis)/6，dis≈400→1
-                    break;
-                }
+                // ★ 2026-08-14 河流系统清除：RIVER_NETWORK 无数据源，暂显示空（色带低端）。
+                //   图层序号（ordinal=9）与 14 层缓存缓冲对齐，保留框架待重构河流恢复。
+                case RIVER_NETWORK:
                 default: pos = 0.0;
             }
             base = continuous(layer, pos);
-            // RIVER_NETWORK：溢出河段（木桶短板被突破）→ 洪泛黄高亮
-            if (layer == PreviewLayer.RIVER_NETWORK && c.riverNetOverflow && pos > 0.0) {
-                base = blendRGB(base, 0xE0B050, 0.6);
-            }
         }
         // 气候连续图层叠加地形底图（数据披在地形之上，地理图常见表现手法）。
         // 注：图例仍显示纯数据色带（continuous），地形叠加是地图侧的视觉底层，
@@ -516,17 +507,9 @@ public final class GeoPalette {
         return blendRGB(climateRGB, terrainRGB, 0.35);
     }
 
-    /** 水文叠加：在任意图层上叠加河/湖掩码。 */
+    /** 水文叠加：在任意图层上叠加湖掩码（河流系统已清除）。 */
     public static int applyHydrology(int baseRGB, Cell c) {
         if (c.lakeMask) return blendRGB(baseRGB, 0x00B4DC, 0.55);
-        if (c.riverMask) return blendRGB(baseRGB, 0x1E64DC, 0.65);
-        if (c.riverWetness > 0.01) {
-            return blendRGB(baseRGB, 0x3C82E6, c.riverWetness * 0.4); // 平滑河湖蓝边
-        }
-        if (c.riverDistance < 0.1) {
-            double s = 1.0 - c.riverDistance / 0.1;
-            return blendRGB(baseRGB, 0x64A0E6, s * 0.3);
-        }
         return baseRGB;
     }
 

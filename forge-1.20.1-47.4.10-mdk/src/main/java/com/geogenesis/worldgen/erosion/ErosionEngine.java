@@ -18,11 +18,11 @@ import java.util.concurrent.CancellationException;
  *   <li><b>localCharge 正反馈</b>：每粒子携带自起点累计高差 localCharge，容量公式乘以
  *       {@code (1 + α·localCharge)}，使长程深流粒子雕得深、短程浅流雕得浅 → 主流深支流浅，
  *       几何涌现尺度多样性，不依赖全局统计（完全本地确定 → 天然无缝）。</li>
- *   <li><b>河流粒子状态机（2026-08-01）</b>：粒子按双闸门（lc 累计落差 × 路径放电量）平滑切换
- *       到河流模式——强侵蚀 × 弱堆积（沉积×0.2）× 蒸发抑制 × 流速放宽，主流道涌现深窄 V 形槽，
- *       坡度变缓处集中沉积 → 河口冲积扇。阈值/强度全配置化（erosionRiver* 系列）。</li>
  *   <li><b>局部 cascade 级联</b>：侵蚀后对 8 邻居按高度差做 settling，平滑河床底部。
  *       SH 真实感的第二个来源。</li>
+ *   <li><b>2026-08-14 河流系统整体清除</b>：StreamTracer/河流雕刻/水面棘轮/河道填水/河流配置
+ *       全部移除。侵蚀液滴自身 = 地形刻画（含沟谷），discharge 场（res.discharge）保留为
+ *       侵蚀副产品，待河流系统重构时作为单一流量数据源。</li>
  *   <li>其余无缝机制（本地算子 + 确定性逐区块播种 + 双平滑抹微断裂）全部保留。</li>
  * </ul>
  *
@@ -440,7 +440,12 @@ public class ErosionEngine {
         // ★ 2026-08-09 优化：平衡态 early-exit（Russian roulette 剪枝）——平坦/平衡区液滴
         //   速度与笔刷增量双双趋于 0（对地形无贡献），连续 STALL_MAX 步后提前终止。
         //   确定性：判定条件是确定性函数的单调收敛 → 同一世界坐标液滴终止点固定 → 无缝保持。
+        // ★ 2026-08-14 湖泊溢出续流（断流修复）：STALL 达阈值不再 return，转 tracking 模式——
+        //   液滴流到局部最低点（洼地）后停止侵蚀笔刷/cascade（不挖坑），但照常走 + 写 disT
+        //   （流线续流），片流/惯性带它爬向盆周溢出口，梯度恢复（brushDelta 回升）→ 自动恢复侵蚀。
+        //   侵蚀液滴自身 = 河道（用户定案），dis 场 = 流量图，不另设硬编码河道。
         int stall = 0;
+        boolean tracking = false;
         for (int st = 0; st < lifetime; st++) {
             int ix = (int) posX, iy = (int) posY;
             if (ix < 1 || ix >= bufSize - 2 || iy < 1 || iy >= bufSize - 2) return;
@@ -534,18 +539,21 @@ public class ErosionEngine {
             // 笔刷邻域分布：权重须对正负通用
             // delta>0: 从邻域取材料（侵蚀）→ flat[bi] 减小, sed 增大
             // delta<0: 向邻域加材料（沉积）→ flat[bi] 增大, sed 减小
-            for (int b = 0; b < bn; b++) {
-                int bi = idx + bOff[b];
-                if (bi < 0 || bi >= flat.length) continue;
-                int bz = bi / bufSize, bx = bi % bufSize;
-                if (locked != null) {
-                    int bzL = bz - pad, bxL = bx - pad;
-                    if (bzL >= 0 && bzL < baseSize && bxL >= 0 && bxL < baseSize && locked[bzL][bxL]) continue;
+            // ★ 2026-08-14 tracking（洼地溢出追踪）跳过侵蚀笔刷——洼地内打转液滴不再挖坑
+            if (!tracking) {
+                for (int b = 0; b < bn; b++) {
+                    int bi = idx + bOff[b];
+                    if (bi < 0 || bi >= flat.length) continue;
+                    int bz = bi / bufSize, bx = bi % bufSize;
+                    if (locked != null) {
+                        int bzL = bz - pad, bxL = bx - pad;
+                        if (bzL >= 0 && bzL < baseSize && bxL >= 0 && bxL < baseSize && locked[bzL][bxL]) continue;
+                    }
+                    float weigh = delta * bWgt[b];
+                    if (weigh == 0f) continue;
+                    flat[bi] -= weigh;
+                    sed += weigh;
                 }
-                float weigh = delta * bWgt[b];
-                if (weigh == 0f) continue;
-                flat[bi] -= weigh;
-                sed += weigh;
             }
 
             // ---- track 累积（SH water.h:113-117：本轮 discharge + 动量 volume·speed） ----
@@ -555,7 +563,8 @@ public class ErosionEngine {
             momYT[idx] += wat * dirY * Math.min(spd, spdCap);
 
             // ---- 局部 cascade（每 CASCADE_INTERVAL 步执行，对齐 SH 每步语义） ----
-            if (cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
+            // ★ 2026-08-14 tracking 跳过 cascade（洼地内不平滑——保持续流轨迹不扰动地形）
+            if (!tracking && cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
                 cascadeLocal(flat, bufSize, nix, niy, cascadeStrength, hs);
             }
 
@@ -564,12 +573,13 @@ public class ErosionEngine {
             float speedSq = spd * spd + dh * GRAVITY;
             spd = speedSq > 1e-12f ? (float) Math.sqrt(speedSq) : 0.1f;
             if (spd <= 0) return;
-            // early-exit：低速 + 近零增量连续 STALL_MAX 步 → 平衡态，对地形已无贡献
-            // 2026-08-12：阈值参数化（XS 微笔刷单步 delta 天然小，用缩窄阈值防误判）
+            // ★ 2026-08-14 湖泊溢出续流：STALL 达阈值 → 转 tracking（不 return，液滴不死在洼地）；
+            //   走出洼地梯度恢复（brushDelta 回升）→ else 分支 tracking=false 恢复侵蚀。
             if (spd < stallSpeed && Math.abs(brushDelta) < stallDelta) {
-                if (++stall >= STALL_MAX) return;
+                if (++stall >= STALL_MAX) tracking = true;
             } else {
                 stall = 0;
+                tracking = false;   // 正常流动 / 找到溢出口 → 恢复侵蚀
             }
             wat *= (1 - EVAP_RATE);
         }

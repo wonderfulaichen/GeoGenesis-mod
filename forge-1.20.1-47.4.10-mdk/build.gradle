@@ -253,13 +253,6 @@ task runPlateauProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.PlateauProfileProbe'
 }
 
-// dis field distribution (loads real toml via SPEC.setConfig)
-task runDisFlowProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.DisFlowProbe'
-    workingDir = project.projectDir
-}
-
 // micro-benchmark: serial vs parallel terrainEQuick sampling
 task runBench(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -333,13 +326,6 @@ task runRidgeABProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.RidgeValleyABProbe'
     // Optional: args = ['98765,12345']  (comma/space separated seeds)
-}
-
-// River cross-tile seam diagnostics (L1 staged pipeline; multi-seed positive control)
-task runRiverSeamProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.RiverSeamProbe'
-    // Optional: args = ['12345']  (seed; default tries 12345/777/999/2024)
 }
 
 // Slope distribution diagnostic (steepness share; L1 terrain form check)

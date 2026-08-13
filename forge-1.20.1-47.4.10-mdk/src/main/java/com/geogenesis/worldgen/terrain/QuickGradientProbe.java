@@ -28,8 +28,8 @@ public final class QuickGradientProbe {
                 if (!Double.isNaN(prevH)) {
                     double d = Math.abs(hv - prevH);
                     if (top.size() < 10 || d > top.firstKey()) {
-                        String desc = String.format("(%d,%d) dY=%.1f eLand=%.3f h=%.1f dom=%s river=%s lake=%s",
-                                x, z, d, c.eLand, c.height, dom, c.riverMask, c.lakeMask);
+                        String desc = String.format("(%d,%d) dY=%.1f eLand=%.3f h=%.1f dom=%s lake=%s",
+                                x, z, d, c.eLand, c.height, dom, c.lakeMask);
                         top.put(d, desc);
                         if (top.size() > 10) top.remove(top.firstKey());
                     }

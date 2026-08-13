@@ -31,7 +31,6 @@ public final class ErosionTileProbe {
         // 创建独立 CellGenerator（config=null，侵蚀引擎走默认值）
         TerrainParams p = TerrainParams.defaults();
         CellGenerator gen = new CellGenerator(p, -64, 320);
-        gen.setRiversEnabled(false); // 关闭河流，隔离侵蚀变量
         gen.seed(seed);
 
         // 右侧邻居：tile (0,0) ↔ (48,0)（2026-08-12 修正：新 48wu 网格，tile 网格坐标 = wu 倍数；

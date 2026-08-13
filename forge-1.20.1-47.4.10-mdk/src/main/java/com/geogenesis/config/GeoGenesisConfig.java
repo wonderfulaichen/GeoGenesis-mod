@@ -202,21 +202,7 @@ public final class GeoGenesisConfig {
     /** 离岸群岛最大高度（e 单位），默认 0.035 */
     public final ForgeConfigSpec.DoubleValue archipelagoHeight;
 
-    // ===== 河流 + 侵蚀（SH 统一水力引擎：侵蚀与河网同源同趟，放电量场涌现物理河流） =====
-    /** 河流总开关（false=不标记任何河流/旱谷） */
-    public final ForgeConfigSpec.BooleanValue riverEnabled;
-    /** (legacy) 河道半宽（世界块）——SH 模式由放电量场自然决定河谷宽度，本参数保留供将来细调 */
-    public final ForgeConfigSpec.DoubleValue riverWidth;
-    /** (legacy) 河谷下切深度（e 单位）——SH 模式由侵蚀自然刻蚀，本参数保留供将来细调 */
-    public final ForgeConfigSpec.DoubleValue riverValleyDepth;
-    /** (legacy) 河谷剖面形状 [0,1]——SH 模式由粒子物理决定，本参数保留 */
-    public final ForgeConfigSpec.DoubleValue riverShape;
-    /** 河道是否灌水（false=旱谷，仅显形为凹槽地形、不填水） */
-    public final ForgeConfigSpec.BooleanValue riverWater;
-    /** 源湖/湖密度（河流节点场用） */
-    public final ForgeConfigSpec.DoubleValue lakeDensity;
-    /** 是否启用河流系统（false = 关闭河网检测和河道填水，独立于侵蚀） */
-    public final ForgeConfigSpec.BooleanValue riversEnabled;
+    // ===== 侵蚀（SH 统一水力引擎：侵蚀与河网同源同趟） =====
     /** 是否启用本地粒子侵蚀 */
     public final ForgeConfigSpec.BooleanValue erosionEnabled;
     /** 细纹理微侵蚀层（XS r1wu 十字笔刷，2026-08-12；默认关——实测加剧 chunk 边界脊） */
@@ -249,18 +235,6 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue erosionRidgeLandRef;
     /** 粗侵蚀细节密度（PowInv 指数，越低=小沟越密，越高=主脊越干净）。默认 1.0，范围 [0.7, 3.0] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeDetail;
-    /** 河流阈值（背景~峰值间比例）：调大→河网更稀疏（只剩主干）。默认 0.02，范围 [0.001, 0.3]。配合汇聚加权（仅河流粒子累计 discharge）使用 */
-    public final ForgeConfigSpec.DoubleValue riverDischargeThreshold;
-    /** 河流粒子模式：lc（累计落差）资格下限。lc 超过后粒子开始进入河流模式。默认 0.05，范围 [0.005, 1.0] */
-    public final ForgeConfigSpec.DoubleValue erosionRiverLcLo;
-    /** 河流粒子模式：lc 资格上限（超过即完全河流模式）。默认 0.15，范围 [0.01, 2.0] */
-    public final ForgeConfigSpec.DoubleValue erosionRiverLcHi;
-    /** 河流粒子模式：放电量确认下限（路径被多少水量走过）。默认 0.3，范围 [0.05, 50]（汇聚加权后量级缩小 ~10×） */
-    public final ForgeConfigSpec.DoubleValue erosionRiverDisLo;
-    /** 河流粒子模式：放电量确认上限。默认 1.5，范围 [0.5, 200] */
-    public final ForgeConfigSpec.DoubleValue erosionRiverDisHi;
-    /** 河流粒子模式总强度：0=关闭（等效旧行为），1=最强（侵蚀×3 沉积×0.2 蒸发×0.1）。默认 0.6，范围 [0, 1] */
-    public final ForgeConfigSpec.DoubleValue erosionRiverStrength;
     /** SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2] */
     public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;
     /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16] */
@@ -613,21 +587,7 @@ public final class GeoGenesisConfig {
             .defineInRange("archipelagoHeight", 0.035, 0.0, 0.15);
         builder.pop();
 
-        builder.push("River & Erosion");
-        riverEnabled = builder.comment("Enable rivers (TF-style node distance-field valley carving). Default true.")
-            .define("riverEnabled", true);
-        riverWidth = builder.comment("River valley outer radius (world blocks). Controls the outermost valley width (~TF valleyWidth). Default 80, range [30, 200].")
-            .defineInRange("riverWidth", 80.0, 30.0, 200.0);
-        riverValleyDepth = builder.comment("River bed incision depth (e units). Deeper = more incised valley. Default 0.01 (~4 blocks), range [0.0, 0.06].")
-            .defineInRange("riverValleyDepth", 0.01, 0.0, 0.06);
-        riverShape = builder.comment("River valley profile shape [0,1]: 0=V-shaped (steep), 1=U-shaped (broad). Default 0.5, range [0, 1].")
-            .defineInRange("riverShape", 0.5, 0.0, 1.0);
-        riverWater = builder.comment("Fill river channels with water (false = dry valleys, terrain notch only). Default true.")
-            .define("riverWater", true);
-        lakeDensity = builder.comment("Source-lake / lake density for river node field. Default 0.15, range [0, 1].")
-            .defineInRange("lakeDensity", 0.15, 0.0, 1.0);
-        riversEnabled = builder.comment("Enable river system (D8 flow detection + river channel filling). Set false to isolate erosion testing. Default true.")
-            .define("riversEnabled", true);
+        builder.push("Erosion");
         erosionEnabled = builder.comment("Enable local particle erosion (seamless, margin-filled with true neighbour heights). Default true.")
             .define("erosionEnabled", true);
         erosionXSEnabled = builder.comment("Extra-fine (XS, r1wu cross-brush) micro-erosion detail layer. Adds 1-2 block textures on slopes, but amplifies cross-chunk birth-set discreteness into visible ridges near chunk borders (measured +1.6 blocks at tile borders). Default false (conservative).")
@@ -642,16 +602,6 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionLocalChargeWeight", 1.0, 0.0, 5.0);
         erosionCascadeStrength = builder.comment("Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.5 (2026-08-10: 0.3->0.5, sharper gully edges), range [0, 1].")
                 .defineInRange("erosionCascadeStrength", 0.5, 0.0, 1.0);
-        riverDischargeThreshold = builder.comment("River threshold (background-to-peak ratio): larger = sparser network (main trunk only). Default 0.02, range [0.001, 0.3]. Works with convergence weighting (only river-mode droplets accumulate discharge).")
-                .defineInRange("riverDischargeThreshold", 0.02, 0.001, 0.3);
-        erosionRiverLcLo = builder.comment("River-particle mode: cumulative-drop (lc) eligibility low threshold. Droplets exceeding lc begin transitioning toward river mode (strong erosion + weak deposition). Default 0.05, range [0.005, 1.0].")
-                .defineInRange("erosionRiverLcLo", 0.05, 0.005, 1.0);
-        erosionRiverLcHi = builder.comment("River-particle mode: lc eligibility high threshold (full river mode above). Default 0.15, range [0.01, 2.0].")
-                .defineInRange("erosionRiverLcHi", 0.15, 0.01, 2.0);
-        erosionRiverDisLo = builder.comment("River-particle mode: discharge confirmation low threshold (how much water has traversed this path). Default 0.3, range [0.05, 50] (scale ~10x lower after convergence weighting).")
-                .defineInRange("erosionRiverDisLo", 0.3, 0.05, 50.0);
-        erosionRiverDisHi = builder.comment("River-particle mode: discharge confirmation high threshold. Default 1.5, range [0.5, 200].")
-                .defineInRange("erosionRiverDisHi", 1.5, 0.5, 200.0);
         erosionMomentumTransfer = builder.comment("SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].")
                 .defineInRange("erosionMomentumTransfer", 1.0, 0.0, 2.0);
         erosionIterations = builder.comment("SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 2 (2026-08-11: 5->2, deep-gully fix; SH Erosion.cs numIterations=1, 2 keeps momentum field accumulation), range [1, 16].")
@@ -659,8 +609,6 @@ public final class GeoGenesisConfig {
         // NOTE(2026-08-10): toml 旧值 2 会覆盖代码默认——修改默认后必须同步 run/config/geogenesis-common.toml
         erosionLrate = builder.comment("SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].")
                 .defineInRange("erosionLrate", 0.1, 0.01, 0.5);
-        erosionRiverStrength = builder.comment("River-particle mode total strength: 0=off (legacy behaviour), 1=strongest (erode x3, deposit x0.2, evaporate x0.1). Default 0.6, range [0, 1].")
-                .defineInRange("erosionRiverStrength", 0.6, 0.0, 1.0);
         // ===== 粗侵蚀骨架层（脊-谷条纹滤镜，Rune Skovbo Johansen 2026 + Luke Mitchell Burst C#）=====
         erosionRidgeEnabled = builder.comment("Coarse ridge-valley skeleton layer (gradient-aligned stripe filter). Builds mountain-ridge basic form before particle detail erosion. Default true.")
                 .define("erosionRidgeEnabled", true);
@@ -813,7 +761,6 @@ public final class GeoGenesisConfig {
         if (INSTANCE == null) return 0L;
         try {
             long h = 1;
-            h = h * 31 + (INSTANCE.riversEnabled.get() ? 1 : 0);
             h = h * 31 + (INSTANCE.erosionEnabled.get() ? 1 : 0);
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionStrength.get());
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionDropsMul.get());

@@ -35,7 +35,6 @@ public final class ChunkBorderProbe {
         TerrainParams p = withHs(TerrainParams.defaults(), HS);
         CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
         gen.seed(seed);
-        if (noriver) gen.setRiversEnabled(false);
         // 2026-08-13：按 toml 覆盖骨架参数（探针无 Forge 环境，cfg=null → 默认 2.0 与游戏不符）
         com.geogenesis.worldgen.erosion.RidgeValleyErosion.RidgeConfig rcfg = new com.geogenesis.worldgen.erosion.RidgeValleyErosion.RidgeConfig();
         rcfg.strength = parseF(toml, "erosionRidgeStrength", rcfg.strength);

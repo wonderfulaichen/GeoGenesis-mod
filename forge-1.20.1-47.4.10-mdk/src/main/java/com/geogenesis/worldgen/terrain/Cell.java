@@ -56,38 +56,14 @@ public class Cell {
     public double continentNoise;
 
     // === 水文 ===
-    /** 是否河流 */
-    public boolean isRiver;
-
-    /** 河流湿度（连续值，0=无河，>0=河流影响） */
-    public double riverWetness;
-
     /** 是否湖泊 */
     public boolean isLake;
 
-    // === 河流/湖泊兼容字段（旧 API，Stage 2 重接） ===
-    /** 河流遮罩（旧 API） */
-    public boolean riverMask;
+    // === 水文（旧 API） ===
     /** 湖泊遮罩（旧 API） */
     public boolean lakeMask;
-    /** 距河距离（旧 API），0=河心，1=谷缘 */
-    public double riverDistance = 1.0;
-    /** 是否瀑布段（旧 API） */
-    public boolean riverIsWaterfall;
-    /** 源头类型（旧 API）：1=溪源，2=山泉，3=源头湖 */
-    public int riverSourceType;
-    /** 河流刻蚀后的河床 Y（RiverField 写入，Generator.fillRiverColumn 灌水读取） */
-    public double riverFloorY;
-    /** 河流刻蚀后的水面 Y（谷壁/海平面较高者，Generator.fillRiverColumn 灌水读取） */
-    public double riverSurfaceY;
     /** 退化标识（旧 API） */
     public boolean erosionMask;
-    /** 河网距离（旧 API） */
-    public double riverNetDist = 1.0;
-    /** 河网流量（旧 API） */
-    public double riverNetDischarge;
-    /** 河网溢出（旧 API） */
-    public boolean riverNetOverflow;
     /** 形态起伏（旧 API），∈[-1,1] */
     public double shape;
     /** 是否积雪覆盖 */

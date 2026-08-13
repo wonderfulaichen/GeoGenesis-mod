@@ -406,9 +406,6 @@ public class GeoGenesisConfigScreen extends Screen {
         int b = 0;
         if (c.erosionEnabled != null && c.erosionEnabled.get()) b |= 1;
         if (c.erosionRidgeEnabled != null && c.erosionRidgeEnabled.get()) b |= 2;
-        if (c.riversEnabled != null && c.riversEnabled.get()) b |= 4;
-        if (c.riverWater != null && c.riverWater.get()) b |= 8;
-        if (c.riverEnabled != null && c.riverEnabled.get()) b |= 16;
         return b;
     }
 
