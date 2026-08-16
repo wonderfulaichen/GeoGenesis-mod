@@ -342,6 +342,72 @@ task runContScaleProbe(type: JavaExec) {
     // Optional: args = ['12345']
 }
 
+// Main chain vs 4wu flowline probe (2026-08-15 R6): gradlew runRiverChainProbe [seed]
+task runRiverChainProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.RiverChainProbe'
+    maxHeapSize = '2g'
+}
+
+// Deterministic river network topology probe (2026-08-14): gradlew runRiverProbe [seed]
+task runRiverProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.RiverProbe'
+    maxHeapSize = '2g'
+    // Optional: args = ['12345']
+}
+
+// River carving sample probe (2026-08-14): gradlew runRiverCarveProbe [seed]
+task runRiverCarveProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.RiverCarveProbe'
+    // Optional: args = ['12345']
+}
+
+// Stage-A flow river probe (2026-08-16): gradlew runFlowRiverProbe -PprobeArgs=12345
+task runFlowRiverProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.FlowRiverProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// ASCII river network visualization (2026-08-15 R12): gradlew runRiverVisProbe --args="seed ox oz size"
+task runRiverVisProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.RiverVisProbe'
+    maxHeapSize = '2g'
+}
+
+// Plate diagnostics (2026-08-15 R13): gradlew runPlateDiagProbe [seed]
+task runPlateDiagProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.PlateDiagProbe'
+    maxHeapSize = '2g'
+}
+
+// Game entry simulation (2026-08-15 R16b): gradlew runEntryDiagProbe [seed]
+task runEntryDiagProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.EntryDiagProbe'
+    maxHeapSize = '2g'
+}
+
+// Highland carving scenario (2026-08-15 R17b): gradlew runHighlandCarveProbe
+task runHighlandCarveProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.HighlandCarveProbe'
+}
+
+// Discharge field visualization probe (2026-08-14): gradlew runRiverDischargeProbe --args="seed ox oz size"
+task runRiverDischargeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.river.RiverDischargeProbe'
+    // Optional: args = ['12345', '0', '0', '512']
+}
+
 // Terrain shape diagnostic (per-type eLand distribution + local roughness)
 task runShapeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

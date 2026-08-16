@@ -54,16 +54,18 @@ public class ErosionEngine {
 
     // ===== 三尺度配置 (v3 - 强侵蚀 + 河谷协同) =====
     // 提升：spacing=4 插值场平滑度高，需要更大参数。河网雕刻后侵蚀液滴沿河谷走廊进一步增强。
-    // C 尺度 (宏观山谷/山脉脊线)：笔刷半径 7 覆盖 225 邻域，DROPS_C=120 每区块约 0.5 滴/格，寿命 60 步
-    // ★ 2026-08-13 寿命 60→40：行程 = LIFE×spdCap(1.0) = 40wu ≤ tile margin 40wu——
-    //   供给缺口修复（详见下方 spdCap 注释）。寿命超 margin 时，提取域边缘缺
-    //   "远处出生"的液滴 → 邻 tile 双写不一致 → 左/上缘墙（x=-288 实测 2.4-4 块）。
-    // ★ 2026-08-13 定案：LIFE_C 60→20（行程 = LIFE×实际spd≈20wu << 缓冲余量 40wu）。
-    //   二分实锤（LIFE=40 时 x=-288 仍 3.6 块墙，LIFE=20 时 0.4-1.0 无缝）：
-    //   液滴行程超出缓冲余量 → 游走型液滴在 tile 缓冲西/东界被截断（两 tile 截断位置
-    //   不同）→ 流经提取域时泥沙/动量历史不同 → delta 双写不一致 → 左缘墙。
-    //   行程 ≤ 缓冲余量一半 → 液滴绝不出界 → 双写一致 → 无缝。大尺度形态由骨架层提供。
-    private static final int R_C = 7, DROPS_C = 120, LIFE_C = 20;
+    // C 尺度 (宏观山谷/山脉脊线)：笔刷半径 7 覆盖 225 邻域，DROPS_C=120 每区块约 0.5 滴/格
+    // ★ 2026-08-14 蚀刻与 dis 累积解耦（断流方案终版）：
+    //   - LIFE_C=20 = 蚀刻步数（无缝铁律：总行程 ≤ 缓冲余量 47 → 覆盖提取区的液滴永不出界）
+    //   - DIS_EXTRA_C=40 = dis 延长步数：液滴蚀刻 20 步后继续"只走不蚀"累积 dis 到 60 步。
+    //     dis 场覆盖 60 步 → 上游液滴足迹延伸到下游 → dis 沿流汇聚（断流改善）。
+    //   - 无缝论证：无缝约束只卡蚀刻（flat 双写）；dis 是副产品，各 tile 提取区独立读
+    //     自己的 dis（不双写），出界截断不影响正确性 → disOnly 段可安全走出缓冲。
+    //   - disOnly 段只写 disT、不写 mom（动量场影响蚀刻轨迹，保持蚀刻行为零变化）。
+    // ★ 2026-08-14 定案：DIS_EXTRA_C=0（纯 20 步）。流量图断裂（tile 边界出生范围不同 →
+    //   dis 单读但 48 网格线处跳变）实测被否，20/60 均未解决河流问题 → 回退纯 20，
+    //   河流系统待基于 Farseek 参考重新设计。disExtra 机制保留（=0 禁用）。
+    private static final int R_C = 7, DROPS_C = 120, LIFE_C = 20, SEG_LEN_C = 0, DIS_EXTRA_C = 0;
     private static final float ERODE_C = 0.100f, DEPOSIT_C = 0.010f;
 
     // M 尺度 (中脊/冲沟)：半径 4，(2*4+1)²=81 邻域，寿命 30 步
@@ -254,7 +256,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hC >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffC, bWgtC, bnC, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_C * strE, DEPOSIT_C, LIFE_C, ox, oz,
+                                ERODE_C * strE, DEPOSIT_C, LIFE_C, SEG_LEN_C, DIS_EXTRA_C, ox, oz,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     long hM = hash(gx * 131 + 7, gz * 131 + 11) * 31L + 17L;
@@ -264,7 +266,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hM >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffM, bWgtM, bnM, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_M * strE, DEPOSIT_M, LIFE_M, ox, oz,
+                                ERODE_M * strE, DEPOSIT_M, LIFE_M, 0, 0, ox, oz,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     long hF = hash(gx * 131 + 7, gz * 131 + 11) * 97L + 23L;
@@ -274,7 +276,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hF >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffF, bWgtF, bnF, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_F * strE, DEPOSIT_F, LIFE_F, ox, oz,
+                                ERODE_F * strE, DEPOSIT_F, LIFE_F, 0, 0, ox, oz,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     if (xsEnabled) {
@@ -285,7 +287,7 @@ public class ErosionEngine {
                                     pad + (gz - oz) + ((hXS >>> 48) & 0xFFFF) / 65536f,
                                     pad, gx, gz, bOffXS, bWgtXS, bnXS, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
-                                    ERODE_XS * strE, DEPOSIT_XS, LIFE_XS, ox, oz,
+                                    ERODE_XS * strE, DEPOSIT_XS, LIFE_XS, 0, 0, ox, oz,
                                     (float) casStr, seaNorm, hs, SPDCAP_XS, STALL_SPEED_XS, STALL_DELTA_XS);
                         }
                     }
@@ -371,7 +373,7 @@ public class ErosionEngine {
                          float[] dis, float[] disT,
                          float[] momX, float[] momY, float[] momXT, float[] momYT,
                          float momTransfer,
-                         float erodeSpeed, float depositSpeed, int lifetime,
+                         float erodeSpeed, float depositSpeed, int lifetime, int segLen, int disExtra,
                          int ox, int oz, float cascadeStrength, float seaNorm, float hs,
                          float spdCap, float stallSpeed, float stallDelta) {
         if (px < 1 || px >= bufSize - 1 || py < 1 || py >= bufSize - 1) return;
@@ -417,7 +419,7 @@ public class ErosionEngine {
         simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
                      bOff, bWgt, bn, locked, pad, baseSize,
                      dis, disT, momX, momY, momXT, momYT, momTransfer,
-                     erodeSpeed, depositSpeed, lifetime, ox, oz,
+                     erodeSpeed, depositSpeed, lifetime, segLen, disExtra, ox, oz,
                      cascadeStrength, hs, spdCap, stallSpeed, stallDelta);
     }
 
@@ -428,7 +430,7 @@ public class ErosionEngine {
                               float[] dis, float[] disT,
                               float[] momX, float[] momY, float[] momXT, float[] momYT,
                               float momTransfer,
-                             float erodeSpeed, float depositSpeed, int lifetime,
+                             float erodeSpeed, float depositSpeed, int lifetime, int segLen, int disExtra,
                              int ox, int oz,
                              float cascadeStrength, float hs,
                              float spdCap, float stallSpeed, float stallDelta) {
@@ -446,8 +448,28 @@ public class ErosionEngine {
         //   侵蚀液滴自身 = 河道（用户定案），dis 场 = 流量图，不另设硬编码河道。
         int stall = 0;
         boolean tracking = false;
-        for (int st = 0; st < lifetime; st++) {
+        // ★ 2026-08-14 20 步接力（用户方案）：总寿命拆成若干安全段（segLen≤20 不出界→无缝），
+        //   段末转世——位置延续、方向/速度/泥沙/水量重置（"在当前落点重新 spawn 一滴"）。
+        //   接力点 = 世界坐标确定性（地形梯度函数）→ 任何 tile 算出同一接力点 → 无缝保持。
+        //   提取区（中心 48）内出生的液滴，3 段接力后仍在缓冲内 → 提取区完全无缝，
+        //   且整体覆盖 60 步 → discharge 场连续性显著改善（对比 20 步单段）。
+        int segCount = (segLen > 0) ? Math.max(1, lifetime / segLen) : 1;
+        int stepLen = (segLen > 0) ? segLen : lifetime;
+        for (int seg = 0; seg < segCount; seg++) {
+            // 段末转世（首段跳过）：位置 + 方向 dir 延续（轨迹连续、防转世首步片流门控误死），
+            //   只重置侵蚀物理量（新"水量"：泥沙清零、速度复位、蒸发重新开始）。
+            //   段界是确定性位置 → 任何 tile 算出同一接力点 → 无缝保持。
+            if (seg > 0) {
+                spd = 1f; sed = 0f; wat = 1f;
+                stall = 0; tracking = false;
+            }
+            // ★ 2026-08-14 蚀刻/dis 解耦：st ≥ stepLen 进入 disOnly 段（只累积 dis、不蚀刻）。
+            //   disOnly 段可安全走出缓冲（dis 各 tile 提取区独立读、无双写断裂）。
+            for (int st = 0; st < stepLen + disExtra; st++) {
+            boolean disOnly = st >= stepLen;
             int ix = (int) posX, iy = (int) posY;
+            // ★ 2026-08-14 出界 return（蚀刻段≤20 < 缓冲余量 47 → 覆盖提取区的液滴不出界 → 无缝；
+            //   disOnly 段出界对提取区 dis 无影响——出界前的足迹已累积，直接 return）。
             if (ix < 1 || ix >= bufSize - 2 || iy < 1 || iy >= bufSize - 2) return;
             int idx = iy * bufSize + ix;
 
@@ -508,6 +530,7 @@ public class ErosionEngine {
             spd = (float) Math.sqrt(spd + Math.abs(flat[idx] - h0) * GRAVITY);
             posX += dirX * Math.min(spd, spdCap);
             posY += dirY * Math.min(spd, spdCap);
+            // 出界 return（同循环顶部，见上）
             if (posX < 1 || posX >= bufSize - 2 || posY < 1 || posY >= bufSize - 2) return;
 
             // ---- 新位置 ---- 
@@ -539,8 +562,8 @@ public class ErosionEngine {
             // 笔刷邻域分布：权重须对正负通用
             // delta>0: 从邻域取材料（侵蚀）→ flat[bi] 减小, sed 增大
             // delta<0: 向邻域加材料（沉积）→ flat[bi] 增大, sed 减小
-            // ★ 2026-08-14 tracking（洼地溢出追踪）跳过侵蚀笔刷——洼地内打转液滴不再挖坑
-            if (!tracking) {
+            // ★ 2026-08-14 tracking（洼地溢出追踪）或 disOnly（dis 延长段）跳过侵蚀笔刷
+            if (!tracking && !disOnly) {
                 for (int b = 0; b < bn; b++) {
                     int bi = idx + bOff[b];
                     if (bi < 0 || bi >= flat.length) continue;
@@ -557,14 +580,18 @@ public class ErosionEngine {
             }
 
             // ---- track 累积（SH water.h:113-117：本轮 discharge + 动量 volume·speed） ----
-            // 2026-08-01：discharge 场不再导出给河网（StreamTracer 独立追踪），保留动量场正反馈
-            disT[idx] += wat;
-            momXT[idx] += wat * dirX * Math.min(spd, spdCap);
-            momYT[idx] += wat * dirY * Math.min(spd, spdCap);
+            // ★ 2026-08-14 disOnly 段只写 disT（不写 mom——动量场影响蚀刻轨迹，保持蚀刻行为零变化）
+            if (disOnly) {
+                disT[idx] += wat;
+            } else {
+                disT[idx] += wat;
+                momXT[idx] += wat * dirX * Math.min(spd, spdCap);
+                momYT[idx] += wat * dirY * Math.min(spd, spdCap);
+            }
 
             // ---- 局部 cascade（每 CASCADE_INTERVAL 步执行，对齐 SH 每步语义） ----
-            // ★ 2026-08-14 tracking 跳过 cascade（洼地内不平滑——保持续流轨迹不扰动地形）
-            if (!tracking && cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
+            // ★ 2026-08-14 tracking / disOnly 跳过 cascade（不扰动地形）
+            if (!tracking && !disOnly && cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
                 cascadeLocal(flat, bufSize, nix, niy, cascadeStrength, hs);
             }
 
@@ -575,13 +602,17 @@ public class ErosionEngine {
             if (spd <= 0) return;
             // ★ 2026-08-14 湖泊溢出续流：STALL 达阈值 → 转 tracking（不 return，液滴不死在洼地）；
             //   走出洼地梯度恢复（brushDelta 回升）→ else 分支 tracking=false 恢复侵蚀。
-            if (spd < stallSpeed && Math.abs(brushDelta) < stallDelta) {
-                if (++stall >= STALL_MAX) tracking = true;
-            } else {
-                stall = 0;
-                tracking = false;   // 正常流动 / 找到溢出口 → 恢复侵蚀
+            //   disOnly 段跳过 STALL（保证 dis 走满 60 步覆盖）。
+            if (!disOnly) {
+                if (spd < stallSpeed && Math.abs(brushDelta) < stallDelta) {
+                    if (++stall >= STALL_MAX) tracking = true;
+                } else {
+                    stall = 0;
+                    tracking = false;   // 正常流动 / 找到溢出口 → 恢复侵蚀
+                }
             }
             wat *= (1 - EVAP_RATE);
+            }
         }
     }
 

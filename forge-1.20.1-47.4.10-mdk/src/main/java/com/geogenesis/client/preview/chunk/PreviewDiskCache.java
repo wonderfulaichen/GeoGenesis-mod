@@ -184,6 +184,7 @@ public final class PreviewDiskCache {
         out.writeFloat((float) c.humidity);
         out.writeFloat((float) c.continentNoise);
         out.writeFloat((float) c.shape);
+        out.writeFloat((float) c.riverNetDischarge);
         out.writeByte(c.terrainType == null ? 0 : c.terrainType.ordinal());
         int flags = 0;
         if (c.lakeMask) flags |= FLAG_LAKE_MASK;
@@ -200,6 +201,7 @@ public final class PreviewDiskCache {
         c.humidity = in.readFloat();
         c.continentNoise = in.readFloat();
         c.shape = in.readFloat();
+        c.riverNetDischarge = in.readFloat();
         int tIdx = in.readByte();
         TerrainClass[] tcs = TerrainClass.values();
         c.terrainType = (tIdx >= 0 && tIdx < tcs.length) ? tcs[tIdx] : TerrainClass.OCEAN;
