@@ -1,9 +1,12 @@
 package com.geogenesis.worldgen.generator;
 
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.worldgen.river.RiverCarver;
+import com.geogenesis.worldgen.river.RiverSample;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
+import com.geogenesis.worldgen.terrain.TerrainClass;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -88,12 +91,28 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     /**
      * 用给定参数 + 当前世界种子构建（已播种）地形引擎。
-     * 生成器与群系源各自按需构建；二者参数 + 种子一致 → 结果确定性相同。
+     *
+     * ★ 2026-08-14 卡死修复：**共享单例**——河网构建（RiverBuilder.mountainPath）触发
+     *   discharge 采样 → 侵蚀 tile 同步生成（670ms/个），20 个 Worker 线程各 new 一套
+     *   = 并发重复构建 + 重复生成 → 世界生成卡死（日志 37% 后无输出）。单例后只构建
+     *   一次，跨线程共享（内部 ConcurrentHashMap 线程安全）。
      */
+    private static volatile GeoGenesisTerrain sharedTerrain;
+
     public static GeoGenesisTerrain buildTerrain(TerrainParams params) {
-        CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y);
-        gen.seed(worldSeed);
-        return new GeoGenesisTerrain(gen);
+        GeoGenesisTerrain t = sharedTerrain;
+        if (t == null) {
+            synchronized (GeoGenesisGenerator.class) {
+                t = sharedTerrain;
+                if (t == null) {
+                    CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y);
+                    gen.seed(worldSeed);
+                    sharedTerrain = new GeoGenesisTerrain(gen);
+                    t = sharedTerrain;
+                }
+            }
+        }
+        return t;
     }
 
     public GeoGenesisGenerator(BiomeSource biomeSource) {
@@ -123,7 +142,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     public static void setWorldSeed(long seed) {
         worldSeed = seed;
-        LOGGER.info("GeoGenesis world seed set to {}", seed);
+        // ★ 2026-08-14 单例失效：新世界 seed 变化 → 下次 buildTerrain 重建河网/地形
+        sharedTerrain = null;
+        LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);
     }
 
     @Override
@@ -149,11 +170,20 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         long t3 = System.nanoTime();
 
         BlockPos.MutableBlockPos mPos = new BlockPos.MutableBlockPos();
+        boolean riversOn = terrain.riversEnabled();
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
 
-                fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell);
+                // Phase 2：确定性河网纯函数采样（开关关闭 → NONE，零开销）
+                // ★ 2026-08-16 R18：海洋列也采样（仅主河 REACH/MOUTH 生效——
+                //   RiverCarver 内支流入海被拒、主河雕贴海床浅槽，水下河谷连续
+                //   延伸入海，河口不"凭空消失"；DW getRiverCarve 同款）。
+                //   历史注释"海洋列跳过采样"作废（曾导致海底起点主河无引导）。
+                RiverSample rs = riversOn
+                        ? terrain.sampleRiverAtBlock(baseX + lx, baseZ + lz)
+                        : RiverSample.NONE;
+                fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell, rs);
             }
         }
         long t4 = System.nanoTime();
@@ -168,7 +198,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     }
 
     /**
-     * 普通地形列填充：按 cell.height 铺 基岩/深板岩/石/土/表层/水柱。
+     * 地形列填充：按 cell.height 铺 基岩/深板岩/石/土/表层/水柱；
+     * 河流列（RiverSample.inChannel）先做河谷雕刻（河心切到河床、岸坡过渡，只切不抬）。
      *
      * 关键修复（旧版 bug）：
      * - 地表用 {@code y == surfaceY}（surfaceY = floor(height)），不再用 {@code y == (int)height}
@@ -177,16 +208,41 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      * - 表层方块随 terrainType/水陆决定：陆地 GRASS+DIRT，海滩/浅水 SAND，深水 GRAVEL。
      */
     private void fillTerrainColumn(ChunkAccess chunk, BlockPos.MutableBlockPos mPos,
-                                   int wx, int wz, Cell cell) {
-        int surfaceY = (int) Math.floor(cell.height);
-        boolean water = cell.isWater();                       // 实测海平面 e<0
-        boolean beach = cell.terrainType ==
-                com.geogenesis.worldgen.terrain.TerrainClass.BEACH;
+                                   int wx, int wz, Cell cell,
+                                   com.geogenesis.worldgen.river.RiverSample rs) {
+        // 河谷雕刻（纯函数计划，R9 DW 完整模型）：地面高/水面/墙区标志
+        double groundY = cell.height;
+        boolean riverWater = false;
+        boolean riverWall = false;      // 墙区（地形低于水面 → 抬填 + 顶草皮）
+        double waterTop = SEA_LEVEL;
+        if (rs.inChannel()) {
+            RiverCarver.CarvedColumn cc = RiverCarver.carve(cell.height, rs, wx, wz, SEA_LEVEL);
+            // ★ 2026-08-15 R16b 修复（用户"实测无效"实锤）：carve 可能返回 NONE
+            //   （skip 条件：地形 < 海平面−4 → 不雕刻）。NONE.groundY=0、
+            //   waterTop=-Inf——无条件取用 → 海上/低地河整列塌陷到 Y=0 黑洞！
+            //   必须检查 cc.inChannel() 才应用雕刻结果，否则保留原地形。
+            if (cc.inChannel()) {
+                groundY = cc.groundY();
+                riverWater = true;
+                riverWall = cc.isWall();
+                waterTop = cc.waterTopY();
+            }
+        }
+        int surfaceY = (int) Math.floor(groundY);
+        boolean water = cell.isWater() || riverWater;         // 实测海平面 e<0
+        boolean beach = cell.terrainType == TerrainClass.BEACH;
 
-        // 表层与填充块选择
+        // 表层与填充块选择（R9：墙顶草皮、墙壁土、河心砾石——DW top/filler/base 语义）
         BlockState top, fill;
-        if (water) {
-            top  = (cell.height <= SEA_LEVEL - 3) ? GRAVEL : SAND;  // 深水砾石 / 浅水沙
+        if (riverWall) {
+            top  = GRASS;  // 墙顶 = 岸顶草皮（DW：y==repairTopY && originalY<=top+2 → 草）
+            fill = DIRT;
+        } else if (riverWater) {
+            if (groundY < waterTop - 3) { top = GRAVEL; fill = GRAVEL; }   // 河床
+            else if (groundY < waterTop) { top = SAND; fill = SAND; }      // 浅岸
+            else { top = DIRT; fill = DIRT; }                              // 露出河岸裸土
+        } else if (water) {
+            top  = (groundY <= SEA_LEVEL - 3) ? GRAVEL : SAND;  // 深水砾石 / 浅水沙
             fill = top;
         } else if (beach) {
             top  = SAND;
@@ -196,9 +252,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             fill = DIRT;
         }
 
-        // ★ 2026-08-09 无伤优化（对齐 ReTerraForged 高度裁剪）：地表/水面以上全 AIR，
-        //   chunk 未生成区默认 AIR（vanilla 约定）→ 跳过写入直接 break。
-        //   世界创建时每 chunk 256 列 × 384 格全写 → 只写到 surfaceY/SEA_LEVEL，省 40-83% setBlockState。
+        // R9 落块（DW 语义）：地表按 groundY 铺、水柱灌到 waterTop；墙区地面已被
+        // carve 抬到水面 → 落块自然形成堤岸（groundY=水面 → 水柱 1 块 + 墙顶草皮）。
+        int waterTopBlock = (int) Math.floor(waterTop);
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
             BlockState state;
@@ -210,8 +266,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 state = fill;                                     // 表层下 3 格（土/沙）
             } else if (y == surfaceY) {
                 state = top;                                      // 地表最顶块
-            } else if (water && y <= SEA_LEVEL) {
-                state = WATER;                                    // 水柱（海平面以下）
+            } else if (water && y <= waterTopBlock) {
+                state = WATER;                                    // 水柱（水面以下）
             } else {
                 break;                                            // 地表/水面以上：默认 AIR，跳过
             }

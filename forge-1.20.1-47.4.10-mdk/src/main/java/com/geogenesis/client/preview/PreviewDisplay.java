@@ -121,6 +121,11 @@ public class PreviewDisplay extends AbstractWidget {
     public boolean showPlayerMarkers = true;
     /** 显示 Voronoi 细胞边界（相邻格主导地形类型不同处画深色线，诊断类型混合用） */
     public boolean showCellBorders = false;
+    /** 显示侵蚀 tile 边界（ERODE_TILE_CENTER=48wu 网格线，诊断 tile 边缘错位/微断裂用）。
+     *  块坐标线距 = 48 × horizontalScale；线处像素压暗。 */
+    public boolean showTileBorders = false;
+    /** 水平缩放（块/wu；构造时从 params 取，tile 边界线定位用） */
+    private double horizontalScale = 1.0;
     /** 拖动时简化视图（跳过最贵的坡度阴影保证 60fps；松手后第一帧补画）。false = 拖动也画完整阴影 */
     public boolean dragSimplify = true;
     /** 公开 CellCache 引用，供外部清除缓存 */
@@ -167,6 +172,7 @@ public class PreviewDisplay extends AbstractWidget {
         this.maxY = params.maxY();
         this.peakFraction = params.peakHeightFraction();
         this.verticalScale = params.verticalScale();
+        this.horizontalScale = params.horizontalScale();
         this.renderScale = Math.max(1, Math.min(4, renderScale));
         // 高程色阶范围跟随地形实际可达 e 区间（由地形类型 e 界限换算），
         // 使地形最高处触顶雪白、最深触底深蓝，而非世界的绝对高度上下限。
@@ -219,7 +225,7 @@ public class PreviewDisplay extends AbstractWidget {
     //   2026-08-10 液滴 SLOPE_MIN_SKIP/CASCADE_MAXDIFF ×hs（wu 化阈值漂移修复）：HS≠1 产出变化 → 18。
     //   2026-08-11 引擎回退到 78bf8bc（用户认可版）+ cascade budget 修复（真 NaN 修复）：
     //   TF 对齐版（23）废弃；回退版产出 ≠ 18（带 budget）→ 19 强制重算。
-    private static final int CACHE_SCHEMA_VERSION = 24;   // 2026-08-14: 河流系统整体清除（PreviewDiskCache 序列化格式变更）
+    private static final int CACHE_SCHEMA_VERSION = 29;   // 2026-08-15: +RIVER_TYPE 图层（Cell.riverType 字段）
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
@@ -496,6 +502,17 @@ public class PreviewDisplay extends AbstractWidget {
                                 color = (r << 16) | (gg << 8) | b;
                             }
                         }
+                        // ★ 2026-08-14 tile 边界叠加（诊断侵蚀 tile 网格/边缘错位用）：
+                        //   线在块坐标 % (48×horizontalScale) == 0 处（ERODE_TILE_CENTER=48wu）。
+                        //   用比细胞边界更暗的压暗（×2/10），一眼可辨 48wu 网格线。
+                        if (showTileBorders) {
+                            int tb = (int) Math.round(48 * horizontalScale);
+                            if (tb > 0 && (wx % tb == 0 || wz % tb == 0)) {
+                                int r = (color >> 16) & 0xFF, gg = (color >> 8) & 0xFF, b = color & 0xFF;
+                                r = r * 2 / 10; gg = gg * 2 / 10; b = b * 2 / 10;
+                                color = (r << 16) | (gg << 8) | b;
+                            }
+                        }
                         image.setPixelRGBA(tx, tz, GeoPalette.toABGR(color));
                         paintedCount++;
                     }
@@ -700,6 +717,7 @@ public class PreviewDisplay extends AbstractWidget {
         this.maxY = params.maxY();
         this.peakFraction = params.peakHeightFraction();
         this.verticalScale = params.verticalScale();
+        this.horizontalScale = params.horizontalScale();
         double[] er = params.elevationERange();
         this.elevEMin = er[0]; this.elevEMax = er[1];
         GeoPalette.setElevationERange(er[0], er[1]);

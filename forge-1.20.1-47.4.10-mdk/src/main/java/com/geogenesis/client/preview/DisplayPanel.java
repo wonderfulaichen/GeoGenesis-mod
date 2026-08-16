@@ -44,17 +44,22 @@ public class DisplayPanel extends ConfigPanel {
         if (h3) hoverTooltip = Component.literal(
             "诊断子图层：相邻格主导地形类型不同处画深色线，用于检查 Voronoi 类型混合是否生硬/断裂");
 
-        boolean h4 = drawToggleRow(g, x, toggleY(4), w, ROW_H,
+        boolean h3b = drawToggleRow(g, x, toggleY(4), w, ROW_H,
+            "侵蚀tile边界叠加", preview.showTileBorders, mx, my);
+        if (h3b) hoverTooltip = Component.literal(
+            "诊断子图层：侵蚀 tile 网格线（48wu，块坐标=48×水平缩放），用于检查 tile 边缘错位/微断裂位置");
+
+        boolean h4 = drawToggleRow(g, x, toggleY(5), w, ROW_H,
             "拖动时简化视图", preview.dragSimplify, mx, my);
         if (h4) hoverTooltip = Component.literal(
             "拖动预览时跳过坡度阴影保证流畅（松手后补画）。关闭 = 拖动也画完整阴影，帧率可能下降");
 
-        boolean h5 = drawToggleRow(g, x, toggleY(5), w, ROW_H,
+        boolean h5 = drawToggleRow(g, x, toggleY(6), w, ROW_H,
             "类型过滤模式", preview.filterMode, mx, my);
         if (h5) hoverTooltip = Component.literal(
             "离散图层多选过滤：开启后点击图例/地图勾选类型（可多选），未勾选类型压暗显示。关闭 = 单选高亮");
 
-        boolean h6 = drawButton(g, x, toggleY(6), w, ROW_H, "定位出生点", false, mx, my);
+        boolean h6 = drawButton(g, x, toggleY(7), w, ROW_H, "定位出生点", false, mx, my);
         if (h6) hoverTooltip = Component.literal("视口中心跳转到出生点（无出生点时回到 0,0）");
     }
 
@@ -79,17 +84,22 @@ public class DisplayPanel extends ConfigPanel {
             playClick(); return true;
         }
         if (hit(x, toggleY(4), w, ROW_H, mx, my)) {
-            preview.dragSimplify = !preview.dragSimplify;
+            preview.showTileBorders = !preview.showTileBorders;
             preview.needsClear = true;
             playClick(); return true;
         }
         if (hit(x, toggleY(5), w, ROW_H, mx, my)) {
+            preview.dragSimplify = !preview.dragSimplify;
+            preview.needsClear = true;
+            playClick(); return true;
+        }
+        if (hit(x, toggleY(6), w, ROW_H, mx, my)) {
             preview.filterMode = !preview.filterMode;
             preview.filterIds.clear();  // 切换模式时清空勾选，避免残留
             preview.needsClear = true;
             playClick(); return true;
         }
-        if (hit(x, toggleY(6), w, ROW_H, mx, my)) {
+        if (hit(x, toggleY(7), w, ROW_H, mx, my)) {
             preview.centerOnSpawn();
             playClick(); return true;
         }

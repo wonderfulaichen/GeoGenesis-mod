@@ -51,6 +51,7 @@ public final class GeoPalette {
         BIOME(Kind.DISCRETE, "geogenesis.layer.biome", "biome", Group.BASE, true, true),
         TERRAIN_TYPE(Kind.DISCRETE, "geogenesis.layer.terrain_type", "terrainType", Group.TERRAIN, true, true),
         RIVER_NETWORK(Kind.CONTINUOUS, "geogenesis.layer.river_network", "river_network", Group.WATER, true, true),
+        RIVER_TYPE(Kind.DISCRETE, "geogenesis.layer.river_type", "riverType", Group.WATER, true, false),
         ROCK_LAYER(Kind.DISCRETE, "geogenesis.layer.rock_layer", "rockLayer", Group.TERRAIN, false, false),
         ROCK_TYPE(Kind.DISCRETE, "geogenesis.layer.rock_type", "rockType", Group.TERRAIN, false, false),
         VEIN_MAP(Kind.DISCRETE, "geogenesis.layer.vein_map", "veinMap", Group.TERRAIN, false, false);
@@ -418,6 +419,9 @@ public final class GeoPalette {
         discreteDefaults.put(PreviewLayer.TERRAIN_TYPE, T_TERRAIN_TYPE);
         discreteDefaults.put(PreviewLayer.CLIMATE_ZONE, T_CLIMATE_ZONE);
         discreteDefaults.put(PreviewLayer.BIOME, T_BIOME);
+        // RIVER_TYPE：0 无(地形色占位)/1 主河深蓝/2 MOUTH 蓝紫/3 支流浅蓝
+        discreteDefaults.put(PreviewLayer.RIVER_TYPE, new int[]{
+                0x3A4A5A, 0x1B3F9E, 0x2E6FD6, 0x7AC8E8});
         // ROCK_LAYER/ROCK_TYPE/VEIN_MAP 无默认色——由 MC 侧或未来地质系统填充
     }
 
@@ -467,9 +471,13 @@ public final class GeoPalette {
                 case CONTINENTALITY: pos = (c.continentNoise + 1.0) * 0.5; break;
                 case RELIEF:      pos = reliefPos(c.shape); break;
                 case LATITUDE:    pos = Latitude.latitude01(worldZ); break;
-                // ★ 2026-08-14 河流系统清除：RIVER_NETWORK 无数据源，暂显示空（色带低端）。
-                //   图层序号（ordinal=9）与 14 层缓存缓冲对齐，保留框架待重构河流恢复。
-                case RIVER_NETWORK:
+                // ★ 2026-08-14 恢复流量图层：显示粒子侵蚀 discharge 场（液滴路径累积 = 流量图）。
+                //   范围 [0, +∞)，log 压缩归一化到 [0,1]（dis≈400 → 1）。
+                case RIVER_NETWORK: {
+                    double dis = c.riverNetDischarge;
+                    pos = dis > 0 ? Math.min(1.0, Math.log1p(dis) / 6.0) : 0.0;
+                    break;
+                }
                 default: pos = 0.0;
             }
             base = continuous(layer, pos);
@@ -627,6 +635,7 @@ public final class GeoPalette {
             case CLIMATE_ZONE -> Zone.values().length;
             case BIOME -> BiomeClass.values().length;
             case TERRAIN_TYPE -> TERRAIN_TYPE_NAMES.length;
+            case RIVER_TYPE -> 4; // 0 无 / 1 主河 / 2 MOUTH / 3 支流
             default -> Integer.MAX_VALUE;
         };
     }
@@ -643,6 +652,12 @@ public final class GeoPalette {
             case CLIMATE_ZONE: return "geogenesis.zone." + Zone.values()[id].name();
             case BIOME:        return "geogenesis.biome." + BiomeClass.values()[id].name();
             case TERRAIN_TYPE: return "geogenesis.terrain_type." + TERRAIN_TYPE_NAMES[id];
+            case RIVER_TYPE: return switch (id) {
+                case 1 -> "geogenesis.river_type.main";
+                case 2 -> "geogenesis.river_type.mouth";
+                case 3 -> "geogenesis.river_type.trib";
+                default -> "geogenesis.river_type.none";
+            };
             default: return layer.labelKey + "." + id;
         }
     }
@@ -671,6 +686,11 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.biome", "Biome");
         ENGLISH.put("geogenesis.layer.terrain_type", "Terrain Type");
         ENGLISH.put("geogenesis.layer.river_network", "Flow Accumulation");
+        ENGLISH.put("geogenesis.layer.river_type", "River Type");
+        ENGLISH.put("geogenesis.river_type.none", "None");
+        ENGLISH.put("geogenesis.river_type.main", "Main River");
+        ENGLISH.put("geogenesis.river_type.mouth", "Mouth");
+        ENGLISH.put("geogenesis.river_type.trib", "Tributary");
         // 气候带
         ENGLISH.put("geogenesis.zone.TROPICAL", "Tropical (A)");
         ENGLISH.put("geogenesis.zone.ARID", "Arid (B)");
@@ -737,6 +757,7 @@ public final class GeoPalette {
             case CLIMATE_ZONE: return ClimateZone.classify(c).ordinal();
             case BIOME:        return BiomeClassifier.classify(c).ordinal();
             case TERRAIN_TYPE: return terrainTypeId(c);
+            case RIVER_TYPE:   return c.riverType; // 0 无 / 1 主河 / 2 MOUTH / 3 支流
             default: return 0;
         }
     }

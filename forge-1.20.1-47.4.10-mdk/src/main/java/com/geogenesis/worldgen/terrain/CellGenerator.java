@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.stream.IntStream;
 
 /**
  * 单格地形装配中枢 —— 统一连续场 e(x,z)。
@@ -30,6 +31,21 @@ import java.util.concurrent.atomic.*;
  */
 public final class CellGenerator {
 
+    /**
+     * 安全并行行循环（2026-08-14 恢复并行）：ForkJoinPool.commonPool（work-stealing）——
+     * 调用线程可参与执行子任务 → 不会"等自己"死锁。曾用 TILE_SAMPLER 有界池 + latch.await
+     * （池被占满 + CallerRunsPolicy 自己跑 = 池饥饿死锁，27 轮）。body 不得嵌套 parallelRows。
+     */
+    private static void parallelRows(int size, java.util.function.IntConsumer body) {
+        if (size <= 4) {
+            for (int i = 0; i < size; i++) body.accept(i);
+            return;
+        }
+        IntStream.range(0, size).parallel().forEach(body);
+    }
+
+    /** 确定性河网（可选，RIVER_NETWORK 流量图层数据源；null = 无河网） */
+    private com.geogenesis.worldgen.river.RiverNetwork rivers;
     private final ContinentField continent;
     private final HeightCurve heightCurve;
     private final TypeLandShape typeLandShape;
@@ -78,6 +94,16 @@ public final class CellGenerator {
     private final Noise humidityNoise; // 独立湿度噪声
 
     public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY) {
+        this(p, minWorldY, maxWorldY, null);
+    }
+
+    /**
+     * @param rivers 确定性河网（可选）：RIVER_NETWORK 流量图层数据源。
+     *               null = 无河网（预览/探针进程），riverNetDischarge 恒 0。
+     */
+    public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY,
+                         com.geogenesis.worldgen.river.RiverNetwork rivers) {
+        this.rivers = rivers;
         this.continent = new ContinentField(p);
         this.heightCurve = new HeightCurve(p, minWorldY, maxWorldY);
         this.typeLandShape = new TypeLandShape(p);
@@ -105,6 +131,11 @@ public final class CellGenerator {
         // 气候噪声（xz 缩放可配置）
         this.tempWarp = new Frequency(new Simplex(501), 1.0 / p.tempWarpScale());
         this.humidityNoise = new Frequency(new Simplex(502), 1.0 / p.humidityScale());
+    }
+
+    /** 回注河网（GeoGenesisTerrain 构造后调用：河网需要 terrainEQuick → 循环依赖解耦） */
+    public void setRivers(com.geogenesis.worldgen.river.RiverNetwork rivers) {
+        this.rivers = rivers;
     }
 
     /** 一次性播种所有噪声节点 + 设置海山中心水深检查器 */
@@ -473,23 +504,13 @@ public final class CellGenerator {
         //    值恒等式：base[x][z] = max(terrainEQuick, -0.05)，与粗采/骨架旧逻辑完全一致 → 输出不变。
         int N0 = ERODE_TILE_SIZE;
         float[][] base = new float[N0][N0];
-        // 并行采样（无伤：每点独立、只读 noise，输出与串行完全一致）
-        int rowsPerTask = Math.max(1, N0 / TILE_PARALLELISM);
-        int nTasks = (N0 + rowsPerTask - 1) / rowsPerTask;
-        CountDownLatch latch = new CountDownLatch(nTasks);
-        for (int t = 0; t < nTasks; t++) {
-            final int z0 = t * rowsPerTask, z1 = Math.min(N0, z0 + rowsPerTask);
-            TILE_SAMPLER.execute(() -> {
-                try {
-                    for (int z = z0; z < z1; z++)
-                        for (int x = 0; x < N0; x++)
-                            base[z][x] = (float) Math.max(terrainEQuick(originX + x, originZ + z), -0.05);
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
-        try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
+        // ★ 2026-08-14 恢复并行（安全版：ForkJoinPool.commonPool work-stealing，见 parallelRows
+        //   ——曾 TILE_SAMPLER 池 + latch.await 池饥饿死锁；曾串行恢复正确性但性能降）
+        parallelRows(N0, z -> {
+            for (int x = 0; x < N0; x++) {
+                base[z][x] = (float) Math.max(terrainEQuick(originX + x, originZ + z), -0.05);
+            }
+        });
         tBaseEnd = System.nanoTime();   // PERF：base 采样结束
 
         // 1) spacing=4 粗采（全局对齐网格，扩展 2 格以消除 Catmull-Rom 边沿退化）
@@ -500,34 +521,20 @@ public final class CellGenerator {
         int alignedStartX = Math.floorDiv(originX, spacing) * spacing - gridExtra * spacing;
         int alignedStartZ = Math.floorDiv(originZ, spacing) * spacing - gridExtra * spacing;
 
-        // ★ 2026-08-09 优化：低分采样并行化（每行独立只读 base/noise，输出与串行逐点一致）
+        // ★ 2026-08-14 恢复并行（安全版，见 parallelRows）
         float[][] lowResBuf = new float[extendedLowRes][extendedLowRes];
-        final float[][] lrb = lowResBuf; // lambda 捕获 final 引用（lowResBuf 后续会被重赋值）
-        int lrRowsPerTask = Math.max(1, extendedLowRes / TILE_PARALLELISM);
-        int lrTasks = (extendedLowRes + lrRowsPerTask - 1) / lrRowsPerTask;
-        CountDownLatch lrLatch = new CountDownLatch(lrTasks);
-        for (int lt = 0; lt < lrTasks; lt++) {
-            final int lz0 = lt * lrRowsPerTask, lz1 = Math.min(extendedLowRes, lz0 + lrRowsPerTask);
-            TILE_SAMPLER.execute(() -> {
-                try {
-                    for (int tz = lz0; tz < lz1; tz++) {
-                        for (int tx = 0; tx < extendedLowRes; tx++) {
-                            int wx = alignedStartX + tx * spacing;
-                            int wz = alignedStartZ + tz * spacing;
-                            // base 覆盖区内复用（值恒等：max(terrainEQuick,-0.05)），边界扩展带走原采样
-                            if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
-                                lrb[tz][tx] = base[wz - originZ][wx - originX];
-                            } else {
-                                lrb[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
-                            }
-                        }
-                    }
-                } finally {
-                    lrLatch.countDown();
+        final float[][] lrb = lowResBuf; // lambda 捕获 final 引用（lowResBuf 后续重赋值）
+        parallelRows(extendedLowRes, tz -> {
+            for (int tx = 0; tx < extendedLowRes; tx++) {
+                int wx = alignedStartX + tx * spacing;
+                int wz = alignedStartZ + tz * spacing;
+                if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
+                    lrb[tz][tx] = base[wz - originZ][wx - originX];
+                } else {
+                    lrb[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
                 }
-            });
-        }
-        try { lrLatch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
+            }
+        });
 
         // 备份未平滑副本 B（粗侵蚀骨架作用于真实地形，不走 step1.5 平滑）
         float[][] rawLowRes = new float[extendedLowRes][extendedLowRes];
@@ -579,51 +586,27 @@ public final class CellGenerator {
                 // 移除 typeMod 类型调制——原按类型权重在过渡带连续渐变 → 类型过渡带出现
                 // 人为强度渐变带（用户反馈"骨架与地形类型打架，过渡带变明显"）。
                 // 平原条纹弱由坡度自然控制（combiMask 坡度触发，平原坡度小→条纹弱），无需人工调制。
-                // 并行采样（无伤：每点独立，输出与串行一致）
-                int skelRowsPerTask = Math.max(1, skelExtLR / TILE_PARALLELISM);
-                int skelTasks = (skelExtLR + skelRowsPerTask - 1) / skelRowsPerTask;
-                CountDownLatch skelLatch = new CountDownLatch(skelTasks);
-                for (int st = 0; st < skelTasks; st++) {
-                    final int sz0 = st * skelRowsPerTask, sz1 = Math.min(skelExtLR, sz0 + skelRowsPerTask);
-                    TILE_SAMPLER.execute(() -> {
-                        try {
-                            for (int tz = sz0; tz < sz1; tz++) {
-                                for (int tx = 0; tx < skelExtLR; tx++) {
-                                    int wx = skelStartX + tx * skelSpacing;
-                                    int wz = skelStartZ + tz * skelSpacing;
-                                    // base 覆盖区内复用（值恒等：max(terrainEQuick,-0.05)），skelExtra 扩展带走原采样
-                                    if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
-                                        skelGrid[tz][tx] = base[wz - originZ][wx - originX];
-                                    } else {
-                                        skelGrid[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
-                                    }
-                                }
-                            }
-                        } finally {
-                            skelLatch.countDown();
+                // ★ 2026-08-14 恢复并行（安全版，见 parallelRows；曾串行——TILE_SAMPLER
+                //   池 + latch.await 池饥饿死锁的替代方案）
+                parallelRows(skelExtLR, tz -> {
+                    for (int tx = 0; tx < skelExtLR; tx++) {
+                        int wx = skelStartX + tx * skelSpacing;
+                        int wz = skelStartZ + tz * skelSpacing;
+                        if (wx >= originX && wx < originX + N0 && wz >= originZ && wz < originZ + N0) {
+                            skelGrid[tz][tx] = base[wz - originZ][wx - originX];
+                        } else {
+                            skelGrid[tz][tx] = (float) Math.max(terrainEQuick(wx, wz), -0.05);
                         }
-                    });
-                }
-                try { skelLatch.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-                // computeCoarseDelta 并行（无伤：每点独立纯局部计算，gradX/gradZ 只读 skelGrid 邻居，
-                // 任务写 delta 不同行；输出与串行逐点一致）
+                    }
+                });
                 final float[][] deltaLR = new float[skelExtLR][skelExtLR];
-                int cdRowsPerTask = Math.max(1, skelExtLR / TILE_PARALLELISM);
-                int cdTasks = (skelExtLR + cdRowsPerTask - 1) / cdRowsPerTask;
-                CountDownLatch cdLatch = new CountDownLatch(cdTasks);
-                for (int ct = 0; ct < cdTasks; ct++) {
-                    final int cz0 = ct * cdRowsPerTask, cz1 = Math.min(skelExtLR, cz0 + cdRowsPerTask);
-                    TILE_SAMPLER.execute(() -> {
-                        try {
-                            for (int tz = cz0; tz < cz1; tz++)
-                                for (int tx = 0; tx < skelExtLR; tx++)
-                                    deltaLR[tz][tx] = RidgeValleyErosion.evaluateCell(
-                                        skelGrid, tx, tz, skelExtLR, skelSpacing, skelStartX, skelStartZ,
-                                        (float) seaE, rcfg);
-                        } finally { cdLatch.countDown(); }
-                    });
-                }
-                try { cdLatch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
+                parallelRows(skelExtLR, tz -> {
+                    for (int tx = 0; tx < skelExtLR; tx++) {
+                        deltaLR[tz][tx] = RidgeValleyErosion.evaluateCell(
+                            skelGrid, tx, tz, skelExtLR, skelSpacing, skelStartX, skelStartZ,
+                            (float) seaE, rcfg);
+                    }
+                });
                 coarseDeltaLR = deltaLR;
             }
         }
@@ -642,44 +625,30 @@ public final class CellGenerator {
             // 2026-08-01 确定性化：去掉三区制（邻居 postErosion 依赖）→ tile 结果只
             // 依赖世界坐标，缓存淘汰后重建结果不变 → 相邻 chunk 无缝；收敛循环随之删除。
             // 2026-08-08 优化：内部区域（与 base 重叠）直接复用 base 值，仅 border 调 terrainEQuick。
-            // ★ 2026-08-09 无伤优化：flat 构建并行化（每行独立只读 base/terrainEQuick/骨架，
-            //   写 flat 私有行 → 输出与串行逐点一致）
+            // ★ 2026-08-14 卡死修复：flat 构建改**串行**（曾并行 + latch.await → 池饥饿死锁）
             float[] flat = new float[bufSize * bufSize];
-            final float[][] cdLR = coarseDeltaLR; // lambda 捕获 final 引用（coarseDeltaLR 后续重赋值）
-            int flatRowsPerTask = Math.max(1, bufSize / TILE_PARALLELISM);
-            int flatTasks = (bufSize + flatRowsPerTask - 1) / flatRowsPerTask;
-            CountDownLatch flatLatch = new CountDownLatch(flatTasks);
-            for (int ft = 0; ft < flatTasks; ft++) {
-                final int fz0 = ft * flatRowsPerTask, fz1 = Math.min(bufSize, fz0 + flatRowsPerTask);
-                TILE_SAMPLER.execute(() -> {
-                    try {
-                        for (int fz = fz0; fz < fz1; fz++) {
-                            for (int fx = 0; fx < bufSize; fx++) {
-                                int worldX = originX + fx - pad;
-                                int worldZ = originZ + fz - pad;
-                                int baseX = fx - pad;
-                                int baseZ = fz - pad;
-                                float val;
-                                if (baseX >= 0 && baseX < N && baseZ >= 0 && baseZ < N) {
-                                    // 内部区域：直接复用 base 数组（省 terrainEQuick 调用）
-                                    val = base[baseZ][baseX];
-                                } else {
-                                    // border 区域：必须采样 worldX/worldZ
-                                    val = (float) Math.max(terrainEQuick(worldX, worldZ), -0.05);
-                                }
-                                if (cdLR != null) {
-                                    val += sampleBilinear(cdLR, skelExtLR, skelSpacing,
-                                            skelStartX, skelStartZ, worldX, worldZ);
-                                }
-                                flat[fz * bufSize + fx] = val;
-                            }
-                        }
-                    } finally {
-                        flatLatch.countDown();
+            final float[][] cdLR = coarseDeltaLR;
+            // ★ 2026-08-14 恢复并行（安全版，见 parallelRows；曾串行）
+            final int fPad = pad, fN = N;
+            parallelRows(bufSize, fz -> {
+                for (int fx = 0; fx < bufSize; fx++) {
+                    int worldX = originX + fx - fPad;
+                    int worldZ = originZ + fz - fPad;
+                    int baseX = fx - fPad;
+                    int baseZ = fz - fPad;
+                    float val;
+                    if (baseX >= 0 && baseX < fN && baseZ >= 0 && baseZ < fN) {
+                        val = base[baseZ][baseX];
+                    } else {
+                        val = (float) Math.max(terrainEQuick(worldX, worldZ), -0.05);
                     }
-                });
-            }
-            try { flatLatch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
+                    if (cdLR != null) {
+                        val += sampleBilinear(cdLR, skelExtLR, skelSpacing,
+                                skelStartX, skelStartZ, worldX, worldZ);
+                    }
+                    flat[fz * bufSize + fx] = val;
+                }
+            });
             float[] flatPre = flat.clone();
 
             // 2026-08-02 恢复 discharge 导出：液滴路径重叠计数 = 粒子汇聚数量
@@ -814,48 +783,33 @@ public final class CellGenerator {
     private static float[][] bicubicUpsampleAligned(float[][] lowRes, int lowResSize, int spacing,
                                                      int alignedStartX, int alignedStartZ,
                                                      int tileStartX, int tileStartZ, int tileSize) {
-        // ★ 2026-08-09 无伤优化：bicubic 升采样并行化（每行只读 lowRes 固定 4×4 邻域，
-        //   写 out[fz] 私有行 → 输出与串行逐点一致）
+        // ★ 2026-08-14 恢复并行（安全版，见 parallelRows；曾串行——TILE_SAMPLER 池饥饿的替代方案）
         float[][] out = new float[tileSize][tileSize];
         int lrLast = lowResSize - 1;
+        parallelRows(tileSize, fz -> {
+            int worldZ = tileStartZ + fz;
+            float lz = (float) (worldZ - alignedStartZ) / spacing;
+            int iz = (int) lz;
+            float tz = lz - iz;
+            int z0 = Math.max(0, iz - 1), z1 = Math.min(lrLast, iz),
+                z2 = Math.min(lrLast, iz + 1), z3 = Math.min(lrLast, iz + 2);
 
-        int rowsPerTask = Math.max(1, tileSize / TILE_PARALLELISM);
-        int tasks = (tileSize + rowsPerTask - 1) / rowsPerTask;
-        CountDownLatch latch = new CountDownLatch(tasks);
-        for (int t = 0; t < tasks; t++) {
-            final int z0b = t * rowsPerTask, z1b = Math.min(tileSize, z0b + rowsPerTask);
-            TILE_SAMPLER.execute(() -> {
-                try {
-                    for (int fz = z0b; fz < z1b; fz++) {
-                        int worldZ = tileStartZ + fz;
-                        float lz = (float) (worldZ - alignedStartZ) / spacing;
-                        int iz = (int) lz;
-                        float tz = lz - iz;
-                        int z0 = Math.max(0, iz - 1), z1 = Math.min(lrLast, iz),
-                            z2 = Math.min(lrLast, iz + 1), z3 = Math.min(lrLast, iz + 2);
+            for (int fx = 0; fx < tileSize; fx++) {
+                int worldX = tileStartX + fx;
+                float lx = (float) (worldX - alignedStartX) / spacing;
+                int ix = (int) lx;
+                float tx = lx - ix;
+                int x0 = Math.max(0, ix - 1), x1 = Math.min(lrLast, ix),
+                    x2 = Math.min(lrLast, ix + 1), x3 = Math.min(lrLast, ix + 2);
 
-                        for (int fx = 0; fx < tileSize; fx++) {
-                            int worldX = tileStartX + fx;
-                            float lx = (float) (worldX - alignedStartX) / spacing;
-                            int ix = (int) lx;
-                            float tx = lx - ix;
-                            int x0 = Math.max(0, ix - 1), x1 = Math.min(lrLast, ix),
-                                x2 = Math.min(lrLast, ix + 1), x3 = Math.min(lrLast, ix + 2);
+                float r0 = bspline(lowRes[z0][x0], lowRes[z0][x1], lowRes[z0][x2], lowRes[z0][x3], tx);
+                float r1 = bspline(lowRes[z1][x0], lowRes[z1][x1], lowRes[z1][x2], lowRes[z1][x3], tx);
+                float r2 = bspline(lowRes[z2][x0], lowRes[z2][x1], lowRes[z2][x2], lowRes[z2][x3], tx);
+                float r3 = bspline(lowRes[z3][x0], lowRes[z3][x1], lowRes[z3][x2], lowRes[z3][x3], tx);
 
-                            float r0 = bspline(lowRes[z0][x0], lowRes[z0][x1], lowRes[z0][x2], lowRes[z0][x3], tx);
-                            float r1 = bspline(lowRes[z1][x0], lowRes[z1][x1], lowRes[z1][x2], lowRes[z1][x3], tx);
-                            float r2 = bspline(lowRes[z2][x0], lowRes[z2][x1], lowRes[z2][x2], lowRes[z2][x3], tx);
-                            float r3 = bspline(lowRes[z3][x0], lowRes[z3][x1], lowRes[z3][x2], lowRes[z3][x3], tx);
-
-                            out[fz][fx] = bspline(r0, r1, r2, r3, tz);
-                        }
-                    }
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
-        try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("tile aborted"); }
+                out[fz][fx] = bspline(r0, r1, r2, r3, tz);
+            }
+        });
         return out;
     }
 
@@ -913,6 +867,24 @@ public final class CellGenerator {
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
         if (res == null) return; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
         double delta = sampleTileField(res.delta, res.originX, res.originZ, wuX, wuZ);
+        // ★ 2026-08-14 晚场（用户建议"流量累积图当梯度图用起来"）：RIVER_NETWORK 图层
+        //   恢复显示粒子侵蚀 discharge 场 = 流量累积图（液滴沿坡流动的集水累积，
+        //   本质是地形梯度/流域方向的可视化）。河网流量仍在 RiverSample.discharge 保留。
+        if (res.discharge != null)
+            cell.riverNetDischarge = sampleTileField(res.discharge, res.originX, res.originZ, wuX, wuZ);
+        // RIVER_TYPE 图层：几何河网段类型（0 无 / 1 主河 / 2 MOUTH / 3 支流）
+        if (rivers != null) {
+            com.geogenesis.worldgen.river.RiverSample rs = rivers.sampleRiver(wuX, wuZ);
+            cell.riverType = (byte) (rs.inChannel()
+                ? (rs.type() == com.geogenesis.worldgen.river.RiverSegmentType.TRIBUTARY ? 3
+                    : (rs.type() == com.geogenesis.worldgen.river.RiverSegmentType.MOUTH ? 2 : 1))
+                : 0);
+            // ★ 2026-08-16 阶段 B：湖泊标记（LakeBuilder 洼地填水盆地）——
+            //   isLake（群系/逻辑）+ lakeMask（预览水文叠加通道）
+            boolean isLake = rivers.isLakeAt(wuX, wuZ);
+            cell.isLake = isLake;
+            cell.lakeMask = isLake;
+        }
 
         // tile 边界对称 4 向 blend + 角块双线性（2026-08-13 重新启用——上次试验参数未对齐
         // 作废：探针 ridge=2.0 vs 游戏 toml 0.75，hs 未参数化；现已全部对齐）。
@@ -943,9 +915,13 @@ public final class CellGenerator {
             ncz = tileCZ - ERODE_TILE_CENTER;
         }
         if (fx > 0 || fz > 0) {
-            ErosionTileResult tx = getOrGenTile(ncx, tileCZ);
-            ErosionTileResult tz = getOrGenTile(tileCX, ncz);
-            ErosionTileResult txz = getOrGenTile(ncx, ncz);
+            // ★ 2026-08-14 性能修复（用户"没做河流前不崩，现在老崩"）：
+            //   邻居 tile 用缓存优先（缺失不生成——d00 兜底已存在）。曾 getOrGenTile
+            //   → 每 chunk 256 格 × 3 邻居 = 数百次同步生成（400-719ms/个）→ 世界生成
+            //   慢到像崩溃。
+            ErosionTileResult tx = erosionTileCache.get(tileKey(ncx, tileCZ));
+            ErosionTileResult tz = erosionTileCache.get(tileKey(tileCX, ncz));
+            ErosionTileResult txz = erosionTileCache.get(tileKey(ncx, ncz));
             double d00 = delta;
             double d10 = tx != null ? sampleTileField(tx.delta, tx.originX, tx.originZ, wuX, wuZ) : d00;
             double d01 = tz != null ? sampleTileField(tz.delta, tz.originX, tz.originZ, wuX, wuZ) : d00;
@@ -1018,8 +994,25 @@ public final class CellGenerator {
                 return null; // 半成品（中断中止）不入缓存；InterruptedException 抛出时中断位已被清除
             }
             erosionTileCache.putIfAbsent(k, r); // 成功 = 完整 = 无条件缓存
+            // ★ 2026-08-14 OOM 修复：有界驱逐——ERODE_TILE_CACHE_SIZE=256 只是初始容量，
+            //   从未 prune（注释误称"常驻"）。玩家移动（视距 32）触发海量 tile 生成
+            //   （每个含 delta/discharge 大数组 ~128KB+）→ 无限累积 → OOM（日志 172 行
+            //   后停止、无堆栈）。超限删 1/8，删除后玩家回到该区域会重建（懒生成语义）。
+            pruneErosionCache();
         }
         return r;
+    }
+
+    /** 侵蚀 tile 缓存有界驱逐（超 256 删 1/8；ConcurrentHashMap 弱一致迭代删除线程安全） */
+    private void pruneErosionCache() {
+        if (erosionTileCache.size() > ERODE_TILE_CACHE_SIZE) {
+            var it = erosionTileCache.keySet().iterator();
+            int toRemove = Math.max(1, erosionTileCache.size() / 8);
+            for (int i = 0; i < toRemove && it.hasNext(); i++) {
+                it.next();
+                it.remove();
+            }
+        }
     }
 
     /**
@@ -1207,5 +1200,90 @@ public final class CellGenerator {
     ErosionTileResult getTileResult(int tileCX, int tileCZ) {
         return erosionTileCache.get(tileKey(tileCX, tileCZ));
     }
+
+    /**
+     * discharge 场采样（wu 语义）——供 RiverNetwork 构建河网路径用。
+     *
+     * <p>双线性插值侵蚀 tile 的 discharge 数组。**关键（2026-08-14 修复）**：
+     * tile 缺失时若侵蚀开启则<b>强制生成</b>（getOrGenTile，缓存幂等）——
+     * 曾用 getTileResult（只查缓存）→ 河网构建时 tile 未生成 → discharge 恒 0
+     * → 河流永远走"无 discharge 回退"分支 → 用户看到"路线没变化"。</p>
+     *
+     * @return discharge 值（侵蚀关闭 / 无数据 = 0）
+     */
+    /**
+     * discharge 场采样（wu 语义）——供 RiverNetwork 构建河网路径用。
+     *
+     * <p>★ 2026-08-14 三修：①48 对齐中心（曾用 128 网格错位 → discharge 恒 0）
+     * ②<b>缓存优先（缺失返回 0 不生成）</b>——曾 getOrGenTile 同步生成侵蚀 tile
+     * （670ms/个）→ 河网构建首 chunk 卡死 2-6s（日志 place=2183/4964/6576ms）
+     * ③null 防御（CancellationException → 0）。</p>
+     */
+    public double sampleDischarge(double wuX, double wuZ) {
+        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        ErosionTileResult r = erosionTileCache.get(tileKey(tileCX, tileCZ));
+        if (r == null) r = getOrGenTile(tileCX, tileCZ); // 探针/诊断：缺失生成（游戏路径用 cached 版）
+        // ★ 2026-08-14 null 防御：tile 生成被取消（CancellationException → getOrGenTile
+        //   返回 null）时返回 0——曾直接 r.discharge → NPE 中断 chunk 生成 → 河流雕刻被
+        //   跳过（用户"实际河道完全没变动"候选根因）
+        if (r == null) {
+            if (dischargeDiagCount.getAndIncrement() < 5) {
+                LOGGER.info("[RIVER-DIAG#{}] tile null tile=({},{}) thread={}",
+                    dischargeDiagCount.get() - 1, tileCX, tileCZ, Thread.currentThread().getName());
+            }
+            return 0;
+        }
+        if (r.discharge == null) {
+            if (dischargeDiagCount.getAndIncrement() < 5) {
+                LOGGER.info("[RIVER-DIAG#{}] discharge null tile=({},{}) erosionOn={} thread={}",
+                    dischargeDiagCount.get() - 1, tileCX, tileCZ, erosionEnabledDiag(),
+                    Thread.currentThread().getName());
+            }
+            return 0;
+        }
+        double v = sampleTileField(r.discharge, r.originX, r.originZ, wuX, wuZ);
+        // ★ 2026-08-14 诊断：前 5 次采样全打印（用 LOGGER——System.out 不写 latest.log，
+        //   用户日志无 DIAG 的根因）
+        if (dischargeDiagCount.getAndIncrement() < 5) {
+            float max = 0; long nz = 0;
+            for (float[] row : r.discharge) {
+                for (float f : row) {
+                    if (f > max) max = f;
+                    if (f > 0.01f) nz++;
+                }
+            }
+            LOGGER.info("[RIVER-DIAG#{}] sample=({},{})={} tile=({},{}) arrMax={} nz={} erosionOn={} thread={}",
+                dischargeDiagCount.get() - 1, wuX, wuZ, v, tileCX, tileCZ, max, nz,
+                erosionEnabledDiag(), Thread.currentThread().getName());
+        }
+        return v;
+    }
+
+    /**
+     * discharge 场采样（缓存优先，**不触发生成**）——游戏河网构建用（性能铁律：
+     * 生成版会同步生成侵蚀 tile 670ms/个 → 首 chunk 卡死 2-6s）。
+     * tile 未生成（如 applyTileDelta 尚未覆盖的区域）→ 0（无引导，走地形评分，可接受）。
+     */
+    public double sampleDischargeCached(double wuX, double wuZ) {
+        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        ErosionTileResult r = erosionTileCache.get(tileKey(tileCX, tileCZ));
+        if (r == null || r.discharge == null) return 0;
+        return sampleTileField(r.discharge, r.originX, r.originZ, wuX, wuZ);
+    }
+
+    /** 诊断：erosionEnabled 配置实际值（探针无 Forge 配置 → no-config） */
+    private static String erosionEnabledDiag() {
+        try {
+            GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+            return cfg == null ? "no-config" : String.valueOf(cfg.erosionEnabled.get());
+        } catch (Throwable t) {
+            return "no-config(" + t.getClass().getSimpleName() + ")";
+        }
+    }
+
+    /** ★ discharge 诊断计数（前 5 次采样打印） */
+    private static final java.util.concurrent.atomic.AtomicInteger dischargeDiagCount = new java.util.concurrent.atomic.AtomicInteger();
 
 }

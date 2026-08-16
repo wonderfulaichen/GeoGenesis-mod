@@ -67,9 +67,19 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - `RiverField` 内部按**世界坐标**语义工作（粗格点 `GRID` 间距取真实 `eLand`），`LongCache` 按粗格 tile 缓存河网，跨 block 无缝无 border 断点。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)` + `terrain.sampleHeight(wx,wz)`，高度/河流/湖泊/气候由引擎确定性产出。
 
-## 当前工作焦点（2026-07-13）
+## 当前工作焦点（2026-08-16）
 
-- **地形整体重写为地质过程范式（2026-07-13，阶段 1–3 完成）**：单一连续场 `e(x,z)`，大陆性 `c∈[0,1]` 单一连续噪声，海陆仅条件切分；海岸 `landW = smoother(clamp((cBiased-threshold)/(coastWidth*1.5)))` 做 C0 连续过渡；海洋深度由 `HeightCurve.eFromC` 样条控制点决定。阶段 1（统一场地形管线）+ 阶段 2（RiverField 粗格点河网 + 河谷刻蚀）+ 阶段 3（多营力局部侵蚀 ErosionSystem）均已编码并接线，BUILD SUCCESSFUL，`runClient`/`runPreview` 目检待做。详见 `ARCHITECTURE.md` / `docs/01-架构设计/01-地形重建设计-terrain-rebuild.md`。
+- **河流系统汇水分析驱动重构（2026-08-16，阶段 A–D 完成）**：废弃几何折线范式（R12–R22 的 `RiverBuilder2` 已标 @Deprecated），整体切换为**源头驱动 D8 追踪 + 树状汇入**：
+  - `FlowField`（D8 流向场：4wu 局部算子、tile 缓存、确定性，无 border 断裂）
+  - `FlowRiverBuilder`（主河 = 每 REGION 640wu 最高 3 候选 ≥80wu 门槛；支流 = REGION 源头池 + 径流门槛；汇入窗口 18wu 成树；入海/洼地终止）
+  - `LakeBuilder`（D8 洼地中心 BFS 盆地 + 溢出口封闭判定 + 湖盆雕刻）
+  - `GroundwaterField`（地下水位场：泉眼判定 + 暗河下潜段，喀斯特"河消失又出现"）
+  - 水量平衡（湿度场 → 源头径流门槛 0.08~0.25 → 干带河稀湿带河密，实测 10% vs 30%）
+  - 探针验证：主河 avg 165-196wu、贴谷 100%、单调 96-97%、湖 1-4、暗河 8-9%；BUILD SUCCESSFUL；`runPreview` 稳定 45s。详见 `DEV_REPORT.md` §10。
+  - **用户实测三轮修复（同日 §10.5）**：join 38-46% → **63-72%**（水面 Y 语义修正 + 高度条件 + 40wu 窗口）；sink 27-47% → **7-8%**（多尺度/远尺度绕行 + 纯几何停滞检测 + 网格锚定振荡根治）；100% 段有落差（avg 49 块）；主河 avg 493-576wu。
+  - **待办（阶段 E）**：Strahler 分级河宽；湖泊群系映射；瀑布跌水潭视觉验证；`runClient` 实机目检。
+
+- **地形整体重写为地质过程范式（2026-07-13，阶段 1–3 完成）**：单一连续场 `e(x,z)`，大陆性 `c∈[0,1]` 单一连续噪声，海陆仅条件切分；海岸 `landW = smoother(clamp((cBiased-threshold)/(coastWidth*1.5)))` 做 C0 连续过渡；海洋深度由 `HeightCurve.eFromC` 样条控制点决定。阶段 1（统一场地形管线）+ 阶段 2（RiverField 粗格点河网 + 河谷刻蚀）+ 阶段 3（多营力局部侵蚀 ErosionSystem）均已编码并接线，BUILD SUCCESSFUL。详见 `ARCHITECTURE.md` / `docs/01-架构设计/01-地形重建设计-terrain-rebuild.md`。
 
 - **气候 → 群系已接游戏**：世界按纬度温度 × 大陆性湿度 × 海洋/山峰标记分布多种原版群系（海洋/海滩/沙漠/森林/针叶林/雪原/雪峰等），不再单一 plains。已由 `runClient` 实机目检 OK。
 - **侵蚀系统已复活**：`worldgen/erosion/` 于 2026-07-13 重建为**局部算子框架**（`ErosionSystem` 编排 `Thermal`/`Coastal`/`Glacial`/`Wind`），已接入 `GeoGenesisTerrain.generateChunk`（侵蚀先于河流），无 flow-accumulation 的 border 断裂。旧粒子系统（2026-07-08 删除）的教训见下「侵蚀系统」段。
