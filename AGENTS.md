@@ -53,7 +53,15 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `worldgen/terrain/CellGenerator.java` | 统一连续场采样 + 实现 HeightProvider + 连续分类 |
 | `worldgen/terrain/LandShape.java` | 省权重(softmax) + 陆地过程形态（替代旧 StructuralField） |
 | `worldgen/terrain/HeightCurve.java` | 单条 cubic Hermite Spline：eFromC / heightFromE（非对称 e→Y） |
-| `worldgen/river/RiverField.java` | 世界坐标粗格点河网 + 河谷多级刻蚀 + LongCache |
+| `worldgen/river/RiverNetwork.java` | ★ RTF 范式河网门面（2026-08-26）：region(512wu) plate 缓存 + 采样合并 3×3 邻 region（结构性无缝）；`sampleRiver` 取「雕刻后地面最低」段（RTF min）；`waterTable(cAt 9 点模糊)` 纯函数水面 → 汇口零落差、无局部锯齿 | 
+| `worldgen/river/RTFRiverGenerator.java` | ★ 几何河网生成（RTF 移植）：root 沿随机角度走 e 场到海岸（`distanceToOcean`）→ 主河必到海；fork depth≤2 树状分叉 + 源点高于汇合点门控（100% 下坡）+ 下坡偏置；确定性（region 坐标+seed id） |
+| `worldgen/river/River.java` | 几何线段（RTF 移植）：法向/bbox/投影/相交 |
+| `worldgen/river/RiverWarp.java` | 确定性蜿蜒（种子化 simplex 噪声，端点淡出→段衔接连续） |
+| `worldgen/river/Network.java` / `Rivermap.java` | 河网树 + region 容器 |
+| `worldgen/river/RiverConfig.java` | RTF 式每级河参数 record（bedWidth/bedDepth/bankWidth/bankHeight/fade/valleySize + createFork） |
+| `worldgen/river/ValleyRiverCarver.java` | ★ RTF Zone1-4 平滑河谷雕刻：床/岸阶/谷底/淡出四段连续函数 + 只下挖不抬升（根治垂直崖/断床/悬河）；湖/河口按 waterTable 展宽 |
+| `worldgen/river/RiverCarver.java` | 雕刻薄门面：`carve(origHeight, rs, wx, wz)` 委托 ValleyRiverCarver；`CarvedColumn` 契约保留 |
+| `worldgen/river/RiverSample.java` | 采样 record（zone 半径 + waterTable 水面 + t + type） |
 | `worldgen/erosion/ErosionSystem.java` | 多营力局部侵蚀编排（Thermal/Coastal/Glacial/Wind） |
 | `worldgen/climate/Climate.java` | 温度/湿度数据载体（替代旧 BasicClimate/PreClimate） |
 
@@ -64,16 +72,65 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 当前 `GeoGenesisGenerator` **不再使用 tile 边界缓存**（旧的 `ERODE_TILE_*` / `TILE_*` / `chunkHeightCache` 等常量已随重构移除）。地形计算全部委托给 `GeoGenesisTerrain`：
 
 - `GeoGenesisTerrain` 内部 `TileCache`（256 tiles，30s TTL）缓存区域级 cell 网格，跨 chunk 共享，无 tile 边界断裂。
-- `RiverField` 内部按**世界坐标**语义工作（粗格点 `GRID` 间距取真实 `eLand`），`LongCache` 按粗格 tile 缓存河网，跨 block 无缝无 border 断点。
-- `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)` + `terrain.sampleHeight(wx,wz)`，高度/河流/湖泊/气候由引擎确定性产出。
+- `RiverNetwork.sampleRiver(wx,wz)` 按世界坐标纯函数采样，**按 REGION=512wu 分 plate 缓存（`RTFRiverGenerator.generateRivers` 确定性；`REGION_SIZE=512`）**；采样合并本 region + 8 邻 region 段集合 → 跨 region 结构性无缝。
+- **游戏雕刻路径（RTF 范式，2026-08-26）**：`GeoGenesisTerrain.generateChunk` 内 `applyRiverValley` 把河谷雕刻**回写 `cell.height`**（Zone1-4 平滑谷，预览/后续采样/落块一致）；`fillFromNoise` 不再二次雕刻，仅按 `rs.waterSurfaceY()` 灌水判定（`groundY < waterTop − 0.5`，Streams `isStreamBed`）。
+- `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)` + `terrain.sampleRiverAtBlock(wx,wz,cell.height)`，高度/河流/湖泊/气候由引擎确定性产出。
 
-## 当前工作焦点（2026-08-16）
+## 当前工作焦点（2026-08-26）
+
+- **★★★ 河流系统整体重构为 RTF 范式（2026-08-26 第四轮，未提交）**：用户「现在的河流完完全全有问题、非常多问题；河流是破坏性生成直接切地形；小溪不按现实物理走；我要模拟现实的河流」→ 放弃 D8 全追踪（前三轮全部取代），按 **FreeTerraForged（RTF）几何河网 + 河谷雕刻** 范式重写：
+  - **拓扑**（`RTFRiverGenerator`）：root 沿随机角度走 e 场到海岸 → **主河必到海**；fork depth≤2 树状分叉（起点钉父河中心线 → **支流必汇主河**）+ 源点高于汇合点门控 + 下坡偏置 → **100% 下坡、100% 树状汇流**。
+  - **雕刻**（`ValleyRiverCarver`）：**Zone1 河床 / Zone2 岸阶 / Zone3 谷底 / Zone4 淡出** 四段连续函数，`finalHeight = min(carved, origHeight)` 只下挖 → **根治垂直崖/河床断裂/悬河/破坏性切地形**。
+  - **水面**（`RiverNetwork.waterLevel`）：`waterTable = clamp(1 − cAt/COAST_C, 0, 1)` 纯位置函数 → **汇口零落差、无逐节点 jitter**；内陆略高于海、海岸贴海平面。
+  - **回写**：`GeoGenesisTerrain.generateChunk` 内 `applyRiverValley` 把河谷写回 `cell.height`（预览/采样/落块一致）；`fillFromNoise` 只按水面灌水。
+  - **验收**（`runRiverTopologyProbe`，双 seed 12345/777）：root 到海率 **100%**、fork 下坡率 **100%**、maxBedStep/maxWaterStep **<1.5**、bedJump>1.5 **=0**、dryRatio **0~3.5%**（仅浅支流源头）、冒烟 `runChunkBorderProbe` 通过。
+  - **清理**：删除 D8 全套（`FlowField`/`FlowRiverBuilder`/`RiverGrid`/`RiverNode`/`GroundwaterField`/`LakeBuilder`/`ProfileSmoother`/`FractalParams`/`RiverSegment`/`RiverCarveParams`）与 16 个失效探针任务；`RiverSample`/`RiverCarver`/`RiverPlate` 重写；配置段改 RTF 参数（rootCount/bedWidth/bedDepth/bankWidth/bankHeight/valleySize/fade）。
+  - **★ 整块漏雕（柱子）根治（2026-08-27）**：用户实测「河上出现一整块原地形柱子、两侧有河」。根因链：① `getChunkCells` 的 5×5 河网预热放在 `generateChunk`（含 `applyRiverValley`）**之后** → 首生成/远离河源 chunk 的 `sampleRiver` 在 carver 入缓存前调用，长河（可达 8000wu）carver 位于 chunk region 的 ±2~3，未预热 → 全列 NONE → 整块漏刻；② `prunePlates` 原在 `plateForRegion` 内、每次 `sampleRiver` 调 2304 次，迭代 `plates.values()` 前就把刚预热的 plate 驱逐 → 同理漏刻。修复：`getChunkCells` 预热**移到 `generateChunk` 前** + 半径提到 3（7×7 region，`PLATE_WARM_MAIN/TRIB=3`，RTF REGION=512wu 即 ±3×64=±192 chunk，覆盖跨区长河）；`prunePlates` 从 `plateForRegion` 移除、改 `sampleRiver` 遍历结束统一驱逐；`PLATE_CACHE_MAX` 512→4096 防长河多 plate 被挤。验收：用户 `runClient` 实测**无柱子**；诊断 `UNCARVED(real)`（收紧后 `riverCrossesChunk` 用点到河中心线真实距离 ~90wu 判断，取代原 550+120wu 粗 bbox）全部 `centerInChannel=false`（河岸外侧正常 chunk，非漏雕）→ 确证零真漏雕。
+  - **已知遗留**：浅支流源头 1~2 块干槽（dryRatio≈3%，物理自然）；`Network.overlaps`/`RiverConfig.length` 等少量未用 API；`runClient` 实机目检（河口喇叭/谷壁平滑/无悬水）待做；**整块漏雕（柱子）已根治（2026-08-27）**。
+
+- **★★ 河网范式定案：回归 D8 全追踪（2026-08-26 第三轮，已被第四轮 RTF 范式整体取代）**：用户质询「为什么每次都说按 DW 写、每次都不一样」→ 复盘承认根本错误：**DW 平原主河敢用纯几何线的前提是流体模拟自填水**（河道只挖槽）；本项目是预计算水面+灌水柱架构，几何河道不贴真实低地则水面悬空/位置荒谬——8-25 分形重写与 8-26 链式拓扑两度照搬不适合本架构的拓扑形式。8-16~24 的 D8 全追踪（实测贴谷 100%、树状汇流 63-72%）才是本架构唯一正确拓扑。本轮 = git HEAD 8-24 追踪核心全量移植 + 8-26 修复成果保留：
+  - **FlowRiverBuilder 重写**：主河层（REGION 512wu 内 16wu 栅格 e 最高 top3 候选 → D8 到海；≥80wu 门槛；候选路径相遇即汇入本 region 已生成主河——D8 谷线汇聚使平行重合段水面互斥，实锤 water 167↔124）；支流层（32wu 栅格源头池 + 湿度径流门槛 + e 降序 + 间距 ≥48 + 上限 60 → D8 追踪，joinTarget 距离 ≤8wu+不上坡+只向下游汇入 → 树状水系）。追踪核心含全部血泪修复：绕行多尺度/漫流锁定/入海冲刺/停滞检测（60 步净位移 <60wu 才算打转）/网格锚定防振荡。
+  - **水面语义回归旧版 PL-RGA**：`min(线性基线 surf0→surfN, 追踪 min 累积面)`——线性掩盖 D8 FAR 大步（一次跨 64wu）的 e 断崖（倾斜补偿方案实测失效 65 块），min 保证单调与贴谷下潜；再经 `ProfileSmoother.refine`（±2 平滑两遍 + 固定坡度上限端点保护夹逼——端点恒不动，入海口=海平面）。
+  - **宽度语义保留**：主河 baseW×0.75→×1.2 smoothstep 单调增；支流 2.2→min(6, 主河×0.85)——用户「大河宽小溪窄沿下游只增不减」。
+  - **blendConfluence 相容阈值 4→14**：同分水岭 top3 主河 surf0 因源头 e 差异天然差 10~15 块（heightFromE 样条陡峭段），±4 判互斥 → Voronoi 翻转断面（water 88↔101 实锤）；±14 覆盖源头高差组内软混合。
+  - **清理**：删除 `FractalRiverGenerator.java`/`TributaryTracer.java`/`RiverTopologyProbe.java`；`FractalParams` 提取为独立 record（配置层兼容）；RiverNetwork 移除 fractals/tributaries 字段。
+  - **验收**：dryRatio 4.33%/maxDryRun=3（历史最优）；纵剖面双 seed 大部分河段 maxDWater ≤3.5。已知遗留：①低源支流与高源主河路径重合被上坡门控阻止汇入 → 源头区个别断面（每 seed 1~2 处，均为细溪）；②支流纵剖面陡（山地急流本性）。
+
+- **★ 河网拓扑重构：DW 链式主河 + D8 支流追踪（2026-08-26 第二轮，已被第三轮取代）**：用户实测「路线完全不合理 / 各生成各的看不到其他河流」→ 深读 DW 双轨制后重构几何链式主河 + TributaryTracer 支流追踪；主河仍为几何线 → 与支流真实谷地系统空间错开（汇入率仅 17%），第三轮整体取代。
+  - **主河链（`FractalRiverGenerator` 重写）**：废弃边界锚点制（0~4 随机锚 + hash 序串联 = 路线折返乱走根源）。改为 DW 式「每 region 一个 hash 内点 + 一条出边连邻居同源点」→ 全网连通长链；链方向按两端 e 定向（低 e=下游）；**region 内点 = hash 5 候选取 e 最低**（贴谷选点，治「位置不合理」+ 提升支流汇入）；宽度起点 ×0.75→终点 ×1.2 smoothstep 单调增（用户语义：大河宽沿下游只增不减）。
+  - **支流追踪（新 `TributaryTracer`）**：hash 候选源点过滤（高地 e≥0.10、距主河 ≥24wu）→ `FlowField` D8 下坡步进（≤240 步×4wu）→ 命中主河（≤半宽+10wu，末端吸附中心线）/入海/洼地终止；步数耗尽时距主河 ≤160wu 直线延伸兜底吸附。宽度 2.2→min(6, 主河×0.85) 单调增（小溪语义）；水面与主河同源统一场（汇口零落差），经 `ProfileSmoother` 同一管线。
+  - **公共逻辑抽离**：水面剖面管线（全分辨率采样+湖钳制+±2 平滑两遍+坡度上限）提取为 `ProfileSmoother`，主河/支流共用；`clipToSegments/emitSegment` 泛化为裸折线数据，主支共用裁剪组装。
+  - **验收**（新探针 `runRiverTopologyProbe`）：主河端点衔接 65.7%（其余=链头源头端，函数图结构正确）；支流 0.5 条/region、17% 直接汇入主河、其余入海/入湖（水文正确）；宽度单调违例 0；ContinuityProbe dryRatio 3.0%（历史最优）。已知遗留：支流纵剖面陡（山地急流本性，endNeed 主导）；`mainChainSegments` 每次重建列表（可缓存）；支流间互汇未实现（需跨 region 缓存一致性方案）。
+
+- **★ 河流纵剖面断面根治（2026-08-26 第一轮）**：用户实测"又出现断面了"→ 深读 DW 11.1.2 反编译字节码（`参考/river/dynamicwaters-11.1.2/HydrologyManager.txt` getRiverCarve L3805-3964）后四根因修复：
+  - **DW 本质还原**：getRiverCarve = 密度场负偏移 `(smoothstep(d/w)−1)×4×fade(y)` 纯位置函数；jitter 仅作用水平距离；fade 作用在密度采样空间 Y（防切山），**不是地表高度**；无预计算水面（流体后处理填水）。本项目保留"预计算水面+灌水柱"架构，对齐其本质=雕刻量必须是水面的平滑纯位置函数。
+  - **根因1 水面锯齿**：节点水面用 4wu 低分辨率网格 `eAt` 插值 → 山地样条误差 10+ 块（实锤 maxWaterStep=12.56）。改 `FlowRiverBuilder` **region 级路径水面剖面缓存**：`rawE` 全分辨率采样 → 湖钳制（预载盆地列表，不触发懒建）→ ±2 节点对称平滑两遍 → 坡度上限夹逼；`clipToSegments` 仅索引切片，同一节点跨 tile 取值一致。
+  - **根因2 截面公式两份矛盾**：`rsFor` 抛物线 `1−(d/w)²`+噪声 vs `carve` smoothstep 并存。统一为 `channelTarget`=min(地形, waterY−bedDepth·(1−smoothstep(dJ/w)))，bedDepth=min(carveMaxDepth,0.9w)；rsFor 与 carve 同式（单一真相）；heightFade（语义错位）与 BED_FILL_CAP 回填硬切换（两分支最大 6 块跳变）整体删除。
+  - **根因3/4 选择翻转**：`blendConfluence` 旧版「最低水面组无条件霸占」丢弃不相容河心段 → 交叉区高低水面随机翻转（seed12345 实锤 109↔46 块跳）。改**组级稳定选择**：水面 ±4 聚类成层级组，terrainY 有效选最贴地形组（防悬河）/NaN 选最近组（稳定 Voronoi）。坡度上限按弧长归一 `max(0.06×spacing, |端点差|/(m−1))`——局部防锯齿 + 全局保端点落差可衔接（分形细分后节点间距仅 ~4.4wu，绝对上限会随细分漂移）。
+  - **验收**（新探针 `runRiverProfileProbe [-PprobeArgs=seed]`，恢复已删 QuickProbe 核心指标）：双 seed 最长 3 河 maxDWater≤0.50 / maxDBed≤1.35 / >1.5 跳变=0（修复前 12.56/12.44/7~14 次）；ContinuityProbe dryRatio 3.6% 不回退。已知遗留：淹没段 groundY=min(orig,bed)=orig 透出自然 V 谷陡坡（水柱连续，属地形形态非断面）；交叉区 Voronoi 边界单次水面阶跃（根治需构建期交叉消解，未来工作）。
+
+## 当前工作焦点（2026-08-24）
+
+- **⚠️ 工作区有大量未提交改动（动手前先看 `git status`）**：2026-08-22~24 河流雕刻/参数化/水位统一场/河口改造尚未提交。
+- **★ 河床连续性 + 入海修复（2026-08-24 第二轮，未提交）**：用户实测三问题（河底视角纵向断裂 / 该入海的河停在陆地 / 无入海口地形）→ 依据 RTF/DW/Streams 三参考深读结论修复：
+  - **河床深度与局部地形解耦**（`RiverCarver`，RTF carveZone1Riverbed 铁律）：旧 depthFactor/悬崖保护吃 relH(每列 origHeight) → 河床继承地表噪声逐列起伏 = 河底断裂根因。改为「绝对深度 × 流量因子 + 高岸平滑帽」（relH 从 carveMaxCliff 起 24 块 smoothstep 渐降到 25%），深度只依赖统一水面。carveSlopeFactor 不再驱动增益（字段保留兼容配置）。
+  - **滨海追踪不提前终止**（`trace()`）：60wu 停滞检查近海豁免；FAR_SCALES 近海改纯 argmin（内陆仍要求 −0.03 降深）；大尺度移动验收近海豁免。效果：主河最长 895→2411wu。
+  - **入海口喇叭 + 不收尖**：`taperedWidth` 加 estuary 因子（e→0⁺ 渐宽至 3×，纯 e 场确定性）；sink==0 的主河远端不做端点收口。⚠️ 喇叭使节点宽达段基准 3×——`sampleRiver` 两处段预筛余量已从 9× 提到 **20×**（不同步会剔掉喇叭岸坡 → inChannel 缺口，实锤过）。
+  - **支流汇口深度继承**（RTF createForkConfig 思想）：支流前 15% 弧长从父河当地实深（p.bedY−p.waterSurfaceY）渐变到自身深度，消除汇口跨段床面台阶。
+  - 参考结论备忘：RTF=几何线段网+二分钉海岸+waterTable 阶梯+地形抬升同函数+4 zone 谷底压平；DW=主河几何弦线+山地河地形追踪（阶梯阶地+瀑布≤4）、无河口逻辑海洋列跳过；Streams 新版=干流域恒西延+边界通海泄漏检测收口 Mouth、贝塞尔纵剖面+出口横断面复制接缝。
+- **★ 跨区断河根因修复：plate 自适应收集（2026-08-24 第三轮）**：旧 `buildPlate` 固定半径（支流 3×3/主河 5×5 region）下，长段远端节点落在收集半径外 → 该 plate 无此段 → sampleRiver NONE → 河道中段凭空消失（probe miss 连续 405 块历史实锤；滨海支流加入后 miss 3371 列）。改为「主河 ±6 / 支流 ±4 region + 段 bbox∩tile 过滤」（半径由最大迹长推导：600 步×4wu、400 步×4wu），内容=seed 纯函数保持确定性。**分层控成本**：外环只生成主河骨架（支流够不到远处 plate）；无差别 ±6 实测构建 154s→21 分钟不可接受，分层后单 tile 冷构建 ~210s。**预热对齐**：`warmRegionsAround(mainR,tribR)` 两半径重载，`GeoGenesisTerrain` 两处调用改 (6,4)，冷成本移入后台守护线程。**验证**：新探针 `RiverQuickProbe`（`gradlew runRiverQuickProbe [-PprobeArgs="seed tx tz"]`，~4min 冷）node continuity **17881/17881=100%**；全量 FlowRiverProbe 3.6 节已加 miss 海陆归因+坐标 dump。
+- **已知遗留（待实机目检决策）**：①长河纵向剖面仍有离散跳变（QuickProbe profile：maxBedStep≈12 块、bedJumps>3blk 7-14 次/河）——疑似穿湖盆进出（湖水面=溢出口 vs 河道统一场）与汇口融合翻转，若目检难看，候选修复=湖岸 shoreT 渐变湖面而非细胞集硬边界。②`t.surf[]` 追踪记录已无人消费待清理。
+- **★ 性能崩塌→定案（2026-08-24 第五轮，用户实测"远比之前差"+质询"确定性为何不等价于便宜"）**：根因链=滨海爬行拉长段→可见性需大半径→生成足迹爆炸（±6/±4 时冷 plate 210s、足迹 ~10×）。**教训：段长决定可见性半径决定生成成本，迹长是第一杠杆；参考项目（RTF/DW/Streams）又确定又便宜的本质是结构区域有界**。定案五件套：①迹长封顶 主河 `maxSteps 600→200`（≤800wu）/ 支流 `TRACE_TRIB_MAX 400→160`（≤640wu）；②收集半径 **主河 ±3 / 支流 ±2**（分层保留）；③**父河池 7×7→3×3**——父河池每扩一环主河有效半径跟扩一环（实测 STAT_MAIN_REGIONS 169→81→49）；④**节点构造期湖查询整体移除**（`lks[]` 钳制删除）：sampleRiver 湖优先已接管盆内水面语义，逐点 lakeAt 懒建占冷构建 68%（QuickProbe 分段计时实锤 98s/144.5s），删后归零；⑤预热对齐 (3,2)。**验收：单 tile 冷构建 210s→20.8s、continuity 100%、lakeAt 0ms**。支流密度随段短而降（tile 内 120→27 条），属预期。诊断工具：QuickProbe 分段计时 + 纵剖面 ASCII 三线图（'.'地形 '~'水面 '*'床）+ 贴谷度量。**第三步基线**：贴谷 fit 78.6%/86.4%（下一步追踪加谷线偏好项）；穿湖剖面跳变 ~12 块待 shoreT 渐变；discharge 驱动尺寸分级待汇流后处理设计。
+- **★ 方案 A：水位统一场（2026-08-24 第一轮）**：节点水面废除「追踪 min 单调 + surf0→surfN 线性插值 + 穿湖特判」三套来源，统一为纯位置函数 `fieldWaterY(x,z)=heightFromE(max(0,e))`（`FlowRiverBuilder`，主/支流共用）。同点同值 ⇒ 汇口零落差；湖面 = heightFromE(溢出口) 同源 ⇒ 湖口零落差；e→0⁺ 自动落海平面。**路径走向不变（连续方向 360° 追踪保留，D8 仅存于湖盆 BFS 与平坦逃生搜索）**；湖内仍钳 `max(surf, waterY)`（lks[] 数组在节点构造期一次查询，禁止放追踪步内——步内查湖触发 tile 懒建风暴是性能回归根因）。`t.surf[]` 追踪记录已无人消费（留待清理）。
+- **河流雕刻/支流参数化重构（2026-08-22~23，未提交）**：新增 `RiverCarveParams` record 收敛散落硬编码——支流分叉锚点间隔/RTF 式夹角窗口、DW MountainRiverPath 上坡容忍、最小支流长度、蛇曲幅度、谷深/谷宽系数、局部地形增益、深上限、悬崖保护、宽度锥形+沿程噪声；13 个参数入 `GeoGenesisConfig`「River Network」段（由 `RiverNetwork` 构造注入），独立预览无 Forge 配置走 `defaults()`。游戏雕刻改经 `terrain.carveRiver`；水体判定收紧为 `groundY < waterTop−0.5`。涉及 `FlowRiverBuilder`(±810 行)/`RiverNetwork`/`RiverCarver` 大改。
+- **湖优先采样 + 形态跟随真实洼地（2026-08-23）**：`sampleRiver` 开头湖优先短路（`LakeHit`=Basin+岸距 t）；湖形态 = D8 洼地 BFS 细胞集 + 多源 BFS shoreT smoothstep 剖面（圆盘半径判定已废除）；`RiverCarver` LAKE 分支置于低洼保持检查之前（深洼列干坑根因）；`LakeBuilder` 负坐标解包符号 bug 修复（`&0xFFFFFFFFL` 必须转回 int）。
 
 - **河流系统汇水分析驱动重构（2026-08-16，阶段 A–D 完成）**：废弃几何折线范式（R12–R22 的 `RiverBuilder2` 已标 @Deprecated），整体切换为**源头驱动 D8 追踪 + 树状汇入**：
   - `FlowField`（D8 流向场：4wu 局部算子、tile 缓存、确定性，无 border 断裂）
   - `FlowRiverBuilder`（主河 = 每 REGION 640wu 最高 3 候选 ≥80wu 门槛；支流 = REGION 源头池 + 径流门槛；汇入窗口 18wu 成树；入海/洼地终止）
   - `LakeBuilder`（D8 洼地中心 BFS 盆地 + 溢出口封闭判定 + 湖盆雕刻）
   - `GroundwaterField`（地下水位场：泉眼判定 + 暗河下潜段，喀斯特"河消失又出现"）
+  - **2026-08-23 plate 边界断裂修复**：`RiverNetwork.sampleRiver` 采样时合并本 plate + 8 邻 plate 段集合（原只查本 plate → 跨 plate 边界河段不被命中 → 沿 128wu 网格线出现整河深垂直崖）；对齐 Streams/SimpleHydrology 的跨块无缝思路。用户实测通过。
   - 水量平衡（湿度场 → 源头径流门槛 0.08~0.25 → 干带河稀湿带河密，实测 10% vs 30%）
   - 探针验证：主河 avg 165-196wu、贴谷 100%、单调 96-97%、湖 1-4、暗河 8-9%；BUILD SUCCESSFUL；`runPreview` 稳定 45s。详见 `DEV_REPORT.md` §10。
   - **用户实测三轮修复（同日 §10.5）**：join 38-46% → **63-72%**（水面 Y 语义修正 + 高度条件 + 40wu 窗口）；sink 27-47% → **7-8%**（多尺度/远尺度绕行 + 纯几何停滞检测 + 网格锚定振荡根治）；100% 段有落差（avg 49 块）；主河 avg 493-576wu。
@@ -120,6 +177,8 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 
 ## 河流系统重写 + 河流生命史特征（2026-07-10）
 
+> ⚠️ **本段为历史记录**：所述旧 `RiverField` 粗格点下坡汇流方案已废弃删除，现行河流系统是 `RiverNetwork`/`FlowRiverBuilder`/`RiverCarver`（见「架构速览」与「当前工作焦点」）。仅特征类型语义（溪源/山泉/源湖/瀑布/湖泊）仍沿用。
+
 把"地形与河流一体"落到实处：河流不再用旧 `Continent` 假高度 per-tile BFS，而是**由新地质过程地形 `eLand` 真实高度场驱动**（粗格点 `GRID` 下坡汇流 → 树枝状河网，天然顺地形排水入海，与海陆同源）。河床相对本地地形下切，刻蚀在 `CellGenerator.computeShape` 内、与海陆同一趟采样完成。
 
 **关键设计**
@@ -140,9 +199,15 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 
 **配置**：`TerrainParams` 河蚀参数 `riverBedDepth(0.08)/riverBankDepth(0.02)/riverBedWidthFrac/riverErosion/sourceLakeDepth/springPoolDepth/plungeDepth`；`RiverSettings` 河网几何 `riverGridSize(40)/riverMinWidth(2)/riverMaxWidth(10)/riverBedWidth/riverMinE/waterfallDrop/sourceLakeChance/sourceRadius`（运行期由 `GeoGenesisConfig`「River Network」段注入；独立预览暂用默认值）。详见 `DEV_REPORT.md` §7.10。
 
-## 调试开关
+## 调试开关与探针铁律
 
 `GeoGenesisGenerator` 无 tile 诊断开关（旧架构已移除）。预览相关开关见 `client/preview/PreviewDisplay`（真实进度 `renderProgress` / `done`）。
+
+探针 = `worldgen/**/*Probe.java` 独立 main 诊断工具（约 34 个，不启 MC）。改侵蚀/河流后必须跑对应探针验证，且：
+
+- **探针进程无 Forge 环境，配置恒为默认值**；用户在配置屏调过参数时，探针须解析 `run/config/geogenesis-common.toml` 才能复现游戏行为。
+- **邻居 tile 连带生成极慢**：用单 tile 直取的探针专用方法（如 `CellGenerator.getErosionTileResultForProbe`），勿走会 fire-and-forget 生成 8 邻居的常规入口。
+- Windows 下含中文的提交信息用 `git commit -F file.txt`（UTF-8），避免命令行转码问题。
 
 ## 已清理的废弃代码
 

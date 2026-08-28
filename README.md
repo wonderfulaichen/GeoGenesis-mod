@@ -8,6 +8,18 @@
 - **编译状态**：`BUILD SUCCESSFUL`（2026-07-11）
 - **待验证**：实机目检河谷蜿蜒度、海岸过渡、湖泊连续性
 
+## 河流系统与第三方许可
+
+河流生成核心（主河 `MeanderingPath` 分形二分折线 + 山地河 `MountainRiverPath` terrace 阶梯寻路 + 瀑布/峡谷横截面）为 **Dynamic Waters**（作者 AdamNew，Modrinth `dynamic-waters-realistic-flowing-rivers`，协议 **CC BY 4.0**）算法的 Java 移植。随机源替换为坐标派生确定性 Random 以满足本工程跨 block 无缝要求，并对 GeoGenesis 的 HeightCurve 尺度做了适配修改。
+
+依据 CC BY 4.0 要求：
+
+- **算法来源**：Dynamic Waters — Realistic Flowing Rivers (AdamNew)
+- **许可证**：知识共享署名 4.0 国际（CC BY 4.0）—— https://creativecommons.org/licenses/by/4.0/
+- **修改标注**：本实现含纯函数化 / 确定性随机 / 尺度适配修改，改动点见 `worldgen/river/` 下各文件头注释。
+
+另在算法层面借鉴 Streams（delvr，Farseek 生态）的跨区块剖面递归与单位化水位思想、Farseek 的横截面采样表与跌水潭。
+
 ## 核心命令
 
 ```bash
@@ -46,7 +58,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 │   │   ├── TerrainBlender.java         # 过程形态合成
 │   │   ├── HeightCurve.java            # 高度映射曲线
 │   │   ├── HeightProvider.java         # 高度提供接口
-│   │   ├── RiverField.java             # 河流系统（HydraulicErosion + priority-flood 湖泊）
+│   │   ├── RiverNetwork.java           # 河流系统门面（确定性几何河网，替代旧 RiverField）
 │   │   ├── HydraulicErosion.java       # 水滴侵蚀引擎
 │   │   ├── TileLakeSolver.java         # 湖泊求解器
 │   │   └── Cell.java / RiverSample.java / RiverRegion.java / TileCache.java

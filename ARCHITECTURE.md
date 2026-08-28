@@ -2,7 +2,7 @@
 
 > **本文档与当前代码同步（2026-07-13 更新）**。描述「鼓包范式 + 旧 droplet 侵蚀」的旧版（LandForms / TerrainType / Continent / TerrainBlender / HydraulicErosion / TileLakeSolver）已彻底废弃，请以本版为准。
 >
-> **✅ 当前进度（2026-07-13）**：地形引擎已整体重写为**地质过程范式**（单一连续场 `e(x,z)`，大陆性 `c` 是单一连续噪声，海陆仅是对同一场的条件切分）。阶段 1（统一场地形管线）、阶段 2（RiverField 粗格点河网 + 河谷刻蚀）、阶段 3（多营力局部侵蚀 ErosionSystem）**均已编码并接线**，BUILD SUCCESSFUL。气候→群系已接游戏（BiomeClassifier 按 `TerrainClass × Climate` 选原版群系）。`runClient`/`runPreview` 目检待做。
+> **✅ 当前进度（2026-07-13）**：地形引擎已整体重写为**地质过程范式**（单一连续场 `e(x,z)`，大陆性 `c` 是单一连续噪声，海陆仅是对同一场的条件切分）。阶段 1（统一场地形管线）、阶段 2（河谷刻蚀，原 `RiverField` 粗格点河网方案，已废弃）、阶段 3（多营力局部侵蚀 ErosionSystem）**均已编码并接线**，BUILD SUCCESSFUL。气候→群系已接游戏（BiomeClassifier 按 `TerrainClass × Climate` 选原版群系）。`runClient`/`runPreview` 目检待做。河流系统现行方案见下方「河流系统」章节（`RiverNetwork`/`FlowRiverBuilder`）。
 >
 > **⚠️ 已知不一致**：`GeoGenesisGenerator` 的世界高度（`WORLD_MIN_Y/MIN_Y`、`WORLD_MAX_Y/MAX_Y`、`SEA_LEVEL`）目前**硬编码**，`GeoGenesisConfig` 的 `World Height` 段（seaLevel/minY/maxY）**暂未驱动 generator**（仅注入 HeightCurve 做 e→Y 映射）。River / Erosion 参数当前仅代码 `defaults()`，**未暴露到 Forge Config**。
 
@@ -160,19 +160,22 @@ GeoGenesisBiomeSource.getNoiseBiome(x, y, z, sampler)
 - 调用约定：`GeoGenesisTerrain.generateChunk` 在采样之后、**河流刻蚀之前**调用 `erosion.apply`，避免侵蚀回填河谷。
 - v1 默认强度（见 `ErosionSettings.defaults()`）：Thermal/Coastal 生效，Glacial/Wind 弱或留桩。
 
-## 河流系统（RiverField 粗格点，2026-07-13）
+## 河流系统（RTF 范式：几何河网 + 河谷雕刻，2026-08-26 整体重构）
 
-`worldgen/river/` 重写，**由真实 `eLand` 高度场驱动**（与海陆同源，非旧假高度 per-tile BFS）：
+`worldgen/river/` 为 **RTF（FreeTerraForged）范式**：几何河网 + Zone1-4 平滑河谷雕刻 + `waterTable` 预计算水面。取代此前三轮 D8 全追踪（路线不合理/各流各的/河床断裂/破坏性切地形的全部根源）。
 
-- `CellGenerator implements HeightProvider`：`landHeight` 返回真实 e（海洋→NaN），注入 `RiverField` 下坡汇流。
-- `RiverField`：每 ~`gridSize`(默认 40) 块取一处陆地高度，对粗格点做 4 邻居下坡汇流 → 树枝状河网（±35% grid 抖动打散网格对齐伪影）；`LongCache` 按粗格 tile 缓存，确定性、跨 chunk 无缝。流量累积门控（`flowGate`）消除平坦区密集沟壑。
-- 多级刻蚀（`computeShape` 内，与海陆同一趟采样）：谷肩抬升 + 河床下切（U 形谷）+ 谷壁侵蚀扰动；源头分型雕源湖盆/山泉小潭，按 `isWaterfall` 雕跌水潭。
-- `apply(cell,x,z)`：刻蚀后 `terrainType=RIVER`、`riverFloorY/riverSurfaceY` 供 MC 灌水；海洋处保持 `OCEAN` 不走 `fillRiverColumn`（防破坏海洋水柱）。
-- 河流特征类型：溪源 / 山泉 / 源湖 / 瀑布 / 湖泊（闭流洼地由 lake 填充逻辑处理）。
+- **拓扑（`RTFRiverGenerator`，几何线段树）**：root 从 region 中心沿随机角度走 `terrainEQuick` 到海岸（`distanceToOcean`）→ 起点内陆 5%~50%、终点海岸 → **主河必到海**（构造保证）；fork 在父河 t∈[0.25,0.9] 分叉、夹角 ±FORK_ANGLE、长度 0.44×父长、源点高于汇合点门控（100% 下坡）+ 3 候选下坡偏置 → **树状汇流天然连通**。
+- **雕刻（`ValleyRiverCarver`，纯函数）**：`finalHeight = min(carved, origHeight)`，四段连续函数（`Zone1 河床 = water − depth×smoothstep(1−d²/w²)` / `Zone2 岸阶 = lerp(water, valleyFloor, smoothstep)` / `Zone3 谷底 = water + bankHeight` / `Zone4 淡出 = lerp(valleyFloor, origHeight, smoothstep)`）→ **根治垂直崖、河床断裂、悬河、破坏性切槽**。
+- **水面（`RiverNetwork.waterLevel`）**：`waterTable = clamp(1 − cAt/COAST_C, 0, 1)`（1=海岸）；`waterLevel = seaLevelY + rise×(1−waterTable)^1.5` —— 纯位置函数 → **汇口/湖口零落差、无逐节点 jitter**；海岸贴海平面、内陆平滑抬升。
+- **采样（`RiverNetwork.sampleRiver`）**：region(512wu) plate 缓存（`RTFRiverGenerator.generateRivers` 确定性）→ 合并本 region + 8 邻 region 段 → bbox 快筛 + warped 距离 → 取「雕刻后地面最低」段（RTF min 语义，重叠区深河胜出）。
+- **游戏落地**：`GeoGenesisTerrain.generateChunk` 内 `applyRiverValley` 把河谷雕刻**回写 `cell.height`**（预览/后续采样/落块一致）；`fillFromNoise` 只按 `rs.waterSurfaceY()` 灌水（`groundY < water − 0.5`，Streams `isStreamBed`）。
+- **湖/河口**：`lakeMultiplier`（waterTable 高 + 中游段）把 Zone1 展宽 1~2.6× → 近海岸平坦区湖式/河口喇叭（`RiverSegmentType.LAKE`，`isLakeAt` 判定）。
+
+> ⚠️ D8 追踪整套（`FlowField`/`FlowRiverBuilder`/`RiverGrid`/`RiverNode`/`GroundwaterField`/`LakeBuilder`/`ProfileSmoother`/`FractalParams`）与旧硬切雕刻已删除（2026-08-26）。参考：`参考/sources/FreeTerraForged/.../rivermap/`（BaseRiverGenerator/SimpleRiverGenerator/River/RiverWarp/UpliftRiverCarver/RiverConfig/RiverCarverSettings）。
 
 ## Configuration（`GeoGenesisConfig.COMMON`）
 
-> River / Erosion 参数当前仅代码 `defaults()`，**未暴露到本配置**。
+> River 参数由 `GeoGenesisConfig`「River Network」段暴露（2026-08-26 RTF 参数集），预览进程无 Forge 配置时走 `GeoGenesisTerrain` 构造默认值。
 
 | 段 | Key | 默认 | 说明 |
 |----|-----|------|------|
@@ -195,6 +198,14 @@ GeoGenesisBiomeSource.getNoiseBiome(x, y, z, sampler)
 | World Height | `seaLevel` | 63 | 海平面（Y） |
 | | `minY` | -64 | 世界底（Y） |
 | | `maxY` | 320 | 最大地形高度（Y） |
+| River Network | `riverEnabled` | true | 河网总开关 |
+| | `riverRootCount` | 6 | 每 512wu region 根河数（越大河网越密） |
+| | `riverBedWidth` | 6.0 | Zone1 河床半宽（块；主河，支流按分叉级缩放） |
+| | `riverBedDepth` | 3.0 | Zone1 河床深（水面以下块，沿下游单调加深） |
+| | `riverBankWidth` | 12.0 | Zone2 岸阶宽（块） |
+| | `riverBankHeight` | 1.5 | Zone2/3 谷底抬升（水面以上块，谷壁坡度） |
+| | `riverValleySize` | 40.0 | Zone3/4 谷幅（块；越大河谷越开阔、雕刻越柔和） |
+| | `riverFade` | 0.7 | 尺寸沿下游 t 取满值比例（源头窄浅） |
 
 > **配置同步铁律**：增删 `GeoGenesisConfig` 字段，必须同步 `TerrainParams(defaults)` + `GeoGenesisGenerator(configParams)` + `GeoGenesisConfigScreen.buildParams` + `run/config/geogenesis-common.toml`（改默认值后必须同步 toml，否则用户看不到变化）。
 
@@ -216,7 +227,7 @@ GeoGenesisBiomeSource.getNoiseBiome(x, y, z, sampler)
 ## Performance Notes
 
 - 地形引擎 chunk 级缓存：`GeoGenesisTerrain` 按 chunk 网格（16×16）缓存 `Cell[]`（256 上限，LRU 半清），跨 chunk 共享，无 tile 边界断裂。
-- `ErosionSystem`（pad=2 邻域）与 `RiverField`（world 坐标 LongCache）均为确定性、跨 chunk 无缝，热路径无注册表查找。
+- `ErosionSystem`（pad=2 邻域）确定性、跨 chunk 无缝；`RiverNetwork`（世界坐标纯函数 + 跨 9 邻 plate 合并查询）确定性、跨 chunk 无缝，热路径无注册表查找。
 - 预览 `getRegionCells` 直接采样 `CellGenerator`（纯 Java，不启动 MC），复用与游戏同一套地形逻辑。
 
 ## 参考项目（World-Preview-TFC）
