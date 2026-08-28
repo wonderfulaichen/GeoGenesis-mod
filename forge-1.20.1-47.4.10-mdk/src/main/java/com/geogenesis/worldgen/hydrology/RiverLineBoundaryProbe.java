@@ -81,8 +81,10 @@ public final class RiverLineBoundaryProbe {
             var cols = HydrologyBlockCarver.carveChunk(engine, cx, cz, horizontalScale, g);
             for (int lz = 0; lz < 16; lz++) {
                 for (int lx = 0; lx < 15; lx++) {
-                    HydrologyBlockCarvedColumn c0 = cols.get(lz * 16 + lx);
-                    HydrologyBlockCarvedColumn c1 = cols.get(lz * 16 + lx + 1);
+                    // 按世界坐标查找（carveChunk 仅返回含河采样列，列表非 256 满索引）
+                    HydrologyBlockCarvedColumn c0 = at(cols, cx * 16 + lx, cz * 16 + lz);
+                    HydrologyBlockCarvedColumn c1 = at(cols, cx * 16 + lx + 1, cz * 16 + lz);
+                    if (c0 == null || c1 == null) continue;
                     if (c0.erosion() <= 0 && c1.erosion() <= 0) continue;
                     smoothPairs++;
                     double dCarve = Math.abs(c0.carvedGroundY() - c1.carvedGroundY());

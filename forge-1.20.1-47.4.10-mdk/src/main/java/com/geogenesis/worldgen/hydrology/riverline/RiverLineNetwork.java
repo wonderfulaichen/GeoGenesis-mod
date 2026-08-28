@@ -493,24 +493,27 @@ public final class RiverLineNetwork {
     public List<RiverLineHit> sampleAll(double wx, double wz) {
         int rx = floorDiv(wx, params.regionSize());
         int rz = floorDiv(wz, params.regionSize());
-        List<RiverLineHit> hits = new ArrayList<>(4);
+        List<RiverLineHit> hits = new ArrayList<>();
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {
                 RiverLineRegion r = region(rx + dx, rz + dz);
                 if (!r.hasWater()) continue;
-                RiverLineHit hit = sampleRegion(r, wx, wz);
-                if (hit != null) hits.add(hit);
+                hits.addAll(sampleRegion(r, wx, wz));
             }
         }
         hits.sort((a, b) -> Double.compare(a.distToCenter(), b.distToCenter()));
         return hits;
     }
 
-    /** 单 region 上的最近命中：河线段 + 湖泊节点取最近（沿线/点插值 surface/width/depth）。 */
-    private RiverLineHit sampleRegion(RiverLineRegion r, double wx, double wz) {
-        double bestDist2 = Double.POSITIVE_INFINITY;
-        int bestRi = -1, bestSeg = -1;
-        double bestT = 0;
+    /**
+     * 单 region 上 valley 半径内"每段独立命中"列表（供雕刻器 smooth-min 合并，
+     * 根治属主在段间切换产生的放射折痕）。仅保留 dist ≤ valleyReach 的段——
+     * 其 carve 才可能非零，远处段不影响 smin（carve=original）。
+     */
+    private List<RiverLineHit> sampleRegion(RiverLineRegion r, double wx, double wz) {
+        List<RiverLineHit> out = new ArrayList<>();
+        double bankFactor = params.bankFactor();
+        double bestRiverDist = Double.POSITIVE_INFINITY;   // 最近河段距离（含 valley 外的）
         for (int ri = 0; ri < r.rivers.size(); ri++) {
             RiverPolyline pl = r.rivers.get(ri);
             List<MidpointDisplacement.Node> line = Arrays.asList(pl.nodes);
@@ -524,34 +527,36 @@ public final class RiverLineNetwork {
                 t = NoiseUtil.clamp(t, 0.0, 1.0);
                 double px = a.x() + abx * t, pz = a.z() + abz * t;
                 double dx = wx - px, dz = wz - pz;
-                double d2 = dx * dx + dz * dz;
-                if (d2 < bestDist2) { bestDist2 = d2; bestRi = ri; bestSeg = i; bestT = t; }
+                double dist = Math.sqrt(dx * dx + dz * dz);
+                bestRiverDist = Math.min(bestRiverDist, dist);
+                double f = i + t;
+                int i0 = (int) Math.floor(f), i1 = Math.min(i0 + 1, line.size() - 1);
+                double surface = lerp(pl.surfaceY[i0], pl.surfaceY[i1], t);
+                double width = lerp(pl.width[i0], pl.width[i1], t);
+                double depth = lerp(pl.depth[i0], pl.depth[i1], t);
+                double valleyReach = Math.max(width * (1.0 + bankFactor), width * 3.0);
+                if (dist <= valleyReach) {
+                    out.add(new RiverLineHit(dist, surface, width, depth,
+                            r.dischargeArea, r.outletOcean, false));
+                }
             }
         }
-        // 湖泊节点：距湖节点最近者参与比较（PL-RGA outlet_local_minimum）
-        double lakeDist2 = Double.POSITIVE_INFINITY;
-        double lakeH = 0.0;
-        for (RiverLineRegion.LakeNode ln : r.lakes) {
-            double d2 = (wx - ln.x) * (wx - ln.x) + (wz - ln.z) * (wz - ln.z);
-            if (d2 < lakeDist2) { lakeDist2 = d2; lakeH = ln.height; }
+        // 湖泊：影响范围内、且比最近河段更近才纳入（保持旧"湖/河竞争"语义；远处湖 carve≈original 无副作用）
+        if (!r.lakes.isEmpty()) {
+            double lakeDist2 = Double.POSITIVE_INFINITY;
+            double lakeH = 0.0;
+            for (RiverLineRegion.LakeNode ln : r.lakes) {
+                double d2 = (wx - ln.x) * (wx - ln.x) + (wz - ln.z) * (wz - ln.z);
+                if (d2 < lakeDist2) { lakeDist2 = d2; lakeH = ln.height; }
+            }
+            double lakeDist = Math.sqrt(lakeDist2);
+            if (lakeDist <= params.lakeRadius() + params.lakeFadeDist()
+                    && lakeDist <= bestRiverDist) {
+                out.add(new RiverLineHit(lakeDist, lakeH, params.lakeRadius(),
+                        params.minDepth(), r.dischargeArea, false, true));
+            }
         }
-        // 湖更近且在影响范围内 → 返回湖命中
-        if (!r.lakes.isEmpty() && lakeDist2 <= bestDist2) {
-            double dist = Math.sqrt(lakeDist2);
-            if (dist > params.lakeRadius() + params.lakeFadeDist()) return null;
-            return new RiverLineHit(dist, lakeH, params.lakeRadius(), params.minDepth(),
-                    r.dischargeArea, false, true);
-        }
-        if (bestSeg < 0) return null;
-        RiverPolyline pl = r.rivers.get(bestRi);
-        List<MidpointDisplacement.Node> line = Arrays.asList(pl.nodes);
-        double dist = Math.sqrt(bestDist2);
-        double f = bestSeg + bestT;
-        int i0 = (int) Math.floor(f), i1 = Math.min(i0 + 1, line.size() - 1);
-        double surface = lerp(pl.surfaceY[i0], pl.surfaceY[i1], bestT);
-        double width = lerp(pl.width[i0], pl.width[i1], bestT);
-        double depth = lerp(pl.depth[i0], pl.depth[i1], bestT);
-        return new RiverLineHit(dist, surface, width, depth, r.dischargeArea, r.outletOcean, false);
+        return out;
     }
 
     /**

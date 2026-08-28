@@ -93,7 +93,9 @@ public record RiverLineParams(
     /** 河高混合回地形幂次（PL-RGA RIVER_BLEND_EXP=1.5）。 */
     double blendExp,
     /** 最小下坡量：邻居须严格低于此才连边/汇入（PL-RGA RIVER_MIN_DROP）。 */
-    double minDrop
+    double minDrop,
+    /** smooth-min 合并宽度（block）：逐段 carve 经此宽度 C1 过渡，根治属主切换放射折痕。 */
+    double smoothMinK
 ) {
     public static RiverLineParams defaults() {
         return new RiverLineParams(
@@ -134,7 +136,8 @@ public record RiverLineParams(
             100.0,                   // lakeFadeDist（湖高淡出距 wu）
             100.0,                   // heightBlendDist（多河 IDW 混合半径 wu）
             1.5,                     // blendExp（河高混合回地形幂次）
-            1e-6                     // minDrop（最小下坡量）
+            1e-6,                    // minDrop（最小下坡量）
+            4.0                      // smoothMinK（smooth-min 合并宽度 block）
         );
     }
 
