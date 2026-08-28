@@ -53,8 +53,6 @@ public record RiverLineParams(
     double gridCell,
     /** 下坡追踪最大步数（防洼地/平地死循环兜底）。 */
     int maxTraceSteps,
-    /** 宽度/深度面积驱动的对数动态范围：汇流面积达 riverAccumThreshold×此值 时宽度到 max。 */
-    double areaLogRange,
     /** 源点最小 e：仅高于此 e 的格可作为河源。0.40 为 a7a8d68 基线（山溪发源，低地由下游覆盖）；
      *  调低（如 0.20）可让平原/低地也出河（option A，用户要求更多河）。 */
     double sourceMinE,
@@ -95,7 +93,20 @@ public record RiverLineParams(
     /** 最小下坡量：邻居须严格低于此才连边/汇入（PL-RGA RIVER_MIN_DROP）。 */
     double minDrop,
     /** smooth-min 合并宽度（block）：逐段 carve 经此宽度 C1 过渡，根治属主切换放射折痕。 */
-    double smoothMinK
+    double smoothMinK,
+    // ===== 下游水力几何（2026-08-29 宽深改革）=====
+    /** 宽度参考汇流面积（wu²）：宽度映射的原点，即"宽度 = minWidth"时所对应的汇流面积。
+     *  ★ 必须与 riverAccumThreshold（成河门槛）解耦——旧实现把门槛当宽度原点，
+     *    导致调密度（降门槛）时全河宽度整体平移，无法独立标定。默认 = gridCell²（单格面积）。 */
+    double widthAreaRef,
+    /** 河宽-汇流面积幂指数 bW：W ∝ A^bW（Leopold-Maddock 下游水力几何 b≈0.5，
+     *  本项目取 0.42 以压缩超大汇流的宽度爆炸）。幂律不会像 smoothstep 那样中段饱和。 */
+    double widthExp,
+    /** 河深-汇流面积幂指数 bD：D ∝ A^bD（LM 水力几何 f≈0.4）。
+     *  bD < bW 使宽深比 W/D ∝ A^0.02 随下游缓慢增大（下游更宽浅）。 */
+    double depthExp,
+    /** 宽深比护栏：D ≤ maxDepthRatio × W。防止窄而极深的非物理断面。 */
+    double maxDepthRatio
 ) {
     public static RiverLineParams defaults() {
         return new RiverLineParams(
@@ -105,10 +116,10 @@ public record RiverLineParams(
             96.0,                    // anchorSnapRadius（旧锚点用）
             12.0,                    // anchorSnapStep（旧锚点用）
             40.0,                    // valleyBiasAmp（旧贴谷用）
-            3.0,                     // minWidth（半宽 block）★加宽：源头也有可见水面
-            8.0,                     // maxWidth（半宽 block，海口宽河）
-            2.5,                     // minDepth（block）★加深：满足 carved<水面−0.5 灌水门控
-            7.0,                     // maxDepth（block）
+            1.75,                    // minWidth（半宽 block）★全宽 3.5 block = 小溪档
+            10.0,                    // maxWidth（半宽 block）★全宽 20 block = 大河档
+            1.6,                     // minDepth（block）★保证小溪水面宽 ≥1.33 block，灌水门控稳定命中
+            8.0,                     // maxDepth（block）
             2.5,                     // bankFactor
             0.30,                    // fadeHighE（已弃用）
             0.10,                    // fadeLowE（已弃用）
@@ -118,12 +129,12 @@ public record RiverLineParams(
             1.0,                     // mountainScale（=1.0：恒等，原始 e，匹配 a7a8d68 基线河位）
             24.0,                    // gridCell（D8 采样分辨率）
             512,                     // maxTraceSteps
-            64.0,                    // areaLogRange
-            0.20,                    // sourceMinE（option A：低地也出河，河网更密）
-            3,                       // sourceSpacingCells（≈72wu 间距，加密源点→河网更密）
+            0.12,                    // sourceMinE（下探到低地/山坡：汇流面积小 → 产出小溪；
+                                     //  原 0.20 使源点只聚集在少数高地，互相 claimed 阻断，密度上不去）
+            1,                       // sourceSpacingCells（≈72wu 间距，加密源点→河网更密）
             2,                       // traceStep（下坡窗口 2 格）
             3,                       // minRiverNodes
-            2000.0,                  // riverAccumThreshold（wu²）
+            200.0,                   // riverAccumThreshold（wu²）
             0.5,                     // slopeDrop（block：源端缓降）
             2.5,                     // bankWidth（河谷壁系数 ×半宽）
             1.5,                     // valleyExp（谷壁陡缓）
@@ -137,7 +148,11 @@ public record RiverLineParams(
             100.0,                   // heightBlendDist（多河 IDW 混合半径 wu）
             1.5,                     // blendExp（河高混合回地形幂次）
             1e-6,                    // minDrop（最小下坡量）
-            4.0                      // smoothMinK（smooth-min 合并宽度 block）
+            4.0,                     // smoothMinK（smooth-min 合并宽度 block）
+            576.0,                   // widthAreaRef（= gridCell²=24²，单格汇流面积）
+            0.42,                    // widthExp（W ∝ A^0.42）
+            0.40,                    // depthExp（D ∝ A^0.40）
+            0.9                      // maxDepthRatio（宽深比护栏 D ≤ 0.9W）
         );
     }
 

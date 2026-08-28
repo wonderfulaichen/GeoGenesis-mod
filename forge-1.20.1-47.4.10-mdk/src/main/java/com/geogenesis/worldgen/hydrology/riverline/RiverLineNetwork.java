@@ -29,6 +29,26 @@ public final class RiverLineNetwork {
 
     private static final int MAX_REGIONS = 256;
 
+    /**
+     * 诊断计数器：防交叉检测的"段比较"总次数（性能诊断用）。
+     *
+     * <p>{@link #segmentCrossesAny} 对全部已有段做线性扫描，是河网构建的 O(n²) 热点。
+     * 单元尺度放大后段数暴涨，该值决定是否需要空间索引（见 platewiseregions 加速结构）。
+     * 生产路径开销仅一次 addAndGet。</p>
+     */
+    private static final java.util.concurrent.atomic.AtomicLong CROSS_COMPARISONS =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /** 防交叉段比较总次数（自上次 reset 起）。 */
+    public static long crossComparisons() {
+        return CROSS_COMPARISONS.get();
+    }
+
+    /** 清零防交叉计数器（探针对比前后使用）。 */
+    public static void resetCrossComparisons() {
+        CROSS_COMPARISONS.set(0);
+    }
+
     private final Map<Long, RiverLineRegion> regions = new ConcurrentHashMap<>();
     /** 选线/贴谷用轻量 e 场（terrainEQuick，纯噪声基础场，无侵蚀 tile 依赖 → 无递归风险）。 */
     private final MidpointDisplacement.ElevationSampler eSampler;
@@ -171,8 +191,6 @@ public final class RiverLineNetwork {
             int m = out.cells.size() - start;
             MidpointDisplacement.Node[] nodes = new MidpointDisplacement.Node[m];
             double[] rawSurf = new double[m], wid = new double[m], dep = new double[m];
-            double logRange = Math.log(Math.max(2.0, params.areaLogRange()));
-            double logMin = Math.log(Math.max(1.0, params.riverAccumThreshold()));
             double acc = 0.0;
             for (int k = 0; k < m; k++) {
                 int idx = out.cells.get(start + k);
@@ -180,11 +198,8 @@ public final class RiverLineNetwork {
                 double a = field.accumAt(idx);
                 nodes[k] = new MidpointDisplacement.Node(wx, wz);
                 rawSurf[k] = groundYAt(wx, wz);
-                double t = NoiseUtil.saturate(
-                        (Math.log(Math.max(params.riverAccumThreshold(), a)) - logMin) / logRange);
-                double growth = t * t * (3.0 - 2.0 * t);
-                wid[k] = params.minWidth() + (params.maxWidth() - params.minWidth()) * growth;
-                dep[k] = params.minDepth() + (params.maxDepth() - params.minDepth()) * growth;
+                wid[k] = widthFromAccum(a, params);
+                dep[k] = depthFromAccum(a, wid[k], params);
                 acc = Math.max(acc, a);
             }
             double[] surf = applyRiverHeightSlopeDrop(rawSurf, out.reachedOcean, curve, params);
@@ -419,6 +434,9 @@ public final class RiverLineNetwork {
 
     /** 河段 (ax,ay)-(bx,by) 是否与已有段集合任一相交（_segmentsCross）。 */
     private static boolean segmentCrossesAny(int ax, int ay, int bx, int by, List<int[]> segs) {
+        // 诊断：按"扫描规模"计数量化 O(n²) 热点（实际比较数因短路更少，
+        // 但空间索引要消除的正是这个线性扫描规模）。
+        CROSS_COMPARISONS.addAndGet(segs.size());
         for (int[] s : segs) {
             if (segmentsCross(ax, ay, bx, by, s[0], s[1], s[2], s[3])) return true;
         }
@@ -467,6 +485,36 @@ public final class RiverLineNetwork {
      */
     private double groundYAt(double wx, double wz) {
         return curve.heightFromE(eSampler.eAt(wx, wz));
+    }
+
+    // ===== 下游水力几何（2026-08-29 宽深改革）=====
+
+    /**
+     * 河宽：W = minWidth × (A / A_ref)^bW，钳制到 maxWidth。
+     *
+     * <p>依据 Leopold-Maddock 下游水力几何 W ∝ Q^b（b≈0.5）、Q ∝ 汇流面积 A，
+     * 本项目取 bW=0.42 以压缩超大汇流的宽度爆炸。</p>
+     *
+     * <p><b>★ 与成河门槛解耦</b>：宽度原点为独立的 {@link RiverLineParams#widthAreaRef()}，
+     * 而非 {@link RiverLineParams#riverAccumThreshold()}。旧实现把两者绑死
+     * （t = (logA − log A0)/log range，A0 即门槛），导致调河网密度时全河宽度整体平移。
+     * 幂律也不会像 smoothstep 那样在中段饱和，沿程保持连续渐变。</p>
+     */
+    private static double widthFromAccum(double accum, RiverLineParams p) {
+        double ratio = Math.max(1.0, accum) / Math.max(1.0, p.widthAreaRef());
+        return Math.min(p.maxWidth(), p.minWidth() * Math.pow(ratio, p.widthExp()));
+    }
+
+    /**
+     * 河深：D = minDepth × (A / A_ref)^bD，钳制到 maxDepth，再受宽深比护栏 D ≤ 0.9W 约束。
+     *
+     * <p>bD(0.40) &lt; bW(0.42) 使宽深比 W/D ∝ A^0.02 随下游缓慢增大（下游更宽浅，符合真实河流）。
+     * 护栏防止窄而极深的非物理断面。</p>
+     */
+    private static double depthFromAccum(double accum, double width, RiverLineParams p) {
+        double ratio = Math.max(1.0, accum) / Math.max(1.0, p.widthAreaRef());
+        double d = Math.min(p.maxDepth(), p.minDepth() * Math.pow(ratio, p.depthExp()));
+        return Math.min(d, p.maxDepthRatio() * width);
     }
 
     // ===== 距离场采样 =====
