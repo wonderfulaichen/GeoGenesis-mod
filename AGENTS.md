@@ -83,7 +83,23 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **游戏雕刻路径（RTF 范式，2026-08-26）**：`GeoGenesisTerrain.generateChunk` 内 `applyRiverValley` 把河谷雕刻**回写 `cell.height`**（Zone1-4 平滑谷，预览/后续采样/落块一致）；`fillFromNoise` 不再二次雕刻，仅按 `rs.waterSurfaceY()` 灌水判定（`groundY < waterTop − 0.5`，Streams `isStreamBed`）。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)` + `terrain.sampleRiverAtBlock(wx,wz,cell.height)`，高度/河流/湖泊/气候由引擎确定性产出。
 
-## 当前工作焦点（2026-08-29）
+## 当前工作焦点（2026-08-29 河网小溪/宽深/分支，提交 72d74eb + 006d0a6）
+
+- **★ 小溪生成 + 宽深沿程连续变化（72d74eb）**：用户反馈"河流都是大河、没有小溪、宽深无变化"。
+  - **三个初始假设全被实测推翻**（新探针 `runRiverLineWidthProbe`）：宽度饱和仅 7.93%（非主因）；河长均值 226wu 远小于 regionSize 640wu（河未被 region 切断，"单元尺度对齐 PL-RGA 板块"方案取消）；防交叉仅 606 次比较/region（"河段空间索引"方案取消）。
+  - **真因 1（宽度）**：宽度映射与成河门槛耦合——旧式 `t=(logA−logA0)/logRange` 的 A0 直接取 `riverAccumThreshold`，降门槛调密度会让全河宽度整体平移（实测 t 平移 +0.553）。
+  - **真因 2（密度）**：追踪成功的河被 `riverAccumThreshold=2000`（≈3.5 格汇流）裁掉源头后不足 `minRiverNodes=3` 则 `continue` **静默丢弃，连 rolledBack 都不计**——45 候选源/region 只产出 1 条河。
+  - **修复**：宽深改 Leopold-Maddock 下游水力几何幂律（`widthFromAccum`/`depthFromAccum`，bW=0.42/bD=0.40，幂律无中段饱和）；新增 `widthAreaRef`（=gridCell²）独立宽度原点与门槛解耦 + `maxDepthRatio` 宽深比护栏；移除死参数 `areaLogRange`。参数重标定：minWidth 3.0→1.75（全宽 3.5 block 小溪）、maxWidth 8→10（全宽 20 block）、minDepth 2.5→1.6（保小溪水面 3 列灌水）、maxDepth 7→8、riverAccumThreshold 2000→200、sourceSpacingCells 3→1、sourceMinE 0.20→0.12。
+  - **效果**：半宽 1.75~10.0 连续铺满 10 档（旧 31% 挤最高档），head→tail 1.96→6.07，河数 26→85。
+- **★ 分支层级修复（006d0a6）**：用户澄清"没有小溪"真义 = 树状水系缺高阶分支（分支的分支）。
+  - **根因**：`build()` 发源循环中 `accepted.add(s)` 在 `traceRiver` **之前**执行，回滚的源仍占据 `sourceSpacingCells` 间距槽位，连带过滤掉周围全部候选——一次失败追踪杀死一片潜在支流。修复：仅成功成为河的源才占槽。
+  - **新增 Strahler 式层级**：`RiverPolyline.level`（1=干流，n+1=汇入 n 级河）+ 构建期 `levelAt[]` 传递；探针输出层级直方图。
+  - **效果**：河数 85→109，层级 **level1=55 / level2=44 / level3=10**（二级支流成型），joined 293→453。
+  - **验收**：`runFlowAccumProbe` reachedOcean 48/48 (100%)、profile/gate/border violations 0（border 除外）、coldMs 1849 不升。
+  - **已知遗留**：border.maxSurfaceDelta 1.209→1.839、border.violations 0→**2**（容差 1.5，发生率 1.6e-7）——分支增多后穿出 region 边界的河段（19.27%）暴露"跨 region 水面无继承"既有范式遗留，实机不可见，未引入跨 region 继承机制，status=REVIEW 与历史基线一致。
+  - **待做**：用户 runClient 实机目检（小溪可见/有水、宽深渐变、分支的分支）；可选打磨：源头渐入（headwater taper）、宽度沿程单调化、蜿蜒振幅/波长挂钩河宽。
+
+## 当前工作焦点（2026-08-29 旧格点水文清理）
 
 - **★ 旧格点水文整体移除（2026-08-29）**：用户实机确认河系正常后，清理与当前生产路径（`GeoGenesisTerrain → HydrologyChunkEngine → HydrologyExperimentEngine + HydrologyBlockCarver`，河网由 `riverline/`+`flowaccum/` 的 D8 汇流场派生）无关的旧格点水文集群。
   - **删除 38 文件**：核心 8（`HydrologySimulator`/`HydrologyRiverAdapter`/`HydrologyCarver`/`RiverNetworkExtractor`/`HydrologyCarvedCell`/`HydrologyGrid`/`HydrologyContinuityAnalyzer`/`HydrologyResult`）+ 旧格点基础设施 7（`HydrologyAscii`/`HydrologyDiagnostics`/`DrainageResolver`/`FlowDirectionSolver`/`RunoffAccumulator`/`RiverWaterSolver`/`RiverProfileSolver`）+ 旧值类型 7（`HydrologyMetrics`/`RiverWaterProfile`/`RiverProfile`/`RiverCrossSection`/`HydrologyContinuityMetrics`/`RiverNetworkSummary`/`RiverSegment`）+ 旧探针 16（`HydrologyProbe`/`HydrologyContinuityProbe`/`HydrologyConfluenceProbe`/`HydrologyTerrainFitProbe`/`HydrologyLongitudinalProbe`/`HydrologyMultiSeedProbe`/`HydrologyWorstCaseProbe`/`HydrologyCrossSectionProbe`/`HydrologyMultiscaleFitProbe`/`HydrologyWaterDiagProbe`/`HydrologyRegionProbe`/`HydrologyAdapterProbe`/`HydrologyCarverProbe`/`RiverWaterProbe`/`RiverProfileProbe`/`HydrologyAcceptanceReport`）。
