@@ -1,59 +1,68 @@
-# GeoGenesis 交接文档（2026-08-13 深夜）
+# GeoGenesis 交接文档（2026-08-27 更新）
 
-> 会话转移。上一交接点：git commit `cb27135`（main，已 push 同步）。本会话在 `cb27135` 之后做了大量**未提交**改动（侵蚀无缝化 + 河流重写），工作区有改动未提交，**先看清 git status 再动手**。
+> 会话转移。**先 `git status` 看清未提交改动再动手**——工作区有大量未提交改动（核心：河流 RTF 范式整体重写 + 2026-08-27 整块漏雕修复），且 `AGENTS.md` / `ARCHITECTURE.md` / `README.md` 也已 modified。
+>
+> **主参考**：`AGENTS.md` 的「当前工作焦点（2026-08-26）」已记录河流 RTF 重写的完整来龙去脉与历史轮次，本文件只给交接速览与接手步骤。
 
 ## 〇、当前 git 状态（最重要）
 
-- HEAD = `cb27135`（XS 微侵蚀调优，已推送）
-- 工作区**未提交**改动：`ErosionEngine.java` / `CellGenerator.java` / `StreamTracer.java` / `GeoGenesisGenerator.java` / `build.gradle` / `RiverProfileProbe.java` / `DischargeFieldProbe.java`（新增）/ `GeoGenesisForgeEvents.java` / `InGameSeamScanner.java`（新增）等
-- **河流重写未定案**，改动是否保留待用户实机确认后决定
+- 工作区**未提交**改动极多：`forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/...` 下河流/地形/预览/配置大量文件，外加 `AGENTS.md` / `ARCHITECTURE.md` / `README.md` / `build.gradle`。
+- **河流系统已整体重写为 RTF 范式（2026-08-26 第四轮），旧 D8 全套已删除**——别再找 `FlowField`/`FlowRiverBuilder`/`StreamTracer`/`LakeBuilder`/`ProfileSmoother` 等（都已删）。
+- 提交时机由用户决定（未主动提交）。
 
-## 一、本会话完成并已验证的（侵蚀无缝化，推荐保留）
+## 一、河流系统现状（RTF 范式，2026-08-26 第四轮 + 2026-08-27 修复）
 
-1. **液滴行程 ≤ tile 缓冲余量**（治侵蚀断裂根本）：`LIFE_C 60→20`、`spdCap 1.5→1.0`——行程 20wu ≤ 缓冲 40wu → 液滴不出界 → 双写一致 → 无缝
-2. **世界坐标连续播种**（ErosionEngine 播种重写）：1wu 出生单元网格 + hash 密度 + 单元内连续偏移 → 任何 tile 看到同一区域 = 同一出生集合
-3. **平滑概率闸门**：SLOPE 硬阈值 → smoothstep(0.5h,1.5h) 概率出生（hash 世界坐标）→ 消除坡度卡阈值处的 0/1 跳变
-4. **hs 参数化**：引擎不再读 `GeoGenesisConfig.INSTANCE.horizontalScale`（探针进程无 Forge 环境恒 1.0 与游戏 2.0 不符，导致探针永远复现不了游戏），改从 `TerrainParams` 传入
-5. **探针工具**：`ChunkBorderProbe`（toml 参数解析 + HS=2 + GeoGenesisTerrain 门面调用链，复现游戏环境）、`InGameSeamScanner`（B 键游戏内扫描，双剖面取证）、`ErosionTileProbe` 修 48wu 网格坐标
-6. **XS 微侵蚀调优**：圆化笔刷（1-d²/2 权重）+ 侵蚀/沉积平衡 + `erosionXSEnabled` 开关（默认关，ParameterConfigPanel 有 toggle）
+**为什么要换**：用户"河流完完全全有问题、破坏性切地形、小溪不按现实物理走" → 放弃 D8 全追踪，按 FreeTerraForged（RTF）**几何河网 + 河谷雕刻**范式重写。
 
-**验证**：ErosionPeriodProbe NaN=0、max=0.0000 零堆积、覆盖率 100%；ChunkBorderProbe 用户实测断裂处 z=-392..-385 从 3.7 → 0.1-0.3 块。
+**核心架构（确定性纯函数，跨 chunk/region 无缝）**：
+- `RTFRiverGenerator`：几何河网。`root` 沿随机角度走 e 场到海岸（主河必到海）；`fork` depth≤2 树状分叉 + 源点高于汇合点门控（100% 下坡、树状汇流）。region(512wu) 确定性（region 坐标 + seed id）。
+- `ValleyRiverCarver`：RTF Zone1-4 平滑谷雕刻，`finalHeight = min(carved, origHeight)` 只下挖（根治垂直崖/悬河）。`fadeRAct = fadeR*lakeMult + h.offset` 已补偿 warp 位移。
+- `RiverNetwork`：采样门面。`sampleRiver(wx,wz)` 遍历全部缓存 plate（3×3 预热 + 全 plate 遍历，无 region 轴对齐接缝）；纯函数水面 `waterTable(cAt 9 点模糊)` → 汇口零落差、无 jitter。
+- `RiverWarp`：种子化 simplex 蜿蜒（端点淡出，段衔接连续）。`River`/`Network`/`Rivermap`：几何线段 / 河网树 / region 容器。
+- 游戏路径：`GeoGenesisTerrain.generateChunk` → `applyRiverValley` 把河谷**回写 `cell.height`**（预览/采样/落块一致）；`fillFromNoise` 只按水面灌水。
 
-## 二、河流重写（本会话主战场，未定案）
+**坐标体系（极易踩坑）**：
+- `toWu(block) = block / hs`（`GeoGenesisTerrain`）；`applyRiverValley` 用 `wx = (baseX+lx) * invHs` 也是 `block/hs` —— **两者一致，hs=2.0 时皆为 block/2**。
+- 河流在 **wu 空间**生成（`REGION_SIZE=512`wu）。`horizontalScale`（hs）默认 2.0。
 
-### 历史（别重蹈覆辙）
+**★ 2026-08-27 整块漏雕（柱子）根治（本次会话最后完成）**：
+- 现象：河上出现一整块原地形柱子、两侧有河。
+- 根因：① `getChunkCells` 的河网预热在 `generateChunk`/`applyRiverValley` **之后** → 远离河源 chunk 的 `sampleRiver` 在 carver 入缓存前调用 → 长河 carver 位于 chunk region 的 ±2~3 未预热 → 全列 NONE；② `prunePlates` 原在 `plateForRegion` 内、每次 `sampleRiver` 调 2304 次，迭代 `plates.values()` 前就把刚预热的 plate 驱逐 → 同理漏刻。
+- 修复：`getChunkCells` 预热**移到 `generateChunk` 前** + 半径提至 3（7×7 region）；`prunePlates` 从 `plateForRegion` 移除、改 `sampleRiver` 遍历结束统一驱逐；`PLATE_CACHE_MAX` 512→4096。
+- 验证：用户 `runClient` 实测**无柱子**；诊断 `UNCARVED(real)`（收紧后 `riverCrossesChunk` 用点到河中心线真实距离 ~90wu，取代原 550+120wu 粗 bbox）全部 `centerInChannel=false` → **确证零真漏雕**。
 
-- 用户反馈链：StreamTracer 几何追踪"太假" → 液滴 discharge 阈值切河道"自然但断流" → 连续播种+脊线检测"太卡" → 降密度
-- **根因链**：侵蚀无缝需要液滴短行程（LIFE_C=20）→ 但流量累积需要长行程（到入海）→ 断流。用户点醒：粒子侵蚀无缝 ≠ 河流系统无缝；流量累积不该复用侵蚀液滴的短行程
+**已知遗留**：
+- 浅支流源头 1~2 块干槽（dryRatio≈3%，物理自然）。
+- `Network.overlaps` / `RiverConfig.length` 等少量未用 API。
+- **`runClient` 实机目检（河口喇叭 / 谷壁平滑 / 无悬水）待做** —— 这是当前最高优先的下一步。
 
-### 当前实现（未定案）
+## 二、其他已完成（侵蚀无缝化等，保留）
 
-- `StreamTracer` 源头改**连续播种**（FLOW_GRID=8、FLOW_DENSITY=0.4、FLOW_MARGIN=48）——液滴走到入海（出界用 `terrainEQuick` 世界坐标），dis = 集水面积连续不断流
-- core 标记改**脊线检测**（dis 是面状场，阈值切不出线状河道）：Sobel 梯度（连续方向非 D8）→ 垂直流向采样两侧 dis → 中心高 = 脊。`ridgeThreshold = maxQ×0.08`
-- 水面棘轮（`computeRiverSurfaces`）保留：discharge 降序 + 河口锚海平面 + 落差标瀑布 + BFS 岸坡传播
-- 宽度/深度随流量渐变保留（bedWidth=1+3·qFrac²、bankWidth=3+5·qFrac、depth=0.015+0.05·qFrac^0.7）
-- `GeoGenesisGenerator.fillFromNoise` 已恢复 `riverMask → fillRiverColumn` 填水
+- 液滴行程 ≤ tile 缓冲余量（LIFE_C=20、spdCap=1.0）→ 侵蚀无缝。
+- 世界坐标连续播种 + 平滑概率闸门 → 消除坡度卡阈值跳变。
+- hs 参数化从 `TerrainParams` 传入（探针 HS=2 复现游戏）。
+- XS 微侵蚀调优（圆化笔刷 + 平衡 + 开关）。
+- 详见旧 HANDOFF 与 `AGENTS.md`。
 
-### 性能（用户"非常卡"已缓解）
+## 三、关键坑 / 铁律（接手必读）
 
-- FLOW_GRID 4→8、MARGIN 96→48、密度 0.5→0.4 → 单 tile 河流追踪 ~0.5s
-- **再卡的话优先降 FLOW_DENSITY**（0.4→0.3）
+- **探针铁律**：改侵蚀/河流必须跑 `ErosionPeriodProbe`（数值）+ `ChunkBorderProbe`（hs=2 + toml 参数复现游戏）+ 河流相关探针。
+- **`getErosionTile` 会 fire-and-forget 生成 8 邻居 tile** → 探针慢到数分钟；必须用 `getErosionTileResultForProbe`（单 tile 直取）。
+- **toml 用户配置 ≠ 探针默认**：探针要解析 `run/config/geogenesis-common.toml`。
+- 游戏崩溃 OOM = 系统内存耗尽（非 Java 异常），跑游戏关本地 AI。
+- Windows 中文提交：`git commit -F file.txt`（UTF-8）。
+- 河流诊断日志：`[RIVER] UNCARVED(real)` 只在 chunk 真挨着河却全未雕刻时报；`centerInChannel=false` 即河岸外侧正常 chunk（非漏雕）。
 
-### 参考（用户点名）
+## 四、接手步骤（新会话）
 
-- `参考/sources/SimpleHydrology`：**地形与河流一体**——液滴同时侵蚀 + 累积流量（maxAge=500、单 map 全局）。我们拆成"侵蚀液滴 + 流量液滴"两套是重复计算，**一体化大重构是可能的正确方向**（大工程，先确认用户意愿）
-- `参考/Farseek-Mods`（Streams 1.0）：**单独河流**——chunk 级图搜索（Basin 网格），非长液滴。水面棘轮/谷肩/瀑布 V 形脊参考自 Streams 旧版（`参考/Streams`）
+1. `git status` + 读 `AGENTS.md`「当前工作焦点（2026-08-26）」确认上下文。
+2. **优先**：`runClient` 实机目检河流外观（河口喇叭 / 谷壁平滑 / 无悬水 / 无漏雕柱）——这是 2026-08-27 修复后的首次系统性目检。
+3. 若目检 OK：清理死代码（未用 API）+ 由用户决定提交时机。
+4. 若目检有问题：定位后按 RTF 范式修（别退回 D8/几何线旧思路——已论证不适合本"预计算水面+灌水柱"架构）。
 
-### 下一步（新会话）
+## 五、本会话未提交改动清单（参考）
 
-1. **runClient 目检**：加载速度 + 河网形态（线状/支流/曲流/入海/边缘断裂）
-2. 若形态 OK：清理死代码（CONFLUENCE_THRESHOLD/isLocalHigh/SOURCE_GRID 旧常量）+ 提交
-3. 若形态差：评估 SimpleHydrology 式"一体液滴"大重构（侵蚀+流量合并）
-
-## 三、其他记住的
-
-- **探针铁律**：改侵蚀/河流必须跑 ErosionPeriodProbe（数值）+ ChunkBorderProbe（hs=2 + toml 参数，复现游戏）+ RiverProfileProbe（水面单调）
-- **`getErosionTile` 会 fire-and-forget 生成 8 邻居 tile** → 探针慢到数分钟；必须用 `getErosionTileResultForProbe`（单 tile 直取）
-- **toml 用户配置 ≠ 探针默认**：用户配置屏调过 `erosionRidgeStrength=0.75` 等，探针要解析 `run/config/geogenesis-common.toml`
-- 游戏崩溃 OOM = 系统内存耗尽（hs_err 无 Java 异常），跑游戏关本地 AI
-- Windows 中文提交：`git commit -F file.txt`（UTF-8）
+- `GeoGenesisTerrain.java`：预热前移 + 诊断收紧（`riverCrossesChunk` 调用）。
+- `RiverNetwork.java`：`prunePlates` 位置修正 + `riverCrossesChunk` 真实距离判断 + `PLATE_CACHE_MAX` 调大。
+- `ValleyRiverCarver` / `RTFRiverGenerator` / `River` / `RiverWarp` / `Network` / `Rivermap` / `RiverCarver` / `RiverSample` / `RiverPlate`：RTF 重写。
+- `AGENTS.md`：工作焦点记录 2026-08-26/27 + 修 REGION 笔误。
