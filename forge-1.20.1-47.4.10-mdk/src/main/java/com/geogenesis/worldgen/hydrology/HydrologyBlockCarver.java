@@ -14,13 +14,10 @@ import java.util.List;
  * <ul>
  *   <li><b>纯距离场</b>：t = dist/width ∈ [0,1]，smoothstep 断面 ——
  *       中心全量下挖、边缘连续淡出，无二值判定、无最近邻吸附；</li>
- *   <li><b>邻近段 IDW 混合（PL-RGA riverHeightField）</b>：每块取
- *       dist ≤ heightBlendDist 的全部命中，按 (1−fade)²/dist² 反距离平方混合
- *       surfaceY/width/depth —— 河线交越处平滑过渡，根除"单属主硬切"接缝；
- *       blendDist 仅 ~valley 量级，远处河线不入场 → 不复发旧"多线 MAX carve"
- *       跨线劫持（远处高水面河线压低河床/抬高水面 → 水漫出河道/巨型矩形水体）；
- *       region 边界连续性由距离场 1-Lipschitz 保证（等距中线两侧取值一致，
- *       最多极小 kink，无 MAX 式 cliff）；</li>
+ *   <li><b>距离场平滑（C1，根治属主切换放射折痕）</b>：几何用 smooth-min(k) 合并各段
+ *       距离（≠ 对雕刻高度做 smooth-min——后者会把相邻段河谷壁叠成包络脊）；
+ *       弯角平分线 / region 边界处由硬切变为 k 宽 C1 过渡 → 放射折痕消失；
+ *       属性仍按 IDW 混合（PL-RGA），河线交越接缝平滑，不复发旧"多线 MAX carve"跨线劫持；</li>
  *   <li><b>只下挖</b>：carved = original − cut，cut ≥ 0；未命中河线处
  *       carved == original（零破坏纯噪声基础地形）；</li>
  *   <li><b>e 空间高度淡出</b>：地形 e ≥ fadeHighE 不雕，河流自然消失于山地；</li>
@@ -72,14 +69,26 @@ public final class HydrologyBlockCarver {
         double seaLevel = terrain.heightCurve().seaLevelY();
         if (original < seaLevel) fadeE = 0.0;
 
-        // ★ IDW 多段混合（参考 PL-RGA riverHeightField: (1−fade)²/dist² 加权）
-        //   取 dist ≤ heightBlendDist 的全部命中按反距离平方混合 surfaceY/width/depth，
-        //   根治"单属主硬切"在河线交越处的接缝；blendDist 仅 ~valley 量级，
-        //   远处河线不入场 → 不复发 DW 式跨线劫持（与单属主"同源"约束正交且兼容）。
+        // ★ 折痕根因：雕刻几何只用"最近段距离"dist，而折线距离场在弯角平分线 /
+        //   region 边界处硬切（梯度方向跳变）→ 经 valleyT/outer 非线性放大成放射折痕。
+        //   正确修法 = 平滑"距离场本身"：对每段距离做 smooth-min（smin ≤ min → 仍只下挖），
+        //   弯角/边界处由硬切变为 k 宽 C1 过渡；属性仍按 IDW 混合（PL-RGA，河线交越接缝平滑）。
+        //   注意：绝不能对"雕刻高度"做 smooth-min——那会把相邻段河谷壁叠加成新的包络脊。
         RiverLineParams P = RiverLineParams.defaults();
+        double k = P.smoothMinK();
+
+        double nearestDist = samples.get(0).distToCenter();   // 灌水门控用（保持原语义）
+        double nearestWidth = Math.max(samples.get(0).width(), 1.0);  // 门控用最近段自身半宽（与 sampleBlock 复查一致）
+        double dist = nearestDist;
+        for (HydrologyBlockSample s : samples) {
+            dist = smin(dist, s.distToCenter(), k);           // C1 距离场，根治几何折痕
+        }
+
+        // ★ IDW 多段混合（PL-RGA riverHeightField: (1−fade)²/dist² 加权）
+        //   取 dist ≤ heightBlendDist 的全部命中按反距离平方混合 surfaceY/width/depth，
+        //   河线交越处平滑过渡，根除"单属主硬切"接缝；blendDist 仅 ~valley 量级，远处河线不入场。
         double blendDist = P.heightBlendDist();
         double wSum = 0.0, sSurf = 0.0, sWid = 0.0, sDep = 0.0;
-        double dist = samples.get(0).distToCenter();   // 几何最近距（河线/湖心）
         for (HydrologyBlockSample s : samples) {
             double d = s.distToCenter();
             if (d > blendDist) break;                   // sampleBlockAll 已按距离升序
@@ -106,14 +115,12 @@ public final class HydrologyBlockCarver {
         // 距离场横断面：t=0 中心 → t=1 河缘（Streams 式 V 形：线性凹断面）
         double t = NoiseUtil.saturate(dist / width);
         double profile = 1.0 - t;                 // 中心 1.0 → 缘 0.0（V 形河床）
-        // 河谷壁：从河缘(valleyT=0)到谷外(valleyT=1)按 valleyExp 幂次渐变归零（V 形谷壁）
+        // 河谷壁：从河缘(valleyT=0)到谷外(valleyT=1)渐变归零；smoothstep 化保证
+        // 谷外缘零导数 → 与原地形 C1 接回（根治谷壁轮廓缝）。
         double valleyT = NoiseUtil.saturate((dist - width) / Math.max(1.0, valley - width));
-        double outer = 1.0 - Math.pow(valleyT, P.valleyExp());
+        double outer = valleyOuter(valleyT, P.valleyExp());
 
         // 水面 = min(单调水面, 当地真实地形)（Streams maxSurfaceAt 范式）。
-        //   surfaceY = 网络逐段插值的单调水面（applyRiverHeightSlopeDrop 产物）→ 保证不爬坡；
-        //   original = 当地真实地形 → 地形低于水面时水面=地形，填满谷、不悬空；
-        //   取 min 后河嵌进真实谷地且水面严格单调（根除"河爬坡"）。
         double waterSurface = Math.min(surfaceY, original);
         // 目标河床：水面 − depth × 断面形状
         double bedTarget = waterSurface - depth * profile;
@@ -125,10 +132,28 @@ public final class HydrologyBlockCarver {
         //   ① dist ≤ width（河道半宽内，valley 谷壁区只塑形不灌水）；
         //   ② carved < waterSurface − 0.5（真雕出河床）；
         //   ③ 水深上界 waterSurface − carved ≤ depth + 1（防异常深水）。
-        boolean anyFill = dist <= width
+        boolean anyFill = nearestDist <= nearestWidth
                 && carved < waterSurface - 0.5
                 && (waterSurface - carved) <= depth + 1.0;
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                 waterSurface, cut, anyFill);
+    }
+
+    /** 二次 smooth-min（IQ）：smin ≤ min(a,b)，C1，且 ≤ 每个输入 → 合并距离时仍只下挖。
+     *  注意：mix 须为 a*h + b*(1-h)（即 mix(b,a,h)），结果才≈min；参数写反会退化为 max。 */
+    private static double smin(double a, double b, double k) {
+        double h = NoiseUtil.clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+        return (a * h + b * (1.0 - h)) - k * h * (1.0 - h);
+    }
+
+    /**
+     * 河谷壁外缘衰减：valleyT=1（谷外缘）处零导数 → 与原地形 C1 接回（根治谷壁轮廓缝）。
+     * 中段保留 1−valleyT^exp 的 V 形谷壁，仅在外缘渐变到零导数 smoothstep。
+     */
+    private static double valleyOuter(double vt, double exp) {
+        double inner = 1.0 - Math.pow(vt, exp);          // 中段 V 形谷壁
+        double tail = 1.0 - NoiseUtil.smooth(vt);         // 末端零导数
+        double m = NoiseUtil.smooth(NoiseUtil.saturate((vt - 0.5) / 0.5));
+        return inner * (1.0 - m) + tail * m;
     }
 }
