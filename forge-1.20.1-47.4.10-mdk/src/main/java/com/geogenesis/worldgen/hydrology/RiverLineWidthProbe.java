@@ -150,6 +150,11 @@ public final class RiverLineWidthProbe {
                 + "『从零长起』，即汇流面积被边界重置)");
 
         System.out.println();
+        System.out.println("-- branch level distribution (Strahler-style) --");
+        System.out.println(levelHistogram(regions));
+        System.out.println("(层级 1=干流、n+1=汇入 n 级河的支流；出现 3/4 级 = 有『分支的分支』)");
+
+        System.out.println();
         System.out.println("-- river supply (why so few rivers?) --");
         int srcSum = 0, rbSum = 0, joinSum = 0;
         for (RiverLineRegion r : regions) {
@@ -267,6 +272,35 @@ public final class RiverLineWidthProbe {
             sb.append(String.format("   [%4.2f,%4.2f) %6d |", a, c, h[b]));
             for (int i = 0; i < bars; i++) sb.append('#');
             sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** 分支层级直方图：统计各层级河数与其宽度特征。 */
+    private static String levelHistogram(List<RiverLineRegion> regions) {
+        int maxLevel = 0;
+        for (RiverLineRegion r : regions) {
+            for (RiverLineRegion.RiverPolyline pl : r.rivers) {
+                maxLevel = Math.max(maxLevel, pl.level);
+            }
+        }
+        if (maxLevel == 0) return "  (no rivers)";
+        int[] count = new int[maxLevel + 1];
+        double[] headSum = new double[maxLevel + 1];
+        double[] tailSum = new double[maxLevel + 1];
+        for (RiverLineRegion r : regions) {
+            for (RiverLineRegion.RiverPolyline pl : r.rivers) {
+                int lv = Math.min(pl.level, maxLevel);
+                count[lv]++;
+                headSum[lv] += pl.width[0];
+                tailSum[lv] += pl.width[pl.width.length - 1];
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int lv = 1; lv <= maxLevel; lv++) {
+            if (count[lv] == 0) continue;
+            sb.append(String.format("  level %d: %4d rivers  headW=%.2f tailW=%.2f%n",
+                    lv, count[lv], headSum[lv] / count[lv], tailSum[lv] / count[lv]));
         }
         return sb.toString();
     }

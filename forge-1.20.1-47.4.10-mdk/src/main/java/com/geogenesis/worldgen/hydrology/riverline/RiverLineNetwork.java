@@ -136,6 +136,7 @@ public final class RiverLineNetwork {
         boolean[] claimed = new boolean[nx * nz];
         double[] nodeE = new double[nx * nz];          // 已接受河路径格 e（就近汇入用）
         java.util.Arrays.fill(nodeE, Double.NaN);
+        int[] levelAt = new int[nx * nz];              // 已接受河路径格的分支层级（0 = 无河）
         List<RiverPolyline> rivers = new ArrayList<>();
         List<RiverLineRegion.LakeNode> lakes = new ArrayList<>();
         List<int[]> allSegments = new ArrayList<>();   // 全局段集合（防交叉）
@@ -167,7 +168,6 @@ public final class RiverLineNetwork {
                         && Math.abs((acc / nx) - sj) <= spacing) { tooClose = true; break; }
             }
             if (tooClose) continue;
-            accepted.add(s);
 
             // 追踪（带回滚/就近汇入/湖终止）；null = 整条回滚
             TraceOutcome out = traceRiver(field, s, stepSize, claimed, nodeE,
@@ -175,8 +175,19 @@ public final class RiverLineNetwork {
             if (out == null) { rolledBack++; continue; }
             if (out.joined) joinedCount++;
 
-            // 提交：认领 + 记录 nodeE（供后续河汇入）+ 段防交叉
-            for (int c : out.cells) { claimed[c] = true; nodeE[c] = field.eAt(c); }
+            // 提交：认领 + 记录 nodeE（供后续河汇入）+ 段防交叉 + 记录分支层级
+            // 层级：汇入 n 级河的支流为 n+1 级；直接入海/湖为 1 级（干流）。
+            int level = 1;
+            if (out.joined) {
+                int last = out.cells.get(out.cells.size() - 1);
+                int tl = levelAt[last];
+                if (tl > 0) level = tl + 1;
+            }
+            for (int c : out.cells) {
+                claimed[c] = true;
+                nodeE[c] = field.eAt(c);
+                levelAt[c] = level;
+            }
             for (int k = 0; k < out.cells.size() - 1; k++) {
                 int a = out.cells.get(k), b = out.cells.get(k + 1);
                 allSegments.add(new int[]{a % nx, a / nx, b % nx, b / nx});
@@ -203,7 +214,7 @@ public final class RiverLineNetwork {
                 acc = Math.max(acc, a);
             }
             double[] surf = applyRiverHeightSlopeDrop(rawSurf, out.reachedOcean, curve, params);
-            RiverPolyline smoothed = smoothPath(nodes, surf, wid, dep);
+            RiverPolyline smoothed = smoothPath(nodes, surf, wid, dep, level);
             maxDischarge = Math.max(maxDischarge, acc);
             rivers.add(smoothed);
             if (out.reachedOcean) outletOcean = true;
@@ -212,6 +223,11 @@ public final class RiverLineNetwork {
                 lakes.add(new RiverLineRegion.LakeNode(
                         field.cellCenterX(last), field.cellCenterZ(last), surf[m - 1]));
             }
+            // ★ 仅"成功成为河"的源点参与后续源点的间距过滤。
+            //   旧实现在追踪前就 add，导致回滚的源也占据 spacing 槽位，
+            //   连带把它周围 spacing 内的候选源一并过滤——一次失败的追踪会杀死一片
+            //   潜在支流，这是"分支太少、没有分支的分支"的直接原因。
+            accepted.add(s);
             acceptedCount++;
         }
 
@@ -317,10 +333,11 @@ public final class RiverLineNetwork {
      * 端点复制首尾避免 Catmull-Rom 边界发散。
      */
     private RiverPolyline smoothPath(MidpointDisplacement.Node[] rawNodes,
-                                     double[] rawSurf, double[] rawWid, double[] rawDep) {
+                                     double[] rawSurf, double[] rawWid, double[] rawDep,
+                                     int level) {
         int n = rawNodes.length;
         if (n < 3) {
-            return new RiverPolyline(rawNodes, rawSurf, rawWid, rawDep);
+            return new RiverPolyline(rawNodes, rawSurf, rawWid, rawDep, level);
         }
         double[] px = new double[n], pz = new double[n];
         for (int i = 0; i < n; i++) {
@@ -405,7 +422,7 @@ public final class RiverLineNetwork {
             rw[i] = outWid.get(i);
             rd[i] = outDep.get(i);
         }
-        return new RiverPolyline(rn, rs, rw, rd);
+        return new RiverPolyline(rn, rs, rw, rd, level);
     }
 
     // ===== 河网生成辅助（PL-RGA 对齐）=====
