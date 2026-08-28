@@ -1,5 +1,7 @@
 package com.geogenesis.worldgen.hydrology.riverline;
 
+import com.geogenesis.worldgen.noise.NoiseUtil;
+
 /**
  * 河线网络参数（不可变）。
  *
@@ -43,13 +45,18 @@ public record RiverLineParams(
     /** 海洋 e 阈值：格 e < 此值视为海洋出口。 */
     double oceanE,
     // ===== 汇流场派生河网 =====
+    /** 选线场山压低系数（0~1]：routingE 把 e 按此系数压低（见 routingE）。
+     *  1.0 = 恒等（用原始 e 追踪，河线回到 a7a8d68 基线位置）；<1 压低山峰、河线贴谷避峰。
+     *  实测 mountainScale<1 会把河从原出河位置挤走（用户反馈"河流变少"），故默认 1.0。 */
+    double mountainScale,
     /** 汇流场栅格边长（wu）：D8 流向/累积的采样分辨率。 */
     double gridCell,
     /** 下坡追踪最大步数（防洼地/平地死循环兜底）。 */
     int maxTraceSteps,
     /** 宽度/深度面积驱动的对数动态范围：汇流面积达 riverAccumThreshold×此值 时宽度到 max。 */
     double areaLogRange,
-    /** 源点最小 e：仅高于此 e 的格可作为河源（PL-RGA source_min_height≈0.5：山溪发源）。 */
+    /** 源点最小 e：仅高于此 e 的格可作为河源。0.40 为 a7a8d68 基线（山溪发源，低地由下游覆盖）；
+     *  调低（如 0.20）可让平原/低地也出河（option A，用户要求更多河）。 */
     double sourceMinE,
     /** 源点最小间距（栅格格数）：控制河网密度。 */
     int sourceSpacingCells,
@@ -69,7 +76,24 @@ public record RiverLineParams(
     /** 蜿蜒振幅（block）：沿河路径叠加的垂直正弦偏移。 */
     double meanderAmp,
     /** 蜿蜒波长（block）。 */
-    double meanderWavelength
+    double meanderWavelength,
+    // ===== PL-RGA 对齐（拓扑健壮性 / 湖 / 多河混合）=====
+    /** 每 region 最大河数（按 e 降序取前 N；PL-RGA RIVER_COUNT=50）。 */
+    int riverCount,
+    /** 距 region 边界安全距（wu）：此内不布源、不终止为湖（PL-RGA border/lake_safe_mask）。 */
+    double borderDist,
+    /** 湖面半径（wu）：outlet_local_minimum 节点展平半径（PL-RGA RIVR_LAKE_RADIUS）。 */
+    double lakeRadius,
+    /** 湖面边距（wu）：距湖节点 ≤ 此 为满湖面（PL-RGA RIVER_LAKE_SURFACE_MARGIN_DISTANCE）。 */
+    double lakeMargin,
+    /** 湖高淡出距（wu）：湖面→地形渐变半径（PL-RGA RIVER_LAKE_NODE_HEIGHT_FADE_DISTANCE）。 */
+    double lakeFadeDist,
+    /** 多河 IDW 混合半径（wu）：此内反距离平方加权混合河高（PL-RGA RIVER_HEIGHT_BLEND_DISTANCE）。 */
+    double heightBlendDist,
+    /** 河高混合回地形幂次（PL-RGA RIVER_BLEND_EXP=1.5）。 */
+    double blendExp,
+    /** 最小下坡量：邻居须严格低于此才连边/汇入（PL-RGA RIVER_MIN_DROP）。 */
+    double minDrop
 ) {
     public static RiverLineParams defaults() {
         return new RiverLineParams(
@@ -79,21 +103,22 @@ public record RiverLineParams(
             96.0,                    // anchorSnapRadius（旧锚点用）
             12.0,                    // anchorSnapStep（旧锚点用）
             40.0,                    // valleyBiasAmp（旧贴谷用）
-            1.5,                     // minWidth（半宽 block）
-            5.0,                     // maxWidth（半宽 block，Streams 式窄河）
-            1.0,                     // minDepth（block）
-            6.0,                     // maxDepth（block，Streams 式深河）
+            3.0,                     // minWidth（半宽 block）★加宽：源头也有可见水面
+            8.0,                     // maxWidth（半宽 block，海口宽河）
+            2.5,                     // minDepth（block）★加深：满足 carved<水面−0.5 灌水门控
+            7.0,                     // maxDepth（block）
             2.5,                     // bankFactor
             0.30,                    // fadeHighE（已弃用）
             0.10,                    // fadeLowE（已弃用）
             1.0,                     // surfaceSink
             2048.0,                  // minDischargeArea（旧门控用）
             -0.02,                   // oceanE
+            1.0,                     // mountainScale（=1.0：恒等，原始 e，匹配 a7a8d68 基线河位）
             24.0,                    // gridCell（D8 采样分辨率）
             512,                     // maxTraceSteps
             64.0,                    // areaLogRange
-            0.40,                    // sourceMinE（山溪发源，低地由下游覆盖）
-            6,                       // sourceSpacingCells（≈144wu 间距）
+            0.20,                    // sourceMinE（option A：低地也出河，河网更密）
+            3,                       // sourceSpacingCells（≈72wu 间距，加密源点→河网更密）
             2,                       // traceStep（下坡窗口 2 格）
             3,                       // minRiverNodes
             2000.0,                  // riverAccumThreshold（wu²）
@@ -101,7 +126,31 @@ public record RiverLineParams(
             2.5,                     // bankWidth（河谷壁系数 ×半宽）
             1.5,                     // valleyExp（谷壁陡缓）
             2.5,                     // meanderAmp（蜿蜒振幅 block）
-            40.0                     // meanderWavelength（蜿蜒波长 block）
+            40.0,                    // meanderWavelength（蜿蜒波长 block）
+            80,                      // riverCount（每 region 最大河数，加密河网）
+            96.0,                    // borderDist（≈0.15×regionSize，边界安全距 wu）
+            120.0,                   // lakeRadius（湖面半径 wu）
+            8.0,                     // lakeMargin（湖面边距 wu）
+            100.0,                   // lakeFadeDist（湖高淡出距 wu）
+            100.0,                   // heightBlendDist（多河 IDW 混合半径 wu）
+            1.5,                     // blendExp（河高混合回地形幂次）
+            1e-6                     // minDrop（最小下坡量）
         );
+    }
+
+    /**
+     * 选线场高程变换：把高于中段的高程按 {@link #mountainScale()} 比例压低，
+     * 使河网在"压低后的地形"上追踪——贴谷而非贴峰（PL-RGA firstHeightField）。
+     * 低地（e ≤ mid）保持不变，仅压低山脊/高峰，避免河线硬切陡坡。
+     *
+     * @param e 原始汇流场高程（terrainEQuick）
+     * @return 选线用高程
+     */
+    public double routingE(double e) {
+        final double mid = 0.4;
+        if (e <= mid) return e;
+        double tt = NoiseUtil.saturate((e - mid) / (1.0 - mid));
+        double lower = mountainScale + (1.0 - mountainScale) * (1.0 - tt);
+        return e * lower;
     }
 }

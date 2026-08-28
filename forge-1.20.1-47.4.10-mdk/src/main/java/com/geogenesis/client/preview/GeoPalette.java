@@ -419,9 +419,9 @@ public final class GeoPalette {
         discreteDefaults.put(PreviewLayer.TERRAIN_TYPE, T_TERRAIN_TYPE);
         discreteDefaults.put(PreviewLayer.CLIMATE_ZONE, T_CLIMATE_ZONE);
         discreteDefaults.put(PreviewLayer.BIOME, T_BIOME);
-        // RIVER_TYPE：0 无(地形色占位)/1 主河深蓝/2 MOUTH 蓝紫/3 支流浅蓝
+        // RIVER_TYPE：0 无 / 1 大河深蓝 / 2 中河蓝 / 3 小溪浅蓝（按河宽档）
         discreteDefaults.put(PreviewLayer.RIVER_TYPE, new int[]{
-                0x3A4A5A, 0x1B3F9E, 0x2E6FD6, 0x7AC8E8});
+                0x3A4A5A, 0x0B2A8C, 0x2E6FD6, 0x9AD8F0});
         // ROCK_LAYER/ROCK_TYPE/VEIN_MAP 无默认色——由 MC 侧或未来地质系统填充
     }
 
@@ -653,9 +653,9 @@ public final class GeoPalette {
             case BIOME:        return "geogenesis.biome." + BiomeClass.values()[id].name();
             case TERRAIN_TYPE: return "geogenesis.terrain_type." + TERRAIN_TYPE_NAMES[id];
             case RIVER_TYPE: return switch (id) {
-                case 1 -> "geogenesis.river_type.main";
-                case 2 -> "geogenesis.river_type.mouth";
-                case 3 -> "geogenesis.river_type.trib";
+                case 1 -> "geogenesis.river_type.big";
+                case 2 -> "geogenesis.river_type.medium";
+                case 3 -> "geogenesis.river_type.small";
                 default -> "geogenesis.river_type.none";
             };
             default: return layer.labelKey + "." + id;
@@ -688,9 +688,9 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.river_network", "Flow Accumulation");
         ENGLISH.put("geogenesis.layer.river_type", "River Type");
         ENGLISH.put("geogenesis.river_type.none", "None");
-        ENGLISH.put("geogenesis.river_type.main", "Main River");
-        ENGLISH.put("geogenesis.river_type.mouth", "Mouth");
-        ENGLISH.put("geogenesis.river_type.trib", "Tributary");
+        ENGLISH.put("geogenesis.river_type.big", "Big River");
+        ENGLISH.put("geogenesis.river_type.medium", "Medium River");
+        ENGLISH.put("geogenesis.river_type.small", "Small Stream");
         // 气候带
         ENGLISH.put("geogenesis.zone.TROPICAL", "Tropical (A)");
         ENGLISH.put("geogenesis.zone.ARID", "Arid (B)");

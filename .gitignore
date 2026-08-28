@@ -55,6 +55,8 @@ docs/
 # Build artifacts / diagnostics
 forge-1.20.1-47.4.10-mdk/*.txt
 forge-1.20.1-47.4.10-mdk/*.log
+forge-1.20.1-47.4.10-mdk/*.ppm
+forge-1.20.1-47.4.10-mdk/*.err
 forge-1.20.1-47.4.10-mdk/terrain-dumps/
 forge-1.20.1-47.4.10-mdk/build-log.txt
 forge-1.20.1-47.4.10-mdk/META-INF/
@@ -86,3 +88,11 @@ preview_run.log
 forge-1.20.1-47.4.10-mdk/*.class
 forge-1.20.1-47.4.10-mdk/*.err
 symcheck.ps1
+
+# Root-level temp / diagnostics (probe logs, old source backups, copy records)
+# NOTE: the rules above only cover the forge/ subdir; these cover the repo root
+/err.txt
+/old*.txt
+/probe_*.log
+/probe_*.txt
+/$dst

@@ -80,6 +80,13 @@ public final class FlowAccumProbe {
                 overflow[4], (int) overflow[5]));
         System.out.println(String.format("border.maxSurfaceDelta=%.3f border.violations=%d",
                 border[0], (int) border[1]));
+        double[] diag = diagnosticStats(net);
+        double rollbackRate = diag[0] == 0 ? 0.0 : 100.0 * diag[1] / diag[0];
+        double confluenceRate = diag[0] == 0 ? 0.0 : 100.0 * diag[2] / diag[0];
+        System.out.println(String.format(
+                "diag.sources=%.0f rolledBack=%.0f rollbackRate=%.1f%%"
+                        + " joined=%.0f confluenceRate=%.1f%% lakes=%.0f regions=%.0f",
+                diag[0], diag[1], rollbackRate, diag[2], confluenceRate, diag[3], diag[4]));
         boolean pass = topo[2] == 0 && profile[0] == 0
                 && (int) overflow[3] == 0 && (int) border[1] == 0;
         System.out.println("status=" + (pass ? "PASS" : "REVIEW"));
@@ -221,5 +228,15 @@ public final class FlowAccumProbe {
 
     private static long pack(int x, int z) {
         return ((long) x << 32) | (z & 0xffffffffL);
+    }
+
+    /** 诊断：跨已缓存 region 聚合候选源/回滚/汇入/湖数（PL-RGA 对齐指标）。 */
+    private static double[] diagnosticStats(RiverLineNetwork net) {
+        int sources = 0, rolled = 0, joined = 0, lakes = 0, regions = 0;
+        for (RiverLineRegion r : net.cachedList()) {
+            sources += r.sourceCount; rolled += r.rolledBack; joined += r.joined;
+            lakes += r.lakes.size(); regions++;
+        }
+        return new double[]{sources, rolled, joined, lakes, regions};
     }
 }

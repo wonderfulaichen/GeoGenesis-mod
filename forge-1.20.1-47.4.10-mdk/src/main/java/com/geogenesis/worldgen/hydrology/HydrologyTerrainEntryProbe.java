@@ -18,7 +18,7 @@ public final class HydrologyTerrainEntryProbe {
         long restored = hash(terrain, generator, 12345L);
         boolean deterministic = first == repeat && first == restored;
         boolean seedSensitive = first != second;
-        boolean hydrologyDefault = HydrologyExperimentSwitch.hydrologyEnabled();
+        boolean hydrologyDefault = terrain.riversEnabled();
         System.out.println("=== HydrologyTerrainEntryProbe ===");
         System.out.println("first=" + Long.toUnsignedString(first));
         System.out.println("repeat=" + Long.toUnsignedString(repeat));

@@ -68,8 +68,10 @@ public class Cell {
     public double shape;
     /** 河网流量（粒子侵蚀 discharge 场采样；RIVER_NETWORK 流量图层用） */
     public double riverNetDischarge;
-    /** 河网段类型（RIVER_TYPE 图层用）：0 无 / 1 主河 REACH / 2 主河 MOUTH / 3 支流 TRIBUTARY（含二级） */
+    /** 河网段类型（RIVER_TYPE 图层用）：0 无 / 1 水文河流 */
     public byte riverType;
+    /** 水文实验河流水面 Y；无河流时为海平面默认值。 */
+    public double riverSurfaceY;
     /** 是否积雪覆盖 */
     public boolean isSnow;
 

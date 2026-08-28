@@ -133,10 +133,8 @@ public class ParameterConfigPanel extends ConfigPanel {
         addIntSpec("Warp倍频", "海岸线 warp 倍频数（octaves）：分形细节尺度层级数。越大海岸线越多尺度（自相似犬牙交错），越小越平滑。默认 5。", c.coastlineWarpOctaves, 1, 8);
         addSpec("Warp频率倍增", "FBM 频率倍增系数（lacunarity）：每倍频频率×该值。默认 2.0。", c.coastlineWarpLacunarity, 1.5, 3.0);
         addSpec("Warp振幅衰减", "FBM 振幅衰减系数（persistence）：每倍频振幅×该值。默认 0.5。", c.coastlineWarpPersistence, 0.25, 0.8);
-        // ★ 确定性河网参数（Phase 4）：结构参数（basin 128wu / 主河行距 4）为代码常量
-        addSpec("河流宽度", "主河河道半宽（块，V 形横截面含岸坡）。支流 = 60%。越大河面越宽。默认 8.0。", c.riverWidth, 1.0, 32.0);
-        addSpec("河流深度", "主河河心深度（块，V 形剖面最深点，含河床噪声）。支流 = 50%。默认 3.0。", c.riverDepth, 1.0, 24.0);
-        addSpec("支流落差阈值", "支流水面抬升的最小落差（块）。小于此值不抬升（下游水面与上游地表差 / 2 达不到阈值 → 水面持平）。瀑布产生于此。默认 3.0。", c.riverMinFall, 0.0, 16.0);
+        // ★ 旧 RTF 几何河网的 Zone 参数已于 2026-08-29 随模型下线移除（仅保留总开关），
+        //   河网形态由水文模型内部参数 RiverLineParams 决定，此处不再暴露死旋钮。
         for (BasicSpec s : specs) {
             ParamSlider ps = new ParamSlider(0, 0, 100, s.min, s.max, s.cfg.get(), v -> {
                 s.cfg.set(v); onChange.accept(v);
