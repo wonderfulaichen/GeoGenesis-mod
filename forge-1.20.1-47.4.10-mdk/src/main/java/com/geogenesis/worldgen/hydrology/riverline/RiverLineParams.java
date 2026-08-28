@@ -131,7 +131,7 @@ public record RiverLineParams(
             512,                     // maxTraceSteps
             0.12,                    // sourceMinE（下探到低地/山坡：汇流面积小 → 产出小溪；
                                      //  原 0.20 使源点只聚集在少数高地，互相 claimed 阻断，密度上不去）
-            1,                       // sourceSpacingCells（≈72wu 间距，加密源点→河网更密）
+            2,                       // sourceSpacingCells（≈48wu 间距；1 时河网过密，用户实机反馈"河流有点多"）
             2,                       // traceStep（下坡窗口 2 格）
             3,                       // minRiverNodes
             200.0,                   // riverAccumThreshold（wu²）
