@@ -427,12 +427,20 @@ public final class RiverLineNetwork {
 
     // ===== 河网生成辅助（PL-RGA 对齐）=====
 
-    /** 下坡邻域：在 step×step 窗口取最陡下降格（带微小距离惩罚），非仅 8 邻 D8（_downhillNeighbor）。 */
+    /**
+     * 下坡邻域：step×step 窗口内取"单位距离落差最大"的格（标准 D8 最陡下降定义）。
+     *
+     * <p>★ 2026-08-29 实机修复"河沿等高线横走"：旧评分 {@code e + 1e-5·dist²}
+     * 的距离惩罚（≤4e-5）远小于 e 的横向差异量级，实际退化为"窗口内绝对最低点"——
+     * 等高线方向只要有缓坡平台，河就横向漂移而非直下坡（用户实机红圈案例）。
+     * 改为 slope = (curE − e)/dist 单位落差率评分：只有横向落差率真正更大时才横走，
+     * 直下坡更陡时必然直下（水的物理走向）。</p>
+     */
     private int downhillNeighbor(FlowField field, int cur, int step, int nx, int nz) {
         int ci = cur % nx, cj = cur / nx;
         double curE = field.eAt(cur);
         int best = -1;
-        double bestScore = curE; // 必须严格更低
+        double bestSlope = 0.0; // 经 minDrop 门控的候选 slope 恒正 → 等价"严格更低"
         int minI = Math.max(0, ci - step), maxI = Math.min(nx - 1, ci + step);
         int minJ = Math.max(0, cj - step), maxJ = Math.min(nz - 1, cj + step);
         for (int j = minJ; j <= maxJ; j++) {
@@ -442,8 +450,8 @@ public final class RiverLineNetwork {
                 double e = field.eAt(idx);
                 if (e >= curE - params.minDrop()) continue;
                 double di = i - ci, dj = j - cj;
-                double score = e + 1e-5 * (di * di + dj * dj);
-                if (score < bestScore) { bestScore = score; best = idx; }
+                double slope = (curE - e) / Math.sqrt(di * di + dj * dj);
+                if (slope > bestSlope) { bestSlope = slope; best = idx; }
             }
         }
         return best;
