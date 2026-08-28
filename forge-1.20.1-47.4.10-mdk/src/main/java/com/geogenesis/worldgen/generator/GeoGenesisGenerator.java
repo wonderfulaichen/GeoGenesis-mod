@@ -1,8 +1,8 @@
 package com.geogenesis.worldgen.generator;
 
 import com.geogenesis.config.GeoGenesisConfig;
-import com.geogenesis.worldgen.river.RiverCarver;
-import com.geogenesis.worldgen.river.RiverSample;
+import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
+import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
@@ -62,6 +62,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     private static final BlockState STONE     = Blocks.STONE.defaultBlockState();
     private static final BlockState DEEPSLATE = Blocks.DEEPSLATE.defaultBlockState();
     private static final BlockState WATER     = Blocks.WATER.defaultBlockState();
+    // 表层流动水观感（方案 B）：WATER 的 LEVEL=1 即流动态（本版无 Blocks.FLOWING_WATER 映射）
+    private static final BlockState FLOWING_WATER = Blocks.WATER.defaultBlockState()
+            .setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LEVEL, 1);
     private static final BlockState BEDROCK   = Blocks.BEDROCK.defaultBlockState();
     private static final BlockState DIRT      = Blocks.DIRT.defaultBlockState();
     private static final BlockState GRASS     = Blocks.GRASS_BLOCK.defaultBlockState();
@@ -106,9 +109,12 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 t = sharedTerrain;
                 if (t == null) {
                     CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y);
-                    gen.seed(worldSeed);
-                    sharedTerrain = new GeoGenesisTerrain(gen);
-                    t = sharedTerrain;
+                    GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
+                    // ★ 2026-08-26 修复：必须走 terrain.seed() —— 它内部调 generator.seed +
+                    //   rivers.setWorldSeed。只 gen.seed 会漏掉河网种子（所有世界同一河网）。
+                    terrain.seed(worldSeed);
+                    sharedTerrain = terrain;
+                    t = terrain;
                 }
             }
         }
@@ -166,24 +172,22 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         int baseZ = pos.getMinBlockZ();
 
         long t2 = System.nanoTime();
-        Cell[] cells = terrain.getChunkCells(pos.x, pos.z);
+        // ★ 2026-08-29：旧 RTF 河网已下线，水文模型是唯一的河流实现，故河流开关
+        //   统一为配置面板 riverEnabled（原 HydrologyExperimentSwitch 的 LEGACY_RTF
+        //   模式已无对应实现，保留会导致"地形被水文雕刻却不灌水"的干河谷）。
+        boolean hydrologyOn = terrain.riversEnabled();
+        HydrologyChunkResult hydrologyResult = hydrologyOn
+                ? terrain.calculateHydrologyChunk(pos.x, pos.z) : null;
+        Cell[] cells = hydrologyResult != null
+                ? applyHydrologyChunk(hydrologyResult, pos.x, pos.z)
+                : terrain.getChunkCells(pos.x, pos.z);
         long t3 = System.nanoTime();
 
         BlockPos.MutableBlockPos mPos = new BlockPos.MutableBlockPos();
-        boolean riversOn = terrain.riversEnabled();
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
-
-                // Phase 2：确定性河网纯函数采样（开关关闭 → NONE，零开销）
-                // ★ 2026-08-16 R18：海洋列也采样（仅主河 REACH/MOUTH 生效——
-                //   RiverCarver 内支流入海被拒、主河雕贴海床浅槽，水下河谷连续
-                //   延伸入海，河口不"凭空消失"；DW getRiverCarve 同款）。
-                //   历史注释"海洋列跳过采样"作废（曾导致海底起点主河无引导）。
-                RiverSample rs = riversOn
-                        ? terrain.sampleRiverAtBlock(baseX + lx, baseZ + lz)
-                        : RiverSample.NONE;
-                fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell, rs);
+                fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell, hydrologyOn);
             }
         }
         long t4 = System.nanoTime();
@@ -197,9 +201,28 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         return CompletableFuture.completedFuture(chunk);
     }
 
+    private Cell[] applyHydrologyChunk(HydrologyChunkResult result, int chunkX, int chunkZ) {
+        Cell[] cells = result.originalCells().clone();
+        for (HydrologyBlockCarvedColumn column : result.carvedColumns()) {
+            int lx = Math.floorMod(column.blockX(), 16);
+            int lz = Math.floorMod(column.blockZ(), 16);
+            Cell cell = cells[lx * 16 + lz];
+            cell.height = column.carvedGroundY();
+            // ★ BugFix: riverType 必须复用 carveColumn 的 anyFill 门控（carved < surfaceY−0.5
+            //   且 original >= surfaceY），否则低洼处原始地面已低于河面时雕刻量为 0，仍会被
+            //   fillTerrainColumn 的 riverType!=0 判定灌水 → 水漫出河道。
+            cell.riverType = (byte) (column.fillWater() ? 1 : 0);
+            cell.riverSurfaceY = column.waterSurfaceY();
+            cell.isLake = column.fillWater() && column.waterSurfaceY() >= terrain.seaLevel();
+            cell.lakeMask = cell.isLake;
+        }
+        return cells;
+    }
+
     /**
-     * 地形列填充：按 cell.height 铺 基岩/深板岩/石/土/表层/水柱；
-     * 河流列（RiverSample.inChannel）先做河谷雕刻（河心切到河床、岸坡过渡，只切不抬）。
+     * 地形列填充：按 cell.height 铺 基岩/深板岩/石/土/表层/水柱。
+     * 河谷雕刻与水柱判定均由水文雕刻计划预先写入 cell（cell.height 已含雕刻量，
+     * riverType/riverSurfaceY 给出灌水判据），本方法只负责落块，不再二次采样河网。
      *
      * 关键修复（旧版 bug）：
      * - 地表用 {@code y == surfaceY}（surfaceY = floor(height)），不再用 {@code y == (int)height}
@@ -209,27 +232,28 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      */
     private void fillTerrainColumn(ChunkAccess chunk, BlockPos.MutableBlockPos mPos,
                                    int wx, int wz, Cell cell,
-                                   com.geogenesis.worldgen.river.RiverSample rs) {
-        // 河谷雕刻（纯函数计划，R9 DW 完整模型）：地面高/水面/墙区标志
+                                   boolean hydrologyOn) {
+        // ★ RTF 范式（2026-08-26）：河谷已由 generateChunk 雕刻回写 cell.height（Zone1-4
+        //   平滑谷），此处不再二次雕刻，仅按 waterTable 水面做灌水判定（Streams isStreamBed：
+        //   雕刻后地面 < 水面 − 0.5 才灌水；岸坡/漫滩只塑形不上水）。
         double groundY = cell.height;
         boolean riverWater = false;
-        boolean riverWall = false;      // 墙区（地形低于水面 → 抬填 + 顶草皮）
+        boolean riverWall = false;
         double waterTop = SEA_LEVEL;
-        if (rs.inChannel()) {
-            RiverCarver.CarvedColumn cc = RiverCarver.carve(cell.height, rs, wx, wz, SEA_LEVEL);
-            // ★ 2026-08-15 R16b 修复（用户"实测无效"实锤）：carve 可能返回 NONE
-            //   （skip 条件：地形 < 海平面−4 → 不雕刻）。NONE.groundY=0、
-            //   waterTop=-Inf——无条件取用 → 海上/低地河整列塌陷到 Y=0 黑洞！
-            //   必须检查 cc.inChannel() 才应用雕刻结果，否则保留原地形。
-            if (cc.inChannel()) {
-                groundY = cc.groundY();
+        if (hydrologyOn) {
+            // ★ 水文模型：灌水判定完全由水文雕刻计划决定（fillWater 已含河道中心门控）
+            if (cell.riverType != 0 && cell.riverSurfaceY > groundY) {
                 riverWater = true;
-                riverWall = cc.isWall();
-                waterTop = cc.waterTopY();
+                waterTop = cell.riverSurfaceY;
             }
         }
         int surfaceY = (int) Math.floor(groundY);
-        boolean water = cell.isWater() || riverWater;         // 实测海平面 e<0
+        // ★ 海洋补灌（水文模式）：雕刻计划只产出河/湖列，无河的"地形低于海平面"海面列
+        //   必须在此补灌（否则整片海洋无水）。仅对"未由河计划处理(riverType==0)且地面低于海"
+        //   的列生效，避免把雕刻河床错误抬到海平面（原屏蔽 cell.isWater() 留下的坑）。
+        boolean ocean = hydrologyOn && cell.riverType == 0 && groundY < SEA_LEVEL;
+        // 水文模式：灌水 = 河计划(riverWater) ∪ 海洋(ocean)；非水文模式保留旧逻辑(isWater + riverWater)。
+        boolean water = hydrologyOn ? (riverWater || ocean) : (cell.isWater() || riverWater);
         boolean beach = cell.terrainType == TerrainClass.BEACH;
 
         // 表层与填充块选择（R9：墙顶草皮、墙壁土、河心砾石——DW top/filler/base 语义）
@@ -267,7 +291,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             } else if (y == surfaceY) {
                 state = top;                                      // 地表最顶块
             } else if (water && y <= waterTopBlock) {
-                state = WATER;                                    // 水柱（水面以下）
+                // 表层用流动水（方案 B 流动观感）；其余静水预填，确定性、永不断裂
+                state = (y == waterTopBlock) ? FLOWING_WATER : WATER;   // 水柱（水面以下）
             } else {
                 break;                                            // 地表/水面以上：默认 AIR，跳过
             }

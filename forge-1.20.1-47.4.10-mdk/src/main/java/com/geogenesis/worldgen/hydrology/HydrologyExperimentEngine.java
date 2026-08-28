@@ -10,8 +10,8 @@ import java.util.List;
  * 水文实验接入门面（河线范式，2026-08-27 重构）。
  *
  * <p>内部委托 {@link RiverLineNetwork}：region 锚点分形河线 + 距离场采样。
- * 旧格点水文（HydrologySimulator/Adapter）保留仅供诊断探针使用，
- * 不再参与生产路径。</p>
+ * 这是当前生产实现（由 GeoGenesisTerrain→HydrologyChunkEngine 驱动）；
+ * 旧格点水文（HydrologySimulator/Adapter 等）已于 2026-08-29 整体移除。</p>
  */
 public final class HydrologyExperimentEngine {
     private final CellGenerator terrain;

@@ -111,6 +111,40 @@ public final class FlowField {
     public double eAt(int idx) { return e[idx]; }
     public int flowTo(int idx) { return flowTo[idx]; }
     public boolean inBounds(int i, int j) { return i >= 0 && i < nx && j >= 0 && j < nz; }
+
+    /**
+     * 是否存在"网格内"的更低邻居（严格低于 curE − minDrop）。
+     * 用于终止判定：有则安全下坡（继续追踪），无则需进一步判断是湖还是越界回滚。
+     */
+    public boolean hasInBoundsDownhill(int idx, double minDrop) {
+        int ci = idx % nx, cj = idx / nx;
+        double curE = e[idx];
+        for (int dj = -1; dj <= 1; dj++) {
+            for (int di = -1; di <= 1; di++) {
+                if (di == 0 && dj == 0) continue;
+                int ni = ci + di, nj = cj + dj;
+                if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                if (e[nj * nx + ni] < curE - minDrop) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 该格是否紧邻网格边界（8 邻存在越界位置）。
+     * 无网格内更低邻居却紧邻边界 → 河流想"流出网格"但不可见 → 不安全（应回滚，对齐 PL-RGA _hasUnsafeDownhillNeighbor）。
+     */
+    public boolean touchesGridEdge(int idx) {
+        int ci = idx % nx, cj = idx / nx;
+        for (int dj = -1; dj <= 1; dj++) {
+            for (int di = -1; di <= 1; di++) {
+                if (di == 0 && dj == 0) continue;
+                int ni = ci + di, nj = cj + dj;
+                if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) return true;
+            }
+        }
+        return false;
+    }
     public double cellCenterX(int idx) { return originX + (idx % nx) * cellSize; }
     public double cellCenterZ(int idx) { return originZ + (idx / nx) * cellSize; }
 

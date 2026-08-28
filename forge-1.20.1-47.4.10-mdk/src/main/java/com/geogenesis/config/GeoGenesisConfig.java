@@ -67,12 +67,9 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue riverLo;
     public final ForgeConfigSpec.DoubleValue riverHi;
 
-    // ===== River Network（决策 4 最小配置集） =====
+    // ===== 河流（水文模型：汇流场派生河网 + 距离场雕刻，2026-08-29） =====
+    /** 河流总开关（旧 RTF 几何河网已下线，水文模型是唯一的河流实现） */
     public final ForgeConfigSpec.BooleanValue riverEnabled;
-    public final ForgeConfigSpec.DoubleValue riverGridSpacing;
-    public final ForgeConfigSpec.DoubleValue riverWidth;
-    public final ForgeConfigSpec.DoubleValue riverDepth;
-    public final ForgeConfigSpec.DoubleValue riverMinFall;
 
     // ===== 海床 =====
     public final ForgeConfigSpec.DoubleValue seabedDetail;
@@ -429,20 +426,13 @@ public final class GeoGenesisConfig {
             .defineInRange("riverHi", 0.00, -1.0, 0.0);
         builder.pop();
 
-        // ===== River Network（确定性几何河网，决策 4 最小配置集） =====
-        // 语义 = 块（玩家视角，与侵蚀配置一致）；引擎内 ÷horizontalScale 转 wu。
-        // 结构性参数（basinSize=128wu / mainRowSpacing=4）为代码常量，运行时不可调。
+        // ===== River Network（RTF 范式：几何河网 + Zone1-4 河谷雕刻，2026-08-26） =====
+        // ★ 2026-08-29：旧 RTF 几何河网的 Zone 参数（根河数/河床宽·深/岸阶宽·高/谷幅/淡入比例）
+        //   随模型下线一并移除——它们只对已删除的 RiverNetwork 生效，保留即"转了没反应"的死旋钮。
+        //   河网形态改由水文模型内部参数（RiverLineParams）决定。
         builder.push("River Network");
-        riverEnabled = builder.comment("Deterministic river network (Farseek-style geometry). Master switch for river generation.")
+        riverEnabled = builder.comment("Master switch for river generation (hydrology model: flow-accumulation derived network + distance-field carving).")
             .define("riverEnabled", true);
-        riverGridSpacing = builder.comment("River tracking grid spacing in wu (D8 basin tracing + tributary Dijkstra). Default 4.0.")
-            .defineInRange("riverGridSpacing", 4.0, 2.0, 16.0);
-        riverWidth = builder.comment("Main river channel half-width in blocks (V-shaped cross section, banks included). Default 8.0.")
-            .defineInRange("riverWidth", 8.0, 1.0, 32.0);
-        riverDepth = builder.comment("Main river bed depth below water surface in blocks (channel center, V-shape). Default 3.0.")
-            .defineInRange("riverDepth", 3.0, 1.0, 24.0);
-        riverMinFall = builder.comment("Minimum tributary fall height (blocks) before water surface rises upstream (Farseek MinFallHeight). Default 3.0.")
-            .defineInRange("riverMinFall", 3.0, 0.0, 16.0);
         builder.pop();
 
         builder.push("Seabed");

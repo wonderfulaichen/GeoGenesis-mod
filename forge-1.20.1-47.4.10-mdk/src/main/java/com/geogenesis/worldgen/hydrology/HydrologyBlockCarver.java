@@ -14,10 +14,11 @@ import java.util.List;
  * <ul>
  *   <li><b>纯距离场</b>：t = dist/width ∈ [0,1]，smoothstep 断面 ——
  *       中心全量下挖、边缘连续淡出，无二值判定、无最近邻吸附；</li>
- *   <li><b>单属主（Voronoi）</b>：每块只归<b>最近一条</b>河线
- *       （sampleBlockAll 已按距离升序，get(0) 即属主），carved/surface/bed/anyFill
- *       <b>全部同源</b> —— 根除旧"多线 MAX carve"的跨线劫持
- *       （远处高水面河线压低河床/抬高水面 → 水漫出河道/巨型矩形水体）；
+ *   <li><b>邻近段 IDW 混合（PL-RGA riverHeightField）</b>：每块取
+ *       dist ≤ heightBlendDist 的全部命中，按 (1−fade)²/dist² 反距离平方混合
+ *       surfaceY/width/depth —— 河线交越处平滑过渡，根除"单属主硬切"接缝；
+ *       blendDist 仅 ~valley 量级，远处河线不入场 → 不复发旧"多线 MAX carve"
+ *       跨线劫持（远处高水面河线压低河床/抬高水面 → 水漫出河道/巨型矩形水体）；
  *       region 边界连续性由距离场 1-Lipschitz 保证（等距中线两侧取值一致，
  *       最多极小 kink，无 MAX 式 cliff）；</li>
  *   <li><b>只下挖</b>：carved = original − cut，cut ≥ 0；未命中河线处
@@ -71,27 +72,51 @@ public final class HydrologyBlockCarver {
         double seaLevel = terrain.heightCurve().seaLevelY();
         if (original < seaLevel) fadeE = 0.0;
 
-        // ★ 单属主：sampleBlockAll 已按 distToCenter 升序，get(0) 即最近河线。
-        //   水面/河床/灌水全部只看属主 —— 远处河线再也无法影响本列。
-        HydrologyBlockSample owner = samples.get(0);
-        double width = Math.max(owner.width(), 1.0);
-        double valley = Math.max(owner.valleyWidth(), width);
-        double dist = owner.distToCenter();
+        // ★ IDW 多段混合（参考 PL-RGA riverHeightField: (1−fade)²/dist² 加权）
+        //   取 dist ≤ heightBlendDist 的全部命中按反距离平方混合 surfaceY/width/depth，
+        //   根治"单属主硬切"在河线交越处的接缝；blendDist 仅 ~valley 量级，
+        //   远处河线不入场 → 不复发 DW 式跨线劫持（与单属主"同源"约束正交且兼容）。
+        RiverLineParams P = RiverLineParams.defaults();
+        double blendDist = P.heightBlendDist();
+        double wSum = 0.0, sSurf = 0.0, sWid = 0.0, sDep = 0.0;
+        double dist = samples.get(0).distToCenter();   // 几何最近距（河线/湖心）
+        for (HydrologyBlockSample s : samples) {
+            double d = s.distToCenter();
+            if (d > blendDist) break;                   // sampleBlockAll 已按距离升序
+            double fade = NoiseUtil.saturate(d / blendDist);
+            double w = (1.0 - fade) * (1.0 - fade) / Math.max(d * d, 1.0);
+            wSum += w;
+            sSurf += w * s.surfaceY();
+            sWid  += w * s.width();
+            sDep  += w * s.depth();
+        }
+        double width, surfaceY, depth;
+        if (wSum > 1e-9) {
+            width = sWid / wSum;
+            surfaceY = sSurf / wSum;
+            depth = sDep / wSum;
+        } else {                                         // 退化：仅最近一条（与旧单属主等价）
+            HydrologyBlockSample o = samples.get(0);
+            width = o.width(); surfaceY = o.surfaceY(); depth = o.depth();
+        }
+        width = Math.max(width, 1.0);
+        double bankW = width * P.bankFactor();
+        double valley = Math.max(width + bankW, width * 3.0);
 
         // 距离场横断面：t=0 中心 → t=1 河缘（Streams 式 V 形：线性凹断面）
         double t = NoiseUtil.saturate(dist / width);
         double profile = 1.0 - t;                 // 中心 1.0 → 缘 0.0（V 形河床）
         // 河谷壁：从河缘(valleyT=0)到谷外(valleyT=1)按 valleyExp 幂次渐变归零（V 形谷壁）
         double valleyT = NoiseUtil.saturate((dist - width) / Math.max(1.0, valley - width));
-        double outer = 1.0 - Math.pow(valleyT, RiverLineParams.defaults().valleyExp());
+        double outer = 1.0 - Math.pow(valleyT, P.valleyExp());
 
         // 水面 = min(单调水面, 当地真实地形)（Streams maxSurfaceAt 范式）。
-        //   owner.surfaceY() = 网络逐段插值的单调水面（applyRiverHeightSlopeDrop 产物）→ 保证不爬坡；
+        //   surfaceY = 网络逐段插值的单调水面（applyRiverHeightSlopeDrop 产物）→ 保证不爬坡；
         //   original = 当地真实地形 → 地形低于水面时水面=地形，填满谷、不悬空；
         //   取 min 后河嵌进真实谷地且水面严格单调（根除"河爬坡"）。
-        double waterSurface = Math.min(owner.surfaceY(), original);
+        double waterSurface = Math.min(surfaceY, original);
         // 目标河床：水面 − depth × 断面形状
-        double bedTarget = waterSurface - owner.depth() * profile;
+        double bedTarget = waterSurface - depth * profile;
         // 雕刻量 = (original − bedTarget) × 外缘衰减 × 高度淡出；只下挖
         double cut = Math.max(0.0, original - bedTarget) * outer * fadeE;
         double carved = original - cut;
@@ -102,7 +127,7 @@ public final class HydrologyBlockCarver {
         //   ③ 水深上界 waterSurface − carved ≤ depth + 1（防异常深水）。
         boolean anyFill = dist <= width
                 && carved < waterSurface - 0.5
-                && (waterSurface - carved) <= owner.depth() + 1.0;
+                && (waterSurface - carved) <= depth + 1.0;
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                 waterSurface, cut, anyFill);
     }

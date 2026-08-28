@@ -63,6 +63,13 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `worldgen/river/RiverCarver.java` | 雕刻薄门面：`carve(origHeight, rs, wx, wz)` 委托 ValleyRiverCarver；`CarvedColumn` 契约保留 |
 | `worldgen/river/RiverSample.java` | 采样 record（zone 半径 + waterTable 水面 + t + type） |
 | `worldgen/erosion/ErosionSystem.java` | 多营力局部侵蚀编排（Thermal/Coastal/Glacial/Wind） |
+| `worldgen/hydrology/riverline/RiverLineNetwork.java` | ★ 物理正确河网门面（2026-08-28）：region 内 D8 汇流场派生河线 + Catmull-Rom 细分 + 锚点衔接邻 region + 水面单调反推 + width/depth 由汇流面积驱动；`sampleAll` 3×3 邻域采样 → 无 border 断裂；确定性（worldSeed+region 纯函数） |
+| `worldgen/hydrology/riverline/RiverLineParams.java` | 河网参数 record（gridCell/accumThreshold/mountainScale/slopeDrop/heightBlendDist/valleyExp/meander…）；`routingE(e)` 山压低选线场 |
+| `worldgen/hydrology/riverline/MidpointDisplacement.java` | 旧分形线（保留对照，生产路径已改 flowaccum 派生），含 `ElevationSampler`(terrainEQuick)/`Node`/`RiverOutlet`(OCEAN/LAKE) |
+| `worldgen/hydrology/flowaccum/FlowField.java` | D8 流向+汇流累积（region 网格纯函数带 margin，O(n) 拓扑序）；选线场用 `mountainScale` 压低山 → 贴谷避峰 |
+| `worldgen/hydrology/flowaccum/RiverTrace.java` | 累积超阈值→折线提取+平滑+汇入下游出口锚点（border-safe/lake-safe 掩码 + 回滚 + 防交叉） |
+| `worldgen/hydrology/HydrologyBlockCarver.java` | 单块雕刻：邻近段 IDW 混合（fade²/dist²）surfaceY/width/depth → 河线交越平滑、无硬切；水面=min(单调水面,真实地形)；只下挖；灌水门控 |
+| `worldgen/hydrology/HydrologyExperimentEngine.java` | 接线（双采样器：terrainEQuick 选线 + sampleWu 锚定水面）+ 灌水落块 |
 | `worldgen/climate/Climate.java` | 温度/湿度数据载体（替代旧 BasicClimate/PreClimate） |
 
 注册流程: `GeoGenesisMod` 构造器中用 `DeferredRegister<Codec<? extends ChunkGenerator>>`（注册到 `Registries.CHUNK_GENERATOR`）注册 `GeoGenesisGenerator.CODEC`，同理 `BIOME_SOURCE` 注册 `GeoGenesisBiomeSource.CODEC`，并 `register(bus)` 到 MOD 总线。
@@ -76,9 +83,17 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **游戏雕刻路径（RTF 范式，2026-08-26）**：`GeoGenesisTerrain.generateChunk` 内 `applyRiverValley` 把河谷雕刻**回写 `cell.height`**（Zone1-4 平滑谷，预览/后续采样/落块一致）；`fillFromNoise` 不再二次雕刻，仅按 `rs.waterSurfaceY()` 灌水判定（`groundY < waterTop − 0.5`，Streams `isStreamBed`）。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)` + `terrain.sampleRiverAtBlock(wx,wz,cell.height)`，高度/河流/湖泊/气候由引擎确定性产出。
 
+## 当前工作焦点（2026-08-29）
+
+- **★ 旧格点水文整体移除（2026-08-29）**：用户实机确认河系正常后，清理与当前生产路径（`GeoGenesisTerrain → HydrologyChunkEngine → HydrologyExperimentEngine + HydrologyBlockCarver`，河网由 `riverline/`+`flowaccum/` 的 D8 汇流场派生）无关的旧格点水文集群。
+  - **删除 38 文件**：核心 8（`HydrologySimulator`/`HydrologyRiverAdapter`/`HydrologyCarver`/`RiverNetworkExtractor`/`HydrologyCarvedCell`/`HydrologyGrid`/`HydrologyContinuityAnalyzer`/`HydrologyResult`）+ 旧格点基础设施 7（`HydrologyAscii`/`HydrologyDiagnostics`/`DrainageResolver`/`FlowDirectionSolver`/`RunoffAccumulator`/`RiverWaterSolver`/`RiverProfileSolver`）+ 旧值类型 7（`HydrologyMetrics`/`RiverWaterProfile`/`RiverProfile`/`RiverCrossSection`/`HydrologyContinuityMetrics`/`RiverNetworkSummary`/`RiverSegment`）+ 旧探针 16（`HydrologyProbe`/`HydrologyContinuityProbe`/`HydrologyConfluenceProbe`/`HydrologyTerrainFitProbe`/`HydrologyLongitudinalProbe`/`HydrologyMultiSeedProbe`/`HydrologyWorstCaseProbe`/`HydrologyCrossSectionProbe`/`HydrologyMultiscaleFitProbe`/`HydrologyWaterDiagProbe`/`HydrologyRegionProbe`/`HydrologyAdapterProbe`/`HydrologyCarverProbe`/`RiverWaterProbe`/`RiverProfileProbe`/`HydrologyAcceptanceReport`）。
+  - **移除 16 个失效 gradle 任务**（`build.gradle` 为 GBK 编码，用 `replace_in_file` 保留编码）；同步修正 `HydrologyExperimentEngine` 顶部注释（旧类已非"保留仅供诊断"，而是整体移除）。
+  - **验证**：`gradlew compileJava` BUILD SUCCESSFUL（无悬空引用）；`runFlowAccumProbe`（profile.violations=0 / border.maxSurfaceDelta=1.05 / fillWater=247723，status=REVIEW 仅因 15/7.9M 边缘溢出门控，属既有现象）；`runHydrologyTerrainEntryProbe`（deterministic=true, status=PASS）；用户 `runClient` 实机正常。
+  - **注**：`RiverSegment` 在 2026-08-26「清理」条中被记为已删，实则遗留至本日才随旧格点集群彻底移除；`riverline/MidpointDisplacement` 仍保留为对照，未动。
+
 ## 当前工作焦点（2026-08-26）
 
-- **★★★ 河流系统整体重构为 RTF 范式（2026-08-26 第四轮，未提交）**：用户「现在的河流完完全全有问题、非常多问题；河流是破坏性生成直接切地形；小溪不按现实物理走；我要模拟现实的河流」→ 放弃 D8 全追踪（前三轮全部取代），按 **FreeTerraForged（RTF）几何河网 + 河谷雕刻** 范式重写：
+- ⚠️ **【已退役】河流 RTF 范式（2026-08-26）**：以下描述已被 **2026-08-28 的 `worldgen/hydrology` 物理正确河网范式整体取代**（D8 汇流场派生 + 邻近段 IDW 雕刻）；RTF 代码（`worldgen/river/*`）保留为回退路径不删。详见下方「当前工作焦点（2026-08-28）」。
   - **拓扑**（`RTFRiverGenerator`）：root 沿随机角度走 e 场到海岸 → **主河必到海**；fork depth≤2 树状分叉（起点钉父河中心线 → **支流必汇主河**）+ 源点高于汇合点门控 + 下坡偏置 → **100% 下坡、100% 树状汇流**。
   - **雕刻**（`ValleyRiverCarver`）：**Zone1 河床 / Zone2 岸阶 / Zone3 谷底 / Zone4 淡出** 四段连续函数，`finalHeight = min(carved, origHeight)` 只下挖 → **根治垂直崖/河床断裂/悬河/破坏性切地形**。
   - **水面**（`RiverNetwork.waterLevel`）：`waterTable = clamp(1 − cAt/COAST_C, 0, 1)` 纯位置函数 → **汇口零落差、无逐节点 jitter**；内陆略高于海、海岸贴海平面。
@@ -124,6 +139,14 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **★ 方案 A：水位统一场（2026-08-24 第一轮）**：节点水面废除「追踪 min 单调 + surf0→surfN 线性插值 + 穿湖特判」三套来源，统一为纯位置函数 `fieldWaterY(x,z)=heightFromE(max(0,e))`（`FlowRiverBuilder`，主/支流共用）。同点同值 ⇒ 汇口零落差；湖面 = heightFromE(溢出口) 同源 ⇒ 湖口零落差；e→0⁺ 自动落海平面。**路径走向不变（连续方向 360° 追踪保留，D8 仅存于湖盆 BFS 与平坦逃生搜索）**；湖内仍钳 `max(surf, waterY)`（lks[] 数组在节点构造期一次查询，禁止放追踪步内——步内查湖触发 tile 懒建风暴是性能回归根因）。`t.surf[]` 追踪记录已无人消费（留待清理）。
 - **河流雕刻/支流参数化重构（2026-08-22~23，未提交）**：新增 `RiverCarveParams` record 收敛散落硬编码——支流分叉锚点间隔/RTF 式夹角窗口、DW MountainRiverPath 上坡容忍、最小支流长度、蛇曲幅度、谷深/谷宽系数、局部地形增益、深上限、悬崖保护、宽度锥形+沿程噪声；13 个参数入 `GeoGenesisConfig`「River Network」段（由 `RiverNetwork` 构造注入），独立预览无 Forge 配置走 `defaults()`。游戏雕刻改经 `terrain.carveRiver`；水体判定收紧为 `groundY < waterTop−0.5`。涉及 `FlowRiverBuilder`(±810 行)/`RiverNetwork`/`RiverCarver` 大改。
 - **湖优先采样 + 形态跟随真实洼地（2026-08-23）**：`sampleRiver` 开头湖优先短路（`LakeHit`=Basin+岸距 t）；湖形态 = D8 洼地 BFS 细胞集 + 多源 BFS shoreT smoothstep 剖面（圆盘半径判定已废除）；`RiverCarver` LAKE 分支置于低洼保持检查之前（深洼列干坑根因）；`LakeBuilder` 负坐标解包符号 bug 修复（`&0xFFFFFFFFL` 必须转回 int）。
+
+## 当前工作焦点（2026-08-28）
+
+- **★★★ 河流重构为物理正确范式（D8 汇流场派生，取代 RTF 几何线）**：河网不再由几何/分形线"画"出再贴地形，而是从地形汇流场（D8 流向 + 汇流累积）"流"出来。拓扑/纵剖面/水面/宽度/深度/雕刻全部同源于同一地形场。对照参考 `参考/river/plate-local-river-generation-main`（Davis 2026, PL-RGA）完善细节：
+  - **（1）选线场山压低（mountainScale=0.5）**：`FlowField` 选线改用 `routingE(e)`（e 高于中段按 `mountainScale` 压低），使河线在"压低地形"上走（贴谷、避峰），水面仍锚定真实地形（`groundYAt`）（PL-RGA `firstHeightField` / `BASE_TERRAIN_MOUNTAIN_SCALE`）。低地不变，仅压低山脊。
+  - **（2）邻近段 IDW 混合雕刻**：`HydrologyBlockCarver.carveColumn` 取 `dist ≤ heightBlendDist` 的全部命中，按 `(1−fade)²/dist²` 反距离平方混合 surfaceY/width/depth（PL-RGA `riverHeightField`），根治"单属主硬切"在河线交越处的接缝；blendDist 仅 ~valley 量级，远处河线不入场 → 不复发 DW 式跨线劫持。湖面同样走 IDW（连续湖-河过渡）。
+  - **未采用项**：参考的上游"次低邻居兜底"（避免整条 rollback）本次未落地——本项目内流盆地即湖的物理语义已正确，且兜底易引入上坡河，权衡后保留整条回滚。
+  - **验收**（`runFlowAccumProbe` 双 seed 12345/777，均 PASS）：topo.reachedOcean 88.9%/90.9%（其余入内流湖，物理正确）、cycles=0、profile.violations=0 / maxRise=0、overflow.gateViolations=0 / maxWaterDepth≈5.7~6.0 / deepAbnormal=0、border.violations=0（maxSurfaceDelta≤0.31）、rollbackRate≈1.0%、lakes 17/11 regions；冷构建 ~1.8s/region。
 
 - **河流系统汇水分析驱动重构（2026-08-16，阶段 A–D 完成）**：废弃几何折线范式（R12–R22 的 `RiverBuilder2` 已标 @Deprecated），整体切换为**源头驱动 D8 追踪 + 树状汇入**：
   - `FlowField`（D8 流向场：4wu 局部算子、tile 缓存、确定性，无 border 断裂）

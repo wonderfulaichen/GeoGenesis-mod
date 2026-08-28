@@ -28,19 +28,42 @@ public final class RiverLineRegion {
         }
     }
 
+    /** 湖泊节点（河流终止于内流洼地）：展平为湖面 + 半径/淡出（PL-RGA outlet_local_minimum）。 */
+    public static final class LakeNode {
+        public final double x, z;     // 世界坐标（wu）
+        public final double height;   // 湖面世界 Y（= 该节点 slope-drop 后河高）
+        public LakeNode(double x, double z, double height) {
+            this.x = x; this.z = z; this.height = height;
+        }
+    }
+
     public final int rx, rz;
     public final List<RiverPolyline> rivers;
+    public final List<LakeNode> lakes;     // 本 region 内流湖（可能为空）
     public final boolean outletOcean;     // 本 region 是否有河到达海洋
     public final double dischargeArea;    // 主河出口汇流面积（诊断用）
+    // 诊断计数（PL-RGA 对齐探针用）
+    public final int sourceCount;         // 候选源数（e>min 且非边界）
+    public final int rolledBack;          // 整条回滚数
+    public final int joined;              // 就近汇入（树状）终止数
 
     public RiverLineRegion(int rx, int rz, List<RiverPolyline> rivers,
-                           boolean outletOcean, double dischargeArea) {
+                           List<LakeNode> lakes,
+                           boolean outletOcean, double dischargeArea,
+                           int sourceCount, int rolledBack, int joined) {
         this.rx = rx;
         this.rz = rz;
         this.rivers = List.copyOf(rivers);
+        this.lakes = List.copyOf(lakes);
         this.outletOcean = outletOcean;
         this.dischargeArea = dischargeArea;
+        this.sourceCount = sourceCount;
+        this.rolledBack = rolledBack;
+        this.joined = joined;
     }
 
+    /** 是否有任何水文特征（河或湖），采样时用于跳过空 region。 */
+    public boolean hasWater() { return !rivers.isEmpty() || !lakes.isEmpty(); }
+    /** 兼容别名（仅河）。 */
     public boolean hasRiver() { return !rivers.isEmpty(); }
 }

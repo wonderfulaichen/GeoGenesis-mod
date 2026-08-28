@@ -84,7 +84,7 @@ minecraft {
         client {
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             property 'forge.enabledGameTestNamespaces', mod_id
-            // 2026-08-02/03：dev 环境堆内存提高（飞行/大视距生成 tile 缓存需要）
+            // 2026-08-02/03锛歞ev 鐜鍫嗗唴瀛樻彁楂橈紙椋炶/澶ц璺濈敓鎴?tile 缂撳瓨闇€瑕侊級
             jvmArgs '-Xmx6G'
         }
 
@@ -206,10 +206,219 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
-    // 抑制 forRemoval 弃用 API 的报错（如 ResourceLocation 构造、ModLoadingContext.get() 等），
-    // 避免重构过渡期整模块编译失败；发布前再统一迁移这些 API。
+    // 鎶戝埗 forRemoval 寮冪敤 API 鐨勬姤閿欙紙濡?ResourceLocation 鏋勯€犮€丮odLoadingContext.get() 绛夛級锛?
+    // 閬垮厤閲嶆瀯杩囨浮鏈熸暣妯″潡缂栬瘧澶辫触锛涘彂甯冨墠鍐嶇粺涓€杩佺Щ杩欎簺 API銆?
     options.compilerArgs << '-Xlint:-removal'
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+task runHydrologyExperimentProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyExperimentProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runRiverLinePreviewProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLinePreviewProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runRiverLineBoundaryProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLineBoundaryProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runRiverLineCarveDiagProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLineCarveDiagProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runRiverLineMultiSeedProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLineMultiSeedProbe'
+    maxHeapSize = '2g'
+}
+
+task runFlowAccumProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.FlowAccumProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runRiverLineLocateProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLineLocateProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyContinuousProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyContinuousProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyBlockProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyBlockProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyChunkPlanProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyChunkPlanProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyChunkBoundaryProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyChunkBoundaryProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyTerrainFacadeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyTerrainFacadeProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyChunkResultProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyChunkResultProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyChunkResultBoundaryProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyChunkResultBoundaryProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyChunkMatrixProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyChunkMatrixProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyTerrainEntryProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyTerrainEntryProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+
+
+task runHydrologyWaterFillProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyWaterFillProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyColumnDiagProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyColumnDiagProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyFadeDiagProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyFadeDiagProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runHydrologyBoundaryDiagProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyBoundaryDiagProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+
+
+
+
+
+
+
+
+
 
 // Standalone terrain preview window (no Minecraft launch required).
 // Runs the pure-Java GeoGenesisTerrain through a Swing heatmap.
@@ -222,6 +431,10 @@ task runPreview(type: JavaExec) {
     // args = ['12345']
 }
 
+// RTF 鑼冨紡娌崇綉楠屾敹鎺㈤拡锛?026-08-26锛夛細root 鍒版捣鐜?fork 涓嬪潯鐜?搴?姘村钩婊?dryRatio銆?
+// Usage: gradlew runRiverTopologyProbe --args="seed radius"锛坮adius=region 鍗婂緞锛岄粯璁?1锛?
+// 鎺ョ紳瀹氫綅鎺㈤拡锛?026-08-26锛夛細鎵弿楂樺害璺冲彉鐨勫懆鏈燂紙16=chunk/512=region/浠?0锛夈€?
+// Usage: gradlew runRiverSeamProbe --args="seed"
 // v7.5 per-layer discontinuity diagnostic + height distribution stats
 task runProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -300,7 +513,7 @@ task runDiscontinuityProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.TerrainDiscontinuityProbe'
 }
 
-// Cell boundary 精准验证（typeWeights/eLand 是否在 400 整数倍处突变）
+// Cell boundary 绮惧噯楠岃瘉锛坱ypeWeights/eLand 鏄惁鍦?400 鏁存暟鍊嶅绐佸彉锛?
 task runCellBoundaryProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.CellBoundaryProbe'
@@ -342,71 +555,7 @@ task runContScaleProbe(type: JavaExec) {
     // Optional: args = ['12345']
 }
 
-// Main chain vs 4wu flowline probe (2026-08-15 R6): gradlew runRiverChainProbe [seed]
-task runRiverChainProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.RiverChainProbe'
-    maxHeapSize = '2g'
-}
 
-// Deterministic river network topology probe (2026-08-14): gradlew runRiverProbe [seed]
-task runRiverProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.RiverProbe'
-    maxHeapSize = '2g'
-    // Optional: args = ['12345']
-}
-
-// River carving sample probe (2026-08-14): gradlew runRiverCarveProbe [seed]
-task runRiverCarveProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.RiverCarveProbe'
-    // Optional: args = ['12345']
-}
-
-// Stage-A flow river probe (2026-08-16): gradlew runFlowRiverProbe -PprobeArgs=12345
-task runFlowRiverProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.FlowRiverProbe'
-    maxHeapSize = '2g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split('\\s+') as List)
-    }
-}
-
-// ASCII river network visualization (2026-08-15 R12): gradlew runRiverVisProbe --args="seed ox oz size"
-task runRiverVisProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.RiverVisProbe'
-    maxHeapSize = '2g'
-}
-
-// Plate diagnostics (2026-08-15 R13): gradlew runPlateDiagProbe [seed]
-task runPlateDiagProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.PlateDiagProbe'
-    maxHeapSize = '2g'
-}
-
-// Game entry simulation (2026-08-15 R16b): gradlew runEntryDiagProbe [seed]
-task runEntryDiagProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.EntryDiagProbe'
-    maxHeapSize = '2g'
-}
-
-// Highland carving scenario (2026-08-15 R17b): gradlew runHighlandCarveProbe
-task runHighlandCarveProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.HighlandCarveProbe'
-}
-
-// Discharge field visualization probe (2026-08-14): gradlew runRiverDischargeProbe --args="seed ox oz size"
-task runRiverDischargeProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.river.RiverDischargeProbe'
-    // Optional: args = ['12345', '0', '0', '512']
-}
 
 // Terrain shape diagnostic (per-type eLand distribution + local roughness)
 task runShapeProbe(type: JavaExec) {
@@ -441,3 +590,7 @@ task runCoastlineProfileProbe(type: JavaExec) {
 
 
 
+
+// RTF 鑼冨紡娌崇綉楠屾敹锛氳 runRiverTopologyProbe锛?026-08-26 閲嶆瀯鍚庣粺涓€鍏ュ彛锛?
+
+// River diagnostic probe (2026-08-25): gradlew runRiverDiagProbe [-PprobeArgs="seed"]

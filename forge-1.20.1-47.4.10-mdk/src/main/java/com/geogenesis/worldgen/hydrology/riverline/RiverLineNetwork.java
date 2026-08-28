@@ -24,7 +24,8 @@ public final class RiverLineNetwork {
 
     /** 距离场采样结果。 */
     public record RiverLineHit(double distToCenter, double surfaceY, double width,
-                               double depth, double dischargeArea, boolean reachesOcean) { }
+                               double depth, double dischargeArea,
+                               boolean reachesOcean, boolean isLake) { }
 
     private static final int MAX_REGIONS = 256;
 
@@ -73,6 +74,14 @@ public final class RiverLineNetwork {
         regions.clear();
     }
 
+    /**
+     * 选线场高程：把原始汇流场 e 经 {@link RiverLineParams#routingE} 山压低后用于 FlowField 追踪，
+     * 使河线在"压低地形"上走（贴谷、避峰），再经水面 blend 融回真实地形（PL-RGA firstHeightField）。
+     */
+    private double routingE(double wx, double wz) {
+        return params.routingE(eSampler.eAt(wx, wz));
+    }
+
     public int cachedRegions() {
         return regions.size();
     }
@@ -100,29 +109,36 @@ public final class RiverLineNetwork {
         double margin = regionSize * 0.5;
         double minX = rx * regionSize - margin, maxX = rx * regionSize + regionSize + margin;
         double minZ = rz * regionSize - margin, maxZ = rz * regionSize + regionSize + margin;
-        FlowField field = new FlowField(minX, minZ, maxX, maxZ, cell, eSampler);
+        // ★ 选线场用"山压低"后的 e（routingE），使河线贴谷避峰；水面仍锚定真实地形（groundYAt）。
+        FlowField field = new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE);
 
         int nx = field.cols(), nz = field.rows();
         boolean[] claimed = new boolean[nx * nz];
+        double[] nodeE = new double[nx * nz];          // 已接受河路径格 e（就近汇入用）
+        java.util.Arrays.fill(nodeE, Double.NaN);
         List<RiverPolyline> rivers = new ArrayList<>();
+        List<RiverLineRegion.LakeNode> lakes = new ArrayList<>();
+        List<int[]> allSegments = new ArrayList<>();   // 全局段集合（防交叉）
         boolean outletOcean = false;
         double maxDischarge = 0.0;
 
-        // 候选源：e > sourceMinE 的格，按 e 降序（高地优先，支流汇入主流）。
-        // 参考 PL-RGA：source_min_height=0.5（山溪发源），min_source_spacing 控制密度。
+        // 候选源：e > sourceMinE 且不在 region 边界安全距内，按 e 降序（高地优先）
         List<Integer> cand = new ArrayList<>();
         for (int i = 0; i < nx * nz; i++) {
-            if (field.eAt(i) > params.sourceMinE()) cand.add(i);
+            if (field.eAt(i) > params.sourceMinE()
+                    && !nearRegionBorder(field, i, rx, rz, params.borderDist())) cand.add(i);
         }
         cand.sort((a, b) -> Double.compare(field.eAt(b), field.eAt(a)));
+        int sourceCount = cand.size();
+        int rolledBack = 0, joinedCount = 0;
 
         int spacing = params.sourceSpacingCells();
         int stepSize = params.traceStep();
         List<Integer> accepted = new ArrayList<>();
-        // 全局段集合（grid 坐标），用于防止河交叉（PL-RGA _wouldCrossExistingSegments）
-        List<int[]> allSegments = new ArrayList<>();
+        int acceptedCount = 0;
 
         for (int s : cand) {
+            if (acceptedCount >= params.riverCount()) break;   // 河数量上限
             if (claimed[s]) continue;
             int si = s % nx, sj = s / nx;
             boolean tooClose = false;
@@ -133,51 +149,37 @@ public final class RiverLineNetwork {
             if (tooClose) continue;
             accepted.add(s);
 
-            // 沿下坡窗口追踪（step_size 邻域取最陡下降格，非仅 8 邻 D8）；
-            // 遇到已汇入的格或会交叉已有河段即停下（支流汇入主流 / 防交叉）。
-            List<Integer> path = new ArrayList<>();
-            int cur = s;
-            boolean reachedOcean = false;
-            while (cur >= 0 && !claimed[cur]) {
-                claimed[cur] = true;
-                path.add(cur);
-                if (field.eAt(cur) <= params.oceanE()) { reachedOcean = true; break; }
-                int down = downhillNeighbor(field, cur, stepSize, nx, nz);
-                if (down < 0) break; // 局部洼地（内流终点）
-                // 防交叉：若 (cur→down) 与已有河段相交，则在此汇入/终止
-                int cri = cur % nx, crj = cur / nx;
-                int dri = down % nx, drj = down / nx;
-                if (segmentCrossesAny(cri, crj, dri, drj, allSegments)) break;
-                cur = down;
-            }
-            if (path.size() < params.minRiverNodes()) continue;
+            // 追踪（带回滚/就近汇入/湖终止）；null = 整条回滚
+            TraceOutcome out = traceRiver(field, s, stepSize, claimed, nodeE,
+                    allSegments, nx, nz, rx, rz);
+            if (out == null) { rolledBack++; continue; }
+            if (out.joined) joinedCount++;
 
-            // 仅保留汇流面积高于阈值的部分（树状稀疏；源头细流不入河）。
-            int start = 0;
-            while (start < path.size()
-                    && field.accumAt(path.get(start)) <= params.riverAccumThreshold()) {
-                start++;
-            }
-            if (path.size() - start < params.minRiverNodes()) continue;
-
-            // 记录本河所有段（用于后续河防交叉）
-            for (int k = 0; k < path.size() - 1; k++) {
-                int a = path.get(k), b = path.get(k + 1);
+            // 提交：认领 + 记录 nodeE（供后续河汇入）+ 段防交叉
+            for (int c : out.cells) { claimed[c] = true; nodeE[c] = field.eAt(c); }
+            for (int k = 0; k < out.cells.size() - 1; k++) {
+                int a = out.cells.get(k), b = out.cells.get(k + 1);
                 allSegments.add(new int[]{a % nx, a / nx, b % nx, b / nx});
             }
 
-            int m = path.size() - start;
+            // 汇流面积阈值裁剪源头细流（树状稀疏）
+            int start = 0;
+            while (start < out.cells.size()
+                    && field.accumAt(out.cells.get(start)) <= params.riverAccumThreshold()) start++;
+            if (out.cells.size() - start < params.minRiverNodes()) continue;
+
+            int m = out.cells.size() - start;
             MidpointDisplacement.Node[] nodes = new MidpointDisplacement.Node[m];
             double[] rawSurf = new double[m], wid = new double[m], dep = new double[m];
             double logRange = Math.log(Math.max(2.0, params.areaLogRange()));
             double logMin = Math.log(Math.max(1.0, params.riverAccumThreshold()));
             double acc = 0.0;
             for (int k = 0; k < m; k++) {
-                int idx = path.get(start + k);
+                int idx = out.cells.get(start + k);
                 double wx = field.cellCenterX(idx), wz = field.cellCenterZ(idx);
                 double a = field.accumAt(idx);
                 nodes[k] = new MidpointDisplacement.Node(wx, wz);
-                rawSurf[k] = groundYAt(wx, wz);   // 地形高度（用于河高插值）
+                rawSurf[k] = groundYAt(wx, wz);
                 double t = NoiseUtil.saturate(
                         (Math.log(Math.max(params.riverAccumThreshold(), a)) - logMin) / logRange);
                 double growth = t * t * (3.0 - 2.0 * t);
@@ -185,17 +187,109 @@ public final class RiverLineNetwork {
                 dep[k] = params.minDepth() + (params.maxDepth() - params.minDepth()) * growth;
                 acc = Math.max(acc, a);
             }
-            // 河高沿程缓降（PL-RGA _applyRiverHeightSlopeDrop）：按地形高度线性插值，
-            // 源端略降，保证水面单调顺滑、不随地形硬起伏。
-            double[] surf = applyRiverHeightSlopeDrop(rawSurf, reachedOcean, curve, params);
-            // Catmull-Rom 细分平滑：消除格点弯道处的矩形切口/地形断裂面。
+            double[] surf = applyRiverHeightSlopeDrop(rawSurf, out.reachedOcean, curve, params);
             RiverPolyline smoothed = smoothPath(nodes, surf, wid, dep);
             maxDischarge = Math.max(maxDischarge, acc);
             rivers.add(smoothed);
-            if (reachedOcean) outletOcean = true;
+            if (out.reachedOcean) outletOcean = true;
+            if (out.isLake) {
+                int last = out.cells.get(out.cells.size() - 1);
+                lakes.add(new RiverLineRegion.LakeNode(
+                        field.cellCenterX(last), field.cellCenterZ(last), surf[m - 1]));
+            }
+            acceptedCount++;
         }
 
-        return new RiverLineRegion(rx, rz, rivers, outletOcean, maxDischarge);
+        return new RiverLineRegion(rx, rz, rivers, lakes, outletOcean, maxDischarge,
+                sourceCount, rolledBack, joinedCount);
+    }
+
+    /** 追踪结果：路径格序列 + 终止类型；null = 整条回滚（PL-RGA _rollbackRiver）。 */
+    private static final class TraceOutcome {
+        final List<Integer> cells;
+        final boolean reachedOcean;
+        final boolean isLake;
+        final boolean joined;     // 终止于汇入已接受河（树状汇流）
+        TraceOutcome(List<Integer> cells, boolean reachedOcean, boolean isLake, boolean joined) {
+            this.cells = cells; this.reachedOcean = reachedOcean; this.isLake = isLake; this.joined = joined;
+        }
+    }
+
+    /**
+     * 沿下坡窗口追踪一条河，带回滚/就近汇入/湖终止（PL-RGA 对齐）。
+     * null = 整条回滚：无安全下坡且越界/边界、或自环/交叉且无汇入。
+     */
+    private TraceOutcome traceRiver(FlowField field, int start, int stepSize,
+                                    boolean[] claimed, double[] nodeE,
+                                    List<int[]> allSegments, int nx, int nz,
+                                    int rx, int rz) {
+        int cur = start;
+        List<Integer> path = new ArrayList<>();
+        boolean[] seen = new boolean[claimed.length];
+        boolean reachedOcean = false, isLake = false, joined = false;
+        while (true) {
+            if (claimed[cur]) { path.add(cur); joined = true; break; }   // 汇入已接受河
+            if (seen[cur]) {                                     // 自环
+                if (!nearRegionBorder(field, cur, rx, rz, params.borderDist())) {
+                    isLake = true; path.add(cur); break;
+                }
+                return null;
+            }
+            path.add(cur); seen[cur] = true;
+            if (field.eAt(cur) <= params.oceanE()) { reachedOcean = true; break; }
+
+            int join = nearbyDownhillNode(field, cur, stepSize, nodeE, nx, nz);
+            if (join >= 0) { path.add(join); joined = true; break; }   // 就近汇入树状
+
+            int down = downhillNeighbor(field, cur, stepSize, nx, nz);
+            if (down < 0) {
+                if (field.touchesGridEdge(cur)) return null;    // 想流出网格 → 不安全回滚
+                if (!nearRegionBorder(field, cur, rx, rz, params.borderDist())) {
+                    isLake = true; break;                        // 内流洼地成湖
+                }
+                return null;                                      // 边界伪极小 → 回滚
+            }
+            int cri = cur % nx, crj = cur / nx, dri = down % nx, drj = down / nx;
+            if (segmentCrossesAny(cri, crj, dri, drj, allSegments)) {
+                if (claimed[down]) { path.add(down); joined = true; break; }   // 交叉但可汇入
+                return null;                                      // 交叉且无汇入 → 回滚
+            }
+            cur = down;
+        }
+        if (path.size() < params.minRiverNodes()) return null;
+        return new TraceOutcome(path, reachedOcean, isLake, joined);
+    }
+
+    /** step 窗口内"已存在且更低"的河节点（PL-RGA _nearbyDownhillRiverNode）：树状汇入。 */
+    private int nearbyDownhillNode(FlowField field, int cur, int step,
+                                   double[] nodeE, int nx, int nz) {
+        int ci = cur % nx, cj = cur / nx;
+        double curE = field.eAt(cur);
+        int best = -1;
+        double bestE = curE;
+        int minI = Math.max(0, ci - step), maxI = Math.min(nx - 1, ci + step);
+        int minJ = Math.max(0, cj - step), maxJ = Math.min(nz - 1, cj + step);
+        for (int j = minJ; j <= maxJ; j++) {
+            for (int i = minI; i <= maxI; i++) {
+                if (i == ci && j == cj) continue;
+                int idx = j * nx + i;
+                double ne = nodeE[idx];
+                if (Double.isNaN(ne)) continue;
+                if (ne >= curE - params.minDrop()) continue;     // 须严格更低
+                if (ne < bestE) { bestE = ne; best = idx; }
+            }
+        }
+        return best;
+    }
+
+    /** 格是否距 region 边界 < borderDist（wu）：边界附近不布源/不成湖（PL-RGA border/lake_safe_mask）。 */
+    private boolean nearRegionBorder(FlowField field, int idx, int rx, int rz, double borderDist) {
+        double wx = field.cellCenterX(idx), wz = field.cellCenterZ(idx);
+        double lo = rx * params.regionSize() + borderDist;
+        double hi = rx * params.regionSize() + params.regionSize() - borderDist;
+        double loZ = rz * params.regionSize() + borderDist;
+        double hiZ = rz * params.regionSize() + params.regionSize() - borderDist;
+        return wx < lo || wx > hi || wz < loZ || wz > hiZ;
     }
 
     // ===== Catmull-Rom 细分平滑 =====
@@ -302,7 +396,7 @@ public final class RiverLineNetwork {
     // ===== 河网生成辅助（PL-RGA 对齐）=====
 
     /** 下坡邻域：在 step×step 窗口取最陡下降格（带微小距离惩罚），非仅 8 邻 D8（_downhillNeighbor）。 */
-    private static int downhillNeighbor(FlowField field, int cur, int step, int nx, int nz) {
+    private int downhillNeighbor(FlowField field, int cur, int step, int nx, int nz) {
         int ci = cur % nx, cj = cur / nx;
         double curE = field.eAt(cur);
         int best = -1;
@@ -314,7 +408,7 @@ public final class RiverLineNetwork {
                 if (i == ci && j == cj) continue;
                 int idx = j * nx + i;
                 double e = field.eAt(idx);
-                if (e >= curE - 1e-6) continue;
+                if (e >= curE - params.minDrop()) continue;
                 double di = i - ci, dj = j - cj;
                 double score = e + 1e-5 * (di * di + dj * dj);
                 if (score < bestScore) { bestScore = score; best = idx; }
@@ -403,7 +497,7 @@ public final class RiverLineNetwork {
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {
                 RiverLineRegion r = region(rx + dx, rz + dz);
-                if (!r.hasRiver()) continue;
+                if (!r.hasWater()) continue;
                 RiverLineHit hit = sampleRegion(r, wx, wz);
                 if (hit != null) hits.add(hit);
             }
@@ -412,7 +506,7 @@ public final class RiverLineNetwork {
         return hits;
     }
 
-    /** 单 region 折线上的最近命中（沿线插值 surface/width/depth）。 */
+    /** 单 region 上的最近命中：河线段 + 湖泊节点取最近（沿线/点插值 surface/width/depth）。 */
     private RiverLineHit sampleRegion(RiverLineRegion r, double wx, double wz) {
         double bestDist2 = Double.POSITIVE_INFINITY;
         int bestRi = -1, bestSeg = -1;
@@ -434,6 +528,20 @@ public final class RiverLineNetwork {
                 if (d2 < bestDist2) { bestDist2 = d2; bestRi = ri; bestSeg = i; bestT = t; }
             }
         }
+        // 湖泊节点：距湖节点最近者参与比较（PL-RGA outlet_local_minimum）
+        double lakeDist2 = Double.POSITIVE_INFINITY;
+        double lakeH = 0.0;
+        for (RiverLineRegion.LakeNode ln : r.lakes) {
+            double d2 = (wx - ln.x) * (wx - ln.x) + (wz - ln.z) * (wz - ln.z);
+            if (d2 < lakeDist2) { lakeDist2 = d2; lakeH = ln.height; }
+        }
+        // 湖更近且在影响范围内 → 返回湖命中
+        if (!r.lakes.isEmpty() && lakeDist2 <= bestDist2) {
+            double dist = Math.sqrt(lakeDist2);
+            if (dist > params.lakeRadius() + params.lakeFadeDist()) return null;
+            return new RiverLineHit(dist, lakeH, params.lakeRadius(), params.minDepth(),
+                    r.dischargeArea, false, true);
+        }
         if (bestSeg < 0) return null;
         RiverPolyline pl = r.rivers.get(bestRi);
         List<MidpointDisplacement.Node> line = Arrays.asList(pl.nodes);
@@ -443,7 +551,7 @@ public final class RiverLineNetwork {
         double surface = lerp(pl.surfaceY[i0], pl.surfaceY[i1], bestT);
         double width = lerp(pl.width[i0], pl.width[i1], bestT);
         double depth = lerp(pl.depth[i0], pl.depth[i1], bestT);
-        return new RiverLineHit(dist, surface, width, depth, r.dischargeArea, r.outletOcean);
+        return new RiverLineHit(dist, surface, width, depth, r.dischargeArea, r.outletOcean, false);
     }
 
     /**
@@ -453,6 +561,7 @@ public final class RiverLineNetwork {
     public double[] flowTangent(double wx, double wz) {
         int rx = floorDiv(wx, params.regionSize());
         int rz = floorDiv(wz, params.regionSize());
+        RiverLineRegion bestRegion = null;
         int bestRi = -1, bestSeg = -1;
         double bestT = 0, bestD2 = Double.POSITIVE_INFINITY;
         for (int dz = -1; dz <= 1; dz++) {
@@ -474,15 +583,14 @@ public final class RiverLineNetwork {
                         double ddx = wx - px, ddz = wz - pz;
                         double d2 = ddx * ddx + ddz * ddz;
                         if (d2 < bestD2) {
-                            bestD2 = d2; bestRi = ri; bestSeg = i; bestT = t;
+                            bestD2 = d2; bestRegion = r; bestRi = ri; bestSeg = i; bestT = t;
                         }
                     }
                 }
             }
         }
-        if (bestRi < 0 || bestSeg < 0) return null;
-        RiverLineRegion r = region(rx, rz);
-        RiverPolyline pl = r.rivers.get(bestRi);
+        if (bestRegion == null || bestRi < 0 || bestSeg < 0) return null;
+        RiverPolyline pl = bestRegion.rivers.get(bestRi);
         List<MidpointDisplacement.Node> line = Arrays.asList(pl.nodes);
         MidpointDisplacement.Node a = line.get(bestSeg), b = line.get(bestSeg + 1);
         double dx = b.x() - a.x(), dz = b.z() - a.z();

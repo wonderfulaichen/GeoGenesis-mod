@@ -44,8 +44,6 @@ public final class CellGenerator {
         IntStream.range(0, size).parallel().forEach(body);
     }
 
-    /** 确定性河网（可选，RIVER_NETWORK 流量图层数据源；null = 无河网） */
-    private com.geogenesis.worldgen.river.RiverNetwork rivers;
     private final ContinentField continent;
     private final HeightCurve heightCurve;
     private final TypeLandShape typeLandShape;
@@ -94,16 +92,6 @@ public final class CellGenerator {
     private final Noise humidityNoise; // 独立湿度噪声
 
     public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY) {
-        this(p, minWorldY, maxWorldY, null);
-    }
-
-    /**
-     * @param rivers 确定性河网（可选）：RIVER_NETWORK 流量图层数据源。
-     *               null = 无河网（预览/探针进程），riverNetDischarge 恒 0。
-     */
-    public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY,
-                         com.geogenesis.worldgen.river.RiverNetwork rivers) {
-        this.rivers = rivers;
         this.continent = new ContinentField(p);
         this.heightCurve = new HeightCurve(p, minWorldY, maxWorldY);
         this.typeLandShape = new TypeLandShape(p);
@@ -131,11 +119,6 @@ public final class CellGenerator {
         // 气候噪声（xz 缩放可配置）
         this.tempWarp = new Frequency(new Simplex(501), 1.0 / p.tempWarpScale());
         this.humidityNoise = new Frequency(new Simplex(502), 1.0 / p.humidityScale());
-    }
-
-    /** 回注河网（GeoGenesisTerrain 构造后调用：河网需要 terrainEQuick → 循环依赖解耦） */
-    public void setRivers(com.geogenesis.worldgen.river.RiverNetwork rivers) {
-        this.rivers = rivers;
     }
 
     /** 一次性播种所有噪声节点 + 设置海山中心水深检查器 */
@@ -306,6 +289,11 @@ public final class CellGenerator {
 
     /** 排水高程（真实地表 e，含海陆混合）。河流节点场用它做下坡汇流，海洋侧 e<0 → 不接河。 */
     public double terrainE(double wx, double wz) { return sampleCore(wx, wz).e; }
+
+    /** 大陆性 c 采样（wu 语义，纯位置函数）。waterTable 水面推导用（RTF 范式河网）。 */
+    public double continentAt(double wx, double wz) {
+        return continent.sample(wx, wz);
+    }
 
     /** 轻量地形 e（跳过气候/分类/height 映射/shape 赋值）。供侵蚀 tile 粗采/flat 用，
      *  省去温度/湿度噪声 + 分类 switch + heightFromE 样条 ≈ 省 30% 每次采样。
@@ -868,23 +856,14 @@ public final class CellGenerator {
         if (res == null) return; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
         double delta = sampleTileField(res.delta, res.originX, res.originZ, wuX, wuZ);
         // ★ 2026-08-14 晚场（用户建议"流量累积图当梯度图用起来"）：RIVER_NETWORK 图层
-        //   恢复显示粒子侵蚀 discharge 场 = 流量累积图（液滴沿坡流动的集水累积，
-        //   本质是地形梯度/流域方向的可视化）。河网流量仍在 RiverSample.discharge 保留。
+        //   显示粒子侵蚀 discharge 场 = 流量累积图（液滴沿坡流动的集水累积，
+        //   本质是地形梯度/流域方向的可视化）。
         if (res.discharge != null)
             cell.riverNetDischarge = sampleTileField(res.discharge, res.originX, res.originZ, wuX, wuZ);
-        // RIVER_TYPE 图层：几何河网段类型（0 无 / 1 主河 / 2 MOUTH / 3 支流）
-        if (rivers != null) {
-            com.geogenesis.worldgen.river.RiverSample rs = rivers.sampleRiver(wuX, wuZ);
-            cell.riverType = (byte) (rs.inChannel()
-                ? (rs.type() == com.geogenesis.worldgen.river.RiverSegmentType.TRIBUTARY ? 3
-                    : (rs.type() == com.geogenesis.worldgen.river.RiverSegmentType.MOUTH ? 2 : 1))
-                : 0);
-            // ★ 2026-08-16 阶段 B：湖泊标记（LakeBuilder 洼地填水盆地）——
-            //   isLake（群系/逻辑）+ lakeMask（预览水文叠加通道）
-            boolean isLake = rivers.isLakeAt(wuX, wuZ);
-            cell.isLake = isLake;
-            cell.lakeMask = isLake;
-        }
+        // RIVER_TYPE 图层与 isLake/lakeMask 统一由水文雕刻计划写入
+        // （GeoGenesisTerrain.applyHydrologyValley / GeoGenesisGenerator.applyHydrologyChunk）。
+        // 旧 RTF 河网已下线：此处曾对每个 cell 采样几何河网写入上述字段，既与水文结果
+        // 互相覆盖造成误导，又是逐 cell 的无效开销。
 
         // tile 边界对称 4 向 blend + 角块双线性（2026-08-13 重新启用——上次试验参数未对齐
         // 作废：探针 ridge=2.0 vs 游戏 toml 0.75，hs 未参数化；现已全部对齐）。
@@ -1202,22 +1181,15 @@ public final class CellGenerator {
     }
 
     /**
-     * discharge 场采样（wu 语义）——供 RiverNetwork 构建河网路径用。
+     * discharge 场采样（wu 语义）——供 RIVER_NETWORK 预览图层使用。
      *
-     * <p>双线性插值侵蚀 tile 的 discharge 数组。**关键（2026-08-14 修复）**：
-     * tile 缺失时若侵蚀开启则<b>强制生成</b>（getOrGenTile，缓存幂等）——
-     * 曾用 getTileResult（只查缓存）→ 河网构建时 tile 未生成 → discharge 恒 0
-     * → 河流永远走"无 discharge 回退"分支 → 用户看到"路线没变化"。</p>
+     * <p>双线性插值侵蚀 tile 的 discharge 数组。历史要点（保留以免回退）：
+     * ①48 对齐中心（曾用 128 网格错位 → discharge 恒 0）；
+     * ②<b>缓存优先（缺失返回 0 不生成）</b>——同步生成侵蚀 tile 约 670ms/个，
+     * 会卡死首 chunk（曾见 place=2183/4964/6576ms）；
+     * ③null 防御（CancellationException → 0）。</p>
      *
      * @return discharge 值（侵蚀关闭 / 无数据 = 0）
-     */
-    /**
-     * discharge 场采样（wu 语义）——供 RiverNetwork 构建河网路径用。
-     *
-     * <p>★ 2026-08-14 三修：①48 对齐中心（曾用 128 网格错位 → discharge 恒 0）
-     * ②<b>缓存优先（缺失返回 0 不生成）</b>——曾 getOrGenTile 同步生成侵蚀 tile
-     * （670ms/个）→ 河网构建首 chunk 卡死 2-6s（日志 place=2183/4964/6576ms）
-     * ③null 防御（CancellationException → 0）。</p>
      */
     public double sampleDischarge(double wuX, double wuZ) {
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;

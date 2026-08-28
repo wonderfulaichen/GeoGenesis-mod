@@ -104,4 +104,15 @@ public final class NoiseUtil {
         h ^= h >>> 31;
         return (int) (h & 0xffffffffL);
     }
+
+    /** 长整型种子 + 长整型盐 → [0,1) 确定性哈希（河线分形偏移用）。 */
+    public static double hashLong01(long seed, long salt) {
+        long h = seed ^ salt * 0x9e3779b97f4a7c15L;
+        h ^= h >>> 30;
+        h *= 0xbf58476d1ce4e5b9L;
+        h ^= h >>> 27;
+        h *= 0x94d049bb133111ebL;
+        h ^= h >>> 31;
+        return (h & 0xffffffffL) * (1.0 / 0x100000000L);
+    }
 }
