@@ -106,8 +106,24 @@ public record RiverLineParams(
      *  bD < bW 使宽深比 W/D ∝ A^0.02 随下游缓慢增大（下游更宽浅）。 */
     double depthExp,
     /** 宽深比护栏：D ≤ maxDepthRatio × W。防止窄而极深的非物理断面。 */
-    double maxDepthRatio
+    double maxDepthRatio,
+    /** 跨 region 连续河：到网格边（缝外 margin）的河作为出口种子交接给下游邻 region，
+     *  携带汇流面积/层级/水面续流，消除瓦片缝断河与宽度颈缩。默认开启。 */
+    boolean crossRegion
 ) {
+    /** 返回副本并把跨 region 连续河开关设为 v（探针 A/B 用）。 */
+    public RiverLineParams withCrossRegion(boolean v) {
+        return new RiverLineParams(
+                regionSize, jitter, fractalLevels, anchorSnapRadius, anchorSnapStep,
+                valleyBiasAmp, minWidth, maxWidth, minDepth, maxDepth, bankFactor,
+                fadeHighE, fadeLowE, surfaceSink, minDischargeArea, oceanE, mountainScale,
+                gridCell, maxTraceSteps, sourceMinE, sourceSpacingCells, traceStep,
+                minRiverNodes, riverAccumThreshold, slopeDrop, bankWidth, valleyExp,
+                meanderAmp, meanderWavelength, riverCount, borderDist, lakeRadius,
+                lakeMargin, lakeFadeDist, heightBlendDist, blendExp, minDrop, smoothMinK,
+                widthAreaRef, widthExp, depthExp, maxDepthRatio, v);
+    }
+
     public static RiverLineParams defaults() {
         return new RiverLineParams(
             640,                     // regionSize
@@ -152,7 +168,8 @@ public record RiverLineParams(
             576.0,                   // widthAreaRef（= gridCell²=24²，单格汇流面积）
             0.42,                    // widthExp（W ∝ A^0.42）
             0.40,                    // depthExp（D ∝ A^0.40）
-            0.9                      // maxDepthRatio（宽深比护栏 D ≤ 0.9W）
+            0.9,                     // maxDepthRatio（宽深比护栏 D ≤ 0.9W）
+            true                     // crossRegion（跨 region 连续河，默认开启）
         );
     }
 
