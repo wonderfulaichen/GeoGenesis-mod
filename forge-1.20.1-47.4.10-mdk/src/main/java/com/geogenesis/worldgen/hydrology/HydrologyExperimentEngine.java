@@ -19,10 +19,11 @@ public final class HydrologyExperimentEngine {
 
     public HydrologyExperimentEngine(CellGenerator terrain, long seed) {
         this.terrain = terrain;
-        // ★ 剖面锚定真实地表：sampleWu 含侵蚀 tile delta（河流贴最终地形走）；
-        //   选线/贴谷仍用 terrainEQuick（轻量、无 tile 依赖 → 无递归风险）。
+        // ★ 剖面锚定与雕刻基线同源：用无侵蚀 sample().height（= carveChunk 的 originalGround）。
+        //   旧 sampleWu 含侵蚀 delta，与方块雕刻基线系统性偏差数格 → 水面判高/判低错乱
+        //   （干河与悬浮并存）。选线/贴谷仍用 terrainEQuick（轻量、无 tile 依赖）。
         this.network = new RiverLineNetwork(terrain::terrainEQuick,
-                (wx, wz) -> terrain.sampleWu(wx, wz).height,
+                (wx, wz) -> terrain.sample(wx, wz).height,
                 terrain.heightCurve(), seed);
     }
 
