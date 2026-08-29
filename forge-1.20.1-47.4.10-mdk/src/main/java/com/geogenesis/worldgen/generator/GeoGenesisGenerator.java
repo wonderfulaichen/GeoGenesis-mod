@@ -250,8 +250,11 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         int surfaceY = (int) Math.floor(groundY);
         // 海洋补灌必须与 riverType 正交：入海河列仍是海洋列，不能因被河计划命中就失去
         // sea-level 水柱。只依据原始地形分类识别海洋，避免把内陆雕刻河床抬到海平面。
-        boolean ocean = hydrologyOn && cell.isWater() && groundY < SEA_LEVEL;
-        if (ocean) waterTop = Math.max(waterTop, SEA_LEVEL);
+        // 海洋补灌：地面低于海平面的列即为海域，不再要求 cell.isWater()（e<0），
+        // 否则入海口两岸 e≥0 但 groundY<seaLevel 的列既无河水也无海水→出现缺角。
+        double seaLevel = terrain.seaLevel();
+        boolean ocean = hydrologyOn && groundY < seaLevel;
+        if (ocean) waterTop = Math.max(waterTop, seaLevel);
         // 水文模式：灌水 = 河计划 ∪ 海洋；入海重叠列取两者较高水面（即海平面）。
         boolean water = hydrologyOn ? (riverWater || ocean) : (cell.isWater() || riverWater);
         boolean beach = cell.terrainType == TerrainClass.BEACH;
