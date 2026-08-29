@@ -183,9 +183,9 @@ public record RiverLineParams(
             0.40,                    // depthExp（D ∝ A^0.40）
             0.9,                     // maxDepthRatio（宽深比护栏 D ≤ 0.9W）
             6.0,                     // mouthFadeDepth（河口向海延伸 6 格后淡出）
-            160.0,                   // estuaryLength（河口喇叭口过渡长度 wu，更长更自然）
-            2.2,                     // estuaryWidthFactor（河口展宽 2.2 倍）
-            18.0,                    // mouthMaxWidth（河口半宽上限 18 block，全宽 36）
+            140.0,                   // estuaryLength（河口喇叭口过渡长度 wu）
+            1.9,                     // estuaryWidthFactor（河口展宽 1.9 倍）
+            14.0,                    // mouthMaxWidth（河口半宽上限 14 block，全宽 28）
             2.0,                     // mouthMinDepth（河口最小水深 2 格）
             true                     // crossRegion（跨 region 连续河，默认开启）
         );
