@@ -45,9 +45,31 @@ public final class RiverLineRegion {
         }
     }
 
+    /**
+     * 跨 region 出口种子：本 region 一条河流到网格边（= 缝外 margin）时的交接信息。
+     *
+     * <p>下游邻 region 在双-pass 构建时吸收此种子作为强制源，从 {@code wx,wz} 继续追踪，
+     * 并携带 {@code accum}（上游汇流面积）/ {@code level}（分支层级）/ {@code surfaceY}
+     * （上游尾节点水面），使河流跨缝连续、宽度不重置（无颈缩）。</p>
+     */
+    public static final class OutletSeed {
+        public final int dRX, dRZ;        // 出口指向的邻 region 增量（如 +1,0 = +X 邻）
+        public final double wx, wz;       // 出口（上游尾节点）世界坐标（wu）
+        public final double accum;        // 上游尾节点汇流面积（wu²），下游续流起点
+        public final double surfaceY;     // 上游尾节点水面世界 Y（下游续流首节点水面，保证连续）
+        public final int level;           // 上游河分支层级（下游续流继承）
+        public OutletSeed(int dRX, int dRZ, double wx, double wz,
+                          double accum, double surfaceY, int level) {
+            this.dRX = dRX; this.dRZ = dRZ;
+            this.wx = wx; this.wz = wz;
+            this.accum = accum; this.surfaceY = surfaceY; this.level = level;
+        }
+    }
+
     public final int rx, rz;
     public final List<RiverPolyline> rivers;
     public final List<LakeNode> lakes;     // 本 region 内流湖（可能为空）
+    public final List<OutletSeed> outlets; // 出口种子（双-pass 交接用；pass-1 产物）
     public final boolean outletOcean;     // 本 region 是否有河到达海洋
     public final double dischargeArea;    // 主河出口汇流面积（诊断用）
     // 诊断计数（PL-RGA 对齐探针用）
@@ -56,13 +78,14 @@ public final class RiverLineRegion {
     public final int joined;              // 就近汇入（树状）终止数
 
     public RiverLineRegion(int rx, int rz, List<RiverPolyline> rivers,
-                           List<LakeNode> lakes,
+                           List<LakeNode> lakes, List<OutletSeed> outlets,
                            boolean outletOcean, double dischargeArea,
                            int sourceCount, int rolledBack, int joined) {
         this.rx = rx;
         this.rz = rz;
         this.rivers = List.copyOf(rivers);
         this.lakes = List.copyOf(lakes);
+        this.outlets = List.copyOf(outlets);
         this.outletOcean = outletOcean;
         this.dischargeArea = dischargeArea;
         this.sourceCount = sourceCount;

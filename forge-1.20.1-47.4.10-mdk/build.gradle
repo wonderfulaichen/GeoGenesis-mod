@@ -318,6 +318,15 @@ task runRiverLineSeamProbe(type: JavaExec) {
     }
 }
 
+task runRiverLineContinuityProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLineContinuityProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 task runHydrologyContinuousProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyContinuousProbe'
