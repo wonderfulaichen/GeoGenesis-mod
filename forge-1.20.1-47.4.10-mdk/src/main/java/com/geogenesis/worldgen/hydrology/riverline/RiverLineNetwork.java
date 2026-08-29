@@ -139,6 +139,8 @@ public final class RiverLineNetwork {
         boolean[] claimed = new boolean[nx * nz];
         double[] nodeE = new double[nx * nz];          // 已接受河路径格 e（就近汇入用）
         java.util.Arrays.fill(nodeE, Double.NaN);
+        double[] nodeSurf = new double[nx * nz];       // 已接受河路径格水面（交汇点继承用）
+        java.util.Arrays.fill(nodeSurf, Double.NaN);
         int[] levelAt = new int[nx * nz];              // 已接受河路径格的分支层级（0 = 无河）
         List<RiverPolyline> rivers = new ArrayList<>();
         List<RiverLineRegion.LakeNode> lakes = new ArrayList<>();
@@ -216,7 +218,21 @@ public final class RiverLineNetwork {
                 dep[k] = depthFromAccum(a, wid[k], params);
                 acc = Math.max(acc, a);
             }
-            double[] surf = applyRiverHeightSlopeDrop(rawSurf, out.reachedOcean, curve, params);
+            // 出口水面：入海→海平面附近；汇入主流→继承主流在交汇点水面（PL-RGA 节点共享，根治交汇台阶）；否则贴地形
+            int junctionCell = out.cells.get(out.cells.size() - 1);
+            double junctionGround = groundYAt(field.cellCenterX(junctionCell), field.cellCenterZ(junctionCell));
+            double outletSurf;
+            if (out.reachedOcean) {
+                outletSurf = Math.min(curve.seaLevelY() - 1.5, junctionGround);
+            } else if (out.joined && !Double.isNaN(nodeSurf[junctionCell])) {
+                outletSurf = nodeSurf[junctionCell];   // 继承主流交汇点水面 → 交汇处零台阶
+            } else {
+                outletSurf = junctionGround;
+            }
+            double[] surf = applyRiverHeightSlopeDrop(rawSurf, outletSurf, curve, params);
+            for (int k = 0; k < m; k++) {
+                nodeSurf[out.cells.get(start + k)] = surf[k];   // 记录本河水面供后续支流继承
+            }
             RiverPolyline smoothed = smoothPath(nodes, surf, wid, dep, level);
             maxDischarge = Math.max(maxDischarge, acc);
             rivers.add(smoothed);
@@ -495,8 +511,13 @@ public final class RiverLineNetwork {
         return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
     }
 
-    /** 河高沿程缓降：按地形高度线性插值，源端略降（_applyRiverHeightSlopeDrop）。 */
-    private static double[] applyRiverHeightSlopeDrop(double[] rawSurf, boolean reachedOcean,
+    /**
+     * 河高沿程缓降：源端略降、出口锚定 {@code outletSurf}，区间内按地形高度线性映射到 [outletSurf, srcH]。
+     *
+     * <p>★ 2026-08-29 交汇连续性：当支流汇入主流、{@code outletSurf} 直接取主流在该交汇节点的水面
+     * （而非 groundYAt），则交汇处两河水面恒等（PL-RGA 节点共享语义），消除交汇台阶。</p>
+     */
+    private static double[] applyRiverHeightSlopeDrop(double[] rawSurf, double outletSurf,
                                                       HeightCurve curve, RiverLineParams params) {
         int m = rawSurf.length;
         double[] surf = new double[m];
@@ -505,11 +526,11 @@ public final class RiverLineNetwork {
             return surf;
         }
         double srcRaw = rawSurf[0];
-        double outRaw = rawSurf[m - 1];
-        double outH = reachedOcean ? Math.min(curve.seaLevelY() - 1.5, outRaw) : outRaw;
+        double outRaw = rawSurf[m - 1];   // 地形出口（仅用于 t 缩放）
+        double outH = outletSurf;         // 实际出口水面（可继承主流）
         double rawSpan = srcRaw - outRaw;
         double srcH = (rawSpan <= 1e-6) ? outH : Math.max(outH + 1e-4, srcRaw - params.slopeDrop());
-        for (int k = 0; k < m; k++) {
+        for (  int k = 0; k < m; k++) {
             double t = NoiseUtil.saturate((rawSurf[k] - outRaw) / rawSpan);
             surf[k] = outH + (srcH - outH) * t;
         }
