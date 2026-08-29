@@ -121,6 +121,7 @@ public final class HydrologyBlockCarver {
             carveSurfaceWeight += weight;
         }
         double carveSurfaceY = carveSurfaceSum / carveSurfaceWeight;
+        // 水面保持河线的平滑单调纵剖面（不做逐列 min：会破坏连续性并制造微观逆坡）。
         double waterSurfaceY = nearest.surfaceY();
         width = Math.max(width, 1.0);
         double bankW = width * P.bankFactor();
@@ -144,13 +145,38 @@ public final class HydrologyBlockCarver {
         double cut = Math.max(0.0, original - bedTarget) * outer * fadeE;
         double carved = original - cut;
 
+        // ★ 河道内切穿（Streams 语义）：地形高于水面时挖出低于水面的河槽，而不是放弃灌水。
+        //   河道内保证 carved < waterSurface → 恒有水（根治干河），且水面高于地形的列
+        //   被切穿后不再悬浮。下挖量有界（≤ minWaterDepth），床面连续。
+        boolean punchedThrough = false;
+        if (nearestDist <= nearestWidth && carved > waterSurface - 0.75) {
+            double minBed = waterSurface - 0.75;
+            if (minBed < carved) {
+                cut += carved - minBed;
+                carved = minBed;
+                punchedThrough = true;
+            }
+        }
+
         // ★ 灌水门控：
         //   ① dist ≤ width（河道半宽内，valley 谷壁区只塑形不灌水）；
         //   ② carved < waterSurface − 0.5（真雕出河床）；
-        //   ③ 水深上界 waterSurface − carved ≤ depth + 1（防异常深水）。
+        //   ③ 水深上界（满足其一即可）：
+        //      a) 相对 IDW 混合雕刻面 carveSurfaceY − carved ≤ depth + 1（段间差免疫）；
+        //      b) 切穿列水深恒 0.75，直接豁免；
+        //      c) 原始地面本就低于水面的天然洼地直接灌（水填洼地）。
+        //     三者缺一都会把对应场景误杀成干列（河中断流）。
+        // ④ 河缘带（0.7w~1.0w）水面若高于当地原始地形，则不灌水：
+        //    否则水会从河缘漫到地面上，表现为"一侧河岸被水盖过"。
+        //    湿核心带（≤0.7w）与切穿列是真正的水槽，不受此限。
+        boolean wetCore = nearestDist <= nearestWidth * 0.7;
+        boolean terrainOk = wetCore || waterSurface <= original + 1e-9;
         boolean anyFill = nearestDist <= nearestWidth
                 && carved < waterSurface - 0.5
-                && (waterSurface - carved) <= depth + 1.0;
+                && terrainOk
+                && (punchedThrough
+                    || (carveSurfaceY - carved) <= depth + 1.0
+                    || original <= waterSurface - 1.0);
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                 waterSurface, cut, anyFill);
     }

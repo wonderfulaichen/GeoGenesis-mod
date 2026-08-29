@@ -330,7 +330,7 @@ public final class RiverLineNetwork {
         } else {
             outletSurf = junctionGround;
         }
-        double[] surf = applyRiverHeightSlopeDrop(nodes, rawSurf, outletSurf, params,
+        double[] surf = applyRiverHeightSlopeDrop(nodes, rawSurf, wid, outletSurf, params,
                 Double.isNaN(forcedSrcH) ? null : forcedSrcH);
         for (int k = 0; k < m; k++) {
             nodeSurf[out.cells.get(start + k)] = surf[k];   // 记录本河水面供后续支流继承
@@ -503,6 +503,7 @@ public final class RiverLineNetwork {
         int n = rawNodes.length;
         if (n < 3) {
             clampMonotonicDownstream(rawSurf, rawWid, rawDep);
+            applyBankCap(rawNodes, rawSurf, rawWid, params);
             return new RiverPolyline(rawNodes, rawSurf, rawWid, rawDep, level);
         }
         double[] px = new double[n], pz = new double[n];
@@ -590,7 +591,19 @@ public final class RiverLineNetwork {
         }
         // 沿程单调化（下游不抬床）：见 clampMonotonicDownstream
         clampMonotonicDownstream(rs, rw, rd);
+        // Catmull-Rom 重采样后节点更密，但水面是节点间线性插值：
+        // 原始节点间的局部地形可能更低，必须再按逐重采样节点收回到岸线 cap。
+        applyBankCap(rn, rs, rw, params);
         return new RiverPolyline(rn, rs, rw, rd, level);
+    }
+
+    /** 逐节点把水面收回到两岸原始地形 cap，并向下游传播最小值（保持不回升）。 */
+    private void applyBankCap(MidpointDisplacement.Node[] nodes, double[] surf,
+                              double[] widths, RiverLineParams params) {
+        for (int i = 0; i < surf.length; i++) {
+            surf[i] = Math.min(surf[i], bankCapY(nodes, i, widths[i], params));
+            if (i > 0) surf[i] = Math.min(surf[i], surf[i - 1]);
+        }
     }
 
     /**
@@ -706,33 +719,77 @@ public final class RiverLineNetwork {
      * 以最小平方误差贴合整条沿河地形。小凸起会被压平并切穿，小凹坑会形成有水的深槽，
      * 整体仍紧贴地势。出口和跨 region 源端用高权重锚定，维持汇口/瓦片缝连续。</p>
      */
-    private static double[] applyRiverHeightSlopeDrop(MidpointDisplacement.Node[] nodes,
-                                                      double[] rawSurf, double outletSurf,
-                                                      RiverLineParams params, Double forcedSrcH) {
+    private double[] applyRiverHeightSlopeDrop(MidpointDisplacement.Node[] nodes,
+                                               double[] rawSurf, double[] widths,
+                                               double outletSurf, RiverLineParams params,
+                                               Double forcedSrcH) {
         int m = rawSurf.length;
         if (m == 0) return new double[0];
         double sink = Math.max(0.0, params.surfaceSink());
         double[] target = new double[m];
         double[] weight = new double[m];
         Arrays.fill(weight, 1.0);
-        for (int k = 0; k < m; k++) target[k] = rawSurf[k] - sink;
+        for (int k = 0; k < m; k++) {
+            double bankCap = bankCapY(nodes, k, widths[k], params);
+            target[k] = Math.min(rawSurf[k] - sink, bankCap);
+        }
 
         double outlet = Math.min(outletSurf, target[m - 1]);
         target[m - 1] = outlet;
         weight[m - 1] = 1e9;
         if (forcedSrcH != null) {
-            target[0] = Math.max(outlet, forcedSrcH);
+            // 跨 region 续流只能继承连续水位，不能突破本 region 入口两岸的原始地形上界。
+            target[0] = Math.min(target[0], Math.max(outlet, forcedSrcH));
             weight[0] = 1e9;
         }
 
         double[] surf = isotonicNonIncreasing(target, weight);
-        double sourceCap = forcedSrcH != null ? Math.max(outlet, forcedSrcH) : surf[0];
+        // 不再用 clamp 的"下界"把水面抬回 outlet/sourceCap：那会把水面重新抬到
+        // 岸线 cap 之上（PAVA 块均值 + 强制下界 = 水面盖过河岸的根因）。
+        // 只保留：不超过本节点两岸原始地形、且沿程不回升。
         for (int k = 0; k < m; k++) {
-            surf[k] = NoiseUtil.clamp(surf[k], outlet, sourceCap);
+            surf[k] = Math.min(surf[k], target[k]);
+            if (k > 0) surf[k] = Math.min(surf[k], surf[k - 1]);
         }
-        if (forcedSrcH != null) surf[0] = sourceCap;
-        surf[m - 1] = outlet;
+        if (forcedSrcH != null) surf[0] = Math.min(surf[0], Math.max(outlet, Math.min(forcedSrcH, target[0])));
+        surf[m - 1] = Math.min(surf[m - 1], Math.max(outlet, target[m - 1]));
         return surf;
+    }
+
+    /**
+     * 采样河线左右岸的多点原始地形，取最小值作为该节点水面硬上界。
+     *
+     * <p>只采单点会在地形起伏处漏判：河岸并非单调升高，横向地形可能比单点更低。
+     * 这里沿法向在近岸与远岸各取一点（左右共 4 点），取最低值并留安全余量，
+     * 保证水面始终嵌在河谷内，不会出现"一侧河岸被水盖过"。</p>
+     */
+    private double bankCapY(MidpointDisplacement.Node[] nodes, int i, double width,
+                            RiverLineParams params) {
+        int prev = Math.max(0, i - 1), next = Math.min(nodes.length - 1, i + 1);
+        double tx = nodes[next].x() - nodes[prev].x();
+        double tz = nodes[next].z() - nodes[prev].z();
+        double len = Math.hypot(tx, tz);
+        if (len < 1e-6) return rawTerrainY(nodes[i]);
+        double nx = -tz / len, nz = tx / len;
+        // ★ 必须采"河缘"(dist≈width)而不是远岸：水从河缘漫出，远岸再高也挡不住。
+        double near = Math.max(1.0, width);
+        double far = Math.max(2.0, width * 1.35);
+        double lowest = Double.POSITIVE_INFINITY;
+        for (double offset : new double[]{near, far}) {
+            lowest = Math.min(lowest, rawTerrainY(nodes[i].x() + nx * offset,
+                    nodes[i].z() + nz * offset));
+            lowest = Math.min(lowest, rawTerrainY(nodes[i].x() - nx * offset,
+                    nodes[i].z() - nz * offset));
+        }
+        return lowest - 0.25;
+    }
+
+    private double rawTerrainY(MidpointDisplacement.Node node) {
+        return groundYAt(node.x(), node.z());
+    }
+
+    private double rawTerrainY(double x, double z) {
+        return terrainY != null ? terrainY.yAt(x, z) : curve.heightFromE(eSampler.eAt(x, z));
     }
 
     /** 加权 PAVA：返回与 target 平方误差最小的非递增序列。 */
@@ -765,7 +822,8 @@ public final class RiverLineNetwork {
      * 与最终地形（sampleWu）的差异仅剩侵蚀 delta（通常很小），不影响视觉嵌入感。</p>
      */
     private double groundYAt(double wx, double wz) {
-        return curve.heightFromE(eSampler.eAt(wx, wz));
+        return terrainY != null ? terrainY.yAt(wx, wz)
+                : curve.heightFromE(eSampler.eAt(wx, wz));
     }
 
     // ===== 下游水力几何（2026-08-29 宽深改革）=====
