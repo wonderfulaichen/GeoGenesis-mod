@@ -614,6 +614,8 @@ public final class RiverLineNetwork {
         double maxLen = Math.max(1.0, p.estuaryLength());
         double widthFactor = Math.max(1.0, p.estuaryWidthFactor());
         double minDepth = Math.max(0.5, p.mouthMinDepth());
+        // 河口上限独立于河道 maxWidth，否则大河河口被钳制到与河道同宽，喇叭口展不开
+        double mouthMax = Math.max(p.maxWidth(), p.mouthMaxWidth());
         double along = 0.0;
         for (int i = n - 1; i >= 0; i--) {
             if (i < n - 1) {
@@ -625,7 +627,7 @@ public final class RiverLineNetwork {
             // t=1 在入海口，t=0 在过渡带上游端
             double t = 1.0 - NoiseUtil.saturate(along / maxLen);
             double grow = 1.0 + (widthFactor - 1.0) * NoiseUtil.smooth(t);
-            widths[i] = Math.min(p.maxWidth(), widths[i] * grow);
+            widths[i] = Math.min(mouthMax, widths[i] * grow);
             depths[i] = Math.max(minDepth, depths[i]);
         }
         // 保持既有水力约束：宽度/深度沿程不减（下游更宽更深）
