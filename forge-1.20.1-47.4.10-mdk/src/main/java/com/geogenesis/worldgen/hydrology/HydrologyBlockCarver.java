@@ -77,15 +77,16 @@ public final class HydrologyBlockCarver {
         RiverLineParams P = RiverLineParams.defaults();
         double k = P.smoothMinK();
 
-        double nearestDist = samples.get(0).distToCenter();   // 灌水门控用（保持原语义）
-        double nearestWidth = Math.max(samples.get(0).width(), 1.0);  // 门控用最近段自身半宽（与 sampleBlock 复查一致）
+        HydrologyBlockSample nearest = samples.get(0);
+        double nearestDist = nearest.distToCenter();   // 灌水门控用（保持原语义）
+        double nearestWidth = Math.max(nearest.width(), 1.0);  // 门控用最近段自身半宽
         double dist = nearestDist;
         for (HydrologyBlockSample s : samples) {
-            dist = smin(dist, s.distToCenter(), k);           // C1 距离场，根治几何折痕
+            // 保留 20ddda4 的完整平滑强度：首样本的 k/4 圆角偏移是既有河槽形态的一部分。
+            dist = smin(dist, s.distToCenter(), k);
         }
 
-        // ★ 宽深按 IDW 多段混合；水位必须保持最近有向河段的单调纵剖面。
-        //   若水位也混合，河曲处会混入上游较高水位并重新制造局部回升。
+        // ★ 宽深按 IDW 多段混合；真实水面必须保持最近有向河段的单调纵剖面。
         double blendDist = P.heightBlendDist();
         double wSum = 0.0, sWid = 0.0, sDep = 0.0;
         for (HydrologyBlockSample s : samples) {
@@ -94,21 +95,33 @@ public final class HydrologyBlockCarver {
             double fade = NoiseUtil.saturate(d / blendDist);
             double w = (1.0 - fade) * (1.0 - fade) / Math.max(d * d, 1.0);
             wSum += w;
-            sWid  += w * s.width();
-            sDep  += w * s.depth();
+            sWid += w * s.width();
+            sDep += w * s.depth();
         }
-        HydrologyBlockSample nearest = samples.get(0);
         double width, depth;
         if (wSum > 1e-9) {
             width = sWid / wSum;
             depth = sDep / wSum;
-        } else {                                         // 退化：仅最近一条（与旧单属主等价）
+        } else {
             width = nearest.width();
             depth = nearest.depth();
         }
-        // 水位不能参与跨段 IDW：混入上游/邻河较高水位会在最终块采样层重新制造局部回升。
-        // 最近段自身已携带有向单调剖面；交汇节点共享水位，因此汇口仍连续。
-        double surfaceY = nearest.surfaceY();
+
+        // PL-RGA 河高场的局部化版本：只在 smooth-min 的 k 宽属主竞争带内混合雕刻高程。
+        // 这同时覆盖同折线弯角、汇流点和跨 region 重叠段；范围仅 k（默认 4 格），
+        // 不会像 100 格水位 IDW 那样混入远处上游高水位，且该值绝不用于最终灌水。
+        double carveSurfaceSum = nearest.surfaceY();
+        double carveSurfaceWeight = 1.0;
+        for (int i = 1; i < samples.size(); i++) {
+            HydrologyBlockSample s = samples.get(i);
+            double delta = s.distToCenter() - nearestDist;
+            if (delta >= k) continue;
+            double weight = NoiseUtil.smooth(1.0 - NoiseUtil.saturate(delta / k));
+            carveSurfaceSum += weight * s.surfaceY();
+            carveSurfaceWeight += weight;
+        }
+        double carveSurfaceY = carveSurfaceSum / carveSurfaceWeight;
+        double waterSurfaceY = nearest.surfaceY();
         width = Math.max(width, 1.0);
         double bankW = width * P.bankFactor();
         double valley = Math.max(width + bankW, width * 3.0);
@@ -124,9 +137,9 @@ public final class HydrologyBlockCarver {
         // 水面直接采用河线的有向单调纵剖面。不能再逐块 min(surfaceY, original)：
         // 局部凹坑会先把水面压低，离开凹坑后又恢复到河线水面，从而在下游制造反向抬升。
         // 地形高于水面时由后续 cut 下挖穿过；地形低于水面时保持原地形并按门控决定灌水。
-        double waterSurface = surfaceY;
-        // 目标河床：水面 − depth × 断面形状
-        double bedTarget = waterSurface - depth * profile;
+        double waterSurface = waterSurfaceY;
+        // 目标河床使用局部连续的雕刻高程；真实水面仍保持最近有向段的 PAVA 纵剖面。
+        double bedTarget = carveSurfaceY - depth * profile;
         // 雕刻量 = (original − bedTarget) × 外缘衰减 × 高度淡出；只下挖
         double cut = Math.max(0.0, original - bedTarget) * outer * fadeE;
         double carved = original - cut;

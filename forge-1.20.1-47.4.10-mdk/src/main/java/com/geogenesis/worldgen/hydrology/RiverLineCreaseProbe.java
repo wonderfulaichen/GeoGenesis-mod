@@ -96,6 +96,9 @@ public final class RiverLineCreaseProbe {
                     if (Math.abs(orig[ni][nj] - cv[ni][nj]) >= 3.0) continue;
                     double ngx = (cv[ni + 1][nj] - cv[ni - 1][nj]) * 0.5;
                     double ngy = (cv[ni][nj + 1] - cv[ni][nj - 1]) * 0.5;
+                    double gLen = Math.hypot(gx, gy);
+                    double ngLen = Math.hypot(ngx, ngy);
+                    if (gLen < 0.05 || ngLen < 0.05) continue; // 近平地梯度方向无定义，避免 180° 数值虚报
                     double dot = gx * ngx + gy * ngy;
                     double cross = gx * ngy - gy * ngx;
                     double ang = Math.abs(Math.atan2(cross, dot)) * 180.0 / Math.PI;
@@ -128,7 +131,7 @@ public final class RiverLineCreaseProbe {
             double[] g = new double[256];
             for (int lz = 0; lz < 16; lz++) {
                 for (int lx = 0; lx < 16; lx++) {
-                    g[lz * 16 + lx] = terrain.sampleWu(cx * 16 + lx, cz * 16 + lz).height;
+                    g[lx * 16 + lz] = terrain.sampleWu(cx * 16 + lx, cz * 16 + lz).height;
                 }
             }
             cols = HydrologyBlockCarver.carveChunk(engine, cx, cz, 1.0, g);
