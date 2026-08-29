@@ -63,18 +63,23 @@ public final class HydrologyBlockCarver {
                                                           List<HydrologyBlockSample> samples,
                                                           double original,
                                                           int blockX, int blockZ) {
+        RiverLineParams P = RiverLineParams.defaults();
         // 不再按高度淡出：河流由汇流场决定，山地也有溪（现实物理范式）。
-        // 仅海床保护：真实地表已低于海平面 → 海洋区域，河流不雕（海洋本身就是水）。
+        // 入海段：不能因"地形低于海平面"就完全停雕——那会让河道在海岸线处直接截断。
+        // 参考 Farseek Mouth：河床继续向海延伸，按"地形处于海面下的深度"平滑淡出，
+        // 形成河口湾/淹没河谷后自然消失，而不是一刀切断。
         double fadeE = 1.0;
         double seaLevel = terrain.heightCurve().seaLevelY();
-        if (original < seaLevel) fadeE = 0.0;
+        if (original < seaLevel) {
+            double submerge = seaLevel - original;
+            fadeE = 1.0 - NoiseUtil.saturate(submerge / P.mouthFadeDepth());
+        }
 
         // ★ 折痕根因：雕刻几何只用"最近段距离"dist，而折线距离场在弯角平分线 /
         //   region 边界处硬切（梯度方向跳变）→ 经 valleyT/outer 非线性放大成放射折痕。
         //   正确修法 = 平滑"距离场本身"：对每段距离做 smooth-min（smin ≤ min → 仍只下挖），
         //   弯角/边界处由硬切变为 k 宽 C1 过渡；属性仍按 IDW 混合（PL-RGA，河线交越接缝平滑）。
         //   注意：绝不能对"雕刻高度"做 smooth-min——那会把相邻段河谷壁叠加成新的包络脊。
-        RiverLineParams P = RiverLineParams.defaults();
         double k = P.smoothMinK();
 
         HydrologyBlockSample nearest = samples.get(0);

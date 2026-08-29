@@ -22,6 +22,8 @@ public final class HydrologyWaterFillProbe {
         int surfaceAboveTerrain = 0, filledAboveTerrain = 0;
         int channelColumns = 0, dryChannel = 0, suspended = 0;
         int bankColumns = 0, bankOverflow = 0;
+        int estuaryColumns = 0, estuaryCarved = 0;
+        double seaLevelY = terrain.heightCurve().seaLevelY();
         double maxErosion = 0.0;
         Set<Long> riverChunkKeys = new LinkedHashSet<>();
         for (int rz = -1; rz <= 1; rz++) for (int rx = -1; rx <= 1; rx++) {
@@ -94,6 +96,13 @@ public final class HydrologyWaterFillProbe {
                         }
                     }
                 }
+                // 河口延伸：地形低于海平面且仍命中河线的列，应有雕刻量向海延伸，
+                // 而不是在海岸线处直接截断（fadeE 二值化为 0 时 estuaryCarved 会恒为 0）。
+                if (column.originalGroundY() < seaLevelY && !samples.isEmpty()
+                        && samples.get(0).width() <= 80) {
+                    estuaryColumns++;
+                    if (column.erosion() > 1e-3) estuaryCarved++;
+                }
                 maxErosion = Math.max(maxErosion, column.erosion());
             }
         }
@@ -107,6 +116,8 @@ public final class HydrologyWaterFillProbe {
                 + " (河岸带水面高于原始地形 = 一侧河岸被水盖过)");
         System.out.println("surfaceAboveTerrain=" + surfaceAboveTerrain
                 + " filledAboveTerrain=" + filledAboveTerrain + " (含河心切穿列，预期>0)");
+        System.out.println("estuaryColumns=" + estuaryColumns + " estuaryCarved=" + estuaryCarved
+                + " (入海列中有雕刻延伸的数量，用于确认河口不再截断)");
         System.out.println("maxErosion=" + maxErosion);
         System.out.println("status=" + (waterColumns > 0 && channelColumns > 0
                 && dryChannel == 0 && invalid == 0 && uplift == 0 && suspended == 0
