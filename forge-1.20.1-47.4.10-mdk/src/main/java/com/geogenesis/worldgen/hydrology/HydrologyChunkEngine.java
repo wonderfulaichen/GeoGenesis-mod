@@ -37,13 +37,7 @@ public final class HydrologyChunkEngine {
     }
 
     private Cell[] sampleOriginal(int chunkX, int chunkZ) {
-        Cell[] cells = new Cell[256];
-        for (int lz = 0; lz < 16; lz++) for (int lx = 0; lx < 16; lx++) {
-            cells[lx * 16 + lz] = generator.sample(
-                    (chunkX * 16 + lx) / horizontalScale,
-                    (chunkZ * 16 + lz) / horizontalScale);
-        }
-        return cells;
+        return HydrologyChunkSampling.sample(generator, horizontalScale, chunkX, chunkZ);
     }
 
     private static double[] heights(Cell[] cells) {

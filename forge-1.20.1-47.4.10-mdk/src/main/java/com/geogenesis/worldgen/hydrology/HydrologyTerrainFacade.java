@@ -18,14 +18,6 @@ public final class HydrologyTerrainFacade {
     public Cell[] sampleChunk(long seed, int chunkX, int chunkZ) {
         hydrology.clear();
         hydrology.setSeed(seed);
-        Cell[] cells = new Cell[256];
-        for (int lz = 0; lz < 16; lz++) {
-            for (int lx = 0; lx < 16; lx++) {
-                cells[lx * 16 + lz] = generator.sample(
-                        (chunkX * 16 + lx) / horizontalScale,
-                        (chunkZ * 16 + lz) / horizontalScale);
-            }
-        }
-        return cells;
+        return HydrologyChunkSampling.sample(generator, horizontalScale, chunkX, chunkZ);
     }
 }
