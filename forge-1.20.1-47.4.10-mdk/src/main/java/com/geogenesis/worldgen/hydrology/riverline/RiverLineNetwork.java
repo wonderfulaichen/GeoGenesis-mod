@@ -323,15 +323,16 @@ public final class RiverLineNetwork {
         int junctionCell = out.cells.get(out.cells.size() - 1);
         double junctionGround = groundYAt(field.cellCenterX(junctionCell), field.cellCenterZ(junctionCell));
         double outletSurf;
-        if (out.reachedOcean) {
-            outletSurf = Math.min(curve.seaLevelY() - 1.5, junctionGround);
+        if (out.reachedOcean || junctionGround < curve.seaLevelY()) {
+            // 入海/海侵出口：水面由海平面决定，不再沿河床继续下探到海底。
+            outletSurf = curve.seaLevelY();
         } else if (out.joined && !Double.isNaN(nodeSurf[junctionCell])) {
             outletSurf = nodeSurf[junctionCell];   // 继承主流交汇点水面 → 交汇处零台阶
         } else {
             outletSurf = junctionGround;
         }
         double[] surf = applyRiverHeightSlopeDrop(nodes, rawSurf, wid, outletSurf, params,
-                Double.isNaN(forcedSrcH) ? null : forcedSrcH);
+                Double.isNaN(forcedSrcH) ? null : forcedSrcH, out.reachedOcean);
         for (int k = 0; k < m; k++) {
             nodeSurf[out.cells.get(start + k)] = surf[k];   // 记录本河水面供后续支流继承
         }
@@ -600,8 +601,13 @@ public final class RiverLineNetwork {
     /** 逐节点把水面收回到两岸原始地形 cap，并向下游传播最小值（保持不回升）。 */
     private void applyBankCap(MidpointDisplacement.Node[] nodes, double[] surf,
                               double[] widths, RiverLineParams params) {
+        double seaLevel = curve.seaLevelY();
         for (int i = 0; i < surf.length; i++) {
-            surf[i] = Math.min(surf[i], bankCapY(nodes, i, widths[i], params));
+            // 海域内不存在河岸上界：岸线低于海平面时不再压低水面，保持海平面。
+            double cap = bankCapY(nodes, i, widths[i], params);
+            if (cap >= seaLevel) {
+                surf[i] = Math.min(surf[i], cap);
+            }
             if (i > 0) surf[i] = Math.min(surf[i], surf[i - 1]);
         }
     }
@@ -722,16 +728,25 @@ public final class RiverLineNetwork {
     private double[] applyRiverHeightSlopeDrop(MidpointDisplacement.Node[] nodes,
                                                double[] rawSurf, double[] widths,
                                                double outletSurf, RiverLineParams params,
-                                               Double forcedSrcH) {
+                                               Double forcedSrcH, boolean reachedOcean) {
         int m = rawSurf.length;
         if (m == 0) return new double[0];
         double sink = Math.max(0.0, params.surfaceSink());
+        double seaLevel = curve.seaLevelY();
         double[] target = new double[m];
         double[] weight = new double[m];
         Arrays.fill(weight, 1.0);
         for (int k = 0; k < m; k++) {
             double bankCap = bankCapY(nodes, k, widths[k], params);
-            target[k] = Math.min(rawSurf[k] - sink, bankCap);
+            if (rawSurf[k] < seaLevel || bankCap < seaLevel) {
+                // 已进入海域（河心或河缘地形低于海平面）就没有"河岸"：
+                // 水面由海平面决定，否则会被海底地形压低成"河流继续下探"。
+                target[k] = seaLevel;
+                continue;
+            }
+            // 陆上河面也不得低于海平面：surfaceSink 会把紧邻海平面的河段压到海平面以下，
+            // 再经单调传播拉低整个入海口。
+            target[k] = Math.max(seaLevel, Math.min(rawSurf[k] - sink, bankCap));
         }
 
         double outlet = Math.min(outletSurf, target[m - 1]);

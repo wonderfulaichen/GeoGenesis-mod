@@ -121,8 +121,9 @@ public final class HydrologyBlockCarver {
             carveSurfaceWeight += weight;
         }
         double carveSurfaceY = carveSurfaceSum / carveSurfaceWeight;
-        // 水面保持河线的平滑单调纵剖面（不做逐列 min：会破坏连续性并制造微观逆坡）。
-        double waterSurfaceY = nearest.surfaceY();
+        // 普通河段继续使用最近有向河段水面；仅在多个河线命中同一局部竞争带时，
+        // 将交汇点的水面统一到局部连续值，避免支流与主流各保留一层水平面。
+        double waterSurfaceY = junctionWaterSurface(samples, nearest, k);
         width = Math.max(width, 1.0);
         double bankW = width * P.bankFactor();
         double valley = Math.max(width + bankW, width * 3.0);
@@ -179,6 +180,24 @@ public final class HydrologyBlockCarver {
                     || original <= waterSurface - 1.0);
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                 waterSurface, cut, anyFill);
+    }
+
+    private static double junctionWaterSurface(List<HydrologyBlockSample> samples,
+                                                HydrologyBlockSample nearest, double k) {
+        double sum = nearest.surfaceY();
+        double weightSum = 1.0;
+        int localHits = 1;
+        for (int i = 1; i < samples.size(); i++) {
+            HydrologyBlockSample s = samples.get(i);
+            if (s.distToCenter() - nearest.distToCenter() >= k) continue;
+            double w = NoiseUtil.smooth(1.0 - NoiseUtil.saturate(
+                    (s.distToCenter() - nearest.distToCenter()) / k));
+            sum += w * s.surfaceY();
+            weightSum += w;
+            localHits++;
+        }
+        // 单线/远距重叠保持原有最近有向水面；只在真正局部多线竞争带统一交汇水面。
+        return localHits > 1 ? sum / weightSum : nearest.surfaceY();
     }
 
     /** 二次 smooth-min（IQ）：smin ≤ min(a,b)，C1，且 ≤ 每个输入 → 合并距离时仍只下挖。
