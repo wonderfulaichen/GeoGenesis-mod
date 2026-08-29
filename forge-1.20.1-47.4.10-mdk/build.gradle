@@ -327,6 +327,15 @@ task runRiverLineContinuityProbe(type: JavaExec) {
     }
 }
 
+task runRiverLineMicroUphillProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLineMicroUphillProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 task runHydrologyContinuousProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyContinuousProbe'

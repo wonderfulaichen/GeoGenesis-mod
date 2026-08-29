@@ -84,30 +84,31 @@ public final class HydrologyBlockCarver {
             dist = smin(dist, s.distToCenter(), k);           // C1 距离场，根治几何折痕
         }
 
-        // ★ IDW 多段混合（PL-RGA riverHeightField: (1−fade)²/dist² 加权）
-        //   取 dist ≤ heightBlendDist 的全部命中按反距离平方混合 surfaceY/width/depth，
-        //   河线交越处平滑过渡，根除"单属主硬切"接缝；blendDist 仅 ~valley 量级，远处河线不入场。
+        // ★ 宽深按 IDW 多段混合；水位必须保持最近有向河段的单调纵剖面。
+        //   若水位也混合，河曲处会混入上游较高水位并重新制造局部回升。
         double blendDist = P.heightBlendDist();
-        double wSum = 0.0, sSurf = 0.0, sWid = 0.0, sDep = 0.0;
+        double wSum = 0.0, sWid = 0.0, sDep = 0.0;
         for (HydrologyBlockSample s : samples) {
             double d = s.distToCenter();
             if (d > blendDist) break;                   // sampleBlockAll 已按距离升序
             double fade = NoiseUtil.saturate(d / blendDist);
             double w = (1.0 - fade) * (1.0 - fade) / Math.max(d * d, 1.0);
             wSum += w;
-            sSurf += w * s.surfaceY();
             sWid  += w * s.width();
             sDep  += w * s.depth();
         }
-        double width, surfaceY, depth;
+        HydrologyBlockSample nearest = samples.get(0);
+        double width, depth;
         if (wSum > 1e-9) {
             width = sWid / wSum;
-            surfaceY = sSurf / wSum;
             depth = sDep / wSum;
         } else {                                         // 退化：仅最近一条（与旧单属主等价）
-            HydrologyBlockSample o = samples.get(0);
-            width = o.width(); surfaceY = o.surfaceY(); depth = o.depth();
+            width = nearest.width();
+            depth = nearest.depth();
         }
+        // 水位不能参与跨段 IDW：混入上游/邻河较高水位会在最终块采样层重新制造局部回升。
+        // 最近段自身已携带有向单调剖面；交汇节点共享水位，因此汇口仍连续。
+        double surfaceY = nearest.surfaceY();
         width = Math.max(width, 1.0);
         double bankW = width * P.bankFactor();
         double valley = Math.max(width + bankW, width * 3.0);
@@ -120,8 +121,10 @@ public final class HydrologyBlockCarver {
         double valleyT = NoiseUtil.saturate((dist - width) / Math.max(1.0, valley - width));
         double outer = valleyOuter(valleyT, P.valleyExp());
 
-        // 水面 = min(单调水面, 当地真实地形)（Streams maxSurfaceAt 范式）。
-        double waterSurface = Math.min(surfaceY, original);
+        // 水面直接采用河线的有向单调纵剖面。不能再逐块 min(surfaceY, original)：
+        // 局部凹坑会先把水面压低，离开凹坑后又恢复到河线水面，从而在下游制造反向抬升。
+        // 地形高于水面时由后续 cut 下挖穿过；地形低于水面时保持原地形并按门控决定灌水。
+        double waterSurface = surfaceY;
         // 目标河床：水面 − depth × 断面形状
         double bedTarget = waterSurface - depth * profile;
         // 雕刻量 = (original − bedTarget) × 外缘衰减 × 高度淡出；只下挖
