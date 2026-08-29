@@ -110,13 +110,10 @@ minecraft {
     }
 }
 
-// Keep diagnostics out of the production mod source set while retaining the existing
-// package layout and Gradle run tasks.
-sourceSets.main.java.exclude '**/*Probe.java'
+// Keep diagnostics in a separate source tree while retaining package names and run tasks.
 sourceSets {
     diagnostics {
-        java.srcDirs = ['src/main/java']
-        java.include '**/*Probe.java'
+        java.srcDirs = ['src/diagnostics/java']
         compileClasspath += sourceSets.main.output
         runtimeClasspath += output + sourceSets.main.runtimeClasspath
     }
