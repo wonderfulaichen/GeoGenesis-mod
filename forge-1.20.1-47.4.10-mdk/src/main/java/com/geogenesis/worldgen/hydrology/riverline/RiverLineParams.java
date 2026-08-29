@@ -114,6 +114,9 @@ public record RiverLineParams(
     double estuaryLength,
     /** 河口展宽倍数（相对上游河宽）。参考 Streams 河口比上游更宽。 */
     double estuaryWidthFactor,
+    /** 河口半宽上限（block）。★ 独立于河道 maxWidth：否则大河上游已接近 maxWidth，
+     *  河口会被钳制到与河道同宽，喇叭口完全展不开。 */
+    double mouthMaxWidth,
     /** 河口最小水深（block），保证河口不被填平（参考 Streams RiverMouthComponent MinDepth）。 */
     double mouthMinDepth,
     /** 跨 region 连续河：到网格边（缝外 margin）的河作为出口种子交接给下游邻 region，
@@ -131,7 +134,7 @@ public record RiverLineParams(
                 meanderAmp, meanderWavelength, riverCount, borderDist, lakeRadius,
                 lakeMargin, lakeFadeDist, heightBlendDist, blendExp, minDrop, smoothMinK,
                 widthAreaRef, widthExp, depthExp, maxDepthRatio, mouthFadeDepth,
-                estuaryLength, estuaryWidthFactor, mouthMinDepth, v);
+                estuaryLength, estuaryWidthFactor, mouthMaxWidth, mouthMinDepth, v);
     }
 
     public static RiverLineParams defaults() {
@@ -180,8 +183,9 @@ public record RiverLineParams(
             0.40,                    // depthExp（D ∝ A^0.40）
             0.9,                     // maxDepthRatio（宽深比护栏 D ≤ 0.9W）
             6.0,                     // mouthFadeDepth（河口向海延伸 6 格后淡出）
-            120.0,                   // estuaryLength（河口喇叭口过渡长度 wu）
-            1.8,                     // estuaryWidthFactor（河口展宽 1.8 倍）
+            160.0,                   // estuaryLength（河口喇叭口过渡长度 wu，更长更自然）
+            2.2,                     // estuaryWidthFactor（河口展宽 2.2 倍）
+            18.0,                    // mouthMaxWidth（河口半宽上限 18 block，全宽 36）
             2.0,                     // mouthMinDepth（河口最小水深 2 格）
             true                     // crossRegion（跨 region 连续河，默认开启）
         );
