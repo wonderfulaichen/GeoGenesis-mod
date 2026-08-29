@@ -29,6 +29,9 @@ public final class RiverLineNetwork {
 
     private static final int MAX_REGIONS = 256;
 
+    /** 汇入评分中的邻近权重（PL-RGA RIVER_JOIN_DISTANCE_WEIGHT）：越低优先，等距时就近。 */
+    private static final double RIVER_JOIN_DISTANCE_WEIGHT = 1e-6;
+
     /**
      * 诊断计数器：防交叉检测的"段比较"总次数（性能诊断用）。
      *
@@ -186,7 +189,7 @@ public final class RiverLineNetwork {
             for (int c : out.cells) {
                 claimed[c] = true;
                 nodeE[c] = field.eAt(c);
-                levelAt[c] = level;
+                if (levelAt[c] == 0) levelAt[c] = level;   // 交汇节点已属主流，勿覆盖其层级（PL-RGA 节点共享）
             }
             for (int k = 0; k < out.cells.size() - 1; k++) {
                 int a = out.cells.get(k), b = out.cells.get(k + 1);
@@ -269,7 +272,7 @@ public final class RiverLineNetwork {
             path.add(cur); seen[cur] = true;
             if (field.eAt(cur) <= params.oceanE()) { reachedOcean = true; break; }
 
-            int join = nearbyDownhillNode(field, cur, stepSize, nodeE, nx, nz);
+            int join = nearbyDownhillNode(field, cur, stepSize, nodeE,  nx, nz, allSegments);
             if (join >= 0) { path.add(join); joined = true; break; }   // 就近汇入树状
 
             int down = downhillNeighbor(field, cur, stepSize, nx, nz);
@@ -291,13 +294,20 @@ public final class RiverLineNetwork {
         return new TraceOutcome(path, reachedOcean, isLake, joined);
     }
 
-    /** step 窗口内"已存在且更低"的河节点（PL-RGA _nearbyDownhillRiverNode）：树状汇入。 */
+    /**
+     * step 窗口内"已存在且更低"的河节点（PL-RGA _nearbyDownhillRiverNode）：树状汇入。
+     *
+     * <p>★ 对齐参考：① 连接会穿过已有河段则跳过（_wouldCrossExistingSegments），
+     * 否则支流跨河汇入、在交汇处产生交叉支流；② 评分用 {@code ne + 1e-6·d²}
+     * （越低越好、等距就近），而非纯最低点——避免长距离跳跃汇入；
+     * ③ 不排除 source 在本实现中无害（源点也已 claimed，跨河跳跃已被①拦截）。</p>
+     */
     private int nearbyDownhillNode(FlowField field, int cur, int step,
-                                   double[] nodeE, int nx, int nz) {
+                                   double[] nodeE, int nx, int nz, List<int[]> allSegments) {
         int ci = cur % nx, cj = cur / nx;
         double curE = field.eAt(cur);
         int best = -1;
-        double bestE = curE;
+        double bestScore = curE + 1e30;
         int minI = Math.max(0, ci - step), maxI = Math.min(nx - 1, ci + step);
         int minJ = Math.max(0, cj - step), maxJ = Math.min(nz - 1, cj + step);
         for (int j = minJ; j <= maxJ; j++) {
@@ -306,8 +316,12 @@ public final class RiverLineNetwork {
                 int idx = j * nx + i;
                 double ne = nodeE[idx];
                 if (Double.isNaN(ne)) continue;
-                if (ne >= curE - params.minDrop()) continue;     // 须严格更低
-                if (ne < bestE) { bestE = ne; best = idx; }
+                if (ne >= curE - params.minDrop()) continue;     // 须严格更低（PL-RGA RIVER_MIN_DROP）
+                // 连接会穿过已有河段 → 跳过（PL-RGA _wouldCrossExistingSegments）
+                if (segmentCrossesAny(ci, cj, i, j, allSegments)) continue;
+                double d2 = (i - ci) * (i - ci) + (j - cj) * (j - cj);
+                double score = ne + RIVER_JOIN_DISTANCE_WEIGHT * d2;  // 越低越好，等距就近
+                if (score < bestScore) { bestScore = score; best = idx; }
             }
         }
         return best;
