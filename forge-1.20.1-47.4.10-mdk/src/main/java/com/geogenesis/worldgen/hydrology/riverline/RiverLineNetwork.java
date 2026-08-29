@@ -603,10 +603,17 @@ public final class RiverLineNetwork {
                               double[] widths, RiverLineParams params) {
         double seaLevel = curve.seaLevelY();
         for (int i = 0; i < surf.length; i++) {
-            // 海域内不存在河岸上界：岸线低于海平面时不再压低水面，保持海平面。
-            double cap = bankCapY(nodes, i, widths[i], params);
-            if (cap >= seaLevel) {
-                surf[i] = Math.min(surf[i], cap);
+            // ★ 重采样会新增大量中间节点；海域锁平原本只作用于 PAVA 原始节点，
+            //   导致落在海域的插值节点仍沿用上游陆地水位（入海口前高一格的真因）。
+            //   这里对"地形已低于海平面"的重采样节点同样锁到海平面。
+            if (rawTerrainY(nodes[i]) < seaLevel) {
+                surf[i] = Math.min(surf[i], seaLevel);
+            } else {
+                // 海域内不存在河岸上界：岸线低于海平面时不再压低水面，保持海平面。
+                double cap = bankCapY(nodes, i, widths[i], params);
+                if (cap >= seaLevel) {
+                    surf[i] = Math.min(surf[i], cap);
+                }
             }
             if (i > 0) surf[i] = Math.min(surf[i], surf[i - 1]);
         }

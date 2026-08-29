@@ -19,6 +19,10 @@ public final class RiverLineMouthProbe {
         RiverLineNetwork network = new RiverLineNetwork(terrain::terrainEQuick,
                 (x, z) -> terrain.sample(x, z).height, terrain.heightCurve(), seed);
         double seaLevel = terrain.heightCurve().seaLevelY();
+        // 量测两种海平面定义：名义海平面(e=0) vs 海岸 spline 处换算值
+        System.out.println("seaLevelY(e=0)=" + seaLevel
+                + "  terrain.seaLevel()=" + terrain.seaLevel()
+                + "  delta=" + (terrain.seaLevel() - seaLevel));
 
         int rivers = 0, mouths = 0, locked = 0, belowSea = 0;
         double maxDeviation = 0.0;
@@ -32,6 +36,17 @@ public final class RiverLineMouthProbe {
                     double ground = terrain.sample(last.x(), last.z()).height;
                     if (ground >= seaLevel - 0.5) continue;
                     mouths++;
+                    if (mouths <= 3) {
+                        int lastIdx = river.surfaceY.length - 1;
+                        StringBuilder sb = new StringBuilder("mouth" + mouths + " tail: ");
+                        for (int i = Math.max(0, lastIdx - 2); i <= lastIdx; i++) {
+                            double nodeGround = terrain.sample(
+                                    river.nodes[i].x(), river.nodes[i].z()).height;
+                            sb.append(String.format("[n%d ground=%.2f surf=%.2f] ",
+                                    i, nodeGround, river.surfaceY[i]));
+                        }
+                        System.out.println(sb);
+                    }
                     double deviation = Math.abs(river.surfaceY[river.surfaceY.length - 1] - seaLevel);
                     maxDeviation = Math.max(maxDeviation, deviation);
                     if (deviation <= 0.5) locked++;
