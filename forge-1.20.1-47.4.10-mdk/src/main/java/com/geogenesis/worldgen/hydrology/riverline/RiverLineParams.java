@@ -145,7 +145,7 @@ public record RiverLineParams(
             96.0,                    // anchorSnapRadius（旧锚点用）
             12.0,                    // anchorSnapStep（旧锚点用）
             40.0,                    // valleyBiasAmp（旧贴谷用）
-            1.75,                    // minWidth（半宽 block）★全宽 3.5 block = 小溪档
+            1.0,                     // minWidth（半宽 block）★全宽 2 block = 山泉/源头溪流档
             10.0,                    // maxWidth（半宽 block）★全宽 20 block = 大河档
             1.6,                     // minDepth（block）★保证小溪水面宽 ≥1.33 block，灌水门控稳定命中
             8.0,                     // maxDepth（block）
