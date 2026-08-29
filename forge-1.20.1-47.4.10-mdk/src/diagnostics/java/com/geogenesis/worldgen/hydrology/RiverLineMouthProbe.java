@@ -38,12 +38,16 @@ public final class RiverLineMouthProbe {
                     mouths++;
                     if (mouths <= 3) {
                         int lastIdx = river.surfaceY.length - 1;
-                        StringBuilder sb = new StringBuilder("mouth" + mouths + " tail: ");
+                        int upIdx = Math.max(0, lastIdx - 30);
+                        StringBuilder sb = new StringBuilder(String.format(
+                                "mouth%d upstream w=%.2f d=%.2f | tail: ",
+                                mouths, river.width[upIdx], river.depth[upIdx]));
                         for (int i = Math.max(0, lastIdx - 2); i <= lastIdx; i++) {
                             double nodeGround = terrain.sample(
                                     river.nodes[i].x(), river.nodes[i].z()).height;
-                            sb.append(String.format("[n%d ground=%.2f surf=%.2f] ",
-                                    i, nodeGround, river.surfaceY[i]));
+                            sb.append(String.format("[n%d g=%.2f s=%.2f w=%.2f d=%.2f] ",
+                                    i, nodeGround, river.surfaceY[i],
+                                    river.width[i], river.depth[i]));
                         }
                         System.out.println(sb);
                     }

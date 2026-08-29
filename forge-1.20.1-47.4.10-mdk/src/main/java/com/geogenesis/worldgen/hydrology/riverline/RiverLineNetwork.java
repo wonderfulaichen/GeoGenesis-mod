@@ -595,7 +595,44 @@ public final class RiverLineNetwork {
         // Catmull-Rom 重采样后节点更密，但水面是节点间线性插值：
         // 原始节点间的局部地形可能更低，必须再按逐重采样节点收回到岸线 cap。
         applyBankCap(rn, rs, rw, params);
+        applyEstuary(rn, rs, rw, rd, params);
         return new RiverPolyline(rn, rs, rw, rd, level);
+    }
+
+    /**
+     * 河口喇叭口：入海口向上游 {@code estuaryLength} 范围内宽度向海渐增，
+     * 并保证河口最小水深。
+     *
+     * <p>参考 Streams {@code RiverMouthComponent}：河口比上游更宽（喇叭口形态），
+     * 且有 {@code MinDepth} 保证河口不被填平。只调整几何参数，不改水面与河网拓扑。</p>
+     */
+    private void applyEstuary(MidpointDisplacement.Node[] nodes, double[] surf,
+                              double[] widths, double[] depths, RiverLineParams p) {
+        int n = nodes.length;
+        if (n < 2) return;
+        double seaLevel = curve.seaLevelY();
+        double maxLen = Math.max(1.0, p.estuaryLength());
+        double widthFactor = Math.max(1.0, p.estuaryWidthFactor());
+        double minDepth = Math.max(0.5, p.mouthMinDepth());
+        double along = 0.0;
+        for (int i = n - 1; i >= 0; i--) {
+            if (i < n - 1) {
+                along += Math.hypot(nodes[i + 1].x() - nodes[i].x(),
+                        nodes[i + 1].z() - nodes[i].z());
+            }
+            // 仅在海域内或紧邻入海口的上游过渡带生效
+            if (rawTerrainY(nodes[i]) >= seaLevel && along > maxLen) break;
+            // t=1 在入海口，t=0 在过渡带上游端
+            double t = 1.0 - NoiseUtil.saturate(along / maxLen);
+            double grow = 1.0 + (widthFactor - 1.0) * NoiseUtil.smooth(t);
+            widths[i] = Math.min(p.maxWidth(), widths[i] * grow);
+            depths[i] = Math.max(minDepth, depths[i]);
+        }
+        // 保持既有水力约束：宽度/深度沿程不减（下游更宽更深）
+        for (int i = 1; i < n; i++) {
+            if (widths[i] < widths[i - 1]) widths[i] = widths[i - 1];
+            if (depths[i] < depths[i - 1]) depths[i] = depths[i - 1];
+        }
     }
 
     /** 逐节点把水面收回到两岸原始地形 cap，并向下游传播最小值（保持不回升）。 */
