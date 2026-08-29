@@ -330,7 +330,7 @@ public final class RiverLineNetwork {
         } else {
             outletSurf = junctionGround;
         }
-        double[] surf = applyRiverHeightSlopeDrop(rawSurf, outletSurf, curve, params,
+        double[] surf = applyRiverHeightSlopeDrop(nodes, rawSurf, outletSurf, params,
                 Double.isNaN(forcedSrcH) ? null : forcedSrcH);
         for (int k = 0; k < m; k++) {
             nodeSurf[out.cells.get(start + k)] = surf[k];   // 记录本河水面供后续支流继承
@@ -502,6 +502,7 @@ public final class RiverLineNetwork {
                                      int level) {
         int n = rawNodes.length;
         if (n < 3) {
+            clampMonotonicDownstream(rawSurf, rawWid, rawDep);
             return new RiverPolyline(rawNodes, rawSurf, rawWid, rawDep, level);
         }
         double[] px = new double[n], pz = new double[n];
@@ -587,7 +588,37 @@ public final class RiverLineNetwork {
             rw[i] = outWid.get(i);
             rd[i] = outDep.get(i);
         }
+        // 沿程单调化（下游不抬床）：见 clampMonotonicDownstream
+        clampMonotonicDownstream(rs, rw, rd);
         return new RiverPolyline(rn, rs, rw, rd, level);
+    }
+
+    /**
+     * 沿程单调化（下游不抬床，2026-08-29）。
+     *
+     * <p>节点顺序恒为 head[0] → mouth[last]：head 高/浅/窄，mouth 低/深/宽。
+     * 对单条折线的水力几何数组做运行约束：</p>
+     * <ul>
+     *   <li>{@code surfaceY} 运行取小 —— 下游水面不回升；</li>
+     *   <li>{@code width}    运行取大 —— 下游河宽不减；</li>
+     *   <li>{@code depth}    运行取大 —— 下游河深不减。</li>
+     * </ul>
+     *
+     * <p>根因（探针 {@code RiverLineMicroUphillProbe}）：雕刻器在 {@code blendDist=100wu}
+     * 内对邻近段做反距离平方混合 surfaceY/width/depth。同一条河自身在河曲/自身相邻段处
+     * 被重复采样（hitCount>1），混合进更高 surfaceY、更小 depth 的"上游/侧向"段，使
+     * 局部河床 {@code surfaceY − depth·profile} 抬升，产生方块级爬坡（占可见爬坡约 67%）。
+     * 单条折线内先强制水力几何下游单调，从根消除此类同河内部爬坡；交汇处跨河段混合的
+     * 残留非单调由雕刻器侧另行处理，不在此处。</p>
+     */
+    private static void clampMonotonicDownstream(double[] surf, double[] wid, double[] dep) {
+        int m = surf.length;
+        if (m <= 1) return;
+        for (int i = 1; i < m; i++) {
+            if (surf[i] > surf[i - 1]) surf[i] = surf[i - 1];
+            if (wid[i] < wid[i - 1]) wid[i] = wid[i - 1];
+            if (dep[i] < dep[i - 1]) dep[i] = dep[i - 1];
+        }
     }
 
     // ===== 河网生成辅助（PL-RGA 对齐）=====
@@ -669,35 +700,62 @@ public final class RiverLineNetwork {
     }
 
     /**
-     * 河高沿程缓降：源端略降、出口锚定 {@code outletSurf}，区间内按地形高度线性映射到 [outletSurf, srcH]。
+     * 地形拟合的单调水面：对 {@code terrainY - surfaceSink} 做非递增单调回归（PAVA）。
      *
-     * <p>★ 2026-08-29 交汇连续性：当支流汇入主流、{@code outletSurf} 直接取主流在该交汇节点的水面
-     * （而非 groundYAt），则交汇处两河水面恒等（PL-RGA 节点共享语义），消除交汇台阶。</p>
-     *
-     * <p>★ 跨 region 续流：{@code forcedSrcH} 非 null 时直接作为源端水面（= 上游尾节点水面），
-     * 保证跨缝水面连续、无台阶。</p>
+     * <p>相比运行最小值，PAVA 不会被单个小凹坑永久拖低；它在保证下游绝不回升的前提下，
+     * 以最小平方误差贴合整条沿河地形。小凸起会被压平并切穿，小凹坑会形成有水的深槽，
+     * 整体仍紧贴地势。出口和跨 region 源端用高权重锚定，维持汇口/瓦片缝连续。</p>
      */
-    private static double[] applyRiverHeightSlopeDrop(double[] rawSurf, double outletSurf,
-                                                      HeightCurve curve, RiverLineParams params,
-                                                      Double forcedSrcH) {
+    private static double[] applyRiverHeightSlopeDrop(MidpointDisplacement.Node[] nodes,
+                                                      double[] rawSurf, double outletSurf,
+                                                      RiverLineParams params, Double forcedSrcH) {
         int m = rawSurf.length;
-        double[] surf = new double[m];
-        if (m < 2) {
-            System.arraycopy(rawSurf, 0, surf, 0, m);
-            return surf;
+        if (m == 0) return new double[0];
+        double sink = Math.max(0.0, params.surfaceSink());
+        double[] target = new double[m];
+        double[] weight = new double[m];
+        Arrays.fill(weight, 1.0);
+        for (int k = 0; k < m; k++) target[k] = rawSurf[k] - sink;
+
+        double outlet = Math.min(outletSurf, target[m - 1]);
+        target[m - 1] = outlet;
+        weight[m - 1] = 1e9;
+        if (forcedSrcH != null) {
+            target[0] = Math.max(outlet, forcedSrcH);
+            weight[0] = 1e9;
         }
-        double srcRaw = rawSurf[0];
-        double outRaw = rawSurf[m - 1];   // 地形出口（仅用于 t 缩放）
-        double outH = outletSurf;         // 实际出口水面（可继承主流）
-        double rawSpan = srcRaw - outRaw;
-        double srcH = (rawSpan <= 1e-6) ? outH
-                : (forcedSrcH != null ? forcedSrcH
-                                      : Math.max(outH + 1e-4, srcRaw - params.slopeDrop()));
+
+        double[] surf = isotonicNonIncreasing(target, weight);
+        double sourceCap = forcedSrcH != null ? Math.max(outlet, forcedSrcH) : surf[0];
         for (int k = 0; k < m; k++) {
-            double t = NoiseUtil.saturate((rawSurf[k] - outRaw) / rawSpan);
-            surf[k] = outH + (srcH - outH) * t;
+            surf[k] = NoiseUtil.clamp(surf[k], outlet, sourceCap);
         }
+        if (forcedSrcH != null) surf[0] = sourceCap;
+        surf[m - 1] = outlet;
         return surf;
+    }
+
+    /** 加权 PAVA：返回与 target 平方误差最小的非递增序列。 */
+    private static double[] isotonicNonIncreasing(double[] target, double[] weight) {
+        int n = target.length;
+        double[] mean = new double[n], sumW = new double[n];
+        int[] start = new int[n], end = new int[n];
+        int blocks = 0;
+        for (int i = 0; i < n; i++) {
+            mean[blocks] = target[i]; sumW[blocks] = weight[i];
+            start[blocks] = i; end[blocks] = i; blocks++;
+            while (blocks >= 2 && mean[blocks - 2] < mean[blocks - 1]) {
+                int a = blocks - 2, b = blocks - 1;
+                double w = sumW[a] + sumW[b];
+                mean[a] = (mean[a] * sumW[a] + mean[b] * sumW[b]) / w;
+                sumW[a] = w; end[a] = end[b]; blocks--;
+            }
+        }
+        double[] out = new double[n];
+        for (int b = 0; b < blocks; b++) {
+            Arrays.fill(out, start[b], end[b] + 1, mean[b]);
+        }
+        return out;
     }
 
     /**
