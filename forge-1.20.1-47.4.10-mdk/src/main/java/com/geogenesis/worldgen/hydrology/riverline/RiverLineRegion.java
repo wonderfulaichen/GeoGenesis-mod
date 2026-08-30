@@ -19,6 +19,8 @@ public final class RiverLineRegion {
         public final double[] surfaceY;   // 水面世界 Y（= 当地地表谷底）
         public final double[] width;      // 半宽（block）：由汇流面积驱动
         public final double[] depth;      // 河深（block）
+        /** 逐节点跌水落差（block）：0 = 普通河段；>0 = 本节点位于跌水潭侧，供水幕填充。 */
+        public final double[] fallDrop;
         /**
          * 分支层级（Strahler 式）：1 = 直接入海/入湖的河（干流）；
          * n+1 = 汇入 n 级河的支流。用于诊断"分支的分支"是否生成
@@ -27,11 +29,12 @@ public final class RiverLineRegion {
         public final int level;
 
         public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
-                             double[] depth, int level) {
+                             double[] depth, double[] fallDrop, int level) {
             this.nodes = nodes;
             this.surfaceY = surfaceY;
             this.width = width;
             this.depth = depth;
+            this.fallDrop = fallDrop;
             this.level = level;
         }
     }
