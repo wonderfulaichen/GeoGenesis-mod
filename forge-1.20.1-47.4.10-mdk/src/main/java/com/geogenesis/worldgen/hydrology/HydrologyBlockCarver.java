@@ -153,6 +153,31 @@ public final class HydrologyBlockCarver {
         double valleyT = NoiseUtil.saturate((dist - width) / Math.max(1.0, valley - width));
         double outer = valleyOuter(valleyT, P.valleyExp());
 
+        // ★ 谷壁雕刻面平滑（消弯角放射折痕回归）：瀑布冻结让雕刻面按阶硬切，
+        //   弯角处各列最近段在上下阶间 Voronoi 跳变 → 谷壁折痕。谷壁（dist>width）
+        //   只塑形不灌水，平滑雕刻面只消折痕、不影响水幕（水面已冻结为阶值）。
+        //   只对"真水幕列"（fallDrop>0，阶跌处）平滑——唇口列（平坦潭面）保持
+        //   阶值，避免被向下拉跨阶挖深。仅与"同为冻结段"样本平滑，限幅 ±maxDrop。
+        if (atFall && nearest.fallDrop() > 0.0 && dist > width) {
+            double fSum = nearest.surfaceY(), fWeight = 1.0;
+            for (int i = 1; i < samples.size(); i++) {
+                HydrologyBlockSample s = samples.get(i);
+                if (!s.frozen()) continue;
+                double delta = s.distToCenter() - nearestDist;
+                if (delta >= k) continue;
+                double weight = NoiseUtil.smooth(1.0 - NoiseUtil.saturate(delta / k));
+                fSum += weight * s.surfaceY();
+                fWeight += weight;
+            }
+            double blendSurf = fSum / fWeight;
+            double maxDrop = P.waterfallMaxDrop();
+            if (Math.abs(blendSurf - nearest.surfaceY()) > maxDrop) {
+                blendSurf = nearest.surfaceY()
+                        + Math.signum(blendSurf - nearest.surfaceY()) * maxDrop;
+            }
+            carveSurfaceY = blendSurf;
+        }
+
         // 水面直接采用河线的有向单调纵剖面。不能再逐块 min(surfaceY, original)：
         // 局部凹坑会先把水面压低，离开凹坑后又恢复到河线水面，从而在下游制造反向抬升。
         // 地形高于水面时由后续 cut 下挖穿过；地形低于水面时保持原地形并按门控决定灌水。
@@ -196,7 +221,11 @@ public final class HydrologyBlockCarver {
         //   灌在草地之上（水幕顶"直角"超出原地形的漫水根因）。冻结只管雕刻（禁
         //   IDW 混合），不管灌水门控，两者语义分离。
         boolean terrainOk = nearest.fallDrop() > 0.0 || wetCore || waterSurface <= original + 1e-9;
-        boolean anyFill = nearestDist <= nearestWidth
+        // ★ 门控①放宽给真水幕列：瀑布的坠落水横跨整段崖面，d 可大于半宽
+        //   （fall plane 往往比窄河道宽）。非水幕列仍受 d≤width 约束（防侧向漫灌）。
+        //   沙崖列（d 大但未挖到水面以下）会被门控② carved<surface−0.5 挡住，不会误灌。
+        boolean inCurtain = nearest.fallDrop() > 0.0;
+        boolean anyFill = (nearestDist <= nearestWidth || inCurtain)
                 && carved < waterSurface - 0.5
                 && terrainOk
                 && (punchedThrough
