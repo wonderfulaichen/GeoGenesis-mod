@@ -72,6 +72,8 @@ public class Cell {
     public byte riverType;
     /** 水文实验河流水面 Y；无河流时为海平面默认值。 */
     public double riverSurfaceY;
+    /** 水文实验瀑布唇口水位 Y（= 潭面 + 落差）；普通河段等于 riverSurfaceY，无副作用。 */
+    public double riverLipY;
     /** 是否积雪覆盖 */
     public boolean isSnow;
 

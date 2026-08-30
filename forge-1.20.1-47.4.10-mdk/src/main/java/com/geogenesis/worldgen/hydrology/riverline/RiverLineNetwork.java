@@ -1230,15 +1230,24 @@ public final class RiverLineNetwork {
                 MidpointDisplacement.Node a = line.get(i), b = line.get(i + 1);
                 double abx = b.x() - a.x(), abz = b.z() - a.z();
                 double len2 = abx * abx + abz * abz;
-                double t = len2 < 1e-9 ? 0.0
+                double u = len2 < 1e-9 ? 0.0
                         : ((wx - a.x()) * abx + (wz - a.z()) * abz) / len2;
-                t = NoiseUtil.clamp(t, 0.0, 1.0);
+                double t = NoiseUtil.clamp(u, 0.0, 1.0);
                 double px = a.x() + abx * t, pz = a.z() + abz * t;
                 double dx = wx - px, dz = wz - pz;
                 double dist = Math.sqrt(dx * dx + dz * dz);
                 bestRiverDist = Math.min(bestRiverDist, dist);
                 double f = i + t;
                 int i0 = (int) Math.floor(f), i1 = Math.min(i0 + 1, line.size() - 1);
+                // ★ 跌水节点端帽豁免（2026-08-31）：弯折瀑布直角外侧岸坡凹槽的根因。
+                //   线段距离场的端帽（投影越出段末的半圆盘）在普通节点被相邻两段矩形
+                //   主体覆盖、不可见；但跌水节点两侧水位阶跃——坠落节点 i1 以外的区域
+                //   被跌水段端帽、潭侧首段起点以外的区域被其起点端帽，按**潭面水位**
+                //   认领并 carve+灌水，沿直角外岸挖出低于上级河面的凹槽（实测截图）。
+                //   弯折外侧楔形区改为不认领，保留原始地形包住直角；水面连续性由两段
+                //   矩形主体保证（沿轴 u_P≥0 与 u_F≤1 互相衔接），潭/水幕形态不变。
+                if (pl.fallDrop[i1] > 0.0 && u > 1.0) continue;
+                if (pl.fallDrop[i1] <= 0.0 && pl.fallDrop[i0] > 0.0 && u < 0.0) continue;
                 // 跌水段：水面为阶跃而非线性插值——8 block 的 lerp 会把一级跌水摊成缓坡。
                 // 唇口侧（t<FALL_STEP_T）取上游阶梯水位（水幕墙顶，无幕）；
                 // 跌水侧取潭面水位，并携带 fallDrop 供水幕填充（旧 Streams fillRiver 语义）。

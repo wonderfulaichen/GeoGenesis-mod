@@ -142,7 +142,14 @@ public final class HydrologyBlockCarver {
         //   valley 谷壁区（dist > width）必须恢复 k=4 IDW 竞争带混合：冻结会让属主切换线
         //   两侧 tread 差硬切（谷壁区 profile=0 → bedTarget=carveSurfaceY），经 outer 衰减区
         //   放大成弯角放射折痕（老折痕问题回归），并使水幕侧壁悬空暴露。
-        boolean frozenChannel = atFall && nearestDist <= nearestWidth;
+        // ★ 与雕刻几何同源（2026-08-31）：冻结范围必须用雕刻几何自己的 dist（smin 合并后）
+        //   与 width（IDW 混合宽），而不是灌水门控的 nearestDist/nearestWidth。
+        //   两者不等价：smin 让 dist 比真实最近距离小最多 k/4，IDW 混合宽也可能大于最近
+        //   段半宽 → 紧贴水道外缘出现一圈"几何上算河道内(按河床深挖)、门控上算河道外
+        //   (不给水)"的错位带；该带又不冻结，瀑布处 carveSurfaceY 被 IDW 跨阶拖到远低于
+        //   邻接水面（实测 124.7 vs 水面 135.5，亏缺 10.7 格）→ 河道两侧深干沟平台。
+        //   改与几何同源后该带同样冻结（取最近段真值），不再被跨阶拖动。
+        boolean frozenChannel = atFall && dist <= width;
         if (frozenChannel) {
             carveSurfaceY = nearest.surfaceY();
             waterSurfaceY = nearest.surfaceY();
@@ -190,6 +197,34 @@ public final class HydrologyBlockCarver {
         double waterSurface = waterSurfaceY;
         // 目标河床使用局部连续的雕刻高程；真实水面仍保持最近有向段的 PAVA 纵剖面。
         double bedTarget = carveSurfaceY - depth * profile;
+        // ★ 瀑布直角岸台修复（2026-08-31）：谷壁列（dist>width）只塑形不灌水，其雕刻
+        //   目标若低于附近最高水位，弯角处会沿河岸挖出一条低于河面的干平台（实测
+        //   截图：平台只在瀑布直角附近出现）。根因是谷壁的雕刻面在直角附近被潭侧
+        //   低位水面拖下去（通用 IDW 混入跌水节点潭面、冻结平滑跨阶混合唇口/潭面）。
+        //   修复：谷壁雕刻目标钳到 k 邻域内最高水位（水面/唇口取大）——普通河段各
+        //   样本水面≈自身 → 钳制≈无操作；瀑布处钳到上级 tread 水位 → 直角两侧岸坡
+        //   不再被潭侧低面拖下去，恰好实现"直角两侧被地形包住"。只影响下挖量：
+        //   当地地形本就低于该水位的下游侧（original < highWater）cut 仍为 0，形态不变。
+        if (dist > width) {
+            double highWater = Math.max(nearest.surfaceY(), nearest.lipSurfaceY());
+            for (int i = 1; i < samples.size(); i++) {
+                HydrologyBlockSample s = samples.get(i);
+                if (s.distToCenter() - nearestDist >= k) continue;
+                highWater = Math.max(highWater, Math.max(s.surfaceY(), s.lipSurfaceY()));
+            }
+            if (bedTarget < highWater) bedTarget = highWater;
+        }
+        // ★ 干地不得低于邻接水面（2026-08-31）：灌水门控①按 nearestDist/nearestWidth 判定，
+        //   而雕刻几何按 smin 后的 dist 与 IDW 混合 width 判定——两者不等价，紧贴水道外缘
+        //   存在一圈"几何上算河道内(按河床深挖)、门控上算河道外(不给水)"的列。该环带被
+        //   挖到 carveSurfaceY − depth·profile（约低于水面一个河深）却是干的，视觉上就是
+        //   紧贴水面、低于河道的干平台（展开图实测标记为 a 的环带）。
+        //   物理常识：不会被灌水 = 那里没有水，干地就不允许被挖到邻接水面以下。
+        //   本列是否灌水完全由门控①预判定（先于 carved），与下面的 anyFill 同源。
+        boolean outsideWaterGate = nearestDist > nearestWidth;
+        if (outsideWaterGate && bedTarget < waterSurface) {
+            bedTarget = waterSurface;
+        }
         // 雕刻量 = (original − bedTarget) × 外缘衰减 × 高度淡出；只下挖
         double cut = Math.max(0.0, original - bedTarget) * outer * fadeE;
         double carved = original - cut;
