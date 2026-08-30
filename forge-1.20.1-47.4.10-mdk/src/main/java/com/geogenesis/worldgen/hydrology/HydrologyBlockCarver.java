@@ -240,6 +240,12 @@ public final class HydrologyBlockCarver {
                     || original <= waterSurface - 1.0);
         // 水幕顶：跌水列取唇口水位（= 潭面 + 落差），普通列与水面同值（fallDrop()=0）。
         double lipSurfaceY = atFall ? nearest.lipSurfaceY() : waterSurface;
+        // ★ 水幕顶钳到当地崖面地形（2026-08-30）：河流有宽度——水幕列的横向岸是
+        //   本级位置的地形（陡坡上低于上级 tread），水幕顶若取上级 tread 会高出
+        //   两侧地形、悬在坡面上（直角两侧不被地形包住）。钳到 original 后水幕
+        //   完全嵌在沟里：潭缘列全高、横向边缘列贴坡变矮，水幕横向呈弧形
+        //   （自然瀑布贴弧形崖面形态）。唇口列 lipY=surfaceY≤original 不受影响。
+        if (lipSurfaceY > original) lipSurfaceY = original;
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                 waterSurface, lipSurfaceY, cut, anyFill);
     }

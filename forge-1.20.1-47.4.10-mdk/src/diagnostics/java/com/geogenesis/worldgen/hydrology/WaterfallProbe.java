@@ -146,6 +146,10 @@ public final class WaterfallProbe {
                 }
                 double fd = c.fallDrop();
                 if (fd <= 0.0) continue;
+                // 水幕指标只统计河道内列（dist≤width）：谷壁列的 fd 来自
+                // lipSurfaceY≤original 钳制（fd=original−tread>0），属正常地形差，
+                // 且谷壁区不灌水（门控①），计入只会污染干列统计。
+                if (s0 == null || s0.distToCenter() > s0.width()) continue;
                 curtainColumns++;
                 curtainDropMax = Math.max(curtainDropMax, fd);
                 if (c.fillWater()) {
@@ -153,7 +157,7 @@ public final class WaterfallProbe {
                     // 水幕出河道（孤立水柱）：水幕列必须落在河道半宽内——
                     // 水只灌在雕刻出的河道里（Streams fillRiver/DW 语义），
                     // 超出半宽的水幕列 = 斜坡上悬空水柱（底部沙块、无河道支撑）。
-                    if (s0 != null && s0.distToCenter() > s0.width()) curtainOutside++;
+                    if (s0.distToCenter() > s0.width()) curtainOutside++;
                 } else curtainDry++;
                 // 湿核心带（≤0.7×半宽）必须满灌——与 HydrologyWaterFillProbe 同一不变量。
                 // 河缘浅水带（V 形断面的浅边）本来就是岩石，瀑布水流集中河心，干列属正常。

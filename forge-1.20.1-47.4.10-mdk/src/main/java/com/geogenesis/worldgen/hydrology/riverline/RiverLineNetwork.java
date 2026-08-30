@@ -627,15 +627,17 @@ public final class RiverLineNetwork {
         // 瀑布阶梯化必须在全部水面调整（单调化→岸线 cap→河口）之后：
         // 它抬升裂点上游水位，放在前面会被后续 cap/单调化重新压平。
         double[] fall = applyWaterfalls(rn, rs, rw, rd, params);
-        // 最终硬上界：水面不得高于原地形中心（防悬空水井/悬河）。
-        // 岸线 cap / 河口 / 阶梯化各阶段可能把水面抬到地形之上，这里统一钳回，
-        // 并补一次沿程单调（下游不抬床），保证雕刻器能正常下切出河床。
+        // 最终硬上界：水面不得高于原地形中心（防悬空水井）。
+        // ★ 对瀑布 tread 安全：tread = min(覆盖范围 minTerr, minCap) ≤ 范围内每个
+        //   节点的 terr，硬上界不会削平 tread。它只修重采样节点地形凹陷处的
+        //   插值残留（surf 高于当地 terr 约 0.2 格的微悬河）。
         double sea = curve.seaLevelY();
         for (int k = 0; k < rn.length; k++) {
             if (rawTerrainY(rn[k]) >= sea && rs[k] > rawTerrainY(rn[k])) {
                 rs[k] = rawTerrainY(rn[k]);
             }
         }
+        // 沿程单调兜底（下游不抬床）。
         for (int k = 1; k < rn.length; k++) {
             if (rs[k] > rs[k - 1]) rs[k] = rs[k - 1];
         }
@@ -827,29 +829,44 @@ public final class RiverLineNetwork {
             while (bi <= steps && cd >= bi * perStep) bounds[bi++] = k;
         }
         for (; bi <= steps; bi++) bounds[bi] = b;                     // 尾部兜底
-        // 每级子窗水面 = 子窗内原地形最低点（贴崖面），单调不回升
+        // 每节点硬上界（与 waterLevelCap 同源，但与 level 无关，可预计算）：
+        // terrI < 海平面 → 海平面；否则 min(bankCapY, terrI)，低于海平面时贴地。
+        double[] hardCap = new double[nodes.length];
+        for (int k = a; k <= b; k++) {
+            double terrI = rawTerrainY(nodes[k]);
+            if (terrI < seaLevel) { hardCap[k] = seaLevel; continue; }
+            double cap = bankCapY(nodes, k, widths[k], p);
+            double hc = Math.min(cap, terrI);
+            hardCap[k] = hc >= seaLevel ? hc : terrI;
+        }
+        // 每级 tread 水面 = min(覆盖范围内原地形最低点, 最严硬上界)——
+        // ★ tread s 实际覆盖节点 [bounds[s], bounds[s+1]-1]（下一级起点之前），
+        //   水面必须 ≤ 覆盖范围内最低地形（否则 tread 高于范围内地形 = 悬空潭）。
+        // ★ tread 恒定：cap 在 tread 级统一取 min，而非逐节点钳制（逐节点钳会让
+        //   同一 tread 内水面被 bankCap/terr 锯成递减碎台阶——"阶数太多"的真正来源）。
         double[] stepSurf = new double[steps + 1];
         stepSurf[0] = lip;
-        for (int s = 1; s <= steps; s++) {
+        for (int s = 0; s <= steps; s++) {
+            int j0 = bounds[s];
+            int j1 = (s < steps) ? bounds[s + 1] - 1 : b;
             double minTerr = Double.POSITIVE_INFINITY;
-            for (int j = bounds[s - 1]; j <= bounds[s]; j++) minTerr = Math.min(minTerr, terr[j]);
-            stepSurf[s] = Math.min(minTerr, stepSurf[s - 1]);         // 单调：≤ 上级水面
+            double minCap = Double.POSITIVE_INFINITY;
+            for (int j = j0; j <= j1; j++) {
+                minTerr = Math.min(minTerr, terr[j]);
+                minCap = Math.min(minCap, hardCap[j]);
+            }
+            double tread = Math.min(minTerr, minCap);
+            stepSurf[s] = (s == 0) ? tread : Math.min(tread, stepSurf[s - 1]); // 单调：≤ 上级
         }
-        // 每节点水面 = 所在级水面（贴地形），fall[k] 标记跌水段（>0 冻结防抹平）
+        // 每节点水面 = 所在级水面（tread 内恒定，无锯齿），fall[k] 标记跌水段
         for (int k = a; k <= b; k++) {
             int stepIdx = 0;
             for (int s = 1; s <= steps; s++) {
                 if (k >= bounds[s]) stepIdx = s; else break;
             }
-            double target = stepSurf[stepIdx];
-            // 受两岸地形/海平面硬上界约束（防悬空水井）
-            double cap = waterLevelCap(nodes, k, widths[k], target, p, seaLevel);
-            if (cap < target) target = cap;
-            // 沿程不回升：不得高于上游
-            if (k > a && target > surf[k - 1]) target = surf[k - 1];
             // 直接设置（贴地形）：tread 低于现有深谷水面时也要降下来，
             // 否则水幕埋在崖壁内部（gap 大，从外面看不见瀑布）。
-            surf[k] = target;
+            surf[k] = stepSurf[stepIdx];
             fall[k] = 1.0;                                            // 跌水段标记
         }
         // 跌水潭：run 末端（潭底）按 plungePoolFactor 加深，向下游平方衰减。

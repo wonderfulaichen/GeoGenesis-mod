@@ -125,8 +125,8 @@ public record RiverLineParams(
     // ===== 瀑布 / 跌水（2026-08-30）=====
     /** 瀑布最小落差（block）：短窗内累计水面落差达到此值才判定为裂点（DW WATERFALL_THRESHOLD=2）。 */
     double waterfallMinDrop,
-    /** 瀑布最大落差（block）：单级跌水落差上限（DW MAX_WATERFALL_DROP=4）。
-     *  超出部分不并入本级联，留给下游连续陡降，避免凭空造出超高瀑。 */
+    /** 瀑布最大落差（block）：单级 sanity 钳（防失控级）。贴地形阶梯化后真实崖面
+     *  单级可达 20+ 格，此值只拦"远超地形落差"的失控级，不再限制正常大落差。 */
     double waterfallMaxDrop,
     /** 裂点检测窗口（节点数）：窗口内累计落差最大的位置即为跌水点。 */
     int waterfallWindowNodes,
@@ -216,14 +216,14 @@ public record RiverLineParams(
             2.0,                     // mouthMinDepth（河口最小水深 2 格）
             true,                    // crossRegion（跨 region 连续河，默认开启）
             2.0,                     // waterfallMinDrop（block；DW WATERFALL_THRESHOLD=2）
-            4.0,                     // waterfallMaxDrop（block；DW MAX_WATERFALL_DROP=4）
+            24.0,                    // waterfallMaxDrop（block：单级 sanity 钳，允许大落差级）
             3,                       // waterfallWindowNodes（裂点窗口 3 节点 ≈ 24 block）
             16,                      // waterfallMinSpacing（≈128 block 一级，防连成阶梯）
             1.0,                     // plungePoolFactor（跌水潭深 = 1.0 × 落差）
             12.0,                    // waterfallMinAngle（度：原地形坡角 ≥12° 才挂瀑）
-            3.0,                     // waterfallStepHeight（block：θ≤45° 时每级基准落差 h0）
+            6.0,                     // waterfallStepHeight（block：θ≤45° 时每级基准落差 h0）
             8.0,                     // waterfallStepRun（block：一级水平跨度；短陡坡<此值→1阶）
-            8                        // waterfallMaxSteps（单 run 最大台阶数）
+            3                        // waterfallMaxSteps（单 run 最大台阶数：保证大落差级）
         );
     }
 
