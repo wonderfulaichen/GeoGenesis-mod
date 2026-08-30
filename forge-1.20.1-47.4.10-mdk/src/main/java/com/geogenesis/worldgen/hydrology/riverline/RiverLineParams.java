@@ -121,7 +121,31 @@ public record RiverLineParams(
     double mouthMinDepth,
     /** 跨 region 连续河：到网格边（缝外 margin）的河作为出口种子交接给下游邻 region，
      *  携带汇流面积/层级/水面续流，消除瓦片缝断河与宽度颈缩。默认开启。 */
-    boolean crossRegion
+    boolean crossRegion,
+    // ===== 瀑布 / 跌水（2026-08-30）=====
+    /** 瀑布最小落差（block）：短窗内累计水面落差达到此值才判定为裂点（DW WATERFALL_THRESHOLD=2）。 */
+    double waterfallMinDrop,
+    /** 瀑布最大落差（block）：单级跌水落差上限（DW MAX_WATERFALL_DROP=4）。
+     *  超出部分不并入本级联，留给下游连续陡降，避免凭空造出超高瀑。 */
+    double waterfallMaxDrop,
+    /** 裂点检测窗口（节点数）：窗口内累计落差最大的位置即为跌水点。 */
+    int waterfallWindowNodes,
+    /** 两级跌水最小间距（节点数）：防止跌水连成阶梯（DW MIN/MAX_TERRACE_LENGTH 语义）。
+     *  节点间距 SMOOTH_SPACING(4wu)×horizontalScale → 默认 16 节点 ≈ 128 block 一级。 */
+    int waterfallMinSpacing,
+    /** 跌水潭加深系数（× 落差）：跌水下方冲刷潭的额外深度（Farseek plungePoolDepth 语义）。 */
+    double plungePoolFactor,
+    // ===== 瀑布 / 跌水（2026-08-30 重写：地形角度触发 + 阶梯分阶）=====
+    /** 瀑布最小坡角（度，block 空间）：原地形连续陡降段夹角 ≥ 此值才挂瀑，
+     *  低于则视为普通河流（平缓坡不挂瀑）。默认 12°（仅明显崖壁成瀑）。 */
+    double waterfallMinAngle,
+    /** 单级最小落差（block）：台阶数公式的基准步高 h0（θ≤45° 时每级约此落差）。 */
+    double waterfallStepHeight,
+    /** 一级对应的水平跨度（block）：run 水平跨度 < 此值强制 1 阶（短陡坡）；
+     *  长陡坡按 floor(runLen/stepRun) 多阶。 */
+    double waterfallStepRun,
+    /** 单 run 最大台阶数：防止极长陡坡被切成无限多级（视觉碎裂）。 */
+    int waterfallMaxSteps
 ) {
     /** 返回副本并把跨 region 连续河开关设为 v（探针 A/B 用）。 */
     public RiverLineParams withCrossRegion(boolean v) {
@@ -134,7 +158,10 @@ public record RiverLineParams(
                 meanderAmp, meanderWavelength, riverCount, borderDist, lakeRadius,
                 lakeMargin, lakeFadeDist, heightBlendDist, blendExp, minDrop, smoothMinK,
                 widthAreaRef, widthExp, depthExp, maxDepthRatio, mouthFadeDepth,
-                estuaryLength, estuaryWidthFactor, mouthMaxWidth, mouthMinDepth, v);
+                estuaryLength, estuaryWidthFactor, mouthMaxWidth, mouthMinDepth, v,
+                waterfallMinDrop, waterfallMaxDrop, waterfallWindowNodes,
+                waterfallMinSpacing, plungePoolFactor, waterfallMinAngle,
+                waterfallStepHeight, waterfallStepRun, waterfallMaxSteps);
     }
 
     public static RiverLineParams defaults() {
@@ -187,7 +214,16 @@ public record RiverLineParams(
             1.9,                     // estuaryWidthFactor（河口展宽 1.9 倍）
             14.0,                    // mouthMaxWidth（河口半宽上限 14 block，全宽 28）
             2.0,                     // mouthMinDepth（河口最小水深 2 格）
-            true                     // crossRegion（跨 region 连续河，默认开启）
+            true,                    // crossRegion（跨 region 连续河，默认开启）
+            2.0,                     // waterfallMinDrop（block；DW WATERFALL_THRESHOLD=2）
+            4.0,                     // waterfallMaxDrop（block；DW MAX_WATERFALL_DROP=4）
+            3,                       // waterfallWindowNodes（裂点窗口 3 节点 ≈ 24 block）
+            16,                      // waterfallMinSpacing（≈128 block 一级，防连成阶梯）
+            1.0,                     // plungePoolFactor（跌水潭深 = 1.0 × 落差）
+            12.0,                    // waterfallMinAngle（度：原地形坡角 ≥12° 才挂瀑）
+            3.0,                     // waterfallStepHeight（block：θ≤45° 时每级基准落差 h0）
+            8.0,                     // waterfallStepRun（block：一级水平跨度；短陡坡<此值→1阶）
+            8                        // waterfallMaxSteps（单 run 最大台阶数）
         );
     }
 

@@ -213,6 +213,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             //   fillTerrainColumn 的 riverType!=0 判定灌水 → 水漫出河道。
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
             cell.riverSurfaceY = column.waterSurfaceY();
+            cell.riverLipY = column.lipSurfaceY();
             cell.isLake = column.fillWater() && column.waterSurfaceY() >= terrain.seaLevel();
             cell.lakeMask = cell.isLake;
         }
@@ -282,6 +283,13 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         // R9 落块（DW 语义）：地表按 groundY 铺、水柱灌到 waterTop；墙区地面已被
         // carve 抬到水面 → 落块自然形成堤岸（groundY=水面 → 水柱 1 块 + 墙顶草皮）。
         int waterTopBlock = (int) Math.floor(waterTop);
+        // ★ 瀑布水幕（2026-08-30）：跌水列在水面之上再挂一段垂直流动水（潭面 → 唇口），
+        //   即旧 Streams fillRiver 的 `yDownstreamSurface+1 .. ySurface` 语义——
+        //   瀑布不是几何特例，只是"本列两个水位之间的垂直水体"。
+        //   普通列 riverLipY == riverSurfaceY → lipBlock == waterTopBlock，无副作用。
+        int lipBlock = (riverWater && cell.riverLipY > waterTop)
+                ? (int) Math.floor(cell.riverLipY) : waterTopBlock;
+        int fillTopBlock = Math.max(waterTopBlock, lipBlock);
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
             BlockState state;
@@ -293,9 +301,13 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 state = fill;                                     // 表层下 3 格（土/沙）
             } else if (y == surfaceY) {
                 state = top;                                      // 地表最顶块
-            } else if (water && y <= waterTopBlock) {
-                // 表层用流动水（方案 B 流动观感）；其余静水预填，确定性、永不断裂
-                state = (y == waterTopBlock) ? FLOWING_WATER : WATER;   // 水柱（水面以下）
+            } else if (water && y <= fillTopBlock) {
+                if (y > waterTopBlock) {
+                    state = FLOWING_WATER;          // 瀑布水幕：垂直悬挂的流动水
+                } else {
+                    // 表层用流动水（方案 B 流动观感）；其余静水预填，确定性、永不断裂
+                    state = (y == waterTopBlock) ? FLOWING_WATER : WATER; // 水柱（水面以下）
+                }
             } else {
                 break;                                            // 地表/水面以上：默认 AIR，跳过
             }

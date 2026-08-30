@@ -46,10 +46,10 @@ public final class RiverLineContinuityProbe {
 
         RiverLineNetwork on = new RiverLineNetwork(terrain::terrainEQuick,
                 (wx, wz) -> terrain.sampleWu(wx, wz).height, terrain.heightCurve(), seed,
-                RiverLineParams.defaults());
+                terrain.params().horizontalScale(), RiverLineParams.defaults());
         RiverLineNetwork off = new RiverLineNetwork(terrain::terrainEQuick,
                 (wx, wz) -> terrain.sampleWu(wx, wz).height, terrain.heightCurve(), seed,
-                RiverLineParams.defaults().withCrossRegion(false));
+                terrain.params().horizontalScale(), RiverLineParams.defaults().withCrossRegion(false));
 
         System.out.println();
         System.out.println("-- crossRegion = ON (修复后) --");
