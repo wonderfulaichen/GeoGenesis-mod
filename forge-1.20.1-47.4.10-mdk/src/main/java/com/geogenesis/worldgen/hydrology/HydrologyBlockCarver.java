@@ -137,7 +137,13 @@ public final class HydrologyBlockCarver {
         //   若走 IDW 混合会被上级/下级 tread 混出中间值，把崖顶边缘挖出垂直凹坑
         //   （悬空沙块平台、水幕与潭面脱节的根因）。唇口侧 fallDrop=0 → 只有冻结、无水幕。
         boolean atFall = nearest.fallDrop() > 0.0 || nearest.frozen();
-        if (atFall) {
+        // ★ 冻结仅作用于河道内（dist ≤ width）：潭面/水幕的阶跃形态只在河道内需要
+        //   保持——弯角属主切换线两侧的 tread 差在河道内被潭水/水幕覆盖（瀑布横向断面）。
+        //   valley 谷壁区（dist > width）必须恢复 k=4 IDW 竞争带混合：冻结会让属主切换线
+        //   两侧 tread 差硬切（谷壁区 profile=0 → bedTarget=carveSurfaceY），经 outer 衰减区
+        //   放大成弯角放射折痕（老折痕问题回归），并使水幕侧壁悬空暴露。
+        boolean frozenChannel = atFall && nearestDist <= nearestWidth;
+        if (frozenChannel) {
             carveSurfaceY = nearest.surfaceY();
             waterSurfaceY = nearest.surfaceY();
         }
