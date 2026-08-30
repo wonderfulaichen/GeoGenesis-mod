@@ -108,6 +108,7 @@ public final class WaterfallProbe {
         int curtainColumns = 0, curtainFilled = 0, curtainDry = 0;
         int curtainCore = 0, curtainCoreDry = 0;
         int lipFrozen = 0, lipOverCarved = 0;   // 崖顶边缘（唇口侧冻结）断言
+        int lipMarginPerched = 0;               // 唇口河缘漫水断言（水幕顶直角超出原地形）
         double curtainDropMax = 0.0;
         for (long key : riverChunkKeys) {
             int cx = (int) (key >> 32), cz = (int) key;
@@ -136,6 +137,11 @@ public final class WaterfallProbe {
                     double idwDepth = wSum > 1e-9 ? sDep / wSum : s0.depth();
                     double bedFloor = c.waterSurfaceY() - Math.max(idwDepth, 0.75) - 1.0;
                     if (c.originalGroundY() >= bedFloor && c.carvedGroundY() < bedFloor) lipOverCarved++;
+                    // 唇口河缘漫水：河缘带（>0.7w）静水面不得高于当地原始地形
+                    // （水幕顶"直角"超出原地形 = 水灌在草地之上）。湿核心带除外
+                    // （河道内切穿灌水合法），真水幕列（fallDrop>0）不在此断言范围。
+                    if (s0.distToCenter() > s0.width() * 0.7 && c.fillWater()
+                            && c.waterSurfaceY() > c.originalGroundY() + 1e-6) lipMarginPerched++;
                 }
                 double fd = c.fallDrop();
                 if (fd <= 0.0) continue;
@@ -174,9 +180,12 @@ public final class WaterfallProbe {
                 + " (湿核心带水幕干列，必须为 0)");
         System.out.println("lipFrozen=" + lipFrozen + " lipOverCarved=" + lipOverCarved
                 + " (崖顶边缘唇口列被 IDW 挖坑数，必须为 0)");
+        System.out.println("lipMarginPerched=" + lipMarginPerched
+                + " (唇口河缘漫水列——水幕顶直角超出原地形，必须为 0)");
 
         boolean pass = nonMonotonic == 0 && angleFails == 0 && runTooSmall == 0
                 && stepOver == 0 && wellViolation == 0 && lipOverCarved == 0
+                && lipMarginPerched == 0
                 && runs > 0 && curtainColumns > 0 && curtainCore > 0 && curtainCoreDry == 0;
         // tooClose 为软间距偏好（防过近崖壁连成阶梯），非正确性铁律，不计入 pass
         System.out.println("status=" + (pass ? "PASS" : "FAIL"));

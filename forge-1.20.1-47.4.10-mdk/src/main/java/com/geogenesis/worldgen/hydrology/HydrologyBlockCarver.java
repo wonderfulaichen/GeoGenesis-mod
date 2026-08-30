@@ -191,7 +191,11 @@ public final class HydrologyBlockCarver {
         // ★ 跌水列豁免"水面不得高于原始地形"（④防漫岸）：瀑布的水是坠落中的水，
         //   不是积在地面上的水。该门控本意是防水从河缘漫到地面，套到瀑布上会把
         //   过半水幕列误杀成干列（实测 142/275 干）——崖面处的 original 天然高于潭面。
-        boolean terrainOk = atFall || wetCore || waterSurface <= original + 1e-9;
+        //   ★ 豁免只给真水幕列（fallDrop>0，坠落水）：唇口侧冻结列（fallDrop=0）是
+        //   崖顶静水潭，必须回归严格门控——否则河缘带当地地形略低于 lip 时水会
+        //   灌在草地之上（水幕顶"直角"超出原地形的漫水根因）。冻结只管雕刻（禁
+        //   IDW 混合），不管灌水门控，两者语义分离。
+        boolean terrainOk = nearest.fallDrop() > 0.0 || wetCore || waterSurface <= original + 1e-9;
         boolean anyFill = nearestDist <= nearestWidth
                 && carved < waterSurface - 0.5
                 && terrainOk
