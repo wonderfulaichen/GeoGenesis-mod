@@ -109,6 +109,7 @@ public final class WaterfallProbe {
         int curtainCore = 0, curtainCoreDry = 0;
         int lipFrozen = 0, lipOverCarved = 0;   // 崖顶边缘（唇口侧冻结）断言
         int lipMarginPerched = 0;               // 唇口河缘漫水断言（水幕顶直角超出原地形）
+        int curtainOutside = 0;                 // 水幕出河道断言（孤立水柱）
         double curtainDropMax = 0.0;
         for (long key : riverChunkKeys) {
             int cx = (int) (key >> 32), cz = (int) key;
@@ -147,8 +148,13 @@ public final class WaterfallProbe {
                 if (fd <= 0.0) continue;
                 curtainColumns++;
                 curtainDropMax = Math.max(curtainDropMax, fd);
-                if (c.fillWater()) curtainFilled++;
-                else curtainDry++;
+                if (c.fillWater()) {
+                    curtainFilled++;
+                    // 水幕出河道（孤立水柱）：水幕列必须落在河道半宽内——
+                    // 水只灌在雕刻出的河道里（Streams fillRiver/DW 语义），
+                    // 超出半宽的水幕列 = 斜坡上悬空水柱（底部沙块、无河道支撑）。
+                    if (s0 != null && s0.distToCenter() > s0.width()) curtainOutside++;
+                } else curtainDry++;
                 // 湿核心带（≤0.7×半宽）必须满灌——与 HydrologyWaterFillProbe 同一不变量。
                 // 河缘浅水带（V 形断面的浅边）本来就是岩石，瀑布水流集中河心，干列属正常。
                 if (s0 != null && s0.width() <= 80) {
@@ -182,10 +188,12 @@ public final class WaterfallProbe {
                 + " (崖顶边缘唇口列被 IDW 挖坑数，必须为 0)");
         System.out.println("lipMarginPerched=" + lipMarginPerched
                 + " (唇口河缘漫水列——水幕顶直角超出原地形，必须为 0)");
+        System.out.println("curtainOutside=" + curtainOutside
+                + " (水幕出河道列——斜坡孤立水柱，必须为 0)");
 
         boolean pass = nonMonotonic == 0 && angleFails == 0 && runTooSmall == 0
                 && stepOver == 0 && wellViolation == 0 && lipOverCarved == 0
-                && lipMarginPerched == 0
+                && lipMarginPerched == 0 && curtainOutside == 0
                 && runs > 0 && curtainColumns > 0 && curtainCore > 0 && curtainCoreDry == 0;
         // tooClose 为软间距偏好（防过近崖壁连成阶梯），非正确性铁律，不计入 pass
         System.out.println("status=" + (pass ? "PASS" : "FAIL"));

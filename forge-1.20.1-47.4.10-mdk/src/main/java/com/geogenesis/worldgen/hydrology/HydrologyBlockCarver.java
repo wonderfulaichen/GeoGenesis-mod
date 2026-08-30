@@ -227,11 +227,12 @@ public final class HydrologyBlockCarver {
         //   灌在草地之上（水幕顶"直角"超出原地形的漫水根因）。冻结只管雕刻（禁
         //   IDW 混合），不管灌水门控，两者语义分离。
         boolean terrainOk = nearest.fallDrop() > 0.0 || wetCore || waterSurface <= original + 1e-9;
-        // ★ 门控①放宽给真水幕列：瀑布的坠落水横跨整段崖面，d 可大于半宽
-        //   （fall plane 往往比窄河道宽）。非水幕列仍受 d≤width 约束（防侧向漫灌）。
-        //   沙崖列（d 大但未挖到水面以下）会被门控② carved<surface−0.5 挡住，不会误灌。
-        boolean inCurtain = nearest.fallDrop() > 0.0;
-        boolean anyFill = (nearestDist <= nearestWidth || inCurtain)
+        // ★ 门控①不放宽（2026-08-30 回退 inCurtain）：曾让真水幕列不受 d≤width
+        //   约束以"水幕横跨崖面"，但陡坡横向地形常低于潭面（tread），远离河道的
+        //   水幕列被灌出**孤立水柱**（斜坡上悬空水柱+底部沙块，实测截图）——
+        //   水必须只在雕刻出的河道内（Streams fillRiver/DW 均如此）。水幕宽度
+        //   = 河道横断面宽；需要更宽水幕应调 width 而非放宽门控。
+        boolean anyFill = nearestDist <= nearestWidth
                 && carved < waterSurface - 0.5
                 && terrainOk
                 && (punchedThrough
