@@ -24,7 +24,7 @@ public final class HydrologyExperimentEngine {
         //   （干河与悬浮并存）。选线/贴谷仍用 terrainEQuick（轻量、无 tile 依赖）。
         this.network = new RiverLineNetwork(terrain::terrainEQuick,
                 (wx, wz) -> terrain.sample(wx, wz).height,
-                terrain.heightCurve(), seed);
+                terrain.heightCurve(), seed, terrain.params().horizontalScale());
     }
 
     public CellGenerator terrain() {
@@ -71,7 +71,8 @@ public final class HydrologyExperimentEngine {
             RiverOutlet.Type outlet = hit.reachesOcean() ? RiverOutlet.Type.OCEAN : null;
             out.add(new HydrologyBlockSample(hit.surfaceY(), hit.surfaceY() - hit.depth(),
                     width, hit.depth(), bankWidth, valleyWidth,
-                    hit.dischargeArea(), outlet, hit.distToCenter() * scale));
+                    hit.dischargeArea(), outlet, hit.distToCenter() * scale,
+                    hit.fallDrop(), hit.frozen()));
         }
         return out;
     }

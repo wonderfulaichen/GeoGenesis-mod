@@ -25,7 +25,17 @@ public final class RiverLineNetwork {
     /** 距离场采样结果。 */
     public record RiverLineHit(double distToCenter, double surfaceY, double width,
                                double depth, double dischargeArea,
-                               boolean reachesOcean, boolean isLake) { }
+                               boolean reachesOcean, boolean isLake,
+                               double fallDrop, boolean frozen) { }
+
+    /**
+     * 跌水段水面阶跃位置：t &lt; 此值时取唇口水位，否则取跌水后水位。
+     *
+     * <p>节点间距 SMOOTH_SPACING(4wu) × horizontalScale(2) = 8 block；若沿用线性插值，
+     * 一级 3 block 的跌水会被摊成 8 block 长的缓坡（急流而非瀑布）。取 0.88 使阶跃
+     * 压缩到约 1 block 内，形成垂直水面落差。</p>
+     */
+    private static final double FALL_STEP_T = 0.88;
 
     private static final int MAX_REGIONS = 256;
 
@@ -61,6 +71,8 @@ public final class RiverLineNetwork {
     private final TerrainYSampler terrainY;
     private final HeightCurve curve;
     private final RiverLineParams params;
+    /** 水平缩放（block ÷ wu）：瀑布角度触发需把 wu 水平距换算成 block 空间（落差本就是 block）。 */
+    private final double horizontalScale;
     private volatile long seed;
 
     /** 真实地表 Y 采样抽象（CellGenerator::sampleWu 注入；返回含侵蚀的最终 height）。 */
@@ -70,23 +82,38 @@ public final class RiverLineNetwork {
 
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             HeightCurve curve, long seed) {
-        this(eSampler, null, curve, seed, RiverLineParams.defaults());
+        this(eSampler, null, curve, seed, 2.0);
     }
 
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             TerrainYSampler terrainY,
                             HeightCurve curve, long seed) {
-        this(eSampler, terrainY, curve, seed, RiverLineParams.defaults());
+        this(eSampler, terrainY, curve, seed, 2.0);
+    }
+
+    /** 带水平缩放的构造（瀑布角度触发用）：horizontalScale 缺省 2.0 仅用于无地形的兼容路径。 */
+    public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
+                            TerrainYSampler terrainY,
+                            HeightCurve curve, long seed, double horizontalScale) {
+        this(eSampler, terrainY, curve, seed, horizontalScale, RiverLineParams.defaults());
     }
 
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             TerrainYSampler terrainY,
                             HeightCurve curve, long seed, RiverLineParams params) {
+        this(eSampler, terrainY, curve, seed, 2.0, params);
+    }
+
+    public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
+                            TerrainYSampler terrainY,
+                            HeightCurve curve, long seed, double horizontalScale,
+                            RiverLineParams params) {
         this.eSampler = eSampler;
         this.terrainY = terrainY;
         this.curve = curve;
         this.seed = seed;
         this.params = params;
+        this.horizontalScale = horizontalScale;
     }
 
     public void setSeed(long next) {
@@ -505,7 +532,8 @@ public final class RiverLineNetwork {
         if (n < 3) {
             clampMonotonicDownstream(rawSurf, rawWid, rawDep);
             applyBankCap(rawNodes, rawSurf, rawWid, params);
-            return new RiverPolyline(rawNodes, rawSurf, rawWid, rawDep, level);
+            return new RiverPolyline(rawNodes, rawSurf, rawWid, rawDep,
+                    new double[n], level);
         }
         double[] px = new double[n], pz = new double[n];
         for (int i = 0; i < n; i++) {
@@ -596,7 +624,22 @@ public final class RiverLineNetwork {
         // 原始节点间的局部地形可能更低，必须再按逐重采样节点收回到岸线 cap。
         applyBankCap(rn, rs, rw, params);
         applyEstuary(rn, rs, rw, rd, params);
-        return new RiverPolyline(rn, rs, rw, rd, level);
+        // 瀑布阶梯化必须在全部水面调整（单调化→岸线 cap→河口）之后：
+        // 它抬升裂点上游水位，放在前面会被后续 cap/单调化重新压平。
+        double[] fall = applyWaterfalls(rn, rs, rw, rd, params);
+        // 最终硬上界：水面不得高于原地形中心（防悬空水井/悬河）。
+        // 岸线 cap / 河口 / 阶梯化各阶段可能把水面抬到地形之上，这里统一钳回，
+        // 并补一次沿程单调（下游不抬床），保证雕刻器能正常下切出河床。
+        double sea = curve.seaLevelY();
+        for (int k = 0; k < rn.length; k++) {
+            if (rawTerrainY(rn[k]) >= sea && rs[k] > rawTerrainY(rn[k])) {
+                rs[k] = rawTerrainY(rn[k]);
+            }
+        }
+        for (int k = 1; k < rn.length; k++) {
+            if (rs[k] > rs[k - 1]) rs[k] = rs[k - 1];
+        }
+        return new RiverPolyline(rn, rs, rw, rd, fall, level);
     }
 
     /**
@@ -637,6 +680,212 @@ public final class RiverLineNetwork {
         }
     }
 
+    /**
+     * 瀑布（跌水）阶梯化：基于<b>原地形坡度</b>检测连续陡降 run，把 run 切成多级阶梯水面
+     * （2026-08-30 重写）。
+     *
+     * <p><b>触发</b>：沿河线逐段算原地形（未雕刻）的 XZ 水平距（block）× 垂直落差的夹角
+     * {@code θ = atan2(ΔY, ΔXZ)}；仅当连续陡降段 {@code θ ≥ waterfallMinAngle} 且
+     * 净落差 {@code ≥ waterfallMinDrop} 才判定为瀑布 run。平缓坡（θ 不足）走普通河流，
+     * 不挂瀑——根治旧实现"按水面差抬节点"造成的地形之上悬垂直水壁（水井）。</p>
+     *
+     * <p><b>台阶数</b>：随角度/长度增长——{@code θ∈[minAngle,45°]} 阶梯增多，
+     * {@code θ>45°} 递减，近 90°→1 阶；run 水平跨度 {@code < waterfallStepRun} 强制 1 阶
+     * （短陡坡），长陡坡按 {@code floor(runLen/stepRun)} 多阶（上限 waterfallMaxSteps）。</p>
+     *
+     * <p><b>阶梯水面</b>：run 切 steps 等分子窗，每窗水面恒值、子窗边界跌 {@code runDrop/steps}；
+     * 每节点 {@code fallDrop[i] = lip − surf[i]}（自崖顶累计），供水幕从崖顶连挂到潭。
+     * 水面恒受两岸原始地形 bankCapY 与海平面硬上界（waterLevelCap）→ 永不抬到地形之上。</p>
+     *
+     * <p><b>单调性</b>由构造保证（阶梯只降不升）+ 末尾沿程取小双重保险；
+     * {@code waterfallMaxDrop} 降级为单级 sanity 钳（仅约束人工抬升量，真实崖面落差可更大）。</p>
+     *
+     * @return 逐节点跌水落差（block），0 = 普通河段
+     */
+    private double[] applyWaterfalls(MidpointDisplacement.Node[] nodes, double[] surf,
+                                     double[] widths, double[] depths, RiverLineParams p) {
+        int n = nodes.length;
+        double[] fall = new double[n];
+        if (n < 4) return fall;
+        double minAngle = Math.max(1.0, p.waterfallMinAngle());      // 度
+        double minDrop = Math.max(0.5, p.waterfallMinDrop());
+        double maxDrop = Math.max(minDrop, p.waterfallMaxDrop());    // 单级 sanity 钳
+        double stepH0 = Math.max(0.5, p.waterfallStepHeight());
+        double stepRun = Math.max(1.0, p.waterfallStepRun());
+        int maxSteps = Math.max(1, p.waterfallMaxSteps());
+        int minSpacing = Math.max(1, p.waterfallMinSpacing());
+        double seaLevel = curve.seaLevelY();
+
+        // 1. 预计算原地形高度与每段水平 block 距（wu × horizontalScale）
+        double[] terr = new double[n];
+        double[] segLen = new double[n];   // segLen[i] = 节点 i-1→i 的水平 block 距
+        for (int i = 0; i < n; i++) terr[i] = rawTerrainY(nodes[i]);
+        for (int i = 1; i < n; i++) {
+            double dx = nodes[i].x() - nodes[i - 1].x();
+            double dz = nodes[i].z() - nodes[i - 1].z();
+            segLen[i] = Math.hypot(dx, dz) * horizontalScale;
+        }
+
+        // 2. 扫描连续陡降 run：局部角 ≥ minAngle 且 terr 下降则并入；平缓/上升断 run
+        double[] lips = new double[n];   // 每个 run 的崖顶水位（非 run 起点 = 0）
+        int lastRunEnd = -minSpacing - 1;
+        int i = 1;
+        while (i < n) {
+            if (terr[i] >= terr[i - 1] - 1e-6) { i++; continue; }   // 非下降
+            double localDrop = terr[i - 1] - terr[i];
+            double localLen = segLen[i];
+            double localAngle = localLen > 1e-6 ? Math.atan2(localDrop, localLen) * 180.0 / Math.PI : 90.0;
+            if (localAngle < minAngle) { i++; continue; }
+            // 扩展 run [a, b]：连续陡降段并入；遇上升/变缓则断（累计跨度 ≤ minSpacing 的短浅段可桥接）
+            int a = i - 1, b = i;
+            double runDrop = localDrop, runLen = localLen;
+            while (b + 1 < n) {
+                int nb = b + 1;
+                double dDrop = terr[b] - terr[nb];
+                double dLen = segLen[nb];
+                if (dDrop <= 1e-6) {
+                    // 平/微升崖面平台：仅当累计 run 跨度 ≤ minSpacing 才并入
+                    // （视作同一瀑布的台阶平台，避免把一段崖壁误拆成过近的两级）
+                    if (nb - a > minSpacing) break;
+                    runLen += dLen; b = nb; continue;
+                }
+                double dAngle = dLen > 1e-6 ? Math.atan2(dDrop, dLen) * 180.0 / Math.PI : 90.0;
+                if (dAngle < minAngle) {
+                    // 短浅桥接：累计 run 跨度 ≤ minSpacing 才并入（视作同一瀑布的缓坡段），
+                    // 且桥接后净角仍 ≥ minAngle；否则断 run（避免把过近的两级误拆/误连）
+                    if (nb - a > minSpacing) break;
+                    double tryDrop = runDrop + dDrop, tryLen = runLen + dLen;
+                    double tryAngle = tryLen > 1e-6 ? Math.atan2(tryDrop, tryLen) * 180.0 / Math.PI : 90.0;
+                    if (tryAngle < minAngle) break;
+                    runDrop = tryDrop; runLen = tryLen; b = nb;
+                    continue;
+                }
+                runDrop += dDrop; runLen += dLen; b = nb;
+            }
+            double runAngle = runLen > 1e-6 ? Math.atan2(runDrop, runLen) * 180.0 / Math.PI : 90.0;
+            if (runDrop >= minDrop && runAngle >= minAngle && a - lastRunEnd >= minSpacing) {
+                lips[a] = buildStaircase(nodes, surf, widths, depths, fall, terr,
+                        a, b, runDrop, runLen, runAngle, p,
+                        minDrop, maxDrop, stepH0, stepRun, maxSteps, seaLevel);
+                lastRunEnd = b;
+            }
+            i = b + 1;
+        }
+        // 阶梯化后仍须沿程不回升（构造已保证，这里兜底）
+        for (int k = 1; k < n; k++) {
+            if (surf[k] > surf[k - 1]) surf[k] = surf[k - 1];
+        }
+        // 上游深潭：run 起点附近水面从上游渐变抬升到崖顶水位（lip）。
+        // 瀑布上游的天然蓄水（水面回升是物理正确的，如尼亚加拉上游湖面），
+        // 渐变 4 节点（≈32 block）避免水面突变；受 waterLevelCap 约束。
+        for (int k = 0; k < n; k++) {
+            if (lips[k] <= 0.0) continue;
+            int poolLen = Math.min(4, k);
+            double base = surf[k - poolLen];                          // 深潭上游端水面
+            for (int j = k - poolLen; j <= k; j++) {
+                double w = (double) (j - (k - poolLen)) / poolLen;    // 0→1 渐变
+                double target = base + (lips[k] - base) * w;
+                double cap = waterLevelCap(nodes, j, widths[j], target, p, seaLevel);
+                if (cap < target) target = cap;
+                if (target > surf[j]) surf[j] = target;
+            }
+        }
+        // fall 标记保持（>0 即跌水段；sampleRegion 用 surf 差生成级间水幕，
+        // carver 冻结 carveSurfaceY 防 IDW 抹平阶梯）。不再按节点重算——
+        // 节点级重算会把 tread 内部（同级水面）的标记清零，导致阶梯被抹平。
+        return fall;
+    }
+
+    /**
+     * 把单个瀑布 run [a,b] 切成 steps 级阶梯水面，并写入 surf/fall/depths。
+     *
+     * <p><b>贴地形阶梯</b>（Dynamic Waters 语义）：每级 tread 水面 = 该级子窗内
+     * 原地形最低点（水面贴崖面，不悬空、不埋地），级间落差 = 地形落差；
+     * 崖顶水位 lip = run 起点原地形（水面贴崖顶，瀑布落差 = 完整地形落差）。
+     * 每节点 {@code fall[k] = 1.0} 仅作"跌水段"标记（sampleRegion 用 surf 差
+     * 生成级间水幕，carver 冻结 carveSurfaceY 防 IDW 抹平阶梯）。</p>
+     *
+     * @return 崖顶水位 lip（供 applyWaterfalls 做上游深潭渐变抬升）
+     */
+    private double buildStaircase(MidpointDisplacement.Node[] nodes, double[] surf, double[] widths,
+                                  double[] depths, double[] fall, double[] terr,
+                                  int a, int b, double runDrop, double runLen, double runAngle,
+                                  RiverLineParams p, double minDrop, double maxDrop,
+                                  double stepH0, double stepRun, int maxSteps, double seaLevel) {
+        // 阶数：θ≤45° 每级约 stepH0；θ>45° 随角度增大 stepH → 阶数递减；近 90°→1 阶
+        double t = NoiseUtil.saturate((runAngle - 45.0) / 45.0);
+        double stepH = stepH0 + t * (runDrop - stepH0);
+        int steps = (int) Math.round(runDrop / Math.max(1e-6, stepH));
+        steps = Math.max(1, steps);
+        steps = Math.min(steps, (int) Math.floor(runLen / stepRun));   // 长陡坡多阶，短陡坡受限
+        steps = Math.min(steps, maxSteps);
+        if (runLen < stepRun) steps = 1;                              // 短陡坡强制 1 阶
+
+        // 崖顶水位 = run 起点原地形（水面贴崖顶），受两岸地形/海平面硬上界约束
+        double lip = terr[a];
+        double lipCap = waterLevelCap(nodes, a, widths[a], lip, p, seaLevel);
+        if (lipCap < lip) lip = lipCap;
+
+        // 子窗按累计落差等分（每级落差 ≈ runDrop/steps，均匀）：
+        // 陡崖段（每节点落差大）被切成多级，平缓段一级——符合"越陡阶数多"。
+        // 子窗 s 边界 = 第一个累计落差 ≥ s·perStep 的节点。
+        double perStep = runDrop / steps;
+        int[] bounds = new int[steps + 1];
+        bounds[0] = a;
+        double cd = 0.0;
+        int bi = 1;
+        for (int k = a; k <= b; k++) {
+            cd = Math.max(cd, terr[a] - terr[k]);                     // 累计落差（单调不降）
+            while (bi <= steps && cd >= bi * perStep) bounds[bi++] = k;
+        }
+        for (; bi <= steps; bi++) bounds[bi] = b;                     // 尾部兜底
+        // 每级子窗水面 = 子窗内原地形最低点（贴崖面），单调不回升
+        double[] stepSurf = new double[steps + 1];
+        stepSurf[0] = lip;
+        for (int s = 1; s <= steps; s++) {
+            double minTerr = Double.POSITIVE_INFINITY;
+            for (int j = bounds[s - 1]; j <= bounds[s]; j++) minTerr = Math.min(minTerr, terr[j]);
+            stepSurf[s] = Math.min(minTerr, stepSurf[s - 1]);         // 单调：≤ 上级水面
+        }
+        // 每节点水面 = 所在级水面（贴地形），fall[k] 标记跌水段（>0 冻结防抹平）
+        for (int k = a; k <= b; k++) {
+            int stepIdx = 0;
+            for (int s = 1; s <= steps; s++) {
+                if (k >= bounds[s]) stepIdx = s; else break;
+            }
+            double target = stepSurf[stepIdx];
+            // 受两岸地形/海平面硬上界约束（防悬空水井）
+            double cap = waterLevelCap(nodes, k, widths[k], target, p, seaLevel);
+            if (cap < target) target = cap;
+            // 沿程不回升：不得高于上游
+            if (k > a && target > surf[k - 1]) target = surf[k - 1];
+            // 直接设置（贴地形）：tread 低于现有深谷水面时也要降下来，
+            // 否则水幕埋在崖壁内部（gap 大，从外面看不见瀑布）。
+            surf[k] = target;
+            fall[k] = 1.0;                                            // 跌水段标记
+        }
+        // 跌水潭：run 末端（潭底）按 plungePoolFactor 加深，向下游平方衰减
+        double plunge = Math.min(p.plungePoolFactor() * runDrop, maxDrop * 2.0);
+        int poolLen = Math.max(1, p.waterfallMinSpacing() / 4);
+        for (int k = 0; k < poolLen && b + k < surf.length; k++) {
+            double w = 1.0 - (double) k / poolLen;
+            depths[b + k] += plunge * w * w;
+        }
+        return lip;
+    }
+
+    /** 水面抬升上限：受两岸地形上界与海平面约束（与 applyBankCap 同一防漫岸约束）。 */
+    private double waterLevelCap(MidpointDisplacement.Node[] nodes, int i, double width,
+                                 double level, RiverLineParams p, double seaLevel) {
+        double terrI = rawTerrainY(nodes[i]);
+        if (terrI < seaLevel) return Math.min(level, seaLevel);
+        double cap = bankCapY(nodes, i, width, p);
+        // 硬上界：水面不得高于原地形中心（防悬空水井）。近岸 cap 低于海平面时退化为贴地
+        // （min(level, terrI)），而非旧实现返回未钳制的 level（会让水漫到地形之上成井）。
+        double hardCap = Math.min(cap, terrI);
+        return hardCap >= seaLevel ? Math.min(level, hardCap) : Math.min(level, terrI);
+    }
+
     /** 逐节点把水面收回到两岸原始地形 cap，并向下游传播最小值（保持不回升）。 */
     private void applyBankCap(MidpointDisplacement.Node[] nodes, double[] surf,
                               double[] widths, RiverLineParams params) {
@@ -651,7 +900,10 @@ public final class RiverLineNetwork {
                 // 海域内不存在河岸上界：岸线低于海平面时不再压低水面，保持海平面。
                 double cap = bankCapY(nodes, i, widths[i], params);
                 if (cap >= seaLevel) {
-                    surf[i] = Math.min(surf[i], cap);
+                    // 硬上界：水面不得高于原地形中心（防悬空水井/悬河）。
+                    // 窄槽中两岸采样可能高于中心，旧实现会放任水面漫过中心 → 钳回中心地形。
+                    double hardCap = Math.min(cap, rawTerrainY(nodes[i]));
+                    surf[i] = Math.min(surf[i], hardCap);
                 }
             }
             if (i > 0) surf[i] = Math.min(surf[i], surf[i - 1]);
@@ -979,13 +1231,31 @@ public final class RiverLineNetwork {
                 bestRiverDist = Math.min(bestRiverDist, dist);
                 double f = i + t;
                 int i0 = (int) Math.floor(f), i1 = Math.min(i0 + 1, line.size() - 1);
-                double surface = lerp(pl.surfaceY[i0], pl.surfaceY[i1], t);
+                // 跌水段：水面为阶跃而非线性插值——8 block 的 lerp 会把一级跌水摊成缓坡。
+                // 唇口侧（t<FALL_STEP_T）取上游阶梯水位（水幕墙顶，无幕）；
+                // 跌水侧取潭面水位，并携带 fallDrop 供水幕填充（旧 Streams fillRiver 语义）。
+                // 两侧均 frozen：禁止参与 k=4 格 IDW 竞争带混合——混合会把垂直落差
+                // 抹成缓坡、把崖顶边缘挖出凹坑（悬空沙块平台/水幕脱节的根因）。
+                double surface;
+                double fallDrop = 0.0;
+                boolean frozen = false;
+                if (pl.fallDrop[i1] > 0.0) {
+                    frozen = true;
+                    if (t < FALL_STEP_T) {
+                        surface = pl.surfaceY[i0];
+                    } else {
+                        surface = pl.surfaceY[i1];
+                        fallDrop = pl.surfaceY[i0] - pl.surfaceY[i1];
+                    }
+                } else {
+                    surface = lerp(pl.surfaceY[i0], pl.surfaceY[i1], t);
+                }
                 double width = lerp(pl.width[i0], pl.width[i1], t);
                 double depth = lerp(pl.depth[i0], pl.depth[i1], t);
                 double valleyReach = Math.max(width * (1.0 + bankFactor), width * 3.0);
                 if (dist <= valleyReach) {
                     out.add(new RiverLineHit(dist, surface, width, depth,
-                            r.dischargeArea, r.outletOcean, false));
+                            r.dischargeArea, r.outletOcean, false, fallDrop, frozen));
                 }
             }
         }
@@ -1001,7 +1271,7 @@ public final class RiverLineNetwork {
             if (lakeDist <= params.lakeRadius() + params.lakeFadeDist()
                     && lakeDist <= bestRiverDist) {
                 out.add(new RiverLineHit(lakeDist, lakeH, params.lakeRadius(),
-                        params.minDepth(), r.dischargeArea, false, true));
+                        params.minDepth(), r.dischargeArea, false, true, 0.0, false));
             }
         }
         return out;

@@ -129,6 +129,18 @@ public final class HydrologyBlockCarver {
         // 普通河段继续使用最近有向河段水面；仅在多个河线命中同一局部竞争带时，
         // 将交汇点的水面统一到局部连续值，避免支流与主流各保留一层水平面。
         double waterSurfaceY = junctionWaterSurface(samples, nearest, k);
+
+        // ★ 瀑布（跌水）豁免（2026-08-30）：跌水潭侧列的水面与雕刻高程必须是阶跃，
+        //   不得参与竞争带 IDW 混合——k=4 格的混合会把垂直落差抹成缓坡，
+        //   瀑布随即退化为普通急流（这正是"地形高于水面就下挖穿过"之外的第二个削平源）。
+        //   ★ 唇口侧（fallDrop=0 但 frozen=true）同样冻结：它是水幕墙顶（上级阶梯水位），
+        //   若走 IDW 混合会被上级/下级 tread 混出中间值，把崖顶边缘挖出垂直凹坑
+        //   （悬空沙块平台、水幕与潭面脱节的根因）。唇口侧 fallDrop=0 → 只有冻结、无水幕。
+        boolean atFall = nearest.fallDrop() > 0.0 || nearest.frozen();
+        if (atFall) {
+            carveSurfaceY = nearest.surfaceY();
+            waterSurfaceY = nearest.surfaceY();
+        }
         width = Math.max(width, 1.0);
         double bankW = width * P.bankFactor();
         double valley = Math.max(width + bankW, width * 3.0);
@@ -176,15 +188,20 @@ public final class HydrologyBlockCarver {
         //    否则水会从河缘漫到地面上，表现为"一侧河岸被水盖过"。
         //    湿核心带（≤0.7w）与切穿列是真正的水槽，不受此限。
         boolean wetCore = nearestDist <= nearestWidth * 0.7;
-        boolean terrainOk = wetCore || waterSurface <= original + 1e-9;
+        // ★ 跌水列豁免"水面不得高于原始地形"（④防漫岸）：瀑布的水是坠落中的水，
+        //   不是积在地面上的水。该门控本意是防水从河缘漫到地面，套到瀑布上会把
+        //   过半水幕列误杀成干列（实测 142/275 干）——崖面处的 original 天然高于潭面。
+        boolean terrainOk = atFall || wetCore || waterSurface <= original + 1e-9;
         boolean anyFill = nearestDist <= nearestWidth
                 && carved < waterSurface - 0.5
                 && terrainOk
                 && (punchedThrough
                     || (carveSurfaceY - carved) <= depth + 1.0
                     || original <= waterSurface - 1.0);
+        // 水幕顶：跌水列取唇口水位（= 潭面 + 落差），普通列与水面同值（fallDrop()=0）。
+        double lipSurfaceY = atFall ? nearest.lipSurfaceY() : waterSurface;
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
-                waterSurface, cut, anyFill);
+                waterSurface, lipSurfaceY, cut, anyFill);
     }
 
     private static double junctionWaterSurface(List<HydrologyBlockSample> samples,

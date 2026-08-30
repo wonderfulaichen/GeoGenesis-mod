@@ -17,7 +17,8 @@ public final class RiverLineMouthProbe {
         CellGenerator terrain = new CellGenerator(tp, tp.minY(), tp.maxY());
         terrain.seed(seed);
         RiverLineNetwork network = new RiverLineNetwork(terrain::terrainEQuick,
-                (x, z) -> terrain.sample(x, z).height, terrain.heightCurve(), seed);
+                (x, z) -> terrain.sample(x, z).height, terrain.heightCurve(), seed,
+                terrain.params().horizontalScale());
         double seaLevel = terrain.heightCurve().seaLevelY();
         // 量测两种海平面定义：名义海平面(e=0) vs 海岸 spline 处换算值
         System.out.println("seaLevelY(e=0)=" + seaLevel
