@@ -296,6 +296,42 @@ task runWaterfallFragmentProbe(type: JavaExec) {
     }
 }
 
+task runValleySeamProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.ValleySeamProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runBankFaultProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.BankFaultProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runSeamCrossProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.SeamCrossProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+task runSeamSpotProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.SeamSpotProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 task runRiverLinePreviewProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.RiverLinePreviewProbe'
