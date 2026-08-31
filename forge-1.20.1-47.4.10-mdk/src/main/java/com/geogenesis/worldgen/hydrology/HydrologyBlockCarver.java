@@ -195,6 +195,20 @@ public final class HydrologyBlockCarver {
         // 局部凹坑会先把水面压低，离开凹坑后又恢复到河线水面，从而在下游制造反向抬升。
         // 地形高于水面时由后续 cut 下挖穿过；地形低于水面时保持原地形并按门控决定灌水。
         double waterSurface = waterSurfaceY;
+        // ★ 斜切崖面连降（2026-08-31）：唇口侧冻结列若地形已从唇口水位降下
+        //   （original < 唇口水位），说明崖面是"斜切角"而非直角——水应贴崖面
+        //   逐列下行，而不是按唇口水位悬空、再被门控④（水面高于地形不灌）
+        //   判成干崖面（实测：斜切瀑布唇口→水幕之间坡面裸露、水幕上下脱节）。
+        //   处理：雕刻面与水面都钳到当地地形 → 切穿/灌水机制自动灌出贴面
+        //   薄水级联（每列水深 ≤0.75），沿斜面逐级衔接到水幕与潭面。
+        //   真直角崖地形从唇口直接跳到潭面、无中间列，水幕不受影响。
+        double lipLevel = Math.max(nearest.surfaceY(), nearest.lipSurfaceY());
+        boolean faceCascade = atFall && nearest.fallDrop() <= 0.0
+                && dist <= width && original < lipLevel - 0.5;
+        if (faceCascade) {
+            carveSurfaceY = Math.min(carveSurfaceY, original);
+            waterSurface = Math.min(waterSurface, original);
+        }
         // 目标河床使用局部连续的雕刻高程；真实水面仍保持最近有向段的 PAVA 纵剖面。
         double bedTarget = carveSurfaceY - depth * profile;
         // ★ 瀑布直角岸台修复（2026-08-31）：谷壁列（dist>width）只塑形不灌水，其雕刻

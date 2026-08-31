@@ -210,6 +210,7 @@ public final class RiverLineNetwork {
         java.util.Arrays.fill(nodeSurf, Double.NaN);
         int[] levelAt = new int[nx * nz];              // 已接受河路径格的分支层级（0 = 无河）
         List<RiverPolyline> rivers = new ArrayList<>();
+        List<RiverSpec> specs = new ArrayList<>();   // 与 rivers 平行：meander 去交叉后处理用
         List<RiverLineRegion.LakeNode> lakes = new ArrayList<>();
         List<RiverLineRegion.OutletSeed> outlets = new ArrayList<>();
         List<int[]> allSegments = new ArrayList<>();   // 全局段集合（防交叉）
@@ -255,7 +256,7 @@ public final class RiverLineNetwork {
                 if (tl > 0) level = tl + 1;
             }
             CommitOut c = commitRiver(field, out, level, claimed, nodeE, nodeSurf,
-                    levelAt, allSegments, rivers, lakes, accepted, nx, Double.NaN, rx, rz);
+                    levelAt, allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz);
             maxDischarge = Math.max(maxDischarge, c.maxDischarge());
             if (c.reachedOcean()) outletOcean = true;
             if (c.poly() != null) {
@@ -297,7 +298,7 @@ public final class RiverLineNetwork {
                 }
                 // 续流首节点水面 = 上游尾节点水面（保证跨缝水面连续，无台阶）
                 CommitOut c = commitRiver(field, out, level, claimed, nodeE, nodeSurf,
-                        levelAt, allSegments, rivers, lakes, accepted, nx, seed.surfaceY, rx, rz);
+                        levelAt, allSegments, rivers, specs, lakes, accepted, nx, seed.surfaceY, rx, rz);
                 maxDischarge = Math.max(maxDischarge, c.maxDischarge());
                 if (c.reachedOcean()) outletOcean = true;
                 if (c.poly() != null) {
@@ -307,15 +308,35 @@ public final class RiverLineNetwork {
             }
         }
 
+        // ★ meander 去交叉后处理（2026-08-31）：见 commitRiver 注释。区域全部河建好后，
+        //   迭代把"与别的河真交叉"的河重建为无 meander（其非 meander 路径沿用已防交叉的
+        //   格路径），直到无交叉或无可去 meander 的河。解决单向 de-meander 修不了的
+        //   "先提交河 meander 摆进后提交河直线路径"情形。
+        resolveMeanderCrossings(rivers, specs);
+
         return new RiverLineRegion(rx, rz, rivers, lakes, outlets, outletOcean, maxDischarge,
                 sourceCount, rolledBack, joinedCount);
+    }
+
+    /** 一条河的平滑原始输入（供 meander 去交叉后处理整条重建）。 */
+    private static final class RiverSpec {
+        final MidpointDisplacement.Node[] nodes;
+        final double[] surf, wid, dep;
+        final int level;
+        boolean meandered;     // 当前 rivers 里这条是否带 meander（可被去 meander）
+        RiverSpec(MidpointDisplacement.Node[] nodes, double[] surf, double[] wid,
+                  double[] dep, int level, boolean meandered) {
+            this.nodes = nodes; this.surf = surf; this.wid = wid; this.dep = dep;
+            this.level = level; this.meandered = meandered;
+        }
     }
 
     /** 提交一条已追踪河流：认领/记录/裁剪/算宽深/水面，返回最终折线（null=被阈值丢弃）。 */
     private CommitOut commitRiver(FlowField field, TraceOutcome out, int level,
                                   boolean[] claimed, double[] nodeE, double[] nodeSurf,
                                   int[] levelAt, List<int[]> allSegments,
-                                  List<RiverPolyline> rivers, List<RiverLineRegion.LakeNode> lakes,
+                                  List<RiverPolyline> rivers, List<RiverSpec> specs,
+                                  List<RiverLineRegion.LakeNode> lakes,
                                   List<Integer> accepted, int nx, double forcedSrcH, int rx, int rz) {
         for (int c : out.cells) {
             claimed[c] = true;
@@ -360,12 +381,24 @@ public final class RiverLineNetwork {
         }
         double[] surf = applyRiverHeightSlopeDrop(nodes, rawSurf, wid, outletSurf, params,
                 Double.isNaN(forcedSrcH) ? null : forcedSrcH, out.reachedOcean);
+        // ★ meander 防交叉（2026-08-31）：D8 追踪的 segmentCrossesAny 只防【原始格路径】
+        //   交叉；meander（±2.5 格横向正弦）在其后叠加，会让近平行的两条河互相穿插
+        //   （实测 #6×#7 交叉 8 次、水面差 4.1 格 → 交汇"上下错层"）。先按满 meander
+        //   平滑，若与已接受河真交叉则整条去 meander 重来（非 meander 路径沿用已防
+        //   交叉的格路径，不再穿插）。
+        RiverPolyline smoothed = smoothPath(nodes, surf, wid, dep, level, 1.0);
+        // ★ 交汇继承必须用【瀑布处理后】的真实水面（2026-08-31）：smoothPath 内
+        //   applyWaterfalls 会把 tread 上游节点抬到阶梯水位，而 surf 是抬升前的贴地
+        //   剖面。旧代码用 surf 回写 nodeSurf → 支流在 tread 区汇入时继承到瀑布前的
+        //   旧（低）水位，与主流实际（高 tread）水位不符 → 交汇处上下错层（实测：
+        //   一条河穿过另一条河并错层）。改为从 smoothed 折线按最近节点回采真实水面。
         for (int k = 0; k < m; k++) {
-            nodeSurf[out.cells.get(start + k)] = surf[k];   // 记录本河水面供后续支流继承
+            nodeSurf[out.cells.get(start + k)] =
+                    smoothed.surfaceY[nearestNodeIndex(smoothed, nodes[k].x(), nodes[k].z())];
         }
-        RiverPolyline smoothed = smoothPath(nodes, surf, wid, dep, level);
         double tailSurface = surf[m - 1];
         rivers.add(smoothed);
+        specs.add(new RiverSpec(nodes, surf, wid, dep, level, m >= 3));
         RiverLineRegion.LakeNode lake = null;
         if (out.isLake) {
             int last = out.cells.get(out.cells.size() - 1);
@@ -373,6 +406,70 @@ public final class RiverLineNetwork {
                     field.cellCenterX(last), field.cellCenterZ(last), tailSurface);
         }
         return new CommitOut(smoothed, out.reachedOcean, acc, lake, tailSurface);
+    }
+
+    /**
+     * meander 去交叉后处理：迭代找出与别的河真交叉的河，重建为无 meander，直到无交叉。
+     * 优先去 meander 当前仍带 meander 的那条（去后其路径=已防交叉的格路径，不再穿插）。
+     */
+    private void resolveMeanderCrossings(List<RiverPolyline> rivers, List<RiverSpec> specs) {
+        boolean changed = true;
+        int guard = 0;
+        while (changed && guard++ < 8) {
+            changed = false;
+            for (int i = 0; i < rivers.size() && !changed; i++) {
+                for (int j = i + 1; j < rivers.size(); j++) {
+                    // 只对"水面确有显著错层"的交叉去 meander：delta≈0 的近水平叠合
+                    // 视觉无害，且重建会重跑 applyWaterfalls 扰动瀑布判定，尽量不碰。
+                    double delta = crossLevelDelta(rivers.get(i), rivers.get(j));
+                    if (delta <= 1.5) continue;
+                    int victim = specs.get(i).meandered ? i
+                            : (specs.get(j).meandered ? j : -1);
+                    if (victim < 0) continue;   // 两条都已直，交叉来自基路径/跨源，去 meander 无解
+                    RiverSpec sp = specs.get(victim);
+                    rivers.set(victim, smoothPath(sp.nodes, sp.surf, sp.wid, sp.dep, sp.level, 0.0));
+                    sp.meandered = false;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    /** 两条折线所有真交点处的最大水面差（无交点返回 0）。 */
+    private static double crossLevelDelta(RiverPolyline a, RiverPolyline b) {
+        double max = 0.0;
+        int na = a.nodes.length, nb = b.nodes.length;
+        for (int i = 0; i + 1 < na; i++) {
+            double x1 = a.nodes[i].x(), y1 = a.nodes[i].z();
+            double x2 = a.nodes[i + 1].x(), y2 = a.nodes[i + 1].z();
+            for (int j = 0; j + 1 < nb; j++) {
+                double x3 = b.nodes[j].x(), y3 = b.nodes[j].z();
+                double x4 = b.nodes[j + 1].x(), y4 = b.nodes[j + 1].z();
+                double d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
+                if (Math.abs(d) < 1e-12) continue;
+                double t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d;
+                double u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d;
+                if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) {
+                    double sa = a.surfaceY[i] + (a.surfaceY[i + 1] - a.surfaceY[i]) * t;
+                    double sb = b.surfaceY[j] + (b.surfaceY[j + 1] - b.surfaceY[j]) * u;
+                    max = Math.max(max, Math.abs(sa - sb));
+                }
+            }
+        }
+        return max;
+    }
+
+    /** 折线上距给定点最近的节点索引（用于把重采样后的真实水面回采到原始格）。 */
+    private static int nearestNodeIndex(RiverPolyline pl, double x, double z) {
+        int best = 0;
+        double bestD = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < pl.nodes.length; i++) {
+            double dx = pl.nodes[i].x() - x, dz = pl.nodes[i].z() - z;
+            double d = dx * dx + dz * dz;
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        return best;
     }
 
     /** 收集出口种子：本河到达网格边（缝外 margin）时，记录其尾节点供下游邻 region 续流。 */
@@ -527,7 +624,7 @@ public final class RiverLineNetwork {
      */
     private RiverPolyline smoothPath(MidpointDisplacement.Node[] rawNodes,
                                      double[] rawSurf, double[] rawWid, double[] rawDep,
-                                     int level) {
+                                     int level, double meanderScale) {
         int n = rawNodes.length;
         if (n < 3) {
             clampMonotonicDownstream(rawSurf, rawWid, rawDep);
@@ -580,7 +677,7 @@ public final class RiverLineNetwork {
 
         // 蜿蜒（meander）：沿路径法向叠加正弦偏移，制造自然弯曲（参考 PL-RGA 河网形态）
         int m = outNodes.size();
-        if (m >= 3 && params.meanderAmp() > 0.01) {
+        if (m >= 3 && params.meanderAmp() > 0.01 && meanderScale > 0.01) {
             double[] mx = new double[m], mz = new double[m];
             double[] arc = new double[m];
             for (int i = 0; i < m; i++) {
@@ -600,7 +697,8 @@ public final class RiverLineNetwork {
                 double tl = Math.hypot(tx, tz);
                 if (tl > 1e-6) { tx /= tl; tz /= tl; }
                 double nx = -tz, nz = tx;   // 左转 90° 法向
-                double off = params.meanderAmp() * Math.sin(2.0 * Math.PI * arc[i] / params.meanderWavelength());
+                double off = meanderScale * params.meanderAmp()
+                        * Math.sin(2.0 * Math.PI * arc[i] / params.meanderWavelength());
                 mx[i] += nx * off;
                 mz[i] += nz * off;
             }
@@ -857,6 +955,17 @@ public final class RiverLineNetwork {
             }
             double tread = Math.min(minTerr, minCap);
             stepSurf[s] = (s == 0) ? tread : Math.min(tread, stepSurf[s - 1]); // 单调：≤ 上级
+        }
+        // ★ 碎阶合并（2026-08-31）：bankCap/tread 钳制可能把相邻阶水面压到差 <2 格，
+        //   形成肉眼是锯齿/碎石、不是瀑布的"假阶"（实测 23/99 阶 <2 格，且与坡角无关，
+        //   提 minAngle 治不了）。落差 < minStepDrop 的阶**向下并入**下一级（只降不升 →
+        //   绝不抬高水漫岸，实测向上并会致 bankOverflow>0），该边界跌水归零、上级边界
+        //   落差随之增大，只保留真实大阶。lip(上级来源) 与潭面(末级) 为锚点不动。
+        double minStepDrop = 2.0;
+        for (int s = steps - 1; s >= 1; s--) {
+            if (stepSurf[s] - stepSurf[s + 1] < minStepDrop) {
+                stepSurf[s] = stepSurf[s + 1];
+            }
         }
         // 每节点水面 = 所在级水面（tread 内恒定，无锯齿），fall[k] 标记跌水段
         for (int k = a; k <= b; k++) {
