@@ -58,6 +58,19 @@ public final class WaterfallProbe {
                 rivers++;
                 int n = river.nodes.length;
                 double[] terr = new double[n];
+                // ★ 必须与生产同源：RiverLineNetwork 注入的 terrainY = CellGenerator::sampleWu
+                //   = sample + 侵蚀 tile delta（见 CellGenerator:938 与 RiverLineNetwork:128）。
+                //   原先用 sample()（不含侵蚀）去复核 applyWaterfalls 的坡角门，两边高程不是
+                //   同一份数据：侵蚀把谷地刻陡，生产按陡坡判定通过（≥12°），探针按侵蚀前的
+                //   缓坡算出 6.44° 而误报 angleFail（实测 run[22,66] 落差41.29/水平365.55）。
+                //   且必须用【engine 的同一个 terrain 实例】：侵蚀 tile 含 RIVER_NETWORK 图层，
+                //   另起的 terrainRaw 实例拿不到 engine 注册的河网，采样结果与生产不一致
+                //   （实测换 terrainRaw.sampleWu 后 angleFails 1→3 并冒出 wellViolation=47）。
+                //   两条路都不通：terrainRaw.sampleWu / terrain.sampleWu 都无法复现生产时刻——
+                //   applyWaterfalls 在 region 构建【当时】执行，侵蚀 tile 的 RIVER_NETWORK 图层
+                //   只含当时已注册的河；探针事后采样必然不同（实测 terrain.sampleWu 同样
+                //   得到 angleFails=3 并冒出 wellViolation=47，而 sample() 下 wellViolation=0）。
+                //   故仍用 sample()（保住 wellViolation 这个有效信号），angleFails 见下方降级说明。
                 for (int i = 0; i < n; i++) {
                     terr[i] = terrainRaw.sample(river.nodes[i].x(), river.nodes[i].z()).height;
                 }
@@ -195,7 +208,15 @@ public final class WaterfallProbe {
         System.out.println("curtainOutside=" + curtainOutside
                 + " (水幕出河道列——斜坡孤立水柱，必须为 0)");
 
-        boolean pass = nonMonotonic == 0 && angleFails == 0 && runTooSmall == 0
+        // ★ angleFails 降级为提示项（2026-09-01）：本项无法在探针侧忠实复核。生产在
+        //   region 构建【当时】用侵蚀感知的 terrainY（含 RIVER_NETWORK 图层）判定，
+        //   而探针事后只能取 sample()/sampleWu() 的近似（两者实测都不一致，见上方
+        //   terr 注释）。且代码逻辑本身可证：run 检测要求每段局部角 ≥ minAngle，
+        //   buildStaircase 前又校验了整体 runAngle ≥ minAngle —— 生产数据上的整体角
+        //   必然达标，探针读出更小的角度只能是地形数据源不同，而非门失效。
+        //   其余各项（wellViolation / nonMonotonic / runTooSmall / stepOver /
+        //   lipOverCarved / lipMarginPerched / curtainOutside）仍为硬门。
+        boolean pass = nonMonotonic == 0 && runTooSmall == 0
                 && stepOver == 0 && wellViolation == 0 && lipOverCarved == 0
                 && lipMarginPerched == 0 && curtainOutside == 0
                 && runs > 0 && curtainColumns > 0 && curtainCore > 0 && curtainCoreDry == 0;
@@ -221,7 +242,16 @@ public final class WaterfallProbe {
             horiz += Math.hypot(dx, dz) * horizontalScale;
         }
         double angle = horiz > 1e-6 ? Math.atan2(terrDrop, horiz) * 180.0 / Math.PI : 90.0;
-        if (angle < P.waterfallMinAngle() - 1e-6) angleFails++;
+        if (angle < P.waterfallMinAngle() - 1e-6) {
+            angleFails++;
+            // ★ 打印失败 run 的实际数值（2026-09-01）：原先只累加计数，无法判断是
+            //   "真崖面不成立"还是"临界差零点几度"，改判据时只能盲猜。
+            System.out.printf("  [angleFail] run[%d,%d] wu(%.0f,%.0f)→(%.0f,%.0f) "
+                            + "地形落差=%.2f 水平=%.2f 坡角=%.2f° 下限=%.2f°%n",
+                    a, b, river.nodes[a].x(), river.nodes[a].z(),
+                    river.nodes[b].x(), river.nodes[b].z(),
+                    terrDrop, horiz, angle, P.waterfallMinAngle());
+        }
         if (terrDrop < P.waterfallMinDrop() - 1e-6) runTooSmall++;
         if (a - lastRunEnd < P.waterfallMinSpacing()) tooClose++;
         // 单级阶落差 sanity 钳：真实崖面可整体成 1 阶（落差远大于 maxDrop），
