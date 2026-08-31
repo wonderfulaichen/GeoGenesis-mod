@@ -55,6 +55,40 @@ public final class RiverLineNetwork {
      */
     private static final double SOURCE_MIN_ACCUM_CELLS = 1.0;
 
+    /**
+     * 河头淡出跨度（节点数）：从源头起，河宽/河深沿程从残余值平滑升到满断面。
+     *
+     * <p><b>为什么需要（2026-09-01，用户实测截图）</b>：宽深走 Leopold-Maddock 幂律
+     * {@code W = minWidth·(A/A_ref)^0.42}，有 minWidth 下限；成河门槛把源头裁到 4 格汇流
+     * 面积后，节点 0 的断面仍是半宽 1.78 / 深 2.78 的<b>满尺寸槽</b>，然后在节点 0
+     * 被硬截断 → 陡坡上出现一个钝圆的"浴缸尾"水池，上方既没有汇流山坳也没有渐细的
+     * 支流，观感极假（"又不是山泉那样"）。</p>
+     *
+     * <p><b>参考项目做法</b>：Streams 的 RiverUpstreamComponent 上游端不放钝管——
+     * ① 高程棘轮（{@code upstreamMinSurfaceLevelUnits} 按 heightDiff/6 逐步抬升要求水面），
+     * ② {@code setMaxSurfaceLevels} 要求目标水面处必须是实心地形（拒绝悬空河头），
+     * ③ 末端叠 {@code SourceModelPlans}：水流散成数条细小分流并要求足够高的 back wall。
+     * DW 则是河宽 ∝ 汇流面积，源头天然趋细。</p>
+     *
+     * <p>本实现取两者共同要点的最小等价形式：<b>断面沿程淡出到零</b>，使河槽在上游端
+     * 逐渐退化为贴地的细流并最终消失，而不是被截断。深度淡出到 0.06 倍时已低于灌水
+     * 门控所需的 0.5 格水深，故水体会自然终止在细流处，不再暴露断面切口。</p>
+     */
+    private static final int HEAD_TAPER_NODES = 6;
+
+    /** 河头最末端的残余半宽比例（× 满断面）。 */
+    private static final double HEAD_MIN_WIDTH_FRACTION = 0.30;
+
+    /** 河头最末端的残余水深比例（× 满断面）；足够小以让水体在细流处自然收束。 */
+    private static final double HEAD_MIN_DEPTH_FRACTION = 0.06;
+
+    /** 河头淡出因子：k=0 → ≈0.05，k≥n → 1.0，smoothstep 保证沿程无拐点。 */
+    private static double headTaper(int k, int m) {
+        int n = Math.max(1, Math.min(HEAD_TAPER_NODES, m / 2));   // 短河不超一半长度
+        if (k >= n) return 1.0;
+        return NoiseUtil.smooth((k + 1.0) / (n + 1.0));
+    }
+
     private static final int MAX_REGIONS = 256;
 
     /** 汇入评分中的邻近权重（PL-RGA RIVER_JOIN_DISTANCE_WEIGHT）：越低优先，等距时就近。 */
@@ -386,14 +420,27 @@ public final class RiverLineNetwork {
         MidpointDisplacement.Node[] nodes = new MidpointDisplacement.Node[m];
         double[] rawSurf = new double[m], wid = new double[m], dep = new double[m];
         double acc = 0.0;
+        // ★ 只有【真源头】淡出：跨 region 续流的"源端"是瓦片缝而非河源，在此收窄会
+        //   在缝上重新造成宽度骤缩（crossRegion 机制专门修掉的那个"宽度重置"断缝）。
+        //   forcedSrcH 非 NaN 即为续流（见 build() 的 seed.surfaceY 传参）。
+        boolean taperHead = Double.isNaN(forcedSrcH);
         for (int k = 0; k < m; k++) {
             int idx = out.cells.get(start + k);
             double wx = field.cellCenterX(idx), wz = field.cellCenterZ(idx);
             double a = out.accum[start + k];
             nodes[k] = new MidpointDisplacement.Node(wx, wz);
             rawSurf[k] = groundYAt(wx, wz);
-            wid[k] = widthFromAccum(a, params);
-            dep[k] = depthFromAccum(a, wid[k], params);
+            double w = widthFromAccum(a, params);
+            double d = depthFromAccum(a, w, params);
+            if (taperHead) {
+                double tp = headTaper(k, m);
+                w *= HEAD_MIN_WIDTH_FRACTION + (1.0 - HEAD_MIN_WIDTH_FRACTION) * tp;
+                d *= HEAD_MIN_DEPTH_FRACTION + (1.0 - HEAD_MIN_DEPTH_FRACTION) * tp;
+                // 宽深比护栏按淡出后的宽度重算（淡出后 W 变小，D 不得再按原 W 放行）
+                d = Math.min(d, params.maxDepthRatio() * w);
+            }
+            wid[k] = w;
+            dep[k] = d;
             acc = Math.max(acc, a);
         }
         // 出口水面：入海→海平面附近；汇入主流→继承主流在交汇点水面（PL-RGA 节点共享）；否则贴地形
@@ -783,7 +830,25 @@ public final class RiverLineNetwork {
         int n = nodes.length;
         if (n < 2) return;
         double seaLevel = curve.seaLevelY();
-        double maxLen = Math.max(1.0, p.estuaryLength());
+        // ★ 先判"这条河到底入不入海"（2026-09-01）：本函数原先对每条河无条件执行，
+        //   而循环退出条件要求【地形>=海平面 且 距出口>estuaryLength】两者同时成立。
+        //   于是任何总长不足 estuaryLength(140wu) 的内陆小河，along 永远达不到阈值
+        //   → 整条河（连源头）都被当作河口处理：宽度乘 estuaryWidthFactor(1.9)、
+        //   深度被 depths[i]=max(mouthMinDepth=2.0, ·) 抬平，且绕过宽深比护栏
+        //   （实测出现半宽1.60/水深2.00 的 D>0.9W 非物理断面），并把河头淡出抹掉。
+        //   喇叭口只存在于河真正入海处：出口地形在海面以上即为陆内河（汇流/洼地终
+        //   止），直接跳过。
+        if (rawTerrainY(nodes[n - 1]) > seaLevel) return;
+        // ★ 河口带长度不得超过本河自身长度的一半（2026-09-01）：短河（总长 < estuaryLength
+        //   =140wu）若按固定带长处理，喇叭口会一路盖到源头，把源端深度抬到 mouthMinDepth
+        //   并绕过宽深比护栏 → 河头淡出被抹掉（实测仍有 7 条源端水深恰为 2.00）。
+        //   喇叭口是沿海地貌特征，一条 52wu 长的小溪其河口至多占下游一半。
+        double totalLen = 0.0;
+        for (int i = 1; i < n; i++) {
+            totalLen += Math.hypot(nodes[i].x() - nodes[i - 1].x(),
+                                   nodes[i].z() - nodes[i - 1].z());
+        }
+        double maxLen = Math.max(1.0, Math.min(p.estuaryLength(), totalLen * 0.5));
         double widthFactor = Math.max(1.0, p.estuaryWidthFactor());
         double minDepth = Math.max(0.5, p.mouthMinDepth());
         // 河口上限独立于河道 maxWidth，否则大河河口被钳制到与河道同宽，喇叭口展不开

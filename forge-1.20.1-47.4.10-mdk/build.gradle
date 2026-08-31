@@ -305,6 +305,15 @@ task runValleySeamProbe(type: JavaExec) {
     }
 }
 
+task runHeadProfileProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HeadProfileProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 task runSourceHeadProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.SourceHeadProbe'
