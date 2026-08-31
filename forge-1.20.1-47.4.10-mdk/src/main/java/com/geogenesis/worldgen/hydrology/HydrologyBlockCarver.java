@@ -297,8 +297,14 @@ public final class HydrologyBlockCarver {
         //   物理常识：不会被灌水 = 那里没有水，干地就不允许被挖到邻接水面以下。
         //   本列是否灌水完全由门控①预判定（先于 carved），与下面的 anyFill 同源。
         boolean outsideWaterGate = nearestDist > nearestWidth;
-        if (outsideWaterGate && bedTarget < waterSurface) {
-            bedTarget = waterSurface;
+        // ★ 干地下界取 max(混合水面, 最近河实际水面)（2026-08-31）：waterSurface 在谷壁
+        //   平滑后是各河 d² 加权的混合值，可能【低于】本列实际紧邻的那条河的水面。按混合
+        //   值钳住，干岸仍会被挖到邻接河面以下 → carvedNotch（探针判据用的正是
+        //   nearest.surfaceY()，故实测为"主动挖出的岸侧凹台"）。物理上这条约束本就该按
+        //   "本列邻接的那条河的水面"成立：不给水的列，不得低到看得见的河面之下。
+        double dryFloor = Math.max(waterSurface, nearest.surfaceY());
+        if (outsideWaterGate && bedTarget < dryFloor) {
+            bedTarget = dryFloor;
         }
         // 雕刻量 = (original − bedTarget) × 外缘衰减 × 高度淡出；只下挖
         double cut = Math.max(0.0, original - bedTarget) * outer * fadeE;
