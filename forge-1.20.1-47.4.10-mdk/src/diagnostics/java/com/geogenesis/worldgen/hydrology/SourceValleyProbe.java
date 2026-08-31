@@ -1,0 +1,134 @@
+package com.geogenesis.worldgen.hydrology;
+
+import com.geogenesis.worldgen.hydrology.riverline.RiverLineParams;
+import com.geogenesis.worldgen.hydrology.riverline.RiverLineRegion;
+import com.geogenesis.worldgen.terrain.CellGenerator;
+import com.geogenesis.worldgen.terrain.TerrainParams;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 源头谷地归属探针（2026-09-01）：用户的两条判据。
+ *
+ * <p>① 源头应在【山谷】里：沿垂直于流向的方向看，两侧地形都应比源点高（汇流槽）。
+ * 现有成河判据只看 D8 汇流面积，而汇流面积在【开阔凸坡】上同样会随下坡累积达标
+ * ——坡面无谷但依然"汇流"，这正是截图里源头切在坡面上的原因。</p>
+ *
+ * <p>② 源头不应落在【另一条河的过渡区】里：到最近另一条河中心线的距离（block）
+ * 若小于该河的谷壁影响半径 valley=3.5×半宽，则新河是在别人的谷壁上再开一条槽。</p>
+ */
+public final class SourceValleyProbe {
+
+    private SourceValleyProbe() { }
+
+    public static void main(String[] args) {
+        long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
+        double hs = args.length > 1 ? Double.parseDouble(args[1]) : 2.0;
+        double off = args.length > 2 ? Double.parseDouble(args[2]) : 24.0;   // 横距(wu)
+        TerrainParams params = TerrainParams.defaults();
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        terrain.seed(seed);
+        HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
+        RiverLineParams P = RiverLineParams.defaults();
+        double regionSize = P.regionSize();
+        double seamTol = 48.0;
+
+        // 收集全部河（跨 3×3 region），用于"是否落在别的河谷里"的判定
+        List<RiverLineRegion.RiverPolyline> all = new ArrayList<>();
+        for (int rz = -1; rz <= 1; rz++) {
+            for (int rx = -1; rx <= 1; rx++) {
+                all.addAll(engine.network().region(rx, rz).rivers);
+            }
+        }
+
+        int n = 0, seam = 0;
+        int inValley = 0, onShoulder = 0, onRidge = 0;
+        int insideOther = 0;
+        double sumMargin = 0;
+        List<String> badValley = new ArrayList<>();
+        List<String> badOther = new ArrayList<>();
+
+        for (RiverLineRegion.RiverPolyline r : all) {
+            if (r.nodes.length < 2) continue;
+            double hx = r.nodes[0].x(), hz = r.nodes[0].z();
+            // 缝头（跨 region 续流端）不考核
+            // ★ 用 floorMod：Java 的 % 对负坐标返回负值，会把所有河误判成"贴边界"
+            // Math.floorMod 无 double 重载，手写正余数
+            double fx = hx - regionSize * Math.floor(hx / regionSize);
+            double fz = hz - regionSize * Math.floor(hz / regionSize);
+            double toBorder = Math.min(Math.min(fx, regionSize - fx), Math.min(fz, regionSize - fz));
+            if (toBorder < seamTol) { seam++; continue; }
+
+            // ① 汇流槽判据：沿垂直流向两侧采样
+            double dx = r.nodes[1].x() - hx, dz = r.nodes[1].z() - hz;
+            double len = Math.hypot(dx, dz);
+            if (len < 1e-6) continue;
+            double px = -dz / len, pz = dx / len;          // 垂直流向（横向）
+            double h0 = terrain.sample(hx, hz).height;
+            double hL = terrain.sample(hx - px * off, hz - pz * off).height;
+            double hR = terrain.sample(hx + px * off, hz + pz * off).height;
+            double margin = Math.min(hL, hR) - h0;         // >0 = 两侧都更高 = 槽内
+            n++;
+            sumMargin += margin;
+            if (margin >= 1.0) inValley++;
+            else if (margin >= -1.0) onShoulder++;
+            else {
+                onRidge++;
+                if (badValley.size() < 10) {
+                    badValley.add(String.format("    源点 wu(%.0f,%.0f) 块(%d,%d) 高=%.1f "
+                                    + "两侧=%.1f/%.1f 槽深裕度=%.1f",
+                            hx, hz, (int) Math.floor(hx * hs), (int) Math.floor(hz * hs),
+                            h0, hL, hR, margin));
+                }
+            }
+
+            // ② 是否落在另一条河的过渡区内
+            double bestExcess = Double.POSITIVE_INFINITY;   // <0 = 在别人谷里
+            for (RiverLineRegion.RiverPolyline o : all) {
+                if (o == r) continue;
+                double bestD = Double.POSITIVE_INFINITY;
+                for (int i = 0; i + 1 < o.nodes.length; i++) {
+                    double ax = o.nodes[i].x(), az = o.nodes[i].z();
+                    double bx = o.nodes[i + 1].x(), bz = o.nodes[i + 1].z();
+                    double abx = bx - ax, abz = bz - az;
+                    double l2 = abx * abx + abz * abz;
+                    double t = l2 < 1e-9 ? 0.0
+                            : Math.max(0.0, Math.min(1.0, ((hx - ax) * abx + (hz - az) * abz) / l2));
+                    bestD = Math.min(bestD, Math.hypot(hx - (ax + abx * t), hz - (az + abz * t)));
+                }
+                double oValleyBlocks = Math.max(o.width[Math.min(o.width.length - 1, 1)], 1.0)
+                        * 3.5 * hs;                          // valley=3.5×半宽，wu→block
+                bestExcess = Math.min(bestExcess, bestD * hs - oValleyBlocks);
+            }
+            if (bestExcess < 0) {
+                insideOther++;
+                if (badOther.size() < 10) {
+                    badOther.add(String.format("    源点 wu(%.0f,%.0f) 块(%d,%d) 侵入邻河谷壁 %.1f 格",
+                            hx, hz, (int) Math.floor(hx * hs), (int) Math.floor(hz * hs), -bestExcess));
+                }
+            }
+        }
+
+        System.out.println("=== SourceValleyProbe ===");
+        System.out.printf("seed=%d 横向采样距=%.0fwu  河总数=%d  其中缝头=%d（不考核）%n",
+                seed, off, n + seam, seam);
+        if (n == 0) { System.out.println("无可考核源头"); return; }
+        System.out.printf("① 谷地归属（两侧更高者相对源点的裕度，平均 %.1f 格）：%n", sumMargin / n);
+        System.out.printf("   槽内/山谷 (>=+1格) = %d (%.0f%%)  ← 应有形态%n", inValley, inValley * 100.0 / n);
+        System.out.printf("   坡肩/近直 (-1~+1)  = %d (%.0f%%)%n", onShoulder, onShoulder * 100.0 / n);
+        System.out.printf("   凸坡/脊 (<-1格)    = %d (%.0f%%)  ← 用户抱怨：源头切在坡面上%n",
+                onRidge, onRidge * 100.0 / n);
+        System.out.printf("② 落在另一条河过渡区内 = %d (%.0f%%)  ← 用户抱怨：不该在别河谷壁里%n",
+                insideOther, insideOther * 100.0 / n);
+        if (!badValley.isEmpty()) {
+            System.out.println("   非谷地源头样例：");
+            for (String s : badValley) System.out.println(s);
+        }
+        if (!badOther.isEmpty()) {
+            System.out.println("   侵入邻河谷地样例：");
+            for (String s : badOther) System.out.println(s);
+        }
+        System.out.println("status=" + ((onRidge * 4 <= n && insideOther * 4 <= n) ? "PASS" : "FAIL"));
+    }
+}

@@ -82,6 +82,12 @@ public final class RiverLineNetwork {
     /** 河头最末端的残余水深比例（× 满断面）；足够小以让水体在细流处自然收束。 */
     private static final double HEAD_MIN_DEPTH_FRACTION = 0.06;
 
+    /**
+     * 汇流槽最小两侧抬升（block）：河头左右两侧地形须各高出此值，才算真在山谷里。
+     * 0 会把"近似平肩"也算作槽；过大则河头被一路推到下游、河长损失。
+     */
+    private static final double VALLEY_MIN_RISE = 0.5;
+
     /** 河头淡出因子：k=0 → ≈0.05，k≥n → 1.0，smoothstep 保证沿程无拐点。 */
     private static double headTaper(int k, int m) {
         int n = Math.max(1, Math.min(HEAD_TAPER_NODES, m / 2));   // 短河不超一半长度
@@ -284,6 +290,12 @@ public final class RiverLineNetwork {
         for (int i = 0; i < nx * nz; i++) {
             if (field.eAt(i) > params.sourceMinE()
                     && field.accumAt(i) >= SOURCE_MIN_ACCUM_CELLS * cellArea
+                    // ★ 汇流槽判据（2026-09-01，用户："源头应该生成在山谷中"）：
+                    //   只有 D8 汇流面积达标是不够的——开阔凸坡上汇流面积同样随下坡
+                    //   累积而达标（坡面并无山谷却照样"汇流"）。实测种子 12345：源头
+                    //   落在谷槽内的仅 19%，50% 在凸坡/山脊上（源点比垂直流向的某一侧
+                    //   还高 2~5 格），即截图里"河槽切在坡面上"的形态。
+                    && inValleyTrough(field, i, nx, nz)
                     && !nearRegionBorder(field, i, rx, rz, params.borderDist())) cand.add(i);
         }
         cand.sort((a, b) -> Double.compare(field.eAt(b), field.eAt(a)));
@@ -306,6 +318,12 @@ public final class RiverLineNetwork {
                         && Math.abs((acc / nx) - sj) <= spacing) { tooClose = true; break; }
             }
             if (tooClose) continue;
+            // ★ 源头不得落在【已有河的过渡区（谷壁）】内（2026-09-01，用户："源头不应该
+            //   生成在另外一条河的过渡区里面"）：claimed 只标记已有河的【中心线格】，
+            //   其谷壁范围（valley = 3.5×半宽）内照样能布源 → 新河在别人的谷壁上
+            //   再开一条槽（实测种子 12345 有源点侵入邻河谷壁 22 格）。
+            //   只约束【普通布源】：跨 region 续流必须无条件接上，见下方 handoff 循环。
+            if (insideExistingValley(field, rivers, s)) continue;
 
             TraceOutcome out = traceRiver(field, s, stepSize, claimed, nodeE,
                     allSegments, nx, nz, rx, rz, Double.NaN);
@@ -414,6 +432,14 @@ public final class RiverLineNetwork {
         int start = 0;
         while (start < out.cells.size()
                 && out.accum[start] <= params.riverAccumThreshold()) start++;
+        // ★ 河头必须落在【汇流槽】里（2026-09-01，用户："源头应该生成在山谷中"）：
+        //   布源阶段筛的是"起点格"，但可见河头是上面这条裁剪循环决定的那一格——
+        //   河头会沿程下移到没被筛过的格子，所以只筛起点不够（实测只筛起点时凸坡
+        //   源头仍有 39%）。这里继续裁到"该格位于谷槽"为止，直接控制河头位置。
+        //   兜底：若为此牺牲到不足 minRiverNodes，则退回仅按汇流面积裁剪的结果——
+        //   宁可保留一条源头略欠理想的河，也不让整条河消失（密度已压缩过多轮）。
+        int valleyStart = advanceToValleyHead(field, out, start, rivers);
+        if (out.cells.size() - valleyStart >= params.minRiverNodes()) start = valleyStart;
         if (out.cells.size() - start < params.minRiverNodes())
             return new CommitOut(null, out.reachedOcean, 0.0, null, Double.NaN);
         int m = out.cells.size() - start;
@@ -677,6 +703,104 @@ public final class RiverLineNetwork {
             }
         }
         return best;
+    }
+
+    /**
+     * 该格是否位于【汇流槽（山谷）】中——等高线平面曲率为负的位置。
+     *
+     * <p>做法：取该格 D8 流向，其垂直方向即"横切河谷"的方向；若左右任一侧比该格
+     * 更低，则该格处在凸坡/山脊 shoulders 上（水会向该侧散开），不是汇流槽。</p>
+     *
+     * <p>这是水文上区分"山谷"与"开阔坡面"的标准判据（plan contour curvature）。
+     * 仅有汇流面积阈值不够：凸坡上每个下坡格的汇流面积同样随下坡累积而达标，
+     * 于是源头会切在光秃坡面上（用户实测截图）。洼地（无更低邻居）本身即汇流
+     * 终点，视为槽内。网格越界的一侧不参与否决。</p>
+     */
+    private static boolean inValleyTrough(FlowField field, int idx, int nx, int nz) {
+        int ci = idx % nx, cj = idx / nx;
+        int di = 1, dj = 0;                       // 洼地：任取一横向，两侧更高即算槽
+        int down = field.flowTo(idx);
+        if (down >= 0) {
+            di = (down % nx) - ci;
+            dj = (down / nx) - cj;
+        }
+        int pi = -dj, pj = di;                    // 垂直于流向
+        if (pi == 0 && pj == 0) return true;
+        double e0 = field.eAt(idx);
+        for (int s = -1; s <= 1; s += 2) {
+            int ni = ci + pi * s, nj = cj + pj * s;
+            if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;   // 越界不否决
+            if (field.eAt(nj * nx + ni) < e0) return false;           // 该侧更低 → 非汇流槽
+        }
+        return true;
+    }
+
+    /**
+     * 从 {@code start} 起向后找第一个【实际地形汇流槽】格，作为可见河头。
+     *
+     * <p>★ 必须用 {@link #groundYAt}（与渲染同源的地形高程），不能用
+     * {@link FlowField#eAt}（纯噪声 e 场、不含侵蚀 tile）：实测按 e 场判定"已在槽内"
+     * 的格子，渲染地形上仍是凸坡，源头指标纹丝不动（28%/33%/39% 与只筛起点时完全
+     * 一致）。用户看到的是渲染地形，判据就必须建立在同一份数据上。</p>
+     *
+     * <p>横向 = 路径局部方向的垂直方向；左右各取 1 格横距。两侧地形都不低于该格
+     * （留 {@code VALLEY_MIN_RISE} 格余量）才算汇流槽，否则说明该格处在凸坡肩部——
+     * 水会向低的那侧散开，不该是河源。</p>
+     *
+     * @return 槽内格的下标；全程无槽时返回 cells.size()（调用方据此回退）
+     */
+    private int advanceToValleyHead(FlowField field, TraceOutcome out, int start,
+                                    List<RiverPolyline> rivers) {
+        int n = out.cells.size();
+        double off = Math.max(8.0, params.gridCell());        // 横距（wu）
+        for (int k = start; k < n; k++) {
+            int cur = out.cells.get(k);
+            int nxt = (k + 1 < n) ? out.cells.get(k + 1) : cur;
+            double ax = field.cellCenterX(cur), az = field.cellCenterZ(cur);
+            double dx = field.cellCenterX(nxt) - ax, dz = field.cellCenterZ(nxt) - az;
+            double len = Math.hypot(dx, dz);
+            if (len < 1e-6) return k;                          // 末格：无方向，视为可用
+            double px = -dz / len * off, pz = dx / len * off;
+            double h0 = groundYAt(ax, az);
+            if (groundYAt(ax - px, az - pz) < h0 + VALLEY_MIN_RISE
+                    || groundYAt(ax + px, az + pz) < h0 + VALLEY_MIN_RISE) continue;
+            // ★ 同样要在【河头这一格】上检查"不在邻河谷壁内"：布源筛查的是源点格，
+            //   而可见河头由本循环决定，两者不是同一格（实测只在源点筛时，侵入邻河
+            //   的源头仍剩 1 处）。支流出口照常汇入主流，不受此限（只约束上游端）。
+            if (!insideExistingValley(field, rivers, cur)) return k;
+        }
+        return n;
+    }
+
+    /**
+     * 该格是否落在【已有某条河的过渡区（谷壁）】内。
+     *
+     * <p>谷壁影响半径 = 3.5 × 该处半宽（与 carver 的 valley 定义同源，单位 wu），
+     * 点到河折线取线段最近距离。源点若落在邻河的谷壁里，新河就会在别人刚雕出的
+     * 谷坡上再切一条槽 —— 即用户实测的"源头生成在另外一条河的过渡区里面"。</p>
+     */
+    private static boolean insideExistingValley(FlowField field,
+                                                List<RiverPolyline> rivers, int cell) {
+        double wx = field.cellCenterX(cell), wz = field.cellCenterZ(cell);
+        for (RiverPolyline r : rivers) {
+            int len = r.nodes.length;
+            for (int i = 0; i < len; i++) {
+                double ax = r.nodes[i].x(), az = r.nodes[i].z();
+                double valley = Math.max(r.width[i], 1.0) * 3.5;
+                double v2 = valley * valley;
+                double ddx = wx - ax, ddz = wz - az;
+                if (ddx * ddx + ddz * ddz <= v2) return true;
+                if (i + 1 >= len) continue;
+                double bx = r.nodes[i + 1].x(), bz = r.nodes[i + 1].z();
+                double abx = bx - ax, abz = bz - az;
+                double l2 = abx * abx + abz * abz;
+                double t = l2 < 1e-9 ? 0.0
+                        : Math.max(0.0, Math.min(1.0, (ddx * abx + ddz * abz) / l2));
+                double qx = ax + abx * t - wx, qz = az + abz * t - wz;
+                if (qx * qx + qz * qz <= v2) return true;
+            }
+        }
+        return false;
     }
 
     /** 格是否距 region 边界 < borderDist（wu）：边界附近不布源/不成湖（PL-RGA border/lake_safe_mask）。 */
