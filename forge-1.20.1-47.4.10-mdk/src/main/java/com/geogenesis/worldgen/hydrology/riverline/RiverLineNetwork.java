@@ -37,6 +37,24 @@ public final class RiverLineNetwork {
      */
     private static final double FALL_STEP_T = 0.88;
 
+    /**
+     * 源点最小汇流面积（单位：栅格数，1 格 = gridCell² wu²）。<b>1.0 = 不启用</b>。
+     *
+     * <p>水文成河判据（channel initiation）：山顶/分水岭的 D8 汇流面积仅自身 1 格，
+     * 要求源点汇流面积 ≥ N 格即可把峰顶从候选中排除，河头落到山坳/谷头。</p>
+     *
+     * <p><b>★ 实测后定为 1.0（关闭），源头修复改由 riverAccumThreshold 的事后裁剪承担</b>
+     * （种子 9139912035078620160 / 12345）：两者都能把山顶源头从 24%+29% 压到 0%，但</p>
+     * <ul>
+     *   <li>本筛 = 2 格 + 裁剪 4 格：河数 27、carvedNotch 169，但 runWaterfallProbe
+     *       {@code angleFails=1}（布源筛改变了 run 剖面，使一级跌水坡角低于下限）；</li>
+     *   <li>只用裁剪 4 格：河数 22、{@code angleFails=0} 全 PASS。</li>
+     * </ul>
+     * <p>保留本常量与判据代码，是因为它是调节"河源形态"的直接旋钮（若将来瀑布坡角
+     * 判据放宽或另有修复，调回 2.0 可换回更高密度）。</p>
+     */
+    private static final double SOURCE_MIN_ACCUM_CELLS = 1.0;
+
     private static final int MAX_REGIONS = 256;
 
     /** 汇入评分中的邻近权重（PL-RGA RIVER_JOIN_DISTANCE_WEIGHT）：越低优先，等距时就近。 */
@@ -217,10 +235,21 @@ public final class RiverLineNetwork {
         boolean outletOcean = false;
         double maxDischarge = 0.0;
 
-        // 候选源：e > sourceMinE 且不在 region 边界安全距内，按 e 降序（高地优先）
+        // 候选源：e > sourceMinE、汇流面积达标、不在 region 边界安全距内，按 e 降序（高地优先）
+        // ★ 汇流面积门限（2026-08-31）：原判据只有"高程 > sourceMinE"且候选纯按 e 降序
+        //   取点 → 源点必然落在山顶/山脊。实测种子 9139912035078620160：源头 24% 在山顶、
+        //   29% 在山脊、平均高程百分位 95%，落在谷头/洼地的只有 6%（用户实机反馈
+        //   "河流源头大部分生成在山顶"）。山顶的 D8 汇流面积只有自身一格，加
+        //   "≥ N 格汇流"即天然把分水岭峰顶排除，河头落到坡面汇流首成槽处
+        //   （channel initiation，水文上的成河判据）。
+        //   ★ 必须在【布源阶段】筛、而不是靠 commitRiver 的事后裁剪：裁剪会把小河整条
+        //     裁掉（实测门槛提到 4 格后河数 34→16，密度腰斩）；布源筛则河从山坳起追，
+        //     全程保留长度。
+        double cellArea = params.gridCell() * params.gridCell();
         List<Integer> cand = new ArrayList<>();
         for (int i = 0; i < nx * nz; i++) {
             if (field.eAt(i) > params.sourceMinE()
+                    && field.accumAt(i) >= SOURCE_MIN_ACCUM_CELLS * cellArea
                     && !nearRegionBorder(field, i, rx, rz, params.borderDist())) cand.add(i);
         }
         cand.sort((a, b) -> Double.compare(field.eAt(b), field.eAt(a)));
