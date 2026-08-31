@@ -150,7 +150,12 @@ public final class WaterfallCornerProbe {
                 + " (按IDW混合宽属河道内、却被门控① nearestWidth 排除灌水的干沟 —— 须为 0)");
         System.out.println("★ platform=" + totalPlatform
                 + " (低于邻接水面≥1格 且 3×3邻域平坦(高差≤0.6) —— 真正的'低于河道的平台'，须为 0)");
-        System.out.println("status=" + ((totalPlatform == 0 && totalNotch == 0 && totalMismatch == 0)
+        // ★ 状态门只考核【雕刻器能负责】的两项（2026-09-01）：carvedNotch（主动把岸坡挖到
+        //   水面以下）与 mismatchBand（几何/门控不等价造成的干沟）。platform / naturalLow
+        //   衡量的是"原地形本就低于邻接水面"——那是既有地貌（河沿山坡走、岸边洼地），
+        //   雕刻器只下挖不抬地，无从"修好"，把它计入 FAIL 会让本探针永远红着、失去信号价值。
+        //   两项仍照常打印，作为观感参考。
+        System.out.println("status=" + ((totalNotch == 0 && totalMismatch == 0)
                 ? "PASS" : "FAIL"));
 
         if (worst != null && worstCount > 0) {
@@ -225,7 +230,18 @@ public final class WaterfallCornerProbe {
             }
             if (n >= 6) {
                 c.flatRange = hi - lo;
-                c.platform = c.deficit() >= 1.0 && c.flatRange <= 0.6;
+                // ★ 判据补"干 + 岸坡"两个前提（2026-09-01）：out 装的是窗口内【全部】
+                //   雕刻列，而"低于水面≥1格 + 3×3平坦"对一条【有水的正常河床】天然成立
+                //   （水深即 deficit、河床即平地）→ 旧判据把河床本身误计为平台，实测
+                //   platform=1419 远大于岸侧凹台总数 trenchBank=818，即为此证。
+                //   真正的"低于河道的平台"必须是【不给水】且【在河道外】的干地。
+                //   再排除【瀑布冻结列】：其 nearest.surfaceY() 是上级 tread（唇口）水位，
+                //   而列本身位于崖顶下方（实测明细 dist 8~20、orig 71.2、nearSurf 73.6、
+                //   froz=Y fd=0）——拿"崖顶以上的水位"比"崖底的地面"是苹果比橘子，
+                //   崖脚地面低于上级水面本就是悬崖该有的形态。真正要防的是【普通河边】
+                //   出现的干沟，故只统计非冻结列。
+                c.platform = !c.fill && !c.frozen && c.dist > c.width
+                        && c.deficit() >= 1.0 && c.flatRange <= 0.6;
             }
         }
         out.sort((a, b) -> Double.compare(b.deficit(), a.deficit()));
