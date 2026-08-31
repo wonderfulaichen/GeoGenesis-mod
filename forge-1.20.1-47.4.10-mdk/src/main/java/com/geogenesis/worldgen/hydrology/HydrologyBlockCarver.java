@@ -154,6 +154,29 @@ public final class HydrologyBlockCarver {
             carveSurfaceY = nearest.surfaceY();
             waterSurfaceY = nearest.surfaceY();
         }
+        // ★ 谷壁多河平滑（2026-08-31）：carveSurfaceY / junctionWaterSurface 都用 delta<k(4)
+        //   窄混合，两河谷壁叠加时在属主切换线上目标水面跳变 → 雕刻诱发谷壁断层
+        //   （正确口径实测 1127 处、86% 在多河列、最大 20.4 格）。只对"不会被灌水"的
+        //   普通谷壁列（nearestDist>nearestWidth 且 !atFall，瀑布壁另有冻结/平滑处理）
+        //   生效，不碰河道 bed/灌水：目标水面与干地钳制统一换成与宽深混合同形式的
+        //   【距离平方反比 IDW】混合 —— 近河权重主导（不会被 40~60 格外宽河的低水面
+        //   拖低，那是 outer 加权方案的失败根因），同缝两河权重相当（缝被平滑成鞍部）。
+        if (nearestDist > nearestWidth && !atFall) {
+            double gwSum = 0.0, gsSum = 0.0;
+            for (HydrologyBlockSample s : samples) {
+                double d = s.distToCenter();
+                if (d > P.heightBlendDist()) break;   // sampleBlockAll 已按距离升序
+                double fade = NoiseUtil.saturate(d / P.heightBlendDist());
+                double w = (1.0 - fade) * (1.0 - fade) / Math.max(d * d, 1.0);
+                gwSum += w;
+                gsSum += w * s.surfaceY();
+            }
+            if (gwSum > 1e-9) {
+                double wallSurf = gsSum / gwSum;
+                carveSurfaceY = wallSurf;
+                waterSurfaceY = wallSurf;
+            }
+        }
         width = Math.max(width, 1.0);
         double bankW = width * P.bankFactor();
         double valley = Math.max(width + bankW, width * 3.0);
@@ -164,7 +187,30 @@ public final class HydrologyBlockCarver {
         // 河谷壁：从河缘(valleyT=0)到谷外(valleyT=1)渐变归零；smoothstep 化保证
         // 谷外缘零导数 → 与原地形 C1 接回（根治谷壁轮廓缝）。
         double valleyT = NoiseUtil.saturate((dist - width) / Math.max(1.0, valley - width));
-        double outer = valleyOuter(valleyT, P.valleyExp());
+        // ★ 谷壁衰减改为【混合 outer 本身】而非"混合宽度再算 outer"（2026-08-31）：
+        //   实测岸坡断层（种子 9139912035078620160 @ -977,-529 / -1072,-485 等 7 处、
+        //   7~11 格）：窄跌水段（半宽 2.8，谷壁 9.8）的宽度被 17 格外、权重仅 12% 的
+        //   宽段（6.8）混合撑到 3.28 → 谷壁 11.5；而该列正坐在谷壁边缘（9.5 格），
+        //   outer 对谷壁半径极度敏感：0.007 → 0.547（78 倍）→ 这条窄跌水段用自己的
+        //   唇口水位把岸坡挖深 12.9 格，与相邻归属普通段（124.3）的列形成岸坡断层。
+        //   两种改法都不可取：混合宽度→谷壁被撑大；只用最近段宽度→属主切换处 outer
+        //   硬跳（聚合实测 904→1107，3~6 格坎明显增多）。
+        //   正解：每条河按【自己的宽度/谷壁范围】算 outerS，再按 IDW 距离权重混合。
+        //   每条河的 outerS 对位置连续、IDW 权重也连续 → 既不被邻河撑大、属主切换处
+        //   又无硬跳。手算该列 outer：0.547 → 0.28（接近"只用最近段"的 0.254）。
+        double oSum = 0.0, oAcc = 0.0;
+        for (HydrologyBlockSample s : samples) {
+            double sd = s.distToCenter();
+            if (sd > P.heightBlendDist()) break;   // sampleBlockAll 已按距离升序
+            double ws = Math.max(s.width(), 1.0);
+            double vs = Math.max(ws + ws * P.bankFactor(), ws * 3.0);
+            double vtS = NoiseUtil.saturate((dist - ws) / Math.max(1.0, vs - ws));
+            double fadeS = NoiseUtil.saturate(sd / P.heightBlendDist());
+            double wS = (1.0 - fadeS) * (1.0 - fadeS) / Math.max(sd * sd, 1.0);
+            oSum += wS;
+            oAcc += wS * valleyOuter(vtS, P.valleyExp());
+        }
+        double outer = oSum > 1e-9 ? oAcc / oSum : valleyOuter(valleyT, P.valleyExp());
 
         // ★ 谷壁雕刻面平滑（消弯角放射折痕回归）：瀑布冻结让雕刻面按阶硬切，
         //   弯角处各列最近段在上下阶间 Voronoi 跳变 → 谷壁折痕。谷壁（dist>width）
@@ -219,13 +265,28 @@ public final class HydrologyBlockCarver {
         //   样本水面≈自身 → 钳制≈无操作；瀑布处钳到上级 tread 水位 → 直角两侧岸坡
         //   不再被潭侧低面拖下去，恰好实现"直角两侧被地形包住"。只影响下挖量：
         //   当地地形本就低于该水位的下游侧（original < highWater）cut 仍为 0，形态不变。
-        if (dist > width) {
-            double highWater = Math.max(nearest.surfaceY(), nearest.lipSurfaceY());
-            for (int i = 1; i < samples.size(); i++) {
-                HydrologyBlockSample s = samples.get(i);
-                if (s.distToCenter() - nearestDist >= k) continue;
-                highWater = Math.max(highWater, Math.max(s.surfaceY(), s.lipSurfaceY()));
+        if (dist > width && atFall) {   // 本意只防瀑布角被潭侧低面拖出干平台；普通河缝交给上面的谷壁平滑
+            // ★ 邻域从 delta<k(4) 改为与宽深混合同款的【距离衰减加权】（2026-08-31）：
+            //   实测岸坡断层（种子 9139912035078620160 @ -977,-529 / -1072,-485 等 7 处、
+            //   7~11 格）：归属窄跌水段（半宽 2.8）的岸坡列，其谷壁范围被 IDW 混合宽
+            //   （混入邻段 6.8）从 9.8 撑到 11.5、又被 smin 把距离缩 1.5 格 → 外缘处的
+            //   outer 从 0.03 抬到 0.55，于是跌水段的唇口水位把岸坡挖到 108（挖深 12.9 格），
+            //   而相邻归属普通段（124.3）的列几乎不挖 → 岸坡方向断层。
+            //   旧钳制邻域 delta<k 太窄（普通段在 delta=7.5 处被排除）→ 看不见 124.3。
+            //   改用距离衰减加权后，岸坡列的钳制目标含入周围地形的真实水位 → 不再被
+            //   窄跌水段的低唇口拖下去；河道内(dist<=width)不生效，瀑布阶跃形态不变。
+            // 含最近段在内，全部按同款 d² 权重（最近段不得用 1.0，否则完全主导 = 无操作）
+            double hwSum = 0.0, hwLevel = 0.0;
+            for (HydrologyBlockSample s : samples) {
+                double d = s.distToCenter();
+                if (d > P.heightBlendDist()) break;   // sampleBlockAll 已按距离升序
+                double fade = NoiseUtil.saturate(d / P.heightBlendDist());
+                double w = (1.0 - fade) * (1.0 - fade) / Math.max(d * d, 1.0);
+                hwSum += w;
+                hwLevel += w * Math.max(s.surfaceY(), s.lipSurfaceY());
             }
+            double highWater = Math.max(hwLevel / hwSum,
+                    Math.max(nearest.surfaceY(), nearest.lipSurfaceY()));
             if (bedTarget < highWater) bedTarget = highWater;
         }
         // ★ 干地不得低于邻接水面（2026-08-31）：灌水门控①按 nearestDist/nearestWidth 判定，
