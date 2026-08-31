@@ -913,6 +913,12 @@ public final class RiverLineNetwork {
         // 单调铁律观感——实测"先深→升高→再单调下降"）。瀑布落差 = 上游水面
         // 到潭面的真实落差；凹槽地形下被 bankCap 钳小属防漫岸正确行为。
         double lip = surf[a];
+        // ★ 入海段不生成瀑布（2026-08-31）：唇口水位已在海平面及以下 → 整段 run 都在
+        //   海面之下（水面沿程单调不回升），水下不存在瀑布（水面被海面钳平，落差不成立）。
+        //   旧代码只看 runDrop/minAngle，入海段照样造阶 → 实测种子 9139912035078620160
+        //   有 51 列瀑布唇口在海平面下（如 (71,1968) 唇口 60.8 / 潭面 54.1，海平面 63），
+        //   表现为入海口的水下落差地形。此处直接跳过：不切阶、不标 fall、不挖潭。
+        if (lip <= seaLevel) return;
 
         // 子窗按累计落差等分（每级落差 ≈ runDrop/steps，均匀）：
         // 陡崖段（每节点落差大）被切成多级，平缓段一级——符合"越陡阶数多"。
@@ -953,7 +959,10 @@ public final class RiverLineNetwork {
                 minTerr = Math.min(minTerr, terr[j]);
                 minCap = Math.min(minCap, hardCap[j]);
             }
-            double tread = Math.min(minTerr, minCap);
+            // ★ 水面不得低于海平面（2026-08-31）：河口入海后水面即海面，继续按地形
+            //   下切会把"海面以下的阶"当成瀑布级（落差完全淹没在水下）。钳到海平面后
+            //   这些级自动等高 → 落差归零，配合下面的 fall 标记判据不再冻结。
+            double tread = Math.max(Math.min(minTerr, minCap), seaLevel);
             stepSurf[s] = (s == 0) ? tread : Math.min(tread, stepSurf[s - 1]); // 单调：≤ 上级
         }
         // ★ 碎阶合并（2026-08-31）：bankCap/tread 钳制可能把相邻阶水面压到差 <2 格，
