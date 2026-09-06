@@ -14,6 +14,25 @@ public final class HydrologyWaterFillProbe {
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         double horizontalScale = args.length > 1 ? Double.parseDouble(args[1]) : 2.0;
+        // ★ 多种子扫描（2026-09-06）：干河段是【概率性】缺陷。单种子只覆盖 ~144 个
+        //   含河 chunk，8 个种子全为 0 仍复现不了玩家世界里的一条干槽——这类问题
+        //   必须放大样本量。第 3 个参数 = 扫描种子数：
+        //   gradlew runHydrologyWaterFillProbe -PprobeArgs="12345 2.0 60"
+        int sweep = args.length > 2 ? Math.max(1, Integer.parseInt(args[2])) : 1;
+        if (sweep > 1) {
+            System.out.println("=== HydrologyWaterFillProbe SWEEP base=" + seed
+                    + " count=" + sweep + " ===");
+            for (int i = 0; i < sweep; i++) {
+                long sd = seed + i * 7919L;
+                System.out.println("---- seed=" + sd + " ----");
+                probeOne(sd, horizontalScale);
+            }
+            return;
+        }
+        probeOne(seed, horizontalScale);
+    }
+
+    private static void probeOne(long seed, double horizontalScale) {
         TerrainParams params = TerrainParams.defaults();
         CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
         terrain.seed(seed);
@@ -21,6 +40,7 @@ public final class HydrologyWaterFillProbe {
         int chunks = 0, riverChunks = 0, waterColumns = 0, invalid = 0, uplift = 0;
         int surfaceAboveTerrain = 0, filledAboveTerrain = 0;
         int channelColumns = 0, dryChannel = 0, suspended = 0;
+        int noWaterBlock = 0;   // 连续门控通过、但取整后水柱区间为空（游戏内可见的断流）
         int bankColumns = 0, bankOverflow = 0;
         int estuaryColumns = 0, estuaryCarved = 0;
         double seaLevelY = terrain.heightCurve().seaLevelY();
@@ -77,6 +97,28 @@ public final class HydrologyWaterFillProbe {
                             }
                         }
                         if (column.carvedGroundY() >= column.waterSurfaceY()) suspended++;
+                        // ★ 块空间干槽（2026-09-06）：上面那条 dryChannel 查的是【连续】门控
+                        //   fillWater()（carved < ws − 0.5），但真正落块时水柱只占
+                        //   y ∈ (floor(carved), floor(max(ws,lip))] 这段【整数】区间。
+                        //   连续门控允许 carved 与 ws 落在同一整数层（ws=69.90/carved=69.35
+                        //   → floor 均为 69），此时 y=69 被河床块占掉、水柱区间为空：
+                        //   该列铺出沙质河床却一个水块都没有 → 游戏内河中段凭空断流。
+                        //   实测 60 种子 × ~1.5 万核心列按连续判据全为 0，而玩家世界能看见，
+                        //   根因就在这道没被建模的取整。必须按落块口径复核。
+                        double topY = Math.max(column.waterSurfaceY(), column.lipSurfaceY());
+                        if (column.fillWater()
+                                && Math.floor(topY) <= Math.floor(column.carvedGroundY())) {
+                            noWaterBlock++;
+                            if (noWaterBlock <= 8) {
+                                System.out.printf("noWaterBlock: bx=%d bz=%d carved=%.2f "
+                                                + "ws=%.2f lip=%.2f floorBed=%d floorTop=%d%n",
+                                        column.blockX(), column.blockZ(),
+                                        column.carvedGroundY(), column.waterSurfaceY(),
+                                        column.lipSurfaceY(),
+                                        (int) Math.floor(column.carvedGroundY()),
+                                        (int) Math.floor(topY));
+                            }
+                        }
                     }
                     // 河缘带（会灌水且靠近河岸）：水面必须低于原始地形，
                     // 否则水会从河缘漫到地面上，表现为"一侧河岸被水盖过"。
@@ -112,6 +154,8 @@ public final class HydrologyWaterFillProbe {
         System.out.println("waterColumns=" + waterColumns + " channelColumns=" + channelColumns
                 + " dryChannel=" + dryChannel);
         System.out.println("invalid=" + invalid + " uplift=" + uplift + " suspended=" + suspended);
+        System.out.println("noWaterBlock=" + noWaterBlock
+                + " (门控判定有水、但取整后水柱区间为空 = 游戏内断流干槽)");
         System.out.println("bankColumns=" + bankColumns + " bankOverflow=" + bankOverflow
                 + " (河岸带水面高于原始地形 = 一侧河岸被水盖过)");
         System.out.println("surfaceAboveTerrain=" + surfaceAboveTerrain
@@ -120,7 +164,8 @@ public final class HydrologyWaterFillProbe {
                 + " (入海列中有雕刻延伸的数量，用于确认河口不再截断)");
         System.out.println("maxErosion=" + maxErosion);
         System.out.println("status=" + (waterColumns > 0 && channelColumns > 0
-                && dryChannel == 0 && invalid == 0 && uplift == 0 && suspended == 0
+                && dryChannel == 0 && noWaterBlock == 0
+                && invalid == 0 && uplift == 0 && suspended == 0
                 && bankOverflow == 0 ? "PASS" : "FAIL"));
     }
 
