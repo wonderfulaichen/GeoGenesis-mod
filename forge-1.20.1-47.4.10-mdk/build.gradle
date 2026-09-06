@@ -341,6 +341,17 @@ task runSeaFallProbe(type: JavaExec) {
     }
 }
 
+// Cross-region handoff pickup safety net (2026-09-06):
+// gradlew runHandoffPickupProbe [-PprobeArgs="seed radius"]
+task runHandoffPickupProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HandoffPickupProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 task runBankFaultProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.BankFaultProbe'
