@@ -254,8 +254,13 @@ public final class RiverLineNetwork {
         return r;
     }
 
-    /** pass-1 构建（无交接，记录出口种子）。独立、无递归。 */
-    private RiverLineRegion regionPass1(int rx, int rz) {
+    /**
+     * pass-1 构建（无交接，记录出口种子）。独立、无递归。
+     *
+     * <p>public 仅为诊断：{@code HandoffPickupProbe} 要核对"pass-1 发出的出口种子是否被
+     * 邻区 pass-2 接上"，而该列表只在 pass-1 结果里完整。纯函数 + 已缓存，无副作用。</p>
+     */
+    public RiverLineRegion regionPass1(int rx, int rz) {
         long key = pack(rx, rz);
         RiverLineRegion r = regionsP1.get(key);
         if (r != null) return r;
