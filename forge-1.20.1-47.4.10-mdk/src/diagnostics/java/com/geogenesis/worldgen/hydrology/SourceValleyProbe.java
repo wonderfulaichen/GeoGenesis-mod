@@ -152,14 +152,24 @@ public final class SourceValleyProbe {
                     double oFz = o.nodes[0].z() - regionSize * Math.floor(o.nodes[0].z() / regionSize);
                     double oToBorder = Math.min(Math.min(oFx, regionSize - oFx),
                             Math.min(oFz, regionSize - oFz));
+                    // ★ oHeadReg/oMouthReg：对方河两端各落在哪个 region（floor 坐标/640）。
+                    //   若两端 region 不同 → 该河横跨缝；若 o 的两端都在 r 所在 region 之外
+                    //   却又能贴近 r 的河头 → 证明 region 网格带 margin 重叠、重叠区两边
+                    //   各画各的（这才是"跨区互看不见"的几何实体）。
+                    int ohrx = (int) Math.floor(o.nodes[0].x() / regionSize);
+                    int ohrz = (int) Math.floor(o.nodes[0].z() / regionSize);
+                    int omrx = (int) Math.floor(o.nodes[o.nodes.length - 1].x() / regionSize);
+                    int omrz = (int) Math.floor(o.nodes[o.nodes.length - 1].z() / regionSize);
                     worst = String.format(
                             "rLen=%d oLen=%d bestSeg=%d/%d d=%.1fwu oHead=%.1fwu "
-                                    + "oMouth=%.1fwu wLocal=%.1f oHeadSeam=%b(%.0fwu)",
+                                    + "oMouth=%.1fwu wLocal=%.1f oHeadSeam=%b(%.0fwu) "
+                                    + "oReg=(%d,%d)->(%d,%d)",
                             r.nodes.length, o.nodes.length, bestI, o.nodes.length - 1,
                             bestD, dToOtherHead,
                             Math.hypot(hx - o.nodes[o.nodes.length - 1].x(),
                                     hz - o.nodes[o.nodes.length - 1].z()),
-                            wLocal, oToBorder < seamTol, oToBorder);
+                            wLocal, oToBorder < seamTol, oToBorder,
+                            ohrx, ohrz, omrx, omrz);
                 }
             }
             if (bestExcess < 0) {
