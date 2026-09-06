@@ -65,8 +65,9 @@ public final class SourceValleyProbe {
                 //   被写即本次 pass-2 build）
                 int[] fs = engine.network().feederStats;
                 System.out.printf("feederFunnel region(%d,%d) heads=%d noUp=%d noReconnect=%d"
-                                + " tooShort=%d rejected=%d noSurf=%d committed=%d%n",
-                        rx, rz, fs[0], fs[1], fs[3], fs[4], fs[5], fs[6], fs[7]);
+                                + " tooShort=%d rejected=%d noSurf=%d committed=%d"
+                                + " mergeTry=%d merged=%d%n",
+                        rx, rz, fs[0], fs[1], fs[3], fs[4], fs[5], fs[6], fs[7], fs[8], fs[9]);
             }
         }
 
@@ -96,15 +97,39 @@ public final class SourceValleyProbe {
             //   注释写"block"与实测不符——实测横移 2.35~2.50 wu），衰减只作用在细流
             //   自己的源头端，不会与主河头精确重合。
             boolean isFeeder = false;
+            boolean tailJoinsRiver = false;
             for (RiverLineRegion.RiverPolyline o : all) {
                 if (o == r) continue;
-                if (Math.hypot(r.nodes[r.nodes.length - 1].x() - o.nodes[0].x(),
-                        r.nodes[r.nodes.length - 1].z() - o.nodes[0].z()) < 3.0) {
+                var tail = r.nodes[r.nodes.length - 1];
+                if (Math.hypot(tail.x() - o.nodes[0].x(), tail.z() - o.nodes[0].z()) < 3.0) {
                     isFeeder = true;
                     break;
                 }
+                // ★ 尾接任何河的河道（含"贴邻河续流并入"产物）= 支流：汇入处贴近
+                //   被并入河是 Y 形汇流的定义，不是缺陷（②不考核）。正则支流的源头
+                //   有本 region 谷壁守卫、本就不会侵入，排除不损失覆盖。
+                if (!tailJoinsRiver) {
+                    // 同格判据：合并/汇入河的尾节点 = 目标【格心】，而目标格是从邻区
+                    // 折线点的所在格反查的——邻区栅格相对本区偏移最多 16 wu，格心到
+                    // 邻区节点天然可达 ~17 wu；再加 meander 横移 ≤2.5 wu。容差取
+                    // gridCell(24 wu) = "尾节点落在邻河同一格"。
+                    for (int k = 0; k < o.nodes.length; k++) {
+                        if (Math.hypot(tail.x() - o.nodes[k].x(),
+                                tail.z() - o.nodes[k].z()) < P.gridCell()) {
+                            tailJoinsRiver = true;
+                            break;
+                        }
+                    }
+                }
             }
             if (isFeeder) {
+                feedersExcluded++;
+                continue;
+            }
+            // ★ 合并连接（"缝口→就近汇入"产物）：2~3 节点 + 尾接他河河道。其"头"是
+            //   跨区缝点而非真源头，①② 皆无意义（① 的源头谷槽考核只对真源头成立）。
+            //   正则支流从真泉眼追踪而来、节点数远多于此，不受影响。
+            if (tailJoinsRiver && r.nodes.length <= 3) {
                 feedersExcluded++;
                 continue;
             }
@@ -145,16 +170,17 @@ public final class SourceValleyProbe {
                 }
             }
 
-            // ② 是否落在另一条河的过渡区内
+            // ② 是否落在另一条河的过渡区内（支流不考核：汇入处贴近被并入河是 Y 形
+            //    汇流的定义；tailJoinsRiver 判据见上方）
             // ★ 半径取【最近点处的局部半宽】，与生产 insideExistingValley 同式
             //   （RiverLineNetwork:1012 逐节点 max(width[i],1)×3.5）。原先整条河只用
             //   o.width[1]——那是源头淡出后的最窄处，量中下游河段时半径普遍偏小，
             //   等于拿一把更短的尺子去量，只会漏报。本项目已四次栽在"探针与生产取
             //   的数据不同源"，这次是【公式不同】。
-            double bestExcess = Double.POSITIVE_INFINITY;   // <0 = 在别人谷里
+            double bestExcess = tailJoinsRiver ? 0.0 : Double.POSITIVE_INFINITY;   // <0 = 在别人谷里
             String worst = "";                              // ★ 诊断：被谁侵入
             for (RiverLineRegion.RiverPolyline o : all) {
-                if (o == r) continue;
+                if (o == r || tailJoinsRiver) continue;
                 double bestD = Double.POSITIVE_INFINITY;
                 int bestI = 0;
                 for (int i = 0; i + 1 < o.nodes.length; i++) {
@@ -216,6 +242,39 @@ public final class SourceValleyProbe {
                             hx, hz, (int) Math.floor(hx * hs), (int) Math.floor(hz * hs),
                             -bestExcess, r.level, r.nodes.length, r.width[0]));
                 }
+                // [TEMP] 侵入者的全程几何：沿自身节点走，看侵入深度何时归零（何处出谷）
+                for (RiverLineRegion.RiverPolyline o : all) {
+                    if (o == r) continue;
+                    double ex0 = Double.POSITIVE_INFINITY;
+                    int exitNode = -1;
+                    for (int i = 0; i < r.nodes.length; i++) {
+                        double px0 = r.nodes[i].x(), pz0 = r.nodes[i].z();
+                        double bd = Double.POSITIVE_INFINITY;
+                        int bi = 0;
+                        for (int k = 0; k + 1 < o.nodes.length; k++) {
+                            double ax = o.nodes[k].x(), az = o.nodes[k].z();
+                            double bx = o.nodes[k + 1].x(), bz = o.nodes[k + 1].z();
+                            double abx = bx - ax, abz = bz - az;
+                            double l2 = abx * abx + abz * abz;
+                            double t = l2 < 1e-9 ? 0.0 : Math.max(0.0, Math.min(1.0,
+                                    ((px0 - ax) * abx + (pz0 - az) * abz) / l2));
+                            double d = Math.hypot(px0 - (ax + abx * t), pz0 - (az + abz * t));
+                            if (d < bd) { bd = d; bi = k; }
+                        }
+                        double wL = Math.max(o.width[bi], 1.0) * 3.5 * hs;
+                        double ex = bd * hs - wL;
+                        if (ex < ex0) ex0 = ex;
+                        if (ex >= 0 && exitNode < 0) exitNode = i;
+                    }
+                    if (ex0 < 0) {
+                        System.out.printf("[TEMP] invader nodes=%d 最深侵入=%.1f格 出谷节点=%d"
+                                        + " (占全程 %.0f%%) 被侵入河节点=%d wMax=%.1f%n",
+                                r.nodes.length, -ex0, exitNode,
+                                100.0 * (exitNode < 0 ? r.nodes.length : exitNode) / r.nodes.length,
+                                o.nodes.length, o.width[0]);
+                        break;
+                    }
+                }
             }
         }
 
@@ -223,12 +282,11 @@ public final class SourceValleyProbe {
         System.out.printf("seed=%d 横向采样距=%.0fwu  河总数=%d  其中缝头=%d（不考核）%n",
                 seed, off, n + seam, seam);
         if (n == 0) { System.out.println("无可考核源头"); return; }
-        System.out.printf("① 谷地归属（两侧更高者相对源点的裕度，平均 %.1f 格）：%n", sumMargin / n);
-        System.out.printf("   槽内/山谷 (>=+1格) = %d (%.0f%%)  ← 应有形态%n", inValley, inValley * 100.0 / n);
-        System.out.printf("   坡肩/近直 (-1~+1)  = %d (%.0f%%)%n", onShoulder, onShoulder * 100.0 / n);
-        System.out.printf("   凸坡/脊 (<-1格)    = %d (%.0f%%)  ← 用户抱怨：源头切在坡面上%n",
-                onRidge, onRidge * 100.0 / n);
-        System.out.printf("② 落在另一条河过渡区内 = %d (%.0f%%)  ← 用户抱怨：不该在别河谷壁里%n",
+        System.out.printf("[M0] marginAvg=%.2f%n", sumMargin / n);
+        System.out.printf("[M1] inValley=%d (%.0f%%)%n", inValley, inValley * 100.0 / n);
+        System.out.printf("[M1b] onShoulder=%d (%.0f%%)%n", onShoulder, onShoulder * 100.0 / n);
+        System.out.printf("[M2] onRidge=%d (%.0f%%)%n", onRidge, onRidge * 100.0 / n);
+        System.out.printf("[M3] insideOther=%d (%.0f%%)%n",
                 insideOther, insideOther * 100.0 / n);
         System.out.println("   （源头质量考核已排除源前细流 " + feedersExcluded + " 条）");
         if (!badValley.isEmpty()) {
