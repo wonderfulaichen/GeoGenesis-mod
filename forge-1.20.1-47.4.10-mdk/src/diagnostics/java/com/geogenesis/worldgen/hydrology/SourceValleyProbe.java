@@ -60,15 +60,6 @@ public final class SourceValleyProbe {
         for (int rz = -rr; rz <= rr; rz++) {
             for (int rx = -rr; rx <= rr; rx++) {
                 all.addAll(engine.network().region(rx, rz).rivers);
-                // ★ 细流淘汰漏斗：region() 返回后统计属于该 region 的 pass-2 build
-                //   （其 8 邻的 pass-1 依赖在 region() 内部先建，全局 stats 最后一次
-                //   被写即本次 pass-2 build）
-                int[] fs = engine.network().feederStats;
-                System.out.printf("feederFunnel region(%d,%d) heads=%d noUp=%d outsideValley=%d"
-                                + " noReconnect=%d tooShort=%d rejected=%d noSurf=%d committed=%d"
-                                + " mergeTry=%d merged=%d borderZone=%d%n",
-                        rx, rz, fs[0], fs[1], fs[2], fs[3], fs[4], fs[5], fs[6], fs[7],
-                        fs[8], fs[9], fs[10]);
             }
         }
 
@@ -195,9 +186,8 @@ public final class SourceValleyProbe {
                     if (d < bestD) { bestD = d; bestI = i; }
                 }
                 // ★ 合法汇流豁免：邻河的【出口】就在本河河头处 → 这是支流汇入，不是
-                //   侵入谷壁。扇形散流的细流正是接在主河河头格上（emitFeederRills 的
-                //   cells.add(head)），不豁免会把每一条被补给的主河误判成缺陷——实测
-                //   insideOther 1→2 / 1→4 与细流存活数 +1 / +3 恰好一一对应。
+                //   侵入谷壁。正则支流（trace 就近汇入）的尾节点落在目标河的河道/河头
+                //   附近，不豁免会把每一条被汇入的主河误判成缺陷。
                 var mouth = o.nodes[o.nodes.length - 1];
                 if (Math.hypot(hx - mouth.x(), hz - mouth.z()) <= 1.5 * P.gridCell()) continue;
                 double wLocal = Math.max(o.width[Math.min(bestI, o.width.length - 1)], 1.0);
