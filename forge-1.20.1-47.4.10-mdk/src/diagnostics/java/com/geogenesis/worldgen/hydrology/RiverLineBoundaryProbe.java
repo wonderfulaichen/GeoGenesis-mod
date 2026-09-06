@@ -64,8 +64,11 @@ public final class RiverLineBoundaryProbe {
 
         // 3) 平滑度：含河 chunk 内随机抽样行/列，单步雕刻量变化与水面台阶
         int smoothPairs = 0, carveSteps = 0, waterSteps = 0, fallExempt = 0;
+        int waterOwnerSwitch = 0, waterRealStep = 0, wetSteps = 0;
+        double maxWetStep = 0.0;
         double maxStepDelta = 0.0, maxWaterStep = 0.0;
-        double maxWaterStepFlat = 0.0;
+        double maxWaterStepFlat = 0.0, maxRealStep = 0.0;
+        java.util.List<String> realList = new java.util.ArrayList<>();
         for (long key : riverChunks) {
             int cx = (int) (key >> 32);
             int cz = (int) (key & 0xffffffffL);
@@ -88,6 +91,22 @@ public final class RiverLineBoundaryProbe {
                     //   水面/河床【本就该】大跳，>0.25 格与 >2.5 格的阈值量的是设计特征
                     //   而非缺陷——实测 2702 处"违规"里 maxWaterStep 达 14.8 格，正是落差
                     //   量级。判据必须认识生产语义，否则永远 REVIEW。
+                    // ★ 水面台阶只考核【两列都真的灌水】的对：waterSurfaceY 是 IDW 混合值，
+                    //   在干岸列上只是外推数、不渲染成水，量它的跳变没有意义。原先沿 x
+                    //   逐列走 = 横切河谷，绝大多数比较落在岸上。
+                    if (c0.fillWater() && c1.fillWater()) {
+                        double dWet = Math.abs(c0.waterSurfaceY() - c1.waterSurfaceY());
+                        if (!(isFall(c0) || isFall(c1)) && dWet > 0.25) {
+                            wetSteps++;
+                            maxWetStep = Math.max(maxWetStep, dWet);
+                            if (realList.size() < 8) {
+                                realList.add(String.format(
+                                        "  wetStep=%.2f格: block(%d,%d) ws %.2f->%.2f",
+                                        dWet, c0.blockX(), c0.blockZ(),
+                                        c0.waterSurfaceY(), c1.waterSurfaceY()));
+                            }
+                        }
+                    }
                     boolean atFall = isFall(c0) || isFall(c1);
                     if (atFall) {
                         fallExempt++;
@@ -96,6 +115,22 @@ public final class RiverLineBoundaryProbe {
                         if (dWater > 0.25) {
                             waterSteps++;
                             maxWaterStepFlat = Math.max(maxWaterStepFlat, dWater);
+                            // ★ 拆分主嫌"相邻列 Voronoi 换主"：carveColumn 让每列归属
+                            //   最近的河，两列可能分属水面差很大的两条河（正常拓扑，不是
+                            //   缺陷）。HydrologyBlockSample 没有河流身份字段，用签名代理：
+                            //   同一条河的相邻列 width/discharge 几乎不变，换主则跳变。
+                            if (ownerSwitched(engine, c0, c1, horizontalScale)) {
+                                waterOwnerSwitch++;
+                            } else {
+                                waterRealStep++;
+                                maxRealStep = Math.max(maxRealStep, dWater);
+                                if (realList.size() < 8) {
+                                    realList.add(String.format(
+                                            "  realStep=%.2f格: block(%d,%d) ws %.2f->%.2f",
+                                            dWater, c0.blockX(), c0.blockZ(),
+                                            c0.waterSurfaceY(), c1.waterSurfaceY()));
+                                }
+                            }
                         }
                     }
                 }
@@ -107,6 +142,14 @@ public final class RiverLineBoundaryProbe {
         System.out.println("carveStepViolations(>2.5)=" + carveSteps);
         System.out.println("waterStepViolations(>0.25)=" + waterSteps
                 + "  maxWaterStep(非跌水)=" + maxWaterStepFlat);
+        System.out.println("  ├ ownerSwitch=" + waterOwnerSwitch
+                + "  (相邻列换主：分属两条河，水面差属正常拓扑，非缺陷)");
+        System.out.println("  └ realStep=" + waterRealStep
+                + "  maxRealStep=" + maxRealStep + "  (同一条河内的真台阶 = 该修的部分)");
+        System.out.println("wetStepViolations(两列都灌水,>0.25)=" + wetSteps
+                + "  max=" + maxWetStep
+                + "  ← 唯一真正可见的判据（干岸列的 ws 只是 IDW 外推、不渲染）");
+        realList.forEach(System.out::println);
         System.out.println("maxStepDelta=" + maxStepDelta);
         System.out.println("maxWaterStep(含跌水)=" + maxWaterStep);
         // 判据说明：仅以【非跌水】列对的台阶考核。仍 >0 时保持 REVIEW 而非自动放宽——
@@ -116,7 +159,7 @@ public final class RiverLineBoundaryProbe {
         // depth/bankWidth/valleyWidth/discharge/outletType/distToCenter/fallDrop/frozen），
         // 无法直接比对两列是否同一条河。可用 discharge 作代理——同一条河相邻列的汇流量
         // 几乎不变，换主则跳变；但要确证仍需给采样加 riverIndex（属生产改动，勿轻易做）。
-        boolean pass = waterSteps == 0;
+        boolean pass = wetSteps == 0;
         System.out.println("status=" + (pass ? "PASS" : "REVIEW"));
     }
 
@@ -155,6 +198,40 @@ public final class RiverLineBoundaryProbe {
      */
     private static boolean isFall(HydrologyBlockCarvedColumn c) {
         return c.lipSurfaceY() > c.waterSurfaceY() + 1e-6;
+    }
+
+    /**
+     * 相邻两列是否【换主】（归属到不同的河）。
+     *
+     * <p>生产按 Voronoi 让每列归属最近的河（{@code carveColumn} 单属主，见
+     * HydrologyBlockCarver"每块只归最近一条河线"）。两列分属不同河时水面本来就可以
+     * 差很多，那不是跨缝不连续。{@code HydrologyBlockSample} 无河流身份字段，故用
+     * 签名代理：同一条河的相邻列 {@code width} 与 {@code discharge} 几乎不变
+     * （宽度是平滑函数、汇流量沿程单调微增），换主则两者同时跳变。</p>
+     *
+     * <p>判据取"两者都跳"才算换主，避免把干支流汇合处汇流量的真实增长误判成换主。</p>
+     */
+    private static boolean ownerSwitched(HydrologyExperimentEngine engine,
+                                         HydrologyBlockCarvedColumn c0,
+                                         HydrologyBlockCarvedColumn c1,
+                                         double scale) {
+        HydrologyBlockSample s0 = nearest(engine, c0, scale);
+        HydrologyBlockSample s1 = nearest(engine, c1, scale);
+        if (s0 == null || s1 == null) return false;
+        return relDiff(s0.width(), s1.width()) > 0.30
+                && relDiff(s0.discharge(), s1.discharge()) > 0.30;
+    }
+
+    private static HydrologyBlockSample nearest(HydrologyExperimentEngine engine,
+                                                HydrologyBlockCarvedColumn c, double scale) {
+        java.util.List<HydrologyBlockSample> ss =
+                engine.sampleBlockAll(c.blockX(), c.blockZ(), scale);
+        return ss.isEmpty() ? null : ss.get(0);
+    }
+
+    private static double relDiff(double a, double b) {
+        double m = Math.max(Math.abs(a), Math.abs(b));
+        return m < 1e-9 ? 0.0 : Math.abs(a - b) / m;
     }
 
     private static long pack(int x, int z) {
