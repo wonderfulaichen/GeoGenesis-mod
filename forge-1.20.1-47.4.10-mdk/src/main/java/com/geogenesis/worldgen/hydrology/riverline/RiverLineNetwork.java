@@ -338,6 +338,7 @@ public final class RiverLineNetwork {
         //   谷壁（实测 insideOther 1→4，6%→21%）。
         List<RiverPolyline> feederParents = new ArrayList<>();
         List<Integer> feederLevels = new ArrayList<>();
+        java.util.Arrays.fill(feederStats, 0);     // 每次建网清零（诊断漏斗）
 
         // ===== 普通源追踪（本 region 高位布源）=====
         for (int s : cand) {
@@ -429,10 +430,15 @@ public final class RiverLineNetwork {
         // ===== 河源扇形散流（post-pass，2026-09-06）=====
         // 必须在【所有主河】建完之后发：细流经 advanceToValleyHead 会避开此刻已存在的
         // 全部谷壁（含先提交的主河），而主河的源头筛查不会被细流反向污染。
+        System.err.println("[DBG] build(" + rx + "," + rz + ") handoff=" + handoff
+                + " parents=" + feederParents.size()
+                + " stats=" + java.util.Arrays.toString(feederStats));
         for (int i = 0; i < feederParents.size(); i++) {
             emitFeederRills(field, feederParents.get(i), feederLevels.get(i), claimed, nodeE,
                     nodeSurf, levelAt, allSegments, rivers, specs, lakes, accepted, nx, rx, rz);
         }
+        System.err.println("[DBG] done(" + rx + "," + rz + ") rivers=" + rivers.size()
+                + " stats=" + java.util.Arrays.toString(feederStats));
 
         // ★ meander 去交叉后处理（2026-08-31）：见 commitRiver 注释。区域全部河建好后，
         //   迭代把"与别的河真交叉"的河重建为无 meander（其非 meander 路径沿用已防交叉的
@@ -449,11 +455,12 @@ public final class RiverLineNetwork {
         final MidpointDisplacement.Node[] nodes;
         final double[] surf, wid, dep;
         final int level;
+        final boolean feeder;  // 源前细流（去交叉时的优先牺牲者：去 meander 不可见）
         boolean meandered;     // 当前 rivers 里这条是否带 meander（可被去 meander）
         RiverSpec(MidpointDisplacement.Node[] nodes, double[] surf, double[] wid,
-                  double[] dep, int level, boolean meandered) {
+                  double[] dep, int level, boolean meandered, boolean feeder) {
             this.nodes = nodes; this.surf = surf; this.wid = wid; this.dep = dep;
-            this.level = level; this.meandered = meandered;
+            this.level = level; this.meandered = meandered; this.feeder = feeder;
         }
 
     }
@@ -491,15 +498,16 @@ public final class RiverLineNetwork {
         //   源头仍有 39%）。这里继续裁到"该格位于谷槽"为止，直接控制河头位置。
         //   兜底：若为此牺牲到不足 minRiverNodes，则退回仅按汇流面积裁剪的结果——
         //   宁可保留一条源头略欠理想的河，也不让整条河消失（密度已压缩过多轮）。
-        int valleyStart = advanceToValleyHead(field, out, start, rivers);
+        // ★ 细流（feeder）不参与谷槽门槛（2026-09-07，修"扇形细流看不见"）：细流上溯
+        //   进入山脊区，谷槽裕度随汇流收窄迅速跌破阈值 → 门槛把 pass-2（游戏实际
+        //   使用的 build）里的细流几乎全部弃用（漏斗实测：候选 10 → 弃用 6、提交 0）。
+        //   该门槛防的是"可见断面切在光坡上"——细流头已归零淡出（宽 1 格、深 0），
+        //   切不出任何断面，位置本就无害；当年"弃用更优"的证据是 insideOther 假
+        //   指标（已证伪）。细流的淘汰交给上游候选/长度下限即可。
+        int valleyStart = feeder ? start : advanceToValleyHead(field, out, start, rivers);
         if (out.cells.size() - valleyStart >= params.minRiverNodes()) {
             start = valleyStart;                                  // 有达标谷槽，直接采用
-        } else if (feeder) {
-            // ★ 细流【不达标即弃】，不做 bestValleyHead 兜底：兜底会把细流头落在凸坡肩部，
-            //   实测使凸坡源头 0%→5%、钝头 1→5 —— 净负面。主河为保河网密度才允许兜底；
-            //   细流是河头的装饰，"没有"远好于"切在光坡上"。
-            return new CommitOut(null, out.reachedOcean, 0.0, null, Double.NaN);
-        } else {
+        } else if (!feeder) {
             // 全程找不到达标谷槽（或为此会把河裁没）：退而求其次取"最像谷槽"的一格，
             // 而不是停在恰好达汇流门槛的任意位置（实测该任意位置两个种子各有 22% 落在
             // 凸坡肩部）。bestValleyHead 的上界已预留 minRiverNodes，不会把河裁丢。
@@ -577,7 +585,7 @@ public final class RiverLineNetwork {
         }
         double tailSurface = surf[m - 1];
         rivers.add(smoothed);
-        specs.add(new RiverSpec(nodes, surf, wid, dep, level, m >= 3));
+        specs.add(new RiverSpec(nodes, surf, wid, dep, level, m >= 3, feeder));
         RiverLineRegion.LakeNode lake = null;
         if (out.isLake) {
             int last = out.cells.get(out.cells.size() - 1);
@@ -602,7 +610,17 @@ public final class RiverLineNetwork {
                     // 视觉无害，且重建会重跑 applyWaterfalls 扰动瀑布判定，尽量不碰。
                     double delta = crossLevelDelta(rivers.get(i), rivers.get(j));
                     if (delta <= 1.5) continue;
-                    int victim = specs.get(i).meandered ? i
+                    // ★ 受害者优先级（2026-09-07）：源前细流 > 带 meander 的主河。
+                    //   细流加入后，其在主河河头附近的口部（带满幅 meander 摆动）容易
+                    //   与主河判成"真交叉"——按原逻辑受害者可能是【主河】，整条河被拉直
+                    //   （河形 ±2.5 格漂移，实测种子 12345 源头裕度 2.3→-0.1、凸坡
+                    //   11%→25%）。细流去 meander 则完全不可见（本就是归零淡出的小溪）。
+                    //   两条细流相争仍取原逻辑（都不可见）。
+                    int victim;
+                    boolean fi = specs.get(i).feeder, fj = specs.get(j).feeder;
+                    if (fi && !fj) victim = specs.get(i).meandered ? i : (specs.get(j).meandered ? j : -1);
+                    else if (fj && !fi) victim = specs.get(j).meandered ? j : (specs.get(i).meandered ? i : -1);
+                    else victim = specs.get(i).meandered ? i
                             : (specs.get(j).meandered ? j : -1);
                     if (victim < 0) continue;   // 两条都已直，交叉来自基路径/跨源，去 meander 无解
                     RiverSpec sp = specs.get(victim);
@@ -950,6 +968,11 @@ public final class RiverLineNetwork {
     /** 细流最多上溯格数（每格 = gridCell），限制源前流长度。 */
     private static final int FEEDER_MAX_CELLS = 8;
 
+    // ===== 细流淘汰漏斗（诊断用，build 时清零）=====
+    /** [0]考虑的主河数 [1]无上游候选 [2]上溯枯竭/过短 [3]接不回河头
+     *  [4]节点数不足 [5]谷槽门槛弃用 [6]主河水面未回写 [7]成功提交 */
+    public final int[] feederStats = new int[8];
+
     /**
      * 在已成型河流的【河头】上游补 1~2 条细流，构成扇形／树枝状源前流。
      *
@@ -974,13 +997,18 @@ public final class RiverLineNetwork {
                                  List<Integer> accepted, int nx, int rx, int rz) {
         if (FEEDER_COUNT <= 0 || parent.nodes.length == 0) return;
         int head = field.indexOf(parent.nodes[0].x(), parent.nodes[0].z());
-        if (Double.isNaN(nodeSurf[head])) return;      // 主河未回写该格水面 → 无法零台阶汇入
+        if (Double.isNaN(nodeSurf[head])) {
+            feederStats[6]++;
+            return;                                    // 主河未回写该格水面 → 无法零台阶汇入
+        }
+        feederStats[0]++;
 
         // 候选补给格：D8 直接汇水入河头的邻格，按汇流面积降序取前 FEEDER_COUNT 条
         List<Integer> ups = new ArrayList<>(field.upstreamOf(head));
         ups.removeIf(u -> claimed[u]);
         ups.sort((a, b) -> Double.compare(field.accumAt(b), field.accumAt(a)));
         int n = Math.min(FEEDER_COUNT, ups.size());
+        feederStats[1] += FEEDER_COUNT - n;
 
         for (int t = 0; t < n; t++) {
             // 从补给格继续上溯，每步取"汇水面积最大"的上游邻格（即主支），直到
@@ -1008,18 +1036,30 @@ public final class RiverLineNetwork {
                 cells.add(p);
                 p = field.flowTo(p);
             }
-            if (p != head) continue;                    // 未接到河头，放弃（不得留悬空细流）
+            if (p != head) {
+                feederStats[3]++;
+                continue;                               // 未接到河头，放弃（不得留悬空细流）
+            }
             cells.add(head);
-            // ★ 长度下限取 HEAD_TAPER_NODES：源头宽深淡出要 6 个节点才走完。短于它的
-            //   rill 淡出未完成即入水，河头呈"断面"——实测短 rill 使钝头率 1→6（25%），
-            //   反而拉低源头质量。宁缺毋滥。
-            if (cells.size() < Math.max(HEAD_TAPER_NODES, params.minRiverNodes())) continue;
+            // ★ 长度下限 = minRiverNodes（2026-09-07，修"扇形细流看不见"）：淘汰漏斗实测
+            //   （SourceValleyProbe feederFunnel）下限取 HEAD_TAPER_NODES=6 时，候选细流
+            //   几乎全部死于"太短"（典型 region：候选 22、提交 0）——细流上溯到山脊天然
+            //   只有 2~5 格（每格 24wu），山脊不会给更多。而"6 节点才够淡出"的前提本身
+            //   不成立：淡出长度自适应（n = min(HEAD_TAPER_NODES, m/2)），短 rill 在自身
+            //   半长内完成归零淡出，无"断面"；当年"短 rill 使钝头率 1→6"的实测证据
+            //   用的正是后来被证伪的 insideOther 假指标。
+            if (cells.size() < params.minRiverNodes()) {
+                feederStats[4]++;
+                continue;
+            }
 
             double[] rAcc = new double[cells.size()];
             for (int i = 0; i < cells.size(); i++) rAcc[i] = field.accumAt(cells.get(i));
             TraceOutcome out = new TraceOutcome(cells, false, false, true, rAcc, false);
+            int before = rivers.size();
             commitRiver(field, out, parentLevel + 1, claimed, nodeE, nodeSurf, levelAt,
                     allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz, true);
+            feederStats[rivers.size() > before ? 7 : 5]++;   // 成功提交 / 被门槛弃用
         }
     }
 

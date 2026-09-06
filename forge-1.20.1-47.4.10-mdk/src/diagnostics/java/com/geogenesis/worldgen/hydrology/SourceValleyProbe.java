@@ -60,18 +60,54 @@ public final class SourceValleyProbe {
         for (int rz = -rr; rz <= rr; rz++) {
             for (int rx = -rr; rx <= rr; rx++) {
                 all.addAll(engine.network().region(rx, rz).rivers);
+                // ★ 细流淘汰漏斗：region() 返回后统计属于该 region 的 pass-2 build
+                //   （其 8 邻的 pass-1 依赖在 region() 内部先建，全局 stats 最后一次
+                //   被写即本次 pass-2 build）
+                int[] fs = engine.network().feederStats;
+                System.out.printf("feederFunnel region(%d,%d) heads=%d noUp=%d noReconnect=%d"
+                                + " tooShort=%d rejected=%d noSurf=%d committed=%d%n",
+                        rx, rz, fs[0], fs[1], fs[3], fs[4], fs[5], fs[6], fs[7]);
             }
         }
 
         int n = 0, seam = 0;
         int inValley = 0, onShoulder = 0, onRidge = 0;
         int insideOther = 0;
+        int feedersExcluded = 0;
         double sumMargin = 0;
         List<String> badValley = new ArrayList<>();
         List<String> badOther = new ArrayList<>();
 
         for (RiverLineRegion.RiverPolyline r : all) {
             if (r.nodes.length < 2) continue;
+            // ★ 细流剖面（level>=2 = 源前细流/支流）：回答"扇形细流在游戏里长什么样"
+            if (r.level >= 2) {
+                StringBuilder sb = new StringBuilder("  rillProfile L" + r.level
+                        + " (" + r.nodes.length + "节点):");
+                for (int i = 0; i < r.nodes.length; i++) {
+                    sb.append(String.format(" [w=%.2f d=%.2f]", r.width[i], r.depth[i]));
+                }
+                System.out.println(sb);
+            }
+            // ★ 细流（feeder）不参与源头质量考核（2026-09-07）：细流头已归零淡出
+            //   （宽 1 格、深 0），落在凸坡上也切不出可见断面——把它当主河考核会
+            //   把"装饰"计成"缺陷"。细流特征：末节点 = 某条河的首节点（汇入主河头）。
+            //   容差取 3 wu：细流汇入端节点被 meander 横移（meanderAmp=2.5wu，参数
+            //   注释写"block"与实测不符——实测横移 2.35~2.50 wu），衰减只作用在细流
+            //   自己的源头端，不会与主河头精确重合。
+            boolean isFeeder = false;
+            for (RiverLineRegion.RiverPolyline o : all) {
+                if (o == r) continue;
+                if (Math.hypot(r.nodes[r.nodes.length - 1].x() - o.nodes[0].x(),
+                        r.nodes[r.nodes.length - 1].z() - o.nodes[0].z()) < 3.0) {
+                    isFeeder = true;
+                    break;
+                }
+            }
+            if (isFeeder) {
+                feedersExcluded++;
+                continue;
+            }
             double hx = r.nodes[0].x(), hz = r.nodes[0].z();
             // 缝头（跨 region 续流端）不考核
             // ★ 用 floorMod：Java 的 % 对负坐标返回负值，会把所有河误判成"贴边界"
@@ -176,9 +212,9 @@ public final class SourceValleyProbe {
                 insideOther++;
                 if (badOther.size() < 10) {
                     badOther.add(String.format("    源点 wu(%.0f,%.0f) 块(%d,%d) 侵入邻河谷壁 "
-                                    + "%.1f 格  [self wu(%.0f,%.0f) 本河节点数见下] %s",
+                                    + "%.1f 格  level=%d nodes=%d w0=%.2f",
                             hx, hz, (int) Math.floor(hx * hs), (int) Math.floor(hz * hs),
-                            -bestExcess, r.nodes[0].x(), r.nodes[0].z(), worst));
+                            -bestExcess, r.level, r.nodes.length, r.width[0]));
                 }
             }
         }
@@ -194,6 +230,7 @@ public final class SourceValleyProbe {
                 onRidge, onRidge * 100.0 / n);
         System.out.printf("② 落在另一条河过渡区内 = %d (%.0f%%)  ← 用户抱怨：不该在别河谷壁里%n",
                 insideOther, insideOther * 100.0 / n);
+        System.out.println("   （源头质量考核已排除源前细流 " + feedersExcluded + " 条）");
         if (!badValley.isEmpty()) {
             System.out.println("   非谷地源头样例：");
             for (String s : badValley) System.out.println(s);
