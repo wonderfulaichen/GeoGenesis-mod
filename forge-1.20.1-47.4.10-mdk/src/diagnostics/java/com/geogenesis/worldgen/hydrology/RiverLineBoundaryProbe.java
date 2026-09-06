@@ -1,5 +1,8 @@
 package com.geogenesis.worldgen.hydrology;
 
+import com.geogenesis.worldgen.hydrology.riverline.RiverLineParams;
+import com.geogenesis.worldgen.hydrology.riverline.RiverLineRegion;
+import com.geogenesis.worldgen.noise.NoiseUtil;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 
@@ -28,6 +31,118 @@ import com.geogenesis.worldgen.terrain.TerrainParams;
 public final class RiverLineBoundaryProbe {
     private RiverLineBoundaryProbe() { }
 
+    /**
+     * 定点诊断：打印给定 block 坐标附近（60 block 内）所有河的节点序列。
+     * 用于定位"相邻湿列水面差 >1 格"这类可见台阶的成因（两条河贴着走？
+     * 同一条河的节点水面异常？源头侵入？）。
+     */
+    private static void dumpSite(long seed, double hs, int bx, int bz) {
+        TerrainParams params = TerrainParams.defaults();
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        terrain.seed(seed);
+        HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
+        RiverLineParams P = RiverLineParams.defaults();
+        double regionSize = P.regionSize();
+        double wx = bx / hs, wz = bz / hs;                 // block → wu
+        System.out.printf("SITE seed=%d block(%d,%d) wu(%.1f,%.1f) regionSize=%.0f%n",
+                seed, bx, bz, wx, wz, regionSize);
+        // ★ 命中列表：台阶对两侧列各自看到的河段采样（距离/水面/frozen/fallDrop）
+        for (int[] c : new int[][]{{bx, bz}, {bx + 1, bz}, {bx, bz + 1}, {bx + 1, bz + 1}}) {
+            System.out.printf("%ncolumn block(%d,%d) 命中列表:%n", c[0], c[1]);
+            for (HydrologyBlockSample s : engine.sampleBlockAll(c[0], c[1], hs)) {
+                System.out.printf("  dist=%.2f ws=%.2f bed=%.2f w=%.2f frozen=%s fall=%.2f%n",
+                        s.distToCenter(), s.surfaceY(), s.bedY(), s.width(),
+                        s.frozen(), s.fallDrop());
+            }
+        }
+        // ★ 带身份的命中溯源：复刻 sampleRegion 的投影循环，指出每个命中来自
+        //   哪条折线的哪一段——定位"0.9 wu 外却带着下游水位"的神秘命中。
+        double cx0 = (bx + 1) / hs, cz0 = bz / hs;   // 台阶低侧列
+        System.out.printf("%n低侧列 block(%d,%d) wu(%.2f,%.2f) 命中溯源:%n", bx + 1, bz, cx0, cz0);
+        int rrx = Math.floorDiv((int) Math.floor(cx0), (int) regionSize);
+        int rrz = Math.floorDiv((int) Math.floor(cz0), (int) regionSize);
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                RiverLineRegion reg = engine.network().region(rrx + dx, rrz + dz);
+                if (!reg.hasRiver()) continue;
+                for (int ri = 0; ri < reg.rivers.size(); ri++) {
+                    RiverLineRegion.RiverPolyline pl = reg.rivers.get(ri);
+                    for (int i = 0; i + 1 < pl.nodes.length; i++) {
+                        var a = pl.nodes[i];
+                        var b = pl.nodes[i + 1];
+                        double abx = b.x() - a.x(), abz = b.z() - a.z();
+                        double l2 = abx * abx + abz * abz;
+                        double u = l2 < 1e-9 ? 0.0
+                                : ((cx0 - a.x()) * abx + (cz0 - a.z()) * abz) / l2;
+                        double t = NoiseUtil.clamp(u, 0.0, 1.0);
+                        double px = a.x() + abx * t, pz = a.z() + abz * t;
+                        double d = Math.hypot(cx0 - px, cz0 - pz);
+                        if (d / hs > 15) continue;       // 只看 15 block 内的段
+                        // ★ 完整复刻 sampleRegion 的跳过与瀑布分支（1845-1865 行）
+                        String note = "";
+                        if (pl.fallDrop[i + 1] > 0.0 && u > 1.0) note = "SKIP(唇口端帽)";
+                        else if (pl.fallDrop[i + 1] <= 0.0 && pl.fallDrop[i] > 0.0 && u < 0.0)
+                            note = "SKIP(跌水起点端帽)";
+                        double surf;
+                        double fd = 0.0;
+                        boolean fz = false;
+                        if (note.isEmpty() && pl.fallDrop[i + 1] > 0.0) {
+                            fz = true;
+                            double FALL_STEP_T = 0.88;   // 与生产 RiverLineNetwork:38 一致
+                            if (t < FALL_STEP_T) {
+                                surf = pl.surfaceY[i];
+                            } else {
+                                surf = pl.surfaceY[i + 1];
+                                fd = pl.surfaceY[i] - pl.surfaceY[i + 1];
+                            }
+                        } else {
+                            surf = NoiseUtil.lerp(pl.surfaceY[i], pl.surfaceY[i + 1], t);
+                        }
+                        System.out.printf(
+                                "  region(%d,%d) river#%d seg[%d] u=%.2f dist=%.2f块 "
+                                        + "ws=%.2f w=%.2f fall[i1]=%.2f %s%s%n",
+                                rrx + dx, rrz + dz, ri, i, u, d / hs, surf,
+                                NoiseUtil.lerp(pl.width[i], pl.width[i + 1], t),
+                                pl.fallDrop[i + 1], note,
+                                fz ? " frozen" : "");
+                    }
+                }
+                for (var ln : reg.lakes) {
+                    double d = Math.hypot(cx0 - ln.x, cz0 - ln.z) / hs;
+                    if (d > 60) continue;
+                    System.out.printf("  region(%d,%d) LAKE at block(%.0f,%.0f) h=%.2f "
+                            + "dist=%.1f块%n", rrx + dx, rrz + dz,
+                            ln.x * hs, ln.z * hs, ln.height, d);
+                }
+            }
+        }
+        int rx0 = (int) Math.floor(wx / regionSize), rz0 = (int) Math.floor(wz / regionSize);
+        for (int rz = rz0 - 1; rz <= rz0 + 1; rz++) {
+            for (int rx = rx0 - 1; rx <= rx0 + 1; rx++) {
+                for (RiverLineRegion.RiverPolyline r : engine.network().region(rx, rz).rivers) {
+                    double best = Double.POSITIVE_INFINITY;
+                    int bestI = -1;
+                    for (int i = 0; i < r.nodes.length; i++) {
+                        double d = Math.hypot(r.nodes[i].x() - wx, r.nodes[i].z() - wz) / hs;
+                        if (d < best) { best = d; bestI = i; }
+                    }
+                    if (best > 60) continue;
+                    System.out.printf("%nriver in region(%d,%d) 最近距离=%.1f block, "
+                                    + "%d 节点%n", rx, rz, best, r.nodes.length);
+                    int lo = Math.max(0, bestI - 4), hi = Math.min(r.nodes.length - 1, bestI + 4);
+                    for (int i = lo; i <= hi; i++) {
+                        System.out.printf("  node[%d] wu(%.2f,%.2f) ws=%.3f w=%.3f fall=%.3f%n",
+                                i, r.nodes[i].x(), r.nodes[i].z(),
+                                r.surfaceY[i], r.width[i], r.fallDrop[i]);
+                    }
+                    if (lo > 0) System.out.printf("  ...头部还有 %d 节点%n", lo);
+                    if (hi < r.nodes.length - 1) System.out.printf("  ...尾部还有 %d 节点%n",
+                            r.nodes.length - 1 - hi);
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         TerrainParams params = TerrainParams.defaults();
@@ -36,6 +151,12 @@ public final class RiverLineBoundaryProbe {
         //   看到的不是同一个世界（本项目已多次栽在探针与生产口径不一致上）。
         double horizontalScale = args.length > 1
                 ? Double.parseDouble(args[1]) : params.horizontalScale();
+        // ★ 定点 dumped 模式：gradlew runRiverLineBoundaryProbe -PprobeArgs="12345 2.0 SITE -427 47"
+        //   打印世界坐标附近所有河的节点/水面，用于诊断"水面台阶"类缺陷的成因。
+        if (args.length > 3 && "SITE".equalsIgnoreCase(args[2])) {
+            dumpSite(seed, horizontalScale, Integer.parseInt(args[3]), Integer.parseInt(args[4]));
+            return;
+        }
         CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
@@ -65,10 +186,12 @@ public final class RiverLineBoundaryProbe {
         // 3) 平滑度：含河 chunk 内随机抽样行/列，单步雕刻量变化与水面台阶
         int smoothPairs = 0, carveSteps = 0, waterSteps = 0, fallExempt = 0;
         int waterOwnerSwitch = 0, waterRealStep = 0, wetSteps = 0;
+        int wet05 = 0, wet10 = 0, wet20 = 0;   // 湿列台阶分档：>0.5 / >1.0 / >2.0 格
         double maxWetStep = 0.0;
         double maxStepDelta = 0.0, maxWaterStep = 0.0;
         double maxWaterStepFlat = 0.0, maxRealStep = 0.0;
         java.util.List<String> realList = new java.util.ArrayList<>();
+        java.util.List<String> bigList = new java.util.ArrayList<>();
         for (long key : riverChunks) {
             int cx = (int) (key >> 32);
             int cz = (int) (key & 0xffffffffL);
@@ -99,6 +222,16 @@ public final class RiverLineBoundaryProbe {
                         if (!(isFall(c0) || isFall(c1)) && dWet > 0.25) {
                             wetSteps++;
                             maxWetStep = Math.max(maxWetStep, dWet);
+                            // ★ 分档（2026-09-07）：0.25 的阈值把顺流【梯度】也算进来了——
+                            //   河面沿程下降，陡河相邻列差 0.3 格是正常坡度。真正可见的
+                            //   "楼梯"是 >1 格的跳变（落块后水柱直接错位一层以上）。
+                            if (dWet > 0.5) wet05++;
+                            if (dWet > 1.0) { wet10++; if (bigList.size() < 12) bigList.add(String.format(
+                                    "  wet>=1格 %.2f: block(%d,%d) ws %.2f->%.2f carved %.2f->%.2f",
+                                    dWet, c0.blockX(), c0.blockZ(),
+                                    c0.waterSurfaceY(), c1.waterSurfaceY(),
+                                    c0.carvedGroundY(), c1.carvedGroundY())); }
+                            if (dWet > 2.0) wet20++;
                             if (realList.size() < 8) {
                                 realList.add(String.format(
                                         "  wetStep=%.2f格: block(%d,%d) ws %.2f->%.2f",
@@ -149,6 +282,10 @@ public final class RiverLineBoundaryProbe {
         System.out.println("wetStepViolations(两列都灌水,>0.25)=" + wetSteps
                 + "  max=" + maxWetStep
                 + "  ← 唯一真正可见的判据（干岸列的 ws 只是 IDW 外推、不渲染）");
+        System.out.println("  wetStep 分档: >0.5=" + wet05 + "  >1.0=" + wet10
+                + "  >2.0=" + wet20
+                + "  （>1.0 才是落块后水柱错层的可见\"楼梯\"；0.25~0.5 多为顺流坡度）");
+        bigList.forEach(System.out::println);
         realList.forEach(System.out::println);
         System.out.println("maxStepDelta=" + maxStepDelta);
         System.out.println("maxWaterStep(含跌水)=" + maxWaterStep);
