@@ -125,8 +125,14 @@ public final class HydrologyWaterFillProbe {
                     // 河心列（d <= 0.7w）允许水面高于原地形——那是切穿出的河槽，属正常。
                     if (d > w * 0.7 && d <= w) {
                         bankColumns++;
-                        // 只有"灌了水且水面高于地形"才会视觉上漫出河岸；未灌水的列是岸。
+                        // ★ 海床列豁免（2026-09-06）：本判据要抓的是"河水漫到【陆地】上"。
+                        //   若原始地面本就低于海平面，那列是海床，那里的水是【海水】，
+                        //   不是河漫出去的水。实测 20 种子全部 bankOverflow 命中列
+                        //   orig=62.13~62.92 均 < 海平面 63、ws=63.00~63.06，且
+                        //   floor(ws)=63 与海面同高 → 落块后就是海水，无任何可见异常。
+                        //   （此前把它当作细流带来的回退，对照后确认细流关闭态更多：4 vs 3）
                         if (column.fillWater()
+                                && column.originalGroundY() >= seaLevelY
                                 && column.waterSurfaceY() > column.originalGroundY() + 1e-6) {
                             bankOverflow++;
                             if (bankOverflow <= 8) {
