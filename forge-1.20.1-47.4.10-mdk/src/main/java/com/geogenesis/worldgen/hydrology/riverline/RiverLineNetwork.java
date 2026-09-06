@@ -87,6 +87,13 @@ public final class RiverLineNetwork {
      * 0 会把"近似平肩"也算作槽；过大则河头被一路推到下游、河长损失。
      */
     private static final double VALLEY_MIN_RISE = 0.5;
+    /** 细流上溯的谷形下限：裕度低于此 = 凸坡肩部/山脊（bestValleyHead 同判据），谷形消失。 */
+    private static final double FEEDER_MARGIN_MIN = -1.0;
+    /** 细流头相对主河【头格地面】的最大爬升（block）：超过即停止上溯。山顶小溪 =
+     *  爬升几十格直上分水岭（实测 30+）；源头上方的支谷泉眼 = 爬升几格~十几格。
+     *  基准取头格【地面】而非水面：水面在雕刻槽底、比周边地面低一个 carving 深度，
+     *  拿它当基准会把爬升量虚高（实测 8~14 格门槛下细流全灭）。 */
+    private static final double FEEDER_MAX_RISE = 14.0;
 
     /**
      * 河源后方崖壁的最小抬升（block）：河头上游一步的地形须高出此值，否则视为落在
@@ -386,7 +393,7 @@ public final class RiverLineNetwork {
             }
             CommitOut c = commitRiver(field, out, level, claimed, nodeE, nodeSurf,
                     levelAt, allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz,
-                    null, false);
+                    null, Double.NaN, Double.NaN, false);
             maxDischarge = Math.max(maxDischarge, c.maxDischarge());
             if (c.reachedOcean()) outletOcean = true;
             if (c.poly() != null) {
@@ -439,7 +446,8 @@ public final class RiverLineNetwork {
                     TraceOutcome mOut = new TraceOutcome(mergeCells, false, false, true, mAcc, false);
                     CommitOut mc = commitRiver(field, mOut, seed.level + 1, claimed, nodeE,
                             nodeSurf, levelAt, allSegments, rivers, specs, lakes, accepted,
-                            nx, seed.surfaceY, rx, rz, neighborRivers, false);
+                            nx, seed.surfaceY, rx, rz, neighborRivers,
+                            Double.NaN, Double.NaN, false);
                     if (mc.poly() != null) {
                         accepted.add(start);
                         acceptedCount++;
@@ -461,7 +469,7 @@ public final class RiverLineNetwork {
                 // 续流首节点水面 = 上游尾节点水面（保证跨缝水面连续，无台阶）
                 CommitOut c = commitRiver(field, out, level, claimed, nodeE, nodeSurf,
                         levelAt, allSegments, rivers, specs, lakes, accepted, nx, seed.surfaceY,
-                        rx, rz, neighborRivers, false);
+                        rx, rz, neighborRivers, Double.NaN, Double.NaN, false);
                 maxDischarge = Math.max(maxDischarge, c.maxDischarge());
                 if (c.reachedOcean()) outletOcean = true;
                 if (c.poly() != null) {
@@ -595,7 +603,8 @@ public final class RiverLineNetwork {
                                   List<RiverPolyline> rivers, List<RiverSpec> specs,
                                   List<RiverLineRegion.LakeNode> lakes,
                                   List<Integer> accepted, int nx, double forcedSrcH, int rx, int rz,
-                                  List<RiverPolyline> extraValleys, boolean feeder) {
+                                  List<RiverPolyline> extraValleys,
+                                  double mouthW, double mouthD, boolean feeder) {
         for (int c : out.cells) {
             claimed[c] = true;
             nodeE[c] = field.eAt(c);
@@ -662,7 +671,8 @@ public final class RiverLineNetwork {
                         TraceOutcome mOut = new TraceOutcome(mc, false, false, true, mAcc, false);
                         CommitOut mC = commitRiver(field, mOut, level + 1, claimed, nodeE,
                                 nodeSurf, levelAt, allSegments, rivers, specs, lakes,
-                                accepted, nx, forcedSrcH, rx, rz, extraValleys, true);
+                                accepted, nx, forcedSrcH, rx, rz, extraValleys,
+                                Double.NaN, Double.NaN, true);
                         if (mC.poly() != null) {
                             feederStats[9]++;
                             return mC;
@@ -715,6 +725,20 @@ public final class RiverLineNetwork {
             dep[k] = d;
             acc = Math.max(acc, a);
         }
+        // ★ 口部收敛（2026-09-07，用户："主河源头是窄的，又接到小溪的宽下游"）：
+        //   细流的汇入格 = 主河【河头】——主河源头宽度已淡出到 HEAD_MIN_WIDTH_FRACTION
+        //   （实测 ~1 格），而细流口部按源头格汇流面积取全宽（实测 2~3 wu）。宽的细流
+        //   口接窄的源头 = 交汇处宽度错位，看起来像"一条河的下游怼在另一条河的源头上"。
+        //   口部 2 节点收敛到主河河头的实际宽深（parent.width[0]/depth[0]）。
+        if (feeder && !Double.isNaN(mouthW)) {
+            int tm = Math.min(2, m);
+            for (int k = 0; k < tm; k++) {
+                int idx = m - 1 - k;
+                double keep = tm == 1 ? 0.0 : 1.0 - (tm - k) / (double) tm;
+                wid[idx] = NoiseUtil.lerp(mouthW, wid[idx], keep);
+                dep[idx] = NoiseUtil.lerp(mouthD, dep[idx], keep);
+            }
+        }
         // 出口水面：入海→海平面附近；汇入主流→继承主流在交汇点水面（PL-RGA 节点共享）；否则贴地形
         int junctionCell = out.cells.get(out.cells.size() - 1);
         double junctionGround = groundYAt(field.cellCenterX(junctionCell), field.cellCenterZ(junctionCell));
@@ -734,7 +758,12 @@ public final class RiverLineNetwork {
         //   （实测 #6×#7 交叉 8 次、水面差 4.1 格 → 交汇"上下错层"）。先按满 meander
         //   平滑，若与已接受河真交叉则整条去 meander 重来（非 meander 路径沿用已防
         //   交叉的格路径，不再穿插）。
-        RiverPolyline smoothed = smoothPath(nodes, surf, wid, dep, level, 1.0);
+        // 尾端淡出：细流口部钉在交汇格。仅限带口部收敛（mouthW 有效）的真细流；
+        // 合并连接（feeder 语义但 mouthW=NaN）的尾端目标是邻区折线点，格心与目标点
+        // 天然可差 ~半格，钉死反而把口部固定在偏离河道的位置（A/B 实测恶化缝指标）。
+        double tailFadeArc = feeder && !Double.isNaN(mouthW)
+                ? 2.0 * Math.max(1.0, params.gridCell()) : 0.0;
+        RiverPolyline smoothed = smoothPath(nodes, surf, wid, dep, level, 1.0, tailFadeArc);
         // ★ 交汇继承必须用【瀑布处理后】的真实水面（2026-08-31）：smoothPath 内
         //   applyWaterfalls 会把 tread 上游节点抬到阶梯水位，而 surf 是抬升前的贴地
         //   剖面。旧代码用 surf 回写 nodeSurf → 支流在 tread 区汇入时继承到瀑布前的
@@ -785,7 +814,8 @@ public final class RiverLineNetwork {
                             : (specs.get(j).meandered ? j : -1);
                     if (victim < 0) continue;   // 两条都已直，交叉来自基路径/跨源，去 meander 无解
                     RiverSpec sp = specs.get(victim);
-                    rivers.set(victim, smoothPath(sp.nodes, sp.surf, sp.wid, sp.dep, sp.level, 0.0));
+                    rivers.set(victim, smoothPath(sp.nodes, sp.surf, sp.wid, sp.dep,
+                            sp.level, 0.0, 0.0));
                     sp.meandered = false;
                     changed = true;
                     break;
@@ -1059,6 +1089,22 @@ public final class RiverLineNetwork {
     }
 
     /**
+     * 细流上溯用的汇流槽横向裕度（{@link #valleyMargin} 的"流向已知"版）：
+     * {@code cell} 的下游方向由 {@code downstream}（水流入的邻格）给出。
+     * 公式与 valleyMargin 完全同源（垂直流向左右两侧高程的最小值 − 自身高程）。
+     */
+    private double feederCellMargin(FlowField field, int cell, int downstream) {
+        double off = Math.max(8.0, params.gridCell());
+        double ax = field.cellCenterX(cell), az = field.cellCenterZ(cell);
+        double dx = field.cellCenterX(downstream) - ax, dz = field.cellCenterZ(downstream) - az;
+        double len = Math.hypot(dx, dz);
+        if (len < 1e-6) return Double.POSITIVE_INFINITY;
+        double px = -dz / len * off, pz = dx / len * off;
+        return Math.min(groundYAt(ax - px, az - pz), groundYAt(ax + px, az + pz))
+                - groundYAt(ax, az);
+    }
+
+    /**
      * 回退选择：整条路径【没有】达标谷槽时，取"最像谷槽"（{@link #valleyMargin} 最大）
      * 的一格作河头。
      *
@@ -1123,17 +1169,19 @@ public final class RiverLineNetwork {
      * （platform / angleFails / SourceValleyProbe 的 sample vs sampleWu / 落块取整），
      * 这次是<b>公式</b>不同。核对新特性时，判据必须逐行对齐生产实现，不能凭语义近似。</p>
      */
-    private static final int FEEDER_COUNT = 2;
+    // 3（2026-09-07，用户要扇形散流）：谷尖即停+爬升上限后单个候选成活率降低，
+    // 取 3 条候选补密度；不达标的照样被门槛淘汰，不会破坏形态。
+    private static final int FEEDER_COUNT = 3;
     /** 细流上溯的汇流面积下限（wu²）：低于此说明已进入坡面散流区，停止上溯。= 1 格。 */
     private static final double FEEDER_MIN_ACCUM = 576.0;
     /** 细流最多上溯格数（每格 = gridCell），限制源前流长度。 */
     private static final int FEEDER_MAX_CELLS = 8;
 
     // ===== 细流淘汰漏斗（诊断用，build 时清零）=====
-    /** [0]考虑的主河数 [1]无上游候选 [2]上溯枯竭/过短 [3]接不回河头
-     *  [4]节点数不足 [5]谷槽门槛弃用 [6]主河水面未回写 [7]成功提交
-     *  [8]续流并入尝试 [9]并入成功 */
-    public final int[] feederStats = new int[10];
+    /** [0]考虑的主河数 [1]无上游候选 [2]起步在凸坡/爬升过顶 [3]接不回河头
+     *  [4]节点数不足 [5]提交被弃用 [6]主河水面未回写 [7]成功提交
+     *  [8]续流并入尝试 [9]并入成功 [10]细流进入缝带 */
+    public final int[] feederStats = new int[12];
 
     /**
      * 在已成型河流的【河头】上游补 1~2 条细流，构成扇形／树枝状源前流。
@@ -1177,7 +1225,22 @@ public final class RiverLineNetwork {
             // 低于细流门槛 / 撞已有河 / 步数耗尽。
             // ★ 注意上游格 accum 必然【小于】当前格，故初值不能用 accumAt(cur) 比较，
             //   否则一步都走不动（写成那样时实测 rill 全部退化为 1 格、被 minRiverNodes 裁光）。
-            int cur = ups.get(t);
+            // ★ 谷尖即停（2026-09-07，用户："小溪源头都生成在山顶"）：上溯的终点是
+            //   "没有更上游的格"——那正是分水岭/山顶。改为沿途检查候选格的汇流槽
+            //   裕度，跌破【凸坡阈值】即停。阈值取 −1 而非主河源的 +0.5：主河河头被
+            //   advanceToValleyHead 推进了深槽，恰好把裕度 <0.5 的上游浅谷段"让"给
+            //   细流（漏斗实测 24/28 候选死于 +0.5 门槛）——浅谷上游段仍是山谷，
+            //   只有裕度 < −1（项目已有的"凸坡肩部"判据，见 bestValleyHead 注释）
+            //   才是用户看到的光坡/山顶。细流源头停在谷形消失之前。
+            int startCell = ups.get(t);
+            double headGround = groundYAt(field.cellCenterX(head), field.cellCenterZ(head));
+            if (feederCellMargin(field, startCell, head) < FEEDER_MARGIN_MIN
+                    || groundYAt(field.cellCenterX(startCell), field.cellCenterZ(startCell))
+                            - headGround > FEEDER_MAX_RISE) {
+                feederStats[2]++;
+                continue;                               // 起步就在凸坡/山脊上（或爬升过顶），放弃
+            }
+            int cur = startCell;
             for (int step = 0; step < FEEDER_MAX_CELLS; step++) {
                 int best = -1;
                 double bestAccum = -1.0;
@@ -1187,6 +1250,9 @@ public final class RiverLineNetwork {
                     if (a > bestAccum) { bestAccum = a; best = u; }
                 }
                 if (best < 0 || bestAccum < FEEDER_MIN_ACCUM) break;
+                if (feederCellMargin(field, best, cur) < FEEDER_MARGIN_MIN
+                        || groundYAt(field.cellCenterX(best), field.cellCenterZ(best))
+                                - headGround > FEEDER_MAX_RISE) break;  // 谷形消失/爬升过顶
                 cur = best;
             }
 
@@ -1203,14 +1269,26 @@ public final class RiverLineNetwork {
                 continue;                               // 未接到河头，放弃（不得留悬空细流）
             }
             cells.add(head);
-            // ★ 长度下限 = minRiverNodes（2026-09-07，修"扇形细流看不见"）：淘汰漏斗实测
-            //   （SourceValleyProbe feederFunnel）下限取 HEAD_TAPER_NODES=6 时，候选细流
-            //   几乎全部死于"太短"（典型 region：候选 22、提交 0）——细流上溯到山脊天然
-            //   只有 2~5 格（每格 24wu），山脊不会给更多。而"6 节点才够淡出"的前提本身
-            //   不成立：淡出长度自适应（n = min(HEAD_TAPER_NODES, m/2)），短 rill 在自身
-            //   半长内完成归零淡出，无"断面"；当年"短 rill 使钝头率 1→6"的实测证据
-            //   用的正是后来被证伪的 insideOther 假指标。
-            if (cells.size() < params.minRiverNodes()) {
+            // ★ 细流不得进入缝带（2026-09-07，A/B 实测断层 404→497、最大坎 9→11）：
+            //   源头距缝 borderDist，细流再往上爬 2~4 格就可能跨入缝带/邻区雕刻重叠区
+            //   ——重叠区最终归属邻区输出，本区版本的细流雕刻被丢弃/错位 → 缝两侧
+            //   台阶。要求整条细流路径都离 region 边界 ≥ borderDist。
+            boolean inBorderZone = false;
+            for (int c : cells) {
+                if (nearRegionBorder(field, c, rx, rz, params.borderDist())) {
+                    inBorderZone = true;
+                    break;
+                }
+            }
+            if (inBorderZone) {
+                feederStats[10]++;
+                continue;
+            }
+            // ★ 长度下限 2 格（2026-09-07，用户："小溪源头生成在山顶"）：谷尖即停+爬升
+            //   上限让细流天然变短（源头就在主河头上方的支谷里），3 格下限会把陡谷里的
+            //   正确细流全灭（漏斗实测 committed 1→0）。2 格 = 源头泉眼 + 交汇格的极短
+            //   支谷，口部收敛（mouthW/mouthD）与头/尾 meander 钉死都已就位，形态完整。
+            if (cells.size() < 2) {
                 feederStats[4]++;
                 continue;
             }
@@ -1219,9 +1297,11 @@ public final class RiverLineNetwork {
             for (int i = 0; i < cells.size(); i++) rAcc[i] = field.accumAt(cells.get(i));
             TraceOutcome out = new TraceOutcome(cells, false, false, true, rAcc, false);
             int before = rivers.size();
+            // 口部收敛：细流口接主河【河头】——主河源头已淡出到 ~1 格宽，细流口部
+            // 收敛到主河河头的实际宽深，避免"宽下游怼在窄源头上"
             commitRiver(field, out, parentLevel + 1, claimed, nodeE, nodeSurf, levelAt,
                     allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz,
-                    null, true);
+                    null, parent.width[0], parent.depth[0], true);
             feederStats[rivers.size() > before ? 7 : 5]++;   // 成功提交 / 被门槛弃用
         }
     }
@@ -1291,7 +1371,7 @@ public final class RiverLineNetwork {
      */
     private RiverPolyline smoothPath(MidpointDisplacement.Node[] rawNodes,
                                      double[] rawSurf, double[] rawWid, double[] rawDep,
-                                     int level, double meanderScale) {
+                                     int level, double meanderScale, double tailFadeArc) {
         int n = rawNodes.length;
         if (n < 3) {
             clampMonotonicDownstream(rawSurf, rawWid, rawDep);
@@ -1364,6 +1444,7 @@ public final class RiverLineNetwork {
             //   物理上也应当如此：蜿蜒振幅随流量/河宽增大，河源细流本就近乎顺直。
             //   跨度取 HEAD_TAPER_NODES × gridCell，与河头宽深淡出同段完成。
             double meanderHeadArc = HEAD_TAPER_NODES * Math.max(1.0, params.gridCell());
+            double totalArc = acc;
             for (int i = 0; i < m; i++) {
                 int prev = i > 0 ? i - 1 : 0;
                 int next = i < m - 1 ? i + 1 : m - 1;
@@ -1373,7 +1454,14 @@ public final class RiverLineNetwork {
                 if (tl > 1e-6) { tx /= tl; tz /= tl; }
                 double nx = -tz, nz = tx;   // 左转 90° 法向
                 double headFade = NoiseUtil.smooth(NoiseUtil.saturate(arc[i] / meanderHeadArc));
-                double off = meanderScale * params.meanderAmp() * headFade
+                // ★ 尾端淡出（2026-09-07，用户："小溪下游和主河源头不在一个高度上"）：
+                //   细流/合并河的尾端是【硬连接】到另一条河的交汇格——被 meander 横移
+                //   （≤2.5wu）后口部落在主河窄头旁边的坡上，水面高度自然对不上。
+                //   tailFadeArc>0 时尾端 meander 归零，口部精确钉在交汇格心。
+                double tailFade = tailFadeArc > 0.0
+                        ? NoiseUtil.smooth(NoiseUtil.saturate((totalArc - arc[i]) / tailFadeArc))
+                        : 1.0;
+                double off = meanderScale * params.meanderAmp() * headFade * tailFade
                         * Math.sin(2.0 * Math.PI * arc[i] / params.meanderWavelength());
                 mx[i] += nx * off;
                 mz[i] += nz * off;

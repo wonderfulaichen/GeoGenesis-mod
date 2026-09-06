@@ -64,10 +64,11 @@ public final class SourceValleyProbe {
                 //   （其 8 邻的 pass-1 依赖在 region() 内部先建，全局 stats 最后一次
                 //   被写即本次 pass-2 build）
                 int[] fs = engine.network().feederStats;
-                System.out.printf("feederFunnel region(%d,%d) heads=%d noUp=%d noReconnect=%d"
-                                + " tooShort=%d rejected=%d noSurf=%d committed=%d"
-                                + " mergeTry=%d merged=%d%n",
-                        rx, rz, fs[0], fs[1], fs[3], fs[4], fs[5], fs[6], fs[7], fs[8], fs[9]);
+                System.out.printf("feederFunnel region(%d,%d) heads=%d noUp=%d outsideValley=%d"
+                                + " noReconnect=%d tooShort=%d rejected=%d noSurf=%d committed=%d"
+                                + " mergeTry=%d merged=%d borderZone=%d%n",
+                        rx, rz, fs[0], fs[1], fs[2], fs[3], fs[4], fs[5], fs[6], fs[7],
+                        fs[8], fs[9], fs[10]);
             }
         }
 
