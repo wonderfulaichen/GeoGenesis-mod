@@ -26,6 +26,24 @@ public final class SourceValleyProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         double hs = args.length > 1 ? Double.parseDouble(args[1]) : 2.0;
         double off = args.length > 2 ? Double.parseDouble(args[2]) : 24.0;   // 横距(wu)
+        // ★ 多种子扫描（第 4 个参数）：源头类缺陷是概率性的，单 region 只有 ~20 条河，
+        //   单种子根本不够。gradlew runSourceValleyProbe -PprobeArgs="12345 2.0 24 30"
+        int sweep = args.length > 3 ? Math.max(1, Integer.parseInt(args[3])) : 1;
+        int rr = args.length > 4 ? Math.max(0, Integer.parseInt(args[4])) : 1;
+        if (sweep > 1) {
+            System.out.println("=== SourceValleyProbe SWEEP base=" + seed + " count=" + sweep
+                    + " rr=" + rr + " ===");
+            for (int i = 0; i < sweep; i++) {
+                long sd = seed + i * 7919L;
+                System.out.println("---- seed=" + sd + " ----");
+                probeOne(sd, hs, off, rr);
+            }
+            return;
+        }
+        probeOne(seed, hs, off, rr);
+    }
+
+    private static void probeOne(long seed, double hs, double off, int rr) {
         TerrainParams params = TerrainParams.defaults();
         CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
         terrain.seed(seed);
@@ -34,10 +52,13 @@ public final class SourceValleyProbe {
         double regionSize = P.regionSize();
         double seamTol = 48.0;
 
-        // 收集全部河（跨 3×3 region），用于"是否落在别的河谷里"的判定
+        // 收集全部河（默认跨 3×3 region），用于"是否落在别的河谷里"的判定。
+        // ★ rr 参数（第 5 个）可收窄到 1×1：用于区分 offender 是【同 region 内】还是
+        //   【跨 region】——resolveInvadedHeads 是 region 级的，跨 region 案例它按定义
+        //   看不见，两者的处置方式完全不同（前者是本地 bug，后者要动架构）。
         List<RiverLineRegion.RiverPolyline> all = new ArrayList<>();
-        for (int rz = -1; rz <= 1; rz++) {
-            for (int rx = -1; rx <= 1; rx++) {
+        for (int rz = -rr; rz <= rr; rz++) {
+            for (int rx = -rr; rx <= rr; rx++) {
                 all.addAll(engine.network().region(rx, rz).rivers);
             }
         }
@@ -95,6 +116,7 @@ public final class SourceValleyProbe {
             //   等于拿一把更短的尺子去量，只会漏报。本项目已四次栽在"探针与生产取
             //   的数据不同源"，这次是【公式不同】。
             double bestExcess = Double.POSITIVE_INFINITY;   // <0 = 在别人谷里
+            String worst = "";                              // ★ 诊断：被谁侵入
             for (RiverLineRegion.RiverPolyline o : all) {
                 if (o == r) continue;
                 double bestD = Double.POSITIVE_INFINITY;
@@ -117,13 +139,29 @@ public final class SourceValleyProbe {
                 if (Math.hypot(hx - mouth.x(), hz - mouth.z()) <= 1.5 * P.gridCell()) continue;
                 double wLocal = Math.max(o.width[Math.min(bestI, o.width.length - 1)], 1.0);
                 double oValleyBlocks = wLocal * 3.5 * hs;    // valley=3.5×半宽，wu→block
-                bestExcess = Math.min(bestExcess, bestD * hs - oValleyBlocks);
+                double ex = bestD * hs - oValleyBlocks;
+                if (ex < bestExcess) {
+                    bestExcess = ex;
+                    // ★ 诊断信息：本河头数 / 对方头数（<10 判为细流）、本河头距对方
+                    //   河头与河口的距离、最近点落在对方第几段（0 段=扎进对方源头区）
+                    double dToOtherHead = Math.hypot(hx - o.nodes[0].x(), hz - o.nodes[0].z());
+                    worst = String.format(
+                            "rLen=%d oLen=%d bestSeg=%d/%d d=%.1fwu oHead=%.1fwu "
+                                    + "oMouth=%.1fwu wLocal=%.1f",
+                            r.nodes.length, o.nodes.length, bestI, o.nodes.length - 1,
+                            bestD, dToOtherHead,
+                            Math.hypot(hx - o.nodes[o.nodes.length - 1].x(),
+                                    hz - o.nodes[o.nodes.length - 1].z()),
+                            wLocal);
+                }
             }
             if (bestExcess < 0) {
                 insideOther++;
                 if (badOther.size() < 10) {
-                    badOther.add(String.format("    源点 wu(%.0f,%.0f) 块(%d,%d) 侵入邻河谷壁 %.1f 格",
-                            hx, hz, (int) Math.floor(hx * hs), (int) Math.floor(hz * hs), -bestExcess));
+                    badOther.add(String.format("    源点 wu(%.0f,%.0f) 块(%d,%d) 侵入邻河谷壁 "
+                                    + "%.1f 格  [self wu(%.0f,%.0f) 本河节点数见下] %s",
+                            hx, hz, (int) Math.floor(hx * hs), (int) Math.floor(hz * hs),
+                            -bestExcess, r.nodes[0].x(), r.nodes[0].z(), worst));
                 }
             }
         }
