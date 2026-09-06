@@ -1169,9 +1169,13 @@ public final class RiverLineNetwork {
      * （platform / angleFails / SourceValleyProbe 的 sample vs sampleWu / 落块取整），
      * 这次是<b>公式</b>不同。核对新特性时，判据必须逐行对齐生产实现，不能凭语义近似。</p>
      */
-    // 3（2026-09-07，用户要扇形散流）：谷尖即停+爬升上限后单个候选成活率降低，
-    // 取 3 条候选补密度；不达标的照样被门槛淘汰，不会破坏形态。
-    private static final int FEEDER_COUNT = 3;
+    // 0 = 停用（2026-09-07，用户裁决：河源扇形细流功能取消）。
+    // 理由：现实水文里支流在【下游中途】汇入（支流 < 主干，且越汇越宽），
+    // 不会都挤在源头——源头汇入 = 源头变成汇聚点，源头失去意义；而"中途
+    // 汇入"河系本来就有（trace 就近汇入的二级河），此功能纯属重复。连带
+    // 的"口部收敛"只是给错误设计的补丁（把宽流硬塞进窄泉眼），一并作废。
+    // 代码骨架保留：emitFeederRills/mouthW/tailFade 全部惰性，零开销。
+    private static final int FEEDER_COUNT = 0;
     /** 细流上溯的汇流面积下限（wu²）：低于此说明已进入坡面散流区，停止上溯。= 1 格。 */
     private static final double FEEDER_MIN_ACCUM = 576.0;
     /** 细流最多上溯格数（每格 = gridCell），限制源前流长度。 */
