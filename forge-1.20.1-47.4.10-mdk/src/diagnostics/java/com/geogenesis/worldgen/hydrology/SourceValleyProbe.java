@@ -65,9 +65,14 @@ public final class SourceValleyProbe {
             double len = Math.hypot(dx, dz);
             if (len < 1e-6) continue;
             double px = -dz / len, pz = dx / len;          // 垂直流向（横向）
-            double h0 = terrain.sample(hx, hz).height;
-            double hL = terrain.sample(hx - px * off, hz - pz * off).height;
-            double hR = terrain.sample(hx + px * off, hz + pz * off).height;
+            // ★ 必须与生产同源：advanceToValleyHead 的汇流槽判据走 groundYAt →
+            //   terrainY.yAt → CellGenerator.sampleWu（含侵蚀 tile delta）。原先用
+            //   sample()（不含侵蚀）复核，等于拿另一份地形去考核判据——本项目已两次
+            //   栽在同一类问题上（WaterfallCornerProbe 的 platform、WaterfallProbe 的
+            //   angleFails 都是探针与生产数据不一致造成的假指标）。
+            double h0 = terrain.sampleWu(hx, hz).height;
+            double hL = terrain.sampleWu(hx - px * off, hz - pz * off).height;
+            double hR = terrain.sampleWu(hx + px * off, hz + pz * off).height;
             double margin = Math.min(hL, hR) - h0;         // >0 = 两侧都更高 = 槽内
             n++;
             sumMargin += margin;

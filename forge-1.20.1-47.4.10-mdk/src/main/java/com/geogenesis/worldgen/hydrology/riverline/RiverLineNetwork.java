@@ -448,7 +448,15 @@ public final class RiverLineNetwork {
         //   兜底：若为此牺牲到不足 minRiverNodes，则退回仅按汇流面积裁剪的结果——
         //   宁可保留一条源头略欠理想的河，也不让整条河消失（密度已压缩过多轮）。
         int valleyStart = advanceToValleyHead(field, out, start, rivers);
-        if (out.cells.size() - valleyStart >= params.minRiverNodes()) start = valleyStart;
+        if (out.cells.size() - valleyStart >= params.minRiverNodes()) {
+            start = valleyStart;                                  // 有达标谷槽，直接采用
+        } else {
+            // 全程找不到达标谷槽（或为此会把河裁没）：退而求其次取"最像谷槽"的一格，
+            // 而不是停在恰好达汇流门槛的任意位置（实测该任意位置两个种子各有 22% 落在
+            // 凸坡肩部）。bestValleyHead 的上界已预留 minRiverNodes，不会把河裁丢。
+            int fallback = bestValleyHead(field, out, start);
+            if (out.cells.size() - fallback >= params.minRiverNodes()) start = fallback;
+        }
         if (out.cells.size() - start < params.minRiverNodes())
             return new CommitOut(null, out.reachedOcean, 0.0, null, Double.NaN);
         int m = out.cells.size() - start;
@@ -769,10 +777,8 @@ public final class RiverLineNetwork {
             double dx = field.cellCenterX(nxt) - ax, dz = field.cellCenterZ(nxt) - az;
             double len = Math.hypot(dx, dz);
             if (len < 1e-6) return k;                          // 末格：无方向，视为可用
-            double px = -dz / len * off, pz = dx / len * off;
+            if (valleyMargin(field, out, k) < VALLEY_MIN_RISE) continue;
             double h0 = groundYAt(ax, az);
-            if (groundYAt(ax - px, az - pz) < h0 + VALLEY_MIN_RISE
-                    || groundYAt(ax + px, az + pz) < h0 + VALLEY_MIN_RISE) continue;
             // ★ back wall（2026-09-06，对标 Streams：源头须有后方崖壁 ——
             //   RiverComponent:234 的 minSourceBackWallHeight、以及
             //   RiverUpstreamComponent:96-97 要求目标水面处必须是实心地形）。
@@ -787,6 +793,56 @@ public final class RiverLineNetwork {
             if (!insideExistingValley(field, rivers, cur)) return k;
         }
         return n;
+    }
+
+    /**
+     * 该格的【汇流槽横向裕度】（block）：垂直于流向的左右两侧地形高程的最小值，
+     * 减去该格自身高程。
+     *
+     * <p>&gt;0 = 两侧都更高（真汇流槽/山谷）；&lt;0 = 至少一侧更低（凸坡肩部，水会向
+     * 那一侧散开）。高程一律走 {@link #groundYAt}（= 生产的 terrainY = sampleWu，
+     * 含侵蚀 tile），与 SourceValleyProbe 的复核口径一致。</p>
+     *
+     * @return 裕度（block）；末格等无法定向的情形返回 +∞（视为可用）
+     */
+    private double valleyMargin(FlowField field, TraceOutcome out, int k) {
+        int n = out.cells.size();
+        double off = Math.max(8.0, params.gridCell());
+        int cur = out.cells.get(k);
+        int nxt = (k + 1 < n) ? out.cells.get(k + 1) : cur;
+        double ax = field.cellCenterX(cur), az = field.cellCenterZ(cur);
+        double dx = field.cellCenterX(nxt) - ax, dz = field.cellCenterZ(nxt) - az;
+        double len = Math.hypot(dx, dz);
+        if (len < 1e-6) return Double.POSITIVE_INFINITY;
+        double px = -dz / len * off, pz = dx / len * off;
+        double h0 = groundYAt(ax, az);
+        return Math.min(groundYAt(ax - px, az - pz), groundYAt(ax + px, az + pz)) - h0;
+    }
+
+    /**
+     * 回退选择：整条路径【没有】达标谷槽时，取"最像谷槽"（{@link #valleyMargin} 最大）
+     * 的一格作河头。
+     *
+     * <p>原先这种情形直接退回"恰好达汇流门槛"的那一格——那是个【任意位置】，实测
+     * 两个种子都有 22% 的河头落在凸坡肩部（横向裕度 &lt; -1 格），正是用户看到的
+     * "源头切在光秃坡面上"。改为在全程范围内挑横向收敛最强的一格：找不到谷槽时
+     * 至少停在最接近谷槽的地方，且【不额外丢河】（不改变河网密度）。</p>
+     *
+     * <p>搜索上界留出 {@code minRiverNodes} 个节点，保证不会把河裁到被丢弃。</p>
+     */
+    private int bestValleyHead(FlowField field, TraceOutcome out, int start) {
+        int n = out.cells.size();
+        // ★ 钳制：上游的汇流面积裁剪可能已把 start 推到 n（整条都被裁掉），
+        //   此时无格可选，直接返回 n 交由调用方按"河太短"丢弃，不得越界取格。
+        if (start < 0 || start >= n) return n;
+        int last = Math.min(n - 1, Math.max(start, n - params.minRiverNodes()));
+        int best = start;
+        double bestMargin = Double.NEGATIVE_INFINITY;
+        for (int k = start; k <= last; k++) {
+            double m = valleyMargin(field, out, k);
+            if (m > bestMargin) { bestMargin = m; best = k; }
+        }
+        return best;
     }
 
     /**
@@ -906,6 +962,14 @@ public final class RiverLineNetwork {
                 acc += Math.hypot(mx[i] - mx[i - 1], mz[i] - mz[i - 1]);
                 arc[i] = acc;
             }
+            // ★ 河源段不施加满幅蜿蜒（2026-09-06）：meanderAmp(2.5) 原先全河 uniform，
+            //   而 advanceToValleyHead 已把河头放进了汇流槽（横向裕度 ≥ VALLEY_MIN_RISE），
+            //   紧接着又被正弦横向挪走 —— 挪幅足以把窄槽里的河头甩到坡面上。这正是
+            //   "凸坡源头稳定卡在 22%"的成因（改用 bestValleyHead 挑最像槽的一格后
+            //   数字一字不差，说明河头选取本身没错，错在选完之后又被挪走）。
+            //   物理上也应当如此：蜿蜒振幅随流量/河宽增大，河源细流本就近乎顺直。
+            //   跨度取 HEAD_TAPER_NODES × gridCell，与河头宽深淡出同段完成。
+            double meanderHeadArc = HEAD_TAPER_NODES * Math.max(1.0, params.gridCell());
             for (int i = 0; i < m; i++) {
                 int prev = i > 0 ? i - 1 : 0;
                 int next = i < m - 1 ? i + 1 : m - 1;
@@ -914,7 +978,8 @@ public final class RiverLineNetwork {
                 double tl = Math.hypot(tx, tz);
                 if (tl > 1e-6) { tx /= tl; tz /= tl; }
                 double nx = -tz, nz = tx;   // 左转 90° 法向
-                double off = meanderScale * params.meanderAmp()
+                double headFade = NoiseUtil.smooth(NoiseUtil.saturate(arc[i] / meanderHeadArc));
+                double off = meanderScale * params.meanderAmp() * headFade
                         * Math.sin(2.0 * Math.PI * arc[i] / params.meanderWavelength());
                 mx[i] += nx * off;
                 mz[i] += nz * off;
