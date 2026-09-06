@@ -89,10 +89,16 @@ public final class SourceValleyProbe {
             }
 
             // ② 是否落在另一条河的过渡区内
+            // ★ 半径取【最近点处的局部半宽】，与生产 insideExistingValley 同式
+            //   （RiverLineNetwork:1012 逐节点 max(width[i],1)×3.5）。原先整条河只用
+            //   o.width[1]——那是源头淡出后的最窄处，量中下游河段时半径普遍偏小，
+            //   等于拿一把更短的尺子去量，只会漏报。本项目已四次栽在"探针与生产取
+            //   的数据不同源"，这次是【公式不同】。
             double bestExcess = Double.POSITIVE_INFINITY;   // <0 = 在别人谷里
             for (RiverLineRegion.RiverPolyline o : all) {
                 if (o == r) continue;
                 double bestD = Double.POSITIVE_INFINITY;
+                int bestI = 0;
                 for (int i = 0; i + 1 < o.nodes.length; i++) {
                     double ax = o.nodes[i].x(), az = o.nodes[i].z();
                     double bx = o.nodes[i + 1].x(), bz = o.nodes[i + 1].z();
@@ -100,10 +106,17 @@ public final class SourceValleyProbe {
                     double l2 = abx * abx + abz * abz;
                     double t = l2 < 1e-9 ? 0.0
                             : Math.max(0.0, Math.min(1.0, ((hx - ax) * abx + (hz - az) * abz) / l2));
-                    bestD = Math.min(bestD, Math.hypot(hx - (ax + abx * t), hz - (az + abz * t)));
+                    double d = Math.hypot(hx - (ax + abx * t), hz - (az + abz * t));
+                    if (d < bestD) { bestD = d; bestI = i; }
                 }
-                double oValleyBlocks = Math.max(o.width[Math.min(o.width.length - 1, 1)], 1.0)
-                        * 3.5 * hs;                          // valley=3.5×半宽，wu→block
+                // ★ 合法汇流豁免：邻河的【出口】就在本河河头处 → 这是支流汇入，不是
+                //   侵入谷壁。扇形散流的细流正是接在主河河头格上（emitFeederRills 的
+                //   cells.add(head)），不豁免会把每一条被补给的主河误判成缺陷——实测
+                //   insideOther 1→2 / 1→4 与细流存活数 +1 / +3 恰好一一对应。
+                var mouth = o.nodes[o.nodes.length - 1];
+                if (Math.hypot(hx - mouth.x(), hz - mouth.z()) <= 1.5 * P.gridCell()) continue;
+                double wLocal = Math.max(o.width[Math.min(bestI, o.width.length - 1)], 1.0);
+                double oValleyBlocks = wLocal * 3.5 * hs;    // valley=3.5×半宽，wu→block
                 bestExcess = Math.min(bestExcess, bestD * hs - oValleyBlocks);
             }
             if (bestExcess < 0) {
