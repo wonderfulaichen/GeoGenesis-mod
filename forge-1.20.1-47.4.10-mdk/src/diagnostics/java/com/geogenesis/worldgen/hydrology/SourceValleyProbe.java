@@ -145,14 +145,21 @@ public final class SourceValleyProbe {
                     // ★ 诊断信息：本河头数 / 对方头数（<10 判为细流）、本河头距对方
                     //   河头与河口的距离、最近点落在对方第几段（0 段=扎进对方源头区）
                     double dToOtherHead = Math.hypot(hx - o.nodes[0].x(), hz - o.nodes[0].z());
+                    // ★ oHeadSeam：对方河的河头是否贴着 region 缝（handoff 续流的特征
+                    //   ——续流河头被强制放在缝口、且豁免全部谷壁守卫）。用于判定侵入者
+                    //   是不是"跨区续流段"。
+                    double oFx = o.nodes[0].x() - regionSize * Math.floor(o.nodes[0].x() / regionSize);
+                    double oFz = o.nodes[0].z() - regionSize * Math.floor(o.nodes[0].z() / regionSize);
+                    double oToBorder = Math.min(Math.min(oFx, regionSize - oFx),
+                            Math.min(oFz, regionSize - oFz));
                     worst = String.format(
                             "rLen=%d oLen=%d bestSeg=%d/%d d=%.1fwu oHead=%.1fwu "
-                                    + "oMouth=%.1fwu wLocal=%.1f",
+                                    + "oMouth=%.1fwu wLocal=%.1f oHeadSeam=%b(%.0fwu)",
                             r.nodes.length, o.nodes.length, bestI, o.nodes.length - 1,
                             bestD, dToOtherHead,
                             Math.hypot(hx - o.nodes[o.nodes.length - 1].x(),
                                     hz - o.nodes[o.nodes.length - 1].z()),
-                            wLocal);
+                            wLocal, oToBorder < seamTol, oToBorder);
                 }
             }
             if (bestExcess < 0) {
