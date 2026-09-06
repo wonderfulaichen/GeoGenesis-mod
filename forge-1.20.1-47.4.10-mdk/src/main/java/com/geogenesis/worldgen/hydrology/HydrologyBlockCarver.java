@@ -314,11 +314,20 @@ public final class HydrologyBlockCarver {
         //   河道内保证 carved < waterSurface → 恒有水（根治干河），且水面高于地形的列
         //   被切穿后不再悬浮。下挖量有界（≤ minWaterDepth），床面连续。
         boolean punchedThrough = false;
-        if (nearestDist <= nearestWidth && carved > waterSurface - 0.75) {
-            double minBed = waterSurface - 0.75;
-            if (minBed < carved) {
-                cut += carved - minBed;
-                carved = minBed;
+        // ★ 河床必须为"至少 1 整块水柱"留出空间（2026-09-06，修河中段凭空断流）：
+        //   落块侧（GeoGenesisGenerator.fillTerrainColumn）把水放在
+        //   y ∈ (floor(carved), floor(max(ws,lip))] 这段【整数】区间，而原先只保证
+        //   连续量 carved ≤ ws − 0.75。两者不等价：ws=104.80 / carved=104.05 相差 0.75
+        //   通过门控，但 floor 同为 104 → y=104 被河床块占掉、水柱区间为空，该列铺出
+        //   沙质河床却【一个水块都没有】。实测 20 种子 100% 命中、共 4460 列，且相邻
+        //   成段 —— 正是玩家看到的"河流填水消失一小段"。
+        //   下界取两者较低（min 保证永不抬高河床）：既满足 ≥0.75 的连续水深，
+        //   又满足 floor(carved) < floor(ws)。
+        double bedCeil = Math.min(waterSurface - 0.75, Math.floor(waterSurface) - 1e-9);
+        if (nearestDist <= nearestWidth && carved > bedCeil) {
+            if (bedCeil < carved) {
+                cut += carved - bedCeil;
+                carved = bedCeil;
                 punchedThrough = true;
             }
         }
