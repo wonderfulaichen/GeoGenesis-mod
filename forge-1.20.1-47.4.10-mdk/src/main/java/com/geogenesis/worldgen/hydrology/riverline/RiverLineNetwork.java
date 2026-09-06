@@ -341,6 +341,21 @@ public final class RiverLineNetwork {
         java.util.Arrays.fill(feederStats, 0);     // 每次建网清零（诊断漏斗）
 
         // ===== 普通源追踪（本 region 高位布源）=====
+        // ★ neighborRivers：8 邻 region 的 pass-1 河（world wu 同域）。邻区河的雕刻
+        //   margin 区可伸入本区最多 320 wu——本区深处的源河头也可能贴着邻区大河的
+        //   谷壁（实测 seed 107373 源头侵入邻区 8.4wu 粗河的谷壁 8.1 格，而源河提交
+        //   时 extra=null 完全看不见它）。handoff=true 时 8 邻 pass-1 必已就绪
+        //   （region() 先收缝种子再建本区 pass-2），无递归风险；pass-1 build 保持
+        //   独立（空表）。pass-1 与邻区最终河可能略有差异，作谷壁判据足够。
+        List<RiverPolyline> neighborRivers = new ArrayList<>();
+        if (handoff) {
+            for (int dz = -1; dz <= 1; dz++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    if (dx == 0 && dz == 0) continue;
+                    neighborRivers.addAll(regionPass1(rx + dx, rz + dz).rivers);
+                }
+            }
+        }
         for (int s : cand) {
             if (acceptedCount >= params.riverCount()) break;   // 河数量上限
             if (claimed[s]) continue;
@@ -356,7 +371,7 @@ public final class RiverLineNetwork {
             //   其谷壁范围（valley = 3.5×半宽）内照样能布源 → 新河在别人的谷壁上
             //   再开一条槽（实测种子 12345 有源点侵入邻河谷壁 22 格）。
             //   只约束【普通布源】：跨 region 续流必须无条件接上，见下方 handoff 循环。
-            if (insideExistingValley(field, rivers, s)) continue;
+            if (insideExistingValley(field, rivers, neighborRivers, s)) continue;
 
             TraceOutcome out = traceRiver(field, s, stepSize, claimed, nodeE,
                     allSegments, nx, nz, rx, rz, Double.NaN);
@@ -370,7 +385,8 @@ public final class RiverLineNetwork {
                 if (tl > 0) level = tl + 1;
             }
             CommitOut c = commitRiver(field, out, level, claimed, nodeE, nodeSurf,
-                    levelAt, allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz, false);
+                    levelAt, allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz,
+                    null, false);
             maxDischarge = Math.max(maxDischarge, c.maxDischarge());
             if (c.reachedOcean()) outletOcean = true;
             if (c.poly() != null) {
@@ -403,6 +419,34 @@ public final class RiverLineNetwork {
                 }
                 if (tooClose) continue;
 
+                // ★ 续流河头落进邻河谷壁 → 并入为分支河（2026-09-07，用户方案）：
+                //   两条续流从不同缝口进入同一区域且地形让它们平行同谷时，谷槽兜底
+                //   （bestValleyHead）全落空 → 河头被放在邻河谷壁内（实测 seed 28183
+                //   侵入 18.4 格；形态是"一条河贴着另一条河开平行河道"）。与其开平行
+                //   河道，不如就地并入：从缝口走一小段直接汇入最近的已有河（继承其
+                //   交汇点水面 → 零台阶），上游来水经由被并入的河继续入海，水文不断。
+                //   仅当：(a) 最近的已占用格在 3 格内（否则直线连出去太做作）；(b) 该格
+                //   水面 ≤ 缝口地面（水才能流进去）；(c) 连线 ≥ minRiverNodes 格。
+                //   任一不满足则回退原独立续流。
+                List<Integer> mergeCells = null;
+                if (insideExistingValley(field, rivers, neighborRivers, start)) {
+                    mergeCells = mergeIntoNearestRiver(field, start, nx, claimed, nodeSurf,
+                            neighborRivers);
+                }
+                if (mergeCells != null) {
+                    double[] mAcc = new double[mergeCells.size()];
+                    java.util.Arrays.fill(mAcc, seed.accum);
+                    TraceOutcome mOut = new TraceOutcome(mergeCells, false, false, true, mAcc, false);
+                    CommitOut mc = commitRiver(field, mOut, seed.level + 1, claimed, nodeE,
+                            nodeSurf, levelAt, allSegments, rivers, specs, lakes, accepted,
+                            nx, seed.surfaceY, rx, rz, neighborRivers, false);
+                    if (mc.poly() != null) {
+                        accepted.add(start);
+                        acceptedCount++;
+                        continue;
+                    }
+                }
+
                 TraceOutcome out = traceRiver(field, start, stepSize, claimed, nodeE,
                         allSegments, nx, nz, rx, rz, seed.accum);
                 if (out == null) continue;
@@ -417,7 +461,7 @@ public final class RiverLineNetwork {
                 // 续流首节点水面 = 上游尾节点水面（保证跨缝水面连续，无台阶）
                 CommitOut c = commitRiver(field, out, level, claimed, nodeE, nodeSurf,
                         levelAt, allSegments, rivers, specs, lakes, accepted, nx, seed.surfaceY,
-                        rx, rz, false);
+                        rx, rz, neighborRivers, false);
                 maxDischarge = Math.max(maxDischarge, c.maxDischarge());
                 if (c.reachedOcean()) outletOcean = true;
                 if (c.poly() != null) {
@@ -450,6 +494,85 @@ public final class RiverLineNetwork {
                 sourceCount, rolledBack, joinedCount);
     }
 
+    /**
+     * 续流并入：从缝口格找最近的汇入目标（本 region 已占用格，或邻区折线上的点），
+     * 沿直线回一条短连接的格序列，使续流作为分支汇入那条河。
+     *
+     * <p>条件（任一不满足返回 {@code null}，调用方回退独立续流）：</p>
+     * <ul>
+     *   <li>目标在 {@code maxLink}（3）格内——更远就连出一条做作的直线河；</li>
+     *   <li>目标水面 ≤ 缝口格地面——水才能流得进去（顺坡汇入）；</li>
+     *   <li>连线（去重后）≥ {@code params.minRiverNodes()} 格。</li>
+     * </ul>
+     *
+     * <p>目标是邻区折线上的点时，其格在本 region 网格内无 nodeSurf——按该点插值水面
+     * 【预写】进 nodeSurf，交汇继承（joined → outletSurf = nodeSurf[junction]）才有值。</p>
+     */
+    private List<Integer> mergeIntoNearestRiver(FlowField field, int start, int nx,
+                                                boolean[] claimed, double[] nodeSurf,
+                                                List<RiverPolyline> extra) {
+        final int nz = field.rows();
+        final int maxLink = 3;
+        int ci = start % nx, cj = start / nx;
+        double headWx = field.cellCenterX(start), headWz = field.cellCenterZ(start);
+        int target = -1;
+        double targetSurf = Double.NaN;
+        double bestD2 = maxLink * params.gridCell() * maxLink * params.gridCell();
+        // ① 本 region 已占用格（nodeSurf 已有值）
+        for (int dj = -maxLink; dj <= maxLink; dj++) {
+            for (int di = -maxLink; di <= maxLink; di++) {
+                if (di == 0 && dj == 0) continue;
+                int ni = ci + di, nj = cj + dj;
+                if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                int n = nj * nx + ni;
+                if (n == start || !claimed[n] || Double.isNaN(nodeSurf[n])) continue;
+                double d2 = di * di + dj * dj;
+                if (d2 < bestD2) { bestD2 = d2; target = n; targetSurf = nodeSurf[n]; }
+            }
+        }
+        // ② 邻区折线上的最近点（world wu 同域；其格在本 region 网格无 nodeSurf）
+        if (extra != null) {
+            for (RiverPolyline r : extra) {
+                for (int i = 0; i < r.nodes.length; i++) {
+                    double ddx = r.nodes[i].x() - headWx, ddz = r.nodes[i].z() - headWz;
+                    double d2 = ddx * ddx + ddz * ddz;
+                    if (d2 < bestD2) {
+                        int idx = field.indexOf(r.nodes[i].x(), r.nodes[i].z());
+                        if (idx < 0 || idx == start) continue;
+                        bestD2 = d2; target = idx; targetSurf = r.surfaceY[i];
+                    }
+                }
+            }
+        }
+        if (target < 0) return null;
+        // 水文校验：目标是旱地且其水面高于缝口地面 → 水流不进去，拒绝。
+        // 缝口格地面在【海平面及以下】时直接放行：那是海岸水位带，河头本就泡在水里，
+        // 目标水面（多为海平面）不可能"高于"一个有意义的地形（实测入海口案例
+        // seed 28183 的合并正因此被误拒）。
+        double startGround = groundYAt(headWx, headWz);
+        if (targetSurf > startGround + 1e-6 && startGround > curve.seaLevelY()) return null;
+        // 目标若是邻区河：预写交汇水面，joined 继承才有值
+        if (Double.isNaN(nodeSurf[target])) nodeSurf[target] = targetSurf;
+        // 直线连线（格坐标插值，去重保序）
+        int ti = target % nx, tj = target / nx;
+        int steps = Math.max(Math.abs(ti - ci), Math.abs(tj - cj));
+        List<Integer> cells = new ArrayList<>();
+        int li = -1, lj = -1;
+        for (int s = 0; s <= steps; s++) {
+            int ii = ci + (ti - ci) * s / Math.max(1, steps);
+            int jj = cj + (tj - cj) * s / Math.max(1, steps);
+            int idx = jj * nx + ii;
+            if (ii != li || jj != lj) cells.add(idx);
+            li = ii; lj = jj;
+        }
+        if (cells.get(cells.size() - 1) != target) cells.add(target);
+        // ★ 最短 2 格（河头+交汇点）即可：邻河经常就在 1 格内（实测 1.7 wu），此时
+        //   "缝口→就近汇入"本来就该是一个极短的 Y 形连接。minRiverNodes(3) 的
+        //   长度门槛是给"独立河"的防退化下限，不适用于合并连接。
+        if (cells.size() < 2) return null;
+        return cells;
+    }
+
     /** 一条河的平滑原始输入（供 meander 去交叉后处理整条重建）。 */
     private static final class RiverSpec {
         final MidpointDisplacement.Node[] nodes;
@@ -472,7 +595,7 @@ public final class RiverLineNetwork {
                                   List<RiverPolyline> rivers, List<RiverSpec> specs,
                                   List<RiverLineRegion.LakeNode> lakes,
                                   List<Integer> accepted, int nx, double forcedSrcH, int rx, int rz,
-                                  boolean feeder) {
+                                  List<RiverPolyline> extraValleys, boolean feeder) {
         for (int c : out.cells) {
             claimed[c] = true;
             nodeE[c] = field.eAt(c);
@@ -504,17 +627,55 @@ public final class RiverLineNetwork {
         //   该门槛防的是"可见断面切在光坡上"——细流头已归零淡出（宽 1 格、深 0），
         //   切不出任何断面，位置本就无害；当年"弃用更优"的证据是 insideOther 假
         //   指标（已证伪）。细流的淘汰交给上游候选/长度下限即可。
-        int valleyStart = feeder ? start : advanceToValleyHead(field, out, start, rivers);
+        int valleyStart = feeder ? start
+                : advanceToValleyHead(field, out, start, rivers, extraValleys);
         if (out.cells.size() - valleyStart >= params.minRiverNodes()) {
             start = valleyStart;                                  // 有达标谷槽，直接采用
         } else if (!feeder) {
             // 全程找不到达标谷槽（或为此会把河裁没）：退而求其次取"最像谷槽"的一格，
             // 而不是停在恰好达汇流门槛的任意位置（实测该任意位置两个种子各有 22% 落在
             // 凸坡肩部）。bestValleyHead 的上界已预留 minRiverNodes，不会把河裁丢。
-            int fallback = bestValleyHead(field, out, start, rivers);
+            int fallback = bestValleyHead(field, out, start, rivers, extraValleys);
             if (out.cells.size() - fallback >= params.minRiverNodes()) start = fallback;
+            // ★ 兜底河头仍落在邻河谷壁内且本河是【跨区续流】→ 并入为分支河
+            //   （2026-09-07，用户方案："源头有概率贴近其他河流，可以尝试将其并入
+            //   成为一条分支河"）。两条续流从不同缝口进入同一区域且平行同谷时，
+            //   谷槽回避全落空 → 河头被放在邻河谷壁里（实测 seed 28183 侵入 18.4 格，
+            //   形态是贴着邻河开平行河道）。并入：从河头走一小段直线汇入最近的已有河
+            //   （继承其交汇点水面 → 零台阶 Y 形汇流），上游来水经由被并入的河继续
+            //   入海，水文不断。合并提交以 feeder 语义走 commitRiver（跳谷槽门槛、
+            //   不再触发本分支的递归），但 forcedSrcH 非 NaN → 河头无淡出、保持全宽。
+            //   extraValleys：邻区 pass-1 河也参与谷壁检查（续流在 margin 区选头，
+            //   本 region 河列表跨区致盲——合并判据与谷壁回避都需要它）。
+            if (!Double.isNaN(forcedSrcH)
+                    && insideExistingValley(field, rivers, extraValleys, out.cells.get(start))) {
+                feederStats[8]++;
+                List<Integer> link = mergeIntoNearestRiver(field, out.cells.get(start),
+                        nx, claimed, nodeSurf, extraValleys);
+                if (link != null) {
+                    List<Integer> mc = new ArrayList<>();
+                    mc.add(out.cells.get(start));
+                    for (int c : link) if (c != mc.get(mc.size() - 1)) mc.add(c);
+                    if (mc.size() >= 2) {
+                        double[] mAcc = new double[mc.size()];
+                        java.util.Arrays.fill(mAcc, out.accum[start]);
+                        TraceOutcome mOut = new TraceOutcome(mc, false, false, true, mAcc, false);
+                        CommitOut mC = commitRiver(field, mOut, level + 1, claimed, nodeE,
+                                nodeSurf, levelAt, allSegments, rivers, specs, lakes,
+                                accepted, nx, forcedSrcH, rx, rz, extraValleys, true);
+                        if (mC.poly() != null) {
+                            feederStats[9]++;
+                            return mC;
+                        }
+                    }
+                }
+            }
         }
-        if (out.cells.size() - start < params.minRiverNodes())
+        // ★ 长度下限：独立河 ≥ minRiverNodes；feeder 语义下的【合并连接】（河头+交汇点
+        //   的 2 格 Y 形）也放行——细流 rill 的 ≥3 格下限由 emitFeederRills 保证，到达
+        //   这里的 2 格 feeder 只可能是合并连接（无淡出、全宽）。
+        if (out.cells.size() - start < params.minRiverNodes()
+                && !(feeder && out.cells.size() - start >= 2))
             return new CommitOut(null, out.reachedOcean, 0.0, null, Double.NaN);
         int m = out.cells.size() - start;
         MidpointDisplacement.Node[] nodes = new MidpointDisplacement.Node[m];
@@ -845,7 +1006,7 @@ public final class RiverLineNetwork {
      * @return 槽内格的下标；全程无槽时返回 cells.size()（调用方据此回退）
      */
     private int advanceToValleyHead(FlowField field, TraceOutcome out, int start,
-                                    List<RiverPolyline> rivers) {
+                                    List<RiverPolyline> rivers, List<RiverPolyline> extra) {
         int n = out.cells.size();
         double off = Math.max(8.0, params.gridCell());        // 横距（wu）
         for (int k = start; k < n; k++) {
@@ -868,7 +1029,7 @@ public final class RiverLineNetwork {
             // ★ 同样要在【河头这一格】上检查"不在邻河谷壁内"：布源筛查的是源点格，
             //   而可见河头由本循环决定，两者不是同一格（实测只在源点筛时，侵入邻河
             //   的源头仍剩 1 处）。支流出口照常汇入主流，不受此限（只约束上游端）。
-            if (!insideExistingValley(field, rivers, cur)) return k;
+            if (!insideExistingValley(field, rivers, extra, cur)) return k;
         }
         return n;
     }
@@ -909,7 +1070,7 @@ public final class RiverLineNetwork {
      * <p>搜索上界留出 {@code minRiverNodes} 个节点，保证不会把河裁到被丢弃。</p>
      */
     private int bestValleyHead(FlowField field, TraceOutcome out, int start,
-                               List<RiverPolyline> rivers) {
+                               List<RiverPolyline> rivers, List<RiverPolyline> extra) {
         int n = out.cells.size();
         // ★ 钳制：上游的汇流面积裁剪可能已把 start 推到 n（整条都被裁掉），
         //   此时无格可选，直接返回 n 交由调用方按"河太短"丢弃，不得越界取格。
@@ -930,7 +1091,7 @@ public final class RiverLineNetwork {
         for (int k = start; k <= last; k++) {
             double m = valleyMargin(field, out, k);
             if (m > bestAnyMargin) { bestAnyMargin = m; bestAny = k; }
-            if (!insideExistingValley(field, rivers, out.cells.get(k))
+            if (!insideExistingValley(field, rivers, extra, out.cells.get(k))
                     && m > bestCleanMargin) { bestCleanMargin = m; bestClean = k; }
         }
         return bestClean >= 0 ? bestClean : bestAny;
@@ -970,8 +1131,9 @@ public final class RiverLineNetwork {
 
     // ===== 细流淘汰漏斗（诊断用，build 时清零）=====
     /** [0]考虑的主河数 [1]无上游候选 [2]上溯枯竭/过短 [3]接不回河头
-     *  [4]节点数不足 [5]谷槽门槛弃用 [6]主河水面未回写 [7]成功提交 */
-    public final int[] feederStats = new int[8];
+     *  [4]节点数不足 [5]谷槽门槛弃用 [6]主河水面未回写 [7]成功提交
+     *  [8]续流并入尝试 [9]并入成功 */
+    public final int[] feederStats = new int[10];
 
     /**
      * 在已成型河流的【河头】上游补 1~2 条细流，构成扇形／树枝状源前流。
@@ -1058,7 +1220,8 @@ public final class RiverLineNetwork {
             TraceOutcome out = new TraceOutcome(cells, false, false, true, rAcc, false);
             int before = rivers.size();
             commitRiver(field, out, parentLevel + 1, claimed, nodeE, nodeSurf, levelAt,
-                    allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz, true);
+                    allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz,
+                    null, true);
             feederStats[rivers.size() > before ? 7 : 5]++;   // 成功提交 / 被门槛弃用
         }
     }
@@ -1069,9 +1232,22 @@ public final class RiverLineNetwork {
      * <p>谷壁影响半径 = 3.5 × 该处半宽（与 carver 的 valley 定义同源，单位 wu），
      * 点到河折线取线段最近距离。源点若落在邻河的谷壁里，新河就会在别人刚雕出的
      * 谷坡上再切一条槽 —— 即用户实测的"源头生成在另外一条河的过渡区里面"。</p>
+     *
+     * <p>{@code extra}：邻 region 的河（pass-1 折线，world wu 坐标同域）——续流的
+     * 选头发生在 region 的 margin 区（±320wu），那里可能已有【邻区】的河在雕刻；
+     * 只看本 region 的 {@code rivers} 会跨区致盲（实测 seed 28183 侵入邻区河
+     * 谷壁 18.4 格，本 region 检查完全看不见）。可为 null。</p>
      */
     private static boolean insideExistingValley(FlowField field,
-                                                List<RiverPolyline> rivers, int cell) {
+                                                List<RiverPolyline> rivers,
+                                                List<RiverPolyline> extra, int cell) {
+        if (extra != null && !extra.isEmpty() && insideValleyOf(field, extra, cell)) return true;
+        return insideValleyOf(field, rivers, cell);
+    }
+
+    /** 单一折线列表的谷壁检查（{@link #insideExistingValley} 的核心循环）。 */
+    private static boolean insideValleyOf(FlowField field,
+                                          List<RiverPolyline> rivers, int cell) {
         double wx = field.cellCenterX(cell), wz = field.cellCenterZ(cell);
         for (RiverPolyline r : rivers) {
             int len = r.nodes.length;
