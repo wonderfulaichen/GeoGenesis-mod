@@ -450,6 +450,7 @@ public final class RiverLineNetwork {
             this.nodes = nodes; this.surf = surf; this.wid = wid; this.dep = dep;
             this.level = level; this.meandered = meandered;
         }
+
     }
 
     /** 提交一条已追踪河流：认领/记录/裁剪/算宽深/水面，返回最终折线（null=被阈值丢弃）。 */
@@ -497,7 +498,7 @@ public final class RiverLineNetwork {
             // 全程找不到达标谷槽（或为此会把河裁没）：退而求其次取"最像谷槽"的一格，
             // 而不是停在恰好达汇流门槛的任意位置（实测该任意位置两个种子各有 22% 落在
             // 凸坡肩部）。bestValleyHead 的上界已预留 minRiverNodes，不会把河裁丢。
-            int fallback = bestValleyHead(field, out, start);
+            int fallback = bestValleyHead(field, out, start, rivers);
             if (out.cells.size() - fallback >= params.minRiverNodes()) start = fallback;
         }
         if (out.cells.size() - start < params.minRiverNodes())
@@ -884,19 +885,32 @@ public final class RiverLineNetwork {
      *
      * <p>搜索上界留出 {@code minRiverNodes} 个节点，保证不会把河裁到被丢弃。</p>
      */
-    private int bestValleyHead(FlowField field, TraceOutcome out, int start) {
+    private int bestValleyHead(FlowField field, TraceOutcome out, int start,
+                               List<RiverPolyline> rivers) {
         int n = out.cells.size();
         // ★ 钳制：上游的汇流面积裁剪可能已把 start 推到 n（整条都被裁掉），
         //   此时无格可选，直接返回 n 交由调用方按"河太短"丢弃，不得越界取格。
         if (start < 0 || start >= n) return n;
         int last = Math.min(n - 1, Math.max(start, n - params.minRiverNodes()));
-        int best = start;
-        double bestMargin = Double.NEGATIVE_INFINITY;
+        // ★ 兜底路径也应躲开【邻河的谷壁】：advanceToValleyHead 那条带
+        //   insideExistingValley 守卫，而本方法原先只按横向裕度挑格、完全不看谷壁，
+        //   逻辑上是条漏网路径。优先只在"不在邻河谷壁内"的格里取裕度最大者；若全程
+        //   都躲不开才退回原逻辑（保河网密度，宁要一条位置欠佳的河，不丢整条）。
+        //   ★ 如实说明：本改动【并非】用户"源头有概率生成在其他河流中"的修复——
+        //     A/B 实测该 2 例（seed 28183 / 107373）是【跨 region】的，而本方法只在
+        //     本 region 内选格、且这条兜底路径本身极少触发，改前改后数字一字不变。
+        //     真正成因见 SourceValleyProbe 的 rr 参数说明。
+        int bestClean = -1;
+        double bestCleanMargin = Double.NEGATIVE_INFINITY;
+        int bestAny = start;
+        double bestAnyMargin = Double.NEGATIVE_INFINITY;
         for (int k = start; k <= last; k++) {
             double m = valleyMargin(field, out, k);
-            if (m > bestMargin) { bestMargin = m; best = k; }
+            if (m > bestAnyMargin) { bestAnyMargin = m; bestAny = k; }
+            if (!insideExistingValley(field, rivers, out.cells.get(k))
+                    && m > bestCleanMargin) { bestCleanMargin = m; bestClean = k; }
         }
-        return best;
+        return bestClean >= 0 ? bestClean : bestAny;
     }
 
     // ===== 河源扇形散流（2026-09-06）=====
