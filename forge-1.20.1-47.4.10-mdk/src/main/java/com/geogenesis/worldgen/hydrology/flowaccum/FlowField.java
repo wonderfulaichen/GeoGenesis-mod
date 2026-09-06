@@ -116,6 +116,29 @@ public final class FlowField {
      * 是否存在"网格内"的更低邻居（严格低于 curE − minDrop）。
      * 用于终止判定：有则安全下坡（继续追踪），无则需进一步判断是湖还是越界回滚。
      */
+    /**
+     * {@code idx} 的【上游】邻格：8 邻中 D8 流向恰为 {@code idx} 的格，即直接汇水入该格的格。
+     *
+     * <p>flowTo 是"每格 → 下游"的正向映射，本方法做局部反向查询（扫 8 邻即可，无需
+     * 建全局逆邻接表）。用于河源扇形散流：找补给河头的细流分支。</p>
+     *
+     * <p>固定扫描序（与 {@link #lowestNeighbor} 一致）保证跨版本确定性。</p>
+     */
+    public List<Integer> upstreamOf(int idx) {
+        List<Integer> ups = new ArrayList<>(4);
+        int ci = idx % nx, cj = idx / nx;
+        for (int dj = -1; dj <= 1; dj++) {
+            for (int di = -1; di <= 1; di++) {
+                if (di == 0 && dj == 0) continue;
+                int ni = ci + di, nj = cj + dj;
+                if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                int n = nj * nx + ni;
+                if (flowTo[n] == idx) ups.add(n);
+            }
+        }
+        return ups;
+    }
+
     public boolean hasInBoundsDownhill(int idx, double minDrop) {
         int ci = idx % nx, cj = idx / nx;
         double curE = e[idx];
