@@ -88,6 +88,15 @@ public final class RiverLineNetwork {
      */
     private static final double VALLEY_MIN_RISE = 0.5;
 
+    /**
+     * 河源后方崖壁的最小抬升（block）：河头上游一步的地形须高出此值，否则视为落在
+     * 台地/平地（河会显得"凭空冒出来"），继续往下游找河头。
+     *
+     * <p>对标 Streams 的 {@code minSourceBackWallHeight} 与
+     * {@code RiverUpstreamComponent.setMaxSurfaceLevels} 的实心地形要求。</p>
+     */
+    private static final double SOURCE_BACK_WALL_RISE = 1.0;
+
     /** 河头淡出因子：k=0 → ≈0.05，k≥n → 1.0，smoothstep 保证沿程无拐点。 */
     private static double headTaper(int k, int m) {
         int n = Math.max(1, Math.min(HEAD_TAPER_NODES, m / 2));   // 短河不超一半长度
@@ -764,6 +773,14 @@ public final class RiverLineNetwork {
             double h0 = groundYAt(ax, az);
             if (groundYAt(ax - px, az - pz) < h0 + VALLEY_MIN_RISE
                     || groundYAt(ax + px, az + pz) < h0 + VALLEY_MIN_RISE) continue;
+            // ★ back wall（2026-09-06，对标 Streams：源头须有后方崖壁 ——
+            //   RiverComponent:234 的 minSourceBackWallHeight、以及
+            //   RiverUpstreamComponent:96-97 要求目标水面处必须是实心地形）。
+            //   只测左右两侧仍可能让河头落在台地/平地上：后方一马平川，
+            //   河就成了"凭空冒出来"的一条槽。要求上游一步的地形明显更高，
+            //   河头才落在坡脚，符合泉眼从坡下渗出的形态。
+            double ux = -dx / len * off, uz = -dz / len * off;   // 上游方向
+            if (groundYAt(ax + ux, az + uz) < h0 + SOURCE_BACK_WALL_RISE) continue;
             // ★ 同样要在【河头这一格】上检查"不在邻河谷壁内"：布源筛查的是源点格，
             //   而可见河头由本循环决定，两者不是同一格（实测只在源点筛时，侵入邻河
             //   的源头仍剩 1 处）。支流出口照常汇入主流，不受此限（只约束上游端）。
