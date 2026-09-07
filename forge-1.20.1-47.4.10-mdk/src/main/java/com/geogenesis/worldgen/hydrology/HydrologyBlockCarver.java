@@ -179,7 +179,15 @@ public final class HydrologyBlockCarver {
         }
         width = Math.max(width, 1.0);
         double bankW = width * P.bankFactor();
-        double valley = Math.max(width + bankW, width * 3.0);
+        // ★ 湖命中谷壁带收窄（2026-09-07，用户截图："河岸过渡带到边缘没平滑跟随
+        //   实际地形"）：谷壁带 [width, valley] 会把地形刨到水面（profile=0 →
+        //   bedTarget=carveSurfaceY）。普通河带宽 ~2×width 是想要的河谷壁；但湖命中
+        //   宽度已 ×3，谷壁带跟着放大 3 倍 = 整片阶梯地貌被刨平成光滑坡。湖岸应该
+        //   跟随自然地形（水只灌到自然洼地处），只留 1.15×width 的过渡羽化防硬切。
+        boolean lakeHit = nearest.isLake();
+        double valley = lakeHit
+                ? width * 1.15
+                : Math.max(width + bankW, width * 3.0);
 
         // 距离场横断面：t=0 中心 → t=1 河缘（Streams 式 V 形：线性凹断面）
         double t = NoiseUtil.saturate(dist / width);
@@ -203,7 +211,10 @@ public final class HydrologyBlockCarver {
             double sd = s.distToCenter();
             if (sd > P.heightBlendDist()) break;   // sampleBlockAll 已按距离升序
             double ws = Math.max(s.width(), 1.0);
-            double vs = Math.max(ws + ws * P.bankFactor(), ws * 3.0);
+            // 湖样本谷壁带同样收窄（与上面 valley 同理，见湖命中注释）
+            double vs = s.isLake()
+                    ? ws * 1.15
+                    : Math.max(ws + ws * P.bankFactor(), ws * 3.0);
             double vtS = NoiseUtil.saturate((dist - ws) / Math.max(1.0, vs - ws));
             double fadeS = NoiseUtil.saturate(sd / P.heightBlendDist());
             double wS = (1.0 - fadeS) * (1.0 - fadeS) / Math.max(sd * sd, 1.0);

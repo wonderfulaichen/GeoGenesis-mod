@@ -73,13 +73,20 @@ public final class SourceValleyProbe {
         // 河成湖统计：有湖段（lakeLevel 有限值）的河数 + 湖段总长（wu → block）
         int riverLakes = 0;
         double lakeReachLen = 0.0;
+        double sea = 63.0;
         for (RiverLineRegion.RiverPolyline r : all) {
             if (r.lakeLevel == null) continue;
             boolean has = false;
-            for (double v : r.lakeLevel) {
-                if (!Double.isNaN(v)) { has = true; lakeReachLen++; }
+            // 逐 reach 报海拔（连续有限值段取末端=湖面）
+            for (int i = 0; i < r.lakeLevel.length; i++) {
+                if (Double.isNaN(r.lakeLevel[i])) continue;
+                if (!has) { riverLakes++; has = true; }
+                lakeReachLen++;
+                if (i + 1 >= r.lakeLevel.length || Double.isNaN(r.lakeLevel[i + 1])) {
+                    System.out.printf("  riverLake reach 湖面=%.2f 高出海平面=%.2f%n",
+                            r.lakeLevel[i], r.lakeLevel[i] - sea);
+                }
             }
-            if (has) riverLakes++;
         }
         System.out.println("[LAKES] 洼地湖 " + lakeTotal + " 个；河成湖："
                 + riverLakes + " 条河共 " + (int) (lakeReachLen * 4.0 * 2.0)
