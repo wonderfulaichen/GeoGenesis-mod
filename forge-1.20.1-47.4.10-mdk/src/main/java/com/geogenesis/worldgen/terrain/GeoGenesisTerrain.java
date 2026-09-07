@@ -4,6 +4,7 @@ import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkEngine;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
+import com.geogenesis.worldgen.noise.NoiseUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -22,6 +23,11 @@ public final class GeoGenesisTerrain {
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
     private static final int CACHE_SIZE = 4096;
     private static final int CHUNK_SHIFT = 4; // 16 blocks per chunk
+
+    /** 河道中心的侵蚀保留比例（2026-09-08，用户："河道内只需要一点点侵蚀影响"）：
+     *  落块合成时河道列的侵蚀 delta 按距河心衰减，中心保留此比例、岸缘（t=1）
+     *  smoothstep 过渡到全量（与岸外非雕刻列连续）。 */
+    private static final double RIVER_EROSION_FEED = 0.15;
 
     private final CellGenerator generator;
     private final HeightCurve curve;
@@ -204,6 +210,11 @@ public final class GeoGenesisTerrain {
      * <p>★ 侵蚀 delta 移位（2026-09-08）：河床绝对高度 = carved + delta，其中
      * delta = 含侵蚀高度 − 无侵蚀原始高度（同列）。水面/唇口同步抬升同一 delta，
      * 床面-水面相对关系与雕刻计划严格一致（否则 deposit 处河床高于水面 → 干河）。</p>
+     *
+     * <p>★ 河道内侵蚀衰减（2026-09-08，用户："河道内只需要一点点侵蚀影响"）：
+     * delta 按归一化距河心距离（distOverWidth）衰减——河道中心保留
+     * {@link #RIVER_EROSION_FEED}，岸缘（t=1，灌水门控①边界）平滑过渡到全量，
+     * 与岸外非雕刻列（全量 delta）连续。床面/水面/唇口同步衰减，相对关系不变。</p>
      */
     private void applyHydrologyValley(Cell[] cells, int cx, int cz) {
         HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
@@ -212,8 +223,12 @@ public final class GeoGenesisTerrain {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
             Cell cell = cells[lx * 16 + lz];
-            double delta = cell.height - column.originalGroundY();   // 本列侵蚀增量
-            cell.height -= column.erosion();                          // = carved + delta
+            double rawDelta = cell.height - column.originalGroundY(); // 本列侵蚀增量（全量）
+            double t = NoiseUtil.saturate(column.distOverWidth());
+            double fade = RIVER_EROSION_FEED
+                    + (1.0 - RIVER_EROSION_FEED) * NoiseUtil.smooth(t);
+            double delta = rawDelta * fade;
+            cell.height -= column.erosion() + (rawDelta - delta);     // = carved + fade·delta
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
             cell.riverSurfaceY = column.waterSurfaceY() + delta;
             cell.riverLipY = column.lipSurfaceY() + delta;
