@@ -32,14 +32,28 @@ public final class RiverLineRegion {
          * 低梯度"河成湖"段内，值为湖面高程（全段水平）。null = 本河未检测。
          */
         public final double[] lakeLevel;
+        /**
+         * 逐节点【build 时刻】地形 Y（2026-09-07 侵蚀修复配套）：水面 cap 用的正是
+         * 这份 terrainY（sampleWu 含侵蚀 tile），而侵蚀 tile 的河网雕刻层随注册时序
+         * 变化，探针事后重采样无法复现（WaterfallProbe 实测：事后 sampleWu 得
+         * wellViolation=47，sample() 又与生产脱节）。存下 build 时刻值，探针即可
+         * 精确复核"水面 ≤ 当时的地形"。null = 旧折线（未记录）。
+         */
+        public final double[] terrainY;
 
         public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
                              double[] depth, double[] fallDrop, int level) {
-            this(nodes, surfaceY, width, depth, fallDrop, level, null);
+            this(nodes, surfaceY, width, depth, fallDrop, level, null, null);
         }
 
         public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
                              double[] depth, double[] fallDrop, int level, double[] lakeLevel) {
+            this(nodes, surfaceY, width, depth, fallDrop, level, lakeLevel, null);
+        }
+
+        public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
+                             double[] depth, double[] fallDrop, int level, double[] lakeLevel,
+                             double[] terrainY) {
             this.nodes = nodes;
             this.surfaceY = surfaceY;
             this.width = width;
@@ -47,6 +61,7 @@ public final class RiverLineRegion {
             this.fallDrop = fallDrop;
             this.level = level;
             this.lakeLevel = lakeLevel;
+            this.terrainY = terrainY;
         }
     }
 

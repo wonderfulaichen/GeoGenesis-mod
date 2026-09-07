@@ -19,9 +19,14 @@ public final class HydrologyExperimentEngine {
 
     public HydrologyExperimentEngine(CellGenerator terrain, long seed) {
         this.terrain = terrain;
-        // ★ 剖面锚定与雕刻基线同源：用无侵蚀 sample().height（= carveChunk 的 originalGround）。
-        //   旧 sampleWu 含侵蚀 delta，与方块雕刻基线系统性偏差数格 → 水面判高/判低错乱
-        //   （干河与悬浮并存）。选线/贴谷仍用 terrainEQuick（轻量、无 tile 依赖）。
+        // ★ 剖面锚定与雕刻基线同源【且无侵蚀】（2026-09-08 终版，恢复管线顺序）：
+        //   历史教训两轮：
+        //   (a) sampleWu 剖面 + sample 基线（不同源）→ 水面判高错乱；
+        //   (b) 双双 sampleWu（2026-09-07 首修）→ 同源但河网构建期触发侵蚀 tile 冷生成，
+        //       预览开窗即卡（用户："管线里河流在地形侵蚀前面"——建网不得吃侵蚀）。
+        //   终版：双双 sample()（同源、无侵蚀、不碰 tile），侵蚀在落块合成时叠加
+        //   （applyHydrologyChunk 的 delta 移位：含侵蚀高度 − 同量雕刻深度，水面同步
+        //   抬升同一 delta）→ 侵蚀在游戏里生效且床面-水面关系严格不变。
         this.network = new RiverLineNetwork(terrain::terrainEQuick,
                 (wx, wz) -> terrain.sample(wx, wz).height,
                 terrain.heightCurve(), seed, terrain.params().horizontalScale());

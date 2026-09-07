@@ -193,11 +193,17 @@ public final class GeoGenesisTerrain {
 
     /**
      * 水文雕刻回写：把 {@link HydrologyChunkEngine} 的雕刻计划写回 cell（高度/河型/
-     * 水面/湖泊标记），使预览与游戏的河流完全一致。
+     * 水面/唇口/湖泊标记）。预览与游戏共用本实现（fillFromNoise 的 hydrology 分支
+     * 也走 getChunkCells → 这里），保证预览 = 游戏。
      *
      * <p>高度采用<b>施加雕刻量</b>而非直接取 carvedGroundY：本方法的 cell 已过侵蚀 tile
-     * （extractFromTile），而雕刻计划基于原始地形计算，直接覆盖会丢失侵蚀细节；
-     * 减去雕刻量（original−carved，恒 ≥0）可在保留侵蚀的同时刻出同一条河谷。</p>
+     * （extractFromTile），而雕刻计划基于无侵蚀原始地形计算（管线顺序：河流在前、
+     * 侵蚀在后），直接覆盖会丢失侵蚀细节；减去雕刻量（original−carved，恒 ≥0）
+     * 可在保留侵蚀的同时刻出同一条河谷。</p>
+     *
+     * <p>★ 侵蚀 delta 移位（2026-09-08）：河床绝对高度 = carved + delta，其中
+     * delta = 含侵蚀高度 − 无侵蚀原始高度（同列）。水面/唇口同步抬升同一 delta，
+     * 床面-水面相对关系与雕刻计划严格一致（否则 deposit 处河床高于水面 → 干河）。</p>
      */
     private void applyHydrologyValley(Cell[] cells, int cx, int cz) {
         HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
@@ -206,10 +212,12 @@ public final class GeoGenesisTerrain {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
             Cell cell = cells[lx * 16 + lz];
-            cell.height -= column.erosion();
+            double delta = cell.height - column.originalGroundY();   // 本列侵蚀增量
+            cell.height -= column.erosion();                          // = carved + delta
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
-            cell.riverSurfaceY = column.waterSurfaceY();
-            cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel;
+            cell.riverSurfaceY = column.waterSurfaceY() + delta;
+            cell.riverLipY = column.lipSurfaceY() + delta;
+            cell.isLake = column.fillWater() && cell.riverSurfaceY >= seaLevel;
             cell.lakeMask = cell.isLake;
         }
     }
