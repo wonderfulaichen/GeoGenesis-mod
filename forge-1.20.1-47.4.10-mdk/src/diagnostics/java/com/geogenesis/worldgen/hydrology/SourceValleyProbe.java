@@ -70,7 +70,20 @@ public final class SourceValleyProbe {
                 }
             }
         }
-        System.out.println("[LAKES] 共 " + lakeTotal + " 个湖（内流洼地成湖，当前唯一湖机制）");
+        // 河成湖统计：有湖段（lakeLevel 有限值）的河数 + 湖段总长（wu → block）
+        int riverLakes = 0;
+        double lakeReachLen = 0.0;
+        for (RiverLineRegion.RiverPolyline r : all) {
+            if (r.lakeLevel == null) continue;
+            boolean has = false;
+            for (double v : r.lakeLevel) {
+                if (!Double.isNaN(v)) { has = true; lakeReachLen++; }
+            }
+            if (has) riverLakes++;
+        }
+        System.out.println("[LAKES] 洼地湖 " + lakeTotal + " 个；河成湖："
+                + riverLakes + " 条河共 " + (int) (lakeReachLen * 4.0 * 2.0)
+                + " block 湖段（节点距 4wu × hs2）");
 
         int n = 0, seam = 0;
         int inValley = 0, onShoulder = 0, onRidge = 0;
