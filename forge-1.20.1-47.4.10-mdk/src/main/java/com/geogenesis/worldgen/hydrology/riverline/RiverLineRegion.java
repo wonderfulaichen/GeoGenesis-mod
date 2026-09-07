@@ -27,15 +27,26 @@ public final class RiverLineRegion {
          * （层级 1 占绝对多数 = 只有干流没有支系；出现 3、4 级 = 树状水系成型）。
          */
         public final int level;
+        /**
+         * 逐节点湖面（2026-09-07 河成湖）：NaN = 普通河节点；有限值 = 该节点在
+         * 低梯度"河成湖"段内，值为湖面高程（全段水平）。null = 本河未检测。
+         */
+        public final double[] lakeLevel;
 
         public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
                              double[] depth, double[] fallDrop, int level) {
+            this(nodes, surfaceY, width, depth, fallDrop, level, null);
+        }
+
+        public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
+                             double[] depth, double[] fallDrop, int level, double[] lakeLevel) {
             this.nodes = nodes;
             this.surfaceY = surfaceY;
             this.width = width;
             this.depth = depth;
             this.fallDrop = fallDrop;
             this.level = level;
+            this.lakeLevel = lakeLevel;
         }
     }
 

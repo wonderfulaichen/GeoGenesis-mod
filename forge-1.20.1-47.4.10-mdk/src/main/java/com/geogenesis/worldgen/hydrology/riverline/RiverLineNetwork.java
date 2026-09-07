@@ -1401,7 +1401,75 @@ public final class RiverLineNetwork {
         for (int k = 1; k < rn.length; k++) {
             if (rs[k] > rs[k - 1]) rs[k] = rs[k - 1];
         }
-        return new RiverPolyline(rn, rs, rw, rd, fall, level);
+        // ★ 河成湖检测（2026-09-07）：低梯度连续河段展宽成过水湖。必须在全部水面
+        //   调整（单调化/岸线 cap/瀑布）之后——梯度才是最终形态的梯度。
+        double[] lakeLv = detectLakeReaches(rn, rs, fall);
+        return new RiverPolyline(rn, rs, rw, rd, fall, level, lakeLv);
+    }
+
+    // ===== 河成湖（2026-09-07）=====
+
+    /** 低梯度判据（wu 坡度）：低于此的连续河段视为湖泊型水面。 */
+    private static final double LAKE_MAX_SLOPE = 0.002;
+    /** 河成湖最小长度（wu）：短于此的缓坡段保持普通河。 */
+    private static final double LAKE_MIN_LEN = 24.0;
+    /** 湖段展宽倍数（相对河宽）。 */
+    private static final double LAKE_WIDEN = 3.0;
+    /** 单条河湖段长度占比上限：防止整条河变成一连串湖。 */
+    private static final double LAKE_MAX_FRACTION = 0.5;
+
+    /**
+     * 河成湖检测：把"低梯度 + 无跌水"的连续河段标记为过水湖。
+     *
+     * <p>规则：段坡度 &lt; {@link #LAKE_MAX_SLOPE} 且两端无跌水标记 → 候选；连续候选
+     * 构成 reach，长度 ≥ {@link #LAKE_MIN_LEN} 且不在河头淡出带（源头泉眼不该被
+     * 摊成湖）才保留；湖面 = reach【下游端】水面（沿程单调下降时即最低点）——
+     * 上游侧地形若略高于湖面，湖岸自然后退，这是真实回水的形态。</p>
+     *
+     * @return 逐节点湖面（NaN = 普通河节点）
+     */
+    private double[] detectLakeReaches(MidpointDisplacement.Node[] rn, double[] rs,
+                                       double[] fall) {
+        int m = rn.length;
+        double[] lv = new double[m];
+        java.util.Arrays.fill(lv, Double.NaN);
+        if (m < 3) return lv;
+        // 累计弧长（用于排除河头淡出带）
+        double[] arc = new double[m];
+        for (int i = 1; i < m; i++) {
+            arc[i] = arc[i - 1] + Math.hypot(rn[i].x() - rn[i - 1].x(),
+                                             rn[i].z() - rn[i - 1].z());
+        }
+        double headTaperArc = HEAD_TAPER_NODES * Math.max(1.0, params.gridCell());
+        int i = 0;
+        double lakeLen = 0.0, riverLen = Math.max(1e-6, arc[m - 1]);
+        while (i < m - 1) {
+            // 找一个候选 reach 的起点
+            double segLen = arc[i + 1] - arc[i];
+            double slope = (rs[i] - rs[i + 1]) / Math.max(1e-6, segLen);
+            boolean waterfall = fall[i + 1] > 0.0 || fall[i] > 0.0;
+            if (!(slope < LAKE_MAX_SLOPE && !waterfall && arc[i] >= headTaperArc)) {
+                i++;
+                continue;
+            }
+            // 向后扩展 reach
+            int start = i, end = i;
+            double len = 0.0;
+            while (end < m - 1) {
+                double sl = arc[end + 1] - arc[end];
+                double sp = (rs[end] - rs[end + 1]) / Math.max(1e-6, sl);
+                if (!(sp < LAKE_MAX_SLOPE) || fall[end + 1] > 0.0 || fall[end] > 0.0) break;
+                len += sl;
+                end++;
+            }
+            if (len >= LAKE_MIN_LEN && (lakeLen + len) / riverLen <= LAKE_MAX_FRACTION) {
+                double level = rs[end];      // 下游端水面 = 湖面（单调下降 → 最低）
+                for (int k = start; k <= end; k++) lv[k] = level;
+                lakeLen += len;
+            }
+            i = Math.max(end, start + 1);
+        }
+        return lv;
     }
 
     /**
@@ -2080,6 +2148,20 @@ public final class RiverLineNetwork {
                 }
                 double width = lerp(pl.width[i0], pl.width[i1], t);
                 double depth = lerp(pl.depth[i0], pl.depth[i1], t);
+                // ★ 河成湖段（2026-09-07）：整段换成"宽而平"的湖命中——湖面全段水平
+                //   （= reach 下游端水面）、宽度展宽 LAKE_WIDEN 倍、深度收成 minDepth
+                //   （湖不挖地，只铺水面，自然盆底保留）、frozen 禁止 IDW 混合（混合
+                //   会把湖面与相邻河面抹出斜坡）。河道自身的深槽 hit 与湖 hit 是同一个
+                //   （本段只有一个命中），不存在竞争。
+                if (pl.lakeLevel != null
+                        && (!Double.isNaN(pl.lakeLevel[i0]) || !Double.isNaN(pl.lakeLevel[i1]))) {
+                    double lv = Double.isNaN(pl.lakeLevel[i1]) ? pl.lakeLevel[i0] : pl.lakeLevel[i1];
+                    surface = lv;
+                    width = Math.max(width, 2.0) * LAKE_WIDEN;
+                    depth = params.minDepth();
+                    frozen = true;
+                    fallDrop = 0.0;
+                }
                 double valleyReach = Math.max(width * (1.0 + bankFactor), width * 3.0);
                 if (dist <= valleyReach) {
                     out.add(new RiverLineHit(dist, surface, width, depth,
