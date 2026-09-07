@@ -57,11 +57,20 @@ public final class SourceValleyProbe {
         //   【跨 region】——resolveInvadedHeads 是 region 级的，跨 region 案例它按定义
         //   看不见，两者的处置方式完全不同（前者是本地 bug，后者要动架构）。
         List<RiverLineRegion.RiverPolyline> all = new ArrayList<>();
+        List<RiverLineRegion.LakeNode> allLakes = new ArrayList<>();
+        int lakeTotal = 0;
         for (int rz = -rr; rz <= rr; rz++) {
             for (int rx = -rr; rx <= rr; rx++) {
-                all.addAll(engine.network().region(rx, rz).rivers);
+                RiverLineRegion reg = engine.network().region(rx, rz);
+                all.addAll(reg.rivers);
+                allLakes.addAll(reg.lakes);
+                if (!reg.lakes.isEmpty()) {
+                    lakeTotal += reg.lakes.size();
+                    System.out.printf("lake region(%d,%d) 湖数=%d%n", rx, rz, reg.lakes.size());
+                }
             }
         }
+        System.out.println("[LAKES] 共 " + lakeTotal + " 个湖（内流洼地成湖，当前唯一湖机制）");
 
         int n = 0, seam = 0;
         int inValley = 0, onShoulder = 0, onRidge = 0;
@@ -90,6 +99,11 @@ public final class SourceValleyProbe {
             //   自己的源头端，不会与主河头精确重合。
             boolean isFeeder = false;
             boolean tailJoinsRiver = false;
+            boolean headAtLakeOutlet = false;
+            for (RiverLineRegion.LakeNode lk : allLakes) {
+                double dh = Math.hypot(r.nodes[0].x() - lk.x, r.nodes[0].z() - lk.z);
+                if (dh <= lk.radius + P.gridCell()) { headAtLakeOutlet = true; break; }
+            }
             for (RiverLineRegion.RiverPolyline o : all) {
                 if (o == r) continue;
                 var tail = r.nodes[r.nodes.length - 1];
@@ -122,6 +136,13 @@ public final class SourceValleyProbe {
             //   跨区缝点而非真源头，①② 皆无意义（① 的源头谷槽考核只对真源头成立）。
             //   正则支流从真泉眼追踪而来、节点数远多于此，不受影响。
             if (tailJoinsRiver && r.nodes.length <= 3) {
+                feedersExcluded++;
+                continue;
+            }
+            // ★ 湖出口河（2026-09-07）：河头在湖的溢出口上，是"湖满溢成溪"的合法
+            //   起点，不是泉眼——按源头谷槽考核它等于把出水口判成缺陷（实测
+            //   放开压力测试时 marginAvg 2.09→0.79 全是这类假缺陷）。
+            if (headAtLakeOutlet) {
                 feedersExcluded++;
                 continue;
             }

@@ -4,7 +4,9 @@ import com.geogenesis.worldgen.hydrology.riverline.MidpointDisplacement.Elevatio
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
+import java.util.PriorityQueue;
 
 /**
  * D8 流向 + 汇流累积场（region 级纯函数，确定性）。
@@ -30,6 +32,11 @@ public final class FlowField {
     private final double[] e;
     private final int[] flowTo;      // 下游格索引；-1 = 洼地（无更低邻居）
     private final double[] accum;    // 汇流面积（wu²，含自身格）
+    // ===== 填洼层（2026-09-07 湖泊）：基于【真实地形】而非选线用的 routingE =====
+    //   eFill   = 真实地形高程（block）
+    //   eFilled = priority-flood 后的"溢出高程"：eFilled > eFill 的格 = 洼地内被水填起的部分
+    private double[] eFill;
+    private double[] eFilled;
 
     public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
                      double cellSize, ElevationSampler sampler) {
@@ -78,6 +85,84 @@ public final class FlowField {
         }
         return best;
     }
+
+    // ===== 填洼（2026-09-07 湖泊功能）=====
+
+    /** priority-flood 判为"被水填起"的最小水深（block）：滤掉浮点噪声。 */
+    private static final double FILL_EPS = 0.05;
+
+    /**
+     * 用【真实地形】采样器建填洼层：湖泊必须按真实高程判定，不能按选线用的
+     * routingE（山压低后的 e）——否则"湖"会落在被人为压低的坡面上。
+     *
+     * <p>算法（Barnes 2014 priority-flood）：以网格边界格为种子（水可流出网格），
+     * 每次取当前最低格向外扩，邻格溢出高程 = max(自身高程, 当前格溢出高程)。
+     * 结果 {@code eFilled} 即"若在此蓄水、水位涨到多少才会溢出"。</p>
+     *
+     * <p><b>同时覆盖闭合洼地与开口洼地</b>：真湖多是有出口、但出口坎（sill）高于
+     * 盆地的【开口洼地】——D8 的 flowTo=-1 只认闭合洼地，漏掉这一类（实测
+     * 本地形闭合洼地极少 → 湖数 0）。</p>
+     */
+    public void computeFill(ElevationSampler fillSampler) {
+        int n = nx * nz;
+        this.eFill = new double[n];
+        this.eFilled = new double[n];
+        Arrays.fill(eFilled, Double.NaN);
+        for (int j = 0; j < nz; j++) {
+            for (int i = 0; i < nx; i++) {
+                eFill[j * nx + i] = fillSampler.eAt(originX + i * cellSize,
+                                                   originZ + j * cellSize);
+            }
+        }
+        PriorityQueue<double[]> pq =
+                new PriorityQueue<>(Comparator.comparingDouble(a -> a[0]));
+        for (int j = 0; j < nz; j++) {
+            for (int i = 0; i < nx; i++) {
+                if (i != 0 && i != nx - 1 && j != 0 && j != nz - 1) continue;   // 仅边界格
+                int idx = j * nx + i;
+                eFilled[idx] = eFill[idx];
+                pq.add(new double[]{eFill[idx], idx});
+            }
+        }
+        while (!pq.isEmpty()) {
+            double[] cur = pq.poll();
+            double h = cur[0];
+            int idx = (int) cur[1];
+            if (h > eFilled[idx]) continue;         // 过期条目（已被更低的溢出高程覆盖）
+            int ci = idx % nx, cj = idx / nx;
+            for (int dj = -1; dj <= 1; dj++) {
+                for (int di = -1; di <= 1; di++) {
+                    if (di == 0 && dj == 0) continue;
+                    int ni = ci + di, nj = cj + dj;
+                    if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                    int nIdx = nj * nx + ni;
+                    if (!Double.isNaN(eFilled[nIdx])) continue;
+                    double f = Math.max(eFill[nIdx], h);
+                    eFilled[nIdx] = f;
+                    pq.add(new double[]{f, nIdx});
+                }
+            }
+        }
+    }
+
+    /** 是否已建填洼层。 */
+    public boolean hasFill() { return eFilled != null; }
+
+    /** 真实地形高程（block）；未建填洼层返回 {@link Double#NaN}。 */
+    public double fillEAt(int idx) { return eFill == null ? Double.NaN : eFill[idx]; }
+
+    /** 溢出高程（block）：该格蓄水后涨到多少才溢出。 */
+    public double filledAt(int idx) { return eFilled == null ? Double.NaN : eFilled[idx]; }
+
+    /** 该格的水深（= 溢出高程 − 真实地形）；非洼地格为 0。 */
+    public double basinDepthAt(int idx) {
+        if (eFilled == null) return 0.0;
+        double d = eFilled[idx] - eFill[idx];
+        return d > FILL_EPS ? d : 0.0;
+    }
+
+    /** 该格是否在洼地内（会被水填起）。 */
+    public boolean isBasinCell(int idx) { return basinDepthAt(idx) > 0.0; }
 
     /** 汇流累积：按 e 降序处理（上游必先于下游），accum[down] += accum[cur]。 */
     private void buildAccum() {

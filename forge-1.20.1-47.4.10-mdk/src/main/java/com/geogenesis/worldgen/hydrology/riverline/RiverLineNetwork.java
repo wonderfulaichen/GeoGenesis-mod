@@ -273,6 +273,9 @@ public final class RiverLineNetwork {
         double minZ = rz * regionSize - margin, maxZ = rz * regionSize + regionSize + margin;
         // ★ 选线场用"山压低"后的 e（routingE），使河线贴谷避峰；水面仍锚定真实地形（groundYAt）。
         FlowField field = new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE);
+        // ★ 填洼层（湖泊）：按【真实地形】判定洼地——选线用的 routingE 是压过低山的
+        //   人工高程，拿它找湖会把湖放在被压低的坡面上。
+        field.computeFill(this::groundYAt);
 
         int nx = field.cols(), nz = field.rows();
         boolean[] claimed = new boolean[nx * nz];
@@ -288,6 +291,12 @@ public final class RiverLineNetwork {
         List<int[]> allSegments = new ArrayList<>();   // 全局段集合（防交叉）
         boolean outletOcean = false;
         double maxDischarge = 0.0;
+
+        // ===== 洼地湖提取（2026-09-07）：必须在【追踪之前】——河 trace 要能看见湖
+        //   （入湖即终止），湖也要知道有没有河汇入（决定要不要发溢出续流河）。
+        List<Integer> lakeOutCells = new ArrayList<>();
+        int[] lakeAt = extractLakes(field, rx, rz, lakes, lakeOutCells);
+        boolean[] lakeHasInflow = new boolean[lakes.size()];
 
         // 候选源：e > sourceMinE、汇流面积达标、不在 region 边界安全距内，按 e 降序（高地优先）
         // ★ 汇流面积门限（2026-08-31）：原判据只有"高程 > sourceMinE"且候选纯按 e 降序
@@ -355,7 +364,7 @@ public final class RiverLineNetwork {
             if (insideExistingValley(field, rivers, neighborRivers, s)) continue;
 
             TraceOutcome out = traceRiver(field, s, stepSize, claimed, nodeE,
-                    allSegments, nx, nz, rx, rz, Double.NaN);
+                    allSegments, nx, nz, rx, rz, Double.NaN, lakeAt);
             if (out == null) { rolledBack++; continue; }
             if (out.joined) joinedCount++;
 
@@ -365,9 +374,19 @@ public final class RiverLineNetwork {
                 int tl = levelAt[last];
                 if (tl > 0) level = tl + 1;
             }
+            // 入湖：记下"这个湖有河汇入"（决定是否发溢出续流河），并让河尾水面 = 湖面
+            double lakeSurface = Double.NaN;
+            if (out.isLake && !out.cells.isEmpty()) {
+                int last = out.cells.get(out.cells.size() - 1);
+                int li = lakeAt[last];
+                if (li >= 0) {
+                    lakeSurface = lakes.get(li).height;
+                    lakeHasInflow[li] = true;
+                }
+            }
             CommitOut c = commitRiver(field, out, level, claimed, nodeE, nodeSurf,
                     levelAt, allSegments, rivers, specs, lakes, accepted, nx, Double.NaN, rx, rz,
-                    null, false);
+                    null, lakeSurface, false);
             maxDischarge = Math.max(maxDischarge, c.maxDischarge());
             if (c.reachedOcean()) outletOcean = true;
             if (c.poly() != null) {
@@ -416,7 +435,7 @@ public final class RiverLineNetwork {
                     TraceOutcome mOut = new TraceOutcome(mergeCells, false, false, true, mAcc, false);
                     CommitOut mc = commitRiver(field, mOut, seed.level + 1, claimed, nodeE,
                             nodeSurf, levelAt, allSegments, rivers, specs, lakes, accepted,
-                            nx, seed.surfaceY, rx, rz, neighborRivers, false);
+                            nx, seed.surfaceY, rx, rz, neighborRivers, Double.NaN, false);
                     if (mc.poly() != null) {
                         accepted.add(start);
                         acceptedCount++;
@@ -425,7 +444,7 @@ public final class RiverLineNetwork {
                 }
 
                 TraceOutcome out = traceRiver(field, start, stepSize, claimed, nodeE,
-                        allSegments, nx, nz, rx, rz, seed.accum);
+                        allSegments, nx, nz, rx, rz, seed.accum, lakeAt);
                 if (out == null) continue;
                 if (out.joined) joinedCount++;
                 // 继承上游层级；若续流汇入本 region 已有河，则为该河支流（层级+1）
@@ -435,10 +454,20 @@ public final class RiverLineNetwork {
                     int tl = levelAt[last];
                     if (tl > 0) level = tl + 1;
                 }
+                // 续流也可能入湖（湖面继承，同普通源）
+                double lakeSurface2 = Double.NaN;
+                if (out.isLake && !out.cells.isEmpty()) {
+                    int last = out.cells.get(out.cells.size() - 1);
+                    int li = lakeAt[last];
+                    if (li >= 0) {
+                        lakeSurface2 = lakes.get(li).height;
+                        lakeHasInflow[li] = true;
+                    }
+                }
                 // 续流首节点水面 = 上游尾节点水面（保证跨缝水面连续，无台阶）
                 CommitOut c = commitRiver(field, out, level, claimed, nodeE, nodeSurf,
                         levelAt, allSegments, rivers, specs, lakes, accepted, nx, seed.surfaceY,
-                        rx, rz, neighborRivers, false);
+                        rx, rz, neighborRivers, lakeSurface2, false);
                 maxDischarge = Math.max(maxDischarge, c.maxDischarge());
                 if (c.reachedOcean()) outletOcean = true;
                 if (c.poly() != null) {
@@ -446,6 +475,27 @@ public final class RiverLineNetwork {
                     acceptedCount++;
                 }
             }
+        }
+
+        // ===== 湖满溢 → 下游续流河（2026-09-07）=====
+        // 有河汇入的湖必须"有出有水"：从溢出口外邻格继续追踪一条河，首节点水面 =
+        // 湖面（forcedSrcH），宽度按湖的汇流面积继承 → 湖上下游水文连续、不断流。
+        // 无河汇入的洼地湖（雨水/地下水补给）不发出口河：它没有上游来水，硬接一条
+        // 河反而造出"无源之河"。
+        for (int li = 0; li < lakes.size(); li++) {
+            if (!lakeHasInflow[li]) continue;
+            int outCell = lakeOutCells.get(li);
+            if (outCell < 0 || claimed[outCell]) continue;
+            RiverLineRegion.LakeNode lk = lakes.get(li);
+            TraceOutcome o = traceRiver(field, outCell, stepSize, claimed, nodeE,
+                    allSegments, nx, nz, rx, rz, field.accumAt(outCell), lakeAt);
+            if (o == null) continue;
+            if (outletOnlyToLake(o, lakeAt)) continue;      // 出口河立刻又进湖 → 不重复发
+            CommitOut c = commitRiver(field, o, 1, claimed, nodeE, nodeSurf,
+                    levelAt, allSegments, rivers, specs, lakes, accepted, nx, lk.height,
+                    rx, rz, null, Double.NaN, false);
+            maxDischarge = Math.max(maxDischarge, c.maxDischarge());
+            if (c.reachedOcean()) outletOcean = true;
         }
 
         // ★ meander 去交叉后处理（2026-08-31）：见 commitRiver 注释。区域全部河建好后，
@@ -559,7 +609,8 @@ public final class RiverLineNetwork {
                                   List<RiverPolyline> rivers, List<RiverSpec> specs,
                                   List<RiverLineRegion.LakeNode> lakes,
                                   List<Integer> accepted, int nx, double forcedSrcH, int rx, int rz,
-                                  List<RiverPolyline> extraValleys, boolean feeder) {
+                                  List<RiverPolyline> extraValleys,
+                                  double lakeSurface, boolean feeder) {
         for (int c : out.cells) {
             claimed[c] = true;
             nodeE[c] = field.eAt(c);
@@ -623,7 +674,8 @@ public final class RiverLineNetwork {
                         TraceOutcome mOut = new TraceOutcome(mc, false, false, true, mAcc, false);
                         CommitOut mC = commitRiver(field, mOut, level + 1, claimed, nodeE,
                                 nodeSurf, levelAt, allSegments, rivers, specs, lakes,
-                                accepted, nx, forcedSrcH, rx, rz, extraValleys, true);
+                                accepted, nx, forcedSrcH, rx, rz, extraValleys,
+                                Double.NaN, true);
                         if (mC.poly() != null) {
                             return mC;
                         }
@@ -672,6 +724,9 @@ public final class RiverLineNetwork {
             outletSurf = curve.seaLevelY();
         } else if (out.joined && !Double.isNaN(nodeSurf[junctionCell])) {
             outletSurf = nodeSurf[junctionCell];   // 继承主流交汇点水面 → 交汇处零台阶
+        } else if (out.isLake && !Double.isNaN(lakeSurface)) {
+            // ★ 入湖：河尾水面 = 湖面（洼地溢出高程），河水平顺没入湖中，不在湖岸留台阶
+            outletSurf = lakeSurface;
         } else {
             outletSurf = junctionGround;
         }
@@ -695,13 +750,9 @@ public final class RiverLineNetwork {
         double tailSurface = surf[m - 1];
         rivers.add(smoothed);
         specs.add(new RiverSpec(nodes, surf, wid, dep, level, m >= 3, feeder));
-        RiverLineRegion.LakeNode lake = null;
-        if (out.isLake) {
-            int last = out.cells.get(out.cells.size() - 1);
-            lake = new RiverLineRegion.LakeNode(
-                    field.cellCenterX(last), field.cellCenterZ(last), tailSurface);
-        }
-        return new CommitOut(smoothed, out.reachedOcean, acc, lake, tailSurface);
+        // ★ 湖不再由河"顺手创建"（2026-09-07）：湖是 build() 里用 priority-flood 从
+        //   洼地提取的（含开口洼地），早已在 region 湖表里；这里只把河尾水面锚到湖面。
+        return new CommitOut(smoothed, out.reachedOcean, acc, null, tailSurface);
     }
 
     /**
@@ -824,7 +875,7 @@ public final class RiverLineNetwork {
     private TraceOutcome traceRiver(FlowField field, int start, int stepSize,
                                     boolean[] claimed, double[] nodeE,
                                     List<int[]> allSegments, int nx, int nz,
-                                    int rx, int rz, double initialAccum) {
+                                    int rx, int rz, double initialAccum, int[] lakeAt) {
         int cur = start;
         List<Integer> path = new ArrayList<>();
         List<Double> accumList = new ArrayList<>();
@@ -841,6 +892,10 @@ public final class RiverLineNetwork {
             pushCell(path, accumList, cur, field, initialAccum);
             seen[cur] = true;
             if (field.eAt(cur) <= params.oceanE()) { reachedOcean = true; break; }
+            // ★ 入湖即终止（2026-09-07）：河水流进洼地湖 → 河道到此为止（湖内不再开
+            //   河槽，否则会出现"河槽切在湖底"）。湖满溢后由 build 的溢出续流河接走，
+            //   水文不断。湖面 = 溢出口高程（commitRiver 用 lakeSurface 继承）。
+            if (lakeAt != null && lakeAt[cur] >= 0) { isLake = true; break; }
 
             int join = nearbyDownhillNode(field, cur, stepSize, nodeE,  nx, nz, allSegments);
             if (join >= 0) { pushCell(path, accumList, join, field, initialAccum); joined = true; break; }   // 就近汇入树状
@@ -1044,6 +1099,117 @@ public final class RiverLineNetwork {
                     && m > bestCleanMargin) { bestCleanMargin = m; bestClean = k; }
         }
         return bestClean >= 0 ? bestClean : bestAny;
+    }
+
+    // ===== 洼地湖（2026-09-07）=====
+
+    /** 成湖最小格数：1~2 格的多是噪声小坑（实测 9 region 有 208 个 ≤3 格）。
+     *  每格 = gridCell(24wu) = 48 block 见方，3 格已是可见水塘。 */
+    private static final int LAKE_MIN_CELLS = 2;   // TEMP 产量曲线
+    /** 成湖最小水深（block）：浅于此 = 泥坑/湿地，不做水面。 */
+    private static final double LAKE_MIN_DEPTH = 0.4;   // TEMP 产量曲线
+
+    /**
+     * 从填洼层提取湖：连通标记"被水填起"的格 → 门槛过滤 → 生成 LakeNode。
+     *
+     * @param field 已 {@link FlowField#computeFill} 的流场
+     * @param lakes 输出：本 region 的湖表（调用方持有）
+     * @param outCells 输出：每个湖的【溢出口外邻格】（-1 = 无出口，真内流）
+     * @return cell → 湖序号（-1 = 非湖格）；供河 trace 判断是否入湖
+     */
+    private int[] extractLakes(FlowField field, int rx, int rz,
+                               List<RiverLineRegion.LakeNode> lakes, List<Integer> outCells) {
+        int nx = field.cols(), nz = field.rows(), n = nx * nz;
+        int[] lakeAt = new int[n];
+        java.util.Arrays.fill(lakeAt, -1);
+        if (!field.hasFill()) return lakeAt;
+        boolean[] seen = new boolean[n];
+        double regionSize = params.regionSize();
+        double lo = rx * regionSize, hi = lo + regionSize;
+        for (int idx = 0; idx < n; idx++) {
+            if (seen[idx] || !field.isBasinCell(idx)) continue;
+            // 8 邻连通洪泛，收集一个洼地
+            java.util.ArrayDeque<Integer> stack = new java.util.ArrayDeque<>();
+            java.util.List<Integer> cells = new java.util.ArrayList<>();
+            stack.push(idx);
+            seen[idx] = true;
+            while (!stack.isEmpty()) {
+                int c = stack.pop();
+                cells.add(c);
+                int ci = c % nx, cj = c / nx;
+                for (int dj = -1; dj <= 1; dj++) {
+                    for (int di = -1; di <= 1; di++) {
+                        if (di == 0 && dj == 0) continue;
+                        int ni = ci + di, nj = cj + dj;
+                        if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                        int nIdx = nj * nx + ni;
+                        if (seen[nIdx] || !field.isBasinCell(nIdx)) continue;
+                        seen[nIdx] = true;
+                        stack.push(nIdx);
+                    }
+                }
+            }
+            double spill = field.filledAt(cells.get(0));
+            double maxDepth = 0.0;
+            int deepest = cells.get(0);
+            double cx = 0.0, cz = 0.0;
+            for (int c : cells) {
+                double d = field.basinDepthAt(c);
+                if (d > maxDepth) { maxDepth = d; deepest = c; }
+                cx += field.cellCenterX(c);
+                cz += field.cellCenterZ(c);
+            }
+            cx /= cells.size();
+            cz /= cells.size();
+            if (cells.size() < LAKE_MIN_CELLS || maxDepth < LAKE_MIN_DEPTH) continue;
+            // 水下洼地不是湖（那是海/海底）：溢出坎低于海平面 = 整盆都在水下 = 海底/潟湖
+            if (spill <= curve.seaLevelY() + 0.5) continue;
+            // 跨区归属：中心须在本 region 自有盒内（margin 重叠区归邻区，避免重复湖）
+            if (cx < lo || cx > hi || cz < lo || cz > hi) continue;
+            // 缝带安全区（PL-RGA lake_safe_mask）：贴边洼地会被邻区也判成湖。
+            //   ★ 湖用【1 格】而非 borderDist(4 格)：重复湖已由上面的"中心格归属"拦住，
+            //     borderDist 是给【布源】用的（源头要离缝远才不撞邻河谷壁），套到湖上
+            //     会白白砍掉 region 边缘一半的洼地（实测产量腰斩）。
+            if (nearRegionBorder(field, deepest, rx, rz, params.gridCell())) continue;
+            double area = cells.size() * params.gridCell() * params.gridCell();
+            int li = lakes.size();
+            lakes.add(new RiverLineRegion.LakeNode(cx, cz, spill,
+                    Math.sqrt(area / Math.PI), maxDepth));
+            for (int c : cells) lakeAt[c] = li;
+            outCells.add(spillCell(field, cells, nx, nz));
+        }
+        return lakeAt;
+    }
+
+    /** 出口河是否一出门就又终止在湖里（同一湖不反复发出口河）。 */
+    private static boolean outletOnlyToLake(TraceOutcome o, int[] lakeAt) {
+        if (o == null || o.cells.isEmpty()) return true;
+        int last = o.cells.get(o.cells.size() - 1);
+        return lakeAt != null && lakeAt[last] >= 0;
+    }
+
+    /** 溢出口：洼地内存在一个"非洼地且高程 ≤ spill"的邻格 → 水从那里溢出。
+     * 返回该【外部邻格】（下游河起点）；无出口（真内流）返回 -1。
+     */
+    private int spillCell(FlowField field, java.util.List<Integer> cells, int nx, int nz) {
+        double spill = field.filledAt(cells.get(0));
+        int bestOut = -1;
+        double bestE = Double.POSITIVE_INFINITY;
+        for (int c : cells) {
+            int ci = c % nx, cj = c / nx;
+            for (int dj = -1; dj <= 1; dj++) {
+                for (int di = -1; di <= 1; di++) {
+                    if (di == 0 && dj == 0) continue;
+                    int ni = ci + di, nj = cj + dj;
+                    if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                    int nIdx = nj * nx + ni;
+                    if (field.isBasinCell(nIdx)) continue;
+                    double e = field.fillEAt(nIdx);
+                    if (e <= spill + 0.05 && e < bestE) { bestE = e; bestOut = nIdx; }
+                }
+            }
+        }
+        return bestOut;
     }
 
     /**
@@ -1769,12 +1935,13 @@ public final class RiverLineNetwork {
     }
 
     /**
-     * 河面世界 Y（= 当地地表谷底）。
+     * 河面世界 Y（= 当地地表谷底）。<b>public：探针需按同一口径采样真实地形</b>
+     * （湖泊填洼层必须用真实高程，不能用选线用的 routingE）。
      *
      * <p>用 terrainEQuick 派生（与 D8 汇流场同源、确定、零侵蚀 tile）→ 保证 region 冷构建亚毫秒级。
      * 与最终地形（sampleWu）的差异仅剩侵蚀 delta（通常很小），不影响视觉嵌入感。</p>
      */
-    private double groundYAt(double wx, double wz) {
+    public double groundYAt(double wx, double wz) {
         return terrainY != null ? terrainY.yAt(wx, wz)
                 : curve.heightFromE(eSampler.eAt(wx, wz));
     }
@@ -1924,14 +2091,20 @@ public final class RiverLineNetwork {
         if (!r.lakes.isEmpty()) {
             double lakeDist2 = Double.POSITIVE_INFINITY;
             double lakeH = 0.0;
+            double lakeR = params.lakeRadius();
             for (RiverLineRegion.LakeNode ln : r.lakes) {
                 double d2 = (wx - ln.x) * (wx - ln.x) + (wz - ln.z) * (wz - ln.z);
-                if (d2 < lakeDist2) { lakeDist2 = d2; lakeH = ln.height; }
+                if (d2 < lakeDist2) {
+                    lakeDist2 = d2; lakeH = ln.height;
+                    // ★ 用【每湖】半径（按洼地面积换算）而非全局 lakeRadius：全局半径
+                    //   会把小水塘摊成 120wu 的大盘子、把真大湖又削小。
+                    lakeR = ln.radius > 0 ? ln.radius : params.lakeRadius();
+                }
             }
             double lakeDist = Math.sqrt(lakeDist2);
-            if (lakeDist <= params.lakeRadius() + params.lakeFadeDist()
+            if (lakeDist <= lakeR + params.lakeFadeDist()
                     && lakeDist <= bestRiverDist) {
-                out.add(new RiverLineHit(lakeDist, lakeH, params.lakeRadius(),
+                out.add(new RiverLineHit(lakeDist, lakeH, lakeR,
                         params.minDepth(), r.dischargeArea, false, true, 0.0, false));
             }
         }
