@@ -25,15 +25,15 @@ public record HydrologyBlockSample(double surfaceY, double bedY,
                                    double bankWidth, double valleyWidth,
                                    double discharge, RiverOutlet.Type outletType,
                                    double distToCenter, double fallDrop,
-                                   boolean frozen) {
+                                   boolean frozen, boolean isLake) {
 
-    /** 兼容旧构造（distToCenter 缺省 = 0，即河道中心；无跌水、不冻结）。 */
+    /** 兼容旧构造（distToCenter 缺省 = 0，即河道中心；无跌水、不冻结、非湖）。 */
     public HydrologyBlockSample(double surfaceY, double bedY,
                                 double width, double depth,
                                 double bankWidth, double valleyWidth,
                                 double discharge, RiverOutlet.Type outletType) {
         this(surfaceY, bedY, width, depth, bankWidth, valleyWidth,
-                discharge, outletType, 0.0, 0.0, false);
+                discharge, outletType, 0.0, 0.0, false, false);
     }
 
     /** 跌水列的唇口水位（水幕顶）：非跌水列即自身水面。 */

@@ -1411,12 +1411,19 @@ public final class RiverLineNetwork {
 
     /** 低梯度判据（wu 坡度）：低于此的连续河段视为湖泊型水面。 */
     private static final double LAKE_MAX_SLOPE = 0.002;
-    /** 河成湖最小长度（wu）：短于此的缓坡段保持普通河。 */
-    private static final double LAKE_MIN_LEN = 24.0;
+    /** 河成湖最小长度（wu）：短于此的缓坡段保持普通河。
+     *  ★ 12 而非 24（2026-09-07 实测）：本地形河面是【阶梯剖面】——坡度分布双峰
+     *    （要么 <0.002 的 tread 平台、要么 ≥0.032 的跌水，中间为空），上游平段
+     *    普遍只有 3~5 节点（12~20wu），24 的下限会把它们全灭、只剩海平面河尾。 */
+    private static final double LAKE_MIN_LEN = 12.0;
     /** 湖段展宽倍数（相对河宽）。 */
     private static final double LAKE_WIDEN = 3.0;
     /** 单条河湖段长度占比上限：防止整条河变成一连串湖。 */
     private static final double LAKE_MAX_FRACTION = 0.5;
+    /** 湖面高出海平面的下限（block）：贴着海平面平走的河尾全是"湖段"——那是河口
+     *  （applyEstuary 管），不是湖（实测 9 区全部 7 个湖段湖面=海平面+0，用户：
+     *  "湖泊基本全生成在海洋了"）。 */
+    private static final double LAKE_MIN_ABOVE_SEA = 4.0;
 
     /**
      * 河成湖检测：把"低梯度 + 无跌水"的连续河段标记为过水湖。
@@ -1462,7 +1469,8 @@ public final class RiverLineNetwork {
                 len += sl;
                 end++;
             }
-            if (len >= LAKE_MIN_LEN && (lakeLen + len) / riverLen <= LAKE_MAX_FRACTION) {
+            if (len >= LAKE_MIN_LEN && (lakeLen + len) / riverLen <= LAKE_MAX_FRACTION
+                    && rs[end] > curve.seaLevelY() + LAKE_MIN_ABOVE_SEA) {
                 double level = rs[end];      // 下游端水面 = 湖面（单调下降 → 最低）
                 for (int k = start; k <= end; k++) lv[k] = level;
                 lakeLen += len;
