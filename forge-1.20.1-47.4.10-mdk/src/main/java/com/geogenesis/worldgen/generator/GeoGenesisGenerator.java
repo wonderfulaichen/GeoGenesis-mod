@@ -175,12 +175,14 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         // ★ 2026-08-29：旧 RTF 河网已下线，水文模型是唯一的河流实现，故河流开关
         //   统一为配置面板 riverEnabled（原 HydrologyExperimentSwitch 的 LEGACY_RTF
         //   模式已无对应实现，保留会导致"地形被水文雕刻却不灌水"的干河谷）。
+        // ★ 2026-09-08 侵蚀修复终版（管线顺序：河流建网在前、侵蚀在后）：
+        //   统一走 getChunkCells（sample + extractFromTile 侵蚀 + applyHydrologyValley
+        //   雕刻减法 + delta 移位）。旧 applyHydrologyChunk 的 carvedGroundY 直接覆盖
+        //   会把侵蚀整条丢掉（用户实测："侵蚀只在预览工作，游戏里不工作"）；
+        //   而给水文采样改 sampleWu 的首修又让河网构建期触发侵蚀 tile 冷生成
+        //   （预览开窗即卡）。终版：建网无侵蚀（快），侵蚀在落块合成时叠加（生效）。
         boolean hydrologyOn = terrain.riversEnabled();
-        HydrologyChunkResult hydrologyResult = hydrologyOn
-                ? terrain.calculateHydrologyChunk(pos.x, pos.z) : null;
-        Cell[] cells = hydrologyResult != null
-                ? applyHydrologyChunk(hydrologyResult, pos.x, pos.z)
-                : terrain.getChunkCells(pos.x, pos.z);
+        Cell[] cells = terrain.getChunkCells(pos.x, pos.z);
         long t3 = System.nanoTime();
 
         BlockPos.MutableBlockPos mPos = new BlockPos.MutableBlockPos();
@@ -199,25 +201,6 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         }
 
         return CompletableFuture.completedFuture(chunk);
-    }
-
-    private Cell[] applyHydrologyChunk(HydrologyChunkResult result, int chunkX, int chunkZ) {
-        Cell[] cells = result.originalCells().clone();
-        for (HydrologyBlockCarvedColumn column : result.carvedColumns()) {
-            int lx = Math.floorMod(column.blockX(), 16);
-            int lz = Math.floorMod(column.blockZ(), 16);
-            Cell cell = cells[lx * 16 + lz];
-            cell.height = column.carvedGroundY();
-            // ★ BugFix: riverType 必须复用 carveColumn 的 anyFill 门控（carved < surfaceY−0.5
-            //   且 original >= surfaceY），否则低洼处原始地面已低于河面时雕刻量为 0，仍会被
-            //   fillTerrainColumn 的 riverType!=0 判定灌水 → 水漫出河道。
-            cell.riverType = (byte) (column.fillWater() ? 1 : 0);
-            cell.riverSurfaceY = column.waterSurfaceY();
-            cell.riverLipY = column.lipSurfaceY();
-            cell.isLake = column.fillWater() && column.waterSurfaceY() >= terrain.seaLevel();
-            cell.lakeMask = cell.isLake;
-        }
-        return cells;
     }
 
     /**

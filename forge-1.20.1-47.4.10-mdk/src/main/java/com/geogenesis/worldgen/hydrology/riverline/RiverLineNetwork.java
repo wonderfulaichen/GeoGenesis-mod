@@ -1282,8 +1282,10 @@ public final class RiverLineNetwork {
         if (n < 3) {
             clampMonotonicDownstream(rawSurf, rawWid, rawDep);
             applyBankCap(rawNodes, rawSurf, rawWid, params);
+            double[] terrShort = new double[n];
+            for (int i = 0; i < n; i++) terrShort[i] = rawTerrainY(rawNodes[i]);
             return new RiverPolyline(rawNodes, rawSurf, rawWid, rawDep,
-                    new double[n], level);
+                    new double[n], level, null, terrShort);
         }
         double[] px = new double[n], pz = new double[n];
         for (int i = 0; i < n; i++) {
@@ -1392,9 +1394,11 @@ public final class RiverLineNetwork {
         //   节点的 terr，硬上界不会削平 tread。它只修重采样节点地形凹陷处的
         //   插值残留（surf 高于当地 terr 约 0.2 格的微悬河）。
         double sea = curve.seaLevelY();
+        double[] terr = new double[rn.length];
         for (int k = 0; k < rn.length; k++) {
-            if (rawTerrainY(rn[k]) >= sea && rs[k] > rawTerrainY(rn[k])) {
-                rs[k] = rawTerrainY(rn[k]);
+            terr[k] = rawTerrainY(rn[k]);
+            if (terr[k] >= sea && rs[k] > terr[k]) {
+                rs[k] = terr[k];
             }
         }
         // 沿程单调兜底（下游不抬床）。
@@ -1404,7 +1408,7 @@ public final class RiverLineNetwork {
         // ★ 河成湖检测（2026-09-07）：低梯度连续河段展宽成过水湖。必须在全部水面
         //   调整（单调化/岸线 cap/瀑布）之后——梯度才是最终形态的梯度。
         double[] lakeLv = detectLakeReaches(rn, rs, fall);
-        return new RiverPolyline(rn, rs, rw, rd, fall, level, lakeLv);
+        return new RiverPolyline(rn, rs, rw, rd, fall, level, lakeLv, terr);
     }
 
     // ===== 河成湖（2026-09-07）=====

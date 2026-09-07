@@ -58,21 +58,21 @@ public final class WaterfallProbe {
                 rivers++;
                 int n = river.nodes.length;
                 double[] terr = new double[n];
-                // ★ 必须与生产同源：RiverLineNetwork 注入的 terrainY = CellGenerator::sampleWu
-                //   = sample + 侵蚀 tile delta（见 CellGenerator:938 与 RiverLineNetwork:128）。
-                //   原先用 sample()（不含侵蚀）去复核 applyWaterfalls 的坡角门，两边高程不是
-                //   同一份数据：侵蚀把谷地刻陡，生产按陡坡判定通过（≥12°），探针按侵蚀前的
-                //   缓坡算出 6.44° 而误报 angleFail（实测 run[22,66] 落差41.29/水平365.55）。
-                //   且必须用【engine 的同一个 terrain 实例】：侵蚀 tile 含 RIVER_NETWORK 图层，
-                //   另起的 terrainRaw 实例拿不到 engine 注册的河网，采样结果与生产不一致
-                //   （实测换 terrainRaw.sampleWu 后 angleFails 1→3 并冒出 wellViolation=47）。
-                //   两条路都不通：terrainRaw.sampleWu / terrain.sampleWu 都无法复现生产时刻——
-                //   applyWaterfalls 在 region 构建【当时】执行，侵蚀 tile 的 RIVER_NETWORK 图层
-                //   只含当时已注册的河；探针事后采样必然不同（实测 terrain.sampleWu 同样
-                //   得到 angleFails=3 并冒出 wellViolation=47，而 sample() 下 wellViolation=0）。
-                //   故仍用 sample()（保住 wellViolation 这个有效信号），angleFails 见下方降级说明。
-                for (int i = 0; i < n; i++) {
-                    terr[i] = terrainRaw.sample(river.nodes[i].x(), river.nodes[i].z()).height;
+                // ★ 2026-09-07 侵蚀修复配套：折线现携带【build 时刻】的 terrainY（水面 cap
+                //   用的同一份数据，见 RiverLineRegion.RiverPolyline.terrainY）。探针直接读它
+                //   复核，与生产精确同源——历史上试过的两条路都不通：
+                //   (a) sampleWu 事后重采样：侵蚀 tile 的河网雕刻层随注册时序变化，无法复现
+                //       生产时刻（实测 wellViolation=47 假阳性）；
+                //   (b) sample()（无侵蚀基准）：2026-09-07 生产基线改为含侵蚀后，水面 cap 跟着
+                //       含侵蚀地形走，deposit(delta>0) 处水面高于无侵蚀基准 → wellViolation=7
+                //       同样是基准错位假阳性。
+                //   terrainY 记录法一次性解决：基准 = 生产 cap 当时的那一份，不多不少。
+                if (river.terrainY != null && river.terrainY.length == n) {
+                    terr = river.terrainY;
+                } else {
+                    for (int i = 0; i < n; i++) {
+                        terr[i] = terrainRaw.sample(river.nodes[i].x(), river.nodes[i].z()).height;
+                    }
                 }
                 int lastRunEnd = -1_000_000;   // 避免首 run 间距误判（同 lastFall 整数溢出坑）
                 int runStart = -1;
