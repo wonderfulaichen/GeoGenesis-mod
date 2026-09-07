@@ -305,6 +305,16 @@ task runValleySeamProbe(type: JavaExec) {
     }
 }
 
+// Lake basin distribution probe (2026-09-07): gradlew runLakeBasinProbe [-PprobeArgs="seed rr"]
+task runLakeBasinProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeBasinProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 task runSourceValleyProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.SourceValleyProbe'

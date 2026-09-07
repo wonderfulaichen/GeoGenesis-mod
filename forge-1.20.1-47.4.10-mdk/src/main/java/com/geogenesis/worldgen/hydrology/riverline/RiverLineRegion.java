@@ -39,12 +39,28 @@ public final class RiverLineRegion {
         }
     }
 
-    /** 湖泊节点（河流终止于内流洼地）：展平为湖面 + 半径/淡出（PL-RGA outlet_local_minimum）。 */
+    /**
+     * 湖泊节点：湖面展平 + 半径/淡出（PL-RGA outlet_local_minimum）。
+     *
+     * <p><b>2026-09-07 起改由 priority-flood 洼地提取生成</b>（此前只在"河 trace 撞
+     * 内流洼地"时按河节点水面造一个，实测 0 个——本地形闭合洼地极少）：</p>
+     * <ul>
+     *   <li>{@code height} = 洼地溢出高程（spill），不是河节点水面——只有取 spill
+     *       才能保证"湖面 = 溢出口坎高"，与下游续流河水面连续；</li>
+     *   <li>{@code radius} = 按洼地面积换算的半径（wu），取代原来的全局 lakeRadius；</li>
+     *   <li>{@code depth} = 最大水深（block），仅用于诊断——<b>湖不挖地</b>：
+     *       洼地天然低于 spill，雕刻只铺水面、保留自然盆底。</li>
+     * </ul>
+     */
     public static final class LakeNode {
         public final double x, z;     // 世界坐标（wu）
-        public final double height;   // 湖面世界 Y（= 该节点 slope-drop 后河高）
-        public LakeNode(double x, double z, double height) {
+        public final double height;   // 湖面世界 Y（= 洼地溢出高程 spill）
+        public final double radius;   // 湖面半径（wu，按洼地面积换算）
+        public final double depth;    // 最大水深（block，诊断用）
+
+        public LakeNode(double x, double z, double height, double radius, double depth) {
             this.x = x; this.z = z; this.height = height;
+            this.radius = radius; this.depth = depth;
         }
     }
 
