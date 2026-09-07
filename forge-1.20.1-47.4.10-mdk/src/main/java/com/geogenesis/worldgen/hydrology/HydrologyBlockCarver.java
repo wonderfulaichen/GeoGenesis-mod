@@ -185,7 +185,11 @@ public final class HydrologyBlockCarver {
         //   宽度已 ×3，谷壁带跟着放大 3 倍 = 整片阶梯地貌被刨平成光滑坡。湖岸应该
         //   跟随自然地形（水只灌到自然洼地处），只留 1.15×width 的过渡羽化防硬切。
         boolean lakeHit = nearest.isLake();
-        double valley = lakeHit
+        // ★ 跌水段同治（2026-09-07，用户："瀑布的岸坡也会这样"）：跌水两侧地形
+        //   高差最大，谷壁带往水面刨的痕迹在瀑布处最刺眼。潭体在河道内（dist≤width）
+        //   不受影响；弯折外侧楔形区本就不认领（2026-08-31）；收窄只去掉岸坡刨平。
+        boolean narrowWall = lakeHit || nearest.fallDrop() > 0.0;
+        double valley = narrowWall
                 ? width * 1.15
                 : Math.max(width + bankW, width * 3.0);
 
@@ -211,8 +215,8 @@ public final class HydrologyBlockCarver {
             double sd = s.distToCenter();
             if (sd > P.heightBlendDist()) break;   // sampleBlockAll 已按距离升序
             double ws = Math.max(s.width(), 1.0);
-            // 湖样本谷壁带同样收窄（与上面 valley 同理，见湖命中注释）
-            double vs = s.isLake()
+            // 湖/跌水样本谷壁带同样收窄（与上面 valley 同理，见湖命中注释）
+            double vs = (s.isLake() || s.fallDrop() > 0.0)
                     ? ws * 1.15
                     : Math.max(ws + ws * P.bankFactor(), ws * 3.0);
             double vtS = NoiseUtil.saturate((dist - ws) / Math.max(1.0, vs - ws));
