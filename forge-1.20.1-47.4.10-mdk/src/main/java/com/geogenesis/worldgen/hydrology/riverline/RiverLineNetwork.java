@@ -152,12 +152,23 @@ public final class RiverLineNetwork {
         double deltaAt(double wx, double wz);
     }
 
-    /** 河网微自适应（2026-09-08，用户："让河流局部路线与侵蚀后的地形匹配"）：
-     * 侵蚀 delta 注入选线场；null = 关闭（零 tile 依赖，erosionEnabled=false /
-     * 预览进程的默认态，遵守"建网不得吃侵蚀"的历史教训）。 */
-    private final ErosionDeltaSampler erosionDelta;
-    /** 微自适应增益：delta 已随 erosionStrength 缩放，此处恒 1.0（线性跟随）。 */
-    private final double erosionRoutingGain;
+    /** 河网微自适应（2026-09-08）：侵蚀 delta 注入选线场（D8 建网引导）。
+     * null = 关闭——【默认】：建网覆盖整个 region 网格，全域吃 tile 实测加载
+     * 分钟级卡顿（用户 2026-09-08："半天没加载进游戏"），仅 toml 手开实验
+     * （erosionRoutingAdaptive）。落块期横向吸附亦已实测实现过但无效果被回滚
+     * （见下方"河道横向吸附"注释块）。 */
+    private final ErosionDeltaSampler routingDelta;
+    /** 选线引导增益：delta 已随 erosionStrength 缩放，恒 1.0。 */
+    private final double routingGain;
+
+    // 河道横向吸附（2026-09-08）已实现并实测后【回滚删除】：
+    // 探针（RiverSnapProbe，git 历史 f47a023..）量得吸附触发率仅 2~5% 段、
+    // 偏移均值 0.09wu（0.2 block，不可见）、且 13/17 触发段方向恶化。
+    // 根因认知：侵蚀引擎动量反馈沿既有汇流谷强化 → 河线（D8 贴谷）与侵蚀沟
+    // 【大面积天然重合】，用户看到的"局部不适应"是 <5% 的尾部段，其沟底在
+    // ±3wu 采样窗外（更大窗会越 chunk 边界触发额外 tile 生成，性能红线）。
+    // 真修复仅剩两条贵路径：建网引导（已实现，erosionRoutingAdaptive 手动开）
+    // 或 tile 异步/磁盘缓存架构（长期项）。
 
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             HeightCurve curve, long seed) {
@@ -191,16 +202,16 @@ public final class RiverLineNetwork {
         this(eSampler, terrainY, null, 0.0, curve, seed, horizontalScale, params);
     }
 
-    /** 微自适应构造：erosionDelta 非空时选线场叠加侵蚀增量（河线局部贴合侵蚀后地形）。 */
+    /** 微自适应构造：routingDelta 非空时选线场叠加侵蚀增量（erosionRoutingAdaptive 实验路径）。 */
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             TerrainYSampler terrainY,
-                            ErosionDeltaSampler erosionDelta, double erosionRoutingGain,
+                            ErosionDeltaSampler routingDelta, double routingGain,
                             HeightCurve curve, long seed, double horizontalScale,
                             RiverLineParams params) {
         this.eSampler = eSampler;
         this.terrainY = terrainY;
-        this.erosionDelta = erosionDelta;
-        this.erosionRoutingGain = erosionRoutingGain;
+        this.routingDelta = routingDelta;
+        this.routingGain = routingGain;
         this.curve = curve;
         this.seed = seed;
         this.params = params;
@@ -230,7 +241,7 @@ public final class RiverLineNetwork {
      */
     private double routingE(double wx, double wz) {
         double e = params.routingE(eSampler.eAt(wx, wz));
-        if (erosionDelta != null) e += erosionRoutingGain * erosionDelta.deltaAt(wx, wz);
+        if (routingDelta != null) e += routingGain * routingDelta.deltaAt(wx, wz);
         return e;
     }
 
