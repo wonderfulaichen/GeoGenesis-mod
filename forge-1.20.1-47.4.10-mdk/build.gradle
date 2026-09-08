@@ -315,6 +315,16 @@ task runErosionDeltaProbe(type: JavaExec) {
     }
 }
 
+// Adaptive river routing probe (2026-09-08): gradlew runAdaptiveRoutingProbe [-PprobeArgs="seed"]
+task runAdaptiveRoutingProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.AdaptiveRoutingProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 // Lake basin distribution probe (2026-09-07): gradlew runLakeBasinProbe [-PprobeArgs="seed rr"]
 task runLakeBasinProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

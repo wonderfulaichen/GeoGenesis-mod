@@ -844,26 +844,22 @@ public final class CellGenerator {
     }
 
     /**
-     * 对 Cell 施加 wu 坐标处的侵蚀增量（含 tile 边界 blend），并重算 height/重分类。
-     * extractFromTile 与 sampleWu 共用的公共逻辑。
+     * wu 坐标处的侵蚀增量（【e 单位】，含 tile 边界对称 blend）——独立可采样接口。
+     *
+     * <p>★ 供河网微自适应（RiverLineNetwork 选线场）与 {@link #applyTileDelta} 共用：
+     * 量纲与 routingE 的 e 场完全一致（tile delta 本就施加于 cell.e），可直接叠加。</p>
+     *
+     * <p>中断语义：getOrGenTile 同步中断（null）时返回 0（不施加增量），与
+     * applyTileDelta 旧语义一致；半成品 tile 不会被缓存。</p>
      */
-    private void applyTileDelta(Cell cell, double wuX, double wuZ) {
+    public double erosionDeltaE(double wuX, double wuZ) {
         // ★ 2026-08-12 回退（半开归属方案经实测否决——48k+24 线引入新墙，且最初断崖根因是
         // SLOPE 0.0015 微坡墙而非 blend；恢复基线 floorDiv(wu,48) + 右/下缘 blend）
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
-        if (res == null) return; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
+        if (res == null) return 0.0; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
         double delta = sampleTileField(res.delta, res.originX, res.originZ, wuX, wuZ);
-        // ★ 2026-08-14 晚场（用户建议"流量累积图当梯度图用起来"）：RIVER_NETWORK 图层
-        //   显示粒子侵蚀 discharge 场 = 流量累积图（液滴沿坡流动的集水累积，
-        //   本质是地形梯度/流域方向的可视化）。
-        if (res.discharge != null)
-            cell.riverNetDischarge = sampleTileField(res.discharge, res.originX, res.originZ, wuX, wuZ);
-        // RIVER_TYPE 图层与 isLake/lakeMask 统一由水文雕刻计划写入
-        // （GeoGenesisTerrain.applyHydrologyValley / GeoGenesisGenerator.applyHydrologyChunk）。
-        // 旧 RTF 河网已下线：此处曾对每个 cell 采样几何河网写入上述字段，既与水文结果
-        // 互相覆盖造成误导，又是逐 cell 的无效开销。
 
         // tile 边界对称 4 向 blend + 角块双线性（2026-08-13 重新启用——上次试验参数未对齐
         // 作废：探针 ridge=2.0 vs 游戏 toml 0.75，hs 未参数化；现已全部对齐）。
@@ -910,6 +906,29 @@ public final class CellGenerator {
                   + d01 * (1 - fx) * fz
                   + d11 * fx * fz;
         }
+        return delta;
+    }
+
+    /**
+     * 对 Cell 施加 wu 坐标处的侵蚀增量（含 tile 边界 blend），并重算 height/重分类。
+     * extractFromTile 与 sampleWu 共用的公共逻辑。
+     */
+    private void applyTileDelta(Cell cell, double wuX, double wuZ) {
+        double delta = erosionDeltaE(wuX, wuZ);
+
+        // ★ 2026-08-14 晚场（用户建议"流量累积图当梯度图用起来"）：RIVER_NETWORK 图层
+        //   显示粒子侵蚀 discharge 场 = 流量累积图（液滴沿坡流动的集水累积，
+        //   本质是地形梯度/流域方向的可视化）。erosionDeltaE 内部已把本 tile 拉进缓存，
+        //   此处 getOrGenTile 必命中（或同步中断 → 与 delta=0 一致地跳过）。
+        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
+        if (res != null && res.discharge != null)
+            cell.riverNetDischarge = sampleTileField(res.discharge, res.originX, res.originZ, wuX, wuZ);
+        // RIVER_TYPE 图层与 isLake/lakeMask 统一由水文雕刻计划写入
+        // （GeoGenesisTerrain.applyHydrologyValley / GeoGenesisGenerator.applyHydrologyChunk）。
+        // 旧 RTF 河网已下线：此处曾对每个 cell 采样几何河网写入上述字段，既与水文结果
+        // 互相覆盖造成误导，又是逐 cell 的无效开销。
 
         // 对全地形施加侵蚀增量（**含海洋**）。
         // 原先用 `delta * cell.blendCont` 保护海洋侧（blendCont=0 → delta=0），
