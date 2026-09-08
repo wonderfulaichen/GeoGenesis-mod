@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "adrs": [
+    {
+      "id": 1,
+      "title": "河流范式切换：RTF 几何河网 → D8 汇流场派生（2026-08-28 定案）",
+      "status": "accepted",
+      "context": "原河流采用 RTF 几何范式（worldgen/river/*：RTFRiverGenerator 几何走线 + ValleyRiverCarver 四段平滑谷 + RiverNetwork 水面 waterTable）。该范式靠几何走线模拟河，拓扑/纵剖面/水面/宽深/雕刻彼此分离，难以保证物理一致（汇口落差、跨 region 接缝、宽深沿程不连续）。需求：河流应是由地形汇流场'流'出来的物理正确河网，各派生量同源。",
+      "decision": "当前权威范式（2026-08-28 定案）= 从地形汇流场用 D8 流向 + 汇流累积派生河网：FlowField（D8 流向+汇流累积，region 纯函数带 margin，选线场用 mountainScale 压低山→贴谷避峰）→ RiverTrace（累积超阈值→折线+平滑+RiverLineNetwork 锚点衔接邻 region）→ RiverLineNetwork（D8 河线门面）→ HydrologyExperimentEngine（双采样器 terrainEQuick 选线 + sampleWu 锚定水面）→ HydrologyBlockCarver（邻近段 IDW 混合 surfaceY/width/depth，只下挖不抬升，灌水门控）。worldgen/river/*（RTF）已于 2026-08-28 删除，勿参考。",
+      "consequences": [
+        "新功能一律走 worldgen/hydrology/riverline/ + flowaccum/；RTF 几何河网 worldgen/river/*（RiverNetwork/RTFRiverGenerator/ValleyRiverCarver/RiverCarver 等）已于 2026-08-28 删除，勿参考。",
+        "水面铁律：水位 = min(单调水面,真实地形)；PAVA 单调（下游严格不升）；水位不参与跨段 IDW；支流出口继承主流在交汇点水面；入海口锁定海平面、河口喇叭展宽。",
+        "宽深铁律：Leopold-Maddock 下游水力几何幂律（widthFromAccum/depthFromAccum，bW=0.42/bD=0.40，幂律无中段饱和）；widthAreaRef 独立宽度原点与成河门槛解耦；maxDepthRatio 宽深比护栏；源头最小宽度 1.0。",
+        "验证手段（探针=测试）：runFlowAccumProbe（reachedOcean/单调性/边界）、runRiverLineWidthProbe（宽深沿程连续）、runRiverLineSeamProbe（跨 region 接缝）、runHydrologyTerrainEntryProbe（地形↔河网入口确定性）；验收基线 reachedOcean 48/48(100%)、violations 0。",
+        "已知范式遗留：跨 region 水面无继承（border 1.6e-7 发生率，实机不可见）；浅支流源头 1~2 块干槽（物理自然），均非阻塞。",
+        "RTF 几何河网 worldgen/river/* 已于 2026-08-28 D8 重构时整体删除，无回退路径；当前河流仅由 worldgen/hydrology/ 实现（见 AGENTS.md 历史演进）。"
+      ],
+      "created_at": 1788037057767,
+      "updated_at": 1788037061735,
+      "project_context": "."
+    }
+  ]
+}

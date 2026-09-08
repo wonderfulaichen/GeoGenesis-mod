@@ -37,8 +37,12 @@ public final class HydrologyExperimentEngine {
         //   建网覆盖【整个 region 的 D8 网格】（每格一次 routingE）→ 首次建 region
         //   会同步冷生成全域侵蚀 tile（数百个 × 100~400ms = 分钟级）——落块只需要
         //   玩家附近几个 tile，建网却是全域，"成本前置"根本不成立。因此默认必须
-        //   关闭（erosionDelta=null → 选线路径与旧代码逐位一致、零 tile 依赖），
+        //   关闭（routingDelta=null → 选线路径与旧代码逐位一致、零 tile 依赖），
         //   仅当 erosionRoutingAdaptive=true 时启用（toml 里手写，注释已警告代价）。
+        //
+        //   ★ 落块期"河道横向吸附"替代路径已实现并实测【无效回滚】（2026-09-08，
+        //   RiverLineNetwork 注释块有完整数据）：河线与侵蚀沟大面积天然重合，
+        //   触发率 2~5%、偏移 0.09wu 不可见——无收益，代码已删。
         RiverLineNetwork.ErosionDeltaSampler deltaSampler = null;
         double gain = 0.0;
         try {
