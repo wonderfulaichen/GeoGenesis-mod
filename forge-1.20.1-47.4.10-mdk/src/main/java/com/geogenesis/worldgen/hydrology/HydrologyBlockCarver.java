@@ -387,7 +387,7 @@ public final class HydrologyBlockCarver {
         //   （自然瀑布贴弧形崖面形态）。唇口列 lipY=surfaceY≤original 不受影响。
         if (lipSurfaceY > original) lipSurfaceY = original;
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
-                waterSurface, lipSurfaceY, cut, anyFill, nearestDist / nearestWidth);
+                waterSurface, lipSurfaceY, cut, anyFill);
     }
 
     private static double junctionWaterSurface(List<HydrologyBlockSample> samples,

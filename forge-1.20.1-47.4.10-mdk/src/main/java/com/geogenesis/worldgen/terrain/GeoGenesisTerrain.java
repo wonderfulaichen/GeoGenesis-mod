@@ -24,10 +24,13 @@ public final class GeoGenesisTerrain {
     private static final int CACHE_SIZE = 4096;
     private static final int CHUNK_SHIFT = 4; // 16 blocks per chunk
 
-    /** 河道中心的侵蚀保留比例（2026-09-08，用户："河道内只需要一点点侵蚀影响"）：
-     *  落块合成时河道列的侵蚀 delta 按距河心衰减，中心保留此比例、岸缘（t=1）
-     *  smoothstep 过渡到全量（与岸外非雕刻列连续）。 */
-    private static final double RIVER_EROSION_FEED = 0.15;
+    /** 河道内侵蚀 delta 的钳幅（2026-09-08，用户："河道被侵蚀得成凸形，特别是河流
+     *  源头靠近山"）。河道内 delta = clamp(全量 delta, ±此值)，【横向均匀】：
+     *  - 横向不衰减是物理正确：源头附近侵蚀沟把两岸刻低时，河道若被单独保护
+     *    （fade）就会浮在沟上成凸梁——水把横穿的谷填平到水面高度才是对的；
+     *  - 钳幅治纵向：逐列 delta 的空间变化（骨架沟槽在山上刻得深）会打乱雕刻
+     *    计划单调化过的纵向剖面 → 钳到 ±0.5 格内，河道只保留一点点侵蚀微起伏。 */
+    private static final double RIVER_EROSION_CLAMP = 0.5;
 
     private final CellGenerator generator;
     private final HeightCurve curve;
@@ -223,11 +226,12 @@ public final class GeoGenesisTerrain {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
             Cell cell = cells[lx * 16 + lz];
+            // ★ 河道内侵蚀钳幅（2026-09-08）：横向均匀（不做距河心 fade——那会让
+            //   河道在两岸被侵蚀沟刻低时浮成凸梁），纵向钳到 ±RIVER_EROSION_CLAMP。
+            //   河床/水面/唇口同步移位，床面-水面相对关系与雕刻计划严格一致。
             double rawDelta = cell.height - column.originalGroundY(); // 本列侵蚀增量（全量）
-            double t = NoiseUtil.saturate(column.distOverWidth());
-            double fade = RIVER_EROSION_FEED
-                    + (1.0 - RIVER_EROSION_FEED) * NoiseUtil.smooth(t);
-            double delta = rawDelta * fade;
+            double delta = Math.max(-RIVER_EROSION_CLAMP,
+                    Math.min(RIVER_EROSION_CLAMP, rawDelta));
             cell.height -= column.erosion() + (rawDelta - delta);     // = carved + fade·delta
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
             cell.riverSurfaceY = column.waterSurfaceY() + delta;
