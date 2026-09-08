@@ -147,6 +147,18 @@ public final class RiverLineNetwork {
         double yAt(double wx, double wz);
     }
 
+    /** 侵蚀增量采样抽象（CellGenerator::erosionDeltaE 注入；返回 e 单位 tile delta）。 */
+    public interface ErosionDeltaSampler {
+        double deltaAt(double wx, double wz);
+    }
+
+    /** 河网微自适应（2026-09-08，用户："让河流局部路线与侵蚀后的地形匹配"）：
+     * 侵蚀 delta 注入选线场；null = 关闭（零 tile 依赖，erosionEnabled=false /
+     * 预览进程的默认态，遵守"建网不得吃侵蚀"的历史教训）。 */
+    private final ErosionDeltaSampler erosionDelta;
+    /** 微自适应增益：delta 已随 erosionStrength 缩放，此处恒 1.0（线性跟随）。 */
+    private final double erosionRoutingGain;
+
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             HeightCurve curve, long seed) {
         this(eSampler, null, curve, seed, 2.0);
@@ -162,21 +174,33 @@ public final class RiverLineNetwork {
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             TerrainYSampler terrainY,
                             HeightCurve curve, long seed, double horizontalScale) {
-        this(eSampler, terrainY, curve, seed, horizontalScale, RiverLineParams.defaults());
+        this(eSampler, terrainY, null, 0.0, curve, seed, horizontalScale, RiverLineParams.defaults());
     }
 
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             TerrainYSampler terrainY,
                             HeightCurve curve, long seed, RiverLineParams params) {
-        this(eSampler, terrainY, curve, seed, 2.0, params);
+        this(eSampler, terrainY, null, 0.0, curve, seed, 2.0, params);
     }
 
+    /** 全参构造（兼容旧 6 参调用：诊断探针用）。 */
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             TerrainYSampler terrainY,
                             HeightCurve curve, long seed, double horizontalScale,
                             RiverLineParams params) {
+        this(eSampler, terrainY, null, 0.0, curve, seed, horizontalScale, params);
+    }
+
+    /** 微自适应构造：erosionDelta 非空时选线场叠加侵蚀增量（河线局部贴合侵蚀后地形）。 */
+    public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
+                            TerrainYSampler terrainY,
+                            ErosionDeltaSampler erosionDelta, double erosionRoutingGain,
+                            HeightCurve curve, long seed, double horizontalScale,
+                            RiverLineParams params) {
         this.eSampler = eSampler;
         this.terrainY = terrainY;
+        this.erosionDelta = erosionDelta;
+        this.erosionRoutingGain = erosionRoutingGain;
         this.curve = curve;
         this.seed = seed;
         this.params = params;
@@ -198,9 +222,16 @@ public final class RiverLineNetwork {
     /**
      * 选线场高程：把原始汇流场 e 经 {@link RiverLineParams#routingE} 山压低后用于 FlowField 追踪，
      * 使河线在"压低地形"上走（贴谷、避峰），再经水面 blend 融回真实地形（PL-RGA firstHeightField）。
+     *
+     * <p>★ 微自适应（2026-09-08，用户："让河流局部路线与河道生成匹配侵蚀后的地形，
+     * 打开侵蚀时再启动"）：erosionDelta 注入时叠加 tile delta（e 单位，同量纲）——
+     * D8 汇流场变为"侵蚀后 e 场"，河线会偏向侵蚀刻出的沟槽/绕开侵蚀抬升，
+     * 与落块时的实际地形一致。关闭（null）时与旧路径逐位一致（零漂移）。</p>
      */
     private double routingE(double wx, double wz) {
-        return params.routingE(eSampler.eAt(wx, wz));
+        double e = params.routingE(eSampler.eAt(wx, wz));
+        if (erosionDelta != null) e += erosionRoutingGain * erosionDelta.deltaAt(wx, wz);
+        return e;
     }
 
     public int cachedRegions() {
