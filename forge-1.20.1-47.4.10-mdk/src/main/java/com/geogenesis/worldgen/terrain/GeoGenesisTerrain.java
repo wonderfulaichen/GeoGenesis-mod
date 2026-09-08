@@ -24,13 +24,10 @@ public final class GeoGenesisTerrain {
     private static final int CACHE_SIZE = 4096;
     private static final int CHUNK_SHIFT = 4; // 16 blocks per chunk
 
-    /** 河道内侵蚀 delta 的钳幅（2026-09-08，用户："河道被侵蚀得成凸形，特别是河流
-     *  源头靠近山"）。河道内 delta = clamp(全量 delta, ±此值)，【横向均匀】：
-     *  - 横向不衰减是物理正确：源头附近侵蚀沟把两岸刻低时，河道若被单独保护
-     *    （fade）就会浮在沟上成凸梁——水把横穿的谷填平到水面高度才是对的；
-     *  - 钳幅治纵向：逐列 delta 的空间变化（骨架沟槽在山上刻得深）会打乱雕刻
-     *    计划单调化过的纵向剖面 → 钳到 ±0.5 格内，河道只保留一点点侵蚀微起伏。 */
-    private static final double RIVER_EROSION_CLAMP = 0.5;
+    /** 河道内沉积 delta 的单向钳幅（2026-09-08）：侵蚀（负 delta）全量跟随河床
+     *  （与岸外连续、无垂直断面），沉积（正 delta）最多抬升此值——防止河床顶破
+     *  计划水面变干河（计划水面保证 carved ≤ surface−0.75，抬升 ≤0.5 仍有水）。 */
+    private static final double RIVER_EROSION_DEPOSIT_CAP = 0.5;
 
     private final CellGenerator generator;
     private final HeightCurve curve;
@@ -210,14 +207,20 @@ public final class GeoGenesisTerrain {
      * 侵蚀在后），直接覆盖会丢失侵蚀细节；减去雕刻量（original−carved，恒 ≥0）
      * 可在保留侵蚀的同时刻出同一条河谷。</p>
      *
-     * <p>★ 侵蚀 delta 移位（2026-09-08）：河床绝对高度 = carved + delta，其中
-     * delta = 含侵蚀高度 − 无侵蚀原始高度（同列）。水面/唇口同步抬升同一 delta，
-     * 床面-水面相对关系与雕刻计划严格一致（否则 deposit 处河床高于水面 → 干河）。</p>
-     *
-     * <p>★ 河道内侵蚀衰减（2026-09-08，用户："河道内只需要一点点侵蚀影响"）：
-     * delta 按归一化距河心距离（distOverWidth）衰减——河道中心保留
-     * {@link #RIVER_EROSION_FEED}，岸缘（t=1，灌水门控①边界）平滑过渡到全量，
-     * 与岸外非雕刻列（全量 delta）连续。床面/水面/唇口同步衰减，相对关系不变。</p>
+     * <p>★ 侵蚀交互三原则（2026-09-08 终版，三轮实测迭代）：</p>
+     * <ol>
+     * <li><b>河床全量贴合侵蚀地形</b>：河床 = carved + delta（delta = 含侵蚀高度 −
+     *     无侵蚀原始高度，同列全量）。河床与岸外吃同一个连续 delta 场 → 河道边界
+     *     无突变。历史上两次失败：fade 衰减（中心 15%）让河道浮在两岸侵蚀沟上成
+     *     凸形；均匀钳幅 ±0.5 让河道边界出现 9.5 格 delta 突变 → 岸坡垂直断面墙
+     *     （用户实测截图，源头近山处沿河一整条）。</li>
+     * <li><b>水面保持雕刻计划水位</b>（不加 delta）：delta 空间变化剧烈（骨架条纹），
+     *     水面若跟随会纵向抖动；计划水面已经过单调化/岸线 cap，保持它 → 河面平滑。
+     *     横穿侵蚀沟处河床跟沟下沉 → 自然形成深潭（物理正确：水填谷到水位）。</li>
+     * <li><b>沉积单向钳幅</b>：delta &gt; 0（沉积抬升）最多 +{@link #RIVER_EROSION_DEPOSIT_CAP}
+     *     ——保证河床不顶破计划水面（计划保证 carved ≤ surface−0.75，抬升 ≤0.5 仍
+     *     有水）；侵蚀方向（delta &lt; 0）不钳，河床全量跟沟走（原则 1 的连续性）。</li>
+     * </ol>
      */
     private void applyHydrologyValley(Cell[] cells, int cx, int cz) {
         HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
@@ -226,17 +229,13 @@ public final class GeoGenesisTerrain {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
             Cell cell = cells[lx * 16 + lz];
-            // ★ 河道内侵蚀钳幅（2026-09-08）：横向均匀（不做距河心 fade——那会让
-            //   河道在两岸被侵蚀沟刻低时浮成凸梁），纵向钳到 ±RIVER_EROSION_CLAMP。
-            //   河床/水面/唇口同步移位，床面-水面相对关系与雕刻计划严格一致。
             double rawDelta = cell.height - column.originalGroundY(); // 本列侵蚀增量（全量）
-            double delta = Math.max(-RIVER_EROSION_CLAMP,
-                    Math.min(RIVER_EROSION_CLAMP, rawDelta));
-            cell.height -= column.erosion() + (rawDelta - delta);     // = carved + fade·delta
+            double delta = Math.min(rawDelta, RIVER_EROSION_DEPOSIT_CAP); // 沉积单向钳幅
+            cell.height -= column.erosion() + (rawDelta - delta);     // = carved + delta
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
-            cell.riverSurfaceY = column.waterSurfaceY() + delta;
-            cell.riverLipY = column.lipSurfaceY() + delta;
-            cell.isLake = column.fillWater() && cell.riverSurfaceY >= seaLevel;
+            cell.riverSurfaceY = column.waterSurfaceY();               // 计划水位（不跟 delta）
+            cell.riverLipY = column.lipSurfaceY();
+            cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel;
             cell.lakeMask = cell.isLake;
         }
     }
