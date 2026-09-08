@@ -209,6 +209,8 @@ public final class GeoGenesisConfig {
     // ===== 侵蚀（SH 统一水力引擎：侵蚀与河网同源同趟） =====
     /** 是否启用本地粒子侵蚀 */
     public final ForgeConfigSpec.BooleanValue erosionEnabled;
+    /** 河网微自适应开关（2026-09-08）：默认 false——建网全域吃 tile，实测加载期数分钟级卡顿。 */
+    public final ForgeConfigSpec.BooleanValue erosionRoutingAdaptive;
     /** 细纹理微侵蚀层（XS r1wu 十字笔刷，2026-08-12；默认关——实测加剧 chunk 边界脊） */
     public final ForgeConfigSpec.BooleanValue erosionXSEnabled;
     /** 侵蚀强度倍率 */
@@ -603,6 +605,8 @@ public final class GeoGenesisConfig {
         builder.push("Erosion");
         erosionEnabled = builder.comment("Enable local particle erosion (seamless, margin-filled with true neighbour heights). Default true.")
             .define("erosionEnabled", true);
+        erosionRoutingAdaptive = builder.comment("Adaptive river routing: blend erosion delta into the D8 routing field so river lines follow eroded gullies. WARNING (measured 2026-09-08): network build covers the whole region grid, so enabling this triggers synchronous cold generation of ALL erosion tiles in the area (~200ms each, hundreds of tiles) -> world load stalls for minutes. Default false; enable only for offline experiments.")
+            .define("erosionRoutingAdaptive", false);
         erosionXSEnabled = builder.comment("Extra-fine (XS, r1wu cross-brush) micro-erosion detail layer. Adds 1-2 block textures on slopes, but amplifies cross-chunk birth-set discreteness into visible ridges near chunk borders (measured +1.6 blocks at tile borders). Default false (conservative).")
             .define("erosionXSEnabled", false);
         erosionStrength = builder.comment("Erosion strength multiplier. Default 1.0, range [0, 4].")
