@@ -30,16 +30,20 @@ public final class HydrologyExperimentEngine {
         //   抬升同一 delta）→ 侵蚀在游戏里生效且床面-水面关系严格不变。
         //
         // ★ 河网微自适应（2026-09-08，用户："让河流局部路线与河道生成匹配侵蚀后的
-        //   地形，打开侵蚀时再启动"）：erosionEnabled=true 时给选线场（terrainEQuick 的
-        //   routingE）注入 tile delta（e 单位，与选线场同量纲）→ D8 汇流场变为"侵蚀后
-        //   e 场"，河线偏向侵蚀刻出的沟槽。这是【用户明确授权的例外】：仅侵蚀开启时
-        //   建网才吃 tile（开侵蚀本就要付 tile 成本）；关闭/预览进程（config 未加载）
-        //   时 erosionDelta=null，选线场与旧路径逐位一致（零漂移、零 tile 依赖）。
-        //   注意：开关在 Engine 构造时快照（世界创建时），游戏内改 config 需新世界生效。
+        //   地形"）：选线场（terrainEQuick 的 routingE）注入 tile delta（e 单位同量纲）
+        //   → D8 汇流场变为"侵蚀后 e 场"，河线偏向侵蚀刻出的沟槽。
+        //
+        //   ★★ 性能红线（2026-09-08 实测教训，用户："半天没加载进游戏"）：
+        //   建网覆盖【整个 region 的 D8 网格】（每格一次 routingE）→ 首次建 region
+        //   会同步冷生成全域侵蚀 tile（数百个 × 100~400ms = 分钟级）——落块只需要
+        //   玩家附近几个 tile，建网却是全域，"成本前置"根本不成立。因此默认必须
+        //   关闭（erosionDelta=null → 选线路径与旧代码逐位一致、零 tile 依赖），
+        //   仅当 erosionRoutingAdaptive=true 时启用（toml 里手写，注释已警告代价）。
         RiverLineNetwork.ErosionDeltaSampler deltaSampler = null;
         double gain = 0.0;
         try {
-            if (GeoGenesisConfig.INSTANCE.erosionEnabled.get()) {
+            if (GeoGenesisConfig.INSTANCE.erosionEnabled.get()
+                    && GeoGenesisConfig.INSTANCE.erosionRoutingAdaptive.get()) {
                 deltaSampler = terrain::erosionDeltaE;
                 gain = 1.0; // delta 已随 erosionStrength 缩放，线性跟随即可
             }
