@@ -26,7 +26,11 @@ public final class RiverLineNetwork {
     public record RiverLineHit(double distToCenter, double surfaceY, double width,
                                double depth, double dischargeArea,
                                boolean reachesOcean, boolean isLake,
-                               double fallDrop, boolean frozen) { }
+                               double fallDrop, boolean frozen,
+                               /** 岸坡雕刻面（2026-09-09）：跌水段/其下游 4 节点窗内 = 崖顶 lip
+                                *  （old-Streams surfaceLevelAt 语义：岸坡取上游水位），随距离
+                                *  渐变回本段水面；普通段 = surfaceY。仅供 carver 岸坡目标。 */
+                               double bankSurfaceY) { }
 
     /**
      * 跌水段水面阶跃位置：t &lt; 此值时取唇口水位，否则取跌水后水位。
@@ -2216,10 +2220,45 @@ public final class RiverLineNetwork {
                     frozen = true;
                     fallDrop = 0.0;
                 }
-                double valleyReach = Math.max(width * (1.0 + bankFactor), width * 3.0);
+                // ★ 岸坡雕刻面（2026-09-09，用户实测"瀑布落差处上游岸坡横在河谷的薄墙"）：
+                //   跌水段/潭后段的岸坡列 (dist>width) 若按本段水面(潭面)雕刻，会把落差上游
+                //   地面刻穿——与下游归属切换处形成 8~19 格直立薄墙（WallForensicsProbe 实证
+                //   cut 0 vs 11.5）。old-Streams surfaceLevelAt 语义：岸坡取【上游水位】。
+                //   规则：跌水段 → 崖顶 lip（surf[i0]）；其下游 4 节点窗 → lip 按节点距线性
+                //   渐变回本段水面；其余段 = surface（零行为变化）。
+                double bankSurface = surface;
+                if (pl.fallDrop[i1] > 0.0
+                        && pl.surfaceY[i0] - pl.surfaceY[i1] >= 2.0) {
+                    // ★ 本段含真跌水：崖顶 = surf[i0]。fall 标记覆盖整个 run，
+                    //   run 内无落差的后续段（surf 相等）必须落入下方回溯分支，
+                    //   否则崖顶会被错取成潭面（实测 -166 列 bank=132 → 墙未消）。
+                    bankSurface = pl.surfaceY[i0];
+                } else {
+                    int back = Math.max(1, i0 - 4);
+                    for (int j = i0; j >= back; j--) {
+                        if (pl.fallDrop[j] > 0.0
+                                && pl.surfaceY[j - 1] - pl.surfaceY[j] >= 2.0) {
+                            // ★ 渐变按【空间距离】（到落差线 32 block 线性衰减）而非节点数——
+                            //   节点数分段会在段界产生 ~2 格台阶（实测平缓种子 38 处）。
+                            double distBlocks = Math.hypot(
+                                    wx - pl.nodes[j].x(), wz - pl.nodes[j].z()) * horizontalScale;
+                            double blend = NoiseUtil.saturate(1.0 - distBlocks / 32.0);
+                            bankSurface = lerp(surface, pl.surfaceY[j - 1], blend);
+                            break;
+                        }
+                    }
+                }
+                // ★ 自适应谷宽（2026-09-09）：雕刻侧的谷壁跨度会随岸高展宽（最多
+                //   bankRunMax），这里必须同步放宽命中裁剪半径，否则新谷宽边缘会被
+                //   提前裁掉 → 属主在半途消失 → 岸坡断层。
+                //   单位说明：本处 dist/width 为 wu，bankRunMax 为 block —— 按 block
+                //   直接相加是【故意放大】的保守值（宁可多留命中；远处段经 smin(k=4)
+                //   合并后对几何无影响，多留无害，少留致命）。
+                double valleyReach = Math.max(width * (1.0 + bankFactor), width * 3.0)
+                        + params.bankRunMax();
                 if (dist <= valleyReach) {
                     out.add(new RiverLineHit(dist, surface, width, depth,
-                            r.dischargeArea, r.outletOcean, false, fallDrop, frozen));
+                            r.dischargeArea, r.outletOcean, false, fallDrop, frozen, bankSurface));
                 }
             }
         }
@@ -2241,7 +2280,7 @@ public final class RiverLineNetwork {
             if (lakeDist <= lakeR + params.lakeFadeDist()
                     && lakeDist <= bestRiverDist) {
                 out.add(new RiverLineHit(lakeDist, lakeH, lakeR,
-                        params.minDepth(), r.dischargeArea, false, true, 0.0, false));
+                        params.minDepth(), r.dischargeArea, false, true, 0.0, false, lakeH));
             }
         }
         return out;

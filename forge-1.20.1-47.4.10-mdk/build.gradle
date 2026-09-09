@@ -606,6 +606,92 @@ task runHydrologyWaterFillProbe(type: JavaExec) {
     }
 }
 
+// Waterfall focus probe (2026-09-09): nearest river + fall dump around a block coord.
+task runWaterfallFocusProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterfallFocusProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Wall forensics probe (2026-09-09): dump full samples+carve state for wall column and neighbours.
+task runWallForensicsProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WallForensicsProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Wall decompose probe (2026-09-09): decompose final=carved+delta along a fall cross-section.
+task runWallDecomposeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WallDecomposeProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Wall column dump probe (2026-09-09): dump sample intermediates along a fall cross-section.
+task runWallColumnDumpProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WallColumnDumpProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Waterfall cross-section probe (2026-09-09): normal-direction transects around a fall segment.
+task runWaterfallCrossSectionProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterfallCrossSectionProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Waterfall bank wall probe (2026-09-09): transverse step scan near frozen columns.
+// gradlew runWaterfallBankWallProbe [-PprobeArgs="seed cx cz radius"]
+task runWaterfallBankWallProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterfallBankWallProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Bank cross-section probe (2026-09-09): perpendicular terrain profile,
+// localizes where the bank "vertical face" occurs (channel edge vs valley edge).
+// gradlew runBankProfileProbe [-PprobeArgs="seed regionRadius maxNodes reach"]
+task runBankProfileProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.BankProfileProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Erosion-river coherence probe (2026-09-09, plan A verification):
+// walks the PRODUCTION path (GeoGenesisTerrain.getChunkCells) to measure
+// dry sand bars (zeroWaterBlock) and terraced bed steps.
+// gradlew runErosionRiverCoherenceProbe [-PprobeArgs="seed chunkRadius"]
+task runErosionRiverCoherenceProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.ErosionRiverCoherenceProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 task runHydrologyColumnDiagProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyColumnDiagProbe'
