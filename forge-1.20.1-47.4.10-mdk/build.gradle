@@ -679,6 +679,43 @@ task runBankProfileProbe(type: JavaExec) {
     }
 }
 
+// Lake shape probe (2026-09-09, B1 verification): measures whether lake shoreline
+// is a circle (shoreline radius CV / aspect ratio over 16 rays) and whether the lake
+// tracks ERODED terrain (flooded-cell count: no-erosion vs production path).
+// gradlew runLakeShapeProbe [-PprobeArgs="seed regionRadius"]
+task runLakeShapeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeShapeProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Lake locate probe (2026-09-09): reverse-lookup the lake/water at a game block
+// coord (player F3 position) - hit type, spill vs eroded rim heights.
+// gradlew runLakeLocateProbe -PprobeArgs="seed blockX blockZ"
+task runLakeLocateProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeLocateProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
+// Lake survey probe (2026-09-10): print all basin lakes' spill/OOB/flood coverage
+// to locate the "lake not filling the whole basin" case.
+// gradlew runLakeSurveyProbe -PprobeArgs="seed regionRadius"
+task runLakeSurveyProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeSurveyProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
+    }
+}
+
 // Erosion-river coherence probe (2026-09-09, plan A verification):
 // walks the PRODUCTION path (GeoGenesisTerrain.getChunkCells) to measure
 // dry sand bars (zeroWaterBlock) and terraced bed steps.

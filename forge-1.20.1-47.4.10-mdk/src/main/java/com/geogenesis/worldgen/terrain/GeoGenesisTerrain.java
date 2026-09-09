@@ -232,6 +232,26 @@ public final class GeoGenesisTerrain {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
             Cell cell = cells[lx * 16 + lz];
+            // ★ 湖列（2026-09-09 B1）：本 cell.height 已是【侵蚀后】地面（extractFromTile
+            //   先跑），湖列不雕刻（carved=original）也不做河床侵蚀减法 —— 只判水：
+            //   cell.height < spill − 0.5 → 出水。湖岸 = 侵蚀后地形与 spill 的等高线。
+            //   侵蚀切深盆底 → 淹更多；侵蚀淤积垫高 → 湖岸内缩/该格变滩（物理正确）。
+            //   这是湖"吃侵蚀后地形"的真正落点（carver 的 original 是无侵蚀基线，判不得）。
+            if (column.lakePlan()) {
+                double spill = column.waterSurfaceY();
+                boolean flooded = cell.height < spill - 0.5;
+                // 湖不挖地；水柱保护：落块水放 (floor(height), floor(spill)]，若
+                // floor 相同则无水块 → 只在必需时把地面压到 floor(spill)-1 以下（<1 格）
+                if (flooded && cell.height >= Math.floor(spill) - 1e-9) {
+                    cell.height = Math.min(spill - 0.75, Math.floor(spill) - 1e-9);
+                }
+                cell.riverType = (byte) (flooded ? 1 : 0);
+                cell.riverSurfaceY = spill;
+                cell.riverLipY = spill;
+                cell.isLake = flooded && spill >= seaLevel;
+                cell.lakeMask = cell.isLake;
+                continue;
+            }
             double rawDelta = cell.height - column.originalGroundY(); // 本列侵蚀增量（全量）
             // ★ 方案 A：河心 mask→0（河床不吃侵蚀，回归计划 carved），谷外→1（全量侵蚀）
             double mask = erosionYieldToRiver ? column.erosionMask() : 1.0;

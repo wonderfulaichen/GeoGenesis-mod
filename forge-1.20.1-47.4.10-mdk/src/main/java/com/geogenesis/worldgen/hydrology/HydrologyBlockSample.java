@@ -32,7 +32,12 @@ public record HydrologyBlockSample(double surfaceY, double bedY,
                                     * 水位），随距离渐变回本段水面；普通段 = surfaceY。
                                     * 仅供 carver 的岸坡 (dist>width) 雕刻目标，不影响水面/灌水。
                                     */
-                                   double bankSurfaceY) {
+                                   double bankSurfaceY,
+                                   /**
+                                    * 湖引用（2026-09-09 侵蚀短板重算）：仅 isLake 非 null；
+                                    * carver 湖分支用其溢出口坎算侵蚀后短板水位。
+                                    */
+                                   com.geogenesis.worldgen.hydrology.riverline.RiverLineRegion.LakeNode lake) {
 
     /** 兼容旧构造（distToCenter 缺省 = 0，即河道中心；无跌水、不冻结、非湖）。 */
     public HydrologyBlockSample(double surfaceY, double bedY,
@@ -40,7 +45,7 @@ public record HydrologyBlockSample(double surfaceY, double bedY,
                                 double bankWidth, double valleyWidth,
                                 double discharge, RiverOutlet.Type outletType) {
         this(surfaceY, bedY, width, depth, bankWidth, valleyWidth,
-                discharge, outletType, 0.0, 0.0, false, false, surfaceY);
+                discharge, outletType, 0.0, 0.0, false, false, surfaceY, null);
     }
 
     /** 跌水列的唇口水位（水幕顶）：非跌水列即自身水面。 */

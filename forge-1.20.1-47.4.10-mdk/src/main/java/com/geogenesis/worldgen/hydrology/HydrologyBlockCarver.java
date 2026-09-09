@@ -28,6 +28,20 @@ import java.util.List;
  */
 public final class HydrologyBlockCarver {
 
+    /**
+     * 湖水位按侵蚀后短板重算的开关（2026-09-09 终版【默认开】）。
+     *
+     * <p>用户两次实测定案：水位必须按短板效应取【侵蚀后】地形的最低溢出坎 ——
+     * 否则（false 时用无侵蚀 spill）侵蚀削低岸坎后水位高出实际地形：水悬空、
+     * 且山坡上大片低于旧水位的区域被误灌（"填到洼地山外围"，截图红圈）。
+     * 短板把水位压到真实缺口 → 只有真正低于水位的盆底才淹，三个问题同解。</p>
+     *
+     * <p>性能：rim 格紧邻湖盆，玩家加载湖边 chunk 时这些侵蚀 tile 本就要生成，
+     * rim 采样只是提前访问（早前"+32 tile/2.7×"为探针窗口不覆盖湖区的测量假象，
+     * 基线 0 tile 实为磁盘缓存命中，不可比）。LakeNode.erodedWaterLevel 每湖只算一次。</p>
+     */
+    public static final boolean LAKE_ERODED_SPILL = true;
+
     private HydrologyBlockCarver() { }
 
     public static List<HydrologyBlockCarvedColumn> carveChunk(HydrologyExperimentEngine engine,
@@ -49,7 +63,7 @@ public final class HydrologyBlockCarver {
                         engine.sampleBlockAll(blockX, blockZ, horizontalScale);
                 if (samples.isEmpty()) continue;
                 result.add(carveColumn(engine.terrain(), samples,
-                        originalGround[index], blockX, blockZ));
+                        originalGround[index], blockX, blockZ, horizontalScale));
             }
         }
         return List.copyOf(result);
@@ -62,7 +76,8 @@ public final class HydrologyBlockCarver {
     private static HydrologyBlockCarvedColumn carveColumn(CellGenerator terrain,
                                                           List<HydrologyBlockSample> samples,
                                                           double original,
-                                                          int blockX, int blockZ) {
+                                                          int blockX, int blockZ,
+                                                          double horizontalScale) {
         RiverLineParams P = RiverLineParams.defaults();
         // 不再按高度淡出：河流由汇流场决定，山地也有溪（现实物理范式）。
         // 入海段：不能因"地形低于海平面"就完全停雕——那会让河道在海岸线处直接截断。
@@ -73,6 +88,64 @@ public final class HydrologyBlockCarver {
         if (original < seaLevel) {
             double submerge = seaLevel - original;
             fadeE = 1.0 - NoiseUtil.saturate(submerge / P.mouthFadeDepth());
+        }
+
+        // ★ 湖分支（2026-09-09 B1，用户实测"湖泊完全就是一个圆盘" + "水面边缘没贴到
+        //   地形、边缘一堆空气位"）：湖命中列【不雕刻】。carveColumn 的 original 是
+        //   【无侵蚀】基线（HydrologyChunkSampling 用 sample()），拿它判"是否淹水"
+        //   是错的 —— 湖盆在落块前已被 extractFromTile 侵蚀改写（GeoGenesisTerrain
+        //   .generateChunk：侵蚀先于雕刻回写），必须由合成层（applyHydrologyValley，
+        //   那里 cell.height 已是侵蚀后地面）用【侵蚀后 height < spill】判出水，湖岸
+        //   = 侵蚀后地形与 spill 的等高线。carver 只负责：给湖域列打 lakePlan 标、
+        //   不雕刻（carved=original）、水面=spill。这样湖自然吃侵蚀后地形、湖岸贴地。
+        if (!samples.isEmpty() && samples.get(0).isLake()) {
+            HydrologyBlockSample lakeSample = samples.get(0);
+            // ★ 侵蚀短板水位（2026-09-09，用户实测"水面边缘没到地形/水面包不住"）：
+            //   surfaceY(spill) 是【无侵蚀】地形的溢出坎高；侵蚀把溢出口坎（rim）削低后，
+            //   旧 spill 会高出真实缺口 → 水从低坎漏走、包不住。真水位 = min(原 spill,
+            //   rim 各坎的侵蚀后高度)（只降不升）。
+            double spill = lakeSample.surfaceY();
+            com.geogenesis.worldgen.hydrology.riverline.RiverLineRegion.LakeNode ln =
+                    lakeSample.lake();
+            if (LAKE_ERODED_SPILL && ln != null && ln.hasRim()) {
+                // 侵蚀短板水位（rim 格紧邻湖盆，数量少，落块时 tile 多半已缓存，每湖一次）。
+                java.util.function.ToDoubleBiFunction<Double, Double> erodedY =
+                        (wx, wz) -> terrain.sampleWu(wx, wz).height;
+                spill = ln.erodedWaterLevel(erodedY);
+                // ★ 湖形 = 侵蚀后连通淹水区（2026-09-10 终版，用户"水没铺满整个洼地"）：
+                //   computeFlood 在侵蚀后地形上 BFS 出"低于水位且与盆底连通"的区域。
+                //   整湖放弃条件（computeFlood=true）：① 淹水区越出认领域（湖比认领
+                //   域大 → 会在认领边界被截断）；② 淹没覆盖无侵蚀洼地不足一半（侵蚀
+                //   把一侧盆底垫高 → 水铺不满 → 残缺湖）。两者都是"硬生成必残缺"，
+                //   按用户要求"超出填充就不生成湖"。
+                //   湖域列是否出水：不在 flood 连通区内的列【不标 lakePlan】→ 该列出水
+                //   自然在连通区边界结束（不会"停在半途"：水位等高线闭合在连通区内部），
+                //   也不会漫出洼地（连通性约束：坡面不连通不淹）。computeFlood 每湖缓存。
+                if (ln.computeFlood(erodedY, spill,
+                        com.geogenesis.worldgen.hydrology.riverline.RiverLineParams
+                                .defaults().gridCell())) {
+                    return new HydrologyBlockCarvedColumn(blockX, blockZ,
+                            original, original, original, original,
+                            0.0, 1.0, false, false);
+                }
+                double wuX = blockX / (horizontalScale > 0.01 ? horizontalScale : 1.0);
+                double wuZ = blockZ / (horizontalScale > 0.01 ? horizontalScale : 1.0);
+                if (!ln.inFlood(wuX, wuZ)) {
+                    // 本列在湖认领域内但不在侵蚀后连通淹水区 → 非湖列（湖形自然闭合）。
+                    return new HydrologyBlockCarvedColumn(blockX, blockZ,
+                            original, original, original, original,
+                            0.0, 1.0, false, false);
+                }
+            }
+            // 湖不挖地：carved = original（合成层 waterSurface vs 侵蚀后 height 判水）。
+            // lakePlan=true 通知合成层走"湖出水判定"（用侵蚀后地面，而非通用河床减法）。
+            return new HydrologyBlockCarvedColumn(blockX, blockZ,
+                    original, original,          // carved = original（湖不雕刻）
+                    spill, spill,                // waterSurface = lip = 侵蚀短板水位
+                    0.0,                         // erosion = cut = 0
+                    1.0,                         // 湖盆吃全量侵蚀（盆底 = 侵蚀后真实地形）
+                    false,                       // fillWater 由合成层判，这里不预判
+                    true);                       // lakePlan：湖域列标记
         }
 
         // ★ 折痕根因：雕刻几何只用"最近段距离"dist，而折线距离场在弯角平分线 /
@@ -513,7 +586,7 @@ public final class HydrologyBlockCarver {
         //   （自然瀑布贴弧形崖面形态）。唇口列 lipY=surfaceY≤original 不受影响。
         if (lipSurfaceY > original) lipSurfaceY = original;
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
-                waterSurface, lipSurfaceY, cut, erosionMask, anyFill);
+                waterSurface, lipSurfaceY, cut, erosionMask, anyFill, false);
     }
 
     private static double junctionWaterSurface(List<HydrologyBlockSample> samples,
