@@ -211,6 +211,12 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.BooleanValue erosionEnabled;
     /** 河网微自适应开关（2026-09-08）：默认 false——建网全域吃 tile，实测加载期数分钟级卡顿。 */
     public final ForgeConfigSpec.BooleanValue erosionRoutingAdaptive;
+    /**
+     * 侵蚀向河道软让步（方案 A，2026-09-09）：默认 true。河床按到河心距离衰减侵蚀 delta
+     * （河心→0、谷外→1），使河床与"无侵蚀计划水面"重新同源 → 根治侵蚀导致的河道非单调
+     * 阶梯（图1）与填水脱离地形的干滩（图2）。设 false 回退到旧"河床全量跟随侵蚀"行为。
+     */
+    public final ForgeConfigSpec.BooleanValue erosionYieldToRiver;
     /** 细纹理微侵蚀层（XS r1wu 十字笔刷，2026-08-12；默认关——实测加剧 chunk 边界脊） */
     public final ForgeConfigSpec.BooleanValue erosionXSEnabled;
     /** 侵蚀强度倍率 */
@@ -607,6 +613,8 @@ public final class GeoGenesisConfig {
             .define("erosionEnabled", true);
         erosionRoutingAdaptive = builder.comment("Adaptive river routing: blend erosion delta into the D8 routing field so river lines follow eroded gullies. WARNING (measured 2026-09-08): network build covers the whole region grid, so enabling this triggers synchronous cold generation of ALL erosion tiles in the area (~200ms each, hundreds of tiles) -> world load stalls for minutes. Default false; enable only for offline experiments.")
             .define("erosionRoutingAdaptive", false);
+        erosionYieldToRiver = builder.comment("Erosion yields to river channel (FreeTerraForged-style erosionMask): attenuate the erosion delta applied to the riverbed by distance to channel center (0 at center, 1 outside valley) so the bed stays coherent with the planned monotonic water surface. Fixes erosion-induced non-monotonic terraced waterfalls and dry sand bars poking through the water. Default true; set false to restore old full-follow behavior.")
+            .define("erosionYieldToRiver", true);
         erosionXSEnabled = builder.comment("Extra-fine (XS, r1wu cross-brush) micro-erosion detail layer. Adds 1-2 block textures on slopes, but amplifies cross-chunk birth-set discreteness into visible ridges near chunk borders (measured +1.6 blocks at tile borders). Default false (conservative).")
             .define("erosionXSEnabled", false);
         erosionStrength = builder.comment("Erosion strength multiplier. Default 1.0, range [0, 4].")
@@ -779,6 +787,7 @@ public final class GeoGenesisConfig {
         try {
             long h = 1;
             h = h * 31 + (INSTANCE.erosionEnabled.get() ? 1 : 0);
+            h = h * 31 + (INSTANCE.erosionYieldToRiver.get() ? 1 : 0);
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionStrength.get());
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionDropsMul.get());
             h = h * 31 + (INSTANCE.erosionRidgeEnabled.get() ? 1 : 0);

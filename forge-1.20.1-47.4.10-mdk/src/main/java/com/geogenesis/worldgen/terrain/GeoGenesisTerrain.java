@@ -24,16 +24,13 @@ public final class GeoGenesisTerrain {
     private static final int CACHE_SIZE = 4096;
     private static final int CHUNK_SHIFT = 4; // 16 blocks per chunk
 
-    /** 河道内沉积 delta 的单向钳幅（2026-09-08）：侵蚀（负 delta）全量跟随河床
-     *  （与岸外连续、无垂直断面），沉积（正 delta）最多抬升此值——防止河床顶破
-     *  计划水面变干河（计划水面保证 carved ≤ surface−0.75，抬升 ≤0.5 仍有水）。 */
-    private static final double RIVER_EROSION_DEPOSIT_CAP = 0.5;
-
     private final CellGenerator generator;
     private final HeightCurve curve;
     private final Map<Long, Cell[]> cache = new ConcurrentHashMap<>(CACHE_SIZE);
 
     private final boolean riversEnabled;
+    /** 侵蚀向河道软让步（方案 A，config erosionYieldToRiver，默认 true）。 */
+    private final boolean erosionYieldToRiver;
     private final HydrologyChunkEngine hydrologyExperiment;
 
     public GeoGenesisTerrain(CellGenerator generator) {
@@ -45,12 +42,15 @@ public final class GeoGenesisTerrain {
         //   try-catch 兜底 → 默认值（对齐 CellGenerator 的 cfg 空保护惯例）。
         double hs = generator.params().horizontalScale();
         boolean riversEnabled = true;
+        boolean erosionYieldToRiver = true;
         try {
             riversEnabled = GeoGenesisConfig.INSTANCE.riverEnabled.get();
+            erosionYieldToRiver = GeoGenesisConfig.INSTANCE.erosionYieldToRiver.get();
         } catch (IllegalStateException e) {
             // 预览进程：配置未加载，保持默认值
         }
         this.riversEnabled = riversEnabled;
+        this.erosionYieldToRiver = erosionYieldToRiver;
         this.hydrologyExperiment = new HydrologyChunkEngine(generator, 0L);
         // ★ 2026-08-14 启动诊断：确认游戏内河网 + discharge 是否启用（用户"跑新版没变化"排查）
         LOGGER.info("[RIVER] terrain init: riversEnabled={} hs={}",
@@ -207,19 +207,22 @@ public final class GeoGenesisTerrain {
      * 侵蚀在后），直接覆盖会丢失侵蚀细节；减去雕刻量（original−carved，恒 ≥0）
      * 可在保留侵蚀的同时刻出同一条河谷。</p>
      *
-     * <p>★ 侵蚀交互三原则（2026-09-08 终版，三轮实测迭代）：</p>
+     * <p>★ 侵蚀交互原则（2026-09-09 方案 A 终版，取代 2026-09-08 的"河床全量跟随侵蚀"）：</p>
      * <ol>
-     * <li><b>河床全量贴合侵蚀地形</b>：河床 = carved + delta（delta = 含侵蚀高度 −
-     *     无侵蚀原始高度，同列全量）。河床与岸外吃同一个连续 delta 场 → 河道边界
-     *     无突变。历史上两次失败：fade 衰减（中心 15%）让河道浮在两岸侵蚀沟上成
-     *     凸形；均匀钳幅 ±0.5 让河道边界出现 9.5 格 delta 突变 → 岸坡垂直断面墙
-     *     （用户实测截图，源头近山处沿河一整条）。</li>
-     * <li><b>水面保持雕刻计划水位</b>（不加 delta）：delta 空间变化剧烈（骨架条纹），
-     *     水面若跟随会纵向抖动；计划水面已经过单调化/岸线 cap，保持它 → 河面平滑。
-     *     横穿侵蚀沟处河床跟沟下沉 → 自然形成深潭（物理正确：水填谷到水位）。</li>
-     * <li><b>沉积单向钳幅</b>：delta &gt; 0（沉积抬升）最多 +{@link #RIVER_EROSION_DEPOSIT_CAP}
-     *     ——保证河床不顶破计划水面（计划保证 carved ≤ surface−0.75，抬升 ≤0.5 仍
-     *     有水）；侵蚀方向（delta &lt; 0）不钳，河床全量跟沟走（原则 1 的连续性）。</li>
+     * <li><b>河床让位于河道（RTF 式软让步）</b>：河床 = carved + delta × mask，
+     *     mask = {@link com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn#erosionMask()}
+     *     ——河心（dist≤width）→ 0，谷外（dist≥valley）→ 1，[width, valley] 间 smoothstep。
+     *     <b>根治图1 阶梯 / 图2 干滩</b>：旧版让河床全量跟随侵蚀 delta，但水面是"无侵蚀
+     *     地形"上算出的计划单调剖面——二者恰好相差一个高频 delta 场，于是出现侵蚀刻画的
+     *     非单调阶梯（图1）与侵蚀沉积顶穿水面的干沙洲（图2，还复活了 2026-09-06 已修的
+     *     "floor 追平 → 零高水柱"）。河心 mask→0 后河床严格 = 计划 carved，与计划水面
+     *     <b>同源自洽</b>，carver 的纵剖面单调与"至少 1 整块水柱"保证全部重新成立。
+     *     用平滑过渡而非二值屏蔽，避免重蹈"均匀钳幅 ±0.5 → 岸坡 9.5 格垂直断面墙"
+     *     的历史旧坑（这正是 FreeTerraForged 用软 riverMask 而非硬屏蔽的原因）。</li>
+     * <li><b>水面保持雕刻计划水位</b>（不加 delta）：计划水面已过单调化/岸线 cap，
+     *     保持它 → 河面平滑；且现在河床已回归计划 carved，二者不再脱节。</li>
+     * <li><b>无钳幅</b>（2026-09-09 终修）：delta = rawDelta·mask，谷外缘（mask→1）恒等于
+     *     隔壁原侵蚀地形，垂直墙在构造上不可能出现（旧 0.5 钳幅为历史残留，已删）。</li>
      * </ol>
      */
     private void applyHydrologyValley(Cell[] cells, int cx, int cz) {
@@ -230,7 +233,16 @@ public final class GeoGenesisTerrain {
             int lz = Math.floorMod(column.blockZ(), 16);
             Cell cell = cells[lx * 16 + lz];
             double rawDelta = cell.height - column.originalGroundY(); // 本列侵蚀增量（全量）
-            double delta = Math.min(rawDelta, RIVER_EROSION_DEPOSIT_CAP); // 沉积单向钳幅
+            // ★ 方案 A：河心 mask→0（河床不吃侵蚀，回归计划 carved），谷外→1（全量侵蚀）
+            double mask = erosionYieldToRiver ? column.erosionMask() : 1.0;
+            // ★ 2026-09-09 终修：去掉 0.5 沉积钳幅（历史残留，用户实测截图"岸坡过渡
+            //   结束边缘的垂直断面"）：min(rawDelta·mask, 0.5) 会在谷外缘（mask→1）把
+            //   本应全额补回的侵蚀截成 +0.5，而隔壁未命中列吃全额 rawDelta →
+            //   两者差 (rawDelta−0.5)，山地沉积 rawDelta 可达 +5 格 = 一堵贯穿山体的墙。
+            //   河心 mask→0 已天然保护水面（不存在"顶破计划水面"），钳幅纯属副作用。
+            //   去掉后：谷外缘 delta=rawDelta ⇒ 高度 = carved + rawDelta = original + rawDelta
+            //   （carved→original）⇒ 数学恒等于隔壁"原侵蚀地形"，墙在构造上不可能出现。
+            double delta = rawDelta * mask;
             cell.height -= column.erosion() + (rawDelta - delta);     // = carved + delta
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
             cell.riverSurfaceY = column.waterSurfaceY();               // 计划水位（不跟 delta）

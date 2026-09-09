@@ -71,6 +71,38 @@ public record RiverLineParams(
     double bankWidth,
     /** 河谷壁陡缓指数：outer = 1 - (dist/valley)^valleyExp，越大壁越陡。 */
     double valleyExp,
+    /**
+     * 岸坡坡度上限（水平跨度 / 每 1 格岸高）：谷壁跨度 R ≥ 岸高 H × 本值。
+     * 岸高 H = 原地形 − 河缘雕刻面（profile=0 处的雕刻目标）。高岸自动展宽、
+     * 低岸维持原宽度 → 根治"岸坡垂直面"（旧版 R 恒 = bankFactor×半宽，
+     * H 大到 15 格、R 仅 7.5 格时坡度 2.0 ≈ 63°，视觉竖直）。
+     * 默认 1.5 → 坡角 ≈ arctan(1/1.06/1.5) ≈ 32°（valleyExp=1.5 时 outer 最大斜率 ≈1.06）。
+     */
+    double bankSlopeRun,
+    /** 谷壁跨度上限（block）：自适应展宽的绝对上限，防止深切河谷无限外扩吞掉地形。 */
+    double bankRunMax,
+    /**
+     * 保形下挖强度（0~1，2026-09-09）：谷壁带<b>不再把地形 lerp 向"水面平面"</b>
+     * （旧式 `carved = original·(1−outer) + carveSurfaceY·outer` 本质是拉向一个水平面，
+     *  整片自然起伏被刨平 → 用户实测"河岸向上一整片被削平的斜坡/平台"），改为只减去
+     *  一个<b>平滑</b>衰减量 A0 ⇒ `carved = original − A0·outer`，起伏原样保留、
+     *  只是整体沉降；带外缘 A0·outer→0 时<b>严格等于实际（已侵蚀）地形</b>。
+     *  0 = 旧行为（拉向平面），1 = 完全保形。
+     */
+    double bankRelief,
+    /** 保形下切量基准（block）：A0 = depth + 本值。深岸只沉 A0、保住山的形状。 */
+    double bankIncise,
+    /**
+     * 雕刻分段化（Zoned Carve，2026-09-09）：内层定形带宽系数。
+     * 谷壁带拆为【内层定形】（width ~ width+formRun，保留现有 outer lerping，
+     * 定形的权力完全归它）+【外层接缝】（formRun 之外 → 谷外缘，
+     * `cut = cut(内层出口) × seamFade(s)`，只做"收敛到 0"，不含目标面信息）。
+     * 0 = 关闭分段（精确回退到旧的一段式 outer）。
+     */
+    double formRunFactor,
+    /** 外层接缝带宽上限（block）：接缝带 = min(valley − (width+formRun), 本值)，
+     * 内层出口 cut 值经 smoothstep 衰减到 0 ⇒ 谷外缘数学保证等于实际地形。 */
+    double seamRun,
     /** 蜿蜒振幅（block）：沿河路径叠加的垂直正弦偏移。 */
     double meanderAmp,
     /** 蜿蜒波长（block）。 */
@@ -155,6 +187,7 @@ public record RiverLineParams(
                 fadeHighE, fadeLowE, surfaceSink, minDischargeArea, oceanE, mountainScale,
                 gridCell, maxTraceSteps, sourceMinE, sourceSpacingCells, traceStep,
                 minRiverNodes, riverAccumThreshold, slopeDrop, bankWidth, valleyExp,
+                bankSlopeRun, bankRunMax, bankRelief, bankIncise, formRunFactor, seamRun,
                 meanderAmp, meanderWavelength, riverCount, borderDist, lakeRadius,
                 lakeMargin, lakeFadeDist, heightBlendDist, blendExp, minDrop, smoothMinK,
                 widthAreaRef, widthExp, depthExp, maxDepthRatio, mouthFadeDepth,
@@ -206,6 +239,27 @@ public record RiverLineParams(
             0.5,                     // slopeDrop（block：源端缓降）
             2.5,                     // bankWidth（河谷壁系数 ×半宽）
             1.5,                     // valleyExp（谷壁陡缓）
+            1.5,                     // bankSlopeRun（岸坡跨度 / 每格岸高；≈32° 上限）
+            24.0,                    // bankRunMax（谷壁跨度上限 block）
+                                     //   ★ 实测不可收窄（2026-09-09）：24→12 使平缓种子
+                                     //     台阶 0→193。带宽是"摊开爬升"的必要尺度，
+                                     //     削平台的问题靠保形(bankRelief)解决，不靠收窄。
+            0.0,                     // bankRelief（保形强度；★ 默认 0 = 关闭，实测见下）
+                                     //   ★★ 实测结论（2026-09-09，双种子 A/B）：保形能削掉
+                                     //     "被刨平的斜坡"，但【必然】在河槽缘制造台阶——
+                                     //     平整的计划床面(carveSurfaceY)与保形的自然起伏
+                                     //     相差 (H − A0)，H 含地形锯齿 ⇒ 台阶。
+                                     //     平缓种子 12345：0 → 302（劣化）；
+                                     //     山地种子 9139912035078620160：458 → 160（改善）。
+                                     //   仅在"多山世界、可容忍河槽缘台阶"时手动开 1.0。
+            8.0,                     // bankIncise（A0 = depth + 8.0：只有岸高超过它的深岸才保形，
+                                     //   浅岸经 min() 自动等于原值 → 平缓区完全不动）
+                                     //   ★ 实测甜点（2026-09-09 seed 12345）：16 → 谷壁台阶 110，
+                                     //     footprint 372364；24 → 台阶 0，footprint 372933（几乎不变）
+                                     //     ——跨度上限几乎不 binding，被截的恰是"最需要展宽的深岸"，
+                                     //     故 24 严格优于 16。
+            1.5,                     // formRunFactor（内层定形带 = width × 1.5）
+            12.0,                    // seamRun（外层接缝带宽上限 12 block）
             2.5,                     // meanderAmp（蜿蜒振幅 block）
             40.0,                    // meanderWavelength（蜿蜒波长 block）
             80,                      // riverCount（每 region 最大河数，加密河网）

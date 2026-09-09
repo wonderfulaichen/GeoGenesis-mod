@@ -187,11 +187,47 @@ public final class HydrologyBlockCarver {
         boolean lakeHit = nearest.isLake();
         // ★ 跌水段同治（2026-09-07，用户："瀑布的岸坡也会这样"）：跌水两侧地形
         //   高差最大，谷壁带往水面刨的痕迹在瀑布处最刺眼。潭体在河道内（dist≤width）
-        //   不受影响；弯折外侧楔形区本就不认领（2026-08-31）；收窄只去掉岸坡刨平。
-        boolean narrowWall = lakeHit || nearest.fallDrop() > 0.0;
+        //   不受影响；弯折外侧楔形区本就不认领（2026-08-31）。
+        // ★ 2026-09-09 v2 终修（用户实测"瀑布河道两侧垂直悬崖"）：此前两版都没真正解决——
+        //   v1 把岸坡雕刻面抬到崖顶 lip（bankSurfaceY），v0/中间版用 narrowWall 把瀑布谷壁
+        //   压到 1.15×width（0.4 格过渡带）——落差 9~15 格于是在河道边缘 1~2 列内全部跳变
+        //   = 矩形垂直槽（横断面实测 h: ...132 132 132 | 141 141...，池底 132 直跳岸 141）。
+        //   正解 = 瀑布坐进【碗状谷地】：谷壁带用自适应展宽（bankRun = H×bankSlopeRun，岸越
+        //   高越宽），雕刻目标逐列保持"最近河段水面/池面"，9~15 格落差经 valleyOuter 在
+        //   ~22 block 内摊成 ~34° 缓坡（不是抬 lip 制造断崖，也不是窄谷硬切）。
+        //   ★ 湖保持窄谷壁 1.15×width：湖不挖地、只铺水面，岸坡不主动雕刻、跟随自然地形
+        //     （2026-09-07 注释原义）。
+        // ★ 守卫用【真实最近距离】nearestDist（与灌水门控①同源）：smin 会被落差处多个
+        //   重叠冻结样本压低（实测 nearestDist=3.84 → smin=2.28 < width），使真正岸坡列被
+        //   误判"河道内"→ frozenChannel 刻到潭面床且不灌水 = 落差线旁垂直切面。
+        // ★ 岸坡雕刻目标（2026-09-09 v2，用户实测"瀑布河道两侧垂直悬崖"）：
+        //   v1 把所有瀑布岸坡目标抬到崖顶 lip(bankSurfaceY)——上游唇口侧确实需要（防刻穿
+        //   地面成薄墙），但【潭侧池岸也被抬到 lip】→ 池面 132 vs 岸 141 无过渡列 = 垂直墙。
+        //   正解：atFall 岸坡列雕刻目标 = 最近河段【自身水面】nearest.surfaceY()（跳过
+        //   k=4 竞争带混合——混合会把 lip/池面抹成 136 中间值，正是 v1 上游薄墙的根因）。
+        //   结果：唇口侧列 → 141（不刻穿高地）；潭侧列 → 132（宽谷壁削出缓坡入潭，碗状
+        //   池岸）。落差 9~15 格由谷壁带（按岸高自适应展宽，见下）摊成 ~1:1.5 缓坡，
+        //   不再是 1~2 列内的垂直跳变。
+        if (nearestDist > nearestWidth && (atFall)) {
+            carveSurfaceY = nearest.surfaceY();
+        }
+        // 湖命中：谷壁带收窄（1.15×width 羽化防硬切）。瀑布段不再收窄，走自适应宽谷壁。
+        boolean narrowWall = lakeHit;
+        // ★ 自适应谷宽（2026-09-09）：岸越高 → 谷壁跨度越大，保证岸坡不超过坡度上限。
+        //   旧版跨度恒为 bankFactor×半宽（与岸高无关）→ 深切入地形的河（岸高 15 格、
+        //   跨度仅 7.5 格）坡度达 2.0≈63°，视觉上就是"垂直面"（用户实测截图）。
+        //   岸高 H = 原地形 − 河缘雕刻面（dist=width 处 profile=0 → bedTarget=carveSurfaceY）。
+        double baseRun = Math.max(bankW, width * 2.0);   // 旧语义：valley − width
+        double bankRun = adaptiveBankRun(carveSurfaceY, original, baseRun, P);
         double valley = narrowWall
                 ? width * 1.15
-                : Math.max(width + bankW, width * 3.0);
+                : width + bankRun;
+
+        // ★ 侵蚀让步 mask（方案 A，RTF 式 erosionMask，2026-09-09）：河床吃多少侵蚀 delta。
+        //   河心（dist≤width）→0：河床严格 = 计划 carved，与计划水面同源 → 根治图1阶梯
+        //   （床不再跟侵蚀沟跳变）与图2干滩（床不再被侵蚀沉积顶穿水面）。谷外（dist≥valley）
+        //   →1：全量侵蚀。中间 smoothstep 过渡，且与 cut 的 outer 淡出同区间 → 边界连续。
+        double erosionMask = channelErosionMask(dist, width, valley);
 
         // 距离场横断面：t=0 中心 → t=1 河缘（Streams 式 V 形：线性凹断面）
         double t = NoiseUtil.saturate(dist / width);
@@ -211,21 +247,56 @@ public final class HydrologyBlockCarver {
         //   每条河的 outerS 对位置连续、IDW 权重也连续 → 既不被邻河撑大、属主切换处
         //   又无硬跳。手算该列 outer：0.547 → 0.28（接近"只用最近段"的 0.254）。
         double oSum = 0.0, oAcc = 0.0;
-        for (HydrologyBlockSample s : samples) {
+        // ★ 分段 carving 准备（2026-09-09）：每个样本的谷宽 vs 与其 IDW 权重 wS
+        //   缓存下来，供【内层出口 outer】复用 —— 出口必须与主 outer 用同一 vs，
+        //   否则出口值与主路径对不上（台阶源）。
+        int nSamp = samples.size();
+        double[] vsArr = new double[nSamp];
+        double[] wSArr = new double[nSamp];
+        for (int si = 0; si < nSamp; si++) {
+            HydrologyBlockSample s = samples.get(si);
             double sd = s.distToCenter();
-            if (sd > P.heightBlendDist()) break;   // sampleBlockAll 已按距离升序
+            if (sd > P.heightBlendDist()) { vsArr[si] = Double.NaN; wSArr[si] = 0.0; continue; }
             double ws = Math.max(s.width(), 1.0);
             // 湖/跌水样本谷壁带同样收窄（与上面 valley 同理，见湖命中注释）
+            // 与主 valley 同式自适应（outer 混合必须与雕刻几何同参，否则属主切换处失配）
             double vs = (s.isLake() || s.fallDrop() > 0.0)
                     ? ws * 1.15
-                    : Math.max(ws + ws * P.bankFactor(), ws * 3.0);
-            double vtS = NoiseUtil.saturate((dist - ws) / Math.max(1.0, vs - ws));
+                    : ws + adaptiveBankRun(s.bankSurfaceY(), original,
+                            Math.max(ws * P.bankFactor(), ws * 2.0), P);
+            vsArr[si] = vs;
             double fadeS = NoiseUtil.saturate(sd / P.heightBlendDist());
-            double wS = (1.0 - fadeS) * (1.0 - fadeS) / Math.max(sd * sd, 1.0);
-            oSum += wS;
-            oAcc += wS * valleyOuter(vtS, P.valleyExp());
+            wSArr[si] = (1.0 - fadeS) * (1.0 - fadeS) / Math.max(sd * sd, 1.0);
+        }
+        for (int si = 0; si < nSamp; si++) {
+            if (wSArr[si] <= 0.0) continue;
+            HydrologyBlockSample s = samples.get(si);
+            double ws = Math.max(s.width(), 1.0);
+            double vtS = NoiseUtil.saturate((dist - ws) / Math.max(1.0, vsArr[si] - ws));
+            oSum += wSArr[si];
+            oAcc += wSArr[si] * valleyOuter(vtS, P.valleyExp());
         }
         double outer = oSum > 1e-9 ? oAcc / oSum : valleyOuter(valleyT, P.valleyExp());
+        // ★ 内层出口 outer：与主 outer 同 vs、同权重，只把 dist 换成 formEdge → 出口连续。
+        double formEdge = width + Math.max(1.0, width * P.formRunFactor());
+        double edgeOuter = outer;
+        if (P.formRunFactor() > 0.0) {
+            double eSum = 0.0, eAcc = 0.0;
+            for (int si = 0; si < nSamp; si++) {
+                if (wSArr[si] <= 0.0) continue;
+                HydrologyBlockSample s = samples.get(si);
+                double ws = Math.max(s.width(), 1.0);
+                double vtE = NoiseUtil.saturate((formEdge - ws) / Math.max(1.0, vsArr[si] - ws));
+                eSum += wSArr[si];
+                eAcc += wSArr[si] * valleyOuter(vtE, P.valleyExp());
+            }
+            if (eSum > 1e-9) {
+                edgeOuter = eAcc / eSum;
+            } else {
+                edgeOuter = valleyOuter(NoiseUtil.saturate((formEdge - width)
+                        / Math.max(1.0, valley - width)), P.valleyExp());
+            }
+        }
 
         // ★ 谷壁雕刻面平滑（消弯角放射折痕回归）：瀑布冻结让雕刻面按阶硬切，
         //   弯角处各列最近段在上下阶间 Voronoi 跳变 → 谷壁折痕。谷壁（dist>width）
@@ -233,21 +304,26 @@ public final class HydrologyBlockCarver {
         //   只对"真水幕列"（fallDrop>0，阶跌处）平滑——唇口列（平坦潭面）保持
         //   阶值，避免被向下拉跨阶挖深。仅与"同为冻结段"样本平滑，限幅 ±maxDrop。
         if (atFall && nearest.fallDrop() > 0.0 && dist > width) {
-            double fSum = nearest.surfaceY(), fWeight = 1.0;
+            // ★ 2026-09-09（用户实测"瀑布岸坡垂直切面"）：本块原先混合邻居 surfaceY（水面
+            //   =潭面），会把上面刚提升的 bankSurfaceY（崖顶）又压回潭面 → 落差线岸坡列
+            //   被刻穿 8~19 格（取证：(-166,-373) bank=141.25 但 carved=132.4，而下游
+            //   (-165,-373) bank=140.2 → 140.2 正常）。岸坡列的雕刻面应混合邻居的
+            //   【bankSurfaceY】（崖顶面）——消弯角折痕的初衷不变，只是混合的是岸坡面。
+            double fSum = nearest.bankSurfaceY(), fWeight = 1.0;
             for (int i = 1; i < samples.size(); i++) {
                 HydrologyBlockSample s = samples.get(i);
                 if (!s.frozen()) continue;
                 double delta = s.distToCenter() - nearestDist;
                 if (delta >= k) continue;
                 double weight = NoiseUtil.smooth(1.0 - NoiseUtil.saturate(delta / k));
-                fSum += weight * s.surfaceY();
+                fSum += weight * s.bankSurfaceY();
                 fWeight += weight;
             }
             double blendSurf = fSum / fWeight;
             double maxDrop = P.waterfallMaxDrop();
-            if (Math.abs(blendSurf - nearest.surfaceY()) > maxDrop) {
-                blendSurf = nearest.surfaceY()
-                        + Math.signum(blendSurf - nearest.surfaceY()) * maxDrop;
+            if (Math.abs(blendSurf - nearest.bankSurfaceY()) > maxDrop) {
+                blendSurf = nearest.bankSurfaceY()
+                        + Math.signum(blendSurf - nearest.bankSurfaceY()) * maxDrop;
             }
             carveSurfaceY = blendSurf;
         }
@@ -280,28 +356,33 @@ public final class HydrologyBlockCarver {
         //   样本水面≈自身 → 钳制≈无操作；瀑布处钳到上级 tread 水位 → 直角两侧岸坡
         //   不再被潭侧低面拖下去，恰好实现"直角两侧被地形包住"。只影响下挖量：
         //   当地地形本就低于该水位的下游侧（original < highWater）cut 仍为 0，形态不变。
-        if (dist > width && atFall) {   // 本意只防瀑布角被潭侧低面拖出干平台；普通河缝交给上面的谷壁平滑
-            // ★ 邻域从 delta<k(4) 改为与宽深混合同款的【距离衰减加权】（2026-08-31）：
-            //   实测岸坡断层（种子 9139912035078620160 @ -977,-529 / -1072,-485 等 7 处、
-            //   7~11 格）：归属窄跌水段（半宽 2.8）的岸坡列，其谷壁范围被 IDW 混合宽
-            //   （混入邻段 6.8）从 9.8 撑到 11.5、又被 smin 把距离缩 1.5 格 → 外缘处的
-            //   outer 从 0.03 抬到 0.55，于是跌水段的唇口水位把岸坡挖到 108（挖深 12.9 格），
-            //   而相邻归属普通段（124.3）的列几乎不挖 → 岸坡方向断层。
-            //   旧钳制邻域 delta<k 太窄（普通段在 delta=7.5 处被排除）→ 看不见 124.3。
-            //   改用距离衰减加权后，岸坡列的钳制目标含入周围地形的真实水位 → 不再被
-            //   窄跌水段的低唇口拖下去；河道内(dist<=width)不生效，瀑布阶跃形态不变。
-            // 含最近段在内，全部按同款 d² 权重（最近段不得用 1.0，否则完全主导 = 无操作）
+        if (dist > width && atFall) {   // 岸坡列（不灌水）紧邻瀑布：雕刻目标不得被潭面拖下去
+            // ★ 2026-09-09（用户实测"瀑布落差处上游岸坡横墙"；WallColumnDumpProbe 实证）：
+            //   落差岸坡列的最近样本常是潭面(132)、真落差样本(lip=141)次近。旧逻辑用
+            //   【距离加权平均】抬 bedTarget → 只到 ~136，仍把 orig~145 的岸坡刻穿 → 墙。
+            //   瀑布岸坡在落差附近应保持上游唇口高度（垂直落差本就该由水幕表现，不该由
+            //   岸坡被刻出 8~19 格平墙）。改：邻域存在真落差样本(fallDrop>0)时，钳制目标
+            //   直接取【全样本最高水面/唇口】而非加权平均——只影响 near-fall 岸坡列。
+            //   普通河段无 fallDrop 样本 → 走下方加权平均分支（2026-08-31 岸坡断层修复不变）。
+            boolean hasFallNear = false;
+            double highWater = Math.max(nearest.surfaceY(), nearest.lipSurfaceY());
             double hwSum = 0.0, hwLevel = 0.0;
             for (HydrologyBlockSample s : samples) {
                 double d = s.distToCenter();
                 if (d > P.heightBlendDist()) break;   // sampleBlockAll 已按距离升序
+                if (s.fallDrop() > 0.0) {
+                    hasFallNear = true;
+                    highWater = Math.max(highWater, s.lipSurfaceY());
+                }
                 double fade = NoiseUtil.saturate(d / P.heightBlendDist());
                 double w = (1.0 - fade) * (1.0 - fade) / Math.max(d * d, 1.0);
                 hwSum += w;
                 hwLevel += w * Math.max(s.surfaceY(), s.lipSurfaceY());
             }
-            double highWater = Math.max(hwLevel / hwSum,
-                    Math.max(nearest.surfaceY(), nearest.lipSurfaceY()));
+            if (!hasFallNear) {
+                // 无真落差：保持 2026-08-31 的距离衰减加权语义
+                highWater = Math.max(hwLevel / hwSum, highWater);
+            }
             if (bedTarget < highWater) bedTarget = highWater;
         }
         // ★ 干地不得低于邻接水面（2026-08-31）：灌水门控①按 nearestDist/nearestWidth 判定，
@@ -321,8 +402,53 @@ public final class HydrologyBlockCarver {
         if (outsideWaterGate && bedTarget < dryFloor) {
             bedTarget = dryFloor;
         }
-        // 雕刻量 = (original − bedTarget) × 外缘衰减 × 高度淡出；只下挖
-        double cut = Math.max(0.0, original - bedTarget) * outer * fadeE;
+        // 雕刻量 = 下切量 × 外缘衰减 × 高度淡出；只下挖
+        double cutNeeded = Math.max(0.0, original - bedTarget);
+        // ★ 保形下挖（2026-09-09，用户实测"河岸向上一整片被削平的斜坡/平台/垂直平面"）：
+        //   旧式 cut = (original − bedTarget)·outer 等价于
+        //   carved = original·(1−outer) + carveSurfaceY·outer —— 把地形【拉向水面这个水平面】，
+        //   谷壁带整片自然起伏被刨平（带中部 outer≈0.65 → 65% 被拉平）。
+        //   改为：谷壁带只减去一个【平滑】量 A0（= depth + bankIncise，再与所需量取小），
+        //   carved = original − A0·outer ⇒ 起伏原样保留、只是整体沉降；带外缘 A0·outer→0
+        //   时严格等于实际（已侵蚀）地形 —— 这才是"逐步平滑回实际地形"。
+        //   缓岸（cutNeeded ≤ A0）取小后 = 旧行为、与河槽连续；深岸只沉 A0、保住山的形状。
+        //   河槽缘 [width−k, width+k] 用 smoothstep 过渡，避免"平整床面"与"保形带"硬台阶。
+        double cutAmount = cutNeeded;
+        double relief = P.bankRelief();
+        if (relief > 0.0) {
+            // A0 = 河深 + 基准（平滑，不含 local original）
+            double a0Raw = depth + P.bankIncise();
+            // ★ 阈值必须是【平滑常量】，绝不能依赖 cutNeeded（含锯齿 original）——
+            //   实测：用 excess=(cutNeeded−A0) 做权重会把地形锯齿放大成台阶
+            //   （平缓 0→863、山地 458→1024）。
+            double a0 = Math.min(a0Raw, cutNeeded);
+            // 几何窗：只在【谷壁带】生效（dist>width），不碰河槽，避免与"切穿"打架
+            double wGeom = NoiseUtil.smooth(NoiseUtil.saturate((dist - width) / k));
+            cutAmount = cutNeeded + (a0 - cutNeeded) * (relief * wGeom);
+        }
+        // ★ 雕刻分段化（Zoned Carve，2026-09-09）：内层定形 + 外层纯接缝。
+        //   旧的一段式 outer 从河缘一路 lerp 到谷外缘 —— 带中部 outer≈0.65 处
+        //   carved 被拉向"区域平均水面"这个平面，中间地带的局部起伏全被抹掉
+        //   （用户实测"河岸向上一整片被削平的斜坡/平台"；山地 footprint 宽达 ~56 格）。
+        //   现拆为：内层（dist ≤ width+formRun，formRun = width×formRunFactor）保持
+        //   现有 outer 行为；外层 cut = 【内层出口处的 cut】× 纯距离 seamFade(s)
+        //   —— 外层不含任何目标面信息，只做"收敛到 0"；谷外缘 seamFade=0 ⇒ cut=0
+        //   ⇒ carved ≡ original（数学保证恒等于实际地形）。
+        //   关键：内层出口 cut 值本身是光滑的（cutNeeded×outer 在 formRun 处取值），
+        //   外层又不引入任何新面 —— 接缝带内不存在"两个面打架"，没有台阶源。
+        //   formRunFactor=0 ⇒ 精确回退到旧行为（edgeOuter 分支恒不执行）。
+        double cut;
+        if (P.formRunFactor() > 0.0 && dist > formEdge) {
+            double cutAtEdge = cutAmount * edgeOuter * fadeE;
+            // ★ 接缝必须【完整覆盖】[formEdge, valley]：若用 min(…, seamRun) 截断，
+            //   会在 formEdge+seamRun 处形成新的 cut 硬边界 → 台阶
+            //   （实测：平缓 0→125、山地 458→661，双种子恶化）。
+            double seamWidth = Math.max(1.0, valley - formEdge);
+            double s = NoiseUtil.saturate((dist - formEdge) / seamWidth);
+            cut = cutAtEdge * (1.0 - NoiseUtil.smooth(s));
+        } else {
+            cut = cutAmount * outer * fadeE;
+        }
         double carved = original - cut;
 
         // ★ 河道内切穿（Streams 语义）：地形高于水面时挖出低于水面的河槽，而不是放弃灌水。
@@ -387,7 +513,7 @@ public final class HydrologyBlockCarver {
         //   （自然瀑布贴弧形崖面形态）。唇口列 lipY=surfaceY≤original 不受影响。
         if (lipSurfaceY > original) lipSurfaceY = original;
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
-                waterSurface, lipSurfaceY, cut, anyFill);
+                waterSurface, lipSurfaceY, cut, erosionMask, anyFill);
     }
 
     private static double junctionWaterSurface(List<HydrologyBlockSample> samples,
@@ -424,5 +550,34 @@ public final class HydrologyBlockCarver {
         double tail = 1.0 - NoiseUtil.smooth(vt);         // 末端零导数
         double m = NoiseUtil.smooth(NoiseUtil.saturate((vt - 0.5) / 0.5));
         return inner * (1.0 - m) + tail * m;
+    }
+
+    /**
+     * 自适应谷壁跨度（2026-09-09）：保证岸坡坡度不超过上限。
+     *
+     * <p>跨度 R ≥ 岸高 H × {@code bankSlopeRun}；低岸（want ≤ baseRun）维持旧固定
+     * 跨度不变，高岸自动展宽，但不超过 {@code bankRunMax}（防深切河谷无限外扩）。</p>
+     *
+     * @param carveSurfaceY 河缘雕刻面（岸顶目标高度；dist=width 处 profile=0 的 bedTarget）
+     * @param original      本列原地形高度
+     * @param baseRun       旧固定跨度下界（valley − width 的原语义）
+     */
+    private static double adaptiveBankRun(double carveSurfaceY, double original,
+                                          double baseRun, RiverLineParams P) {
+        double h = Math.max(0.0, original - carveSurfaceY);   // 岸高
+        double want = h * P.bankSlopeRun();
+        if (want <= baseRun) return baseRun;
+        return Math.min(want, Math.max(baseRun, P.bankRunMax()));
+    }
+
+    /**
+     * 侵蚀让步系数（方案 A）：河床对侵蚀 delta 的采纳比例。
+     * 河心（dist≤width）→0（河床 = 计划 carved，与计划水面自洽）；
+     * 谷外（dist≥valley）→1（全量侵蚀）；中间 smoothstep 连续过渡。
+     */
+    private static double channelErosionMask(double dist, double width, double valley) {
+        if (dist <= width) return 0.0;
+        double u = NoiseUtil.saturate((dist - width) / Math.max(1.0, valley - width));
+        return NoiseUtil.smooth(u);
     }
 }
