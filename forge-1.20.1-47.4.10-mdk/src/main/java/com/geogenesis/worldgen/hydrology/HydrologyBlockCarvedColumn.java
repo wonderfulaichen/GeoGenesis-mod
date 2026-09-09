@@ -15,7 +15,8 @@ public record HydrologyBlockCarvedColumn(int blockX, int blockZ,
                                           * 雕刻量 cut 的淡出同步归零，边界连续无断面墙。
                                           */
                                          double erosionMask,
-                                         boolean fillWater) {
+                                         boolean fillWater,
+                                         boolean lakePlan) {
     /** 水幕高度（block）：0 = 普通列。 */
     public double fallDrop() {
         double d = lipSurfaceY - waterSurfaceY;

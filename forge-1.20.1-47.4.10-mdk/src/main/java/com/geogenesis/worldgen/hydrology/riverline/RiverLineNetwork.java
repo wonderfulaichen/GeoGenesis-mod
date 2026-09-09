@@ -30,7 +30,10 @@ public final class RiverLineNetwork {
                                /** 岸坡雕刻面（2026-09-09）：跌水段/其下游 4 节点窗内 = 崖顶 lip
                                 *  （old-Streams surfaceLevelAt 语义：岸坡取上游水位），随距离
                                 *  渐变回本段水面；普通段 = surfaceY。仅供 carver 岸坡目标。 */
-                               double bankSurfaceY) { }
+                               double bankSurfaceY,
+                               /** 湖引用（2026-09-09 侵蚀短板重算）：仅 isLake 命中非 null；
+                                *  供 carver 湖分支取溢出口坎的侵蚀后短板水位。 */
+                               RiverLineRegion.LakeNode lake) { }
 
     /**
      * 跌水段水面阶跃位置：t &lt; 此值时取唇口水位，否则取跌水后水位。
@@ -1219,8 +1222,49 @@ public final class RiverLineNetwork {
             if (nearRegionBorder(field, deepest, rx, rz, params.gridCell())) continue;
             double area = cells.size() * params.gridCell() * params.gridCell();
             int li = lakes.size();
+            // ★ 逐格洼地轮廓（2026-09-09 B1）：保留洼地真实格中心，取代"等面积圆"。
+            //   radius 仅留作诊断/包围盒；命中判定改由 LakeNode.inDomain 的格方块并集
+            //   + 落块侧等高线（侵蚀后 height < spill）共同决定 → 湖岸是自然等高线。
+            double[] outlineX = new double[cells.size()];
+            double[] outlineZ = new double[cells.size()];
+            for (int ci = 0; ci < cells.size(); ci++) {
+                outlineX[ci] = field.cellCenterX(cells.get(ci));
+                outlineZ[ci] = field.cellCenterZ(cells.get(ci));
+            }
+            // ★ 溢出口坎邻格（2026-09-09 侵蚀短板重算）：湖盆外圈 8 邻中"非洼地且
+            //   fillE ≤ spill+0.05"的格 = 真正挡水/溢出的墙缺口。侵蚀削低它们 → 水位
+            //   随之降（短板）。存 rim → carver 湖分支用侵蚀后高度对 rim 取 min。
+            java.util.ArrayList<double[]> rims = new java.util.ArrayList<>();
+            java.util.HashSet<Integer> rimSeen = new java.util.HashSet<>();
+            for (int c : cells) {
+                int ci = c % nx, cj = c / nx;
+                for (int dj = -1; dj <= 1; dj++) {
+                    for (int di = -1; di <= 1; di++) {
+                        if (di == 0 && dj == 0) continue;
+                        int ni = ci + di, nj = cj + dj;
+                        if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                        int nIdx = nj * nx + ni;
+                        if (field.isBasinCell(nIdx) || rimSeen.contains(nIdx)) continue;
+                        double e = field.fillEAt(nIdx);
+                        if (e <= spill + 0.05) {
+                            rimSeen.add(nIdx);
+                            rims.add(new double[]{field.cellCenterX(nIdx), field.cellCenterZ(nIdx)});
+                        }
+                    }
+                }
+            }
+            double[] rimX = null, rimZ = null;
+            if (!rims.isEmpty()) {
+                rimX = new double[rims.size()];
+                rimZ = new double[rims.size()];
+                for (int ri = 0; ri < rims.size(); ri++) {
+                    rimX[ri] = rims.get(ri)[0];
+                    rimZ[ri] = rims.get(ri)[1];
+                }
+            }
             lakes.add(new RiverLineRegion.LakeNode(cx, cz, spill,
-                    Math.sqrt(area / Math.PI), maxDepth));
+                    Math.sqrt(area / Math.PI), maxDepth,
+                    outlineX, outlineZ, params.gridCell() * 0.5, rimX, rimZ));
             for (int c : cells) lakeAt[c] = li;
             outCells.add(spillCell(field, cells, nx, nz));
         }
@@ -2258,29 +2302,45 @@ public final class RiverLineNetwork {
                         + params.bankRunMax();
                 if (dist <= valleyReach) {
                     out.add(new RiverLineHit(dist, surface, width, depth,
-                            r.dischargeArea, r.outletOcean, false, fallDrop, frozen, bankSurface));
+                            r.dischargeArea, r.outletOcean, false, fallDrop, frozen, bankSurface,
+                            null));
                 }
             }
         }
         // 湖泊：影响范围内、且比最近河段更近才纳入（保持旧"湖/河竞争"语义；远处湖 carve≈original 无副作用）
         if (!r.lakes.isEmpty()) {
             double lakeDist2 = Double.POSITIVE_INFINITY;
-            double lakeH = 0.0;
-            double lakeR = params.lakeRadius();
+            RiverLineRegion.LakeNode bestLn = null;
             for (RiverLineRegion.LakeNode ln : r.lakes) {
                 double d2 = (wx - ln.x) * (wx - ln.x) + (wz - ln.z) * (wz - ln.z);
                 if (d2 < lakeDist2) {
-                    lakeDist2 = d2; lakeH = ln.height;
-                    // ★ 用【每湖】半径（按洼地面积换算）而非全局 lakeRadius：全局半径
-                    //   会把小水塘摊成 120wu 的大盘子、把真大湖又削小。
-                    lakeR = ln.radius > 0 ? ln.radius : params.lakeRadius();
+                    lakeDist2 = d2;
+                    bestLn = ln;
                 }
             }
-            double lakeDist = Math.sqrt(lakeDist2);
-            if (lakeDist <= lakeR + params.lakeFadeDist()
-                    && lakeDist <= bestRiverDist) {
-                out.add(new RiverLineHit(lakeDist, lakeH, lakeR,
-                        params.minDepth(), r.dischargeArea, false, true, 0.0, false, lakeH));
+            if (bestLn != null) {
+                double lakeDist = Math.sqrt(lakeDist2);
+                // ★ 命中判定（2026-09-09 B1）：有逐格轮廓 → 用【洼地格方块并集】判域，
+                //   不再用"圆心距 ≤ 半径"的圆盘（那会把任意形状洼地铺成圆，用户实测
+                //   "湖泊完全就是一个圆盘"）。域只决定"这个湖管不管这里"，真正的岸线
+                //   由落块侧【侵蚀后 height < spill 的等高线】决定 —— 湖岸自然、
+                //   且随侵蚀盆底变化自动伸缩（切深→淹更多，淤积→内缩）。
+                //   无轮廓的旧式湖退化为圆盘（兼容）。
+                //   ★ 外扩量（2026-09-09 修正）：出水由合成层【侵蚀后 height < spill】
+                //     等高线精确定界，域只决定"这湖管不管这里"。若外扩太小（曾用半格
+                //     12wu），侵蚀把 spill 等高线推远后会被截在域外漏判 → 用户实测
+                //     "水边没贴到地形/水面包不住"。外扩 2×gridCell（48wu=96block）让
+                //     spill 等高线能在域内自然闭合；不会因外扩变大变圆（出水不靠域）。
+                boolean inDomain = bestLn.hasOutline()
+                        ? bestLn.inDomain(wx, wz, params.gridCell() * 2.0)
+                        : lakeDist <= (bestLn.radius > 0 ? bestLn.radius : params.lakeRadius())
+                                + params.lakeFadeDist();
+                if (inDomain && lakeDist <= bestRiverDist) {
+                    double lakeW = bestLn.radius > 0 ? bestLn.radius : params.lakeRadius();
+                    out.add(new RiverLineHit(lakeDist, bestLn.height, lakeW,
+                            params.minDepth(), r.dischargeArea, false, true, 0.0, false,
+                            bestLn.height, bestLn));
+                }
             }
         }
         return out;

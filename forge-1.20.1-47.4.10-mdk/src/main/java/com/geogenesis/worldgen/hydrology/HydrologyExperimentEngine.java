@@ -106,7 +106,8 @@ public final class HydrologyExperimentEngine {
             out.add(new HydrologyBlockSample(hit.surfaceY(), hit.surfaceY() - hit.depth(),
                     width, hit.depth(), bankWidth, valleyWidth,
                     hit.dischargeArea(), outlet, hit.distToCenter() * scale,
-                    hit.fallDrop(), hit.frozen(), hit.isLake(), hit.bankSurfaceY()));
+                    hit.fallDrop(), hit.frozen(), hit.isLake(), hit.bankSurfaceY(),
+                    hit.lake()));
         }
         return out;
     }
