@@ -29,8 +29,9 @@ import java.util.List;
 /**
  * 独立地形预览窗口（Swing，零 MC 依赖）。
  * <p>
- * 使用 {@link PreviewCache} + {@link PreviewWorker} 异步采样引擎：
- * 拖拽/缩放时后台渐进式计算（低分→高分），图层切换仅重新填充像素，无需重采样 Cell 网格。
+ * 采样引擎为 {@link LargeAreaSampler}：<b>固定采样数 + 步长缩放</b>（参考 FreeTerraForged
+ * {@code TileGenerator.generateZoomed}），<b>开销与视野无关</b> → 可一眼看数万格的气候格局与纬度分带。
+ * 拖拽/缩放时按视口标识增量重采（默认 64×64 ≈ 40 ms），图层切换无需重采。
  * <p>
  * 视图模式：数字键 1..9/0 选图层 0..9；[ / ] 前后切换；R 水文叠加；X 分辨率；C 清空搜索。
  * 图例：离散图层列出条目（按搜索框过滤），连续图层画渐变条。
@@ -57,9 +58,9 @@ public final class TerrainPreview {
     private int qualityIdx = 0;
     private String search = "";
 
-    // === 缓存引擎 ===
-    private final PreviewCache cache = new PreviewCache();
-    private final PreviewWorker worker;
+    // === 大范围采样（★ 2026-09-11：取代已 @Deprecated 的 PreviewWorker + PreviewCache）===
+    //   固定采样数 + 步长缩放 → 开销与视野无关，可看数万格（参考 FTF generateZoomed）。
+    private LargeAreaSampler.Grid grid;
 
     // === Swing 组件 ===
     private final JFrame frame;
@@ -90,11 +91,7 @@ public final class TerrainPreview {
         GeoPalette.setElevationERange(er[0], er[1]);
         GeoPalette.setSeaLevel(seaLevel);
 
-        // 初始化缓存引擎（回调在 canvas 创建后设置）
-        this.worker = new PreviewWorker(terrain, cache);
-        worker.setHeightRange(minY, mountainCap);
-        worker.setSeaLevel(seaLevel);
-        worker.setHydrology(hydrology);
+        // 大范围采样无需初始化：LargeAreaSampler 在 render 内按视口标识增量采样
 
         frame = new JFrame("GeoGenesis Terrain Preview");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -147,13 +144,10 @@ public final class TerrainPreview {
                     switchLayer();
                 } else if (c == 'r' || c == 'R') {
                     hydrology = !hydrology;
-                    worker.setHydrology(hydrology);
+                    canvas.repaint();
                 } else if (c == 'l' || c == 'L') {
-                    // ★ 大范围模式：切廉价管线 + 放宽视口上限 → 可看数万格的气候格局/纬度分带
+                    // ★ 大范围模式：放宽滚轮缩放上限 → 可看数万格的气候格局/纬度分带
                     largeArea = !largeArea;
-                    worker.setLargeArea(largeArea);
-                    requestResample();
-                    worker.computeLayer(currentLayer());
                     canvas.repaint();
                 } else if (c == 'x' || c == 'X') {
                     qualityIdx = (qualityIdx + 1) % QUALITY.length;
@@ -166,8 +160,7 @@ public final class TerrainPreview {
             }
         });
 
-        // canvas 已初始化完成，设置 Worker 回调
-        worker.setOnComplete(c -> SwingUtilities.invokeLater(() -> canvas.repaint()));
+        // 无需 Worker 回调：采样在 render 内同步完成后直接重绘
 
         searchBox = new JTextField();
         searchBox.setToolTipText("图例搜索过滤（按 '/' 激活，Esc 退出）");
@@ -202,24 +195,14 @@ public final class TerrainPreview {
         return GeoPalette.PreviewLayer.values()[layerIndex];
     }
 
-    /** 图层切换：若已缓存则直接重绘，否则让 Worker 计算。 */
+    /** 图层切换：采样与图层无关（Cell 已含全部图层所需数据），直接重绘。 */
     private void switchLayer() {
-        GeoPalette.PreviewLayer layer = currentLayer();
-        if (cache.isLayerReady(layer)) {
-            canvas.repaint();
-        } else {
-            worker.computeLayer(layer);
-        }
+        canvas.repaint();
     }
 
-    /** 视口变化：后台渐进式重采样（低→高）。 */
+    /** 视口变化：直接重绘（采样在 render 内按视口标识增量执行，固定 64×64 ≈ 40ms）。 */
     private void requestResample() {
-        double sampleScale = (double) PANEL * scale / PANEL; // = scale
-        worker.setPixelToWorldScale(sampleScale);
-        cache.invalidate();
-        worker.queueProgressive(viewportId(),
-                (int) Math.floor(originX), (int) Math.floor(originZ),
-                PANEL, PANEL, currentLayer());
+        canvas.repaint();
     }
 
     private long viewportId() {
@@ -237,34 +220,35 @@ public final class TerrainPreview {
     private void render(Graphics2D g) {
         GeoPalette.PreviewLayer layer = currentLayer();
 
-        if (!cache.isLayerReady(layer)) {
-            // 数据未就绪：显示旧帧仿射映射（若有）或黑屏占位
-            if (lastFrame != null) {
-                g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL);
-                double sx = lastScale / scale, tx = (lastOriginX - originX) / scale, ty = (lastOriginZ - originZ) / scale;
-                AffineTransform at = new AffineTransform(); at.translate(tx, ty); at.scale(sx, sx);
-                g.drawImage(lastFrame, at, null);
-            } else {
-                g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL);
-                g.setColor(Color.WHITE); g.drawString("计算中... (seed=" + seed + ")", 10, 30);
-            }
-            info.setText("计算中...  seed=" + seed);
-            return;
+        // ★ 视口变化才重采：固定 64×64 采样数，视野再大成本不变（FTF 同款做法）
+        long vid = viewportId();
+        if (grid == null || grid.viewportId() != vid) {
+            int blocksWide = (int) Math.round(PANEL * scale);
+            grid = LargeAreaSampler.sample(terrain,
+                    (int) Math.floor(originX), (int) Math.floor(originZ),
+                    blocksWide, blocksWide,
+                    LargeAreaSampler.DEFAULT_GRID, LargeAreaSampler.DEFAULT_GRID, vid);
         }
 
         try {
             int res = PANEL / QUALITY[qualityIdx];
             int quality = QUALITY[qualityIdx];
-            int[] pixels = cache.getLayerPixels(layer);
-            int bufW = cache.texWidth();
+            int gw = grid.gridW(), gh = grid.gridH();
+            double stepX = grid.blocksWide() / (double) gw;
+            double stepZ = grid.blocksHigh() / (double) gh;
 
             BufferedImage img = new BufferedImage(res, res, BufferedImage.TYPE_INT_RGB);
             for (int py = 0; py < res; py++) {
                 for (int px = 0; px < res; px++) {
-                    int sx = px * quality;
-                    int sy = py * quality;
-                    int srcIdx = (sy < bufW) ? sy * bufW + sx : py * res + px;
-                    int rgb = (srcIdx >= 0 && srcIdx < pixels.length) ? pixels[srcIdx] : 0;
+                    int gx = Math.min(gw - 1, px * gw / res);
+                    int gz = Math.min(gh - 1, py * gh / res);
+                    Cell c = grid.at(gx, gz);
+                    int rgb = 0;
+                    if (c != null) {
+                        int wx = grid.originX() + (int) Math.round(gx * stepX);
+                        int wz = grid.originZ() + (int) Math.round(gz * stepZ);
+                        rgb = GeoPalette.color(layer, c, wx, wz, minY, maxY, hydrology);
+                    }
                     img.setRGB(px, py, rgb);
                 }
             }
@@ -273,9 +257,12 @@ public final class TerrainPreview {
 
             drawLegend(g, layer);
             drawTooltip(g, layer);
-            info.setText(String.format("seed=%d  scale=%.2f  layer=%s hydro=%s large=%s  res=%dx%d  q=%d  [1-9/0]图层 [ ]切换 [R]河 [L]大范围 [X]分辨率 [/]搜索 [Esc]退出搜索",
-                    seed, scale, GeoPalette.englishLabel(layer.labelKey), hydrology ? "ON" : "OFF",
-                    largeArea ? "ON(廉价管线)" : "OFF", res, res, quality));
+            // ★ 诊断要点：视野(格)随 scale 增长，但【采样数与耗时保持不变】—— FTF 同款"开销与缩放无关"
+            info.setText(String.format("seed=%d scale=%.2f 视野=%d格  layer=%s hydro=%s large=%s  采样=%dx%d/%dms  res=%dx%d q=%d  [1-9/0]图层 [ ]切换 [R]河 [L]大范围 [X]分辨率 [/]搜索 [Esc]退出",
+                    seed, scale, (int) Math.round(PANEL * scale),
+                    GeoPalette.englishLabel(layer.labelKey), hydrology ? "ON" : "OFF",
+                    largeArea ? "ON" : "OFF",
+                    grid.gridW(), grid.gridH(), grid.costMs(), res, res, quality));
         } catch (Throwable t) {
             t.printStackTrace();
             if (lastFrame != null) g.drawImage(lastFrame, 0, 0, null);
@@ -339,17 +326,17 @@ public final class TerrainPreview {
     // ============================================================
 
     private void drawTooltip(Graphics2D g, GeoPalette.PreviewLayer layer) {
-        Cell[][] cells = cache.getCells();
-        if (hoverPx < 0 || hoverPy < 0 || cells == null) return;
+        if (grid == null || hoverPx < 0 || hoverPy < 0) return;
         if (hoverPx >= PANEL || hoverPy >= PANEL) return;
-        int originBlockX = (int) Math.floor(originX);
-        int originBlockZ = (int) Math.floor(originZ);
         double wx = originX + hoverPx * scale, wz = originZ + hoverPy * scale;
-        // 2026-08-10 修正：预览采样网格间距 = scale（块/像素），非 horizontalScale（wu 映射无关）——
-        // 原写法 HS≠1 时 hover 索引错格。采样 API 用块坐标，一格 = scale 块。
-        int cx = Math.max(0, Math.min(cells.length - 1, (int) Math.floor((wx - originBlockX) / scale)));
-        int cz = Math.max(0, Math.min(cells[0].length - 1, (int) Math.floor((wz - originBlockZ) / scale)));
-        Cell cell = cells[cx][cz];
+        // 从大范围采样网格取最近点：网格步长 = 世界尺寸 / 网格数（与 scale 无关）
+        int gw = grid.gridW(), gh = grid.gridH();
+        double stepX = grid.blocksWide() / (double) gw;
+        double stepZ = grid.blocksHigh() / (double) gh;
+        int gx = Math.max(0, Math.min(gw - 1, (int) Math.floor((wx - grid.originX()) / stepX)));
+        int gz = Math.max(0, Math.min(gh - 1, (int) Math.floor((wz - grid.originZ()) / stepZ)));
+        Cell cell = grid.at(gx, gz);
+        if (cell == null) return;
         String water = cell.lakeMask ? "湖泊" : "无";   // 河流系统已清除，仅湖泊
         String[] lines = {
                 String.format("x=%d  z=%d", (int) Math.round(wx), (int) Math.round(wz)),

@@ -184,6 +184,25 @@ public final class GeoGenesisTerrain {
     public CacheStats chunkCacheStats() { return chunkCacheStats; }
 
     /**
+     * 【大范围预览专用】最廉价的采样（★ 2026-09-11）。
+     *
+     * <p>只跑 {@code generator.sample()}（高度场 + 气候 + 降水），与 {@link #sampleCellLight} 相比
+     * <b>额外省掉两件事</b>：
+     * <ol>
+     *   <li><b>不查河流距离</b>：{@link #fillRiverDistance} 对干旱格会调
+     *       {@code riverNetwork().distanceToWater(...)}，在【大范围】下会触发大量河网 region 构建
+     *       （实测可达 ~117 ms/region），代价不可接受；</li>
+     *   <li><b>不叠加已缓存的侵蚀增量</b>：大范围看的是气候格局与地形骨架，侵蚀量级差异不影响判读。</li>
+     * </ol>
+     *
+     * <p>因此本方法<b>不保证与最终落块地形一致</b>（相差侵蚀增量 + 河谷雕刻），仅用于
+     * {@code LargeAreaSampler} 的大范围视图；需要"预览 = 游戏"请用 {@link #sampleCell}。</p>
+     */
+    public Cell sampleCellCoarse(double wx, double wz) {
+        return generator.sample(toWu(wx), toWu(wz));
+    }
+
+    /**
      * 填充「到最近河线的距离」（wu）—— 河流绿洲判定的输入。
      *
      * <p><b>为什么需要</b>：本类有两条采样路径 —— 完整管线（{@link #getChunkCells}，
