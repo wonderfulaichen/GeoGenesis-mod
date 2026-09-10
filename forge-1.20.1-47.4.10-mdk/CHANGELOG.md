@@ -34,7 +34,7 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
 
 - `TerrainClass.RIVER` 全工程从未赋值 → `BiomeClassifier.pickKey` 的 `case RIVER` 为死代码。不影响表现（河流靠 `riverSurfaceY` 灌水表现），下个版本清理或接上。
 - 陡坡裸岩只在游戏地表可见，预览的群系图层不显示 —— 群系本身仍是森林，裸岩是地表方块属性，与 RTF 的处理一致。
-- 温度在 `|z| > latitudeScale`（默认 6000 wu）饱和于 −1，形成永久极冠。若希望无限世界保持气候多样，可加纬度回卷或调大默认值。
+- ~~温度在 `|z| > latitudeScale`（默认 6000 wu）饱和于 −1，形成永久极冠~~ → **✅ 已修（2026-09-11）**：纬度改为【周期性】`lat01 = |sin(z / scale)|` —— 世界成为**沿 z 无缝卷绕的圆柱、无极点**，赤道 → 极地 → 赤道无限交替；完整气候周期 `2π·scale ≈ 37,700 格`。同时统一了 `Latitude.DEFAULT_SCALE`(5000) 与 `TerrainParams.latitudeScale`(6000) 的**尺度不一致**（此前预览显示的纬度与生成器实际用的纬度是两个值）。
 
 ### 验证 / Verification
 
