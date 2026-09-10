@@ -81,6 +81,9 @@ preview_run.log
 
 # CodeBuddy internal data (entire local agent dir, not project source)
 .codebuddy/
+
+# Prism MCP internal data (ADRs / decision records, local agent data)
+.prism/
 0.45*
 
 # Build artifacts / diagnostics (compiled test classes, run logs, temp scripts)
