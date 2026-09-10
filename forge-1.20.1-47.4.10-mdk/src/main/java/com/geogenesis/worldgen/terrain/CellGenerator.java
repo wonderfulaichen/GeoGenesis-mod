@@ -359,6 +359,16 @@ public final class CellGenerator {
     /** 排水高程（真实地表 e，含海陆混合）。河流节点场用它做下坡汇流，海洋侧 e<0 → 不接河。 */
     public double terrainE(double wx, double wz) { return sampleCore(wx, wz).e; }
 
+    /**
+     * 归一化降水采样（★ 2026-09-11 Phase C）—— 供水文汇流加权使用。
+     *
+     * <p>走 {@link #sample}（纯噪声 + 气候，<b>不含侵蚀</b>）→ 廉价且<b>不触发侵蚀 tile</b>。
+     * 水文侧按粗格点调用（见 {@code FlowField.PRECIP_COARSE}）以避免过采样。</p>
+     */
+    public double precipitationAt(double wx, double wz) {
+        return sample(wx, wz).precipitation;
+    }
+
     /** 大陆性 c 采样（wu 语义，纯位置函数）。waterTable 水面推导用（RTF 范式河网）。 */
     public double continentAt(double wx, double wz) {
         return continent.sample(wx, wz);

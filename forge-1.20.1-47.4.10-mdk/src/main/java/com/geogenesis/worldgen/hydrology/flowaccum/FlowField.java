@@ -38,8 +38,83 @@ public final class FlowField {
     private double[] eFill;
     private double[] eFilled;
 
+    /** 降水取样器（归一化相对降水，见 {@code CellGenerator.precipitationAt}）。 */
+    @FunctionalInterface
+    public interface PrecipSampler {
+        double precipitationAt(double wx, double wz);
+    }
+
+    /**
+     * 降水 → 汇流权重（★ 2026-09-11 Phase C）。
+     *
+     * <p><b>消费端归一化</b>（设计文档 §4.3.4 修正）：气候侧只产出"物理相对降水"
+     * （实测全局均值 ≈ 0.27），本类用<b>显式参考值</b> {@code ref} 折算成权重原点。
+     * 拆开的好处：改降水标定<b>不会</b>悄悄平移全部河宽（与 {@code widthAreaRef} 解耦同一条教训）。</p>
+     *
+     * <pre>
+     * weight = clamp(precip / ref, floor, +inf) ^ exponent
+     * </pre>
+     *
+     * @param ref      参考降水（取实测全局均值 → 权重均值 ≈ 1，河宽不整体平移）
+     * @param floor    权重下限（防极端干旱把汇流压到 0 → 沙漠彻底断流）
+     * @param exponent 软化指数（&lt;1 收敛差异；1.0 = 线性）
+     */
+    public record PrecipWeights(double ref, double floor, double exponent) {
+        /**
+         * 默认参数。<b>ref 经实测标定</b>（2026-09-11）：降水全局均值 ≈0.272，
+         * 但指数 0.6 为凹函数（Jensen 效应）→ 若直接取 ref=0.272，权重均值只有
+         * <b>0.758</b>（实测 n=901 陆地），汇流被系统性缩小 → 河网被门槛多裁
+         * （`runFlowAccumProbe` reachedOcean 48/48 → 43/50）。
+         * 按 {@code ref' = ref·mean^(1/exp)} 反解取 <b>0.17</b> → 权重均值回到 ≈1.0。
+         */
+        public static PrecipWeights defaults() { return new PrecipWeights(0.17, 0.10, 0.60); }
+        public static PrecipWeights disabled() { return new PrecipWeights(1.0, 1.0, 0.0); }
+
+        /** 降水 → 累积权重（均值 ≈ 1）。 */
+        public double weight(double precip) {
+            double r = precip / ref;
+            if (r < floor) r = floor;
+            return Math.pow(r, exponent);
+        }
+    }
+
+    /**
+     * 降水粗格点间距（<b>wu</b>，非 flow 格数）。
+     *
+     * <p><b>为什么必须粗采</b>（★ 2026-09-11 实测教训）：{@code PrecipSampler} 走
+     * {@code CellGenerator.sample()}，实测单次约 <b>0.5 ms</b>（远贵于 flow 自身的
+     * {@code terrainEQuick}）。若逐 flow 格采样（实测 region 内上万格），单 region 涨
+     * <b>~215 ms</b>，{@code runFlowAccumProbe} 的 coldMs 从基线 1849 ms 飙到 17355 ms（9.4×）。</p>
+     *
+     * <p><b>为什么间距用固定 wu 且全球对齐</b>：格点取 {@code k·PRECIP_STEP_WU}（世界坐标），
+     * 与 region 无关 → 同一点在任何 region 都取到<b>同一个值</b>，杜绝"region 相关伪影"；
+     * 且相邻 region 的格点集合大量重叠 → 天然可复用。</p>
+     *
+     * <p>代价（如实说明）：跨度 1280wu 的 region 只有 ~6×6 格点 → 水文只吃到降水的
+     * <b>大尺度分量</b>（气候带/大陆尺度），<b>地形雨的谷坡尺度细节不进入汇流加权</b>
+     * （它仍完整存在于气候层：预览图层 / Cell.precipitation）。这是性能与保真度的取舍。</p>
+     */
+    private static final double PRECIP_STEP_WU = 320.0;
+
+    /** 本次构建用到的降水格点值（局部缓存，避免同一格点重复调 sample()）。 */
+    private java.util.HashMap<Long, Double> precipNodes;
+    /** 降水取样器（构造时注入；null = 不启用降水加权）。 */
+    private PrecipSampler precipSampler;
+    /** 降水权重参数。 */
+    private PrecipWeights precipWeights;
+
     public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
                      double cellSize, ElevationSampler sampler) {
+        this(minWuX, minWuZ, maxWuX, maxWuZ, cellSize, sampler, null, PrecipWeights.disabled());
+    }
+
+    /**
+     * @param precip  降水取样器；{@code null} = 纯面积累积（与旧路径逐位一致）
+     * @param weights 降水权重参数（仅 {@code precip != null} 时生效）
+     */
+    public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
+                     double cellSize, ElevationSampler sampler,
+                     PrecipSampler precip, PrecipWeights weights) {
         this.cellSize = Math.max(1.0, cellSize);
         this.originX = minWuX;
         this.originZ = minWuZ;
@@ -56,8 +131,44 @@ public final class FlowField {
                                            originZ + j * this.cellSize);
             }
         }
+        // ★ Phase C：降水加权初始累积（每格产流量 = 面积 × 降水权重）
+        if (precip != null && weights != null) {
+            this.precipSampler = precip;
+            this.precipWeights = weights;
+            this.precipNodes = new java.util.HashMap<>();
+            for (int j = 0; j < nz; j++) {
+                double wz = originZ + j * this.cellSize;
+                for (int i = 0; i < nx; i++) {
+                    double wx = originX + i * this.cellSize;
+                    accum[j * nx + i] = this.cellSize * this.cellSize
+                                      * weights.weight(precipAtWu(wx, wz));
+                }
+            }
+        }
         buildFlow();
         buildAccum();
+    }
+
+    /** 世界坐标处的降水（由全球对齐的粗格点双线性插值）。 */
+    private double precipAtWu(double wx, double wz) {
+        double gx = wx / PRECIP_STEP_WU, gz = wz / PRECIP_STEP_WU;
+        int i0 = (int) Math.floor(gx), j0 = (int) Math.floor(gz);
+        double fi = gx - i0, fj = gz - j0;
+        double a0 = precipNode(i0, j0),     a1 = precipNode(i0 + 1, j0);
+        double b0 = precipNode(i0, j0 + 1), b1 = precipNode(i0 + 1, j0 + 1);
+        double a = a0 + (a1 - a0) * fi;
+        double b = b0 + (b1 - b0) * fi;
+        return a + (b - a) * fj;
+    }
+
+    /** 降水格点值（<b>全球对齐</b>：坐标 = k·PRECIP_STEP_WU，与 region 无关 → 跨 region 一致）。 */
+    private double precipNode(int ix, int iz) {
+        long k = ((long) ix << 32) | (iz & 0xFFFFFFFFL);
+        Double v = precipNodes.get(k);
+        if (v != null) return v;
+        double val = precipSampler.precipitationAt(ix * PRECIP_STEP_WU, iz * PRECIP_STEP_WU);
+        precipNodes.put(k, val);
+        return val;
     }
 
     /** D8 流向：8 邻最低 e，严格更低才连边（平地/洼地 = 终点）。 */

@@ -246,6 +246,25 @@ public final class RiverLineNetwork {
      * D8 汇流场变为"侵蚀后 e 场"，河线会偏向侵蚀刻出的沟槽/绕开侵蚀抬升，
      * 与落块时的实际地形一致。关闭（null）时与旧路径逐位一致（零漂移）。</p>
      */
+    // ===== 降水加权（★ 2026-09-11 Phase C）=====
+    /** 降水取样器；{@code null} = 纯面积累积（旧行为，逐位一致）。 */
+    private FlowField.PrecipSampler precipSampler;
+    /** 降水权重参数。 */
+    private FlowField.PrecipWeights precipWeights = FlowField.PrecipWeights.disabled();
+
+    /**
+     * 注入降水取样器 → 汇流累积改由<b>降水加权</b>（★ Phase C）。
+     *
+     * <p><b>必须在首次构建 region 前调用</b>；调用后会清空已有 region 缓存，
+     * 避免"部分 region 加权、部分未加权"的混用。</p>
+     */
+    public void setPrecipSampler(FlowField.PrecipSampler sampler, FlowField.PrecipWeights weights) {
+        this.precipSampler = sampler;
+        this.precipWeights = weights != null ? weights : FlowField.PrecipWeights.defaults();
+        regions.clear();
+        if (regionsP1 != null) regionsP1.clear();
+    }
+
     private double routingE(double wx, double wz) {
         double e = params.routingE(eSampler.eAt(wx, wz));
         if (routingDelta != null) e += routingGain * routingDelta.deltaAt(wx, wz);
@@ -321,7 +340,9 @@ public final class RiverLineNetwork {
         double minX = rx * regionSize - margin, maxX = rx * regionSize + regionSize + margin;
         double minZ = rz * regionSize - margin, maxZ = rz * regionSize + regionSize + margin;
         // ★ 选线场用"山压低"后的 e（routingE），使河线贴谷避峰；水面仍锚定真实地形（groundYAt）。
-        FlowField field = new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE);
+        // ★ Phase C：降水加权汇流累积（precipSampler 为 null 时与旧行为逐位一致）
+        FlowField field = new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE,
+                                        precipSampler, precipWeights);
         // ★ 填洼层（湖泊）：按【真实地形】判定洼地——选线用的 routingE 是压过低山的
         //   人工高程，拿它找湖会把湖放在被压低的坡面上。
         field.computeFill(this::groundYAt);
@@ -709,7 +730,12 @@ public final class RiverLineNetwork {
             //   不再触发本分支的递归），但 forcedSrcH 非 NaN → 河头无淡出、保持全宽。
             //   extraValleys：邻区 pass-1 河也参与谷壁检查（续流在 margin 区选头，
             //   本 region 河列表跨区致盲——合并判据与谷壁回避都需要它）。
-            if (!Double.isNaN(forcedSrcH)
+            // ★ 2026-09-11 越界守卫（既有潜在 bug，被 Phase C 的 accum 分布变化触发）：
+            //   上面的汇流门槛裁剪循环（见 `while (start < out.cells.size() && out.accum[start] <=
+            //   riverAccumThreshold()) start++;`）可把 start 推到 `out.cells.size()`（整条河都不达标）。
+            //   而本块直接 `out.cells.get(start)`，"河太短"的丢弃判据却在更下面 → 越界崩溃。
+            //   此处补 `start < size` 守卫；不成立时直接落下、由下方长度下限判据正常丢弃。
+            if (!Double.isNaN(forcedSrcH) && start < out.cells.size()
                     && insideExistingValley(field, rivers, extraValleys, out.cells.get(start))) {
                 List<Integer> link = mergeIntoNearestRiver(field, out.cells.get(start),
                         nx, claimed, nodeSurf, extraValleys);
