@@ -88,11 +88,38 @@ public final class PreviewWorker {
     /** 设置海平面世界 Y（坡度阴影用）。 */
     public void setSeaLevel(int seaLevel) { this.seaLevel = seaLevel; }
 
-    /** 设置每像素对应的世界块数。由 PreviewDisplay.requestResample 在视口变化时更新。
-     *  上限 4.0：超过此值时 CellGenerator.sample 会触发上千个 chunk 生成（Voronoi 噪声 + 缓存抖动），
-     *  远超预览实时性要求。超过则夹到 4.0，使预览区缩为 ~1024 块宽（约 64 chunk），
-     *  在 CACHE_SIZE=4096 缓存下可一次装下，秒级渲染。 */
-    public void setPixelToWorldScale(double s) { this.pixelToWorldScale = Math.min(s, 4.0); }
+    /**
+     * ★ 大范围模式（2026-09-11）：走【廉价管线】{@code GeoGenesisTerrain.sampleCellLight}
+     * —— 后者用 {@code CellGenerator.sample()}，<b>不会触发 chunk / 侵蚀 tile 生成</b>。
+     *
+     * <p>精确模式（{@code sampleCell}）上限只有 4.0 块/像素（视口 ~1024 块），
+     * 因为 {@code sampleCell → getChunkCells → generateChunk} 会生成完整 chunk（含侵蚀 tile）。
+     * 要做【大范围】预览必须换廉价管线 —— 参考 FreeTerraForged 的
+     * {@code TileGenerator.generateZoomed}：大范围预览只跑高度场 + 气候，不跑侵蚀。</p>
+     *
+     * <p><b>取舍</b>：大范围模式下高度<b>不含侵蚀增量与河谷雕刻</b>（与最终地形相差侵蚀量级），
+     * 用于看<b>气候格局 / 地形骨架 / 纬度分带</b>；看细节请切回精确模式。</p>
+     */
+    private boolean largeArea = false;
+
+    public void setLargeArea(boolean v) { this.largeArea = v; }
+
+    public boolean isLargeArea() { return largeArea; }
+
+    /** 大范围/精确模式的视口块数上限（每像素）。 */
+    private static final double MAX_SCALE_PRECISE = 4.0;
+    private static final double MAX_SCALE_LARGE = 512.0;
+
+    /**
+     * 设置每像素对应的世界块数。由 PreviewDisplay / TerrainPreview 在视口变化时更新。
+     *
+     * <p>上限：<b>精确模式 4.0</b>（超过此值时 {@code sampleCell} 会触发上千个 chunk 生成
+     * —— Voronoi 噪声 + 缓存抖动，远超预览实时性要求）；
+     * <b>大范围模式 512.0</b>（走 {@code sampleCellLight}，不生成 chunk，可看数万格）。</p>
+     */
+    public void setPixelToWorldScale(double s) {
+        this.pixelToWorldScale = Math.min(s, largeArea ? MAX_SCALE_LARGE : MAX_SCALE_PRECISE);
+    }
 
     public void setOnComplete(Consumer<PreviewCache> callback) { this.onComplete = callback; }
 
@@ -270,7 +297,9 @@ public final class PreviewWorker {
                 int wx = originX + (int) Math.round(gx * step);
                 int wz = originZ + (int) Math.round(gz * step);
                 if (Thread.interrupted()) throw new InterruptedException();
-                grid[gx][gz] = terrain.sampleCell(wx, wz);
+                // ★ 大范围模式 → 廉价管线（不生成 chunk/侵蚀 tile）；精确模式 → 完整管线（预览=游戏）
+                grid[gx][gz] = largeArea ? terrain.sampleCellLight(wx, wz)
+                                         : terrain.sampleCell(wx, wz);
                 sampled++;
 
                 // 每完成一批采样 → 触发渐进式上传

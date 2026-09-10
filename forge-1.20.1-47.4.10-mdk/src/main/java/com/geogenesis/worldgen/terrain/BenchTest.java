@@ -50,6 +50,19 @@ public final class BenchTest {
             long t2 = System.nanoTime();
             System.out.println("PARALLEL base=" + (t2 - t1) / 1e6 + "ms (rep " + rep + ")");
             t1 = t2;
+
+            // ★ 2026-09-11 大范围预览：底层是 CellGenerator.sample()（sampleCellLight）。
+            //   预览一次约 576 个采样点 → 需确认单次成本，使总耗落在 1~3s。
+            long t3 = System.nanoTime();
+            double s2 = 0;
+            for (int i = 0; i < 4096; i++) {
+                s2 += gen.sample(originX + (i % 64), originZ + (i / 64)).height;
+            }
+            long t4 = System.nanoTime();
+            System.out.println("SAMPLE   n=4096 total=" + (t4 - t3) / 1e6 + "ms"
+                    + "  per=" + (t4 - t3) / 1e3 / 4096.0 + "us  (576点预计="
+                    + (t4 - t3) / 1e6 * 576.0 / 4096.0 + "ms)  sum=" + s2);
+            t1 = t4;
         }
         pool.shutdown();
     }
