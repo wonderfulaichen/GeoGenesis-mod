@@ -202,7 +202,29 @@ public final class PrecipFieldProbe {
             peakB / (double) B, (peakB + 1) / (double) B,
             pass8 ? "PASS（落在副热带高压带 2/8~5/8）" : "FAIL（未落在副热带）");
 
-        boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8;
+        // ================= [9] 周期性纬度（无限世界无极点） =================
+        double sc = tp.latitudeScale();
+        double l0 = Latitude.latitude01(0.0, sc);
+        double lPole = Latitude.latitude01(sc * Math.PI / 2.0, sc);
+        double lBack = Latitude.latitude01(sc * Math.PI, sc);
+        // 远处应继续振荡而非饱和：取一段极远的 z，看 lat01 是否仍横跨 0→1
+        double farMin = 1e9, farMax = -1e9;
+        for (double z = 200000; z < 260000; z += 137) {
+            double v = Latitude.latitude01(z, sc);
+            farMin = Math.min(farMin, v);
+            farMax = Math.max(farMax, v);
+        }
+        double farSpan = farMax - farMin;
+        boolean pass9 = l0 < 1e-6 && lPole > 0.999 && lBack < 1e-6 && farSpan > 0.9;
+        System.out.printf("[9] 周期性纬度: lat(0)=%.4f  lat(π/2·scale)=%.4f  lat(π·scale)=%.4f%n",
+            l0, lPole, lBack);
+        System.out.printf("    远处 z=20万~26万 的 lat01 跨度=%.3f (>0.9 表示仍在振荡、未饱和) %s%n",
+            farSpan, pass9 ? "PASS" : "FAIL");
+        System.out.printf("    完整气候周期(赤道→北极→赤道→南极→赤道) = %.0f 格%n",
+            Latitude.cycleLength(sc));
+
+        boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6
+                && pass7 && pass8 && pass9;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
     }
 }
