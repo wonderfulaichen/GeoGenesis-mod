@@ -59,6 +59,10 @@ public final class HydrologyExperimentEngine {
                 deltaSampler, gain,
                 terrain.heightCurve(), seed, terrain.params().horizontalScale(),
                 com.geogenesis.worldgen.hydrology.riverline.RiverLineParams.defaults());
+        // ★ 2026-09-11 Phase C：降水驱动汇流累积 —— 只在此【生产接线处】注入；
+        //   探针若不走本类则保持旧基线（纯面积累积），便于 A/B 对比。
+        this.network.setPrecipSampler(terrain::precipitationAt,
+                com.geogenesis.worldgen.hydrology.flowaccum.FlowField.PrecipWeights.defaults());
     }
 
     public CellGenerator terrain() {

@@ -1,6 +1,7 @@
 package com.geogenesis.worldgen.climate;
 
 import com.geogenesis.client.preview.GeoPalette;
+import com.geogenesis.worldgen.hydrology.flowaccum.FlowField;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.TerrainParams;
@@ -144,7 +145,31 @@ public final class PrecipFieldProbe {
         System.out.printf("[6] 降水图层: n=%d 颜色多样性=%d 方向违例=%d %s%n",
             n6, colors.size(), badDir, pass6 ? "PASS" : "FAIL");
 
-        boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6;
+        // ================= [7] 降水权重标定（Phase C 用） =================
+        FlowField.PrecipWeights pw = FlowField.PrecipWeights.defaults();
+        double sumW = 0, minW = 1e9, maxW = -1e9;
+        int nw = 0;
+        for (double z = -5000; z <= 5000; z += 197) {
+            for (double x = -5000; x <= 5000; x += 199) {
+                Cell c = gen.sample(x, z);
+                if (c.e < 0) continue;                  // 只统计陆地（汇流加权只对陆地有意义）
+                double w = pw.weight(c.precipitation);
+                sumW += w;
+                minW = Math.min(minW, w);
+                maxW = Math.max(maxW, w);
+                nw++;
+            }
+        }
+        double meanW = nw > 0 ? sumW / nw : 0;
+        boolean pass7 = meanW > 0.90 && meanW < 1.10;   // 收紧：确保权重均值真在 1.0 附近（河宽不整体平移）
+        System.out.printf("[7] 权重标定: n=%d 均值=%.3f (目标≈1.0) 范围=[%.3f, %.3f] %s%n",
+            nw, meanW, minW, maxW, pass7 ? "PASS" : "FAIL");
+        if (!pass7) {
+            System.out.printf("    → 建议 ref = %.4f（当前 %.4f，exponent=%.2f）%n",
+                pw.ref() * Math.pow(meanW, 1.0 / pw.exponent()), pw.ref(), pw.exponent());
+        }
+
+        boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6 && pass7;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
     }
 }

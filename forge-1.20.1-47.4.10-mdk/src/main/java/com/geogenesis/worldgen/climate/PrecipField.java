@@ -44,7 +44,13 @@ public final class PrecipField {
         public static Params defaults() {
             // foehnK = 8.0：MC 垂直尺度被压缩，按真实直减率算焚风仅 ~1°C 不可见，
             // 故按"游戏可感知"标定（设计文档 §4.4 已明确标注为游戏化放大）。
-            return new Params(0.85, 24.0, 0.70, 40.0, 8.0, 0.0048, 6, 32.0);
+            //
+            // ★ cellSize 32→96（2026-09-11 性能修正）：本类被放在最热的
+            //   CellGenerator.sample() 里，而每个【冷】节点要 8 次 terrainEQuick
+            //   （1 自身 + 1 迎风 + 6 上风）。实测 runFlowAccumProbe 的 coldMs
+            //   从基线 1849ms 涨到 ~17600ms（9.4×）。节点密度降 9× 后代价回落；
+            //   96wu 仍优于地形雨所需的"山脉尺度"（数百 wu），保真度损失可接受。
+            return new Params(0.85, 24.0, 0.70, 40.0, 8.0, 0.0048, 6, 96.0);
         }
     }
 
