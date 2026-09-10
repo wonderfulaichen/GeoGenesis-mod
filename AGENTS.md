@@ -53,16 +53,10 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `worldgen/terrain/CellGenerator.java` | 统一连续场采样 + 实现 HeightProvider + 连续分类 |
 | `worldgen/terrain/LandShape.java` | 省权重(softmax) + 陆地过程形态（替代旧 StructuralField） |
 | `worldgen/terrain/HeightCurve.java` | 单条 cubic Hermite Spline：eFromC / heightFromE（非对称 e→Y） |
-| `worldgen/river/RiverNetwork.java` | ★ RTF 范式河网门面（2026-08-26）：region(512wu) plate 缓存 + 采样合并 3×3 邻 region（结构性无缝）；`sampleRiver` 取「雕刻后地面最低」段（RTF min）；`waterTable(cAt 9 点模糊)` 纯函数水面 → 汇口零落差、无局部锯齿 | 
-| `worldgen/river/RTFRiverGenerator.java` | ★ 几何河网生成（RTF 移植）：root 沿随机角度走 e 场到海岸（`distanceToOcean`）→ 主河必到海；fork depth≤2 树状分叉 + 源点高于汇合点门控（100% 下坡）+ 下坡偏置；确定性（region 坐标+seed id） |
-| `worldgen/river/River.java` | 几何线段（RTF 移植）：法向/bbox/投影/相交 |
-| `worldgen/river/RiverWarp.java` | 确定性蜿蜒（种子化 simplex 噪声，端点淡出→段衔接连续） |
-| `worldgen/river/Network.java` / `Rivermap.java` | 河网树 + region 容器 |
-| `worldgen/river/RiverConfig.java` | RTF 式每级河参数 record（bedWidth/bedDepth/bankWidth/bankHeight/fade/valleySize + createFork） |
-| `worldgen/river/ValleyRiverCarver.java` | ★ RTF Zone1-4 平滑河谷雕刻：床/岸阶/谷底/淡出四段连续函数 + 只下挖不抬升（根治垂直崖/断床/悬河）；湖/河口按 waterTable 展宽 |
-| `worldgen/river/RiverCarver.java` | 雕刻薄门面：`carve(origHeight, rs, wx, wz)` 委托 ValleyRiverCarver；`CarvedColumn` 契约保留 |
-| `worldgen/river/RiverSample.java` | 采样 record（zone 半径 + waterTable 水面 + t + type） |
-| `worldgen/erosion/ErosionSystem.java` | 多营力局部侵蚀编排（Thermal/Coastal/Glacial/Wind） |
+| ~~`worldgen/river/*`（RTF 全套）~~ | ❌ **已删除**（2026-08-28 被 D8 汇流场范式取代）；**现行河流见下方 `worldgen/hydrology/*` 行** | 
+| `worldgen/erosion/ErosionEngine.java` | ✅ **唯一真实存在的侵蚀**：液滴水力侵蚀（SimpleHydrology 型，物质守恒）+ `cascadeLocal` 塌落（高差阈值≈固定 38.7° 安息角） |
+| `worldgen/erosion/RidgeValleyErosion.java` | ✅ 脊-谷条纹骨架滤镜 |
+| ❌ **不存在（2026-09-11 核查）** | `ErosionSystem` / `ErosionAgent` / `Thermal` / `Coastal` / `Glacial` / `Wind` —— **多营力侵蚀从未实现**；`worldgen/river/*` RTF 全套已删（2026-08-28） |
 | `worldgen/hydrology/riverline/RiverLineNetwork.java` | ★ 物理正确河网门面（2026-08-28）：region 内 D8 汇流场派生河线 + Catmull-Rom 细分 + 锚点衔接邻 region + 水面单调反推 + width/depth 由汇流面积驱动；`sampleAll` 3×3 邻域采样 → 无 border 断裂；确定性（worldSeed+region 纯函数） |
 | `worldgen/hydrology/riverline/RiverLineParams.java` | 河网参数 record（gridCell/accumThreshold/mountainScale/slopeDrop/heightBlendDist/valleyExp/meander…）；`routingE(e)` 山压低选线场 |
 | `worldgen/hydrology/riverline/MidpointDisplacement.java` | 旧分形线（保留对照，生产路径已改 flowaccum 派生），含 `ElevationSampler`(terrainEQuick)/`Node`/`RiverOutlet`(OCEAN/LAKE) |
@@ -78,10 +72,13 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 
 当前 `GeoGenesisGenerator` **不再使用 tile 边界缓存**（旧的 `ERODE_TILE_*` / `TILE_*` / `chunkHeightCache` 等常量已随重构移除）。地形计算全部委托给 `GeoGenesisTerrain`：
 
-- `GeoGenesisTerrain` 内部 `TileCache`（256 tiles，30s TTL）缓存区域级 cell 网格，跨 chunk 共享，无 tile 边界断裂。
-- `RiverNetwork.sampleRiver(wx,wz)` 按世界坐标纯函数采样，**按 REGION=512wu 分 plate 缓存（`RTFRiverGenerator.generateRivers` 确定性；`REGION_SIZE=512`）**；采样合并本 region + 8 邻 region 段集合 → 跨 region 结构性无缝。
-- **游戏雕刻路径（RTF 范式，2026-08-26）**：`GeoGenesisTerrain.generateChunk` 内 `applyRiverValley` 把河谷雕刻**回写 `cell.height`**（Zone1-4 平滑谷，预览/后续采样/落块一致）；`fillFromNoise` 不再二次雕刻，仅按 `rs.waterSurfaceY()` 灌水判定（`groundY < waterTop − 0.5`，Streams `isStreamBed`）。
-- `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)` + `terrain.sampleRiverAtBlock(wx,wz,cell.height)`，高度/河流/湖泊/气候由引擎确定性产出。
+- **缓存（⚠️ 2026-09-11 校正）**：`GeoGenesisTerrain` 按 chunk 网格缓存 `Cell[]`，容量 **4096、真 LRU**；`CellGenerator` 另有侵蚀 tile 缓存，容量 **256、真 LRU**。两者均含 `CacheStats` 埋点（`chunkCacheStats()` / `tileCacheStats()`）。
+  原述「`TileCache`（256 tiles，30s TTL）」**失实** —— 那是参考项目 FreeTerraForged 的设计；本项目无此类、无 TTL（内容为 (seed, 配置, 坐标) 纯函数，永不失效，TTL 只会驱逐**有效**条目）。
+- **非阻塞高度查询（2026-09-11 新增，B1 修复）**：`GeoGenesisTerrain.sampleHeightNonBlocking(wx,wz)` 两级降级（① 已生成 chunk 取缓存精确值；② 未生成则廉价重算）→ `getBaseHeight` / `getBaseColumn` 用它，**绝不触发冷侵蚀 tile**（原实现单次可达 ~2.2s）。
+- **快速路径收敛（2026-09-11 新增，B2 修复）**：`sampleCellLight` 会并入**已缓存**的侵蚀增量（`CellGenerator.applyCachedTileDelta`）→ 已探索区域与完整管线收敛；tile 未生成时静默跳过，冷启动仍零生成。
+- **河流**：`RiverLineNetwork.sampleAll` 按 **region(640wu) + margin** 纯函数缓存，合并 3×3 邻 region → 跨 region 结构性无缝；水面为 PAVA 加权单调反推。（RTF `sampleRiver` / `REGION=512` 已作废）
+- **游戏雕刻路径**：`GeoGenesisTerrain.generateChunk` 内 `extractFromTile`（侵蚀 delta）+ `applyHydrologyValley`（水文雕刻，**回写 `cell.height`**，预览/落块一致）；`fillFromNoise` 只按 `waterSurfaceY` 灌水判定。
+- `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)`，高度/河流/湖泊/气候由引擎确定性产出。
 
 ## 当前工作焦点（2026-09-10 气候主导群系 + 河流绿洲 + 陡坡裸岩，发布 v0.0.1）
 
