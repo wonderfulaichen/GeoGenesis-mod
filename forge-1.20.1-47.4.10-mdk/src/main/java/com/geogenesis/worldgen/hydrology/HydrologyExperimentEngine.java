@@ -55,7 +55,14 @@ public final class HydrologyExperimentEngine {
             // 预览/探针进程：Forge 配置未加载 → 微自适应关闭（保持零 tile 依赖）
         }
         this.network = new RiverLineNetwork(terrain::terrainEQuick,
-                (wx, wz) -> terrain.sample(wx, wz).height,
+                // ★ 2026-09-11 D13 修复（性能，零行为变化）：
+                //   RiverLineNetwork.groundYAt 的文档契约本就是"terrainEQuick 派生 →
+                //   保证 region 冷构建亚毫秒级"，但此处接线传了 terrain.sample(...).height
+                //   （含气候/分类/群区，实测 ~0.5ms/次并被河网逐节点调用）
+                //   → runFlowAccumProbe 的 coldMs 从基线 1849ms 涨到 ~13.6s。
+                //   两者【逐位等价】：sampleCore 的 e 与 terrainEQuick 同源（同一连续场），
+                //   且 sample() 不含侵蚀（侵蚀由 applyTileDelta 单独施加）。
+                (wx, wz) -> terrain.heightCurve().heightFromE(terrain.terrainEQuick(wx, wz)),
                 deltaSampler, gain,
                 terrain.heightCurve(), seed, terrain.params().horizontalScale(),
                 com.geogenesis.worldgen.hydrology.riverline.RiverLineParams.defaults());
