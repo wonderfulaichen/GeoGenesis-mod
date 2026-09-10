@@ -79,9 +79,8 @@ build_output.txt
 ocean_probe_output.txt
 preview_run.log
 
-# CodeBuddy internal data
-.codebuddy/plans/
-.codebuddy/memory/
+# CodeBuddy internal data (entire local agent dir, not project source)
+.codebuddy/
 0.45*
 
 # Build artifacts / diagnostics (compiled test classes, run logs, temp scripts)
