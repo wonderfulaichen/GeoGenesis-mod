@@ -44,6 +44,8 @@ public final class GeoPalette {
         ELEVATION(Kind.CONTINUOUS, "geogenesis.layer.elevation", "elevation", Group.TERRAIN, true, true),
         TEMPERATURE(Kind.CONTINUOUS, "geogenesis.layer.temperature", "temperature", Group.CLIMATE, true, true),
         HUMIDITY(Kind.CONTINUOUS, "geogenesis.layer.humidity", "humidity", Group.CLIMATE, true, true),
+        // ★ 2026-09-11 Phase B：降水图层（纬度廓线 × 湿度 × 地形雨 × 雨影 × 温度门控）
+        PRECIPITATION(Kind.CONTINUOUS, "geogenesis.layer.precipitation", "precipitation", Group.CLIMATE, true, true),
         CONTINENTALITY(Kind.CONTINUOUS, "geogenesis.layer.continentality", "continentality", Group.CLIMATE, false, false),
         RELIEF(Kind.CONTINUOUS, "geogenesis.layer.relief", "relief", Group.TERRAIN, false, false),
         LATITUDE(Kind.CONTINUOUS, "geogenesis.layer.latitude", "latitude", Group.CLIMATE, false, false),
@@ -118,6 +120,18 @@ public final class GeoPalette {
             {0.70f, 0.95f, 0.85f, 0.22f},  // 暖 黄
             {0.85f, 0.96f, 0.55f, 0.14f},  // 热 橙
             {1.00f, 0.86f, 0.18f, 0.14f},  // 极热 红
+    };
+    /**
+     * 降水色带：干燥棕 → 绿 → 湿润蓝。
+     * <p>端点语义沿用参考项目 World-Preview-TFC 的 rainfall 色带（干燥
+     * {@code [0.545,0.353,0.196]} → 湿润 {@code [0.235,0.302,0.494]}），中段插绿以增强可读性。</p>
+     */
+    private static final float[][] S_PRECIPITATION = {
+            {0.00f, 0.545f, 0.353f, 0.196f},  // 极干 棕
+            {0.25f, 0.640f, 0.560f, 0.280f},  // 干 黄绿
+            {0.50f, 0.350f, 0.600f, 0.320f},  // 中 绿
+            {0.75f, 0.240f, 0.480f, 0.520f},  // 湿 青
+            {1.00f, 0.235f, 0.302f, 0.494f},  // 极湿 蓝
     };
     private static final float[][] S_HUMIDITY = {
             {0.00f, 0.80f, 0.62f, 0.30f},  // 干旱 土黄
@@ -204,6 +218,7 @@ public final class GeoPalette {
         buildElevationColormap(eMin, eMax);
         register("temperature", S_TEMPERATURE);
         register("humidity", S_HUMIDITY);
+        register("precipitation", S_PRECIPITATION);
         register("continentality", S_CONTINENTALITY);
         register("relief", S_RELIEF);
         register("latitude", S_LATITUDE);
@@ -320,6 +335,7 @@ public final class GeoPalette {
     public static String[] continuousLegendLabels(PreviewLayer layer) {
         if (layer == PreviewLayer.TEMPERATURE) return new String[]{"热 +1", "冷 -1"};
         if (layer == PreviewLayer.HUMIDITY) return new String[]{"湿 +1", "干 -1"};
+        if (layer == PreviewLayer.PRECIPITATION) return new String[]{"降水多", "降水少"};
         if (layer == PreviewLayer.CONTINENTALITY) return new String[]{"内陆 +1", "海洋 -1"};
         if (layer == PreviewLayer.RELIEF) return new String[]{"起伏高", "起伏低"};
         if (layer == PreviewLayer.LATITUDE) return new String[]{"北", "南"};
@@ -482,6 +498,14 @@ public final class GeoPalette {
                 }
                 case TEMPERATURE: pos = (c.temperature + 1.0) * 0.5; break;  // [-1,1] → [0,1]
                 case HUMIDITY:    pos = (c.humidity + 1.0) * 0.5; break;     // [-1,1] → [0,1]
+                // ★ 2026-09-11 Phase B：降水 ∈ [0,1.5]，实测全局均值 ≈0.27（右偏分布）。
+                //   用 sqrt 展宽低值端，否则整幅图挤在色带最干的一小段、看不出结构。
+                //   视网上限取 1.2（≈ p99），超出即饱和；映射为非线性但**单调** →
+                //   不影响"哪边更湿"的判读方向（图例端点标注为定性文字）。
+                case PRECIPITATION: {
+                    pos = Math.sqrt(Math.max(0.0, Math.min(1.0, c.precipitation / 1.2)));
+                    break;
+                }
                 case CONTINENTALITY: pos = (c.continentNoise + 1.0) * 0.5; break;
                 case RELIEF:      pos = reliefPos(c.shape); break;
                 case LATITUDE:    pos = Latitude.latitude01(worldZ); break;
@@ -693,6 +717,7 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.elevation", "Elevation");
         ENGLISH.put("geogenesis.layer.temperature", "Temperature");
         ENGLISH.put("geogenesis.layer.humidity", "Humidity");
+        ENGLISH.put("geogenesis.layer.precipitation", "Precipitation");
         ENGLISH.put("geogenesis.layer.continentality", "Continentality");
         ENGLISH.put("geogenesis.layer.relief", "Relief");
         ENGLISH.put("geogenesis.layer.latitude", "Latitude");

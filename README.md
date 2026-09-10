@@ -69,7 +69,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 │   ├── ParamSlider.java                # 通用参数滑块
 │   └── preview/
 │       ├── ColorMap.java               # 零依赖连续色带
-│       ├── GeoPalette.java             # 配色中枢（11 图层注册表）
+│       ├── GeoPalette.java             # 配色中枢（15 图层注册表，含降水）
 │       ├── PreviewColor.java           # MC 侧着色（ABGR）
 │       ├── PreviewDisplay.java         # 游戏内预览控件
 │       ├── TerrainPreview.java         # 独立 Swing 预览窗口

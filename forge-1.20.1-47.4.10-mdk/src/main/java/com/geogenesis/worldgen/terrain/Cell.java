@@ -90,6 +90,8 @@ public class Cell {
     public double temperature;
     /** 湿度 */
     public double humidity;
+    /** 归一化降水 [0,1.5]（★ 2026-09-11 Phase B；与 {@code Climate.precipitation} 同源） */
+    public double precipitation;
     /** 大陆性噪声（旧 API，=continent） */
     public double continentNoise;
 

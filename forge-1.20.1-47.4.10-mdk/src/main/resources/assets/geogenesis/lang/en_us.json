@@ -42,6 +42,7 @@
   "geogenesis.layer.elevation": "Elevation",
   "geogenesis.layer.temperature": "Temperature",
   "geogenesis.layer.humidity": "Humidity",
+  "geogenesis.layer.precipitation": "Precipitation",
   "geogenesis.layer.continentality": "Continentality",
   "geogenesis.layer.relief": "Relief",
   "geogenesis.layer.latitude": "Latitude",

@@ -42,6 +42,7 @@
   "geogenesis.layer.elevation": "高程",
   "geogenesis.layer.temperature": "温度",
   "geogenesis.layer.humidity": "湿度",
+  "geogenesis.layer.precipitation": "降水",
   "geogenesis.layer.continentality": "大陆性",
   "geogenesis.layer.relief": "地形起伏",
   "geogenesis.layer.latitude": "纬度",
