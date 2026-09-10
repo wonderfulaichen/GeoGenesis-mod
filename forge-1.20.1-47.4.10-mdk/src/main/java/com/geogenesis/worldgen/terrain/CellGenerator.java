@@ -151,6 +151,7 @@ public final class CellGenerator {
         this.precipField = new PrecipField(0L,
             (x, z) -> heightCurve.heightFromE(terrainEQuick(x, z)),
             p.latitudeScale(), PrecipField.Params.defaults(), WindField.Params.defaults());
+        clearEqCache();   // terrainEQuick 缓存哨兵初始化
         // 波长 ≈1.5 个气候区：边界以该尺度蜿蜒，观感自然
         this.regionWarp = new Frequency(new Simplex(503), 1.0 / (p.climateRegionSize() * 1.5));
         // 波长 ≈0.75 个气候区：绿洲斑块与气候区同尺度，是"断续的绿洲群"而非细碎噪点
@@ -163,6 +164,7 @@ public final class CellGenerator {
         typeLandShape.seed(worldSeed);
         seaBed.seed(worldSeed);
         precipField.setSeed(worldSeed);   // ★ Phase B：降水场随世界种子重置
+        clearEqCache();                   // ★ D13：地形 e 缓存随世界种子失效
         // 海山中心水深检查：计算中心点的真实 eOcean（含 seabed，不含海山增量）
         // 仅在 eOcean_at_center < -0.20（足够深）时才允许生成海山
         oceanFeatures.setSeamountDepthChecker((wx, wz) -> {
@@ -374,10 +376,67 @@ public final class CellGenerator {
         return continent.sample(wx, wz);
     }
 
-    /** 轻量地形 e（跳过气候/分类/height 映射/shape 赋值）。供侵蚀 tile 粗采/flat 用，
-     *  省去温度/湿度噪声 + 分类 switch + heightFromE 样条 ≈ 省 30% 每次采样。
-     *  坐标语义 = wu（2026-08-10 wu 化，见 {@link #sampleCore}）。 */
+    // ===== terrainEQuick 直接映射缓存（★ 2026-09-11，D13 性能）=====
+    // 纯函数 (wx,wz) → e（同 seed 恒定）。实测两个热点会【在同一批坐标】各采样一次：
+    //   routingE（FlowField 选线场）与 computeFill（填洼层，走 groundYAt）
+    //   → 天然 2× 冗余；跨 region 的 margin 重叠再放大。
+    // 缓存命中 ~20ns vs 计算 ~6µs（runBench 实测 16384 次 = 97.61ms）。
+    //
+    // ★ 并发铁律：terrainEQuick 会被【侵蚀 tile 并行行】与【水文多线程】调用，
+    //   故必须保证 64 位读写原子 —— 用 AtomicLongArray 存 double 的【位模式】，
+    //   不能用 double[]（JLS：非 volatile 的 long/double 数组元素读写不保证原子
+    //   → 会撕裂读并返回错误的 e，进而污染地形）。
+    //   写入次序：先写值、后写键（键为 volatile 写）→ 读者读到键即保证值已写入。
+    private static final int EQ_CACHE_BITS = 17;                 // 131072 槽 ≈ 2 MB
+    private static final int EQ_CACHE_SIZE = 1 << EQ_CACHE_BITS;
+    private static final int EQ_CACHE_MASK = EQ_CACHE_SIZE - 1;
+    /** 空槽哨兵（构造/播种时填充；真实键恰为此值者会被重映射，概率 2^-64）。 */
+    private static final long EQ_EMPTY = Long.MIN_VALUE;
+
+    private final AtomicLongArray eqKeys = new AtomicLongArray(EQ_CACHE_SIZE);
+    private final AtomicLongArray eqVals = new AtomicLongArray(EQ_CACHE_SIZE);
+    private final AtomicLong eqHits = new AtomicLong();
+    private final AtomicLong eqMisses = new AtomicLong();
+
+    /** 清空 terrainEQuick 缓存（换种子/构造时调用）。 */
+    private void clearEqCache() {
+        for (int i = 0; i < EQ_CACHE_SIZE; i++) eqKeys.set(i, EQ_EMPTY);
+        eqHits.set(0);
+        eqMisses.set(0);
+    }
+
+    /** 缓存命中/未命中统计（诊断用）。 */
+    public long eqCacheHits() { return eqHits.get(); }
+
+    /** 缓存未命中数（诊断用）。 */
+    public long eqCacheMisses() { return eqMisses.get(); }
+
+    /**
+     * 轻量地形 e（跳过气候/分类/height 映射/shape 赋值）—— <b>带直接映射缓存</b>。
+     *
+     * <p>缓存是<b>纯加速</b>：值为纯函数结果，命中与未命中等价（除 2^-64 的哨兵碰撞）。</p>
+     */
     public double terrainEQuick(double wx, double wz) {
+        long kx = Double.doubleToRawLongBits(wx);
+        long kz = Double.doubleToRawLongBits(wz);
+        long key = kx ^ Long.rotateLeft(kz, 32);
+        if (key == EQ_EMPTY) key = Long.MAX_VALUE;               // 避开哨兵
+        int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> (64 - EQ_CACHE_BITS));
+        if (eqKeys.get(slot) == key) {
+            eqHits.incrementAndGet();
+            return Double.longBitsToDouble(eqVals.get(slot));
+        }
+        eqMisses.incrementAndGet();
+        double v = terrainEQuickCompute(wx, wz);
+        eqVals.set(slot, Double.doubleToRawLongBits(v));         // 先值
+        eqKeys.set(slot, key);                                   // 后键（volatile）
+        return v;
+    }
+
+    /** 轻量地形 e 的【实际计算】（跳过气候/分类/height 映射/shape 赋值）。
+     *  坐标语义 = wu（2026-08-10 wu 化，见 {@link #sampleCore}）。
+     *  <p>★ 2026-09-11：外部请调用带缓存的 {@link #terrainEQuick}。</p> */
+    private double terrainEQuickCompute(double wx, double wz) {
         double sx = wx, sz = wz;
 
         // 1. 大陆性 c
