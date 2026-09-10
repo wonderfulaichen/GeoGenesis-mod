@@ -84,6 +84,9 @@ preview_run.log
 
 # Prism MCP internal data (ADRs / decision records, local agent data)
 .prism/
+
+# Agent-generated AGENTS.md inside forge subdir (redundant with root AGENTS.md, keep local only)
+forge-1.20.1-47.4.10-mdk/AGENTS.md
 0.45*
 
 # Build artifacts / diagnostics (compiled test classes, run logs, temp scripts)
