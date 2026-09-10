@@ -4,21 +4,15 @@
 
 ## 项目状态
 
-- **当前版本**：地质过程范式地形 + 水滴侵蚀河流系统
-- **编译状态**：`BUILD SUCCESSFUL`（2026-07-11）
-- **待验证**：实机目检河谷蜿蜒度、海岸过渡、湖泊连续性
+- **当前版本**：`v0.1.0-preview.1`（早期预览）— 程序化地形 + 气候群系 + 原版群系装饰（植被）+ D8 物理河网 + 湖泊/瀑布
+- **编译状态**：`BUILD SUCCESSFUL`
+- **已知限制**：无洞穴、侵蚀新洼地暂不成湖、河成湖圆管观感、湖岸锯齿（详见 `RELEASE_NOTES.md`）
 
 ## 河流系统与第三方许可
 
-河流生成核心（主河 `MeanderingPath` 分形二分折线 + 山地河 `MountainRiverPath` terrace 阶梯寻路 + 瀑布/峡谷横截面）为 **Dynamic Waters**（作者 AdamNew，Modrinth `dynamic-waters-realistic-flowing-rivers`，协议 **CC BY 4.0**）算法的 Java 移植。随机源替换为坐标派生确定性 Random 以满足本工程跨 block 无缝要求，并对 GeoGenesis 的 HeightCurve 尺度做了适配修改。
+河流系统（D8 汇流场派生河网 + 瀑布/峡谷横截面 + 洼地湖）为本模组**原创实现**：高位布源、沿 D8 下坡追踪汇入，形成树状水系；随机源为坐标派生确定性哈希，以满足跨 block 无缝要求。
 
-依据 CC BY 4.0 要求：
-
-- **算法来源**：Dynamic Waters — Realistic Flowing Rivers (AdamNew)
-- **许可证**：知识共享署名 4.0 国际（CC BY 4.0）—— https://creativecommons.org/licenses/by/4.0/
-- **修改标注**：本实现含纯函数化 / 确定性随机 / 尺度适配修改，改动点见 `worldgen/river/` 下各文件头注释。
-
-另在算法层面借鉴 Streams（delvr，Farseek 生态）的跨区块剖面递归与单位化水位思想、Farseek 的横截面采样表与跌水潭。
+本模组当前不含任何需署名的第三方算法代码，许可证为 **All Rights Reserved**。
 
 ## 核心命令
 
@@ -38,7 +32,6 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 |------|------|
 | `AGENTS.md` | IDE 自动扫描，项目速览（**勿手动编辑**） |
 | `ARCHITECTURE.md` | 核心架构设计，配置表，注册流程 |
-| `DEV_REPORT.md` | 开发报告，版本记录，修复历史 |
 | `HANDOFF.md` | 项目交接，上下文快照 |
 
 ### 源代码（`forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/`）

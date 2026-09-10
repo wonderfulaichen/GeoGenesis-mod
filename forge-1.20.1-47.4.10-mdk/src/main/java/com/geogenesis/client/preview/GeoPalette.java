@@ -385,31 +385,45 @@ public final class GeoPalette {
             0xE8EEF2, // POLAR E
     };
     // BIOME id: 与 BiomeClass.ordinal() 严格对齐（顺序/数量必须一致！）。
-    // BiomeClass 枚举（com.geogenesis.worldgen.climate.BiomeClassifier）：
-    //   0 OCEAN, 1 DEEP_OCEAN, 2 BEACH, 3 PLAIN, 4 HILLS, 5 PLATEAU, 6 MOUNTAINS,
-    //   7 PEAK, 8 LAKE, 9 RIVER, 10 BASIN, 11 SNOW, 12 SWAMP, 13 FOREST, 14 TAIGA,
-    //   15 DESERT, 16 SAVANNA, 17 JUNGLE, 18 TUNDRA
+    // 【2026-09-10】BiomeClass 改为直接绑定真实 MC 群系 ResourceKey，
+    //   本表同步重写为 35 项（见 BiomeClassifier.BiomeClass 的声明顺序）。
     // 若 BiomeClass 增删项，本数组须同步增删，否则图例离散索引越界崩溃。
     private static final int[] T_BIOME = {
             0x2E6FD6, // 0  OCEAN
             0x1B3F8F, // 1  DEEP_OCEAN
-            0xE6D29A, // 2  BEACH
-            0x7CB342, // 3  PLAIN
-            0x8A7A66, // 4  HILLS
-            0xC2A04A, // 5  PLATEAU
-            0x6B5D4A, // 6  MOUNTAINS
-            0xFFFFFF, // 7  PEAK
-            0x34B4D6, // 8  LAKE
-            0x2E6F9F, // 9  RIVER
-            0x7A6FA0, // 10 BASIN
-            0xE8F0E8, // 11 SNOW
-            0x4A6B3A, // 12 SWAMP
-            0x4C9A2A, // 13 FOREST
-            0x3B6B4A, // 14 TAIGA
-            0xD9C26A, // 15 DESERT
-            0xB5C56A, // 16 SAVANNA
-            0x2E8B3B, // 17 JUNGLE
-            0xCFE0EA, // 18 TUNDRA
+            0x43D5EE, // 2  WARM_OCEAN
+            0x2E9BD6, // 3  LUKEWARM_OCEAN
+            0x1B6E9E, // 4  DEEP_LUKEWARM_OCEAN
+            0x2B5BA8, // 5  COLD_OCEAN
+            0x1B3A78, // 6  DEEP_COLD_OCEAN
+            0x7BA7D9, // 7  FROZEN_OCEAN
+            0x4A6FA5, // 8  DEEP_FROZEN_OCEAN
+            0x34B4D6, // 9  RIVER
+            0x9AC7E8, // 10 FROZEN_RIVER
+            0x4E6B2E, // 11 SWAMP
+            0xE6D29A, // 12 BEACH
+            0xEAEAEA, // 13 SNOWY_BEACH
+            0x7CB342, // 14 PLAINS
+            0x83BB6C, // 15 MEADOW
+            0x3F7A2E, // 16 FOREST
+            0x6E9B4E, // 17 BIRCH_FOREST
+            0x8A7A66, // 18 WINDSWEPT_HILLS
+            0x5E7A52, // 19 WINDSWEPT_FOREST
+            0xB59A5B, // 20 WINDSWEPT_SAVANNA
+            0x1E7A1E, // 21 JUNGLE
+            0x4E9A3E, // 22 SPARSE_JUNGLE
+            0xBFA83A, // 23 SAVANNA
+            0xC2A04A, // 24 SAVANNA_PLATEAU
+            0xD9C072, // 25 DESERT
+            0xA9552F, // 26 BADLANDS
+            0x2F6B4F, // 27 TAIGA
+            0x4E8C7A, // 28 SNOWY_TAIGA
+            0xDDE6EC, // 29 SNOWY_PLAINS
+            0x5C8A6E, // 30 GROVE
+            0xC9D6DE, // 31 SNOWY_SLOPES
+            0x8A8A8A, // 32 STONY_PEAKS
+            0xB0B0B0, // 33 JAGGED_PEAKS
+            0xFFFFFF, // 34 FROZEN_PEAKS
     };
 
     private static final Map<PreviewLayer, int[]> discreteDefaults = new EnumMap<>(PreviewLayer.class);
@@ -746,6 +760,14 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.biome.SAVANNA_PLATEAU", "Savanna Plateau");
         ENGLISH.put("geogenesis.biome.JUNGLE", "Jungle");
         ENGLISH.put("geogenesis.biome.SPARSE_JUNGLE", "Sparse Jungle");
+        ENGLISH.put("geogenesis.biome.RIVER", "River");
+        ENGLISH.put("geogenesis.biome.FROZEN_RIVER", "Frozen River");
+        ENGLISH.put("geogenesis.biome.SWAMP", "Swamp");
+        ENGLISH.put("geogenesis.biome.MEADOW", "Meadow");
+        ENGLISH.put("geogenesis.biome.WINDSWEPT_SAVANNA", "Windswept Savanna");
+        ENGLISH.put("geogenesis.biome.BADLANDS", "Badlands");
+        ENGLISH.put("geogenesis.biome.GROVE", "Grove");
+        ENGLISH.put("geogenesis.biome.JAGGED_PEAKS", "Jagged Peaks");
     }
 
     // ============================================================

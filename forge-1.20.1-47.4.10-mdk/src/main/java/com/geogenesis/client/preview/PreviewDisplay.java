@@ -225,7 +225,14 @@ public class PreviewDisplay extends AbstractWidget {
     //   2026-08-10 液滴 SLOPE_MIN_SKIP/CASCADE_MAXDIFF ×hs（wu 化阈值漂移修复）：HS≠1 产出变化 → 18。
     //   2026-08-11 引擎回退到 78bf8bc（用户认可版）+ cascade budget 修复（真 NaN 修复）：
     //   TF 对齐版（23）废弃；回退版产出 ≠ 18（带 budget）→ 19 强制重算。
-    private static final int CACHE_SCHEMA_VERSION = 29;   // 2026-08-15: +RIVER_TYPE 图层（Cell.riverType 字段）
+    // 34 = 2026-09-10 河流绿洲（Cell.riverDistance + Cell.oasisNoise）
+    // 33 = 2026-09-10 变体抖动波长 64→128 wu（变体斑块更完整）
+    // 32 = 2026-09-10 群系变体抖动（Cell.variantTerrain；消除地形边界导致的长直线）
+    // 31 = 2026-09-10 区界 5 倍频扰动（气候区边界形状改变）
+    // 30 = 2026-09-10 气候双轨（Cell.biomeType 参与群系；eClimate/snowLineE 参与垂直带与雪）
+    // ⚠ 任何影响 Cell 采样结果的代码改动都必须递增本版本，否则旧磁盘缓存会被静默复用，
+    //   表现为"改了没生效 / 新旧数据混成矩形块"。
+    private static final int CACHE_SCHEMA_VERSION = 34;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

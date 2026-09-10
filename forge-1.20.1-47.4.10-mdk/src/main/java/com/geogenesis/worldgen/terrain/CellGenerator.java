@@ -1,7 +1,10 @@
 package com.geogenesis.worldgen.terrain;
 
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.worldgen.climate.ClimateRegion;
 import com.geogenesis.worldgen.climate.ClimateSpline;
+import com.geogenesis.worldgen.climate.Latitude;
+import com.geogenesis.worldgen.climate.WhittakerType;
 import com.geogenesis.worldgen.erosion.ErosionEngine;
 import com.geogenesis.worldgen.erosion.RidgeValleyErosion;
 import com.geogenesis.worldgen.noise.*;
@@ -25,8 +28,8 @@ import java.util.stream.IntStream;
  *   │    与地形类型过渡（PLAIN↔MOUNTAINS）完全同构——海岸线由地形场自然决定
  *   └─ 大陆性 c 只做：细胞概率偏置 + 海洋深度样条 + 气候（湿度/温度），不直接决定海陆边界
  *
- * 气候（v2 增强模型）：
- *   温度 = sin²(z) 纬度基值 × 海洋性修正 − 海拔递减率 + 噪声
+ * 气候（v3 增强模型，2026-09-10）：
+ *   温度 = 纬度基值（赤道热 → 两极冷，单调递减）× 海洋性修正 − 海拔递减率 + 噪声
  *   湿度 = 大陆性距海 + 山地雨影 + 噪声
  */
 public final class CellGenerator {
@@ -54,6 +57,8 @@ public final class CellGenerator {
     private final double continentBias;
     private final double seabedAmp;
     private final double oceanDepthFactor;
+    /** 极寒阈值：温度低于此值即常年积雪（与 WhittakerType.T_TUNDRA=0.24 对齐：tempE < -0.52） */
+    private static final double POLAR_SNOW_TEMP = -0.52;
     /** 海洋淡出起点（cBiased），在此以上海洋深度开始衰减到 0 */
     private final double oceanFadeStart;
     /** 陆地高度终点（cBiased），在此达到全量陆地高度 */
@@ -86,10 +91,18 @@ public final class CellGenerator {
         r -> { Thread t = new Thread(r, "GeoGenesis-TileSampler"); t.setDaemon(true); return t; },
         new ThreadPoolExecutor.CallerRunsPolicy());
 
-    // 温度参数（v5.10 正弦纬度模型，参考 TF/RTF）
+    // 温度参数（v6 纬度梯度，2026-09-10 取代旧正弦锚点模型）
     private final double tempFreq;    // 温度纬度角频率 = 1/latitudeScale（由 TerrainParams 注入，可配置）
     private final Noise tempWarp;     // 温度噪声扰动
     private final Noise humidityNoise; // 独立湿度噪声
+    /** 气候区（抖动 Voronoi）：区内温湿恒定，消除群系椒盐碎斑 */
+    private final ClimateRegion climateRegion;
+    /** 气候区尺寸（wu），区界扰动幅度按它取 */
+    private final double regionSize;
+    /** 区界扰动噪声：让 Voronoi 边界蜿蜒（否则边界是直线/大块多边形） */
+    private final Noise regionWarp;
+    /** 绿洲斑块噪声（大尺度）：河流绿洲的断续门控（RTG SurfaceRiverOasis 范式） */
+    private final Noise oasisNoise;
 
     public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY) {
         this.continent = new ContinentField(p);
@@ -119,6 +132,12 @@ public final class CellGenerator {
         // 气候噪声（xz 缩放可配置）
         this.tempWarp = new Frequency(new Simplex(501), 1.0 / p.tempWarpScale());
         this.humidityNoise = new Frequency(new Simplex(502), 1.0 / p.humidityScale());
+        this.climateRegion = new ClimateRegion(p.climateRegionSize());
+        this.regionSize = p.climateRegionSize();
+        // 波长 ≈1.5 个气候区：边界以该尺度蜿蜒，观感自然
+        this.regionWarp = new Frequency(new Simplex(503), 1.0 / (p.climateRegionSize() * 1.5));
+        // 波长 ≈0.75 个气候区：绿洲斑块与气候区同尺度，是"断续的绿洲群"而非细碎噪点
+        this.oasisNoise = new Frequency(new Simplex(504), 1.0 / (p.climateRegionSize() * 0.75));
     }
 
     /** 一次性播种所有噪声节点 + 设置海山中心水深检查器 */
@@ -146,6 +165,9 @@ public final class CellGenerator {
         this.worldSeed = worldSeed;
         Noises.seedAll(tempWarp, worldSeed, 0);
         Noises.seedAll(humidityNoise, worldSeed, 0);
+        Noises.seedAll(regionWarp, worldSeed, 0);
+        Noises.seedAll(oasisNoise, worldSeed, 0);
+        climateRegion.seed(worldSeed);
     }
 
     /** 世界高度下界 */
@@ -223,6 +245,8 @@ public final class CellGenerator {
         // 8. 海陆统一 e = 类型混合 + 海洋特征增量（海山/洋中脊按海洋权重平滑淡入）
         double e = softCapLandE(eLand + oceanFeat.total * oceanW);
         cell.e = e;
+        cell.eClimate = e;   // 侵蚀前 e：群系垂直带判定专用（applyTileDelta 不覆写）
+        cell.variantTerrain = ditheredTerrain(cell.typeWeights, wx, wz);
         cell.eOcean = eOcean;      // 海洋基面（预特征，分类/诊断用）
         cell.blendCont = oceanW;   // 语义（2026-08-06）：海洋类型权重和（原 cont 已废除）
         cell.height = heightCurve.heightFromE(e);
@@ -239,30 +263,34 @@ public final class CellGenerator {
         Cell cell = sampleCore(wx, wz);
         double sx = wx, sz = wz;
 
-        // 8. 气候（增强模型 v2）
-        //    温度：纬度基值 + 海拔递减率 + 海洋性修正 + 噪声
-        //    湿度：大陆性距海 + 山区雨影 + 噪声
-        double sinVal = Math.sin(wz * tempFreq);
-        double temp = sinVal * sinVal * 2.0 - 1.0; // 纬度基值 [-1, 1]
-        // 海洋性修正：海岸（c≈0）温差小，内陆（c>0.5）温差大
-        double continentFactor = clamp(cell.continent * 1.5, 0.0, 1.0);
-        temp = temp * (0.85 + 0.15 * continentFactor);
-        // 海拔递减率：每 eLand 冷 0.15（山顶比山脚冷约 0.1 = ~5.8°C）
-        temp -= cell.eLand * 0.15;
-        // 噪声扰动
-        temp += tempWarp.compute(sx, sz) * 0.10;
+        // 8. 气候（v5 双轨模型，对齐 RTF ClimateModule，2026-09-10）
+        //    RTF 原文：cell.biome = BiomeType.get(regionTemperature, regionMoisture)
+        //              cell.temperature/moisture = 在【查询位置】采样的连续值
+        //    ① 区域层（区内恒定）→ 只决定 Whittaker 群区 → 群系成片、不椒盐
+        //    ② 连续层（逐格平滑）→ 暴露到 Cell.climate → 预览/下游看到平滑渐变
+        //    【教训】此前把暴露的温湿度也做成区域恒定 → 温度/湿度/群系三个图层全成
+        //      平顶马赛克（用户实测"多边形"）。双轨后温湿是连续曲线，群系仍是成片。
+        // 区界扰动（参考 RTF 的 biomeEdgeShape：多倍频噪声 + offsetX/offsetZ）。
+        // 【教训】单频扰动只能把 Voronoi 的直线"弯一下"，长直段依然可见（用户实测仍有直边多边形）；
+        // 多倍频在 1.5×/0.75×/0.375× 区尺度同时起伏 → 打断所有可见尺度的直线段。
+        double rx = wx + regionWarpOffset(wx, wz);
+        double rz = wz + regionWarpOffset(wz, wx);
+        ClimateRegion.Sample reg = climateRegion.sample(rx, rz);
+
+        // ① 区域层：只算群区
+        cell.biomeType = WhittakerType.classify(
+            clamp(regionTemperature(reg) * 0.5 + 0.5, 0.0, 1.0),
+            clamp(regionMoisture(reg) * 0.5 + 0.5, 0.0, 1.0));
+
+        // ② 连续层：纬度 + 低频噪声，再叠加逐格地形修正
+        double temp = temperatureAt(wx, wz);
+        temp *= 0.85 + 0.15 * clamp(cell.continent * 1.5, 0.0, 1.0);    // 大陆性温差（逐格）
+        temp -= elevationTempDrop(cell.e);                              // 海拔递减（逐格）
         temp = clamp(temp, -1.0, 1.0);
 
-        // 湿度模型 v2：大陆性距海 + 山区雨影 + 噪声
-        double montW = cell.typeWeights != null && cell.typeWeights.length > TerrainClass.MOUNTAINS.ordinal()
-            ? cell.typeWeights[TerrainClass.MOUNTAINS.ordinal()] : 0.0;
-        // 海岸（c≈0）湿 -> 内陆（c>0.8）干
-        double humBase = 1.0 - clamp(cell.continent * 1.25, 0.0, 1.0);
-        double hum = humBase * 2.0 - 1.0; // map [0,1]→[-1,1]
-        // 山地雨影：山脉区域降低湿度（简化处理）
-        hum -= montW * 0.3;
-        // 噪声扰动
-        hum += humidityNoise.compute(sx, sz) * 0.25;
+        double hum = humidityNoise.compute(wx, wz) * 0.75;               // 低频平滑湿度噪声
+        hum = continentMoisture(hum, cell.continent);                     // 大陆性：沿海湿 / 内陆干（逐格）
+        hum -= elevationMoistureDrop(cell.e);                             // 山地雨影（背风坡/高海拔变干，逐格）
         hum = clamp(hum, -1.0, 1.0);
 
         // 气候影响权重（tempInfluence / humidityInfluence / continentInfluence）
@@ -278,11 +306,24 @@ public final class CellGenerator {
         cell.temperature = tempE;
         cell.humidity = humE;
 
+        // 9. 雪线（单一来源）：配置基准 + 纬度（温度）耦合 + 湿度耦合。
+        //    —— 干区雪线升高、湿区降低；暖区升高、寒区降低。
+        //    —— isSnow 供 BiomeClassifier 与地表铺雪共用，取代此前散落的硬编码阈值。
+        cell.snowLineE = params.snowLine()
+            + params.snowLatitudeInfluence() * tempE
+            - params.snowHumidityInfluence() * humE;
+        // 两种情况要雪：① 海拔超过雪线；② 气候本身极寒（对应 ICE/TUNDRA 群的 SNOWY_PLAINS）。
+        // ② 不可省：本模组 buildSurface 为空实现（原版 SurfaceSystem 的铺雪不会执行），
+        //   若只按海拔判雪，极地平坦地带会顶着「雪原」群系却没有雪。
+        cell.isSnow = cell.eClimate > 0.0
+            && (cell.eClimate > cell.snowLineE || tempE < POLAR_SNOW_TEMP);
+
         // 9. 分类（使用 sampleCore 已缓存 FeatureResult，避免重复 compute）
         cell.terrainType = classify(cell.continent, cell.e, cell.eLand,
             TypeLandShape.dominantFromWeights(cell.typeWeights), cell.typeWeights,
             tempE, humE, cell.oceanFeat, cell.landFeat, cell.coastCoord);
         cell.continentNoise = cell.continent;
+        cell.oasisNoise = oasisNoise.compute(wx, wz);
 
         return cell;
     }
@@ -948,6 +989,25 @@ public final class CellGenerator {
             cell.terrainType = classifyTerrain(e, cell.eLand, ct, cell.temperature,
                 cell.humidity, cell.typeWeights, cell.coastCoord);
         }
+
+        // 坡度（陡坡裸岩用）：取 tile 的【侵蚀后】高度网格做 ±1 wu 中心差分。
+        // ★ 必须用 tile 网格而非 chunk 的 16×16：chunk 边缘只能 clamp → 16 块间距的接缝。
+        //   tile 自带 padding，跨 tile 连续；且 postErosion 已含侵蚀 → 与真实地表一致。
+        if (res != null && res.postErosion != null) {
+            double hs = Math.max(0.01, params.horizontalScale());
+            double hxp = heightCurve.heightFromE(
+                sampleTileField(res.postErosion, res.originX, res.originZ, wuX + 1.0, wuZ));
+            double hxm = heightCurve.heightFromE(
+                sampleTileField(res.postErosion, res.originX, res.originZ, wuX - 1.0, wuZ));
+            double hzp = heightCurve.heightFromE(
+                sampleTileField(res.postErosion, res.originX, res.originZ, wuX, wuZ + 1.0));
+            double hzm = heightCurve.heightFromE(
+                sampleTileField(res.postErosion, res.originX, res.originZ, wuX, wuZ - 1.0));
+            // 1 wu = hs 块；中心差分跨 2 wu → 除以 2*hs 得「每块抬升」
+            double dhx = (hxp - hxm) / (2.0 * hs);
+            double dhz = (hzp - hzm) / (2.0 * hs);
+            cell.gradient = (float) Math.sqrt(dhx * dhx + dhz * dhz);
+        }
     }
 
     /**
@@ -1128,6 +1188,116 @@ public final class CellGenerator {
         return temperature < -0.6 ? 1.0 : temperature < -0.2 ? (-0.2 - temperature) / 0.4 : 0.0;
     }
 
+    /**
+     * 抖动后的主导地形类型（<b>仅用于群系变体选择</b>，见 {@code Cell.variantTerrain}）。
+     *
+     * <p>地形类型场是两个 Voronoi 站点高斯权重相等处 → 边界为<b>直线段</b>（站点上下排列时
+     * 即长水平线，实测达 424 wu）。若群系变体直接按 {@link Cell#terrainType} 切换，
+     * 群系边界就沿这条直线走。此处对每类权重叠加独立高频噪声后取最大：
+     * 边界附近两类权重接近，噪声使主导类型随机翻转 → 变体边界被打散。
+     *
+     * @param weights 5 类地形权重（按 {@link TerrainClass#ordinal()} 索引，和=1）
+     */
+    private TerrainClass ditheredTerrain(double[] weights, double x, double z) {
+        if (weights == null || weights.length == 0) return null;
+        TerrainClass[] all = TerrainClass.values();
+        int best = -1;
+        double bestW = Double.NEGATIVE_INFINITY;
+        for (int i = 0; i < weights.length && i < all.length; i++) {
+            // 每类独立噪声（坐标加不同偏移），波长 ≈ 区尺寸/3 ≈ 128 wu（2026-09-10：调大，变体斑块更完整）
+            double dith = regionWarp.compute(x * 3.0 + i * 733.0, z * 3.0 - i * 1499.0) * 0.12;
+            double w = weights[i] + dith;
+            if (w > bestW) {
+                bestW = w;
+                best = i;
+            }
+        }
+        return best >= 0 ? all[best] : null;
+    }
+
+    /**
+     * 气候区边界的 3 倍频扰动位移（wu）。
+     * 用同一噪声按坐标倍频叠加（1、2、4 倍），省掉额外噪声实例；
+     * 幅值 0.25/0.12/0.06 × regionSize，合计最大约 0.43 个区尺度。
+     */
+    private double regionWarpOffset(double x, double z) {
+        double o = regionWarp.compute(x, z) * 0.25
+                 + regionWarp.compute(x * 2.0, z * 2.0) * 0.12
+                 + regionWarp.compute(x * 4.0, z * 4.0) * 0.06
+                 + regionWarp.compute(x * 8.0, z * 8.0) * 0.04
+                 + regionWarp.compute(x * 16.0, z * 16.0) * 0.02;
+        return o * regionSize;
+    }
+
+    /**
+     * 区域层温度：纬度基值 + 区域级扰动。区界处与次近区混合 → C0 连续。
+     */
+    private double regionTemperature(ClimateRegion.Sample reg) {
+        double t1 = temperatureAt(reg.centerX(), reg.centerZ());
+        if (reg.blend() <= 0.0) return t1;
+        double t2 = temperatureAt(reg.centerX2(), reg.centerZ2());
+        return t1 + (t2 - t1) * reg.blend();
+    }
+
+    /** 单点温度基值：纬度梯度（赤道 +1 → 两极 −1）+ 温度扰动噪声 */
+    private double temperatureAt(double x, double z) {
+        double lat = Latitude.latitude01(z, 1.0 / tempFreq);
+        return (1.0 - 2.0 * lat) + tempWarp.compute(x, z) * 0.15;
+    }
+
+    /** 区域层湿度：区域噪声，区界处与次近区混合 → C0 连续 */
+    private double regionMoisture(ClimateRegion.Sample reg) {
+        double m1 = humidityNoise.compute(reg.centerX(), reg.centerZ());
+        if (reg.blend() <= 0.0) return m1;
+        double m2 = humidityNoise.compute(reg.centerX2(), reg.centerZ2());
+        return m1 + (m2 - m1) * reg.blend();
+    }
+
+    /**
+     * 海拔递减率（参考 FreeTerraForged 的 ClimateModule.modifyTemp）。
+     * e≤0.35 基本不降温，0.35→0.65 线性增强，e≥0.65 达到最大 0.16。
+     * 逐格生效 → 山体保有真实垂直气候分异，群系因而"看得见地形"。
+     */
+    private static double elevationTempDrop(double e) {
+        if (e <= 0.35) return 0.0;
+        if (e >= 0.65) return 0.16;
+        return 0.16 * (e - 0.35) / 0.30;
+    }
+
+    /**
+     * 高海拔/山地雨影导致的减湿：e≤0.25 无影响，0.25→0.60 线性增强，最大 0.20。
+     *
+     * <p>【2026-09-10】原先用类型权重 {@code montW} 驱动（{@code -montW*0.25}），
+     * 但地形类型权重在类型边界处变化很快 → 相邻格湿度可跳变 0.2 以上，
+     * 直接跨过 Whittaker 的中间分区（探针实测违例）。改用连续高程 e 后同一效应平滑得多。
+     */
+    private static double elevationMoistureDrop(double e) {
+        if (e <= 0.25) return 0.0;
+        if (e >= 0.60) return 0.20;
+        return 0.20 * (e - 0.25) / 0.35;
+    }
+
+    /**
+     * 大陆性对湿度的调制（参考 FreeTerraForged 的 ClimateModule.modifyMoisture）。
+     * 海洋/沿海 → 拉向湿润；深内陆 → 拉向干燥（大陆性才是湿度主控，噪声只提供区域差异）。
+     *
+     * @param hum       区域级湿度 [-1,1]
+     * @param continent 大陆性 [-1,1]（负=海洋，0=海岸，正=内陆）
+     */
+    private static double continentMoisture(double hum, double continent) {
+        double c01 = clamp(continent * 0.5 + 0.5, 0.0, 1.0); // 0=深海 0.5=海岸 1=深内陆
+        double m01 = hum * 0.5 + 0.5;
+        double limit = 0.5;                                   // 海岸线位置
+        if (c01 < limit) {
+            double k = (limit - c01) / limit * 0.55;          // 海洋侧：最多把湿度拉向 1 的 55%
+            m01 += (1.0 - m01) * k;
+        } else {
+            double k = (c01 - limit) / (1.0 - limit) * 0.55;  // 内陆侧：最多拉向 0 的 55%
+            m01 -= m01 * k;
+        }
+        return clamp(m01 * 2.0 - 1.0, -1.0, 1.0);
+    }
+
     private static double clamp(double v, double lo, double hi) {
         return v < lo ? lo : (v > hi ? hi : v);
     }
@@ -1160,25 +1330,17 @@ public final class CellGenerator {
     }
 
     /**
-     * 安全读取 Forge 配置值。
+     * 安全读取 Forge 配置值（委托公共门面 {@link com.geogenesis.config.ConfigSafe}）。
      * 游戏内（config 已加载）→ 正常返回 toml 值；独立预览/探针（config 未加载运行时）
      * 的 {@code ConfigValue.get()} 会抛 IllegalStateException，此时回退到代码默认值。
      * 仅在配置未加载时改变行为，不影响游戏内结果。
      */
     private static double cfgDbl(net.minecraftforge.common.ForgeConfigSpec.DoubleValue v, double fallback) {
-        try {
-            return v.get();
-        } catch (IllegalStateException ex) {
-            return fallback;
-        }
+        return com.geogenesis.config.ConfigSafe.dbl(v, fallback);
     }
 
     private static boolean cfgBool(net.minecraftforge.common.ForgeConfigSpec.BooleanValue v, boolean fallback) {
-        try {
-            return v.get();
-        } catch (IllegalStateException ex) {
-            return fallback;
-        }
+        return com.geogenesis.config.ConfigSafe.bool(v, fallback);
     }
 
     /** 采样大陆性快捷接口 */

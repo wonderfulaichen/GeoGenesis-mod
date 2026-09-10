@@ -105,7 +105,27 @@ public final class GeoGenesisTerrain {
      * 入参 = MC 块坐标 → wu 换算。
      */
     public Cell sampleCellLight(double wx, double wz) {
-        return generator.sample(toWu(wx), toWu(wz));
+        double wux = toWu(wx), wuz = toWu(wz);
+        Cell cell = generator.sample(wux, wuz);
+        fillRiverDistance(cell, wux, wuz);
+        return cell;
+    }
+
+    /**
+     * 填充「到最近河线的距离」（wu）—— 河流绿洲判定的输入。
+     *
+     * <p><b>为什么需要</b>：本类有两条采样路径 —— 完整管线（{@link #getChunkCells}，
+     * 含侵蚀与水文雕刻）与快速路径（{@link #sampleCellLight}，群系分类专用）。
+     * 绿洲依赖"离水多远"，此前只有完整管线拿得到，导致规则只在预览生效。
+     * 两条路径在此用<b>同一个方法、同一个条件</b>填充 → 预览 = 游戏。
+     *
+     * <p><b>只在干旱群区计算</b>：快速路径在出生点搜索等场景被高频调用，
+     * 全域查询会无谓地实例化大量河网 region（region 是懒加载的）。
+     */
+    private void fillRiverDistance(Cell cell, double wuX, double wuZ) {
+        if (!riversEnabled || hydrologyExperiment == null || cell == null) return;
+        if (cell.biomeType != com.geogenesis.worldgen.climate.WhittakerType.DESERT) return;
+        cell.riverDistance = hydrologyExperiment.riverNetwork().distanceToWater(wuX, wuZ);
     }
 
     /**
@@ -228,6 +248,13 @@ public final class GeoGenesisTerrain {
     private void applyHydrologyValley(Cell[] cells, int cx, int cz) {
         HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
         double seaLevel = generator.seaLevel();
+
+        // 河流绿洲输入：到最近河线的距离（与快速路径 fillRiverDistance 同一条件 → 预览 = 游戏）
+        for (int lx = 0; lx < 16; lx++) {
+            for (int lz = 0; lz < 16; lz++) {
+                fillRiverDistance(cells[lx * 16 + lz], toWu(cx * 16 + lx), toWu(cz * 16 + lz));
+            }
+        }
         for (HydrologyBlockCarvedColumn column : result.carvedColumns()) {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);

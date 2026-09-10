@@ -1,6 +1,7 @@
 package com.geogenesis.worldgen.generator;
 
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.worldgen.climate.BiomeClassifier;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
 import com.geogenesis.worldgen.terrain.Cell;
@@ -56,6 +57,18 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     static final int WORLD_MIN_Y = -64;
     static final int WORLD_MAX_Y = 320;
     static final int SEA_LEVEL = 63;
+    /**
+     * 陡坡裸岩的坡度阈值（无量纲 tan 坡角，按 2wu≈4 块中心差分测得）：>0.40 地表出露岩石。
+     *
+     * <p>RTF 范式：{@code Steepness} tile filter 算 gradient，{@code ErodeFeature} 用
+     * 0.3 起、0.65+ 为重岩分档。此处取单档 0.40 —— 介于 RTF 起始 0.3 与保守值之间：
+     * 实测（384 wu、含海陆）>0.30 覆盖 6.3%、>0.45 覆盖 2.7%，0.40 落在真实陡坡上，
+     * 平缓丘陵不会误判成裸岩。
+     *
+     * <p>注意：山地群系本身已由 {@code surfaceOf} 返回 STONE，本阈值主要让
+     * <b>森林/草原里的陡崖与台地边缘</b>也出露岩石。
+     */
+    static final float ROCK_GRADIENT = 0.40f;
 
     // 方块状态缓存
     private static final BlockState AIR       = Blocks.AIR.defaultBlockState();
@@ -70,6 +83,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     private static final BlockState GRASS     = Blocks.GRASS_BLOCK.defaultBlockState();
     private static final BlockState SAND      = Blocks.SAND.defaultBlockState();
     private static final BlockState GRAVEL    = Blocks.GRAVEL.defaultBlockState();
+    /** 雪层（1/8 层，原版 Blocks.SNOW）—— 雪线以上地表覆盖 */
+    private static final BlockState SNOW      = Blocks.SNOW.defaultBlockState();
+    private static final BlockState PODZOL    = Blocks.PODZOL.defaultBlockState();
 
     // 地形引擎（每生成器实例一份）。参数来自当前世界存档，种子来自 LevelEvent.Load。
     private GeoGenesisTerrain terrain;
@@ -258,9 +274,21 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         } else if (beach) {
             top  = SAND;
             fill = SAND;
+        } else if (cell.gradient > ROCK_GRADIENT) {
+            // 陡坡裸岩（RTF Steepness + ErodeFeature 范式）：陡崖不长植被、积不住沙，
+            // 地表直接出露岩石 —— 与群系/地表材质无关（沙漠里的陡崖同样是裸岩）。
+            top  = STONE;
+            fill = STONE;
         } else {
-            top  = GRASS;
-            fill = DIRT;
+            // 地表方块由【群系】决定（BiomeClassifier.surfaceOf）——此前只看地形类型，
+            // 导致沙漠群系也铺草方块。BEACH 已在上面单独处理。
+            switch (BiomeClassifier.surfaceOf(cell)) {
+                case SAND   -> { top = SAND;   fill = SAND; }
+                case STONE  -> { top = STONE;  fill = STONE; }
+                case GRAVEL -> { top = GRAVEL; fill = GRAVEL; }
+                case PODZOL -> { top = PODZOL; fill = DIRT; }
+                default     -> { top = GRASS;  fill = DIRT; }
+            }
         }
 
         // R9 落块（DW 语义）：地表按 groundY 铺、水柱灌到 waterTop；墙区地面已被
@@ -296,6 +324,16 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             }
             chunk.setBlockState(mPos, state, false);
         }
+
+        // 雪线以上铺雪层：isSnow 由 CellGenerator 按 snowLine/纬度/湿度配置统一计算，
+        // 与 BiomeClassifier 的垂直带共用同一阈值（消除此前"两套雪线"）。
+        if (!water && cell.isSnow) {
+            int snowY = surfaceY + 1;
+            if (snowY < WORLD_MAX_Y) {
+                mPos.set(wx, snowY, wz);
+                chunk.setBlockState(mPos, SNOW, false);
+            }
+        }
     }
 
     // ===== 基础覆写 =====
@@ -323,8 +361,12 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     @Override
     public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk,
                                      StructureManager structureManager) {
-        // 暂不注入生物群系装饰（树/高草/甘蔗等），仅保留 fillFromNoise 基础方块。
-        // 待地形定稿后再逐步恢复装饰。
+        // 重新启用原版群系装饰：委托基类 ChunkGenerator.applyBiomeDecoration。
+        // 基类按 FEATURES 状态遍历群系，用 biomeSource 返回的群系（原版 biome Holder）
+        // 按其 BiomeGenerationSettings 放置树/草/花/甘蔗等特征。
+        // 地表已由 fillFromNoise 在 NOISE 阶段铺好（草/沙/砾石顶块），
+        // 装饰在 FEATURES 阶段叠加，顺序正确，无需自研放置逻辑。
+        super.applyBiomeDecoration(level, chunk, structureManager);
     }
 
     @Override

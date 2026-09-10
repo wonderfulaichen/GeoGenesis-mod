@@ -83,6 +83,20 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **游戏雕刻路径（RTF 范式，2026-08-26）**：`GeoGenesisTerrain.generateChunk` 内 `applyRiverValley` 把河谷雕刻**回写 `cell.height`**（Zone1-4 平滑谷，预览/后续采样/落块一致）；`fillFromNoise` 不再二次雕刻，仅按 `rs.waterSurfaceY()` 灌水判定（`groundY < waterTop − 0.5`，Streams `isStreamBed`）。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)` + `terrain.sampleRiverAtBlock(wx,wz,cell.height)`，高度/河流/湖泊/气候由引擎确定性产出。
 
+## 当前工作焦点（2026-09-10 气候主导群系 + 河流绿洲 + 陡坡裸岩，发布 v0.0.1）
+
+- **温度纬向锚点修复**（`CellGenerator.sample`）：旧 `sin²(z·tempFreq)` 在 z=0 恒取 −1（出生点极寒）且振荡、无单调梯度。改为复用 `Latitude.latitude01`：`temp = 1 − 2·lat`（赤道 +1 → 两极 −1）。实测 z=0 → +0.932，z=6000 → −0.851。
+- **群系改气候主导**（`BiomeClassifier`）：由「switch(地形)」改为 **Whittaker 群区（温度×降水）× 垂直带谱 × 地形变体**。气候在抖动 Voronoi 气候区上采样（区内温湿恒定 → 无椒盐碎斑），区界用 5 倍频扰动打散；垂直带由温度相关雪线驱动（同一座山：赤道=雨林→草甸→石峰，寒带=针叶林→雪坡→冰峰）。`GeoGenesisBiomeSource.ALL_KEYS` 补全暖/冻海洋、针叶林、恶地、雪坡等漏项。
+- **群系变体抖动**（`Cell.variantTerrain`）：地形类型边界是 Voronoi 垂直平分线（直线段），直接按 `terrainType` 换群系会让群系边界沿直线走（实测最长 **424 wu** 水平直线，即用户反复反馈的"直线"）。改为对 5 类地形权重各加独立噪声后取主导类型 → **424 wu → 104 wu**，回到纯气候基线，邻接违例 0。
+- **河流绿洲**（RTG `SurfaceRiverOasis` 范式）：新增 `Cell.riverDistance`（到最近河/湖距离）与 `Cell.oasisNoise`。干旱群区沿水 <24 wu 且过大尺度噪声门控 + 海拔截断 → DESERT 转 SAVANNA（Whittaker 图上合法邻居）。
+  - `RiverLineNetwork.distanceToWater` 为**只读**查询，**委托既有 `sample()`**：自写"扫全部河段"版本漏掉 `RiverLineRegion.lakes`（19/245 例比雕刻器远最多 191 wu），自检抓出后改委托，现差值恒为 0。
+  - ★ **预览 = 游戏**：群系分类走快速路径 `sampleCellLight`（无侵蚀/雕刻，为把建世界从 7.5 分钟压到秒级），原本拿不到水文数据 → 绿洲规则只会在预览生效。现由 `GeoGenesisTerrain.fillRiverDistance` 在完整管线与快速路径用**同一条件**填充。实测 17 µs/次（侵蚀 tile 800ms 的 0.002%），性能假设成立。
+- **陡坡裸岩**（RTF `Steepness` tile filter + `ErodeFeature` 范式）：新增 `Cell.gradient`，从侵蚀 tile 的 `postErosion` 高度网格取 ±1 wu 中心差分。**必须用 tile 网格而非 chunk 的 16×16**——chunk 边缘只能 clamp，会产生 16 块间距的接缝；tile 自带 padding 跨 tile 连续。`GeoGenesisGenerator` 落块处 `gradient > ROCK_GRADIENT(0.40)` → 铺 STONE，优先于 `surfaceOf`（沙漠里的陡崖同样是裸岩）。**未改动 `ErosionEngine`**（`postErosion` 本就存在）。
+  - 阈值标定（384 wu 实测）：p50=0.008 p90=0.205 p99=0.499 max=0.731；>0.30 覆盖 6.3%、>0.45 覆盖 2.7% → 取 0.40。
+- **发布 v0.0.1**：`gradle.properties` 的 `mod_version` 0.1.0-preview.1 → **0.0.1**；产物 `build/libs/geogenesis-0.0.1.jar`（`mods.toml` 用 `${mod_version}` 占位符，自动同步）。已删除旧版本号的构建产物避免误传。
+- 新增探针：`runClimateBiomeProbe`（气候分异/邻接合法性/直线段与各向异性/精细群区图）、`runRiverOasisProbe`（距离查询一致性与耗时 + 坡度分布标定）。
+- 已知遗留：`TerrainClass.RIVER` 全工程从未赋值 → `pickKey` 的 `case RIVER` 为死代码（河流靠 `riverSurfaceY` 灌水表现）**【已于 2026-09-11 清理：移除死分支 `case RIVER`，`TerrainClass.RIVER` 枚举保留以避免 ordinal 漂移破坏预览缓存格式；河流本就由灌水表现，不按 terrainType 分类】**；陡坡裸岩只在游戏地表可见，预览群系图层不显示（群系本身仍是森林，裸岩是地表属性，与 RTF 一致）。
+
 ## 当前工作焦点（2026-08-29 河网小溪/宽深/分支，提交 72d74eb + 006d0a6）
 
 - **★ 小溪生成 + 宽深沿程连续变化（72d74eb）**：用户反馈"河流都是大河、没有小溪、宽深无变化"。

@@ -5,7 +5,7 @@ import com.geogenesis.worldgen.noise.NoiseUtil;
 /**
  * 确定性中点位移分形折线 + 节点贴谷偏置。
  *
- * <p>参照 DynamicWaters MidpointFractal：起点/终点固定，中点沿法向
+ * <p>通用 midpoint displacement 分形：起点/终点固定，中点沿法向
  * 随机偏移（幅度 = 段长 × jitter），递归二分 levels 次。
  * 偏移量由 (worldSeed, region, 节点索引) 整数哈希导出 → 同 seed 同线。</p>
  *
