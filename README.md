@@ -4,9 +4,9 @@
 
 ## 项目状态
 
-- **当前版本**：`v0.1.0-preview.1`（早期预览）— 程序化地形 + 气候群系 + 原版群系装饰（植被）+ D8 物理河网 + 湖泊/瀑布
+- **当前版本**：`v0.0.1`（早期预览）— 程序化地形 + 气候群系 + 原版群系装饰（植被）+ D8 物理河网 + 湖泊/瀑布
 - **编译状态**：`BUILD SUCCESSFUL`
-- **已知限制**：无洞穴、侵蚀新洼地暂不成湖、河成湖圆管观感、湖岸锯齿（详见 `RELEASE_NOTES.md`）
+- **已知限制**：无洞穴、侵蚀新洼地暂不成湖、河成湖圆管观感、湖岸锯齿（详见 `forge-1.20.1-47.4.10-mdk/CHANGELOG.md`）
 
 ## 河流系统与第三方许可
 
@@ -32,7 +32,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 |------|------|
 | `AGENTS.md` | IDE 自动扫描，项目速览（**勿手动编辑**） |
 | `ARCHITECTURE.md` | 核心架构设计，配置表，注册流程 |
-| `HANDOFF.md` | 项目交接，上下文快照 |
+| `forge-1.20.1-47.4.10-mdk/CHANGELOG.md` | v0.0.1 发布记录 |
 
 ### 源代码（`forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/`）
 
@@ -111,7 +111,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 ## 快速开始
 
 1. **理解架构**：阅读 `ARCHITECTURE.md`
-2. **查看最新开发**：阅读 `DEV_REPORT.md`
+2. **查看最新开发**：阅读 `AGENTS.md` 的「当前工作焦点」
 3. **设计变更**：查看 `docs/design/`
 4. **实施计划**：查看 `docs/plans/PLAN.md`
 5. **文档索引**：查看 `docs/INDEX.md`
@@ -125,6 +125,6 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 ## 注意事项
 
 - `AGENTS.md` 由 IDE 自动维护，勿手动编辑
-- 核心文档（AGENTS/ARCHITECTURE/DEV_REPORT/HANDOFF）保留在根目录
+- 核心文档（`AGENTS.md`/`ARCHITECTURE.md`）保留在根目录
 - 设计/计划/修复文档已分类到 `docs/` 子目录
 - 侵蚀测试工具已废弃但保留（用户确认）
