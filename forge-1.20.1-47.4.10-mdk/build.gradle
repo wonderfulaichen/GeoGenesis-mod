@@ -834,6 +834,24 @@ task runSpikeLocateProbe(type: JavaExec) {
     }
 }
 
+// Precip field probe (2026-09-11, Phase B): gradlew runPrecipFieldProbe [seed]
+task runPrecipFieldProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.climate.PrecipFieldProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Wind field probe (2026-09-11, Phase A): gradlew runWindFieldProbe [seed]
+task runWindFieldProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.climate.WindFieldProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // BaseHeight non-blocking probe (2026-09-11, P0-1): gradlew runBaseHeightProbe [seed]
 task runBaseHeightProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
