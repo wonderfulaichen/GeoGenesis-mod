@@ -51,6 +51,8 @@ public final class TerrainPreview {
     private double originX = 0.0, originZ = 0.0;
     private double scale = 2.0; // blocks per pixel
     private boolean hydrology = true;
+    /** ★ 大范围模式（L 切换）：走廉价管线，可查看数万格的气候格局 / 纬度分带。 */
+    private boolean largeArea = false;
     private int layerIndex = 0;
     private int qualityIdx = 0;
     private String search = "";
@@ -123,7 +125,7 @@ public final class TerrainPreview {
         canvas.addMouseWheelListener(new MouseAdapter() {
             @Override public void mouseWheelMoved(MouseWheelEvent e) {
                 scale *= (e.getWheelRotation() < 0) ? 0.8 : 1.25;
-                scale = Math.max(0.25, Math.min(64.0, scale));
+                scale = Math.max(0.25, Math.min(largeArea ? 512.0 : 64.0, scale));
                 requestResample();
             }
         });
@@ -146,6 +148,11 @@ public final class TerrainPreview {
                 } else if (c == 'r' || c == 'R') {
                     hydrology = !hydrology;
                     worker.setHydrology(hydrology);
+                } else if (c == 'l' || c == 'L') {
+                    // ★ 大范围模式：切廉价管线 + 放宽视口上限 → 可看数万格的气候格局/纬度分带
+                    largeArea = !largeArea;
+                    worker.setLargeArea(largeArea);
+                    requestResample();
                     worker.computeLayer(currentLayer());
                     canvas.repaint();
                 } else if (c == 'x' || c == 'X') {
@@ -266,8 +273,9 @@ public final class TerrainPreview {
 
             drawLegend(g, layer);
             drawTooltip(g, layer);
-            info.setText(String.format("seed=%d  scale=%.2f  layer=%s hydro=%s  res=%dx%d  q=%d  [1-9/0]图层 [ ]切换 [R]河 [X]分辨率 [/]搜索 [Esc]退出搜索",
-                    seed, scale, GeoPalette.englishLabel(layer.labelKey), hydrology ? "ON" : "OFF", res, res, quality));
+            info.setText(String.format("seed=%d  scale=%.2f  layer=%s hydro=%s large=%s  res=%dx%d  q=%d  [1-9/0]图层 [ ]切换 [R]河 [L]大范围 [X]分辨率 [/]搜索 [Esc]退出搜索",
+                    seed, scale, GeoPalette.englishLabel(layer.labelKey), hydrology ? "ON" : "OFF",
+                    largeArea ? "ON(廉价管线)" : "OFF", res, res, quality));
         } catch (Throwable t) {
             t.printStackTrace();
             if (lastFrame != null) g.drawImage(lastFrame, 0, 0, null);
