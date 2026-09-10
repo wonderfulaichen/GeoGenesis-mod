@@ -2,6 +2,32 @@
 
 > **本文档与当前代码同步（2026-07-13 更新）**。描述「鼓包范式 + 旧 droplet 侵蚀」的旧版（LandForms / TerrainType / Continent / TerrainBlender / HydraulicErosion / TileLakeSolver）已彻底废弃，请以本版为准。
 >
+> ---
+> ### ⚠️ 2026-09-11 事实校正（**本节优先于下文所有相冲突叙述**）
+>
+> 下文多处已与代码不符。以下每条均经**源码实地核查**（非依据文档自述），完整核查见
+> `docs/05-分析诊断/05-全身体检报告-health-check.md`：
+>
+> 1. **`ErosionSystem` 不存在。** `erosion/ErosionSystem.java`、`ErosionAgent.java`、`Thermal.java`、
+>    `Coastal.java`、`Glacial.java`、`Wind.java` **均不存在**。实际只有 `ErosionEngine.java`
+>    （液滴水力侵蚀，物质守恒）+ `RidgeValleyErosion.java`（脊谷骨架）。
+>    **"多营力侵蚀"从未实现** → 下文「多营力侵蚀」整节作废。
+> 2. **`worldgen/river/` RTF 河网整体已删除**（2026-08-28 被 D8 汇流场范式取代）：
+>    `RiverNetwork` / `RTFRiverGenerator` / `ValleyRiverCarver` / `RiverCarver` / `RiverWarp` /
+>    `Network` / `Rivermap` / `RiverConfig` / `RiverSample` 均不存在 →
+>    下文「河流系统（RTF 范式）」整节作废。
+>    **现行河流见 `worldgen/hydrology/`**（`riverline/RiverLineNetwork` + `flowaccum/FlowField`）。
+> 3. **`RiverField` / `RiverSettings` / `HydraulicErosion` / `TileLakeSolver` 不存在**（旧方案，早已删除）。
+> 4. **`TileCache`（256 tiles / 30s TTL）不是本项目的** —— 那是参考项目 **FreeTerraForged** 的设计。
+>    本项目为 `GeoGenesisTerrain` 的 chunk Cell 缓存（容量 **4096**，2026-09-11 起为**真 LRU**）
+>    + `CellGenerator` 的侵蚀 tile 缓存（容量 **256**，**真 LRU**，**无 TTL**）。
+> 5. **`LandShape` 的"省权重 softmax"未实现**：实际为 `TypeLandShape` 的 Voronoi + 高斯权重；
+>    `GeoGenesisConfig` 的 `province*` / `craton*` / `belt*` 系列参数**全为零调用的死配置**。
+> 6. **`cascadeLocal` 并非"没有安息角"**：其高差阈值等价于**固定 ≈38.7° 安息角**
+>    （SimpleHydrology `maxdiff=0.01 × mapscale=80`）；真正差距是角度**不随物质/气候分异**。
+>
+> ---
+>
 > **✅ 当前进度（2026-07-13）**：地形引擎已整体重写为**地质过程范式**（单一连续场 `e(x,z)`，大陆性 `c` 是单一连续噪声，海陆仅是对同一场的条件切分）。阶段 1（统一场地形管线）、阶段 2（河谷刻蚀，原 `RiverField` 粗格点河网方案，已废弃）、阶段 3（多营力局部侵蚀 ErosionSystem）**均已编码并接线**，BUILD SUCCESSFUL。气候→群系已接游戏（BiomeClassifier 按 `TerrainClass × Climate` 选原版群系）。`runClient`/`runPreview` 目检待做。河流系统现行方案见下方「河流系统」章节（`RiverNetwork`/`FlowRiverBuilder`）。
 >
 > **⚠️ 已知不一致**：`GeoGenesisGenerator` 的世界高度（`WORLD_MIN_Y/MIN_Y`、`WORLD_MAX_Y/MAX_Y`、`SEA_LEVEL`）目前**硬编码**，`GeoGenesisConfig` 的 `World Height` 段（seaLevel/minY/maxY）**暂未驱动 generator**（仅注入 HeightCurve 做 e→Y 映射）。River / Erosion 参数当前仅代码 `defaults()`，**未暴露到 Forge Config**。
@@ -55,19 +81,15 @@ com.geogenesis
     │   ├── TerrainParams.java        # record：全部地质过程参数载体 [ACTIVE]
     │   ├── Size.java                 # 尺度载体（horizontalScale）
     │   └── SplineUtil.java           # 样条工具（cubic Hermite）
-    ├── river/                      # 河流网（2026-07-13 粗格点下坡汇流，替代旧 droplet/HydraulicErosion）
-    │   ├── HeightProvider.java       # 接口：landHeight(陆地 e / 海洋 NaN) + provinceWeights [ACTIVE]
-    │   ├── RiverField.java           # 世界坐标确定性河网：粗格点下坡汇流 + 流量门控 + 多级刻蚀 + LongCache [ACTIVE]
-    │   ├── RiverSample.java          # 运行期采样载体（riverMask/riverDistance/riverWetness/flowCount/...）[ACTIVE]
-    │   └── RiverSettings.java        # record：gridSize/width/minE/waterfallDrop/sourceLakeChance/... [ACTIVE]
-    ├── erosion/                    # 多营力局部侵蚀（2026-07-13 复活，全新局部算子框架）
-    │   ├── ErosionSystem.java        # 编排器：按固定顺序组合各 agent 作用于统一 e 场 [ACTIVE]
-    │   ├── ErosionAgent.java         # 局部算子接口（仅访问 pad 邻域，无 border 断裂）[ACTIVE]
-    │   ├── Thermal.java              # 坡积软化（v1 主效）[ACTIVE]
-    │   ├── Coastal.java              # 海岸冲刷（v1 主效）[ACTIVE]
-    │   ├── Glacial.java              # 冰川（已实现，气候门控留桩）[ACTIVE]
-    │   ├── Wind.java                 # 风蚀（已实现，气候门控留桩）[ACTIVE]
-    │   └── ErosionSettings.java      # record：各 agent 强度/气候权重 [ACTIVE]
+    ├── river/                      # ❌ 不存在（RTF 已删除，见文首校正 #2/#3）
+    ├── erosion/                    # 侵蚀（⚠️ 2026-09-11 校正：实际仅 2 个文件）
+    │   ├── ErosionEngine.java        # 液滴水力侵蚀（SimpleHydrology 型，物质守恒）+ cascadeLocal 塌落 [ACTIVE]
+    │   └── RidgeValleyErosion.java   # 脊-谷条纹骨架滤镜 [ACTIVE]
+    │   # ❌ 从未存在/已删：ErosionSystem | ErosionAgent | Thermal | Coastal | Glacial | Wind | ErosionSettings
+    ├── hydrology/                  # ★ 现行河流实现（2026-08-28 D8 汇流场范式）
+    │   ├── riverline/RiverLineNetwork.java   # D8 派生河线 + Leopold-Maddock 宽深 + PAVA 单调水面 + 瀑布/湖泊 [ACTIVE]
+    │   ├── flowaccum/FlowField.java          # D8 流向 + 汇流累积（region 网格 + margin 纯函数）[ACTIVE]
+    │   └── HydrologyBlockCarver.java          # 邻近段 IDW 雕刻（只下挖 + 灌水门控）[ACTIVE]
     └── noise/                      # 噪声原语（27 个文件：NoiseEngine 封装 + 各类噪声）
 ```
 
@@ -83,12 +105,14 @@ new GeoGenesisTerrain(CellGenerator)        // GeoGenesisGenerator.ensureEngine
   ├─ CellGenerator.sample(x,z):                          ← 统一连续场中枢
   │     cBiased    = clamp(c - continentBias, 0, 1)      （正=更多海，负=更多陆）
   │     eOcean     = min(HeightCurve.eFromC(cBiased) + seabed, 0)   （海洋基面，样条定深）
-  │     eLand      = LandShape.sample(...)               （省权重 softmax + 过程形态 + 海岸衰减）
+  │     eLand      = TypeLandShape.sample(...)            （Voronoi 类型场 + 过程形态 + 海岸衰减）
+  │                 # ⚠️ 2026-09-11 校正：类名是 TypeLandShape（非 LandShape）；"省权重 softmax"未实现
   │     landW      = smoother(clamp((cBiased - threshold)/(coastWidth*1.5), 0, 1))
   │     e          = lerp(eOcean, eLand, landW)          （单一 e 场，海岸 C0 连续，无硬切）
   │     terrainType= classify(e, eLand, provinceWeights) （实测 e<0 → 海洋）
-  ├─ ErosionSystem.apply(eGrid)    ← 多营力局部侵蚀（Thermal/Coastal/Glacial/Wind），侵蚀先于河流
-  └─ RiverField.apply(cell, x, z)  ← 粗格点河网 + 河谷多级刻蚀（U 形谷 + 源/瀑盆雕琢）
+  ├─ extractFromTile(cells)        ← 侵蚀 tile（ErosionEngine 液滴水力 + 脊谷骨架）施加 delta
+  │                                 # ⚠️ 2026-09-11：原 ErosionSystem 不存在，见文首校正 #1
+  └─ applyHydrologyValley(cells)   ← 水文雕刻（D8 河网 + 湖泊/瀑布）回写 cell.height
 对外 API:
   double   sampleHeight(blockX, blockZ)     // 任意 block 高度（= cell.height）
   Cell     sampleCell(blockX, blockZ)       // 单格完整数据（带 chunk 级缓存）
@@ -150,7 +174,11 @@ GeoGenesisBiomeSource.getNoiseBiome(x, y, z, sampler)
 
 > ⚠️ **群系解析铁律（曾崩溃）**：1.20.1 群系是动态注册表，禁止用 `ForgeRegistries.BIOMES.getValue` / `BuiltInRegistries` 静态解析 `Holder<Biome>`。必须经由 `RegistryOps.retrieveGetter(Registries.BIOME)` 在 BiomeSource CODEC 解码时取 `HolderGetter<Biome>`，运行时再 `getOrThrow(Biomes.XXX)`。详见 `docs/06-历史归档/00-设计陷阱与经验教训-design-pitfalls.md`。
 
-## 多营力侵蚀（局部算子，2026-07-13）
+## ~~多营力侵蚀（局部算子，2026-07-13）~~ ❌ 作废（2026-09-11）
+
+> 经源码核查：`ErosionSystem` / `ErosionAgent` / `Thermal` / `Coastal` / `Glacial` / `Wind`
+> **均不存在**，本节描述的系统**从未落地**。实际仅 `ErosionEngine`（液滴水力侵蚀 + 塌落）
+> 与 `RidgeValleyErosion`（脊谷骨架）。详见文首「2026-09-11 事实校正」#1。以下原文仅作历史留痕：
 
 `worldgen/erosion/` 复活为**全新局部算子框架**（非旧粒子系统）：
 
@@ -160,7 +188,14 @@ GeoGenesisBiomeSource.getNoiseBiome(x, y, z, sampler)
 - 调用约定：`GeoGenesisTerrain.generateChunk` 在采样之后、**河流刻蚀之前**调用 `erosion.apply`，避免侵蚀回填河谷。
 - v1 默认强度（见 `ErosionSettings.defaults()`）：Thermal/Coastal 生效，Glacial/Wind 弱或留桩。
 
-## 河流系统（RTF 范式：几何河网 + 河谷雕刻，2026-08-26 整体重构）
+## ~~河流系统（RTF 范式：几何河网 + 河谷雕刻，2026-08-26 整体重构）~~ ❌ 作废（2026-09-11）
+
+> 经源码核查：`worldgen/river/` RTF 全套（`RiverNetwork` / `RTFRiverGenerator` / `ValleyRiverCarver` /
+> `RiverCarver` / `RiverWarp` / `Network` / `Rivermap` / `RiverConfig` / `RiverSample`）**已删除**
+> （2026-08-28 被 D8 汇流场范式取代）。**现行河流实现见 `worldgen/hydrology/`**：
+> `riverline/RiverLineNetwork`（D8 派生河线 + Leopold-Maddock 宽深幂律 + PAVA 加权单调水面 + 瀑布/湖泊）
+> + `flowaccum/FlowField`（D8 流向 / 汇流累积）+ `HydrologyBlockCarver`（邻近段 IDW 雕刻）。
+> 详见文首「2026-09-11 事实校正」#2。以下原文仅作 2026-08-26 阶段的历史留痕：
 
 `worldgen/river/` 为 **RTF（FreeTerraForged）范式**：几何河网 + Zone1-4 平滑河谷雕刻 + `waterTable` 预计算水面。取代此前三轮 D8 全追踪（路线不合理/各流各的/河床断裂/破坏性切地形的全部根源）。
 
@@ -226,8 +261,11 @@ GeoGenesisBiomeSource.getNoiseBiome(x, y, z, sampler)
 
 ## Performance Notes
 
-- 地形引擎 chunk 级缓存：`GeoGenesisTerrain` 按 chunk 网格（16×16）缓存 `Cell[]`（256 上限，LRU 半清），跨 chunk 共享，无 tile 边界断裂。
-- `ErosionSystem`（pad=2 邻域）确定性、跨 chunk 无缝；`RiverNetwork`（世界坐标纯函数 + 跨 9 邻 plate 合并查询）确定性、跨 chunk 无缝，热路径无注册表查找。
+- 地形引擎 chunk 级缓存：`GeoGenesisTerrain` 按 chunk 网格（16×16）缓存 `Cell[]`，容量 **4096**、**真 LRU**（2026-09-11 起，`LinkedHashMap(accessOrder=true)`），跨 chunk 共享，无 tile 边界断裂。
+- 侵蚀 tile 缓存：`CellGenerator`，容量 **256**、**真 LRU**（按 `lastAccess` 淘汰最久未访问者），**无 TTL**；含 `CacheStats` 命中率埋点（`chunkCacheStats()` / `tileCacheStats()`）。
+  - ⚠️ 2026-09-11 校正：原述「256 上限，LRU 半清」与「`TileCache` + 30s TTL」均**失实**（后者是 FreeTerraForged 的设计，不是本项目的）。
+- `getBaseHeight` / `getBaseColumn` 走**非阻塞两级降级**（2026-09-11 修复）：已生成 chunk 取缓存精确值；未生成则廉价重算 —— **绝不触发冷侵蚀 tile**（原实现单次可达 ~2.2s）。
+- 侵蚀（`ErosionEngine`）与河网（`RiverLineNetwork`）均为确定性纯函数、跨 chunk 无缝，热路径无注册表查找。
 - 预览 `getRegionCells` 直接采样 `CellGenerator`（纯 Java，不启动 MC），复用与游戏同一套地形逻辑。
 
 ## 参考项目（World-Preview-TFC）

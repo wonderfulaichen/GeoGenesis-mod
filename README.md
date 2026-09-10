@@ -30,7 +30,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 
 | 文件 | 作用 |
 |------|------|
-| `AGENTS.md` | IDE 自动扫描，项目速览（**勿手动编辑**） |
+| `AGENTS.md` | 项目速览 + 逐日「当前工作焦点」开发笔记（**需随代码变更手动更新**） |
 | `ARCHITECTURE.md` | 核心架构设计，配置表，注册流程 |
 | `forge-1.20.1-47.4.10-mdk/CHANGELOG.md` | v0.0.1 发布记录 |
 
@@ -42,22 +42,27 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 │   └── GeoGenesisConfig.java           # Forge 配置（COMMON/DCLIENT）
 ├── worldgen/
 │   ├── generator/
-│   │   ├── GeoGenesisGenerator.java    # 主生成器，fillFromNoise
-│   │   ├── GeoGenesisTerrain.java      # 地形引擎（TileCache + RiverField）
-│   │   └── BiomeMapper.java            # 分类器 → 原版群系映射
+│   │   ├── GeoGenesisGenerator.java    # 主生成器，fillFromNoise / getBaseHeight（非阻塞降级）
+│   │   └── GeoGenesisBiomeSource.java  # BiomeSource（委托 BiomeClassifier）
 │   ├── terrain/
-│   │   ├── CellGenerator.java          # 逐 cell 地形计算（StructuralField + TerrainBlender）
-│   │   ├── StructuralField.java        # 地质背景场（省权重）
-│   │   ├── TerrainBlender.java         # 过程形态合成
-│   │   ├── HeightCurve.java            # 高度映射曲线
-│   │   ├── HeightProvider.java         # 高度提供接口
-│   │   ├── RiverNetwork.java           # 河流系统门面（确定性几何河网，替代旧 RiverField）
-│   │   ├── HydraulicErosion.java       # 水滴侵蚀引擎
-│   │   ├── TileLakeSolver.java         # 湖泊求解器
-│   │   └── Cell.java / RiverSample.java / RiverRegion.java / TileCache.java
+│   │   ├── GeoGenesisTerrain.java      # 地形引擎门面（chunk Cell 真 LRU 缓存 + 装配侵蚀/水文）
+│   │   ├── CellGenerator.java          # 逐 cell 地形计算 + 侵蚀 tile（terrainEQuick 廉价采样）
+│   │   ├── TypeLandShape.java          # 地形类型形态（Voronoi + 高斯权重）
+│   │   ├── TypeNoiseProvider.java      # 每类型噪声配方
+│   │   ├── HeightCurve.java            # 高度映射曲线（cubic Hermite）
+│   │   ├── CacheStats.java             # 缓存命中埋点（2026-09-11 新增）
+│   │   └── Cell.java / TerrainClass.java / ...
+│   ├── erosion/
+│   │   ├── ErosionEngine.java          # 液滴水力侵蚀（SimpleHydrology 型，物质守恒）
+│   │   └── RidgeValleyErosion.java     # 脊-谷条纹骨架滤镜
+│   ├── hydrology/                      # ★ 现行河流实现（2026-08-28 D8 汇流场范式）
+│   │   ├── riverline/RiverLineNetwork.java   # D8 河线 + Leopold-Maddock 宽深 + PAVA 水面
+│   │   ├── flowaccum/FlowField.java          # D8 流向 + 汇流累积
+│   │   └── HydrologyBlockCarver.java          # 邻近段 IDW 雕刻
 │   └── climate/
-│       ├── BiomeClassifier.java        # 零依赖群系分类
-│       ├── ClimateZone.java            # Köppen 气候带
+│       ├── BiomeClassifier.java        # 零依赖群系分类（Whittaker 群区 × 垂直带谱）
+│       ├── WhittakerType.java          # Whittaker 群区
+│       ├── ClimateZone.java            # Köppen 气候带（已被 Whittaker 边缘化）
 │       └── Latitude.java               # 纬度带
 ├── client/
 │   ├── GeoGenesisConfigScreen.java     # 游戏内配置/预览屏（三页标签）
@@ -124,7 +129,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 
 ## 注意事项
 
-- `AGENTS.md` 由 IDE 自动维护，勿手动编辑
+- `AGENTS.md` 记录项目速览与逐日开发焦点，**需随代码变更手动更新**（并非 IDE 自动生成，勿轻信"勿编辑"的旧说明）
 - 核心文档（`AGENTS.md`/`ARCHITECTURE.md`）保留在根目录
 - 设计/计划/修复文档已分类到 `docs/` 子目录
 - 侵蚀测试工具已废弃但保留（用户确认）
