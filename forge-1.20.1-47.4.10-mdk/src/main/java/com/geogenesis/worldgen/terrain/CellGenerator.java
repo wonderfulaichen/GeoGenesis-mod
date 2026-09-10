@@ -107,6 +107,13 @@ public final class CellGenerator {
      * {@code Climate.temperature ∈ [-1,1]} 对应约 −40…+40 °C → 1 e 单位 ≈ 40 °C。
      */
     private static final double DEG_C_PER_E_UNIT = 40.0;
+
+    /**
+     * 纬度降水廓线参考值（★ Phase D）：把 {@link LatPrecipProfile} 折算到均值 ≈1，
+     * 使"区域层降水"与旧"区域层湿度"量级可比，避免切换后全图群系整体漂移。
+     * 0.70 ≈ 廓线在 lat01∈[0,1] 上的平均（控制点 1.40 / 0.30 / 1.00 / 0.35 / 0.25）。
+     */
+    private static final double LAT_PRECIP_REF = 0.70;
     /** 气候区尺寸（wu），区界扰动幅度按它取 */
     private final double regionSize;
     /** 区界扰动噪声：让 Voronoi 边界蜿蜒（否则边界是直线/大块多边形） */
@@ -298,9 +305,19 @@ public final class CellGenerator {
         ClimateRegion.Sample reg = climateRegion.sample(rx, rz);
 
         // ① 区域层：只算群区
+        // ★ 2026-09-11 Phase D：Whittaker 的"降水轴"由【区域层湿度】换成【区域层降水】——
+        //   区域层湿度 × 纬度降水廓线（ITCZ 峰 / 副热带谷 / 西风带次峰 / 极地低）。
+        //
+        //   为什么必须用【区域层】而非逐格连续的 cell.precipitation：
+        //   逐格值含 96wu 尺度的地形雨/雨影 → 群区会随之地形破碎，退化成"椒盐群系"
+        //   （本项目在温湿度上踩过这个坑，见下方"双轨模型"注释）。
+        //   区域层 → 区内恒定 → 群系仍成片；纬度结构则带来了真正的"行星级"分异。
+        double regionMoist01 = clamp(regionMoisture(reg) * 0.5 + 0.5, 0.0, 1.0);
+        double regionPrecip01 = clamp(
+            regionMoist01 * LatPrecipProfile.at(Latitude.latitude01(wz, params.latitudeScale()))
+                / LAT_PRECIP_REF, 0.0, 1.0);
         cell.biomeType = WhittakerType.classify(
-            clamp(regionTemperature(reg) * 0.5 + 0.5, 0.0, 1.0),
-            clamp(regionMoisture(reg) * 0.5 + 0.5, 0.0, 1.0));
+            clamp(regionTemperature(reg) * 0.5 + 0.5, 0.0, 1.0), regionPrecip01);
 
         // ② 连续层：纬度 + 低频噪声，再叠加逐格地形修正
         double temp = temperatureAt(wx, wz);
