@@ -169,7 +169,40 @@ public final class PrecipFieldProbe {
                 pw.ref() * Math.pow(meanW, 1.0 / pw.exponent()), pw.ref(), pw.exponent());
         }
 
-        boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6 && pass7;
+        // ================= [8] Phase D：荒漠是否落在副热带高压带 =================
+        //   Phase D 把 Whittaker 的降水轴换成"区域层湿度 × 纬度降水廓线"。
+        //   聚合看会相互抵消（副热带变干 + 赤道变湿），必须【按纬度细分】才看得见。
+        final int B = 8;
+        int[] total = new int[B], desert = new int[B], rain = new int[B];
+        for (double z = 0; z <= 7000; z += 121) {
+            int b = Math.min(B - 1, (int) (Latitude.latitude01(z, LAT_SCALE) * B));
+            for (double x = -6000; x <= 6000; x += 199) {
+                Cell c = gen.sample(x, z);
+                if (c.e < 0) continue;
+                total[b]++;
+                if (c.biomeType == WhittakerType.DESERT) desert[b]++;
+                if (c.biomeType == WhittakerType.TROPICAL_RAINFOREST) rain[b]++;
+            }
+        }
+        System.out.println("[8] Phase D 群区随纬度（每 1/" + B + " 纬度带，只统计陆地）");
+        System.out.println("    lat01带     样本    DESERT    RAINFOREST   参考");
+        int peakB = -1;
+        double peak = -1;
+        for (int b = 0; b < B; b++) {
+            if (total[b] == 0) continue;
+            double dr = 100.0 * desert[b] / total[b];
+            double rr = 100.0 * rain[b] / total[b];
+            if (dr > peak) { peak = dr; peakB = b; }
+            System.out.printf("    %.3f~%.3f  %5d   %6.1f%%   %8.1f%%     %s%n",
+                b / (double) B, (b + 1) / (double) B, total[b], dr, rr,
+                b == 0 ? "ITCZ 应最湿" : (b >= 2 && b <= 4 ? "副热带 应最干" : ""));
+        }
+        boolean pass8 = peakB >= 2 && peakB <= 4;
+        System.out.printf("    荒漠占比峰值带 = %.3f~%.3f  %s%n",
+            peakB / (double) B, (peakB + 1) / (double) B,
+            pass8 ? "PASS（落在副热带高压带 2/8~5/8）" : "FAIL（未落在副热带）");
+
+        boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
     }
 }
