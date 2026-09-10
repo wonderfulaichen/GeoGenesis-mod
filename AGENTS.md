@@ -31,8 +31,8 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `client/preview/ColorMap.java` | 零依赖连续色带（Lab 插值 + bake LUT），不 import MC |
 | `client/preview/GeoPalette.java` | 零依赖配色中枢：`PreviewLayer` 注册表 + 多内置色带 + 离散映射 + 覆盖接口 + 图例条目 |
 | `client/preview/PreviewColor.java` | MC 侧着色外观，委托 `GeoPalette` 输出各图层 ABGR |
-| `client/preview/PreviewDisplay.java` | 游戏内预览控件（11 图层 + 图例 + 分辨率/色带 + 水文 + 拖拽防抖） |
-| `client/preview/TerrainPreview.java` | 独立 Swing 预览窗口（11 图层 + 图例搜索 + 分辨率 + 水文） |
+| `client/preview/PreviewDisplay.java` | 游戏内预览控件（15 图层 + 图例 + 分辨率/色带 + 水文 + 拖拽防抖） |
+| `client/preview/TerrainPreview.java` | 独立 Swing 预览窗口（15 图层 + 图例搜索 + 分辨率 + 水文） |
 | `client/preview/GeoGenesisColorReloadListener.java` | MC 资源重载监听器，JSON 资源包覆盖 `GeoPalette` 默认 |
 | `client/GeoGenesisConfigScreen.java` | 游戏内预览/配置屏（三页标签：地形/气候/参数 + 右侧工具栏 + 预览） |
 | `client/ParamSlider.java` | 通用参数滑块（含重置按钮 + tooltip） |

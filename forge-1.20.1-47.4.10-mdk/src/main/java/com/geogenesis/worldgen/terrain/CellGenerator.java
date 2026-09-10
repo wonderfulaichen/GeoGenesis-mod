@@ -4,7 +4,10 @@ import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.climate.ClimateRegion;
 import com.geogenesis.worldgen.climate.ClimateSpline;
 import com.geogenesis.worldgen.climate.Latitude;
+import com.geogenesis.worldgen.climate.LatPrecipProfile;
+import com.geogenesis.worldgen.climate.PrecipField;
 import com.geogenesis.worldgen.climate.WhittakerType;
+import com.geogenesis.worldgen.climate.WindField;
 import com.geogenesis.worldgen.erosion.ErosionEngine;
 import com.geogenesis.worldgen.erosion.RidgeValleyErosion;
 import com.geogenesis.worldgen.noise.*;
@@ -97,6 +100,13 @@ public final class CellGenerator {
     private final Noise humidityNoise; // 独立湿度噪声
     /** 气候区（抖动 Voronoi）：区内温湿恒定，消除群系椒盐碎斑 */
     private final ClimateRegion climateRegion;
+    /** 降水的地形调制场（★ 2026-09-11 Phase B）：地形雨 / 雨影 / 焚风 */
+    private final PrecipField precipField;
+    /**
+     * 温度 e 单位的"每单位多少 °C"换算（焚风用）。
+     * {@code Climate.temperature ∈ [-1,1]} 对应约 −40…+40 °C → 1 e 单位 ≈ 40 °C。
+     */
+    private static final double DEG_C_PER_E_UNIT = 40.0;
     /** 气候区尺寸（wu），区界扰动幅度按它取 */
     private final double regionSize;
     /** 区界扰动噪声：让 Voronoi 边界蜿蜒（否则边界是直线/大块多边形） */
@@ -134,6 +144,13 @@ public final class CellGenerator {
         this.humidityNoise = new Frequency(new Simplex(502), 1.0 / p.humidityScale());
         this.climateRegion = new ClimateRegion(p.climateRegionSize());
         this.regionSize = p.climateRegionSize();
+
+        // 降水地形调制场（★ Phase B）：高度取用走"廉价 + 绝不触发侵蚀 tile"铁律 ——
+        // heightFromE(terrainEQuick(·)) 是纯噪声场，与 FlowAccumProbe 的 baseGround 同源。
+        // 种子在 seed() 里注入（此处先给 0）。
+        this.precipField = new PrecipField(0L,
+            (x, z) -> heightCurve.heightFromE(terrainEQuick(x, z)),
+            p.latitudeScale(), PrecipField.Params.defaults(), WindField.Params.defaults());
         // 波长 ≈1.5 个气候区：边界以该尺度蜿蜒，观感自然
         this.regionWarp = new Frequency(new Simplex(503), 1.0 / (p.climateRegionSize() * 1.5));
         // 波长 ≈0.75 个气候区：绿洲斑块与气候区同尺度，是"断续的绿洲群"而非细碎噪点
@@ -145,6 +162,7 @@ public final class CellGenerator {
         continent.seed(worldSeed);
         typeLandShape.seed(worldSeed);
         seaBed.seed(worldSeed);
+        precipField.setSeed(worldSeed);   // ★ Phase B：降水场随世界种子重置
         // 海山中心水深检查：计算中心点的真实 eOcean（含 seabed，不含海山增量）
         // 仅在 eOcean_at_center < -0.20（足够深）时才允许生成海山
         oceanFeatures.setSeamountDepthChecker((wx, wz) -> {
@@ -286,11 +304,16 @@ public final class CellGenerator {
         double temp = temperatureAt(wx, wz);
         temp *= 0.85 + 0.15 * clamp(cell.continent * 1.5, 0.0, 1.0);    // 大陆性温差（逐格）
         temp -= elevationTempDrop(cell.e);                              // 海拔递减（逐格）
+
+        // ★ 2026-09-11 Phase B：降水地形调制（地形雨 / 雨影 / 焚风）。
+        //   一次"上风向回扫"同时得出三者；焚风为背风坡干绝热下沉增温，并入温度。
+        PrecipField.Mod pm = precipField.at(wx, wz);
+        temp += pm.foehnWarm() / DEG_C_PER_E_UNIT;
         temp = clamp(temp, -1.0, 1.0);
 
         double hum = humidityNoise.compute(wx, wz) * 0.75;               // 低频平滑湿度噪声
         hum = continentMoisture(hum, cell.continent);                     // 大陆性：沿海湿 / 内陆干（逐格）
-        hum -= elevationMoistureDrop(cell.e);                             // 山地雨影（背风坡/高海拔变干，逐格）
+        hum -= elevationMoistureDrop(cell.e);                             // 高海拔变干（逐格）
         hum = clamp(hum, -1.0, 1.0);
 
         // 气候影响权重（tempInfluence / humidityInfluence / continentInfluence）
@@ -302,9 +325,14 @@ public final class CellGenerator {
         double humE = clamp(hum * humInf, -1.0, 1.0);
         double contE = clamp(cell.continent * contInf, -1.0, 1.0);
 
-        cell.climate = new com.geogenesis.worldgen.climate.Climate(tempE, humE, contE);
+        // ★ 2026-09-11 Phase B：降水 = 纬度廓线 × 湿度 × (1+地形雨) × (1−雨影) × 温度门控
+        double precipE = precipitationFrom(humE, tempE,
+            Latitude.latitude01(wz, params.latitudeScale()), pm);
+
+        cell.climate = new com.geogenesis.worldgen.climate.Climate(tempE, humE, contE, precipE);
         cell.temperature = tempE;
         cell.humidity = humE;
+        cell.precipitation = precipE;
 
         // 9. 雪线（单一来源）：配置基准 + 纬度（温度）耦合 + 湿度耦合。
         //    —— 干区雪线升高、湿区降低；暖区升高、寒区降低。
@@ -1276,6 +1304,33 @@ public final class CellGenerator {
     }
 
     // ===== 内联工具 =====
+
+    /**
+     * 降水合成（★ 2026-09-11 Phase B）。
+     *
+     * <pre>
+     * precip = humidity01        // 水汽供给（湿度 [−1,1] → [0,1]）
+     *        × LatPrecipProfile   // 纬度结构（ITCZ 峰 / 副热带谷 / 西风带次峰 / 极地低）
+     *        × (1 + 地形雨)        // 迎风坡抬升凝结
+     *        × (1 − 雨影)          // 背风坡减雨
+     *        × tempGate           // 冷空气持水能力低（下限 0.55，不归零）
+     * </pre>
+     *
+     * <p><b>Phase B 只"产出"降水</b>（写入 {@link Cell#precipitation} 与
+     * {@link com.geogenesis.worldgen.climate.Climate#precipitation}）：
+     * <b>尚未驱动水文</b>（Phase C 才把汇流累积改为受降水加权），
+     * 也<b>尚未参与 Whittaker 群区</b>（Phase D 才切换，避免群系立刻漂移）。</p>
+     *
+     * @return 归一化降水 [0, 1.5]
+     */
+    private static double precipitationFrom(double humE, double tempE, double lat01,
+                                            PrecipField.Mod pm) {
+        double humidity01 = clamp(humE * 0.5 + 0.5, 0.0, 1.0);
+        double base = humidity01 * LatPrecipProfile.at(lat01);
+        double tempGate = 0.55 + 0.45 * ((tempE + 1.0) * 0.5);   // 冷 → 0.55，热 → 1.0
+        double v = base * (1.0 + pm.orographicGain()) * (1.0 - pm.shadowLoss()) * tempGate;
+        return clamp(v, 0.0, 1.5);
+    }
 
     /**
      * 计算温度的"寒冷权重"（样条连续值）。

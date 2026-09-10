@@ -7,7 +7,8 @@ import com.geogenesis.config.GeoGenesisConfig;
  * 气候容器（零依赖，不持颜色）。
  *
  * <p>temperature ∈ [-1,1]（冷→热）、humidity ∈ [-1,1]（干→湿）、
- * continentality ∈ [-1,1]（海洋→内陆，= MC 原版 Continentalness）。
+ * continentality ∈ [-1,1]（海洋→内陆，= MC 原版 Continentalness）、
+ * precipitation ∈ [0,1.5]（归一化<b>降水</b>，★ 2026-09-11 Phase B 新增）。
  *
  * <p>v2 重构（2026-07-21）：阈值从离散 boolean 判断升级为样条控制点。
  * 每个条件维度（温度/湿度/大陆性）有一条 Cubic Hermite 样条，阈值作为控制点，
@@ -15,9 +16,9 @@ import com.geogenesis.config.GeoGenesisConfig;
  *
  * <p>v3（2026-07-22）：加入 continentality 字段，用于群系大陆性分支判断。
  */
-public record Climate(double temperature, double humidity, double continentality) {
+public record Climate(double temperature, double humidity, double continentality, double precipitation) {
 
-    public static final Climate DEFAULT = new Climate(0.0, 0.0, 0.0);
+    public static final Climate DEFAULT = new Climate(0.0, 0.0, 0.0, 0.0);
 
     /** 从 GeoGenesisConfig 加载阈值（在 mod 初始化时调用，兼容旧代码） */
     public static void loadFromConfig() {

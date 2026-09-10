@@ -50,7 +50,7 @@ com.geogenesis
 │   ├── ParamSlider.java            # 通用参数滑块（含重置按钮 + tooltip）
 │   ├── TerrainConfigPanel.java     # 地形页：基础因素曲线图 + 控制点滑块（可折叠）
 │   ├── BasicParamsPanel.java       # 参数页：噪声/尺度/海平面/雪线等基础参数滑块
-│   └── preview/                    # 渲染/热力图/叠加/控制面板（11 图层 + 图例）
+│   └── preview/                    # 渲染/热力图/叠加/控制面板（15 图层 + 图例，含降水）
 │       ├── TerrainPreview.java      # 独立 Swing 预览窗口
 │       ├── PreviewDisplay.java      # 游戏内预览控件
 │       ├── PreviewColor.java        # MC 侧着色外观，委托 GeoPalette
