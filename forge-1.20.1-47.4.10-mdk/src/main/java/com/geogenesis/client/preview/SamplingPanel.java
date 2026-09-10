@@ -34,6 +34,15 @@ public class SamplingPanel extends ConfigPanel {
             boolean h = drawButton(g, bx, by, bw, BTN_H, SCALES[i] + "×", active, mx, my);
             if (h) hoverTooltip = Component.literal(I18n.get("geogenesis.settings.sampling.scale_" + SCALES[i] + ".tooltip"));
         }
+        // ★ 大范围预览开关（2026-09-11）：开启后缩小超过 1:16 走 LargeAreaSampler
+        //   （固定 64×64 采样，开销与视野无关）→ 可查看数万格的气候格局与纬度分带。
+        int ty = btnY(2);
+        boolean large = preview.isLargeArea();
+        boolean hl = drawButton(g, x, ty, w, BTN_H,
+                I18n.get(large ? "geogenesis.settings.sampling.large.on"
+                               : "geogenesis.settings.sampling.large.off"),
+                large, mx, my);
+        if (hl) hoverTooltip = Component.literal(I18n.get("geogenesis.settings.sampling.large.tooltip"));
     }
 
     @Override
@@ -46,6 +55,9 @@ public class SamplingPanel extends ConfigPanel {
             if (hit(bx, by, bw, BTN_H, mx, my)) {
                 preview.setRenderScale(SCALES[i]); playClick(); return true;
             }
+        }
+        if (hit(x, btnY(2), w, BTN_H, mx, my)) {
+            preview.setLargeArea(!preview.isLargeArea()); playClick(); return true;
         }
         return false;
     }

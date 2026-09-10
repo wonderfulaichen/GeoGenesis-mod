@@ -61,6 +61,16 @@ public class PreviewDisplay extends AbstractWidget {
     private int texW, texH;
     /** 每纹理像素对应的世界块数。越大越缩。 */
     public int scaleBlockPos = 1;
+    /**
+     * ★ 大范围模式（2026-09-11）：{@code scaleBlockPos > 16} 时走 {@link LargeAreaSampler}。
+     *
+     * <p><b>为什么必须换管线</b>：{@code chunk/} 引擎是【按 chunk 遍历】且
+     * {@code ChunkWorkUnit.blockStride} 上限为 16 —— 视口 30 万格时绘制循环要约 3.7 亿次迭代。
+     * 大范围必须走"固定采样数 + 步长缩放"（FreeTerraForged 同款），开销与视野无关。</p>
+     */
+    private boolean largeArea = false;
+    private LargeAreaSampler.Grid largeGrid;
+    private long largeGridId = Long.MIN_VALUE;
     /** 纹理超采样倍率（渲染分辨率 = 预览窗口逻辑分辨率 × renderScale）。
      *  1=显示器模型（纹理=窗口逻辑像素，GPU 负责 DPI 上采样，最快）；2/3/4=更锐利但更慢。 */
     public int renderScale = 1;
@@ -285,8 +295,12 @@ public class PreviewDisplay extends AbstractWidget {
             hoverX = -1; hoverZ = -1;
         }
 
-        queue.queueGeneration(centerX + (int) totalDragX,
-                centerZ + (int) totalDragZ, blocksWide, blocksHigh);
+        // ★ 大范围模式不走 chunk 队列（按 chunk 遍历 + stride≤16 → 视口 30 万格约 3.7 亿次迭代）；
+        //   其采样在 paintLargeArea 内按视口标识增量执行（固定 64×64，约 40ms）。
+        if (!largeArea) {
+            queue.queueGeneration(centerX + (int) totalDragX,
+                    centerZ + (int) totalDragZ, blocksWide, blocksHigh);
+        }
 
         // ★ 脏检查：只有视口移动 / 新数据到位 / 图层或选中变化 / 显式 needsClear 才重画+重传。
         //   静止帧（无拖拽、无新 chunk）直接 blit GPU 旧纹理 → 0 CPU 重画，消除"打架/撕裂"。
@@ -305,13 +319,18 @@ public class PreviewDisplay extends AbstractWidget {
             //   dirty 本身已被视口移动/新数据/图层变化严格门控，多一次 fillRect（O(texW×texH)≈1ms）安全。
             image.fillRect(0, 0, texW, texH, 0);
             needsClear = false;
-            paintAvailableChunks(originWx, originWz, blocksWide, blocksHigh);
+            if (largeArea) {
+                paintLargeArea(originWx, originWz, blocksWide, blocksHigh);
+            } else {
+                paintAvailableChunks(originWx, originWz, blocksWide, blocksHigh);
+            }
 
             // 真实性地形阴影（逐像素高度梯度法线 · 光源点乘）：由 TerrainUnderlay 全局控制，
             // 对图层无关（气候/地形数据均可披真实地形明暗）。
             // 拖拽中按 dragSimplify 开关跳过（最贵的一步：全图 3 遍 + 每像素缓存查找），
             // 松手后 needsClear 补画。false = 拖动也画完整阴影（接受掉帧）。
-            if ((!dragging || !dragSimplify)
+            // ★ 大范围模式跳过：坡度阴影从 cellCache 取高度，而大范围模式不走 chunk 缓存（会是空数据）
+            if (!largeArea && (!dragging || !dragSimplify)
                     && GeoPalette.getTerrainUnderlay() == GeoPalette.TerrainUnderlay.SHADE) {
                 applySlopeShading(image, originWx, originWz);
             }
@@ -365,6 +384,58 @@ public class PreviewDisplay extends AbstractWidget {
         frameTimes.add(elapsed);
         if (frameTimes.size() > 30) frameTimes.poll();
     }
+
+    /**
+     * 大范围绘制（★ 2026-09-11）：用 {@link LargeAreaSampler} 的固定采样网格上采样填充纹理。
+     *
+     * <p>采样数恒为 {@link LargeAreaSampler#DEFAULT_GRID}²，<b>与视野无关</b>
+     * （FreeTerraForged {@code generateZoomed} 同款：固定采样缓冲 + 缩放只改步长）；
+     * 仅当视口（原点/尺寸）变化才重采。</p>
+     *
+     * <p><b>取舍</b>：本路径经 {@code sampleCellCoarse} —— 跳过侵蚀 tile 与河谷雕刻，
+     * 高度与实际落块相差一个侵蚀量级。用于看<b>气候格局 / 纬度分带 / 地形骨架</b>；
+     * 需要"预览 = 游戏"请缩小到 ≤1:16 回到精确管线。</p>
+     */
+    private void paintLargeArea(int originWx, int originWz, int blocksWide, int blocksHigh) {
+        long id = (long) originWx * 31L + originWz;
+        id = id * 131L + blocksWide;
+        id = id * 131L + blocksHigh;
+        if (largeGrid == null || largeGridId != id) {
+            largeGrid = LargeAreaSampler.sample(terrain, originWx, originWz,
+                    blocksWide, blocksHigh,
+                    LargeAreaSampler.DEFAULT_GRID, LargeAreaSampler.DEFAULT_GRID, id);
+            largeGridId = id;
+        }
+        int gw = largeGrid.gridW(), gh = largeGrid.gridH();
+        for (int py = 0; py < texH; py++) {
+            int gz = Math.min(gh - 1, py * gh / texH);
+            int wz = originWz + py * scaleBlockPos;
+            for (int px = 0; px < texW; px++) {
+                int gx = Math.min(gw - 1, px * gw / texW);
+                Cell c = largeGrid.at(gx, gz);
+                int color = 0;
+                if (c != null) {
+                    int wx = originWx + px * scaleBlockPos;   // 真实世界坐标（供纬度/坐标类图层）
+                    color = GeoPalette.color(activeLayer, c, wx, wz, minY, maxY, false);
+                }
+                image.setPixelRGBA(px, py, GeoPalette.toABGR(color));
+            }
+        }
+    }
+
+    /** 切换大范围模式（>1:16 走 {@link LargeAreaSampler}；关闭时回落精确管线并复位缩放）。 */
+    public void setLargeArea(boolean v) {
+        if (this.largeArea == v) return;
+        this.largeArea = v;
+        largeGrid = null;
+        largeGridId = Long.MIN_VALUE;
+        if (!v && scaleBlockPos > 16) scaleBlockPos = 16;
+        needsClear = true;
+        rebuildQueue();
+    }
+
+    /** 是否处于大范围模式。 */
+    public boolean isLargeArea() { return largeArea; }
 
     /** 坡度阴影后处理。
      *  1. 从 cellCache 提取高度数据
@@ -690,7 +761,8 @@ public class PreviewDisplay extends AbstractWidget {
         int next = current;
         if (delta > 0) {
             // 向上滚→更细（scale 减小）
-            if (current > 8) next = current / 2;
+            if (current > 16) next = Math.max(16, current / 2);   // ★ 大范围档退回
+            else if (current > 8) next = current / 2;
             else if (current > 4) next = 4;
             else if (current > 2) next = 2;
             else if (current > 1) next = 1;
@@ -700,6 +772,8 @@ public class PreviewDisplay extends AbstractWidget {
             else if (current < 4) next = 4;
             else if (current < 8) next = 8;
             else if (current < 16) next = 16;
+            // ★ 大范围：16 → 32 → … → 1024（走 LargeAreaSampler，开销与视野无关）
+            else if (largeArea && current < 1024) next = current * 2;
         }
         if (next != current) {
             scaleBlockPos = next;
