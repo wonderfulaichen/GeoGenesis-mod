@@ -406,6 +406,10 @@ public final class CellGenerator {
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
 
     private final ConcurrentHashMap<Long, ErosionTileResult> erosionTileCache = new ConcurrentHashMap<>(ERODE_TILE_CACHE_SIZE);
+    /** 侵蚀 tile 缓存命中统计（P0-3 埋点）。 */
+    private final CacheStats tileCacheStats = new CacheStats("erosionTile");
+    /** LRU 逻辑时钟（P0-3）：每次访问自增，驱逐时取最小者。 */
+    private final AtomicLong tileAccessClock = new AtomicLong();
     /** 侵蚀配置指纹快照（2026-08-06）：配置改动 → 侵蚀/河流 tile 缓存失效，避免旧配置结果被复用 */
     private long lastCfgFingerprint = Long.MIN_VALUE;
 
@@ -426,6 +430,8 @@ public final class CellGenerator {
         int tileCX, tileCZ;
         int originX, originZ;
         int erosionRound; // 版本号（保留字段，诊断用）
+        /** ★ 2026-09-11 P0-3：LRU 驱逐用的"最近访问"逻辑时钟（越小越久未用）。 */
+        volatile long lastAccess;
     }
 
     /**
@@ -900,6 +906,54 @@ public final class CellGenerator {
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
         if (res == null) return 0.0; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
+        return blendTileDelta(res, wuX, wuZ, tileCX, tileCZ);
+    }
+
+    /**
+     * 【非阻塞】只窥探缓存的侵蚀增量（【e 单位】）——主 tile 未生成时返回 empty。
+     *
+     * <p>★ 2026-09-11 P0-1 止血：结构/特征放置阶段（STRUCTURE_STARTS 早于 NOISE）会高频调用
+     * {@code getBaseHeight}/{@code getBaseColumn}，而 {@link #erosionDeltaE} 内部的
+     * {@code getOrGenTile} 会<b>同步生成</b>侵蚀 tile（实测 400~719 ms/个）→ 世界生成卡死。
+     * 本方法与 {@link #erosionDeltaE} <b>共用同一套 blend 逻辑</b>（{@link #blendTileDelta}），
+     * 唯一差别是主 tile 缺失时【直接放弃】而非触发生成。</p>
+     *
+     * <p>语义：返回 empty（而非 0.0）以便调用方区分"确实无侵蚀增量"与"尚不可知"。</p>
+     */
+    public OptionalDouble peekErosionDeltaE(double wuX, double wuZ) {
+        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        ErosionTileResult res = tileCacheGet(tileKey(tileCX, tileCZ));
+        if (res == null) return OptionalDouble.empty();   // 未生成 → 绝不触发生成
+        return OptionalDouble.of(blendTileDelta(res, wuX, wuZ, tileCX, tileCZ));
+    }
+
+    /**
+     * 【非阻塞】侵蚀感知地表高度：基础高度 + 侵蚀增量（增量仅在 tile 已缓存时可得）。
+     *
+     * <p>用于 {@code getBaseHeight}/{@code getBaseColumn} 等对延迟敏感的查询。
+     * <b>保证绝不触发侵蚀 tile 生成</b>；tile 未生成时退化为无侵蚀基础高度
+     * （与 {@link #sample} 一致，即 {@code sampleCellLight} 同源）。</p>
+     */
+    public double sampleHeightNonBlocking(double wuX, double wuZ) {
+        Cell cell = sample(wuX, wuZ);
+        OptionalDouble d = peekErosionDeltaE(wuX, wuZ);
+        double e = d.isPresent() ? softCapLandE(cell.e + d.getAsDouble()) : cell.e;
+        return heightCurve.heightFromE(e);
+    }
+
+    /** 诊断用：当前侵蚀 tile 缓存条目数（P0-3 埋点；探针据此断言"未触发 tile 生成"）。 */
+    public int erosionTileCacheSize() { return erosionTileCache.size(); }
+
+    /** 侵蚀 tile 缓存命中统计（P0-3 埋点）：hit / miss / evict。 */
+    public CacheStats tileCacheStats() { return tileCacheStats; }
+
+    /**
+     * tile 边界对称 4 向 blend + 角块双线性 —— {@link #erosionDeltaE} 与
+     * {@link #peekErosionDeltaE} 共用（公共逻辑抽离，避免两份实现漂移）。
+     */
+    private double blendTileDelta(ErosionTileResult res, double wuX, double wuZ,
+                                  int tileCX, int tileCZ) {
         double delta = sampleTileField(res.delta, res.originX, res.originZ, wuX, wuZ);
 
         // tile 边界对称 4 向 blend + 角块双线性（2026-08-13 重新启用——上次试验参数未对齐
@@ -964,6 +1018,36 @@ public final class CellGenerator {
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
+        coreApplyDelta(cell, delta, res, wuX, wuZ);
+    }
+
+    /**
+     * 【非阻塞】把<b>已缓存</b>的侵蚀增量施加到 cell（含 height 重算 / 陆地重分类 / 坡度），
+     * 使群系快速路径 {@code sampleCellLight} 在已探索区域与完整管线<b>收敛</b>。
+     *
+     * <p>★ 2026-09-11 B2：快速路径原本只跑 {@link #sample}（无侵蚀），导致
+     * ① {@code terrainType} 与完整管线（侵蚀后重分类）在海岸/火山等阈值边缘不一致；
+     * ② {@code height} 不含侵蚀（也不含河谷雕刻）—— 当前群系判定不读 height，但属
+     * <b>潜在陷阱</b>（降水/风场等后续消费者要读）。本方法与 {@link #applyTileDelta}
+     * 共用 {@link #coreApplyDelta}，差别仅是 tile 缺失时【放弃】而非触发生成。</p>
+     *
+     * @return true = 已施加侵蚀增量；false = tile 未生成，cell 保持原样（绝不阻塞）
+     */
+    public boolean applyCachedTileDelta(Cell cell, double wuX, double wuZ) {
+        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        ErosionTileResult res = erosionTileCache.get(tileKey(tileCX, tileCZ));
+        if (res == null) return false;              // 未生成 → 绝不触发
+        coreApplyDelta(cell, blendTileDelta(res, wuX, wuZ, tileCX, tileCZ), res, wuX, wuZ);
+        return true;
+    }
+
+    /**
+     * 侵蚀增量施加核心（{@link #applyTileDelta} 与 {@link #applyCachedTileDelta} 共用）：
+     * discharge 场 → e/height 更新 → 陆地重分类 → 坡度。{@code res} 可为 null（中断语义）。
+     */
+    private void coreApplyDelta(Cell cell, double delta, ErosionTileResult res,
+                                double wuX, double wuZ) {
         if (res != null && res.discharge != null)
             cell.riverNetDischarge = sampleTileField(res.discharge, res.originX, res.originZ, wuX, wuZ);
         // RIVER_TYPE 图层与 isLake/lakeMask 统一由水文雕刻计划写入
@@ -1044,13 +1128,14 @@ public final class CellGenerator {
      */
     private ErosionTileResult getOrGenTile(int tileCX, int tileCZ) {
         long k = tileKey(tileCX, tileCZ);
-        ErosionTileResult r = erosionTileCache.get(k);
+        ErosionTileResult r = tileCacheGet(k);
         if (r == null) {
             try {
                 r = generateErosionTile(tileCX, tileCZ);
             } catch (CancellationException e) {
                 return null; // 半成品（中断中止）不入缓存；InterruptedException 抛出时中断位已被清除
             }
+            r.lastAccess = tileAccessClock.incrementAndGet();
             erosionTileCache.putIfAbsent(k, r); // 成功 = 完整 = 无条件缓存
             // ★ 2026-08-14 OOM 修复：有界驱逐——ERODE_TILE_CACHE_SIZE=256 只是初始容量，
             //   从未 prune（注释误称"常驻"）。玩家移动（视距 32）触发海量 tile 生成
@@ -1061,15 +1146,40 @@ public final class CellGenerator {
         return r;
     }
 
-    /** 侵蚀 tile 缓存有界驱逐（超 256 删 1/8；ConcurrentHashMap 弱一致迭代删除线程安全） */
+    /**
+     * 侵蚀 tile 缓存查询入口 —— 命中埋点 + LRU 触碰（★ 2026-09-11 P0-3）。
+     * 集中入口可避免各处直接 {@code .get} 导致统计与 LRU 序失准。
+     */
+    private ErosionTileResult tileCacheGet(long key) {
+        ErosionTileResult r = erosionTileCache.get(key);
+        if (r != null) {
+            r.lastAccess = tileAccessClock.incrementAndGet();
+            tileCacheStats.hit();
+        } else {
+            tileCacheStats.miss();
+        }
+        return r;
+    }
+
+    /**
+     * 侵蚀 tile 缓存有界驱逐 —— <b>真 LRU</b>（★ 2026-09-11 P0-3）。
+     *
+     * <p>原实现为「超 256 任意删 1/8」：ConcurrentHashMap 无访问序，删掉的可能正是
+     * 刚生成的热点 tile（~128KB、生成 400~719 ms）→ 玩家原地打转也会反复重建。
+     * 现按 {@link ErosionTileResult#lastAccess} 淘汰最久未访问者。本方法仅在
+     * <b>超容量时</b>触发（约每 32 次生成一次），O(n log n)（n≈256）开销可忽略。</p>
+     */
     private void pruneErosionCache() {
-        if (erosionTileCache.size() > ERODE_TILE_CACHE_SIZE) {
-            var it = erosionTileCache.keySet().iterator();
-            int toRemove = Math.max(1, erosionTileCache.size() / 8);
-            for (int i = 0; i < toRemove && it.hasNext(); i++) {
-                it.next();
-                it.remove();
-            }
+        int size = erosionTileCache.size();
+        if (size <= ERODE_TILE_CACHE_SIZE) return;
+        int toRemove = Math.max(1, size / 8);
+        // 注意：本类 import 了 com.geogenesis.worldgen.noise.*（含名为 Map 的类），
+        // 与 java.util.Map 冲突 → 此处必须用全限定名。
+        List<java.util.Map.Entry<Long, ErosionTileResult>> entries =
+            new ArrayList<>(erosionTileCache.entrySet());
+        entries.sort(Comparator.comparingLong(e -> e.getValue().lastAccess));
+        for (int i = 0; i < toRemove && i < entries.size(); i++) {
+            if (erosionTileCache.remove(entries.get(i).getKey()) != null) tileCacheStats.evicted();
         }
     }
 
