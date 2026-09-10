@@ -834,6 +834,15 @@ task runSpikeLocateProbe(type: JavaExec) {
     }
 }
 
+// Precip -> river width A/B probe (2026-09-11, Phase C): gradlew runPrecipRiverWidthProbe [seed]
+task runPrecipRiverWidthProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.PrecipRiverWidthProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Precip field probe (2026-09-11, Phase B): gradlew runPrecipFieldProbe [seed]
 task runPrecipFieldProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
