@@ -50,17 +50,34 @@ public class GeoGenesisBiomeSource extends BiomeSource {
             ).apply(instance, seed -> new GeoGenesisBiomeSource())
         );
 
-    /** 分类器可能产出的全部原版群系键（用于 possibleBiomes，结构定位等）。 */
+    /**
+     * 分类器可能产出的全部原版群系键（用于 possibleBiomes，结构定位等）。
+     *
+     * <p>★ 2026-09-10 补全：旧列表漏了暖/冻海洋、冰河、针叶林、恶地、雪坡、疏林丘陵等
+     * 分类器实际会产出的键 —— possibleBiomes 缺项会让对应群系不被结构放置器识别
+     * （村庄/神庙/掠夺者哨站等按群系标签定位时跳过）。此处按气候主导 v4 映射全量对齐。
+     */
     private static final List<ResourceKey<Biome>> ALL_KEYS = List.of(
-        Biomes.DEEP_COLD_OCEAN, Biomes.COLD_OCEAN, Biomes.OCEAN,
-        Biomes.SWAMP, Biomes.RIVER,
-        Biomes.SNOWY_BEACH, Biomes.BEACH,
-        Biomes.SNOWY_PLAINS, Biomes.SAVANNA, Biomes.PLAINS,
-        Biomes.WINDSWEPT_HILLS, Biomes.WINDSWEPT_SAVANNA, Biomes.FOREST,
-        Biomes.SAVANNA_PLATEAU, Biomes.BIRCH_FOREST,
-        Biomes.STONY_PEAKS, Biomes.JUNGLE,
-        Biomes.FROZEN_PEAKS, Biomes.JAGGED_PEAKS,
-        Biomes.DESERT, Biomes.MEADOW
+        // 海洋（按温度带：冻 / 冷 / 常温 / 温 / 暖）
+        Biomes.DEEP_FROZEN_OCEAN, Biomes.DEEP_COLD_OCEAN, Biomes.DEEP_OCEAN,
+        Biomes.DEEP_LUKEWARM_OCEAN, Biomes.FROZEN_OCEAN, Biomes.COLD_OCEAN,
+        Biomes.OCEAN, Biomes.LUKEWARM_OCEAN, Biomes.WARM_OCEAN,
+        // 河流 / 湖泊 / 海岸
+        Biomes.RIVER, Biomes.FROZEN_RIVER, Biomes.SWAMP,
+        Biomes.BEACH, Biomes.SNOWY_BEACH,
+        // 温带（C）
+        Biomes.PLAINS, Biomes.FOREST, Biomes.BIRCH_FOREST, Biomes.MEADOW,
+        Biomes.WINDSWEPT_HILLS, Biomes.WINDSWEPT_FOREST,
+        // 热带（雨季林/雨林/稀树草原）
+        Biomes.JUNGLE, Biomes.SPARSE_JUNGLE, Biomes.SAVANNA,
+        Biomes.SAVANNA_PLATEAU, Biomes.WINDSWEPT_SAVANNA,
+        // 干旱（B）
+        Biomes.DESERT, Biomes.BADLANDS,
+        // 冷温带 / 极地（D、E）
+        Biomes.TAIGA, Biomes.SNOWY_TAIGA, Biomes.SNOWY_PLAINS,
+        Biomes.GROVE, Biomes.SNOWY_SLOPES,
+        // 山峰
+        Biomes.STONY_PEAKS, Biomes.JAGGED_PEAKS, Biomes.FROZEN_PEAKS
     );
 
     // 回退群系（plains）惰性解析，运行时一旦解析即永久缓存；确保永远非 null。

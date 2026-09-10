@@ -1,5 +1,6 @@
 package com.geogenesis.worldgen.climate;
 
+import com.geogenesis.config.ConfigSafe;
 import com.geogenesis.config.GeoGenesisConfig;
 
 /**
@@ -32,11 +33,12 @@ public record Climate(double temperature, double humidity, double continentality
     private static ClimateSpline tempSpline() {
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         if (cfg != null) {
+            // ConfigSafe：预览/探针进程配置未加载时 get() 抛 IllegalStateException → 回退默认值
             return ClimateSpline.temperature(
-                cfg.tempFrozenThreshold.get(),
-                cfg.tempColdThreshold.get(),
-                cfg.tempWarmThreshold.get(),
-                cfg.tempHotThreshold.get());
+                ConfigSafe.dbl(cfg.tempFrozenThreshold, -0.6),
+                ConfigSafe.dbl(cfg.tempColdThreshold, -0.2),
+                ConfigSafe.dbl(cfg.tempWarmThreshold, 0.2),
+                ConfigSafe.dbl(cfg.tempHotThreshold, 0.5));
         }
         // 默认值
         return ClimateSpline.temperature(-0.6, -0.2, 0.2, 0.5);
@@ -49,9 +51,9 @@ public record Climate(double temperature, double humidity, double continentality
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         if (cfg != null) {
             return ClimateSpline.humidity(
-                cfg.humidityDryThreshold.get(),
-                cfg.humiditySemiThreshold.get(),
-                cfg.humidityWetThreshold.get());
+                ConfigSafe.dbl(cfg.humidityDryThreshold, -0.3),
+                ConfigSafe.dbl(cfg.humiditySemiThreshold, 0.0),
+                ConfigSafe.dbl(cfg.humidityWetThreshold, 0.3));
         }
         return ClimateSpline.humidity(-0.3, 0.0, 0.3);
     }
@@ -130,12 +132,12 @@ public record Climate(double temperature, double humidity, double continentality
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         if (cfg != null) {
             return ClimateSpline.continentality(
-                cfg.continentDeepOceanThreshold.get(),
-                cfg.continentNearOceanThreshold.get(),
-                cfg.continentCoastThreshold.get(),
-                cfg.continentTransitionalThreshold.get(),
-                cfg.continentNearInlandThreshold.get(),
-                cfg.continentInlandThreshold.get());
+                ConfigSafe.dbl(cfg.continentDeepOceanThreshold, -0.8),
+                ConfigSafe.dbl(cfg.continentNearOceanThreshold, -0.4),
+                ConfigSafe.dbl(cfg.continentCoastThreshold, -0.1),
+                ConfigSafe.dbl(cfg.continentTransitionalThreshold, 0.15),
+                ConfigSafe.dbl(cfg.continentNearInlandThreshold, 0.4),
+                ConfigSafe.dbl(cfg.continentInlandThreshold, 0.7));
         }
         return ClimateSpline.continentality(-0.8, -0.4, -0.1, 0.15, 0.4, 0.7);
     }

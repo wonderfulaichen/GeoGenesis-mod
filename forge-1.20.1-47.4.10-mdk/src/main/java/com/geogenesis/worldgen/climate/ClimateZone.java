@@ -1,5 +1,6 @@
 package com.geogenesis.worldgen.climate;
 
+import com.geogenesis.config.ConfigSafe;
 import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.terrain.Cell;
 
@@ -41,37 +42,19 @@ public final class ClimateZone {
     public static Zone classify(double temperature, double humidity) {
         GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
         if (cfg != null) {
-            // 构建样条
+            // 构建样条（ConfigSafe：预览/探针进程配置未加载时 get() 抛异常 → 回退默认值）
             ClimateSpline tempSpl = ClimateSpline.temperature(
-                cfg.tempFrozenThreshold.get(),
-                cfg.tempColdThreshold.get(),
-                cfg.tempWarmThreshold.get(),
-                cfg.tempHotThreshold.get());
+                ConfigSafe.dbl(cfg.tempFrozenThreshold, -0.6),
+                ConfigSafe.dbl(cfg.tempColdThreshold, -0.2),
+                ConfigSafe.dbl(cfg.tempWarmThreshold, 0.2),
+                ConfigSafe.dbl(cfg.tempHotThreshold, 0.5));
             ClimateSpline humSpl = ClimateSpline.humidity(
-                cfg.humidityDryThreshold.get(),
-                cfg.humiditySemiThreshold.get(),
-                cfg.humidityWetThreshold.get());
+                ConfigSafe.dbl(cfg.humidityDryThreshold, -0.3),
+                ConfigSafe.dbl(cfg.humiditySemiThreshold, 0.0),
+                ConfigSafe.dbl(cfg.humidityWetThreshold, 0.3));
 
-            // 温度权重
-            double frozenW = tempSpl.zoneWeight(temperature, ClimateSpline.TEMP_FROZEN);
-            double coldW = tempSpl.zoneWeight(temperature, ClimateSpline.TEMP_COLD);
-            double mildW = tempSpl.zoneWeight(temperature, ClimateSpline.TEMP_MILD);
-            double warmW = tempSpl.zoneWeight(temperature, ClimateSpline.TEMP_WARM);
-            double hotW = tempSpl.zoneWeight(temperature, ClimateSpline.TEMP_HOT);
-
-            // 湿度权重
-            double dryW = humSpl.zoneWeight(humidity, ClimateSpline.HUM_DRY)
-                        + humSpl.zoneWeight(humidity, ClimateSpline.HUM_SEMI);
-            double wetW = humSpl.zoneWeight(humidity, ClimateSpline.HUM_WET)
-                        + humSpl.zoneWeight(humidity, ClimateSpline.HUM_HUMID);
-
-            // 分类：干旱优先，然后按温度
-            if (dryW > wetW) return Zone.B;
-            if (frozenW + coldW > mildW + warmW + hotW) {
-                return frozenW > coldW ? Zone.E : Zone.D;
-            }
-            if (warmW + hotW > mildW) return Zone.A;
-            return Zone.C;
+            return classifyFromWeights(tempSpl.zoneWeights(temperature),
+                                       humSpl.zoneWeights(humidity));
         }
         // fallback
         if (temperature > 0.5) return Zone.A;
@@ -79,6 +62,30 @@ public final class ClimateZone {
         if (humidity < -0.3) return Zone.B;
         if (temperature > 0.0) return Zone.C;
         return Zone.D;
+    }
+
+    /**
+     * 从已算好的样条权重分类（供调用方复用同一次权重计算，避免重复构造 ClimateSpline）。
+     *
+     * @param tempWeights 温度权重数组（长度 5，见 {@link Climate#tempWeights()}：[极寒, 寒冷, 温和, 温暖, 炎热]）
+     * @param humWeights  湿度权重数组（长度 4，见 {@link Climate#humWeights()}：[干旱, 半干旱, 湿润, 潮湿]）
+     */
+    public static Zone classifyFromWeights(double[] tempWeights, double[] humWeights) {
+        double frozenW = tempWeights[0];
+        double coldW   = tempWeights[1];
+        double mildW   = tempWeights[2];
+        double warmW   = tempWeights[3];
+        double hotW    = tempWeights[4];
+
+        // 干旱（干旱 + 半干旱）优先于温度带
+        double dryW = humWeights[0] + humWeights[1];
+        double wetW = humWeights[2] + humWeights[3];
+        if (dryW > wetW) return Zone.B;
+        if (frozenW + coldW > mildW + warmW + hotW) {
+            return frozenW > coldW ? Zone.E : Zone.D;
+        }
+        if (warmW + hotW > mildW) return Zone.A;
+        return Zone.C;
     }
 
     /** Cell→气候带（旧 API） */

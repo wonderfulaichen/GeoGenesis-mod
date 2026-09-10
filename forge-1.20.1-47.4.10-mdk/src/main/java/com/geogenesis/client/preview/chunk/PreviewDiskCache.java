@@ -41,7 +41,10 @@ public final class PreviewDiskCache {
 
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
     private static final String MAGIC = "GGPC";
-    private static final int VERSION = 1;
+    /** 4 = 增加 riverDistance / oasisNoise 两个 float（2026-09-10 河流绿洲）。
+     *  3 = 增加 variantTerrain 字节（2026-09-10 群系变体抖动）。
+     *  2 = 增加 biomeType 字节（2026-09-10 气候双轨改造）。格式变更必须递增，否则旧缓存会错读。 */
+    private static final int VERSION = 4;
     private static final Path CACHE_DIR = Path.of("config/geogenesis/preview_cache");
 
     private static final int FLAG_LAKE_MASK = 2;
@@ -185,7 +188,13 @@ public final class PreviewDiskCache {
         out.writeFloat((float) c.continentNoise);
         out.writeFloat((float) c.shape);
         out.writeFloat((float) c.riverNetDischarge);
+        out.writeFloat((float) c.riverDistance);
+        out.writeFloat((float) c.oasisNoise);
         out.writeByte(c.terrainType == null ? 0 : c.terrainType.ordinal());
+        // 群区（区域层，区内恒定）—— 不存则磁盘回填的 chunk 群系全变默认值
+        out.writeByte(c.biomeType == null ? 0 : c.biomeType.ordinal());
+        // 抖动地形（群系变体用）—— 不存则回填后变体退回 terrainType → 直线边界重现
+        out.writeByte(c.variantTerrain == null ? -1 : c.variantTerrain.ordinal());
         int flags = 0;
         if (c.lakeMask) flags |= FLAG_LAKE_MASK;
         if (c.isSnow) flags |= FLAG_SNOW;
@@ -202,9 +211,18 @@ public final class PreviewDiskCache {
         c.continentNoise = in.readFloat();
         c.shape = in.readFloat();
         c.riverNetDischarge = in.readFloat();
+        c.riverDistance = in.readFloat();
+        c.oasisNoise = in.readFloat();
         int tIdx = in.readByte();
         TerrainClass[] tcs = TerrainClass.values();
         c.terrainType = (tIdx >= 0 && tIdx < tcs.length) ? tcs[tIdx] : TerrainClass.OCEAN;
+        int bIdx = in.readByte();
+        com.geogenesis.worldgen.climate.WhittakerType[] wts =
+            com.geogenesis.worldgen.climate.WhittakerType.values();
+        c.biomeType = (bIdx >= 0 && bIdx < wts.length) ? wts[bIdx]
+            : com.geogenesis.worldgen.climate.WhittakerType.GRASSLAND;
+        int vIdx = in.readByte();
+        c.variantTerrain = (vIdx >= 0 && vIdx < tcs.length) ? tcs[vIdx] : null;
         int flags = in.readByte();
         c.lakeMask = (flags & FLAG_LAKE_MASK) != 0;
         c.isSnow = (flags & FLAG_SNOW) != 0;

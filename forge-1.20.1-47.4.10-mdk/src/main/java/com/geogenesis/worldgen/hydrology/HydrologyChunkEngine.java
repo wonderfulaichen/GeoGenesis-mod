@@ -1,5 +1,6 @@
 package com.geogenesis.worldgen.hydrology;
 
+import com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 
@@ -13,6 +14,15 @@ public final class HydrologyChunkEngine {
         this.generator = generator;
         this.horizontalScale = Math.max(0.01, generator.params().horizontalScale());
         this.hydrology = new HydrologyExperimentEngine(generator, seed);
+    }
+
+    /**
+     * 只读暴露河线网络 —— 供"离水多远"类群系规则（河流绿洲等）在<b>完整管线与群系
+     * 快速路径</b>两条采样路径上取到同一份数据，避免规则只在预览生效。
+     * <b>不改变任何水文生产逻辑。</b>
+     */
+    public RiverLineNetwork riverNetwork() {
+        return hydrology.network();
     }
 
     public void setSeed(long seed) {

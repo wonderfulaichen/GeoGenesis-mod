@@ -166,6 +166,8 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue tempWarpScale;
     /** 湿度噪声 xz 缩放（块），湿度场频率 = 1/humidityScale，默认 800 */
     public final ForgeConfigSpec.DoubleValue humidityScale;
+    /** 气候区尺寸（wu）：区内温湿恒定的抖动 Voronoi 网格边长。默认 256 */
+    public final ForgeConfigSpec.DoubleValue climateRegionSize;
 
     // ===== 世界高度 =====
     public final ForgeConfigSpec.IntValue seaLevel;
@@ -557,6 +559,8 @@ public final class GeoGenesisConfig {
             .defineInRange("tempWarpScale", 1500.0, 100.0, 8000.0);
         humidityScale = builder.comment("Humidity noise xz scale (blocks). Humidity field frequency = 1/humidityScale. Default 800.")
             .defineInRange("humidityScale", 800.0, 100.0, 8000.0);
+        climateRegionSize = builder.comment("Climate region size (wu). Jittered Voronoi cell size within which temperature/moisture are constant. Larger = bigger climate patches. Default 256.")
+            .defineInRange("climateRegionSize", 256.0, 64.0, 2048.0);
         builder.pop();
 
 
@@ -855,7 +859,7 @@ public final class GeoGenesisConfig {
             // coastline diversification
             coastlineWarpAmp.get(), coastlineWarpScale.get(), coastlineWarpOctaves.get(), coastlineWarpLacunarity.get(), coastlineWarpPersistence.get(), coastTerrainInfluence.get(),
             archipelagoBand.get(), archipelagoDensity.get(), archipelagoScale.get(), archipelagoHeight.get(),
-            latitudeScale.get(), tempWarpScale.get(), humidityScale.get(),
+            latitudeScale.get(), tempWarpScale.get(), humidityScale.get(), climateRegionSize.get(),
 
             // Phase 1: unified spline config (built from individual fields)
             buildSplineConfig()
@@ -1032,7 +1036,7 @@ public final class GeoGenesisConfig {
             // coastline diversification
             coastlineWarpAmp.getDefault(), coastlineWarpScale.getDefault(), coastlineWarpOctaves.getDefault(), coastlineWarpLacunarity.getDefault(), coastlineWarpPersistence.getDefault(), coastTerrainInfluence.getDefault(),
             archipelagoBand.getDefault(), archipelagoDensity.getDefault(), archipelagoScale.getDefault(), archipelagoHeight.getDefault(),
-            latitudeScale.getDefault(), tempWarpScale.getDefault(), humidityScale.getDefault(),
+            latitudeScale.getDefault(), tempWarpScale.getDefault(), humidityScale.getDefault(), climateRegionSize.getDefault(),
 
             // Phase 1: unified spline config (built from default values)
             buildDefaultSplineConfig()

@@ -2183,6 +2183,30 @@ public final class RiverLineNetwork {
     }
 
     /**
+     * 最近河线的水平距离（wu）——<b>只读查询</b>，不改动河网生产路径。
+     *
+     * <p><b>为什么需要它</b>：群系分类走快速路径 {@code GeoGenesisTerrain.sampleCellLight}
+     * （为了把建世界从 7.5 分钟压到秒级，刻意跳过侵蚀与雕刻计划），因此拿不到
+     * {@code riverNetDischarge}/{@code isLake} 这些"雕刻后才写"的字段。结果是任何
+     * 依赖"离水多远"的群系规则（河流绿洲、湖效应、河岸带）<b>只在预览里生效、
+     * 游戏里永远不触发</b>，违反本项目的"预览 = 游戏"原则。本方法让两条路径
+     * 读到同一份数据。
+     *
+     * <p><b>实现</b>：直接委托 {@link #sample} 取最近命中。这是刻意的 ——
+     * {@code sampleRegion} 的几何语义相当复杂（河段 + 湖盆逐格轮廓 + 河成湖展宽 +
+     * 跌水端帽豁免…），另写一份"最小距离"必然与雕刻器分叉（实测自写版本漏掉
+     * {@code RiverLineRegion.lakes}，19/245 例比雕刻器远最多 191 wu）。
+     * 委托即单一事实来源：绿洲看到的水，就是雕刻器刻出来的水。
+     *
+     * @return 最近水体（河或湖）中心的距离（wu）；影响范围内无水体返回
+     *         {@link Double#POSITIVE_INFINITY}
+     */
+    public double distanceToWater(double wx, double wz) {
+        RiverLineHit hit = sample(wx, wz);
+        return hit == null ? Double.POSITIVE_INFINITY : hit.distToCenter();
+    }
+
+    /**
      * 单 region 上 valley 半径内"每段独立命中"列表（供雕刻器 smooth-min 合并，
      * 根治属主在段间切换产生的放射折痕）。仅保留 dist ≤ valleyReach 的段——
      * 其 carve 才可能非零，远处段不影响 smin（carve=original）。

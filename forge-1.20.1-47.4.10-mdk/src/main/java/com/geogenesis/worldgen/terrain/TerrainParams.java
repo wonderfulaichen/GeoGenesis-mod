@@ -213,6 +213,11 @@ public record TerrainParams(
     double tempWarpScale,
     /** 湿度噪声 xz 缩放（块），湿度场频率 = 1/humidityScale，默认 800 */
     double humidityScale,
+    /**
+     * 气候区尺寸（wu）：抖动 Voronoi 网格边长，区内温湿恒定。
+     * 越大 → 气候斑块越大、群系越成片；越小 → 越碎。默认 256。
+     */
+    double climateRegionSize,
 
     // ===== Phase 1：统一样条配置（独立 record，避免参数过多）=====
     SplineConfig splineConfig
@@ -284,6 +289,7 @@ public record TerrainParams(
 
             // climate / latitude xz scales (injected into CellGenerator)
             6000.0, 1500.0, 800.0,   // latitudeScale, tempWarpScale, humidityScale
+            256.0,                   // climateRegionSize
 
             // Phase 1: unified spline config
             SplineConfig.defaults()

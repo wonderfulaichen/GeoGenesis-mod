@@ -61,16 +61,20 @@ public class BiomeEntryWidget {
     private static boolean isMarine(String n) {
         return n.contains("OCEAN") || n.contains("BEACH") || n.contains("LAKE") || n.contains("RIVER");
     }
+    // 【2026-09-10】群系列表改为真实 MC 群系名，补充新增条目的归类
     private static boolean isCold(String n) {
-        return n.contains("SNOW") || n.contains("TUNDRA") || n.contains("TAIGA");
+        return n.contains("SNOW") || n.contains("TUNDRA") || n.contains("TAIGA")
+            || n.contains("FROZEN") || n.contains("ICE") || n.contains("GROVE");
     }
     private static boolean isTemperate(String n) {
-        return n.contains("PLAIN") || n.contains("FOREST") || n.contains("SWAMP") || n.contains("HILLS") || n.contains("PLATEAU");
+        return n.contains("PLAIN") || n.contains("FOREST") || n.contains("SWAMP")
+            || n.contains("HILLS") || n.contains("PLATEAU") || n.contains("MEADOW");
     }
     private static boolean isHot(String n) {
-        return n.contains("DESERT") || n.contains("SAVANNA") || n.contains("JUNGLE");
+        return n.contains("DESERT") || n.contains("SAVANNA") || n.contains("JUNGLE")
+            || n.contains("BADLANDS");
     }
     private static boolean isDry(String n) {
-        return n.contains("DESERT") || n.contains("SAVANNA");
+        return n.contains("DESERT") || n.contains("SAVANNA") || n.contains("BADLANDS");
     }
 }
