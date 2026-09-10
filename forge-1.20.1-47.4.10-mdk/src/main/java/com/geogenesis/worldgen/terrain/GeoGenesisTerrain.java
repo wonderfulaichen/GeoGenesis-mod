@@ -8,9 +8,11 @@ import com.geogenesis.worldgen.noise.NoiseUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 地形引擎对外接口：带缓存的 Cell 网格采样。
@@ -26,12 +28,27 @@ public final class GeoGenesisTerrain {
 
     private final CellGenerator generator;
     private final HeightCurve curve;
-    private final Map<Long, Cell[]> cache = new ConcurrentHashMap<>(CACHE_SIZE);
+
+    /** 缓存命中统计（P0-3）；须在 cache 之前初始化（LruMap 构造引用它）。 */
+    private final CacheStats chunkCacheStats = new CacheStats("chunkCell");
+
+    /**
+     * chunk Cell 缓存 —— 访问序（<b>真 LRU</b>）有界 Map。
+     *
+     * <p>★ 2026-09-11 P0-3：取代原「ConcurrentHashMap + 超限任意删 1/8」——
+     * 原实现会把刚生成的热点随机驱逐，玩家回头又得重建（~700ms/chunk）。</p>
+     */
+    private final Map<Long, Cell[]> cache =
+        Collections.synchronizedMap(new LruMap<>(CACHE_SIZE, chunkCacheStats));
 
     private final boolean riversEnabled;
     /** 侵蚀向河道软让步（方案 A，config erosionYieldToRiver，默认 true）。 */
     private final boolean erosionYieldToRiver;
     private final HydrologyChunkEngine hydrologyExperiment;
+
+    /** 非阻塞高度查询降级计数（P0-3 埋点）：① 已生成 chunk 精确命中 / ② 廉价重算。 */
+    private final AtomicLong baseHeightTier1 = new AtomicLong();
+    private final AtomicLong baseHeightTier2 = new AtomicLong();
 
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
@@ -61,6 +78,9 @@ public final class GeoGenesisTerrain {
     public void seed(long worldSeed) {
         generator.seed(worldSeed);
         cache.clear();
+        baseHeightTier1.set(0);   // 埋点按世界重置
+        baseHeightTier2.set(0);
+        chunkCacheStats.reset();
         hydrologyExperiment.setSeed(worldSeed);
     }
 
@@ -107,9 +127,61 @@ public final class GeoGenesisTerrain {
     public Cell sampleCellLight(double wx, double wz) {
         double wux = toWu(wx), wuz = toWu(wz);
         Cell cell = generator.sample(wux, wuz);
+        // ★ 2026-09-11 B2：把【已缓存】的侵蚀增量并入快速路径 → 已探索区域与完整管线收敛
+        //   （terrainType 重分类 + height 含侵蚀）。tile 未生成时静默跳过 →
+        //   出生点搜索等冷启动场景仍【零 tile 生成】，保持秒级（与 B1 同一"不阻塞"语义）。
+        //   残余有界近似：① 不含水文河谷雕刻（河道处 height 可略高）；
+        //   ② 结果依赖 tile 是否已缓存（冷启动 = 无侵蚀分类，tile 就绪后 = 有）；
+        //      实测侵蚀 delta 在多数 tile 为小量或 0，故影响有界。
+        generator.applyCachedTileDelta(cell, wux, wuz);
         fillRiverDistance(cell, wux, wuz);
         return cell;
     }
+
+    /**
+     * 【非阻塞】结构/特征放置专用高度查询（★ 2026-09-11 P0-1 止血）。
+     *
+     * <p><b>为什么需要</b>：MC 的 {@code getBaseHeight}/{@code getBaseColumn} 在
+     * STRUCTURE_STARTS 阶段被高频调用，而该阶段<b>早于</b> NOISE —— 目标 chunk 必然尚未生成。
+     * 原实现走 {@link #sampleCell} → {@link #getChunkCells} → 冷侵蚀 tile
+     * （实测 400~719 ms/次），等于把全管线最贵的操作接到最热的调用点 → 世界生成卡死。</p>
+     *
+     * <p>两级降级（参考 FreeTerraForged {@code WorldLookup} 的 accurate / cached / cheap）：</p>
+     * <ol>
+     *   <li><b>① 已生成 chunk</b>：直接取缓存 Cell 的 height → <b>与落块完全一致</b>，零额外成本。</li>
+     *   <li><b>② 未生成 chunk</b>：走 {@link CellGenerator#sampleHeightNonBlocking} —— 基础场
+     *       + <b>仅当侵蚀 tile 已缓存时</b>叠加增量；tile 未生成则退化为无侵蚀基础高度。
+     *       <b>保证绝不触发侵蚀 tile 生成。</b></li>
+     * </ol>
+     *
+     * <p><b>权衡（已知近似）</b>：② 在完全未探索区域不含<b>侵蚀增量</b>，也不含
+     * <b>水文河谷雕刻</b>（河道下切），故结构（村庄等）放置高度可能与最终地形相差一个
+     * 侵蚀/下切量级，河道处可能偏高。这是"绝不阻塞"的必然代价，与 RTF 的 cheap 降级同级。
+     * 而相邻 chunk 已生成时（常见情形）tile 通常已缓存 → ② 同样能拿到侵蚀，误差极小。</p>
+     */
+    public double sampleHeightNonBlocking(double wx, double wz) {
+        // ① 已生成 chunk → 精确（与落块完全一致）
+        Cell[] cells = cachedChunk(chunkCoord(wx), chunkCoord(wz));
+        if (cells != null) {
+            Cell c = cells[localCoord(wx) * 16 + localCoord(wz)];
+            if (c != null) {
+                baseHeightTier1.incrementAndGet();
+                return c.height;
+            }
+        }
+        // ② 未生成 → 廉价重算：基础场 + 已缓存的侵蚀增量，绝不触发侵蚀 tile
+        baseHeightTier2.incrementAndGet();
+        return generator.sampleHeightNonBlocking(toWu(wx), toWu(wz));
+    }
+
+    /** 非阻塞高度查询降级统计（P0-3 埋点）：① 已生成 chunk 精确命中次数。 */
+    public long baseHeightTier1Count() { return baseHeightTier1.get(); }
+
+    /** 非阻塞高度查询降级统计（P0-3 埋点）：② 廉价重算次数。 */
+    public long baseHeightTier2Count() { return baseHeightTier2.get(); }
+
+    /** chunk Cell 缓存命中统计（P0-3 埋点）：hit / miss / evict。 */
+    public CacheStats chunkCacheStats() { return chunkCacheStats; }
 
     /**
      * 填充「到最近河线的距离」（wu）—— 河流绿洲判定的输入。
@@ -133,13 +205,19 @@ public final class GeoGenesisTerrain {
      */
     public Cell[] getChunkCells(int chunkX, int chunkZ) {
         long key = pack(chunkX, chunkZ);
-        Cell[] cells = cache.get(key);
+        Cell[] cells = cachedChunk(chunkX, chunkZ);
         if (cells == null) {
             cells = generateChunk(chunkX, chunkZ);
             Cell[] prev = cache.putIfAbsent(key, cells);
             if (prev != null) cells = prev;
         }
-        pruneIfNeeded();
+        return cells;
+    }
+
+    /** 带埋点的 chunk 缓存查询（hit/miss 统计，P0-3）。 */
+    private Cell[] cachedChunk(int chunkX, int chunkZ) {
+        Cell[] cells = cache.get(pack(chunkX, chunkZ));
+        if (cells != null) chunkCacheStats.hit(); else chunkCacheStats.miss();
         return cells;
     }
 
@@ -299,15 +377,28 @@ public final class GeoGenesisTerrain {
         }
     }
 
-    /** 简单 LRU 淘汰 */
-    private void pruneIfNeeded() {
-        if (cache.size() > CACHE_SIZE) {
-            var it = cache.keySet().iterator();
-            int toRemove = Math.max(1, cache.size() / 8);
-            for (int i = 0; i < toRemove && it.hasNext(); i++) {
-                it.next();
-                it.remove();
-            }
+    /**
+     * 访问序（<b>真 LRU</b>）有界 Map —— 超容量即淘汰【最久未访问】条目（O(1)）。
+     *
+     * <p>★ 2026-09-11 P0-3：取代原「超限任意删 1/8」。原实现的问题不是"删太多"，
+     * 而是<b>删错对象</b>——ConcurrentHashMap 无访问序，删掉的可能是刚生成的热点。</p>
+     */
+    private static final class LruMap<K, V> extends LinkedHashMap<K, V> {
+        private static final long serialVersionUID = 1L;
+        private final int maxSize;
+        private final CacheStats stats;
+
+        LruMap(int maxSize, CacheStats stats) {
+            super(Math.max(16, maxSize + 1), 0.75f, true);   // accessOrder = true
+            this.maxSize = maxSize;
+            this.stats = stats;
+        }
+
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+            if (size() <= maxSize) return false;
+            stats.evicted();
+            return true;
         }
     }
 

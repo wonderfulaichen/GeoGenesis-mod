@@ -398,8 +398,13 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     public int getBaseHeight(int x, int z, Heightmap.Types type,
                               LevelHeightAccessor levelHeightAccessor,
                               RandomState randomState) {
-        Cell cell = terrain != null ? terrain.sampleCell(x, z) : null;
-        double h = cell != null ? cell.height : SEA_LEVEL;
+        // ★ 2026-09-11 P0-1 止血：原走 terrain.sampleCell → getChunkCells → 冷侵蚀 tile
+        //   （实测 400~719 ms/次）。而 STRUCTURE_STARTS 早于 NOISE → 此处必然是未生成 chunk，
+        //   等于把全管线最贵的操作接到最热的调用点 → 世界生成卡死。
+        //   改走【非阻塞】两级降级：
+        //     ① 已生成 chunk → 取缓存 Cell，与落块完全一致（零额外成本）
+        //     ② 未生成 chunk → 廉价重算（基础场 + 已缓存侵蚀增量），绝不触发侵蚀 tile
+        double h = terrain != null ? terrain.sampleHeightNonBlocking(x, z) : SEA_LEVEL;
         return (int) Math.round(h);
     }
 
@@ -407,8 +412,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     public NoiseColumn getBaseColumn(int x, int z,
                                       LevelHeightAccessor levelHeightAccessor,
                                       RandomState randomState) {
-        Cell cell = terrain != null ? terrain.sampleCell(x, z) : null;
-        double h = cell != null ? cell.height : SEA_LEVEL;
+        // 同 getBaseHeight：非阻塞两级降级，绝不触发侵蚀 tile（详见上方注释）
+        double h = terrain != null ? terrain.sampleHeightNonBlocking(x, z) : SEA_LEVEL;
         int iy = (int) Math.round(h);
         BlockState[] states = new BlockState[getGenDepth()];
         for (int i = 0; i < getGenDepth(); i++) {

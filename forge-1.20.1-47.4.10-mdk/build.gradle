@@ -834,6 +834,15 @@ task runSpikeLocateProbe(type: JavaExec) {
     }
 }
 
+// BaseHeight non-blocking probe (2026-09-11, P0-1): gradlew runBaseHeightProbe [seed]
+task runBaseHeightProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.BaseHeightProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // HS wu-ization A/B probe (2026-08-10): gradlew runHSABProbe [seed]
 task runHSABProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
