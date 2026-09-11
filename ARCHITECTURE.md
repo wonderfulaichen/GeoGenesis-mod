@@ -51,7 +51,9 @@ com.geogenesis
 │   ├── TerrainConfigPanel.java     # 地形页：基础因素曲线图 + 控制点滑块（可折叠）
 │   ├── BasicParamsPanel.java       # 参数页：噪声/尺度/海平面/雪线等基础参数滑块
 │   └── preview/                    # 渲染/热力图/叠加/控制面板（15 图层 + 图例，含降水）
-│       ├── TerrainPreview.java      # 独立 Swing 预览窗口
+│       ├── LargeAreaSampler.java    # ★ 大范围采样器（固定采样数 + 步长缩放，开销与视野无关）
+│       ├── chunk/                   # 精确管线引擎（CellCache + TerrainQueue + TerrainPool，4 线程 + 磁盘缓存）
+│       ├── TerrainPreview.java      # 独立 Swing 预览窗口（大范围 + 坡度阴影 + 图例滚动）
 │       ├── PreviewDisplay.java      # 游戏内预览控件
 │       ├── PreviewColor.java        # MC 侧着色外观，委托 GeoPalette
 │       ├── ColorMap.java            # 零依赖连续色带（Lab 插值 + bake LUT）
