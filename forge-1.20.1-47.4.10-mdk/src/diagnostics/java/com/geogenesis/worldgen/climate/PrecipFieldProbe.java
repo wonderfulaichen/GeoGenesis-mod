@@ -175,10 +175,18 @@ public final class PrecipFieldProbe {
         // ================= [8] Phase D：荒漠是否落在副热带高压带 =================
         //   Phase D 把 Whittaker 的降水轴换成"区域层湿度 × 纬度降水廓线"。
         //   聚合看会相互抵消（副热带变干 + 赤道变湿），必须【按纬度细分】才看得见。
+        //   ★ 2026-09-11 采样方式修正：改为【按 lat01 均匀扫描】+ 二分反解 z。
+        //   原实现扫固定 z 网格、再按 lat01 分桶 —— 一旦纬度映射改变（|sin| → cos），
+        //   同一个桶会采到【完全不同的 z 窗口】（地形/湿度噪声实况不同），
+        //   于是"换映射前后同一桶的荒漠率"不可比，会误判成"荒漠带移位"。
+        //   改为按 lat01 均匀取点后，每个桶的纬度含义固定，**跨映射可比**。
         final int B = 8;
+        final int LAT_STEPS = 80;                 // 每带 10 个纬度采样点
         int[] total = new int[B], desert = new int[B], rain = new int[B];
-        for (double z = 0; z <= 7000; z += 121) {
-            int b = Math.min(B - 1, (int) (Latitude.latitude01(z, LAT_SCALE) * B));
+        for (int i = 0; i < LAT_STEPS; i++) {
+            double lat = (i + 0.5) / LAT_STEPS;
+            double z = zAtLatitude(lat, LAT_SCALE);
+            int b = Math.min(B - 1, (int) (lat * B));
             for (double x = -6000; x <= 6000; x += 199) {
                 Cell c = gen.sample(x, z);
                 if (c.e < 0) continue;
@@ -257,5 +265,20 @@ public final class PrecipFieldProbe {
         boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6
                 && pass7 && pass8 && pass9 && pass10;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
+    }
+
+    /**
+     * 反解纬度：在 z ∈ [0, π·scale/2] 内二分求使 {@code Latitude.latitude01(z, scale) ≈ target} 的 z。
+     *
+     * <p>用二分而非解析反函数 —— 只要纬度映射在该区间单调递增即可，
+     * 因此公式变更（如 2026-09-11 的 {@code |sin|} → {@code cos}）时探针无需同步改。</p>
+     */
+    private static double zAtLatitude(double target, double scale) {
+        double lo = 0.0, hi = Math.PI * scale / 2.0;
+        for (int i = 0; i < 60; i++) {
+            double mid = 0.5 * (lo + hi);
+            if (Latitude.latitude01(mid, scale) < target) lo = mid; else hi = mid;
+        }
+        return 0.5 * (lo + hi);
     }
 }
