@@ -33,15 +33,21 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class PrecipField {
 
-    /** 地形调制量。{@code foehnWarm} 单位与 {@code Climate.temperature} 同量纲（[-1,1] e 单位的增量）。 */
-    public record Mod(double orographicGain, double shadowLoss, double foehnWarm) {
-        public static final Mod NONE = new Mod(0.0, 0.0, 0.0);
+    /**
+     * 地形调制量。{@code foehnWarm} 与 {@code waterMoist} 单位与 {@code Climate.temperature} /
+     * {@code humidity} 同量纲（[-1,1] e 单位的增量）。
+     *
+     * <p>★ 2026-09-11 Phase E 新增 {@code waterMoist}（上风向海域回灌湿度）：
+     * 上风是海面 → 下风向空气更湿（水汽来源）。这是"水文 → 气候"反向耦合的第一条通路。</p>
+     */
+    public record Mod(double orographicGain, double shadowLoss, double foehnWarm, double waterMoist) {
+        public static final Mod NONE = new Mod(0.0, 0.0, 0.0, 0.0);
     }
 
     /** 参数（Phase B 用 defaults；接 Forge 配置推迟到接线完成时，避免产生死配置）。 */
     public record Params(double oroGain, double oroRefRise, double shadowMax, double shadowRef,
                          double foehnK, double lapseDiff, double foehnMax,
-                         int upwindCells, double cellSize) {
+                         double moistGain, int upwindCells, double cellSize) {
         public static Params defaults() {
             // foehnK = 8.0：MC 垂直尺度被压缩，按真实直减率算焚风仅 ~1°C 不可见，
             // 故按"游戏可感知"标定（设计文档 §4.4 已明确标注为游戏化放大）。
@@ -64,7 +70,11 @@ public final class PrecipField {
             //   （1 自身 + 1 迎风 + 6 上风）。实测 runFlowAccumProbe 的 coldMs
             //   从基线 1849ms 涨到 ~17600ms（9.4×）。节点密度降 9× 后代价回落；
             //   96wu 仍优于地形雨所需的"山脉尺度"（数百 wu），保真度损失可接受。
-            return new Params(0.85, 24.0, 0.70, 40.0, 8.0, 0.0048, 3.0, 6, 96.0);
+            //
+            // ★ moistGain = 0.25（Phase E，2026-09-11）：上风向海域回灌的最大湿度增益
+            //   （humidity ∈ [−1,1]，故 0.25 属"可感知但不淹没原有湿度噪声"的量级）。
+            //   随上风距离线性衰减（最近的岸线影响最大，最远 6×96=576wu 处降至 0.167×）。
+            return new Params(0.85, 24.0, 0.70, 40.0, 8.0, 0.0048, 3.0, 0.25, 6, 96.0);
         }
     }
 
@@ -84,6 +94,11 @@ public final class PrecipField {
     private final double latScale;
     private final Params p;
     private final WindField.Params wind;
+    /**
+     * 海平面高度（块）—— Phase E 用它判"上风向是否为海域"（{@code h ≤ seaY}）。
+     * 由调用方注入（{@code heightCurve.seaLevelY()}），本类保持对 HeightCurve 零依赖。
+     */
+    private final double seaY;
 
     /** 无锁有损直接映射缓存（命中/未命中仅作诊断，覆盖写不回退）。 */
     private final long[] keys = new long[CACHE_SIZE];
@@ -93,11 +108,21 @@ public final class PrecipField {
 
     public PrecipField(long seed, HeightFn height, double latScale,
                        Params p, WindField.Params wind) {
+        this(seed, height, latScale, p, wind, Double.NaN);
+    }
+
+    /**
+     * @param seaY 海平面高度（块）；用于 Phase E 判定"上风向海域"。
+     *             传 {@link Double#NaN} 表示<b>关闭海域回灌</b>（此时 {@code waterMoist} 恒 0）。
+     */
+    public PrecipField(long seed, HeightFn height, double latScale,
+                       Params p, WindField.Params wind, double seaY) {
         this.seed = seed;
         this.height = height;
         this.latScale = latScale;
         this.p = p;
         this.wind = wind;
+        this.seaY = seaY;
         java.util.Arrays.fill(keys, EMPTY);
     }
 
@@ -162,21 +187,28 @@ public final class PrecipField {
         double lift = hAhead - hP;
         double orographicGain = p.oroGain() * clamp01(lift / p.oroRefRise()) * w.speed();
 
-        // (b) 雨影 / (c) 焚风：沿风向上溯，距离加权取"最大上风屏障"
+        // (b) 雨影 / (c) 焚风 / (d) 海域回灌：沿风向上溯一次扫描全部得出
         int L = p.upwindCells();
         double barrier = 0.0;
+        double seaFrac = 0.0;
+        boolean seaEnabled = !Double.isNaN(seaY);   // ★ Phase E 开关
         for (int d = 1; d <= L; d++) {
             double hUp = height.at(wx - w.x() * cs * d, wz - w.z() * cs * d);
             double wd = 1.0 - (d - 1.0) / L;        // 越近的屏障影响越大
             barrier = Math.max(barrier, wd * (hUp - hP));
+            // ★ 2026-09-11 Phase E：上风向若为海面（h ≤ 海平面）→ 水汽来源。
+            //   复用本循环【已经采样过】的 hUp → 零额外采样开销。
+            if (seaEnabled && hUp <= seaY) seaFrac = Math.max(seaFrac, wd);
         }
         double shadowLoss = p.shadowMax() * clamp01(barrier / p.shadowRef());
         // 焚风：线性段保留"屏障越高增温越强"的梯度，但用 foehnMax 封顶
         // （与雨影在 shadowRef 处饱和相呼应——原式无上限，极端地形会失控）。
         double foehnWarm = Math.min(p.foehnMax(),
             p.foehnK() * Math.max(0.0, barrier) * p.lapseDiff());
+        // 海域回灌：上风海面占比 × 增益（下风向增湿；无上风海域则为 0）
+        double waterMoist = p.moistGain() * seaFrac;
 
-        return new Mod(orographicGain, shadowLoss, foehnWarm);
+        return new Mod(orographicGain, shadowLoss, foehnWarm, waterMoist);
     }
 
     // ===== 工具 =====
@@ -191,7 +223,8 @@ public final class PrecipField {
         return new Mod(
             a.orographicGain() + (b.orographicGain() - a.orographicGain()) * t,
             a.shadowLoss()     + (b.shadowLoss()     - a.shadowLoss())     * t,
-            a.foehnWarm()      + (b.foehnWarm()      - a.foehnWarm())      * t);
+            a.foehnWarm()      + (b.foehnWarm()      - a.foehnWarm())      * t,
+            a.waterMoist()     + (b.waterMoist()     - a.waterMoist())     * t);
     }
 
     private static long pack(int ix, int iz) {

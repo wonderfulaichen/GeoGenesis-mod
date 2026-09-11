@@ -157,7 +157,8 @@ public final class CellGenerator {
         // 种子在 seed() 里注入（此处先给 0）。
         this.precipField = new PrecipField(0L,
             (x, z) -> heightCurve.heightFromE(terrainEQuick(x, z)),
-            p.latitudeScale(), PrecipField.Params.defaults(), WindField.Params.defaults());
+            p.latitudeScale(), PrecipField.Params.defaults(), WindField.Params.defaults(),
+            heightCurve.seaLevelY());   // ★ Phase E：注入海平面 → 上风向海域回灌湿度
         clearEqCache();   // terrainEQuick 缓存哨兵初始化
         // 波长 ≈1.5 个气候区：边界以该尺度蜿蜒，观感自然
         this.regionWarp = new Frequency(new Simplex(503), 1.0 / (p.climateRegionSize() * 1.5));
@@ -333,6 +334,12 @@ public final class CellGenerator {
         double hum = humidityNoise.compute(wx, wz) * 0.75;               // 低频平滑湿度噪声
         hum = continentMoisture(hum, cell.continent);                     // 大陆性：沿海湿 / 内陆干（逐格）
         hum -= elevationMoistureDrop(cell.e);                             // 高海拔变干（逐格）
+        // ★ 2026-09-11 Phase E：水文 → 气候反向耦合。
+        //   上风向为海面时下风向增湿（水汽来源），完成"地形→气候→水文→气候"闭环。
+        //   注：Whittaker 群区用的是【区域层】温/降水，故此处逐格增湿【不会】产生椒盐群系；
+        //   但它会经 precipitationFrom 提高降水 → 进而加宽下游河宽（Phase C 链），
+        //   水源为地形固定的海面 → 不存在"河越宽→越湿→河更宽"的正反馈发散。
+        hum += pm.waterMoist();
         hum = clamp(hum, -1.0, 1.0);
 
         // 气候影响权重（tempInfluence / humidityInfluence / continentInfluence）
