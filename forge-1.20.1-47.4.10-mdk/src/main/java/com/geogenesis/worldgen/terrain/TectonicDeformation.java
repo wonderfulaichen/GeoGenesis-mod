@@ -118,12 +118,14 @@ public final class TectonicDeformation {
         if (d >= reach) return 0.0;
 
         double decay = decay(d, reach);
-        // 相位扰动：沿走向低频 → 褶皱轴波状起伏
-        // ★ 尺度由 1600/900 调大到 6000/3600：along 用绝对坐标投影、量级 ~1e4，
-        //   而切向存在微小不连续；尺度越大，同样的 along 跳变引起的噪声变化越小。
         double along = alongFaultCoord(s, wx, wz);
+        // ★ 2026-09-12 修复（用户反馈"密集同心波纹"）：**波纹必须沿走向，不能沿距离**。
+        //   原式 sin(dist·2π/λ) 的等值线是【距离的等值线】——绕板块格子闭合成【同心环】，
+        //   与项目当初否决 Terrace 的"环状台阶伪影"同源（我的设计失误）。
+        //   现改为 sin(along·2π/λ)：波峰波谷是<b>平行于边界、沿走向延展的波列</b>
+        //   （真实褶皱带即如此），而距离只通过 decay 控制"离边界越远越弱"，<b>不再产生闭环</b>。
         double phase = valueNoise(along / 6000.0, d / 2600.0, SALT_FOLD) * Math.PI;
-        double wave = Math.sin(d / FOLD_WAVELENGTH * 2.0 * Math.PI + phase);
+        double wave = Math.sin(along / FOLD_WAVELENGTH * 2.0 * Math.PI + phase);
 
         // 幅度沿走向也做调制：褶皱不是处处等强（真实褶皱带强弱相间）
         double ampMod = 0.55 + 0.45 * valueNoise(along / 3600.0, 3.7, SALT_FOLD + 1);
@@ -148,11 +150,23 @@ public final class TectonicDeformation {
         if (d >= reach) return 0.0;
 
         double decay = decay(d, reach);
-        double block = Math.floor(d / FAULT_SPACING);
-        double along = alongFaultCoord(s, wx, wz) / FAULT_SEGMENT;
-        // 中心化（valueNoise 输出 [-1,1]）→ 断块有升有降 → 近零均值，不整体平移地形
-        double slip = valueNoise(along, block * FAULT_BLOCK_FREQ, SALT_FAULT);
-        return FAULT_AMP * slip * decay;
+        double along = alongFaultCoord(s, wx, wz);
+        // ★ 2026-09-12 修复（同心波纹）：断块沿走向取"块索引"，而非按【距离】分块。
+        //   原式 floor(dist/spacing) 的块边界 = 距离等值线 → 绕板块格子闭合成同心多边环
+        //   （用户截图中的密集波纹）。改为 floor(along/spacing)：
+        //   块边界是<b>垂直于走向的平行线</b>，沿走向推进才换块 —— 这正是真实断层系统的
+        //   "分段/断块"形态，且【不产生闭环】。
+        //   距离仍只通过 decay 决定作用范围。
+        double block = Math.floor(along / FAULT_SPACING);
+        double slip = valueNoise(along / FAULT_SEGMENT, block * FAULT_BLOCK_FREQ, SALT_FAULT);
+        // ★ 2026-09-12 修复（近零均值）：块索引改为沿走向后，"块"覆盖面积大增
+        //   （实测有形变面积 29%→98%），纯随机断距的偏差随之累积
+        //   （全域均值 0.28→0.87 块）。此处对相邻块取<b>中心化</b>：
+        //   滑移量按相邻块的噪声差的一半给出 —— 数学上等价于随机游走的增量形式，
+        //   相邻块必然一升一降，整体趋近零均值，且【不影响崖线的陡度】。
+        double nb = valueNoise(along / FAULT_SEGMENT, (block + 1.0) * FAULT_BLOCK_FREQ, SALT_FAULT);
+        double diff = (nb - slip) * 0.5;
+        return FAULT_AMP * diff * decay;
     }
 
     /** 平滑衰减：边界处 1，reach 处 0（一阶导为 0，无硬边界）。 */

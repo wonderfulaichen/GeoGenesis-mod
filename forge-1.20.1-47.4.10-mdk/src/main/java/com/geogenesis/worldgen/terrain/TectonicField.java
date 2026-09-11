@@ -46,6 +46,18 @@ public final class TectonicField {
     /** 邻域搜索半径：1 → 3×3 窗口（足够确定 Voronoi 归属与 F1/F2）。 */
     private static final int SEARCH_RADIUS = 1;
 
+    // ===== 域扭曲（让 Voronoi 直线边界变有机）=====
+    /**
+     * 域扭曲幅度（wu）。Voronoi 边界本质是<b>中垂线（直线）</b>，直接用会让
+     * 2000wu 的板块格子呈<b>笔直多边形</b>（用户反馈"岩石类型出现明显平直边界"）。
+     * 对查询点做<b>连续</b>域扭曲后边界变为有机曲线，且不影响 dist/alongCoord 的连续性。
+     * 取板块间距的 16%（太大会使板块形状失控，太小仍显直）。
+     */
+    private static final double WARP_AMP = 320.0;
+    /** 域扭曲频率（1/wu）：波长 ~1600wu（约为板块间距的 0.8 倍）。 */
+    private static final double WARP_FREQ = 1.0 / 1600.0;
+    private static final long SALT_WARP = 0x2C6E_F1A3_84BD_9075L;
+
     /**
      * 边界影响宽度（wu）：超出此距离返回 {@link #INTERIOR}（stress=0）。
      *
@@ -193,8 +205,18 @@ public final class TectonicField {
      * </ul>
      */
     public Sample sample(double wx, double wz) {
-        int baseX = (int) Math.floor(wx / PLATE_SPACING);
-        int baseZ = (int) Math.floor(wz / PLATE_SPACING);
+        // ★ 2026-09-12 修复（用户反馈"岩石类型出现明显平直边界"）：
+        //   Voronoi 边界本是【中垂线 = 直线】，2000wu 的板块格子被直接暴露
+        //   → 岩性/构造单元的边界呈笔直多边形（方案 §3.6 早已注明"后续可加域扭曲让边界变有机"，
+        //   本次补上）。对<b>查询点</b>做域扭曲（连续映射）→ 边界变有机曲线，
+        //   且 dist/alongCoord 的连续性不受影响（扭曲是连续变换）。
+        double wxw = wx, wzw = wz;
+        if (WARP_AMP > 0.0) {
+            wxw = wx + WARP_AMP * valueNoise(wx * WARP_FREQ, wz * WARP_FREQ, SALT_WARP);
+            wzw = wz + WARP_AMP * valueNoise(wx * WARP_FREQ + 17.3, wz * WARP_FREQ + 31.7, SALT_WARP + 1);
+        }
+        int baseX = (int) Math.floor(wxw / PLATE_SPACING);
+        int baseZ = (int) Math.floor(wzw / PLATE_SPACING);
 
         // 找最近(d1)与次近(d2)种子
         double d1 = Double.MAX_VALUE, d2 = Double.MAX_VALUE;
@@ -206,7 +228,7 @@ public final class TectonicField {
             for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
                 int cx = baseX + dx, cz = baseZ + dz;
                 plateSeed(cx, cz, sp);
-                double ddx = wx - sp[0], ddz = wz - sp[1];
+                double ddx = wxw - sp[0], ddz = wzw - sp[1];
                 double d = Math.sqrt(ddx * ddx + ddz * ddz);
                 if (d < d1) {
                     d2 = d1; c2x = c1x; c2z = c1z; s2x = s1x; s2z = s1z;
@@ -254,8 +276,8 @@ public final class TectonicField {
             if (d1 < 1e-9 || d2 < 1e-9) {
                 gx = nx; gz = nz;                       // 退化兜底（点与种子重合）
             } else {
-                gx = (wx - s2x) / d2 - (wx - s1x) / d1;
-                gz = (wz - s2z) / d2 - (wz - s1z) / d1;
+                gx = (wxw - s2x) / d2 - (wxw - s1x) / d1;
+                gz = (wzw - s2z) / d2 - (wzw - s1z) / d1;
             }
             double gm = Math.sqrt(gx * gx + gz * gz);
             if (gm > 1e-12) {
@@ -345,8 +367,13 @@ public final class TectonicField {
      */
     public double boundaryStrengthChained(Sample s, double wx, double wz) {
         double g = boundaryStrength(s);
-        if (g <= 0.0) return 0.0;
-        // ★ 2026-09-12：改用连续应力，避免 btype 跳变造成系数骤变
+        // ★ 2026-09-12 性能修复：**先判衰减再算 chain**。
+        //   boundaryStrength 是 σ=110 的高斯，在 330wu 处已降到 1%；
+        //   而 BOUNDARY_REACH 扩到 1000 后，"非 INTERIOR" 的区域面积增大约 9.8×
+        //   （∝d²）→ 若不早退，chainModulation（2×ridgedNoise ≈ 8+ 哈希 + 三角函数）
+        //   会在近 10 倍大的区域被白算。此处 `g` 已算出，直接用阈值早退。
+        if (g <= 0.01) return 0.0;
+        // ★ 连续应力，避免 btype 跳变造成系数骤变
         double cw = Math.max(0.0, s.stress());
         double dw = Math.max(0.0, -s.stress());
         if (cw <= 0.0 && dw <= 0.0) return 0.0;     // 纯走滑：无形变

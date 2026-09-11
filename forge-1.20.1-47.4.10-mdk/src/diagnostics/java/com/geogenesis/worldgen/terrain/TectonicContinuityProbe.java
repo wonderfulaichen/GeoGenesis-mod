@@ -95,7 +95,10 @@ public final class TectonicContinuityProbe {
                     // 仅当【当前与上一点都在作用范围内】时才考察
                     if (s.dist() < REACH && prevDist < REACH) {
                         n2++;
-                        int blk = (int) Math.floor(s.dist() / TectonicDeformation.FAULT_SPACING);
+                        // ★ 2026-09-12：产品已把断块判据由 floor(dist/spacing) 改为
+                        //   floor(along/spacing)（沿走向分块，避免距离等值线闭合成同心环）。
+                        //   探针必须同步，否则崖线会被误判为"无理由跳变"。
+                        int blk = (int) Math.floor(s.alongCoord() / TectonicDeformation.FAULT_SPACING);
                         boolean crossed = (prevBlock != Integer.MIN_VALUE && blk != prevBlock);
                         if (crossed) blockCross++;
                         double j = Math.abs(off - prevOff);
