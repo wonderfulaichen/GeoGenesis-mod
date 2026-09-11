@@ -188,5 +188,17 @@
   "geogenesis.legend.latitude.north": "North",
   "geogenesis.legend.latitude.south": "South",
   "geogenesis.legend.river_network.high": "High Flow",
-  "geogenesis.legend.river_network.low": "Low Flow"
+  "geogenesis.legend.river_network.low": "Low Flow",
+  "geogenesis.rock.GNEISS": "Gneiss",
+  "geogenesis.rock.SCHIST": "Schist",
+  "geogenesis.rock.GRANITE": "Granite",
+  "geogenesis.rock.SANDSTONE": "Sandstone",
+  "geogenesis.rock.SHALE": "Shale",
+  "geogenesis.rock.LIMESTONE": "Limestone",
+  "geogenesis.rock.BASALT": "Basalt",
+  "geogenesis.rock.ANDESITE": "Andesite",
+  "geogenesis.rock_layer.0": "Layer 1 (Surface)",
+  "geogenesis.rock_layer.1": "Layer 2",
+  "geogenesis.rock_layer.2": "Layer 3",
+  "geogenesis.rock_layer.3": "Layer 4 (Deep)"
 }

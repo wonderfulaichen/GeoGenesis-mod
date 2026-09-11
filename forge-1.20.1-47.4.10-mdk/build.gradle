@@ -843,6 +843,15 @@ task runPrecipRiverWidthProbe(type: JavaExec) {
     }
 }
 
+// Stratum / rock type probe (2026-09-12, geology Phase T4): gradlew runStratumProbe [seed]
+task runStratumProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.StratumProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Terrain shape probe (2026-09-12, geology Phase T3): gradlew runTerrainShapeProbe [seed]
 task runTerrainShapeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
