@@ -46,6 +46,15 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
   - i18n：`continuousLegendLabels()`/`terrainUnderlayLabel()` 不再硬编码中文，改为接收本地化回调；`DisplayPanel` 显示设置全部改用 `I18n.get`；新增 ~30 个语言 key（`geogenesis.legend.*`/`geogenesis.underlay.*`/`geogenesis.settings.display.*`）。
   - 新增 `PaletteProbe`（`gradlew runPaletteProbe`）：离散图层三方一致性自检（颜色/名称/枚举/key 解析），防止手工平行表漂移。验证：8 项 PASS。
 
+- **游戏内「大范围预览」开关不可用/无反馈**（2026-09-11，用户反馈）：
+  - 现象：MC 预览窗口无法（或看起来无法）打开大范围预览。原因是游戏内没有实体按键（Swing 端的 `L` 键不存在），且该开关只藏在「采样」页签第 3 行。
+  - **根因（真 bug）**：`PreviewDisplay.setLargeArea(true)` 只切换采样管线、**不改缩放** → 点开后画面**毫无变化**（仍在 1:1 精确档），必须再手动滚轮缩到 1:32+ 才见效果 → 被当成"打不开"。
+  - 修复：
+    1. `setLargeArea(true)` 现**自动缩到 1:64**（`LARGE_AREA_ENTRY_SCALE`），点开即见宽视野气候格局；关闭时回落 ≤1:16。
+    2. 在**预览正上方**新增大范围开关按钮（与「◀ 图层 / 图层 ▶」同排），这是主入口；「采样」页签那个保留为次入口。两处共享 `PreviewDisplay` 状态，文案每帧自动同步。
+    3. 预览右下角倍率标签在大范围模式下附加「大范围」标记（`geogenesis.preview.large_area`），便于确认当前走哪条管线。
+    4. tooltip 文案更新为"开启后自动缩到 1:64…之后仍可继续缩放到 1:1024"。
+
 ### 验证 / Verification
 
 - `gradlew build` BUILD SUCCESSFUL（含 `reobfJar`，已混淆为目标运行环境映射）。

@@ -365,8 +365,9 @@ public class PreviewDisplay extends AbstractWidget {
         g.fill(x - 1, y, x, y + h, 0xFF666666);
         g.fill(x + w, y, x + w + 1, y + h, 0xFF666666);
 
-        // 缩放比标签：1:N 右下角
-        String zoomTxt = "1:" + scaleBlockPos;
+        // 缩放比标签：1:N 右下角（★ 大范围模式附带标记——否则分不清当前走的是哪条管线）
+        String zoomTxt = "1:" + scaleBlockPos
+                + (largeArea ? " · " + localize("geogenesis.preview.large_area") : "");
         g.fill(x + w - mc.font.width(zoomTxt) - 8, y + h - 14, x + w - 2, y + h - 2, 0x88000000);
         g.drawString(mc.font, zoomTxt, x + w - mc.font.width(zoomTxt) - 5, y + h - 12, 0xCCCCCCCC);
 
@@ -423,13 +424,26 @@ public class PreviewDisplay extends AbstractWidget {
         }
     }
 
-    /** 切换大范围模式（>1:16 走 {@link LargeAreaSampler}；关闭时回落精确管线并复位缩放）。 */
+    /** 开启大范围时自动跳到该缩放档（1:64）——保证"点开即见效果"。 */
+    private static final int LARGE_AREA_ENTRY_SCALE = 64;
+
+    /**
+     * 切换大范围模式（>1:16 走 {@link LargeAreaSampler}；关闭时回落精确管线并复位缩放）。
+     *
+     * <p>★ 2026-09-11 修复：开启时<b>自动缩到 {@value #LARGE_AREA_ENTRY_SCALE} 档</b>。
+     * 原实现只改采样管线、<b>不动缩放</b> → 点开开关后画面<b>毫无变化</b>
+     * （仍在 1:1 精确档），用户会认为"大范围预览打不开"。现在点开即见宽视野格局。</p>
+     */
     public void setLargeArea(boolean v) {
         if (this.largeArea == v) return;
         this.largeArea = v;
         largeGrid = null;
         largeGridId = Long.MIN_VALUE;
-        if (!v && scaleBlockPos > 16) scaleBlockPos = 16;
+        if (v) {
+            if (scaleBlockPos < LARGE_AREA_ENTRY_SCALE) scaleBlockPos = LARGE_AREA_ENTRY_SCALE;
+        } else if (scaleBlockPos > 16) {
+            scaleBlockPos = 16;
+        }
         needsClear = true;
         rebuildQueue();
     }
