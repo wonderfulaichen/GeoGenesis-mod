@@ -101,10 +101,16 @@ public final class PrecipFieldProbe {
             }
         }
         long t1 = System.nanoTime();
+        // ★ 2026-09-11：焚风必须【有上限】。
+        //   单位换算（易错，务必留意）：CellGenerator 以 `temp += foehnWarm / 40` 施加
+        //   （DEG_C_PER_E_UNIT=40，1 e 单位 = 40 °C）→ **增益的 °C 值在数值上恰等于 foehnWarm**，
+        //   故下面对 foehnWarm 的阈值判断即为 °C 判断，**不需要再乘/除 40**。
+        boolean foehnBounded = maxFoehn <= 3.5;    // foehnMax 目标 3.0，留 0.5 容差
         boolean pass4 = maxOro > 0.2 && maxShadow > 0.2 && maxFoehn > 0.2
-                     && oroHit > 0 && shadowHit > 0 && foehnHit > 0;
-        System.out.printf("[4] 真实地形统计(n=%d): 平均地形雨=%.4f 最大=%.3f | 最大雨影=%.3f | 最大焚风=%.2f°C%n",
-            n, sumOro / n, maxOro, maxShadow, maxFoehn);
+                     && oroHit > 0 && shadowHit > 0 && foehnHit > 0 && foehnBounded;
+        System.out.printf("[4] 真实地形统计(n=%d): 平均地形雨=%.4f 最大=%.3f | 最大雨影=%.3f | 最大焚风=%.2f°C %s%n",
+            n, sumOro / n, maxOro, maxShadow, maxFoehn,
+            foehnBounded ? "" : "← 超上限!");
         System.out.printf("    命中占比: 地形雨>0.05 %d(%.1f%%) 雨影>0.05 %d(%.1f%%) 焚风>0.05 %d(%.1f%%)  %s%n",
             oroHit, 100.0 * oroHit / n, shadowHit, 100.0 * shadowHit / n,
             foehnHit, 100.0 * foehnHit / n, pass4 ? "PASS" : "FAIL");

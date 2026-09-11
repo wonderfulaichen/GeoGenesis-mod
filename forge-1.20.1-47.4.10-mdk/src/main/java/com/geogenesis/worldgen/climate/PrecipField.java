@@ -40,17 +40,31 @@ public final class PrecipField {
 
     /** 参数（Phase B 用 defaults；接 Forge 配置推迟到接线完成时，避免产生死配置）。 */
     public record Params(double oroGain, double oroRefRise, double shadowMax, double shadowRef,
-                         double foehnK, double lapseDiff, int upwindCells, double cellSize) {
+                         double foehnK, double lapseDiff, double foehnMax,
+                         int upwindCells, double cellSize) {
         public static Params defaults() {
             // foehnK = 8.0：MC 垂直尺度被压缩，按真实直减率算焚风仅 ~1°C 不可见，
             // 故按"游戏可感知"标定（设计文档 §4.4 已明确标注为游戏化放大）。
+            //
+            // ★ foehnMax = 3.0（2026-09-11 修复）：
+            //   原式 foehnWarm = foehnK·barrier·lapseDiff 是【线性无上限】的，
+            //   而雨影 shadowLoss 却被 shadowRef(40) 归一化饱和 —— 二者不对称。
+            //   实测 barrier 可达 137 块（此时雨影已饱和 0.70），焚风算出 5.27，
+            //   超出 §4.4 的 1~3 °C 目标带；极端地形下更会失控增长
+            //   （仅被 CellGenerator 的 clamp(temp,−1,1) 兜住，最多 +40 °C 等效）。
+            //   现按"典型 ≈2 °C、上限 3 °C"截断：低 barrier 段保留原有梯度，超出即封顶。
+            //
+            //   ⚠️ 单位说明（本次曾算错一次，务必留意）：CellGenerator 以
+            //   `temp += foehnWarm / DEG_C_PER_E_UNIT` 施加，而 1 e 单位 = 40 °C
+            //   （DEG_C_PER_E_UNIT=40）→ **增益的 °C 值在数值上恰等于 foehnWarm**。
+            //   故此处直接写"3.0"即代表 3 °C，**不要**再除以 40。
             //
             // ★ cellSize 32→96（2026-09-11 性能修正）：本类被放在最热的
             //   CellGenerator.sample() 里，而每个【冷】节点要 8 次 terrainEQuick
             //   （1 自身 + 1 迎风 + 6 上风）。实测 runFlowAccumProbe 的 coldMs
             //   从基线 1849ms 涨到 ~17600ms（9.4×）。节点密度降 9× 后代价回落；
             //   96wu 仍优于地形雨所需的"山脉尺度"（数百 wu），保真度损失可接受。
-            return new Params(0.85, 24.0, 0.70, 40.0, 8.0, 0.0048, 6, 96.0);
+            return new Params(0.85, 24.0, 0.70, 40.0, 8.0, 0.0048, 3.0, 6, 96.0);
         }
     }
 
@@ -157,7 +171,10 @@ public final class PrecipField {
             barrier = Math.max(barrier, wd * (hUp - hP));
         }
         double shadowLoss = p.shadowMax() * clamp01(barrier / p.shadowRef());
-        double foehnWarm = p.foehnK() * Math.max(0.0, barrier) * p.lapseDiff();
+        // 焚风：线性段保留"屏障越高增温越强"的梯度，但用 foehnMax 封顶
+        // （与雨影在 shadowRef 处饱和相呼应——原式无上限，极端地形会失控）。
+        double foehnWarm = Math.min(p.foehnMax(),
+            p.foehnK() * Math.max(0.0, barrier) * p.lapseDiff());
 
         return new Mod(orographicGain, shadowLoss, foehnWarm);
     }
