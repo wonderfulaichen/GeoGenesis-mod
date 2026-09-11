@@ -55,6 +55,19 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
     3. 预览右下角倍率标签在大范围模式下附加「大范围」标记（`geogenesis.preview.large_area`），便于确认当前走哪条管线。
     4. tooltip 文案更新为"开启后自动缩到 1:64…之后仍可继续缩放到 1:1024"。
 
+- **Phase C / D 重验证 + 两处探针口径修正**（2026-09-11，纬度改余弦后复核）：
+  - `runFlowAccumProbe` **status=PASS**（profile.violations=0 / border.violations=0 / topo.cycles=0 / gateViolations=0）；
+    `coldMs=4810`（此前 ~13.6s，D13 的 `terrainEQuick` 缓存 + `groundYAt` 接线修复见效）。
+  - `runPrecipRiverWidthProbe` 复核发现**判据口径错误**并修正：原判据要求 `tail`（河口）最干桶 < 1.0，
+    但 `tail = width[last]` 被 `applyEstuary` 喇叭口（×1.9）/ `mouthMax` 上限 / 沿程取大三重规则主导，
+    **不纯反映汇流** → 假失败。改为**只以 head（河道中段）为判据**，并新增「桶均降水 / 权重 / 解析预期」诊断列。
+    实测 head：最干桶 **0.933**（<0.95 ✓）、最湿桶 **1.058**（>1.05 ✓）→ 核心主张成立；
+    幅度约为解析预期（`w^0.252`）的 55~80%，属 `minWidth`/`maxWidth` 护栏的预期压缩。
+  - `PrecipFieldProbe [8]` 采样方式修正：原扫固定 z 网格再按 lat01 分桶，纬度映射一变同一桶会采到
+    **完全不同的 z 窗口**（跨映射不可比，会误判"荒漠带移位"）。改为**按 lat01 均匀扫描 + 二分反解 z**
+    （`zAtLatitude`，对任意单调映射成立）。新映射下荒漠峰值落在 **0.375~0.500** ↔ 约 **37°N**（副热带高压/撒哈拉纬度），判据 PASS。
+  - 两处修正的根因相同：**探针隐含假设了特定纬度映射**，公式一变即产生假信号。
+
 ### 验证 / Verification
 
 - `gradlew build` BUILD SUCCESSFUL（含 `reobfJar`，已混淆为目标运行环境映射）。
