@@ -530,7 +530,8 @@ public final class CellGenerator {
      */
     private void applyTectonicWeights(double[] w, double sx, double sz) {
         TectonicField.Sample ts = tectonic.sample(sx, sz);
-        double g = TectonicField.boundaryStrength(ts);
+        // ★ Phase T2：汇聚造山带按走向串珠化（独立山峰），离散保持连续（真实裂谷是线状）
+        double g = tectonic.boundaryStrengthChained(ts, sx, sz);
         if (g <= 0.01) return;
 
         double oceanW = w[TerrainClass.OCEAN.ordinal()] + w[TerrainClass.DEEP_OCEAN.ordinal()];
