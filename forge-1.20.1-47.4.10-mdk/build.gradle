@@ -843,6 +843,15 @@ task runPrecipRiverWidthProbe(type: JavaExec) {
     }
 }
 
+// Tectonic field probe (2026-09-12, geology Phase T1): gradlew runTectonicProbe [seed]
+task runTectonicProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TectonicProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Erosion concurrency / deadlock regression probe (2026-09-11, D3): gradlew runErosionConcurrencyProbe [seed] [threads]
 task runErosionConcurrencyProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
