@@ -843,6 +843,15 @@ task runPrecipRiverWidthProbe(type: JavaExec) {
     }
 }
 
+// Erosion concurrency / deadlock regression probe (2026-09-11, D3): gradlew runErosionConcurrencyProbe [seed] [threads]
+task runErosionConcurrencyProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.erosion.ErosionConcurrencyProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Palette consistency probe (2026-09-11): gradlew runPaletteProbe
 task runPaletteProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
