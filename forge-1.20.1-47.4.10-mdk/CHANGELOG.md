@@ -68,6 +68,17 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
     （`zAtLatitude`，对任意单调映射成立）。新映射下荒漠峰值落在 **0.375~0.500** ↔ 约 **37°N**（副热带高压/撒哈拉纬度），判据 PASS。
   - 两处修正的根因相同：**探针隐含假设了特定纬度映射**，公式一变即产生假信号。
 
+- **焚风超幅（5.27 → 3.00 °C）**（2026-09-11）：
+  - 问题：`shadowLoss` 被 `shadowRef(40)` 归一化**饱和**，而 `foehnWarm = foehnK·barrier·lapseDiff`
+    **线性无上限** —— 二者不对称。实测 `barrier` 可达 137 块（雨影已饱和），焚风算出 5.27，
+    超出 §4.4 的 1~3 °C 目标带；极端地形会失控（仅靠 `clamp(temp,−1,1)` 兜住）。
+  - 修复：新增 `Params.foehnMax`（默认 **3.0**），`foehnWarm = min(foehnMax, 线性式)`；
+    低 barrier 段保留梯度，超出即封顶。探针 [4] 新增**上限判据**（≤3.5）防回归。
+  - ⚠️ **单位陷阱（曾算错一次）**：`temp += foehnWarm / 40` 且 1 e 单位 = 40 °C
+    → **增益 °C 数值上等于 `foehnWarm`**，故 `foehnMax` 直接写 3.0，**不再除以 40**
+    （误写 0.075 会让焚风只剩 0.075 °C ≈ 消失，已被探针判据拦下）。
+  - 验证：最大焚风 **3.00 °C**；`runClimateBiomeProbe` 邻接违例仍 **0/20000**（无退化）。
+
 ### 验证 / Verification
 
 - `gradlew build` BUILD SUCCESSFUL（含 `reobfJar`，已混淆为目标运行环境映射）。
