@@ -59,8 +59,16 @@ public final class TectonicDeformation {
     static final double FAULT_REACH = 700.0;
     /** 相邻断块去相关速度（越大 → 相邻块高差越明显、崖线越陡）。 */
     static final double FAULT_BLOCK_FREQ = 2.5;
-    /** 断块沿走向的相关长度（wu）：断层是分段活动的，故沿走向每约此长度才换一"段"。 */
-    static final double FAULT_SEGMENT = 1400.0;
+    /**
+     * 断块沿走向的相关长度（wu）：断层是分段活动的，故沿走向每约此长度才换一"段"。
+     *
+     * <p>★ 2026-09-12 由 1400 调大（配合下面的相位尺度）：{@code along} 用<b>绝对世界坐标</b>
+     * 投影（{@code wx·tx + wz·tz}），在远离原点处量级可达 1e4；而切向存在微小不连续
+     * （配对切换，dTan&lt;1e-4），经此量级放大后 along 可跳 ~100wu
+     * → 噪声值跳变 → 伪台阶。加长尺度后同样的 along 跳变引起的相对变化降低数倍，
+     * 同时让断层沿走向更连续（此前"串珠感"过强，也不够自然）。</p>
+     */
+    static final double FAULT_SEGMENT = 4000.0;
 
     private static final long SALT_FOLD = 0x3B91_D7C4_5E02_1A87L;
     private static final long SALT_FAULT = 0x6D2A_F813_B94C_70E5L;
@@ -85,16 +93,17 @@ public final class TectonicDeformation {
      * @return 高程偏置；内部/走滑或超出作用距离时返回 0
      */
     public double offset(TectonicField.Sample s, double wx, double wz) {
-        return switch (s.btype()) {
-            // 挤压 → 褶皱 + 逆断层
-            case TectonicField.CONVERGENT ->
-                    foldOffset(s, wx, wz) + faultOffset(s, wx, wz, 0.6);   // 逆断层断距小于正断层
-            // 拉张 → 正断层（地垒/地堑），无褶皱
-            case TectonicField.DIVERGENT ->
-                    faultOffset(s, wx, wz, 1.0);
-            // 走滑无垂向形变（与 T1 的判定一致）；内部无形变
-            default -> 0.0;
-        };
+        // ★ 2026-09-12 修复（伪影）：改用【连续应力】stress 加权，取代 switch(btype)。
+        //   原因：btype 是离散枚举，在类型边界处跳变 → 公式骤变 → 偏移跳变
+        //   （探针实测：btype 0→1 时偏移从 0 跳到 0.005e ≈ 1 块，成线状分布）。
+        //   stress ∈[-1,1] 由 dot/|(dot,cross)| 连续给出 → 过渡平滑。
+        double cw = Math.max(0.0, s.stress());    // 汇聚度（挤压）
+        double dw = Math.max(0.0, -s.stress());   // 离散度（拉张）
+        if (cw <= 0.0 && dw <= 0.0) return 0.0;   // 纯走滑 / 内部 → 无形变（与 T1 一致）
+
+        double fold = cw * foldOffset(s, wx, wz);                          // 褶皱仅挤压环境
+        double fault = (cw * 0.6 + dw * 1.0) * faultOffsetUnit(s, wx, wz); // 逆断层弱于正断层
+        return fold + fault;
     }
 
     /**
@@ -110,12 +119,14 @@ public final class TectonicDeformation {
 
         double decay = decay(d, reach);
         // 相位扰动：沿走向低频 → 褶皱轴波状起伏
+        // ★ 尺度由 1600/900 调大到 6000/3600：along 用绝对坐标投影、量级 ~1e4，
+        //   而切向存在微小不连续；尺度越大，同样的 along 跳变引起的噪声变化越小。
         double along = alongFaultCoord(s, wx, wz);
-        double phase = valueNoise(along / 1600.0, d / 2600.0, SALT_FOLD) * Math.PI;
+        double phase = valueNoise(along / 6000.0, d / 2600.0, SALT_FOLD) * Math.PI;
         double wave = Math.sin(d / FOLD_WAVELENGTH * 2.0 * Math.PI + phase);
 
         // 幅度沿走向也做调制：褶皱不是处处等强（真实褶皱带强弱相间）
-        double ampMod = 0.55 + 0.45 * valueNoise(along / 900.0, 3.7, SALT_FOLD + 1);
+        double ampMod = 0.55 + 0.45 * valueNoise(along / 3600.0, 3.7, SALT_FOLD + 1);
         return FOLD_AMP * wave * decay * ampMod;
     }
 
@@ -129,9 +140,9 @@ public final class TectonicDeformation {
      * <p><b>分段性</b>：断距的沿走向坐标以 {@link #FAULT_SEGMENT} 为尺度，
      * 使断层"分段活动"（真实断层由多段组成），而非一整条等强。
      *
-     * @param scale 断距缩放（逆断层弱于正断层）
+     * <p>返回<b>未缩放</b>的单位断距（缩放由调用方按应力加权）。
      */
-    private double faultOffset(TectonicField.Sample s, double wx, double wz, double scale) {
+    private double faultOffsetUnit(TectonicField.Sample s, double wx, double wz) {
         double reach = FAULT_REACH;
         double d = s.dist();
         if (d >= reach) return 0.0;
@@ -141,7 +152,7 @@ public final class TectonicDeformation {
         double along = alongFaultCoord(s, wx, wz) / FAULT_SEGMENT;
         // 中心化（valueNoise 输出 [-1,1]）→ 断块有升有降 → 近零均值，不整体平移地形
         double slip = valueNoise(along, block * FAULT_BLOCK_FREQ, SALT_FAULT);
-        return FAULT_AMP * scale * slip * decay;
+        return FAULT_AMP * slip * decay;
     }
 
     /** 平滑衰减：边界处 1，reach 处 0（一阶导为 0，无硬边界）。 */
@@ -152,11 +163,16 @@ public final class TectonicDeformation {
     }
 
     /**
-     * 沿断层走向的坐标（wu）：把世界点投影到边界切向。
-     * 用于相位/分段——保证同一断层的不同位置共享一致的沿走向参数。
+     * 沿断层走向的坐标（wu）。
+     *
+     * <p>★ 2026-09-12 修复（伪影）：改用 {@code s.alongCoord()}（= (d1+d2)/2，由连续的
+     * d1/d2 得出）替代原切向投影 {@code wx·tx + wz·tz}。后者在最近邻配对切换处因切向的
+     * 微小不连续，经绝对世界坐标（|p|~1e4）放大成 ~100wu 的坐标跳变
+     * → 相位/断块噪声跳变 → 褶皱轴断裂 + 伪断层台阶（用户反馈的"线性疤痕/串珠"）。
+     * 新坐标处处连续，且零额外采样成本。</p>
      */
     private static double alongFaultCoord(TectonicField.Sample s, double wx, double wz) {
-        return wx * s.tangentX() + wz * s.tangentZ();
+        return s.alongCoord();
     }
 
     // ===================== 零依赖极简 value noise =====================
