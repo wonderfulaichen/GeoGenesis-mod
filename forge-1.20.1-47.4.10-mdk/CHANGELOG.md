@@ -79,6 +79,23 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
     （误写 0.075 会让焚风只剩 0.075 °C ≈ 消失，已被探针判据拦下）。
   - 验证：最大焚风 **3.00 °C**；`runClimateBiomeProbe` 邻接违例仍 **0/20000**（无退化）。
 
+- **D3 修复：侵蚀平滑的池饥饿死锁**（2026-09-11）：
+  - 问题：`ErosionEngine.smoothErosionResult` / `smoothDepositionZones` 用
+    `TILE_SAMPLER.execute + CountDownLatch.await` 做行级并行。池 core 8 / max 16 / 队列 64，
+    而每次仅提交 ≈8 个子任务 → **队列永不满** → `CallerRunsPolicy`（唯一的提交者自救路径）
+    **永不触发**；一旦 16 个池线程同时阻塞在 `await`，就无人能取走队列中的子任务 → **永久死锁**。
+    且 `CellGenerator:603` 在池内任务里调 `generateErosionTile` → 成环（正是 `CellGenerator:42`
+    记录的"池饥饿死锁 27 轮"）。
+  - 修复：改用 `IntStream.range(...).parallel()`（ForkJoinPool，work-stealing，调用线程参与执行）；
+    原中止语义改为显式检查中断位，保留 `CancellationException("erosion aborted")`。
+  - **A/B 实测行为中立**：还原旧代码重跑 `runFlowAccumProbe`，确定性指标逐位相同
+    （`hitColumns=4865284`、`fillWater=447345`，其余全同）→ 零行为变化。
+  - 新增 `ErosionConcurrencyProbe`（`gradlew runErosionConcurrencyProbe`）：
+    ① 24 线程 × 40 次 `sampleWu` 硬超时 180s → 实测 **28.8s 完成、0 错误、tile 缓存有界 256**；
+    ② 并行确定性 n=2704 逐位一致。旧代码下该探针即死锁回归守卫。
+  - 顺带发现（既有、无行为影响）：`CellGenerator.erosionRoundCounter` 为非原子 `int` 竞态，
+    但 `erosionRound` 只写不读（保留诊断字段）→ 记入体检报告待后续接滑窗时改用 `AtomicInteger`。
+
 ### 验证 / Verification
 
 - `gradlew build` BUILD SUCCESSFUL（含 `reobfJar`，已混淆为目标运行环境映射）。

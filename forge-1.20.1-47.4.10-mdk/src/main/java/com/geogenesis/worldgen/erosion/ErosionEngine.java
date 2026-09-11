@@ -683,51 +683,57 @@ public class ErosionEngine {
 
         for (int pass = 0; pass < passes; pass++) {
             float[] smoothed = flat.clone();
-            // ★ 2026-08-09 无伤优化：平滑并行化（每行只读 flat、写 smoothed 私有行 → 输出逐点一致）
+            // ★ 2026-09-11 D3 死锁修复：改用 ForkJoinPool.commonPool（work-stealing，
+            //   【调用线程会参与执行子任务】→ 不存在"等自己"）。
+            //   原实现 TILE_SAMPLER.execute + latch.await 会永久死锁：
+            //   池上限 16 / 队列 64，而每次仅提交约 8 个子任务 → 队列【永不满】
+            //   → 唯一的救命稻草 CallerRunsPolicy 永不触发；
+            //   一旦 16 个池线程同时走到此处并阻塞在 await，就无人能取走队列里的子任务。
+            //   CellGenerator:42 已记录该模式曾造成"池饥饿死锁 27 轮"。
+            //   并行安全性不变：每行只读 flat、只写本行 smoothed → 输出逐点一致。
             int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);
             int tasks = (end - start + rowsPerTask - 1) / rowsPerTask;
-            java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(tasks);
-            for (int t = 0; t < tasks; t++) {
-                final int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
-                com.geogenesis.worldgen.terrain.CellGenerator.TILE_SAMPLER.execute(() -> {
-                    try {
-                        for (int z = z0; z < z1; z++) {
-                            for (int x = start; x < end; x++) {
-                                int idx = z * bufSize + x;
-                                float h = flat[idx];
-                                float heightModifier;
-                                if (h <= seaNorm) heightModifier = 0.0f;   // 水下不平滑——保留侵蚀痕迹（沟壑/水下峡谷）
-                                else if (h >= seaNorm + 0.25f) heightModifier = 0.0f;
-                                else heightModifier = 1.0f - (h - seaNorm) / 0.25f;
-                                if (heightModifier <= 0.01f) continue;
+            java.util.stream.IntStream.range(0, tasks).parallel().forEach(t -> {
+                int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
+                for (int z = z0; z < z1; z++) {
+                    for (int x = start; x < end; x++) {
+                        int idx = z * bufSize + x;
+                        float h = flat[idx];
+                        float heightModifier;
+                        if (h <= seaNorm) heightModifier = 0.0f;   // 水下不平滑——保留侵蚀痕迹（沟壑/水下峡谷）
+                        else if (h >= seaNorm + 0.25f) heightModifier = 0.0f;
+                        else heightModifier = 1.0f - (h - seaNorm) / 0.25f;
+                        if (heightModifier <= 0.01f) continue;
 
-                                float total = 0, weights = 0;
-                                for (int dz = -radius; dz <= radius; dz++) {
-                                    for (int dx = -radius; dx <= radius; dx++) {
-                                        float dist2 = dx * dx + dz * dz;
-                                        if (dist2 <= radiusSq) {
-                                            int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
-                                            int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
-                                            int ni = ni_z * bufSize + ni_x;
-                                            float weight = 1.0f - dist2 / radiusSq;
-                                            total += flat[ni] * weight;
-                                            weights += weight;
-                                        }
-                                    }
-                                }
-                                if (weights > 0) {
-                                    float avg = total / weights;
-                                    float diff = h - avg;
-                                    smoothed[idx] = h - diff * smoothingRate * heightModifier;
+                        float total = 0, weights = 0;
+                        for (int dz = -radius; dz <= radius; dz++) {
+                            for (int dx = -radius; dx <= radius; dx++) {
+                                float dist2 = dx * dx + dz * dz;
+                                if (dist2 <= radiusSq) {
+                                    int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
+                                    int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
+                                    int ni = ni_z * bufSize + ni_x;
+                                    float weight = 1.0f - dist2 / radiusSq;
+                                    total += flat[ni] * weight;
+                                    weights += weight;
                                 }
                             }
                         }
-                    } finally {
-                        latch.countDown();
+                        if (weights > 0) {
+                            float avg = total / weights;
+                            float diff = h - avg;
+                            smoothed[idx] = h - diff * smoothingRate * heightModifier;
+                        }
                     }
-                });
+                }
+            });
+            // 保留原中止语义：被中断 → 抛 CancellationException，
+            // 调用方（getOrGenTile）据此丢弃半成品 tile、绝不入缓存。
+            // （原先靠 latch.await 抛 InterruptedException 实现；并行流不抛，
+            //   故改为显式检查中断位。）
+            if (Thread.currentThread().isInterrupted()) {
+                throw new CancellationException("erosion aborted");
             }
-            try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("erosion aborted"); }
             System.arraycopy(smoothed, 0, flat, 0, flat.length);
         }
     }
@@ -736,49 +742,49 @@ public class ErosionEngine {
         int start = pad + 1;
         int end = pad + sz - 1;
         float[] smoothed = flat.clone();
-        // ★ 2026-08-09 无伤优化：沉积区平滑并行化（每行只读 flat/flatPre、写 smoothed 私有行 → 输出逐点一致）
+        // ★ 2026-09-11 D3 死锁修复：同 smoothErosionResult —— 原 TILE_SAMPLER.execute
+        //   + latch.await 会永久死锁（队列永不满 → CallerRunsPolicy 不触发 →
+        //   16 个池线程全阻塞在 await 时无人取走子任务）。改用 ForkJoinPool 并行流
+        //   （work-stealing，调用线程参与执行）。并行安全性不变：每行只读 flat/flatPre、
+        //   只写本行 smoothed → 输出逐点一致。
         int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);
         int tasks = (end - start + rowsPerTask - 1) / rowsPerTask;
-        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(tasks);
-        for (int t = 0; t < tasks; t++) {
-            final int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
-            com.geogenesis.worldgen.terrain.CellGenerator.TILE_SAMPLER.execute(() -> {
-                try {
-                    for (int z = z0; z < z1; z++) {
-                        for (int x = start; x < end; x++) {
-                            int idx = z * bufSize + x;
-                            float h = flat[idx];
-                            float hPre = flatPre[idx];
-                            if (h <= 0.05f) continue;
-                            float deposition = h - hPre;
-                            if (deposition <= 0.005f) continue;
-                            float sum = 0;
-                            int count = 0;
-                            for (int dz = -1; dz <= 1; dz++) {
-                                for (int dx = -1; dx <= 1; dx++) {
-                                    if (dx == 0 && dz == 0) continue;
-                                    int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
-                                    int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
-                                    int ni = ni_z * bufSize + ni_x;
-                                    sum += flat[ni];
-                                    count++;
-                                }
-                            }
-                            float avg = sum / count;
-                            float diff = h - avg;
-                            // ★ 2026-08-12 T3：只削明显孤峰（突出 >0.003e≈1 块），
-                            // 保留 1-3 块级沉积微纹理（旧版无条件平均会抹掉细节）
-                            if (diff <= 0.003f) continue;
-                            float blend = Math.min((diff - 0.003f) * 3.0f, 0.6f);
-                            smoothed[idx] = h * (1f - blend) + avg * blend;
+        java.util.stream.IntStream.range(0, tasks).parallel().forEach(t -> {
+            int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
+            for (int z = z0; z < z1; z++) {
+                for (int x = start; x < end; x++) {
+                    int idx = z * bufSize + x;
+                    float h = flat[idx];
+                    float hPre = flatPre[idx];
+                    if (h <= 0.05f) continue;
+                    float deposition = h - hPre;
+                    if (deposition <= 0.005f) continue;
+                    float sum = 0;
+                    int count = 0;
+                    for (int dz = -1; dz <= 1; dz++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dz == 0) continue;
+                            int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
+                            int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
+                            int ni = ni_z * bufSize + ni_x;
+                            sum += flat[ni];
+                            count++;
                         }
                     }
-                } finally {
-                    latch.countDown();
+                    float avg = sum / count;
+                    float diff = h - avg;
+                    // ★ 2026-08-12 T3：只削明显孤峰（突出 >0.003e≈1 块），
+                    // 保留 1-3 块级沉积微纹理（旧版无条件平均会抹掉细节）
+                    if (diff <= 0.003f) continue;
+                    float blend = Math.min((diff - 0.003f) * 3.0f, 0.6f);
+                    smoothed[idx] = h * (1f - blend) + avg * blend;
                 }
-            });
+            }
+        });
+        // 保留原中止语义（见 smoothErosionResult 注释）
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("erosion aborted");
         }
-        try { latch.await(); } catch (InterruptedException e) { throw new CancellationException("erosion aborted"); }
         System.arraycopy(smoothed, 0, flat, 0, flat.length);
     }
 
