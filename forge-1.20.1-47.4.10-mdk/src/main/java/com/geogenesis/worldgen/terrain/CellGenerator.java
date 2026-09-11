@@ -75,6 +75,15 @@ public final class CellGenerator {
 
     /** 地层场（构造环境 → 地层序列 → 出露岩性）。 */
     private final StratumField strata;
+
+    /**
+     * ★ 2026-09-12 地质 Phase T5 开关：褶皱/断层形变是否参与高程合成。
+     * {@code false} → 不调用 {@link TectonicDeformation}，输出<b>逐位退回</b>（可回滚）。
+     */
+    private static final boolean DEFORM_ENABLED = true;
+
+    /** 构造形变场（褶皱 / 断层）。 */
+    private final TectonicDeformation deform;
     private final double continentBias;
     private final double seabedAmp;
     private final double oceanDepthFactor;
@@ -149,6 +158,7 @@ public final class CellGenerator {
         this.coastline = new CoastlineField(p);
         this.tectonic = new TectonicField(0L);   // 种子在 seed() 注入
         this.strata = new StratumField(0L);      // ★ T4：地层场（种子在 seed() 注入）
+        this.deform = new TectonicDeformation(0L); // ★ T5：褶皱/断层形变场
         this.continentBias = p.continentBias();
         this.seabedAmp = p.seabedDetail();
         this.oceanDepthFactor = p.oceanDepthFactor();
@@ -194,6 +204,7 @@ public final class CellGenerator {
         precipField.setSeed(worldSeed);   // ★ Phase B：降水场随世界种子重置
         tectonic.setSeed(worldSeed);      // ★ 地质 Phase T1：构造格局随世界种子重置
         strata.setSeed(worldSeed);        // ★ 地质 Phase T4：地层分布随世界种子重置
+        deform.setSeed(worldSeed);        // ★ 地质 Phase T5：褶皱/断层相位随世界种子重置
         clearEqCache();                   // ★ D13：地形 e 缓存随世界种子失效
         // 海山中心水深检查：计算中心点的真实 eOcean（含 seabed，不含海山增量）
         // 仅在 eOcean_at_center < -0.20（足够深）时才允许生成海山
@@ -290,10 +301,21 @@ public final class CellGenerator {
         // ★ 2026-09-12 地质 Phase T4：地层/岩性（构造环境 → 地层序列 → 出露岩性）。
         //   纯数据层，不参与 e 合成（不影响地形/气候/水文）；
         //   为 ROCK_LAYER / ROCK_TYPE 预览图层提供此前完全缺失的数据源。
+        TectonicField.Sample tsAll = null;
+        if (STRATA_ENABLED || DEFORM_ENABLED) {
+            tsAll = tectSample != null ? tectSample : tectonic.sample(sx, sz);
+        }
         if (STRATA_ENABLED) {
-            TectonicField.Sample ts = tectSample != null ? tectSample : tectonic.sample(sx, sz);
             cell.rockLayer = strata.layerAt(sx, sz);
-            cell.rockTypeId = StratumField.rockTypeId(ts, oceanW < 0.5, cell.rockLayer);
+            cell.rockTypeId = StratumField.rockTypeId(tsAll, oceanW < 0.5, cell.rockLayer);
+        }
+
+        // ★ 2026-09-12 地质 Phase T5：构造形变（褶皱 / 断层）。
+        //   叠加到 eLand（形变本质是"地形被构造应力改造"）。
+        //   设计为近零均值：褶皱用正弦（天然零均值），断层断块用中心化哈希
+        //   → 不整体抬升/压低地形，避免 T1 那次"整体抬升连锁改变降水与河宽"的教训。
+        if (DEFORM_ENABLED && tsAll != null) {
+            eLand += deform.offset(tsAll, sx, sz);
         }
 
         // 2026-08-06 修复：移除整体 ×0.9 余量缩放。该设计为旧显式脊谷抬升（+0.17e）预留空间，
@@ -516,7 +538,8 @@ public final class CellGenerator {
         // 4. 类型混合（Voronoi 场）
         TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(sx, sz);
         // ★ 地质 Phase T1：与 sampleCore 相同的构造调制（保证 tile 与直接采样一致）
-        if (TECTONIC_ENABLED) applyTectonicWeights(cellBlend.typeWeights, sx, sz);
+        TectonicField.Sample tsQ = null;
+        if (TECTONIC_ENABLED) tsQ = applyTectonicWeights(cellBlend.typeWeights, sx, sz);
 
         // 5. 海岸线扭曲
         double cEdge = cBiased + coastline.warpDisplacement(sx, sz, cBiased);
@@ -529,6 +552,12 @@ public final class CellGenerator {
         double oceanW = cellBlend.typeWeights[TerrainClass.OCEAN.ordinal()]
             + cellBlend.typeWeights[TerrainClass.DEEP_OCEAN.ordinal()];
         eLand += landFeat.total * (1.0 - oceanW);
+
+        // ★ 地质 Phase T5：与 sampleCore 相同的构造形变（保证 tile 与直接采样一致）
+        if (DEFORM_ENABLED) {
+            TectonicField.Sample tsD = tsQ != null ? tsQ : tectonic.sample(sx, sz);
+            eLand += deform.offset(tsD, sx, sz);
+        }
 
         // 8. 海陆统一 e
         return softCapLandE(eLand + oceanFeat.total * oceanW);
