@@ -30,7 +30,10 @@ public final class PrecipFieldProbe {
             PrecipField.Params.defaults(), WindField.Params.defaults());
 
         // lat01=0.5 → 西风带（风朝 +x）→ 西坡(x<0)迎风、东坡(x>0)背风
-        double zTest = 0.5 * LAT_SCALE;
+        // ★ 2026-09-11：必须【按纬度反解 z】而非硬编码 —— 纬度映射改为余弦后，
+        //   旧写法 z = 0.5·LAT_SCALE 实际落在 lat01≈0.25（副热带高压边缘），
+        //   风带位置随之改变、风向反向，测试会以"风向反了"假失败报警。
+        double zTest = Latitude.zForLatitude(0.5, LAT_SCALE);
         WindField.Wind wAt = WindField.sample(seed, 0.0, zTest, LAT_SCALE, WindField.Params.defaults());
         PrecipField.Mod west = pf.at(-40, zTest);
         PrecipField.Mod east = pf.at(+40, zTest);
@@ -223,8 +226,36 @@ public final class PrecipFieldProbe {
         System.out.printf("    完整气候周期(赤道→北极→赤道→南极→赤道) = %.0f 格%n",
             Latitude.cycleLength(sc));
 
+        // ================= [10] 纬度分带宽度对称性（2026-09-11 用户反馈复查） =================
+        //   用户反馈两件事，逐条量化：
+        //   (a) 温度图「冷区占比大于热区」→ 检查 z 向 冷:热 宽度比；
+        //       中间版本用 |sin(z/scale)|：极值处平坦、赤道处陡峭 → 冷区被拉宽（理论 2:1）。
+        //       日照 ∝ cos(纬度角) → 改用 (1−cos(2z/scale))/2 后应为 1:1（真实地球）。
+        //   (b) 纬度图「北比南大」→ 检查 lat01 是否为【严格偶函数】（决定上下是否镜像）。
+        double sc3 = tp.latitudeScale();
+        double cyc = Latitude.cycleLength(sc3);
+        int hotOld = 0, coldOld = 0, hotNew = 0, coldNew = 0;
+        double maxAsym = 0;
+        for (double z = 0; z < cyc; z += 4.0) {
+            if (Math.abs(Math.sin(z / sc3)) < 0.5) hotOld++; else coldOld++;
+            double nL = Latitude.latitude01(z, sc3);
+            if (nL < 0.5) hotNew++; else coldNew++;
+            maxAsym = Math.max(maxAsym, Math.abs(nL - Latitude.latitude01(-z, sc3)));
+        }
+        double rOld = coldOld / (double) Math.max(1, hotOld);
+        double rNew = coldNew / (double) Math.max(1, hotNew);
+        boolean pass10 = rNew > 0.90 && rNew < 1.10 && maxAsym == 0.0;
+        System.out.printf("[10] 冷:热 带宽比: 旧|sin|=%.2f  现cos=%.2f  (真实地球≈1.00) %s%n",
+            rOld, rNew, pass10 ? "PASS" : "FAIL");
+        System.out.printf("     南北镜像: max|lat01(z)-lat01(-z)|=%.1e (严格偶函数=0) %s%n",
+            maxAsym, maxAsym == 0.0 ? "PASS" : "FAIL");
+        System.out.printf("     带宽: 赤道→极地=%.0f 格  完整循环=%.0f 格%n",
+            Latitude.poleDistance(sc3), cyc);
+        System.out.println("     注: 截图中的“北比南大”不是模型不对称 —— lat01 严格偶函数，");
+        System.out.println("         而是【视口从 z=0（赤道）开始】把最上一条带切了一半，属取景偏差。");
+
         boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6
-                && pass7 && pass8 && pass9;
+                && pass7 && pass8 && pass9 && pass10;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
     }
 }

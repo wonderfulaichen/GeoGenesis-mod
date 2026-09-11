@@ -61,13 +61,21 @@ public final class FlowField {
      */
     public record PrecipWeights(double ref, double floor, double exponent) {
         /**
-         * 默认参数。<b>ref 经实测标定</b>（2026-09-11）：降水全局均值 ≈0.272，
-         * 但指数 0.6 为凹函数（Jensen 效应）→ 若直接取 ref=0.272，权重均值只有
-         * <b>0.758</b>（实测 n=901 陆地），汇流被系统性缩小 → 河网被门槛多裁
-         * （`runFlowAccumProbe` reachedOcean 48/48 → 43/50）。
-         * 按 {@code ref' = ref·mean^(1/exp)} 反解取 <b>0.17</b> → 权重均值回到 ≈1.0。
+         * 默认参数。<b>ref 经实测标定</b>（2026-09-11）：
+         *
+         * <p>指数 0.6 为凹函数（Jensen 效应）→ 直接取 {@code ref = 降水均值} 时权重均值会偏离 1，
+         * 汇流被系统性放大/缩小 → 河网被门槛多裁或少裁。按
+         * {@code ref' = ref · mean^(1/exp)} 反解，使<b>权重均值回到 ≈1.0</b>（河宽不整体平移）。</p>
+         *
+         * <p>标定历史（每次降水分布变化都需重标）：
+         * <ul>
+         *   <li>初期（降水均值 0.272）→ <b>0.17</b>（权重均值 0.951）；</li>
+         *   <li>★ 纬度改余弦后（2026-09-11，降水均值升到 <b>0.347</b>，热带/温带增湿）
+         *       → <b>0.212</b>。旧 0.17 会让权重均值漂到 <b>1.143</b>（探针 [7] 实测 FAIL），
+         *       即所有河普遍偏粗。</li>
+         * </ul>
          */
-        public static PrecipWeights defaults() { return new PrecipWeights(0.17, 0.10, 0.60); }
+        public static PrecipWeights defaults() { return new PrecipWeights(0.212, 0.10, 0.60); }
         public static PrecipWeights disabled() { return new PrecipWeights(1.0, 1.0, 0.0); }
 
         /** 降水 → 累积权重（均值 ≈ 1）。 */
