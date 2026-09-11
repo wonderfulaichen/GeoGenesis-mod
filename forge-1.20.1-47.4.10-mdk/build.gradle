@@ -843,6 +843,12 @@ task runPrecipRiverWidthProbe(type: JavaExec) {
     }
 }
 
+// Palette consistency probe (2026-09-11): gradlew runPaletteProbe
+task runPaletteProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.client.preview.PaletteProbe'
+}
+
 // Precip field probe (2026-09-11, Phase B): gradlew runPrecipFieldProbe [seed]
 task runPrecipFieldProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

@@ -10,6 +10,7 @@ import com.geogenesis.worldgen.terrain.TerrainClass;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.function.Function;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -321,26 +322,51 @@ public final class GeoPalette {
         else if (terrainUnderlay == TerrainUnderlay.TINT) terrainUnderlay = TerrainUnderlay.SHADE;
         else terrainUnderlay = TerrainUnderlay.OFF;
     }
-    public static String terrainUnderlayLabel() {
-        if (terrainUnderlay == TerrainUnderlay.OFF) return "关闭";
-        if (terrainUnderlay == TerrainUnderlay.TINT) return "染色底图";
-        return "地形阴影";
+    /** 地形底图模式的三种取值对应的本地化 key（★ 2026-09-11 i18n：不再硬编码中文，改用 key + 本地化回调）。 */
+    private static String terrainUnderlayKey() {
+        if (terrainUnderlay == TerrainUnderlay.OFF) return "geogenesis.underlay.off";
+        if (terrainUnderlay == TerrainUnderlay.TINT) return "geogenesis.underlay.tint";
+        return "geogenesis.underlay.shade";
+    }
+
+    /**
+     * 返回当前地形底图模式的本地化显示文本。
+     *
+     * <p>★ 2026-09-11 i18n：MC 侧传 {@code k -> { String s = I18n.get(k); return s.equals(k) ? englishLabel(k) : s; }}，
+     * Swing 侧传 {@code GeoPalette::englishLabel}，避免调用方自己拼 key。</p>
+     */
+    public static String terrainUnderlayLabel(Function<String, String> loc) {
+        return loc.apply(terrainUnderlayKey());
     }
 
     /**
      * 连续图层图例的顶/底语义标签（供 MC PreviewDisplay 与 Swing TerrainPreview 共用）。
-     * 图例渐变顶部对应 pos=1、底部对应 pos=0；对多数图层 pos=(值+1)/2，故顶=+1、底=-1。
-     * ELEVATION 图层由 UI 自行换算 Y 高度，不在此处理。
+     *
+     * <p>图例渐变顶部对应 pos=1、底部对应 pos=0；对多数图层 pos=(值+1)/2，故顶=+1、底=-1。
+     * ELEVATION 图层由 UI 自行换算 Y 高度，不在此处理。</p>
+     *
+     * <p>★ 2026-09-11 i18n：不再硬编码中文，改为返回本地化后的文本。
+     * MC 侧传 {@code k -> { String s = I18n.get(k); return s.equals(k) ? englishLabel(k) : s; }}，
+     * Swing 侧传 {@code GeoPalette::englishLabel}。</p>
      */
-    public static String[] continuousLegendLabels(PreviewLayer layer) {
-        if (layer == PreviewLayer.TEMPERATURE) return new String[]{"热 +1", "冷 -1"};
-        if (layer == PreviewLayer.HUMIDITY) return new String[]{"湿 +1", "干 -1"};
-        if (layer == PreviewLayer.PRECIPITATION) return new String[]{"降水多", "降水少"};
-        if (layer == PreviewLayer.CONTINENTALITY) return new String[]{"内陆 +1", "海洋 -1"};
-        if (layer == PreviewLayer.RELIEF) return new String[]{"起伏高", "起伏低"};
-        if (layer == PreviewLayer.LATITUDE) return new String[]{"北", "南"};
-        if (layer == PreviewLayer.RIVER_NETWORK) return new String[]{"高流量", "低流量"};
-        return new String[]{"1.0", "0.0"};
+    public static String[] continuousLegendLabels(PreviewLayer layer, Function<String, String> loc) {
+        return switch (layer) {
+            case TEMPERATURE    -> new String[]{loc.apply("geogenesis.legend.temperature.high"),
+                                                loc.apply("geogenesis.legend.temperature.low")};
+            case HUMIDITY       -> new String[]{loc.apply("geogenesis.legend.humidity.high"),
+                                                loc.apply("geogenesis.legend.humidity.low")};
+            case PRECIPITATION  -> new String[]{loc.apply("geogenesis.legend.precipitation.high"),
+                                                loc.apply("geogenesis.legend.precipitation.low")};
+            case CONTINENTALITY -> new String[]{loc.apply("geogenesis.legend.continentality.high"),
+                                                loc.apply("geogenesis.legend.continentality.low")};
+            case RELIEF         -> new String[]{loc.apply("geogenesis.legend.relief.high"),
+                                                loc.apply("geogenesis.legend.relief.low")};
+            case LATITUDE       -> new String[]{loc.apply("geogenesis.legend.latitude.north"),
+                                                loc.apply("geogenesis.legend.latitude.south")};
+            case RIVER_NETWORK  -> new String[]{loc.apply("geogenesis.legend.river_network.high"),
+                                                loc.apply("geogenesis.legend.river_network.low")};
+            default             -> new String[]{"1.0", "0.0"};
+        };
     }
 
     /**
@@ -685,25 +711,51 @@ public final class GeoPalette {
         return d != null ? d.length : 0;
     }
 
+    /** Zone 枚举（A/B/C/D/E）→ 语言文件使用的描述性名称（TROPICAL/ARID/TEMPERATE/BOREAL/POLAR）。 */
+    private static String zoneLabelName(Zone z) {
+        return switch (z) {
+            case A -> "TROPICAL";
+            case B -> "ARID";
+            case C -> "TEMPERATE";
+            case D -> "BOREAL";
+            case E -> "POLAR";
+        };
+    }
+
     private static String discreteLabelKey(PreviewLayer layer, int id) {
         switch (layer) {
-            case CLIMATE_ZONE: return "geogenesis.zone." + Zone.values()[id].name();
+            case CLIMATE_ZONE: return "geogenesis.zone." + zoneLabelName(Zone.values()[id]);
             case BIOME:        return "geogenesis.biome." + BiomeClass.values()[id].name();
             case TERRAIN_TYPE: return "geogenesis.terrain_type." + TERRAIN_TYPE_NAMES[id];
             case RIVER_TYPE: return switch (id) {
-                case 1 -> "geogenesis.river_type.big";
-                case 2 -> "geogenesis.river_type.medium";
-                case 3 -> "geogenesis.river_type.small";
+                case 1 -> "geogenesis.river_type.main";
+                case 2 -> "geogenesis.river_type.mouth";
+                case 3 -> "geogenesis.river_type.trib";
                 default -> "geogenesis.river_type.none";
             };
             default: return layer.labelKey + "." + id;
         }
     }
 
+    /**
+     * TERRAIN_TYPE 图例名 —— <b>必须与 {@link TerrainClass} 的声明顺序/数量逐一对应（17 项）</b>。
+     *
+     * <p>★ 2026-09-11 修复：此前只有 14 项，漏了末尾的 {@code SNOW / VOLCANO / VOLCANIC_FIELD}。
+     * 后果有两处：
+     * <ol>
+     *   <li>{@link #discreteEntries} 取 {@code min(颜色数17, 名称数14)=14} → 图例少 3 条，
+     *       而地图上这 3 类<b>照样有颜色</b>（{@code T_TERRAIN_TYPE} 是齐的）→
+     *       "图上有一块颜色，图例里查不到"；</li>
+     *   <li>{@link #discreteLabelKey} 用本数组下标取名 → 一旦传入 id≥14（如悬停/选中 SNOW 地块）
+     *       会 <b>ArrayIndexOutOfBoundsException</b>（此前因图例上限恰好 14 而侥幸未触发）。</li>
+     * </ol>
+     * 两处根因相同：<b>手工平行表</b>随枚举增删而漂移。已由 {@code PaletteProbe} 的
+     * 「离散图层一致性自检」兜住（检查颜色数 / 名称数 / 语言 key 三方对齐）。</p>
+     */
     private static final String[] TERRAIN_TYPE_NAMES = {
             "OCEAN", "DEEP_OCEAN", "CONTINENTAL_SHELF", "SUBMARINE_RIDGE", "SEAMOUNT",
             "LAKE", "RIVER", "BEACH", "PLAIN", "HILLS", "PLATEAU",
-            "MOUNTAINS", "PEAK", "BASIN"
+            "MOUNTAINS", "PEAK", "BASIN", "SNOW", "VOLCANO", "VOLCANIC_FIELD"
     };
 
     /** Swing 端图例英文回退（避免缺失翻译时显示 key）。 */
@@ -727,9 +779,9 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.river_network", "Flow Accumulation");
         ENGLISH.put("geogenesis.layer.river_type", "River Type");
         ENGLISH.put("geogenesis.river_type.none", "None");
-        ENGLISH.put("geogenesis.river_type.big", "Big River");
-        ENGLISH.put("geogenesis.river_type.medium", "Medium River");
-        ENGLISH.put("geogenesis.river_type.small", "Small Stream");
+        ENGLISH.put("geogenesis.river_type.main", "Main River");
+        ENGLISH.put("geogenesis.river_type.mouth", "River Mouth");
+        ENGLISH.put("geogenesis.river_type.trib", "Tributary");
         // 气候带
         ENGLISH.put("geogenesis.zone.TROPICAL", "Tropical (A)");
         ENGLISH.put("geogenesis.zone.ARID", "Arid (B)");
@@ -750,6 +802,10 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.terrain_type.MOUNTAINS", "Mountains");
         ENGLISH.put("geogenesis.terrain_type.PEAK", "Peak");
         ENGLISH.put("geogenesis.terrain_type.BASIN", "Basin");
+        // ★ 2026-09-11 补：TerrainClass 后 3 项此前既无图例名也无英文名
+        ENGLISH.put("geogenesis.terrain_type.SNOW", "Snow");
+        ENGLISH.put("geogenesis.terrain_type.VOLCANO", "Volcano");
+        ENGLISH.put("geogenesis.terrain_type.VOLCANIC_FIELD", "Volcanic Field");
         ENGLISH.put("geogenesis.terrain_type.CONTINENTAL_SHELF", "Continental Shelf");
         ENGLISH.put("geogenesis.terrain_type.SUBMARINE_RIDGE", "Mid-Ocean Ridge");
         ENGLISH.put("geogenesis.terrain_type.SEAMOUNT", "Seamount");
@@ -757,6 +813,31 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.rock_layer", "Rock Layer");
         ENGLISH.put("geogenesis.layer.rock_type", "Rock Type");
         ENGLISH.put("geogenesis.layer.vein_map", "Vein Map");
+        // ★ 2026-09-11 i18n：地形底图模式 + 连续图层图例端点（中英双语文本的 key）
+        ENGLISH.put("geogenesis.underlay.off", "Off");
+        ENGLISH.put("geogenesis.underlay.tint", "Tinted");
+        ENGLISH.put("geogenesis.underlay.shade", "Hillshade");
+        ENGLISH.put("geogenesis.legend.temperature.high", "Hot +1");
+        ENGLISH.put("geogenesis.legend.temperature.low", "Cold -1");
+        ENGLISH.put("geogenesis.legend.humidity.high", "Wet +1");
+        ENGLISH.put("geogenesis.legend.humidity.low", "Dry -1");
+        ENGLISH.put("geogenesis.legend.precipitation.high", "High");
+        ENGLISH.put("geogenesis.legend.precipitation.low", "Low");
+        ENGLISH.put("geogenesis.legend.continentality.high", "Continental +1");
+        ENGLISH.put("geogenesis.legend.continentality.low", "Oceanic -1");
+        ENGLISH.put("geogenesis.legend.relief.high", "High");
+        ENGLISH.put("geogenesis.legend.relief.low", "Low");
+        ENGLISH.put("geogenesis.legend.latitude.north", "North");
+        ENGLISH.put("geogenesis.legend.latitude.south", "South");
+        ENGLISH.put("geogenesis.legend.river_network.high", "High Flow");
+        ENGLISH.put("geogenesis.legend.river_network.low", "Low Flow");
+        // ★ 2026-09-11 i18n：显示设置面板
+        ENGLISH.put("geogenesis.settings.display.underlay", "Climate Terrain Underlay");
+        ENGLISH.put("geogenesis.settings.display.cell_borders", "Cell Borders");
+        ENGLISH.put("geogenesis.settings.display.tile_borders", "Erosion Tile Borders");
+        ENGLISH.put("geogenesis.settings.display.drag_simplify", "Simplify While Dragging");
+        ENGLISH.put("geogenesis.settings.display.filter_mode", "Type Filter Mode");
+        ENGLISH.put("geogenesis.settings.display.locate_spawn", "Locate Spawn");
         ENGLISH.put("geogenesis.biome.OCEAN", "Ocean");
         ENGLISH.put("geogenesis.biome.DEEP_OCEAN", "Deep Ocean");
         ENGLISH.put("geogenesis.biome.COLD_OCEAN", "Cold Ocean");

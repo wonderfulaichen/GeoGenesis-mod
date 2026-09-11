@@ -384,7 +384,7 @@ public final class TerrainPreview {
                 lbl = new String[]{"Y=" + (int) Math.round(heightFromE(elevEMax)),
                                    "Y=" + (int) Math.round(heightFromE(elevEMin))};
             } else {
-                lbl = GeoPalette.continuousLegendLabels(layer);
+                lbl = GeoPalette.continuousLegendLabels(layer, GeoPalette::englishLabel);
             }
             g.drawString(lbl[0], bx - 40, by + 8);
             g.drawString(lbl[1], bx - 40, by + bh);

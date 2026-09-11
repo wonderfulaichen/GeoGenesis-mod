@@ -1129,6 +1129,12 @@ public class PreviewDisplay extends AbstractWidget {
     //  图例
     // ================================================================
 
+    /** 本地化：优先 I18n（MC 语言文件），缺失则回退到英文表（与 Swing 端一致）。 */
+    private String localize(String key) {
+        String s = I18n.get(key);
+        return s.equals(key) ? GeoPalette.englishLabel(key) : s;
+    }
+
     private void drawLegend(GuiGraphics g, int mx, int my) {
         GeoPalette.PreviewLayer layer = getLayer();
         int lx = getX() + width - 132, ly = getY() + 8;
@@ -1227,7 +1233,7 @@ public class PreviewDisplay extends AbstractWidget {
                 lbl = new String[]{"Y=" + (int) Math.round(heightFromE(elevEMax)),
                                    "Y=" + (int) Math.round(heightFromE(elevEMin))};
             } else {
-                lbl = GeoPalette.continuousLegendLabels(layer);
+                lbl = GeoPalette.continuousLegendLabels(layer, this::localize);
             }
             g.drawString(mc.font, lbl[0], bx - 28, by, 0xCCCCCC);
             g.drawString(mc.font, lbl[1], bx - 28, by + bh - 8, 0xCCCCCC);
