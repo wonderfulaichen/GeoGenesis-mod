@@ -46,8 +46,19 @@ public final class TectonicField {
     /** 邻域搜索半径：1 → 3×3 窗口（足够确定 Voronoi 归属与 F1/F2）。 */
     private static final int SEARCH_RADIUS = 1;
 
-    /** 边界影响宽度（wu）：超出此距离视为板块内部，无构造影响。 */
-    private static final double BOUNDARY_REACH = 320.0;
+    /**
+     * 边界影响宽度（wu）：超出此距离返回 {@link #INTERIOR}（stress=0）。
+     *
+     * <p>★ 2026-09-12 由 320 扩到 1000：原值造成<b>硬截断伪影</b>——
+     * T5 形变的作用距离是 700/900wu（其 decay 平滑衰减到 0），
+     * 但本场在 320wu 就返回 INTERIOR → stress 从有值<b>骤降为 0</b>
+     * → 形变在 dist=320 处被硬切（探针实测：dist 319.9→320.6 时偏移从
+     * −0.0071 跳到 0，成线状）。扩到 1000 后覆盖 T5 reach，让其自身 decay 平滑收尾。
+     *
+     * <p>对 T1/T2 无副作用：其 {@code boundaryStrength} 是 σ=110 的高斯，
+     * 在 320wu 处已衰减到 1.4%，扩范围不改变实际权重。</p>
+     */
+    private static final double BOUNDARY_REACH = 1000.0;
     /**
      * 构造对地形类型权重的调制强度（汇聚造山 / 海沟，离散裂谷 / 洋脊）。
      *
@@ -126,8 +137,43 @@ public final class TectonicField {
              */
             double tangentX,
             /** 边界切向单位向量的 z 分量（见 {@link #tangentX}）。 */
-            double tangentZ
+            double tangentZ,
+            /**
+             * ★ 2026-09-12 新增：<b>连续应力值</b> ∈ [-1,1]（+1 纯汇聚 / -1 纯离散 / 0 走滑）。
+             *
+             * <p><b>为何需要</b>：{@link #btype} 是<b>离散枚举</b>，在边界类型切换处
+             * <b>跳变</b>；而 T1 的权重调制与 T5 的形变都按 btype 分支（{@code switch}）
+             * → 公式骤变 → 偏移跳变 → 线状疤痕（探针实测：btype 0→1 时偏移从 0 跳到 0.005e）。
+             * 本字段由 {@code dot/|(dot,cross)|} 连续给出，切换处平滑过渡，
+             * 调用方应<b>优先用它</b>做加权，而非按 btype 硬分支。</p>
+             */
+            double stress,
+            /**
+             * ★ 2026-09-12 新增：<b>沿走向坐标的连续代理</b> = {@code (d1+d2)/2}。
+             *
+             * <p><b>为何需要</b>：T2(山链串珠) / T5(褶皱相位) 需要"沿边界方向的坐标"，
+             * 原实现用切向投影 {@code wx·tx + wz·tz}。但 {@code tx,tz} 在最近邻配对切换处
+             * 存在微小不连续（dTan&lt;1e-4），而投影用<b>绝对世界坐标</b>（|p|~1e4）
+             * → 把微小角度误差放大成 ~100wu 的坐标跳变 → 噪声值跳变 → 线状疤痕 / 伪台阶。</p>
+             *
+             * <p>本字段基于 Voronoi 的<b>椭圆坐标</b>：对边界上的点 d1=d2，沿中垂线移动 t 后
+             * {@code d1=d2=√(dist²+t²)}，故 {@code (d1+d2)/2 = √(dist²+t²)} —— 随 t <b>单调</b>，
+             * 且由<b>连续的</b> d1/d2 直接得出 → <b>处处连续</b>，且<b>零额外采样成本</b>。</p>
+             */
+            double alongCoord
     ) {
+        /**
+         * 紧凑构造器（便捷/测试用）：由 {@code btype} 推导名义应力
+         * （汇聚→+1、离散→−1、走滑/内部→0）。
+         *
+         * <p>生产路径请用 {@link TectonicField#sample}（它给出真实的连续 stress）。</p>
+         */
+        public Sample(double dist, int btype, double rate, double tangentX, double tangentZ) {
+            this(dist, btype, rate, tangentX, tangentZ,
+                 btype == CONVERGENT ? 1.0 : (btype == DIVERGENT ? -1.0 : 0.0),
+                 dist);   // 名义样本：alongCoord 取 dist（无真实配对信息）
+        }
+
         /** 是否处于板块边界影响范围内。 */
         public boolean onBoundary() {
             return btype != INTERIOR && dist < BOUNDARY_REACH;
@@ -171,25 +217,59 @@ public final class TectonicField {
             }
         }
         if (d2 == Double.MAX_VALUE) {
-            return new Sample(Double.MAX_VALUE, INTERIOR, 0.0, 1.0, 0.0);
+            return new Sample(Double.MAX_VALUE, INTERIOR, 0.0, 1.0, 0.0, 0.0, Double.MAX_VALUE);
         }
 
-        // 到两种子中垂线的有符号距离（标准 Voronoi 边界距离公式）
+        // 到 Voronoi 边界的距离 = (d2 - d1) / 2
+        //
+        // ★ 2026-09-12 修复（用户反馈"明显不自然的线性疤痕"）：
+        //   原式 dist = |d2²−d1²| / (2·|s1−s2|) 依赖【最近邻配对 (c1,c2)】——
+        //   当配对在 Voronoi 边界的延长线上切换时，分母 |s1−s2| 骤变
+        //   → dist 跳变（探针实测最大 668wu ≈ 7000 块！62% 的点受影响）。
+        //   跳变轨迹是线状的 → 表现为【笔直线性疤痕】+ T5 的 floor(dist) 伪断层崖。
+        //
+        //   改用 (d2−d1)/2：这是"到 Voronoi 边界距离"的标准定义，且
+        //   d1=min 与 d2=second-min 都是【连续函数】（min 连续；second-min
+        //   在两函数交叉处取值相等故亦连续）→ 距离场处处连续。
+        //   实测最大跳变 668.72wu → 1.00wu（小 600 倍，≈ 0.6 块，不可见）。
         double nx = s2x - s1x, nz = s2z - s1z;
         double len = Math.sqrt(nx * nx + nz * nz);
         double dist;
         double ux, uz, tx, tz;
-        if (len < 1e-9) {
+        if (d2 == Double.MAX_VALUE) {
             dist = Double.MAX_VALUE;
             ux = 1.0; uz = 0.0; tx = 0.0; tz = 1.0;
         } else {
-            dist = Math.abs((d2 * d2 - d1 * d1) / (2.0 * len));
-            ux = nx / len; uz = nz / len;            // 法线（s1→s2）
+            dist = Math.max(0.0, (d2 - d1) * 0.5);
+
+            // ★ 2026-09-12 修复（伪影）：法向改用 ∇(d2−d1) 的【解析梯度】。
+            //   演进过程（三次尝试，以"切向连续性"为准）：
+            //   ① 配对法向 (s2−s1)/|s2−s1|：配对切换时骤变。
+            //   ② 解析梯度（本实现）：∂(d2−d1)/∂x=(x−s2x)/d2−(x−s1x)/d1。
+            //      只用到【连续】的 d1/d2，且在边界上 (d1=d2=d) 化为 (s1−s2)/d —— 正确法向、不退化；
+            //      性能零成本（无额外采样）。实测优于①（配对切换处对 s2 的敏感度被摊薄）。
+            //   ③ 数值梯度（中心差分）：在边界附近 (d2−d1) 呈 V 形 → 差分【对称抵消】→ 梯度退化，
+            //      实测跳变反而增至 1126 次（劣化 4.7×），已否决。
+            double gx, gz;
+            if (d1 < 1e-9 || d2 < 1e-9) {
+                gx = nx; gz = nz;                       // 退化兜底（点与种子重合）
+            } else {
+                gx = (wx - s2x) / d2 - (wx - s1x) / d1;
+                gz = (wz - s2z) / d2 - (wz - s1z) / d1;
+            }
+            double gm = Math.sqrt(gx * gx + gz * gz);
+            if (gm > 1e-12) {
+                ux = gx / gm; uz = gz / gm;              // 法向（dist 增大方向）
+            } else if (len > 1e-9) {
+                ux = nx / len; uz = nz / len;            // 兜底：配对法向
+            } else {
+                ux = 1.0; uz = 0.0;
+            }
             tx = -uz; tz = ux;                       // ★ 切向 = 法线旋转 90°（沿走向）
         }
 
         if (dist >= BOUNDARY_REACH) {
-            return new Sample(dist, INTERIOR, 0.0, tx, tz);
+            return new Sample(dist, INTERIOR, 0.0, tx, tz, 0.0, d1);
         }
 
         // 分类：dot/cross 分解
@@ -210,7 +290,10 @@ public final class TectonicField {
             btype = TRANSFORM;
             rate = cross;
         }
-        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz);
+        // ★ 连续应力：+1 纯汇聚 / -1 纯离散 / 0 走滑（切换处平滑，见 Sample#stress 注释）
+        double mag = Math.sqrt(dot * dot + cross * cross);
+        double stress = mag < 1e-12 ? 0.0 : dot / mag;
+        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz, stress, (d1 + d2) * 0.5);
     }
 
     /**
@@ -263,8 +346,13 @@ public final class TectonicField {
     public double boundaryStrengthChained(Sample s, double wx, double wz) {
         double g = boundaryStrength(s);
         if (g <= 0.0) return 0.0;
-        if (s.btype() != CONVERGENT) return g;      // 仅造山带串珠化
-        return g * chainModulation(wx, wz, s);
+        // ★ 2026-09-12：改用连续应力，避免 btype 跳变造成系数骤变
+        double cw = Math.max(0.0, s.stress());
+        double dw = Math.max(0.0, -s.stress());
+        if (cw <= 0.0 && dw <= 0.0) return 0.0;     // 纯走滑：无形变
+        // 汇聚部分串珠化（chain），离散部分保持连续（真实裂谷系统是线状）
+        double combined = cw * chainModulation(wx, wz, s) + dw;
+        return g * combined;
     }
 
     /**
@@ -281,11 +369,13 @@ public final class TectonicField {
      * @return 调制系数，约 [0.25, 1.0]（不改变符号，只压弱部分区段）
      */
     private double chainModulation(double wx, double wz, Sample s) {
-        // 到最近边界的最近点近似 = 当前点沿法线退到边界线（此处只需走向方向，故简化）
-        // 沿走向坐标 t、垂直走向坐标 a（按 PLATE_SPACING 归一化 → 与板块尺度无关的稳定频率）
+        // ★ 2026-09-12 修复（伪影）：沿走向坐标改用 s.alongCoord()（= (d1+d2)/2，连续），
+        //   不再用切向投影 wx·tx + wz·tz —— 后者在配对切换处因切向的微小不连续，
+        //   经绝对坐标（|p|~1e4）放大成 ~100wu 的坐标跳变 → 噪声跳变 → 线状疤痕。
+        //   (alongCoord, dist) 天然构成"沿边界 / 跨边界"的椭圆坐标，且零额外成本。
         double inv = 1.0 / PLATE_SPACING;
-        double t = (wx * s.tangentX() + wz * s.tangentZ()) * inv;
-        double a = (wx * s.tangentZ() - wz * s.tangentX()) * inv;
+        double t = s.alongCoord() * inv;
+        double a = s.dist() * inv;
 
         // 沿走向低频（6/格）、垂直走向高频（18/格）——与 worldgen 的 (along×6, across×18) 同构
         double n = ridgedNoise(t * CHAIN_ALONG_FREQ, a * CHAIN_ACROSS_FREQ, CHAIN_SEED);

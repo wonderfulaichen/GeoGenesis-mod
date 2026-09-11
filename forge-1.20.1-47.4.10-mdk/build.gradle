@@ -843,6 +843,15 @@ task runPrecipRiverWidthProbe(type: JavaExec) {
     }
 }
 
+// Tectonic continuity probe (2026-09-12, artifact root-cause): gradlew runTectonicContinuityProbe [seed]
+task runTectonicContinuityProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TectonicContinuityProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Tectonic deformation probe (2026-09-12, geology Phase T5): gradlew runTectonicDeformProbe [seed]
 task runTectonicDeformProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

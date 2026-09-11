@@ -588,18 +588,21 @@ public final class CellGenerator {
 
         double oceanW = w[TerrainClass.OCEAN.ordinal()] + w[TerrainClass.DEEP_OCEAN.ordinal()];
         double landW = 1.0 - oceanW;
-        switch (ts.btype()) {
-            case TectonicField.CONVERGENT -> {
-                w[TerrainClass.MOUNTAINS.ordinal()] *= 1.0 + TectonicField.CONVERGENT_BOOST * g * landW;
-                w[TerrainClass.DEEP_OCEAN.ordinal()] *= 1.0 + TectonicField.CONVERGENT_BOOST * g * oceanW;
-            }
-            case TectonicField.DIVERGENT -> {
-                w[TerrainClass.BASIN.ordinal()] *= 1.0 + TectonicField.DIVERGENT_BOOST * g * landW;
-                w[TerrainClass.OCEAN.ordinal()] *= 1.0 + TectonicField.DIVERGENT_BOOST * g * oceanW;
-            }
-            default -> {
-                return ts;   // 走滑：无影响
-            }
+        // ★ 2026-09-12 修复（伪影）：改用【连续应力】stress 加权，取代 switch(btype)。
+        //   btype 在类型边界跳变 → 权重调制骤变 → eLand 骤变 → 线状疤痕。
+        //   stress ∈[-1,1] 连续 → 过渡平滑。
+        double cw = Math.max(0.0, ts.stress());    // 汇聚度
+        double dw = Math.max(0.0, -ts.stress());   // 离散度
+        if (cw <= 0.0 && dw <= 0.0) return ts;     // 纯走滑：无影响
+        if (cw > 0.0) {   // 汇聚 → 造山带（陆）/ 海沟（海）
+            double add = TectonicField.CONVERGENT_BOOST * g * cw;
+            w[TerrainClass.MOUNTAINS.ordinal()] *= 1.0 + add * landW;
+            w[TerrainClass.DEEP_OCEAN.ordinal()] *= 1.0 + add * oceanW;
+        }
+        if (dw > 0.0) {   // 离散 → 裂谷（陆）/ 洋中脊（海）
+            double add = TectonicField.DIVERGENT_BOOST * g * dw;
+            w[TerrainClass.BASIN.ordinal()] *= 1.0 + add * landW;
+            w[TerrainClass.OCEAN.ordinal()] *= 1.0 + add * oceanW;
         }
         double sum = 0.0;
         for (double v : w) sum += v;
