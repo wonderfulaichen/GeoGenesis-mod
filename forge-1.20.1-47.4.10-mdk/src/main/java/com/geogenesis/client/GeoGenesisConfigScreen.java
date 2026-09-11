@@ -88,6 +88,8 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private PreviewDisplay preview;
     private Button applyBtn, savePresetBtn, resetBtn, layerPrev, layerNext;
+    /** ★ 2026-09-11：大范围预览开关（放在预览正上方，见 init）。 */
+    private Button largeAreaBtn;
     private int currentMode = DEFAULT_PREVIEW_LAYER;
 
     private int panelX, panelW, headerY, listTop, listBottom;
@@ -185,10 +187,20 @@ public class GeoGenesisConfigScreen extends Screen {
         // 按钮在 widget 上方留出 4px 间隙
         layerPrev = Button.builder(Component.literal("◀ 图层"), b -> cycleLayer(-1))
             .pos(previewX, previewY - 24).size(70, 20).build();
+        // ★ 2026-09-11：大范围预览开关移到【预览正上方】。
+        //   原先只存在「采样」页签里，且开启后不改缩放 → 无任何可见反馈，
+        //   用户会认为"游戏里的预览窗口打不开大范围预览"（游戏内没有实体按键可用）。
+        int largeX = previewX + 74;
+        int largeW = Math.max(60, previewW - 74 - 74);
+        largeAreaBtn = Button.builder(largeAreaLabel(), b -> toggleLargeArea())
+            .pos(largeX, previewY - 24).size(largeW, 20).build();
+        largeAreaBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+            Component.literal(I18nSafe("geogenesis.settings.sampling.large.tooltip"))));
         layerNext = Button.builder(Component.literal("图层 ▶"), b -> cycleLayer(1))
             .pos(previewX + previewW - 70, previewY - 24).size(70, 20).build();
         addRenderableWidget(layerPrev);
         addRenderableWidget(layerNext);
+        addRenderableWidget(largeAreaBtn);
 
         // 始终重新登记 preview widget（clearWidgets 后必须重建，否则返回后预览消失）。
         // 思路对齐参考项目 World-Preview-TFC：preview 实例跨屏持久复用，init() 仅「重加同一实例」而非重建，
@@ -297,6 +309,25 @@ public class GeoGenesisConfigScreen extends Screen {
     private void cycleLayer(int d) {
         currentMode = (currentMode + d + GeoPalette.PreviewLayer.values().length) % GeoPalette.PreviewLayer.values().length;
         if (preview != null) preview.setMode(currentMode);
+    }
+
+    /** 大范围预览开关的按钮文案（开/关）——preview 可能尚未构造，需容忍 null。 */
+    private Component largeAreaLabel() {
+        boolean on = preview != null && preview.isLargeArea();
+        return Component.literal(I18nSafe(on ? "geogenesis.settings.sampling.large.on"
+                                              : "geogenesis.settings.sampling.large.off"));
+    }
+
+    /**
+     * 切换大范围预览。{@link PreviewDisplay#setLargeArea(boolean)} 会在开启时自动缩到 1:64，
+     * 保证点开即有可见效果（原实现只换管线不改缩放 → 看起来"没反应"）。
+     *
+     * <p>文案每帧在 render 里同步（「采样」页签也能改同一状态，两处必须一致）。</p>
+     */
+    private void toggleLargeArea() {
+        if (preview == null) return;
+        preview.setLargeArea(!preview.isLargeArea());
+        if (largeAreaBtn != null) largeAreaBtn.setMessage(largeAreaLabel());
     }
     private void doApply() {
         // 应用 = 当前配置持久化到全局 toml，并关屏返回创建界面（世界即用此配置）
@@ -486,6 +517,13 @@ public class GeoGenesisConfigScreen extends Screen {
         }
 
         // 图层名由 widget 内部图例显示，此处不重复绘制（避免与按钮重叠）
+
+        // ★ 2026-09-11：大范围开关文案每帧同步——「采样」页签与预览上方按钮共享同一状态，
+        //   两处必须一致（任一入口切换后另一处的文案立即跟上）。
+        if (largeAreaBtn != null) {
+            Component want = largeAreaLabel();
+            if (!want.equals(largeAreaBtn.getMessage())) largeAreaBtn.setMessage(want);
+        }
 
         // 对话框显示时跳过面板/widgets 渲染：避免 ParamSlider ↩ 重置按钮穿透遮罩显示
         boolean dialogActive = nameDialog.isShowing() || confirmDialog.isShowing();

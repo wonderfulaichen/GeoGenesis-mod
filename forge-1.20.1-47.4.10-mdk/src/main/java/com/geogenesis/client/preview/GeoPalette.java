@@ -838,6 +838,7 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.settings.display.drag_simplify", "Simplify While Dragging");
         ENGLISH.put("geogenesis.settings.display.filter_mode", "Type Filter Mode");
         ENGLISH.put("geogenesis.settings.display.locate_spawn", "Locate Spawn");
+        ENGLISH.put("geogenesis.preview.large_area", "Wide");
         ENGLISH.put("geogenesis.biome.OCEAN", "Ocean");
         ENGLISH.put("geogenesis.biome.DEEP_OCEAN", "Deep Ocean");
         ENGLISH.put("geogenesis.biome.COLD_OCEAN", "Cold Ocean");
