@@ -113,10 +113,16 @@ public record TerrainParams(
     double plateauTop,
     /** 高原阶梯数，默认 4。
      *  <b>已废弃</b>：Terrace 算子已否决（环状台阶伪影），引擎不再读取。
-     *  保留占位供旧 config 兼容，阶段 2 Hydraulic 接入后可安全删除。 */
+     *  保留占位供旧 config 兼容，阶段 2 Hydraulic 接入后可安全删除。
+     *
+     *  <p>★ 2026-09-12（地质 Phase T3）重新尝试接线 Terrace 以实现"真平顶"，
+     *  <b>确认该否决结论成立</b>：空间量化会把噪声的<b>等值线</b>（闭合曲线）变成台阶
+     *  → 产生<b>同心环梯田</b>伪影。最终改用<b>值域幂压缩</b> {@code v^0.55}
+     *  （见 {@code TypeNoiseProvider.computePlateau}），实测台顶梯度为台缘的 <b>0.23×</b>。
+     *  即：本参数<b>不应复活</b>，此结论有实测支撑。</p> */
     int plateauSteps,
     /** 高原阶梯强度，默认 0.7。
-     *  <b>已废弃</b>：同上。 */
+     *  <b>已废弃</b>：同上（T3 已二次确认）。 */
     double plateauStepStrength,
     /** 盆地基底 eLand，默认 0.02 */
     double basinBase,

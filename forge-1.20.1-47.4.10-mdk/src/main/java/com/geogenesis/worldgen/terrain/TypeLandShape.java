@@ -37,7 +37,8 @@ public final class TypeLandShape {
         this.generators = new TypeGenerators(p);
         this.continent = new ContinentField(p);
         this.character = new TerrainCharacterField(continent, p.continentBias());
-        this.typeNoise = new TypeNoiseProvider(p.beltReliefAmp());
+        // ★ 2026-09-12 地质 Phase T3：接线 basinBase（碗形盆底）
+        this.typeNoise = new TypeNoiseProvider(p.beltReliefAmp(), p.basinBase());
         this.moistureNoise = new Frequency(new Simplex(401), 1.0 / 1500.0);
         this.continentBias = p.continentBias();
         this.oceanLoc = p.oceanLocations();

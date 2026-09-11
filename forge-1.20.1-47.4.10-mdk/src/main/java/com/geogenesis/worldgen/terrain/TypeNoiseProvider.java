@@ -24,8 +24,23 @@ public final class TypeNoiseProvider {
     // 造山带起伏振幅（e 单位），由 TerrainParams.beltReliefAmp 注入；缩放山脉脊线相对高度，让山脉起伏可调（复活死参数）
     private final double beltReliefAmp;
 
-    public TypeNoiseProvider(double beltReliefAmp) {
+    // ★ 2026-09-12 地质 Phase T3：接线盆地基准（原为死配置）
+    /**
+     * 盆地基准（TerrainParams.basinBase，默认 0.02）—— 碗形盆底的下限。
+     *
+     * <p><b>注</b>：同批的 {@code plateauSteps} / {@code plateauStepStrength} <b>未接线</b>——
+     * 它们对应的 Terrace 空间量化已被本项目实测否决（环状台阶伪影），
+     * T3 改用值域幂压缩实现平顶（见 {@link #computePlateau}）。</p>
+     */
+    private final double basinBase;
+
+    /**
+     * @param beltReliefAmp 造山带起伏振幅
+     * @param basinBase     盆地基准（★ T3 接线）
+     */
+    public TypeNoiseProvider(double beltReliefAmp, double basinBase) {
         this.beltReliefAmp = beltReliefAmp;
+        this.basinBase = basinBase;
         // --- PLAIN: 1/800 单频 + 极弱 warp，真正平坦 ---
         Noise pSimplex = new Frequency(new Simplex(410), 1.0 / 800.0);
         Noise pWarpX = new Frequency(new Simplex(433), 1.0 / 500.0);
@@ -79,12 +94,14 @@ public final class TypeNoiseProvider {
         Noise platWarped = new Warp(pBase, pWX, pWZ, 31.0);
         this.platNoise   = new Map(platWarped, -1.0, 1.0, 0.0, 1.0);
 
-        // --- BASIN：修复与 shape 同 seed 问题 ---
+        // --- BASIN：★ T3 改为【沉降势 + 碗形映射】（原为噪声取反，无构造语义）---
+        // 原实现 Map(Invert(bBase), -1.5,1.5, 0,0.6) 只是"把噪声翻过来"，
+        // 既不体现"盆地 = 沉降中心低 + 向边缘抬升"，也无盆底/盆缘之分。
+        // 现保留低频噪声作为【沉降势】（s 大 = 沉降强 = 盆底），碗形映射见 computeBasin。
         Noise bOct1 = new Frequency(new Simplex(428), 1.0 / 300.0);
         Noise bOct2 = new Boost(new Frequency(new Simplex(429), 1.0 / 100.0), 0.3);
         Noise bBase = new Add(bOct1, bOct2);
-        Noise bInv = new Invert(bBase);
-        this.basinNoise = new Map(bInv, -1.5, 1.5, 0.0, 0.6);
+        this.basinNoise = new Map(bBase, -1.0, 1.0, 0.0, 1.0);   // 沉降势 s ∈ [0,1]
     }
 
     public void seed(long worldSeed) {
@@ -111,7 +128,7 @@ public final class TypeNoiseProvider {
             case HILLS     -> foldHills(hillsNoise.compute(wx, wz));
             case MOUNTAINS -> computeMountain(wx, wz);
             case PLATEAU   -> computePlateau(wx, wz);
-            case BASIN     -> basinNoise.compute(wx, wz);
+            case BASIN     -> computeBasin(wx, wz);   // ★ T3：碗形沉降
             default        -> 0.5;
         };
     }
@@ -128,8 +145,52 @@ public final class TypeNoiseProvider {
     // 高原 vs 丘陵的差异只在频率（1/1000 vs 1/400 → 波长更长 → 视觉上丘沟更"缓"）+
     // platMod 轻微收敛（1.5 倍，比丘陵的无收敛略平）。"顶部平一点"由倍频放宽实现
     //（丘沟波长 200 块 vs 丘陵 80 块 → 相同振幅但斜率更低 = 更平缓）。
+    /**
+     * ★ 2026-09-12 地质 Phase T3：<b>高原平顶</b>（值域幂压缩，非空间量化）。
+     *
+     * <p><b>为何不用 Terrace 阶地化</b>：本项目已实测否决过 Terrace
+     * （见 {@code TerrainParams.plateauSteps} 注释："<i>Terrace 算子已否决（环状台阶伪影）</i>"）。
+     * 原因是空间量化会把噪声的<b>等值线</b>变成台阶，而等值线是闭合曲线
+     * → 产生<b>同心环梯田</b>，视觉上极假。本次重新尝试确认该结论成立，故改用值域变换。
+     *
+     * <p><b>值域幂压缩</b> {@code v^p}（p&lt;1，只压高端、保留低端动态范围）：
+     * <ul>
+     *   <li>高值端密集于顶部 → <b>台顶平</b>（梯度 dv'/dv 随 v 增大而减小）</li>
+     *   <li>低值端梯度相对保留 → <b>台缘/崖线有起伏</b></li>
+     * </ul>
+     * 因为是<b>逐点值域变换</b>（不含任何空间量化），<b>不产生同心环伪影</b>。
+     *
+     * <p>与 v7 失败的"整体压缩到中位（×0.2）"不同：那只压整体、抹平地貌对比；
+     * 本式<b>保序且保低端范围</b>，只重塑高低端的梯度分配。
+     */
     private double computePlateau(double wx, double wz) {
-        return foldHills(platNoise.compute(wx, wz)); // 全幅丘沟，不压缩——与 HILLS 同链路
+        double v = foldHills(platNoise.compute(wx, wz));   // [0,1] 丘沟（保留大形态）
+        double c = v < 0 ? 0 : (v > 1 ? 1 : v);
+        return Math.pow(c, PLATEAU_TOP_POWER);
+    }
+
+    /** 高原顶部幂（&lt;1 = 压高端使台顶变平）。 */
+    private static final double PLATEAU_TOP_POWER = 0.55;
+
+    /** 盆地碗形幂：>1 → 盆底平阔、向边缘快速抬升（真实沉积盆地的形态特征）。 */
+    private static final double BASIN_BOWL_POWER = 2.2;
+
+    /**
+     * ★ 2026-09-12 地质 Phase T3：<b>构造盆地 = 沉降中心 + 向边缘抬升</b>。
+     *
+     * <p>取代原"噪声取反"（那只是把噪声翻过来，既不体现盆底/盆缘之分，
+     * 也没有"中心低、边缘高"的碗形）。
+     *
+     * <p>做法：低频噪声作为<b>沉降势</b> s ∈ [0,1]（s 大 = 沉降强 = 盆底），
+     * 再做碗形映射 {@code (1-s)^p}：p&gt;1 使 s→1 附近变化平缓
+     * → <b>大面积平阔盆底</b>，而 s→0 附近快速抬升 → <b>盆缘</b>。
+     *
+     * <p>下限取 {@code basinBase}（★ 复活死配置），上界 0.6 与原值域一致。
+     */
+    private double computeBasin(double wx, double wz) {
+        double s = basinNoise.compute(wx, wz);                       // 沉降势 [0,1]
+        double bowl = Math.pow(1.0 - Math.max(0.0, Math.min(1.0, s)), BASIN_BOWL_POWER);
+        return basinBase + (0.6 - basinBase) * bowl;
     }
 
     /**
