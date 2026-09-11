@@ -36,37 +36,59 @@ public final class PrecipRiverWidthProbe {
 
     @SuppressWarnings("unused")
     public static void main(String[] args) {
-        long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
-        TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
-        gen.seed(seed);
-        System.out.printf("=== PrecipRiverWidthProbe seed=%d (region半径=%d → %d region) ===%n",
-            seed, R, (2 * R + 1) * (2 * R + 1));
+        long baseSeed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
+        int seedCount = args.length > 1 ? Integer.parseInt(args[1]) : 5;
+        System.out.printf("=== PrecipRiverWidthProbe baseSeed=%d 种子数=%d (region半径=%d → %d region) ===%n",
+            baseSeed, seedCount, R, (2 * R + 1) * (2 * R + 1));
+        System.out.println("★ 多种子平均：本指标是【统计性主张】，单种子单阈值不可靠。");
+        System.out.println("  实测教训（2026-09-12）：同一实现下 head 最干桶跨种子 0.885~1.062、");
+        System.out.println("  最湿桶 1.003~1.173 —— 单种子判定会随机 PASS/FAIL（5 种子中 3 个假失败）。");
+        System.out.println("  物理方向在平均意义下成立，故判据改为【多种子均值】。");
 
-        double[][] off = collect(build(gen, seed, false), gen);
-        double[][] on = collect(build(gen, seed, true), gen);
-        System.out.printf("河道数: OFF=%d  ON=%d%n", off.length, on.length);
+        double[] dry = new double[seedCount], wet = new double[seedCount];
+        for (int i = 0; i < seedCount; i++) {
+            long sd = baseSeed + i;
+            TerrainParams tp = TerrainParams.defaults();
+            CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+            gen.seed(sd);
+            double[][] off = collect(build(gen, sd, false), gen);
+            double[][] on = collect(build(gen, sd, true), gen);
+            double[] head;
+            if (i == 0) {
+                System.out.printf("--- seed=%d 明细: 河道数 OFF=%d ON=%d ---%n", sd, off.length, on.length);
+                head = bucket("head 半宽（河道中段 —— 判据用此列）", on, off, 1, true);
+                double[] tail = bucket("tail 半宽（★ 河口 —— 仅参考，不作判据）", on, off, 2, true);
+                System.out.printf("    tail(参考): 最干桶=%.3f 最湿桶=%.3f%n", tail[0], tail[1]);
+                System.out.println("解析预期: 同汇水面积下 width比 = (降水比)^(exponent×widthExp) = (降水比)^0.252");
+            } else {
+                head = bucket("", on, off, 1, false);
+            }
+            dry[i] = head[0];
+            wet[i] = head[1];
+            System.out.printf("    seed=%-6d head: 最干桶=%.3f 最湿桶=%.3f%n", sd, head[0], head[1]);
+        }
 
-        double[] head = bucket("head 半宽（河道中段 —— 判据用此列）", on, off, 1);
+        // ---- 聚合：多种子均值（统计性主张的正确验证方式）----
+        double mDry = 0, mWet = 0;
+        double minDry = Double.MAX_VALUE, maxDry = -Double.MAX_VALUE;
+        double minWet = Double.MAX_VALUE, maxWet = -Double.MAX_VALUE;
+        for (int i = 0; i < seedCount; i++) {
+            mDry += dry[i]; mWet += wet[i];
+            minDry = Math.min(minDry, dry[i]); maxDry = Math.max(maxDry, dry[i]);
+            minWet = Math.min(minWet, wet[i]); maxWet = Math.max(maxWet, wet[i]);
+        }
+        mDry /= seedCount; mWet /= seedCount;
+
+        // 判据：多种子平均下，干旱桶更细、湿润桶更宽。
+        //   阈值沿用 0.95 / 1.05（源自解析式 (降水比)^0.252 与护栏压缩比），
+        //   但作用于【均值】而非单次采样 —— 这才是该主张的正确统计形式。
+        boolean pass = mDry < 0.95 && mWet > 1.05;
         System.out.println();
-        double[] tail = bucket("tail 半宽（★ 河口 —— 仅参考，见下）", on, off, 2);
-
-        System.out.println();
-        System.out.println("解析预期: 同汇水面积下 width比 = (降水比)^(exponent×widthExp) = (降水比)^0.252");
-        // ★ 2026-09-11 判据修正：只以 head（河道中段）为准。
-        //   原判据要求 tail 最干桶 < 1.0，但 tail = width[last] 是【河口】宽度：
-        //   applyEstuary 会按 estuaryWidthFactor(≈1.9) 做喇叭口展宽，并受 mouthMax 上限钳制，
-        //   且沿程 width 取运行最大值（下游不减）—— 三重影响叠加后，河口宽度主要由
-        //   "是否入海 + 河口带长度"决定，【不纯反映汇流累积】。用它当判据会得到假失败。
-        //   实测诊断列亦佐证：head 与解析预期趋势一致（0.933/0.853、1.076/1.079、1.058/1.175），
-        //   而 tail 被压向 1（1.031/0.853）。故 tail 保留为观测量、不作判据。
-        //   另注：两侧仍被 minWidth / maxWidth 护栏压缩（实测幅度 ≈ 解析预期的 55~80%），
-        //   这是预期的护栏效应，不是加权失效。
-        boolean pass = head[0] < 0.95 && head[1] > 1.05;
-        System.out.printf("head: 最干桶=%.3f 最湿桶=%.3f   tail(参考): 最干桶=%.3f 最湿桶=%.3f%n",
-            head[0], head[1], tail[0], tail[1]);
-        System.out.println("判据: head 最干桶<0.95 且 最湿桶>1.05（tail 不作判据：河口宽度被喇叭口/上限主导）");
-        System.out.println("（逐桶单调性不作判据：最小桶 n≈25，均值抖动 ~±0.03，仅列作趋势参考）");
+        System.out.printf("★ 多种子均值(n=%d): 最干桶=%.3f (范围 %.3f~%.3f)  最湿桶=%.3f (范围 %.3f~%.3f)%n",
+            seedCount, mDry, minDry, maxDry, mWet, minWet, maxWet);
+        System.out.printf("判据: 均值 最干桶<0.95 且 最湿桶>1.05 %s%n", pass ? "" : "（未达）");
+        System.out.println("说明: tail 不作判据（河口宽度被喇叭口/mouthMax 上限主导，不纯反映汇流）；");
+        System.out.println("      两侧被 minWidth/maxWidth 护栏压缩（实测 ≈解析预期的 55~80%），属预期效应。");
         System.out.println(pass ? "=== PASS ===" : "=== FAIL ===");
     }
 
@@ -76,10 +98,12 @@ public final class PrecipRiverWidthProbe {
      * @param idx 1 = head 半宽；2 = tail 半宽
      * @return {最干桶比值, 最湿桶比值}
      */
-    private static double[] bucket(String title, double[][] on, double[][] off, int idx) {
-        System.out.println("--- " + title + " ---");
-        System.out.println("降水桶              | ON 河数    平均 | OFF 河数    平均 | 实测ON/OFF | 桶均降水 | 桶均权重 | 解析预期");
-        System.out.println("--------------------|----------------|----------------|-----------|---------|---------|--------");
+    private static double[] bucket(String title, double[][] on, double[][] off, int idx, boolean print) {
+        if (print) {
+            System.out.println("--- " + title + " ---");
+            System.out.println("降水桶              | ON 河数    平均 | OFF 河数    平均 | 实测ON/OFF | 桶均降水 | 桶均权重 | 解析预期");
+            System.out.println("--------------------|----------------|----------------|-----------|---------|---------|--------");
+        }
         double first = Double.NaN, last = Double.NaN;
         for (int i = 0; i < EDGES.length - 1; i++) {
             double lo = EDGES[i], hi = EDGES[i + 1];
@@ -96,8 +120,10 @@ public final class PrecipRiverWidthProbe {
             double meanP = sP / nOn;
             double w = precipWeight(meanP);
             double expected = Math.pow(w, 0.252);
-            System.out.printf("%.2f~%-14.2f | %5d %11.3f | %5d %11.3f | %9.3f | %7.4f | %7.3f | %6.3f%n",
-                lo, hi, nOn, mOn, nOff, mOff, ratio, meanP, w, expected);
+            if (print) {
+                System.out.printf("%.2f~%-14.2f | %5d %11.3f | %5d %11.3f | %9.3f | %7.4f | %7.3f | %6.3f%n",
+                    lo, hi, nOn, mOn, nOff, mOff, ratio, meanP, w, expected);
+            }
             if (Double.isNaN(first)) first = ratio;
             last = ratio;
         }
