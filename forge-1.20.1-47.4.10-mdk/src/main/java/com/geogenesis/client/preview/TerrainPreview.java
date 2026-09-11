@@ -54,6 +54,10 @@ public final class TerrainPreview {
     private boolean hydrology = true;
     /** ★ 大范围模式（L 切换）：走廉价管线，可查看数万格的气候格局 / 纬度分带。 */
     private boolean largeArea = false;
+    /** ★ 坡度阴影（H 切换）：与游戏内 SHADE 一致的地图学光源（左上）→ 大范围下看山脉骨架。 */
+    private boolean slopeShading = true;
+    /** 图例滚动态（条目超出面板高度时启用；由 drawLegend 每帧回填）。 */
+    private int legendScroll = 0, legendMaxRows = 0, legendRowCount = 0;
     private int layerIndex = 0;
     private int qualityIdx = 0;
     private String search = "";
@@ -121,6 +125,14 @@ public final class TerrainPreview {
         });
         canvas.addMouseWheelListener(new MouseAdapter() {
             @Override public void mouseWheelMoved(MouseWheelEvent e) {
+                // ★ 光标在图例内且图例可滚动 → 滚图例，不改缩放（对齐游戏内 isOverLegend 做法）
+                if (e.getX() >= PANEL - 156 && legendRowCount > legendMaxRows && legendMaxRows > 0) {
+                    int maxScroll = Math.max(0, legendRowCount - legendMaxRows);
+                    legendScroll = Math.max(0, Math.min(maxScroll,
+                            legendScroll + e.getWheelRotation()));
+                    canvas.repaint();
+                    return;
+                }
                 scale *= (e.getWheelRotation() < 0) ? 0.8 : 1.25;
                 scale = Math.max(0.25, Math.min(largeArea ? 512.0 : 64.0, scale));
                 requestResample();
@@ -148,6 +160,10 @@ public final class TerrainPreview {
                 } else if (c == 'l' || c == 'L') {
                     // ★ 大范围模式：放宽滚轮缩放上限 → 可看数万格的气候格局/纬度分带
                     largeArea = !largeArea;
+                    canvas.repaint();
+                } else if (c == 'h' || c == 'H') {
+                    // ★ 坡度阴影开关（对齐游戏内 SHADE；大范围下用来看山脉骨架）
+                    slopeShading = !slopeShading;
                     canvas.repaint();
                 } else if (c == 'x' || c == 'X') {
                     qualityIdx = (qualityIdx + 1) % QUALITY.length;
@@ -238,6 +254,8 @@ public final class TerrainPreview {
             double stepZ = grid.blocksHigh() / (double) gh;
 
             BufferedImage img = new BufferedImage(res, res, BufferedImage.TYPE_INT_RGB);
+            // ★ 坡度阴影（对齐游戏内 SHADE）：先在采样网格上算明暗因子，再逐像素映射
+            double[] shade = slopeShading ? shadeFactors(gw, gh, stepX, stepZ) : null;
             for (int py = 0; py < res; py++) {
                 for (int px = 0; px < res; px++) {
                     int gx = Math.min(gw - 1, px * gw / res);
@@ -248,6 +266,7 @@ public final class TerrainPreview {
                         int wx = grid.originX() + (int) Math.round(gx * stepX);
                         int wz = grid.originZ() + (int) Math.round(gz * stepZ);
                         rgb = GeoPalette.color(layer, c, wx, wz, minY, maxY, hydrology);
+                        if (shade != null) rgb = applyShade(rgb, shade[gx * gh + gz]);
                     }
                     img.setRGB(px, py, rgb);
                 }
@@ -258,10 +277,10 @@ public final class TerrainPreview {
             drawLegend(g, layer);
             drawTooltip(g, layer);
             // ★ 诊断要点：视野(格)随 scale 增长，但【采样数与耗时保持不变】—— FTF 同款"开销与缩放无关"
-            info.setText(String.format("seed=%d scale=%.2f 视野=%d格  layer=%s hydro=%s large=%s  采样=%dx%d/%dms  res=%dx%d q=%d  [1-9/0]图层 [ ]切换 [R]河 [L]大范围 [X]分辨率 [/]搜索 [Esc]退出",
+            info.setText(String.format("seed=%d scale=%.2f 视野=%d格  layer=%s hydro=%s large=%s shade=%s  采样=%dx%d/%dms  res=%dx%d q=%d  [1-9/0]图层 [ ]切换 [R]河 [L]大范围 [H]阴影 [X]分辨率 [/]搜索",
                     seed, scale, (int) Math.round(PANEL * scale),
                     GeoPalette.englishLabel(layer.labelKey), hydrology ? "ON" : "OFF",
-                    largeArea ? "ON" : "OFF",
+                    largeArea ? "ON" : "OFF", slopeShading ? "ON" : "OFF",
                     grid.gridW(), grid.gridH(), grid.costMs(), res, res, quality));
         } catch (Throwable t) {
             t.printStackTrace();
@@ -269,6 +288,52 @@ public final class TerrainPreview {
             else { g.setColor(Color.BLACK); g.fillRect(0, 0, PANEL, PANEL); }
             g.setColor(Color.RED); g.drawString("渲染错误: " + t.getMessage(), 10, 30);
         }
+    }
+
+    // ============================================================
+    // 坡度阴影（对齐游戏内 TerrainUnderlay.SHADE）
+    // ============================================================
+
+    /**
+     * 采样网格上的明暗因子（地图学光源：左上方，符合"光从左上来"的直觉）。
+     *
+     * <p>水域与湖泊返回 1.0（水面是平的，做明暗会雕出虚假浮雕 —— 与游戏内一致）；
+     * 其余按法线 · 光源点乘，映射到 [0.65, 1.0] 以避免过暗。</p>
+     */
+    private double[] shadeFactors(int gw, int gh, double stepX, double stepZ) {
+        double[] f = new double[gw * gh];
+        double sx = Math.max(1.0, stepX), sz = Math.max(1.0, stepZ);
+        for (int gx = 0; gx < gw; gx++) {
+            for (int gz = 0; gz < gh; gz++) {
+                Cell c = grid.at(gx, gz);
+                if (c == null || c.e < 0.0 || c.lakeMask) { f[gx * gh + gz] = 1.0; continue; }
+                double dhx = (hAt(gx + 1, gz) - hAt(gx - 1, gz)) / (2.0 * sx);
+                double dhz = (hAt(gx, gz + 1) - hAt(gx, gz - 1)) / (2.0 * sz);
+                // 法线 ∝ (−dh/dx, −dh/dz, 1)；光源指向屏幕左上（−x、−z）且向上
+                double nx = -dhx, ny = -dhz, nz = 1.0;
+                double nlen = Math.sqrt(nx * nx + ny * ny + 1.0);
+                double lx = -0.5, lz = -0.3, ly = 1.0;
+                double llen = Math.sqrt(lx * lx + lz * lz + ly * ly);
+                double dot = (nx * lx + ny * lz + nz * ly) / (nlen * llen);
+                f[gx * gh + gz] = 0.65 + 0.35 * Math.max(0.0, dot);
+            }
+        }
+        return f;
+    }
+
+    /** 采样网格点高度（越界返回 0）。 */
+    private double hAt(int gx, int gz) {
+        Cell c = grid.at(gx, gz);
+        return c == null ? 0.0 : c.height;
+    }
+
+    /** 按因子压暗/提亮一个 RGB。 */
+    private static int applyShade(int rgb, double f) {
+        if (f >= 0.999) return rgb;
+        int r = (int) Math.min(255, ((rgb >> 16) & 0xFF) * f);
+        int g = (int) Math.min(255, ((rgb >> 8) & 0xFF) * f);
+        int b = (int) Math.min(255, (rgb & 0xFF) * f);
+        return (r << 16) | (g << 8) | b;
     }
 
     // ============================================================
@@ -285,11 +350,23 @@ public final class TerrainPreview {
                 if (search.isEmpty() || label.toLowerCase().contains(search)) vis.add(e);
             }
             int rowH = 16, titleH = 16, panelW = 146;
-            int panelH = titleH + vis.size() * rowH + 6;
+            // ★ 修复（2026-09-11）：面板高度上限 = 屏幕内可用高度，否则条目多时溢出屏幕
+            //   （群系图层 42 条 × 16 = 694 px > PANEL 600）。超高时改为滚动。
+            int maxRows = Math.max(1, (PANEL - ly - titleH - 20) / rowH);
+            legendMaxRows = maxRows;
+            legendRowCount = vis.size();
+            legendScroll = Math.max(0, Math.min(Math.max(0, vis.size() - maxRows), legendScroll));
+            int shown = Math.min(maxRows, Math.max(0, vis.size() - legendScroll));
+            int panelH = titleH + shown * rowH + 6 + (vis.size() > maxRows ? 10 : 0);
             g.setColor(new Color(0, 0, 0, 180)); g.fillRect(lx - 6, ly - 4, panelW, panelH);
-            g.setColor(Color.CYAN); g.drawString(GeoPalette.englishLabel(layer.labelKey), lx, ly + 6);
+            g.setColor(Color.CYAN);
+            String title = GeoPalette.englishLabel(layer.labelKey);
+            if (vis.size() > maxRows) title += "  (" + (legendScroll + 1) + "-"
+                    + (legendScroll + shown) + "/" + vis.size() + " 滚轮)";
+            g.drawString(title, lx, ly + 6);
             int cy = ly + titleH;
-            for (GeoPalette.LegendEntry e : vis) {
+            for (int i = legendScroll; i < legendScroll + shown && i < vis.size(); i++) {
+                GeoPalette.LegendEntry e = vis.get(i);
                 g.setColor(new Color(e.color)); g.fillRect(lx, cy, 12, 12);
                 g.setColor(Color.WHITE); g.drawString(GeoPalette.englishLabel(e.labelKey), lx + 16, cy + 11);
                 cy += rowH;
