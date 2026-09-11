@@ -96,6 +96,20 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
   - 顺带发现（既有、无行为影响）：`CellGenerator.erosionRoundCounter` 为非原子 `int` 竞态，
     但 `erosionRound` 只写不读（保留诊断字段）→ 记入体检报告待后续接滑窗时改用 `AtomicInteger`。
 
+- **地质 Phase T3：真平顶高原 + 构造盆地**（2026-09-12）：
+  - **PLATEAU 平顶**：改造前实为「宽频丘陵」（仅放宽频率，无平顶无崖线）。
+    改用**值域幂压缩** `v^0.55`（只压高端、保低端动态范围）→ 台顶平、台缘有起伏。
+    实测**台顶梯度 = 台缘的 0.23×**（`runTerrainShapeProbe [1]`）。
+  - ⚠️ **Terrace 空间量化二次验证确认否决**：本项目原已记录「Terrace 已否决（环状台阶伪影）」，
+    本次为实现平顶重新尝试接线，**确认结论成立**——空间量化把噪声的**等值线**（闭合曲线）
+    变成台阶 → 产生**同心环梯田**伪影。故 `plateauSteps` / `plateauStepStrength`
+    **保持废弃不接线**（顺手补写了证据链注释，避免后人再试）。
+  - **BASIN 碗形沉降**：改造前仅「噪声取反」（无盆底/盆缘之分）。改为低频**沉降势** + 碗形映射
+    `(1-s)^2.2` → **平阔盆底 + 向边缘抬升**；接线死配置 `basinBase`(0.02) 作为盆底下限。
+    实测**平阔盆底(<0.2) 占比 60.4%**（`[2]`）、值域 `[basinBase, 0.6]`（`[2b]`）。
+  - 新增 `TerrainShapeProbe`（`gradlew runTerrainShapeProbe`）。
+  - 回归：9 探针全通过；群系邻接违例 0/20000；FlowAccum cycles/violations/gate/border 全 0。
+
 - **Phase E：水文 → 气候反向耦合（闭环达成）**（2026-09-11）：
   - 实现：`PrecipField.Mod` 新增第 4 分量 `waterMoist`（上风向海域回灌湿度）。
     在**已有的上风向回扫循环内**顺带判定 `hUp <= seaY` → **零额外采样开销**（复用本就为

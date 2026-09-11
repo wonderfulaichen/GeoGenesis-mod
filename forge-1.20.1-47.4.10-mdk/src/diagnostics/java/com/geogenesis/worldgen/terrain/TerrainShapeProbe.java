@@ -1,98 +1,110 @@
 package com.geogenesis.worldgen.terrain;
 
 /**
- * 地形形状量化诊断：扫描一片区域，按主导类型分桶统计 eLand 的
- * 全局分布(mean/std/min/max) 与局部起伏度(3×3 邻域 eLand std)。
- * <p>
- * 用途：验证"山脉不像山脉、高原不像高原"的根因 —— 若 SplineConfig 内层样条
- * lo==hi（常数区间），混合公式 eLand = blendLo + (blendHi-blendLo)*modulated 中的
- * modulated（承载类型形状噪声）被 (blendHi-blendLo)=0 消去，则各地形类型退化为
- * 类型中心值的加权平均 → 同一类型主导区内部 localStd 应极小（平坦平台），且
- * 山脉/高原的 center 值若接近则两者高度难以区分。
- * <p>
- * 运行：gradlew runShapeProbe            (默认 seed 12345)
- *       gradlew runShapeProbe --args=98765
+ * 地形形态探针（★ 2026-09-12，地质系统 Phase T3 配套）：验证"真平顶高原"与"碗形盆地"。
+ *
+ * <p>背景：改造前 PLATEAU 实为<b>宽频丘陵</b>（仅放宽频率，无平顶无崖线），
+ * BASIN 仅<b>噪声取反</b>（无沉降中心概念）。本探针量化两者的形态特征：
+ * <ol>
+ *   <li><b>PLATEAU 真平顶</b>：阶地化后"台面"占比应显著上升
+ *       （相邻采样点差值≈0 的比例）——台面平是平顶的直接度量</li>
+ *   <li><b>BASIN 碗形</b>：值域下限为 {@code basinBase}；"平阔盆底"（低值区）应占多数</li>
+ *   <li>确定性、值域合法</li>
+ * </ol>
+ *
+ * <p>用法：{@code gradlew runTerrainShapeProbe [seed]}</p>
  */
 public final class TerrainShapeProbe {
 
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
-        TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, -64, 320);
-        gen.seed(seed);
+        System.out.printf("=== TerrainShapeProbe seed=%d ===%n", seed);
+        TerrainParams tp = TerrainParams.defaults();
 
-        final int R = 2000;      // 扫描半径（块）
-        final int step = 20;     // 采样步长（块）
-        final int n = R / step;  // 网格数（100×100 = 10000 点）
+        TypeNoiseProvider withT = new TypeNoiseProvider(tp.beltReliefAmp(), tp.basinBase());
+        withT.seed(seed);
 
-        double[][] e = new double[n][n];
-        int[][] dom = new int[n][n];
-        double[] sum = new double[TerrainClass.COUNT];
-        double[] sum2 = new double[TerrainClass.COUNT];
-        int[] cnt = new int[TerrainClass.COUNT];
-        double[] mn = new double[TerrainClass.COUNT];
-        double[] mx = new double[TerrainClass.COUNT];
-        for (int t = 0; t < TerrainClass.COUNT; t++) { mn[t] = 1e9; mx[t] = -1e9; }
+        System.out.printf("参数: basinBase=%.3f%n", tp.basinBase());
 
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                int wx = (i - n / 2) * step;
-                int wz = (j - n / 2) * step;
-                Cell c = gen.sample(wx, wz);
-                double ev = c.typeWeights != null ? c.eLand : 0.0;
-                e[i][j] = ev;
-                int d = c.typeWeights != null
-                        ? TypeLandShape.dominantFromWeights(c.typeWeights).ordinal() : 0;
-                dom[i][j] = d;
-                sum[d] += ev; sum2[d] += ev * ev; cnt[d]++;
-                if (ev < mn[d]) mn[d] = ev;
-                if (ev > mx[d]) mx[d] = ev;
+        // ================= [1] PLATEAU 真平顶：台顶应比台缘平 =================
+        //   "平顶"的本质 = 高值段（台顶）的地形梯度显著小于低值段（台缘）。
+        //   直接度量该性质，无需 A/B，也无需依赖具体实现手法（幂压缩 / 阶地 / 其它）。
+        //
+        //   ★ 判据设计两轮教训：
+        //   ① 初版统计 |Δv| < 1e-4（要求"完全相同"）过严——噪声本身 Δv≈0.01，无法区分；
+        //   ② 次版用"中位数下降"也不本质——它度量整体变平，而非"顶部比边缘平"。
+        final int CAP = 60000;
+        double[] gHigh = new double[CAP], gLow = new double[CAP];
+        int nH = 0, nL = 0;
+        double minP = 1e9, maxP = -1e9;
+        for (double z = -6000; z <= 6000; z += 1511) {
+            double prev = Double.NaN;
+            for (double x = -6000; x <= 6000; x += 2.0) {
+                double v = withT.computeNoise(TerrainClass.PLATEAU, x, z);
+                minP = Math.min(minP, v);
+                maxP = Math.max(maxP, v);
+                if (!Double.isNaN(prev)) {
+                    double g = Math.abs(v - prev) / 2.0;   // 每 wu 梯度
+                    double m = (v + prev) * 0.5;
+                    if (m > 0.75 && nH < CAP) gHigh[nH++] = g;        // 台顶段
+                    else if (m < 0.30 && nL < CAP) gLow[nL++] = g;    // 台缘段
+                }
+                prev = v;
             }
         }
+        double mH = 0, mL = 0;
+        for (int i = 0; i < nH; i++) mH += gHigh[i];
+        for (int i = 0; i < nL; i++) mL += gLow[i];
+        mH /= Math.max(1, nH);
+        mL /= Math.max(1, nL);
+        // 判据：台顶平均梯度显著小于台缘（<0.65×）
+        boolean pass1 = nH > 100 && nL > 100 && mH < mL * 0.65;
+        System.out.printf("[1] PLATEAU 台顶 vs 台缘梯度: 台顶(n=%d)=%.5f 台缘(n=%d)=%.5f 比值=%.2f× %s%n",
+            nH, mH, nL, mL, mL > 0 ? mH / mL : 0, pass1 ? "PASS" : "FAIL");
+        System.out.println("    要求: 台顶梯度 < 0.65×台缘（平顶 = 顶部明显比边缘平缓）");
 
-        System.out.println("=== TerrainShapeProbe seed=" + seed
-                + " region=" + (2 * R) + "x" + (2 * R) + " step=" + step + " ===");
-        System.out.println("全局 eLand 分布 (按主导类型):");
-        for (int t = 0; t < TerrainClass.COUNT; t++) {
-            if (cnt[t] == 0) {
-                System.out.println("  " + TerrainClass.values()[t].name() + " : (无样本)");
-                continue;
-            }
-            double mean = sum[t] / cnt[t];
-            double std = Math.sqrt(Math.max(0.0, sum2[t] / cnt[t] - mean * mean));
-            System.out.printf("  %-12s n=%6d  mean=%.3f  std=%.3f  min=%.3f  max=%.3f%n",
-                    TerrainClass.values()[t].name(), cnt[t], mean, std, mn[t], mx[t]);
-        }
+        boolean pass1b = minP >= -1e-9 && maxP <= 1.0 + 1e-9;
+        System.out.printf("[1b] PLATEAU 值域: [%.4f, %.4f] 应在 [0,1]内 %s%n",
+            minP, maxP, pass1b ? "PASS" : "FAIL");
 
-        // 局部起伏度：3×3 邻域 eLand std（窗口约 step*2 = 40 块）
-        double[] ls = new double[TerrainClass.COUNT];
-        int[] lc = new int[TerrainClass.COUNT];
-        for (int i = 1; i < n - 1; i++) {
-            for (int j = 1; j < n - 1; j++) {
-                double m = 0;
-                for (int a = -1; a <= 1; a++)
-                    for (int b = -1; b <= 1; b++) m += e[i + a][j + b];
-                m /= 9.0;
-                double v = 0;
-                for (int a = -1; a <= 1; a++)
-                    for (int b = -1; b <= 1; b++) {
-                        double d2 = e[i + a][j + b] - m;
-                        v += d2 * d2;
-                    }
-                v = Math.sqrt(v / 9.0);
-                int t = dom[i][j];
-                ls[t] += v; lc[t]++;
+        // ================= [2] BASIN 碗形：平阔盆底 =================
+        //   碗形 (1-s)^p (p>1) 使低值区（盆底）占多数。统计 <0.2 的占比。
+        //   对照：改造前是"噪声取反"，值近似均匀分布（低值区占比应低得多）。
+        int lowB = 0, nB = 0;
+        double minB = 1e9, maxB = -1e9;
+        for (double z = -8000; z <= 8000; z += 257) {
+            for (double x = -8000; x <= 8000; x += 263) {
+                double v = withT.computeNoise(TerrainClass.BASIN, x, z);
+                minB = Math.min(minB, v);
+                maxB = Math.max(maxB, v);
+                nB++;
+                if (v < 0.2) lowB++;
             }
         }
-        System.out.println();
-        System.out.println("局部起伏度 (3×3 邻域 eLand std, 窗口≈" + (step * 2) + "块):");
-        for (int t = 0; t < TerrainClass.COUNT; t++) {
-            if (lc[t] == 0) continue;
-            System.out.printf("  %-12s localStd=%.4f%n",
-                    TerrainClass.values()[t].name(), ls[t] / lc[t]);
+        double lowRatio = 100.0 * lowB / nB;
+        boolean pass2 = lowRatio > 45.0;
+        System.out.printf("[2] BASIN 平阔盆底(<0.2)占比=%.1f%% (要求>45%%) %s%n",
+            lowRatio, pass2 ? "PASS" : "FAIL");
+        boolean pass2b = minB >= tp.basinBase() - 1e-9 && maxB <= 0.6 + 1e-9;
+        System.out.printf("[2b] BASIN 值域: [%.4f, %.4f] 应在 [basinBase=%.3f, 0.6]内 %s%n",
+            minB, maxB, tp.basinBase(), pass2b ? "PASS" : "FAIL");
+
+        // ================= [3] 确定性 =================
+        TypeNoiseProvider again = new TypeNoiseProvider(tp.beltReliefAmp(), tp.basinBase());
+        again.seed(seed);
+        int bad = 0;
+        for (int i = 0; i < 300; i++) {
+            double x = i * 271.0 - 30000, z = i * 173.0 - 20000;
+            if (Double.compare(withT.computeNoise(TerrainClass.PLATEAU, x, z),
+                               again.computeNoise(TerrainClass.PLATEAU, x, z)) != 0) bad++;
+            if (Double.compare(withT.computeNoise(TerrainClass.BASIN, x, z),
+                               again.computeNoise(TerrainClass.BASIN, x, z)) != 0) bad++;
         }
-        System.out.println();
-        System.out.println("判读：localStd 极低(如<0.01≈<4格/40块) = 该类型内部平坦化(无脊线/平顶特征)。");
-        System.out.println("      eLand 是 HeightCurve 坐标(0≈海平面63,1≈接近世界顶), 1e≈约 (maxY-63) 格高度差。");
+        boolean pass3 = bad == 0;
+        System.out.printf("[3] 确定性(n=600): 不一致=%d %s%n", bad, pass3 ? "PASS" : "FAIL");
+
+        boolean all = pass1 && pass1b && pass2 && pass2b && pass3;
+        System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
+        if (!all) System.exit(1);
     }
 }
