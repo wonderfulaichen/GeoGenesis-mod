@@ -51,12 +51,12 @@ public final class TectonicProbe {
         // ================= [2] 边界 profile 符号正确性 =================
         // 直接构造各类型的 Sample，验证 elevationOffset 的符号与相对大小。
         // 用 dist=0（边界线上）以取得最大幅度。
-        double convLand = tf.elevationOffset(new TectonicField.Sample(0, TectonicField.CONVERGENT, 1.0), true);
-        double convOcean = tf.elevationOffset(new TectonicField.Sample(0, TectonicField.CONVERGENT, 1.0), false);
-        double divLand = tf.elevationOffset(new TectonicField.Sample(0, TectonicField.DIVERGENT, 1.0), true);
-        double divOcean = tf.elevationOffset(new TectonicField.Sample(0, TectonicField.DIVERGENT, 1.0), false);
-        double transOff = tf.elevationOffset(new TectonicField.Sample(0, TectonicField.TRANSFORM, 1.0), true);
-        double interiorOff = tf.elevationOffset(new TectonicField.Sample(0, TectonicField.INTERIOR, 1.0), true);
+        double convLand = tf.elevationOffset(smp(TectonicField.CONVERGENT), true);
+        double convOcean = tf.elevationOffset(smp(TectonicField.CONVERGENT), false);
+        double divLand = tf.elevationOffset(smp(TectonicField.DIVERGENT), true);
+        double divOcean = tf.elevationOffset(smp(TectonicField.DIVERGENT), false);
+        double transOff = tf.elevationOffset(smp(TectonicField.TRANSFORM), true);
+        double interiorOff = tf.elevationOffset(smp(TectonicField.INTERIOR), true);
 
         System.out.printf("[2] 边界 profile(e单位): 陆汇聚=%+.4f 洋汇聚=%+.4f 陆离散=%+.4f 洋离散=%+.4f 走滑=%+.4f 内部=%+.4f%n",
             convLand, convOcean, divLand, divOcean, transOff, interiorOff);
@@ -120,8 +120,43 @@ public final class TectonicProbe {
         System.out.printf("[5] 陆地 MOUNTAINS 权重: 汇聚边界=%.4f (n=%d) vs 板块内部=%.4f (n=%d) 比值=%.2f× %s%n",
             mc, nC, mi, nI, mi > 0 ? mc / mi : 0, pass5 ? "PASS" : "FAIL");
 
-        boolean all = pass1 && pass2 && pass3 && pass4 && pass5;
+        // ================= [6] Phase T2：造山带沿走向串珠化 =================
+        //   沿一条汇聚边界取样，比较"带 Chain"与"不带 Chain"的 MOUNTAINS 权重：
+        //   串珠化的特征 = 沿走向方差显著升高（有峰有谷），且均值不至崩塌。
+        //   ★ 判据设计教训：初版测【乘积 gN·m】的方差，被 gN 自身的方差（由 dist 主导）掩盖，
+        //   无论怎么采样都测不出串珠效果。现改为直接测【串珠因子 m 本身】的离散度：
+        //   m = 有Chain / 无Chain，它必须显著偏离 1（有峰有谷）才是真串珠。
+        //   另注：采样步长必须远小于 Chain 周期（2000/18≈111wu）以免混叠。
+        int nS = 0;
+        double sumM = 0, sumM2 = 0, minM = Double.MAX_VALUE, maxM = -Double.MAX_VALUE;
+        for (double z = -6000; z <= 6000; z += 1800) {
+            for (double x = -8000; x <= 8000; x += 13) {
+                TectonicField.Sample s = tf.sample(x, z);
+                if (s.btype() != TectonicField.CONVERGENT || TectonicField.boundaryStrength(s) <= 0.3) continue;
+                double gN = TectonicField.boundaryStrength(s);
+                double gC = tf.boundaryStrengthChained(s, x, z);
+                double m = gC / gN;                 // 串珠因子
+                sumM += m; sumM2 += m * m;
+                minM = Math.min(minM, m);
+                maxM = Math.max(maxM, m);
+                nS++;
+            }
+        }
+        double meanM = nS > 0 ? sumM / nS : 0;
+        double sdM = nS > 0 ? Math.sqrt(Math.max(0, sumM2 / nS - meanM * meanM)) : 0;
+        // 判据：串珠因子必须显著波动（标准差 >0.1），且均值不被压垮（>0.55，即山峰仍成规模）
+        boolean pass6 = nS > 20 && sdM > 0.10 && meanM > 0.55;
+        System.out.printf("[6] Chain 串珠化(汇聚边界 n=%d): 串珠因子 m 均值=%.3f 标准差=%.3f 范围=[%.3f, %.3f] %s%n",
+            nS, meanM, sdM, minM, maxM, pass6 ? "PASS" : "FAIL");
+        System.out.println("    要求: 标准差>0.10（峰谷分明）且均值>0.55（山峰仍成规模）");
+
+        boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
         if (!all) System.exit(1);
+    }
+
+    /** 测试用 Sample：dist=0（边界线上，取最大幅度），切向指向 +z。 */
+    private static TectonicField.Sample smp(int btype) {
+        return new TectonicField.Sample(0, btype, 1.0, 0.0, 1.0);
     }
 }

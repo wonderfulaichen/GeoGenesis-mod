@@ -65,6 +65,16 @@ public final class TectonicField {
     /** 高斯衰减 sigma（wu）：控制山脉/海沟的宽度。 */
     private static final double PROFILE_SIGMA = 110.0;
 
+    // ===== Phase T2：Chain modulation（山链串珠化，沿走向打破均匀脊）=====
+    /** 沿走向频率：低频 = 山链长。 */
+    private static final double CHAIN_ALONG_FREQ = 6.0;
+    /** 垂直走向频率：高频 = 山链窄。 */
+    private static final double CHAIN_ACROSS_FREQ = 18.0;
+    /** Chain 调制下限（保留的最小强度比例）。 */
+    private static final double CHAIN_MIN = 0.35;
+    /** Chain 噪声盐。 */
+    private static final long CHAIN_SEED = 0x51ED270B7A1C3E5FL;
+
     // ===== 高程偏置幅度（e 单位，[-1,1]；海平面 e=0） =====
     /**
      * 陆-陆汇聚造山幅度（e 单位）。
@@ -108,7 +118,15 @@ public final class TectonicField {
             /** 边界类型：INTERIOR / CONVERGENT / DIVERGENT / TRANSFORM。 */
             int btype,
             /** 相对速度大小（构造活动强度，无量纲，约 0~2）。 */
-            double rate
+            double rate,
+            /**
+             * 边界<b>切向</b>（沿走向）单位向量的 x 分量。
+             * ★ Phase T2：供 Chain modulation 把均匀脊按走向切成独立山峰。
+             * 内部点为 (1,0) 占位。
+             */
+            double tangentX,
+            /** 边界切向单位向量的 z 分量（见 {@link #tangentX}）。 */
+            double tangentZ
     ) {
         /** 是否处于板块边界影响范围内。 */
         public boolean onBoundary() {
@@ -153,21 +171,25 @@ public final class TectonicField {
             }
         }
         if (d2 == Double.MAX_VALUE) {
-            return new Sample(Double.MAX_VALUE, INTERIOR, 0.0);
+            return new Sample(Double.MAX_VALUE, INTERIOR, 0.0, 1.0, 0.0);
         }
 
         // 到两种子中垂线的有符号距离（标准 Voronoi 边界距离公式）
         double nx = s2x - s1x, nz = s2z - s1z;
         double len = Math.sqrt(nx * nx + nz * nz);
         double dist;
+        double ux, uz, tx, tz;
         if (len < 1e-9) {
             dist = Double.MAX_VALUE;
+            ux = 1.0; uz = 0.0; tx = 0.0; tz = 1.0;
         } else {
             dist = Math.abs((d2 * d2 - d1 * d1) / (2.0 * len));
+            ux = nx / len; uz = nz / len;            // 法线（s1→s2）
+            tx = -uz; tz = ux;                       // ★ 切向 = 法线旋转 90°（沿走向）
         }
 
         if (dist >= BOUNDARY_REACH) {
-            return new Sample(dist, INTERIOR, 0.0);
+            return new Sample(dist, INTERIOR, 0.0, tx, tz);
         }
 
         // 分类：dot/cross 分解
@@ -176,7 +198,6 @@ public final class TectonicField {
         plateVelocity(c2x, c2z, v2);
         double vrx = v1[0] - v2[0], vrz = v1[1] - v2[1];
 
-        double ux = nx / len, uz = nz / len;         // 法线（s1→s2）
         double dot = vrx * ux + vrz * uz;
         double cross = Math.abs(vrx * uz - vrz * ux);
 
@@ -189,7 +210,7 @@ public final class TectonicField {
             btype = TRANSFORM;
             rate = cross;
         }
-        return new Sample(dist, btype, Math.min(rate, 2.0));
+        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz);
     }
 
     /**
@@ -229,6 +250,79 @@ public final class TectonicField {
     public static double boundaryStrength(Sample s) {
         if (s.btype() == INTERIOR) return 0.0;
         return Math.exp(-(s.dist() * s.dist()) / (2.0 * PROFILE_SIGMA * PROFILE_SIGMA));
+    }
+
+    /**
+     * ★ Phase T2：带 Chain modulation 的边界强度（仅汇聚边界生效）。
+     *
+     * <p>汇聚造山带在沿走向方向被切成"串珠状"独立山峰（{@link #chainModulation}），
+     * 而离散（裂谷/洋中脊）保持连续——真实裂谷系统是连续线状的，不应串珠化。
+     *
+     * <p>这是<b>实例方法</b>（chain 采样需要世界坐标，且用实例种子）。
+     */
+    public double boundaryStrengthChained(Sample s, double wx, double wz) {
+        double g = boundaryStrength(s);
+        if (g <= 0.0) return 0.0;
+        if (s.btype() != CONVERGENT) return g;      // 仅造山带串珠化
+        return g * chainModulation(wx, wz, s);
+    }
+
+    /**
+     * ★ 2026-09-12 Phase T2：<b>Chain modulation</b>（移植自 worldgen elevation.rs）。
+     *
+     * <p>把沿边界均匀延伸的山脊<b>打破成一个个独立山峰</b>：
+     * 在<b>沿走向</b>方向用低频（山链长）、<b>垂直走向</b>方向用高频（山链窄）
+     * 采样 ridged 噪声 → 形成"串珠状"山峰，而非一条均匀的墙。
+     *
+     * <p><b>为何要沿走向旋转坐标</b>：若在固定世界轴上采样，山链会被切成
+     * 与走向无关的斑块，"走向"就白做了。旋转后噪声随走向对齐，
+     * 山峰才真正沿造山带排列。
+     *
+     * @return 调制系数，约 [0.25, 1.0]（不改变符号，只压弱部分区段）
+     */
+    private double chainModulation(double wx, double wz, Sample s) {
+        // 到最近边界的最近点近似 = 当前点沿法线退到边界线（此处只需走向方向，故简化）
+        // 沿走向坐标 t、垂直走向坐标 a（按 PLATE_SPACING 归一化 → 与板块尺度无关的稳定频率）
+        double inv = 1.0 / PLATE_SPACING;
+        double t = (wx * s.tangentX() + wz * s.tangentZ()) * inv;
+        double a = (wx * s.tangentZ() - wz * s.tangentX()) * inv;
+
+        // 沿走向低频（6/格）、垂直走向高频（18/格）——与 worldgen 的 (along×6, across×18) 同构
+        double n = ridgedNoise(t * CHAIN_ALONG_FREQ, a * CHAIN_ACROSS_FREQ, CHAIN_SEED);
+        // 映射到 [0.25, 1.0]：保留大部分强度，只在"谷"处压低 → 山峰分明
+        return CHAIN_MIN + (1.0 - CHAIN_MIN) * clamp01(n);
+    }
+
+    /**
+     * 极简 ridged 噪声（零依赖）：{@code 1 - |value noise|}，两层叠加。
+     * 不依赖 noise 包（后者引 mojang Codec，会破坏零依赖约定）。
+     */
+    private double ridgedNoise(double x, double z, long salt) {
+        double v = 1.0 - Math.abs(valueNoise(x, z, salt));
+        double v2 = 1.0 - Math.abs(valueNoise(x * 2.3 + 5.1, z * 2.3 + 7.7, salt + 1));
+        return clamp01(0.65 * v + 0.35 * v2);
+    }
+
+    /** 极简 2D value noise（双线性 + smootherstep），返回 [-1,1]。 */
+    private double valueNoise(double x, double z, long salt) {
+        int ix = (int) Math.floor(x), iz = (int) Math.floor(z);
+        double fx = x - ix, fz = z - iz;
+        double sx = fx * fx * fx * (fx * (fx * 6.0 - 15.0) + 10.0);   // smootherstep（5 次）
+        double sz = fz * fz * fz * (fz * (fz * 6.0 - 15.0) + 10.0);
+        double v00 = cellNoise(ix, iz, salt),     v10 = cellNoise(ix + 1, iz, salt);
+        double v01 = cellNoise(ix, iz + 1, salt), v11 = cellNoise(ix + 1, iz + 1, salt);
+        double a = v00 + (v10 - v00) * sx;
+        double b = v01 + (v11 - v01) * sx;
+        return a + (b - a) * sz;
+    }
+
+    /** 格点随机值 [-1,1]。 */
+    private double cellNoise(int ix, int iz, long salt) {
+        return unit(hash(ix, iz, salt)) * 2.0 - 1.0;
+    }
+
+    private static double clamp01(double v) {
+        return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
     }
 
     // ===================== 内部工具 =====================
