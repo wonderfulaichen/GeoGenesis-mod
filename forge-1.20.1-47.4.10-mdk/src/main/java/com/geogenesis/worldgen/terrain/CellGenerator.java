@@ -57,6 +57,15 @@ public final class CellGenerator {
     private final OceanFeatures oceanFeatures;
     private final LandFeatures landFeatures;
     private final CoastlineField coastline;
+    /**
+     * ★ 2026-09-12 地质系统 Phase T1 总开关：构造骨架是否参与高程合成。
+     * {@code false} → 完全不调用 TectonicField，输出<b>逐位退回</b>接入前（可回滚）。
+     * 接 Forge 配置推迟到验证有效后（避免产生死配置，见体检报告 C8）。
+     */
+    private static final boolean TECTONIC_ENABLED = true;
+
+    /** 构造骨架场（见 {@link #TECTONIC_ENABLED}）。 */
+    private final TectonicField tectonic;
     private final double continentBias;
     private final double seabedAmp;
     private final double oceanDepthFactor;
@@ -129,6 +138,7 @@ public final class CellGenerator {
         this.oceanFeatures = new OceanFeatures();
         this.landFeatures = new LandFeatures();
         this.coastline = new CoastlineField(p);
+        this.tectonic = new TectonicField(0L);   // 种子在 seed() 注入
         this.continentBias = p.continentBias();
         this.seabedAmp = p.seabedDetail();
         this.oceanDepthFactor = p.oceanDepthFactor();
@@ -172,6 +182,7 @@ public final class CellGenerator {
         typeLandShape.seed(worldSeed);
         seaBed.seed(worldSeed);
         precipField.setSeed(worldSeed);   // ★ Phase B：降水场随世界种子重置
+        tectonic.setSeed(worldSeed);      // ★ 地质 Phase T1：构造格局随世界种子重置
         clearEqCache();                   // ★ D13：地形 e 缓存随世界种子失效
         // 海山中心水深检查：计算中心点的真实 eOcean（含 seabed，不含海山增量）
         // 仅在 eOcean_at_center < -0.20（足够深）时才允许生成海山
@@ -245,6 +256,8 @@ public final class CellGenerator {
         // 3. 连续类型混合结果
         TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(sx, sz);
         cell.typeWeights = cellBlend.typeWeights;
+        // ★ 2026-09-12 地质 Phase T1：构造决定类型（汇聚→造山/海沟，离散→裂谷/洋脊）
+        if (TECTONIC_ENABLED) applyTectonicWeights(cell.typeWeights, sx, sz);
 
         // 4. 海岸线域扭曲（v8 CoastlineField）— 海洋深度/类型样条用的 c 空间位移（保留轻量扰动）。
         double cEdge = cBiased + coastline.warpDisplacement(sx, sz, cBiased);
@@ -479,6 +492,8 @@ public final class CellGenerator {
 
         // 4. 类型混合（Voronoi 场）
         TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(sx, sz);
+        // ★ 地质 Phase T1：与 sampleCore 相同的构造调制（保证 tile 与直接采样一致）
+        if (TECTONIC_ENABLED) applyTectonicWeights(cellBlend.typeWeights, sx, sz);
 
         // 5. 海岸线扭曲
         double cEdge = cBiased + coastline.warpDisplacement(sx, sz, cBiased);
@@ -494,6 +509,50 @@ public final class CellGenerator {
 
         // 8. 海陆统一 e
         return softCapLandE(eLand + oceanFeat.total * oceanW);
+    }
+
+    /**
+     * ★ 2026-09-12 地质 Phase T1：<b>构造决定地形类型</b>（而非"构造推高地形"）。
+     *
+     * <p>按板块边界类型调制 {@code typeWeights}，让山脉/海沟/裂谷/洋脊沿<b>地质边界</b>分布：
+     * <ul>
+     *   <li><b>汇聚</b>：陆地→提升 MOUNTAINS（造山带）；海洋→提升 DEEP_OCEAN（俯冲海沟）</li>
+     *   <li><b>离散</b>：陆地→提升 BASIN（裂谷）；海洋→提升 OCEAN（洋中脊，浅于深海）</li>
+     *   <li><b>走滑 / 内部</b>：不调制（worldgen 亦无垂向贡献）</li>
+     * </ul>
+     *
+     * <p><b>为何用权重调制而非直接加高程偏置</b>：直接抬升 {@code e} 会连锁增强地形雨
+     * （PrecipField 的 orographicGain 基于高度差），推高全局降水并稀释 Phase C
+     * 「干旱区河细」的区分度（实测 head 最干桶 0.922→0.959）。改为调制类型权重后，
+     * 山脉由<b>既有 MOUNTAINS 配方</b>生成，不引入额外高度偏置 → 不干扰气候/水文标定。
+     *
+     * <p>调制后重新归一化，保证权重和为 1（{@code dominantFromWeights} 依赖此性质）。
+     */
+    private void applyTectonicWeights(double[] w, double sx, double sz) {
+        TectonicField.Sample ts = tectonic.sample(sx, sz);
+        double g = TectonicField.boundaryStrength(ts);
+        if (g <= 0.01) return;
+
+        double oceanW = w[TerrainClass.OCEAN.ordinal()] + w[TerrainClass.DEEP_OCEAN.ordinal()];
+        double landW = 1.0 - oceanW;
+        switch (ts.btype()) {
+            case TectonicField.CONVERGENT -> {
+                w[TerrainClass.MOUNTAINS.ordinal()] *= 1.0 + TectonicField.CONVERGENT_BOOST * g * landW;
+                w[TerrainClass.DEEP_OCEAN.ordinal()] *= 1.0 + TectonicField.CONVERGENT_BOOST * g * oceanW;
+            }
+            case TectonicField.DIVERGENT -> {
+                w[TerrainClass.BASIN.ordinal()] *= 1.0 + TectonicField.DIVERGENT_BOOST * g * landW;
+                w[TerrainClass.OCEAN.ordinal()] *= 1.0 + TectonicField.DIVERGENT_BOOST * g * oceanW;
+            }
+            default -> {
+                return;   // 走滑：无影响
+            }
+        }
+        double sum = 0.0;
+        for (double v : w) sum += v;
+        if (sum > 1e-15) {
+            for (int i = 0; i < w.length; i++) w[i] /= sum;
+        }
     }
 
     /** 纯陆地形态 eLand（侵蚀边际采样用，不含气候/分类）。 */
