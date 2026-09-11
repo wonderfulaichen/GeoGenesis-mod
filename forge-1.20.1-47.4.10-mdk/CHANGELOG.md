@@ -39,6 +39,13 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
   - 「北比南宽」经实测**不是模型问题**：`lat01` 是严格偶函数（`max|lat01(z)−lat01(−z)| = 0`），观感来自视口从 z=0（赤道）起、切掉半条带。
   - 连锁：降水均值 0.272 → 0.347，汇流权重 `PrecipWeights.ref` 随之 **0.17 → 0.212** 重标。
 
+- **预览图层 #9（TERRAIN_TYPE） bug + i18n 缺口**（2026-09-11）：
+  - TERRAIN_TYPE 图例少 3 条：颜色数组 17 项 vs 名称数组仅 14 项 → 图例取 min=14，SNOW/VOLCANO/VOLCANIC_FIELD 有颜色但图例查不到；`discreteLabelKey(id≥14)` 潜在 AIOOBE。修复：名称数组补齐 17 项 + 语言文件补 `terrain_type.VOLCANO/.VOLCANO_FIELD`。
+  - RIVER_TYPE 图例 key 名不匹配：代码用 `big/medium/small`，语言文件是 `main/mouth/trib` → 已修正。
+  - CLIMATE_ZONE 图例 key 名不匹配：`Zone` 枚举 `A/B/C/D/E` 生成 `geogenesis.zone.A`，语言文件是 `TROPICAL` 等 → 新增 `zoneLabelName()` 映射。
+  - i18n：`continuousLegendLabels()`/`terrainUnderlayLabel()` 不再硬编码中文，改为接收本地化回调；`DisplayPanel` 显示设置全部改用 `I18n.get`；新增 ~30 个语言 key（`geogenesis.legend.*`/`geogenesis.underlay.*`/`geogenesis.settings.display.*`）。
+  - 新增 `PaletteProbe`（`gradlew runPaletteProbe`）：离散图层三方一致性自检（颜色/名称/枚举/key 解析），防止手工平行表漂移。验证：8 项 PASS。
+
 ### 验证 / Verification
 
 - `gradlew build` BUILD SUCCESSFUL（含 `reobfJar`，已混淆为目标运行环境映射）。

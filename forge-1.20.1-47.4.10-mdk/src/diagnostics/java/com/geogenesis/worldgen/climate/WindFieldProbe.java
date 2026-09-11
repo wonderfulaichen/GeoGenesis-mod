@@ -121,7 +121,9 @@ public final class WindFieldProbe {
     }
 
     private static double meanVx(long seed, double lat01, WindField.Params p) {
-        double z = lat01 * LAT_SCALE;
+        // ★ 2026-09-11：必须【按纬度反解 z】而非 z = lat01*LAT_SCALE（仅在线性旧映射下成立）。
+        //   纬度改余弦后，同一 z 对应不同 lat01，旧写法会采样到错误的风带 → 风向/风速均失真。
+        double z = Latitude.zForLatitude(lat01, LAT_SCALE);
         double sum = 0;
         int n = 0;
         for (double x = -4000; x <= 4000; x += 137) {
@@ -132,7 +134,7 @@ public final class WindFieldProbe {
     }
 
     private static double meanSpeed(long seed, double lat01, WindField.Params p) {
-        double z = lat01 * LAT_SCALE;
+        double z = Latitude.zForLatitude(lat01, LAT_SCALE);
         double sum = 0;
         int n = 0;
         for (double x = -4000; x <= 4000; x += 137) {
