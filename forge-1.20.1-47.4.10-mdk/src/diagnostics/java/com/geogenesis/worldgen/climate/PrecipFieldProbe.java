@@ -268,8 +268,61 @@ public final class PrecipFieldProbe {
         System.out.println("     注: 截图中的“北比南大”不是模型不对称 —— lat01 严格偶函数，");
         System.out.println("         而是【视口从 z=0（赤道）开始】把最上一条带切了一半，属取景偏差。");
 
+        // ================= [11] Phase E：上风向海域回灌湿度 =================
+        //   合成"海岸"地形验证 —— 只依赖几何，不依赖真实地形的巧合。
+        //   x<0 = 海（h=-20）、x>0 = 陆（h=+50）、海平面 seaY=0；
+        //   取 lat01=0.5（西风带，风朝 +x）→ +x 方向为"下风向"，其水源在 -x（海）。
+        final double seaY = 0.0;
+        PrecipField.HeightFn coast = (x, z) -> x < 0 ? -20.0 : 50.0;
+        double zE = Latitude.zForLatitude(0.5, LAT_SCALE);
+        PrecipField pfSea = new PrecipField(seed, coast, LAT_SCALE,
+            PrecipField.Params.defaults(), WindField.Params.defaults(), seaY);
+        PrecipField pfNoSea = new PrecipField(seed, coast, LAT_SCALE,
+            PrecipField.Params.defaults(), WindField.Params.defaults());   // seaY=NaN → 关闭
+
+        double wWind = WindField.sample(seed, 0, zE, LAT_SCALE, WindField.Params.defaults()).x();
+
+        // [11a] 近岸下风增湿：x=+40 的上风第 1 格落在 x=-56（海）→ 应显著 > 0
+        double nearCoast = pfSea.at(40, zE).waterMoist();
+        // [11b] 远内陆不增湿：x=+900 的上风 1..6 格全在陆上（x≥324）→ 应恰为 0（局部性）
+        double farInland = pfSea.at(900, zE).waterMoist();
+        boolean pass11a = nearCoast > 0.1 && Math.abs(farInland) < 1e-12;
+        System.out.printf("[11a] 合成海岸(风x=%+.2f, 海在 -x): 近岸(x=+40)=%.4f 远内陆(x=+900)=%.4f %s%n",
+            wWind, nearCoast, farInland, pass11a ? "PASS" : "FAIL");
+        System.out.println("     要求: 近岸下风显著增湿(>0.1) 且远内陆恰为 0（证明是局部海岸效应、非全局抬升）");
+
+        // [11c] 关闭开关（seaY 未注入 = NaN）→ waterMoist 必须恒为 0（可回滚性）
+        double off1 = pfNoSea.at(40, zE).waterMoist();
+        double off2 = pfNoSea.at(-500, zE).waterMoist();
+        boolean pass11c = Math.abs(off1) < 1e-12 && Math.abs(off2) < 1e-12;
+        System.out.printf("[11c] 关闭海域回灌(seaY=NaN): x=+40 → %.4f  x=-500 → %.4f %s%n",
+            off1, off2, pass11c ? "PASS" : "FAIL");
+
+        // [11d] 真实地形：上界与命中占比
+        //   注意：上一实例 real 未注入 seaY（Phase E 关闭），此处需另建带海平面的实例。
+        PrecipField realSea = new PrecipField(seed,
+            (x, z) -> gen.heightCurve().heightFromE(gen.terrainEQuick(x, z)),
+            tp.latitudeScale(), PrecipField.Params.defaults(), WindField.Params.defaults(),
+            gen.heightCurve().seaLevelY());
+        double maxMoist = 0;
+        int nE = 0, moistHit = 0;
+        for (double z = -6000; z <= 6000; z += 137) {
+            for (double x = -6000; x <= 6000; x += 149) {
+                double v = realSea.at(x, z).waterMoist();
+                nE++;
+                maxMoist = Math.max(maxMoist, v);
+                if (v > 0.02) moistHit++;
+            }
+        }
+        double moistCap = PrecipField.Params.defaults().moistGain();
+        boolean pass11d = maxMoist > 0.0 && maxMoist <= moistCap + 1e-9 && moistHit > 0;
+        System.out.printf("[11d] 真实地形(n=%d): 最大海域回灌=%.4f (上界 moistGain=%.2f) 命中>0.02 %d(%.1f%%) %s%n",
+            nE, maxMoist, moistCap, moistHit, 100.0 * moistHit / nE, pass11d ? "PASS" : "FAIL");
+
+        boolean pass11 = pass11a && pass11c && pass11d;
+
         boolean all = pass1 && pass1b && pass2 && pass3 && pass4 && pass5 && pass6
-                && pass7 && pass8 && pass9 && pass10;
+                && pass7 && pass8 && pass9 && pass10 && pass11;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
     }
 

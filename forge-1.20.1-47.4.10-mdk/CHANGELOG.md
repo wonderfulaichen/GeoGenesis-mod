@@ -96,6 +96,22 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
   - 顺带发现（既有、无行为影响）：`CellGenerator.erosionRoundCounter` 为非原子 `int` 竞态，
     但 `erosionRound` 只写不读（保留诊断字段）→ 记入体检报告待后续接滑窗时改用 `AtomicInteger`。
 
+- **Phase E：水文 → 气候反向耦合（闭环达成）**（2026-09-11）：
+  - 实现：`PrecipField.Mod` 新增第 4 分量 `waterMoist`（上风向海域回灌湿度）。
+    在**已有的上风向回扫循环内**顺带判定 `hUp <= seaY` → **零额外采样开销**（复用本就为
+    雨影/焚风采样的 `hUp`）。`seaY` 由调用方注入（`heightCurve.seaLevelY()`），
+    `PrecipField` 保持对 `HeightCurve` 零依赖；传 `NaN` 即**关闭**（可回滚）。
+  - `CellGenerator` 在 `clamp(hum,−1,1)` 之前 `hum += pm.waterMoist()`。
+  - **安全性两条**：① `WhittakerType.classify` 用**区域层**温/降水 → 逐格增湿**不会**产生椒盐群系；
+    ② 水源为地形固定的海面 → **无**"河更宽→更湿→河更宽"的正反馈发散。
+  - 实测（`PrecipFieldProbe [11]`）：合成海岸近岸 `x=+40` **0.2343**、远内陆 `x=+900` **0.0000**
+    （证明是局部海岸效应）；关闭开关 → **0**；真实地形 n=7128 最大增益 **0.2500**
+    （= `moistGain` 上界）、命中 **82.3%**。
+  - **v1 范围（诚实标注）**：仅**海域**；**湖泊/河流未纳入** —— 其判定需调用河网
+    （`distanceToWater`），会把水文采样拖进最热的 `sample()` 路径（违反 §3.1 铁律）
+    且引入正反馈风险；建议将来在 `GeoGenesisTerrain` 侧做后置修正。
+  - **至此三系统闭环**：地形 → 气候 → 水文 → 气候（唯一仍断为"水文 → 地形"的河流演化，属 P1-9）。
+
 ### 验证 / Verification
 
 - `gradlew build` BUILD SUCCESSFUL（含 `reobfJar`，已混淆为目标运行环境映射）。
