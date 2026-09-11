@@ -129,6 +129,13 @@ public class Cell {
      * 岩层阈值范式）：陡崖不长植被、积不住沙，地表应出露岩石。
      */
     public float gradient;
+
+    // === 地层 / 岩性（★ 2026-09-12 地质系统 Phase T4） ===
+    /** 岩性 id（{@link RockType#ordinal()}），供 ROCK_TYPE 预览图层。 */
+    public int rockTypeId;
+    /** 出露地层号（0 = 地表/最新，越大越深越老），供 ROCK_LAYER 预览图层。 */
+    public int rockLayer;
+
     /** 河网段类型（RIVER_TYPE 图层用）：0 无 / 1 水文河流 */
     public byte riverType;
     /** 水文实验河流水面 Y；无河流时为海平面默认值。 */

@@ -6,6 +6,8 @@ import com.geogenesis.worldgen.climate.ClimateZone;
 import com.geogenesis.worldgen.climate.ClimateZone.Zone;
 import com.geogenesis.worldgen.climate.Latitude;
 import com.geogenesis.worldgen.terrain.Cell;
+import com.geogenesis.worldgen.terrain.RockType;
+import com.geogenesis.worldgen.terrain.StratumField;
 import com.geogenesis.worldgen.terrain.TerrainClass;
 
 import java.util.ArrayList;
@@ -426,6 +428,23 @@ public final class GeoPalette {
             0x3B7DA8, // BOREAL D
             0xE8EEF2, // POLAR E
     };
+
+    // ★ 2026-09-12 地质 Phase T4：ROCK_TYPE / ROCK_LAYER 色表（此前为空占位，无数据源）。
+    // ROCK_TYPE id 与 RockType.ordinal() 严格对齐（顺序/数量必须一致！）。
+    //   配色按成因分族：变质岩灰紫 / 侵入岩粉白 / 沉积岩黄褐系 / 喷出岩暗黑系。
+    private static final int[] T_ROCK_TYPE = {
+            0x8A8A96, // 0 GNEISS    片麻岩  变质·高级（灰紫）
+            0x6E8A8A, // 1 SCHIST    片岩    变质·中级（青灰）
+            0xD8B8B0, // 2 GRANITE   花岗岩  侵入（粉白）
+            0xD9C18A, // 3 SANDSTONE 砂岩    沉积·粗粒（沙黄）
+            0x5A6B5E, // 4 SHALE     页岩    沉积·细粒（深灰绿）
+            0xC8CFC0, // 5 LIMESTONE 石灰岩  沉积·化学（浅灰白）
+            0x3A3A42, // 6 BASALT    玄武岩  喷出·基性（黑灰）
+            0x7A7A80, // 7 ANDESITE  安山岩  喷出·中性（中灰）
+    };
+    // ROCK_LAYER id = 出露层号（0=地表/最新 → 3=最深/最老），按深度递增加深
+    private static final int[] T_ROCK_LAYER = {
+            0xC2A878, 0xA88C64, 0x8E7050, 0x74583C };
     // BIOME id: 与 BiomeClass.ordinal() 严格对齐（顺序/数量必须一致！）。
     // 【2026-09-10】BiomeClass 改为直接绑定真实 MC 群系 ResourceKey，
     //   本表同步重写为 35 项（见 BiomeClassifier.BiomeClass 的声明顺序）。
@@ -478,7 +497,10 @@ public final class GeoPalette {
         // RIVER_TYPE：0 无 / 1 大河深蓝 / 2 中河蓝 / 3 小溪浅蓝（按河宽档）
         discreteDefaults.put(PreviewLayer.RIVER_TYPE, new int[]{
                 0x3A4A5A, 0x0B2A8C, 0x2E6FD6, 0x9AD8F0});
-        // ROCK_LAYER/ROCK_TYPE/VEIN_MAP 无默认色——由 MC 侧或未来地质系统填充
+        // ★ 2026-09-12 地质 Phase T4：填充 ROCK_TYPE / ROCK_LAYER（此前为空占位）
+        discreteDefaults.put(PreviewLayer.ROCK_TYPE, T_ROCK_TYPE);
+        discreteDefaults.put(PreviewLayer.ROCK_LAYER, T_ROCK_LAYER);
+        // VEIN_MAP 仍无默认色——矿脉属独立的成矿系统，尚未建模
     }
 
     // ============================================================
@@ -700,6 +722,9 @@ public final class GeoPalette {
             case BIOME -> BiomeClass.values().length;
             case TERRAIN_TYPE -> TERRAIN_TYPE_NAMES.length;
             case RIVER_TYPE -> 4; // 0 无 / 1 主河 / 2 MOUTH / 3 支流
+            // ★ T4：岩性 / 地层
+            case ROCK_TYPE -> RockType.values().length;
+            case ROCK_LAYER -> StratumField.LAYER_COUNT;
             default -> Integer.MAX_VALUE;
         };
     }
@@ -733,6 +758,9 @@ public final class GeoPalette {
                 case 3 -> "geogenesis.river_type.trib";
                 default -> "geogenesis.river_type.none";
             };
+            // ★ T4：岩性 / 地层
+            case ROCK_TYPE:  return "geogenesis.rock." + RockType.values()[id].name();
+            case ROCK_LAYER: return "geogenesis.rock_layer." + id;
             default: return layer.labelKey + "." + id;
         }
     }
@@ -813,6 +841,20 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.layer.rock_layer", "Rock Layer");
         ENGLISH.put("geogenesis.layer.rock_type", "Rock Type");
         ENGLISH.put("geogenesis.layer.vein_map", "Vein Map");
+        // ★ 2026-09-12 地质 Phase T4：岩性名（8 种）
+        ENGLISH.put("geogenesis.rock.GNEISS", "Gneiss");
+        ENGLISH.put("geogenesis.rock.SCHIST", "Schist");
+        ENGLISH.put("geogenesis.rock.GRANITE", "Granite");
+        ENGLISH.put("geogenesis.rock.SANDSTONE", "Sandstone");
+        ENGLISH.put("geogenesis.rock.SHALE", "Shale");
+        ENGLISH.put("geogenesis.rock.LIMESTONE", "Limestone");
+        ENGLISH.put("geogenesis.rock.BASALT", "Basalt");
+        ENGLISH.put("geogenesis.rock.ANDESITE", "Andesite");
+        // ★ T4：地层号名（0=地表/最新 → 3=最深/最老）
+        ENGLISH.put("geogenesis.rock_layer.0", "Layer 1 (surface)");
+        ENGLISH.put("geogenesis.rock_layer.1", "Layer 2");
+        ENGLISH.put("geogenesis.rock_layer.2", "Layer 3");
+        ENGLISH.put("geogenesis.rock_layer.3", "Layer 4 (deep)");
         // ★ 2026-09-11 i18n：地形底图模式 + 连续图层图例端点（中英双语文本的 key）
         ENGLISH.put("geogenesis.underlay.off", "Off");
         ENGLISH.put("geogenesis.underlay.tint", "Tinted");
@@ -887,6 +929,9 @@ public final class GeoPalette {
             case BIOME:        return BiomeClassifier.classify(c).ordinal();
             case TERRAIN_TYPE: return terrainTypeId(c);
             case RIVER_TYPE:   return c.riverType; // 0 无 / 1 主河 / 2 MOUTH / 3 支流
+            // ★ 2026-09-12 地质 Phase T4：地层/岩性（此前落 default -> 0，无数据）
+            case ROCK_TYPE:    return c.rockTypeId;
+            case ROCK_LAYER:   return c.rockLayer;
             default: return 0;
         }
     }

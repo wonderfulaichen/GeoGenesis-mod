@@ -66,6 +66,15 @@ public final class CellGenerator {
 
     /** 构造骨架场（见 {@link #TECTONIC_ENABLED}）。 */
     private final TectonicField tectonic;
+
+    /**
+     * ★ 2026-09-12 地质 Phase T4 开关：地层/岩性是否计算。
+     * {@code false} → 不调用 {@link StratumField}，{@code Cell} 的岩性字段保持默认。
+     */
+    private static final boolean STRATA_ENABLED = true;
+
+    /** 地层场（构造环境 → 地层序列 → 出露岩性）。 */
+    private final StratumField strata;
     private final double continentBias;
     private final double seabedAmp;
     private final double oceanDepthFactor;
@@ -139,6 +148,7 @@ public final class CellGenerator {
         this.landFeatures = new LandFeatures();
         this.coastline = new CoastlineField(p);
         this.tectonic = new TectonicField(0L);   // 种子在 seed() 注入
+        this.strata = new StratumField(0L);      // ★ T4：地层场（种子在 seed() 注入）
         this.continentBias = p.continentBias();
         this.seabedAmp = p.seabedDetail();
         this.oceanDepthFactor = p.oceanDepthFactor();
@@ -183,6 +193,7 @@ public final class CellGenerator {
         seaBed.seed(worldSeed);
         precipField.setSeed(worldSeed);   // ★ Phase B：降水场随世界种子重置
         tectonic.setSeed(worldSeed);      // ★ 地质 Phase T1：构造格局随世界种子重置
+        strata.setSeed(worldSeed);        // ★ 地质 Phase T4：地层分布随世界种子重置
         clearEqCache();                   // ★ D13：地形 e 缓存随世界种子失效
         // 海山中心水深检查：计算中心点的真实 eOcean（含 seabed，不含海山增量）
         // 仅在 eOcean_at_center < -0.20（足够深）时才允许生成海山
@@ -257,7 +268,9 @@ public final class CellGenerator {
         TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(sx, sz);
         cell.typeWeights = cellBlend.typeWeights;
         // ★ 2026-09-12 地质 Phase T1：构造决定类型（汇聚→造山/海沟，离散→裂谷/洋脊）
-        if (TECTONIC_ENABLED) applyTectonicWeights(cell.typeWeights, sx, sz);
+        //   保留返回的 Sample，供 T4 岩性计算复用（避免重复采样构造场）
+        TectonicField.Sample tectSample = null;
+        if (TECTONIC_ENABLED) tectSample = applyTectonicWeights(cell.typeWeights, sx, sz);
 
         // 4. 海岸线域扭曲（v8 CoastlineField）— 海洋深度/类型样条用的 c 空间位移（保留轻量扰动）。
         double cEdge = cBiased + coastline.warpDisplacement(sx, sz, cBiased);
@@ -273,6 +286,16 @@ public final class CellGenerator {
             + cellBlend.typeWeights[TerrainClass.DEEP_OCEAN.ordinal()]);
         double landW = 1.0 - oceanW;
         eLand += landFeat.total * landW;
+
+        // ★ 2026-09-12 地质 Phase T4：地层/岩性（构造环境 → 地层序列 → 出露岩性）。
+        //   纯数据层，不参与 e 合成（不影响地形/气候/水文）；
+        //   为 ROCK_LAYER / ROCK_TYPE 预览图层提供此前完全缺失的数据源。
+        if (STRATA_ENABLED) {
+            TectonicField.Sample ts = tectSample != null ? tectSample : tectonic.sample(sx, sz);
+            cell.rockLayer = strata.layerAt(sx, sz);
+            cell.rockTypeId = StratumField.rockTypeId(ts, oceanW < 0.5, cell.rockLayer);
+        }
+
         // 2026-08-06 修复：移除整体 ×0.9 余量缩放。该设计为旧显式脊谷抬升（+0.17e）预留空间，
         // 显式抬升 2026-08-05 已全部移除 → ×0.9 只是无谓压低整个地形 10%
         // （用户反馈"有什么在限制着"；山脉 hi 0.95 实际仅 0.855）。softCapLandE（>0.9215 才压缩）
@@ -528,11 +551,11 @@ public final class CellGenerator {
      *
      * <p>调制后重新归一化，保证权重和为 1（{@code dominantFromWeights} 依赖此性质）。
      */
-    private void applyTectonicWeights(double[] w, double sx, double sz) {
+    private TectonicField.Sample applyTectonicWeights(double[] w, double sx, double sz) {
         TectonicField.Sample ts = tectonic.sample(sx, sz);
         // ★ Phase T2：汇聚造山带按走向串珠化（独立山峰），离散保持连续（真实裂谷是线状）
         double g = tectonic.boundaryStrengthChained(ts, sx, sz);
-        if (g <= 0.01) return;
+        if (g <= 0.01) return ts;
 
         double oceanW = w[TerrainClass.OCEAN.ordinal()] + w[TerrainClass.DEEP_OCEAN.ordinal()];
         double landW = 1.0 - oceanW;
@@ -546,7 +569,7 @@ public final class CellGenerator {
                 w[TerrainClass.OCEAN.ordinal()] *= 1.0 + TectonicField.DIVERGENT_BOOST * g * oceanW;
             }
             default -> {
-                return;   // 走滑：无影响
+                return ts;   // 走滑：无影响
             }
         }
         double sum = 0.0;
@@ -554,6 +577,7 @@ public final class CellGenerator {
         if (sum > 1e-15) {
             for (int i = 0; i < w.length; i++) w[i] /= sum;
         }
+        return ts;
     }
 
     /** 纯陆地形态 eLand（侵蚀边际采样用，不含气候/分类）。 */

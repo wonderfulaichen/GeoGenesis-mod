@@ -188,5 +188,17 @@
   "geogenesis.legend.latitude.north": "北",
   "geogenesis.legend.latitude.south": "南",
   "geogenesis.legend.river_network.high": "高流量",
-  "geogenesis.legend.river_network.low": "低流量"
+  "geogenesis.legend.river_network.low": "低流量",
+  "geogenesis.rock.GNEISS": "片麻岩",
+  "geogenesis.rock.SCHIST": "片岩",
+  "geogenesis.rock.GRANITE": "花岗岩",
+  "geogenesis.rock.SANDSTONE": "砂岩",
+  "geogenesis.rock.SHALE": "页岩",
+  "geogenesis.rock.LIMESTONE": "石灰岩",
+  "geogenesis.rock.BASALT": "玄武岩",
+  "geogenesis.rock.ANDESITE": "安山岩",
+  "geogenesis.rock_layer.0": "第1层（地表）",
+  "geogenesis.rock_layer.1": "第2层",
+  "geogenesis.rock_layer.2": "第3层",
+  "geogenesis.rock_layer.3": "第4层（深部）"
 }

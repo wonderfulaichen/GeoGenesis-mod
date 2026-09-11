@@ -97,7 +97,10 @@ public final class PaletteProbe {
         for (GeoPalette.PreviewLayer layer : new GeoPalette.PreviewLayer[]{
                 GeoPalette.PreviewLayer.TERRAIN_TYPE,
                 GeoPalette.PreviewLayer.CLIMATE_ZONE,
-                GeoPalette.PreviewLayer.RIVER_TYPE}) {
+                GeoPalette.PreviewLayer.RIVER_TYPE,
+                // ★ 2026-09-12 地质 Phase T4：新填充的两个图层也须纳入自检
+                GeoPalette.PreviewLayer.ROCK_TYPE,
+                GeoPalette.PreviewLayer.ROCK_LAYER}) {
             for (GeoPalette.LegendEntry e : GeoPalette.discreteEntries(layer)) {
                 if (GeoPalette.englishLabel(e.labelKey).equals(e.labelKey)) {
                     p6 = false;
