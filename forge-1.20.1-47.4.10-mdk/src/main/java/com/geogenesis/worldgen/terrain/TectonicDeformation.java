@@ -93,17 +93,49 @@ public final class TectonicDeformation {
      * @return 高程偏置；内部/走滑或超出作用距离时返回 0
      */
     public double offset(TectonicField.Sample s, double wx, double wz) {
-        // ★ 2026-09-12 修复（伪影）：改用【连续应力】stress 加权，取代 switch(btype)。
-        //   原因：btype 是离散枚举，在类型边界处跳变 → 公式骤变 → 偏移跳变
-        //   （探针实测：btype 0→1 时偏移从 0 跳到 0.005e ≈ 1 块，成线状分布）。
-        //   stress ∈[-1,1] 由 dot/|(dot,cross)| 连续给出 → 过渡平滑。
+        // ★ 2026-09-12 修复（用户反馈"地形不像一个整体、每块各自独立生成"）：
+        //   **根本改动：不再使用 per-cell 的 alongCoord 作为噪声输入。**
+        //
+        //   原实现用 alongCoord（每个 Voronoi 单元各自定义的相对坐标）作噪声坐标
+        //   → 相邻板块的"沿走向方向"不同 → 同一世界位置的纹理走向不同
+        //   → 边界处纹理错位，视觉上"每块独立生成"。
+        //
+        //   对照 worldgen（参考项目）的正确做法：
+        //     · along/across 只用于算 **标量幅度**；
+        //     · 随后 blur_grid 高斯模糊（源码注释："Smooth profiles to eliminate
+        //       Voronoi ridge discontinuities"）；
+        //     · 山脊噪声用 **世界坐标** 采样。
+        //   本类此前两步都没做 —— 这是实现偏离，不是参考项目的问题。
+        //
+        //   现改为：dist（全局连续）决定"平行于边界"的几何，
+        //   碎片化改用 **世界坐标噪声**（全局连续）→ 处处无缝、纹理方向一致。
         double cw = Math.max(0.0, s.stress());    // 汇聚度（挤压）
         double dw = Math.max(0.0, -s.stress());   // 离散度（拉张）
         if (cw <= 0.0 && dw <= 0.0) return 0.0;   // 纯走滑 / 内部 → 无形变（与 T1 一致）
 
-        double fold = cw * foldOffset(s, wx, wz);                          // 褶皱仅挤压环境
-        double fault = (cw * 0.6 + dw * 1.0) * faultOffsetUnit(s, wx, wz); // 逆断层弱于正断层
+        // 世界坐标分段遮罩：把"平行边界的环状带"打断成**弧段**（真实褶皱/断层带是分段的），
+        // 且因用世界坐标，跨板块边界完全连续。
+        double mask = segmentMask(wx, wz);
+
+        double fold = cw * foldOffset(s, wx, wz, mask);                          // 褶皱仅挤压环境
+        double fault = (cw * 0.6 + dw * 1.0) * faultOffsetUnit(s, wx, wz, mask); // 逆断层弱于正断层
         return fold + fault;
+    }
+
+    /** 分段遮罩尺度（wu）：沿边界把长带切成若干弧段。 */
+    static final double MASK_SCALE = 1500.0;
+    private static final long SALT_MASK = 0x8B41_0C7E_2D93_5AF6L;
+
+    /**
+     * 世界坐标分段遮罩 ∈ [0.25, 1]（<b>全局连续</b>，与板块无关）。
+     *
+     * <p>作用：把"平行于板块边界"的环状带打断成弧段，避免整圈闭环；
+     * 同时因为只依赖世界坐标，<b>跨板块边界连续</b> —— 这是修复
+     * "每块各自独立生成"的关键（不再引入 per-cell 坐标）。
+     */
+    private double segmentMask(double wx, double wz) {
+        double n = valueNoise(wx / MASK_SCALE, wz / MASK_SCALE, SALT_MASK);   // [-1,1]
+        return 0.25 + 0.75 * (n * 0.5 + 0.5);
     }
 
     /**
@@ -112,24 +144,21 @@ public final class TectonicDeformation {
      * <p>相位沿走向扰动（{@link #alongFaultCoord}），使褶皱轴<b>非严格平行</b>
      * （真实褶皱轴有起伏、呈波状），避免出现"人工平行线"的观感。
      */
-    private double foldOffset(TectonicField.Sample s, double wx, double wz) {
+    private double foldOffset(TectonicField.Sample s, double wx, double wz, double mask) {
         double reach = FOLD_REACH;
         double d = s.dist();
         if (d >= reach) return 0.0;
 
         double decay = decay(d, reach);
-        double along = alongFaultCoord(s, wx, wz);
-        // ★ 2026-09-12 修复（用户反馈"密集同心波纹"）：**波纹必须沿走向，不能沿距离**。
-        //   原式 sin(dist·2π/λ) 的等值线是【距离的等值线】——绕板块格子闭合成【同心环】，
-        //   与项目当初否决 Terrace 的"环状台阶伪影"同源（我的设计失误）。
-        //   现改为 sin(along·2π/λ)：波峰波谷是<b>平行于边界、沿走向延展的波列</b>
-        //   （真实褶皱带即如此），而距离只通过 decay 控制"离边界越远越弱"，<b>不再产生闭环</b>。
-        double phase = valueNoise(along / 6000.0, d / 2600.0, SALT_FOLD) * Math.PI;
-        double wave = Math.sin(along / FOLD_WAVELENGTH * 2.0 * Math.PI + phase);
-
-        // 幅度沿走向也做调制：褶皱不是处处等强（真实褶皱带强弱相间）
-        double ampMod = 0.55 + 0.45 * valueNoise(along / 3600.0, 3.7, SALT_FOLD + 1);
-        return FOLD_AMP * wave * decay * ampMod;
+        // ★ 2026-09-12 修复（"每块独立生成"）：相位改用【世界坐标】采样。
+        //   原用 alongCoord（per-cell 相对坐标）→ 相邻板块相位基准不同 →
+        //   边界处褶皱纹理错位，视觉上"每块各自生成"。
+        //   现用世界坐标 → 相位全局一致，跨边界完全连续。
+        //   （距离 d 仍决定"平行于边界"的几何，它是全局连续的。）
+        double phase = valueNoise(wx / 3000.0, wz / 3000.0, SALT_FOLD) * Math.PI;
+        // 沿距离的周期性：等值线平行于边界；闭环由 mask（世界坐标）打断成弧段
+        double wave = Math.sin(d / FOLD_WAVELENGTH * 2.0 * Math.PI + phase);
+        return FOLD_AMP * wave * decay * mask;
     }
 
     /**
@@ -144,29 +173,23 @@ public final class TectonicDeformation {
      *
      * <p>返回<b>未缩放</b>的单位断距（缩放由调用方按应力加权）。
      */
-    private double faultOffsetUnit(TectonicField.Sample s, double wx, double wz) {
+    private double faultOffsetUnit(TectonicField.Sample s, double wx, double wz, double mask) {
         double reach = FAULT_REACH;
         double d = s.dist();
         if (d >= reach) return 0.0;
 
         double decay = decay(d, reach);
-        double along = alongFaultCoord(s, wx, wz);
-        // ★ 2026-09-12 修复（同心波纹）：断块沿走向取"块索引"，而非按【距离】分块。
-        //   原式 floor(dist/spacing) 的块边界 = 距离等值线 → 绕板块格子闭合成同心多边环
-        //   （用户截图中的密集波纹）。改为 floor(along/spacing)：
-        //   块边界是<b>垂直于走向的平行线</b>，沿走向推进才换块 —— 这正是真实断层系统的
-        //   "分段/断块"形态，且【不产生闭环】。
-        //   距离仍只通过 decay 决定作用范围。
-        double block = Math.floor(along / FAULT_SPACING);
-        double slip = valueNoise(along / FAULT_SEGMENT, block * FAULT_BLOCK_FREQ, SALT_FAULT);
-        // ★ 2026-09-12 修复（近零均值）：块索引改为沿走向后，"块"覆盖面积大增
-        //   （实测有形变面积 29%→98%），纯随机断距的偏差随之累积
-        //   （全域均值 0.28→0.87 块）。此处对相邻块取<b>中心化</b>：
-        //   滑移量按相邻块的噪声差的一半给出 —— 数学上等价于随机游走的增量形式，
-        //   相邻块必然一升一降，整体趋近零均值，且【不影响崖线的陡度】。
-        double nb = valueNoise(along / FAULT_SEGMENT, (block + 1.0) * FAULT_BLOCK_FREQ, SALT_FAULT);
-        double diff = (nb - slip) * 0.5;
-        return FAULT_AMP * diff * decay;
+        // ★ 2026-09-12 修复（"每块独立生成"）：断块判据改用【世界坐标】噪声，
+        //   不再用 per-cell 的 alongCoord。
+        //   原用 floor(along/spacing) → 相邻板块 block 基准不同 → 边界两侧断块错位
+        //   → 地形"像各自生成"。现用世界坐标噪声取整 → 全局一致、跨边界连续。
+        //   距离 d 仍只通过 decay 决定作用范围；mask 把长带切成弧段。
+        double slip = valueNoise(wx / FAULT_SEGMENT, wz / FAULT_SEGMENT, SALT_FAULT);
+        // 块状量化：对世界坐标噪声做阶梯化，得到"断块"（相邻块高差 = 断层崖）
+        double q = FAULT_BLOCK_FREQ;
+        double blockN = valueNoise(wx / FAULT_SPACING * q, wz / FAULT_SPACING * q, SALT_FAULT + 7);
+        double slipQ = Math.floor(blockN * 3.0) / 3.0;   // 3 档量化 → 断块
+        return FAULT_AMP * (slip * 0.5 + slipQ * 0.5) * decay * mask;
     }
 
     /** 平滑衰减：边界处 1，reach 处 0（一阶导为 0，无硬边界）。 */
@@ -176,18 +199,9 @@ public final class TectonicDeformation {
         return t * t * (3.0 - 2.0 * t);   // smoothstep
     }
 
-    /**
-     * 沿断层走向的坐标（wu）。
-     *
-     * <p>★ 2026-09-12 修复（伪影）：改用 {@code s.alongCoord()}（= (d1+d2)/2，由连续的
-     * d1/d2 得出）替代原切向投影 {@code wx·tx + wz·tz}。后者在最近邻配对切换处因切向的
-     * 微小不连续，经绝对世界坐标（|p|~1e4）放大成 ~100wu 的坐标跳变
-     * → 相位/断块噪声跳变 → 褶皱轴断裂 + 伪断层台阶（用户反馈的"线性疤痕/串珠"）。
-     * 新坐标处处连续，且零额外采样成本。</p>
-     */
-    private static double alongFaultCoord(TectonicField.Sample s, double wx, double wz) {
-        return s.alongCoord();
-    }
+    // ★ 2026-09-12：已移除 alongFaultCoord（曾用 per-cell 的 alongCoord）。
+    //   它是"地形每块各自独立生成"的根因——per-cell 相对坐标使相邻板块的
+    //   纹理基准不同，边界处错位。现全部改用世界坐标噪声，见 foldOffset/faultOffsetUnit。
 
     // ===================== 零依赖极简 value noise =====================
 

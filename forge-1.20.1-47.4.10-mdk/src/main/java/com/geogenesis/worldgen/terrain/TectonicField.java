@@ -396,15 +396,22 @@ public final class TectonicField {
      * @return 调制系数，约 [0.25, 1.0]（不改变符号，只压弱部分区段）
      */
     private double chainModulation(double wx, double wz, Sample s) {
-        // ★ 2026-09-12 修复（伪影）：沿走向坐标改用 s.alongCoord()（= (d1+d2)/2，连续），
-        //   不再用切向投影 wx·tx + wz·tz —— 后者在配对切换处因切向的微小不连续，
-        //   经绝对坐标（|p|~1e4）放大成 ~100wu 的坐标跳变 → 噪声跳变 → 线状疤痕。
-        //   (alongCoord, dist) 天然构成"沿边界 / 跨边界"的椭圆坐标，且零额外成本。
+        // ★ 2026-09-12 修复（"地形每块各自独立生成"）：
+        //   **不再使用 per-cell 的 alongCoord 作为噪声坐标。**
+        //   原实现 (alongCoord, dist) 是"每个 Voronoi 单元各自定义"的坐标系 ——
+        //   相邻板块的沿走向基准不同 → 同一世界位置的噪声值不同
+        //   → 山链在板块边界处错位，山体纹理方向各自为政（用户截图所见的"各自生成"）。
+        //
+        //   对照 worldgen：它把 along/across 只用于**标量幅度**，随后 blur_grid
+        //   高斯模糊 + 山脊噪声用**世界坐标**。本项目此前两步都没做。
+        //
+        //   现改为：dist 决定"平行于边界"的几何（全局连续），
+        //   碎片化用 **世界坐标噪声**（全局连续）→ 跨板块边界完全无缝。
         double inv = 1.0 / PLATE_SPACING;
-        double t = s.alongCoord() * inv;
         double a = s.dist() * inv;
+        double t = (wx + wz) * inv * 0.5;   // 世界坐标的斜向投影：全局一致，无 per-cell 依赖
 
-        // 沿走向低频（6/格）、垂直走向高频（18/格）——与 worldgen 的 (along×6, across×18) 同构
+        // 沿走向低频、垂直走向高频——与 worldgen 的 (along×6, across×18) 同构
         double n = ridgedNoise(t * CHAIN_ALONG_FREQ, a * CHAIN_ACROSS_FREQ, CHAIN_SEED);
         // 映射到 [0.25, 1.0]：保留大部分强度，只在"谷"处压低 → 山峰分明
         return CHAIN_MIN + (1.0 - CHAIN_MIN) * clamp01(n);
