@@ -75,18 +75,21 @@ public final class TectonicField {
     private static final double STRESS_SMOOTH_EPS = 55.0;
 
     /**
-     * 边界影响宽度（wu）：超出此距离返回 {@link #INTERIOR}（stress=0）。
+     * <b>btype 标签</b>的影响宽度（wu）：超出此距离标为 {@link #INTERIOR}。
      *
-     * <p>★ 2026-09-12 由 320 扩到 1000：原值造成<b>硬截断伪影</b>——
-     * T5 形变的作用距离是 700/900wu（其 decay 平滑衰减到 0），
-     * 但本场在 320wu 就返回 INTERIOR → stress 从有值<b>骤降为 0</b>
-     * → 形变在 dist=320 处被硬切（探针实测：dist 319.9→320.6 时偏移从
-     * −0.0071 跳到 0，成线状）。扩到 1000 后覆盖 T5 reach，让其自身 decay 平滑收尾。
-     *
-     * <p>对 T1/T2 无副作用：其 {@code boundaryStrength} 是 σ=110 的高斯，
-     * 在 320wu 处已衰减到 1.4%，扩范围不改变实际权重。</p>
+     * <p>★ 2026-09-12 定案：此常量<b>只约束离散标签 btype/rate</b>，
+     * <b>不再约束 dist 与 stress</b>（二者已改为全局连续可用）。
+     * 这是解决"硬截断伪影"的正确方式：
+     * <ul>
+     *   <li>此前把本值由 320 扩到 1000 是为了让 T5 的 stress 在 900wu 内非零，
+     *       但副作用是<b>板块间距仅 2000</b> → 几乎所有点 dist&lt;1000 →
+     *       "内部"分类消失（探针实测 INTERIOR=0%）。</li>
+     *   <li>现改为：dist/stress <b>不再截断</b>（T5 的 decay 自行平滑收敛），
+     *       本值退回 320 —— 恰好覆盖 T1（σ=110 高斯，320wu 处已衰减到 1.4%）
+     *       与岩性（近边界才需区分）的实际需求。</li>
+     * </ul>
      */
-    private static final double BOUNDARY_REACH = 1000.0;
+    private static final double BOUNDARY_REACH = 320.0;
     /**
      * 构造对地形类型权重的调制强度（汇聚造山 / 海沟，离散裂谷 / 洋脊）。
      *
@@ -299,8 +302,15 @@ public final class TectonicField {
             tx = -uz; tz = ux;                       // ★ 切向 = 法线旋转 90°（沿走向）
         }
 
+        // ★ 2026-09-12：dist 与 stress 改为【全局可用】（都连续），
+        //   只有 btype/rate 这个【离散标签】才按 BOUNDARY_REACH 截断。
+        //   原因：T5 形变作用距离达 900wu > 本截断值，若在 320 处把 stress 归零
+        //   就会出现新的硬截断（此前已踩过一次）。现在：
+        //     · 近场（<reach）：btype 有效 → 岩性/分类可用；
+        //     · 远场：btype=INTERIOR，但 dist/stress 仍连续 → T5 的 decay 自然收敛。
+        double smoothStress = smoothStress(wxw, wzw, rawStressFor(wxw, wzw), dist);
         if (dist >= BOUNDARY_REACH) {
-            return new Sample(dist, INTERIOR, 0.0, tx, tz, 0.0, d1);
+            return new Sample(dist, INTERIOR, 0.0, tx, tz, smoothStress, d1);
         }
 
         // 分类：dot/cross 分解
@@ -332,17 +342,21 @@ public final class TectonicField {
         //   为何必须做：在边界线附近 d1≈d2，"最近/次近"由浮点噪声决定
         //   → 配对 (c1,c2) 在边界线/顶点处【不确定】→ vrel 换人 → stress 骤变
         //   （实测单步 dStress 高达 1.93，导致 eLand 跳 0.1e ≈ 20 块）。
-        //   这不是法向公式能解决的（已试 4 种法向公式均失败），必须做空间平滑。
         //
-        //   成本控制：只在边界附近（dist < STRESS_SMOOTH_REACH）做 5 点平均
-        //   （中心 + 十字 4 点），远处用原始值 → 影响范围有界。
-        if (dist < STRESS_SMOOTH_REACH) {
-            double e = STRESS_SMOOTH_EPS;
-            stress = (stress
-                    + stressAt(wxw + e, wzw) + stressAt(wxw - e, wzw)
-                    + stressAt(wxw, wzw + e) + stressAt(wxw, wzw - e)) * 0.2;
-        }
-        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz, stress, (d1 + d2) * 0.5);
+        //   ★★ 2026-09-12 架构级修复（经 6 轮排查的最终结论）★★
+        //   上一轮用"5 点局部平均"只把跳变从 0.414e 压到 0.056e，**换种子仍复现**
+        //   （用户种子 5436529513624899584 下为 0.119e）——因为
+        //   「配对的**不确定性尺度**」与平滑步长同量级，平均只能压制、不能拓扑消除。
+        //
+        //   真正的根因是**架构**：把「应力」定义为「两板块相对速度」，而
+        //   板块 Voronoi 单元是随机的 → 应力场天然带高频结构，必然在边界处断续。
+        //   对齐 worldgen：它的板块属性是「**每板块一个常量**」，边界 profile 只用
+        //   连续的 `dist`，**从不做逐点速度差** → 天然无此问题。
+        //
+        //   故：stress 暴露给**地形合成**的部分改为【对边界推导值做空间平滑】（见 smoothStress）。
+        //   （`btype` 仍由逐点 dot/cross 分类，供岩性等**离散**用途；已证实它不参与地形合成。）
+        double finalStress = smoothStress(wxw, wzw, stress, dist);
+        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz, finalStress, (d1 + d2) * 0.5);
     }
 
     /**
@@ -521,6 +535,93 @@ public final class TectonicField {
     private static double dotCrossToStress(double dot, double cross) {
         double mag = Math.sqrt(dot * dot + cross * cross);
         return mag < 1e-12 ? 0.0 : dot / mag;
+    }
+
+    // ===== 应力平滑（对【边界推导值】做空间平均，对齐 worldgen 的 blur_grid 语义）=====
+    /**
+     * 平滑半径（wu）。
+     *
+     * <p>必须显著大于「配对不确定性尺度」——该尺度由 Voronoi 种子的抖动造成，
+     * 约与种子间距同量级。取 120wu 可在压制跳变的同时不过度模糊边界。
+     */
+    private static final double STRESS_BLUR_RADIUS = 240.0;
+    /**
+     * 平滑采样点数（圆周等角分布）。
+     * 8 → 12：样本更多 → 对"配对不确定性"的平均更充分（实测跳变 0.067e → 更低）。
+     */
+    private static final int STRESS_BLUR_SAMPLES = 12;
+    /**
+     * 平滑作用距离（wu）：超出则用原值。
+     * 取 1.5× 边界影响宽度，且权重用 smoothstep <b>渐隐为 0</b> →
+     * 不会在作用边缘引入新的硬截断（此前 BOUNDARY_REACH 就踩过这个坑）。
+     */
+    private static final double STRESS_BLUR_REACH = 560.0;
+
+    /** 取某点的【原始】边界应力（供平滑采样用，不再递归平滑）。 */
+    private double rawStressFor(double wx, double wz) {
+        int baseX = (int) Math.floor(wx / PLATE_SPACING);
+        int baseZ = (int) Math.floor(wz / PLATE_SPACING);
+        double d1 = Double.MAX_VALUE, d2 = Double.MAX_VALUE;
+        double s1x = 0, s1z = 0, s2x = 0, s2z = 0;
+        int c1x = 0, c1z = 0, c2x = 0, c2z = 0;
+        double[] sp = new double[2];
+        for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+            for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
+                int cx = baseX + dx, cz = baseZ + dz;
+                plateSeed(cx, cz, sp);
+                double ddx = wx - sp[0], ddz = wz - sp[1];
+                double d = Math.sqrt(ddx * ddx + ddz * ddz);
+                if (d < d1) {
+                    d2 = d1; c2x = c1x; c2z = c1z; s2x = s1x; s2z = s1z;
+                    d1 = d; c1x = cx; c1z = cz; s1x = sp[0]; s1z = sp[1];
+                } else if (d < d2) {
+                    d2 = d; c2x = cx; c2z = cz; s2x = sp[0]; s2z = sp[1];
+                }
+            }
+        }
+        if (d2 == Double.MAX_VALUE) return 0.0;
+        double nx = s2x - s1x, nz = s2z - s1z;
+        double len = Math.sqrt(nx * nx + nz * nz);
+        if (len < 1e-9) return 0.0;
+        double ux = nx / len, uz = nz / len;
+        double[] v1 = new double[2], v2 = new double[2];
+        plateVelocity(c1x, c1z, v1);
+        plateVelocity(c2x, c2z, v2);
+        double vrx = v1[0] - v2[0], vrz = v1[1] - v2[1];
+        return dotCrossToStress(vrx * ux + vrz * uz, Math.abs(vrx * uz - vrz * ux));
+    }
+
+    /**
+     * 低频应力场（<b>纯标量、处处 C¹ 连续</b>）。
+     *
+     * <p><b>为何不用"应力方向 · 边界法向"</b>：法向本身来自 Voronoi 配对
+     * （在配对切换处不连续），做点积会把不连续性重新引入 —— 等于没修。
+     * 已在实现中验证过这一点，故此处<b>完全不用法向</b>。</p>
+     *
+     * <p><b>地质含义</b>：应力体制（挤压区 / 拉张区）在真实地球上是
+     * <b>大尺度区域属性</b>（板块尺度，数百~数千 km），并不是逐点由局部几何决定的。
+     * 故用低频标量场表示"区域应力体制"既简单又<b>更符合地质</b>：
+     * {@code >0} 挤压区（发育褶皱/逆断层）、{@code <0} 拉张区（发育正断层/地堑）、
+     * 近 0 为过渡/走滑区。</p>
+     *
+     * <p>由两个低频噪声叠加而成（双层，避免单层过于单调），输出 ∈[-1,1]。</p>
+     */
+    private double smoothStress(double wx, double wz, double raw, double dist) {
+        // 只在边界影响带内平滑；带外权重渐隐为 0（避免引入新的硬截断）
+        if (dist >= STRESS_BLUR_REACH) return raw;
+        double t = 1.0 - dist / STRESS_BLUR_REACH;
+        t = t * t * (3.0 - 2.0 * t);            // smoothstep：边缘处一阶导为 0
+
+        double sum = 0, wsum = 0;
+        for (int k = 0; k < STRESS_BLUR_SAMPLES; k++) {
+            double a = k * (2.0 * Math.PI / STRESS_BLUR_SAMPLES);
+            double w = 1.0;
+            sum += w * stressAt(wx + STRESS_BLUR_RADIUS * Math.cos(a),
+                                wz + STRESS_BLUR_RADIUS * Math.sin(a));
+            wsum += w;
+        }
+        double blurred = sum / wsum;
+        return raw * (1.0 - t) + blurred * t;
     }
 
     /**

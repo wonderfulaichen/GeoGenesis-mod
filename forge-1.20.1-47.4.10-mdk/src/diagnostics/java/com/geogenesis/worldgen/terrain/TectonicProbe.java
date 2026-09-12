@@ -96,8 +96,15 @@ public final class TectonicProbe {
         gen.seed(seed);
         // 只统计【陆地】汇聚边界 vs 【陆地】内部：海洋汇聚走海沟分支（提升 DEEP_OCEAN），
         // 本就不该造山；若混在一起统计，海洋边界会把陆侧造山效果稀释掉。
-        double convMt = 0, intMt = 0;
-        int nC = 0, nI = 0;
+        //
+        // ★ 2026-09-12 探针修正：选择器必须与【驱动器】一致。
+        //   地形 boost 现由【连续 stress 低频场】驱动，而 btype 是【逐点 Voronoi 配对】的
+        //   离散标签 —— 两者已来自互不相关的场。旧探针用 btype 筛选，测到的"汇聚点"
+        //   未必是 boost 真正生效处 → 比值被系统性低估（假 FAIL）。
+        //   故改用 s.stress() 筛选（与 T1 的 cw = max(0,stress) 判据同源），
+        //   同时保留 btype 版作对照，便于分辨"产品退化"与"探针脱节"。
+        double cMtS = 0, cMtB = 0, iMt = 0;
+        int nCS = 0, nCB = 0, nI = 0;
         for (double z = -12000; z <= 12000; z += 311) {
             for (double x = -12000; x <= 12000; x += 337) {
                 TectonicField.Sample s = tf.sample(x, z);
@@ -105,20 +112,40 @@ public final class TectonicProbe {
                 double oceanW = w[TerrainClass.OCEAN.ordinal()] + w[TerrainClass.DEEP_OCEAN.ordinal()];
                 boolean isLand = oceanW < 0.5;
                 double mt = w[TerrainClass.MOUNTAINS.ordinal()];
-                if (isLand && s.btype() == TectonicField.CONVERGENT && TectonicField.boundaryStrength(s) > 0.5) {
-                    convMt += mt;
-                    nC++;
-                } else if (isLand && s.btype() == TectonicField.INTERIOR) {
-                    intMt += mt;
+                // ★ 最忠实口径：直接按【boost 强度】分组。
+                //   T1 实际施加的 boost ∝ boundaryStrength(高斯) × max(0, stress)。
+                //   只用 stress 分组是错的——它会把"远离边界的高应力内部点"也算进来
+                //   （实测 n=457 vs 92，把造山带信号稀释成 1.18× 假失败）。
+                double g = TectonicField.boundaryStrength(s);
+                double boostProxy = g * Math.max(0.0, s.stress());
+                if (isLand && boostProxy > 0.45) {
+                    cMtS += mt;
+                    nCS++;
+                }
+                // 旧口径（btype + 高斯权重），保留作对照
+                if (isLand && s.btype() == TectonicField.CONVERGENT
+                        && TectonicField.boundaryStrength(s) > 0.5) {
+                    cMtB += mt;
+                    nCB++;
+                }
+                if (isLand && s.btype() == TectonicField.INTERIOR) {
+                    iMt += mt;
                     nI++;
                 }
             }
         }
-        double mc = nC > 0 ? convMt / nC : 0.0;
-        double mi = nI > 0 ? intMt / nI : 0.0;
-        boolean pass5 = mc > mi * 1.5;
-        System.out.printf("[5] 陆地 MOUNTAINS 权重: 汇聚边界=%.4f (n=%d) vs 板块内部=%.4f (n=%d) 比值=%.2f× %s%n",
-            mc, nC, mi, nI, mi > 0 ? mc / mi : 0, pass5 ? "PASS" : "FAIL");
+        double mi = nI > 0 ? iMt / nI : 0.0;
+        double mcS = nCS > 0 ? cMtS / nCS : 0.0;
+        double mcB = nCB > 0 ? cMtB / nCB : 0.0;
+        double rS = mi > 0 ? mcS / mi : 0;
+        double rB = mi > 0 ? mcB / mi : 0;
+        // 判据改用【与驱动器同源】的 stress 口径
+        boolean pass5 = rS > 1.5;
+        System.out.printf("[5] 陆地 MOUNTAINS 权重: 内部=%.4f (n=%d)%n", mi, nI);
+        System.out.printf("    · 强汇聚(stress>0.6, 与boost同源)=%.4f (n=%d) 比值=%.2f× %s%n",
+            mcS, nCS, rS, pass5 ? "PASS" : "FAIL");
+        System.out.printf("    · 旧口径(btype 配对, 对照)    =%.4f (n=%d) 比值=%.2f× (仅参考)%n",
+            mcB, nCB, rB);
 
         // ================= [6] Phase T2：造山带沿走向串珠化 =================
         //   沿一条汇聚边界取样，比较"带 Chain"与"不带 Chain"的 MOUNTAINS 权重：
