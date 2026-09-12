@@ -59,6 +59,22 @@ public final class TectonicField {
     private static final long SALT_WARP = 0x2C6E_F1A3_84BD_9075L;
 
     /**
+     * 法向差分步长（wu）。
+     *
+     * <p>取 45wu 而非小值：dist 场在 Voronoi 边界附近是<b>分段线性</b>的（±|t|），
+     * 步长过小会因分段折角造成方向抖动；45wu 足以跨过折角、给出稳定方向。</p>
+     */
+    private static final double GRAD_EPS = 45.0;
+
+    /**
+     * stress 局部平滑的作用距离（wu）：超出则用原始值（不做 5 点平均）。
+     * 取 ≈ BOUNDARY_REACH 的一半即可覆盖全部边界影响区。
+     */
+    private static final double STRESS_SMOOTH_REACH = 600.0;
+    /** stress 平滑的十字采样步长（wu）：须跨越"配对不确定性"的尺度（约几十 wu）。 */
+    private static final double STRESS_SMOOTH_EPS = 55.0;
+
+    /**
      * 边界影响宽度（wu）：超出此距离返回 {@link #INTERIOR}（stress=0）。
      *
      * <p>★ 2026-09-12 由 320 扩到 1000：原值造成<b>硬截断伪影</b>——
@@ -264,26 +280,19 @@ public final class TectonicField {
         } else {
             dist = Math.max(0.0, (d2 - d1) * 0.5);
 
-            // ★ 2026-09-12 修复（伪影）：法向改用 ∇(d2−d1) 的【解析梯度】。
-            //   演进过程（三次尝试，以"切向连续性"为准）：
-            //   ① 配对法向 (s2−s1)/|s2−s1|：配对切换时骤变。
-            //   ② 解析梯度（本实现）：∂(d2−d1)/∂x=(x−s2x)/d2−(x−s1x)/d1。
-            //      只用到【连续】的 d1/d2，且在边界上 (d1=d2=d) 化为 (s1−s2)/d —— 正确法向、不退化；
-            //      性能零成本（无额外采样）。实测优于①（配对切换处对 s2 的敏感度被摊薄）。
-            //   ③ 数值梯度（中心差分）：在边界附近 (d2−d1) 呈 V 形 → 差分【对称抵消】→ 梯度退化，
-            //      实测跳变反而增至 1126 次（劣化 4.7×），已否决。
-            double gx, gz;
-            if (d1 < 1e-9 || d2 < 1e-9) {
-                gx = nx; gz = nz;                       // 退化兜底（点与种子重合）
-            } else {
-                gx = (wxw - s2x) / d2 - (wxw - s1x) / d1;
-                gz = (wzw - s2z) / d2 - (wzw - s1z) / d1;
-            }
-            double gm = Math.sqrt(gx * gx + gz * gz);
-            if (gm > 1e-12) {
-                ux = gx / gm; uz = gz / gm;              // 法向（dist 增大方向）
-            } else if (len > 1e-9) {
-                ux = nx / len; uz = nz / len;            // 兜底：配对法向
+            // ★ 2026-09-12 结论（经四次尝试后定位到真正的根因）：
+            //   法向换用哪种公式**都无法**消除跳变——因为跳变的根源不是法向，
+            //   而是 **vrel 绑定于"一对板块"**：在 Voronoi 边界线上 d1≈d2，
+            //   "最近/次近"的判定由浮点噪声决定 → 配对 (c1,c2) 不确定 → vrel 换人 → stress 乱跳。
+            //
+            //   演进记录（保留以免后人重走）：
+            //   ① 配对法向 (s2−s1)/|s2−s1|     ② ∇(d2−d1) 解析梯度
+            //   ③ 中心差分（V 形 → 对称抵消 → 劣化 4.7×）  ④ dist 单侧差分 —— 均无效。
+            //   → 正解见 {@link #sample}：保留便宜的配对法向，改为对 **stress 做局部平均**
+            //     （等价 worldgen `elevation.rs` 的 `blur_grid`，其注释明确写道
+            //      "Smooth profiles to eliminate Voronoi ridge discontinuities"）。
+            if (len > 1e-9) {
+                ux = nx / len; uz = nz / len;            // 配对法向（便宜）
             } else {
                 ux = 1.0; uz = 0.0;
             }
@@ -312,9 +321,27 @@ public final class TectonicField {
             btype = TRANSFORM;
             rate = cross;
         }
-        // ★ 连续应力：+1 纯汇聚 / -1 纯离散 / 0 走滑（切换处平滑，见 Sample#stress 注释）
-        double mag = Math.sqrt(dot * dot + cross * cross);
-        double stress = mag < 1e-12 ? 0.0 : dot / mag;
+        // ★ 连续应力：+1 纯汇聚 / -1 纯离散 / 0 走滑
+        double stress = dotCrossToStress(dot, cross);
+
+        // ★ 2026-09-12 修复（用户反馈"岩石类型交界处地形不自然"）——**关键修复**：
+        //   stress 对 Voronoi 边界线/顶点做【局部平均】，等价 worldgen `elevation.rs`
+        //   的 `blur_grid`（其注释："Smooth profiles to eliminate Voronoi ridge
+        //   discontinuities"）。这是我一直没做的第二步。
+        //
+        //   为何必须做：在边界线附近 d1≈d2，"最近/次近"由浮点噪声决定
+        //   → 配对 (c1,c2) 在边界线/顶点处【不确定】→ vrel 换人 → stress 骤变
+        //   （实测单步 dStress 高达 1.93，导致 eLand 跳 0.1e ≈ 20 块）。
+        //   这不是法向公式能解决的（已试 4 种法向公式均失败），必须做空间平滑。
+        //
+        //   成本控制：只在边界附近（dist < STRESS_SMOOTH_REACH）做 5 点平均
+        //   （中心 + 十字 4 点），远处用原始值 → 影响范围有界。
+        if (dist < STRESS_SMOOTH_REACH) {
+            double e = STRESS_SMOOTH_EPS;
+            stress = (stress
+                    + stressAt(wxw + e, wzw) + stressAt(wxw - e, wzw)
+                    + stressAt(wxw, wzw + e) + stressAt(wxw, wzw - e)) * 0.2;
+        }
         return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz, stress, (d1 + d2) * 0.5);
     }
 
@@ -450,6 +477,73 @@ public final class TectonicField {
     }
 
     // ===================== 内部工具 =====================
+
+    /**
+     * 只算某点的 stress（<b>不做平滑</b>），供 {@link #sample} 的局部平均调用。
+     *
+     * <p>与 {@code sample()} 相比省去切向/alongCoord 计算，且<b>不再递归平滑</b>
+     * （否则会爆炸）。</p>
+     */
+    private double stressAt(double wx, double wz) {
+        int baseX = (int) Math.floor(wx / PLATE_SPACING);
+        int baseZ = (int) Math.floor(wz / PLATE_SPACING);
+        double d1 = Double.MAX_VALUE, d2 = Double.MAX_VALUE;
+        double s1x = 0, s1z = 0, s2x = 0, s2z = 0;
+        int c1x = 0, c1z = 0, c2x = 0, c2z = 0;
+        double[] sp = new double[2];
+        for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+            for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
+                int cx = baseX + dx, cz = baseZ + dz;
+                plateSeed(cx, cz, sp);
+                double ddx = wx - sp[0], ddz = wz - sp[1];
+                double d = Math.sqrt(ddx * ddx + ddz * ddz);
+                if (d < d1) {
+                    d2 = d1; c2x = c1x; c2z = c1z; s2x = s1x; s2z = s1z;
+                    d1 = d; c1x = cx; c1z = cz; s1x = sp[0]; s1z = sp[1];
+                } else if (d < d2) {
+                    d2 = d; c2x = cx; c2z = cz; s2x = sp[0]; s2z = sp[1];
+                }
+            }
+        }
+        if (d2 == Double.MAX_VALUE) return 0.0;
+        double nx = s2x - s1x, nz = s2z - s1z;
+        double len = Math.sqrt(nx * nx + nz * nz);
+        if (len < 1e-9) return 0.0;
+        double ux = nx / len, uz = nz / len;
+        double[] v1 = new double[2], v2 = new double[2];
+        plateVelocity(c1x, c1z, v1);
+        plateVelocity(c2x, c2z, v2);
+        double vrx = v1[0] - v2[0], vrz = v1[1] - v2[1];
+        return dotCrossToStress(vrx * ux + vrz * uz, Math.abs(vrx * uz - vrz * ux));
+    }
+
+    /** dot/cross → 连续应力 ∈[-1,1]（+1 纯汇聚 / −1 纯离散 / 0 走滑）。 */
+    private static double dotCrossToStress(double dot, double cross) {
+        double mag = Math.sqrt(dot * dot + cross * cross);
+        return mag < 1e-12 ? 0.0 : dot / mag;
+    }
+
+    /**
+     * 仅求"到 Voronoi 边界距离" = {@code (d2−d1)/2}（<b>不含域扭曲</b>）。
+     *
+     * <p>与 {@link #sample} 的内联循环相比，本方法只求最近/次近距离，
+     * 不求种子坐标与速度，因而更轻。</p>
+     */
+    private double edgeDistRaw(double wx, double wz) {
+        int baseX = (int) Math.floor(wx / PLATE_SPACING);
+        int baseZ = (int) Math.floor(wz / PLATE_SPACING);
+        double d1 = Double.MAX_VALUE, d2 = Double.MAX_VALUE;
+        double[] sp = new double[2];
+        for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+            for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
+                plateSeed(baseX + dx, baseZ + dz, sp);
+                double ddx = wx - sp[0], ddz = wz - sp[1];
+                double d = Math.sqrt(ddx * ddx + ddz * ddz);
+                if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+            }
+        }
+        return d2 == Double.MAX_VALUE ? Double.MAX_VALUE : Math.max(0.0, (d2 - d1) * 0.5);
+    }
 
     /** 确定性哈希：cell 坐标 → 抖动后的种子世界坐标。 */
     private void plateSeed(int cx, int cz, double[] out) {
