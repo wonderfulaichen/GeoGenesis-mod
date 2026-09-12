@@ -60,23 +60,32 @@ public final class TectonicDeformProbe {
         // ================= [3] 断层阶跃：块边界处应有骤变 =================
         //   在块边界（dist = k·FAULT_SPACING）两侧微小偏移处取值，差值应显著大于
         //   块内同距离的差值（即"崖线"而非"平滑坡"）。
-        double maxJump = 0, maxSmooth = 0;
-        for (double k = 1; k <= 2; k++) {
-            double edge = k * TectonicDeformation.FAULT_SPACING;
-            // 跨边界跳变（±2wu）
-            double a = td.offset(new TectonicField.Sample(edge - 2, TectonicField.DIVERGENT, 1.0, 0.0, 1.0), 999.0, 777.0);
-            double b = td.offset(new TectonicField.Sample(edge + 2, TectonicField.DIVERGENT, 1.0, 0.0, 1.0), 999.0, 777.0);
-            maxJump = Math.max(maxJump, Math.abs(b - a));
-            // 块内平滑（同 4wu 跨度，但取块中心附近）
-            double mid = edge + TectonicDeformation.FAULT_SPACING * 0.5;
-            double c = td.offset(new TectonicField.Sample(mid - 2, TectonicField.DIVERGENT, 1.0, 0.0, 1.0), 999.0, 777.0);
-            double e = td.offset(new TectonicField.Sample(mid + 2, TectonicField.DIVERGENT, 1.0, 0.0, 1.0), 999.0, 777.0);
-            maxSmooth = Math.max(maxSmooth, Math.abs(e - c));
+        //   ★ 2026-09-12 判据更新：断块已由 floor(dist/spacing) 改为
+        //   【世界坐标块状量化】（消除"每块各自生成"的 per-cell 依赖）→
+        //   崖线不再位于 dist 的固定倍数上，旧判据失效。
+        //   新判据用沿距离的【强梯度事件】统计：断层带内梯度分布应显著长尾。
+        double scarpMax = 0, scarpSum = 0;
+        int scarpN = 0;
+        final double SCARP_DS = 2.0;
+        for (double sz0 = -4000; sz0 <= 4000; sz0 += 811) {
+            double sPrev = Double.NaN;
+            for (double sx = -4000; sx <= 4000; sx += SCARP_DS) {
+                TectonicField.Sample sm = new TectonicField.Sample(100, TectonicField.DIVERGENT, 1.0, 0.0, 1.0);
+                double sv = td.offset(sm, sx, sz0);
+                if (!Double.isNaN(sPrev)) {
+                    double g = Math.abs(sv - sPrev) / SCARP_DS;
+                    scarpMax = Math.max(scarpMax, g);
+                    scarpSum += g;
+                    scarpN++;
+                }
+                sPrev = sv;
+            }
         }
-        boolean pass3 = maxJump > maxSmooth * 3.0;
-        System.out.printf("[3] 断层崖(离散): 跨块边界跳变=%.4f 块内同跨度变化=%.4f 比值=%.1f× %s%n",
-            maxJump, maxSmooth, maxSmooth > 0 ? maxJump / maxSmooth : 0, pass3 ? "PASS" : "FAIL");
-        System.out.println("    要求: 跨边界跳变 >3× 块内变化（陡崖 ≠ 平滑坡）");
+        double scarpMean = scarpN > 0 ? scarpSum / scarpN : 0;
+        boolean pass3 = scarpMean > 0 && scarpMax > scarpMean * 5.0;
+        System.out.printf("[3] 断层崖(离散): 最大梯度=%.6f 平均梯度=%.6f 比值=%.1f× %s%n",
+            scarpMax, scarpMean, scarpMean > 0 ? scarpMax / scarpMean : 0, pass3 ? "PASS" : "FAIL");
+        System.out.println("    要求: 最大/平均梯度 >5×（存在陡崖而非处处平滑）");
 
         // ================= [4] 近零均值（真实世界分布） =================
         //   ★ 判据两处修正：

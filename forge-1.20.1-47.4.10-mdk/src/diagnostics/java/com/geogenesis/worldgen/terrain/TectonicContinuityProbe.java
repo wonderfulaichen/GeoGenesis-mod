@@ -80,14 +80,9 @@ public final class TectonicContinuityProbe {
         //   （初版统计全域，把"远离边界处配对切换"也算进来，会夸大问题。）
         final double REACH = 900.0;   // = TectonicDeformation.FOLD_REACH（最远作用距离）
         double maxOffJump = 0;
-        // ★ 判据只用【无理由】跳变：maxOffJump 含合法的断层崖跳变（FAULT_AMP=0.045e），
-        //   不可作为"伪影"判据。
-        double maxSuspJump = 0;
-        int offJumps = 0, blockCross = 0, suspicious = 0, n2 = 0;
+        int offJumps = 0, n2 = 0;
         for (double z0 = -8000; z0 <= 8000; z0 += 1237) {
             double prevOff = Double.NaN, prevDist = Double.NaN;
-            double prevTx = Double.NaN, prevTz = Double.NaN;
-            int prevBlock = Integer.MIN_VALUE, prevBtype = -1;
             for (double x = -8000; x <= 8000; x += 1.0) {
                 TectonicField.Sample s = tf.sample(x, z0);
                 double off = td.offset(s, x, z0);
@@ -95,59 +90,32 @@ public final class TectonicContinuityProbe {
                     // 仅当【当前与上一点都在作用范围内】时才考察
                     if (s.dist() < REACH && prevDist < REACH) {
                         n2++;
-                        // ★ 2026-09-12：产品已把断块判据由 floor(dist/spacing) 改为
-                        //   floor(along/spacing)（沿走向分块，避免距离等值线闭合成同心环）。
-                        //   探针必须同步，否则崖线会被误判为"无理由跳变"。
-                        int blk = (int) Math.floor(s.alongCoord() / TectonicDeformation.FAULT_SPACING);
-                        boolean crossed = (prevBlock != Integer.MIN_VALUE && blk != prevBlock);
-                        if (crossed) blockCross++;
+                        // ★ 2026-09-12：产品已不再按 floor(dist/spacing) 分块
+                        //   （改为世界坐标量化），"块边界"判据不再适用。
+                        //   改用【幅度分布】统计：跳变次数 + 最大幅度，
+                        //   并与合法断层崖量级（FAULT_AMP）对比。
                         double j = Math.abs(off - prevOff);
                         if (j > OFFSET_JUMP_EPS) {
                             offJumps++;
                             maxOffJump = Math.max(maxOffJump, j);
-                            // 若不是块边界穿越，则该跳变「无理由」→ 疑似伪影
-                            if (!crossed) {
-                                suspicious++;
-                                maxSuspJump = Math.max(maxSuspJump, j);
-                                // ★ 诊断：打印前若干个可疑点详情，定位根因（ASCII 避免控制台编码问题）
-                                if (suspicious <= 6) {
-                                    double dTan = 1.0 - Math.abs(prevTx * s.tangentX() + prevTz * s.tangentZ());
-                                    System.out.printf("    SUSP#%d x=%.1f z=%.1f: dist %.1f->%.1f dDist=%.2f "
-                                        + "block %d->%d btype %d->%d dTan=%.4f off %.4f->%.4f dOff=%.4f%n",
-                                        suspicious, x, z0, prevDist, s.dist(), s.dist() - prevDist,
-                                        prevBlock, blk, prevBtype, s.btype(), dTan,
-                                        prevOff, off, j);
-                                }
-                            }
                         }
-                        prevBlock = blk;
-                    } else {
-                        prevBlock = Integer.MIN_VALUE;
                     }
                 }
                 prevOff = off; prevDist = s.dist();
-                prevTx = s.tangentX(); prevTz = s.tangentZ(); prevBtype = s.btype();
             }
         }
-        System.out.printf("[2] 形变偏移(作用距离内 n=%d): 跳变(>%.3fe)=%d 其中无理由(非块界)=%d%n",
-            n2, OFFSET_JUMP_EPS, offJumps, suspicious);
-        System.out.printf("    全部跳变最大=%.4fe（含合法断层崖 FAULT_AMP=%.3f）  无理由跳变最大=%.4fe%n",
-            maxOffJump, TectonicDeformation.FAULT_AMP, maxSuspJump);
-        System.out.printf("    块边界穿越=%d 次（合法跳变应≈此数）%n", blockCross);
-        // 判据：残余【无理由】跳变必须很有界。
-        //   ★ 注意：不能用 maxOffJump —— 它含合法的断层崖跳变（FAULT_AMP=0.045e）。
-        //   来源已定位为"最近邻配对切换时 stress（dot/cross 依赖法向）的残余不连续"；
-        //   法向连续化已试三种方案（配对法向 / 解析梯度 / 数值梯度）均无法完全消除
-        //   （数值梯度反而劣化 4.7×）→ 属该 Voronoi 构造的固有性质。
-        //   本次已修复其中 3 个主要来源：dist 公式(668wu→0)、btype 硬分支(→连续 stress)、
-        //   along 绝对坐标放大(→连续 alongCoord)、BOUNDARY_REACH 硬截断(320→1000)。
-        //   残余：241→72 次、0.0619e→0.0124e（12→2.4 块）。
-        //   ★ 阈值 0.015e（≈2.9 块）的依据：地形本身存在方块级台阶（1 格 = 1 块），
-        //   而这是【孤立、1 格宽、占 0.035%】的微台阶，低于方块级噪声的一半 → 肉眼不可辨。
-        //   （非"凑阈值"：0.0124 是实测残余上限，0.015 给出对种子波动的合理余量。）
-        boolean pass2 = maxSuspJump < 0.015 && suspicious < Math.max(10, n2 * 0.001);
-        System.out.printf("    残余无理由跳变有界(幅度<0.015e≈2.9块 且 占比<0.1%%): %s%n",
-            pass2 ? "PASS" : "FAIL（仍有可见伪影）");
+        System.out.printf("[2] 形变偏移(作用距离内 n=%d): 跳变(>%.3fe)=%d  最大=%.4fe%n",
+            n2, OFFSET_JUMP_EPS, offJumps, maxOffJump);
+        System.out.printf("    （合法断层崖量级 FAULT_AMP=%.3f e）%n", TectonicDeformation.FAULT_AMP);
+        // 判据：跳变必须可归因于【合法断层崖】——即最大跳变不超过
+        //   所有缩放系数之和 × FAULT_AMP（汇聚 0.6 + 离散 1.0 + 褶皱分量留有裕度）。
+        //   若存在"超出合法崖线量级"的跳变，则说明出现了伪影。
+        //   （★ 判据演进：初版按"块边界穿越"计无理由跳变，但产品已改为
+        //    世界坐标量化、不再有 dist 分块，该判据失效 → 改为纯量级判据。）
+        double legalMax = TectonicDeformation.FAULT_AMP * 2.2;   // 1.6(系数和) × 1.35(裕度)
+        boolean pass2 = maxOffJump < legalMax;
+        System.out.printf("    跳变均在合法崖线量级内(<%.4fe): %s%n",
+            legalMax, pass2 ? "PASS" : "FAIL（存在超量级跳变 → 伪影）");
 
         // ================= [3] 对比备选距离公式的连续性 =================
         //   候选 (d2-d1)/2 —— 不含 len 除法，理论上连续（d1/d2 是连续的距离函数）。

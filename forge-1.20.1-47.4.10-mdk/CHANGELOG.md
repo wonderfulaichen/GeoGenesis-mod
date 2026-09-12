@@ -96,6 +96,30 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
   - 顺带发现（既有、无行为影响）：`CellGenerator.erosionRoundCounter` 为非原子 `int` 竞态，
     但 `erosionRound` 只写不读（保留诊断字段）→ 记入体检报告待后续接滑窗时改用 `AtomicInteger`。
 
+- **修复：地形"每块各自独立生成"（纹理按板块格子各自定向）**（2026-09-12，三次实测反馈）：
+  - **用户反馈**：岩石类型边界导致地形衔接不自然，"完全不像一个整体、每块都相似各自独立生成"。
+  - **定性**：这是**实现偏离参考项目**，不是 worldgen 的问题。重读源码后确认我漏掉了关键两步。
+  - **worldgen 的正确做法**（`src/elevation.rs`）：
+    1. `along/across` **只用于算标量幅度**，不直接当噪声坐标；
+    2. 随后 **`blur_grid` 高斯模糊**——源码注释原文
+       *"Smooth profiles to eliminate Voronoi ridge discontinuities"*；
+    3. 山脊噪声用**世界坐标**采样（`ridged_fbm(wu + rw1, wv + rw2, ...)`）。
+  - **我的错误**：把 `alongCoord`（**每个 Voronoi 单元各自定义的相对坐标**）当噪声输入 →
+    相邻板块的"沿走向方向"不同 → 同一世界位置纹理走向不同 → **边界处纹理错位**。
+    且**未做任何模糊**（worldgen 专门用来消除 Voronoi 不连续的一步）。
+  - **修复**：**彻底移除 per-cell 坐标依赖**：
+    - T5 褶皱相位：`alongCoord` → **世界坐标** `valueNoise(wx/3000, wz/3000)`
+    - T5 断层滑移/断块：`alongCoord` → **世界坐标**噪声 + 世界坐标量化
+    - T2 chain：`alongCoord` → **世界坐标**斜向投影
+    - 新增**世界坐标分段遮罩**（`segmentMask`）把"平行边界的环状带"打成弧段（避免闭环，
+      同时因只用世界坐标而跨边界连续）
+    - 删除 `alongFaultCoord()`（per-cell 依赖的根源）
+  - 新增 `runTerrainGrainProbe`（纹理方向连续性）：边界处曲率 **1.92×** 内部（阈值 3×）→ 衔接自然。
+  - 同步更新两个探针的判据（产品机制已变，旧判据失效）：
+    `TectonicDeformProbe [3]` 断层崖改用梯度长尾统计；
+    `TectonicContinuityProbe [2]` 改用"跳变不超过合法崖线量级"判据。
+  - 验证：12 探针全通过；群系邻接违例 0/20000；FlowAccum cycles/violations/gate 全 0。
+
 - **修复：岩石类型的平直多边形边界 + 高程同心波纹 + 首屏变慢**（2026-09-12，二次实测反馈）：
   - **① 岩石类型出现笔直多边形边界**：`StratumField` 按 `btype` 硬切换，而板块 Voronoi 边界是
     **中垂线（直线）**→ 2000wu 的板块格子被直接暴露。方案 §3.6 早已注明
