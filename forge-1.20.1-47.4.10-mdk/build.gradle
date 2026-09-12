@@ -843,6 +843,15 @@ task runPrecipRiverWidthProbe(type: JavaExec) {
     }
 }
 
+// LandE conformity probe (2026-09-12): gradlew runLandEConformityProbe [seed]
+task runLandEConformityProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.LandEConformityProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Terrain grain continuity probe (2026-09-12): gradlew runTerrainGrainProbe [seed]
 task runTerrainGrainProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
