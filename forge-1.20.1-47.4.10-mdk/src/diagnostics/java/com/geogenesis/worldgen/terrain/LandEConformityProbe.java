@@ -59,14 +59,21 @@ public final class LandEConformityProbe {
                         if (jd > 1.5) distJumps++;
                         if (shown < 8) {
                             shown++;
-                            // 同时看 T5 形变分量与 T1 权重调制输入，定位来源
+                            // ★ 同时看：T5 形变分量 / T1 权重调制输入（MOUNTAINS、BASIN 权重）
+                            //   —— 定位 eLand 跳变的真实放大环节
                             double offNow = td.offset(s, x, z0);
                             TectonicField.Sample sp = tf.sample(x - 1.0, z0);
                             double offPrev = td.offset(sp, x - 1.0, z0);
-                            System.out.printf("    JUMP#%d x=%.1f z=%.1f dE=%.5f | dStress=%.4f dDist=%.2f "
-                                + "btype=%d dist=%.1f | dOffset=%.5f%n",
-                                shown, x, z0, je, js, jd, s.btype(), s.dist(),
-                                offNow - offPrev);
+                            double[] wNow = gen.typeWeightsAt(x, z0);
+                            double[] wPrev = gen.typeWeightsAt(x - 1.0, z0);
+                            int mt = TerrainClass.MOUNTAINS.ordinal();
+                            int bs = TerrainClass.BASIN.ordinal();
+                            int pl = TerrainClass.PLAIN.ordinal();
+                            System.out.printf("    JUMP#%d x=%.1f z=%.1f dE=%.5f | dStress=%.3f dDist=%.2f "
+                                + "dist=%.0f | dOffset=%.5f | dW(mt)=%+.4f dW(bs)=%+.4f dW(pl)=%+.4f%n",
+                                shown, x, z0, je, js, jd, s.dist(),
+                                offNow - offPrev,
+                                wNow[mt] - wPrev[mt], wNow[bs] - wPrev[bs], wNow[pl] - wPrev[pl]);
                         }
                     }
                 }
