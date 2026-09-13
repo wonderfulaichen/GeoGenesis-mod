@@ -45,6 +45,23 @@ public final class PerfProbe {
         }
         long tResist = System.nanoTime() - t0;
 
+        // ---- 2.5) terrainEQuick（河网/侵蚀/purch 的公共热路径）----
+        //   ★ 关键：P5 给它加了 landFactorAt（火山中心海陆判定），
+        //     而 landFactorAt 内部又会重采样 continent + tectonic（昂贵）⇒ 必须实测。
+        int M = 200_000;
+        t0 = System.nanoTime();
+        for (int i = 0; i < M; i++) {
+            acc += gen.terrainEQuick(i * 0.37, i * 0.71);
+        }
+        long tEQ = System.nanoTime() - t0;
+
+        // ---- 2.6) landFactorAt 单独（P5 新增，怀疑是元凶）----
+        t0 = System.nanoTime();
+        for (int i = 0; i < M / 10; i++) {
+            acc += gen.landFactorAt(i * 0.37, i * 0.71);
+        }
+        long tLF = System.nanoTime() - t0;
+
         // ---- 3) 逐格累减查找（fillTerrainColumn 热路径）----
         int packed = 0x1234567;
         t0 = System.nanoTime();
@@ -65,6 +82,10 @@ public final class PerfProbe {
                 tResist / (double) (N / 10) * 10, tResist / 1e6);
         System.out.printf("逐格累减查找(4层) : %6.1f ns/次  (总 %6.1f ms)%n",
                 tLookup / (double) N, tLookup / 1e6);
+        System.out.printf("terrainEQuick     : %6.1f ns/次  (总 %6.1f ms)  ← 河网/侵蚀热路径%n",
+                tEQ / (double) M, tEQ / 1e6);
+        System.out.printf("landFactorAt      : %6.1f ns/次  (总 %6.1f ms)  ← P5 新增，疑元凶%n",
+                tLF / (double) (M / 10) * 10, tLF / 1e6);
 
         // 估算：一个 chunk 256 列，每列 ~384 个 y 需要查层
         double perChunkMs = 256.0 * 384 * (tLookup / (double) N) / 1e6;

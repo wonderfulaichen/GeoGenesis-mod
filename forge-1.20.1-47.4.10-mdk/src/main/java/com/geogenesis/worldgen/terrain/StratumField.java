@@ -280,13 +280,16 @@ public final class StratumField {
      * @param wx/wz 世界坐标（厚度随空间变化）
      */
     public int packSequence(TectonicField.Sample s, boolean isLand, double wx, double wz) {
-        byte[] seq = sequenceIds(s, isLand);
+        // ★ 2026-09-14 性能修复：直接读 sequenceFor 的【静态数组】，不再经
+        //   sequenceIds（后者每 cell 分配一个 byte[] ⇒ 256 次/chunk 的短命垃圾）。
+        //   sequenceFor 返回类静态常量数组，零分配。
+        RockType[] seq = sequenceFor(s.btype(), isLand);
         int packed = 0;
         // ★ 必须【循环填充到 LAYER_COUNT】—— 序列长度不一（洋中脊仅 1 项、克拉通 3 项、
         //   裂谷 4 项）。若只写实际长度，{@link #seqAt} 按 LAYER_COUNT 取模会读到未写入的
         //   零位 ⇒ 第 2~3 层恒为 ordinal 0（片麻岩），产生错误岩层。
         for (int i = 0; i < LAYER_COUNT; i++) {
-            packed |= (seq[i % seq.length] & SEQ_MASK) << (i * SEQ_BITS);
+            packed |= (seq[i % seq.length].ordinal() & SEQ_MASK) << (i * SEQ_BITS);
             packed |= (thicknessLevel(wx, wz, i) & THK_MASK) << (THK_SHIFT + i * THK_BITS);
         }
         return packed;

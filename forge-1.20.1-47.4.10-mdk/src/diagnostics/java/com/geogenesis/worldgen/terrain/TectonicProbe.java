@@ -591,6 +591,16 @@ public final class TectonicProbe {
                     }
                 }
                 if (!nearSea) continue;
+                // ★ 2026-09-14 判据修正：必须落在【自身基底相对平坦】处，否则
+                //   "环峰−火口底"会把外部山体算进来（实测 107 格 ≫ 纯锥面 44 ⇒ 误判）。
+                //   量火口需要左右 100wu 范围内地形高差小（火山独立于山脊）。
+                double hL = genP.sample(x - 100, z).height;
+                double hR = genP.sample(x + 100, z).height;
+                double hU = genP.sample(x, z - 100).height;
+                double hD = genP.sample(x, z + 100).height;
+                double spread = Math.max(Math.max(hL, hR), Math.max(hU, hD))
+                              - Math.min(Math.min(hL, hR), Math.min(hU, hD));
+                if (spread > 40) continue;                  // 基底起伏过大 ⇒ 无法可靠量火口
                 if (cc.landFeat.singleEdifice > bestCoastal) {
                     bestCoastal = cc.landFeat.singleEdifice; cxC = x; czC = z;
                 }

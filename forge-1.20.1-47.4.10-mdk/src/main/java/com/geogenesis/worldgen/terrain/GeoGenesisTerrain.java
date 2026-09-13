@@ -291,6 +291,7 @@ public final class GeoGenesisTerrain {
     // === 内部 ===
 
     private Cell[] generateChunk(int cx, int cz) {
+        long ts0 = System.nanoTime();
         Cell[] cells = new Cell[16 * 16];
         int baseX = cx << CHUNK_SHIFT;
         int baseZ = cz << CHUNK_SHIFT;
@@ -301,16 +302,26 @@ public final class GeoGenesisTerrain {
                     toWu(baseX + lx), toWu(baseZ + lz));
             }
         }
+        long ts1 = System.nanoTime();
 
         // 水文 + 侵蚀 tile 管线（wu 坐标定位 tile；extractFromTile 内部按块→wu 插值读取）
         generator.extractFromTile(cells, cx, cz);
+        long ts2 = System.nanoTime();
 
         // ★ 水文河谷雕刻回写 cell.height：预览/群系采样与游戏落块看到同一条河
         //   （旧 RTF 河网已下线，雕刻改由水文模型统一提供）。
         if (riversEnabled) {
             applyHydrologyValley(cells, cx, cz);
         }
+        long ts3 = System.nanoTime();
 
+        // ★ 2026-09-14 性能诊断（用户"比几小时前慢"）：分段定位
+        //   sample=地形采样 / extract=侵蚀tile提取(可能触发冷生成) / hydro=水文雕刻
+        if ((ts3 - ts0) > 50_000_000L) {
+            System.out.printf("[PERF-TERRAIN] chunk(%d,%d) sample=%dms extract=%dms hydro=%dms total=%dms%n",
+                    cx, cz, (ts1 - ts0) / 1000000, (ts2 - ts1) / 1000000,
+                    (ts3 - ts2) / 1000000, (ts3 - ts0) / 1000000);
+        }
         return cells;
     }
 

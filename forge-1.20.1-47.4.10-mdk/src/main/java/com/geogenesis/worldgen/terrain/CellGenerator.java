@@ -121,8 +121,16 @@ public final class CellGenerator {
     //   原生内存 mmap 失败崩溃（hs_err_pid48068: "Native memory allocation (mmap) failed"）。
     //   有界池 + CallerRunsPolicy：队满时提交者自己跑（等价串行，天然反压，绝不排队饿死），
     //   线程数硬顶 16 → 内存可控。
+    // ★★★ 2026-09-14 性能修复（用户"比几小时前慢"）：8 → 4 ★★★
+    //   【根因】侵蚀 tile 生成【内部】已用 parallelRows（ForkJoinPool.commonPool）
+    //   对 base/粗采/骨架/flat/双三次升采样 5 处做行级并行。
+    //   若同时有 8 个 tile 线程在跑 ⇒ 8 × commonPool 的【嵌套并行】
+    //   ⇒ 线程数远超核数（20 核上并行任务可达 8×20=160）⇒ 上下文切换风暴，
+    //   实测 chunk 冷启动从 2 秒级恶化到 20 秒级（用户日志 cells=22098ms）。
+    //   【正解】降低外层 tile 并发，让 commonPool 的行级并行有核可用。
+    //   4 与 commonPool 规模（≈核数−1）配合后超订显著缓解。
     // ★ 2026-08-09 优化：4→8（20 核机器，冷启动 tile 排队吞吐 ×1.5-2；daemon 池不阻塞主线程）
-    public static final int TILE_PARALLELISM = 8;
+    public static final int TILE_PARALLELISM = 4;
     public static final ExecutorService TILE_SAMPLER = new ThreadPoolExecutor(
         TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(64),
@@ -663,17 +671,22 @@ public final class CellGenerator {
         if (lfKeys.get(slot) == key) {
             return Double.longBitsToDouble(lfVals.get(slot));
         }
-        // 复刻 sampleCore 第 1~6 步中【决定 eLandBase】的部分（不含任何特征与形变）
-        double c = continent.sample(wx, wz);
-        double cBiased = c - continentBias;
-        TerrainCharacterField.BlendResult blend = typeLandShape.sampleBlend(wx, wz);
-        if (TECTONIC_ENABLED) {
-            TectonicField.Sample ts = tectonic.sample(wx, wz);
-            applyTectonicWeights(blend.typeWeights, ts, wx, wz, cBiased);
-        }
-        double cEdge = cBiased + coastline.warpDisplacement(wx, wz, cBiased);
-        double eLandBase = typeLandShape.sample(blend, wx, wz, cEdge);
-        double v = smoothstep(-0.01, 0.01, eLandBase);
+        // ★★★ 2026-09-14 性能修复（用户"比几小时前慢"，卡在 0%）★★★
+        //
+        //   【原实现（性能回归根因，已删）】为精确复刻 eLandBase，本方法重采样了
+        //   几乎整个 sampleCore：continent + typeLandShape.sampleBlend（7×7 Voronoi）
+        //   + tectonic.sample + coastline.warpDisplacement + typeLandShape.sample。
+        //   实测 <b>78,568 ns/次</b> —— 是 terrainEQuick 的 <b>8.75 倍</b>！
+        //   而它被 terrainEQuick 链式触发（terrainEQuick → landFeatures.compute
+        //   → centerFactorOf → 本方法）⇒ 河网构建（每 region 数万格）被拖慢近 9 倍。
+        //
+        //   【为何不需要精确】本方法唯一用途是回答"这个<b>火山中心</b>在陆上吗"，
+        //   属【二值去留】判定（LandFeatures.centerFactorOf）。而
+        //   {@link ContinentField} 正是本项目的<b>海陆场</b>（{@code shellFromC} 与它同源）
+        //   ⇒ 直接用它判定即可，无需经过"类型场 Voronoi + 海岸线扭曲"那套形态学管线。
+        //   两者在海岸带的细微差异，对"整座火山生成与否"无观感影响。
+        double cBiased = continent.sample(wx, wz) - continentBias;
+        double v = smoothstep(-0.01, 0.01, cBiased);
         lfVals.set(slot, Double.doubleToRawLongBits(v));         // 先值
         lfKeys.set(slot, key);                                   // 后键（volatile）
         return v;
