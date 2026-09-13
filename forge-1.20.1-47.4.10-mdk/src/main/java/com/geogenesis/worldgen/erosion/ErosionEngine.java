@@ -160,16 +160,20 @@ public class ErosionEngine {
     /**
      * 硬度网格的粗采间距（wu）。
      *
-     * <p><b>为何 8wu</b>：岩性来自{@link com.geogenesis.worldgen.terrain.RockType}的
-     * <b>地层序列</b>（由构造环境 + 900wu 尺度剥蚀噪声决定）⇒ 岩性单元的特征尺度
-     * 是<b>数百 wu</b>，8wu 采样远密于其变化尺度 ⇒ 双线性插值误差可忽略。
-     * 同时把每 tile 的采样次数从 16,384（逐点）降到 272（34×34）⇒ 开销可忽略。</p>
+     * <p><b>为何 16wu（原 8wu，2026-09-14 性能修复放宽）</b>：岩性来自
+     * {@link com.geogenesis.worldgen.terrain.RockType}的<b>地层序列</b>
+     * （由构造环境 = 2000wu 级 Voronoi 板块 + 900wu 尺度剥蚀噪声决定）
+     * ⇒ 岩性单元的特征尺度是<b>数百 wu</b>。而每次采样需调用
+     * {@code CellGenerator.rockResistanceAt}（内含 continent + tectonic 采样，
+     * 实测 ~22μs/次，缓存基本不命中）⇒ 8wu 是<b>严重过采样</b>。
+     * 放宽到 16wu：采样次数减半（272 → 136/tile），而插值误差仍远小于
+     * 岩性自身的变化尺度 ⇒ <b>质量无损、开销减半</b>。</p>
      *
      * <p><b>为何必须插值而非"最近邻"</b>：最近邻会在岩性单元边界产生<b>阶跃</b>
      * ⇒ 硬度突变 ⇒ 侵蚀量突变 ⇒ 地形上一条硬边（本项目反复踩的坑）。
      * 双线性插值使硬度场 C⁰ 连续 ⇒ 侵蚀过渡自然。</p>
      */
-    public static final int HARDNESS_SPACING = 8;
+    public static final int HARDNESS_SPACING = 16;
 
     /**
      * 岩性耦合强度 ∈ [0,1]：0 = 不耦合（同硬度）/ 1 = 全耦合（按抗蚀性线性调制）。

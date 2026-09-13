@@ -258,25 +258,25 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         // ★ T10：改为【水平层】后，地表裸岩应取"地表下方第一个岩层"所在的层
         //   （与地下同一套水平层逻辑）⇒ 陡坡不同高度会露出不同岩层（崖壁彩条），
         //   且与紧邻地下岩性连续。
-        int nLay = StratumField.LAYER_COUNT * 4;
-        int[] th = new int[nLay];
-        int total = 0;
+        final int nLay = StratumField.LAYER_COUNT;    // = 4（与 fillTerrainColumn 同）
+        int period = 0;
         for (int i = 0; i < nLay; i++) {
-            th[i] = StratumField.thicknessOf(
+            period += StratumField.thicknessOf(
                     StratumField.thickLevelAt(cell.rockSeqPacked, cell.rockLayer + i));
-            total += th[i];
         }
-        if (total <= 0) return -1;
+        if (period <= 0) return -1;
         // 与 fillTerrainColumn 同基准：seaLevel + 区域倾斜
         int base = (int) Math.round(seaLevel + cell.rockTilt);
-        int local = Math.floorMod((surfaceY - 3) - base, total);
+        int local = Math.floorMod((surfaceY - 3) - base, period);
         int acc = 0;
         for (int i = 0; i < nLay; i++) {
-            if (local < acc + th[i]) {
+            int th = StratumField.thicknessOf(
+                    StratumField.thickLevelAt(cell.rockSeqPacked, cell.rockLayer + i));
+            if (local < acc + th) {
                 int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer + i);
                 return (id >= 0 && id < ROCK_BLOCKS.length) ? id : -1;
             }
-            acc += th[i];
+            acc += th;
         }
         return -1;
     }
@@ -550,31 +550,34 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //   避免每格重复累加（周期总厚 ≤ 16层×42 = 672 格，数组极小）。
         //   只在陆地列构建（cell.isWater() 为假）：海洋列保持 STONE/DEEPSLATE
         //   （修改海洋侧风险更高，且海底被水覆盖 ⇒ 暂不动）。
-        int[] rockLut = null;
+        // ★★★ 2026-09-14 性能回归修复（用户："卡在 0% 要等很久"）★★★
+        //   【原实现】把"周期内每格 Y → 岩性"展开成 LUT（int[total]），
+        //   total 可达 16层×42 = 672 ⇒ <b>每列分配 2.7KB，每 chunk 256 列 = 705KB 垃圾</b>
+        //   ⇒ 世界生成数百 MB/s 分配 ⇒ GC 频繁停顿（进度卡 0%）。
+        //   【另有一处错误】nLay 写成 LAYER_COUNT*4=16，但 packSequence 本就按
+        //   LAYER_COUNT=4 循环填充、seqAt 也按 4 取模 ⇒ 16 只是重复 4 遍相同序列（浪费 4 倍）。
+        //   【正解】不建 LUT：只保留 nLay=4 的【层厚 + 层岩性】两个小数组，
+        //   逐 y 用累减查找（4 次比较）。nLay 仅 4 ⇒ 比 O(1) 查表稍慢但<b>零大分配</b>，
+        //   整体远快于"分配 2.7KB/列 + GC"（无 GC 才是关键）。
+        int[] rockTh = null;      // 各层厚度（块）
+        int[] rockOrd = null;     // 各层岩性 ordinal（-1 = 回退 STONE）
         int rockPeriod = 0;
         int rockBase = 0;
         if (!cell.isWater() && cell.rockSeqPacked != 0) {
-            int nLay = StratumField.LAYER_COUNT * 4;          // 层序列长度（覆盖足够深度）
-            int[] th = new int[nLay];
-            int total = 0;
+            final int nLay = StratumField.LAYER_COUNT;         // = 4（层序循环长度）
+            rockTh = new int[nLay];
+            rockOrd = new int[nLay];
+            int period = 0;
             for (int i = 0; i < nLay; i++) {
-                th[i] = StratumField.thicknessOf(
+                rockTh[i] = StratumField.thicknessOf(
                         StratumField.thickLevelAt(cell.rockSeqPacked, cell.rockLayer + i));
-                total += th[i];
+                int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer + i);
+                rockOrd[i] = (id >= 0 && id < ROCK_BLOCKS.length) ? id : -1;   // 越界守卫
+                period += rockTh[i];
             }
-            if (total > 0) {
-                rockLut = new int[total];
-                int acc = 0;
-                for (int i = 0; i < nLay; i++) {
-                    int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer + i);
-                    int ord = (id >= 0 && id < ROCK_BLOCKS.length) ? id : -1;   // 越界守卫
-                    for (int k = 0; k < th[i]; k++) rockLut[acc + k] = ord;
-                    acc += th[i];
-                }
-                rockPeriod = total;
-                // 基准：海平面 + 区域倾斜（tilt 使层界面在区域尺度起伏 = 褶皱）
-                rockBase = (int) Math.round(seaLevel + cell.rockTilt);
-            }
+            rockPeriod = period;
+            // 基准：海平面 + 区域倾斜（tilt 使层界面在区域尺度起伏 = 褶皱）
+            rockBase = (int) Math.round(seaLevel + cell.rockTilt);
         }
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
@@ -582,10 +585,15 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             if (y == WORLD_MIN_Y) {
                 state = BEDROCK;
             } else if (y < surfaceY - 3) {
-                if (rockLut != null) {
+                if (rockTh != null && rockPeriod > 0) {
                     // 水平层：按【绝对 Y】取模周期内位置（floorMod 保证负 y 正确）
                     int local = Math.floorMod(y - rockBase, rockPeriod);
-                    int ord = rockLut[local];
+                    // 累减查找（nLay=4 ⇒ 最多 4 次比较，零分配）
+                    int ord = -1, acc = 0;
+                    for (int i = 0; i < rockTh.length; i++) {
+                        if (local < acc + rockTh[i]) { ord = rockOrd[i]; break; }
+                        acc += rockTh[i];
+                    }
                     state = ord >= 0 ? ROCK_BLOCKS[ord] : ((y < 0) ? DEEPSLATE : STONE);
                 } else {
                     state = (y < 0) ? DEEPSLATE : STONE;       // 无岩性数据 / 海洋列
