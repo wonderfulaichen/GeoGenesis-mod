@@ -48,14 +48,25 @@ public final class TectonicField {
 
     // ===== 域扭曲（让 Voronoi 直线边界变有机）=====
     /**
-     * 域扭曲幅度（wu）。Voronoi 边界本质是<b>中垂线（直线）</b>，直接用会让
-     * 2000wu 的板块格子呈<b>笔直多边形</b>（用户反馈"岩石类型出现明显平直边界"）。
-     * 对查询点做<b>连续</b>域扭曲后边界变为有机曲线，且不影响 dist/alongCoord 的连续性。
-     * 取板块间距的 16%（太大会使板块形状失控，太小仍显直）。
+     * 域扭曲幅度（wu）。
+     *
+     * <p>Voronoi 边界本质是<b>中垂线（直线，长约 2000wu）</b>，直接用会让板块格子呈
+     * <b>笔直多边形</b>（用户多次反馈"平直边界 / 不自然断裂线"）。对查询点做<b>连续</b>
+     * 域扭曲后边界变为有机曲线，且不影响 dist 的连续性。</p>
+     *
+     * <p>★ 2026-09-12 第五次修复：<b>幅度与频率须配套</b>。原取
+     * {@code AMP=320 / 波长1600wu}——波长与界线长度同量级（2000wu）⇒ 在局部
+     * 400wu 视野内边界仍<b>几乎是直线</b>（曲率半径 ≫ 视野）⇒ 用户实机仍看到
+     * "笔直断裂线"（实测 {@code contours_1block.png} 的直线与 {@code boundaries.png}
+     * 中那条红色板块边界方向完全一致）。</p>
+     *
+     * <p>现改为<b>短波长、低幅度</b>：波长 ≈ 界线长度的 1/5 ⇒ 一条界线内有 ~5 个弯折，
+     * 任何 100~400wu 的视野里都呈明显波浪 ⇒ 不再有"笔直"观感；
+     * 幅度取 130wu（板块间距的 6.5%）⇒ 板块形状不被破坏。</p>
      */
-    private static final double WARP_AMP = 320.0;
-    /** 域扭曲频率（1/wu）：波长 ~1600wu（约为板块间距的 0.8 倍）。 */
-    private static final double WARP_FREQ = 1.0 / 1600.0;
+    private static final double WARP_AMP = 130.0;
+    /** 域扭曲频率（1/wu）：波长 ~400wu（约为板块间距的 1/5，保证界线在任一局部视野内已弯曲）。 */
+    private static final double WARP_FREQ = 1.0 / 400.0;
     private static final long SALT_WARP = 0x2C6E_F1A3_84BD_9075L;
 
     /**
@@ -108,10 +119,21 @@ public final class TectonicField {
     private static final double PROFILE_SIGMA = 110.0;
 
     // ===== Phase T2：Chain modulation（山链串珠化，沿走向打破均匀脊）=====
-    /** 沿走向频率：低频 = 山链长。 */
-    private static final double CHAIN_ALONG_FREQ = 6.0;
-    /** 垂直走向频率：高频 = 山链窄。 */
-    private static final double CHAIN_ACROSS_FREQ = 18.0;
+    /**
+     * Chain 噪声的特征尺度（wu）。
+     *
+     * <p>★ 2026-09-12 第三次回归后定案（<b>硬约束</b>）：<b>禁止用 dist 作噪声坐标</b>。
+     * 原实现第二坐标为 {@code dist/PLATE_SPACING*CHAIN_ACROSS_FREQ = dist/111}
+     * → 噪声沿"跨边界"方向每 <b>111wu</b> 完成一个周期
+     * → 每条边界两侧出现<b>平行于边界的同心波纹</b>（用户三次反馈的"平行带"，
+     * 实测周期 111wu 与 screenshot 窄带内纹理完全一致）。
+     * 这与项目早已否决的 Terrace「环状台阶伪影」同源，故 dist 仅允许用于 decay。</p>
+     *
+     * <p>取值：造山带宽度由 {@link #PROFILE_SIGMA}(110wu) 决定，故本尺度须远大于 110。
+     * 取 900wu 使带内一次穿越仅覆盖 ~0.12 个噪声格 → 跨走向近似单调（无波纹），
+     * 而沿走向仍可容纳多个山包 → 保留"串珠状独立山峰"的设计意图。</p>
+     */
+    private static final double CHAIN_SCALE = 900.0;
     /** Chain 调制下限（保留的最小强度比例）。 */
     private static final double CHAIN_MIN = 0.35;
     /** Chain 噪声盐。 */
@@ -150,6 +172,47 @@ public final class TectonicField {
     public void setSeed(long worldSeed) {
         this.seed = worldSeed;
     }
+
+    // ===================== 公开工具 =====================
+
+    /**
+     * ★ 2026-09-12 第五次伪影修复：<b>平滑正部</b> {@code max(0,v)}。
+     *
+     * <p><b>为何必须用平滑版</b>：{@code Math.max(0, v)} 在 {@code v=0} 处<b>一阶不连续</b>
+     * （斜率由 0 突变为 1）。而本项目把应力拆成「汇聚部 {@code cw}」与「离散部 {@code dw}」
+     * 时到处用它 ⇒ 沿 {@code stress=0} 的等值线留下<b>折痕</b> ⇒ 等高线在折痕处挤成一条
+     * <b>笔直细线</b> ⇒ 游戏里 {@code floor(height)} 后就是用户反复反馈的
+     * "不自然断裂线 / 密集平行细线"（实测 {@code contours_1block.png} 的黑直线与
+     * {@code comp_chain.png} 的 Voronoi 棱面完全对应）。</p>
+     *
+     * <p>本式 {@code f(v) = v · smoothstep(−eps, eps, v)}：
+     * <ul>
+     *   <li>{@code v ≥ eps} → {@code f = v}（保留全强度）</li>
+     *   <li>{@code v ≤ −eps} → {@code f = 0}（完全归零）</li>
+     *   <li>{@code |v| < eps} → 平滑过渡，<b>且 f(0)=0</b></li>
+     * </ul>
+     * <b>为何必须 f(0)=0</b>：本项目语义是"<b>纯走滑 = 无垂向形变</b>"
+     * （见 {@code TectonicDeformProbe}[1]/[5]）。若用
+     * {@code 0.5(v+√(v²+eps²))} 这类"只圆化不平移"的写法，{@code f(0)=eps/2≠0}
+     * ⇒ 纯走滑区也会产生 ~14% 强度的形变 ⇒ 语义破坏、探针 [1] 泄漏 12 例。
+     * 本式在 v=0 处恒为 0，故语义完全保留。</p>
+     *
+     * @param v   应力分量（−1..1）
+     * @param eps 圆化半宽（应力单位）。取 {@link #STRESS_POS_EPS}
+     */
+    public static double smoothPos(double v, double eps) {
+        double t = (v + eps) / (2.0 * eps);
+        t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        return v * (t * t * (3.0 - 2.0 * t));
+    }
+
+    /**
+     * 正部圆化半宽（应力单位）。
+     *
+     * <p>应力范围约 [−1,1]，取 0.18：过渡带约占值域 18%——足以消除折痕，
+     * 又不明显改变"纯汇聚/纯离散"区的强度（{@code |stress|>0.5} 处误差 &lt;4%）。</p>
+     */
+    public static final double STRESS_POS_EPS = 0.18;
 
     // ===================== 公开 API =====================
 
@@ -281,7 +344,23 @@ public final class TectonicField {
             dist = Double.MAX_VALUE;
             ux = 1.0; uz = 0.0; tx = 0.0; tz = 1.0;
         } else {
-            dist = Math.max(0.0, (d2 - d1) * 0.5);
+            // ★★★ 2026-09-12 第六次伪影修复（Voronoi 顶点折痕/扇形射线）★★★
+            //   对齐参考项目 worldgen src/elevation.rs 的 Phase 2：
+            //     // Smooth profiles to eliminate Voronoi ridge discontinuities.
+            //     blur_grid(&mut profile_off, blur_sigma);  blur_grid(&mut mt_amp, blur_sigma);
+            //   它同样使用 dist，但**对推导出的边界量做高斯模糊**以消除折痕。
+            //
+            //   本项目按需采样（无全图网格），故等价实现为【局部环形平均】。
+            //   仅对 dist 做模糊即可：所有地形消费者（boundaryStrength 高斯 /
+            //   T5 的 decay）都是 dist 的函数 ⇒ dist 平滑则全链路平滑。
+            //   ★ 2026-09-13：该环形平均的 reach 处硬切换已修（改 smoothstep 渐隐，
+            //     否则在 dist=420 等值线产生阶跃 → 又一条直线网）。
+            //
+            //   为何必要：dist = (d2−d1)/2 在 Voronoi 顶点处是"到三条边取最小"，
+            //   沿三条角平分线有折痕（C¹ 断裂）⇒ 被 T1/T5 原样印成"扇形射线/竖带"。
+            //   注意：传入【未扭曲】坐标 —— distAt 内部会自行做同一域扭曲
+            //   （若传扭曲后坐标会二次扭曲，导致邻居采样点偏移、模糊失效）。
+            dist = blurDist(wx, wz, Math.max(0.0, (d2 - d1) * 0.5));
 
             // ★ 2026-09-12 结论（经四次尝试后定位到真正的根因）：
             //   法向换用哪种公式**都无法**消除跳变——因为跳变的根源不是法向，
@@ -290,10 +369,11 @@ public final class TectonicField {
             //
             //   演进记录（保留以免后人重走）：
             //   ① 配对法向 (s2−s1)/|s2−s1|     ② ∇(d2−d1) 解析梯度
-            //   ③ 中心差分（V 形 → 对称抵消 → 劣化 4.7×）  ④ dist 单侧差分 —— 均无效。
-            //   → 正解见 {@link #sample}：保留便宜的配对法向，改为对 **stress 做局部平均**
-            //     （等价 worldgen `elevation.rs` 的 `blur_grid`，其注释明确写道
-            //      "Smooth profiles to eliminate Voronoi ridge discontinuities"）。
+            //   ③ 中心差分（V 形 → 对称抵消 → 劣化 4.7×）  ④ dist 单侧差分
+            //   ⑤ 对 stress 做局部平均（旧 smoothStress，只能压制不能拓扑消除）
+            //   → **最终正解见 {@link #stressField}**：应力改为【连续加权投票构造】，
+            //     不再依赖"配对"，从构造上消除配对切换 ⇒ 无需任何事后平滑。
+            //     此处配对法向仅保留给 btype/rate 这个【离散标签】使用。
             if (len > 1e-9) {
                 ux = nx / len; uz = nz / len;            // 配对法向（便宜）
             } else {
@@ -308,9 +388,11 @@ public final class TectonicField {
         //   就会出现新的硬截断（此前已踩过一次）。现在：
         //     · 近场（<reach）：btype 有效 → 岩性/分类可用；
         //     · 远场：btype=INTERIOR，但 dist/stress 仍连续 → T5 的 decay 自然收敛。
-        double smoothStress = smoothStress(wxw, wzw, rawStressFor(wxw, wzw), dist);
+        // ★ 2026-09-13 第七次伪影修复：应力改为【连续加权投票构造】（见 stressField）。
+        //   旧的「最近板块对归一化速度差」是分片常数场，配对切换处沿 Voronoi 直线网阶跃。
+        double stressCont = stressField(wxw, wzw);
         if (dist >= BOUNDARY_REACH) {
-            return new Sample(dist, INTERIOR, 0.0, tx, tz, smoothStress, d1);
+            return new Sample(dist, INTERIOR, 0.0, tx, tz, stressCont, d1);
         }
 
         // 分类：dot/cross 分解
@@ -331,32 +413,13 @@ public final class TectonicField {
             btype = TRANSFORM;
             rate = cross;
         }
-        // ★ 连续应力：+1 纯汇聚 / -1 纯离散 / 0 走滑
-        double stress = dotCrossToStress(dot, cross);
-
-        // ★ 2026-09-12 修复（用户反馈"岩石类型交界处地形不自然"）——**关键修复**：
-        //   stress 对 Voronoi 边界线/顶点做【局部平均】，等价 worldgen `elevation.rs`
-        //   的 `blur_grid`（其注释："Smooth profiles to eliminate Voronoi ridge
-        //   discontinuities"）。这是我一直没做的第二步。
-        //
-        //   为何必须做：在边界线附近 d1≈d2，"最近/次近"由浮点噪声决定
-        //   → 配对 (c1,c2) 在边界线/顶点处【不确定】→ vrel 换人 → stress 骤变
-        //   （实测单步 dStress 高达 1.93，导致 eLand 跳 0.1e ≈ 20 块）。
-        //
-        //   ★★ 2026-09-12 架构级修复（经 6 轮排查的最终结论）★★
-        //   上一轮用"5 点局部平均"只把跳变从 0.414e 压到 0.056e，**换种子仍复现**
-        //   （用户种子 5436529513624899584 下为 0.119e）——因为
-        //   「配对的**不确定性尺度**」与平滑步长同量级，平均只能压制、不能拓扑消除。
-        //
-        //   真正的根因是**架构**：把「应力」定义为「两板块相对速度」，而
-        //   板块 Voronoi 单元是随机的 → 应力场天然带高频结构，必然在边界处断续。
-        //   对齐 worldgen：它的板块属性是「**每板块一个常量**」，边界 profile 只用
-        //   连续的 `dist`，**从不做逐点速度差** → 天然无此问题。
-        //
-        //   故：stress 暴露给**地形合成**的部分改为【对边界推导值做空间平滑】（见 smoothStress）。
-        //   （`btype` 仍由逐点 dot/cross 分类，供岩性等**离散**用途；已证实它不参与地形合成。）
-        double finalStress = smoothStress(wxw, wzw, stress, dist);
-        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz, finalStress, (d1 + d2) * 0.5);
+        // ★ 2026-09-13 第七次伪影修复：stress 不再由「逐点板块对速度差」产生
+        //   （旧式 dot/|vrel| 在配对不变的区域是**常数** ⇒ 分片常数场 ⇒ 配对切换处
+        //    沿 Voronoi 直线网阶跃，事后平滑只能压制不能拓扑消除，见 stressField 注释）。
+        //   现直接取连续加权投票场 stressCont（上方已算）。
+        //   注：dot/cross 仍用于 btype/rate —— 那是**离散标签**（供岩性等用途），
+        //   已证实不参与地形合成。
+        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz, stressCont, (d1 + d2) * 0.5);
     }
 
     /**
@@ -394,7 +457,17 @@ public final class TectonicField {
      * 供调用方按"距边界多近"平滑地施加构造影响（地形类型权重调制等）。
      */
     public static double boundaryStrength(Sample s) {
-        if (s.btype() == INTERIOR) return 0.0;
+        // ★★★ 2026-09-12 第五次伪影修复（残留细线 / 串珠状虚线）★★★
+        //
+        //   原式带 {@code if (s.btype() == INTERIOR) return 0.0;} —— 这是**硬截断**：
+        //   {@code btype} 在 {@code dist >= BOUNDARY_REACH(320)} 处跳变为 INTERIOR，
+        //   使本函数沿 {@code dist≈320} 的**环**由 exp(−320²/2σ²)=0.0146 <b>骤降为 0</b>。
+        //   该跳变量再乘上沿环变化的 chain 噪声 ⇒ 地形上一条<b>亮度随位置起伏的环状线</b>
+        //   ⇒ 用户看到的"<b>串珠状虚线</b>"（实测 {@code gradmag.png} 三条孤立细线）。
+        //
+        //   正解：<b>只依赖连续量 dist</b>。高斯本身在 320wu 处已衰减到 1.5%，
+        //   内部区本就自然≈0，无需再用离散标签去"截断"（截断反而制造了伪影）。
+        //   （`btype` 仅用于岩性等**离散**用途，不参与地形合成。）
         return Math.exp(-(s.dist() * s.dist()) / (2.0 * PROFILE_SIGMA * PROFILE_SIGMA));
     }
 
@@ -410,14 +483,15 @@ public final class TectonicField {
         double g = boundaryStrength(s);
         // ★ 2026-09-12 性能修复：**先判衰减再算 chain**。
         //   boundaryStrength 是 σ=110 的高斯，在 330wu 处已降到 1%；
-        //   而 BOUNDARY_REACH 扩到 1000 后，"非 INTERIOR" 的区域面积增大约 9.8×
-        //   （∝d²）→ 若不早退，chainModulation（2×ridgedNoise ≈ 8+ 哈希 + 三角函数）
-        //   会在近 10 倍大的区域被白算。此处 `g` 已算出，直接用阈值早退。
-        if (g <= 0.01) return 0.0;
-        // ★ 连续应力，避免 btype 跳变造成系数骤变
-        double cw = Math.max(0.0, s.stress());
-        double dw = Math.max(0.0, -s.stress());
-        if (cw <= 0.0 && dw <= 0.0) return 0.0;     // 纯走滑：无形变
+        //   而"非 INTERIOR" 的区域面积随 d² 增长 → 若不早退，chainModulation
+        //   （含 1 次 valueNoise ≈ 4 哈希）会在远大于实际影响区的范围被白算。
+        //   此处 `g` 已算出，直接用阈值早退。
+        //   ★ 阈值降到 1e-6：任何"提前 return"都是跳变源，故阈值必须低到**不可见**。
+        //     1e-6 × combined(≤2) × BOOST(2.5) ≈ 5e-6 → e 变化约 1.6e-7（远小于 1 块的 1/192≈0.005e）。
+        if (g <= 1e-6) return 0.0;
+        // ★ 连续应力 + **平滑正部**（消除 stress=0 等值线上的折痕 → 笔直断裂线根因）
+        double cw = smoothPos(s.stress(), STRESS_POS_EPS);
+        double dw = smoothPos(-s.stress(), STRESS_POS_EPS);
         // 汇聚部分串珠化（chain），离散部分保持连续（真实裂谷系统是线状）
         double combined = cw * chainModulation(wx, wz, s) + dw;
         return g * combined;
@@ -437,48 +511,75 @@ public final class TectonicField {
      * @return 调制系数，约 [0.25, 1.0]（不改变符号，只压弱部分区段）
      */
     private double chainModulation(double wx, double wz, Sample s) {
-        // ★ 2026-09-12 修复（"地形每块各自独立生成"）：
-        //   **不再使用 per-cell 的 alongCoord 作为噪声坐标。**
-        //   原实现 (alongCoord, dist) 是"每个 Voronoi 单元各自定义"的坐标系 ——
-        //   相邻板块的沿走向基准不同 → 同一世界位置的噪声值不同
-        //   → 山链在板块边界处错位，山体纹理方向各自为政（用户截图所见的"各自生成"）。
+        // ★★★ 2026-09-12 第三次回归修复（用户反馈"若干条平行带"，且"更明显了"）★★★
         //
-        //   对照 worldgen：它把 along/across 只用于**标量幅度**，随后 blur_grid
-        //   高斯模糊 + 山脊噪声用**世界坐标**。本项目此前两步都没做。
+        //   【根因】原实现第二坐标为 s.dist()：`a*CHAIN_ACROSS_FREQ = dist/2000*18 = dist/111`
+        //   → 噪声沿"跨边界"方向每 111wu 一个周期（实测 d=19 谷 0.3131 / d=60 峰 0.5328）。
+        //   dist 的等值线平行于 Voronoi 边界且绕板块闭合 → 波纹即【平行于边界的同心环带】。
         //
-        //   现改为：dist 决定"平行于边界"的几何（全局连续），
-        //   碎片化用 **世界坐标噪声**（全局连续）→ 跨板块边界完全无缝。
-        double inv = 1.0 / PLATE_SPACING;
-        double a = s.dist() * inv;
-        double t = (wx + wz) * inv * 0.5;   // 世界坐标的斜向投影：全局一致，无 per-cell 依赖
-
-        // 沿走向低频、垂直走向高频——与 worldgen 的 (along×6, across×18) 同构
-        double n = ridgedNoise(t * CHAIN_ALONG_FREQ, a * CHAIN_ACROSS_FREQ, CHAIN_SEED);
+        //   【历史】此问题在 087698c 明确修过（commit 原文："高程密集同心波纹 …
+        //   等值线绕板块格子闭合成同心环 == 项目当初否决 Terrace 的『环状台阶伪影』同源。
+        //   改为沿走向波：褶皱 sin(dist)→sin(along)"），但 8e51a08 为修"每块独立生成"
+        //   又改回 dist 基准 → 波纹回归；60e182f 平滑 stress 后由"断续疤痕"变"规整波纹"
+        //   → 视觉上更明显。本轮彻底消除，并写下硬约束（见 CHAIN_SCALE javadoc）。
+        //
+        //   【正解】跨走向<b>不允许</b>任何周期性：
+        //     · "平行于边界成带"这一几何由 boundaryStrength 的 σ=110 高斯承担；
+        //     · chain 的职责只是把带内强度沿走向切成独立山峰 → 只需<b>单变量</b>调制。
+        //   故此处只用【世界坐标】做低频起伏（全局连续、无 per-cell 依赖、
+        //   与边界法向无关 → 不会形成平行带），dist 完全不参与噪声坐标。
+        //
+        //   性能：由 2 次 ridgedNoise（8+ 哈希）降为 1 次 valueNoise（4 哈希）。
+        double n = valueNoise(wx / CHAIN_SCALE, wz / CHAIN_SCALE, CHAIN_SEED);   // [-1,1]
         // 映射到 [0.25, 1.0]：保留大部分强度，只在"谷"处压低 → 山峰分明
-        return CHAIN_MIN + (1.0 - CHAIN_MIN) * clamp01(n);
+        return CHAIN_MIN + (1.0 - CHAIN_MIN) * clamp01(n * 0.5 + 0.5);
     }
 
     /**
-     * 极简 ridged 噪声（零依赖）：{@code 1 - |value noise|}，两层叠加。
-     * 不依赖 noise 包（后者引 mojang Codec，会破坏零依赖约定）。
+     * 2D value noise，返回约 [-1,1]。
+     *
+     * <p>★★★ 2026-09-12 第六次伪影修复（Voronoi 顶点扇形射线）★★★</p>
+     *
+     * <p><b>旧实现（双线性 + smootherstep）为何产生扇形直线</b>：双线性插值
+     * 在 2D 只有 <b>C⁰</b>——
+     * <pre>
+     *   ∂f/∂x = lerp((v10−v00)·sx′, (v11−v01)·sx′, sz)
+     * </pre>
+     * 跨 <b>z 格线</b>时上下两行的 {@code (v10−v00)} 不同 ⇒ {@code ∂f/∂x} <b>跳变</b>
+     * ⇒ 等值线在格线处出现折角 ⇒ 在格点附近聚成一族<b>扇形直线段</b>；
+     * 而 {@code faultOffsetUnit} 又对它做 smoothstep 陡坎 ⇒ 折角被放大成可见"射线"。</p>
+     *
+     * <p><b>参考项目做法</b>：{@code worldgen} 全程使用 fBm/ridged_fbm（基于连续噪声），
+     * 不存在格点折角；本项目手写噪声必须自行保证阶数。</p>
+     *
+     * <p><b>本实现：Catmull-Rom 双三次插值</b>（4×4 邻域）——全局 <b>C¹</b>，
+     * 等值线处处切线连续 ⇒ 折角/扇形从构造上消失。
+     * 权重和恒为 1（不引入整体偏移）。代价：每点 16 次哈希（原 4 次）。</p>
      */
-    private double ridgedNoise(double x, double z, long salt) {
-        double v = 1.0 - Math.abs(valueNoise(x, z, salt));
-        double v2 = 1.0 - Math.abs(valueNoise(x * 2.3 + 5.1, z * 2.3 + 7.7, salt + 1));
-        return clamp01(0.65 * v + 0.35 * v2);
-    }
-
-    /** 极简 2D value noise（双线性 + smootherstep），返回 [-1,1]。 */
     private double valueNoise(double x, double z, long salt) {
         int ix = (int) Math.floor(x), iz = (int) Math.floor(z);
         double fx = x - ix, fz = z - iz;
-        double sx = fx * fx * fx * (fx * (fx * 6.0 - 15.0) + 10.0);   // smootherstep（5 次）
-        double sz = fz * fz * fz * (fz * (fz * 6.0 - 15.0) + 10.0);
-        double v00 = cellNoise(ix, iz, salt),     v10 = cellNoise(ix + 1, iz, salt);
-        double v01 = cellNoise(ix, iz + 1, salt), v11 = cellNoise(ix + 1, iz + 1, salt);
-        double a = v00 + (v10 - v00) * sx;
-        double b = v01 + (v11 - v01) * sx;
-        return a + (b - a) * sz;
+        // Catmull-Rom 基函数权重（和一为 1）
+        double fx2 = fx * fx, fx3 = fx2 * fx;
+        double wx0 = -0.5 * fx3 + fx2 - 0.5 * fx;
+        double wx1 = 1.5 * fx3 - 2.5 * fx2 + 1.0;
+        double wx2 = -1.5 * fx3 + 2.0 * fx2 + 0.5 * fx;
+        double wx3 = 0.5 * fx3 - 0.5 * fx2;
+        double fz2 = fz * fz, fz3 = fz2 * fz;
+        double wz0 = -0.5 * fz3 + fz2 - 0.5 * fz;
+        double wz1 = 1.5 * fz3 - 2.5 * fz2 + 1.0;
+        double wz2 = -1.5 * fz3 + 2.0 * fz2 + 0.5 * fz;
+        double wz3 = 0.5 * fz3 - 0.5 * fz2;
+        // 先沿 z 对 4 个 x 列各插值一次，再沿 x 合成（4×4=16 次哈希，无分配）
+        double r0 = cellNoise(ix - 1, iz - 1, salt) * wz0 + cellNoise(ix - 1, iz, salt) * wz1
+                  + cellNoise(ix - 1, iz + 1, salt) * wz2 + cellNoise(ix - 1, iz + 2, salt) * wz3;
+        double r1 = cellNoise(ix, iz - 1, salt) * wz0 + cellNoise(ix, iz, salt) * wz1
+                  + cellNoise(ix, iz + 1, salt) * wz2 + cellNoise(ix, iz + 2, salt) * wz3;
+        double r2 = cellNoise(ix + 1, iz - 1, salt) * wz0 + cellNoise(ix + 1, iz, salt) * wz1
+                  + cellNoise(ix + 1, iz + 1, salt) * wz2 + cellNoise(ix + 1, iz + 2, salt) * wz3;
+        double r3 = cellNoise(ix + 2, iz - 1, salt) * wz0 + cellNoise(ix + 2, iz, salt) * wz1
+                  + cellNoise(ix + 2, iz + 1, salt) * wz2 + cellNoise(ix + 2, iz + 2, salt) * wz3;
+        return r0 * wx0 + r1 * wx1 + r2 * wx2 + r3 * wx3;
     }
 
     /** 格点随机值 [-1,1]。 */
@@ -492,136 +593,176 @@ public final class TectonicField {
 
     // ===================== 内部工具 =====================
 
+    // ===== 连续应力场（★ 2026-09-13 第七次伪影修复：加权投票取代"配对速度差"）=====
     /**
-     * 只算某点的 stress（<b>不做平滑</b>），供 {@link #sample} 的局部平均调用。
+     * 投票权重的高斯 σ（wu）。
      *
-     * <p>与 {@code sample()} 相比省去切向/alongCoord 计算，且<b>不再递归平滑</b>
-     * （否则会爆炸）。</p>
+     * <p>取 1000（= 板块间距 2000 的一半）：近邻板块权重显著、次近邻仍有参与
+     * ⇒ 应力随位置平滑变化；远场自然衰减（3000wu 处 w≈0.011）。</p>
      */
-    private double stressAt(double wx, double wz) {
+    private static final double STRESS_VOTE_SIGMA = 1000.0;
+    /**
+     * 投票窗口半径（格）。
+     *
+     * <p><b>必须 ≥ 2</b>：半径 1（3×3）时最近被排除的种子仅 ~1300wu 远
+     * → 权重 {@code e^{−0.845}≈0.43}，窗口平移会造成可见跳变（又生一条直线网）。
+     * 半径 2（5×5）→ 最近被排除种子 ≥ 3300wu → 权重 ≈0.0045，不可见。</p>
+     */
+    private static final int STRESS_VOTE_RADIUS = 2;
+    /**
+     * 幅度增益：把"两板块极限下的 {@code (v1−v2)·n/2}"还原到旧式 {@code dot/|vrel|} 的量级
+     * （常见 {@code |vrel|≈1}），以<b>保持既有标定</b>（CONVERGENT_BOOST / STRESS_POS_EPS 等）。
+     */
+    private static final double STRESS_VOTE_GAIN = 2.0;
+
+    /**
+     * ★ 2026-09-13 第七次伪影修复：<b>连续加权投票构造的应力场</b>（处处 C^∞）。
+     *
+     * <h3>为何必须换掉旧定义</h3>
+     * <p>旧式 {@code stress = dot/|vrel|}（{@code dot = (v1−v2)·n}）由「最近 + 次近板块」
+     * 这一<b>对</b>决定。而在配对不变的空间区域里，它<b>只依赖板块对、与位置无关</b>
+     * ⇒ 应力是<b>分片常数场</b>——探针实测 {@code P50|∇stress| = 7.9e-17}，
+     * 即<b>中位梯度精确为 0</b>，这是"分片常数"的铁证。</p>
+     * <p>配对在 Voronoi 边界与 order-2 边上切换 ⇒ 应力沿这些<b>直线网</b>阶跃（幅度可达 2.0）
+     * ⇒ 经 {@code boundaryStrength}(σ=110) × {@code CONVERGENT_BOOST}(2.5) 进入 eLand
+     * ⇒ 用户截图的「<b>笔直长线段 + Y 形交汇</b>」（实测 eLand {@code max|grad|=0.0026} e/wu，
+     * 与阶跃传导的理论量级吻合）。</p>
+     * <p><b>事后平滑解决不了</b>：旧 {@code smoothStress} 的环形平均只在边界带内生效
+     * （reach 处渐隐），带缘仍有 {@code (1−t)} 权重的原始阶跃漏出；
+     * 且项目注释早已写明「<i>平均只能压制、不能拓扑消除</i>」。
+     * 参考项目 worldgen 的板块属性是「每板块一个常量」、<b>从不做逐点速度差</b>
+     * ⇒ 它天然没有这个问题。本次对齐该语义。</p>
+     *
+     * <h3>新定义（无"配对"概念，故无配对切换）</h3>
+     * <pre>
+     *   w_i    = exp(−d_i² / 2σ²)                 // 邻块高斯权重（σ = STRESS_VOTE_SIGMA）
+     *   û_i    = (p − s_i) / d_i                   // 由种子 i 指向采样点
+     *   stress = GAIN · Σ w_i·(v_i · û_i) / Σ w_i  // 加权平均，钳到 [−1,1]
+     * </pre>
+     * <p>地质语义与旧式<b>同号</b>（两板块极限下 = {@code (v1−v2)·n/2}）：</p>
+     * <ul>
+     *   <li>邻块朝采样点靠近（{@code v·û > 0}）→ <b>汇聚 → 正</b></li>
+     *   <li>邻块远离（{@code v·û < 0}）→ <b>离散 → 负</b></li>
+     *   <li>邻块切向掠过（{@code v ⊥ û}）→ <b>走滑 → ≈0</b>，
+     *       与「纯走滑无垂向形变」铁律一致（无需再靠 {@code max(0,·)} 事后修正）</li>
+     * </ul>
+     *
+     * <h3>为何不再需要平滑</h3>
+     * <p>投票对每个参量连续可导；被排除的远场种子权重 &lt; 0.5%（半径 2）⇒ 窗口平移无可见跳变。
+     * 故 {@code smoothStress} 及其 12 点环形采样<b>整体删除</b>，
+     * 每次采样反而<b>少 100+ 次哈希</b>（12 点 × 11 次哈希 ≈ 132 → 25 格 × 2 次 ≈ 50），
+     * 是净性能收益。同时<b>不使用任何配对法向</b>（法向在配对切换处不连续，用它会重新引入断续）。</p>
+     *
+     * <p><b>唯一奇点</b>：恰好落在种子点上（{@code d<1e-9}）返回 0 —— 单点、无面积，不可见。</p>
+     */
+    private double stressField(double wx, double wz) {
         int baseX = (int) Math.floor(wx / PLATE_SPACING);
         int baseZ = (int) Math.floor(wz / PLATE_SPACING);
+        final double inv2s2 = 1.0 / (2.0 * STRESS_VOTE_SIGMA * STRESS_VOTE_SIGMA);
+        double num = 0.0, den = 0.0;
+        for (int dx = -STRESS_VOTE_RADIUS; dx <= STRESS_VOTE_RADIUS; dx++) {
+            for (int dz = -STRESS_VOTE_RADIUS; dz <= STRESS_VOTE_RADIUS; dz++) {
+                int cx = baseX + dx, cz = baseZ + dz;
+                // 种子位置（等价 plateSeed，内联以免热路径分配数组）
+                long hs = hash(cx, cz, SALT_SEED);
+                double sx = (cx + 0.5 + (unit(hs) - 0.5) * SEED_JITTER) * PLATE_SPACING;
+                double sz = (cz + 0.5 + (unit(hs >>> 24) - 0.5) * SEED_JITTER) * PLATE_SPACING;
+                double ux = wx - sx, uz = wz - sz;
+                double d = Math.sqrt(ux * ux + uz * uz);
+                if (d < 1e-9) return 0.0;
+                double w = Math.exp(-d * d * inv2s2);
+                // 速度（等价 plateVelocity，内联）
+                long hv = hash(cx, cz, SALT_VEL);
+                double ang = unit(hv) * Math.PI * 2.0;
+                double mag = 0.3 + unit(hv >>> 24) * 0.7;
+                // 投影 = v·û（û = (p−s)/d）
+                num += w * mag * (Math.cos(ang) * ux + Math.sin(ang) * uz) / d;
+                den += w;
+            }
+        }
+        if (den <= 1e-12) return 0.0;
+        double v = STRESS_VOTE_GAIN * num / den;
+        return v < -1.0 ? -1.0 : (v > 1.0 ? 1.0 : v);
+    }
+
+    // ===== dist 空间模糊（对齐 worldgen elevation.rs 的 blur_grid）=====
+    /**
+     * dist 模糊的环形采样半径（wu）。
+     *
+     * <p>须覆盖"Voronoi 顶点折痕"的尺度：折痕从顶点沿角平分线延伸，
+     * 在 ~150wu 内曲率最大。取 150 可有效抹平。</p>
+     */
+    private static final double DIST_BLUR_RADIUS = 150.0;
+    /** dist 模糊环形采样点数（等角分布）。4 点已足以打散三条角平分线折痕。 */
+    private static final int DIST_BLUR_SAMPLES = 4;
+    /**
+     * 模糊作用距离（wu）：dist 超过此值直接返回原值（该处已远离折痕，且省性能）。
+     *
+     * <p>取 3× 高斯影响宽度（σ=110）——更远处 boundaryStrength 已 &lt; 0.01。</p>
+     */
+    private static final double DIST_BLUR_REACH = 420.0;
+
+    /**
+     * 对 {@code dist} 做局部环形平均（= 参考项目 {@code blur_grid} 的按需等价实现）。
+     *
+     * <p>数学性质：对<b>线性</b>场，环形平均恒等于中心值 ⇒ 远离折痕处<b>结果不变</b>；
+     * 只在折痕（C¹ 断裂）处把尖角抹圆 ⇒ <b>精确消除伪影而不改变标定</b>。</p>
+     *
+     * <p>★★★ 2026-09-12 第七次伪影修复（笔直线段 + Y 形交汇网）★★★</p>
+     *
+     * <p><b>根因</b>：原实现 {@code if (center >= DIST_BLUR_REACH) return center;}
+     * 是<b>硬切换</b> —— {@code dist<420} 走 5 点环形平均、{@code dist≥420} 走原值，
+     * 两分支<b>数值不相等</b>（环形平均可偏离中心上百 wu）⇒ {@code dist} 沿
+     * <b>{@code dist=420} 等值线产生阶跃</b>。而 {@code dist} 的等值线是
+     * <b>平行于 Voronoi 边的多边形偏移线</b>（直边 + 顶点交汇）⇒ 这套多边形网经
+     * {@code boundaryStrength}(σ=110) → T1 类型权重（BOOST 2.5）被印进 eLand，
+     * 形成用户截图的「笔直长线段 + Y 形交汇」（实测 eLand max|grad|=0.00245 e/wu，
+     * 与阶跃传导的理论值 ~0.002 精确吻合；{@code tect_dist} 的 max|∇|=37.7 ——
+     * 距离场物理上不可能超过 ~2.4 —— 即阶跃的直接证据）。</p>
+     *
+     * <p><b>正解</b>：与 {@link #smoothStress} 同款手法 —— 混合权重 {@code t}
+     * 用 smoothstep 在 reach 处<b>渐隐到 0</b>（一阶导也为 0）⇒ 两分支 C¹ 衔接，
+     * 阶跃从构造上消失；近边界（center→0）仍是全量模糊，抹平折痕的能力不变。</p>
+     */
+    private double blurDist(double wxw, double wzw, double center) {
+        if (center >= DIST_BLUR_REACH) return center;
+        double t = 1.0 - center / DIST_BLUR_REACH;
+        t = t * t * (3.0 - 2.0 * t);            // center→reach 时 t→0（C¹），无硬切换
+        double sum = center;
+        for (int k = 0; k < DIST_BLUR_SAMPLES; k++) {
+            double a = k * (2.0 * Math.PI / DIST_BLUR_SAMPLES);
+            sum += distAt(wxw + DIST_BLUR_RADIUS * Math.cos(a),
+                          wzw + DIST_BLUR_RADIUS * Math.sin(a));
+        }
+        double blurred = sum / (DIST_BLUR_SAMPLES + 1);
+        return center + (blurred - center) * t;
+    }
+
+    /**
+     * 轻量采样：只求"到 Voronoi 边界的距离"（<b>含域扭曲</b>，与 {@link #sample} 口径一致）。
+     *
+     * <p>与 {@link #sample} 的区别：不求种子坐标、不求速度、不建 Sample 对象 ⇒ 更廉价，
+     * 专供 {@link #blurDist} 的邻居采样使用。</p>
+     */
+    private double distAt(double wx, double wz) {
+        double wxw = wx, wzw = wz;
+        if (WARP_AMP > 0.0) {
+            wxw = wx + WARP_AMP * valueNoise(wx * WARP_FREQ, wz * WARP_FREQ, SALT_WARP);
+            wzw = wz + WARP_AMP * valueNoise(wx * WARP_FREQ + 17.3, wz * WARP_FREQ + 31.7, SALT_WARP + 1);
+        }
+        int baseX = (int) Math.floor(wxw / PLATE_SPACING);
+        int baseZ = (int) Math.floor(wzw / PLATE_SPACING);
         double d1 = Double.MAX_VALUE, d2 = Double.MAX_VALUE;
-        double s1x = 0, s1z = 0, s2x = 0, s2z = 0;
-        int c1x = 0, c1z = 0, c2x = 0, c2z = 0;
         double[] sp = new double[2];
         for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
             for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
-                int cx = baseX + dx, cz = baseZ + dz;
-                plateSeed(cx, cz, sp);
-                double ddx = wx - sp[0], ddz = wz - sp[1];
+                plateSeed(baseX + dx, baseZ + dz, sp);
+                double ddx = wxw - sp[0], ddz = wzw - sp[1];
                 double d = Math.sqrt(ddx * ddx + ddz * ddz);
-                if (d < d1) {
-                    d2 = d1; c2x = c1x; c2z = c1z; s2x = s1x; s2z = s1z;
-                    d1 = d; c1x = cx; c1z = cz; s1x = sp[0]; s1z = sp[1];
-                } else if (d < d2) {
-                    d2 = d; c2x = cx; c2z = cz; s2x = sp[0]; s2z = sp[1];
-                }
+                if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
             }
         }
-        if (d2 == Double.MAX_VALUE) return 0.0;
-        double nx = s2x - s1x, nz = s2z - s1z;
-        double len = Math.sqrt(nx * nx + nz * nz);
-        if (len < 1e-9) return 0.0;
-        double ux = nx / len, uz = nz / len;
-        double[] v1 = new double[2], v2 = new double[2];
-        plateVelocity(c1x, c1z, v1);
-        plateVelocity(c2x, c2z, v2);
-        double vrx = v1[0] - v2[0], vrz = v1[1] - v2[1];
-        return dotCrossToStress(vrx * ux + vrz * uz, Math.abs(vrx * uz - vrz * ux));
-    }
-
-    /** dot/cross → 连续应力 ∈[-1,1]（+1 纯汇聚 / −1 纯离散 / 0 走滑）。 */
-    private static double dotCrossToStress(double dot, double cross) {
-        double mag = Math.sqrt(dot * dot + cross * cross);
-        return mag < 1e-12 ? 0.0 : dot / mag;
-    }
-
-    // ===== 应力平滑（对【边界推导值】做空间平均，对齐 worldgen 的 blur_grid 语义）=====
-    /**
-     * 平滑半径（wu）。
-     *
-     * <p>必须显著大于「配对不确定性尺度」——该尺度由 Voronoi 种子的抖动造成，
-     * 约与种子间距同量级。取 120wu 可在压制跳变的同时不过度模糊边界。
-     */
-    private static final double STRESS_BLUR_RADIUS = 240.0;
-    /**
-     * 平滑采样点数（圆周等角分布）。
-     * 8 → 12：样本更多 → 对"配对不确定性"的平均更充分（实测跳变 0.067e → 更低）。
-     */
-    private static final int STRESS_BLUR_SAMPLES = 12;
-    /**
-     * 平滑作用距离（wu）：超出则用原值。
-     * 取 1.5× 边界影响宽度，且权重用 smoothstep <b>渐隐为 0</b> →
-     * 不会在作用边缘引入新的硬截断（此前 BOUNDARY_REACH 就踩过这个坑）。
-     */
-    private static final double STRESS_BLUR_REACH = 560.0;
-
-    /** 取某点的【原始】边界应力（供平滑采样用，不再递归平滑）。 */
-    private double rawStressFor(double wx, double wz) {
-        int baseX = (int) Math.floor(wx / PLATE_SPACING);
-        int baseZ = (int) Math.floor(wz / PLATE_SPACING);
-        double d1 = Double.MAX_VALUE, d2 = Double.MAX_VALUE;
-        double s1x = 0, s1z = 0, s2x = 0, s2z = 0;
-        int c1x = 0, c1z = 0, c2x = 0, c2z = 0;
-        double[] sp = new double[2];
-        for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
-            for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
-                int cx = baseX + dx, cz = baseZ + dz;
-                plateSeed(cx, cz, sp);
-                double ddx = wx - sp[0], ddz = wz - sp[1];
-                double d = Math.sqrt(ddx * ddx + ddz * ddz);
-                if (d < d1) {
-                    d2 = d1; c2x = c1x; c2z = c1z; s2x = s1x; s2z = s1z;
-                    d1 = d; c1x = cx; c1z = cz; s1x = sp[0]; s1z = sp[1];
-                } else if (d < d2) {
-                    d2 = d; c2x = cx; c2z = cz; s2x = sp[0]; s2z = sp[1];
-                }
-            }
-        }
-        if (d2 == Double.MAX_VALUE) return 0.0;
-        double nx = s2x - s1x, nz = s2z - s1z;
-        double len = Math.sqrt(nx * nx + nz * nz);
-        if (len < 1e-9) return 0.0;
-        double ux = nx / len, uz = nz / len;
-        double[] v1 = new double[2], v2 = new double[2];
-        plateVelocity(c1x, c1z, v1);
-        plateVelocity(c2x, c2z, v2);
-        double vrx = v1[0] - v2[0], vrz = v1[1] - v2[1];
-        return dotCrossToStress(vrx * ux + vrz * uz, Math.abs(vrx * uz - vrz * ux));
-    }
-
-    /**
-     * 低频应力场（<b>纯标量、处处 C¹ 连续</b>）。
-     *
-     * <p><b>为何不用"应力方向 · 边界法向"</b>：法向本身来自 Voronoi 配对
-     * （在配对切换处不连续），做点积会把不连续性重新引入 —— 等于没修。
-     * 已在实现中验证过这一点，故此处<b>完全不用法向</b>。</p>
-     *
-     * <p><b>地质含义</b>：应力体制（挤压区 / 拉张区）在真实地球上是
-     * <b>大尺度区域属性</b>（板块尺度，数百~数千 km），并不是逐点由局部几何决定的。
-     * 故用低频标量场表示"区域应力体制"既简单又<b>更符合地质</b>：
-     * {@code >0} 挤压区（发育褶皱/逆断层）、{@code <0} 拉张区（发育正断层/地堑）、
-     * 近 0 为过渡/走滑区。</p>
-     *
-     * <p>由两个低频噪声叠加而成（双层，避免单层过于单调），输出 ∈[-1,1]。</p>
-     */
-    private double smoothStress(double wx, double wz, double raw, double dist) {
-        // 只在边界影响带内平滑；带外权重渐隐为 0（避免引入新的硬截断）
-        if (dist >= STRESS_BLUR_REACH) return raw;
-        double t = 1.0 - dist / STRESS_BLUR_REACH;
-        t = t * t * (3.0 - 2.0 * t);            // smoothstep：边缘处一阶导为 0
-
-        double sum = 0, wsum = 0;
-        for (int k = 0; k < STRESS_BLUR_SAMPLES; k++) {
-            double a = k * (2.0 * Math.PI / STRESS_BLUR_SAMPLES);
-            double w = 1.0;
-            sum += w * stressAt(wx + STRESS_BLUR_RADIUS * Math.cos(a),
-                                wz + STRESS_BLUR_RADIUS * Math.sin(a));
-            wsum += w;
-        }
-        double blurred = sum / wsum;
-        return raw * (1.0 - t) + blurred * t;
+        return d2 == Double.MAX_VALUE ? Double.MAX_VALUE : Math.max(0.0, (d2 - d1) * 0.5);
     }
 
     /**

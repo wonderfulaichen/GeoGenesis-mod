@@ -242,7 +242,27 @@ public class PreviewDisplay extends AbstractWidget {
     // 30 = 2026-09-10 气候双轨（Cell.biomeType 参与群系；eClimate/snowLineE 参与垂直带与雪）
     // ⚠ 任何影响 Cell 采样结果的代码改动都必须递增本版本，否则旧磁盘缓存会被静默复用，
     //   表现为"改了没生效 / 新旧数据混成矩形块"。
-    private static final int CACHE_SCHEMA_VERSION = 34;
+    // 35 = 2026-09-12 地质伪影修复（T5 断层去量化 + 褶皱脊线圆化 + T2 chain 去平行带
+    //      + T3 高原去 pow 奇点）→ 地形产出变化，旧缓存必须失效
+    // 36 = 2026-09-12 平滑正部（max(0,stress) → smoothPos）+ 去硬截断跳变
+    //      → 消除沿 stress=0 等值线的折痕（笔直断裂线根因）
+    // 37 = 2026-09-12 域扭曲改短波长(400wu)/低幅度(130) → 板块边界不再呈"笔直断裂线"
+    // 38 = 2026-09-12 boundaryStrength 去掉 btype==INTERIOR 硬截断（dist≈320 环状跳变线/串珠虚线）
+    // 39 = 2026-09-12 dist 环形模糊（对齐 worldgen elevation.rs 的 blur_grid）
+    //      → 消除 Voronoi 顶点折痕（扇形射线/竖带）
+    // 40 = 2026-09-12 valueNoise 升级 Catmull-Rom 双三次（C¹）→ 消除格线折角/扇形直线
+    // 41 = 2026-09-12 T5 定位改用世界坐标构造带掩码 beltMask（reach 900/700→2600）
+    //      → 不再把 Voronoi 多边形的直边/折角印到地形上
+    // 42 = 2026-09-12 ★ 撤销 HILLS/PLATEAU 的 |2n−1| 折叠（TypeNoiseProvider.foldHills）
+    //      → 消除"密集波浪状平行细线"（HILLS/PLATEAU 高通幅值 0.42/0.46 → 0.19/0.16；
+    //        折叠使梯度处处满值 + 频率翻倍 + 折痕成对等值线，三者叠加即伪影）
+    // 43 = 2026-09-12 ★ blurDist 硬切换改 smoothstep 渐隐（第七次伪影修复）
+    //      → 原版在 dist=420 等值线（= Voronoi 多边形偏移网）上产生 dist 阶跃，
+    //        经 boundaryStrength→T1 权重印进 eLand = "笔直线段 + Y 形交汇"伪影
+    // 44 = 2026-09-13 ★ stress 改为【连续加权投票构造】（删 smoothStress/配对速度差）
+    //      → 旧式应力是"分片常数场"（P50|∇|=7.9e-17），配对切换处沿 Voronoi
+    //        直线网阶跃 = 笔直线段 + Y 形交汇伪影的最终根因
+    private static final int CACHE_SCHEMA_VERSION = 44;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

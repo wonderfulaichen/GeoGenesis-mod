@@ -85,7 +85,10 @@ public final class TypeNoiseProvider {
 
         // --- PLATEAU v8（2026-08-07 用户："你到底有没有认真看丘陵代码"）---
         // v7/v7.1/v7.2 迭代都是错层打转。真正参考丘陵：频率只比丘陵宽一点（1.25x），
-        // 完全同结构（foldHills 全幅、Map(-1,1,0,1)），高原 vs 丘陵只在频率和 lo/hi。
+        // 完全同结构（Map(-1,1,0,1)），高原 vs 丘陵只在频率和 lo/hi。
+        // ★ 2026-09-12：原述"foldHills 全幅"已作废 —— 折叠已撤销（见 clampUnit），
+        //   高原与丘陵现仅差 ① 频率 1/500 vs 1/400 ② lo/hi（0.41/0.71 vs 0.06/0.18）
+        //   ③ 台顶压平（computePlateau 的 1−(1−c)^q）。
         Noise pMain      = new Frequency(new Simplex(422), 1.0 / 500.0);
         Noise pSub       = new Boost(new Frequency(new Simplex(423), 1.0 / 150.0), 0.5);
         Noise pBase      = new Add(pMain, pSub);
@@ -113,19 +116,52 @@ public final class TypeNoiseProvider {
     }
 
     /**
-     * 绝对值折叠（用户方案 2026-08-01，修正版）：|2n-1| —— 原谷底（n→0）翻成峰、原峰顶
-     * （n→1）保持峰、原中位（0.5）折叠成窄 V 沟 → 密集圆丘夹细沟，频率翻倍。
-     * 注意：初版误用 1-|2n-1|（反相）把原峰顶翻成谷底（用户指出"包反成谷"），已修正。
-     * 线性折叠保持均匀分布（高度分布不变），连续无断裂。
+     * 值域钳制（把噪声输出收进 [0,1]）。
+     *
+     * <p><b>★★★ 2026-09-12 第四次伪影修复（撤销折叠）★★★</b></p>
+     *
+     * <p>本函数<b>曾</b>实现绝对值折叠 {@code |2n−1|}（2026-08-01 起的方案）。
+     * 折叠的几何副作用被低估了，它是「密集波浪状平行细线」的直接来源：</p>
+     * <ol>
+     *   <li><b>频率翻倍</b>：{@code |2n−1|} 把单个原周期拆成两条脊 + 两条沟
+     *       → 等值线（等高线）数量直接翻倍、间距减半。</li>
+     *   <li><b>梯度恒定</b>：正弦在极值附近 {@code d/dx→0}（等高线自然稀疏），
+     *       而 {@code |2n−1|} 在<b>处处</b>保持满梯度 {@code 2A·2π/λ}
+     *       → 本该稀疏的缓坡区也铺满等高线 ⇒ <b>“密集”且“均匀”</b>。</li>
+     *   <li><b>crest 等值线成对</b>：n=0.5 处 V 形折痕两侧的等值线成对平行出现
+     *       → <b>“平行细线”</b>，且折痕轨迹本身是蜿蜒曲线 ⇒ <b>“波浪状”</b>。</li>
+     * </ol>
+     * <p>三者叠加正好复现用户反馈的“密集波浪状平行细线”。</p>
+     *
+     * <p><b>决定性实测证据</b>（同 seed 同渲染，{@code build/stripe/typeHP_*.png}，
+     * 高通幅值 = 减 12wu 窗口均值）：</p>
+     * <pre>
+     *   PLAIN     0.0025   ← 无折叠
+     *   MOUNTAINS 0.120    ← RWG 配方，不用折叠
+     *   BASIN     0.056    ← 碗形映射，不用折叠
+     *   HILLS     <b>0.425</b>    ← 用折叠，异常 170×
+     *   PLATEAU   <b>0.464</b>    ← 用折叠 + 顶部压平，异常 185×
+     * </pre>
+     * <p>HILLS 与 PLATEAU 的<b>唯一共同点</b>就是折叠 ⇒ 根因即折叠。</p>
+     *
+     * <p><b>为何上一版“圆化折痕”无效</b>：把折角用 {@code sqrt(x²+r²)−r} 圆化
+     * 只消除了二阶不连续，<b>脊谷交替结构与频率翻倍原样保留</b>
+     * （实测高通幅值仍 0.42）。方向错了 —— 正解是<b>去掉折叠</b>，不是软化折叠。
+     * 本项目 v8b 早有同类记载（折痕层在实机产生“规律性条纹/沙丘状图案”，
+     * v8c 靠删掉那层规避）。</p>
+     *
+     * <p><b>修复后代价与取舍</b>：丘体密度降回噪声自身的多频尺度
+     * （hillsNoise = 1/400 + 1/120 两频 + 25wu 域扭曲），不再有“频率翻倍”的密集小丘。
+     * 这是<b>有意</b>的取舍 —— 那正是伪影来源。值域仍为 [0,1]，下游高度分布不漂移。</p>
      */
-    private static double foldHills(double n) {
-        return Math.abs(2.0 * n - 1.0);
+    private static double clampUnit(double n) {
+        return n < 0.0 ? 0.0 : (n > 1.0 ? 1.0 : n);
     }
 
     public double computeNoise(TerrainClass type, double wx, double wz) {
         return switch (type) {
             case PLAIN     -> plainNoise.compute(wx, wz);
-            case HILLS     -> foldHills(hillsNoise.compute(wx, wz));
+            case HILLS     -> clampUnit(hillsNoise.compute(wx, wz));
             case MOUNTAINS -> computeMountain(wx, wz);
             case PLATEAU   -> computePlateau(wx, wz);
             case BASIN     -> computeBasin(wx, wz);   // ★ T3：碗形沉降
@@ -164,13 +200,31 @@ public final class TypeNoiseProvider {
      * 本式<b>保序且保低端范围</b>，只重塑高低端的梯度分配。
      */
     private double computePlateau(double wx, double wz) {
-        double v = foldHills(platNoise.compute(wx, wz));   // [0,1] 丘沟（保留大形态）
-        double c = v < 0 ? 0 : (v > 1 ? 1 : v);
-        return Math.pow(c, PLATEAU_TOP_POWER);
+        // ★ 2026-09-12：原为 foldHills(...)——折叠已撤销（见 clampUnit 注释），
+        //   与 HILLS 完全同构：platNoise 自带 1/500 + 1/150 两频 + 31wu 域扭曲。
+        //   高原 vs 丘陵的差异由此收敛为【纯频率差异】（1/500 vs 1/400）+ 下方压平。
+        double c = clampUnit(platNoise.compute(wx, wz));
+        // ★★★ 2026-09-12 第三次伪影修复：pow(c, 0.55) → 1−(1−c)^q ★★★
+        //
+        //   【为何必须改】pow(c, p) 在 p<1 时于 c→0 处导数 → ∞（数学奇点）。
+        //   而 c=0 恰是 foldHills 的折痕（谷底）——两者叠加把折痕放大成
+        //   【无限梯度的锐利细线】，这是"平行细线"伪影的直接放大器
+        //   （即使 foldHills 已圆化，pow 仍会把 c→0 附近重新拉成奇点）。
+        //
+        //   【新式】1−(1−c)^q（q>1）：同样"压高端使台顶变平"，但
+        //     · c→1 端导数 →0  → 台顶平（与原意一致）
+        //     · c→0 端导数 = q → 【有界】，无奇点
+        //   保留了 T3 的设计意图（台顶平、台缘有起伏），同时杜绝细线。
+        return 1.0 - Math.pow(1.0 - c, PLATEAU_TOP_FLATTEN);
     }
 
-    /** 高原顶部幂（&lt;1 = 压高端使台顶变平）。 */
-    private static final double PLATEAU_TOP_POWER = 0.55;
+    /**
+     * 高原台顶压平指数（&gt;1 = 压高端使台顶变平）。
+     *
+     * <p>由原 {@code PLATEAU_TOP_POWER = 0.55} 换算：{@code q ≈ 1/0.55 ≈ 1.8}，
+     * 保持台顶压平力度与 T3 标定接近（见 {@code TerrainShapeProbe} 的"台顶梯度 vs 台缘梯度"判据）。</p>
+     */
+    private static final double PLATEAU_TOP_FLATTEN = 1.8;
 
     /** 盆地碗形幂：>1 → 盆底平阔、向边缘快速抬升（真实沉积盆地的形态特征）。 */
     private static final double BASIN_BOWL_POWER = 2.2;
