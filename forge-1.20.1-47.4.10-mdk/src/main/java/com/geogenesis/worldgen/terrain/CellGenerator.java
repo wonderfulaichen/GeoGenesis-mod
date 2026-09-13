@@ -362,8 +362,8 @@ public final class CellGenerator {
             cell.rockLayer = strata.layerAt(sx, sz);
             boolean isLandShell = TectonicField.shellFromC(cBiased) > 0.5;
             cell.rockTypeId = StratumField.rockTypeId(tsAll, isLandShell, cell.rockLayer);
-            // ★ 2026-09-14 Phase T9：整条地层序列（打包）→ 供方块层铺【垂直岩层】
-            cell.rockSeqPacked = StratumField.packSequence(tsAll, isLandShell);
+            // ★ 2026-09-14 Phase T9/T9b：整条地层序列 + 各层厚度（打包）→ 供方块层铺垂直岩层
+            cell.rockSeqPacked = strata.packSequence(tsAll, isLandShell, sx, sz);
         }
 
         // ★ 2026-09-12 地质 Phase T5：构造形变（褶皱 / 断层）。

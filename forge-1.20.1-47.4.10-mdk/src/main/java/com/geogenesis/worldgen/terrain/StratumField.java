@@ -53,12 +53,38 @@ public final class StratumField {
     private static final long DEPTH_SALT = 0x4C1D_7A3E_9B02_5F81L;
 
     // ===== 构造环境 → 地层序列（浅 → 深） =====
+    /**
+     * 克拉通/地盾（板块内部陆地）。
+     *
+     * <p>★ 2026-09-14 T9b 修订：原为 {@code 片麻岩 → 花岗岩 → 片岩}，但
+     * <b>最浅层是片麻岩</b>（高级变质、深部专属性）⇒ 在 Y≥0 的浅部触发
+     * 方块层的"MC 设定回退"（实测 142/282 列受影响 ⇒ 大片石头，岩层白做）。
+     * 且地质上也反了：<b>克拉通地表常出露花岗岩</b>（如华南花岗岩体），
+     * 片麻岩才是更深的结晶基底 ⇒ 正序为 {@code 花岗岩 → 片麻岩 → 片岩}。</p>
+     */
     private static final RockType[] CRATON = {
-            RockType.GNEISS, RockType.GRANITE, RockType.SCHIST };
+            RockType.GRANITE, RockType.GNEISS, RockType.SCHIST };
+
+    /**
+     * 造山带（汇聚边界陆地）。
+     *
+     * <p>★ 2026-09-14 T9b 修订：原为 {@code 片岩 → 片麻岩 → 花岗岩}（最浅=片岩，
+     * 同样触发浅部回退）。地质上造山带<b>核部常出露花岗岩</b>（深成岩体抬升），
+     * 向外/向下变质程度递增 ⇒ 正序为 {@code 花岗岩 → 片岩 → 片麻岩}。</p>
+     */
     private static final RockType[] OROGENIC = {
-            RockType.SCHIST, RockType.GNEISS, RockType.GRANITE };
+            RockType.GRANITE, RockType.SCHIST, RockType.GNEISS };
+
+    /**
+     * 裂谷（离散边界陆地）：沉积充填，底部见基性岩浆。
+     *
+     * <p>★ 2026-09-14 T9b 修订：原为 {@code 砂岩 → 页岩 → 石灰岩 → 玄武岩}，
+     * 但石灰岩（→方解石，深部专属）在<b>第 3 层</b>，若该层落在 Y≥0 会触发回退。
+     * 现把石灰岩下移到最深处之前（地质上灰岩也常见于较深的海相层位），
+     * 使浅两层（砂岩/页岩 → 砂岩块/凝灰岩）都是"浅部成因岩"。</p>
+     */
     private static final RockType[] RIFT = {
-            RockType.SANDSTONE, RockType.SHALE, RockType.LIMESTONE, RockType.BASALT };
+            RockType.SANDSTONE, RockType.SHALE, RockType.BASALT, RockType.LIMESTONE };
 
     // —— 海洋序列：真实海底 = 玄武岩基底 + 沉积盖层（盖层厚度随环境不同）——
     /** 深海平原：远洋软泥/灰岩覆盖在洋壳玄武岩之上。 */
@@ -159,21 +185,76 @@ public final class StratumField {
     private static final int SEQ_BITS = 3;
     private static final int SEQ_MASK = (1 << SEQ_BITS) - 1;
 
+    // ===== ★ 2026-09-14 Phase T9b：地层【厚度】可变（非固定）=====
     /**
-     * ★ 2026-09-14 Phase T9：把地层序列打包进一个 {@code int}（零分配，供 {@link Cell}）。
+     * 层厚噪声频率（1/wu）。
      *
-     * <p>见 {@link Cell#rockSeqPacked} 的注释（为何不直接存 {@code byte[]}）。</p>
+     * <p>★ 用户反馈"现实里面的岩层不可能固定厚度的"。真实地层厚度随沉积环境
+     * 剧烈变化（几十米到上千米）⇒ 必须<b>随空间变化</b>，且边界平滑
+     * （地层界面是起伏曲面，不是锯齿断面）。</p>
+     *
+     * <p>取 1/650：地层单元的水平延伸尺度通常在数百 wu（与构造单元同量级），
+     * 故厚度变化尺度取 650wu ⇒ 同一地层内可容纳数层，跨区域厚度显著不同。</p>
      */
-    public static int packSequence(TectonicField.Sample s, boolean isLand) {
+    private static final double THICK_FREQ = 1.0 / 650.0;
+    private static final long THICK_SALT = 0x7A31_C4E9_2B60_5D13L;
+
+    /** 层厚级别 0~31 对应的块数范围（线性映射）。5 块薄夹层 ~ 42 块主岩体。 */
+    public static final int THICK_MIN = 5, THICK_MAX = 42;
+
+    /** 每层厚度级别占用的位数（5 bit → 0~31）。 */
+    private static final int THK_BITS = 5;
+    private static final int THK_MASK = (1 << THK_BITS) - 1;
+    /** 厚度级别在打包 int 中的起始位（岩性占低 12 位 = 4 层 × 3 bit）。 */
+    private static final int THK_SHIFT = LAYER_COUNT * SEQ_BITS;
+
+    /**
+     * 取第 {@code layerIdx} 层的<b>厚度级别</b>（0~31，噪声驱动 ⇒ 随空间变化）。
+     *
+     * <p>用 layerIdx 偏移使各层厚度<b>互不相关</b>（真实地层不会所有层同步增厚）。</p>
+     */
+    private int thicknessLevel(double wx, double wz, int layerIdx) {
+        double n = valueNoise(wx * THICK_FREQ + layerIdx * 41.3,
+                              wz * THICK_FREQ + layerIdx * 17.9, THICK_SALT);
+        double t = n * 0.5 + 0.5;                       // [0,1]
+        int lv = (int) Math.round(t * THK_MASK);
+        return lv < 0 ? 0 : (lv > THK_MASK ? THK_MASK : lv);
+    }
+
+    /** 厚度级别 → 块数。 */
+    public static int thicknessOf(int level) {
+        int lv = level < 0 ? 0 : (level > THK_MASK ? THK_MASK : level);
+        return THICK_MIN + (int) Math.round(lv * (THICK_MAX - THICK_MIN) / (double) THK_MASK);
+    }
+
+    /**
+     * ★ 2026-09-14 Phase T9b：打包【地层序列 + 各层厚度】进一个 {@code int}（零分配）。
+     *
+     * <p>位布局（共 32 bit）：</p>
+     * <pre>
+     *   bit 0..11  ：4 层岩性 ordinal（各 3 bit，浅 → 深）
+     *   bit 12..31 ：4 层厚度级别（各 5 bit，浅 → 深）
+     * </pre>
+     *
+     * @param wx/wz 世界坐标（厚度随空间变化）
+     */
+    public int packSequence(TectonicField.Sample s, boolean isLand, double wx, double wz) {
         byte[] seq = sequenceIds(s, isLand);
         int packed = 0;
         // ★ 必须【循环填充到 LAYER_COUNT】—— 序列长度不一（洋中脊仅 1 项、克拉通 3 项、
         //   裂谷 4 项）。若只写实际长度，{@link #seqAt} 按 LAYER_COUNT 取模会读到未写入的
         //   零位 ⇒ 第 2~3 层恒为 ordinal 0（片麻岩），产生错误岩层。
-        for (int i = 0; i < LAYER_COUNT && i * SEQ_BITS + SEQ_BITS <= 32; i++) {
+        for (int i = 0; i < LAYER_COUNT; i++) {
             packed |= (seq[i % seq.length] & SEQ_MASK) << (i * SEQ_BITS);
+            packed |= (thicknessLevel(wx, wz, i) & THK_MASK) << (THK_SHIFT + i * THK_BITS);
         }
         return packed;
+    }
+
+    /** 从打包序列取第 {@code index} 层的<b>厚度级别</b>（自动按 LAYER_COUNT 循环）。 */
+    public static int thickLevelAt(int packed, int index) {
+        int i = Math.floorMod(index, LAYER_COUNT);
+        return (packed >>> (THK_SHIFT + i * THK_BITS)) & THK_MASK;
     }
 
     /** 从打包序列取第 {@code index} 层岩性 ordinal（自动按序列长度循环）。 */
