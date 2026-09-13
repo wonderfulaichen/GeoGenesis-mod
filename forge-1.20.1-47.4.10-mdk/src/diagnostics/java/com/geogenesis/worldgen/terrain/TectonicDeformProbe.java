@@ -37,24 +37,39 @@ public final class TectonicDeformProbe {
         System.out.printf("[1] 走滑/内部 必须无形变(n=%d): 泄漏=%d %s%n",
             checked, leak, pass1 ? "PASS" : "FAIL");
 
-        // ================= [2] 褶皱周期性：符号交替 =================
-        //   沿 dist 均匀采样（同一沿走向坐标），统计符号变化次数。
-        //   波长 300wu、作用距离 900wu → 至少应有 2~3 次过零。
+        // ================= [2] 褶皱起伏（沿【世界坐标】扫描）=================
+        //
+        //   ★ 2026-09-12 判据演进（与 TectonicWaveProbe 同步）：原判据为
+        //   "沿 dist 均匀采样、统计符号交替"，它绑定的是旧机制
+        //   {@code wave = sin(dist·2π/λ)}（相位是 dist 的函数）。
+        //   而该机制正是用户三次反馈的"平行于边界的同心波纹带"的根因
+        //   （087698c 曾修、8e51a08 回退）→ 已改为【世界坐标噪声】起伏
+        //   （dist 仅经 decay 控制范围）。新机制下形变与 dist 无周期关系，
+        //   旧判据必然失效 → 改为沿真实扫描线检验"起伏仍存在"。
+        //
+        //   判据：在边界作用区内沿 x 扫描，形变总量应多次过零（证明有脊谷起伏，
+        //   而非单调平坦）；同时幅值须在合理量级（>0 证明未失效、<0.1e 证明未失控）。
+        TectonicField tf2 = new TectonicField(seed);
         int signChanges = 0;
         double prev = 0;
+        boolean hasPrev = false;
         double ampMax = 0;
-        for (double d = 0; d < TectonicDeformation.FOLD_REACH; d += 10.0) {
-            TectonicField.Sample s = new TectonicField.Sample(d, TectonicField.CONVERGENT, 1.0, 0.0, 1.0);
-            // 只看褶皱分量：把断层分量减掉（用同为汇聚但无褶皱的等价方式不可行，
-            // 故此处用"沿走向固定 → 断层分量在块内近似常数"的特性，
-            // 直接统计总位移的过零次数——褶皱是主周期源）
-            double v = td.offset(s, 4321.0, 8765.0);
-            ampMax = Math.max(ampMax, Math.abs(v));
-            if (prev != 0 && Math.signum(v) != Math.signum(prev)) signChanges++;
-            prev = v;
+        for (double z0 = -4000; z0 <= 4000; z0 += 997.0) {
+            hasPrev = false;
+            for (double x = -6000; x <= 6000; x += 25.0) {
+                TectonicField.Sample s = tf2.sample(x, z0);
+                if (s.dist() >= TectonicDeformation.FOLD_REACH) { hasPrev = false; continue; }
+                double v = td.offset(s, x, z0);
+                ampMax = Math.max(ampMax, Math.abs(v));
+                if (hasPrev && v != 0.0 && prev != 0.0 && Math.signum(v) != Math.signum(prev)) {
+                    signChanges++;
+                }
+                prev = v;
+                hasPrev = true;
+            }
         }
-        boolean pass2 = signChanges >= 2;
-        System.out.printf("[2] 褶皱周期性(汇聚, 沿dist扫描): 过零次数=%d (要求>=2) 最大幅值=%.4f e %s%n",
+        boolean pass2 = signChanges >= 4 && ampMax > 0.0 && ampMax < 0.1;
+        System.out.printf("[2] 褶皱起伏(沿世界坐标扫描): 过零次数=%d (要求>=4) 最大幅值=%.4f e (要求 0~0.1) %s%n",
             signChanges, ampMax, pass2 ? "PASS" : "FAIL");
 
         // ================= [3] 断层阶跃：块边界处应有骤变 =================

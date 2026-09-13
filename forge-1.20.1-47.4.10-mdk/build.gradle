@@ -879,10 +879,41 @@ task runTectonicDeformProbe(type: JavaExec) {
     }
 }
 
+// Tectonic wave (parallel-band / concentric-ripple) probe (2026-09-12, 3rd regression guard):
+//   gradlew runTectonicWaveProbe [seed]
+//   判据：值能否由 dist 单变量解释 —— 补上阈值型探针（Grain/LandE/Deform）的原理盲区。
+task runTectonicWaveProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TectonicWaveProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Stratum / rock type probe (2026-09-12, geology Phase T4): gradlew runStratumProbe [seed]
 task runStratumProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.StratumProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Terrain stripe PNG export (visual diagnosis, 2026-09-12 3rd artifact):
+//   gradlew runTerrainStripePngProbe [-PprobeArgs="seed size"]  -> build/stripe/*.png
+task runTerrainStripePngProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TerrainStripePngProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Terrain stripe (dense parallel thin-lines / value-range singularity) probe:
+//   gradlew runTerrainStripeProbe [seed]   (2026-09-12, 3rd artifact)
+task runTerrainStripeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TerrainStripeProbe'
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     }
