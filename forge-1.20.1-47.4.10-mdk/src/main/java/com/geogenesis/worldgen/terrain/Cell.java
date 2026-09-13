@@ -136,6 +136,18 @@ public class Cell {
     /** 出露地层号（0 = 地表/最新，越大越深越老），供 ROCK_LAYER 预览图层。 */
     public int rockLayer;
 
+    /**
+     * ★ 2026-09-14 Phase T9：该列地层的<b>打包序列</b>（供方块层铺垂直岩层）。
+     *
+     * <p><b>为何打包而非 {@code byte[]}</b>：每 chunk 采样 256 个 Cell，若每格分配
+     * 一个 {@code byte[4]} 会产生大量短命对象（GC 压力）。8 种岩性只需 3 bit，
+     * 4 层序列 = 12 bit，一个 {@code int} 足够 ⇒ <b>零分配</b>。</p>
+     *
+     * <p>布局：{@code bits[3i .. 3i+2] = 第 i 层岩性 ordinal}（i=0 为最浅）。
+     * 用 {@link StratumField#seqAt(int, int)} 取值，勿手工拆位。</p>
+     */
+    public int rockSeqPacked;
+
     /** 河网段类型（RIVER_TYPE 图层用）：0 无 / 1 水文河流 */
     public byte riverType;
     /** 水文实验河流水面 Y；无河流时为海平面默认值。 */

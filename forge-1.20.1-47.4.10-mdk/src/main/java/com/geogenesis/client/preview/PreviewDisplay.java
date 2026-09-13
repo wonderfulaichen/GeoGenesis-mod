@@ -313,7 +313,20 @@ public class PreviewDisplay extends AbstractWidget {
     //         → 改为存在性只看固定哈希、boost 只缩放高度（ampBoost）
     //      ② 火山区掩码阈值不再随门控下移（同一缺陷的"区域版"）
     //      → 地形产出变化，旧缓存必须失效
-    private static final int CACHE_SCHEMA_VERSION = 56;
+    // 57 = 2026-09-14 ★ Phase T8(P3)：岩性 → 侵蚀耦合（软岩成谷、硬岩成脊）
+    //      · RockType.resistance()（既有预留接口）经 StratumField.resistanceAt
+    //        → CellGenerator.rockResistanceAt → 注入 ErosionEngine
+    //      · 侵蚀量按抗蚀性调制（倍率 = 1−0.6×resistance，上限 1 = 只压不放大）
+    //      · 硬度场 8wu 粗采 + 双线性插值（避免阶跃；地质单元尺度达数百 wu）
+    //      → 地形产出变化，旧缓存必须失效
+    // 58 = 2026-09-14 ★ Phase T9：垂直岩层（岩性 → 方块，让地质"看得见"）
+    //      · StratumField.sequenceIds/packSequence/seqAt（地层序列打包，零分配）
+    //      · Cell.rockSeqPacked（3bit×4 层）
+    //      · GeoGenesisGenerator.ROCK_BLOCKS：8 岩性 → 原版方块
+    //        （花岗岩/砂岩/玄武岩/安山岩有同名方块；片麻岩+片岩→深板岩；
+    //          页岩→黏土、石灰岩→方解石）
+    //      · 陆地列地下按【深度】铺垂直岩层（层厚 24），海洋列保持原样
+    private static final int CACHE_SCHEMA_VERSION = 58;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

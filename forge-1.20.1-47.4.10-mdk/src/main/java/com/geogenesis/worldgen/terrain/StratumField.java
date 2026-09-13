@@ -35,9 +35,13 @@ package com.geogenesis.worldgen.terrain;
  *       {@link TectonicField.Sample}（不重复采样构造场）</li>
  * </ul>
  *
- * <p><b>Phase T4 范围</b>：仅建立数据层。<b>尚未</b>让岩性影响地貌
- * （"软岩成谷、硬岩成脊"需与侵蚀耦合，属后续阶段）。{@link RockType#resistance()}
- * 已预留该接口。
+ * <p><b>Phase T4 范围</b>：建立数据层（岩性标签、供预览图层与后续地质系统消费）。
+ *
+ * <p><b>★ 2026-09-14 Phase T8(P3) 已完成"岩性 → 侵蚀耦合"</b>：
+ * {@link #resistanceAt} 把 {@link RockType#resistance()} 暴露给侵蚀引擎
+ * （经 {@code CellGenerator.rockResistanceAt} 注入 {@code ErosionEngine}），
+ * 侵蚀量按抗蚀性调制 ⇒ <b>软岩成谷、硬岩成脊</b>。
+ * 见 {@link #resistanceAt} 的 javadoc。
  */
 public final class StratumField {
 
@@ -100,6 +104,82 @@ public final class StratumField {
     public static int rockTypeId(TectonicField.Sample s, boolean isLand, int layer) {
         RockType[] seq = sequenceFor(s.btype(), isLand);
         return seq[Math.floorMod(layer, seq.length)].ordinal();
+    }
+
+    /**
+     * ★ 2026-09-14 Phase T8(P3)：<b>该点出露岩性的抗蚀性</b> ∈ [0,1]（越大越难蚀）。
+     *
+     * <h3>用途：软岩成谷、硬岩成脊（岩性 → 侵蚀耦合）</h3>
+     * <p>P3 之前所有岩石"一样硬"（侵蚀引擎完全不感知岩性）。本方法把
+     * {@link RockType#resistance()}（地质学硬度序）暴露给侵蚀引擎，
+     * 使侵蚀量按抗蚀性调制：页岩(0.30) 比花岗岩(0.90) 易蚀 3 倍
+     * ⇒ 同坡度下软岩区被下切成谷、硬岩区残留成脊（真实地貌的核心机制）。</p>
+     *
+     * <p><b>为何合并为单一标量</b>：调用方（{@code ErosionEngine} 预构建的硬度网格）
+     * 只需要"这一个数字"，不必知道岩性枚举/地层序列 —— 保持侵蚀引擎不依赖地质细节。</p>
+     *
+     * @param s      构造采样（由调用方持有，复用避免重复采样）
+     * @param isLand 该点是否倾向陆地
+     * @param layer  出露层号（{@link #layerAt}）
+     * @return 抗蚀性 ∈ [0,1]（{@link RockType#resistance()} 的值）
+     */
+    public static double resistanceAt(TectonicField.Sample s, boolean isLand, int layer) {
+        return RockType.values()[rockTypeId(s, isLand, layer)].resistance();
+    }
+
+    /**
+     * ★ 2026-09-14 Phase T9：<b>该列的地层序列</b>（{@link RockType#ordinal()}，浅 → 深）。
+     *
+     * <h3>用途：让岩性在游戏里【看得见】（垂直岩层）</h3>
+     * <p>P3 之前岩性只是"地形形成机制的输入"（影响侵蚀抗性），玩家挖下去看到的
+     * 仍全是 {@code STONE}。本方法把整条地层序列交给方块层（{@code GeoGenesisGenerator}），
+     * 使其能按<b>深度</b>逐层取用 ⇒ 同一列从上到下依次是
+     * {@code seq[layer], seq[layer+1], seq[layer+2] …}（序列循环）——
+     * 即真实地质的<b>层序叠置</b>（老在下、新在上）。</p>
+     *
+     * <p><b>为何返回整条序列而非单一岩性</b>：{@link #rockTypeId} 只给"地表出露的那一种"，
+     * 不足以表达垂直分层。方块层需要"往下是什么"，故必须给出完整序列
+     * （深度 → 序列下标由方块层按层厚换算）。</p>
+     *
+     * <p><b>与侵蚀的关系</b>：侵蚀是<b>地表过程</b>，抗蚀性取最表层岩性
+     * （{@code seq[layer]} = {@link #rockTypeId}）—— 与 {@link #resistanceAt} 一致。</p>
+     *
+     * @param s      构造采样
+     * @param isLand 该点是否倾向陆地
+     * @return 地层序列的 ordinal 数组（浅 → 深）；调用方按深度循环取用
+     */
+    public static byte[] sequenceIds(TectonicField.Sample s, boolean isLand) {
+        RockType[] seq = sequenceFor(s.btype(), isLand);
+        byte[] ids = new byte[seq.length];
+        for (int i = 0; i < seq.length; i++) ids[i] = (byte) seq[i].ordinal();
+        return ids;
+    }
+
+    /** 每层占用的位数（8 种岩性 → 3 bit；{@code RockType.values().length ≤ 8} 必须成立）。 */
+    private static final int SEQ_BITS = 3;
+    private static final int SEQ_MASK = (1 << SEQ_BITS) - 1;
+
+    /**
+     * ★ 2026-09-14 Phase T9：把地层序列打包进一个 {@code int}（零分配，供 {@link Cell}）。
+     *
+     * <p>见 {@link Cell#rockSeqPacked} 的注释（为何不直接存 {@code byte[]}）。</p>
+     */
+    public static int packSequence(TectonicField.Sample s, boolean isLand) {
+        byte[] seq = sequenceIds(s, isLand);
+        int packed = 0;
+        // ★ 必须【循环填充到 LAYER_COUNT】—— 序列长度不一（洋中脊仅 1 项、克拉通 3 项、
+        //   裂谷 4 项）。若只写实际长度，{@link #seqAt} 按 LAYER_COUNT 取模会读到未写入的
+        //   零位 ⇒ 第 2~3 层恒为 ordinal 0（片麻岩），产生错误岩层。
+        for (int i = 0; i < LAYER_COUNT && i * SEQ_BITS + SEQ_BITS <= 32; i++) {
+            packed |= (seq[i % seq.length] & SEQ_MASK) << (i * SEQ_BITS);
+        }
+        return packed;
+    }
+
+    /** 从打包序列取第 {@code index} 层岩性 ordinal（自动按序列长度循环）。 */
+    public static int seqAt(int packed, int index) {
+        int i = Math.floorMod(index, LAYER_COUNT);
+        return (packed >>> (i * SEQ_BITS)) & SEQ_MASK;
     }
 
     /** 按构造环境选地层序列。走滑/内部归入"板块内部"。 */

@@ -237,6 +237,9 @@ public final class CellGenerator {
         // ★ 2026-09-14 P5：注入【中心点海陆判定】—— 火山按中心决定去留（整体生成），
         //   替代原先"逐点 × landFactor"的斜切（见 landFactorAt 注释）。
         landFeatures.setLandFactorProvider(this::landFactorAt);
+        // ★ 2026-09-14 Phase T8(P3)：注入【岩性抗蚀性】—— 侵蚀按岩性调制
+        //   （软岩成谷、硬岩成脊）。与上面两个注入同一模式：保持侵蚀引擎不依赖地质包。
+        erosion.setHardnessProvider(this::rockResistanceAt);
         erosionTileCache.clear();
         this.worldSeed = worldSeed;
         Noises.seedAll(tempWarp, worldSeed, 0);
@@ -357,8 +360,10 @@ public final class CellGenerator {
         }
         if (STRATA_ENABLED) {
             cell.rockLayer = strata.layerAt(sx, sz);
-            cell.rockTypeId = StratumField.rockTypeId(
-                    tsAll, TectonicField.shellFromC(cBiased) > 0.5, cell.rockLayer);
+            boolean isLandShell = TectonicField.shellFromC(cBiased) > 0.5;
+            cell.rockTypeId = StratumField.rockTypeId(tsAll, isLandShell, cell.rockLayer);
+            // ★ 2026-09-14 Phase T9：整条地层序列（打包）→ 供方块层铺【垂直岩层】
+            cell.rockSeqPacked = StratumField.packSequence(tsAll, isLandShell);
         }
 
         // ★ 2026-09-12 地质 Phase T5：构造形变（褶皱 / 断层）。
@@ -572,6 +577,7 @@ public final class CellGenerator {
         eqHits.set(0);
         eqMisses.set(0);
         for (int i = 0; i < LF_CACHE_SIZE; i++) lfKeys.set(i, EQ_EMPTY);
+        clearRockResistanceCache();   // ★ P3：岩性硬度缓存（种子/配置变更时一并失效）
     }
 
     // ===== ★ 2026-09-14 P5：火山中心「海陆判定」缓存 =====
@@ -669,6 +675,53 @@ public final class CellGenerator {
         lfVals.set(slot, Double.doubleToRawLongBits(v));         // 先值
         lfKeys.set(slot, key);                                   // 后键（volatile）
         return v;
+    }
+
+    // ===== ★ 2026-09-14 Phase T8(P3)：岩性抗蚀性（软岩成谷、硬岩成脊）=====
+    //   侵蚀引擎按【抗蚀性】调制侵蚀量，故需按世界坐标查"该点什么岩性、多硬"。
+    //   与 landFactorAt 同模式（AtomicLongArray 存 double 位模式 + 独立键域），
+    //   因为 ErosionEngine 的硬度网格与液滴查表会反复命中同一批坐标。
+    private static final int HR_CACHE_BITS = 13;                 // 8192 槽 ≈ 128 KB
+    private static final int HR_CACHE_SIZE = 1 << HR_CACHE_BITS;
+    private static final long HR_SALT = 0x27BB2EE687B0B0FDL;
+    private final AtomicLongArray hrKeys = new AtomicLongArray(HR_CACHE_SIZE);
+    private final AtomicLongArray hrVals = new AtomicLongArray(HR_CACHE_SIZE);
+
+    /**
+     * ★ 2026-09-14 Phase T8(P3)：<b>岩性抗蚀性</b>（供 {@code ErosionEngine} 注入）。
+     *
+     * <p>走与 {@link #sampleCore} 岩性计算<b>完全同源</b>的推理链
+     * （构造环境 → 地层序列 → 出露岩性 → {@link RockType#resistance()}），
+     * 保证"预览图层显示的岩性"与"侵蚀实际使用的硬度"<b>永不矛盾</b>
+     * （本项目反复强调的"两个场互相矛盾"教训）。</p>
+     *
+     * <p><b>无自引用</b>：不调用 {@code terrainEQuick}；只读构造场 + 地层场
+     * （两者都是纯噪声场，不含侵蚀）。</p>
+     *
+     * @return 抗蚀性 ∈ [0,1]（越大越难蚀；±1 = 花岗岩 / 页岩）
+     */
+    public double rockResistanceAt(double wx, double wz) {
+        long kx = Double.doubleToRawLongBits(wx);
+        long kz = Double.doubleToRawLongBits(wz);
+        long key = (kx ^ Long.rotateLeft(kz, 31)) + HR_SALT;
+        if (key == EQ_EMPTY) key = Long.MAX_VALUE;
+        int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> (64 - HR_CACHE_BITS));
+        if (hrKeys.get(slot) == key) {
+            return Double.longBitsToDouble(hrVals.get(slot));
+        }
+        double c = continent.sample(wx, wz);
+        double cBiased = c - continentBias;
+        TectonicField.Sample ts = tectonic.sample(wx, wz);
+        int layer = strata.layerAt(wx, wz);
+        double v = StratumField.resistanceAt(ts, TectonicField.shellFromC(cBiased) > 0.5, layer);
+        hrVals.set(slot, Double.doubleToLongBits(v));            // 先值
+        hrKeys.set(slot, key);                                   // 后键（volatile）
+        return v;
+    }
+
+    /** 清空岩性硬度缓存（由 {@code clearEqCache} 统一调用）。 */
+    private void clearRockResistanceCache() {
+        for (int i = 0; i < HR_CACHE_SIZE; i++) hrKeys.set(i, EQ_EMPTY);
     }
 
     /** 轻量地形 e 的【实际计算】（跳过气候/分类/height 映射/shape 赋值）。

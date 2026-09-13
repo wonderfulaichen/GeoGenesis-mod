@@ -1087,6 +1087,16 @@ task runLandFeatProbe(type: JavaExec) {
     }
 }
 
+// Rock erosion probe (★ 2026-09-14 Phase T8/P3：岩性→侵蚀耦合验收)
+//   args = [seed] [originX] [originZ]
+task runRockErosionProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.RockErosionProbe'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
 // Coastline smoothness probe (diagnose "perfect arc" issue)
 task runCoastlineSmoothnessProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
