@@ -64,6 +64,14 @@ public final class CellGenerator {
      */
     private static final boolean TECTONIC_ENABLED = true;
 
+    /**
+     * ★ 2026-09-13 Phase T7(P0.5)：<b>海床护栏</b> —— 海床特征累计抬升与海平面的最小余量
+     * （e 单位，≈3.8 块）。
+     */
+    private static final double SEABED_MARGIN = 0.02;
+    /** 海床护栏软饱和的过渡宽度（e 单位）；见 {@link TectonicField#smoothMin}。 */
+    private static final double SEABED_SOFT_SAT = 0.03;
+
     /** 构造骨架场（见 {@link #TECTONIC_ENABLED}）。 */
     private final TectonicField tectonic;
 
@@ -222,6 +230,13 @@ public final class CellGenerator {
         coastline.seed(worldSeed);
         oceanFeatures.seed(worldSeed);
         landFeatures.seed(worldSeed);
+        // ★ 2026-09-13 Phase T7(P4)：陆地火山布点改由【俯冲带火山活动强度】驱动
+        //   （沿俯冲带富集，而非随机散布）。注入而非直接持有 —— 与 setSeamountDepthChecker
+        //   同一模式（保持本类不感知构造场）。
+        landFeatures.setArcVolcanismProvider(tectonic::arcVolcanism);
+        // ★ 2026-09-14 P5：注入【中心点海陆判定】—— 火山按中心决定去留（整体生成），
+        //   替代原先"逐点 × landFactor"的斜切（见 landFactorAt 注释）。
+        landFeatures.setLandFactorProvider(this::landFactorAt);
         erosionTileCache.clear();
         this.worldSeed = worldSeed;
         Noises.seedAll(tempWarp, worldSeed, 0);
@@ -270,18 +285,24 @@ public final class CellGenerator {
         double seabed = seabedAmp * depthMod * seaBed.sample(sx, sz);
         double eOcean = eBase + seabed;
         eOcean = eOcean * oceanDepthFactor;
-        // 海洋特征：计算洋中脊/海山增量，叠加到 eOcean 使海床产生实际地形。
-        OceanFeatures.FeatureResult oceanFeat = oceanFeatures.compute(sx, sz, Math.min(eOcean, 0.0), cBiased);
-        eOcean += oceanFeat.total; // 海山/洋中脊抬升海床（仅海洋侧生效，陆地侧 blend 天然淡出）
+        // ★ 2026-09-13 Phase T6：构造采样【提前】到海洋特征之前 —— 海洋特征的
+        //   「洋中脊位置」（构造离散带门控）与「火山弧」（俯冲带离轴隆起）都依赖构造场。
+        //   同一次采样随后供 T1 权重调制 / T4 岩性 / T5 形变复用 ⇒ 不增加采样次数。
+        TectonicField.Sample tectSample = TECTONIC_ENABLED ? tectonic.sample(sx, sz) : null;
+
+        // 海洋特征：计算洋中脊/海山/火山弧增量，叠加到 eOcean 使海床产生实际地形。
+        double arcProf = tectSample != null ? tectonic.oceanProfile(tectSample) : 0.0;
+        OceanFeatures.FeatureResult oceanFeat =
+            oceanFeatures.compute(sx, sz, Math.min(eOcean, 0.0), cBiased, tectSample, arcProf);
+        eOcean += oceanFeat.total; // 海山/洋中脊/弧抬升海床（仅海洋侧生效，陆地侧 blend 天然淡出）
         cell.oceanFeat = oceanFeat; // 缓存供 classify 使用，避免 sample() 重复 compute
 
         // 3. 连续类型混合结果
         TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(sx, sz);
         cell.typeWeights = cellBlend.typeWeights;
         // ★ 2026-09-12 地质 Phase T1：构造决定类型（汇聚→造山/海沟，离散→裂谷/洋脊）
-        //   保留返回的 Sample，供 T4 岩性计算复用（避免重复采样构造场）
-        TectonicField.Sample tectSample = null;
-        if (TECTONIC_ENABLED) tectSample = applyTectonicWeights(cell.typeWeights, sx, sz);
+        //   ★ 2026-09-13：复用上方已采样的 Sample（原先在本行重复采样一次构造场）
+        if (tectSample != null) applyTectonicWeights(cell.typeWeights, tectSample, sx, sz, cBiased);
 
         // 4. 海岸线域扭曲（v8 CoastlineField）— 海洋深度/类型样条用的 c 空间位移（保留轻量扰动）。
         double cEdge = cBiased + coastline.warpDisplacement(sx, sz, cBiased);
@@ -290,24 +311,54 @@ public final class CellGenerator {
         //    e = Σw·lo + Σw·(hi-lo)·modulated → e 自然连续穿过 0，海陆边界 = Voronoi 类型竞争。
         double eLand = typeLandShape.sample(cellBlend, sx, sz, cEdge);
 
-        // 6. 特征增量按类型权重调制（海洋特征→海洋权重；陆地火山→陆地权重），
-        //    保证深海不被火山抬出海面、陆地不被海山垫高。
-        LandFeatures.FeatureResult landFeat = landFeatures.compute(sx, sz);
+        // 6. 特征增量的海陆门控（★ 2026-09-13 修复：改用【与地形同源】的门控）
+        //
+        //   【修复的问题（用户反馈"平原上的火山特别矮：平原 68 格、火山才 78 格"）】
+        //   原用 `landW = 1 − oceanW`（oceanW 来自**类型权重场**）作陆地特征权重。
+        //   但类型权重场与地形海陆（由 eLand 定义）**可以不一致**：实测一座位于
+        //   e=+0.6552（明显内陆高地）的火山，其 `oceanW=0.4207` ⇒ `landW=0.58`
+        //   ⇒ 火山只按 58% 抬升（0.161 e ≈ 38 格，而非应有的 65 格）。
+        //   这与本项目反复出现的"两个场互相矛盾"是同一类问题
+        //   （参见 `shellFromC` / 大陆架判据的注释）。
+        //
+        //   【正解】门控直接由**特征前的地形** eLandBase 推出（与海岸线同源，定义上不可能矛盾）：
+        //     landFactor = smoothstep(−ε, +ε, eLandBase)   // 连续 0→1，ε=0.01
+        //     海洋特征 × (1 − landFactor)（陆侧自然淡出）
+        //   海岸线上 eLandBase=0 → 各半，过渡连续（无硬边）。
+        //   ★ 这也是用户在"大陆架"反馈中确认有效的同一思路。
+        //
+        //   ★★ 2026-09-14 P5：<b>陆地特征不再乘 landFactor(x,z)</b> ★★
+        //     用户反馈"火山山体靠海就被海陆过渡机制影响，导致火山口被强行降低"。
+        //     逐点缩放（total × landFactor(x,z)）会让山体<b>靠海一侧被压缩</b>（斜切），
+        //     且火口下凹（0.02~0.07e）在 eLandBase≈0 处几乎被抹平。
+        //     现改为在 {@link LandFeatures} 内按<b>火山中心</b>取一次 landFactor
+        //     （{@code landFactorAt}，经 {@link LandFeatures#setLandFactorProvider} 注入），
+        //     对整座火山<b>整体</b>缩放 ⇒ 形状与火口完整、中心在深海则整座不生成
+        //     （杜绝陆地火山造陆，与 {@link OceanFeatures} 的海山中心判定同构）。
+        double eLandBase = eLand;                                  // 特征前地形 = 海陆定义
+        double landFactor = smoothstep(-0.01, 0.01, eLandBase);
+        LandFeatures.FeatureResult landFeat = landFeatures.compute(sx, sz, tectSample);
         double oceanW = (cellBlend.typeWeights[TerrainClass.OCEAN.ordinal()]
             + cellBlend.typeWeights[TerrainClass.DEEP_OCEAN.ordinal()]);
-        double landW = 1.0 - oceanW;
-        eLand += landFeat.total * landW;
+        // ★ 2026-09-14 P5：海陆判定已下沉到 LandFeatures 的【火山中心】，
+        //   按中心因子【整体】缩放（见 LandFeatures.centerFactorOf）⇒ 此处直接相加。
+        //   【为何不再乘 landFactor(x,z)】那是逐点缩放 ⇒ 斜切山体 + 压浅火口
+        //   （用户反馈"火山山体靠海就被海陆过渡机制影响，火山口被强行降低"）。
+        eLand += landFeat.total;
 
         // ★ 2026-09-12 地质 Phase T4：地层/岩性（构造环境 → 地层序列 → 出露岩性）。
         //   纯数据层，不参与 e 合成（不影响地形/气候/水文）；
         //   为 ROCK_LAYER / ROCK_TYPE 预览图层提供此前完全缺失的数据源。
+        //   ★ 2026-09-13 P0.5：海陆判据改用【壳属性 shellS】（= shellFromC(c)），
+        //     与海陆同源 ⇒ 不会像 oceanW 那样给出"c 说海、类型场说陆"的矛盾答案。
         TectonicField.Sample tsAll = null;
         if (STRATA_ENABLED || DEFORM_ENABLED) {
             tsAll = tectSample != null ? tectSample : tectonic.sample(sx, sz);
         }
         if (STRATA_ENABLED) {
             cell.rockLayer = strata.layerAt(sx, sz);
-            cell.rockTypeId = StratumField.rockTypeId(tsAll, oceanW < 0.5, cell.rockLayer);
+            cell.rockTypeId = StratumField.rockTypeId(
+                    tsAll, TectonicField.shellFromC(cBiased) > 0.5, cell.rockLayer);
         }
 
         // ★ 2026-09-12 地质 Phase T5：构造形变（褶皱 / 断层）。
@@ -325,11 +376,46 @@ public final class CellGenerator {
         cell.eLand = eLand;
         cell.landFeat = landFeat; // 缓存供 classify 使用，避免 sample() 重复 compute
 
+        // ★★★ 2026-09-13 Phase T7(P0.5)：**海床护栏**（从构造上杜绝"海洋特征造陆"）★★★
+        //
+        //   【问题（实测）】海床特征（海山/洋中脊/火山弧）按 `× oceanW` 软加权叠加时，
+        //   在【eLand ≈ 0 且 oceanW 仍较大】的点上会把地形推过 e=0 ⇒ 冒出一座"孤岛"。
+        //   实测（OceanTypeProbe 差分归因，seed=12345）：
+        //     洋中脊 22 例 / 3460 作用点  ·  火山弧 17 例 / 602  ·  海山 0 例
+        //   逐点诊断定机制：`eOcean=−0.250`（c 场说深海，弧的深海门控通过）
+        //   但 `eLand=−0.0033`（类型场说陆）——**两场不一致**是该现象的唯一成因。
+        //
+        //   【为何"× oceanW" 挡不住】`oceanW` 是类型场的海洋权重，在 eLand≈0 处仍可达 0.68
+        //   （类型场在海陆过渡带本就是渐变）⇒ 弧贡献 0.10×0.68=0.068e ≫ 0.0033。
+        //   （另注：`OceanFeatures` 内部**已有**基于 eOcean 的深海门控 `arcFade`，
+        //     故这个 `× oceanW` 是**重复门控**，且引入了类型场的矛盾。）
+        //
+        //   【正解：护栏，而非调小特征】让海洋特征的<b>累计抬升</b>永不把地形推过海平面：
+        //       oceanFeat.total·oceanW ≤ (−eLand) − MARGIN
+        //   深海处 `eLand` 很负 ⇒ 上限远大于特征幅度 ⇒ **完全不生效**（特征形态不变）；
+        //   只在 `eLand≈0`（矛盾点）才压缩 ⇒ 那些孤岛消失，且 MARGIN 保证被压缩点仍 <0
+        //   ⇒ **不新增/移除海岸线**（既有标定不受影响）。用 C¹ 的 smoothMin 避免折痕。
+        //
+        //   ★ 必须放在此处（**T5 形变之后**）——初版放在第 6 步（形变前）时护栏算漏了
+        //     `deform.offset`（可达 +0.045e）的抬升，实测仍有 14/13 例漏网（洋中脊 22→13、
+        //     弧 17→14 只降不归零）。移到最终 `eLand` 之后才真正封住。
+        //   ★ 权重同样改用同源门控 (1 − landFactor)：海侧 eLandBase<0 → ≈1（满值），
+        //     陆侧 → 0（自然淡出），海岸线处各半（连续）。原用 oceanW（类型场）会
+        //     在"类型场与地形不一致"处既可能放大也可能缩小海洋特征。
+        double oceanFeatW = oceanFeat.total * (1.0 - landFactor);
+        if (oceanFeatW > 0.0) {
+            double cap = -eLand - SEABED_MARGIN;
+            oceanFeatW = cap <= 0.0 ? 0.0 : TectonicField.smoothMin(oceanFeatW, cap, SEABED_SOFT_SAT);
+        }
+        // （诊断可用 `cell.e − cell.eLand` 反推本值：低处 softCapLandE 不介入 ⇒ 精确；
+        //   故不新增 Cell 字段，避免扩大改动面。）
+
         // 7. 连续主导类型（可能为 OCEAN/DEEP_OCEAN）
         TerrainClass cellType = TypeLandShape.dominantFromWeights(cellBlend.typeWeights);
 
-        // 8. 海陆统一 e = 类型混合 + 海洋特征增量（海山/洋中脊按海洋权重平滑淡入）
-        double e = softCapLandE(eLand + oceanFeat.total * oceanW);
+        // 8. 海陆统一 e = 类型混合 + 海洋特征增量（海山/洋中脊按海洋权重平滑淡入；
+        //    上方已过"海床护栏"，保证这一项不会把地形推过海平面）
+        double e = softCapLandE(eLand + oceanFeatW);
         cell.e = e;
         cell.eClimate = e;   // 侵蚀前 e：群系垂直带判定专用（applyTileDelta 不覆写）
         cell.variantTerrain = ditheredTerrain(cell.typeWeights, wx, wz);
@@ -485,7 +571,23 @@ public final class CellGenerator {
         for (int i = 0; i < EQ_CACHE_SIZE; i++) eqKeys.set(i, EQ_EMPTY);
         eqHits.set(0);
         eqMisses.set(0);
+        for (int i = 0; i < LF_CACHE_SIZE; i++) lfKeys.set(i, EQ_EMPTY);
     }
+
+    // ===== ★ 2026-09-14 P5：火山中心「海陆判定」缓存 =====
+    //   火山中心是【哈希确定的离散点】（单体格 800wu，每格至多一座），
+    //   其半径（最大 300wu）内的所有采样点都要反复查询"这个中心在陆上吗"
+    //   ⇒ 空间局部性极强，命中率 > 99%。
+    //   【为何必须缓存】不加缓存时每次查询要重算"半个 sampleCore"
+    //   （continent + 类型场 Voronoi + 海岸线扭曲 + 构造权重），而调用频率约
+    //   0.7 次/采样点（单体 8%×9 邻居格 + 火山区 12%×9×区域占比）
+    //   ⇒ 实测开销约 +40%。与 terrainEQuick 同模式（AtomicLongArray 存 double
+    //   位模式，先写值后写键；键域用 LF_SALT 隔离，避免与 e 缓存互相覆盖）。
+    private static final int LF_CACHE_BITS = 12;                 // 4096 槽 ≈ 64 KB
+    private static final int LF_CACHE_SIZE = 1 << LF_CACHE_BITS;
+    private final AtomicLongArray lfKeys = new AtomicLongArray(LF_CACHE_SIZE);
+    private final AtomicLongArray lfVals = new AtomicLongArray(LF_CACHE_SIZE);
+    private static final long LF_SALT = 0x5DEECE66DL;
 
     /** 缓存命中/未命中统计（诊断用）。 */
     public long eqCacheHits() { return eqHits.get(); }
@@ -515,6 +617,60 @@ public final class CellGenerator {
         return v;
     }
 
+    /**
+     * ★ 2026-09-14 P5：<b>特征前的基面「陆地门控」</b>（供 {@link LandFeatures} 按火山中心判定海陆）。
+     *
+     * <h3>为何需要（用户反馈"火山山体靠海就被海陆过渡机制影响，火山口被强行降低"）</h3>
+     * <p>原实现把 {@code landFactor} 施加在<b>每个采样点</b>：
+     * {@code eLand += landFeat.total * landFactor(x,z)}。而 {@code landFactor} 的过渡带
+     * 仅 {@code ε=0.01e}（≈2.4 格）⇒ 对一座横跨海岸线的火山，山体的<b>靠海一侧被按比例压缩</b>
+     * （= 斜切），且<b>火口下凹也被同比例压浅</b>（火口深度 0.02~0.07e 在 eLandBase≈0 处
+     * 几乎被完全抹平）。地质上火山是<b>刚性离散体</b>：它不随基底的海陆过渡而"变软"。</p>
+     *
+     * <h3>正解：判定改到「中心点」，与海山完全同构</h3>
+     * <p>{@link OceanFeatures} 早有正确先例（{@code seamountCenterDepthCheck}）：
+     * 按<b>中心点</b>的水深决定这座海山生成与否，生成后整体叠加。本方法提供同样的
+     * 「某点是否算陆地」，由 {@link LandFeatures} 在<b>火山中心</b>调用一次，
+     * 决定整座火山的去留 ⇒ 山体不再被斜切、火口完整。</p>
+     *
+     * <p><b>为何是离散去留而非连续缩放</b>：中心距边界 &lt; 半径时，无论用哪种连续
+     * 缩放，都必然使山体两侧不对称（= 斜切）。而"离散去留"只让海岸线上的火山
+     * 要么完整、要么没有 —— 中心点哈希是<b>离散事件</b>，其判定边界不产生地形折痕
+     * （对比：若用连续量做门控坐标，等值线会成为直线/折痕）。</p>
+     *
+     * <p><b>无自引用</b>：本方法算的是 {@code eLandBase}（<b>未叠加</b>任何特征的基面），
+     * 与 {@link #sampleCore} 第 6 步一致 —— 绝不能调用 {@link #terrainEQuick}，
+     * 那会经 {@code landFeatures.compute} 递归回本方法。</p>
+     *
+     * <p><b>非纯加速</b>：缓存只影响性能，命中与未命中等价（值为纯函数结果）。</p>
+     *
+     * @return 陆地门控 ∈ [0,1]：1 = 明确陆地（火山完整生成），0 = 明确海洋（不生成）
+     */
+    public double landFactorAt(double wx, double wz) {
+        long kx = Double.doubleToRawLongBits(wx);
+        long kz = Double.doubleToRawLongBits(wz);
+        long key = (kx ^ Long.rotateLeft(kz, 29)) + LF_SALT;
+        if (key == EQ_EMPTY) key = Long.MAX_VALUE;
+        int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> (64 - LF_CACHE_BITS));
+        if (lfKeys.get(slot) == key) {
+            return Double.longBitsToDouble(lfVals.get(slot));
+        }
+        // 复刻 sampleCore 第 1~6 步中【决定 eLandBase】的部分（不含任何特征与形变）
+        double c = continent.sample(wx, wz);
+        double cBiased = c - continentBias;
+        TerrainCharacterField.BlendResult blend = typeLandShape.sampleBlend(wx, wz);
+        if (TECTONIC_ENABLED) {
+            TectonicField.Sample ts = tectonic.sample(wx, wz);
+            applyTectonicWeights(blend.typeWeights, ts, wx, wz, cBiased);
+        }
+        double cEdge = cBiased + coastline.warpDisplacement(wx, wz, cBiased);
+        double eLandBase = typeLandShape.sample(blend, wx, wz, cEdge);
+        double v = smoothstep(-0.01, 0.01, eLandBase);
+        lfVals.set(slot, Double.doubleToRawLongBits(v));         // 先值
+        lfKeys.set(slot, key);                                   // 后键（volatile）
+        return v;
+    }
+
     /** 轻量地形 e 的【实际计算】（跳过气候/分类/height 映射/shape 赋值）。
      *  坐标语义 = wu（2026-08-10 wu 化，见 {@link #sampleCore}）。
      *  <p>★ 2026-09-11：外部请调用带缓存的 {@link #terrainEQuick}。</p> */
@@ -531,15 +687,20 @@ public final class CellGenerator {
         double seabed = seabedAmp * depthMod * seaBed.sample(sx, sz);
         double eOcean = (eBase + seabed) * oceanDepthFactor;
 
+        // ★ 2026-09-13 Phase T6：与 sampleCore 同序 —— 构造采样提前，供海洋特征
+        //   （洋中脊门控 / 火山弧）与 T1 权重调制复用（保证 tile 与直接采样逐位一致）。
+        TectonicField.Sample tsQ = TECTONIC_ENABLED ? tectonic.sample(sx, sz) : null;
+
         // 3. 海洋特征
-        OceanFeatures.FeatureResult oceanFeat = oceanFeatures.compute(sx, sz, Math.min(eOcean, 0.0), cBiased);
+        double arcProfQ = tsQ != null ? tectonic.oceanProfile(tsQ) : 0.0;
+        OceanFeatures.FeatureResult oceanFeat =
+            oceanFeatures.compute(sx, sz, Math.min(eOcean, 0.0), cBiased, tsQ, arcProfQ);
         eOcean += oceanFeat.total;
 
         // 4. 类型混合（Voronoi 场）
         TerrainCharacterField.BlendResult cellBlend = typeLandShape.sampleBlend(sx, sz);
-        // ★ 地质 Phase T1：与 sampleCore 相同的构造调制（保证 tile 与直接采样一致）
-        TectonicField.Sample tsQ = null;
-        if (TECTONIC_ENABLED) tsQ = applyTectonicWeights(cellBlend.typeWeights, sx, sz);
+        // ★ 地质 Phase T1：与 sampleCore 相同的构造调制（复用上方已采样的 tsQ）
+        if (tsQ != null) applyTectonicWeights(cellBlend.typeWeights, tsQ, sx, sz, cBiased);
 
         // 5. 海岸线扭曲
         double cEdge = cBiased + coastline.warpDisplacement(sx, sz, cBiased);
@@ -547,11 +708,15 @@ public final class CellGenerator {
         // 6. 全类型混合 e
         double eLand = typeLandShape.sample(cellBlend, sx, sz, cEdge);
 
-        // 7. 特征增量
-        LandFeatures.FeatureResult landFeat = landFeatures.compute(sx, sz);
+        // 7. 特征增量（★ P4：传入构造采样，使陆地火山沿俯冲带弧轴成链）
+        //    ★ 与 sampleCore 一致：海陆门控改用【与地形同源】的 landFactor（见 sampleCore 注释）
+        double eLandBaseQ = eLand;
+        double landFactorQ = smoothstep(-0.01, 0.01, eLandBaseQ);
+        LandFeatures.FeatureResult landFeat = landFeatures.compute(sx, sz, tsQ);
         double oceanW = cellBlend.typeWeights[TerrainClass.OCEAN.ordinal()]
             + cellBlend.typeWeights[TerrainClass.DEEP_OCEAN.ordinal()];
-        eLand += landFeat.total * (1.0 - oceanW);
+        // ★ 2026-09-14 P5：与 sampleCore 同源 —— 中心因子已内建于 LandFeatures ⇒ 直接相加
+        eLand += landFeat.total;
 
         // ★ 地质 Phase T5：与 sampleCore 相同的构造形变（保证 tile 与直接采样一致）
         if (DEFORM_ENABLED) {
@@ -559,8 +724,15 @@ public final class CellGenerator {
             eLand += deform.offset(tsD, sx, sz);
         }
 
-        // 8. 海陆统一 e
-        return softCapLandE(eLand + oceanFeat.total * oceanW);
+        // ★ P0.5 海床护栏：与 sampleCore 逐位一致（必须同样在 T5 形变【之后】）
+        double oceanFeatWQ = oceanFeat.total * (1.0 - landFactorQ);
+        if (oceanFeatWQ > 0.0) {
+            double capQ = -eLand - SEABED_MARGIN;
+            oceanFeatWQ = capQ <= 0.0 ? 0.0 : TectonicField.smoothMin(oceanFeatWQ, capQ, SEABED_SOFT_SAT);
+        }
+
+        // 8. 海陆统一 e（★ P0.5：用受海床护栏约束的 oceanFeatWQ，与 sampleCore 一致）
+        return softCapLandE(eLand + oceanFeatWQ);
     }
 
     /**
@@ -579,16 +751,42 @@ public final class CellGenerator {
      * 山脉由<b>既有 MOUNTAINS 配方</b>生成，不引入额外高度偏置 → 不干扰气候/水文标定。
      *
      * <p>调制后重新归一化，保证权重和为 1（{@code dominantFromWeights} 依赖此性质）。
+     *
+     * <p>★ 2026-09-13 Phase T6：改为<b>接收已采样的 {@code ts}</b>（调用方在海洋特征之前
+     * 已采样一次并复用），避免同一位置重复采样构造场。</p>
      */
-    private TectonicField.Sample applyTectonicWeights(double[] w, double sx, double sz) {
-        TectonicField.Sample ts = tectonic.sample(sx, sz);
+    private void applyTectonicWeights(double[] w, TectonicField.Sample ts, double sx, double sz,
+                                      double cBiased) {
         // ★ Phase T2：汇聚造山带按走向串珠化（独立山峰），离散保持连续（真实裂谷是线状）
         double g = tectonic.boundaryStrengthChained(ts, sx, sz);
         // ★ 阈值必须低到不可见：任何提前 return 都是地形跳变源（环状细线/串珠虚线）。
-        if (g <= 1e-6) return ts;
+        if (g <= 1e-6) return;
 
-        double oceanW = w[TerrainClass.OCEAN.ordinal()] + w[TerrainClass.DEEP_OCEAN.ordinal()];
-        double landW = 1.0 - oceanW;
+        // ★★ 2026-09-13 Phase T7（P0）：分支判据由【形态学 landW/oceanW】改为
+        //    【地质学板块壳属性 shellS】★★
+        //
+        //   见 TectonicField.plateShell 的长注释。核心差异：
+        //     · 旧：landW/oceanW 来自【类型权重场】（形态学）—— 与板块无关，
+        //           且与 c 场可互相矛盾（实测"火山弧在 eLand≈0 处造陆"即源于此）。
+        //     · 新：shellS 来自【该点所属板块的壳属性】（由 c 场在板块种子处取值推导）
+        //           —— 这才是参考项目 worldgen 的 (陆,陆)/(陆,洋)/(洋,洋) 分支依据。
+        //
+        //   地质语义随之正确（对齐参考项目 boundary_profile）：
+        //     陆-陆汇聚 → 两侧 shell≈1 → 都造山；陆-洋汇聚 → 陆侧造山 + 洋侧海沟；
+        //     洋-洋汇聚 → 都海沟。离散同理（陆壳裂谷 / 洋壳洋中脊）。
+        //   ★ 关键收益：陆-洋汇聚不再"两边都造山"，而是陆侧造山、洋侧海沟。
+        //
+        //   ★ 为何不会产生"直线网伪影"（实测已验证）：
+        //     shellS 直接由【连续的 c 场】得出（多倍频 FBM，处处 C¹）——
+        //     **与海陆同源**且**绝无阶跃**。
+        //     ※ 曾尝试"壳属性 = 所属板块的常数"（更贴近参考项目的 is_continental[pid]），
+        //       被 TectonicProbe[8] **实测否决**：本项目 PLATE_SPACING=2000wu 而 c 波长
+        //       ≈4000wu ⇒ 一个大陆仅约 2 个板块（参考项目 ~10 个）⇒ 相邻板块壳属性差
+        //       P50=0.41 / 48.4% 是"一陆一洋" ⇒ 等效阶跃 96 块 = 必然的 Voronoi 直线网。
+        //       详见 TectonicField.shellFromC 的注释。
+        //
+        //   （旧注释保留以免后人误改回：用 landW/oceanW 分叉 = 让形态学冒充地质学。）
+        double shellS = TectonicField.shellFromC(cBiased);   // 0=洋壳 1=陆壳（连续、与海陆同源）
         // ★ 2026-09-12 修复（伪影）：改用【连续应力】stress 加权，取代 switch(btype)。
         //   btype 在类型边界跳变 → 权重调制骤变 → eLand 骤变 → 线状疤痕。
         //   stress ∈[-1,1] 连续 → 过渡平滑。
@@ -597,18 +795,17 @@ public final class CellGenerator {
         //   改后两个分支恒执行（cw/dw 恒>0），公式处处一致 → 无折痕。
         double cw = TectonicField.smoothPos(ts.stress(), TectonicField.STRESS_POS_EPS);
         double dw = TectonicField.smoothPos(-ts.stress(), TectonicField.STRESS_POS_EPS);
-        double addC = TectonicField.CONVERGENT_BOOST * g * cw;   // 汇聚 → 造山带（陆）/ 海沟（海）
-        w[TerrainClass.MOUNTAINS.ordinal()] *= 1.0 + addC * landW;
-        w[TerrainClass.DEEP_OCEAN.ordinal()] *= 1.0 + addC * oceanW;
-        double addD = TectonicField.DIVERGENT_BOOST * g * dw;    // 离散 → 裂谷（陆）/ 洋中脊（海）
-        w[TerrainClass.BASIN.ordinal()] *= 1.0 + addD * landW;
-        w[TerrainClass.OCEAN.ordinal()] *= 1.0 + addD * oceanW;
+        double addC = TectonicField.CONVERGENT_BOOST * g * cw;   // 汇聚 → 造山（陆壳）/ 海沟（洋壳）
+        w[TerrainClass.MOUNTAINS.ordinal()] *= 1.0 + addC * shellS;
+        w[TerrainClass.DEEP_OCEAN.ordinal()] *= 1.0 + addC * (1.0 - shellS);
+        double addD = TectonicField.DIVERGENT_BOOST * g * dw;    // 离散 → 裂谷（陆壳）/ 洋中脊（洋壳）
+        w[TerrainClass.BASIN.ordinal()] *= 1.0 + addD * shellS;
+        w[TerrainClass.OCEAN.ordinal()] *= 1.0 + addD * (1.0 - shellS);
         double sum = 0.0;
         for (double v : w) sum += v;
         if (sum > 1e-15) {
             for (int i = 0; i < w.length; i++) w[i] /= sum;
         }
-        return ts;
     }
 
     /** 纯陆地形态 eLand（侵蚀边际采样用，不含气候/分类）。 */
@@ -1306,8 +1503,11 @@ public final class CellGenerator {
         // 重分类：仅陆地侧（e>=0），避免海洋的 12 类细分被破坏
         if (e >= 0) {
             TerrainClass ct = TypeLandShape.dominantFromWeights(cell.typeWeights);
+            // ★ 2026-09-13 修复：必须传入 cell.landFeat —— 否则侵蚀 tile 生成后
+            //   该区块的 VOLCANO/VOLCANIC_FIELD 会被重分类抹掉
+            //   （用户反馈："大范围预览显示火山，关掉就不显示火山了，改显示其他类型"）。
             cell.terrainType = classifyTerrain(e, cell.eLand, ct, cell.temperature,
-                cell.humidity, cell.typeWeights, cell.coastCoord);
+                cell.humidity, cell.typeWeights, cell.coastCoord, cell.landFeat);
         }
 
         // 坡度（陡坡裸岩用）：取 tile 的【侵蚀后】高度网格做 ±1 wu 中心差分。
@@ -1450,27 +1650,47 @@ public final class CellGenerator {
                                   double cEdge) {
         if (e < 0.0) {
             // 海洋地形细分
-            double baseE = oceanFeat != null ? oceanFeat.baseE : e;
             double ridgeAmp = oceanFeat != null ? oceanFeat.ridge : 0;
             double seamountAmp = oceanFeat != null ? oceanFeat.seamount : 0;
-            // 【2026-08-06 修复】深度判定改用基面 e（不含特征增量）：海山/洋中脊把 e 抬升后
-            // 原 "e < -0.08" 自相矛盾（海山顶峰 e>-0.08 → 被判 SHELF，探针实测 SEAMOUNT 仅 11 个）。
+            // ★ 2026-09-13 Phase T6：火山弧（离轴隆起）也是"海中的显著凸起"，
+            //   语义上同属 SEAMOUNT（海底火山）。不新增枚举 —— 见 TerrainClass 说明。
+            //   注意 oceanFeat.arc 是【带符号】剖面（>0 弧 / <0 海沟窄槽），故取正部判断。
+            double arcAmp = oceanFeat != null ? Math.max(0.0, oceanFeat.arc) : 0;
+            // ★★★ 2026-09-13 修复（用户反馈"大陆架好像并没有包住整个大陆"）★★★
+            //   深度分带判据由 `oceanFeat.baseE`（c 场推算的海底基面）改为 **eLand**。
+            //
+            //   【为何是 bug】**海岸线是由 eLand 定义的**（e = eLand + 海洋特征，e=0 即海岸）。
+            //   用 c 场推算的 baseE 分带 ⇒ 陆架带与真实海岸线**错位**：
+            //   实测沿海海洋点仅 **52.2%** 被判 SHELF，且与构造体制无关
+            //   （活动边缘 60.8% / 被动边缘 46.9% —— 若真是"活动边缘无陆架"的地质正确性，
+            //    该比例应与构造强相关，实测反之 ⇒ 纯属两个场错位）。
+            //   改用 eLand 后同一实测升至 **81.4%**（其余为海山/洋中脊优先 + 真属陆坡）。
+            //
+            //   【为何不破坏原注释的初衷】原用 baseE 是为了"不含特征增量，防止海山顶峰
+            //   被抬升后自相矛盾地判成 SHELF"（见下方 2026-08-06 记录）。
+            //   而 `eLand` **同样不含海洋特征增量**（features 在 oceanFeat.total 里单独叠加）
+            //   ⇒ 该防线完整保留，同时海岸线对齐。两全。
+            //
+            //   【分带随之成为沿岸等深带】地质正确的陆架→陆坡→深海平原序列：
+            //     eLand > −0.08           → 大陆架
+            //     −0.18 < eLand ≤ −0.08   → 海洋（陆坡 / 浅海）
+            //     eLand ≤ −0.18           → 深海（深海平原）
+            //   （2026-08-06 旧记录：原用逐点 e 会自相矛盾 —— 海山顶峰 e>−0.08 被判 SHELF，
+            //     探针实测 SEAMOUNT 仅 11 个。改用 eLand 后该问题不复现，因它不含特征增量。）
             // SEAMOUNT 判定优先于 RIDGE（海山独立特征，避免被洋中脊抢走）。
-            if (seamountAmp > 0.02 && baseE < -0.08) return TerrainClass.SEAMOUNT;
+            if ((seamountAmp > 0.02 || arcAmp > 0.02) && eLand < -0.08) return TerrainClass.SEAMOUNT;
             // 2026-08-06 调稀洋中脊：阈值 0.03→0.05（用户反馈"洋中脊有点多"）——边缘弱贡献区
             // 归入 OCEAN/DEEP_OCEAN，仅脊线主体保留 RIDGE 类型（地形抬升不受影响）。
-            if (ridgeAmp > 0.05 && baseE < -0.08) return TerrainClass.SUBMARINE_RIDGE;
-            if (baseE > -0.08) return TerrainClass.CONTINENTAL_SHELF;
-            return baseE < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
+            if (ridgeAmp > 0.05 && eLand < -0.08) return TerrainClass.SUBMARINE_RIDGE;
+            if (eLand > -0.08) return TerrainClass.CONTINENTAL_SHELF;
+            return eLand < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
         // 【2026-08-03 用户决策】BEACH 不再作为独立地形类型（沙滩是海岸过渡带而非地形形态）：
         // 海岸窄条自然落入后续陆地类型（PLAIN/HILLS 等），群系层面仍由 BiomeClassifier 按气候映射。
 
         // 火山优先（可见特征，用户核心诉求：陆地需有火山地形）。
-        if (landFeat != null) {
-            if (landFeat.single > 0.05) return TerrainClass.VOLCANO;
-            if (landFeat.field > 0.04) return TerrainClass.VOLCANIC_FIELD;
-        }
+        TerrainClass vol = volcanoClass(landFeat);
+        if (vol != null) return vol;
 
         // 【2026-08-05 用户决策】PEAK 不再作为独立地形类型（山峰=山脉的高海拔部分，
         // 与 BEACH/SNOW 同为状态/过渡而非独立形态）：高海拔山地直接落入 MOUNTAINS
@@ -1479,36 +1699,89 @@ public final class CellGenerator {
     }
 
     /**
+     * ★ 2026-09-13 修复（用户反馈"火山只在大范围预览显示，关掉就没有了"）：
+     * <b>火山优先判定</b>（主 {@link #classify} 与侵蚀后静态重分类<b>共用</b>）。
+     *
+     * <p><b>为何要抽成共用函数</b>：原先 {@code classify} 有这段判定，而
+     * {@code classifyTerrain}（侵蚀回写后调用）<b>没有</b>，且其签名里根本没有
+     * {@code landFeat} 参数 ⇒ 侵蚀 tile 生成后（近距离，预览放大时）该区块的
+     * {@code VOLCANO/VOLCANIC_FIELD} 被<b>静默重分类</b>成底层类型（PLAIN/MOUNTAINS…）
+     * ⇒ 用户看到的"远处有火山、走近就没了"。
+     * 抽成一处可保证<b>两个入口的阈值永不漂移</b>。</p>
+     *
+     * @return 火山类型；非火山返回 {@code null}（调用方继续后续判定）
+     */
+    private static TerrainClass volcanoClass(LandFeatures.FeatureResult landFeat) {
+        if (landFeat == null) return null;
+        // ★ 2026-09-13 修复（用户反馈"火山中间竟然是旁边的地形"）：
+        //   判据由【净抬升 single/field（含火口下凹）】改为【山体掩码 singleEdifice/fieldEdifice
+        //   （不扣火口）】。原因：火口在中心下凹 0.02~0.07 e，当 amp 较小时
+        //   `single(中心) = amp − crater` 会跌破阈值（实测 amp=0.12, crater=0.07
+        //   → 恰好 0.05，严格大于不成立）⇒ 中心被判成周围类型，火山只剩一圈"环形"。
+        //   而地质上<b>火口内部仍属这座火山</b>（火山口湖亦是火山的一部分）⇒ 应按"山体覆盖"判。
+        //
+        // ★ 2026-09-13 阈值修正（用户反馈"火山类型包不全火山的山体"）：
+        //   原阈值 0.05 / 0.04 是**任意常数**，与"地形上看得见"没有关系。
+        //   陆地 1 e = (maxY−seaLevel)×peakFraction = 257×0.92 ≈ 236 格 ⇒
+        //   0.05 e ≈ 11.8 格 —— 远高于"可见"的门槛（~2 格 ≈ 0.0085 e）。
+        //   后果：山体外缘（抬升 2~11 格、肉眼明显是火山锥面）被判成周围类型。
+        //   现按【可见地形】定阈值：0.010 e ≈ 2.4 格 ⇒ 类型覆盖≈可见山体。
+        if (landFeat.singleEdifice > 0.010) return TerrainClass.VOLCANO;
+        if (landFeat.fieldEdifice > 0.010) return TerrainClass.VOLCANIC_FIELD;
+        return null;
+    }
+
+    /**
      * 静态分类方法（侵蚀回写后重分类用）。
      */
     public static TerrainClass classifyTerrain(double ne, double eLand,
                                                 TerrainClass cellType,
                                                 double temperature, double humidity) {
-        return classifyTerrain(ne, eLand, cellType, temperature, humidity, null, 0.0);
+        return classifyTerrain(ne, eLand, cellType, temperature, humidity, null, 0.0, null);
     }
 
     /**
      * 静态分类方法（带连续类型权重 + coastCoord 海岸约束）。
      * PEAK/SNOW 使用 typeWeights 连续阈值，避免离散 argmax 跳变。
      * 海洋区域按深度细分：大陆架 / 海洋 / 深海（无特征分量，仅靠 e）。
+     *
+     * <p>★ 2026-09-13 新增 {@code landFeat} 参数：侵蚀回写后必须与 {@link #classify}
+     * 用<b>同一套火山判定</b>，否则火山类型会在侵蚀 tile 生成后被抹掉（见
+     * {@link #volcanoClass} 注释）。传 {@code null} 表示"该调用点不掌握火山信息"
+     * （退化为不判火山，与旧行为一致）。</p>
      */
     public static TerrainClass classifyTerrain(double ne, double eLand,
                                                 TerrainClass cellType,
                                                 double temperature,
                                                 double humidity,
                                                 double[] typeWeights,
-                                                double coastCoord) {
+                                                double coastCoord,
+                                                LandFeatures.FeatureResult landFeat) {
         if (ne < 0.0) {
             if (ne > -0.08) return TerrainClass.CONTINENTAL_SHELF;
             return ne < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }
         // 【2026-08-03 用户决策】BEACH/SNOW 不再作为独立地形类型（见主 classify 注释）。
+        // ★ 火山优先（与主 classify 一致）——修复"侵蚀后火山消失"。
+        TerrainClass vol = volcanoClass(landFeat);
+        if (vol != null) return vol;
         // 【2026-08-05 用户决策】PEAK 不再独立分类（山峰=山脉高海拔部分，群系由
         // BiomeClassifier 按 cell.e 阈值映射），此处直接取 typeWeights 主导类型。
         if (typeWeights != null && typeWeights.length >= TerrainClass.COUNT) {
             return TypeLandShape.dominantFromWeights(typeWeights);
         }
         return cellType;
+    }
+
+    /** 兼容旧签名的重载（不判火山）。 */
+    public static TerrainClass classifyTerrain(double ne, double eLand,
+                                                TerrainClass cellType,
+                                                double temperature,
+                                                double humidity,
+                                                double[] typeWeights,
+                                                double coastCoord) {
+        return classifyTerrain(ne, eLand, cellType, temperature, humidity,
+                typeWeights, coastCoord, null);
     }
 
     // ===== 内联工具 =====

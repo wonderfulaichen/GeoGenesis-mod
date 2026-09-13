@@ -158,6 +158,62 @@ public final class TectonicField {
     /** 洋洋离散洋中脊高度。 */
     private static final double RIDGE_HEIGHT = 0.045;
 
+    // ===== ★ 2026-09-13 Phase T6：海洋侧构造地形（海沟窄槽 + 火山弧）=====
+    //
+    //   【为何需要】T1 用【类型权重调制】表达海洋侧构造，只能给出<b>宽带深度趋势</b>
+    //   （MOUNTAINS/DEEP_OCEAN 权重 × BOOST，宽度由 σ=110 高斯支配）。
+    //   而参考项目 worldgen 的 boundary_profile 在海洋侧给出的是<b>中尺度特征形态</b>：
+    //     · 俯冲侧海沟 = 窄而深的槽（gaussian(dist, 12)）
+    //     · 洋-洋汇聚  = 离轴火山弧（gaussian(dist−35, 18)）
+    //   两者<b>几何位置不同</b>（槽在线、弧在离轴 ~210wu），无法靠权重调制表达 ⇒ 需显式偏移。
+    //
+    //   【为何不会污染气候标定】T1 当初弃用高程偏移改权重调制，是因为<b>陆地</b>抬升
+    //   会连锁增强地形雨（PrecipField.orographicGain 基于高度差），推高全局降水。
+    //   而本函数的两个分量<b>全在水下</b>：海平面恒为 e=0，水下雨影无从产生
+    //   （cell.e < 0 时 PrecipField 的迎风坡抬升无意义）⇒ 标定安全。
+    //   陆侧造山/裂谷<b>仍归 T1 的权重调制</b>，本函数不碰（避免与 T1 重复）。
+    /**
+     * 海沟窄槽的宽度（wu）。须远窄于 PROFILE_SIGMA(110)，才能形成"槽"而非"坡"。
+     *
+     * <p>对齐真实地质：海沟宽 50~100 km，本项目尺度 1 wu ≈ 1.5 km
+     * （PLATE_SPACING=2000wu 对应真实微板块 ~3000km）⇒ 约 33~67 wu。
+     * 取 45（配合 dist 已被 blurDist 平滑）。参考项目 {@code gaussian(dist, 12px)}
+     * 换算约 12~50wu，同量级。</p>
+     */
+    private static final double TRENCH_NOTCH_SIGMA = 45.0;
+    /**
+     * 海沟窄槽深度（e 单位，≈9.6 块）。
+     *
+     * <p><b>为何要有"槽"而不只有 T1 的宽趋势</b>：T1 把俯冲侧表达为「提升 DEEP_OCEAN 权重」，
+     * 那是被 σ=110 高斯支配的<b>宽带加深</b>（缓坡）；而真实海沟是<b>紧贴边界线的窄槽</b>
+     * （参考项目 {@code gaussian(dist, 12px)}）。两者叠加才构成「外隆—沟—坡」的俯冲带剖面。</p>
+     *
+     * <p>取值 0.05 e 而非参考项目的 -2500px（≈ -0.33 e）：本项目海域的 e 总动态范围比参考项目
+     * 小（深海底约 -0.35 e），若照搬相对深度会把海床压穿世界底面。0.05 e 提供"槽"的锐利感，
+     * 又不与 T1 的宽加深叠成双重深沟。</p>
+     */
+    private static final double TRENCH_NOTCH_DEPTH = 0.05;
+    /** 火山弧的离轴距离（wu）：弧不在边界线上，而在海沟后方约 210wu 处。 */
+    private static final double ARC_OFFSET = 210.0;
+    /** 火山弧的半宽（wu）。 */
+    private static final double ARC_SIGMA = 55.0;
+    /**
+     * 火山弧高度（e 单位，≈19 块）。
+     *
+     * <p><b>取值依据（对齐参考项目比例）</b>：参考项目洋-洋弧 = {@code 1000 × 1.5 × ms(0.6) × oro(1.5)}
+     * ≈ +1350px，而其洋壳基面 -4000~-3000px ⇒ <b>弧高/深海深 ≈ 39%</b>。
+     * 本项目深海底约 -0.35 e（{@code deepOceanDepth}）⇒ 同比例弧高 ≈ <b>0.14 e</b>。
+     * 保守取 0.10 e（29%），仍远低于"露出水面"所需的 ~0.30 e。</p>
+     *
+     * <p><b>★ 弧不露头是刻意的（有证据）</b>：参考项目 {@code docs/map.png} 中海洋是连续的
+     * 深浅蓝、<b>无任何裸露的岛弧链</b>；其弧顶绝对高度约 -1650m，<b>远在海平面之下</b>。
+     * 故本项目的弧同样<b>只作海底隆起</b>（且在 {@code OceanFeatures} 里另用深海门控加强
+     * 这一保证，见 {@code arcFade}）—— 绝不把弧写成能生成陆地的量。</p>
+     */
+    private static final double ARC_HEIGHT = 0.10;
+    /** 海洋侧剖面的作用距离（wu）：超过则完全无贡献（远大于 ARC_OFFSET+3σ=375）。 */
+    private static final double OCEAN_PROFILE_REACH = 420.0;
+
     // ===== 哈希盐（互不干扰） =====
     private static final long SALT_SEED = 0x9E3779B97F4A7C15L;
     private static final long SALT_VEL = 0xBF58476D1CE4E5B9L;
@@ -204,6 +260,27 @@ public final class TectonicField {
         double t = (v + eps) / (2.0 * eps);
         t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
         return v * (t * t * (3.0 - 2.0 * t));
+    }
+
+    /**
+     * 平滑最小值 {@code smoothMin(a, b, k)}：{@code min} 的 C¹ 版本（公共工具）。
+     *
+     * <p>直接 {@code Math.min} 在 {@code a=b} 处一阶不连续 ⇒ 沿该等值线留下<b>折痕</b>
+     * （本项目已多次踩坑，见 {@link #smoothPos}）。本式是标准多项式 smooth-min：
+     * {@code |a−b| ≥ k} 时精确等于 {@code min}，只在过渡带圆化
+     * ⇒ <b>不改变标定，只消除折痕</b>。</p>
+     *
+     * <p>用途：地形护栏（如"海洋特征不得抬出海平面"的软天花板）。
+     * 放在本类是因为它已是本项目"地形数学工具"的宿主（{@code smoothPos} /
+     * {@code shellFromC} / {@code boundaryStrength}），供各处复用而不重复实现。</p>
+     *
+     * @param k 过渡宽度（&gt;0；a,b 相差 ≫k 时退化为精确 min）
+     */
+    public static double smoothMin(double a, double b, double k) {
+        if (a - b >= k) return b;
+        if (b - a >= k) return a;
+        double h = (k - Math.abs(a - b)) / k;
+        return Math.min(a, b) - h * h * k * 0.25;
     }
 
     /**
@@ -427,7 +504,22 @@ public final class TectonicField {
      *
      * <p><b>关键差异</b>：worldgen 区分陆-陆/陆-洋/洋-洋三种汇聚（因它有显式的
      * {@code is_continental} 板块属性）。本类暂<b>不维护板块陆/洋属性</b>（Phase T1 简化），
-     * 改为由调用方传入当前点的海陆倾向 {@code isLand} 决定取造山还是海沟分支。
+     * 改为由调用方传入当前点的海陆倾向 {@code isLand} 决定取造山还是海沟分支。</p>
+     *
+     * <p><b>★ 2026-09-13 Phase T6 现状说明（避免误用）</b>：本方法在<b>生产路径中已不再调用</b>，
+     * 原因是它与 T1 的职责重叠且方式相冲突：</p>
+     * <ul>
+     *   <li><b>陆侧</b>（造山 {@code MOUNTAIN_GAIN} / 裂谷 {@code -RIFT_DEPTH}）—— 与 T1 的
+     *       {@code applyTectonicWeights} 重复。T1 之所以改用<b>权重调制</b>而非直接加偏置，
+     *       是因为直接抬升 e 会连锁增强地形雨（{@code PrecipField.orographicGain} 基于高度差）
+     *       → 推高全局降水、稀释干旱区区分度（实测 head 最干桶 0.922→0.959）。</li>
+     *   <li><b>海洋侧</b>——由 {@link #oceanProfile} 以<b>中尺度形态</b>（窄槽 + 离轴弧）
+     *       取代；直接用本方法的宽高斯 {@code TRENCH_DEPTH/ RIDGE_HEIGHT} 会与 T1 的
+     *       宽带趋势叠成"双重加深"。</li>
+     * </ul>
+     * <p>保留此方法的唯一用途：<b>符号语义自检</b>（{@code TectonicProbe[2]} 用它断言
+     * "造山+/海沟−/裂谷−/洋脊+/走滑0" 这一与参考项目一致的<b>参考语义</b>）。
+     * 若日后要恢复"显式偏移"路线，须先解决上述地形雨连锁问题。</p>
      *
      * @param isLand 当前采样点是否倾向陆地（决定造山 vs 海沟 / 裂谷 vs 洋中脊）
      * @return 高程偏置（e 单位），内部点与走滑边界返回 0
@@ -450,6 +542,168 @@ public final class TectonicField {
                     : RIDGE_HEIGHT * strength * g;
             default -> 0.0;
         };
+    }
+
+    /**
+     * ★ 2026-09-13 Phase T6：<b>海洋侧构造剖面</b>（俯冲带「海沟窄槽 + 火山弧」）。
+     *
+     * <p>只对<b>汇聚边界</b>产出（用连续量 {@code cw = smoothPos(stress)} 加权），返回
+     * <b>纯剖面值</b>（e 单位：负 = 海沟槽 / 正 = 火山弧）。海陆淡入由调用方按基面
+     * {@code eOcean} 施加（与 {@code OceanFeatures} 的 {@code fade} 同款，保证连续）。</p>
+     *
+     * <h3>为何不能靠 T1 的权重调制</h3>
+     * <p>T1 把汇聚边界表达为「提升 DEEP_OCEAN / MOUNTAINS 权重」，其空间尺度由
+     * {@link #boundaryStrength} 的 σ=110 高斯支配 → 只能给出<b>宽带趋势</b>。
+     * 而参考项目 {@code elevation.rs:boundary_profile} 在海洋侧给出的是<b>中尺度形态</b>：</p>
+     * <pre>{@code
+     *   (陆,洋) 俯冲：trench * gaussian(dist, 12.0)                       // 窄槽紧贴边界线
+     *   (洋,洋) 汇聚：dist<15 → gaussian(dist, 8.0)                        // 极窄海沟
+     *                 否则   → arc * gaussian(dist − 35.0, 18.0)           // ★ 离轴弧
+     * }</pre>
+     * <p>关键差异是「<b>离轴</b>」—— 弧不在边界线上，而在海沟<b>后方</b>
+     * （俯冲板片达 ~100km 深部脱水熔融 → 弧后 ~200km 发育）。这种<b>位置偏移</b>
+     * 无法用"权重调制"表达：权重只在"线性叠加"意义下抬升/压低，<b>不含空间平移</b>。</p>
+     *
+     * <h3>为何不需要区分「对面板块是陆是洋」</h3>
+     * <p>参考项目靠 {@code is_continental[pid]} 分 (陆,洋)/(洋,洋)，因为它的
+     * {@code base_elevation} 等属性绑在板块上。但<b>「海沟 + 火山弧」是俯冲带的普遍特征</b>：
+     * 马里亚纳型（洋-洋）与安第斯型（洋-陆）都有（差别仅在弧发育于洋壳还是陆壳，
+     * 属<b>岩性/生物群系层</b>的事，不属高程形态层）。故本项目<b>不新增板块陆/洋属性</b> ——
+     * 既省一次 continent 采样，又避免与既有 {@link ContinentField} 的全球海陆场语义冲突。</p>
+     *
+     * <h3>连续性（不引入伪影）—— 三条硬约束，均已实测验证</h3>
+     * <ol>
+     *   <li><b>不用离散 {@code btype} 分支</b>：它在 {@code dist = BOUNDARY_REACH(320)} 处
+     *       跳变为 INTERIOR，若据此开关本函数，会在弧高斯仍有 ~1% 幅值处<b>砍出 1 块台阶</b>。
+     *       改用连续 {@code cw = smoothPos(stress)}（已保证 {@code f(0)=0} 且一阶导连续）。</li>
+     *   <li><b>不用 {@code rate}（最重要的教训）</b>：{@code rate = |v1−v2|} 只依赖「最近板块对」
+     *       ⇒ 是<b>分片常数</b>，在三板块交汇（<b>Voronoi 顶点</b>）处跳变。若用它做幅度因子，
+     *       跳变轨迹正是顶点处发散的 <b>Y 形细直线</b>（实测 {@code arc_gradmag} max=7.4e-3，
+     *       与总场 7.7e-3 同量级 ⇒ 该分量贡献了<b>全部</b>残余细线；而 {@code dist_gradmag}
+     *       仅 1.40 ≈ √2，属正常顶点折痕而非跳变 ⇒ 排除 dist）。
+     *       这与项目既有铁律一致：{@code btype/rate} 是<b>离散标签</b>（供岩性等用途），
+     *       <b>不得参与地形合成</b>（{@code boundaryStrength} 的注释已记同一教训）。
+     *       参考项目之所以能用 {@code rate}，是因为它对整张 profile 网格先算后
+     *       {@code blur_grid} 模糊（{@code elevation.rs} Phase 2）—— 本项目按需采样、
+     *       无全图模糊步骤，故直接弃用。</li>
+     *   <li>{@link #OCEAN_PROFILE_REACH} 处早退：该处弧高斯值 &lt; 1e-6 e
+     *       （1 块 = 0.0079 e）⇒ 截断不可见。</li>
+     * </ol>
+     *
+     * <h3>尺度标定（本项目 wu 体系，非参考项目的像素体系）</h3>
+     * <pre>
+     *   PROFILE_SIGMA = 110（既有，boundaryStrength 的高斯）→ T1 的宽带趋势
+     *   本函数：海沟 σ=45 窄槽（紧贴边界）、火山弧 = ARC_OFFSET(210) 处 σ=55 的隆起
+     * </pre>
+     *
+     * @param s 构造采样（<b>只用连续量</b> {@code dist} / {@code stress}）
+     * @return 海洋侧高程偏置（e 单位）；内部点 / 走滑 / 非汇聚 / 超出作用距离均返回 0
+     */
+    public double oceanProfile(Sample s) {
+        double d = s.dist();
+        if (d >= OCEAN_PROFILE_REACH) return 0.0;      // 早退：此处弧高斯 < 1e-6 e（不可见）
+        double cw = smoothPos(s.stress(), STRESS_POS_EPS);
+        if (cw <= 0.0) return 0.0;                     // 非汇聚（连续量，无跳变）
+        double trench = -TRENCH_NOTCH_DEPTH * gaussian(d, TRENCH_NOTCH_SIGMA);
+        double arc = ARC_HEIGHT * gaussian(d - ARC_OFFSET, ARC_SIGMA);
+        return (trench + arc) * cw;
+    }
+
+    /** 高斯核 {@code exp(−d²/2σ²)}（移植自 worldgen {@code elevation.rs} 的同名函数）。 */
+    private static double gaussian(double d, double sigma) {
+        return Math.exp(-(d * d) / (2.0 * sigma * sigma));
+    }
+
+    /**
+     * ★ 2026-09-13 Phase T7(P4)：<b>俯冲带火山活动强度</b> ∈ [0,1]（<b>区域场</b>）。
+     *
+     * <h3>用途：让陆地火山"沿俯冲带富集"而非随机散布</h3>
+     * <p>{@link LandFeatures} 原先把陆上火山布点做成<b>纯随机哈希</b>（800wu 格 3% / 掩码区 12%），
+     * 与任何地质过程无关 —— 而真实地球的陆上火山<b>几乎全部发育在俯冲带</b>
+     * （安第斯、喀斯喀特、日本、爪哇），其余（板内火山）稀少。</p>
+     *
+     * <h3>★ 为何【不含】Voronoi 距离 {@code dist}（实测教训，务必保留）</h3>
+     * <p>初版实现为 {@code cw × gaussian(dist − ARC_OFFSET, ARC_SIGMA)}
+     * （想复用海中火山弧的"离轴带"几何）。但它有<b>致命副作用</b>：
+     * {@code dist = (d2−d1)/2} 在远离 Voronoi 顶点处是<b>线性函数</b>
+     * ⇒ 其等值线是<b>直线</b>（平行于板块边界）⇒ {@code boost} 沿直线变化
+     * ⇒ 火山格点的"激活阈值"与火山区掩码阈值都<b>沿直线翻转</b>
+     * ⇒ 用户实机看到"火山区域边界有一条笔直斜线"（实测截图，坐标 1077,-833）。</p>
+     * <p>这是本项目反复出现的同一类坑（参见 {@code CHAIN_SCALE} 的<b>硬约束</b>
+     * "禁止用 dist 作噪声/门控坐标"、以及 {@code oceanProfile} 弃用 {@code rate}）。
+     * <b>结论：陆地火山门控只能用区域连续量。</b></p>
+     *
+     * <p>地质上这也更准确：<b>弧火山作用是一条"带"（宽 100~300km）而非一条"线"</b>，
+     * 用区域尺度的应力场（{@code stressField} 的 σ=1000）表达正合适；
+     * 线状的弧轴几何只保留给<b>水下</b>地形剖面（{@code oceanProfile}，海里的直线不明显）。</p>
+     *
+     * @return 0 = 无俯冲带火山活动 / 1 = 最强（俯冲带核心区）
+     */
+    public double arcVolcanism(Sample s) {
+        return smoothPos(s.stress(), STRESS_POS_EPS);
+    }
+
+    // ===== ★ 2026-09-13 Phase T7(P0)：板块壳属性（陆壳 / 洋壳）=====
+    /**
+     * 壳属性过渡半宽（{@code c} 值域单位）。
+     *
+     * <p>{@code c} 是 {@link ContinentField} 的多倍频 FBM：{@code c≤−w} → 洋壳 0、
+     * {@code c≥+w} → 陆壳 1、中间 smoothstep 过渡。</p>
+     *
+     * <p>取 0.15（{@code c} 值域 ±1 的 15%）：使"海岸附近"（|c| 小）有一个
+     * 平滑的过渡带，而大陆内部（c≈+0.5）恒为 1、深海（c≈−0.5）恒为 0。
+     * 该过渡带无需刻意很窄 —— 它所在的位置本来就处于海陆过渡，
+     * 造山/海沟的切换在那里发生是<b>地质上应然</b>的（大陆坡）。</p>
+     */
+    private static final double SHELL_BLEND = 0.15;
+
+    /**
+     * ★ 2026-09-13 Phase T7(P0)：<b>壳属性</b> ∈ [0,1]（0 = 洋壳 / 1 = 陆壳）。
+     *
+     * <h3>为何需要（对照参考项目 worldgen）</h3>
+     * <p>参考项目 {@code elevation.rs:boundary_profile} 决定"造山还是海沟"的关键一行是：
+     * <pre>{@code
+     *   if plates.is_continental[current_pid] {   // ← 用【当前点】的壳属性
+     *       offset = peak * gaussian(dist, mw);   // 陆侧 → 造山
+     *   } else {
+     *       let trench = -2500.0 * ...;           // 洋侧 → 海沟
+     *   }
+     * }</pre>
+     * 注意用的是 {@code current_pid}（<b>当前点</b>），而非配对字段 {@code pa/pb} ——
+     * 配对属性只用于<b>选择分支类型</b>（陆-陆/陆-洋/洋-洋）。</p>
+     * <p>本项目此前用 {@code landW/oceanW}（来自<b>形态学</b>类型场）代替该判据，
+     * 等于<b>用形态冒充地质</b>：类型场与 {@code c} 场可互相矛盾
+     * （实测出现"火山弧把 eLand≈0 的点抬出水面"—— 因为该点 c 说海、类型场说陆）。</p>
+     *
+     * <h3>★ 为何用 {@code c} 而不是"板块常数壳属性"（实测否决）</h3>
+     * <p>曾尝试"壳属性 = 所属板块的常数"（更贴近参考项目的 {@code is_continental[pid]}），
+     * 但 {@code TectonicProbe[8]} <b>实测否决</b>：本项目 {@code PLATE_SPACING=2000wu}
+     * 而 {@code c} 基频波长 ≈4000wu ⇒ <b>一个大陆仅约 2 个板块</b>
+     * （参考项目是 ~10 个微板块/大陆）⇒ 相邻板块壳属性差
+     * {@code P50=0.41 / max=1.0}、<b>48.4% 的相邻板块"一陆一洋"</b>
+     * ⇒ 等效高程阶跃达 <b>96 块</b>，必然印出 Voronoi 直线网
+     * （正是本项目历史上反复出现的"边界线伪影"）。</p>
+     * <p>改用 {@code c} 则有三个决定性优点：</p>
+     * <ol>
+     *   <li><b>与海陆严格同源</b>：海陆本来就由 {@code c} 决定 ⇒ 判据与结果不可能矛盾，
+     *       从构造上消除"形态与地质打架"（含那个"弧造陆"）。</li>
+     *   <li><b>绝对连续</b>：{@code c} 是多倍频 FBM，处处 C¹ ⇒ <b>不可能产生阶跃/直线网</b>。</li>
+     *   <li>与参考项目的 {@code current_pid} 语义<b>等价</b>（都是"当前点在海侧还是陆侧"），
+     *       只是用连续场表达而非板块常量 —— 在其自身尺度下二者近似一致。</li>
+     * </ol>
+     *
+     * <h3>与 {@code oceanW} 的区别（为何必须换掉旧的）</h3>
+     * <p>{@code oceanW} 与 {@code c} 都是连续量、都不产生阶跃，差别只在<b>是否与海陆同源</b>。
+     * 旧实现在"两场矛盾"的点上把海沟/造山放错侧；用 {@code c} 后<b>从定义上</b>不可能放错。</p>
+     *
+     * @param c 大陆性（{@code ContinentField.sample}）
+     * @return 0 = 洋壳 / 1 = 陆壳（连续过渡）
+     */
+    public static double shellFromC(double c) {
+        if (c <= -SHELL_BLEND) return 0.0;
+        if (c >= SHELL_BLEND) return 1.0;
+        double t = (c + SHELL_BLEND) / (2.0 * SHELL_BLEND);
+        return t * t * (3.0 - 2.0 * t);
     }
 
     /**

@@ -19,9 +19,8 @@ import java.util.function.DoubleBinaryOperator;
  */
 public final class OceanFeatures {
 
-    // ===== 洋中脊：Ridge(1/600) + Warp(200) =====
+    // ===== 洋中脊：构造离散带门控 + Ridge(1/600)/Warp(200) 轴向细节 =====
     private final Noise ridgeNoise;
-    private final Noise ridgeMask; // 低频掩码 [0,1]，避免全球都有中脊
 
     // ===== 海山/海底火山：粗格点高斯鼓包 + 域扭曲去圆化 =====
     private final Noise seamountWarpX, seamountWarpZ; // 海山域扭曲 @1/200
@@ -48,7 +47,12 @@ public final class OceanFeatures {
     private DoubleBinaryOperator seamountCenterDepthCheck;
 
     public OceanFeatures() {
-        // 洋中脊脊线：Ridge(Simplex, 1/600, p=1.0)
+        // 洋中脊脊线：Ridge(Simplex, 1/600, p=1.0) + Warp(200) 蜿蜒。
+        // ★ 2026-09-13 Phase T6：**位置**（在哪）改由构造离散带门控（见 compute 的
+        //   ridgeGate），本噪声只负责**轴向细节**（脊线蜿蜒 / 轴谷起伏）。
+        //   ⇒ 原本的"低频掩码"（Simplex 1/2000）已被构造门控取代并删除：
+        //     随机掩码会让洋中脊出现在任意海底，与"洋中脊 = 离散板块边界"的地质定义
+        //     矛盾（参考项目 worldgen 的洋中脊正是由 DIVERGENT 边界驱动）。
         Noise simplex = new Simplex(701);
         Noise freq = new Frequency(simplex, 1.0 / 600.0);
         Noise ridge = new Ridge(freq, 1.0);
@@ -56,9 +60,6 @@ public final class OceanFeatures {
         Noise warpX = new Frequency(new Simplex(702), 1.0 / 300.0);
         Noise warpZ = new Frequency(new Simplex(703), 1.0 / 300.0);
         this.ridgeNoise = new Warp(ridge, warpX, warpZ, 200.0);
-        // 低频掩码：Simplex(1/2000) → [0,1]
-        Noise maskBase = new Frequency(new Simplex(704), 1.0 / 2000.0);
-        this.ridgeMask = new Map(maskBase, -1.0, 1.0, 0.0, 1.0);
         // 海山域扭曲（去圆化）：低频 Simplex @1/200，幅度由每座 radius 缩放
         this.seamountWarpX = new Frequency(new Simplex(705), 1.0 / 200.0);
         this.seamountWarpZ = new Frequency(new Simplex(706), 1.0 / 200.0);
@@ -79,11 +80,21 @@ public final class OceanFeatures {
         public final double total;     // 总增量
         public final double ridge;     // 洋中脊增量
         public final double seamount;  // 海山增量
+        /**
+         * ★ 2026-09-13 Phase T6：俯冲带剖面增量（{@link TectonicField#oceanProfile} 透传），
+         * <b>带符号</b>：{@code >0} = 火山弧（离轴隆起，分类时可作 {@code SEAMOUNT}）；
+         * {@code <0} = 海沟窄槽（紧贴边界的深槽）。已计入 {@link #total}。
+         */
+        public final double arc;
         public final double baseE;     // 预特征基面 e（分类深度判定用，避免特征抬升自相矛盾）
         public FeatureResult(double total, double ridge, double seamount, double baseE) {
+            this(total, ridge, seamount, 0.0, baseE);
+        }
+        public FeatureResult(double total, double ridge, double seamount, double arc, double baseE) {
             this.total = total;
             this.ridge = ridge;
             this.seamount = seamount;
+            this.arc = arc;
             this.baseE = baseE;
         }
     }
@@ -91,7 +102,6 @@ public final class OceanFeatures {
     /** 播种所有噪声节点 + 海山种子偏移 */
     public void seed(long worldSeed) {
         Noises.seedAll(ridgeNoise, worldSeed, 0);
-        Noises.seedAll(ridgeMask, worldSeed, 0);
         Noises.seedAll(seamountWarpX, worldSeed, 0);
         Noises.seedAll(seamountWarpZ, worldSeed, 0);
         this.seamountSeed = worldSeed + 987654321L;
@@ -100,13 +110,23 @@ public final class OceanFeatures {
     /**
      * 计算海洋特征增量 delta。
      *
+     * <p>★ 2026-09-13 Phase T6：洋中脊的<b>位置</b>改由构造场驱动（{@code tect}），
+     * 火山弧由 {@link TectonicField#oceanProfile} 的<b>正部</b>透传。详见各段注释。</p>
+     *
      * @param wx      世界 X 坐标
      * @param wz      世界 Z 坐标
      * @param eOcean  当前海洋基面 e ∈ [-1, 0]
      * @param cBiased 偏置大陆性（仅保留签名兼容，未用）
-     * @return FeatureResult 包含 total / ridge / seamount 分量
+     * @param tect    构造采样结果（{@code null} 时退回"无构造版"：洋中脊无门控、无火山弧，
+     *                与 T6 接入前等价，便于回滚与对照）
+     * @param arcProf {@link TectonicField#oceanProfile} 的剖面值（e 单位，负=海沟窄槽 /
+     *                正=火山弧），由调用方算出传入。本方法取<b>正部</b>作火山弧、
+     *                <b>负部</b>作海沟<b>窄槽</b>（叠加在 T1 的宽带加深之上）—— 二者语义不同，
+     *                但都只在<b>深海</b>生效，不会把海床抬出海面
+     * @return FeatureResult 包含 total / ridge / seamount / arc 分量
      */
-    public FeatureResult compute(double wx, double wz, double eOcean, double cBiased) {
+    public FeatureResult compute(double wx, double wz, double eOcean, double cBiased,
+                                 TectonicField.Sample tect, double arcProf) {
         // 修复：原版 `if (eOcean >= 0) return 0` 是硬阈值，在 eOcean=0 的海岸线产生跳变
         // （火山贡献最高 0.16 e ≈ 41 blocks → 大断裂面）。改用 smoothstep 淡入，
         // 保证海陆过渡带地形连续。海岸线上 eOcean=0 → fade=0，仍无海山贡献。
@@ -114,30 +134,128 @@ public final class OceanFeatures {
         // 原 smoothstep(0,-0.05,...) 区间反转与平滑版（无 1-）都会使 fade 恒 0，海山/洋中脊从未生成
         // （探针实测 maxSeamountAmp=0）。
         double fade = eOcean < 0 ? 1.0 - smoothstep(-0.05, 0.0, eOcean) : 0.0;
-        if (fade <= 0.0) return new FeatureResult(0, 0, 0, eOcean);
+        if (fade <= 0.0) return new FeatureResult(0, 0, 0, 0, eOcean);
 
         double ridgeDelta = 0.0;
         double seamountDelta = 0.0;
+        double arcDelta = 0.0;
 
         // 1. 洋中脊：smoothstep 平滑淡入（eOcean ≥ -0.08 无脊，≤ -0.25 全幅）
         // 2026-08-06 修复：ridgeFade 语义 = "深海 1 / 浅海 0" → 1-smoothstep(-0.25,-0.08,eOcean)。
         // 原实现（区间反转 / 无 1-）ridgeFade 恒 0，洋中脊从未生效。
         double ridgeFade = eOcean < -0.08 ? 1.0 - smoothstep(-0.25, -0.08, eOcean) : 0.0;
         if (ridgeFade > 0) {
-            double mask = ridgeMask.compute(wx, wz); // [0, 1]
-            if (mask > 0.3) {
-                double ridge = ridgeNoise.compute(wx, wz); // [0, 1]
-                double strength = (mask - 0.3) / 0.7; // 0.3→0, 1.0→1.0
-                ridgeDelta = 0.18 * strength * ridge * ridgeFade;
+            // ★★★ 2026-09-13 Phase T6：洋中脊门控由【随机低频掩码】改为【构造离散带】★★★
+            //
+            //   原实现用 ridgeMask = Simplex(1/2000) 决定洋中脊出现在哪 —— 即
+            //   **随机位置**，与"洋中脊 = 离散板块边界"的地质定义无关
+            //   （参考项目 worldgen 的洋中脊正是由 DIVERGENT 边界 + gaussian(dist,35) 驱动）。
+            //   本次对齐：位置由构造离散强度给出，噪声退居"轴向细节"。
+            //
+            //   门控 = 【离散强度】× 【到边界距离的高斯包络】，二者缺一不可：
+            //     · smoothPos(−stress)：· stress<0（离散）→ 1；stress>0（汇聚）→ 0
+            //       （汇聚处是海沟/弧，不该有洋中脊）；f(0)=0 且一阶导连续 ⇒ 无折痕。
+            //       ★ 它只是**区域尺度**（stressField 的 σ=1000）的"这片海域是离散体制"，
+            //         本身不给出"脊在哪"，必须再乘距离包络。
+            //     · gaussian(dist, RIDGE_BAND_SIGMA)：洋中脊是**沿边界线的带**
+            //       （参考项目 worldgen 用 gaussian(dist, 35px)，本项目按 wu 标定）。
+            //       ★ 教训：只乘 stress 会让"洋中脊"铺满整个离散海盆（实测 RIDGE 占比
+            //         11.29%，远超 P∩D 边界带面积）—— 因为应力场是区域量、不是边界量。
+            //       注：此处用 dist 做**单调包络**是安全的；被否决的是用 dist 当**噪声坐标**
+            //       （会产生同心波纹，见 TectonicField.CHAIN_SCALE 的硬约束）。
+            double gate = 1.0;
+            if (tect != null) {
+                gate = TectonicField.smoothPos(-tect.stress(), TectonicField.STRESS_POS_EPS)
+                     * Math.exp(-(tect.dist() * tect.dist())
+                                / (2.0 * RIDGE_BAND_SIGMA * RIDGE_BAND_SIGMA));
+            }
+            if (gate > 0.0) {
+                // 轴向细节：Ridge(1/600)+Warp(200)，提供脊线蜿蜒与轴谷起伏（[0,1]）
+                double detail = ridgeNoise.compute(wx, wz);
+                ridgeDelta = RIDGE_AMPLITUDE * gate * detail * ridgeFade;
             }
         }
 
         // 2. 海山/海底火山（域扭曲去圆化 + 共享 VolcanicShape 形状）
         seamountDelta = seamountCompute(wx, wz);
 
-        double total = (ridgeDelta + seamountDelta) * fade;
-        return new FeatureResult(total, ridgeDelta * fade, seamountDelta * fade, eOcean);
+        // 3. ★ Phase T6：俯冲带剖面（火山弧 + 海沟窄槽）
+        //   剖面值 arcProf 由 TectonicField.oceanProfile 给出：
+        //     正部 = 离轴火山弧（dist≈210）  负部 = 紧贴边界的海沟窄槽（dist≈0）
+        //   二者语义不同，但共用同一"深海门控" arcFade，理由见下。
+        //
+        //   ★ 为何用【独立的 arcFade】而非上面那个 fade：
+        //     fade = 1−smoothstep(−0.05, 0, eOcean) 的语义是"只要 eOcean<0 就几乎满值"
+        //     —— 浅海（eOcean≈−0.05）也拿 ~0.6。这对**海山**是设计意图（浅海也有海底丘），
+        //     但把 +0.10 e 的弧放在浅海上会**抬出水面造岛**（本项目的海陆边界由类型权重
+        //     竞争决定，一旦弧把某个 OCEAN 权重点的 e 推过 0，就会长出一块**非预期小岛**）。
+        //     故弧/槽用"深海才满值"的 arcFade。
+        //
+        //   ★ 门槛取值有实测依据（初版设 −0.30~−0.12 是错的）：
+        //     剖线实测（OceanTypeProbe 的 [PROFILE]）显示【汇聚边界处的 eOcean 典型值 ≈ −0.20】，
+        //     而初版渐变带中心恰是 −0.21 ⇒ 典型汇聚点被压到 **0.39 倍**
+        //     （实测弧峰仅 0.0075 e ≈ 1.4 块、海沟仅 −0.0058 e）—— 门控把该服务的位置压死了。
+        //     现值 −0.16~−0.10：−0.20 处 arcFade=1（满值），−0.15 处 ≈0.93，−0.10 以上为 0。
+        //
+        //   ★ 安全性证明（为何仍绝不露头）：满值区 eOcean ≤ −0.16，弧峰 0.10
+        //     ⇒ 最高 −0.06 < 0；渐变区 arcFade=k 时 eOcean ∈[−0.16,−0.10]，
+        //     叠加 ≤ k×0.10 ⇒ 最高 ≤ −0.16+k×0.16−… 恒 < 0。故**数学上不可能抬出海平面**。
+        double arcFade = eOcean < -0.10 ? 1.0 - smoothstep(-0.16, -0.10, eOcean) : 0.0;
+        if (arcFade > 0.0) {
+            double v = arcProf * arcFade;
+            // ★ 软天花板：限制弧相对【基面 eOcean】的抬升量（防浅海露头）
+            //     arc ≤ cap = (−eOcean) − MARGIN
+            //   深海（|eOcean|≈0.35）cap ≫ 弧幅(0.10) ⇒ **完全不生效**，弧形态不变；
+            //   浅海/近岸（cap 小）才压缩 —— 那里 arcFade 本就≈0，此限是**双保险**。
+            //   用 smoothMin 而非 Math.min：后者一阶不连续会留折痕（项目铁律）。
+            //
+            //   ★ 诚实记录（实测，勿误信为"已杜绝造岛"）：本限**只约束弧相对基面的量**，
+            //     无法约束 eLand。探针差分归因实测仍有 **1 例**（602 弧作用点中）出现
+            //     "无弧为海、有弧为陆" —— 该点 eOcean=−0.250（深海，门控通过）但
+            //     **eLand=−0.0033**（类型场与 c 场不一致，陆形场几乎恰在海平面），
+            //     此时任何正值海床特征（含既有的**洋中脊**，同类 21 例）都会把它抬出水面。
+            //     ⇒ 这是**本架构的既有特性**（正值特征 × oceanW 软加权于 eLand≈0 处），
+            //       **非 T6 引入**；弧（1 例）实际比洋中脊（21 例）还轻。
+            //     彻底消除需改"海陆判定由类型场与 c 场双场决定"这一用户既定架构，超出本次范围。
+            if (v > 0.0) {
+                double cap = -eOcean - ARC_SEA_MARGIN;
+                arcDelta = cap <= 0.0 ? 0.0 : TectonicField.smoothMin(v, cap, ARC_SOFT_SAT);
+            } else {
+                arcDelta = v;      // 负部 = 海沟窄槽，向下不会露头，无需限制
+            }
+        }
+
+        double total = (ridgeDelta + seamountDelta) * fade + arcDelta;
+        return new FeatureResult(total, ridgeDelta * fade, seamountDelta * fade,
+                                 arcDelta, eOcean);
     }
+
+    /**
+     * 洋中脊幅度（e 单位）。
+     *
+     * <p>原为硬编码 {@code 0.18}，语义上它正是"深海脊轴相对深海平原的抬升"
+     * （真实大洋中脊轴部水深 ~2500m vs 深海平原 ~5000m ⇒ 约 +2500m ≈ +0.18 e）。
+     * 提取为常量以便门控改造后仍保留原标定（本次<b>不改幅度</b>，只改位置来源）。</p>
+     */
+    private static final double RIDGE_AMPLITUDE = 0.18;
+    /**
+     * 洋中脊带的半宽（wu）：{@code gaussian(dist, σ)} 的 σ。
+     *
+     * <p>取 130wu ≈ 3.5 块 ≈ 中心带 ~20 块宽。参考项目用 35px（其世界 ~2048 宽 ⇒
+     * 约 1.7% 世界宽）；本项目板块间距 2000wu ⇒ 同比例约 35~100wu。
+     * 130 稍宽是因为本项目的 {@code dist} 已被 {@code blurDist} 平滑过
+     * （折痕被抹圆 ⇒ 有效带宽略涨）。</p>
+     */
+    private static final double RIDGE_BAND_SIGMA = 130.0;
+
+    // ===== ★ 2026-09-13 Phase T6：火山弧"永不露头"的软天花板 =====
+    /** 弧顶与海平面之间的最小余量（e 单位，≈3.8 块）。 */
+    private static final double ARC_SEA_MARGIN = 0.02;
+    /** 软饱和的过渡宽度（e 单位）：在此宽度内平滑逼近天花板（一阶连续，无折痕）。 */
+    private static final double ARC_SOFT_SAT = 0.03;
+
+    // （smoothMin 已上移到 TectonicField 作为公共工具，供地面护栏等复用，
+    //   避免两处各写一份 —— 见 TectonicField.smoothMin 的注释。）
 
     /**
      * 海山场：粗格点确定性鼓包，域扭曲去圆化 + 各向异性 + 三剖面。
