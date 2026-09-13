@@ -1087,6 +1087,26 @@ task runLandFeatProbe(type: JavaExec) {
     }
 }
 
+// Concurrent chunk probe (★ 2026-09-14：并发 chunk 生成压测，复现"卡在 0%"真实场景)
+//   args = [seed] [threads] [chunksPerThread]
+task runConcurrentChunkProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ConcurrentChunkProbe'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
+// Chunk time probe (★ 2026-09-14：chunk 生成冷/热耗时分段实测)
+//   args = [seed] [chunks]
+task runChunkTimeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ChunkTimeProbe'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
 // Hardness race probe (★ 2026-09-14：硬度网格并发安全压测，复现/验证崩溃修复)
 //   args = [seed] [threads]
 task runHardnessRaceProbe(type: JavaExec) {
