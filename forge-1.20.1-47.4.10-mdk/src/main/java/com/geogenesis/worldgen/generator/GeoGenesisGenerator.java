@@ -171,10 +171,32 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      *
      * @return 岩性 ordinal；无数据/越界时返回 {@code -1} ⇒ 调用方回退 {@code STONE}
      */
-    private static int surfaceRockOrd(Cell cell) {
+    private static int surfaceRockOrd(Cell cell, int surfaceY, double seaLevel) {
         if (cell.rockSeqPacked == 0) return -1;              // STRATA 未启用 / 退化
-        int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer);
-        return (id >= 0 && id < ROCK_BLOCKS.length) ? id : -1;
+        // ★ T10：改为【水平层】后，地表裸岩应取"地表下方第一个岩层"所在的层
+        //   （与地下同一套水平层逻辑）⇒ 陡坡不同高度会露出不同岩层（崖壁彩条），
+        //   且与紧邻地下岩性连续。
+        int nLay = StratumField.LAYER_COUNT * 4;
+        int[] th = new int[nLay];
+        int total = 0;
+        for (int i = 0; i < nLay; i++) {
+            th[i] = StratumField.thicknessOf(
+                    StratumField.thickLevelAt(cell.rockSeqPacked, cell.rockLayer + i));
+            total += th[i];
+        }
+        if (total <= 0) return -1;
+        // 与 fillTerrainColumn 同基准：seaLevel + 区域倾斜
+        int base = (int) Math.round(seaLevel + cell.rockTilt);
+        int local = Math.floorMod((surfaceY - 3) - base, total);
+        int acc = 0;
+        for (int i = 0; i < nLay; i++) {
+            if (local < acc + th[i]) {
+                int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer + i);
+                return (id >= 0 && id < ROCK_BLOCKS.length) ? id : -1;
+            }
+            acc += th[i];
+        }
+        return -1;
     }
 
     /**
@@ -382,7 +404,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             //   岩层的方块"）：原为硬编码 STONE，与地下岩层脱节 ⇒ 陡崖露出的是
             //   中性石头、而紧邻的地下却是花岗岩/闪长岩，观上断层。
             //   现按该列【最浅层岩性】出露 —— 与地下岩层系统同源（挖下去即同一岩性）。
-            int surfOrd = surfaceRockOrd(cell);
+            int surfOrd = surfaceRockOrd(cell, surfaceY, seaLevel);
             top  = surfOrd >= 0 ? ROCK_BLOCKS[surfOrd] : STONE;
             fill = top;
         } else {
@@ -393,7 +415,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 // ★ 2026-09-14 T9c：群系判定为"裸岩"（山地/石质群系）同样按【岩性】
                 //   出露 —— 与陡坡裸岩、地下岩层同源（此前一律 STONE，与地层脱节）。
                 case STONE  -> {
-                    int o = surfaceRockOrd(cell);
+                    int o = surfaceRockOrd(cell, surfaceY, seaLevel);
                     top = o >= 0 ? ROCK_BLOCKS[o] : STONE;
                     fill = top;
                 }
@@ -413,41 +435,58 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         int lipBlock = (riverWater && cell.riverLipY > waterTop)
                 ? (int) Math.floor(cell.riverLipY) : waterTopBlock;
         int fillTopBlock = Math.max(waterTopBlock, lipBlock);
-        // ★ 2026-09-14 Phase T9b：预解析本列的【岩层边界】（可变层厚，一次解析逐 y 查表）。
+        // ★ 2026-09-14 Phase T10：预解析本列的【水平地层】查找表（LUT）。
+        //
+        //   【Δ 为何改为水平层】T9b 是"披盖式"：地层从地表往下累加层厚
+        //   ⇒ 层界随地形起伏（像洋葱一层层裹住山体）。但<b>真实地层是水平沉积</b>的，
+        //   后经构造倾斜/褶皱、再被侵蚀切割露出 —— 参考 RTG 的恶地彩带（绝对 Y 取模）
+        //   与探索结论「区域层序 + 绝对 Y 基准 + 倾斜」最接近真实地质。
+        //
+        //   【实现】层序在垂直方向<b>循环</b>（RTG 式 y % 周期），配合：
+        //     · 可变层厚（T9b，5~42 块噪声）
+        //     · 区域倾斜 tilt（T10，模拟褶皱使层界面起伏，而非绝对平面）
+        //   ⇒ 水平层 + 界面起伏 + 层厚变化，且山顶/深谷都有层（循环保证）。
+        //
+        //   【LUT】把"周期内的每一格 Y → 岩性"展开成数组 ⇒ 逐 y 查表 O(1)，
+        //   避免每格重复累加（周期总厚 ≤ 16层×42 = 672 格，数组极小）。
         //   只在陆地列构建（cell.isWater() 为假）：海洋列保持 STONE/DEEPSLATE
-        //   （修改海洋侧风险更高，且海底被水覆盖、玩家不易看到 ⇒ 暂不动）。
-        //   数组语义：rockTopY[i] = 第 i 层的最高 y；rockOrd[i] = 该层岩性（-1 = 回退 STONE）。
-        //   深度约束（片麻岩/片岩/石灰岩须在 Y<0）在【构建时】应用 ⇒ 逐 y 查表零开销。
-        int[] rockTopY = null;
-        int[] rockOrd = null;
+        //   （修改海洋侧风险更高，且海底被水覆盖 ⇒ 暂不动）。
+        int[] rockLut = null;
+        int rockPeriod = 0;
+        int rockBase = 0;
         if (!cell.isWater() && cell.rockSeqPacked != 0) {
-            int nLay = StratumField.LAYER_COUNT * 4;          // 上限（防深度超过总层厚）
-            rockTopY = new int[nLay];
-            rockOrd = new int[nLay];
-            int y0 = surfaceY - 3;                            // 岩层起点（表土之下）
-            for (int i = 0; i < nLay && y0 >= WORLD_MIN_Y; i++) {
-                int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer + i);
-                int th = StratumField.thicknessOf(
+            int nLay = StratumField.LAYER_COUNT * 4;          // 层序列长度（覆盖足够深度）
+            int[] th = new int[nLay];
+            int total = 0;
+            for (int i = 0; i < nLay; i++) {
+                th[i] = StratumField.thicknessOf(
                         StratumField.thickLevelAt(cell.rockSeqPacked, cell.rockLayer + i));
-                rockTopY[i] = y0;
-                // 越界守卫（RockType 增删成员时安全回退 STONE）
-                rockOrd[i] = (id >= 0 && id < ROCK_BLOCKS.length) ? id : -1;
-                y0 -= th;
+                total += th[i];
+            }
+            if (total > 0) {
+                rockLut = new int[total];
+                int acc = 0;
+                for (int i = 0; i < nLay; i++) {
+                    int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer + i);
+                    int ord = (id >= 0 && id < ROCK_BLOCKS.length) ? id : -1;   // 越界守卫
+                    for (int k = 0; k < th[i]; k++) rockLut[acc + k] = ord;
+                    acc += th[i];
+                }
+                rockPeriod = total;
+                // 基准：海平面 + 区域倾斜（tilt 使层界面在区域尺度起伏 = 褶皱）
+                rockBase = (int) Math.round(seaLevel + cell.rockTilt);
             }
         }
-        // 逐 y 查层（rockTopY 单调递减 ⇒ 从浅到深扫描，一次遍历 O(1) 均摊）
-        int rockCursor = 0;
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
             BlockState state;
             if (y == WORLD_MIN_Y) {
                 state = BEDROCK;
             } else if (y < surfaceY - 3) {
-                if (rockTopY != null) {
-                    while (rockCursor < rockTopY.length - 1 && y <= rockTopY[rockCursor + 1]) {
-                        rockCursor++;                          // 继续下潜 → 推进到下一层
-                    }
-                    int ord = rockOrd[rockCursor];
+                if (rockLut != null) {
+                    // 水平层：按【绝对 Y】取模周期内位置（floorMod 保证负 y 正确）
+                    int local = Math.floorMod(y - rockBase, rockPeriod);
+                    int ord = rockLut[local];
                     state = ord >= 0 ? ROCK_BLOCKS[ord] : ((y < 0) ? DEEPSLATE : STONE);
                 } else {
                     state = (y < 0) ? DEEPSLATE : STONE;       // 无岩性数据 / 海洋列

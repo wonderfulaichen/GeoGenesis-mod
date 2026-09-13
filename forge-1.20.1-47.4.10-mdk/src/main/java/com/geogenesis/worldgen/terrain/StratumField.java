@@ -221,6 +221,31 @@ public final class StratumField {
         return lv < 0 ? 0 : (lv > THK_MASK ? THK_MASK : lv);
     }
 
+    // ===== ★ 2026-09-14 Phase T10：地层【倾斜/褶皱】偏移（水平层用）=====
+    /**
+     * 倾斜噪声频率（1/wu）与幅度（块）。
+     *
+     * <p><b>为何需要</b>：真实地层是<b>水平沉积</b>后经构造倾斜/褶皱，界面是起伏曲面，
+     * 而非绝对平面。若地层严格水平（无 tilt），挖开后会看到"绝对平直的层界"，
+     * 与本项目反复强调的"禁止等值线成为直线"同源问题。</p>
+     *
+     * <p>取 1/1200（比层厚噪声 1/650 更低频）：倾斜是<b>区域尺度</b>的构造变形，
+     * 应比层厚变化更宏大 ⇒ 层界面大范围缓慢起伏（褶皱感），而层厚在小尺度变化。</p>
+     */
+    private static final double TILT_FREQ = 1.0 / 1200.0;
+    private static final double TILT_AMP = 30.0;
+    private static final long TILT_SALT = 0x5F3A_9C21_7E44_B1D6L;
+
+    /**
+     * 该点地层的<b>垂直偏移</b>（块），模拟区域倾斜/褶皱。
+     *
+     * <p>与层厚噪声独立（不同 salt）⇒ 倾斜与厚度变化不相关（真实：褶皱幅度和
+     * 沉积厚度是两回事）。</p>
+     */
+    public double tiltAt(double wx, double wz) {
+        return valueNoise(wx * TILT_FREQ, wz * TILT_FREQ, TILT_SALT) * TILT_AMP;
+    }
+
     /** 厚度级别 → 块数。 */
     public static int thicknessOf(int level) {
         int lv = level < 0 ? 0 : (level > THK_MASK ? THK_MASK : level);
