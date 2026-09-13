@@ -15,6 +15,11 @@ public final class PlateauProfileProbe {
         gen.seed(seed);
 
         // 1. 扫描找一个 PLATEAU 主导细胞（dominantFromWeights == PLATEAU）
+        // ★ 2026-09-13 修复选点条件：原条件只要求 argmax==PLATEAU，实测会在**海岸/海底**
+        //   命中"PLATEAU 权重最大但 eLand<0"的胞（类型权重最大 ≠ 该处是高原：
+        //   邻类权重把 blendLo/Hi 拉低），于是整份剖面打印的是海底数值 —— 诊断失效。
+        //   现追加"必须高于海平面且进入高原量级"（eLand ≥ 0.3 ≈ 58 块）才是真高原台面。
+        final double MIN_PLATEAU_ELAND = 0.30;
         int bestX = 0, bestZ = 0;
         boolean found = false;
         outer:
@@ -23,14 +28,15 @@ public final class PlateauProfileProbe {
                 Cell c = gen.sample(x, z);
                 if (c.typeWeights == null) continue;
                 TerrainClass dom = TypeLandShape.dominantFromWeights(c.typeWeights);
-                if (dom == TerrainClass.PLATEAU) {
+                if (dom == TerrainClass.PLATEAU && c.eLand >= MIN_PLATEAU_ELAND) {
                     bestX = x; bestZ = z; found = true;
                     break outer;
                 }
             }
         }
         if (!found) {
-            System.out.println("未找到 PLATEAU 主导细胞，seed=" + seed);
+            System.out.println("未找到【陆地】PLATEAU 主导细胞 (要求 eLand>=" + MIN_PLATEAU_ELAND
+                    + ")，seed=" + seed);
             return;
         }
         System.out.println("=== PlateauProfileProbe ===");
