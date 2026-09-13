@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **诊断探针 [F]「逐分量梯度排查」**（`runTerrainStripePngProbe`）：对 `eLand` 的每个输入分量单独求 `|∇|`，打印 `P99.9/P50` **长尾比**并输出 `gmagC_<分量>.png`。一次运行即可定位「折痕属于哪个场」，取代此前 6 轮的「假设 → 修 → 仍存在」循环。（注意看图陷阱：`|∇|` 图上平滑脊的两翼天然呈亮线，须配合长尾比与线宽判读。）
 
+- **两处失效探针修复**（纯诊断，不影响地形产出）：
+  - `HydrologyTerrainEntryProbe` 原用**单个 chunk (0,0)** 断言"换种子哈希应不同"。而该哈希从 FNV offset basis 起累加**雕刻列**，列为空即恒等于 basis（实测 `14695981039346656037` = `0xcbf29ce484222325`）；河流稀疏（≈1.4 条/1000wu²，400×400wu 网格期望仅 ≈0.22 条）⇒ 断言**空洞且必然失败**（`status=FAIL`，与地形无关）。现改为采样 **5×5 chunk 网格**并把 `originalCells` 高程折入哈希 → 种子敏感性在构造上不可能空洞；"含雕刻列的 chunk 数"降为**信息项**（不为判据，避免再次依赖"该区域恰好有河"）。
+  - `PlateauProfileProbe` 原选点条件只要求 `argmax==PLATEAU`，实测命中"PLATEAU 权重最大但 `eLand<0`"的**海底**胞 → 整份高原剖面打印的是海底数值（诊断失效）。追加 `eLand ≥ 0.30` 选点条件。
+
 ### 已知遗留 / Known Issues
 
 - **高度标定漂移**：应力改为区域尺度场后，同一 304 wu 窗口地形由 `Y 64.5~112.4` 升至 **`88.0~152.9`**（+23~40 块）—— 造山带由「细线」变成「成带」，物理上更正确，且全部守门探针（含专门防抬升污染水文的 `runPrecipRiverWidthProbe`）通过。若需回调：`CONVERGENT_BOOST` 2.5→~1.8，或 `STRESS_VOTE_GAIN` 2.0→1.0。
