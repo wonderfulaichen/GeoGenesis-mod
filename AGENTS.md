@@ -198,6 +198,12 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   - **两条探针缺陷已修**（单 chunk 空断言 / 海底选点，详见 `CHANGELOG.md` [Unreleased]）。
   - **实测技巧**：Windows 下探针中文输出乱码是**运行时 stdout 编码**问题（`build.gradle` 已设 `options.encoding='UTF-8'`，编译期无问题）。设
     `$env:JAVA_TOOL_OPTIONS="-Dstdout.encoding=UTF-8 -Dfile.encoding=UTF-8"` + `[Console]::OutputEncoding=[System.Text.Encoding]::UTF8` 即可正常读取中文判据。
+- **性能归因（`coldMs`；用户实机无感知）**：`runFlowAccumProbe.coldMs` 实测 **6048ms**（复测 5925/6038，±2% 可复现），而本文旧记 **1849ms** —— ⚠️ **两者不可直接比较**：旧值是 15+ 个提交之前、且 region 数未必相同，期间新增了整套气候系统（2026-09-10）+ 河流绿洲 + 降水加权汇流（Phase C）+ 地质 T1~T5。**可控变量实测分解**（同步记录 `riverRegions` 以确认工作量未变，实测恒为 45/47）：
+  - 仅关 T1（`TECTONIC_ENABLED`）：6048 → 5835，**T1 ≈ 213ms**
+  - 关 T1+T4+T5：6048 → **4419ms**，**地质总计 ≈ 1629ms（27%）**（其中 T4 地层 + T5 形变 ≈ 1.4s）
+  - 关地质 + `precipitationAt` 置常量：6038 ≈ 对照 6048，**降水加权汇流 ≈ 0（假设被推翻）**
+  - **结论**：27% 是新增地质功能的成本；剩余 ~4.4s 在基础地形 + 河网路径，且不是降水。**成本属新功能累积，未见缺陷**。
+  - **后续若要深挖**：必须做真正的 profiling —— ⚠️ JFR 经 `JAVA_TOOL_OPTIONS` 只采到 **JVM 启动阶段**（5 个样本），采样器接不进取 gradle **fork** 的探针进程；正确做法是给探针 task 显式加 `jvmArgs`（或独立 launch），属单独一轮工作。
 - **已知遗留（两项均已量化并给出结论，均**不改**）**：
   1. **高度标定"漂移" → 论证为不应调、也无法调**：同一 304wu 窗口 `[full] height` `64.5~112.4` → `88.0~152.9`（+23~40 块）。归因实验实测：**撤销折叠只占 +2 / +13 块**（该窗口其余升高来自本提交合并的会话前几轮）。**为何不调**：① 会话前基线在任何提交里都不存在（试回退 `TectonicField` 到 `60e182f` 连编译都过不了 ⇒ 不可复原）；② 没有任何探针/规格定义**绝对高度**目标（只有相对判据：造山带 ≥1.5×、高原平顶等，均通过）；③ 唯一的绝对标定守门 `runPrecipRiverWidthProbe` 通过（head 最干桶 0.928 < 0.95）。在无基线无目标下调旋钮 = 纯凭口味改参。若日后确有偏好，旋钮为 `CONVERGENT_BOOST`（2.5）或 `STRESS_VOTE_GAIN`（2.0）。
   2. **类型场 Voronoi 轴对齐直段 → 已量化 → 试修 → 回退**：
