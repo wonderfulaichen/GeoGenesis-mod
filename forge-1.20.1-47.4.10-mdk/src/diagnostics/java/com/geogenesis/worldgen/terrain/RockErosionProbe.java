@@ -51,6 +51,11 @@ public final class RockErosionProbe {
         return -1;
     }
 
+    /** 百分比（分母 0 时返回 0）。 */
+    private static double pctOf(int a, int b) {
+        return b > 0 ? 100.0 * a / b : 0.0;
+    }
+
     public static void main(String[] args) throws Exception {
         TerrainParams p = TerrainParams.defaults();
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
@@ -332,8 +337,32 @@ public final class RockErosionProbe {
         boolean pass10 = nPair > 30 && nSame * 10 > nPair * 7;
         System.out.printf("      地层在横向连续（>70%% 同岩性）: %s%n", pass10 ? "PASS" : "FAIL");
 
+        // ================= [11] T11：坡度分档（碎石坡 / 裸岩）覆盖率 =================
+        //   参考 RTF ErodeFeature 的三档坡度。本项目 T11 前的分档：
+        //     gradient > 0.40 → 裸岩 ；其余 → 草/土（山地"草→裸岩"突变）
+        //   T11 后：> 0.40 裸岩（干旱区→恶地陶瓦）；0.25~0.40 碎石坡；其余 草/土。
+        //   判据：三档都应有合理占比（碎石坡 > 裸岩，且都不吞掉大部分地表）。
+        System.out.println("[11] 坡度分档覆盖率（裸岩 / 碎石坡 / 植被）:");
+        int nRock = 0, nScree = 0, nVeg = 0, nTot = 0;
+        for (double z = oz - 500; z <= oz + 500; z += 29) {
+            for (double x = ox - 500; x <= ox + 500; x += 31) {
+                Cell c = gen.sampleWu(x, z);              // 须含侵蚀 tile 才有 gradient
+                if (c.e <= 0.05) continue;
+                nTot++;
+                float g = c.gradient;
+                if (g > 0.40f) nRock++;
+                else if (g > 0.30f) nScree++;
+                else nVeg++;
+            }
+        }
+        System.out.printf("      陆地采样=%d | 裸岩(>0.40)=%d (%.1f%%) | 碎石坡(0.25~0.40)=%d (%.1f%%) | 植被=%d (%.1f%%)%n",
+                nTot, nRock, pctOf(nRock, nTot), nScree, pctOf(nScree, nTot), nVeg, pctOf(nVeg, nTot));
+        // 判据：植被仍占多数（>50%，不吞掉地表）；碎石坡与裸岩都真实存在
+        boolean pass11 = nTot > 200 && nVeg * 2 > nTot && nScree > 0 && nRock > 0;
+        System.out.printf("      植被仍占多数且两档岩石坡均存在: %s%n", pass11 ? "PASS" : "FAIL");
+
         boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8
-                && pass9 && pass10;
+                && pass9 && pass10 && pass11;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
         if (!all) System.exit(1);
     }
