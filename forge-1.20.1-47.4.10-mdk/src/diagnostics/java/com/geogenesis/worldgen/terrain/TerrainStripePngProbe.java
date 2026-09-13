@@ -148,6 +148,16 @@ public final class TerrainStripePngProbe {
         // ---------- [D] 构造分量单独渲染（定位"细线"落在哪个分量）----------
         renderComponents(outDir, seed, ox, oz, size, step);
 
+        // ---------- [G] 类型主导边界的轴对齐直段检测（★ 2026-09-13）----------
+        //   `TerrainCharacterField` 种子位于**规则网格**（无抖动、`WARP_AMP=0`）
+        //   ⇒ 其 Voronoi 边是**轴对齐直线**（x=k·400 / z=k·400）。
+        //   本节的判据与项目既有"群区边界直线段"口径一致：最长轴对齐直段 / 采样区长度。
+        //   （注意：这是**类型**边界，≠ 群区边界；后者由气候驱动，实测已各向同性。）
+        //   ★ 采样区必须远大于类型网格间距（400wu）才能让"方向比"有意义：
+        //     600wu 窗口只横跨 1~2 条网格边 → 比值纯属取样运气（实测 4.84 即如此）。
+        //     故本段用**独立的固定采样区**（3000wu / 8wu 步），与上方沉重渲染段解耦。
+        typeBoundaryAxisMetric(terrain, ox, oz, 3000, 8);
+
         // ---------- [F] 分量梯度排查：谁的 |∇| 里有"直线折痕"（★ 第七轮排查）----------
         //   用户 gradmag.png 显示【笔直细线段 + Y 形交汇】= Voronoi 边/顶点签名，
         //   与折叠/量化产生的"波浪等值线"几何完全不同。
@@ -164,6 +174,83 @@ public final class TerrainStripePngProbe {
         System.out.println();
         System.out.println("--- 剖面 B: z=0, x∈[-200,200] ---");
         dumpProfile(terrain, -200, 200, 0);
+    }
+
+    /**
+     * ★ 2026-09-13 新增 [G]：<b>类型主导边界的轴对齐直段检测</b>。
+     *
+     * <p><b>为何需要</b>：{@code TerrainCharacterField} 的种子在<b>规则网格</b>上
+     * （{@code WARP_AMP=0}），其 Voronoi 边必然是<b>轴对齐直线</b>
+     * （{@code x=k·400} / {@code z=k·400}）。而群区（生物群系）边界由气候驱动，
+     * 项目既有探针已证其各向同性（{@code runClimateBiomeProbe}：最长直段 88/112wu、
+     * 方向比 1.07）。故<b>必须单独量测类型边界</b>，否则会误以为整体已经自然。</p>
+     *
+     * <p><b>判据（与项目既有"群区边界直线段"口径一致）</b>：指标 =
+     * 最长轴对齐直段 / 采样区边长 —— 接近 1.00 表示一整条贯穿直线（异常）；
+     * 并统计水平走向 / 竖直走向的边界点数之比（≈1.0 = 各向同性）。
+     * 规则网格 Voronoi 会出现显著大的最值 + 方向比失衡。</p>
+     */
+    private static void typeBoundaryAxisMetric(GeoGenesisTerrain terrain,
+                                               int ox, int oz, int size, int step) {
+        int n = size / step;
+        int[][] dom = new int[n][n];
+        for (int py = 0; py < n; py++) {
+            for (int px = 0; px < n; px++) {
+                dom[py][px] = dominantOrdinal(
+                        terrain.sampleCellCoarse(ox + px * (double) step, oz + py * (double) step));
+            }
+        }
+        boolean[][] zChange = new boolean[n][n];   // 与上一行（z-1）类型不同 → 边界沿 x 走向
+        boolean[][] xChange = new boolean[n][n];   // 与左列（x-1）类型不同 → 边界沿 z 走向
+        int hPoints = 0, vPoints = 0;
+        for (int py = 1; py < n; py++) {
+            for (int px = 0; px < n; px++) {
+                if (dom[py][px] != dom[py - 1][px]) { zChange[py][px] = true; hPoints++; }
+            }
+        }
+        for (int py = 0; py < n; py++) {
+            for (int px = 1; px < n; px++) {
+                if (dom[py][px] != dom[py][px - 1]) { xChange[py][px] = true; vPoints++; }
+            }
+        }
+        // 最长"水平走向"直段 = 固定行内 zChange 连续出现的最大游程（沿 x 延伸）
+        int bestH = 0, bestHrow = 0, bestHcol = 0;
+        for (int py = 0; py < n; py++) {
+            int run = 0, start = 0;
+            for (int px = 0; px < n; px++) {
+                if (zChange[py][px]) {
+                    if (run == 0) start = px;
+                    run++;
+                    if (run > bestH) { bestH = run; bestHrow = py; bestHcol = start; }
+                } else {
+                    run = 0;
+                }
+            }
+        }
+        // 最长"竖直走向"直段 = 固定列内 xChange 连续出现的最大游程（沿 z 延伸）
+        int bestV = 0, bestVcol = 0, bestVrow = 0;
+        for (int px = 0; px < n; px++) {
+            int run = 0, start = 0;
+            for (int py = 0; py < n; py++) {
+                if (xChange[py][px]) {
+                    if (run == 0) start = py;
+                    run++;
+                    if (run > bestV) { bestV = run; bestVcol = px; bestVrow = start; }
+                } else {
+                    run = 0;
+                }
+            }
+        }
+        System.out.println("--- [G] 类型主导边界轴对齐检测 ---");
+        System.out.printf("  边界点: 水平走向=%d 竖直走向=%d 比值=%.2f (1.00=各向同性)%n",
+                hPoints, vPoints, hPoints / (double) Math.max(1, vPoints));
+        System.out.printf("  最长水平走向直段=%d wu (%.2f × 采样边长) @z=%d x∈[%d,%d]%n",
+                bestH * step, bestH / (double) n,
+                oz + bestHrow * step, ox + bestHcol * step, ox + (bestHcol + bestH) * step);
+        System.out.printf("  最长竖直走向直段=%d wu (%.2f × 采样边长) @x=%d z∈[%d,%d]%n",
+                bestV * step, bestV / (double) n,
+                ox + bestVcol * step, oz + bestVrow * step, oz + (bestVrow + bestV) * step);
+        System.out.println("  判据：最值 ≪1.00 且方向比 ≈1.00 → 类型边界无轴对齐倾向");
     }
 
     /**
