@@ -356,7 +356,14 @@ public class PreviewDisplay extends AbstractWidget {
     //        （橙/棕/红/黄），即 MC 恶地群系表现地层的方式
     //      · 坡度判定加【逐格确定性抖动】(±0.06)，避免边界沿等坡度线成光滑曲线
     //      · 实测覆盖：裸岩 28.1% / 碎石坡 16.2% / 植被 55.7%（植被仍占多数）
-    private static final int CACHE_SCHEMA_VERSION = 62;
+    // 63 = 2026-09-14 ★ Phase T10b：层界多尺度起伏（修复"层界是平直直线"）
+    //      · 用户反馈"你这个岩层没点轻微浮动吗？"+ 截图显示层界完全水平
+    //      · 根因：T10 单用 1/1200 低频倾斜 ⇒ 玩家视野(~100块)内仅变化 ~2.5 块
+    //      · 修复：多尺度叠加 —— 1/1200±30（区域倾斜）+ 1/220±7（局部褶皱）
+    //        + 1/55±2.5（细节摆动），各层独立 salt
+    //      · 实测 128×128 视野窗口内：平均起伏 6.5 块、最大 12.9 块
+    //        （此前 ~2.5 块 ⇒ 视觉上平直）
+    private static final int CACHE_SCHEMA_VERSION = 63;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

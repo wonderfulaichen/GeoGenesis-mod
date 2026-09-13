@@ -361,8 +361,39 @@ public final class RockErosionProbe {
         boolean pass11 = nTot > 200 && nVeg * 2 > nTot && nScree > 0 && nRock > 0;
         System.out.printf("      植被仍占多数且两档岩石坡均存在: %s%n", pass11 ? "PASS" : "FAIL");
 
+        // ================= [12] T10b：层界起伏（局部视野内不得是平直直线）=================
+        //   【用户反馈】"你这个岩层没点轻微浮动吗？"+ 截图层界完全水平。
+        //   根因：T10 只用单一 1/1200 低频倾斜（±30）⇒ 在玩家视野（~100 块）内
+        //   仅变化 ~2.5 块 ⇒ 局部看起来是绝对平直的直线。
+        //   【修复】多尺度叠加（1/1200±30 + 1/220±7 + 1/55±2.5）。
+        //   【判据】在 128×128（一个视距级）窗口内，层界偏移（rockTilt）的
+        //   <b>极差</b>必须显著（有可见起伏），但不过大（层界不混乱）。
+        System.out.println("[12] 层界起伏（128×128 视野窗口内的偏移极差）:");
+        double worstRange = 0, worstX = 0, worstZ = 0;
+        double sumRange = 0; int nWin = 0;
+        for (double z0 = oz - 400; z0 <= oz + 400; z0 += 128) {
+            for (double x0 = ox - 400; x0 <= ox + 400; x0 += 128) {
+                double mn = Double.MAX_VALUE, mx = -Double.MAX_VALUE;
+                for (double z = z0; z <= z0 + 128; z += 8) {
+                    for (double x = x0; x <= x0 + 128; x += 8) {
+                        double t = gen.sample(x, z).rockTilt;
+                        mn = Math.min(mn, t); mx = Math.max(mx, t);
+                    }
+                }
+                double rng = mx - mn;
+                sumRange += rng; nWin++;
+                if (rng > worstRange) { worstRange = rng; worstX = x0; worstZ = z0; }
+            }
+        }
+        double avgRange = nWin > 0 ? sumRange / nWin : 0;
+        System.out.printf("      窗口数=%d | 平均极差=%.1f 块 | 最大极差=%.1f 块 at (%.0f,%.0f)%n",
+                nWin, avgRange, worstRange, worstX, worstZ);
+        // 判据：视野内平均起伏 > 3 块（肉眼可见），且 < 60 块（不混乱）
+        boolean pass12 = nWin > 10 && avgRange > 3.0 && avgRange < 60.0;
+        System.out.printf("      层界在视野内有可见起伏（3~60 块）: %s%n", pass12 ? "PASS" : "FAIL");
+
         boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8
-                && pass9 && pass10 && pass11;
+                && pass9 && pass10 && pass11 && pass12;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
         if (!all) System.exit(1);
     }
