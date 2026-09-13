@@ -1067,6 +1067,26 @@ task runOceanTypeProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.OceanTypeProbe'
 }
 
+// Ocean stage probe (★ 2026-09-13 T6：分阶段海洋管线 + 熔岩/弧/脊 PNG 目检)
+//   args = [seed] [originX] [originZ]，默认 12345 / 0 / 0
+task runOceanStageProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.OceanStageProbe'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
+// Land feature probe (★ 2026-09-14：陆地火山分量 PNG 目检 + 竖线指标)
+//   args = [seed] [originX] [originZ]，默认世界种子 / 1077 / -833
+task runLandFeatProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.LandFeatProbe'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
 // Coastline smoothness probe (diagnose "perfect arc" issue)
 task runCoastlineSmoothnessProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

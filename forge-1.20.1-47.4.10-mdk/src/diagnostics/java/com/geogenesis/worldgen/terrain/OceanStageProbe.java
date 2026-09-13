@@ -24,9 +24,11 @@ public final class OceanStageProbe {
         "eFull(v8 twoStage)",// 9: two-stage blend (eOcean fade + eLand ramp)
     };
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         TerrainParams p = TerrainParams.defaults();
-        long seed = 12345L;
+        long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
+        int ox = args.length > 1 ? Integer.parseInt(args[1]) : 0;
+        int oz = args.length > 2 ? Integer.parseInt(args[2]) : 0;
 
         int W = 800, H = 800;
         System.out.println("=== OceanStageProbe v1 ===");
@@ -57,10 +59,15 @@ public final class OceanStageProbe {
             return Math.min(eOcean, 0.0);
         });
         oceanFeatures.seed(seed);
+        // ★ 2026-09-13 Phase T6：本探针也走完整链路（洋中脊门控 / 火山弧需构造场）。
+        TectonicField tectonic = new TectonicField(seed);
 
         // 采样各阶段
         final int L = STAGE_NAMES.length;
         double[][][] stages = new double[L][W][H];
+        // ★ T6 排查用：构造 dist 与弧纯分量（定位"细直线 + Y 汇聚"归属哪个分量）
+        double[][] distF = new double[W][H];
+        double[][] arcF = new double[W][H];
 
         System.out.print("Sampling " + W + "x" + H + " ... ");
         long t0 = System.currentTimeMillis();
@@ -69,7 +76,7 @@ public final class OceanStageProbe {
 
         for (int x = 0; x < W; x++) {
             for (int z = 0; z < H; z++) {
-                double wx = x, wz = z;
+                double wx = ox + x, wz = oz + z;
 
                 // 1. 大陆性
                 double c = continent.sample(wx, wz);
@@ -94,10 +101,14 @@ public final class OceanStageProbe {
                 eOcean = eOcean < -1.0 ? -1.0 : eOcean;
                 stages[4][x][z] = eOcean;
 
-                // 6. OceanFeatures
-                OceanFeatures.FeatureResult feat = oceanFeatures.compute(wx, wz, eOcean, cBiased);
+                // 6. OceanFeatures（★ T6：带构造场，与生产路径一致）
+                TectonicField.Sample ts = tectonic.sample(wx, wz);
+                double arcProf = tectonic.oceanProfile(ts);
+                OceanFeatures.FeatureResult feat = oceanFeatures.compute(wx, wz, eOcean, cBiased, ts, arcProf);
                 stages[5][x][z] = feat.ridge;
-                stages[6][x][z] = feat.seamount;
+                stages[6][x][z] = feat.seamount + feat.arc;
+                distF[x][z] = ts.dist();
+                arcF[x][z] = feat.arc;
 
                 // 7. eOcean post-feature
                 double eOceanFinal = eOcean + feat.total;
@@ -241,6 +252,90 @@ public final class OceanStageProbe {
         System.out.println();
         System.out.println("=== OceanStageProbe v1 done ===");
         System.out.println("Threshold: maxDelta > 0.01 (~3.8 blocks) needs watch, >0.05 (~19 blocks) severe.");
+
+        // =========================================================
+        // ★ 2026-09-13 T6：PNG 目检（海沟 / 火山弧 / 洋中脊 形态是否成立）
+        // =========================================================
+        //   gradmag（梯度幅值）是判定"细线/折痕伪影"的标准视图；
+        //   eOcean_postFeature 是"海床最终形态"，可直接看海沟(暗线)/弧(亮线)/洋中脊(亮带)。
+        //   注意：海沟槽**不写入剖面**（负部归 T1 权重调制），故此处看 T1 是否已给出海沟。
+        java.io.File outDir = new java.io.File("build/oceanstage");
+        outDir.mkdirs();
+        final String tag = "_" + ox + "_" + oz;
+        java.util.function.BiConsumer<String, double[][]> dump = (name, v) -> {
+            double mn = Double.MAX_VALUE, mx = -Double.MAX_VALUE;
+            for (double[] col : v) for (double val : col) { mn = Math.min(mn, val); mx = Math.max(mx, val); }
+            try {
+                javax.imageio.ImageIO.write(gray(v, mn, mx), "png", new java.io.File(outDir, name + tag + ".png"));
+            } catch (Exception e) { throw new RuntimeException(e); }
+            System.out.printf("  [png] %-22s 值域=[%.4f, %.4f]%n", name + tag, mn, mx);
+        };
+        double[][] oceanFinal = stages[7];
+        double[][] ridgeField = stages[5];
+        double[][] seamountField = stages[6];
+        dump.accept("eOcean_postFeature", oceanFinal);
+        dump.accept("ridge", ridgeField);
+        dump.accept("seamount_arc", seamountField);
+        dump.accept("tect_dist", distF);
+        dump.accept("arc_only", arcF);
+        // 梯度幅值（细线/折痕检测）：分别给"总场"与"各分量"，一次运行即可定位元凶
+        java.util.function.Function<double[][], double[][]> grad = v -> {
+            double[][] g = new double[W][H];
+            for (int x = 1; x < W - 1; x++) {
+                for (int z = 1; z < H - 1; z++) {
+                    double dx = (v[x + 1][z] - v[x - 1][z]) * 0.5;
+                    double dz = (v[x][z + 1] - v[x][z - 1]) * 0.5;
+                    g[x][z] = Math.hypot(dx, dz);
+                }
+            }
+            return g;
+        };
+        dump.accept("eOcean_gradmag", grad.apply(oceanFinal));
+        dump.accept("arc_gradmag", grad.apply(arcF));
+        dump.accept("dist_gradmag", grad.apply(distF));
+        // 长尾比诊断（P99.9/P50）：含"折痕线"的场比值远高于平滑场（~3~8）
+        for (String nm : new String[]{"eOcean", "arc", "tect_dist"}) {
+            double[][] src = nm.equals("eOcean") ? oceanFinal : (nm.equals("arc") ? arcF : distF);
+            double[][] g = grad.apply(src);
+            java.util.List<Double> vals = new java.util.ArrayList<>();
+            for (int x = 1; x < W - 1; x++) {
+                for (int z = 1; z < H - 1; z++) vals.add(g[x][z]);
+            }
+            vals.sort(Double::compare);
+            int n = vals.size();
+            double p50 = vals.get(n / 2), p999 = vals.get((int) (n * 0.999));
+            System.out.printf("  [长尾比] %-12s P50=%.6g P99.9=%.6g max=%.6g ratio=%.2f%n",
+                    nm, p50, p999, vals.get(n - 1), p50 > 1e-15 ? p999 / p50 : Double.POSITIVE_INFINITY);
+        }
+        // 洋中脊 与 弧 的分离度（验证二者位置确实不同 —— 弧离轴）
+        int both = 0, arcOnly = 0, ridgeOnly = 0;
+        for (int x = 0; x < W; x++) {
+            for (int z = 0; z < H; z++) {
+                boolean r = ridgeField[x][z] > 0.05;
+                boolean a = seamountField[x][z] > 0.02 && stages[8][x][z] <= 0;
+                if (r && a) both++; else if (a) arcOnly++; else if (r) ridgeOnly++;
+            }
+        }
+        System.out.printf("  [分离度] 脊弧同点=%d 仅弧=%d 仅脊=%d%n", both, arcOnly, ridgeOnly);
+        System.out.println("  输出目录: " + outDir.getAbsolutePath());
+    }
+
+    /** 灰度归一化出图（最小值→黑，最大值→白）。 */
+    private static java.awt.image.BufferedImage gray(double[][] v, double mn, double mx) {
+        int w = v.length, h = v[0].length;
+        java.awt.image.BufferedImage img =
+            new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_BYTE_GRAY);
+        double span = mx - mn;
+        if (span <= 1e-12) span = 1;
+        for (int x = 0; x < w; x++) {
+            for (int z = 0; z < h; z++) {
+                int g = (int) Math.round(255.0 * (v[x][z] - mn) / span);
+                g = g < 0 ? 0 : (g > 255 ? 255 : g);
+                // TYPE_BYTE_GRAY 的 raster 已按 sRGB 约定存放亮度值
+                img.getRaster().setSample(x, z, 0, g);
+            }
+        }
+        return img;
     }
 
     // ===== 内联工具（与 CellGenerator 一致） =====
