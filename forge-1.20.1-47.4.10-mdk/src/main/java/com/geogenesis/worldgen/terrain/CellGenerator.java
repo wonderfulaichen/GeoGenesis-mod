@@ -584,26 +584,25 @@ public final class CellGenerator {
         TectonicField.Sample ts = tectonic.sample(sx, sz);
         // ★ Phase T2：汇聚造山带按走向串珠化（独立山峰），离散保持连续（真实裂谷是线状）
         double g = tectonic.boundaryStrengthChained(ts, sx, sz);
-        if (g <= 0.01) return ts;
+        // ★ 阈值必须低到不可见：任何提前 return 都是地形跳变源（环状细线/串珠虚线）。
+        if (g <= 1e-6) return ts;
 
         double oceanW = w[TerrainClass.OCEAN.ordinal()] + w[TerrainClass.DEEP_OCEAN.ordinal()];
         double landW = 1.0 - oceanW;
         // ★ 2026-09-12 修复（伪影）：改用【连续应力】stress 加权，取代 switch(btype)。
         //   btype 在类型边界跳变 → 权重调制骤变 → eLand 骤变 → 线状疤痕。
         //   stress ∈[-1,1] 连续 → 过渡平滑。
-        double cw = Math.max(0.0, ts.stress());    // 汇聚度
-        double dw = Math.max(0.0, -ts.stress());   // 离散度
-        if (cw <= 0.0 && dw <= 0.0) return ts;     // 纯走滑：无影响
-        if (cw > 0.0) {   // 汇聚 → 造山带（陆）/ 海沟（海）
-            double add = TectonicField.CONVERGENT_BOOST * g * cw;
-            w[TerrainClass.MOUNTAINS.ordinal()] *= 1.0 + add * landW;
-            w[TerrainClass.DEEP_OCEAN.ordinal()] *= 1.0 + add * oceanW;
-        }
-        if (dw > 0.0) {   // 离散 → 裂谷（陆）/ 洋中脊（海）
-            double add = TectonicField.DIVERGENT_BOOST * g * dw;
-            w[TerrainClass.BASIN.ordinal()] *= 1.0 + add * landW;
-            w[TerrainClass.OCEAN.ordinal()] *= 1.0 + add * oceanW;
-        }
+        // ★ 2026-09-12 第五次伪影修复：Math.max(0,·) → 平滑正部，并**去掉 if 分支**。
+        //   原写法沿 stress=0 等值线切换公式 → 一阶不连续 → 地形折痕（笔直断裂线）。
+        //   改后两个分支恒执行（cw/dw 恒>0），公式处处一致 → 无折痕。
+        double cw = TectonicField.smoothPos(ts.stress(), TectonicField.STRESS_POS_EPS);
+        double dw = TectonicField.smoothPos(-ts.stress(), TectonicField.STRESS_POS_EPS);
+        double addC = TectonicField.CONVERGENT_BOOST * g * cw;   // 汇聚 → 造山带（陆）/ 海沟（海）
+        w[TerrainClass.MOUNTAINS.ordinal()] *= 1.0 + addC * landW;
+        w[TerrainClass.DEEP_OCEAN.ordinal()] *= 1.0 + addC * oceanW;
+        double addD = TectonicField.DIVERGENT_BOOST * g * dw;    // 离散 → 裂谷（陆）/ 洋中脊（海）
+        w[TerrainClass.BASIN.ordinal()] *= 1.0 + addD * landW;
+        w[TerrainClass.OCEAN.ordinal()] *= 1.0 + addD * oceanW;
         double sum = 0.0;
         for (double v : w) sum += v;
         if (sum > 1e-15) {
