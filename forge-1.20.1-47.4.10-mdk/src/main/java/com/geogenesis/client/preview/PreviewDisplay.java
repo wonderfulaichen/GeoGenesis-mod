@@ -326,7 +326,13 @@ public class PreviewDisplay extends AbstractWidget {
     //        （花岗岩/砂岩/玄武岩/安山岩有同名方块；片麻岩+片岩→深板岩；
     //          页岩→黏土、石灰岩→方解石）
     //      · 陆地列地下按【深度】铺垂直岩层（层厚 24），海洋列保持原样
-    private static final int CACHE_SCHEMA_VERSION = 58;
+    // 59 = 2026-09-14 ★ Phase T9b：岩层厚度可变 + 方块映射遵守 MC 设定
+    //      · StratumField：各层厚度由噪声驱动（5bit 级别 → 5~42 块，随空间变化）
+    //        用户反馈"现实里面的岩层不可能固定厚度的"
+    //      · 方块映射修订：弃 DEEPSLATE（MC 限定 Y<0，导致 29.8% 列被迫回退 STONE）
+    //        → 片麻岩=闪长岩 / 片岩=凝灰岩 / 页岩=黏土（全部【深度无关】）
+    //      · 地层序列修订：克拉通/造山带改为"花岗岩在前"（浅部成因岩先出露）
+    private static final int CACHE_SCHEMA_VERSION = 59;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

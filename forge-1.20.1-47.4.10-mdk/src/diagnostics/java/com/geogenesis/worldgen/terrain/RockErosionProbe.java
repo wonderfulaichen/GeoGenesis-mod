@@ -190,7 +190,54 @@ public final class RockErosionProbe {
         boolean pass6 = nPk > 50 && nPkBad == 0 && nVary * 2 > nPk;
         System.out.printf("      岩层数据自洽且确为分层（≥50%% 含变化）: %s%n", pass6 ? "PASS" : "FAIL");
 
-        boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6;
+        // ================= [7] T9b：层厚可变（用户："不可能固定厚度"）=================
+        System.out.println("[7] 层厚可变性（同一岩层在不同位置应有不同厚度）:");
+        int thMin = Integer.MAX_VALUE, thMax = 0;
+        java.util.Set<Integer> thSet = new java.util.TreeSet<>();
+        int nTh = 0;
+        for (double z = oz - 2000; z <= oz + 2000; z += 97) {
+            for (double x = ox - 2000; x <= ox + 2000; x += 101) {
+                Cell c = gen.sample(x, z);
+                if (c.e <= 0.05 || c.rockSeqPacked == 0) continue;
+                for (int i = 0; i < StratumField.LAYER_COUNT; i++) {
+                    int th = StratumField.thicknessOf(
+                            StratumField.thickLevelAt(c.rockSeqPacked, c.rockLayer + i));
+                    thMin = Math.min(thMin, th); thMax = Math.max(thMax, th);
+                    thSet.add(th); nTh++;
+                }
+            }
+        }
+        System.out.printf("      层厚范围 = %d ~ %d 块 | 不同厚度值 = %d 种 (n=%d)%n",
+                thMin, thMax, thSet.size(), nTh);
+        // 判据：厚度确实随空间变化（≥5 种取值，且跨度 ≥ 20 块）
+        boolean pass7 = nTh > 100 && thSet.size() >= 5 && thMax - thMin >= 20;
+        System.out.printf("      层厚非固定（≥5 种取值且跨度≥20）: %s%n", pass7 ? "PASS" : "FAIL");
+
+        // ================= [8] T9b：序列顺序（浅部成因岩在前）=================
+        //   【背景】首版用 DEEPSLATE 表示片麻岩/片岩，但 MC 深板岩只在 Y<0 生成
+        //   ⇒ 29.8% 的列被迫回退 STONE（大片石头）。改用闪长岩/凝灰岩后不再受限，
+        //   但"序列顺序"仍应正确：最浅层应是【浅部成因岩】（花岗岩/砂岩），
+        //   深变质岩（片麻岩/片岩）应在较深层 —— 否则地质上讲不通。
+        System.out.println("[8] 序列顺序（浅部成因岩应在前）:");
+        int nChecked = 0, nShallowMetamorphic = 0;
+        for (double z = oz - 1500; z <= oz + 1500; z += 83) {
+            for (double x = ox - 1500; x <= ox + 1500; x += 89) {
+                Cell c = gen.sample(x, z);
+                if (c.e <= 0.05 || c.rockSeqPacked == 0) continue;
+                nChecked++;
+                int id0 = StratumField.seqAt(c.rockSeqPacked, c.rockLayer);
+                // 最浅层是深变质岩（片麻岩 0 / 片岩 1）= 顺序反了
+                if (id0 == 0 || id0 == 1) nShallowMetamorphic++;
+            }
+        }
+        System.out.printf("      检查列=%d | 最浅层为深变质岩=%d (%.1f%%)%n",
+                nChecked, nShallowMetamorphic,
+                nChecked > 0 ? 100.0 * nShallowMetamorphic / nChecked : 0);
+        // 判据：最浅层为深变质岩的比例应低（岩石圈/造山带序列已修为花岗岩在前）
+        boolean pass8 = nChecked > 50 && nShallowMetamorphic * 4 < nChecked;
+        System.out.printf("      浅部非深变质岩（<25%%）: %s%n", pass8 ? "PASS" : "FAIL");
+
+        boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
         if (!all) System.exit(1);
     }
