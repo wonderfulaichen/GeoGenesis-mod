@@ -1595,6 +1595,30 @@ public final class CellGenerator {
         return cell;
     }
 
+    /**
+     * ★ 2026-09-14 探针专用：<b>直接以给定原点跑一次侵蚀</b>（不走 tile 缓存）。
+     *
+     * <p>供 {@code HardnessRaceProbe} 复现"多线程共享 ErosionEngine 实例"的竞态 ——
+     * 走缓存会被 tile 复用掩盖（同一 tile 只算一次），无法并发触发。</p>
+     */
+    public void runErosionAtForProbe(int originX, int originZ, double hs) {
+        // ★ 必须与生产同构：bufSize = N + pad*2（pad=9，见 generateErosionTile）
+        //   初版误用 bufSize = N ⇒ 液滴走到 flat 边界越界（Index 16384 of 16384）。
+        int n = ERODE_TILE_SIZE;
+        int pad = 9;
+        int bufSize = n + pad * 2;
+        float[] flat = new float[bufSize * bufSize];
+        for (int z = 0; z < bufSize; z++) {
+            for (int x = 0; x < bufSize; x++) {
+                flat[z * bufSize + x] =
+                        (float) Math.max(terrainEQuick(originX - pad + x, originZ - pad + z), -0.05);
+            }
+        }
+        float[] pre = flat.clone();
+        erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,
+                (float) heightCurve.seaE(), 1.0f, null, (float) hs);
+    }
+
     /** 探针专用：直接生成/取 tile 结果（ErosionPeriodProbe 用，不经 getOrGenTile 的中断捕获）。 */
     public ErosionTileResult getErosionTileResultForProbe(int tileCX, int tileCZ) {
         long k = tileKey(tileCX, tileCZ);

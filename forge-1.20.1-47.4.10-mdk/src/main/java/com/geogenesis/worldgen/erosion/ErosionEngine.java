@@ -148,9 +148,15 @@ public class ErosionEngine {
      * 改动面；而每次 {@code runErosionOnFlat} 调用独占本实例的"本次执行"
      * （tile 生成在 {@code computeIfAbsent} 中串行、互不重入）⇒ 字段语义安全。</p>
      */
-    private float[][] hardGrid;
-    private int hardGridN;
-    private int hardOriginX, hardOriginZ;
+    /** 硬度网格的构建参数（尺寸/原点），随网格一起以参数传递（**禁止实例字段**，见下）。 */
+    public static final class HardGrid {
+        final float[][] grid;
+        final int n;
+        final int originX, originZ;
+        HardGrid(float[][] g, int n, int ox, int oz) {
+            this.grid = g; this.n = n; this.originX = ox; this.originZ = oz;
+        }
+    }
 
     /** 注入岩性抗蚀性提供者（{@code CellGenerator} 调用；传 {@code null} 即退回无耦合行为）。 */
     public void setHardnessProvider(java.util.function.DoubleBinaryOperator provider) {
@@ -216,9 +222,16 @@ public class ErosionEngine {
         float fz = (worldZ - originZ) / HARDNESS_SPACING;
         int x0 = (int) Math.floor(fx), z0 = (int) Math.floor(fz);
         float tx = fx - x0, tz = fz - z0;
-        int x1 = Math.min(x0 + 1, n - 1), z1 = Math.min(z0 + 1, n - 1);
+        // ★★★ 2026-09-14 崩溃修复 ★★★
+        //   【原 bug】x1/z1 在 x0/z0 被 clamp 之前计算 ⇒ 若 x0 为负（网格与查询坐标
+        //   不匹配时），x1 也为负 ⇒ ArrayIndexOutOfBoundsException（实测 Index -2）。
+        //   【且必须 4 个索引都 clamp】—— 仅 clamp x0 而 x1 取 min(x0+1,n-1) 在
+        //   x0=n-1 时 x1 也=n-1（正确），但 x0<0 时 x1 仍负（错误）。
+        //   【正解】先 clamp 基准索引，再算邻居（并夹住上界）⇒ 任何输入都安全。
         x0 = x0 < 0 ? 0 : (x0 > n - 1 ? n - 1 : x0);
         z0 = z0 < 0 ? 0 : (z0 > n - 1 ? n - 1 : z0);
+        int x1 = Math.min(x0 + 1, n - 1);
+        int z1 = Math.min(z0 + 1, n - 1);
         float a = g[z0][x0] + (g[z0][x1] - g[z0][x0]) * tx;
         float b = g[z1][x0] + (g[z1][x1] - g[z1][x0]) * tx;
         return a + (b - a) * tz;
@@ -305,10 +318,12 @@ public class ErosionEngine {
         //   故必须与 flat 同域；世界原点 = (ox − pad, oz − pad)。
         //   用实例字段传给 spawnAt（避免改动其 12 处调用签名，且每 tile 生成独占本实例的本次调用）。
         int hGridN = bufSize / HARDNESS_SPACING + 2;
-        this.hardGrid = buildHardnessGrid(hardnessProvider, hGridN, ox - R_MAX - 2, oz - R_MAX - 2);
-        this.hardGridN = hGridN;
-        this.hardOriginX = ox - R_MAX - 2;
-        this.hardOriginZ = oz - R_MAX - 2;
+        // ★★★ 必须为局部 final（禁止实例字段）：ErosionEngine 实例被多线程共享
+        //   （Worker-Main-N 与 TileSampler 并发生成多个 tile），实例字段会被
+        //   并发写覆盖 ⇒ 网格与查询坐标不匹配 ⇒ 负索引崩溃（实测 Index -2）。
+        final HardGrid hard = hardnessProvider == null ? null
+                : new HardGrid(buildHardnessGrid(hardnessProvider, hGridN, ox - R_MAX - 2, oz - R_MAX - 2),
+                               hGridN, ox - R_MAX - 2, oz - R_MAX - 2);
 
         int pad = R_MAX + 2;
         float[] dis = new float[bufSize * bufSize];   // 稳态放电量场（跨轮累积）
@@ -375,7 +390,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hC >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffC, bWgtC, bnC, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_C * strE, DEPOSIT_C, LIFE_C, SEG_LEN_C, DIS_EXTRA_C, ox, oz,
+                                ERODE_C * strE, DEPOSIT_C, LIFE_C, SEG_LEN_C, DIS_EXTRA_C, ox, oz, hard,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     long hM = hash(gx * 131 + 7, gz * 131 + 11) * 31L + 17L;
@@ -385,7 +400,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hM >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffM, bWgtM, bnM, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_M * strE, DEPOSIT_M, LIFE_M, 0, 0, ox, oz,
+                                ERODE_M * strE, DEPOSIT_M, LIFE_M, 0, 0, ox, oz, hard,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     long hF = hash(gx * 131 + 7, gz * 131 + 11) * 97L + 23L;
@@ -395,7 +410,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hF >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffF, bWgtF, bnF, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_F * strE, DEPOSIT_F, LIFE_F, 0, 0, ox, oz,
+                                ERODE_F * strE, DEPOSIT_F, LIFE_F, 0, 0, ox, oz, hard,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     if (xsEnabled) {
@@ -406,7 +421,7 @@ public class ErosionEngine {
                                     pad + (gz - oz) + ((hXS >>> 48) & 0xFFFF) / 65536f,
                                     pad, gx, gz, bOffXS, bWgtXS, bnXS, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
-                                    ERODE_XS * strE, DEPOSIT_XS, LIFE_XS, 0, 0, ox, oz,
+                                    ERODE_XS * strE, DEPOSIT_XS, LIFE_XS, 0, 0, ox, oz, hard,
                                     (float) casStr, seaNorm, hs, SPDCAP_XS, STALL_SPEED_XS, STALL_DELTA_XS);
                         }
                     }
@@ -493,7 +508,8 @@ public class ErosionEngine {
                          float[] momX, float[] momY, float[] momXT, float[] momYT,
                          float momTransfer,
                          float erodeSpeed, float depositSpeed, int lifetime, int segLen, int disExtra,
-                         int ox, int oz, float cascadeStrength, float seaNorm, float hs,
+                         int ox, int oz, HardGrid hard,
+                         float cascadeStrength, float seaNorm, float hs,
                          float spdCap, float stallSpeed, float stallDelta) {
         if (px < 1 || px >= bufSize - 1 || py < 1 || py >= bufSize - 1) return;
         if (locked != null) {
@@ -538,7 +554,7 @@ public class ErosionEngine {
         simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
                      bOff, bWgt, bn, locked, pad, baseSize,
                      dis, disT, momX, momY, momXT, momYT, momTransfer,
-                     erodeSpeed, depositSpeed, lifetime, segLen, disExtra, ox, oz,
+                     erodeSpeed, depositSpeed, lifetime, segLen, disExtra, ox, oz, hard,
                      cascadeStrength, hs, spdCap, stallSpeed, stallDelta);
     }
 
@@ -550,7 +566,7 @@ public class ErosionEngine {
                               float[] momX, float[] momY, float[] momXT, float[] momYT,
                               float momTransfer,
                              float erodeSpeed, float depositSpeed, int lifetime, int segLen, int disExtra,
-                             int ox, int oz,
+                             int ox, int oz, HardGrid hard,
                              float cascadeStrength, float hs,
                              float spdCap, float stallSpeed, float stallDelta) {
         float dirX = 0, dirY = 0, sed = 0, spd = 1f, wat = 1f;
@@ -683,11 +699,11 @@ public class ErosionEngine {
             //   ⇒ 不会比耦合前蚀得更多（不破坏既有侵蚀强度标定）。
             //   采样点 = 液滴当前位置（idx）的世界坐标：与笔刷邻点共用同一因子，
             //   避免"笔刷内每点各取硬度"导致高差被抹平（那会反过来抑制成谷）。
-            if (delta > 0f && hardGrid != null) {
+            if (delta > 0f && hard != null) {
                 int hwx = ox + (idx % bufSize) - pad;
                 int hwz = oz + (idx / bufSize) - pad;
-                delta *= hardnessFactor(sampleHardness(hardGrid, hardGridN,
-                        hardOriginX, hardOriginZ, hwx, hwz));
+                delta *= hardnessFactor(sampleHardness(hard.grid, hard.n,
+                        hard.originX, hard.originZ, hwx, hwz));
             }
             float brushDelta = delta;                // 笔刷前增量快照（early-exit 判定用）
 
