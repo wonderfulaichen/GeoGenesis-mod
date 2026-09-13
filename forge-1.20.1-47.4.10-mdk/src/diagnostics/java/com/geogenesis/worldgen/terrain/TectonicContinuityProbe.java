@@ -22,9 +22,23 @@ public final class TectonicContinuityProbe {
      *
      * <p>★ 注意：dist 的<b>正常梯度就是 1.0/wu</b>（远离边界时距离随位置线性增长），
      * 故阈值必须 &gt; 1.0×步长，否则会把正常梯度误报为"跳变"
-     * （初版用 0.5 就犯了这个错：修复后仍有 52% 的"跳变"其实是正常梯度）。
+     * （初版用 0.5 就犯了这个错：修复后仍有 52% 的"跳变"其实是正常梯度）。</p>
+     *
+     * <p>★★ 2026-09-13 阈值修正（1.5 → 2.2，消除<b>假 FAIL</b>）★★</p>
+     * <p>原阈值只按"无域扭曲时 {@code |∇dist| ≤ 1.0}"设定，<b>漏算了生产路径的域扭曲</b>：
+     * <pre>
+     *   生产：dist(p) = distRaw(W(p))，W(p) = p + WARP_AMP·valueNoise(p/400)
+     *   |∇dist| ≤ 1 · (1 + |∇W|)，|∇W| ≤ WARP_AMP · max|∇CR| / 400
+     *                      ≤ 130 · 3.3 / 400 ≈ 1.07
+     *   ⇒ 合法上界 ≈ 2.07 → 阈值取 2.2
+     * </pre>
+     * <b>本探针 [3] 自证</b>：无扭曲的裸公式 {@code (d2−d1)/2} 实测 max = <b>1.00wu</b>
+     * （正是理论极限，且跳变数 = 0），而生产路径 max = 1.69wu —— 差额即域扭曲的合法贡献。</p>
+     * <p><b>不会漏报</b>：真正的"阶跃"伪影量级完全不同 ——
+     * 历史实测（旧 {@code |d2²−d1²|/(2·len)} 配对公式）为 <b>668wu</b>；
+     * 本轮修的 {@code blurDist} reach 硬切换也是数十 wu 量级。2.2 远低于它们。</p>
      */
-    private static final double DIST_JUMP_EPS = 1.5;      // wu（步长 1.0）
+    private static final double DIST_JUMP_EPS = 2.2;      // wu（步长 1.0）
     private static final double TANGENT_JUMP_EPS = 0.05;  // 单位向量夹角
     private static final double OFFSET_JUMP_EPS = 0.002;  // e 单位
 
@@ -37,7 +51,7 @@ public final class TectonicContinuityProbe {
 
         // ================= [1] dist / 切向 连续性 =================
         //   沿 z 固定的多条扫描线，以 1wu 细步遍历，统计逐点跳变。
-        double maxDistJump = 0, maxTanJump = 0;
+        double maxDistJump = 0, maxDistJumpAll = 0, maxTanJump = 0;
         int distJumps = 0, tanJumps = 0, n = 0;
         double jumpX = 0, jumpZ = 0;
         for (double z0 = -8000; z0 <= 8000; z0 += 1237) {
@@ -48,9 +62,15 @@ public final class TectonicContinuityProbe {
                     n++;
                     // 只在边界影响范围内考察（内部 dist=MAX 无意义）
                     double dJump = Math.abs(s.dist() - prevDist);
-                    if (prevDist < 1e6 && s.dist() < 1e6 && dJump > DIST_JUMP_EPS) {
-                        distJumps++;
-                        if (dJump > maxDistJump) { maxDistJump = dJump; jumpX = x; jumpZ = z0; }
+                    if (prevDist < 1e6 && s.dist() < 1e6) {
+                        // ★ 2026-09-13：无条件记录真实上界（原实现只在超阈值时记录 →
+                        //   输出恒为 0，掩盖了"域扭曲把梯度抬到 1.69"的事实，
+                        //   导致无法复核阈值是否合理）。
+                        if (dJump > maxDistJumpAll) maxDistJumpAll = dJump;
+                        if (dJump > DIST_JUMP_EPS) {
+                            distJumps++;
+                            if (dJump > maxDistJump) { maxDistJump = dJump; jumpX = x; jumpZ = z0; }
+                        }
                     }
                     if (prevDist < 1e6 && s.dist() < 1e6) {
                         double tJump = 1.0 - Math.abs(prevTx * s.tangentX() + prevTz * s.tangentZ());
@@ -63,6 +83,8 @@ public final class TectonicContinuityProbe {
         }
         System.out.printf("[1] 连续性(n=%d): dist 跳变(>%.1fwu)=%d 最大=%.2fwu @(%.0f,%.0f)%n",
             n, DIST_JUMP_EPS, distJumps, maxDistJump, jumpX, jumpZ);
+        System.out.printf("                生产路径 dist 真实最大逐点差=%.2fwu（域扭曲合法上界≈2.07，见阈值注释）%n",
+            maxDistJumpAll);
         System.out.printf("                切向跳变(>%.2f)=%d 最大=%.4f （仅观察，见下）%n",
             TANGENT_JUMP_EPS, tanJumps, maxTanJump);
         // 判据只看 dist：它被 T1(权重调制,经 gaussian)、T5(形变,经 floor/decay) 直接消费，

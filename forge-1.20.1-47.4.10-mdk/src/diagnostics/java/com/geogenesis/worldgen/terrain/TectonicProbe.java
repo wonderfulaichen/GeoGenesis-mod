@@ -159,7 +159,16 @@ public final class TectonicProbe {
         for (double z = -6000; z <= 6000; z += 1800) {
             for (double x = -8000; x <= 8000; x += 13) {
                 TectonicField.Sample s = tf.sample(x, z);
-                if (s.btype() != TectonicField.CONVERGENT || TectonicField.boundaryStrength(s) <= 0.3) continue;
+                // ★ 2026-09-13：筛选口径必须与【驱动器同源】——chain 的汇聚权重现在
+                //   取连续应力 cw = smoothPos(stress)，而非 btype 这个逐点配对标签。
+                //   自 stress 改为【区域尺度投票场】（σ=1000，跨 25 块板块）后，
+                //   btype==CONVERGENT（局部配对）不再蕴含 stress>0
+                //   → 用旧口径筛选会把"非汇聚区"样本混入，把 m 均值稀释成假失败。
+                //   阈值取 0.70：与旧口径【等价】—— btype==CONVERGENT ⟺ |dot|>|cross|
+                //   ⟺ |stress| > 1/√2 ≈ 0.707（stress>0.18 时 smoothPos≈stress）。
+                //   取 0.5 会把"弱汇聚"样本混入，把 m 均值稀释到 0.531（假失败）。
+                double cwSel = TectonicField.smoothPos(s.stress(), TectonicField.STRESS_POS_EPS);
+                if (cwSel <= 0.70 || TectonicField.boundaryStrength(s) <= 0.3) continue;
                 double gN = TectonicField.boundaryStrength(s);
                 double gC = tf.boundaryStrengthChained(s, x, z);
                 double m = gC / gN;                 // 串珠因子
