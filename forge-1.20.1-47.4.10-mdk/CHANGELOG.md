@@ -35,7 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 量化（新增 [G] 探针）：窗口 `(-1500,1500)` 最长水平直段 **560 wu（0.19×）**，且正好落在网格中垂线 `z=3204`；另一窗口方向比 2.35 属窗口地理取样（对照窗口 1.10），非系统偏差。
   - 试修：`TerrainCharacterField` 细胞种子抖动 `SEED_JITTER=0.7` → **560 wu → 120 wu**、方向比 **1.10 → 0.87**（目标达成）。
   - **回退**：抖动改变排水格局 ⇒ `runFlowAccumProbe` 河流 region 接缝退化 —— `border.maxSurfaceDelta` **1.358 → 12.772**（≈12.8 块落差）、`border.violations` **0 → 2**（属 PASS 判据 ⇒ `status` PASS→REVIEW）。A/B 精确可逆。以敏感子系统退化换预览层美观不划算，且抖动在热路径多一次数组分配却零收益 ⇒ 全量回退（不留死开关）。
-  - **前置条件**：重做前必须先修「跨 region 水面无继承」，否则任何改变排水的改动都会撞同一面墙。
+  - **⚠️ 更正**：此前所记"前置条件 = 先修「跨 region 水面无继承」"**有误**（照抄了 2026-08-29 的过时记载）—— 继承机制**已存在**（2026-09-07 加入：`OutletSeed` 携带 `surfaceY`，`RiverLineNetwork.region()` 双-pass 吸收邻区出口作强制续流源）；且 `borderStats` 量的本是 **chunk 边界**水面差而非 region。退化真因是改变排水后某处出现 12.8 块的 chunk 级落差（未进一步定位）。
+  - **真正该记的**：当前 `border.maxSurfaceDelta` 1.358 距容差 1.5 **仅剩 10% 余量**，该指标对地形改动**高度敏感** → 任何动地形的改动都应把 `runFlowAccumProbe` 的 `border`/`status` 纳入验收。
 
 ### 验证 / Verified
 
