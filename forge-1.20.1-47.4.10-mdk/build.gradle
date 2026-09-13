@@ -1087,6 +1087,16 @@ task runLandFeatProbe(type: JavaExec) {
     }
 }
 
+// Perf probe (★ 2026-09-14：地质系统性能基准，定位"卡在 0%"回归)
+//   args = [seed]
+task runPerfProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.PerfProbe'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
 // Rock erosion probe (★ 2026-09-14 Phase T8/P3：岩性→侵蚀耦合验收)
 //   args = [seed] [originX] [originZ]
 task runRockErosionProbe(type: JavaExec) {
