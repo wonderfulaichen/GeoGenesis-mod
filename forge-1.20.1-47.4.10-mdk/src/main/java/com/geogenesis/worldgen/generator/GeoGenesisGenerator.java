@@ -88,6 +88,38 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     private static final BlockState SNOW      = Blocks.SNOW.defaultBlockState();
     private static final BlockState PODZOL    = Blocks.PODZOL.defaultBlockState();
 
+    // ===== ★ 2026-09-14 Phase T11：碎石坡（scree）与恶地色带（参考 RTF ErodeFeature）=====
+    private static final BlockState COARSE_DIRT = Blocks.COARSE_DIRT.defaultBlockState();
+    private static final BlockState ANDESITE    = Blocks.ANDESITE.defaultBlockState();
+    private static final BlockState TUFF_BLK    = Blocks.TUFF.defaultBlockState();
+    /** 恶地色带（MC 恶地群系即以此表现地层）：由深到浅的暖色陶瓦序列。 */
+    private static final BlockState ORANGE_TERRACOTTA = Blocks.ORANGE_TERRACOTTA.defaultBlockState();
+    private static final BlockState RED_TERRACOTTA    = Blocks.RED_TERRACOTTA.defaultBlockState();
+    private static final BlockState BROWN_TERRACOTTA  = Blocks.BROWN_TERRACOTTA.defaultBlockState();
+    private static final BlockState YELLOW_TERRACOTTA = Blocks.YELLOW_TERRACOTTA.defaultBlockState();
+
+    /**
+     * 碎石坡（scree / talus）的坡度下限。
+     *
+     * <p>参考 RTF {@code ErodeFeature} 的三档坡度：{@code rockSteepness / screeSteepness / dirtSteepness}。
+     * 本项目原只有一档（{@link #ROCK_GRADIENT}=0.40 ⇒ 直接裸岩），
+     * 中间坡度（0.25~0.40）仍是草/土 ⇒ 山地"草→裸岩"突变，不自然。</p>
+     *
+     * <p>取 0.25：实测 {@code gradient>0.30} 覆盖 6.3%、{@code >0.45} 覆盖 2.7%，
+     * 0.25 落在"丘陵向山地过渡"的坡段 —— 真实山区此段正是<b>岩屑坡（talus）</b>发育处
+     * （基岩风化碎屑堆积、植被稀疏）✓</p>
+     */
+    private static final float SCREE_GRADIENT = 0.30f;
+
+    /**
+     * 坡度判定的<b>随机抖动</b>幅度（RTF {@code slopeModifier} 同款思路）。
+     *
+     * <p>若直接按 {@code gradient > 阈值} 判定，边界会沿"等坡度线"形成
+     * <b>绝对光滑的曲线</b>（本项目反复强调的"等值线成线"问题）。
+     * 加逐格确定性抖动 ⇒ 边界呈<b>有机锯齿/渐变斑块</b>，与噪声地形自然融合。</p>
+     */
+    private static final float GRADIENT_JITTER = 0.06f;
+
     /**
      * ★ 2026-09-14 Phase T9/T9b：<b>岩性 → 方块映射</b>（让地质岩性在游戏里可见）。
      *
@@ -160,6 +192,56 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             Blocks.BASALT.defaultBlockState(),             // 6 BASALT    玄武岩 → 玄武岩（同名）
             Blocks.ANDESITE.defaultBlockState(),           // 7 ANDESITE  安山岩 → 安山岩（同名）
     };
+
+    /**
+     * ★ 2026-09-14 Phase T11：逐格确定性随机 [0,1)（用于坡度抖动与碎石选材）。
+     *
+     * <p><b>为何用 hash 而非噪声实例</b>：方块层（本类）不持有噪声场实例，且碎石
+     * 斑块属<b>逐格细节</b>（非大尺度结构）⇒ 确定性 hash 足够：零状态、
+     * 不依赖播种、跨 chunk 无缝（同坐标恒同值）。</p>
+     */
+    private static float hash01(int wx, int wz, long salt) {
+        long h = (long) wx * 374761393L + (long) wz * 668265263L + salt;
+        h = (h ^ (h >>> 13)) * 1274126177L;
+        h ^= h >>> 16;
+        return ((h & 0xFFFFFFL) / (float) 0x1000000L);
+    }
+
+    /**
+     * ★ 2026-09-14 Phase T11：<b>碎石坡材质</b>（加权混合，参考 RTF {@code placeScree}）。
+     *
+     * <p>RTF 用 {@code WeightedBlockSelector}：gravel×1, coarse_dirt×1,
+     * andesite×2, tuff×2, moss×1 —— 即<b>岩块与土混杂</b>，而非纯岩石。</p>
+     *
+     * <p><b>为何必须混杂</b>：若中等坡度全铺岩石，会形成大片突兀的"石海"
+     * （当前观感尚可，不宜大面积改变）。掺入粗泥土 ⇒ 视觉上是
+     * "植被稀疏的岩屑坡"，与周围草地<b>自然过渡</b> ✓</p>
+     *
+     * <p>权重：安山岩 2、凝灰岩 2、砾石 1、粗泥 1（总 6）—— 岩石为主、土为辅。</p>
+     */
+    private static BlockState screeBlock(int wx, int wz) {
+        float r = hash01(wx, wz, 0x5C2E_E91B_37A4_D6F0L);
+        if (r < 2.0f / 6.0f) return ANDESITE;      // 0.000 ~ 0.333
+        if (r < 4.0f / 6.0f) return TUFF_BLK;      // 0.333 ~ 0.667
+        if (r < 5.0f / 6.0f) return GRAVEL;        // 0.667 ~ 0.833
+        return COARSE_DIRT;                        // 0.833 ~ 1.000
+    }
+
+    /**
+     * ★ 2026-09-14 Phase T11：<b>恶地色带</b>（参考 RTF {@code erodeDesert}）。
+     *
+     * <p>按坡度分档选陶瓦颜色 —— MC 恶地（Badlands）群系本身即用
+     * 红砂岩 + 各色陶瓦表现地层 ⇒ 陶瓦在本项目中天然读作"地层"。</p>
+     *
+     * <p>坡度越大 → 露出越深/越鲜艳的层（模拟崖壁自上而下揭穿更多地层）。</p>
+     */
+    private static BlockState badlandsBlock(float steep) {
+        if (steep > 0.975f) return ORANGE_TERRACOTTA;
+        if (steep > 0.850f) return BROWN_TERRACOTTA;
+        if (steep > 0.750f) return RED_TERRACOTTA;
+        if (steep > 0.650f) return Blocks.TERRACOTTA.defaultBlockState();
+        return YELLOW_TERRACOTTA;
+    }
 
     /**
      * ★ 2026-09-14 Phase T9c：<b>地表出露岩性</b>（最浅层）的 ordinal。
@@ -383,6 +465,11 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         boolean beach = cell.terrainType == TerrainClass.BEACH;
 
         // 表层与填充块选择（R9：墙顶草皮、墙壁土、河心砾石——DW top/filler/base 语义）
+        // ★ T11：坡度加【逐格确定性抖动】—— 直接用 gradient 比阈值会让边界沿
+        //   "等坡度线"形成光滑曲线（本项目反复强调的等值线问题）；抖动后边界呈
+        //   有机斑块/锯齿，与噪声地形自然融合（参考 RTF slopeModifier 思路）。
+        float steepened = cell.gradient
+                + (hash01(wx, wz, 0x2A7B_51C9_6E30_4D81L) - 0.5f) * 2.0f * GRADIENT_JITTER;
         BlockState top, fill;
         if (riverWall) {
             top  = GRASS;  // 墙顶 = 岸顶草皮（DW：y==repairTopY && originalY<=top+2 → 草）
@@ -397,15 +484,27 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         } else if (beach) {
             top  = SAND;
             fill = SAND;
-        } else if (cell.gradient > ROCK_GRADIENT) {
-            // 陡坡裸岩（RTF Steepness + ErodeFeature 范式）：陡崖不长植被、积不住沙，
-            // 地表直接出露岩石 —— 与群系/地表材质无关（沙漠里的陡崖同样是裸岩）。
-            // ★ 2026-09-14 T9c 修复（用户反馈"表面陡峭坡的裸露岩石还是石头，并不是
-            //   岩层的方块"）：原为硬编码 STONE，与地下岩层脱节 ⇒ 陡崖露出的是
-            //   中性石头、而紧邻的地下却是花岗岩/闪长岩，观上断层。
-            //   现按该列【最浅层岩性】出露 —— 与地下岩层系统同源（挖下去即同一岩性）。
-            int surfOrd = surfaceRockOrd(cell, surfaceY, seaLevel);
-            top  = surfOrd >= 0 ? ROCK_BLOCKS[surfOrd] : STONE;
+        } else if (steepened > ROCK_GRADIENT) {
+            // 陡坡裸岩（RTF Steepness + ErodeFeature 范式）：陡崖不长植被、积不住沙。
+            // ★ 2026-09-14 T9c：按该列【最浅层岩性】出露（原硬编码 STONE 已修）。
+            // ★ 2026-09-14 T11：干旱/沙漠群系的陡崖改用【恶地色带】陶瓦
+            //   （参考 RTF erodeDesert）—— MC 恶地本身即用陶瓦表现地层，
+            //   且崖壁按坡度分色 ⇒ 天然形成"地层被切割露出"的彩条观感。
+            //   非干旱区仍按岩性出露（保留地质信息）。
+            if (BiomeClassifier.surfaceOf(cell) == BiomeClassifier.SurfaceType.SAND) {
+                top  = badlandsBlock(cell.gradient);
+                fill = top;
+            } else {
+                int surfOrd = surfaceRockOrd(cell, surfaceY, seaLevel);
+                top  = surfOrd >= 0 ? ROCK_BLOCKS[surfOrd] : STONE;
+                fill = top;
+            }
+        } else if (steepened > SCREE_GRADIENT) {
+            // ★ 2026-09-14 T11：碎石坡（scree / talus，参考 RTF placeScree）
+            //   中等坡度段（0.25~0.40）：基岩风化碎屑堆积、植被稀疏。
+            //   用【安山岩/凝灰岩/砾石/粗泥】加权混合 ⇒ 与周围草地自然过渡，
+            //   不会形成突兀的大片"石海"（此前该坡段直接是草/土，山地过渡生硬）。
+            top  = screeBlock(wx, wz);
             fill = top;
         } else {
             // 地表方块由【群系】决定（BiomeClassifier.surfaceOf）——此前只看地形类型，

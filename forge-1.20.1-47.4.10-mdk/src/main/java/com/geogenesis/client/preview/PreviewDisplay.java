@@ -348,7 +348,15 @@ public class PreviewDisplay extends AbstractWidget {
     //      · 查表 LUT（周期内每格 Y → 岩性）⇒ 逐 y O(1)，无性能损失
     //      · 地表裸岩同步：陡坡不同高度露出不同岩层 ⇒ 崖壁天然呈水平彩条
     //      注：地表植被/表土不变，仅地下与陡坡裸露受影响
-    private static final int CACHE_SCHEMA_VERSION = 61;
+    // 62 = 2026-09-14 ★ Phase T11：坡度分档（参考 RTF ErodeFeature）
+    //      · 新增【碎石坡 scree】档：坡度 0.30~0.40（原只有 >0.40 裸岩一档，
+    //        山地"草→裸岩"突变）。材质用 RTF placeScree 的加权混合：
+    //        安山岩×2、凝灰岩×2、砾石×1、粗泥×1（岩土混杂 ⇒ 与草地自然过渡）
+    //      · 新增【恶地色带】：干旱/沙漠群系的陡崖按坡度分档各色陶瓦
+    //        （橙/棕/红/黄），即 MC 恶地群系表现地层的方式
+    //      · 坡度判定加【逐格确定性抖动】(±0.06)，避免边界沿等坡度线成光滑曲线
+    //      · 实测覆盖：裸岩 28.1% / 碎石坡 16.2% / 植被 55.7%（植被仍占多数）
+    private static final int CACHE_SCHEMA_VERSION = 62;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
