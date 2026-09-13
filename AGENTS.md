@@ -198,10 +198,14 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   - **两条探针缺陷已修**（单 chunk 空断言 / 海底选点，详见 `CHANGELOG.md` [Unreleased]）。
   - **实测技巧**：Windows 下探针中文输出乱码是**运行时 stdout 编码**问题（`build.gradle` 已设 `options.encoding='UTF-8'`，编译期无问题）。设
     `$env:JAVA_TOOL_OPTIONS="-Dstdout.encoding=UTF-8 -Dfile.encoding=UTF-8"` + `[Console]::OutputEncoding=[System.Text.Encoding]::UTF8` 即可正常读取中文判据。
-- **已知遗留（本轮有意不动，留给专门的标定轮）**：
-  1. **高度标定漂移**：同一 304wu 窗口 `[full] height` `64.5~112.4` → **`88.0~152.9`**（+23~40 块）。因新应力是区域尺度场，汇聚权重 `cw` 在边界带内分布改变 ⇒ MOUNTAINS boost 更强（**物理上更对**：造山带本就成带而非细线）。守门探针全过。若需回调：`CONVERGENT_BOOST` 2.5→~1.8，或 `STRESS_VOTE_GAIN` 2.0→1.0。
-  2. **类型场 Voronoi 轴对齐直段**：`TerrainCharacterField` 种子在**规则网格**上（`WARP_AMP=0`，2026-08-03 因"warp 致主导类型沿细胞边界跳变"被关）⇒ 类型主导边界有长**水平/垂直**直段（`boundaries_full.png` 蓝线可见）。配方：仿 `TectonicField.SEED_JITTER` 给细胞种子加抖动（高斯权重下仍是 C^∞，无折痕风险）。**须与上面的高度标定一起做**，避免叠加混淆变量。
-- `CACHE_SCHEMA_VERSION` 41 → **44**（本次三处地形产出变更：折叠 / blurDist / stress）。
+- **已知遗留（两项均已量化并给出结论，均**不改**）**：
+  1. **高度标定"漂移" → 论证为不应调、也无法调**：同一 304wu 窗口 `[full] height` `64.5~112.4` → `88.0~152.9`（+23~40 块）。归因实验实测：**撤销折叠只占 +2 / +13 块**（该窗口其余升高来自本提交合并的会话前几轮）。**为何不调**：① 会话前基线在任何提交里都不存在（试回退 `TectonicField` 到 `60e182f` 连编译都过不了 ⇒ 不可复原）；② 没有任何探针/规格定义**绝对高度**目标（只有相对判据：造山带 ≥1.5×、高原平顶等，均通过）；③ 唯一的绝对标定守门 `runPrecipRiverWidthProbe` 通过（head 最干桶 0.928 < 0.95）。在无基线无目标下调旋钮 = 纯凭口味改参。若日后确有偏好，旋钮为 `CONVERGENT_BOOST`（2.5）或 `STRESS_VOTE_GAIN`（2.0）。
+  2. **类型场 Voronoi 轴对齐直段 → 已量化 → 试修 → 回退**：
+     - **量化**：新增 `runTerrainStripePngProbe` 的 **[G] 段**（指标 = 最长轴对齐直段 / 采样边长 + 水平:竖直方向比）。窗口 `(-1500,1500)` 实测最长水平直段 **560wu（0.19×）** 且**正好落在网格中垂线 `z=3204`**；另一窗口方向比 2.35 属**窗口地理取样**而非系统偏差（对照窗口 1.10）。
+     - **试修**：给 `TerrainCharacterField` 细胞种子加抖动（`SEED_JITTER=0.7`）→ 目标达成：**560wu → 120wu**、方向比 **1.10 → 0.87**（各向同性）。
+     - **回退（结论）**：抖动改变排水格局 ⇒ `runFlowAccumProbe` 的**河流 region 接缝**退化：`border.maxSurfaceDelta` **1.358 → 12.772**（≈12.8 块地表落差）、`border.violations` **0 → 2**（属 PASS 判据 ⇒ `status` PASS→REVIEW）。A/B **精确可逆**（回退后 `hitColumns/fillWater/maxWaterDepth` 逐项复原）。以畸形换美观不划算，且抖动在热路径多一次数组分配却零收益 ⇒ 全量回退（不留死开关）。
+     - **前置条件**：若日后重做，**必须先修**「跨 region 水面无继承」（河流 region 边界的水面/地表不连续，AGENTS 另有记载），否则任何改变排水的改动都会撞同一面墙。
+- `CACHE_SCHEMA_VERSION` 41 → **44**（本次三处地形产出变更：折叠 / blurDist / stress；上条抖动实验的 45 已随回退撤销）。
 
 ## 当前工作焦点（2026-09-10 气候主导群系 + 河流绿洲 + 陡坡裸岩，发布 v0.0.1）
 
