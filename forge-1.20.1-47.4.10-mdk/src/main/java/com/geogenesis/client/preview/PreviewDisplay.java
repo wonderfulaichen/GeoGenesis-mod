@@ -332,7 +332,13 @@ public class PreviewDisplay extends AbstractWidget {
     //      · 方块映射修订：弃 DEEPSLATE（MC 限定 Y<0，导致 29.8% 列被迫回退 STONE）
     //        → 片麻岩=闪长岩 / 片岩=凝灰岩 / 页岩=黏土（全部【深度无关】）
     //      · 地层序列修订：克拉通/造山带改为"花岗岩在前"（浅部成因岩先出露）
-    private static final int CACHE_SCHEMA_VERSION = 59;
+    // 60 = 2026-09-14 ★ Phase T9c：地表裸岩跟随岩层 + 方块映射放宽
+    //      · 修复：陡坡裸岩 / 群系裸岩（原硬编码 STONE）改为按该列【最浅层岩性】出露
+    //        （用户反馈"表面陡峭坡的裸露岩石还是石头，并不是岩层的方块"）
+    //      · 映射放宽（用户建议"不一定要按现实名称，可用陶瓦等"）：
+    //        页岩→陶瓦（硬化黏土=页岩固结，参考 MC 恶地地层）
+    //        石灰岩→白色陶瓦（弃方解石：其仅生成于紫水晶洞 Y≤30，浅部违和）
+    private static final int CACHE_SCHEMA_VERSION = 60;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

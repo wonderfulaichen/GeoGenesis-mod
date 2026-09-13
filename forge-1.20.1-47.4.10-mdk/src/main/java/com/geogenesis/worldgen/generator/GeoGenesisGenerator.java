@@ -115,14 +115,32 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      *           与片岩（细粒、片理、灰绿）观感接近 ✓</td></tr>
      *   <tr><td>GRANITE 花岗岩</td><td><b>GRANITE</b></td><td>原版同名，精确对应 ✓</td></tr>
      *   <tr><td>SANDSTONE 砂岩</td><td><b>SANDSTONE</b></td><td>原版同名，精确对应 ✓</td></tr>
-     *   <tr><td>SHALE 页岩</td><td>CLAY 黏土</td>
-     *       <td>页岩是黏土级细粒沉积岩 ⇒ 矿物成分即黏土矿物 ✓
-     *           （仅出现在最深层位 / 水下，见序列设计）</td></tr>
-     *   <tr><td>LIMESTONE 石灰岩</td><td>CALCITE 方解石</td>
-     *       <td>方解石是石灰岩的主要矿物（Δ保留）✓</td></tr>
+     *   <tr><td>SHALE 页岩</td><td>TERRACOTTA 陶瓦（橙）</td>
+     *       <td>Δ弃 CLAY：<b>陶瓦 = 硬化的黏土</b>（烧制后成岩），
+     *           正是页岩（黏土固结成岩）的对应物，且是<b>坚硬岩石</b>而非松软土 ✓
+     *           参考 MC <b>恶地（Badlands）</b>群系：原版即用陶瓦表现地层 ✓</td></tr>
+     *   <tr><td>LIMESTONE 石灰岩</td><td>WHITE_TERRACOTTA 白色陶瓦</td>
+     *       <td>Δ弃 CALCITE：方解石仅生成于紫水晶洞（Y≤30，深部），浅部违和。
+     *           白色陶瓦 —— 浅色沉积岩层，无高度限制 ✓</td></tr>
      *   <tr><td>BASALT 玄武岩</td><td><b>BASALT</b></td><td>原版同名，精确对应 ✓</td></tr>
      *   <tr><td>ANDESITE 安山岩</td><td><b>ANDESITE</b></td><td>原版同名，精确对应 ✓</td></tr>
      * </table>
+     *
+     * <h3>★ 设计原则：不严格按现实名称，优先【MC 观感 + 无生成限制】</h3>
+     * <p>用户建议："不一定完全按照现实的名称去使用岩石方块，可以用安山岩、石头、
+     * 砂岩、红砂岩、各色陶瓦（MC 恶地群系就在用）"。据此定三条优先级：</p>
+     * <ol>
+     *   <li><b>有同名方块</b>（花岗岩/砂岩/玄武岩/安山岩）→ 直接用（精确且无争议）；</li>
+     *   <li><b>无同名方块</b> → 按<b>成因+观感</b>就近，且必须是
+     *       <b>无生成高度限制</b>的自然方块（陶瓦系/闪长岩/凝灰岩/石头）；</li>
+     *   <li><b>禁止</b>使用带高度/群系硬限制的方块做地层
+     *       （深板岩 Y&lt;0、方解石紫水晶洞、黏土偏水下）。</li>
+     * </ol>
+     *
+     * <p><b>为何用陶瓦做沉积岩</b>：MC 的恶地群系本身就用红砂岩 + 各色陶瓦
+     * 表现地层 ⇒ 陶瓦在本项目中读起来就是"地层"，与砂岩系搭配层理分明。
+     * 若日后要更丰富的配色，可按<b>层位</b>再选不同颜色陶瓦
+     * （当前是"岩性→方块"一对一；二维映射需改表结构）。</p>
      *
      * <p><b>为何不用 STONE 兜底</b>：{@code STONE} 保留给"无岩性信息"的列
      * （{@code STRATA_ENABLED=false} / 海洋列 / 打包值退化）⇒ 可区分
@@ -133,15 +151,31 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      * 若 {@code RockType} 增删成员，本表必须同步 —— 越界时回退 STONE（安全）。</p>
      */
     private static final BlockState[] ROCK_BLOCKS = {
-            Blocks.DIORITE.defaultBlockState(),     // 0 GNEISS    片麻岩 → 闪长岩
-            Blocks.TUFF.defaultBlockState(),        // 1 SCHIST    片岩   → 凝灰岩
-            Blocks.GRANITE.defaultBlockState(),     // 2 GRANITE   花岗岩 → 花岗岩
-            Blocks.SANDSTONE.defaultBlockState(),   // 3 SANDSTONE 砂岩   → 砂岩
-            Blocks.CLAY.defaultBlockState(),        // 4 SHALE     页岩   → 黏土
-            Blocks.CALCITE.defaultBlockState(),     // 5 LIMESTONE 石灰岩 → 方解石
-            Blocks.BASALT.defaultBlockState(),      // 6 BASALT    玄武岩 → 玄武岩
-            Blocks.ANDESITE.defaultBlockState(),    // 7 ANDESITE  安山岩 → 安山岩
+            Blocks.DIORITE.defaultBlockState(),            // 0 GNEISS    片麻岩 → 闪长岩
+            Blocks.TUFF.defaultBlockState(),               // 1 SCHIST    片岩   → 凝灰岩
+            Blocks.GRANITE.defaultBlockState(),            // 2 GRANITE   花岗岩 → 花岗岩（同名）
+            Blocks.SANDSTONE.defaultBlockState(),          // 3 SANDSTONE 砂岩   → 砂岩（同名）
+            Blocks.TERRACOTTA.defaultBlockState(),         // 4 SHALE     页岩   → 陶瓦（Δ 原 CLAY）
+            Blocks.WHITE_TERRACOTTA.defaultBlockState(),   // 5 LIMESTONE 石灰岩 → 白色陶瓦（Δ 原 CALCITE）
+            Blocks.BASALT.defaultBlockState(),             // 6 BASALT    玄武岩 → 玄武岩（同名）
+            Blocks.ANDESITE.defaultBlockState(),           // 7 ANDESITE  安山岩 → 安山岩（同名）
     };
+
+    /**
+     * ★ 2026-09-14 Phase T9c：<b>地表出露岩性</b>（最浅层）的 ordinal。
+     *
+     * <p>用于<b>陡坡裸岩</b>与<b>群系判定为裸岩</b>的地表方块（T9/T9b 只改了地下，
+     * 地表仍硬编码 STONE ⇒ 用户反馈"陡峭坡的裸露岩石还是石头，并不是岩层的方块"）。
+     * 取地表出露层 {@link Cell#rockLayer} 对应的岩性，与地下岩层的<b>最上一层同源</b>
+     * ⇒ 陡崖露出的岩石与紧邻地下岩性一致（挖下去即同一岩性）。</p>
+     *
+     * @return 岩性 ordinal；无数据/越界时返回 {@code -1} ⇒ 调用方回退 {@code STONE}
+     */
+    private static int surfaceRockOrd(Cell cell) {
+        if (cell.rockSeqPacked == 0) return -1;              // STRATA 未启用 / 退化
+        int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer);
+        return (id >= 0 && id < ROCK_BLOCKS.length) ? id : -1;
+    }
 
     /**
      * ★ 2026-09-14 Phase T9b：<b>垂直岩层</b>（可变层厚）。
@@ -344,14 +378,25 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         } else if (cell.gradient > ROCK_GRADIENT) {
             // 陡坡裸岩（RTF Steepness + ErodeFeature 范式）：陡崖不长植被、积不住沙，
             // 地表直接出露岩石 —— 与群系/地表材质无关（沙漠里的陡崖同样是裸岩）。
-            top  = STONE;
-            fill = STONE;
+            // ★ 2026-09-14 T9c 修复（用户反馈"表面陡峭坡的裸露岩石还是石头，并不是
+            //   岩层的方块"）：原为硬编码 STONE，与地下岩层脱节 ⇒ 陡崖露出的是
+            //   中性石头、而紧邻的地下却是花岗岩/闪长岩，观上断层。
+            //   现按该列【最浅层岩性】出露 —— 与地下岩层系统同源（挖下去即同一岩性）。
+            int surfOrd = surfaceRockOrd(cell);
+            top  = surfOrd >= 0 ? ROCK_BLOCKS[surfOrd] : STONE;
+            fill = top;
         } else {
             // 地表方块由【群系】决定（BiomeClassifier.surfaceOf）——此前只看地形类型，
             // 导致沙漠群系也铺草方块。BEACH 已在上面单独处理。
             switch (BiomeClassifier.surfaceOf(cell)) {
                 case SAND   -> { top = SAND;   fill = SAND; }
-                case STONE  -> { top = STONE;  fill = STONE; }
+                // ★ 2026-09-14 T9c：群系判定为"裸岩"（山地/石质群系）同样按【岩性】
+                //   出露 —— 与陡坡裸岩、地下岩层同源（此前一律 STONE，与地层脱节）。
+                case STONE  -> {
+                    int o = surfaceRockOrd(cell);
+                    top = o >= 0 ? ROCK_BLOCKS[o] : STONE;
+                    fill = top;
+                }
                 case GRAVEL -> { top = GRAVEL; fill = GRAVEL; }
                 case PODZOL -> { top = PODZOL; fill = DIRT; }
                 default     -> { top = GRASS;  fill = DIRT; }

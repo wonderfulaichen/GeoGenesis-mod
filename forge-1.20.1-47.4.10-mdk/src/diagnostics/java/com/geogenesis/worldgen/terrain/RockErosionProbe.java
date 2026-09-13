@@ -237,7 +237,43 @@ public final class RockErosionProbe {
         boolean pass8 = nChecked > 50 && nShallowMetamorphic * 4 < nChecked;
         System.out.printf("      浅部非深变质岩（<25%%）: %s%n", pass8 ? "PASS" : "FAIL");
 
-        boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8;
+        // ================= [9] T9c：地表裸岩必须【跟随岩层】=================
+        //   【用户反馈】"表面陡峭坡的裸露岩石还是石头，并不是岩层的方块"
+        //   根因：fillTerrainColumn 的陡坡分支与群系 STONE 分支都硬编码 STONE，
+        //   而 T9/T9b 只改了地下 ⇒ 地表与地下岩性脱节。
+        //   【判据】陡坡（gradient > ROCK_GRADIENT）的陆地列，其"最浅层岩性"
+        //   必须是有效 ordinal（>=0）⇒ 方块层会据此出露岩层方块（而非 STONE）。
+        //   统计陡坡列中有多少能取到岩性（应 ≈100%，否则说明地表仍会退回 STONE）。
+        System.out.println("[9] 地表裸岩跟随岩层（陡坡列应能取到岩性）:");
+        // ★ 必须用 sampleWu（含侵蚀 tile）—— cell.gradient 只在 applyTileDelta 中
+        //   计算（基于侵蚀后地形），普通 sample() 的 gradient 恒为 0 ⇒ 筛不出陡坡。
+        int nSteep = 0, nSteepHasRock = 0;
+        double steepMinX = 0, steepMinZ = 0;
+        for (double z = oz - 300; z <= oz + 300; z += 43) {
+            for (double x = ox - 300; x <= ox + 300; x += 47) {
+                Cell c = gen.sampleWu(x, z);
+                if (c.e <= 0.05) continue;                 // 只看陆地
+                if (!(c.gradient > 0.40f)) continue;       // 只看陡坡（ROCK_GRADIENT=0.40）
+                nSteep++;
+                if (c.rockSeqPacked != 0) {
+                    int id = StratumField.seqAt(c.rockSeqPacked, c.rockLayer);
+                    if (id >= 0 && id < RockType.values().length) nSteepHasRock++;
+                } else {
+                    steepMinX = x; steepMinZ = z;
+                }
+            }
+        }
+        System.out.printf("      陡坡列=%d | 能取到岩性=%d (%.1f%%)%n",
+                nSteep, nSteepHasRock, nSteep > 0 ? 100.0 * nSteepHasRock / nSteep : 0);
+        if (nSteepHasRock < nSteep) {
+            System.out.printf("      未取到岩性的陡坡点示例 (%.0f,%.0f)%n", steepMinX, steepMinZ);
+        }
+        // 判据：陡坡列必须能按岩性出露（>90%）；为 0 说明 STRATA 未生效 ⇒ 地表仍 STONE
+        boolean pass9 = nSteep > 10 && nSteepHasRock * 10 > nSteep * 9;
+        System.out.printf("      陡坡裸岩按岩性出露（>90%%）: %s%n", pass9 ? "PASS" : "FAIL");
+
+        boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8
+                && pass9;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
         if (!all) System.exit(1);
     }
