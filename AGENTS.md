@@ -209,8 +209,9 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   2. **类型场 Voronoi 轴对齐直段 → 已量化 → 试修 → 回退**：
      - **量化**：新增 `runTerrainStripePngProbe` 的 **[G] 段**（指标 = 最长轴对齐直段 / 采样边长 + 水平:竖直方向比）。窗口 `(-1500,1500)` 实测最长水平直段 **560wu（0.19×）** 且**正好落在网格中垂线 `z=3204`**；另一窗口方向比 2.35 属**窗口地理取样**而非系统偏差（对照窗口 1.10）。
      - **试修**：给 `TerrainCharacterField` 细胞种子加抖动（`SEED_JITTER=0.7`）→ 目标达成：**560wu → 120wu**、方向比 **1.10 → 0.87**（各向同性）。
-     - **回退（结论）**：抖动改变排水格局 ⇒ `runFlowAccumProbe` 的**河流 region 接缝**退化：`border.maxSurfaceDelta` **1.358 → 12.772**（≈12.8 块地表落差）、`border.violations` **0 → 2**（属 PASS 判据 ⇒ `status` PASS→REVIEW）。A/B **精确可逆**（回退后 `hitColumns/fillWater/maxWaterDepth` 逐项复原）。以畸形换美观不划算，且抖动在热路径多一次数组分配却零收益 ⇒ 全量回退（不留死开关）。
-     - **前置条件**：若日后重做，**必须先修**「跨 region 水面无继承」（河流 region 边界的水面/地表不连续，AGENTS 另有记载），否则任何改变排水的改动都会撞同一面墙。
+     - **回退（结论）**：抖动改变排水格局 ⇒ `runFlowAccumProbe` 的 `border` 指标退化：`border.maxSurfaceDelta` **1.358 → 12.772**（≈12.8 块落差）、`border.violations` **0 → 2**（属 PASS 判据 ⇒ `status` PASS→REVIEW）。A/B **精确可逆**（回退后 `hitColumns/fillWater/maxWaterDepth` 逐项复原）。以敏感指标退化换预览层美观不划算，且抖动在热路径多一次数组分配却零收益 ⇒ 全量回退（不留死开关）。
+     - **⚠️ 更正（2026-09-13 核查）：此前记的"前置条件 = 先修「跨 region 水面无继承」"是错的**（照抄了 2026-08-29 的过时记载）。实际代码里**继承机制已存在**（2026-09-07 加入）：`RiverLineRegion.OutletSeed` 携带 `surfaceY`/`accum`/`level`，`RiverLineNetwork.region()` 走**双-pass**（pass-1 记录出口 → pass-2 吸收 4 邻种子作**强制续流源**，另有 `bestHandoffStart` 容错与"并入邻河谷"处理）。且 `borderStats` 量的本是 **chunk 边界**（每 16 格）水面差，**不是 region**。
+     - **真正该记的**：jitter 的退化**不是**缺继承所致，而是改变排水后某处出现了 12.8 块的 **chunk 级**水面落差（未进一步定位）。⚠️ 当前 1.358 距容差 1.5 **仅 10% 余量** ⇒ 该指标对地形改动**高度敏感**：任何动地形的改动都应把 `runFlowAccumProbe` 的 `border` 与 `status` 列入验收。
 - `CACHE_SCHEMA_VERSION` 41 → **44**（本次三处地形产出变更：折叠 / blurDist / stress；上条抖动实验的 45 已随回退撤销）。
 
 ## 当前工作焦点（2026-09-10 气候主导群系 + 河流绿洲 + 陡坡裸岩，发布 v0.0.1）
@@ -240,7 +241,9 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   - **新增 Strahler 式层级**：`RiverPolyline.level`（1=干流，n+1=汇入 n 级河）+ 构建期 `levelAt[]` 传递；探针输出层级直方图。
   - **效果**：河数 85→109，层级 **level1=55 / level2=44 / level3=10**（二级支流成型），joined 293→453。
   - **验收**：`runFlowAccumProbe` reachedOcean 48/48 (100%)、profile/gate/border violations 0（border 除外）、coldMs 1849 不升。
+    - ⚠️ **更正（2026-09-13）**：`coldMs=1849` **不得再当基线** —— 该值所属工况（region 数）未记录，且此后新增气候系统/河流绿洲/降水加权汇流/地质 T1~T5；当前实测 6048ms，**两者不可直接比较**（详见「当前工作焦点（2026-09-13）」的性能归因）。另 `reachedOcean` 现为 38/45（84.4%），该指标**不在 PASS 判据内**（判据 = cycles/profile/gate/border）。
   - **已知遗留**：border.maxSurfaceDelta 1.209→1.839、border.violations 0→**2**（容差 1.5，发生率 1.6e-7）——分支增多后穿出 region 边界的河段（19.27%）暴露"跨 region 水面无继承"既有范式遗留，实机不可见，未引入跨 region 继承机制，status=REVIEW 与历史基线一致。
+    - ⚠️ **更正（2026-09-13）**：本条的「跨 region 水面无继承」与「未引入继承机制」**均已过时** —— 继承机制已于 **2026-09-07 加入**（`RiverLineRegion.OutletSeed` 携带 `surfaceY`/`accum`/`level`；`RiverLineNetwork.region()` 双-pass 吸收 4 邻出口作**强制续流源**，另有 `bestHandoffStart` 容错与"并入邻河谷"处理）。且 `borderStats` 量的是 **chunk 边界**（每 16 格）水面差，**不是 region**。
   - **待做**：用户 runClient 实机目检（小溪可见/有水、宽深渐变、分支的分支）；可选打磨：源头渐入（headwater taper）、宽度沿程单调化、蜿蜒振幅/波长挂钩河宽。
 
 ## 当前工作焦点（2026-08-29 旧格点水文清理）
