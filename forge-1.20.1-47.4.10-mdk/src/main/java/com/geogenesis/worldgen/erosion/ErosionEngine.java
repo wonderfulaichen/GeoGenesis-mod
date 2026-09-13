@@ -127,6 +127,111 @@ public class ErosionEngine {
     /** 细纹理微侵蚀层开关（2026-08-12，配置 erosionXSEnabled） */
     private boolean xsEnabled;
 
+    // ===== ★ 2026-09-14 Phase T8(P3)：岩性 → 侵蚀耦合（软岩成谷、硬岩成脊）=====
+
+    /**
+     * 岩性抗蚀性提供者：{@code (worldX, worldZ) → resistance ∈ [0,1]}（越大越难蚀）。
+     *
+     * <p><b>为何用注入而非直接依赖地质包</b>：本引擎是<b>独立的物理模拟核</b>
+     * （三尺度液滴 + cascade），只应感知"纯数字"。岩性推理链
+     * （构造环境 → 地层序列 → 岩性 → 硬度）属地质域，由 {@code CellGenerator}
+     * 注入 {@code rockResistanceAt}（与 {@code setSeamountDepthChecker} 同一模式）。</p>
+     *
+     * <p>{@code null} → 不耦合（所有岩石同硬度），逐位退回 P3 之前的行为（可回滚）。</p>
+     */
+    private java.util.function.DoubleBinaryOperator hardnessProvider;
+
+    /**
+     * 当前 tile 的岩性硬度网格（{@code null} = 无耦合）。
+     *
+     * <p>用实例字段而非参数传递：{@code spawnAt} 有 12 处调用点，逐处加参数会显著扩大
+     * 改动面；而每次 {@code runErosionOnFlat} 调用独占本实例的"本次执行"
+     * （tile 生成在 {@code computeIfAbsent} 中串行、互不重入）⇒ 字段语义安全。</p>
+     */
+    private float[][] hardGrid;
+    private int hardGridN;
+    private int hardOriginX, hardOriginZ;
+
+    /** 注入岩性抗蚀性提供者（{@code CellGenerator} 调用；传 {@code null} 即退回无耦合行为）。 */
+    public void setHardnessProvider(java.util.function.DoubleBinaryOperator provider) {
+        this.hardnessProvider = provider;
+    }
+
+    /**
+     * 硬度网格的粗采间距（wu）。
+     *
+     * <p><b>为何 8wu</b>：岩性来自{@link com.geogenesis.worldgen.terrain.RockType}的
+     * <b>地层序列</b>（由构造环境 + 900wu 尺度剥蚀噪声决定）⇒ 岩性单元的特征尺度
+     * 是<b>数百 wu</b>，8wu 采样远密于其变化尺度 ⇒ 双线性插值误差可忽略。
+     * 同时把每 tile 的采样次数从 16,384（逐点）降到 272（34×34）⇒ 开销可忽略。</p>
+     *
+     * <p><b>为何必须插值而非"最近邻"</b>：最近邻会在岩性单元边界产生<b>阶跃</b>
+     * ⇒ 硬度突变 ⇒ 侵蚀量突变 ⇒ 地形上一条硬边（本项目反复踩的坑）。
+     * 双线性插值使硬度场 C⁰ 连续 ⇒ 侵蚀过渡自然。</p>
+     */
+    public static final int HARDNESS_SPACING = 8;
+
+    /**
+     * 岩性耦合强度 ∈ [0,1]：0 = 不耦合（同硬度）/ 1 = 全耦合（按抗蚀性线性调制）。
+     *
+     * <p>取值 0.6：真实 "软岩成谷" 是显著但非支配性的效应（坡度、降水、构造仍主导）。
+     * 页岩(0.30) 与花岗岩(0.90) 的侵蚀量比 ≈
+     * {@code (1−0.6×0.30)/(1−0.6×0.90) = 0.82/0.46 ≈ 1.8×}
+     * —— 足以在数千米尺度上分别形成谷与脊，又不至于让地形完全被岩性支配。</p>
+     */
+    private static final float HARDNESS_COUPLING = 0.6f;
+
+    /**
+     * 采样岩性抗蚀性网格（{@code [n][n]} 行主序，{@code worldToGrid} 为 1/间距）。
+     *
+     * @param n      网格边长
+     * @param originX/originZ 网格左上角世界坐标
+     */
+    public static float[][] buildHardnessGrid(java.util.function.DoubleBinaryOperator provider,
+                                              int n, int originX, int originZ) {
+        if (provider == null) return null;
+        float[][] g = new float[n][n];
+        for (int gz = 0; gz < n; gz++) {
+            for (int gx = 0; gx < n; gx++) {
+                g[gz][gx] = (float) provider.applyAsDouble(
+                        originX + gx * HARDNESS_SPACING, originZ + gz * HARDNESS_SPACING);
+            }
+        }
+        return g;
+    }
+
+    /**
+     * 双线性采样硬度网格（世界坐标 → 抗蚀性 ∈ [0,1]）。
+     *
+     * <p>越界时 clamp 到边缘（pad 区已保证覆盖，clamp 仅兜底）⇒ 无异常、无跳变。</p>
+     */
+    public static float sampleHardness(float[][] g, int n, int originX, int originZ,
+                                       float worldX, float worldZ) {
+        if (g == null) return 0.5f;                              // 无提供者 → 中性（不耦合）
+        float fx = (worldX - originX) / HARDNESS_SPACING;
+        float fz = (worldZ - originZ) / HARDNESS_SPACING;
+        int x0 = (int) Math.floor(fx), z0 = (int) Math.floor(fz);
+        float tx = fx - x0, tz = fz - z0;
+        int x1 = Math.min(x0 + 1, n - 1), z1 = Math.min(z0 + 1, n - 1);
+        x0 = x0 < 0 ? 0 : (x0 > n - 1 ? n - 1 : x0);
+        z0 = z0 < 0 ? 0 : (z0 > n - 1 ? n - 1 : z0);
+        float a = g[z0][x0] + (g[z0][x1] - g[z0][x0]) * tx;
+        float b = g[z1][x0] + (g[z1][x1] - g[z1][x0]) * tx;
+        return a + (b - a) * tz;
+    }
+
+    /**
+     * 抗蚀性 → 侵蚀量倍率（<b>只压缩，不放大</b>）。
+     *
+     * <p>{@code 1 − COUPLING × resistance}：硬岩（resistance→1）→ 倍率小（难蚀），
+     * 软岩（→0）→ 倍率大（易蚀）。上限恒为 1 ⇒ <b>不会比引入前蚀得更多</b>
+     * （保证"只增加地貌对比、不整体加剧侵蚀"，也不破坏既有侵蚀强度标定）。</p>
+     */
+    private static float hardnessFactor(float resistance) {
+        float r = resistance < 0f ? 0f : (resistance > 1f ? 1f : resistance);
+        return 1f - HARDNESS_COUPLING * r;
+    }
+
     // ===== 公共入口 =====
 
     /**
@@ -190,6 +295,16 @@ public class ErosionEngine {
         float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);
         int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）
         float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);
+
+        // ★ 2026-09-14 P3：构建岩性硬度网格（粗采 + 双线性，避免逐点查地质链）。
+        //   网格覆盖整个 bufSize 缓冲（含 pad）——液滴可能跑到 pad 区取料，
+        //   故必须与 flat 同域；世界原点 = (ox − pad, oz − pad)。
+        //   用实例字段传给 spawnAt（避免改动其 12 处调用签名，且每 tile 生成独占本实例的本次调用）。
+        int hGridN = bufSize / HARDNESS_SPACING + 2;
+        this.hardGrid = buildHardnessGrid(hardnessProvider, hGridN, ox - R_MAX - 2, oz - R_MAX - 2);
+        this.hardGridN = hGridN;
+        this.hardOriginX = ox - R_MAX - 2;
+        this.hardOriginZ = oz - R_MAX - 2;
 
         int pad = R_MAX + 2;
         float[] dis = new float[bufSize * bufSize];   // 稳态放电量场（跨轮累积）
@@ -557,6 +672,19 @@ public class ErosionEngine {
             float c_eq = (1f + ENTRAINMENT * flowGate) * heightDrop;  // 平衡浓度
             float effD = 0.1f;                       // 松弛率 = depositionRate(=0.1)
             float delta = effD * (c_eq - sed);       // >0=侵蚀, <0=沉积
+            // ★ 2026-09-14 P3：岩性抗蚀性调制（软岩成谷、硬岩成脊）。
+            //   只作用于【侵蚀】（delta>0），不作用于沉积（delta<0）：
+            //   沉积是"搬运物落地"，与基底岩性无关（且硬岩区沉积后成盖层本就正常）。
+            //   倍率 ∈ [0.46, 1]（页岩 0.30 → 0.82 / 花岗岩 0.90 → 0.46），上限 1
+            //   ⇒ 不会比耦合前蚀得更多（不破坏既有侵蚀强度标定）。
+            //   采样点 = 液滴当前位置（idx）的世界坐标：与笔刷邻点共用同一因子，
+            //   避免"笔刷内每点各取硬度"导致高差被抹平（那会反过来抑制成谷）。
+            if (delta > 0f && hardGrid != null) {
+                int hwx = ox + (idx % bufSize) - pad;
+                int hwz = oz + (idx / bufSize) - pad;
+                delta *= hardnessFactor(sampleHardness(hardGrid, hardGridN,
+                        hardOriginX, hardOriginZ, hwx, hwz));
+            }
             float brushDelta = delta;                // 笔刷前增量快照（early-exit 判定用）
 
             // 笔刷邻域分布：权重须对正负通用

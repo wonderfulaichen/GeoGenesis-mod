@@ -7,6 +7,7 @@ import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
+import com.geogenesis.worldgen.terrain.StratumField;
 import com.geogenesis.worldgen.terrain.TerrainClass;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 import com.mojang.serialization.Codec;
@@ -86,6 +87,78 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     /** 雪层（1/8 层，原版 Blocks.SNOW）—— 雪线以上地表覆盖 */
     private static final BlockState SNOW      = Blocks.SNOW.defaultBlockState();
     private static final BlockState PODZOL    = Blocks.PODZOL.defaultBlockState();
+
+    /**
+     * ★ 2026-09-14 Phase T9：<b>岩性 → 方块映射</b>（让地质岩性在游戏里可见）。
+     *
+     * <h3>为何需要（用户提问："这个岩石是虚拟岩石吗？"）</h3>
+     * <p>P3 之前岩性只参与<b>地形形成</b>（抗蚀性耦合），但 {@code fillTerrainColumn}
+     * 地下一律铺 {@code STONE} ⇒ 玩家挖下去看不到任何岩性差异。
+     * 本表把 8 种地质岩性映射到原版方块，使<b>岩性 → 地形 → 方块</b>形成可见的因果闭环
+     * （看到花岗岩山脊 → 挖下去确实是花岗岩）。</p>
+     *
+     * <h3>映射依据（原版只有 6 种可用的"岩石"方块，8 种岩性需有损映射）</h3>
+     * <table border="1">
+     *   <caption>选择原则：优先语义最接近的原版方块；无对应者按【硬度/成因】就近</caption>
+     *   <tr><th>岩性</th><th>方块</th><th>理由</th></tr>
+     *   <tr><td>GNEISS 片麻岩</td><td>DEEPSLATE</td><td>深变质、深部产出，原版深部岩</td></tr>
+     *   <tr><td>SCHIST 片岩</td><td>DEEPSLATE</td><td>同上（同为区域变质，与片麻岩成分相近）</td></tr>
+     *   <tr><td>GRANITE 花岗岩</td><td><b>GRANITE</b></td><td>原版有同名方块，精确对应</td></tr>
+     *   <tr><td>SANDSTONE 砂岩</td><td><b>SANDSTONE</b></td><td>原版有同名方块，精确对应</td></tr>
+     *   <tr><td>SHALE 页岩</td><td>CLAY</td><td>页岩是黏土级细粒沉积，MC 无页岩 ⇒ 用黏土块</td></tr>
+     *   <tr><td>LIMESTONE 石灰岩</td><td>CALCITE</td><td>MC 无石灰岩；方解石是石灰岩的主要矿物</td></tr>
+     *   <tr><td>BASALT 玄武岩</td><td><b>BASALT</b></td><td>原版有同名方块，精确对应</td></tr>
+     *   <tr><td>ANDESITE 安山岩</td><td><b>ANDESITE</b></td><td>原版有同名方块，精确对应</td></tr>
+     * </table>
+     *
+     * <p><b>为何不用 STONE 兜底</b>：{@code STONE} 保留给"无岩性信息"的列
+     * （{@code STRATA_ENABLED=false} 或打包值为 0 的退化情况）⇒ 可区分
+     * "地质上确实没数据"与"岩性是片麻岩"。</p>
+     *
+     * <p>索引与 {@link com.geogenesis.worldgen.terrain.RockType#ordinal()} <b>严格对齐</b>
+     * （顺序：GNEISS, SCHIST, GRANITE, SANDSTONE, SHALE, LIMESTONE, BASALT, ANDESITE）。
+     * 若 {@code RockType} 增删成员，本表必须同步 —— 长度不符时回退 STONE（安全）。</p>
+     */
+    private static final BlockState[] ROCK_BLOCKS = {
+            Blocks.DEEPSLATE.defaultBlockState(),   // 0 GNEISS    片麻岩
+            Blocks.DEEPSLATE.defaultBlockState(),   // 1 SCHIST    片岩
+            Blocks.GRANITE.defaultBlockState(),     // 2 GRANITE   花岗岩
+            Blocks.SANDSTONE.defaultBlockState(),   // 3 SANDSTONE 砂岩
+            Blocks.CLAY.defaultBlockState(),        // 4 SHALE     页岩
+            Blocks.CALCITE.defaultBlockState(),     // 5 LIMESTONE 石灰岩
+            Blocks.BASALT.defaultBlockState(),      // 6 BASALT    玄武岩
+            Blocks.ANDESITE.defaultBlockState(),    // 7 ANDESITE  安山岩
+    };
+
+    /**
+     * 岩层厚度（块）。同一岩性连续铺 {@code LAYER_THICKNESS} 块后切到序列下一层。
+     *
+     * <p>取 24：本世界高 384 块，地下可见段通常 60~120 块 ⇒ 可看到 3~5 个岩层，
+     * 既形成清晰的"层序叠置"观感，又不会让单层薄到与噪声混同。</p>
+     */
+    private static final int LAYER_THICKNESS = 24;
+
+    /**
+     * 把 {@link Cell#rockSeqPacked} 展开为<b>深度序</b>岩性数组（供 {@link #fillTerrainColumn}）。
+     *
+     * <p>数组下标 = 从地表往下第几个岩层（0 = 最浅）；越深下标越大
+     * （层序叠置：老岩层在下）。由最浅层号旋转起点，使序列随空间变化。</p>
+     *
+     * @return 岩性 ordinal 数组；<b>无岩性数据</b>（STRATA 未启用 / 打包值退化）时返回 {@code null}
+     *         ⇒ 调用方回退到原 STONE/DEEPSLATE 行为（可安全回滚）
+     */
+    private static int[] rockColumn(Cell cell) {
+        int packed = cell.rockSeqPacked;
+        if (packed == 0) return null;                      // 未计算（STRATA 关闭 / 全 0 退化）
+        int[] col = new int[StratumField.LAYER_COUNT];
+        for (int i = 0; i < col.length; i++) {
+            // 起点按出露层号旋转：layerAt 变化时整列岩层顺序随之平移 → 空间上有"层位起伏"
+            int id = StratumField.seqAt(packed, i + cell.rockLayer);
+            if (id < 0 || id >= ROCK_BLOCKS.length) return null;   // 越界守卫（枚举增删时的安全网）
+            col[i] = id;
+        }
+        return col;
+    }
 
     // 地形引擎（每生成器实例一份）。参数来自当前世界存档，种子来自 LevelEvent.Load。
     private GeoGenesisTerrain terrain;
@@ -301,13 +374,22 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         int lipBlock = (riverWater && cell.riverLipY > waterTop)
                 ? (int) Math.floor(cell.riverLipY) : waterTopBlock;
         int fillTopBlock = Math.max(waterTopBlock, lipBlock);
+        // ★ 2026-09-14 Phase T9：预解析该列的岩层（若岩性数据可用）。
+        //   深度 → 序列下标：越深越靠后（层序叠置 = 老在下）。
+        //   只对【陆地且 STRATA 已启用】的列生效；海洋列保持原 STONE/DEEPSLATE
+        //   （洋壳是玄武岩，但海底已被水覆盖、玩家不易看到，且改海洋侧风险更高 ⇒ 暂不动）。
+        final int[] rockCol = rockColumn(cell);
         for (int y = WORLD_MIN_Y; y < WORLD_MAX_Y; y++) {
             mPos.set(wx, y, wz);
             BlockState state;
             if (y == WORLD_MIN_Y) {
                 state = BEDROCK;
             } else if (y < surfaceY - 3) {
-                state = (y < 0) ? DEEPSLATE : STONE;             // 深层
+                // 深层：有岩性数据 → 按【垂直岩层】铺；否则回退原行为（STONE/DEEPSLATE）
+                state = rockCol != null
+                        ? ROCK_BLOCKS[rockCol[Math.min(rockCol.length - 1,
+                                (surfaceY - 3 - y) / LAYER_THICKNESS)]]
+                        : ((y < 0) ? DEEPSLATE : STONE);
             } else if (y < surfaceY) {
                 state = fill;                                     // 表层下 3 格（土/沙）
             } else if (y == surfaceY) {

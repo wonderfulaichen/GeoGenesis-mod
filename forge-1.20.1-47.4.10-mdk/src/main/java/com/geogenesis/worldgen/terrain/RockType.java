@@ -15,8 +15,10 @@ package com.geogenesis.worldgen.terrain;
  *   <li>火山弧/洋壳 → {@link #BASALT} {@link #ANDESITE}（火山岩）</li>
  * </ul>
  *
- * <p><b>注意</b>：Phase T4 仅建立<b>数据层</b>（岩性标签、供预览图层与后续地质系统消费），
- * <b>尚未</b>让岩性影响地貌（"软岩成谷、硬岩成脊"需与侵蚀耦合，属后续阶段）。
+ * <p><b>注意</b>：Phase T4 建立<b>数据层</b>（岩性标签、供预览图层消费）；
+ * <b>★ 2026-09-14 Phase T8(P3)</b> 已让岩性影响地貌：{@link #resistance()}
+ * 经 {@link StratumField#resistanceAt} → {@code CellGenerator.rockResistanceAt}
+ * 注入 {@code ErosionEngine}，按抗蚀性调制侵蚀量 ⇒ <b>软岩成谷、硬岩成脊</b>。
  */
 public enum RockType {
 
