@@ -221,29 +221,45 @@ public final class StratumField {
         return lv < 0 ? 0 : (lv > THK_MASK ? THK_MASK : lv);
     }
 
-    // ===== ★ 2026-09-14 Phase T10：地层【倾斜/褶皱】偏移（水平层用）=====
+    // ===== ★ 2026-09-14 Phase T10/T10b：地层【倾斜/褶皱】偏移（水平层用）=====
     /**
-     * 倾斜噪声频率（1/wu）与幅度（块）。
+     * 倾斜噪声的<b>多尺度</b>频率（1/wu）与幅度（块）。
      *
-     * <p><b>为何需要</b>：真实地层是<b>水平沉积</b>后经构造倾斜/褶皱，界面是起伏曲面，
-     * 而非绝对平面。若地层严格水平（无 tilt），挖开后会看到"绝对平直的层界"，
-     * 与本项目反复强调的"禁止等值线成为直线"同源问题。</p>
+     * <p><b>为何必须多尺度（T10b 修复）</b>：T10 初版只用单一 1/1200 低频（±30 块）
+     * ⇒ 在玩家视野（约 100 块）内该噪声仅变化约 2.5 块 ⇒ <b>局部看起来层界是
+     * 一根绝对平直的直线</b>（用户实机反馈"你这个岩层没点轻微浮动吗？"，
+     * 截图层界完全水平）。</p>
      *
-     * <p>取 1/1200（比层厚噪声 1/650 更低频）：倾斜是<b>区域尺度</b>的构造变形，
-     * 应比层厚变化更宏大 ⇒ 层界面大范围缓慢起伏（褶皱感），而层厚在小尺度变化。</p>
+     * <p>这与本项目反复出现的"单一低频噪声在大尺度上看似良好、局部仍成直线"
+     * 是同一类问题。正解：按地形噪声的做法做<b>多倍频叠加</b> ——
+     * 每个尺度都在层界上留下起伏，任何视野范围内都能看到波动：</p>
+     * <ul>
+     *   <li><b>区域倾斜</b> 1/1200 ±30 块 —— 大范围缓倾（褶皱趋势）</li>
+     *   <li><b>局部起伏</b> 1/220 ±7 块 —— 中尺度褶皱（视野内可见）</li>
+     *   <li><b>细节摆动</b> 1/55 ±2.5 块 —— 小尺度波状（消除平直感的关键）</li>
+     * </ul>
+     *
+     * <p>各层用不同 salt ⇒ 互不相关（真实：不同尺度的构造变形独立叠加）。</p>
      */
-    private static final double TILT_FREQ = 1.0 / 1200.0;
-    private static final double TILT_AMP = 30.0;
+    private static final double[] TILT_FREQ = {1.0 / 1200.0, 1.0 / 220.0, 1.0 / 55.0};
+    private static final double[] TILT_AMP = {30.0, 7.0, 2.5};
     private static final long TILT_SALT = 0x5F3A_9C21_7E44_B1D6L;
 
     /**
-     * 该点地层的<b>垂直偏移</b>（块），模拟区域倾斜/褶皱。
+     * 该点地层的<b>垂直偏移</b>（块）：多尺度叠加，模拟区域倾斜 + 褶皱 + 局部摆动。
      *
      * <p>与层厚噪声独立（不同 salt）⇒ 倾斜与厚度变化不相关（真实：褶皱幅度和
      * 沉积厚度是两回事）。</p>
+     *
+     * <p>注意：{@code valueNoise} 是 smootherstep 双线性插值 ⇒ C¹ 连续，
+     * 叠加后<b>不会产生折角/台阶</b>（层界是平滑起伏曲面）。</p>
      */
     public double tiltAt(double wx, double wz) {
-        return valueNoise(wx * TILT_FREQ, wz * TILT_FREQ, TILT_SALT) * TILT_AMP;
+        double t = 0.0;
+        for (int i = 0; i < TILT_FREQ.length; i++) {
+            t += valueNoise(wx * TILT_FREQ[i], wz * TILT_FREQ[i], TILT_SALT + i * 0x9E37L) * TILT_AMP[i];
+        }
+        return t;
     }
 
     /** 厚度级别 → 块数。 */
