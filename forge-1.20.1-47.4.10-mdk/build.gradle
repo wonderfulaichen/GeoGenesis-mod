@@ -1087,6 +1087,16 @@ task runLandFeatProbe(type: JavaExec) {
     }
 }
 
+// Hardness race probe (★ 2026-09-14：硬度网格并发安全压测，复现/验证崩溃修复)
+//   args = [seed] [threads]
+task runHardnessRaceProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.erosion.HardnessRaceProbe'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
 // Perf probe (★ 2026-09-14：地质系统性能基准，定位"卡在 0%"回归)
 //   args = [seed]
 task runPerfProbe(type: JavaExec) {
