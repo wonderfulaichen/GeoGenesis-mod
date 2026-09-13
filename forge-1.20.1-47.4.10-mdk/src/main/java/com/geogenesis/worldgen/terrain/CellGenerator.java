@@ -364,6 +364,8 @@ public final class CellGenerator {
             cell.rockTypeId = StratumField.rockTypeId(tsAll, isLandShell, cell.rockLayer);
             // ★ 2026-09-14 Phase T9/T9b：整条地层序列 + 各层厚度（打包）→ 供方块层铺垂直岩层
             cell.rockSeqPacked = strata.packSequence(tsAll, isLandShell, sx, sz);
+            // ★ 2026-09-14 Phase T10：区域倾斜/褶皱偏移（水平地层的界面起伏）
+            cell.rockTilt = strata.tiltAt(sx, sz);
         }
 
         // ★ 2026-09-12 地质 Phase T5：构造形变（褶皱 / 断层）。

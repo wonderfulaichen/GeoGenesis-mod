@@ -338,7 +338,17 @@ public class PreviewDisplay extends AbstractWidget {
     //      · 映射放宽（用户建议"不一定要按现实名称，可用陶瓦等"）：
     //        页岩→陶瓦（硬化黏土=页岩固结，参考 MC 恶地地层）
     //        石灰岩→白色陶瓦（弃方解石：其仅生成于紫水晶洞 Y≤30，浅部违和）
-    private static final int CACHE_SCHEMA_VERSION = 60;
+    // 61 = 2026-09-14 ★ Phase T10：地层水平化（真实水平沉积，非披盖式）
+    //      · 层界由【绝对 Y】决定（+ 区域倾斜 tilt 模拟褶皱），层序垂直循环
+    //        ⇒ 同一海拔的岩性横向连续，山地被切割后山坡露出水平条带
+    //        （对齐探索结论「区域层序 + 绝对 Y 基准 + 倾斜」，超越 RTF 的披盖式）
+    //      · 保留 T9b 的可变层厚（5~42 块噪声）
+    //      · StratumField.tiltAt（1/1200 低频倾斜噪声，幅度 ±30 块）
+    //      · Cell.rockTilt（逐列缓存倾斜，方块层复用）
+    //      · 查表 LUT（周期内每格 Y → 岩性）⇒ 逐 y O(1)，无性能损失
+    //      · 地表裸岩同步：陡坡不同高度露出不同岩层 ⇒ 崖壁天然呈水平彩条
+    //      注：地表植被/表土不变，仅地下与陡坡裸露受影响
+    private static final int CACHE_SCHEMA_VERSION = 61;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

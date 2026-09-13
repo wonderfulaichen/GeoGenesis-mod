@@ -148,6 +148,15 @@ public class Cell {
      */
     public int rockSeqPacked;
 
+    /**
+     * ★ 2026-09-14 Phase T10：该点地层的<b>垂直偏移</b>（块，区域倾斜/褶皱）。
+     *
+     * <p>由 {@link StratumField#tiltAt} 给出。存进 Cell 是因为方块层
+     * （{@code GeoGenesisGenerator}）不持有 {@code StratumField} 实例，
+     * 而倾斜必须<b>与种子绑定</b>（确定性）。</p>
+     */
+    public double rockTilt;
+
     /** 河网段类型（RIVER_TYPE 图层用）：0 无 / 1 水文河流 */
     public byte riverType;
     /** 水文实验河流水面 Y；无河流时为海平面默认值。 */

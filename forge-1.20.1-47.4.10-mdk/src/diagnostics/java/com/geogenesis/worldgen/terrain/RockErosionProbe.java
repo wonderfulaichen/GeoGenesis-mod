@@ -24,6 +24,33 @@ package com.geogenesis.worldgen.terrain;
  */
 public final class RockErosionProbe {
 
+    /**
+     * 复刻 GeoGenesisGenerator 的水平层逻辑，求该列在绝对高度 y 处的岩性 ordinal。
+     * 探针必须与方块层【同一套算法】，否则测的不是实际铺的方块。
+     */
+    private static int ordAtY(Cell cell, int y) {
+        int nLay = StratumField.LAYER_COUNT * 4;
+        int[] th = new int[nLay];
+        int total = 0;
+        for (int i = 0; i < nLay; i++) {
+            th[i] = StratumField.thicknessOf(
+                    StratumField.thickLevelAt(cell.rockSeqPacked, cell.rockLayer + i));
+            total += th[i];
+        }
+        if (total <= 0) return -1;
+        int base = (int) Math.round(63 + cell.rockTilt);   // seaLevel=63
+        int local = Math.floorMod(y - base, total);
+        int acc = 0;
+        for (int i = 0; i < nLay; i++) {
+            if (local < acc + th[i]) {
+                int id = StratumField.seqAt(cell.rockSeqPacked, cell.rockLayer + i);
+                return (id >= 0 && id < RockType.values().length) ? id : -1;
+            }
+            acc += th[i];
+        }
+        return -1;
+    }
+
     public static void main(String[] args) throws Exception {
         TerrainParams p = TerrainParams.defaults();
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
@@ -272,8 +299,41 @@ public final class RockErosionProbe {
         boolean pass9 = nSteep > 10 && nSteepHasRock * 10 > nSteep * 9;
         System.out.printf("      陡坡裸岩按岩性出露（>90%%）: %s%n", pass9 ? "PASS" : "FAIL");
 
+        // ================= [10] T10：地层水平化（同海拔岩性应横向连续）=================
+        //   【T9b 披盖式】层界 = 地表 - 累加层厚 ⇒ 层随地形起伏（洋葱裹山）
+        //   【T10 水平层】层界 = 绝对 Y（+ 区域倾斜）⇒ 同一海拔的岩性【横向连续】，
+        //     被地形切割后山坡露出水平条带（真实地层 + 恶地观感）。
+        //   判据：取两个水平相邻的采样点（同 y、不同 x），若地表高度差异大（说明地形起伏），
+        //   但"同一 y 的岩性"仍相同 ⇒ 水平层生效（披盖式下会不同）。
+        System.out.println("[10] 地层水平化（同 y 处的岩性应横向一致）:");
+        int nPair = 0, nSame = 0;
+        double tiltSum = 0; int nTilt = 0;
+        for (double z = oz - 600; z <= oz + 600; z += 37) {
+            for (double x = ox - 600; x <= ox + 600; x += 41) {
+                Cell a = gen.sample(x, z);
+                Cell b = gen.sample(x + 41, z);
+                if (a.e <= 0.05 || b.e <= 0.05) continue;
+                if (a.rockSeqPacked == 0 || b.rockSeqPacked == 0) continue;
+                // 地形起伏必须显著（否则两点的层序本就可能相同，测不出差异）
+                if (Math.abs(a.height - b.height) < 15) continue;
+                nPair++;
+                tiltSum += Math.abs(a.rockTilt - b.rockTilt); nTilt++;
+                // 取一个共同深度（都在地表之下的同一绝对 Y）
+                int yCommon = (int) Math.floor(Math.min(a.height, b.height)) - 10;
+                int oa = ordAtY(a, yCommon), ob = ordAtY(b, yCommon);
+                if (oa >= 0 && oa == ob) nSame++;
+            }
+        }
+        System.out.printf("      地形起伏显著的点对=%d | 同 y 岩性相同=%d (%.1f%%)%n",
+                nPair, nSame, nPair > 0 ? 100.0 * nSame / nPair : 0);
+        System.out.printf("      相邻点倾斜差均值=%.2f 块（区域尺度起伏，非平面）%n",
+                nTilt > 0 ? tiltSum / nTilt : 0);
+        // 水平层：绝大多数点对在同一 y 应同岩性（>70%）；披盖式会显著更低
+        boolean pass10 = nPair > 30 && nSame * 10 > nPair * 7;
+        System.out.printf("      地层在横向连续（>70%% 同岩性）: %s%n", pass10 ? "PASS" : "FAIL");
+
         boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8
-                && pass9;
+                && pass9 && pass10;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
         if (!all) System.exit(1);
     }
