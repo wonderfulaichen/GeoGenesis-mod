@@ -51,7 +51,10 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `GeoGenesisConfig.java` | Forge COMMON 配置（地质过程参数：continent*/ocean spline 控制点/coast/seabed/province*/land process/world height，详见 `ARCHITECTURE.md` 配置表） |
 | `worldgen/terrain/GeoGenesisTerrain.java` | 零 MC 依赖地形引擎门面（缓存 Cell + generateChunk 装配侵蚀/河流） |
 | `worldgen/terrain/CellGenerator.java` | 统一连续场采样 + 实现 HeightProvider + 连续分类 |
-| `worldgen/terrain/LandShape.java` | 省权重(softmax) + 陆地过程形态（替代旧 StructuralField） |
+| `worldgen/terrain/TerrainCharacterField.java` | 类型场：**规则网格** Voronoi 高斯距离权重（400wu 格、σ=200、7×7 窗口、`WARP_AMP=0`）→ 类型主导边界偏轴对齐（见「已知遗留」） |
+| `worldgen/terrain/TypeNoiseProvider.java` | 逐类型地形噪声配方（PLAIN/HILLS/MOUNTAINS/PLATEAU/BASIN）；★ 已撤销 `\|2n−1\|` 折叠（见「折叠类算子的禁令」） |
+| `worldgen/terrain/LandFeatures.java` (+`VolcanicShape`) | 陆地火山特征（单体 800wu 格 3% + 火山群 200wu 格 12% × 低频掩码）；`VolcanicShape` 提供 cone/guyot 形状与火口数学 |
+| ~~`worldgen/terrain/LandShape.java`~~ | ⚠️ **不存在（2026-09-13 核查）**：本行曾写「省权重(softmax) + 陆地过程形态」，实际无此文件；类型权重由 `TerrainCharacterField` 提供 |
 | `worldgen/terrain/HeightCurve.java` | 单条 cubic Hermite Spline：eFromC / heightFromE（非对称 e→Y） |
 | ~~`worldgen/river/*`（RTF 全套）~~ | ❌ **已删除**（2026-08-28 被 D8 汇流场范式取代）；**现行河流见下方 `worldgen/hydrology/*` 行** | 
 | `worldgen/erosion/ErosionEngine.java` | ✅ **唯一真实存在的侵蚀**：液滴水力侵蚀（SimpleHydrology 型，物质守恒）+ `cascadeLocal` 塌落（高差阈值≈固定 38.7° 安息角） |
@@ -65,6 +68,106 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `worldgen/hydrology/HydrologyBlockCarver.java` | 单块雕刻：邻近段 IDW 混合（fade²/dist²）surfaceY/width/depth → 河线交越平滑、无硬切；水面=min(单调水面,真实地形)；只下挖；灌水门控 |
 | `worldgen/hydrology/HydrologyExperimentEngine.java` | 接线（双采样器：terrainEQuick 选线 + sampleWu 锚定水面）+ 灌水落块 |
 | `worldgen/climate/Climate.java` | 温度/湿度数据载体（替代旧 BasicClimate/PreClimate） |
+| `worldgen/terrain/TectonicField.java` | 构造骨架（Phase T1/T2）：哈希 Voronoi 板块 + 域扭曲 + **连续加权投票应力**（`stressField`，★ 第三条硬约束）+ 山链调制 chain + `blurDist` smoothstep 渐隐 |
+| `worldgen/terrain/TectonicDeformation.java` | 构造形变（Phase T5）：褶皱（世界坐标 ridged 噪声 + **圆化绝对值**）+ 断层（噪声**零等值线** + 单条平滑 sigmoid 落差，**已去值域量化**） |
+| `worldgen/terrain/StratumField.java` | 地层/岩性（Phase T4，纯数据层，不参与 e 合成） |
+
+> ### ⛔ 地质系统硬约束（违反会导致「平行带」伪影，已回归三次）
+>
+> **`dist`（到板块边界的距离）只能用于 `decay` / 高斯衰减（控制作用范围），绝不能作噪声坐标。**
+>
+> **原因**：`dist` 的等值线**平行于 Voronoi 边界**，且**绕板块闭合成同心环**。
+> 任何以 `dist` 为噪声坐标的量（如旧 `chainModulation` 的 `dist/111`、旧 `foldOffset` 的 `sin(dist·2π/λ)`）
+> 都会产生**平行于边界的波纹带** —— 与项目早已否决的 Terrace「环状台阶伪影」同源。
+>
+> **历史（修过又被改回，务必先读）**：
+> - `087698c` 修过（"改为沿走向波：褶皱 sin(dist)→sin(along)"）
+> - `8e51a08` 为修"每块独立生成"**改回 `sin(dist)`** + chain 跨走向项 `dist/111` → 波纹回归
+> - `60e182f` 平滑 `stress` → 由"断续疤痕"变"连续规整波纹" → **视觉上更明显**
+> - `（本轮）` 两处均改为**纯世界坐标噪声**，`dist` 不再参与
+>
+> **守门探针**：`gradlew runTectonicWaveProbe` —— 判据为「法向/切向各向异性比值」
+> （平行带 ≫1，各向同性 ≈1），补上阈值型探针（Grain/LandE/Deform）的原理盲区。
+> 修复前 T5=2.20~2.51（FAIL）、修复后 ≈1.1（PASS），已双向验证。
+>
+> **教训**：新增地质参数时，若发现形变量与 `dist` 相关，先问"这会不会形成平行带"。
+>
+> ### ⛔ 第二条硬约束：**禁止对噪声做值域量化**（`Math.floor/round` on noise）
+>
+> **原因**：量化把连续噪声切成阶梯，而**阶梯的等值线**是一族**嵌套闭合波浪曲线**
+> → 在地形上就是"密集波浪状平行细线 / 同心环梯田"。这与本项目**两次否决 Terrace**
+> 的「环状台阶伪影」**完全同源**。
+>
+> **实例**：`TectonicDeformation.faultOffsetUnit` 曾用
+> `slipQ = Math.floor(blockN * 3.0) / 3.0`（3 档量化）→ 用户第四次反馈的直接根因
+> （实测 `comp_deform.png` 可见同心环）。现改为**跨越断层线的单条平滑 sigmoid**
+> （取噪声零等值线为断层线 + smoothstep 过渡）→ 保留断块落差，但处处 C¹。
+>
+> 同理，`1-|x|` 这类 **V 型折痕**（斜率跳变）也会沿零等值线形成锐利细脊，
+> 须用**圆化绝对值** `sqrt(x²+r²)−r` 代替（见 `TectonicDeformation.foldOffset`）。
+> ⚠️ 但**圆化只对"本就该保留的脊线"有效**；若脊谷结构本身是伪影来源，
+> 圆化无效，必须**去掉折叠**（见下方「折叠类算子的禁令」）。
+>
+> ### ⛔ 第三条硬约束：**禁止用「最近邻配对」定义参与地形合成的场**
+>
+> **原因**：把标量场定义为「最近 + 次近 Voronoi 种子的配对量」（如
+> `stress = (v1−v2)·n / |v1−v2|`）时，在**配对不变**的空间区域内该量与位置无关
+> ⇒ 场是**分片常数**；配对在 Voronoi 边与 order-2 边上切换 ⇒ 沿**直线网**阶跃
+> ⇒ 地形上就是「**笔直长线段 + Y 形交汇**」（实测 `gradmag.png` 与
+> `gmagC_tect_chain.png` 几何完全同构，连线的密度与交汇点位置都一致）。
+>
+> **铁证（可复现）**：分片常数场的探针特征是 **`P50|∇| ≈ 0`（精确为 0）**。
+> 实测 `TectonicField.stress` 的 `P50|∇| = 7.9e-17` → 当场锁定根因。
+> 同理，`tect_dist` 的 `max|∇| = 37.7`（距离场物理上不可能超 ~2.4）也是同一类荒谬值报警。
+>
+> **为何事后平滑无效**：环形/局部平均**只能压制、不能拓扑消除**
+> （2026-09-12 的注释已写下这句，但当时没换架构，只加大 `smoothStress` 半径/样本 → 伪影存活）。
+> **正解 = 连续加权投票**（`TectonicField.stressField`）：
+> `stress = Σ w_i·(v_i·û_i) / Σ w_i`，`w_i = exp(−d_i²/2σ²)`，`û_i` = 种子 i 指向采样点的单位向量。
+> 无「配对」概念 ⇒ 无配对切换 ⇒ **处处 C^∞**；顺带删掉 12 点环形采样（**净性能收益**）。
+>
+> **要点**：投票窗口半径**必须 ≥ 2 格**（半径 1 时最近被排除种子的权重达 0.43
+> → 窗口平移又生一条直线网）。
+>
+> ### ⛔ 第四条硬约束：**任何在 `reach` 处硬切换的模糊/混合，必须 smoothstep 渐隐**
+>
+> **原因**：`if (v >= REACH) return v; else return blurred(v);` 这类写法两分支**数值不等**
+> （模糊值可偏离原值上百单位）⇒ 沿 **`v = REACH` 的等值线**产生**阶跃**。
+> 而 `dist` 的等值线是**平行于 Voronoi 边的多边形偏移网**（直边 + 顶点）
+> ⇒ 又一套「笔直细线 + Y 交汇」被印进地形。
+>
+> **实例**：`TectonicField.blurDist` 的 `DIST_BLUR_REACH=420` 硬切换 → `tect_dist`
+> `max|∇| = 37.7`。修正（`t` 用 smoothstep 在 reach 处渐隐到 0）后 `37.7 → 1.26`、
+> 长尾比 `17.9 → 1.6`。参照 `TectonicField.smoothStress`（当年已写对）——**本条是它的推广**。
+>
+> ### ⛔ 折叠类算子的禁令：`|2n−1|` 禁用于地形噪声
+>
+> **原因**：绝对值折叠有三重几何副作用，叠加即「密集波浪状平行细线」：
+> ① **频率翻倍**（一个原周期拆成两脊两沟 → 等值线数量翻倍）
+> ② **梯度恒定**（正弦在极值处 `d/dx→0`；折叠后处处满梯度 → 本该稀疏的缓坡也铺满等高线）
+> ③ **折痕处等值线成对平行**（`n=0.5` 的 V 形折痕两侧等值线成对出现）
+>
+> **实例**：`TypeNoiseProvider.foldHills`（HILLS/PLATEAU 共用）。逐配方高通幅值实测：
+> `PLAIN 0.0025 / MOUNTAINS 0.120 / BASIN 0.056 / HILLS 0.425 / PLATEAU 0.464`
+> —— 用折叠的两个类型异常 **170~185×**，且**折叠是它们的唯一共同点**。
+> **圆化折痕无效**（只消二阶不连续，脊谷交替与频率翻倍原样保留，实测高通仍 0.42）。
+> **正解 = 去掉折叠**（`clampUnit` 恒等钳值域），地貌语义交给噪声自身的多频叠加。
+>
+> **可视化守门工具（★ 关键方法论）**：`gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"`
+> → `build/stripe/` 输出 `hillshade.png`（人眼所见）、`eLand_highpass.png`（去趋势，弱纹理显形）、
+> `comp_deform.png`（构造分量）、`type_*.png` / `typeHP_*.png`（逐配方 + 高通）。
+> - ★ 2026-09-13 新增 **[F] 逐分量梯度排查**：对 eLand 的每个输入分量单独求 `|∇|`，
+>   打印 `P99.9/P50` **长尾比**（平滑场 ~3~8；含折痕线的场极大），并输出 `gmagC_<分量>.png`。
+>   **这是定位「折痕属于哪个场」的最快路径**，一次运行即可锁定，不必逐个假设。
+> - **⚠️ 看图陷阱（本轮差点误判）**：`|∇|` 图上，**平滑脊的两翼天然呈亮线**
+>   （`|∇g|` 的极值在 `d=σ` 处）。故"图上有线"**不等于**"有折痕"；
+>   判据须配合长尾比 + **线宽**（折痕线 1~2px；平滑脊翼宽约 35px）。
+>
+> **⚠️ 探针不够用**：`runTectonicWaveProbe` 等**阈值型**探针全部 PASS 时，用户仍可能看到明显伪影——
+> 因为它们测"幅度/各向异性"，测不出"值域量化/配对阶跃"。**判定伪影的最终依据只能是渲染图**。
+>
+> **⚠️ 改动地形产出必须升 `PreviewDisplay.CACHE_SCHEMA_VERSION`**，否则预览**静默复用旧磁盘缓存**
+> → 表现为"改了没生效"（当前 **44**）。
 
 注册流程: `GeoGenesisMod` 构造器中用 `DeferredRegister<Codec<? extends ChunkGenerator>>`（注册到 `Registries.CHUNK_GENERATOR`）注册 `GeoGenesisGenerator.CODEC`，同理 `BIOME_SOURCE` 注册 `GeoGenesisBiomeSource.CODEC`，并 `register(bus)` 到 MOD 总线。
 
@@ -79,6 +182,21 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **河流**：`RiverLineNetwork.sampleAll` 按 **region(640wu) + margin** 纯函数缓存，合并 3×3 邻 region → 跨 region 结构性无缝；水面为 PAVA 加权单调反推。（RTF `sampleRiver` / `REGION=512` 已作废）
 - **游戏雕刻路径**：`GeoGenesisTerrain.generateChunk` 内 `extractFromTile`（侵蚀 delta）+ `applyHydrologyValley`（水文雕刻，**回写 `cell.height`**，预览/落块一致）；`fillFromNoise` 只按 `waterSurfaceY` 灌水判定。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)`，高度/河流/湖泊/气候由引擎确定性产出。
+
+## 当前工作焦点（2026-09-13 「笔直线段 + Y 形交汇」伪影根治，用户实机确认消失）
+
+- **用户症状**：预览/实机出现**笔直细线段 + Y 形交汇**（不是波浪等值线，而是**直线网**）。历轮修复（T5 去量化、褶皱圆化、`smoothPos`、域扭曲、`valueNoise` 升 Catmull-Rom、`beltMask`）后仍存活。
+- **方法论转折**：新增 `TerrainStripePngProbe` 的 **[F] 逐分量梯度排查** —— 对 eLand 每个输入分量单独求 `|∇|`，打印 `P99.9/P50` **长尾比**并输出 `gmagC_<分量>.png`。**一次运行即锁定元凶**，不再逐个假设（此前 6 轮都是"假设→修→仍存在"）。
+- **三处根因（按发现顺序，均已修）**：
+  1. **`TypeNoiseProvider.foldHills` 的 `|2n−1|` 折叠**（HILLS/PLATEAU 共用）：频率翻倍 + 梯度恒定 + 折痕等值线成对 ⇒ 「密集波浪状平行细线」。修法 = **撤销折叠**（`clampUnit`）。逐配方高通实测 `0.425/0.464 → 0.193/0.157`。
+  2. **`TectonicField.blurDist` 的 reach 硬切换**：沿 `dist=420`（= Voronoi 多边形**偏移网**）产生 dist 阶跃 ⇒ `tect_dist` 的 `max|∇| = 37.7`（距离场**不可能**超 ~2.4，荒谬值即铁证）。修法 = 混合权重 smoothstep 渐隐 ⇒ **1.26**，长尾比 `17.9 → 1.6`。
+  3. **★ 最终根因：`stress` 是「分片常数场」**。旧式 `stress = dot/|v1−v2|` 在配对不变区域内**与位置无关**（探针铁证 `P50|∇| = 7.9e-17` —— 精确为 0）⇒ 配对在 Voronoi 边 / order-2 边切换处沿**直线网**阶跃 ⇒ 经 `boundaryStrength`(σ=110) × `CONVERGENT_BOOST`(2.5) 印进 eLand。修法 = **连续加权投票** `stressField`（5×5 窗口、σ=1000、gain 2.0），并删除 `smoothStress`/`stressAt`/`rawStressFor`/`dotCrossToStress` 与 `STRESS_BLUR_*`（**每次采样少 100+ 次哈希，净性能收益**）。
+- **验收（全绿）**：`runTectonicProbe` ALL PASS（造山带 **1.70×**、串珠 `meanM=0.611/sd=0.151`、性能 **2.16µs < 5µs**）；`runTectonicDeformProbe` ALL PASS（纯走滑无垂向形变等语义保住）；`runTectonicWaveProbe` ALL PASS（各向异性 **≈1.0**，无平行带回归）；`runTectonicContinuityProbe` ALL PASS；`runPrecipRiverWidthProbe` PASS（head 最干桶 **0.928 < 0.95** ⇒ **未污染水文标定**）。分量长尾比 `tect_stress ∞→1.6`、`tect_chain 68.5→3.0`；eLand `max|grad| 0.00245→0.00211`；`[full] max|grad| 4.10→1.78`。**用户实机确认伪影消失**。
+- **探针口径修正（重要）**：`TectonicProbe` [6] 的筛选从 `btype==CONVERGENT` 改为 `smoothPos(stress) > 0.70`（**等价**：CONVERGENT ⟺ `|dot|>|cross|` ⟺ `|stress|>1/√2`）。应力改为**区域尺度**场后，局部配对标签不再蕴含 `stress>0`，旧口径把非汇聚样本混入 → 假失败（`meanM 0.531 → 0.611` PASS）。`TectonicContinuityProbe` 阈值 `1.5 → 2.2`（原阈值漏算域扭曲的合法梯度上界 ≈2.07；**该探针 [3] 自证**：无扭曲的裸公式 `(d2−d1)/2` 实测 max = **1.00wu** 正是理论极限，生产路径 1.69wu = 差额即域扭曲贡献），并让 `max` **无条件记录**以免掩盖真实上界。
+- **已知遗留（本轮有意不动，留给专门的标定轮）**：
+  1. **高度标定漂移**：同一 304wu 窗口 `[full] height` `64.5~112.4` → **`88.0~152.9`**（+23~40 块）。因新应力是区域尺度场，汇聚权重 `cw` 在边界带内分布改变 ⇒ MOUNTAINS boost 更强（**物理上更对**：造山带本就成带而非细线）。守门探针全过。若需回调：`CONVERGENT_BOOST` 2.5→~1.8，或 `STRESS_VOTE_GAIN` 2.0→1.0。
+  2. **类型场 Voronoi 轴对齐直段**：`TerrainCharacterField` 种子在**规则网格**上（`WARP_AMP=0`，2026-08-03 因"warp 致主导类型沿细胞边界跳变"被关）⇒ 类型主导边界有长**水平/垂直**直段（`boundaries_full.png` 蓝线可见）。配方：仿 `TectonicField.SEED_JITTER` 给细胞种子加抖动（高斯权重下仍是 C^∞，无折痕风险）。**须与上面的高度标定一起做**，避免叠加混淆变量。
+- `CACHE_SCHEMA_VERSION` 41 → **44**（本次三处地形产出变更：折叠 / blurDist / stress）。
 
 ## 当前工作焦点（2026-09-10 气候主导群系 + 河流绿洲 + 陡坡裸岩，发布 v0.0.1）
 
