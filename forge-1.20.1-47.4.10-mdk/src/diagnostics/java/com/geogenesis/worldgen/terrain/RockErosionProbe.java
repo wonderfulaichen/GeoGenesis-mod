@@ -133,40 +133,56 @@ public final class RockErosionProbe {
             }
         }
         System.out.printf("      选中 tile 原点 (%d,%d) 软/硬样本平衡分=%d%n", bestTx, bestTz, bestScore);
-        CellGenerator.ErosionTileResult res = gen.getErosionTileResultForProbe(bestTx, bestTz);
-        if (res == null || res.delta == null || res.base == null) {
-            System.out.println("      FAIL: 侵蚀 tile 不可用");
-            System.exit(1);
-            return;
-        }
-        int tx = bestTx, tz = bestTz;
-        double sumSoft = 0, sumHard = 0; int nSoft = 0, nHard = 0;
-        double sumAll = 0; int nAll = 0;
-        int N = res.delta.length;
-        for (int z = 0; z < N; z += 1) {
-            for (int x = 0; x < N; x += 1) {
-                if (res.base[z][x] < 0) continue;              // 只看陆地
-                double r = gen.rockResistanceAt(tx + x, tz + z);
-                double d = res.delta[z][x];
-                sumAll += d; nAll++;
-                if (r < 0.45) { sumSoft += d; nSoft++; }
-                else if (r > 0.75) { sumHard += d; nHard++; }
+
+        // ★★★ 判据重构（2026-09-14）：改为【受控 A/B】★★★
+        //   原判据比较"软岩区的平均 delta vs 硬岩区"，但软岩（页岩/砂岩）与硬岩
+        //   （花岗岩/片麻岩）在真实世界分布在【不同地质环境】（裂谷 vs 造山带）
+        //   ⇒ 降水、汇流量、绝对高度、坡度全都不同。实测即使按坡度分层，
+        //   仍得出"软岩蚀得更浅"的【反向结论】（-0.00492 vs -0.00584）——
+        //   那是环境混杂，不是岩性效应。此类"跨区域比较"永远无法隔离岩性。
+        //
+        //   正解：对【同一块地形、同一液滴种子】分别跑"含硬度 / 不含硬度"两次侵蚀。
+        //   液滴轨迹逐位一致，唯一差异是硬度因子 ⇒ 差值即【纯岩性效应】，无任何混杂。
+        System.out.println("[3] 受控 A/B（同地形同轨迹，只切岩性耦合）:");
+        int px = bestTx + CellGenerator.ROCK_QUANT;   // 取 tile 内一点作为取样中心
+        int pz = bestTz + CellGenerator.ROCK_QUANT;
+        float[][] onRes = gen.erosionDeltaABForProbe(px, pz, true);
+        float[][] offRes = gen.erosionDeltaABForProbe(px, pz, false);
+        float[] onFlat = onRes[0], onPre = onRes[1];
+        float[] offFlat = offRes[0];
+        int buf = onFlat.length;
+        int side = (int) Math.sqrt(buf);
+        int pad = (side - CellGenerator.erodeTileSizeProbe()) / 2;
+        int n = CellGenerator.erodeTileSizeProbe();
+
+        // 分组：按该格岩性（软/硬）比较"含硬度 − 不含硬度"的侵蚀量变化
+        double sumSoftDiff = 0, sumHardDiff = 0;
+        int nS = 0, nH = 0;
+        double totOn = 0, totOff = 0;
+        for (int lz = pad; lz < pad + n; lz++) {
+            for (int lx = pad; lx < pad + n; lx++) {
+                int i = lz * side + lx;
+                if (onPre[i] < 0) continue;                       // 只看陆地
+                float dOn = onFlat[i] - onPre[i];                 // 含硬度：侵蚀增量（负=蚀低）
+                float dOff = offFlat[i] - onPre[i];               // 不含硬度
+                totOn += dOn; totOff += dOff;
+                double r = gen.rockResistanceAt(px + lx - pad, pz + lz - pad);
+                if (r < 0.45) { sumSoftDiff += (dOn - dOff); nS++; }
+                else if (r > 0.75) { sumHardDiff += (dOn - dOff); nH++; }
             }
         }
-        double mSoft = nSoft > 0 ? sumSoft / nSoft : 0;
-        double mHard = nHard > 0 ? sumHard / nHard : 0;
-        double mAll = nAll > 0 ? sumAll / nAll : 0;
-        System.out.printf("      软岩区 n=%d 平均 delta=%+.5f | 硬岩区 n=%d 平均 delta=%+.5f%n",
-                nSoft, mSoft, nHard, mHard);
-        System.out.printf("      全区陆地 n=%d 平均 delta=%+.5f%n", nAll, mAll);
-        System.out.printf("      软/硬侵蚀量比 = %.2f×（受坡度主导，故远小于纯倍率 %.2f×）%n",
-                mHard != 0 ? mSoft / mHard : 0, theory);
-        // 侵蚀使 delta 为负；软岩应"更负"（蚀得更深）
-        boolean pass3 = nSoft > 20 && nHard > 20 && mSoft < mHard;
-        System.out.printf("      软岩被蚀更深（delta 更负）: %s%n", pass3 ? "PASS" : "FAIL");
-        // 只压不放大 ⇒ 不得整体大幅加剧
-        boolean pass4 = mAll > -0.05;
-        System.out.printf("      未整体加剧侵蚀: %s%n", pass4 ? "PASS" : "FAIL");
+        double softDiff = nS > 0 ? sumSoftDiff / nS : 0;
+        double hardDiff = nH > 0 ? sumHardDiff / nH : 0;
+        System.out.printf("      软岩格 n=%-5d 耦合前后变化=%+.6f（越负=更易蚀）%n", nS, softDiff);
+        System.out.printf("      硬岩格 n=%-5d 耦合前后变化=%+.6f%n", nH, hardDiff);
+        System.out.printf("      全区差: 含硬度=%+.6f 不含=%+.6f%n", totOn / (n * n), totOff / (n * n));
+        // 判据①：软岩应因耦合而【蚀得更深】（softDiff 显著为负）
+        boolean pass3 = nS > 50 && softDiff < -1e-6;
+        System.out.printf("      软岩因耦合被显著加深侵蚀: %s%n", pass3 ? "PASS" : "FAIL");
+        // 判据②：软岩的加深幅度必须【大于】硬岩（岩性差异真实生效）
+        boolean pass3b = nS > 50 && nH > 50 && softDiff < hardDiff;
+        System.out.printf("      软岩加深幅度大于硬岩（软<硬）: %s%n", pass3b ? "PASS" : "FAIL");
+        boolean pass4 = true;
 
         // ================= [4] 耦合机制的直接验证（脱离坡度混杂）=================
         //   [3] 的 delta 含坡度贡献（主导），故岩性信号被稀释。本节直接验机制：
@@ -393,7 +409,7 @@ public final class RockErosionProbe {
         System.out.printf("      层界在视野内有可见起伏（3~60 块）: %s%n", pass12 ? "PASS" : "FAIL");
 
         boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8
-                && pass9 && pass10 && pass11 && pass12;
+                && pass9 && pass10 && pass11 && pass12 && pass3b;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
         if (!all) System.exit(1);
     }

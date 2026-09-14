@@ -130,7 +130,7 @@ public final class CellGenerator {
     //   【正解】降低外层 tile 并发，让 commonPool 的行级并行有核可用。
     //   4 与 commonPool 规模（≈核数−1）配合后超订显著缓解。
     // ★ 2026-08-09 优化：4→8（20 核机器，冷启动 tile 排队吞吐 ×1.5-2；daemon 池不阻塞主线程）
-    public static final int TILE_PARALLELISM = 4;
+    public static final int TILE_PARALLELISM = 8;
     public static final ExecutorService TILE_SAMPLER = new ThreadPoolExecutor(
         TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(64),
@@ -696,6 +696,17 @@ public final class CellGenerator {
     //   侵蚀引擎按【抗蚀性】调制侵蚀量，故需按世界坐标查"该点什么岩性、多硬"。
     //   与 landFactorAt 同模式（AtomicLongArray 存 double 位模式 + 独立键域），
     //   因为 ErosionEngine 的硬度网格与液滴查表会反复命中同一批坐标。
+    /**
+     * ★ 岩性量化粒度（wu）：{@link #rockResistanceAt} 按此网格量化<b>缓存键与采样点</b>。
+     *
+     * <p>公开此常量以便诊断探针用<b>同一粒度</b>查询岩性 —— 若探针按真实坐标查、
+     * 而引擎按网格中心取值，两者分组到的岩性会错位，判据会得出反向结论。</p>
+     */
+    public static final int ROCK_QUANT = 16;
+
+    /** ★ 诊断用：侵蚀 tile 的有效输出边长（供探针按同口径取样）。 */
+    public static int erodeTileSizeProbe() { return ERODE_TILE_SIZE; }
+
     private static final int HR_CACHE_BITS = 13;                 // 8192 槽 ≈ 128 KB
     private static final int HR_CACHE_SIZE = 1 << HR_CACHE_BITS;
     private static final long HR_SALT = 0x27BB2EE687B0B0FDL;
@@ -716,18 +727,32 @@ public final class CellGenerator {
      * @return 抗蚀性 ∈ [0,1]（越大越难蚀；±1 = 花岗岩 / 页岩）
      */
     public double rockResistanceAt(double wx, double wz) {
-        long kx = Double.doubleToRawLongBits(wx);
-        long kz = Double.doubleToRawLongBits(wz);
-        long key = (kx ^ Long.rotateLeft(kz, 31)) + HR_SALT;
+        // ★★★ 2026-09-14 性能修复（用户"速度没恢复"）：★ 缓存键改为【量化到 16wu 网格】★
+        //
+        //   【原缺陷】键 = 精确坐标位模式 ⇒ 每个不同坐标都是一次 miss。
+        //   而硬度网格按 spacing 逐点采样（相邻点坐标必然不同）⇒ <b>命中率 ~0%</b>，
+        //   每点都完整重算 continent + tectonic + layerAt（实测 ~22us/次）。
+        //   同进程 A/B 实测：P3 耦合使 chunk 生成 <b>2084ms → 4049ms（+94%）</b>。
+        //
+        //   【为何可以量化】岩性由构造场（Voronoi 2000wu 级）+ 剥蚀噪声（900wu）决定，
+        //   其空间变化尺度是<b>数百 wu</b> ⇒ 16wu 内取值几乎不变，量化误差
+        //   （±8wu）远小于岩性单元尺寸，<b>视觉与地质语义均无损</b>。
+        //   量化后同一网格单元只计算一次 ⇒ 命中率 >99%（相邻网格点多落在同一单元）。
+        final int QUANT = ROCK_QUANT;
+        long qx = Math.floorDiv((long) Math.floor(wx), QUANT);
+        long qz = Math.floorDiv((long) Math.floor(wz), QUANT);
+        long key = (qx * 0x9E3779B97F4A7C15L) ^ (qz * 0xC2B2AE3D27D4EB4FL) ^ HR_SALT;
         if (key == EQ_EMPTY) key = Long.MAX_VALUE;
         int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> (64 - HR_CACHE_BITS));
         if (hrKeys.get(slot) == key) {
             return Double.longBitsToDouble(hrVals.get(slot));
         }
-        double c = continent.sample(wx, wz);
-        double cBiased = c - continentBias;
-        TectonicField.Sample ts = tectonic.sample(wx, wz);
-        int layer = strata.layerAt(wx, wz);
+        // ★ 量化点采样：用【网格中心】而非调用者坐标 ⇒ 同一单元内所有调用得到同一值
+        //   （避免"同单元不同点算出不同值"导致缓存值与直接计算不一致）。
+        double sx = (qx + 0.5) * QUANT, sz = (qz + 0.5) * QUANT;
+        double cBiased = continent.sample(sx, sz) - continentBias;
+        TectonicField.Sample ts = tectonic.sample(sx, sz);
+        int layer = strata.layerAt(sx, sz);
         double v = StratumField.resistanceAt(ts, TectonicField.shellFromC(cBiased) > 0.5, layer);
         hrVals.set(slot, Double.doubleToLongBits(v));            // 先值
         hrKeys.set(slot, key);                                   // 后键（volatile）
@@ -1275,6 +1300,50 @@ public final class CellGenerator {
     public static volatile boolean PROBE_SKELETON_ONLY = false;
     /** 探针诊断：覆盖骨架配置（无 Forge 环境时对齐游戏 toml 参数，2026-08-13） */
     public static volatile RidgeValleyErosion.RidgeConfig probeRidgeConfig = null;
+
+    /**
+     * ★ 2026-09-14 P3 受控验证：对<b>同一块地形</b>跑两次侵蚀（一次含硬度耦合、一次不含），
+     * 返回两者的 delta 差（侵蚀后 − 侵蚀前）。
+     *
+     * <h3>为何必须这样做（而非比较"软岩区 vs 硬岩区"的 delta）</h3>
+     * <p>软岩（页岩/砂岩）与硬岩（花岗岩/片麻岩）在真实世界里分布在<b>不同的地质环境</b>
+     * （裂谷 vs 造山带）⇒ 降水、汇流量、绝对高度、坡度全不同。实测即便按坡度分层，
+     * 仍会得出"软岩蚀得更浅"的<b>反向结论</b>（-0.00492 vs -0.00584）—— 那是环境混杂，
+     * 不是岩性效应。</p>
+     *
+     * <p>本方法对<b>同一坐标的同一地形、同一液滴种子</b>分别跑"有/无硬度"两次：
+     * 液滴轨迹完全一致，唯一差异是硬度因子 ⇒ 差值即<b>纯岩性效应</b>，无任何混杂。</p>
+     *
+     * @param hardnessOn true = 含岩性耦合；false = 不含（= P3 之前的行为）
+     * @return 侵蚀后 − 侵蚀前 的 delta 场（行主序，边长 = bufSize）
+     */
+    public float[][] erosionDeltaABForProbe(int originX, int originZ, boolean hardnessOn) {
+        int n = ERODE_TILE_SIZE;
+        int pad = 9;
+        int bufSize = n + pad * 2;
+        float[] flat = new float[bufSize * bufSize];
+        for (int z = 0; z < bufSize; z++) {
+            for (int x = 0; x < bufSize; x++) {
+                flat[z * bufSize + x] =
+                        (float) Math.max(terrainEQuick(originX - pad + x, originZ - pad + z), -0.05);
+            }
+        }
+        float[] pre = flat.clone();
+        java.util.function.DoubleBinaryOperator saved = hardnessOn ? hardnessProviderRef() : null;
+        if (!hardnessOn) erosion.setHardnessProvider(null);
+        try {
+            erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,
+                    (float) heightCurve.seaE(), 1.0f, null, (float) params.horizontalScale());
+        } finally {
+            if (!hardnessOn && saved != null) erosion.setHardnessProvider(saved);
+        }
+        return new float[][]{flat, pre};
+    }
+
+    /** 诊断用：取回当前注入的硬度提供者。 */
+    private java.util.function.DoubleBinaryOperator hardnessProviderRef() {
+        return this::rockResistanceAt;
+    }
 
     /** 设置探针骨架配置覆盖（仅探针用，游戏不调用） */
     public void setRidgeConfig(RidgeValleyErosion.RidgeConfig rcfg) {
