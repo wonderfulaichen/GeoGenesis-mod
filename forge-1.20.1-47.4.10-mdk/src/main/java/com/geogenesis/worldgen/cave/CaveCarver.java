@@ -7,33 +7,26 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 
 /**
- * 洞穴雕刻的 <b>MC 适配器</b>（★ 2026-09-15 新增；此前 {@code applyCarvers} 一直是空实现）。
+ * 洞穴雕刻的 <b>MC 适配器</b>（★ 2026-09-15 由"柱体切挖"改为"逐体素 3D 判定"）。
  *
  * <h3>职责边界</h3>
- * <p>本类<b>只做"把方块挖成空气"</b>这一件 MC 相关的事；<b>洞穴几何</b>
- * （某列该不该挖、上下边界在哪、岩性如何调制）全部在 {@link CaveShape} ——
- * 那是<b>零 MC 依赖的纯函数</b>，因此可在无 MC 的诊断源码集中直接验证。</p>
+ * <p>本类只做"把方块挖成空气"；<b>洞穴几何</b>（某体素该不该挖、岩性如何调制）
+ * 全部在 {@link CaveShape} —— 那是<b>零 MC 依赖的纯函数</b>，可在无 MC 的诊断集直接验证。</p>
  *
- * <h3>为何自研而非用原版 WorldCarver</h3>
- * <p>本项目是自定义 {@code ChunkGenerator}，<b>没有</b> {@code NoiseSettings} /
- * {@code NoiseChunk}；而原版 {@code cave/canyon} carver 依赖 {@code NoiseChunk}，
- * 且 {@code ChunkGenerator.applyCarvers} 基类是<b>空实现</b>
- * （真正实现在 {@code NoiseBasedChunkGenerator}）⇒ {@code super.applyCarvers} 无效。
- * 故采用自研的"2D 场驱动柱体切挖"（见 {@link CaveShape} 的机制说明）。</p>
+ * <h3>★ 为何从"按列挖"改为"逐体素"</h3>
+ * <p>初版按 {@code (x,z)} 列挖整段 {@code [bottom, top]}（移植 TF），几何上是<b>竖直柱</b>
+ * ⇒ 用户实测"完全不成洞穴的样子"。现改为对每个体素独立判定
+ * （{@link CaveShape#isCave}，3D 噪声等值面）⇒ 可产出真正蜿蜒、有分支、可上下起伏的隧道。</p>
  *
- * <h3>安全边界（刻意保守）</h3>
+ * <h3>性能（逐体素比按列贵，故必须量化）</h3>
+ * <p>逐体素需对地下带内<b>每个方块</b>求噪声。为控制成本：</p>
  * <ul>
- *   <li><b>不破地表</b>：洞顶钳到 {@code surface − CaveShape.SURFACE_LID}；</li>
- *   <li><b>不挖海底</b>：地表低于海平面的列整体跳过 —— 本项目无 aquifer，
- *       挖海底会留下干空腔（原版靠 aquifer 灌水）；</li>
- *   <li><b>不动流体</b>：遇水/熔岩方块跳过（与 TF {@code NoiseCaveCarver} 一致）。</li>
+ *   <li>先按列算 {@code depth} 窗口（只在地下带 {@code [DEPTH_MIN, DEPTH_MAX]} 内遍历）；</li>
+ *   <li>隧道判定有<b>短路</b>：{@code |n1| ≥ t1} 时不求 {@code n2}（多数体素在此返回）；</li>
+ *   <li>洞室/孔洞只在前两级未命中时才求（顺序即便宜到贵）；</li>
+ *   <li>岩性/地表取自 {@code terrain.peekChunk}（<b>只读已就绪</b>，不触发生成）。</li>
  * </ul>
- *
- * <h3>性能</h3>
- * <p>每 chunk ≈ 256 列 × 2 族 × 3 次 2D 噪声 ≈ 1500 次求值；方块写入只发生在命中列。
- * 岩性/地表高度取自 {@code terrain.getChunkCells()} 的 <b>LRU 命中</b>
- * （同 chunk 刚在 {@code fillFromNoise} 生成过）⇒ <b>零额外地形采样</b>，
- * 不会触发侵蚀 tile 冷生成（项目性能红线）。</p>
+ * <p>实测成本见 {@code CavePerfProbe}。</p>
  */
 public final class CaveCarver {
 
@@ -45,9 +38,9 @@ public final class CaveCarver {
      * 雕刻整个 chunk 的洞穴。
      *
      * @param chunk     目标 chunk（已由 {@code fillFromNoise} 填好地形）
-     * @param cells     本 chunk 的 {@link Cell}（来自 {@code terrain.getChunkCells}，LRU 命中）
+     * @param cells     本 chunk 的 {@link Cell}（来自 {@code terrain.peekChunk}，只读）
      * @param worldMinY 世界最低 Y
-     * @param seaLevel  海平面 Y（地表低于此的列跳过，见类注释）
+     * @param seaLevel  海平面 Y（地表低于此的列跳过 —— 无 aquifer，挖海底会留干空腔）
      */
     public static void carve(ChunkAccess chunk, Cell[] cells, int worldMinY, int seaLevel) {
         if (!CaveShape.isSeeded()) return;
@@ -65,34 +58,28 @@ public final class CaveCarver {
                 int wx = baseX + lx;
                 int wz = baseZ + lz;
 
-                // 地表高取自 Cell —— 不读 chunk 高度图，绕开 TF 警告的
-                // "heightmap 未 prime（OCEAN_FLOOR_WG 在 applyCarvers 阶段未必已算）" 陷阱。
+                // 地表高取自 Cell —— 不读 chunk 高度图，绕开 TF 警告的"未 prime"陷阱
                 int surface = (int) Math.floor(cell.height);
-                // 海底列跳过（无 aquifer ⇒ 会留下干空腔）
+                // 海底列跳过（本项目无 aquifer ⇒ 会留下干空腔）
                 if (surface < seaLevel) continue;
 
                 double litho = CaveShape.lithoFactor(cell.rockTypeId);
 
-                for (int fam = 0; fam < CaveShape.FAMILY_COUNT; fam++) {
-                    long span = CaveShape.span(fam, wx, wz, surface, worldMinY, litho);
-                    if (span == CaveShape.NO_SPAN) continue;
-                    carveSpan(chunk, pos, wx, wz,
-                            CaveShape.spanBottom(span), CaveShape.spanTop(span));
+                // 只遍历地下带（与 CaveShape 内的窗口一致，避免无谓的逐体素求值）
+                int yTop = surface - CaveShape.SURFACE_LID;
+                int yBot = Math.max(worldMinY + 1, surface - 120);
+                if (yTop <= yBot) continue;
+
+                for (int y = yBot; y <= yTop; y++) {
+                    if (!CaveShape.isCave(wx, y, wz, surface, worldMinY, litho)) continue;
+                    pos.set(wx, y, wz);
+                    BlockState st = chunk.getBlockState(pos);
+                    if (st.isAir()) continue;
+                    // 不动流体（水/熔岩）—— 与 TF NoiseCaveCarver 一致
+                    if (!st.getFluidState().isEmpty()) continue;
+                    chunk.setBlockState(pos, AIR, false);
                 }
             }
-        }
-    }
-
-    /** 把 [bottom, top] 整柱的非流体方块挖成空气。 */
-    private static void carveSpan(ChunkAccess chunk, BlockPos.MutableBlockPos pos,
-                                  int wx, int wz, int bottom, int top) {
-        for (int y = bottom; y <= top; y++) {
-            pos.set(wx, y, wz);
-            BlockState st = chunk.getBlockState(pos);
-            if (st.isAir()) continue;
-            // 不动流体（水/熔岩）—— 与 TF NoiseCaveCarver 一致
-            if (!st.getFluidState().isEmpty()) continue;
-            chunk.setBlockState(pos, AIR, false);
         }
     }
 }

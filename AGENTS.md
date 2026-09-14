@@ -186,6 +186,74 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **游戏雕刻路径**：`GeoGenesisTerrain.generateChunk` 内 `extractFromTile`（侵蚀 delta）+ `applyHydrologyValley`（水文雕刻，**回写 `cell.height`**，预览/落块一致）；`fillFromNoise` 只按 `waterSurfaceY` 灌水判定。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)`，高度/河流/湖泊/气候由引擎确定性产出。
 
+## 当前工作焦点（2026-09-15 ★★ 洞穴重写：2D柱体切挖 → 3D噪声等值面）
+
+- **★★★ 用户实测推翻了"探针 ALL PASS"**："洞穴非常奇怪，完全不成洞穴的样子" —— 用户是对的。
+- **根因（几何性）**：初版移植 TF 的"2D 场驱动竖直柱体切挖"（每列挖 `[bottom,top]`），
+  空洞本质是**竖直柱** ⇒ 水平截面是孤立点/小团 ⇒ **无论怎么调参都不可能像隧道**。
+- **★ 诊断盲区（本项目两次同错，必须记住）**：初版探针只渲染 **X-Y 垂直剖面** ——
+  柱体在 X-Y 上是竖直白条，相邻列拼起来看着像"斑块" ⇒ **图看着还行、判据全 PASS**。
+  补 **X-Z 水平切片**后立刻暴露。**判定 3D 结构必须同时看两个正交方向的切片**。
+- **新实现**：
+  - `noise/Simplex3`（经典 Gustavson 3D，约70行）+ `Noise3` 接口 + `Seed.gradIndex3`。
+    不移植 RTG OpenSimplex：其 3D 依赖 2048 项 `LOOKUP_3D` 预计算表、552 行、不可读不可验。
+  - `CaveShape` 逐体素判定，**统一判据 = 双噪声等值面交集 `|n1|<t1 && |n2|<t2`**。
+    **数学依据：两张曲面相交 = 一条曲线 = 隧道**。三族（隧道/洞室/孔洞）同原理，仅尺度/阈值不同。
+  - `CaveCarver` 逐体素遍历地下带；短路（`|n1|≥t1` 直接返回）⇒ 平均 1~1.3 次噪声/体素。
+- **★ 第二根因（分量分解定位）**：洞室原用**单噪声阈值**（`n>0.72`）—— 数学上**必然**
+  产生贯穿世界的大块（等值面一侧 = 无限体积）。分量分解实测：**隧道健康**（竖向段6.7块/
+  长段7.2%），**洞室才是罪魁**（29.7块/91.2%）。⇒ 洞室也改双噪声交集。
+  **教训：多分量并集无法定位问题 ⇒ 新增 `CaveShape.components()` 返回位掩码**。
+- **★ 参数必须网格扫描**：形态对 yScale/阈值敏感且**跨种子不稳**（yScale=1 时 seed=7
+  长段39.9%，yScale=2 时 seed=12345 反升56.9%）—— 单点试参陷入"修好这个坏那个"。
+  新增 `CaveShapeProbe` **scan 模式**（3 种子取最差）⇒ 选定 **yScale=7.0 / t×0.7**：
+  长段 **63.1%→7.4%**、平均竖向段 **11.5→2.7 块**、密度 2.63~3.45%（3种子全PASS）。
+- **Y 各向异性**：y 采样频率提高 ⇒ 管道趋向**水平延伸**（vanilla `cave_layer` 的
+  `y_scale=8` 同理）。这是"隧道像隧道"的关键旋钮。
+- **验证（图像+指标双确认）**：水平切片呈**蜿蜒有分支的有机曲线**；垂直切片呈
+  **水平短条带**（此前竖直长柱）。性能：`isCave` 128ns、几何段 3.15ms/chunk（~0.3%预算）、
+  写块均值 2057/chunk。守门全 PASS。
+- **★★ 方法学教训（两次同一类错）**：**"指标好看"≠"形态正确"** ——
+  ① 纵横比 14.45 被少数巨团拉高（假阳性）；② 全局包围盒恒≈1（分量连通成网是正常的，
+  该指标无判别力，假阴性）。判据必须用**不可被连通性污染的局部量**
+  （如"管道穿过一列留下的竖向段长"），且**必须与渲染图互相印证**。
+- **诊断基建**：`CaveShapeProbe` 支持 `scan` 模式（参数网格 + 3种子最差）；
+  `CaveShape.dbgSet/dbgReset`（volatile 诊断覆盖，生产恒为默认值，不改热路径签名）。
+
+## 当前工作焦点（2026-09-15 洞穴性能补测 + 地表边界碎屑化修复）
+
+- **★★ 洞穴性能此前【完全未测】**（用户质问，属实）。缺口根源：所有性能探针
+  （`AbChunkProbe`/`ChunkTimeProbe`/`SpawnSearchProbe`）**全走 `getChunkCells`**，
+  而洞穴在 `applyCarvers` ⇒ 该路径**无任何探针覆盖**。新增 `runCavePerfProbe`。
+- **实测**：`span` 63ns / 几何段 32μs/chunk（可忽略）/ 写块上界 均值 1650、最大 6782 块/chunk
+  （与原版洞穴同量级）。
+- **★ 真风险（已修）**：`applyCarvers` 里 `getChunkCells` 在 **miss 时会主动生成**侵蚀 tile
+  —— 实测 **冷取 avg 24.7ms / max 594ms**，热取仅 **0.6μs**（差数万倍）。
+  初版"此处必命中"是**未经验证的假设**。
+  → 新增 `GeoGenesisTerrain.peekChunk`（**只 peek 不生成**），`applyCarvers` 改用它；
+  未就绪→**跳过洞穴**（不触发 600ms 冷生成）+ `caveSkippedCount()` 埋点使其可观测。
+  **原则**：下游只读已就绪数据，绝不反向触发昂贵上游生成（同 `getBaseHeight` P0-1 止血、
+  `sampleHeightNonBlocking`）。
+- **★★ 地表方块过渡不自然（已修）**：根因是地表阈值链（`steepened>0.40` 裸岩 /
+  `>0.30 且汇流高` 碎石坡）的抖动用了 **逐格 `hash01`** —— 空间相关性为**零** ⇒ 阈值附近
+  **逐块翻转** ⇒ 边界呈"盐和胡椒"碎屑。实测敏感区孤立单格率 **5.75%（hash）vs 0.20%（noise）**，
+  **降 29 倍**；裸岩占比几乎不变（36.20%→35.98%）。
+  → 新增 `steepJitter()`（`Simplex` scale=6wu）取代；`hash01` **保留**给碎石选材
+  （那里要的正是逐块独立）。
+  **教训**：同一项目里 `variantTerrain` 用噪声抖动、坡度却用 hash —— **两套工具，一套用错**。
+- **诊断集局限（重要，实测所得）**：`build.gradle` 的 diagnostics `compileClasspath` 原先
+  **不含 MC jar** ⇒ 与 MC 耦合的逻辑无法测。现已补 `sourceSets.main.compileClasspath`，
+  **但仍不够**：`Bootstrap.bootStrap()` 会连带 `NetworkHooks.init()` 引导 Forge 网络而失败；
+  `BuiltInRegistries.bootStrap()` 又要求已 bootstrap（循环）。
+  ⇒ **依赖 MC 注册表的探针仍不可行**（如 `BiomeClassifier.surfaceOf` 依赖 `Biomes`）。
+  自建 registry 桩会引入"桩≠真"漂移，违背项目铁律 ⇒ 不做。
+- **未覆盖（如实记录）**：群系**本身**的过渡（`pickKey` 是离散硬切换、无权重混合、
+  气候区区内恒定）**尚未处理** —— 本次只修了用户点名的"地表方块"边界。
+  这是一个更大的工程（需要引入权重混合或扩大 `ClimateRegion.blend` 混合带）。
+- **生产/探针一致性**：`SurfaceBlockProbe` 镜像判定链，但**无法逐位自检**
+  （生产类静态初始化依赖 MC registry，诊断进程加载会失败）⇒ 靠**参数人工核对**
+  （已核对：0.06 / scale 6.0 / Simplex(0x6D3FA281) 全一致）。**此为已知验证缺口**。
+
 ## 当前工作焦点（2026-09-15 洞穴系统）
 
 - **★ 洞穴此前完全是空实现**：`GeoGenesisGenerator.applyCarvers` 自创建起写着 `// 暂不实现洞穴雕刻`
