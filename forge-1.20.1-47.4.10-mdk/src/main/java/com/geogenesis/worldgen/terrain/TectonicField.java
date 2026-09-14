@@ -95,7 +95,7 @@ public final class TectonicField {
      *   <li>此前把本值由 320 扩到 1000 是为了让 T5 的 stress 在 900wu 内非零，
      *       但副作用是<b>板块间距仅 2000</b> → 几乎所有点 dist&lt;1000 →
      *       "内部"分类消失（探针实测 INTERIOR=0%）。</li>
-     *   <li>现改为：dist/stress <b>不再截断</b>（T5 的 decay 自行平滑收敛），
+     *   <li>现改为：dist/stress <b>不再截断</b>（T5 的形变由 beltMask 定位、自然收敛），
      *       本值退回 320 —— 恰好覆盖 T1（σ=110 高斯，320wu 处已衰减到 1.4%）
      *       与岩性（近边界才需区分）的实际需求。</li>
      * </ul>
@@ -127,7 +127,11 @@ public final class TectonicField {
      * → 噪声沿"跨边界"方向每 <b>111wu</b> 完成一个周期
      * → 每条边界两侧出现<b>平行于边界的同心波纹</b>（用户三次反馈的"平行带"，
      * 实测周期 111wu 与 screenshot 窄带内纹理完全一致）。
-     * 这与项目早已否决的 Terrace「环状台阶伪影」同源，故 dist 仅允许用于 decay。</p>
+     * 这与项目早已否决的 Terrace「环状台阶伪影」同源。
+     * <p>★ 2026-09-14 更新：当时写的"dist 仅允许用于 decay"已<b>作废</b> ——
+     * {@code TectonicDeformation} 的最后一个 {@code decay(dist)} 也已移除
+     * （它同样把多边形印进地形）。现在<b>形变幅度完全不依赖 dist</b>，
+     * 范围由世界坐标 {@code beltMask} 决定。</p>
      *
      * <p>取值：造山带宽度由 {@link #PROFILE_SIGMA}(110wu) 决定，故本尺度须远大于 110。
      * 取 900wu 使带内一次穿越仅覆盖 ~0.12 个噪声格 → 跨走向近似单调（无波纹），

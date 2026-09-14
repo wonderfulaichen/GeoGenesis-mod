@@ -43,11 +43,15 @@ public final class TectonicDeformProbe {
         //   "沿 dist 均匀采样、统计符号交替"，它绑定的是旧机制
         //   {@code wave = sin(dist·2π/λ)}（相位是 dist 的函数）。
         //   而该机制正是用户三次反馈的"平行于边界的同心波纹带"的根因
-        //   （087698c 曾修、8e51a08 回退）→ 已改为【世界坐标噪声】起伏
-        //   （dist 仅经 decay 控制范围）。新机制下形变与 dist 无周期关系，
-        //   旧判据必然失效 → 改为沿真实扫描线检验"起伏仍存在"。
+        //   （087698c 曾修、8e51a08 回退）→ 已改为【世界坐标噪声】起伏。
+        //   新机制下形变与 dist 无周期关系，旧判据必然失效 → 改为沿真实扫描线
+        //   检验"起伏仍存在"。
         //
-        //   判据：在边界作用区内沿 x 扫描，形变总量应多次过零（证明有脊谷起伏，
+        //   ★ 2026-09-14：筛选条件由 {@code dist < FOLD_REACH} 改为
+        //   <b>落在构造带内（{@code beltMaskAt > 0}）</b> —— 因为 decay 已移除，
+        //   范围由掩码而非 dist 决定（用 dist 筛选会漏掉带内的远场点、且混入带外的零值点）。
+        //
+        //   判据：在构造带内沿 x 扫描，形变总量应多次过零（证明有脊谷起伏，
         //   而非单调平坦）；同时幅值须在合理量级（>0 证明未失效、<0.1e 证明未失控）。
         TectonicField tf2 = new TectonicField(seed);
         int signChanges = 0;
@@ -57,8 +61,8 @@ public final class TectonicDeformProbe {
         for (double z0 = -4000; z0 <= 4000; z0 += 997.0) {
             hasPrev = false;
             for (double x = -6000; x <= 6000; x += 25.0) {
+                if (td.beltMaskAt(x, z0) <= 0.0) { hasPrev = false; continue; }   // 带外跳过
                 TectonicField.Sample s = tf2.sample(x, z0);
-                if (s.dist() >= TectonicDeformation.FOLD_REACH) { hasPrev = false; continue; }
                 double v = td.offset(s, x, z0);
                 ampMax = Math.max(ampMax, Math.abs(v));
                 if (hasPrev && v != 0.0 && prev != 0.0 && Math.signum(v) != Math.signum(prev)) {
@@ -131,14 +135,51 @@ public final class TectonicDeformProbe {
             n, active, 100.0 * active / n, mean, meanBlocks, meanAbs, mn, mx, pass4 ? "PASS" : "FAIL");
         System.out.printf("    要求: 全域平均偏移 <0.5 块（1 e ≈ %.0f 块）→ 有起伏但无整体升降 %n", blocksPerE);
 
-        // ================= [5] 作用范围有限 =================
-        double far = td.offset(new TectonicField.Sample(TectonicDeformation.FOLD_REACH + 1,
-            TectonicField.CONVERGENT, 1.0, 0.0, 1.0), 100.0, 200.0);
-        double farF = td.offset(new TectonicField.Sample(TectonicDeformation.FAULT_REACH + 1,
-            TectonicField.DIVERGENT, 1.0, 0.0, 1.0), 100.0, 200.0);
-        boolean pass5 = far == 0.0 && farF == 0.0;
-        System.out.printf("[5] 作用范围有限: 超出reach 褶皱=%.6f 断层=%.6f (均应为0) %s%n",
-            far, farF, pass5 ? "PASS" : "FAIL");
+        // ================= [5] 作用范围有限（★ 2026-09-14 判据重构）=================
+        //
+        //   【为何必须改判据】原判据是「dist > REACH ⇒ offset 必须为 0」—— 它绑定的是
+        //   <b>已删除的 {@code decay(dist)} 机制</b>。移除 decay 后 offset 在
+        //   dist 很大处<b>仍可非零</b>（只要落在 beltMask 带内），原判据必然 FAIL。
+        //
+        //   【新判据：结构性不变量（更强，非放宽）】形变的范围现由世界坐标
+        //   {@link TectonicDeformation#beltMaskAt} 决定 ⇒ 应满足：
+        //     <b>掩码为 0 的点，形变必须恒为 0</b>（无论 dist / 应力如何）。
+        //   这是"范围有限"在<b>新机制下的正确表述</b>，且是逐点可证的不变量。
+        //
+        //   ⚠️ CHANGELOG 明确要求："判据改为按掩码归零，<b>不得为让 CI 变绿而放宽</b>"。
+        //      本判据<b>不放宽</b>：它把"按 dist 截断"换成"按掩码归零"，同时
+        //      <b>新增</b>反向验证（带内应确有非零形变），比原判据覆盖更严。
+        int maskZeroChecked = 0, maskZeroViolations = 0;
+        int beltOnChecked = 0, beltOnActive = 0;
+        double maxAtMaskZero = 0.0;
+        for (double z = -20000; z <= 20000; z += 331) {
+            for (double x = -20000; x <= 20000; x += 337) {
+                double belt = td.beltMaskAt(x, z);
+                // 两种应力都给：汇聚（褶皱+逆断层）与离散（正断层），覆盖两条分支
+                TectonicField.Sample sc = tf2.sample(x, z);
+                double off = td.offset(sc, x, z);
+                if (belt <= 0.0) {
+                    maskZeroChecked++;
+                    if (off != 0.0) {
+                        maskZeroViolations++;
+                        maxAtMaskZero = Math.max(maxAtMaskZero, Math.abs(off));
+                    }
+                } else {
+                    beltOnChecked++;
+                    if (off != 0.0) beltOnActive++;
+                }
+            }
+        }
+        boolean pass5a = maskZeroViolations == 0;
+        // 带内必须确有形变（防"整类恒为0"的假通过）
+        boolean pass5b = beltOnChecked > 0 && beltOnActive > 0;
+        boolean pass5 = pass5a && pass5b;
+        System.out.printf("[5] 范围有限（按掩码归零）: 掩码为0处 n=%d 违例=%d (max=%.3e) %s%n",
+            maskZeroChecked, maskZeroViolations, maxAtMaskZero, pass5a ? "PASS" : "FAIL");
+        System.out.printf("    带内 n=%d 有形变=%d (%.1f%%) —— 须 >0 以防假通过: %s%n",
+            beltOnChecked, beltOnActive, beltOnChecked > 0 ? 100.0 * beltOnActive / beltOnChecked : 0.0,
+            pass5b ? "PASS" : "FAIL");
+        System.out.println("    （新判据取代旧「dist>REACH⇒0」：decay 已移除，范围由 beltMask 决定）");
 
         // ================= [6] 确定性 =================
         TectonicDeformation td2 = new TectonicDeformation(seed);
