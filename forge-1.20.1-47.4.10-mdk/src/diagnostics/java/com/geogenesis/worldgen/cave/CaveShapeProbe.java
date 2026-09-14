@@ -271,11 +271,18 @@ public final class CaveShapeProbe {
         //     ③ 现在只用**【局部】竖向连续段**：它直接反映"一根管道穿过一列时
         //        留下多长的一段"。竖直柱 ⇒ 段长≈带高；隧道 ⇒ 段长≈管径（数块）。
         //        这是唯一不可被"连通成大网"这件事污染的指标。
-        boolean runOk = meanRun > 0 && meanRun <= 10.0;                 // 平均段长≈管径
-        boolean longRunLow = voxInLongRun < caveVox * 0.20;             // 长段体素占比低
+        //   ★★ 判据3 第三次修正（2026-09-15）：目标改为**可通行区间**，而非"越短越好"。
+        //     历史（保留以免重犯）：
+        //       ① 纵横比被巨团拉高 → 假阳性；
+        //       ② 全局包围盒恒≈1 → 假阴性；
+        //       ③ "平均竖向段≤10" → 我据此一路加大 yScale 到 7.0，把隧道压成
+        //          **薄饼**（高度不足 2 格），用户实测"玩家没法走"。
+        //     现在：管道截面必须落在 [3,12] 格 —— 太短不能走，太长是竖井。
+        boolean runOk = meanRun >= 3.0 && meanRun <= 12.0;
+        boolean longRunLow = voxInLongRun < caveVox * 0.25;
         boolean pass3 = runOk && longRunLow;
-        System.out.printf("[判据3] 形态像隧道（局部竖向段）: %s%n", pass3 ? "PASS" : "FAIL");
-        System.out.printf("         平均段≤10块: %s（平均 %.1f）| 长段(≥20)占比<20%%: %s（%.1f%%）%n",
+        System.out.printf("[判据3] 形态可通行（管道截面 3~12 格）: %s%n", pass3 ? "PASS" : "FAIL");
+        System.out.printf("         平均段∈[3,12]: %s（平均 %.1f）| 长段(≥20)占比<25%%: %s（%.1f%%）%n",
                 runOk ? "✓" : "✗", meanRun,
                 longRunLow ? "✓" : "✗", 100.0 * voxInLongRun / Math.max(1, caveVox));
         System.out.printf("         （注：包围盒 dx=%d dy=%d dz=%d 水平/竖向=%.2f —— 已弃用，"
@@ -299,8 +306,10 @@ public final class CaveShapeProbe {
     private static void scanMode(String[] args) throws Exception {
         int N = args.length > 1 ? Integer.parseInt(args[1]) : 96;
         long[] seeds = { 12345L, 7L, 42L };
-        double[] yMuls = { 2.5, 3.0, 3.5, 4.0 };
-        double[] tMuls = { 0.5, 0.6, 0.7, 0.8 };
+        // 扫描范围重设：基准 yScale=2.0，yMul<1 ⇒ 减弱各向异性（隧道更接近圆管）。
+        //   上一版只扫 yMul>=2.5（effective 5~8）⇒ 全都是薄饼，方向性错误（已修正）。
+        double[] yMuls = { 0.25, 0.4, 0.6, 0.8, 1.0, 1.5 };
+        double[] tMuls = { 0.8, 1.1, 1.5, 2.0 };
 
         System.out.printf("=== 参数扫描 N=%d seeds=%d ===%n", N, seeds.length);
         System.out.printf("%6s %6s | %8s | %8s %8s %8s | %8s%n",
@@ -372,8 +381,14 @@ public final class CaveShapeProbe {
                     worstLongRun = Math.max(worstLongRun, longPct);
                     minConn = Math.min(minConn, conn);
                 }
-                boolean ok = worstMeanRun <= 10 && worstLongRun <= 20
-                        && worstDensity >= 0.5 && worstDensity <= 8 && minConn >= 30;
+                // ★★ 判定方向已修正（2026-09-15 第二次修正，务必保留）：
+                //   上一版把"平均竖向段越短越好"当成目标 ⇒ 一路加大 yScale 到 7.0
+                //   ⇒ 隧道被压成**薄饼**（竖向高度不足 2 格），用户实测"玩家没法走"。
+                //   这是**优化代理指标而毁掉真实目标**的典型错误。
+                //   正确目标：管道截面在**可通行区间** [3,12] 格 —— 太短不能走，太长是竖井。
+                boolean runOk = worstMeanRun >= 3.0 && worstMeanRun <= 12.0;
+                boolean ok = runOk && worstLongRun <= 25
+                        && worstDensity >= 0.5 && worstDensity <= 8 && minConn >= 15;
                 System.out.printf("%6.1f %6.1f | %10.2f | %10.1f %9.1f %10.1f | %8s%n",
                         ym, tm, worstDensity, worstMeanRun, worstLongRun, minConn,
                         ok ? "★OK" : "-");
