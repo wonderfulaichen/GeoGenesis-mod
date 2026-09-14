@@ -2453,13 +2453,22 @@ public final class RiverLineNetwork {
                 //   由落块侧【侵蚀后 height < spill 的等高线】决定 —— 湖岸自然、
                 //   且随侵蚀盆底变化自动伸缩（切深→淹更多，淤积→内缩）。
                 //   无轮廓的旧式湖退化为圆盘（兼容）。
-                //   ★ 外扩量（2026-09-09 修正）：出水由合成层【侵蚀后 height < spill】
-                //     等高线精确定界，域只决定"这湖管不管这里"。若外扩太小（曾用半格
-                //     12wu），侵蚀把 spill 等高线推远后会被截在域外漏判 → 用户实测
-                //     "水边没贴到地形/水面包不住"。外扩 2×gridCell（48wu=96block）让
-                //     spill 等高线能在域内自然闭合；不会因外扩变大变圆（出水不靠域）。
+                //   ★ 外扩量（2026-09-09 修正 → 2026-09-15 再修正）：
+                //     出水由合成层【侵蚀后 height < spill】等高线精确定界，域只决定
+                //     "这湖管不管这里"。若外扩太小（曾用半格 12wu），侵蚀把 spill
+                //     等高线推远后会被截在域外漏判 → 用户实测"水边没贴到地形/
+                //     水面包不住"。于是 2026-09-09 提到 2×gridCell（48wu）。
+                //
+                //     ★ 2026-09-15：48wu 仍不够 —— 用户再次反馈"湖泊填充容易没到
+                //     地形边缘就结束，提前在前一个区块停止"。`runLakeLocateProbe`
+                //     的 rim 环采样给出硬证据：在距湖心 **57.6wu** 处仍有 4 个采样点
+                //     低于湖面（h=129.45/128.68/135.16/138.03 < spill=138.29），
+                //     探针标注 "below spill -> water should reach here"；
+                //     而域外扩仅 48wu < 57.6wu ⇒ 水被**硬截断在域边界**。
+                //     故提到 4×gridCell（96wu）：足以让 spill 等高线在域内自然闭合。
+                //     不会因外扩变大变圆（出水不靠域，只靠等高线）。
                 boolean inDomain = bestLn.hasOutline()
-                        ? bestLn.inDomain(wx, wz, params.gridCell() * 2.0)
+                        ? bestLn.inDomain(wx, wz, params.gridCell() * 4.0)
                         : lakeDist <= (bestLn.radius > 0 ? bestLn.radius : params.lakeRadius())
                                 + params.lakeFadeDist();
                 if (inDomain && lakeDist <= bestRiverDist) {
