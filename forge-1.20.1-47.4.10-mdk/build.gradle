@@ -1097,6 +1097,17 @@ task runConcurrentChunkProbe(type: JavaExec) {
     }
 }
 
+// Spawn search probe (★ 2026-09-14：出生点搜索阶段耗时，定位"进度条前空闲期")
+//   args = [seed] [radiusQuart]
+task runSpawnSearchProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.SpawnSearchProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
 // Baseline A/B chunk probe (★ 2026-09-14：与基线 505c81f 直接对比性能)
 //   args = [seed] [chunks] [threads]
 task runAbChunkProbe(type: JavaExec) {
