@@ -1,6 +1,8 @@
 package com.geogenesis.worldgen.generator;
 
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.worldgen.cave.CaveCarver;
+import com.geogenesis.worldgen.cave.CaveShape;
 import com.geogenesis.worldgen.climate.BiomeClassifier;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
@@ -428,6 +430,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         worldSeed = seed;
         // ★ 2026-08-14 单例失效：新世界 seed 变化 → 下次 buildTerrain 重建河网/地形
         sharedTerrain = null;
+        // ★ 2026-09-15：洞穴噪声同批播种（与地形/河网同生命周期，避免跨存档串扰）。
+        CaveShape.setSeed(seed);
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);
     }
 
@@ -735,7 +739,21 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     public void applyCarvers(WorldGenRegion level, long seed, RandomState random,
                               BiomeManager biomeManager, StructureManager structures,
                               ChunkAccess chunk, GenerationStep.Carving carving) {
-        // 暂不实现洞穴雕刻
+        // ★ 2026-09-15：洞穴雕刻（此前是"暂不实现"的空实现）。
+        //
+        //   ① 只处理 AIR 阶段：原版把 applyCarvers 调两次（AIR / LIQUID），
+        //      后者供"水/熔岩雕刻器"使用；本 impl 不涉流体雕刻 ⇒ 直接返回
+        //      （重复雕刻不仅浪费，还会把已灌的水挖掉）。
+        //   ② 为何不能用原版 WorldCarver：本项目是自定义 ChunkGenerator，没有
+        //      NoiseSettings/NoiseChunk ⇒ super.applyCarvers 是空实现、且原版
+        //      cave/canyon carver 依赖 NoiseChunk。故自研（见 CaveCarver 注释）。
+        //   ③ 复用本 chunk 刚生成的 Cell（getChunkCells 是 4096-LRU，此处必命中）
+        //      ⇒ 洞穴的"地表高度"与"岩性门控"零额外地形采样，不触发侵蚀 tile 冷生成。
+        if (carving != GenerationStep.Carving.AIR) return;
+        if (terrain == null) return;
+        ChunkPos cpos = chunk.getPos();
+        Cell[] cells = terrain.getChunkCells(cpos.x, cpos.z);
+        CaveCarver.carve(chunk, cells, WORLD_MIN_Y, getSeaLevel());
     }
 
     @Override

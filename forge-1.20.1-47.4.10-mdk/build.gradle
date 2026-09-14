@@ -861,6 +861,19 @@ task runTerrainGrainProbe(type: JavaExec) {
     }
 }
 
+// Cave shape probe (2026-09-15): 洞穴几何诊断 ——
+//   复用生产的零 MC 依赖纯函数 CaveShape：体积占比 / 是否挖穿地表 /
+//   岩性耦合（石灰岩 vs 花岗岩）+ 输出 X-Y 垂直剖面图。
+//   gradlew runCaveShapeProbe [-PprobeArgs="seed chunksPerSide"]
+task runCaveShapeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.cave.CaveShapeProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Canyon profile probe (2026-09-14): 峡谷（大峡谷式）剖面诊断 ——
 //   先实测现状（岸高 → 谷壁坡度分布）+ 渲染对照图，再定峡谷参数。
 //   gradlew runCanyonProfileProbe [-PprobeArgs="seed hs chunksPerSide"]

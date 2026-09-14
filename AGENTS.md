@@ -22,7 +22,9 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | 文件 | 作用 |
 |------|------|
 | `GeoGenesisMod.java` | `@Mod("geogenesis")` 入口，注册 CODEC；`onClientSetup` 注册预览配置屏 + `GeoGenesisColorReloadListener` |
-| `GeoGenesisGenerator.java` | 主生成器，`fillFromNoise` 是地形产线入口；`createState` 注入共享地形到 BiomeSource |
+| `GeoGenesisGenerator.java` | 主生成器，`fillFromNoise` 是地形产线入口；`createState` 注入共享地形到 BiomeSource；★ `applyCarvers` 调 `CaveCarver` 雕洞穴 |
+| `worldgen/cave/CaveShape.java` | ★ 2026-09-15：洞穴**几何**（**零 MC 依赖纯函数**，可被探针直接复用）；2D 场驱动柱体切挖 + 岩性门控 |
+| `worldgen/cave/CaveCarver.java` | ★ 2026-09-15：洞穴雕刻的 **MC 适配器**（只负责把方块挖成空气），几何全部委托 `CaveShape` |
 | `GeoGenesisBiomeSource.java` | BiomeSource，按 Cell 气候选原版群系 |
 | ~~`worldgen/generator/BiomeMapper.java`~~ | ⚠️ 已删除（2026-07-13）：群系映射合并入 `BiomeClassifier.pickKey`，不再有独立文件 |
 | `worldgen/climate/BiomeClassifier.java` | 零依赖群系分类（`classify(Cell)→BiomeClass` 枚举，无颜色）；★ T12 起 `soilVariant` 做「岩性→群系」变体 |
@@ -183,6 +185,40 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **河流**：`RiverLineNetwork.sampleAll` 按 **region(640wu) + margin** 纯函数缓存，合并 3×3 邻 region → 跨 region 结构性无缝；水面为 PAVA 加权单调反推。（RTF `sampleRiver` / `REGION=512` 已作废）
 - **游戏雕刻路径**：`GeoGenesisTerrain.generateChunk` 内 `extractFromTile`（侵蚀 delta）+ `applyHydrologyValley`（水文雕刻，**回写 `cell.height`**，预览/落块一致）；`fillFromNoise` 只按 `waterSurfaceY` 灌水判定。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)`，高度/河流/湖泊/气候由引擎确定性产出。
+
+## 当前工作焦点（2026-09-15 洞穴系统）
+
+- **★ 洞穴此前完全是空实现**：`GeoGenesisGenerator.applyCarvers` 自创建起写着 `// 暂不实现洞穴雕刻`
+  ⇒ 世界挖下去只有实心岩。本轮补齐。
+- **为何自研**：本项目是自定义 `ChunkGenerator`，**没有** `NoiseSettings`/`NoiseChunk`；原版
+  cave/canyon carver 依赖 `NoiseChunk`，且 `ChunkGenerator.applyCarvers` 基类是**空实现**
+  ⇒ `super.applyCarvers` 无效、原版 carver 用不了。
+- **核心机制（移植 `TerraForged-0.3.x`）**：**2D 场驱动「竖直柱体切挖」，不用 3D 噪声** ——
+  每个 (x,z) 用 3 个 2D 场算「中心高度/向上扩展(脊线)/向下扩展」，整柱挖空；相邻列重叠 ⇒ 3D 网络状洞穴。
+  成本 ≈ 6 次 2D 求值/列。**这是 TF 的关键洞察**（全仓无 4 参数 3D 噪声调用）。
+- **两类洞穴族**：`SYNAPSE`(细密,size 9) + `MEGA`(粗大, 受低频区域掩码门控, size 18)。
+- **★ 本项目独创：岩性门控**（三个参考项目**均无**）：石灰岩 ×1.7（喀斯特）→ 花岗岩/片麻岩 ×0.55。
+  受控合成实测 **4.54×**。
+- **安全边界**：洞顶钳 `surface−6`（**永不破地表**，实测 0 次）；海底列跳过（**无 aquifer**，
+  挖海底会留干空腔）；遇流体跳过。
+- **接口分离（关键）**：几何在**零 MC 依赖**的 `CaveShape`（探针可复用同一份生产实现，无需复刻）；
+  `CaveCarver` 只是薄适配器。照抄 `SoilInfluence`/`BiomeClassifier` 的同一范式。
+- **零额外地形采样**：岩性/地表取自 `terrain.getChunkCells()` 的 **LRU 命中**；**刻意不读 chunk 高度图**
+  —— 绕开 TF 警告的"`OCEAN_FLOOR_WG` 在 carvers 阶段未必已 prime"陷阱。
+- **实测（合成扫描，种子 12345/7/42）**：密度 **3.05%/3.05%/3.19%**（种子稳健）· 破地表 **0** · 岩性比 **4.54/4.45/4.46×**。
+- **调参旋钮**：`CaveShape.SHAPE_FLOOR`（密度主控）。0.35 → 18%（瑞士奶酪）；0.55 → ~3%。
+- **★ 探针口径教训（已修）**：密度**不可用真实地形窗口统计** —— 噪声特征尺度 350 块，
+  chunk 窗口仅数十~百余块（不足一个特征）⇒ 实测 0.40%~7.11% 剧烈波动，且换种子可能整窗是海
+  （seed=42 → 陆地列 0，判据空转）。改**大范围合成扫描**后稳定 3.05~3.19%。属**口径错误**非功能缺陷。
+- **新增探针 `runCaveShapeProbe`**：输出 `build/cave/slice_z*.png`（X-Y 剖面，白=洞穴）。
+  ⚠ 渲染必须**裁到可判读窗口**（全高 512 会把洞穴压成细斜纹而误判）+ **按 chunk 行取整行切片**
+  （按固定 z 匹配会让 15/16 列无数据 → 图上出现规则黑条带，实测踩过）。
+- **未做（如实记录）**：洞穴 biome（TF 会在洞里写 dripstone 群系 + 放钟乳石特征）、洞穴装饰、
+  洞穴与矿脉/地下水联动。洞内方块仍是围岩岩性（岩性映射照常生效）。
+- **验证覆盖的诚实说明**：探针验证的是**几何**；`CaveCarver` 是极薄适配器，
+  端到端需 `runClient` 实机挖洞 —— **现有探针无法覆盖 MC 侧方块写入**。
+- **`CACHE_SCHEMA_VERSION` 未升**：该版本号服务**预览磁盘缓存**，洞穴只改 chunk 方块、
+  不改任何 `Cell` 派生量（`CaveShape` 对 `Cell` 只读）⇒ 预览无差异。
 
 ## 当前工作焦点（2026-09-14 构造地貌可见化 + 碎石坡归位 + 盆地抬离海平面 + 地质→群系耦合）
 
