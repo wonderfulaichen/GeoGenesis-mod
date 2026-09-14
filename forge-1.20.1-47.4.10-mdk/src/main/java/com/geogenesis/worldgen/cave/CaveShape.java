@@ -73,26 +73,37 @@ public final class CaveShape {
      */
     private static final double TUNNEL_SCALE_A = 120.0;
     private static final double TUNNEL_SCALE_B = 155.0;
-    /** 洞室：比隧道尺度大（更宽敞）、阈值宽（更粗），但仍用双噪声交集保证"有限尺寸"。 */
-    private static final double CAVERN_SCALE_A = 210.0;
-    private static final double CAVERN_SCALE_B = 265.0;
-    /** 孔洞：高频、双噪声交集 ⇒ 小而不连片。 */
-    private static final double CHEESE_SCALE_A = 54.0;
-    private static final double CHEESE_SCALE_B = 68.0;
+    /**
+     * ★★ 空腔（原版 {@code cave_cheese}）的噪声特征尺度。
+     *
+     * <p>原版 {@code Noises.CAVE_CHEESE} 的单元格约 64 格；这里取 55（略密），
+     * 目的是产生<b>可以站进去走动</b>的大空间 —— 这是"玩家能在洞里走"的主要来源。</p>
+     */
+    private static final double CHAMBER_SCALE = 55.0;
+    /**
+     * ★★ 层调制（原版 {@code cave_layer}）的噪声 —— <b>防止空腔竖直贯穿的关键</b>。
+     *
+     * <p>原版：{@code caveLayer = 4 × noise(CAVE_LAYER, yScale=8)²}，把它<b>加到密度上</b>
+     * （恒 ≥0）⇒ 在噪声绝对值大的 Y 层，密度被推回正值（实心）
+     * ⇒ 把本会连通成大块的空间<b>切成一层层有限高度的空腔</b>。</p>
+     *
+     * <p><b>这正是我前两版失败的根因</b>：第一版空腔没有层调制 ⇒ 竖直贯穿
+     * （长段占比 91.2%，世界被挖成竖井）；而我当时的"修复"是改用纯管道，
+     * 结果只留下细管道、丢了大空间 ⇒ 用户实测"没法走"。</p>
+     */
+    private static final double LAYER_SCALE = 30.0;
+    /** 层调制在 Y 方向的频率倍率（原版 yScale=8；越大 ⇒ 层越薄）。 */
+    private static final double LAYER_Y_SCALE = 3.0;
 
     private static final int SALT_TUNNEL_A = 0x1F4A9C3B;
     private static final int SALT_TUNNEL_B = 0x7B2E5D18;
-    private static final int SALT_CAVERN_A = 0x4C8F21A7;
-    private static final int SALT_CAVERN_B = 0x2D63B9E4;
-    private static final int SALT_CHEESE_A = 0x6A18D3F2;
-    private static final int SALT_CHEESE_B = 0x38C7E15A;
+    private static final int SALT_CHAMBER = 0x4C8F21A7;
+    private static final int SALT_LAYER = 0x2D63B9E4;
 
     private static final Noise3 TUNNEL_A = new Simplex3(SALT_TUNNEL_A);
     private static final Noise3 TUNNEL_B = new Simplex3(SALT_TUNNEL_B);
-    private static final Noise3 CAVERN_A = new Simplex3(SALT_CAVERN_A);
-    private static final Noise3 CAVERN_B = new Simplex3(SALT_CAVERN_B);
-    private static final Noise3 CHEESE_A = new Simplex3(SALT_CHEESE_A);
-    private static final Noise3 CHEESE_B = new Simplex3(SALT_CHEESE_B);
+    private static final Noise3 CHAMBER = new Simplex3(SALT_CHAMBER);
+    private static final Noise3 LAYER = new Simplex3(SALT_LAYER);
 
     private static volatile boolean seeded = false;
 
@@ -100,10 +111,8 @@ public final class CaveShape {
     public static synchronized void setSeed(long worldSeed) {
         seedOne(TUNNEL_A, worldSeed, 0);
         seedOne(TUNNEL_B, worldSeed, 1);
-        seedOne(CAVERN_A, worldSeed, 2);
-        seedOne(CAVERN_B, worldSeed, 3);
-        seedOne(CHEESE_A, worldSeed, 4);
-        seedOne(CHEESE_B, worldSeed, 5);
+        seedOne(CHAMBER, worldSeed, 2);
+        seedOne(LAYER, worldSeed, 3);
         seeded = true;
     }
 
@@ -137,11 +146,28 @@ public final class CaveShape {
      * <p>现改为<b>双噪声交集</b>（同隧道原理，仅尺度更大、阈值更宽）——
      * 两曲面相交只能得到<b>有限尺寸的管状体</b>，这才是真正的"洞室"。</p>
      */
-    private static final double CAVERN_T1 = 0.073;         // 0.13 × 0.56
-    private static final double CAVERN_T2 = 0.073;
-    /** 孔洞阈值：双噪声交集，高频、细 ⇒ 小孔不连片。 */
-    private static final double CHEESE_T1 = 0.031;         // 0.055 × 0.56
-    private static final double CHEESE_T2 = 0.031;
+    /**
+     * ★ 空腔判定阈值（原版 {@code 0.27} 偏置）。
+     *
+     * <p>原版：{@code density = 0.27 + (1-prob) + cheeseNoise + caveLayer + depthTerm}，
+     * {@code density < 0} 即挖空。取 {@code prob=1.0}、忽略 depthTerm 后即
+     * {@code cheeseNoise < -0.27 - layerTerm}。</p>
+     *
+     * <p>这里 {@code CHAMBER_T = 0.27}：噪声低于 {@code -0.27} 的区域成空腔。
+     * 由于噪声分布近高斯，这大约是 25~30% 的体积 —— 但会被<b>层调制</b>大量抵消，
+     * 最终只留下"层与层之间"的有限空腔（这正是原版的效果）。</p>
+     */
+    private static final double CHAMBER_T = 0.432;        // 0.27 × 1.6（扫描标定）
+    /**
+     * 层调制的强度（原版 {@code caveLayer = 4 × n²} 中的 4）。
+     *
+     * <p>该值直接决定"空腔被切成多薄"：越大 ⇒ 层越容易把密度推回实心 ⇒ 空腔越薄、
+     * 越不会竖直贯穿。原版取 4（相对其噪声幅度），这里因噪声归一化不同取 0.55，
+     * 由 {@code CaveShapeProbe} 扫描标定。</p>
+     */
+    private static final double LAYER_W = 1.925;          // 0.55 × 3.5（扫描标定）
+    /** 空腔所需的最小埋深（避免贴近地表塌陷感）。 */
+    private static final int CHAMBER_MIN_DEPTH = 14;
 
     /**
      * ★★ Y 方向各向异性缩放（"隧道趋向水平"的关键旋钮）。
@@ -235,22 +261,31 @@ public final class CaveShape {
         int mask = 0;
         double x = wx, y = wy, z = wz;
 
-        // ---- 1) 隧道：两噪声等值面交线（1D 管道）----
+        // ---- 1) 隧道：两噪声等值面交线（1D 管道，负责"连接"）----
         //   岩性越大 ⇒ 阈值越大 ⇒ 管道越粗（石灰岩溶洞 vs 花岗岩）
         if (pair(TUNNEL_A, TUNNEL_SCALE_A, TUNNEL_B, TUNNEL_SCALE_B, TUNNEL_Y_SCALE,
                 x, y, z, TUNNEL_T1 * litho, TUNNEL_T2 * litho)) {
             mask |= F_TUNNEL;
         }
-        // ---- 2) 洞室：同原理但尺度更大、阈值更宽 ⇒ 更粗的管（大厅）----
-        //   ⚠ 不可用单噪声阈值（会产生无限延伸大块，见 CAVERN_T1 的注释）
-        if (pair(CAVERN_A, CAVERN_SCALE_A, CAVERN_B, CAVERN_SCALE_B, CAVERN_Y_SCALE,
-                x, y, z, CAVERN_T1 * litho, CAVERN_T2 * litho)) {
-            mask |= F_CAVERN;
-        }
-        // ---- 3) 孔洞：高频细管 ⇒ 小孔、不连片 ----
-        if (pair(CHEESE_A, CHEESE_SCALE_A, CHEESE_B, CHEESE_SCALE_B, CHEESE_Y_SCALE,
-                x, y, z, CHEESE_T1 * litho, CHEESE_T2 * litho)) {
-            mask |= F_CHEESE;
+
+        // ---- 2) ★★ 空腔（原版 cave_cheese + cave_layer，负责"能走的大空间"）----
+        //   连续密度模型（与隧道的二值交集不同）：
+        //       density = CHAMBER_T + chamberNoise + layerTerm
+        //       density < 0  ⇒ 挖空
+        //   其中 layerTerm = LAYER_W × layerNoise² 恒 ≥ 0 ⇒ 在"层"上把密度推回实心，
+        //   把本会连通的大空间切成**一层层有限高度的空腔**（防竖直贯穿）。
+        if (depth >= CHAMBER_MIN_DEPTH) {
+            double cT = CHAMBER_T * dbgChamberMul / litho;
+            double lw = LAYER_W * dbgLayerMul;
+            double cn = CHAMBER.compute(x / CHAMBER_SCALE, y / CHAMBER_SCALE * 1.5,
+                    z / CHAMBER_SCALE);
+            // 只在"有可能是空腔"时才去算层（短路，省一次噪声）
+            if (cn < -cT + lw) {
+                double ln = LAYER.compute(x / LAYER_SCALE, y / LAYER_SCALE * LAYER_Y_SCALE,
+                        z / LAYER_SCALE);
+                double layerTerm = lw * ln * ln;
+                if (cT + cn + layerTerm < 0) mask |= F_CAVERN;
+            }
         }
         return mask;
     }
@@ -295,6 +330,10 @@ public final class CaveShape {
     static volatile double dbgYScaleMul = 1.0;
     /** 诊断用阈值倍率（越大洞越粗）。 */
     static volatile double dbgThresholdMul = 1.0;
+    /** 诊断用空腔阈值倍率（越大空腔越稀疏）。 */
+    static volatile double dbgChamberMul = 1.0;
+    /** 诊断用层调制倍率（越大气腔越薄、越不竖直贯穿）。 */
+    static volatile double dbgLayerMul = 1.0;
 
     /** 供探针扫描参数（仅诊断用）。 */
     public static void dbgSet(double yScaleMul, double thresholdMul) {
@@ -302,10 +341,18 @@ public final class CaveShape {
         dbgThresholdMul = thresholdMul;
     }
 
+    /** 供探针扫描参数（仅诊断用）：空腔阈值 × 层调制强度。 */
+    public static void dbgSetChamber(double chamberMul, double layerMul) {
+        dbgChamberMul = chamberMul;
+        dbgLayerMul = layerMul;
+    }
+
     /** 恢复生产默认参数。 */
     public static void dbgReset() {
         dbgYScaleMul = 1.0;
         dbgThresholdMul = 1.0;
+        dbgChamberMul = 1.0;
+        dbgLayerMul = 1.0;
     }
 
     /**
