@@ -306,14 +306,15 @@ public final class CaveShapeProbe {
     private static void scanMode(String[] args) throws Exception {
         int N = args.length > 1 ? Integer.parseInt(args[1]) : 96;
         long[] seeds = { 12345L, 7L, 42L };
-        // 扫描范围重设：基准 yScale=2.0，yMul<1 ⇒ 减弱各向异性（隧道更接近圆管）。
-        //   上一版只扫 yMul>=2.5（effective 5~8）⇒ 全都是薄饼，方向性错误（已修正）。
-        double[] yMuls = { 0.25, 0.4, 0.6, 0.8, 1.0, 1.5 };
-        double[] tMuls = { 0.8, 1.1, 1.5, 2.0 };
+        // ★ 2026-09-15 改为标定【原版配方的空腔/层调制】（当前形态由空腔主导）：
+        //   chamberMul 越大 ⇒ 空腔越稀疏；layerMul 越大 ⇒ 空腔被切得越薄。
+        //   目标：密度 3~7%、竖向段 5~10 格（可走）、长段 <25%、连通 40~90%。
+        double[] yMuls = { 1.2, 1.6, 2.0, 2.6, 3.2 };      // 复用为 chamberMul
+        double[] tMuls = { 1.0, 2.0, 3.5 };                // 复用为 layerMul
 
         System.out.printf("=== 参数扫描 N=%d seeds=%d ===%n", N, seeds.length);
-        System.out.printf("%6s %6s | %8s | %8s %8s %8s | %8s%n",
-                "yMul", "tMul", "密度%(最差)", "平均段最差", "长段%最差", "连通%最差", "判定");
+        System.out.printf("%8s %8s | %10s | %9s %9s %9s | %8s%n",
+                "chamMul", "layMul", "密度%(最差)", "平均段最差", "长段%最差", "连通%最差", "判定");
 
         int H = WORLD_MAX_Y - WORLD_MIN_Y;
         long underVox = (long) N * N * Math.max(0, SYN_SURFACE - WORLD_MIN_Y - CaveShape.SURFACE_LID);
@@ -324,7 +325,8 @@ public final class CaveShapeProbe {
                 double minConn = 1e9;
                 for (long sd : seeds) {
                     CaveShape.setSeed(sd);
-                    CaveShape.dbgSet(ym, tm);
+                    CaveShape.dbgSet(1.0, 1.0);           // 隧道参数保持生产默认
+                    CaveShape.dbgSetChamber(ym, tm);      // ym=chamberMul, tm=layerMul
                     boolean[][][] v = new boolean[N][N][H];
                     long vox = 0;
                     for (int x = 0; x < N; x++) {
