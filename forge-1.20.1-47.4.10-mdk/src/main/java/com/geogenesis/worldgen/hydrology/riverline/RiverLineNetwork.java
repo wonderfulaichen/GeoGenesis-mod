@@ -404,7 +404,11 @@ public final class RiverLineNetwork {
                                         precipSampler, precipWeights);
         // ★ 填洼层（湖泊）：按【真实地形】判定洼地——选线用的 routingE 是压过低山的
         //   人工高程，拿它找湖会把湖放在被压低的坡面上。
-        field.computeFill(this::groundYAt);
+        // ★ 2026-09-15：第二参 = 真实海平面，作为 priority-flood 的<b>出水口</b>
+        //   （原实现把"网格边界格"当出口 ⇒ 边界格永不成湖，见 FlowField.computeFill 的
+        //   修复说明）。此处改用海洋 ⇒ 边界的陆地格也能成湖，且不会像"单一最低格"
+        //   那样填出巨型湖（实测出现过 cells=772 的湖）。
+        field.computeFill(this::groundYAt, curve.seaLevelY());
 
         int nx = field.cols(), nz = field.rows();
         boolean[] claimed = new boolean[nx * nz];

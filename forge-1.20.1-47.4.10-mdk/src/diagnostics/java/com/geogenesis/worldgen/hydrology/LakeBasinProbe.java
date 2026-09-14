@@ -46,7 +46,9 @@ public final class LakeBasinProbe {
                 double minX = rx * rs - margin, maxX = rx * rs + rs + margin;
                 double minZ = rz * rs - margin, maxZ = rz * rs + rs + margin;
                 FlowField field = new FlowField(minX, minZ, maxX, maxZ, cell, net::groundYAt);
-                field.computeFill(net::groundYAt);
+                // ★ 2026-09-15：第二参 = 真实海平面（priority-flood 的出水口）。
+                //   与生产 RiverLineNetwork.build 同口径，否则探针与生产不一致。
+                field.computeFill(net::groundYAt, terrain.heightCurve().seaLevelY());
                 int nx = field.cols(), nz = field.rows(), n = nx * nz;
                 boolean[] seen = new boolean[n];
                 int regionBasins = 0;
