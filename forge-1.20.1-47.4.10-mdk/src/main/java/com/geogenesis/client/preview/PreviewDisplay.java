@@ -384,7 +384,11 @@ public class PreviewDisplay extends AbstractWidget {
     //        （成土母质变体：钙质土→MEADOW、酸性土→BIRCH_FOREST，噪声门控 30% 覆盖率）
     //      · 群系产出变化 ⇒ 预览 BIOME 图层与磁盘缓存必须失效
     //      （地形 e/高度不变，但 Cell 缓存含 biome 相关派生值）
-    private static final int CACHE_SCHEMA_VERSION = 67;
+    // 68 = 2026-09-14 ★ 移除 T5 最后一个 decay(dist)（CHANGELOG 遗留项）
+    //      · foldOffset / faultOffsetUnit 不再乘 decay，定位仅由 beltMask 决定
+    //      · 消除"贴合板块多边形"的形状来源（残留"淡淡多边形棱面"）
+    //      · eLand 产出变化（形变略增：均值 0.64→0.67 块、p99 6.56→7.07 块）
+    private static final int CACHE_SCHEMA_VERSION = 68;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

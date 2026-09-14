@@ -168,7 +168,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 > 因为它们测"幅度/各向异性"，测不出"值域量化/配对阶跃"。**判定伪影的最终依据只能是渲染图**。
 >
 > **⚠️ 改动地形产出必须升 `PreviewDisplay.CACHE_SCHEMA_VERSION`**，否则预览**静默复用旧磁盘缓存**
-> → 表现为"改了没生效"（当前 **67**；历次因折叠/blurDist/stress、岩性硬度量化、河网并行、构造放大、盆地抬升、地质→群系耦合等产出变更递增）。
+> → 表现为"改了没生效"（当前 **68**；历次因折叠/blurDist/stress、岩性硬度量化、河网并行、构造放大、盆地抬升、地质→群系耦合、T5 移除 decay 等产出变更递增）。
 
 注册流程: `GeoGenesisMod` 构造器中用 `DeferredRegister<Codec<? extends ChunkGenerator>>`（注册到 `Registries.CHUNK_GENERATOR`）注册 `GeoGenesisGenerator.CODEC`，同理 `BIOME_SOURCE` 注册 `GeoGenesisBiomeSource.CODEC`，并 `register(bus)` 到 MOD 总线。
 
@@ -210,7 +210,13 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **本轮守门（全绿）**：`runTectonicDeformProbe`（断层崖 3.3×，近零均值保住）· `runTectonicWaveProbe`（**各向异性 1.137**，无平行带回归）· `runTectonicProbe` 16 项 · `runTectonicContinuityProbe` · `runLandEConformityProbe`（**跳变 0**）· `runPrecipRiverWidthProbe`（未污染水文标定）· `runTerrainShapeProbe` · `runClimateBiomeProbe` · `runPaletteProbe` · `runStratumProbe` · `runSoilBiomeCrosstabProbe`（3 种子）。
 - **★ 发现一处【预存的脆弱判据】（非本轮回归）**：`runRockErosionProbe[3]`「软岩因耦合被显著加深侵蚀」。本轮出现 FAIL，经 **git stash 基线对照 + 多种子复现** 定性：**基线在 seed=7/42 本就 FAIL**（`+0.000134` / `+0.001246`），仅 seed=12345 靠单 tile 取样巧合 PASS；且**仅 A 生效即 FAIL、与 C 无关**（已隔离验证），选中 tile 与格子分组基线与新版**完全一致**（nS=896/nH=13952）。⇒ 该判据应改为多种子聚合或扩大样本，属**独立议题**（未擅自改判据）。
 - **新增探针**：`runDeformVisibilityProbe`（镜像生产数学 + 逐位自检 + 多参数并排山体阴影/差值图，`build/deform/`）· `runScreePlacementProbe`（脊/沟 AUC + 门控模拟，`build/scree/`）· `runSoilBiomeCrosstabProbe`（受控 A/B 交叉表；⚠️ 该探针进程**无法完成 MC 引导** ⇒ 群系改写率判据跳过，**验证责任已指派**：合法性→`runClimateBiomeProbe` 的「非法邻接 0」、生效率→门控触发率；**其反射桥接不破坏"诊断源码集零 MC 依赖"纪律**）。
-- **`CACHE_SCHEMA_VERSION` 65 → 67**（66：构造放大 + 盆地抬升，改 eLand 产出；67：地质→群系耦合，改群系产出）。
+- **`CACHE_SCHEMA_VERSION` 65 → 68**（66：构造放大 + 盆地抬升，改 eLand 产出；67：地质→群系耦合，改群系产出；68：移除 T5 `decay(dist)`，改 eLand 产出）。
+- **★ T5 技术债清偿：移除最后一个 `decay(dist)`**（CHANGELOG 长期遗留项）：`dist` 的等值线是**平行于 Voronoi 边的多边形**，故 `decay` 一直在把多边形印进地形（**残留"淡淡多边形棱面"的唯一来源**）。现定位仅由世界坐标 `beltMask` 决定，**早退 `d>=reach` 一并移除**（同类硬截断）。`decay` 方法已删；`FOLD_REACH`/`FAULT_REACH` **不再参与计算**，仅作文档与探针窗口参考。
+  - **负作用评估**：幅度 gating 仍三重（`beltMask` × `segmentMask` × `smoothPos(stress)`）⇒ 板块内部 `stress≈0`，形变自然为 0，不会泄漏。
+  - **连带**：形变略增（均值 0.64→**0.67 块**、p99 6.56→**7.07 块**）；性能**提升**（`offset` 0.211→**0.137 µs，−35%**）。
+  - **探针判据重构（★ 未放宽、反而更严）**：`TectonicDeformProbe[5]` 由「`dist>REACH ⇒ 0`」改为「**按掩码归零**」+ **新增反向验证**「带内须确有形变」。实测掩码为 0 处 **7000 点 0 违例**、带内 **100% 有形变**。新增公开入口 `TectonicDeformation.beltMaskAt(wx,wz)` 供探针做结构性判据。
+  - `runFlowAccumProbe` **`status=PASS`**（`border.maxSurfaceDelta` 1.358→**1.391**，容差 1.5 仍留余量）—— 该指标对地形改动高度敏感，已纳入验收。
+  - 渲染图目视：崖线呈**有机蜿蜒曲线，无直边多边形痕迹**。
 
 ## 当前工作焦点（2026-09-13 「笔直线段 + Y 形交汇」伪影根治，用户实机确认消失）
 

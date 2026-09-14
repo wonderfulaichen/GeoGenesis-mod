@@ -9,7 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> 构造地貌可见化 + 地表细节归位 + 地质→群系耦合轮（2026-09-14）。
+> 构造地貌可见化 + 地表细节归位 + 地质→群系耦合 + T5 技术债清理轮（2026-09-14）。
+
+### 变更 / Changed
+
+- **★ 移除 T5 最后一个 `decay(dist)`**（CHANGELOG 长期遗留项，本轮清偿）：
+  - **为何移除**：`dist = (d2−d1)/2` 的等值线是**平行于 Voronoi 边的多边形**（直边 + 折角），故任何 `dist` 的函数都会把这套多边形"印"到地形上 —— 这正是上一轮修完扇形射线后**残留的"淡淡多边形棱面"**（`comp_deform.png` 可见）的唯一来源。
+  - **改法**：`foldOffset` / `faultOffsetUnit` 不再乘 `decay`，定位仅由世界坐标 `beltMask` 给出；**早退 `if (d >= reach) return 0.0` 一并移除**（它本身也是沿 `dist=reach` 多边形的硬截断，属同类伪影）。归零边界改由 `beltMask` 自身的 smoothstep 承担（掩码为 0 处形变自然为 0）。
+  - **负作用评估**：幅度 gating 仍有三重（`beltMask` 带体 × `segmentMask` 弧段 × `smoothPos(stress)` 应力）⇒ 移除 decay **不会**让形变泄漏到板块内部（那里 `stress≈0`，自然为 0）。
+  - **`decay` 方法已整体删除**；`FOLD_REACH` / `FAULT_REACH` 已不参与任何计算，**仅保留为文档与探针窗口参考值**（注释已明确标注）。
+  - **连带效果**：形变范围略增（均值 0.64→**0.67 块**、p99 6.56→**7.07 块**），因去掉了衰减因子；**性能反而提升**（`offset` **0.211 → 0.137 µs/次，−35%**，少算一次 smoothstep）。
+- **新增 `TectonicDeformation.beltMaskAt(wx, wz)`**（公开诊断入口）：移除 decay 后 "范围" 不再由 `dist` 决定，探针无法再用 `dist > REACH ⇒ 0` 判断 —— 本方法暴露掩码值，使探针能做**结构性不变量**判据（"掩码为 0 处形变必须恒为 0"）。
+- **`TectonicDeformProbe[5]` 判据重构（★ 未放宽，反而更严）**：由「`dist > REACH` ⇒ offset=0」改为「**按掩码归零**」，并**新增反向验证**「带内必须确有非零形变」（防"整类恒为 0"的假通过）。实测：掩码为 0 处 **n=7000 违例 0（max=0.000e+00）**、带内 **n=7399 有形变 100%**。
+  - 同探针 `[2]` 的筛选条件也由 `dist < FOLD_REACH` 改为 `beltMaskAt > 0`（用 dist 筛选会漏掉带内远场点、并混入带外零值点）。
+- `TectonicContinuityProbe[2]` 筛选条件由 `dist < 900` 改为 `beltMaskAt > 0`（同上理由）。
+- `DeformVisibilityProbe` 镜像同步移除 `decay`（自检 **0/4000 不一致** 通过）；删除已无引用的 `FOLD_REACH`/`FAULT_REACH` 镜像常量。
+- 更正两处过时注释：`TectonicField` 的「dist 仅允许用于 decay」（**该结论已作废** —— decay 也已移除，形变幅度现完全不依赖 dist）。
+- `PreviewDisplay.CACHE_SCHEMA_VERSION` **67 → 68**（decay 移除改变 eLand 产出）。
+
+### 验证 / Verified（本轮补充）
+
+- `runTectonicDeformProbe` **ALL PASS**：`[5]` 按掩码归零 7000 点 0 违例 + 带内 100% 有形变；性能 **0.137 µs**（原 0.211）。
+- `runTectonicWaveProbe` **PASS**：T2 各向异性 **1.023**、T5 **1.142**（≈1.0，**无平行带回归**）。
+- `runTectonicContinuityProbe` **PASS**：带内最大跳变 0.0053e ≪ 合法阈值 0.198e。
+- `runTectonicProbe` **ALL PASS**（16 项）· `runLandEConformityProbe` **跳变 0** · `runPrecipRiverWidthProbe` **PASS**。
+- `runFlowAccumProbe` **`status=PASS`**（`border.maxSurfaceDelta` 1.358 → **1.391**，容差 1.5，仍留余量；`border.violations=0`）—— 该指标对地形改动高度敏感，已按 CHANGELOG 要求纳入验收。
+- **渲染图目视确认**（`shade_fault2_steep.png`，判据的最终依据）：崖线呈**有机蜿蜒曲线**，**无直边多边形痕迹**。
 
 ### 新增 / Added
 
@@ -248,9 +273,12 @@ GeoGenesis 是一个以"模拟现实地形"为目标的 Minecraft 地形模组�
     且探针「超出 reach 必须为 0」判据依然成立。
   - **结果**：`comp_deform.png` 由"强扇形直线射线"变为**有机斑块**；
     残留**淡淡的多边形棱面**（来自最后一个 `decay(dist)` 因子）。
-  - **遗留（下一步）**：彻底去掉 T5 中最后的 `decay(dist)`（仅用 `beltMask` 定位），
+  - ~~**遗留（下一步）**：彻底去掉 T5 中最后的 `decay(dist)`（仅用 `beltMask` 定位），
     并同步把 `TectonicDeformProbe [5]`「作用范围有限」判据由"按 dist 截断"
-    改为"按掩码归零"（**不得为让 CI 变绿而放宽**）。
+    改为"按掩码归零"（**不得为让 CI 变绿而放宽**）。~~
+    **★ 2026-09-14 已完成** —— 见本文件 `[Unreleased]` 的「移除 T5 最后一个 decay(dist)」。
+    实施结果：判据**未放宽反而更严**（新增"带内须确有形变"的反向验证）；
+    `CACHE_SCHEMA_VERSION` **67 → 68**。
   - 保留的正面成果：`valueNoise` 的 Catmull-Rom 升级（C¹，对全场噪声都是改进）；
     `CACHE_SCHEMA_VERSION` → **41**。
 

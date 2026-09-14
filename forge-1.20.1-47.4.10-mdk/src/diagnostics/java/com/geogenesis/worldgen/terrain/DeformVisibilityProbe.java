@@ -46,9 +46,7 @@ public final class DeformVisibilityProbe {
     // ===================== 镜像 TectonicDeformation 的私有常量 =====================
     //   刻意保持与生产源码【完全相同】的数值 —— 自检会验证这一点。
     private static final double FOLD_WAVELENGTH = 600.0;
-    private static final double FOLD_REACH = 2600.0;
     private static final double FAULT_SPACING = 240.0;
-    private static final double FAULT_REACH = 2600.0;
     private static final double FAULT_BLOCK_FREQ = 2.5;
     private static final double FAULT_SEGMENT = 4000.0;
     private static final double MASK_SCALE = 1500.0;
@@ -107,17 +105,15 @@ public final class DeformVisibilityProbe {
         double cw = TectonicField.smoothPos(s.stress(), eps);
         double dw = TectonicField.smoothPos(-s.stress(), eps);
         double mask = segmentMask(wx, wz, cfg.segFloor());
-        double fold = cw * foldOffset(s, wx, wz, mask, cfg);
-        double fault = (cw * 0.6 + dw * 1.0) * faultOffsetUnit(s, wx, wz, mask, cfg);
+        double fold = cw * foldOffset(wx, wz, mask, cfg);
+        double fault = (cw * 0.6 + dw * 1.0) * faultOffsetUnit(wx, wz, mask, cfg);
         return fold + fault;
     }
 
-    /** 镜像 {@code foldOffset}。 */
-    private double foldOffset(TectonicField.Sample s, double wx, double wz,
-                              double mask, Cfg cfg) {
-        double d = s.dist();
-        if (d >= FOLD_REACH) return 0.0;
-        double decay = decay(d, FOLD_REACH) * beltMask(wx, wz, cfg.beltBias());
+    /** 镜像 {@code foldOffset}（★ 2026-09-14：已同步移除 decay）。 */
+    private double foldOffset(double wx, double wz, double mask, Cfg cfg) {
+        double belt = beltMask(wx, wz, cfg.beltBias());
+        if (belt <= 0.0) return 0.0;
         double n = valueNoise(wx / FOLD_WAVELENGTH, wz / FOLD_WAVELENGTH, SALT_FOLD);
         double n2 = valueNoise(wx / (FOLD_WAVELENGTH * 2.1) + 13.7,
                 wz / (FOLD_WAVELENGTH * 2.1) - 7.3, SALT_FOLD + 1);
@@ -126,15 +122,13 @@ public final class DeformVisibilityProbe {
                 - FOLD_RIDGE_ROUND) / FOLD_RIDGE_NORM;
         double ridge = 1.0 - roundAbs;
         double wave = ridge * 2.0 - 1.0;
-        return cfg.foldAmp() * wave * decay * mask;
+        return cfg.foldAmp() * wave * belt * mask;
     }
 
-    /** 镜像 {@code faultOffsetUnit}。 */
-    private double faultOffsetUnit(TectonicField.Sample s, double wx, double wz,
-                                   double mask, Cfg cfg) {
-        double d = s.dist();
-        if (d >= FAULT_REACH) return 0.0;
-        double decay = decay(d, FAULT_REACH) * beltMask(wx, wz, cfg.beltBias());
+    /** 镜像 {@code faultOffsetUnit}（★ 2026-09-14：已同步移除 decay）。 */
+    private double faultOffsetUnit(double wx, double wz, double mask, Cfg cfg) {
+        double belt = beltMask(wx, wz, cfg.beltBias());
+        if (belt <= 0.0) return 0.0;
         double slip = valueNoise(wx / FAULT_SEGMENT, wz / FAULT_SEGMENT, SALT_FAULT);
         double q = FAULT_BLOCK_FREQ;
         double fN = valueNoise(wx / FAULT_SPACING * q, wz / FAULT_SPACING * q, SALT_FAULT + 7);
@@ -143,7 +137,7 @@ public final class DeformVisibilityProbe {
         t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
         double scarp = t * t * (3.0 - 2.0 * t);
         double slipBlk = scarp * 2.0 - 1.0;
-        return cfg.faultAmp() * (slip * 0.5 + slipBlk * 0.5) * decay * mask;
+        return cfg.faultAmp() * (slip * 0.5 + slipBlk * 0.5) * belt * mask;
     }
 
     /** 镜像 {@code segmentMask}（地板可调）。 */
@@ -161,12 +155,7 @@ public final class DeformVisibilityProbe {
         return t * t * (3.0 - 2.0 * t);
     }
 
-    /** 镜像 {@code decay}。 */
-    private static double decay(double d, double reach) {
-        double t = 1.0 - d / reach;
-        if (t <= 0.0) return 0.0;
-        return t * t * (3.0 - 2.0 * t);
-    }
+    // ★ 2026-09-14：镜像的 {@code decay} 已随生产同步删除（详见 TectonicDeformation）。
 
     /** 镜像 {@code valueNoise}（Catmull-Rom 双三次，C¹）。 */
     private double valueNoise(double x, double z, long salt) {

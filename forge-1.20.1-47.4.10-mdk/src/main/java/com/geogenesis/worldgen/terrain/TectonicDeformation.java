@@ -63,13 +63,17 @@ public final class TectonicDeformation {
      */
     static final double FOLD_WAVELENGTH = 600.0;
     /**
-     * 褶皱带作用距离（wu）：延伸至前陆。
+     * 褶皱带名义作用距离（wu）—— <b>⚠️ 2026-09-14 起已不参与任何计算</b>。
      *
-     * <p>★ 2026-09-12：900 → <b>2600</b>。原值使 {@code decay(dist)} 在近场有显著梯度，
-     * 而 {@code dist} 的等值线是多边形（直边+折角）⇒ 多边形被印到地形上。
-     * 放宽后 decay 在带内≈常数（<b>常数没有形状</b> ⇒ 不再印多边形），
-     * 真正的定位交给世界坐标的 {@link #beltMask}；
-     * 同时探针「超出 reach 必须为 0」的判据依然成立（更远才归零）。</p>
+     * <p><b>历史</b>：曾用于 {@code decay(dist)} 控制作用范围（900 → 2600）。
+     * 但 {@code decay} 本身会把 {@code dist} 的多边形等值线印到地形上
+     * （残留的"淡淡多边形棱面"），已在本轮<b>彻底移除</b>。</p>
+     *
+     * <p><b>现状</b>：范围完全由世界坐标 {@link #beltMask} 决定，
+     * 本常量<b>仅保留为</b>：① 地质语义上的"前陆延伸尺度"文档；
+     * ② {@code TectonicContinuityProbe} 等探针的采样窗口参考值。</p>
+     *
+     * <p>⚠️ 勿据此常量恢复 {@code dist} 截断 —— 见 {@link #beltMask} 的长注释。</p>
      */
     static final double FOLD_REACH = 2600.0;
 
@@ -94,7 +98,11 @@ public final class TectonicDeformation {
     static final double FAULT_AMP = 0.090;
     /** 断层间距（wu）：断块宽度。 */
     static final double FAULT_SPACING = 240.0;
-    /** 断层带作用距离（wu）。★ 2026-09-12：700 → 2600（理由同 {@link #FOLD_REACH}）。 */
+    /**
+     * 断层带名义作用距离（wu）—— <b>⚠️ 2026-09-14 起已不参与任何计算</b>。
+     * 同 {@link #FOLD_REACH}：曾用于 {@code decay(dist)}（700 → 2600），
+     * 该因子已移除；范围现由 {@link #beltMask} 决定。仅作文档与探针窗口参考。
+     */
     static final double FAULT_REACH = 2600.0;
     /** 相邻断块去相关速度（越大 → 相邻块高差越明显、崖线越陡）。 */
     static final double FAULT_BLOCK_FREQ = 2.5;
@@ -158,8 +166,8 @@ public final class TectonicDeformation {
         // 且因用世界坐标，跨板块边界完全连续。
         double mask = segmentMask(wx, wz);
 
-        double fold = cw * foldOffset(s, wx, wz, mask);                          // 褶皱仅挤压环境
-        double fault = (cw * 0.6 + dw * 1.0) * faultOffsetUnit(s, wx, wz, mask); // 逆断层弱于正断层
+        double fold = cw * foldOffset(wx, wz, mask);                          // 褶皱仅挤压环境
+        double fault = (cw * 0.6 + dw * 1.0) * faultOffsetUnit(wx, wz, mask); // 逆断层弱于正断层
         return fold + fault;
     }
 
@@ -185,13 +193,28 @@ public final class TectonicDeformation {
      * <p>相位沿走向扰动（{@link #alongFaultCoord}），使褶皱轴<b>非严格平行</b>
      * （真实褶皱轴有起伏、呈波状），避免出现"人工平行线"的观感。
      */
-    private double foldOffset(TectonicField.Sample s, double wx, double wz, double mask) {
-        double reach = FOLD_REACH;
-        double d = s.dist();
-        if (d >= reach) return 0.0;
-
-        // ★ 世界坐标构造带掩码 × 大幅放宽的 decay（后者在带内≈常数 → 不印多边形）
-        double decay = decay(d, reach) * beltMask(wx, wz);
+    private double foldOffset(double wx, double wz, double mask) {
+        // ★★★ 2026-09-14：<b>移除最后一个 {@code decay(dist)}</b>（CHANGELOG 遗留项）★★★
+        //
+        //   【为何必须移除】{@code dist = (d2−d1)/2} 的等值线是<b>平行于 Voronoi 边的
+        //   多边形</b>（直边 + 折角）。任何 {@code dist} 的函数都会把这套多边形
+        //   "印"到地形上 —— 这正是上一轮修完扇形射线后<b>残留的"淡淡多边形棱面"</b>
+        //   （{@code comp_deform.png} 可见）的唯一来源。同文件 {@link #beltMask}
+        //   的长注释已论证："要彻底消除，只能<b>不使用 dist</b>"。
+        //
+        //   【现定位方式】仅用世界坐标构造带掩码 {@link #beltMask}（阈值化低频噪声
+        //   ⇒ 有机弯曲的带体，处处 C¹）。地质语义不变（形变仍集中在活动带内），
+        //   但<b>带体形状与 Voronoi 无关</b>。
+        //
+        //   【为何早退也一并去掉】原 {@code if (d >= reach) return 0.0;} 本身也是
+        //   <b>沿 {@code dist=reach} 多边形的硬截断</b>（同一类伪影）。现在归零边界
+        //   交给 beltMask 自身的 smoothstep —— 掩码为 0 处自然为 0，无需 dist 判断。
+        //
+        //   【负作用评估】幅度gating 仍有三重：beltMask（带体）× segmentMask（弧段）
+        //   × {@code smoothPos(stress)}（应力，来自 T1 的连续场）。故移除 decay
+        //   <b>不会</b>让形变泄漏到板块内部（那里 stress≈0 ⇒ 自然为 0）。
+        double belt = beltMask(wx, wz);
+        if (belt <= 0.0) return 0.0;                    // 带外恒 0（按掩码归零）
         // ★★★ 2026-09-12 第三次回归修复（用户反馈"若干条平行带"，且"更明显了"）★★★
         //
         //   原实现：wave = sin(dist·2π/λ) —— 相位是 dist 的函数
@@ -202,8 +225,7 @@ public final class TectonicDeformation {
         //
         //   现改为：【纯世界坐标噪声】直接给出起伏。
         //   · 与边界法向无关 → 数学上不可能产生"平行于边界"的带；
-        //   · 全局连续、无 per-cell 依赖 → 不会"每块各自生成"；
-        //   · dist 仅经 decay 控制作用范围（不参与噪声坐标）。
+        //   · 全局连续、无 per-cell 依赖 → 不会"每块各自生成"。
         //   ridged 形式（1-|n|）使背斜成脊、向斜成谷，符合褶皱的地貌表现。
         double n = valueNoise(wx / FOLD_WAVELENGTH, wz / FOLD_WAVELENGTH, SALT_FOLD);
         double n2 = valueNoise(wx / (FOLD_WAVELENGTH * 2.1) + 13.7,
@@ -217,7 +239,7 @@ public final class TectonicDeformation {
                            - FOLD_RIDGE_ROUND) / FOLD_RIDGE_NORM;   // ∈[0,1]，归一化保值域
         double ridge = 1.0 - roundAbs;                       // ∈[0,1]，折痕已圆化
         double wave = ridge * 2.0 - 1.0;                     // 中心化 → 近零均值
-        return FOLD_AMP * wave * decay * mask;
+        return FOLD_AMP * wave * belt * mask;                // ★ 已无 decay（见上方说明）
     }
 
     /**
@@ -250,13 +272,11 @@ public final class TectonicDeformation {
      * "密集波浪状平行细线"（用户第四次反馈的直接根因，实测 {@code comp_deform.png}
      * 可见同心环）。这与本项目两次否决 Terrace 的「环状台阶伪影」同源。</p>
      */
-    private double faultOffsetUnit(TectonicField.Sample s, double wx, double wz, double mask) {
-        double reach = FAULT_REACH;
-        double d = s.dist();
-        if (d >= reach) return 0.0;
-
-        // ★ 同上：世界坐标构造带掩码取代对 dist 的形状依赖
-        double decay = decay(d, reach) * beltMask(wx, wz);
+    private double faultOffsetUnit(double wx, double wz, double mask) {
+        // ★ 2026-09-14：与 {@link #foldOffset} 同批移除 {@code decay(dist)} 与早退
+        //   （理由与负作用评估见该方法的注释）。定位仅由世界坐标 {@link #beltMask} 给出。
+        double belt = beltMask(wx, wz);
+        if (belt <= 0.0) return 0.0;                    // 带外恒 0（按掩码归零）
         // ★ 2026-09-12 修复（"每块独立生成"）：断块判据改用【世界坐标】噪声，
         //   不再用 per-cell 的 alongCoord。
         //   原用 floor(along/spacing) → 相邻板块 block 基准不同 → 边界两侧断块错位
@@ -271,7 +291,8 @@ public final class TectonicDeformation {
         //   "密集波浪状平行细线"（实测 {@code comp_deform.png} 直接可见同心环）。
         //   这与本项目<b>两次否决 Terrace</b> 的「环状台阶伪影」<b>完全同源</b>
         //   （证据链见 {@code TerrainParams.plateauSteps} 注释）。
-        //   （同图里那些<b>笔直多边形边</b>则来自 {@code decay} 的硬截断与 mask 边界。）
+        //   （同图里那些<b>笔直多边形边</b>则来自 {@code decay} 的硬截断与 mask 边界。
+        //     ★ 2026-09-14：decay 硬截断<b>已移除</b>，该来源不复存在。）
         //
         //   【正解】不做值域量化，改为<b>跨越断层线的单条平滑 sigmoid</b>：
         //   取噪声的<b>零等值线</b>作为断层线（{@code fN=0}），只在它两侧做一次
@@ -285,7 +306,7 @@ public final class TectonicDeformation {
         t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
         double scarp = t * t * (3.0 - 2.0 * t);      // smoothstep：0 → 1（C¹）
         double slipBlk = scarp * 2.0 - 1.0;          // 中心化 → [-1,1]，近零均值
-        return FAULT_AMP * (slip * 0.5 + slipBlk * 0.5) * decay * mask;
+        return FAULT_AMP * (slip * 0.5 + slipBlk * 0.5) * belt * mask;   // ★ 已无 decay
     }
 
     /**
@@ -355,12 +376,41 @@ public final class TectonicDeformation {
      */
     private static final double BELT_BIAS = 0.10;
 
-    /** 平滑衰减：边界处 1，reach 处 0（一阶导为 0，无硬边界）。 */
-    private static double decay(double d, double reach) {
-        double t = 1.0 - d / reach;
-        if (t <= 0.0) return 0.0;
-        return t * t * (3.0 - 2.0 * t);   // smoothstep
+    /**
+     * 构造带掩码的公开查询（★ 2026-09-14 新增，<b>供诊断探针做结构性判据</b>）。
+     *
+     * <h3>为何需要公开</h3>
+     * <p>移除 {@code decay(dist)} 后，"形变范围"不再由 {@code dist} 决定，
+     * 而是由本掩码决定。于是探针不能再像旧版那样用
+     * 「{@code dist > REACH} ⇒ 应为 0」来判断范围有限
+     * （该判据绑定的是<b>已删除的机制</b>）。</p>
+     *
+     * <p>正确的新判据是<b>结构性</b>的：<b>掩码为 0 处形变必须恒为 0</b>。
+     * 本方法暴露掩码值，使探针能精确验证这条不变量
+     * （{@code TectonicDeformProbe[5]}）。</p>
+     *
+     * <p>这也是 CHANGELOG 所要求的口径 —— 判据改为"按掩码归零"，
+     * 而<b>不是</b>为让 CI 变绿而放宽阈值。</p>
+     */
+    public double beltMaskAt(double wx, double wz) {
+        return beltMask(wx, wz);
     }
+
+    // ★ 2026-09-14：{@code decay(d, reach)} 已<b>删除</b>（CHANGELOG 遗留项，本轮完成）。
+    //
+    //   它是本类最后一个 {@code dist} 的函数 —— 而 {@code dist} 的等值线是
+    //   <b>平行于 Voronoi 边的多边形</b>，故它一直在把多边形"印"到地形上
+    //   （用户多次反馈的"直线射线/竖带"的残留形态：{@code comp_deform.png} 里
+    //   那层<b>淡淡的多边形棱面</b>）。
+    //
+    //   现在<b>全类不再有任何 {@code dist} 参与形变幅度</b>：
+    //     · 定位 → {@link #beltMask}（世界坐标阈值化噪声，有机弯曲）
+    //     · 分段 → {@link #segmentMask}（世界坐标，C¹）
+    //     · 强度 → {@code smoothPos(stress)}（T1 的连续场）
+    //   ⇒ 几何上不可能再产生"贴合板块多边形"的形状。
+    //
+    //   ⚠️ 勿因"形变似乎扩散了"而改回 decay：真正的范围控制由 beltMask 承担；
+    //   板块内部 stress≈0 ⇒ 形变自然为 0（见 {@link #foldOffset} 的负作用评估）。
 
     // ★ 2026-09-12：已移除 alongFaultCoord（曾用 per-cell 的 alongCoord）。
     //   它是"地形每块各自独立生成"的根因——per-cell 相对坐标使相邻板块的

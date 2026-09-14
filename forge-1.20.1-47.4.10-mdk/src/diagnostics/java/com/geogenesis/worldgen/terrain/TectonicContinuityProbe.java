@@ -97,20 +97,26 @@ public final class TectonicContinuityProbe {
         // ================= [2] 形变偏移连续性 =================
         //   合法的"跳变"只应出现在断层块边界（floor(dist) 阶跃处）。
         //   统计：跳变次数 与 块边界穿越次数 是否匹配；有无"无理由"的跳变。
-        //   ★ 只统计【作用距离内】的跳变：T5 形变在 reach 外严格为 0，
+        //   ★ 只统计【构造带内】的跳变：T5 形变在带外严格为 0（beltMask=0），
         //   故远处的 dist/切向不连续【不影响地形】，不应计入伪影。
         //   （初版统计全域，把"远离边界处配对切换"也算进来，会夸大问题。）
-        final double REACH = 900.0;   // = TectonicDeformation.FOLD_REACH（最远作用距离）
+        //
+        //   ★ 2026-09-14：筛选条件由 {@code dist < REACH(=900)} 改为
+        //   <b>beltMaskAt > 0</b>。原因：decay(dist) 已移除，形变范围不再由 dist
+        //   决定，而是由世界坐标掩码决定 ⇒ 用 dist 筛选已无法对应真实作用范围。
+        //   本探针关注的仍是「两次采样都在作用范围内」的相邻点。
         double maxOffJump = 0;
         int offJumps = 0, n2 = 0;
         for (double z0 = -8000; z0 <= 8000; z0 += 1237) {
-            double prevOff = Double.NaN, prevDist = Double.NaN;
+            double prevOff = Double.NaN;
+            boolean prevInBelt = false;
             for (double x = -8000; x <= 8000; x += 1.0) {
+                boolean inBelt = td.beltMaskAt(x, z0) > 0.0;
                 TectonicField.Sample s = tf.sample(x, z0);
                 double off = td.offset(s, x, z0);
                 if (!Double.isNaN(prevOff)) {
-                    // 仅当【当前与上一点都在作用范围内】时才考察
-                    if (s.dist() < REACH && prevDist < REACH) {
+                    // 仅当【当前与上一点都在构造带内】时才考察
+                    if (inBelt && prevInBelt) {
                         n2++;
                         // ★ 2026-09-12：产品已不再按 floor(dist/spacing) 分块
                         //   （改为世界坐标量化），"块边界"判据不再适用。
@@ -123,10 +129,10 @@ public final class TectonicContinuityProbe {
                         }
                     }
                 }
-                prevOff = off; prevDist = s.dist();
+                prevOff = off; prevInBelt = inBelt;
             }
         }
-        System.out.printf("[2] 形变偏移(作用距离内 n=%d): 跳变(>%.3fe)=%d  最大=%.4fe%n",
+        System.out.printf("[2] 形变偏移(构造带内 n=%d): 跳变(>%.3fe)=%d  最大=%.4fe%n",
             n2, OFFSET_JUMP_EPS, offJumps, maxOffJump);
         System.out.printf("    （合法断层崖量级 FAULT_AMP=%.3f e）%n", TectonicDeformation.FAULT_AMP);
         // 判据：跳变必须可归因于【合法断层崖】——即最大跳变不超过
