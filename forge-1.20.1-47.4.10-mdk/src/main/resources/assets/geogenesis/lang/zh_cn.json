@@ -76,7 +76,7 @@
   "geogenesis.terrain_type.PLATEAU": "高原",
   "geogenesis.terrain_type.MOUNTAINS": "山脉",
   "geogenesis.terrain_type.PEAK": "山峰",
-  "geogenesis.terrain_type.BASIN": "盆地",
+  "geogenesis.terrain_type.BASIN": "盆地/裂谷",
   "geogenesis.terrain_type.SNOW": "雪",
   "geogenesis.terrain_type.CONTINENTAL_SHELF": "陆架",
   "geogenesis.terrain_type.SUBMARINE_RIDGE": "洋中脊",

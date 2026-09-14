@@ -1,6 +1,7 @@
 package com.geogenesis.worldgen.climate;
 
 import com.geogenesis.worldgen.terrain.Cell;
+import com.geogenesis.worldgen.terrain.RockType;
 import com.geogenesis.worldgen.terrain.TerrainClass;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -190,8 +191,13 @@ public final class BiomeClassifier {
             case SUBALPINE -> wt.isCold() ? Biomes.GROVE : Biomes.MEADOW;
             // 变体用「抖动后的地形类型」：地形类型边界是 Voronoi 直线段，
             // 直接用 terrainType 会让群系边界沿直线走（用户实测的长直线）。
-            case LOWLAND   -> landVariant(riverOasis(cell, lowlandBiome(wt)),
-                cell.variantTerrain != null ? cell.variantTerrain : cell.terrainType);
+            //
+            // ★ 2026-09-14 Phase T12：管道末端追加【成土母质变体】（地质 → 群系）。
+            //   管道顺序 = 基础气候群系 → 河流绿洲 → 地形形态变体 → 岩性变体
+            //   （岩性放最后：它是"在既定气候与形态之上的母质修正"，语义上最外层）。
+            case LOWLAND   -> soilVariant(cell,
+                landVariant(riverOasis(cell, lowlandBiome(wt)),
+                    cell.variantTerrain != null ? cell.variantTerrain : cell.terrainType));
         };
     }
 
@@ -262,6 +268,62 @@ public final class BiomeClassifier {
             // （曾无条件 yield MEADOW → 雨林/草原旁边凭空出现草甸）
             case BASIN -> base.equals(Biomes.DESERT) ? Biomes.DESERT : base;
             default -> base;
+        };
+    }
+
+    /**
+     * ★ 2026-09-14 Phase T12：<b>成土母质对群系的变体修正</b>（岩性 → 群系耦合）。
+     *
+     * <h3>地学依据（真实的岩性 → 土壤 → 植被链）</h3>
+     * <p>岩性经风化形成土壤，土壤的<b>化学性质与养分供给</b>决定植被类型：</p>
+     * <ul>
+     *   <li><b>钙质土</b>（石灰岩）与<b>火山土</b>（玄武岩/安山岩）：肥沃、排水好
+     *       ⇒ 高生产力草本/疏林。真实对应：欧洲钙质草地、爪哇火山土农业带。</li>
+     *   <li><b>酸性土</b>（花岗岩/片麻岩/片岩）：硅铝质难风化、养分贫
+     *       ⇒ 抑制多数阔叶树，利于<b>先锋树种</b>（桦木是贫瘠酸性土的经典先锋）。</li>
+     *   <li><b>中性</b>（砂岩粗粒透水、页岩黏重）：无明确单向倾向 ⇒ 不变（保持基础群系）。</li>
+     * </ul>
+     *
+     * <h3>★★★ 铁律：变体不得引入【新的】气候邻接对 ★★★</h3>
+     * <p>本项目已有血的教训：曾有一条 {@code SPARSE_JUNGLE → JUNGLE}（高原季雨林"升级"），
+     * 使雨林与稀树草原直接贴边 → 用户实测「热带草原旁边就是丛林」。
+     *
+     * <p>故本方法<b>只使用 {@link #landVariant} 已经确立的合法映射</b>，不新增任何邻接对：</p>
+     * <table border="1">
+     *   <caption>岩性 → 群系映射表（全部复用既有合法对）</caption>
+     *   <tr><th>成土性质</th><th>基础群系</th><th>目标群系</th><th>来源</th></tr>
+     *   <tr><td>CALCAREOUS（石灰岩/火山岩）</td><td>PLAINS</td><td>MEADOW</td>
+     *       <td>= {@code landVariant} 的 "PLAINS→MEADOW（高原草甸）"</td></tr>
+     *   <tr><td>ACIDIC（花岗岩/片麻岩/片岩）</td><td>FOREST</td><td>BIRCH_FOREST</td>
+     *       <td>= {@code landVariant} 的 "FOREST→BIRCH_FOREST"</td></tr>
+     * </table>
+     *
+     * <p>两对均为<b>气候等价</b>（同一 Whittaker 群区内的植被变体）⇒
+     * 结构上不可能产生生态上不可能的相邻。这也是本方法只有两条规则、
+     * 而非把 8 种岩性 × 10 种群区全铺满的原因。</p>
+     *
+     * <h3>为何用 PLATEAU 语义的 MEADOW / BIRCH_FOREST 表达岩性</h3>
+     * <p>原版 MC 群系集里没有"钙质草地"专属群系，只能复用<b>最接近的现成群系</b>。
+     * MEADOW（草甸）与 BIRCH_FOREST（桦木林）在观感上恰好对应
+     * "开敞草花 + 稀疏桦树"——正是钙质土与酸性土的典型植被。
+     * 宁可复用也不新增自定义群系（后者会大幅扩大改动面并需注册资源）。</p>
+     *
+     * @param cell 已含 {@code rockTypeId} 与 {@code oasisNoise}（{@code sampleCore} 中填充）
+     * @param base 已过"绿洲 + 地形形态"修正的群系
+     * @return 施加母质修正后的群系（未触发 / 无映射时原样返回）
+     */
+    private static ResourceKey<Biome> soilVariant(Cell cell, ResourceKey<Biome> base) {
+        int id = cell.rockTypeId;
+        if (id < 0 || id >= RockType.values().length) return base;   // 越界（STRATA 未启用/退化）→ 不改
+        SoilInfluence.SoilCharacter ch = SoilInfluence.of(RockType.values()[id]);
+        // 噪声门控：使切换成"有机斑块"，且强度 0 时永不触发（可回滚）
+        if (!SoilInfluence.triggers(ch, cell.oasisNoise, SoilInfluence.STRENGTH)) return base;
+        return switch (ch) {
+            // 钙质/肥沃 → 开敞草甸（PLAINS → MEADOW，既有合法对）
+            case CALCAREOUS -> base.equals(Biomes.PLAINS) ? Biomes.MEADOW : base;
+            // 酸性/贫瘠 → 先锋桦木林（FOREST → BIRCH_FOREST，既有合法对）
+            case ACIDIC     -> base.equals(Biomes.FOREST) ? Biomes.BIRCH_FOREST : base;
+            case NEUTRAL    -> base;
         };
     }
 

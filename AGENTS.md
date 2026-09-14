@@ -25,7 +25,8 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `GeoGenesisGenerator.java` | 主生成器，`fillFromNoise` 是地形产线入口；`createState` 注入共享地形到 BiomeSource |
 | `GeoGenesisBiomeSource.java` | BiomeSource，按 Cell 气候选原版群系 |
 | ~~`worldgen/generator/BiomeMapper.java`~~ | ⚠️ 已删除（2026-07-13）：群系映射合并入 `BiomeClassifier.pickKey`，不再有独立文件 |
-| `worldgen/climate/BiomeClassifier.java` | 零依赖群系分类（`classify(Cell)→BiomeClass` 枚举，无颜色） |
+| `worldgen/climate/BiomeClassifier.java` | 零依赖群系分类（`classify(Cell)→BiomeClass` 枚举，无颜色）；★ T12 起 `soilVariant` 做「岩性→群系」变体 |
+| `worldgen/climate/SoilInfluence.java` | ★ 2026-09-14 T12：成土母质（岩性→土壤性质）+ 噪声门控；**零 MC 依赖纯函数**（可在无引导探针中测试） |
 | `worldgen/climate/ClimateZone.java` | 零依赖 Köppen 简版气候带（A/B/C/D/E） |
 | `worldgen/climate/Latitude.java` | 零依赖纬度带 `latitude01(worldZ)` |
 | `client/preview/ColorMap.java` | 零依赖连续色带（Lab 插值 + bake LUT），不 import MC |
@@ -167,7 +168,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 > 因为它们测"幅度/各向异性"，测不出"值域量化/配对阶跃"。**判定伪影的最终依据只能是渲染图**。
 >
 > **⚠️ 改动地形产出必须升 `PreviewDisplay.CACHE_SCHEMA_VERSION`**，否则预览**静默复用旧磁盘缓存**
-> → 表现为"改了没生效"（当前 **44**）。
+> → 表现为"改了没生效"（当前 **67**；历次因折叠/blurDist/stress、岩性硬度量化、河网并行、构造放大、盆地抬升、地质→群系耦合等产出变更递增）。
 
 注册流程: `GeoGenesisMod` 构造器中用 `DeferredRegister<Codec<? extends ChunkGenerator>>`（注册到 `Registries.CHUNK_GENERATOR`）注册 `GeoGenesisGenerator.CODEC`，同理 `BIOME_SOURCE` 注册 `GeoGenesisBiomeSource.CODEC`，并 `register(bus)` 到 MOD 总线。
 
@@ -182,6 +183,34 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **河流**：`RiverLineNetwork.sampleAll` 按 **region(640wu) + margin** 纯函数缓存，合并 3×3 邻 region → 跨 region 结构性无缝；水面为 PAVA 加权单调反推。（RTF `sampleRiver` / `REGION=512` 已作废）
 - **游戏雕刻路径**：`GeoGenesisTerrain.generateChunk` 内 `extractFromTile`（侵蚀 delta）+ `applyHydrologyValley`（水文雕刻，**回写 `cell.height`**，预览/落块一致）；`fillFromNoise` 只按 `waterSurfaceY` 灌水判定。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)`，高度/河流/湖泊/气候由引擎确定性产出。
+
+## 当前工作焦点（2026-09-14 构造地貌可见化 + 碎石坡归位 + 盆地抬离海平面 + 地质→群系耦合）
+
+用户三问：①「构造地貌（断层崖/地垒/地堑）看不到？」②「靠海出现盆地？」③「碎石堆怎么在山脊上？」
+
+- **① 构造地貌"看不见" → 真因是信噪比，不是没接**（⚠️ 交接总结曾写"构造场只在岩层数据层、未暴露地表"，**与代码不符**）：
+  - `CellGenerator:377-379` 的 `DEFORM_ENABLED=true` + `eLand += deform.offset(...)` **早已接入**（`sampleCore` 与 `extractTile` 两处）。
+  - 实测（新探针 `runDeformVisibilityProbe`，镜像 vs 生产 **0/4000 不一致** 逐位自检通过）：改前 deform **均值仅 0.29 块 / 覆盖率 41%**，而 eLand 全域跨 158 块 ⇒ 信噪比 3.7%，肉眼不可辨。
+  - 修法：`FAULT_AMP 0.045→0.090`、`SCARP_HALF_WIDTH 0.30→0.18`、新增 `BELT_BIAS=+0.10`（带覆盖率 41%→49%）。**褶皱 `FOLD_AMP` 刻意不动** —— 渲染图证实高幅褶皱的 ridged 结构呈**蠕虫状波浪细线**（与「密集波浪状平行细线」伪影同源），断层崖才是地垒/地堑的视觉主体。
+  - ⚠️ **关键教训：单提幅度无效** —— 实测 amp×2 时 `max|∇h|` **1.88→1.88 完全不变**（崖宽 20~40wu 把 9 块落差摊平，坡度仅 ~0.25）。**必须同时收窄崖宽**才能形成可辨崖线。
+  - 结果：断层崖最大梯度 **0.002517→0.008275（3.3×）**、均值 0.29→**0.64 块**、p99 3.59→6.56 块。
+- **② 「靠海盆地」→ 是"高度区间骑在海平面线上"，不是坐标 bug**：`SplineConfig` BASIN `hi=0.02 e` 仅海平面上 3.8 块、`lo=-0.08 e` 在海面下 15 块 ⇒ **盆地类型定义本身贴海面**（对照 PLAIN 0.005~0.03 e 同样贴海面 ⇒ 实为"海岸低地被判为盆地"）。修法：`hi 0.02→0.05`（盆顶达海面上 9.6 块，与 PLAIN 区间错开），`lo` 保持 -0.08（保留内陆沉降洼地/裂谷成湖）。
+  - **语义澄清（重要）**：本项目 `BASIN` = **沉降洼地/裂谷**，**不要求四周环山**。经核查三个参考项目（worldgen / FreeTerraForged / RTG）**也都没有**"环山"判据（RTG 的 `VoronoiBasinEffect` 只是距心形态、worldgen 的 basin 是河流流域）。图例已正名为「盆地/裂谷」「Basin/Rift」（`zh_cn.json` / `en_us.json` / `GeoPalette` 内置英文回退三处同步）。
+  - **为何不做"环山"判据**：它必须邻域采样，而邻域量（如 `gradient`）**只在完整管线有**、`sampleCellLight` 拿不到 ⇒ 会造出**预览≠游戏**且是 spawn search 热路径的性能雷（项目反复踩过的坑）。
+- **③ 碎石坡在山脊 → 判据缺"凹凸"维度（真缺陷）**：`cell.gradient = √(dhx²+dhz²)` **恒为正** ⇒ 山脊坡面与沟谷侧壁数值相同，一起被判碎石坡。而真实 talus 是重力碎屑在**凹坡坡脚**堆积（脊是凸地形、碎屑滚落）。
+  - 修法：判定改为「陡 **且** `cell.riverNetDischarge ≥ SCREE_DISCHARGE_MIN × erosionDropsMul`」。**选 discharge 的理由**：物理正确（汇流累积=收敛度，沟高脊低）、**零额外采样**（字段已存在）、**不产生路径分歧**（它与 `gradient` **同源**，都只在完整管线 `applyTileDelta` 填充 ⇒ "轻量路径不判碎石"是一致行为）。
+  - 实测（新探针 `runScreePlacementProbe`）：**AUC=0.845**（强判别力）；门控 `D=2.31` ⇒ **脊保留 24.9%、沟保留 77.9%**。
+  - ⚠️ **阈值必须按 `erosionDropsMul` 缩放**：discharge 是液滴计数，总量随配置液滴倍率线性变化；用绝对常数会使倍率 2× 时门控形同失效。
+- **④ 地质→群系耦合（Phase T12，用户"地质和群系有关系吧？"）**：`BiomeClassifier` 此前**完全没接**地质（搜 `rock|strata|tectonic` **0 匹配**）。
+  - **★ 参考项目调研结论：两个项目都没做**。FTG 的 `CellSampler.Field.SEDIMENT` 只进**地形密度函数**（不接群系轴）、`StrataRule` 只作用于**地表方块分层**；RTG 完全没有岩性轴。⇒ 本项是**原创扩展**，无配方可抄；可借鉴的只有 FTG 的 `WeightedBlockSelector`（权重→选择）思路。
+  - 实现：新增 `SoilInfluence`（岩性→成土性质 3 类 + 噪声门控，零 MC 依赖）＋ `BiomeClassifier.soilVariant`（**映射表在 `BiomeClassifier` 内**，因只有它持有 `Biomes.*`）。管道顺序 = 基础气候群系 → 河流绿洲 → 地形形态变体 → **岩性变体**。
+  - **★★★ 铁律：变体不得引入【新的】气候邻接对 ★★★** —— 故只做 **2 条**、且**全部复用 `landVariant` 已确立的合法对**：`LIMESTONE/BASALT/ANDESITE(CALCAREOUS) → PLAINS→MEADOW`、`GRANITE/GNEISS/SCHIST(ACIDIC) → FOREST→BIRCH_FOREST`。`SANDSTONE/SHALE(NEUTRAL)` **不变**（无可安全复用的既有对，硬造新对正是"跨气候跳变"风险源）。地学依据：钙质土/火山土肥沃→草甸；酸性贫瘠土→先锋桦木林。
+  - 门控复用 `Cell.oasisNoise`（**零新增噪声、零新增 Cell 字段**），`STRENGTH=0.50`（静态常量而非 Forge 配置，避免死配置），强度 0 时永不触发（可逐位回滚）。
+  - 实测：门控触发率 **21~28%**（设计值 30%），三随机种子稳定；`runClimateBiomeProbe` **非法邻接 0（0.0000%）**。
+- **本轮守门（全绿）**：`runTectonicDeformProbe`（断层崖 3.3×，近零均值保住）· `runTectonicWaveProbe`（**各向异性 1.137**，无平行带回归）· `runTectonicProbe` 16 项 · `runTectonicContinuityProbe` · `runLandEConformityProbe`（**跳变 0**）· `runPrecipRiverWidthProbe`（未污染水文标定）· `runTerrainShapeProbe` · `runClimateBiomeProbe` · `runPaletteProbe` · `runStratumProbe` · `runSoilBiomeCrosstabProbe`（3 种子）。
+- **★ 发现一处【预存的脆弱判据】（非本轮回归）**：`runRockErosionProbe[3]`「软岩因耦合被显著加深侵蚀」。本轮出现 FAIL，经 **git stash 基线对照 + 多种子复现** 定性：**基线在 seed=7/42 本就 FAIL**（`+0.000134` / `+0.001246`），仅 seed=12345 靠单 tile 取样巧合 PASS；且**仅 A 生效即 FAIL、与 C 无关**（已隔离验证），选中 tile 与格子分组基线与新版**完全一致**（nS=896/nH=13952）。⇒ 该判据应改为多种子聚合或扩大样本，属**独立议题**（未擅自改判据）。
+- **新增探针**：`runDeformVisibilityProbe`（镜像生产数学 + 逐位自检 + 多参数并排山体阴影/差值图，`build/deform/`）· `runScreePlacementProbe`（脊/沟 AUC + 门控模拟，`build/scree/`）· `runSoilBiomeCrosstabProbe`（受控 A/B 交叉表；⚠️ 该探针进程**无法完成 MC 引导** ⇒ 群系改写率判据跳过，**验证责任已指派**：合法性→`runClimateBiomeProbe` 的「非法邻接 0」、生效率→门控触发率；**其反射桥接不破坏"诊断源码集零 MC 依赖"纪律**）。
+- **`CACHE_SCHEMA_VERSION` 65 → 67**（66：构造放大 + 盆地抬升，改 eLand 产出；67：地质→群系耦合，改群系产出）。
 
 ## 当前工作焦点（2026-09-13 「笔直线段 + Y 形交汇」伪影根治，用户实机确认消失）
 

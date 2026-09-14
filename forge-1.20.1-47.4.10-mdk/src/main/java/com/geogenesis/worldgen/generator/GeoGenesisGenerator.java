@@ -121,6 +121,63 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     private static final float GRADIENT_JITTER = 0.06f;
 
     /**
+     * ★ 2026-09-14：碎石坡的<b>汇流下限</b>（液滴汇聚计数，已按 {@code erosionDropsMul} 归一化）。
+     *
+     * <h3>为何需要（用户反馈："碎石堆好像都在山脊上，正常不应该在山谷、山沟壑处吗？"）</h3>
+     * <p>该观察在物理上成立：真实 talus（岩屑坡）是重力碎屑在<b>凹坡坡脚</b>堆积；
+     * 脊线是凸地形，碎屑会滚落。</p>
+     *
+     * <h3>根因</h3>
+     * <p>原判据只有坡度幅值 {@code √(dhx²+dhz²)}（{@link CellGenerator} 的中心差分），
+     * 该量<b>恒为正</b> ⇒ 山脊坡面与沟谷侧壁数值相同 ⇒ 一起被判为碎石坡。
+     * <b>判据缺"凹凸"维度</b>。</p>
+     *
+     * <h3>为何用 discharge 作"凹度"代理</h3>
+     * <p>{@link com.geogenesis.worldgen.terrain.Cell#riverNetDischarge} = 液滴路径汇聚累积，
+     * 即<b>汇流累积</b> —— 沟壑/汇水区高、脊线低，正是所需的正交判据。</p>
+     * <ul>
+     *   <li><b>物理正确</b>：收敛度直接反映凹凸，无需二阶差分。</li>
+     *   <li><b>零额外采样</b>：字段已存在。</li>
+     *   <li><b>不产生路径分歧</b>：discharge 与 gradient <b>同源</b>（都只在完整管线
+     *       {@code applyTileDelta} 中填充）⇒ "轻量路径不判碎石"是一致行为，
+     *       不会引入"预览≠游戏"（本项目已为此踩坑多次）。</li>
+     * </ul>
+     *
+     * <h3>取值依据（{@code ScreePlacementProbe}，seed=12345，14×14 chunks）</h3>
+     * <pre>
+     *   陡坡像素 7747（占陆地 23.3%）：脊 811(10.5%) / 沟 679(8.8%) / 平坦 6257
+     *   discharge 中位数：脊 1.7  vs  沟 4.1（2.4×）
+     *   AUC(discharge 区分"沟&gt;脊") = 0.845   ← 强判别力
+     *   门控 D=2.31 ⇒ 脊保留 24.9%、沟保留 77.9%   ← 目标效果
+     * </pre>
+     *
+     * <p>⚠ <b>必须按 {@code erosionDropsMul} 缩放</b>：discharge 是液滴计数，
+     * 总量随配置的液滴倍率线性变化（{@code ErosionEngine.DROPS_*} × dropsMul）。
+     * 若用绝对常数，改配置后门控会整体偏移（倍率 2× 时门控形同失效）。</p>
+     */
+    private static final double SCREE_DISCHARGE_MIN = 2.3;
+
+    /**
+     * 读取当前世界的侵蚀液滴倍率（{@code erosionDropsMul}），用于归一化
+     * {@link #SCREE_DISCHARGE_MIN}。
+     *
+     * <p>与 {@code ErosionEngine} 读同一配置项 ⇒ 两边口径一致。
+     * 配置不可用时回退 1.0（与 {@code ErosionEngine} 的默认一致）。</p>
+     */
+    private static double erosionDropsMul() {
+        try {
+            GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+            if (cfg != null && cfg.erosionDropsMul != null) {
+                double v = cfg.erosionDropsMul.get();
+                return v > 0 ? v : 1.0;
+            }
+        } catch (Throwable ignored) {
+            // 服务器/测试环境无配置 → 回退默认
+        }
+        return 1.0;
+    }
+
+    /**
      * ★ 2026-09-14 Phase T9/T9b：<b>岩性 → 方块映射</b>（让地质岩性在游戏里可见）。
      *
      * <h3>为何需要（用户提问："这个岩石是虚拟岩石吗？"）</h3>
@@ -504,11 +561,21 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 top  = surfOrd >= 0 ? ROCK_BLOCKS[surfOrd] : STONE;
                 fill = top;
             }
-        } else if (steepened > SCREE_GRADIENT) {
-            // ★ 2026-09-14 T11：碎石坡（scree / talus，参考 RTF placeScree）
-            //   中等坡度段（0.25~0.40）：基岩风化碎屑堆积、植被稀疏。
+        } else if (steepened > SCREE_GRADIENT
+                && cell.riverNetDischarge >= SCREE_DISCHARGE_MIN * erosionDropsMul()) {
+            // ★ 2026-09-14 T11b：碎石坡（scree / talus，参考 RTF placeScree）
+            //   中等坡度段：基岩风化碎屑堆积、植被稀疏。
             //   用【安山岩/凝灰岩/砾石/粗泥】加权混合 ⇒ 与周围草地自然过渡，
             //   不会形成突兀的大片"石海"（此前该坡段直接是草/土，山地过渡生硬）。
+            //
+            //   ★ 2026-09-14 修复（用户反馈"碎石堆好像都在山脊上"）：
+            //     原判据【只有坡度】⇒ √(dhx²+dhz²) 恒为正，山脊坡面与沟谷侧壁
+            //     数值相同 ⇒ 脊上也出碎石（物理错误：碎屑会从凸脊滚落）。
+            //     现加【汇流门控】riverNetDischarge ≥ 阈值：
+            //       discharge = 液滴汇流累积 ⇒ 沟壑/坡脚高、脊线低，即"凹凸"代理。
+            //     实测 AUC=0.845，D=2.31 时脊保留 24.9%、沟保留 77.9%
+            //     （见 SCREE_DISCHARGE_MIN 的完整依据）。
+            //     未达汇流阈值的陡坡（脊线）落入下方 else 分支 ⇒ 走群系/岩性常规材质。
             top  = screeBlock(wx, wz);
             fill = top;
         } else {

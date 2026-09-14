@@ -374,7 +374,17 @@ public class PreviewDisplay extends AbstractWidget {
     //      · routingE / groundYAt 加坐标级缓存（纯函数 ⇒ 逐位一致）
     //      实测首 chunk 1996ms → 1327ms；e/gy 缓存均随 seed 失效，产出不变
     //      （CACHE 版本仅在产地形确实变化时才需升；本项为等价重构，用 65 保守失效一次）
-    private static final int CACHE_SCHEMA_VERSION = 65;
+    // 66 = 2026-09-14 ★ 构造地貌可见化 + 盆地抬离海平面（用户"构造地貌看不到""靠海出现盆地"）
+    //      · TectonicDeformation.FAULT_AMP 0.045→0.090、SCARP_HALF_WIDTH 0.30→0.18、
+    //        beltMask 偏置 +0.10（构造带覆盖率 ~35%→48%）⇒ eLand 产出变化
+    //      · SplineConfig BASIN hi 0.02→0.05（盆顶抬到海平面上 9.6 块）⇒ 地形产出变化
+    //      （碎石坡汇流门控只改方块材质，不改 e/高度，但其判定读 Cell ⇒ 缓存需同批失效）
+    // 67 = 2026-09-14 ★ 地质→群系耦合（Phase T12，用户"地质和群系有关系吧？"）
+    //      · BiomeClassifier.pickLandKey 的 LOWLAND 管道末端追加 soilVariant
+    //        （成土母质变体：钙质土→MEADOW、酸性土→BIRCH_FOREST，噪声门控 30% 覆盖率）
+    //      · 群系产出变化 ⇒ 预览 BIOME 图层与磁盘缓存必须失效
+    //      （地形 e/高度不变，但 Cell 缓存含 biome 相关派生值）
+    private static final int CACHE_SCHEMA_VERSION = 67;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
