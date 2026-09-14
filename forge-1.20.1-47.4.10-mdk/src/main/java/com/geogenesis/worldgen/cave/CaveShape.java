@@ -123,8 +123,8 @@ public final class CaveShape {
      *
      * <p>取自扫描最优格（{@code tMul=0.7}）：{@code 0.075 × 0.7 ≈ 0.053}。</p>
      */
-    private static final double TUNNEL_T1 = 0.053;
-    private static final double TUNNEL_T2 = 0.053;
+    private static final double TUNNEL_T1 = 0.042;
+    private static final double TUNNEL_T2 = 0.042;
     /**
      * 洞室阈值：比隧道宽 ⇒ 管径更粗（成"大厅"而非细管）。
      *
@@ -137,11 +137,11 @@ public final class CaveShape {
      * <p>现改为<b>双噪声交集</b>（同隧道原理，仅尺度更大、阈值更宽）——
      * 两曲面相交只能得到<b>有限尺寸的管状体</b>，这才是真正的"洞室"。</p>
      */
-    private static final double CAVERN_T1 = 0.091;         // 0.13 × 0.7
-    private static final double CAVERN_T2 = 0.091;
+    private static final double CAVERN_T1 = 0.073;         // 0.13 × 0.56
+    private static final double CAVERN_T2 = 0.073;
     /** 孔洞阈值：双噪声交集，高频、细 ⇒ 小孔不连片。 */
-    private static final double CHEESE_T1 = 0.039;         // 0.055 × 0.7
-    private static final double CHEESE_T2 = 0.039;
+    private static final double CHEESE_T1 = 0.031;         // 0.055 × 0.56
+    private static final double CHEESE_T2 = 0.031;
 
     /**
      * ★★ Y 方向各向异性缩放（"隧道趋向水平"的关键旋钮）。
@@ -176,9 +176,13 @@ public final class CaveShape {
      * <p>⚠ 这组值是<b>网格扫描 + 3 种子取最差</b>得到的，不是单点试出来的 ——
      * 单点试参曾陷入"修好 seed=7 又坏 seed=12345"的循环（实测）。</p>
      */
-    private static final double TUNNEL_Y_SCALE = 7.0;      // = 基准 2.0 × 3.5
-    private static final double CAVERN_Y_SCALE = 7.0;
-    private static final double CHEESE_Y_SCALE = 5.25;     // = 1.5 × 3.5
+    //   基准值（扫描的 dbgYScaleMul 会乘在此之上）。
+    //   ⚠ 2026-09-15 第二次修正：此前写成 7.0（=2.0×3.5），把隧道压成**薄饼**，
+    //     用户实测"连高度 2 格都没有，玩家没法走"。现回到 2.0 基准，
+    //     由扫描在 [0.25,1.5] 倍（effective 0.5~3.0）内重新选定。
+    private static final double TUNNEL_Y_SCALE = 1.2;      // = 基准 2.0 × 0.6
+    private static final double CAVERN_Y_SCALE = 1.2;
+    private static final double CHEESE_Y_SCALE = 0.9;      // = 1.5 × 0.6
 
     /** 洞穴带在 Y 上的范围（相对地表）：太浅会破地表，太深无意义。 */
     private static final int DEPTH_MIN = 8;      // 距地表至少 8 块（配合 SURFACE_LID）
