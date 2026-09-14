@@ -388,7 +388,12 @@ public class PreviewDisplay extends AbstractWidget {
     //      · foldOffset / faultOffsetUnit 不再乘 decay，定位仅由 beltMask 决定
     //      · 消除"贴合板块多边形"的形状来源（残留"淡淡多边形棱面"）
     //      · eLand 产出变化（形变略增：均值 0.64→0.67 块、p99 6.56→7.07 块）
-    private static final int CACHE_SCHEMA_VERSION = 68;
+    // 69 = 2026-09-14 ★ 峡谷（大峡谷式）：高原深谷的谷壁跨度收窄
+    //      · HydrologyBlockCarver 在岸高 h≥canyonMinBank 的河段收窄谷壁跨度
+    //        （bankSlopeRun 1.5→0.40、bankFactor 2.5→1.6）⇒ 陡壁
+    //      · **水面完全不动** ⇒ 水文标定零影响（FlowAccum/WaterFill 实测逐位一致）
+    //      · 雕刻产出变化 ⇒ 旧预览缓存必须失效
+    private static final int CACHE_SCHEMA_VERSION = 69;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

@@ -861,6 +861,18 @@ task runTerrainGrainProbe(type: JavaExec) {
     }
 }
 
+// Canyon profile probe (2026-09-14): 峡谷（大峡谷式）剖面诊断 ——
+//   先实测现状（岸高 → 谷壁坡度分布）+ 渲染对照图，再定峡谷参数。
+//   gradlew runCanyonProfileProbe [-PprobeArgs="seed hs chunksPerSide"]
+task runCanyonProfileProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.CanyonProfileProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Soil→biome crosstab probe (2026-09-14, Phase T12): 成土母质 × 群系 交叉表 ——
 //   受控 A/B（同点只切耦合）量化岩性→群系耦合的实际生效率与映射合法性。
 //   gradlew runSoilBiomeCrosstabProbe [-PprobeArgs="seed size step"]

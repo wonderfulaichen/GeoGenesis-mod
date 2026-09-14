@@ -9,7 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> 构造地貌可见化 + 地表细节归位 + 地质→群系耦合 + T5 技术债清理轮（2026-09-14）。
+> 构造地貌可见化 + 地表细节归位 + 地质→群系耦合 + T5 技术债清理 + 峡谷（2026-09-14）。
+
+### 新增 / Added
+
+- **峡谷（大峡谷式地貌）**：用户请求"大峡谷式"。**先实测再定参**（项目铁律）——新增 `runCanyonProfileProbe` 量化现状后发现：
+  - **缺口不是"陡"而是"宽"**：谷壁带内最大岸高 22.6 格，且 h≥20 的深谷**平均坡度已达 1.22（≈51°）**；但**典型河谷被 `bankFactor`(2.5×半宽) 与 `bankRunMax`(24) 双重托底** ⇒ h=20 的河谷跨度也达 ~24 格 ⇒ 坡度仅 ~0.9，渲染图直接可见是**宽缓河谷**而非峡谷。
+  - **做法（只改横向跨度，不改深度/水面）**：新增 `RiverLineParams` 的 4 个峡谷参数（`canyonMinBank=8` / `canyonFullBank=20` / `canyonSlopeRun=0.40` / `canyonWallFactor=1.6`），`HydrologyBlockCarver` 按**岸高 h = 原地形 − 计划水面**做 smoothstep 门控，在深谷段把谷壁跨度收窄 ⇒ 同样的落差压缩到更窄横向距离 = **陡壁**。
+  - **关键取舍：水面完全不动**。峡谷是"高原保留 + 河谷横向收窄"，河流纵剖面（PAVA）零改动 ⇒ **不污染水文标定**。实测 `runFlowAccumProbe` 的 `border.maxSurfaceDelta=1.391` / `fillWater=403716` / `hitColumns=4159038` 与改动前**逐位一致**（正是预期：只改谷壁几何）。
+  - **为何用岸高而非地形类型做门控**：岸高在雕刻阶段**免费可得**（{@code original} 与 {@code carveSurfaceY} 都是入参），无需额外 `sample()`（那要带上气候/分类且拖慢雕刻热路径）；而"河谷深度"本就是峡谷的物理定义。
+  - **A/B 验证**（项目铁律：最终依据只能是渲染图）：临时把 `canyonMinBank` 置 999（关闭峡谷）跑基线并保存图，与开启版对比 —— **图像 MD5 不同**（`5026D7…` vs `E85729…`），确认改动真正生效（非"改了没生效"的静默失败）。
+  - **量化效果**：陡坡（坡度>1）占比 —— h∈[15,20) **19.3% → 37.6%**、h∈[10,15) **3.4% → 6.9%**。
+  - **守门全绿**：`runValleySeamProbe` **PASS**（雕刻诱发谷壁断层 **0**，最大 1.8 格 —— 最相关守门）· `runFlowAccumProbe` `status=PASS` · `runHydrologyWaterFillProbe` PASS · `runPrecipRiverWidthProbe` PASS。
+  - **⚠️ 已知限度（如实记录）**：峡谷**深度**受地形高差限制（当前谷壁带内最大岸高 22.6 格）。要做 40~60 格的"宏大峡谷"，必须提高高原相对河道的高差 —— 那需要改地形场或河道纵剖面，**两者都会污染水文标定**，故本轮**不做**。
 
 ### 变更 / Changed
 
@@ -25,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TectonicContinuityProbe[2]` 筛选条件由 `dist < 900` 改为 `beltMaskAt > 0`（同上理由）。
 - `DeformVisibilityProbe` 镜像同步移除 `decay`（自检 **0/4000 不一致** 通过）；删除已无引用的 `FOLD_REACH`/`FAULT_REACH` 镜像常量。
 - 更正两处过时注释：`TectonicField` 的「dist 仅允许用于 decay」（**该结论已作废** —— decay 也已移除，形变幅度现完全不依赖 dist）。
-- `PreviewDisplay.CACHE_SCHEMA_VERSION` **67 → 68**（decay 移除改变 eLand 产出）。
+- `PreviewDisplay.CACHE_SCHEMA_VERSION` **67 → 68**（decay 移除改变 eLand 产出）→ **68 → 69**（峡谷谷壁收窄改变雕刻产出）。
+- `RiverLineParams` 新增峡谷参数 4 项（`canyonMinBank` / `canyonFullBank` / `canyonSlopeRun` / `canyonWallFactor`），并同步 `withCrossRegion` 与 `defaults()`。
 
 ### 验证 / Verified（本轮补充）
 
