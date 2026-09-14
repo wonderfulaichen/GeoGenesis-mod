@@ -233,6 +233,29 @@ public final class GeoGenesisTerrain {
         return cells;
     }
 
+    /**
+     * ★ 2026-09-15：<b>非生成</b>的 chunk Cell 查询（只 peek 缓存，miss 返回 null）。
+     *
+     * <h3>为何需要（性能实测驱动的修复）</h3>
+     * <p>{@link #getChunkCells} 在 miss 时会<b>主动触发</b> {@code generateChunk}
+     * —— 实测（{@code CavePerfProbe}）冷取 <b>avg 24.7ms、max 594ms</b>，
+     * 而热取仅 <b>0.6μs</b>（相差可达数万倍）。</p>
+     *
+     * <p>{@code applyCarvers} 雕洞穴时需要本 chunk 的地表高度与岩性，但它位于
+     * 管道<b>下游</b>（{@code fillFromNoise} → {@code applyCarvers}），按下游调用者
+     * 的正确姿势<b>不该</b>在这里触发地形生成 —— 与 {@code getBaseHeight} 的
+     * 止血（P0-1）和 {@link #sampleHeightNonBlocking} 是同一原则：
+     * <b>下游只读已就绪的数据，绝不反向触发昂贵的上游生成</b>。</p>
+     *
+     * <h3>语义（与 getChunkCells 的差别）</h3>
+     * <p>返回 {@code null} 表示"本 chunk 尚未生成"。调用方应<b>跳过</b>该 chunk
+     * （而非退回 getChunkCells）：跳过只损失洞穴（下一轮生成/相邻 chunk 仍会雕），
+     * 而触发生成会付出最高 ~600ms 的代价并可能形成"生成链"。</p>
+     */
+    public Cell[] peekChunk(int chunkX, int chunkZ) {
+        return cachedChunk(chunkX, chunkZ);
+    }
+
     /** 带埋点的 chunk 缓存查询（hit/miss 统计，P0-3）。 */
     private Cell[] cachedChunk(int chunkX, int chunkZ) {
         Cell[] cells = cache.get(pack(chunkX, chunkZ));
