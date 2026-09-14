@@ -76,7 +76,7 @@
   "geogenesis.terrain_type.PLATEAU": "Plateau",
   "geogenesis.terrain_type.MOUNTAINS": "Mountains",
   "geogenesis.terrain_type.PEAK": "Peak",
-  "geogenesis.terrain_type.BASIN": "Basin",
+  "geogenesis.terrain_type.BASIN": "Basin/Rift",
   "geogenesis.terrain_type.SNOW": "Snow",
   "geogenesis.terrain_type.CONTINENTAL_SHELF": "Continental Shelf",
   "geogenesis.terrain_type.SUBMARINE_RIDGE": "Mid-Ocean Ridge",

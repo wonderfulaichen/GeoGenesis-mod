@@ -74,8 +74,24 @@ public final class TectonicDeformation {
     static final double FOLD_REACH = 2600.0;
 
     // ===== 断层（faults）：挤压（逆断层）/ 拉张（正断层）=====
-    /** 断层垂直断距（e 单位）。 */
-    static final double FAULT_AMP = 0.045;
+    /**
+     * 断层垂直断距（e 单位）。
+     *
+     * <p>★ 2026-09-14 由 <b>0.045 → 0.090</b>（×2）—— 用户反馈"构造地貌看不到"。
+     * 实测（{@code DeformVisibilityProbe}，镜像自检 0/4000 不一致）确认
+     * {@code deform} <b>早已接入 eLand</b>，问题在<b>信噪比</b>：
+     * 均值仅 0.29 块、覆盖率 41%，而 eLand 全域跨 158 块 ⇒ 完全淹没。</p>
+     *
+     * <p><b>为何只加断层、不动褶皱</b>：渲染图（{@code shade_amp3_belt_steep.png}）
+     * 证实高幅褶皱的 ridged 结构呈<b>蠕虫状波浪细线</b> —— 与本项目明令禁止的
+     * 「密集波浪状平行细线」伪影同源（见 {@code TypeNoiseProvider.clampUnit}）。
+     * 断层崖才是"地垒/地堑"的视觉主体，故仅提升断层分量。</p>
+     *
+     * <p><b>为何必须同时收窄崖宽</b>：实测单独 ×2 时 {@code max|∇h| 1.88→1.88}
+     * （<b>完全无变化</b>）—— 因崖过渡带宽 20~40wu，9 块落差摊平后坡度仅 ~0.25，
+     * 仍是缓坡。必须配合 {@link #SCARP_HALF_WIDTH} 收窄才形成可辨崖线。</p>
+     */
+    static final double FAULT_AMP = 0.090;
     /** 断层间距（wu）：断块宽度。 */
     static final double FAULT_SPACING = 240.0;
     /** 断层带作用距离（wu）。★ 2026-09-12：700 → 2600（理由同 {@link #FOLD_REACH}）。 */
@@ -279,8 +295,13 @@ public final class TectonicDeformation {
      * 越大越平缓。取 0.30 → 过渡带占噪声值域的 60%，落在
      * {@code FAULT_SPACING}(240wu) × {@code FAULT_BLOCK_FREQ}(2.5) ≈ 96wu 的
      * 空间尺度上，崖线宽约 20~40wu，视觉上是"陡坡"而非"台阶"。</p>
+     *
+     * <p>★ 2026-09-14 由 <b>0.30 → 0.18</b> —— 配合 {@link #FAULT_AMP} ×2 让崖线可达。
+     * 过渡带宽随之从 ~60% 值域收窄到 ~36%，崖线宽约 12~24wu。
+     * 实测（{@code shade_fault2_steep.png}）呈<b>离散、不平行、不嵌套</b>的单侧亮面
+     * = 断层崖特征，非"密集平行细线"伪影。仍为 smoothstep（C¹），不产生台阶折痕。</p>
      */
-    private static final double SCARP_HALF_WIDTH = 0.30;
+    private static final double SCARP_HALF_WIDTH = 0.18;
 
     // ===== 构造带掩码（世界坐标，取代 dist 定位）=====
     /**
@@ -309,13 +330,30 @@ public final class TectonicDeformation {
      *
      * <p>故改为世界坐标带体掩码：阈值化低频噪声 ⇒ 约 30~40% 面积成为<b>有机弯曲的构造带</b>，
      * 地质语义（"形变集中在活动带内"）保留，但不再与板块多边形绑定。</p>
+     *
+     * <p>★ 2026-09-14：偏置由 0 → {@link #BELT_BIAS}（<b>+0.10</b>）—— 实测生产带覆盖率
+     * 偏低（deform 仅 41% 网格非零，均值 0.29 块），构造地貌因此大片缺失。
+     * 提高偏置 = 等效下移阈值 ⇒ 带覆盖率约 35% → 48%，且因仍是同一噪声的
+     * smoothstep 映射，<b>边界依旧 C¹ 有机</b>（不引入直线网）。</p>
      */
     private double beltMask(double wx, double wz) {
         double n = valueNoise(wx / BELT_SCALE, wz / BELT_SCALE, SALT_BELT);   // ~[-1,1]
-        double t = (n - 0.10) / 0.40;                                         // 阈值 → 约 30~40% 成带
+        double t = (n + BELT_BIAS - 0.10) / 0.40;                             // 阈值 → 约 35~48% 成带
         t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
         return t * t * (3.0 - 2.0 * t);                                       // C¹ 平滑边界
     }
+
+    /**
+     * 构造带掩码偏置（★ 2026-09-14 新增）。
+     *
+     * <p>加到带体噪声上，等效于下移成带阈值 ⇒ 扩大"构造活动带"面积。
+     * 取 0.10 的实测依据见 {@code DeformVisibilityProbe}：
+     * 带覆盖率提升后，断层崖在<b>更多区域</b>出现，而非只集中在少数活跃带内。</p>
+     *
+     * <p>⚠ 勿无脑调大：偏置趋近 0.40 时掩码恒为 1（构造带消失 = 全域形变），
+     * 会失去"形变集中在活动带内"的地质语义，并可能让褶皱伪影重新成片。</p>
+     */
+    private static final double BELT_BIAS = 0.10;
 
     /** 平滑衰减：边界处 1，reach 处 0（一阶导为 0，无硬边界）。 */
     private static double decay(double d, double reach) {

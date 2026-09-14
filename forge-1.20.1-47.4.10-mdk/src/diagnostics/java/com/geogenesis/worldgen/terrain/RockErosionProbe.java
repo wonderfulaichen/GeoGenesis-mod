@@ -182,8 +182,6 @@ public final class RockErosionProbe {
         // 判据②：软岩的加深幅度必须【大于】硬岩（岩性差异真实生效）
         boolean pass3b = nS > 50 && nH > 50 && softDiff < hardDiff;
         System.out.printf("      软岩加深幅度大于硬岩（软<硬）: %s%n", pass3b ? "PASS" : "FAIL");
-        boolean pass4 = true;
-
         // ================= [4] 耦合机制的直接验证（脱离坡度混杂）=================
         //   [3] 的 delta 含坡度贡献（主导），故岩性信号被稀释。本节直接验机制：
         //     · 引擎使用的【插值硬度场】在同一点上的倍率是否随岩性变化；
@@ -408,7 +406,7 @@ public final class RockErosionProbe {
         boolean pass12 = nWin > 10 && avgRange > 3.0 && avgRange < 60.0;
         System.out.printf("      层界在视野内有可见起伏（3~60 块）: %s%n", pass12 ? "PASS" : "FAIL");
 
-        boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7 && pass8
+        boolean all = pass1 && pass2 && pass3 && pass5 && pass6 && pass7 && pass8
                 && pass9 && pass10 && pass11 && pass12 && pass3b;
         System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
         if (!all) System.exit(1);

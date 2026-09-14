@@ -121,15 +121,9 @@ public final class CellGenerator {
     //   原生内存 mmap 失败崩溃（hs_err_pid48068: "Native memory allocation (mmap) failed"）。
     //   有界池 + CallerRunsPolicy：队满时提交者自己跑（等价串行，天然反压，绝不排队饿死），
     //   线程数硬顶 16 → 内存可控。
-    // ★★★ 2026-09-14 性能修复（用户"比几小时前慢"）：8 → 4 ★★★
-    //   【根因】侵蚀 tile 生成【内部】已用 parallelRows（ForkJoinPool.commonPool）
-    //   对 base/粗采/骨架/flat/双三次升采样 5 处做行级并行。
-    //   若同时有 8 个 tile 线程在跑 ⇒ 8 × commonPool 的【嵌套并行】
-    //   ⇒ 线程数远超核数（20 核上并行任务可达 8×20=160）⇒ 上下文切换风暴，
-    //   实测 chunk 冷启动从 2 秒级恶化到 20 秒级（用户日志 cells=22098ms）。
-    //   【正解】降低外层 tile 并发，让 commonPool 的行级并行有核可用。
-    //   4 与 commonPool 规模（≈核数−1）配合后超订显著缓解。
-    // ★ 2026-08-09 优化：4→8（20 核机器，冷启动 tile 排队吞吐 ×1.5-2；daemon 池不阻塞主线程）
+    // 外层 tile 采样并发度。2026-08-09 由 4 提到 8（20 核机器冷启动 tile 排队吞吐 ×1.5-2；
+    // daemon 池不阻塞主线程）。8 曾因"tile 线程 × 内部 parallelRows(commonPool) 嵌套并行"
+    // 导致线程超订风暴，已在 5e7b8dd 根治，现 8 可安全使用。
     public static final int TILE_PARALLELISM = 8;
     public static final ExecutorService TILE_SAMPLER = new ThreadPoolExecutor(
         TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,

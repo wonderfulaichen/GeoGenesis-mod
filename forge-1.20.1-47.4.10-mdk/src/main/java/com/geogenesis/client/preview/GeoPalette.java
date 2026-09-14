@@ -829,7 +829,7 @@ public final class GeoPalette {
         ENGLISH.put("geogenesis.terrain_type.PLATEAU", "Plateau");
         ENGLISH.put("geogenesis.terrain_type.MOUNTAINS", "Mountains");
         ENGLISH.put("geogenesis.terrain_type.PEAK", "Peak");
-        ENGLISH.put("geogenesis.terrain_type.BASIN", "Basin");
+        ENGLISH.put("geogenesis.terrain_type.BASIN", "Basin/Rift");
         // ★ 2026-09-11 补：TerrainClass 后 3 项此前既无图例名也无英文名
         ENGLISH.put("geogenesis.terrain_type.SNOW", "Snow");
         ENGLISH.put("geogenesis.terrain_type.VOLCANO", "Volcano");

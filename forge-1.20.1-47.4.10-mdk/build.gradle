@@ -861,6 +861,39 @@ task runTerrainGrainProbe(type: JavaExec) {
     }
 }
 
+// Soil→biome crosstab probe (2026-09-14, Phase T12): 成土母质 × 群系 交叉表 ——
+//   受控 A/B（同点只切耦合）量化岩性→群系耦合的实际生效率与映射合法性。
+//   gradlew runSoilBiomeCrosstabProbe [-PprobeArgs="seed size step"]
+task runSoilBiomeCrosstabProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.climate.SoilBiomeCrosstabProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Deform visibility probe (2026-09-14): 构造地貌"看不见"归因 ——
+//   镜像 TectonicDeformation 数学（逐位自检）+ 多参数并排山体阴影渲染。
+//   gradlew runDeformVisibilityProbe [-PprobeArgs="seed size step ox oz"]
+task runDeformVisibilityProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.DeformVisibilityProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Scree placement probe (2026-09-14): 碎石坡"出现在山脊"归因 ——
+//   量化 discharge(汇流累积) 作为"凹度"判据区分脊/沟的 AUC 与门控效果。
+//   gradlew runScreePlacementProbe [-PprobeArgs="seed chunks ox oz"]
+task runScreePlacementProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ScreePlacementProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Tectonic continuity probe (2026-09-12, artifact root-cause): gradlew runTectonicContinuityProbe [seed]
 task runTectonicContinuityProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

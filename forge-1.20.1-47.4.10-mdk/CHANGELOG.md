@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> 构造地貌可见化 + 地表细节归位 + 地质→群系耦合轮（2026-09-14）。
+
+### 新增 / Added
+
+- **地质 → 群系耦合（Phase T12）**：`BiomeClassifier` 此前**完全不看地质**（搜 `rock|strata|tectonic` 0 匹配），群系输入只有温度×降水、垂直带、地形形态三样；`RockType` 的全部消费方仅"方块层"与"预览图层"。
+  - 新增 `worldgen/climate/SoilInfluence.java`：岩性 → **成土性质**（`CALCAREOUS` 石灰岩/火山岩 · `ACIDIC` 花岗岩/片麻岩/片岩 · `NEUTRAL` 砂岩/页岩）+ **噪声门控**。**零 MC 依赖纯函数**（可在无引导探针中测试）。地学依据：钙质土/火山土肥沃高排水 → 草甸；酸性硅铝质贫瘠 → 抑制阔叶、利于先锋桦木。
+  - `BiomeClassifier.pickLandKey` 的 `LOWLAND` 管道末端追加 `soilVariant`：基础气候群系 → 河流绿洲 → 地形形态变体 → **岩性变体**。
+  - **★ 铁律（防复现历史 bug）**：变体不得引入**新的**气候邻接对。故只做 **2 条**且**全部复用 `landVariant` 已确立的合法对** —— `PLAINS→MEADOW`、`FOREST→BIRCH_FOREST`。`NEUTRAL` 刻意**不变**（无可安全复用的既有对；硬造新对正是"跨气候跳变"的风险源，本项目曾因 `SPARSE_JUNGLE→JUNGLE` 出现"丛林紧挨草原"）。
+  - 门控复用 `Cell.oasisNoise`（**零新增噪声实例、零新增 Cell 字段**），`STRENGTH=0.50`（静态常量而非 Forge 配置，避免产生死配置）；强度 0 时永不触发 ⇒ **可逐位回滚**。
+  - 实测：门控触发率 **21~28%**（设计值 30%，三随机种子稳定）；`runClimateBiomeProbe` **非法邻接 0（0.0000%）**。
+  - **★ 参考项目调研结论（重要）**：FreeTerraForged 与 RTG-Community **都没有**"岩性/土壤/地质 → 群系"的映射（FTG 的 `SEDIMENT` 只进**地形密度函数**，不接群系轴；其 `StrataRule` 只作用于**地表方块分层**；RTG 完全没有岩性轴）。⇒ 本项为**原创扩展**，无现成配方可照搬。
+- **`runDeformVisibilityProbe`**（诊断）：镜像 `TectonicDeformation` 的私有数学（`valueNoise`/`beltMask`/`segmentMask`）并参数化，先用生产参数跑**逐位自检**（`Double.compare`，实测 **0/4000 不一致**）—— **只有自检通过探索才可信**。输出多方案并排山体阴影 + 差值图（`build/deform/`），用同一视觉口径一轮定死参数量级。
+- **`runScreePlacementProbe`**（诊断）：量化 `discharge`（汇流累积）作为"凹度"判据区分**脊/沟**的 AUC 与门控效果（`build/scree/`）。
+- **`runSoilBiomeCrosstabProbe`**（诊断）：受控 A/B（同点只切耦合，OFF 用 `oasisNoise=-1` 使门控恒不触发）量化岩性→群系的实际生效程度与映射合法性。
+
+### 修复 / Fixed
+
+- **构造地貌「看不见」→ 真因是信噪比，不是"没接"**（⚠️ 交接总结曾记"构造场只在岩层数据层里、未暴露地表"，**与代码不符**）：`CellGenerator:377-379` 的 `DEFORM_ENABLED=true` + `eLand += deform.offset(...)` **早已接入**（`sampleCore` 与 `extractTile` 两处）。
+  - 实测改前：deform **均值仅 0.29 块 / 覆盖率 41%**，而 eLand 全域跨 158 块 ⇒ **信噪比 3.7%**，肉眼不可辨。
+  - 修法：`FAULT_AMP 0.045→0.090`、`SCARP_HALF_WIDTH 0.30→0.18`、新增 `BELT_BIAS=+0.10`（带覆盖率 41%→49%）。**褶皱 `FOLD_AMP` 刻意不动** —— 渲染图证实高幅褶皱的 ridged 结构呈**蠕虫状波浪细线**（与本项目明令禁止的「密集波浪状平行细线」伪影同源）；断层崖才是地垒/地堑的视觉主体。
+  - **★ 关键教训：单提幅度完全无效** —— 实测 amp×2 时 `max|∇h|` **1.88→1.88（无变化）**，因崖过渡带宽 20~40wu 把 9 块落差摊平（坡度仅 ~0.25）。**必须同时收窄崖宽**。
+  - 效果：断层崖最大梯度 **0.002517→0.008275（3.3×）**、平均幅值 0.29→**0.64 块**、p99 3.59→**6.56 块**。
+- **碎石坡出现在山脊（判据缺"凹凸"维度，真缺陷）**：`cell.gradient = √(dhx²+dhz²)` **恒为正** ⇒ 山脊坡面与沟谷侧壁数值相同，一起被判碎石坡；而真实 talus 是重力碎屑在**凹坡坡脚**堆积（脊是凸地形、碎屑滚落）。
+  - 修法：`GeoGenesisGenerator` 判定改为「陡 **且** `cell.riverNetDischarge ≥ SCREE_DISCHARGE_MIN × erosionDropsMul`」。
+  - **为何选 discharge**：物理正确（汇流累积 = 收敛度，沟高脊低）、**零额外采样**（字段已存在）、**不产生路径分歧**（与 `gradient` **同源**，都只在完整管线 `applyTileDelta` 中填充 ⇒ "轻量路径不判碎石"是一致行为，不会造成预览≠游戏）。
+  - 实测：**AUC = 0.845**（强判别力）；门控 `D=2.31` ⇒ **脊保留 24.9%、沟保留 77.9%**。
+  - ⚠️ 阈值**按 `erosionDropsMul` 缩放**：discharge 是液滴计数，总量随配置液滴倍率线性变化；用绝对常数会使倍率 2× 时门控形同失效。
+- **靠海出现"盆地"**：`SplineConfig` BASIN `hi=0.02 e`（仅海平面上 3.8 块）、`lo=-0.08 e`（海面下 15 块）⇒ **盆地类型的高度区间骑在海平面线上**，故天然贴着海岸线出现（对照 PLAIN 0.005~0.03 e 同样贴海面 ⇒ 本质是"海岸低地被判为盆地"，非盆地特有 bug）。
+  - 修法：`hi 0.02→0.05`（盆顶达海面上 9.6 块，与 PLAIN 区间错开），`lo` 保持 -0.08（保留内陆沉降洼地/裂谷成湖能力）。
+  - **语义澄清**：本项目 `BASIN` = **沉降洼地/裂谷**，**不要求四周环山**；三个参考项目（worldgen / FreeTerraForged / RTG）**也都没有**环山判据。图例正名为「**盆地/裂谷**」「**Basin/Rift**」（`zh_cn.json` + `en_us.json` + `GeoPalette` 内置英文回退，三处同步）。
+
+### 变更 / Changed
+
+- `TectonicDeformation.FAULT_AMP` `0.045 → 0.090`、`SCARP_HALF_WIDTH` `0.30 → 0.18`、新增 `BELT_BIAS = 0.10`。
+- `SplineConfig` BASIN `hi` `0.02 → 0.05`。
+- `PreviewDisplay.CACHE_SCHEMA_VERSION` **65 → 67**（66：构造放大 + 盆地抬升改 eLand 产出；67：地质→群系耦合改群系产出）。
+
+### 已知遗留 / Known Issues
+
+- **`runRockErosionProbe[3]`「软岩因耦合被显著加深侵蚀」是【预存的脆弱判据】，非本轮回归**：本轮出现 FAIL，经 **git stash 基线对照 + 多种子复现**定性 —— **基线在 seed=7/42 本就 FAIL**（`+0.000134` / `+0.001246`），仅 seed=12345 靠单 tile 取样巧合 PASS。且经隔离验证**仅构造放大（A）生效即 FAIL、与盆地抬升（C）无关**；选中 tile 与格子分组在基线与新版**完全一致**（nS=896 / nH=13952）⇒ 排除"选点漂移"，确认是**判据本身脆弱**（应改为多种子聚合或扩大样本）。**未擅自改判据**（属独立议题）。
+- **"断层泉 / 次级张裂隙 / 断层三角面"均未实现**：本项目断层只有"错断 + 陡坎"（地垒/地堑靠断块交替升降成立）。**走滑断层谷/断头河/眉峰被刻意归零**（`TectonicDeformProbe[1]` 强制「走滑/内部必须无形变」，属**有意的语义决策**）；若要实现须**同时改该探针判据**，非可顺手改。
+- **`runSoilBiomeCrosstabProbe` 无法完成 MC 引导**（`ExceptionInInitializerError`，Forge 环境初始化在探针进程不可行）⇒ 其"群系改写率/合法性"判据跳过。**验证责任已显式指派**（非放过）：合法性 → `runClimateBiomeProbe` 的「非法邻接 0」（真实环境实测 PASS）；生效率 → 本探针「门控触发率」（门控是改写的唯一前置条件）。该探针用**反射**桥接 `pickKey`，以**不破坏"诊断源码集零 MC 依赖"纪律**（全项目 30+ 既有探针均 0 个 `import net.minecraft`）。
+
+### 验证 / Verified
+
+- 守门探针全绿：`runTectonicDeformProbe`（断层崖 3.3×，近零均值保住）· `runTectonicWaveProbe`（**各向异性 1.137**，无平行带回归）· `runTectonicProbe`（16 项）· `runTectonicContinuityProbe` · `runLandEConformityProbe`（**跳变 0**）· `runPrecipRiverWidthProbe`（未污染水文标定）· `runTerrainShapeProbe` · `runClimateBiomeProbe`（**非法邻接 0**）· `runPaletteProbe` · `runStratumProbe` · `runSoilBiomeCrosstabProbe`（3 种子 ALL PASS）。
+- 新探针效果量化：构造 deform 均值 **0.29 → 0.64 块**、p99 **3.59 → 6.56 块**、覆盖率 **41% → 49%**；碎石坡 `discharge` **AUC 0.845**；岩性→群系门控触发率 **21~28%**。
+
+---
+
 > 地形伪影根治轮（2026-09-12 ~ 09-13）。用户实机确认「笔直线段 + Y 形交汇」伪影消失。
 
 ### 修复 / Fixed
