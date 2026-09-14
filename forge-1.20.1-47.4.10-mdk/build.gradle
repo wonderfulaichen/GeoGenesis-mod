@@ -1097,6 +1097,17 @@ task runConcurrentChunkProbe(type: JavaExec) {
     }
 }
 
+// Baseline A/B chunk probe (★ 2026-09-14：与基线 505c81f 直接对比性能)
+//   args = [seed] [chunks] [threads]
+task runAbChunkProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.AbChunkProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        args(project.property('probeArgs').split('\\s+'))
+    }
+}
+
 // Chunk time probe (★ 2026-09-14：chunk 生成冷/热耗时分段实测)
 //   args = [seed] [chunks]
 task runChunkTimeProbe(type: JavaExec) {

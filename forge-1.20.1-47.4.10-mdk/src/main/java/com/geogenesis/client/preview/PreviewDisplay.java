@@ -363,7 +363,13 @@ public class PreviewDisplay extends AbstractWidget {
     //        + 1/55±2.5（细节摆动），各层独立 salt
     //      · 实测 128×128 视野窗口内：平均起伏 6.5 块、最大 12.9 块
     //        （此前 ~2.5 块 ⇒ 视觉上平直）
-    private static final int CACHE_SCHEMA_VERSION = 63;
+    // 64 = 2026-09-14 ★ 性能修复（用户"速度没恢复"）：岩性硬度缓存量化
+    //      · rockResistanceAt 的缓存键由【精确坐标】改为【16wu 网格量化】
+    //        （原键导致命中率 ~0%，每点重算 continent+tectonic ≈22us）
+    //      · 采样点同步改为网格中心 ⇒ 同一单元取值恒定，地形产出有细微变化
+    //      · HARDNESS_SPACING 与量化粒度对齐（16wu）
+    //      → 地形产出变化，旧缓存必须失效
+    private static final int CACHE_SCHEMA_VERSION = 64;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
