@@ -214,15 +214,52 @@ public final class FlowField {
      * 用【真实地形】采样器建填洼层：湖泊必须按真实高程判定，不能按选线用的
      * routingE（山压低后的 e）——否则"湖"会落在被人为压低的坡面上。
      *
-     * <p>算法（Barnes 2014 priority-flood）：以网格边界格为种子（水可流出网格），
-     * 每次取当前最低格向外扩，邻格溢出高程 = max(自身高程, 当前格溢出高程)。
+     * <p>算法（Barnes 2014 priority-flood）：每次取当前最低格向外扩，
+     * 邻格溢出高程 = max(自身高程, 当前格溢出高程)。
      * 结果 {@code eFilled} 即"若在此蓄水、水位涨到多少才会溢出"。</p>
      *
      * <p><b>同时覆盖闭合洼地与开口洼地</b>：真湖多是有出口、但出口坎（sill）高于
      * 盆地的【开口洼地】——D8 的 flowTo=-1 只认闭合洼地，漏掉这一类（实测
      * 本地形闭合洼地极少 → 湖数 0）。</p>
+     *
+     * <h3>★ 2026-09-15 修复：种子由"全部边界格"改为"网格最低格"</h3>
+     *
+     * <p><b>原实现</b>把<b>所有边界格</b>当作种子（{@code eFilled = eFill}），
+     * 语义是"水可从任意边界自由流出网格"。这对<b>全球网格</b>是对的（边界=海洋），
+     * 但本类的网格是<b>局部的</b>（每个 region 各建一份，见
+     * {@code RiverLineNetwork.build}），于是带来两个实测缺陷：</p>
+     * <ol>
+     *   <li><b>边界格永远不是洼地</b>：边界格 {@code eFilled == eFill} ⇒ 水深恒 0
+     *       ⇒ {@link #isBasinCell} 恒 false。实测（{@code LakeEdgeProbe}）：
+     *       边界圈 216 格水深 <b>100% 为 0</b>，而内部洼地占 13.31%
+     *       ⇒ 触及网格边界的湖被"泄水"掉。</li>
+     *   <li><b>相邻 region 结果不一致</b>：每个 region 网格不同 ⇒ 泄水点不同
+     *       ⇒ 整个 {@code eFilled} 场不同。实测重叠区 <b>99.8%</b> 水位不一致、
+     *       最大差 <b>13.86 block</b> ⇒ 湖跨 region 接缝时被硬截断
+     *       （对应用户反馈"湖没到边缘就结束"）。</li>
+     * </ol>
+     *
+     * <h3>★ 2026-09-15 修复：种子由"全部边界格"改为"真实海洋格"</h3>
+     *
+     * <p>演化过程（两版都实测过，务必保留以免重犯）：</p>
+     * <ol>
+     *   <li><b>原实现</b>：所有边界格都是种子（语义"水可从任意边界流出"）。
+     *       对全球网格正确，但本类网格是<b>局部的</b>（每 region 各建一份）
+     *       ⇒ 边界格 {@code eFilled == eFill} ⇒ 水深恒 0 ⇒ 永不成湖。
+     *       实测：边界圈 <b>100%</b> 水深为 0，而内部洼地占 13.31%。</li>
+     *   <li><b>第二版（已放弃）</b>：改为"网格最低格"作唯一种子。边界格确实能成湖了
+     *       （边界圈水深 0 的比例降到 54.6%），<b>但引入巨型湖</b> —— 实测
+     *       {@code runLakeBasinProbe} 出现 {@code cells=772、最深 28.30} 的湖
+     *       （半径约 376wu）。原因：单一出口会让大片连通区域被填成湖。</li>
+     *   <li><b>现版本</b>：种子 = <b>{@code eFill <= outletE} 的真实海洋格</b>。
+     *       物理上正确（海洋才是最终出水口），且边界格若是陆地则不再是出口
+     *       ⇒ 可成湖；又因出口是整片海洋而非单一点，不会过度填充。
+     *       纯内陆网格（无海洋格）兜底用最低格。</li>
+     * </ol>
+     *
+     * @param outletE 出水口高程（真实海平面）；低于等于它的格视为海洋/出口
      */
-    public void computeFill(ElevationSampler fillSampler) {
+    public void computeFill(ElevationSampler fillSampler, double outletE) {
         int n = nx * nz;
         this.eFill = new double[n];
         this.eFilled = new double[n];
@@ -235,13 +272,23 @@ public final class FlowField {
         }
         PriorityQueue<double[]> pq =
                 new PriorityQueue<>(Comparator.comparingDouble(a -> a[0]));
-        for (int j = 0; j < nz; j++) {
-            for (int i = 0; i < nx; i++) {
-                if (i != 0 && i != nx - 1 && j != 0 && j != nz - 1) continue;   // 仅边界格
-                int idx = j * nx + i;
-                eFilled[idx] = eFill[idx];
-                pq.add(new double[]{eFill[idx], idx});
+        // ★ 种子 = 真实海洋格（最终出水口）
+        int seeds = 0;
+        for (int i = 0; i < n; i++) {
+            if (eFill[i] <= outletE) {
+                eFilled[i] = eFill[i];
+                pq.add(new double[]{eFill[i], i});
+                seeds++;
             }
+        }
+        // 兜底：纯内陆网格（无海洋格）→ 用最低格作唯一出口，保证扩散能启动
+        if (seeds == 0) {
+            int minIdx = 0;
+            for (int i = 1; i < n; i++) {
+                if (eFill[i] < eFill[minIdx]) minIdx = i;
+            }
+            eFilled[minIdx] = eFill[minIdx];
+            pq.add(new double[]{eFill[minIdx], minIdx});
         }
         while (!pq.isEmpty()) {
             double[] cur = pq.poll();
