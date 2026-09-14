@@ -144,8 +144,11 @@ public final class LakeLocateProbe {
                 boolean w = c.isLake && c.riverSurfaceY > c.height;
                 // 只有【本湖域内】(inDomain) 的 dry 列才可能是漏判 —— 窗口边缘那些低地
                 // 属于别的湖/山谷，套本湖 spill 判 missed 全是假阳性。
-                // 生产用 inDomain(margin=2×gridCell)，探针也用同 margin 判域。
-                boolean inThisLake = nearest.inDomain(px, pz, nearest.cellHalf * 2.0);
+                // ★ 口径必须与生产一致：生产 inDomain(wx,wz, gridCell*4.0)，
+                //   而 inDomain 内部 r = cellHalf + margin 且 cellHalf = gridCell/2
+                //   ⇒ 等价 margin = 8×cellHalf。此处若沿用旧值 2×cellHalf，
+                //   探针判域会比生产小很多，把"域外本就不该有水"的列误报成漏判。
+                boolean inThisLake = nearest.inDomain(px, pz, nearest.cellHalf * 8.0);
                 double level = spill;
                 if (inThisLake && (c.riverType != 0 || c.isLake)) level = c.riverSurfaceY;
                 boolean missed = !w && inThisLake && c.height < level - 0.5;
