@@ -177,7 +177,27 @@ public record RiverLineParams(
      *  长陡坡按 floor(runLen/stepRun) 多阶。 */
     double waterfallStepRun,
     /** 单 run 最大台阶数：防止极长陡坡被切成无限多级（视觉碎裂）。 */
-    int waterfallMaxSteps
+    int waterfallMaxSteps,
+    // ===== 峡谷（大峡谷式，★ 2026-09-14）=====
+    //
+    //   【为何需要】实测（CanyonProfileProbe）：现状已是"深且陡"的深谷并不缺——
+    //   缺的是【典型河谷太宽缓】：谷壁跨度被 bankFactor(2.5×半宽) 与 bankRunMax(24)
+    //   双重托底，h=20 格的河谷跨度也达 ~24 格 ⇒ 坡度仅 ~0.9（42°），
+    //   视觉上是"宽缓河谷"而非峡谷（渲染图直接可见）。
+    //
+    //   【做法】在"岸高 h = 原地形 − 水面"足够大的河段，把谷壁跨度【收窄】：
+    //   同样的落差压缩到更窄的横向距离 ⇒ 陡壁。**水面不动** ⇒ 不污染水文标定
+    //   （这是本方案最关键的取舍：不改深度，只改横向跨度）。
+    /** 峡谷门控下界（block）：岸高 h = 原地形 − 水面 ≥ 本值开始进入峡谷形态。 */
+    double canyonMinBank,
+    /** 峡谷门控上界（block）：岸高 ≥ 本值达到全强度（smoothstep 过渡）。 */
+    double canyonFullBank,
+    /** 峡谷区岸坡跨度系数（水平跨度 / 每格岸高）：&lt; bankSlopeRun ⇒ 崖更陡。
+     *  0.40 → 坡度上限 ≈ arctan(1/1.06/0.40) ≈ 67°（对照 bankSlopeRun=1.5 → 32°）。 */
+    double canyonSlopeRun,
+    /** 峡谷区谷底跨度系数（× 河道半宽）：&lt; bankFactor ⇒ 谷底更窄、崖壁更贴近河道。
+     *  1.6 → 谷底带 = 1.6×半宽（保留"宽底"，但远窄于常规的 2.5×）。 */
+    double canyonWallFactor
 ) {
     /** 返回副本并把跨 region 连续河开关设为 v（探针 A/B 用）。 */
     public RiverLineParams withCrossRegion(boolean v) {
@@ -194,7 +214,8 @@ public record RiverLineParams(
                 estuaryLength, estuaryWidthFactor, mouthMaxWidth, mouthMinDepth, v,
                 waterfallMinDrop, waterfallMaxDrop, waterfallWindowNodes,
                 waterfallMinSpacing, plungePoolFactor, waterfallMinAngle,
-                waterfallStepHeight, waterfallStepRun, waterfallMaxSteps);
+                waterfallStepHeight, waterfallStepRun, waterfallMaxSteps,
+                canyonMinBank, canyonFullBank, canyonSlopeRun, canyonWallFactor);
     }
 
     public static RiverLineParams defaults() {
@@ -289,7 +310,14 @@ public record RiverLineParams(
             12.0,                    // waterfallMinAngle（度：原地形坡角 ≥12° 才挂瀑）
             6.0,                     // waterfallStepHeight（block：θ≤45° 时每级基准落差 h0）
             8.0,                     // waterfallStepRun（block：一级水平跨度；短陡坡<此值→1阶）
-            3                        // waterfallMaxSteps（单 run 最大台阶数：保证大落差级）
+            3,                       // waterfallMaxSteps（单 run 最大台阶数：保证大落差级）
+            // ===== 峡谷（★ 2026-09-14）=====
+            8.0,                     // canyonMinBank（岸高 ≥8 格起进入峡谷过渡）
+            20.0,                    // canyonFullBank（岸高 ≥20 格达全强度；
+                                     //   ★ 实测 CanyonProfileProbe：谷壁带内最大岸高 22.6 格，
+                                     //     故 20 使最深的河谷接近全强度、且 8~20 平滑过渡）
+            0.40,                    // canyonSlopeRun（≈67° 上限；对照 bankSlopeRun=1.5 ≈32°）
+            1.6                      // canyonWallFactor（谷底带 = 1.6×半宽；对照 bankFactor=2.5）
         );
     }
 

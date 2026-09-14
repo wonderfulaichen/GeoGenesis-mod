@@ -291,7 +291,19 @@ public final class HydrologyBlockCarver {
         //   跨度仅 7.5 格）坡度达 2.0≈63°，视觉上就是"垂直面"（用户实测截图）。
         //   岸高 H = 原地形 − 河缘雕刻面（dist=width 处 profile=0 → bedTarget=carveSurfaceY）。
         double baseRun = Math.max(bankW, width * 2.0);   // 旧语义：valley − width
-        double bankRun = adaptiveBankRun(carveSurfaceY, original, baseRun, P);
+        // ★ 2026-09-14 峡谷模式：收窄谷壁跨度（同样的落差压缩到更窄横向距离 ⇒ 陡壁）。
+        //   canyon01 由"岸高"门控（见 canyonFactor）；水面不变 ⇒ 不影响水文标定。
+        double canyon01 = canyonFactor(carveSurfaceY, original, P);
+        double slopeRun = P.bankSlopeRun();
+        if (canyon01 > 0.0) {
+            // 谷底带：bankFactor(2.5×半宽) → canyonWallFactor(1.6×半宽)
+            double baseRunCanyon = Math.max(width * P.canyonWallFactor(), width + 1.0);
+            baseRun = baseRun + (baseRunCanyon - baseRun) * canyon01;
+            // 坡度上限：bankSlopeRun(1.5 → ≈32°) → canyonSlopeRun(0.40 → ≈67°)
+            slopeRun = P.bankSlopeRun()
+                    + (P.canyonSlopeRun() - P.bankSlopeRun()) * canyon01;
+        }
+        double bankRun = adaptiveBankRun(carveSurfaceY, original, baseRun, slopeRun, P);
         double valley = narrowWall
                 ? width * 1.15
                 : width + bankRun;
@@ -333,10 +345,16 @@ public final class HydrologyBlockCarver {
             double ws = Math.max(s.width(), 1.0);
             // 湖/跌水样本谷壁带同样收窄（与上面 valley 同理，见湖命中注释）
             // 与主 valley 同式自适应（outer 混合必须与雕刻几何同参，否则属主切换处失配）
+            // ★ 2026-09-14：峡谷模式同样作用于本处 —— 复用主路径算出的 canyon01 / slopeRun，
+            //   保证多河 outer 混合与主几何【同参】（否则属主切换处会出现宽度失配台阶）。
+            double vsBaseRun = Math.max(ws * P.bankFactor(), ws * 2.0);
+            if (canyon01 > 0.0) {
+                double vsBaseRunCanyon = Math.max(ws * P.canyonWallFactor(), ws + 1.0);
+                vsBaseRun = vsBaseRun + (vsBaseRunCanyon - vsBaseRun) * canyon01;
+            }
             double vs = (s.isLake() || s.fallDrop() > 0.0)
                     ? ws * 1.15
-                    : ws + adaptiveBankRun(s.bankSurfaceY(), original,
-                            Math.max(ws * P.bankFactor(), ws * 2.0), P);
+                    : ws + adaptiveBankRun(s.bankSurfaceY(), original, vsBaseRun, slopeRun, P);
             vsArr[si] = vs;
             double fadeS = NoiseUtil.saturate(sd / P.heightBlendDist());
             wSArr[si] = (1.0 - fadeS) * (1.0 - fadeS) / Math.max(sd * sd, 1.0);
@@ -637,10 +655,42 @@ public final class HydrologyBlockCarver {
      */
     private static double adaptiveBankRun(double carveSurfaceY, double original,
                                           double baseRun, RiverLineParams P) {
+        return adaptiveBankRun(carveSurfaceY, original, baseRun, P.bankSlopeRun(), P);
+    }
+
+    /**
+     * 自适应谷壁跨度（★ 2026-09-14 增 slopeRun 变体，供峡谷模式覆写坡度上限）。
+     *
+     * @param slopeRun 跨度/岸高 系数（常规 {@link RiverLineParams#bankSlopeRun()}；
+     *                 峡谷模式取更小的 {@link RiverLineParams#canyonSlopeRun()} ⇒ 更陡）
+     */
+    private static double adaptiveBankRun(double carveSurfaceY, double original,
+                                          double baseRun, double slopeRun, RiverLineParams P) {
         double h = Math.max(0.0, original - carveSurfaceY);   // 岸高
-        double want = h * P.bankSlopeRun();
+        double want = h * slopeRun;
         if (want <= baseRun) return baseRun;
         return Math.min(want, Math.max(baseRun, P.bankRunMax()));
+    }
+
+    /**
+     * ★ 2026-09-14：<b>峡谷强度门控</b> ∈ [0,1]。
+     *
+     * <p>依据"岸高" h = 原地形 − 计划水面（即河谷深度）做平滑门控：
+     * h ≤ {@code canyonMinBank} → 0（常规宽缓河谷）；h ≥ {@code canyonFullBank} → 1（全峡谷）。</p>
+     *
+     * <p><b>为何用岸高而非地形类型</b>：岸高在雕刻阶段<b>免费可得</b>（{@code original} 与
+     * {@code carveSurfaceY} 都是入参），无需额外的 {@code sample()}（那要带上气候/分类，
+     * 且会拖慢雕刻热路径）；而"河谷深度"本就是峡谷的物理定义。</p>
+     *
+     * <p><b>为何不改水面</b>：峡谷做法是"高原保留 + 河谷横向收窄"，水面（河流纵剖面）
+     * 完全不动 ⇒ <b>不改变水文标定</b>（降水-河宽、汇流等守门探针不受影响）。</p>
+     */
+    private static double canyonFactor(double carveSurfaceY, double original, RiverLineParams P) {
+        double h = original - carveSurfaceY;
+        double lo = P.canyonMinBank();
+        double hi = P.canyonFullBank();
+        if (hi <= lo) return h >= hi ? 1.0 : 0.0;
+        return NoiseUtil.smooth(NoiseUtil.saturate((h - lo) / (hi - lo)));
     }
 
     /**

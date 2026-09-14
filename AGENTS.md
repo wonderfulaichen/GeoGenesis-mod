@@ -168,7 +168,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 > 因为它们测"幅度/各向异性"，测不出"值域量化/配对阶跃"。**判定伪影的最终依据只能是渲染图**。
 >
 > **⚠️ 改动地形产出必须升 `PreviewDisplay.CACHE_SCHEMA_VERSION`**，否则预览**静默复用旧磁盘缓存**
-> → 表现为"改了没生效"（当前 **68**；历次因折叠/blurDist/stress、岩性硬度量化、河网并行、构造放大、盆地抬升、地质→群系耦合、T5 移除 decay 等产出变更递增）。
+> → 表现为"改了没生效"（当前 **69**；历次因折叠/blurDist/stress、岩性硬度量化、河网并行、构造放大、盆地抬升、地质→群系耦合、T5 移除 decay、峡谷谷壁收窄等产出变更递增）。
 
 注册流程: `GeoGenesisMod` 构造器中用 `DeferredRegister<Codec<? extends ChunkGenerator>>`（注册到 `Registries.CHUNK_GENERATOR`）注册 `GeoGenesisGenerator.CODEC`，同理 `BIOME_SOURCE` 注册 `GeoGenesisBiomeSource.CODEC`，并 `register(bus)` 到 MOD 总线。
 
@@ -210,7 +210,13 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **本轮守门（全绿）**：`runTectonicDeformProbe`（断层崖 3.3×，近零均值保住）· `runTectonicWaveProbe`（**各向异性 1.137**，无平行带回归）· `runTectonicProbe` 16 项 · `runTectonicContinuityProbe` · `runLandEConformityProbe`（**跳变 0**）· `runPrecipRiverWidthProbe`（未污染水文标定）· `runTerrainShapeProbe` · `runClimateBiomeProbe` · `runPaletteProbe` · `runStratumProbe` · `runSoilBiomeCrosstabProbe`（3 种子）。
 - **★ 发现一处【预存的脆弱判据】（非本轮回归）**：`runRockErosionProbe[3]`「软岩因耦合被显著加深侵蚀」。本轮出现 FAIL，经 **git stash 基线对照 + 多种子复现** 定性：**基线在 seed=7/42 本就 FAIL**（`+0.000134` / `+0.001246`），仅 seed=12345 靠单 tile 取样巧合 PASS；且**仅 A 生效即 FAIL、与 C 无关**（已隔离验证），选中 tile 与格子分组基线与新版**完全一致**（nS=896/nH=13952）。⇒ 该判据应改为多种子聚合或扩大样本，属**独立议题**（未擅自改判据）。
 - **新增探针**：`runDeformVisibilityProbe`（镜像生产数学 + 逐位自检 + 多参数并排山体阴影/差值图，`build/deform/`）· `runScreePlacementProbe`（脊/沟 AUC + 门控模拟，`build/scree/`）· `runSoilBiomeCrosstabProbe`（受控 A/B 交叉表；⚠️ 该探针进程**无法完成 MC 引导** ⇒ 群系改写率判据跳过，**验证责任已指派**：合法性→`runClimateBiomeProbe` 的「非法邻接 0」、生效率→门控触发率；**其反射桥接不破坏"诊断源码集零 MC 依赖"纪律**）。
-- **`CACHE_SCHEMA_VERSION` 65 → 68**（66：构造放大 + 盆地抬升，改 eLand 产出；67：地质→群系耦合，改群系产出；68：移除 T5 `decay(dist)`，改 eLand 产出）。
+- **`CACHE_SCHEMA_VERSION` 65 → 69**（66：构造放大 + 盆地抬升，改 eLand 产出；67：地质→群系耦合，改群系产出；68：移除 T5 `decay(dist)`，改 eLand 产出；69：峡谷谷壁收窄，改雕刻产出）。
+- **★ 峡谷（大峡谷式）**：**先实测再定参**（新探针 `runCanyonProfileProbe`）—— 实测发现缺口不是"陡"而是"宽"：h≥20 的深谷坡度已达 1.22（≈51°），但典型河谷被 `bankFactor`(2.5×) 与 `bankRunMax`(24) 双重托底 ⇒ 宽缓河谷。
+  - **做法**：`RiverLineParams` 新增 4 个峡谷参数（`canyonMinBank=8`/`canyonFullBank=20`/`canyonSlopeRun=0.40`/`canyonWallFactor=1.6`）；`HydrologyBlockCarver` 按**岸高 h = 原地形 − 计划水面** smoothstep 门控，深谷段**收窄谷壁跨度**（同样的落差压缩到更窄横向距离 = 陡壁）。两处 `adaptiveBankRun` 调用（主几何 + 每样本 `vs`）**必须同参**，否则属主切换处会出现宽度失配台阶。
+  - **关键取舍：水面完全不动** ⇒ 河流纵剖面零改动 ⇒ **不污染水文标定**（实测 `FlowAccumProbe` 的 `border.maxSurfaceDelta`/`fillWater`/`hitColumns` 与改前**逐位一致**，正是"只改谷壁几何"的预期证据）。
+  - **A/B 验证**（铁律：最终依据只能是渲染图）：临时 `canyonMinBank=999` 关闭峡谷做基线，与原图对比 **MD5 不同** ⇒ 确认真生效。陡坡占比 h∈[15,20) **19.3%→37.6%**。
+  - **守门**：`runValleySeamProbe` **PASS**（雕刻诱发谷壁断层 **0**）· `runFlowAccumProbe` PASS · `runHydrologyWaterFillProbe` PASS · `runPrecipRiverWidthProbe` PASS。
+  - **⚠️ 限度**：峡谷**深度**受地形高差限制（谷壁带内最大岸高 22.6 格）。要 40~60 格必须在**地形/河道纵剖面**上加大高差 —— 两者都会污染水文标定，故本轮不做。
 - **★ T5 技术债清偿：移除最后一个 `decay(dist)`**（CHANGELOG 长期遗留项）：`dist` 的等值线是**平行于 Voronoi 边的多边形**，故 `decay` 一直在把多边形印进地形（**残留"淡淡多边形棱面"的唯一来源**）。现定位仅由世界坐标 `beltMask` 决定，**早退 `d>=reach` 一并移除**（同类硬截断）。`decay` 方法已删；`FOLD_REACH`/`FAULT_REACH` **不再参与计算**，仅作文档与探针窗口参考。
   - **负作用评估**：幅度 gating 仍三重（`beltMask` × `segmentMask` × `smoothPos(stress)`）⇒ 板块内部 `stress≈0`，形变自然为 0，不会泄漏。
   - **连带**：形变略增（均值 0.64→**0.67 块**、p99 6.56→**7.07 块**）；性能**提升**（`offset` 0.211→**0.137 µs，−35%**）。
