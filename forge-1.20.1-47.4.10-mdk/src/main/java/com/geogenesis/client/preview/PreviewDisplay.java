@@ -369,7 +369,12 @@ public class PreviewDisplay extends AbstractWidget {
     //      · 采样点同步改为网格中心 ⇒ 同一单元取值恒定，地形产出有细微变化
     //      · HARDNESS_SPACING 与量化粒度对齐（16wu）
     //      → 地形产出变化，旧缓存必须失效
-    private static final int CACHE_SCHEMA_VERSION = 64;
+    // 65 = 2026-09-14 ★ 河网冷启动性能（用户"刚创建加载有一段无动静的空闲期"）
+    //      · region() 的 3×3 邻居 pass-1 改为并行（相互独立、无递归 ⇒ 逐位一致）
+    //      · routingE / groundYAt 加坐标级缓存（纯函数 ⇒ 逐位一致）
+    //      实测首 chunk 1996ms → 1327ms；e/gy 缓存均随 seed 失效，产出不变
+    //      （CACHE 版本仅在产地形确实变化时才需升；本项为等价重构，用 65 保守失效一次）
+    private static final int CACHE_SCHEMA_VERSION = 65;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

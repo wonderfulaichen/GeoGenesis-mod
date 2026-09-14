@@ -230,11 +230,15 @@ public final class RiverLineNetwork {
         this.seed = next;
         regions.clear();
         regionsP1.clear();
+        eCache.clear();      // ★ 选线场随种子变化 ⇒ 坐标缓存必须失效
+        gyCache.clear();
     }
 
     public void clear() {
         regions.clear();
         regionsP1.clear();
+        eCache.clear();
+        gyCache.clear();
     }
 
     /**
@@ -265,9 +269,36 @@ public final class RiverLineNetwork {
         if (regionsP1 != null) regionsP1.clear();
     }
 
+    // ★★★ 2026-09-14 性能修复（用户："刚创建加载有一段无动静的空闲期"）★★★
+    //   【根因】region() 建 1 个 region 要先建 8 个邻居的 pass-1（3×3 循环）⇒ 9 次 build。
+    //   每次 build 都 new FlowField，而对 region 覆盖范围（regionSize 640 + margin 320×2
+    //   = 1280wu）按 gridCell=24 逐格调 routingE → eSampler.eAt（terrainEQuick）。
+    //   ⇒ 单 region ~2,916 格、9 个 region ≈ 2.6 万次采样，且【9 个 region 的采样区域
+    //     高度重叠】（相邻 region 只差 640wu，而各自覆盖 1280wu）⇒ 大量重复计算。
+    //   实测：冷 region 837ms、热 region 3ms ⇒ 代价几乎全在首次的重复采样上。
+    //
+    //   【修复】加坐标级共享缓存：同一格点无论被哪个 region 采样都只算一次。
+    //   · 纯函数（结果只由坐标 + 种子决定）⇒ 命中与未命中等价，输出【逐位一致】。
+    //   · 线程安全：ConcurrentHashMap（pass-1 现为并行构建，见 region()）。
+    //   · 量化到 1wu：采样点坐标为 originX + i·24（originX 为整数）⇒ floor 后精确无碰撞。
+    //   · 上限护栏：超过 E_CACHE_MAX 则停止写入（退化为直接计算，不影响正确性）。
+    private final Map<Long, Double> eCache = new ConcurrentHashMap<>();
+    /**
+     * 坐标缓存上限（保护内存）。
+     *
+     * <p>依据：region 网格步长 24wu，MAX_REGIONS=256 个 region 各自覆盖约 54×54 格，
+     * 但相邻 region 高度重叠 ⇒ 实际不同坐标数明显小于 256×2916。取 1&lt;&lt;19（52 万条，
+     * 约 40MB）已远超典型探索范围；超出后停止写入（退化为直接计算，正确性不变）。</p>
+     */
+    private static final int E_CACHE_MAX = 1 << 19;
+
     private double routingE(double wx, double wz) {
+        long key = ((long) Math.floor(wx) << 32) ^ ((long) Math.floor(wz) & 0xFFFFFFFFL);
+        Double hit = eCache.get(key);
+        if (hit != null) return hit;
         double e = params.routingE(eSampler.eAt(wx, wz));
         if (routingDelta != null) e += routingGain * routingDelta.deltaAt(wx, wz);
+        if (eCache.size() < E_CACHE_MAX) eCache.put(key, e);   // 纯函数 ⇒ 竞态下值相同
         return e;
     }
 
@@ -294,14 +325,42 @@ public final class RiverLineNetwork {
         }
         // 双-pass：本 region 的 pass-2 吸收 4 邻 region 的 pass-1 出口种子作续流源。
         // pass-1 相互独立、无递归；pass-2 仅依赖邻 region 的 pass-1 结果（固定），顺序无关。
-        List<RiverLineRegion.OutletSeed> incoming = new ArrayList<>();
+        //
+        // ★★★ 2026-09-14 性能修复（用户："刚创建加载有一段无动静的空闲期"）★★★
+        //   【症状】首个 chunk 的阶段计时实测：sample=4ms extract=465ms **hydro=1526ms**。
+        //   即"进度条出现前"有 ~1.5 秒完全无输出（出生点搜索结束→首个 chunk 之间）。
+        //
+        //   【根因】本处 3×3 循环"建 1 个 region 要先建 8 个邻居的 pass-1"
+        //   ⇒ 首次访问任意 region 都要付【9 次构建】。单次 build 约 117~170ms
+        //   ⇒ 9 × 170 ≈ 1.5s，与实测 hydro=1526ms 完全吻合。
+        //   而 chunk(40,40)（region 已缓存）仅 hydro=26ms ⇒ 确认是一次性冷启动代价。
+        //
+        //   【为何可安全并行】① 各 pass-1 相互独立、无递归（代码设计如此）；
+        //   ② FlowField 内部【无并行】（已核对：无 parallel/IntStream）⇒ 不嵌套并行；
+        //   ③ regionsP1 是 ConcurrentHashMap + computeIfAbsent（原子、幂等）；
+        //   ④ build 为纯函数（只读 eSampler/groundYAt，输出由 (rx,rz) 唯一确定）。
+        //   ⇒ 并行后结果【逐位一致】，只是把 9 次串行的墙钟压到 ~ceil(9/核数) 次。
+        //   用 commonPool（work-stealing，调用线程参与 ⇒ 不会"等自己"死锁，与
+        //   CellGenerator.parallelRows 同一安全模式）。
+        int[] drxArr = new int[8], drzArr = new int[8];
+        int nNb = 0;
         for (int dRX = -1; dRX <= 1; dRX++) {
             for (int dRZ = -1; dRZ <= 1; dRZ++) {
                 if (dRX == 0 && dRZ == 0) continue;
-                RiverLineRegion nb = regionPass1(rx + dRX, rz + dRZ);
-                for (RiverLineRegion.OutletSeed o : nb.outlets) {
-                    if (o.dRX == -dRX && o.dRZ == -dRZ) incoming.add(o);  // 邻的出口指向本 region
-                }
+                // ★ 对角邻【必须保留】：collectOutlet 的 dRX/dRZ 恒为 ±1（出口指向必为对角），
+                //   故 3×3 全部 8 邻都可能接到本 region 的续流种子 —— 不可裁剪。
+                drxArr[nNb] = dRX; drzArr[nNb] = dRZ; nNb++;
+            }
+        }
+        RiverLineRegion[] nbs = new RiverLineRegion[nNb];
+        java.util.stream.IntStream.range(0, nNb).parallel().forEach(i ->
+                nbs[i] = regionPass1(rx + drxArr[i], rz + drzArr[i]));
+        List<RiverLineRegion.OutletSeed> incoming = new ArrayList<>();
+        for (int i = 0; i < nNb; i++) {
+            RiverLineRegion nb = nbs[i];
+            int dRX = drxArr[i], dRZ = drzArr[i];
+            for (RiverLineRegion.OutletSeed o : nb.outlets) {
+                if (o.dRX == -dRX && o.dRZ == -dRZ) incoming.add(o);  // 邻的出口指向本 region
             }
         }
         r = regions.computeIfAbsent(key, ignored -> build(rx, rz, true, incoming));
@@ -2138,9 +2197,23 @@ public final class RiverLineNetwork {
      * 与最终地形（sampleWu）的差异仅剩侵蚀 delta（通常很小），不影响视觉嵌入感。</p>
      */
     public double groundYAt(double wx, double wz) {
-        return terrainY != null ? terrainY.yAt(wx, wz)
+        // ★★★ 2026-09-14 性能修复：坐标级缓存（与 routingE 同一原因，见 eCache 注释）★★★
+        //   groundYAt 在 build() 内对【整片网格】被调用一次（computeFill 填洼层，
+        //   region 覆盖 1280wu ÷ gridCell 24 ⇒ ~2,916 格），且 9 个 region 高度重叠
+        //   ⇒ 与 routingE 叠加共 ~5.2 万次采样。经此缓存后，同一坐标只算一次。
+        //   纯函数（terrainY 在游戏接线中是 heightFromE(terrainEQuick) —— 只依赖坐标）
+        //   ⇒ 命中与未命中等价，输出逐位一致。
+        long key = ((long) Math.floor(wx) << 32) ^ ((long) Math.floor(wz) & 0xFFFFFFFFL);
+        Double hit = gyCache.get(key);
+        if (hit != null) return hit;
+        double v = terrainY != null ? terrainY.yAt(wx, wz)
                 : curve.heightFromE(eSampler.eAt(wx, wz));
+        if (gyCache.size() < E_CACHE_MAX) gyCache.put(key, v);
+        return v;
     }
+
+    /** groundYAt 的坐标级缓存（见 {@link #groundYAt} 注释）。 */
+    private final Map<Long, Double> gyCache = new ConcurrentHashMap<>();
 
     // ===== 下游水力几何（2026-08-29 宽深改革）=====
 

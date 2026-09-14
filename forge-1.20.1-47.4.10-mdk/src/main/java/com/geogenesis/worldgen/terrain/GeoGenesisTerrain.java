@@ -252,20 +252,53 @@ public final class GeoGenesisTerrain {
     private final AtomicBoolean preloadSpawnScheduled = new AtomicBoolean(false);
 
     /**
+     * ★ 首个 chunk 完成信号（2026-09-14）：预热等它之后再启动，避免与主线程抢 CPU。
+     *
+     * <p><b>为何需要</b>：同进程对照实测 —— 单独生成首 chunk 893ms，
+     * <b>并发预热时 1086ms</b>（+193ms）。因为预热构建的 region/tile 与首 chunk
+     * 需要的高度重叠，两者争抢 CPU 且竞争 {@code computeIfAbsent} ⇒ 主线程反而更慢，
+     * 而这段正是用户看到的"进度条不动"。</p>
+     */
+    private final java.util.concurrent.CountDownLatch firstChunkLatch =
+            new java.util.concurrent.CountDownLatch(1);
+
+    /** 由 {@code fillFromNoise} 在 chunk 生成本身完成后调用（释放预热等待）。 */
+    public void noteChunkGenerated() {
+        firstChunkLatch.countDown();
+    }
+
+    /**
      * ★ 2026-08-09 优化：出生点周边异步预热（光追"先投浅路径"类比——把可能马上要用的
      *   tiles 提前在后台算好，玩家进入时缓存命中，冷启动观感丝滑）。
-     *   只执行一次（AtomicBoolean），提交到 TILE_SAMPLER 后台池，不阻塞服务器线程。
+     *   只执行一次（AtomicBoolean），后台线程执行，不阻塞服务器线程。
      *   围绕 (0,0) 半径 3 → 7×7=49 chunk，覆盖 3×3 tiles 全量 + 1 圈边（含懒生成热点）。
+     *
+     * <p>★ 2026-09-14 两处修正（用户："刚创建加载有一段无动静的空闲期"）：</p>
+     * <ol>
+     *   <li><b>推迟到首个 chunk 完成后</b>：实测并发预热使首 chunk 从 893ms 涨到 1086ms
+     *       —— 预热与首 chunk 抢 CPU，正好加长了"进度条不动"的窗口。先让首 chunk 跑完，
+     *       再把预热放出去（此时玩家已看到进度条在动）。</li>
+     *   <li><b>改用专用守护线程</b>（原先提交到 {@code TILE_SAMPLER}）：预热现在要
+     *       "等待"，若提交到 TILE_SAMPLER，在其队列满（64）且线程全忙时
+     *       {@code CallerRunsPolicy} 会在<b>调用线程（主线程）</b>上执行该任务
+     *       ⇒ 那个等待就会把主线程卡住（与优化目标相反）。专用线程彻底规避该风险。</li>
+     * </ol>
      */
     public void preloadSpawnAsync() {
         if (!preloadSpawnScheduled.compareAndSet(false, true)) return;
-        CellGenerator.TILE_SAMPLER.execute(() -> {
+        Thread t = new Thread(() -> {
             try {
+                // 等首个 chunk 生成完毕（上限 30s，超时也继续 —— 预热只是优化）
+                firstChunkLatch.await(30, java.util.concurrent.TimeUnit.SECONDS);
                 preloadAround(0, 0, 3);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
             } catch (Exception e) {
                 LOGGER.warn("spawn preload failed", e);
             }
-        });
+        }, "GeoGenesis-SpawnPreload");
+        t.setDaemon(true);
+        t.start();
     }
 
     /** 旧 API 兼容：按 block 网格返回 Cell 二维数组。支持中断。 */

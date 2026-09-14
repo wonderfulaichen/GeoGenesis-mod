@@ -421,6 +421,11 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 (t1-t0)/1000000, (t3-t2)/1000000, (t4-t3)/1000000, (t4-t0)/1000000);
         }
 
+        // ★ 2026-09-14：本 chunk 已生成完毕 → 释放【出生点预热】的等待。
+        //   预热在此之前一直等待（见 GeoGenesisTerrain.preloadSpawnAsync）：
+        //   实测并发预热会把首 chunk 从 893ms 拖到 1086ms，正好加长"进度条不动"的窗口。
+        terrain.noteChunkGenerated();
+
         return CompletableFuture.completedFuture(chunk);
     }
 
