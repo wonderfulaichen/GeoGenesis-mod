@@ -22,7 +22,8 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | 文件 | 作用 |
 |------|------|
 | `GeoGenesisMod.java` | `@Mod("geogenesis")` 入口，注册 CODEC；`onClientSetup` 注册预览配置屏 + `GeoGenesisColorReloadListener` |
-| `GeoGenesisGenerator.java` | 主生成器，`fillFromNoise` 是地形产线入口；`createState` 注入共享地形到 BiomeSource；★ `applyCarvers` 调 `CaveCarver` 雕洞穴 |
+| `GeoGenesisGenerator.java` | 主生成器，`fillFromNoise` 是地形产线入口；`createState` 注入共享地形到 BiomeSource；★ `applyCarvers` 调 `CaveCarver` 雕洞穴；★ 构造器注入 `VanillaDecorationFilter::filter`（剔除破坏岩层的原版装饰） |
+| `worldgen/generator/VanillaDecorationFilter.java` | ★ 2026-09-16：注入给 `ChunkGenerator` 的**过滤版 `generationSettingsGetter`** —— 剔除 9 个会打散 `StratumField` 水平岩层的原版"岩块团块"特征（`ore_granite/diorite/andesite/tuff/dirt/gravel` 的 upper/lower），**保留金属矿与水成细节**（零平衡风险）。⚠ 1.20.1 的 `BiomeGenerationSettings` 构造器非 public ⇒ 走 `PlainBuilder` 子类 |
 | `worldgen/cave/CaveShape.java` | ★ 2026-09-15：洞穴**几何**（**零 MC 依赖纯函数**，可被探针直接复用）；2D 场驱动柱体切挖 + 岩性门控 |
 | `worldgen/cave/CaveCarver.java` | ★ 2026-09-15：洞穴雕刻的 **MC 适配器**（只负责把方块挖成空气），几何全部委托 `CaveShape` |
 | `worldgen/ore/OreVeins.java` | ★ 2026-09-15：矿脉**纯函数**（**零 MC 依赖**）：成矿带 2D 门控 + 宿主岩/深度带 + 3D 等值面脉体；矿种按岩性成矿 |
@@ -144,6 +145,32 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 > **实例**：`TectonicField.blurDist` 的 `DIST_BLUR_REACH=420` 硬切换 → `tect_dist`
 > `max|∇| = 37.7`。修正（`t` 用 smoothstep 在 reach 处渐隐到 0）后 `37.7 → 1.26`、
 > 长尾比 `17.9 → 1.6`。参照 `TectonicField.smoothStress`（当年已写对）——**本条是它的推广**。
+>
+> ### ⛔ 第五条硬约束：**原版装饰会把「岩块团块」塞进本项目的水平岩层 ⇒ 必须过滤**
+>
+> **原因**：`GeoGenesisGenerator` 直接继承原版 `ChunkGenerator`，其
+> `applyBiomeDecoration` 委托 `super`（原版实现）⇒ **原版会把群系
+> `BiomeGenerationSettings` 里的全部特征放下来**，其中包括 `UNDERGROUND_ORES` 步的
+> **9 个"岩块团块"**特征（`ore_granite / ore_diorite / ore_andesite / ore_tuff /
+> ore_dirt / ore_gravel` 的 upper/lower）。其替换目标是 `STONE_ORE_REPLACEABLES`
+> （含 stone/granite/andesite）⇒ **正好命中 `StratumField` 的水平岩层** ⇒ 岩层被打散。
+> ⚠ `ore_tuff` 尤其误导：**本项目片岩(SCHIST) 即映射为 TUFF** ⇒ 团块会被误认成片岩层。
+>
+> **正解**：`VanillaDecorationFilter`（构造器注入过滤版 `generationSettingsGetter`，
+> 见 `super(biomeSource, VanillaDecorationFilter::filter)`）已剔除这 9 项 ——
+> 原版该 getter 同时驱动 `featuresPerStep` 与 `applyBiomeDecoration` ⇒
+> **过滤后原版管线自动跳过，无需重写装饰循环**。
+> **★ 新增群系 / 改 `BiomeClassifier` 时，必须复核该过滤器仍覆盖新用到群系的团块特征。**
+>
+> **实测取证**（2026-09-16，临时 `[DECOR-AUDIT]` 日志，验证后已删）：
+> `biome=minecraft:jungle steps=11 features=47 oreFeatures=24`，`[6] UNDERGROUND_ORES = 28`
+> ⇒ 原版矿**确实与自研 `OreVeins` 叠加生成**（自研量约为原版 1/10）。
+> 过滤后 `features=38 oreFeatures=15`（剔除 9 项），世界正常生成。
+>
+> **⚠ 同步更正一条长期错误论证**：`OreVeins` 曾写"没有 `NoiseSettings` ⇒ 原版 `ore_*`
+> 用不了"—— **不成立**（装饰放置不依赖 `NoiseSettings`）。真正的自研理由是
+> **按宿主岩 + 深度带成矿**（原版 `OreConfiguration` 无法表达自定义岩性）。
+> **待决**：金属矿是否改为自研独占 ⇒ 属平衡决策，若采纳需重新标定自研总量。
 >
 > ### ⛔ 折叠类算子的禁令：`|2n−1|` 禁用于地形噪声
 >

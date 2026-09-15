@@ -264,10 +264,23 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     /**
      * ★ 2026-09-15：<b>矿种 → 方块映射</b>（让 {@link OreVeins} 的矿脉在游戏里可见）。
      *
-     * <h3>为何自研矿脉（原版 ore feature 用不了）</h3>
-     * <p>本项目地形由自定义 {@code ChunkGenerator} 生成、<b>没有 {@code NoiseSettings}</b>
-     * ⇒ 原版 {@code ore_*} 依赖 {@code OreConfiguration} 的替换机制与 {@code FeatureSorter}
-     * 阶段（同洞穴的处境）。故自研，见 {@link OreVeins}。</p>
+     * <h3>为何自研矿脉（★ 2026-09-16 更正：原论证有误）</h3>
+     * <p><b>旧论证（错误，勿再引用）</b>：曾写"没有 {@code NoiseSettings} ⇒ 原版
+     * {@code ore_*} 用不了"。这不成立 —— {@code NoiseSettings} 只约束原版 carver
+     * 与噪声管线，<b>特征放置并不需要它</b>；且本类 {@code applyBiomeDecoration}
+     * 已委托 {@code super}（原版实现）⇒ 原版群系特征<b>确实会落地</b>。</p>
+     *
+     * <p><b>★ 已定案（2026-09-16 实机取证）</b>：原版陆地群系的
+     * {@code BiomeGenerationSettings} 在 {@code UNDERGROUND_ORES} 步含 <b>28 个</b>放置特征
+     * ⇒ <b>原版矿确实与自研矿脉叠加生成</b>（自研量约为原版的 1/10）。
+     * 其中会<b>打散本地水平岩层</b>的 9 个"岩块团块"特征
+     * （{@code ore_granite/diorite/andesite/tuff/dirt/gravel}）已由
+     * {@link VanillaDecorationFilter} 剔除；<b>金属矿与水成细节刻意保留</b>
+     * ⇒ 矿量与改动前完全一致，无平衡风险。详见该类 javadoc。</p>
+     *
+     * <p><b>真正的自研理由（始终成立）</b>：本设计的矿按<b>宿主岩 + 深度带</b>生成，
+     * 而原版 {@code OreConfiguration} 的 {@code targets} 只能匹配原版方块，
+     * 无法表达"依赖 {@code StratumField} 自定义岩性"。详见 {@link OreVeins}。</p>
      *
      * <h3>为何选这些方块</h3>
      * <p>遵循本项目既有原则（见 {@link #ROCK_BLOCKS} 的 javadoc）：优先<b>同名原版矿石</b>
@@ -538,7 +551,14 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     }
 
     public GeoGenesisGenerator(BiomeSource biomeSource) {
-        super(biomeSource);
+        // ★ 2026-09-16：注入过滤版 generationSettingsGetter。
+        //   原版 applyBiomeDecoration 会按 BiomeGenerationSettings 放置全部特征，
+        //   其中包括会打散本地层（StratumField 水平岩层）的原版"岩块团块"
+        //   （ore_granite/diorite/andesite/tuff/dirt/gravel）。
+        //   该 getter 同时驱动 featuresPerStep 与 applyBiomeDecoration ⇒
+        //   在注入处过滤即可让原版管线自动跳过被剔除项（无需重写装饰循环）。
+        //   详见 VanillaDecorationFilter 的 javadoc（含实机取证日志）。
+        super(biomeSource, VanillaDecorationFilter::filter);
     }
 
     // ===== 初始化 =====
