@@ -210,9 +210,16 @@ public final class CaveShape {
     private static final double CAVERN_Y_SCALE = 1.2;
     private static final double CHEESE_Y_SCALE = 0.9;      // = 1.5 × 0.6
 
-    /** 洞穴带在 Y 上的范围（相对地表）：太浅会破地表，太深无意义。 */
-    private static final int DEPTH_MIN = 8;      // 距地表至少 8 块（配合 SURFACE_LID）
-    private static final int DEPTH_MAX = 120;    // 最深挖到地表下 120 块
+    /**
+     * 洞穴带在 Y 上的范围（相对地表）：太浅会破地表，太深无意义。
+     *
+     * <p>★ 2026-09-15 改为 {@code public}：矿脉的"洞壁露头"联动需要知道
+     * <b>洞穴可能存在的深度窗口</b> —— 超出此窗口即不可能有洞穴，
+     * 该处的"紧邻洞穴"判定恒为 false。若探针硬编码该值会与生产<b>漂移</b>，
+     * 故开放为公开常量，两边共用同一口径。</p>
+     */
+    public static final int DEPTH_MIN = 8;      // 距地表至少 8 块（配合 SURFACE_LID）
+    public static final int DEPTH_MAX = 120;    // 最深挖到地表下 120 块
 
     /** 分量位掩码：隧道。 */
     public static final int F_TUNNEL = 1;

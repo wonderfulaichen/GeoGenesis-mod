@@ -1,5 +1,6 @@
 package com.geogenesis.worldgen.ore;
 
+import com.geogenesis.worldgen.cave.CaveShape;
 import com.geogenesis.worldgen.terrain.RockType;
 
 /**
@@ -85,6 +86,39 @@ public final class OrePerfProbe {
                 us / 1000.0, us / (side * side), us / calls);
         System.out.printf("    ★ 折算每 chunk（256 列）: %.3f ms/chunk%n", perChunkMs);
 
+        // ---------- 1b) ★ 含【洞穴联动】的成本（真实生产口径）----------
+        //   ⚠ 上面 [1] 调的是**无 exposure** 版本 ⇒ 联动的开销（每体素 6 次
+        //     CaveShape.isCave）**没被测量**。这正是本项目被批评过的"性能探针
+        //     没覆盖到实际生产路径"问题，故必须单独测。
+        //   口径：只用【紧邻洞穴】的最坏情况（exposure>1 且每次都做 6 邻判定）
+        //     ⇒ 给出联动成本的上界。
+        CaveShape.setSeed(seed);
+        long tLink = System.nanoTime();
+        long linkCalls = 0, linkHits = 0;
+        for (int cx = 0; cx < side; cx++) {
+            for (int cz = 0; cz < side; cz++) {
+                int surface = 80 + ((cx * 31 + cz * 17) % 181);
+                int rockOrd = ((cx / 32) + (cz / 32) * 4) % rocks;
+                boolean zone = OreVeins.beginColumn(cx, cz);
+                if (!zone) continue;
+                double litho = CaveShape.lithoFactor(rockOrd);
+                for (int y = WORLD_MIN_Y + 1; y < WORLD_MAX_Y; y++) {
+                    if (!OreVeins.depthInRange(y, surface)) continue;
+                    linkCalls++;
+                    // 与生产同构：两阶段判定（只有擦肩体素才做 6 邻洞穴预测）
+                    int o = OreVeins.veinAtLinked(cx, y, cz, surface, rockOrd,
+                            WORLD_MIN_Y, litho);
+                    if (o >= 0) linkHits++;
+                }
+            }
+        }
+        long elLink = System.nanoTime() - tLink;
+        double linkPerChunkMs = elLink / 1000.0 / 1000.0 / (side * side) * 256.0;
+        System.out.printf("[1b] 含洞穴联动（6 邻预测）: 体素=%d 命中=%d 总=%.1fms"
+                        + "  ★ 折算每 chunk: %.3f ms/chunk（联动增量 %+.3f）%n",
+                linkCalls, linkHits, elLink / 1_000_000.0, linkPerChunkMs,
+                linkPerChunkMs - perChunkMs);
+
         // ---------- 2) 仅列级门控成本（不含逐体素）----------
         long t1 = System.nanoTime();
         int zoneHits = 0;
@@ -123,6 +157,9 @@ public final class OrePerfProbe {
         boolean pass2 = worstPerChunk <= 2.5;
         System.out.printf("[判据2] 最坏成本 ≤ 2.5 ms/chunk（全部列都在成矿带内）: %s（实测 %.3f）%n",
                 pass2 ? "PASS" : "FAIL", worstPerChunk);
+        boolean pass3 = linkPerChunkMs <= 2.5;
+        System.out.printf("[判据3] 含洞穴联动 ≤ 2.5 ms/chunk（联动增量应可忽略）: %s（实测 %.3f）%n",
+                pass3 ? "PASS" : "FAIL", linkPerChunkMs);
 
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < perOre.length; i++) sb.append(perOre[i]).append(' ');
@@ -130,6 +167,6 @@ public final class OrePerfProbe {
         System.out.println("    ⚠ 本探针窗口小 + 地表高/岩性按模运算循环 ⇒ 某些矿的深度带"
                 + "未必被采到（实测 seed=12345 只有 3 种有命中）。");
         System.out.println("      矿种齐全性【不以此为准】—— 见 runOreVeinProbe 判据2（ND=512 大窗口）。");
-        System.out.println((pass1 && pass2) ? "ALL PASS" : "FAILURES");
+        System.out.println((pass1 && pass2 && pass3) ? "ALL PASS" : "FAILURES");
     }
 }

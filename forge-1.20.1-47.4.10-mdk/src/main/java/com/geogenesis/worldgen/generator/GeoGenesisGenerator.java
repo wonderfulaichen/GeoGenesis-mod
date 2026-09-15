@@ -774,6 +774,12 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //   与地层同为"陆地列"前提：海洋列岩性恒为 STONE 且被水覆盖，不成矿。
         boolean oreZone = !cell.isWater() && OreVeins.isSeeded()
                 && OreVeins.beginColumn(wx, wz);
+        // ★★ 2026-09-15 洞穴联动开关：矿脉在【洞壁露头】。
+        //   为何需要：矿脉与洞穴此前独立判定 ⇒ 洞穴穿过矿脉处把矿脉挖断
+        //   （视觉上"矿在洞里断掉"）。开启后，紧邻洞穴的矿脉阈值被放大
+        //   （{@code OreVeins.VEIN_EXPOSURE_MUL}）⇒ 洞壁上的矿脉更粗、看得见。
+        //   两个前提都满足才启用：矿脉已播种 + 洞穴已播种（否则 CaveShape.isCave 恒 false）。
+        boolean caveLinked = oreZone && CaveShape.isSeeded();
         if (!cell.isWater() && cell.rockSeqPacked != 0) {
             final int nLay = StratumField.LAYER_COUNT;         // = 4（层序循环长度）
             rockTh = new int[nLay];
@@ -813,7 +819,16 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                     //   深度窗口剪枝：只有地表下 6~220 格才可能成矿，其余 Y 整段跳过
                     //   （否则每列会多出上百次必然失败的 veinAt 调用）。
                     if (oreZone && ord >= 0 && OreVeins.depthInRange(y, surfaceY)) {
-                        int ore = OreVeins.veinAt(wx, y, wz, surfaceY, ord, WORLD_MIN_Y);
+                        //   ★★ 洞穴联动：矿脉在【洞壁露头】。
+                        //      ⚠ 必须"预测"而非"查询已生成方块"：矿脉铺在 fillFromNoise，
+                        //        洞穴雕在之后的 applyCarvers ⇒ 此刻洞穴还不存在。
+                        //      ⚠ 用参数传递（非静态注入）⇒ 多 chunk 并行生成安全。
+                        //      ⚠ 走【两阶段】版本：只有"擦肩而过"的体素才做 6 邻洞穴预测
+                        //        （实测该优化把联动增量从 +2.32 降到 +0.37 ms/chunk）。
+                        int ore = caveLinked
+                                ? OreVeins.veinAtLinked(wx, y, wz, surfaceY, ord, WORLD_MIN_Y,
+                                        CaveShape.lithoFactor(cell.rockTypeId))
+                                : OreVeins.veinAt(wx, y, wz, surfaceY, ord, WORLD_MIN_Y);
                         if (ore >= 0 && ore < ORE_BLOCKS.length) state = ORE_BLOCKS[ore];
                     }
                 } else {

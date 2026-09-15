@@ -1,5 +1,6 @@
 package com.geogenesis.worldgen.ore;
 
+import com.geogenesis.worldgen.cave.CaveShape;
 import com.geogenesis.worldgen.terrain.RockType;
 
 import java.awt.image.BufferedImage;
@@ -270,8 +271,94 @@ public final class OreVeinProbe {
         System.out.printf("[判据5] 脉体形态（平均分量≥4块 且 孤立点<40%%）: %s%n",
                 pass5 ? "PASS" : "FAIL");
 
+        // ---------- 判据6：洞穴联动（矿脉在洞壁露头）----------
+        //   受控对照：同点分别用 exposure=1.0（无联动）与 exposure=VEIN_EXPOSURE_MUL
+        //   （紧邻洞穴）求值，统计命中数增幅。增幅必须显著（否则联动形同虚设）。
+        //
+        //   ⚠ 口径说明：本判据直接给 exposure 值做对照，**不**真的调用 CaveShape
+        //     （那需要完整的地表/岩性上下文，且与洞穴探针职责重复）。它隔离的是
+        //     "暴露面放大是否真的让脉更密"这一机制本身。
+        System.out.println("[6] 洞穴联动（受控：同点只换 exposure）:");
+        //   ★ 对照必须限制在【洞穴深度窗口】内（CaveShape.DEPTH_MIN..DEPTH_MAX）。
+        //     为何：矿脉深度带是 6~220，而洞穴只存在于地表下 8~120 ⇒ 深于 120 处
+        //     **根本没有洞穴**，"紧邻洞穴"不可能成立 ⇒ 不放大才是正确的。
+        //     若把整个矿脉深度带都拿去对照，会高估联动范围（实测踩过：这样算出的
+        //     "朴素高 exposure" 命中 24597，而合理口径只有 10409）。
+        int dLo = Math.max(OreVeins.MIN_DEPTH, CaveShape.DEPTH_MIN);
+        int dHi = Math.min(OreVeins.MAX_DEPTH, CaveShape.DEPTH_MAX);
+        System.out.printf("    对照深度窗口 = 地表下 [%d, %d]（矿脉∩洞穴）%n", dLo, dHi);
+        long plainHits = 0, expHits = 0;
+        long linkSamples = 0;
+        for (int[] p : band) {
+            for (int y = SYN_SURFACE - dHi; y <= SYN_SURFACE - dLo; y++) {
+                for (int r = 0; r < rocks; r++) {
+                    linkSamples++;
+                    if (OreVeins.veinAt(p[0], y, p[1], SYN_SURFACE, r, WORLD_MIN_Y, 1.0) >= 0) {
+                        plainHits++;
+                    }
+                    if (OreVeins.veinAt(p[0], y, p[1], SYN_SURFACE, r, WORLD_MIN_Y,
+                            OreVeins.VEIN_EXPOSURE_MUL) >= 0) {
+                        expHits++;
+                    }
+                }
+            }
+        }
+        // ★ 等价性校验（本判据的<b>正确性核心</b>）：两阶段优化（veinAtLinked）
+        //   依赖"三态划分"不丢命中。这里直接校验该不变式：
+        //     对任意体素，若 veinHitCode 返回 1（命中）或 0（远离），
+        //     则【无论 exposure 多大】结论都不变；只有返回 -1（擦肩）时
+        //     exposure 才可能翻转结果。
+        //   违反任一条 ⇒ 优化会丢矿（最危险的静默 bug）。
+        //
+        //   ⚠ 为何不用"恒紧邻洞穴"模拟：那需要调用真实 CaveShape.isCave，
+        //     而它要求先 setSeed。实测踩过 —— 忘了 setSeed 会让 isCave 恒 false，
+        //     于是"两阶段结果 == 无联动结果"，看起来像优化丢矿，实为探针没播种。
+        //     改为直接校验数学不变式后，该陷阱不存在。
+        long code1 = 0, code0 = 0, codeMinus1 = 0, bad = 0;
+        for (int[] p : band) {
+            for (int y = SYN_SURFACE - dHi; y <= SYN_SURFACE - dLo; y++) {
+                for (int r = 0; r < rocks; r++) {
+                    // 两端作为"地面真值"：
+                    //   narrow = exposure 1.0（无联动）
+                    //   wide   = exposure = 生产联动值（VEIN_EXPOSURE_MUL）
+                    //   ⚠ 不能取极大值（那会让阈值大到恒命中，校验失去意义 —— 实测踩过）。
+                    boolean narrow = OreVeins.veinAt(p[0], y, p[1], SYN_SURFACE, r,
+                            WORLD_MIN_Y, 1.0) >= 0;
+                    boolean wide = OreVeins.veinAt(p[0], y, p[1], SYN_SURFACE, r,
+                            WORLD_MIN_Y, OreVeins.VEIN_EXPOSURE_MUL) >= 0;
+                    // 逐矿种校验三态划分的正确性（双向等价）：
+                    //   ① 有任一矿种 code==1 ⇒ narrow 必须 true（命中必显现）
+                    //   ② narrow==true ⇒ 必须有某个矿种 code==1（不会"命中却无 code=1"）
+                    int depth = SYN_SURFACE - y;
+                    boolean anyCode1 = false;
+                    boolean anyMinus1 = false;
+                    for (int i = 0; i < OreVeins.ORES.length; i++) {
+                        OreVeins.Ore o = OreVeins.ORES[i];
+                        if (depth < o.minDepth || depth > o.maxDepth) continue;
+                        if (!o.hosts(r)) continue;
+                        int code = OreVeins.veinHitCode(i, p[0], y, p[1], o.richness);
+                        if (code == 1) { code1++; anyCode1 = true; }
+                        else if (code == -1) { codeMinus1++; anyMinus1 = true; }
+                        else code0++;
+                    }
+                    if (anyCode1 != narrow) bad++;      // ① 与 ② 合并
+                    // ★ 单调性：无联动命中 ⇒ 有联动（放大阈值）必须仍命中。
+                    //   用生产 exposure 值而非极大值，否则校验恒真、失去意义。
+                    if (narrow && !wide) bad++;
+                }
+            }
+        }
+        double gain = plainHits == 0 ? 0 : (double) expHits / plainHits;
+        System.out.printf("    样本=%d  无联动命中=%d  联动命中=%d  增幅=%.2f×%n",
+                linkSamples, plainHits, expHits, gain);
+        System.out.printf("    三态分布: 命中=%d 远离=%d 擦肩=%d%n", code1, code0, codeMinus1);
+        System.out.printf("    不变式校验（双向等价 + 单调性）: 违反=%d%n", bad);
+        boolean pass6 = expHits > plainHits && gain >= 1.3 && bad == 0 && code1 > 0;
+        System.out.printf("[判据6] 洞穴联动生效（增幅≥1.3× 且三态不变式无违反）: %s%n",
+                pass6 ? "PASS" : "FAIL");
+
         int failures = (pass1 ? 0 : 1) + (pass2 ? 0 : 1) + (pass3 ? 0 : 1)
-                + (pass4 ? 0 : 1) + (pass5 ? 0 : 1);
+                + (pass4 ? 0 : 1) + (pass5 ? 0 : 1) + (pass6 ? 0 : 1);
         System.out.println(failures == 0 ? "ALL PASS" : ("FAILURES=" + failures));
     }
 
