@@ -4,6 +4,7 @@ import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.cave.CaveCarver;
 import com.geogenesis.worldgen.cave.CaveShape;
 import com.geogenesis.worldgen.climate.BiomeClassifier;
+import com.geogenesis.worldgen.ore.OreVeins;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
 import com.geogenesis.worldgen.noise.Frequency;
@@ -254,6 +255,44 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             Blocks.WHITE_TERRACOTTA.defaultBlockState(),   // 5 LIMESTONE 石灰岩 → 白色陶瓦（Δ 原 CALCITE）
             Blocks.BASALT.defaultBlockState(),             // 6 BASALT    玄武岩 → 玄武岩（同名）
             Blocks.ANDESITE.defaultBlockState(),           // 7 ANDESITE  安山岩 → 安山岩（同名）
+    };
+
+    /**
+     * ★ 2026-09-15：<b>矿种 → 方块映射</b>（让 {@link OreVeins} 的矿脉在游戏里可见）。
+     *
+     * <h3>为何自研矿脉（原版 ore feature 用不了）</h3>
+     * <p>本项目地形由自定义 {@code ChunkGenerator} 生成、<b>没有 {@code NoiseSettings}</b>
+     * ⇒ 原版 {@code ore_*} 依赖 {@code OreConfiguration} 的替换机制与 {@code FeatureSorter}
+     * 阶段（同洞穴的处境）。故自研，见 {@link OreVeins}。</p>
+     *
+     * <h3>为何选这些方块</h3>
+     * <p>遵循本项目既有原则（见 {@link #ROCK_BLOCKS} 的 javadoc）：优先<b>同名原版矿石</b>
+     * —— 本项目 8 种矿恰好与原版矿物一一对应：</p>
+     * <table border="1">
+     *   <caption>矿种 → 原版方块</caption>
+     *   <tr><th>矿种</th><th>方块</th><th>MC 依据</th></tr>
+     *   <tr><td>COAL</td><td>COAL_ORE</td><td>原版同名 ✓</td></tr>
+     *   <tr><td>COPPER</td><td>COPPER_ORE</td><td>原版同名 ✓</td></tr>
+     *   <tr><td>IRON</td><td>IRON_ORE</td><td>原版同名 ✓</td></tr>
+     *   <tr><td>GOLD</td><td>GOLD_ORE</td><td>原版同名 ✓</td></tr>
+     *   <tr><td>REDSTONE</td><td>REDSTONE_ORE</td><td>原版同名 ✓</td></tr>
+     *   <tr><td>LAPIS</td><td>LAPIS_ORE</td><td>原版同名 ✓</td></tr>
+     *   <tr><td>EMERALD</td><td>EMERALD_ORE</td><td>原版同名 ✓</td></tr>
+     *   <tr><td>DIAMOND</td><td>DIAMOND_ORE</td><td>原版同名 ✓</td></tr>
+     * </table>
+     * <p>索引与 {@link OreVeins.Ore#ordinal()} <b>严格对齐</b>（顺序：COAL, COPPER, IRON,
+     * GOLD, REDSTONE, LAPIS, EMERALD, DIAMOND）。若该枚举增删成员，本表必须同步
+     * —— 越界时回退原岩层（安全）。</p>
+     */
+    private static final BlockState[] ORE_BLOCKS = {
+            Blocks.COAL_ORE.defaultBlockState(),           // 0 COAL     煤
+            Blocks.COPPER_ORE.defaultBlockState(),         // 1 COPPER   铜
+            Blocks.IRON_ORE.defaultBlockState(),           // 2 IRON     铁
+            Blocks.GOLD_ORE.defaultBlockState(),           // 3 GOLD     金
+            Blocks.REDSTONE_ORE.defaultBlockState(),       // 4 REDSTONE 红石
+            Blocks.LAPIS_ORE.defaultBlockState(),          // 5 LAPIS    青金石
+            Blocks.EMERALD_ORE.defaultBlockState(),        // 6 EMERALD  绿宝石
+            Blocks.DIAMOND_ORE.defaultBlockState(),        // 7 DIAMOND  钻石
     };
 
     /**
@@ -512,6 +551,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         sharedTerrain = null;
         // ★ 2026-09-15：洞穴噪声同批播种（与地形/河网同生命周期，避免跨存档串扰）。
         CaveShape.setSeed(seed);
+        // ★ 2026-09-15：矿脉噪声同批播种（同上）。
+        OreVeins.setSeed(seed);
         // ★ 2026-09-15：坡度抖动噪声同批失效（否则换存档后仍用旧种子的抖动）。
         invalidateSteepJitter();
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);
@@ -727,6 +768,12 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         int[] rockOrd = null;     // 各层岩性 ordinal（-1 = 回退 STONE）
         int rockPeriod = 0;
         int rockBase = 0;
+        // ★ 2026-09-15：矿脉列级门控（成矿带）。
+        //   每列只求一次 2D 噪声 —— 不在成矿带内的列【整列跳过】矿脉判定，
+        //   这是性能主控（实测带内列约 27%，即约 73% 的列零成本）。
+        //   与地层同为"陆地列"前提：海洋列岩性恒为 STONE 且被水覆盖，不成矿。
+        boolean oreZone = !cell.isWater() && OreVeins.isSeeded()
+                && OreVeins.beginColumn(wx, wz);
         if (!cell.isWater() && cell.rockSeqPacked != 0) {
             final int nLay = StratumField.LAYER_COUNT;         // = 4（层序循环长度）
             rockTh = new int[nLay];
@@ -759,6 +806,16 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                         acc += rockTh[i];
                     }
                     state = ord >= 0 ? ROCK_BLOCKS[ord] : ((y < 0) ? DEEPSLATE : STONE);
+                    // ★ 2026-09-15：矿脉覆盖（在【岩层之上】判定 —— 矿脉嵌在岩层里）。
+                    //   复用上面已算出的 ord（该体素所在【层】的岩性）⇒ 零额外采样。
+                    //   成矿带门控在 OreVeins 内部缓存（每列仅一次 2D 噪声），
+                    //   故只需在 oreZone 为真时才调用（省掉 200+ 次无谓的深度/岩性比较）。
+                    //   深度窗口剪枝：只有地表下 6~220 格才可能成矿，其余 Y 整段跳过
+                    //   （否则每列会多出上百次必然失败的 veinAt 调用）。
+                    if (oreZone && ord >= 0 && OreVeins.depthInRange(y, surfaceY)) {
+                        int ore = OreVeins.veinAt(wx, y, wz, surfaceY, ord, WORLD_MIN_Y);
+                        if (ore >= 0 && ore < ORE_BLOCKS.length) state = ORE_BLOCKS[ore];
+                    }
                 } else {
                     state = (y < 0) ? DEEPSLATE : STONE;       // 无岩性数据 / 海洋列
                 }

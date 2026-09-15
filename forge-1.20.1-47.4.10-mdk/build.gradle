@@ -919,6 +919,32 @@ task runCavePerfProbe(type: JavaExec) {
     }
 }
 
+// Ore vein perf probe (2026-09-15): 矿脉性能 ——
+//   矿脉接在方块铺设的逐体素层，既有性能探针只测到地形层 ⇒ 单独补测。
+//   含列级门控/深度剪枝/最坏上界，并与洞穴的 2.48ms/chunk 对照。
+//   gradlew runOrePerfProbe [-PprobeArgs="seed chunks"]
+task runOrePerfProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.ore.OrePerfProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Ore vein probe (2026-09-15): 矿脉诊断 ——
+//   复用生产的零 MC 依赖纯函数 OreVeins：密度 / 矿种齐全 / 岩性耦合（受控对照）/
+//   深度带硬约束 / 脉体连通性 + 输出 Y-Z 与 X-Z 剖面图。
+//   gradlew runOreVeinProbe [-PprobeArgs="seed spanXY [scan]"]
+task runOreVeinProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.ore.OreVeinProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Cave shape probe (2026-09-15): 洞穴几何诊断 ——
 //   复用生产的零 MC 依赖纯函数 CaveShape：体积占比 / 是否挖穿地表 /
 //   岩性耦合（石灰岩 vs 花岗岩）+ 输出 X-Y 垂直剖面图。
