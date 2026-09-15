@@ -10,12 +10,23 @@ import com.geogenesis.worldgen.terrain.RockType;
 /**
  * 矿脉生成（<b>零 Minecraft 依赖的纯函数</b>）。
  *
- * <h2>为何必须自研（与原版 ore feature 的关系）</h2>
- * <p>本项目地形由自定义 {@code ChunkGenerator} 生成、<b>没有 {@code NoiseSettings}</b>
- * ⇒ 原版 {@code ConfiguredFeature}({@code ore_*}) 用不了：它们依赖
- * {@code OreConfiguration} 的 {targets → replaceable} 替换机制与 {@code FeatureSorter}
- * 放置阶段，两者都要求原版世界生成管线（同 {@code CaveShape} 的处境）。
- * 故自研，复用本项目既有的 {@link Simplex3}。</p>
+ * <h2>与原版 ore feature 的关系（★ 2026-09-16 更正：原论证有误）</h2>
+ * <p><b>旧论证（错误，勿再引用）</b>：曾写"没有 {@code NoiseSettings} ⇒ 原版
+ * {@code ConfiguredFeature}({@code ore_*}) 用不了"。这不成立 ——
+ * {@code NoiseSettings} 只约束原版 carver 与噪声管线，<b>特征放置并不需要它</b>；
+ * 且 {@code GeoGenesisGenerator.applyBiomeDecoration} 已明确委托 {@code super}
+ * （原版实现）⇒ 原版群系特征<b>确实会落地</b>（洞穴钟乳石/苔藓已被观察到）。</p>
+ *
+ * <p><b>★ 已定案（2026-09-16 实机取证）</b>：原版陆地群系的 {@code BiomeGenerationSettings}
+ * 在 {@code UNDERGROUND_ORES} 步含 <b>28 个</b>放置特征 ⇒ <b>原版矿确实同时在生成</b>，
+ * 本类产出是"叠加在原版量之上的 ~1/10"，故"按岩性成矿"当前被原版随机矿稀释。
+ * 本次已剔除的是会<b>打散本地水平岩层</b>的 9 个"岩块团块"特征
+ * （见 {@code VanillaDecorationFilter}）；<b>金属矿是否改为自研独占，是待决的平衡问题</b>，
+ * 不在本次改动范围内。</p>
+ *
+ * <p><b>真正的自研理由（不依赖上述结论，始终成立）</b>：本设计的矿按<b>宿主岩 + 深度带</b>
+ * 成矿（见下），而原版 {@code OreConfiguration} 的 {@code targets} 只能匹配<b>原版方块</b>，
+ * 无法表达"依赖本项目 {@code StratumField} 的自定义岩性"。这才是必须自研的根据。</p>
  *
  * <h2>设计：三层门控（由便宜到昂贵）</h2>
  * <ol>

@@ -13,6 +13,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 修复 / Fixed
 
+- **★★ 原版"岩块团块"装饰正在打散本项目的水平岩层（2026-09-16，含一处事实更正）**：
+  - **发现途径**：追查"为何要自研矿脉"时，发现 `OreVeins` / `GeoGenesisGenerator` 的
+    javadoc 断言"没有 `NoiseSettings` ⇒ 原版 `ore_*` 用不了"——**与事实不符**：
+    装饰放置**不依赖** `NoiseSettings`，且本类 `applyBiomeDecoration` 明确委托了
+    `super`（原版实现）⇒ **原版群系特征确实会落地**。
+  - **取证（新增一次性 `[DECOR-AUDIT]` 日志，验证完成后已删除）**：实机日志
+    `biome=minecraft:jungle steps=11 features=47 oreFeatures=24`，
+    **`[6] UNDERGROUND_ORES = 28`** ⇒ 原版矿**确实同时在生成**（自研量约为原版 1/10）。
+  - **更严重的一层**：该步除金属矿外还有 **9 个"岩块团块"特征**
+    （`ore_granite / ore_diorite / ore_andesite / ore_tuff / ore_dirt / ore_gravel` 的 upper/lower），
+    其替换目标是 `STONE_ORE_REPLACEABLES`（含 stone/granite/andesite）⇒
+    **正好命中本项目 `StratumField` 的岩层** ⇒ 精心构造的水平岩层被随机团块打散，
+    直接违背"岩性 → 地形 → 方块 可见因果闭环"的设计目标。
+    ⚠ 其中 `ore_tuff` 尤其误导：**本项目片岩(SCHIST) 即映射为 TUFF** ⇒ 团块会被误认成片岩层。
+  - **修复**：新增 `worldgen/generator/VanillaDecorationFilter.java`，通过
+    **构造器注入过滤版 `generationSettingsGetter`**（`super(biomeSource, VanillaDecorationFilter::filter)`）
+    剔除上述 9 项。
+    - **为何用注入 getter 而非重写装饰循环**：原版该 getter 同时驱动 `featuresPerStep`
+      与 `applyBiomeDecoration`（`ChunkGenerator.java:93-97`、`:324`）⇒ 过滤后原版管线
+      自动跳过，**一行原版逻辑都不用抄**，无"照抄抄错"风险。
+    - **刻意保留金属矿 + 水成细节**（`disk_*`）⇒ **矿量与改动前完全一致，零平衡风险**；
+      本改动只修"岩层被团块打散"这一个确定的 bug。
+  - **验证（实机）**：`原始: features=47 oreFeatures=24 ⇒ 过滤后: features=38 oreFeatures=15 (剔除 9 项)`；
+    世界正常生成、装饰阶段无异常（无 `Biome decoration` CrashReport）。
+  - **坑（务必记住）**：`ng_execute` 缓存里有**多个版本**的 `BiomeGenerationSettings`。
+    1.21 形态是 `getCarvers()` 无参 + carvers 为单 `HolderSet`；
+    **1.20.1 是 `Map<GenerationStep.Carving, HolderSet<...>>` + `getCarvers(Carving)` 带参**。
+    读反编译源务必**认准版本**（本次先读错、编译立刻报错）。
+    另：1.20.1 的 `BiomeGenerationSettings` **构造器不是 public** ⇒ 须走公开的 `PlainBuilder`，
+    并用其子类访问 `protected features` 以保留**含空步的完整 11 步结构**（否则扰动 `FeatureSorter` 步索引）。
+  - **更正**：`OreVeins` / `GeoGenesisGenerator` 中"原版 ore_* 用不了"的错误论证已改写为事实版本。
+  - **待决（不在本次范围）**：金属矿是否改为自研独占 ⇒ 属**平衡决策**；
+    若采纳，需把自研总量从"原版 1/10"重新标定。
+  - ⚠ **未 bump `PreviewDisplay.CACHE_SCHEMA_VERSION`**：本改动只影响原版装饰，
+    `Cell`/地形场与预览产出均不变（预览不渲染装饰）⇒ 按 `ErosionEngine` 注释确立的纪律不 bump。
+
 - **★★★ 地形类型场【忽略世界种子】⇒ 所有世界的山脉/高原/平原布局相同（严重）**：
   - **缺陷**：`TerrainCharacterField.getCellType(cx, cz)` 用 `hash(cx, cz)` 决定格点类型，
     哈希<b>不含世界种子</b>；而 `seed()` 只播种了 `warpX/warpZ`，但 `WARP_AMP = 0`
