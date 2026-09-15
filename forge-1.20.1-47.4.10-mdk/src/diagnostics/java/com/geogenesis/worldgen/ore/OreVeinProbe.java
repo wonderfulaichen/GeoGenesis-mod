@@ -153,6 +153,31 @@ public final class OreVeinProbe {
         System.out.printf("[判据2] 8 种矿全部出现（无死矿种）: %s%s%n",
                 pass2 ? "PASS" : "FAIL", missing == 0 ? "" : "（缺 " + missing + " 种）");
 
+        // ---------- ★ 2026-09-16 新增 [2b]：折算【每 chunk 矿石块数】----------
+        //   为何要这个绝对口径：原版密度只能从数据包查（count×size），而"我们是否与
+        //   之同量级"必须换算到同一绝对单位才可判断（本探针原只报百分比，无法与原版比）。
+        //   折算：本窗口 N² 列 ⇒ 等价 N²/256 个 chunk（层数相同 H）。
+        //   ⚠⚠ 本项【只报数、不设判据】—— 因为原版对照值存在【近 10 倍的不确定性】：
+        //     · 名义上限 count×size（数据包）合计 ~2984 块/chunk；
+        //     · 历史公认值（Wiki 统计）却是 钻石 ~3.7、煤 ~185、铁 ~77 块/chunk。
+        //     两者矛盾近 10×（数据包是"单脉最大块数"、且各变体 count 有疑）。
+        //     据不可靠对照值设门禁 ⇒ 会变成"会在未来翻车/误导排查"的坏判据
+        //     （本项目已在"抖动判据"上栽过一次）。故此处只把数摆出来，
+        //     裁决交给【实机手感】，并把旋钮写清楚（见 CHANGELOG『矿石总量对照』）。
+        double chunksHere = (double) N * N / 256.0;
+        double totalPerChunk = oreTotal / chunksHere;
+        StringBuilder pb = new StringBuilder();
+        for (int i = 0; i < OreVeins.ORES.length; i++) {
+            pb.append(String.format("%s=%.1f ", OreVeins.ORES[i], perOre[i] / chunksHere));
+        }
+        System.out.printf("[2b] 折算每 chunk 矿石块数: %s%n", pb);
+        System.out.printf("     合计 = %.1f 块/chunk（占该 chunk %d 层的 %.3f%%）%n",
+                totalPerChunk, H, 100.0 * totalPerChunk / (256.0 * H));
+        System.out.println("     原版对照（名义上限 count×size，非实际）："
+                + "煤850 铜480 铁940 金108 红石96 青金石42 钻石168 绿宝石300 ⇒ 合计 ~2984");
+        System.out.println("     历史公认值（Wiki 统计）: 钻石 ~3.7 煤 ~185 铁 ~77 块/chunk"
+                + "  ⇒ 与原版口径差近 10×，故本项不设判据");
+
         // ---------- 判据3：岩性耦合（受控合成对照）----------
         //   对每种矿，分别用【宿主岩】与【非宿主岩】在**同一点**求值，比较命中数。
         //   宿主岩必须 > 0，非宿主岩必须 = 0（这正是"岩性门控"的直接检验）。
@@ -361,8 +386,24 @@ public final class OreVeinProbe {
         System.out.printf("[判据6] 洞穴联动生效（增幅≥1.3× 且三态不变式无违反）: %s%n",
                 pass6 ? "PASS" : "FAIL");
 
+        // ---------- ★ 判据7（2026-09-16 新增）：总量【锚定】----------
+        //   与判据8（紫晶洞占比）同一思路：把"我们自己的绝对量"钉住，
+        //   使得日后任何人改动 VEIN_T / PROSPECT_T / 矿种 richness 时，
+        //   若把总量改得面目全非，会立刻被这条挡住。
+        //   ★ 刻意【不】锚定到原版数值：原版对照值本身有近 10× 不确定性
+        //     （见 [2b] 的说明）⇒ 把不可靠对照值变成硬门禁是自找翻车。
+        //     区间取当前实测（~232）的 ±40%：足够容纳"有意的调平衡"，
+        //     又能挡住"手滑把它改成 10 倍/0.1 倍"。
+        boolean pass7 = totalPerChunk >= 140.0 && totalPerChunk <= 330.0;
+        System.out.printf("[判据7] 总量锚定（140~330 块/chunk，防静默漂移；"
+                        + "非对齐原版）: %s（实测 %.1f）%n",
+                pass7 ? "PASS" : "FAIL", totalPerChunk);
+        System.out.println("     若要贴近原版手感，唯一旋钮 = PROSPECT_T（成矿带阈值，"
+                + "越小带越大、矿越多）或 VEIN_T（脉体阈值，越大脉越粗）");
+
         int failures = (pass1 ? 0 : 1) + (pass2 ? 0 : 1) + (pass3 ? 0 : 1)
-                + (pass4 ? 0 : 1) + (pass5 ? 0 : 1) + (pass6 ? 0 : 1);
+                + (pass4 ? 0 : 1) + (pass5 ? 0 : 1) + (pass6 ? 0 : 1)
+                + (pass7 ? 0 : 1);
         System.out.println(failures == 0 ? "ALL PASS" : ("FAILURES=" + failures));
     }
 
