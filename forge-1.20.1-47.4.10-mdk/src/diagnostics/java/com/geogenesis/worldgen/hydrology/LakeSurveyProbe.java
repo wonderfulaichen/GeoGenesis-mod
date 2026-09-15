@@ -59,9 +59,10 @@ public final class LakeSurveyProbe {
                 java.util.function.ToDoubleBiFunction<Double, Double> erodedY =
                         (wx, wz) -> generator.sampleWu(wx, wz).height;
                 level = lk.erodedWaterLevel(erodedY);
-                oob = lk.computeFlood(erodedY, level,
-                        com.geogenesis.worldgen.hydrology.riverline.RiverLineParams
-                                .defaults().gridCell());
+                // ★ 2026-09-15：与生产同口径 —— BFS 加密一倍，认领域基准用原始 gridCell
+                double claimGrid = com.geogenesis.worldgen.hydrology.riverline.RiverLineParams
+                        .defaults().gridCell();
+                oob = lk.computeFlood(erodedY, level, claimGrid * 0.5, claimGrid);
             }
             // 生产实际出水格数（湖域周边扫块）
             int wetCells = 0;

@@ -121,9 +121,13 @@ public final class HydrologyBlockCarver {
                 //   湖域列是否出水：不在 flood 连通区内的列【不标 lakePlan】→ 该列出水
                 //   自然在连通区边界结束（不会"停在半途"：水位等高线闭合在连通区内部），
                 //   也不会漫出洼地（连通性约束：坡面不连通不淹）。computeFlood 每湖缓存。
-                if (ln.computeFlood(erodedY, spill,
-                        com.geogenesis.worldgen.hydrology.riverline.RiverLineParams
-                                .defaults().gridCell())) {
+                // ★ 2026-09-15：BFS 粗格加密一倍（claimGrid/2 = 12wu），认领域基准仍用
+                //   原始 gridCell。原因：24wu 粗格下湖岸尖端即使 5 点采样也会漏判
+                //   （实测 ASCII 湖形呈 "#.##"、"…?#…" 破碎），加密后 floodHalf 同步
+                //   减半 ⇒ 岸线量化误差从 ±12wu 降到 ±6wu。格数影响可控：pad 按物理
+                //   72wu 换算，格数仅从 8² 增到 15²（远低于 nx*nz>40000 的弃湖阈值）。
+                double claimGrid = RiverLineParams.defaults().gridCell();
+                if (ln.computeFlood(erodedY, spill, claimGrid * 0.5, claimGrid)) {
                     return new HydrologyBlockCarvedColumn(blockX, blockZ,
                             original, original, original, original,
                             0.0, 1.0, false, false);
