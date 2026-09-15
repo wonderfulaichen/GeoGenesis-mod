@@ -63,7 +63,11 @@ public final class OreVeinProbe {
         // 参数覆盖仅接受数字（"scan" 已在上面分流）
 
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
-        int N = args.length > 1 ? Integer.parseInt(args[1]) : 160;
+        // ★ 默认窗口必须 ≥512：成矿带特征尺度 190 块，N=160 时带内列仅 5.4%
+        //   ⇒ 连通性统计被窗口边界"截断"（脉体在边界被切），判据5 会误报 FAIL。
+        //   这是"窗口不足一个特征"的老坑（本项目在洞穴密度上踩过一次）。
+        //   调大默认值 ⇒ 无参数运行也给出可信结论，不再给后人埋雷。
+        int N = args.length > 1 ? Integer.parseInt(args[1]) : 512;
 
         // 可选参数覆盖（便于迭代形态，不污染生产默认值）：
         //   args[2] = veinMul（脉体阈值倍率），args[3] = prosMul（成矿带阈值倍率）
