@@ -64,6 +64,25 @@ public final class TerrainCharacterField {
     private final ContinentField continent;
     private final double continentBias;
 
+    /**
+     * ★ 2026-09-16 修复（严重）：世界种子参与【格点类型哈希】。
+     *
+     * <h3>原缺陷：地形类型场与种子无关 ⇒ 所有世界的山脉/高原/平原布局相同</h3>
+     * <p>{@code getCellType} 原先用 {@code hash(cx, cz)} 决定每个格点的类型，
+     * <b>哈希不含世界种子</b>；而 {@link #seed} 只播种了 {@code warpX/warpZ}，
+     * 但 {@code WARP_AMP = 0} ⇒ warp 对采样坐标<b>没有任何影响</b>。
+     * 合起来 ⇒ <b>{@code seed()} 对类型场完全无效。</b></p>
+     * <p>后果：格点 {@code (cx,cz)} 的陆地类型在所有世界都相同 ⇒
+     * <b>山脉带、高原区、平原区的大尺度位置是世界无关的常量</b>。
+     * 随种子变化的只有海陆比例（由已播种的 {@code ContinentField} 决定，
+     * 即"哪些格点是海、哪些是陆"）⇒ 换种子只换海岸线，不换地形性格。</p>
+     *
+     * <p>★ 发现途径：新建的 {@code runTypeAxisProbe} 用 3 个不同种子跑出
+     * <b>逐位相同</b>的结果（水平 920 / 垂直 776 / 对角 781、419，方向比 1.18）
+     * ⇒ 暴露了"种子没接进去"。<b>若不是先补了那条遗失的门禁，这个 bug 不会现形。</b></p>
+     */
+    private volatile long seedHash = 0L;
+
     // ===== 域扭曲（打散网格规则感） =====
     private final Noise warpX, warpZ;
     // 2026-08-03：80→0（用户实测确认——类型权重查格点 ±80 块平移让主导沿细胞边界跳跃，
@@ -90,6 +109,9 @@ public final class TerrainCharacterField {
     }
 
     public void seed(long worldSeed) {
+        // ★ 2026-09-16：必须记录种子本身 —— 它要参与【格点类型哈希】（见 seedHash）。
+        //   原先只播种 warp（而 WARP_AMP=0 ⇒ 等于什么都没做）⇒ 类型场与种子无关。
+        seedHash = worldSeed;
         Noises.seedAll(warpX, worldSeed, 0);
         Noises.seedAll(warpZ, worldSeed, 0);
     }
@@ -186,7 +208,11 @@ public final class TerrainCharacterField {
      * 大尺度大陆结构仍由 c 概率场保证。
      */
     private int getCellType(int cx, int cz) {
-        long h = (long) cx * 374761393L + (long) cz * 668265263L;
+        // ★ 2026-09-16：把【世界种子】折进哈希（黄金比例常数乘 ⇒ 种子低位也充分扩散，
+        //   后面的雪崩混合再把坐标与种子彻底搅在一起）。
+        //   原实现缺这一项 ⇒ 类型场与种子无关（见 seedHash 的说明）。
+        long h = seedHash * 0x9E3779B97F4A7C15L
+                + (long) cx * 374761393L + (long) cz * 668265263L;
         h = h * 1274126177L ^ (h >>> 16);
         h = h * 709369L ^ (h >>> 13);
         h ^= (h >>> 16);

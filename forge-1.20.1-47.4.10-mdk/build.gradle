@@ -136,13 +136,56 @@ sourceSets {
     }
 }
 
+// ★ 2026-09-16 修复【坏门禁事故】：
+//   原判据是「任务名以 Probe 结尾」⇒ 挂诊断类路径。但 runTypeDist / runProfile /
+//   runQuickGradient 三个任务指向的是【诊断源树】的探针类，名字却不以 Probe 结尾
+//   ⇒ 它们拿到的仍是 main 的类路径 ⇒ **必然 ClassNotFound，永远跑不起来**（静默失效）。
+//   ⚠ runTypeDist 正是测量「类型场轴对齐直段」的探针 —— 那是本项目已记录的缺陷指标，
+//     而这个门禁坏了多久，该缺陷就有多久没被客观测量过。
+//   改为按【mainClass 所属源树】判定：只在诊断树、且不在 main 树 ⇒ 挂诊断类路径。
+//   ★ 刻意【保留】原有的「名字以 Probe 结尾」规则作为兜底 ⇒ 新判据是原判据的**超集**，
+//     不可能打破任何当前可用的任务（只可能多修好坏的）。
+// 判定：某个 JavaExec 任务是否需要【诊断源树】的类路径。
+//   规则：mainClass 对应的 .java 只存在于 src/diagnostics/java（且不存在于 main 树）。
+//   ★ 另保留「任务名以 Probe 结尾」作为兜底 ⇒ 是原判据的超集，不会打破现有可用任务。
+static String probeRelPath(String mainClass) {
+    return mainClass == null ? null : mainClass.replace('.', '/') + '.java'
+}
+
 tasks.withType(JavaExec).configureEach {
-    if (name.startsWith('run') && name.endsWith('Probe')) {
-        dependsOn sourceSets.diagnostics.classesTaskName
-    }
+    // ★ 类路径在【执行期】判定：此时 mainClass 一定已设置
+    //   （配置期判定不可行 —— configureEach 在任务定义之前注册，那时 mainClass 还是 null，
+    //     这正是第一版修复仍然 ClassNotFound 的原因）。
     doFirst {
-        if (name.startsWith('run') && name.endsWith('Probe')) {
+        boolean need = (name.startsWith('run') && name.endsWith('Probe'))
+        String rel = probeRelPath(mainClass.orNull?.toString())
+        if (rel != null) {
+            boolean inDiag = project.file("src/diagnostics/java/${rel}").exists()
+            boolean inMain = project.file("src/main/java/${rel}").exists()
+            if (inDiag && !inMain) {
+                need = true
+            }
+        }
+        if (need) {
             classpath = sourceSets.diagnostics.runtimeClasspath
+        }
+    }
+}
+
+// ★ 依赖（编译诊断集）必须在【配置期】加，但要在所有任务定义完之后 ⇒ 用 afterEvaluate。
+afterEvaluate {
+    tasks.withType(JavaExec).each { t ->
+        boolean need = (t.name.startsWith('run') && t.name.endsWith('Probe'))
+        String rel = probeRelPath(t.mainClass.orNull?.toString())
+        if (rel != null) {
+            boolean inDiag = project.file("src/diagnostics/java/${rel}").exists()
+            boolean inMain = project.file("src/main/java/${rel}").exists()
+            if (inDiag && !inMain) {
+                need = true
+            }
+        }
+        if (need) {
+            t.dependsOn sourceSets.diagnostics.classesTaskName
         }
     }
 }
@@ -821,6 +864,24 @@ task runProfile(type: JavaExec) {
 task runTypeDist(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.TypeDistributionProbe'
+}
+
+// Type field axis-alignment probe (2026-09-16): 类型场【轴向对齐】诊断。
+//   补回一条【遗失的门禁】：CHANGELOG/AGENTS 长期记着"最长水平直段 560 wu"，
+//   但当年那个 [G] 探针并未留在仓库里 —— 指标记下了，工具没了，
+//   导致该已知缺陷从那以后再没有被客观测量过。
+//   度量：4 个方向（+x/+z/两条对角）上"主导类型不变"的最长连续段，
+//   取 轴向/对角 之比作为方向比（≈1 = 有机；明显>1 = 被轴向直线主导）。
+//   gradlew runTypeAxisProbe [-PprobeArgs="seed windowBlocks step"]
+task runTypeAxisProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TypeAxisProbe'
+    // ⚠ 必须支持 probeArgs：本探针的核心用途就是【跨种子对照】
+    //   （初版漏了这段 ⇒ -PprobeArgs 被忽略 ⇒ 三种子跑出相同结果，
+    //     差点让人误判"种子仍然没生效"）。
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
 }
 
 // Plateau crater diagnostic
