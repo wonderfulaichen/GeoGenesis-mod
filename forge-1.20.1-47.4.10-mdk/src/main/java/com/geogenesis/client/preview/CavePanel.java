@@ -78,16 +78,43 @@ public class CavePanel extends ConfigPanel {
         };
     }
 
+    /**
+     * 档位<b>按钮下方的一行摘要</b>（简短，挂在界面上常驻显示）。
+     *
+     * <p>★ 必须与 {@link #presetTip}（悬停说明）<b>内容不同</b>：初版摘要直接取
+     * {@code firstLine(presetTip(...))}，导致悬停时"摘要 + 同文 tooltip"上下叠在一起，
+     * 看起来像同一句话被写了两遍（用户实测反馈）。现摘要只给<b>一句短语</b>，
+     * 详细说明放在 tooltip。</p>
+     */
+    private static String presetSummary(CaveConfig.Preset p) {
+        return switch (p) {
+            case OFF -> "地下不再有任何洞穴";
+            case MINIMAL -> "只有细隧道，洞少而小";
+            case REALISTIC -> "岩石类型 + 岩层控制（地质拟真）";
+            case VANILLA_LIKE -> "洞厅更大更圆，不分层";
+            case CUSTOM -> "按下方开关与参数生效";
+        };
+    }
+
+    /**
+     * 档位<b>悬停说明</b>（面向玩家的功能描述）。
+     *
+     * <p>★ 撰写准则（初版违反过）：只写<b>玩家能感知到的效果</b>。
+     * 不写实现机制、不写"参考项目如何"、不写"实测数据" —— 那些属于代码注释，
+     * 出现在游戏界面上是噪音（用户实测反馈"怎么把这个内容也写进描述里了"）。</p>
+     */
     private static String presetTip(CaveConfig.Preset p) {
         return switch (p) {
-            case OFF -> "关闭：地下无任何洞穴。\n（本模组是自定义区块生成器、没有噪声设置，"
-                    + "原版雕刻器无法调用 ⇒ \"关闭\"即\"无洞穴\"，与参考模组 RTG 的 useCaves=false 同义）";
-            case MINIMAL -> "精简：只保留细隧道，洞少而细。\n适合低配/喜欢地下紧凑的玩法。";
-            case REALISTIC -> "拟真（默认）：岩性门控（石灰岩溶洞大、花岗岩几乎无洞）"
-                    + "+ 层调制（沿层理发育的水平洞穴）。\n本模组独有，三个参考项目都没有这两个耦合。";
-            case VANILLA_LIKE -> "接近原版：洞更大更圆、无层理、不看岩性。\n"
-                    + "原版雕刻器无法调用，故用现有三维噪声换参数【近似】原版观感。";
-            case CUSTOM -> "自定义：直接使用下方的开关与旋钮值。\n手动改任一旋钮会自动切到本档。";
+            case OFF -> "关闭洞穴生成。\n地下是实心岩层，不会出现洞穴。";
+            case MINIMAL -> "只生成细小的隧道。\n洞穴数量少、规模小，适合低配设备或喜欢地下紧凑的玩法。";
+            case REALISTIC -> "地质拟真（推荐）：\n"
+                    + "· 在石灰岩等易溶蚀的岩石中洞穴更发育，花岗岩中很少\n"
+                    + "· 洞穴沿岩层水平发育，不易出现贯通上下的竖井";
+            case VANILLA_LIKE -> "更接近原版观感：\n"
+                    + "· 洞厅更大、更圆\n"
+                    + "· 不沿岩层分层\n"
+                    + "· 各类岩石一视同仁";
+            case CUSTOM -> "使用下方「开关」与「参数微调」的设置。";
         };
     }
 
@@ -140,33 +167,34 @@ public class CavePanel extends ConfigPanel {
     // ===================== 构建 =====================
 
     private void buildToggles() {
-        toggles.add(new Toggle("洞穴总开关", "关闭后地下无任何洞穴（与档位正交）。",
+        toggles.add(new Toggle("洞穴总开关", "关闭后地下不再生成任何洞穴。",
                 this::onManualChange));
-        toggles.add(new Toggle("隧道分量（蜿蜒管道）", "两噪声等值面交线形成的细长管道，负责把洞穴连起来。",
+        toggles.add(new Toggle("隧道分量（蜿蜒管道）",
+                "细长的曲折通道，把分散的洞穴连接起来。\n关闭后洞穴之间不再连通。",
                 this::onManualChange));
         toggles.add(new Toggle("空腔分量（可站立的洞厅）",
-                "能走进去的大空间，是\"玩家能在洞里走\"的主要来源。\n"
-                + "关掉后只剩细隧道，可能站不起来（本项目实测过的失败形态）。", this::onManualChange));
+                "能走进去、站得起来的较大空间。\n关闭后只剩细隧道，可能难以通行。",
+                this::onManualChange));
         toggles.add(new Toggle("层调制（防竖直贯穿）",
-                "把高大空腔切成一层层有限高度的洞穴，避免挖出贯通世界的竖井。\n"
-                + "关掉更接近原版奶酪洞，但可能出现竖直贯穿。", this::onManualChange));
+                "把高大的空腔压成一层层水平洞穴，避免挖出贯通上下的竖井。\n"
+                + "关闭后更接近原版洞厅，但可能出现竖直贯穿。", this::onManualChange));
         toggles.add(new Toggle("岩性门控（拟真耦合）",
-                "石灰岩（可溶岩）溶洞更发育、花岗岩/片麻岩几乎不成洞。\n"
-                + "本项目独有，三个参考项目都没有。关掉则各岩性一视同仁。", this::onManualChange));
+                "洞穴只在容易溶蚀的岩石（如石灰岩）中发育，花岗岩等坚硬岩石中很少。\n"
+                + "关闭后各类岩石一视同仁。", this::onManualChange));
         toggles.add(new Toggle("地下洞穴群系",
-                "洞穴内出现滴水石洞（钟乳石/石笋，全气候）与繁茂洞穴（苔藓/藤蔓，成林气候）。\n"
-                + "装饰由原版自动放置。关掉则洞穴沿用该列的地表群系。", this::onManualChange));
+                "洞穴内出现钟乳石与石笋（滴水石洞）；湿润气候下还会出现苔藓与藤蔓（繁茂洞穴）。\n"
+                + "关闭后洞穴内沿用该处地表的群系。", this::onManualChange));
     }
 
     private void buildKnobs() {
         GeoGenesisConfig c = cfg();
-        knobs.add(new Knob("洞穴密度倍率", "乘在分量阈值上：越大洞穴越粗越密。默认 1.00。",
+        knobs.add(new Knob("洞穴密度倍率", "数值越大，洞穴越多、越粗。默认 1.00。",
                 0.2, 3.0, 1.0,
                 () -> ConfigSafe.dbl(c.caveDensityMul, 1.0),
                 v -> c.caveDensityMul.set(v),
                 v -> String.format("%.2f", v)));
-        knobs.add(new Knob("洞顶保护厚度", "洞顶至少低于地表这么多格。\n"
-                + "设为 0 允许洞穴破地表形成【入口】—— 想徒步进洞就调小。默认 6。",
+        knobs.add(new Knob("洞顶保护厚度", "洞顶与地表之间至少保留的厚度（格）。\n"
+                + "设为 0 时洞穴可以破开地表形成【洞口】，便于直接走进地下。默认 6。",
                 0.0, 40.0, 6.0,
                 () -> (double) ConfigSafe.i32(c.caveSurfaceLid, 6),
                 v -> c.caveSurfaceLid.set((int) Math.round(v)),
@@ -256,14 +284,20 @@ public class CavePanel extends ConfigPanel {
 
     /** 说明文字起始 Y（相对面板顶）。 */
     private static final int DESC_Y = 14;
-    /** 说明文字块高度。 */
-    private static final int DESC_H = 24;
+    /**
+     * 说明文字块高度（<b>单行</b>）。
+     *
+     * <p>★ 初版这里是两行（24），其中第二行"改动只影响新生成的区块"与<b>底部提示
+     * 完全重复</b>。现说明区只留一句功能概述，生效范围说明统一放底部。</p>
+     */
+    private static final int DESC_H = 12;
     /** 档位标题 Y = 顶部 + 说明块。 */
     private static final int LAST_DESC_Y = DESC_Y + DESC_H + 8;
 
     @Override
     public int getHeight() {
-        return knobY(knobs.size() - 1) - top() + SLIDER_ROW_H + 34;
+        // 内容底部 = 最后一个旋钮行 + 底部提示（一行）
+        return knobY(knobs.size() - 1) - top() + SLIDER_ROW_H + 26;
     }
 
     // ===================== 渲染 =====================
@@ -274,12 +308,9 @@ public class CavePanel extends ConfigPanel {
         int y = top();
         drawHeader(g, x, y, "洞穴");
 
-        // 说明
-        int dy = y + DESC_Y;
-        g.drawString(f, "洞穴为可开关配置：选档位即可，也可逐项微调。",
-                x, dy, C_TEXT_DIM);
-        g.drawString(f, "改动只影响【新生成】的区块，已生成的区块不变。",
-                x, dy + 11, C_TEXT_DIM);
+        // 说明（单行概述；生效范围见底部提示）
+        g.drawString(f, "选择档位即可一键切换，也可逐项微调下方的开关与参数。",
+                x, y + DESC_Y, C_TEXT_DIM);
 
         // ---- 档位 ----
         g.drawString(f, "档位（一键切换）", x, presetLabelY(), C_TEXT_DIM);
@@ -294,10 +325,8 @@ public class CavePanel extends ConfigPanel {
                     presetLabel(PRESETS[i]), active, mx, my);
             if (hover) hoverTooltip = Component.literal(presetTip(PRESETS[i]));
         }
-        // 当前档位效果（一行摘要，过长则截断）；CUSTOM 时明确标注"已手动调整"
-        String summary = cur == CaveConfig.Preset.CUSTOM
-                ? "当前：自定义（已手动调整下方开关/旋钮）"
-                : firstLine(presetTip(cur));
+        // 当前档位摘要（一句短语；详细说明走 tooltip，避免同一段文字重复出现）
+        String summary = presetSummary(cur);
         g.drawString(f, clip(summary, w), x, presetBtnY() + PRESET_BTN_H + 4,
                 cur == CaveConfig.Preset.CUSTOM ? C_ACCENT : C_TEXT_DIM);
 
@@ -312,7 +341,7 @@ public class CavePanel extends ConfigPanel {
         }
 
         // ---- 旋钮 ----
-        g.drawString(f, "旋钮", x, knobsLabelY(), C_TEXT_DIM);
+        g.drawString(f, "参数微调", x, knobsLabelY(), C_TEXT_DIM);
         for (int i = 0; i < knobs.size(); i++) {
             Knob k = knobs.get(i);
             int ky = knobY(i);
@@ -325,17 +354,10 @@ public class CavePanel extends ConfigPanel {
         }
         for (Knob k : knobs) k.slider.renderTooltip(g, mx, my);
 
-        // ---- 底部提示 ----
+        // ---- 底部提示（面向玩家；不写实现细节/参考项目/实测数据）----
         int footY = knobY(knobs.size() - 1) + SLIDER_ROW_H + 8;
-        g.drawString(f, "提示：没有\"回退原版\"选项 —— 本模组无原版噪声设置，",
+        g.drawString(f, "提示：更改设置后，只对之后新生成的区块生效。",
                 x, footY, 0xFF808080);
-        g.drawString(f, "原版雕刻器无法调用，故\"关闭\"即\"地下无洞穴\"。",
-                x, footY + 11, 0xFF808080);
-    }
-
-    private static String firstLine(String s) {
-        int i = s.indexOf('\n');
-        return i < 0 ? s : s.substring(0, i);
     }
 
     /**
