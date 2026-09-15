@@ -192,18 +192,26 @@ public final class RiverLineRegion {
          * 地形不匹配而整片漏淹。结果缓存（每湖只算一次，跨 chunk 复用）。</p>
          *
          * <p><b>越界判定（2026-09-09，用户"填水范围超出填充上限就不生成湖"）</b>：
-         * 若 BFS 在【无侵蚀认领域 = 洼地格 + 2×gridCell】外仍探到低于水位的淹水格，
+         * 若 BFS 在【无侵蚀认领域 = 洼地格 + 4×claimGrid】外仍探到低于水位的淹水格，
          * 说明实际洼地比提取时的无侵蚀域更大 → 若硬生成会在认领域边缘被截断
          * （用户实测"湖形不对称缺一块"）。此时返回 {@code floodOOB=true} 让调用方
          * 放弃该湖 —— 与其生成残缺湖，不如不生成。</p>
          *
-         * @param erodedY 侵蚀后地面高度采样
-         * @param level   侵蚀后短板水位（erodedWaterLevel 结果）
-         * @param gridCell 粗格分辨率（wu）
+         * <p>★ 2026-09-15：认领域外扩由 2×claimGrid 放宽到 4×claimGrid。原因：BFS
+         * 搜索窗是【洼地格包围盒 + 72wu】，**比 2×gridCell(48wu) 的认领域更大** ⇒
+         * 只要 48~72wu 环带内有任一低于水位的连通格就判 OOB ⇒ 整湖被丢（实测用户
+         * 报"湖没生成"即此）。认领域只决定"湖允许占多大"、不参与湖形塑形，故放宽安全。</p>
+         *
+         * @param erodedY  侵蚀后地面高度采样
+         * @param level    侵蚀后短板水位（erodedWaterLevel 结果）
+         * @param gridCell <b>BFS 粗格分辨率（wu）</b>；调用方传 {@code claimGrid/2}
+         *                 以提高湖形精度（见下述 2026-09-15 精度说明）
+         * @param claimGrid <b>认领域基准格（wu）</b>＝原始 gridCell，与 BFS 分辨率解耦，
+         *                  使加密 BFS 时认领域的物理范围不缩水
          * @return true = 淹没区越出认领域（湖残缺，应放弃）
          */
         public boolean computeFlood(java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
-                                    double level, double gridCell) {
+                                    double level, double gridCell, double claimGrid) {
             if (floodX != null) return floodOOB;
             synchronized (this) {
                 if (floodX != null) return floodOOB;
@@ -218,7 +226,11 @@ public final class RiverLineRegion {
                     minX = Math.min(minX, cellX[i]); maxX = Math.max(maxX, cellX[i]);
                     minZ = Math.min(minZ, cellZ[i]); maxZ = Math.max(maxZ, cellZ[i]);
                 }
-                int pad = 3;
+                // ★ 2026-09-15：pad 由"固定 3 格"改为【按物理 72wu 换算格数】。
+                //   调用方把 gridCell 加密到 claimGrid/2 以提高湖形精度；若 pad 仍固定
+                //   为 3 格，搜索窗物理范围会跟着减半（72→36wu），可能探不到湖盆坎外沿
+                //   ⇒ 淹没区被截断、湖被削掉一圈。按物理距离换算则搜索窗恒定 72wu。
+                int pad = (int) Math.round(72.0 / gridCell);
                 minX -= pad * gridCell; maxX += pad * gridCell;
                 minZ -= pad * gridCell; maxZ += pad * gridCell;
                 int nx = (int) Math.floor((maxX - minX) / gridCell) + 1;
@@ -275,7 +287,9 @@ public final class RiverLineRegion {
                 //   认领域只决定"这个湖允许占多大"，不参与湖形塑形（湖形 = inFlood 连通区
                 //   + 落块侧等高线），故放宽到 4×gridCell(96wu) ≥ 搜索窗(72wu) 是安全的：
                 //   它只是不再因为"搜索窗必然探到远处"而误弃整个湖。
-                double claimR = gridCell * 4.0;
+                //   基准用 claimGrid（原始 gridCell）而非加密后的 gridCell，
+                //   否则加密 BFS 会把认领域物理范围也缩小一半。
+                double claimR = claimGrid * 4.0;
                 claimLoX -= claimR; claimHiX += claimR;
                 claimLoZ -= claimR; claimHiZ += claimR;
                 boolean oob = false;
@@ -295,7 +309,14 @@ public final class RiverLineRegion {
                         if (seen[nIdx]) continue;
                         double h = erodedHeightAt(erodedY, minX + ni * gridCell,
                                                   minZ + nj * gridCell, gridCell);
-                        if (h < level - 0.5) { seen[nIdx] = true; q.add(nIdx); }
+                        // ★ 2026-09-15：BFS 【通行条件】由 level-0.5 放宽到 level-0.05。
+                        //   原 0.5 是"最小水深"语义，但用作连通性通行条件时，湖底一个
+                        //   高出 level-0.5 的小突起就会被当成"墙"，BFS 无法通过 ⇒
+                        //   淹没区被拦腰截断。实测（加密到 12wu 后暴露得最明显）：
+                        //   floodN 31 -> 22，湖一侧整片水消失。
+                        //   连通性只该问"是否低于水位"；"薄水/最小水深"由落块侧的
+                        //   `height < spill-0.5` 等高线判定负责，不该在这里二次设卡。
+                        if (h < level - 0.05) { seen[nIdx] = true; q.add(nIdx); }
                     }
                 }
                 double[] fx = new double[flood.size()], fz = new double[flood.size()];
@@ -313,8 +334,14 @@ public final class RiverLineRegion {
                 //   → 需≥2），杜绝"一半洼地没水"的残缺湖。
                 if (!oob) {
                     int covered = 0;
+                    // ★ 2026-09-15：覆盖判据的半径用【原始格半宽】claimGrid/2，不用
+                    //   floodHalf。floodHalf 随 BFS 加密而减半（12→6wu），若沿用会把
+                    //   "洼地格中心是否被淹"判得过严 ⇒ covered 偏低 ⇒ 误判 OOB ⇒
+                    //   整湖被弃（实测 runLakeSurveyProbe lake[2]: OOB=true wetProd=0）。
+                    //   本判据的语义是"洼地格被淹了吗"，与 BFS 分辨率无关，故用原始格宽。
+                    double coverR = claimGrid * 0.5;
                     for (int i = 0; i < cellX.length; i++) {
-                        if (inFloodLocal(cellX[i], cellZ[i], fx, fz, floodHalf)) covered++;
+                        if (inFloodLocal(cellX[i], cellZ[i], fx, fz, coverR)) covered++;
                     }
                     if (covered * 4 < cellX.length * 3) oob = true;
                 }
