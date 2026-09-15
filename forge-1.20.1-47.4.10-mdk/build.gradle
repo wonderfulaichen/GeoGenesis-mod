@@ -919,6 +919,19 @@ task runCavePerfProbe(type: JavaExec) {
     }
 }
 
+// Cave biome probe (2026-09-15): 洞穴群系诊断 ——
+//   复用生产的零 MC 依赖纯函数 CaveBiomeSelector：分布 / 深度带（不破地表）/
+//   气候耦合（受控对照：干旱与极寒不得出繁茂）/ 与洞穴几何一致 / 性能。
+//   gradlew runCaveBiomeProbe [-PprobeArgs="seed spanXY"]
+task runCaveBiomeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.cave.CaveBiomeProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Ore vein perf probe (2026-09-15): 矿脉性能 ——
 //   矿脉接在方块铺设的逐体素层，既有性能探针只测到地形层 ⇒ 单独补测。
 //   含列级门控/深度剪枝/最坏上界，并与洞穴的 2.48ms/chunk 对照。

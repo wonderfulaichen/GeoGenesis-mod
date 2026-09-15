@@ -1,6 +1,7 @@
 package com.geogenesis.worldgen.generator;
 
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.worldgen.cave.CaveBiomeSelector;
 import com.geogenesis.worldgen.cave.CaveCarver;
 import com.geogenesis.worldgen.cave.CaveShape;
 import com.geogenesis.worldgen.climate.BiomeClassifier;
@@ -553,6 +554,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         CaveShape.setSeed(seed);
         // ★ 2026-09-15：矿脉噪声同批播种（同上）。
         OreVeins.setSeed(seed);
+        // ★ 2026-09-15：洞穴群系的"繁茂/滴水石交错"噪声同批播种（同上）。
+        CaveBiomeSelector.setSeed(seed);
         // ★ 2026-09-15：坡度抖动噪声同批失效（否则换存档后仍用旧种子的抖动）。
         invalidateSteepJitter();
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);
