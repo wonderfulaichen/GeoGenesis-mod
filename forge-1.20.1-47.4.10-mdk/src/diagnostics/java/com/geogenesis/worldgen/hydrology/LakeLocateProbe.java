@@ -8,6 +8,7 @@ import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -78,6 +79,91 @@ public final class LakeLocateProbe {
         if (nearest == null) {
             System.out.println("no lake within 400wu -> this water is NOT a basin lake (check river-lake reach)");
             return;
+        }
+        // ★ 2026-09-15 诊断：直接打印湖的两个门控，避免靠推理猜"为什么不出水"。
+        //   inFlood=false ⇒ HydrologyBlockCarver 返回 lakePlan=false（该列不出水）；
+        //   floodOOB=true ⇒ 整湖被放弃（另一种不出水路径）。
+        System.out.printf("-- [GATE] inFlood(%.1f,%.1f)=%s  floodOOB=%s%n",
+                wx, wz, nearest.inFlood(wx, wz), nearest.floodOOB);
+        // 与该点在 x/z 方向相邻的淹水粗格（若 inFlood=false，看差多远）
+        double[] fxs = nearest.floodCellX(), fzs = nearest.floodCellZ();
+        if (fxs != null && fxs.length > 0) {
+            double bestD = Double.POSITIVE_INFINITY, bx = 0, bz = 0;
+            for (int i = 0; i < fxs.length; i++) {
+                double d = Math.hypot(fxs[i] - wx, fzs[i] - wz);
+                if (d < bestD) { bestD = d; bx = fxs[i]; bz = fzs[i]; }
+            }
+            System.out.printf("-- [GATE] 最近淹水粗格 (%.1f,%.1f) 距离 %.2fwu（覆盖半径 floodHalf=%.1f）%n",
+                    bx, bz, bestD, nearest.floodHalf());
+        } else {
+            System.out.println("-- [GATE] flood 集合为空（computeFlood 未算 或 湖被判定不该存在）");
+        }
+        // ★ 2026-09-15：复现生产 computeFlood 的"是否弃湖"判定。
+        //   口径必须用 terrain.sampleWu（侵蚀后），与 HydrologyBlockCarver:112-113 一致；
+        //   若错用 generator.sampleWu（无侵蚀）会得到与生产不同的 spill/盆底高度。
+        if (nearest.hasOutline()) {
+            double prodSpill = nearest.erodedWaterLevel((ax, az) -> generator.sampleWu(ax, az).height);
+            double bestEroded = Double.POSITIVE_INFINITY;
+            int bestI = -1;
+            for (int i = 0; i < nearest.cellX.length; i++) {
+                double h = generator.sampleWu(nearest.cellX[i], nearest.cellZ[i]).height;
+                if (h < bestEroded) { bestEroded = h; bestI = i; }
+                System.out.printf("-- [GATE]   cell[%d] wu=(%.1f,%.1f) sampleWu=%.2f%n",
+                        i, nearest.cellX[i], nearest.cellZ[i], h);
+            }
+            System.out.printf("-- [GATE] 生产口径(generator.sampleWu): spill=%.2f  盆底侵蚀后最低=%.2f"
+                            + " (cell[%d])  弃湖判定(盆底>=spill-0.5)=%s%n",
+                    prodSpill, bestEroded, bestI, bestEroded >= prodSpill - 0.5);
+        }
+        // ★ 2026-09-15 终局诊断：直接看该 block 的 carvedColumn 是否被标记 lakePlan。
+        //   若 lakePlan=false ⇒ 该列根本没走湖分支（HydrologyBlockCarver:101 的
+        //   samples.get(0).isLake() 为假），与湖本身是否算得出来无关。
+        int chunkX = Math.floorDiv(blockX, 16), chunkZ = Math.floorDiv(blockZ, 16);
+        HydrologyChunkEngine chunkEngine = new HydrologyChunkEngine(generator, seed);
+        HydrologyChunkResult hres = chunkEngine.calculate(chunkX, chunkZ);
+        boolean foundCol = false;
+        for (HydrologyBlockCarvedColumn col : hres.carvedColumns()) {
+            if (col.blockX() == blockX && col.blockZ() == blockZ) {
+                System.out.printf("-- [GATE] carvedColumn: lakePlan=%s waterSurfaceY=%.2f"
+                                + " lipY=%.2f fillWater=%s%n",
+                        col.lakePlan(), col.waterSurfaceY(), col.lipSurfaceY(), col.fillWater());
+                foundCol = true;
+            }
+        }
+        if (!foundCol) {
+            System.out.println("-- [GATE] 该 block 无 carvedColumn（未进入雕刻）");
+        }
+        // ★ 2026-09-15 终局：直接看 carver 拿到的 samples（决定进不进湖分支）
+        List<HydrologyBlockSample> blk = engine.sampleBlockAll(blockX, blockZ, hs);
+        System.out.printf("-- [GATE] sampleBlockAll size=%d%n", blk.size());
+        for (HydrologyBlockSample s : blk) {
+            System.out.printf("-- [GATE]   isLake=%s dist=%.2f surf=%.2f width=%.2f%n",
+                    s.isLake(), s.distToCenter(), s.surfaceY(), s.width());
+        }
+        // ★ 2026-09-15 终局修正：上面查的 nearest 来自 engine.network()（实例 A），
+        //   而 carvedColumn 来自 chunkEngine 内部【另一个 network 实例 B】⇒
+        //   A 的 LakeNode 从未 computeFlood，floodX=null 是"查了没算过的对象"，
+        //   并非生产真实状态。此处改用 chunkEngine.riverNetwork() 复查同一实例。
+        RiverLineNetwork net2 = chunkEngine.riverNetwork();
+        double rs2 = net2.regionSize();
+        int rcx2 = (int) Math.floor(wx / rs2), rcz2 = (int) Math.floor(wz / rs2);
+        RiverLineRegion.LakeNode nearest2 = null;
+        double nd2 = Double.POSITIVE_INFINITY;
+        for (int drz = -1; drz <= 1; drz++) {
+            for (int drx = -1; drx <= 1; drx++) {
+                for (RiverLineRegion.LakeNode ln : net2.region(rcx2 + drx, rcz2 + drz).lakes) {
+                    double d = Math.hypot(wx - ln.x, wz - ln.z);
+                    if (d < nd2) { nd2 = d; nearest2 = ln; }
+                }
+            }
+        }
+        if (nearest2 != null) {
+            double[] f2 = nearest2.floodCellX();
+            System.out.printf("-- [GATE2] 生产同实例: lake=(%.1f,%.1f) spill=%.2f hasRim=%s"
+                            + " inFlood=%s floodOOB=%s floodN=%s%n",
+                    nearest2.x, nearest2.z, nearest2.height, nearest2.hasRim(),
+                    nearest2.inFlood(wx, wz), nearest2.floodOOB,
+                    f2 == null ? "null(未算)" : String.valueOf(f2.length));
         }
 
         // 4) 最近湖：盆底（轮廓格中心）与沿岸环带（侵蚀后生产高度）vs spill
