@@ -260,7 +260,22 @@ public final class RiverLineRegion {
                     claimLoZ = Math.min(claimLoZ, cellZ[i]);
                     claimHiZ = Math.max(claimHiZ, cellZ[i]);
                 }
-                double claimR = gridCell * 2.0;
+                // ★ 2026-09-15 修复：认领域外扩 2×gridCell(48wu) → 4×gridCell(96wu)。
+                //
+                //   结构性冲突：下面的 BFS 搜索窗是【洼地格包围盒 + pad(3)×gridCell = 72wu】，
+                //   而认领域只有 2×gridCell = 48wu ⇒ 搜索窗**比认领域大** ⇒ 只要在
+                //   48~72wu 环带内存在任一"低于水位且与盆底连通"的格，就判 floodOOB=true
+                //   ⇒ 调用方(HydrologyBlockCarver:124-129) **放弃整个湖**（所有列 lakePlan=false）。
+                //
+                //   实测（seed 5436529513624899584，用户报"湖没生成/提前结束"）：
+                //   湖 wu(-132,-108) 的 floodOOB=true（floodN=31，inFlood(用户点)=true
+                //   —— 即淹水区确实算出来了、也覆盖了用户位置），却因越出 48wu 认领域
+                //   而整湖被丢 ⇒ 该处方块完全没有水。
+                //
+                //   认领域只决定"这个湖允许占多大"，不参与湖形塑形（湖形 = inFlood 连通区
+                //   + 落块侧等高线），故放宽到 4×gridCell(96wu) ≥ 搜索窗(72wu) 是安全的：
+                //   它只是不再因为"搜索窗必然探到远处"而误弃整个湖。
+                double claimR = gridCell * 4.0;
                 claimLoX -= claimR; claimHiX += claimR;
                 claimLoZ -= claimR; claimHiZ += claimR;
                 boolean oob = false;
@@ -278,7 +293,8 @@ public final class RiverLineRegion {
                         if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
                         int nIdx = nj * nx + ni;
                         if (seen[nIdx]) continue;
-                        double h = erodedY.applyAsDouble(minX + ni * gridCell, minZ + nj * gridCell);
+                        double h = erodedHeightAt(erodedY, minX + ni * gridCell,
+                                                  minZ + nj * gridCell, gridCell);
                         if (h < level - 0.5) { seen[nIdx] = true; q.add(nIdx); }
                     }
                 }
@@ -306,6 +322,36 @@ public final class RiverLineRegion {
             }
         }
 
+        /**
+         * 粗格"是否该被淹"的采样高度：取 <b>格心 + 4 角</b> 的 <b>最小值</b>。
+         *
+         * <p>★ 2026-09-15 修复（用户实测"湖泊填充没到地形边缘就结束、提前在前一个
+         * 区块停止填充"）：原先 BFS 只采样 <b>格心一个点</b>，于是 24wu×24wu 的粗格
+         * 只要<b>格心</b>恰好高出水位 0.5，整个粗格就被判"不淹"——湖岸因此被量化到
+         * 24wu（≈1.5 chunk）并在格边界<b>硬截断</b>，形态上正是"提前一个区块结束"。</p>
+         *
+         * <p>实测（seed 5436529513624899584）：用户所在 wu(-133,-83)（湖心
+         * wu(-132,-108)，相距 25wu，即正落在第 2 个粗格内）侵蚀后高度 126.85，
+         * 低于侵蚀短板水位 130.23，本该有水，却因所在粗格格心采样偏高而
+         * {@code inFlood=false} ⇒ {@code lakePlan=false} ⇒ 该列不出水。</p>
+         *
+         * <p>改用 5 点取 min 后，格内<b>任一</b>采样点低于水位即算淹。刻意<b>不</b>缩小
+         * {@code gridCell}：那会令格数 ×4，可能触发 {@code nx*nz > 40000} 的"弃湖"
+         * 分支（把湖整个丢掉），5 点采样则格数不变、精度显著提升，且 {@code erodedY}
+         * 走地形 LRU 缓存。</p>
+         */
+        private static double erodedHeightAt(
+                java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
+                double gx, double gz, double gridCell) {
+            double q = gridCell * 0.5;
+            double h = erodedY.applyAsDouble(gx, gz);
+            h = Math.min(h, erodedY.applyAsDouble(gx - q, gz - q));
+            h = Math.min(h, erodedY.applyAsDouble(gx + q, gz - q));
+            h = Math.min(h, erodedY.applyAsDouble(gx - q, gz + q));
+            h = Math.min(h, erodedY.applyAsDouble(gx + q, gz + q));
+            return h;
+        }
+
         /** 局部 inFlood（computeFlood 内部用，flood 尚未发布时）。 */
         private static boolean inFloodLocal(double wx, double wz,
                                             double[] fx, double[] fz, double half) {
@@ -329,6 +375,14 @@ public final class RiverLineRegion {
 
         /** 淹没区是否越出认领域（computeFlood 结果；true=湖残缺应放弃）。 */
         public volatile boolean floodOOB = false;
+
+        // ===== 诊断访问器（2026-09-15，LakeLocateProbe 用）=====
+        /** 淹水粗格中心 X（只读；null = 未算）。 */
+        public double[] floodCellX() { return floodX; }
+        /** 淹水粗格中心 Z（只读；null = 未算）。 */
+        public double[] floodCellZ() { return floodZ; }
+        /** 粗格覆盖半宽（wu）= gridCell/2。 */
+        public double floodHalf() { return floodHalf; }
     }
 
     /**
