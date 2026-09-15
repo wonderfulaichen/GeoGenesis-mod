@@ -26,6 +26,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `worldgen/cave/CaveShape.java` | ★ 2026-09-15：洞穴**几何**（**零 MC 依赖纯函数**，可被探针直接复用）；2D 场驱动柱体切挖 + 岩性门控 |
 | `worldgen/cave/CaveCarver.java` | ★ 2026-09-15：洞穴雕刻的 **MC 适配器**（只负责把方块挖成空气），几何全部委托 `CaveShape` |
 | `worldgen/ore/OreVeins.java` | ★ 2026-09-15：矿脉**纯函数**（**零 MC 依赖**）：成矿带 2D 门控 + 宿主岩/深度带 + 3D 等值面脉体；矿种按岩性成矿 |
+| `worldgen/geode/GeodeShape.java` | ★ 2026-09-15：紫晶洞**纯函数**（**零 MC 依赖，无噪声**：形状由整数哈希驱动）：岩性门控（玄武岩/安山岩 = 杏仁状玄武岩）+ 深度带 + 3D 晶格候选椭球 + 按归一化半径分档的同心壳层 |
 | `GeoGenesisBiomeSource.java` | BiomeSource，按 Cell 气候选原版群系 |
 | ~~`worldgen/generator/BiomeMapper.java`~~ | ⚠️ 已删除（2026-07-13）：群系映射合并入 `BiomeClassifier.pickKey`，不再有独立文件 |
 | `worldgen/climate/BiomeClassifier.java` | 零依赖群系分类（`classify(Cell)→BiomeClass` 枚举，无颜色）；★ T12 起 `soilVariant` 做「岩性→群系」变体 |
@@ -387,10 +388,37 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   （不破地表）；③ **气候耦合 + 交错**（干旱/极寒繁茂恒 0）；④ 与洞穴几何一致
   （非 NONE ⇒ 必为洞穴）；⑤ 单次裁定 **0.066 us**。
 - **守门**：`runClimateBiomeProbe` **非法邻接 0** · `runSoilBiomeCrosstabProbe` ALL PASS。
-- **未做（如实记录）**：`DEEP_DARK` · 洞穴专属结构（紫晶洞/化石）· 实机进洞确认。
+- **未做（如实记录）**：`DEEP_DARK` · 化石（沉积岩中的骨块 —— 晶洞已做，见下）· 实机进洞确认。
 - **★ 顺手修的探针雷**：`OreVeinProbe` 默认 `N=160`（< 成矿带特征尺度 190）时
   连通性统计被窗口边界截断 ⇒ 判据5 误报 FAIL。已把默认调至 **512**，
   避免后人无参数运行踩坑（本项目在"窗口不足一个特征"上已踩过两次）。
+
+## 当前工作焦点（2026-09-15 紫晶洞）
+
+- **★ 补齐"地下探索奖励"的最后一块**：此前地下只有岩层 + 洞穴 + 矿脉，没有任何"值得专程去找"的结构。
+- **实现**：`worldgen/geode/GeodeShape.java` **零 MC 依赖纯函数**（照 `CaveShape`/`OreVeins` 范式）
+  + 生成器 `GEODE_BLOCKS` 映射（`SMOOTH_BASALT / CALCITE / AMETHYST_BLOCK / BUDDING_AMETHYST / CAVE_AIR`）。
+- **地质依据**：杏仁状玄武岩 —— 岩性门控到**玄武岩/安山岩**（火山岩气孔被热液充填）。
+  **被岩层界面切平是正确产状**（杏仁体局限于单一熔岩流），且因此**无需跨体素状态**。
+- **★ 两条必须保留的推导（改代码前先读 javadoc）**：
+  1. `JITTER(9) + MAX_SEMI_AXIS(6.5) = 15.5 ≤ CELL/2(16)` ⇒ **椭球不越出自己那一格**
+     ⇒ 每体素只查 1 格、**无缓存、无跨线程状态**。放大晶洞**必须同步放大 `CELL`**。
+  2. 壳层按**归一化半径**分档（`r` 自中心单调↑）⇒ 层序**数学上必然正确**。
+- **★ 洞穴联动免费**：洞穴在 `applyCarvers`（更晚）雕 ⇒ 洞穴穿洞处**洞壁自然露紫水晶**。
+- **验收**：`runGeodeProbe` 判据 1~7 全 PASS（岩性耦合 · 深度带 · 壳层序+五层齐全 ·
+  无死层 · 密度 · 性能）；**4 次运行 / 3 种子稳定**。密度 **1/41~47 chunk**、
+  纯函数成本 **0.111~0.168 ms/chunk**（对照矿脉 0.13~0.19、洞穴 2.5~3.1）。
+- **★ 探针抓到的真 bug（务必记住这个范式陷阱）**：`unit()` 写成
+  `(h >>> (k*9)) & 掩码` —— "取不同位段"看似合理，但 `h` 只 64 位，
+  `k≥2` 起有效位被右移殆尽（k≥4 恒 0）⇒ **抖动/尺寸全塌成固定值**。
+  正解：每次**重新混合**取高 53 位。**是"尺寸分布"判据暴露的** ——
+  只判"是否成洞/壳层序"会一直藏着。
+- **★ 两条判据口径教训**：
+  ① "缺层"≠"失序"：门控切平椭球**本来就缺层**，且**深切割先丢内层**
+     （空腔最小）⇒ 改为"只对出现过材料要求递增" + 出**缺失层直方图**。
+  ② 稀有特征的密度**不能直数窗口内的个数**（Poisson 噪声）：改用
+     **放大 presence 后线性折算**；探针默认窗口 256→**512**。
+- **未做**：化石 · 实机目检。
 
 ## 当前工作焦点（2026-09-15 矿脉系统）
 
@@ -654,7 +682,11 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   - 水量平衡（湿度场 → 源头径流门槛 0.08~0.25 → 干带河稀湿带河密，实测 10% vs 30%）
   - 探针验证：主河 avg 165-196wu、贴谷 100%、单调 96-97%、湖 1-4、暗河 8-9%；BUILD SUCCESSFUL；`runPreview` 稳定 45s。详见 `DEV_REPORT.md` §10。
   - **用户实测三轮修复（同日 §10.5）**：join 38-46% → **63-72%**（水面 Y 语义修正 + 高度条件 + 40wu 窗口）；sink 27-47% → **7-8%**（多尺度/远尺度绕行 + 纯几何停滞检测 + 网格锚定振荡根治）；100% 段有落差（avg 49 块）；主河 avg 493-576wu。
-  - **待办（阶段 E）**：Strahler 分级河宽；湖泊群系映射；瀑布跌水潭视觉验证；`runClient` 实机目检。
+  - **待办（阶段 E）**：湖泊群系映射；瀑布跌水潭视觉验证；`runClient` 实机目检。
+  - ⚠ **2026-09-15 核对修正**：原列于此的"Strahler 分级河宽"**前提已具备** ——
+    本段上面已记"新增 Strahler 式层级：`RiverPolyline.level` + 构建期 `levelAt[]` 传递"
+    （`RiverLineNetwork:419` 确有 `levelAt`），且宽度单调违例为 0。
+    ⇒ 该条**不再是明确缺口**；若还要做"按层级/流量显式设宽"属**增强**而非补缺。
 
 - **地形整体重写为地质过程范式（2026-07-13，阶段 1–3 完成）**：单一连续场 `e(x,z)`，大陆性 `c∈[0,1]` 单一连续噪声，海陆仅条件切分；海岸 `landW = smoother(clamp((cBiased-threshold)/(coastWidth*1.5)))` 做 C0 连续过渡；海洋深度由 `HeightCurve.eFromC` 样条控制点决定。阶段 1（统一场地形管线）+ 阶段 2（RiverField 粗格点河网 + 河谷刻蚀）+ 阶段 3（多营力局部侵蚀 ErosionSystem）均已编码并接线，BUILD SUCCESSFUL。详见 `ARCHITECTURE.md` / `docs/01-架构设计/01-地形重建设计-terrain-rebuild.md`。
 
@@ -694,6 +726,11 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 - **编译通过（BUILD SUCCESSFUL）**。`runClient`/`runPreview` 目检待做。
 
 **待办（follow-up，不阻塞首版地形）**：调音台 `mixer` 的基础因素曲线仍绑定旧 `@Deprecated` 的 `*MinE/*MaxE` 配置字段（现为 inert，拖动不影响新引擎）。需把 mixer 重绑到新的地质过程参数（或改造成"省权重/山脉形态/高原形态"曲线）。`GeoGenesisConfigScreen` 参数页的 `regionScale` 等滑块同理待替换为过程参数滑块。
+  - ⚠ **2026-09-15 核对**：全仓搜索 `plainsMinE` / `mountainsMaxE` / `*MinE` / `*MaxE`
+    配置字段，**在 `src/main` 中已不存在**（只命中无关的 `RiverLineParams.sourceMinE`
+    与 `GeoPalette.setElevationERange` 的形参）⇒ 本条**前提已失效**。
+    若确认 mixer 各曲线已绑到过程参数，应直接删除本条；本次**未逐条核对
+    `Factor.ConfigBinding` 的绑定目标**，故仅标注"前提失效"，不擅自删。
 
 ## 河流系统重写 + 河流生命史特征（2026-07-10）
 
