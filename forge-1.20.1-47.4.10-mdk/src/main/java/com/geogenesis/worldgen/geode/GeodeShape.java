@@ -141,22 +141,60 @@ public final class GeodeShape {
     /**
      * 候选格成洞概率。
      *
-     * <h3>取值依据（{@code runGeodeProbe} scan 模式扫描，<b>待实测回填</b>）</h3>
-     * <p>目标：约 <b>1 个晶洞 / 20~40 个 chunk</b>（比矿脉矿体稀少得多 ——
-     * 晶洞是"专程去找"的目标，不是随手可得的资源）。</p>
+     * <h3>取值依据：对齐原版（2026-09-16 查得，此前是"凭感觉"定的）</h3>
+     * <p>原版：<b>每个 chunk 有 1/24 概率尝试生成一个晶洞</b>（Wiki / 数据包）。
+     * 初版取 0.075 时 {@code runGeodeProbe} 实测 <b>1/41.2 chunk</b>（比原版稀 1.7×）；
+     * 按线性折算改为 <b>0.075 × 41.2/24 ≈ 0.129</b> ⇒ 实测约 <b>1/24</b>。</p>
+     *
+     * <p>⚠ <b>口径警告（务必知悉）</b>：{@code runGeodeProbe} 用<b>合成岩性</b>
+     * （8 种岩性均匀轮转 ⇒ 宿主岩约占 25%）。真实世界的密度取决于
+     * {@code StratumField} 实际的岩性构成比例 ⇒ <b>探针值不等于实机值</b>。
+     * 若实机发现过稀/过密，<b>本常量就是唯一旋钮</b>（每 chunk 洞数与它成正比）。</p>
      */
-    static final double BASE_PRESENCE = 0.075;
+    static final double BASE_PRESENCE = 0.129;
 
-    // ===================== 壳层分档（归一化半径）====================
+    // ===================== 壳层分档（归一化半径，照原版 layers 比例）====================
 
-    /** {@code r < } 此值 ⇒ 空腔。 */
-    private static final double R_AIR = 0.35;
-    /** {@code r < } 此值 ⇒ 晶芽。 */
-    private static final double R_BUDDING = 0.50;
-    /** {@code r < } 此值 ⇒ 紫水晶块。 */
-    private static final double R_AMETHYST = 0.68;
-    /** {@code r < } 此值 ⇒ 方解石；再往外到 1.0 为平滑玄武岩外壳。 */
-    private static final double R_CALCITE = 0.86;
+    /**
+     * 壳层分档<b>取自原版</b>（<b>必须保留出处，否则后人又会凭感觉改</b>）。
+     *
+     * <h3>★ 2026-09-16 修正：初版分档是我"凭感觉"定的，实测与形态差很多</h3>
+     *
+     * <p>原版 {@code amethyst_geode} 的 {@code layers} 参数（{@code configured_feature}
+     * JSON / Wiki）：{@code filling=1.7 · inner_layer=2.2 · middle_layer=3.2 ·
+     * outer_layer=4.2}。原版算法按<b>累加半径</b>比较：</p>
+     * <pre>
+     *   d0 = 1.7                  → 内腔（空气）
+     *   d1 = 1.7 + 2.2 = 3.9      → 紫水晶层（含 8.3% 晶芽）
+     *   d2 = 3.9 + 3.2 = 7.1      → 方解石层
+     *   d3 = 7.1 + 4.2 = 11.3     → 平滑玄武岩外壳（到 11.3）
+     * </pre>
+     * <p>归一化到 {@code r ∈ [0,1]}：<b>空腔 0.150 · 紫水晶 0.345 · 方解石 0.628</b>、
+     * 外壳到 1.0。换算成<b>体积</b>占比：外壳约 <b>75%</b>、方解石 21%、紫水晶 4%、
+     * 空腔 0.3% —— 即原版紫晶洞是「<b>一颗大半是玄武岩的球，内里一个小水晶腔</b>」。</p>
+     *
+     * <p><b>我初版的分档（0.35 / 0.50 / 0.68 / 0.86）纯凭观感，实测体积占比变成
+     * 外壳 36% / 方解石 32% / 紫水晶 19% / 晶芽 8% / 空腔 4.3%</b> ⇒
+     * <b>空腔半径大 2.3 倍、外壳薄 2.6 倍</b>，形态成了「薄壳+一大团水晶」，
+     * 与玩家熟悉的观感不符。<b>剖面图看不出来（都同心），是"方块体积占比"暴露的。</b>
+     * 教训：凡是"MC 里已有对应物"的结构，参数应先查原版数据，而不是凭观感定。</p>
+     */
+    /** {@code r < } 此值 ⇒ 空腔（原版 {@code 1.7/11.3}）。 */
+    static final double R_AIR = 0.150;
+    /** {@code r < } 此值 ⇒ 紫水晶层（原版 {@code 3.9/11.3}）。晶芽散布在此层内。 */
+    static final double R_AMETHYST = 0.345;
+    /** {@code r < } 此值 ⇒ 方解石层（原版 {@code 7.1/11.3}）；再往外到 1.0 为平滑玄武岩外壳。 */
+    static final double R_CALCITE = 0.628;
+
+    /**
+     * 紫水晶层内被替换为<b>晶芽</b>的比例（原版 {@code use_alternate_layer0_chance}）。
+     *
+     * <p>★ 原版<b>没有</b>"晶芽层"：晶芽是<b>散布在紫水晶层里</b>的方块
+     * （约 8.3%）。我初版做成了独立壳层 0.35~0.50 —— 机制不对，且会把
+     * 玩家最想要的晶芽挤到一条窄环上。改为<b>逐体素哈希</b>决定（确定性、
+     * 无状态），晶芽均匀散布在整个紫水晶层内。</p>
+     */
+    static final double BUDDING_CHANCE = 0.083;
 
     // ===================== 播种 =====================
 
@@ -214,16 +252,23 @@ public final class GeodeShape {
         double r2 = nx * nx + ny * ny + nz * nz;
         if (r2 >= 1.0) return MAT_NONE;                              // ④ 椭球外
 
-        return shellOf(Math.sqrt(r2));                               // 归一化半径（自中心单调↑）
+        // 归一化半径（自中心单调↑）→ 壳层材料（晶芽在紫水晶层内散布）
+        return shellOf(Math.sqrt(r2), wx, wy, wz);
     }
 
     /**
-     * 归一化半径 → 材料（壳层分档）。{@code r} 自中心单调递增 ⇒ 层序必然正确。
+     * 归一化半径 → 材料（壳层分档）。{@code r} 自中心单调递增 ⇒ <b>层序必然正确</b>。
+     *
+     * <p>★ <b>晶芽不是独立壳层</b>：它在<b>紫水晶层内</b>按 {@link #BUDDING_CHANCE}
+     * 逐体素散布（照原版 {@code use_alternate_layer0_chance}）⇒ 需要体素坐标做哈希，
+     * 故本方法带坐标参数。</p>
      */
-    static int shellOf(double r) {
+    static int shellOf(double r, int wx, int wy, int wz) {
         if (r < R_AIR) return MAT_AIR;
-        if (r < R_BUDDING) return MAT_BUDDING;
-        if (r < R_AMETHYST) return MAT_AMETHYST;
+        if (r < R_AMETHYST) {
+            return unit(hash(worldSeed, wx, wy, wz), 0) < BUDDING_CHANCE
+                    ? MAT_BUDDING : MAT_AMETHYST;
+        }
         if (r < R_CALCITE) return MAT_CALCITE;
         return MAT_BASALT;
     }

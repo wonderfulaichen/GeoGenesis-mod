@@ -229,8 +229,17 @@ public final class GeodeProbe {
                 GeodeShape.MIN_DEPTH, GeodeShape.MAX_DEPTH);
 
         // ---------- [5] 壳层同心序（独立复核）----------
-        int[] seq = {GeodeShape.MAT_AIR, GeodeShape.MAT_BUDDING, GeodeShape.MAT_AMETHYST,
-                GeodeShape.MAT_CALCITE, GeodeShape.MAT_BASALT};
+        //   ★ 2026-09-16 改口径：对齐原版后，【晶芽不再是独立壳层】——
+        //     原版把紫水晶层内 8.3% 的方块换成晶芽（use_alternate_layer0_chance），
+        //     故晶芽与紫水晶【同层、相互交错】，二者之间不存在序关系。
+        //     故改用"结构序对"：空腔 < {紫水晶, 晶芽} < 方解石 < 平滑玄武岩。
+        int[][] orderPairs = {
+                {GeodeShape.MAT_AIR, GeodeShape.MAT_AMETHYST},
+                {GeodeShape.MAT_AIR, GeodeShape.MAT_BUDDING},
+                {GeodeShape.MAT_AMETHYST, GeodeShape.MAT_CALCITE},
+                {GeodeShape.MAT_BUDDING, GeodeShape.MAT_CALCITE},
+                {GeodeShape.MAT_CALCITE, GeodeShape.MAT_BASALT},
+        };
         Map<String, Integer> missingHist = new HashMap<>();
         int complete = 0, truncated = 0, orderBad = 0, tiny = 0;
         double minGap = Double.MAX_VALUE;
@@ -253,15 +262,15 @@ public final class GeodeProbe {
                 }
             }
 
-            // ① 序检查：只对【出现过的】材料要求严格递增。
-            //    ★ 缺失层不能算失序 —— 晶洞被岩性/深度带"切平"是正确产状
-            //      （杏仁体局限于单一熔岩流），初版把缺失当失序 ⇒ 误报 4 个。
+            // ① 序检查：按"结构序对"逐对比较，且【只对两边都出现过的】才比较。
+            //    ★ 两个教训都保留：
+            //      · 缺失层不能算失序 —— 晶洞被岩性/深度带"切平"是正确产状
+            //        （杏仁体局限于单一熔岩流），初版把缺失当失序 ⇒ 误报 4 个；
+            //      · 晶芽与紫水晶【同层交错】⇒ 二者不可比较（原版就是这样）。
             boolean ok = true;
-            double prev = -1;
-            for (int i : seq) {
-                if (!present[i]) continue;
-                if (meanR[i] <= prev) { ok = false; break; }
-                prev = meanR[i];
+            for (int[] pr : orderPairs) {
+                if (!present[pr[0]] || !present[pr[1]]) continue;
+                if (meanR[pr[0]] >= meanR[pr[1]]) { ok = false; break; }
             }
             if (!ok) { orderBad++; continue; }
 
@@ -288,14 +297,16 @@ public final class GeodeProbe {
             }
         }
         System.out.printf("%n[5] 壳层结构（用 dbgCellShape 独立重算归一化半径复核）:%n");
-        System.out.printf("    完整洞（五层齐全）=%d   被切平洞（有缺层）=%d   失序=%d   体素<40 跳过=%d%n",
+        System.out.printf("    五层齐全洞=%d   有缺层洞=%d   失序=%d   体素<40 跳过=%d%n",
                 complete, truncated, orderBad, tiny);
-        System.out.printf("    期望序（内→外）: 空腔 < 晶芽 < 紫水晶块 < 方解石 < 平滑玄武岩%n");
+        System.out.printf("    期望结构序: 空腔 < {紫水晶块, 晶芽} < 方解石 < 平滑玄武岩%n");
+        System.out.println("      （晶芽与紫水晶【同层交错】—— 原版把紫水晶层内 8.3% 换成晶芽，"
+                + "二者无先后）");
         System.out.printf("    完整洞的最小\"外壳 - 方解石\"平均半径间隔: %s%n",
                 minGap == Double.MAX_VALUE ? "(无有效样本)" : String.format("%.4f", minGap));
         List<String> sigKeys = new ArrayList<>(missingHist.keySet());
         sigKeys.sort((a, b) -> missingHist.get(b) - missingHist.get(a));
-        System.out.println("    缺失层直方图（门控切平椭球的必然结果；切割深时先丢内层）:");
+        System.out.println("    缺失层直方图（两种成因：①门控切平椭球 ②小洞装不下稀有层）:");
         for (String k : sigKeys) {
             System.out.printf("        %-24s %d 个%n", k, missingHist.get(k));
         }
@@ -376,15 +387,42 @@ public final class GeodeProbe {
         boolean p5 = true;
         for (int i = 0; i < GeodeShape.MATERIALS; i++) p5 &= res.matCount[i] > 0;
         System.out.printf("[判据5] 五层材料全部出现（无死层）: %s%n", p5 ? "PASS" : "FAIL");
-        boolean p6 = perChunkDensity >= 1.0 / 60.0 && perChunkDensity <= 1.0 / 8.0;
-        System.out.printf("[判据6] 密度合理（1/60 ~ 1/8 个每 chunk，即「专程去找」级别）: %s"
+        // ★ 2026-09-16 改为对齐原版：原版每 chunk 有 1/24 概率尝试生成一个晶洞。
+        //   容差 ±1.6×（本探针用合成岩性、岩石构成与实机不同 ⇒ 允许偏离）。
+        boolean p6 = perChunkDensity >= 1.0 / 38.0 && perChunkDensity <= 1.0 / 15.0;
+        System.out.printf("[判据6] 密度对齐原版（原版 1/24 chunk，容差 1/38~1/15）: %s"
                         + "（标定值 1/%.1f chunk）%n",
                 p6 ? "PASS" : "FAIL",
                 perChunkDensity <= 0 ? 0.0 : 1.0 / perChunkDensity);
         boolean p7 = perChunkMs <= 1.0;
         System.out.printf("[判据7] 性能 ≤ 1.0 ms/chunk（对照洞穴 2.5~3.1）: %s（实测 %.3f）%n",
                 p7 ? "PASS" : "FAIL", perChunkMs);
-        System.out.println(p1 && p2 && p3 && p4 && p5 && p6 && p7 ? "ALL PASS" : "FAILURES");
+
+        // ---------- 判据8（2026-09-16 新增，来自"去查原版数据"）----------
+        //   ★ 这条判据的真正价值：**它当初就能抓住"薄壳 + 一大团水晶"的错误形态**。
+        //     只判"是否同心 / 是否五层齐全"永远看不出来 —— 两种形态都同心、都五层。
+        //   原版（layers 1.7/2.2/3.2/4.2）折算体积占比：
+        //     外壳≈75% · 方解石≈21% · 紫水晶≈3.8%（其中晶芽 8.3%≈0.3%）· 空腔≈0.34%
+        //   容差给得较宽，因为门控切平会剥掉一些外层（使外壳占比偏低）。
+        double tm = Math.max(1, totalMat);
+        double basaltPct = 100.0 * res.matCount[GeodeShape.MAT_BASALT] / tm;
+        double calcitePct = 100.0 * res.matCount[GeodeShape.MAT_CALCITE] / tm;
+        double amethystPct = 100.0 * res.matCount[GeodeShape.MAT_AMETHYST] / tm;
+        double buddingPct = 100.0 * res.matCount[GeodeShape.MAT_BUDDING] / tm;
+        double airPct = 100.0 * res.matCount[GeodeShape.MAT_AIR] / tm;
+        boolean p8 = basaltPct >= 60.0 && basaltPct <= 88.0
+                && calcitePct >= 10.0 && calcitePct <= 32.0
+                && amethystPct >= 0.5 && amethystPct <= 12.0
+                && airPct <= 4.0 && buddingPct <= 4.0;
+        System.out.printf("[判据8] 方块占比符合原版量级（外壳 60~88 / 方解石 10~32 / "
+                        + "紫水晶 0.5~12 / 空腔<=4 / 晶芽<=4，单位%%）: %s%n",
+                p8 ? "PASS" : "FAIL");
+        System.out.printf("        实测 外壳%.1f 方解石%.1f 紫水晶%.1f 晶芽%.1f 空腔%.1f"
+                        + "   （初版凭观感定档时为 36.4/32.2/18.9/8.2/4.3 ⇒ 本条会 FAIL）%n",
+                basaltPct, calcitePct, amethystPct, buddingPct, airPct);
+
+        System.out.println(p1 && p2 && p3 && p4 && p5 && p6 && p7 && p8
+                ? "ALL PASS" : "FAILURES");
     }
 
     // ===================== 密度扫描 =====================
