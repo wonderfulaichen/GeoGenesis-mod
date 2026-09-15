@@ -129,9 +129,38 @@ public final class CaveConfigProbe {
         boolean pass6 = usPer <= 1.0;
         System.out.printf("[判据6] 配置读取未拖慢热路径（≤1.0 us/次）: %s%n", pass6 ? "PASS" : "FAIL");
 
+        // ---------- 判据7：配置热刷新（"UI 改完即生效"的机制）----------
+        //   背景：setConfig 原先只在 setWorldSeed（世界加载）时调用 ⇒ 配置界面
+        //   改档位后世界生成器仍用旧配置 ⇒ **UI 看起来无效**。
+        //   本判据验证新加的刷新通道：未标记脏时零开销；标记脏后恰好刷新一次；
+        //   刷新后再调不重复（幂等）。
+        CaveShape.setConfig(CaveConfig.fromPreset(CaveConfig.Preset.REALISTIC));
+        java.util.concurrent.atomic.AtomicInteger refreshCalls = new java.util.concurrent.atomic.AtomicInteger();
+        CaveShape.setConfigRefresher(() -> {
+            refreshCalls.incrementAndGet();
+            CaveShape.setConfig(CaveConfig.fromPreset(CaveConfig.Preset.OFF));
+        });
+        CaveShape.ensureConfigFresh();                       // 未脏 ⇒ 不应刷新
+        int callsNotDirty = refreshCalls.get();
+        boolean fresh1 = callsNotDirty == 0 && CaveShape.isEnabled();
+        CaveShape.markConfigDirty();
+        CaveShape.ensureConfigFresh();                       // 脏 ⇒ 刷新一次
+        int callsAfterDirty = refreshCalls.get();
+        boolean fresh2 = callsAfterDirty == 1 && !CaveShape.isEnabled();
+        CaveShape.ensureConfigFresh();                       // 再调 ⇒ 不重复
+        boolean fresh3 = refreshCalls.get() == 1;
+        System.out.printf("[7] 热刷新: 未脏时调用=%d(应0)  脏后调用=%d(应1)  幂等=%s%n",
+                callsNotDirty, callsAfterDirty, fresh3);
+        boolean pass7 = fresh1 && fresh2 && fresh3;
+        System.out.printf("[判据7] 配置热刷新机制正确（未脏零开销 / 脏后一次 / 幂等）: %s%n",
+                pass7 ? "PASS" : "FAIL");
+        // 还原（并注销探针自己的 refresher，避免影响后续）
+        CaveShape.setConfigRefresher(null);
         CaveShape.setConfig(CaveConfig.DEFAULT);
+
         int failures = (pass1 ? 0 : 1) + (pass1b ? 0 : 1) + (pass2 ? 0 : 1)
-                + (pass3 ? 0 : 1) + (pass4 ? 0 : 1) + (pass5 ? 0 : 1) + (pass6 ? 0 : 1);
+                + (pass3 ? 0 : 1) + (pass4 ? 0 : 1) + (pass5 ? 0 : 1) + (pass6 ? 0 : 1)
+                + (pass7 ? 0 : 1);
         System.out.println(failures == 0 ? "ALL PASS" : ("FAILURES=" + failures));
     }
 

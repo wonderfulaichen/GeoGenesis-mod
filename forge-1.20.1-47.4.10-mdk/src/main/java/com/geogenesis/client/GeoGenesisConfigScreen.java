@@ -2,6 +2,7 @@ package com.geogenesis.client;
 
 import com.geogenesis.client.preview.BiomesPanel;
 import com.geogenesis.client.preview.CachePanel;
+import com.geogenesis.client.preview.CavePanel;
 import com.geogenesis.client.preview.ClimateConfigPanel;
 import com.geogenesis.client.preview.ColormapPanel;
 import com.geogenesis.client.preview.ConfigPanel;
@@ -53,7 +54,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private int tab = 0;
     /** 标签页名：上游→下游排列。页签0=世界参数（最上游），页签1=气候，页签2=地形（含雪线） */
-    private static final String[] TAB_NAMES = {"预设", "世界参数", "气候", "地形", "显示", "采样", "色带", "缓存", "群系"};
+    private static final String[] TAB_NAMES = {"预设", "世界参数", "气候", "地形", "洞穴", "显示", "采样", "色带", "缓存", "群系"};
 
     /** 标签页导航条配色（仿设置页 TabNavigationBar 原生形态 + 主屏深绿主题） */
     private static final int TAB_H = 24;              // 标签条高度
@@ -83,6 +84,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private ColormapPanel colormapPanel;
     private CachePanel cachePanel;
     private BiomesPanel biomesPanel;
+    /** ★ 2026-09-15：洞穴设置页（档位一键切换 + 开关 + 旋钮）。 */
+    private CavePanel cavePanel;
     private PresetsPanel presetsPanel;
     private ConfigPanel[] panels;
 
@@ -229,8 +232,14 @@ public class GeoGenesisConfigScreen extends Screen {
         if (colormapPanel == null) colormapPanel = new ColormapPanel(preview);
         if (cachePanel == null) cachePanel = new CachePanel(preview);
         if (biomesPanel == null) biomesPanel = new BiomesPanel(preview);
+        // ★ 2026-09-15：洞穴页签（档位一键切换 + 开关 + 旋钮）。顺序必须与 TAB_NAMES 严格对齐。
+        if (cavePanel == null) cavePanel = new CavePanel();
+        cavePanel.setOnMarkDirty(markDirty);
+        // 每次进屏都从配置回读一次 ⇒ 若别处（如「预设」页/重置按钮）改过洞穴配置，
+        // 滑块位置不会停在旧值（否则界面显示与实际不符，属误导）。
+        cavePanel.buildFromConfig();
         panels = new ConfigPanel[]{ presetsPanel, paramPanel, climatePanel, terrainPanel,
-            displayPanel, samplingPanel, colormapPanel, cachePanel, biomesPanel };
+            cavePanel, displayPanel, samplingPanel, colormapPanel, cachePanel, biomesPanel };
         int px0 = panelX + 4, pTop0 = listTop, pW0 = panelW - 8;
         for (ConfigPanel p : panels) p.setBounds(px0, pTop0, pW0);
 
