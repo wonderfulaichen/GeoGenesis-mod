@@ -65,6 +65,26 @@ public final class CaveBiomeSelector {
      */
     public static final int MIN_DEPTH = 12;
 
+    /**
+     * ★ 2026-09-16：<b>过渡带宽</b>（block）—— 硬壳之下，洞穴群系的启用率
+     * 由 0 渐升到 1，而不是在 {@link #MIN_DEPTH} 处<b>阶跃</b>。
+     *
+     * <h3>为何需要（照参考项目 + 本项目自身教训）</h3>
+     * <p>① <b>参考项目</b>：FreeTerraForged 的 {@code UndergroundBiomeSurfaceProtection}
+     * 用的正是"<b>硬壳 + 过渡</b>"两段式：{@code HARD_SHELL_BLOCKS = QuartPos.SIZE}(4)
+     * 内完全禁用、其后 {@code TRANSITION_BLOCKS = 24} 内用 {@code surfaceFactor} 渐升
+     * （见 {@code UndergroundBiomeBanding.surfaceFactor}）。<b>取 24 即沿用其同值。</b></p>
+     * <p>② <b>本项目自己的教训</b>：本类 javadoc 已记录"用户反馈群系过渡不自然，
+     * 根因是<b>阈值硬切换</b>"（地表方块的"盐和胡椒"碎屑即为此），繁茂/滴水石交错
+     * 也因此改成噪声抖动。唯独这个『地表保护』仍是硬截断 —— <b>不一致</b>。</p>
+     *
+     * <h3>硬截断的实际后果</h3>
+     * <p>{@code surface − wy = MIN_DEPTH} 是一个<b>水平面</b> ⇒ 洞穴群系会在洞里
+     * 沿一条<b>水平直线</b>突变（又一类"直边"瑕疵，与地形 Voronoi 直段同型）。
+     * 过渡带 + 噪声抖动 ⇒ 边界变成随深度渐变的<b>有机形态</b>。</p>
+     */
+    public static final int TRANSITION_DEPTH = 24;
+
     // ===================== 繁茂/滴水石的【交错】混合 =====================
 
     /**
@@ -104,11 +124,34 @@ public final class CaveBiomeSelector {
     private static final int SALT_LUSH = 0x4B7E2A19;
     private static final Noise3 LUSH_MIX = new Simplex3(SALT_LUSH);
 
+    /**
+     * 过渡带抖动的噪声特征尺度（block）。
+     *
+     * <p>取 24 ≈ 过渡带宽度的一半 ⇒ 抖动团块与过渡带同量级，
+     * 既不会碎成"盐和胡椒"（太小），也不会整片同进同退（太大）。</p>
+     */
+    private static final double TRANSITION_SCALE = 24.0;
+
+    private static final int SALT_TRANSITION = 0x2C19E7B3;
+    private static final Noise3 TRANSITION_MIX = new Simplex3(SALT_TRANSITION);
+
+    /**
+     * 体素在过渡带内的【启用概率】随深度线性上升：{@code p = (depth − MIN_DEPTH) / TRANSITION_DEPTH}。
+     *
+     * <p>⚠ Simplex 近似高斯<b>而非均匀</b> ⇒ 实际启用率与 {@code p} 是<b>单调对应但非线性</b>。
+     * 这对本用途无妨（要的是"渐变的有机边界"，不是精确的线性），但<b>不要</b>
+     * 拿本常量去反推"某深度的启用率应为 x%"。探针实测的启用率才是真值。</p>
+     */
+    private static double transitionChance(int depth, int minDepth) {
+        return (depth - minDepth) / (double) TRANSITION_DEPTH;
+    }
+
     private static volatile boolean seeded = false;
 
     /** 换世界种子（与地形/洞穴/矿脉同批失效，避免跨存档串扰）。 */
     public static synchronized void setSeed(long worldSeed) {
         if (LUSH_MIX instanceof Simplex3 s3) s3.seed(worldSeed, 0);
+        if (TRANSITION_MIX instanceof Simplex3 s3) s3.seed(worldSeed, 1);
         seeded = true;
     }
 
@@ -136,12 +179,24 @@ public final class CaveBiomeSelector {
         //   阈值取 max(MIN_DEPTH, 洞穴洞顶保护) —— 若用户把 caveSurfaceLid 设为 0
         //   （允许破地表成入口），群系仍不跟进地表（否则"洞穴植被长到地表"）。
         int minDepth = Math.max(MIN_DEPTH, CaveShape.surfaceLid());
-        if (surface - wy < minDepth) return CaveBiome.NONE;
+        int depth = surface - wy;
+        if (depth < minDepth) return CaveBiome.NONE;               // ① 硬壳（纯整型，最便宜）
 
         // ② 必须真在洞穴里。直接复用洞穴几何的【同一份】纯函数判定
         //    ⇒ 群系与洞穴形状<b>严格一致</b>，不会"群系漂到岩石里"。
         if (CaveShape.components(wx, wy, wz, surface, worldMinY, litho) == 0) {
             return CaveBiome.NONE;
+        }
+
+        // ③ ★ 过渡带（2026-09-16 新增）：启用率随深度渐升，替代原先的阶跃。
+        //    ⚠ 刻意放在【洞穴几何判定之后】：过渡带厚 24 块，若放几何之前，
+        //      会对大量<b>非洞穴</b>体素白算一次噪声（洞穴体素只占地下的一小部分）
+        //      ⇒ 显著浪费。放在其后则只对"洞穴内且深度在过渡带"的体素求值。
+        //    ⚠ 未播种时跳过过渡（保持"最合理的默认"：直接启用，与繁茂噪声一致）。
+        if (depth < minDepth + TRANSITION_DEPTH && seeded) {
+            double n01 = 0.5 + 0.5 * TRANSITION_MIX.compute(
+                    wx / TRANSITION_SCALE, wy / TRANSITION_SCALE, wz / TRANSITION_SCALE);
+            if (n01 >= transitionChance(depth, minDepth)) return CaveBiome.NONE;
         }
 
         // ③ 气候是<b>必要条件</b>：只有成林气候（湿润）才可能出繁茂洞穴。

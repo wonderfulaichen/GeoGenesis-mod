@@ -64,6 +64,13 @@ public final class CaveBiomeProbe {
         int minAssignedDepth = Integer.MAX_VALUE;
         int maxAssignedDepth = Integer.MIN_VALUE;
 
+        // ★ 2026-09-16：「启用率 vs 深度」分档（验证过渡带是【渐变】而非【阶跃】）。
+        //   分母必须是"该深度的【洞穴】体素数" —— 用"被赋群系数 / 总洞穴数"，
+        //   而不是 / 总体素数（那样会被"各深度洞穴多少"的地形因素污染）。
+        final int DEPTH_BINS = 64;
+        long[] caveAtDepth = new long[DEPTH_BINS];
+        long[] assignedAtDepth = new long[DEPTH_BINS];
+
         long t0 = System.nanoTime();
         for (int wx = 0; wx < N; wx++) {
             for (int wz = 0; wz < N; wz++) {
@@ -72,15 +79,26 @@ public final class CaveBiomeProbe {
                 for (int wy = WORLD_MIN_Y + 1; wy < SYN_SURFACE; wy++) {
                     CaveBiomeSelector.CaveBiome cb = CaveBiomeSelector.select(
                             wx, wy, wz, SYN_SURFACE, WORLD_MIN_Y, NEUTRAL_LITHO, ct);
+                    int d = SYN_SURFACE - wy;
                     if (cb == CaveBiomeSelector.CaveBiome.NONE) {
                         none[ci]++;
+                        // ★ 补算分母：该体素是否【在洞穴里】。
+                        //   只在 NONE 分支补算 ⇒ 对"已赋群系"的体素不重复求值。
+                        if (d < DEPTH_BINS
+                                && CaveShape.components(wx, wy, wz, SYN_SURFACE,
+                                        WORLD_MIN_Y, NEUTRAL_LITHO) != 0) {
+                            caveAtDepth[d]++;
+                        }
                         continue;
                     }
                     caveVoxels++;
                     biomeAssigned++;
+                    if (d < DEPTH_BINS) {
+                        caveAtDepth[d]++;
+                        assignedAtDepth[d]++;
+                    }
                     if (cb == CaveBiomeSelector.CaveBiome.DRIPSTONE) drip[ci]++;
                     else lush[ci]++;
-                    int d = SYN_SURFACE - wy;
                     minAssignedDepth = Math.min(minAssignedDepth, d);
                     maxAssignedDepth = Math.max(maxAssignedDepth, d);
                 }
@@ -167,8 +185,51 @@ public final class CaveBiomeProbe {
         System.out.printf("[判据5] 单次裁定 ≤ 2.0 us（与洞穴几何同量级）: %s（实测 %.3f us）%n",
                 pass5 ? "PASS" : "FAIL", usPerCall);
 
+        // ---------- ★ 判据6（2026-09-16 新增）：过渡带是【渐变】而非【阶跃】----------
+        //   ★ 为何要这条："硬截断"与"渐变"在旧判据下<b>都能通过</b> ——
+        //     判据2 只查"最小深度 ≥ 12"，两者都满足；判据1 只查"有产出"，两者都满足。
+        //     必须按【深度分档的启用率】才区分得开（与紫晶洞"判据8 占比"同源思路）。
+        //   期望：硬壳(12)之下，启用率随深度由 ~0 渐升到 ~1。
+        System.out.printf("%n[2b] 启用率 vs 深度（分母=该深度的【洞穴】体素数）:%n");
+        int minD = CaveBiomeSelector.MIN_DEPTH;
+        int transD = CaveBiomeSelector.TRANSITION_DEPTH;
+        double[] rate = new double[DEPTH_BINS];
+        for (int d = 0; d < DEPTH_BINS; d++) {
+            rate[d] = caveAtDepth[d] == 0 ? Double.NaN
+                    : 100.0 * assignedAtDepth[d] / caveAtDepth[d];
+        }
+        for (int d = minD - 4; d < Math.min(DEPTH_BINS, minD + transD + 8); d += 2) {
+            if (d < 0) continue;
+            System.out.printf("    深度 %3d  洞穴体素=%8d  赋群系=%8d  启用率=%s%n",
+                    d, caveAtDepth[d], assignedAtDepth[d],
+                    Double.isNaN(rate[d]) ? "  (无样本)"
+                            : String.format("%5.1f%%", rate[d]));
+        }
+        // ① 过渡带内启用率【单调不减】（容忍 3 个百分点的采样抖动）
+        boolean monotone = true;
+        double prevRate = -1;
+        for (int d = minD; d < Math.min(DEPTH_BINS, minD + transD); d++) {
+            if (caveAtDepth[d] < 200) continue;          // 样本太少不判
+            if (Double.isNaN(rate[d])) continue;
+            if (rate[d] < prevRate - 3.0) { monotone = false; break; }
+            prevRate = Math.max(prevRate, rate[d]);
+        }
+        // ② 确实存在【中间值】（渐变 vs 阶跃的判据：阶跃时中间档几乎不存在）
+        int intermediate = 0;
+        for (int d = minD; d < Math.min(DEPTH_BINS, minD + transD); d++) {
+            if (caveAtDepth[d] >= 200 && !Double.isNaN(rate[d])
+                    && rate[d] > 5.0 && rate[d] < 95.0) intermediate++;
+        }
+        boolean pass6 = monotone && intermediate >= 3;
+        System.out.printf("[判据6] 过渡带为渐变（启用率单调不减 且 中间档>=3）: %s"
+                        + "（单调=%s 中间档=%d，硬壳%d + 过渡%d）%n",
+                pass6 ? "PASS" : "FAIL", monotone ? "是" : "否", intermediate,
+                minD, transD);
+        System.out.println("     改前为硬截断时：启用率在深度 12 处由 0% 直接跳到 100%"
+                + " ⇒ 本条会 FAIL（中间档=0）");
+
         int failures = (pass1 ? 0 : 1) + (pass2 ? 0 : 1) + (pass3 ? 0 : 1)
-                + (pass4 ? 0 : 1) + (pass5 ? 0 : 1);
+                + (pass4 ? 0 : 1) + (pass5 ? 0 : 1) + (pass6 ? 0 : 1);
         System.out.println(failures == 0 ? "ALL PASS" : ("FAILURES=" + failures));
     }
 }
