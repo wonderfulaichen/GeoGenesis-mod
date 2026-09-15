@@ -43,6 +43,9 @@ public final class CaveCarver {
      * @param seaLevel  海平面 Y（地表低于此的列跳过 —— 无 aquifer，挖海底会留干空腔）
      */
     public static void carve(ChunkAccess chunk, Cell[] cells, int worldMinY, int seaLevel) {
+        // ★ 配置热刷新：若配置界面刚改过档位/开关，此处（chunk 级，非逐体素）
+        //   立即重新解析 ⇒ "改完即生效"（仅影响新生成区块）。
+        CaveShape.ensureConfigFresh();
         // ★ 2026-09-15：总开关（配置）。关闭 ⇒ 直接返回，地下无洞穴。
         //   与 RTG 的 useCaves=false 同语义。放在最前 ⇒ 关闭时零成本。
         if (!CaveShape.isEnabled()) return;

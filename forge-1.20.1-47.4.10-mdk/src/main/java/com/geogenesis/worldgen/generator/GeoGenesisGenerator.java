@@ -559,6 +559,16 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      * <p>⚠ 全部走 {@link ConfigSafe} 容错读取：配置未加载（如诊断进程）时回退默认，
      * 绝不让配置读取异常把世界生成打挂。</p>
      */
+    /**
+     * ★ 2026-09-15：重新从配置解析并注入洞穴配置。
+     *
+     * <p>供两处调用：① {@code setWorldSeed}（世界加载）；
+     * ② {@link CaveShape#configRefresher} 热刷新（配置界面改档位后）。</p>
+     */
+    public static void refreshCaveConfig() {
+        CaveShape.setConfig(resolveCaveConfig());
+    }
+
     private static CaveConfig resolveCaveConfig() {
         CaveConfig.Preset preset = ConfigSafe.enumOf(GeoGenesisConfig.INSTANCE.cavePreset,
                 CaveConfig.Preset.REALISTIC);
@@ -590,7 +600,10 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         CaveBiomeSelector.setSeed(seed);
         // ★ 2026-09-15：洞穴配置同批注入（档位 + 旋钮）。
         //   与 seed 同生命周期 ⇒ 换存档/改配置后行为一致（不会用旧配置继续挖洞）。
-        CaveShape.setConfig(resolveCaveConfig());
+        //   并注册"热刷新"回调 ⇒ 配置界面改档位后，**新生成的区块**立即用新配置
+        //   （否则 UI 改了却不生效 = 功能没接到底）。
+        CaveShape.setConfigRefresher(GeoGenesisGenerator::refreshCaveConfig);
+        refreshCaveConfig();
         // ★ 2026-09-15：坡度抖动噪声同批失效（否则换存档后仍用旧种子的抖动）。
         invalidateSteepJitter();
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);

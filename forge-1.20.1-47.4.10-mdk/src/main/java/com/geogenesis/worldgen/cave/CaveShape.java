@@ -164,6 +164,44 @@ public final class CaveShape {
         return cfg;
     }
 
+    // ===== ★ 配置热刷新（供配置界面"改完即生效"）=====
+    //
+    //   为何需要：setConfig 原先只在 setWorldSeed（世界加载）时调用 ⇒ 玩家在配置
+    //   界面改了"关闭洞穴"后，世界生成器仍在用旧配置 ⇒ **UI 看起来无效**。
+    //   这正是本项目被批评过的"功能没接到底"的一类 bug，故补上刷新通道。
+    //
+    //   语义（如实说明）：配置变更**只影响之后新生成的区块**，已生成的区块不会改变
+    //   （世界生成的固有性质，任何 mod 都一样）。
+
+    /** 由生成器注册的"重新解析配置"回调（null = 未注册，退化为只在换种子时刷新）。 */
+    private static volatile Runnable configRefresher = null;
+    /** 配置脏标记（由配置界面置位）。 */
+    private static volatile boolean configDirty = false;
+
+    /** 注册刷新回调（由 {@code GeoGenesisGenerator} 在初始化时调用一次）。 */
+    public static void setConfigRefresher(Runnable refresher) {
+        configRefresher = refresher;
+    }
+
+    /** 标记配置已变更（配置界面调用）。 */
+    public static void markConfigDirty() {
+        configDirty = true;
+    }
+
+    /**
+     * 若有待应用的配置变更则立即刷新（挖洞入口调用；未脏时仅一次 volatile 读）。
+     *
+     * <p>放在 chunk 级入口（而非逐体素）⇒ 每 chunk 至多一次检查，热路径零影响。</p>
+     */
+    public static void ensureConfigFresh() {
+        if (!configDirty) return;
+        Runnable r = configRefresher;
+        if (r != null) {
+            configDirty = false;      // 先清标记：即使回调抛异常也不会每 chunk 重试
+            r.run();
+        }
+    }
+
     /**
      * 洞穴是否启用（<b>总开关</b>）。{@code false} ⇒ {@link CaveCarver} 直接返回，
      * 地下无任何洞穴（同 RTG 的 {@code useCaves=false} 语义）。
