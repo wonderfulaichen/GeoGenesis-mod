@@ -1,8 +1,10 @@
 package com.geogenesis.worldgen.generator;
 
+import com.geogenesis.config.ConfigSafe;
 import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.cave.CaveBiomeSelector;
 import com.geogenesis.worldgen.cave.CaveCarver;
+import com.geogenesis.worldgen.cave.CaveConfig;
 import com.geogenesis.worldgen.cave.CaveShape;
 import com.geogenesis.worldgen.climate.BiomeClassifier;
 import com.geogenesis.worldgen.ore.OreVeins;
@@ -546,6 +548,36 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         return caveSkipped.get();
     }
 
+    /**
+     * ★ 2026-09-15：解析洞穴配置（档位 + 旋钮）为纯数据 {@link CaveConfig}。
+     *
+     * <h3>档位与旋钮的关系（游戏性优先）</h3>
+     * <p>档位给出一组<b>推荐值</b>（见 {@link CaveConfig#fromPreset}）；若档位是
+     * {@link CaveConfig.Preset#CUSTOM}，则各旋钮按配置原值生效。非 CUSTOM 档位下，
+     * 旋钮仍<b>可微调</b>（在档位基础上覆盖）—— 这样"选档位就能玩，想细调也有门"。</p>
+     *
+     * <p>⚠ 全部走 {@link ConfigSafe} 容错读取：配置未加载（如诊断进程）时回退默认，
+     * 绝不让配置读取异常把世界生成打挂。</p>
+     */
+    private static CaveConfig resolveCaveConfig() {
+        CaveConfig.Preset preset = ConfigSafe.enumOf(GeoGenesisConfig.INSTANCE.cavePreset,
+                CaveConfig.Preset.REALISTIC);
+        CaveConfig base = CaveConfig.fromPreset(preset);
+        boolean enabled = ConfigSafe.bool(GeoGenesisConfig.INSTANCE.caveEnabled, base.enabled);
+        if (!enabled) return CaveConfig.fromPreset(CaveConfig.Preset.OFF);
+        return CaveConfig.custom(
+                true,
+                ConfigSafe.bool(GeoGenesisConfig.INSTANCE.caveTunnelEnabled, base.tunnelEnabled),
+                ConfigSafe.bool(GeoGenesisConfig.INSTANCE.caveChamberEnabled, base.chamberEnabled),
+                ConfigSafe.bool(GeoGenesisConfig.INSTANCE.caveLayerEnabled, base.layerEnabled),
+                ConfigSafe.dbl(GeoGenesisConfig.INSTANCE.caveDensityMul, base.densityMul),
+                ConfigSafe.i32(GeoGenesisConfig.INSTANCE.caveSurfaceLid, base.surfaceLid),
+                ConfigSafe.i32(GeoGenesisConfig.INSTANCE.caveDepthMin, base.depthMin),
+                ConfigSafe.i32(GeoGenesisConfig.INSTANCE.caveDepthMax, base.depthMax),
+                ConfigSafe.bool(GeoGenesisConfig.INSTANCE.caveLithoGating, base.lithoGating),
+                ConfigSafe.bool(GeoGenesisConfig.INSTANCE.caveBiomesEnabled, base.caveBiomes));
+    }
+
     public static void setWorldSeed(long seed) {
         worldSeed = seed;
         // ★ 2026-08-14 单例失效：新世界 seed 变化 → 下次 buildTerrain 重建河网/地形
@@ -556,6 +588,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         OreVeins.setSeed(seed);
         // ★ 2026-09-15：洞穴群系的"繁茂/滴水石交错"噪声同批播种（同上）。
         CaveBiomeSelector.setSeed(seed);
+        // ★ 2026-09-15：洞穴配置同批注入（档位 + 旋钮）。
+        //   与 seed 同生命周期 ⇒ 换存档/改配置后行为一致（不会用旧配置继续挖洞）。
+        CaveShape.setConfig(resolveCaveConfig());
         // ★ 2026-09-15：坡度抖动噪声同批失效（否则换存档后仍用旧种子的抖动）。
         invalidateSteepJitter();
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);

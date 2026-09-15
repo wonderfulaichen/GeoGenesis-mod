@@ -919,6 +919,19 @@ task runCavePerfProbe(type: JavaExec) {
     }
 }
 
+// Cave config probe (2026-09-15): 洞穴配置档位诊断 ——
+//   验证"可开关配置"真的生效：OFF 确实无洞 / 档位密度单调 / 岩性门控开关 /
+//   层调制开关（防竖直贯穿）/ 分量开关 / 配置读取不拖慢热路径。
+//   gradlew runCaveConfigProbe [-PprobeArgs="seed spanXY"]
+task runCaveConfigProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.cave.CaveConfigProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Cave biome probe (2026-09-15): 洞穴群系诊断 ——
 //   复用生产的零 MC 依赖纯函数 CaveBiomeSelector：分布 / 深度带（不破地表）/
 //   气候耦合（受控对照：干旱与极寒不得出繁茂）/ 与洞穴几何一致 / 性能。

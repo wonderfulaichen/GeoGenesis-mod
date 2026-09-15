@@ -9,9 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> 构造地貌可见化 + 地表细节归位 + 地质→群系耦合 + T5 技术债清理 + 峡谷 + 洞穴 + 矿脉 + 洞穴群系（2026-09-14 ~ 09-15）。
+> 构造地貌可见化 + 地表细节归位 + 地质→群系耦合 + T5 技术债清理 + 峡谷 + 洞穴 + 矿脉 + 洞穴群系 + 洞穴配置（2026-09-14 ~ 09-15）。
 
 ### 新增 / Added
+
+- **★★ 洞穴可开关配置（游戏性优先）**：用户要求「<i>不需要完全按照地质学去设计，
+  毕竟我们这是 MC 游戏，要考虑游戏性。比如洞穴相关的可以开关配置，想要模拟现实洞穴
+  就打开，不需要就关闭回默认原版。</i>」
+  - **档位（一键切换）**：`REALISTIC`（拟真，默认：岩性门控 + 层调制）·
+    `VANILLA_LIKE`（接近原版：洞更大更圆、**不含层理**、**不看岩性**）·
+    `MINIMAL`（精简：只留细隧道）· `OFF`（**关闭**）· `CUSTOM`（旋钮直用）。
+  - **⚠ "关闭回原版"的技术现实（必须讲清，不含糊）**：本项目是**自定义
+    `ChunkGenerator`**、**没有 `NoiseSettings`/`NoiseChunk`** ⇒ 原版 carver
+    **在物理上无法调用**（这正是当初自研洞穴的原因）。故 `OFF` 的语义只能是
+    <b>"地下无洞穴"</b> —— 与参考项目 **RTG 的 `useCaves=false` 完全一致**。
+    作为补偿，`VANILLA_LIKE` 用现有 3D 噪声换参数去**近似**原版观感。
+    （调研确认：**三个参考项目都没有**"自研洞穴关闭 ⇒ 自动回退原版 carver"的双实现。）
+  - **配置项**（`Caves` 组，11 项）：总开关 `caveEnabled` · 档位 `cavePreset` ·
+    分量开关 `caveTunnelEnabled`/`caveChamberEnabled`/`caveLayerEnabled` ·
+    `caveDensityMul` · `caveSurfaceLid`（**设 0 ⇒ 允许洞穴破地表成入口**）·
+    `caveDepthMin`/`caveDepthMax` · `caveLithoGating` · `caveBiomesEnabled`。
+  - **★ 实现方式（关键）**：把 `CaveShape` **既有的诊断倍率机制升格为配置注入点**
+    ⇒ 探针代码**零改动**，默认档位下行为**逐位不变**（`runCaveShapeProbe` /
+    `runCavePerfProbe` 仍 ALL PASS）。配置经 `CaveConfig`（**零 MC 依赖纯数据 +
+    档位解析纯函数**）注入，热路径读**扁平 volatile 字段**（非逐次访问对象字段链）。
+  - **★ 单一配置来源**：`GeoGenesisBiomeSource` 原本自带一份 `caveBiomesEnabled`
+    字段 ⇒ 改为读 `CaveShape.config()`，消除"两套开关不一致"的风险。
+  - **验收（`runCaveConfigProbe`，7 项判据全 ALL PASS）**：
+    ① **`OFF` 确实无洞**：洞穴体素 **0**；② 总开关**正交**（`enabled=false` → 0）；
+    ③ 档位密度单调：MINIMAL(**385**) < REALISTIC(**36890**) < VANILLA_LIKE(**41162**)；
+    ④ **岩性门控开关**：REALISTIC 石灰岩/花岗岩 = **18.77×**，
+       VANILLA_LIKE **二者相等**（41162/41162）；⑤ **层调制开关**：平均最长竖直段
+       REALISTIC **6.31** < VANILLA_LIKE **8.25**（层调制确实防竖直贯穿）；
+    ⑥ 分量开关：关掉的分量**恒为 0**；⑦ 配置读取**不拖慢热路径**（**0.0584 us/次**）。
+  - **守门**：`runCaveShapeProbe` / `runCavePerfProbe` / `runCaveBiomeProbe` /
+    `runOreVeinProbe` 全 ALL PASS；水文两项 `status=PASS`。
+  - **未做（如实记录）**：① **配置界面未加**（核心诉求"能开关"已达成，TOML 可直接编辑、
+    标准 Forge 配置界面亦可见；本项目配置界面是自定义绘制的复杂 UI，加面板风险高）；
+    ② `CaveShape` 里 **`F_CHEESE` 分量与 `CAVERN_Y_SCALE`/`CHEESE_Y_SCALE` 常量
+    已声明但从未使用**（已在代码中标注 —— `CaveShapeProbe` 的 cheese 统计恒为 0，
+    曾让人误以为该分量"被关掉了"）；③ 端到端需实机确认。
 
 - **★★ 洞穴群系（此前完全没有 —— 洞穴内空荡无装饰）**：洞穴里现在有
   **滴水石洞**（钟乳石/石笋）与**繁茂洞穴**（苔藓/洞穴藤蔓/发光浆果）。

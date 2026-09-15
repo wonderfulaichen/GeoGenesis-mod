@@ -1,5 +1,6 @@
 package com.geogenesis.config;
 
+import com.geogenesis.worldgen.cave.CaveConfig;
 import net.minecraftforge.common.ForgeConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -249,6 +250,30 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue erosionRidgeLandRef;
     /** 粗侵蚀细节密度（PowInv 指数，越低=小沟越密，越高=主脊越干净）。默认 1.0，范围 [0.7, 3.0] */
     public final ForgeConfigSpec.DoubleValue erosionRidgeDetail;
+
+    // ===================== ★ 2026-09-15 洞穴（游戏性优先，可开关）=====================
+    /** 洞穴档位（REALISTIC 拟真 / VANILLA_LIKE 接近原版 / MINIMAL 精简 / OFF 关闭 / CUSTOM）。 */
+    public final ForgeConfigSpec.EnumValue<CaveConfig.Preset> cavePreset;
+    /** 洞穴总开关（false ⇒ 地下无洞穴；与档位正交）。 */
+    public final ForgeConfigSpec.BooleanValue caveEnabled;
+    /** 隧道分量（蜿蜒细管，负责"连通"）。 */
+    public final ForgeConfigSpec.BooleanValue caveTunnelEnabled;
+    /** 空腔分量（可站立的洞厅，负责"能走"）。 */
+    public final ForgeConfigSpec.BooleanValue caveChamberEnabled;
+    /** 层调制（把大空腔切成层状，防竖直贯穿）。 */
+    public final ForgeConfigSpec.BooleanValue caveLayerEnabled;
+    /** 洞穴密度倍率（乘在分量阈值上，越大洞越粗越密）。 */
+    public final ForgeConfigSpec.DoubleValue caveDensityMul;
+    /** 洞顶保护厚度（0 ⇒ 允许破地表形成入口）。 */
+    public final ForgeConfigSpec.IntValue caveSurfaceLid;
+    /** 洞穴带最浅深度。 */
+    public final ForgeConfigSpec.IntValue caveDepthMin;
+    /** 洞穴带最深深度。 */
+    public final ForgeConfigSpec.IntValue caveDepthMax;
+    /** 岩性门控（石灰岩溶洞大 / 花岗岩几乎无洞）—— 本项目独创。 */
+    public final ForgeConfigSpec.BooleanValue caveLithoGating;
+    /** 地下洞穴群系（滴水石洞 / 繁茂洞穴）。 */
+    public final ForgeConfigSpec.BooleanValue caveBiomesEnabled;
     /** SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2] */
     public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;
     /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16] */
@@ -657,6 +682,57 @@ public final class GeoGenesisConfig {
                 .defineInRange("erosionRidgeLandRef", 0.15, 0.02, 0.5);
         erosionRidgeDetail = builder.comment("Gully detail density (PowInv exponent; lower=finer gullies everywhere, higher=cleaner main ridges). Default 1.0, range [0.7, 3.0].")
                 .defineInRange("erosionRidgeDetail", 1.0, 0.7, 3.0);
+        builder.pop();
+
+        // ===================== ★ 2026-09-15 洞穴（游戏性优先，可开关）=====================
+        //   设计依据：用户要求"不需要完全按地质学设计，MC 是游戏，要考虑游戏性；
+        //   洞穴可以开关配置，想模拟现实洞穴就打开，不需要就关闭回默认原版"。
+        //
+        //   ⚠ 关于"关闭回原版"的技术现实（必须写明，避免误解）：
+        //     本项目是【自定义 ChunkGenerator】、没有 NoiseSettings/NoiseChunk
+        //     ⇒ 原版 carver 在物理上【无法调用】（这正是当初自研洞穴的原因）。
+        //     故 cavePreset=OFF 的语义只能是"【地下无洞穴】"—— 与参考项目 RTG 的
+        //     useCaves=false 完全一致。作为补偿，VANILLA_LIKE 档用现有 3D 噪声
+        //     换参数去【近似】原版观感（洞更大更圆、无层理、不看岩性）。
+        builder.push("Caves");
+        cavePreset = builder.comment(
+                "Cave preset (gameplay-first, one-click):"
+                + " REALISTIC = current default, geological (limestone karst caves are big, granite almost none, horizontal stratified caves);"
+                + " VANILLA_LIKE = closer to vanilla feel (bigger rounder chambers, no layering, rock type ignored);"
+                + " MINIMAL = sparse thin tunnels only;"
+                + " OFF = NO caves at all (vanilla carvers are UNAVAILABLE in this custom ChunkGenerator, so 'off' means an empty underground, same as RTG's useCaves=false);"
+                + " CUSTOM = use the individual knobs below as-is.")
+                .defineEnum("cavePreset", CaveConfig.Preset.REALISTIC);
+        caveEnabled = builder.comment(
+                "Master switch for cave carving. false = no caves at all (independent of cavePreset).")
+                .define("caveEnabled", true);
+        caveTunnelEnabled = builder.comment(
+                "Enable TUNNEL component (winding 1D tubes formed by two noise isosurface intersections; provides 'connectivity').")
+                .define("caveTunnelEnabled", true);
+        caveChamberEnabled = builder.comment(
+                "Enable CHAMBER component (walkable hall-like voids; provides 'room to walk'). Disabling leaves only thin tunnels -> players cannot stand up (a failure mode measured before).")
+                .define("caveChamberEnabled", true);
+        caveLayerEnabled = builder.comment(
+                "Enable LAYER modulation (squashes tall chambers into horizontal strata). Prevents vertically-through-going shafts. Disable for vanilla-cheese-like blob caves (accepts the risk of vertical shafts).")
+                .define("caveLayerEnabled", true);
+        caveDensityMul = builder.comment(
+                "Cave density multiplier applied to component thresholds (bigger = thicker & more caves). Default 1.0, range [0.2, 3.0].")
+                .defineInRange("caveDensityMul", 1.0, 0.2, 3.0);
+        caveSurfaceLid = builder.comment(
+                "Roof protection thickness in blocks: cave ceilings stay at least this far below the surface. 0 = caves MAY breach the surface (creates cave entrances, good for exploration). Default 6, range [0, 40].")
+                .defineInRange("caveSurfaceLid", 6, 0, 40);
+        caveDepthMin = builder.comment(
+                "Shallowest cave depth below surface (blocks). Default 8, range [0, 80].")
+                .defineInRange("caveDepthMin", 8, 0, 80);
+        caveDepthMax = builder.comment(
+                "Deepest cave depth below surface (blocks). Default 120, range [40, 320].")
+                .defineInRange("caveDepthMax", 120, 40, 320);
+        caveLithoGating = builder.comment(
+                "Rock-type gating (PROJECT-UNIQUE, absent in all 3 reference projects): limestone karst caves are 1.7x bigger, granite/gneiss almost none (0.55x). Disable for vanilla-like uniform caves.")
+                .define("caveLithoGating", true);
+        caveBiomesEnabled = builder.comment(
+                "Underground cave biomes: DRIPSTONE_CAVES everywhere, LUSH_CAVES in forest climates. Decoration (stalactites/moss/vines) is placed by vanilla automatically. Disable to keep the surface biome underground.")
+                .define("caveBiomesEnabled", true);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");
