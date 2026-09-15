@@ -48,4 +48,21 @@ public final class ConfigSafe {
             return fallback;
         }
     }
+
+    /**
+     * 安全读取枚举配置（未加载/未注册/值为 null → fallback）。
+     *
+     * <p>★ 2026-09-15 新增：洞穴档位（{@code CaveConfig.Preset}）需要读枚举。
+     * 语义与上面三个完全一致 —— 诊断/预览进程里配置未加载时回退默认档，
+     * 绝不让配置读取异常把世界生成或探针打挂。</p>
+     */
+    public static <E extends Enum<E>> E enumOf(ForgeConfigSpec.EnumValue<E> v, E fallback) {
+        if (v == null) return fallback;
+        try {
+            E got = v.get();
+            return got != null ? got : fallback;
+        } catch (IllegalStateException ex) {
+            return fallback;
+        }
+    }
 }

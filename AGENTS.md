@@ -306,6 +306,36 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   （生产类静态初始化依赖 MC registry，诊断进程加载会失败）⇒ 靠**参数人工核对**
   （已核对：0.06 / scale 6.0 / Simplex(0x6D3FA281) 全一致）。**此为已知验证缺口**。
 
+## 当前工作焦点（2026-09-15 洞穴可开关配置）
+
+- **用户要求**：洞穴**可开关配置**，"想拟真就开、不需要就关"，**游戏性优先**
+  （不必完全按地质学）。
+- **档位**：`REALISTIC`（拟真，默认）· `VANILLA_LIKE`（接近原版：洞大更圆、
+  **无层理**、**不看岩性**）· `MINIMAL`（只留细隧道）· `OFF`（关闭）· `CUSTOM`。
+- **⚠ "关闭回原版"的技术现实（必须讲清）**：本项目自定义 `ChunkGenerator`、
+  **无 `NoiseSettings`/`NoiseChunk`** ⇒ 原版 carver **物理上无法调用**。
+  故 `OFF` = <b>"地下无洞穴"</b>（**同 RTG 的 `useCaves=false`**）。
+  调研确认：**三个参考项目都没有**"自研洞穴关闭 ⇒ 回退原版 carver"的双实现
+  （TF 完全替换原版且废弃了 `CarverUtil`；FreeTF 靠 `probability=0` 隐式关单类；
+  RTG 的 `useCaves=false` 也只是"不生成"）。
+- **配置项**（`Caves` 组，11 项）：`caveEnabled` · `cavePreset` ·
+  `caveTunnelEnabled`/`caveChamberEnabled`/`caveLayerEnabled` · `caveDensityMul` ·
+  `caveSurfaceLid`（**0 ⇒ 允许破地表成入口**）· `caveDepthMin`/`caveDepthMax` ·
+  `caveLithoGating` · `caveBiomesEnabled`。
+- **★ 实现方式（关键）**：把 `CaveShape` 既有的 `dbg*Mul` **诊断倍率机制升格为
+  配置注入点** ⇒ **探针零改动**、默认档位行为**逐位不变**
+  （`runCaveShapeProbe`/`runCavePerfProbe` 仍 ALL PASS）。
+- **★ 单一配置来源**：`GeoGenesisBiomeSource` 原自带 `caveBiomesEnabled` 字段
+  ⇒ 改读 `CaveShape.config()`，消除两套开关不一致。
+- **验收（`runCaveConfigProbe`，7 判据全 ALL PASS）**：`OFF` 体素 **0** ·
+  总开关正交 · 档位密度 MINIMAL(**385**) < REALISTIC(**36890**) <
+  VANILLA_LIKE(**41162**) · 岩性门控 REALISTIC **18.77×** vs VANILLA_LIKE **相等** ·
+  层调制竖直段 **6.31 < 8.25** · 分量开关恒 0 · 性能 **0.0584 us/次**。
+- **未做（如实记录）**：**配置界面未加**（核心"能开关"已达成；TOML 可直接编辑、
+  Forge 标准界面可见；本项目配置界面是自定义绘制 UI，加面板风险高）·
+  `F_CHEESE` 分量与 `CAVERN_Y_SCALE`/`CHEESE_Y_SCALE` **声明未用**（已标注）·
+  实机确认。
+
 ## 当前工作焦点（2026-09-15 洞穴群系）
 
 - **★ 此前洞穴内空荡无装饰**。现补上滴水石洞（钟乳石/石笋）+ 繁茂洞穴（苔藓/藤蔓/发光浆果）。

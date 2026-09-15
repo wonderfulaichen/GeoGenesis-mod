@@ -126,18 +126,15 @@ public class GeoGenesisBiomeSource extends BiomeSource {
     private GeoGenesisTerrain terrain;
 
     /**
-     * ★★ 2026-09-15：洞穴群系开关（默认开）。
+     * ★★ 2026-09-15：洞穴群系开关。
      *
-     * <p>关闭后 {@code getNoiseBiome} 完全不做 3D 裁定 ⇒ 退回旧的纯 2D 行为
-     * （供 A/B 对比与故障排查）。</p>
+     * <p><b>单一来源</b>：直接读 {@link CaveShape#config()}（由
+     * {@code GeoGenesisGenerator.setWorldSeed} 注入的配置）——
+     * <b>不再自带一份字段</b>，避免"两套开关不一致"（B 源开、A 源关 ⇒ 群系漂移）。
+     * 洞穴关闭时群系也自动关闭（没有洞就没有洞穴群系）。</p>
      */
-    private static final boolean CAVE_BIOMES_ENABLED = true;
-    /** 实例字段（便于探针/调试期关闭；生产恒为上面的常量）。 */
-    private boolean caveBiomesEnabled = CAVE_BIOMES_ENABLED;
-
-    /** 供诊断关闭/开启洞穴群系（仅诊断用）。 */
-    public void setCaveBiomesEnabled(boolean v) {
-        this.caveBiomesEnabled = v;
+    private boolean caveBiomesEnabled() {
+        return CaveShape.config().caveBiomes && CaveShape.isEnabled();
     }
 
     // ---- 直接哈希映射缓存（MC 出生点搜索查几千次 quart 位置，避免重复全管线采样） ----
@@ -276,7 +273,7 @@ public class GeoGenesisBiomeSource extends BiomeSource {
      * ③ 洞穴几何（噪声）。绝大多数调用在 ② 就返回 —— 这是热路径不退化的关键。</p>
      */
     private Holder<Biome> caveBiomeAt(int x, int y, int z, int slot) {
-        if (!caveBiomesEnabled) return null;
+        if (!caveBiomesEnabled()) return null;
         int info = caveColInfo[slot];
         if (info == 0) return null;                       // 未初始化
 
@@ -285,11 +282,14 @@ public class GeoGenesisBiomeSource extends BiomeSource {
         int biomeOrd = (info >>> 20) & 0x1F;
         int wy = QuartPos.toBlock(y);
 
-        // ② 便宜剪枝：地表下 MIN_DEPTH 以内的层不必进洞穴判定
+        // ② 便宜剪枝：地表下 minDepth 以内的层不必进洞穴判定
         //    （CaveBiomeSelector 内部也会判，但那要先进噪声求值 ⇒ 这里先拦）
-        if (surfaceY - wy < CaveBiomeSelector.MIN_DEPTH) return null;
-        // ②b 更深于洞穴深度上限 ⇒ 必然不是洞穴
-        if (surfaceY - wy > CaveShape.DEPTH_MAX) return null;
+        //    minDepth 用与 CaveBiomeSelector 相同的口径（含洞顶保护）
+        if (surfaceY - wy < Math.max(CaveBiomeSelector.MIN_DEPTH, CaveShape.surfaceLid())) {
+            return null;
+        }
+        // ②b 更深于洞穴深度上限 ⇒ 必然不是洞穴（用配置生效值）
+        if (surfaceY - wy > CaveShape.depthMax()) return null;
 
         CaveBiomeSelector.CaveBiome cb = CaveBiomeSelector.select(
                 QuartPos.toBlock(x), wy, QuartPos.toBlock(z), surfaceY,

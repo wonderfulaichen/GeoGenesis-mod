@@ -43,12 +43,19 @@ public final class CaveCarver {
      * @param seaLevel  海平面 Y（地表低于此的列跳过 —— 无 aquifer，挖海底会留干空腔）
      */
     public static void carve(ChunkAccess chunk, Cell[] cells, int worldMinY, int seaLevel) {
+        // ★ 2026-09-15：总开关（配置）。关闭 ⇒ 直接返回，地下无洞穴。
+        //   与 RTG 的 useCaves=false 同语义。放在最前 ⇒ 关闭时零成本。
+        if (!CaveShape.isEnabled()) return;
         if (!CaveShape.isSeeded()) return;
         if (cells == null || cells.length != 256) return;
 
         int baseX = chunk.getPos().getMinBlockX();
         int baseZ = chunk.getPos().getMinBlockZ();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+
+        // ★ 运行时深度窗口（配置可覆盖）：在所有列之前取一次，避免逐列重复读取。
+        int lid = CaveShape.surfaceLid();
+        int dMax = CaveShape.depthMax();
 
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
@@ -63,11 +70,15 @@ public final class CaveCarver {
                 // 海底列跳过（本项目无 aquifer ⇒ 会留下干空腔）
                 if (surface < seaLevel) continue;
 
-                double litho = CaveShape.lithoFactor(cell.rockTypeId);
+                // ★ 岩性门控关闭时（VANILLA_LIKE 档）不查表 —— CaveShape 内部会再
+                //   判一次 cfgLitho，但这里先省掉整列的查表调用（逐列一次，成本虽小，
+                //   但"关掉了还查"是白做功，且会让读者误以为门控仍在生效）。
+                double litho = CaveShape.config().lithoGating
+                        ? CaveShape.lithoFactor(cell.rockTypeId) : 1.0;
 
                 // 只遍历地下带（与 CaveShape 内的窗口一致，避免无谓的逐体素求值）
-                int yTop = surface - CaveShape.SURFACE_LID;
-                int yBot = Math.max(worldMinY + 1, surface - 120);
+                int yTop = surface - lid;
+                int yBot = Math.max(worldMinY + 1, surface - dMax);
                 if (yTop <= yBot) continue;
 
                 for (int y = yBot; y <= yTop; y++) {

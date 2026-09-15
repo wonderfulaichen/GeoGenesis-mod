@@ -130,8 +130,13 @@ public final class CaveBiomeSelector {
      */
     public static CaveBiome select(int wx, int wy, int wz, int surface, int worldMinY,
                                    double litho, WhittakerType biomeType) {
-        // ① 太浅不换群系（洞口/天坑从地表可见）—— <b>放在最前</b>，避免无谓的洞穴求值。
-        if (surface - wy < MIN_DEPTH) return CaveBiome.NONE;
+        // ① 配置总开关：洞穴群系禁用（或洞穴本身关闭）⇒ 直接沿用地表群系。
+        if (!CaveShape.config().caveBiomes) return CaveBiome.NONE;
+        // ② 太浅不换群系（洞口/天坑从地表可见）—— <b>放在噪声之前</b>，避免无谓求值。
+        //   阈值取 max(MIN_DEPTH, 洞穴洞顶保护) —— 若用户把 caveSurfaceLid 设为 0
+        //   （允许破地表成入口），群系仍不跟进地表（否则"洞穴植被长到地表"）。
+        int minDepth = Math.max(MIN_DEPTH, CaveShape.surfaceLid());
+        if (surface - wy < minDepth) return CaveBiome.NONE;
 
         // ② 必须真在洞穴里。直接复用洞穴几何的【同一份】纯函数判定
         //    ⇒ 群系与洞穴形状<b>严格一致</b>，不会"群系漂到岩石里"。

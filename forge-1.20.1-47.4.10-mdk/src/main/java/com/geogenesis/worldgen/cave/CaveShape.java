@@ -107,6 +107,71 @@ public final class CaveShape {
 
     private static volatile boolean seeded = false;
 
+    // ===================== ★ 配置注入（2026-09-15 可开关配置）=====================
+
+    /**
+     * 当前生效的洞穴配置（默认拟真档）。
+     *
+     * <p>由 {@link #setConfig} 注入；{@link #configured()} 会解析到具体旋钮。
+     * 生产路径读的是<b>解析后的字段</b>（{@link #cfgEnabled} 等）而非每次都解包
+     * {@link CaveConfig} 对象 —— 这些字段在热路径（逐体素）上被读，
+     * 必须是简单 volatile 读（与既有的 {@code dbg*} 倍率同款，零分配零分支成本）。</p>
+     */
+    private static volatile CaveConfig cfg = CaveConfig.DEFAULT;
+
+    /** 解析后的启用开关（热路径读这个，避免逐体素访问对象字段链）。 */
+    private static volatile boolean cfgEnabled = true;
+    /** 解析后：隧道分量是否启用。 */
+    private static volatile boolean cfgTunnel = true;
+    /** 解析后：空腔分量是否启用。 */
+    private static volatile boolean cfgChamber = true;
+    /** 解析后：层调制是否启用。 */
+    private static volatile boolean cfgLayer = true;
+    /** 解析后：岩性门控是否启用。 */
+    private static volatile boolean cfgLitho = true;
+    /** 解析后：密度倍率（乘在分量阈值上）。 */
+    private static volatile double cfgDensityMul = 1.0;
+    /** 解析后：洞顶保护厚度（{@code public SURFACE_LID} 的运行时值）。 */
+    private static volatile int cfgSurfaceLid = 6;
+    /** 解析后：洞穴带最浅/最深深度。 */
+    private static volatile int cfgDepthMin = 8;
+    private static volatile int cfgDepthMax = 120;
+
+    /**
+     * 注入洞穴配置（与 {@link #setSeed} 同批调用，保证换世界/改配置后一致）。
+     *
+     * <p><b>为何"解析成字段"而不是直接读 {@code CaveConfig}</b>：{@link #components}
+     * 是<b>逐体素</b>热路径（每 chunk 数万次调用）⇒ 每次沿
+     * {@code cfg.preset.…} 访问对象字段链既慢又难保证并发可见性。
+     * 这里一次性展开成扁平 volatile 字段，热路径只做简单读。</p>
+     */
+    public static synchronized void setConfig(CaveConfig config) {
+        CaveConfig c = config != null ? config : CaveConfig.DEFAULT;
+        cfg = c;
+        cfgEnabled = c.enabled;
+        cfgTunnel = c.tunnelEnabled;
+        cfgChamber = c.chamberEnabled;
+        cfgLayer = c.layerEnabled;
+        cfgLitho = c.lithoGating;
+        cfgDensityMul = c.densityMul;
+        cfgSurfaceLid = c.surfaceLid;
+        cfgDepthMin = c.depthMin;
+        cfgDepthMax = c.depthMax;
+    }
+
+    /** 当前配置。 */
+    public static CaveConfig config() {
+        return cfg;
+    }
+
+    /**
+     * 洞穴是否启用（<b>总开关</b>）。{@code false} ⇒ {@link CaveCarver} 直接返回，
+     * 地下无任何洞穴（同 RTG 的 {@code useCaves=false} 语义）。
+     */
+    public static boolean isEnabled() {
+        return cfgEnabled;
+    }
+
     /** 换世界种子（与地形/河网同批失效）。 */
     public static synchronized void setSeed(long worldSeed) {
         seedOne(TUNNEL_A, worldSeed, 0);
@@ -209,6 +274,10 @@ public final class CaveShape {
     private static final double TUNNEL_Y_SCALE = 1.2;      // = 基准 2.0 × 0.6
     private static final double CAVERN_Y_SCALE = 1.2;
     private static final double CHEESE_Y_SCALE = 0.9;      // = 1.5 × 0.6
+    // ⚠ 2026-09-15 核实：上面两个常量（CAVERN_Y_SCALE / CHEESE_Y_SCALE）
+    //   【已声明但从未被 components() 使用】—— 空腔的 Y 各向异性硬编码为
+    //   下面的 `* 1.5`。保留是为了不破坏历史注释的可追溯性；
+    //   若日后要把"空腔 Y 缩放"做成配置项，应改用这两个常量而非字面量 1.5。
 
     /**
      * 洞穴带在 Y 上的范围（相对地表）：太浅会破地表，太深无意义。
@@ -221,12 +290,37 @@ public final class CaveShape {
     public static final int DEPTH_MIN = 8;      // 距地表至少 8 块（配合 SURFACE_LID）
     public static final int DEPTH_MAX = 120;    // 最深挖到地表下 120 块
 
+    // ===== ★ 运行时取值（配置可覆盖上面的默认常量）=====
+    //   为何保留常量又新增访问器：常量被<b>探针与 BiomeSource</b> 多处引用
+    //   （{@code CaveShapeProbe}/{@code CavePerfProbe}/{@code GeoGenesisBiomeSource}），
+    //   改成访问器会牵动它们；而生产路径必须读<b>配置生效值</b>。
+    //   故：常量 = 默认值（文档与探针口径），访问器 = 生效值（生产用）。
+
+    /** 生效的洞顶保护厚度（配置可覆盖；0 ⇒ 允许洞穴破地表）。 */
+    public static int surfaceLid() {
+        return cfgSurfaceLid;
+    }
+
+    /** 生效的洞穴带最浅深度。 */
+    public static int depthMin() {
+        return cfgDepthMin;
+    }
+
+    /** 生效的洞穴带最深深度。 */
+    public static int depthMax() {
+        return cfgDepthMax;
+    }
+
     /** 分量位掩码：隧道。 */
     public static final int F_TUNNEL = 1;
     /** 分量位掩码：洞室。 */
     public static final int F_CAVERN = 2;
     /** 分量位掩码：孔洞。 */
     public static final int F_CHEESE = 4;
+    // ⚠ 2026-09-15 核实：F_CHEESE 【从未被 components() 置位】—— 该分量未实现。
+    //   CaveShapeProbe 的 cheese 统计因此恒为 0（曾让人误以为"孔洞分量被关掉了"）。
+    //   保留常量是为了不破坏探针编译；若日后实现 CHEESE 分量，
+    //   CHEESE_Y_SCALE / 本常量即为它的接入点。
 
     /**
      * 地表下方是否应为洞穴。
@@ -257,21 +351,30 @@ public final class CaveShape {
      */
     public static int components(int wx, int wy, int wz, int surface,
                                  int worldMinY, double litho) {
+        // ★ 2026-09-15：总开关 —— 关闭时立即返回（零成本）。
+        //   与 RTG 的 useCaves=false 同语义：地下无任何洞穴。
+        if (!cfgEnabled) return 0;
         if (!seeded) return 0;
-        // 不破地表：洞顶至少低于地表 SURFACE_LID
-        if (wy > surface - SURFACE_LID) return 0;
+        // 不破地表：洞顶至少低于地表 cfgSurfaceLid（可由配置设为 0 ⇒ 允许破地表成入口）
+        if (wy > surface - cfgSurfaceLid) return 0;
         if (wy < worldMinY + 1) return 0;
         // 限制在"地下带"内（贴近地表的浅层不挖 ⇒ 避免草原破洞；过深无意义）
         int depth = surface - wy;
-        if (depth < DEPTH_MIN || depth > DEPTH_MAX) return 0;
+        if (depth < cfgDepthMin || depth > cfgDepthMax) return 0;
+
+        // 岩性门控可由配置关闭（VANILLA_LIKE 档 ⇒ 一视同仁，同原版不看岩性）
+        double L = cfgLitho ? litho : 1.0;
+        // 密度倍率：档位缩放（VANILLA_LIKE 档放大 ⇒ 洞更粗）
+        double dens = cfgDensityMul;
 
         int mask = 0;
         double x = wx, y = wy, z = wz;
 
         // ---- 1) 隧道：两噪声等值面交线（1D 管道，负责"连接"）----
         //   岩性越大 ⇒ 阈值越大 ⇒ 管道越粗（石灰岩溶洞 vs 花岗岩）
-        if (pair(TUNNEL_A, TUNNEL_SCALE_A, TUNNEL_B, TUNNEL_SCALE_B, TUNNEL_Y_SCALE,
-                x, y, z, TUNNEL_T1 * litho, TUNNEL_T2 * litho)) {
+        if (cfgTunnel && pair(TUNNEL_A, TUNNEL_SCALE_A, TUNNEL_B, TUNNEL_SCALE_B,
+                TUNNEL_Y_SCALE, x, y, z,
+                TUNNEL_T1 * L * dens, TUNNEL_T2 * L * dens)) {
             mask |= F_TUNNEL;
         }
 
@@ -281,13 +384,19 @@ public final class CaveShape {
         //       density < 0  ⇒ 挖空
         //   其中 layerTerm = LAYER_W × layerNoise² 恒 ≥ 0 ⇒ 在"层"上把密度推回实心，
         //   把本会连通的大空间切成**一层层有限高度的空腔**（防竖直贯穿）。
-        if (depth >= CHAMBER_MIN_DEPTH) {
-            double cT = CHAMBER_T * dbgChamberMul / litho;
-            double lw = LAYER_W * dbgLayerMul;
+        //
+        //   ★ 层调制可关（VANILLA_LIKE 档）：关掉后大空腔更接近原版 cheese 洞
+        //     （无层理），代价是可能出现竖直贯穿 —— 这是该档位的<b>有意取舍</b>。
+        if (cfgChamber && depth >= CHAMBER_MIN_DEPTH) {
+            double cT = CHAMBER_T * dbgChamberMul * dens / L;
+            double lw = cfgLayer ? (LAYER_W * dbgLayerMul) : 0.0;
             double cn = CHAMBER.compute(x / CHAMBER_SCALE, y / CHAMBER_SCALE * 1.5,
                     z / CHAMBER_SCALE);
-            // 只在"有可能是空腔"时才去算层（短路，省一次噪声）
-            if (cn < -cT + lw) {
+            if (lw <= 0.0) {
+                // 无层调制：纯单噪声阈值（原版 cheese 式）
+                if (cT + cn < 0) mask |= F_CAVERN;
+            } else if (cn < -cT + lw) {
+                // 只在"有可能是空腔"时才去算层（短路，省一次噪声）
                 double ln = LAYER.compute(x / LAYER_SCALE, y / LAYER_SCALE * LAYER_Y_SCALE,
                         z / LAYER_SCALE);
                 double layerTerm = lw * ln * ln;
