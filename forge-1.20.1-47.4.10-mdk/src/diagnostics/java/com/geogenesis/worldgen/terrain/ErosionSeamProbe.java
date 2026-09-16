@@ -113,13 +113,19 @@ public final class ErosionSeamProbe {
         System.out.println();
         System.out.printf("[1b] 指定坐标附近：wu=(%.1f, %.1f)，所在 tile=(%d,%d)，最近边界 x=%.0f%n",
                 wuX, wuZ, tileX, tileZ, edge);
-        System.out.println("     x(wu)      delta(e)      最终地面Y      |Δdelta|    |ΔY|");
+        System.out.println("     x(wu)      delta(e)      最终地面Y      |Δdelta|    |ΔY|"
+                + "    singleEdif  fieldEdif   类型");
         for (int i = 0; i < xs.length; i++) {
             double dd = i == 0 ? 0 : Math.abs(ds[i] - ds[i - 1]);
             double dh = i == 0 ? 0 : Math.abs(hh[i] - hh[i - 1]);
             String mark = Math.abs(xs[i] - edge) < 0.5 ? "  ← tile 边界" : "";
-            System.out.printf("    %6.1f   %12.8f   %10.3f   %9.7f   %6.3f%s%n",
-                    xs[i], ds[i], hh[i], dd, dh, mark);
+            // ★ 打出类型判定的实际输入（volcanoClass 用 >0.010 判 VOLCANO/VOLCANIC_FIELD），
+            //   以定位"边界到底由哪个量决定"。
+            Cell cc = gen.sampleWu(xs[i], wuZ);
+            double se = cc.landFeat == null ? -1 : cc.landFeat.singleEdifice;
+            double fe = cc.landFeat == null ? -1 : cc.landFeat.fieldEdifice;
+            System.out.printf("    %6.1f   %12.8f   %10.3f   %9.7f   %6.3f   %9.5f  %9.5f  %s%s%n",
+                    xs[i], ds[i], hh[i], dd, dh, se, fe, cc.terrainType, mark);
         }
         System.out.printf("    → max|ΔY| = %.3f 块 @ x=%.0f（均值 %.3f 块）⇒ 显著比 = %.1f×%n",
                 maxDH, atH, meanDH, meanDH <= 1e-9 ? 0.0 : maxDH / meanDH);
