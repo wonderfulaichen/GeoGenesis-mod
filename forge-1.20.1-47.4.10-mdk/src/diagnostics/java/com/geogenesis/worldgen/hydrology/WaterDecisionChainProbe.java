@@ -106,8 +106,25 @@ public final class WaterDecisionChainProbe {
                     r, best, bxx, bzz, placed.riverSurfaceY, placed.riverSurfaceY - best);
         }
 
+        // ---- ★★ 全部命中（carver 走 IDW 混合用的就是这份列表）----
+        //   若某列 dist ≫ width（不在河道内、是谷壁列），carver 会走
+        //   `nearestDist > nearestWidth && !atFall` 分支 ⇒ waterSurfaceY = 多命中 surfaceY 的 IDW 平均
+        //   ⇒ **可能被远处/另一水体的高度拉高**，导致"离河 70 块的低地被灌水"。
         System.out.println();
-        System.out.println("判读：哪个环节的输出 ≈『半径 1~2 块的最低旱地』，它就是正确的短板实现。");
-        System.out.println("      若【没有一个环节】给出该值 ⇒ 说明短板从未按『紧邻』尺度求解。");
+        System.out.printf("[7] ★ 全部命中（sampleAll）—— carver 的 IDW 混合依据%n");
+        java.util.List<RiverLineNetwork.RiverLineHit> all = net.sampleAll(wuX, wuZ);
+        System.out.printf("    命中数 = %d%n", all.size());
+        for (int i = 0; i < all.size(); i++) {
+            RiverLineNetwork.RiverLineHit h = all.get(i);
+            System.out.printf("    [%d] dist=%7.2f wu (%6.1f 块)  width=%6.2f wu  isLake=%-5s surfaceY=%.3f%n",
+                    i, h.distToCenter(), h.distToCenter() * hs, h.width(), h.isLake(), h.surfaceY());
+        }
+        System.out.println();
+        System.out.println("判读：① 若存在【更近】的命中其 surfaceY ≈ 166.6 ⇒ IDW 把水面拉高到它；");
+        System.out.println("      ② 若所有命中的 dist 都 ≫ width ⇒ 本列是【谷壁列】，");
+        System.out.println("         carver 的 `nearestDist > nearestWidth` 分支会给它一个混合水面；");
+        System.out.println("      ③ 该混合水面若高于本列地面（本列 157.946）⇒ 被灌水 ⇒ 悬空水板。");
+        System.out.println();
+        System.out.println("（另：哪个环节的输出 ≈『半径 1~2 块的最低旱地』= 正确的短板实现。）");
     }
 }

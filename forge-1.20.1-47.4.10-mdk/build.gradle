@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// River hit consistency between sample() and sampleAll().get(0) (2026-09-17):
+//   gradlew runHitConsistencyProbe [-PprobeArgs="seed blockX blockZ radiusBlocks [step]"]
+task runHitConsistencyProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HitConsistencyProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Water level decision chain at a specific point (2026-09-17, controlled variables):
 //   gradlew runWaterDecisionChainProbe [-PprobeArgs="seed blockX blockZ"]
 task runWaterDecisionChainProbe(type: JavaExec) {
