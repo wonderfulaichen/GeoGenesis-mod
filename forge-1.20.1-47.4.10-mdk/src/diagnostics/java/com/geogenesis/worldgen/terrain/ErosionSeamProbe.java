@@ -140,7 +140,8 @@ public final class ErosionSeamProbe {
      */
     private static void sectionMap(CellGenerator gen, double wuX, double wuZ) {
         // ★ 两级视野：近了看"方块/裸岩"，远了看"类型边界直线"（长直线尺度可达上千块）。
-        mapView(gen, wuX, wuZ, 24, 1, "近景 ±24wu / 1wu");
+        // ⚠ 步长必须足够细：圆/椭圆在粗格上会被画成"菱形"（走样）⇒ 会误导成"直边缺陷"。
+        mapView(gen, wuX, wuZ, 48, 2, "近景 ±48wu / 2wu");
         mapView(gen, wuX, wuZ, 192, 6, "远景 ±192wu / 6wu");
     }
 
