@@ -189,6 +189,17 @@ public final class TerrainStripePngProbe {
      * 最长轴对齐直段 / 采样区边长 —— 接近 1.00 表示一整条贯穿直线（异常）；
      * 并统计水平走向 / 竖直走向的边界点数之比（≈1.0 = 各向同性）。
      * 规则网格 Voronoi 会出现显著大的最值 + 方向比失衡。</p>
+     *
+     * <p><b>★ 2026-09-16 修订：本节不再自带判定。</b>原实现只打印一句
+     * <b>无数值阈值、也无 PASS/FAIL</b>的话（"最值 ≪1.00 且方向比 ≈1.00 → 类型边界无轴对齐倾向"），
+     * 读者无法据此判断"0.27 / 0.32"这类读数是否合格；且 <b>0.32 显然不满足"≪1.00"</b>
+     * ⇒ <b>那句"结论"由它自己的数字并不成立</b>。
+     * 现本节<b>只出数</b>，判定统一交给 {@code runTypeAxisProbe}
+     * （多种子×多相位聚合、三条判据、直段与方向比双口径，锚定基线写在该探针内）
+     * —— <b>避免同一件事在两处各自演化出互相矛盾的阈值</b>。</p>
+     *
+     * <p>⚠ 口径差异勿混：本节"方向比" = 边界<b>点数</b>之比；
+     * {@code runTypeAxisProbe} 的"方向比" = 最长<b>段长</b>之比。</p>
      */
     private static void typeBoundaryAxisMetric(GeoGenesisTerrain terrain,
                                                int ox, int oz, int size, int step) {
@@ -250,7 +261,18 @@ public final class TerrainStripePngProbe {
         System.out.printf("  最长竖直走向直段=%d wu (%.2f × 采样边长) @x=%d z∈[%d,%d]%n",
                 bestV * step, bestV / (double) n,
                 ox + bestVcol * step, oz + bestVrow * step, oz + (bestVrow + bestV) * step);
-        System.out.println("  判据：最值 ≪1.00 且方向比 ≈1.00 → 类型边界无轴对齐倾向");
+        // ★ 2026-09-16 修订：原先此处打印的是
+        //   "判据：最值 ≪1.00 且方向比 ≈1.00 → 类型边界无轴对齐倾向"
+        //   —— 它【没有数值阈值、没有 PASS/FAIL】，读者无法判断上面 0.27/0.32 这类
+        //  读数是否合格；而 0.32 显然不满足"≪1.00" ⇒ 那句"结论"由它自己的数字并不成立。
+        //   现改为【只出数 + 明确指路】：判定统一交给 runTypeAxisProbe
+        //   （多种子聚合、三条判据），避免同一件事在两处各自演化出互相矛盾的阈值。
+        System.out.println("  ⚠ 本节只作【单窗口快照】（随种子漂移大）"
+                + "⇒ 判定请用 runTypeAxisProbe（多种子×多相位聚合，判据 1~3）。");
+        System.out.println("  ⚠ 口径：本节'方向比' = 边界【点数】之比；"
+                + "runTypeAxisProbe 为【段长】之比 —— 定义不同，勿混。");
+        System.out.println("  ⚠ 盲区：本节只测轴向；0°/45°/90° 都可能很长"
+                + "⇒ 对角盲区见 runTypeAxisProbe 判据3。");
     }
 
     /**
