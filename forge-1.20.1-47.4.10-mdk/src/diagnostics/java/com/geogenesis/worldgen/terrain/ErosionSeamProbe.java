@@ -282,8 +282,45 @@ public final class ErosionSeamProbe {
             waterView(gen, wuX, wuZ, 96, 1, "build/seam/water_view.png");
             sectionLakeShortboard(gen, wuX, wuZ, 96);
             sectionRiverPerch(gen, wuX, wuZ, 96, 1, 12);
+            sectionCliff(gen, wuX, wuZ);
         } catch (Exception e) {
             System.out.println("     审计失败: " + e);
+        }
+    }
+
+    // ==================================================================
+    // [7] 最坏悬空点的横剖面：地形 / 类型 / 水 —— 悬崖是否与类型边界重合
+    // ==================================================================
+
+    /**
+     * 过最坏悬空点打两条剖面（沿 x、沿 z），每 2wu 一格，打印：
+     * {@code 放置后地面 Y / 主导类型 / 是否水 / gradient}。
+     *
+     * <p><b>判读</b>：若"地面骤降的位置"与"主导类型切换的位置"重合
+     * ⇒ 悬崖来自【类型场的边界】（P1 轴向对齐缺陷），而非水文本身；
+     * 若类型恒定 ⇒ 悬崖来自侵蚀/雕刻/构造，需另查。</p>
+     *
+     * <p>⚠ 口径必须用 {@code getChunkCells}（含水文雕刻）——本会话已两次因
+     * 用错口径而得出错误结论。</p>
+     */
+    private static void sectionCliff(CellGenerator gen, double wuX, double wuZ) {
+        double hs = gen.params().horizontalScale();
+        GeoGenesisTerrain t = new GeoGenesisTerrain(gen);
+        int bx = (int) Math.floor(wuX * hs), bz = (int) Math.floor(wuZ * hs);
+        System.out.println();
+        System.out.printf("[7] 最坏悬空点 wu(%.0f,%.0f) 横剖面（每 2wu；Y=放置后地面）%n", wuX, wuZ);
+        for (int axis = 0; axis < 2; axis++) {
+            System.out.printf("     —— 沿 %s 轴（%s 过最坏点）——%n", axis == 0 ? "X" : "Z",
+                    axis == 0 ? "z 固定" : "x 固定");
+            for (int i = -24; i <= 24; i += 2) {
+                double x = axis == 0 ? wuX + i : wuX;
+                double z = axis == 0 ? wuZ : wuZ + i;
+                int px = (int) Math.floor(x * hs), pz = (int) Math.floor(z * hs);
+                Cell c = t.getChunkCells(px >> 4, pz >> 4)
+                        [Math.floorMod(px, 16) * 16 + Math.floorMod(pz, 16)];
+                System.out.printf("       %+5d wu  Y=%8.2f  %-15s %s grad=%.3f%n",
+                        i, c.height, c.terrainType, c.riverType != 0 ? "水" : "  ", c.gradient);
+            }
         }
     }
 
