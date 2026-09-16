@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Erosion seam / determinism + plan-vs-final field divergence (2026-09-17, hydrology 重构 M0):
+//   gradlew runErosionSeamProbe [-PprobeArgs="seed span"]
+task runErosionSeamProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ErosionSeamProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Terrain shape probe (2026-09-12, geology Phase T3): gradlew runTerrainShapeProbe [seed]
 task runTerrainShapeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
