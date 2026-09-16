@@ -281,9 +281,89 @@ public final class ErosionSeamProbe {
                     "山体阴影（1wu/px，±192wu）");
             waterView(gen, wuX, wuZ, 96, 1, "build/seam/water_view.png");
             sectionLakeShortboard(gen, wuX, wuZ, 96);
+            sectionRiverPerch(gen, wuX, wuZ, 96, 1, 12);
         } catch (Exception e) {
             System.out.println("     审计失败: " + e);
         }
+    }
+
+    // ==================================================================
+    // [6] ★ 河流悬空审计：河面 vs 半径 R 内最低非水地面（谷底）
+    // ==================================================================
+
+    /**
+     * 对窗口内每个【河水格】计算 {@code 违反 = riverSurfaceY − 半径 R 内最低非水地面}。
+     *
+     * <p>违反 &gt; 0 ⇒ 河面高于周边谷底 ⇒ 河被"悬空"架在谷地上方
+     * （水应从河岸流出却没流走）—— 这正是用户截图里"悬空水板/垂直水墙"的量化。</p>
+     *
+     * <p>⚠ 与 [5] 的区别：[5] 按水体分组（适合湖面为常量的湖）；
+     * 河的水面沿程变化，必须<b>逐格</b>量，故本节用网格半径搜索。</p>
+     */
+    private static void sectionRiverPerch(CellGenerator gen, double wuX, double wuZ,
+                                          int half, int step, int radiusWu) {
+        double hs = gen.params().horizontalScale();
+        int n = 2 * half / step + 1;
+        double[][] h = new double[n][n];
+        boolean[][] wat = new boolean[n][n];
+        double[][] sf = new double[n][n];
+        GeoGenesisTerrain t = new GeoGenesisTerrain(gen);
+        int bx0 = (int) Math.floor((wuX - half) * hs), bx1 = (int) Math.floor((wuX + half) * hs);
+        int bz0 = (int) Math.floor((wuZ - half) * hs), bz1 = (int) Math.floor((wuZ + half) * hs);
+        for (int cx = bx0 >> 4; cx <= bx1 >> 4; cx++) {
+            for (int cz = bz0 >> 4; cz <= bz1 >> 4; cz++) {
+                Cell[] cs = t.getChunkCells(cx, cz);
+                for (int lx = 0; lx < 16; lx++) {
+                    for (int lz = 0; lz < 16; lz++) {
+                        double wx = (cx * 16 + lx) / hs, wz = (cz * 16 + lz) / hs;
+                        int pi = (int) Math.round((wx - (wuX - half)) / step);
+                        int pj = (int) Math.round((wz - (wuZ - half)) / step);
+                        if (pi < 0 || pi >= n || pj < 0 || pj >= n) continue;
+                        Cell c = cs[lx * 16 + lz];
+                        h[pj][pi] = c.height;
+                        wat[pj][pi] = c.riverType != 0;
+                        sf[pj][pi] = c.riverSurfaceY;
+                    }
+                }
+            }
+        }
+        int r = Math.max(1, radiusWu / step);
+        int riverCells = 0;
+        int[] bucket = new int[5];       // <2 / <5 / <10 / <20 / ≥20 块
+        double worst = 0, wX = 0, wZ = 0, wL = 0, wV = 0;
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                if (!wat[j][i]) continue;
+                riverCells++;
+                double level = sf[j][i];
+                double valleyMin = Double.MAX_VALUE;
+                int ri = radiusWu / step;
+                for (int dj = -ri; dj <= ri; dj++) {
+                    int jj = j + dj;
+                    if (jj < 0 || jj >= n) continue;
+                    for (int di = -ri; di <= ri; di++) {
+                        int ii = i + di;
+                        if (ii < 0 || ii >= n) continue;
+                        if (wat[jj][ii]) continue;
+                        valleyMin = Math.min(valleyMin, h[jj][ii]);
+                    }
+                }
+                if (valleyMin == Double.MAX_VALUE) continue;   // 半径内全是水
+                double v = level - valleyMin;
+                int b = v < 2 ? 0 : (v < 5 ? 1 : (v < 10 ? 2 : (v < 20 ? 3 : 4)));
+                bucket[b]++;
+                if (v > worst) { worst = v; wX = wuX - half + i * step; wZ = wuZ - half + j * step;
+                    wL = level; wV = valleyMin; }
+            }
+        }
+        System.out.println();
+        System.out.printf("[6] ★ 河流悬空审计（±%dwu，河水格 %d，谷底搜索半径 %d wu）%n",
+                half, riverCells, radiusWu);
+        System.out.printf("    悬空 <2 块: %d   2~5: %d   5~10: %d   10~20: %d   ≥20: %d%n",
+                bucket[0], bucket[1], bucket[2], bucket[3], bucket[4]);
+        System.out.printf("    最坏悬空 = %.3f 块 @ wu(%.0f,%.0f)（河面 %.3f / 谷底 %.3f）%n",
+                worst, wX, wZ, wL, wV);
+        System.out.println("    判读：悬空格占比高 ⇒ 河面被架在谷地上方（用户所见『垂直水墙』）。");
     }
 
     // ==================================================================
