@@ -81,14 +81,14 @@ public final class WaterLevelSolver {
         double[] level = new double[n];
         Arrays.fill(level, Double.NaN);
 
-        // 下游入度 + 反向边（上游列表）
-        int[] pending = new int[n];
+        // ★ 固定修正（2026-09-17）：D8 每格【只有一个】下游 ⇒ 不需要入度计数，
+        //   只要"下游已定"就立即算上游（BFS 向上）。曾误用入度（有多少上游指向我）
+        //   当作"还有几个下游未定" ⇒ 部分格在下游未定时被计算 ⇒ 实测单调违反 28 条。
         List<List<Integer>> ups = new ArrayList<>(n);
         for (int i = 0; i < n; i++) ups.add(null);
         for (int i = 0; i < n; i++) {
             int d = field.flowTo(i);
             if (d >= 0 && d < n) {
-                pending[d]++;
                 List<Integer> list = ups.get(d);
                 if (list == null) {
                     list = new ArrayList<>(4);
@@ -114,8 +114,7 @@ public final class WaterLevelSolver {
             }
         }
 
-        // 拓扑传播：下游已定 → 上游可算（Kahn）
-        int[] remaining = pending.clone();
+        // 向上 BFS：下游已定 → 上游立即可算（D8 单下游 ⇒ 无需计数）
         while (!queue.isEmpty()) {
             int cur = queue.poll();
             List<Integer> uppers = ups.get(cur);
@@ -123,7 +122,6 @@ public final class WaterLevelSolver {
             for (int u : uppers) {
                 if (!waterMask.isWater(u)) continue;
                 if (!Double.isNaN(level[u])) continue;
-                if (--remaining[u] > 0) continue;        // 还有别的下游未定
                 double gu = ground.at(u);
                 level[u] = Math.max(gu, level[cur]);     // 唯一规则
                 queue.add(u);
