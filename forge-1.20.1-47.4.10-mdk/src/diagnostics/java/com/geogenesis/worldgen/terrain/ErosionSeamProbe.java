@@ -64,12 +64,129 @@ public final class ErosionSeamProbe {
                 TILE_CENTER, TILE_BORDER, TILE_CENTER + TILE_BORDER * 2, BLEND_START);
 
         if (atX != null && atZ != null) {
+            sectionPlaced(gen, atX, atZ);
             sectionAt(gen, atX, atZ);
             sectionMap(gen, atX, atZ);
         }
         sectionSeam(gen, seed);
         sectionEdgeJump(gen);
         sectionPlanVsFinal(gen, span);
+        sectionCaliber(gen, 64);
+    }
+
+    // ==================================================================
+    // [4] ★ 三口径分歧：预览快速路径 / 含侵蚀 / 实际放置
+    // ==================================================================
+
+    /**
+     * 在同一批点上比较三份地形口径，量化"跨场套用"的完整误差。
+     *
+     * <ul>
+     *   <li><b>预览（快速路径）</b>：{@code sampleCellLight} —— 无侵蚀、无雕刻（为性能）；</li>
+     *   <li><b>含侵蚀</b>：{@code sampleWu} —— + 侵蚀 tile delta；</li>
+     *   <li><b>实际放置</b>：{@code getChunkCells} —— + 侵蚀 + <b>水文雕刻</b>（玩家看到的）。</li>
+     * </ul>
+     *
+     * <p>⚠ 这三者<b>本应收敛</b>（AGENTS 记"快速路径在已探索区域与完整管线收敛"）；
+     * 若不收敛，则"预览看到的"与"游戏生成的"是两回事 —— 本项目此前已因此产出
+     * 86 块深、spill≈171 的异常湖。</p>
+     *
+     * <p>本节的数值即 M2（最终高度唯一化）的<b>验收基线</b>：改造后应显著收敛。</p>
+     */
+    private static void sectionCaliber(CellGenerator gen, int span) {
+        GeoGenesisTerrain t = new GeoGenesisTerrain(gen);
+        double hs = gen.params().horizontalScale();
+        int half = span / 2;
+        double[] dPreview = new double[span * span];
+        double[] dEro = new double[span * span];
+        int flips = 0, carve1 = 0, carve4 = 0, n = 0;
+        for (int i = 0; i < span; i++) {
+            for (int j = 0; j < span; j++) {
+                double wuX = -half + i, wuZ = -half + j;
+                int bx = (int) Math.floor(wuX * hs), bz = (int) Math.floor(wuZ * hs);
+                int cx = bx >> 4, cz = bz >> 4;
+                int lx = Math.floorMod(bx, 16), lz = Math.floorMod(bz, 16);
+                Cell placed = t.getChunkCells(cx, cz)[lx * 16 + lz];
+                // 预览快速路径 = sample()（无侵蚀、不触发 tile 生成）。
+                // ⚠ 不存在 sampleCellLight 方法 —— 它只出现在 CellGenerator 的注释里（实测编译报"找不到符号"）。
+                Cell light = gen.sample(wuX, wuZ);
+                Cell ero = gen.sampleWu(wuX, wuZ);
+                dPreview[n] = light.height - placed.height;
+                dEro[n] = ero.height - placed.height;
+                if (light.terrainType != placed.terrainType) flips++;
+                double c = Math.abs(dEro[n]);
+                if (c > 1.0) carve1++;
+                if (c > 4.0) carve4++;
+                n++;
+            }
+        }
+        double[] sp = sortedAbs(dPreview), se = sortedAbs(dEro);
+        System.out.println();
+        System.out.printf("[4] ★ 三口径分歧（%d×%d 点，span=%d wu）—— 基准 = 【实际放置】getChunkCells%n",
+                span, span, span);
+        System.out.printf("    预览(sampleCellLight) − 放置：均值 %.3f  中位 %.3f  p95 %.3f  max %.3f 块%n",
+                meanAbs(dPreview), sp[sp.length / 2], sp[(int) (sp.length * 0.95)], sp[sp.length - 1]);
+        System.out.printf("    含侵蚀(sampleWu) − 放置：均值 %.3f  中位 %.3f  p95 %.3f  max %.3f 块%n",
+                meanAbs(dEro), se[se.length / 2], se[(int) (se.length * 0.95)], se[se.length - 1]);
+        System.out.printf("    预览与放置【地形类型不同】的点: %d / %d = %.1f%%%n",
+                flips, n, 100.0 * flips / n);
+        System.out.printf("    ★ 水文雕刻量（= 放置与「含侵蚀」之差）：|Δ|>1 块 %d 点(%.1f%%)、>4 块 %d 点(%.1f%%)%n",
+                carve1, 100.0 * carve1 / n, carve4, 100.0 * carve4 / n);
+        System.out.println("    判读：水文雕刻量 = 我此前一直用 sampleWu 却漏掉的那部分；");
+        System.out.println("          预览偏差 = 玩家在预览里看到的与游戏里生成的不是同一份地形。");
+    }
+
+    private static double[] sortedAbs(double[] a) {
+        double[] c = new double[a.length];
+        for (int i = 0; i < a.length; i++) c[i] = Math.abs(a[i]);
+        Arrays.sort(c);
+        return c;
+    }
+
+    private static double meanAbs(double[] a) {
+        double s = 0;
+        for (double v : a) s += Math.abs(v);
+        return s / Math.max(1, a.length);
+    }
+
+    // ==================================================================
+    // [1a] ★ 口径核对：与实际【放置方块】同源的地形（getChunkCells）
+    // ==================================================================
+
+    /**
+     * 用 {@code GeoGenesisTerrain.getChunkCells}（= 游戏实际放置方块的口径：
+     * sample + 侵蚀 + **水文雕刻**）读取该点，与 {@code sampleWu}（**不含雕刻**）对比。
+     *
+     * <p><b>为何必须做</b>：此前探针一律用 {@code sampleWu}，它<b>不含河道/河谷雕刻</b>
+     * ⇒ 量到的不是玩家看到的地形（用户 F3 显示 Y=192，而 sampleWu 读 210.6，**差 18 块**）。
+     * 这正是"反复查不到用户所见伪影"的根因。</p>
+     */
+    private static void sectionPlaced(CellGenerator gen, double wuX, double wuZ) {
+        double hs = gen.params().horizontalScale();
+        int bx = (int) Math.floor(wuX * hs);   // wu → 块
+        int bz = (int) Math.floor(wuZ * hs);
+        int cx = bx >> 4, cz = bz >> 4;
+        int lx = Math.floorMod(bx, 16), lz = Math.floorMod(bz, 16);
+        GeoGenesisTerrain t = new GeoGenesisTerrain(gen);
+
+        double hSampleWu = gen.sampleWu(wuX, wuZ).height;
+        Cell[] cells = t.getChunkCells(cx, cz);
+        Cell placed = cells[lx * 16 + lz];
+
+        System.out.println();
+        System.out.println("[1a] ★ 口径核对（同一世界点，两种口径）");
+        System.out.printf("     点：wu=(%.1f,%.1f) = 块(%d,%d) = chunk(%d,%d) 内 (%d,%d)%n",
+                wuX, wuZ, bx, bz, cx, cz, lx, lz);
+        System.out.printf("     sampleWu()      Y = %9.3f  ← 含侵蚀、【不含雕刻】（我此前一直用这个）%n",
+                hSampleWu);
+        System.out.printf("     getChunkCells() Y = %9.3f  ← 实际放置口径（+水文雕刻）%n",
+                placed.height);
+        System.out.printf("     ⇒ 差值 = %+.3f 块   （玩家看到的是后者）%n", placed.height - hSampleWu);
+        System.out.printf("     riverType=%d isLake=%s lakeMask=%s riverSurfaceY=%.3f riverLipY=%.3f%n",
+                placed.riverType, placed.isLake, placed.lakeMask,
+                placed.riverSurfaceY, placed.riverLipY);
+        System.out.println("     判读：若差值显著（十几块），说明该点被【河谷雕刻】切开 ——");
+        System.out.println("           玩家看到的陡壁就是雕刻谷壁，与类型/侵蚀伪影无关。");
     }
 
     // ==================================================================
