@@ -22,7 +22,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | 文件 | 作用 |
 |------|------|
 | `GeoGenesisMod.java` | `@Mod("geogenesis")` 入口，注册 CODEC；`onClientSetup` 注册预览配置屏 + `GeoGenesisColorReloadListener` |
-| `GeoGenesisGenerator.java` | 主生成器，`fillFromNoise` 是地形产线入口；`createState` 注入共享地形到 BiomeSource；★ `applyCarvers` 调 `CaveCarver` 雕洞穴；★ 构造器注入 `VanillaDecorationFilter::filter`（剔除破坏岩层的原版装饰） |
+| `GeoGenesisGenerator.java` | 主生成器，`fillFromNoise` 是地形产线入口；`ensureEngine` 注入共享地形到 BiomeSource（⚠ 旧述"`createState` 注入"**有误** —— `createState` 未被覆写）；★ `applyCarvers` 调 `CaveCarver` 雕洞穴；★ 构造器注入 `VanillaDecorationFilter::filter`（剔除破坏岩层的原版装饰）；★ `spawnOriginalMobs` 委托原版 `NaturalSpawner` |
 | `worldgen/generator/VanillaDecorationFilter.java` | ★ 2026-09-16：注入给 `ChunkGenerator` 的**过滤版 `generationSettingsGetter`** —— 剔除 9 个会打散 `StratumField` 水平岩层的原版"岩块团块"特征（`ore_granite/diorite/andesite/tuff/dirt/gravel` 的 upper/lower），**保留金属矿与水成细节**（零平衡风险）。⚠ 1.20.1 的 `BiomeGenerationSettings` 构造器非 public ⇒ 走 `PlainBuilder` 子类 |
 | `worldgen/cave/CaveShape.java` | ★ 2026-09-15：洞穴**几何**（**零 MC 依赖纯函数**，可被探针直接复用）；2D 场驱动柱体切挖 + 岩性门控 |
 | `worldgen/cave/CaveCarver.java` | ★ 2026-09-15：洞穴雕刻的 **MC 适配器**（只负责把方块挖成空气），几何全部委托 `CaveShape` |
@@ -202,6 +202,55 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 > → 表现为"改了没生效"（当前 **69**；历次因折叠/blurDist/stress、岩性硬度量化、河网并行、构造放大、盆地抬升、地质→群系耦合、T5 移除 decay、峡谷谷壁收窄等产出变更递增）。
 
 注册流程: `GeoGenesisMod` 构造器中用 `DeferredRegister<Codec<? extends ChunkGenerator>>`（注册到 `Registries.CHUNK_GENERATOR`）注册 `GeoGenesisGenerator.CODEC`，同理 `BIOME_SOURCE` 注册 `GeoGenesisBiomeSource.CODEC`，并 `register(bus)` 到 MOD 总线。
+
+## ★ 原版复用边界（2026-09-16 审计 —— 动笔写新世界生成内容前先读）
+
+> **本项目已四次重复实现原版已有之物**（岩块团块 / 金属矿 / 紫水晶洞 / 化石）。
+> 完整对照审计（含证据与可复现命令）见 `docs/analysis/原版复用对照审计-2026-09-16.md`。
+> 本节是**决策速查**，目的是避免第五次。
+
+**判据（决定性）**：`applyBiomeDecoration` 委托 `super`（原版实现）
+⇒ **只要某特征在该群系的 `BiomeGenerationSettings` 里，它就一定在生成**。
+查证方法：读原版 datapack `data/minecraft/worldgen/biome/<biome>.json` 的 `features[]`
+（11 步，按 `GenerationStep.Decoration` 索引）。
+⚠ 本地 client jar 路径与"多版本缓存认版本"的坑，见审计文档 §0。
+
+### 已确认「原版免费提供」——不要再自研
+- 植被：树 / 草 / 花 / 藤蔓 / 甘蔗 / 西瓜 / 南瓜 / 发光地衣
+- 洞穴装饰：钟乳石 / 石笋 / 洞穴藤蔓 / 发光浆果 / 苔藓（我们只负责**选洞穴群系**）
+- 岩浆湖、水/岩浆泉、`disk_sand/clay/gravel`、`underwater_magma`
+- 地牢 `monster_room(_deep)`、沙漠水井 `desert_well`
+- **★ 原版结构（村庄 / 要塞 / 废弃矿井 / 古城 / 传送门遗迹…）**：
+  `createStructures` / `createReferences` / `createState` 在 1.20.1 **均非抽象**
+  ⇒ 我们继承了默认实现，**结构一直在生成**（此前文档从未提及）
+- **紫水晶洞 `amethyst_geode`**（`LOCAL_MODIFICATIONS` 槽，`rarity 1/24`）
+  与 **化石 `fossil_*`**（`desert` / `swamp` / `mangrove_swamp`）
+- `freeze_top_layer`（按群系温度铺雪 / 水面结冰）—— 与本项目**海拔雪线互补**，二者并存
+
+### 已确认「必须自研」——原版无对应物或技术上不可用
+- 地形本体：`ContinentField` / `CellGenerator` / `TerrainCharacterField` / `TypeNoiseProvider` /
+  `HeightCurve` / `SeaBedDetail`
+- 地质系统：`StratumField`（地层）/ `TectonicField` + `TectonicDeformation`（构造）/
+  `LandFeatures` + `VolcanicShape`（火山）
+- 侵蚀 `ErosionEngine` / `RidgeValleyErosion` · 水文 `hydrology/*`
+- 洞穴几何 `CaveShape` / `CaveCarver`（原版 carver 需 `NoiseChunk`，我们无 `NoiseSettings`）
+  · 洞穴群系 `CaveBiomeSelector`（原版 3D 路由，我们 2D）
+- 气候分类 `climate/*` · 噪声原语 `noise/*`（**有意的重复**：为"零 MC 依赖"，
+  让探针/预览能脱离 MC 运行）· 预览 UI
+
+### 复用机制（怎么减 / 怎么加 / 怎么接）
+- **减**：`VanillaDecorationFilter` —— 构造器注入**过滤版** `generationSettingsGetter`，
+  原版管线自动跳过，**无需重写装饰循环**
+- **加**：同一注入点也能**追加**原版特征（例：把 `amethyst_geode` 引入某群系）
+- **接**：原版留空/默认处委托原版 API（例：`spawnOriginalMobs`
+  → `NaturalSpawner.spawnMobsForChunkGeneration`；但 `applyCarvers` **接不了**）
+
+### 未决（勿擅自改）
+- **金属矿**：现为「原版打底 + 自研 `OreVeins` 叠加（约原版 1/10）」；
+  改自研独占需**重标定矿量** ⇒ 属平衡决策
+- **雪 / 冰**：若要"我们的雪线"独占，把 `freeze_top_layer` 加入过滤器剔除集即可（一行）
+
+> **用户约束（2026-09-16）**：**不新建任何方块/物品** ⇒ 一切方案只用原版内容或删自研代码。
 
 ## 缓存与坐标（当前）
 
