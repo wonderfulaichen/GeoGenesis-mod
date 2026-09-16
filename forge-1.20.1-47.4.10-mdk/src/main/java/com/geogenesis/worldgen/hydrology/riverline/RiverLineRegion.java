@@ -257,13 +257,7 @@ public final class RiverLineRegion {
                 }
                 si = Math.max(0, Math.min(nx - 1, si));
                 sj = Math.max(0, Math.min(nz - 1, sj));
-                boolean[] seen = new boolean[nx * nz];
-                java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
-                int sIdx = sj * nx + si;
-                q.add(sIdx); seen[sIdx] = true;
-                java.util.List<double[]> flood = new java.util.ArrayList<>();
-                int[] ddx = {1, -1, 0, 0}, ddz = {0, 0, 1, -1};
-                // 认领域边界（wu，绝对坐标）：洼地格外扩 2×gridCell（与 sampleRegion 一致）
+                // 认领域边界（wu，绝对坐标）：洼地格外扩 4×claimGrid（2026-09-15 放宽后）
                 double claimLoX = Double.MAX_VALUE, claimHiX = -Double.MAX_VALUE;
                 double claimLoZ = Double.MAX_VALUE, claimHiZ = -Double.MAX_VALUE;
                 for (int i = 0; i < cellX.length; i++) {
@@ -292,31 +286,45 @@ public final class RiverLineRegion {
                 double claimR = claimGrid * 4.0;
                 claimLoX -= claimR; claimHiX += claimR;
                 claimLoZ -= claimR; claimHiZ += claimR;
-                boolean oob = false;
-                while (!q.isEmpty()) {
-                    int cur = q.poll();
-                    int ci = cur % nx, cj = cur / nx;
-                    double wx = minX + ci * gridCell, wz = minZ + cj * gridCell;
-                    // 该淹水格若落在认领域外 → 实际湖比认领域大 → 注定残缺
-                    if (wx < claimLoX || wx > claimHiX || wz < claimLoZ || wz > claimHiZ) {
-                        oob = true;
+
+                // ★★★ 2026-09-17 短板强制（M2 阶段二）：迭代压低水位至【真实溢出口】★★★
+                //
+                // 【被修的缺陷（实测，湖泊短板审计）】seed 5436529513624899584、窗口 ±96wu：
+                //   一个 13,685 格、水位 166.63 的巨大水体，紧邻旱地最低只有 140.55
+                //   ⇒ 水面比真实盆沿高出 26 块（用户截图"悬空水板 / 水淹到山腰"）。
+                //   根因：原水位 = min(粗格 spill, rim 格侵蚀后高度)，而 rim 只取
+                //   "洼地格 8 邻中 fillE ≤ spill+0.05" 的【一圈】—— 真实最低出水口
+                //   若离洼地格超过 1 格，就永远进不了该集合 ⇒ 水位停在 166.63。
+                //
+                // 【修法】迭代短板：反复以当前水位跑 BFS（通行条件 h < level−0.05），
+                //   取洪泛区外缘【非淹格】的最低高度（= 当前水位下的真实盆沿），
+                //   若低于水位则压低水位，直到短板成立或迭代上限（3 次）。
+                //   全程只用侵蚀后地形（erodedY）⇒ 与落块侧判水同源。
+                //   回退：LAKE_SHORTBOARD_ENFORCE = false 一行。
+                double lvl = level;
+                if (LAKE_SHORTBOARD_ENFORCE) {
+                    for (int iter = 0; iter < 3; iter++) {
+                        FloodRun probe = runFloodCore(erodedY, lvl, minX, minZ, gridCell,
+                                nx, nz, si, sj);
+                        if (probe.rimMin() >= lvl - 0.5) break;      // 短板成立
+                        double next = Math.min(lvl, probe.rimMin());
+                        if (next >= lvl - 1e-9) break;               // 已无法再降
+                        lvl = next;
                     }
-                    flood.add(new double[]{wx, wz});
-                    for (int d = 0; d < 4; d++) {
-                        int ni = ci + ddx[d], nj = cj + ddz[d];
-                        if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
-                        int nIdx = nj * nx + ni;
-                        if (seen[nIdx]) continue;
-                        double h = erodedHeightAt(erodedY, minX + ni * gridCell,
-                                                  minZ + nj * gridCell, gridCell);
-                        // ★ 2026-09-15：BFS 【通行条件】由 level-0.5 放宽到 level-0.05。
-                        //   原 0.5 是"最小水深"语义，但用作连通性通行条件时，湖底一个
-                        //   高出 level-0.5 的小突起就会被当成"墙"，BFS 无法通过 ⇒
-                        //   淹没区被拦腰截断。实测（加密到 12wu 后暴露得最明显）：
-                        //   floodN 31 -> 22，湖一侧整片水消失。
-                        //   连通性只该问"是否低于水位"；"薄水/最小水深"由落块侧的
-                        //   `height < spill-0.5` 等高线判定负责，不该在这里二次设卡。
-                        if (h < level - 0.05) { seen[nIdx] = true; q.add(nIdx); }
+                }
+                // 盆底被垫到（可能已压低的）水位以上 → 湖被侵蚀填平，物理上就该消失
+                if (best >= lvl - 0.5) {
+                    floodX = new double[0]; floodZ = new double[0];
+                    return floodOOB = false;    // 消失 ≠ 残缺，不必弃湖
+                }
+                // 最终一次 BFS：以（可能已压低的）水位求正式淹水区
+                FloodRun run = runFloodCore(erodedY, lvl, minX, minZ, gridCell, nx, nz, si, sj);
+                java.util.List<double[]> flood = run.flood();
+                boolean oob = false;
+                for (double[] pt : flood) {
+                    if (pt[0] < claimLoX || pt[0] > claimHiX || pt[1] < claimLoZ || pt[1] > claimHiZ) {
+                        oob = true;
+                        break;
                     }
                 }
                 double[] fx = new double[flood.size()], fz = new double[flood.size()];
@@ -347,6 +355,72 @@ public final class RiverLineRegion {
                 }
                 return floodOOB = oob;
             }
+        }
+
+        /**
+         * ★ 短板强制开关（2026-09-17 M2 阶段二实验）。<b>当前 = false（默认关闭）</b>。
+         *
+         * <p><b>实验结论（如实记录）</b>：实现后用 `runErosionSeamProbe` 的短板审计复测，
+         * 目标水体（13,685 格、水位 166.627、rimMin 140.551、违反 +26.076 块）
+         * <b>逐格不变</b> ⇒ 该水体【不是】LakeNode 湖（本修法只作用于湖），而
+         * 极可能是【河流】—— 河面在一段长台阶上恒定，被审计按水位分组误认成"湖"。
+         * ⇒ <b>真正的 bug 在河流水位（河被悬空架在谷地上方 26 块），属另一子系统</b>。
+         * 本实现保留（机制正确：迭代压低水位至真实盆沿），待河流水位修完后再评估启用。</p>
+         */
+        static final boolean LAKE_SHORTBOARD_ENFORCE = false;
+
+        /**
+         * {@link #runFloodCore} 的结果。
+         *
+         * @param flood  淹水格中心（wu）
+         * @param rimMin 洪泛区外缘【非淹格】的最低侵蚀后高度（= 当前水位下的真实盆沿）；
+         *               无洪泛时为 {@code +∞}
+         */
+        private record FloodRun(java.util.List<double[]> flood, double rimMin) { }
+
+        /**
+         * 以给定水位做一次 BFS（通行条件 {@code h < level − 0.05}）。
+         *
+         * <p>无缓存、无副作用 ⇒ 供短板迭代反复调用；{@link #computeFlood} 的最终一次
+         * 也走这里（原实现内联，现抽离，避免"迭代版 / 正式版"两份 BFS 漂移）。</p>
+         *
+         * @return 淹水格列表 + 洪泛区外缘非淹格的最低侵蚀后高度（rimMin）
+         */
+        private FloodRun runFloodCore(java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
+                                      double level,
+                                      double minX, double minZ, double gridCell, int nx, int nz,
+                                      int si, int sj) {
+            boolean[] seen = new boolean[nx * nz];
+            java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
+            int sIdx = sj * nx + si;
+            q.add(sIdx); seen[sIdx] = true;
+            java.util.List<double[]> flood = new java.util.ArrayList<>();
+            int[] ddx = {1, -1, 0, 0}, ddz = {0, 0, 1, -1};
+            double rimMin = Double.MAX_VALUE;
+            while (!q.isEmpty()) {
+                int cur = q.poll();
+                int ci = cur % nx, cj = cur / nx;
+                double wx = minX + ci * gridCell, wz = minZ + cj * gridCell;
+                flood.add(new double[]{wx, wz});
+                for (int d = 0; d < 4; d++) {
+                    int ni = ci + ddx[d], nj = cj + ddz[d];
+                    if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                    int nIdx = nj * nx + ni;
+                    if (seen[nIdx]) continue;
+                    double hh = erodedHeightAt(erodedY, minX + ni * gridCell,
+                            minZ + nj * gridCell, gridCell);
+                    // 通行条件与原实现一致（只问"是否低于水位"）；
+                    // "薄水/最小水深"由落块侧的 `height < spill-0.5` 等高线判定负责。
+                    if (hh < level - 0.05) {
+                        seen[nIdx] = true;
+                        q.add(nIdx);
+                    } else {
+                        // 外缘非淹格 = 当前水位下的盆沿候选（短板迭代用）
+                        rimMin = Math.min(rimMin, hh);
+                    }
+                }
+            }
+            return new FloodRun(flood, rimMin);
         }
 
         /**
