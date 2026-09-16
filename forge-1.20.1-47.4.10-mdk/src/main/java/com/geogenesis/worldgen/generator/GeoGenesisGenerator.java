@@ -7,7 +7,6 @@ import com.geogenesis.worldgen.cave.CaveCarver;
 import com.geogenesis.worldgen.cave.CaveConfig;
 import com.geogenesis.worldgen.cave.CaveShape;
 import com.geogenesis.worldgen.climate.BiomeClassifier;
-import com.geogenesis.worldgen.geode.GeodeShape;
 import com.geogenesis.worldgen.ore.OreVeins;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
@@ -310,33 +309,6 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             Blocks.LAPIS_ORE.defaultBlockState(),          // 5 LAPIS    青金石
             Blocks.EMERALD_ORE.defaultBlockState(),        // 6 EMERALD  绿宝石
             Blocks.DIAMOND_ORE.defaultBlockState(),        // 7 DIAMOND  钻石
-    };
-
-    /**
-     * ★ 2026-09-15：<b>紫晶洞材料 → 方块映射</b>（让 {@link GeodeShape} 的晶洞在游戏里可见）。
-     *
-     * <p>索引与 {@link GeodeShape} 的 {@code MAT_*} 常量<b>严格对齐</b>
-     * （0=BASALT 外壳, 1=CALCITE, 2=AMETHYST, 3=BUDDING, 4=AIR）。</p>
-     *
-     * <h3>为何这些方块"合法"（与 {@link #ROCK_BLOCKS} 的禁令不冲突）</h3>
-     * <p>{@code ROCK_BLOCKS} 的 javadoc 明令<b>禁止</b>把带高度/群系硬限制的方块
-     * （深板岩 Y&lt;0、方解石、黏土）用作<b>地层</b>。但本表是<b>结构</b>而非地层：
-     * {@code CALCITE} 在 MC 里的唯一自然产地<b>就是紫水晶洞</b>（且限 Y≤30），
-     * 把它用在紫晶洞里恰恰是"归位"—— 逻辑闭环，不违反任何设定。</p>
-     *
-     * <p><b>空腔用 {@code CAVE_AIR}</b> 而非 {@code AIR}：地下掏空一律用洞穴空气，
-     * 与 {@code CaveCarver} 一致（避免与"未生成的空气"混淆，且不影响光照/液体判定）。</p>
-     *
-     * <p><b>★ 洞穴联动是免费的</b>：洞穴雕在之后的 {@code applyCarvers} 阶段
-     * ⇒ 洞穴一旦穿过晶洞，<b>洞壁上自然露出紫水晶</b>。这不需要任何额外代码，
-     * 也正是玩家发现晶洞的主要方式（与矿脉"洞壁露头"同一效果，但这里是白拿的）。</p>
-     */
-    private static final BlockState[] GEODE_BLOCKS = {
-            Blocks.SMOOTH_BASALT.defaultBlockState(),      // 0 外壳（与宿主玄武岩区分）
-            Blocks.CALCITE.defaultBlockState(),            // 1 方解石带
-            Blocks.AMETHYST_BLOCK.defaultBlockState(),     // 2 紫水晶块
-            Blocks.BUDDING_AMETHYST.defaultBlockState(),   // 3 晶芽（可再生，玩家目标）
-            Blocks.CAVE_AIR.defaultBlockState(),           // 4 空腔
     };
 
     /**
@@ -644,10 +616,6 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         CaveShape.setSeed(seed);
         // ★ 2026-09-15：矿脉噪声同批播种（同上）。
         OreVeins.setSeed(seed);
-        // ★ 2026-09-15：紫晶洞同批播种（同上）。
-        //   注意本类【不用噪声】（形状由整数哈希驱动）⇒ 这里只是记住种子，
-        //   成本为零；但必须调用，否则 GeodeShape 恒返回 MAT_NONE（未播种守卫）。
-        GeodeShape.setSeed(seed);
         // ★ 2026-09-15：洞穴群系的"繁茂/滴水石交错"噪声同批播种（同上）。
         CaveBiomeSelector.setSeed(seed);
         // ★ 2026-09-15：洞穴配置同批注入（档位 + 旋钮）。
@@ -934,17 +902,6 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                                 : OreVeins.veinAt(wx, y, wz, surfaceY, ord, WORLD_MIN_Y);
                         if (ore >= 0 && ore < ORE_BLOCKS.length) state = ORE_BLOCKS[ore];
                     }
-                    // ★ 2026-09-15：<b>紫晶洞</b>（火山岩中的杏仁状晶洞）。
-                    //   铺在矿脉<b>之后</b> ⇒ 晶洞会覆盖被它包住的矿脉段。真实顺序亦然
-                    //   （岩层/矿脉成岩在先、气孔后期充填成洞），且晶洞稀少
-                    //   （实测 1/44 chunk）⇒ 覆盖影响可忽略。
-                    //   ⚠ 此处<b>不需要</b>列级门控（不像矿脉要 2D 成矿带噪声）：
-                    //     GeodeShape 的前两层门控是纯整型比较（岩性掩码 + 深度带），
-                    //     已经把绝大多数体素挡在哈希之前 ⇒ 零额外噪声开销。
-                    if (ord >= 0 && GeodeShape.depthInRange(y, surfaceY)) {
-                        int gm = GeodeShape.geodeAt(wx, y, wz, surfaceY, ord, WORLD_MIN_Y);
-                        if (gm >= 0 && gm < GEODE_BLOCKS.length) state = GEODE_BLOCKS[gm];
-                    }
                 } else {
                     state = (y < 0) ? DEEPSLATE : STONE;       // 无岩性数据 / 海洋列
                 }
@@ -1001,11 +958,22 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     @Override
     public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk,
                                      StructureManager structureManager) {
-        // 重新启用原版群系装饰：委托基类 ChunkGenerator.applyBiomeDecoration。
-        // 基类按 FEATURES 状态遍历群系，用 biomeSource 返回的群系（原版 biome Holder）
-        // 按其 BiomeGenerationSettings 放置树/草/花/甘蔗等特征。
+        // 委托基类 ChunkGenerator.applyBiomeDecoration —— 原版按本群系的
+        // BiomeGenerationSettings 放置【全部】特征：树/草/花/甘蔗、矿、盘状水成细节、
+        // 以及 ★紫水晶洞与化石★。
+        // ★ 注入的 getter 是过滤版（见构造器 / VanillaDecorationFilter）：
+        //   只剔除会打散本地水平岩层的 9 个"岩块团块"特征，其余原样。
+        // ★★ 2026-09-16 起【不再自研紫水晶洞】：原版 amethyst_geode 就在本步
+        //   （LOCAL_MODIFICATIONS 槽位）生成 —— 证据：1.20.1 datapack
+        //   jungle.json 的 features[2] = ["minecraft:amethyst_geode"]，
+        //   且它自带 95% 裂纹（`crack.generate_crack_chance=0.95`）、晶芽、分层。
+        //   自研 GeodeShape 属重复实现（密度还会翻倍），已删除。
+        //   ⚠ 地质门控（只在玄武岩/安山岩）若日后要恢复，正解是
+        //     "复用原版 GeodeFeature + 自定义 placement 门控"，而非重写形状。
+        // ★ 化石同理：原版 fossil_upper/lower 在 desert / swamp 生成，
+        //   而本项目的 BASIN(干旱)→desert、LAKE→swamp ⇒ 已自动获得，无需自研。
         // 地表已由 fillFromNoise 在 NOISE 阶段铺好（草/沙/砾石顶块），
-        // 装饰在 FEATURES 阶段叠加，顺序正确，无需自研放置逻辑。
+        // 装饰在 FEATURES 阶段叠加，顺序正确。
         super.applyBiomeDecoration(level, chunk, structureManager);
     }
 
