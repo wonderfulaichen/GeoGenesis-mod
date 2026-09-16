@@ -279,12 +279,69 @@ public final class ErosionSeamProbe {
         try {
             pngView(gen, wuX, wuZ, 192, 1, "build/seam/hillshade_at.png",
                     "山体阴影（1wu/px，±192wu）");
-            pngView(gen, wuX, wuZ, 768, 4, "build/seam/hillshade_wide.png",
-                    "山体阴影（4wu/px，±768wu）");
+            waterView(gen, wuX, wuZ, 96, 1, "build/seam/water_view.png");
         } catch (Exception e) {
             System.out.println("     PNG 渲染失败: " + e);
         }
     }
+
+    /**
+     * 图 E：<b>水体渲染图</b> —— 直接复现玩家看到的水平面。
+     *
+     * <p>蓝色 = 实际放置口径（{@code getChunkCells}，含水文雕刻）里 {@code riverType != 0}
+     * 的列；其余为山体阴影灰度。<b>水面高度另存为文本</b>（便于量化"水位 vs 周边谷底"）。</p>
+     */
+    private static void waterView(CellGenerator gen, double wuX, double wuZ, int half, int step,
+                                  String path) throws java.io.IOException {
+        double hs = gen.params().horizontalScale();
+        int n = 2 * half / step + 1;
+        double[][] h = new double[n][n];
+        boolean[][] wat = new boolean[n][n];
+        double[] surf = new double[n * n];
+        int bx0 = (int) Math.floor((wuX - half) * hs), bx1 = (int) Math.floor((wuX + half) * hs);
+        int bz0 = (int) Math.floor((wuZ - half) * hs), bz1 = (int) Math.floor((wuZ + half) * hs);
+        GeoGenesisTerrain t = new GeoGenesisTerrain(gen);
+        int kc = 0;
+        for (int cx = bx0 >> 4; cx <= bx1 >> 4; cx++) {
+            for (int cz = bz0 >> 4; cz <= bz1 >> 4; cz++) {
+                Cell[] cs = t.getChunkCells(cx, cz);
+                for (int lx = 0; lx < 16; lx++) {
+                    for (int lz = 0; lz < 16; lz++) {
+                        double wx = (cx * 16 + lx) / hs, wz = (cz * 16 + lz) / hs;
+                        int pi = (int) Math.round((wx - (wuX - half)) / step);
+                        int pj = (int) Math.round((wz - (wuZ - half)) / step);
+                        if (pi < 0 || pi >= n || pj < 0 || pj >= n) continue;
+                        Cell c = cs[lx * 16 + lz];
+                        h[pj][pi] = c.height;
+                        wat[pj][pi] = c.riverType != 0;
+                        if (wat[pj][pi]) surf[kc++] = c.riverSurfaceY;
+                    }
+                }
+            }
+        }
+        java.awt.image.BufferedImage img =
+                new java.awt.image.BufferedImage(n, n, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                if (wat[j][i]) { img.setRGB(i, j, 0x2E6FD6); continue; }
+                double dzdx = (i + 1 < n ? h[j][i + 1] - h[j][i] : 0) / step;
+                double dzdy = (j + 1 < n ? h[j + 1][i] - h[j][i] : 0) / step;
+                double shade = 0.65 + 0.35 * (-(dzdx / 2.0) * 0.7071 - (dzdy / 2.0) * 0.7071);
+                int g = (int) Math.round(255 * Math.max(0.0, Math.min(1.0, shade)));
+                img.setRGB(i, j, (g << 16) | (g << 8) | g);
+            }
+        }
+        java.io.File f = new java.io.File(path);
+        if (f.getParentFile() != null) f.getParentFile().mkdirs();
+        javax.imageio.ImageIO.write(img, "png", f);
+        double[] s = Arrays.copyOf(surf, kc);
+        Arrays.sort(s);
+        System.out.printf("     已写图 E「%s」→ %s（%d×%d px；水体 %d px，水面 Y %.3f ~ %.3f）%n",
+                title(path), f.getAbsolutePath(), n, n, kc,
+                kc == 0 ? 0 : s[0], kc == 0 ? 0 : s[kc - 1]);
+    }
+
+    private static String title(String p) { return p.substring(p.lastIndexOf('/') + 1); }
 
     /**
      * 图 D：把该坐标附近渲染成<b>山体阴影 PNG</b>（灰度），供人眼判断"直线/棱线"在哪。
