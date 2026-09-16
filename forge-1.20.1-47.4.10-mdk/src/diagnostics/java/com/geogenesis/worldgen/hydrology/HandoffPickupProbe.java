@@ -20,6 +20,16 @@ import java.util.List;
  * {@code RiverLineBoundaryProbe} 分工不同：那个测【渲染层跨 chunk 一致性】
  * （雕刻台阶、水面台阶），本探针测【拓扑层是否接上】。</p>
  *
+ * <p><b>★ 2026-09-16：本探针已取代 {@code RiverLineContinuityProbe}（后者已删除）。</b>
+ * 后者只查"声明目标区"（{@code OutletSeed.dRX/dRZ}）那<b>一个</b>邻 region、<b>无全局回退</b>
+ * ⇒ 把本探针归类为 {@code misaimed}（河其实接上了，只是被派给错误邻区）的情形
+ * <b>误算成断流</b>，实测给出 {@code continuity = 52.8%} 的<b>假警报</b>
+ * （本探针同种子同窗口：{@code lost=0} / PASS）。
+ * 且它构造两个 {@code RiverLineNetwork}（ON/OFF）在 5×5 region 上跑，<b>&gt;20 分钟未完成</b>，
+ * 本探针仅 <b>14 秒</b> ⇒ 同一问题只保留本探针。</p>
+ *
+ * <p>教训（本项目第七次同型）：<b>判据口径不对，结论就反</b> —— 详见提交 {@code 96968a8} 正文。</p>
+ *
  * <p>两个独立指标，避免用单一"距离阈值"造成误判：</p>
  * <ul>
  *   <li><b>headPickup</b>：B 区存在某条河，其<b>上游端</b>落在种子附近 → 正常续流；</li>

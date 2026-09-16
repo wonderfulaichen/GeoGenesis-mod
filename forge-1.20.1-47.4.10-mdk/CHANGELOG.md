@@ -13,6 +13,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 修复 / Fixed
 
+- **★ 删除 `RiverLineContinuityProbe`（判据错误 + 与 `HandoffPickupProbe` 重复 + 慢到不会被跑）**：
+  - **起因**：复验那条"唯一未跑的守门探针"（CHANGELOG 曾记"3 次超时未跑"）时，
+    它给出 `continuity = 52.8%`、陆地缺口 `gapLand = 19`。但 `HandoffPickupProbe`
+    （同种子、同 radius=2）给出 **`headPickup=4/4`、`lost=0`、`surfaceMismatch=0` → PASS**。
+    两者**矛盾** ⇒ 必须查源码定性，不能凭数字下结论。
+  - **定性：52.8% 是判据口径缺陷造成的假警报。**
+    `RiverLineContinuityProbe` 只用 `neighborHasNodeNear(声明邻区)` 判定，**没有全局回退**；
+    而 `HandoffPickupProbe` 源码 **98-108 行**已明确记录：`OutletSeed.dRX/dRZ` 是
+    **象限判定**（恒 ±1、**从不为 0**；实测"种子 `wx=-336` 仍在发方区内却被判成向西出境"）
+    ⇒ **该方向字段不可用于几何定位**，必须全局搜索。
+    故被它计入 `gap` 的多数实为 `misaimed`（河接上了，只是"声明目标区"不准）。
+  - **同型第 7 次的又一实例**：提交 `96968a8` 正文早已写下同一条教训 ——
+    *"初版判出 lost=7/10。改为**全局搜索** + '任意节点经过也算接上'后归 0。
+    教训与本项目前六次同源 —— **判据口径不对，结论就反**。"*
+    但本探针**从未按该洞察修正**（它比 `HandoffPickupProbe` 更早引入）。
+  - **处置**：删除探针 + gradle 任务 `runRiverLineContinuityProbe`；
+    在 `HandoffPickupProbe` javadoc 中注明"已取代"，作为**唯一**权威
+    （**14 秒 vs >20 分钟**，约 100×）。
+    ⚠ 未"修判据后再留"：那会留下**两个探针答同一个问题**（本次会话一直在清理的重复）。
+  - **★ 顺带清欠账**：`d0412bd`（类型场种子修复）**未破坏**跨区河连续性 ——
+    `headPickup=4/4`、接上点偏差 **11.3wu**（容差 60wu）、`lost=0`、`surfaceMismatch=0`
+    ⇒ 此前"未复验"的欠账**已清，且结论为无问题**。
+
 - **★ 原版复用对照审计 + 接回 `spawnOriginalMobs`（2026-09-16）**：
   - **审计产出**：逐条对照「原版已提供 vs 本项目自研」，形成
     `docs/analysis/原版复用对照审计-2026-09-16.md`（本地笔记区；`docs/` 被 `.gitignore` 忽略）
