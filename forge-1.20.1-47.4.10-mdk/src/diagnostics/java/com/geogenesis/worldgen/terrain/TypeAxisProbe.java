@@ -95,9 +95,8 @@ import java.util.Arrays;
  * 导致 chunk 边界出现 12.8 块水面落差而被<b>全量回退</b>）。故判据把指标
  * <b>锚定</b>在历史水平：现在会通过，但一旦有人把它改得更糟就立刻报警。</p>
  *
- * <pre>{@code gradlew runTypeAxisProbe [-PprobeArgs="seeds window step warpAmp"]}</pre>
- * <p>{@code seeds} 为逗号分隔（默认 {@link #DEFAULT_SEEDS}）；
- * 第 4 个参数 {@code warpAmp} 用于<b>实证</b>"启用域扭曲后能改善多少"（默认取当前设置 = 0）。</p>
+ * <pre>{@code gradlew runTypeAxisProbe [-PprobeArgs="seeds window step"]}</pre>
+ * <p>{@code seeds} 为逗号分隔（默认 {@link #DEFAULT_SEEDS}）。</p>
  */
 public final class TypeAxisProbe {
 
@@ -145,20 +144,14 @@ public final class TypeAxisProbe {
         long[] seeds = args.length > 0 ? parseSeeds(args[0]) : DEFAULT_SEEDS;
         int window = args.length > 1 ? Integer.parseInt(args[1]) : 3000;
         int step = args.length > 2 ? Integer.parseInt(args[2]) : 8;
-        // ★ 2026-09-16 第 4 参数：域扭曲幅度（块）。0 = 现状。
-        //   用途 = 实证"启用域扭曲后轴向对齐能改善多少"（P1 预研的 Step 1/2）。
-        if (args.length > 3) {
-            TerrainCharacterField.setWarpAmp(Double.parseDouble(args[3]));
-        }
-        double warpAmp = TerrainCharacterField.warpAmp();
         int ns = seeds.length, np = DEFAULT_PHASES.length;
 
         double[][] ratio = new double[ns][np];
         // 方向段长（块）：0=水平H 1=垂直V 2=对角↘ 3=对角↗
         double[][][] len = new double[4][ns][np];
 
-        System.out.printf("=== TypeAxisProbe 多种子×多相位 seed=%d phase=%d window=%d step=%d warpAmp=%.0f ===%n",
-                ns, np, window, step, warpAmp);
+        System.out.printf("=== TypeAxisProbe 多种子×多相位 seed=%d phase=%d window=%d step=%d ===%n",
+                ns, np, window, step);
         System.out.println("（历史基线：最长水平直段 560 wu / 0.19×，窗口 (-1500,1500)）");
         System.out.println();
         System.out.println("[1] 逐样本方向比 = 轴向最长 / 对角最长");
