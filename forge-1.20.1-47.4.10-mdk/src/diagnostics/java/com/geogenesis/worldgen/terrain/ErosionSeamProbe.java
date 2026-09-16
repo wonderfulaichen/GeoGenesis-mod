@@ -50,6 +50,10 @@ public final class ErosionSeamProbe {
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         int span = args.length > 1 ? Integer.parseInt(args[1]) : 96;
+        // ★ 可选：指定世界坐标（wu）——用于复现"用户看到缝的那个位置"。
+        //   ⚠ 传【wu】(= 块坐标 ÷ horizontalScale)。tile 网格按 wu 对齐，故 wu 才是稳口径。
+        Double atX = args.length > 2 ? Double.parseDouble(args[2]) : null;
+        Double atZ = args.length > 3 ? Double.parseDouble(args[3]) : null;
 
         TerrainParams p = TerrainParams.defaults();
         CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
@@ -59,9 +63,150 @@ public final class ErosionSeamProbe {
         System.out.printf("（tile: center=%d border=%d size=%d；blend 带=%d wu）%n",
                 TILE_CENTER, TILE_BORDER, TILE_CENTER + TILE_BORDER * 2, BLEND_START);
 
+        if (atX != null && atZ != null) {
+            sectionAt(gen, atX, atZ);
+            sectionMap(gen, atX, atZ);
+        }
         sectionSeam(gen, seed);
         sectionEdgeJump(gen);
         sectionPlanVsFinal(gen, span);
+    }
+
+    // ==================================================================
+    // [1b] 指定坐标（wu）附近的 tile 边界：delta 与【最终地面 Y】的阶跃
+    // ==================================================================
+
+    /**
+     * 在给定 wu 坐标附近，找到最近的 tile 边界，沿 x 以 1wu 步长扫过 33 点，
+     * 同时读 {@code erosionDeltaE}（增量）与 {@code sampleWu().height}（最终地面）。
+     *
+     * <p><b>为何两者都读</b>：可见性取决于【最终地面 Y 的阶跃】而非 delta 本身；
+     * 且"阶跃 / 邻域典型步长"的比值决定肉眼是否看得出（陡坡上 1 块阶跃不显，缓坡上极显）。</p>
+     */
+    private static void sectionAt(CellGenerator gen, double wuX, double wuZ) {
+        int tileX = Math.floorDiv((int) Math.floor(wuX), TILE_CENTER) * TILE_CENTER;
+        int tileZ = Math.floorDiv((int) Math.floor(wuZ), TILE_CENTER) * TILE_CENTER;
+        double dRight = (tileX + TILE_CENTER) - wuX;
+        double dLeft = wuX - tileX;
+        double edge = dRight <= dLeft ? tileX + TILE_CENTER : tileX;
+
+        final int half = 16;
+        double[] xs = new double[2 * half + 1];
+        double[] ds = new double[xs.length];
+        double[] hh = new double[xs.length];
+        for (int i = 0; i < xs.length; i++) {
+            xs[i] = edge - half + i;
+            ds[i] = gen.erosionDeltaE(xs[i], wuZ);
+            hh[i] = gen.sampleWu(xs[i], wuZ).height;
+        }
+        double maxDH = 0, atH = 0, maxDD = 0, atD = 0, sumDH = 0;
+        double[] steps = new double[xs.length - 1];
+        for (int i = 1; i < xs.length; i++) {
+            steps[i - 1] = Math.abs(hh[i] - hh[i - 1]);
+            sumDH += steps[i - 1];
+            if (steps[i - 1] > maxDH) { maxDH = steps[i - 1]; atH = xs[i]; }
+            double dd = Math.abs(ds[i] - ds[i - 1]);
+            if (dd > maxDD) { maxDD = dd; atD = xs[i]; }
+        }
+        double meanDH = sumDH / Math.max(1, steps.length);
+
+        System.out.println();
+        System.out.printf("[1b] 指定坐标附近：wu=(%.1f, %.1f)，所在 tile=(%d,%d)，最近边界 x=%.0f%n",
+                wuX, wuZ, tileX, tileZ, edge);
+        System.out.println("     x(wu)      delta(e)      最终地面Y      |Δdelta|    |ΔY|");
+        for (int i = 0; i < xs.length; i++) {
+            double dd = i == 0 ? 0 : Math.abs(ds[i] - ds[i - 1]);
+            double dh = i == 0 ? 0 : Math.abs(hh[i] - hh[i - 1]);
+            String mark = Math.abs(xs[i] - edge) < 0.5 ? "  ← tile 边界" : "";
+            System.out.printf("    %6.1f   %12.8f   %10.3f   %9.7f   %6.3f%s%n",
+                    xs[i], ds[i], hh[i], dd, dh, mark);
+        }
+        System.out.printf("    → max|ΔY| = %.3f 块 @ x=%.0f（均值 %.3f 块）⇒ 显著比 = %.1f×%n",
+                maxDH, atH, meanDH, meanDH <= 1e-9 ? 0.0 : maxDH / meanDH);
+        System.out.printf("    → max|Δdelta| = %.8f e ≈ %.2f 块 @ x=%.0f%n",
+                maxDD, maxDD * 192.0, atD);
+        System.out.println("    判读：max|ΔY| 若明显高于均值（比如 >3×）⇒ 该处接缝肉眼可见。");
+    }
+
+    // ==================================================================
+    // [1c] 指定坐标的局部「诊断图」：主导类型 + 陡坡裸岩 + tile 网格线
+    // ==================================================================
+
+    /**
+     * 打印以给定点为中心的 ASCII 图（±{@code half} wu，1wu 步长）。
+     *
+     * <p>两个用途：① 肉眼判断"平台/长直线"到底是<b>类型场边界</b>（PLATEAU/Voronoi）
+     * 还是 <b>tile 网格</b>（侵蚀）；② 标记陡坡裸岩（{@code gradient>0.40}）以区分"方块感"来源。</p>
+     */
+    private static void sectionMap(CellGenerator gen, double wuX, double wuZ) {
+        // ★ 两级视野：近了看"方块/裸岩"，远了看"类型边界直线"（长直线尺度可达上千块）。
+        mapView(gen, wuX, wuZ, 24, 1, "近景 ±24wu / 1wu");
+        mapView(gen, wuX, wuZ, 192, 6, "远景 ±192wu / 6wu");
+    }
+
+    /**
+     * 打印一张诊断图。图 A = 主导类型（tile 网格线为 '+'）；
+     * 图 B = <b>类型边界走向</b>：{@code |} 与左邻不同（竖走近）、{@code -} 与上邻不同（横走近）、
+     * {@code +} 两者皆不同（角/交汇）、{@code .} 无边。
+     * <p>图 B 是判断"长直线"的关键：规则网格 Voronoi 会让边界沿直线排列成整排的 {@code |} 或 {@code -}。</p>
+     */
+    private static void mapView(CellGenerator gen, double wuX, double wuZ, int half, int step, String title) {
+        int n = 2 * half / step + 1;
+        TerrainClass[][] t = new TerrainClass[n][n];
+        double[][] g = new double[n][n];
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                Cell c = gen.sampleWu(wuX - half + i * step, wuZ - half + j * step);
+                t[j][i] = c.terrainType;
+                g[j][i] = c.gradient;
+            }
+        }
+        System.out.println();
+        System.out.printf("[1c] %s：中心 wu=(%.0f,%.0f)，%d×%d 格%n", title, wuX, wuZ, n, n);
+        System.out.println("     图A 主导类型 B盆地 P平原 H丘陵 L高原 M山地 O海 D深海（+ = tile 网格线）");
+        System.out.println("     图B 边界走向 | 竖走近  - 横走近  + 交汇  . 无边（# = 陡坡裸岩）");
+        StringBuilder a = new StringBuilder();
+        StringBuilder b = new StringBuilder();
+        for (int j = 0; j < n; j++) {
+            a.append("     ");
+            b.append("     ");
+            for (int i = 0; i < n; i++) {
+                double x = wuX - half + i * step, z = wuZ - half + j * step;
+                boolean grid = Math.floorDiv((int) Math.floor(x), TILE_CENTER) * TILE_CENTER == (int) Math.floor(x)
+                        || Math.floorDiv((int) Math.floor(z), TILE_CENTER) * TILE_CENTER == (int) Math.floor(z);
+                a.append(grid ? '+' : typeLetter(t[j][i]));
+                boolean vd = i > 0 && t[j][i - 1] != t[j][i];
+                boolean hd = j > 0 && t[j - 1][i] != t[j][i];
+                char cb = vd && hd ? '+' : (vd ? '|' : (hd ? '-' : (g[j][i] > 0.40 ? '#' : '.')));
+                b.append(grid ? '+' : cb);
+            }
+            a.append('\n');
+            b.append('\n');
+        }
+        System.out.println(a);
+        System.out.println(b);
+        if (!UNKNOWN.isEmpty()) {
+            System.out.println("     ⚠ 本图出现的非基础类型（小写字母 = 其名字首字母）：" + UNKNOWN);
+        }
+    }
+
+    /** 未知类型名（一次性收集，打印图例用）——避免"用猜的符号代替真值"。 */
+    private static final java.util.LinkedHashSet<String> UNKNOWN = new java.util.LinkedHashSet<>();
+
+    private static char typeLetter(TerrainClass t) {
+        return switch (t) {
+            case BASIN -> 'B';
+            case PLAIN -> 'P';
+            case HILLS -> 'H';
+            case PLATEAU -> 'L';
+            case MOUNTAINS -> 'M';
+            case OCEAN -> 'O';
+            case DEEP_OCEAN -> 'D';
+            default -> {
+                UNKNOWN.add(t.name());
+                yield Character.toLowerCase(t.name().charAt(0));
+            }
+        };
     }
 
     // ==================================================================
