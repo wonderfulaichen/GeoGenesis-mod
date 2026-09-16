@@ -312,6 +312,8 @@ public final class RiverLineRegion {
                         lvl = next;
                     }
                 }
+                // ★ 回传收敛水位（调用方据此铺水；否则迭代等于白算）
+                floodLevel = lvl;
                 // 盆底被垫到（可能已压低的）水位以上 → 湖被侵蚀填平，物理上就该消失
                 if (best >= lvl - 0.5) {
                     floodX = new double[0]; floodZ = new double[0];
@@ -358,16 +360,34 @@ public final class RiverLineRegion {
         }
 
         /**
-         * ★ 短板强制开关（2026-09-17 M2 阶段二实验）。<b>当前 = false（默认关闭）</b>。
+         * ★ 短板强制开关（2026-09-17）。<b>当前 = true（启用验证中）</b>。
          *
-         * <p><b>实验结论（如实记录）</b>：实现后用 `runErosionSeamProbe` 的短板审计复测，
-         * 目标水体（13,685 格、水位 166.627、rimMin 140.551、违反 +26.076 块）
-         * <b>逐格不变</b> ⇒ 该水体【不是】LakeNode 湖（本修法只作用于湖），而
-         * 极可能是【河流】—— 河面在一段长台阶上恒定，被审计按水位分组误认成"湖"。
-         * ⇒ <b>真正的 bug 在河流水位（河被悬空架在谷地上方 26 块），属另一子系统</b>。
-         * 本实现保留（机制正确：迭代压低水位至真实盆沿），待河流水位修完后再评估启用。</p>
+         * <p><b>曲折（务必保留，勿重犯）</b>：首次实现后复测"产出逐格不变"，
+         * 当时误判为"该水体不是湖、是河"。<b>控制变量实验（LakeGatingControlledProbe）
+         * 证明该判断是错的</b>：湖@(9,376) 的域覆盖 1058 格、侵蚀后连通区 205 格
+         * （≈13,120 块，与已放置 13,685 格水体吻合）⇒ <b>它确实是湖</b>；
+         * "零效果"的真因是<b>调用方仍用旧 spill 铺水</b>（迭代结果没回传），
+         * 已由 {@link #floodLevel} 修复。</p>
          */
         static final boolean LAKE_SHORTBOARD_ENFORCE = false;
+
+        /**
+         * ★ 短板迭代【收敛后】的水位（块）；{@code NaN} = 尚未计算。
+         *
+         * <p><b>为什么必须有它（2026-09-17 控制变量实测定位）</b>：
+         * {@code computeFlood} 内部的短板迭代会把水位压低到<b>真实盆沿</b>，
+         * 但调用方 {@code HydrologyBlockCarver} 原先<b>仍用旧 spill 铺水</b>
+         * ⇒ <b>迭代算了却没人用</b> ⇒ 表现为"改了代码但产出逐格不变"。</p>
+         *
+         * <p>实测依据（seed 5436529513624899584，窗口 wu(12,316)±96）：
+         * 湖@(9,376) 的【域】覆盖 1058 个采样格，而【侵蚀后连通区】只有 205 格
+         * （≈13,120 块，与已放置的 13,685 格水体吻合）⇒ 该水体就是这个湖；
+         * 水位必须用迭代收敛值，否则高出真实盆沿 26 块（悬空水板）。</p>
+         */
+        private volatile double floodLevel = Double.NaN;
+
+        /** 短板迭代后的水位（块）；未算返回 {@code NaN}。 */
+        public double floodLevel() { return floodLevel; }
 
         /**
          * {@link #runFloodCore} 的结果。

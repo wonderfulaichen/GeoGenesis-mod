@@ -140,6 +140,12 @@ public final class HydrologyBlockCarver {
                             original, original, original, original,
                             0.0, 1.0, false, false);
                 }
+                // ★★★ 2026-09-17 修复（实测定位：算出来的水位没人用）★★★
+                //   computeFlood 内部的短板迭代会把水位压低到【真实盆沿】，
+                //   但此处原先仍用旧 `spill` 铺水 ⇒ 迭代等于白算
+                //   （实测：湖域 1058 格 / 连通区 205 格，水位却仍是未压低的旧值）。
+                double enforced = ln.floodLevel();
+                if (!Double.isNaN(enforced)) spill = enforced;
             }
             // 湖不挖地：carved = original（合成层 waterSurface vs 侵蚀后 height 判水）。
             // lakePlan=true 通知合成层走"湖出水判定"（用侵蚀后地面，而非通用河床减法）。
