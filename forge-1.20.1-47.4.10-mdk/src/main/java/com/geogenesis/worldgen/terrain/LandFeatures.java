@@ -49,6 +49,13 @@ public final class LandFeatures {
     // ===== 火山群（极罕见） =====
     private static final double FIELD_MASK_FREQ = 1.0 / 4000.0;
     private static final double FIELD_MASK_THRESHOLD = 0.72; // 更高掩码 → 更小覆盖 (~1.4% 陆地)
+
+    // ⚠ 2026-09-17 勘误（留痕，勿重犯）：曾试图给 fieldMask 加域扭曲以"消除火山群边界的直线感"，
+    //   实测【完全无效】（诊断图逐格不变）——因为该处边界并不由掩码 fade 决定，
+    //   而是由 CellGenerator.volcanoClass 的 `fieldEdifice > 0.010` 决定
+    //   （实测 fieldEdifice 由 0.0116 平滑降到 0.0097 跨过阈值 = 火山锥裙边的自然轮廓）。
+    //   ⇒ 该改动已【全量撤销】，不留任何旋钮。
+    //   教训：改之前必须先确认"这个量真的是决定边界的那个量"，否则就是白改产出。
     private static final double FIELD_GRID = 200.0;
     private static final int FIELD_CHANCE = (int) (0.12 * 65536);   // ~12% → 区内更稀疏
     /** 火山群小锥半径（wu）。★ 同步上调：幅度提高后若半径不变，坡度会陡到失真。 */
