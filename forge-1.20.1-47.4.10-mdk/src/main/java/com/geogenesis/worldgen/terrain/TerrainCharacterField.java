@@ -14,7 +14,7 @@ import com.geogenesis.worldgen.noise.*;
  *   <li>任意类型可邻接任意类型（OCEAN 可紧邻 MOUNTAINS）</li>
  *   <li>最近格点高斯距离权重主导（σ=200），类型边界平滑过渡</li>
  *   <li>7×7 搜索窗口（SEARCH_RADIUS=3）：进出格点距离≥1000 → 权重自然衰减到 3.7e-6，零窗口进出跳变</li>
- *   <li>域扭曲打散网格规则感（默认 {@code WARP_AMP=0}；★ 2026-09-16 起改为<b>可设</b>，见 {@link #setWarpAmp}）</li>
+ *   <li>域扭曲打散网格规则感（WARP_AMP=0，保留字段可恢复）</li>
  * </ul>
  */
 public final class TerrainCharacterField {
@@ -85,98 +85,10 @@ public final class TerrainCharacterField {
 
     // ===== 域扭曲（打散网格规则感） =====
     private final Noise warpX, warpZ;
-
-    /**
-     * 域扭曲幅度默认值（块）。★ 2026-09-16：<b>0.0（关闭）</b>。
-     *
-     * <p><b>⚠⚠ 本值曾短暂设为 40.0，已因【实机回归】回退（2026-09-16）。</b>
-     * 用户实机反馈：<b>河流与湖泊都出问题了</b>（而当时
-     * {@code runFlowAccumProbe} 仍报 {@code status=PASS}、{@code border} 甚至改善到 0.764）。
-     * ⇒ <b>说明当年验收用的门禁子集【抓不住这个回归】</b>：本轮只跑了
-     * FlowAccum / LandE / ChunkBorder / Ore / Cave* / TypeAxis，
-     * <b>一个湖泊探针都没跑</b>（{@code runLake*} 系列），也没跑
-     * {@code runCoastline*} / {@code runHandoffPickupProbe} / {@code runSeamCrossProbe} 等河网口径。
-     * <b>教训：PASS 不等于安全 —— 只说明"我选的那几个门禁没报警"。</b></p>
-     *
-     * <p><b>⚠ 再启用前必须做的事</b>（按此顺序，缺一不可）：
-     * ① 先跑<b>湖泊系列</b>（LakeSurvey / LakeShape / LakeEdge / LakeLocate / LakeBasin）；
-     * ② 再跑<b>河网全口径</b>（HandoffPickup / SeamCross / BankProfile / SourceValley / RiverLineWidth…）；
-     * ③ 最后<b>必须用户实机目视</b>（改地形大尺度位置的改动一律须目检）。
-     * 只凭 {@code runFlowAccumProbe} 单条 PASS 就启用 = <b>重复本次的错</b>。</p>
-     *
-     * <h4>下方"取值依据"表为 2026-09-16 的 A/B 实测数据，【保留供参考】——
-     * 它仍是有效证据（说明域扭曲本身不产生断裂、且能改善轴向对齐），
-     * 但<b>它不足以证明"启用后世界仍然正确"</b>。</h4>
-     *
-     * <h4>取值依据（5 种子 × 4 相位实测量化，见 {@code docs/plans/轴向对齐与域扭曲-预研}）</h4>
-     * <table>
-     *   <tr><th>amp</th><th>最长轴向直段中位</th><th>{@code border.maxSurfaceDelta}</th>
-     *       <th>LandE 跳变（既知未达标）</th></tr>
-     *   <tr><td>0（旧）</td><td>944 块（0.315×）</td><td>1.845</td>
-     *       <td>10 次 / 0.02251e @(723,−755)</td></tr>
-     *   <tr><td><b>40（采用）</b></td><td><b>272 块（0.091×）</b></td><td><b>0.764</b></td>
-     *       <td>11 次 / 0.02257e <b>@(723,−755) 同一位置</b></td></tr>
-     *   <tr><td>80</td><td>192 块</td><td>1.032</td>
-     *       <td>14 次 / 0.02479e @(−338,294) <b>新位置</b></td></tr>
-     * </table>
-     * <p>⇒ <b>取 40 而非 80</b>：直段已改善 3.5×，而更重要的是
-     * <b>amp=40 的 LandE 最坏点仍在原位置（幅度 +0.3%）= 不引入新跳变源</b>；
-     * amp=80 则出现<b>新位置</b>的跳变。而两档的排水哨兵都<b>改善</b>（1.845 → 0.764 / 1.032）。</p>
-     *
-     * <h4>⚠ 性质</h4>
-     * <p>启用它会<b>改变所有世界的地形大尺度位置</b>（类型场被形变）⇒ 旧存档/预览缓存失效。
-     * <b>当前默认 0.0 = 关闭 = 原行为。</b></p>
-     */
-    private static final double WARP_AMP_DEFAULT = 0.0;
-
-    /**
-     * 域扭曲幅度（块）。★ 2026-09-16：由 {@code static final 0.0} 改为<b>可设</b>
-     * （默认 {@link #WARP_AMP_DEFAULT} ⇒ <b>产出逐位不变</b>，故无需 bump 预览缓存）。
-     *
-     * <h4>为何改成可设：为【实证复核】2026-08-03 那条结论</h4>
-     * <p>当时的记载是："80→0（用户实测确认——类型权重查格点 ±80 块平移让主导沿细胞边界跳跃，
-     * 产生 1 格宽断裂伪影…）"。但<b>同一次改动（同日）还修了另一处、症状完全相同的缺陷</b>：
-     * {@link #SEARCH_RADIUS} 由 1（3×3 窗口）扩到 3（7×7），而其记录明确写着
-     * "移出/移入格点类型不同 → typeWeights 在 1 格内突变 ~0.022 → argmax 翻转 →
-     * eLand 突变 → <b>1 格断裂线（CellBoundaryProbe 实测 @X=400/800）</b>"。
-     * ⇒ <b>两条记录描述的是同一个"1 格宽断裂"，而窗口那条有实测定位、warp 那条只有现象描述</b>
-     * ⇒ <b>warp 疑似背了窗口的锅（误诊）。</b></p>
-     *
-     * <h4>代码与数学都不支持"warp 致断裂"</h4>
-     * <ul>
-     *   <li>采样是 {@code w' = w + A·warp(w)} 的<b>连续</b>位移，权重是 {@code w'} 的连续函数；</li>
-     *   <li>唯一的非连续点是 7×7 窗口随 {@code floor(w'/400)} 换格；而进出窗口的格点
-     *       距离 ≥ {@code 2.5×400 = 1000} ⇒ 权重 {@code exp(-12.5) ≈ 3.7e-6}，
-     *       对 typeWeights 的影响约 {@code 2.6e-5} —— <b>不可能造成断裂</b>
-     *       （这正是 {@code SEARCH_RADIUS=3} 的设计目的）。</li>
-     * </ul>
-     *
-     * <h4>另有强对照</h4>
-     * <p>{@code TectonicField} 用<b>同一机制</b>（扭曲查询点，{@code WARP_AMP=130 / 波长 400}），
-     * 且 CHANGELOG（2026-09-12）记载它<b>实测消除了长直线边界</b>
-     * （"contours_1block 中的长直线全部消失"），未见断裂。</p>
-     *
-     * <h4>★ 若确认可用，它正是 P1「轴向对齐」所需的机制</h4>
-     * <p>位移<b>有界</b>（≤A 块，远小于 {@code CELL_SPACING=400}）⇒ 类型图是原图的
-     * <b>拓扑形变</b>：各类型区的<b>邻接关系与规模不变</b>，只是边界被平滑弯折。
-     * 这与"种子抖动"那种<b>改归属、重排格局</b>的做法有本质区别
-     * （后者已被证伪：`border.maxSurfaceDelta` 1.358→12.772）。</p>
-     * <p>实证：断裂看 {@code WarpFractureProbe}，轴向对齐看 {@code TypeAxisProbe}（第 4 参数 = warpAmp）。</p>
-     */
-    private static volatile double warpAmp = WARP_AMP_DEFAULT;
-
-    /** 域扭曲频率（1/wu）：波长 500 块。 */
+    // 2026-08-03：80→0（用户实测确认——类型权重查格点 ±80 块平移让主导沿细胞边界跳跃，
+    // 产生 1 格宽断裂伪影；纯噪声 + 侵蚀已足够丰富，warp 纯属冗余。保留字段供未来恢复）。
+    private static final double WARP_AMP = 0.0;
     private static final double WARP_FREQ = 1.0 / 500.0;
-
-    /** 设置域扭曲幅度（块）；{@code 0} = 关闭。供探针/实验使用。 */
-    public static void setWarpAmp(double amp) {
-        warpAmp = amp < 0 ? 0 : amp;
-    }
-
-    /** 当前域扭曲幅度（块）。 */
-    public static double warpAmp() {
-        return warpAmp;
-    }
 
     // ===== 混合结果 =====
     public static final class BlendResult {
@@ -216,9 +128,9 @@ public final class TerrainCharacterField {
      * </ol>
      */
     public BlendResult sampleBlend(double wx, double wz) {
-        // 1. 域扭曲（幅度默认 0；实测复核见 warpAmp 字段的说明）
-        double wxw = wx + warpAmp * warpX.compute(wx, wz);
-        double wzw = wz + warpAmp * warpZ.compute(wx, wz);
+        // 1. 域扭曲
+        double wxw = wx + WARP_AMP * warpX.compute(wx, wz);
+        double wzw = wz + WARP_AMP * warpZ.compute(wx, wz);
 
         // 2. 查询点所在基格
         int baseX = floorToInt(wxw / CELL_SPACING);
