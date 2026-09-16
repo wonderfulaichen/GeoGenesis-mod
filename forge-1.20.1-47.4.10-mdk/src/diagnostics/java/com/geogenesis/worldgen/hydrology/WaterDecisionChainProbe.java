@@ -119,6 +119,61 @@ public final class WaterDecisionChainProbe {
             System.out.printf("    [%d] dist=%7.2f wu (%6.1f 块)  width=%6.2f wu  isLake=%-5s surfaceY=%.3f%n",
                     i, h.distToCenter(), h.distToCenter() * hs, h.width(), h.isLake(), h.surfaceY());
         }
+        // ---- ★★★ [8] 直接调用 carver，拿它对【本列】的计划（唯一的权威依据）----
+        //   矛盾点：最近命中是河（isLake=false）⇒ carver 湖分支"不该"触发，
+        //   但实际铺了湖面 ⇒ 必须让 carver 自己回答"它走了哪条分支、给出什么水面"。
+        System.out.println();
+        System.out.println("[8] ★ 直接调用 carveChunk，取本列的雕刻计划（权威）");
+        HydrologyExperimentEngine engine = new HydrologyExperimentEngine(gen, seed);
+        double[] originalGround = new double[256];
+        for (int lz = 0; lz < 16; lz++) {
+            for (int lx = 0; lx < 16; lx++) {
+                int gx = (bx >> 4) * 16 + lx, gz = (bz >> 4) * 16 + lz;
+                originalGround[lx * 16 + lz] = gen.sample(gx / hs, gz / hs).height;
+            }
+        }
+        java.util.List<HydrologyBlockCarvedColumn> cols =
+                HydrologyBlockCarver.carveChunk(engine, bx >> 4, bz >> 4, hs, originalGround);
+        int want = Math.floorMod(bx, 16) * 16 + Math.floorMod(bz, 16);
+        HydrologyBlockCarvedColumn target = null;
+        for (HydrologyBlockCarvedColumn c : cols) {
+            if (Math.floorMod(c.blockX(), 16) * 16 + Math.floorMod(c.blockZ(), 16) == want) {
+                target = c;
+                break;
+            }
+        }
+        if (target == null) {
+            System.out.println("    未找到本列（carveChunk 返回 " + cols.size() + " 列）");
+        } else {
+            System.out.printf("    block=(%d,%d) originalGround=%.3f carved=%.3f%n",
+                    target.blockX(), target.blockZ(),
+                    target.originalGroundY(), target.carvedGroundY());
+            System.out.printf("    ★ waterSurfaceY=%.3f  lipSurfaceY=%.3f  fillWater=%s  lakePlan=%s  fallDrop=%.3f%n",
+                    target.waterSurfaceY(), target.lipSurfaceY(),
+                    target.fillWater(), target.lakePlan(), target.fallDrop());
+            System.out.println("    ⇒ waterSurfaceY 即合成层据以判水的 spil；与 [0] 的 166.627 比对即可定位分支");
+            if (target.lakePlan()) {
+                System.out.println("    ★★ lakePlan = true ⇒ **走了湖分支**（尽管最近命中 isLake=false）");
+                System.out.println("       ⇒ 湖分支的触发条件不是 samples.get(0).isLake()，需再查 carveColumn 的湖判定");
+            } else {
+                System.out.println("    lakePlan = false ⇒ 未走湖分支 ⇒ 166.627 来自普通分支的 IDW/最近水面");
+            }
+        }
+
+        // ---- ★★★ [9] 终极对照：carver 内部那条调用链给出的 get(0) ----
+        System.out.println();
+        System.out.println("[9] 终极对照：carver 用的调用链 vs 我的调用");
+        java.util.List<HydrologyBlockSample> bs = engine.sampleBlockAll(bx, bz, hs);
+        System.out.printf("    engine.sampleBlockAll(%d,%d,%.1f)：%d 个样本%n", bx, bz, hs, bs.size());
+        for (int i = 0; i < bs.size(); i++) {
+            HydrologyBlockSample s = bs.get(i);
+            System.out.printf("      [%d] dist=%7.2f isLake=%-5s surfaceY=%.3f  (lake()=%s)%n",
+                    i, s.distToCenter(), s.isLake(), s.surfaceY(), s.lake() == null ? "null" : "非null");
+        }
+        System.out.printf("    ★ carver 的判定依据 samples.get(0).isLake() = %s%n",
+                bs.isEmpty() ? "空" : bs.get(0).isLake());
+        System.out.println("    与 [7] 的 network.sampleAll 对照：若 isLake 不同 ⇒ 两条链路本身不一致");
+
         System.out.println();
         System.out.println("判读：① 若存在【更近】的命中其 surfaceY ≈ 166.6 ⇒ IDW 把水面拉高到它；");
         System.out.println("      ② 若所有命中的 dist 都 ≫ width ⇒ 本列是【谷壁列】，");
