@@ -1139,6 +1139,17 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Determinism / order-independence gate (2026-09-17, hydrology 重构 M1 基线):
+//   gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]
+//   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0）
+task runHydrologyDeterminismProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.HydrologyDeterminismProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Erosion seam / determinism + plan-vs-final field divergence (2026-09-17, hydrology 重构 M0):
 //   gradlew runErosionSeamProbe [-PprobeArgs="seed span"]
 task runErosionSeamProbe(type: JavaExec) {
