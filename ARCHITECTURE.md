@@ -30,7 +30,14 @@
 >
 > **✅ 当前进度（2026-07-13）**：地形引擎已整体重写为**地质过程范式**（单一连续场 `e(x,z)`，大陆性 `c` 是单一连续噪声，海陆仅是对同一场的条件切分）。阶段 1（统一场地形管线）、阶段 2（河谷刻蚀，原 `RiverField` 粗格点河网方案，已废弃）、阶段 3（多营力局部侵蚀 ErosionSystem）**均已编码并接线**，BUILD SUCCESSFUL。气候→群系已接游戏（BiomeClassifier 按 `TerrainClass × Climate` 选原版群系）。`runClient`/`runPreview` 目检待做。河流系统现行方案见下方「河流系统」章节（`RiverNetwork`/`FlowRiverBuilder`）。
 >
-> **⚠️ 已知不一致**：`GeoGenesisGenerator` 的世界高度（`WORLD_MIN_Y/MIN_Y`、`WORLD_MAX_Y/MAX_Y`、`SEA_LEVEL`）目前**硬编码**，`GeoGenesisConfig` 的 `World Height` 段（seaLevel/minY/maxY）**暂未驱动 generator**（仅注入 HeightCurve 做 e→Y 映射）。River / Erosion 参数当前仅代码 `defaults()`，**未暴露到 Forge Config**。
+> **⚠️ 已知不一致**：`GeoGenesisGenerator` 的世界高度（`WORLD_MIN_Y/MIN_Y`、`WORLD_MAX_Y/MAX_Y`、`SEA_LEVEL`）目前**硬编码**，`GeoGenesisConfig` 的 `World Height` 段（seaLevel/minY/maxY）**暂未驱动 generator**（仅注入 HeightCurve 做 e→Y 映射）。~~River / Erosion 参数当前仅代码 `defaults()`，**未暴露到 Forge Config**。~~
+> **⚠️ 更正（2026-09-16 核查）：此句已过时** —— `riverEnabled` 已在 `GeoGenesisConfig`
+> （`GeoGenesisConfig.java:473`；被 `GeoGenesisTerrain.java:64` 消费，且
+> `ParameterConfigPanel.java:168` 有 UI 绑定）；**`Erosion` 段有 7+ 个键**
+> （`erosionEnabled` / `erosionRoutingAdaptive` / `erosionYieldToRiver` / `erosionXSEnabled` /
+> `erosionStrength` / `erosionRidgeEnabled` / `erosionRidgeStrength`，见该类 :644-674）。
+> 另：上面「`World Height` 段暂未驱动 generator」一句**经复核仍成立**
+> （`WORLD_MIN_Y/MAX_Y/SEA_LEVEL` 仍是 `static final` 硬编码，`getSeaLevel()` 返回常量）。
 
 ## Overview
 
@@ -236,13 +243,7 @@ GeoGenesisBiomeSource.getNoiseBiome(x, y, z, sampler)
 | | `minY` | -64 | 世界底（Y） |
 | | `maxY` | 320 | 最大地形高度（Y） |
 | River Network | `riverEnabled` | true | 河网总开关 |
-| | `riverRootCount` | 6 | 每 512wu region 根河数（越大河网越密） |
-| | `riverBedWidth` | 6.0 | Zone1 河床半宽（块；主河，支流按分叉级缩放） |
-| | `riverBedDepth` | 3.0 | Zone1 河床深（水面以下块，沿下游单调加深） |
-| | `riverBankWidth` | 12.0 | Zone2 岸阶宽（块） |
-| | `riverBankHeight` | 1.5 | Zone2/3 谷底抬升（水面以上块，谷壁坡度） |
-| | `riverValleySize` | 40.0 | Zone3/4 谷幅（块；越大河谷越开阔、雕刻越柔和） |
-| | `riverFade` | 0.7 | 尺寸沿下游 t 取满值比例（源头窄浅） |
+| | ⚠️ **（2026-09-16 更正）** ~~`riverRootCount` / `riverBedWidth` / `riverBedDepth` / `riverBankWidth` / `riverBankHeight` / `riverValleySize` / `riverFade`~~ | — | **这些键已不存在** —— 它们是 RTF 河网时代的参数，随 `worldgen/river/*` 于 2026-08-28 删除而移除。**现存只有 `riverEnabled`**；河网自身的参数改由 `hydrology/riverline/RiverLineParams.defaults()` 承载（不进 Forge Config） |
 
 > **配置同步铁律**：增删 `GeoGenesisConfig` 字段，必须同步 `TerrainParams(defaults)` + `GeoGenesisGenerator(configParams)` + `GeoGenesisConfigScreen.buildParams` + `run/config/geogenesis-common.toml`（改默认值后必须同步 toml，否则用户看不到变化）。
 
