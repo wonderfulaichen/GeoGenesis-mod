@@ -1139,6 +1139,17 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Type-field domain warp fracture test (2026-09-16, P1 axis-alignment 预研 Step 1):
+//   gradlew runWarpFractureProbe [-PprobeArgs="seed half"]
+//   实证复核 2026-08-03 那条"warp 造成 1 格宽断裂"的结论（疑似误诊为窗口缺陷）。
+task runWarpFractureProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.WarpFractureProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Terrain shape probe (2026-09-12, geology Phase T3): gradlew runTerrainShapeProbe [seed]
 task runTerrainShapeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

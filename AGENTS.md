@@ -57,7 +57,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `GeoGenesisConfig.java` | Forge COMMON 配置（地质过程参数：continent*/ocean spline 控制点/coast/seabed/land process/world height/**Caves**/**Ores**，详见 `ARCHITECTURE.md` 配置表）。⚠ **2026-09-16 核定：`province*` 系列仍是零消费的死配置**（ARCHITECTURE 已如实标注），本行原把它列入"地质过程参数"易误导，已移除；**另新增 `Caves`（档位+旋钮）与 `Ores`（`oreVeinsEnabled` 总开关）两段** |
 | `worldgen/terrain/GeoGenesisTerrain.java` | 零 MC 依赖地形引擎门面（缓存 Cell + generateChunk 装配侵蚀/河流） |
 | `worldgen/terrain/CellGenerator.java` | 统一连续场采样 + 实现 HeightProvider + 连续分类 |
-| `worldgen/terrain/TerrainCharacterField.java` | 类型场：**规则网格** Voronoi 高斯距离权重（400wu 格、σ=200、7×7 窗口、`WARP_AMP=0`）→ 类型主导边界偏轴对齐（见「已知遗留」） |
+| `worldgen/terrain/TerrainCharacterField.java` | 类型场：**规则网格** Voronoi 高斯距离权重（400wu 格、σ=200、7×7 窗口）。★ 2026-09-16：**域扭曲已启用（`WARP_AMP_DEFAULT = 40`）** 修掉轴向对齐缺陷（944→272 块）；`setWarpAmp()/warpAmp()` 供探针 A/B |
 | `worldgen/terrain/TypeNoiseProvider.java` | 逐类型地形噪声配方（PLAIN/HILLS/MOUNTAINS/PLATEAU/BASIN）；★ 已撤销 `\|2n−1\|` 折叠（见「折叠类算子的禁令」） |
 | `worldgen/terrain/LandFeatures.java` (+`VolcanicShape`) | 陆地火山特征（单体 800wu 格 3% + 火山群 200wu 格 12% × 低频掩码）；`VolcanicShape` 提供 cone/guyot 形状与火口数学 |
 | ~~`worldgen/terrain/LandShape.java`~~ | ⚠️ **不存在（2026-09-13 核查）**：本行曾写「省权重(softmax) + 陆地过程形态」，实际无此文件；类型权重由 `TerrainCharacterField` 提供 |
@@ -706,7 +706,13 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   3. **★ 最终根因：`stress` 是「分片常数场」**。旧式 `stress = dot/|v1−v2|` 在配对不变区域内**与位置无关**（探针铁证 `P50|∇| = 7.9e-17` —— 精确为 0）⇒ 配对在 Voronoi 边 / order-2 边切换处沿**直线网**阶跃 ⇒ 经 `boundaryStrength`(σ=110) × `CONVERGENT_BOOST`(2.5) 印进 eLand。修法 = **连续加权投票** `stressField`（5×5 窗口、σ=1000、gain 2.0），并删除 `smoothStress`/`stressAt`/`rawStressFor`/`dotCrossToStress` 与 `STRESS_BLUR_*`（**每次采样少 100+ 次哈希，净性能收益**）。
 - **验收（全绿）**：`runTectonicProbe` ALL PASS（造山带 **1.70×**、串珠 `meanM=0.611/sd=0.151`、性能 **2.16µs < 5µs**）；`runTectonicDeformProbe` ALL PASS（纯走滑无垂向形变等语义保住）；`runTectonicWaveProbe` ALL PASS（各向异性 **≈1.0**，无平行带回归）；`runTectonicContinuityProbe` ALL PASS；`runPrecipRiverWidthProbe` PASS（head 最干桶 **0.928 < 0.95** ⇒ **未污染水文标定**）。分量长尾比 `tect_stress ∞→1.6`、`tect_chain 68.5→3.0`；eLand `max|grad| 0.00245→0.00211`；`[full] max|grad| 4.10→1.78`。**用户实机确认伪影消失**。
 - **探针口径修正（重要）**：`TectonicProbe` [6] 的筛选从 `btype==CONVERGENT` 改为 `smoothPos(stress) > 0.70`（**等价**：CONVERGENT ⟺ `|dot|>|cross|` ⟺ `|stress|>1/√2`）。应力改为**区域尺度**场后，局部配对标签不再蕴含 `stress>0`，旧口径把非汇聚样本混入 → 假失败（`meanM 0.531 → 0.611` PASS）。`TectonicContinuityProbe` 阈值 `1.5 → 2.2`（原阈值漏算域扭曲的合法梯度上界 ≈2.07；**该探针 [3] 自证**：无扭曲的裸公式 `(d2−d1)/2` 实测 max = **1.00wu** 正是理论极限，生产路径 1.69wu = 差额即域扭曲贡献），并让 `max` **无条件记录**以免掩盖真实上界。
-- **验收探针组全绿（补还验证债）**：除前述 5 项外，另跑 `runChunkBorderProbe`（含蚀差 max 1.08 块）、`runLandEConformityProbe`（最大跳变 <0.02e ≈ 3.8 块，**ALL PASS**）、`runPlateauProbe`（中心 eLand 0.307 / Y=135.7，宽缓高台、**无**"中间低四周高"环形伪形）、`runHydrologyTerrainEntryProbe`（**PASS**）。
+- **验收探针组全绿（补还验证债）**：除前述 5 项外，另跑 `runChunkBorderProbe`（含蚀差 max 1.08 块）、`runLandEConformityProbe`（最大跳变 <0.02e ≈ 3.8 块）、`runPlateauProbe`（中心 eLand 0.307 / Y=135.7，宽缓高台、**无**"中间低四周高"环形伪形）、`runHydrologyTerrainEntryProbe`（**PASS**）。
+  - **⚠️ 更正（2026-09-16 实测）：`runLandEConformityProbe` 并非 "ALL PASS"，而是 FAIL。**
+    实测（amp=0、seed=12345）10 次跳变 / 最大 **0.02251e > 阈值 0.02e**。该探针注释**自述**
+    "保持严格判据并**如实报 FAIL**，作为后续继续收敛的量化靶子
+    （**不为了让 CI 变绿而放宽阈值** —— 那会掩盖『边界处仍不够自然』这一真实事实）"
+    ⇒ 它是**已知未达标的靶子**，**不是回归**；本行原写的 "ALL PASS" 有误。
+    ⚠ **验收时不要把它当"必须绿"的门禁**，否则会误判（本次 WARP 改动就一度被它误导）。
   - ★ `FlowAccumProbe` 的 `reachedOcean=38/45 (84.4%)`（历史记录为 100%）**已用可控变量实验排除与本轮改动相关**：临时把 `TECTONIC_ENABLED` 置 `false` → `38/46 (82.6%)`，**到海 region 数完全相同（38）**；且该指标**不在 PASS 判据内**（判据 = `cycles/profile/gate/border` 全 0，实测全 0 → `status=PASS`）。差额来自 2026-08-29 河网参数变更（门槛 2000→200、源间距 3→1）后新增的大量内陆小溪。
   - **两条探针缺陷已修**（单 chunk 空断言 / 海底选点，详见 `CHANGELOG.md` [Unreleased]）。
   - **实测技巧**：Windows 下探针中文输出乱码是**运行时 stdout 编码**问题（`build.gradle` 已设 `options.encoding='UTF-8'`，编译期无问题）。设
