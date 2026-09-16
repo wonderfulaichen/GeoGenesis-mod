@@ -235,6 +235,30 @@ public final class OreVeins {
         return seeded;
     }
 
+    // ===================== ★ 2026-09-16 总开关（想用纯原版矿的可关闭）=====================
+
+    /**
+     * 地质矿脉总开关（默认 {@code true}）。
+     *
+     * <p><b>语义（务必注意）</b>：本类产出的是<b>叠加在原版矿之上</b>的矿脉 ——
+     * 原版 {@code ore_*} 由 {@code applyBiomeDecoration} 放置、<b>始终存在</b>，
+     * 不受本开关影响。故 {@code false} 的语义是
+     * <b>"关闭自研地质矿脉 ⇒ 只剩原版矿"（纯原版体验）</b>，
+     * <b>而不是</b>"地下无矿"。（与 {@code CaveShape} 的 OFF 语义不同：洞穴无原版替身，
+     * 矿有。）</p>
+     */
+    private static volatile boolean cfgEnabled = true;
+
+    /** 设置矿脉开关（由 {@code GeoGenesisGenerator} 在世界加载时按配置注入）。 */
+    public static void setEnabled(boolean enabled) {
+        cfgEnabled = enabled;
+    }
+
+    /** 矿脉开关当前值。 */
+    public static boolean isEnabled() {
+        return cfgEnabled;
+    }
+
     // ===================== 门控 ①②③ =====================
 
     /**
@@ -244,7 +268,7 @@ public final class OreVeins {
      * {@link #beginColumn} + {@link #veinAt}，无需直接调用本方法。</p>
      */
     public static boolean columnProspective(int wx, int wz) {
-        if (!seeded) return false;
+        if (!seeded || !cfgEnabled) return false;
         double v = PROSPECT.compute(wx / PROSPECT_SCALE, wz / PROSPECT_SCALE);
         return v > PROSPECT_T * dbgProspectMul;
     }
@@ -274,6 +298,10 @@ public final class OreVeins {
      * @return 本列在成矿带内 ⇒ true（此时才值得遍历本列的 Y）
      */
     public static boolean beginColumn(int wx, int wz) {
+        // ★ 总开关：关闭时【在缓存查询之前】直返 false ——
+        //   ① 一处设防：veinAt / veinAtLinked 内部都走这里 ⇒ 无法绕过；
+        //   ② 放在缓存之前：避免"先开后备"时读到上一列缓存的 true（脏读）。
+        if (!cfgEnabled) return false;
         if (wx == cachedColX && wz == cachedColZ) return cachedProspective;
         boolean p = columnProspective(wx, wz);
         cachedColX = wx;

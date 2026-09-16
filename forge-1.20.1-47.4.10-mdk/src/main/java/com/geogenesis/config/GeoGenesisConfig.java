@@ -274,6 +274,10 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.BooleanValue caveLithoGating;
     /** 地下洞穴群系（滴水石洞 / 繁茂洞穴）。 */
     public final ForgeConfigSpec.BooleanValue caveBiomesEnabled;
+
+    // ===================== ★ 2026-09-16 矿脉（游戏性优先，可开关）=====================
+    /** 自研地质矿脉开关（true = 叠加在原版矿之上；false = 只留原版矿）。 */
+    public final ForgeConfigSpec.BooleanValue oreVeinsEnabled;
     /** SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2] */
     public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;
     /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16] */
@@ -733,6 +737,27 @@ public final class GeoGenesisConfig {
         caveBiomesEnabled = builder.comment(
                 "Underground cave biomes: DRIPSTONE_CAVES everywhere, LUSH_CAVES in forest climates. Decoration (stalactites/moss/vines) is placed by vanilla automatically. Disable to keep the surface biome underground.")
                 .define("caveBiomesEnabled", true);
+        builder.pop();
+
+        // ===================== ★ 2026-09-16 矿脉（可开关，与洞穴同款"游戏性优先"）=====================
+        //
+        //   ⚠ 与洞穴 OFF 语义的【关键区别】（必须写明，避免误解）：
+        //     洞穴没有原版替身（自定义生成器调不了原版 carver）⇒ OFF = 地下无洞穴；
+        //     而【矿有原版替身】—— 原版 ore_coal/iron/... 由 applyBiomeDecoration 放置、
+        //     用的是原版群系特征列表，【始终在生成】，与本开关无关。
+        //     故本开关 false 的语义是"关闭【自研地质矿脉】⇒ 只剩原版矿（纯原版体验）"，
+        //     而不是"地下无矿"。
+        builder.push("Ores");
+        oreVeinsEnabled = builder.comment(
+                "Self-developed geological ore veins (PROJECT-UNIQUE: ore is placed by HOST ROCK + depth band"
+                + " -- e.g. coal only in sandstone/shale, lapis only in limestone, diamond only in gneiss/schist)."
+                + " true (default) = ON: these veins are placed ON TOP of the vanilla ore."
+                + " false = OFF: keep ONLY vanilla ore (pure-vanilla ore experience)."
+                + " NOTE: vanilla ore (ore_coal/ore_iron/... , placed from biome features) is ALWAYS generated"
+                + " and is NOT controlled by this switch; it intentionally DOES pollute the geological strata"
+                + " (that is vanilla behaviour and is left alone here)."
+                + " Takes effect on world (re)load; already-generated chunks are unchanged.")
+                .define("oreVeinsEnabled", true);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");

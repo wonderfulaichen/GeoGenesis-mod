@@ -627,6 +627,13 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //   （否则 UI 改了却不生效 = 功能没接到底）。
         CaveShape.setConfigRefresher(GeoGenesisGenerator::refreshCaveConfig);
         refreshCaveConfig();
+        // ★ 2026-09-16：矿脉开关同批注入（与洞穴同款：与 seed 同生命周期）。
+        //   语义：自研矿脉是【叠加在原版矿之上】的 ⇒ 关闭只去掉自研矿脉，
+        //   原版 ore_* 仍照常生成（"想用纯原版矿"即此开关）。
+        //   ⚠ 无热刷新通道（洞穴的热刷新由 CavePanel 置脏触发；矿暂无 UI）⇒
+        //     配置变更需重新进入世界才对新生成区块生效。若要 UI + 热刷新，
+        //     照 CavePanel/CaveShape 的 setConfigRefresher 模式补即可。
+        OreVeins.setEnabled(ConfigSafe.bool(GeoGenesisConfig.INSTANCE.oreVeinsEnabled, true));
         // ★ 2026-09-15：坡度抖动噪声同批失效（否则换存档后仍用旧种子的抖动）。
         invalidateSteepJitter();
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);
