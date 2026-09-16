@@ -137,5 +137,66 @@ public final class LakeGatingControlledProbe {
         System.out.println("判读：① 若『不一致』占比大 ⇒ 预览与游戏判定湖范围的口径**不统一**（违反项目铁律）；");
         System.out.println("      ② 若『无 rim 的湖』占比高 ⇒ 它们绕过连通性约束，域内低地全灌；");
         System.out.println("      修法 = 让【所有湖】统一走 computeFlood/inFlood，且 sample 与 carver 共用同一判据。");
+
+        // ===== ★ 归属判定：已放置的水是【河】还是【湖】？ =====
+        //   判据：以 sample() 的命中为准 —— isLake=true ⇒ 湖；否则若 distToCenter ≤ width ⇒ 河。
+        //   这决定了"水位悬空 26 块"该归谁负责（河纵剖面 or 湖盆 flood）。
+        System.out.println();
+        System.out.println("[归属] 窗口内【已放置水格】（riverType != 0）的来源判定：");
+        com.geogenesis.worldgen.terrain.GeoGenesisTerrain gt =
+                new com.geogenesis.worldgen.terrain.GeoGenesisTerrain(gen);
+        int placedWater = 0, cntLake = 0, cntRiver = 0, byNeither = 0;
+        double sumPerchLake = 0, sumPerchRiver = 0;
+        int nPerchLake = 0, nPerchRiver = 0;
+        double worstLake = 0, worstRiver = 0;
+        for (int j = -half; j <= half; j += step) {
+            for (int i = -half; i <= half; i += step) {
+                double wx = cx + i, wz = cz + j, hs2 = gen.params().horizontalScale();
+                int bx = (int) Math.floor(wx * hs2), bz = (int) Math.floor(wz * hs2);
+                com.geogenesis.worldgen.terrain.Cell pc = gt.getChunkCells(bx >> 4, bz >> 4)
+                        [Math.floorMod(bx, 16) * 16 + Math.floorMod(bz, 16)];
+                if (pc.riverType == 0) continue;
+                placedWater++;
+                // 该点 8 邻最低旱地（短板参照）
+                double rimMin = Double.MAX_VALUE;
+                for (int dj = -1; dj <= 1; dj++) {
+                    for (int di = -1; di <= 1; di++) {
+                        if (di == 0 && dj == 0) continue;
+                        double nx = wx + di, nz = wz + dj;
+                        int nbx = (int) Math.floor(nx * hs2), nbz = (int) Math.floor(nz * hs2);
+                        com.geogenesis.worldgen.terrain.Cell nc = gt.getChunkCells(nbx >> 4, nbz >> 4)
+                                [Math.floorMod(nbx, 16) * 16 + Math.floorMod(nbz, 16)];
+                        if (nc.riverType != 0) continue;
+                        rimMin = Math.min(rimMin, nc.height);
+                    }
+                }
+                double perch = rimMin == Double.MAX_VALUE ? 0 : pc.riverSurfaceY - rimMin;
+                RiverLineNetwork.RiverLineHit h = net.sample(wx, wz);
+                boolean lake = h != null && h.isLake();
+                boolean river = h != null && !h.isLake()
+                        && h.distToCenter() <= Math.max(1.0, h.width() * 1.5);
+                if (lake) {
+                    cntLake++;
+                    sumPerchLake += perch;
+                    nPerchLake++;
+                    worstLake = Math.max(worstLake, perch);
+                } else if (river) {
+                    cntRiver++;
+                    sumPerchRiver += perch;
+                    nPerchRiver++;
+                    worstRiver = Math.max(worstRiver, perch);
+                } else {
+                    byNeither++;
+                }
+            }
+        }
+        System.out.printf("  已放置水格 %d ⇒ 湖 %d（%.1f%%）、河 %d（%.1f%%）、无法归属 %d%n",
+                placedWater, cntLake, 100.0 * cntLake / Math.max(1, placedWater),
+                cntRiver, 100.0 * cntRiver / Math.max(1, placedWater), byNeither);
+        System.out.printf("  ★ 短板违反（水位−紧邻最低旱地）：湖 平均 %.2f 最坏 %.2f 块；"
+                        + "河 平均 %.2f 最坏 %.2f 块%n",
+                nPerchLake == 0 ? 0 : sumPerchLake / nPerchLake, worstLake,
+                nPerchRiver == 0 ? 0 : sumPerchRiver / nPerchRiver, worstRiver);
+        System.out.println("  判读：悬空量主要落在【河】还是【湖】⇒ 定责到对应子系统。");
     }
 }
