@@ -280,9 +280,84 @@ public final class ErosionSeamProbe {
             pngView(gen, wuX, wuZ, 192, 1, "build/seam/hillshade_at.png",
                     "山体阴影（1wu/px，±192wu）");
             waterView(gen, wuX, wuZ, 96, 1, "build/seam/water_view.png");
+            sectionLakeShortboard(gen, wuX, wuZ, 96);
         } catch (Exception e) {
-            System.out.println("     PNG 渲染失败: " + e);
+            System.out.println("     审计失败: " + e);
         }
+    }
+
+    // ==================================================================
+    // [5] ★ 湖泊短板审计：已放置水位 vs 其紧邻旱地的最低高度
+    // ==================================================================
+
+    /**
+     * 对窗口内每个【已放置水体】（按水位分组）计算：
+     * <ul>
+     *   <li>{@code level} = 该水体所有水格的 {@code riverSurfaceY}（湖面为常量）；</li>
+     *   <li>{@code rimMin} = 紧邻该水体的【非水格】地面高度的最小值（= 真实盆沿短板）；</li>
+     *   <li>{@code 违反} = level − rimMin。&gt;0 ⇒ 水会从该处流走却被硬放住 ⇒ 短板被违反。</li>
+     * </ul>
+     * <p>这是"水位不按短板"的<b>直接量化</b>：违反值就是水面上方多出来的那截水柱。</p>
+     */
+    private static void sectionLakeShortboard(CellGenerator gen, double wuX, double wuZ, int halfWu) {
+        double hs = gen.params().horizontalScale();
+        GeoGenesisTerrain t = new GeoGenesisTerrain(gen);
+        int bx0 = (int) Math.floor((wuX - halfWu) * hs), bx1 = (int) Math.floor((wuX + halfWu) * hs);
+        int bz0 = (int) Math.floor((wuZ - halfWu) * hs), bz1 = (int) Math.floor((wuZ + halfWu) * hs);
+        // key = 水位×1000（湖面为常量 ⇒ 同一水体同 key）；value = {level, rimMin, cells}
+        java.util.TreeMap<Long, double[]> bodies = new java.util.TreeMap<>();
+        int waterCells = 0;
+        for (int cx = bx0 >> 4; cx <= bx1 >> 4; cx++) {
+            for (int cz = bz0 >> 4; cz <= bz1 >> 4; cz++) {
+                Cell[] cs = t.getChunkCells(cx, cz);
+                for (int lx = 0; lx < 16; lx++) {
+                    for (int lz = 0; lz < 16; lz++) {
+                        Cell c = cs[lx * 16 + lz];
+                        if (c.riverType != 0) {
+                            waterCells++;
+                            long key = Math.round(c.riverSurfaceY * 1000.0);
+                            double[] b = bodies.computeIfAbsent(key,
+                                    k -> new double[]{c.riverSurfaceY, Double.MAX_VALUE, 0});
+                            b[2]++;
+                            continue;
+                        }
+                        // 旱地：查 8 邻是否有水，若有则把本格高度记入该水体的盆沿
+                        int bx = cx * 16 + lx, bz = cz * 16 + lz;
+                        for (int dx = -1; dx <= 1; dx++) {
+                            for (int dz = -1; dz <= 1; dz++) {
+                                if (dx == 0 && dz == 0) continue;
+                                int nbx = bx + dx, nbz = bz + dz;
+                                Cell nb = t.getChunkCells(nbx >> 4, nbz >> 4)
+                                        [Math.floorMod(nbx, 16) * 16 + Math.floorMod(nbz, 16)];
+                                if (nb.riverType == 0) continue;
+                                long key = Math.round(nb.riverSurfaceY * 1000.0);
+                                bodies.computeIfAbsent(key,
+                                        k -> new double[]{nb.riverSurfaceY, Double.MAX_VALUE, 0})[1] =
+                                        Math.min(bodies.get(key)[1], c.height);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println();
+        System.out.printf("[5] ★ 湖泊短板审计（窗口 ±%d wu，水格 %d，水体 %d）%n",
+                halfWu, waterCells, bodies.size());
+        System.out.println("     水面Y      水格数   紧邻旱地最低(rimMin)   违反(level−rimMin)");
+        int violations = 0;
+        double worst = 0;
+        for (java.util.Map.Entry<Long, double[]> e : bodies.entrySet()) {
+            double[] b = e.getValue();
+            if (b[2] < 4) continue;                       // 过滤碎屑
+            if (b[1] == Double.MAX_VALUE) continue;       // 盆沿在窗外
+            double v = b[0] - b[1];
+            if (v > 0.5) violations++;
+            worst = Math.max(worst, v);
+            System.out.printf("     %8.3f   %6d      %10.3f          %+.3f%s%n",
+                    b[0], (int) b[2], b[1], v, v > 0.5 ? "  ← 违反" : "");
+        }
+        System.out.printf("    → 违反(>0.5 块)的水体 %d 个；最坏违反 = %+.3f 块%n", violations, worst);
+        System.out.println("    判读：违反值 = 该水体上方多出的水柱高度（= 水该流走却没流走的那截）。");
     }
 
     /**
