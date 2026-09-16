@@ -438,6 +438,9 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   层调制竖直段 **6.31 < 8.25** · 分量开关恒 0 · 性能 **0.0584 us/次**。
 - **未做（如实记录）**：**配置界面未加**（核心"能开关"已达成；TOML 可直接编辑、
   Forge 标准界面可见；本项目配置界面是自定义绘制 UI，加面板风险高）·
+  —— **⚠️ 更正（2026-09-16 核查）：此条已过时** —— `CavePanel`（「洞穴」页签）
+  **已实现并接入配置屏**（`GeoGenesisConfigScreen.TAB_NAMES` 含「洞穴」，
+  每屏 `cavePanel.buildFromConfig()` 从配置回读，`CaveShape.markConfigDirty()` 热刷新）·
   `F_CHEESE` 分量与 `CAVERN_Y_SCALE`/`CHEESE_Y_SCALE` **声明未用**（已标注）·
   实机确认。
 
@@ -539,6 +542,9 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   ② 稀有特征的密度**不能直数窗口内的个数**（Poisson 噪声）：改用
      **放大 presence 后线性折算**；探针默认窗口 256→**512**。
 - **未做**：化石 · 实机目检。
+  —— **⚠️ 更正（2026-09-16 核查）：化石【不需要自研】** —— 原版 `fossil_upper/lower`
+  已在 `desert` / `swamp` / `mangrove_swamp` 生成（1.20.1 datapack 实证），
+  而本项目 BASIN(干旱)→`desert`、LAKE→`swamp` ⇒ **已自动获得**。详见「原版复用边界」。
 
 ## 当前工作焦点（2026-09-15 矿脉系统）
 
@@ -639,6 +645,12 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   （按固定 z 匹配会让 15/16 列无数据 → 图上出现规则黑条带，实测踩过）。
 - **未做（如实记录）**：洞穴 biome（TF 会在洞里写 dripstone 群系 + 放钟乳石特征）、洞穴装饰、
   洞穴与矿脉/地下水联动。洞内方块仍是围岩岩性（岩性映射照常生效）。
+  —— **⚠️ 更正（2026-09-16 核查）：以上三条【均已实现或已由原版提供】，此条已过时**：
+  ① **洞穴群系已实现**（`CaveBiomeSelector` + `[Caves] caveBiomesEnabled`，判据见 `runCaveBiomeProbe`）；
+  ② **洞穴装饰由原版免费提供**（我们只负责选群系，钟乳石/苔藓/发光浆果由
+  `applyBiomeDecoration` 按群系放置 —— 见「原版复用边界」）；
+  ③ **洞穴↔矿脉联动已实现**（`OreVeins.veinAtLinked` + `VEIN_EXPOSURE_MUL`，判据 `OreVeinProbe[6]`）。
+  （"洞穴↔地下水联动"仍未见独立实现，如需请另立。）
 - **验证覆盖的诚实说明**：探针验证的是**几何**；`CaveCarver` 是极薄适配器，
   端到端需 `runClient` 实机挖洞 —— **现有探针无法覆盖 MC 侧方块写入**。
 - **`CACHE_SCHEMA_VERSION` 未升**：该版本号服务**预览磁盘缓存**，洞穴只改 chunk 方块、
