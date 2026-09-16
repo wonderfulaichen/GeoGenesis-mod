@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// 1-block-precision water shortboard audit (2026-09-17): fixes a 4.3x over-statement
+//   gradlew runAccurateWaterAuditProbe [-PprobeArgs="seed blockX blockZ radiusBlocks"]
+task runAccurateWaterAuditProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.AccurateWaterAuditProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Lake true-outlet measurement + coarse-to-fine sampling A/B (2026-09-17):
 //   gradlew runLakeOutletProbe [-PprobeArgs="seed wuX wuZ"]
 task runLakeOutletProbe(type: JavaExec) {
