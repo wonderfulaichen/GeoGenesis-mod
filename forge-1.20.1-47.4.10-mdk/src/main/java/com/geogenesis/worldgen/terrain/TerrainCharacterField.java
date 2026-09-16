@@ -87,7 +87,26 @@ public final class TerrainCharacterField {
     private final Noise warpX, warpZ;
 
     /**
-     * 域扭曲幅度默认值（块）。★ 2026-09-16：<b>40.0（启用）</b> —— 用于消除轴向对齐缺陷。
+     * 域扭曲幅度默认值（块）。★ 2026-09-16：<b>0.0（关闭）</b>。
+     *
+     * <p><b>⚠⚠ 本值曾短暂设为 40.0，已因【实机回归】回退（2026-09-16）。</b>
+     * 用户实机反馈：<b>河流与湖泊都出问题了</b>（而当时
+     * {@code runFlowAccumProbe} 仍报 {@code status=PASS}、{@code border} 甚至改善到 0.764）。
+     * ⇒ <b>说明当年验收用的门禁子集【抓不住这个回归】</b>：本轮只跑了
+     * FlowAccum / LandE / ChunkBorder / Ore / Cave* / TypeAxis，
+     * <b>一个湖泊探针都没跑</b>（{@code runLake*} 系列），也没跑
+     * {@code runCoastline*} / {@code runHandoffPickupProbe} / {@code runSeamCrossProbe} 等河网口径。
+     * <b>教训：PASS 不等于安全 —— 只说明"我选的那几个门禁没报警"。</b></p>
+     *
+     * <p><b>⚠ 再启用前必须做的事</b>（按此顺序，缺一不可）：
+     * ① 先跑<b>湖泊系列</b>（LakeSurvey / LakeShape / LakeEdge / LakeLocate / LakeBasin）；
+     * ② 再跑<b>河网全口径</b>（HandoffPickup / SeamCross / BankProfile / SourceValley / RiverLineWidth…）；
+     * ③ 最后<b>必须用户实机目视</b>（改地形大尺度位置的改动一律须目检）。
+     * 只凭 {@code runFlowAccumProbe} 单条 PASS 就启用 = <b>重复本次的错</b>。</p>
+     *
+     * <h4>下方"取值依据"表为 2026-09-16 的 A/B 实测数据，【保留供参考】——
+     * 它仍是有效证据（说明域扭曲本身不产生断裂、且能改善轴向对齐），
+     * 但<b>它不足以证明"启用后世界仍然正确"</b>。</h4>
      *
      * <h4>取值依据（5 种子 × 4 相位实测量化，见 {@code docs/plans/轴向对齐与域扭曲-预研}）</h4>
      * <table>
@@ -104,12 +123,11 @@ public final class TerrainCharacterField {
      * <b>amp=40 的 LandE 最坏点仍在原位置（幅度 +0.3%）= 不引入新跳变源</b>；
      * amp=80 则出现<b>新位置</b>的跳变。而两档的排水哨兵都<b>改善</b>（1.845 → 0.764 / 1.032）。</p>
      *
-     * <h4>⚠ 这条改动的性质</h4>
-     * <p>它会<b>改变所有世界的地形大尺度位置</b>（类型场被形变）⇒ 旧存档/旧预览缓存失效。
-     * 故已同步 bump {@code PreviewDisplay.CACHE_SCHEMA_VERSION}，
-     * 且<b>须实机复验</b>。若观感不佳，把本常量改回 {@code 0.0} 即完全回退（无其它牵连）。</p>
+     * <h4>⚠ 性质</h4>
+     * <p>启用它会<b>改变所有世界的地形大尺度位置</b>（类型场被形变）⇒ 旧存档/预览缓存失效。
+     * <b>当前默认 0.0 = 关闭 = 原行为。</b></p>
      */
-    private static final double WARP_AMP_DEFAULT = 40.0;
+    private static final double WARP_AMP_DEFAULT = 0.0;
 
     /**
      * 域扭曲幅度（块）。★ 2026-09-16：由 {@code static final 0.0} 改为<b>可设</b>
