@@ -124,8 +124,14 @@ public final class ErosionSeamProbe {
             Cell cc = gen.sampleWu(xs[i], wuZ);
             double se = cc.landFeat == null ? -1 : cc.landFeat.singleEdifice;
             double fe = cc.landFeat == null ? -1 : cc.landFeat.fieldEdifice;
-            System.out.printf("    %6.1f   %12.8f   %10.3f   %9.7f   %6.3f   %9.5f  %9.5f  %s%s%n",
-                    xs[i], ds[i], hh[i], dd, dh, se, fe, cc.terrainType, mark);
+            // ★ 追加"裸石判定"：仅用 gradient（零 MC 依赖）。
+            //   ⚠ 不得调用 BiomeClassifier.surfaceOf —— 它依赖 Biomes 注册表，
+            //     探针进程无法引导（实测 "Not bootstrapped" 崩溃）；
+            //     项目铁律：不自建 registry 桩（"桩≠真"漂移）⇒ 只报 gradient 与阈值判定。
+            System.out.printf("    %6.1f   %12.8f   %10.3f   %9.7f   %6.3f   %9.5f  %9.5f  %s"
+                            + "   grad=%6.3f 裸石=%s%s%n",
+                    xs[i], ds[i], hh[i], dd, dh, se, fe, cc.terrainType,
+                    cc.gradient, cc.gradient > 0.40 ? "是" : "否", mark);
         }
         System.out.printf("    → max|ΔY| = %.3f 块 @ x=%.0f（均值 %.3f 块）⇒ 显著比 = %.1f×%n",
                 maxDH, atH, meanDH, meanDH <= 1e-9 ? 0.0 : maxDH / meanDH);
@@ -147,8 +153,113 @@ public final class ErosionSeamProbe {
     private static void sectionMap(CellGenerator gen, double wuX, double wuZ) {
         // ★ 两级视野：近了看"方块/裸岩"，远了看"类型边界直线"（长直线尺度可达上千块）。
         // ⚠ 步长必须足够细：圆/椭圆在粗格上会被画成"菱形"（走样）⇒ 会误导成"直边缺陷"。
-        mapView(gen, wuX, wuZ, 48, 2, "近景 ±48wu / 2wu");
-        mapView(gen, wuX, wuZ, 192, 6, "远景 ±192wu / 6wu");
+        mapView(gen, wuX, wuZ, 48, 2, "近景（地形类型）±48wu / 2wu");
+        // ★ 与山体阴影【同尺度】的类型图：判断"山体边缘的直边"是否 = 类型场边界。
+        mapView(gen, wuX, wuZ, 384, 12, "同尺度类型图（对照山体阴影）±384wu / 12wu");
+        // ★ 治本纠正：**类型在游戏里看不见**。用户看的是几何 ⇒ 必须看"可见量"。
+        //   ASCII 在起伏地形上不够判别 ⇒ 再渲染山体阴影 PNG（可当图片读入细看）。
+        stepMapView(gen, wuX, wuZ, 96, 3, "台阶图（可见几何）±96wu / 3wu");
+        try {
+            pngView(gen, wuX, wuZ, 192, 1, "build/seam/hillshade_at.png",
+                    "山体阴影（1wu/px，±192wu）");
+            pngView(gen, wuX, wuZ, 768, 4, "build/seam/hillshade_wide.png",
+                    "山体阴影（4wu/px，±768wu）");
+        } catch (Exception e) {
+            System.out.println("     PNG 渲染失败: " + e);
+        }
+    }
+
+    /**
+     * 图 D：把该坐标附近渲染成<b>山体阴影 PNG</b>（灰度），供人眼判断"直线/棱线"在哪。
+     *
+     * <p>夸张系数按 {@code |∇h|} 的 p99 自动归一 ⇒ 平缓地形也能显出结构（否则一片均匀灰）。
+     * 光源来自西北。仅读 {@code sampleWu().height}（真实最终地形，零近似）。</p>
+     */
+    private static void pngView(CellGenerator gen, double wuX, double wuZ, int half, int step,
+                                String path, String title) throws java.io.IOException {
+        int n = 2 * half / step + 1;
+        double[][] h = new double[n][n];
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                h[j][i] = gen.sampleWu(wuX - half + i * step, wuZ - half + j * step).height;
+            }
+        }
+        double[][] gx = new double[n][n];
+        double[][] gy = new double[n][n];
+        double[] mags = new double[n * n];
+        int k = 0;
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                gx[j][i] = ((i + 1 < n ? h[j][i + 1] : h[j][i]) - (i > 0 ? h[j][i - 1] : h[j][i]))
+                        / (2.0 * step);
+                gy[j][i] = ((j + 1 < n ? h[j + 1][i] : h[j][i]) - (j > 0 ? h[j - 1][i] : h[j][i]))
+                        / (2.0 * step);
+                mags[k++] = Math.hypot(gx[j][i], gy[j][i]);
+            }
+        }
+        double[] sorted = Arrays.copyOf(mags, mags.length);
+        Arrays.sort(sorted);
+        double p99 = Math.max(1e-6, sorted[(int) (sorted.length * 0.99)]);
+        java.awt.image.BufferedImage img =
+                new java.awt.image.BufferedImage(n, n, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                double nx = gx[j][i] / p99;
+                double ny = gy[j][i] / p99;
+                double shade = 0.65 + 0.35 * (-nx * 0.7071 - ny * 0.7071);
+                int g = (int) Math.round(255 * Math.max(0.0, Math.min(1.0, shade)));
+                img.setRGB(i, j, (g << 16) | (g << 8) | g);
+            }
+        }
+        java.io.File f = new java.io.File(path);
+        if (f.getParentFile() != null) f.getParentFile().mkdirs();
+        javax.imageio.ImageIO.write(img, "png", f);
+        System.out.printf("     已写图 D「%s」→ %s（%d×%d px，p99|∇|=%.4f 块/wu）%n",
+                title, f.getAbsolutePath(), n, n, p99);
+    }
+
+    /**
+     * 图 C：<b>逐格 |ΔY| 台阶图</b> —— 只读真实最终地形 {@code sampleWu().height}（零近似）。
+     *
+     * <p>符号 = 该格到右邻/下邻的最大高度差（块/格）：
+     * {@code .} &lt;0.5 · {@code :} &lt;1 · {@code o} &lt;2 · {@code #} ≥2。
+     * 顶部标尺 {@code ^} 标出 tile 网格线（每 48wu）⇒ <b>异常是否与分块对齐，一眼可判</b>。</p>
+     *
+     * <p>⚠ 阈值是【绝对值】而非常规坡度归一：本项目地形平缓（实测该处 ~0.03wu/格），
+     * 故正常坡在图上是一片 {@code .}，<b>任何真台阶都会以 {@code : o #} 凸显出来</b>。</p>
+     */
+    private static void stepMapView(CellGenerator gen, double wuX, double wuZ,
+                                    int half, int step, String title) {
+        int n = 2 * half / step + 1;
+        double[][] h = new double[n][n];
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                h[j][i] = gen.sampleWu(wuX - half + i * step, wuZ - half + j * step).height;
+            }
+        }
+        System.out.println();
+        System.out.printf("[1d] %s：中心 wu=(%.0f,%.0f)，%d×%d 格，每格 %dwu%n",
+                title, wuX, wuZ, n, n, step);
+        System.out.println("     图C 台阶 |ΔY|（块/格）：. <0.5   : <1   o <2   # ≥2");
+        System.out.println("     标尺 ^ = tile 网格线（每 48wu）；若某条直线恒在 ^ 上 ⇒ 分块伪影");
+        StringBuilder ruler = new StringBuilder("     ");
+        for (int i = 0; i < n; i++) {
+            double x = wuX - half + i * step;
+            boolean tile = Math.floorDiv((int) Math.floor(x), TILE_CENTER) * TILE_CENTER
+                    == (int) Math.floor(x);
+            ruler.append(tile ? '^' : ' ');
+        }
+        System.out.println(ruler);
+        for (int j = 0; j < n; j++) {
+            StringBuilder sb = new StringBuilder("     ");
+            for (int i = 0; i < n; i++) {
+                double s = 0;
+                if (i + 1 < n) s = Math.max(s, Math.abs(h[j][i + 1] - h[j][i]));
+                if (j + 1 < n) s = Math.max(s, Math.abs(h[j + 1][i] - h[j][i]));
+                sb.append(s < 0.5 ? '.' : (s < 1.0 ? ':' : (s < 2.0 ? 'o' : '#')));
+            }
+            System.out.println(sb);
+        }
     }
 
     /**
@@ -170,6 +281,31 @@ public final class ErosionSeamProbe {
         }
         System.out.println();
         System.out.printf("[1c] %s：中心 wu=(%.0f,%.0f)，%d×%d 格%n", title, wuX, wuZ, n, n);
+        // ★ 钉死"块状量化"来自哪条路径：对比 sample()（无侵蚀）与 sampleWu()（含侵蚀 tile）。
+        //   指标：某个坐标的 terrainType 是否等于【其所在 48wu tile 中心】的 terrainType。
+        int sameNoEro = 0, sameEro = 0, total = 0, diffTwo = 0;
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                double x = wuX - half + i * step, z = wuZ - half + j * step;
+                int tx = Math.floorDiv((int) Math.floor(x), TILE_CENTER) * TILE_CENTER + TILE_CENTER / 2;
+                int tz = Math.floorDiv((int) Math.floor(z), TILE_CENTER) * TILE_CENTER + TILE_CENTER / 2;
+                TerrainClass a = gen.sample(x, z).terrainType;
+                TerrainClass b = gen.sampleWu(x, z).terrainType;
+                TerrainClass ac = gen.sample(tx, tz).terrainType;
+                TerrainClass bc = gen.sampleWu(tx, tz).terrainType;
+                total++;
+                if (a == ac) sameNoEro++;
+                if (b == bc) sameEro++;
+                if (a != b) diffTwo++;
+            }
+        }
+        System.out.printf("     ★ 类型是否等于【本 48wu tile 中心】的类型（块内一致性）：%n");
+        System.out.printf("        sample()（无侵蚀）  : %d/%d = %.1f%%%n",
+                sameNoEro, total, 100.0 * sameNoEro / total);
+        System.out.printf("        sampleWu()（含侵蚀）: %d/%d = %.1f%%%n",
+                sameEro, total, 100.0 * sameEro / total);
+        System.out.printf("        两条路径类型不同的格 : %d/%d = %.1f%%%n",
+                diffTwo, total, 100.0 * diffTwo / total);
         System.out.println("     图A 主导类型 B盆地 P平原 H丘陵 L高原 M山地 O海 D深海（+ = tile 网格线）");
         System.out.println("     图B 边界走向 | 竖走近  - 横走近  + 交汇  . 无边（# = 陡坡裸岩）");
         StringBuilder a = new StringBuilder();
