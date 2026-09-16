@@ -54,7 +54,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `client/preview/WorldHeightBar.java` | 参数页：世界高度柱状图（柱图 + 横排滑块 maxY/山脊上限/海平面/世界底 + 色点标记连线 + 内嵌高度预设按钮，可折叠） |
 | `client/preview/SnowLineChart.java` | 参数页：雪线双曲线（温度/纬度对雪线影响，可折叠） |
 | `client/preview/ScalePreview.java` | 参数页：尺度预览（垂直尺度柱对比 + 水平尺度采样密度，水平尺度滑块置于图右侧，可折叠） |
-| `GeoGenesisConfig.java` | Forge COMMON 配置（地质过程参数：continent*/ocean spline 控制点/coast/seabed/province*/land process/world height，详见 `ARCHITECTURE.md` 配置表） |
+| `GeoGenesisConfig.java` | Forge COMMON 配置（地质过程参数：continent*/ocean spline 控制点/coast/seabed/land process/world height/**Caves**/**Ores**，详见 `ARCHITECTURE.md` 配置表）。⚠ **2026-09-16 核定：`province*` 系列仍是零消费的死配置**（ARCHITECTURE 已如实标注），本行原把它列入"地质过程参数"易误导，已移除；**另新增 `Caves`（档位+旋钮）与 `Ores`（`oreVeinsEnabled` 总开关）两段** |
 | `worldgen/terrain/GeoGenesisTerrain.java` | 零 MC 依赖地形引擎门面（缓存 Cell + generateChunk 装配侵蚀/河流） |
 | `worldgen/terrain/CellGenerator.java` | 统一连续场采样 + 实现 HeightProvider + 连续分类 |
 | `worldgen/terrain/TerrainCharacterField.java` | 类型场：**规则网格** Voronoi 高斯距离权重（400wu 格、σ=200、7×7 窗口、`WARP_AMP=0`）→ 类型主导边界偏轴对齐（见「已知遗留」） |
@@ -758,6 +758,15 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   - **已知遗留**：border.maxSurfaceDelta 1.209→1.839、border.violations 0→**2**（容差 1.5，发生率 1.6e-7）——分支增多后穿出 region 边界的河段（19.27%）暴露"跨 region 水面无继承"既有范式遗留，实机不可见，未引入跨 region 继承机制，status=REVIEW 与历史基线一致。
     - ⚠️ **更正（2026-09-13）**：本条的「跨 region 水面无继承」与「未引入继承机制」**均已过时** —— 继承机制已于 **2026-09-07 加入**（`RiverLineRegion.OutletSeed` 携带 `surfaceY`/`accum`/`level`；`RiverLineNetwork.region()` 双-pass 吸收 4 邻出口作**强制续流源**，另有 `bestHandoffStart` 容错与"并入邻河谷"处理）。且 `borderStats` 量的是 **chunk 边界**（每 16 格）水面差，**不是 region**。
   - **待做**：用户 runClient 实机目检（小溪可见/有水、宽深渐变、分支的分支）；可选打磨：源头渐入（headwater taper）、宽度沿程单调化、蜿蜒振幅/波长挂钩河宽。
+    —— **⚠️ 更正（2026-09-16 核查）：上面「可选打磨」三项【均已实现】，此句已过时**：
+    ① **源头渐入已实现** —— `RiverLineNetwork.HEAD_TAPER_NODES`(6) + `headTaper()`（smoothstep
+    无拐点）+ `HEAD_MIN_WIDTH_FRACTION`/`HEAD_MIN_DEPTH_FRACTION`，且**只对真源头淡出**
+    （`taperHead = Double.isNaN(forcedSrcH)`，跨 region 续流不淡出，否则会在瓦片缝重现宽度骤缩）；
+    ② **宽度/深度沿程单调化已实现** —— `clampMonotonicDownstream(surf, wid, dep)`
+    （2026-08-29，对水力几何三数组同时做"下游不抬床"约束）；
+    ③ **蜿蜒振幅挂钩河宽已实现** —— `meanderHeadArc = HEAD_TAPER_NODES × gridCell`
+    （注释明写"蜿蜒振幅随流量/河宽增大，河源细流本就近乎顺直"）。
+    另「实机目检」也已由用户多轮完成（2026-08-29 起的各轮均有"用户实测/用户反馈"记录）。
 
 ## 当前工作焦点（2026-08-29 旧格点水文清理）
 
