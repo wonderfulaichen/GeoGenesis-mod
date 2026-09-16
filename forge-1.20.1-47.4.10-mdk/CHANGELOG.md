@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 修复 / Fixed
 
+- **★★★ 删除自研紫水晶洞 —— 原版 `amethyst_geode` 早就在生成（2026-09-16，重复实现第四次）**：
+  - **发现**：审计 `[DECOR-AUDIT]` 的逐槽位输出显示 `[2] LOCAL_MODIFICATIONS = 1`
+    —— 我当时只看了 `[7] UNDERGROUND_DECORATION = 0` 就断言"晶洞不是免费的"，**看漏了一行**。
+    从 1.20.1 `client.jar` 解出原版 datapack 坐实：`jungle.json` 的 `features[2]`
+    = `["minecraft:amethyst_geode"]`（每个陆地群系都是），`placed_feature` 的
+    `rarity_filter.chance = 24` ⇒ 与自研探针对照过的"原版 1/24"**完全吻合**。
+  - **后果**：自研 `GeodeShape`（约 400 行 + 探针 + 方块映射）是**重复实现**，
+    实际密度 ≈ 1/24 + 1/25 ≈ **翻倍**。
+  - **处置**：**删除** `worldgen/geode/GeodeShape.java` + `runGeodeProbe` 任务
+    + diagnostics 的 `GeodeProbe.java` + 生成器的 `GEODE_BLOCKS` 映射 / 播种 / 逐体素调用。
+    改用原版 ⇒ 白拿 **95% 裂纹**（`crack.generate_crack_chance = 0.95`）、
+    晶芽、分层与噪声扰动；密度回 **1/24**。
+  - **代价与恢复路径**：失去"只在玄武岩/安山岩（杏仁状玄武岩）"的地质门控。
+    若日后要恢复，正解是**复用原版 `GeodeFeature` + 自定义 `placement` 门控**，
+    而非重写形状（被删的就是那个重写版）。
+  - **★ 连带结论**：**化石也不需要自研** —— 原版 `fossil_upper/lower` 在
+    `desert` / `swamp` 生成（1.20.1 datapack 证实），而本项目 BASIN(干旱)→`desert`、
+    LAKE→`swamp` ⇒ **已自动获得**。原 P2-7「化石」按此关闭
+    （"沉积岩中的骨块"若要另做，属新设计而非补缺口）。
+  - **★ 教训（第四次同型：岩块团块 / 金属矿 / 紫晶洞 / 化石）**：
+    **动笔前先查"原版是否已经在生成这件事"** —— 判据是：
+    `applyBiomeDecoration` 委托 `super` ⇒ 只要该特征在群系的
+    `BiomeGenerationSettings` 里，它就**一定在生成**。
+  - ⚠ **未 bump `PreviewDisplay.CACHE_SCHEMA_VERSION`**：预览不渲染装饰/晶洞，
+    `Cell`/地形场不变。
+
 - **★★ 原版"岩块团块"装饰正在打散本项目的水平岩层（2026-09-16，含一处事实更正）**：
   - **发现途径**：追查"为何要自研矿脉"时，发现 `OreVeins` / `GeoGenesisGenerator` 的
     javadoc 断言"没有 `NoiseSettings` ⇒ 原版 `ore_*` 用不了"——**与事实不符**：

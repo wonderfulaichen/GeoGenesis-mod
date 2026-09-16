@@ -27,7 +27,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `worldgen/cave/CaveShape.java` | ★ 2026-09-15：洞穴**几何**（**零 MC 依赖纯函数**，可被探针直接复用）；2D 场驱动柱体切挖 + 岩性门控 |
 | `worldgen/cave/CaveCarver.java` | ★ 2026-09-15：洞穴雕刻的 **MC 适配器**（只负责把方块挖成空气），几何全部委托 `CaveShape` |
 | `worldgen/ore/OreVeins.java` | ★ 2026-09-15：矿脉**纯函数**（**零 MC 依赖**）：成矿带 2D 门控 + 宿主岩/深度带 + 3D 等值面脉体；矿种按岩性成矿 |
-| `worldgen/geode/GeodeShape.java` | ★ 2026-09-15：紫晶洞**纯函数**（**零 MC 依赖，无噪声**：形状由整数哈希驱动）：岩性门控（玄武岩/安山岩 = 杏仁状玄武岩）+ 深度带 + 3D 晶格候选椭球 + 按归一化半径分档的同心壳层 |
+| ~~`worldgen/geode/GeodeShape.java`~~ | ⚠️ **已删除（2026-09-16）**：**原版 `amethyst_geode` 早就在生成**（`LOCAL_MODIFICATIONS` 槽位；1.20.1 datapack `jungle.json` 的 `features[2]` 证实）⇒ 自研属**重复实现**，且使晶洞密度翻倍（≈1/24+1/25）。改用原版（自带 95% 裂纹/晶芽/分层）。若要恢复"岩性门控"，正解是"原版 `GeodeFeature` + 自定义 placement"，而非重写形状 |
 | `GeoGenesisBiomeSource.java` | BiomeSource，按 Cell 气候选原版群系 |
 | ~~`worldgen/generator/BiomeMapper.java`~~ | ⚠️ 已删除（2026-07-13）：群系映射合并入 `BiomeClassifier.pickKey`，不再有独立文件 |
 | `worldgen/climate/BiomeClassifier.java` | 零依赖群系分类（`classify(Cell)→BiomeClass` 枚举，无颜色）；★ T12 起 `soilVariant` 做「岩性→群系」变体 |
@@ -415,15 +415,30 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
   （不破地表）；③ **气候耦合 + 交错**（干旱/极寒繁茂恒 0）；④ 与洞穴几何一致
   （非 NONE ⇒ 必为洞穴）；⑤ 单次裁定 **0.066 us**。
 - **守门**：`runClimateBiomeProbe` **非法邻接 0** · `runSoilBiomeCrosstabProbe` ALL PASS。
-- **未做（如实记录）**：`DEEP_DARK` · 化石（沉积岩中的骨块 —— 晶洞已做，见下）· 实机进洞确认。
+- **未做（如实记录）**：`DEEP_DARK` · 实机进洞确认。
+- **★ 2026-09-16 更正**：**化石与紫水晶洞都【不需要自研】—— 原版已在生成**：
+  化石 `fossil_upper/lower` 在 `desert`/`swamp`（我们的 BASIN(干旱)→desert、LAKE→swamp
+  ⇒ 已自动获得）；紫水晶洞在 `LOCAL_MODIFICATIONS`（**每个陆地群系都有**）。
+  详见下方「紫晶洞」段的删除记录。
 - **★ 顺手修的探针雷**：`OreVeinProbe` 默认 `N=160`（< 成矿带特征尺度 190）时
   连通性统计被窗口边界截断 ⇒ 判据5 误报 FAIL。已把默认调至 **512**，
   避免后人无参数运行踩坑（本项目在"窗口不足一个特征"上已踩过两次）。
 
-## 当前工作焦点（2026-09-15 紫晶洞）
+## 历史焦点（2026-09-15 紫晶洞 —— ★ 2026-09-16 已删除，改用原版）
 
-- **★ 补齐"地下探索奖励"的最后一块**：此前地下只有岩层 + 洞穴 + 矿脉，没有任何"值得专程去找"的结构。
-- **实现**：`worldgen/geode/GeodeShape.java` **零 MC 依赖纯函数**（照 `CaveShape`/`OreVeins` 范式）
+> **结论：自研晶洞是重复实现，已删除。**
+> 原版 `amethyst_geode` **一直在生成**（`LOCAL_MODIFICATIONS` 槽位；1.20.1 datapack
+> `jungle.json` 的 `features[2]` 即该特征；`placed_feature` 的 `rarity_filter.chance = 24`），
+> 且自带 **95% 裂纹**（`crack.generate_crack_chance = 0.95`）、晶芽、分层与噪声扰动。
+> 我们的 `GeodeShape` + `GEODE_BLOCKS` + `runGeodeProbe` **已全部移除**；
+> 世界密度回到原版 **1/24**（此前 ≈ 1/24 + 1/25 ≈ **翻倍**）。
+> **★ 教训（第四次同型）：动笔前先查"原版是否已经在生成这件事"。**
+> 恢复地质门控的正确形态 = 复用原版 `GeodeFeature` + 自定义 `placement` 门控（非重写形状）。
+
+以下为删除前的设计记录（保留其方法论价值）：
+
+- **原目标**：补齐"地下探索奖励"的最后一块（岩层 + 洞穴 + 矿脉之外的结构）。
+- **原实现**：`GeodeShape` 零 MC 依赖纯函数（照 `CaveShape`/`OreVeins` 范式）
   + 生成器 `GEODE_BLOCKS` 映射（`SMOOTH_BASALT / CALCITE / AMETHYST_BLOCK / BUDDING_AMETHYST / CAVE_AIR`）。
 - **地质依据**：杏仁状玄武岩 —— 岩性门控到**玄武岩/安山岩**（火山岩气孔被热液充填）。
   **被岩层界面切平是正确产状**（杏仁体局限于单一熔岩流），且因此**无需跨体素状态**。

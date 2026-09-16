@@ -1006,20 +1006,6 @@ task runCaveBiomeProbe(type: JavaExec) {
     }
 }
 
-// Geode probe (2026-09-15): 紫晶洞 —— 形状/门控/壳层序/密度/性能。
-//   合成地表+合成岩性逐体素调用 GeodeShape.geodeAt；
-//   晶洞个数用「有命中的候选格数」（依赖"椭球不越出本格"的论证）；
-//   壳层同心序用 dbgCellShape 独立重算归一化半径复核（不信任内部 shellOf）。
-//   gradlew runGeodeProbe [-PprobeArgs="seed spanXY [scan]"]
-task runGeodeProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.geode.GeodeProbe'
-    maxHeapSize = '3g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
 // Ore vein perf probe (2026-09-15): 矿脉性能 ——
 //   矿脉接在方块铺设的逐体素层，既有性能探针只测到地形层 ⇒ 单独补测。
 //   含列级门控/深度剪枝/最坏上界，并与洞穴的 2.48ms/chunk 对照。
