@@ -4,9 +4,10 @@
 
 ## 项目状态
 
-- **当前版本**：`v0.0.1`（早期预览）— 程序化地形 + 气候群系 + 原版群系装饰（植被）+ D8 物理河网 + 湖泊/瀑布
+- **当前版本**：`v0.0.1`（早期预览）— 程序化地形 + 气候群系 + 原版群系装饰（植被）+ D8 物理河网 + 湖泊/瀑布 + **洞穴**（洞穴几何/雕刻 + 地下洞穴群系）+ **地层/构造/侵蚀** + **地质矿脉**（按岩性成矿，**可开关**）
 - **编译状态**：`BUILD SUCCESSFUL`
-- **已知限制**：无洞穴、侵蚀新洼地暂不成湖、河成湖圆管观感、湖岸锯齿（详见 `forge-1.20.1-47.4.10-mdk/CHANGELOG.md`）
+- **已知限制**：类型场轴向对齐缺陷（主导类型边界方向比 0.77~1.50，目标 ≤1.5）· 水面在多段线节点间插值的残差（~1.8 格，**非断裂**）· `WARP_AMP = 0`（域扭曲已实现但未启用）· 湖泊群系映射未做（详见 `forge-1.20.1-47.4.10-mdk/CHANGELOG.md`）
+- **★ 原版复用边界**：世界生成中「原版已经在做」的部分（植被 / 洞穴装饰 / 地牢 / **原版结构** / 紫水晶洞 / 化石 / 顶层雪冰 …）**一律复用原版，不自研**；本项目只自研原版确实没有的（地形本体 / 地层 / 构造 / 侵蚀 / 水文 / 洞穴几何 / 气候分类）。细则见 `AGENTS.md`「原版复用边界」与 `docs/analysis/原版复用对照审计-2026-09-16.md`
 
 ## 河流系统与第三方许可
 
@@ -39,11 +40,13 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 ```
 ├── GeoGenesisMod.java                  # @Mod 入口，注册 CODEC
 ├── config/
-│   └── GeoGenesisConfig.java           # Forge 配置（COMMON/DCLIENT）
+│   ├── GeoGenesisConfig.java           # Forge 配置（COMMON/DCLIENT；含 Caves / Ores 两段开关）
+│   └── ConfigSafe.java                 # 配置容错读取（诊断进程无配置时回退默认，绝不打挂世界生成）
 ├── worldgen/
 │   ├── generator/
 │   │   ├── GeoGenesisGenerator.java    # 主生成器，fillFromNoise / getBaseHeight（非阻塞降级）
-│   │   └── GeoGenesisBiomeSource.java  # BiomeSource（委托 BiomeClassifier）
+│   │   ├── GeoGenesisBiomeSource.java  # BiomeSource（委托 BiomeClassifier）
+│   │   └── VanillaDecorationFilter.java # ★ 注入过滤版 generationSettingsGetter（剔除破坏岩层的原版"岩块团块"）
 │   ├── terrain/
 │   │   ├── GeoGenesisTerrain.java      # 地形引擎门面（chunk Cell 真 LRU 缓存 + 装配侵蚀/水文）
 │   │   ├── CellGenerator.java          # 逐 cell 地形计算 + 侵蚀 tile（terrainEQuick 廉价采样）
@@ -59,6 +62,13 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 │   │   ├── riverline/RiverLineNetwork.java   # D8 河线 + Leopold-Maddock 宽深 + PAVA 水面
 │   │   ├── flowaccum/FlowField.java          # D8 流向 + 汇流累积
 │   │   └── HydrologyBlockCarver.java          # 邻近段 IDW 雕刻
+│   ├── cave/                           # ★ 2026-09-15：洞穴（几何与 MC 适配器分离）
+│   │   ├── CaveShape.java              # 洞穴几何（零 MC 依赖）：空腔 / 层调制 / 隧道
+│   │   ├── CaveCarver.java             # MC 适配器：只把方块挖成空气
+│   │   ├── CaveBiomeSelector.java      # 地下洞穴群系（气候 × 3D 噪声交错）
+│   │   └── CaveConfig.java             # 档位 + 旋钮（REALISTIC / VANILLA_LIKE / MINIMAL / OFF / CUSTOM）
+│   ├── ore/
+│   │   └── OreVeins.java               # ★ 地质矿脉（零 MC 依赖）：成矿带 + 宿主岩/深度带 + 3D 等值面；含总开关
 │   └── climate/
 │       ├── BiomeClassifier.java        # 零依赖群系分类（Whittaker 群区 × 垂直带谱）
 │       ├── WhittakerType.java          # Whittaker 群区
@@ -74,6 +84,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 │       ├── PreviewDisplay.java         # 游戏内预览控件
 │       ├── TerrainPreview.java         # 独立 Swing 预览窗口
 │       ├── GeoGenesisColorReloadListener.java  # 资源重载监听器
+│       ├── CavePanel.java              # 洞穴页签（档位一键切换 + 开关 + 旋钮）
 │       ├── TerrainConfigPanel.java     # 地形配置面板
 │       ├── BasicParamsPanel.java       # 基础参数面板
 │       ├── WorldHeightBar.java         # 世界高度柱状图
