@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 修复 / Fixed
 
+- **★ 原版复用对照审计 + 接回 `spawnOriginalMobs`（2026-09-16）**：
+  - **审计产出**：逐条对照「原版已提供 vs 本项目自研」，形成
+    `docs/analysis/原版复用对照审计-2026-09-16.md`（本地笔记区；`docs/` 被 `.gitignore` 忽略）
+    + `docs/INDEX.md`，并在 `AGENTS.md` 新增「原版复用边界」速查节。
+  - **关键判据**：`applyBiomeDecoration` 委托 `super`（原版实现）⇒ 只要某特征在群系的
+    `BiomeGenerationSettings` 里，它就一定在生成。查证 = 读原版 datapack 的 `features[]` 数组。
+  - **★ 新确认的"白拿"**：**原版结构（村庄 / 要塞 / 废弃矿井 / 古城 / 传送门遗迹…）一直在生成**
+    —— `createStructures` / `createReferences` / `createState` 在 1.20.1 **均非抽象**，
+    我们继承了默认实现（此前文档从未提及，容易误以为"自定义生成器就没有结构"）。
+  - **接回缺口**：`spawnOriginalMobs` 原为空实现 ⇒ 世界生成时**少了初始被动动物批量生成**。
+    现完全照搬 `NoiseBasedChunkGenerator:449-457` 的做法，委托原版
+    `NaturalSpawner.spawnMobsForChunkGeneration(...)`（零新方块/物品，纯复用）。
+  - **两套雪/冰规则（已论证）**：原版 `freeze_top_layer`（按群系温度铺雪/水面结冰）与本项目
+    `cell.isSnow`（海拔雪线）**互补并存**，不冲突：冷群系低海拔由原版铺雪、暖群系高海拔由我们铺雪、
+    冷水体由原版结冰 —— 并集一致。若要"我们的雪线"独占，一行即可（加入过滤器剔除集）；
+    **本次未改**，留作可选项。
+  - **未决（未擅自动）**：金属矿现为「原版打底 + 自研叠加（约原版 1/10）」；
+    改为自研独占会把矿量降到 ~1/10 ⇒ 需重新标定，属**平衡决策**
+    （用户约束：**不新建任何方块/物品**）。
+  - **勘误**：`AGENTS.md` 曾写「`createState` 注入共享地形到 BiomeSource」——**不实**，
+    实际注入在 `ensureEngine`，`createState` 根本没被覆写。
+
 - **★★★ 删除自研紫水晶洞 —— 原版 `amethyst_geode` 早就在生成（2026-09-16，重复实现第四次）**：
   - **发现**：审计 `[DECOR-AUDIT]` 的逐槽位输出显示 `[2] LOCAL_MODIFICATIONS = 1`
     —— 我当时只看了 `[7] UNDERGROUND_DECORATION = 0` 就断言"晶洞不是免费的"，**看漏了一行**。

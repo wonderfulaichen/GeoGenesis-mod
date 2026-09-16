@@ -38,7 +38,10 @@ import net.minecraft.world.level.levelgen.*;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.core.Holder;
+import net.minecraft.world.level.NaturalSpawner;
 import net.minecraft.world.level.NoiseColumn;
+import net.minecraft.world.level.biome.Biome;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -1027,7 +1030,20 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     @Override
     public void spawnOriginalMobs(WorldGenRegion level) {
-        // 暂不自定义生物生成
+        // ★ 2026-09-16：接回原版「世界生成时的初始动物生成」。
+        //   此前为空实现 ⇒ 相比 NoiseBasedChunkGenerator 少了这一次批量生成
+        //   （被动生物偏少）。此处**完全照搬原版做法**（NoiseBasedChunkGenerator
+        //   同名方法：取本 chunk 中心上方所在群系 → 按 decorationSeed 播种 →
+        //   交给原版 NaturalSpawner 处理生成规则），零新方块/物品。
+        //   ⚠ 原版用 NoiseGeneratorSettings.disableMobGeneration() 做门控，
+        //     本项目无该设置 ⇒ 恒定启用；若要开关，应走 GeoGenesisConfig。
+        ChunkPos chunkPos = level.getCenter();
+        Holder<Biome> biome = level.getBiome(
+                chunkPos.getWorldPosition().atY(level.getMaxBuildHeight() - 1));
+        WorldgenRandom random =
+                new WorldgenRandom(new LegacyRandomSource(RandomSupport.generateUniqueSeed()));
+        random.setDecorationSeed(level.getSeed(), chunkPos.getMinBlockX(), chunkPos.getMinBlockZ());
+        NaturalSpawner.spawnMobsForChunkGeneration(level, biome, chunkPos, random);
     }
 
     // ===== 可选覆写（世界预设显示） =====
