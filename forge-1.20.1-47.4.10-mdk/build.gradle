@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Water level decision chain at a specific point (2026-09-17, controlled variables):
+//   gradlew runWaterDecisionChainProbe [-PprobeArgs="seed blockX blockZ"]
+task runWaterDecisionChainProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterDecisionChainProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // 1-block-precision water shortboard audit (2026-09-17): fixes a 4.3x over-statement
 //   gradlew runAccurateWaterAuditProbe [-PprobeArgs="seed blockX blockZ radiusBlocks"]
 task runAccurateWaterAuditProbe(type: JavaExec) {
