@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 修复 / Fixed
 
+- **★ 自研地质矿脉新增总开关 `oreVeinsEnabled` —— 想用纯原版矿的可关闭（2026-09-16）**：
+  - **动机（用户提出）**：能复用原版就别自研；而**已经自研的应给用户"回到原版"的选择权**
+    —— 与 `CaveConfig` 既有的"档位/开关"哲学一致（"游戏性优先，可一键开关"）。
+  - **★ 语义（与洞穴 OFF 的【关键区别】，已写进配置注释与 javadoc）**：
+    洞穴**没有**原版替身（自定义 `ChunkGenerator` 调不了原版 carver）⇒ OFF = 地下无洞穴；
+    而**矿有原版替身** —— 原版 `ore_*` 由 `applyBiomeDecoration` 放置、**始终在生成**，
+    与本开关无关。故本开关 `false` = **关闭自研地质矿脉 ⇒ 只剩原版矿（纯原版体验）**，
+    **不是**"地下无矿"。
+  - **实现**：
+    - `GeoGenesisConfig` 新增 `[Ores] oreVeinsEnabled`（`BooleanValue`，默认 `true`）；
+    - `OreVeins.setEnabled/isEnabled`（`volatile boolean cfgEnabled`）；
+    - **门控放在 `beginColumn`** —— 它是所有矿脉判定的**唯一入口**
+      （`veinAt` / `veinAtLinked` 内部都走它）⇒ **一处设防、无法绕过**；
+      且放在**缓存查询之前** ⇒ 避免"先开后备"时读到旧列缓存的 `true`（脏读）。
+    - 生成器在 `setWorldSeed` 用 `ConfigSafe` 读取并注入（与 seed 同生命周期）。
+  - **★ 新增判据8（能区分对/错）**：`OreVeinProbe` 关闭开关后按同一规则重新采样，
+    **带内列与命中均须为 0**。实测 **`PASS`（带内列=0、命中=0）**；其余 7 条判据全绿 ⇒
+    `ALL PASS`。（若开关是"没接到底"的功能，此判据必然复现主扫描同量级的命中数。）
+    顺带补齐了该探针 javadoc 中**已滞后**的判据清单（原缺 6/7）。
+  - **默认行为不变**：默认 `true` ⇒ 现状（原版打底 + 自研叠加）**完全不变，零平衡风险**。
+  - **未做（可续）**：
+    ① **无 UI、无热刷新** —— 洞穴的热刷新由 `CavePanel` 置脏触发，矿暂无面板 ⇒
+       配置变更需**重新进入世界**才对**新生成区块**生效（Forge 自动配置界面可见该项）；
+    ② 未提供"自研独占（屏蔽原版金属矿）"档 —— 那需要**重新标定矿量**，属平衡决策。
+
 - **★ 删除 `RiverLineContinuityProbe`（判据错误 + 与 `HandoffPickupProbe` 重复 + 慢到不会被跑）**：
   - **起因**：复验那条"唯一未跑的守门探针"（CHANGELOG 曾记"3 次超时未跑"）时，
     它给出 `continuity = 52.8%`、陆地缺口 `gapLand = 19`。但 `HandoffPickupProbe`

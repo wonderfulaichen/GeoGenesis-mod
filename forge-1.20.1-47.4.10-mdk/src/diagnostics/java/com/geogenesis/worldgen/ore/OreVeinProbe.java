@@ -27,6 +27,12 @@ import javax.imageio.ImageIO;
  *   <li><b>★ 深度带生效</b>：煤只出现在浅部、钻石只出现在深部（深度分布双峰可分）；</li>
  *   <li><b>脉体形态</b>：连通分量应为"少数中等分量"而非"海量孤立点"
  *       （后者意味着只是随机撒点，不是脉）。</li>
+ *   <li><b>★ 洞穴联动</b>：受控对照（同点只换 {@code exposure}）⇒ 紧邻洞穴处
+ *       脉体命中率须显著上升（增幅 ≥1.3×，且三态划分不变式无违反）；</li>
+ *   <li><b>★ 总量锚定</b>：每 chunk 矿石块数须落在锚定区间（防静默漂移；
+ *       <b>刻意不对齐原版</b> —— 原版对照值本身有近 10× 不确定性）；</li>
+ *   <li><b>★ 总开关</b>：关闭 {@code oreVeinsEnabled} 后产出必须为 <b>0</b>
+ *       （否则开关就是"没接到底"的功能）。</li>
  * </ol>
  *
  * <h3>输出</h3>
@@ -401,9 +407,35 @@ public final class OreVeinProbe {
         System.out.println("     若要贴近原版手感，唯一旋钮 = PROSPECT_T（成矿带阈值，"
                 + "越小带越大、矿越多）或 VEIN_T（脉体阈值，越大脉越粗）");
 
+        // ---------- ★ 判据8（2026-09-16 新增）：总开关【关闭 ⇒ 零产出】----------
+        //   为何要这条：新增的 oreVeinsEnabled 开关若不检验，就是"没接到底"的功能
+        //   （本项目已记过"UI 改了却不生效"的同型缺陷；判据必须能区分对/错）。
+        //   ⚠ 必须在既有判据【全部完成之后】执行，且**必须恢复开关** ——
+        //     否则上面所有统计与 renderSlices 的图都会被污染。
+        //   ⚠ 列范围/岩性分区规则与主扫描一致 ⇒ 若开关无效，这里必然复现出
+        //     与主扫描同量级的命中数（这就是"判据能区分对错"的保证）。
+        OreVeins.setEnabled(false);
+        long offHits = 0, offCols = 0;
+        int scanN = Math.min(N, 128);          // 子集即可：主扫描已证明带内点存在
+        for (int x = 0; x < scanN; x++) {
+            for (int z = 0; z < scanN; z++) {
+                int rockOrd = ((x / ROCK_ZONE) + (z / ROCK_ZONE) * 4) % rocks;
+                if (OreVeins.beginColumn(x, z)) offCols++;
+                for (int y = yBot; y <= yTop; y++) {
+                    if (OreVeins.veinAt(x, y, z, SYN_SURFACE, rockOrd, WORLD_MIN_Y) >= 0) {
+                        offHits++;
+                    }
+                }
+            }
+        }
+        OreVeins.setEnabled(true);
+        boolean pass8 = offHits == 0 && offCols == 0;
+        System.out.printf("[判据8] 总开关关闭 ⇒ 零产出（带内列=%d、命中=%d，均须为 0）: %s%n",
+                offCols, offHits, pass8 ? "PASS" : "FAIL");
+
         int failures = (pass1 ? 0 : 1) + (pass2 ? 0 : 1) + (pass3 ? 0 : 1)
                 + (pass4 ? 0 : 1) + (pass5 ? 0 : 1) + (pass6 ? 0 : 1)
-                + (pass7 ? 0 : 1);
+                + (pass7 ? 0 : 1) + (pass8 ? 0 : 1);
         System.out.println(failures == 0 ? "ALL PASS" : ("FAILURES=" + failures));
     }
 
