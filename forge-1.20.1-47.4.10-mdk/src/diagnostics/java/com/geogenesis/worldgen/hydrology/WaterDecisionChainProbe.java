@@ -53,10 +53,14 @@ public final class WaterDecisionChainProbe {
                 placed.height, placed.riverType, placed.riverSurfaceY);
 
         // ---- 河线侧 ----
-        RiverLineNetwork net = new RiverLineNetwork(
-                (wx, wz) -> gen.terrainEQuick(wx, wz),
-                (wx, wz) -> gen.heightCurve().heightFromE(gen.terrainEQuick(wx, wz)),
-                gen.heightCurve(), seed, hs, rp);
+        // ★★★ 2026-09-17 口径修正（第 8 次同类错误的根治）★★★
+        //   此前本探针自建 RiverLineNetwork，**漏了生产 engine 的关键接线**：
+        //     `network.setPrecipSampler(terrain::precipitationAt, ...)`  ← 降水驱动汇流累积
+        //   而降水影响汇流累积 ⇒ 影响河网/湖的规模与域 ⇒ 两条链路看到的是**不同水体**
+        //   （实测：自建版 3 个命中且最近是河；engine 版只剩 1 个湖命中）。
+        //   ⇒ 探针一律复用 **生产 engine 的 network 实例**，不再自己拼。
+        HydrologyExperimentEngine engine0 = new HydrologyExperimentEngine(gen, seed);
+        RiverLineNetwork net = engine0.network();
         RiverLineNetwork.RiverLineHit hit = net.sample(wuX, wuZ);
         if (hit == null) {
             System.out.println("[1] 河线命中：无");
