@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Lake true-outlet measurement + coarse-to-fine sampling A/B (2026-09-17):
+//   gradlew runLakeOutletProbe [-PprobeArgs="seed wuX wuZ"]
+task runLakeOutletProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeOutletProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Controlled-variable probe for lake water gating (2026-09-17):
 //   gradlew runLakeGatingControlledProbe [-PprobeArgs="seed rx rz halfWu step"]
 task runLakeGatingControlledProbe(type: JavaExec) {
