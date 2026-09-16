@@ -178,6 +178,78 @@ public final class WaterDecisionChainProbe {
                 bs.isEmpty() ? "空" : bs.get(0).isLake());
         System.out.println("    与 [7] 的 network.sampleAll 对照：若 isLake 不同 ⇒ 两条链路本身不一致");
 
+        // ---- ★★★ [10] 关键判定：水边界来自【域】还是【连通区】？----
+        //   在违反点周围取若干"水面以下却是干的"格，分别问 inDomain / inFlood：
+        //     · inDomain=false ⇒ 边界 = 域（carver 的 isLake 标记范围）⇒ 修 carver 标记逻辑；
+        //     · inDomain=true, inFlood=false ⇒ 边界 = BFS 连通区 ⇒ 修 computeFlood 搜索窗；
+        //     · 两者皆 true 却是干的 ⇒ 边界在别处（合成层）。
+        System.out.println();
+        System.out.println("[10] ★ 水边界来源判定（周围『低于水面但干』的格）");
+        if (hit != null && hit.lake() != null) {
+            RiverLineRegion.LakeNode ln = hit.lake();
+            java.util.function.ToDoubleBiFunction<Double, Double> ey2 =
+                    (a, b) -> gen.sampleWu(a, b).height;
+            double lvl2 = ln.erodedWaterLevel(ey2);
+            int inDomainOnly = 0, inFloodOnly = 0, bothTrue = 0, bothFalse = 0;
+            int shown2 = 0;
+            for (int dz = -40; dz <= 40; dz += 8) {
+                for (int dx = -40; dx <= 40; dx += 8) {
+                    int x = bx + dx, z = bz + dz;
+                    com.geogenesis.worldgen.terrain.Cell c = gt.getChunkCells(x >> 4, z >> 4)
+                            [Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
+                    if (c.riverType != 0) continue;                 // 只看干格
+                    if (c.height >= lvl2 - 0.5) continue;           // 只看"低于水位"的
+                    double wx = x / hs, wz = z / hs;
+                    boolean dom = ln.inDomain(wx, wz, rp.gridCell() * 2.0);
+                    boolean fl = ln.inFlood(wx, wz);
+                    if (dom && !fl) inDomainOnly++;
+                    else if (!dom && fl) inFloodOnly++;
+                    else if (dom) bothTrue++;
+                    else bothFalse++;
+                    if (shown2 < 6) {
+                        System.out.printf("      块(%d,%d) 低于水位却被判干：inDomain=%-5s inFlood=%-5s%n",
+                                x, z, dom, fl);
+                        shown2++;
+                    }
+                }
+            }
+            System.out.printf("    统计：inDomain=true&inFlood=false %d ｜ inDomain=false&inFlood=true %d"
+                            + " ｜ 皆 true %d ｜ 皆 false %d%n",
+                    inDomainOnly, inFloodOnly, bothTrue, bothFalse);
+            System.out.println("    ⇒ 多数落哪一类，就修那一类："
+                    + "『皆 false』= 域外（carver isLake 标记）；"
+                    + "『true&false』= 连通区太窄（computeFlood 窗口）");
+        } else {
+            System.out.println("    （无湖命中，跳过）");
+        }
+
+        // ---- [11] 路径剖面：湖心 → 违反点，中间有没有"坎"？（决定水位是否正确）----
+        System.out.println();
+        System.out.println("[11] 路径剖面（湖心 → 违反点，1 块步长）：中间是否有坎？");
+        if (hit != null && hit.lake() != null) {
+            RiverLineRegion.LakeNode lnode = hit.lake();
+            double lx = lnode.x * hs, lz = lnode.z * hs;
+            int nSteps = (int) Math.hypot(bx - lx, bz - lz);
+            double maxH = -Double.MAX_VALUE, maxAt = 0;
+            int overCount = 0;
+            for (int t = 1; t <= nSteps; t++) {
+                double frac = (double) t / nSteps;
+                int x = (int) Math.round(lx + (bx - lx) * frac);
+                int z = (int) Math.round(lz + (bz - lz) * frac);
+                Cell c = gt.getChunkCells(x >> 4, z >> 4)
+                        [Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
+                if (c.height > maxH) { maxH = c.height; maxAt = t; }
+                if (c.height >= lnode.erodedWaterLevel((a, b) -> gen.sampleWu(a, b).height) - 0.05) {
+                    overCount++;
+                }
+            }
+            System.out.printf("    湖心块(%.0f,%.0f) → 违反点(%d,%d)，共 %d 块；"
+                            + "路径最高地面 %.3f（在 %d%% 处），≥水位的点 %d 个%n",
+                    lx, lz, bx, bz, nSteps, maxH, 100 * maxAt / Math.max(1, nSteps), overCount);
+            System.out.println("    判读：若 overCount > 0 ⇒ 路径上有坎挡住了水 ⇒ 水位 166.6 可能正确；");
+            System.out.println("          若 overCount = 0 ⇒ 一路无坎，水本应流走 ⇒ 水位过高（真缺陷）。");
+        }
+
         System.out.println();
         System.out.println("判读：① 若存在【更近】的命中其 surfaceY ≈ 166.6 ⇒ IDW 把水面拉高到它；");
         System.out.println("      ② 若所有命中的 dist 都 ≫ width ⇒ 本列是【谷壁列】，");

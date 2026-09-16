@@ -148,6 +148,64 @@ public final class AccurateWaterAuditProbe {
         System.out.println();
         System.out.println("判读：这是【1 块精度】的可信基线（含侵蚀与雕刻，与玩家所见一致）。");
         System.out.println("      此前 24wu 粗格读数（最坏 +26 块）应作废。");
+
+        // ===== ★ 违反点附近的【块级水/陆地图】—— 决定修法 =====
+        //   若"水边界"与"等高线"不重合（水陆分界切在等高线之间）⇒ 修法 = 块级连通性；
+        //   若水边界恰好落在某条直线/网格上 ⇒ 修法 = 域量化粒度。
+        System.out.println();
+        printBlockMap(gt, null, bx, bz, 12);
+    }
+
+    /**
+     * 打印块级地图：{@code W}=水、{@code .}=地面低于水位却干（违反）、{@code #}=地面高于水位。
+     * 另在上方标出该列地面高度（取整）以便看等高线是否与水界重合。
+     */
+    private static void printBlockMap(GeoGenesisTerrain gt,
+                                      com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork net,
+                                      int bx, int bz, int half) {
+        // 先取窗口内水格的水面（中位）作为参照水位
+        java.util.List<Double> surfs = new java.util.ArrayList<>();
+        for (int z = bz - half; z <= bz + half; z++) {
+            for (int x = bx - half; x <= bx + half; x++) {
+                Cell c = gt.getChunkCells(x >> 4, z >> 4)
+                        [Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
+                if (c.riverType != 0) surfs.add(c.riverSurfaceY);
+            }
+        }
+        if (surfs.isEmpty()) {
+            System.out.println("    该窗口无水格，跳过地图。");
+            return;
+        }
+        java.util.Collections.sort(surfs);
+        double ref = surfs.get(surfs.size() / 2);      // 参照水位 = 水面中位
+        double minSurf = surfs.get(0), maxSurf = surfs.get(surfs.size() - 1);
+
+        System.out.printf("    块级地图（中心块 %d,%d，±%d 块）%n", bx, bz, half);
+        System.out.printf("      符号：W=水  o=干但地面低于水位(违反)  .=干且高于水位%n");
+        System.out.printf("      参照水位 = 水面中位 %.3f（范围 %.3f~%.3f）%n", ref, minSurf, maxSurf);
+        for (int z = bz - half; z <= bz + half; z++) {
+            StringBuilder sb = new StringBuilder(String.format("    z=%5d ", z));
+            for (int x = bx - half; x <= bx + half; x++) {
+                Cell c = gt.getChunkCells(x >> 4, z >> 4)
+                        [Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
+                if (c.riverType != 0) sb.append('W');
+                else sb.append(c.height < ref - 0.5 ? 'o' : '.');
+            }
+            System.out.println(sb);
+        }
+        int viol = 0, dry = 0;
+        for (int z = bz - half; z <= bz + half; z++) {
+            for (int x = bx - half; x <= bx + half; x++) {
+                Cell c = gt.getChunkCells(x >> 4, z >> 4)
+                        [Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
+                if (c.riverType == 0) { dry++; if (c.height < ref - 0.5) viol++; }
+            }
+        }
+        System.out.printf("    窗口：水格 %d，干格 %d（其中低于水位 %d）%n",
+                surfs.size(), dry, viol);
+        System.out.println("    判读：① 若大量 'o' 与 'W' 相邻 ⇒ 水边界【超出】等高线 ⇒ 灌到不该灌处；");
+        System.out.println("          ② 若水面在本窗口【恒定】⇒ 该处是按湖面铺的水平水板；");
+        System.out.println("          ③ 若 'o' 成片且远离 'W' ⇒ 域过大把远处低地也标成了湖域。");
     }
 
     /** 全域精扫：半径 R 内最低非水地面（1 块步长）。 */
