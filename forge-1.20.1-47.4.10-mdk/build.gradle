@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// River "lake reach" flattening verification (2026-09-17): read-only hypothesis check
+//   gradlew runRiverLakeLevelProbe [-PprobeArgs="seed rx rz qx qz"]
+task runRiverLakeLevelProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLakeLevelProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Unified water-graph billing probe (2026-09-17, hydrology 统一化 M1):
 //   gradlew runWaterGraphProbe [-PprobeArgs="seed regionX regionZ"]
 task runWaterGraphProbe(type: JavaExec) {
