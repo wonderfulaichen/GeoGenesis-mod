@@ -98,20 +98,31 @@ public final class WaterLevelSolver {
             }
         }
 
+        // ★★★ 规则修正（2026-09-17，实测证伪了前一版规则）★★★
+        //
+        // 前一版规则 `level = max(地面, 下游水位)` 沿 flowTo 传播 —— 实测**不满足短板**：
+        //   短板违反「新 66 格 / 最坏 +42.879 块」反而**比旧系统更差**（旧 34 格 / +15.469）。
+        //   原因：flowTo 只看"下游那一个格"，**看不见旁边更低的地**（水本该从那里流走）。
+        //
+        // ⇒ 正解：统一水位 = **priority-flood 的溢流高程 filledAt**
+        //   —— 它按定义就是"水涨到多少才溢出" = **盆沿（短板）**，
+        //   且对河/湖/海**同一个场**有效（真·统一，不再需要按类型分规则）：
+        //     · 海洋：filledAt 在出海口一侧已由 seaLevel 作种子 ⇒ 水面 ≈ 海平面；
+        //     · 湖：filledAt = 溢流坎高（短板）；
+        //     · 河：排水的河段 filledAt ≈ 自身地面 ⇒ 水面贴地、不会悬空。
+        //   单调性由 priority-flood 的构造保证（沿逃逸路径单调）。
         ArrayDeque<Integer> queue = new ArrayDeque<>();
         for (int i = 0; i < n; i++) {
             if (!waterMask.isWater(i)) continue;
             double g = ground.at(i);
-            if (g <= seaLevel) {
-                level[i] = seaLevel;                    // 海：图的根
-                queue.add(i);
-                continue;
+            double spill = field.filledAt(i);
+            if (Double.isNaN(spill)) {
+                // 未建填洼层 → 退化：海平面以下取海平面，否则取自身地面
+                level[i] = Math.max(seaLevel, g <= seaLevel ? seaLevel : g);
+            } else {
+                level[i] = Math.max(seaLevel, spill);   // 统一规则：水位 = 溢流高程（≥ 海平面）
             }
-            if (field.flowTo(i) < 0) {                  // 洼地/出口：湖面 = 溢流高程（短板）
-                double spill = field.filledAt(i);
-                level[i] = Double.isNaN(spill) ? g : Math.max(g, spill);
-                queue.add(i);
-            }
+            queue.add(i);
         }
 
         // 向上 BFS：下游已定 → 上游立即可算（D8 单下游 ⇒ 无需计数）
@@ -122,8 +133,8 @@ public final class WaterLevelSolver {
             for (int u : uppers) {
                 if (!waterMask.isWater(u)) continue;
                 if (!Double.isNaN(level[u])) continue;
-                double gu = ground.at(u);
-                level[u] = Math.max(gu, level[cur]);     // 唯一规则
+                // 一致性兜底：上游水位不低于下游（filledAt 已保证，此处仅防御）
+                level[u] = Math.max(ground.at(u), level[cur]);
                 queue.add(u);
             }
         }
