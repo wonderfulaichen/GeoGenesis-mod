@@ -374,7 +374,11 @@ public final class GeoGenesisTerrain {
         // ★ 2026-09-14 性能诊断（用户"比几小时前慢"）：分段定位
         //   sample=地形采样 / extract=侵蚀tile提取(可能触发冷生成) / hydro=水文雕刻
         if ((ts3 - ts0) > 50_000_000L) {
-            System.out.printf("[PERF-TERRAIN] chunk(%d,%d) sample=%dms extract=%dms hydro=%dms total=%dms%n",
+            // ★ 2026-09-16：由 System.out.printf 改为 LOGGER —— 原先只打到 stdout，
+            //   进不了 latest.log（dev 环境下 stdout 不落盘）⇒ 实机性能问题无法定位。
+            //   改为日志后与既有的 [PERF] fillFromNoise 同源，可直接从 latest.log 读分段。
+            //   （纯日志改动，零行为变更。）
+            LOGGER.info("[PERF-TERRAIN] chunk({},{}): sample={}ms extract={}ms hydro={}ms total={}ms",
                     cx, cz, (ts1 - ts0) / 1000000, (ts2 - ts1) / 1000000,
                     (ts3 - ts2) / 1000000, (ts3 - ts0) / 1000000);
         }
