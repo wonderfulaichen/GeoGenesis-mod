@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Controlled-variable probe for lake water gating (2026-09-17):
+//   gradlew runLakeGatingControlledProbe [-PprobeArgs="seed rx rz halfWu step"]
+task runLakeGatingControlledProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeGatingControlledProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // River "lake reach" flattening verification (2026-09-17): read-only hypothesis check
 //   gradlew runRiverLakeLevelProbe [-PprobeArgs="seed rx rz qx qz"]
 task runRiverLakeLevelProbe(type: JavaExec) {
