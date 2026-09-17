@@ -86,7 +86,7 @@ public final class WallAttributionProbe {
         Map<String, Integer> mod6 = new LinkedHashMap<>();
         Map<String, Integer> mod12 = new LinkedHashMap<>();
         Map<Long, Integer> seedCache = new LinkedHashMap<>();
-        int walls = 0, shown = 0;
+        int walls = 0, shown = 0, shallow = 0;
 
         System.out.println();
         System.out.printf("%-14s %-13s %9s %9s %9s  %-4s %-8s %-6s %9s %9s %9s %6s%n",
@@ -104,6 +104,11 @@ public final class WallAttributionProbe {
                     if (wat[j] && (Double.isNaN(L) || lvl[j] > L)) L = lvl[j];
                 }
                 if (Double.isNaN(L) || h[i] >= L) continue;      // 不是干墙
+                // ★ 只统计【真·干墙】：深度 < 0.5 块的格是"地面与水面同一格、放不下任何一个水块"
+                //   （落块水放 (floor(height), floor(spill)]，两者相同则无水块）⇒ 物理上本就该是干的，
+                //   不是伪影。此前把它们计入会淹没真实信号（421 个里绝大多数属这一类）。
+                double minDepth = args.length > 4 ? Double.parseDouble(args[4]) : 0.5;
+                if (L - h[i] < minDepth) { shallow++; continue; }
                 walls++;
                 int bx = bx0 + gx, bz = bz0 + gz;
                 double wuXc = bx / hs, wuZc = bz / hs;
@@ -137,7 +142,9 @@ public final class WallAttributionProbe {
             }
         }
         System.out.println();
-        System.out.printf("窗口内干墙格总数 = %d（上表只列前 45 个）%n", walls);
+        System.out.printf("窗口内【真·干墙】总数 = %d（上表只列前 45 个）%n", walls);
+        System.out.printf("（另跳过 %d 个『浅水墙』：深度 < %.1f 块 = 放不下任何一个水块，物理上本就该是干的）%n",
+                shallow, 0.5);
         System.out.println("按闸门分类：" + catCount);
         System.out.println("干墙格 wu.x mod 6 分布：" + mod6);
         System.out.println("干墙格 wu.x mod 12 分布：" + mod12);
