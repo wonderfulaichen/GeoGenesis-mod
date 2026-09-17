@@ -28,6 +28,14 @@ public final class FlowField {
 
     private final int nx, nz;
     private final double cellSize;
+    /**
+     * ★ 2026-09-18（水文 M2）：<b>沿程衰减系数（1/wu）</b> —— 蒸发 / 入渗。
+     *
+     * <p>语义：水量沿流向传递时按 {@code exp(−decayPerWu · dist)} 衰减。
+     * <b>0.0 = 关闭 ⇒ 与旧行为逐位一致</b>（实测 `runWaterBalanceProbe` 判据1：
+     * 不一致格 = 0、最大绝对差 = 0）。</p>
+     */
+    private final double decayPerWu;
     private final double originX, originZ;
     private final double[] e;
     private final int[] flowTo;      // 下游格索引；-1 = 洼地（无更低邻居）
@@ -123,7 +131,28 @@ public final class FlowField {
     public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
                      double cellSize, ElevationSampler sampler,
                      PrecipSampler precip, PrecipWeights weights) {
+        this(minWuX, minWuZ, maxWuX, maxWuZ, cellSize, sampler, precip, weights, 0.0);
+    }
+
+    /**
+     * ★ 2026-09-18（水文 M2）：<b>带沿程衰减</b>的构造器 —— 把"水量沿程只增不减"
+     * 改为"沿途蒸发/入渗"，使【内流河 / 时令河】成为可能
+     * （现实中干旱区河流流着流着就消失，这是最直观的水文现象之一）。
+     *
+     * <p>参考 geotransport 的 {@code solve_uniform}：沿流线乘 {@code exp(−∫decay dt)}。
+     * 落到 D8 图上即 {@code accum[down] += accum[cur] · exp(−decay · dist)}。</p>
+     *
+     * <p>⚠ <b>默认 {@code decayPerWu = 0.0} ⇒ 与旧行为【逐位一致】</b>。</p>
+     *
+     * @param decayPerWu 沿程衰减系数（1/wu）。实测参考（`runWaterBalanceProbe`，grid 64）：
+     *                   {@code 1e-4} ⇒ 成河格 −23%、河宽 ×0.99；{@code 1e-3} ⇒ 河宽 ×0.97；
+     *                   {@code 2e-3} ⇒ 河宽 ×0.95、总水量 ×0.87
+     */
+    public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
+                     double cellSize, ElevationSampler sampler,
+                     PrecipSampler precip, PrecipWeights weights, double decayPerWu) {
         this.cellSize = Math.max(1.0, cellSize);
+        this.decayPerWu = Math.max(0.0, decayPerWu);
         this.originX = minWuX;
         this.originZ = minWuZ;
         this.nx = Math.max(2, (int) Math.ceil((maxWuX - minWuX) / this.cellSize) + 1);
@@ -330,16 +359,37 @@ public final class FlowField {
     /** 该格是否在洼地内（会被水填起）。 */
     public boolean isBasinCell(int idx) { return basinDepthAt(idx) > 0.0; }
 
-    /** 汇流累积：按 e 降序处理（上游必先于下游），accum[down] += accum[cur]。 */
+    /**
+     * 汇流累积：按 e 降序处理（上游必先于下游），{@code accum[down] += accum[cur]}。
+     *
+     * <p>★ 2026-09-18（水文 M2）：加入<b>沿程衰减</b>
+     * {@code accum[down] += accum[cur] · exp(−decayPerWu · dist)}，
+     * 使水量不再"只增不减" ⇒ 支持<b>内流河 / 时令河</b>。</p>
+     *
+     * <p>⚠ <b>{@code decayPerWu == 0.0} 时走【原路径】（不加乘法）⇒ 与旧行为逐位一致</b>。
+     * （虽 {@code x * 1.0} 在 IEEE754 下亦精确，但仍显式分支 ——
+     * 本项目已多次因"看似等价的浮点改写"产生逐位差异，零风险优先。）</p>
+     */
     private void buildAccum() {
         int n = nx * nz;
         Integer[] order = new Integer[n];
         for (int i = 0; i < n; i++) order[i] = i;
         Arrays.sort(order, (a, b) -> Double.compare(e[b], e[a]));
+        final boolean attenuate = decayPerWu > 0.0;
+        final double diag = Math.sqrt(2.0) * cellSize;
         for (int k = 0; k < n; k++) {
             int cur = order[k];
             int down = flowTo[cur];
-            if (down >= 0) accum[down] += accum[cur];
+            if (down < 0) continue;                       // 洼地/平地 ⇒ 终止
+            if (!attenuate) {
+                accum[down] += accum[cur];                // ★ 原路径（逐位一致）
+                continue;
+            }
+            // 8 邻：行列都变 ⇒ 对角（cellSize·√2）；否则正交（cellSize）
+            int dx = Math.abs((cur % nx) - (down % nx));
+            int dz = Math.abs((cur / nx) - (down / nx));
+            double dist = (dx == 1 && dz == 1) ? diag : cellSize;
+            accum[down] += accum[cur] * Math.exp(-decayPerWu * dist);
         }
     }
 
