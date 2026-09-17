@@ -917,7 +917,12 @@ public final class CellGenerator {
         /** 低分辨率网格边长 */
         private static final int ERODE_LOW_RES = ERODE_TILE_SIZE / ERODE_SAMPLING_SPACING;
     /** 缓存条目数（256 条目 ≈ 全部出生区域 tiles 常驻，无 LRU 驱逐） */
-    private static final int ERODE_TILE_CACHE_SIZE = 256;
+    // ★ 2026-09-17：256 → 512。原因：blendTileDelta 现在对缺失邻居【同步生成】
+    //   （确定性修复），容量不足会造成"刚生成→被驱逐→再生成"的抖动 ——
+    //   那正是 2026-08-14 把窥探改回同步时"慢到像崩溃"的真凶。加大容量后
+    //   工作集（本 tile + 8 邻预热 + 3 个 blend 邻居）能常驻。
+    //   内存：单 tile ≈ 4 个 48×48 float 数组 ≈ 38KB ⇒ 512 ≈ 19MB，可接受。
+    private static final int ERODE_TILE_CACHE_SIZE = 512;
     /** tile 边界 blend 起始列/行（chunk 内部）。16-BLEND_START=10 块 blend 范围（原 4 块太窄，
      *  独立粒子模拟 delta 差异大时 smoothstep 不够 → 网格感）。 */
     private static final int BLEND_START = 6;
@@ -1470,7 +1475,7 @@ public final class CellGenerator {
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
         if (res == null) return 0.0; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
-        return blendTileDelta(res, wuX, wuZ, tileCX, tileCZ);
+        return blendTileDelta(res, wuX, wuZ, tileCX, tileCZ, true);   // 主路径：missing ⇒ 现场生成（确定性）
     }
 
     /**
@@ -1489,7 +1494,7 @@ public final class CellGenerator {
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = tileCacheGet(tileKey(tileCX, tileCZ));
         if (res == null) return OptionalDouble.empty();   // 未生成 → 绝不触发生成
-        return OptionalDouble.of(blendTileDelta(res, wuX, wuZ, tileCX, tileCZ));
+        return OptionalDouble.of(blendTileDelta(res, wuX, wuZ, tileCX, tileCZ, false));
     }
 
     /**
@@ -1517,7 +1522,7 @@ public final class CellGenerator {
      * {@link #peekErosionDeltaE} 共用（公共逻辑抽离，避免两份实现漂移）。
      */
     private double blendTileDelta(ErosionTileResult res, double wuX, double wuZ,
-                                  int tileCX, int tileCZ) {
+                                  int tileCX, int tileCZ, boolean allowGen) {
         double delta = sampleTileField(res.delta, res.originX, res.originZ, wuX, wuZ);
 
         // tile 边界对称 4 向 blend + 角块双线性（2026-08-13 重新启用——上次试验参数未对齐
@@ -1549,13 +1554,32 @@ public final class CellGenerator {
             ncz = tileCZ - ERODE_TILE_CENTER;
         }
         if (fx > 0 || fz > 0) {
-            // ★ 2026-08-14 性能修复（用户"没做河流前不崩，现在老崩"）：
-            //   邻居 tile 用缓存优先（缺失不生成——d00 兜底已存在）。曾 getOrGenTile
-            //   → 每 chunk 256 格 × 3 邻居 = 数百次同步生成（400-719ms/个）→ 世界生成
-            //   慢到像崩溃。
-            ErosionTileResult tx = erosionTileCache.get(tileKey(ncx, tileCZ));
-            ErosionTileResult tz = erosionTileCache.get(tileKey(tileCX, ncz));
-            ErosionTileResult txz = erosionTileCache.get(tileKey(ncx, ncz));
+            // ★★★ 2026-09-17【确定性修复】★★★
+            //   旧写法是 `erosionTileCache.get(...)`（只读窥探），邻居缺失就把
+            //   d10/d01/d11 退化为 d00（= 本 tile 未 blend 的值）⇒ **同一个
+            //   (seed, 坐标) 的 height 取决于"查询时邻居 tile 在不在缓存"**，
+            //   而邻居是异步 fire-and-forget 预热的（见 getOrGenTile）+ 会被 LRU 驱逐
+            //   ⇒ 产出依赖【生成顺序 / 线程调度】，违反本项目"纯函数铁律"。
+            //   门禁实锤：runHydrologyDeterminismProbe ✅[1] max|A−B| = 1.15e-5（≈0.0022 块）
+            //     ✅[2] 正序 vs 倒序 max|Δheight| = 0.0515 块（ΔriverSurfaceY/Δgradient 均为 0）。
+            //
+            //   修法：缺失即【同步生成】(neighborTile)。neighborTile 与"已缓存"分支
+            //   **必然同值**（tile 是 (seed, 坐标) 的纯函数）⇒ 缓存状态不再影响结果。
+            //
+            //   ⚠ 为何这次不会重演 2026-08-14 的"数百次同步生成 400~719ms"：
+            //     那次是【缓存抖动】—— 容量 256 且异步预热把刚用到的邻居挤掉，于是
+            //     逐格 miss → 反复重建。现在①每个 tile 至多触发 3 个**不同**邻居
+            //     （computeIfAbsent 去重）②容量已加大（见 ERODE_TILE_CACHE_SIZE）
+            //     ③命中时走 tileCacheGet（含 LRU 触碰，防"刚用就被驱逐"）。
+            //   回退：把这 3 行改回 erosionTileCache.get(...)。
+            //   ⚠ allowGen 闸门（★ 2026-09-17）：只有【主地形路径】(erosionDeltaE) 允许
+            //     现场生成邻居；peekErosionDeltaE / applyCachedTileDelta 的契约是
+            //     "绝不触发生成"（2026-09-11 P0-1 止血：结构放置阶段高频调用，
+            //     同步生成 400~719ms/个 ⇒ 世界生成卡死）⇒ 它们保持"纯窥探 + d00 兜底"。
+            //     代价：放置/群系快速路径在 tile 带内仍是近似（**既有行为**，本次不变）。
+            ErosionTileResult tx = blendNeighbor(tileKey(ncx, tileCZ), ncx, tileCZ, allowGen);
+            ErosionTileResult tz = blendNeighbor(tileKey(tileCX, ncz), tileCX, ncz, allowGen);
+            ErosionTileResult txz = blendNeighbor(tileKey(ncx, ncz), ncx, ncz, allowGen);
             double d00 = delta;
             double d10 = tx != null ? sampleTileField(tx.delta, tx.originX, tx.originZ, wuX, wuZ) : d00;
             double d01 = tz != null ? sampleTileField(tz.delta, tz.originX, tz.originZ, wuX, wuZ) : d00;
@@ -1602,7 +1626,7 @@ public final class CellGenerator {
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = erosionTileCache.get(tileKey(tileCX, tileCZ));
         if (res == null) return false;              // 未生成 → 绝不触发
-        coreApplyDelta(cell, blendTileDelta(res, wuX, wuZ, tileCX, tileCZ), res, wuX, wuZ);
+        coreApplyDelta(cell, blendTileDelta(res, wuX, wuZ, tileCX, tileCZ, false), res, wuX, wuZ);
         return true;
     }
 
@@ -1738,6 +1762,18 @@ public final class CellGenerator {
     }
 
     /**
+     * ★ 2026-09-17：blend 的邻居取法（见 {@link #neighborTile} 与
+     * {@link #blendTileDelta} 的确定性说明）。
+     *
+     * @param allowGen {@code true} = 主地形路径：缺失即同步生成（结果与"已缓存"必然同值 ⇒ 顺序无关）；
+     *                 {@code false} = 非阻塞路径（结构放置 / 群系快速路径）：
+     *                 保持"纯窥探 + d00 兜底"，绝不触发生成（P0-1 延迟契约）
+     */
+    private ErosionTileResult blendNeighbor(long key, int tileCX, int tileCZ, boolean allowGen) {
+        return allowGen ? neighborTile(key, tileCX, tileCZ) : tileCacheGet(key);
+    }
+
+    /**
      * 侵蚀 tile 缓存查询入口 —— 命中埋点 + LRU 触碰（★ 2026-09-11 P0-3）。
      * 集中入口可避免各处直接 {@code .get} 导致统计与 LRU 序失准。
      */
@@ -1750,6 +1786,32 @@ public final class CellGenerator {
             tileCacheStats.miss();
         }
         return r;
+    }
+
+    /**
+     * ★ 2026-09-17【确定性修复】取邻居 tile：<b>缺失即同步生成</b>（不触发 8 邻预热，
+     * 避免二级级联）。
+     *
+     * <p>为什么必须有这一步：tile delta 是 {@code (seed, 世界坐标)} 的纯函数，
+     * 因此"已缓存"与"现场生成"必然同值 —— 只要<b>缺失时补算</b>，缓存状态就不再
+     * 影响产出（这正是 {@code blendTileDelta} 此前只有窥探、缺失退化 d00 所破坏的性质）。</p>
+     *
+     * <p>中断语义与 {@code getOrGenTile} 一致：{@code generateErosionTile} 在池线程
+     * 被中断时抛 {@link CancellationException} ⇒ 返回 {@code null}，调用方退回 d00
+     * （该 chunk 由调用方丢弃/重采，见 {@code erosionDeltaE} 的说明）。</p>
+     */
+    private ErosionTileResult neighborTile(long key, int tileCX, int tileCZ) {
+        ErosionTileResult r = tileCacheGet(key);
+        if (r != null) return r;
+        try {
+            ErosionTileResult nr = erosionTileCache.computeIfAbsent(
+                    key, k -> generateErosionTile(tileCX, tileCZ));
+            nr.lastAccess = tileAccessClock.incrementAndGet();
+            return nr;
+        } catch (CancellationException ce) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
     }
 
     /**
