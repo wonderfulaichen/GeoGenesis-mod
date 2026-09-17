@@ -278,6 +278,22 @@ public final class GeoGenesisConfig {
     // ===================== ★ 2026-09-16 矿脉（游戏性优先，可开关）=====================
     /** 自研地质矿脉开关（true = 叠加在原版矿之上；false = 只留原版矿）。 */
     public final ForgeConfigSpec.BooleanValue oreVeinsEnabled;
+    /**
+     * ★ 2026-09-18：<b>矿物系统接管开关</b>（预研「路径 D」，见
+     * {@code docs/plans/矿物系统-预研-2026-09-18.md}）。
+     *
+     * <ul>
+     *   <li>{@code false}（默认）= <b>VANILLA</b>：完全不干预原版矿 ⇒ <b>零行为变更</b>；</li>
+     *   <li>{@code true} = <b>OVERRIDE</b>：从原版装饰管线<b>剔除 {@code minecraft} 命名空间的
+     *       金属矿特征</b>（<b>19 项</b>，见 {@code VanillaDecorationFilter.METAL_ORES}），
+     *       地下矿改为完全由自研 {@link com.geogenesis.worldgen.ore.OreVeins}
+     *       按<b>宿主岩 + 深度带</b>生成。</li>
+     * </ul>
+     *
+     * <p>⚠ <b>多模组兼容</b>：只剔除 {@code minecraft} 命名空间 ⇒ <b>其它任何模组的矿一律不动</b>。
+     * 本开关也<b>不</b>影响原版水成细节（{@code disk_*} / {@code underwater_magma}）与岩块团块策略。</p>
+     */
+    public final ForgeConfigSpec.BooleanValue oreOverrideVanilla;
     /** SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2] */
     public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;
     /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16] */
@@ -758,6 +774,20 @@ public final class GeoGenesisConfig {
                 + " (that is vanilla behaviour and is left alone here)."
                 + " Takes effect on world (re)load; already-generated chunks are unchanged.")
                 .define("oreVeinsEnabled", true);
+        oreOverrideVanilla = builder.comment(
+                "★ Ore system takeover (see docs/plans/矿物系统-预研-2026-09-18.md, 'path D')."
+                + " false (default) = VANILLA: do NOT touch vanilla ore at all (zero behaviour change)."
+                + " true = OVERRIDE: REMOVE minecraft metal ore features (19 placed_feature ids: coal/iron/"
+                + " gold/redstone/diamond/lapis/copper/emerald/infested variants) from the biome decoration pipeline, so the"
+                + " underground ore is placed ONLY by the self-developed OreVeins (host-rock + depth-band"
+                + " geology). Vanilla water details (disk_*/underwater_magma) and the strata-protection"
+                + " filter are unaffected."
+                + " MOD COMPATIBILITY: only the 'minecraft' namespace is removed, so ore from ANY other mod"
+                + " is always left untouched."
+                + " NOTE: enabling this REDUCES total ore (vanilla ore is currently already gated by our"
+                + " rock layers via the stone_ore_replaceables tag) -- use it to A/B compare ore volume."
+                + " Takes effect on world (re)load; already-generated chunks are unchanged.")
+                .define("oreOverrideVanilla", false);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");

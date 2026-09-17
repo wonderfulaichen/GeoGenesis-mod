@@ -82,6 +82,68 @@ public final class VanillaDecorationFilter {
             "ore_gravel");
 
     /**
+     * ★ 2026-09-18：<b>原版金属矿特征全集（16 项）</b> —— 供
+     * {@link com.geogenesis.config.GeoGenesisConfig#oreOverrideVanilla} = {@code OVERRIDE} 时剔除。
+     *
+     * <h4>为什么必须【精确枚举】而不是"名字含 ore"</h4>
+     * <p>1.20.1 每个矿种有 <b>1~3 个形态变体</b>，与"8 个矿种"是两回事。</p>
+     *
+     * <p>★★ <b>取证方法（务必照做）：穷举【全部 64 个群系】取并集</b>，<b>不可抽样</b>。
+     * 本项目踩过两次同类坑：</p>
+     * <ul>
+     *   <li>只读 {@code jungle} ⇒ 漏 {@code ore_gold_extra}（<b>仅 badlands 有</b>）；</li>
+     *   <li>只读 6 个<b>非山地</b>群系 ⇒ 漏 <code>ore_emerald</code> / {@code ore_infested}
+     *       （<b>仅山地群系有</b>）。</li>
+     * </ul>
+     * <p>最终并集 <b>19 项</b>：</p>
+     * <pre>
+     * coal     : upper, lower                          (2)
+     * iron     : upper, middle, small                  (3)
+     * gold     : gold, gold_lower, gold_extra          (3)
+     * redstone : redstone, redstone_lower              (2)
+     * diamond  : diamond, diamond_large, buried        (3)
+     * lapis    : lapis, lapis_buried                   (2)
+     * copper   : copper, copper_large                  (2)
+     * emerald  : emerald                               (1)  ★ 仅山地
+     * infested : infested                              (1)  ★ 仅山地
+     * </pre>
+     * <p>⚠ <b>必须排除下界/末地同名矿</b>：并集中还有 {@code ore_gold_nether} /
+     * {@code ore_quartz_nether} / {@code ore_quartz_deltas} / {@code ore_gold_deltas} /
+     * {@code ore_ancient_debris_large} / {@code ore_debris_small} / {@code ore_blackstone} /
+     * {@code ore_magma} / {@code ore_soul_sand} / {@code ore_gravel_nether} 等
+     * —— 它们<b>不是主世界资源矿</b>，<b>不得</b>进本清单
+     * （"名字含 ore/gold 就删"式匹配会全部误伤）。</p>
+     * <p>另需保留（非金属）：{@code ore_clay} · {@code disk_grass} ·
+     * {@code disk_sand/clay/gravel} · {@code underwater_magma}。</p>
+     * <p>而"名字含 {@code ore}"的模糊匹配会误伤：{@code disk_sand/clay/gravel}、
+     * {@code underwater_magma}，以及<b>模组自建的 {@code ore_*} 命名</b>
+     * ⇒ 必须精确枚举（并叠加 {@link #isVanillaNamespace} 命名空间门控）。</p>
+     *
+     * <p>⚠ <b>本表刻意不做不可变集合</b>（不用 {@code Set.of}）：它要参与"模板集合 ⊆ 白名单"
+     * 的**枚举校验**（见 {@code OreOverrideProbe}），用 {@code HashSet} 更直白。
+     * 内容仍是 1.20.1 原版内容快照。</p>
+     */
+    private static final Set<String> METAL_ORES = new java.util.HashSet<>(java.util.Arrays.asList(
+            // 煤 2
+            "ore_coal_upper", "ore_coal_lower",
+            // 铁 3
+            "ore_iron_upper", "ore_iron_middle", "ore_iron_small",
+            // 金 3（gold_extra 仅 badlands 有）
+            "ore_gold", "ore_gold_lower", "ore_gold_extra",
+            // 红石 2
+            "ore_redstone", "ore_redstone_lower",
+            // 钻石 3
+            "ore_diamond", "ore_diamond_large", "ore_diamond_buried",
+            // 青金石 2
+            "ore_lapis", "ore_lapis_buried",
+            // 铜 2（copper_large 易漏）
+            "ore_copper", "ore_copper_large",
+            // 绿宝石 1（★ 仅山地群系；只读非山地群系会整项漏掉）
+            "ore_emerald",
+            // 虫蚀石 1（★ 同上，仅山地群系）
+            "ore_infested"));
+
+    /**
      * 按群系缓存过滤结果。
      *
      * <p>该 getter 在热路径上会被反复调用（每个 chunk 的 {@code applyBiomeDecoration}
@@ -90,6 +152,37 @@ public final class VanillaDecorationFilter {
      */
     private static final ConcurrentHashMap<Holder<Biome>, BiomeGenerationSettings> CACHE =
             new ConcurrentHashMap<>();
+
+    /**
+     * ★ 2026-09-18：矿脉接管模式（{@code true} = 额外剔除 {@link #METAL_ORES}）。
+     *
+     * <p>由 {@code GeoGenesisGenerator.setWorldSeed} 从配置注入。⚠ <b>本字段参与缓存键</b>：
+     * 模式变化时必须 {@link #invalidateCache()}，否则会命中按旧模式构建的缓存
+     * ⇒ 表现为"改了配置没生效"（本项目已多次踩过"注释说改了、缓存没失效"的坑）。</p>
+     */
+    private static volatile boolean overrideVanillaOre = false;
+
+    /**
+     * 设置接管模式；<b>仅在模式真正变化时清缓存</b>（避免每次进世界都清空）。
+     *
+     * @return 是否发生了模式变化
+     */
+    public static boolean setOverrideVanillaOre(boolean override) {
+        boolean changed = (overrideVanillaOre != override);
+        overrideVanillaOre = override;
+        if (changed) invalidateCache();
+        return changed;
+    }
+
+    /** 当前是否为接管模式（供审计/探针读取）。 */
+    public static boolean isOverrideVanillaOre() {
+        return overrideVanillaOre;
+    }
+
+    /** 清空按群系缓存（模式变化后必须调用）。 */
+    public static void invalidateCache() {
+        CACHE.clear();
+    }
 
     /** 注入给 {@code ChunkGenerator} 的 getter（带缓存）。 */
     public static BiomeGenerationSettings filter(Holder<Biome> biome) {
@@ -147,21 +240,48 @@ public final class VanillaDecorationFilter {
     }
 
     /**
-     * 判定一个 placed_feature 是否属于"会打散岩层"的类别。
+     * 判定一个 placed_feature 是否应被剔除。
      *
      * <p>用 {@link Holder#unwrapKey()} 取 key —— <b>不需要注册表</b>，
      * 因为注入 getter 时（构造期）拿不到 {@code RegistryAccess}。</p>
+     *
+     * <p>两类剔除：① {@link #STRATA_BREAKING}（始终剔除，打散岩层）；
+     * ② {@link #METAL_ORES}（仅 {@link #overrideVanillaOre} 时剔除）。</p>
      */
     private static boolean isStrataBreaking(Holder<PlacedFeature> holder) {
         return holder.unwrapKey()
                 .map(ResourceKey::location)
+                .filter(VanillaDecorationFilter::isVanillaNamespace)
                 .map(ResourceLocation::getPath)
-                .map(STRATA_BREAKING::contains)
+                .map(path -> STRATA_BREAKING.contains(path)
+                        || (overrideVanillaOre && METAL_ORES.contains(path)))
                 .orElse(false);
     }
 
-    /** 给定特征名是否在剔除清单内（供文档/审计对照）。 */
+    /**
+     * ★ <b>多模组兼容的关键闸门</b>：只处理 {@code minecraft} 命名空间。
+     *
+     * <p>原版矿的 id 必然是 {@code minecraft:ore_*}；而<b>任何模组</b>的矿无论怎么命名，
+     * 命名空间都不会是 {@code minecraft} ⇒ 天然不被触碰。
+     * （对照参考项目 FreeTerraForged `OreContractClassifier` 的"读不懂就不动"原则：
+     * 这里用命名空间做更简单的一道等价闸门。）</p>
+     */
+    private static boolean isVanillaNamespace(ResourceLocation id) {
+        return "minecraft".equals(id.getNamespace());
+    }
+
+    /** 给定特征名是否在【始终剔除】清单内（供文档/审计对照）。 */
     public static boolean isFiltered(String featurePath) {
         return STRATA_BREAKING.contains(featurePath);
+    }
+
+    /** 给定特征名是否为【接管模式下】会剔除的原版金属矿（供审计/探针对照）。 */
+    public static boolean isMetalOre(String featurePath) {
+        return METAL_ORES.contains(featurePath);
+    }
+
+    /** 原版金属矿清单大小（= 16；供审计断言）。 */
+    public static int metalOreCount() {
+        return METAL_ORES.size();
     }
 }

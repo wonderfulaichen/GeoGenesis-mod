@@ -634,6 +634,14 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //     配置变更需重新进入世界才对新生成区块生效。若要 UI + 热刷新，
         //     照 CavePanel/CaveShape 的 setConfigRefresher 模式补即可。
         OreVeins.setEnabled(ConfigSafe.bool(GeoGenesisConfig.INSTANCE.oreVeinsEnabled, true));
+        // ★ 2026-09-18：矿物系统接管开关（路径 D，见 VanillaDecorationFilter.METAL_ORES）。
+        //   语义：true = 从原版装饰管线剔除 16 个 minecraft 金属矿特征 ⇒ 地下矿由
+        //   OreVeins 按"宿主岩+深度带"独占；false（默认）= 完全不动原版矿（零行为变更）。
+        //   ⚠ setOverrideVanillaOre 内部会在【模式变化时】清按群系缓存 —— 否则会命中
+        //     按旧模式构建的缓存，表现为"改了配置没生效"。
+        //   ⚠ 与 oreVeinsEnabled 是两个独立开关（可"只留原版矿"或"只留自研矿"）。
+        VanillaDecorationFilter.setOverrideVanillaOre(
+                ConfigSafe.bool(GeoGenesisConfig.INSTANCE.oreOverrideVanilla, false));
         // ★ 2026-09-15：坡度抖动噪声同批失效（否则换存档后仍用旧种子的抖动）。
         invalidateSteepJitter();
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);
