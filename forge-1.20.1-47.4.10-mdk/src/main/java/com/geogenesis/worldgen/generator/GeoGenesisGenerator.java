@@ -592,6 +592,28 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         CaveShape.setConfig(resolveCaveConfig());
     }
 
+    /**
+     * ★ 2026-09-18：重新从配置解析并注入<b>矿物</b>配置（照 {@link #refreshCaveConfig} 同款）。
+     *
+     * <p>供两处调用：① {@code setWorldSeed}（世界加载）；
+     * ② {@link com.geogenesis.worldgen.ore.OreVeins#markConfigDirty} 热刷新（配置界面改动后）。</p>
+     *
+     * <p>⭐ <b>这里同时处理【两个独立开关】，且必须成对刷新</b>：</p>
+     * <ul>
+     *   <li>{@code oreVeinsEnabled} ⇒ {@link OreVeins#setEnabled}（自研矿脉是否产出）；</li>
+     *   <li>{@code oreOverrideVanilla} ⇒ {@link VanillaDecorationFilter#setOverrideVanillaOre}
+     *       （是否从原版装饰管线剔除金属矿）。</li>
+     * </ul>
+     * <p>⚠ {@code setOverrideVanillaOre} 内部会在<b>模式真正变化时</b>清空按群系缓存 ——
+     * 否则会命中按旧模式构建的 {@code BiomeGenerationSettings} 缓存，
+     * 表现为"改了配置没生效"（本项目已多次踩过此类"缓存未失效"的坑）。</p>
+     */
+    public static void refreshOreConfig() {
+        OreVeins.setEnabled(ConfigSafe.bool(GeoGenesisConfig.INSTANCE.oreVeinsEnabled, true));
+        VanillaDecorationFilter.setOverrideVanillaOre(
+                ConfigSafe.bool(GeoGenesisConfig.INSTANCE.oreOverrideVanilla, false));
+    }
+
     private static CaveConfig resolveCaveConfig() {
         CaveConfig.Preset preset = ConfigSafe.enumOf(GeoGenesisConfig.INSTANCE.cavePreset,
                 CaveConfig.Preset.REALISTIC);
@@ -633,15 +655,10 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //   ⚠ 无热刷新通道（洞穴的热刷新由 CavePanel 置脏触发；矿暂无 UI）⇒
         //     配置变更需重新进入世界才对新生成区块生效。若要 UI + 热刷新，
         //     照 CavePanel/CaveShape 的 setConfigRefresher 模式补即可。
-        OreVeins.setEnabled(ConfigSafe.bool(GeoGenesisConfig.INSTANCE.oreVeinsEnabled, true));
-        // ★ 2026-09-18：矿物系统接管开关（路径 D，见 VanillaDecorationFilter.METAL_ORES）。
-        //   语义：true = 从原版装饰管线剔除 16 个 minecraft 金属矿特征 ⇒ 地下矿由
-        //   OreVeins 按"宿主岩+深度带"独占；false（默认）= 完全不动原版矿（零行为变更）。
-        //   ⚠ setOverrideVanillaOre 内部会在【模式变化时】清按群系缓存 —— 否则会命中
-        //     按旧模式构建的缓存，表现为"改了配置没生效"。
-        //   ⚠ 与 oreVeinsEnabled 是两个独立开关（可"只留原版矿"或"只留自研矿"）。
-        VanillaDecorationFilter.setOverrideVanillaOre(
-                ConfigSafe.bool(GeoGenesisConfig.INSTANCE.oreOverrideVanilla, false));
+        //   ★ 2026-09-18：改为走 refreshOreConfig() + 注册热刷新回调（照洞穴同款范式）
+        //     ⇒ 配置界面改动后，**新生成的区块**立即生效（不再需要重进世界）。
+        OreVeins.setConfigRefresher(GeoGenesisGenerator::refreshOreConfig);
+        refreshOreConfig();
         // ★ 2026-09-15：坡度抖动噪声同批失效（否则换存档后仍用旧种子的抖动）。
         invalidateSteepJitter();
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);

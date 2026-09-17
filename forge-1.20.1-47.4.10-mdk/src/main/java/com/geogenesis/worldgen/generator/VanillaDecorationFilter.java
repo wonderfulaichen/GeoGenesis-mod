@@ -183,6 +183,20 @@ public final class VanillaDecorationFilter {
         return changed;
     }
 
+    /**
+     * ★ 2026-09-18：<b>从配置重读并应用</b>（供热刷新调用）。
+     *
+     * <p>⚠ 本类【不】import {@code GeoGenesisConfig} —— 刻意保持解耦
+     * （该类在无 MC 的诊断路径下也不应被牵连）。故由
+     * {@code GeoGenesisGenerator.refreshOreConfig()} 读取配置后经
+     * {@link #setOverrideVanillaOre} 注入。</p>
+     *
+     * <p>本方法只是语义别名，便于调用点表达"这是热刷新链路"。</p>
+     */
+    public static boolean applyFromConfig(boolean override) {
+        return setOverrideVanillaOre(override);
+    }
+
     /** 当前是否为接管模式（供审计/探针读取）。 */
     public static boolean isOverrideVanillaOre() {
         return overrideVanillaOre;

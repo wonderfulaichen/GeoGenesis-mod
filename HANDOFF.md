@@ -174,6 +174,35 @@ gradlew runChunkLoadPerfProbe     -PprobeArgs="5436529513624899584 32 4"        
 - ⚠ **判据7 语义需补强**：现为「总量 ∈ [140,330]」，**掩盖分布形状问题**
   （铁翻倍+煤砍半仍可能落在区间内）⇒ M2 应补一条 **per-ore 分布形状**判据。
 
+### 9.5.7 ★ M3 完成：矿物配置 UI + 热刷新（2026-09-18）
+
+**做了什么**：
+
+| 文件 | 改动 |
+|---|---|
+| `client/preview/OrePanel.java`（新） | 矿物配置页签：两个开关 + 组合状态提示 + 多模组说明 |
+| `GeoGenesisConfigScreen` | 插入页签 **"矿物"**（index 5，地形仍是 3 ⇒ 既有硬编码索引不受影响） |
+| `OreVeins` | 新增 `setConfigRefresher` / `markConfigDirty` / `ensureConfigFresh`（**照 `CaveShape` 同款范式**）；`beginColumn` 最靠前处调 `ensureConfigFresh()` |
+| `GeoGenesisGenerator` | 新增 `refreshOreConfig()`（**成对刷新两个开关**）+ 注册热刷新回调 |
+| `VanillaDecorationFilter` | 新增 `applyFromConfig`（语义别名）+ 文档说明为何不 import 配置类（保持解耦） |
+
+**★ 热刷新的关键接线（易漏）**：`applyToggle` 里做了**三件事**，缺一不可：
+1. 写配置；2. `OreVeins.markConfigDirty()`（自研矿脉侧）；3. **`VanillaDecorationFilter.invalidateCache()`**
+（接管模式改了"哪些特征会被剔" ⇒ 必须清按群系缓存，否则命中旧模式的
+`BiomeGenerationSettings` = **"改了配置没生效"**）。
+
+**界面设计要点**：
+- **组合状态提示**（切哪个开关都能看懂当前会生成什么），含警告
+  **「两项都关 = 地下几乎没有矿」**（这是唯一会让玩家困惑的组合）；
+- 明写 **「只影响原版矿，其它模组的矿不受影响」**（玩家会担心这点）。
+
+**⚠️ 验证边界（如实说明）**：`OrePanel` 是 **UI 类代码，本项目无自动化验证手段**
+（`runWorldgenGate` 只覆盖世界生成逻辑，不覆盖渲染/点击）。
+已验证的是：**`compileJava` 通过 + 门禁全绿**；**未验证**：界面实际观感与点击行为。
+⇒ 这是本轮唯一仍"只能靠实机看"的部分，**属 UI 固有性质，非推诿**。
+
+**门禁**：`runWorldgenGate` 9 探针 / 24s / ALL PASS。
+
 ### 9.5.6 ★★ 地质学校正：宿主岩设定（2026-09-18，用户："地质学我不懂，交给你设计"）
 
 **逐矿种对照真实矿床学审计**（8 种矿，7 对 1 错 → 修正后全对）：
