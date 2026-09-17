@@ -785,6 +785,13 @@ public final class GeoGenesisTerrain {
     /**
      * 取（或新建）某湖在分组列表中的下标。
      * <p>节点非 null 时按【身份】匹配；节点为 null（理论上罕见）时按【水位】匹配。</p>
+     *
+     * <p>★ 2026-09-17 实测注记（勿再重复尝试）：曾把分组键放宽到"同水位即合并"
+     *   （假设残余真·干墙里"本 chunk 无种子"的格能借到邻居水体的种子），
+     *   实测（runWallAttributionProbe，minDepth=0.5）<b>真·干墙 12 → 12，分类不变</b>。<br>
+     *   根因：那 8 个 C 类格紧邻的水<b>本身就是块级精修造出来的</b>（不是粗格洪泛水），
+     *   故 {@code node.inFlood} 在那里必为 false —— 与分组、与抽样步长（4→2 亦无效）都无关。<br>
+     *   要接上它们必须有"跨 chunk 的精修水状态"，而那会令结果依赖生成顺序 ⇒ 违反纯函数铁律。</p>
      */
     private static int lakeGroupOf(java.util.List<LakeGroup> groups, Object node, double level) {
         for (int i = 0; i < groups.size(); i++) {
