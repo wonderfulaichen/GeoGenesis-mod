@@ -1304,6 +1304,7 @@ task runWorldgenGate {
     dependsOn 'runStratumProbe'
     dependsOn 'runCaveShapeProbe'
     dependsOn 'runTectonicContinuityProbe'
+    dependsOn 'runOreVeinProbe'
 }
 
 // Erosion seam / determinism + plan-vs-final field divergence (2026-09-17, hydrology 重构 M0):

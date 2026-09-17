@@ -177,7 +177,11 @@ gradlew.bat runWorldgenGate      # 世界生成门禁（只跑当前实测 ALL P
 >
 > **实测取证**（2026-09-16，临时 `[DECOR-AUDIT]` 日志，验证后已删）：
 > `biome=minecraft:jungle steps=11 features=47 oreFeatures=24`，`[6] UNDERGROUND_ORES = 28`
-> ⇒ 原版矿**确实与自研 `OreVeins` 叠加生成**（自研量约为原版 1/10）。
+> ⇒ 原版矿**确实与自研 `OreVeins` 叠加生成**。
+> ⚠ **2026-09-18 更正**：原文写"自研量约为原版 **1/10**"，但**该数字缺乏实证**。按原版
+> 15 个金属矿 placed_feature 的 `count × size` 粗估，原版约 **600~1500 块/chunk**（上界 1900），
+> 自研实测 **231.9 块/chunk** ⇒ 实际量级应是 **1/3 ~ 1/6**。该数字**未经精确测量**，
+> 引用前请以 `runOreVeinProbe` 实测为准。详见 `docs/plans/矿物系统-预研-2026-09-18.md` §6.1。
 > 过滤后 `features=38 oreFeatures=15`（剔除 9 项），世界正常生成。
 >
 > **⚠ 同步更正一条长期错误论证**：`OreVeins` 曾写"没有 `NoiseSettings` ⇒ 原版 `ore_*`
