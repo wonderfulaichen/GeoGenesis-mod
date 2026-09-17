@@ -42,7 +42,20 @@
 - **不新建任何方块/物品**（只用原版内容或删自研代码）。
 - 动水系前先跑第 5 节的四把尺子。
 
-## 5. 四把尺子（改水文前必跑）
+## 5. 「四把尺子」—— ⚠ 2026-09-18 **重新分类**（原说法不准确）
+
+> **关键更正**：这 4 个里**只有 1 个是真尺子**。判据是硬的 —— Gradle `JavaExec`
+> **只在退出码非零时才算失败**；核查发现 128 个探针中仅 18 个调用 `System.exit`，
+> 而这"四把尺子"**一把都没有** ⇒ 即使 FAIL 也报 `BUILD SUCCESSFUL` ⇒ 门禁名存实亡。
+
+| 探针 | 真实类别 | 说明 |
+|---|---|---|
+| `runHydrologyDeterminismProbe` | ✅ **真尺子** | `TOL = 0.0`（逐位相等）。2026-09-18 补上退出码；实测 **ALL PASS**（`max\|A−B\| = 0`、`max\|Δheight\| = 0`） |
+| `runWaterPhysicsProbe` | ⚠ **判据过时** | 判据 `viol<=0.5 && walls==0`；实测 `viol = +7.088`（±96wu **窗口假象**）、`walls = 13`（已接受的**结构性上限**）⇒ **永远不可能 PASS**，需先修判据才能当门禁 |
+| `runWallAttributionProbe` | 🔧 **仪表** | 逐格归因（A/B/C/D + 浅水墙），**无自动判据**，结论靠人读 |
+| `runChunkLoadPerfProbe` | 🔧 **仪表** | 性能基准（v2 比 min），**无自动判据** |
+
+**常用命令不变**（仪表仍有用，只是别指望它们拦你）：
 
 ```bash
 gradlew runWaterPhysicsProbe      -PprobeArgs="5436529513624899584 12 316 96"        # 水位 vs 应有水位 + 干墙数
@@ -92,6 +105,53 @@ gradlew runChunkLoadPerfProbe     -PprobeArgs="5436529513624899584 32 4"        
 **核查通过、无需改动（放心清单）**：`ERODE_TILE_CACHE_SIZE=512` · `neighborTile`/`blendNeighbor`/`allowGen` 闸门 · 弃湖阈值物理面积 `5.76e6 wu²` · `LAKE_FINE_FLOOD=true` · `lakeLevelY` 被拒列回传 · `FLOOD_COARSE_REUSE=false` · 四个探针 task 均存在 · `province*` 确为零消费。
 
 **⚠️ 本轮最大的方法论收获**：**文档里抄数值 = 必然漂移**（69 vs 72）。凡是会变的数字，一律写"以代码常量 X 为准"+ 指路，不要在文档里复述。
+
+## 9. 2026-09-18 追加：项目整理（门禁机制化 + 全仓文档体检）
+
+### 9.1 门禁：让「尺子」名副其实
+
+- **事实**：128 个探针中只有 **18 个**调用 `System.exit`；而 §5 原称的「四把尺子」**一把都没有**。
+  Gradle `JavaExec` **只在退出码非零时才算失败** ⇒ 即使打印 FAILURES 也报 `BUILD SUCCESSFUL` ⇒ 门禁名存实亡。
+- **已做**：`HydrologyDeterminismProbe` 补 `System.exit`；新建 **`gradlew runWorldgenGate`**，
+  纳入 6 个实测 ALL PASS 的探针：`runHydrologyDeterminismProbe` / `runTectonicWaveProbe` /
+  `runTerrainGrainProbe` / `runStratumProbe` / `runCaveShapeProbe` / `runTectonicContinuityProbe`（约 27s）。
+- **反向验证**：临时挂入已知 FAIL 的 `runLandEConformityProbe` ⇒ `BUILD FAILED` / exit=1（验完即撤）
+  ⇒ 门禁**真的会拦**，不只是"能过"。
+- **排除（原因已写进 `build.gradle` 注释，勿无声加回）**：
+  - `runLandEConformityProbe`：实测 FAIL（T5 形变量差值 < 0.02e）—— **当前唯一红着的门禁，待归因**。
+  - `runWaterPhysicsProbe`：**判据过时**（`viol<=0.5 && walls==0`；实测 `viol=+7.088`（±96wu 窗口假象）、
+    `walls=13`（已接受的结构性上限）⇒ **永远不可能 PASS**，需先修判据才能当门禁）。
+- **归类更正**：「四把尺子」里 `WallAttributionProbe` / `ChunkLoadPerfProbe` 实为**仪表**
+  （无自动判据，靠人眼），已在 §5 重新分类。
+
+### 9.2 文档体检（全仓，不只水文）
+
+方法：提取文档中所有**可验证声明**（文件路径 / 类名 / 方法名 / gradle task）逐条核验。
+
+- **第四例「文档说改了、代码没有」（最严重一例）**：`AGENTS.md` 与 `README` 均称
+  「域扭曲已启用 `WARP_AMP = 40`、修掉轴向对齐缺陷（944→272 块）」，实际
+  **`TerrainCharacterField.WARP_AMP = 0.0`** —— 40 曾启用过，但**实机反馈河流/湖泊出问题已回退**
+  （与 `PreviewDisplay` 缓存版本 70 作废记录完全吻合）；`setWarpAmp()/warpAmp()` 也不存在。已改。
+- **`client` 包文档整段过时**：架构速览的 preview/mixer 段 **7 项错 6 项**
+  （`PreviewColor` / `BasicParamsPanel` / `Factor` / `FactorCurveChart` / `FactorMixer` /
+  `ConfigBinding` / `FactorCategoryBar` 均不存在；`WorldHeightBar` / `SnowLineChart` / `ScalePreview`
+  实际在 `mixer/` 下）。已按实际 49 个文件重写。
+- **`ARCHITECTURE.md`**：`LandShape.java` 原标 `[ACTIVE]` 但不存在（实际 `TypeLandShape`）；
+  `fillRiverColumn` 不存在（实际 `fillTerrainColumn`）；`PreviewColor` 不存在；`TerrainConfigPanel` 路径错。已改。
+- **`README`**：目录结构段大量失真 —— `docs/`、`参考/`、`backups/`、`logs/`、`net/minecraftforge/`、
+  `erosion-test-tool*/`、`sca_smoke/`、`river_check/` **全部不存在**。已改为如实记录并保留原声明痕迹。
+- **僵尸探针假说被证伪**：0 处引用已删除模块（`worldgen.river` / `GeodeShape` / `BiomeMapper`）
+  ⇒ **不需要清理任何探针**。
+
+### 9.3 死代码盘点（**只报告，未动任何代码**）
+
+| 项 | 结论 |
+|---|---|
+| `province*` 配置 | 确认**零消费**（`AGENTS.md` 已标注） |
+| `worldgen/geode/` | **空目录**（`GeodeShape` 删除后的遗留）⇒ 可安全删除，**待你确认** |
+| `ClimateZone` | 仍有消费（预览配色图层 / `ConfigSafe`）⇒ **不是死代码**，只是不再主导群系 |
+| `MidpointDisplacement` | ⚠ 仍被 `RiverLineNetwork` / `RiverLineRegion` 与 7 个探针引用 —— 与 `AGENTS.md` 所述"生产路径已改 flowaccum、仅保留对照"**可能不符**，值得单独查一次（未动） |
+| `runLandEConformityProbe` | 当前 FAIL（T5 形变量）⇒ 是**回归还是判据过时**，需归因（未动） |
 
 ---
 *本文为交接用，随后续工作更新。*

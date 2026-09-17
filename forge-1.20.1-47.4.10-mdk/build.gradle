@@ -1273,6 +1273,37 @@ task runHydrologyDeterminismProbe(type: JavaExec) {
     }
 }
 
+// ==================================================================
+// ★ 2026-09-18：世界生成【门禁】聚合入口
+//   gradlew runWorldgenGate
+//
+// 背景（本轮核查结论）：仓库有 129+ 个探针 task，但绝大多数只是"打印给人看的仪表"；
+//   真正带 PASS/FAIL 判据、且能用【退出码】让构建失败的（= 真尺子）只有 18 个。
+//   而 HANDOFF 曾称的"四把尺子"里，WallAttributionProbe / ChunkLoadPerfProbe 其实
+//   【没有自动判据】（归因为人眼），WaterPhysicsProbe 的判据已过时（永远红）。
+//
+// 纳入标准（务必遵守）：
+//   ① 必须有 PASS/FAIL 判据；② 必须以 System.exit(非零) 承载 FAIL；
+//   ③ 【当前实测必须 ALL PASS】—— 门禁从第一天就红 = 立刻被弃用。
+//
+// 排除（已记录原因，勿无声加回）：
+//   · runLandEConformityProbe：2026-09-18 实测 FAIL（T5 形变量差值 < 0.02e）⇒ 待归因
+//   · runWaterPhysicsProbe：判据 `viol<=0.5 && walls==0` 已过时
+//     （+7.088 是 ±96wu 窗口假象、13 个干墙是已接受的结构性上限）⇒ 永远不可能 PASS，需先修判据
+//
+// 若某个探针长期 FAIL：请【移出本门禁并单开议题】，而不是删除探针。
+// ==================================================================
+task runWorldgenGate {
+    group = 'verification'
+    description = '世界生成门禁：只跑当前实测 ALL PASS 的判据型探针（任一 FAIL 即构建失败）'
+    dependsOn 'runHydrologyDeterminismProbe'
+    dependsOn 'runTectonicWaveProbe'
+    dependsOn 'runTerrainGrainProbe'
+    dependsOn 'runStratumProbe'
+    dependsOn 'runCaveShapeProbe'
+    dependsOn 'runTectonicContinuityProbe'
+}
+
 // Erosion seam / determinism + plan-vs-final field divergence (2026-09-17, hydrology 重构 M0):
 //   gradlew runErosionSeamProbe [-PprobeArgs="seed span"]
 task runErosionSeamProbe(type: JavaExec) {
