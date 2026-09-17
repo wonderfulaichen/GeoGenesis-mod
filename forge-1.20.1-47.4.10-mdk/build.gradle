@@ -1292,6 +1292,16 @@ task runGeotransportRealTerrainProbe(type: JavaExec) {
     }
 }
 
+// M2 可行性：水量平衡（D8 累积加沿程衰减 = 蒸发/入渗），不改生产代码（2026-09-18）:
+//   gradlew runWaterBalanceProbe [-PprobeArgs="seed gridN"]
+task runWaterBalanceProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterBalanceProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Determinism / order-independence gate (2026-09-17, hydrology 重构 M1 基线):
 //   gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]
 //   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0）
