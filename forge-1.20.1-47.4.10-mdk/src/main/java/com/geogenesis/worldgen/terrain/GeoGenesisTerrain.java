@@ -663,6 +663,8 @@ public final class GeoGenesisTerrain {
         final int pad = 16;          // 只做【岸边】精修 ⇒ 一个粗格（6wu/12wu）足够
         final int w = 16 + 2 * pad;
         double seaLevel = generator.seaLevel();
+        final double hsFlood = generator.params().horizontalScale() > 0.01
+                ? generator.params().horizontalScale() : 1.0;
         boolean[] seen = new boolean[w * w];
         java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
         final int[] dxx = {1, -1, 0, 0};
@@ -680,6 +682,32 @@ public final class GeoGenesisTerrain {
                     if (!lakeSeed[i] || lakeOf[i] != gi) continue;
                     int k = (lz + pad) * w + (lx + pad);
                     if (!seen[k] && fineFloodWet(cells, cx, cz, pad, k % w, k / w, level)) {
+                        seen[k] = true;
+                        q.add(k);
+                    }
+                }
+            }
+            // ②b 【pad 侧种子】—— 跨 chunk 边界起步（★ 2026-09-17 归因后新增）
+            //    动机（WallAttributionProbe 实测，用户标注的轴对齐直边）：有一类 chunk
+            //    【本 chunk 内一个种子都没有】（其列全是被拒列，lakeSeed 全 false），
+            //    但隔壁 chunk 就是水体 ⇒ 洪泛无从起步 ⇒ 水边界停在【粗格边界】上
+            //    （6wu=12 块网格对齐 ⇒ 横平竖直的直边，正是用户圈的两处）。
+            //    做法：在 pad 内【稀疏抽点】(步长 4 块)，用粗格判水 API node.inFlood(wu)
+            //    取种子 —— 粗格本身 6wu=12 块，步长 4 块足以覆盖；点数 ≤169。
+            //    ⚠ 必须稀疏：inFlood 是 O(淹没格数) 线性扫描，逐格调用会白烧 CPU。
+            //    ⚠ 只取粗格【已认领】的格作种子 ⇒ 水仍不会长到认领域之外，
+            //      也不违反"填充范围内无法闭合就不生成"（弃湖节点根本不会回传到这里）。
+            if (g.node != null) {
+                var node = (com.geogenesis.worldgen.hydrology.riverline
+                        .RiverLineRegion.LakeNode) g.node;
+                for (int gz = 0; gz < w; gz += 4) {
+                    for (int gx = 0; gx < w; gx += 4) {
+                        int lx = gx - pad, lz = gz - pad;
+                        if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) continue;  // 本 chunk 已按列判定
+                        int k = gz * w + gx;
+                        if (seen[k]) continue;
+                        if (!node.inFlood((cx * 16 + lx) / hsFlood, (cz * 16 + lz) / hsFlood)) continue;
+                        if (!fineFloodWet(cells, cx, cz, pad, gx, gz, level)) continue;
                         seen[k] = true;
                         q.add(k);
                     }
