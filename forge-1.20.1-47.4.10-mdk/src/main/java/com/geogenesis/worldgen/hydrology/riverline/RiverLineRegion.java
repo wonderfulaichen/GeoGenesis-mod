@@ -493,11 +493,15 @@ public final class RiverLineRegion {
                 //   【回退】删本块，并把两处 runFloodCore 的末参 hCache 去掉。
                 double[] hCache = new double[nx * nz];
                 java.util.Arrays.fill(hCache, Double.NaN);
+                // ★ 由粗到细：粗格 = 2×2 细格，只采样一次，供【深水区】复用（省 ~3/4 采样）
+                int cnx = (nx + 1) >> 1, cnz = (nz + 1) >> 1;
+                double[] coarseH = new double[cnx * cnz];
+                java.util.Arrays.fill(coarseH, Double.NaN);
                 double lvl = level;
                 if (LAKE_SHORTBOARD_ENFORCE) {
                     for (int iter = 0; iter < 3; iter++) {
                         FloodRun probe = runFloodCore(erodedY, lvl, minX, minZ, gridCell,
-                                nx, nz, si, sj, hCache);
+                                nx, nz, si, sj, hCache, coarseH, cnx);
                         if (probe.rimMin() >= lvl - 0.5) break;      // 短板成立
                         double next = Math.min(lvl, probe.rimMin());
                         if (next >= lvl - 1e-9) break;               // 已无法再降
@@ -512,7 +516,8 @@ public final class RiverLineRegion {
                     return floodOOB = false;    // 消失 ≠ 残缺，不必弃湖
                 }
                 // 最终一次 BFS：以（可能已压低的）水位求正式淹水区
-                FloodRun run = runFloodCore(erodedY, lvl, minX, minZ, gridCell, nx, nz, si, sj, hCache);
+                FloodRun run = runFloodCore(erodedY, lvl, minX, minZ, gridCell, nx, nz, si, sj,
+                        hCache, coarseH, cnx);
                 java.util.List<double[]> flood = run.flood();
                 boolean oob = false;
                 for (double[] pt : flood) {
@@ -563,6 +568,39 @@ public final class RiverLineRegion {
          */
         static final boolean LAKE_SHORTBOARD_ENFORCE = false;
 
+    /**
+     * ★ 2026-09-17「由粗到细」（用户建议）：粗格 = 2×2 细格，<b>只采样一次</b>。
+     *
+     * <p>若粗格采样低于 {@code 水位 − 本值} ⇒ 判为<b>【深水区】</b>（淹没与连通性均无争议），
+     * 其 4 个细格<b>复用</b>这一次采样，不再逐格调用昂贵的 {@code erodedY}
+     * （实测 {@code sampleWu} ≈ 150µs/次）⇒ 深水区省掉约 3/4 的采样。</p>
+     *
+     * <p>越接近水位（= 岸线附近，最需要精细的地方）越不会复用 ⇒ <b>岸线精度不变</b>。
+     * 这与"中间区域不需要细、边缘要细"完全一致。</p>
+     *
+     * <p>⚠ <b>代价</b>：深水区内若有<b>高于水位的小高地</b>，可能因复用而被判为淹（小岛消失）。
+     * 本值越大越保守（复用越少）。设 {@code Double.MAX_VALUE} = 完全不复用（旧行为）。</p>
+     */
+    /**
+     * ★ 2026-09-17 实测：<b>本机制当前净亏，默认关闭</b>（保留实现 + 实测记录，勿删勿盲开）。
+     *
+     * <p>实测（ChunkLoadPerfProbe 48×48 chunk，同一负载）：</p>
+     * <pre>
+     *   关闭（逐格采样）      : 13.82 ms/chunk
+     *   SAFE_DEPTH=2.0（复用）: 14.29 ms/chunk，产出【完全相同】（水位/面积/干墙 13 全同）
+     *   SAFE_DEPTH=1.0（复用）: 15.50 ms/chunk（复跑 15.61 确认非噪声），干墙 13→9
+     * </pre>
+     * <p><b>为何净亏</b>：复用省掉的是 BFS 采样，但会让淹水区略大 ⇒ {@code floodX} 数组变长；
+     * 而 {@code inFlood} 是 <b>{@code O(淹没格数)} 的线性扫描</b>、被<b>逐列</b>调用
+     * （carver 判湖列 + 块级精修的 pad 侧种子）⇒ 省下的采样费被"每列多扫"吃回去还倒贴。</p>
+     *
+     * <p><b>结论</b>：先把 {@code inFlood} 换成 O(1) 的网格索引（语义完全等价的查表加速），
+     * 再重新评估本开关 —— 届时"淹水区略大"不再有逐列代价，本机制很可能转为净收益。</p>
+     */
+    static final boolean FLOOD_COARSE_REUSE = false;
+    /** 见 {@link #FLOOD_COARSE_REUSE}：粗格深度超过本值即判"深水区"并复用其采样。 */
+    static final double FLOOD_COARSE_SAFE_DEPTH = 1.0;
+
         /**
          * ★ 短板迭代【收敛后】的水位（块）；{@code NaN} = 尚未计算。
          *
@@ -602,7 +640,7 @@ public final class RiverLineRegion {
                                       double level,
                                       double minX, double minZ, double gridCell, int nx, int nz,
                                       int si, int sj,
-                                      double[] hCache) {
+                                      double[] hCache, double[] coarseH, int cnx) {
             boolean[] seen = new boolean[nx * nz];
             java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
             int sIdx = sj * nx + si;
@@ -620,11 +658,32 @@ public final class RiverLineRegion {
                     if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
                     int nIdx = nj * nx + ni;
                     if (seen[nIdx]) continue;
-                    // ★ 2026-09-17【性能】高度走缓存（见 computeFlood 的 hCache 说明）。
+                    // ★ 2026-09-17【性能·由粗到细】高度取法（详见 FLOOD_COARSE_SAFE_DEPTH）：
+                    //   ① hCache 命中 ⇒ 直接用（同格绝不重复采样）；
+                    //   ② 否则先取所属【粗格】(2×2 细格) 的采样（粗格只采样一次）：
+                    //      · 深度 > FLOOD_COARSE_SAFE_DEPTH ⇒ 深水区、判定无争议
+                    //        ⇒ 本细格复用粗格高度（省掉这次昂贵的 sampleWu）；
+                    //      · 否则（接近水位 = 岸线附近）⇒ 逐细格【真实采样】，精度不变。
                     double hh = hCache[nIdx];
                     if (Double.isNaN(hh)) {
-                        hh = erodedHeightAt(erodedY, minX + ni * gridCell,
-                                minZ + nj * gridCell, gridCell);
+                        if (FLOOD_COARSE_REUSE) {
+                            // 由粗到细：深水区复用粗格采样（当前默认关闭，见常量处实测记录）
+                            int cbi = ni >> 1, cbj = nj >> 1;  // 所属粗格（2×2 细格）
+                            int cIdx = cbj * cnx + cbi;
+                            double ch = coarseH[cIdx];
+                            if (Double.isNaN(ch)) {
+                                ch = erodedHeightAt(erodedY, minX + cbi * 2 * gridCell,
+                                        minZ + cbj * 2 * gridCell, gridCell);
+                                coarseH[cIdx] = ch;
+                            }
+                            hh = (ch < level - FLOOD_COARSE_SAFE_DEPTH)
+                                    ? ch                        // 深水区：复用粗格采样
+                                    : erodedHeightAt(erodedY, minX + ni * gridCell,
+                                            minZ + nj * gridCell, gridCell);
+                        } else {
+                            hh = erodedHeightAt(erodedY, minX + ni * gridCell,
+                                    minZ + nj * gridCell, gridCell);
+                        }
                         hCache[nIdx] = hh;
                     }
                     // 通行条件与原实现一致（只问"是否低于水位"）；
