@@ -173,6 +173,23 @@ public final class OreVeins {
      * <p>⚠ <b>定量关系（实测标定）</b>：矿量 ∝ <b>{@code richness}²</b>
      * （阈值 {@code t = VEIN_T × richness}，而脉体体积 ∝ t²）⇒
      * <b>目标倍率 k 对应 richness 乘 √k</b>。这是本类调参的正确算法，勿线性估算。</p>
+     *
+     * <h4>⚠⚠ 不要再试图"对齐原版绝对量"（原理上不可能，2026-09-18 结论）</h4>
+     * <ol>
+     *   <li><b>原版矿量不是常量，而是【地形高度】的函数</b>：原版 {@code height_range}
+     *       用<b>绝对 Y</b>，尝试落在地表之上（空气）即浪费；而本类用
+     *       <b>{@code depth = surfaceY − y}</b>（距地表深度）⇒ <b>与地形无关</b>。
+     *       二者<b>本质上不可比</b>：同一种子在不同高度的群系，原版矿量都不同，
+     *       故<b>不存在一个"原版数值"可对齐</b>。</li>
+     *   <li><b>数据包 {@code count × size} 会【把形状搞反】</b>：它忽略"尝试落在地形之外"。
+     *       例：{@code ore_iron_upper} count=90 但高度带 Y=80~320（典型地表 Y≈70）
+     *       ⇒ <b>绝大部分尝试落在空气</b>；而煤的 {@code ore_coal_lower}(count=20) 高度带
+     *       Y=0~192 大部分有效。故名义上"铁 940 &gt; 煤 850"，实际却是<b>煤 &gt; 铁</b>
+     *       （MC百科采样 191 vs 109 印证）。<b>勿用该口径折算比例</b>
+     *       —— 会系统性低估煤、高估铁。</li>
+     *   <li><b>故设计目标 = 对齐【形状特征】（煤是常见矿、钻石最稀有），而非绝对数值。</b>
+     *       由 {@code runOreVeinProbe} 判据7b（金字塔序 + 煤/铁比值带）长期锚定。</li>
+     * </ol>
      */
     private static final double PROSPECT_T = 0.341;
 
