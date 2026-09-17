@@ -1249,6 +1249,17 @@ task runWallAttributionProbe(type: JavaExec) {
     }
 }
 
+// 区块加载性能基准（2026-09-17）：扫 span×span chunk（真实工作集 + 驱逐），
+//   统计 ms/chunk 与【侵蚀 tile 生成次数 / 触达不同 tile 数】（重复生成率）:
+//   gradlew runChunkLoadPerfProbe [-PprobeArgs="seed spanChunks"]
+task runChunkLoadPerfProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ChunkLoadPerfProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Determinism / order-independence gate (2026-09-17, hydrology 重构 M1 基线):
 //   gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]
 //   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0）

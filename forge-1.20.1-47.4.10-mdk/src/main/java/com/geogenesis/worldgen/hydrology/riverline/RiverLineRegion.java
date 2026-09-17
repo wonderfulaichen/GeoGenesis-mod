@@ -426,11 +426,24 @@ public final class RiverLineRegion {
                 //   若低于水位则压低水位，直到短板成立或迭代上限（3 次）。
                 //   全程只用侵蚀后地形（erodedY）⇒ 与落块侧判水同源。
                 //   回退：LAKE_SHORTBOARD_ENFORCE = false 一行。
+                // ★★★ 2026-09-17【性能修复：BFS 高度缓存 hCache】★★★
+                //   【被修的浪费（ChunkLoadPerfProbe 实测量化）】runFloodCore 原实现对本网格
+                //   <b>每访问一次就采样一次地形</b>（erodedY → terrain.sampleWu，实测 ~10~15µs/次），
+                //   且有双重放大：
+                //     ① 外缘【非淹格不标 seen】⇒ 被多少个邻居探到就采样多少次（最多 4 次）；
+                //     ② 短板迭代(最多 3 遍) + 最终 1 遍 ⇒ 同一网格最多遍历 4 遍，每遍重采样全部。
+                //   实测落点：chunk(0,33) 单块 hydro = 5087ms（区块加载可见卡顿）。
+                //   【为何语义完全不变】地形高度在整段求解中<b>恒定</b>（hCache 只按格索引缓存
+                //   erodedY 的结果，不做任何近似）⇒ 与逐次重算**逐位同值**。
+                //   【收益】采样次数降到"每格最多一次"（实测约 1/4~1/8）。
+                //   【回退】删本块，并把两处 runFloodCore 的末参 hCache 去掉。
+                double[] hCache = new double[nx * nz];
+                java.util.Arrays.fill(hCache, Double.NaN);
                 double lvl = level;
                 if (LAKE_SHORTBOARD_ENFORCE) {
                     for (int iter = 0; iter < 3; iter++) {
                         FloodRun probe = runFloodCore(erodedY, lvl, minX, minZ, gridCell,
-                                nx, nz, si, sj);
+                                nx, nz, si, sj, hCache);
                         if (probe.rimMin() >= lvl - 0.5) break;      // 短板成立
                         double next = Math.min(lvl, probe.rimMin());
                         if (next >= lvl - 1e-9) break;               // 已无法再降
@@ -445,7 +458,7 @@ public final class RiverLineRegion {
                     return floodOOB = false;    // 消失 ≠ 残缺，不必弃湖
                 }
                 // 最终一次 BFS：以（可能已压低的）水位求正式淹水区
-                FloodRun run = runFloodCore(erodedY, lvl, minX, minZ, gridCell, nx, nz, si, sj);
+                FloodRun run = runFloodCore(erodedY, lvl, minX, minZ, gridCell, nx, nz, si, sj, hCache);
                 java.util.List<double[]> flood = run.flood();
                 boolean oob = false;
                 for (double[] pt : flood) {
@@ -534,7 +547,8 @@ public final class RiverLineRegion {
         private FloodRun runFloodCore(java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
                                       double level,
                                       double minX, double minZ, double gridCell, int nx, int nz,
-                                      int si, int sj) {
+                                      int si, int sj,
+                                      double[] hCache) {
             boolean[] seen = new boolean[nx * nz];
             java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
             int sIdx = sj * nx + si;
@@ -552,8 +566,13 @@ public final class RiverLineRegion {
                     if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
                     int nIdx = nj * nx + ni;
                     if (seen[nIdx]) continue;
-                    double hh = erodedHeightAt(erodedY, minX + ni * gridCell,
-                            minZ + nj * gridCell, gridCell);
+                    // ★ 2026-09-17【性能】高度走缓存（见 computeFlood 的 hCache 说明）。
+                    double hh = hCache[nIdx];
+                    if (Double.isNaN(hh)) {
+                        hh = erodedHeightAt(erodedY, minX + ni * gridCell,
+                                minZ + nj * gridCell, gridCell);
+                        hCache[nIdx] = hh;
+                    }
                     // 通行条件与原实现一致（只问"是否低于水位"）；
                     // "薄水/最小水深"由落块侧的 `height < spill-0.5` 等高线判定负责。
                     if (hh < level - 0.05) {
