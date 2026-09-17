@@ -604,9 +604,30 @@ public final class RiverLineRegion {
 
         /** 该点是否落在【侵蚀后淹水连通域】内（粗格覆盖；边界由落块侧等高线精修）。 */
         public boolean inFlood(double wx, double wz) {
+            return inFlood(wx, wz, 0.0);
+        }
+
+        /**
+         * 带**容差**的连通域判定 —— 用于"粗格只做连通性粗筛、边界交给块级等高线"。
+         *
+         * <h4>为什么需要容差（2026-09-17，水体渲染图实证）</h4>
+         * <p>本方法此前是**唯一**的水界判据（carver 直接 `if (!inFlood) return 非湖列`），
+         * 而 BFS 是**粗格**（`claimGrid*0.25 = 6wu`）⇒ 水界带**格网直角**，
+         * 与设计意图"湖岸 = 侵蚀后地形与 spill 的**等高线**"不符
+         * （见本类 {@code computeFlood} 的注释，以及 {@code GeoGenesisTerrain}
+         * 湖分支里的块级判定 {@code cell.height < spill − 0.5}）。</p>
+         *
+         * <p>⇒ 正解：本方法负责<b>连通性粗筛</b>（排除远在域外/不连通的低地），
+         * 边界再交由落块侧的**块级等高线**判定。给一点容差
+         * （如一个粗格 {@code floodHalf}）即可让"粗格边界外、但确实低于水位且相邻"的列
+         * 进入块级判定 ⇒ 水界回归等高线，同时不破坏连通性语义。</p>
+         *
+         * @param extra 额外容差（wu）；{@code 0} = 原行为
+         */
+        public boolean inFlood(double wx, double wz, double extra) {
             double[] fx = floodX, fz = floodZ;
             if (fx == null || fx.length == 0) return false;
-            double r = floodHalf;
+            double r = floodHalf + Math.max(0.0, extra);
             for (int i = 0; i < fx.length; i++) {
                 if (Math.abs(wx - fx[i]) <= r && Math.abs(wz - fz[i]) <= r) return true;
             }
