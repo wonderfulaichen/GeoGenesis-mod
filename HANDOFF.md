@@ -150,8 +150,10 @@ gradlew runChunkLoadPerfProbe     -PprobeArgs="5436529513624899584 32 4"        
 | `province*` 配置 | 确认**零消费**（`AGENTS.md` 已标注） |
 | `worldgen/geode/` | **空目录**（`GeodeShape` 删除后的遗留）⇒ 可安全删除，**待你确认** |
 | `ClimateZone` | 仍有消费（预览配色图层 / `ConfigSafe`）⇒ **不是死代码**，只是不再主导群系 |
-| `MidpointDisplacement` | ⚠ 仍被 `RiverLineNetwork` / `RiverLineRegion` 与 7 个探针引用 —— 与 `AGENTS.md` 所述"生产路径已改 flowaccum、仅保留对照"**可能不符**，值得单独查一次（未动） |
-| `runLandEConformityProbe` | 当前 FAIL（T5 形变量）⇒ 是**回归还是判据过时**，需归因（未动） |
+| `MidpointDisplacement` | ✅ **已查清（2026-09-18）**：`generate()` **全仓零调用**＝死方法；但**类不能删**（`Node` / `ElevationSampler` 是生产类型，`RiverLineNetwork` 大量使用）。💣 并挖出隐藏耦合：`RiverTrace.nodeCount()` 仍消费 `fractalLevels` 决定**新范式 D8 河线的节点数** ⇒ 已在 `RiverLineParams` / `RiverTrace` 加警告，**勿当死参数清理**（会静默改变产出） |
+| `runLandEConformityProbe` | ✅ **已查清（2026-09-18）：不是回归，是刻意保留的靶子** —— 判据 `maxJump < 0.02e`，当前 0.056e（已由 0.414e 改善 7.4×）；探针注释明写"保持严格判据并如实报 FAIL，**不为了让 CI 变绿而放宽阈值**"，`README` 已知限制亦有记录 ⇒ **勿为它放宽阈值，也勿纳入门禁** |
+| `WaterPhysicsProbe` | ⏳ 仍待决：判据 `viol<=0.5 && walls==0` 已过时（永远红）。可选：改判据为「基线 + 容忍」并显式打印基线 vs 当前，或承认它是仪表。**未动** |
+| `worldgen/geode/` | ⏳ 空目录，删不删都无影响（git 不跟踪空目录，实际未入库）。**未动** |
 
 ---
 *本文为交接用，随后续工作更新。*

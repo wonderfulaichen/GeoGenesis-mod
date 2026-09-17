@@ -16,7 +16,9 @@ public record RiverLineParams(
     int regionSize,
     /** 分形中点位移抖动幅度（占段长比例）。旧分形线用，保留兼容。 */
     double jitter,
-    /** 分形最大二分次数。旧分形线用，保留兼容。 */
+    /** 分形最大二分次数。⚠ 2026-09-18 警告：本字段注释原写"旧分形线用，保留兼容"，
+     *  极易被当成死参数清理 —— 但【新范式 RiverTrace.nodeCount() 仍在消费它】，
+     *  决定 D8 河线的节点数（2^levels + 1）。清理前必须先改 RiverTrace，否则静默改变产出。 */
     int fractalLevels,
     /** 锚点从 hash 位置向局部低 e 走廊吸附的搜索半径（wu）。旧锚点用，保留兼容。 */
     double anchorSnapRadius,
