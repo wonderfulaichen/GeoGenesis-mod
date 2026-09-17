@@ -64,7 +64,9 @@ public final class RiverTrace {
         return out;
     }
 
-    /** 节点数与旧分形一致（2^levels + 1），width/depth 数组逻辑无需改动。 */
+    /** 节点数与旧分形一致（2^levels + 1），width/depth 数组逻辑无需改动。
+     *  ⚠ 2026-09-18：因此本方法【依赖 RiverLineParams.fractalLevels】。该字段注释标为
+     *  "旧分形线用，保留兼容"，但实为【生产参数】⇒ 勿当死参数清理（会静默改变河线）。 */
     private static int nodeCount(RiverLineParams params) {
         return (1 << params.fractalLevels()) + 1;
     }

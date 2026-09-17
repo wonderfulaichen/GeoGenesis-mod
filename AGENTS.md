@@ -81,7 +81,7 @@ gradlew.bat runWorldgenGate      # 世界生成门禁（只跑当前实测 ALL P
 | ❌ **不存在（2026-09-11 核查）** | `ErosionSystem` / `ErosionAgent` / `Thermal` / `Coastal` / `Glacial` / `Wind` —— **多营力侵蚀从未实现**；`worldgen/river/*` RTF 全套已删（2026-08-28） |
 | `worldgen/hydrology/riverline/RiverLineNetwork.java` | ★ 物理正确河网门面（2026-08-28）：region 内 D8 汇流场派生河线 + Catmull-Rom 细分 + 锚点衔接邻 region + 水面单调反推 + width/depth 由汇流面积驱动；`sampleAll` 3×3 邻域采样 → 无 border 断裂；确定性（worldSeed+region 纯函数） |
 | `worldgen/hydrology/riverline/RiverLineParams.java` | 河网参数 record（gridCell/accumThreshold/mountainScale/slopeDrop/heightBlendDist/valleyExp/meander…）；`routingE(e)` 山压低选线场 |
-| `worldgen/hydrology/riverline/MidpointDisplacement.java` | 旧分形线（保留对照，生产路径已改 flowaccum 派生），含 `ElevationSampler`(terrainEQuick)/`Node`/`RiverOutlet`(OCEAN/LAKE) |
+| `worldgen/hydrology/riverline/MidpointDisplacement.java` | 旧分形线（保留对照，生产路径已改 flowaccum 派生），含 `ElevationSampler`(terrainEQuick)/`Node`/`RiverOutlet`(OCEAN/LAKE)。⚠ **2026-09-18 细化（原表述易误删）**：① `generate()`（分形线生成）**全仓零调用**，是死方法；② 但**类不能删** —— `Node` / `ElevationSampler` 是**生产类型**，`RiverLineNetwork` 大量使用；③ 💣 **隐藏耦合**：`RiverTrace.nodeCount()` 仍消费 `RiverLineParams.fractalLevels`（该字段注释标为"旧分形用，保留兼容"）来决定**新范式 D8 河线的节点数** ⇒ 照注释去"清理旧参数"会**静默改变生产产出** |
 | `worldgen/hydrology/flowaccum/FlowField.java` | D8 流向+汇流累积（region 网格纯函数带 margin，O(n) 拓扑序）；选线场用 `mountainScale` 压低山 → 贴谷避峰 |
 | `worldgen/hydrology/flowaccum/RiverTrace.java` | 累积超阈值→折线提取+平滑+汇入下游出口锚点（border-safe/lake-safe 掩码 + 回滚 + 防交叉） |
 | `worldgen/hydrology/HydrologyBlockCarver.java` | 单块雕刻：邻近段 IDW 混合（fade²/dist²）surfaceY/width/depth → 河线交越平滑、无硬切；水面=min(单调水面,真实地形)；只下挖；灌水门控 |
