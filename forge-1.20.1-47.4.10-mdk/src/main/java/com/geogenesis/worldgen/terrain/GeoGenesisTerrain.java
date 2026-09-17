@@ -42,6 +42,30 @@ public final class GeoGenesisTerrain {
         Collections.synchronizedMap(new LruMap<>(CACHE_SIZE, chunkCacheStats));
 
     private final boolean riversEnabled;
+
+    /**
+     * ★ 2026-09-17【M2，默认 false】湖水位是否改用"雕刻后最终地形上的逃逸高度"。
+     *
+     * <p>修的是<b>阶段错位</b>：旧水位在【侵蚀后、雕刻前】地形上求，而雕刻会把山脊挖穿、
+     * 开出新排水口 ⇒ 水悬在"现已能排干"的河谷上方（实测 21.6% 的水格紧邻 1~2 块内
+     * 有低 8.75 块的旱地却无水）。详见 {@code applyHydrologyValley} 湖分支的注释。</p>
+     *
+     * <h4>★ 2026-09-17 A/B 实测：本实现【尚不完整】（故默认关闭）</h4>
+     * <p>启用后窗口水格由 362 → 136（确有变化），但<b>目标最坏点未改善</b>（仍 166.63 / +8.747 块）。
+     * 原因：本实现用 {@code generator.sampleWu} 作为地形——那是<b>侵蚀后、但仍未雕刻</b>的地形，
+     * 与旧实现<b>同一份输入</b> ⇒ 逃逸高度（167.539）反而高于旧水位（166.627）⇒ {@code min} 后不变。</p>
+     *
+     * <h4>★ 真正的结构结（必须一并解决才能启用）</h4>
+     * <p>水位必须在<b>雕刻后的地形</b>上求解；但<b>雕刻是逐 chunk 的</b>，而逃逸路径要跨几十个 chunk ⇒
+     * 在 {@code applyHydrologyValley} 内部读"其它 chunk 的已雕刻地形"会递归触发
+     * {@code getChunkCells → generateChunk → applyHydrologyValley → 逃逸计算 → getChunkCells …}。</p>
+     * <p>⇒ <b>水位与雕刻必须处于同一层级</b>：先把 region 级地形"侵蚀 + 雕刻"定型，
+     * 再在其上求水位 —— 即本例程所属的「世界水文模型」重构核心（见
+     * {@code .codebuddy/plans/世界水文模型-重构设计.md} §2.3）。
+     * <b>在该结构调整完成前，本开关保持 false。</b></p>
+     */
+    static final boolean LAKE_ESCAPE_LEVEL = false;   // 待"雕刻与水位同层级"重构后启用
+
     /** 侵蚀向河道软让步（方案 A，config erosionYieldToRiver，默认 true）。 */
     private final boolean erosionYieldToRiver;
     private final HydrologyChunkEngine hydrologyExperiment;
@@ -413,8 +437,7 @@ public final class GeoGenesisTerrain {
      *     隔壁原侵蚀地形，垂直墙在构造上不可能出现（旧 0.5 钳幅为历史残留，已删）。</li>
      * </ol>
      */
-    private void applyHydrologyValley(Cell[] cells, int cx, int cz) {
-        HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
+    private void applyHydrologyValley(Cell[] cells, int cx, int cz) {        HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
         double seaLevel = generator.seaLevel();
 
         // 河流绿洲输入：到最近河线的距离（与快速路径 fillRiverDistance 同一条件 → 预览 = 游戏）
@@ -433,7 +456,30 @@ public final class GeoGenesisTerrain {
             //   侵蚀切深盆底 → 淹更多；侵蚀淤积垫高 → 湖岸内缩/该格变滩（物理正确）。
             //   这是湖"吃侵蚀后地形"的真正落点（carver 的 original 是无侵蚀基线，判不得）。
             if (column.lakePlan()) {
+                // ★★★ 2026-09-17【M2】湖水位改用【雕刻后最终地形】上的逃逸高度 ★★★
+                //
+                // 【被修的缺陷（实机 + 路径剖面实证）】
+                //   旧：水位 = erodedWaterLevel（在【侵蚀后、雕刻前】地形上求，且只取 rim 圈）。
+                //   实测（块(-15,661)，湖心块(17,752)）：
+                //     · 水位求解=166.627 —— 对"侵蚀后雕刻前"地形【正确】
+                //       （两法互证：priority-flood filledAt 167.117、逃逸高度 167.539）
+                //     · 但【雕刻】随后把山脊挖穿、开出新排水口：
+                //       已雕刻地形上，湖心→违反点路径最高仅 162.150
+                //     · 水位没有重算 ⇒ 水悬在"现已能排干"的河谷上方
+                //       ⇒ 紧邻 1~2 块内有低 8.75 块的旱地却无水（21.6% 的水格如此）
+                //
+                // 【修法】在【已雕刻的最终地形】上重算逃逸高度（minimax escape height），
+                //   并只降不升（不高于旧水位，避免引入新变形）。
+                //   湖列【不雕刻】⇒ 湖水位不影响雕刻 ⇒ 无循环、可后算（单向化）。
+                //   回退：LAKE_ESCAPE_LEVEL = false。
                 double spill = column.waterSurfaceY();
+                if (LAKE_ESCAPE_LEVEL && column.lakeNode() != null) {
+                    double esc = column.lakeNode().escapeWaterLevel(
+                            (a, b) -> generator.sampleWu(a, b).height, 24.0, 6.0);
+                    if (!Double.isNaN(esc)) {
+                        spill = Math.min(spill, esc);      // 只降不升
+                    }
+                }
                 boolean flooded = cell.height < spill - 0.5;
                 // 湖不挖地；水柱保护：落块水放 (floor(height), floor(spill)]，若
                 // floor 相同则无水块 → 只在必需时把地面压到 floor(spill)-1 以下（<1 格）

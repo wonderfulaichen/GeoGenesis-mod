@@ -16,7 +16,26 @@ public record HydrologyBlockCarvedColumn(int blockX, int blockZ,
                                           */
                                          double erosionMask,
                                          boolean fillWater,
-                                         boolean lakePlan) {
+                                         boolean lakePlan,
+                                         /**
+                                          * ★ 2026-09-17：湖节点引用（仅湖列非 null）。
+                                          * 供落块层在【雕刻后的最终地形】上重算湖水位
+                                          * （{@code LakeNode.escapeWaterLevel}）——
+                                          * 修"水位求解早于雕刻"的阶段错位。见
+                                          * {@code GeoGenesisTerrain.LAKE_ESCAPE_LEVEL}。
+                                          */
+                                         com.geogenesis.worldgen.hydrology.riverline
+                                                 .RiverLineRegion.LakeNode lakeNode) {
+
+    /** 兼容旧调用（无湖节点）。 */
+    public HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
+                                      double carvedGroundY, double waterSurfaceY,
+                                      double lipSurfaceY, double erosion,
+                                      double erosionMask, boolean fillWater,
+                                      boolean lakePlan) {
+        this(blockX, blockZ, originalGroundY, carvedGroundY, waterSurfaceY, lipSurfaceY,
+                erosion, erosionMask, fillWater, lakePlan, null);
+    }
     /** 水幕高度（block）：0 = 普通列。 */
     public double fallDrop() {
         double d = lipSurfaceY - waterSurfaceY;
