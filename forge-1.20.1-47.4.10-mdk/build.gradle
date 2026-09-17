@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Lake shore precise-intersection feasibility (2026-09-17, user's ray-tracing suggestion):
+//   gradlew runLakeEdgeRefineProbe [-PprobeArgs="seed blockX blockZ radiusBlocks"]
+task runLakeEdgeRefineProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeEdgeRefineProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Lake "ridge tunneling" hypothesis test (2026-09-17):
 //   gradlew runLakeTunnelProbe [-PprobeArgs="seed lakeX lakeZ"]
 task runLakeTunnelProbe(type: JavaExec) {
