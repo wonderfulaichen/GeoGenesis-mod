@@ -95,6 +95,38 @@ public final class FlowField {
     }
 
     /**
+     * ★ 2026-09-18（水文 M2-C）：<b>气候驱动的沿程衰减</b> —— 兑现"水文是一个整体"。
+     *
+     * <p>与常量 {@code decayPerWu} 的区别：常量只能让<b>全局</b>河普遍变细；
+     * 气候驱动才产生<b>空间上不同的水文行为</b> ——
+     * 干旱区蒸发强 ⇒ 河流流着流着就消失（<b>内流河 / 时令河</b>）；
+     * 湿润区 {@code decay ≈ 0} ⇒ 河流穿流到海。</p>
+     *
+     * <p>公式（降水是干旱度最直接的代理）：</p>
+     * <pre>
+     *   decay(precip) = maxDecay · max(0, 1 − precip/ref)^exponent
+     * </pre>
+     * <p>⇒ {@code precip ≥ ref}（湿润）时 <b>decay = 0（完全不变）</b>；
+     * {@code precip → 0}（极旱）时 {@code decay → maxDecay}。</p>
+     *
+     * @param maxDecay 极旱区衰减系数（1/wu）
+     * @param ref      参考降水：≥ 此值视为湿润（decay = 0）
+     * @param exponent 软化指数（&lt;1 ⇒ 半干旱区也有明显衰减）
+     */
+    public record DecayClimate(double maxDecay, double ref, double exponent) {
+        /** 关闭（= 旧行为）。 */
+        public static DecayClimate disabled() { return new DecayClimate(0.0, 1.0, 1.0); }
+
+        /** 该降水处的沿程衰减系数（1/wu）。 */
+        public double decayAt(double precip) {
+            double r = precip / ref;
+            if (r >= 1.0) return 0.0;                       // 湿润 ⇒ 不衰减
+            double d = 1.0 - Math.max(0.0, r);
+            return maxDecay * Math.pow(d, exponent);
+        }
+    }
+
+    /**
      * 降水粗格点间距（<b>wu</b>，非 flow 格数）。
      *
      * <p><b>为什么必须粗采</b>（★ 2026-09-11 实测教训）：{@code PrecipSampler} 走
@@ -118,6 +150,10 @@ public final class FlowField {
     private PrecipSampler precipSampler;
     /** 降水权重参数。 */
     private PrecipWeights precipWeights;
+    /** ★ 2026-09-18 M2-C：气候驱动衰减参数（{@code null} = 不用气候驱动）。 */
+    private DecayClimate decayClimate;
+    /** ★ 2026-09-18 M2-C：逐格预计算的衰减系数（1/wu）；{@code null} = 改用常量 {@link #decayPerWu}。 */
+    private double[] decayCell;
 
     public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
                      double cellSize, ElevationSampler sampler) {
@@ -151,8 +187,29 @@ public final class FlowField {
     public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
                      double cellSize, ElevationSampler sampler,
                      PrecipSampler precip, PrecipWeights weights, double decayPerWu) {
+        this(minWuX, minWuZ, maxWuX, maxWuZ, cellSize, sampler, precip, weights,
+             decayPerWu, null);
+    }
+
+    /**
+     * ★ 2026-09-18（水文 M2-C）：<b>气候驱动衰减</b>的完整构造器。
+     *
+     * <p>与常量 {@code decayPerWu} 的取舍：常量只能"全局变细"；
+     * 气候驱动才能让<b>沙漠里的河消失、雨林里的河穿流</b>（见 {@link DecayClimate}）。</p>
+     *
+     * <p>⚠ {@code decayClimate} 仅在 {@code precip != null} 时生效
+     * （气候驱动需要降水信息）⇒ 传了气候但没传降水 = 不衰减。</p>
+     *
+     * @param decayClimate 气候驱动参数；{@code null} 或 {@code maxDecay == 0} ⇒ 不用
+     */
+    public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
+                     double cellSize, ElevationSampler sampler,
+                     PrecipSampler precip, PrecipWeights weights, double decayPerWu,
+                     DecayClimate decayClimate) {
         this.cellSize = Math.max(1.0, cellSize);
         this.decayPerWu = Math.max(0.0, decayPerWu);
+        this.decayClimate = (decayClimate != null && decayClimate.maxDecay() > 0.0)
+                ? decayClimate : null;
         this.originX = minWuX;
         this.originZ = minWuZ;
         this.nx = Math.max(2, (int) Math.ceil((maxWuX - minWuX) / this.cellSize) + 1);
@@ -173,12 +230,17 @@ public final class FlowField {
             this.precipSampler = precip;
             this.precipWeights = weights;
             this.precipNodes = new java.util.HashMap<>();
+            // ★ 2026-09-18 M2-C：气候驱动衰减 —— 与降水加权【共用同一次】precipAtWu 采样
+            if (this.decayClimate != null) this.decayCell = new double[n];
             for (int j = 0; j < nz; j++) {
                 double wz = originZ + j * this.cellSize;
                 for (int i = 0; i < nx; i++) {
                     double wx = originX + i * this.cellSize;
-                    accum[j * nx + i] = this.cellSize * this.cellSize
-                                      * weights.weight(precipAtWu(wx, wz));
+                    double p = precipAtWu(wx, wz);
+                    accum[j * nx + i] = this.cellSize * this.cellSize * weights.weight(p);
+                    if (this.decayCell != null) {
+                        this.decayCell[j * nx + i] = this.decayClimate.decayAt(p);
+                    }
                 }
             }
         }
@@ -375,7 +437,7 @@ public final class FlowField {
         Integer[] order = new Integer[n];
         for (int i = 0; i < n; i++) order[i] = i;
         Arrays.sort(order, (a, b) -> Double.compare(e[b], e[a]));
-        final boolean attenuate = decayPerWu > 0.0;
+        final boolean attenuate = decayPerWu > 0.0 || decayCell != null;
         final double diag = Math.sqrt(2.0) * cellSize;
         for (int k = 0; k < n; k++) {
             int cur = order[k];
@@ -389,7 +451,13 @@ public final class FlowField {
             int dx = Math.abs((cur % nx) - (down % nx));
             int dz = Math.abs((cur / nx) - (down / nx));
             double dist = (dx == 1 && dz == 1) ? diag : cellSize;
-            accum[down] += accum[cur] * Math.exp(-decayPerWu * dist);
+            // 衰减系数：气候驱动优先（逐格）；否则用常量
+            double d = (decayCell != null) ? decayCell[cur] : decayPerWu;
+            if (d <= 0.0) {
+                accum[down] += accum[cur];                // 湿润区 ⇒ 与旧路径逐位一致
+            } else {
+                accum[down] += accum[cur] * Math.exp(-d * dist);
+            }
         }
     }
 
@@ -400,6 +468,19 @@ public final class FlowField {
         i = Math.max(0, Math.min(nx - 1, i));
         j = Math.max(0, Math.min(nz - 1, j));
         return j * nx + i;
+    }
+
+    /**
+     * ★ 2026-09-18 M2-C：指定格【实际使用】的沿程衰减系数（1/wu）。
+     *
+     * <p>供诊断探针与实现【同口径】比对 —— 本项目已多次因探针自算降水
+     * （如用格中心 {@code precipitationAt}）而实现走粗格点插值 {@code precipAtWu}
+     * 产生口径差异，得出假结论（见门禁清单 §D-1）。</p>
+     *
+     * @return 气候驱动时为该格预计算值；否则为常量 {@code decayPerWu}
+     */
+    public double decayAt(int idx) {
+        return (decayCell != null) ? decayCell[idx] : decayPerWu;
     }
 
     /** 指定格的汇流面积（wu²）。 */

@@ -269,6 +269,31 @@ public final class RiverLineNetwork {
         if (regionsP1 != null) regionsP1.clear();
     }
 
+    // ===== 水量平衡：沿程衰减（★ 2026-09-18 水文 M2）=====
+    /**
+     * 气候驱动衰减参数；{@code null} = 关闭（<b>旧行为，逐位一致</b>）。
+     *
+     * <p>语义：干旱区蒸发强 ⇒ 河流流着流着就消失（<b>内流河 / 时令河</b>）；
+     * 湿润区 {@code decay ≈ 0} ⇒ 河流穿流到海。见
+     * {@link FlowField.DecayClimate}。</p>
+     */
+    private FlowField.DecayClimate decayClimate;
+
+    /**
+     * 注入气候驱动衰减（★ 2026-09-18 水文 M2-C）。
+     *
+     * <p><b>必须在首次构建 region 前调用</b>；调用后会清空已有 region 缓存，
+     * 避免"部分 region 衰减、部分未衰减"的混用。</p>
+     *
+     * <p>⚠ 与 {@link #setPrecipSampler} 一样，只改<b>河网规模</b>（进而河宽/湖域）；
+     * 传 {@code null} 或 {@code maxDecay=0} ⇒ 与旧行为<b>逐位一致</b>。</p>
+     */
+    public void setDecayClimate(FlowField.DecayClimate dc) {
+        this.decayClimate = dc;
+        regions.clear();
+        if (regionsP1 != null) regionsP1.clear();
+    }
+
     // ★★★ 2026-09-14 性能修复（用户："刚创建加载有一段无动静的空闲期"）★★★
     //   【根因】region() 建 1 个 region 要先建 8 个邻居的 pass-1（3×3 循环）⇒ 9 次 build。
     //   每次 build 都 new FlowField，而对 region 覆盖范围（regionSize 640 + margin 320×2
@@ -400,8 +425,13 @@ public final class RiverLineNetwork {
         double minZ = rz * regionSize - margin, maxZ = rz * regionSize + regionSize + margin;
         // ★ 选线场用"山压低"后的 e（routingE），使河线贴谷避峰；水面仍锚定真实地形（groundYAt）。
         // ★ Phase C：降水加权汇流累积（precipSampler 为 null 时与旧行为逐位一致）
-        FlowField field = new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE,
-                                        precipSampler, precipWeights);
+        // ★ 2026-09-18 M2-C：decayClimate 为 null 时走 9 参构造器（decayPerWu=0）
+        //   ⇒ 与旧行为逐位一致
+        FlowField field = (decayClimate == null)
+                ? new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE,
+                                precipSampler, precipWeights)
+                : new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE,
+                                precipSampler, precipWeights, 0.0, decayClimate);
         // ★ 填洼层（湖泊）：按【真实地形】判定洼地——选线用的 routingE 是压过低山的
         //   人工高程，拿它找湖会把湖放在被压低的坡面上。
         // ★ 2026-09-15：第二参 = 真实海平面，作为 priority-flood 的<b>出水口</b>
