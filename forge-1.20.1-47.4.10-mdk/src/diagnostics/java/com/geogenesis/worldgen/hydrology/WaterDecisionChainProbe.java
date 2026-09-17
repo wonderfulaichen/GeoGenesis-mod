@@ -298,6 +298,46 @@ public final class WaterDecisionChainProbe {
                     : "    ★ 判定：有偏差 ⇒ 写回公式需再核对");
         }
 
+        // ---- [14] ★★ 决定性问题：那些"低于水位却干"的格，为什么没被灌？----
+        System.out.println();
+        System.out.println("[14] ★ 干格（低于水位）的 lakePlan 判定 —— 决定修法");
+        if (hit != null && hit.lake() != null) {
+            RiverLineRegion.LakeNode lnode = hit.lake();
+            HydrologyExperimentEngine eng14 = new HydrologyExperimentEngine(gen, seed);
+            double lvl14 = lnode.erodedWaterLevel((a, b) -> gen.sampleWu(a, b).height);
+            int lakePlanTrue = 0, lakePlanFalse = 0, inDomainTrue = 0;
+            int shown14 = 0;
+            for (int dz = -30; dz <= 30; dz += 6) {
+                for (int dx = -30; dx <= 30; dx += 6) {
+                    int x = bx + dx, z = bz + dz;
+                    Cell c14 = gt.getChunkCells(x >> 4, z >> 4)
+                            [Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
+                    if (c14.riverType != 0) continue;              // 只看干格
+                    if (c14.height >= lvl14 - 0.5) continue;       // 只看低于水位
+                    double wux14 = x / hs, wuz14 = z / hs;
+                    double o14 = gen.sample(wux14, wuz14).height;
+                    HydrologyBlockCarvedColumn cc =
+                            HydrologyBlockCarver.carveColumnAt(eng14, x, z, o14, hs);
+                    boolean lp = cc != null && cc.lakePlan();
+                    boolean dom = lnode.inDomain(wux14, wuz14, rp.gridCell() * 2.0);
+                    if (lp) lakePlanTrue++; else lakePlanFalse++;
+                    if (dom) inDomainTrue++;
+                    if (shown14 < 8) {
+                        System.out.printf("      块(%d,%d) h=%.2f(<水位%.2f) lakePlan=%-5s inDomain=%-5s"
+                                        + " ⇒ 走%s分支%n",
+                                x, z, c14.height, lvl14, lp, dom, lp ? "湖(会灌)" : "河(保持干)");
+                        shown14++;
+                    }
+                }
+            }
+            System.out.printf("    统计：lakePlan=true %d ｜ lakePlan=false %d；inDomain=true %d%n",
+                    lakePlanTrue, lakePlanFalse, inDomainTrue);
+            System.out.println("    ⇒ 若多数 lakePlan=false 而 inDomain=true ⇒ **它们本属湖区却走了河分支**");
+            System.out.println("      ⇒ 修法 = 湖域内的列（inDomain）一律走湖分支，由等高线判水（1 块精度）");
+        } else {
+            System.out.println("    （无湖命中，跳过）");
+        }
+
         System.out.println();
         System.out.println("判读：① 若存在【更近】的命中其 surfaceY ≈ 166.6 ⇒ IDW 把水面拉高到它；");
         System.out.println("      ② 若所有命中的 dist 都 ≫ width ⇒ 本列是【谷壁列】，");

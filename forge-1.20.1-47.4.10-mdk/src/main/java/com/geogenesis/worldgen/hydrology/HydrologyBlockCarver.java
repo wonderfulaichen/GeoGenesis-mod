@@ -142,8 +142,38 @@ public final class HydrologyBlockCarver {
         //   那里 cell.height 已是侵蚀后地面）用【侵蚀后 height < spill】判出水，湖岸
         //   = 侵蚀后地形与 spill 的等高线。carver 只负责：给湖域列打 lakePlan 标、
         //   不雕刻（carved=original）、水面=spill。这样湖自然吃侵蚀后地形、湖岸贴地。
-        if (!samples.isEmpty() && samples.get(0).isLake()) {
-            HydrologyBlockSample lakeSample = samples.get(0);
+        // ★★★ 2026-09-17【已定位的修复点，尚未启用】★★★
+        //
+        // 【问题】下面这个条件用 `samples.get(0).isLake()`（"最近命中是不是湖"）决定是否走湖分支。
+        //   但**湖的域内，很多列的最近命中是"河"** ⇒ 这些列 lakePlan=false ⇒ 走河分支
+        //   ⇒ **完全不被灌**，尽管它们低于湖面、且属于该湖的域。
+        //
+        // 【实测证据（块(-15,661) 周围，seed 5436529513624899584）】
+        //   49 个"低于水位(166.63)却是干的"格：
+        //     lakePlan = true 的 0 个；lakePlan = false 的 **49 个**；
+        //     inDomain = true 的 **49 个**（即全部本属湖区）
+        //   样例：块(9,643) h=160.91、块(3,649) h=159.05、块(-3,655) h=158.41 …
+        //   ⇒ **湖域内的列被"最近命中是河"这条判据排除在湖分支之外**。
+        //
+        // 【修法（待启用）】判据由"最近命中是否湖"改为"**本列是否落在某个湖的域内**"：
+        //   `if (engine.lakeDomainAt(blockX, blockZ, horizontalScale) != null) { ...湖分支... }`
+        //   湖分支内的判水 `cell.height < spill − 0.5` 本身就是【1 块精度等高线判定】
+        //   ⇒ 水天然贴合地形、不会出现"跨 24 块的斜线边界"。
+        //
+        // 【为何安全】湖列不雕刻（carved=original）、水面仅用于判水 ⇒ 改动只影响"哪些列出水"，
+        //   不改变地形高度 ⇒ 不会引入新的地形形变。
+        // 【回退】恢复原条件一行。
+        // ★★★ 2026-09-17 实施：判据由"最近命中是否湖"改为"**是否存在湖命中**" ★★★
+        //   实测（块(-15,661) 周围）：49 个"低于水位却干"的格，全部 inDomain=true 却
+        //   lakePlan=false —— 因为它们最近的命中是【河】，于是被完全排除在湖判水之外。
+        //   改为"只要命中里有湖" ⇒ 这些列进入湖分支，由 `height < spill − 0.5`
+        //   按【1 块精度等高线】判水 ⇒ 水天然贴合地形（不再有跨 24 块的斜线边界）。
+        HydrologyBlockSample anyLakeSample = null;
+        for (HydrologyBlockSample s : samples) {
+            if (s.isLake()) { anyLakeSample = s; break; }
+        }
+        if (anyLakeSample != null) {
+            HydrologyBlockSample lakeSample = anyLakeSample;
             // ★ 侵蚀短板水位（2026-09-09，用户实测"水面边缘没到地形/水面包不住"）：
             //   surfaceY(spill) 是【无侵蚀】地形的溢出坎高；侵蚀把溢出口坎（rim）削低后，
             //   旧 spill 会高出真实缺口 → 水从低坎漏走、包不住。真水位 = min(原 spill,
