@@ -138,8 +138,21 @@ gradlew runChunkLoadPerfProbe     -PprobeArgs="5436529513624899584 32 4"        
   实际在 `mixer/` 下）。已按实际 49 个文件重写。
 - **`ARCHITECTURE.md`**：`LandShape.java` 原标 `[ACTIVE]` 但不存在（实际 `TypeLandShape`）；
   `fillRiverColumn` 不存在（实际 `fillTerrainColumn`）；`PreviewColor` 不存在；`TerrainConfigPanel` 路径错。已改。
-- **`README`**：目录结构段大量失真 —— `docs/`、`参考/`、`backups/`、`logs/`、`net/minecraftforge/`、
-  `erosion-test-tool*/`、`sca_smoke/`、`river_check/` **全部不存在**。已改为如实记录并保留原声明痕迹。
+- **`README` 目录结构段**：⚠️ **本轮在这里犯了一个错误并已回滚**。我用**受 `.gitignore` 过滤的
+  搜索工具**判断"目录是否存在"，据此把 `docs/`、`参考/`、`logs/`、`river_check/`、`sca_smoke/`
+  改写成"不存在" —— **全错**。权威核实（`git status --ignored`）：这些目录**真实存在**，
+  只是被忽略；真正不存在的只有 `backups/` / `net/minecraftforge/` / `erosion-test-tool*/`。
+  ⇒ **教训（已写进 `README` 注意事项）：判断文件/目录是否存在，绝不能用受 ignore 规则过滤的工具；
+  必须用 `git status --ignored` 或显式路径列目录。**
+- **★ 由此捞回一份关键资产**：`docs/` 内有
+  `docs/analysis/守门门禁清单-2026-09-16.md` —— **115 个探针的「改什么 ⇒ 必跑什么」矩阵 +
+  实测基线 + 使用纪律**（含"渲染图才是伪影最终依据""口径错误的判据比没有判据更糟"等）。
+  它与本轮的 `runWorldgenGate` **互补**：清单管"该跑哪些"，门禁管"跑了会不会拦"。
+  ⚠ **本轮的 `runWorldgenGate` 可能纳入不全** —— 清单 §B 里 ✅ 实测 ALL PASS 的探针有 12+ 个
+  （`runFlowAccumProbe` / `runOreVeinProbe` / `runCaveBiomeProbe` / `runHandoffPickupProbe` /
+  `runTectonicProbe` / `runTectonicDeformProbe` / `runShapeProbe` / `runTypeAxisProbe` …），
+  本轮只纳入了 6 个。**待办：按清单 §B 补齐门禁**（注意这些探针多数**尚未挂退出码**，
+  需先补 `System.exit` 才是真门禁）。
 - **僵尸探针假说被证伪**：0 处引用已删除模块（`worldgen.river` / `GeodeShape` / `BiomeMapper`）
   ⇒ **不需要清理任何探针**。
 
