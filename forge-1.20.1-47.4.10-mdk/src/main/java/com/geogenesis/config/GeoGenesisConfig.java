@@ -294,6 +294,35 @@ public final class GeoGenesisConfig {
      * 本开关也<b>不</b>影响原版水成细节（{@code disk_*} / {@code underwater_magma}）与岩块团块策略。</p>
      */
     public final ForgeConfigSpec.BooleanValue oreOverrideVanilla;
+
+    // ===================== ★ 2026-09-18 水量平衡（水文 M2）=====================
+    /**
+     * ★ 2026-09-18：<b>水量平衡 —— 沿程衰减（蒸发/入渗）</b>。
+     *
+     * <p>现状（{@code false}）下水只"越流越多"：D8 汇流累积
+     * （{@code FlowField.buildAccum}）纯累加 ⇒ <b>不可能有内流河 / 时令河</b>。</p>
+     *
+     * <ul>
+     *   <li>{@code false}（默认）= <b>OFF</b>：不衰减 ⇒ <b>零行为变更</b>（逐位一致）；</li>
+     *   <li>{@code true} = <b>CLIMATE</b>：衰减由<b>降水</b>驱动
+     *       （降水是干旱度最直接的代理）——
+     *       干旱区蒸发强 ⇒ 河流流着流着就消失（<b>内流河</b>）；
+     *       湿润区 {@code decay = 0} ⇒ 河流穿流到海。</li>
+     * </ul>
+     *
+     * <p>⚠ 影响范围：只改<b>河网规模</b>（进而河宽 / 湖域），<b>不改</b>地形高度。</p>
+     * <p>⚠ 实测（{@code runWaterBalanceProbe}）：{@code maxDecay = 2e-3} 时
+     * 受影响区平均累积 ×0.98、河宽 ×0.95（很轻）；成河格数对衰减呈<b>阶跃</b>响应
+     * （临界格先跌破）。启用前请跑 {@code runFlowAccumProbe}（约 11 分钟）+ {@code runHandoffPickupProbe}。</p>
+     */
+    public final ForgeConfigSpec.BooleanValue hydrologyDecayEnabled;
+    /** 极旱区沿程衰减系数（1/wu）。越大 ⇒ 内流河越多。默认 2e-3。范围 [0, 2e-2] */
+    public final ForgeConfigSpec.DoubleValue hydrologyDecayMax;
+    /** 参考降水：≥ 此值视为湿润（decay = 0）。默认 0.7647（= 实测全局降水均值附近）。范围 [0.05, 2.0] */
+    public final ForgeConfigSpec.DoubleValue hydrologyDecayRef;
+    /** 软化指数（&lt;1 ⇒ 半干旱区也有明显衰减）。默认 0.5。范围 [0.1, 3.0] */
+    public final ForgeConfigSpec.DoubleValue hydrologyDecayExponent;
+
     /** SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2] */
     public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;
     /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16] */
@@ -788,6 +817,29 @@ public final class GeoGenesisConfig {
                 + " rock layers via the stone_ore_replaceables tag) -- use it to A/B compare ore volume."
                 + " Takes effect on world (re)load; already-generated chunks are unchanged.")
                 .define("oreOverrideVanilla", false);
+        hydrologyDecayEnabled = builder.comment(
+                "Water balance: downstream decay (evaporation / infiltration) along flow paths."
+                + " false (default) = OFF: pure accumulation, zero behaviour change (bit-identical)."
+                + " true = CLIMATE: decay is driven by precipitation (the most direct proxy for aridity)"
+                + " -- arid regions evaporate strongly, so rivers fade out (endorheic / ephemeral rivers),"
+                + " while humid regions get decay = 0 and rivers run through to the sea."
+                + " SCOPE: affects river network size only (hence river width / lake extent), NOT terrain height."
+                + " Takes effect on world (re)load; already-generated chunks are unchanged.")
+                .define("hydrologyDecayEnabled", false);
+        hydrologyDecayMax = builder.comment(
+                "Maximum downstream decay coefficient (1/wu) in the driest regions."
+                + " Higher = more endorheic rivers. Default 2e-3. Measured (runWaterBalanceProbe, grid 64):"
+                + " 1e-3 => mean river width x0.97; 2e-3 => x0.95, total water x0.87. Range [0, 2e-2]")
+                .defineInRange("hydrologyDecayMax", 2.0e-3, 0.0, 2.0e-2);
+        hydrologyDecayRef = builder.comment(
+                "Reference precipitation: at or above this value the climate is considered humid"
+                + " and decay becomes exactly 0 (zero disturbance). Default 0.7647 (near the measured"
+                + " global precipitation mean). Range [0.05, 2.0]")
+                .defineInRange("hydrologyDecayRef", 0.7647, 0.05, 2.0);
+        hydrologyDecayExponent = builder.comment(
+                "Softening exponent for the decay ramp: decay = maxDecay * max(0, 1 - precip/ref)^exponent."
+                + " Values below 1 give semi-arid regions noticeable decay too. Default 0.5. Range [0.1, 3.0]")
+                .defineInRange("hydrologyDecayExponent", 0.5, 0.1, 3.0);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");

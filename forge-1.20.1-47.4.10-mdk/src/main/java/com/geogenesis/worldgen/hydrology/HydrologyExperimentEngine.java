@@ -70,6 +70,22 @@ public final class HydrologyExperimentEngine {
         //   探针若不走本类则保持旧基线（纯面积累积），便于 A/B 对比。
         this.network.setPrecipSampler(terrain::precipitationAt,
                 com.geogenesis.worldgen.hydrology.flowaccum.FlowField.PrecipWeights.defaults());
+        // ★ 2026-09-18 水文 M2-C：水量平衡（沿程衰减 = 蒸发/入渗）—— 同样只在【生产接线处】注入。
+        //   默认关闭（hydrologyDecayEnabled=false）⇒ decayClimate 为 null
+        //   ⇒ RiverLineNetwork 走 9 参构造器（decay=0）⇒ 与旧行为【逐位一致】。
+        //   开启后：干旱区蒸发强 ⇒ 内流河/时令河；湿润区 decay=0 ⇒ 河流穿流到海。
+        try {
+            GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+            if (cfg.hydrologyDecayEnabled.get()) {
+                this.network.setDecayClimate(
+                        new com.geogenesis.worldgen.hydrology.flowaccum.FlowField.DecayClimate(
+                                cfg.hydrologyDecayMax.get(),
+                                cfg.hydrologyDecayRef.get(),
+                                cfg.hydrologyDecayExponent.get()));
+            }
+        } catch (IllegalStateException e) {
+            // 预览/探针进程：Forge 配置未加载 ⇒ 衰减关闭（与旧行为逐位一致）
+        }
     }
 
     public CellGenerator terrain() {

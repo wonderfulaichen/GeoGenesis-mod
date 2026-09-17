@@ -77,8 +77,9 @@ public final class WaterBalanceProbe {
         testRiverArea(f, cell);
         testWidthImpact(f, cell);
         boolean t4 = testProductionDecayPath(gen, cell, span);
+        boolean t5 = testClimateDriven(gen, cell, span);
 
-        int fails = (t1 ? 0 : 1) + (t2 ? 0 : 1) + (t3 ? 0 : 1) + (t4 ? 0 : 1);
+        int fails = (t1 ? 0 : 1) + (t2 ? 0 : 1) + (t3 ? 0 : 1) + (t4 ? 0 : 1) + (t5 ? 0 : 1);
         System.out.println();
         System.out.printf("总判定: %s%n", fails == 0
                 ? "ALL PASS（复现正确 + 衰减生效 + 单调性保持 + 生产路径一致 ⇒ 机制可落地）"
@@ -299,6 +300,92 @@ public final class WaterBalanceProbe {
                 : "⚠ 生产与复现不一致 ⇒ 生产的衰减实现有误，须先修");
         System.out.printf("    判定: %s%n%n", allSame ? "PASS" : "FAIL");
         return allSame;
+    }
+
+    // ==================================================================
+    // [7] ★★ 气候驱动衰减（M2-C）：湿润区必须【完全不变】，干旱区才衰减
+    // ==================================================================
+    private static boolean testClimateDriven(CellGenerator gen, double cell, double span) {
+        System.out.println("[7] ★★ 气候驱动衰减（M2-C）：空间分化 —— 湿润区不变 / 干旱区衰减");
+        System.out.println("    公式 decay(precip) = maxDecay · max(0, 1 − precip/ref)^exp");
+        System.out.println("    意义：这是『水文是一个整体』的兑现 —— 沙漠河会消失、雨林河能穿流");
+
+        // 先看该窗口的降水分布（决定阈值 ref 怎么取才合理）
+        int nx = (int) Math.ceil(span / cell) + 1;
+        double pMin = Double.MAX_VALUE, pMax = -Double.MAX_VALUE, pSum = 0;
+        int cnt = 0;
+        for (int j = 0; j < nx; j++) {
+            for (int i = 0; i < nx; i++) {
+                double p = gen.precipitationAt(i * cell, j * cell);
+                pMin = Math.min(pMin, p);
+                pMax = Math.max(pMax, p);
+                pSum += p;
+                cnt++;
+            }
+        }
+        double pMean = pSum / cnt;
+        System.out.printf("    本窗口降水：min=%.4f mean=%.4f max=%.4f%n", pMin, pMean, pMax);
+
+        double ref = pMean;                    // ≥ 均值视为湿润
+        double maxDecay = 2e-3;
+        FlowField.DecayClimate dc = new FlowField.DecayClimate(maxDecay, ref, 0.5);
+
+        // ⚠ 口径纪律（§D-1）：基线必须与实验组【除 decay 外完全一致】——
+        //   即两者都启用降水加权，仅 decayClimate 不同；否则差异里混入权重因素，
+        //   『湿润区零改变』必然失败（我第一版就犯了这个错，特此留痕）。
+        FlowField baseF = new FlowField(0, 0, span, span, cell, gen::terrainEQuick,
+                gen::precipitationAt, FlowField.PrecipWeights.defaults(), 0.0, null);
+        FlowField climF = new FlowField(0, 0, span, span, cell, gen::terrainEQuick,
+                gen::precipitationAt, FlowField.PrecipWeights.defaults(), 0.0, dc);
+
+        int n = baseF.cols() * baseF.rows();
+
+        // ⚠ 口径纪律（§D-1）：『不受影响』的定义【必须含上游集水区】。
+        //   本项目第一版判据只看"本格 decay==0"，误报 181 格 —— 因为【衰减沿流向级联】：
+        //   某格本身湿润，但上游是干旱区 ⇒ 它收到的水量已减少。
+        //   这是【期望的物理行为】（干旱上游 ⇒ 下游水少），不是 bug ⇒ 判据须相应放宽。
+        //   正确口径：『该格 + 其全部上游』decay 全为 0 ⇒ 必须逐位不变。
+        boolean[] upHasDecay = new boolean[n];
+        Integer[] order = new Integer[n];
+        for (int i = 0; i < n; i++) order[i] = i;
+        Arrays.sort(order, (x, y) -> Double.compare(baseF.eAt(y), baseF.eAt(x)));   // 与 buildAccum 同序
+        for (int k = 0; k < n; k++) {
+            int cur = order[k];
+            if (climF.decayAt(cur) > 0.0) upHasDecay[cur] = true;
+            int down = baseF.flowTo(cur);
+            if (down >= 0 && upHasDecay[cur]) upHasDecay[down] = true;             // 级联传播
+        }
+
+        int cleanCells = 0, cleanChanged = 0, affected = 0, affectedChanged = 0;
+        double ratioSum = 0;
+        for (int i = 0; i < n; i++) {
+            double b = baseF.accumAt(i);
+            double c = climF.accumAt(i);
+            if (!upHasDecay[i]) {                       // 自身与上游都无衰减 ⇒ 必须逐位不变
+                cleanCells++;
+                if (b != c) cleanChanged++;
+            } else {                                     // 受影响区（自身或上游有衰减）
+                affected++;
+                if (b != c) affectedChanged++;
+                if (b > 0) ratioSum += c / b;
+            }
+        }
+        System.out.printf("    『不受影响』格（自身+全部上游 decay 均为 0）= %d：改变 %d 格（须为 0）%n",
+                cleanCells, cleanChanged);
+        System.out.printf("    受影响格 = %d：改变 %d 格（%.1f%%）；平均累积比 = %.4f%n",
+                affected, affectedChanged, 100.0 * affectedChanged / Math.max(1, affected),
+                affected > 0 ? ratioSum / affected : 0);
+
+        // 判据：① 不受影响区必须逐位不变（= 不该打扰已正常的水文）
+        //      ② 受影响区确有改变（= 气候驱动真的生效）
+        boolean pass = (cleanChanged == 0) && (affected == 0 || affectedChanged > 0);
+        System.out.printf("    ⇒ 零打扰 = %s；确有分化 = %s%n",
+                cleanChanged == 0 ? "是" : "否(" + cleanChanged + " 格被改)",
+                affectedChanged > 0 ? "是" : "否");
+        System.out.println("    ★ 关键结论：衰减会【沿流向级联】（干旱上游 ⇒ 下游水量减少），"
+                + "这是期望的物理行为");
+        System.out.printf("    判定: %s%n%n", pass ? "PASS" : "FAIL");
+        return pass;
     }
 
     private static double sum(double[] a) {

@@ -633,6 +633,66 @@ public BiomeGenerationSettings getGenerationSettings() {
 犯的是同一个错** ⇒ 已确认是**习惯性错误**：写含中文的 `println` 时一律用
 `『』` 或 `【】`，**不用弯引号**。
 
+## 11. 2026-09-18 追加：水文 M2-C —— 气候驱动水量平衡（**已接线，默认关闭**）
+
+### 11.1 做了什么
+
+M2 只做了「常量 decay」，但实测证明它**只是全局变细**（`[4]` 成河格数对 decay 几乎不敏感）。
+C 才是"水文是一个整体"的真正兑现：**干旱区河会消失、雨林区河能穿流**。
+
+**实现**（全部默认关闭 ⇒ 逐位一致）：
+
+| 位置 | 改动 |
+|---|---|
+| `FlowField` | 新增 record `DecayClimate(maxDecay, ref, exponent)`：`decay(precip) = maxDecay · max(0, 1−precip/ref)^exp` ⇒ **降水≥ref 时 decay 恰为 0**；新增 `decayCell[]` 逐格预计算（与降水加权**共用同一次** `precipAtWu` 采样，不增开销）；`decayAt(idx)` 公开给探针（**同口径**） |
+| `RiverLineNetwork` | 新增 `setDecayClimate(dc)`（清缓存，同 `setPrecipSampler` 范式）；`build()` 里 `decayClimate==null` 时走 9 参构造器 |
+| `GeoGenesisConfig` | 4 项：`hydrologyDecayEnabled`(默认 false) / `hydrologyDecayMax`(2e-3) / `hydrologyDecayRef`(0.7647) / `hydrologyDecayExponent`(0.5) |
+| `HydrologyExperimentEngine` | **只在此生产接线处**注入；try-catch `IllegalStateException`（预览/探针进程无配置 ⇒ 保持关闭） |
+
+### 11.2 ★ 本轮最有价值的收获：两次「口径错误」被自己的判据抓住
+
+判据 `[7]` 我**写错了两次**，两次都 FAIL，两次都指向真实问题 —— **这正是门禁清单 §D-1
+（"口径错误的判据比没有判据更糟"）的实证**：
+
+| 版本 | 错法 | FAIL 表现 | 修正 |
+|---|---|---|---|
+| v1 | 基线**未**启用降水加权，实验组启用了 | 差异里混入权重因素 ⇒ 必然 FAIL | 基线也启用降水加权，**只差 decayClimate** |
+| v2 | 用 `gen.precipitationAt(格中心)` 判"湿润" | 322 格误报 —— 实现走**粗格点(320wu)双线性插值** `precipAtWu`，与格中心单点采样**不同口径** | 改为读 `FlowField.decayAt(idx)`（实现实际使用的值） |
+| v3 | 只看"**本格** decay==0" | 181 格误报 —— **衰减沿流向级联**：本格湿润但上游干旱 ⇒ 收到水量已减少 | 判据改为「**自身 + 全部上游** decay 全为 0」才算不受影响 |
+
+⇒ **v3 的修正同时是一个物理发现**：衰减会**沿流向级联传播**，这是期望行为（干旱上游 ⇒
+下游水少），不是 bug。
+
+### 11.3 实测（`runWaterBalanceProbe` `[7]`，seed 12345 / grid 64，maxDecay 2e-3 / ref 0.7647）
+
+```
+本窗口降水：min=0.0679  mean=0.7647  max=1.3078
+『不受影响』格（自身+全部上游 decay 均为 0）= 1974：改变 0 格   ✅ 零打扰
+受影响格 = 2122：改变 1214 格（57.2%）；平均累积比 = 0.9812
+⇒ PASS
+```
+
+**全部 7 项判据**（`[1]`~`[7]`）**ALL PASS**。
+
+### 11.4 ⚠️ 未启用（默认关闭，等你决定）
+
+`hydrologyDecayEnabled = false` ⇒ **当前产出零变化**。开启后：
+- 干旱区（降水 < ref）河流变细、部分**断流**（内流河）
+- 湿润区**逐位不变**
+- 影响范围：**只改河网规模**（河宽 / 湖域），**不改地形高度**
+
+**⚠ 开启前必跑**：`runFlowAccumProbe`（**约 11 分钟**，哨兵 `border.maxSurfaceDelta`）·
+`runHandoffPickupProbe`（跨 region 连续性权威）· `runPrecipRiverWidthProbe`（`head` 最干桶）。
+
+> 建议先在游戏里 A/B：`hydrologyDecayEnabled=true` + `maxDecay=2e-3`，找一片沙漠看河流是否断流。
+
+### 11.5 零行为变更验证（本轮已做）
+
+- `runWaterBalanceProbe` → exit 0（7 项 ALL PASS）
+- `runWorldgenGate` → **BUILD SUCCESSFUL**（9 探针 / 38s）
+- `runFlowAccumProbe`（seed 12345）→ **`status=PASS`、`border.maxSurfaceDelta=1.845`、
+  `violations=0`、`gateViolations=0`、`cycles=0`** —— 与门禁清单基线**逐项吻合**
+
 ---
 
 *本文为交接用，随后续工作更新。*
