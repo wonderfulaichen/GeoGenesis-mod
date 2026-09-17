@@ -57,7 +57,8 @@ public final class OreFilterBehaviorProbe {
             "ore_diamond", "ore_diamond_large", "ore_diamond_buried",
             "ore_lapis", "ore_lapis_buried",
             "ore_copper", "ore_copper_large",
-            "ore_emerald", "ore_infested");
+            "ore_emerald");
+            // ⚠ 刻意不含 ore_infested（虫蚀石）—— 非地质资源矿，保留
 
     /** 非金属原版特征（两种模式都应保留）。 */
     private static final List<String> MUST_KEEP_VANILLA = List.of(

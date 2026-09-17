@@ -28,10 +28,10 @@ gradlew.bat runWorldgenGate      # 世界生成门禁（只跑当前实测 ALL P
 |------|------|
 | `GeoGenesisMod.java` | `@Mod("geogenesis")` 入口，注册 CODEC；`onClientSetup` 注册预览配置屏 + `GeoGenesisColorReloadListener` |
 | `GeoGenesisGenerator.java` | 主生成器，`fillFromNoise` 是地形产线入口；`ensureEngine` 注入共享地形到 BiomeSource（⚠ 旧述"`createState` 注入"**有误** —— `createState` 未被覆写）；★ `applyCarvers` 调 `CaveCarver` 雕洞穴；★ 构造器注入 `VanillaDecorationFilter::filter`（剔除破坏岩层的原版装饰）；★ `spawnOriginalMobs` 委托原版 `NaturalSpawner` |
-| `worldgen/generator/VanillaDecorationFilter.java` | ★ 2026-09-16：注入给 `ChunkGenerator` 的**过滤版 `generationSettingsGetter`** —— 剔除 9 个会打散 `StratumField` 水平岩层的原版"岩块团块"特征（`ore_granite/diorite/andesite/tuff/dirt/gravel` 的 upper/lower），**保留金属矿与水成细节**（零平衡风险）。⚠ 1.20.1 的 `BiomeGenerationSettings` 构造器非 public ⇒ 走 `PlainBuilder` 子类 |
+| `worldgen/generator/VanillaDecorationFilter.java` | ★ 2026-09-16：注入给 `ChunkGenerator` 的**过滤版 `generationSettingsGetter`** —— ① 剔除 9 个会打散 `StratumField` 水平岩层的原版"岩块团块"特征（`ore_granite/diorite/andesite/tuff/dirt/gravel` 的 upper/lower）；② ★ **2026-09-18 起兼任「矿物接管」闸门**：`oreOverrideVanilla=true` 时额外剔除 **18 个 `minecraft` 金属资源矿特征**（= 预研「路径 D」，零 Mixin）。⚠ 1.20.1 的 `BiomeGenerationSettings` 构造器非 public ⇒ 走 `PlainBuilder` 子类。⚠ **多模组兼容**：只剔 `minecraft` 命名空间（`isVanillaNamespace`）⇒ 任何模组的矿不动；前提「`Biome.getGenerationSettings()` 返回已应用 biome modifier 的最终态」**已 Forge 源码级核实**（注释内附证据）。⚠ 刻意保留 `ore_infested`（非资源矿） |
 | `worldgen/cave/CaveShape.java` | ★ 2026-09-15：洞穴**几何**（**零 MC 依赖纯函数**，可被探针直接复用）；2D 场驱动柱体切挖 + 岩性门控 |
 | `worldgen/cave/CaveCarver.java` | ★ 2026-09-15：洞穴雕刻的 **MC 适配器**（只负责把方块挖成空气），几何全部委托 `CaveShape` |
-| `worldgen/ore/OreVeins.java` | ★ 2026-09-15：矿脉**纯函数**（**零 MC 依赖**）：成矿带 2D 门控 + 宿主岩/深度带 + 3D 等值面脉体；矿种按岩性成矿 |
+| `worldgen/ore/OreVeins.java` | ★ 2026-09-15：矿脉**纯函数**（**零 MC 依赖**）：成矿带 2D 门控 + 宿主岩/深度带 + 3D 等值面脉体；矿种按岩性成矿。★ **2026-09-18 地质校正**：`IRON` 宿主岩由"全部 8 种"收窄为 **BIF/沉积 4 种**（`GNEISS/SCHIST/SANDSTONE/SHALE`，原设定属过度泛化=「倒金字塔」根因）、`COPPER` 补入 `GRANITE` 母岩（斑岩铜矿）⇒ 8 矿均有真实矿床学依据。⚠ **per-ore 旋钮 = `Ore.richness`，矿量 ∝ richness²**（目标倍率 k ⇒ 乘 √k）；⚠ **勿再试图"对齐原版绝对量"**（原版是绝对 Y 的函数、我们是距地表深度的函数，原理上不可比 —— 见类 javadoc） |
 | ~~`worldgen/geode/GeodeShape.java`~~ | ⚠️ **已删除（2026-09-16）**：**原版 `amethyst_geode` 早就在生成**（`LOCAL_MODIFICATIONS` 槽位；1.20.1 datapack `jungle.json` 的 `features[2]` 证实）⇒ 自研属**重复实现**，且使晶洞密度翻倍（≈1/24+1/25）。改用原版（自带 95% 裂纹/晶芽/分层）。若要恢复"岩性门控"，正解是"原版 `GeodeFeature` + 自定义 placement"，而非重写形状 |
 | `GeoGenesisBiomeSource.java` | BiomeSource，按 Cell 气候选原版群系 |
 | ~~`worldgen/generator/BiomeMapper.java`~~ | ⚠️ 已删除（2026-07-13）：群系映射合并入 `BiomeClassifier.pickKey`，不再有独立文件 |
@@ -67,7 +67,7 @@ gradlew.bat runWorldgenGate      # 世界生成门禁（只跑当前实测 ALL P
 | `client/preview/mixer/WorldHeightBar.java` | 世界高度柱状图（柱图 + 横排滑块 maxY/山脊上限/海平面/世界底 + 内嵌高度预设按钮，可折叠） |
 | `client/preview/mixer/SnowLineChart.java` | 雪线双曲线（温度/纬度对雪线影响，可折叠） |
 | `client/preview/mixer/ScalePreview.java` | 尺度预览（垂直尺度柱对比 + 水平尺度采样密度，可折叠） |
-| `GeoGenesisConfig.java` | Forge COMMON 配置（地质过程参数：continent*/ocean spline 控制点/coast/seabed/land process/world height/**Caves**/**Ores**，详见 `ARCHITECTURE.md` 配置表）。⚠ **2026-09-16 核定：`province*` 系列仍是零消费的死配置**（ARCHITECTURE 已如实标注），本行原把它列入"地质过程参数"易误导，已移除；**另新增 `Caves`（档位+旋钮）与 `Ores`（`oreVeinsEnabled` 总开关）两段** |
+| `GeoGenesisConfig.java` | Forge COMMON 配置（地质过程参数：continent*/ocean spline 控制点/coast/seabed/land process/world height/**Caves**/**Ores**，详见 `ARCHITECTURE.md` 配置表）。⚠ **2026-09-16 核定：`province*` 系列仍是零消费的死配置**（ARCHITECTURE 已如实标注），本行原把它列入"地质过程参数"易误导，已移除；**另有 `Caves`（档位+旋钮）与 `Ores`（★ 两个独立开关：`oreVeinsEnabled` = 自研矿脉开关 / `oreOverrideVanilla` = 是否接管并剔除原版金属矿）两段** |
 | `worldgen/terrain/GeoGenesisTerrain.java` | 零 MC 依赖地形引擎门面（缓存 Cell + generateChunk 装配侵蚀/河流） |
 | `worldgen/terrain/CellGenerator.java` | 统一连续场采样 + 实现 HeightProvider + 连续分类 |
 | `worldgen/terrain/TerrainCharacterField.java` | 类型场：**规则网格** Voronoi 高斯距离权重（400wu 格、σ=200、7×7 窗口）。⚠ **2026-09-18 校正**：本行原称"域扭曲已启用 `WARP_AMP_DEFAULT = 40`、修掉轴向对齐缺陷（944→272 块）"——**实际 `WARP_AMP = 0.0（未启用）**；40 曾启用过，但**实机反馈河流/湖泊出问题已回退**（`PreviewDisplay` 缓存版本 70 即因此作废，字段保留可恢复）。另：`setWarpAmp()/warpAmp()` **两个方法都不存在**，勿据本文档调用 |
@@ -178,16 +178,25 @@ gradlew.bat runWorldgenGate      # 世界生成门禁（只跑当前实测 ALL P
 > **实测取证**（2026-09-16，临时 `[DECOR-AUDIT]` 日志，验证后已删）：
 > `biome=minecraft:jungle steps=11 features=47 oreFeatures=24`，`[6] UNDERGROUND_ORES = 28`
 > ⇒ 原版矿**确实与自研 `OreVeins` 叠加生成**。
-> ⚠ **2026-09-18 更正**：原文写"自研量约为原版 **1/10**"，但**该数字缺乏实证**。按原版
-> 15 个金属矿 placed_feature 的 `count × size` 粗估，原版约 **600~1500 块/chunk**（上界 1900），
-> 自研实测 **231.9 块/chunk** ⇒ 实际量级应是 **1/3 ~ 1/6**。该数字**未经精确测量**，
-> 引用前请以 `runOreVeinProbe` 实测为准。详见 `docs/plans/矿物系统-预研-2026-09-18.md` §6.1。
+> ⚠ **2026-09-18 更正（两轮）**：原文写"自研量约为原版 **1/10**"，该数字**缺乏实证**。
+> 第一轮按 `count × size` 粗估为 1/3~1/6，但**第二轮发现该口径不可用**：
+> `count` 是"尝试次数"，**落在地表之上（空气）即浪费**，故它**把形状搞反**
+> （名义"铁 940 &gt; 煤 850"，实际"煤 &gt; 铁"）。
+> **更根本：原版矿量是【绝对 Y】的函数、我们是【距地表深度】的函数 ⇒ 原理上不可比，
+> 不存在可对齐的"原版数值"。** ⇒ 目标改为**对齐形状特征**，由判据 **7b** 锚定。
+> 详见 `docs/plans/矿物系统-预研-2026-09-18.md` §6.1/§6.4。
 > 过滤后 `features=38 oreFeatures=15`（剔除 9 项），世界正常生成。
 >
 > **⚠ 同步更正一条长期错误论证**：`OreVeins` 曾写"没有 `NoiseSettings` ⇒ 原版 `ore_*`
 > 用不了"—— **不成立**（装饰放置不依赖 `NoiseSettings`）。真正的自研理由是
 > **按宿主岩 + 深度带成矿**（原版 `OreConfiguration` 无法表达自定义岩性）。
-> **待决**：金属矿是否改为自研独占 ⇒ 属平衡决策，若采纳需重新标定自研总量。
+> ~~**待决**：金属矿是否改为自研独占~~ ⇒ ✅ **已解决（2026-09-18）**：
+> 新增开关 `[Ores] oreOverrideVanilla`（**默认 `false` = 零行为变更**）。
+> `true` = 剔除 18 个 `minecraft` 金属资源矿，地下矿由 `OreVeins` **独占**（按岩性+深度）；
+> `false` = 完全不动原版矿。**只删 `minecraft` 命名空间 ⇒ 任何模组的矿不受影响**。
+> 实现方式是**复用本过滤器注入点做特征级路由**（预研「路径 D」），**无需 Mixin**。
+> 矿量已重标定（总量 ≈384.1 块/chunk）；门禁 `runOreVeinProbe` 判据 **7b**（金字塔序）
+> 锁定分布形状；`runOreOverrideProbe` / `runOreFilterBehaviorProbe` 守白名单与过滤行为。
 >
 > ### ⛔ 折叠类算子的禁令：`|2n−1|` 禁用于地形噪声
 >
@@ -270,8 +279,9 @@ gradlew.bat runWorldgenGate      # 世界生成门禁（只跑当前实测 ALL P
   ⚠ 注意**矿有原版替身**（原版 `ore_*` 始终生成）⇒ 与洞穴 `OFF`（="地下无洞穴"）语义不同。
   默认值 = 现状 ⇒ **零平衡风险**；门控在 `OreVeins.beginColumn`（唯一入口、且在缓存之前）。
   门禁：`OreVeinProbe` 判据8「关闭 ⇒ 零产出」。
-  仍未做：① **无 UI / 无热刷新** ⇒ 改配置需重新进世界（Forge 自动配置界面可见）；
-  ② 未提供"自研独占（屏蔽原版金属矿）"档 —— 需重标定矿量，属平衡决策
+  仍未做：① **无 UI / 无热刷新** ⇒ 改配置需重新进世界（Forge 自动配置界面可见，**矿物侧 M3 待办**）；
+  ~~② 未提供"自研独占（屏蔽原版金属矿）"档~~ ⇒ ✅ **已实现（2026-09-18）**：
+  `[Ores] oreOverrideVanilla`（默认 `false` = 零变更）
 - **雪 / 冰**：若要"我们的雪线"独占，把 `freeze_top_layer` 加入过滤器剔除集即可（一行）
 
 > **用户约束（2026-09-16）**：**不新建任何方块/物品** ⇒ 一切方案只用原版内容或删自研代码。

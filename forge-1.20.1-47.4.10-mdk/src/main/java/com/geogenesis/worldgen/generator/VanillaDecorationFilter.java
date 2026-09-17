@@ -115,6 +115,15 @@ public final class VanillaDecorationFilter {
      * （"名字含 ore/gold 就删"式匹配会全部误伤）。</p>
      * <p>另需保留（非金属）：{@code ore_clay} · {@code disk_grass} ·
      * {@code disk_sand/clay/gravel} · {@code underwater_magma}。</p>
+     *
+     * <h4>⚠ 刻意排除 {@code ore_infested}（虫蚀石）—— 2026-09-18 语义校正</h4>
+     * <p>它在穷举并集里出现（仅山地群系），但<b>不是"地质资源矿"</b>：
+     * 它是与<b>要塞/刷怪机制</b>关联的特殊方块，而非玩家采掘的资源。</p>
+     * <p>而 {@code OreVeins} <b>没有对应矿种</b> ⇒ 若剔除，虫蚀石将<b>永久消失</b>
+     * （无任何系统补位）= 白白丢失一个原版特性。</p>
+     * <p><b>取舍：保留</b>。理由：本项目的接管目标是<b>"地质资源矿"</b>，
+     * 虫蚀石不属于该范畴；保留它使改动面更小、更保守。</p>
+     * <p>⇒ 本清单实际为 <b>18 项</b>（金属资源矿），非并集里的 19 项。</p>
      * <p>而"名字含 {@code ore}"的模糊匹配会误伤：{@code disk_sand/clay/gravel}、
      * {@code underwater_magma}，以及<b>模组自建的 {@code ore_*} 命名</b>
      * ⇒ 必须精确枚举（并叠加 {@link #isVanillaNamespace} 命名空间门控）。</p>
@@ -139,9 +148,9 @@ public final class VanillaDecorationFilter {
             // 铜 2（copper_large 易漏）
             "ore_copper", "ore_copper_large",
             // 绿宝石 1（★ 仅山地群系；只读非山地群系会整项漏掉）
-            "ore_emerald",
-            // 虫蚀石 1（★ 同上，仅山地群系）
-            "ore_infested"));
+            "ore_emerald"
+            // ⚠ 刻意【不】含 ore_infested（虫蚀石）—— 见下方说明
+            ));
 
     /**
      * 按群系缓存过滤结果。
