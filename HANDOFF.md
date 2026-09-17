@@ -174,6 +174,40 @@ gradlew runChunkLoadPerfProbe     -PprobeArgs="5436529513624899584 32 4"        
 - ⚠ **判据7 语义需补强**：现为「总量 ∈ [140,330]」，**掩盖分布形状问题**
   （铁翻倍+煤砍半仍可能落在区间内）⇒ M2 应补一条 **per-ore 分布形状**判据。
 
+### 9.5.5 ★★ 验收自动化：**不再依赖用户实机**（2026-09-18）
+
+> 用户明确要求：**「这些我实机是看不出变化的……这个判断只能你来」**
+> ⇒ 凡"看不见/纯数值"的验证，一律由机器判定，不得再推给人工观察。
+
+**① Forge 源码级核实：模组兼容的前提成立（此前只是假设）**
+
+```java
+// forge-1.20.1-47.4.10-sources.jar → Biome.java
+public BiomeGenerationSettings getGenerationSettings() {
+    return this.modifiableBiomeInfo().get().generationSettings();   // ← FORGE 改写
+}
+```
+⇒ 过滤器读到的是**已应用全部 biome modifier 的最终态** ⇒
+**`minecraft` 命名空间过滤成立，模组的矿不会被误删**。
+（`VanillaDecorationFilter.isVanillaNamespace` 的 javadoc 已写入该证据，防后人重新怀疑。）
+
+**② 新增 `runOreFilterBehaviorProbe`：过滤行为端到端门禁**
+
+把"是否剔除"抽为**纯函数** `VanillaDecorationFilter.wouldRemove(ResourceLocation)`
+（不再依赖 `Holder`）⇒ 探针可**独立验证**，4 组判据：
+
+| 组 | 验证内容 | 实测 |
+|---|---|---|
+| [1] | **VANILLA 模式**：金属矿全保留 + 团块仍剔 | PASS（0/0/0） |
+| [2] | **OVERRIDE 模式**：**19 项全剔** + 团块仍剔 + 水成细节不误剔 | PASS（0/0/0） |
+| [3] | ★ **多模组兼容**：8 命名空间 × 9 特征 × 2 模式 = **144 次检查** | PASS（**误删 0**） |
+| [4] | **模式切换真生效**（防"开关没接到底"） | PASS |
+
+★ 第 [3] 组含**冒充原版名**用例（`somemod:ore_coal_upper` / `somemod:ore_dirt`）
+—— 若命名空间闸门失效即会被误删，这正是要抓的错。
+
+**③ 门禁现状**：`runWorldgenGate` **9 探针 / 33s / ALL PASS**。
+
 ### 9.5.4 ★★ 三源交叉核验：**「原版真实矿量」无法确定**（2026-09-18 追加）
 
 用户提供 `mcmod.cn` / `zh.minecraft.wiki` ⇒ 第二轮取证。结论是**诚实的**：
