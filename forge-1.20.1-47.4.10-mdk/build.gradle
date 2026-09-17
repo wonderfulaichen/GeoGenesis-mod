@@ -1239,6 +1239,16 @@ task runWaterPhysicsProbe(type: JavaExec) {
     }
 }
 
+// 干墙格归因（2026-09-17）：逐格打印"是哪道闸门掐断了水"（cat A/B/C/D + 种子数 + 粗格余数）:
+//   gradlew runWallAttributionProbe [-PprobeArgs="seed wuX wuZ halfWu"]
+task runWallAttributionProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WallAttributionProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Determinism / order-independence gate (2026-09-17, hydrology 重构 M1 基线):
 //   gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]
 //   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0）
