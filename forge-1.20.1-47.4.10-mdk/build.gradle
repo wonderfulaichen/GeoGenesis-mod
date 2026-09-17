@@ -1306,6 +1306,17 @@ task runWorldgenGate {
     dependsOn 'runTectonicContinuityProbe'
     dependsOn 'runOreVeinProbe'
     dependsOn 'runOreOverrideProbe'
+    dependsOn 'runOreFilterBehaviorProbe'
+}
+
+// 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什么 + 多模组零误删 + 开关真生效:
+//   gradlew runOreFilterBehaviorProbe
+task runOreFilterBehaviorProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.ore.OreFilterBehaviorProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
 }
 
 // 矿物接管白名单正确性（2026-09-18）：校验 METAL_ORES 与 1.20.1 原版内容快照一致（防漏剔/误剔）:

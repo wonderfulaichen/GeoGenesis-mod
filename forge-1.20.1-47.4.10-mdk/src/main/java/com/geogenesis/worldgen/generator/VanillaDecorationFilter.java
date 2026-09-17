@@ -251,11 +251,33 @@ public final class VanillaDecorationFilter {
     private static boolean isStrataBreaking(Holder<PlacedFeature> holder) {
         return holder.unwrapKey()
                 .map(ResourceKey::location)
-                .filter(VanillaDecorationFilter::isVanillaNamespace)
-                .map(ResourceLocation::getPath)
-                .map(path -> STRATA_BREAKING.contains(path)
-                        || (overrideVanillaOre && METAL_ORES.contains(path)))
+                .map(VanillaDecorationFilter::wouldRemove)
                 .orElse(false);
+    }
+
+    /**
+     * ★★ <b>剔除判定的【纯函数】入口</b>（2026-09-18 新增）——
+     * 把"是否剔除"从 {@code Holder} 依赖中剥离，使<b>诊断探针可在无 MC 环境下完整验证</b>
+     * （对照用户要求"实机看不出变化 ⇒ 判断只能由 AI 承担"）。
+     *
+     * <p><b>判定真值表</b>（{@code override} = {@link #overrideVanillaOre}）：</p>
+     * <table border="1">
+     *   <caption>三档行为</caption>
+     *   <tr><th>特征 id</th><th>{@code override=false}</th><th>{@code override=true}</th></tr>
+     *   <tr><td>{@code minecraft:ore_dirt} 等岩块团块</td><td>剔除</td><td>剔除</td></tr>
+     *   <tr><td>{@code minecraft:ore_coal_upper} 等金属矿</td><td><b>保留</b></td><td><b>剔除</b></td></tr>
+     *   <tr><td>{@code minecraft:disk_sand} 等水成细节</td><td>保留</td><td><b>保留</b></td></tr>
+     *   <tr><td>{@code 任意模组:ore_xxx}</td><td><b>保留</b></td><td><b>保留</b> ★多模组兼容</td></tr>
+     * </table>
+     *
+     * <p>⚠ 命名空间闸门<b>最先</b>判（短路）：非 {@code minecraft} 一律保留，
+     * 故即使某模组自建名为 {@code ore_coal_upper} 的特征，也<b>不会</b>被误删。</p>
+     */
+    public static boolean wouldRemove(ResourceLocation id) {
+        if (!isVanillaNamespace(id)) return false;          // ★ 多模组闸门（最先判）
+        String path = id.getPath();
+        return STRATA_BREAKING.contains(path)
+                || (overrideVanillaOre && METAL_ORES.contains(path));
     }
 
     /**
@@ -265,6 +287,20 @@ public final class VanillaDecorationFilter {
      * 命名空间都不会是 {@code minecraft} ⇒ 天然不被触碰。
      * （对照参考项目 FreeTerraForged `OreContractClassifier` 的"读不懂就不动"原则：
      * 这里用命名空间做更简单的一道等价闸门。）</p>
+     *
+     * <h4>★ 前提已核实（2026-09-18，Forge 源码级证据）—— 勿再重新怀疑</h4>
+     * <p>本闸门成立的前提是：{@link Biome#getGenerationSettings()} 返回的必须是
+     * <b>「已应用全部 biome modifier」之后的最终态</b>，否则我们会看不到模组加进来的矿，
+     * 过滤就失去意义（甚至误删）。<b>已查证为真</b>：</p>
+     * <pre>
+     * // forge-1.20.1-47.4.10-sources.jar → net/minecraft/world/level/biome/Biome.java
+     * public BiomeGenerationSettings getGenerationSettings() {
+     *     return this.modifiableBiomeInfo().get().generationSettings();   // ← FORGE 改写
+     * }
+     * </pre>
+     * <p>{@code modifiableBiomeInfo()} 即 Forge 的群系修饰结果 ⇒ 返回的是<b>最终态</b>。</p>
+     * <p>（旁证：参考项目 FreeTerraForged 亦在同一层做特征路由，
+     * 其 {@code DynamicOrePlanner} 同样从 {@code generator.getBiomeGenerationSettings(biome)} 读取。）</p>
      */
     private static boolean isVanillaNamespace(ResourceLocation id) {
         return "minecraft".equals(id.getNamespace());
