@@ -58,6 +58,36 @@ public final class HydrologyBlockCarver {
 
     private HydrologyBlockCarver() { }
 
+    /**
+     * ★★★ 2026-09-17【单列雕刻入口】—— 支持【按点】求"最终地形" ★★★
+     *
+     * <h4>为什么需要它</h4>
+     * <p>{@code carveChunk} 内部是<b>逐列独立</b>的（每列只依赖自己的 {@code samples} 与
+     * {@code original}，无跨列状态）⇒ 可以<b>按点</b>求雕刻，无需 region 级定型。
+     * 这打破了此前的判断"水位要在雕刻后地形上求解 ⇒ 必须 region 级定型
+     * ⇒ 会递归触发 chunk 生成"。<b>实际不会</b>：单列雕刻不触发任何 chunk 生成。</p>
+     *
+     * <h4>用途</h4>
+     * <p>构造"点态最终地形"采样器，供 {@code LakeNode.escapeWaterLevel} 在
+     * <b>雕刻后的地形</b>上求水位（修"水位求解早于雕刻"的阶段错位）：</p>
+     * <pre>
+     *   finalGround(x,z) = carvedGroundY + rawDelta × erosionMask
+     *     （由 GeoGenesisTerrain.applyHydrologyValley 的写回公式反推：
+     *        cell.height = eroded − erosion − (rawDelta − delta)
+     *                    = carved + delta,  delta = rawDelta·mask）
+     * </pre>
+     *
+     * @return 该列的雕刻计划；无河线命中返回 {@code null}
+     */
+    public static HydrologyBlockCarvedColumn carveColumnAt(HydrologyExperimentEngine engine,
+                                                           int blockX, int blockZ,
+                                                           double original, double horizontalScale) {
+        List<HydrologyBlockSample> samples =
+                engine.sampleBlockAll(blockX, blockZ, horizontalScale);
+        if (samples.isEmpty()) return null;
+        return carveColumn(engine.terrain(), samples, original, blockX, blockZ, horizontalScale);
+    }
+
     public static List<HydrologyBlockCarvedColumn> carveChunk(HydrologyExperimentEngine engine,
                                                                 int chunkX, int chunkZ,
                                                                 double horizontalScale,
