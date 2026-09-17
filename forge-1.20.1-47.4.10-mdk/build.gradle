@@ -1229,6 +1229,16 @@ task runWaterGraphProbe(type: JavaExec) {
     }
 }
 
+// Water physics audit: level vs required (minimax escape) + dry-wall count (2026-09-17):
+//   gradlew runWaterPhysicsProbe [-PprobeArgs="seed wuX wuZ halfWu"]
+task runWaterPhysicsProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterPhysicsProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Determinism / order-independence gate (2026-09-17, hydrology 重构 M1 基线):
 //   gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]
 //   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0）

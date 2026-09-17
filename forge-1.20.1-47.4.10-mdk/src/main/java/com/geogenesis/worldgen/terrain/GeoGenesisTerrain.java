@@ -80,6 +80,28 @@ public final class GeoGenesisTerrain {
      */
     static final boolean LAKE_ESCAPE_LEVEL = true;    // ★ 与"湖域判定修复"配套启用（见类注释）
 
+    /**
+     * ★ 2026-09-17【湖岸 1 块精度精修】开关。<b>当前 = true（A/B 验证中）</b>。
+     *
+     * <p>修的是<b>覆盖缺陷</b>（不是水位）：水体物理审计实测（runWaterPhysicsProbe）
+     * 显示「水位 166.627 vs 真盆沿 167.706 ⇒ 水位正确（短板生效）；但干墙 451 格」——
+     * 水边界被 12wu 粗格洪泛区切死 ⇒ 垂直水墙 + 水不贴岸（用户截图）。
+     * 详见 {@link #lakeFineFlood}。</p>
+     *
+     * <h4>★ 2026-09-17 A/B 实测：<b>本实现无效</b>（故默认关闭）</h4>
+     * <p>启用后水体物理审计：干墙 <b>451 → 452</b>、面积 26739 → 26741（几乎不变），
+     * 而 `hydro` 段从 ~10ms 涨到 ~85ms/chunk ⇒ <b>纯开销、零收益</b>。</p>
+     * <p><b>原因（关键）</b>：本方法<b>只重判 {@code lakePlan=true} 的列</b>，
+     * 而那 452 个干墙格正是被 {@code inFlood} <b>拒绝</b>过的列 ——
+     * carver 走的是"非湖列"早退分支（{@code lakePlan=false}），
+     * 本方法的 {@code lakeCol} 登记根本看不到它们 ⇒ <b>够不着目标</b>。</p>
+     * <p><b>正确修法（下一步）</b>：让 carver 对<b>被拒列也带上"湖 + 水位"</b>
+     * （{@code lakeNode} + level，{@code lakePlan} 仍为 false），
+     * 再由本方法对<b>所有受该湖影响的列</b>做块级洪泛、<b>只增不减</b>
+     * （避免出现"空洞"）。这样才可能把干墙打到 0。</p>
+     */
+    static final boolean LAKE_FINE_FLOOD = false;
+
     /** 逃逸水位专用的水文引擎（懒建一次，供点态最终地形采样复用）。 */
     private HydrologyExperimentEngine escapeEngine;
 
@@ -468,6 +490,10 @@ public final class GeoGenesisTerrain {
                 fillRiverDistance(cells[lx * 16 + lz], toWu(cx * 16 + lx), toWu(cz * 16 + lz));
             }
         }
+        // ★ 2026-09-17：湖列登记（供 chunk 级【块精度】洪泛重判湖岸，见 LAKE_FINE_FLOOD）
+        boolean[] lakeCol = new boolean[256];
+        double[] lakeLvl = new double[256];
+        int lakeCount = 0;
         for (HydrologyBlockCarvedColumn column : result.carvedColumns()) {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
@@ -541,6 +567,10 @@ public final class GeoGenesisTerrain {
                 cell.riverLipY = spill;
                 cell.isLake = flooded && spill >= seaLevel;
                 cell.lakeMask = cell.isLake;
+                // ★ 登记本列（湖岸精修用）
+                lakeCol[lx * 16 + lz] = true;
+                lakeLvl[lx * 16 + lz] = spill;
+                lakeCount++;
                 continue;
             }
             double rawDelta = cell.height - column.originalGroundY(); // 本列侵蚀增量（全量）
@@ -560,6 +590,108 @@ public final class GeoGenesisTerrain {
             cell.riverLipY = column.lipSurfaceY();
             cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel;
             cell.lakeMask = cell.isLake;
+        }
+        // ★ 2026-09-17：湖岸 1 块精度精修（默认关闭，见 LAKE_FINE_FLOOD 的说明）
+        if (LAKE_FINE_FLOOD && lakeCount > 0) {
+            lakeFineFlood(cells, cx, cz, lakeCol, lakeLvl);
+        }
+    }
+
+    /**
+     * ★ 2026-09-17：<b>湖岸 1 块精度精修</b>（开关 {@link #LAKE_FINE_FLOOD}）。
+     *
+     * <h4>被修的缺陷（水体物理审计实测）</h4>
+     * <p>{@code runWaterPhysicsProbe} 在用户报告点实测（seed 5436529513624899584）：</p>
+     * <pre>
+     *   水体：水位 166.627  面积 26739 格  盆底 153.145
+     *   【应有水位】159.540（±96wu 窗口）/ 165.498（稳定值，96~288 块）/ 167.706（真盆沿，384 块）
+     *   ⇒ 水位 166.627 < 真盆沿 167.706 ⇒ **水位本身是对的**（短板生效）
+     *   但【干墙 = 451 格】—— 与水相邻、低于水位、却是干的
+     * </pre>
+     * <p>⇒ 水边界既不是水位等高线、也不是地形，而是 <b>12wu 粗格洪泛区的边界</b>
+     * （{@code computeFlood} 的 BFS 网格）⇒ 视觉上就是<b>垂直水墙 + 水不贴岸</b>。</p>
+     *
+     * <h4>修法</h4>
+     * <p>以【本 chunk 内的湖列】（= 粗格洪泛内）为<b>种子</b>，在
+     * {@code chunk + 32 块 pad} 的窗口内做 <b>1 块精度 4 邻洪泛</b>
+     * （只通过 {@code 高度 < 水位 − 0.5} 的格）⇒ 水边界回归水位等高线。
+     * 本 chunk 的湖列按洪泛结果<b>重判</b>（未连通的不出水）。</p>
+     *
+     * <h4>为何是局部（而非全局）</h4>
+     * <p>种子已由粗格洪泛给出（保证大范围正确），本步只做<b>边界精修</b>
+     * ⇒ 窗口只需覆盖岸边，成本 O((16+64)²) ≈ 6.4k 格/chunk，可忽略。
+     * pad 内的高度用<b>不带侵蚀</b>的廉价采样（{@code sample}）：它只参与连通性判断，
+     * 而侵蚀 delta 为亚块级；<b>刻意不用 {@code sampleWu}</b>——那会为 pad 触发侵蚀 tile 生成。</p>
+     */
+    private void lakeFineFlood(Cell[] cells, int cx, int cz,
+                               boolean[] lakeCol, double[] lakeLvl) {
+        final int pad = 32;
+        final int w = 16 + 2 * pad;
+        double seaLevel = generator.seaLevel();
+        boolean[] pass = new boolean[w * w];
+        boolean[] seen = new boolean[w * w];
+        java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
+        // 按水位分组（不同湖不同水位；同一湖水位相同）
+        java.util.LinkedHashSet<Double> levels = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < 256; i++) {
+            if (lakeCol[i]) levels.add(Math.round(lakeLvl[i] * 100) / 100.0);
+        }
+        final int[] dxx = {1, -1, 0, 0};
+        final int[] dzz = {0, 0, 1, -1};
+        for (double level : levels) {
+            java.util.Arrays.fill(pass, false);
+            java.util.Arrays.fill(seen, false);
+            q.clear();
+            for (int gz = 0; gz < w; gz++) {
+                for (int gx = 0; gx < w; gx++) {
+                    int lx = gx - pad, lz = gz - pad;
+                    double h;
+                    if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) {
+                        h = cells[lx * 16 + lz].height;          // 本 chunk：最终高度（含雕刻）
+                    } else {
+                        h = generator.sample(toWu(cx * 16 + lx), toWu(cz * 16 + lz)).height;
+                    }
+                    pass[gz * w + gx] = h < level - 0.5;
+                }
+            }
+            for (int lz = 0; lz < 16; lz++) {
+                for (int lx = 0; lx < 16; lx++) {
+                    int i = lx * 16 + lz;
+                    if (!lakeCol[i]) continue;
+                    if (Math.abs(Math.round(lakeLvl[i] * 100) / 100.0 - level) > 1e-6) continue;
+                    int gi = (lz + pad) * w + (lx + pad);
+                    if (pass[gi] && !seen[gi]) { seen[gi] = true; q.add(gi); }
+                }
+            }
+            while (!q.isEmpty()) {
+                int cur = q.poll();
+                int gx = cur % w, gz = cur / w;
+                for (int d = 0; d < 4; d++) {
+                    int nx = gx + dxx[d], nz = gz + dzz[d];
+                    if (nx < 0 || nx >= w || nz < 0 || nz >= w) continue;
+                    int ni = nz * w + nx;
+                    if (seen[ni] || !pass[ni]) continue;
+                    seen[ni] = true;
+                    q.add(ni);
+                }
+            }
+            for (int lz = 0; lz < 16; lz++) {
+                for (int lx = 0; lx < 16; lx++) {
+                    int i = lx * 16 + lz;
+                    if (!lakeCol[i]) continue;
+                    if (Math.abs(Math.round(lakeLvl[i] * 100) / 100.0 - level) > 1e-6) continue;
+                    Cell cell = cells[i];
+                    boolean flooded = seen[(lz + pad) * w + (lx + pad)];
+                    if (flooded && cell.height >= Math.floor(level) - 1e-9) {
+                        cell.height = Math.min(level - 0.75, Math.floor(level) - 1e-9);
+                    }
+                    cell.riverType = (byte) (flooded ? 1 : 0);
+                    cell.riverSurfaceY = level;
+                    cell.riverLipY = level;
+                    cell.isLake = flooded && level >= seaLevel;
+                    cell.lakeMask = cell.isLake;
+                }
+            }
         }
     }
 
