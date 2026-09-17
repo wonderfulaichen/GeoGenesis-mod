@@ -221,17 +221,20 @@ public final class HydrologyBlockCarver {
                 //   减半 ⇒ 岸线量化误差从 ±12wu 降到 ±6wu。格数影响可控：pad 按物理
                 //   72wu 换算，格数仅从 8² 增到 15²（远低于 nx*nz>40000 的弃湖阈值）。
                 double claimGrid = RiverLineParams.defaults().gridCell();
-                // ★★★ 2026-09-17：BFS 网格由 12wu 再加密到 **6wu** ★★★
-                //   【被修的缺陷（水体渲染图确认）】水边界在右侧呈现【多条笔直的竖直/水平切边】，
-                //   而左侧沿地形（有机曲线）⇒ 边界被**格网**截断。
-                //   根因：`inFlood` 是 computeFlood 的 BFS 粗连通区，其格距此前为
-                //   `claimGrid*0.5 = 12wu`（= 24 块）⇒ 边界带 12wu 直角，
-                //   与"湖岸 = 侵蚀后地形与 spill 的等高线"的语义不符。
-                //   ⇒ 再加密一倍到 `claimGrid*0.25 = 6wu`（= 12 块），
-                //     并按物理距离换算 pad（72wu）保持搜索窗不变；
-                //     格数约 ×4，仍远低于弃湖阈值（见 computeFlood 的 nx*nz 检查）。
+                // ★★★ 2026-09-17：BFS 网格由 12wu 加密到 **6wu**（= 12 块）★★★
+                //   ⚠ 本条注释此前【声称已加密到 0.25，而代码仍是 0.5】—— 现改齐。
+                //   【被修的缺陷（水体渲染图 + WallAttributionProbe 双重确认）】
+                //   用户标注的水界直边是【轴对齐】的 ⇒ 网格限，而非精度不足。
+                //   归因实锤：干墙格中 wu.x ≡ 0 (mod 12) 占 21.5%（均匀应 8.3%，2.6× 过代表）
+                //   ⇒ 边界正是 `claimGrid*0.5 = 12wu` 的粗格网。
+                //   机理：`inFlood` = computeFlood 的粗连通区，格距 12wu ⇒ 边界带 12wu 直角；
+                //   且 `erodedHeightAt` 自 2026-09-17 起用【格心单点】（治隧穿的代价）
+                //   ⇒ "格心偏高、边缘却低于水位"的连通处在 12wu 尺度上被判【不连通】
+                //   ⇒ 水在网格线处硬截断（= 直边）。
+                //   ⚠ 2026-09-15 曾【刻意不缩小 gridCell】（怕格数 ×4、怕撞弃湖阈值）——
+                //     该顾虑现由"弃湖阈值改为按【物理面积】判定"消解（见 computeFlood）。
                 //   回退：把 0.25 改回 0.5 一行。
-                if (ln.computeFlood(erodedY, spill, claimGrid * 0.5, claimGrid)) {
+                if (ln.computeFlood(erodedY, spill, claimGrid * 0.25, claimGrid)) {
                     return new HydrologyBlockCarvedColumn(blockX, blockZ,
                             original, original, original, original,
                             0.0, 1.0, false, false);

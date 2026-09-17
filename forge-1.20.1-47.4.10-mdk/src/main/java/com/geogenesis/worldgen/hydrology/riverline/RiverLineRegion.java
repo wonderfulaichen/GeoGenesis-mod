@@ -354,7 +354,13 @@ public final class RiverLineRegion {
                 minZ -= pad * gridCell; maxZ += pad * gridCell;
                 int nx = (int) Math.floor((maxX - minX) / gridCell) + 1;
                 int nz = (int) Math.floor((maxZ - minZ) / gridCell) + 1;
-                if (nx <= 0 || nz <= 0 || (long) nx * nz > 40000L) {
+                // ★ 2026-09-17：弃湖阈值由【格数 ≤ 40000】改为【物理面积 ≤ 5.76e6 wu²】
+                //   （= 旧上限 40000 格 × (12wu)²，语义等价，且与 BFS 分辨率解耦）。
+                //   原因：BFS 网格加密到 6wu 后格数 ×4；若沿用 40000 会把一批
+                //   【本来正常的大湖】误判为"越界"而整湖丢弃（用户最反感的回归）。
+                //   代价：最坏情况 erodedY 采样数上限 ×4（每次采样走地形 LRU 缓存）。
+                double areaWu2 = (maxX - minX) * (maxZ - minZ);
+                if (nx <= 0 || nz <= 0 || areaWu2 > 5.76e6) {
                     floodX = new double[0]; floodZ = new double[0];
                     return floodOOB = true;
                 }
@@ -575,10 +581,14 @@ public final class RiverLineRegion {
          * 低于侵蚀短板水位 130.23，本该有水，却因所在粗格格心采样偏高而
          * {@code inFlood=false} ⇒ {@code lakePlan=false} ⇒ 该列不出水。</p>
          *
-         * <p>改用 5 点取 min 后，格内<b>任一</b>采样点低于水位即算淹。刻意<b>不</b>缩小
-         * {@code gridCell}：那会令格数 ×4，可能触发 {@code nx*nz > 40000} 的"弃湖"
-         * 分支（把湖整个丢掉），5 点采样则格数不变、精度显著提升，且 {@code erodedY}
-         * 走地形 LRU 缓存。</p>
+         * <p>改用 5 点取 min 后，格内<b>任一</b>采样点低于水位即算淹。当时刻意<b>不</b>缩小
+         * {@code gridCell}：那会令格数 ×4，可能触发 {@code nx*nz > 40000} 的"弃湖"分支。</p>
+         *
+         * <p>⚠ 2026-09-17 <b>本方法已回退为【格心单点】</b>（见下）：5 点取 min 的代价是
+         * <b>隧穿</b> —— 粗格"任一角低于水位"即算淹 ⇒ 山脊两侧的低格被同一粗格连通
+         * ⇒ 淹水区越过分水岭。两者是同一枚硬币的两面：粗格尺度上的"漏判/误判"。
+         * 真正的解法是<b>缩小格距</b>（把误差尺度本身变小），而不是在粗格内挑采样点；
+         * 弃湖阈值的顾虑已由"按物理面积判阈"消解（见 {@code computeFlood}）。</p>
          */
         private static double erodedHeightAt(
                 java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
