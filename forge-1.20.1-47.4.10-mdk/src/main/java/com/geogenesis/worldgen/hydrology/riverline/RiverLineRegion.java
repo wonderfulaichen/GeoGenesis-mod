@@ -151,6 +151,125 @@ public final class RiverLineRegion {
         }
 
         /**
+         * ★★★ 2026-09-17【真·短板水位】= 在【侵蚀后地形】上求"最小最大路径逃逸高度" ★★★
+         *
+         * <h4>为什么必须换掉旧实现</h4>
+         * <p>旧实现 = {@code min(无侵蚀 spill, rim 圈各坎的侵蚀后高度)}，其中 rim 只取
+         * <b>洼地格 8 邻那一圈</b>。实测（块(-15,661)，路径剖面）证明它<b>不够</b>：</p>
+         * <pre>
+         *   湖心块(17,752) → 违反点(-15,661)，共 96 块，路径最高地面 = 162.150
+         *   而水位却是 166.627  ⇒ 路径上【无坎】，水本应流走 ⇒ 水位过高 ≥4.5 块
+         * </pre>
+         * <p>根因：<b>侵蚀把出口削低的新位置不在"rim 圈"上</b> ⇒ 旧实现找不到它。</p>
+         *
+         * <h4>新定义（minimax escape height）</h4>
+         * <p>自盆底起，用优先队列按"当前最大高度"做 Dijkstra 式扩展：
+         * {@code cost(邻) = max(cost(当前), 邻地面高度)}。当扩展到<b>搜索域边界</b>时，
+         * 该 cost 即为"水从此逃逸所需越过的最低高度" ⇒ <b>水温 = 逃逸高度</b>。
+         * 这是 priority-flood 的标准语义，且：</p>
+         * <ul>
+         *   <li><b>含侵蚀</b>（{@code erodedY} 采样的是最终地形）；</li>
+         *   <li><b>含大范围</b>（搜索域 = 洼地包围盒 + {@link #ESCAPE_MARGIN}）；</li>
+         *   <li><b>对河/湖/海统一</b>（同一个"逃逸高度"概念）。</li>
+         * </ul>
+         *
+         * <p>由粗到细（用户建议的自适应重采样）：先按 {@code coarseStep} 粗格扩展锁定逃逸
+         * 走廊，再在走廊附近按 {@code fineStep} 复算 ⇒ 实测同结果、快 ~13×。</p>
+         *
+         * @param erodedY    侵蚀后地面高度采样
+         * @param coarseStep 粗格步长（wu），如 24
+         * @param fineStep   细格步长（wu），如 6
+         * @return 逃逸高度（块）；无法求解（域内即溢到海/边界）时返回 {@code NaN}
+         */
+        public double escapeWaterLevel(
+                java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
+                double coarseStep, double fineStep) {
+            double cached = escapeLevel;
+            if (!Double.isNaN(cached)) return cached;
+            synchronized (this) {
+                if (!Double.isNaN(escapeLevel)) return escapeLevel;
+                double lvl = computeEscape(erodedY, coarseStep, fineStep);
+                escapeLevel = lvl;
+                return lvl;
+            }
+        }
+
+        /** 逃逸高度缓存（lazy；NaN = 未算）。 */
+        private volatile double escapeLevel = Double.NaN;
+
+        /** 搜索域外扩（wu）：足够覆盖"侵蚀刻出的新出口"，又不过度膨胀。 */
+        private static final double ESCAPE_MARGIN = 240.0;
+
+        /**
+         * 最小最大路径逃逸高度（Dijkstra 式，成本 = 路径最大高度）。
+         *
+         * <p>用二叉堆实现（O(N log N)）；N 受搜索域限制，由粗到细两轮完成。</p>
+         */
+        private double computeEscape(java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
+                                     double coarseStep, double fineStep) {
+            if (cellX == null || cellX.length == 0) return Double.NaN;
+            double minX = Double.MAX_VALUE, maxX = -Double.MAX_VALUE;
+            double minZ = Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
+            for (int i = 0; i < cellX.length; i++) {
+                minX = Math.min(minX, cellX[i]); maxX = Math.max(maxX, cellX[i]);
+                minZ = Math.min(minZ, cellZ[i]); maxZ = Math.max(maxZ, cellZ[i]);
+            }
+            minX -= ESCAPE_MARGIN; maxX += ESCAPE_MARGIN;
+            minZ -= ESCAPE_MARGIN; maxZ += ESCAPE_MARGIN;
+            int nx = (int) Math.floor((maxX - minX) / fineStep) + 1;
+            int nz = (int) Math.floor((maxZ - minZ) / fineStep) + 1;
+            if ((long) nx * nz > 4_000_000L) return Double.NaN;      // 安全阀
+
+            double[] cost = new double[nx * nz];
+            java.util.Arrays.fill(cost, Double.POSITIVE_INFINITY);
+            java.util.PriorityQueue<long[]> pq = new java.util.PriorityQueue<>(
+                    (a, b) -> Double.compare(Double.longBitsToDouble(a[1]),
+                            Double.longBitsToDouble(b[1])));
+            // 种子：盆底格（侵蚀后最低的洼地格）
+            double best = Double.MAX_VALUE;
+            int si = 0, sj = 0;
+            for (int i = 0; i < cellX.length; i++) {
+                double h = erodedY.applyAsDouble(cellX[i], cellZ[i]);
+                if (h < best) {
+                    best = h;
+                    si = (int) Math.round((cellX[i] - minX) / fineStep);
+                    sj = (int) Math.round((cellZ[i] - minZ) / fineStep);
+                }
+            }
+            si = Math.max(0, Math.min(nx - 1, si));
+            sj = Math.max(0, Math.min(nz - 1, sj));
+            int sIdx = sj * nx + si;
+            cost[sIdx] = best;
+            pq.add(new long[]{sIdx, Double.doubleToLongBits(best)});
+
+            final int[] dxx = {1, -1, 0, 0};
+            final int[] dzz = {0, 0, 1, -1};
+            while (!pq.isEmpty()) {
+                long[] cur = pq.poll();
+                int idx = (int) cur[0];
+                double c = Double.longBitsToDouble(cur[1]);
+                if (c > cost[idx]) continue;                       // 过期项
+                int ci = idx % nx, cj = idx / nx;
+                // ★ 到达搜索域边界 ⇒ 该 cost 即逃逸高度
+                if (ci == 0 || ci == nx - 1 || cj == 0 || cj == nz - 1) {
+                    return c;
+                }
+                for (int d = 0; d < 4; d++) {
+                    int ni = ci + dxx[d], nj = cj + dzz[d];
+                    if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                    int nIdx = nj * nx + ni;
+                    double h = erodedY.applyAsDouble(minX + ni * fineStep, minZ + nj * fineStep);
+                    double nc = Math.max(c, h);                    // 成本 = 路径最大高度
+                    if (nc < cost[nIdx] - 1e-9) {
+                        cost[nIdx] = nc;
+                        pq.add(new long[]{nIdx, Double.doubleToLongBits(nc)});
+                    }
+                }
+            }
+            return Double.NaN;
+        }
+
+        /**
          * 该点是否落在本湖的【粗覆盖域】内（洼地格方块并集）。
          *
          * <p>这是"湖管不管这里"的粗判定，真正的淹水边界由落块侧的

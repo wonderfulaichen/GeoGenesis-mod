@@ -244,10 +244,32 @@ public final class WaterDecisionChainProbe {
                 }
             }
             System.out.printf("    湖心块(%.0f,%.0f) → 违反点(%d,%d)，共 %d 块；"
-                            + "路径最高地面 %.3f（在 %d%% 处），≥水位的点 %d 个%n",
-                    lx, lz, bx, bz, nSteps, maxH, 100 * maxAt / Math.max(1, nSteps), overCount);
+                            + "路径最高地面 %.3f（在 %.0f%% 处），≥水位的点 %d 个%n",
+                    lx, lz, bx, bz, nSteps, maxH,
+                    100.0 * maxAt / Math.max(1, nSteps), overCount);
             System.out.println("    判读：若 overCount > 0 ⇒ 路径上有坎挡住了水 ⇒ 水位 166.6 可能正确；");
             System.out.println("          若 overCount = 0 ⇒ 一路无坎，水本应流走 ⇒ 水位过高（真缺陷）。");
+        }
+
+        // ---- [12] ★ 验证【新·逃逸高度水位】是否 ≤ 路径最高地面（预期 ≤162.15）----
+        System.out.println();
+        System.out.println("[12] ★ 新实现 escapeWaterLevel（侵蚀后地形上的最小最大路径逃逸高度）");
+        if (hit != null && hit.lake() != null) {
+            RiverLineRegion.LakeNode lnode = hit.lake();
+            java.util.function.ToDoubleBiFunction<Double, Double> ey3 =
+                    (a, b) -> gen.sampleWu(a, b).height;
+            long t0 = System.nanoTime();
+            double esc = lnode.escapeWaterLevel(ey3, 24.0, 6.0);
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            double old = lnode.erodedWaterLevel(ey3);
+            System.out.printf("    旧（erodedWaterLevel, rim 圈）= %.3f%n", old);
+            System.out.printf("    新（escapeWaterLevel, 逃逸高度）= %.3f   用时 %d ms%n", esc, ms);
+            System.out.printf("    路径最高地面（湖心→违反点）= 162.150（上一节实测）%n");
+            System.out.println(esc <= 162.2
+                    ? "    ★ 判定：新水位 ≤ 162.2 ⇒ **与路径剖面一致** ⇒ 修法有效 ✔"
+                    : "    ★ 判定：新水位仍偏高 ⇒ 需再查（搜索域/分辨率）");
+        } else {
+            System.out.println("    （无湖命中，跳过）");
         }
 
         System.out.println();
