@@ -15,7 +15,21 @@ import java.util.Set;
 /**
  * 汇流场河网验收探针（离线纯 Java，不启动 MC）。
  *
- * <p>运行：{@code gradlew runFlowAccumProbe [-PprobeArgs=seed]}</p>
+ * <p>运行：{@code gradlew runFlowAccumProbe [-PprobeArgs="seed [decay=值] [ref=值]"]}</p>
+ *
+ * <p>★ 2026-09-18（水文 M2-C）：新增<b>命名参数</b>用于开启态 A/B ——
+ * 探针进程无 Forge 配置（{@code GeoGenesisConfig} 抛 {@code IllegalStateException}），
+ * 故必须显式注入 decay。不传 {@code decay}（或传 0）⇒ 与旧基线逐位一致。</p>
+ * <ul>
+ *   <li>{@code decay=} 极旱区沿程衰减（1/wu）；生产默认配置为 {@code 2e-3}（关闭态）</li>
+ *   <li>{@code ref=} 参考降水（≥ 视为湿润 ⇒ decay=0）；生产默认配置为 {@code 0.7647}</li>
+ * </ul>
+ * <p>例：{@code -PprobeArgs="12345 decay=0.002 ref=0.7647"}</p>
+ * <p>⚠ 用途：<b>启用前先建"开启态"基线</b>，确认哨兵 {@code border.maxSurfaceDelta}
+ * 不会恶化（关闭态基线 = 1.845）。</p>
+ * <p>⚠ <b>刻意用命名参数而非位置参数</b>：历史调用形如
+ * {@code -PprobeArgs="12345 12 316"}，若按位置读会把 316 当成 decayMax
+ * ⇒ {@code exp(−316·dist)≈0} ⇒ 水全消失。</p>
  *
  * <p>验收五项（2026-08-28 汇流范式）：</p>
  * <ol>
@@ -57,6 +71,29 @@ public final class FlowAccumProbe {
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         RiverLineNetwork net = engine.network();
+
+        // ★ 2026-09-18 M2-C：可选的【开启态】注入（探针进程无 Forge 配置 ⇒ 必须显式传）。
+        //   ⚠ 必须用【命名参数】：历史文档里的调用是 `-PprobeArgs="12345 12 316"`，
+        //   若按位置读 args[2] 会把 316 当成 decayMax ⇒ exp(−316·dist)≈0 ⇒ 水全消失。
+        //   故一律 `decay=<值> ref=<值>` 形式；未传 decay（或 =0）⇒ 不注入 ⇒ 与旧基线逐位一致。
+        double decayMax = 0.0, decayRef = 0.7647;
+        for (String a : args) {
+            int eq = a.indexOf('=');
+            if (eq <= 0) continue;
+            String k = a.substring(0, eq), v = a.substring(eq + 1);
+            try {
+                if (k.equals("decay")) decayMax = Double.parseDouble(v);
+                else if (k.equals("ref")) decayRef = Double.parseDouble(v);
+            } catch (NumberFormatException ignored) { }
+        }
+        if (decayMax > 0.0) {
+            net.setDecayClimate(new com.geogenesis.worldgen.hydrology.flowaccum.FlowField
+                    .DecayClimate(decayMax, decayRef, 0.5));
+            System.out.printf("[M2-C] 气候驱动衰减已注入：maxDecay=%.1e ref=%.4f exponent=0.5%n",
+                    decayMax, decayRef);
+        } else {
+            System.out.println("[M2-C] 衰减关闭（未传 decay）⇒ 旧基线");
+        }
 
         long t0 = System.nanoTime();
         int riverRegions = 0;

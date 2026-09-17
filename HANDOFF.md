@@ -686,6 +686,34 @@ C 才是"水文是一个整体"的真正兑现：**干旱区河会消失、雨�
 
 > 建议先在游戏里 A/B：`hydrologyDecayEnabled=true` + `maxDecay=2e-3`，找一片沙漠看河流是否断流。
 
+### 11.4b ★ 开启态哨兵基线（**已建，结论：安全**）
+
+启用前必须确认哨兵指标不恶化。`runFlowAccumProbe`（seed 12345，各约 11 分钟，后台跑）：
+
+| 指标 | 关闭态（基线） | **开启态**（decay=2e-3） | 判定 |
+|---|---|---|---|
+| **`border.maxSurfaceDelta`**（哨兵） | **1.845** | **1.848** | ✅ **仅 +0.003**（容差 2.0） |
+| `border.violations` | 0 | 0 | ✅ |
+| `gateViolations` / `topo.cycles` | 0 / 0 | 0 / 0 | ✅ |
+| `profile.violations` | 0 | 0 | ✅ |
+| `status` | PASS | **PASS** | ✅ |
+| `riverRegions` | 49 | 48 | −1（预期） |
+| `fillWater` | 458770 | 419280 | **−8.6%**（预期） |
+| `deepAbnormal` | 3873 | 3612 | −6.7% |
+| `lakes` | 9 | 9 | 不变 |
+
+> **结论：开启衰减【不会破坏 chunk 边界连续性】**（哨兵几乎不动），水量温和减少 8.6%。
+> ⇒ 风险低于预期，可以放心 A/B。
+
+⚠ **一个我埋过又拆掉的坑**：我最初把新参数设计成**位置参数**（`args[2]=decayMax`），
+但历史调用形如 `-PprobeArgs="12345 12 316"` ⇒ 316 会被当成 decayMax
+⇒ `exp(−316·dist)≈0` ⇒ **水全消失**。已改为**命名参数** `decay= ref=`（见 `FlowAccumProbe` javadoc）。
+⇒ 教训：**给已有探针加参数，一律用命名参数**，不要占用位置。
+
+⚠ **另一个坑（PowerShell 转义）**：`Start-Process -ArgumentList 'runFlowAccumProbe', '-PprobeArgs=12345 12 0'`
+中空格会被拆成多参数 ⇒ Gradle 只收到 `12345`，探针用**默认 radius=4** 静默跑完（输出只有一行 JVM 信息）。
+必须写成 `'-PprobeArgs="12345 ..."'`（值整体带引号）。**这与项目既有教训"命令行拼长命令易被转义搞坏"同源。**
+
 ### 11.5 零行为变更验证（本轮已做）
 
 - `runWaterBalanceProbe` → exit 0（7 项 ALL PASS）
