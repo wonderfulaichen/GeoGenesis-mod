@@ -236,6 +236,13 @@ public final class HydrologyBlockCarver {
                             original, original, original, original,
                             0.0, 1.0, false, false);
                 }
+                // ★ 2026-09-17：把【水位采用 floodLevel】提到 inFlood 判定【之前】。
+                //   原因：下面那条"非湖列"早退（inFlood=false）也必须带上**同一个水位**，
+                //   落块层才能在该水位上做块级洪泛重判（GeoGenesisTerrain.LAKE_FINE_FLOOD）。
+                //   对湖列自身零行为变化（原先只是晚几句赋值，值相同）。
+                //   回退：把这两行移回 inFlood 判定之后。
+                double enforcedFlood = ln.floodLevel();
+                if (!Double.isNaN(enforcedFlood)) spill = enforcedFlood;
                 double wuX = blockX / (horizontalScale > 0.01 ? horizontalScale : 1.0);
                 double wuZ = blockZ / (horizontalScale > 0.01 ? horizontalScale : 1.0);
                 // ★★★ 2026-09-17：给连通区判定【一个粗格容差】★★★
@@ -251,17 +258,21 @@ public final class HydrologyBlockCarver {
                 //   结论：在"湖域已过大（太多列被判为湖）"的前提下，放宽连通带只会加剧问题。
                 //   根因在更上游（域/水位），不在边界容差。
                 if (!ln.inFlood(wuX, wuZ)) {
-                    // 本列在湖认领域内但不在侵蚀后连通淹水区 → 非湖列（湖形自然闭合）。
+                    // 本列在湖认领域内但不在侵蚀后连通淹水区 → 暂判"非湖列"。
+                    // ★ 2026-09-17：但**仍回传湖节点 + 湖水位**。实测（水体物理审计）：
+                    //   该判定是在 6wu 粗格上做 BFS，会把"低于水位、且与水相邻"的岸线列
+                    //   成片错杀（实测 452 个"干墙"格 100% 来自这一类列）⇒
+                    //   落块层改用【1 块精度洪泛】在同一水位上重判这些列
+                    //   （GeoGenesisTerrain.LAKE_FINE_FLOOD；lakePlan 仍为 false
+                    //    = "按粗格暂不出水"，只有块级洪泛连通到才出水）。
                     return new HydrologyBlockCarvedColumn(blockX, blockZ,
                             original, original, original, original,
-                            0.0, 1.0, false, false);
+                            0.0, 1.0, false, false, ln, spill);
                 }
                 // ★★★ 2026-09-17 修复（实测定位：算出来的水位没人用）★★★
-                //   computeFlood 内部的短板迭代会把水位压低到【真实盆沿】，
-                //   但此处原先仍用旧 `spill` 铺水 ⇒ 迭代等于白算
-                //   （实测：湖域 1058 格 / 连通区 205 格，水位却仍是未压低的旧值）。
-                double enforced = ln.floodLevel();
-                if (!Double.isNaN(enforced)) spill = enforced;
+                //   computeFlood 内部的短板迭代会把水位压低到【真实盆沿】。
+                //   ⚠ 该赋值已于 2026-09-17 上移到 inFlood 判定【之前】（见 enforcedFlood），
+                //     目的是让"被拒列"与"湖列"拿到同一个水位，避免两条路径口径不一。
             }
             // 湖不挖地：carved = original（合成层 waterSurface vs 侵蚀后 height 判水）。
             // lakePlan=true 通知合成层走"湖出水判定"（用侵蚀后地面，而非通用河床减法）。
@@ -272,8 +283,10 @@ public final class HydrologyBlockCarver {
                     1.0,                         // 湖盆吃全量侵蚀（盆底 = 侵蚀后真实地形）
                     false,                       // fillWater 由合成层判，这里不预判
                     true,                        // lakePlan：湖域列标记
-                    ln);                         // ★ 2026-09-17：回传湖节点，
+                    ln,                          // ★ 2026-09-17：回传湖节点，
                                                  //   供落块层在【雕刻后最终地形】上重算水位
+                    spill);                      // ★ 2026-09-17：水位随列回传 ——
+                                                 //   与"被拒列"同一口径，供块级洪泛使用
         }
 
         // ★ 折痕根因：雕刻几何只用"最近段距离"dist，而折线距离场在弯角平分线 /

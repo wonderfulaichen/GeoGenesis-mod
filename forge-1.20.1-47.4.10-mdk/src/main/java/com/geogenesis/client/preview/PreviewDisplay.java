@@ -396,7 +396,7 @@ public class PreviewDisplay extends AbstractWidget {
     // 70 = （已撤销，不再回收，避免与历史缓存串号）
     //      曾用于"类型场启用域扭曲 WARP_AMP 0→40"，但**实机反馈河流/湖泊出问题**已回退；
     //      产出已回到 69 的状态，故版本号同步回到 69。
-    private static final int CACHE_SCHEMA_VERSION = 69;
+    private static final int CACHE_SCHEMA_VERSION = 70;   // ★ 70：湖岸 1 块精度精修（LAKE_FINE_FLOOD）
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
