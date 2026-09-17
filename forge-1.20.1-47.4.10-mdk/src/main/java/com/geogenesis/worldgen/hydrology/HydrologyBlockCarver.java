@@ -221,6 +221,16 @@ public final class HydrologyBlockCarver {
                 //   减半 ⇒ 岸线量化误差从 ±12wu 降到 ±6wu。格数影响可控：pad 按物理
                 //   72wu 换算，格数仅从 8² 增到 15²（远低于 nx*nz>40000 的弃湖阈值）。
                 double claimGrid = RiverLineParams.defaults().gridCell();
+                // ★★★ 2026-09-17：BFS 网格由 12wu 再加密到 **6wu** ★★★
+                //   【被修的缺陷（水体渲染图确认）】水边界在右侧呈现【多条笔直的竖直/水平切边】，
+                //   而左侧沿地形（有机曲线）⇒ 边界被**格网**截断。
+                //   根因：`inFlood` 是 computeFlood 的 BFS 粗连通区，其格距此前为
+                //   `claimGrid*0.5 = 12wu`（= 24 块）⇒ 边界带 12wu 直角，
+                //   与"湖岸 = 侵蚀后地形与 spill 的等高线"的语义不符。
+                //   ⇒ 再加密一倍到 `claimGrid*0.25 = 6wu`（= 12 块），
+                //     并按物理距离换算 pad（72wu）保持搜索窗不变；
+                //     格数约 ×4，仍远低于弃湖阈值（见 computeFlood 的 nx*nz 检查）。
+                //   回退：把 0.25 改回 0.5 一行。
                 if (ln.computeFlood(erodedY, spill, claimGrid * 0.5, claimGrid)) {
                     return new HydrologyBlockCarvedColumn(blockX, blockZ,
                             original, original, original, original,
@@ -228,6 +238,18 @@ public final class HydrologyBlockCarver {
                 }
                 double wuX = blockX / (horizontalScale > 0.01 ? horizontalScale : 1.0);
                 double wuZ = blockZ / (horizontalScale > 0.01 ? horizontalScale : 1.0);
+                // ★★★ 2026-09-17：给连通区判定【一个粗格容差】★★★
+                //   本检查只负责"连通性粗筛"（排除远在域外/不连通的低地）；
+                //   真正的湖岸边界由落块侧的**块级等高线**（`cell.height < spill − 0.5`）决定。
+                //   此前不给容差 ⇒ 粗格边界（6wu）被当成终判 ⇒ 水界带格网直角
+                //   （水体渲染图实证：右侧多条笔直切边，左侧却沿地形）。
+                //   给 `claimGrid*0.25`（= 一个粗格）容差后，边界外但确实低于水位的相邻列
+                //   会进入块级判定 ⇒ 水界回归等高线，且不破坏连通性语义。
+                //   回退：把 extra 改回 0.0。
+                // ⚠ 2026-09-17 回退：曾给"一个粗格容差"以让水界贴等高线，
+                //   实测**反而灌得更多**（水体渲染图：29670 px，占窗口 80%）⇒ 撤销。
+                //   结论：在"湖域已过大（太多列被判为湖）"的前提下，放宽连通带只会加剧问题。
+                //   根因在更上游（域/水位），不在边界容差。
                 if (!ln.inFlood(wuX, wuZ)) {
                     // 本列在湖认领域内但不在侵蚀后连通淹水区 → 非湖列（湖形自然闭合）。
                     return new HydrologyBlockCarvedColumn(blockX, blockZ,
