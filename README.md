@@ -105,30 +105,44 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 > `ConfigBinding.java` / `FactorCategoryBar.java` **七个文件全部不存在**（历史名）；
 > `WorldHeightBar` / `SnowLineChart` / `ScalePreview` 实际位于 `mixer/` 下。
 
-### 文档（`docs/`）— ⚠ **当前不存在**
+### 文档（`docs/`）
 
-> **2026-09-18 核查**：`docs/` 整个目录被 `.gitignore:52` 忽略，且**当前工作区中并不存在**。
-> 后果：① 本文原列的 `docs/design/`、`docs/plans/`、`docs/fixes/`、`docs/archived/`、
-> `docs/INDEX.md` **均无法访问**；② **新文档必须放仓库根**才能入库（`HANDOFF.md` 即如此）。
-> ⚠ 另有一处内部矛盾：`README` 用 `design/plans/fixes/archived` 编号，而 `ARCHITECTURE.md`
-> 用 `01-架构设计/05-分析诊断/06-历史归档` 编号 —— **两套方案不可能同时成立**。
+> ⚠️ **2026-09-18 重要更正**：`docs/` **真实存在且内容完整**（`01-架构设计/` `02-功能设计/`
+> `03-实施计划/` `04-修复记录/` `05-分析诊断/` `06-历史归档/` + `analysis/` `design/`
+> `plans/` + `INDEX.md`）。它只是被 `.gitignore:52` 忽略 ⇒ **本地可见、不进版本库**。
+> 本文前一版曾误写"不存在"，原因是**用受 .gitignore 过滤的搜索工具做存在性判断** —— 见 `docs/INDEX.md`。
+> **★ 改动世界生成前必读**：`docs/analysis/守门门禁清单-2026-09-16.md`（115 个探针的
+> 「改什么 ⇒ 必跑什么」矩阵 + 实测基线 + 使用纪律）与 `docs/analysis/原版复用对照审计-2026-09-16.md`。
 
-### 其他目录 — ⚠ **原表 7 项全部不存在**
+| 目录 | 内容 |
+|------|------|
+| `docs/01-架构设计/` … `docs/06-历史归档/` | 编号分类（`ARCHITECTURE.md` 采用此方案） |
+| `docs/analysis/` | 分析与审计（**改动前必读**） |
+| `docs/design/` `docs/plans/` | 设计 / 计划 |
+| `docs/INDEX.md` | 文档分类索引（**含每篇时效性标注**，查新旧以此为准） |
 
-> 2026-09-18 核查：仓库根实际只有 `.dbg/`、`.gitignore`、`AGENTS.md`、`ARCHITECTURE.md`、
-> `HANDOFF.md`、`README.md`、`forge-1.20.1-47.4.10-mdk/`。
-> 原表所列的 `参考/`、`backups/`、`logs/`、`net/minecraftforge/`、`erosion-test-tool*/`、
-> `sca_smoke/`、`river_check/` **一个都没有**（`logs/` 仅存在于 `forge-1.20.1-47.4.10-mdk/logs/`）。
+### 其他目录
+
+> ⚠️ **2026-09-18 更正**：下表状态经 `git status --ignored` 权威核实。**原表基本正确**，
+> 此前我误判为"全部不存在"，同样是**被 .gitignore 过滤的搜索工具所误导**。
+
+| 目录 | 作用 | 状态 |
+|------|------|------|
+| `参考/` | 外部参考资料（**9 个项目**：FreeTerraForged-1.21.1 / TerraForged-0.3.x / RTG-Community / SimpleHydrology / novoatlas-ref / MOBIDICpy / geotransport / worldgen…） | ✅ 存在（被忽略） |
+| `logs/` | 杂项日志 | ✅ 存在（被忽略） |
+| `river_check/` | 河流检查小工具 | ✅ 存在（被忽略） |
+| `sca_smoke/` | SCA 编译产物 | ✅ 存在（被忽略） |
+| `backups/` | 历史备份 | ❌ 不存在 |
+| `net/minecraftforge/` | 疑似误放的依赖源码 | ❌ 不存在 |
+| `erosion-test-tool*/` | 旧侵蚀测试工具（已废弃） | ❌ 不存在 |
 
 ## 快速开始
 
 1. **接手项目**：先读 **`HANDOFF.md`**（当前状态 / 残余边界 / 必跑的尺子 / 下一步候选）
 2. **理解架构**：阅读 `ARCHITECTURE.md`
 3. **查看最新开发**：阅读 `AGENTS.md` 的「当前工作焦点」
-4. **改世界生成前先跑门禁**：`gradlew.bat runWorldgenGate`（任一 FAIL 即 `BUILD FAILED`）
-
-> ⚠️ 原第 3~5 条指向 `docs/design/`、`docs/plans/PLAN.md`、`docs/INDEX.md`，
-> 但 `docs/` 目录**当前不存在**（见上节）⇒ 已改为指向仓库根的实际文档。
+4. **改世界生成前先查门禁矩阵**：`docs/analysis/守门门禁清单-2026-09-16.md` 的 A 节
+5. **文档索引**：`docs/INDEX.md`（含每篇时效性标注）
 
 ## 开发环境
 
@@ -142,5 +156,5 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 - 核心文档（`AGENTS.md`/`ARCHITECTURE.md`/`HANDOFF.md`）保留在根目录
 - ⚠️ **文档里抄数值 = 必然漂移**（2026-09-18 教训：`AGENTS.md` 长期写 `CACHE_SCHEMA_VERSION` 当前 69，而代码已到 72；又写"域扭曲已启用 40"，实际回退为 0）。凡会变的数字一律写"以代码常量 X 为准"并指路，不要复述
 - ⚠️ **带判据的探针必须以 `System.exit(非零)` 承载 FAIL**，否则 Gradle 报 `BUILD SUCCESSFUL`、门禁名存实亡（128 个探针里只有 18 个做对了）
-- ~~设计/计划/修复文档已分类到 `docs/` 子目录~~ ⚠ 该目录当前不存在，新文档放仓库根
-- ~~侵蚀测试工具已废弃但保留~~ ⚠ `erosion-test-tool*/` 目录当前不存在
+- 设计/计划/修复文档已分类到 `docs/` 子目录（⚠ `docs/` 被 `.gitignore` 忽略 ⇒ 本地可见、不进版本库）
+- ⚠️ **不要用受 `.gitignore` 过滤的搜索工具判断"文件是否存在"**（2026-09-18 踩坑：据此误判 `docs/`、`参考/`、`logs/` 等为"不存在"，并改错了本文件）。**权威做法是 `git status --ignored` 或显式路径列目录**
