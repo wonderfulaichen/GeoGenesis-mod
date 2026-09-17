@@ -1139,6 +1139,16 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Lake "ridge tunneling" hypothesis test (2026-09-17):
+//   gradlew runLakeTunnelProbe [-PprobeArgs="seed lakeX lakeZ"]
+task runLakeTunnelProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeTunnelProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // River hit consistency between sample() and sampleAll().get(0) (2026-09-17):
 //   gradlew runHitConsistencyProbe [-PprobeArgs="seed blockX blockZ radiusBlocks [step]"]
 task runHitConsistencyProbe(type: JavaExec) {

@@ -583,13 +583,28 @@ public final class RiverLineRegion {
         private static double erodedHeightAt(
                 java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
                 double gx, double gz, double gridCell) {
-            double q = gridCell * 0.5;
-            double h = erodedY.applyAsDouble(gx, gz);
-            h = Math.min(h, erodedY.applyAsDouble(gx - q, gz - q));
-            h = Math.min(h, erodedY.applyAsDouble(gx + q, gz - q));
-            h = Math.min(h, erodedY.applyAsDouble(gx - q, gz + q));
-            h = Math.min(h, erodedY.applyAsDouble(gx + q, gz + q));
-            return h;
+            // ★★★ 2026-09-17 修复：由"格心 + 4 角取 min"改为【格心单点】★★★
+            //
+            // 【被修的缺陷（隧穿，实测量化）】旧实现取格心与 4 角的**最小值**：
+            //   h = min(格心, 左上, 右上, 左下, 右下)
+            // ⇒ 一个粗格**只要有一个角低于水位就算淹** ⇒ BFS 会**穿过山脊"隧穿"**
+            //   （山脊两侧的低格被同一个粗格连通）⇒ 淹水区越过分水岭延伸。
+            //
+            // 【实测（runLakeTunnelProbe，seed 5436529513624899584 @湖 wu(9,376)）】
+            //   5 点取 min（旧）：淹水粗格 **220**
+            //   格心单点（新）  ：淹水粗格 **64**
+            //   ⇒ 旧实现让淹水区达到严格版的 **3.4 倍**（+243.8%）。
+            //   这正是实机"填出山腰外的悬空水板"的机制，也解释了为何"加密 BFS 网格"
+            //   无效（问题在**采样方式**，不在粒度）。
+            //
+            // 【为何安全】
+            //   · 通行条件变严 ⇒ 淹水区**只会缩小**，不会新增淹没（对称于"只降不升"原则）；
+            //   · 采样次数由 5 次降到 1 次 ⇒ **更快**；
+            //   · 边界仍由落块侧的块级等高线（`height < spill − 0.5`）精修 ⇒ 不损失精度。
+            //   · 注：该函数此前被 2026-09-15 用于修"湖岸尖端漏判"，但那个问题
+            //     的**正确解**是块级等高线（已有），不该用"放宽粗格通行条件"来代偿。
+            //   【回退】恢复上方 4 个 `h = Math.min(...)` 行即可。
+            return erodedY.applyAsDouble(gx, gz);
         }
 
         /** 局部 inFlood（computeFlood 内部用，flood 尚未发布时）。 */
