@@ -106,6 +106,27 @@ gradlew runChunkLoadPerfProbe     -PprobeArgs="5436529513624899584 32 4"        
 
 **⚠️ 本轮最大的方法论收获**：**文档里抄数值 = 必然漂移**（69 vs 72）。凡是会变的数字，一律写"以代码常量 X 为准"+ 指路，不要在文档里复述。
 
+## 9.5 2026-09-18 追加：矿物系统预研（**未写代码**）
+
+详见 `docs/plans/矿物系统-预研-2026-09-18.md`。要点：
+
+- **参考项目扫描**：`参考/sources/` 下 9 个项目中，**只有 FreeTerraForged-1.21.1 有完整矿物系统**
+  （`DynamicOre` 7 类 + 4 Mixin）；TerraForged-0.3.x / RTG-Community / novoatlas-ref **均无矿**。
+- **`DynamicOre` 机制**：不替换矿特征，而在 **`PlacementModifier` 层面拦截** `getPositions()`，
+  用自算的 Y 分布替换原版高度分布。契约判定（`OreContractClassifier`）**不看模组名、只看结构**，
+  读不懂就跳过 ⇒ **这正是"多模组兼容"的正解**（优于按命名空间过滤）。
+- **★ 决定性发现（两条，都是"别照搬"的理由）**：
+  1. 它的 `isReferenceFrame()` 基准是 `(-64, 319, 63)`，而**我们的 world frame 恰好完全相同**
+     ⇒ 其垂直重映射**在我们这里恒为 no-op**（它设计给"改过世界高度"的 RTF）。
+  2. **本项目无 Mixin 基础设施**（gradle/toml/json 全 0 命中）⇒ 运行时接管需先引入 Mixin。
+- **推荐路径 D**：复用**已有的** `VanillaDecorationFilter` 注入点（同时驱动
+  `featuresPerStep` 与 `applyBiomeDecoration`，2026-09-16 已取证）做**特征级路由**：
+  `OVERRIDE` 模式移除 `minecraft` 矿业特征交给 `OreVeins`，`VANILLA` 模式原样
+  ⇒ **零新基础设施 + 开关语义天然成立 + 多模组天然兼容**。
+- **前置必做**：`OreVeins` 当前矿量仅原版 **~1/10**（基线 231.9 块/chunk）⇒ 直接接管会"矿荒"，
+  **M2 必须先标定**。
+- **待用户拍板**：路径 D vs C；矿量基准（对齐原版 / 地质真实感优先）；岩性门控是否随开关。
+
 ## 9. 2026-09-18 追加：项目整理（门禁机制化 + 全仓文档体检）
 
 ### 9.1 门禁：让「尺子」名副其实
