@@ -1282,6 +1282,16 @@ task runGeotransportGraphOnRealD8Probe(type: JavaExec) {
     }
 }
 
+// M1：geotransport 图模式 + 真实地形/真实 FlowField（2026-09-18）:
+//   gradlew runGeotransportRealTerrainProbe [-PprobeArgs="seed gridN samples"]
+task runGeotransportRealTerrainProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.GeotransportRealTerrainProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Determinism / order-independence gate (2026-09-17, hydrology 重构 M1 基线):
 //   gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]
 //   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0）
