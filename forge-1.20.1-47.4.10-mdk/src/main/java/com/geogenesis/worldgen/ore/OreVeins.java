@@ -65,15 +65,42 @@ public final class OreVeins {
          * 对齐原版公认值 ~185（比值 0.99）。</p>
          */
         COAL(6, 70, 2.20, RockType.SANDSTONE, RockType.SHALE),
-        /** 铜：火山成因（斑岩铜矿）。 */
-        COPPER(20, 90, 0.85, RockType.BASALT, RockType.ANDESITE, RockType.SANDSTONE),
         /**
-         * 铁：分布最广（沉积 + 变质 BIF）。
-         * <p>★ 2026-09-18 M2 标定：{@code 0.75 → 0.63}。铁的宿主岩是全部 8 种
-         * ⇒ 最易成矿，原 richness 使其成为"倒金字塔"的顶端 ⇒ 实测
-         * <b>109.2 → 75.2 块/chunk</b>，对齐原版公认值 ~77（比值 0.98）。</p>
+         * 铜：<b>斑岩铜矿</b>（母岩）+ 火山弧围岩 + 沉积砂岩型。
+         *
+         * <p>★ 2026-09-18 地质校正：<b>补入 {@link RockType#GRANITE}</b>。
+         * 斑岩铜矿的名字即来自"斑岩"（花岗闪长岩/石英二长岩）——
+         * 铜由<b>花岗质岩浆</b>带出、在侵入体及其围岩中沉淀。
+         * 原设定只有围岩（ANDESITE）与沉积端（SANDSTONE），<b>漏了母岩本身</b>。</p>
+         * <p>四种宿主各对应一个真实矿床类型：
+         * GRANITE = 斑岩铜矿母岩；ANDESITE = 弧火山岩围岩；
+         * BASALT = 裂谷玄武岩铜矿（密歇根型自然铜）与 VMS 块状硫化物；
+         * SANDSTONE = 砂岩型铜矿（赞比亚式）。</p>
          */
-        IRON(15, 110, 0.63, RockType.values()),
+        COPPER(20, 90, 0.85, RockType.GRANITE, RockType.ANDESITE,
+                RockType.BASALT, RockType.SANDSTONE),
+        /**
+         * 铁：<b>BIF 条带状铁建造</b>（前寒武纪海相化学沉积，变质后为磁铁矿片岩/铁英岩）
+         * + 鲕状赤铁矿（碎屑沉积）。
+         *
+         * <p>★★ <b>2026-09-18 地质校正（重要）</b>：原宿主为 {@code RockType.values()}
+         * —— <b>全部 8 种岩性</b>，属<b>过度泛化</b>。
+         * 真实铁矿床的宿主是<b>确定的</b>：</p>
+         * <ul>
+         *   <li>{@link RockType#GNEISS} / {@link RockType#SCHIST}
+         *       —— BIF 经受<b>区域变质</b>后的磁铁矿片岩（世界主要铁源）；</li>
+         *   <li>{@link RockType#SANDSTONE} / {@link RockType#SHALE}
+         *       —— 碎屑沉积型（鲕状赤铁矿）。</li>
+         * </ul>
+         * <p>而 <b>{@link RockType#GRANITE}（侵入岩）、{@link RockType#BASALT}（喷出岩）、
+         * {@link RockType#LIMESTONE}（碳酸盐岩）、{@link RockType#ANDESITE} 中
+         * 并不产出铁矿床</b> ⇒ 已移除。</p>
+         * <p>⚠ <b>为何这条很重要</b>：原先"全岩性都是宿主"使铁成为<b>最常见矿</b>
+         * （倒金字塔顶端），当时只能靠压低 {@code richness} 去补偿 ——
+         * <b>那是以数值掩盖设定错误</b>。改对宿主岩后，矿量由<b>地质本身</b>门控。</p>
+         */
+        IRON(15, 110, 1.05, RockType.GNEISS, RockType.SCHIST,
+                RockType.SANDSTONE, RockType.SHALE),
         /** 金：造山型（变质 + 侵入）。 */
         GOLD(30, 130, 0.45, RockType.GRANITE, RockType.GNEISS, RockType.SCHIST),
         /** 红石：深部结晶基底。 */
@@ -166,10 +193,25 @@ public final class OreVeins {
      * 原版是「煤(185) ≫ 铁(77) ≫ 钻石(3.7)」的金字塔，而自研原本是
      * <b>铁(109.2) 最大、煤(41.1) 很少</b>的倒金字塔。根因：{@code IRON} 的宿主岩是
      * <b>全部 8 种</b>（最易成矿），{@code COAL} 只有 2 种且深度带最窄。</p>
-     * <p><b>结论：不动本常量，改为逐矿种调 {@link Ore#richness}</b>（含 per-ore 语义、互不干扰）。
-     * 标定后（煤 1.00→2.20、铁 0.75→0.63）实测：
-     * <b>煤 183.8 / 铁 75.2 / 钻石 4.2</b> ⇒ 三者对齐原版公认值
-     * （0.99× / 0.98× / 1.14×）；总量 231.9 → <b>340.1 块/chunk</b>。</p>
+     * <p><b>结论：不动本常量，改为逐矿种调 {@link Ore#richness}</b>（含 per-ore 语义、互不干扰）。</p>
+     *
+     * <p><b>★ 2026-09-18 两步走的最终状态</b>：</p>
+     * <ol>
+     *   <li><b>先标定数值</b>（煤 1.00→2.20、铁 0.75→0.63）—— 但这一步的"铁 ~77"依据
+     *       <b>来源不可查</b>（见 HANDOFF §9.5.4）。</li>
+     *   <li><b>再做地质校正</b>（本类的核心修正）：
+     *       {@code IRON} 宿主岩由 <b>全部 8 种</b> 收窄为 <b>BIF/沉积 4 种</b>
+     *       （GNEISS/SCHIST/SANDSTONE/SHALE）；{@code COPPER} 补入 {@code GRANITE} 母岩。
+     *       ⇒ 铁不再"到处都是"，其常见性由<b>地质</b>而非数值决定；
+     *       同时 {@code richness} 相应<b>上调</b>（铁 0.63→1.05，因宿主变少）。</li>
+     * </ol>
+     *
+     * <p><b>实测最终分布（384.1 块/chunk）</b>：
+     * 煤 183.8 · 铁 106.5 · 铜 48.0 · 红石 18.0 · 金 13.3 · 绿宝石 6.1 ·
+     * 青金石 4.3 · 钻石 4.1</p>
+     * <p>⚠ 铁的绝对值存在<b>两源分歧</b>：来源不明的"~77" vs
+     * MC百科采样（1.12.2，1000 区块）的 <b>109.2</b>。
+     * <b>取有采样数据支撑的一方（≈106.5）</b> —— 见 HANDOFF §9.5.4 的取证记录。</p>
      * <p>⚠ <b>定量关系（实测标定）</b>：矿量 ∝ <b>{@code richness}²</b>
      * （阈值 {@code t = VEIN_T × richness}，而脉体体积 ∝ t²）⇒
      * <b>目标倍率 k 对应 richness 乘 √k</b>。这是本类调参的正确算法，勿线性估算。</p>
