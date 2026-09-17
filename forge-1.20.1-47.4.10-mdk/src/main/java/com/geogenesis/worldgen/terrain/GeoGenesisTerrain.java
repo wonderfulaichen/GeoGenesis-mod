@@ -2,8 +2,10 @@ package com.geogenesis.worldgen.terrain;
 
 import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
+import com.geogenesis.worldgen.hydrology.HydrologyBlockCarver;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkEngine;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
+import com.geogenesis.worldgen.hydrology.HydrologyExperimentEngine;
 import com.geogenesis.worldgen.noise.NoiseUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -55,7 +57,19 @@ public final class GeoGenesisTerrain {
      * 原因：本实现用 {@code generator.sampleWu} 作为地形——那是<b>侵蚀后、但仍未雕刻</b>的地形，
      * 与旧实现<b>同一份输入</b> ⇒ 逃逸高度（167.539）反而高于旧水位（166.627）⇒ {@code min} 后不变。</p>
      *
-     * <h4>★ 真正的结构结（必须一并解决才能启用）</h4>
+     * <h4>★★ 2026-09-17 二次 A/B（地形口径已修正为点态最终地形）：仍无改善</h4>
+     * <p>修正后再测：窗口水格仍 136、最坏点仍 166.63 / +8.747 块。
+     * ⇒ <b>水位不是主因</b>。结合决策链 [10]（边界 44/44 来自 {@code inFlood} 连通区）
+     * 与块级地图（水边界为一条跨约 24 块的斜线）⇒ <b>真正的主因是
+     * {@code computeFlood} 的 BFS 网格粒度：{@code claimGrid/2 = 12wu（= 24 块）}</b>，
+     * 与 {@code floodHalf = 6wu}。水边界因此被<b>量化到 12wu 网格</b>，
+     * 而不是贴合"侵蚀后 height &lt; spill"的等高线 ⇒
+     * 紧邻水边、低于水位却是干的格（实测 263 格）正是"量化边界之外"的格。</p>
+     * <p>⇒ <b>下一步应改 {@code inFlood} 的边界精度</b>（加密网格或落块侧按等高线精修），
+     * 而不是继续调水位。水位重算能力本身（{@code escapeWaterLevel} + 点态雕刻）仍然有效，
+     * 可在边界修好后作为"统一水位"接入。</p>
+     *
+     * <h4>★ 先前的结构结判断（已由点态雕刻【推翻】）</h4>
      * <p>水位必须在<b>雕刻后的地形</b>上求解；但<b>雕刻是逐 chunk 的</b>，而逃逸路径要跨几十个 chunk ⇒
      * 在 {@code applyHydrologyValley} 内部读"其它 chunk 的已雕刻地形"会递归触发
      * {@code getChunkCells → generateChunk → applyHydrologyValley → 逃逸计算 → getChunkCells …}。</p>
@@ -64,7 +78,7 @@ public final class GeoGenesisTerrain {
      * {@code .codebuddy/plans/世界水文模型-重构设计.md} §2.3）。
      * <b>在该结构调整完成前，本开关保持 false。</b></p>
      */
-    static final boolean LAKE_ESCAPE_LEVEL = false;   // 待"雕刻与水位同层级"重构后启用
+    static final boolean LAKE_ESCAPE_LEVEL = false;   // A/B 无改善（见注释：边界实为 inFlood 的 12wu 量化）
 
     /** 侵蚀向河道软让步（方案 A，config erosionYieldToRiver，默认 true）。 */
     private final boolean erosionYieldToRiver;
@@ -474,8 +488,24 @@ public final class GeoGenesisTerrain {
                 //   回退：LAKE_ESCAPE_LEVEL = false。
                 double spill = column.waterSurfaceY();
                 if (LAKE_ESCAPE_LEVEL && column.lakeNode() != null) {
-                    double esc = column.lakeNode().escapeWaterLevel(
-                            (a, b) -> generator.sampleWu(a, b).height, 24.0, 6.0);
+                    // ★ 地形采样 = **雕刻后的点态最终地形**（carved + rawDelta×mask），
+                    //   与真实放置口径一致（实测差 0.005 块）。这是修"水位求解早于雕刻"的关键：
+                    //   旧实现用的是侵蚀后但仍未雕刻的地形（同一份输入 ⇒ 逃逸高度反而更高、min 后不变）。
+                    final HydrologyExperimentEngine engEsc =
+                            new HydrologyExperimentEngine(generator, 0L);
+                    // ⚠ 入参 (a,b) 是 **wu**（escapeWaterLevel 用 wu）；块坐标 = wu × hs
+                    final double hsEscape = generator.params().horizontalScale();
+                    java.util.function.ToDoubleBiFunction<Double, Double> finalGroundFn = (a, b) -> {
+                        int bxx = (int) Math.floor(a * hsEscape);
+                        int bzz = (int) Math.floor(b * hsEscape);
+                        double o = generator.sample(a, b).height;
+                        HydrologyBlockCarvedColumn c =
+                                HydrologyBlockCarver.carveColumnAt(engEsc, bxx, bzz, o, hsEscape);
+                        if (c == null) return generator.sampleWu(a, b).height;
+                        double raw = generator.sampleWu(a, b).height - c.originalGroundY();
+                        return c.carvedGroundY() + raw * c.erosionMask();
+                    };
+                    double esc = column.lakeNode().escapeWaterLevel(finalGroundFn, 24.0, 6.0);
                     if (!Double.isNaN(esc)) {
                         spill = Math.min(spill, esc);      // 只降不升
                     }

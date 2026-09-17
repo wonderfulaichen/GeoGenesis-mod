@@ -272,6 +272,32 @@ public final class WaterDecisionChainProbe {
             System.out.println("    （无湖命中，跳过）");
         }
 
+        // ---- [13] ★★ 用【单列雕刻入口】构造点态最终地形，验证它是否给出真实放置值 ----
+        System.out.println();
+        System.out.println("[13] ★ 点态最终地形（carveColumnAt + 写回公式）验证");
+        HydrologyExperimentEngine eng13 = new HydrologyExperimentEngine(gen, seed);
+        double orig13 = gen.sample(wuX, wuZ).height;
+        HydrologyBlockCarvedColumn col13 =
+                HydrologyBlockCarver.carveColumnAt(eng13, bx, bz, orig13, hs);
+        if (col13 == null) {
+            System.out.println("    carveColumnAt 返回 null（无河线命中）");
+        } else {
+            double eroded13 = gen.sampleWu(wuX, wuZ).height;
+            double rawDelta13 = eroded13 - col13.originalGroundY();
+            double mask13 = col13.erosionMask();
+            double finalGround13 = col13.carvedGroundY() + rawDelta13 * mask13;
+            System.out.printf("    original(无侵蚀)=%.3f  carved=%.3f  eroded(sampleWu)=%.3f%n",
+                    col13.originalGroundY(), col13.carvedGroundY(), eroded13);
+            System.out.printf("    rawDelta=%.3f  erosionMask=%.3f  lakePlan=%s%n",
+                    rawDelta13, mask13, col13.lakePlan());
+            System.out.printf("    ★ 点态最终地形 = carved + rawDelta×mask = %.3f%n", finalGround13);
+            System.out.printf("    实际放置（getChunkCells）= %.3f  ⇒ 差 %.3f 块%n",
+                    placed.height, Math.abs(finalGround13 - placed.height));
+            System.out.println(Math.abs(finalGround13 - placed.height) < 0.5
+                    ? "    ★ 判定：与真实放置一致 ⇒ **点态雕刻可用** ⇒ 不需要 region 级定型 ✔"
+                    : "    ★ 判定：有偏差 ⇒ 写回公式需再核对");
+        }
+
         System.out.println();
         System.out.println("判读：① 若存在【更近】的命中其 surfaceY ≈ 166.6 ⇒ IDW 把水面拉高到它；");
         System.out.println("      ② 若所有命中的 dist 都 ≫ width ⇒ 本列是【谷壁列】，");
