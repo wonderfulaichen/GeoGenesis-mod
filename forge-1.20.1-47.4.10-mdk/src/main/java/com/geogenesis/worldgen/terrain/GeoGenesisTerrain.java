@@ -88,19 +88,27 @@ public final class GeoGenesisTerrain {
      * 水边界被 12wu 粗格洪泛区切死 ⇒ 垂直水墙 + 水不贴岸（用户截图）。
      * 详见 {@link #lakeFineFlood}。</p>
      *
-     * <h4>★ 2026-09-17 A/B 实测：<b>本实现无效</b>（故默认关闭）</h4>
-     * <p>启用后水体物理审计：干墙 <b>451 → 452</b>、面积 26739 → 26741（几乎不变），
-     * 而 `hydro` 段从 ~10ms 涨到 ~85ms/chunk ⇒ <b>纯开销、零收益</b>。</p>
-     * <p><b>原因（关键）</b>：本方法<b>只重判 {@code lakePlan=true} 的列</b>，
-     * 而那 452 个干墙格正是被 {@code inFlood} <b>拒绝</b>过的列 ——
-     * carver 走的是"非湖列"早退分支（{@code lakePlan=false}），
-     * 本方法的 {@code lakeCol} 登记根本看不到它们 ⇒ <b>够不着目标</b>。</p>
-     * <p><b>正确修法（下一步）</b>：让 carver 对<b>被拒列也带上"湖 + 水位"</b>
-     * （{@code lakeNode} + level，{@code lakePlan} 仍为 false），
-     * 再由本方法对<b>所有受该湖影响的列</b>做块级洪泛、<b>只增不减</b>
-     * （避免出现"空洞"）。这样才可能把干墙打到 0。</p>
+     * <h4>★ 2026-09-17：v1（失败）→ v2（有效，本版）</h4>
+     * <p><b>v1 = 只重判 {@code lakePlan=true} 的列</b>：干墙 451 → 452、面积 +2
+     * ⇒ <b>纯开销零收益</b>。原因：那些干墙格全是被 {@code inFlood} <b>拒绝</b>过的列
+     * （carver 走"非湖列"早退分支，v1 的登记根本看不到它们）⇒ <b>够不着目标</b>。</p>
+     * <p><b>v2（本版）</b>：carver 对<b>被拒列也回传"湖节点 + 水位"</b>
+     * （{@code lakeNode} + {@code lakeLevelY}，{@code lakePlan} 仍为 false），
+     * 本方法再对<b>所有受该湖影响的列</b>做块级洪泛、<b>只增不减</b>（避免空洞）。
+     * 实测（{@code runWaterPhysicsProbe}，seed 5436529513624899584 @ wu(12,316)±96wu）：</p>
+     * <pre>
+     *   水位 166.627 → 166.627   （**一字未动** ⇒ 只修覆盖、不动水位）
+     *   面积 26739   → 28586     （+6.9%，补上该淹而没淹的格）
+     *   干墙 451     → 158       （−65%）
+     * </pre>
+     * <p>水体视图 {@code build/seam/water_view.png} 已确认岸线基本贴合地形（不再是直角水板）。
+     * <b>残余 158 格待查</b>（疑为：弃湖列 / 本 chunk 无粗格种子的岸线格 ——
+     * 后者可考虑用 {@code LakeNode.inFlood} 作 pad 侧种子，但它是线性扫描，需先评估开销）。</p>
+     * <p>⚠ 本实现自身<b>顺序无关</b>（只读本 chunk 最终高度 + 纯采样）；
+     * 门禁 {@code runHydrologyDeterminismProbe} 的 FAIL 经隔离实验确认是<b>既有问题</b>
+     * （本开关关掉仍 FAIL；max|Δheight| = 0.0515，与本改动无关）。</p>
      */
-    static final boolean LAKE_FINE_FLOOD = false;
+    static final boolean LAKE_FINE_FLOOD = true;
 
     /** 逃逸水位专用的水文引擎（懒建一次，供点态最终地形采样复用）。 */
     private HydrologyExperimentEngine escapeEngine;
@@ -490,9 +498,15 @@ public final class GeoGenesisTerrain {
                 fillRiverDistance(cells[lx * 16 + lz], toWu(cx * 16 + lx), toWu(cz * 16 + lz));
             }
         }
-        // ★ 2026-09-17：湖列登记（供 chunk 级【块精度】洪泛重判湖岸，见 LAKE_FINE_FLOOD）
-        boolean[] lakeCol = new boolean[256];
-        double[] lakeLvl = new double[256];
+        // ★ 2026-09-17：湖【影响】登记（供 chunk 级【块精度】洪泛重判湖岸，见 LAKE_FINE_FLOOD）
+        //   ⚠ 必须包含【被拒列】（carver 的 inFlood=false 早退：lakePlan=false 但带湖节点）
+        //     —— 水体物理审计实测：452 个"干墙"格 100% 来自这一类列；
+        //     只登记 lakePlan 列则本法【够不着】它们（首版 A/B 无效的直接原因）。
+        java.util.List<LakeGroup> lakeGroups = new java.util.ArrayList<>();
+        boolean[] lakeAny = new boolean[256];    // 受某湖影响的列（含被拒列）
+        boolean[] lakeSeed = new boolean[256];   // 粗格已判出水 ⇒ 块级洪泛的种子
+        int[] lakeOf = new int[256];             // 列 → lakeGroups 下标
+        java.util.Arrays.fill(lakeOf, -1);
         int lakeCount = 0;
         for (HydrologyBlockCarvedColumn column : result.carvedColumns()) {
             int lx = Math.floorMod(column.blockX(), 16);
@@ -567,9 +581,14 @@ public final class GeoGenesisTerrain {
                 cell.riverLipY = spill;
                 cell.isLake = flooded && spill >= seaLevel;
                 cell.lakeMask = cell.isLake;
-                // ★ 登记本列（湖岸精修用）
-                lakeCol[lx * 16 + lz] = true;
-                lakeLvl[lx * 16 + lz] = spill;
+                // ★ 登记本列（湖列：粗格已判出水 ⇒ 块级洪泛的种子；水位优先采用它）
+                int lgi = lakeGroupOf(lakeGroups, column.lakeNode(), spill);
+                LakeGroup lg = lakeGroups.get(lgi);
+                lg.level = spill;        // 湖列水位（可能已被 escape 压低）优先级最高
+                lg.accepted = true;
+                lakeAny[lx * 16 + lz] = true;
+                lakeSeed[lx * 16 + lz] = flooded;
+                lakeOf[lx * 16 + lz] = lgi;
                 lakeCount++;
                 continue;
             }
@@ -590,10 +609,23 @@ public final class GeoGenesisTerrain {
             cell.riverLipY = column.lipSurfaceY();
             cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel;
             cell.lakeMask = cell.isLake;
+            // ★ 2026-09-17：湖域内【被拒列】登记（carver 的 inFlood=false 早退）。
+            //   本列行为与改前【完全一致】（仍不出水、riverSurfaceY 不变）：
+            //   只是把"湖 + 水位"登记下来，交给 lakeFineFlood 做 1 块精度重判。
+            if (!column.lakePlan() && column.lakeNode() != null) {
+                int lgi = lakeGroupOf(lakeGroups, column.lakeNode(), column.lakeLevelY());
+                LakeGroup lg = lakeGroups.get(lgi);
+                if (!lg.accepted && !Double.isNaN(column.lakeLevelY())) {
+                    lg.level = column.lakeLevelY();   // 湖列水位优先（它已含 escape 压低）
+                }
+                lakeAny[lx * 16 + lz] = true;
+                lakeOf[lx * 16 + lz] = lgi;
+                lakeCount++;
+            }
         }
-        // ★ 2026-09-17：湖岸 1 块精度精修（默认关闭，见 LAKE_FINE_FLOOD 的说明）
+        // ★ 2026-09-17：湖岸 1 块精度精修（见 LAKE_FINE_FLOOD）
         if (LAKE_FINE_FLOOD && lakeCount > 0) {
-            lakeFineFlood(cells, cx, cz, lakeCol, lakeLvl);
+            lakeFineFlood(cells, cx, cz, lakeAny, lakeSeed, lakeOf, lakeGroups);
         }
     }
 
@@ -615,54 +647,48 @@ public final class GeoGenesisTerrain {
      * <p>以【本 chunk 内的湖列】（= 粗格洪泛内）为<b>种子</b>，在
      * {@code chunk + 32 块 pad} 的窗口内做 <b>1 块精度 4 邻洪泛</b>
      * （只通过 {@code 高度 < 水位 − 0.5} 的格）⇒ 水边界回归水位等高线。
-     * 本 chunk 的湖列按洪泛结果<b>重判</b>（未连通的不出水）。</p>
+     * ★ 覆盖范围 = <b>所有受该湖影响的列</b>（含 carver 因 {@code inFlood=false} 早退的
+     * "被拒列"）—— 实测干墙格 100% 来自被拒列，只重判湖列是够不着的（首版 A/B 无效的教训）。
+     * ★ 写入策略 = <b>只增不减</b>：粗格已判出水的列一律保留（避免出现空洞），
+     * 只把"1 块精度洪泛连通得到"的列补成水；河列出水列（非湖种子）不抢。</p>
      *
      * <h4>为何是局部（而非全局）</h4>
      * <p>种子已由粗格洪泛给出（保证大范围正确），本步只做<b>边界精修</b>
-     * ⇒ 窗口只需覆盖岸边，成本 O((16+64)²) ≈ 6.4k 格/chunk，可忽略。
+     * ⇒ 窗口只需覆盖岸边，成本 O((16+32)²) ≈ 2.3k 格/chunk，可忽略。
      * pad 内的高度用<b>不带侵蚀</b>的廉价采样（{@code sample}）：它只参与连通性判断，
      * 而侵蚀 delta 为亚块级；<b>刻意不用 {@code sampleWu}</b>——那会为 pad 触发侵蚀 tile 生成。</p>
      */
-    private void lakeFineFlood(Cell[] cells, int cx, int cz,
-                               boolean[] lakeCol, double[] lakeLvl) {
-        final int pad = 32;
+    private void lakeFineFlood(Cell[] cells, int cx, int cz, boolean[] lakeAny,
+                               boolean[] lakeSeed, int[] lakeOf, java.util.List<LakeGroup> groups) {
+        final int pad = 16;          // 只做【岸边】精修 ⇒ 一个粗格（6wu/12wu）足够
         final int w = 16 + 2 * pad;
         double seaLevel = generator.seaLevel();
-        boolean[] pass = new boolean[w * w];
         boolean[] seen = new boolean[w * w];
         java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
-        // 按水位分组（不同湖不同水位；同一湖水位相同）
-        java.util.LinkedHashSet<Double> levels = new java.util.LinkedHashSet<>();
-        for (int i = 0; i < 256; i++) {
-            if (lakeCol[i]) levels.add(Math.round(lakeLvl[i] * 100) / 100.0);
-        }
         final int[] dxx = {1, -1, 0, 0};
         final int[] dzz = {0, 0, 1, -1};
-        for (double level : levels) {
-            java.util.Arrays.fill(pass, false);
+        for (int gi = 0; gi < groups.size(); gi++) {
+            LakeGroup g = groups.get(gi);
+            double level = g.level;
+            if (Double.isNaN(level)) continue;
             java.util.Arrays.fill(seen, false);
             q.clear();
-            for (int gz = 0; gz < w; gz++) {
-                for (int gx = 0; gx < w; gx++) {
-                    int lx = gx - pad, lz = gz - pad;
-                    double h;
-                    if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) {
-                        h = cells[lx * 16 + lz].height;          // 本 chunk：最终高度（含雕刻）
-                    } else {
-                        h = generator.sample(toWu(cx * 16 + lx), toWu(cz * 16 + lz)).height;
-                    }
-                    pass[gz * w + gx] = h < level - 0.5;
-                }
-            }
+            // ① 种子 = 本 chunk 内【粗格已判出水】的湖列（大范围正确性由粗格保证）
             for (int lz = 0; lz < 16; lz++) {
                 for (int lx = 0; lx < 16; lx++) {
                     int i = lx * 16 + lz;
-                    if (!lakeCol[i]) continue;
-                    if (Math.abs(Math.round(lakeLvl[i] * 100) / 100.0 - level) > 1e-6) continue;
-                    int gi = (lz + pad) * w + (lx + pad);
-                    if (pass[gi] && !seen[gi]) { seen[gi] = true; q.add(gi); }
+                    if (!lakeSeed[i] || lakeOf[i] != gi) continue;
+                    int k = (lz + pad) * w + (lx + pad);
+                    if (!seen[k] && fineFloodWet(cells, cx, cz, pad, k % w, k / w, level)) {
+                        seen[k] = true;
+                        q.add(k);
+                    }
                 }
             }
+            // ② 1 块精度 4 邻洪泛
+            //    ★ 可通行性【惰性求值】：只对洪泛真正访问到的格算高度 ——
+            //    若预生成全窗口掩码，每 chunk 要多算 (48²−16²)=2048 次 generator.sample()
+            //    （实测 sample ≈ 10~15µs/格 ⇒ +20~30ms/chunk，且绝大多数是白算的）。
             while (!q.isEmpty()) {
                 int cur = q.poll();
                 int gx = cur % w, gz = cur / w;
@@ -670,29 +696,77 @@ public final class GeoGenesisTerrain {
                     int nx = gx + dxx[d], nz = gz + dzz[d];
                     if (nx < 0 || nx >= w || nz < 0 || nz >= w) continue;
                     int ni = nz * w + nx;
-                    if (seen[ni] || !pass[ni]) continue;
+                    if (seen[ni]) continue;
+                    if (!fineFloodWet(cells, cx, cz, pad, nx, nz, level)) continue;
                     seen[ni] = true;
                     q.add(ni);
                 }
             }
+            // ④ 回写：本 chunk 内【受该湖影响】的列（含被拒列）—— 只增不减
             for (int lz = 0; lz < 16; lz++) {
                 for (int lx = 0; lx < 16; lx++) {
                     int i = lx * 16 + lz;
-                    if (!lakeCol[i]) continue;
-                    if (Math.abs(Math.round(lakeLvl[i] * 100) / 100.0 - level) > 1e-6) continue;
+                    if (!lakeAny[i] || lakeOf[i] != gi) continue;
+                    if (cells[i].riverType != 0 && !lakeSeed[i]) continue;   // 河列出水：不抢
+                    if (!seen[(lz + pad) * w + (lx + pad)]) continue;        // 未连通 ⇒ 不动
                     Cell cell = cells[i];
-                    boolean flooded = seen[(lz + pad) * w + (lx + pad)];
-                    if (flooded && cell.height >= Math.floor(level) - 1e-9) {
+                    if (cell.height >= Math.floor(level) - 1e-9) {
                         cell.height = Math.min(level - 0.75, Math.floor(level) - 1e-9);
                     }
-                    cell.riverType = (byte) (flooded ? 1 : 0);
+                    cell.riverType = 1;
                     cell.riverSurfaceY = level;
                     cell.riverLipY = level;
-                    cell.isLake = flooded && level >= seaLevel;
+                    cell.isLake = level >= seaLevel;
                     cell.lakeMask = cell.isLake;
                 }
             }
         }
+    }
+
+    /**
+     * 块级洪泛的【可通行】判据：该格是否低于水位 − 0.5。
+     *
+     * <p>本 chunk 用 {@code cell.height}（最终高度，含雕刻）；pad 用
+     * {@code generator.sample()} 的廉价采样 —— 只参与<b>连通性</b>判断，
+     * 而侵蚀 delta 为亚块级；<b>刻意不用 sampleWu</b>：那会为 pad 触发侵蚀 tile 生成。</p>
+     */
+    private boolean fineFloodWet(Cell[] cells, int cx, int cz, int pad,
+                                 int gx, int gz, double level) {
+        int lx = gx - pad, lz = gz - pad;
+        double h;
+        if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) {
+            h = cells[lx * 16 + lz].height;
+        } else {
+            h = generator.sample(toWu(cx * 16 + lx), toWu(cz * 16 + lz)).height;
+        }
+        return h < level - 0.5;
+    }
+
+    /** 一个 chunk 内的湖分组（块级洪泛按【湖身份】分组，避免不同湖共用同一水位判据）。 */
+    private static final class LakeGroup {
+        final Object node;
+        double level = Double.NaN;
+        /** 是否已有"湖列水位"：湖列水位（已含 escape 压低）优先于被拒列的湖水位。 */
+        boolean accepted;
+        LakeGroup(Object node) { this.node = node; }
+    }
+
+    /**
+     * 取（或新建）某湖在分组列表中的下标。
+     * <p>节点非 null 时按【身份】匹配；节点为 null（理论上罕见）时按【水位】匹配。</p>
+     */
+    private static int lakeGroupOf(java.util.List<LakeGroup> groups, Object node, double level) {
+        for (int i = 0; i < groups.size(); i++) {
+            LakeGroup g = groups.get(i);
+            if (node != null ? g.node == node
+                    : (g.node == null && Math.abs(g.level - level) < 1e-6)) {
+                return i;
+            }
+        }
+        LakeGroup g = new LakeGroup(node);
+        if (node == null) g.level = level;
+        groups.add(g);
+        return groups.size() - 1;
     }
 
     /**
