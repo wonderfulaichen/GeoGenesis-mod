@@ -184,18 +184,50 @@ public final class RiverLineRegion {
         public double escapeWaterLevel(
                 java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
                 double coarseStep, double fineStep) {
-            double cached = escapeLevel;
-            if (!Double.isNaN(cached)) return cached;
+            return escapeWaterLevel(erodedY, coarseStep, fineStep, Double.POSITIVE_INFINITY);
+        }
+
+        /**
+         * ★ 2026-09-17【性能：上界剪枝】真正干活的这个重载。
+         *
+         * <h4>为何剪枝是<b>严格等价</b>的</h4>
+         * <p>调用方 {@code GeoGenesisTerrain} 的语义是 {@code spill = min(spill, escape)}。
+         * 若某条路径的"路径最高点"已 &gt; 上界（= 当前水位），则该路径 cost &gt; 上界 ≥ min 的结果
+         * ⇒ <b>无论它通向哪里都不可能改变最终采用的水位</b> ⇒ 松弛时可直接丢弃（不再采样其邻居）。
+         * 反之，若真实逃逸高度 ≤ 上界，其最优路径上每格都 ≤ 逃逸高度 ≤ 上界 ⇒ 一格都不会被误剪
+         * ⇒ 返回值与不剪枝时<b>逐位相同</b>。</p>
+         *
+         * <p><b>实测收益</b>（ChunkLoadPerfProbe 48×48 chunk）：escape 段占 hydro 的 <b>54%</b>
+         * （关掉 LAKE_ESCAPE_LEVEL：hydro 6316→2902ms、单块峰值 4971→1484ms）。
+         * 剪枝后只探索"低于当前水位"的格（盆地内部），远小于全域
+         * {@code ((bbox+2×240wu)/fineStep)²}（可达 2 万格 × 昂贵的 finalGroundFn）。</p>
+         *
+         * @param upperBound 上界（调用方传当前水位）；{@code +∞} = 不剪枝（旧行为）
+         */
+        public double escapeWaterLevel(
+                java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
+                double coarseStep, double fineStep, double upperBound) {
+            // ★ 2026-09-17 修复：原实现以 `escapeLevel != NaN` 当"已算"标记 ⇒
+            //   求解失败（返 NaN，这是合法结果"逃逸高度不可达"）时**永不命中缓存**
+            //   ⇒ 同一湖的每一列都重算一次 → 实机长卡。改用具名 computed 标志。
+            //   另：剪枝只在"给定上界"下等价，故记录所用上界；若本次上界更大则重算。
+            if (escapeComputed && upperBound <= escapeBoundUsed) return escapeLevel;
             synchronized (this) {
-                if (!Double.isNaN(escapeLevel)) return escapeLevel;
-                double lvl = computeEscape(erodedY, coarseStep, fineStep);
+                if (escapeComputed && upperBound <= escapeBoundUsed) return escapeLevel;
+                double lvl = computeEscape(erodedY, coarseStep, fineStep, upperBound);
+                escapeBoundUsed = upperBound;
                 escapeLevel = lvl;
+                escapeComputed = true;
                 return lvl;
             }
         }
 
-        /** 逃逸高度缓存（lazy；NaN = 未算）。 */
+        /** 逃逸高度缓存（lazy）。 */
         private volatile double escapeLevel = Double.NaN;
+        /** 是否已求解（★ 不能用 NaN 当"未算"标记 —— NaN 本身是合法结果）。 */
+        private volatile boolean escapeComputed = false;
+        /** 上次求解所用上界（本次上界更大时需重算 —— 剪枝只在给定上界下等价）。 */
+        private volatile double escapeBoundUsed = Double.POSITIVE_INFINITY;
 
         /** 搜索域外扩（wu）：足够覆盖"侵蚀刻出的新出口"，又不过度膨胀。 */
         private static final double ESCAPE_MARGIN = 240.0;
@@ -206,7 +238,7 @@ public final class RiverLineRegion {
          * <p>用二叉堆实现（O(N log N)）；N 受搜索域限制，由粗到细两轮完成。</p>
          */
         private double computeEscape(java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
-                                     double coarseStep, double fineStep) {
+                                     double coarseStep, double fineStep, double upperBound) {
             if (cellX == null || cellX.length == 0) return Double.NaN;
             double minX = Double.MAX_VALUE, maxX = -Double.MAX_VALUE;
             double minZ = Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
@@ -222,6 +254,11 @@ public final class RiverLineRegion {
 
             double[] cost = new double[nx * nz];
             java.util.Arrays.fill(cost, Double.POSITIVE_INFINITY);
+            // ★ 2026-09-17【性能】地形高度缓存：本域格数是 (bbox+2×240wu)/fineStep 的平方
+            //   （可达 2 万格），而 erodedY 是昂贵的 finalGroundFn（内含 carveColumnAt）
+            //   ⇒ 无缓存时 Dijkstra 松弛会重复采样同一格 ⇒ 首次触达某湖可卡 5 秒。
+            double[] hCache = new double[nx * nz];
+            java.util.Arrays.fill(hCache, Double.NaN);
             java.util.PriorityQueue<long[]> pq = new java.util.PriorityQueue<>(
                     (a, b) -> Double.compare(Double.longBitsToDouble(a[1]),
                             Double.longBitsToDouble(b[1])));
@@ -238,6 +275,10 @@ public final class RiverLineRegion {
             }
             si = Math.max(0, Math.min(nx - 1, si));
             sj = Math.max(0, Math.min(nz - 1, sj));
+            // ★ 上界剪枝（等价性论证见 escapeWaterLevel(...,upperBound)）：
+            //   盆底（本湖最低格）已高于上界 ⇒ 任何路径 cost ≥ best > 上界 ⇒
+            //   逃逸高度不可能改变调用方的 min() 结果 ⇒ 直接返回 NaN（"不可达"）。
+            if (best > upperBound) return Double.NaN;
             int sIdx = sj * nx + si;
             cost[sIdx] = best;
             pq.add(new long[]{sIdx, Double.doubleToLongBits(best)});
@@ -258,7 +299,20 @@ public final class RiverLineRegion {
                     int ni = ci + dxx[d], nj = cj + dzz[d];
                     if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
                     int nIdx = nj * nx + ni;
-                    double h = erodedY.applyAsDouble(minX + ni * fineStep, minZ + nj * fineStep);
+                    // ★ 2026-09-17【性能】高度走缓存（同 runFloodCore 的 hCache）：
+                    //   erodedY 在本路径是 **finalGroundFn**（内含 generator.sample +
+                    //   carveColumnAt（河流采样）+ sampleWu，实测 100~250µs/次），
+                    //   而 Dijkstra 松弛会对同一格重复调用（4 邻 × 多次改进）⇒ 缓存把
+                    //   "每格最多一次"，语义完全等价（地形高度在求解中恒定）。
+                    double h = hCache[nIdx];
+                    if (Double.isNaN(h)) {
+                        h = erodedY.applyAsDouble(minX + ni * fineStep, minZ + nj * fineStep);
+                        hCache[nIdx] = h;
+                    }
+                    // ★ 2026-09-17【上界剪枝】本格已高于上界 ⇒ 经它的路径 cost > 上界
+                    //   ⇒ 不可能改变 min(当前水位, 逃逸高度) ⇒ 丢弃（不再展开其邻居，
+                    //     连采样都省了）。等价性证明见 escapeWaterLevel(...,upperBound)。
+                    if (h > upperBound) continue;
                     double nc = Math.max(c, h);                    // 成本 = 路径最大高度
                     if (nc < cost[nIdx] - 1e-9) {
                         cost[nIdx] = nc;

@@ -556,7 +556,10 @@ public final class GeoGenesisTerrain {
                         double raw = generator.sampleWu(a, b).height - c.originalGroundY();
                         return c.carvedGroundY() + raw * c.erosionMask();
                     };
-                    double esc = column.lakeNode().escapeWaterLevel(finalGroundFn, 24.0, 6.0);
+                    // ★ 2026-09-17：把【当前水位】作为上界传入 ⇒ 逃逸求解可安全剪掉
+                    //   "路径最高点 > 当前水位"的全部格（下一行本就是 min(spill, esc)，
+                    //   那些路径无论通向何处都不会改变结果）⇒ 实测该段从占 hydro 54% 降下来。
+                    double esc = column.lakeNode().escapeWaterLevel(finalGroundFn, 24.0, 6.0, spill);
                     // ★ 临时诊断（取到结论后删）：确认逃逸高度是否真的被算出来、以及值是多少
                     if (LAKE_ESCAPE_DIAG && escapeDiagCount.getAndIncrement() < 10) {
                         LOGGER.info("[LAKE-ESC] block=({},{}) 旧spill={} 逃逸高度={} ⇒ 采用={}",
