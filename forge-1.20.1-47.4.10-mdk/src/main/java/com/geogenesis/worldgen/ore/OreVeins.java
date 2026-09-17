@@ -330,6 +330,47 @@ public final class OreVeins {
         cfgEnabled = enabled;
     }
 
+    // ===================== ★ 2026-09-18：配置热刷新（照 CaveShape 范式）=====================
+    //
+    //   背景：矿物有两个独立配置（oreVeinsEnabled / oreOverrideVanilla），
+    //   原先【改配置必须重新进世界】—— 与本项目"UI 改了却不生效 = 功能没接到底"的
+    //   既有教训同型。此处补齐，语义与洞穴一致：
+    //     配置变更**只影响之后新生成的区块**，已生成区块不变（世界生成的固有性质）。
+
+    /** 由生成器注册的"重新解析配置"回调（null = 未注册，退化为只在换种子时刷新）。 */
+    private static volatile Runnable configRefresher = null;
+    /** 配置脏标记（由配置界面置位）。 */
+    private static volatile boolean configDirty = false;
+
+    /** 注册刷新回调（由 {@code GeoGenesisGenerator} 在初始化时调用一次）。 */
+    public static void setConfigRefresher(Runnable refresher) {
+        configRefresher = refresher;
+    }
+
+    /** 标记配置已变更（配置界面调用）；也可由 {@code VanillaDecorationFilter} 侧共用。 */
+    public static void markConfigDirty() {
+        configDirty = true;
+    }
+
+    /** 是否有待应用的配置变更（供诊断/探针断言）。 */
+    public static boolean isConfigDirty() {
+        return configDirty;
+    }
+
+    /**
+     * 若有待应用的配置变更则立即刷新（<b>列级入口</b>调用；未脏时仅一次 volatile 读）。
+     *
+     * <p>放在 {@link #beginColumn}（而非逐体素）⇒ 每列至多一次检查，热路径零影响。</p>
+     */
+    public static void ensureConfigFresh() {
+        if (!configDirty) return;
+        Runnable r = configRefresher;
+        if (r != null) {
+            configDirty = false;      // 先清标记：即使回调抛异常也不会每列重试
+            r.run();
+        }
+    }
+
     /** 矿脉开关当前值。 */
     public static boolean isEnabled() {
         return cfgEnabled;
@@ -374,6 +415,9 @@ public final class OreVeins {
      * @return 本列在成矿带内 ⇒ true（此时才值得遍历本列的 Y）
      */
     public static boolean beginColumn(int wx, int wz) {
+        // ★ 2026-09-18：热刷新检查（未脏时仅一次 volatile 读，热路径零影响）。
+        //   必须【最靠前】—— 否则会先用旧配置判完本列，热刷新形同虚设。
+        ensureConfigFresh();
         // ★ 总开关：关闭时【在缓存查询之前】直返 false ——
         //   ① 一处设防：veinAt / veinAtLinked 内部都走这里 ⇒ 无法绕过；
         //   ② 放在缓存之前：避免"先开后备"时读到上一列缓存的 true（脏读）。

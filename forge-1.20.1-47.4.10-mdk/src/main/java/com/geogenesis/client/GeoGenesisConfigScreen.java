@@ -6,6 +6,7 @@ import com.geogenesis.client.preview.CavePanel;
 import com.geogenesis.client.preview.ClimateConfigPanel;
 import com.geogenesis.client.preview.ColormapPanel;
 import com.geogenesis.client.preview.ConfigPanel;
+import com.geogenesis.client.preview.OrePanel;
 import com.geogenesis.client.preview.DisplayPanel;
 import com.geogenesis.client.preview.ParameterConfigPanel;
 import com.geogenesis.client.preview.Preset;
@@ -54,7 +55,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private int tab = 0;
     /** 标签页名：上游→下游排列。页签0=世界参数（最上游），页签1=气候，页签2=地形（含雪线） */
-    private static final String[] TAB_NAMES = {"预设", "世界参数", "气候", "地形", "洞穴", "显示", "采样", "色带", "缓存", "群系"};
+    private static final String[] TAB_NAMES = {"预设", "世界参数", "气候", "地形", "洞穴", "矿物", "显示", "采样", "色带", "缓存", "群系"};
 
     /** 标签页导航条配色（仿设置页 TabNavigationBar 原生形态 + 主屏深绿主题） */
     private static final int TAB_H = 24;              // 标签条高度
@@ -86,6 +87,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private BiomesPanel biomesPanel;
     /** ★ 2026-09-15：洞穴设置页（档位一键切换 + 开关 + 旋钮）。 */
     private CavePanel cavePanel;
+    /** ★ 2026-09-18：矿物设置页（自研矿脉开关 + 接管原版矿开关）。 */
+    private OrePanel orePanel;
     private PresetsPanel presetsPanel;
     private ConfigPanel[] panels;
 
@@ -238,8 +241,12 @@ public class GeoGenesisConfigScreen extends Screen {
         // 每次进屏都从配置回读一次 ⇒ 若别处（如「预设」页/重置按钮）改过洞穴配置，
         // 滑块位置不会停在旧值（否则界面显示与实际不符，属误导）。
         cavePanel.buildFromConfig();
+        // ★ 2026-09-18：矿物页签（自研矿脉 + 接管原版矿）。顺序必须与 TAB_NAMES 严格对齐。
+        if (orePanel == null) orePanel = new OrePanel();
+        orePanel.setOnMarkDirty(markDirty);
+        orePanel.buildFromConfig();
         panels = new ConfigPanel[]{ presetsPanel, paramPanel, climatePanel, terrainPanel,
-            cavePanel, displayPanel, samplingPanel, colormapPanel, cachePanel, biomesPanel };
+            cavePanel, orePanel, displayPanel, samplingPanel, colormapPanel, cachePanel, biomesPanel };
         int px0 = panelX + 4, pTop0 = listTop, pW0 = panelW - 8;
         for (ConfigPanel p : panels) p.setBounds(px0, pTop0, pW0);
 
