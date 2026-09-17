@@ -43,6 +43,11 @@ public final class OreOverrideProbe {
      *
      * <p>★ 若 MC 升级或原版增删矿种，<b>本模板与 {@code METAL_ORES} 都要更新</b>；
      * 只改一边会让本门禁 FAIL —— 这是有意的（强制两边同步）。</p>
+     *
+     * <p>⚠ <b>与"穷举并集"差 1 项</b>：穷举 64 群系得到的并集是 19 项，其中
+     * {@code ore_infested}（虫蚀石）被<b>刻意排除</b> —— 它不是地质资源矿
+     * （与要塞/刷怪关联），且 {@code OreVeins} 无对应矿种，剔除会使其永久消失。
+     * ⇒ 本模板（与 {@code METAL_ORES}）均为 <b>18 项</b>。</p>
      */
     private static final List<String> EXPECTED_VANILLA_METAL_ORES = List.of(
             // 煤 2
@@ -60,9 +65,11 @@ public final class OreOverrideProbe {
             // 铜 2（★ copper_large 易漏）
             "ore_copper", "ore_copper_large",
             // 绿宝石 1（★ 仅山地群系 —— 只读非山地群系会整项漏掉）
-            "ore_emerald",
-            // 虫蚀石 1（★ 同上）
-            "ore_infested");
+            "ore_emerald"
+            // ⚠ 刻意【不】含 ore_infested（虫蚀石）：它不是"地质资源矿"，
+            //    而是与要塞/刷怪关联的特殊方块，且 OreVeins 无对应矿种
+            //    ⇒ 剔除会让它永久消失。保留 ⇒ 本模板为 18 项。
+            );
 
     /**
      * 必须【不被剔除】的原版特征（防误伤）。
