@@ -49,6 +49,11 @@ public final class HydrologyDeterminismProbe {
         System.out.println();
         System.out.printf("总判定: %s%n", (t1 && t2) ? "ALL PASS（顺序无关，确定性成立）"
                 : "FAILURES（存在顺序依赖 ⇒ 违反纯函数铁律）");
+        // ★ 2026-09-18：以【退出码】承载判定。
+        //   Gradle 的 JavaExec **只在退出码非零时才算失败**；本探针此前不设退出码
+        //   ⇒ 即使打印 FAILURES，gradle 仍报 BUILD SUCCESSFUL ⇒ "门禁"名存实亡
+        //   （下个会话只看最后一行就会误判为通过）。本行是它真正成为门禁的关键。
+        System.exit((t1 && t2) ? 0 : 1);
     }
 
     // ==================================================================

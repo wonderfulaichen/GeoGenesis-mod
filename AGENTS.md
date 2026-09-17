@@ -19,6 +19,7 @@ gradlew.bat runClient          # 启动 Minecraft 客户端
 gradlew.bat runServer          # 启动服务器
 gradlew.bat runData            # 运行数据生成（输出到 src/generated/resources/）
 gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启动 MC）
+gradlew.bat runWorldgenGate      # 世界生成门禁（只跑当前实测 ALL PASS 的判据型探针；任一 FAIL 即构建失败）
 ```
 
 ## 架构速览
@@ -40,28 +41,36 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 | `worldgen/climate/Latitude.java` | 零依赖纬度带 `latitude01(worldZ)` |
 | `client/preview/ColorMap.java` | 零依赖连续色带（Lab 插值 + bake LUT），不 import MC |
 | `client/preview/GeoPalette.java` | 零依赖配色中枢：`PreviewLayer` 注册表 + 多内置色带 + 离散映射 + 覆盖接口 + 图例条目 |
-| `client/preview/PreviewColor.java` | MC 侧着色外观，委托 `GeoPalette` 输出各图层 ABGR |
+| ~~`client/preview/PreviewColor.java`~~ | ⚠ **已不存在**（2026-09-18 核查）：着色已并入 `GeoPalette`/`PreviewDisplay`，勿再引用 |
 | `client/preview/PreviewDisplay.java` | 游戏内预览控件（15 图层 + 图例 + 分辨率/色带 + 水文 + 拖拽防抖） |
 | `client/preview/TerrainPreview.java` | 独立 Swing 预览窗口（15 图层 + 图例搜索 + 分辨率 + 水文） |
 | `client/preview/GeoGenesisColorReloadListener.java` | MC 资源重载监听器，JSON 资源包覆盖 `GeoPalette` 默认 |
 | `client/GeoGenesisConfigScreen.java` | 游戏内预览/配置屏（三页标签：地形/气候/参数 + 右侧工具栏 + 预览） |
 | `client/ParamSlider.java` | 通用参数滑块（含重置按钮 + tooltip） |
-| `client/preview/mixer/Factor.java` | 调音台因素数据模型（双曲线/单曲线 + 分类色条 + ConfigBinding） |
-| `client/preview/mixer/FactorCurveChart.java` | 因素曲线可视化（双曲线范围图 + 单曲线 + 控制点拖拽） |
-| `client/preview/mixer/FactorMixer.java` | 多因素协调管理器（loadFromConfig/applyToConfig） |
+| `client/preview/TerrainConfigPanel.java` | 地形页：基础因素曲线图 + 14 个控制点滑块（可折叠） |
+| `client/preview/ParameterConfigPanel.java` | 参数页（⚠ 原写 `BasicParamsPanel`，**已不存在**）：噪声/尺度等基础参数滑块 + 承载三个可视化组件 |
+| `client/preview/ClimateConfigPanel.java` | 气候配置面板 |
+| `client/preview/CavePanel.java` | 洞穴页签（档位一键切换 + 开关 + 旋钮） |
+
+> ⚠️ **2026-09-18 校正：`client/preview/mixer/` 段曾整段过时**——原列的
+> `Factor` / `FactorCurveChart` / `FactorMixer` / `ConfigBinding` / `FactorCategoryBar`
+> **五个文件全部不存在**（历史名）。下表按实际目录内容重写；`WorldHeightBar` /
+> `SnowLineChart` / `ScalePreview` 原被列在 `client/preview/` 下，**实际在 `mixer/` 下**。
+> `client` 包实际共 **49 个文件**（含 `chunk/` 7 个），本节只列核心；需要全量请直接列目录。
+
 | `client/preview/mixer/MixerPanel.java` | 调音台面板 UI 容器（可折叠，集成曲线图+分类色条+滑块） |
 | `client/preview/mixer/ControlPoint.java` | 可拖拽控制点（X/Y 坐标 + 选中/悬停状态） |
-| `client/preview/mixer/ConfigBinding.java` | 控制点→GeoGenesisConfig 参数绑定 |
-| `client/preview/mixer/FactorCategoryBar.java` | 条件因素分类色条（温度/湿度/大陆性，可拖拽边界） |
-| `client/preview/TerrainConfigPanel.java` | 地形页：基础因素曲线图 + 14 个控制点滑块（可折叠） |
-| `client/preview/BasicParamsPanel.java` | 参数页：噪声/尺度等基础参数滑块 + 承载三个可视化组件（可滚动/scissor 裁剪） |
-| `client/preview/WorldHeightBar.java` | 参数页：世界高度柱状图（柱图 + 横排滑块 maxY/山脊上限/海平面/世界底 + 色点标记连线 + 内嵌高度预设按钮，可折叠） |
-| `client/preview/SnowLineChart.java` | 参数页：雪线双曲线（温度/纬度对雪线影响，可折叠） |
-| `client/preview/ScalePreview.java` | 参数页：尺度预览（垂直尺度柱对比 + 水平尺度采样密度，水平尺度滑块置于图右侧，可折叠） |
+| `client/preview/mixer/ClickableRegion.java` | 可点击区域 |
+| `client/preview/mixer/CategoryBar.java` | 分类色条 |
+| `client/preview/mixer/DualRangeChart.java` | 图表组件（DualRange） |
+| `client/preview/mixer/SingleCurveChart.java` | 图表组件（SingleCurve） |
+| `client/preview/mixer/WorldHeightBar.java` | 世界高度柱状图（柱图 + 横排滑块 maxY/山脊上限/海平面/世界底 + 内嵌高度预设按钮，可折叠） |
+| `client/preview/mixer/SnowLineChart.java` | 雪线双曲线（温度/纬度对雪线影响，可折叠） |
+| `client/preview/mixer/ScalePreview.java` | 尺度预览（垂直尺度柱对比 + 水平尺度采样密度，可折叠） |
 | `GeoGenesisConfig.java` | Forge COMMON 配置（地质过程参数：continent*/ocean spline 控制点/coast/seabed/land process/world height/**Caves**/**Ores**，详见 `ARCHITECTURE.md` 配置表）。⚠ **2026-09-16 核定：`province*` 系列仍是零消费的死配置**（ARCHITECTURE 已如实标注），本行原把它列入"地质过程参数"易误导，已移除；**另新增 `Caves`（档位+旋钮）与 `Ores`（`oreVeinsEnabled` 总开关）两段** |
 | `worldgen/terrain/GeoGenesisTerrain.java` | 零 MC 依赖地形引擎门面（缓存 Cell + generateChunk 装配侵蚀/河流） |
 | `worldgen/terrain/CellGenerator.java` | 统一连续场采样 + 实现 HeightProvider + 连续分类 |
-| `worldgen/terrain/TerrainCharacterField.java` | 类型场：**规则网格** Voronoi 高斯距离权重（400wu 格、σ=200、7×7 窗口）。★ 2026-09-16：**域扭曲已启用（`WARP_AMP_DEFAULT = 40`）** 修掉轴向对齐缺陷（944→272 块）；`setWarpAmp()/warpAmp()` 供探针 A/B |
+| `worldgen/terrain/TerrainCharacterField.java` | 类型场：**规则网格** Voronoi 高斯距离权重（400wu 格、σ=200、7×7 窗口）。⚠ **2026-09-18 校正**：本行原称"域扭曲已启用 `WARP_AMP_DEFAULT = 40`、修掉轴向对齐缺陷（944→272 块）"——**实际 `WARP_AMP = 0.0（未启用）**；40 曾启用过，但**实机反馈河流/湖泊出问题已回退**（`PreviewDisplay` 缓存版本 70 即因此作废，字段保留可恢复）。另：`setWarpAmp()/warpAmp()` **两个方法都不存在**，勿据本文档调用 |
 | `worldgen/terrain/TypeNoiseProvider.java` | 逐类型地形噪声配方（PLAIN/HILLS/MOUNTAINS/PLATEAU/BASIN）；★ 已撤销 `\|2n−1\|` 折叠（见「折叠类算子的禁令」） |
 | `worldgen/terrain/LandFeatures.java` (+`VolcanicShape`) | 陆地火山特征（单体 800wu 格 3% + 火山群 200wu 格 12% × 低频掩码）；`VolcanicShape` 提供 cone/guyot 形状与火口数学 |
 | ~~`worldgen/terrain/LandShape.java`~~ | ⚠️ **不存在（2026-09-13 核查）**：本行曾写「省权重(softmax) + 陆地过程形态」，实际无此文件；类型权重由 `TerrainCharacterField` 提供 |

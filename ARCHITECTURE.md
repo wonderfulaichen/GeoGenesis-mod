@@ -55,14 +55,14 @@ com.geogenesis
 │   ├── GeoGenesisForgeEvents.java  # FORGE 总线：游戏内按 G 打开预览屏
 │   ├── GeoGenesisConfigScreen.java # 游戏内预览/配置屏（三页标签：地形/气候/参数 + 右侧工具栏）
 │   ├── ParamSlider.java            # 通用参数滑块（含重置按钮 + tooltip）
-│   ├── TerrainConfigPanel.java     # 地形页：基础因素曲线图 + 控制点滑块（可折叠）
-│   ├── BasicParamsPanel.java       # 参数页：噪声/尺度/海平面/雪线等基础参数滑块
+│   ├── TerrainConfigPanel.java     # ⚠ 2026-09-18：实际位于 `client/preview/`，非 `client/`
+│   ├── ParameterConfigPanel.java   # 参数页（⚠ 原写 `BasicParamsPanel`，**已不存在**）：噪声/尺度/海平面/雪线等基础参数滑块
 │   └── preview/                    # 渲染/热力图/叠加/控制面板（15 图层 + 图例，含降水）
 │       ├── LargeAreaSampler.java    # ★ 大范围采样器（固定采样数 + 步长缩放，开销与视野无关）
 │       ├── chunk/                   # 精确管线引擎（CellCache + TerrainQueue + TerrainPool，4 线程 + 磁盘缓存）
 │       ├── TerrainPreview.java      # 独立 Swing 预览窗口（大范围 + 坡度阴影 + 图例滚动）
 │       ├── PreviewDisplay.java      # 游戏内预览控件
-│       ├── PreviewColor.java        # MC 侧着色外观，委托 GeoPalette
+│       ├── ~~PreviewColor.java~~    # ⚠ **已不存在**：着色已并入 GeoPalette / PreviewDisplay
 │       ├── ColorMap.java            # 零依赖连续色带（Lab 插值 + bake LUT）
 │       ├── GeoPalette.java          # 零依赖配色中枢
 │       ├── GeoGenesisColorReloadListener.java # MC 资源重载：JSON 覆盖 GeoPalette
@@ -83,7 +83,7 @@ com.geogenesis
     │   ├── Cell.java                 # 单格数据（c/e/eLand/terrainType/provinceWeights/climate/river*）[ACTIVE]
     │   ├── CellGenerator.java        # 统一连续场采样 + 实现 HeightProvider + 连续分类 [ACTIVE]
     │   ├── ContinentField.java       # 大陆场 c∈[0,1]：FBM Simplex + Warp [ACTIVE]
-    │   ├── LandShape.java            # 省权重(softmax) + 陆地过程形态（克拉通/造山带/高原/盆地）[ACTIVE]
+    │   ├── ~~LandShape.java~~        # ⚠ 2026-09-18 核查：**该文件不存在**（实际为 `TypeLandShape.java`；`AGENTS.md` 已标为已删，本表未同步）⇒ 原标 [ACTIVE] 是错的
     │   ├── SeaBedDetail.java         # 零均值海床细节（替代旧 OceanField 平台）[ACTIVE]
     │   ├── HeightCurve.java          # 单条 cubic Hermite Spline：eFromC / heightFromE（非对称）/ eFromHeightF [ACTIVE]
     │   ├── TerrainClass.java         # 12 类地形枚举（OCEAN/DEEP_OCEAN/LAKE/RIVER/BEACH/PLAIN/HILLS/PLATEAU/MOUNTAINS/PEAK/BASIN/SNOW）[ACTIVE]
@@ -140,7 +140,8 @@ fillFromNoise(executor, blender, randomState, structureManager, chunk)
   └─ for each (x,z) in 16×16:
         Cell cell = cells[cx][cz]
         if (cell.riverMask && cell.terrainType == RIVER)
-            → fillRiverColumn: 按 riverFloorY..riverSurfaceY 灌水（水面≈谷壁高度，使高山河谷也可见水）
+            → fillTerrainColumn: 按 riverFloorY..riverSurfaceY 灌水（水面≈谷壁高度，使高山河谷也可见水）
+              ⚠ 2026-09-18：原写 `fillRiverColumn`，该方法**不存在**，实际为 `fillTerrainColumn`
         else:
             top = cell.height
             ├─ top <= SEA_LEVEL 且 cell.isWater()  → 海洋/湖：沙/砾石水底 + 注水
