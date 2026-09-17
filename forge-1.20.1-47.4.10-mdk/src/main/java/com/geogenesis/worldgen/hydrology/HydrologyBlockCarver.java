@@ -180,7 +180,9 @@ public final class HydrologyBlockCarver {
                     0.0,                         // erosion = cut = 0
                     1.0,                         // 湖盆吃全量侵蚀（盆底 = 侵蚀后真实地形）
                     false,                       // fillWater 由合成层判，这里不预判
-                    true);                       // lakePlan：湖域列标记
+                    true,                        // lakePlan：湖域列标记
+                    ln);                         // ★ 2026-09-17：回传湖节点，
+                                                 //   供落块层在【雕刻后最终地形】上重算水位
         }
 
         // ★ 折痕根因：雕刻几何只用"最近段距离"dist，而折线距离场在弯角平分线 /
