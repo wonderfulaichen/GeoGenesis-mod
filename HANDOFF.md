@@ -127,6 +127,28 @@ gradlew runChunkLoadPerfProbe     -PprobeArgs="5436529513624899584 32 4"        
   **M2 必须先标定**。
 - **待用户拍板**：路径 D vs C；矿量基准（对齐原版 / 地质真实感优先）；岩性门控是否随开关。
 
+### 9.5.1 ★ M1 已实施（2026-09-18 当天，**默认关闭 ⇒ 零行为变更**）
+
+- **新增开关**：`GeoGenesisConfig.oreOverrideVanilla`（默认 **`false` = VANILLA**）。
+  开启后从原版装饰管线剔除 **19 个 `minecraft` 金属矿特征**，地下矿由 `OreVeins` 独占。
+  **只删 `minecraft` 命名空间 ⇒ 任何模组的矿一律不动**（多模组兼容）。
+- **★★ 白名单取证踩坑两次，最终靠穷举修正**（**方法论教训，务必记住**）：
+
+  | 轮次 | 方法 | 结论 |
+  |---|---|---|
+  | 1 | 只读 `jungle` | 15 项 ❌ 漏 `ore_gold_extra`（**仅 badlands 有**） |
+  | 2 | 读 6 个**非山地**群系 | 16 项 ❌ 漏 `ore_emerald` / `ore_infested` / `ore_copper_large`（**仅山地有**） |
+  | 3 | **穷举全部 64 群系取并集** | **19 项** ✅ |
+
+  ⇒ **凡"某东西的全集"，必须穷举取并集，不可抽样**；穷举后还要**排除下界/末地同名变体**
+  （`ore_gold_nether` / `ore_quartz_*` / `ore_ancient_debris_*` / `ore_blackstone` 等，
+  是"名字含 ore 就删"式匹配的最大误伤面）。
+- **门禁**：新增 `runOreOverrideProbe`（模板⊆白名单 / 白名单⊆模板 / 不误伤 / 计数）
+  ⇒ `runWorldgenGate` 现 **8 个探针 / 23s / ALL PASS**。
+- **⚠ M1 的边界**：**只改"原版矿是否剔除"，未改 `OreVeins` 矿量** ⇒ 开 `OVERRIDE` 后总量会下降。
+  **这正是 AB 对比的设计**：开/关各生成一批区块、实测差值 ⇒ **即为 M2 的标定目标**。
+- **未做**：配置 UI / 热刷新（需重进世界生效，同 `oreVeinsEnabled`）。
+
 **★ 2026-09-18 实测追加（一手，已写进预研 §6.1）**：
 - **原版「金属矿」是 15 个 placed_feature，不是 8 个矿种**（每矿种 2~3 变体：
   coal upper/lower · iron upper/middle/small · gold 2 · redstone 2 · **diamond 3** · lapis 2 · copper 1）

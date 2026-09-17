@@ -1305,6 +1305,17 @@ task runWorldgenGate {
     dependsOn 'runCaveShapeProbe'
     dependsOn 'runTectonicContinuityProbe'
     dependsOn 'runOreVeinProbe'
+    dependsOn 'runOreOverrideProbe'
+}
+
+// 矿物接管白名单正确性（2026-09-18）：校验 METAL_ORES 与 1.20.1 原版内容快照一致（防漏剔/误剔）:
+//   gradlew runOreOverrideProbe
+task runOreOverrideProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.ore.OreOverrideProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
 }
 
 // Erosion seam / determinism + plan-vs-final field divergence (2026-09-17, hydrology 重构 M0):
