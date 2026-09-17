@@ -1566,8 +1566,13 @@ public final class CellGenerator {
             //   (seed, 坐标) 的 height 取决于"查询时邻居 tile 在不在缓存"**，
             //   而邻居是异步 fire-and-forget 预热的（见 getOrGenTile）+ 会被 LRU 驱逐
             //   ⇒ 产出依赖【生成顺序 / 线程调度】，违反本项目"纯函数铁律"。
-            //   门禁实锤：runHydrologyDeterminismProbe ✅[1] max|A−B| = 1.15e-5（≈0.0022 块）
-            //     ✅[2] 正序 vs 倒序 max|Δheight| = 0.0515 块（ΔriverSurfaceY/Δgradient 均为 0）。
+            //   门禁实锤：runHydrologyDeterminismProbe ❌[1] max|A−B| = 1.15e-5（≈0.0022 块）
+            //     ❌[2] 正序 vs 倒序 max|Δheight| = 0.0515 块（ΔriverSurfaceY/Δgradient 均为 0）。
+            //   ⚠ 2026-09-18 校正：以上两个值是【修复前】的 FAIL 实证，原注释误标为 ✅。
+            //     门禁判据是【逐位相等】（HydrologyDeterminismProbe 的 TOL = 0.0）
+            //     ⇒ 任何非零值都是 FAIL，不存在"足够小就算通过"。
+            //     修复后实测（seed 5436529513624899584）：
+            //     [1] max|A−B| = 0、[2] max|Δheight| = 0 ⇒ ALL PASS（与 HANDOFF 记录一致）。
             //
             //   修法：缺失即【同步生成】(neighborTile)。neighborTile 与"已缓存"分支
             //   **必然同值**（tile 是 (seed, 坐标) 的纯函数）⇒ 缓存状态不再影响结果。

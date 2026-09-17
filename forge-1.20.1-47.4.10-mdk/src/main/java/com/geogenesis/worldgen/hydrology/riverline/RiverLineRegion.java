@@ -173,11 +173,16 @@ public final class RiverLineRegion {
          *   <li><b>对河/湖/海统一</b>（同一个"逃逸高度"概念）。</li>
          * </ul>
          *
-         * <p>由粗到细（用户建议的自适应重采样）：先按 {@code coarseStep} 粗格扩展锁定逃逸
-         * 走廊，再在走廊附近按 {@code fineStep} 复算 ⇒ 实测同结果、快 ~13×。</p>
+         * <p><b>⚠ 2026-09-18 文档校正：由粗到细【尚未实现】。</b>
+         * 下述"先按 {@code coarseStep} 粗格扩展锁定逃逸走廊、再在走廊附近按 {@code fineStep}
+         * 复算 ⇒ 实测同结果、快 ~13×"是<b>设计意图</b>，非事实：{@code coarseStep} 只经本方法
+         * 透传给 {@code computeEscape}，<b>函数体内从未被使用</b>（实际只有 {@code fineStep}
+         * 一个阶段）⇒ 该 13× 无实测来源。<br>
+         * ⚠ 勿与 {@code FLOOD_COARSE_REUSE} 混淆：那是<b>另一个</b>"由粗到细"（深水区复用粗格
+         * BFS 采样），<b>已实现</b>但实测净亏、默认关闭。两者同名不同物，历史讨论中常被张冠李戴。</p>
          *
          * @param erodedY    侵蚀后地面高度采样
-         * @param coarseStep 粗格步长（wu），如 24
+         * @param coarseStep 粗格步长（wu），如 24；<b>当前未被使用（见上）</b>
          * @param fineStep   细格步长（wu），如 6
          * @return 逃逸高度（块）；无法求解（域内即溢到海/边界）时返回 {@code NaN}
          */
@@ -235,7 +240,9 @@ public final class RiverLineRegion {
         /**
          * 最小最大路径逃逸高度（Dijkstra 式，成本 = 路径最大高度）。
          *
-         * <p>用二叉堆实现（O(N log N)）；N 受搜索域限制，由粗到细两轮完成。</p>
+         * <p>用二叉堆实现（O(N log N)）；N 受搜索域限制。<br>
+         * ⚠ 2026-09-18 校正：本行原称"由粗到细两轮完成"，实际<b>只有 {@code fineStep} 一轮</b>，
+         * 形参 {@code coarseStep} 未被使用（详见 {@code escapeWaterLevel} 的说明）。</p>
          */
         private double computeEscape(java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
                                      double coarseStep, double fineStep, double upperBound) {
@@ -377,8 +384,11 @@ public final class RiverLineRegion {
          *
          * @param erodedY  侵蚀后地面高度采样
          * @param level    侵蚀后短板水位（erodedWaterLevel 结果）
-         * @param gridCell <b>BFS 粗格分辨率（wu）</b>；调用方传 {@code claimGrid/2}
-         *                 以提高湖形精度（见下述 2026-09-15 精度说明）
+         * @param gridCell <b>BFS 粗格分辨率（wu）</b>；<b>生产调用方传 {@code claimGrid*0.25}</b>
+         *                 以提高湖形精度（2026-09-17 由 *0.5 加密为 *0.25，见下述精度说明）。
+         *                 ⚠ 2026-09-18 校正：本行原写 claimGrid/2 已过时；且两个诊断探针
+         *                 （{@code LakeSurveyProbe} / {@code LakeGatingControlledProbe}）
+         *                 <b>仍传 *0.5</b>，与生产差一倍 ⇒ 改生产分辨率时须同步它们
          * @param claimGrid <b>认领域基准格（wu）</b>＝原始 gridCell，与 BFS 分辨率解耦，
          *                  使加密 BFS 时认领域的物理范围不缩水
          * @return true = 淹没区越出认领域（湖残缺，应放弃）

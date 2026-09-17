@@ -88,6 +88,8 @@ public final class LakeGatingControlledProbe {
                         ln != null && ln.hasRim() ? 1 : 0,
                         ln != null && ln.hasOutline() ? 1 : 0});
                 // ★ 模拟 carver 的前置：先算侵蚀短板水位 + computeFlood（每湖一次）
+                // ⚠ 2026-09-18【口径差异】：这里传 *0.5（12wu），生产已加密为 *0.25（6wu）
+                //   ⇒ 本探针的 OOB 结论只能做【本探针历史自比】，不代表生产口径。
                 if (ln != null && !floodDone.contains(ln)) {
                     java.util.function.ToDoubleBiFunction<Double, Double> ey =
                             (a, b) -> gen.heightCurve().heightFromE(gen.terrainEQuick(a, b));

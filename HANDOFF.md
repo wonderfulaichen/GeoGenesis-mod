@@ -66,5 +66,32 @@ gradlew runChunkLoadPerfProbe     -PprobeArgs="5436529513624899584 32 4"        
 2. **（性能，用户已暂停）**：若重启，最大杠杆是 `computeEscape` 的**真正由粗到细**（`coarseStep` 未使用），以及**地形本体**（冷启动占比约 89%，水文只占 ~5-6%）。
 3. **文档**：`ARCHITECTURE.md` 未见与湖判水相关的过时描述（本轮已核查：无 `inFlood`/粗格/水位求解/弃湖 条目）⇒ 无需改动；如需补"关键陷阱"，可加 blend 确定性与"注释≠代码"两条。
 
+## 8. 2026-09-18 追加：文档 ↔ 代码一致性核查（**纯注释/文档改动，产出逐位不变**）
+
+**起因**：上一轮在同一模块发现 3 处「注释说改了、代码没改」⇒ 判定留痕已从"事实记录"退化为"意图记录"，而下个会话会基于错误前提决策。本轮做小范围核查：`RiverLineRegion` / `HydrologyBlockCarver` / `GeoGenesisTerrain`(湖) / `CellGenerator` / `PreviewDisplay` / `build.gradle` / 4 个探针。共改 **8 个文件**（未提交）。
+
+| # | 位置 | 处理 |
+|---|---|---|
+| A1 | `RiverLineRegion` `escapeWaterLevel` / `computeEscape` javadoc | 「由粗到细、快 13×」→ 标明 **未实现**（`coarseStep` 体内零引用），并注明与 `FLOOD_COARSE_REUSE` 是**同名不同物**（后者已实现、净亏、默认关） |
+| A2 | `LakeSurveyProbe` / `LakeGatingControlledProbe` | 加 ⚠ **口径差异**：探针传 `claimGrid*0.5`，生产 `HydrologyBlockCarver` 是 `*0.25` ⇒ 探针结论只能历史自比（原"与生产同口径"说法不成立）。**刻保持 0.5**（改则历史断档 + 慢 4 倍） |
+| A3 | `CellGenerator` `blendTileDelta` | 门禁证据 ✅ → **❌**（判据 `TOL=0.0`，非零即 FAIL；那两个值是修复前 FAIL 实证），并补修复后实测 |
+| B1 | `AGENTS.md` | 「`CACHE_SCHEMA_VERSION` 当前 69」→ 改**指路代码常量**（不再抄数字，抄数字本身即漂移源） |
+| B2 | `PreviewDisplay` 版本清单 | 补 **71** 条目；**70 原注释"已撤销、不再回收"与 git 不符**（70 实际用过两次）⇒ 如实改写，确立"今后一律 max+1" |
+| B3 | `build.gradle` `runChunkLoadPerfProbe` | 补第 3 参 `regions`（v2 冷启动区域数，比 min） |
+| B4 | `build.gradle` + `WallAttributionProbe` javadoc | 补第 5 参 `minDepth`（默认 0.5，排除浅水墙） |
+| — | `RiverLineRegion` `@param gridCell` | 「调用方传 claimGrid/2」→ 生产实为 `*0.25`，并注明两探针仍 `*0.5` |
+
+**两个一手事实（本轮实测/考古得出，勿再当"不可考"）**：
+- 确定性门禁**实测 ALL PASS**（seed `5436529513624899584`）：`[1] max|A−B| = 0`、`[2] max|Δheight| = 0`（`ΔriverSurfaceY/Δgradient` 均 0、type 差异 0）⇒ `CellGenerator` 里的 `1.15e-5` / `0.0515` 确为**修复前**值。
+- `CACHE_SCHEMA_VERSION` 考古：**71 = blendTileDelta 确定性修复**（`b465f9d`，原 `-` 行注释明写）；**72 = 湖岸 BFS 12wu→6wu**（`8313d35`）；70 先后被"域扭曲 WARP_AMP"（撤销）与"湖岸 1 块精度精修"（`07f0a10`，后被 71 取代）用过。
+
+**刻意未改（留给未来决策）**：
+- 两个湖探针的 `*0.5` —— 见 A2，改之前先确认能否接受历史数据断档。
+- `computeEscape` 的粗阶段 —— 只标注未实现，**未补代码**；属性能议题，而用户已明确"性能目前不是目的"。
+
+**核查通过、无需改动（放心清单）**：`ERODE_TILE_CACHE_SIZE=512` · `neighborTile`/`blendNeighbor`/`allowGen` 闸门 · 弃湖阈值物理面积 `5.76e6 wu²` · `LAKE_FINE_FLOOD=true` · `lakeLevelY` 被拒列回传 · `FLOOD_COARSE_REUSE=false` · 四个探针 task 均存在 · `province*` 确为零消费。
+
+**⚠️ 本轮最大的方法论收获**：**文档里抄数值 = 必然漂移**（69 vs 72）。凡是会变的数字，一律写"以代码常量 X 为准"+ 指路，不要在文档里复述。
+
 ---
 *本文为交接用，随后续工作更新。*

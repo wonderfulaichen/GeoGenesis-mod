@@ -59,7 +59,13 @@ public final class LakeSurveyProbe {
                 java.util.function.ToDoubleBiFunction<Double, Double> erodedY =
                         (wx, wz) -> generator.sampleWu(wx, wz).height;
                 level = lk.erodedWaterLevel(erodedY);
-                // ★ 2026-09-15：与生产同口径 —— BFS 加密一倍，认领域基准用原始 gridCell
+                // ★ 2026-09-15：BFS 加密一倍，认领域基准用原始 gridCell。
+                // ⚠ 2026-09-18 校正【口径差异】：本探针传 claimGrid*0.5（12wu），
+                //   而生产（HydrologyBlockCarver.computeFlood 调用点）已加密为
+                //   claimGrid*0.25（6wu）⇒ 本探针【并非与生产同口径】（原注释此说法不成立）。
+                //   OOB 判定与覆盖判定均随 BFS 分辨率变化 ⇒ 本探针的绝对数值
+                //   只能做【同探针历史自比】，不可直接代表生产。
+                //   刻意保持 *0.5：改为 *0.25 会让历史实测数据全部断档，且慢约 4 倍。
                 double claimGrid = com.geogenesis.worldgen.hydrology.riverline.RiverLineParams
                         .defaults().gridCell();
                 oob = lk.computeFlood(erodedY, level, claimGrid * 0.5, claimGrid);

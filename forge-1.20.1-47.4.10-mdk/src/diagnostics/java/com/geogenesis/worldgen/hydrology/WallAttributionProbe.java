@@ -31,7 +31,11 @@ import java.util.Map;
  * <p>同时打印 wu 坐标的 {@code mod 6 / mod 12} 余数（粗格对齐特征）与
  * "本 chunk 的湖种子数"（= {@code lakePlan && 高度 < 水位-0.5} 的列数）。</p>
  *
- * <pre>{@code gradlew runWallAttributionProbe [-PprobeArgs="seed wuX wuZ halfWu"]}</pre>
+ * <pre>{@code gradlew runWallAttributionProbe [-PprobeArgs="seed wuX wuZ halfWu minDepth"]}</pre>
+ *
+ * <p>第 5 参 {@code minDepth} 默认 {@code 0.5}：深度 &lt; 0.5 块的<b>浅水墙</b>
+ * （地面与水面落在同一格、放不下任何一个水块 ⇒ 物理上本就该是干的）
+ * 会被排除 —— 否则它们会淹没真实信号（实测 421 个里绝大多数属这一类）。</p>
  */
 public final class WallAttributionProbe {
 
