@@ -78,7 +78,15 @@ public final class GeoGenesisTerrain {
      * {@code .codebuddy/plans/世界水文模型-重构设计.md} §2.3）。
      * <b>在该结构调整完成前，本开关保持 false。</b></p>
      */
-    static final boolean LAKE_ESCAPE_LEVEL = false;   // A/B 无改善（见注释：边界实为 inFlood 的 12wu 量化）
+    static final boolean LAKE_ESCAPE_LEVEL = true;    // ★ 与"湖域判定修复"配套启用（见类注释）
+
+    /** 逃逸水位专用的水文引擎（懒建一次，供点态最终地形采样复用）。 */
+    private HydrologyExperimentEngine escapeEngine;
+
+    /** ★ 2026-09-17【临时诊断，取到结论后删】。 */
+    private static final boolean LAKE_ESCAPE_DIAG = false;
+    private static final java.util.concurrent.atomic.AtomicInteger escapeDiagCount =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     /** 侵蚀向河道软让步（方案 A，config erosionYieldToRiver，默认 true）。 */
     private final boolean erosionYieldToRiver;
@@ -491,8 +499,11 @@ public final class GeoGenesisTerrain {
                     // ★ 地形采样 = **雕刻后的点态最终地形**（carved + rawDelta×mask），
                     //   与真实放置口径一致（实测差 0.005 块）。这是修"水位求解早于雕刻"的关键：
                     //   旧实现用的是侵蚀后但仍未雕刻的地形（同一份输入 ⇒ 逃逸高度反而更高、min 后不变）。
-                    final HydrologyExperimentEngine engEsc =
-                            new HydrologyExperimentEngine(generator, 0L);
+                    // ⚠ 引擎必须复用（懒建一次）；此前写在逐列循环内 ⇒ 每列都新建，极浪费。
+                    if (escapeEngine == null) {
+                        escapeEngine = new HydrologyExperimentEngine(generator, 0L);
+                    }
+                    final HydrologyExperimentEngine engEsc = escapeEngine;
                     // ⚠ 入参 (a,b) 是 **wu**（escapeWaterLevel 用 wu）；块坐标 = wu × hs
                     final double hsEscape = generator.params().horizontalScale();
                     java.util.function.ToDoubleBiFunction<Double, Double> finalGroundFn = (a, b) -> {
@@ -506,6 +517,15 @@ public final class GeoGenesisTerrain {
                         return c.carvedGroundY() + raw * c.erosionMask();
                     };
                     double esc = column.lakeNode().escapeWaterLevel(finalGroundFn, 24.0, 6.0);
+                    // ★ 临时诊断（取到结论后删）：确认逃逸高度是否真的被算出来、以及值是多少
+                    if (LAKE_ESCAPE_DIAG && escapeDiagCount.getAndIncrement() < 10) {
+                        LOGGER.info("[LAKE-ESC] block=({},{}) 旧spill={} 逃逸高度={} ⇒ 采用={}",
+                                column.blockX(), column.blockZ(),
+                                String.format("%.3f", column.waterSurfaceY()),
+                                String.format("%.3f", esc),
+                                String.format("%.3f", Double.isNaN(esc) ? column.waterSurfaceY()
+                                        : Math.min(column.waterSurfaceY(), esc)));
+                    }
                     if (!Double.isNaN(esc)) {
                         spill = Math.min(spill, esc);      // 只降不升
                     }

@@ -168,12 +168,21 @@ public final class HydrologyBlockCarver {
         //   lakePlan=false —— 因为它们最近的命中是【河】，于是被完全排除在湖判水之外。
         //   改为"只要命中里有湖" ⇒ 这些列进入湖分支，由 `height < spill − 0.5`
         //   按【1 块精度等高线】判水 ⇒ 水天然贴合地形（不再有跨 24 块的斜线边界）。
-        HydrologyBlockSample anyLakeSample = null;
+        // ★★ 2026-09-17 二次修正：取【最近的湖命中】，而不是"任意一个湖"。
+        //   背景：第一次修正改为"只要命中里有湖"⇒ 若一列同时命中**两个不同的湖**
+        //   （不同 spill），会取到**列表中第一个**湖 ⇒ **用错湖的水位**，
+        //   把水铺到与该湖无关的高度（实机表现为"填出山腰外的悬空水板"）。
+        //   正解：在所有【湖】命中中取【距本列最近】者 —— 既修掉"最近命中是河 ⇒
+        //   整列不参与湖判水"的问题，又保证用的是**本列真正所属**的那个湖。
+        HydrologyBlockSample lakeSample = null;
+        double bestLakeDist = Double.MAX_VALUE;
         for (HydrologyBlockSample s : samples) {
-            if (s.isLake()) { anyLakeSample = s; break; }
+            if (s.isLake() && s.distToCenter() < bestLakeDist) {
+                bestLakeDist = s.distToCenter();
+                lakeSample = s;
+            }
         }
-        if (anyLakeSample != null) {
-            HydrologyBlockSample lakeSample = anyLakeSample;
+        if (lakeSample != null) {
             // ★ 侵蚀短板水位（2026-09-09，用户实测"水面边缘没到地形/水面包不住"）：
             //   surfaceY(spill) 是【无侵蚀】地形的溢出坎高；侵蚀把溢出口坎（rim）削低后，
             //   旧 spill 会高出真实缺口 → 水从低坎漏走、包不住。真水位 = min(原 spill,
