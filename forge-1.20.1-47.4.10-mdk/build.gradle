@@ -1272,6 +1272,16 @@ task runGeotransportFeasibilityProbe(type: JavaExec) {
     }
 }
 
+// M0：geotransport 图模式接到【真实 D8 语义】+ 对抗性场景验证（2026-09-18）:
+//   gradlew runGeotransportGraphOnRealD8Probe [-PprobeArgs="nx samples"]
+task runGeotransportGraphOnRealD8Probe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.GeotransportGraphOnRealD8Probe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Determinism / order-independence gate (2026-09-17, hydrology 重构 M1 基线):
 //   gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]
 //   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0）
