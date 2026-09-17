@@ -531,7 +531,18 @@ public final class RiverLineRegion {
                     fx[i] = flood.get(i)[0]; fz[i] = flood.get(i)[1];
                 }
                 floodHalf = gridCell * 0.5;
-                floodX = fx; floodZ = fz;      // volatile 安全发布
+                // ★ 2026-09-17【性能】建立 O(1) 网格索引（见 inFlood 的说明）：淹水格本就是
+                //   规则网格上的点 ⇒ 布尔表直接查。同时供下面的"覆盖比例判据"复用，
+                //   省掉原来 cellX.length × floodN 的量级（大湖可达千万次比较）。
+                boolean[] fgrid = new boolean[nx * nz];
+                for (int i = 0; i < fx.length; i++) {
+                    int gi = (int) Math.round((fx[i] - minX) / gridCell);
+                    int gj = (int) Math.round((fz[i] - minZ) / gridCell);
+                    if (gi >= 0 && gi < nx && gj >= 0 && gj < nz) fgrid[gj * nx + gi] = true;
+                }
+                FloodIndex fidx = new FloodIndex(minX, minZ, gridCell, nx, nz, fgrid);
+                floodIdx = fidx;
+                floodX = fx; floodZ = fz;      // volatile 安全发布（索引先发布，读方以 floodIdx 为准）
                 // ★ 覆盖比例判据（2026-09-10，用户"水没铺满整个洼地"）：淹没区若不能
                 //   覆盖绝大部分【无侵蚀洼地格】，说明侵蚀把洼地一侧盆底垫高到水位以上
                 //   → 湖水铺不满洼地（一侧有、一侧无的残缺湖，实测 lake0：2 格洼地只淹
@@ -547,8 +558,11 @@ public final class RiverLineRegion {
                     //   整湖被弃（实测 runLakeSurveyProbe lake[2]: OOB=true wetProd=0）。
                     //   本判据的语义是"洼地格被淹了吗"，与 BFS 分辨率无关，故用原始格宽。
                     double coverR = claimGrid * 0.5;
+                    // ★ 走 O(1) 索引（contains 内部会再 +cell/2，故这里传差值）——
+                    //   原 inFloodLocal 是线性扫描 ⇒ 洼地格数 × 淹水格数（大湖可达千万次比较）。
+                    double coverExtra = coverR - gridCell * 0.5;
                     for (int i = 0; i < cellX.length; i++) {
-                        if (inFloodLocal(cellX[i], cellZ[i], fx, fz, coverR)) covered++;
+                        if (fidx.contains(cellX[i], cellZ[i], coverExtra)) covered++;
                     }
                     if (covered * 4 < cellX.length * 3) oob = true;
                 }
@@ -782,7 +796,16 @@ public final class RiverLineRegion {
          * @param extra 额外容差（wu）；{@code 0} = 原行为
          */
         public boolean inFlood(double wx, double wz, double extra) {
-            double[] fx = floodX, fz = floodZ;
+            // ★★★ 2026-09-17【性能：O(n) 线性扫描 → O(1) 查表】★★★
+            //   原实现对本点扫描【全部淹水格】。而它在两个热路径上被高频调用：
+            //     ① HydrologyBlockCarver 逐列判"是否湖列"；
+            //     ② GeoGenesisTerrain.lakeFineFlood 的 pad 侧种子（每 chunk 最多 169 次）。
+            //   代价随淹水区大小线性增长（大湖上万格 ⇒ 每次查询上万次比较）。
+            //   关键事实：淹水格【必落在规则网格上】（runFloodCore 里 wx = minX + i·gridCell），
+            //   故可算出下标直接查布尔表 ⇒ **语义逐位等价**（纯查表加速，判定不变）。
+            FloodIndex idx = floodIdx;
+            if (idx != null) return idx.contains(wx, wz, extra);
+            double[] fx = floodX, fz = floodZ;               // 回退（索引未建：无淹水等情形）
             if (fx == null || fx.length == 0) return false;
             double r = floodHalf + Math.max(0.0, extra);
             for (int i = 0; i < fx.length; i++) {
@@ -790,6 +813,34 @@ public final class RiverLineRegion {
             }
             return false;
         }
+
+        /**
+         * 淹水区的 <b>O(1) 网格索引</b>（与 {@code floodX/floodZ} 同源；一次发布后只读）。
+         *
+         * <p>淹水格本就在规则网格 {@code (minX + i·cell, minZ + j·cell)} 上 ⇒ 布尔表即可。
+         * {@link #contains} 对"半径 r 内的所有网格点"枚举下标（通常 1~2 个）再查表，
+         * 与原来的全量线性扫描<b>逐位等价</b>。</p>
+         */
+        private record FloodIndex(double minX, double minZ, double cell,
+                                  int nx, int nz, boolean[] grid) {
+            boolean contains(double wx, double wz, double extra) {
+                double r = cell * 0.5 + Math.max(0.0, extra);   // = floodHalf + extra（同原式）
+                int iLo = (int) Math.ceil((wx - r - minX) / cell);
+                int iHi = (int) Math.floor((wx + r - minX) / cell);
+                int jLo = (int) Math.ceil((wz - r - minZ) / cell);
+                int jHi = (int) Math.floor((wz + r - minZ) / cell);
+                if (iHi < 0 || jHi < 0 || iLo > nx - 1 || jLo > nz - 1) return false;
+                for (int j = Math.max(0, jLo); j <= Math.min(nz - 1, jHi); j++) {
+                    for (int i = Math.max(0, iLo); i <= Math.min(nx - 1, iHi); i++) {
+                        if (grid[j * nx + i]) return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        /** ★ 2026-09-17：淹水区 O(1) 索引（null = 未建/无淹水 ⇒ 回退线性扫描）。 */
+        private volatile FloodIndex floodIdx = null;
 
         /** 淹没区是否越出认领域（computeFlood 结果；true=湖残缺应放弃）。 */
         public volatile boolean floodOOB = false;
