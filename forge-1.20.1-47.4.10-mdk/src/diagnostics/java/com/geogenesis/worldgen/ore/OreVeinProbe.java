@@ -396,16 +396,43 @@ public final class OreVeinProbe {
         //   与判据8（紫晶洞占比）同一思路：把"我们自己的绝对量"钉住，
         //   使得日后任何人改动 VEIN_T / PROSPECT_T / 矿种 richness 时，
         //   若把总量改得面目全非，会立刻被这条挡住。
-        //   ★ 刻意【不】锚定到原版数值：原版对照值本身有近 10× 不确定性
+        //   ★ 刻意【不】锚定到原版数值：原版对照值本身有不确定性
         //     （见 [2b] 的说明）⇒ 把不可靠对照值变成硬门禁是自找翻车。
-        //     区间取当前实测（~232）的 ±40%：足够容纳"有意的调平衡"，
-        //     又能挡住"手滑把它改成 10 倍/0.1 倍"。
-        boolean pass7 = totalPerChunk >= 140.0 && totalPerChunk <= 330.0;
-        System.out.printf("[判据7] 总量锚定（140~330 块/chunk，防静默漂移；"
+        //   ★ 2026-09-18 M2 更新：区间由 [140,330] 改为基于**标定后实测 340.1** 的 ±40%。
+        //     改动原因：M2 逐矿种标定（煤 1.00→2.20、铁 0.75→0.63）把总量从 231.9 提到 340.1，
+        //     旧上限 330 已被合理标定突破 ⇒ 不更新会让"正确结果"报 FAIL。
+        double lo7 = 340.1 * 0.6, hi7 = 340.1 * 1.4;
+        boolean pass7 = totalPerChunk >= lo7 && totalPerChunk <= hi7;
+        System.out.printf("[判据7] 总量锚定（%.0f~%.0f 块/chunk，防静默漂移；"
                         + "非对齐原版）: %s（实测 %.1f）%n",
-                pass7 ? "PASS" : "FAIL", totalPerChunk);
-        System.out.println("     若要贴近原版手感，唯一旋钮 = PROSPECT_T（成矿带阈值，"
-                + "越小带越大、矿越多）或 VEIN_T（脉体阈值，越大脉越粗）");
+                lo7, hi7, pass7 ? "PASS" : "FAIL", totalPerChunk);
+
+        // ---------- ★★ 判据7b（2026-09-18 M2 新增）：分布【形状】----------
+        //   为什么需要：判据7 只锚【总量】⇒ 掩盖分布问题
+        //   —— 例如"铁翻倍 + 煤砍半"总量仍可能落在区间内，但分布已与原版相反。
+        //   M2 的核心发现正是"形状相反"（原版 煤≫铁≫钻石，自研曾是 铁最大/煤很少）
+        //   ⇒ 必须把形状也钉住，否则同类走样会静默复发。
+        //
+        //   判据依据（有实证）：原版公认值 煤~185 / 铁~77 / 钻石~3.7
+        //     ⇒ 煤/铁 ≈ 2.4、铁/钻石 ≈ 21。取宽松带以容纳"有意的调平衡"：
+        //       煤 > 铁 > 钻石（金字塔序，硬要求）
+        //       煤/铁 ∈ [1.2, 5.0]（原版 2.4 的宽邻域）
+        //   ⚠ 只对【有可靠原版参照】的三个矿设判据；铜/金/红石/青金石/绿宝石
+        //     未取得可靠对照值 ⇒ 不设判据（避免"贴在测量值上"的坏判据）。
+        double pCoal = perOre[OreVeins.Ore.COAL.ordinal()] / chunksHere;
+        double pIron = perOre[OreVeins.Ore.IRON.ordinal()] / chunksHere;
+        double pDiamond = perOre[OreVeins.Ore.DIAMOND.ordinal()] / chunksHere;
+        boolean pyramid = pCoal > pIron && pIron > pDiamond;
+        double coalIronRatio = pIron > 0 ? pCoal / pIron : Double.NaN;
+        boolean ratioOk = coalIronRatio >= 1.2 && coalIronRatio <= 5.0;
+        boolean pass7b = pyramid && ratioOk;
+        System.out.printf("[判据7b] 分布形状【金字塔序】(原版 煤≫铁≫钻石): %s%n",
+                pass7b ? "PASS" : "FAIL");
+        System.out.printf("     煤=%.1f 铁=%.1f 钻石=%.1f  煤/铁=%.2f（原版≈2.4，带 [1.2,5.0]）"
+                        + "  金字塔序=%s%n",
+                pCoal, pIron, pDiamond, coalIronRatio, pyramid ? "满足" : "违反");
+        System.out.println("     若要贴近原版手感：优先调【各矿种 richness】（per-ore，互不干扰），"
+                + "★ 矿量 ∝ richness² ⇒ 目标倍率 k 时 richness 乘 √k");
 
         // ---------- ★ 判据8（2026-09-16 新增）：总开关【关闭 ⇒ 零产出】----------
         //   为何要这条：新增的 oreVeinsEnabled 开关若不检验，就是"没接到底"的功能
@@ -435,8 +462,10 @@ public final class OreVeinProbe {
 
         int failures = (pass1 ? 0 : 1) + (pass2 ? 0 : 1) + (pass3 ? 0 : 1)
                 + (pass4 ? 0 : 1) + (pass5 ? 0 : 1) + (pass6 ? 0 : 1)
-                + (pass7 ? 0 : 1) + (pass8 ? 0 : 1);
+                + (pass7 ? 0 : 1) + (pass7b ? 0 : 1) + (pass8 ? 0 : 1);
         System.out.println(failures == 0 ? "ALL PASS" : ("FAILURES=" + failures));
+        // ★ 2026-09-18：以退出码承载判定（Gradle JavaExec 只在退出码非零时失败）
+        System.exit(failures == 0 ? 0 : 1);
     }
 
     /** 渲染 Y-Z 垂直切片与 X-Z 水平切片（矿种用不同颜色）。 */
