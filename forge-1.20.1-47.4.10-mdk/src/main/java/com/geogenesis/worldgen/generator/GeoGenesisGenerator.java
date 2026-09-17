@@ -48,6 +48,9 @@ import org.apache.logging.log4j.Logger;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import com.geogenesis.diagnostics.WorldGenProfiler;
+
+
 /**
  * GeoGenesis 地形生成器（Forge 1.20.1 ChunkGenerator）。
  *
@@ -59,6 +62,26 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     public static final String CODEC_ID = "geogenesis:generator";
     private static final Logger LOGGER = LogManager.getLogger(CODEC_ID);
+
+    /**
+     * ★ 2026-09-18 全流程诊断短别名（仅省字，不改语义）。
+     * <p>见 {@link WorldGenProfiler}：默认关闭时 {@code begin()} 返回 0、
+     * 各 {@code record/end} 直接 return ⇒ <b>零开销、产出逐位不变</b>。</p>
+     */
+    private static final class WGP {
+        static final WorldGenProfiler.Stage ENSURE = WorldGenProfiler.Stage.ENSURE;
+        static long begin() { return WorldGenProfiler.begin(); }
+        static void end(WorldGenProfiler.Stage s, long t0) { WorldGenProfiler.end(s, t0); }
+        static void record(WorldGenProfiler.Stage s, long ns) { WorldGenProfiler.record(s, ns); }
+        static void endChunk(int cx, int cz, long ns) { WorldGenProfiler.endChunk(cx, cz, ns); }
+        static final class Stage {
+            static final WorldGenProfiler.Stage ENSURE = WorldGenProfiler.Stage.ENSURE;
+            static final WorldGenProfiler.Stage DECORATE = WorldGenProfiler.Stage.DECORATE;
+            static final WorldGenProfiler.Stage CARVE = WorldGenProfiler.Stage.CARVE;
+            static final WorldGenProfiler.Stage PLACE = WorldGenProfiler.Stage.PLACE;
+        }
+        private WGP() { }
+    }
 
     // CODEC: RecordCodecBuilder with biome_source only (settings come from global config)
     public static final Codec<GeoGenesisGenerator> CODEC = RecordCodecBuilder.create(instance ->
@@ -661,6 +684,14 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         refreshOreConfig();
         // ★ 2026-09-15：坡度抖动噪声同批失效（否则换存档后仍用旧种子的抖动）。
         invalidateSteepJitter();
+        // ★ 2026-09-18：全流程诊断开关（世界加载时注入；默认关闭 ⇒ 零开销）
+        try {
+            WorldGenProfiler.configure(
+                    ConfigSafe.bool(GeoGenesisConfig.INSTANCE.worldgenProfilerEnabled, false),
+                    ConfigSafe.i32(GeoGenesisConfig.INSTANCE.worldgenProfilerEveryChunks, 200));
+        } catch (IllegalStateException e) {
+            // 预览/探针进程：Forge 配置未加载 ⇒ 保持关闭（零开销）
+        }
         LOGGER.info("GeoGenesis world seed set to {} (terrain singleton invalidated)", seed);
     }
 
@@ -704,6 +735,11 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             }
         }
         long t4 = System.nanoTime();
+
+        // ★ 2026-09-18 全流程诊断：无条件记账（既有插桩只在 >100ms 时打印 ⇒ 看不到分布）
+        WGP.record(WGP.Stage.ENSURE, t1 - t0);
+        WGP.record(WGP.Stage.PLACE, t4 - t3);
+        WGP.endChunk(pos.x, pos.z, t4 - t0);      // 单块总耗时（并可能触发滚动汇总）
 
         if ((t3 - t2) > 100000000L || (t4 - t3) > 100000000L) {
             LOGGER.info("[PERF] fillFromNoise chunk({},{}): ensure={}ms cells={}ms place={}ms total={}ms",
@@ -993,6 +1029,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     @Override
     public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk,
                                      StructureManager structureManager) {
+        // ★ 2026-09-18 全流程诊断：装饰阶段此前【零插桩】—— 而它是实机最重的一段
+        //   （树/草/花/矿 + 紫水晶洞/化石 全在这里）。这是离线探针的盲区。
+        long tDec = WGP.begin();
         // 委托基类 ChunkGenerator.applyBiomeDecoration —— 原版按本群系的
         // BiomeGenerationSettings 放置【全部】特征：树/草/花/甘蔗、矿、盘状水成细节、
         // 以及 ★紫水晶洞与化石★。
@@ -1010,6 +1049,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         // 地表已由 fillFromNoise 在 NOISE 阶段铺好（草/沙/砾石顶块），
         // 装饰在 FEATURES 阶段叠加，顺序正确。
         super.applyBiomeDecoration(level, chunk, structureManager);
+        WGP.end(WGP.Stage.DECORATE, tDec);
     }
 
     @Override
@@ -1037,6 +1077,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //      故改用 peekChunk（不生成）；未就绪则本 chunk 跳过洞穴。
         if (carving != GenerationStep.Carving.AIR) return;
         if (terrain == null) return;
+        // ★ 2026-09-18 全流程诊断：洞穴雕刻此前零插桩
+        long tCarve = WGP.begin();
         ChunkPos cpos = chunk.getPos();
         Cell[] cells = terrain.peekChunk(cpos.x, cpos.z);
         if (cells == null) {
@@ -1049,15 +1091,19 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 LOGGER.warn("applyCarvers: chunk({},{}) 地形未就绪，跳过洞穴（累计 {} 次）",
                         cpos.x, cpos.z, n);
             }
+            WGP.end(WGP.Stage.CARVE, tCarve);
             return;
         }
         CaveCarver.carve(chunk, cells, WORLD_MIN_Y, getSeaLevel());
+        WGP.end(WGP.Stage.CARVE, tCarve);
     }
 
     @Override
     public void buildSurface(WorldGenRegion level, StructureManager structures,
                               RandomState random, ChunkAccess chunk) {
         // fillFromNoise 已直接设置顶层方块
+        // ★ 2026-09-18：本实现为空 ⇒ 记账恒为 0，但保留探针以证明"它确实不耗时"
+        //   （若未来在此加逻辑，profiler 会自动显现，不必再改插桩点）
     }
 
     @Override

@@ -447,6 +447,18 @@ public final class GeoGenesisTerrain {
         }
         long ts3 = System.nanoTime();
 
+        // ★ 2026-09-18 全流程诊断：无条件记账（不再受 50ms 阈值门控 ⇒ 可统计分布）
+        //   关闭时零开销（WorldGenProfiler.begin/record 内部只做一次 volatile 读）
+        com.geogenesis.diagnostics.WorldGenProfiler.record(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.SAMPLE, ts1 - ts0);
+        com.geogenesis.diagnostics.WorldGenProfiler.record(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXTRACT, ts2 - ts1);
+        com.geogenesis.diagnostics.WorldGenProfiler.record(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.HYDRO, ts3 - ts2);
+        // ★ 说明：此处【不再】重复记 SAMPLE/EXTRACT/HYDRO 之外的阶段——
+        //   PLACE / DECORATE / CARVE / ENSURE 由 GeoGenesisGenerator 侧记账
+        //   （它们发生在 getChunkCells 之外）。
+
         // ★ 2026-09-14 性能诊断（用户"比几小时前慢"）：分段定位
         //   sample=地形采样 / extract=侵蚀tile提取(可能触发冷生成) / hydro=水文雕刻
         if ((ts3 - ts0) > 50_000_000L) {

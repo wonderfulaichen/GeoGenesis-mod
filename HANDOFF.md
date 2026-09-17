@@ -721,6 +721,79 @@ C 才是"水文是一个整体"的真正兑现：**干旱区河会消失、雨�
 - `runFlowAccumProbe`（seed 12345）→ **`status=PASS`、`border.maxSurfaceDelta=1.845`、
   `violations=0`、`gateViolations=0`、`cycles=0`** —— 与门禁清单基线**逐项吻合**
 
+## 12. 2026-09-18 追加：全流程诊断 profiler（应"从创建世界开始测试"而建）
+
+### 12.1 缘起：性能怀疑排查中，发现【探针测不到实机】
+
+用户反馈"性能比之前差很多"。排查过程暴露了一个**方法论问题**：
+
+**① 我犯的两个错（如实记录）**
+- **没测性能**：前几轮只验证"产出逐位不变 + 门禁全绿"，**从未跑过性能探针**。
+- **基准选错**：先拿 `98dc8d0` 当基线，但**它已包含 `8313d35`（湖岸 BFS 加密）** ⇒ 把真凶排除在对照之外；
+  后又拿更早的 `5ba8e78` 比，得出"+25.6%"，但**用户指定的基准是 `cf9cb0e`**（= 接手时 HEAD），
+  而 `cf9cb0e` **同样已包含** BFS 加密 ⇒ 那个 +25.6% **基准不对，作废**。
+
+**② 按 `cf9cb0e` 重测（同口径，两边同一份 v2 探针，串行交替）**
+
+| 探针 | `cf9cb0e` | HEAD | 结论 |
+|---|---|---|---|
+| `runChunkLoadPerfProbe` min（轮1/轮2） | 6.81 / 6.92 | 6.83 / **6.65** | **无回归** |
+| `runOrePerfProbe` [1] 典型 | 0.134 | **0.123** | 更好 |
+| `runOrePerfProbe` [3] 最坏 | 1.056 | **0.929** | 更好 |
+| `runOrePerfProbe` [1b] 联动 | 0.196 | 0.247 | +26%（绝对量仅 +0.05 ms/chunk） |
+
+> ⚠ **注意 min 这次是 6.8 左右，接近文档记录的 6.61** —— 说明我先前测到的 8.x 是
+> **机器负载噪声**（同一提交两次跑出 6.99 与 9.38，差 34%）⇒ **单次测量不可作结论**。
+
+**③ 但离线探针有明确盲区**（这才是真问题）
+
+- `ChunkLoadPerfProbe` 只走 `getChunkCells`（Cell 网格 + 侵蚀 + 水文），
+  **不经过 `fillFromNoise`** ⇒ **不覆盖方块铺设、原版装饰、洞穴雕刻**。
+- 既有 `[PERF-TERRAIN]` / `[PERF] fillFromNoise` **只在超阈值（50/100ms）时打印**
+  ⇒ **快的块完全没有记录，无法统计分布**。
+- `applyBiomeDecoration`（树/草/花/矿）、`applyCarvers`（洞穴）**此前零插桩** —— 实机最重的两段。
+
+### 12.2 已实现：`WorldGenProfiler`（默认关闭，零开销，产出逐位不变）
+
+| 文件 | 内容 |
+|---|---|
+| **新增** `diagnostics/WorldGenProfiler.java` | 9 阶段计时（`ENSURE/SAMPLE/EXTRACT/HYDRO/PLACE/DECORATE/CARVE/SURFACE/MOBS`）；统计 次数/总耗时/均值/**P50/P95/max**/占比 + **最慢块 Top8**；滚动汇总 + 世界卸载总计 |
+| `GeoGenesisTerrain.generateChunk` | 补记 `SAMPLE/EXTRACT/HYDRO`（**无条件**，去掉 50ms 门控） |
+| `GeoGenesisGenerator` | `fillFromNoise` 记 `ENSURE/PLACE` + **`endChunk`（单块总耗时）**；`applyBiomeDecoration` 记 `DECORATE`；`applyCarvers` 记 `CARVE` |
+| `GeoGenesisConfig` | `worldgenProfilerEnabled`(默认 false) / `worldgenProfilerEveryChunks`(200) |
+| **新增探针** `runProfilerSelfCheckProbe` | 自检：① 关闭态零记录 ② 开启态有记录 ③ 阶段插桩点没漏接 |
+
+**设计要点**：关闭时 `begin()` 返回 0、各 `record/end` 直接 return ⇒ **不调 `nanoTime`**；
+**不消费任何随机数** ⇒ 确定性不受影响。输出同时落 `geogenesis-wgp.txt`（UTF-8，
+避开 Windows 终端 GBK 乱码 —— 本项目既有教训"别信终端输出"）。
+
+**自检 ALL PASS**（首轮就抓到两个真问题，已修）：
+- 首轮 `[2] 单块记录 = 0` ⇒ 查明是**探针口径**（离线走 `getChunkCells`，不经过 `fillFromNoise`）
+  ⇒ 已把判据改为"只断言阶段记账"，并加 `[2b]` 逐阶段"有/无"校验。
+- 首轮 `[3]` 汇总只打标题 ⇒ `report()` 在 `chunks==0` 时**直接 return，连阶段明细都不打**
+  ⇒ 已改为仍打印明细。
+
+**首份数据（离线，24 chunk）**：
+```
+阶段          次数   总耗时ms   均ms     P50     P95     max    占比
+地形采样       25     80.9    3.238   3.100   4.625   4.641   3.3%
+侵蚀tile提取   25   1329.7   53.189   0.060 299.877 608.321  54.5%
+水文雕刻       25   1030.2   41.207   6.719   8.019 867.132  42.2%
+```
+⇒ **`P50` 与 `max` 的巨大落差正是旧插桩永远看不到的信息**：
+侵蚀提取 `P50=0.06ms` 但 `max=608ms` ⇒ 只有极少数块在冷生成 tile。
+
+### 12.3 ⏳ 待用户实测（这是本轮结论的关键）
+
+**离线探针测不到实机全流程** ⇒ 必须由用户跑一次：
+
+1. `config/geogenesis-common.toml` 里设 `worldgenProfilerEnabled = true`
+2. **新建世界**（避免旧存档干扰）→ 走一圈
+3. 看 `logs/latest.log` 的 `[WGP]` 行，或运行目录 `geogenesis-wgp.txt`
+
+**届时能直接回答**：装饰阶段（树/草/矿）到底占多少、洞穴多少、最慢是哪块 ——
+这些是离线探针**结构上无法覆盖**的，也是"变慢"最可能的藏身处。
+
 ---
 
 *本文为交接用，随后续工作更新。*

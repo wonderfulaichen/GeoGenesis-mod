@@ -22,6 +22,38 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 gradlew.bat runWorldgenGate      # 世界生成门禁（只跑当前实测 ALL PASS 的判据型探针；任一 FAIL 即构建失败）
 ```
 
+### ★ 实机性能诊断（2026-09-18 新增，查"加载变慢"用这个）
+
+```toml
+# config/geogenesis-common.toml
+worldgenProfilerEnabled = true      # 打开全流程诊断
+worldgenProfilerEveryChunks = 200   # 每 200 块打一次滚动汇总
+```
+
+打开后进世界走一圈，然后看 **`logs/latest.log` 里的 `[WGP]` 行**，
+或直接读运行目录下的 **`geogenesis-wgp.txt`**（UTF-8，避免终端 GBK 乱码）。
+
+输出形如：
+
+```
+阶段             次数   总耗时ms   均ms     P50     P95     max    占比
+地形采样          25     80.9    3.238   3.100   4.625   4.641   3.3%
+侵蚀tile提取      25   1329.7   53.189   0.060 299.877 608.321  54.5%
+水文雕刻          25   1030.2   41.207   6.719   8.019 867.132  42.2%
+原版装饰          24    ...
+```
+
+**为什么必须用它**（既有插桩的三个硬伤，已实测确认）：
+1. `[PERF-TERRAIN]` 只在 `>50ms` 打印、`[PERF] fillFromNoise` 只在 `>100ms` 打印
+   ⇒ **快的块完全没有记录**，看不到分布（而 `P50` 与 `max` 的落差恰是最关键的信息：
+   如上面"侵蚀提取 P50=0.06ms 但 max=608ms" ⇒ 只有极少数块在冷生成 tile）。
+2. `applyBiomeDecoration`（树/草/矿）、`applyCarvers`（洞穴）**此前零插桩** ——
+   而它们是实机最重的两段，也是离线探针的盲区。
+3. 没有汇总 ⇒ 无法回答"创建世界共多久 / 各阶段占比 / 最慢是哪块"。
+
+**默认关闭，零开销**（`begin()` 返回 0、各记账直接 return ⇒ 不调 `nanoTime`）；
+本诊断**不消费任何随机数** ⇒ **产出逐位不变**。
+
 ## 架构速览
 
 | 文件 | 作用 |
