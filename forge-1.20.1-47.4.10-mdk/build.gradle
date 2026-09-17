@@ -1240,7 +1240,8 @@ task runWaterPhysicsProbe(type: JavaExec) {
 }
 
 // 干墙格归因（2026-09-17）：逐格打印"是哪道闸门掐断了水"（cat A/B/C/D + 种子数 + 粗格余数）:
-//   gradlew runWallAttributionProbe [-PprobeArgs="seed wuX wuZ halfWu"]
+//   gradlew runWallAttributionProbe [-PprobeArgs="seed wuX wuZ halfWu minDepth"]
+//     minDepth 默认 0.5：排除"浅水墙"（地面与水面同格、放不下水块 ⇒ 本就该干），否则淹没信号
 task runWallAttributionProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WallAttributionProbe'
@@ -1251,7 +1252,8 @@ task runWallAttributionProbe(type: JavaExec) {
 
 // 区块加载性能基准（2026-09-17）：扫 span×span chunk（真实工作集 + 驱逐），
 //   统计 ms/chunk 与【侵蚀 tile 生成次数 / 触达不同 tile 数】（重复生成率）:
-//   gradlew runChunkLoadPerfProbe [-PprobeArgs="seed spanChunks"]
+//   gradlew runChunkLoadPerfProbe [-PprobeArgs="seed spanChunks regions"]
+//     regions = v2 的独立冷启动区域数（判据取 min，见 ChunkLoadPerfProbe 头部说明）
 task runChunkLoadPerfProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.ChunkLoadPerfProbe'

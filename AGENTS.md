@@ -203,7 +203,9 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 > 因为它们测"幅度/各向异性"，测不出"值域量化/配对阶跃"。**判定伪影的最终依据只能是渲染图**。
 >
 > **⚠️ 改动地形产出必须升 `PreviewDisplay.CACHE_SCHEMA_VERSION`**，否则预览**静默复用旧磁盘缓存**
-> → 表现为"改了没生效"（当前 **69**；历次因折叠/blurDist/stress、岩性硬度量化、河网并行、构造放大、盆地抬升、地质→群系耦合、T5 移除 decay、峡谷谷壁收窄等产出变更递增）。
+> → 表现为"改了没生效"。
+> **当前值一律以代码常量为准**：`PreviewDisplay` 常量上方的注释清单是**唯一留痕处**，改值时先在那里补条目。
+> ⚠️ 本行**不再抄写具体数字** —— 2026-09-18 核查发现这里长期写着"当前 69"而代码已到 **72**（70 两度作废 / 71 = blendTileDelta 确定性修复 / 72 = 湖岸 BFS 12wu→6wu）⇒ 抄数字本身就是漂移源。
 
 注册流程: `GeoGenesisMod` 构造器中用 `DeferredRegister<Codec<? extends ChunkGenerator>>`（注册到 `Registries.CHUNK_GENERATOR`）注册 `GeoGenesisGenerator.CODEC`，同理 `BIOME_SOURCE` 注册 `GeoGenesisBiomeSource.CODEC`，并 `register(bus)` 到 MOD 总线。
 

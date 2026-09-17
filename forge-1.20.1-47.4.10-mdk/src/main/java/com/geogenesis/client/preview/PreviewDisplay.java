@@ -393,9 +393,14 @@ public class PreviewDisplay extends AbstractWidget {
     //        （bankSlopeRun 1.5→0.40、bankFactor 2.5→1.6）⇒ 陡壁
     //      · **水面完全不动** ⇒ 水文标定零影响（FlowAccum/WaterFill 实测逐位一致）
     //      · 雕刻产出变化 ⇒ 旧预览缓存必须失效
-    // 70 = （已撤销，不再回收，避免与历史缓存串号）
-    //      曾用于"类型场启用域扭曲 WARP_AMP 0→40"，但**实机反馈河流/湖泊出问题**已回退；
-    //      产出已回到 69 的状态，故版本号同步回到 69。
+    // 70 = ⚠ 2026-09-18 校正：本条原写"已撤销、不再回收"，与 git 历史不符 —— 70 实际被用过
+    //      【两次】：①"类型场启用域扭曲 WARP_AMP 0→40"（实机反馈河流/湖泊出问题 ⇒ 回退 69）；
+    //      ②又被 07f0a10 复用为"湖岸 1 块精度精修（LAKE_FINE_FLOOD）"，直至 b465f9d 才升 71。
+    //      ⇒ "不再回收"的约定实际已被破坏过一次。今后一律取【当前 max + 1】，不再回收。
+    // 71 = 2026-09-17 ★ blendTileDelta 确定性修复（tile 边界 blend 不再随机缺失）
+    //      · 产出不再依赖"邻居 tile 是否在缓存" ⇒ 旧预览缓存必须失效
+    // 72 = 2026-09-17 ★ 湖岸粗格 BFS 12wu → 6wu（直边网格伪影）
+    //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
     private static final int CACHE_SCHEMA_VERSION = 72;   // ★ 72：湖岸粗格 BFS 12wu → 6wu（直边网格伪影）
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
