@@ -323,6 +323,26 @@ public final class GeoGenesisConfig {
     /** 软化指数（&lt;1 ⇒ 半干旱区也有明显衰减）。默认 0.5。范围 [0.1, 3.0] */
     public final ForgeConfigSpec.DoubleValue hydrologyDecayExponent;
 
+    // ===================== ★ 2026-09-18 全流程诊断 =====================
+    /**
+     * ★ 2026-09-18：<b>世界生成全流程诊断</b>（把每个阶段的耗时打进 {@code latest.log}）。
+     *
+     * <p>为什么需要：既有 {@code [PERF-TERRAIN]} / {@code [PERF] fillFromNoise}
+     * <b>只在超过阈值（50/100ms）时才打印</b> ⇒ 快的块完全没记录，<b>无法统计分布</b>；
+     * 且 {@code applyBiomeDecoration}（树/草/矿）、{@code applyCarvers}（洞穴）
+     * 此前<b>零插桩</b> —— 而它们在实机是最重的两段。</p>
+     *
+     * <p>开启后每 {@link #worldgenProfilerEveryChunks} 块打一次<b>滚动汇总</b>
+     * （次数/总耗时/均值/P50/P95/max/占比 + 最慢块 Top8），世界卸载时打总计。
+     * 输出前缀 {@code [WGP]}。</p>
+     *
+     * <p>⚠ <b>默认关闭</b>：关闭时 {@code begin()} 返回 0、各记账直接 return
+     * ⇒ <b>零开销、产出逐位不变</b>（本诊断不消费任何随机数）。</p>
+     */
+    public final ForgeConfigSpec.BooleanValue worldgenProfilerEnabled;
+    /** 全流程诊断：每多少块打一次滚动汇总（0 = 只在世界卸载时打总计）。默认 200。范围 [0, 100000] */
+    public final ForgeConfigSpec.IntValue worldgenProfilerEveryChunks;
+
     /** SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2] */
     public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;
     /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16] */
@@ -840,6 +860,21 @@ public final class GeoGenesisConfig {
                 "Softening exponent for the decay ramp: decay = maxDecay * max(0, 1 - precip/ref)^exponent."
                 + " Values below 1 give semi-arid regions noticeable decay too. Default 0.5. Range [0.1, 3.0]")
                 .defineInRange("hydrologyDecayExponent", 0.5, 0.1, 3.0);
+        worldgenProfilerEnabled = builder.comment(
+                "World-generation full-pipeline profiler. Logs per-stage timing to latest.log (prefix [WGP])."
+                + " WHY: the pre-existing [PERF-TERRAIN] / [PERF] fillFromNoise logs only fire ABOVE a"
+                + " threshold (50ms / 100ms), so fast chunks are never recorded and no distribution can be"
+                + " computed; and applyBiomeDecoration (trees/grass/ore) plus applyCarvers (caves) had NO"
+                + " instrumentation at all -- yet they are the heaviest stages in a real game."
+                + " When on, a rolling summary is printed every worldgenProfilerEveryChunks chunks"
+                + " (count / total / mean / P50 / P95 / max / share, plus the 8 slowest chunks), and a grand"
+                + " total on world unload. false (default) = OFF, zero overhead, bit-identical output"
+                + " (the profiler consumes no random numbers).")
+                .define("worldgenProfilerEnabled", false);
+        worldgenProfilerEveryChunks = builder.comment(
+                "Profiler rolling-summary interval, in chunks. 0 = only print the grand total on world unload."
+                + " Default 200. Range [0, 100000]")
+                .defineInRange("worldgenProfilerEveryChunks", 200, 0, 100000);
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");

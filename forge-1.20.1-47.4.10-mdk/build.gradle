@@ -1292,6 +1292,16 @@ task runGeotransportRealTerrainProbe(type: JavaExec) {
     }
 }
 
+// 全流程诊断 profiler 自检（2026-09-18）：验证"关闭零记录 / 开启有记录 / 占比自洽"
+//   gradlew runProfilerSelfCheckProbe [-PprobeArgs="seed chunks"]
+task runProfilerSelfCheckProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.diagnostics.ProfilerSelfCheckProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // M2 可行性：水量平衡（D8 累积加沿程衰减 = 蒸发/入渗），不改生产代码（2026-09-18）:
 //   gradlew runWaterBalanceProbe [-PprobeArgs="seed gridN"]
 task runWaterBalanceProbe(type: JavaExec) {
