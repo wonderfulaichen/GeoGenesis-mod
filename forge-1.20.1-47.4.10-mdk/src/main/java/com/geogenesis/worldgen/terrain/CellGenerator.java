@@ -1010,7 +1010,13 @@ public final class CellGenerator {
                 int ncz = tileCZ + dz * ERODE_TILE_CENTER;
                 long nk = tileKey(ncx, ncz);
                 if (erosionTileCache.containsKey(nk)) continue;
-                // fire-and-forget：不 await，后台补全（putIfAbsent 去重，结果确定性相同）
+                // fire-and-forget：不 await，后台补全（结果确定性相同）
+                // ★ 2026-09-17【实测结论：保持 putIfAbsent，勿改 computeIfAbsent】
+                //   曾疑"与主路径的 neighborTile 重复生成同一 tile"，改 computeIfAbsent 去重；
+                //   实测（ChunkLoadPerfProbe 48×48 chunk）**无收益**：不同 tile 数 17 → 17。
+                //   而 `computeIfAbsent` 会在**整个生成期间持有 bin 锁**（tile 生成 100~700ms）
+                //   ⇒ 并发区块加载时可能阻塞其它线程（探针单线程测不出，故不冒险）。
+                //   结论：预热保持"算完再 putIfAbsent"（不持锁），去重交给缓存本身。
                 TILE_SAMPLER.execute(() -> {
                     try {
                         ErosionTileResult nr = generateErosionTile(ncx, ncz);
