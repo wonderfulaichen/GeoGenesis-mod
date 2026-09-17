@@ -1,6 +1,8 @@
 # AGENTS.md — GeoGenesis Mod
 
 > Minecraft Forge 1.20.1 模组，自定义 `ChunkGenerator` + `BiomeSource`，程序化生成地形，并按气候驱动生物群系。
+>
+> **👉 新对话接手请先读 [`docs/HANDOFF-2026-09-18.md`](docs/HANDOFF-2026-09-18.md)**（当前状态 / 残余边界 / 四把必跑的尺子 / 下一步候选）；本轮成果详见下方「当前工作焦点（2026-09-17/18）」。
 
 ## 开发场配置
 
@@ -261,13 +263,44 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java，不启�
 
 当前 `GeoGenesisGenerator` **不再使用 tile 边界缓存**（旧的 `ERODE_TILE_*` / `TILE_*` / `chunkHeightCache` 等常量已随重构移除）。地形计算全部委托给 `GeoGenesisTerrain`：
 
-- **缓存（⚠️ 2026-09-11 校正）**：`GeoGenesisTerrain` 按 chunk 网格缓存 `Cell[]`，容量 **4096、真 LRU**；`CellGenerator` 另有侵蚀 tile 缓存，容量 **256、真 LRU**。两者均含 `CacheStats` 埋点（`chunkCacheStats()` / `tileCacheStats()`）。
+- **缓存（⚠️ 2026-09-11 校正 + 2026-09-17 更新）**：`GeoGenesisTerrain` 按 chunk 网格缓存 `Cell[]`，容量 **4096、真 LRU**；`CellGenerator` 另有侵蚀 tile 缓存，容量 **512、真 LRU**（★ 2026-09-17 由 256 加大：blend 确定性修复后主路径会在边界带**同步生成邻居 tile**，容量不足会"刚生成→被驱逐→再生成"抖动 —— **2026-08-14 那次"数百次同步生成 400~719ms"的真凶就是这个抖动**，不是同步生成本身）。两者均含 `CacheStats` 埋点（`chunkCacheStats()` / `tileCacheStats()`）。
   原述「`TileCache`（256 tiles，30s TTL）」**失实** —— 那是参考项目 FreeTerraForged 的设计；本项目无此类、无 TTL（内容为 (seed, 配置, 坐标) 纯函数，永不失效，TTL 只会驱逐**有效**条目）。
 - **非阻塞高度查询（2026-09-11 新增，B1 修复）**：`GeoGenesisTerrain.sampleHeightNonBlocking(wx,wz)` 两级降级（① 已生成 chunk 取缓存精确值；② 未生成则廉价重算）→ `getBaseHeight` / `getBaseColumn` 用它，**绝不触发冷侵蚀 tile**（原实现单次可达 ~2.2s）。
 - **快速路径收敛（2026-09-11 新增，B2 修复）**：`sampleCellLight` 会并入**已缓存**的侵蚀增量（`CellGenerator.applyCachedTileDelta`）→ 已探索区域与完整管线收敛；tile 未生成时静默跳过，冷启动仍零生成。
 - **河流**：`RiverLineNetwork.sampleAll` 按 **region(640wu) + margin** 纯函数缓存，合并 3×3 邻 region → 跨 region 结构性无缝；水面为 PAVA 加权单调反推。（RTF `sampleRiver` / `REGION=512` 已作废）
 - **游戏雕刻路径**：`GeoGenesisTerrain.generateChunk` 内 `extractFromTile`（侵蚀 delta）+ `applyHydrologyValley`（水文雕刻，**回写 `cell.height`**，预览/落块一致）；`fillFromNoise` 只按 `waterSurfaceY` 灌水判定。
 - `fillFromNoise` 每 chunk 调用 `terrain.getChunkCells(cx,cz)`，高度/河流/湖泊/气候由引擎确定性产出。
+
+## 当前工作焦点（2026-09-17/18 ★★★★★ 湖岸贴合 + 消除生成顺序依赖 + 性能归因；**用户实机确认正常**）
+
+**起因**：用户在水体视图上圈出「**轴对齐直边**」⇒ 这不是精度不足，而是**网格限**（精度问题不会横平竖直）。
+
+### 一、湖岸贴合（真·干墙 451 → 12）
+- **度量学先行**：`runWaterPhysicsProbe` 证明**水位本身是正确的**（166.627，短板已收敛；"违反 +7.088"是 ±96wu 窗口假象）⇒ 缺陷只在**覆盖**。新增 `runWallAttributionProbe` 逐格重跑 carver、打印闸门状态，把干墙分成 `{A无命中 / C被拒列 / D湖列}`，并识别出其中 **409 个是『浅水墙』**（深度 < 0.5 块 = 地面与水面同一格、**放不下任何一个水块** ⇒ 物理上本就该干，**不是伪影**）⇒ 真实残余只有 **12 个（占水体 0.04%）**。
+- **三层修复**（`07f0a10` / `5ba8e78` / `8313d35`）：① carver 对**被拒列也回传湖节点 + 水位**（新增 `lakeLevelY`，`lakePlan` 仍 false）⇒ 落块层才能在**同一水位**上重判；② 落块层 `lakeFineFlood` 以粗格判水列为种子，在 chunk+16 块窗口做 **1 块精度 4 邻洪泛、只增不减**（避免空洞），并补 **pad 侧种子**（跨 chunk 起步）⇒ 修掉"本 chunk 一个种子都没有"的整排直边；③ **粗格 BFS 12wu → 6wu**（实锤：干墙格 `wu.x ≡ 0 (mod 12)` 占 21.5%，均匀应 8.3%，**2.6× 过代表**）。
+- **⚠️ 两处"注释说改了、代码没改"（本次发现并改齐，务必警惕此类）**：
+  - `computeFlood` 的 BFS 网格：注释写 `claimGrid*0.25 = 6wu`，代码实际是 `0.5 = 12wu`；
+  - `computeEscape` 的 `coarseStep` 参数**至今未被使用**（文档称"由粗到细、实测快 13×"，代码只有细阶段）。
+- **残余 12 个 = 结构性上限**：`A无命中=4`（在流域之外，物理上不该有水）；`C被拒=8`（紧邻的水**本身就是块级精修造出来的** ⇒ `node.inFlood` 必为 false ⇒ 与分组、与抽样步长都无关 —— **两项实测阴性已记录**）。要接它们必须跨 chunk 记忆精修状态，**会破坏确定性** ⇒ 判定：接受，不换铁律。
+- **⚠️ 你的"填充范围内无法闭合就不生成这片湖"规则**已对齐：`computeFlood=true`（越出认领域 / 淹不满洼地）走**弃湖**分支，**刻意不回传湖节点** ⇒ 块级精修不会去救它，弃湖一列水都不出。
+
+### 二、消除生成顺序依赖（门禁 FAIL → **ALL PASS**）★ 违反纯函数铁律的根因
+- `CellGenerator.blendTileDelta` 用 `erosionTileCache.get()` **只读窥探**取 3 个邻居 tile，缺失就退化 `d00`（不 blend）⇒ 同一 `(seed, 坐标)` 的 height 取决于"查询时邻居在不在缓存"，而邻居是**异步 fire-and-forget** 预热的、且会被 LRU 驱逐 ⇒ 产出依赖生成顺序/线程调度。
+- 修法 `neighborTile()`：**缺失即同步生成**（tile 是 `(seed,坐标)` 纯函数 ⇒ 与"已缓存"分支**必然同值**）。⚠️ 用 `allowGen` 闸门保护 `peekErosionDeltaE` / `applyCachedTileDelta` 的"**绝不触发生成**"契约（P0-1 止血：结构/特征放置阶段同步生成 400~719ms/个 ⇒ 世界生成卡死）。
+- 附带：弃湖阈值由"格数 ≤ 40000"改为"**物理面积 ≤ 5.76e6 wu²**"（与旧语义等价、但与 BFS 分辨率解耦）—— 否则 6wu 加密会把一批正常大湖误判越界而整湖丢弃。
+
+### 三、性能（副产品；用户称"目前不是目的"，已停止）
+- **逃逸水位求解占 hydro 的 54%**（`LAKE_ESCAPE_LEVEL` 关掉：hydro 6316→2902ms、单块峰值 4971→1484ms）⇒ 做**上界剪枝**（调用方本就取 `min(spill, esc)` ⇒ 路径最高点 > 当前水位的路径**不可能改变结果**），单块峰值 **→ 2486ms**。
+- 另修：`escapeWaterLevel` 拿 `escapeLevel != NaN` 当"已算"标记 ⇒ 但 **NaN 是合法结果**（逃逸高度不可达）⇒ 求解失败时永不命中缓存、**每一列都重算一次**。
+- `inFlood` 由 `O(n)` 线性扫描改 **O(1) 网格索引**（淹水格本就在规则网格上 ⇒ 语义逐位等价）。
+- 用户提出的「**由粗到细**」（中间不需要细、边缘要细）**已实现，但实测净亏**（min 6.61 → 6.77 ms/chunk）⇒ 默认关闭 `FLOOD_COARSE_REUSE=false`，实测数据与根因**存档在常量注释处**，勿删勿盲开。
+- **⚠️ 测量教训（重要）**：v1 基准**同一份代码连跑两次差 18%** ⇒ 什么都测不出。已升级 `ChunkLoadPerfProbe` **v2**（R 个独立冷启动区域 + **以 min 为判据**，离散降到 ±8%）⇒ **A/B 一律比 min**。
+
+### 四、改水文前必须先跑的两把尺子
+- `runWaterPhysicsProbe [-PprobeArgs="seed wuX wuZ halfWu"]`：水位 vs 应有水位 + 干墙数 ⇒ 判定"**水位错**"还是"**覆盖错**"。
+- `runWallAttributionProbe [-PprobeArgs="seed wuX wuZ halfWu minDepth"]`：逐格归因（默认 minDepth=0.5，自动排除浅水墙）⇒ 判定"**是哪道闸门**"。
+- `runHydrologyDeterminismProbe [-PprobeArgs="seed"]`：**纯函数铁律门禁**（顺序无关，判据 diff == 0）。
+- `runChunkLoadPerfProbe [-PprobeArgs="seed spanChunks regions"]`：区块加载性能（v2，比 min）。
 
 ## 当前工作焦点（2026-09-15 ★★★★ 洞穴按原版 MC 配方重设计 —— 结构缺失无法用调参弥补）
 
