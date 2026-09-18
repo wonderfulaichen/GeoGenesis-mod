@@ -1789,6 +1789,11 @@ public final class CellGenerator {
         long k = tileKey(tileCX, tileCZ);
         ErosionTileResult r = tileCacheGet(k);
         if (r == null) {
+            // ★★ 2026-09-19 修复（性能）：中断位已置 ⇒ 立即放弃，不尝试生成。
+            //   与 neighborTile 同一机制的另一个入口 —— 且本方法在 erosionDeltaE 里
+            //   【先】被调用（每格 1 次），若不拦，风暴会在这里发生而根本走不到 blend。
+            //   详见 neighborTile 处的完整推导；产出不变（原本也是 null → delta=0 兜底）。
+            if (Thread.currentThread().isInterrupted()) return null;
             try {
                 r = generateErosionTile(tileCX, tileCZ);
             } catch (CancellationException e) {
@@ -1847,6 +1852,23 @@ public final class CellGenerator {
     private ErosionTileResult neighborTile(long key, int tileCX, int tileCZ) {
         ErosionTileResult r = tileCacheGet(key);
         if (r != null) return r;
+        // ★★ 2026-09-19 修复（性能；实测单块 extract 103 秒的根因路径）：
+        //   <b>中断位已置 ⇒ 立即放弃，绝不再尝试生成。</b>
+        //
+        //   机制（为何是一百秒而不是一百毫秒）：
+        //   线程被 cancel(true) 后 flag 常驻 → generateErosionTile 内部的 ForkJoin
+        //   并行段（parallelRows，跑在 commonPool）抛 CancellationException
+        //   → 本方法 return null 且【半成品绝不入缓存】（见上方 1755 行注释）
+        //   → 下一个 cell 再试 → 每块 256 格 × 至多 3 个邻居 ≈ 768 次
+        //   → 每次白烧"到抛点之前"的 CPU（tile 生成实测均 246ms）
+        //   ⇒ 768 × ~130ms ≈ 100 秒，且【全部计入 EXTRACT、完全不计入 TILEGEN】
+        //     （TILEGEN 记账在 generateErosionTile 末尾，中止的生成走不到）
+        //   ⇒ 这正是实测"TILEGEN 仅 70 次 / 17.2s，而单块 extract 达 103s"的原因。
+        //
+        //   ⚠ 产出不变：原本也是返回 null（d00 兜底），本改动只是不再白烧 CPU。
+        //   ⚠ 判据放在缓存查询【之后】：已缓存 tile 即使 flag 置位也照常返回，
+        //     符合"成功返回的 tile 无条件可用"的既有语义。
+        if (Thread.currentThread().isInterrupted()) return null;
         try {
             // ★ 2026-09-18 诊断：同上（blend 邻居路径，每 chunk 最多 768 次访问）
             long tw0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
@@ -1857,7 +1879,9 @@ public final class CellGenerator {
             nr.lastAccess = tileAccessClock.incrementAndGet();
             return nr;
         } catch (CancellationException ce) {
-            Thread.currentThread().interrupt();
+            // ★ 2026-09-19：不再重新 interrupt() —— 本文件 1757 行本就规定
+            //   "无需（也禁止）重新 interrupt()"。且 CancellationException 并不清除
+            //   中断位，故该调用本就是空操作（移除后语义不变）。
             return null;
         }
     }

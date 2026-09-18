@@ -1302,6 +1302,19 @@ task runProfilerSelfCheckProbe(type: JavaExec) {
     }
 }
 
+// 中断 → 重试风暴 离线复现（★ 2026-09-19）：验"中断线程跑 parallelRows 会抛
+// CancellationException ⇒ 不入缓存 ⇒ 逐格重试 ⇒ 单块烧几十秒 CPU"这条机制。
+//   gradlew runInterruptStormProbe [-PprobeArgs="seed"]
+// 判据：中断态的 tile miss 不得多于常态、耗时不得慢一个量级。
+// ⚠ 反向验证（§D-1）：临时移除 CellGenerator 里的中断拦截 ⇒ 本探针必须 FAIL。
+task runInterruptStormProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.diagnostics.InterruptStormProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // M2 可行性：水量平衡（D8 累积加沿程衰减 = 蒸发/入渗），不改生产代码（2026-09-18）:
 //   gradlew runWaterBalanceProbe [-PprobeArgs="seed gridN"]
 task runWaterBalanceProbe(type: JavaExec) {
