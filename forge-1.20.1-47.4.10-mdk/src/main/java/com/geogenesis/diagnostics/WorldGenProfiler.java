@@ -97,7 +97,28 @@ public final class WorldGenProfiler {
          * ⚠ 只记 ≥1ms 的调用是<b>刻意的</b>：每 chunk 最多 768 次缓存访问，全记会淹没
          * 8192 样本环 ⇒ P50 恒为 0，真正的阻塞反而看不见。</p>
          */
-        TILEWAIT("tile等待(阻塞)");
+        TILEWAIT("tile等待(阻塞)"),
+        /**
+         * ★ 2026-09-18 新增：<b>停顿 = 墙钟 − 本线程 CPU</b>（只记 ≥1ms 的块）。
+         *
+         * <h4>为什么必须区分"在算"与"没在跑"</h4>
+         * <p>实机实测（seed 9139912035078620160，第二次）出现 <b>4 个块
+         * extract 长达 110~126 秒</b>，而 EXTRACT 的正常 <b>P50 仅 0.056ms</b>——
+         * 相差 <b>10⁶ 倍</b>。这两个可能原因的<b>修法完全相反</b>：</p>
+         * <ul>
+         *   <li><b>在算</b>（真跑到 108s 的计算/锁竞争）⇒ 要改代码（减锁、减复杂度）；</li>
+         *   <li><b>没在跑</b>（被 GC / 换页 / 调度挂住）⇒ 改代码<b>毫无用处</b>，
+         *       要调 JVM 堆、内存或线程数。</li>
+         * </ul>
+         * <p>墙钟分不出来，CPU 时间能：本阶段记 {@code 墙钟 − 本线程CPU}。
+         * 该值≈0 ⇒ 线程一直在占 CPU（= 在算）；该值≈墙钟 ⇒ 线程基本没被调度（= 停顿）。</p>
+         *
+         * <h4>口径</h4>
+         * <p>用 {@code ThreadMXBean.getCurrentThreadCpuTime()}（线程自身累计 CPU，
+         * 不含阻塞与等待）。<b>不支持的 JVM ⇒ 记不到</b>（静默跳过，绝不影响生成）。</p>
+         * <p>⚠ 只记 ≥1ms 的块（正常块墙钟≈CPU ⇒ 无停顿 ⇒ 不记）。</p>
+         */
+        STALL("停顿(未占CPU)");
 
         final String label;
         Stage(String label) { this.label = label; }
@@ -244,6 +265,56 @@ public final class WorldGenProfiler {
         long ns = System.nanoTime() - t0;
         if (ns < thresholdNs) return;
         record(stage, ns);
+    }
+
+    // ===== 本线程 CPU 时间（用于把"墙钟"拆成"在算 + 停顿"，见 Stage.STALL）=====
+
+    private static volatile java.lang.management.ThreadMXBean threadMx;
+    private static volatile boolean threadMxFailed;
+
+    private static java.lang.management.ThreadMXBean threadMx() {
+        if (threadMx == null && !threadMxFailed) {
+            try {
+                threadMx = java.lang.management.ManagementFactory.getThreadMXBean();
+            } catch (Throwable t) {
+                threadMxFailed = true;   // 诊断工具绝不能因取 Bean 失败而影响游戏
+            }
+        }
+        return threadMx;
+    }
+
+    /**
+     * 当前线程的<b>累计 CPU 时间</b>（ns）；<b>关闭时返回 0</b>（零开销），
+     * JVM 不支持时也返回 0。
+     *
+     * <p>线程自身占用的 CPU，<b>不含</b>阻塞、等待、被换出、GC 停顿 ⇒
+     * 与墙钟配合即可分离"在算"与"没在跑"。</p>
+     */
+    public static long threadCpuNow() {
+        if (!enabled) return 0L;
+        java.lang.management.ThreadMXBean mx = threadMx();
+        if (mx == null) return 0L;
+        try {
+            return mx.isThreadCpuTimeSupported() ? mx.getCurrentThreadCpuTime() : 0L;
+        } catch (Throwable t) {
+            return 0L;
+        }
+    }
+
+    /**
+     * 记一次<b>停顿</b>（{@code 墙钟 − 本线程CPU}），仅当 ≥1ms 且 CPU 可用时。
+     *
+     * <p>解读：结果≈0 ⇒ 线程全程占着 CPU（<b>在算</b>）；结果≈墙钟 ⇒
+     * 线程基本没被调度（<b>停顿</b>：GC / 换页 / 调度 / 阻塞）。</p>
+     *
+     * @param wallNs 该块的墙钟耗时
+     * @param cpuNs  该块消耗的<b>本线程</b> CPU 时间（须 &gt;0；0 = 不可用，静默跳过）
+     */
+    public static void recordStall(long wallNs, long cpuNs) {
+        if (!enabled || cpuNs <= 0L) return;
+        long stall = wallNs - cpuNs;
+        if (stall < 1_000_000L) return;
+        record(Stage.STALL, stall);
     }
 
     /** 直接记账（已有耗时值，如既有插桩处）。关闭时零开销。 */

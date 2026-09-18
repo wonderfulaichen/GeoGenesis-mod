@@ -424,6 +424,10 @@ public final class GeoGenesisTerrain {
 
     private Cell[] generateChunk(int cx, int cz) {
         long ts0 = System.nanoTime();
+        // ★ 2026-09-18 诊断：本线程 CPU 起点 —— 与末尾配合算"停顿"（墙钟 − 本线程CPU），
+        //   用于区分「真在算 108 秒」与「根本没被调度 108 秒」（见 Stage.STALL）。
+        //   诊断关闭时 threadCpuNow() 返回 0 ⇒ recordStall 静默跳过 ⇒ 零开销。
+        long cpu0 = com.geogenesis.diagnostics.WorldGenProfiler.threadCpuNow();
         Cell[] cells = new Cell[16 * 16];
         int baseX = cx << CHUNK_SHIFT;
         int baseZ = cz << CHUNK_SHIFT;
@@ -446,6 +450,13 @@ public final class GeoGenesisTerrain {
             applyHydrologyValley(cells, cx, cz);
         }
         long ts3 = System.nanoTime();
+
+        // ★ 2026-09-18 诊断：停顿 = 墙钟 − 本线程 CPU（≥1ms 才记）。
+        //   结果≈0 ⇒ 线程全程占 CPU（在算）；结果≈墙钟 ⇒ 基本没被调度（GC/换页/调度）。
+        long cpu1 = com.geogenesis.diagnostics.WorldGenProfiler.threadCpuNow();
+        if (cpu0 != 0L && cpu1 != 0L) {
+            com.geogenesis.diagnostics.WorldGenProfiler.recordStall(ts3 - ts0, cpu1 - cpu0);
+        }
 
         // ★ 2026-09-18 全流程诊断：无条件记账（不再受 50ms 阈值门控 ⇒ 可统计分布）
         //   关闭时零开销（WorldGenProfiler.begin/record 内部只做一次 volatile 读）
