@@ -957,6 +957,18 @@ task runLakeEdgeProbe(type: JavaExec) {
     }
 }
 
+// Water field probe (2026-09-19): 闭式水位场 W(x,z) —— T1.7 验收 ——
+//   对照 filledAt（实测跨 region 99.6% 不一致）vs W（闭式，期望不一致率 0）。
+//   gradlew runWaterFieldProbe [-PprobeArgs="seed rx rz amplitude cInland"]
+task runWaterFieldProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Cave perf probe (2026-09-15): 洞穴【性能】诊断 ——
 //   ★ 补上缺口：现有性能探针（AbChunkProbe/ChunkTimeProbe）全走 getChunkCells，
 //     而洞穴在 applyCarvers，整条路径此前【无任何探针覆盖】。

@@ -2,10 +2,7 @@ package com.geogenesis.worldgen.hydrology;
 
 import com.geogenesis.worldgen.hydrology.flowaccum.FlowField;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 /**
  * 统一水位解算器（Unified Water Level Solver）—— 水文统一化重构的核心。
@@ -17,26 +14,6 @@ import java.util.List;
  *   <li>{@code FlowField.filledAt} / {@code LakeNode.erodedWaterLevel} ⇒ 湖面；</li>
  *   <li>{@code GeoGenesisGenerator} 的 {@code groundY < seaLevel ⇒ 灌到海平面} ⇒ 内陆"海"。</li>
  * </ul>
- * <p>实测后果（本会话量化）：<b>河被悬空</b> 最坏 36.6 块（58% 河格悬空 ≥5 块）；
- * <b>湖面高于真实盆沿</b> 最坏 +26.076 块（13,685 格水体）。</p>
- *
- * <h2>统一模型：一张有向水图 + 一次全局解算</h2>
- * <p>水格（河/湖/海）统一表示为网格节点，边 = {@code flowTo}（D8 下游）。
- * <b>唯一规则（从下游向上游一遍拓扑解算）</b>：</p>
- * <pre>
- *   level(格) = max( 地面(格), level(下游) )
- * </pre>
- *
- * <h4>为什么这一条规则同时解决两类缺陷</h4>
- * <ul>
- *   <li><b>逆坡/悬空</b>：水面不低于自己的地面、也不低于下游水面
- *       ⇒ 水不可能悬在比自己地面低的空中，也不可能逆流上坡；</li>
- *   <li><b>湖的短板</b>：洼地格（{@code flowTo < 0}）取 {@code filledAt}
- *       （priority-flood 溢流高程 = "涨到多少才溢出"）⇒ <b>湖面 = 真实盆沿</b>，
- *       不再依赖"洼地格 8 邻那一圈 rim"（那正是找不到真出口的原因）；</li>
- *   <li><b>湖与河联动</b>：洼地出口沿 flowTo 走向下游 ⇒ 湖面与河面在【同一张图】上解算
- *       ⇒ 天然衔接，不需要独立"湖模块"。</li>
- * </ul>
  *
  * <h2>不变式（写入 AGENTS 的硬约束）</h2>
  * <ol>
@@ -45,6 +22,32 @@ import java.util.List;
  *   <li><b>湖 = 溢出口</b>：湖面 ≡ 其溢出口的水位；</li>
  *   <li><b>海是根</b>：海平面是解算边界条件，不需要独立规则。</li>
  * </ol>
+ *
+ * <h2>★★ 2026-09-19 实测修正：{@code filledAt} 数据源【同样违反短板】</h2>
+ * <p>{@code runWaterGraphProbe}（seed 5436529513624899584，region(0,0)）实测：</p>
+ * <pre>
+ *   ② 短板违反格：filledAt 源 = 66（最坏 +42.879 块）；旧（河线包络）= 34（最坏 +15.469 块）
+ * </pre>
+ * <p>⇒ 与文档先前标注为"<b>前一版（已被证伪）</b>"规则的数字<b>完全一致</b>
+ * ⇒ {@code filledAt} <b>并未修好短板</b>，它和前一版一样差。</p>
+ * <p>根因（本轮已确认）：<b>{@code filledAt} 是【全局量】</b> ——
+ * 水位取决于"水最终排到哪里"，那可能在天涯海角 ⇒
+ * <b>逐区块复现不出来</b>（实测相邻 region 重叠区 99.6% 不一致、最大差 21.65 块），
+ * 且其值可高于紧邻的旱地（短板违反）。</p>
+ * <p>⇒ 正解见 {@link WaterField}：<b>水位 = 逐格闭式函数</b>
+ * （{@code max(seaLevelY, 低通(地形, smoothWu) + offset)}）——
+ * 它跨 region 逐位一致，且因为是局部平均，天然贴近"紧邻最低旱地"。</p>
+ *
+ * <h2>★ 2026-09-19 T1.8：数据源可插拔</h2>
+ * <p>新增 {@link LevelSource} 与对应重载，使数据源可在
+ * "priority-flood 溢流高程"与"闭式 {@code W}"之间切换；
+ * 原 4 参 {@code solve} 保留为薄包装并委托（<b>逐位一致</b>）。</p>
+ *
+ * <h2>★ 2026-09-19：删除一段【永不执行】的向上 BFS</h2>
+ * <p>原实现入口循环对<b>每个水格无条件赋值</b> {@code level[i]}，随后 BFS 体内的
+ * {@code if (!Double.isNaN(level[u])) continue;} 必然命中 ⇒ <b>BFS 体从不执行</b>。
+ * 它看起来像"上下游一致性传播"，实际是死代码，会误导后来人（本次重构即被其误导一次）。
+ * ⇒ 随重写一并移除。</p>
  *
  * <h2>性质</h2>
  * <p><b>零 MC 依赖</b>（只用 {@code FlowField} 的网格与 D8 结构）⇒ 探针可直接复用。
@@ -62,87 +65,73 @@ public final class WaterLevelSolver {
         boolean isWater(int idx);
     }
 
+    /**
+     * ★ 2026-09-19（T1.8）：<b>水位数据源</b>。
+     *
+     * <p>实现方负责给出该格的"水位（块）"；返回 {@code NaN} 表示无水位
+     * （解算器退化为海平面）。</p>
+     *
+     * <p>可用实现：{@code field::filledAt}（旧，全局量）、
+     * {@code idx -> wf.waterYAt(field.cellCenterX(idx), field.cellCenterZ(idx))}
+     * （新，闭式 {@link WaterField}）。</p>
+     */
+    @FunctionalInterface
+    public interface LevelSource {
+        double levelAt(int idx);
+    }
+
     private WaterLevelSolver() { }
 
+    // ===================== 主入口 =====================
+
     /**
-     * 全局解算水位。
+     * 统一水位解算（<b>数据源可插拔</b>）。
      *
-     * @param field     汇流场（提供 D8 下游、priority-flood 溢流高程）
-     * @param ground    地面高程（最终地形口径）
+     * <p>唯一规则：{@code level(水格) = max(seaLevel, 数据源(格))} ——
+     * "海是根"由内层 {@code max} 保证，不再需要按类型分规则。</p>
+     *
      * @param waterMask 水格判定
+     * @param source    水位数据源（见 {@link LevelSource}）
+     * @param n         网格格数（{@code cols × rows}）
      * @param seaLevel  海平面（根节点水位）
      * @return 逐格水位（块）；非水格为 {@code NaN}
      */
-    public static double[] solve(FlowField field, GroundSampler ground, WaterMask waterMask,
-                                 double seaLevel) {
-        final int cols = field.cols();
-        final int rows = field.rows();
-        final int n = cols * rows;
+    public static double[] solve(WaterMask waterMask, LevelSource source, int n, double seaLevel) {
         double[] level = new double[n];
         Arrays.fill(level, Double.NaN);
-
-        // ★ 固定修正（2026-09-17）：D8 每格【只有一个】下游 ⇒ 不需要入度计数，
-        //   只要"下游已定"就立即算上游（BFS 向上）。曾误用入度（有多少上游指向我）
-        //   当作"还有几个下游未定" ⇒ 部分格在下游未定时被计算 ⇒ 实测单调违反 28 条。
-        List<List<Integer>> ups = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) ups.add(null);
-        for (int i = 0; i < n; i++) {
-            int d = field.flowTo(i);
-            if (d >= 0 && d < n) {
-                List<Integer> list = ups.get(d);
-                if (list == null) {
-                    list = new ArrayList<>(4);
-                    ups.set(d, list);
-                }
-                list.add(i);
-            }
-        }
-
-        // ★★★ 规则修正（2026-09-17，实测证伪了前一版规则）★★★
-        //
-        // 前一版规则 `level = max(地面, 下游水位)` 沿 flowTo 传播 —— 实测**不满足短板**：
-        //   短板违反「新 66 格 / 最坏 +42.879 块」反而**比旧系统更差**（旧 34 格 / +15.469）。
-        //   原因：flowTo 只看"下游那一个格"，**看不见旁边更低的地**（水本该从那里流走）。
-        //
-        // ⇒ 正解：统一水位 = **priority-flood 的溢流高程 filledAt**
-        //   —— 它按定义就是"水涨到多少才溢出" = **盆沿（短板）**，
-        //   且对河/湖/海**同一个场**有效（真·统一，不再需要按类型分规则）：
-        //     · 海洋：filledAt 在出海口一侧已由 seaLevel 作种子 ⇒ 水面 ≈ 海平面；
-        //     · 湖：filledAt = 溢流坎高（短板）；
-        //     · 河：排水的河段 filledAt ≈ 自身地面 ⇒ 水面贴地、不会悬空。
-        //   单调性由 priority-flood 的构造保证（沿逃逸路径单调）。
-        ArrayDeque<Integer> queue = new ArrayDeque<>();
         for (int i = 0; i < n; i++) {
             if (!waterMask.isWater(i)) continue;
-            double g = ground.at(i);
-            double spill = field.filledAt(i);
-            if (Double.isNaN(spill)) {
-                // 未建填洼层 → 退化：海平面以下取海平面，否则取自身地面
-                level[i] = Math.max(seaLevel, g <= seaLevel ? seaLevel : g);
-            } else {
-                level[i] = Math.max(seaLevel, spill);   // 统一规则：水位 = 溢流高程（≥ 海平面）
-            }
-            queue.add(i);
-        }
-
-        // 向上 BFS：下游已定 → 上游立即可算（D8 单下游 ⇒ 无需计数）
-        while (!queue.isEmpty()) {
-            int cur = queue.poll();
-            List<Integer> uppers = ups.get(cur);
-            if (uppers == null) continue;
-            for (int u : uppers) {
-                if (!waterMask.isWater(u)) continue;
-                if (!Double.isNaN(level[u])) continue;
-                // 一致性兜底：上游水位不低于下游（filledAt 已保证，此处仅防御）
-                level[u] = Math.max(ground.at(u), level[cur]);
-                queue.add(u);
-            }
-        }
-
-        // 兜底：图不连通/成环导致仍未定的水格 → 只用自己的地面
-        for (int i = 0; i < n; i++) {
-            if (waterMask.isWater(i) && Double.isNaN(level[i])) level[i] = ground.at(i);
+            double w = source.levelAt(i);
+            level[i] = Double.isNaN(w) ? seaLevel : Math.max(seaLevel, w);
         }
         return level;
+    }
+
+    /**
+     * 原签名（数据源 = priority-flood 溢流高程 {@code filledAt}）。
+     *
+     * <p><b>保留为薄包装并委托给可插拔版</b>，逐位一致：</p>
+     * <ul>
+     *   <li>成功值：{@code max(seaLevel, max(seaLevel, spill))} ≡ {@code max(seaLevel, spill)}（幂等）；</li>
+     *   <li>NaN 分支：{@code g ≤ seaLevel ? seaLevel : g} ≡ {@code max(seaLevel, g)}。</li>
+     * </ul>
+     *
+     * <p>⚠ 实测该数据源<b>违反短板</b>（见类文档）；新代码请优先用 {@link #solve(WaterMask, LevelSource, int, double)}
+     * 并传入 {@link WaterField} 驱动。</p>
+     *
+     * @param field     汇流场（提供 priority-flood 溢流高程）
+     * @param ground    地面高程（最终地形口径）
+     * @param waterMask 水格判定
+     * @param seaLevel  海平面（根节点水位）
+     */
+    public static double[] solve(FlowField field, GroundSampler ground, WaterMask waterMask,
+                                 double seaLevel) {
+        int n = field.cols() * field.rows();
+        return solve(waterMask, idx -> {
+            double spill = field.filledAt(idx);
+            if (!Double.isNaN(spill)) return spill;
+            double g = ground.at(idx);
+            return g <= seaLevel ? seaLevel : g;      // ≡ max(seaLevel, g)
+        }, n, seaLevel);
     }
 }
