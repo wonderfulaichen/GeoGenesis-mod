@@ -635,6 +635,75 @@ def hillslope_routing(lateral_flow, flow_direction):
 
 ---
 
+## 1.11 ★★★ SimpleHydrology（`README` + `vegetation.h`）—— 三方耦合与"洪泛已删"
+
+### 1.11.1 ★★★★ 作者自述：**洪泛系统已被移除**（原文）
+
+> **Update January 2023**
+> *"The flooding system has been removed for now, because of **buggyness and slowness**.
+> A better system has been proposed [here](SoilMachine)."*
+> *"Momentum and discharge maps are now explicit and interact physically with the water
+> particles, giving **river meandering** behavior."*
+
+**⇒ 这是本项目【最有价值的一条外部证据】：
+`SimpleHydrology` 的作者**主动删除了洪泛系统**（正是我们 `computeFill`/`computeFlood`/
+`LakeNode` 那一整套），理由是**"多 bug 且慢"**；改用**动量 + 流量图**显式耦合。**
+
+**⇒ 而我们当前：洪泛（priority-flood + BFS 连通区）是湖泊的**唯一**机制。
+⇒ 参考里两处都指向"洪泛不该做重"：**
+- `HANDOFF.md:222`（前人已记）：*"SimpleHydrology 作者因『又慢又多 bug』已移除其洪泛 ⇒ **不宜为整体化而加重洪泛**"*
+- 本条原文再次确认。
+
+**⇒ 结论：湖泊机制应向【流量图 + 局部水位】演化，而不是继续加固洪泛。**
+
+### 1.11.2 `vegetation.h` —— 植被 ↔ 水文 ↔ 侵蚀 三方耦合（我们完全没有）
+
+```cpp
+struct Plant {
+  static float maxSize = 1.5f, growRate = 0.05f;
+  static float maxSteep = 0.8f;        // ★ 坡度上限
+  static float maxDischarge = 0.3f;    // ★ 流量上限（河道里不长树）
+  static float maxTreeHeight = 0.8f;
+
+  bool die() {
+    if (World::map.discharge(pos) >= maxDischarge) return true;   // ★ 被水冲走
+    if (World::map.height(pos)   >= maxTreeHeight) return true;   // ★ 太高
+    if (rand()%1000 == 0) return true;                            // 随机死亡
+  }
+  static bool spawn(vec2 pos) {
+    if (World::map.discharge(pos) >= maxDischarge) return false;  // ★ 河道内不生成
+    if (World::map.normal(pos).y < maxSteep)       return false;  // ★ 太陡不长
+    ...
+  }
+  void root(float f) {                  // ★★ 根系写入 rootdensity（9 格加权：中心1.0/十字0.6/对角0.4）
+    c->rootdensity += f * 1.0f;  // 中心
+    c->rootdensity += f * 0.6f;  // 4 邻
+    c->rootdensity += f * 0.4f;  // 4 对角
+  }
+};
+```
+
+**⇒ 三方耦合的闭环：**
+```
+水（discharge）  → 决定 植被能否存活（河道内死）
+植被（rootdensity）→ 决定 侵蚀强度（根系固土，water.h 里读 rootdensity）
+侵蚀（地形变化）  → 改变 坡度/高度 → 又影响植被
+```
+
+**⇒ 我们：植被是群系层（`BiomeClassifier`），与水文/侵蚀**无双向耦合**。
+⇒ 而"水文是一个整体"若要彻底，这一环是缺失的。**（优先级低于统一水位，但应记入。）
+
+### 1.11.3 其他要点
+
+| 项 | 内容 |
+|---|---|
+| 主循环 | 侵蚀 + 植被生长（`README`："main game loop that calls the erosion and vegetation growth functions"） |
+| 渲染 | `model.h` 只有渲染参数（无关水文） |
+| 后续项目 | `SoilMachine`（作者推荐的新一代） |
+| 我们已读 | `water.h`（液滴）、`world.h`（cascade）、`cellpool.h`（内存池，无关算法） |
+
+---
+
 ## 2. 参考实现给出的答案（四套，逐条对应）
 
 | 参考 | 关键机制 | 对我们 |
