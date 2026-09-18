@@ -1010,6 +1010,18 @@ task runWaterFieldUnifyProbe(type: JavaExec) {
     }
 }
 
+// LakeNodeCensusProbe (2026-09-19): T2.4（湖节点合并）的【先量后改】——
+//   普查湖节点数量、洼地格数分布、碎湖占比、按水位合并潜力。
+//   gradlew runLakeNodeCensusProbe [-PprobeArgs="seed rx rz regionCount"]
+task runLakeNodeCensusProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeNodeCensusProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runWaterFieldProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldProbe'
