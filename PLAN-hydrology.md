@@ -80,6 +80,121 @@ erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,
 
 ---
 
+## 1.5 ★★★★★ 新增：`Farseek-Mods/mainStreams`（Streams）—— **本仓库同路线的"正确形态"**
+
+> 这是本仓库代码注释反复引用的 "old-Streams 语义" 的来源，我此前**从未读过**。
+> 位置：`参考/river/Farseek-Mods/src/mainStreams/scala/streams/`
+
+### 它的架构（与我们的对照）
+
+| | **Farseek Streams** | **我们的 `RiverLineNetwork`** |
+|---|---|---|
+| 水位 | **`Segment.surfaceLevel`（每段一个字段）** | 河线逐节点包络 + 湖 `spill` + 海平面 = **三套** |
+| 判水判据 | **`floorLevel vs surfaceLevel`（绝对等高线）** | 河：`dist ≤ width`（**几何**）；湖：`height < spill`（**等高线**）⇒ **两套混用** |
+| 河床/河岸 | `isStreamBed = maxFloorLevel < surfaceLevel` | 无显式区分（靠 `dist`/`width`） |
+| 湖 | **没有湖的概念** | `LakeNode` 独立系统 |
+| 河网 | **图上最短路径**（节点=chunk，边权=边界最低高度差） | D8 流量累积 + 阈值 |
+| 落差 | `outletIsFall = downstreamSurfaceLevel < surfaceLevel`；`MinFallHeight = 3` | `fallDrop` + `frozen`（**另有整套复杂逻辑**） |
+| 宽度 | **横断面 = 列序列 `slopesLeftToRight`** | `width` 标量 + `dist` 距离场 |
+| 水位递推 | `TributaryUpstreamNode.surfaceLevel = downstreamSurfaceLevel :+ fallHeight` | PAVA 单调回归 + 岸线 cap |
+| 落地 | `preCarve` 只放"防雕刻遮罩" + 放水；`build()` 换土 | `HydrologyBlockCarver` + `GeoGenesisTerrain.applyHydrologyValley` |
+
+### ★★★ 决定性三条
+
+**① `splitChannel` —— 一个横断面，按同一水位切成 河岸/河床/河岸：**
+
+```scala
+// Segment.scala:107-109
+val (leftBank, streamBedAndRightBank) = slopesLeftToRight.span(_.maxFloorLevel >= surfaceLevel)
+val (rightBank, streamBed)            = streamBedAndRightBank.reverse.span(_.maxFloorLevel >= surfaceLevel)
+
+// StreamsColumn.scala:20-22
+def isStreamBed  = maxFloorLevel <  segment.surfaceLevel    // ★ 河床 = 低于水面
+def isStreamBank = maxFloorLevel >= segment.surfaceLevel    // ★ 河岸 = 高于水面
+```
+
+**⇒ 这正是用户说的【绝对等高线判据】。没有"湖/河分支竞争"——
+只有同一个剖面，用同一个水位切开。**
+**⇒ 我们的"湖分支 vs 河分支"（`carveColumn` 里两套判据）在 Farseek 里【不存在】。**
+
+**② `outletSlopes` —— 河谷横断面是【显式的列高度表】，不是靠 `dist` 算出来的：**
+
+```scala
+// Reach.scala:18-21（主流，35 列）
+override protected lazy val outletSlopes = NonEmptySeq(
+  (5,7), (3,5), (1,3), (0,1), (-1,-1), (-2,-3), ... (5,12))
+//          ↑ 左岸（正数=高于水面）  ↑ 河床（负数）        ↑ 右岸
+
+// TributaryNode.scala:29-33（支流，按 streamSize 分档）
+if isSpring then NonEmptySeq(2,1,-1,-1,0,1,2)
+else streamSize match
+  case 1 => NonEmptySeq(3,1,0,-1,-1,-1,0,0,1,1,3)
+  case 2 => NonEmptySeq(3,1,0,-1,-2,-2,-1,0,0,1,1,3)
+  case _ => NonEmptySeq(3,1,0,-1,-2,-3,-3,-2,-1,0,0,1,1,3)
+```
+
+**⇒ 断面形状是【数据】，不是算法。** 支流按 `streamSize`（上游汇入数）选断面。
+**⇒ 我们的 `depth`/`width` 是从流量算的标量，没有"断面形状"这个概念。**
+
+**③ 水位递推 —— 落差由【上游高度】决定，不是硬编码：**
+
+```scala
+// TributaryNode.scala:57-59
+override lazy val surfaceLevel =
+  val fallHeight = (downstreamSurfaceLevel delta maxSurfaceLevelFromUpstream) / 2
+  downstreamSurfaceLevel :+ (if fallHeight >= MinFallHeight then fallHeight else 0)
+```
+
+**⇒ 水位 = 下游水位 + (上游最高 - 下游)/2（超过 3 格才成瀑布）。**
+**⇒ 这就是"水位场"的递推形式 —— 单一字段、逐段可算、无需全局量。**
+
+**④ 它如何适应【无限世界】**：
+
+```scala
+// StreamsGenerator.scala:104-116  newSegment(p) 按 basin 懒建
+// basins.scala:27-34  BasinChunkSize = 8 chunk（1 basin = 8×8 chunk）
+```
+
+**⇒ 以 basin（8×8 chunk）为局部求解单元，河网在 basin 图上求最短路径
+⇒ 完全不需要全局遍历 ⇒ 天然适应无限世界。**
+
+### 1.5.1 判据分歧的度量（2026-09-19，含口径缺陷说明）
+
+`WaterViewProbe` 新增「判据统一度量」段，实测（seed 9139912035078620160 @ 块(-377,-335)±128）：
+
+```
+河分支列 33588
+两判据一致：湿 0 / 干 19645
+几何湿·等高线干（多灌）= 0
+几何干·等高线湿（漏灌）= 13980
+分歧合计 = 13980（41.6% of 河列）
+```
+
+**⚠️ 本度量有口径缺陷（诚实交代）**：
+`湿 0` 是**过滤条件造成的假象** —— 探针写了 `if (c.isLake) continue`，
+而内陆所有湿列都满足 `spill >= seaLevel ⇒ isLake = true` ⇒ **全被排除**
+⇒ 13980 与先前"漏灌"数**完全相同** ⇒ **没能独立度量两套判据的分歧**。
+
+**但仍能得出的结论**：**41.6% 带水位的列「低于自己的水位却是干的」**
+⇒ 两套判据的实际分歧**很大** ⇒ **统一判据会大幅改变地形 ⇒ 必须先标定**。
+
+**⇒ 下一步（若要统一判据）**：
+1. 修探针口径（按 `column.fillWater()` 而非 `cell.isLake` 区分分支，需在 `Cell` 上
+   或探针内记录分支来源）；
+2. 标定：统一到等高线后，水体面积变化多少、河宽变化多少。
+
+### 对我们重构的直接含义
+
+| 我们现在 | Farseek 的做法 | 该改的 |
+|---|---|---|
+| 湖/河**两套判据**（`dist` vs `height`） | **一套**（`floorLevel vs surfaceLevel`） | ★ 线 A 的核心 |
+| `depth`/`width` **标量** | **断面列序列**（`outletSlopes`） | 断面形状化 |
+| 水位 = 河线包络 + 湖 spill + 海面 | **`surfaceLevel` 单一字段 + 递推** | ★ 线 A 的核心 |
+| D8 accum + 阈值 | **图上最短路径** | 可选（影响河网拓扑） |
+| `fallDrop` + `frozen` 整套复杂逻辑 | `downstreamSurfaceLevel < surfaceLevel` | 大幅简化 |
+
+---
+
 ## 2. 参考实现给出的答案（四套，逐条对应）
 
 | 参考 | 关键机制 | 对我们 |

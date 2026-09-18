@@ -484,6 +484,42 @@ public final class WaterViewProbe {
         System.out.printf("    合计：该有水=%d  实际有水=%d  ★漏灌=%d（%.1f%%）%n",
                 tBelow, tWet, tDry, 100.0 * tDry / Math.max(1, tBelow));
         System.out.println("    判读：漏灌格若沿某几行 z 突增 ⇒ 那条 z 就是被硬切断的位置。");
+
+        // ★★★ 2026-09-19【判据统一度量】—— 对齐 Farseek 范式前的【先量后改】
+        //
+        //   Farseek Streams 只有一套判据：isStreamBed = maxFloorLevel < surfaceLevel（绝对等高线）。
+        //   我们有两套：
+        //     · 湖分支：cell.height < spill − 0.5          （等高线）
+        //     · 河分支：column.fillWater()（dist ≤ width）  （几何）
+        //   ⇒ 本段量【两套判据的分歧】：有多少列"几何判湿、等高线判干"（多灌），
+        //     有多少列"几何判干、等高线判湿"（漏灌）。
+        //   若分歧小 ⇒ 统一判据低风险；若分歧大 ⇒ 统一会改变大量地形，须先标定。
+        long geomWetContourDry = 0, geomDryContourWet = 0, agreeWet = 0, agreeDry = 0;
+        long riverCols = 0;
+        for (int j = 0; j < w; j++) {
+            for (int i = 0; i < w; i++) {
+                int x = bx + i, z = bz + j;
+                Cell c = gt.getChunkCells(x >> 4, z >> 4)[Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
+                if (c.riverSurfaceY <= 0) continue;          // 无水位 ⇒ 非水文列
+                if (c.isLake) continue;                      // 只看【河分支】列（湖已用等高线）
+                riverCols++;
+                boolean geomWet = c.riverType != 0;
+                boolean contourWet = c.height < c.riverSurfaceY - 0.5;
+                if (geomWet && !contourWet) geomWetContourDry++;
+                else if (!geomWet && contourWet) geomDryContourWet++;
+                else if (geomWet) agreeWet++;
+                else agreeDry++;
+            }
+        }
+        System.out.printf("%n  ── ★★ 判据统一度量（河分支列 %d）%n", riverCols);
+        System.out.printf("    两判据一致：湿 %d / 干 %d%n", agreeWet, agreeDry);
+        System.out.printf("    几何湿·等高线干（多灌）= %d%n", geomWetContourDry);
+        System.out.printf("    几何干·等高线湿（漏灌）= %d%n", geomDryContourWet);
+        System.out.printf("    分歧合计 = %d（%.1f%% of 河列）%n",
+                geomWetContourDry + geomDryContourWet,
+                100.0 * (geomWetContourDry + geomDryContourWet) / Math.max(1, riverCols));
+        System.out.println("    判读：分歧小 ⇒ 可用一套等高线判据（Farseek 范式）；");
+        System.out.println("          分歧大 ⇒ 统一判据会大幅改地形，须先标定再动。");
     }
 
     /** 山体阴影灰度（NW 光，真实比例）。 */
