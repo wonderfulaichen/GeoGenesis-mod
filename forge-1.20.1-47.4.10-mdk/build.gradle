@@ -973,6 +973,19 @@ task runRiverLakeStealProbe(type: JavaExec) {
     }
 }
 
+// TwoWaterBudgetProbe (2026-09-19): 「水文与侵蚀是一个整体」可行性测量 ——
+//   量【侵蚀 discharge 场】与【河网 D8 accum】的关系（相关性/量纲/分歧区），
+//   决定能否用 dis 取代 accum（ErosionEngine:273 注释写明但未做的目标）。
+//   gradlew runTwoWaterBudgetProbe [-PprobeArgs="seed bx bz half step"]
+task runTwoWaterBudgetProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.TwoWaterBudgetProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runWaterFieldProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldProbe'
