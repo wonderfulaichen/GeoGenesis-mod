@@ -176,13 +176,38 @@ public final class HydrologyBlockCarver {
         //   整列不参与湖判水"的问题，又保证用的是**本列真正所属**的那个湖。
         HydrologyBlockSample lakeSample = null;
         double bestLakeDist = Double.MAX_VALUE;
+        // ★★★ 2026-09-19 修复：湖分支【不得接管河道内的列】★★★
+        //
+        //   【被修的缺陷（RiverLakeStealProbe 实测）】
+        //   2026-09-19 把 RiverLineNetwork.sampleRegion 的湖认领条件由
+        //   `inDomain && lakeDist <= bestRiverDist` 放宽为 `inDomain` 之后，
+        //   河道内的列也带上了湖命中 ⇒ 被本分支接管 ⇒ `carved = original`（湖不挖地）
+        //   ⇒ 河床不再下切。
+        //   实测（seed 9139912035078620160 @ 块(-377,-335)±128，步长 2）：
+        //     含河列 3976，其中【河+湖双命中】3976（100%）
+        //     ★ 在河道内（dist ≤ width）被抢 = 203 列，最大宽度损失 8.03 块
+        //   远离湖的区域（-2000,-2000）为 0/699 ⇒ 仅在湖域发生。
+        //
+        //   【修法】本分支是"湖不挖地"的路径，只适用于【不在河道内】的列。
+        //     河道内的列交给下方河分支（正常下切 + 灌水）。
+        //     ⚠ 这是 ⑤（归属竞争，按距离）与 ⑥（分支决策，按"有无湖命中"）两套判据
+        //       不一致的补丁 —— 根治须靠 T1/T3 的统一水位场重构，勿以此为终态。
+        //   【回退】把本条件改回 `if (lakeSample != null) {`。
+        double nearestRiverDist = Double.POSITIVE_INFINITY;
+        double nearestRiverWidth = 1.0;
         for (HydrologyBlockSample s : samples) {
-            if (s.isLake() && s.distToCenter() < bestLakeDist) {
-                bestLakeDist = s.distToCenter();
-                lakeSample = s;
+            if (s.isLake()) {
+                if (s.distToCenter() < bestLakeDist) {
+                    bestLakeDist = s.distToCenter();
+                    lakeSample = s;
+                }
+            } else if (s.distToCenter() < nearestRiverDist) {
+                nearestRiverDist = s.distToCenter();
+                nearestRiverWidth = Math.max(s.width(), 1.0);
             }
         }
-        if (lakeSample != null) {
+        boolean inRiverChannel = nearestRiverDist <= nearestRiverWidth;
+        if (lakeSample != null && !inRiverChannel) {
             // ★ 侵蚀短板水位（2026-09-09，用户实测"水面边缘没到地形/水面包不住"）：
             //   surfaceY(spill) 是【无侵蚀】地形的溢出坎高；侵蚀把溢出口坎（rim）削低后，
             //   旧 spill 会高出真实缺口 → 水从低坎漏走、包不住。真水位 = min(原 spill,

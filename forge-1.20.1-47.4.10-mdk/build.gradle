@@ -960,6 +960,19 @@ task runLakeEdgeProbe(type: JavaExec) {
 // Water field probe (2026-09-19): 闭式水位场 W(x,z) —— T1.7 验收 ——
 //   对照 filledAt（实测跨 region 99.6% 不一致）vs W（闭式，期望不一致率 0）。
 //   gradlew runWaterFieldProbe [-PprobeArgs="seed rx rz amplitude cInland"]
+// RiverLakeStealProbe (2026-09-19): 量化湖岸修复对河流的副作用 ——
+//   湖分支入口是"是否存在湖命中"，放宽湖认领后，河道内的列可能被拉进湖分支
+//   （carved = original ⇒ 河道不再下切）。
+//   gradlew runRiverLakeStealProbe [-PprobeArgs="seed bx bz half step"]
+task runRiverLakeStealProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLakeStealProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runWaterFieldProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldProbe'
