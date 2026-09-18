@@ -284,6 +284,47 @@ public final class UnifiedCriterionProbe {
         System.out.println("    判读：真漏灌/真多灌 都很小 ⇒ 湖分支也是对的（1.13 的 32% 全是判据假象）；");
         System.out.println("          真漏灌大 ⇒ 湖域连通性判定有缺陷（C7 证据）。");
 
+        // ---------- [8] ★★★★ C3 落地评估：抬升后的【地形改动量】与【水体变化】 ----------
+        //   C3 = 把河谷带（width < dist ≤ valley）低于水面的列抬到 surf + minBank。
+        //   落生产代码前必须量：改多少地形？水体变多少？是否出现"悬空平地"？
+        double minBank2 = 1.0;
+        long liftCols2 = 0, wetCols = 0;
+        java.util.ArrayList<Double> liftAmts = new java.util.ArrayList<>();
+        long wouldStayDry = 0, wouldBecomeWet = 0;
+        for (int dz = -half; dz <= half; dz += step) {
+            for (int dx = -half; dx <= half; dx += step) {
+                int bx = bx0 + dx, bz = bz0 + dz;
+                Cell cell = gt.getChunkCells(bx >> 4, bz >> 4)
+                        [Math.floorMod(bx, 16) * 16 + Math.floorMod(bz, 16)];
+                double surf = cell.riverSurfaceY;
+                if (surf <= 0 || Double.isNaN(surf)) continue;
+                if (cell.riverType != 0) {
+                    wetCols++;
+                    continue;                       // 已有水：C3 不改（只抬干列）
+                }
+                double target = surf + minBank2;
+                if (cell.height >= target) continue;  // 已高于水面+岸 ⇒ 不动
+                double lift = target - cell.height;
+                liftAmts.add(lift);
+                liftCols2++;
+                // 抬升后：该列地形 ≥ surf+1 ⇒ 按等高线判据【不会】被判成水
+                wouldStayDry++;
+            }
+        }
+        if (!liftAmts.isEmpty()) {
+            liftAmts.sort(null);
+            double[] la = liftAmts.stream().mapToDouble(Double::doubleValue).toArray();
+            long sampled = liftCols2 + wetCols;
+            System.out.printf("%n[8] ★★ C3 落地评估（抬升目标 = surf + %.1f）%n", minBank2);
+            System.out.printf("    需抬升干列 = %d（占带水位列 %.1f%%）；已有水列 = %d%n",
+                    liftCols2, 100.0 * liftCols2 / Math.max(1, sampled), wetCols);
+            System.out.printf("    抬升量：p50=%.3f p90=%.3f max=%.3f 块%n",
+                    pct(la, 0.50), pct(la, 0.90), la[la.length - 1]);
+            System.out.printf("    ★ 抬升后这些列【由可能变水 变回 确定干】= %d 列%n", wouldStayDry);
+            System.out.println("    判读：C3 抬升【只影响干列】⇒ 不会淹地、不会改变已有水面；");
+            System.out.println("          风险 = 抬升量 p90/max 大 ⇒ 河谷两侧会被抬高 ⇒ 需实机看是否生硬。");
+        }
+
         System.out.println();
         System.out.println("判读：");
         System.out.println("  · 若【分歧合计】很小（<5%）⇒ 统一判据低风险，可直接实施 P0-2；");

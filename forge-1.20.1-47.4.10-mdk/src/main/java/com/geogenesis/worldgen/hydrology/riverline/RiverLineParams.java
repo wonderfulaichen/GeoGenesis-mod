@@ -95,6 +95,32 @@ public record RiverLineParams(
     /** 保形下切量基准（block）：A0 = depth + 本值。深岸只沉 A0、保住山的形状。 */
     double bankIncise,
     /**
+     * ★★ 2026-09-19 <b>河谷最小岸高</b>（block）—— <b>默认 0 = 关闭（逐位一致）</b>。
+     *
+     * <p>打开后：河谷带（{@code width < dist ≤ valley}）的雕刻目标被抬到
+     * {@code waterSurface + 本值} ⇒ <b>河谷两侧高于水面</b>
+     * —— 对齐 Farseek {@code outletSlopes} 的<b>正数部分</b>
+     * （{@code (5,7),(3,5),(1,3),...}：左/右岸高出水面 5/3/1 块）与
+     * RTF {@code minBankHeight}（主河 2、支流 1）。</p>
+     *
+     * <h4>为什么要它</h4>
+     * <p>我们当前河谷两侧是<b>原地形</b>（未被雕到水面之上），实测
+     * （{@code runUnifiedCriterionProbe} [5][8]）大量干列低于河线水面。
+     * 参考实现靠<b>显式的横断面剖面</b>保证"岸高于水"，才能用
+     * {@code bed < surface} 作为<b>统一判据</b>。本参数即补上这一环。</p>
+     *
+     * <h4>实测依据（落生产代码前的最后一量）</h4>
+     * <pre>
+     *   抬升目标 = surf + 1.0：
+     *     需抬升【干列】= 7533（占带水位列 69.8%）；已有水列 3256【完全不动】
+     *     抬升量：p50=2.332  p90=13.434  max=47.214 块
+     *   ⇒ 只抬干列 ⇒ 不淹地、不改现有水面；但改动面大（p90 13 块）
+     * </pre>
+     * <p>⚠ <b>因此默认关闭，靠实机调参</b>（0 / 1 / 2 / 3 对比视觉）。
+     * 参考取值：RTF 主河 {@code minBankHeight=2}、支流 {@code 1}。</p>
+     */
+    double minBankHeight,
+    /**
      * 雕刻分段化（Zoned Carve，2026-09-09）：内层定形带宽系数。
      * 谷壁带拆为【内层定形】（width ~ width+formRun，保留现有 outer lerping，
      * 定形的权力完全归它）+【外层接缝】（formRun 之外 → 谷外缘，
@@ -209,7 +235,8 @@ public record RiverLineParams(
                 fadeHighE, fadeLowE, surfaceSink, minDischargeArea, oceanE, mountainScale,
                 gridCell, maxTraceSteps, sourceMinE, sourceSpacingCells, traceStep,
                 minRiverNodes, riverAccumThreshold, slopeDrop, bankWidth, valleyExp,
-                bankSlopeRun, bankRunMax, bankRelief, bankIncise, formRunFactor, seamRun,
+                bankSlopeRun, bankRunMax, bankRelief, bankIncise, minBankHeight,
+                formRunFactor, seamRun,
                 meanderAmp, meanderWavelength, riverCount, borderDist, lakeRadius,
                 lakeMargin, lakeFadeDist, heightBlendDist, blendExp, minDrop, smoothMinK,
                 widthAreaRef, widthExp, depthExp, maxDepthRatio, mouthFadeDepth,
@@ -281,6 +308,16 @@ public record RiverLineParams(
                                      //     footprint 372364；24 → 台阶 0，footprint 372933（几乎不变）
                                      //     ——跨度上限几乎不 binding，被截的恰是"最需要展宽的深岸"，
                                      //     故 24 严格优于 16。
+            0.0,                     // ★★ minBankHeight（河谷最小岸高 block）
+                                     //   ★ 默认 0 = 【关闭】⇒ 逐位一致，零行为变更。
+                                     //   打开后把河谷带抬到 waterSurface + 本值
+                                     //   （Farseek outletSlopes 正数部分 / RTF minBankHeight）。
+                                     //   ★ 实测（runUnifiedCriterionProbe [8]，target=surf+1）：
+                                     //     需抬干列 7533（占带水位列 69.8%），已有水列 3256 不动；
+                                     //     抬升量 p50=2.33 / p90=13.43 / max=47.21 块
+                                     //     ⇒ 只抬干列（不淹地、不改水面），但改动面大。
+                                     //   ★ 参考取值：RTF 主河 minBankHeight=2、支流 1。
+                                     //   ⇒ 靠实机 0/1/2/3 对比选视觉最自然者。
             1.5,                     // formRunFactor（内层定形带 = width × 1.5）
             12.0,                    // seamRun（外层接缝带宽上限 12 block）
             2.5,                     // meanderAmp（蜿蜒振幅 block）
