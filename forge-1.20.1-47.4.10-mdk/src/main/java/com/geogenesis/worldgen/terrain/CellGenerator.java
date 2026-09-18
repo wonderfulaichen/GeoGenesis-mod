@@ -1283,6 +1283,11 @@ public final class CellGenerator {
         res.tileCZ = tileCZ;
         res.originX = originX;
         res.originZ = originZ;
+        // ★ 2026-09-18：精确记账【每一次】tile 生成（下方日志是每 8 次打印 1 次 ⇒ 会低估 8×，
+        //   曾据此误判"tile 只跑了 3.8 秒"）。profiler 关闭时零开销。
+        com.geogenesis.diagnostics.WorldGenProfiler.record(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.TILEGEN,
+                System.nanoTime() - tStart);
         if (++perfTileCount % 8 == 1) {
             double ms = (System.nanoTime() - tStart) / 1e6;
             double bMs = (tBaseEnd - tStart) / 1e6;      // base 采样

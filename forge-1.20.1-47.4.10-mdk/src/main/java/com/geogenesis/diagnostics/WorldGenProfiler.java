@@ -58,7 +58,17 @@ public final class WorldGenProfiler {
         DECORATE("原版装饰"),
         CARVE("洞穴雕刻"),
         SURFACE("地表构建"),
-        MOBS("初始生物");
+        MOBS("初始生物"),
+        /**
+         * ★ 2026-09-18 新增：<b>单次侵蚀 tile 生成</b>（精确计数）。
+         *
+         * <p>为什么必须单独统计：既有的 {@code [PERF] erosion tile} 日志
+         * <b>每 8 个只打印 1 个</b>（{@code ++perfTileCount % 8 == 1}）⇒
+         * 从日志数出的"生成次数/耗时"是 <b>8× 低估</b>，而这**已经误导过一次归因**
+         * （据此得出"tile 只跑了 3.8 秒 ⇒ 那 100 秒不可能是计算"的结论）。
+         * 本阶段【每次都记】，不采样。</p>
+         */
+        TILEGEN("侵蚀tile生成");
 
         final String label;
         Stage(String label) { this.label = label; }
