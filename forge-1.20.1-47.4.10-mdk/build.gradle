@@ -998,6 +998,18 @@ task runUnifiedCriterionProbe(type: JavaExec) {
     }
 }
 
+// WaterFieldUnifyProbe (2026-09-19): T1.3（W 作湖水位）的【先量后改】——
+//   量 WaterField.W 与现行 LakeNode.spill 的差值分布，判断能否直接接线。
+//   gradlew runWaterFieldUnifyProbe [-PprobeArgs="seed bx bz half step smoothWu offset"]
+task runWaterFieldUnifyProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldUnifyProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runWaterFieldProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldProbe'
