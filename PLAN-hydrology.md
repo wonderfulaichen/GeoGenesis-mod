@@ -475,6 +475,166 @@ if (riverAlpha < 1.0f) {
 
 ---
 
+## 1.9 ★★★★★ geotransport（`sample.hpp` + `path.cu`）—— **"水文与侵蚀是一个整体"的数学形式**
+
+> `参考/sources/geotransport-main/source/geotransport/{sample.hpp, path.cu}`。
+> **这是 SimpleHydrology 作者的后续项目**（`HANDOFF.md` 已记录其可行性实测）。
+
+### 1.9.1 核心方程：**线性守恒律的蒙特卡洛解**
+
+```cuda
+// path.cu :: __solve_uniform
+flux  : 通量积分估计 [X·m^D/s]
+flow  : 流场         [m/s]
+source: 源项（= 降水）[X/s]
+decay : 衰减项（= 蒸发）[1/s]
+
+const float L = length(scale);                  // 格长
+const float A = scale.x * scale.y;              // 格面积
+const float P = 1.0 / (A * shape.elem());       // 采样概率
+const vecK S = sourceView[ind] / P;             // ★ 采样源率
+if (length(S) < epsilon) return;                // 源太小 ⇒ 提前终止
+
+// ★★★ 沿流线积分（随机游走）
+float att = 1.0f;                               // 累积衰减
+while (!oob(pos) && epsilon < abs(att) && ++step < maxstep) {
+    if (nind != ind) {                          // 离开本格 ⇒ 把通量累加到该格
+        atomicAdd(&fluxView[ind].x, S.x * att); // ★ flux[格] += 源 × 累积衰减
+    }
+    v = gather(flowView, pos);                  // 双线性插值取速度
+    pos += stepsize(pos, normalize(v)) * normalize(v);   // ★ 走一步
+    float dlambda = step * L / v_len;           // 真实时间
+    att *= exp(-dlambda * decay[ind]);          // ★ 衰减累积（沿流线指数衰减）
+}
+```
+
+**⇒ 一句话：`flux[i] = Σ_样本  S/(Δx·Δy) · exp(−∫ decay dt)`，沿流线积分。**
+**⇒ 它把「降水(source) / 河流(flow) / 蒸发(decay)」统一成【同一个场 φ】。**
+
+### 1.9.2 ★★★ 为什么这就是我们要的"整体"
+
+| 水文要素 | geotransport 里的身份 |
+|---|---|
+| **降水** | `source` 项 |
+| **蒸发** | `decay` 项 |
+| **河流 / 流向** | `flow` 速度场 |
+| **汇流量** | `flux`（= 我们要的 `accum`） |
+| **侵蚀输运量** | **同一个 `flux`**（K 维张量 ⇒ 可同时输运多种量） |
+
+**⇒ "水文是一个整体" = 它们都是【同一个守恒律的项】，不是三套系统。**
+**⇒ 而我们：`FlowField.accum`（D8）、`riverNetDischarge`（液滴）、`decayPerWu`（蒸发）
+是【三个独立实现】—— 这正是"不整体"的技术事实。**
+
+### 1.9.3 ★ 与 D8 的关系（作者自己的注释）
+
+```cuda
+// the flow evolution rule?
+//  if we don't have any type of momentum, then pits basically
+//  don't really go away. We rely on the well-structuredness of
+//  the velocity field, which we cannot always do.
+```
+
+**⇒ 作者明说：没有动量项时，洼地（pits）不会消失；依赖速度场的良好结构，
+而那并不总能保证。** ⇒ **这解释了为何 `[4] 湖泊自然涌现` 实测 FAIL。**
+
+### 1.9.4 ★★ 归一化（`__normalize`）—— 关键工程细节
+
+```cuda
+const float A    = scale.x * scale.y;
+const float norm = abs(v.x*scale.y) + abs(v.y*scale.x);   // ★ 迎风面积
+// ★ 加上 source 项，使【零采样的格也有正值】（对应本地源项），且不除以样本数
+fluxView[n] = (sourceView[n] * A + fluxView[n] / count) / norm;
+```
+
+**⇒ 两个要点：**
+1. **`norm` = 迎风面积**（不是格面积）⇒ 通量对速度方向各向异性正确；
+2. **零采样格也补上本地源项** ⇒ **不会出现"没采样到就为 0"的洞**。
+
+### 1.9.5 对我们的直接含义
+
+| 我们 | geotransport | 该学的 |
+|---|---|---|
+| `accum`（D8 面积累积） | `flux`（守恒律解） | **统一的水量定义** |
+| `riverNetDischarge`（液滴计数） | **同一个 `flux`** | 两套合一套 |
+| `decayPerWu`（常量/气候衰减） | `decay` 项（沿流线积分） | 已在，形式一致 |
+| 无"源项"概念 | `source` = 降水 | 已有 `precipSampler` |
+| 采样为零 ⇒ 该格为 0 | **补本地源项** | 防"洞" |
+
+**⚠ 但 `HANDOFF.md` 已记录实测限制**：`[4] 湖泊自然涌现` FAIL（洼地/全局 = 1.01×）。
+根因三条（D8 单下游拓扑保证汇聚、连续梯度场不保证、示例地形是严格单调的圆锥）。
+**⇒ 结论仍是：`flux` 可用于【河流汇流量统一求解】，但【湖泊仍须现有洪泛机制】。**
+
+---
+
+## 1.10 ★★★ MOBIDIC（`river_network.py` + `routing.py`）—— 河宽 = 等级幂律
+
+> `参考/sources/MOBIDICpy-main/mobidic/{preprocessing/river_network.py, core/routing.py}`。
+
+### 1.10.1 ★★★ 河宽的物理公式（直接可搬）
+
+```python
+# _compute_strahler_order —— Strahler 分级
+#   ① 无支流 ⇒ order = 1
+#   ② 两条 order=i 汇合 ⇒ order = i+1
+#   ③ 不同级汇合 ⇒ 取较高者
+def _recursive_strahler(idx):
+    if 无上游: return 1
+    orders = [upstream_1 的 order, upstream_2 的 order]
+    ...
+
+# _calculate_routing_parameters
+network["width_m"]   = Br0 * (strahler_order ** NBr)    # ★★ B = Br0 · order^NBr
+#   Br0 = 1.0（一级河宽 m），NBr = 1.5（幂指数）⇒ 默认
+network["lag_time_s"] = length_m / wcel                  # 滞时 = 河长 / 波速（wcel=5 m/s）
+network["n_manning"]  = n_Man                            # 曼宁系数（0.03）
+```
+
+**⇒ 河宽 = 基准宽 × 等级^1.5。** 一级 1m、二级 2.83m、三级 5.2m、四级 8m…
+**⇒ 这正是前人 `Streams-完整架构分析` 里"宽度 = 汇流数量（streamSize）"的同一条，
+但 MOBIDIC 给了【幂律指数 1.5】这个具体值。**
+
+**⇒ 我们当前是"线性 taper 0.55→1.0"（与汇流无关）—— 这是明确的缺口。**
+
+### 1.10.2 网络拓扑：强制二叉树 + 合并单支流
+
+```python
+# _enforce_binary_tree：每段最多 2 条上游支流（超出则拆分）
+# _join_single_tributaries：只有 1 条上游的段 ⇒ 与上游合并（简化线性链）
+# _compute_calculation_order：拓扑排序（上游先算）
+```
+
+**⇒ "每段最多 2 上游" 让网络成为【二叉树】⇒ 递归计算稳定、无环。
+⇒ 而我们的 `RiverLineNetwork` 是 D8 + graft 吸附，汇合点数任意。**
+
+### 1.10.3 坡面路由（`routing.py`）—— 显式区分"一步"与"累积"
+
+```python
+def hillslope_routing(lateral_flow, flow_direction):
+    """Route lateral flow ONE STEP from upslope cells to immediate downstream neighbors.
+    CRITICAL: This is NOT cumulative routing! To move water from headwaters to outlets
+    requires calling this function once per timestep for many timesteps."""
+    for i, j:
+        down_i = i + _DIR_OFFSETS_I[flow_dir-1]      # D8 偏移
+        down_j = j + _DIR_OFFSETS_J[flow_dir-1]
+        upstream_contribution[down_i, down_j] += lateral_flow[i, j]
+```
+
+**⇒ 关键区分：`hillslope_routing` = **一步**转移（时间推进）；
+而 `flow_accumulation` = **累积**（拓扑一次算完）。**
+**⇒ 我们只有"累积"这一种（`accum[down] += accum[cur]`）—— 没有时间维。**
+**（对地形生成，累积足够；时间维是"动态水"才需要。）**
+
+### 1.10.4 对我们的直接含义
+
+| 我们 | MOBIDIC | 该搬的 |
+|---|---|---|
+| 线性 taper 0.55→1.0 | **`B = Br0 · order^1.5`** | ★★ 河宽公式 |
+| D8 + graft（汇合数任意） | **二叉树（≤2 上游）** | 拓扑简化 |
+| 只有累积 | 一步 + 累积（显式区分） | 概念澄清 |
+| 无滞时/曼宁 | `lag_time = L/wcel`、`n_Manning` | 若做动态水 |
+
+---
+
 ## 2. 参考实现给出的答案（四套，逐条对应）
 
 | 参考 | 关键机制 | 对我们 |
