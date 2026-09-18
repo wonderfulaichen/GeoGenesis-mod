@@ -91,23 +91,34 @@ public final class UnifiedCriterionProbe {
                     else lakeUnder++;
                 } else {
                     riverTotal++;
-                    if (actualWet && contourWet) riverAgreeWet++;
-                    else if (!actualWet && !contourWet) riverAgreeDry++;
-                    else if (actualWet) {
-                        riverOver++;
-                        if (hasLevel) maxOverDepth = Math.max(maxOverDepth, surf - cell.height);
-                    } else {
-                        riverUnder++;
-                        if (hasLevel) {
-                            double d = surf - cell.height;
-                            if (d > maxUnderDepth) maxUnderDepth = d;
-                            if (shownUnder < 6) {
-                                System.out.printf("    漏灌 块(%d,%d) h=%.3f surf=%.3f 差=%.3f "
-                                                + "fillWater=%b lakePlan=%b%n",
-                                        bx, bz, cell.height, surf, d,
-                                        col.fillWater(), col.lakePlan());
-                                shownUnder++;
+                    // ★★★ 2026-09-19 判据修正（重要）：
+                    //   RTF 的 isSubMerged = dist < zone1Radius && carvedThisPass
+                    //                       && finalHeight < targetWaterLevel —— 【三者缺一不可】。
+                    //   即"设计剖面约束（在河道内）"是【必要条件】。
+                    //   本探针原先只用 cell.height < surf（漏了设计剖面）⇒ 会把
+                    //   【河谷两侧本就不该有水的原地形】误判为"漏灌"。
+                    //   ⇒ 正确判据：真漏灌 = fillWater（该有水）但实际无水。
+                    boolean designChannel = col.fillWater();     // 设计剖面判为河道内（RTF ①）
+                    if (designChannel) {
+                        if (actualWet) riverAgreeWet++;
+                        else {
+                            riverUnder++;                        // ★ 真漏灌：该有水却无水
+                            if (hasLevel) {
+                                double d = surf - cell.height;
+                                if (d > maxUnderDepth) maxUnderDepth = d;
+                                if (shownUnder < 6) {
+                                    System.out.printf("    ★真漏灌 块(%d,%d) h=%.3f surf=%.3f 差=%.3f%n",
+                                            bx, bz, cell.height, surf, d);
+                                    shownUnder++;
+                                }
                             }
+                        }
+                    } else {
+                        if (actualWet) {
+                            riverOver++;                          // ★ 真多灌：不该有水却有
+                            if (hasLevel) maxOverDepth = Math.max(maxOverDepth, surf - cell.height);
+                        } else {
+                            riverAgreeDry++;                      // 不在河道内 + 无水 = 正确
                         }
                     }
                 }
@@ -209,6 +220,69 @@ public final class UnifiedCriterionProbe {
             System.out.println("    判读：比例高（>60%）⇒ 成带 ⇒ 是【河谷带】⇒ C3 该做（抬地形）；");
             System.out.println("          比例低（<40%）⇒ 散布 ⇒ 疑【河线水位求解错误】⇒ 先修水位再谈 C3。");
         }
+
+        // ---------- [7] ★★★★ 湖分支的【正确判据】测量 ----------
+        //   湖分支的正确判据 = 【连通性 inFlood】+【低于湖面 height < spill】——
+        //   与河分支的"设计剖面 + 低于水面"同构（RTF 三条件的湖版）。
+        //   湖域（inDomain）刻意外扩 4×gridCell ⇒ 域内大量列【不连通】⇒ 本就不该有水。
+        long lkTotal = 0, lkShouldWet = 0, lkShouldDry = 0;
+        long lkMiss = 0, lkOver = 0, lkAgreeWet = 0, lkAgreeDry = 0;
+        long lkNoNode = 0;
+        double lkMissMax = 0.0, lkOverMax = 0.0;
+        int shownLk = 0;
+        for (int dz = -half; dz <= half; dz += step) {
+            for (int dx = -half; dx <= half; dx += step) {
+                int bx = bx0 + dx, bz = bz0 + dz;
+                Cell cell = gt.getChunkCells(bx >> 4, bz >> 4)
+                        [Math.floorMod(bx, 16) * 16 + Math.floorMod(bz, 16)];
+                double original = gen.sample(bx / hs, bz / hs).height;
+                HydrologyBlockCarvedColumn col =
+                        HydrologyBlockCarver.carveColumnAt(engine, bx, bz, original, hs);
+                if (col == null || col.lakeNode() == null) continue;
+                lkTotal++;
+                double wuX = bx / hs, wuZ = bz / hs;
+                boolean inFlood;
+                try {
+                    inFlood = col.lakeNode().inFlood(wuX, wuZ);
+                } catch (Throwable t) {
+                    lkNoNode++;
+                    continue;
+                }
+                double surf = cell.riverSurfaceY;
+                boolean belowLevel = surf > 0 && !Double.isNaN(surf) && cell.height < surf - 0.5;
+                boolean shouldWet = inFlood && belowLevel;
+                boolean actualWet = cell.riverType != 0;
+                if (shouldWet) {
+                    lkShouldWet++;
+                    if (actualWet) lkAgreeWet++;
+                    else {
+                        lkMiss++;
+                        if (belowLevel) lkMissMax = Math.max(lkMissMax, surf - cell.height);
+                        if (shownLk < 6) {
+                            System.out.printf("    ★湖漏灌 块(%d,%d) h=%.3f surf=%.3f inFlood=true%n",
+                                    bx, bz, cell.height, surf);
+                            shownLk++;
+                        }
+                    }
+                } else {
+                    lkShouldDry++;
+                    if (actualWet) {
+                        lkOver++;
+                        if (belowLevel) lkOverMax = Math.max(lkOverMax, surf - cell.height);
+                    } else lkAgreeDry++;
+                }
+            }
+        }
+        System.out.printf("%n[7] ★★ 湖分支正确判据（inFlood 连通 + height < spill）  列数 = %d%n", lkTotal);
+        System.out.printf("    该有水 = %d：实际有水 %d / ★真漏灌 %d（%.2f%%）最大欠灌 %.3f 块%n",
+                lkShouldWet, lkAgreeWet, lkMiss,
+                100.0 * lkMiss / Math.max(1, lkShouldWet), lkMissMax);
+        System.out.printf("    该无水 = %d：实际无水 %d / ★真多灌 %d（%.2f%%）最大超出 %.3f 块%n",
+                lkShouldDry, lkAgreeDry, lkOver,
+                100.0 * lkOver / Math.max(1, lkShouldDry), lkOverMax);
+        if (lkNoNode > 0) System.out.printf("    inFlood 查询异常 = %d%n", lkNoNode);
+        System.out.println("    判读：真漏灌/真多灌 都很小 ⇒ 湖分支也是对的（1.13 的 32% 全是判据假象）；");
+        System.out.println("          真漏灌大 ⇒ 湖域连通性判定有缺陷（C7 证据）。");
 
         System.out.println();
         System.out.println("判读：");
