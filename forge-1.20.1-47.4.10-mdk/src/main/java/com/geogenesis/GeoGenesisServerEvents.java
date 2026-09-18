@@ -36,5 +36,21 @@ public final class GeoGenesisServerEvents {
         }
     }
 
+    /**
+     * ★ 2026-09-18：世界卸载时打一份<b>全流程诊断总计</b>。
+     *
+     * <p>为什么需要：全流程 profiler 的滚动汇总每 N 块打一次，<b>最后不足 N 块的那段</b>
+     * 不会被包含 ⇒ 需要一次收尾总计。本方法只读统计、不改任何生成逻辑。</p>
+     *
+     * <p>⚠ 与 {@code GeoGenesisConfig} 的读取一样，探针/预览进程没有 Forge 生命周期
+     * ⇒ 本方法只在真实服务端事件里触发，天然安全。</p>
+     */
+    @SubscribeEvent
+    public static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof ServerLevel s && s.dimension() == Level.OVERWORLD) {
+            com.geogenesis.diagnostics.WorldGenProfiler.reportNow("世界卸载总计");
+        }
+    }
+
     private GeoGenesisServerEvents() {}
 }
