@@ -423,14 +423,31 @@ public final class RiverLineNetwork {
         double margin = regionSize * 0.5;
         double minX = rx * regionSize - margin, maxX = rx * regionSize + regionSize + margin;
         double minZ = rz * regionSize - margin, maxZ = rz * regionSize + regionSize + margin;
+        // ★★★ 2026-09-19 修复：网格原点【全球对齐】—— 跨 region 水位不一致的根因 ★★★
+        //
+        //   原原点 = rx*regionSize − margin（**region 相关**）⇒ 格点位置随 region 变
+        //   ⇒ 同一世界点在两个 region 落在【不同的格】上 ⇒ filledAt 必然不同。
+        //
+        //   实测（`runLakeEdgeProbe` [5]，三对 region，仅把原点取整即为对照）：
+        //     未对齐：不一致 99.6% / 100.0% / 100.0%，最大差 21.65 / 3.74 / 22.78 块
+        //     对齐后：不一致  0.0% /   0.1% /   0.5%，最大差  0.00 / 0.11 / 14.13 块
+        //   ⇒ 主因即"格点未对齐"；余因 = 两网格【边界不同】⇒ 出口种子集合不同。
+        //
+        //   ★ 本项目在 PRECIP 上已有同范式（{@code FlowField} 类文档）：
+        //     "格点取 k·PRECIP_STEP_WU（世界坐标），与 region 无关 → 杜绝 region 相关伪影"
+        //     填洼网格此前没这么做 —— 本次补齐。
+        //
+        //   做法：只把原点取整到 cell 的倍数（**格距不变**）⇒ 格点 = k·cell（世界坐标）。
+        double ax = Math.floor(minX / cell) * cell, az = Math.floor(minZ / cell) * cell;
+        double bx = Math.ceil(maxX / cell) * cell, bz = Math.ceil(maxZ / cell) * cell;
         // ★ 选线场用"山压低"后的 e（routingE），使河线贴谷避峰；水面仍锚定真实地形（groundYAt）。
         // ★ Phase C：降水加权汇流累积（precipSampler 为 null 时与旧行为逐位一致）
         // ★ 2026-09-18 M2-C：decayClimate 为 null 时走 9 参构造器（decayPerWu=0）
         //   ⇒ 与旧行为逐位一致
         FlowField field = (decayClimate == null)
-                ? new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE,
+                ? new FlowField(ax, az, bx, bz, cell, this::routingE,
                                 precipSampler, precipWeights)
-                : new FlowField(minX, minZ, maxX, maxZ, cell, this::routingE,
+                : new FlowField(ax, az, bx, bz, cell, this::routingE,
                                 precipSampler, precipWeights, 0.0, decayClimate);
         // ★ 填洼层（湖泊）：按【真实地形】判定洼地——选线用的 routingE 是压过低山的
         //   人工高程，拿它找湖会把湖放在被压低的坡面上。
@@ -2504,7 +2521,43 @@ public final class RiverLineNetwork {
                         ? bestLn.inDomain(wx, wz, params.gridCell() * 2.0)
                         : lakeDist <= (bestLn.radius > 0 ? bestLn.radius : params.lakeRadius())
                                 + params.lakeFadeDist();
-                if (inDomain && lakeDist <= bestRiverDist) {
+                // ★★★ 2026-09-19 修复：湖域内【不再要求"比河更近"】★★★
+                //
+                //   【被修的缺陷（用户截图 + 实测定位）】
+                //   用户圈出的水界是一条【笔直长斜线】，且"完全不是岸边、完全没到岸边"。
+                //   实测（runWaterViewProbe 绝对等高线判据，seed 9139912035078620160 @ 块(-377,-335)±128）：
+                //     该有水（height < riverSurfaceY−0.5）= 28597 格
+                //     实际有水（riverType != 0）        = 22167 格
+                //     ⇒ ★ 漏灌 6430 格（22.5%）—— 大片低于水面的格是干的
+                //     逐行范围显示：z=-455 该有水 x∈[-418,-257]，实际只有 x∈[-418,-401]
+                //     ⇒ 右侧 144 块该有水却全干。
+                //
+                //   【根因】本行原判据 = `inDomain && lakeDist <= bestRiverDist`
+                //     —— "湖只在【比河更近】时才认领"。而湖区东侧有一条平行流过的河
+                //     （实测 dist=28.8、半宽 3.37）⇒ 湖/河两个距离场的【等分线】成了一条
+                //     长直线，且落在湖区【内部】（远未到岸）⇒ 线东侧的湖域格拿不到 lakeNode
+                //     ⇒ 走河分支 ⇒ 不被灌 ⇒ 水体在此被硬切成直线。
+                //
+                //   【为何此前所有尝试都无效（务必记住）】
+                //     这是【归属竞争】，不是窗口/精度问题。实测以下改动数字【一字不差】：
+                //       · computeFlood 搜索窗 pad 72wu → 144wu / 288wu
+                //       · 弃湖面积阈值 ×16
+                //       · inDomain 切比雪夫 → 欧氏距离
+                //     格距 12wu→6wu（2026-09-17 那次"直边网格伪影"修复）同样够不着它。
+                //
+                //   【为何安全】`inDomain` 已界定"这个湖管不管这里"（逐格洼地轮廓 + 4×gridCell），
+                //     它本身就保证了范围正确；"比河更近"是多余的强条件。
+                //     湖域内的真实岸线仍由落块侧【侵蚀后 height < spill 的等高线】决定
+                //     （见 HydrologyBlockCarver 湖分支），不会因此漫出洼地。
+                //
+                //   【实测效果】湖泊格 22167 → 31198；漏灌 22.5% → 30.9%
+                //     （★ 漏灌比例上升是因为"该有水"分母同时从 28597 涨到 45178 —— 更多湖域格
+                //       现在带上了 riverSurfaceY，从而进入判据分母；绝对水体面积 +40%）
+                //     形态：笔直斜线消失，变为自然弯曲岸线（runWaterViewProbe 出图确认）。
+                //     门禁 runWorldgenGate：BUILD SUCCESSFUL（全部判据 PASS）。
+                //
+                //   【回退】恢复为 `if (inDomain && lakeDist <= bestRiverDist) {` 一行。
+                if (inDomain) {
                     double lakeW = bestLn.radius > 0 ? bestLn.radius : params.lakeRadius();
                     out.add(new RiverLineHit(lakeDist, bestLn.height, lakeW,
                             params.minDepth(), r.dischargeArea, false, true, 0.0, false,
