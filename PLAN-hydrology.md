@@ -704,6 +704,57 @@ struct Plant {
 
 ---
 
+## 1.12 ★★★★★ 五参考共同核心 vs 我们的缺口（本方案的最终依据）
+
+> 范围：`FreeTerraForged-1.21.1` / `TerraForged-0.3.x` / `Farseek-Mods` / `PL-RGA` /
+> `geotransport` / `MOBIDIC` / `SimpleHydrology` / `worldgen-master`（8 个项目，含 4 个河系专门项目）。
+> **只列【多个参考都这么做】的条目 —— 那才是"核心"，不是某个项目的偏好。**
+
+### 1.12.1 共同核心（≥3 个参考一致）
+
+| # | 共同核心 | 谁这么做 | **我们** | 缺口 |
+|---|---|---|---|---|
+| **C1** | **水位是单一基准**（海/湖/河同源） | RTF(`Levels.water`)、TF-0.3.x、PL-RGA(海平面)、worldgen-master、Farseek | ❌ **三套**（海常数/湖 spill/河包络） | ★★★ |
+| **C2** | **`河床 = 水位 − 深度`** | RTF、TF-0.3.x、Farseek(`maxFloorLevel`)、PL-RGA | ✅ 有（`bedTarget`） | — |
+| **C3** | **径向/分层剖面**（河床/河岸/谷底/渐隐） | RTF(四区)、TF-0.3.x(三级)、Farseek(`outletSlopes`)、PL-RGA(dist 幂) | ⚠️ 雏形（`profile` 单一 V 形） | ★★ |
+| **C4** | **判水 = 绝对等高线**（`floorLevel vs surfaceLevel`） | Farseek、RTF(`finalHeight < targetWaterLevel`)、TF-0.3.x(`Math.min`) | ❌ **河用几何、湖用等高线（两套）** | ★★★ |
+| **C5** | **河网 = 图上的树**（无环、全覆盖） | TF-0.3.x(`connects` 双向)、Farseek(最短路径)、PL-RGA(下坡追踪+汇入)、RTF(Voronoi 最低邻居) | ⚠️ D8 + graft 吸附 | ★ |
+| **C6** | **逐点闭式可算**（无限世界前提） | PL-RGA(`pointwise`)、RTF(`waterTable`)、Farseek(basin 局部)、TF-0.3.x(细胞图) | ⚠️ 部分（`WaterField` 已验证但未接线） | ★★ |
+| **C7** | **湖不是独立系统** | worldgen-master(**无 lake 模块**)、RTF(`lakeMultiplier` 一个乘数)、PL-RGA(`outlet_local_minimum` 节点属性)、Farseek(**无湖**) | ❌ **独立 `LakeNode` + BFS + 洪泛** | ★★★ |
+| **C8** | **`riverNoise`/影响场供下游用** | RTF(`cell.riverMask`)、TF-0.3.x(`sample.riverNoise`)、PL-RGA(`river_distance`) | ⚠️ 有 `riverDistance`，无 [0,1] 场 | ★ |
+| **C9** | **降采样取 MAX**（保细河） | worldgen-master（原文注释） | ❓ 未核实 | ? |
+| **C10** | **蛇曲/扭曲在填洼之前，且不推下水位** | worldgen-master（clamp 注释） | ❌ `WARP_AMP` 加在全局高度场 | ★★ |
+
+### 1.12.2 关键反证（参考告诉我们【不要做什么】）
+
+| # | 反面教训 | 出处 | 对我们的意义 |
+|---|---|---|---|
+| **N1** | **洪泛系统"多 bug 且慢"，已被作者删除** | SimpleHydrology README（2023-01） | ★★★ **不要再加固洪泛** |
+| **N2** | **无动量时 pits 不会消失，依赖速度场结构，而那不总能保证** | geotransport `path.cu` 注释 | 解释了湖泊涌现 FAIL |
+| **N3** | **Priority-Flood 的求解域边界=排水出口，任何有限域都有此问题** | `analysis/2026-06-13-诊断与修复方向.md` + 我们实测 99.6% | ★★★ 加 halo 治不了 |
+| **N4** | **RTF 从不拿 `W` 与 `height` 比较来决定"是不是水"** | RTF `UpliftRiverCarver` | `W` 只管【水面高度】 |
+| **N5** | **不安全就整条回滚，不生成半截河** | PL-RGA `_rollbackRiver` | 我们的"尽力生成+事后修补"是反模式 |
+| **N6** | **Streams 哲学 ≠ 我们的哲学；用户认可现有贴谷路线** | `analysis/Streams-完整架构分析-2026-08-15.md` | 不整体改路线 |
+
+### 1.12.3 ★★★ 按缺口排的优先级（= 重构顺序）
+
+```
+P0-1  C1 统一水位（海/湖/河 → 一个场）        ← 症状的共同根（接缝/河湖脱节/湖岸）
+P0-2  C4 判据统一（绝对等高线一套）           ← 我这两周反复踩的坑
+P0-3  C7 湖去对象化（乘数/节点属性，非独立系统）← N1 反证支持
+P1-1  C3 分层剖面（河床/岸/谷/渐隐）          ← 视觉质量
+P1-2  C6 逐点闭式（无限世界确定性）           ← `WaterField` 已验证，待接线
+P1-3  C10 扭曲定位（填洼前 + clamp）
+P2-1  C5 河网拓扑（可选，现状已可用）
+P2-2  C8 riverNoise 影响场
+P2-3  植被三方耦合（SimpleHydrology 范式）
+```
+
+**⇒ 与我们此前方案（线 A/B/C）的对应**：C1+C4+C7 = 线 A；C6 = 线 A 的落地；
+线 B（水文↔侵蚀）经测量**不能简单取代**，须走 geotransport 的守恒律统一（更大工程）。
+
+---
+
 ## 2. 参考实现给出的答案（四套，逐条对应）
 
 | 参考 | 关键机制 | 对我们 |
