@@ -68,7 +68,36 @@ public final class WorldGenProfiler {
          * （据此得出"tile 只跑了 3.8 秒 ⇒ 那 100 秒不可能是计算"的结论）。
          * 本阶段【每次都记】，不采样。</p>
          */
-        TILEGEN("侵蚀tile生成");
+        TILEGEN("侵蚀tile生成"),
+        /**
+         * ★ 2026-09-18 新增：<b>tile 缓存访问的阻塞等待</b>（只记耗时 ≥1ms 的调用）。
+         *
+         * <h4>为什么要单列</h4>
+         * <p>{@code 侵蚀tile提取}(EXTRACT) 记的是<b>墙钟</b>，而 {@code 侵蚀tile生成}(TILEGEN)
+         * 记的是<b>实际生成</b>。实测（seed 9139912035078620160，2356 chunk）两者相差
+         * <b>50.4 秒</b>（EXTRACT 总 63962ms vs TILEGEN 总 13572ms）——
+         * 这段缺口既不是采样也不是生成，<b>只能是等待</b>。</p>
+         *
+         * <h4>等待从哪来</h4>
+         * <p>{@code erosionTileCache.computeIfAbsent(...)} 在<b>整个生成期间持有 CHM 的 bin 锁</b>
+         * （{@code CellGenerator} 2026-09-17 注释已记录该风险）。并发生成同一 tile 时，
+         * 后到的线程必须等前一个线程的 ~141ms 生成结束 ⇒ 这段等待被记进 EXTRACT，
+         * 却<b>不会</b>被记进 TILEGEN（它不是生成）。</p>
+         *
+         * <h4>怎么读（诊断口径）</h4>
+         * <ul>
+         *   <li><b>miss（自己生成）</b>：同时记进 TILEWAIT 与 TILEGEN。</li>
+         *   <li><b>被阻塞（别人在生成）</b>：只记进 TILEWAIT。</li>
+         *   <li><b>快命中</b>（&lt;1ms）：两者都不记。</li>
+         * </ul>
+         * <p>⇒ <b>被阻塞次数 ≈ TILEWAIT.次数 − TILEGEN.次数</b>；
+         * <b>阻塞总时长 ≈ TILEWAIT.总耗时 − TILEGEN.总耗时</b>。</p>
+         *
+         * <p>⚠ <b>本阶段墙钟 ⊂ EXTRACT</b>（是其子集）⇒ 报告里"占比"之和会 &gt;100%，属正常。
+         * ⚠ 只记 ≥1ms 的调用是<b>刻意的</b>：每 chunk 最多 768 次缓存访问，全记会淹没
+         * 8192 样本环 ⇒ P50 恒为 0，真正的阻塞反而看不见。</p>
+         */
+        TILEWAIT("tile等待(阻塞)");
 
         final String label;
         Stage(String label) { this.label = label; }
@@ -198,6 +227,25 @@ public final class WorldGenProfiler {
         record(stage, System.nanoTime() - t0);
     }
 
+    /**
+     * 结束计时，<b>仅当耗时 ≥ {@code thresholdNs} 才记账</b>
+     * （★ 2026-09-18：专用于"阻塞等待"类热点，见 {@link Stage#TILEWAIT}）。
+     *
+     * <p>用途是<b>海量调用</b>的埋点（tile 缓存访问每 chunk 最多 768 次）：
+     * 若每次都记，8192 样本环会被"快命中"（~百 ns）淹没 ⇒ P50 恒为 0，
+     * 真正的阻塞反而看不见。只记超阈值的调用 ⇒ 样本<b>全是慢的那次</b>，
+     * P50 直接等于"典型阻塞时长"。</p>
+     *
+     * @param t0          {@link #begin()} 的返回（{@code 0} = 关闭 ⇒ 立即返回，零开销）
+     * @param thresholdNs 记账门限（ns）；小于此值<b>不记</b>
+     */
+    public static void endIfSlow(Stage stage, long t0, long thresholdNs) {
+        if (t0 == 0L) return;
+        long ns = System.nanoTime() - t0;
+        if (ns < thresholdNs) return;
+        record(stage, ns);
+    }
+
     /** 直接记账（已有耗时值，如既有插桩处）。关闭时零开销。 */
     public static void record(Stage stage, long ns) {
         if (!enabled) return;
@@ -273,6 +321,11 @@ public final class WorldGenProfiler {
                     pct[0] / 1e6, pct[1] / 1e6, MAX_NS[i].get() / 1e6,
                     sumAll == 0 ? 0 : 100.0 * tot / sumAll));
         }
+
+        // ⚠ 口径提示（★ 2026-09-18）：tile等待 是【侵蚀tile提取】的墙钟子集 ⇒ 占比之和可 >100%。
+        sb.append("注：tile等待(阻塞) ⊂ 侵蚀tile提取（是其墙钟子集）⇒ 占比之和可 >100%，属正常。\n");
+        sb.append("    被阻塞次数 ≈ tile等待.次数 − 侵蚀tile生成.次数；")
+          .append("阻塞总时长 ≈ tile等待.总耗时 − 侵蚀tile生成.总耗时。\n");
 
         // 最慢块 Top（从环形缓冲扫描，只报最近 CHUNK_CAP 块内的最慢者）
         if (chunks > 0) sb.append(topChunks());

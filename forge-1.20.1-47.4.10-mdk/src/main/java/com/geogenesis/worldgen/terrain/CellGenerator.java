@@ -1031,7 +1031,13 @@ public final class CellGenerator {
         // ★ 2026-08-09 优化：原 get→putIfAbsent 非原子，两线程并发时重复生成（日志实锤
         //   (-6,6) 700ms 级两次）；computeIfAbsent 让后到线程阻塞等待第一个完成 → 零重复。
         long key = tileKey(tileCX, tileCZ);
+        // ★ 2026-09-18 诊断（口径见 Stage.TILEWAIT）：本调用在【整个生成期间持有 CHM 的 bin 锁】
+        //   ⇒ 并发生成同一 tile 时，后到线程在此阻塞（等待被记进 EXTRACT，却不算 TILEGEN）。
+        //   只记 ≥1ms 的调用 —— 每 chunk 最多 768 次访问，全记会淹没 8192 样本环。
+        long tw0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
         ErosionTileResult res = erosionTileCache.computeIfAbsent(key, k -> generateErosionTile(tileCX, tileCZ));
+        com.geogenesis.diagnostics.WorldGenProfiler.endIfSlow(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.TILEWAIT, tw0, 1_000_000L);
         return res.delta;
     }
 
@@ -1820,8 +1826,12 @@ public final class CellGenerator {
         ErosionTileResult r = tileCacheGet(key);
         if (r != null) return r;
         try {
+            // ★ 2026-09-18 诊断：同上（blend 邻居路径，每 chunk 最多 768 次访问）
+            long tw0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
             ErosionTileResult nr = erosionTileCache.computeIfAbsent(
                     key, k -> generateErosionTile(tileCX, tileCZ));
+            com.geogenesis.diagnostics.WorldGenProfiler.endIfSlow(
+                    com.geogenesis.diagnostics.WorldGenProfiler.Stage.TILEWAIT, tw0, 1_000_000L);
             nr.lastAccess = tileAccessClock.incrementAndGet();
             return nr;
         } catch (CancellationException ce) {
