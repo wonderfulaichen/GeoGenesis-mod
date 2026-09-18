@@ -671,13 +671,60 @@ public class GeoGenesisConfigScreen extends Screen {
         return super.mouseScrolled(mx, my, delta);
     }
 
+    /**
+     * ★★ 2026-09-18 修复【预览线程池泄漏 / 世界创建变慢的真凶】★★
+     *
+     * <p>根因：{@code Minecraft.setScreen()} 只调用旧屏的 {@link #removed()}，
+     * <b>不会</b>调用 {@link #onClose()}。而"应用"按钮 ({@code doApply}) 走的正是
+     * {@code Minecraft.getInstance().setScreen(parent)} ⇒ 本类原先只在 {@code onClose()}
+     * 里关预览 ⇒ <b>"应用"路径下预览从未被关闭</b>。</p>
+     *
+     * <p>后果：{@code PreviewDisplay.pool}（{@code TerrainPool}，固定 4 线程）
+     * 连同<b>已排队的 480 块 × 3 批</b>任务继续运行，<b>跑进世界生成阶段</b>，
+     * 与 20 个 {@code Worker-Main} + 8 个 {@code TileSampler} + 出生点预热抢 CPU。</p>
+     *
+     * <p><b>实机证据</b>（{@code 2026-09-18 latest.log}，seed 9139912035078620160）：
+     * <pre>
+     *   21:20:41.964  [DIAG Queue] queued 480 chunks in 8 batches   ← 创建世界界面预览
+     *   21:20:42.781  [DIAG Queue] queued 480 chunks in 8 batches
+     *   21:20:44.133  [DIAG Queue] queued 480 chunks in 8 batches
+     *   21:20:49.849  Starting integrated minecraft server          ← 世界开始生成
+     *   21:21:45.313  Time elapsed: 37963 ms                        ← 世界创建 38 秒
+     *   21:22:15.291  [TerrainPool] chunk(7,-3)  extract=91796ms    ← 预览首块，91 秒
+     *   21:22:21.279  [TerrainPool] chunk(4,9)   extract=99006ms
+     *   21:22:24.166  [TerrainPool] chunk(-3,9)  extract=101881ms
+     *   21:22:28.951  [TerrainPool] chunk(9,2)   extract=106924ms
+     * </pre>
+     * 而<b>整个会话侵蚀 tile 只生成了 20 个 / 合计 3803ms</b>（max 297ms）
+     * ⇒ 那 91~107 秒<b>不可能</b>是计算 ⇒ 全是争抢/阻塞；
+     * 且这些块的 {@code sample} 也从正常 3ms 涨到 53~54ms（17×）⇒ 线程被饿死。
+     * {@code TerrainPool} 在 21:20:43~21:22:15 期间<b>一块都没产出</b>，正是被占用/挨饿。</p>
+     *
+     * <p>覆盖所有关屏路径（应用 / ESC / 被替换）。与 {@link #onClose()} 共用幂等的
+     * {@link #closePreview()}，不会重复关闭。</p>
+     */
     @Override
-    public void onClose() {
-        // 预览磁盘缓存：关屏前保存已采样的地图数据（"已加载的记录"）
+    public void removed() {
+        closePreview();
+        super.removed();
+    }
+
+    /** 关闭预览（幂等：{@code preview=null} 兼作"已关闭"标记，防止 removed/onClose 双触发）。 */
+    private void closePreview() {
         if (preview != null) {
             preview.close();
             preview = null;
+            // ★ 可观测：本次修复的验证点 —— 下次实机日志里应在"创建世界"前后看到本行。
+            //   若世界生成期间仍出现大量 [GeoGenesis-TerrainPool] 的 [PERF-TERRAIN]，
+            //   说明本修复未覆盖到该路径（回来看这里）。
+            LOGGER.info("[Preview] 预览已关闭（释放 TerrainPool 4 线程与排队任务）");
         }
+    }
+
+    @Override
+    public void onClose() {
+        // 预览磁盘缓存：关屏前保存已采样的地图数据（"已加载的记录"）
+        closePreview();
         // 不再把未保存的困在屏里：直接返回父屏（未提交的改动丢弃，契合「应用才提交」语义）
         super.onClose();
     }

@@ -837,6 +837,14 @@ public final class GeoGenesisConfig {
                 + " rock layers via the stone_ore_replaceables tag) -- use it to A/B compare ore volume."
                 + " Takes effect on world (re)load; already-generated chunks are unchanged.")
                 .define("oreOverrideVanilla", false);
+        builder.pop();
+
+        // ===================== ★ 2026-09-18 水量平衡（水文 M2，独立段落）=====================
+        //
+        //   ⚠ 同样必须独立成段（与下面 Diagnostics 段同一个教训）：初版把这三项加在
+        //     【Ores 段内】⇒ 路径变成 [.. .Ores].hydrologyDecayEnabled，与"水文"语义完全无关，
+        //     用户根本不会去那里找。配置项的【归属段落】就是它的"文档"。
+        builder.push("Hydrology");
         hydrologyDecayEnabled = builder.comment(
                 "Water balance: downstream decay (evaporation / infiltration) along flow paths."
                 + " false (default) = OFF: pure accumulation, zero behaviour change (bit-identical)."
@@ -860,6 +868,18 @@ public final class GeoGenesisConfig {
                 "Softening exponent for the decay ramp: decay = maxDecay * max(0, 1 - precip/ref)^exponent."
                 + " Values below 1 give semi-arid regions noticeable decay too. Default 0.5. Range [0.1, 3.0]")
                 .defineInRange("hydrologyDecayExponent", 0.5, 0.1, 3.0);
+        builder.pop();
+
+        // ===================== ★ 2026-09-18 全流程诊断（独立段落）=====================
+        //
+        //   ⚠ 为什么必须独立成段（我犯过的错，如实记录）：
+        //     初版把这两个键加在【Ores 段内】（代码上紧挨着 oreOverrideVanilla 的 define，
+        //     但漏看了后面的 builder.pop() 位置）⇒ 配置路径变成
+        //     ["GeoGenesis Terrain Generation".Ores].worldgenProfilerEnabled。
+        //     用户按直觉在别处找 ⇒ 找不到 ⇒ 打开失败（日志：corrected from null to its default, false）
+        //     ⇒ 诊断从未运行。这与"文档里抄数字会漂移"是同一类病：
+        //     【配置项放在语义无关的段落里，人就会找不到】。
+        builder.push("Diagnostics");
         worldgenProfilerEnabled = builder.comment(
                 "World-generation full-pipeline profiler. Logs per-stage timing to latest.log (prefix [WGP])."
                 + " WHY: the pre-existing [PERF-TERRAIN] / [PERF] fillFromNoise logs only fire ABOVE a"
@@ -868,7 +888,8 @@ public final class GeoGenesisConfig {
                 + " instrumentation at all -- yet they are the heaviest stages in a real game."
                 + " When on, a rolling summary is printed every worldgenProfilerEveryChunks chunks"
                 + " (count / total / mean / P50 / P95 / max / share, plus the 8 slowest chunks), and a grand"
-                + " total on world unload. false (default) = OFF, zero overhead, bit-identical output"
+                + " total on world unload. Output is also written to geogenesis-wgp.txt (UTF-8) in the"
+                + " game directory. false (default) = OFF, zero overhead, bit-identical output"
                 + " (the profiler consumes no random numbers).")
                 .define("worldgenProfilerEnabled", false);
         worldgenProfilerEveryChunks = builder.comment(
