@@ -658,18 +658,14 @@ public final class HydrologyBlockCarver {
         //   值钳住，干岸仍会被挖到邻接河面以下 → carvedNotch（探针判据用的正是
         //   nearest.surfaceY()，故实测为"主动挖出的岸侧凹台"）。物理上这条约束本就该按
         //   "本列邻接的那条河的水面"成立：不给水的列，不得低到看得见的河面之下。
+        // ⚠ 2026-09-19 记录（勿重犯）：曾在此处加"河谷最小岸高" minBankHeight
+        //   （把 dryFloor 抬到 waterSurface + minBank），期望让河谷两侧高于水面。
+        //   ★ 实测【无效】：cut = max(0, original − bedTarget) ⇒ dryFloor 只【阻止挖低】，
+        //     不会【抬升】地形。原地形低于水面的列 carved = original 纹丝不动。
+        //     实测 minBankHeight 0→1：需抬升干列 7533 → 7495（仅 0.5%）⇒ 空转。
+        //   ⇒ 真正的 C3 需要【抬升地形】，会打破"只下挖（carved ≤ original）"铁律
+        //     ⇒ 属设计决策，不是参数能解决 ⇒ 已撤销，改记入 PLAN-hydrology.md §1.18。
         double dryFloor = Math.max(waterSurface, nearest.surfaceY());
-        // ★★ 2026-09-19 河谷最小岸高（C3，{@code RiverLineParams.minBankHeight}，默认 0 = 关闭）：
-        //   把干列的"下界"由【水面】抬到【水面 + minBankHeight】
-        //   ⇒ 河谷两侧高于水面 —— 对齐 Farseek outletSlopes 的正数部分
-        //   （(5,7),(3,5),(1,3)... = 岸高出水面 5/3/1 块）与 RTF minBankHeight（主河 2 / 支流 1）。
-        //   ★ 实测（runUnifiedCriterionProbe [8]）：target = surf+1 时需抬干列 7533
-        //     （占带水位列 69.8%），已有水列 3256 完全不动；抬升量 p50=2.33/p90=13.43/max=47.21 块。
-        //   ⚠ 默认 0 ⇒ 与旧行为【逐位一致】；取值靠实机 0/1/2/3 对比。
-        double minBank = P.minBankHeight();
-        if (minBank > 0.0) {
-            dryFloor += minBank;
-        }
         if (outsideWaterGate && bedTarget < dryFloor) {
             bedTarget = dryFloor;
         }
