@@ -529,15 +529,24 @@ public final class GeoGenesisTerrain {
      *     隔壁原侵蚀地形，垂直墙在构造上不可能出现（旧 0.5 钳幅为历史残留，已删）。</li>
      * </ol>
      */
-    private void applyHydrologyValley(Cell[] cells, int cx, int cz) {        HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
+    private void applyHydrologyValley(Cell[] cells, int cx, int cz) {
+        // ★ 2026-09-19 诊断：水文雕刻子项 ① —— 计算（河网 region 懒建 / FlowField / 雕刻计划）
+        long hy0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
+        HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
+        com.geogenesis.diagnostics.WorldGenProfiler.end(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.HYCALC, hy0);
         double seaLevel = generator.seaLevel();
 
         // 河流绿洲输入：到最近河线的距离（与快速路径 fillRiverDistance 同一条件 → 预览 = 游戏）
+        // ★ 2026-09-19 诊断：水文雕刻子项 ② —— 逐格河距（仅沙漠格；可触发河网 region 构建）
+        long hy1 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
                 fillRiverDistance(cells[lx * 16 + lz], toWu(cx * 16 + lx), toWu(cz * 16 + lz));
             }
         }
+        com.geogenesis.diagnostics.WorldGenProfiler.end(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.HYDIST, hy1);
         // ★ 2026-09-17：湖【影响】登记（供 chunk 级【块精度】洪泛重判湖岸，见 LAKE_FINE_FLOOD）
         //   ⚠ 必须包含【被拒列】（carver 的 inFlood=false 早退：lakePlan=false 但带湖节点）
         //     —— 水体物理审计实测：452 个"干墙"格 100% 来自这一类列；
@@ -668,7 +677,14 @@ public final class GeoGenesisTerrain {
         }
         // ★ 2026-09-17：湖岸 1 块精度精修（见 LAKE_FINE_FLOOD）
         if (LAKE_FINE_FLOOD && lakeCount > 0) {
-            lakeFineFlood(cells, cx, cz, lakeAny, lakeSeed, lakeOf, lakeGroups);
+            // ★ 2026-09-19 诊断：水文雕刻子项 ③ —— 湖岸 1 块精度 BFS 精修
+            long hy2 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
+            try {
+                lakeFineFlood(cells, cx, cz, lakeAny, lakeSeed, lakeOf, lakeGroups);
+            } finally {
+                com.geogenesis.diagnostics.WorldGenProfiler.end(
+                        com.geogenesis.diagnostics.WorldGenProfiler.Stage.HYFLOOD, hy2);
+            }
         }
     }
 

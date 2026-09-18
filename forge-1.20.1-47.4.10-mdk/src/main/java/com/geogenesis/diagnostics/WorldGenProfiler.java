@@ -136,7 +136,31 @@ public final class WorldGenProfiler {
          */
         EXGET("提取内-取tile"),
         EXBLEND("提取内-blend"),
-        EXCORE("提取内-落格");
+        EXCORE("提取内-落格"),
+        /**
+         * ★ 2026-09-19 新增：<b>水文雕刻子项</b>。
+         *
+         * <h4>为什么要切水文</h4>
+         * <p>实测（seed 9139912035078620160）：{@code 水文雕刻} 的
+         * <b>P50 = 17.8ms</b>，而 {@code 侵蚀tile提取} 的 P50 仅 <b>0.056ms</b>
+         * —— 水文雕刻的<b>常态</b>开销是提取的 <b>300 倍</b>，是 2127 块里
+         * 每一块都要付的成本（总 39.6 秒 / 占比 16.8%）。
+         * 因此本次优先打的是它的 P50，而不是那个 4328ms 的离群。</p>
+         *
+         * <h4>三段切分（{@code applyHydrologyValley}）</h4>
+         * <ul>
+         *   <li>{@link #HYCALC} = {@code hydrologyExperiment.calculate(cx,cz)}
+         *       （河网 region 懒建 / FlowField / 雕刻计划）</li>
+         *   <li>{@link #HYDIST} = 逐格 {@code fillRiverDistance}（仅沙漠格，
+         *       会触发 {@code distanceToWater} ⇒ 可能实例化河网 region）</li>
+         *   <li>{@link #HYFLOOD} = {@code lakeFineFlood}（湖岸 1 块精度 BFS）</li>
+         * </ul>
+         * <p>未列的一段（回写 + 湖登记）＝ {@code 水文雕刻 − 以上三者}（残差即可读出）。</p>
+         * <p>⚠ 三者 ⊂ {@code 水文雕刻}，只在有湖时才有 HYFLOOD。</p>
+         */
+        HYCALC("水文-计算"),
+        HYDIST("水文-河距"),
+        HYFLOOD("水文-湖岸精修");
 
         final String label;
         Stage(String label) { this.label = label; }
