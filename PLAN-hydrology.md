@@ -195,6 +195,286 @@ override lazy val surfaceLevel =
 
 ---
 
+## 1.6 ★★ 参考文档的【有效性判定】（哪些过时、哪些仍有效）
+
+> 用户提示："有不少文档是已经过时的"。本节的判定方法 = **看它引用的类是否还存在**
+> （对已删除代码的分析，结论必然过时）。
+
+### 1.6.1 判定证据：文档引用的 8 个类全部已不存在
+
+```
+★已不存在: SimplifiedRiverSystem / GridRiverSystem / RegionHydrologySolver
+★已不存在: TileLakeSolver / HydrologySystem / ParticleRiverSystem
+★已不存在: MaterialMapper / ClimateBiomeMapper
+```
+
+**⇒ 2026-06 那一整代架构（RegionHydrology / TileLake / GridRiver / SimplifiedRiver）
+已被完全重写为当前架构（`RiverLineNetwork` + `FlowField` + `HydrologyBlockCarver`）。**
+
+### 1.6.2 逐文档判定
+
+| 文档 | 引用架构 | 判定 |
+|---|---|---|
+| `2026-06-13-河流系统重写方案.md` | Simplified/GridRiver | ❌ **过时**（代码已删） |
+| `2026-06-13-诊断与修复方向.md` | Grid/RegionHydrology/TileLake | ⚠️ **代码过时，但【根因分析仍有效】**（见下） |
+| `2026-06-13-边界侵蚀对齐与混合水文方案.md` | RegionHydrology/TileLake | ⚠️ 同上 |
+| `2026-06-14-河流系统重写方案-v2.md` | Simplified/Grid/TileLake | ❌ **过时** |
+| `2026-06-14-河流系统重写方案-v2.1.md` | SimplifiedRiver | ❌ **过时** |
+| `2026-06-15-河流系统重写方案-v2.2.md` | SimplifiedRiver | ❌ **过时** |
+| `2026-06-15-河流系统重写方案-v2.3.md` | SimplifiedRiver | ❌ **过时** |
+| `2026-06-15-河流系统重写方案-v5.md` | SimplifiedRiver | ❌ **过时** |
+| `方案_v7.0_粒子侵蚀河流系统.md` | ParticleRiver/ErosionEngine | ⚠️ 部分（`ErosionEngine` 仍在） |
+| `ReTerraForged河流系统深度分析.md` | SimplifiedRiver | ✅ **仍有效**（分析的是 RTF 本体，非我们的代码） |
+| `Streams-完整架构分析-2026-08-15.md` | — | ✅ **仍有效**（分析 Farseek，且给出路线判断） |
+| `四大参考项目技术提炼.md` | — | ✅ **仍有效**（参考项目提炼） |
+| `侵蚀噪声对比分析报告.md` | — | ✅ **仍有效**（Shadertoy 算法对比） |
+| `Epic_Terrain_*.md`（2 份） | — | ✅ 有效（分析 Epic Terrain 数据包） |
+| `群系分布分析报告.md` | — | ✅ 有效（群系，非水文） |
+| `项目需求.md` | — | ✅ **仍有效（★ 用户原始需求，验收依据）** |
+
+### 1.6.3 ★★★ 过时文档里【仍然有效】的根因分析（这才是最该看的）
+
+`2026-06-13-诊断与修复方向.md` 的**代码已删，但根因分析今天依然成立**：
+
+> **根因 A：Priority-Flood 的边界假设不可回避**
+> "Priority-Flood 的数学前提：**求解域的边界是排水出口**。……
+> 如果盆地位于 Tile 中央，真实出口在远方（超出 152 格），Tile 边界处地形比真实出口高
+> ⇒ 水位被抬高 ⇒ 水面高于岸边。"
+>
+> **"关键认识：任何有限大小的求解域都有这个问题。344×344 patch 有，152×152 tile 也有。
+> 缩小/扩大求解域只是改变裁剪大小，不解决根本矛盾。"**
+>
+> "MC 原版用**连续噪声场**（aquifer）定义地下水，不依赖局部填洼。
+> TerraForged 用**全局地形噪声**确保无缝。
+> 只有 ReTerraForged 用了 Priority-Flood，但它的求解域是**整个 Region（数千格）**。"
+
+**⇒ 这条诊断与我 2026-09-19 用 `runLakeEdgeProbe` 实测出的结论【完全一致】**
+（跨 region 不一致 99.6%、加 halo 无效）。**而它写在 3 个月前。**
+
+**★ 更重要：它已给出解法方向**
+
+> **方向 1：连续噪声场定义湖泊（推荐）**
+> 在 NoiseEngine 中新增 lakeBasinNoise + lakeLevelNoise，天然无边界断裂。
+
+**⇒ 这正是 RTF 的 `waterTable` 噪声场路线 —— 与我后来"改走闭式 W"的结论同向。**
+
+### 1.6.4 我该吸取的教训
+
+1. **`analysis/` 里有 3 个月前的同款诊断** ⇒ 我这几周是在**重复踩已记录过的坑**；
+2. **过时文档不能整体丢弃** —— 要按"**代码引用**（过时）"与"**根因分析**（常青）"分开看；
+3. **`项目需求.md` 是验收依据**（大/中/小三级河、自然源头、瀑布、湖泊），
+   我从未按它验收过。
+
+---
+
+## 1.7 ★★★★★ 新增：`plate-local-river-generation`（PL-RGA, 2026-06）—— 无限世界的确定性答案
+
+> `参考/river/plate-local-river-generation-main`（含 `davis2026_...pdf` 论文）。
+> **它专解我们的核心难题：无限世界 + 确定性河网 + 无跨区接缝。**
+
+### 1.7.1 两级分工（★ 这是"确定性"的架构基础）
+
+```
+platewise/  （板块局部，可缓存）：
+  platewisegrid     → 该板块的粗网格（高度、valid/border_safe/lake_safe 掩膜）
+  platewisenetwork  → 河网几何（nodes + segments + paths）
+  platewiseregions  → 把线段包成【区域多边形】（供点查询加速）
+
+pointwise/  （逐点，无缓存，纯函数）：
+  pointwiseheight   → 地形高度（纯噪声）
+  pointwiseplatefields.riverFields(x,y) → ★ 查表得 (river_height, river_distance)
+```
+
+**⇒ 关键：河网几何**只在板块内算一次并缓存**；而**任意世界点**的水位/距离
+通过 `riverFields(x,y)` 用【板块归属 → 最近区域 → 候选线段】三级索引查到
+⇒ **逐点可算、无全局遍历、与"当前加载了哪些区块"无关**。
+
+### 1.7.2 ★★★ 河高与地形的 blend（逐点闭式）
+
+```python
+# pointwiseheight.finalHeightField
+if river_distance >= 1.0:
+    return height                                   # 河影响区之外 → 纯地形
+terrain_weight = river_distance ** RIVER_BLEND_EXP  # ★ 距离的幂
+return height * terrain_weight + river_height * (1.0 - terrain_weight)
+```
+
+**⇒ `最终地形 = 地形 × w + 河高 × (1−w)`，`w = river_distance^exp`。**
+**⇒ 这正是"河床 = 水位 − 深度"的另一种写法，而且【逐点闭式、天然连续】。**
+**⇒ 我们的 `HydrologyBlockCarver` 用的是"距离场 + 平滑 min + IDW 混合"一整套
+（为此写了大量注释处理折痕/断层）；PL-RGA 只用【一个幂函数 blend】。**
+
+**★ 而河高本身也是节点插值**（与我们相同）：
+```python
+river_height = height_from + (height_to - height_from) * t
+```
+⇒ 与我们的 `lerp(pl.surfaceY[i0], pl.surfaceY[i1], t)` **完全同构**。
+
+### 1.7.3 ★★★★ 水位如何跟随地形（`_applyRiverHeightSlopeDrop`）—— **解"水面像爬坡"**
+
+```python
+RIVR_HGHT_SLOPE_DROP = 0.005
+
+source_raw   = nodes[source].height       # 源头【地形】高度
+outlet_raw   = nodes[outlet].height       # 出口【地形】高度
+outlet_height= nodes[outlet].river_height # 出口【水面】高度
+raw_span     = source_raw - outlet_raw
+
+if raw_span <= RIVER_MIN_DROP:
+    source_height = outlet_height                       # 平坦 ⇒ 整条河水平
+else:
+    source_height = source_raw - drop                   # ★ 源头水位 = 地形 − 0.005
+adjusted_span = source_height - outlet_height
+
+for node in path:
+    t = (raw_height - outlet_raw) / raw_span            # ★ 用【地形高度】定参数
+    river_height = outlet_height + adjusted_span * t    # ★ 按地形比例插值水位
+```
+
+**⇒ 两条同时成立：**
+1. **水位跟随地形起伏**（`t` 由该节点的**地形高度**决定）；
+2. **落差被压缩**（`span` 被 `drop=0.005` 压扁）⇒ **水面不会"贴着 45° 山坡爬"**。
+
+**⇒ 这正是前人诊断里那条"陡坡处水面贴着地形缓抬 → 河水像爬坡"的正解。**
+**⇒ 我们当前是"缓抬 max+2/4wu"（手工常数），PL-RGA 是"按地形比例 + 压缩落差"（有据）。**
+
+### 1.7.4 ★★ 三种出口 + 回滚（保证"不生成半截河"）
+
+```python
+# 出口类型（node.type）
+"source"                # 源头
+"outlet_sea"            # 入海（heights[pixel] <= SEA_LEVEL_FRACTION）
+"outlet_local_minimum"  # 内流（终点是局部最低点）★ 仅当 lake_safe_mask 为真
+
+# ★ 回滚条件（任一命中 ⇒ 整条河【删除】，不生成）
+if _hasUnsafeDownhillNeighbor(...):   _rollbackRiver(...)   # 下坡指向 border 安全区之外
+if not lake_safe_mask[pixel]:         _rollbackRiver(...)   # 内流终点不在安全湖点
+```
+
+**⇒ 这是"跨板块一致性"的关键：宁可【不生成】，也不生成一条会跨板块断裂的河。**
+**⇒ 而我们的做法是"尽力生成 + 事后修补"（大量 fallback / 容差 / 特判）。**
+
+### 1.7.5 其他可搬的细节
+
+| 机制 | 代码 | 价值 |
+|---|---|---|
+| **河线不交叉** | `_wouldCrossExistingSegments` / `_segmentsCross`（方向叉积判定） | 几何约束，防自交 |
+| **汇入已有河** | `_nearbyDownhillRiverNode`（找 step_size 内更低的已有节点） | 天然生成树状汇流 |
+| **源头选取确定性** | `_sourcePixels`（按高度降序 + `min_source_spacing` 去重，取前 N） | 可复现 |
+| **距离场** | `_riverDistanceFieldFromDistance`：`(dist/width)^power`，≥1 即区外 | 与我们 `dist/width` 同构 |
+| **湖节点处理** | `_lakeAdjustedSegmentFields`（端点标为 lake 时，半径内水位取湖面） | 湖 = 节点属性，非独立系统 |
+
+### 1.7.6 对我们的直接含义
+
+| 我们现在 | PL-RGA | 该搬的 |
+|---|---|---|
+| 平滑 min + IDW 混合（防折痕） | **一个幂函数 blend** | ★ 简化雕刻 |
+| 水位"缓抬 max+2/4wu"（手工常数） | **按地形比例 + 压缩落差** | ★★ 解"水面爬坡" |
+| 尽力生成 + 事后修补 | **不安全就整条回滚** | ★★ 确定性 |
+| 湖 = 独立系统（`LakeNode` + BFS） | **湖 = 节点属性（`outlet_local_minimum`）** | 湖的定位 |
+| 跨区靠 halo + 容差 | **`border_safe_mask` 硬约束** | 接缝 |
+
+---
+
+## 1.8 ★★★ TerraForged-0.3.x（RTF 前代）—— 与 RTF 1.21.1 同源，但**更简洁**
+
+> `参考/sources/TerraForged-0.3.x`（5 个类：`RiverConfig/RiverCarver/RiverGenerator/RiverNode/RiverPieces`）。
+> **对照价值：看 RTF 这套设计在 4 年演进中哪些是核心（保留）、哪些是补丁（后加）。**
+
+### 1.8.1 河网生成（`RiverGenerator`）—— Voronoi 细胞图 + 双向连接
+
+```java
+// 对细胞 A 的 4 邻居 B：
+//   ① 记录【最低邻居】min
+//   ② 若 B 更高、且 A 是 B 的最低邻居（connects）⇒ A→B 加河
+for (var dir : DIRS) {
+    var b = continent.getCell(seed, bx, by);
+    if (value <= minValue) { min = b; minValue = value; continue; }   // 最低邻居
+    if (value <= 0) continue;                                          // 海洋
+    if (connects(seed, ax, ay, bx, by, value)) { addRiverNodes(a, b, ...); isSource = false; }
+}
+// ③ 若 A 是源头（无上游）且无更低邻居 ⇒ 连到最低邻居
+```
+
+**⇒ `connects` = 双向检查（A 是 B 的最低邻居）⇒ 保证树状、无环、无虚假连接。**
+**⇒ 与我们 D8 追踪的区别：它在【细胞图】上做，天然全覆盖、天然无环。**
+
+### 1.8.2 节点几何（`RiverNode`）—— **中点细分 + 垂直位移 + 曲线投影**
+
+```java
+record RiverNode(ax,ay, bx,by, ah,bh, ar,br, displacement) {
+    getHeight(t) = ah + t*(bh-ah)          // ★ 水位沿段线性插值
+    getRadius(t) = ar + t*(br-ar)          // ★ 半径沿段线性插值
+    getDistance2(x,y,t) {
+        alpha = ...(t 的曲线，CURVE3) * displacement
+        px = tx - (by-ay)*alpha            // ★ 把直线段【垂直位移】成曲线
+        py = ty + (bx-ax)*alpha
+        return Line.dist2(x,y,px,py)
+    }
+}
+```
+
+**⇒ 关键：`displacement` 让"直线段"在距离场里变成**曲线**——
+即"弯道"是**距离场的一部分**，不是另加的东西。**
+**⇒ 我们的 `RiverLineNetwork` 用折线节点 + `smin` 平滑，`TF-0.3.x` 用"直线段 + 垂直位移"。**
+
+### 1.8.3 雕刻（`RiverCarver`）—— 三级剖面，与 RTF 1.21.1 同构
+
+```java
+float bedLevel   = baseLevel - bedDepth * levels.unit;      // ★ 河床 = 水位 − 深度
+float bankLevel  = baseLevel + bankDepth * levels.unit;     // ★ 河岸 = 水位 + 岸高
+
+// ① 河谷（valley）：距离 ≥ valleyWidth 直接返回；bank~valley 之间 lerp
+float valleyAlpha = getValleyAlpha(distance, bankWidth, valleyWidth, sample.baseNoise);
+if (valleyAlpha < 1.0f) {
+    float level = Math.min(bankLevel, height);              // ★ 不超过岸高
+    height = lerp(level, height, valleyAlpha * modifier);   // ★ 侵蚀调制
+    sample.riverNoise *= getValleyNoise(...);
+}
+// ② 河床（bed）：distance ≤ bedWidth
+float riverAlpha = getAlpha(distance, bedWidth, bankWidth);
+if (riverAlpha < 1.0f) {
+    float level = Math.min(bedLevel, height);               // ★ 不超过河床
+    height = lerp(level, height, riverAlpha);
+    sample.terrainType = nodeSample.type;
+}
+```
+
+**⇒ 两个 `Math.min` 是关键：河谷不高于岸、河床不高于床
+⇒ **天然满足"水在河道里"**（不需要事后短板检查）。**
+**⇒ 而 `riverNoise`（[0,1] 河影响场）与 `terrainType` 都在这里产出 —— 供下游群系/材质用。**
+
+### 1.8.4 ★ 与 RTF 1.21.1 的演进对照（哪些是核心、哪些是后加）
+
+| 机制 | TF-0.3.x（2021） | RTF 1.21.1（2025） | 判定 |
+|---|---|---|---|
+| 河网 | Voronoi 细胞图 + `connects` | 保留（`RiverGenerator`） | **核心** |
+| 水位 | `levels.water`（海平面）+ 段插值 | `getComplexWaterHeight(waterTable)` | **核心（水位统一）** |
+| 雕刻 | 三级：valley / bank / bed | 四区：河床/河岸/谷底/渐隐 | **核心** |
+| 河床 | `baseLevel - bedDepth` | `targetWaterLevel - finalizedDepth` | **同一式** |
+| 湖 | `lakeDensity` 概率 + `addLakeNodes` | `lakeMultiplier`（半径乘数） | **演进：从"概率撒点"到"平坦度驱动"** |
+| 弯道 | `displacement`（距离场位移） | 8 种噪声（宽度/深度/阶地/不对称…） | **演进：从 1 个到 8 个** |
+| 侵蚀调制 | `getErosionModifier(erosion * config.erosion, valleyAlpha)` | 同 | **核心** |
+| 入海 | `b.noise < threshold` ⇒ 延伸到海 | `isAboveOcean` 判断 | **核心** |
+
+**⇒ 4 年演进中【不变的核心】= ① 细胞图河网 ② 统一水位 ③ 三级/四区径向剖面
+④ `河床 = 水位 − 深度` ⑤ `riverNoise` 影响场。**
+**⇒ 变化的只是【参数化程度】（湖从概率→平坦度；弯道从 1→8 个噪声）。**
+
+### 1.8.5 对我们的直接含义
+
+**我们缺的，正是那 5 条核心里的第 2、3、5 条：**
+
+| # | 核心 | 我们有吗 |
+|---|---|---|
+| ① | 细胞图/D8 河网 | ✅ 有（`RiverLineNetwork`） |
+| ② | **统一水位** | ❌ **三套**（海/湖/河） |
+| ③ | **三级径向剖面** | ⚠️ 有雏形（`bedTarget = carveSurfaceY − depth*profile`），但无"岸/谷"分层 |
+| ④ | `河床 = 水位 − 深度` | ✅ 有 |
+| ⑤ | **`riverNoise` 影响场** | ⚠️ 有 `riverDistance`，但无 [0,1] 河谷影响场 |
+
+---
+
 ## 2. 参考实现给出的答案（四套，逐条对应）
 
 | 参考 | 关键机制 | 对我们 |
