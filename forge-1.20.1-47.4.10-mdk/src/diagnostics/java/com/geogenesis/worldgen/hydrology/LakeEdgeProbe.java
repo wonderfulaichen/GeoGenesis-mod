@@ -36,7 +36,14 @@ public final class LakeEdgeProbe {
 
     private LakeEdgeProbe() { }
 
-    /** 镜像 {@code RiverLineNetwork.build} 396-404 行的网格 + origin。 */
+    /**
+     * 镜像网格 + origin。
+     *
+     * <p>⚠ <b>2026-09-19 起本类的 {@link #buildGrid} 是【遗留（未对齐）公式】，
+     * 不再是生产现状</b> —— 生产已改为对齐原点（见 {@link #buildAlignedGrid} 与
+     * {@code RiverLineNetwork.build} 的修复注释）。保留未对齐版作【对照组】，
+     * 以便随时复现"对齐前 → 对齐后"的差距。生产现状用 {@link #buildAlignedGrid}。</p>
+     */
     private record Grid(FlowField f, double minX, double minZ) { }
 
     public static void main(String[] args) throws Exception {
@@ -149,6 +156,93 @@ public final class LakeEdgeProbe {
                     wx, eF, eFd, dep, ba ? "Y" : "-", ib < 0 ? "n/a" : (bb ? "Y" : "-"));
         }
 
+        // ---------- ⑤ ★ T2.4 修复候选（零风险验证）：网格原点【全球对齐】 ----------
+        //   假说：跨 region 不一致的【直接机制】是网格原点 = rx*regionSize − margin（region 相关）
+        //        ⇒ 同一世界点在两个 region 落在【不同的格】上 ⇒ filledAt 必然不同。
+        //   项目在 PRECIP 上已有正确范式（"格点取 k·PRECIP_STEP_WU（世界坐标），与 region 无关
+        //   ⇒ 杜绝 region 相关伪影"）—— 填洼网格没这么做。
+        //   做法：只把 minX/minZ 向下取整到 cell 的倍数（格距不变），构造器无需改动。
+        Grid ca = buildAlignedGrid(rX, rZ, regionSize, cell, margin, eSampler);
+        ca.f().computeFill(net::groundYAt, curve.seaLevelY());
+        Grid cb = buildAlignedGrid(rX + 1, rZ, regionSize, cell, margin, eSampler);
+        cb.f().computeFill(net::groundYAt, curve.seaLevelY());
+        FlowField na = ca.f(), nb = cb.f();
+
+        // 网格原点 = 第 0 格中心（FlowField 未暴露 origin 访问器，用 cellCenter 反推）
+        double aLoX = Math.max(na.cellCenterX(0), nb.cellCenterX(0));
+        double aHiX = Math.min(na.cellCenterX(na.cols() - 1), nb.cellCenterX(nb.cols() - 1));
+        double aLoZ = Math.max(na.cellCenterZ(0), nb.cellCenterZ(0));
+        double aHiZ = Math.min(na.cellCenterZ((na.rows() - 1) * na.cols()),
+                nb.cellCenterZ((nb.rows() - 1) * nb.cols()));
+
+        long ov2 = 0, dif2 = 0;
+        double max2 = 0, sum2 = 0;
+        for (double wz = aLoZ; wz <= aHiZ + 1e-9; wz += cell) {
+            for (double wx = aLoX; wx <= aHiX + 1e-9; wx += cell) {
+                int ia = na.indexOf(wx, wz), ib = nb.indexOf(wx, wz);
+                ov2++;
+                double d = Math.abs(na.filledAt(ia) - nb.filledAt(ib));
+                sum2 += d;
+                if (d > 1e-6) dif2++;
+                max2 = Math.max(max2, d);
+            }
+        }
+        System.out.printf("%n[5] ★ 全球对齐网格（= 【2026-09-19 起的生产现状】；"
+                + "原点取整到 %.0f wu 的倍数）：%n", cell);
+        System.out.printf("    网格 A %d×%d，B %d×%d；重叠区取样=%d%n",
+                na.cols(), na.rows(), nb.cols(), nb.rows(), ov2);
+        System.out.printf("    不一致=%d（%.1f%%）  最大差=%.4f block  平均差=%.4f block%n",
+                dif2, 100.0 * dif2 / Math.max(1, ov2), max2, sum2 / Math.max(1, ov2));
+        System.out.printf("    对照（未对齐，见 [3]）：不一致=%d（%.1f%%）  最大差=%.4f block%n",
+                differ, 100.0 * differ / Math.max(1, overlap), maxAbsDiff);
+        System.out.printf("    判据3【对齐后跨 region 一致】: %s%n",
+                dif2 == 0 ? "PASS（对齐即解决）"
+                        : String.format("仍差 %d 格 ⇒ 对齐不是全部原因", dif2));
+
+        // ---------- ⑥ ★ 接缝线一致性（生产真正关心的位置）----------
+        //   口径修正：[2]/[3]/[5] 的"重叠区"= [rxS+0.5S, rxS+1.5S]，而
+        //   A 的本体只到 rxS+S、B 的本体从 rxS+S 起 ⇒ 重叠区里有大量格是
+        //   "一个 region 的本体" vs "另一个 region 的 margin 外围"——**外围生产不用**。
+        //   玩家看得见的是【region 接缝线】两侧的水位是否连续（跨缝跳变 = 湖在此截断）。
+        double seamX = (rX + 1) * regionSize;
+        long seamN = 0, seamDiff = 0;
+        double seamMax = 0, seamSum = 0;
+        double loSz = rZ * regionSize, hiSz = loSz + regionSize;
+        for (double wz = loSz; wz <= hiSz + 1e-9; wz += cell) {
+            int ia = na.indexOf(seamX, wz);
+            int ib = nb.indexOf(seamX, wz);
+            if (ia < 0 || ib < 0) continue;
+            seamN++;
+            double d = Math.abs(na.filledAt(ia) - nb.filledAt(ib));
+            seamSum += d;
+            if (d > 1e-6) seamDiff++;
+            seamMax = Math.max(seamMax, d);
+        }
+        System.out.printf("%n[6] ★ 接缝线一致性（wx = %.0f，即 region 分界；"
+                + "两侧各属一个 region 的【本体】）：%n", seamX);
+        System.out.printf("    取样=%d  不一致=%d（%.1f%%）  最大差=%.4f block  平均差=%.4f block%n",
+                seamN, seamDiff, 100.0 * seamDiff / Math.max(1, seamN), seamMax,
+                seamSum / Math.max(1, seamN));
+        // 对照：同一位置（接缝线）在【未对齐网格】下的表现 —— 才能量化修复收益
+        long s2N = 0, s2Diff = 0;
+        double s2Max = 0, s2Sum = 0;
+        for (double wz = loSz; wz <= hiSz + 1e-9; wz += cell) {
+            int ia = ga.f().indexOf(seamX, wz);
+            int ib = gb.f().indexOf(seamX, wz);
+            if (ia < 0 || ib < 0) continue;
+            s2N++;
+            double d = Math.abs(ga.f().filledAt(ia) - gb.f().filledAt(ib));
+            s2Sum += d;
+            if (d > 1e-6) s2Diff++;
+            s2Max = Math.max(s2Max, d);
+        }
+        System.out.printf("    对照（未对齐网格，同一条线）：不一致=%d（%.1f%%）  "
+                        + "最大差=%.4f block  平均差=%.4f block%n",
+                s2Diff, 100.0 * s2Diff / Math.max(1, s2N), s2Max,
+                s2Sum / Math.max(1, s2N));
+        System.out.printf("    判读：接缝线是玩家唯一看得见 region 划分的位置 —— "
+                + "此处一致 ⇒ 无缝；此处跳变 ⇒ 湖/河在缝上被截断。%n");
+
         // ---------- 判据 ----------
         boolean leak = rimZero == rimTotal;
         System.out.printf("[判据1] 边界圈水深恒为 0（= 确认边界泄水缺陷）: %s（%d/%d）%n",
@@ -174,5 +268,22 @@ public final class LakeEdgeProbe {
         double minX = rx * regionSize - margin, maxX = rx * regionSize + regionSize + margin;
         double minZ = rz * regionSize - margin, maxZ = rz * regionSize + regionSize + margin;
         return new Grid(new FlowField(minX, minZ, maxX, maxZ, cell, sampler), minX, minZ);
+    }
+
+    /**
+     * ★ 与 {@link #buildGrid} 同范围，但原点【向下取整到 {@code cell} 的倍数】
+     * ⇒ 格点 = {@code k·cell}（世界坐标）⇒ 与 region 无关。
+     *
+     * <p>格距不变，只是把网格平移到一个全球对齐的原点。</p>
+     */
+    private static Grid buildAlignedGrid(int rx, int rz, double regionSize, double cell,
+                                         double margin, MidpointDisplacement.ElevationSampler sampler) {
+        double minX = rx * regionSize - margin, maxX = rx * regionSize + regionSize + margin;
+        double minZ = rz * regionSize - margin, maxZ = rz * regionSize + regionSize + margin;
+        double ax = Math.floor(minX / cell) * cell;
+        double az = Math.floor(minZ / cell) * cell;
+        double bx = Math.ceil(maxX / cell) * cell;
+        double bz = Math.ceil(maxZ / cell) * cell;
+        return new Grid(new FlowField(ax, az, bx, bz, cell, sampler), ax, az);
     }
 }

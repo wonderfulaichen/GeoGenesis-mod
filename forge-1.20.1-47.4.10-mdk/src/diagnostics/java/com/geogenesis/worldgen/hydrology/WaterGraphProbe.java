@@ -92,6 +92,7 @@ public final class WaterGraphProbe {
         double[] gnd = new double[n];
         double[] oldLevel = new double[n];
         boolean[] water = new boolean[n];
+        boolean[] river = new boolean[n];   // ★ 河/湖命中列（供 [5] 前置测量）
         int riverCells = 0, oceanCells = 0;
         for (int i = 0; i < n; i++) {
             double wx = field.cellCenterX(i), wz = field.cellCenterZ(i);
@@ -107,6 +108,7 @@ public final class WaterGraphProbe {
             if (hit != null && hit.distToCenter() <= Math.max(1.0, hit.width() * 1.5)) {
                 water[i] = true;                            // 河/湖（命中河道内）
                 oldLevel[i] = hit.surfaceY();
+                river[i] = true;
                 riverCells++;
             }
         }
@@ -114,23 +116,43 @@ public final class WaterGraphProbe {
                 riverCells, oceanCells, riverCells + oceanCells, n,
                 100.0 * (riverCells + oceanCells) / n);
 
-        // ===== 3) 统一解算 =====
+        // ===== 3) 统一解算（数据源 = priority-flood 溢流高程 filledAt）=====
         long t0 = System.nanoTime();
         double[] level = WaterLevelSolver.solve(field, idx -> gnd[idx], idx -> water[idx], seaLevel);
         long ms = (System.nanoTime() - t0) / 1_000_000;
 
+        // ===== 3b) ★ T1.8：数据源 = 闭式水位场 W =====
+        WaterField wf = new WaterField(gen::terrainEQuick, gen.heightCurve(),
+                WaterField.DEFAULT_SMOOTH_WU, WaterField.DEFAULT_OFFSET);
+        double[] levelW = WaterLevelSolver.solve(idx -> water[idx],
+                idx -> wf.waterYAt(field.cellCenterX(idx), field.cellCenterZ(idx)), n, seaLevel);
+        System.out.printf("闭式水位场 W：smoothWu=%.0f wu  offset=%.1f 块%n",
+                wf.smoothWu(), wf.offset());
+
         // ===== 4) 账单 =====
-        int monoViol = 0, perchNew = 0, perchOld = 0, diffCells = 0;
-        double maxPerchNew = 0, maxPerchOld = 0, maxDepthNew = 0, maxDepthOld = 0;
-        double sumAbsDiff = 0;
+        int monoViol = 0, monoViolW = 0;
+        int perchNew = 0, perchOld = 0, perchW = 0;
+        int diffCells = 0, diffWCells = 0;
+        // ★ 2026-09-19 修正：④ 的分母必须是【参与比较的格数】（河+海，见下方计数），
+        //   旧代码用 riverCells(88) 作分母，而计数含海洋格(1923) ⇒ 实测打出 "90/88" 这种坏数。
+        int cmpCells = 0;
+        double maxPerchNew = 0, maxPerchOld = 0, maxPerchW = 0, sumPerchW = 0;
+        double maxDepthNew = 0, maxDepthOld = 0, maxDepthW = 0;
+        double sumAbsDiff = 0, sumAbsDiffW = 0;
         for (int i = 0; i < n; i++) {
             if (!water[i]) continue;
-            // 短板（新）
+            // 短板：水位 ≤ 紧邻最低旱地（三种口径同测）
             double rimMin = rimMin(field, water, gnd, i);
             if (rimMin != Double.MAX_VALUE) {
                 double v = level[i] - rimMin;
                 if (v > 0.5) perchNew++;
                 maxPerchNew = Math.max(maxPerchNew, v);
+
+                double vw = levelW[i] - rimMin;
+                if (vw > 0.5) perchW++;
+                maxPerchW = Math.max(maxPerchW, vw);
+                sumPerchW += vw;
+
                 if (!Double.isNaN(oldLevel[i])) {
                     double vo = oldLevel[i] - rimMin;
                     if (vo > 0.5) perchOld++;
@@ -138,27 +160,173 @@ public final class WaterGraphProbe {
                 }
             }
             maxDepthNew = Math.max(maxDepthNew, level[i] - gnd[i]);
+            maxDepthW = Math.max(maxDepthW, levelW[i] - gnd[i]);
             if (!Double.isNaN(oldLevel[i])) {
+                cmpCells++;
                 maxDepthOld = Math.max(maxDepthOld, oldLevel[i] - gnd[i]);
                 double d = Math.abs(level[i] - oldLevel[i]);
                 sumAbsDiff += d;
                 if (d > 0.5) diffCells++;
+                double dw = Math.abs(levelW[i] - oldLevel[i]);
+                sumAbsDiffW += dw;
+                if (dw > 0.5) diffWCells++;
             }
             int dn = field.flowTo(i);
-            if (dn >= 0 && dn < n && water[dn] && level[i] < level[dn] - 1e-6) monoViol++;
+            if (dn >= 0 && dn < n && water[dn]) {
+                if (level[i] < level[dn] - 1e-6) monoViol++;
+                if (levelW[i] < levelW[dn] - 1e-6) monoViolW++;
+            }
         }
 
         System.out.println();
         System.out.printf("[账单] 统一解算 %d ms（%d 格）%n", ms, n);
-        System.out.printf("  ① 单调违反边 = %d（应 0）%n", monoViol);
-        System.out.printf("  ② 短板违反格：新 = %d（最坏 %+.3f 块）；旧 = %d（最坏 %+.3f 块）%n",
-                perchNew, maxPerchNew, perchOld, maxPerchOld);
-        System.out.printf("  ③ 最深水深：新 = %.3f 块；旧 = %.3f 块%n", maxDepthNew, maxDepthOld);
-        System.out.printf("  ④ 新旧水位不同的格 = %d / %d；平均差 %.3f 块%n",
-                diffCells, riverCells, riverCells == 0 ? 0 : sumAbsDiff / riverCells);
+        System.out.printf("  ① 单调违反边：filledAt 源 = %d；W 源 = %d（应 0）%n", monoViol, monoViolW);
+        System.out.printf("  ② 短板违反格（水位 − 紧邻最低旱地 > 0.5 块）：%n");
+        System.out.printf("       河线包络（旧生产）  = %4d   最坏 %+.3f 块%n", perchOld, maxPerchOld);
+        System.out.printf("       filledAt（统一解算）= %4d   最坏 %+.3f 块%n", perchNew, maxPerchNew);
+        System.out.printf("       W（闭式，T1.8）     = %4d   最坏 %+.3f 块   平均 %+.3f%n",
+                perchW, maxPerchW, sumPerchW / Math.max(1, riverCells));
+        System.out.printf("  ③ 最深水深（水位 − 地面）：河线包络 %.3f；filledAt %.3f；W %.3f 块%n",
+                maxDepthOld, maxDepthNew, maxDepthW);
+        System.out.printf("  ④ 与旧生产的差异（分母 = 可比较水格 %d = 河/湖 %d + 海 %d）：%n",
+                cmpCells, riverCells, oceanCells);
+        System.out.printf("       filledAt：差 %d/%d 格（%.1f%%），平均 %.3f 块%n",
+                diffCells, cmpCells, 100.0 * diffCells / Math.max(1, cmpCells),
+                cmpCells == 0 ? 0 : sumAbsDiff / cmpCells);
+        System.out.printf("       W       ：差 %d/%d 格（%.1f%%），平均 %.3f 块%n",
+                diffWCells, cmpCells, 100.0 * diffWCells / Math.max(1, cmpCells),
+                cmpCells == 0 ? 0 : sumAbsDiffW / cmpCells);
+        // ===== 5) ★ T3 前置测量：河线水面(surfaceY) vs 闭式 W 的逐点差 =====
+        int dr = 0;
+        double dSum = 0, dMin = Double.MAX_VALUE, dMax = -Double.MAX_VALUE;
+        int[] buckets = new int[4];                       // |差| <1 / <3 / <10 / ≥10
+        for (int i = 0; i < n; i++) {
+            if (!river[i]) continue;
+            double d = oldLevel[i] - levelW[i];
+            dr++;
+            dSum += d;
+            dMin = Math.min(dMin, d);
+            dMax = Math.max(dMax, d);
+            double ad = Math.abs(d);
+            if (ad < 1) buckets[0]++;
+            else if (ad < 3) buckets[1]++;
+            else if (ad < 10) buckets[2]++;
+            else buckets[3]++;
+        }
+        double dMean = dr == 0 ? 0 : dSum / dr;
+        double dSd = 0;
+        for (int i = 0; i < n; i++) {
+            if (!river[i]) continue;
+            double e = oldLevel[i] - levelW[i] - dMean;
+            dSd += e * e;
+        }
+        dSd = Math.sqrt(dr == 0 ? 0 : dSd / dr);
+        System.out.println();
+        System.out.printf("[5] ★ T3 前置：河线水面 − W 的逐点差（河/湖列 %d 个）%n", dr);
+        if (dr > 0) {
+            System.out.printf("    平均 %+.3f 块   标准差 %.3f   最小 %+.3f   最大 %+.3f%n",
+                    dMean, dSd, dMin, dMax);
+            System.out.printf("    |差|<1 块: %d（%.0f%%）  1~3: %d  3~10: %d  ≥10: %d%n",
+                    buckets[0], 100.0 * buckets[0] / dr, buckets[1], buckets[2], buckets[3]);
+            // 有符号分解：>0 = 河面高于 W（潜在悬空，W 作上界可治）；<0 = 河面低于 W（正常）
+            int above = 0, below = 0;
+            double maxExcess = 0, maxDeficit = 0;
+            for (int i = 0; i < n; i++) {
+                if (!river[i]) continue;
+                double d = oldLevel[i] - levelW[i];
+                if (d > 1.0) {
+                    above++;
+                    maxExcess = Math.max(maxExcess, d);
+                } else if (d < -1.0) {
+                    below++;
+                    maxDeficit = Math.max(maxDeficit, -d);
+                }
+            }
+            System.out.printf("    河面【高于】W+1 的列 = %d / %d（%.0f%%，最坏 +%.3f）"
+                            + " ⇒ W 作上界约束可治这些%n",
+                    above, dr, 100.0 * above / Math.max(1, dr), maxExcess);
+            System.out.printf("    河面【低于】W−1 的列 = %d / %d（%.0f%%，最坏 −%.3f）"
+                            + " ⇒ 正常（河在谷里）%n",
+                    below, dr, 100.0 * below / Math.max(1, dr), maxDeficit);
+        }
+        System.out.println("    判读：标准差小 ⇒ 水面与 W 已自洽（锚定是小修正，T3 可低风险做）；");
+        System.out.println("          标准差大 ⇒ 锚定会改动现有形态，必须先弄清差异来源再动。");
+        // ===== 6) ★ 洼地掩膜候选：depthBelowSmooth > 0 vs 现有湖域 =====
+        testLakeMask(net, wf, rx, rz, regionSize);
+
         System.out.println();
         System.out.println("  对照（旧系统独立审计）：河悬空 58% ≥5 块 / 最坏 36.6 块；湖短板最坏 +26.076 块");
-        System.out.println("  判读：②③ 的『新』显著小于『旧』⇒ 统一解算对两类缺陷有效。");
+        System.out.println("  ★ 判读（按实测，勿写死）：短板栏越小越好。"
+                + "2026-09-19 实测 filledAt 源并未优于旧生产（与『前一版规则』同数），"
+                + "故不要预设『新优于旧』。");
+    }
+
+    /**
+     * [6] ★ 洼地掩膜候选（{@code depthBelowSmooth > 0}）与【现有湖域】的重合度。
+     *
+     * <h4>它要回答的问题</h4>
+     * <p>{@code W} 相对河面偏高（平均 +5.4 块）⇒ 它不能当河道水面；
+     * 但它也许能当【跨区一致的洼地掩膜】（解决"湖没到边缘就结束"）。
+     * 若它与现有湖域（{@code inDomain} / {@code inFlood}）<b>重合很差</b>，
+     * 则该方向<b>不成立</b>，应彻底放弃。</p>
+     *
+     * <h4>为何必须用湖自己的口径</h4>
+     * <p>现有湖系统比表面成熟：逐格洼地轮廓（2026-09-09 B1 取代圆盘命中）+
+     * 侵蚀后 rim 短板（{@code erodedWaterLevel}）+ 侵蚀后连通域（{@code inFlood}）
+     * + 块级等高线精修。⇒ 用它的口径量，才不是在重造轮子。</p>
+     */
+    private static void testLakeMask(RiverLineNetwork net, WaterField wf,
+                                     int rx, int rz, double regionSize) {
+        final double step = 16.0;
+        int m = (int) Math.round(regionSize / step) + 1;
+        double loX = rx * regionSize, loZ = rz * regionSize;
+        double tol = RiverLineParams.defaults().gridCell() * 2.0;
+
+        long total = 0, maskCells = 0;
+        long lakeHits = 0, lakeBoth = 0;
+        long domHits = 0, domBoth = 0;
+        long floodHits = 0, floodBoth = 0;
+
+        for (int j = 0; j < m; j++) {
+            for (int i = 0; i < m; i++) {
+                double wx = loX + i * step, wz = loZ + j * step;
+                total++;
+                boolean inMask = wf.depthBelowSmooth(wx, wz) > 0.0;
+                if (inMask) maskCells++;
+
+                RiverLineNetwork.RiverLineHit hit = net.sample(wx, wz);
+                if (hit == null) continue;
+                if (hit.isLake()) {
+                    lakeHits++;
+                    if (inMask) lakeBoth++;
+                }
+                if (hit.lake() != null) {
+                    if (hit.lake().inDomain(wx, wz, tol)) {
+                        domHits++;
+                        if (inMask) domBoth++;
+                    }
+                    if (hit.lake().inFlood(wx, wz)) {
+                        floodHits++;
+                        if (inMask) floodBoth++;
+                    }
+                }
+            }
+        }
+
+        System.out.println();
+        System.out.printf("[6] 洼地掩膜候选 vs 现有湖域（%d 点 @ %.0f wu）%n", total, step);
+        System.out.printf("    掩膜 depthBelowSmooth>0 命中 = %d（%.1f%%）%n",
+                maskCells, 100.0 * maskCells / Math.max(1, total));
+        System.out.printf("    现有 isLake  命中 = %4d   其中也在掩膜内 = %4d（%.0f%%）%n",
+                lakeHits, lakeBoth, 100.0 * lakeBoth / Math.max(1, lakeHits));
+        System.out.printf("    现有 inDomain 命中 = %4d   其中也在掩膜内 = %4d（%.0f%%）%n",
+                domHits, domBoth, 100.0 * domBoth / Math.max(1, domHits));
+        System.out.printf("    现有 inFlood 命中  = %4d   其中也在掩膜内 = %4d（%.0f%%）%n",
+                floodHits, floodBoth, 100.0 * floodBoth / Math.max(1, floodHits));
+        System.out.printf("    反向：掩膜内落在湖域的比例 = %.1f%%（%d/%d）%n",
+                100.0 * domBoth / Math.max(1, maskCells), domBoth, maskCells);
+        System.out.println("    判读：若湖域命中【几乎不落在】掩膜内 ⇒ W 当不了洼地掩膜，"
+                + "该方向放弃；若重合高 ⇒ 可用它做跨区一致的掩膜，锦上添花。");
     }
 
     /** 紧邻最低旱地（格）高度。 */
