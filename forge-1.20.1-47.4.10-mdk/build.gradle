@@ -1139,6 +1139,19 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
+// Water view render (★ 2026-09-19): hillshade + blue water, for EYE-CONTROL of lake/river shore.
+//   The original blue-water renderer was lost during the hydrology refactor (no PNG probe drew
+//   blue water), so this restores it. 1 pixel = 1 block. Output: build/waterview/*.png
+//   gradlew runWaterViewProbe [-PprobeArgs="seed blockX blockZ radiusBlocks"]
+task runWaterViewProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.WaterViewProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Lake shore precise-intersection feasibility (2026-09-17, user's ray-tracing suggestion):
 //   gradlew runLakeEdgeRefineProbe [-PprobeArgs="seed blockX blockZ radiusBlocks"]
 task runLakeEdgeRefineProbe(type: JavaExec) {
