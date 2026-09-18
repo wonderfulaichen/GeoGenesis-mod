@@ -986,6 +986,18 @@ task runTwoWaterBudgetProbe(type: JavaExec) {
     }
 }
 
+// UnifiedCriterionProbe (2026-09-19): P0-2 判据统一前的【先量后改】——
+//   量【河分支几何判水】vs【绝对等高线判水】的分歧（多灌/漏灌），以及水体面积净变化。
+//   gradlew runUnifiedCriterionProbe [-PprobeArgs="seed bx bz half step"]
+task runUnifiedCriterionProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.UnifiedCriterionProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runWaterFieldProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldProbe'
