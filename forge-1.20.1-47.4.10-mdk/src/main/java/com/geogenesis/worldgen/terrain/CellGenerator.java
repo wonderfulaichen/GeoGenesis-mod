@@ -1490,9 +1490,20 @@ public final class CellGenerator {
         // SLOPE 0.0015 微坡墙而非 blend；恢复基线 floorDiv(wu,48) + 右/下缘 blend）
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        // ★ 2026-09-19 诊断：取 tile 子项（每格第 1 次；含 tileCacheGet + 生成 + 驱逐）
+        long tg0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
+        com.geogenesis.diagnostics.WorldGenProfiler.end(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXGET, tg0);
         if (res == null) return 0.0; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
-        return blendTileDelta(res, wuX, wuZ, tileCX, tileCZ, true);   // 主路径：missing ⇒ 现场生成（确定性）
+        // ★ 2026-09-19 诊断：blend 子项（每格 1 次）
+        long tb0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
+        try {
+            return blendTileDelta(res, wuX, wuZ, tileCX, tileCZ, true);   // 主路径：missing ⇒ 现场生成（确定性）
+        } finally {
+            com.geogenesis.diagnostics.WorldGenProfiler.end(
+                    com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXBLEND, tb0);
+        }
     }
 
     /**
@@ -1627,8 +1638,19 @@ public final class CellGenerator {
         //   此处 getOrGenTile 必命中（或同步中断 → 与 delta=0 一致地跳过）。
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        // ★ 2026-09-19 诊断：取 tile 子项（每格第 2 次）
+        long tg1 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
         ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
-        coreApplyDelta(cell, delta, res, wuX, wuZ);
+        com.geogenesis.diagnostics.WorldGenProfiler.end(
+                com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXGET, tg1);
+        // ★ 2026-09-19 诊断：落格子项（含陆地重分类，每格 1 次）
+        long tc0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
+        try {
+            coreApplyDelta(cell, delta, res, wuX, wuZ);
+        } finally {
+            com.geogenesis.diagnostics.WorldGenProfiler.end(
+                    com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXCORE, tc0);
+        }
     }
 
     /**

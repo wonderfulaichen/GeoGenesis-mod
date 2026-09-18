@@ -118,7 +118,25 @@ public final class WorldGenProfiler {
          * 不含阻塞与等待）。<b>不支持的 JVM ⇒ 记不到</b>（静默跳过，绝不影响生成）。</p>
          * <p>⚠ 只记 ≥1ms 的块（正常块墙钟≈CPU ⇒ 无停顿 ⇒ 不记）。</p>
          */
-        STALL("停顿(未占CPU)");
+        STALL("停顿(未占CPU)"),
+        /**
+         * ★ 2026-09-19 新增：<b>提取内子项</b> —— 把 {@code extractFromTile} 切开。
+         *
+         * <h4>为什么必须切</h4>
+         * <p>实测（seed 9139912035078620160 第三轮）：单块 <b>extract 达 103426ms</b>，
+         * 而同一块的 {@code 停顿(未占CPU)} 最多 2519ms ⇒ <b>它真的烧了 ~101 秒 CPU</b>
+         * （不是被挂住）。而 tile 生成总 70 次 / 17.2 秒、两处 computeIfAbsent 总 13.9 秒
+         * ⇒ <b>这 101 秒既不是生成也不是那两处锁</b>。</p>
+         * <p>剩下未埋点的只有：{@code getOrGenTile}（含 {@code tileCacheGet} 与
+         * {@code pruneErosionCache}）、{@code blendTileDelta}、{@code coreApplyDelta}。
+         * 三者单次都应是<b>微秒级</b>，故必须先量出<b>哪一项、各多少次</b>。</p>
+         * <p>⚠ <b>每次调用都记</b>（不设阈值）—— 因为本阶段要同时拿到<b>精确次数</b>
+         * （次数本身就是判据：256 格循环若出现几十万次调用即异常）。</p>
+         * <p>⚠ 四者共同构成 {@code 侵蚀tile提取}，故占比之和会明显 &gt;100%。</p>
+         */
+        EXGET("提取内-取tile"),
+        EXBLEND("提取内-blend"),
+        EXCORE("提取内-落格");
 
         final String label;
         Stage(String label) { this.label = label; }
