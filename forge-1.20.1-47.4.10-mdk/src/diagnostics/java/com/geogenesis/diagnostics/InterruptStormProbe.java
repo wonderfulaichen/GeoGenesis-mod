@@ -1,5 +1,6 @@
 package com.geogenesis.diagnostics;
 
+import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
 import com.geogenesis.worldgen.terrain.TerrainParams;
@@ -84,11 +85,47 @@ public final class InterruptStormProbe {
         System.out.println("        反例留痕：临时移除 CellGenerator 的中断拦截后，本项实测");
         System.out.println("        14488ms vs 阈值 2260ms ⇒ FAIL（extract 由 0ms 涨到 13950ms）。");
 
+        // ---- [4] 缓存污染：中断中产出的【降级块】不得留在共享 chunk 缓存里 ----
+        //   中断时取 tile 直接返回 null ⇒ 该块拿不到任何侵蚀增量（delta=0），
+        //   是"看起来像没被侵蚀"的降级结果。若入缓存 ⇒ 预览永久显示平地形。
+        // ⚠ 口径修正（首版踩的坑）：必须用【全新的 terrain 实例】做本项。
+        //   首版复用已在 [1]/[2] 用过的 gt，且区域 (60,60) 的侵蚀量本就≈0
+        //   ⇒ 降级值与正确值【凑巧相等】⇒ 判据失去判别力（三项签名全相同）。
+        //   现改为：全新实例（缓存必空）+ 已证实有侵蚀的区域 (40,40)（[1] 中
+        //   该块有 4 次 tile miss、extract 302ms）。
+        CellGenerator gen2 = new CellGenerator(tp, tp.minY(), tp.maxY());
+        gen2.seed(seed);
+        GeoGenesisTerrain gt2 = new GeoGenesisTerrain(gen2);
+        // ⚠ 判据口径（第二次修正）：不能靠"内容签名"判断。
+        //   首版用 cell.height（被水文雕刻重写）、二版用 cell.e（同样被重写）
+        //   ⇒ 三项签名完全相同，判据毫无判别力。
+        //   改为【直接判据】：看正常调用是否真的【重新生成了 tile】。
+        //     - 未污染：正常调用要重算 ⇒ 侵蚀 tile 缓存条目【增加】
+        //     - 已污染：正常调用原样取回降级块 ⇒ 条目【不增加】
+        long s1 = gen2.erosionTileCacheSize();
+        cellsOn(gt2, 40, 40, true);                          // 中断 ⇒ 降级块
+        long s2 = gen2.erosionTileCacheSize();
+        cellsOn(gt2, 40, 40, false);                         // 正常调用 ⇒ 应【重算】
+        long s3 = gen2.erosionTileCacheSize();
+        cellsOn(gt2, 40, 40, false);                         // 再一次 ⇒ 应【命中缓存】
+        long s4 = gen2.erosionTileCacheSize();
         System.out.println();
-        System.out.printf("总判定: %s%n", notSlower
-                ? "ALL PASS（中断不会引发重试风暴）"
-                : "FAIL（中断态出现重试风暴 ⇒ 入口拦截失效/被移除）");
-        System.exit(notSlower ? 0 : 1);
+        System.out.println("[4] 缓存污染检查（全新实例 + chunk(40,40)，看侵蚀 tile 缓存条目数）：");
+        System.out.printf("    初始=%d  中断调用后=%d  正常调用后=%d  再次调用后=%d%n",
+                s1, s2, s3, s4);
+        boolean notPolluted = s3 > s2;    // 正常调用确实重算了 ⇒ 没吃到被污染的降级块
+        boolean stillCached = s4 == s3;   // 第三次没再生成 ⇒ 正常缓存仍然有效
+        System.out.printf("    [4a] 降级块未入缓存（正常调用重算了：%d > %d）⇒ %s%n",
+                s3, s2, notPolluted ? "PASS" : "FAIL");
+        System.out.printf("    [4b] 正常路径仍在缓存（第三次未再生成：%d == %d）⇒ %s%n",
+                s4, s3, stillCached ? "PASS" : "FAIL");
+
+        boolean pass = notSlower && notPolluted && stillCached;
+        System.out.println();
+        System.out.printf("总判定: %s%n", pass
+                ? "ALL PASS（无重试风暴 + 降级块不污染缓存 + 正常缓存仍在）"
+                : "FAILURES（见上方分项）");
+        System.exit(pass ? 0 : 1);
     }
 
     /** 在【新线程】上生成一块，返回耗时与 tile 命中/未命中增量。 */
@@ -116,6 +153,40 @@ public final class InterruptStormProbe {
             Thread.currentThread().interrupt();
         }
         return m;
+    }
+
+    /** 在（可选中断的）新线程上取一块 —— 用于 [4] 的缓存污染检查。 */
+    private static Cell[] cellsOn(GeoGenesisTerrain gt, int cx, int cz, boolean interrupt) {
+        Cell[][] out = new Cell[1][];
+        Thread t = new Thread(() -> {
+            if (interrupt) Thread.currentThread().interrupt();
+            out[0] = gt.getChunkCells(cx, cz);
+            Thread.interrupted();   // 消费中断位（该线程随即结束，属保险）
+        }, "gg-probe-worker2");
+        t.setDaemon(true);
+        t.start();
+        try {
+            t.join();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+        return out[0];
+    }
+
+    /**
+     * 侵蚀签名：判断两次生成是否得到【同一结果】（缓存命中 vs 重算）。
+     *
+     * <p>⚠ 口径修正（首版踩的坑）：初版用 {@code cell.height} —— 三项签名<b>完全相同</b>，
+     * 判据毫无判别力。原因：{@code cell.height} 随后会被<b>水文雕刻</b>
+     * （{@code applyHydrologyValley}）【重写】，因此侵蚀有无在 height 上看不出来。
+     * 侵蚀增量真正作用的是 {@code cell.e} ⇒ 签名必须用 {@code e}。</p>
+     */
+    private static double heightSig(Cell[] cells) {
+        double s = 0;
+        if (cells != null) {
+            for (Cell c : cells) if (c != null) s += c.e;
+        }
+        return s;
     }
 
     private InterruptStormProbe() { }

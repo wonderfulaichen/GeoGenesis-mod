@@ -302,6 +302,23 @@ public final class GeoGenesisTerrain {
         long key = pack(chunkX, chunkZ);
         Cell[] cells = cachedChunk(chunkX, chunkZ);
         if (cells == null) {
+            // ★★ 2026-09-19 修复（缓存污染）：<b>中断中产出的块【绝不入缓存】</b>。
+            //
+            //   为什么必须拦：线程中断位已置时，CellGenerator 的取 tile 入口会直接
+            //   返回 null（见中断重试风暴修复）⇒ 本块拿不到任何侵蚀增量 ⇒
+            //   它是一个【降级结果】（delta=0，看起来是"未被侵蚀"的平地形）。
+            //   若写进共享 chunk 缓存，后续正常请求会一直拿到这个降级块
+            //   ⇒ 预览出现"拖动后该区域变成平原"的伪影，且不会自愈。
+            //
+            //   为什么现在才成为问题：修复前该路径要卡 14~100 秒（难得一见），
+            //   修复后是【瞬时】完成 ⇒ 发生频率高得多。
+            //
+            //   ⚠ 只影响"线程已被中断"这一种情况；生产 Worker-Main 线程不会被
+            //     这样中断 ⇒ 对游戏地形零影响（仅多算一次）。
+            //   ⚠ 返回值照常给出（调用方仍可显示），只是【不再落缓存】。
+            if (Thread.currentThread().isInterrupted()) {
+                return generateChunk(chunkX, chunkZ);
+            }
             cells = generateChunk(chunkX, chunkZ);
             Cell[] prev = cache.putIfAbsent(key, cells);
             if (prev != null) cells = prev;
