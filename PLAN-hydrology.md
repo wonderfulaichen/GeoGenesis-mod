@@ -9,6 +9,155 @@
 
 ---
 
+# ★★★ 新对话交接（2026-09-19）—— 先读这一节 ★★★
+
+> 本会话上下文已耗尽，工作**整体未提交 git**（用户未要求）。新对话请从本节接手。
+
+## 0. 当前代码状态：**干净可交付**
+
+```
+compileJava + compileDiagnosticsJava … BUILD SUCCESSFUL
+runWorldgenGate                      … ALL PASS
+runWaterViewProbe (seed 9139912035078620160 @ 块(-377,-335)±128) … 实际有水 31753
+```
+
+未提交（`git status`）：11 项删除 + 8 项修改 + 4 项新增（详见 §5）。
+
+## 1. ✅ 已完成并经实测（保留，勿回退）
+
+| 项 | 实测证据 |
+|---|---|
+| **回退我的 12wu 回归**（湖域容差 12→48wu） | 水体逐位回到基线（31327/45307/13980）；用户实机确认边缘未贴合是我造成的 |
+| **删净死代码**（9 项 main + 5 个探针 + 5 个 gradle 任务） | 编译 PASS、门禁 PASS、水体 31802 逐位不变、J1 一字未变 ⇒ 零行为变更 |
+| **动量流向场** `FlowField.MOMENTUM_WEIGHT=0.45`（`RiverLineNetwork.FLOW_MOMENTUM_WEIGHT`） | 成河格方向落在 **45° 整数倍**占比 **100.0% → 18.8%**；`flowTo`/`accum` 不一致 0/0（权重 0 时逐位退化） |
+| **粒子化河线节点**（`RiverLineNetwork` 河线构建处，由"格心"改为沿连续流向场积分） | 水体 31327 → 31802（+1.5%）；门禁 ALL PASS |
+| **★ 域扭曲替换纯正弦蜿蜒**（新增 `riverline/RiverWarp.java`） | 该河段方向 **45.0° 恒定 → 32.6°~51.3°**；出图河线明显弯曲 |
+| **★ 河源淡出跨度改全长比例**（`meanderHeadArc`） | 这是"太直"的**真正根因**：旧值固定 144wu，而一级河全长仅 ~34wu ⇒ `headFade ≤ 0.14` ⇒ 蜿蜒被压到 14% |
+
+## 2. ❌ 已回退（原因已写入代码注释）
+
+| 项 | 回退原因 |
+|---|---|
+| P5 成河门槛 4格→2格（2304→1152） | 实测：河数 +19%、"很宽" 34.2%→13.9%（**有效**），但**我当时基于错误归因回退**（见 §4）。**可重新评估启用** |
+| P2 选湖规则"最低水位"×2 次（`RiverLineNetwork.sampleRegion` / `HydrologyBlockCarver.carveColumn`） | 两次都**与 P4 改动叠加**，基线被污染 ⇒ **结论不成立**，不是"已证伪"。需单变量重测 |
+
+## 3. ⛔ 已被推翻的前提（重要：别再为它动刀）
+
+**「湖面不平 / 湖内水位不一致」= 假缺陷。**
+
+- 埋点实测（`GeoGenesisTerrain.LAKE_LEVEL_SPLIT_DIAG`，已关闭）：真走湖分支的湖
+  `spill∈[169.331,169.331] 跨度=0.000`、`最终水位∈[169.331,169.331] 跨度=0.000`
+  ⇒ **湖面本来就是平的**；且 25000 列里**只有 1 个湖**。
+- 根因：`cell.isLake` 在**三处**被赋值（`:685` 湖分支 / `:713` **河分支** / `:857` **精修洪泛**）
+  ⇒ `isLake=true` 只表示"水位 ≥ 海平面"，**不表示"这是湖"**；河列同样为 true。
+- ⇒ `runLakeLevelFlatnessProbe` 的 J1 判据失效，**不得**再据其输出改生产代码。
+- ⇒ 连带：**P2（水位收敛）与 P3（湖=加宽河床）的前提被推翻**，不必再为它动刀。
+- 同理：**"河湖衔接差 10.7 块"的判据可能也混淆了河与湖**，需重新评估。
+
+## 4. 🔥 我犯过的方法论错误（新对话务必避免）
+
+1. **判据混淆 ×5**（判水漏灌 32% / 湖真漏灌 / 97.1% 漏灌 / sinuosity 不可比 / **湖面不平**）
+   ⇒ 每次都是"自造统计指标 + 未做反例检验"。**形态类一律以出图肉眼为终审。**
+2. **混淆实验**：P4 + P5门槛 + P2选湖 三处叠加，却拿 P4 之前的基线去比
+   ⇒ 把 P2 的"证伪"和 P5 的"σ 恶化"都记错了。**一次只改一处。**
+3. **在死代码上做工**：按计划改 `RiverTrace.traceLine`，结果它在 `src/main` **零调用**（白改一场）。
+   ⇒ **动手前先确认调用点存在。**
+4. **轻率否定参考价值**：我曾说 SimpleHydrology/geotransport 对本项目"没价值"，被用户纠正
+   （"**这流量图层就是这些得来的**"）。两者分别提供**动量/discharge 蜿蜒**与**随机线性输运**，
+   我们 `FlowField` 注释自己就写着"参考 geotransport 的 `solve_uniform`"。
+
+## 5. 本轮改动清单（`git status`）
+
+**删除**：`RiverTrace.java`、`WaterField.java`、`WaterLevelSolver.java`、`HydrologyContinuousSample.java`、
+`HydrologyTerrainFacade.java`、`HydrologyRiverSample.java`、`DrainageField.java`
+（+ 探针 `WaterFieldProbe`/`WaterFieldUnifyProbe`/`WaterGraphProbe`/`HydrologyTerrainFacadeProbe`/`HydrologyExperimentProbe`）
+
+**修改**：`build.gradle`、`FlowField.java`（删死方法 + 新增连续流向场）、`MidpointDisplacement.java`（只剩 `Node`/`ElevationSampler`）、
+`RiverLineNetwork.java`、`RiverLineParams.java`、`HydrologyBlockCarver.java`、`HydrologyChunkResult.java`、
+`HydrologyExperimentEngine.java`、`GeoGenesisTerrain.java`、`LakeDomainSweepProbe.java`
+
+**新增**：`riverline/RiverWarp.java`、探针 `FlowDirectionHistogramProbe`/`LakeLevelFlatnessProbe`/`RiverWidthProfileProbe`
+
+## 6. ▶ 下一步（唯一推荐）：**复刻 FTF `generateForks` —— 沿已接受河主动分叉出支流**
+
+### 为什么必须这样做（已查证，勿再走调参路线）
+
+- 我们现在的源头生成是**"候选源点 + 三重过滤"**（`RiverLineNetwork:533-548`）：
+  `claimed`（河中心线）/ `tooClose`（与已有源至少隔 **96 块**）/ `insideExistingValley`（谷壁 = **3.5×半宽**，34% 的河半宽 ≥8 块 ⇒ 谷壁 28+ 块）
+- ⇒ **降门槛无效**（实测门槛腰斩后 `<10` 节点的河仍是 0）；**放宽过滤会回退你 2026-09-01 的要求**
+  （"源头不应该生成在另外一条河的过渡区里面"）⇒ 二者在本架构下**互斥**。
+- **参考的第三条路（FTF）**：支流**本来就该贴着父河生长** —— 它们是"从主干分出来的"，
+  不是"独立候选源点"。这样两个要求可同时满足。
+
+### FTF 的 `generateForks` 完整参数（已逐行提取，可直接照搬机制）
+
+```java
+// BaseRiverGenerator.java:77-119
+if (depth > 2) return;                                   // 最多 3 级 fork
+float length = 0.44F * parent.carver.getRiver().length;
+if (length < 300.0f) return;                             // fork 最小长 300（父段须 ≥681.8）
+for (float offset = 0.25F; offset < 0.9f; offset += spacing.next(random)) {
+    direction = -direction;                              // 每个位置双向各试一次
+    float parentAngle = parent.carver.getRiver().getAngle();
+    float forkAngle = direction * 6.2831855F * River.FORK_ANGLE.next(random);
+    ...
+    if (!this.riverOverlaps(river, parent, rivers)) {    // 重叠排斥 250（这是唯一的密度限制）
+        RiverWarp forkWarp = parent.carver.getWarp().createChild(0.15f, 0.75f, 0.65f, random);
+        this.generateForks(builder, River.FORK_SPACING, config, random, warp, rivers, depth + 1);
+    }
+}
+```
+
+| 常量（`River.java:11-16`） | 公式 `min + rand×range` | 区间 |
+|---|---|---|
+| `FORK_ANGLE` | 0.075 + rand×0.115 | ±2π×[0.075,0.190] = **±27.0°~68.4°** |
+| `MAIN_SPACING` | 0.1 + rand×0.25 | [0.10, 0.35]（沿父河比例步进） |
+| `FORK_SPACING` | 0.25 + rand×0.25 | [0.25, 0.50] |
+| `MAIN_VALLEY` / `FORK_VALLEY` | 0.8+0.7 / 0.4+0.75 | 谷宽 275×该值 |
+
+- fork 宽度：`√(父河在 offset 处的宽度) × 0.75`，下限 **1**（`UpliftRiverCarver.createForkConfig:474-482`）
+- FTF **没有汇流面积门槛**；`RiverConfig.length=5000/4500` 在 carving 路径中未被引用（未确认其它用途）
+- 另一条可参考的路线（更贴"生源头"）：`worldgen-master/src/hydrology.rs:424-503`
+  **per-basin 上游延伸**（每流域最多 +50%，`min_extend_flow = flow_threshold×0.05`，20 passes）
+
+### 验收方式
+
+- `runRiverWidthProfileProbe -PprobeArgs="<seed> <rx0> <rz0> <rn>"`：看**长度分布**
+  当前基线：`<5=0  <10=0  <20=5  <40=44  <80=22  >=80=14`，密度 3.4 条/region
+  ⇒ 目标：出现 `<10` 节点的短溪、密度上升
+- `runRiverWidthProfileProbe -PprobeArgs="<seed> <rx0> <rz0> <rn> <块x> <块z>"`：定点打印最近那条河的逐节点宽/水面
+- 终审：**出图**（`runWaterViewProbe` → `build/waterview/overlay.png`）看 (-772,515) 是否**能看到上游源头**
+- 每次改动后：`runWorldgenGate` ALL PASS + 单变量对照
+
+## 7. 常用验证命令（新对话直接复制）
+
+```powershell
+cd "d:/Office software/Development Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk"
+.\gradlew compileJava compileDiagnosticsJava --console=plain
+.\gradlew runWorldgenGate --console=plain                                            # 必须 ALL PASS
+.\gradlew runWaterViewProbe -PprobeArgs="9139912035078620160 -377 -335 128"          # 出图 + 水体面积
+.\gradlew runRiverWidthProfileProbe -PprobeArgs="9139912035078620160 -3 -2 5"        # 河网密度/长度分布
+.\gradlew runRiverWidthProfileProbe -PprobeArgs="9139912035078620160 -3 -2 5 -772 515"  # 定点诊断
+.\gradlew runFlowDirectionHistogramProbe -PprobeArgs="9139912035078620160 -754 -670 256 24 0.45"
+```
+
+⚠ **坑**：`-PprobeArgs` 会被同一次构建里**所有**探针任务继承。曾因此让 `runCaveShapeProbe` 收到 `-377`
+当数组大小而 `NegativeArraySizeException`（假 FAIL）。**门禁与带参探针必须分开跑。**
+
+## 8. 关键文件坐标
+
+| 概念 | 位置 |
+|---|---|
+| 河线生成（**唯一活的**） | `RiverLineNetwork.traceRiver`(:1106) → 节点构建(:881-948) → `smoothPath`(:1550) → 蜿蜒(:1605-1644) |
+| 源头候选/过滤 | `RiverLineNetwork.build`(:533-560)、`insideExistingValley`、`traceRiver` |
+| 归属竞争（⑤） | `RiverLineNetwork.sampleRegion`(:2444) |
+| 分支决策（⑥） | `HydrologyBlockCarver.carveColumn`(:120)，湖选择(:222)（**代码自述两套判据不一致**） |
+| 湖 | `RiverLineRegion.LakeNode`：`inDomain`:342 / `computeFlood`:396 / `floodLevel`:644 / `inFlood`:787 / `escapeWaterLevel`:189 / `erodedWaterLevel`:135 |
+| 落块/水位 | `GeoGenesisTerrain.applyHydrologyValley`(:532)，湖列(:569-646)，`isLake` 三处赋值 :685/:713/:857 |
+| 参数 | `RiverLineParams`：`regionSize=640` `gridCell=24` `minRiverNodes=3` `riverAccumThreshold=2304` `sourceSpacingCells=2` `meanderAmp=2.5` `meanderWavelength=40` `riverCount=80` |
+
+---
+
 # ★ START HERE（一页决策摘要，2026-09-19）
 
 ## 你的三条要求 → 现状
