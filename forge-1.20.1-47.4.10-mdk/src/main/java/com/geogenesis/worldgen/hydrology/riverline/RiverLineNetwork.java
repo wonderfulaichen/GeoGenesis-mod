@@ -2481,7 +2481,32 @@ public final class RiverLineNetwork {
                 }
             }
         }
-        // 湖泊：影响范围内、且比最近河段更近才纳入（保持旧"湖/河竞争"语义；远处湖 carve≈original 无副作用）
+        // ★★★ 2026-09-19【⑤⑥ 判据统一】★★★
+        //   问题：⑤（本处，发出命中）与 ⑥（HydrologyBlockCarver 的分支决策）曾是【两套判据】——
+        //     ⑤ 把"河命中 + 湖命中"全都发出去，像"比河更近"这种距离竞争由消费方按距离裁决；
+        //     ⑥ 却按【样本里是否存在湖命中】决定分支（不看距离）。
+        //   ⇒ 改 ⑤ 会让 ⑥ 跳变：2026-09-19 放宽湖认领修湖岸直线后，
+        //     河道内的列也带上了湖命中 ⇒ 被 ⑥ 的湖分支接管 ⇒ carved = original
+        //     ⇒ 实测 203 列河道不再下切（河流"新问题"，已在 ⑥ 侧打补丁止血）。
+        //   ⇒ 根治 = 让 ⑤ 与 ⑥ 【同源】：本处也遵守"河道内 → 河优先"，不发湖命中。
+        //     这样两层的规则都是单一的一条：
+        //       · 河道内（dist ≤ width）              ⇒ 河（下切 + 灌水）
+        //       · 否则若在湖域（inDomain）             ⇒ 湖（不挖地；水由落块侧等高线定）
+        //       · 否则                                ⇒ 河的一例谷壁带（只塑形）
+        //   对齐参考：Farseek `isStreamBed = (maxFloorLevel < surfaceLevel)`、
+        //     RTF `isSubMerged = dist < zone1Radius && … && h < targetWaterLevel` —— 均为【一套判据】。
+        //   【回退】把下面的 `&& !inRiverChannel` 去掉。
+        double chanDist = Double.POSITIVE_INFINITY, chanWidth = 1.0;
+        for (RiverLineHit h : out) {
+            if (h.isLake()) continue;
+            if (h.distToCenter() < chanDist) {
+                chanDist = h.distToCenter();
+                chanWidth = Math.max(h.width(), 1.0);
+            }
+        }
+        boolean inRiverChannel = chanDist <= chanWidth;
+        // 湖泊：影响范围内纳入（远处湖 carve≈original 无副作用）；
+        //   ★ 但【河道内不发湖命中】—— 与 ⑥ 的分支判据同源（见上）。
         if (!r.lakes.isEmpty()) {
             double lakeDist2 = Double.POSITIVE_INFINITY;
             RiverLineRegion.LakeNode bestLn = null;
@@ -2557,7 +2582,7 @@ public final class RiverLineNetwork {
                 //     门禁 runWorldgenGate：BUILD SUCCESSFUL（全部判据 PASS）。
                 //
                 //   【回退】恢复为 `if (inDomain && lakeDist <= bestRiverDist) {` 一行。
-                if (inDomain) {
+                if (inDomain && !inRiverChannel) {
                     double lakeW = bestLn.radius > 0 ? bestLn.radius : params.lakeRadius();
                     out.add(new RiverLineHit(lakeDist, bestLn.height, lakeW,
                             params.minDepth(), r.dischargeArea, false, true, 0.0, false,
