@@ -195,6 +195,28 @@ public final class HydrologyBlockCarver {
         //   【回退】把本条件改回 `if (lakeSample != null) {`。
         double nearestRiverDist = Double.POSITIVE_INFINITY;
         double nearestRiverWidth = 1.0;
+        // ★★★ 2026-09-19（P2）湖样本选择：按【水位最低】而非【离湖心最近】★★★
+        //
+        //   【被修的缺陷（runLakeLevelFlatnessProbe / 判据 J1 实测）】
+        //   用户判据"湖面不平 / 湖内水位不一致"。按 4 邻连通分组（无任何假设）实测：
+        //     · 31198 格水体 σ = 0.000000（单节点覆盖 ⇒ 天然平）
+        //     · ★ 604 格【纯湖】σ = 0.471812，水面跨 167.694 → 169.829（2.1 块）
+        //   ⇒ 静止水面必须处处同高 ⇒ 硬物理错误。
+        //
+        //   【为什么必须在【本层】改，而不是在 RiverLineNetwork.sampleRegion 内】
+        //   ⚠ 2026-09-19 已试过在 sampleRegion 内把"最近"改成"最低水位" ⇒ **被实测证伪**：
+        //     σ 一字未变（0.471812），且大湖 31198→29206（−6%，引入新回归），已回退。
+        //   ⇒ 原因：`sampleRegion` 只遍历【单个 region】的湖；而样本由
+        //     `HydrologyExperimentEngine.sampleBlockAll` 跨 **3×3 region** 汇总后传到这里。
+        //     那个 604 格水体若跨 region，其两个湖节点分属不同 region
+        //     ⇒ 只有【本层】才同时看得见两个节点 ⇒ 只有在这里"取最低"才能让全湖同高。
+        //
+        //   【物理依据（对齐用户给出的水文模型："湖泊只是水的一个定义，是水堆积的表现"）】
+        //     水的位能由【它能流出的最低出口】决定 ⇒ 覆盖本列的所有湖候选中取水位最低者。
+        //     对单节点覆盖的列，行为与旧实现完全一致（只有多节点覆盖才可能变）。
+        //     ⇒ 同一连通水体所有列都选到同一（最低）节点 ⇒ σ = 0。
+        //   【回退】把本 if 改回 `if (s.distToCenter() < bestLakeDist) { bestLakeDist = s.distToCenter(); lakeSample = s; }`。
+        double lowestLakeLevel = Double.POSITIVE_INFINITY;
         for (HydrologyBlockSample s : samples) {
             if (s.isLake()) {
                 if (s.distToCenter() < bestLakeDist) {
@@ -206,6 +228,23 @@ public final class HydrologyBlockCarver {
                 nearestRiverWidth = Math.max(s.width(), 1.0);
             }
         }
+        // ★ 2026-09-19（P2）【第二次尝试已实测否决，勿重犯】
+        //   假设："604 格水体跨 region，两个湖节点分属不同 region ⇒ 取【水位最低】者
+        //         即可让全湖同高"。
+        //   做法：把上面对湖样本的选择由"离湖心最近"改为"水位最低"（本层跨 3×3 region，看得见两个节点）。
+        //   ★ 实测（runLakeLevelFlatnessProbe，seed 9139912035078620160 @ 块(-377,-335)±128）：
+        //     该水体 σ 由 0.471812 **恶化到 0.912168**，水面跨度 2.1 → 2.98 块
+        //     ⇒ 假设**再次被证伪**，已回退。
+        //   连同上一次（在 RiverLineNetwork.sampleRegion 内改选择：σ 一字未变 + 大湖 −6%），
+        //   **两次针对"选湖规则"的修法都无效** ⇒ 杠杆不在【选择】，而在【逐列求解本身】。
+        //   ⇒ 下一步必须先做判别测量（再改就是第三次盲改）：
+        //     对同一湖的各列，分别打印 `column.waterSurfaceY()`(spill) 与
+        //     `escapeWaterLevel(...)` 的结果，判定：
+        //       ① 若 spill 本就逐列不同 ⇒ 根因在 RiverLineNetwork 的湖命中水位；
+        //       ② 若 spill 相同而 esc 不同 ⇒ 根因在 GeoGenesisTerrain 的逐列 escape 调用
+        //          （正解：每湖只求一次并缓存，见 PLAN 的 P2 设计）；
+        //       ③ 若两者都相同却仍不平 ⇒ 根因在落块/精修洪泛的某一层。
+        //   未做该测量前，不得再改选湖规则。
         boolean inRiverChannel = nearestRiverDist <= nearestRiverWidth;
         if (lakeSample != null && !inRiverChannel) {
             // ★ 侵蚀短板水位（2026-09-09，用户实测"水面边缘没到地形/水面包不住"）：

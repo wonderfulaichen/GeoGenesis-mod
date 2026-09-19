@@ -139,24 +139,6 @@ public final class HydrologyExperimentEngine {
         return out;
     }
 
-    /** 兼容旧探针的 wu 直接采样（返回格点样本语义；河线版取最近命中）。 */
-    public HydrologyRiverSample sample(double wx, double wz) {
-        RiverLineNetwork.RiverLineHit hit = network.sample(wx, wz);
-        if (hit == null) return null;
-        int id = (int) Long.hashCode(Double.doubleToLongBits(wx) * 31
-                + Double.doubleToLongBits(wz));
-        return new HydrologyRiverSample(id, -1, hit.surfaceY(),
-                hit.surfaceY() - hit.depth(), hit.width(), hit.depth(),
-                hit.width() * 2.5, Math.max(hit.width() * 7.5, hit.width() * 3.0),
-                hit.dischargeArea(),
-                hit.reachesOcean() ? RiverOutlet.Type.OCEAN : null);
-    }
-
-    /** 上次 sampleBlock 是否直接命中河道（兼容旧 API；距离场版恒 true——null 即未命中）。 */
-    public boolean lastQueryWasDirect() {
-        return true;
-    }
-
     public int cachedRegions() {
         return network.cachedRegions();
     }

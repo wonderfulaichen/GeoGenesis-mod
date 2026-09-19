@@ -311,14 +311,6 @@ tasks.withType(JavaCompile).configureEach {
 
 
 
-task runHydrologyExperimentProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyExperimentProbe'
-    maxHeapSize = '2g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split('\\s+') as List)
-    }
-}
 
 task runWaterfallProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -601,14 +593,6 @@ task runHydrologyChunkBoundaryProbe(type: JavaExec) {
     }
 }
 
-task runHydrologyTerrainFacadeProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.HydrologyTerrainFacadeProbe'
-    maxHeapSize = '2g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split('\\s+') as List)
-    }
-}
 
 task runHydrologyChunkResultProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1001,14 +985,6 @@ task runUnifiedCriterionProbe(type: JavaExec) {
 // WaterFieldUnifyProbe (2026-09-19): T1.3（W 作湖水位）的【先量后改】——
 //   量 WaterField.W 与现行 LakeNode.spill 的差值分布，判断能否直接接线。
 //   gradlew runWaterFieldUnifyProbe [-PprobeArgs="seed bx bz half step smoothWu offset"]
-task runWaterFieldUnifyProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldUnifyProbe'
-    maxHeapSize = '3g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
 
 // LakeNodeCensusProbe (2026-09-19): T2.4（湖节点合并）的【先量后改】——
 //   普查湖节点数量、洼地格数分布、碎湖占比、按水位合并潜力。
@@ -1016,6 +992,41 @@ task runWaterFieldUnifyProbe(type: JavaExec) {
 task runLakeNodeCensusProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.LakeNodeCensusProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// RiverWidthProfileProbe (2026-09-19): 河宽剖面 —— 验收"有的很宽/有的不变宽"+"没有源头"
+//   gradlew runRiverWidthProfileProbe [-PprobeArgs="seed rx0 rz0 rn"]
+task runRiverWidthProfileProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverWidthProfileProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// LakeLevelFlatnessProbe (2026-09-19, P3 判据 J1): 湖面是否绝对水平 ——
+//   按【连通水体】分组（无假设），统计各组 riverSurfaceY 的标准差，必须为 0。
+//   gradlew runLakeLevelFlatnessProbe [-PprobeArgs="seed bx bz radius"]
+task runLakeLevelFlatnessProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeLevelFlatnessProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// FlowDirectionHistogramProbe (2026-09-19, P1 验收): 连续流向场（动量）——
+//   ① W=0 时 flowTo/accum 逐位一致 ② 45° 聚集度下降 ③ 粒子追踪 sinuosity 进自然区间
+//   gradlew runFlowDirectionHistogramProbe [-PprobeArgs="seed wuX wuZ R cell W1"]
+task runFlowDirectionHistogramProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.FlowDirectionHistogramProbe'
     maxHeapSize = '3g'
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
@@ -1046,14 +1057,6 @@ task runRiverLakeLevelGapProbe(type: JavaExec) {
     }
 }
 
-task runWaterFieldProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldProbe'
-    maxHeapSize = '3g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
 
 // Cave perf probe (2026-09-15): 洞穴【性能】诊断 ——
 //   ★ 补上缺口：现有性能探针（AbChunkProbe/ChunkTimeProbe）全走 getChunkCells，
@@ -1332,13 +1335,6 @@ task runRiverLakeLevelProbe(type: JavaExec) {
 
 // Unified water-graph billing probe (2026-09-17, hydrology 统一化 M1):
 //   gradlew runWaterGraphProbe [-PprobeArgs="seed regionX regionZ"]
-task runWaterGraphProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.WaterGraphProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
 
 // Water physics audit: level vs required (minimax escape) + dry-wall count (2026-09-17):
 //   gradlew runWaterPhysicsProbe [-PprobeArgs="seed wuX wuZ halfWu"]

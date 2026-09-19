@@ -39,10 +39,11 @@ public final class LakeDomainSweepProbe {
     private static final double[] TOLS = {0.0, 6.0, 12.0, 24.0, 48.0, 96.0};
     /**
      * 生产默认容差（wu）—— 仅用于表格里标"← 生产"。
-     * ★ 2026-09-19 已由 2×gridCell(48) 收窄为 0.5×gridCell(12)（gridCell=24）
-     *   ⇒ 改容差时【必须同步本常量】。
+     * ★ 2026-09-19：0.5×gridCell(12) 那次已被【实机否决并回退】
+     *   （用户实测"湖泊填水出现一小部分边缘未完全贴合"）
+     *   ⇒ 生产值恢复 2×gridCell(48wu)。改容差时【必须同步本常量】。
      */
-    private static final double PROD_TOL = 12.0;
+    private static final double PROD_TOL = 48.0;
 
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 9139912035078620160L;

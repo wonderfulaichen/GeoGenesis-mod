@@ -442,6 +442,10 @@ public final class RiverLineNetwork {
         double bx = Math.ceil(maxX / cell) * cell, bz = Math.ceil(maxZ / cell) * cell;
         // ★ 选线场用"山压低"后的 e（routingE），使河线贴谷避峰；水面仍锚定真实地形（groundYAt）。
         // ★ Phase C：降水加权汇流累积（precipSampler 为 null 时与旧行为逐位一致）
+        // ★ 2026-09-19（P1/P2）：把动量权重转交给 FlowField（见 FLOW_MOMENTUM_WEIGHT 的实测表）。
+        //   ⚠ FlowField.MOMENTUM_WEIGHT 是静态的（避免改动 17+ 处构造调用）；
+        //     生产上只有本处会写它，且写的是编译期常量 ⇒ 确定性不受影响。
+        FlowField.MOMENTUM_WEIGHT = FLOW_MOMENTUM_WEIGHT;
         // ★ 2026-09-18 M2-C：decayClimate 为 null 时走 9 参构造器（decayPerWu=0）
         //   ⇒ 与旧行为逐位一致
         FlowField field = (decayClimate == null)
@@ -881,9 +885,51 @@ public final class RiverLineNetwork {
         //   在缝上重新造成宽度骤缩（crossRegion 机制专门修掉的那个"宽度重置"断缝）。
         //   forcedSrcH 非 NaN 即为续流（见 build() 的 seed.surfaceY 传参）。
         boolean taperHead = Double.isNaN(forcedSrcH);
+        // ★★★ 2026-09-19（P2）河线节点位置：格心 → 【沿连续流向场（含动量）积分的粒子位置】★★★
+        //
+        //   【被修的缺陷（用户实机判据）】"河网走向不像自然河流（太直 / 太规则）"。
+        //   原实现 `nodes[k] = field.cellCenter(idx)` —— 节点钉死在【格心】上，而格序列是
+        //   D8 的 8 邻路径 ⇒ 折线先天是 45° 阶梯（Catmull-Rom 只能磨圆，磨不掉步长）。
+        //
+        //   【修法（对应用户的定义："河流只是水的运动路线"）】仍以该格序列为【参数化】，
+        //   但位置由【粒子沿连续流向场推进】给出：
+        //     · 方向 = 连续流向(含上游累积动量) ⊕ 指向下一格心（越近越偏向目标 ⇒ 不脱离格序列）
+        //     · 步长 = 到下一格心的距离（与格序列严格同步 ⇒ 不产生滞后累积）
+        //   ⇒ 轨迹落在格心【之间】，是自然曲线而非阶梯。
+        //
+        //   【依据】FlowField.MOMENTUM_WEIGHT 的注释（SimpleHydrology 的 momentumTransfer，
+        //     README 原话 "giving river meandering behavior"）；实测 45° 整数倍占比
+        //     100.0% → 18.8%（runFlowDirectionHistogramProbe）。
+        //
+        //   【回退】FlowField.MOMENTUM_WEIGHT = 0.0 ⇒ 本段逐位回到"格心"（旧行为）。
+        final boolean particlePos = FlowField.MOMENTUM_WEIGHT > 0.0;
+        final double gridCell = params.gridCell();
+        double ppx = particlePos ? field.cellCenterX(out.cells.get(start)) : 0.0;
+        double ppz = particlePos ? field.cellCenterZ(out.cells.get(start)) : 0.0;
         for (int k = 0; k < m; k++) {
             int idx = out.cells.get(start + k);
-            double wx = field.cellCenterX(idx), wz = field.cellCenterZ(idx);
+            double wx, wz;
+            if (!particlePos || k == 0) {
+                wx = particlePos ? ppx : field.cellCenterX(idx);
+                wz = particlePos ? ppz : field.cellCenterZ(idx);
+            } else {
+                double tx = field.cellCenterX(idx), tz = field.cellCenterZ(idx);
+                double ddx = tx - ppx, ddz = tz - ppz;
+                double dist = Math.sqrt(ddx * ddx + ddz * ddz);
+                if (dist < 1e-9) {
+                    wx = ppx; wz = ppz;
+                } else {
+                    double[] dirv = field.dirAtWu(ppx, ppz);
+                    double g = Math.min(1.0, dist / gridCell);      // 离下一格心越远 ⇒ 越信流向
+                    double ux = dirv[0] * g + (ddx / dist) * (1.0 - g);
+                    double uz = dirv[1] * g + (ddz / dist) * (1.0 - g);
+                    double len = Math.sqrt(ux * ux + uz * uz);
+                    if (len < 1e-12) { ux = ddx / dist; uz = ddz / dist; len = 1.0; }
+                    ppx += ux / len * dist;
+                    ppz += uz / len * dist;
+                    wx = ppx; wz = ppz;
+                }
+            }
             double a = out.accum[start + k];
             nodes[k] = new MidpointDisplacement.Node(wx, wz);
             rawSurf[k] = groundYAt(wx, wz);
@@ -1577,7 +1623,46 @@ public final class RiverLineNetwork {
             //   数字一字不差，说明河头选取本身没错，错在选完之后又被挪走）。
             //   物理上也应当如此：蜿蜒振幅随流量/河宽增大，河源细流本就近乎顺直。
             //   跨度取 HEAD_TAPER_NODES × gridCell，与河头宽深淡出同段完成。
-            double meanderHeadArc = HEAD_TAPER_NODES * Math.max(1.0, params.gridCell());
+            // ★★★ 2026-09-19（P4）河源淡出跨度：固定 144wu → 【全长比例】★★★
+            //
+            //   【被修的缺陷（实测定位，这是"太直"的真正根因）】
+            //   旧值 = HEAD_TAPER_NODES(6) × gridCell(24) = **固定 144wu**。
+            //   而定点探针实测 块(-772,515) 那条一级河**全长仅 ≈34wu**
+            //   ⇒ arc/144 ≤ 0.24 ⇒ smooth(0.24) ≈ 0.14
+            //   ⇒ **headFade 最大只有 0.14 ⇒ 蜿蜒振幅被压到 14% ⇒ 整条河近乎笔直**
+            //   （实测该河每段都是精确 45.0°，是一条完美斜直线）。
+            //
+            //   【为什么参考没这个问题】FTF 的 RiverWarp.getWarpAlpha(t) 用的是
+            //   **归一化进度 t ∈ [0,1]**（lower=0.1 / upper=0.85），**与河长无关**
+            //   ⇒ 无论河多短，中段都能拿到满幅蜿蜒。
+            //   ⇒ 本行改为"全长的固定比例"，忠实复刻该语义。
+            //
+            //   【回退】把下一行换回 `HEAD_TAPER_NODES * Math.max(1.0, params.gridCell())`。
+            final double meanderHeadFraction = 0.15;   // ≈ FTF lower=0.1（略大以留安全边距）
+            double meanderHeadArc = Math.max(1.0, meanderHeadFraction * arc[m - 1]);
+            // ★★★ 2026-09-19（P4）蜿蜒：纯正弦 → 【域扭曲（噪声）】—— 复刻 FTF RiverWarp ★★★
+            //
+            //   【被修的缺陷（用户实机判据 + 实测）】
+            //   用户报"河网太直太规则"，给出坐标 块(-772,515)。定点探针实测该河
+            //   （11 节点、level=1）**每一段都是精确 45°** —— 是一条完美斜直线。
+            //   旧实现是**纯正弦**：固定波长(meanderWavelength=40) + 固定振幅(2.5)
+            //   ⇒ 等距规则周期 ⇒ 观感"太规则"（且正弦本身看不出"源头"）。
+            //
+            //   【为什么是域扭曲而不是动量】
+            //   FlowField.MOMENTUM_WEIGHT 按【上游累积量】加权 ⇒ 一级河累积量极小
+            //   ⇒ 方向退化为纯 D8 ⇒ 精确 45°，**动量救不了小河流**。
+            //   而 FTF 的自然观感【全部来自域扭曲】，它对所有河流一视同仁（不看汇流量）。
+            //
+            //   【参数为什么不照搬】FTF 的 scale=125~174wu、frequency=5e-4（波长≈2000wu）
+            //   是按大陆尺度河流标定的；本项目河长常仅 34wu ⇒ 照搬会让噪声沿河近乎常数、无效果。
+            //   ⇒ **复刻机制、参数按本项目尺度标定**（波长沿用 meanderWavelength）。
+            //
+            //   【回退】把下面 `warp.unitOffset(mx[i], mz[i])` 换回
+            //     `Math.sin(2.0 * Math.PI * arc[i] / params.meanderWavelength())`。
+            RiverWarp warp = new RiverWarp(seed,
+                    Double.doubleToRawLongBits(rawNodes[0].x()) * 31L
+                            + Double.doubleToRawLongBits(rawNodes[0].z()) * 17L + level,
+                    params.meanderWavelength());
             for (int i = 0; i < m; i++) {
                 int prev = i > 0 ? i - 1 : 0;
                 int next = i < m - 1 ? i + 1 : m - 1;
@@ -1588,7 +1673,7 @@ public final class RiverLineNetwork {
                 double nx = -tz, nz = tx;   // 左转 90° 法向
                 double headFade = NoiseUtil.smooth(NoiseUtil.saturate(arc[i] / meanderHeadArc));
                 double off = meanderScale * params.meanderAmp() * headFade
-                        * Math.sin(2.0 * Math.PI * arc[i] / params.meanderWavelength());
+                        * warp.unitOffset(mx[i], mz[i]);
                 mx[i] += nx * off;
                 mz[i] += nz * off;
             }
@@ -2357,6 +2442,26 @@ public final class RiverLineNetwork {
     }
 
     /**
+     * ★★★ 2026-09-19（P1/P2）<b>流向动量混合权重</b> —— 总开关，唯一改点 ★★★
+     *
+     * <p>转交给 {@link com.geogenesis.worldgen.hydrology.flowaccum.FlowField#MOMENTUM_WEIGHT}
+     * （见那里对"依据 SimpleHydrology 的 momentumTransfer"的完整说明与实测数字）。</p>
+     *
+     * <table border="1">
+     *   <caption>实测（{@code runFlowDirectionHistogramProbe}，seed 9139912035078620160 @ wu(-754,-670)±256，cell=24）</caption>
+     *   <tr><th>权重</th><th>成河格方向落在 45° 整数倍(±1°) 的占比</th></tr>
+     *   <tr><td>0.0（纯 D8）</td><td><b>100.0%</b> ← 这就是"河网太直太规则"的直接证据</td></tr>
+     *   <tr><td>0.30</td><td>29.2%</td></tr>
+     *   <tr><td>0.45（本值）</td><td>18.8%</td></tr>
+     *   <tr><td>0.60</td><td>6.3%</td></tr>
+     * </table>
+     *
+     * <p><b>回退</b>：置 {@code 0.0} ⇒ {@code flowTo}/{@code accum}/{@code tracePath} 全部
+     * 与旧行为<b>逐位一致</b>（实测 flowTo 不一致 = 0、accum 不一致 = 0）。</p>
+     */
+    static final double FLOW_MOMENTUM_WEIGHT = 0.45;
+
+    /**
      * ★ 2026-09-19 <b>诊断专用</b>：湖域外扩容差（wu）覆盖。
      *
      * <p>{@code < 0} ⇒ 用生产默认 {@code gridCell * 2.0}（<b>生产行为完全不变</b>）。
@@ -2522,6 +2627,34 @@ public final class RiverLineNetwork {
         // 湖泊：影响范围内纳入（远处湖 carve≈original 无副作用）；
         //   ★ 但【河道内不发湖命中】—— 与 ⑥ 的分支判据同源（见上）。
         if (!r.lakes.isEmpty()) {
+            // ★★★ 2026-09-19（P3）湖面不平【已确认的缺陷 + 失败尝试留痕】★★★
+            //
+            //   【缺陷已实测确认（判据 J1，runLakeLevelFlatnessProbe）】
+            //   按 **4 邻连通**分组（无任何"湖节点/域/半径"假设），统计各组
+            //   `cell.riverSurfaceY` 的标准差：
+            //     · 31198 格水体 σ = 0.000000（完美水平）
+            //     · ★ 604 格【纯湖】（全部 isLake=true）σ = 0.471812，
+            //       水面跨 167.694 → 169.829（**2.1 块**）
+            //   —— 静止水面必须处处同高 ⇒ 这是硬物理错误，用户判据"湖面不平"**成立**。
+            //
+            //   【⚠ 已尝试并被实测否决的修法（勿重犯）】
+            //   假设："一个连通水体被两个湖节点覆盖，各列按【最近】选到不同节点 ⇒ 不同 spill"。
+            //   改法：把选择条件由"最近"改为"覆盖本点且水位最低"。
+            //   ★ 实测结果（同一窗口）：
+            //     · 目标水体 σ **一字未变**（0.471812）⇒ 假设**被证伪**
+            //     · 且大湖 31198 → 29206 格（**−6%**，引入了新的水体回归）
+            //   ⇒ 已回退为本行（按最近）。
+            //
+            //   【为什么假设错（留给后继者）】
+            //   本方法只遍历**单个 region** 的湖（`r.lakes`），而候选点由
+            //   `sampleAll` 跨 3×3 region 汇总。若该 604 格水体**跨 region**，
+            //   两个湖节点分属不同 region ⇒ 本处的"最低水位"选择**够不着**它。
+            //   ⇒ 下一步应先在**跨 region 汇总层**（`sampleAll` 的消费方
+            //     `HydrologyBlockCarver.carveColumn` 选 `bestLakeDist` 处）验证该假设，
+            //     而不是在本函数内改选择规则。
+            final double domTol0 = domainToleranceOverride >= 0
+                    ? domainToleranceOverride
+                    : params.gridCell() * 2.0;
             double lakeDist2 = Double.POSITIVE_INFINITY;
             RiverLineRegion.LakeNode bestLn = null;
             for (RiverLineRegion.LakeNode ln : r.lakes) {
@@ -2556,39 +2689,38 @@ public final class RiverLineNetwork {
                 //        （水漫到湖盆外的坡上）。
                 //     真正的根因是 floodOOB（认领域 < BFS 搜索窗导致整湖被弃），
                 //     已在 LakeNode.computeFlood 修复。此处恢复 2×gridCell。
-                // ★★★ 2026-09-19 湖域容差 2×gridCell(48wu) → 0.5×gridCell(12wu) ★★★
+                // ★★★ 2026-09-19【已回退】湖域容差 0.5×gridCell(12wu) → 2×gridCell(48wu) ★★★
                 //
-                //   【为什么要收窄】湖分支返回 `carved = original`（湖底不雕，靠自然盆地，
-                //   比 RTF 的"湖=更宽河床"更自然）。但域太宽 ⇒ 它连带接管了本应由【河】
-                //   塑形的【谷壁带】⇒ 陆地河谷不被雕。
-                //   实测（runRiverLakeLevelGapProbe，seed 9139912035078620160 @ 块(-377,-335)±128 步长2）：
-                //     符合"河道外 + 高于湖面 + 在河谷带" 2127 列，其中 1497 列（70.4%）
-                //     被湖分支接管 ⇒ 河谷完全没被雕。
-                //
-                //   【收窄的代价有多大】runLakeDomainSweepProbe 扫描容差（同一区域）：
+                //   【回退原因：实机否决，我的实验判据错了】
+                //   我曾在 2026-09-19 把容差由 2×gridCell(48wu) 收窄到 0.5×gridCell(12wu)，
+                //   依据是 runLakeDomainSweepProbe 的扫描：
                 //     容差wu   水体列   ★失水   抑制河谷
                 //       48     8228      0      2168   ← 原生产值
-                //       24     8207      21     1687
-                //      ★12     8207      21     1209   ← 采用（失水仅 0.26%，抑制 −44%）
-                //        6     7948     280      782
-                //        0     6814    1414      333
-                //   ⇒ 12~24wu 是甜点：几乎不丢水，抑制显著下降；再收窄则失水陡增。
+                //      ★12     8207      21     1209   ← 我当时选的（"失水仅 0.26%，抑制 −44%"）
+                //   ⇒ 我把「失水 21 列（0.26%）」判为"可忽略"。
                 //
-                //   【为什么不担心"水面包不住"（历史注释曾警告 12wu 失败）】
-                //     那段注释（2026-09-09）自己已给出结论："真正的根因是 floodOOB
-                //     （认领域 < BFS 搜索窗导致整湖被弃），已在 LakeNode.computeFlood 修复"。
-                //     ⇒ 容差 12wu 是在【floodOOB 未修】时被判失败的，修复后从未复测。
-                //     本次实测（floodOOB 已修）：12wu 相对 48wu 只少 21 列水体（0.26%）。
-                //     ⚠ 但实机才是终审：若出现"水边没贴到地形/水面包不住"，先回退本行。
+                //   ★ 用户实机验收否决：「湖泊填水出现一小部分边缘未完全贴合」，
+                //     并确认该现象是**【这次改动之后才出现】**。
+                //   ⇒ 21 列不是"可忽略"：湖的水边由落块侧 `height < spill − 0.5` 的
+                //     【1 块精度等高线】决定，而**只有拿到湖命中的列**才走湖分支；
+                //     域一收窄，域外那些"低于水位"的列落回河分支 ⇒ **不灌** ⇒
+                //     水边出现零散缺口、不再贴地形。
                 //
-                //   【与 2026-09-15 那次误改 4×gridCell 的区别】
-                //     那次是【放大】到 96wu ⇒ 用户实测"水漫到湖盆外的坡上"；本次是【收窄】，
-                //     方向相反，且已用扫描量化过代价。
+                //   【教训（务必记住）】
+                //     · 形态/贴合类的"损失"不能只看【总格数占比】——21/8228=0.26% 看着可忽略，
+                //       但它落在【水岸线上】，是肉眼可见的缺口。**岸线类指标必须按"沿周长"计，
+                //       不能按面积占比计。**
+                //     · 并且：历史注释（2026-09-09）早就警告过"半格(12wu) ⇒ 用户实测
+                //       水边没贴到地形/水面包不住"。我当时用"那段注释自己说是 floodOOB 的锅"
+                //       绕过去了 —— **绕错了**。历史警告另有独立成因时，仍应先小范围验证，
+                //       而不是直接推翻它。
                 //
-                //   【回退】把 `params.gridCell() * 0.5` 改回 `params.gridCell() * 2.0`。
+                //   【现状】恢复 2×gridCell(48wu)，与 2026-09-15 结论一致。
+                //     ⚠ 同文件 :1403 也有一个 `params.gridCell() * 0.5` ——
+                //       那是 LakeNode 的【轮廓格距】，**与本次容差无关，不得一起改**。
                 double domTol = domainToleranceOverride >= 0
                         ? domainToleranceOverride
-                        : params.gridCell() * 0.5;
+                        : params.gridCell() * 2.0;
                 boolean inDomain = bestLn.hasOutline()
                         ? bestLn.inDomain(wx, wz, domTol)
                         : lakeDist <= (bestLn.radius > 0 ? bestLn.radius : params.lakeRadius())
