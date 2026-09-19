@@ -23,9 +23,6 @@ import java.util.PriorityQueue;
  */
 public final class FlowField {
 
-    /** 追踪结果：路径点（wu）+ 终止原因。 */
-    public record TraceResult(List<double[]> points, boolean reachedTarget, boolean hitSink) { }
-
     private final int nx, nz;
     private final double cellSize;
     /**
@@ -155,6 +152,67 @@ public final class FlowField {
     /** ★ 2026-09-18 M2-C：逐格预计算的衰减系数（1/wu）；{@code null} = 改用常量 {@link #decayPerWu}。 */
     private double[] decayCell;
 
+    // ===== ★ 2026-09-19（P1）连续流向场：给 D8 加【动量】=====
+
+    /**
+     * ★ 2026-09-19 <b>动量混合权重</b>（0.0 = 纯 D8 ⇒ 与旧行为【逐位一致】）。
+     *
+     * <h4>它修的是什么</h4>
+     * <p>纯 D8 的流向只有 <b>8 个方向</b> ⇒ 河线每格必须转向 45° 的整数倍
+     * ⇒ 实机表现为"**河网太直、太规则、分叉生硬**"（用户实机验收判据）。</p>
+     *
+     * <h4>依据（用户指定的参考，逐字）</h4>
+     * <p>{@code SimpleHydrology/README.md:70-78}（2023-01 更新）：</p>
+     * <pre>
+     * The flooding system has been removed for now, because of buggyness and slowness. …
+     * Momentum and discharge maps are now explicit and interact physically with the water
+     * particles, giving river meandering behavior.
+     * </pre>
+     * <p>{@code SimpleHydrology/source/water.h:97-117} 的实体：</p>
+     * <pre>
+     *   vec2 fspeed = vec2(cell->momentumx, cell->momentumy);
+     *   speed += lodsize*momentumTransfer*dot(normalize(fspeed), normalize(speed))
+     *            /(volume + cell->discharge)*fspeed;      // ★ 动量传递
+     *   cell->discharge_track += volume;
+     *   cell->momentumx_track += volume*speed.x;          // ★ 累积动量图
+     *   cell->momentumy_track += volume*speed.y;
+     * </pre>
+     * <p>参数 {@code water.h:50 momentumTransfer = 1.0f}。</p>
+     *
+     * <h4>本实现怎么落地</h4>
+     * <pre>
+     *   mom[cur]  = Σ_上游(accum[上游] · dir[上游])        // 累积动量（与 accum 同一次拓扑序推送）
+     *   dir[cur]  = normalize( (1−w)·最陡下降单位向量 + w·normalize(mom[cur]) )
+     * </pre>
+     * <p>无上游（源头格）时 {@code mom = 0} ⇒ 自动退化为最陡下降（无惯性），
+     * 与 SimpleHydrology 的 {@code /(volume + discharge)} 同义。</p>
+     *
+     * <h4>为什么安全</h4>
+     * <ul>
+     *   <li><b>不改 D8 有向无环图</b>：{@code flowTo} 与 {@code accum} 一字不动
+     *       ⇒ 汇流量、河宽、干谷剔除全部不受影响；本场只用于<b>河线几何</b>（P2 追踪）。</li>
+     *   <li><b>无环</b>：按 e 降序拓扑序计算，上游必先于下游（与 {@link #buildAccum} 同序）。</li>
+     *   <li><b>确定性</b>：只依赖本网格内的 e / flowTo / accum，与 chunk 访问顺序无关。</li>
+     *   <li><b>偏角有界</b>：混合方向相对最陡下降的偏角被 {@link #MOMENTUM_MAX_ANGLE_DEG} 夹住
+     *       ⇒ 河线不会脱离开 D8 流向图。</li>
+     * </ul>
+     * <p><b>回退</b>：置 0.0（默认）即逐位回到纯 D8。</p>
+     */
+    public static double MOMENTUM_WEIGHT = 0.0;
+
+    /**
+     * ★ 2026-09-19 动量方向相对【最陡下降】的最大偏角（度）。
+     *
+     * <p>取 60° 的理由：D8 相邻方向的夹角本身就是 45°（正交→对角），
+     * 若允许偏到 60°，河线可自由落在两格之间而仍朝下游；再大则可能横向漂移、
+     * 使 P2 的追踪脱离 D8 流向图。</p>
+     */
+    public static double MOMENTUM_MAX_ANGLE_DEG = 60.0;
+
+    /** 连续流向（单位向量，wu 坐标系）。{@code flowTo < 0} 的洼地格为 (0,0)。 */
+    private double[] dirX;
+    private double[] dirZ;
+
     public FlowField(double minWuX, double minWuZ, double maxWuX, double maxWuZ,
                      double cellSize, ElevationSampler sampler) {
         this(minWuX, minWuZ, maxWuX, maxWuZ, cellSize, sampler, null, PrecipWeights.disabled());
@@ -246,6 +304,8 @@ public final class FlowField {
         }
         buildFlow();
         buildAccum();
+        // ★ 2026-09-19（P1）：连续流向场（D8 ⊕ 上游累积动量）。MOMENTUM_WEIGHT = 0 时逐位退化。
+        buildDirections();
     }
 
     /** 世界坐标处的降水（由全球对齐的粗格点双线性插值）。 */
@@ -461,6 +521,127 @@ public final class FlowField {
         }
     }
 
+    // ===== ★ 2026-09-19（P1）连续流向场 =====
+
+    /**
+     * 建立连续流向场（D8 最陡下降 ⊕ 上游累积动量）。见 {@link #MOMENTUM_WEIGHT} 的完整依据。
+     *
+     * <p>⚠ 本场<b>只用于河线几何</b>（P2 沿它追踪）；{@code flowTo} / {@code accum}
+     * 一字不动 ⇒ 汇流量、河宽、干谷剔除不受影响。</p>
+     */
+    private void buildDirections() {
+        int n = nx * nz;
+        dirX = new double[n];
+        dirZ = new double[n];
+        final double w = MOMENTUM_WEIGHT;
+        if (w <= 0.0) {
+            // 纯 D8（默认）：不看动量 ⇒ 与旧行为逐位一致
+            for (int j = 0; j < nz; j++) {
+                for (int i = 0; i < nx; i++) {
+                    int idx = j * nx + i;
+                    int down = flowTo[idx];
+                    if (down < 0) continue;                       // 洼地 ⇒ (0,0)
+                    double dx = (down % nx) - i, dz = (down / nx) - j;
+                    double len = Math.sqrt(dx * dx + dz * dz);
+                    dirX[idx] = dx / len;
+                    dirZ[idx] = dz / len;
+                }
+            }
+            return;
+        }
+        // 有动量：与 buildAccum 同一次拓扑序（e 降序 ⇒ 上游必先于下游），把动量推给下游
+        double[] momX = new double[n], momZ = new double[n];
+        Integer[] order = new Integer[n];
+        for (int i = 0; i < n; i++) order[i] = i;
+        Arrays.sort(order, (a, b) -> Double.compare(e[b], e[a]));
+        final double cosMax = Math.cos(Math.toRadians(MOMENTUM_MAX_ANGLE_DEG));
+        for (int k = 0; k < n; k++) {
+            int cur = order[k];
+            int down = flowTo[cur];
+            // ① 本格最陡下降单位向量（洼地无方向）
+            double sx = 0.0, sz = 0.0;
+            if (down >= 0) {
+                double dx = (down % nx) - (cur % nx), dz = (down / nx) - (cur / nx);
+                double len = Math.sqrt(dx * dx + dz * dz);
+                sx = dx / len;
+                sz = dz / len;
+            }
+            // ② 上游累积动量的单位向量（无上游 ⇒ 退化）
+            double mx = momX[cur], mz = momZ[cur];
+            double mlen = Math.sqrt(mx * mx + mz * mz);
+            double ux, uz;
+            if (mlen > 1e-12) {
+                ux = mx / mlen;
+                uz = mz / mlen;
+            } else {
+                ux = sx;
+                uz = sz;
+            }
+            // ③ 混合；并把权重夹到"偏角不超过 MOMENTUM_MAX_ANGLE_DEG"
+            double dx1, dz1;
+            if (down < 0) {
+                dx1 = 0.0; dz1 = 0.0;                             // 洼地：无下游方向
+            } else {
+                double dot = ux * sx + uz * sz;
+                double ang = Math.acos(Math.max(-1.0, Math.min(1.0, dot)));
+                double maxRad = Math.acos(cosMax);
+                double wEff = (ang > 1e-6) ? Math.min(w, maxRad / ang) : w;
+                double bx = (1.0 - wEff) * sx + wEff * ux;
+                double bz = (1.0 - wEff) * sz + wEff * uz;
+                double blen = Math.sqrt(bx * bx + bz * bz);
+                if (blen < 1e-9) {                                // 反向抵消 ⇒ 退化为最陡下降
+                    dx1 = sx; dz1 = sz;
+                } else {
+                    dx1 = bx / blen; dz1 = bz / blen;
+                }
+            }
+            dirX[cur] = dx1;
+            dirZ[cur] = dz1;
+            // ④ 把本格动量推给下游（权重 = 本格累积量，与 accum 同结构）
+            if (down >= 0 && (dx1 != 0.0 || dz1 != 0.0)) {
+                momX[down] += accum[cur] * dx1;
+                momZ[down] += accum[cur] * dz1;
+            }
+        }
+    }
+
+    /** 指定格的连续流向 X 分量（单位向量，wu 坐标系）。 */
+    public double dirXAt(int idx) { return dirX[idx]; }
+
+    /** 指定格的连续流向 Z 分量（单位向量，wu 坐标系）。 */
+    public double dirZAt(int idx) { return dirZ[idx]; }
+
+    /**
+     * 世界坐标处的连续流向（双线性插值，单位向量）。
+     *
+     * <p>供 P2 的河线追踪使用 —— 沿本场推进即得"水的运动路线"的自然曲线，
+     * 而不是 D8 的 8 邻折线。</p>
+     *
+     * @return 长度 2 的数组 {ux, uz}；无有效方向时返回 {@code {0,0}}
+     */
+    public double[] dirAtWu(double wx, double wz) {
+        double fx = (wx - originX) / cellSize, fz = (wz - originZ) / cellSize;
+        int i0 = (int) Math.floor(fx), j0 = (int) Math.floor(fz);
+        double tx = fx - i0, tz = fz - j0;
+        double sx = 0.0, sz = 0.0, wt = 0.0;
+        for (int dj = 0; dj <= 1; dj++) {
+            for (int di = 0; di <= 1; di++) {
+                int i = i0 + di, j = j0 + dj;
+                if (i < 0 || i >= nx || j < 0 || j >= nz) continue;
+                double bw = (di == 0 ? 1.0 - tx : tx) * (dj == 0 ? 1.0 - tz : tz);
+                if (bw <= 0.0) continue;
+                int idx = j * nx + i;
+                sx += bw * dirX[idx];
+                sz += bw * dirZ[idx];
+                wt += bw;
+            }
+        }
+        if (wt <= 0.0) return new double[]{0.0, 0.0};
+        double len = Math.sqrt(sx * sx + sz * sz);
+        if (len < 1e-12) return new double[]{0.0, 0.0};
+        return new double[]{sx / len, sz / len};
+    }
+
     /** 世界坐标 → 格索引（钳制到网格内）。 */
     public int indexOf(double wx, double wz) {
         int i = (int) Math.round((wx - originX) / cellSize);
@@ -553,21 +734,4 @@ public final class FlowField {
     public double cellCenterX(int idx) { return originX + (idx % nx) * cellSize; }
     public double cellCenterZ(int idx) { return originZ + (idx / nx) * cellSize; }
 
-    /**
-     * 沿 D8 流向追踪路径：从 start 格逐格走向下游，收集格中心坐标（wu）。
-     * 终止：到达 target 格 / 洼地（hitSink）/ 步数耗尽。
-     */
-    public TraceResult tracePath(int start, int target, int maxSteps) {
-        List<double[]> pts = new ArrayList<>();
-        int cur = start;
-        boolean reached = false, sink = false;
-        for (int step = 0; step <= maxSteps; step++) {
-            pts.add(new double[]{cellCenterX(cur), cellCenterZ(cur)});
-            if (cur == target) { reached = true; break; }
-            int down = flowTo[cur];
-            if (down < 0) { sink = true; break; }
-            cur = down;
-        }
-        return new TraceResult(pts, reached, sink);
-    }
 }
