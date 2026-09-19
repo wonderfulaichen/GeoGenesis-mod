@@ -1022,6 +1022,18 @@ task runLakeNodeCensusProbe(type: JavaExec) {
     }
 }
 
+// RiverLakeLevelGapProbe (2026-09-19): 架构第二刀（水位来源收敛）的前置测量 ——
+//   量【河水面 − 湖水位】的差值分布，判断"三套基准"是否真有可见代价。
+//   gradlew runRiverLakeLevelGapProbe [-PprobeArgs="seed bx bz half step"]
+task runRiverLakeLevelGapProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverLakeLevelGapProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runWaterFieldProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WaterFieldProbe'
