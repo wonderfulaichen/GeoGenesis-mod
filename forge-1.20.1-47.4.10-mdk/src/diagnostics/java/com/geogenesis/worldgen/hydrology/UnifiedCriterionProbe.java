@@ -325,6 +325,61 @@ public final class UnifiedCriterionProbe {
             System.out.println("          风险 = 抬升量 p90/max 大 ⇒ 河谷两侧会被抬高 ⇒ 需实机看是否生硬。");
         }
 
+        // ---------- [9] ★★★★★ 本质判别：那些"低于水面却干"的列，水能不能排走？ ----------
+        //   【为什么这才是本质判据】
+        //   水面在 S 处的水会【往低处流】。若某列 h < S 但附近有【更低的地】，
+        //   水从那里排走 ⇒ 该列【不该积水】⇒ 现状"干"是对的，我此前的"漏灌"概念本身就错。
+        //   只有【排不出去】的列（洼地/无更低出口）才是真缺陷。
+        //   ⇒ 这是 RTF isSubMerged / 湖分支 inFlood 的同一思想：水的存在需要【连通性/无出口】。
+        double eps = 0.01;
+        int[] radii = {1, 2, 4, 8};
+        long[] totR = new long[radii.length];
+        long[] hasLower = new long[radii.length];
+        long dryBelowWater = 0;
+        // 额外：连 8 格邻域都没有更低者 ⇒ 局部洼地
+        long localPit8 = 0;
+        for (int dz = -half; dz <= half; dz += step) {
+            for (int dx = -half; dx <= half; dx += step) {
+                int bx = bx0 + dx, bz = bz0 + dz;
+                Cell cell = gt.getChunkCells(bx >> 4, bz >> 4)
+                        [Math.floorMod(bx, 16) * 16 + Math.floorMod(bz, 16)];
+                double surf = cell.riverSurfaceY;
+                if (surf <= 0 || Double.isNaN(surf)) continue;
+                if (cell.riverType != 0) continue;              // 只看干的
+                if (cell.height >= surf - 0.5) continue;        // 只看"低于水面"的
+                dryBelowWater++;
+                for (int ri = 0; ri < radii.length; ri++) {
+                    int R = radii[ri];
+                    totR[ri]++;
+                    boolean lower = false;
+                    for (int nz = -R; nz <= R && !lower; nz++) {
+                        for (int nx = -R; nx <= R && !lower; nx++) {
+                            if (nx == 0 && nz == 0) continue;
+                            int qx = bx + nx, qz = bz + nz;
+                            if (Math.abs(qx - bx0) > half + 8 || Math.abs(qz - bz0) > half + 8) continue;
+                            Cell q = gt.getChunkCells(qx >> 4, qz >> 4)
+                                    [Math.floorMod(qx, 16) * 16 + Math.floorMod(qz, 16)];
+                            if (q.height < cell.height - eps) { lower = true; break; }
+                        }
+                    }
+                    if (lower) hasLower[ri]++;
+                    if (ri == 0 && !lower) localPit8++;    // ri==0 ⇒ 半径 1 = 8 邻
+                }
+            }
+        }
+        System.out.printf("%n[9] ★★ 本质判别：'低于水面却干'的列 %d 个，水能否排走？%n", dryBelowWater);
+        for (int ri = 0; ri < radii.length; ri++) {
+            if (totR[ri] == 0) continue;
+            double pct = 100.0 * hasLower[ri] / totR[ri];
+            System.out.printf("    半径 %-2d 内有更低邻居（可排水）: %d/%d = %.1f%%%n",
+                    radii[ri], hasLower[ri], totR[ri], pct);
+        }
+        System.out.printf("    ★ 8 邻内无更低者（局部洼地，排不出去）: %d（%.1f%%）%n",
+                localPit8, 100.0 * localPit8 / Math.max(1, dryBelowWater));
+        System.out.println("    判读：若绝大多数【能排水】（半径 2 内 >80%）⇒ 现状'干'是对的，");
+        System.out.println("          我此前的'漏灌'概念【本身就错】⇒ C3 不需要做；");
+        System.out.println("          若大量【排不出去】⇒ 它们才是真缺陷（该有水）⇒ C3/水位才该动。");
+
         System.out.println();
         System.out.println("判读：");
         System.out.println("  · 若【分歧合计】很小（<5%）⇒ 统一判据低风险，可直接实施 P0-2；");
