@@ -2357,6 +2357,20 @@ public final class RiverLineNetwork {
     }
 
     /**
+     * ★ 2026-09-19 <b>诊断专用</b>：湖域外扩容差（wu）覆盖。
+     *
+     * <p>{@code < 0} ⇒ 用生产默认 {@code gridCell * 2.0}（<b>生产行为完全不变</b>）。
+     * 仅供 {@code LakeDomainSweepProbe} 扫描"收窄湖域"的代价：</p>
+     * <ul>
+     *   <li>收窄过多 ⇒ 域外列落回河分支 ⇒ 不灌 ⇒ <b>域边界重新变成硬边</b>
+     *       （正是 2026-09-19 修掉的那条直线）</li>
+     *   <li>收窄不足 ⇒ 湖分支继续抑制河谷塑形（§1.18 实测 1497 列）</li>
+     * </ul>
+     * <p>⚠ 生产代码不得读写本字段；探针跑完须复位为 {@code -1}。</p>
+     */
+    public static double domainToleranceOverride = -1.0;
+
+    /**
      * 单 region 上 valley 半径内"每段独立命中"列表（供雕刻器 smooth-min 合并，
      * 根治属主在段间切换产生的放射折痕）。仅保留 dist ≤ valleyReach 的段——
      * 其 carve 才可能非零，远处段不影响 smin（carve=original）。
@@ -2542,8 +2556,41 @@ public final class RiverLineNetwork {
                 //        （水漫到湖盆外的坡上）。
                 //     真正的根因是 floodOOB（认领域 < BFS 搜索窗导致整湖被弃），
                 //     已在 LakeNode.computeFlood 修复。此处恢复 2×gridCell。
+                // ★★★ 2026-09-19 湖域容差 2×gridCell(48wu) → 0.5×gridCell(12wu) ★★★
+                //
+                //   【为什么要收窄】湖分支返回 `carved = original`（湖底不雕，靠自然盆地，
+                //   比 RTF 的"湖=更宽河床"更自然）。但域太宽 ⇒ 它连带接管了本应由【河】
+                //   塑形的【谷壁带】⇒ 陆地河谷不被雕。
+                //   实测（runRiverLakeLevelGapProbe，seed 9139912035078620160 @ 块(-377,-335)±128 步长2）：
+                //     符合"河道外 + 高于湖面 + 在河谷带" 2127 列，其中 1497 列（70.4%）
+                //     被湖分支接管 ⇒ 河谷完全没被雕。
+                //
+                //   【收窄的代价有多大】runLakeDomainSweepProbe 扫描容差（同一区域）：
+                //     容差wu   水体列   ★失水   抑制河谷
+                //       48     8228      0      2168   ← 原生产值
+                //       24     8207      21     1687
+                //      ★12     8207      21     1209   ← 采用（失水仅 0.26%，抑制 −44%）
+                //        6     7948     280      782
+                //        0     6814    1414      333
+                //   ⇒ 12~24wu 是甜点：几乎不丢水，抑制显著下降；再收窄则失水陡增。
+                //
+                //   【为什么不担心"水面包不住"（历史注释曾警告 12wu 失败）】
+                //     那段注释（2026-09-09）自己已给出结论："真正的根因是 floodOOB
+                //     （认领域 < BFS 搜索窗导致整湖被弃），已在 LakeNode.computeFlood 修复"。
+                //     ⇒ 容差 12wu 是在【floodOOB 未修】时被判失败的，修复后从未复测。
+                //     本次实测（floodOOB 已修）：12wu 相对 48wu 只少 21 列水体（0.26%）。
+                //     ⚠ 但实机才是终审：若出现"水边没贴到地形/水面包不住"，先回退本行。
+                //
+                //   【与 2026-09-15 那次误改 4×gridCell 的区别】
+                //     那次是【放大】到 96wu ⇒ 用户实测"水漫到湖盆外的坡上"；本次是【收窄】，
+                //     方向相反，且已用扫描量化过代价。
+                //
+                //   【回退】把 `params.gridCell() * 0.5` 改回 `params.gridCell() * 2.0`。
+                double domTol = domainToleranceOverride >= 0
+                        ? domainToleranceOverride
+                        : params.gridCell() * 0.5;
                 boolean inDomain = bestLn.hasOutline()
-                        ? bestLn.inDomain(wx, wz, params.gridCell() * 2.0)
+                        ? bestLn.inDomain(wx, wz, domTol)
                         : lakeDist <= (bestLn.radius > 0 ? bestLn.radius : params.lakeRadius())
                                 + params.lakeFadeDist();
                 // ★★★ 2026-09-19 修复：湖域内【不再要求"比河更近"】★★★

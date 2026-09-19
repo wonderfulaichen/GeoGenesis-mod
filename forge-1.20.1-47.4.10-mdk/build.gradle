@@ -1022,6 +1022,18 @@ task runLakeNodeCensusProbe(type: JavaExec) {
     }
 }
 
+// LakeDomainSweepProbe (2026-09-19): 架构第二刀（湖域过大）判决实验 ——
+//   扫描湖域容差 T，量【失水（硬边代价）】与【抑制河谷】此消彼长的关系。
+//   gradlew runLakeDomainSweepProbe [-PprobeArgs="seed bx bz half step"]
+task runLakeDomainSweepProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeDomainSweepProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // RiverLakeLevelGapProbe (2026-09-19): 架构第二刀（水位来源收敛）的前置测量 ——
 //   量【河水面 − 湖水位】的差值分布，判断"三套基准"是否真有可见代价。
 //   gradlew runRiverLakeLevelGapProbe [-PprobeArgs="seed bx bz half step"]
