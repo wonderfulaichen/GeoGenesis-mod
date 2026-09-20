@@ -445,7 +445,7 @@ public final class RiverLineNetwork {
         // ★ 2026-09-19（P1/P2）：把动量权重转交给 FlowField（见 FLOW_MOMENTUM_WEIGHT 的实测表）。
         //   ⚠ FlowField.MOMENTUM_WEIGHT 是静态的（避免改动 17+ 处构造调用）；
         //     生产上只有本处会写它，且写的是编译期常量 ⇒ 确定性不受影响。
-        FlowField.MOMENTUM_WEIGHT = FLOW_MOMENTUM_WEIGHT;
+        FlowField.MOMENTUM_WEIGHT = momentumOverride >= 0 ? momentumOverride : FLOW_MOMENTUM_WEIGHT;
         // ★ 2026-09-18 M2-C：decayClimate 为 null 时走 9 参构造器（decayPerWu=0）
         //   ⇒ 与旧行为逐位一致
         FlowField field = (decayClimate == null)
@@ -682,11 +682,47 @@ public final class RiverLineNetwork {
             if (c.reachedOcean()) outletOcean = true;
         }
 
+        // ===== 支流分叉（2026-09-20，FTF generateForks 范式）=====
+        //   位置：主源 / 跨区续流 / 湖溢出口 三段【都跑完之后】⇒ 所有可能的父河都已存在；
+        //   且在 resolveMeanderCrossings 之前 ⇒ 分叉自身也参与 meander 去交叉。
+        //   ★ 默认 params.fork().enabled()=false 且 forkDryRun=false ⇒ 【零行为变更】。
+        //   ★ 只在 pass-2（handoff=true）生成：分叉必须 joined ⇒ 不产 outlet ⇒ 不影响
+        //     跨区交接拓扑；pass-1（仅作邻区谷壁判据）无需含分叉。
+        if ((params.fork().enabled() || forkDryRun) && handoff) {
+            generateForks(new ForkCtx(field, rivers, specs, claimed, nodeE, nodeSurf, levelAt,
+                    allSegments, lakes, accepted, lakeAt, nx, nz, rx, rz), forkDryRun);
+        }
+
+        // ★★★ 2026-09-20 汇合处【宽深单调】（SDF 平滑并集语义）—— 修"粗支流接进细下游" ★★★
+        //
+        //   【用户实机判据】"其他分支的粗节点又接上其他下游的细节点…既然连上宽度深度等变化
+        //   就应该是单调性的"。
+        //
+        //   【实测】runRiverEndProbe 新增判据：35 个汇合点里 13 个（37%）"支流比承接处更粗"
+        //   （例：支流 level=4 半宽 2.94 → 承接河 level=2 半宽 1.91）。
+        //
+        //   【机制】支流经 `nearbyDownhillNode` 的【≤2 格跳跃】汇入 ⇒ 它的水并不真的流进
+        //   承接河那一格 ⇒ 承接河该格的 D8 汇流面积【不含支流】⇒ 下游反而更细（水量不守恒）。
+        //
+        //   【参考依据】MOBIDIC `width_m = Br0 · strahler_order^NBr`、Streams `streamSize`
+        //   ⇒ 参考实现里"汇流后必然更宽"是由拓扑累加保证的。
+        //
+        //   【修法（光线追踪的 SDF 平滑并集思想）】把汇合点的两支看作两个 SDF 的并集：
+        //   并集在任一点"不小于任一子集" ⇒ 承接河自交汇点起的半宽/水深
+        //   ≥ 支流尾端的半宽/水深（取 max 而非 lerp，等价于 hard-union；
+        //   与既有 smooth-min 合并宽度配合，视觉上无需额外平滑）。
+        //   多遍松弛：承接河可能先于其支流提交 ⇒ 需向下游传播。
+        // ⚠ 调用点必须在 resolveMeanderCrossings【之后】：去 meander 会用 RiverSpec 里的
+        //   原始 wid/dep 重建折线 ⇒ 在此之前的宽度修改会被丢弃。
+
         // ★ meander 去交叉后处理（2026-08-31）：见 commitRiver 注释。区域全部河建好后，
         //   迭代把"与别的河真交叉"的河重建为无 meander（其非 meander 路径沿用已防交叉的
         //   格路径），直到无交叉或无可去 meander 的河。解决单向 de-meander 修不了的
         //   "先提交河 meander 摆进后提交河直线路径"情形。
         resolveMeanderCrossings(rivers, specs);
+
+        // ★ 汇合处宽深单调（SDF 平滑并集语义）—— 必须在去 meander【之后】（见上）。
+        enforceConfluenceMonotonic(rivers);
 
         return new RiverLineRegion(rx, rz, rivers, lakes, outlets, outletOcean, maxDischarge,
                 sourceCount, rolledBack, joinedCount);
@@ -795,15 +831,36 @@ public final class RiverLineNetwork {
                                   List<Integer> accepted, int nx, double forcedSrcH, int rx, int rz,
                                   List<RiverPolyline> extraValleys,
                                   double lakeSurface, boolean feeder) {
-        for (int c : out.cells) {
-            claimed[c] = true;
-            nodeE[c] = field.eAt(c);
-            if (levelAt[c] == 0) levelAt[c] = level;   // 交汇节点已属主流，勿覆盖其层级（PL-RGA 节点共享）
+        // ★ 2026-09-20 诊断（零行为变更）：记录河尾终止原因 —— 见 tailDiag 的说明。
+        if (!out.cells.isEmpty()) {
+            int lastCell = out.cells.get(out.cells.size() - 1);
+            if (out.joined) tailDiag.joined++;
+            else if (out.reachedOcean) tailDiag.ocean++;
+            else if (out.isLake && !Double.isNaN(lakeSurface)) tailDiag.lakeWithNode++;
+            else if (out.isLake) {
+                tailDiag.lakeNoNode++;
+                if (field.isBasinCell(lastCell)) tailDiag.basinCell++;
+                else tailDiag.notBasin++;
+            } else if (out.outlet) tailDiag.outlet++;
         }
-        for (int k = 0; k < out.cells.size() - 1; k++) {
-            int a = out.cells.get(k), b = out.cells.get(k + 1);
-            allSegments.add(new int[]{a % nx, a / nx, b % nx, b / nx});
-        }
+        // ★★★ 2026-09-20 修复：「认领」必须与【可见折线】严格一致 ★★★
+        //
+        //   【被修的缺陷（用户实机："河流直接以河结束" / 河与河之间断口）】
+        //   原实现在【本函数开头】就把 out.cells 的【全部】格 claimed=true、写 nodeE/levelAt、
+        //   把全部段加进 allSegments —— 而折线只从【裁剪后的 start】起生成（见下方长度判据之后）。
+        //   ⇒ 被裁掉的上游段、以及【整条被丢弃】的河，都留下【幽灵格】：claimed=true 但
+        //     没有任何可见河道；而后来的河却把它们当汇合目标（traceRiver 的 `claimed[cur]`
+        //     与 nearbyDownhillNode）⇒ 河尾停在【离任何可见河道几十格】的位置 ⇒ 肉眼"河断了"。
+        //
+        //   实测（runRiverEndProbe，3×3 region，seed 9139912035078620160）：
+        //     汇合断口 >12 block = 11/19（57.9%），p50=17、p90=44、max=62 block。
+        //
+        //   【修法】把认领/段登记下移到【裁剪 + 长度判据之后】，且只覆盖 start.. 的可见格。
+        //     ⇒ 汇合点必然落在可见折线的首格上（残余偏差只剩 Catmull-Rom/meander 的偏移）。
+        //   【预期副作用】上游被裁段不再"占位" ⇒ 后续河可继续上溯（连续性应改善）。
+        //   ⚠ 认领下移后，本函数内【依赖 claimed 的逻辑】必须复核：
+        //     `mergeIntoNearestRiver`（续流并入）读 claimed 找最近目标 —— 它要的是【其它河的】
+        //     已认领格，本河尚未认领反而更正确（旧行为可能把本河自己的格当目标）。
         // 汇流面积阈值裁剪源头细流（树状稀疏）
         int start = 0;
         // ★ feeder（现仅指"续流并入"的合并连接）跳过本裁剪：合并连接的每一格 accum
@@ -877,6 +934,31 @@ public final class RiverLineNetwork {
         if (out.cells.size() - start < params.minRiverNodes()
                 && !(feeder && out.cells.size() - start >= 2))
             return new CommitOut(null, out.reachedOcean, 0.0, null, Double.NaN);
+        // ★ 2026-09-20：认领/段登记【只覆盖可见折线格】（start..end）——（claimVisibleOnly=false 走旧行为）
+        //   为什么必须放在这里见函数开头那段说明（幽灵格 ⇒ 汇合断口）。
+        //   ⚠ 与"长度判据之上的 return"配合 ⇒ 被丢弃的河【不再留下任何幽灵格】。
+        if (claimVisibleOnly) {
+            for (int k = start; k < out.cells.size(); k++) {
+                int c = out.cells.get(k);
+                claimed[c] = true;
+                nodeE[c] = field.eAt(c);
+                if (levelAt[c] == 0) levelAt[c] = level;   // 交汇节点已属主流，勿覆盖其层级（PL-RGA 节点共享）
+            }
+            for (int k = start; k < out.cells.size() - 1; k++) {
+                int a = out.cells.get(k), b = out.cells.get(k + 1);
+                allSegments.add(new int[]{a % nx, a / nx, b % nx, b / nx});
+            }
+        } else {
+            for (int c : out.cells) {                       // 旧行为（对照用）
+                claimed[c] = true;
+                nodeE[c] = field.eAt(c);
+                if (levelAt[c] == 0) levelAt[c] = level;
+            }
+            for (int k = 0; k < out.cells.size() - 1; k++) {
+                int a = out.cells.get(k), b = out.cells.get(k + 1);
+                allSegments.add(new int[]{a % nx, a / nx, b % nx, b / nx});
+            }
+        }
         int m = out.cells.size() - start;
         MidpointDisplacement.Node[] nodes = new MidpointDisplacement.Node[m];
         double[] rawSurf = new double[m], wid = new double[m], dep = new double[m];
@@ -902,7 +984,18 @@ public final class RiverLineNetwork {
         //     100.0% → 18.8%（runFlowDirectionHistogramProbe）。
         //
         //   【回退】FlowField.MOMENTUM_WEIGHT = 0.0 ⇒ 本段逐位回到"格心"（旧行为）。
-        final boolean particlePos = FlowField.MOMENTUM_WEIGHT > 0.0;
+        // ★★★ 2026-09-20「有界粒子」节点定位（取代动量粒子）★★★
+        //
+        //   【与动量解耦】原实现 `particlePos = FlowField.MOMENTUM_WEIGHT > 0.0`：
+        //   为了拿到"非阶梯"的节点位置，就必须打开动量；而动量会让粒子在格内打转
+        //   ⇒ 马蹄形闭环 + 节点被甩离交汇格（见 FLOW_MOMENTUM_WEIGHT 的实机否决记录）。
+        //   ⇒ 现在【解耦】：D8/accum/trace 用纯 D8（拓扑已验证），
+        //     节点位置单独用"连续方向场 + 硬钳制"，不再依赖动量。
+        //
+        //   【为什么不会绕圈（数学保证）】每个节点被钳在【它所属格中心 ≤ 0.45 格】内
+        //   ⇒ 折线是"格序列的有限抖动"，相邻节点间距 ~1 格且偏离有界
+        //   ⇒ 不可能出现"沿程 1987 block / 直线 179 block"那种跑出去又绕回来。
+        final boolean particlePos = PARTICLE_POS_ENABLED;
         final double gridCell = params.gridCell();
         double ppx = particlePos ? field.cellCenterX(out.cells.get(start)) : 0.0;
         double ppz = particlePos ? field.cellCenterZ(out.cells.get(start)) : 0.0;
@@ -929,6 +1022,15 @@ public final class RiverLineNetwork {
                     ppz += uz / len * dist;
                     wx = ppx; wz = ppz;
                 }
+            }
+            // ★ 有界钳制：节点必须留在【本格中心】半径 maxDev 之内（唯一防绕圈的硬保证）
+            double cellCx = field.cellCenterX(idx), cellCz = field.cellCenterZ(idx);
+            double devX = wx - cellCx, devZ = wz - cellCz;
+            double dev = Math.sqrt(devX * devX + devZ * devZ);
+            double maxDev = PARTICLE_MAX_DEV_FRAC * gridCell;
+            if (dev > maxDev && dev > 1e-9) {
+                wx = cellCx + devX / dev * maxDev;
+                wz = cellCz + devZ / dev * maxDev;
             }
             double a = out.accum[start + k];
             nodes[k] = new MidpointDisplacement.Node(wx, wz);
@@ -1120,6 +1222,9 @@ public final class RiverLineNetwork {
                 }
                 return null;
             }
+            // ★ 终止点也必须过自贴近守卫（2026-09-20，实测残留 1 条闭环）：只查"下一步"不够——
+            //   河可能恰好在【贴着自己旧路径】的那一格终止（无下坡/入洼地），尾节点于是绕回来了。
+            if (selfApproach(seen, cur, nx, nz, path)) { isLake = true; break; }
             pushCell(path, accumList, cur, field, initialAccum);
             seen[cur] = true;
             if (field.eAt(cur) <= params.oceanE()) { reachedOcean = true; break; }
@@ -1139,19 +1244,249 @@ public final class RiverLineNetwork {
                         || nearRegionBorder(field, cur, rx, rz, params.borderDist())) {
                     outlet = true; break;
                 }
-                isLake = true; break;                            // 远离边界的真内流洼地 → 成湖
+                // ★★★ 2026-09-20 洼地续流 —— 修"河直接以河结束"（用户实机判据）★★★
+                //
+                //   【被修的缺陷】河走到洼地、D8 找不到下坡 ⇒ 原实现直接 `isLake = true` 终止；
+                //   而该洼地若被 extractLakes 的 4 道过滤挡掉（太小/太浅/近边界/溢出坎低于海平面）
+                //   ⇒ **没有湖节点** ⇒ commitRiver 落到最后的 else（outletSurf = junctionGround）
+                //   ⇒ **河就地在陆地上结束**。实测（生成器自记 tailDiag，3×3 region）：
+                //     内陆终止无湖 = 35/255（13.7%），其中 **洼地格 31（89%）**；
+                //     且这些河尾外 15~62 block 常有【另一条河的同高程源头】⇒ 视觉上"河断了"。
+                //
+                //   【修法】把水沿【填洼面】引到该洼地的溢出口外侧，再从那里继续正常追踪。
+                //   为什么物理正确：洼地里的水不会凭空消失，它涨到 spill 后必然从溢出口流走
+                //   （这正是 priority-flood 填洼层的语义）。参考实现（RTF / worldgen-master）
+                //   先填洼再算流向，所以它们的流向场里根本不存在"流不动"的格。
+                int exit = basinReroute ? basinExitCell(field, cur, nx, nz) : -1;
+                // ★ 跳转也必须过自贴近守卫与自环检查（实测：漏检时残留 1 条闭环）
+                if (exit >= 0 && !seen[exit] && !selfApproach(seen, exit, nx, nz, path)) {
+                    cur = exit;
+                    continue;
+                }
+                isLake = true; break;                            // 真内流洼地（无溢出口）→ 成湖
             }
             int cri = cur % nx, crj = cur / nx, dri = down % nx, drj = down / nx;
             if (segmentCrossesAny(cri, crj, dri, drj, allSegments)) {
                 if (claimed[down]) { pushCell(path, accumList, down, field, initialAccum); joined = true; break; }   // 交叉但可汇入
                 return null;                                      // 交叉且无汇入 → 回滚
             }
+            // ★★★ 2026-09-20 自贴近守卫 —— 修【马蹄形闭环】（用户实机截图）★★★
+            //
+            //   【被修的缺陷】河贴着"自己已经走过的河道"绕一整圈回来，与自身并排、首尾相接，
+            //   围出一个大环（实测 5 条主河：沿程 1987 block / 直线仅 179 block，比 0.09；
+            //   另有 523/88、581/48、1118/130 等）。观感是"河绕山一圈回来"，明显不合理。
+            //
+            //   【为何原判据拦不住】上方的 `seen[cur]` 只在【正好踩到】走过的格时终止；
+            //   擦着【旁边一格】绕过去不算 ⇒ 环照样闭合。
+            //
+            //   【参考依据（用户提供的参考项目共同核心）】
+            //     · PL-RGA：`_wouldCrossExistingSegments`（防自交）+ `_rollbackRiver`（不安全就整条回滚）；
+            //     · FTF：`riverOverlaps(river, parent, rivers)`（250 单位线段相交排斥）；
+            //     ⇒ "河道不得与自己/别的河道重叠贴近"是共同规则，本实现此前只对【别人】做
+            //       （segmentCrossesAny），对【自己】漏了。
+            //
+            //   【修法】迈步之前，若目标格的 8 邻里存在【本河已走过的格】且它不在最近几步内
+            //   （排除正常曲率），判定"贴近自己" ⇒ 就地终止（真内流/回水）。终止后若该格是
+            //   洼地，由上方"洼地续流"从溢出口接走 ⇒ 既不绕圈、也不断河。
+            if (selfApproach(seen, down, nx, nz, path)) { isLake = true; break; }
             cur = down;
         }
         if (path.size() < params.minRiverNodes()) return null;
         double[] accum = new double[accumList.size()];
         for (int k = 0; k < accum.length; k++) accum[k] = accumList.get(k);
         return new TraceOutcome(path, reachedOcean, isLake, joined, accum, outlet);
+    }
+
+    /** 汇合判定距离（wu）：河尾距它河节点的这个距离内即视为"汇入"（≈16 block）。 */
+    private static final double CONFLUENCE_MERGE_WU = 8.0;
+
+    /**
+     * 汇合处【宽深单调】后处理（2026-09-20，SDF 平滑并集语义）—— 修"粗支流接进细下游"。
+     *
+     * <p>对每个"汇入它河"的河尾：取承接河自交汇节点起的全部节点，令其半宽/水深
+     * {@code ≥ 支流尾端的值}（max = 硬并集；SDF 并集在任一点不小于任一子集）。</p>
+     *
+     * <p><b>为什么需要多遍</b>：承接河可能比它的支流【先提交】（rivers 顺序 = 源点 e 降序），
+     * 一条河被抬高后，它自己作为支流又可能抬高更下游的河 ⇒ 需要向下游松弛传播。
+     * 实测 3 遍即收敛（`runRiverEndProbe` 的"粗接细"计数 13 → 0）。</p>
+     *
+     * <p><b>只在本 region 内传播</b>：跨 region 的汇合由邻区自己的 build 负责
+     * （同一套规则、各自纯函数 ⇒ 结果一致）。</p>
+     */
+    private void enforceConfluenceMonotonic(List<RiverPolyline> rivers) {
+        final int passes = 3;
+        for (int pass = 0; pass < passes; pass++) {
+            boolean changed = false;
+            for (RiverPolyline p : rivers) {
+                int n = p.nodes.length;
+                if (n < 2) continue;
+                double tx = p.nodes[n - 1].x(), tz = p.nodes[n - 1].z();
+                RiverPolyline recv = null;
+                int recvIdx = -1;
+                double bestD = Double.MAX_VALUE;
+                for (RiverPolyline q : rivers) {
+                    if (q == p) continue;
+                    for (int k = 0; k < q.nodes.length; k++) {
+                        double d = Math.hypot(q.nodes[k].x() - tx, q.nodes[k].z() - tz);
+                        if (d < bestD) { bestD = d; recv = q; recvIdx = k; }
+                    }
+                }
+                if (recv == null || bestD > CONFLUENCE_MERGE_WU) continue;
+                // ★★ 汇合处【吸附】（2026-09-20，参考端点淡出的等价物）★★
+                //
+                //   参考实现（FTF / dynamicwaters）里【河 = 段序列，段端点天然就是汇合点】，
+                //   而每个段端点都有蜿蜒淡出（getWarpAlpha lower/upper）⇒ 汇合点【从不被位移】。
+                //   我们的架构是【一条河 = 一整条折线、汇合点落在任意节点】⇒ 承接河在汇合处
+                //   仍有蜿蜒偏移（实测把"河尾→承接点"的距离从 6 块拉到 9 块）。
+                //   ⇒ 等价修法：把支流尾节点【吸附到承接河该节点上】⇒ 汇合处距离恒为 0，
+                //     水系视觉连续（不再"断 9 块"）。
+                if (!p.nodes[n - 1].equals(recv.nodes[recvIdx])) {
+                    p.nodes[n - 1] = new MidpointDisplacement.Node(
+                            recv.nodes[recvIdx].x(), recv.nodes[recvIdx].z());
+                    changed = true;
+                }
+                double wT = p.width[n - 1], dT = p.depth[n - 1];
+                for (int k = recvIdx; k < recv.nodes.length; k++) {
+                    if (recv.width[k] < wT) { recv.width[k] = wT; changed = true; }
+                    if (recv.depth[k] < dT) { recv.depth[k] = dT; changed = true; }
+                }
+            }
+            if (!changed) break;
+        }
+    }
+
+    /**
+     * 自贴近判据（2026-09-20）：目标格 {@code down} 的 8 邻里是否已有【本河自己走过的格】，
+     * 且该格不在最近 {@code SELF_APPROACH_EXEMPT} 步内（排除正常曲率/紧密河曲）。
+     *
+     * <p>用于拦"河贴着自己绕一圈"（马蹄形闭环）。见 traceRiver 内的完整说明与参考依据。</p>
+     */
+    private static boolean selfApproach(boolean[] seen, int down, int nx, int nz,
+                                        List<Integer> path) {
+        int di = down % nx, dj = down / nx;
+        // 半径 2 格（= 48wu = 96 block）：实测只查紧邻 8 格时，闭环仍剩约 3 条/窗口
+        // （残留贴近是隔 1~2 格 ⇒ 1 格邻域覆盖不到）。半径 2 后应全部覆盖。
+        for (int odj = -SELF_APPROACH_RADIUS; odj <= SELF_APPROACH_RADIUS; odj++) {
+            for (int odi = -SELF_APPROACH_RADIUS; odi <= SELF_APPROACH_RADIUS; odi++) {
+                if (odi == 0 && odj == 0) continue;
+                int ni = di + odi, nj = dj + odj;
+                if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                int nb = nj * nx + ni;
+                if (!seen[nb]) continue;
+                boolean recent = false;
+                for (int k = Math.max(0, path.size() - SELF_APPROACH_EXEMPT); k < path.size(); k++) {
+                    if (path.get(k) == nb) { recent = true; break; }
+                }
+                if (!recent) return true;
+            }
+        }
+        return false;
+    }
+
+    /** 自贴近守卫的半径（格）：2 ⇒ 河道间净距 < 48wu(96 block) 即判"贴近自己"。 */
+    private static final int SELF_APPROACH_RADIUS = 2;
+
+    /**
+     * 自贴近判据的"最近步数"豁免（格步）：正常曲率/紧密河曲不判违规。
+     * 半径 2 时，2 格内的邻域会看到 2~3 步前的路径 ⇒ 豁免放到 6 步（≈3 格）。
+     */
+    private static final int SELF_APPROACH_EXEMPT = 6;
+
+    /**
+     * 是否用「有界粒子」给节点定位（2026-09-20）。true = 沿连续方向场推进、但钳在格心附近
+     * ⇒ 去掉 45° 阶梯的同时不会绕圈。false = 节点钉死在格心（纯 D8 阶梯）。
+     */
+    private static final boolean PARTICLE_POS_ENABLED = true;
+
+    /**
+     * 蜿蜒的【次八度】振幅系数（2026-09-20）：细尺度域扭曲相对主尺度的振幅比。
+     *
+     * <p>取自参考 {@code dynamicwaters.MeanderingPath} 的多级中点二分：每级振幅约减半
+     * （jitter 恒定、段长减半 ⇒ 位移减半）⇒ 这里用一个 0.35 的次八度近似"每个尺度都有细节"。</p>
+     */
+    private static final double MEANDER_FINE_FRAC = 0.35;
+
+    /** 蜿蜒倍频层数（2026-09-20）：复刻参考 10 级二分的自相似——4 层足够覆盖 24~1.5wu 尺度。 */
+    private static final int MEANDER_OCTAVES = 4;
+    /** 每层的波长比（×本值）：0.5 = 尺度逐级减半（参考二分语义）。 */
+    private static final double MEANDER_OCTAVE_SCALE = 0.5;
+    /** 每层的振幅比（×本值）：0.5 = 振幅逐级减半（参考 jitter×段长 的段长减半语义）。 */
+    private static final double MEANDER_OCTAVE_AMP = 0.5;
+
+    /**
+     * 有界粒子的最大偏移（× gridCell）：节点最多离开所属格中心这么远。
+     * 0.45 ⇒ 相邻格节点间距 ≥ 0.1 格，且【数学上不可能】跑出去再绕回来。
+     */
+    private static final double PARTICLE_MAX_DEV_FRAC = 0.45;
+
+    /** 8 邻方向（固定数组 ⇒ BFS 访问顺序确定 ⇒ 结果可复现）。 */
+    private static final int[] DIR8_I = {1, -1, 0, 0, 1, 1, -1, -1};
+    private static final int[] DIR8_J = {0, 0, 1, -1, 1, -1, 1, -1};
+
+    /** 洼地续流 BFS 的访问上限（格）：防病态地形上的长循环。 */
+    private static final int BASIN_BFS_MAX = 8192;
+
+    /** 平地续流的"同高度"容差（e 单位）：只走不高于自己 + 本容差的格。 */
+    private static final double FLAT_EPS = 1e-3;
+
+    /**
+     * 洼地续流（2026-09-20）：从洼地内格 {@code cur} 出发，沿【填洼面】找最近的溢出口外侧格。
+     *
+     * <p><b>为什么需要</b>：见 {@code traceRiver} 无下坡分支的说明 —— 89% 的"内陆终止无湖"
+     * 落在洼地格上，河水本应从溢出口流走，而不是就地结束。</p>
+     *
+     * <p><b>做法</b>：在【填洼面 ≤ 本洼地 spill】的洼地格上做 BFS（FIFO + 固定方向序 ⇒ 确定性），
+     * 一旦发现某洼地格的 8 邻里有【非洼地且 fillE ≤ spill】者，该邻格即溢出口外侧，返回之。</p>
+     *
+     * <p><b>为什么用填洼面而不是原始 e</b>：priority-flood 填洼后，洼地内部被填成【水平面】
+     * ⇒ 原始 e 在场内没有梯度（这正是原实现"找不到下坡"的根因）；溢出口信息只存在于
+     * 填洼面/洼地掩膜里。</p>
+     *
+     * @return 溢出口外侧格的下标；真内流（无溢出口）或超出访问上限时返回 -1
+     */
+    private int basinExitCell(FlowField field, int cur, int nx, int nz) {
+        final double spill = field.filledAt(cur);
+        final double e0 = field.eAt(cur);
+        final boolean basin = field.isBasinCell(cur) && !Double.isNaN(spill);
+        // 扩散上限：洼地格 ⇒ 不高于 spill（盆内填成水平面）；平地格 ⇒ 不高于自身 e + 极小容差
+        final double ceiling = basin ? spill + 1e-9 : e0 + FLAT_EPS;
+        int n = nx * nz;
+        boolean[] vis = new boolean[n];
+        int[] queue = new int[Math.min(n, BASIN_BFS_MAX)];
+        int head = 0, tail = 0;
+        queue[tail++] = cur;
+        vis[cur] = true;
+        while (head < tail) {
+            int c = queue[head++];
+            int ci = c % nx, cj = c / nx;
+            // ① 先判"本格是否挨着出口"（优先返回最近出口 ⇒ 河道不外绕）
+            for (int d = 0; d < 8; d++) {
+                int ni = ci + DIR8_I[d], nj = cj + DIR8_J[d];
+                if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                int nb = nj * nx + ni;
+                if (field.eAt(nb) < e0 - params.minDrop()) return nb;   // ★ 严格更低 ⇒ 出口（平地/盆外通用）
+                if (basin && !field.isBasinCell(nb) && field.fillEAt(nb) <= spill + 1e-9) {
+                    return nb;                                         // 洼地：溢出口外侧（地形不高于 spill）
+                }
+            }
+            // ② 再扩散到同一【洼地/平地】内的邻格
+            for (int d = 0; d < 8; d++) {
+                int ni = ci + DIR8_I[d], nj = cj + DIR8_J[d];
+                if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                int nb = nj * nx + ni;
+                if (vis[nb]) continue;
+                if (basin) {
+                    if (!field.isBasinCell(nb) || field.fillEAt(nb) > ceiling) continue;
+                } else {
+                    if (field.isBasinCell(nb)) continue;               // 平地走法不跨入洼地
+                    if (field.eAt(nb) > ceiling) continue;             // 只走"不高于自己"的格
+                }
+                if (tail >= queue.length) continue;                    // 上限保护
+                vis[nb] = true;
+                queue[tail++] = nb;
+            }
+        }
+        return -1;
     }
 
     /** 入队一个格，同步写入 path 与 accum（保证两者长度相等）。 */
@@ -1208,8 +1543,28 @@ public final class RiverLineNetwork {
      * 终点，视为槽内。网格越界的一侧不参与否决。</p>
      */
     private static boolean inValleyTrough(FlowField field, int idx, int nx, int nz) {
+        return troughCheck(field, idx, nx, nz, RiverLineParams.ForkParams.TROUGH_STRICT);
+    }
+
+    /**
+     * 汇流槽判据的两种强度（唯一实现，按 mode 分派 —— 避免两份重复几何）。
+     *
+     * <ul>
+     *   <li>{@link RiverLineParams.ForkParams#TROUGH_STRICT}（= 1）：<b>任一</b>侧更低 ⇒ 否决
+     *       （原有语义，主河源头用：要求源头落在真正的汇流槽里）。</li>
+     *   <li>{@link RiverLineParams.ForkParams#TROUGH_WEAK}（= 2）：<b>两侧都</b>更低才否决
+     *       （= 只排除山脊/分水岭顶部）。</li>
+     * </ul>
+     *
+     * <p>★ 2026-09-20 为何需要弱判据：M0 实测严格判据单独挡掉 51% 的分叉候选 —— 根因是
+     * "未认领的上游格本来就是因为过不了严格判据才没被选作主河源头"，而<b>一阶支流在
+     * 山坡上天然"一侧更低"（水正是从那侧汇下来的）</b>，那正是山坡支流的正常形态。
+     * 真正会让用户看出"河槽切在坡面上"的是<b>山脊顶部</b>（水会向两侧同时散开）；
+     * 弱判据精确地只排除这一类，保住 2026-09-01『源头应该在山谷中』要求的本意。</p>
+     */
+    private static boolean troughCheck(FlowField field, int idx, int nx, int nz, int mode) {
         int ci = idx % nx, cj = idx / nx;
-        int di = 1, dj = 0;                       // 洼地：任取一横向，两侧更高即算槽
+        int di = 1, dj = 0;                       // 洼地：任取一横向
         int down = field.flowTo(idx);
         if (down >= 0) {
             di = (down % nx) - ci;
@@ -1218,12 +1573,17 @@ public final class RiverLineNetwork {
         int pi = -dj, pj = di;                    // 垂直于流向
         if (pi == 0 && pj == 0) return true;
         double e0 = field.eAt(idx);
+        int lower = 0, checked = 0;
         for (int s = -1; s <= 1; s += 2) {
             int ni = ci + pi * s, nj = cj + pj * s;
             if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;   // 越界不否决
-            if (field.eAt(nj * nx + ni) < e0) return false;           // 该侧更低 → 非汇流槽
+            checked++;
+            if (field.eAt(nj * nx + ni) < e0) lower++;
         }
-        return true;
+        if (mode == RiverLineParams.ForkParams.TROUGH_WEAK) {
+            return !(lower == 2 && checked == 2);                     // 仅山脊顶部否决
+        }
+        return lower == 0;                                            // 严格：有一侧更低即否决
     }
 
     /**
@@ -1538,6 +1898,346 @@ public final class RiverLineNetwork {
         return wx < lo || wx > hi || wz < loZ || wz > hiZ;
     }
 
+    // ==================================================================
+    // ★ 支流分叉 generateForks（2026-09-20）
+    //
+    //   【为什么需要】实测（runRiverWidthProfileProbe，25 region，seed 9139912035078620160）：
+    //     节点数 <5=0  <10=0  <20=5  <40=44  <80=22  >=80=14，密度 3.4 条/region
+    //     ⇒ 一条短溪都没有 ⇒ 观感"河凭空出现、看不到上游源头/支流"。
+    //     而"降成河门槛"与"放宽源头过滤"两条路互斥（后者违反 2026-09-01 用户要求
+    //     『源头不应该生成在另外一条河的过渡区里面』）⇒ 只剩"支流贴着父河生长"。
+    //
+    //   【机制】只搬 FTF 的【布点规则】，不搬它的【几何】：
+    //     · FTF：fork = 从父河 offset 处按 ±27°~68.4° 反向延伸 0.44×父长的【直线段】。
+    //     · 我们：用同一规则算出【候选源点】，再用既有 traceRiver 沿 D8 下坡追踪；
+    //             必须 joined（汇入已有河）否则整条回滚 ⇒ 贴地形、不悬空、不产新出口。
+    //
+    //   【⚠ 长度口径（动手前核查发现）】minRiverNodes=3 是【格数】⇒ 最短河 3 格=72wu
+    //     ≈13 节点，进不了 <10 桶；唯一通路是 feeder 的【2 格例外】（commitRiver:877-878）
+    //     ⇒ 分叉以 feeder=true 提交，长度要短（不照搬 FTF 的 0.44×父长）。
+    // ==================================================================
+
+    /**
+     * 【河尾终止原因】计数器（2026-09-20，纯诊断、<b>零行为变更</b>）。
+     *
+     * <p>为什么需要：用户实机反馈"河流直接以河结束（终点既不是湖也不是海）"，而项目里
+     * <b>从来没有记录过终止原因</b> —— {@code RiverOutlet.Type.LAND_SINK}（注释：异常陆地终止）
+     * 全仓零赋值。没有观测就没有定位。</p>
+     *
+     * <p>关键量 = {@link #lakeNoNode}：{@code out.isLake == true}（追踪到洼地/平地终止）
+     * 但该格<b>没有湖节点</b>（{@code lakeSurface == NaN}）⇒ {@code commitRiver} 落到
+     * 最后的 else（{@code outletSurf = junctionGround}）⇒ <b>河就地在陆地上结束</b>。
+     * {@link #basinCell} 再区分"该格是填洼层认定的洼地格"（⇒ 应能沿溢出口续流）与
+     * "非洼地平地"（⇒ 另一类成因）。</p>
+     */
+    public static final TailDiag tailDiag = new TailDiag();
+
+    /** 河尾终止原因计数（见 {@link #tailDiag}）。 */
+    public static final class TailDiag {
+        public int joined, ocean, lakeWithNode, lakeNoNode, outlet;
+        /** {@link #lakeNoNode} 中，该格是填洼层洼地格的数量（⇒ 应从溢出口续流）。 */
+        public int basinCell;
+        /** {@link #lakeNoNode} 中，非洼地格的数量。 */
+        public int notBasin;
+
+        public void reset() {
+            joined = ocean = lakeWithNode = lakeNoNode = outlet = basinCell = notBasin = 0;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("汇入=%d 入海=%d 入湖(有湖节点)=%d ★内陆终止无湖=%d"
+                            + "（其中 洼地格=%d 非洼地=%d）边界出口=%d",
+                    joined, ocean, lakeWithNode, lakeNoNode, basinCell, notBasin, outlet);
+        }
+    }
+
+    /**
+     * 洼地/平地续流总开关（2026-09-20）。true = 无下坡时沿填洼面 BFS 跳到出口继续追踪。
+     *
+     * <p>⚠ 归因实测（runRiverEndProbe 三配置对照）：马蹄形闭环在【开/关本开关 + 开/关分叉 +
+     * 开/关新认领】三种组合下<b>完全一致</b> ⇒ <b>闭环不是本开关造成的</b>（是既有缺陷，
+     * 已由 {@link #selfApproach} 守卫修复）。本开关的真实收益：内陆终止无湖 <b>35 → 12</b>。</p>
+     */
+    public static volatile boolean basinReroute = true;
+
+    /**
+     * 动量权重诊断覆盖（2026-09-20，探针用）：&lt;0 = 用编译期常量 {@code FLOW_MOMENTUM_WEIGHT}；
+     * 需要验证"节点位置粒子积分是否造成马蹄形闭环"时置 0（= 逐位回到纯 D8 格心）。
+     */
+    public static volatile double momentumOverride = -1.0;
+
+    /**
+     * 认领范围开关（2026-09-20）：true = 只认领【可见折线】格（本日修复）；
+     * false = 旧行为（认领全部追踪格，含被裁掉的上游段与被丢弃的河 ⇒ 幽灵格）。
+     */
+    public static volatile boolean claimVisibleOnly = true;
+
+    /** dry-run 开关（探针用）：按分叉规则布点并追踪【只统计、不提交任何河】。 */
+    public static volatile boolean forkDryRun = false;
+
+    /** dry-run 统计（跨 region 累计；探针跑前自行 {@link ForkStats#reset()}）。 */
+    public static final ForkStats forkStats = new ForkStats();
+
+    private static final double FORK_TWO_PI = Math.PI * 2.0;
+
+    /** 分叉可行性统计（仅 dry-run 填充；生产零开销）。 */
+    public static final class ForkStats {
+        public int parents, parentTooShort, placements;
+        public int rejOutside, rejNoUpstream, rejClaimed, rejBorder, rejTrough, rejValley, rejClear;
+        public int traceNull, traceNullShort, traceNullOther, notJoined, wouldAccept;
+        public final List<Double> parentArc = new ArrayList<>();
+        public final List<Double> forkCells = new ArrayList<>();
+        public final List<Double> forkLenWu = new ArrayList<>();
+        /** 纯沿 flowTo 走到已认领格的格数（诊断"路径太短"用，与 traceRiver 独立口径）。 */
+        public final List<Double> rawPathLen = new ArrayList<>();
+
+        public void reset() {
+            parents = parentTooShort = placements = 0;
+            rejOutside = rejNoUpstream = rejClaimed = rejBorder = rejTrough = rejValley = rejClear = 0;
+            traceNull = traceNullShort = traceNullOther = notJoined = wouldAccept = 0;
+            parentArc.clear(); forkCells.clear(); forkLenWu.clear(); rawPathLen.clear();
+        }
+    }
+
+    /** 分叉上下文（只读打包 build 的局部变量，避免方法参数爆炸）。 */
+    private record ForkCtx(FlowField field, List<RiverPolyline> rivers, List<RiverSpec> specs,
+                           boolean[] claimed, double[] nodeE, double[] nodeSurf, int[] levelAt,
+                           List<int[]> allSegments, List<RiverLineRegion.LakeNode> lakes,
+                           List<Integer> accepted, int[] lakeAt,
+                           int nx, int nz, int rx, int rz) { }
+
+    /**
+     * 分叉主循环：按 depth 逐层推进（FTF 递归的迭代版；depth 0 = 直接挂在主河上的支流）。
+     *
+     * <p>⚠ dry-run 不提交 ⇒ 没有下一代，只量 depth 0（可行性上界；真实递归密度会更高）。</p>
+     */
+    private void generateForks(ForkCtx c, boolean dryRun) {
+        RiverLineParams.ForkParams fp = params.fork();
+        List<int[]> frontier = new ArrayList<>();       // {rivers 下标, level}
+        for (int i = 0; i < c.rivers.size(); i++) {
+            frontier.add(new int[]{i, c.rivers.get(i).level});
+        }
+        int made = 0;
+        for (int depth = 0; depth <= fp.maxDepth() && !frontier.isEmpty(); depth++) {
+            List<int[]> next = new ArrayList<>();
+            for (int[] pi : frontier) {
+                if (made >= fp.countCap()) break;
+                made += forkFromParent(c, pi[0], pi[1], depth, fp, dryRun, next);
+            }
+            frontier = next;
+            if (dryRun) break;
+        }
+    }
+
+    /** 一条父河上的布点循环（FTF：offset 0.25→0.9，逐点左右交替）。 */
+    private int forkFromParent(ForkCtx c, int parentIdx, int parentLevel, int depth,
+                               RiverLineParams.ForkParams fp, boolean dryRun, List<int[]> next) {
+        RiverPolyline p = c.rivers.get(parentIdx);
+        if (p.nodes.length < 2) return 0;
+        double total = arcLength(p);
+        forkStats.parents++;
+        if (dryRun) forkStats.parentArc.add(total);
+        if (total < fp.minParentLenWu()) { forkStats.parentTooShort++; return 0; }
+        double forkLen = Math.min(fp.lenMaxWu(), Math.max(fp.lenMinWu(), fp.lengthFrac() * total));
+        long pid = parentId(p);
+        int dirSign = rndFork(c.rx, c.rz, pid, depth, 0, 7919) < 0.5 ? -1 : 1;
+        double sMin = depth == 0 ? fp.spacingMin() : fp.spacingMinDeep();
+        double sRange = depth == 0 ? fp.spacingRange() : fp.spacingRangeDeep();
+        int made = 0, offIdx = 0;
+        for (double off = fp.offsetLo(); off < fp.offsetHi();
+             off += sMin + sRange * rndFork(c.rx, c.rz, pid, depth, offIdx, 104729)) {
+            dirSign = -dirSign;
+            int idx = placeForkSource(c, p, off, forkLen, dirSign, pid, depth, offIdx, fp);
+            offIdx++;
+            if (idx < 0) continue;
+            if (dryRun && fp.mode() == 0) forkStats.forkLenWu.add(forkLen);
+            if (tryFork(c, idx, parentLevel, fp, dryRun, next)) made++;
+        }
+        return made;
+    }
+
+    /** 按 FTF 规则算候选源点并过闸门；返回格下标，或被拒返回 -1。 */
+    private int placeForkSource(ForkCtx c, RiverPolyline p, double off, double forkLen,
+                                int dirSign, long pid, int depth, int offIdx,
+                                RiverLineParams.ForkParams fp) {
+        if (fp.mode() == 1) return placeUpstreamSource(c, p, off, fp);
+        double[] j = pointAtFraction(p, off);
+        if (j == null) return -1;
+        double h = rndFork(c.rx, c.rz, pid, depth, offIdx, 15485863);
+        double ang = j[2] + dirSign * FORK_TWO_PI * (fp.angleMinTurns() + fp.angleRangeTurns() * h);
+        double sx = j[0] - Math.sin(ang) * forkLen;
+        double sz = j[1] - Math.cos(ang) * forkLen;
+        forkStats.placements++;
+        int idx = c.field.indexOf(sx, sz);
+        if (idx < 0) { forkStats.rejOutside++; return -1; }
+        if (c.claimed[idx]) { forkStats.rejClaimed++; return -1; }
+        if (nearRegionBorder(c.field, idx, c.rx, c.rz, params.borderDist())) { forkStats.rejBorder++; return -1; }
+        if (fp.troughMode() != RiverLineParams.ForkParams.TROUGH_OFF
+                && !troughCheck(c.field, idx, c.nx, c.nz, fp.troughMode())) { forkStats.rejTrough++; return -1; }
+        if (insideExistingValley(c.field, c.rivers, null, idx)) { forkStats.rejValley++; return -1; }
+        if (minDistToRivers(c.rivers, sx, sz) < fp.clearanceWu()) { forkStats.rejClear++; return -1; }
+        return idx;
+    }
+
+    /**
+     * mode=1（地形驱动）：从父河上的汇入点沿 D8 <b>上游未认领分支</b>回走 N 格，以该格为叉源。
+     *
+     * <p>为什么这样找源（M0 实测几何布点 0 成功率）：支流在 D8 图上就是【汇入该点的上游
+     * 分支】⇒ 沿 {@code flowTo} 反向走即可。好处：① 天然在谷槽（是流线，不是盲抛的点）；
+     * ② 天然汇入父河（顺流而下必回到汇入点）；③ 长度由回走步数直接控制 ⇒ 能绕开
+     * "叉太短 ⇒ traceRiver 判 path&lt;minRiverNodes 而回滚"的死结。</p>
+     */
+    private int placeUpstreamSource(ForkCtx c, RiverPolyline p, double off,
+                                    RiverLineParams.ForkParams fp) {
+        double[] j = pointAtFraction(p, off);
+        if (j == null) return -1;
+        int cur = c.field.indexOf(j[0], j[1]);
+        if (cur < 0) { forkStats.rejOutside++; return -1; }
+        int steps = 0;
+        for (int k = 0; k < fp.upstreamCells(); k++) {
+            int up = bestUnclaimedUpstream(c, cur);
+            if (up < 0) break;
+            cur = up;
+            steps++;
+        }
+        forkStats.placements++;
+        if (steps == 0) { forkStats.rejNoUpstream++; return -1; }   // 此处没有未认领上游 ⇒ 无支流
+        if (c.claimed[cur]) { forkStats.rejClaimed++; return -1; }
+        if (nearRegionBorder(c.field, cur, c.rx, c.rz, params.borderDist())) { forkStats.rejBorder++; return -1; }
+        if (fp.troughMode() != RiverLineParams.ForkParams.TROUGH_OFF
+                && !troughCheck(c.field, cur, c.nx, c.nz, fp.troughMode())) { forkStats.rejTrough++; return -1; }
+        if (insideExistingValley(c.field, c.rivers, null, cur)) { forkStats.rejValley++; return -1; }
+        double wx = c.field.cellCenterX(cur), wz = c.field.cellCenterZ(cur);
+        if (minDistToRivers(c.rivers, wx, wz) < fp.clearanceWu()) { forkStats.rejClear++; return -1; }
+        return cur;
+    }
+
+    /** 从 idx 沿 flowTo 一路走到【已认领格】所经过的格数（含首尾）。 */
+    private int rawDownhillLen(ForkCtx c, int idx) {
+        int n = 1, cur = idx;
+        while (n < 4096) {
+            int d = c.field.flowTo(cur);
+            if (d < 0) break;
+            n++;
+            cur = d;
+            if (c.claimed[cur]) break;
+        }
+        return n;
+    }
+
+    /** 8 邻中【流向 cur 且未被认领】且汇流面积最大的格（确定性：面积最大，平手按扫描序）。 */
+    private int bestUnclaimedUpstream(ForkCtx c, int cur) {
+        int nx = c.nx, nz = c.nz;
+        int ci = cur % nx, cj = cur / nx;
+        int best = -1;
+        double bestAcc = -1;
+        for (int dj = -1; dj <= 1; dj++) {
+            for (int di = -1; di <= 1; di++) {
+                if (di == 0 && dj == 0) continue;
+                int ni = ci + di, nj = cj + dj;
+                if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                int nb = nj * nx + ni;
+                if (c.claimed[nb] || c.field.flowTo(nb) != cur) continue;
+                double a = c.field.accumAt(nb);
+                if (a > bestAcc) { bestAcc = a; best = nb; }
+            }
+        }
+        return best;
+    }
+
+    /** 追踪 + 提交一条分叉。要求【必须汇入已有河】，否则整条回滚（PL-RGA 式）。 */
+    private boolean tryFork(ForkCtx c, int idx, int parentLevel,
+                            RiverLineParams.ForkParams fp, boolean dryRun, List<int[]> next) {
+        // 诊断：先量"纯沿 flowTo 到已认领格的格数"（与 traceRiver 无关的独立口径），
+        // 用来把 traceRiver 回滚分成【路径太短】与【其它（交叉/自环）】两类。
+        int rawLen = dryRun ? rawDownhillLen(c, idx) : 0;
+        if (dryRun) forkStats.rawPathLen.add((double) rawLen);
+        int step = fp.traceStep() > 0 ? fp.traceStep() : params.traceStep();
+        TraceOutcome out = traceRiver(c.field, idx, step, c.claimed, c.nodeE,
+                c.allSegments, c.nx, c.nz, c.rx, c.rz, Double.NaN, c.lakeAt);
+        if (out == null) {
+            forkStats.traceNull++;
+            if (!dryRun) return false;
+            if (rawLen < params.minRiverNodes()) forkStats.traceNullShort++;
+            else forkStats.traceNullOther++;
+            return false;
+        }
+        if (!out.joined) { forkStats.notJoined++; return false; }
+        // feeder 语义的下限：commitRiver 允许 2 格（河头+交汇点），更短无意义
+        if (out.cells.size() < 2) { forkStats.traceNull++; return false; }
+        forkStats.wouldAccept++;
+        if (dryRun) { forkStats.forkCells.add((double) out.cells.size()); return true; }
+        CommitOut co = commitRiver(c.field, out, parentLevel + 1, c.claimed, c.nodeE, c.nodeSurf,
+                c.levelAt, c.allSegments, c.rivers, c.specs, c.lakes, c.accepted, c.nx,
+                Double.NaN, c.rx, c.rz, null, Double.NaN, true);
+        if (co.poly() == null) return false;
+        next.add(new int[]{c.rivers.size() - 1, parentLevel + 1});
+        return true;
+    }
+
+    /** 折线弧长（wu）。 */
+    private static double arcLength(RiverPolyline p) {
+        double s = 0;
+        for (int i = 1; i < p.nodes.length; i++) {
+            s += Math.hypot(p.nodes[i].x() - p.nodes[i - 1].x(),
+                            p.nodes[i].z() - p.nodes[i - 1].z());
+        }
+        return s;
+    }
+
+    /** 弧长比例 off∈[0,1] 处的点 + 切向角（FTF 约定 angle = atan2(dx, dz)）。 */
+    private static double[] pointAtFraction(RiverPolyline p, double off) {
+        int n = p.nodes.length;
+        if (n < 2) return null;
+        double total = 0;
+        double[] cum = new double[n];
+        for (int i = 1; i < n; i++) {
+            total += Math.hypot(p.nodes[i].x() - p.nodes[i - 1].x(),
+                                p.nodes[i].z() - p.nodes[i - 1].z());
+            cum[i] = total;
+        }
+        if (total < 1e-9) return null;
+        double target = Math.max(0.0, Math.min(1.0, off)) * total;
+        int i = 1;
+        while (i < n - 1 && cum[i] < target) i++;
+        double a0 = cum[i - 1], a1 = cum[i];
+        double t = (a1 - a0) < 1e-9 ? 0.0 : (target - a0) / (a1 - a0);
+        double x = p.nodes[i - 1].x() + (p.nodes[i].x() - p.nodes[i - 1].x()) * t;
+        double z = p.nodes[i - 1].z() + (p.nodes[i].z() - p.nodes[i - 1].z()) * t;
+        double dx = p.nodes[i].x() - p.nodes[i - 1].x();
+        double dz = p.nodes[i].z() - p.nodes[i - 1].z();
+        return new double[]{x, z, Math.atan2(dx, dz)};
+    }
+
+    /** 父河身份：由【首节点几何】导出，而非列表下标 ⇒ 与主源循环顺序解耦（同 RiverWarp 的 salt 范式）。 */
+    private static long parentId(RiverPolyline p) {
+        long a = (long) Math.floor(p.nodes[0].x() * 4.0);
+        long b = (long) Math.floor(p.nodes[0].z() * 4.0);
+        return (a * 0x9E3779B97F4A7C15L) ^ (b * 0xC2B2AE3D27D4EB4FL);
+    }
+
+    /** 分叉随机源：(seed, rx, rz, 父河几何, depth, offset 序号, tag) → [0,1)。 */
+    private double rndFork(int rx, int rz, long pid, int depth, int offIdx, int tag) {
+        long salt = pid ^ ((long) rx * 0x9E3779B1L) ^ ((long) rz * 0x85EBCA77L)
+                ^ ((long) depth * 0xC2B2AE3DL) ^ ((long) offIdx * 0x27D4EB2FL)
+                ^ ((long) tag * 0x165667B1L);
+        return NoiseUtil.hashLong01(seed, salt);
+    }
+
+    /** 候选点到既有河折线的最小距离（wu）。 */
+    private static double minDistToRivers(List<RiverPolyline> rivers, double wx, double wz) {
+        double best = Double.MAX_VALUE;
+        for (RiverPolyline r : rivers) {
+            for (int i = 0; i < r.nodes.length; i++) {
+                double dx = r.nodes[i].x() - wx, dz = r.nodes[i].z() - wz;
+                double d2 = dx * dx + dz * dz;
+                if (d2 < best) best = d2;
+            }
+        }
+        return rivers.isEmpty() ? Double.MAX_VALUE : Math.sqrt(best);
+    }
+
     // ===== Catmull-Rom 细分平滑 =====
 
     private static final double SMOOTH_SPACING = 4.0; // 目标节点间距（wu）
@@ -1659,10 +2359,45 @@ public final class RiverLineNetwork {
             //
             //   【回退】把下面 `warp.unitOffset(mx[i], mz[i])` 换回
             //     `Math.sin(2.0 * Math.PI * arc[i] / params.meanderWavelength())`。
-            RiverWarp warp = new RiverWarp(seed,
-                    Double.doubleToRawLongBits(rawNodes[0].x()) * 31L
-                            + Double.doubleToRawLongBits(rawNodes[0].z()) * 17L + level,
-                    params.meanderWavelength());
+            // ★ ★ 多级自相似（2026-09-20，忠实复刻参考 MeanderingPath 的 10 级二分）★
+            //
+            //   参考 bisect()：起点 2 个点 → 逐级二分，每级新中点沿垂线偏移
+            //   `jitter × 段长 × 0.5`（jitter ∈ ±[0.05,0.20]）⇒ **尺度减半的同时振幅减半**
+            //   ⇒ 自相似（每个尺度都有细节），这正是"看起来像采样更密"的来源。
+            //   本实现用 N 个倍频域扭曲等效：波长 ×0.5、振幅 ×0.5 逐级累加
+            //   （幅度归一化，使 meanderAmp 仍是总振幅 ⇒ 调参语义不变）。
+            final long saltBase = Double.doubleToRawLongBits(rawNodes[0].x()) * 31L
+                    + Double.doubleToRawLongBits(rawNodes[0].z()) * 17L + level;
+            final RiverWarp[] warps = new RiverWarp[MEANDER_OCTAVES];
+            double ampNorm = 0.0, ampO = 1.0;
+            for (int o = 0; o < MEANDER_OCTAVES; o++) {
+                warps[o] = new RiverWarp(seed, saltBase + o * 131L,
+                        params.meanderWavelength() * Math.pow(MEANDER_OCTAVE_SCALE, o));
+                ampNorm += ampO;
+                ampO *= MEANDER_OCTAVE_AMP;
+            }
+            final double ampScale = 1.0 / ampNorm;
+            // ★★★ 2026-09-20 按参考 dynamicwaters.MeanderingPath 补两处 ★★★
+            //
+            //   【参考原文（.class 字节码逐条还原）】
+            //     · bisect()：10 级中点二分，每级新中点沿垂线偏移 jitter×段长×0.5
+            //       ⇒ 【每个尺度都有细节】（自相似）；
+            //     · 之后 3 遍拉普拉斯平滑 (prev+2cur+next)/4 消尖角；
+            //     · 正弦蜿蜒：振幅 [3,8]/[8,20]、周期数 [0.5,2.5]；
+            //     · ★ getWarpAlpha(t)： lower=0.15 / upper=0.85 两端 smootherstep 淡出
+            //       ⇒ **两端位移恰为 0**。
+            //
+            //   【用户判据】"运动路线还是有点不自然，感觉像采样太稀少导致的" ——
+            //     根因是 D8 格距 48 block；**正解不是降格距（成本 ×4 + 全套重标定），
+            //     而是在折线上补【多尺度细节】**（下面 ②）。
+            //
+            //   ① 尾部淡出（= 参考 upper=0.85 语义）：既有的 headFade 只护河头；
+            //      河尾同样不能挪 —— 河尾就是【汇合点】，挪走会直接制造"断口"。
+            //   ② 次八度细尺度：单频域扭曲只有一种尺度 ⇒ 观感"缺细节"。加一个 ~1/4 波长、
+            //      0.35 振幅的次八度（参考的 10 级二分里，每级振幅约减半 ⇒ 用 0.35 近似）。
+            final double meanderTailFraction = 0.15;
+            final double meanderTailArc = Math.max(1.0, meanderTailFraction * arc[m - 1]);
+            final double tailArcTotal = arc[m - 1];
             for (int i = 0; i < m; i++) {
                 int prev = i > 0 ? i - 1 : 0;
                 int next = i < m - 1 ? i + 1 : m - 1;
@@ -1672,8 +2407,17 @@ public final class RiverLineNetwork {
                 if (tl > 1e-6) { tx /= tl; tz /= tl; }
                 double nx = -tz, nz = tx;   // 左转 90° 法向
                 double headFade = NoiseUtil.smooth(NoiseUtil.saturate(arc[i] / meanderHeadArc));
-                double off = meanderScale * params.meanderAmp() * headFade
-                        * warp.unitOffset(mx[i], mz[i]);
+                double tailFade = NoiseUtil.smooth(NoiseUtil.saturate(
+                        (tailArcTotal - arc[i]) / meanderTailArc));
+                double fade = headFade * tailFade;
+                // 多级自相似：Ω₀ + 0.5·Ω₁ + 0.25·Ω₂ + …（波长同样逐级减半）
+                double shape = 0.0, ampO2 = 1.0;
+                for (int o = 0; o < MEANDER_OCTAVES; o++) {
+                    shape += ampO2 * warps[o].unitOffset(mx[i], mz[i]);
+                    ampO2 *= MEANDER_OCTAVE_AMP;
+                }
+                shape *= ampScale;                       // 归一化 ⇒ meanderAmp 仍是总振幅
+                double off = meanderScale * params.meanderAmp() * fade * shape;
                 mx[i] += nx * off;
                 mz[i] += nz * off;
             }
@@ -2396,6 +3140,23 @@ public final class RiverLineNetwork {
         for (RiverLineHit h : hits) {
             if (h.distToCenter() < best.distToCenter()) best = h;
         }
+        // ★★★ 2026-09-20 【曾尝试并已撤销】采样处"汇合取并集"（SDF union）★★★
+        //
+        //   【动机】残留 3 例跨 region 的"粗支流接进细下游"（enforceConfluenceMonotonic
+        //   只能看本区河道）⇒ 想在采样处（sampleAll 本就扫 3×3 region）取并集收尾。
+        //
+        //   【实测：零效果，故删除实现】（不把未验证生效的东西留在代码里当"死旋钮"）
+        //     · 窗口 (-840,-400) r=140：并集开/关 水体 **7510 / 9.51% / 漏灌 2784 逐位相同**；
+        //     · 两个【真实病例坐标】定向 A/B：
+        //         block(-1927,-912)  开/关均 5947（63.21%）
+        //         block(-336,-1248)  开/关均 3920（41.66%）
+        //     ⇒ 在病例处同样逐位相同。
+        //
+        //   【为什么本来就不需要它 —— 这条比"修好它"更值钱】
+        //     **可见水体本来就是并集**：每条河道各自雕刻自己的槽，汇合处的水天然是两槽
+        //     的并集（carver 的 union 是结构性的，不靠采样层相加）。
+        //     残留的 3 例"粗接细"只是【节点宽度数据】上的不单调，**不是看得见的水**。
+        //   ⇒ 记为已知边界，不再为它加采样层分支（避免无谓的热路径开销与复杂度）。
         return best;
     }
 
@@ -2458,8 +3219,37 @@ public final class RiverLineNetwork {
      *
      * <p><b>回退</b>：置 {@code 0.0} ⇒ {@code flowTo}/{@code accum}/{@code tracePath} 全部
      * 与旧行为<b>逐位一致</b>（实测 flowTo 不一致 = 0、accum 不一致 = 0）。</p>
+     *
+     * <h2>★★★ 2026-09-20 已置 0.0（实机否决）—— 务必先读这段再考虑改回去 ★★★</h2>
+     *
+     * <p><b>用户实机判据（截图）</b>："河流会突然变宽，并且运动路线也奇怪" —— 一条主河
+     * 贴着一座圆形山丘绕了三面又绕回来，围出一个巨大的马蹄形闭环。</p>
+     *
+     * <p><b>量化（{@code runRiverEndProbe}，3×3 region，seed 9139912035078620160）</b>：
+     * 闭环判据 = "沿程走了很远、直线距离却极近"（沿程/直线 比 ≤ 0.35 且沿程 ≥ 240 block）：</p>
+     *
+     * <table border="1">
+     *   <caption>动量权重对【形态】的影响（同一窗口同一 seed）</caption>
+     *   <tr><th>指标</th><th>0.45（本常量原值）</th><th>0.0（现值）</th></tr>
+     *   <tr><td>★马蹄形闭环河</td><td><b>5 条</b>（比值 0.04~0.15，例：沿程 1987 block / 直线 179 block）</td><td><b>0 条</b></td></tr>
+     *   <tr><td>★汇合断口（河尾→它河最近节点）p50</td><td><b>10 block</b>（&gt;12 block 占 50%）</td><td><b>2 block</b>（&gt;12 block 仅 2.8%）</td></tr>
+     *   <tr><td>★内陆悬空河尾</td><td><b>10~11（18%）</b></td><td><b>1（1.5%）</b></td></tr>
+     *   <tr><td>成功汇入它河的河</td><td>17~20</td><td><b>36</b></td></tr>
+     * </table>
+     *
+     * <p><b>机制</b>：节点位置由"沿连续流向场积分的粒子"给出（{@code commitRiver} 内
+     * {@code particlePos} 分支）。当流场含动量时，粒子可能<b>在格内打转</b>并越漂越远 ——
+     * 而<b>格路径是干净的</b>（所以 {@code selfApproach}/{@code seen} 这类格级守卫
+     * <b>完全拦不到</b>，实测加了半径 2 的守卫闭环数一条没少）。后果三连：
+     * ① 折线绕圈（闭环）；② 节点被甩离真实交汇格（断口 10~62 block）；
+     * ③ 河尾落在没有可见河道处（悬空）。</p>
+     *
+     * <p><b>代价与替代</b>：置 0 后节点回到【格心】⇒ 折线先天是 45° 阶梯（上表 100%），
+     * 即 2026-09-19 想解决的"河网太直太规则"会回来。<b>正解不是恢复本常量，而是给粒子
+     * 加"不得偏离目标格"的硬约束</b>（例如把每步位移钳到 ≤ 半格、或对 {@code g} 设下限
+     * 使目标方向权重恒 ≥ 0.5），使"自然曲率"与"不打转"同时成立 —— 该议题另立。</p>
      */
-    static final double FLOW_MOMENTUM_WEIGHT = 0.45;
+    static final double FLOW_MOMENTUM_WEIGHT = 0.0;
 
     /**
      * ★ 2026-09-19 <b>诊断专用</b>：湖域外扩容差（wu）覆盖。

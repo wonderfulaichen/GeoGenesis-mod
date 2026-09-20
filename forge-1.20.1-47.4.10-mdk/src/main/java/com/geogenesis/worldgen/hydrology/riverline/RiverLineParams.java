@@ -199,8 +199,33 @@ public record RiverLineParams(
     double canyonSlopeRun,
     /** 峡谷区谷底跨度系数（× 河道半宽）：&lt; bankFactor ⇒ 谷底更窄、崖壁更贴近河道。
      *  1.6 → 谷底带 = 1.6×半宽（保留"宽底"，但远窄于常规的 2.5×）。 */
-    double canyonWallFactor
+    double canyonWallFactor,
+    /**
+     * ★ 2026-09-20：支流分叉参数（复刻 FTF {@code BaseRiverGenerator.generateForks} 的
+     * 【布点规则】，追踪仍走本项目的 D8 下坡 {@code traceRiver}）。
+     *
+     * <p>单独成 record 的原因：本 record 已有 ~60 个位置参数，再平铺十几个分叉参数
+     * 极易错位 ⇒ 归组为嵌套 record，只经 {@link #withFork(ForkParams)} 一个出入口。</p>
+     *
+     * <p><b>默认 {@code enabled=false} ⇒ 零行为变更</b>（与 {@code Caves}/{@code Ores}
+     * 同范式：先做默认关闭的实现，再靠实机 A/B 标定）。</p>
+     */
+    ForkParams fork
 ) {
+    /**
+     * ★ 2026-09-20 采样密度实验开关：对 {@code gridCell} 与【以格为基准的面积量】做全局缩放。
+     *
+     * <p>{@code 1.0} = 生产默认（零变更）。{@code 0.5} ⇒ gridCell 24→12wu、
+     * widthAreaRef 576→144、riverAccumThreshold 2304→576；后两者同步按 {@code scale²} 缩放，
+     * 是为了<b>保持"4 格汇流面积 / 单格面积"的口径不变</b>（否则会把河流宽度整体平移）。</p>
+     *
+     * <p><b>为什么需要它</b>：用户判据"运动路线还是有点不自然，感觉像采样太稀少导致的" ——
+     * 根因就是 D8 采样格距本身是 48 block；有界粒子只能在格内弯，改不了"格粗"。</p>
+     *
+     * <p>⚠ 设非 1.0 会改变产出，且水文耗时约 ×(1/scale)²（0.5 ⇒ ~4×）。仅用于实验对比。</p>
+     */
+    public static volatile double gridCellScale = 1.0;
+
     /** 返回副本并把跨 region 连续河开关设为 v（探针 A/B 用）。 */
     public RiverLineParams withCrossRegion(boolean v) {
         return new RiverLineParams(
@@ -217,7 +242,191 @@ public record RiverLineParams(
                 waterfallMinDrop, waterfallMaxDrop, waterfallWindowNodes,
                 waterfallMinSpacing, plungePoolFactor, waterfallMinAngle,
                 waterfallStepHeight, waterfallStepRun, waterfallMaxSteps,
-                canyonMinBank, canyonFullBank, canyonSlopeRun, canyonWallFactor);
+                canyonMinBank, canyonFullBank, canyonSlopeRun, canyonWallFactor, fork);
+    }
+
+    /** 返回副本并替换【支流分叉】参数组（探针 A/B / 实机调参用）。 */
+    public RiverLineParams withFork(ForkParams v) {
+        return new RiverLineParams(
+                regionSize, jitter, fractalLevels, anchorSnapRadius, anchorSnapStep,
+                valleyBiasAmp, minWidth, maxWidth, minDepth, maxDepth, bankFactor,
+                fadeHighE, fadeLowE, surfaceSink, minDischargeArea, oceanE, mountainScale,
+                gridCell, maxTraceSteps, sourceMinE, sourceSpacingCells, traceStep,
+                minRiverNodes, riverAccumThreshold, slopeDrop, bankWidth, valleyExp,
+                bankSlopeRun, bankRunMax, bankRelief, bankIncise, formRunFactor, seamRun,
+                meanderAmp, meanderWavelength, riverCount, borderDist, lakeRadius,
+                lakeMargin, lakeFadeDist, heightBlendDist, blendExp, minDrop, smoothMinK,
+                widthAreaRef, widthExp, depthExp, maxDepthRatio, mouthFadeDepth,
+                estuaryLength, estuaryWidthFactor, mouthMaxWidth, mouthMinDepth, crossRegion,
+                waterfallMinDrop, waterfallMaxDrop, waterfallWindowNodes,
+                waterfallMinSpacing, plungePoolFactor, waterfallMinAngle,
+                waterfallStepHeight, waterfallStepRun, waterfallMaxSteps,
+                canyonMinBank, canyonFullBank, canyonSlopeRun, canyonWallFactor, v);
+    }
+
+    // ==================================================================
+    // ★ 支流分叉（2026-09-20）—— 复刻 FTF generateForks 的【布点规则】
+    //
+    //   【参考原文（已逐行核对）】
+    //     FreeTerraForged-1.21.1 .../rivermap/river/BaseRiverGenerator.java:77-119
+    //       if (depth > 2) return;
+    //       length = 0.44F * parent.length;  if (length < 300f) return;
+    //       for (offset = 0.25F; offset < 0.9F; offset += spacing.next(random)) {
+    //           direction = -direction;
+    //           angle = parentAngle + direction * 2π * FORK_ANGLE.next(random);
+    //           (x1,z1) = parent.pos(offset);                  ← 汇入点（父河上）
+    //           (x2,z2) = (x1,z1) - (sin angle, cos angle) * length;   ← 叉源（外侧）
+    //       }
+    //     River.java:14-16  FORK_ANGLE = 0.075+rand*0.115（圈数）⇒ ±27.0°~68.4°
+    //                       MAIN_SPACING = 0.1+0.25 / FORK_SPACING = 0.25+0.25
+    //
+    //   【⚠ 与参考的两处关键差异（勿照抄数值）】
+    //     ① FTF 的 fork 是【直线段】（两点、不追地形）；我方必须由 traceRiver 沿 D8
+    //        下坡追踪，否则会造出『河悬在空中』⇒ 只搬【布点规则】，不搬几何。
+    //     ② FTF 的 length=0.44×父长 是【同量级大支流】，而 300 的量纲是 FTF 世界单位；
+    //        我方 regionSize=640wu、格距 24wu ⇒ 阈值必须由实测标定（见
+    //        ForkFeasibilityProbe）。
+    //
+    //   【⚠ 长度与"短溪"目标的关系（动手前核查发现，务必记住）】
+    //     minRiverNodes=3 是【格数】（traceRiver:1151）⇒ 最短河 = 3 格 = 72wu，
+    //     经 smoothPath 按 4wu 重采样 ≈ 13 节点 ⇒ 只能落进 <20 桶，<10 恒为 0。
+    //     唯一能进 <10 的通路是 feeder 语义的【2 格例外】（commitRiver:877-878，
+    //     2 格 ≈ 24wu ≈ 7 节点）⇒ 分叉必须以 feeder 提交，且长度要短。
+    // ==================================================================
+    public record ForkParams(
+            /** 总开关。false ⇒ 不进入分叉循环（零行为变更）。 */
+            boolean enabled,
+            /**
+             * 布点方式：<b>0</b> = FTF 几何（父河切向 ±角 反推源点）；
+             * <b>1</b> = 沿 D8 <b>上游未认领分支</b>回走（本项目地形驱动）。
+             *
+             * <p>为什么必须有 1（2026-09-20 M0 实测）：几何布点 151 个候选仅 8 个过闸，
+             * 且 8 个<b>全部</b>被 traceRiver 回滚 —— 叉源离父河仅 1~3 格 ⇒ 追踪 2 格就
+             * 撞上父河 ⇒ {@code path.size() < minRiverNodes(3)} ⇒ 返回 null。
+             * 而"支流"在 D8 图上<b>就是</b>【汇入该点的上游分支】⇒ 沿 flowTo 反向走即可：
+             * 天然在谷槽、天然汇入父河、长度由步数直接控制。</p>
+             */
+            int mode,
+            /** 最大递归深度（FTF：depth > 2 即 return ⇒ 0/1/2 三代）。 */
+            int maxDepth,
+            /** 叉长 = 本值 × 父河弧长（FTF 0.44）。再被 [lenMinWu, lenMaxWu] 钳制。 */
+            double lengthFrac,
+            /** 父河弧长下限（wu）：短于此不分叉（FTF 等价 300/0.44≈682，量纲不同需标定）。 */
+            double minParentLenWu,
+            /** 叉长下限（wu）。 */
+            double lenMinWu,
+            /** 叉长上限（wu）：防分叉长到与主河同量级（FTF 无此约束）。 */
+            double lenMaxWu,
+            /** 分叉角下限（圈数，FTF 0.075 ⇒ 27°）。 */
+            double angleMinTurns,
+            /** 分叉角跨度（圈数，FTF 0.115 ⇒ 上限 68.4°）。 */
+            double angleRangeTurns,
+            /** 沿父河布点间距下限（占弧长比例；FTF MAIN_SPACING 0.10）。 */
+            double spacingMin,
+            /** 布点间距随机跨度（FTF MAIN_SPACING 0.25）。 */
+            double spacingRange,
+            /** 二级及以下分叉的间距下限（FTF FORK_SPACING 0.25，更稀疏）。 */
+            double spacingMinDeep,
+            /** 二级及以下分叉的间距跨度（FTF 0.25）。 */
+            double spacingRangeDeep,
+            /** 布点起点（占弧长比例，FTF 0.25）。 */
+            double offsetLo,
+            /** 布点终点（占弧长比例，FTF 0.90）。 */
+            double offsetHi,
+            /** mode=1：从汇入点沿【上游未认领分支】回走的格数 ⇒ 直接决定叉长（格）。 */
+            int upstreamCells,
+            /**
+             * 叉源的汇流槽判据强度：{@link #TROUGH_OFF} / {@link #TROUGH_STRICT} / {@link #TROUGH_WEAK}。
+             *
+             * <p>⚠ M0 实测（2026-09-20，mode=1）：<b>严格</b>判据单独拒绝 <b>51%</b> 的候选，
+             * 导致可成叉 ≈ 0。根因是"未认领的上游格"<b>本来就是因为过不了严格判据才没被
+             * 选作主河源头</b>；而一阶支流在山坡上天然"一侧更低"（水正是从那侧汇下来的），
+             * 那是山坡支流的正常形态，不是缺陷。</p>
+             *
+             * <p>默认 {@link #TROUGH_WEAK}：只排除<b>山脊/分水岭顶部</b>（两侧都更低 =
+             * 水向两侧同时散开）—— 那才是"河槽切在坡面上"的真正观感来源 ⇒ 保住
+             * 2026-09-01『源头应该在山谷中』要求的本意，同时能出叉。</p>
+             */
+            int troughMode,
+            /**
+             * 分叉追踪步长（格）：<b>0 = 沿用 {@code params.traceStep()}</b>。
+             *
+             * <p>M0 实测：步长 2 时 90 个过闸候选里 65 个被 {@code segmentCrossesAny} 回滚
+             * —— 2 格跳跃会【跨过】介于中间的他人河段 ⇒ 判为交叉。改 1（逐格走）应能救回
+             * 其中一部分（待实测确认）。</p>
+             */
+            int traceStep,
+            /** 叉源与既有河的最小净空（wu）：太近则不开叉（FTF 用 250 的线段相交排斥）。 */
+            double clearanceWu,
+            /** 每 region 分叉数上限（护栏：防数量/耗时失控）。 */
+            int countCap
+    ) {
+        /**
+         * 默认：<b>关闭</b>（零行为变更）+ mode=1（上游分支）+ FTF 原始角度/间距比例。
+         *
+         * <p>绝对阈值（minParentLenWu / upstreamCells / clearanceWu）由
+         * {@code ForkFeasibilityProbe} 实测标定，<b>不照搬 FTF 数值</b>。</p>
+         */
+        /** 汇流槽判据：不检查。 */
+        public static final int TROUGH_OFF = 0;
+        /** 汇流槽判据：严格（任一侧更低即否决）—— 主河源头语义。 */
+        public static final int TROUGH_STRICT = 1;
+        /** 汇流槽判据：弱（仅两侧都更低 = 山脊顶部 才否决）—— 分叉默认。 */
+        public static final int TROUGH_WEAK = 2;
+
+        /**
+         * ★ 2026-09-20 M0 标定后<b>启用</b>的默认值（实测依据见 {@code runForkFeasibilityProbe}）：
+         *
+         * <pre>
+         *   25 region / seed 9139912035078620160 / 只量 depth 0：
+         *     槽判据 严格 ⇒ 可成叉 2 条（0.1/region）      ← 等于没有
+         *     槽判据 弱   ⇒ 可成叉 31 条（1.2/region）★启用
+         *     槽判据 关   ⇒ 可成叉 49 条（2.0/region）     ← 含山脊顶部源，不采用
+         *   密度 3.7 → 4.9 条/region（+32%）；叉长 3~5 格 ≈ 13~21 节点
+         * </pre>
+         *
+         * <p>⚠ 目标口径：分叉改善的是 <b>{@code <20} 桶</b>（短溪）；{@code <10} 结构性
+         * 不可达 —— {@code minRiverNodes=3} 是<b>格数</b>（3 格 = 72wu ≈ 13 节点）。</p>
+         */
+        public static ForkParams defaults() {
+            return new ForkParams(true, 1, 2, 0.44, 40.0, 24.0, 200.0,
+                    0.075, 0.115, 0.10, 0.25, 0.25, 0.25,
+                    0.25, 0.90, 3, TROUGH_WEAK, 1, 24.0, 40);
+        }
+
+        public ForkParams withEnabled(boolean v) {
+            return tune(v, null, null, null, null, null, null, null, null, null, null, null);
+        }
+
+        /**
+         * 探针调参入口：<b>null = 沿用当前值</b>。
+         *
+         * <p>取代逐个 {@code with*} —— 本 record 有 19 个组件，每个 wither 都抄一遍
+         * 极易漏项（与本项目"参数平铺导致错位"的既有教训同源）。</p>
+         */
+        public ForkParams tune(Boolean enabled, Integer mode, Integer maxDepth,
+                               Double lengthFrac, Double minParentLenWu,
+                               Double lenMinWu, Double lenMaxWu, Integer upstreamCells,
+                               Integer troughMode, Integer traceStep,
+                               Double clearanceWu, Integer countCap) {
+            return new ForkParams(
+                    enabled != null ? enabled : this.enabled,
+                    mode != null ? mode : this.mode,
+                    maxDepth != null ? maxDepth : this.maxDepth,
+                    lengthFrac != null ? lengthFrac : this.lengthFrac,
+                    minParentLenWu != null ? minParentLenWu : this.minParentLenWu,
+                    lenMinWu != null ? lenMinWu : this.lenMinWu,
+                    lenMaxWu != null ? lenMaxWu : this.lenMaxWu,
+                    this.angleMinTurns, this.angleRangeTurns,
+                    this.spacingMin, this.spacingRange,
+                    this.spacingMinDeep, this.spacingRangeDeep,
+                    this.offsetLo, this.offsetHi,
+                    upstreamCells != null ? upstreamCells : this.upstreamCells,
+                    troughMode != null ? troughMode : this.troughMode,
+                    traceStep != null ? traceStep : this.traceStep,
+                    clearanceWu != null ? clearanceWu : this.clearanceWu,
+                    countCap != null ? countCap : this.countCap);
+        }
     }
 
     public static RiverLineParams defaults() {
@@ -239,7 +448,7 @@ public record RiverLineParams(
             2048.0,                  // minDischargeArea（旧门控用）
             -0.02,                   // oceanE
             1.0,                     // mountainScale（=1.0：恒等，原始 e，匹配 a7a8d68 基线河位）
-            24.0,                    // gridCell（D8 采样分辨率）
+            24.0 * gridCellScale,    // gridCell（D8 采样分辨率）× 实验缩放
             512,                     // maxTraceSteps
             0.05,                    // sourceMinE（下探到低地/山坡：汇流面积小 → 产出小溪；
                                      //  原 0.20 使源点只聚集在少数高地，互相 claimed 阻断，密度上不去）
@@ -248,7 +457,7 @@ public record RiverLineParams(
                                      //    （14→14），约束不在间距而在候选被已有河路径 claimed，故保持 2。
             2,                       // traceStep（下坡窗口 2 格）
             3,                       // minRiverNodes
-            2304.0,                  // riverAccumThreshold（wu²）= 4 格汇流面积
+            2304.0 * gridCellScale * gridCellScale,   // riverAccumThreshold（wu²）= 4 格汇流面积 × 缩放²
                                      // ★ 2026-09-19【P5 实验已回退，勿重犯】
                                      //   曾试 4 格 → 2 格（1152），目的：让短小源头溪流生成。
                                      //   实测结果（runRiverWidthProfileProbe，25 region）：
@@ -296,8 +505,16 @@ public record RiverLineParams(
             //   见 HydrologyBlockCarver 干地下界处的说明，与 PLAN-hydrology.md §1.18。）
             1.5,                     // formRunFactor（内层定形带 = width × 1.5）
             12.0,                    // seamRun（外层接缝带宽上限 12 block）
-            2.5,                     // meanderAmp（蜿蜒振幅 block）
-            40.0,                    // meanderWavelength（蜿蜒波长 block）
+            6.0,                     // meanderAmp（蜿蜒振幅 block）
+                                     //   ★ 2026-09-20：2.5 → 6.0。用户判据"运动路线还是有点
+                                     //     不自然，感觉像采样太稀少" —— 根因是 D8 采样格距 48 block，
+                                     //     而 2.5 块的蜿蜒相对格距几乎不可见（试过降格距到 24 block：
+                                     //     形态变好但水体膨胀 + 耗时 ×4 + 全套 wu 半径需重标定 ⇒ 放弃）。
+                                     //     ⇒ 改在【可见折线】层加蜿蜒：零成本、不动世界。
+                                     //     与新加的"自贴近守卫"配合（守卫拦自绕，见 traceRiver）。
+            24.0,                    // meanderWavelength（蜿蜒波长 block）
+                                     //   ★ 2026-09-20：40 → 24，与 meanderAmp 6.0 配套
+                                     //     （振幅增大时波长须相应缩短，否则弯道被拉直成缓波）。
             80,                      // riverCount（每 region 最大河数，加密河网）
             96.0,                    // borderDist（≈0.15×regionSize，边界安全距 wu）
             120.0,                   // lakeRadius（湖面半径 wu）
@@ -307,7 +524,7 @@ public record RiverLineParams(
             1.5,                     // blendExp（河高混合回地形幂次）
             1e-6,                    // minDrop（最小下坡量）
             4.0,                     // smoothMinK（smooth-min 合并宽度 block）
-            576.0,                   // widthAreaRef（= gridCell²=24²，单格汇流面积）
+            576.0 * gridCellScale * gridCellScale,   // widthAreaRef（= gridCell²，单格汇流面积）× 缩放²
             0.42,                    // widthExp（W ∝ A^0.42）
             0.40,                    // depthExp（D ∝ A^0.40）
             0.9,                     // maxDepthRatio（宽深比护栏 D ≤ 0.9W）
@@ -332,7 +549,8 @@ public record RiverLineParams(
                                      //   ★ 实测 CanyonProfileProbe：谷壁带内最大岸高 22.6 格，
                                      //     故 20 使最深的河谷接近全强度、且 8~20 平滑过渡）
             0.40,                    // canyonSlopeRun（≈67° 上限；对照 bankSlopeRun=1.5 ≈32°）
-            1.6                      // canyonWallFactor（谷底带 = 1.6×半宽；对照 bankFactor=2.5）
+            1.6,                     // canyonWallFactor（谷底带 = 1.6×半宽；对照 bankFactor=2.5）
+            ForkParams.defaults()    // ★ 支流分叉（默认关闭 ⇒ 零行为变更）
         );
     }
 
