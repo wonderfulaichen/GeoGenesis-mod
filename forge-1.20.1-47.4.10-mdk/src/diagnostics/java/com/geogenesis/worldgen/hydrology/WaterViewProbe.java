@@ -45,6 +45,14 @@ public final class WaterViewProbe {
         int bz = args.length > 2 ? Integer.parseInt(args[2]) : -347;
         int radius = args.length > 3 ? Integer.parseInt(args[3]) : 128;
 
+        // ★ 2026-09-20：可选第 6 参 = 采样密度缩放（gridCell × scale；1.0 = 生产默认）。
+        //   用于肉眼对比"格距更细 ⇒ 河线是否更自然"（0.5 ⇒ 24 block/格）。
+        if (args.length > 5) {
+            RiverLineParams.gridCellScale = Double.parseDouble(args[5]);
+            System.out.printf("  [采样密度] gridCell × %.2f（1.0 = 生产默认）%n",
+                    RiverLineParams.gridCellScale);
+        }
+
         TerrainParams tp = TerrainParams.defaults();
         CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
         gen.seed(seed);

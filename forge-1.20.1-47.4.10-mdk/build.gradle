@@ -1009,6 +1009,42 @@ task runRiverWidthProfileProbe(type: JavaExec) {
     }
 }
 
+// ForkFeasibilityProbe (2026-09-20, 支流分叉 M0): 复刻 FTF generateForks 的布点规则在我方地形上
+//   能出多少条叉？—— dry-run【只统计不提交】，用于标定 ForkParams（不照搬 FTF 数值）。
+//   gradlew runForkFeasibilityProbe [-PprobeArgs="seed rx0 rz0 rn frac lenMin lenMax clearance minParentLen"]
+task runForkFeasibilityProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.ForkFeasibilityProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// RiverEndProbe (2026-09-20, 缺陷诊断): 河尾终止类型分布 —— 用户反馈"河流直接以河结束"。
+//   含【分叉开/关】单变量对照；含两点定位（是否同一条河）。零生产改动。
+//   gradlew runRiverEndProbe -PprobeArgs="seed rx0 rz0 rn [blockX1 blockZ1 blockX2 blockZ2]"
+task runRiverEndProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverEndProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// HydroWindowProbe (2026-09-20, 形态诊断): 窗口内【全水体 + 河身份 + 湖泊 + 定点剖面】的
+//   ASCII 逐格图（带大地坐标，能数格子）—— 用来定位"河在哪里断/哪里该有水却干"。
+//   gradlew runHydroWindowProbe -PprobeArgs="seed blockX blockZ radiusBlocks step [profX profZ]"
+task runHydroWindowProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydroWindowProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // LakeLevelFlatnessProbe (2026-09-19, P3 判据 J1): 湖面是否绝对水平 ——
 //   按【连通水体】分组（无假设），统计各组 riverSurfaceY 的标准差，必须为 0。
 //   gradlew runLakeLevelFlatnessProbe [-PprobeArgs="seed bx bz radius"]
@@ -1477,6 +1513,9 @@ task runWorldgenGate {
     dependsOn 'runOreVeinProbe'
     dependsOn 'runOreOverrideProbe'
     dependsOn 'runOreFilterBehaviorProbe'
+    // 支流分叉（2026-09-20 启用）：判据 = 循环真的执行 + 启用状态下必须有产出。
+    // 不加它 ⇒ 分叉日后被改坏（闸门/参数）会【静默】退化成"没有支流"，而门禁全绿。
+    dependsOn 'runForkFeasibilityProbe'
 }
 
 // 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什么 + 多模组零误删 + 开关真生效:
