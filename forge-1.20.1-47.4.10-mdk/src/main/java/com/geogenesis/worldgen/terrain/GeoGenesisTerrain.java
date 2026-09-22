@@ -678,6 +678,10 @@ public final class GeoGenesisTerrain {
                     //   侵蚀先于水文（extractFromTile → applyHydrologyValley），不违背"湖先于河"；
                     //   河雕刻对湖域的避让由 RiverLineNetwork.sampleAll 的湖域优先保证。
                     final double hsEscape = generator.params().horizontalScale();
+                    // ★★★ 2026-09-23【回到“采样器地形”版 —— 与 domTol=0.5 同批（修环状湖）】★★★
+                    //   实测：采样器版（侵蚀后、雕刻前）= 湖内缺格 534（基本实心）；
+                    //         HEAD 的点态雕刻后地形版 = 38571（环状）。
+                    //   ⚠ 这与早前 HANDOFF 的结论相反 —— 以【同 seed 同窗口的实测数字】为准。
                     java.util.function.ToDoubleBiFunction<Double, Double> finalGroundFn =
                             (a, b) -> generator.sampleWu(a, b).height;
                     // ★ 2026-09-17：把【当前水位】作为上界传入 ⇒ 逃逸求解可安全剪掉

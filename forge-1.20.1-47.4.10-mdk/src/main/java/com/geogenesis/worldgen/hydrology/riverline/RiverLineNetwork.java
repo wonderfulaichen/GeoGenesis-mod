@@ -2718,6 +2718,8 @@ public final class RiverLineNetwork {
      * ★ 2026-09-20「填洼优先」流向总开关：{@code true} = 流向/累积建在 e 空间填洼面上
      * （洼地不再是终点 ⇒ 水"堆积→溢出→继续向下流"）；{@code false} = 旧行为（原始 e 建流向）。
      */
+    // ★ 2026-09-23 A/B 实测：关闭它会让【湖内缺格 7 → 40210（更差）】⇒ 它不是环状湖的原因，
+    //   故恢复 true。（关闭即回到"流向卡洼地"的旧场，湖反而大面积缺失。）
     public static volatile boolean fillFirstRouting = true;
 
     /**
@@ -4797,11 +4799,16 @@ public final class RiverLineNetwork {
                 //   这正是 git `c8f6860`（2026-09-19 第二刀）的取值；后被恢复成 48wu，
                 //   在"纯等高线判水"组合下即成为本次山腰挂水的来源。
                 //   回退：把 0.5 改回 2.0。
-                // ★ 2026-09-23 回退到 HEAD 取值（2×gridCell=48wu）：A/B 实测 HEAD 湖
-                //   （用户实机确认"正常"）用的就是它；0.5 版是我会话内基于错误前提的改动。
+                // ★★★ 2026-09-23【恢复 0.5×gridCell(12wu) —— 修“环状湖”】★★★
+                //   A/B 实测（同 seed 同窗口，指标=湖内"该有水却无水"格数）：
+                //     48wu ⇒ 38571（环状/网状湖，用户实测"现在都是环的湖泊"）
+                //     12wu ⇒ 534  （湖基本实心 —— 即用户认可的那一版）
+                //   ⇒ 12wu 才是"湖面贴合"的取值；48wu 的方格外扩把大量域内格推出
+                //     连通区 ⇒ 湖内成片空洞。
+                //   回退：把 0.5 改回 2.0。
                 double domTol = domainToleranceOverride >= 0
                         ? domainToleranceOverride
-                        : params.gridCell() * 2.0;
+                        : params.gridCell() * 0.5;
                 boolean inDomain = bestLn.hasOutline()
                         ? bestLn.inDomain(wx, wz, domTol)
                         : lakeDist <= (bestLn.radius > 0 ? bestLn.radius : params.lakeRadius())
@@ -4850,11 +4857,14 @@ public final class RiverLineNetwork {
                     //     【圆盘】（用户截图：左图湖下缘是光滑圆弧、压在平坦地面上）。
                     //   修法：与雕刻侧完全同源 —— finalLakeLevel（minimax 逃逸，
                     //   多溢出口取最低）⇒ 平原连海处逃逸高度低 ⇒ 圆盘自然缩回真实湖盆。
-                    // ★ 2026-09-23 回退到 HEAD 原样（bestLn.height）：A/B 实测 HEAD 湖正常，
-                    //   我改的 finalLakeLevel 链反而引入偏差。保留注释供后续重做时参考。
-                    out.add(new RiverLineHit(lakeDist, bestLn.height, lakeW,
+                    // ★★★ 2026-09-23【恢复最终水位链】—— 与上一处 domTol 同批（修环状湖）★★★
+                    //   命中水位取 finalLakeLevel（minimax 逃逸），与雕刻侧同源；
+                    //   曾回退成 bestLn.height（无侵蚀 spill，偏高）⇒ 判水阈值虚高 ⇒ 湖内空洞。
+                    double lv = finalLakeLevel(bestLn);
+                    if (Double.isNaN(lv)) lv = bestLn.height;
+                    out.add(new RiverLineHit(lakeDist, lv, lakeW,
                             params.minDepth(), r.dischargeArea, false, true, 0.0, false,
-                            bestLn.height, bestLn));
+                            lv, bestLn));
                 }
             }
         }

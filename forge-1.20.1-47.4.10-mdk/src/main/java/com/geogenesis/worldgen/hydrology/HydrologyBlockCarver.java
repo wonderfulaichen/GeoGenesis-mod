@@ -66,10 +66,11 @@ public final class HydrologyBlockCarver {
      *
      * <p><b>回退</b>：置 false ⇒ 逐位回到 {@code erodedWaterLevel} 旧行为。</p>
      */
-    // ★ 2026-09-23 回退 false：A/B 实测 HEAD（用户确认"湖正常"）走的是旧链
-    //   （erodedWaterLevel → computeFlood → floodLevel）。本会话的 minimax 改动
-    //   在 HEAD 基线下无净收益。留档供后续"统一水位链"专项重做。
-    public static final boolean LAKE_MINIMAX_LEVEL = false;
+    // ★★★ 2026-09-23【恢复 true（修环状湖）】★★★
+    //   A/B：false（旧链 eroded→flood）⇒ 湖内缺格 38571（环状）；
+    //        true（minimax 逃逸，多溢出口取最低）⇒ 534（实心）。
+    //   与 RiverLineNetwork.finalLakeLevel / domTol=0.5 是同一批修复，必须同开。
+    public static final boolean LAKE_MINIMAX_LEVEL = true;
 
     /**
      * ★★★ 2026-09-22【停用"弃湖"旧逻辑】★★★
@@ -84,9 +85,10 @@ public final class HydrologyBlockCarver {
      *
      * <p><b>回退</b>：置 false ⇒ 逐位回到"OOB 即弃湖"。</p>
      */
-    // ★ 2026-09-23 回退 false：回到 HEAD 的"OOB ⇒ 弃湖"语义
-    //   （AGENTS.md 用户规则：「填充范围内无法闭合的湖泊 ⇒ 就不生成这片湖」）。
-    public static final boolean LAKE_NO_ABANDON_ON_OOB = false;
+    // ★★★ 2026-09-23【恢复 true（修环状湖）】★★★
+    //   OOB 弃湖会让整片湖不出水 ⇒ 湖内大块空洞（与 domTol 48wu 叠加时尤其明显）。
+    //   新语义：OOB 不再弃湖，照常按等高线判水（水位由 LAKE_MINIMAX_LEVEL 保证）。
+    public static final boolean LAKE_NO_ABANDON_ON_OOB = true;
 
     /**
      * ★★★ 2026-09-22【湖判水 = 纯等高线，不再要求 inFlood 连通区】★★★
