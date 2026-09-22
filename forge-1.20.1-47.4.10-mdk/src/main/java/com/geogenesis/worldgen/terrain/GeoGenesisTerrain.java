@@ -892,6 +892,33 @@ public final class GeoGenesisTerrain {
                     }
                 }
             }
+            // ★★★ 2026-09-23【③ 全盆地种子（修“环状/网状湖”＝湖内灰色空洞）】★★★
+            //
+            //   【被修的缺陷（用户实测：湖内出现成片灰色空洞）】
+            //   种子只有 ①（粗格已判出水列）与 ②b（pad 侧 inFlood 抽点）——
+            //   若某片湖盆列【粗格判为不出水】（inFlood=false，被 6wu 粗格连通性否决），
+            //   而它们在【块级】确实低于水位且属于本湖（lakeAny），就永远做不了种子
+            //   ⇒ 1 块精度洪泛从别处过不来（中间被高于水位的格隔断）⇒ 该片保持干
+            //   ⇒ 湖面出现成片灰色空洞（视觉上"环状/网状湖"）。
+            //
+            //   【正解（与用户设计一致：湖面恒定、填到实体边缘为止）】
+            //   本湖【域内】(lakeAny ∧ lakeOf==gi) 且【块级低于水位】(fineFloodWet) 的列
+            //   一律作为种子 —— 这天然满足"在盆地内 ∧ 低于水位"两条，不会外溢：
+            //     · lakeAny 已限定在本湖认领域内（不含无关地形）；
+            //     · fineFloodWet 仍要求 h < level−0.5（高于水位的盆壁不会被灌）。
+            //   ⚠ 与 ②b 的"稀疏抽点"不同：本段是【逐列】检查，故只在【本 chunk 16×16】
+            //     范围做（成本 O(256)，可忽略）；pad 区仍走 ②b 的稀疏路径。
+            for (int lz = 0; lz < 16; lz++) {
+                for (int lx = 0; lx < 16; lx++) {
+                    int i = lx * 16 + lz;
+                    if (!lakeAny[i] || lakeOf[i] != gi) continue;
+                    int k = (lz + pad) * w + (lx + pad);
+                    if (seen[k]) continue;
+                    if (!fineFloodWet(cells, cx, cz, pad, k % w, k / w, level)) continue;
+                    seen[k] = true;
+                    q.add(k);
+                }
+            }
             // ② 1 块精度 4 邻洪泛
             //    ★ 可通行性【惰性求值】：只对洪泛真正访问到的格算高度 ——
             //    若预生成全窗口掩码，每 chunk 要多算 (48²−16²)=2048 次 generator.sample()

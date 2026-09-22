@@ -57,10 +57,15 @@ public final class WaterViewProbe {
 
         // ★ 2026-09-20：可选第 6 参 = 采样密度缩放（gridCell × scale；1.0 = 生产默认）。
         //   用于肉眼对比"格距更细 ⇒ 河线是否更自然"（0.5 ⇒ 24 block/格）。
+        //   ★ 2026-09-23：容错 —— 非数字（如 "fastlake"）直接忽略，不再抛 NumberFormatException。
         if (args.length > 5) {
-            RiverLineParams.gridCellScale = Double.parseDouble(args[5]);
-            System.out.printf("  [采样密度] gridCell × %.2f（1.0 = 生产默认）%n",
-                    RiverLineParams.gridCellScale);
+            try {
+                RiverLineParams.gridCellScale = Double.parseDouble(args[5]);
+                System.out.printf("  [采样密度] gridCell × %.2f（1.0 = 生产默认）%n",
+                        RiverLineParams.gridCellScale);
+            } catch (NumberFormatException ignore) {
+                // 非数字（例如 fastlake 标志）⇒ 保持默认采样密度
+            }
         }
 
         TerrainParams tp = TerrainParams.defaults();
@@ -160,6 +165,13 @@ public final class WaterViewProbe {
         boolean[][] lakeDomNear = new boolean[w][w];    // 最近命中是湖（雕刻实际走湖分支）
 
         int nLake = 0, nOcean = 0;
+        // ★★★ 2026-09-23【快速模式：只出左图（湖）】★★★
+        //   用户要求："我们现在是在修复湖泊，其实你可以渲染左边图，中间和右边可以先不渲染节省时间"。
+        //   【省在哪】最贵的一步是【每列调用 net.sampleAll】（1.4M 列 × 3×3 region × 段）——
+        //   而左图只需要"实际有水的湖列"，干列（陆地，占 ~91.5%）根本不需要命中查询。
+        //   ⇒ 快速模式下：只为 `riverType != 0` 的列调 sampleAll；跳过中/右面板、
+        //     骨架图、流量图，并把左图直接写成 panels_3.png（路径不变，便于对比）。
+        final boolean fastLakeOnly = java.util.Arrays.asList(args).contains("fastlake");
         // ★★★ 2026-09-22【湖内"该有水却无水"的成因分解】（用户判据：湖被截短）★★★
         //   定义：c.riverType==0（干） ∧ 非海 ∧ 存在湖命中 ∧ c.height < 湖命中水位−0.5
         //   ⇒ 物理上该是湖面，却没水。三条成因：
@@ -186,7 +198,13 @@ public final class WaterViewProbe {
                 if (c.isWater()) nOcean++;
 
                 // —— 域判定（全部命中）与分支判定（最近命中）——
-                List<RiverLineNetwork.RiverLineHit> hs2 = netS.sampleAll(x / hsS, z / hsS);
+                // ★ 快速模式：干列（非水、非海）无需命中查询 ⇒ 直接跳过（省掉 ~91% 的 sampleAll）。
+                List<RiverLineNetwork.RiverLineHit> hs2;
+                if (fastLakeOnly && c.riverType == 0) {
+                    hs2 = List.of();
+                } else {
+                    hs2 = netS.sampleAll(x / hsS, z / hsS);
+                }
                 boolean anyRv = false, anyLk = false;
                 for (RiverLineNetwork.RiverLineHit hh : hs2) {
                     if (hh.isLake()) anyLk = true; else anyRv = true;
@@ -354,6 +372,13 @@ public final class WaterViewProbe {
             }
             double[][] hsPre = shadeGray(hPre, mnPre, mxPre);   // 雕刻前地形阴影（左图底）
             BufferedImage p1 = domainPanel(hsPre, lakeDom, 0x2E86FF, 0x9CC8FF, alpha);  // 湖+雕刻前
+            // ★ 快速模式：只写左图（湖），跳过中/右面板、骨架图、流量图 ⇒ 显著省时。
+            if (fastLakeOnly) {
+                ImageIO.write(p1, "png", new File(dir, "panels_3.png"));
+                ImageIO.write(p1, "png", new File(dir, "lake_only.png"));
+                System.out.println("  panels_3.png  ★ 快速模式：仅左图（湖 + 雕刻前地形）");
+                return;      // main 方法收尾（后续中/右面板与其余图全部跳过）
+            }
             BufferedImage p2 = domainPanel(hs, riverDom, 0x00C8B4, 0x7CFFE8, alpha);    // 河+最终
             BufferedImage p3 = mergePanel(hs,                       // 叠加（最终地形底，不变）
                     riverDom, 0x00C8B4, 0x7CFFE8,
