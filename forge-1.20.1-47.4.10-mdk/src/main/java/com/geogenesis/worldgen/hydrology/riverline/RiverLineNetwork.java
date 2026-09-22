@@ -3992,6 +3992,27 @@ public final class RiverLineNetwork {
      */
     public static volatile java.util.function.ToDoubleBiFunction<Double, Double> erodedYSampler = null;
 
+    // ★★★ 2026-09-23【P2-2 块分辨率湖盆连通掩码】★★★
+    //   湖连通性（computeFlood BFS）的格距（wu）。2.0 = 1 块（hs=2 生产默认），
+    //   由 HydrologyExperimentEngine 接线时按 horizontalScale 覆写。
+    //   回退到旧 6wu 粗格：置 lakeBasinFloodGrid = 6.0。
+    public static volatile double lakeBasinFloodGrid = 2.0;
+    // ★ P2-2 总开关：湖命中/管辖域扩展到【块级连通洼地掩码】
+    //   （掩码 = 低于水位 ∧ 与盆底连通，构造保证，治直边/没填到山边/假洼地）。
+    //   false = 逐位回到"轮廓方格 + domTol + 6wu BFS"旧行为（探针/雕刻全链路）。
+    public static volatile boolean lakeBasinHits = true;
+
+    // ★★★ 2026-09-23【"河成湖"（2026-09-07）关闭 —— 用户架构裁定】★★★
+    //   用户规则："湖泊生成要优先于河流，湖泊确定才能做河流"。
+    //   但 detectLakeReaches（低梯度河段自造平湖面，lakeNodes=null）是【由河造湖】，
+    //   且 sampleRegion 会把该段转成湖命中 + 展宽 LAKE_WIDEN 倍 ⇒ 河谷被铺成
+    //   一大片水平"湖"水（实测 region(0,-1)：100 节点河中 5 个节点 lakeLevel=171.23
+    //   ⇒ 26,137 格平坦水体 = 用户红圈"河水被判成湖"）。
+    //   false = 只有【锚定在真实湖节点】的河段（lakeNodes != null，= 2026-09-22
+    //           入湖锚点段，河尾接真湖）才转湖命中；"河自造湖"按普通河处理。
+    //   回退：置 true（逐位回到旧行为）。
+    public static volatile boolean riverMadeLakes = false;
+
     /**
      * ★★★ 2026-09-22【侵蚀增量提供者】—— 修"河不贴谷"（用户实测）★★★
      *
@@ -4472,12 +4493,33 @@ public final class RiverLineNetwork {
         for (RiverLineRegion.LakeNode ln : r.lakes) {
             if (ln.hasOutline()) {
                 if (ln.inDomain(wx, wz, 0.0)) return true;
+                // ★ P2-2：块级连通掩码内的列也归湖管辖（低于水位 ∧ 与盆底连通，
+                //   掩码构造保证湖分支必然出水 ⇒ 不存在 09-22"剥了河命中却不出水"
+                //   的空窗带 —— 那次的根源是 domTol 羽化带里的格不在 inFlood 内）。
+                //   回退：lakeBasinHits=false 一处生效于全部三条链路。
+                if (inBasinMask(ln, wx, wz)) return true;
             } else {
                 double dx = wx - ln.x, dz = wz - ln.z;
                 if (dx * dx + dz * dz <= ln.radius * ln.radius) return true;
             }
         }
         return false;
+    }
+
+    /**
+     * ★ 2026-09-23【P2-2】湖盆连通掩码查询（命中发射 / 河剥除共用）。
+     *
+     * <p>开关关闭、无轮廓（旧式圆盘湖）或侵蚀采样器未接线（探针旧基线）时
+     * 一律 false ⇒ 调用方退回纯 inDomain 语义。掩码惰性建一次/湖
+     * （{@link RiverLineRegion.LakeNode#inBasinFlood}）。</p>
+     */
+    private boolean inBasinMask(RiverLineRegion.LakeNode ln, double wx, double wz) {
+        if (!lakeBasinHits || !ln.hasOutline()) return false;
+        java.util.function.ToDoubleBiFunction<Double, Double> es = erodedYSampler;
+        if (es == null) return false;
+        double lv = finalLakeLevel(ln);
+        if (Double.isNaN(lv)) return false;
+        return ln.inBasinFlood(es, lv, lakeBasinFloodGrid, params.gridCell(), wx, wz);
     }
 
     private List<RiverLineHit> sampleRegion(RiverLineRegion r, double wx, double wz) {
@@ -4560,7 +4602,34 @@ public final class RiverLineNetwork {
                 //     "湖：不挖地 + 水面=雕刻侧湖面" ⇒ **与湖面同源，构造上必然齐平**。
                 boolean emitAsLake = false;
                 RiverLineRegion.LakeNode lakeNodeForHit = null;
+                if (pl.lakeLevel != null && pl.lakeNodes != null) {
+                    // 湖命中必须带上【LakeNode】：雕刻侧湖分支用它做水位（含蚀后短板
+                    // escapeWaterLevel）与域判定 ⇒ 与湖面完全同源。
+                    lakeNodeForHit = !Double.isNaN(pl.lakeLevel[i1])
+                            ? pl.lakeNodes[i1] : pl.lakeNodes[i0];
+                }
+                // ★★★ 2026-09-23【河成湖关闭：只有【锚定真湖】的河段才转湖命中】★★★
+                //   判据 = 本段是否有真实湖节点（lakeNodes 非空且该端非空）。
+                //   旧行为（riverMadeLakes=true）= 只要 lakeLevel 有限就转湖 ⇒
+                //   "河成湖"把低梯度河谷铺成水平湖面（实测 26,137 格 = 用户红圈）；
+                //   现改为：无锚点 ⇒ 保持普通河（用自身单调下降河面、不展宽、不染湖色）。
+                boolean anchoredToLake = lakeNodeForHit != null;
+                // ★★★ 2026-09-23【非锚定"河成湖"段 = 只展宽、不造湖】★★★
+                //   低梯度河段（lakeLevel 有限但无真实湖锚点）：
+                //     · 旧行为 = 转湖命中 + 展宽 + 水面压成 reach 下游端水平面
+                //       ⇒ 河谷被铺成一大片水平"湖"（实测 26,137 格 = 用户红圈；
+                //         且违反用户架构"湖先定、河后接"）；
+                //     · 仅关闭转湖（riverMadeLakes=false）⇒ 水体总量 −18k（低梯度段被抽细）；
+                //     · 本行做法 = 保留展宽（低梯度 = 宽而缓的真河，物理正确），
+                //       水面仍用自身【单调下降】河面（不压平、不染湖色、不接管湖分支）。
+                boolean widenOnly = !anchoredToLake && !riverMadeLakes
+                        && pl.lakeLevel != null
+                        && (!Double.isNaN(pl.lakeLevel[i0]) || !Double.isNaN(pl.lakeLevel[i1]));
+                if (widenOnly) {
+                    width = Math.max(width, 2.0) * LAKE_WIDEN;
+                }
                 if (pl.lakeLevel != null
+                        && (anchoredToLake || riverMadeLakes)
                         && (!Double.isNaN(pl.lakeLevel[i0]) || !Double.isNaN(pl.lakeLevel[i1]))) {
                     double lv = Double.isNaN(pl.lakeLevel[i1]) ? pl.lakeLevel[i0] : pl.lakeLevel[i1];
                     surface = lv;
@@ -4569,12 +4638,6 @@ public final class RiverLineNetwork {
                     frozen = true;
                     fallDrop = 0.0;
                     emitAsLake = true;
-                    // 湖命中必须带上【LakeNode】：雕刻侧湖分支用它做水位（含蚀后短板
-                    // escapeWaterLevel）与域判定 ⇒ 与湖面完全同源。
-                    if (pl.lakeNodes != null) {
-                        lakeNodeForHit = !Double.isNaN(pl.lakeLevel[i1])
-                                ? pl.lakeNodes[i1] : pl.lakeNodes[i0];
-                    }
                     // ★★★ 2026-09-22【命中水位 = 雕刻侧最终水位链】★★★
                     //   雕刻侧最终湖面 = min(carver spill, escapeWaterLevel(雕刻后地形))。
                     //   命中里若填的是旧 spill ⇒ 会【高于】湖面 ⇒ 河尾悬在湖上（用户实测）。
@@ -4849,7 +4912,14 @@ public final class RiverLineNetwork {
                 //     门禁 runWorldgenGate：BUILD SUCCESSFUL（全部判据 PASS）。
                 //
                 //   【回退】恢复为 `if (inDomain && lakeDist <= bestRiverDist) {` 一行。
-                if (inDomain && !inRiverChannel) {
+                // ★★★ 2026-09-23【P2-2：湖命中域扩展到块级连通洼地掩码】★★★
+                //   掩码 = 低于水位 ∧ 与盆底连通（runFloodCore 通行条件构造保证），
+                //   恰为用户规则"湖面恒定高度、填到实体山体边缘、能排走的地形不成湖"。
+                //   域外但掩码内的列此前拿不到湖命中 ⇒ 绝对等高线漏灌 51,434 格无命中
+                //   （LakeHoleSplitProbe B7）+ 水界停在轮廓方格壳上（直边）。
+                //   ⚠ inDomain 短路在前 ⇒ 域内列零新增开销；掩码惰性建一次/湖。
+                //   回退：lakeBasinHits=false。
+                if ((inDomain || inBasinMask(bestLn, wx, wz)) && !inRiverChannel) {
                     double lakeW = bestLn.radius > 0 ? bestLn.radius : params.lakeRadius();
                     // ★★★ 2026-09-22【湖命中水位 = 最终采用水位链】★★★
                     //   ⚠ 曾用 bestLn.height（无侵蚀 spill）—— 比真实湖面【高】，

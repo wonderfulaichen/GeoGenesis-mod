@@ -81,9 +81,22 @@ public final class WaterDecisionChainProbe {
 
         // ---- priority-flood（大窗细格）----
         double R = 192;   // wu
-        FlowField f = new FlowField(wuX - R, wuZ - R, wuX + R, wuZ + R, 6.0,
-                (wx, wz) -> gen.terrainEQuick(wx, wz));
-        f.computeFill((wx, wz) -> gen.heightCurve().heightFromE(gen.terrainEQuick(wx, wz)), seaLevel);
+        // ★ 2026-09-23【可选第 4 参 "wu"】：填洼输入改用【侵蚀后】真实地形 sampleWu。
+        //   ⚠ 第一版误用 net::groundYAt —— 实测两口径数字逐位相同，因 groundYAt =
+        //   heightFromE(terrainEQuick)（RiverLineNetwork javadoc 自证"零侵蚀 tile"）。
+        //   默认（无参）保持 terrainEQuick 预侵蚀口径，历史数字不断档。
+        //   用途：复核"肉眼不是洼地"的候选点在侵蚀后是否仍是盆。
+        FlowField f;
+        if (args.length > 3 && "wu".equals(args[3])) {
+            System.out.println("[5-口径] wu = 侵蚀后 sampleWu（含侵蚀 tile）");
+            f = new FlowField(wuX - R, wuZ - R, wuX + R, wuZ + R, 6.0,
+                    (wx, wz) -> gen.sampleWu(wx, wz).height);
+            f.computeFill((wx, wz) -> gen.sampleWu(wx, wz).height, seaLevel);
+        } else {
+            f = new FlowField(wuX - R, wuZ - R, wuX + R, wuZ + R, 6.0,
+                    (wx, wz) -> gen.terrainEQuick(wx, wz));
+            f.computeFill((wx, wz) -> gen.heightCurve().heightFromE(gen.terrainEQuick(wx, wz)), seaLevel);
+        }
         int idx = f.indexOf(wuX, wuZ);
         System.out.printf("[5] priority-flood（6wu 细格 ±%.0fwu）：地面=%.3f  fillE=%.3f  filledAt=%.3f  accum=%.0f%n",
                 R, f.fillEAt(idx), f.fillEAt(idx), f.filledAt(idx), f.accumAt(idx));

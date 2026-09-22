@@ -1333,12 +1333,23 @@ task runHitConsistencyProbe(type: JavaExec) {
 }
 
 // Water level decision chain at a specific point (2026-09-17, controlled variables):
-//   gradlew runWaterDecisionChainProbe [-PprobeArgs="seed blockX blockZ"]
+//   gradlew runWaterDecisionChainProbe [-PprobeArgs="seed blockX blockZ [wu]"]
 task runWaterDecisionChainProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WaterDecisionChainProbe'
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// 漏灌三分解 (2026-09-23 Phase1): "该有水却干"按成因拆桶（湖域内欠灌/域外/河/残留水位/无命中）
+//   gradlew runLakeHoleSplitProbe [-PprobeArgs="seed blockX blockZ radius"]
+task runLakeHoleSplitProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeHoleSplitProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split('\\s+') as List)
     }
 }
 

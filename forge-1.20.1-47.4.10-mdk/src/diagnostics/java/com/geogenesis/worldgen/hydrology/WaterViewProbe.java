@@ -68,6 +68,18 @@ public final class WaterViewProbe {
             }
         }
 
+        // ★ 2026-09-23【Phase1-a：门控链坐标同时作 CARVE-TRACE 断点】
+        //   必须在首次 getChunkCells 之前设置（雕刻发生在生成期）。
+        //   用法不变：args[6],args[7] = 定点块坐标 ⇒ 该块生成时打印 carver 决策链。
+        if (args.length > 7) {
+            try {
+                HydrologyBlockCarver.TRACE_BLOCK = HydrologyBlockCarver.traceKey(
+                        Integer.parseInt(args[6]), Integer.parseInt(args[7]));
+            } catch (NumberFormatException ignore) {
+                // 非数字 ⇒ 不设断点
+            }
+        }
+
         TerrainParams tp = TerrainParams.defaults();
         CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
         gen.seed(seed);

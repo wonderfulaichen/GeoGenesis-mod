@@ -109,7 +109,16 @@ public final class GeoGenesisTerrain {
      * 门禁 {@code runHydrologyDeterminismProbe} 的 FAIL 经隔离实验确认是<b>既有问题</b>
      * （本开关关掉仍 FAIL；max|Δheight| = 0.0515，与本改动无关）。</p>
      */
-    static final boolean LAKE_FINE_FLOOD = true;
+    // ★★★ 2026-09-23【P2-2 收尾：默认关闭】（B9 簇扫描实锤）★★★
+    //   本机制的历史使命 = 补 6wu 粗格 inFlood 的误杀（452 干墙格）。
+    //   P2-2 把连通性换成 1 块分辨率掩码后，"被拒列"= 掩码外 = 本就不该出水的列，
+    //   本方法的"局部连通即出水"反而变成【掩码外灌水】——
+    //   实测（B9 簇扫描，seed 9139912035078620160）：坡地孤斑簇距母湖 88~102wu、
+    //   带母湖水位（173.28/189.05）、全部不在掩码内（如 (-256,-276) 19 格、
+    //   (-251,-269) 34 格、(-412,-49) 8 格、(-26,-419) 2 格）⇒ 用户实机圈出的
+    //   "坡地小水斑"（B8 过量蓄水 702 格同源）。
+    //   回退：改回 true（旧链语义原样恢复）。
+    static final boolean LAKE_FINE_FLOOD = false;
 
     /** 逃逸水位专用的水文引擎（懒建一次，供点态最终地形采样复用）。 */
     private HydrologyExperimentEngine escapeEngine;
