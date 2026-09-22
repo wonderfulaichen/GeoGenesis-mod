@@ -323,6 +323,17 @@ public final class GeoGenesisConfig {
     /** 软化指数（&lt;1 ⇒ 半干旱区也有明显衰减）。默认 0.5。范围 [0.1, 3.0] */
     public final ForgeConfigSpec.DoubleValue hydrologyDecayExponent;
 
+    /**
+     * ★ 2026-09-21【流体骨架路线】（实验）：{@code true} = 河道折线改由块分辨率流体物理
+     * 模拟（{@code TerrainFlowSim}）产出 ⇒ 路线按构造物理正确（最陡下降，无横切/上坡）。
+     *
+     * <p><b>默认 false（工程安全）</b>：骨架路线目前绕过整条旧追踪链路，因此
+     * <b>支流分叉 / 瀑布阶梯化 / 河口湾 / 跨区出口延续尚未接入</b>，
+     * 且审计实测沿河线无水 18.8%、沿程抬升 23.2%（旧链路为 0/0）。
+     * 打开即可在游戏里直接看到新路线（其余流程不变），关闭逐位回到旧行为。</p>
+     */
+    public final ForgeConfigSpec.BooleanValue hydrologySkeletonRouting;
+
     // ===================== ★ 2026-09-18 全流程诊断 =====================
     /**
      * ★ 2026-09-18：<b>世界生成全流程诊断</b>（把每个阶段的耗时打进 {@code latest.log}）。
@@ -845,6 +856,20 @@ public final class GeoGenesisConfig {
         //     【Ores 段内】⇒ 路径变成 [.. .Ores].hydrologyDecayEnabled，与"水文"语义完全无关，
         //     用户根本不会去那里找。配置项的【归属段落】就是它的"文档"。
         builder.push("Hydrology");
+        hydrologySkeletonRouting = builder.comment(
+                "Fluid-physics river skeleton routing (EXPERIMENTAL). true = river polylines are"
+                + " derived from a block-resolution fluid simulation (priority-flood -> D8 -> accumulation),"
+                + " so every step is strictly downhill (no cross-slope / uphill segments)."
+                + " false (default) = legacy 48-block D8 tracing + particle/meander decoration (bit-identical)."
+                + " KNOWN GAPS when true: tributary forking, waterfall stepping, estuary and cross-region"
+                + " outlet continuation are not yet wired (measured: dry river nodes 18.8%, rising water 23.2%)."
+                + " Takes effect on world (re)load; already-generated chunks are unchanged."
+                + " DEFAULT true since 2026-09-21 (user: the new routing must be visible in-game to be"
+                + " testable). Set false to revert to the legacy 48-block tracing.")
+                // ★ 2026-09-23 默认改为 false：骨架路线会顶替 09-19 已完成的湖拓扑，
+                //   导致湖泊变形（用户实测）。湖泊验收通过前保持关闭（见
+                //   RiverLineNetwork.flowSkeletonRouting 注释与 git 铁证）。
+                .define("hydrologySkeletonRouting", false);
         hydrologyDecayEnabled = builder.comment(
                 "Water balance: downstream decay (evaporation / infiltration) along flow paths."
                 + " false (default) = OFF: pure accumulation, zero behaviour change (bit-identical)."

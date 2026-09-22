@@ -6,6 +6,7 @@ import com.geogenesis.worldgen.hydrology.HydrologyBlockCarver;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkEngine;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
 import com.geogenesis.worldgen.hydrology.HydrologyExperimentEngine;
+import com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork;
 import com.geogenesis.worldgen.noise.NoiseUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -225,6 +226,22 @@ public final class GeoGenesisTerrain {
     /** 实验专用水文 chunk 结果；默认游戏路径不调用。 */
     public HydrologyChunkResult calculateHydrologyChunk(int chunkX, int chunkZ) {
         return hydrologyExperiment.calculate(chunkX, chunkZ);
+    }
+
+    /**
+     * ★ 2026-09-21 诊断用只读暴露：本地形实例【生产中正在使用】的那份河线网络。
+     *
+     * <p><b>为什么必须有这个 getter</b>：诊断探针若要判"河线与生成的 Cell 是否自洽"，
+     * 必须拿【同一份】网络去比。此前探针自建 {@code new RiverLineNetwork(gen::terrainEQuick,
+     * null, ...)} —— 少了生产接线里的 {@code precipSampler}（降水加权汇流）与
+     * {@code horizontalScale=2.0}，河线路由与生产雕刻的**不是同一条河**
+     * ⇒ 那些"干河节点"多是<b>假阳性</b>（实测干节点样本里出现"折线水面 166.2 而 Cell
+     * 水面 178.0"这种自相矛盾，正是两套网络各说各话）。</p>
+     *
+     * <p><b>不改变任何生产逻辑</b>（只读返回内部引用）。</p>
+     */
+    public RiverLineNetwork hydrologyNetwork() {
+        return hydrologyExperiment.riverNetwork();
     }
 
     /** 海平面 Y */
@@ -651,22 +668,18 @@ public final class GeoGenesisTerrain {
                     //   与真实放置口径一致（实测差 0.005 块）。这是修"水位求解早于雕刻"的关键：
                     //   旧实现用的是侵蚀后但仍未雕刻的地形（同一份输入 ⇒ 逃逸高度反而更高、min 后不变）。
                     // ⚠ 引擎必须复用（懒建一次）；此前写在逐列循环内 ⇒ 每列都新建，极浪费。
-                    if (escapeEngine == null) {
-                        escapeEngine = new HydrologyExperimentEngine(generator, 0L);
-                    }
-                    final HydrologyExperimentEngine engEsc = escapeEngine;
-                    // ⚠ 入参 (a,b) 是 **wu**（escapeWaterLevel 用 wu）；块坐标 = wu × hs
+                    // ★★★ 2026-09-22【湖先于河】（用户裁定："湖泊应该在河流生成前。
+                    //   因为河流生成后会改变地形，这是目前河流的机制导致的。"）★★★
+                    //
+                    //   旧实现 finalGroundFn = sampleWu 基线 + carveColumnAt 的雕刻量
+                    //   ⇒ 逃逸水位的地形输入【含河雕刻】⇒ 湖水位依赖河雕刻结果 = 湖在河后。
+                    //   河一旦挖低湖坎/开出新排水口，湖水位跟着河变 —— 顺序颠倒。
+                    //   修法：地形输入 = 【侵蚀后、雕刻前】的 sampleWu。
+                    //   侵蚀先于水文（extractFromTile → applyHydrologyValley），不违背"湖先于河"；
+                    //   河雕刻对湖域的避让由 RiverLineNetwork.sampleAll 的湖域优先保证。
                     final double hsEscape = generator.params().horizontalScale();
-                    java.util.function.ToDoubleBiFunction<Double, Double> finalGroundFn = (a, b) -> {
-                        int bxx = (int) Math.floor(a * hsEscape);
-                        int bzz = (int) Math.floor(b * hsEscape);
-                        double o = generator.sample(a, b).height;
-                        HydrologyBlockCarvedColumn c =
-                                HydrologyBlockCarver.carveColumnAt(engEsc, bxx, bzz, o, hsEscape);
-                        if (c == null) return generator.sampleWu(a, b).height;
-                        double raw = generator.sampleWu(a, b).height - c.originalGroundY();
-                        return c.carvedGroundY() + raw * c.erosionMask();
-                    };
+                    java.util.function.ToDoubleBiFunction<Double, Double> finalGroundFn =
+                            (a, b) -> generator.sampleWu(a, b).height;
                     // ★ 2026-09-17：把【当前水位】作为上界传入 ⇒ 逃逸求解可安全剪掉
                     //   "路径最高点 > 当前水位"的全部格（下一行本就是 min(spill, esc)，
                     //   那些路径无论通向何处都不会改变结果）⇒ 实测该段从占 hydro 54% 降下来。
@@ -833,6 +846,43 @@ public final class GeoGenesisTerrain {
                         if (seen[k]) continue;
                         if (!node.inFlood((cx * 16 + lx) / hsFlood, (cz * 16 + lz) / hsFlood)) continue;
                         if (!fineFloodWet(cells, cx, cz, pad, gx, gz, level)) continue;
+                        seen[k] = true;
+                        q.add(k);
+                    }
+                }
+            }
+            // ★★★ 2026-09-22【③ 兜底种子：盆底最低格】★★★
+            //
+            //   【被修的缺陷（审计命中诊断 + 判据钉死）】
+            //   种子只有 ①（本 chunk 粗格已出水列）与 ②b（pad 侧 inFlood 抽点）。
+            //   若某湖的列【全部】被 inFlood 粗格连通判定拒绝（6wu 网格量化 + 格心单点
+            //   采样的隧穿问题，见本类 L292-297 的自述）⇒ lakeSeed 全 false、②b 也不命中
+            //   ⇒ 本湖【零种子】⇒ 1 块精度重判无从起步 ⇒ **整个湖不出水**。
+            //   实测后果：该湖所有入湖河尾列 riverType=0 / water=false
+            //   （审计"河尾无水 19/58 = 32.8% FAIL"几乎全部落在少数几个这样的湖上，
+            //    样本 r(-1,-1)#26 k=141..144 同属一湖）。
+            //
+            //   【物理依据（用户语义）】"湖 = 水位以下的连通水域"：
+            //   盆底必然低于水面（水位 ≥ 盆底是构造保证）⇒ 盆底最低格是【天然合法种子】。
+            //   洪泛只通过 `h < level − 0.5` 的格 ⇒ 水位低于真盆沿时水【不可能】漫出湖盆
+            //   ⇒ 与"最低溢出口定湖面"的语义完全一致，不会多淹。
+            //
+            //   【触发条件】仅当本湖在 ①+②b 下【一个种子都没有】时启用（q.isEmpty()）
+            //   ⇒ 对原行为零影响（有种子时此段不执行）。
+            if (q.isEmpty()) {
+                int bestI = -1;
+                double bestH = Double.MAX_VALUE;
+                for (int lz = 0; lz < 16; lz++) {
+                    for (int lx = 0; lx < 16; lx++) {
+                        int i = lx * 16 + lz;
+                        if (!lakeAny[i] || lakeOf[i] != gi) continue;
+                        if (cells[i].height < bestH) { bestH = cells[i].height; bestI = i; }
+                    }
+                }
+                if (bestI >= 0) {
+                    int lx = bestI % 16, lz = bestI / 16;
+                    int k = (lz + pad) * w + (lx + pad);
+                    if (fineFloodWet(cells, cx, cz, pad, k % w, k / w, level)) {
                         seen[k] = true;
                         q.add(k);
                     }

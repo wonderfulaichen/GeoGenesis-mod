@@ -15,6 +15,10 @@ import java.util.List;
  * 旧格点水文（HydrologySimulator/Adapter 等）已于 2026-08-29 整体移除。</p>
  */
 public final class HydrologyExperimentEngine {
+    /** 日志（诊断用）：确认骨架路线开关的【实际生效值】与回退原因。 */
+    private static final org.apache.logging.log4j.Logger LOGGER =
+            org.apache.logging.log4j.LogManager.getLogger("geogenesis");
+
     private final CellGenerator terrain;
     private final RiverLineNetwork network;
 
@@ -74,8 +78,43 @@ public final class HydrologyExperimentEngine {
         //   默认关闭（hydrologyDecayEnabled=false）⇒ decayClimate 为 null
         //   ⇒ RiverLineNetwork 走 9 参构造器（decay=0）⇒ 与旧行为【逐位一致】。
         //   开启后：干旱区蒸发强 ⇒ 内流河/时令河；湿润区 decay=0 ⇒ 河流穿流到海。
+        // ★ 2026-09-22【河-湖水位同口径】注入【侵蚀后地形】采样器：
+        //   雕刻侧湖面 = min(无侵蚀 spill, 侵蚀后坎高)；河尾必须用同一水位才能对接
+        //   （用户实测："河流根本没有和湖泊高度对接上"）。
+        try {
+            com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.erodedYSampler =
+                    (a, b) -> terrain.sampleWu(a, b).height;
+        } catch (RuntimeException ignore) {
+            // 探针/无地形时保持 null ⇒ 退回无侵蚀 spill
+        }
+        // ★ 2026-09-22【侵蚀感知路由场】注入：修"河不贴谷"（路由场原为侵蚀前地形）。
+        //   用 peek（非阻塞）—— 绝不触发侵蚀 tile 冷生成，未缓存处退化为侵蚀前地形。
+        try {
+            com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.erosionDeltaProvider =
+                    (a, b) -> {
+                        java.util.OptionalDouble d = terrain.peekErosionDeltaE(a, b);
+                        return d.isPresent() ? d.getAsDouble() : Double.NaN;
+                    };
+        } catch (RuntimeException ignore) {
+            // 无侵蚀模块 ⇒ 保持 null（等同侵蚀前地形）
+        }
         try {
             GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
+            // ★ 2026-09-21【流体骨架路线开关】config 缺省 false ⇒ 零行为变更。
+            //   打开即让河道折线走块分辨率流体模拟（物理正确路线）。
+            try {
+                boolean v = cfg.hydrologySkeletonRouting.get();
+                RiverLineNetwork.flowSkeletonRouting = v;
+                // ★ 2026-09-21【必须打日志】用户判据："我在游戏里面看到的还是旧版？"
+                //   两条可能：① 磁盘 config 里仍是旧值 false（本次改动前生成的配置文件
+                //   会永久保留旧值，默认值改了也没用）；② 骨架在建河里静默失败回退。
+                //   这条日志直接给出【实际生效值】，把两种情况分开。
+                LOGGER.info("[RIVER] skeletonRouting config={} => effective={}", v,
+                        RiverLineNetwork.flowSkeletonRouting);
+            } catch (RuntimeException e) {
+                LOGGER.info("[RIVER] skeletonRouting config MISSING (old config file) => keep default={}",
+                        RiverLineNetwork.flowSkeletonRouting);
+            }
             if (cfg.hydrologyDecayEnabled.get()) {
                 this.network.setDecayClimate(
                         new com.geogenesis.worldgen.hydrology.flowaccum.FlowField.DecayClimate(
