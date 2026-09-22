@@ -1,7 +1,9 @@
 package com.geogenesis.worldgen.hydrology;
 
 import com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork;
+
 import com.geogenesis.worldgen.hydrology.riverline.RiverLineParams;
+import com.geogenesis.worldgen.hydrology.riverline.RiverLineRegion;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
@@ -10,6 +12,7 @@ import com.geogenesis.worldgen.terrain.TerrainParams;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.List;
 
 /**
  * 水景出图探针（★ 2026-09-19）—— 山体阴影 + 水体染色，用于【人眼目检】湖岸/河岸形态。
@@ -41,9 +44,16 @@ public final class WaterViewProbe {
 
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 9139912035078620160L;
-        int bx = args.length > 1 ? Integer.parseInt(args[1]) : -426;
-        int bz = args.length > 2 ? Integer.parseInt(args[2]) : -347;
-        int radius = args.length > 3 ? Integer.parseInt(args[3]) : 128;
+        // ★★★ 2026-09-22【窗口 = 用户认可的锁定框架】★★★
+        //   用户判据："你干嘛放大？明明之前就挺好的，局部是看不到问题的。"
+        //   ⇒ 默认窗口 = **块(-840,-363) 起算、1400 块见方**（与 HydroPhysicsAudit
+        //     的 COMPARE_* 完全一致）。中心 = (-840+700, -363+700) = (-140, 337)。
+        //   ★ 2026-09-22【窗口上移】（用户判据："图的渲染位置应该向上挪，因为目前看到
+        //     顶部河流与湖泊比较密集，可能更容易找问题"）：中心 z 由 337 → **137**
+        //     （上移 200 块），使窗口北缘覆盖原来"顶部那一片密集河湖"更完整。
+        int bx = args.length > 1 ? Integer.parseInt(args[1]) : -140;
+        int bz = args.length > 2 ? Integer.parseInt(args[2]) : 137;
+        int radius = args.length > 3 ? Integer.parseInt(args[3]) : 700;
 
         // ★ 2026-09-20：可选第 6 参 = 采样密度缩放（gridCell × scale；1.0 = 生产默认）。
         //   用于肉眼对比"格距更细 ⇒ 河线是否更自然"（0.5 ⇒ 24 block/格）。
@@ -61,14 +71,103 @@ public final class WaterViewProbe {
 
         int w = 2 * radius + 1;
         double[][] h = new double[w][w];
+        // ★★★ 2026-09-22【双底图】（用户裁定三联图语义）★★★
+        //   hPre  = 雕刻前地形（sampleWu = 侵蚀后、河雕刻前）—— 湖泊生成时看到的输入
+        //   h(现) = 最终地形（cell.height = 侵蚀 + 河雕刻后）—— 河流雕刻的产物
+        //   左图(湖)用 hPre、中图(河)用 h ⇒ 可直接观察"管线顺序"有没有问题。
+        double[][] hPre = new double[w][w];
         boolean[][] lake = new boolean[w][w];
         boolean[][] ocean = new boolean[w][w];
+        // ★ 2026-09-22【河/湖分色】（用户要求"渲染图要区分河流与湖泊，方便调试"）
+        boolean[][] riverOnly = new boolean[w][w];
+        boolean[][] lakeOnly = new boolean[w][w];
+        boolean[][] prodLake = new boolean[w][w];
+
         // ★ 流量图 = 液滴物理侵蚀的汇流累积（discharge 场）—— 【物理机制跑出来的结果】，
         //   作为"哪里该有水"的参照物（ground truth）。预览图层 RIVER_NETWORK 即此场。
         double[][] flow = new double[w][w];
 
+        // ★ 2026-09-22【填色诊断】—— 用户判据："填色绝对有 bug"。
+        //   直接量：湖域掩码标了多少块 / 有多少水列落在掩码内 / 湖节点清单。
+        int maskN = 0;
+        for (int j = 0; j < w; j++) {
+            for (int i = 0; i < w; i++) if (prodLake[j][i]) maskN++;
+        }
+        System.out.printf("[湖域掩码] 标记 %d 块（窗口 %d 块的 %.2f%%）· 湖节点样本：%n",
+                maskN, w * w, 100.0 * maskN / (w * w));
+        {
+            RiverLineParams rlpD = RiverLineParams.defaults();
+            double hsD = tp.horizontalScale();
+            RiverLineNetwork netD = gt.hydrologyNetwork() /* ★ 游戏同实例（勿自建：自建缺 precip/delta 等接线 ⇒ 与雕刻不同源） */;
+            netD.setSeed(seed);
+            List<String> dbg = new java.util.ArrayList<>();
+            int nLakesTotal = 0, nRiversTotal = 0, nLakeReachPolys = 0;
+            for (int rgx = (int) Math.floor((bx - radius) / hsD / rlpD.regionSize()) - 1;
+                    rgx <= (int) Math.floor((bx + radius) / hsD / rlpD.regionSize()) + 1; rgx++) {
+                for (int rgz = (int) Math.floor((bz - radius) / hsD / rlpD.regionSize()) - 1;
+                        rgz <= (int) Math.floor((bz + radius) / hsD / rlpD.regionSize()) + 1; rgz++) {
+                    RiverLineRegion rrD = netD.region(rgx, rgz);
+                    nLakesTotal += rrD.lakes.size();
+                    nRiversTotal += rrD.rivers.size();
+                    for (RiverLineRegion.LakeNode ln : rrD.lakes) {
+                        if (dbg.size() < 8) {
+                            dbg.add(String.format("    湖 block(%d,%d) r=%.0f outline=%b cells=%d spill=%.1f",
+                                    (int) Math.round(ln.x * hsD), (int) Math.round(ln.z * hsD),
+                                    ln.radius * hsD, ln.hasOutline(),
+                                    ln.hasOutline() ? ln.cellX.length : 0, ln.height));
+                        }
+                    }
+                    for (RiverLineRegion.RiverPolyline pl : rrD.rivers) {
+                        if (pl.lakeLevel != null) {
+                            boolean any = false;
+                            for (double v : pl.lakeLevel) if (!Double.isNaN(v)) { any = true; break; }
+                            if (any) nLakeReachPolys++;
+                        }
+                    }
+                }
+            }
+            System.out.printf("    区域统计：lakes=%d · rivers=%d · 带湖段(lakeLevel)的折线=%d%n",
+                    nLakesTotal, nRiversTotal, nLakeReachPolys);
+            dbg.forEach(System.out::println);
+        }
+
+        // ★★★ 2026-09-22【分色口径改成"直接问生产网络"】—— 修"填色绝对有 bug" ★★★
+        //   ⚠ 自建掩码（遍历 region.lakes 轮廓 / lakeLevel）与雕刻结果【不是同一套】：
+        //     实测 lakes=5（轮廓仅 2~23 格）却有 376 条折线 ⇒ 大片真实湖泊根本不在掩码里
+        //     ⇒ 被渲染成河色 ⇒ 图上"湖泊是青色的、河是蓝色"完全错乱。
+        //   正解：用【雕刻侧选分支时的同一判据】逐列问网络 ——
+        //     `net.sample(wu).isLake()`（HydrologyBlockCarver 正是按 samples.get(0).isLake()
+        //     决定走湖分支还是河分支）⇒ 渲染与实际雕刻必然一致。
+        RiverLineParams rlpS = RiverLineParams.defaults();
+        double hsS = tp.horizontalScale();
+        RiverLineNetwork netS = gt.hydrologyNetwork() /* ★ 游戏同实例（勿自建：自建缺 precip/delta 等接线 ⇒ 与雕刻不同源） */;
+        netS.setSeed(seed);
+
+        // ===== ★★★ 2026-09-22【三联域图：河域 / 湖域 / 重叠】★★★ =====
+        //   用户判据："你这河流填色，湖泊填色还是不对。你这样我都不知道河流、湖泊的
+        //   各自区域是哪些。或者你渲染3张拼接图，第一个渲染河流，第二个渲染湖泊，
+        //   第三个二者重叠。"
+        //   ⇒ 三个面板各自独立，【域】= 命中影响范围（不是雕刻结果）：
+        //     ① riverDom = 该列存在【河】命中（河线影响域）
+        //     ② lakeDom  = 该列存在【湖】命中（湖域）
+        //     ③ overlap  = 两者同时存在 ⇒ 这正是"河湖冲突带"，是我们要修的地方
+        //   ⚠ 与"雕刻分支"（按最近命中二选一）区分开：域描述的是【影响范围】，
+        //     分支描述的是【谁胜出】——两者都要能看，所以分开画。
+        boolean[][] riverDom = new boolean[w][w];
+        boolean[][] lakeDom = new boolean[w][w];
+        boolean[][] overlap = new boolean[w][w];
+        boolean[][] riverDomNear = new boolean[w][w];   // 最近命中是河（雕刻实际走河分支）
+        boolean[][] lakeDomNear = new boolean[w][w];    // 最近命中是湖（雕刻实际走湖分支）
+
         int nLake = 0, nOcean = 0;
+        // ★★★ 2026-09-22【湖内"该有水却无水"的成因分解】（用户判据：湖被截短）★★★
+        //   定义：c.riverType==0（干） ∧ 非海 ∧ 存在湖命中 ∧ c.height < 湖命中水位−0.5
+        //   ⇒ 物理上该是湖面，却没水。三条成因：
+        //     ① 无任何命中       ⇒ 湖域没铺到（域/影响半径问题）
+        //     ② 有湖命中却判干   ⇒ 判水层（inFlood 连通 / 落块闸门）
+        int holeNoHit = 0, holeJudged = 0;
         double flowMax = 0;
+        int nRiverWet = 0, nLakeWet = 0, nOverlap = 0, nMskWet = 0;
         for (int j = 0; j < w; j++) {
             for (int i = 0; i < w; i++) {
                 int x = bx - radius + i, z = bz - radius + j;
@@ -76,17 +175,108 @@ public final class WaterViewProbe {
                 // X 主序（与 generateChunk / 预览层一致）：cells[lx*16 + lz]
                 Cell c = cells[Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
                 h[j][i] = c.height;
-                // ★ 2026-09-19 口径修正：与预览 RIVER_TYPE 层同口径（c.riverType != 0），
-                //   而不是 c.isLake —— 两者不同（riverType 含河列 + spill<seaLevel 的湖列）。
-                //   此前用 isLake ⇒ 与用户看到的预览形态对不上 ⇒ 定位错了位置。
-                lake[j][i] = c.riverType != 0;
+                // 雕刻前地形（左图底）：sampleWu = 侵蚀后、河雕刻前（= 湖泊生成的输入）
+                //   tile 已由上面 getChunkCells 触发生成 ⇒ 此处命中缓存，成本可控。
+                hPre[j][i] = gen.sampleWu(x / tp.horizontalScale(), z / tp.horizontalScale()).height;
+                lake[j][i] = c.riverType != 0;   // 兼容旧字段（预览口径）
                 ocean[j][i] = c.isWater();
                 flow[j][i] = c.riverNetDischarge;
                 if (c.riverNetDischarge > flowMax) flowMax = c.riverNetDischarge;
                 if (c.riverType != 0) nLake++;
                 if (c.isWater()) nOcean++;
+
+                // —— 域判定（全部命中）与分支判定（最近命中）——
+                List<RiverLineNetwork.RiverLineHit> hs2 = netS.sampleAll(x / hsS, z / hsS);
+                boolean anyRv = false, anyLk = false;
+                for (RiverLineNetwork.RiverLineHit hh : hs2) {
+                    if (hh.isLake()) anyLk = true; else anyRv = true;
+                }
+                // ★★★ 2026-09-22【域 = 实际水列，不是影响半径】★★★
+                //   ⚠ 上一版把"命中影响范围"（valleyReach，可达数十块）整片涂色 ⇒
+                //     左面板把整条河谷都涂成青色（用户："我都不知道河流、湖泊的各自区域
+                //     是哪些"）。河谷影响域 ≠ 水体。
+                //   修法：三面板只标注【实际有水】的列（{@code riverType != 0}，排除海洋），
+                //     再按【雕刻实际走的分支】拆分：
+                //       · 只有河命中 ⇒ ① 河
+                //       · 只有湖命中 ⇒ ② 湖
+                //       · 河湖都有命中 ⇒ ③ 重叠（= 冲突带，重点修复区）
+                boolean wet = c.riverType != 0 && !c.isWater();
+                if (wet && !hs2.isEmpty()) {
+                    // 面板①②=雕刻【实际分支】（最近命中胜出，与 carver 同源）
+                    boolean branchLk = hs2.get(0).isLake();
+                    if (branchLk) { lakeDom[j][i] = true; nLakeWet++; }
+                    else          { riverDom[j][i] = true; nRiverWet++; }
+                }
+                // ★★★ 2026-09-22【面板② = 游戏里实际的湖水】—— 修"游戏湖正常、图却不同"★★★
+                //   用户判据："游戏实测湖泊正常了，但为什么图里面的湖泊还是这样的？"
+                //   【根因】旧图把"湖的管辖域"（inDomain 轮廓，含无水的岸带/浅滩格）
+                //   整片画蓝 ⇒ 图 ⊃ 游戏水面，且轮廓格方块拼合 ⇒ 形状带方块感。
+                //   而用户在游戏里看到的湖 = 【湖域内实际有水的列】（落块后 height<sink 淹水）。
+                //   ⇒ 中面板只画：湖分支(wet && branchLk) —— 上面 wet 分支已赋值，
+                //     此处不再用"管辖域"覆盖（删掉 lkDom 段）。
+                if (anyRv && anyLk) nOverlap++;
+                // ★ 湖内"该有水却无水"判定（成因分解；只用上面已算好的命中，零额外采样）
+                if (c.riverType == 0 && !c.isWater()) {
+                    double lvl = Double.NaN;
+                    for (RiverLineNetwork.RiverLineHit hh : hs2) {
+                        if (hh.isLake() && (Double.isNaN(lvl) || hh.surfaceY() > lvl)) {
+                            lvl = hh.surfaceY();
+                        }
+                    }
+                    if (!Double.isNaN(lvl) && c.height < lvl - 0.5) {
+                        if (hs2.isEmpty()) holeNoHit++;
+                        else holeJudged++;
+                    }
+                }
+                if (!hs2.isEmpty()) {
+                    boolean nearLk = hs2.get(0).isLake();   // sampleAll 按距离升序
+                    lakeDomNear[j][i] = nearLk;
+                    riverDomNear[j][i] = !nearLk;
+                    // 兼容旧渲染字段（water_view 用）
+                    lakeOnly[j][i] = nearLk && (c.riverType != 0 || c.isWater());
+                    riverOnly[j][i] = !nearLk && c.riverType != 0;
+                    prodLake[j][i] = nearLk;
+                    if (nearLk && c.riverType != 0) nMskWet++;
+                }
             }
         }
+
+        // ★★★ 2026-09-22【湖域完整性量测】—— 回答用户判据："有部分明显还是湖泊的部分" ★★★
+        //   只统计【最近命中=湖】的列（= 湖管辖内、按设计就该是湖面），看有多少【没水】。
+        //   意义：若这批列大量无水 ⇒ 湖在自己的管辖域内就是破的（截断在判水那一层，
+        //   不是域没铺到）；若几乎全有水 ⇒ 用户看到的"缺"在域外（域没铺到）⇒ 下一刀改域。
+        int lkDomWet = 0, lkDomDry = 0;
+        int rvDomWet = 0;
+        for (int j = 0; j < w; j++) {
+            for (int i = 0; i < w; i++) {
+                if (prodLake[j][i]) {
+                    if (lake[j][i]) lkDomWet++; else lkDomDry++;
+                } else if (riverDom[j][i]) {
+                    rvDomWet++;
+                }
+            }
+        }
+        int lkDomAll = lkDomWet + lkDomDry;
+        System.out.printf("  [湖域完整性] 最近命中=湖的列 %d：有水 %d · 无水 %d（无水 %.1f%%）"
+                        + " | 最近命中=河的有水列 %d%n",
+                lkDomAll, lkDomWet, lkDomDry,
+                lkDomAll == 0 ? 0.0 : 100.0 * lkDomDry / lkDomAll, rvDomWet);
+        int holeAll = holeNoHit + holeJudged;
+        System.out.printf("  [湖内缺格] 该有水却无水 %d 格（占比 %.2f%%）"
+                        + " ⇒ 成因①无任何命中 %d · 成因②有湖命中却判干 %d%n",
+                holeAll, 100.0 * holeAll / (w * (double) w), holeNoHit, holeJudged);
+        System.out.printf("  [结论指引] ①占多 ⇒ 改【湖域/影响半径】；②占多 ⇒ 改【判水层 inFlood/落块闸门】%n");
+
+        // 面板③ = 面板① ∩ 面板②（用户："右图是显示前面2张图重叠的效果"）
+        int nP3 = 0;
+        for (int j = 0; j < w; j++) {
+            for (int i = 0; i < w; i++) {
+                if (riverDom[j][i] && lakeDom[j][i]) { overlap[j][i] = true; nP3++; }
+            }
+        }
+        System.out.printf("[三联图统计] ① 湖 %d 列 · ② 河 %d 列 · ③ 叠加(①+②) %d 列 "
+                        + "· 分支互斥残留交集 %d%n", nLakeWet, nRiverWet,
+                nRiverWet + nLakeWet, nP3);
 
         double mn = Double.MAX_VALUE, mx = -Double.MAX_VALUE;
         for (double[] row : h) {
@@ -99,18 +289,138 @@ public final class WaterViewProbe {
 
             ImageIO.write(shade(h, mn, mx), "png", new File(dir, "hillshade.png"));
 
-            BufferedImage wv = new BufferedImage(w, w, BufferedImage.TYPE_INT_RGB);
+            // ===== ★★★ 2026-09-22【水体渲染重写：半透明填充 + 各自描边】★★★ =====
+            //   用户判据："渲染图效果做的非常差。河流和湖泊都区分不了，没有各自的
+            //   边缘显示，没有半透明色彩填充。"
+            //   设计：
+            //     · 底图 = 地形山体阴影（灰）—— 地形纹理仍可见；
+            //     · 水体 = 【半透明】色填充（α≈0.62）叠加在山体阴影上（不是硬覆盖）；
+            //     · 每种水体有【自己的描边色】（边缘 1px 高亮）：河亮青、湖亮蓝、海白蓝；
+            //     · 河/湖用【不同色相】：河 = 青绿 #00C8B4、湖 = 亮蓝 #2E86FF。
             double[][] hs = shadeGray(h, mn, mx);
+            BufferedImage wv = new BufferedImage(w, w, BufferedImage.TYPE_INT_RGB);
+            final double alpha = 0.62;
             for (int y = 0; y < w; y++) {
                 for (int x = 0; x < w; x++) {
                     int g = (int) Math.max(0, Math.min(255, hs[y][x]));
                     int rgb = (g << 16) | (g << 8) | g;
-                    if (ocean[y][x])      rgb = 0x1040A0;   // 海洋：深蓝
-                    else if (lake[y][x])  rgb = 0x1E78D2;   // 湖泊：亮蓝
+                    // ★★★ 2026-09-22【河/湖各自描边 + 重叠区双描边】（用户三条要求）★★★
+                    //   ① 河的描边与湖的描边【不同色】：河 = 亮青白 #7CFFE8、湖 = 亮蓝白 #9CC8FF；
+                    //   ② 【重叠区域各自描边都画】：判"该像素是否位于【河域】边界"与
+                    //      "是否位于【湖域】边界"是两件独立的事，互不遮蔽 ⇒ 交界处能同时
+                    //      看到两种描边（用于判断"河湖在哪里重叠/谁盖住谁"）；
+                    //   ③ 填充仍半透明（保留地形明暗）。
+                    final int F_SEA = 0x0E3C8C, F_LAKE = 0x2E86FF, F_RIVER = 0x00C8B4;
+                    final int E_SEA = 0xBFE0FF, E_LAKE = 0x9CC8FF, E_RIVER = 0x7CFFE8;
+                    boolean isSea = ocean[y][x], isLk = lakeOnly[y][x], isRv = riverOnly[y][x];
+                    if (isSea || isLk || isRv) {
+                        int fc = isSea ? F_SEA : (isLk ? F_LAKE : F_RIVER);
+                        int r0 = (rgb >> 16) & 0xFF, g0 = (rgb >> 8) & 0xFF, b0 = rgb & 0xFF;
+                        int r1 = (fc >> 16) & 0xFF, g1 = (fc >> 8) & 0xFF, b1 = fc & 0xFF;
+                        int r = (int) (r0 * (1 - alpha) + r1 * alpha);
+                        int gg = (int) (g0 * (1 - alpha) + g1 * alpha);
+                        int b = (int) (b0 * (1 - alpha) + b1 * alpha);
+                        rgb = (r << 16) | (gg << 8) | b;
+                        // —— 各域边界各自判定（互不遮蔽）——
+                        boolean edgeRv = isRv && (x == 0 || y == 0 || x == w - 1 || y == w - 1
+                                || !riverOnly[y][x - 1] || !riverOnly[y][x + 1]
+                                || !riverOnly[y - 1][x] || !riverOnly[y + 1][x]);
+                        boolean edgeLk = isLk && (x == 0 || y == 0 || x == w - 1 || y == w - 1
+                                || !lakeOnly[y][x - 1] || !lakeOnly[y][x + 1]
+                                || !lakeOnly[y - 1][x] || !lakeOnly[y + 1][x]);
+                        boolean edgeSea = isSea && (x == 0 || y == 0 || x == w - 1 || y == w - 1
+                                || !ocean[y][x - 1] || !ocean[y][x + 1]
+                                || !ocean[y - 1][x] || !ocean[y + 1][x]);
+                        // 河描边最优先显示（它是调试重点）；湖/海描边依次兜底。
+                        if (edgeRv)      rgb = E_RIVER;
+                        else if (edgeLk) rgb = E_LAKE;
+                        else if (edgeSea) rgb = E_SEA;
+                    }
                     wv.setRGB(x, y, rgb);
                 }
             }
             ImageIO.write(wv, "png", new File(dir, "water_view.png"));
+
+            // ===== ★★★ 2026-09-22【三联拼接图 · 按管线顺序】★★★
+            //   用户裁定（本轮最终版）：
+            //     ① 左 = 【湖泊】+【雕刻前地形】（sampleWu = 侵蚀后、河雕刻前）
+            //        —— 湖最先生成，底图必须是它看到的输入；若底图带河雕刻痕迹 = 管线顺序 bug；
+            //     ② 中 = 【河流】+【雕刻后地形】（cell.height 最终）—— 河雕刻的产物；
+            //     ③ 右 = 【左+中叠加】（不变）—— 河湖衔接检查。
+            //   颜色：湖亮蓝 #2E86FF/描边 #9CC8FF · 河青绿 #00C8B4/描边 #7CFFE8。
+            double mnPre = Double.MAX_VALUE, mxPre = -Double.MAX_VALUE;
+            for (double[] row : hPre) {
+                for (double v : row) { mnPre = Math.min(mnPre, v); mxPre = Math.max(mxPre, v); }
+            }
+            double[][] hsPre = shadeGray(hPre, mnPre, mxPre);   // 雕刻前地形阴影（左图底）
+            BufferedImage p1 = domainPanel(hsPre, lakeDom, 0x2E86FF, 0x9CC8FF, alpha);  // 湖+雕刻前
+            BufferedImage p2 = domainPanel(hs, riverDom, 0x00C8B4, 0x7CFFE8, alpha);    // 河+最终
+            BufferedImage p3 = mergePanel(hs,                       // 叠加（最终地形底，不变）
+                    riverDom, 0x00C8B4, 0x7CFFE8,
+                    lakeDom, 0x2E86FF, 0x9CC8FF, alpha);
+            BufferedImage tri = new BufferedImage(w * 3 + 8, w, BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g2 = tri.createGraphics();
+            g2.setColor(new java.awt.Color(0x22, 0x22, 0x22));
+            g2.fillRect(0, 0, w * 3 + 8, w);
+            g2.drawImage(p1, 0, 0, null);
+            g2.drawImage(p2, w + 4, 0, null);
+            g2.drawImage(p3, w * 2 + 8, 0, null);
+            g2.dispose();
+            ImageIO.write(tri, "png", new File(dir, "panels_3.png"));
+            System.out.println("  panels_3.png  ★ 三联：左=湖+雕刻前地形 · 中=河+雕刻后地形 · 右=叠加");
+
+            // ★★★ 2026-09-22【骨架折线叠加图】（用户要求："应该直接显示骨架河流"）★★★
+            //   在【地形山体阴影】底图上，直接画生产河网的【折线骨架】（node 连线）
+            //   + 湖域轮廓 —— 完全绕开雕刻结果，用于验证"骨架本身长什么样"、
+            //   "骨架与湖是否接上"。这条链路用生产网络（与雕刻同源）。
+            BufferedImage sk = new BufferedImage(w, w, BufferedImage.TYPE_INT_RGB);
+            for (int y = 0; y < w; y++) {
+                for (int x = 0; x < w; x++) {
+                    int g = (int) Math.max(0, Math.min(255, hs[y][x]));
+                    sk.setRGB(x, y, (g << 16) | (g << 8) | g);
+                }
+            }
+            {
+                RiverLineParams rlp = RiverLineParams.defaults();
+                double hsG = tp.horizontalScale();
+                RiverLineNetwork net = gt.hydrologyNetwork() /* ★ 游戏同实例（勿自建：自建缺 precip/delta 等接线 ⇒ 与雕刻不同源） */;
+                net.setSeed(seed);
+                int rgx0 = (int) Math.floor((bx - radius) / hsG / rlp.regionSize()) - 1;
+                int rgz0 = (int) Math.floor((bz - radius) / hsG / rlp.regionSize()) - 1;
+                int rgx1 = (int) Math.floor((bx + radius) / hsG / rlp.regionSize()) + 1;
+                int rgz1 = (int) Math.floor((bz + radius) / hsG / rlp.regionSize()) + 1;
+                int drawn = 0, lakePts = 0;
+                for (int rgx = rgx0; rgx <= rgx1; rgx++) {
+                    for (int rgz = rgz0; rgz <= rgz1; rgz++) {
+                        RiverLineRegion rr = net.region(rgx, rgz);
+                        for (RiverLineRegion.RiverPolyline pl : rr.rivers) {
+                            for (int k = 0; k + 1 < pl.nodes.length; k++) {
+                                // 湖段用蓝色、河段用青色，便于直观看"骨架在哪止步"
+                                boolean isLk = pl.lakeLevel != null
+                                        && (!Double.isNaN(pl.lakeLevel[k]) || !Double.isNaN(pl.lakeLevel[k + 1]));
+                                int col = isLk ? 0x1E78D2 : 0x00B4A0;
+                                drawn += drawSeg(sk, pl.nodes[k].x() * hsG, pl.nodes[k].z() * hsG,
+                                        pl.nodes[k + 1].x() * hsG, pl.nodes[k + 1].z() * hsG,
+                                        bx, bz, radius, col);
+                                if (isLk) lakePts++;
+                            }
+                        }
+                        // 湖域轮廓（逐格）
+                        for (RiverLineRegion.LakeNode ln : rr.lakes) {
+                            if (ln.hasOutline()) {
+                                for (int ci = 0; ci < ln.cellX.length; ci++) {
+                                    int px = (int) Math.round(ln.cellX[ci] * hsG) - (bx - radius);
+                                    int pz = (int) Math.round(ln.cellZ[ci] * hsG) - (bz - radius);
+                                    if (px >= 0 && pz >= 0 && px < w && pz < w) sk.setRGB(px, pz, 0x0A3C7A);
+                                }
+                            }
+                        }
+                    }
+                }
+                System.out.printf("  skeleton.png  骨架折线叠加（河段青 #00B4A0 / 湖段蓝 #1E78D2 / "
+                        + "湖域暗蓝 #0A3C7A）· 画线 %d 段（其中湖段 %d）%n", drawn, lakePts);
+            }
+            ImageIO.write(sk, "png", new File(dir, "skeleton.png"));
 
             // ---- 流量图（discharge 场，对数拉伸）----
             BufferedImage fimg = new BufferedImage(w, w, BufferedImage.TYPE_INT_RGB);
@@ -135,8 +445,17 @@ public final class WaterViewProbe {
                         int r = (int) (255 * Math.min(1, t));
                         rgb = (r << 16) | ((int) (110 * t) << 8) | 0;
                     }
-                    if (ocean[y][x])     rgb = 0x1040A0;
-                    else if (lake[y][x]) rgb = 0x1E78D2;
+                    // ★ 与 water_view.png 同口径：半透明 + 河/湖/海分色（用户判据）
+                    int water = ocean[y][x] ? 1 : (lakeOnly[y][x] ? 2 : (riverOnly[y][x] ? 3 : 0));
+                    if (water != 0) {
+                        int fc = water == 1 ? 0x0E3C8C : (water == 2 ? 0x2E86FF : 0x00C8B4);
+                        int r0 = (rgb >> 16) & 0xFF, g0 = (rgb >> 8) & 0xFF, b0 = rgb & 0xFF;
+                        int r1 = (fc >> 16) & 0xFF, g1 = (fc >> 8) & 0xFF, b1 = fc & 0xFF;
+                        int r = (int) (r0 * (1 - alpha) + r1 * alpha);
+                        int gg = (int) (g0 * (1 - alpha) + g1 * alpha);
+                        int b = (int) (b0 * (1 - alpha) + b1 * alpha);
+                        rgb = (r << 16) | (gg << 8) | b;
+                    }
                     ov.setRGB(x, y, rgb);
                 }
             }
@@ -177,7 +496,7 @@ public final class WaterViewProbe {
             int dx1 = args.length > 6 ? Integer.parseInt(args[6]) : Integer.MIN_VALUE;
             int dz1 = args.length > 7 ? Integer.parseInt(args[7]) : Integer.MIN_VALUE;
             if (dx1 != Integer.MIN_VALUE) {
-                RiverLineNetwork net = new RiverLineNetwork(gen::terrainEQuick, gen.heightCurve(), seed);
+                RiverLineNetwork net = gt.hydrologyNetwork() /* ★ 游戏同实例（勿自建：自建缺 precip/delta 等接线 ⇒ 与雕刻不同源） */;
                 RiverLineParams rlp = RiverLineParams.defaults();
                 net.region((int) Math.floor(dx1 / rlp.regionSize()),
                         (int) Math.floor((double) dz1 / rlp.regionSize()));
@@ -232,7 +551,7 @@ public final class WaterViewProbe {
                 // ★ hit 剖面：湖认领范围 = inDomain && lakeDist <= bestRiverDist
                 //   ⇒ 湖/河两个距离场的【等分线】—— 疑似"直边"的真正来源。
                 //   沿同一列采样 net.sample，看 isLake / dist 在哪一行翻转。
-                RiverLineNetwork net = new RiverLineNetwork(gen::terrainEQuick, gen.heightCurve(), seed);
+                RiverLineNetwork net = gt.hydrologyNetwork() /* ★ 游戏同实例（勿自建：自建缺 precip/delta 等接线 ⇒ 与雕刻不同源） */;
                 // ⚠ 必须先定位 region —— 否则查的是 region(0,0) 的河网（实测：查错 region
                 //   ⇒ 整列无湖命中，与图上蓝水矛盾）。湖在 region(floor(x/640), floor(z/640))。
                 RiverLineParams rlp = RiverLineParams.defaults();
@@ -553,6 +872,102 @@ public final class WaterViewProbe {
             out[i][w - 1] = out[i][w - 2];
         }
         return out;
+    }
+
+    /**
+     * ★ 2026-09-22【叠加面板】—— 右图：把域 A（河）与域 B（湖）画到同一张图上。
+     *
+     * <p>用户语义："把前面2个的效果叠加重合在一起看看有没有什么问题"。
+     * 各自颜色填充、**各自描边独立判定**（交界处两边描边都出）⇒ 可直接检查河湖衔接。</p>
+     */
+    private static BufferedImage mergePanel(double[][] hs, boolean[][] domA, int fillA, int edgeA,
+                                            boolean[][] domB, int fillB, int edgeB, double alpha) {
+        int w = domA.length;
+        BufferedImage img = new BufferedImage(w, w, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < w; y++) {
+            for (int x = 0; x < w; x++) {
+                int g = (int) Math.max(0, Math.min(255, hs[y][x]));
+                int rgb = (g << 16) | (g << 8) | g;
+                boolean inA = domA[y][x], inB = domB[y][x];
+                if (inA || inB) {
+                    int fill = inA ? fillA : fillB;
+                    int r0 = (rgb >> 16) & 0xFF, g0 = (rgb >> 8) & 0xFF, b0 = rgb & 0xFF;
+                    int r1 = (fill >> 16) & 0xFF, g1 = (fill >> 8) & 0xFF, b1 = fill & 0xFF;
+                    rgb = ((int) (r0 * (1 - alpha) + r1 * alpha) << 16)
+                            | ((int) (g0 * (1 - alpha) + g1 * alpha) << 8)
+                            | (int) (b0 * (1 - alpha) + b1 * alpha);
+                    // 各域描边独立判定（交界两侧各出各的边）
+                    boolean edgeAHit = inA && (x == 0 || y == 0 || x == w - 1 || y == w - 1
+                            || !domA[y][x - 1] || !domA[y][x + 1]
+                            || !domA[y - 1][x] || !domA[y + 1][x]);
+                    boolean edgeBHit = inB && (x == 0 || y == 0 || x == w - 1 || y == w - 1
+                            || !domB[y][x - 1] || !domB[y][x + 1]
+                            || !domB[y - 1][x] || !domB[y + 1][x]);
+                    if (edgeAHit) rgb = edgeA;
+                    else if (edgeBHit) rgb = edgeB;
+                }
+                img.setRGB(x, y, rgb);
+            }
+        }
+        return img;
+    }
+
+    /**
+     * ★ 2026-09-22【域面板】—— 三联拼接图用：底图 = 山体阴影，域内 = 半透明填充 + 1px 描边。
+     *
+     * @param hs    山体阴影底图（0~255）
+     * @param dom   该域的布尔掩码
+     * @param fill  填充色（0xRRGGBB）
+     * @param edge  描边色（0xRRGGBB，域的边界像素）
+     * @param alpha 填充透明度（保留地形明暗）
+     */
+    private static BufferedImage domainPanel(double[][] hs, boolean[][] dom,
+                                             int fill, int edge, double alpha) {
+        int w = dom.length;
+        BufferedImage img = new BufferedImage(w, w, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < w; y++) {
+            for (int x = 0; x < w; x++) {
+                int g = (int) Math.max(0, Math.min(255, hs[y][x]));
+                int rgb = (g << 16) | (g << 8) | g;
+                if (dom[y][x]) {
+                    int r0 = (rgb >> 16) & 0xFF, g0 = (rgb >> 8) & 0xFF, b0 = rgb & 0xFF;
+                    int r1 = (fill >> 16) & 0xFF, g1 = (fill >> 8) & 0xFF, b1 = fill & 0xFF;
+                    rgb = ((int) (r0 * (1 - alpha) + r1 * alpha) << 16)
+                            | ((int) (g0 * (1 - alpha) + g1 * alpha) << 8)
+                            | (int) (b0 * (1 - alpha) + b1 * alpha);
+                    boolean isEdge = x == 0 || y == 0 || x == w - 1 || y == w - 1
+                            || !dom[y][x - 1] || !dom[y][x + 1]
+                            || !dom[y - 1][x] || !dom[y + 1][x];
+                    if (isEdge) rgb = edge;
+                }
+                img.setRGB(x, y, rgb);
+            }
+        }
+        return img;
+    }
+
+    /**
+     * 在图上画一段线（Bresenham 的简化版，1 像素步进）—— 骨架折线叠加用。
+     *
+     * @param col 颜色（0xRRGGBB）
+     * @return 实际写入的像素数
+     */
+    private static int drawSeg(BufferedImage img, double x0, double z0, double x1, double z1,
+                               int bx, int bz, int radius, int col) {
+        int w = img.getWidth();
+        double dx = x1 - x0, dz = z1 - z0;
+        double len = Math.hypot(dx, dz);
+        int steps = Math.max(1, (int) Math.ceil(len));
+        int n = 0;
+        for (int s = 0; s <= steps; s++) {
+            double t = s / (double) steps;
+            int px = (int) Math.round(x0 + dx * t) - (bx - radius);
+            int pz = (int) Math.round(z0 + dz * t) - (bz - radius);
+            if (px < 0 || pz < 0 || px >= w || pz >= w) continue;
+            img.setRGB(px, pz, col);
+            n++;
+        }
+        return n;
     }
 
     private static BufferedImage shade(double[][] h, double mn, double mx) {

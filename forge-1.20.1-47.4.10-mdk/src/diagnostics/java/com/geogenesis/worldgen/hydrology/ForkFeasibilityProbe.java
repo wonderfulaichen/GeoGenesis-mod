@@ -139,6 +139,16 @@ public final class ForkFeasibilityProbe {
                 s.wouldAccept / (double) nReg, baseRivers / (double) nReg,
                 (baseRivers + s.wouldAccept) / (double) nReg);
 
+        // ★ 2026-09-21：本探针测的是【旧追踪链路】的支流分叉（fork 挂在 traceRiver 上）。
+        //   流体骨架路线（flowSkeletonRouting=true，默认）不经过 traceRiver ⇒ 本探针
+        //   不适用：不是"功能被改坏"，而是"该能力尚未接入新路线"。
+        //   用户裁定：旧能力是否搬进新路线【由实测决定】⇒ 此处明确 SKIP，不用它挡路。
+        if (RiverLineNetwork.flowSkeletonRouting) {
+            System.out.printf("%n[SKIP] 当前为流体骨架路线（flowSkeletonRouting=true）："
+                    + "本探针针对旧追踪链路的支流分叉，不适用。%n"
+                    + "       若要跑旧链路：RiverLineNetwork.flowSkeletonRouting=false%n");
+            return;
+        }
         // ---------- 判据 ----------
         boolean wired = s.placements > 0;
         System.out.printf("%n[判据-1] 布点数 > 0（分叉循环真的被执行）⇒ %s%n",

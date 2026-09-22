@@ -83,48 +83,6 @@ public final class RiverEndProbe {
         report(off, seaLevel);
 
         // ---------- 定点：两个 block 坐标属于哪条河 ----------
-        // ---------- [C] 全旧行为对照（分叉关 + 旧认领 + 无洼地续流）—— 归因用 ----------
-        if (args.length > 9) {
-            boolean oldClaim = Integer.parseInt(args[8]) == 0;
-            boolean oldBasin = Integer.parseInt(args[9]) == 0;
-            RiverLineNetwork.claimVisibleOnly = oldClaim;
-            RiverLineNetwork.basinReroute = !oldBasin;
-            RiverLineNetwork.tailDiag.reset();
-            List<RiverLineRegion> oldAll = build(gen, seed, offParams, rx0, rz0, rn);
-            System.out.printf("%n[C] 全旧行为（分叉关 + claimVisibleOnly=%b + basinReroute=%b）%n",
-                    oldClaim, !oldBasin);
-            System.out.printf("    [终止原因·生成器自记] %s%n", RiverLineNetwork.tailDiag);
-            report(oldAll, seaLevel);
-            RiverLineNetwork.claimVisibleOnly = true;
-            RiverLineNetwork.basinReroute = false;
-        }
-
-        // ---------- [D] 动量关（节点位置回到"格心"）—— 验证闭环是否来自粒子积分 ----------
-        if (args.length > 10) {
-            RiverLineNetwork.momentumOverride = 0.0;
-            RiverLineNetwork.tailDiag.reset();
-            List<RiverLineRegion> noMom = build(gen, seed, onParams, rx0, rz0, rn);
-            System.out.printf("%n[D] 动量=0（节点回格心；分叉开、其余同生产）%n");
-            report(noMom, seaLevel);
-            RiverLineNetwork.momentumOverride = -1.0;
-        }
-
-        // ---------- [E] 采样密度实验：gridCell × scale（治"路线不自然 / 采样太稀少"） ----------
-        if (args.length > 11) {
-            double scale = Double.parseDouble(args[11]);
-            RiverLineParams.gridCellScale = scale;
-            RiverLineParams denseParams = RiverLineParams.defaults();   // ★ 必须在设 scale 之后取
-            RiverLineNetwork.tailDiag.reset();
-            long t0 = System.currentTimeMillis();
-            List<RiverLineRegion> dense = build(gen, seed, denseParams, rx0, rz0, rn);
-            long ms = System.currentTimeMillis() - t0;
-            System.out.printf("%n[E] 采样密度 gridCell×%.2f ⇒ 格距 %.0f wu = %.0f block（本段耗时 %d ms）%n",
-                    scale, denseParams.gridCell(), denseParams.gridCell() * 2.0, ms);
-            System.out.printf("    [终止原因·生成器自记] %s%n", RiverLineNetwork.tailDiag);
-            report(dense, seaLevel);
-            RiverLineParams.gridCellScale = 1.0;
-        }
-
         if (hasPts) {
             double bx1 = Double.parseDouble(args[4]), bz1 = Double.parseDouble(args[5]);
             double bx2 = Double.parseDouble(args[6]), bz2 = Double.parseDouble(args[7]);
@@ -264,75 +222,25 @@ public final class RiverEndProbe {
                 int n = p.nodes.length;
                 if (n < 8) continue;
                 double tx = p.nodes[n - 1].x(), tz = p.nodes[n - 1].z();
-                // 沿程弧长：只有"沿河走了很远、直线却很近"才是真闭环（普通弯河两者同量级）
-                double[] cum = new double[n];
-                for (int k = 1; k < n; k++) {
-                    cum[k] = cum[k - 1] + Math.hypot(
-                            p.nodes[k].x() - p.nodes[k - 1].x(),
-                            p.nodes[k].z() - p.nodes[k - 1].z());
-                }
-                double bestRatio = Double.MAX_VALUE;
+                double best = Double.MAX_VALUE;
                 int bestK = -1;
-                double bestEu = 0, bestPath = 0;
                 for (int k = 1; k < n - 4; k++) {
-                    double pathBack = (cum[n - 1] - cum[k]) * WU_PER_BLOCK;   // block
-                    if (pathBack < 240.0) continue;                            // 沿程至少 240 块
-                    double eu = Math.hypot(p.nodes[k].x() - tx,
-                            p.nodes[k].z() - tz) * WU_PER_BLOCK;
-                    double ratio = eu / pathBack;
-                    if (ratio < bestRatio) {
-                        bestRatio = ratio; bestK = k; bestEu = eu; bestPath = pathBack;
-                    }
+                    double d = Math.hypot(p.nodes[k].x() - tx, p.nodes[k].z() - tz);
+                    if (d < best) { best = d; bestK = k; }
                 }
-                if (bestK >= 0 && bestRatio <= 0.35) {          // 直线距离 ≤ 沿程 35% ⇒ 绕回来了
+                if (best * WU_PER_BLOCK <= 48.0) {      // 尾部回到 48 block 内 ⇒ 闭环
                     loops++;
                     System.out.printf("       ★闭环：r(%d,%d) level=%d 节点=%d  尾block(%.0f,%.0f) "
-                                    + "回到第 %d/%d 节点 block(%.0f,%.0f)：沿程 %.0f 块 / 直线 %.0f 块"
-                                    + "（比 %.2f）%n",
+                                    + "回到自身第 %d/%d 节点 block(%.0f,%.0f) 附近（距 %.0f block）%n",
                             r.rx, r.rz, p.level, n,
-                            tx * WU_PER_BLOCK, tz * WU_PER_BLOCK, bestK, n - 1,
+                            tx * WU_PER_BLOCK, tz * WU_PER_BLOCK,
+                            bestK, n - 1,
                             p.nodes[bestK].x() * WU_PER_BLOCK, p.nodes[bestK].z() * WU_PER_BLOCK,
-                            bestPath, bestEu, bestRatio);
+                            best * WU_PER_BLOCK);
                 }
             }
         }
         System.out.printf("    ★闭环（马蹄形）河 = %d 条%n", loops);
-        // ★ 2026-09-20 汇合【宽度单调性】（用户判据）：支流汇入处，承接河不得比支流更细。
-        //   参考：MOBIDIC `B = Br0·order^1.5`、Streams `streamSize` ⇒ 汇流后必然更宽更深。
-        int junc = 0, juncBad = 0;
-        for (RiverLineRegion r : regions) {
-            for (RiverLineRegion.RiverPolyline p : r.rivers) {
-                int n = p.nodes.length;
-                if (n < 2) continue;
-                double tx = p.nodes[n - 1].x(), tz = p.nodes[n - 1].z();
-                double bestD = Double.MAX_VALUE;
-                int bi = -1;
-                RiverLineRegion.RiverPolyline bq = null;
-                for (RiverLineRegion r2 : regions) {
-                    for (RiverLineRegion.RiverPolyline q : r2.rivers) {
-                        if (q == p) continue;
-                        for (int k = 0; k < q.nodes.length; k++) {
-                            double d = Math.hypot(q.nodes[k].x() - tx, q.nodes[k].z() - tz);
-                            if (d < bestD) { bestD = d; bi = k; bq = q; }
-                        }
-                    }
-                }
-                if (bq == null || bestD * WU_PER_BLOCK > 16.0) continue;   // 只在真汇合处判
-                junc++;
-                double wTail = p.width[n - 1], wRecv = bq.width[bi];
-                if (wTail > wRecv * 1.10) {
-                    juncBad++;
-                    if (juncBad <= 6) {
-                        System.out.printf("       ★粗接细：支流 level=%d 尾半宽=%.2f → 承接河 level=%d "
-                                        + "半宽=%.2f  汇合block(%.0f,%.0f)%n",
-                                p.level, wTail, bq.level, wRecv,
-                                tx * WU_PER_BLOCK, tz * WU_PER_BLOCK);
-                    }
-                }
-            }
-        }
-        System.out.printf("    ★汇合宽度单调性：汇合点 %d 个，支流比承接处更粗的 = %d（%.1f%%）%n",
-                junc, juncBad, pct(juncBad, junc));
         System.out.printf("    ★水位抬升（水上坡）：抬升节点数 = %d，涉及河 = %d 条，最大抬升 = %.2f block%n",
                 rising, riseRivers, worstRise);
         System.out.printf("    ★汇合断口：JOIN %d 条中，断口 >12 block 的 = %d（%.1f%%）；"
