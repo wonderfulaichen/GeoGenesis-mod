@@ -40,20 +40,32 @@ public final class RiverLineRegion {
          * 精确复核"水面 ≤ 当时的地形"。null = 旧折线（未记录）。
          */
         public final double[] terrainY;
+        /**
+         * ★ 2026-09-22 逐节点所属【生产湖】（与 {@link #lakeLevel} 平行，null = 无）：
+         * 入湖锚点段必须有它 ⇒ 发出的是【湖命中】(isLake=true + LakeNode)
+         * ⇒ 雕刻侧走湖分支（不挖地、水面取雕刻侧湖面）⇒ 河湖水位【同源齐平】。
+         */
+        public final LakeNode[] lakeNodes;
 
         public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
                              double[] depth, double[] fallDrop, int level) {
-            this(nodes, surfaceY, width, depth, fallDrop, level, null, null);
+            this(nodes, surfaceY, width, depth, fallDrop, level, null, null, null);
         }
 
         public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
                              double[] depth, double[] fallDrop, int level, double[] lakeLevel) {
-            this(nodes, surfaceY, width, depth, fallDrop, level, lakeLevel, null);
+            this(nodes, surfaceY, width, depth, fallDrop, level, lakeLevel, null, null);
         }
 
         public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
                              double[] depth, double[] fallDrop, int level, double[] lakeLevel,
                              double[] terrainY) {
+            this(nodes, surfaceY, width, depth, fallDrop, level, lakeLevel, terrainY, null);
+        }
+
+        public RiverPolyline(Node[] nodes, double[] surfaceY, double[] width,
+                             double[] depth, double[] fallDrop, int level, double[] lakeLevel,
+                             double[] terrainY, LakeNode[] lakeNodes) {
             this.nodes = nodes;
             this.surfaceY = surfaceY;
             this.width = width;
@@ -62,6 +74,7 @@ public final class RiverLineRegion {
             this.level = level;
             this.lakeLevel = lakeLevel;
             this.terrainY = terrainY;
+            this.lakeNodes = lakeNodes;
         }
     }
 
@@ -342,11 +355,30 @@ public final class RiverLineRegion {
         public boolean inDomain(double wx, double wz, double margin) {
             if (cellX == null || cellX.length == 0) return false;
             double r = cellHalf + margin;
+            // ★ 2026-09-22【AABB 预筛 + 惰性包围盒】：本方法是采样热路径
+            //   （湖域判定每列一次；河域内不发河命中也走它）⇒ 原 O(轮廓格数) 逐格
+            //   比较在大湖上很贵（实测 hydro 由 ~2.6s 涨到 9.5s）。
+            //   预筛：先用一次包围盒判断排除域外点（大多数列远离湖 ⇒ 立即返回）。
+            double minX = bboxMinX, maxX = bboxMaxX, minZ = bboxMinZ, maxZ = bboxMaxZ;
+            if (Double.isNaN(minX)) {
+                double a = Double.MAX_VALUE, b = -Double.MAX_VALUE;
+                double c0 = Double.MAX_VALUE, d0 = -Double.MAX_VALUE;
+                for (int i = 0; i < cellX.length; i++) {
+                    a = Math.min(a, cellX[i]); b = Math.max(b, cellX[i]);
+                    c0 = Math.min(c0, cellZ[i]); d0 = Math.max(d0, cellZ[i]);
+                }
+                bboxMinX = a; bboxMaxX = b; bboxMinZ = c0; bboxMaxZ = d0;
+                minX = a; maxX = b; minZ = c0; maxZ = d0;
+            }
+            if (wx < minX - r || wx > maxX + r || wz < minZ - r || wz > maxZ + r) return false;
             for (int i = 0; i < cellX.length; i++) {
                 if (Math.abs(wx - cellX[i]) <= r && Math.abs(wz - cellZ[i]) <= r) return true;
             }
             return false;
         }
+
+        /** 轮廓包围盒缓存（惰性一次计算；见 {@link #inDomain} 的性能说明）。 */
+        private volatile double bboxMinX = Double.NaN, bboxMaxX, bboxMinZ, bboxMaxZ;
 
         /** 是否有逐格轮廓（false = 旧式圆盘湖，调用方需回退旧行为）。 */
         public boolean hasOutline() { return cellX != null && cellX.length > 0; }

@@ -1009,6 +1009,19 @@ task runRiverWidthProfileProbe(type: JavaExec) {
     }
 }
 
+// HydroPhysicsAudit (2026-09-20): 按【用户的物理定义】审计水文 + 【左=最新改进 / 右=上一版本】对比出图。
+//   "水文就是水的流体物理运动形成的几种状态，堆积是湖/海，流动路线就是河流"。
+//   判据：河必有水 / 水在低处 / 沿程不升 / 终点必是湖海 / 汇合守恒 / 河宽分层。
+//   gradlew runHydroPhysicsAudit -PprobeArgs="seed centerBX centerBZ windowBlocks [gridCellScale]"
+task runHydroPhysicsAudit(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydroPhysicsAudit'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ForkFeasibilityProbe (2026-09-20, 支流分叉 M0): 复刻 FTF generateForks 的布点规则在我方地形上
 //   能出多少条叉？—— dry-run【只统计不提交】，用于标定 ForkParams（不照搬 FTF 数值）。
 //   gradlew runForkFeasibilityProbe [-PprobeArgs="seed rx0 rz0 rn frac lenMin lenMax clearance minParentLen"]

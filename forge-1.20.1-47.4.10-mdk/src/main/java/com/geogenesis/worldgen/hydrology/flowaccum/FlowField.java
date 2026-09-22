@@ -42,6 +42,31 @@ public final class FlowField {
     //   eFilled = priority-flood 后的"溢出高程"：eFilled > eFill 的格 = 洼地内被水填起的部分
     private double[] eFill;
     private double[] eFilled;
+    // ===== ★★★ 2026-09-20「填洼优先」流向面（修"河流突然结束"的根治层）★★★
+    //
+    //   【被修的缺陷】flowTo / accum 一直建在【原始 e】上 ⇒ 每个洼地/平地都是终点
+    //   （{@code lowestNeighbor} 要求"严格更低"）⇒ 河追到洼地就停。而该洼地若没被
+    //   extractLakes 提取成湖，commitRiver 就落到最后 else（outletSurf = junctionGround）
+    //   ⇒ **河流就地以地形高度结束**。用户判据："河流怎么可能突然结束"／
+    //   "水流堆积后溢出会继续向下流动的，但你完全不符合物理现象"。
+    //
+    //   【参考实现】{@code 参考/sources/worldgen-master/src/hydrology.rs:105-181}：
+    //   {@code priority_flood → flow_dir → accum}，并给填起区加【递增 epsilon】：
+    //     // Add tiny epsilon so filled areas slope toward their outlet —
+    //     // without this, D8 can't find a downhill direction on flat filled areas
+    //     // and rivers dead-end inland.
+    //     if elev.data[ni] < cell.elev { elev.data[ni] = cell.elev + 1e-5; }
+    //   即：填洼后必须让填起区【朝出口单调微降】，否则 D8 在水平面上仍找不到下坡。
+    //
+    //   【为什么是 e 空间而不是块空间】eAt()/oceanE()/sourceMinE()/minDrop() 与各探针
+    //   全部在 e 口径上标定；把整场换成块空间 Y（~60-200）会让 sourceMinE=0.05 判据
+    //   全格命中 ⇒ 河网密度标定被静默破坏。而上面那层（块空间）继续只服务湖提取。
+    //   两层在 mountainScale=1.0（生产默认 ⇒ routingE 恒等）下由 heightFromE 保序等价
+    //   ⇒ 同一批盆地、同一溢出序（{@link #initializedFillFirst()} 由探针校验一致性）。
+    private double[] eFilledR;
+
+    /** 每格基础产流（面积 × 降水权重）：让 {@link #buildAccum()} 可幂等重算。 */
+    private double[] baseAccum;
 
     /** 降水取样器（归一化相对降水，见 {@code CellGenerator.precipitationAt}）。 */
     @FunctionalInterface
@@ -276,7 +301,10 @@ public final class FlowField {
         this.e = new double[n];
         this.flowTo = new int[n];
         this.accum = new double[n];
-        Arrays.fill(this.accum, this.cellSize * this.cellSize);
+        // ★ 2026-09-20：基础产流单列一份 ⇒ buildAccum 可幂等重算（填洼优先要重跑一遍）。
+        this.baseAccum = new double[n];
+        Arrays.fill(this.baseAccum, this.cellSize * this.cellSize);
+        System.arraycopy(this.baseAccum, 0, this.accum, 0, n);
         for (int j = 0; j < nz; j++) {
             for (int i = 0; i < nx; i++) {
                 e[j * nx + i] = sampler.eAt(originX + i * this.cellSize,
@@ -295,7 +323,9 @@ public final class FlowField {
                 for (int i = 0; i < nx; i++) {
                     double wx = originX + i * this.cellSize;
                     double p = precipAtWu(wx, wz);
-                    accum[j * nx + i] = this.cellSize * this.cellSize * weights.weight(p);
+                    double base = this.cellSize * this.cellSize * weights.weight(p);
+                    baseAccum[j * nx + i] = base;
+                    accum[j * nx + i] = base;
                     if (this.decayCell != null) {
                         this.decayCell[j * nx + i] = this.decayClimate.decayAt(p);
                     }
@@ -330,7 +360,15 @@ public final class FlowField {
         return val;
     }
 
-    /** D8 流向：8 邻最低 e，严格更低才连边（平地/洼地 = 终点）。 */
+    /**
+     * 建流向用的高程面（★ 2026-09-20）：填洼优先已初始化时用【填洼面】，
+     * 否则用原始 e（构造器路径，向后兼容 17+ 处既有调用）。
+     */
+    private double flowE(int idx) {
+        return eFilledR != null ? eFilledR[idx] : e[idx];
+    }
+
+    /** D8 流向：8 邻最低，严格更低才连边。高程面见 {@link #flowE}（填洼优先 ⇒ 无内流终点）。 */
     private void buildFlow() {
         for (int j = 0; j < nz; j++) {
             for (int i = 0; i < nx; i++) {
@@ -340,16 +378,16 @@ public final class FlowField {
         }
     }
 
-    /** 8 邻中 e 最低者（须严格低于自身）；返回 -1 表示洼地。固定扫描序保证确定性。 */
+    /** 8 邻中高程最低者（须严格低于自身）；返回 -1 表示无下坡。固定扫描序保证确定性。 */
     private int lowestNeighbor(int ci, int cj) {
         int best = -1;
-        double bestE = e[cj * nx + ci];
+        double bestE = flowE(cj * nx + ci);
         for (int dj = -1; dj <= 1; dj++) {
             for (int di = -1; di <= 1; di++) {
                 if (di == 0 && dj == 0) continue;
                 int ni = ci + di, nj = cj + dj;
                 if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
-                double ne = e[nj * nx + ni];
+                double ne = flowE(nj * nx + ni);
                 if (ne < bestE) { bestE = ne; best = nj * nx + ni; }
             }
         }
@@ -465,6 +503,130 @@ public final class FlowField {
     /** 是否已建填洼层。 */
     public boolean hasFill() { return eFilled != null; }
 
+    // ===== ★★★ 2026-09-20「填洼优先」初始化（生产路径唯一入口）★★★
+
+    /**
+     * 填洼面每步递增的微坡（e 单位）。
+     *
+     * <p>参考 {@code worldgen-master/src/hydrology.rs:175-181} 取 {@code 1e-5}：</p>
+     * <pre>
+     *   // Add tiny epsilon so filled areas slope toward their outlet —
+     *   // without this, D8 can't find a downhill direction on flat filled areas
+     *   // and rivers dead-end inland.
+     * </pre>
+     * <p>量级说明：填起的洼地宽 ~50 格 ⇒ 累计抬高 ~5e-4（e 单位），
+     * 远小于湖深判据 {@link #FILL_EPS}=0.05，也远小于任何可视高程分辨率
+     * ⇒ 只影响 D8 能否找到下坡，不影响任何几何。</p>
+     */
+    private static final double FILL_SLOPE_EPS = 1e-5;
+
+    /**
+     * <b>填洼优先</b>：把【流向/累积/方向场】重建在 e 空间填洼面上 —— 修的正是
+     * 用户判据「河流怎么可能突然结束」「水流堆积后溢出会继续向下流动」。
+     *
+     * <p>顺序（与参考 {@code priority_flood → flow_dir → accum} 一致）：</p>
+     * <ol>
+     *   <li>{@code priority-flood} 在 {@code e[]}（= routingE 口径）上填洼，种子 =
+     *       海洋格（{@code e <= oceanE}），纯内陆网格兜底用最低格；</li>
+     *   <li>填起区每步加 {@link #FILL_SLOPE_EPS} ⇒ <b>朝出口单调微降</b>
+     *       ⇒ 每个格都有下坡，洼地不再是终点；</li>
+     *   <li>在填洼面上重建 {@code flowTo}（严格最陡下降）与 {@code accum}
+     *       （按填洼面降序 = 拓扑序），并重建连续方向场。</li>
+     * </ol>
+     *
+     * <p><b>物理意义</b>：洼地里的水涨到 spill 高程后必然从最低缺口溢出继续下行 ——
+     * 「堆积 → 溢出 → 继续向下流」由构造保证，不再需要任何"续流补丁"。</p>
+     *
+     * <p><b>确定性</b>：priority-flood 用 {@link PriorityQueue}，同高程按插入序稳定；
+     * 方向扫描序固定 ⇒ 与旧路径同样可复现（{@code runHydrologyDeterminismProbe} 守）。</p>
+     *
+     * @param oceanE 海洋/最终出水口在 <b>e 空间</b>的阈值（{@code RiverLineParams.oceanE()}，
+     *               生产默认 −0.02）
+     */
+    public void initializeFillFirstRouting(double oceanE) {
+        fillRoutingSurface(oceanE);
+        buildFlow();
+        buildAccum();
+        buildDirections();
+    }
+
+    /** 是否已启用填洼优先流向面。 */
+    public boolean initializedFillFirst() { return eFilledR != null; }
+
+    /**
+     * ★★★ 建流向所用的高程面（追踪器<b>必须</b>用它）★★★
+     *
+     * <p>填洼优先已初始化时返回【填洼面】（洼地已填平并带 epsilon 微坡 ⇒ 处处有下坡），
+     * 否则返回原始 e。{@code RiverLineNetwork.downhillNeighbor} 等追踪判据若仍读
+     * {@code eAt}（原始 e），就会继续看见原始洼地并在此终止 —— 实测该漏点会让
+     * "填洼优先"完全失效（河尾无水 5→6、内陆终止 5→5，一字未改善）。</p>
+     *
+     * <p><b>不要</b>把它用于 e 口径的标定判据（{@code sourceMinE} / {@code oceanE}）：
+     * 那些阈值是与原始 e 一起标定的。</p>
+     */
+    public double flowElevAt(int idx) {
+        return flowE(idx);
+    }
+
+    /** 填洼优先的溢出高程（e 单位）；未启用返回 NaN。 */
+    public double routingFillAt(int idx) { return eFilledR == null ? Double.NaN : eFilledR[idx]; }
+
+    /**
+     * 在 {@code e[]} 上做 priority-flood，结果写入 {@link #eFilledR}（含 epsilon 微坡）。
+     *
+     * <p>与 {@link #computeFill}（块空间、供湖提取）同算法、不同高程面与用途 ——
+     * 本方法专门服务流向。种子同取"海洋格"，使水朝最近海岸/区域外排。</p>
+     */
+    private void fillRoutingSurface(double oceanE) {
+        int n = nx * nz;
+        this.eFilledR = new double[n];
+        Arrays.fill(eFilledR, Double.NaN);
+        PriorityQueue<double[]> pq = new PriorityQueue<>(Comparator.comparingDouble(a -> a[0]));
+        int seeds = 0;
+        for (int i = 0; i < n; i++) {
+            if (e[i] <= oceanE) {
+                eFilledR[i] = e[i];
+                pq.add(new double[]{e[i], i});
+                seeds++;
+            }
+        }
+        if (seeds == 0) {
+            // 纯内陆网格（无海洋格）：兜底用最低格作唯一出口，保证水有去处
+            int minIdx = 0;
+            for (int i = 1; i < n; i++) {
+                if (e[i] < e[minIdx]) minIdx = i;
+            }
+            eFilledR[minIdx] = e[minIdx];
+            pq.add(new double[]{e[minIdx], minIdx});
+        }
+        final int cap = Math.min(n, BASIN_FILL_MAX);
+        int visited = 0;
+        while (!pq.isEmpty() && visited < cap) {
+            double[] cur = pq.poll();
+            double h = cur[0];
+            int idx = (int) cur[1];
+            if (h > eFilledR[idx]) continue;              // 过期条目
+            visited++;
+            int ci = idx % nx, cj = idx / nx;
+            for (int dj = -1; dj <= 1; dj++) {
+                for (int di = -1; di <= 1; di++) {
+                    if (di == 0 && dj == 0) continue;
+                    int ni = ci + di, nj = cj + dj;
+                    if (ni < 0 || ni >= nx || nj < 0 || nj >= nz) continue;
+                    int nIdx = nj * nx + ni;
+                    if (!Double.isNaN(eFilledR[nIdx])) continue;
+                    // ★ epsilon 微坡：抬到"当前格 + ε" ⇒ 填起区朝种子（出口）单调微降
+                    double f = Math.max(e[nIdx], h + FILL_SLOPE_EPS);
+                    eFilledR[nIdx] = f;
+                    pq.add(new double[]{f, nIdx});
+                }
+            }
+        }
+    }
+
+    /** 填洼扩散的访问上限（格）：防病态地形上的长循环（正常 region 网格 ~3k 格）。 */
+    private static final int BASIN_FILL_MAX = 1 << 20;
+
     /** 真实地形高程（block）；未建填洼层返回 {@link Double#NaN}。 */
     public double fillEAt(int idx) { return eFill == null ? Double.NaN : eFill[idx]; }
 
@@ -494,9 +656,13 @@ public final class FlowField {
      */
     private void buildAccum() {
         int n = nx * nz;
+        // ★ 2026-09-20：从【基础产流】重算 ⇒ 本方法可幂等重跑（填洼优先要重建一遍）。
+        //   不清零直接再跑会把汇流面积翻倍（accum[down] += 是累加）。
+        if (baseAccum != null) System.arraycopy(baseAccum, 0, accum, 0, n);
         Integer[] order = new Integer[n];
         for (int i = 0; i < n; i++) order[i] = i;
-        Arrays.sort(order, (a, b) -> Double.compare(e[b], e[a]));
+        // 拓扑序必须与 flowTo 用的【同一高程面】一致（填洼面上严格单调 ⇒ 排序即拓扑序）。
+        Arrays.sort(order, (a, b) -> Double.compare(flowE(b), flowE(a)));
         final boolean attenuate = decayPerWu > 0.0 || decayCell != null;
         final double diag = Math.sqrt(2.0) * cellSize;
         for (int k = 0; k < n; k++) {
@@ -553,7 +719,7 @@ public final class FlowField {
         double[] momX = new double[n], momZ = new double[n];
         Integer[] order = new Integer[n];
         for (int i = 0; i < n; i++) order[i] = i;
-        Arrays.sort(order, (a, b) -> Double.compare(e[b], e[a]));
+        Arrays.sort(order, (a, b) -> Double.compare(flowE(b), flowE(a)));
         final double cosMax = Math.cos(Math.toRadians(MOMENTUM_MAX_ANGLE_DEG));
         for (int k = 0; k < n; k++) {
             int cur = order[k];
