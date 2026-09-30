@@ -1124,6 +1124,20 @@ task runWindFieldProbe(type: JavaExec) {
     }
 }
 
+// PrecipField / LatPrecipProfile probe (2026-09-11 Phase B; ★ 2026-09-30 阶段D 清理审计后恢复).
+//   11 个气候章节：地形雨/雨影/焚风、纬度廓线、确定性、真实地形统计、端到端 Cell 一致、
+//   预览图层、荒漠-副热带对应、周期纬度、分带对称性、上风向海域回灌。
+//   ⚠ 章节 [7]（降水权重标定）已退役 —— 其接口随旧链 FlowField 移除；
+//     不变量（源项归一化均值≈1.0）转记为重建待办，见该段注释。
+//   gradlew runPrecipFieldProbe [seed]
+task runPrecipFieldProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.climate.PrecipFieldProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // BaseHeight non-blocking probe (2026-09-11, P0-1): gradlew runBaseHeightProbe [seed]
 task runBaseHeightProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath

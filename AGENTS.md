@@ -6,6 +6,15 @@
 > 顺序 = 本文件（总规）→ `_handover/` 里**日期最新**的交接（当前进度）→ 按需下钻 PLAN/HANDOFF。
 > 旧述「先读 HANDOFF.md」已过时——`HANDOFF.md` 止于 09-20，最新交接在 `_handover/`。
 >
+> ## ⛔ 本文中【水文】相关结论已整体废止（2026-09-30 P0）
+> 下方架构表中的 `TerrainFlowSim` / `FlowField` / `RiverLineNetwork` / `RiverLineRegion`
+> **已被删除**；各「当前工作焦点」章节里关于水文模型、湖泊、河网、伪影归因的结论
+> （含"唯一水文管线已定型""ε 阶梯导致平原直线""直线属自然坡向"）**均不再成立**。
+> 现行依据见 [.openbitfun/plans/hydrology-system-reassessment.plan.md](.openbitfun/plans/hydrology-system-reassessment.plan.md)。
+> 被删旧链与 56 个探针保存在 tag `recovery/pre-stageD-legacy`，审计见
+> [_handover/2026-09-30_P0_清理损失审计与资产恢复.md](_handover/2026-09-30_P0_清理损失审计与资产恢复.md)。
+> **地形/气候/洞穴/矿物/构造等非水文部分不受此废止影响。**
+>
 > ⚠️ `docs/` 整个目录被 `.gitignore:52` 忽略 ⇒ **新文档放仓库根**才能入库（`HANDOFF.md` 即如此）。
 
 ## 开发场配置

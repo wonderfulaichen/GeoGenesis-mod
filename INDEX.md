@@ -1,9 +1,17 @@
-# INDEX — 仓库导航（2026-09-30 盘点）
+# INDEX — 仓库导航（2026-09-30 盘点；★ 同日 P0 修订）
 
 > **本文件是文档入口的唯一导航**。历史教训：交接信息按轮次追加导致入口分裂成 4 处
 > （AGENTS 焦点段 / HANDOFF / PLAN-hydrology / _handover），且 AGENTS 与 _handover
 > 曾互相矛盾地自称"先读我"。**阅读顺序以本文件为准。**
-> ⚠️ 文中文件计数为盘点快照（2026-09-30），会漂移；**结构以目录与代码为准**，勿把数字当依据。
+> ⚠️ 文中文件计数为盘点快照，会漂移；**结构以目录与代码为准**，勿把数字当依据。
+>
+> ## ⛔ 水文部分的结论已整体废止（2026-09-30 P0）
+> `AGENTS.md` / `HANDOFF.md` / `LAKE-HANDOFF-2026-09-23.md` / `_handover/2026-09-29_*`
+> 中**关于水文模型、湖泊、河网、伪影归因的结论一律不再是当前规格**，包括
+> "唯一水文管线已定型""ε 阶梯导致平原直线""直线属自然坡向"等。
+> 现行依据 = **[.openbitfun/plans/hydrology-system-reassessment.plan.md](.openbitfun/plans/hydrology-system-reassessment.plan.md)**
+> + **[P0 清理损失审计](_handover/2026-09-30_P0_清理损失审计与资产恢复.md)**。
+> 阶段 D 已删除的旧链与 56 个探针保存在 tag `recovery/pre-stageD-legacy`。
 
 ## 0. 新对话阅读顺序
 
@@ -36,11 +44,11 @@
 `docs/analysis/原版复用对照审计-2026-09-16.md` · `docs/plans/`（3 份预研）。
 目录：`01-架构设计` / `02-功能设计` / `03-实施计划` / `04-修复记录` / `05-分析诊断` / `06-历史归档`。
 
-## 3. 源码（`forge-1.20.1-47.4.10-mdk/`，git 跟踪 ~322 文件）
+## 3. 源码（`forge-1.20.1-47.4.10-mdk/`）
 
-**325 个 Java = main 134 + diagnostics 191（其中 153 个 \*Probe.java）**
+**266 个 Java = main 165 + diagnostics 101（其中 99 个 \*Probe.java）** —— ★ 阶段 D 后实测
 
-### `src/main/java/com/geogenesis/`（134）
+### `src/main/java/com/geogenesis/`（165）
 | 包 | 数 | 要点 |
 |---|---|---|
 | 根 | 2 | `GeoGenesisMod`（入口/注册）· `GeoGenesisServerEvents` |
@@ -54,20 +62,17 @@
 | `worldgen/cave` · `erosion` · `ore` | 4·2·1 | 洞穴 · 侵蚀 · `OreVeins` |
 | `worldgen/noise` | 29 | 零 MC 依赖噪声原语 |
 | `worldgen/hydrology`（根） | 8 | 雕刻器/采样/引擎/ChunkEngine |
-| `hydrology/flow` · `flowaccum` · `riverline` | 1·1·5 | `TerrainFlowSim` · `FlowField` · 旧链（生产不可达）|
-| **`hydrology/sim`** | **19** | **新水文核心（契约/tile/无限世界 solver）— 2026-09-29 起的生产核心** |
+| `hydrology/flow` · `flowaccum` | **0 · 0** | ⚠ 阶段 D 后**已空**（`TerrainFlowSim` / `FlowField` 已删）|
+| `hydrology/riverline` | **1** | 仅 `RiverLineParams`（车床几何参数，15 个在用 / 52 个零读取）|
+| **`hydrology/sim`** | **19** | **当前生产核心（契约/tile/无限世界 solver）—— ⚠ 正被整体重审替换** |
 
-### `src/diagnostics/java/`（191）
-| 模块 | 数 |
-|---|---|
-| `hydrology`（+`sim` 3） | **88**（最大头）|
-| `terrain` | 48 |
-| `climate` 5 · `cave` 4 · `ore` 4 · `erosion` 2 | 15 |
-| `diagnostics` 2 · `client/preview` 1 | 3 |
+### `src/diagnostics/java/`
+
+（★ 阶段 D 后实测：101 个文件 / 99 个 `*Probe`；56 个探针已删，清单见 P0 审计。原 88+48+15+3 的分布已变，不再抄具体数。）
 
 ### 资源与构建
 - `src/main/resources`：`mods.toml` · `pack.mcmeta` · lang×2 · `biome_colors.json` · `colormap_preview/` · world_preset×2
-- `build.gradle`（84 KB）：**156 个 `run*` 任务**；门禁入口 **`gradlew runWorldgenGate`**
+- `build.gradle`：**103 个 `run*` 任务**；门禁入口 **`gradlew runWorldgenGate`**
 - 空源集：`src/test` · `src/generated` · `src/diagnostics/resources`
 
 ## 4. 忽略目录/杂项（本地存在、不入库）
