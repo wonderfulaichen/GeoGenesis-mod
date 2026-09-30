@@ -1,6 +1,5 @@
 package com.geogenesis.worldgen.hydrology;
 
-import com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 
@@ -17,14 +16,6 @@ public final class HydrologyChunkEngine {
     }
 
     /**
-     * 只读暴露河线网络 —— 探针/对照用。
-     * ⚠ 2026-09-29：生产（绿洲）已改走 {@link #distanceToWaterWu}（新核心），
-     * 勿再让生产路径调它触发旧链 region 构建（创建世界卡死根因，见 handoff §10）。
-     */
-    public RiverLineNetwork riverNetwork() {
-        return hydrology.network();
-    }
-
     /**
      * 到最近水体的距离（wu）——河流绿洲输入，走新核心（与雕刻同一 solver/缓存，
      * 边际成本≈0）。2026-09-29 起替代 riverNetwork().distanceToWater。

@@ -28,99 +28,19 @@ import java.util.List;
  */
 public final class HydrologyBlockCarver {
 
-    /**
-     * 湖水位按侵蚀后短板重算的开关（2026-09-09 终版【默认开】）。
-     *
-     * <p>用户两次实测定案：水位必须按短板效应取【侵蚀后】地形的最低溢出坎 ——
-     * 否则（false 时用无侵蚀 spill）侵蚀削低岸坎后水位高出实际地形：水悬空、
-     * 且山坡上大片低于旧水位的区域被误灌（"填到洼地山外围"，截图红圈）。
-     * 短板把水位压到真实缺口 → 只有真正低于水位的盆底才淹，三个问题同解。</p>
-     *
-     * <p>性能：rim 格紧邻湖盆，玩家加载湖边 chunk 时这些侵蚀 tile 本就要生成，
-     * rim 采样只是提前访问（早前"+32 tile/2.7×"为探针窗口不覆盖湖区的测量假象，
-     * 基线 0 tile 实为磁盘缓存命中，不可比）。LakeNode.erodedWaterLevel 每湖只算一次。</p>
-     */
-    /**
-     * @deprecated ★ 2026-09-22【旧版湖水位入口 · 已被 {@link #LAKE_MINIMAX_LEVEL} 取代】
-     *     <p>它只控制"是否用侵蚀短板水位覆盖 spill"。旧链的 rim 圈存在 e/h 空间口径
-     *     混用（见 {@link #LAKE_MINIMAX_LEVEL} 注释），会把水位错误压低 ⇒ 已由
-     *     minimax 逃逸水位取代。保留仅供 A/B 回退。</p>
-     */
-    @Deprecated
-    public static final boolean LAKE_ERODED_SPILL = true;
-
-    /**
-     * ★★★ 2026-09-22【湖水位 = minimax 逃逸（统一口径）】总开关 ★★★
-     *
-     * <p><b>为什么要它（CARVE-TRACE 实证）</b>：旧链 {@code spill = ln.erodedWaterLevel(...)}
-     * 取"rim 圈各坎的侵蚀后高度 min"，而 rim 圈是用 {@code field.fillEAt(nIdx) <= spill+0.05}
-     * 选出的 —— <b>{@code fillEAt} 是 e 空间填洼面、rim 高度却取侵蚀后地形（height 空间）</b>，
-     * 两个口径混用 ⇒ 会把<b>远处深谷底</b>当成湖盆溢出口 ⇒ 水位被错误压低
-     * （样本 block(-444,-76)：水位 151.89，而地形 167.44）⇒ {@code cell.height < spill−0.5}
-     * 永不成立 ⇒ 湖列/河尾普遍不出水（审计"河尾无水 19/58"）。</p>
-     *
-     * <p><b>正解（对齐用户语义"湖面 = 地形的最低溢出高度，溢出口不一定只有一个"）</b>：
-     * {@code escapeWaterLevel} = minimax（从盆底向任意方向扩张，cost = 路径最高地面，
-     * 到低处即逃逸高度）—— 天然就是"多个溢出口取最低"，且与 rim 选点无关。
-     * 以【无侵蚀 spill】为上界（湖面不可能高于它）。</p>
-     *
-     * <p><b>回退</b>：置 false ⇒ 逐位回到 {@code erodedWaterLevel} 旧行为。</p>
-     */
-    // ★★★ 2026-09-23【恢复 true（修环状湖）】★★★
-    //   A/B：false（旧链 eroded→flood）⇒ 湖内缺格 38571（环状）；
-    //        true（minimax 逃逸，多溢出口取最低）⇒ 534（实心）。
-    //   与 RiverLineNetwork.finalLakeLevel / domTol=0.5 是同一批修复，必须同开。
-    public static final boolean LAKE_MINIMAX_LEVEL = true;
-
-    /**
-     * ★★★ 2026-09-22【停用"弃湖"旧逻辑】★★★
-     *
-     * <p>旧：{@code computeFlood} 返回 OOB（淹没区越出认领域 / 面积过大 / 无轮廓）
-     * ⇒ 整列直接返回原始地形（无水）。实测（CARVE-TRACE）这是"命中在·水不在"的
-     * <b>直接出口</b>：水位被错值压低后必然 OOB ⇒ 一批湖被整片丢弃 ⇒ 其所有入湖河尾无水解。
-     * 而用户语义下，湖是否存在的判据只有"水位以下的连通水域"，不需要"认领域内闭合"。</p>
-     *
-     * <p>新：OOB <b>不再弃湖</b>，照常走 {@code inFlood}/{@code 等高线} 判水（水位由
-     * {@link #LAKE_MINIMAX_LEVEL} 保证正确）；OOB 时<b>不采用</b>不可信的 {@code floodLevel}。</p>
-     *
-     * <p><b>回退</b>：置 false ⇒ 逐位回到"OOB 即弃湖"。</p>
-     */
-    // ★★★ 2026-09-23【恢复 true（修环状湖）】★★★
-    //   OOB 弃湖会让整片湖不出水 ⇒ 湖内大块空洞（与 domTol 48wu 叠加时尤其明显）。
-    //   新语义：OOB 不再弃湖，照常按等高线判水（水位由 LAKE_MINIMAX_LEVEL 保证）。
-    public static final boolean LAKE_NO_ABANDON_ON_OOB = true;
-
-    /**
-     * ★★★ 2026-09-22【湖判水 = 纯等高线，不再要求 inFlood 连通区】★★★
-     *
-     * <p><b>量测依据（WaterViewProbe 成因分解）</b>：窗口内"该有水却无水"共
-     * <b>20081 格</b>，其中<b>成因① 无任何命中 = 0</b>、<b>成因② 有湖命中却判干 = 20081</b>
-     * ⇒ 湖域铺得没问题，问题<b>全部</b>在判水层。</p>
-     *
-     * <p><b>被修的缺陷</b>：湖分支在 {@code !ln.inFlood(wuX,wuZ)} 时早退成"被拒列"
-     * （lakePlan=false ⇒ 不出水），把出水与否交给 GeoGenesisTerrain 的
-     * {@code lakeFineFlood} 块级洪泛重判；而那个重判要从"粗格已出水种子"起步 ——
-     * 种子不足/不连通时就<b>永远补不上</b> ⇒ 湖在自己域内成片干。</p>
-     *
-     * <p><b>用户的设计（原话）</b>：「湖面保持高度一直填满到碰到实体山体边缘就完成了」
-     * ⇒ 判水只需<b>一条等高线判据</b>：{@code cell.height < 水位 − 0.5}
-     * （GeoGenesisTerrain 的湖列分支本就是这么判的）。"粗格连通区"是另一套机制
-     * （用于筑岸/防越界），不该用来决定湖面有没有水。</p>
-     *
-     * <p><b>边界安全性</b>：湖命中本身只在湖域（LakeNode 轮廓）内发出 ⇒ 判水范围
-     * 天然被"该湖的盆底轮廓"限住，不会漫到无关地形；水位由
-     * {@link #LAKE_MINIMAX_LEVEL} 保证（多溢出口取最低）。</p>
-     *
-     * <p><b>回退</b>：置 false ⇒ 逐位回到"inFlood=false 即判干（交精修洪泛）"。</p>
-     */
-    // ★ 2026-09-23【改回 false —— 修"没贴边 + 非洼地水"】（用户截图双圈）★★★
-    //   纯等高线判水（true）会同时产生两类伪影：
-    //     · notch（没贴边）：真盆地块被粗格/容差域切掉 ⇒ 湖岸有矩形缺口；
-    //     · specks（非洼地水）：粗格方格盖到坡地 ⇒ 坡上低于水位的孤立块也被灌。
-    //   两者的共同根因 = 缺【块级连通】。正确判据 = 低于水位 ∧ 与盆地连通，
-    //   即恢复 "inFlood 粗筛 + lakeFineFlood 块级精修"（GeoGenesisTerrain），
-    //   其兜底种子（盆底最低格）已在本会话补上 ⇒ 不会再出现"零种子全干"。
-    public static final boolean LAKE_CONTOUR_ONLY = false;
+    // ★ 2026-09-30【原 4 个湖水位开关已删除：LAKE_ERODED_SPILL / LAKE_MINIMAX_LEVEL /
+    //   LAKE_NO_ABANDON_ON_OOB / LAKE_CONTOUR_ONLY】
+    //   它们的唯一消费者是 carveColumn 湖分支的"侵蚀短板水位重算"块 —— 该块依赖
+    //   `lakeSample.lake()`（旧链 LakeNode），而唯一管线化后该字段恒为 null
+    //   ⇒ 整块不可达（同批已删）。
+    //   历史结论（当时有效，现由新核心承担）：
+    //     ① 水位必须按【侵蚀后】地形的最低溢出坎取（短板），否则水悬空且坡地被误灌；
+    //     ② 旧链 rim 圈 e/h 口径混用会把水位错误压低（实测 151.89 « 地形 167.44）
+    //        ⇒ 改用 minimax 逃逸（多溢出口取最低）；
+    //     ③ 纯等高线判水会产生 notch（湖岸缺口）与 specks（坡地孤立水斑），
+    //        正解 = "低于水位 ∧ 与盆地连通"。
+    //   现在 `sim/HydroTileTopology`（minimax 最低溢口）+ `sim/HydroTileBalance`（盆地水位）
+    //   一次性给出正确水位与连通盆地 ⇒ 本层不再需要任何湖水位开关。
 
     // ★ 2026-09-17【已删除的 LAKE_DIAG 探针——结论留痕，勿再重加】
     //   诊断日志显示水位来源链为
@@ -368,11 +288,9 @@ public final class HydrologyBlockCarver {
         //   未做该测量前，不得再改选湖规则。
         boolean inRiverChannel = nearestRiverDist <= nearestRiverWidth;
         if (TR) {
-            System.out.printf("[CARVE-TRACE]   分支判定 lakeSample=%s hasRim=%s inRiverChannel=%s "
+            System.out.printf("[CARVE-TRACE]   分支判定 lakeSample=%s inRiverChannel=%s "
                             + "(nearestRiverDist=%.2f nearestRiverWidth=%.2f) 初始spill=%s%n",
                     lakeSample == null ? "null" : "有",
-                    lakeSample != null && lakeSample.lake() != null
-                            ? String.valueOf(lakeSample.lake().hasRim()) : "-",
                     inRiverChannel, nearestRiverDist, nearestRiverWidth,
                     lakeSample == null ? "-" : String.format("%.2f", lakeSample.surfaceY()));
         }
@@ -382,140 +300,17 @@ public final class HydrologyBlockCarver {
             //   旧 spill 会高出真实缺口 → 水从低坎漏走、包不住。真水位 = min(原 spill,
             //   rim 各坎的侵蚀后高度)（只降不升）。
             double spill = lakeSample.surfaceY();
-            com.geogenesis.worldgen.hydrology.riverline.RiverLineRegion.LakeNode ln =
-                    lakeSample.lake();
-            if (LAKE_ERODED_SPILL && ln != null && ln.hasRim()) {
-                // 侵蚀后地形采样（rim 格紧邻湖盆，数量少；每湖只算一次并缓存）。
-                java.util.function.ToDoubleBiFunction<Double, Double> erodedY =
-                        (wx, wz) -> terrain.sampleWu(wx, wz).height;
-                // ★★★ 2026-09-22【水位统一到 minimax 逃逸】（见 LAKE_MINIMAX_LEVEL 注释）★★★
-                //   旧：spill = ln.erodedWaterLevel(erodedY)（rim 圈 e/h 口径混用 ⇒ 水位被
-                //   深谷格错误压低，CARVE-TRACE 实测 151.89 « 地形 167.44 ⇒ 湖列全干）。
-                //   新：esc = minimax 逃逸高度（多溢出口取最低），上界 = 无侵蚀 spill。
-                if (LAKE_MINIMAX_LEVEL) {
-                    double upper = Double.isNaN(ln.height) ? spill : Math.min(spill, ln.height);
-                    double esc = ln.escapeWaterLevel(erodedY, 24.0, 6.0, upper);
-                    spill = Double.isNaN(esc) ? upper : Math.min(upper, esc);
-                } else {
-                    spill = ln.erodedWaterLevel(erodedY);
-                }
-                // ★ 湖形 = 侵蚀后连通淹水区（2026-09-10 终版，用户"水没铺满整个洼地"）：
-                //   computeFlood 在侵蚀后地形上 BFS 出"低于水位且与盆底连通"的区域。
-                //   整湖放弃条件（computeFlood=true）：① 淹水区越出认领域（湖比认领
-                //   域大 → 会在认领边界被截断）；② 淹没覆盖无侵蚀洼地不足一半（侵蚀
-                //   把一侧盆底垫高 → 水铺不满 → 残缺湖）。两者都是"硬生成必残缺"，
-                //   按用户要求"超出填充就不生成湖"。
-                //   湖域列是否出水：不在 flood 连通区内的列【不标 lakePlan】→ 该列出水
-                //   自然在连通区边界结束（不会"停在半途"：水位等高线闭合在连通区内部），
-                //   也不会漫出洼地（连通性约束：坡面不连通不淹）。computeFlood 每湖缓存。
-                // ★ 2026-09-15：BFS 粗格加密一倍（claimGrid/2 = 12wu），认领域基准仍用
-                //   原始 gridCell。原因：24wu 粗格下湖岸尖端即使 5 点采样也会漏判
-                //   （实测 ASCII 湖形呈 "#.##"、"…?#…" 破碎），加密后 floodHalf 同步
-                //   减半 ⇒ 岸线量化误差从 ±12wu 降到 ±6wu。格数影响可控：pad 按物理
-                //   72wu 换算，格数仅从 8² 增到 15²（远低于 nx*nz>40000 的弃湖阈值）。
-                double claimGrid = RiverLineParams.defaults().gridCell();
-                // ★★★ 2026-09-17：BFS 网格由 12wu 加密到 **6wu**（= 12 块）★★★
-                //   ⚠ 本条注释此前【声称已加密到 0.25，而代码仍是 0.5】—— 现改齐。
-                //   【被修的缺陷（水体渲染图 + WallAttributionProbe 双重确认）】
-                //   用户标注的水界直边是【轴对齐】的 ⇒ 网格限，而非精度不足。
-                //   归因实锤：干墙格中 wu.x ≡ 0 (mod 12) 占 21.5%（均匀应 8.3%，2.6× 过代表）
-                //   ⇒ 边界正是 `claimGrid*0.5 = 12wu` 的粗格网。
-                //   机理：`inFlood` = computeFlood 的粗连通区，格距 12wu ⇒ 边界带 12wu 直角；
-                //   且 `erodedHeightAt` 自 2026-09-17 起用【格心单点】（治隧穿的代价）
-                //   ⇒ "格心偏高、边缘却低于水位"的连通处在 12wu 尺度上被判【不连通】
-                //   ⇒ 水在网格线处硬截断（= 直边）。
-                //   ⚠ 2026-09-15 曾【刻意不缩小 gridCell】（怕格数 ×4、怕撞弃湖阈值）——
-                //     该顾虑现由"弃湖阈值改为按【物理面积】判定"消解（见 computeFlood）。
-                //   回退：把 0.25 改回 0.5 一行。
-                // ★ 2026-09-23【P2-2 掩码格距与发射侧统一】：lakeBasinHits=true 时用
-                //   块级格距（与 sampleRegion 的 inBasinMask 同参数 ⇒ 无论谁先触发，
-                //   缓存命中后参数被忽略，两处永远共用同一份掩码）；
-                //   lakeBasinHits=false（回退）⇒ 逐位走旧 6wu（claimGrid*0.25）。
-                boolean oob = ln.computeFlood(erodedY, spill,
-                        com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.lakeBasinHits
-                                ? com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.lakeBasinFloodGrid
-                                : claimGrid * 0.25,
-                        claimGrid);
-                if (TR) {
-                    System.out.printf("[CARVE-TRACE]   computeFlood oob=%s spill(侵蚀后)=%.2f "
-                                    + "floodLevel=%s%n", oob,
-                            ln.erodedWaterLevel(erodedY), String.format("%.2f", ln.floodLevel()));
-                }
-                if (oob && !LAKE_NO_ABANDON_ON_OOB) {
-                    if (TR) System.out.println("[CARVE-TRACE]   ⇒ 出口=弃湖列(inFlood域出界)");
-                    return new HydrologyBlockCarvedColumn(blockX, blockZ,
-                            original, original, original, original,
-                            0.0, 1.0, false, false);
-                }
-                if (oob && TR && LAKE_NO_ABANDON_ON_OOB) {
-                    System.out.println("[CARVE-TRACE]   oob=true（旧=弃湖）→ 新=照常判水（水位已统一 minimax）");
-                }
-                // ★ 2026-09-17：把【水位采用 floodLevel】提到 inFlood 判定【之前】。
-                //   原因：下面那条"非湖列"早退（inFlood=false）也必须带上**同一个水位**，
-                //   落块层才能在该水位上做块级洪泛重判（GeoGenesisTerrain.LAKE_FINE_FLOOD）。
-                //   对湖列自身零行为变化（原先只是晚几句赋值，值相同）。
-                //   回退：把这两行移回 inFlood 判定之后。
-                // ★ 2026-09-22：OOB 时 floodLevel 不可信（computeFlood 早退，未做短板迭代）
-                //   ⇒ 不采用，保持 minimax 水位。
-                // ★★★ 2026-09-22【旧链 floodLevel 覆盖退役】★★★
-                //   量测依据：改用 minimax 水位后，湖内"该有水却无水" 20081 → 12702。
-                //   剩余格的原因 = 本行：{@code floodLevel}（旧 computeFlood 短板迭代的产物）
-                //   仍会把水位【再压低】到命中水位之下 ⇒ 判水时 {@code height < spill−0.5} 又失败。
-                //   既然水位已统一到 {@link #LAKE_MINIMAX_LEVEL}（多溢出口取最低），
-                //   这个覆盖就是**旧链遗留**，必须停用（否则等于两条水位链并存）。
-                //   回退：置 LAKE_MINIMAX_LEVEL = false（走旧链）。
-                double enforcedFlood = (oob || LAKE_MINIMAX_LEVEL) ? Double.NaN : ln.floodLevel();
-                if (!Double.isNaN(enforcedFlood)) spill = enforcedFlood;
-                double wuX = blockX / (horizontalScale > 0.01 ? horizontalScale : 1.0);
-                double wuZ = blockZ / (horizontalScale > 0.01 ? horizontalScale : 1.0);
-                // ★★★ 2026-09-17：给连通区判定【一个粗格容差】★★★
-                //   本检查只负责"连通性粗筛"（排除远在域外/不连通的低地）；
-                //   真正的湖岸边界由落块侧的**块级等高线**（`cell.height < spill − 0.5`）决定。
-                //   此前不给容差 ⇒ 粗格边界（6wu）被当成终判 ⇒ 水界带格网直角
-                //   （水体渲染图实证：右侧多条笔直切边，左侧却沿地形）。
-                //   给 `claimGrid*0.25`（= 一个粗格）容差后，边界外但确实低于水位的相邻列
-                //   会进入块级判定 ⇒ 水界回归等高线，且不破坏连通性语义。
-                //   回退：把 extra 改回 0.0。
-                // ⚠ 2026-09-17 回退：曾给"一个粗格容差"以让水界贴等高线，
-                //   实测**反而灌得更多**（水体渲染图：29670 px，占窗口 80%）⇒ 撤销。
-                //   结论：在"湖域已过大（太多列被判为湖）"的前提下，放宽连通带只会加剧问题。
-                //   根因在更上游（域/水位），不在边界容差。
-                if (!LAKE_CONTOUR_ONLY && !ln.inFlood(wuX, wuZ)) {
-                    // 本列在湖认领域内但不在侵蚀后连通淹水区 → 暂判"非湖列"。
-                    // ★ 2026-09-17：但**仍回传湖节点 + 湖水位**。实测（水体物理审计）：
-                    //   该判定是在 6wu 粗格上做 BFS，会把"低于水位、且与水相邻"的岸线列
-                    //   成片错杀（实测 452 个"干墙"格 100% 来自这一类列）⇒
-                    //   落块层改用【1 块精度洪泛】在同一水位上重判这些列
-                    //   （GeoGenesisTerrain.LAKE_FINE_FLOOD；lakePlan 仍为 false
-                    //    = "按粗格暂不出水"，只有块级洪泛连通到才出水）。
-                    if (TR) {
-                        System.out.printf("[CARVE-TRACE]   ⇒ 出口=被拒列(inFlood=false) spill=%.2f "
-                                        + "⇒ 交 lakeFineFlood 块级重判%n", spill);
-                    }
-                    // ★★★ 2026-09-23【P2-1 幽灵水位修复】★★★
-                    //   旧写法 waterSurfaceY/lipSurfaceY = original（侵蚀前地形）——
-                    //   经合成层 `cell.riverSurfaceY = column.waterSurfaceY()` 落盘后，
-                    //   被侵蚀切低的列会挂着【高于地形的假水位】（CARVE-TRACE 实锤
-                    //   block(-400,-60)：original=192.84 vs 湖水位 173.28，Δ=+19.6）⇒
-                    //   绝对等高线判据"该有水却干"被污染（实测 B4 |Δ|>5 共 17,605 格），
-                    //   一切缺格/漏灌验收数字失真。
-                    //   改为回传 spill（与 lakeLevelY 同值同口径 = 湖列分支既有语义）。
-                    //   【零放水风险】落块灌水被 `cell.riverType != 0` 硬门控
-                    //   （GeoGenesisGenerator 灌水判定），riverType 仍由 fillWater /
-                    //   lakeFineFlood 决定 ⇒ 本改动不改变任何水块放置；
-                    //   lakeFineFlood 重判用 lakeLevelY（末参），同样不受影响。
-                    //   【未动】本文件 437 行"弃湖列"出口同款写法保持原样：
-                    //   ① LAKE_NO_ABANDON_ON_OOB=true 下是死路径；② 弃湖语义下无可信水位。
-                    //   回退：把 spill, spill 改回 original, original。
-                    return new HydrologyBlockCarvedColumn(blockX, blockZ,
-                            original, original, spill, spill,
-                            0.0, 1.0, false, false, ln, spill);
-                }
-                // ★★★ 2026-09-17 修复（实测定位：算出来的水位没人用）★★★
-                //   computeFlood 内部的短板迭代会把水位压低到【真实盆沿】。
-                //   ⚠ 该赋值已于 2026-09-17 上移到 inFlood 判定【之前】（见 enforcedFlood），
-                //     目的是让"被拒列"与"湖列"拿到同一个水位，避免两条路径口径不一。
-            }
+            // ★ 2026-09-17【已删除的"侵蚀短板水位重算"块 —— 结论留痕，勿再重加】
+            //   该块依赖 `LakeNode ln = lakeSample.lake()`，而 2026-09-29 唯一管线化后
+            //   `HydrologyBlockSample` 的两处构造【都传 null】⇒ ln 恒为 null ⇒ 整块
+            //   （L387~L518，132 行）从未执行，含：minimax 逃逸水位、computeFlood 湖域
+            //   连通性、被拒列出口、6wu 粗格加密等。
+            //   历史结论（当时有效，现已由新核心内部承担）：① 水位来源链为
+            //   spill(无侵蚀)→erodedWaterLevel→落块；② 真因在 computeFlood 的搜索窗/粗格
+            //   分辨率（看不见真实低出口）；③ 两次针对"选湖规则"的修法均被实测证伪
+            //   ⇒ 杠杆不在【选择】而在【逐列求解本身】。
+            //   现在这些语义全部由 `sim/HydroTileTopology`（minimax 最低溢口）
+            //   与 `sim/HydroTileBalance`（盆地水位）承担，不再需要本层二次推导。
             // 湖不挖地：carved = original（合成层 waterSurface vs 侵蚀后 height 判水）。
             // lakePlan=true 通知合成层走"湖出水判定"（用侵蚀后地面，而非通用河床减法）。
             if (TR) {
@@ -523,15 +318,12 @@ public final class HydrologyBlockCarver {
             }
             return new HydrologyBlockCarvedColumn(blockX, blockZ,
                     original, original,          // carved = original（湖不雕刻）
-                    spill, spill,                // waterSurface = lip = 侵蚀短板水位
+                    spill, spill,                // waterSurface = lip（= spill）
                     0.0,                         // erosion = cut = 0
                     1.0,                         // 湖盆吃全量侵蚀（盆底 = 侵蚀后真实地形）
                     false,                       // fillWater 由合成层判，这里不预判
                     true,                        // lakePlan：湖域列标记
-                    ln,                          // ★ 2026-09-17：回传湖节点，
-                                                 //   供落块层在【雕刻后最终地形】上重算水位
-                    spill);                      // ★ 2026-09-17：水位随列回传 ——
-                                                 //   与"被拒列"同一口径，供块级洪泛使用
+                    spill);                      // 水位随列回传（供块级洪泛使用）
         }
 
         if (TR) {

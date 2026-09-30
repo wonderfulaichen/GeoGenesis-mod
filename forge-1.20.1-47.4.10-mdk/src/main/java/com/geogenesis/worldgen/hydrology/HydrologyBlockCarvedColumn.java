@@ -18,46 +18,28 @@ public record HydrologyBlockCarvedColumn(int blockX, int blockZ,
                                          boolean fillWater,
                                          boolean lakePlan,
                                          /**
-                                          * ★ 2026-09-17：湖节点引用（仅湖列非 null）。
-                                          * 供落块层在【雕刻后的最终地形】上重算湖水位
-                                          * （{@code LakeNode.escapeWaterLevel}）——
-                                          * 修"水位求解早于雕刻"的阶段错位。见
-                                          * {@code GeoGenesisTerrain.LAKE_ESCAPE_LEVEL}。
-                                          */
-                                         com.geogenesis.worldgen.hydrology.riverline
-                                                 .RiverLineRegion.LakeNode lakeNode,
-                                         /**
-                                          * ★ 2026-09-17：本列所属湖的<b>水位</b>（NaN = 不受湖影响）。
-                                          * <p>关键：被 {@code inFlood} 判为"非湖列"的列
-                                          * （{@code lakePlan=false}）<b>也会带上湖节点 + 本水位</b>
-                                          * —— 实测"低于水位却干"的岸线格全部来自这一类列
-                                          * （粗格 BFS 把它们错杀），需要由落块层的
-                                          * <b>1 块精度洪泛</b>在同一水位上重判。
-                                          * 见 {@code GeoGenesisTerrain.LAKE_FINE_FLOOD}。</p>
+                                          * ★ 本列所属湖的<b>水位</b>（NaN = 不受湖影响）。
+                                          *
+                                          * <p>⚠ 2026-09-30【原 `lakeNode` 字段已删除】：它是旧链
+                                          * {@code RiverLineRegion.LakeNode} 的引用，唯一管线化后
+                                          * {@code HydrologyBlockSample} 恒传 null ⇒ 落块层的
+                                          * {@code LAKE_ESCAPE_LEVEL} / {@code LAKE_FINE_FLOOD}
+                                          * 两条消费路径同时失效（后者本已默认关闭）。
+                                          * 湖水位现在由 {@code sim/HydroTileBalance} 直接给出；
+                                          * 本字段保留供块级洪泛读取同一水位。</p>
                                           */
                                          double lakeLevelY) {
 
-                                         /** 兼容旧调用（无湖节点 / 无湖水位）。 */
-                                         public HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
-                                         double carvedGroundY, double waterSurfaceY,
-                                         double lipSurfaceY, double erosion,
-                                         double erosionMask, boolean fillWater,
-                                         boolean lakePlan) {
-                                         this(blockX, blockZ, originalGroundY, carvedGroundY, waterSurfaceY, lipSurfaceY,
-                                         erosion, erosionMask, fillWater, lakePlan, null, Double.NaN);
-                                         }
+    /** 兼容旧调用（无湖水位）。 */
+    public HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
+                                      double carvedGroundY, double waterSurfaceY,
+                                      double lipSurfaceY, double erosion,
+                                      double erosionMask, boolean fillWater,
+                                      boolean lakePlan) {
+        this(blockX, blockZ, originalGroundY, carvedGroundY, waterSurfaceY, lipSurfaceY,
+                erosion, erosionMask, fillWater, lakePlan, Double.NaN);
+    }
 
-                                         /** 兼容：有湖节点、无独立湖水位（lakeLevelY = NaN）。 */
-                                         public HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
-                                         double carvedGroundY, double waterSurfaceY,
-                                         double lipSurfaceY, double erosion,
-                                         double erosionMask, boolean fillWater,
-                                         boolean lakePlan,
-                                         com.geogenesis.worldgen.hydrology.riverline
-                                               .RiverLineRegion.LakeNode lakeNode) {
-                                         this(blockX, blockZ, originalGroundY, carvedGroundY, waterSurfaceY, lipSurfaceY,
-                                         erosion, erosionMask, fillWater, lakePlan, lakeNode, Double.NaN);
-                                         }
     /** 水幕高度（block）：0 = 普通列。 */
     public double fallDrop() {
         double d = lipSurfaceY - waterSurfaceY;

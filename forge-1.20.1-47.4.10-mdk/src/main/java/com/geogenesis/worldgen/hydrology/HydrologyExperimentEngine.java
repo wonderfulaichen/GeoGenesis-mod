@@ -1,7 +1,6 @@
 package com.geogenesis.worldgen.hydrology;
 
 import com.geogenesis.config.GeoGenesisConfig;
-import com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork;
 import com.geogenesis.worldgen.hydrology.sim.HydroCellSampler;
 import com.geogenesis.worldgen.hydrology.sim.HydroConfig;
 import com.geogenesis.worldgen.hydrology.sim.HydroFlowGeometry;
@@ -21,7 +20,9 @@ import java.util.List;
  * 源头 → 汇流 → 洼地蓄水 → 最低溢口 → 继续下泄 → 入海）。雕刻层继续消费
  * {@code HydrologyBlockSample}，但每个量都只来自新核心。</p>
  *
- * <p>旧 {@link RiverLineNetwork} 字段保留至 stage D 清理，<b>生产不再调用</b>。</p>
+ * <p><b>2026-09-30（stage D）</b>：旧 {@code RiverLineNetwork} 字段与全部接线已删除
+ * —— 采样只走新核心，旧链不再是任何形式的回退（归档在 git 分支
+ * {@code legacy-hydrology-archive}）。</p>
  */
 public final class HydrologyExperimentEngine {
     /** 日志（诊断用）：确认骨架路线开关的【实际生效值】与回退原因。 */
@@ -29,7 +30,6 @@ public final class HydrologyExperimentEngine {
             org.apache.logging.log4j.LogManager.getLogger("geogenesis");
 
     private final CellGenerator terrain;
-    private final RiverLineNetwork network;
     /** 唯一水文核心（无限世界求解器）。 */
     private final HydroWorldSolver hydroSolver;
     /** 全球水文格字段采样缓存（tile halo 重叠共享）。 */
@@ -41,110 +41,22 @@ public final class HydrologyExperimentEngine {
 
     public HydrologyExperimentEngine(CellGenerator terrain, long seed) {
         this.terrain = terrain;
-        // ★ 剖面锚定与雕刻基线同源【且无侵蚀】（2026-09-08 终版，恢复管线顺序）：
-        //   历史教训两轮：
-        //   (a) sampleWu 剖面 + sample 基线（不同源）→ 水面判高错乱；
-        //   (b) 双双 sampleWu（2026-09-07 首修）→ 同源但河网构建期触发侵蚀 tile 冷生成，
-        //       预览开窗即卡（用户："管线里河流在地形侵蚀前面"——建网不得吃侵蚀）。
-        //   终版：双双 sample()（同源、无侵蚀、不碰 tile），侵蚀在落块合成时叠加
-        //   （applyHydrologyChunk 的 delta 移位：含侵蚀高度 − 同量雕刻深度，水面同步
-        //   抬升同一 delta）→ 侵蚀在游戏里生效且床面-水面关系严格不变。
+        // ★ 2026-09-30【旧链接线已整体删除 —— 结论留痕，勿再重加】
+        //   原构造器在此创建并配置 `RiverLineNetwork`（即计划里的 stage D 清理项），含：
+        //     · `new RiverLineNetwork(terrainEQuick …)` + `setPrecipSampler`（降水驱动汇流）；
+        //     · 4 处静态字段注入：`erodedYSampler` / `routeHeightSampler` /
+        //       `lakeBasinFloodGrid` / `erosionDeltaProvider`；
+        //     · `flowSkeletonRouting = true`（强制骨架路线，配置值被忽略）；
+        //     · `setDecayClimate`（水文 M2-C 水量平衡）。
+        //   唯一管线化后这些已无任何消费者 —— 采样走 `sim/HydroWorldSolver`，
+        //   继续初始化只是"给死链路供电"，并让读者误以为旧链仍然活着。
         //
-        // ★ 河网微自适应（2026-09-08，用户："让河流局部路线与河道生成匹配侵蚀后的
-        //   地形"）：选线场（terrainEQuick 的 routingE）注入 tile delta（e 单位同量纲）
-        //   → D8 汇流场变为"侵蚀后 e 场"，河线偏向侵蚀刻出的沟槽。
-        //
-        //   ★★ 性能红线（2026-09-08 实测教训，用户："半天没加载进游戏"）：
-        //   建网覆盖【整个 region 的 D8 网格】（每格一次 routingE）→ 首次建 region
-        //   会同步冷生成全域侵蚀 tile（数百个 × 100~400ms = 分钟级）——落块只需要
-        //   玩家附近几个 tile，建网却是全域，"成本前置"根本不成立。因此默认必须
-        //   关闭（routingDelta=null → 选线路径与旧代码逐位一致、零 tile 依赖），
-        //   仅当 erosionRoutingAdaptive=true 时启用（toml 里手写，注释已警告代价）。
-        //
-        //   ★ 落块期"河道横向吸附"替代路径已实现并实测【无效回滚】（2026-09-08，
-        //   RiverLineNetwork 注释块有完整数据）：河线与侵蚀沟大面积天然重合，
-        //   触发率 2~5%、偏移 0.09wu 不可见——无收益，代码已删。
-        RiverLineNetwork.ErosionDeltaSampler deltaSampler = null;
-        double gain = 0.0;
-        try {
-            if (GeoGenesisConfig.INSTANCE.erosionEnabled.get()
-                    && GeoGenesisConfig.INSTANCE.erosionRoutingAdaptive.get()) {
-                deltaSampler = terrain::erosionDeltaE;
-                gain = 1.0; // delta 已随 erosionStrength 缩放，线性跟随即可
-            }
-        } catch (IllegalStateException e) {
-            // 预览/探针进程：Forge 配置未加载 → 微自适应关闭（保持零 tile 依赖）
-        }
-        this.network = new RiverLineNetwork(terrain::terrainEQuick,
-                // ★ 2026-09-11 D13 修复（性能，零行为变化）：
-                //   RiverLineNetwork.groundYAt 的文档契约本就是"terrainEQuick 派生 →
-                //   保证 region 冷构建亚毫秒级"，但此处接线传了 terrain.sample(...).height
-                //   （含气候/分类/群区，实测 ~0.5ms/次并被河网逐节点调用）
-                //   → runFlowAccumProbe 的 coldMs 从基线 1849ms 涨到 ~13.6s。
-                //   两者【逐位等价】：sampleCore 的 e 与 terrainEQuick 同源（同一连续场），
-                //   且 sample() 不含侵蚀（侵蚀由 applyTileDelta 单独施加）。
-                (wx, wz) -> terrain.heightCurve().heightFromE(terrain.terrainEQuick(wx, wz)),
-                deltaSampler, gain,
-                terrain.heightCurve(), seed, terrain.params().horizontalScale(),
-                com.geogenesis.worldgen.hydrology.riverline.RiverLineParams.defaults());
-        // ★ 2026-09-11 Phase C：降水驱动汇流累积 —— 只在此【生产接线处】注入；
-        //   探针若不走本类则保持旧基线（纯面积累积），便于 A/B 对比。
-        this.network.setPrecipSampler(terrain::precipitationAt,
-                com.geogenesis.worldgen.hydrology.flowaccum.FlowField.PrecipWeights.defaults());
-        // ★ 2026-09-18 水文 M2-C：水量平衡（沿程衰减 = 蒸发/入渗）—— 同样只在【生产接线处】注入。
-        //   默认关闭（hydrologyDecayEnabled=false）⇒ decayClimate 为 null
-        //   ⇒ RiverLineNetwork 走 9 参构造器（decay=0）⇒ 与旧行为【逐位一致】。
-        //   开启后：干旱区蒸发强 ⇒ 内流河/时令河；湿润区 decay=0 ⇒ 河流穿流到海。
-        // ★ 2026-09-22【河-湖水位同口径】注入【侵蚀后地形】采样器：
-        //   雕刻侧湖面 = min(无侵蚀 spill, 侵蚀后坎高)；河尾必须用同一水位才能对接
-        //   （用户实测："河流根本没有和湖泊高度对接上"）。
-        try {
-            com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.erodedYSampler =
-                    (a, b) -> terrain.sampleWu(a, b).height;
-            // ★ 2026-09-24：路由专用【便宜且等价】的侵蚀后高度采样器（性能，实测 40~90s/region）
-            com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.routeHeightSampler =
-                    (a, b) -> terrain.erodedHeightForRouting(a, b);
-            // ★ 2026-09-23【P2-2】湖盆连通掩码格距 = 1 块（hs wu/块）
-            com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.lakeBasinFloodGrid =
-                    Math.max(0.5, terrain.params().horizontalScale());
-        } catch (RuntimeException ignore) {
-            // 探针/无地形时保持 null ⇒ 退回无侵蚀 spill
-        }
-        // ★ 2026-09-22【侵蚀感知路由场】注入：修"河不贴谷"（路由场原为侵蚀前地形）。
-        //   用 peek（非阻塞）—— 绝不触发侵蚀 tile 冷生成，未缓存处退化为侵蚀前地形。
-        try {
-            com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.erosionDeltaProvider =
-                    (a, b) -> {
-                        java.util.OptionalDouble d = terrain.peekErosionDeltaE(a, b);
-                        return d.isPresent() ? d.getAsDouble() : Double.NaN;
-                    };
-        } catch (RuntimeException ignore) {
-            // 无侵蚀模块 ⇒ 保持 null（等同侵蚀前地形）
-        }
-        try {
-            GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
-            // ★ 2026-09-29【唯一水文管线】骨架路由不再是可选实验开关。
-            //   历史 TOML 中的 hydrologySkeletonRouting 仍可存在，但不能让旧湖/旧河链
-            //   重新成为生产路径；唯一生产语义是洼地蓄水 + 最低溢口续流。
-            try {
-                boolean configured = cfg.hydrologySkeletonRouting.get();
-                RiverLineNetwork.flowSkeletonRouting = true;
-                LOGGER.info("[RIVER] skeletonRouting forced=true (legacy config value ignored: {})",
-                        configured);
-            } catch (RuntimeException e) {
-                RiverLineNetwork.flowSkeletonRouting = true;
-                LOGGER.info("[RIVER] skeletonRouting forced=true (legacy config unavailable)");
-            }
-            if (cfg.hydrologyDecayEnabled.get()) {
-                this.network.setDecayClimate(
-                        new com.geogenesis.worldgen.hydrology.flowaccum.FlowField.DecayClimate(
-                                cfg.hydrologyDecayMax.get(),
-                                cfg.hydrologyDecayRef.get(),
-                                cfg.hydrologyDecayExponent.get()));
-            }
-        } catch (IllegalStateException e) {
-            // 预览/探针进程：Forge 配置未加载 ⇒ 衰减关闭（与旧行为逐位一致）
-        }
+        //   历史教训（保留，仍适用于新核心）：
+        //     · 建网若覆盖整个 region 的 D8 网格 ⇒ 首次建 region 会同步冷生成全域
+        //       侵蚀 tile（数百个 × 100~400ms = 分钟级）⇒ 选线场必须零 tile 依赖；
+        //     · `groundYAt` 必须用 `terrainEQuick` 派生，否则 region 冷构建从亚毫秒
+        //       涨到 ~13.6s（两者逐位等价）；
+        //     · 河网微自适应（选线场注入侵蚀 delta）默认必须关闭 —— 成本前置不成立。
 
         // ★★★ 2026-09-29【唯一水文管线】新核心接线 ★★★
         //   sampleBlockAll 只走 HydroWorldSolver；水文状态的唯一定义在核心内部：
@@ -234,10 +146,6 @@ public final class HydrologyExperimentEngine {
         return terrain;
     }
 
-    public RiverLineNetwork network() {
-        return network;
-    }
-
     /**
      * MC 块坐标采样（距离场版）。
      *
@@ -282,7 +190,7 @@ public final class HydrologyExperimentEngine {
         if (isLake) {
             return List.of(new HydrologyBlockSample(surfaceY, s.terrainY(), width, depth,
                     bankWidth, valleyWidth, s.discharge(), RiverOutlet.Type.LAKE, 0.0, 0.0,
-                    false, true, surfaceY, null));
+                    false, true, surfaceY));
         }
         double dist = hydroAdapter.distanceToCenterline(blockX, blockZ);
         if (Double.isNaN(dist)) dist = 0;
@@ -296,7 +204,7 @@ public final class HydrologyExperimentEngine {
         };
         HydrologyBlockSample one = new HydrologyBlockSample(surfaceY, bedY, width, depth,
                 bankWidth, valleyWidth, s.discharge(), outlet, dist, 0.0, false, isLake,
-                surfaceY, null);
+                surfaceY);
         return List.of(one);
     }
 
@@ -305,7 +213,6 @@ public final class HydrologyExperimentEngine {
     }
 
     public void setSeed(long seed) {
-        network.setSeed(seed);
         // ★ 2026-09-30【必须把种子传给新核心】（此前只清缓存 ⇒ solver 恒用构造时的 seed=0
         //   ⇒ 生产水文用的是"别的世界的地形"，河与地形整体错位）。
         hydroSolver.setSeed(seed);
@@ -314,7 +221,6 @@ public final class HydrologyExperimentEngine {
     }
 
     public void clear() {
-        network.clear();
         hydroSolver.clearCache();
         hydroAdapter.clearIndex();
         hydroSampler.clear();
