@@ -1138,6 +1138,20 @@ task runPrecipFieldProbe(type: JavaExec) {
     }
 }
 
+// ★ P1 物理模型原型验收（2026-09-30，plan §6.2 数值物理矩阵）。
+//   扩散波守恒模型 + 独立参照(Dijkstra minimax / 定义式库容二分)。
+//   12 判据：静水保持 / 零输入不蓄水 / 封闭碗解析加水 / 最低溢口 / 鞍口溢流 /
+//   嵌套盆地 / 陡坡账本 / 蒸发入渗账本 / 水深非负 / 全域账本 / 分辨率与时步收敛。
+//   gradlew runHydroModelProbe [-PprobeArgs=4]   ← 只跑第 4 项（调试用）
+task runHydroModelProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ModelVerificationProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // BaseHeight non-blocking probe (2026-09-11, P0-1): gradlew runBaseHeightProbe [seed]
 task runBaseHeightProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
