@@ -496,35 +496,44 @@ public final class RiverLineNetwork {
         boolean outletOcean = false;
         double maxDischarge = 0.0;
 
-        // ===== 洼地湖提取（2026-09-07）：必须在【追踪之前】——河 trace 要能看见湖
-        //   （入湖即终止），湖也要知道有没有河汇入（决定要不要发溢出续流河）。
+        // ===== ★★★ 2026-09-29【唯一水文管线】★★★
+        // 生产只使用 TerrainFlowSim 的完整生命周期：
+        // SOURCE → CHANNEL → BASIN_ENTRY → LAKE_STORAGE → SPILLWAY
+        // → DOWNSTREAM → SEA。
+        //
+        // 旧 extractLakes()/traceRiver() 链不再先行创建第二套 LakeNode。骨架从空湖表
+        // 开始，直接把 res.lake 的洼地蓄水连通域转成 LakeNode，并从同一份
+        // basinSpillHeight 发出最低溢口续流。
+        //
+        // 骨架为空不是旧链回退条件：纯海区/无上游汇流时，正确结果就是本 region 无河。
+        // 历史 traceRiver 代码仍在下方保留作源码考古；这些占位只服务其编译，
+        // 生产入口在下方无条件 return 之前永远不会读取它们。
         List<Integer> lakeOutCells = new ArrayList<>();
-        int[] lakeAt = extractLakes(field, rx, rz, lakes, lakeOutCells);
-        boolean[] lakeHasInflow = new boolean[lakes.size()];
+        int[] lakeAt = new int[nx * nz];
+        java.util.Arrays.fill(lakeAt, -1);
+        boolean[] lakeHasInflow = new boolean[0];
 
-        // ===== ★★★ 2026-09-21【T1.3 流体骨架路线】★★★ =====
-        //   开关默认开启（用户："默认关闭我怎么在游戏里面看到呢？"）。
-        //   骨架 = 块分辨率流体模拟（TerrainFlowSim）的河道折线 ⇒ 路线物理正确。
-        //   兜底：骨架为空（纯海区/无达标集水/异常）⇒ 继续走下方旧链路，绝不"没河"。
-        //   ⚠ 已知限制：跨区接缝用 margin 采样缓解，尚未做"出口种子延续"（后续 T1.3b）。
-        if (flowSkeletonRouting) {
-            long skelT0 = System.nanoTime();
-            SkelOut sko = buildSkeletonRivers(rx, rz, handoff, incoming, lakes);
-            if (!sko.rivers.isEmpty()) {
-                if (skelOkCount.getAndIncrement() < 3) {
-                    LOGGER.info("[RIVER] skeleton routing ACTIVE for region ({},{}): {} rivers, {} outlets, {} ms",
-                            rx, rz, sko.rivers.size(), sko.outlets.size(),
-                            (System.nanoTime() - skelT0) / 1_000_000L);
-                }
-                return new RiverLineRegion(rx, rz, sko.rivers, lakes, sko.outlets, false,
-                        maxDischarge, sko.rivers.size(), 0, 0);
+        long skelT0 = System.nanoTime();
+        SkelOut sko = buildSkeletonRivers(rx, rz, handoff, incoming, lakes);
+        if (!sko.newLakes.isEmpty()) {
+            lakes.addAll(sko.newLakes);
+        }
+        if (!sko.rivers.isEmpty()) {
+            if (skelOkCount.getAndIncrement() < 40) {
+                LOGGER.info("[RIVER] skeleton routing ACTIVE for region ({},{}): {} rivers, {} outlets, {} ms",
+                        rx, rz, sko.rivers.size(), sko.outlets.size(),
+                        (System.nanoTime() - skelT0) / 1_000_000L);
             }
-            if (skelEmptyCount.getAndIncrement() < 3) {
-                LOGGER.warn("[RIVER] skeleton routing produced 0 rivers for region ({},{}) ⇒ fallback",
-                        rx, rz);
-            }
+        } else if (skelEmptyCount.getAndIncrement() < 40) {
+            LOGGER.info("[RIVER] skeleton routing produced 0 rivers for region ({},{}): no valid lifecycle path",
+                    rx, rz);
+        }
+        if (!legacyHydrologyPathEnabled()) {
+            return new RiverLineRegion(rx, rz, sko.rivers, lakes, sko.outlets, false,
+                    maxDischarge, sko.rivers.size(), 0, 0);
         }
 
+        // 旧 traceRiver 链保留在源码中供考古/后续删除，但生产唯一入口不可再进入。
         // 候选源：e > sourceMinE、汇流面积达标、不在 region 边界安全距内，按 e 降序（高地优先）
         // ★ 汇流面积门限（2026-08-31）：原判据只有"高程 > sourceMinE"且候选纯按 e 降序
         //   取点 → 源点必然落在山顶/山脊。实测种子 9139912035078620160：源头 24% 在山顶、
@@ -794,6 +803,17 @@ public final class RiverLineNetwork {
 
         return new RiverLineRegion(rx, rz, rivers, lakes, outlets, outletOcean, maxDischarge,
                 sourceCount, rolledBack, joinedCount);
+    }
+
+    /**
+     * 旧 traceRiver / extractLakes 生产旁路永久关闭。
+     *
+     * <p>保留为非常量方法，避免编译器把历史代码折叠成不可达代码；调用点位于
+     * 无条件骨架返回之后，因此生产永远只有一条水文管线。</p>
+     */
+    private static boolean legacyHydrologyPathEnabled() {
+        // 唯一管线裁定后不再提供运行时回退开关；旧代码仅保留在源码中待清理。
+        return false;
     }
 
     /**
@@ -1904,11 +1924,22 @@ public final class RiverLineNetwork {
 
     // ===== 洼地湖（2026-09-07）=====
 
-    /** 成湖最小格数：1~2 格的多是噪声小坑（实测 9 region 有 208 个 ≤3 格）。
-     *  每格 = gridCell(24wu) = 48 block 见方，3 格已是可见水塘。 */
-    private static final int LAKE_MIN_CELLS = 2;   // TEMP 产量曲线
-    /** 成湖最小水深（block）：浅于此 = 泥坑/湿地，不做水面。 */
-    private static final double LAKE_MIN_DEPTH = 0.4;   // TEMP 产量曲线
+    /**
+     * 成湖最小格数。<b>★ 2026-09-25 起取 1 = 取消该门槛</b>。
+     *
+     * <p><b>用户定义（铁律）</b>：<i>"湖泊的定义就是『洼地蓄水』，不存在 2 个物种"</i>
+     * ⇒ 不得用"面积太小"去否定"这里有水"。原值 2（注释自标 {@code TEMP 产量曲线}）
+     * 与 {@link TerrainFlowSim} 侧的 300 格门槛，正是"两个物种"的实体：
+     * 同一次「填洼面 + 连通域」被拆成两套口径、再在 {@code skeletonRouteOnEroded}
+     * 里用交集缝合。</p>
+     *
+     * <p><b>回退</b>：改回 {@code 2}（并同步 {@link #LAKE_MIN_DEPTH} 与
+     * {@link TerrainFlowSim#LAKE_MIN_DEPTH}/{@link TerrainFlowSim#LAKE_MIN_AREA}）。</p>
+     */
+    private static final int LAKE_MIN_CELLS = 1;
+
+    /** 成湖最小水深（block）。<b>★ 2026-09-25 起取 0.0 = 取消该门槛</b>（同见 {@link #LAKE_MIN_CELLS}）。 */
+    private static final double LAKE_MIN_DEPTH = 0.0;
 
     /**
      * 从填洼层提取湖：连通标记"被水填起"的格 → 门槛过滤 → 生成 LakeNode。
@@ -1950,6 +1981,12 @@ public final class RiverLineNetwork {
     private static final class SkelOut {
         final List<RiverPolyline> rivers = new ArrayList<>();
         final List<RiverLineRegion.OutletSeed> outlets = new ArrayList<>();
+        /**
+         * ★ 2026-09-24【湖泊=洼地 统一】骨架模拟发现、而生产湖提取未覆盖的深盆
+         * ⇒ 合成的 LakeNode（水面=溢口高程、轮廓=盆地格）。由调用方并入 region 湖表
+         * ⇒ 渲染/雕刻/掩码与骨架共用同一套"洼地=湖泊"定义（用户判据）。
+         */
+        final List<RiverLineRegion.LakeNode> newLakes = new ArrayList<>();
     }
 
     /**
@@ -1980,6 +2017,35 @@ public final class RiverLineNetwork {
         //     门禁没拦住，是因为它不检查"有没有河"。
         //   正解：与审计框架同一标定 —— 集水面积占窗口 ~0.3% 即成河（可目视成网）。
         int thr = Math.max(4, (int) Math.round(gridN * (double) gridN * 0.003));
+        // ★ 2026-09-23【路由地形口径】：skeletonRouteOnEroded ⇒ 一律走侵蚀后地形
+        //   （优先于 edp 的"peek delta"路径：peek 在 tile 未缓存时退化为侵蚀前，
+        //   会把两套河谷网混在同一次路由里；本开关要求"要么全侵蚀后、要么全侵蚀前"）。
+        //   ⚠ 必须声明在 try 之外 —— 下方的 terr[k]（逐节点地形）也要用同一口径。
+        // ★★★ 2026-09-24【routeTerrain 坐标级缓存 —— 性能】★★★
+        //   【实测】eroded 模式每 region 40~90 秒（旧口径 groundYAt 仅 0.5 秒）。
+        //   采样量 = 角点 (gridN+1)²≈148k + 自适应陡格 9 次/格 ⇒ 约 80 万次/region；
+        //   而每次 `sampleWu` 含"9 邻 tile blend"⇒ 邻域坐标被【反复重算】。
+        //   `groundYAt` 早就有坐标级缓存（其注释："同一坐标只算一次"），
+        //   本采样器却无 ⇒ 本处补上（同款 floor(wx)/floor(wz) 键、纯函数等价）。
+        //   预期：重复坐标命中缓存 ⇒ 采样量降数倍。
+        //   回退：直接赋 erodedYSampler（去掉包装）。
+        //   ★ 2026-09-24 再优化：路由只需【高度】⇒ 优先用 routeHeightSampler
+        //   （= CellGenerator.erodedHeightForRouting，跳过 discharge/重分类/坡度的 4 次
+        //   tile 采样；与 sampleWu().height 数值链相同，探针侧有 maxErr 自检）。
+        final java.util.function.ToDoubleBiFunction<Double, Double> routeRaw =
+                (skeletonRouteOnEroded && routeHeightSampler != null) ? routeHeightSampler
+                : (skeletonRouteOnEroded && erodedYSampler != null) ? erodedYSampler : null;
+        final java.util.concurrent.ConcurrentHashMap<Long, Double> routeCache =
+                routeRaw == null ? null : new java.util.concurrent.ConcurrentHashMap<>();
+        final java.util.function.ToDoubleBiFunction<Double, Double> routeTerrain =
+                routeRaw == null ? null : (a, b) -> {
+                    long key = ((long) Math.floor(a) << 32) ^ ((long) Math.floor(b) & 0xFFFFFFFFL);
+                    Double hit = routeCache.get(key);
+                    if (hit != null) return hit;
+                    double v = routeRaw.applyAsDouble(a, b);
+                    routeCache.put(key, v);
+                    return v;
+                };
         TerrainFlowSim.Result res;
         try {
             // ⚠⚠ 2026-09-21【性能事故·勿重犯】⚠⚠
@@ -2002,7 +2068,9 @@ public final class RiverLineNetwork {
                     double wx = (oxB + gi * (double) cellB) / hs;
                     double wz = (ozB + gj * (double) cellB) / hs;
                     double hh;
-                    if (edp != null) {
+                    if (routeTerrain != null) {
+                        hh = routeTerrain.applyAsDouble(wx, wz);       // ★ 侵蚀后地形（整场一致）
+                    } else if (edp != null) {
                         // ★ 侵蚀后地形（仅在 tile 已缓存时可得；NaN ⇒ 退回侵蚀前）：
                         //   heightFromE(e + Δe) 才是玩家看到的谷地 ⇒ 河贴【可见沟壑】走。
                         double de = edp.applyAsDouble(wx, wz);
@@ -2017,7 +2085,21 @@ public final class RiverLineNetwork {
                     cornerH[gj * cn + gi] = hh;
                 }
             }
-            res = TerrainFlowSim.simulate(
+            // ★★★ 2026-09-24【自适应采样：起伏大的格加密找沟底 —— 用户方案】★★★
+            //   用户原话："我不是提过骨架精度可以尝试自适应吗？小距离内地形变化大就
+            //   提高精度，平缓可以适当下降精度。"
+            //   【为什么必要】格内只取【4 角最小值】⇒ 4 块格（cellB=4）分辨不出宽 1~2 块的
+            //   沟谷 ⇒ 路径横切坡面（实测一条 40 块路径沿 45° 对角链爬升 19.5 块，
+            //   而相邻沟底就在数块之内）。
+            //   【做法】格内 4 角高程差 = 局部起伏代理：
+            //     · 差 ≤ ADAPT_TOL（平缓）⇒ 保持 4 角最小值（零额外采样）；
+            //     · 差 >  ADAPT_TOL（陡）⇒ 在该格子网格（3×3 再 5×5 两级）内找【最低点】，
+            //       把谷底"挖出来" ⇒ 路由沿沟走。
+            //   【确定性】子网格采样位置是格坐标的纯函数 ⇒ 与触发顺序无关；
+            //     采样器仍是 routeTerrain（侵蚀后、tile 已由探针预热）。
+            //   【成本】仅陡格付 9~25 次采样；实测陡格占比约三成，总采样量约 ×3（探针可接受）。
+            //   回退：把 ADAPT_TOL 设为极大（如 1e9）⇒ 全部走"4 角最小值"，逐位回到旧行为。
+            final TerrainFlowSim.HeightSampler cellSampler =
                     (bxx, bzz) -> {
                         int gi = (int) ((bxx - oxB) / cellB);
                         int gj = (int) ((bzz - ozB) / cellB);
@@ -2026,9 +2108,27 @@ public final class RiverLineNetwork {
                         int gi1 = Math.min(cn - 1, gi + 1), gj1 = Math.min(cn - 1, gj + 1);
                         double a = cornerH[gj * cn + gi], b = cornerH[gj * cn + gi1];
                         double c = cornerH[gj1 * cn + gi], d = cornerH[gj1 * cn + gi1];
-                        return Math.min(Math.min(a, b), Math.min(c, d));
-                    },
-                    oxB, ozB, gridN, cellB,
+                        double mn = Math.min(Math.min(a, b), Math.min(c, d));
+                        double mx = Math.max(Math.max(a, b), Math.max(c, d));
+                        if (mx - mn <= ADAPT_TOL) return mn;
+                        // 陡格：格内子网格找最低点（3×3 覆盖 4 块格 = 1.33 块间隔）
+                        // ★ 2026-09-24【5×5 → 3×3】：5×5=25 次采样/陡格，实测把单 region
+                        //   角点采样推到数百万次（24~101s/region）⇒ 降为 3×3=9 次，
+                        //   保留"找沟底"能力（1.33 块间隔足以分辨宽 1~2 块的沟）。
+                        double lo = mn;
+                        for (int sz2 = 0; sz2 <= 2; sz2++) {
+                            for (int sx2 = 0; sx2 <= 2; sx2++) {
+                                double sx3 = oxB + (gi + sx2 * 0.5) * (double) cellB;
+                                double sz3 = ozB + (gj + sz2 * 0.5) * (double) cellB;
+                                double hh = routeTerrain != null
+                                        ? routeTerrain.applyAsDouble(sx3 / hs, sz3 / hs)
+                                        : groundYAt(sx3 / hs, sz3 / hs);
+                                if (hh < lo) lo = hh;
+                            }
+                        }
+                        return lo;
+                    };
+            res = TerrainFlowSim.simulate(cellSampler, oxB, ozB, gridN, cellB,
                     curve.seaLevelY(), thr);
         } catch (RuntimeException ex) {
             // ★ 2026-09-21：必须记日志 —— 否则"骨架失败静默回退旧链路"会被误认为
@@ -2051,19 +2151,54 @@ public final class RiverLineNetwork {
         //       真正的生产湖上 ⇒ **改动看似生效、实际从未触发**（用户实测"一点改进都没有"）。
         //   【正解】把 res.lake 修正为【生产湖掩码】：非生产湖的"模拟湖格"恢复为普通格，
         //   并按同一掩码【重建 channel】⇒ 河道穿过那些干地、只在真湖岸终止。
+        // ★ 2026-09-23【R-C1 F1】probLake 改用【生产块级连通掩码】(inBasinMask)：
+        //   旧=轮廓 bbox 超集 ⇒ 干岸格入域 ⇒ 骨架干节点 29.3%（样例 inFlood=false×2、
+        //   0.46 浅滩×1）。预筛窗=bbox+80wu（掩码 ⊆ flood 窗 bbox+72wu）。
+        //   回退：lakeBasinHits=false 或 erodedYSampler 未接线 ⇒ 旧 bbox 路径逐位保留。
         boolean[] probLake = new boolean[gridN * gridN];
+        // ★ F1i：纯连通掩码（无 0.5 深度门）—— 只给【入湖锚点步进 / 尾抬升】用：
+        //   尾要能先走进浅水（0.05~0.5），浅滩格由河分支雕刻出水；probLake（深度门版）
+        //   继续管"归属/剥河/湖命中"（浅滩归河，防死区）。无轮廓/旧路径与 probLake 同值。
+        boolean[] floodAny = new boolean[gridN * gridN];
+        boolean maskMode = lakeBasinHits && erodedYSampler != null;
         if (lakes != null) {
             for (RiverLineRegion.LakeNode ln : lakes) {
-                if (ln.hasOutline()) {
+                if (ln.hasOutline() && maskMode) {
+                    double loX = Double.MAX_VALUE, hiX = -Double.MAX_VALUE;
+                    double loZ = Double.MAX_VALUE, hiZ = -Double.MAX_VALUE;
+                    for (int ci = 0; ci < ln.cellX.length; ci++) {
+                        loX = Math.min(loX, ln.cellX[ci] - ln.cellHalf);
+                        hiX = Math.max(hiX, ln.cellX[ci] + ln.cellHalf);
+                        loZ = Math.min(loZ, ln.cellZ[ci] - ln.cellHalf);
+                        hiZ = Math.max(hiZ, ln.cellZ[ci] + ln.cellHalf);
+                    }
+                    double marginB = 80.0 * hs;
+                    int giA = (int) Math.floor((loX * hs - marginB - oxB) / cellB);
+                    int giB = (int) Math.floor((hiX * hs + marginB - oxB) / cellB);
+                    int gjA = (int) Math.floor((loZ * hs - marginB - ozB) / cellB);
+                    int gjB = (int) Math.floor((hiZ * hs + marginB - ozB) / cellB);
+                    for (int gj = Math.max(0, gjA); gj <= Math.min(gridN - 1, gjB); gj++) {
+                        for (int gi = Math.max(0, giA); gi <= Math.min(gridN - 1, giB); gi++) {
+                            double wx = (oxB + gi * (double) cellB + cellB * 0.5) / hs;
+                            double wz = (ozB + gj * (double) cellB + cellB * 0.5) / hs;
+                            if (inBasinMask(ln, wx, wz)) probLake[gj * gridN + gi] = true;
+                            double lvA = finalLakeLevel(ln);
+                            if (!Double.isNaN(lvA) && ln.inBasinFlood(erodedYSampler, lvA,
+                                    lakeBasinFloodGrid, params.gridCell(), wx, wz)) {
+                                floodAny[gj * gridN + gi] = true;
+                            }
+                        }
+                    }
+                } else if (ln.hasOutline()) {
                     double halfW = Math.max(ln.cellHalf, cellB * 0.5 / hs);
                     for (int ci = 0; ci < ln.cellX.length; ci++) {
                         double bxs = ln.cellX[ci] * hs, bzs = ln.cellZ[ci] * hs;
-                        int giA = (int) Math.floor((bxs - halfW * hs - oxB) / cellB);
-                        int giB = (int) Math.floor((bxs + halfW * hs - oxB) / cellB);
-                        int gjA = (int) Math.floor((bzs - halfW * hs - ozB) / cellB);
-                        int gjB = (int) Math.floor((bzs + halfW * hs - ozB) / cellB);
-                        for (int gj = Math.max(0, gjA); gj <= Math.min(gridN - 1, gjB); gj++) {
-                            for (int gi = Math.max(0, giA); gi <= Math.min(gridN - 1, giB); gi++) {
+                        int giA2 = (int) Math.floor((bxs - halfW * hs - oxB) / cellB);
+                        int giB2 = (int) Math.floor((bxs + halfW * hs - oxB) / cellB);
+                        int gjA2 = (int) Math.floor((bzs - halfW * hs - ozB) / cellB);
+                        int gjB2 = (int) Math.floor((bzs + halfW * hs - ozB) / cellB);
+                        for (int gj = Math.max(0, gjA2); gj <= Math.min(gridN - 1, gjB2); gj++) {
+                            for (int gi = Math.max(0, giA2); gi <= Math.min(gridN - 1, giB2); gi++) {
                                 probLake[gj * gridN + gi] = true;
                             }
                         }
@@ -2078,17 +2213,131 @@ public final class RiverLineNetwork {
                             double ddz = (ozB + gj * (double) cellB + cellB * 0.5) / hs - ln.z;
                             if (ddx * ddx + ddz * ddz <= ln.radius * ln.radius) {
                                 probLake[gj * gridN + gi] = true;
+                                floodAny[gj * gridN + gi] = true;   // 无轮廓湖：连通=圆盘
                             }
                         }
                     }
                 }
             }
-        }
-        int lakeFixed = 0;
-        for (int k = 0; k < gridN * gridN; k++) {
-            if (res.lake[k] && !probLake[k]) { res.lake[k] = false; lakeFixed++; }
-        }
-        if (lakeFixed > 0 || probLake.length > 0) {
+            if (!maskMode) {
+                // 旧 bbox 路径（回退）：两掩码同值 ⇒ 行为与 F1i 之前逐位一致
+                System.arraycopy(probLake, 0, floodAny, 0, probLake.length);
+            }
+            }
+            // ★ 洼地合成湖的本地合并表：后续"节点归属 / 尾锚找湖"用它查询
+        //   （新湖在本 region 的雕刻与骨架里与生产湖同权；region 湖表由调用方合并）
+        final List<RiverLineRegion.LakeNode> lakesAll = new java.util.ArrayList<>(
+                lakes == null ? java.util.List.of() : lakes);
+        // ★★★ 2026-09-24【湖泊=洼地 统一 —— 用户判据"湖泊就是洼地，明明就都是一个东西"】★★★
+            //   【被修的缺陷】系统里存在两套"湖"：生产 LakeNode（旧链路提取，含边界/深度/
+            //   面积过滤）与骨架模拟盆地（TerrainFlowSim 的洼地拓扑）。本方法原句
+            //   `res.lake && !probLake ⇒ 清成陆地` 把两者强行对齐到生产侧 ⇒ 凡生产湖
+            //   提取漏掉的深盆（如边界伪极小过滤误杀的大洼地）⇒ 湖消失 + 盆地被当陆地
+            //   穿行 ⇒ 用户截图红圈：巨大的洼地里既无湖也无河。
+            //   【正解（一套定义）】湖泊 ⟺ 洼地蓄水。凡模拟判定为深盆（res.lake 有格）
+            //   而生产湖掩码未覆盖的盆地 ⇒ 【合成 LakeNode】（水面=溢口高程 spillHeight、
+            //   轮廓=盆地格、形心=盆地平均），并保留其湖格 ⇒ 河在湖岸终止（BASIN_ENTRY）、
+            //   溢口续流（spillDown）接走下游、雕刻/渲染走湖分支（不挖地、铺水面）。
+            //   三套消费（渲染蓝面 / probLake 掩码 / 骨架拓扑）从此同源。
+            //   【确定性】全部为 res 数组的纯函数；湖序 = basinId 升序。
+            //   回退：删除本块 + 恢复下方"清成陆地"循环（或 TerrainFlowSim.HYDRO_LIFECYCLE=false）。
+            {
+                int nB = res.basinSpillHeight.length;
+                if (nB > 0) {
+                    int[] bCells = new int[nB];
+                    int[] bLakeCells = new int[nB];
+                    double[] bMinH = new double[nB];
+                    double[] bLakeMinH = new double[nB];
+                    double[] bSx = new double[nB], bSz = new double[nB];
+                    double[] bLakeSx = new double[nB], bLakeSz = new double[nB];
+                    java.util.Arrays.fill(bMinH, Double.POSITIVE_INFINITY);
+                    java.util.Arrays.fill(bLakeMinH, Double.POSITIVE_INFINITY);
+                    boolean[] bHasLake = new boolean[nB];
+                    boolean[] bTouchesWindow = new boolean[nB];
+                    boolean[] bHasProb = new boolean[nB];
+                    for (int k = 0; k < gridN * gridN; k++) {
+                        int b = res.basinId[k];
+                        if (b < 0) continue;
+                        bCells[b]++;
+                        if (res.height[k] < bMinH[b]) bMinH[b] = res.height[k];
+                        bSx[b] += oxB + (k % gridN) * (double) cellB + cellB * 0.5;
+                        bSz[b] += ozB + (k / gridN) * (double) cellB + cellB * 0.5;
+                        if (res.lake[k]) {
+                            bHasLake[b] = true;
+                            int ki = k % gridN, kj = k / gridN;
+                            if (ki == 0 || kj == 0 || ki == gridN - 1 || kj == gridN - 1) {
+                                bTouchesWindow[b] = true;
+                            }
+                            bLakeCells[b]++;
+                            if (res.height[k] < bLakeMinH[b]) bLakeMinH[b] = res.height[k];
+                            bLakeSx[b] += oxB + (k % gridN) * (double) cellB + cellB * 0.5;
+                            bLakeSz[b] += ozB + (k / gridN) * (double) cellB + cellB * 0.5;
+                        }
+                        if (probLake[k]) bHasProb[b] = true;
+                    }
+                    int synthesized = 0;
+                    for (int b = 0; b < nB; b++) {
+                        if (!bHasLake[b] || bHasProb[b] || bCells[b] == 0 || bTouchesWindow[b]) continue;
+                        double spill = res.basinSpillHeight[b];
+                        // 湖的面积、深度、形心、轮廓全部以 res.lake 为准；盆地只是
+                        // 溢口拓扑容器，不能把其中的非湖格一起铺水。
+                        double depth = spill - bLakeMinH[b];
+                        if (bLakeCells[b] < TerrainFlowSim.LAKE_MIN_AREA
+                                || depth < TerrainFlowSim.LAKE_MIN_DEPTH) continue;
+                        double cxWu = (bLakeSx[b] / bLakeCells[b]) / hs;
+                        double czWu = (bLakeSz[b] / bLakeCells[b]) / hs;
+                        // 只允许湖心所属 region 创建 LakeNode，避免邻区 margin 对同一湖
+                        // 分别创建局部副本，最终在 region 边界形成竖直切边。
+                        double regionLoX = rx * regionW, regionHiX = regionLoX + regionW;
+                        double regionLoZ = rz * regionW, regionHiZ = regionLoZ + regionW;
+                        if (cxWu < regionLoX || cxWu >= regionHiX
+                                || czWu < regionLoZ || czWu >= regionHiZ) continue;
+                        double radiusWu = Math.sqrt(bLakeCells[b] * (double) cellB * cellB / Math.PI) / hs;
+                        // 轮廓 = 实际湖格中心（wu）；cellHalf = 半格（wu）
+                        java.util.ArrayList<double[]> outline = new java.util.ArrayList<>();
+                        for (int k = 0; k < gridN * gridN; k++) {
+                            if (res.basinId[k] != b || !res.lake[k]) continue;
+                            outline.add(new double[]{
+                                    (oxB + (k % gridN) * (double) cellB + cellB * 0.5) / hs,
+                                    (ozB + (k / gridN) * (double) cellB + cellB * 0.5) / hs});
+                            probLake[k] = true;                 // 仅实际湖格进入湖掩码
+                            floodAny[k] = true;                 // 入湖锚点延伸仅到实际湖域
+                        }
+                        double[] ox2 = new double[outline.size()];
+                        double[] oz2 = new double[outline.size()];
+                        for (int i = 0; i < outline.size(); i++) {
+                            ox2[i] = outline.get(i)[0];
+                            oz2[i] = outline.get(i)[1];
+                        }
+                        so.newLakes.add(new RiverLineRegion.LakeNode(cxWu, czWu, spill,
+                                radiusWu, depth, ox2, oz2, cellB * 0.5 / hs,
+                                null, null, true));
+                        synthesized++;
+                    }
+                    if (synthesized > 0 && skelLogCount.get() < 40) {
+                        LOGGER.info("[RIVER] skeleton region ({},{}): 洼地成湖 {} 个（生产湖提取遗漏 ⇒ 由模拟洼地合成，湖泊=洼地统一）",
+                                rx, rz, synthesized);
+                    }
+                    lakesAll.addAll(so.newLakes);
+                }
+            }
+        // ★★★ 2026-09-25【删除"两套湖"的缝合 —— 用户定义：湖泊 = 洼地蓄水，不存在 2 个物种】★★★
+        //   【被删的缺陷】此处原为
+        //       if (res.lake[k] && !probLake[k]) { res.lake[k] = false; lakeFixed++; }
+        //   即把【模拟判定的湖】强行裁到【生产湖 LakeNode 掩码】上（交集）。二者分辨率不同
+        //   （模拟格 cellB=4 块；生产湖轮廓来自 FlowField 格），且生产掩码另带"湖心须属本
+        //   region"的归属裁剪 ⇒ 细齿的模拟湖被粗齿的生产掩码啃掉。
+        //
+        //   【实测后果 —— 这就是"漏洞"本身，不是理论担忧】
+        //     把 LAKE_MIN_* 门槛归零（= 湖泊只由洼地蓄水决定）后，湖面反而【净减 9.9%】：
+        //     45961 → 41407 像素（新增 4097 / 消失 7729，seed 9139912035078620160, r=400）
+        //     ⇒ "取消门槛"的收益被这一步整个缝了回去。
+        //     日志直接给出量级：`模拟湖格修正` = 0 / 106 / 2910 格（单 region）。
+        //
+        //   【正解】模拟的 `res.lake` 就是唯一定义（`fill − h > 0.5` 的连通分量 = 洼地蓄水）；
+        //   生产 LakeNode 从此只负责【提供渲染/雕刻用的轮廓几何】，不再反向删湖。
+        //   回退：恢复上面那三行交集循环即可（`lakeFixed` 计数与它一起恢复）。
+        if (probLake.length > 0) {
             for (int k = 0; k < gridN * gridN; k++) {
                 res.channel[k] = !res.lake[k]
                         && res.accum[k] >= res.chanThreshold
@@ -2096,8 +2345,8 @@ public final class RiverLineNetwork {
             }
         }
         if (skelLogCount.getAndIncrement() < 3) {
-            LOGGER.info("[RIVER] skeleton region ({},{}): 模拟湖格修正 {} 个（非生产湖⇒恢复为陆地）",
-                    rx, rz, lakeFixed);
+            LOGGER.info("[RIVER] skeleton region ({},{}): 湖掩码=模拟洼地蓄水（不再被生产湖掩码裁剪）",
+                    rx, rz);
         }
         boolean[] used = new boolean[gridN * gridN];
         List<int[]> paths = new ArrayList<>();
@@ -2105,6 +2354,52 @@ public final class RiverLineNetwork {
             if (p.length >= 2) {
                 for (int c : p) used[c] = true;
                 paths.add(p);
+            }
+        }
+        // ★★★ 2026-09-24【水文生命周期统计】（用户判据：明确区分各阶段状态）
+        //   只读输出，不参与几何；前 12 次打印，用于验收"每条水系是否走完生命周期"。
+        if (skelLifeLogCount.getAndIncrement() < 12) {
+            int invalid = res.lifeCounts[TerrainFlowSim.Stage.INVALID_TERMINATION.ordinal()];
+            int spill = res.lifeCounts[TerrainFlowSim.Stage.SPILLWAY.ordinal()];
+            int sea = res.lifeCounts[TerrainFlowSim.Stage.SEA.ordinal()];
+            int outl = res.lifeCounts[TerrainFlowSim.Stage.REGION_OUTLET.ordinal()];
+            int entry = res.lifeCounts[TerrainFlowSim.Stage.BASIN_ENTRY.ordinal()];
+            int conf = res.lifeCounts[TerrainFlowSim.Stage.CONFLUENCE.ordinal()];
+            LOGGER.info("[RIVER] skeleton region ({},{}): 路径 {} · 归宿[汇流 {} / 湖入口 {} / 溢口 {} / 入海 {} / 区出口 {} / 异常 {}]",
+                    rx, rz, paths.size(), conf, entry, spill, sea, outl, invalid);
+            // ★ 2026-09-24【审计升级】全阶段表（stageSummary 含 SOURCE/CHANNEL/
+            //   LAKE_STORAGE/DOWNSTREAM）+ 异常路径尾坐标（下一轮定点修的依据）
+            LOGGER.info("[RIVER] skeleton region ({},{}): stages {}", rx, rz,
+                    TerrainFlowSim.stageSummary(res));
+            if (invalid > 0) {
+                java.util.List<String> bad = new ArrayList<>();
+                for (int k = 0; k < res.stage.length && bad.size() < 6; k++) {
+                    if (res.stage[k] != TerrainFlowSim.Stage.INVALID_TERMINATION.ordinal()) continue;
+                    int gi2 = k % res.n, gj2 = k / res.n;
+                    bad.add("b(" + (int) ((oxB + gi2 * (double) cellB + cellB * 0.5) / hs)
+                            + "," + (int) ((ozB + gj2 * (double) cellB + cellB * 0.5) / hs) + ")");
+                }
+                LOGGER.info("[RIVER] skeleton region ({},{}): 异常尾 {} 个 ⇒ {}", rx, rz, bad.size(), bad);
+            }
+        }
+        // ★★★ 2026-09-24【生命周期兜底：每个有溢口的湖盆必须有人续流】★★★
+        //   【断环场景】湖的入流全部来自邻区（本区没有任何路径止于该湖岸 ⇒ 不触发
+        //   entersLake ⇒ collectSpillRun 不发生）⇒ 湖有进水、无出水 = "洼地蓄水→
+        //   最低溢口→继续下泄"链条在区缝上断环。
+        //   【修法】扫全部盆地：凡 spillDown ≥ 0 且溢口下游格未被任何续流段占用
+        //   ⇒ 补一条续流折线（traceSkeleton 沿 down 走，撞湖即止 = 下一段由该湖
+        //   自己的兜底接管 ⇒ "湖→溢口→河→湖→…"链式全覆盖）。
+        //   已有续流段（used[spillDown]）⇒ 跳过（去重，不改既有行为）。
+        //   确定性：纯 res/used 函数，盆地序遍历。回退：删除本块。
+        for (int b = 0; b < res.spillDown.length; b++) {
+            int sd = res.spillDown[b];
+            // 溢口不是自动成河：只有下游格已达到汇流阈值，才允许补画续流。
+            // 旧逻辑无条件 traceSkeleton，会沿普通坡面画出从湖心扇出的伪河线。
+            if (sd < 0 || !res.channel[sd] || used[sd] || res.lake[sd]) continue;
+            int[] run = traceSkeleton(res, used, sd);
+            if (run.length >= 2) {
+                for (int c : run) used[c] = true;
+                paths.add(run);
             }
         }
         // ★ 跨区续流：邻区出口种子（pass-2 传入）—— 从种子处沿【本地 D8】继续追。
@@ -2123,7 +2418,15 @@ public final class RiverLineNetwork {
                 //   · 短且【死胡同】= 贴着主河的平行废段 → 丢（此前截图的废段）。
                 int lastDown = p.length > 0 ? res.down[p[p.length - 1]] : -1;
                 boolean joinsRiver = lastDown >= 0 && used[lastDown];
-                if (p.length < 6 && !joinsRiver) continue;
+                // ★ 2026-09-24【生命周期】：种子续流的短段若终点合法（入湖/入海/出窗）
+                //   必须保留 —— 那正是"跨缝衔接段"，丢掉 = 区缝上断头。
+                //   （旧过滤器只认"汇入主河"，短入湖/短入海段被误丢。）
+                boolean endsInWater = lastDown >= 0
+                        && (res.lake[lastDown] || res.height[lastDown] <= res.seaLevel);
+                boolean endsAtEdge = p.length > 0
+                        && (p[p.length - 1] % gridN == 0 || p[p.length - 1] % gridN == gridN - 1
+                            || p[p.length - 1] / gridN == 0 || p[p.length - 1] / gridN == gridN - 1);
+                if (p.length < 6 && !joinsRiver && !endsInWater && !endsAtEdge) continue;
                 paths.add(p);
             }
         }
@@ -2147,7 +2450,9 @@ public final class RiverLineNetwork {
             int cur = res.down[p[p.length - 1]];
             List<Integer> ext = new ArrayList<>();
             int g2 = 0;
-            while (cur >= 0 && probLake[cur] && !used[cur] && g2++ < LAKE_ANCHOR_EXT) {
+            // ★ F1i：步进谓词用 floodAny（纯连通，含浅滩 0.05~0.5）—— 尾先走进水里；
+            //   浅滩尾节点不入归属（probLake 有 0.5 门）⇒ 按河雕刻出水，不卡死在岸上。
+            while (cur >= 0 && floodAny[cur] && !used[cur] && g2++ < LAKE_ANCHOR_EXT) {
                 used[cur] = true;
                 ext.add(cur);
                 cur = res.down[cur];
@@ -2206,16 +2511,25 @@ public final class RiverLineNetwork {
                 double bzz = ozB + gj * (double) cellB + cellB * 0.5;
                 double wx = bxx / hs, wz = bzz / hs;
                 nodes[k] = new MidpointDisplacement.Node(wx, wz);
-                double g = groundYAt(wx, wz);
+                // ★ 2026-09-23：逐节点地形与路由场同口径（routeTerrain 非 null 时为侵蚀后）
+                //   —— 否则水面（surf = g − sink）按侵蚀前地面算，而路由/湖按侵蚀后 ⇒ 水位悬空。
+                double g = routeTerrain != null ? routeTerrain.applyAsDouble(wx, wz)
+                        : groundYAt(wx, wz);
                 terr[k] = g;
                 // 找所属【生产湖】—— 以生产湖掩码 probLake 为准（不是 res.lake：
                 //  res.lake 是模拟湖，模拟 ⊋ 生产 ⇒ 用它会把干地误判成湖岸）。
                 RiverLineRegion.LakeNode hit = null;
-                if (probLake[idx] && lakes != null) {
-                    for (RiverLineRegion.LakeNode ln : lakes) {
+                if (probLake[idx] && !lakesAll.isEmpty()) {
+                    // ★ 2026-09-24：用 lakesAll（含洼地合成湖）⇒ 新湖格也能归属
+                    for (RiverLineRegion.LakeNode ln : lakesAll) {
                         boolean inside;
                         if (ln.hasOutline()) {
-                            inside = ln.inDomain(wx, wz, ln.cellHalf * 2.0);
+                            // ★ F1：归属判据同 probLake —— 块级掩码（inBasinMask，
+                            //   掩码外不归属 ⇒ 岸上干格保持河分支，由河雕刻出水）。
+                            //   lakeBasinHits=false ⇒ inBasinMask 恒 false ⇒ 退回旧 bbox。
+                            inside = maskMode
+                                    ? inBasinMask(ln, wx, wz)
+                                    : ln.inDomain(wx, wz, ln.cellHalf * 2.0);
                         } else {
                             double ddx = wx - ln.x, ddz = wz - ln.z;
                             inside = ddx * ddx + ddz * ddz <= ln.radius * ln.radius * 1.44;
@@ -2256,16 +2570,60 @@ public final class RiverLineNetwork {
             //   湖面高度的。只能河适应湖。"）
             //   ① 岸线钳制【跳过湖节点】：湖面是 spill 锚点，钳到"岸高"会破坏它；
             //      湖节点单个跳过，其余节点照常钳（保持防漫岸）。
-            applyBankCapSkip(nodes, surf, wid, params, lakeNodeAt);
-            //   ② 河适应湖：入湖前 3 个节点把水面【抬】到湖面 ⇒ 水面连续进入湖（不悬空、
-            //      不形成落差台阶）。这是"河适应湖"的落点：湖不动，河抬。
-            for (int k = 0; k < m; k++) {
-                if (lakeNodeAt[k]) continue;
-                for (int j = k + 1; j < m && j <= k + 3; j++) {
-                    if (!lakeNodeAt[j]) continue;
-                    double lv = Math.min(lakeLevelAt[j], terr[k] + 1.0);  // 限高防漫岸
-                    if (surf[k] < lv) surf[k] = lv;
-                    break;
+            applyBankCapSkip(nodes, surf, wid, params, lakeNodeAt, terr);
+            //   ② 河适应湖【回水版】（2026-09-23 R-C1，修"水面沿程抬升 7"）：
+            //   旧 = 入湖前 3 节点抬到 min(lv, 地面+1) —— 地面低于湖面的【回水谷段】
+            //   （实测 7 例全部 lakeNode=true：上游剖面 148/165 « 湖面 173）抬不到位
+            //   ⇒ 入湖处水面跳升 ⇒ 违反"水向低处流"。
+            //   新 = 湖面回水语义：从每个湖节点【向上游】走，凡水面低于湖面的节点
+            //   一律抬到湖面（= 湖水淹没该谷段，地面<湖面 ⇒ 必有水，非漫岸），
+            //   直到水面已 ≥ 湖面（真实岸边）或撞到上一个湖锚为止。
+            //   湖面绝对不动（只抬河）——用户铁律保持。
+            //   判据用【填洼面连通】（res.fill ≥ lv−0.5）而非地表剖面 —— 地表判据分不清
+            //   "干岛穿越"（ground>lv 但 fill≈lv，应平过）与"真岸"（其后系统 fill<lv）
+            //   ⇒ 旧写法在岛处断链，③ 的 pinned 链随即把已抬段拉回原剖面（实测残留
+            //   2 例 148.45→173.28 正是被③反克）。fill 判据下路径不可能从 <lv 跨到
+            //   ≥lv（down[] 沿 fill 严格下行）⇒ 边界只在路径起点/湖锚 ⇒ ③ 链全 lv 无反克。
+            for (int j = 0; j < m; j++) {
+                if (!lakeNodeAt[j]) continue;
+                double lv = lakeLevelAt[j];
+                for (int k = j - 1; k >= 0; k--) {
+                    if (lakeNodeAt[k]) break;
+                    int idx = path[first + k];
+                    // ★★★ 2026-09-23【T1.c-1：回水判据方向修复 —— 修"河横着过山腰"】★★★
+                    //   旧判据 `fill < lv - 0.5 ⇒ break`：fill ≥ h 恒成立，高地形节点
+                    //   （h=231 ≫ lv=173.28）的 fill 更高 ⇒ 退出条件【永不触发】
+                    //   ⇒ 回水沿折线一路把上游节点全部抬到湖面 ⇒ 计划水面比地形低
+                    //   57.78 块（T0 实测样例）⇒ 雕刻层只能硬挖一条穿山峡谷
+                    //   = 用户看到的"河横着过山腰/山脊"。
+                    //   正解：节点属于该湖水体 ⟺ 它的填洼面【就在湖面这一层】：
+                    //     · 真淹没（fill = lv）→ 回水抬升，保持；
+                    //     · 干岛（ground > lv 但 fill ≈ lv）→ 平过，保持（原判据想保的语义）；
+                    //     · 高地（fill = h ≫ lv）→ 离开湖的填洼层 ⇒ break，不再污染上游。
+                    //   回退：把本行改回 `res.fill[idx] < lv - 0.5`。
+                    if (idx < 0 || Math.abs(res.fill[idx] - lv) > 0.5) break;   // 离开该湖的填洼层
+                    surf[k] = lv;                                      // 回水/干岛：统一湖面
+                }
+            }
+            //   ②b【F1c：浅滩湖节点改判河】（★ 必须在 ② 回水之后 —— 回水要以【完整
+            //      归属】为源找抬升起点；先清源会让残留 2 例抬升回归。实测留痕）：
+            //      水深 ∈ [0.05,0.5) 造不出水块 ⇒ 改判河（保水面=湖面，补最小河深，
+            //      河雕刻下切入湖口）。⚠ 同步清 lakeNodeArr（polyline 侧），否则
+            //      F1g/发射段的 endsInMask 判据被陈旧非空值污染。
+            //      深度基准=侵蚀后 sampleWu（terr 是预侵蚀，会漏判）。仅 maskMode。
+            if (maskMode) {
+                for (int k = 0; k < m; k++) {
+                    if (!lakeNodeAt[k]) continue;
+                    double hE = erodedYSampler != null
+                            ? erodedYSampler.applyAsDouble(nodes[k].x(), nodes[k].z())
+                            : terr[k];
+                    if (lakeLevelAt[k] - hE < 0.5) {
+                        lakeNodeAt[k] = false;
+                        lakeLv[k] = Double.NaN;
+                        lakeLevelAt[k] = Double.NaN;
+                        lakeNodeArr[k] = null;
+                        if (dep[k] < MIN_RENDER_DEPTH) dep[k] = MIN_RENDER_DEPTH;
+                    }
                 }
             }
             //   ③ 锚点式单调化：**湖面是不可越过的锚**（湖节点绝不修改）。
@@ -2274,8 +2632,46 @@ public final class RiverLineNetwork {
             //      两侧都不会出现跨越湖面的台阶（这是"河适应湖"的另一半）。
             double pinned = Double.NaN;
             for (int k = 0; k < m; k++) {
+                int idxP = path[first + k];
                 if (lakeNodeAt[k]) { pinned = lakeLevelAt[k]; continue; }   // 湖面锚点（不动）
-                if (!Double.isNaN(pinned) && surf[k] > pinned) surf[k] = pinned;
+                // ★★★ 2026-09-23【T1.c-2：出湖上岸解除钉住】★★★
+                //   旧实现：湖锚之后所有节点一律 surf ≤ 湖面（单调化）。
+                //   但折线可能因【生产湖掩码未盖满】穿湖而过 —— 出湖侧地形迅速抬升，
+                //   节点仍被钉在湖面 ⇒ 计划水面比地形低数十块（T1c 实测样例：地面
+                //   148~166、水面恒 131.07，需下切 17~34 块）⇒ 雕刻硬挖穿山峡谷
+                //   = 用户判据"河流不会横着山腰，应该顺山而下"。
+                //   修法：节点填洼面已高于湖面（fill > 湖面+0.5 = 已离开湖水体）
+                //   ⇒ 解除钉住，恢复该节点自身剖面（terrain − surfaceSink）。
+                //   仍在湖层内（fill ≈ 湖面）⇒ 保持压平（原语义不变）。
+                //   回退：删除本 if 块。
+                if (!Double.isNaN(pinned) && idxP >= 0 && res.fill[idxP] > pinned + 0.5) {
+                    pinned = Double.NaN;
+                }
+                // ★★★ 2026-09-24【pinned 链加"地形合理性"约束 —— 修"水面钉死在山腰"】★★★
+                //   【实测铁证（T6 整条折线转储，region(-2,-2)，81 节点）】
+                //     k=9  地形=174.93 水面=173.93（盆地最低点，正常）
+                //     k=10 地形=181.53 水面=173.93  差=7.60   ← 地形翻头爬升
+                //     k=17 地形=199.02 水面=173.93  差=25.09
+                //     k=33 地形=200.93 水面=173.93  差=27.00  ← 水面【被钉死 27 块】
+                //     k=36 地形=170.34 水面=169.34  ← 越过脊后骤降 70 块到另一侧深谷
+                //   【根因】旧 `pinned` 无条件向下传播：只要下游出现过更低值，上游全部
+                //   被压平，哪怕那最低点在 27 块之外、中间隔着一道 26 块高的脊。
+                //   ⇒ 水面比地形低 27 块 ⇒ 雕刻必须凿穿山腰 = 用户判据"河横着过山腰"。
+                //   【修法】pinned 只在【地形本身允许】时生效：水面不得低于
+                //   `地形 − surfaceSink − PIN_TOL`。地形高于该下限（= 该处地面已高出
+                //   下游水位，水在物理上到不了这里）⇒ 解除钉住，让节点回到自身剖面
+                //   （terr − sink）⇒ 水面重新贴地，不再凿山。
+                //   【为什么合法】水面高于地形是"悬空水"（另一类 bug），但水面低于地形
+                //   数十块意味着"水在空气里穿过山"——比悬空更违背物理。
+                //   回退：把 PIN_TOL 设为极大（1e9）⇒ 逐位回到旧行为。
+                double pinFloor = terr[k] - params.surfaceSink() - PIN_TOL;
+                if (!Double.isNaN(pinned) && pinned < pinFloor) {
+                    pinned = Double.NaN;                      // 该处地形已高于下游水位 ⇒ 断开钉链
+                }
+                if (!Double.isNaN(pinned) && surf[k] > pinned) {
+                    // 压平不得超过地形下限（同样防"钉死在山腰"）
+                    surf[k] = Math.max(pinned, pinFloor);
+                }
                 pinned = surf[k];
             }
             // ★★★ 2026-09-22【入湖衔接：河适应湖】（用户裁定"河进湖就该停止雕刻"）★★★
@@ -2283,10 +2679,22 @@ public final class RiverLineNetwork {
             //   并让上游若干节点跟随抬升（保持下游不抬升的单调性，直到地形上界为止）
             //   ⇒ 视觉上水连续进入湖，而湖内没有任何雕刻。
             int tailDownCell = res.down[path[last]];
-            if (tailDownCell >= 0 && res.lake[tailDownCell] && lakes != null) {
+            // ★ F1d：条件加 probLake（=块掩码）—— 下游格是生产湖但 sim 未标 lake 时也抬；
+            //   归属两级：掩码优先（在下游格上定湖），失败退回旧 inDomain(cellHalf*6)。
+            if (tailDownCell >= 0
+                    && (res.lake[tailDownCell] || floodAny[tailDownCell])
+                    && !lakesAll.isEmpty()) {
                 RiverLineRegion.LakeNode tl = null;
                 double twx = nodes[m - 1].x(), twz = nodes[m - 1].z();
-                for (RiverLineRegion.LakeNode ln : lakes) {
+                if (maskMode) {
+                    double dwx = (oxB + (tailDownCell % gridN) * (double) cellB + cellB * 0.5) / hs;
+                    double dwz = (ozB + (tailDownCell / gridN) * (double) cellB + cellB * 0.5) / hs;
+                    for (RiverLineRegion.LakeNode ln : lakesAll) {
+                        if (inBasinMask(ln, dwx, dwz)) { tl = ln; break; }
+                    }
+                }
+                for (RiverLineRegion.LakeNode ln : lakesAll) {
+                    if (tl != null) break;
                     if (ln.hasOutline()) {
                         if (ln.inDomain(twx, twz, ln.cellHalf * 6)) { tl = ln; break; }
                     } else {
@@ -2300,8 +2708,35 @@ public final class RiverLineNetwork {
                 //     ⇒ 河尾水位悬空、inFlood=false ⇒ "命中在·水不在"
                 //     （审计河尾无水 19/58 = 32.8% FAIL 的根因：命中诊断 s=173.3 而实际湖面≈164）。
                 //   ⚠ 不再做任何 res.fill 近似兜底（用户驳回："你这不是造假吗？"）。
+                // ★★★ 2026-09-24【入湖夹角修复 —— 用户判据②】★★★
+                //   用户原话："骨架入湖有一部分几乎与湖边缘水平，正常来说应该呈现夹角
+                //   状态才对。"（真实入湖：河面斜插进湖面，不是与湖缘平行贴合）
+                //   【根因】旧写法 `surf[m-1] = min(lvTarget, terr+1)` + 向上游"跟随抬升"
+                //   把【入湖前若干节点全部抬平到湖面】⇒ 末段水面与湖面等高且水平。
+                //   【修法】入湖只要求"水面【低于】湖面"（水的下坡连续性），而不是"相等"：
+                //     ① 末节点抬到 min(湖面 − ENTER_DROP, 地形+1)：保留一个下坡落差，
+                //        且该落差在地形允许范围内；
+                //     ② 上游跟随抬升时同样保持 ≥ ENTER_DROP 的单调递降 ⇒ 末段呈现
+                //        "斜插入湖"的夹角，而非水平贴合。
+                //   物理：河水面必须略高于湖面才在流动（否则湖水倒灌）；体现为末段
+                //        与湖缘成夹角。ENter_DROP=0.75 块（<1 格，仅保证有明确斜率）。
+                //   回退：把 ENTER_DROP 设为 0.0 ⇒ 逐位回到旧"抬平"行为。
                 double lvTarget = finalLakeLevel(tl);
-                if (!Double.isNaN(lvTarget) && surf[m - 1] < lvTarget) {
+                if (!Double.isNaN(lvTarget)) {
+                    double enterTarget = lvTarget - LAKE_ENTER_DROP;
+                    if (surf[m - 1] < enterTarget) {
+                        surf[m - 1] = Math.min(enterTarget, terr[m - 1] + 1.0);
+                        for (int k = m - 2; k >= 0; k--) {
+                            double want = surf[k + 1] + LAKE_ENTER_DROP;
+                            if (surf[k] >= want) break;              // 已满足递降
+                            double capK = terr[k] + 1.0;
+                            if (capK < want) break;                  // 抬会漫岸 ⇒ 停
+                            surf[k] = want;
+                        }
+                    }
+                }
+                // ⚠ 旧路径（保留为不可达代码，便于对照/回退）：
+                if (false) {
                     surf[m - 1] = Math.min(lvTarget, terr[m - 1] + 1.0);
                     for (int k = m - 2; k >= 0; k--) {
                         if (surf[k] >= surf[k + 1]) break;                 // 已满足单调
@@ -2311,6 +2746,83 @@ public final class RiverLineNetwork {
                     }
                 }
             }
+            // ★★★ 2026-09-24【两节点间地形单调性校验 + 顺地形插点 —— 用户判据】★★★
+            //   用户原话："难道没有判断 2 个连接的节点之间的那段线走的地形不是单调的吗？
+            //   我发现很多连接线他们走过的地形根本没判断这个路线的地形变化已经超过
+            //   2 个节点的高度区间了。"
+            //   核实：确实没有 —— 节点每 cellB 块取一个格心，相邻【直接直线相连】
+            //   ⇒ 段内地形可高出两端十几到几十块（T1c 实测最大 37 块）= 图上"斜切长线"。
+            //   做法：逐段以 ~1 块步长采样地形；段内最高 > 两端较高者 + MONO_TOL(1 块)
+            //   ⇒ 判未顺地形 ⇒ 在【段内地形最低点】插入节点（插点不删点 ⇒ 连通性、
+            //   下游拓扑、湖锚全部不变；水面/宽度/深度按 t 线性插值，湖锚段跳过）。
+            {
+                java.util.function.ToDoubleBiFunction<Double, Double> tf =
+                        routeTerrain != null ? routeTerrain : (a, b) -> groundYAt(a, b);
+                java.util.ArrayList<MidpointDisplacement.Node> nn = new java.util.ArrayList<>();
+                java.util.ArrayList<Double> ns = new java.util.ArrayList<>();
+                java.util.ArrayList<Double> nw = new java.util.ArrayList<>();
+                java.util.ArrayList<Double> nd = new java.util.ArrayList<>();
+                java.util.ArrayList<Double> nf = new java.util.ArrayList<>();
+                java.util.ArrayList<Double> nlv = new java.util.ArrayList<>();
+                java.util.ArrayList<Double> nt = new java.util.ArrayList<>();
+                java.util.ArrayList<RiverLineRegion.LakeNode> nln = new java.util.ArrayList<>();
+                int inserted = 0;
+                for (int k = 0; k < m; k++) {
+                    nn.add(nodes[k]); ns.add(surf[k]); nw.add(wid[k]); nd.add(dep[k]);
+                    nf.add(fall[k]); nlv.add(lakeLv[k]); nt.add(terr[k]); nln.add(lakeNodeArr[k]);
+                    if (k + 1 >= m) continue;
+                    if (lakeNodeAt[k] && lakeNodeAt[k + 1]) continue;      // 湖锚段：水面由湖定
+                    double[] lowT = new double[1];
+                    if (segmentIsMonotone(nodes[k].x(), nodes[k].z(),
+                            nodes[k + 1].x(), nodes[k + 1].z(),
+                            terr[k], terr[k + 1], tf, hs, MONO_TOL, lowT)) {
+                        continue;
+                    }
+                    double t = lowT[0];
+                    double mx2 = nodes[k].x() + (nodes[k + 1].x() - nodes[k].x()) * t;
+                    double mz2 = nodes[k].z() + (nodes[k + 1].z() - nodes[k].z()) * t;
+                    nn.add(new MidpointDisplacement.Node(mx2, mz2));
+                    ns.add(surf[k] + (surf[k + 1] - surf[k]) * t);
+                    nw.add(wid[k] + (wid[k + 1] - wid[k]) * t);
+                    nd.add(dep[k] + (dep[k + 1] - dep[k]) * t);
+                    nf.add(0.0);
+                    nlv.add(Double.NaN);
+                    nt.add(tf.applyAsDouble(mx2, mz2));
+                    nln.add(null);
+                    inserted++;
+                }
+                if (inserted > 0) {
+                    m = nn.size();
+                    nodes = new MidpointDisplacement.Node[m];
+                    surf = new double[m];
+                    wid = new double[m];
+                    dep = new double[m];
+                    fall = new double[m];
+                    terr = new double[m];
+                    lakeLv = new double[m];
+                    lakeNodeArr = new RiverLineRegion.LakeNode[m];
+                    for (int k = 0; k < m; k++) {
+                        nodes[k] = nn.get(k); surf[k] = ns.get(k); wid[k] = nw.get(k);
+                        dep[k] = nd.get(k); fall[k] = nf.get(k); terr[k] = nt.get(k);
+                        lakeLv[k] = nlv.get(k); lakeNodeArr[k] = nln.get(k);
+                    }
+                    monotoneInsertTotal.addAndGet(inserted);
+                }
+            }
+            // D8 路径相邻格中心距最多 sqrt(2)*cellB。若超过 2*cellB，说明路径数组
+            // 在湖/盆地跳转时拼接了不连续节点；禁止把损坏拓扑输出成长射线。
+            boolean contiguous = true;
+            double maxStepWu = 2.0 * cellB / hs;
+            for (int k = 0; k + 1 < nodes.length; k++) {
+                if (Math.hypot(nodes[k + 1].x() - nodes[k].x(),
+                        nodes[k + 1].z() - nodes[k].z()) > maxStepWu + 1e-9) {
+                    contiguous = false;
+                    LOGGER.warn("[RIVER] drop non-contiguous skeleton region ({},{}): node {} -> {}",
+                            rx, rz, k, k + 1);
+                    break;
+                }
+            }
+            if (!contiguous) continue;
             so.rivers.add(new RiverPolyline(nodes, surf, wid, dep, fall, 1, lakeLv, terr, lakeNodeArr));
             // ★ 出口种子：河尾在裁剪边界之外（还会继续流）⇒ 交给邻区接续
             int endIdx = path[last];
@@ -2330,14 +2842,110 @@ public final class RiverLineNetwork {
     }
 
     /** 从 start 沿本地 D8 追一条续流路径（跨区种子用）；标记 used 防重复。 */
+    /**
+     * ★★★ 2026-09-24【单调插点阈值】★★★ 段内地面高出【两端地面较高者】超过本值（块）
+     * ⇒ 判该段未顺地形单调 ⇒ 插入段内地形最低点。
+     * 取 1.0 块（= Minecraft 1 格）：小于此值的起伏是雕刻正常整形范围。
+     */
+    private static final double MONO_TOL = 1.0;
+
+    /**
+     * ★★★ 2026-09-24【自适应采样阈值】★★★ 格内 4 角高程差（块）超过本值 ⇒ 判"陡格"，
+     * 在格内子网格（5×5）找最低点（沟底）；否则保持"4 角最小值"（零额外采样）。
+     *
+     * <p>取 2.0 块：一个 4 块格内落差 2 块以上，已足以说明格内藏着沟/脊
+     * （4 块格只取 4 角会漏掉宽 1~2 块的沟）。设 {@code 1e9} 即关闭自适应（回到旧行为）。</p>
+     */
+    private static final double ADAPT_TOL = 2.0;
+
+    /**
+     * ★★★ 2026-09-24【pinned 链的地形公差】★★★ 水面被单调化钉住时，允许比
+     * {@code 地形 − surfaceSink} 低的最大值（块）。超过即判定"该处地形已高出下游水位
+     * ⇒ 水物理到不了" ⇒ 解除钉住。
+     *
+     * <p>取 3.0 块：正常河道水面贴地在 sink(≈1) + 局部起伏(≈2) 范围内；
+     * 而"穿山"级别的脱节是 7~34 块（T6 实测）。设 {@code 1e9} 即关闭本修复。</p>
+     */
+    private static final double PIN_TOL = 3.0;
+
+    /**
+     * ★★★ 2026-09-24【入湖落差】★★★ 河入湖时末节点水面与湖面的落差（块）。
+     *
+     * <p>用户判据："骨架入湖有一部分几乎与湖边缘水平，正常来说应该呈现夹角状态才对。"
+     * 取 0.75 块（&lt;1 格）：仅保证末段有明确下坡斜率，不改变"河水面必须高于湖面
+     * 才能流动"的物理。设 {@code 0.0} ⇒ 回到旧"抬平到湖面"行为。</p>
+     */
+    private static final double LAKE_ENTER_DROP = 0.75;
+
+    /** 诊断累计：因"段内不单调"而插入的节点数（T0 报告用）。 */
+    public static final java.util.concurrent.atomic.AtomicLong monotoneInsertTotal =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * ★★★ 2026-09-24【两节点间地形单调性校验 —— 用户判据】★★★
+     *
+     * <p>用户原话："难道没有判断 2 个连接的节点之间的那段线走的地形不是单调的吗？
+     * 我发现很多连接线他们走过的地形根本没判断这个路线的地形变化已经超过 2 个节点
+     * 的高度区间了。"</p>
+     *
+     * <p><b>核实结论：确实没有。</b>节点 = 每 {@code SKELETON_CELL_BLOCKS} 块取一个格心，
+     * 相邻节点直接直线相连 ⇒ 段内地形可以高出两端十几到几十块（实测最大 37 块），
+     * 表现为"斜切长线横过山脊"。</p>
+     *
+     * <p>本方法以 ~1 块步长采样段内地形，判定"段内最高点 ≤ 两端较高者 + tol"。
+     * 不满足即返回 false，并输出段内地形最低点的归一化参数 {@code outLowT[0]}
+     * ⇒ 调用方在该处插入节点（插点不删点 ⇒ 不破坏连通性与下游拓扑）。</p>
+     */
+    private static boolean segmentIsMonotone(double ax, double az, double cx, double cz,
+                                            double ha, double hc,
+                                            java.util.function.ToDoubleBiFunction<Double, Double> tf,
+                                            double hs, double tol, double[] outT) {
+        double lenB = Math.hypot(cx - ax, cz - az) * hs;
+        int steps = Math.max(2, (int) Math.ceil(lenB));          // ~1 块步长
+        double hi = Math.max(ha, hc);
+        double lo = Math.min(ha, hc);
+        double mx = Double.NEGATIVE_INFINITY;
+        double mn = Double.POSITIVE_INFINITY;
+        double mnT = 0.5, mxT = 0.5;
+        for (int s = 1; s < steps; s++) {
+            double t = s / (double) steps;
+            double hh = tf.applyAsDouble(ax + (cx - ax) * t, az + (cz - az) * t);
+            if (hh > mx) { mx = hh; mxT = t; }
+            if (hh < mn) { mn = hh; mnT = t; }
+        }
+        // ★★★ 2026-09-24【三向判据 —— 用户指正后修正】★★★
+        //   ⚠ 上一版只查 `mx <= hi + tol`（越脊）一个方向 ⇒ 漏掉【谷穿】：
+        //     段两端在坡上、段中间穿过一条比两端都低的沟（真实河道该拐进那条沟，
+        //     直连就等于"把弯拉直、横切等高线"）—— 这正是用户在图上圈出的现象。
+        //   现在双向都查；返回"需要插点的 t"：
+        //     · 越脊 ⇒ 取【段内最低点】（往低处绕）
+        //     · 谷穿 ⇒ 取【段内最低点】（就是那条沟的谷心）
+        if (mn < lo - tol) { outT[0] = mnT; return false; }      // 谷穿
+        if (mx > hi + tol) { outT[0] = mnT; return false; }      // 越脊
+        outT[0] = mnT;
+        return true;
+    }
+
+    /** 从 start 沿本地 D8 追一条续流路径（跨区种子用）；标记 used 防重复。 */
     private static int[] traceSkeleton(TerrainFlowSim.Result res, boolean[] used, int start) {
         List<Integer> p = new ArrayList<>();
         int cur = start;
-        while (cur >= 0 && !used[cur] && !res.lake[cur]) {
+        while (cur >= 0 && !used[cur] && !res.lake[cur] && res.channel[cur]) {
             used[cur] = true;
             p.add(cur);
             cur = res.down[cur];
             if (cur < 0) break;
+        }
+        // ★★★ 2026-09-24【跨区续流首节点补入 —— 修"骨架中间断开一小段"（用户判据②）】★★★
+        //   现象：主路径在 [exit] 处停下（下一格是湖/已占用 ⇒ 白循环退出），而续流从
+        //   [enter] = [exit]+down 起步。【两个格心各偏半格 ⇒ 渲染上出现 3 块的缝】。
+        //   正确的水流路径包含 [enter]（它就在 exit 的下游、同一 D8 链上）⇒ 补入首节点，
+        //   缝隙即消失（湖则不进：湖面由湖负责）。
+        //   ⚠ 只在起点可补；循环内补会把"另一条已占用路径"的格吃进来。
+        //   回退：删除本 if 块。
+        if (cur >= 0 && !res.lake[cur] && res.channel[cur] && !used[cur] && !p.isEmpty()) {
+            used[cur] = true;
+            p.add(cur);
         }
         int[] a = new int[p.size()];
         for (int i = 0; i < a.length; i++) a[i] = p.get(i);
@@ -3704,7 +4312,7 @@ public final class RiverLineNetwork {
      */
     private void applyBankCapSkip(MidpointDisplacement.Node[] nodes, double[] surf,
                                   double[] widths, RiverLineParams params,
-                                  boolean[] skip) {
+                                  boolean[] skip, double[] terr) {
         double seaLevel = curve.seaLevelY();
         for (int i = 0; i < surf.length; i++) {
             if (skip != null && i < skip.length && skip[i]) continue;   // 湖面锚点：不动
@@ -3720,7 +4328,24 @@ public final class RiverLineNetwork {
             // 上游累积取小：但若【下游紧邻是湖节点】则不取小（否则会把入湖口压低于湖面，
             // 造成"河低于湖"的错位）。湖面是锚，河只能抬到它。
             boolean nextIsLake = skip != null && i + 1 < skip.length && skip[i + 1];
-            if (i > 0 && !nextIsLake) surf[i] = Math.min(surf[i], surf[i - 1]);
+            if (i > 0 && !nextIsLake) {
+                // ★★★ 2026-09-24【运行取小加地形下限 —— 修"水面钉死在盆底"残留链】★★★
+                //   【实测铁证（水文拓扑轮，region(-2,-2) 转储 + 脱节样例）】
+                //     浅洼 breach 段：地形 174.17 → 177.91 沿程爬升（水面越鞍缓升），
+                //     而水面被本方法旧的"下游不回升"链【钉死在盆底 167.12】
+                //     ⇒ 计划水面比地形低 8~11 块 ⇒ 雕刻层凿山（需雕穿 121 段回升的根因）。
+                //   【修法】取小不得低于 `地形 − surfaceSink − PIN_TOL`（与 ③ pinned 链
+                //     同一款地形合理性约束）：地形本段抬升 ⇒ 水面允许随之抬升
+                //     （= 水面越鞍缓升的真实水文形态）；微爬坡伪影（< PIN_TOL=3 块）
+                //     仍被照常压平 ⇒ 原"同河内部爬坡"修复不受影响。
+                //   【terr 口径】骨架路径传侵蚀后 routeTerrain（与路由同源）；null 时
+                //     退回 rawTerrainY（预侵蚀，legacy 兼容）。
+                //   回退：把 floor 计算删掉、恢复无条件 min。
+                double terrHere = terr != null && i < terr.length ? terr[i]
+                        : rawTerrainY(nodes[i]);
+                double floor = terrHere - params.surfaceSink() - PIN_TOL;
+                surf[i] = Math.max(Math.min(surf[i], surf[i - 1]), floor);
+            }
         }
     }
 
@@ -3969,7 +4594,8 @@ public final class RiverLineNetwork {
     //   轮廓外扩得到的 `probLake` 掩码近似 ⇒ 湖泊区域随之变形（用户实测截图）。
     //   ⇒ 在湖泊恢复并验收通过之前，本开关保持 false（= 走 09-19 那套）。
     //   重新启用前必须先让骨架路线接上【同一套湖拓扑】（PLAN T1 的后续工作）。
-    public static volatile boolean flowSkeletonRouting = false;
+    /** 唯一生产水文管线：TerrainFlowSim 完整生命周期。历史 false 回退已停用。 */
+    public static volatile boolean flowSkeletonRouting = true;
 
     /**
      * 骨架模拟格距（块）。
@@ -3978,7 +4604,13 @@ public final class RiverLineNetwork {
      * 为 16 块的水平/垂直线段，观感比流体模拟图差）。8 ⇒ 折角细化一倍、成本 ×4
      * （region 160² = 25.6k 格，仍在百毫秒量级）。</p>
      */
-    public static final int SKELETON_CELL_BLOCKS = 8;
+    public static volatile int SKELETON_CELL_BLOCKS = 8;
+
+    // ★ 2026-09-23【改为可调 + 新增 4 档】—— 用户判据："骨架路线达不到模拟现实流体运动
+    //   路线"，图上折线每 8 块就出现一次直角/折角（D8 量化）⇒ 谷底走向被粗格吃掉。
+    //   4 块 ⇒ 折角细化一倍（观感更接近流体流线），代价：模拟格数 ×4、角点采样 ×4
+    //   （采样是已知瓶颈，探针可接受；生产若启用需先按 SKELETON_CELL_BLOCKS 复测耗时）。
+    //   设值入口：探针参数 "cell4"（见 WaterViewProbe）。回退：保持 8。
 
     /**
      * ★ 2026-09-22【侵蚀后地形采样器】—— 河-湖水位对齐用。
@@ -4047,6 +4679,43 @@ public final class RiverLineNetwork {
     public static volatile boolean erosionAwareRouting = false;
 
     /**
+     * ★★★ 2026-09-23【骨架路由地形口径：侵蚀后】★ 默认 false ★★★
+     *
+     * <p>{@code false} = 旧行为：角点高度用 {@link #groundYAt}（= {@code heightFromE(terrainEQuick)}，
+     * <b>侵蚀前</b>）。该口径的 javadoc 假设"与最终地形（sampleWu）的差异仅剩侵蚀 delta
+     * （<b>通常很小</b>，不影响视觉嵌入感）"。</p>
+     *
+     * <p><b>该假设被用户实测图推翻</b>：图上侵蚀沟壑深达数十块，而河线走的是侵蚀前
+     * 排水格局 ⇒ 出现"<b>两套互不相干的河谷网</b>"，河既看不出贴着山体沟壑，也不贴湖
+     * （用户判据："河流看不到湖和山体那种感觉"）。</p>
+     *
+     * <p>{@code true} 且 {@link #erodedYSampler} 非 null ⇒ 角点预采样与逐节点地形
+     * 一律改用 {@code erodedYSampler}（= {@code terrain.sampleWu(...).height}，侵蚀后、
+     * 雕刻前）⇒ 路由场与【图上可见的地形】同源。</p>
+     *
+     * <p><b>⚠ 使用前提（必读）</b>：{@code sampleWu} 内部会 {@code getOrGenTile} ——
+     * 若首次取 tile 发生在 <b>chunk 生成内部</b>，会命中"同步中断 ⇒ delta=0"语义
+     * ⇒ 路由场随触发顺序变化（<b>破坏确定性</b>）。故探针侧必须<b>先预热</b>窗口+margin 的
+     * 侵蚀 tile 再构建河网（见 {@code WaterViewProbe} 的 "eroded" 分支）。</p>
+     *
+     * <p>生产默认 false（确定性铁律）；仅诊断出图启用。回退：探针去掉 {@code eroded} 参数。</p>
+     */
+    public static volatile boolean skeletonRouteOnEroded = false;
+
+    /**
+     * ★★★ 2026-09-24【路由专用高度采样器（侵蚀后）】★★★
+     *
+     * <p>比 {@link #erodedYSampler}（= {@code sampleWu().height}，走完整 sample）便宜：
+     * 只走 {@code heightFromE(softCapLandE(e + delta))} 这条高度链，跳过 discharge 采样、
+     * 地形重分类、坡度 4 次 tile 采样（见 {@code CellGenerator.erodedHeightForRouting}）。</p>
+     *
+     * <p>接线：{@code HydrologyExperimentEngine} 注入
+     * {@code (a,b) -> terrain.erodedHeightForRouting(a,b)}。为 null 时自动退回
+     * {@link #erodedYSampler}（行为不变）。</p>
+     */
+    public static volatile java.util.function.ToDoubleBiFunction<Double, Double> routeHeightSampler = null;
+
+    /**
      * ★★★ 2026-09-22【湖的最终采用水位】—— 复刻【生产完整两段链】★★★
      *
      * <p><b>用户的物理语义（本轮裁定，作为验收标准）</b>：</p>
@@ -4074,6 +4743,9 @@ public final class RiverLineNetwork {
      */
     private double finalLakeLevel(RiverLineRegion.LakeNode ln) {
         if (ln == null) return Double.NaN;
+        // 骨架合成湖的 height 已是 TerrainFlowSim 的最低溢口水位；其轮廓也是同一次
+        // 模拟的 res.lake 掩码。不得再用另一套 minimax/洪泛算法改水位或扩大湖域。
+        if (ln.exactOutline) return ln.height;
         java.util.function.ToDoubleBiFunction<Double, Double> es = erodedYSampler;
         // 上界 = 无侵蚀 spill（湖面物理上不可能高于它）
         double upper = Double.isNaN(ln.height) ? ln.erodedSpill : ln.height;
@@ -4102,6 +4774,9 @@ public final class RiverLineNetwork {
     private static final java.util.concurrent.atomic.AtomicInteger skelEmptyCount =
             new java.util.concurrent.atomic.AtomicInteger();
     private static final java.util.concurrent.atomic.AtomicInteger skelLogCount =
+            new java.util.concurrent.atomic.AtomicInteger();
+    /** ★ 2026-09-24 水文生命周期统计日志计数（前 12 次打印）。 */
+    private static final java.util.concurrent.atomic.AtomicInteger skelLifeLogCount =
             new java.util.concurrent.atomic.AtomicInteger();
 
     /** 骨架模拟的外扩余量（块）：保证跨区河流能追到边界外，接缝处两条河自然对接。 */
@@ -4492,12 +5167,17 @@ public final class RiverLineNetwork {
         if (r.lakes == null || r.lakes.isEmpty()) return false;
         for (RiverLineRegion.LakeNode ln : r.lakes) {
             if (ln.hasOutline()) {
-                if (ln.inDomain(wx, wz, 0.0)) return true;
-                // ★ P2-2：块级连通掩码内的列也归湖管辖（低于水位 ∧ 与盆底连通，
-                //   掩码构造保证湖分支必然出水 ⇒ 不存在 09-22"剥了河命中却不出水"
-                //   的空窗带 —— 那次的根源是 domTol 羽化带里的格不在 inFlood 内）。
-                //   回退：lakeBasinHits=false 一处生效于全部三条链路。
-                if (inBasinMask(ln, wx, wz)) return true;
+                // ★ R-C1 F1e【骨架模式湖域 = 块掩码独占】（2026-09-23）：
+                //   轮廓并集内、掩码外的岸上格若仍算"湖域"⇒ 河命中被抑制
+                //   （sampleRegion 见湖域即 skip）⇒ 只剩湖等高线判水 ⇒ 地形高于
+                //   湖面即必干 —— 审计残留干尾 5 例全在 r#26 岸带实锤。
+                //   骨架模式：掩码外放行河命中（河雕刻下切出水=入湖口）。
+                //   旧路线（flowSkeletonRouting=false）：P2-2 行为逐位不变。
+                if (flowSkeletonRouting) {
+                    if (inBasinMask(ln, wx, wz)) return true;
+                } else if (ln.inDomain(wx, wz, 0.0) || inBasinMask(ln, wx, wz)) {
+                    return true;
+                }
             } else {
                 double dx = wx - ln.x, dz = wz - ln.z;
                 if (dx * dx + dz * dz <= ln.radius * ln.radius) return true;
@@ -4519,7 +5199,20 @@ public final class RiverLineNetwork {
         if (es == null) return false;
         double lv = finalLakeLevel(ln);
         if (Double.isNaN(lv)) return false;
-        return ln.inBasinFlood(es, lv, lakeBasinFloodGrid, params.gridCell(), wx, wz);
+        if (!ln.inBasinFlood(es, lv, lakeBasinFloodGrid, params.gridCell(), wx, wz)) {
+            return false;
+        }
+        // ★ R-C1 F1h【骨架模式：掩码要求可蓄水深度 ≥0.5】（决策链实锤死区）：
+        //   水深 ∈ [0.05, 0.5) 的格被洪泛算进连通区，但落块等高线 h<level−0.5
+        //   造不出水块 —— 若它还在湖域，sampleAll 会剥掉河命中 ⇒ 河也发不出
+        //   ⇒ 两边都无水（样例 (-404,-484)：深 0.36，剥河后 nearestRiverDist=Infinity）。
+        //   掩码收紧到 ≥0.5 ⇒ 浅滩格归河 ⇒ 河雕刻下切入湖口出水。
+        //   仅 flowSkeletonRouting=true 生效 —— 旧路线的 P2-2 验收数字逐位不变。
+        //   回退：删本段或 flag=false。
+        if (flowSkeletonRouting && lv - es.applyAsDouble(wx, wz) < 0.5) {
+            return false;
+        }
+        return true;
     }
 
     private List<RiverLineHit> sampleRegion(RiverLineRegion r, double wx, double wz) {
@@ -4605,8 +5298,18 @@ public final class RiverLineNetwork {
                 if (pl.lakeLevel != null && pl.lakeNodes != null) {
                     // 湖命中必须带上【LakeNode】：雕刻侧湖分支用它做水位（含蚀后短板
                     // escapeWaterLevel）与域判定 ⇒ 与湖面完全同源。
-                    lakeNodeForHit = !Double.isNaN(pl.lakeLevel[i1])
+                    RiverLineRegion.LakeNode cand = !Double.isNaN(pl.lakeLevel[i1])
                             ? pl.lakeNodes[i1] : pl.lakeNodes[i0];
+                    // ★ R-C1 F1g【骨架模式：段锚定须两端都在掩码内】（CARVE-TRACE 实锤）：
+                    //   单端跨界的段（一端在掩码、一端在干岸）= 河的入湖口 —— 若整段转成
+                    //   湖命中（不雕刻），干岸格 nearestRiverDist=Infinity ⇒ 等高线必干
+                    //   （样例 (-404,-484)：地形 175.5 > 湖面 173.3，20 命中全是湖型）。
+                    //   两端都在掩码 ⇒ 纯湖内段才锚定；跨界段保持河命中 ⇒ 雕刻进湖通道。
+                    //   旧路线（flag=false）保持"任一端"旧行为逐位不变。
+                    boolean endsInMask = pl.lakeNodes[i0] != null && pl.lakeNodes[i1] != null;
+                    if (cand != null && (!flowSkeletonRouting || endsInMask)) {
+                        lakeNodeForHit = cand;
+                    }
                 }
                 // ★★★ 2026-09-23【河成湖关闭：只有【锚定真湖】的河段才转湖命中】★★★
                 //   判据 = 本段是否有真实湖节点（lakeNodes 非空且该端非空）。
@@ -4919,7 +5622,13 @@ public final class RiverLineNetwork {
                 //   （LakeHoleSplitProbe B7）+ 水界停在轮廓方格壳上（直边）。
                 //   ⚠ inDomain 短路在前 ⇒ 域内列零新增开销；掩码惰性建一次/湖。
                 //   回退：lakeBasinHits=false。
-                if ((inDomain || inBasinMask(bestLn, wx, wz)) && !inRiverChannel) {
+                // ★ R-C1 F1f：骨架模式湖命中 = 块掩码【独占】（岸带轮廓内但掩码外
+                //   的格不发湖命中 ⇒ 最近命中落到河 ⇒ 河分支下切入湖口出水）；
+                //   旧路线保持 P2-2 的 (inDomain || mask) 逐位不变。
+                boolean lkDom = flowSkeletonRouting
+                        ? inBasinMask(bestLn, wx, wz)
+                        : (inDomain || inBasinMask(bestLn, wx, wz));
+                if (lkDom && !inRiverChannel) {
                     double lakeW = bestLn.radius > 0 ? bestLn.radius : params.lakeRadius();
                     // ★★★ 2026-09-22【湖命中水位 = 最终采用水位链】★★★
                     //   ⚠ 曾用 bestLn.height（无侵蚀 spill）—— 比真实湖面【高】，

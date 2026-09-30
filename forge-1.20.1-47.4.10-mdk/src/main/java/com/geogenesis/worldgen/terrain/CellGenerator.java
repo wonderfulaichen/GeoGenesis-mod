@@ -922,7 +922,14 @@ public final class CellGenerator {
     //   那正是 2026-08-14 把窥探改回同步时"慢到像崩溃"的真凶。加大容量后
     //   工作集（本 tile + 8 邻预热 + 3 个 blend 邻居）能常驻。
     //   内存：单 tile ≈ 4 个 48×48 float 数组 ≈ 38KB ⇒ 512 ≈ 19MB，可接受。
-    private static final int ERODE_TILE_CACHE_SIZE = 512;
+    //   ★ 2026-09-24【512 → 2048】OOM 与抖动都要防：
+    //     实测（eroded 骨架路由，窗口 1401 块）工作集 = 窗口 tile(≈19²) + blend 邻居(≈21²)
+    //     + region margin 外扩 ⇒ **530+** 个 tile > 512 ⇒ 预热完就被驱逐、路由期反复重建
+    //     （每个 100~500ms）⇒ 表现为"CPU 负载低但跑得极慢"（线程在等锁/生成，不在算）。
+    //     2048 的代价：单 tile ≈ 38KB（4×48² float）⇒ 2048 ≈ 78MB（+delta/discharge 峰值
+    //     约 200MB 量级），在 5g 探针堆与游戏默认堆内均可接受。
+    //   回退：改回 512。
+    private static final int ERODE_TILE_CACHE_SIZE = 2048;
     /** tile 边界 blend 起始列/行（chunk 内部）。16-BLEND_START=10 块 blend 范围（原 4 块太窄，
      *  独立粒子模拟 delta 差异大时 smoothstep 不够 → 网格感）。 */
     private static final int BLEND_START = 6;
@@ -1539,6 +1546,34 @@ public final class CellGenerator {
         return heightCurve.heightFromE(e);
     }
 
+    /**
+     * ★★★ 2026-09-24【路由专用：侵蚀后高度（便宜且与 sampleWu().height 等价）】★★★
+     *
+     * <p><b>为什么需要</b>：骨架路由（{@code skeletonRouteOnEroded}）此前用
+     * {@code sampleWu(wx,wz).height} ⇒ 走【完整 sample()】，而它付了一堆<b>与高度无关</b>
+     * 的重活：{@code sampleTileField(discharge)}、{@code dominantFromWeights +
+     * classifyTerrain} 重分类、以及坡度的<b>4 次额外 tile 采样 + 4 次 heightFromE</b>
+     * （见 {@link #coreApplyDelta}）。实测：每 region 40~90 秒。</p>
+     *
+     * <p><b>数值等价性（有自检，勿凭假设）</b>：{@code applyTileDelta} 的高度链是
+     * {@code heightFromE(softCapLandE(cell.e + blendTileDelta))}，而 {@code cell.e}
+     * 与 {@link #terrainEQuick} 同源 ⇒ 本方法复刻【同一条链】，只丢与 height 无关的赋值。
+     * 探针侧用 {@code maxErr} 打印与 {@code sampleWu().height} 的最大偏差做验收。</p>
+     *
+     * <p><b>中断/tile 缺失语义</b>：与 {@link #erosionDeltaE} 一致 —— delta 记 0
+     * （不施加侵蚀），保持既有"半成品不入缓存"的确定语义。</p>
+     */
+    public double erodedHeightForRouting(double wuX, double wuZ) {
+        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
+        double e = terrainEQuick(wuX, wuZ);
+        if (res != null) {
+            e += blendTileDelta(res, wuX, wuZ, tileCX, tileCZ, true);
+        }
+        return heightCurve.heightFromE(softCapLandE(e));
+    }
+
     /** 诊断用：当前侵蚀 tile 缓存条目数（P0-3 埋点；探针据此断言"未触发 tile 生成"）。 */
     public int erosionTileCacheSize() { return erosionTileCache.size(); }
 
@@ -1902,9 +1937,24 @@ public final class CellGenerator {
         // 与 java.util.Map 冲突 → 此处必须用全限定名。
         List<java.util.Map.Entry<Long, ErosionTileResult>> entries =
             new ArrayList<>(erosionTileCache.entrySet());
-        entries.sort(Comparator.comparingLong(e -> e.getValue().lastAccess));
-        for (int i = 0; i < toRemove && i < entries.size(); i++) {
-            if (erosionTileCache.remove(entries.get(i).getKey()) != null) tileCacheStats.evicted();
+        // ★★★ 2026-09-24【并发竞态修复：比较器传递性破坏】★★★
+        //   【症状】`IllegalArgumentException: Comparison method violates its general
+        //     contract!`（实测 region(-1,-1) 抛此异常 ⇒ 该区【整块 fallback 到 legacy
+        //     链路】⇒ 该区河流走的是与骨架不同的水面链 = 用户图上"横切长线"的来源之一）。
+        //   【根因】lastAccess 是 volatile 且被多线程并发更新（getOrGenTile 里
+        //     `r.lastAccess = tileAccessClock.incrementAndGet()`）⇒ 一次 sort 内同一元素
+        //     读到的值不同 ⇒ TimSort 检测到 a<b、b<c 但 a>=c ⇒ 契约破坏抛异常。
+        //     eroded 路由（每格 sampleWu ⇒ tile 生成量激增 ⇒ 驱逐频繁）把它逼出来。
+        //   【修法】排序键用【快照】（先取出到数组，排序期间不可变）⇒ 比较器成为纯函数。
+        //     LRU 语义不变（仍是淘汰最久未访问者）。
+        //   回退：改回 `entries.sort(Comparator.comparingLong(e -> e.getValue().lastAccess));`
+        final long[] acc = new long[entries.size()];
+        for (int i = 0; i < entries.size(); i++) acc[i] = entries.get(i).getValue().lastAccess;
+        Integer[] idx = new Integer[entries.size()];
+        for (int i = 0; i < idx.length; i++) idx[i] = i;
+        java.util.Arrays.sort(idx, (a, b) -> Long.compare(acc[a], acc[b]));
+        for (int i = 0; i < toRemove && i < idx.length; i++) {
+            if (erosionTileCache.remove(entries.get(idx[i]).getKey()) != null) tileCacheStats.evicted();
         }
     }
 

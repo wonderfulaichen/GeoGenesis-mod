@@ -68,6 +68,34 @@ public final class WaterViewProbe {
             }
         }
 
+        // ★ 2026-09-23【R-C1】出图也可切骨架路线：参数含 "skeleton" ⇒ 渲染
+        //   flowSkeletonRouting=true 的生产结果（必须在首次采样前设置）。
+        if (java.util.Arrays.asList(args).contains("skeleton")) {
+            RiverLineNetwork.flowSkeletonRouting = true;
+            System.out.println("★ 出图口径 = 流体骨架路线（flowSkeletonRouting=true）");
+        }
+
+        // ★ 2026-09-23【nocarve】宽度雕刻旁路（用户："宽度等雕刻机制非常垃圾，
+        //   干扰骨架调试"）：河分支回传透传列 ⇒ 不挖宽谷、不灌河宽水（湖不受影响）。
+        //   必须在首次 getChunkCells 之前设置。回退：去掉本参数。
+        if (java.util.Arrays.asList(args).contains("nocarve")) {
+            HydrologyBlockCarver.WIDTH_CARVE = false;
+            System.out.println("★ 宽度雕刻 = 关（WIDTH_CARVE=false：河不挖谷不灌水；湖不受影响）");
+        }
+
+        // ★ 2026-09-23【eroded】骨架路由地形口径 = 侵蚀后（sampleWu）★
+        //   修"河线看不到山体沟壑"（旧口径 = groundYAt 侵蚀前，其 javadoc 假设
+        //   "侵蚀 delta 通常很小"被实测图推翻）。tile 预热见下方（构建河网之前）。
+        if (java.util.Arrays.asList(args).contains("eroded")) {
+            RiverLineNetwork.skeletonRouteOnEroded = true;
+            System.out.println("★ 骨架路由地形 = 侵蚀后（skeletonRouteOnEroded=true）");
+        }
+        // ★ 2026-09-23【cell4】骨架模拟格距 8 → 4 块（折角细化一倍；代价 ×4）
+        if (java.util.Arrays.asList(args).contains("cell4")) {
+            RiverLineNetwork.SKELETON_CELL_BLOCKS = 4;
+            System.out.println("★ 骨架格距 = 4 块（SKELETON_CELL_BLOCKS=4）");
+        }
+
         // ★ 2026-09-23【Phase1-a：门控链坐标同时作 CARVE-TRACE 断点】
         //   必须在首次 getChunkCells 之前设置（雕刻发生在生成期）。
         //   用法不变：args[6],args[7] = 定点块坐标 ⇒ 该块生成时打印 carver 决策链。
@@ -85,6 +113,62 @@ public final class WaterViewProbe {
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(seed);
+        // ★ 2026-09-24【eroded 模式的 routeHeightSampler 接线】—— 探针直建 CellGenerator，
+        //   不经 HydrologyExperimentEngine，故在此自行注入（与生产同源公式）。
+        if (RiverLineNetwork.skeletonRouteOnEroded) {
+            RiverLineNetwork.routeHeightSampler = (a, b) -> gen.erodedHeightForRouting(a, b);
+        }
+
+        // ★★★ 2026-09-23【侵蚀 tile 预热 —— eroded 模式的前置条件（勿删）】★★★
+        //   skeletonRouteOnEroded 走 sampleWu → getOrGenTile。若首次取 tile 发生在
+        //   chunk 生成内部，会命中"同步中断 ⇒ delta=0"语义 ⇒ 路由场随触发顺序变化
+        //   ⇒ 破坏确定性。故必须在【任何 region / chunk 生成之前】把窗口 + margin
+        //   （192 块 = 96wu）覆盖到的 tile 全部生成好。tile 有效边长 48wu。
+        if (RiverLineNetwork.skeletonRouteOnEroded) {
+            double hsP = tp.horizontalScale();
+            // ★★★ 2026-09-24【预热范围修正 —— 性能真凶】★★★
+            //   ⚠ 旧值只外扩 96wu（=192 块），而每个 region 的模拟跨度是
+            //     regionW(640wu)×hs + 2×SKELETON_MARGIN(128 块) = 1536 块 = 768wu，
+            //     且邻区查询会让网格覆盖到更远 ⇒ 大量 tile 未预热、路由期现场生成
+            //     （每次 sampleWu 100~300µs）⇒ 实测 24~101 秒/region。
+            //   修法：外扩 = SKELETON_MARGIN(128 块) + blend 余量(128 块) = 256 块 = 128wu。
+            //   回退：把 128 改回 96（wu）。
+            double padWu = 128.0;
+            int wx0 = (int) Math.floor((bx - radius) / hsP - padWu);
+            int wx1 = (int) Math.ceil((bx + radius) / hsP + padWu);
+            int wz0 = (int) Math.floor((bz - radius) / hsP - padWu);
+            int wz1 = (int) Math.ceil((bz + radius) / hsP + padWu);
+            long tPre = System.nanoTime();
+            int nPre = 0;
+            for (int wz = wz0; wz <= wz1; wz += 24) {
+                for (int wx = wx0; wx <= wx1; wx += 24) {
+                    gen.sampleWu(wx, wz);
+                    nPre++;
+                }
+            }
+            System.out.printf("  侵蚀 tile 预热：%d 次采样（%d ms）%n", nPre,
+                    (System.nanoTime() - tPre) / 1_000_000L);
+            // ★★★ 2026-09-24【等价性自检：便宜采样器 vs sampleWu().height】★★★
+            //   路由改用 erodedHeightForRouting（跳过 discharge/重分类/坡度）——
+            //   【必须实测等价】，不能凭"我复刻了同一条链"的假设。随机抽样比对。
+            {
+                java.util.Random rr = new java.util.Random(12345L);
+                double maxErr = 0.0;
+                int nChk = 0;
+                for (int t = 0; t < 3000; t++) {
+                    double wx = wx0 + rr.nextDouble() * (wx1 - wx0);
+                    double wz = wz0 + rr.nextDouble() * (wz1 - wz0);
+                    double a = gen.erodedHeightForRouting(wx, wz);
+                    double b = gen.sampleWu(wx, wz).height;
+                    double err = Math.abs(a - b);
+                    if (err > maxErr) maxErr = err;
+                    nChk++;
+                }
+                System.out.printf("  [等价自检] erodedHeightForRouting vs sampleWu().height："
+                                + "%d 点 maxErr=%.6f 块 ⇒ %s%n",
+                        nChk, maxErr, maxErr < 0.01 ? "等价 ✅" : "⚠ 不等价（勿用便宜口径）");
+            }
+        }
 
         int w = 2 * radius + 1;
         double[][] h = new double[w][w];
@@ -184,6 +268,16 @@ public final class WaterViewProbe {
         //   ⇒ 快速模式下：只为 `riverType != 0` 的列调 sampleAll；跳过中/右面板、
         //     骨架图、流量图，并把左图直接写成 panels_3.png（路径不变，便于对比）。
         final boolean fastLakeOnly = java.util.Arrays.asList(args).contains("fastlake");
+        // ★★★ 2026-09-24【skelonly：骨架专用轻量出图 —— 用户判据"跑得太慢"】★★★
+        //   用户原话："跑个湖泊和河流骨架有这么慢？又没跑河流雕刻那些。"
+        //   【慢在哪（实测）】每像素一次 `netS.sampleAll`（1.4M~1.96M 次 × 3×3 region × 段）
+        //   —— 本文件注释自承"最贵的一步"；而它只服务于【河/湖域分色面板】。
+        //   骨架调试根本不需要那两块 ⇒ 本模式跳过全部 sampleAll：
+        //     ① 逐像素循环只取 height（chunk 已缓存）⇒ 山体阴影底图；
+        //     ② 直接叠画骨架折线 + 湖域轮廓 ⇒ 写 panels_3.png / skeleton.png；
+        //     ③ 跳过河/湖域三联面板、流量图、缺格判据 ⇒ 时间大幅下降。
+        //   回退：去掉 `skelonly` 参数。
+        final boolean skelOnly = java.util.Arrays.asList(args).contains("skelonly");
         // ★★★ 2026-09-22【湖内"该有水却无水"的成因分解】（用户判据：湖被截短）★★★
         //   定义：c.riverType==0（干） ∧ 非海 ∧ 存在湖命中 ∧ c.height < 湖命中水位−0.5
         //   ⇒ 物理上该是湖面，却没水。三条成因：
@@ -201,7 +295,10 @@ public final class WaterViewProbe {
                 h[j][i] = c.height;
                 // 雕刻前地形（左图底）：sampleWu = 侵蚀后、河雕刻前（= 湖泊生成的输入）
                 //   tile 已由上面 getChunkCells 触发生成 ⇒ 此处命中缓存，成本可控。
-                hPre[j][i] = gen.sampleWu(x / tp.horizontalScale(), z / tp.horizontalScale()).height;
+                // ★ 2026-09-24【性能：skelonly 跳过 hPre 采样】此前无条件执行 ⇒
+                //   1.96M 次 sampleWu（每次含 9 邻 blend + tile 查找）纯浪费（轻量模式不用它）。
+                hPre[j][i] = skelOnly ? c.height
+                        : gen.sampleWu(x / tp.horizontalScale(), z / tp.horizontalScale()).height;
                 lake[j][i] = c.riverType != 0;   // 兼容旧字段（预览口径）
                 ocean[j][i] = c.isWater();
                 flow[j][i] = c.riverNetDischarge;
@@ -212,8 +309,8 @@ public final class WaterViewProbe {
                 // —— 域判定（全部命中）与分支判定（最近命中）——
                 // ★ 快速模式：干列（非水、非海）无需命中查询 ⇒ 直接跳过（省掉 ~91% 的 sampleAll）。
                 List<RiverLineNetwork.RiverLineHit> hs2;
-                if (fastLakeOnly && c.riverType == 0) {
-                    hs2 = List.of();
+                if (skelOnly || (fastLakeOnly && c.riverType == 0)) {
+                    hs2 = List.of();          // ★ skelonly：跳过最贵的 sampleAll
                 } else {
                     hs2 = netS.sampleAll(x / hsS, z / hsS);
                 }
@@ -269,6 +366,59 @@ public final class WaterViewProbe {
                     if (nearLk && c.riverType != 0) nMskWet++;
                 }
             }
+        }
+
+        // ★★★ 2026-09-24【skelonly 提前返回：骨架专用轻量出图】★★★
+        //   跳过：湖域完整性量测、缺格判据、三联域图、流量图、直边度量、绝对等高线……
+        //   只做：山体阴影底图 + 骨架折线叠加 + 湖域轮廓 + 【骨架质量/交叉】判据。
+        //   依据：用户判据"跑个湖泊和河流骨架有这么慢？又没跑河流雕刻那些。"
+        if (skelOnly) {
+            double mn0 = Double.MAX_VALUE, mx0 = -Double.MAX_VALUE;
+            for (double[] row : h) {
+                for (double v : row) { mn0 = Math.min(mn0, v); mx0 = Math.max(mx0, v); }
+            }
+            // ★★★ 2026-09-24【skelonly 必须画出湖泊（用户判据："你倒是把湖泊渲染出来啊"）】★★★
+            //   ⚠ 上一版 skelonly 为省时间跳过 sampleAll，而湖泊色块【也】在那条链上
+            //     ⇒ 图上完全没有湖。湖泊其实不需要 sampleAll：chunk cells 自带
+            //     `c.riverType != 0`（有水的河/湖列）与 `c.isLake`、`c.isWater()`（海洋）
+            //     ⇒ 直接逐像素上色即可，零额外查询成本。
+            //   配色（与全量模式一致）：湖 = 蓝 #2E86FF、海 = 深蓝 #14406E；陆地为山体阴影。
+            BufferedImage img = shade(h, mn0, mx0);
+            int wetPx = 0, seaPx = 0;
+            for (int j = 0; j < w; j++) {
+                for (int i = 0; i < w; i++) {
+                    int x = bx - radius + i, z = bz - radius + j;
+                    Cell[] cells = gt.getChunkCells(x >> 4, z >> 4);
+                    Cell c = cells[Math.floorMod(x, 16) * 16 + Math.floorMod(z, 16)];
+                    boolean sea = c.isWater();
+                    boolean wet = c.riverType != 0 && !sea;
+                    if (!sea && !wet) continue;
+                    int col = sea ? 0x14406E : 0x2E86FF;
+                    int rgb = img.getRGB(i, j);
+                    double al = sea ? 0.85 : 0.75;
+                    int r0 = (rgb >> 16) & 0xFF, g0 = (rgb >> 8) & 0xFF, b0 = rgb & 0xFF;
+                    int r1 = (col >> 16) & 0xFF, g1 = (col >> 8) & 0xFF, b1 = col & 0xFF;
+                    img.setRGB(i, j, ((int) (r0 * (1 - al) + r1 * al) << 16)
+                            | ((int) (g0 * (1 - al) + g1 * al) << 8)
+                            | (int) (b0 * (1 - al) + b1 * al));
+                    if (sea) seaPx++; else wetPx++;
+                }
+            }
+            int[] skc = overlaySkeleton(img, gt, tp, seed, bx, bz, radius);
+            System.out.printf("  [skelonly] 骨架段 %d（湖段 %d）· 湖/河水格 %d · 海格 %d ·"
+                            + " 跳过 sampleAll/三联/流量 ⇒ 轻量出图%n",
+                    skc[0], skc[1], wetPx, seaPx);
+            reportSkeletonQuality(gt, gen, tp, seed, bx, bz, radius);
+            try {
+                File dirS = new File("build/waterview");
+                dirS.mkdirs();
+                ImageIO.write(img, "png", new File(dirS, "skeleton.png"));
+                ImageIO.write(img, "png", new File(dirS, "panels_3.png"));
+                System.out.println("  skeleton.png / panels_3.png 已写出（skelonly 轻量模式）");
+            } catch (java.io.IOException e) {
+                System.out.println("  [skelonly] 写图失败：" + e.getMessage());
+            }
+            return;
         }
 
         // ★★★ 2026-09-22【湖域完整性量测】—— 回答用户判据："有部分明显还是湖泊的部分" ★★★
@@ -395,6 +545,15 @@ public final class WaterViewProbe {
             BufferedImage p3 = mergePanel(hs,                       // 叠加（最终地形底，不变）
                     riverDom, 0x00C8B4, 0x7CFFE8,
                     lakeDom, 0x2E86FF, 0x9CC8FF, alpha);
+            // ★ 2026-09-23 用户判据："把骨架线显示出来"——骨架折线直接叠进三个面板
+            //   （此前只画在独立的 skeleton.png 上，三联图里看不到线）。
+            int[] skp = overlaySkeleton(p1, gt, tp, seed, bx, bz, radius);
+            overlaySkeleton(p2, gt, tp, seed, bx, bz, radius);
+            overlaySkeleton(p3, gt, tp, seed, bx, bz, radius);
+            System.out.printf("  三联面板已叠骨架线：%d 段（其中湖段 %d）· 青=河 蓝=湖段 暗蓝点=湖域%n",
+                    skp[0], skp[1]);
+            // ★ 2026-09-23【T0】骨架质量客观尺子（穿脊率 / 水面下切 / 坡向一致度 / 出口开放性）
+            reportSkeletonQuality(gt, gen, tp, seed, bx, bz, radius);
             BufferedImage tri = new BufferedImage(w * 3 + 8, w, BufferedImage.TYPE_INT_RGB);
             java.awt.Graphics2D g2 = tri.createGraphics();
             g2.setColor(new java.awt.Color(0x22, 0x22, 0x22));
@@ -530,8 +689,16 @@ public final class WaterViewProbe {
             // ★★★ 2026-09-19 门控链诊断（用户指正：水没到岸就停）：
             //   对"该有水却干"的格，逐层打印是哪一道门把它拒了。
             //   这是唯一能定死"直线是谁切的"的办法。
-            int dx1 = args.length > 6 ? Integer.parseInt(args[6]) : Integer.MIN_VALUE;
-            int dz1 = args.length > 7 ? Integer.parseInt(args[7]) : Integer.MIN_VALUE;
+            // ★ 2026-09-23：args[6] 可能是 "skeleton"/"fastlake" 等标志位而非坐标
+            //   （实测完整模式 + skeleton 在此 NumberFormatException 烧掉 12 分钟）。
+            //   非数字 ⇒ 不设门控链坐标（骨架标志的解析在 main 顶部 contains 处）。
+            int dx1 = Integer.MIN_VALUE, dz1 = Integer.MIN_VALUE;
+            try {
+                dx1 = args.length > 6 ? Integer.parseInt(args[6]) : Integer.MIN_VALUE;
+                dz1 = args.length > 7 ? Integer.parseInt(args[7]) : Integer.MIN_VALUE;
+            } catch (NumberFormatException ignore) {
+                // 标志位混入坐标位 ⇒ 跳过门控链诊断
+            }
             if (dx1 != Integer.MIN_VALUE) {
                 RiverLineNetwork net = gt.hydrologyNetwork() /* ★ 游戏同实例（勿自建：自建缺 precip/delta 等接线 ⇒ 与雕刻不同源） */;
                 RiverLineParams rlp = RiverLineParams.defaults();
@@ -983,6 +1150,40 @@ public final class WaterViewProbe {
         return img;
     }
 
+    /** 两点是否基本重合（块，容差 0.01）。 */
+    private static boolean nearPt(double x0, double z0, double x1, double z1) {
+        return Math.abs(x0 - x1) < 0.01 && Math.abs(z0 - z1) < 0.01;
+    }
+
+    /** 叉积（p→q）×（p→r）的符号量，用于线段相交判定。 */
+    private static double crossOf(double px, double py, double qx, double qy,
+                                  double rx, double ry) {
+        return (qx - px) * (ry - py) - (qy - py) * (rx - px);
+    }
+
+    /**
+     * ★ 2026-09-24【真交叉判定（用户判据③）】：两段线段在【内部】相交。
+     * 共享端点（= 合法汇合/相接）不算交叉 ⇒ 先排除端点重合。
+     */
+    private static boolean segmentsProperlyCross(double[] a, double[] b) {
+        if (nearPt(a[0], a[1], b[0], b[1]) || nearPt(a[0], a[1], b[2], b[3])
+                || nearPt(a[2], a[3], b[0], b[1]) || nearPt(a[2], a[3], b[2], b[3])) {
+            return false;                     // 共端点 ⇒ 汇合，不是交叉
+        }
+        double d1 = crossOf(b[0], b[1], b[2], b[3], a[0], a[1]);
+        double d2 = crossOf(b[0], b[1], b[2], b[3], a[2], a[3]);
+        double d3 = crossOf(a[0], a[1], a[2], a[3], b[0], b[1]);
+        double d4 = crossOf(a[0], a[1], a[2], a[3], b[2], b[3]);
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
+                && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+    }
+
+    /** 两段是否共享端点（合法汇合/贴合）。 */
+    private static boolean segmentsTouch(double[] a, double[] b) {
+        return nearPt(a[0], a[1], b[0], b[1]) || nearPt(a[0], a[1], b[2], b[3])
+                || nearPt(a[2], a[3], b[0], b[1]) || nearPt(a[2], a[3], b[2], b[3]);
+    }
+
     /**
      * 在图上画一段线（Bresenham 的简化版，1 像素步进）—— 骨架折线叠加用。
      *
@@ -1002,9 +1203,347 @@ public final class WaterViewProbe {
             int pz = (int) Math.round(z0 + dz * t) - (bz - radius);
             if (px < 0 || pz < 0 || px >= w || pz >= w) continue;
             img.setRGB(px, pz, col);
+            // ★ 2026-09-23：1px 太细看不清（用户"把骨架线显示出来"）⇒ 加粗到 2px。
+            if (px + 1 < w) img.setRGB(px + 1, pz, col);
             n++;
         }
         return n;
+    }
+
+    /**
+     * ★★★ 2026-09-23【骨架质量量化 —— 用户判据的客观尺子】★★★
+     *
+     * <p>用户判据（原话）："还是会有横着过山脊的情况。坡向他看不到？"<br>
+     * 本段把这两个观感变成数字，避免"看图争论"：</p>
+     *
+     * <ol>
+     *   <li><b>穿脊率（段级）</b>：沿每段折线以 ~2 块步长采样【侵蚀后地形】，若段内
+     *       地面最高点高于【两端较高者】+0.5 块 ⇒ 该段越过脊/坎（水必须爬升再下降，
+     *       物理上不可能）—— 这是"横着过山脊"的直接定义。</li>
+     *   <li><b>水面下切量</b>：同一最高点 −【两端计划水面较高者】>0.5 ⇒ 该段只能靠
+     *       雕刻硬挖一条槽穿过地形（= 图上看到的"横切峡谷"）。给出占比与最大值。</li>
+     *   <li><b>坡向一致度</b>：节点处地形梯度（中心差分，±1wu）的下行方向与折线前进
+     *       方向夹角；>60° 记"逆坡/横切"＝路由没看见坡向。给出占比与平均夹角。</li>
+     *   <li><b>出口开放性</b>：窗口+margin 内 ≤ 海平面的格数，以及地形最低点离窗口边的
+     *       距离。0 且最低点在内部 ⇒ {@code TerrainFlowSim.simulate} 只认【单一出口】
+     *       ⇒ 整个窗口的水被 ε 梯度强行汇到一个人为点（平坦区会画出与地形无关的直线）。</li>
+     * </ol>
+     */
+    /**
+     * 谷穿判定容差（块）：段中地形比两端都低超过此值 ⇒ 该段"把弯拉直、横切等高线"。
+     * 取 1.0 = Minecraft 1 格（生产插点判据 RiverLineNetwork.MONO_TOL 同值）。
+     */
+    private static final double MONO_TOL_D = 1.0;
+
+    private static void reportSkeletonQuality(GeoGenesisTerrain gt, CellGenerator gen,
+                                              TerrainParams tp, long seed,
+                                              int bx, int bz, int radius) {
+        RiverLineParams rlp = RiverLineParams.defaults();
+        double hsG = tp.horizontalScale();
+        RiverLineNetwork net = gt.hydrologyNetwork();
+        net.setSeed(seed);
+        int rgx0 = (int) Math.floor((bx - radius) / hsG / rlp.regionSize()) - 1;
+        int rgz0 = (int) Math.floor((bz - radius) / hsG / rlp.regionSize()) - 1;
+        int rgx1 = (int) Math.floor((bx + radius) / hsG / rlp.regionSize()) + 1;
+        int rgz1 = (int) Math.floor((bz + radius) / hsG / rlp.regionSize()) + 1;
+        int segAll = 0, segRidge = 0, segValley = 0, segCanyon = 0, segCanyon8 = 0, segLake = 0;
+        double worstValley = 0;
+        double worstRidge = 0, worstCanyon = 0;
+        int nodeAll = 0, nodeCross = 0, crestAll = 0;
+        double angSum = 0, crestCutSum = 0, crestCutMax = 0;
+        List<String> samples = new java.util.ArrayList<>();
+        for (int rgx = rgx0; rgx <= rgx1; rgx++) {
+            for (int rgz = rgz0; rgz <= rgz1; rgz++) {
+                RiverLineRegion rr = net.region(rgx, rgz);
+                for (RiverLineRegion.RiverPolyline pl : rr.rivers) {
+                    int m = pl.nodes.length;
+                    for (int k = 0; k + 1 < m; k++) {
+                        double ax = pl.nodes[k].x(), az = pl.nodes[k].z();
+                        double cx = pl.nodes[k + 1].x(), cz = pl.nodes[k + 1].z();
+                        double pax = ax * hsG, paz = az * hsG;
+                        if (pax < bx - radius || pax > bx + radius
+                                || paz < bz - radius || paz > bz + radius) {
+                            continue;
+                        }
+                        boolean lk = pl.lakeLevel != null
+                                && (!Double.isNaN(pl.lakeLevel[k]) || !Double.isNaN(pl.lakeLevel[k + 1]));
+                        if (lk) { segLake++; continue; }                 // 湖锚段水面由湖定
+                        double lenB = Math.hypot(cx - ax, cz - az) * hsG;
+                        if (lenB < 1e-6) continue;
+                        int steps = Math.max(2, (int) Math.ceil(lenB / 2.0));   // ~2 块步长
+                        double h0 = gen.sampleWu(ax, az).height;
+                        double h1 = gen.sampleWu(cx, cz).height;
+                        double mxMid = Double.NEGATIVE_INFINITY;
+                        double mnMid = Double.POSITIVE_INFINITY;
+                        for (int s = 1; s < steps; s++) {
+                            double t = s / (double) steps;
+                            double hh = gen.sampleWu(ax + (cx - ax) * t,
+                                    az + (cz - az) * t).height;
+                            if (hh > mxMid) mxMid = hh;
+                            if (hh < mnMid) mnMid = hh;
+                        }
+                        segAll++;
+                        double ridgeOver = mxMid - Math.max(h0, h1);
+                        // ★ 2026-09-24【谷穿判据 —— 用户指正后补上】：
+                        //   段两端在坡上、段中间穿过一条【比两端都低】的沟 ⇒ 真实河道该
+                        //   拐进那条沟；直连 = "把弯拉直、横切等高线"。
+                        //   ⚠ 这正是用户圈出的现象，上一版只查越脊方向 ⇒ 漏计、误判"不成立"。
+                        double valleyUnder = Math.min(h0, h1) - mnMid;
+                        double wRef = Math.max(pl.surfaceY[k], pl.surfaceY[k + 1]);
+                        double canyon = mxMid - wRef;
+                        if (ridgeOver > 0.5) {
+                            segRidge++;
+                            worstRidge = Math.max(worstRidge, ridgeOver);
+                        }
+                        if (valleyUnder > MONO_TOL_D) {
+                            segValley++;
+                            worstValley = Math.max(worstValley, valleyUnder);
+                        }
+                        // ★ 2026-09-23 阈值 0.5 → 3/8 两档：0.5 会被"段内局部起伏"淹没
+                        //   （河道正常下切 ~1-3 块属正常），3+ = 异常下切，8+ = 穿山级。
+                        if (canyon > 3.0) {
+                            segCanyon++;
+                            if (canyon > 8.0) segCanyon8++;
+                            if (canyon > worstCanyon && samples.size() < 8) {
+                                // ★ 2026-09-24【定位水面链：把湖锚状态一起打出来】
+                                //   若 lakeLevel 是有限值 ⇒ 该节点被判为【湖锚】（水面取湖）；
+                                //   若为 NaN ⇒ 水面被后处理压低（②回水 / ③pinned / estuary）。
+                                //   ⚠ 湖锚判定用 lakeLevel（= 湖命中水位），lakeNodes 为引用。
+                                String lv0 = pl.lakeLevel == null || Double.isNaN(pl.lakeLevel[k])
+                                        ? "NaN" : String.format("%.2f", pl.lakeLevel[k]);
+                                String lv1 = pl.lakeLevel == null || Double.isNaN(pl.lakeLevel[k + 1])
+                                        ? "NaN" : String.format("%.2f", pl.lakeLevel[k + 1]);
+                                samples.add(String.format(
+                                        "  脱节段 block(%d,%d)->(%d,%d) 地形=%.2f/%.2f "
+                                                + "计划水面=%.2f/%.2f 需下切=%.2f · 湖锚水位=%s/%s "
+                                                + "· 段内最高=%.2f 越脊=%.2f · 湖节点=%s/%s · level=%d",
+                                        (int) pax, (int) paz, (int) (cx * hsG), (int) (cz * hsG),
+                                        h0, h1, pl.surfaceY[k], pl.surfaceY[k + 1], canyon,
+                                        lv0, lv1, mxMid, ridgeOver,
+                                        pl.lakeNodes != null && pl.lakeNodes[k] != null,
+                                        pl.lakeNodes != null && pl.lakeNodes[k + 1] != null,
+                                        pl.level));
+                            }
+                            worstCanyon = Math.max(worstCanyon, canyon);
+                        }
+                        // —— 节点级：坡向一致度 + 山脊凸点（用 build 时刻地形，零额外采样）——
+                        double dxu = cx - ax, dzu = cz - az;
+                        double dl = Math.hypot(dxu, dzu);
+                        if (pl.lakeLevel != null && !Double.isNaN(pl.lakeLevel[k])) continue;
+                        double gx = (gen.sampleWu(ax + 1, az).height - gen.sampleWu(ax - 1, az).height) / 2.0;
+                        double gz = (gen.sampleWu(ax, az + 1).height - gen.sampleWu(ax, az - 1).height) / 2.0;
+                        double gl = Math.hypot(gx, gz);
+                        if (gl > 1e-4 && dl > 1e-6) {                     // 平地无坡向可言
+                            double cos = (-gx / gl) * (dxu / dl) + (-gz / gl) * (dzu / dl);
+                            double ang = Math.toDegrees(Math.acos(Math.max(-1, Math.min(1, cos))));
+                            nodeAll++;
+                            angSum += ang;
+                            if (ang > 60) nodeCross++;
+                        }
+                        if (pl.terrainY != null && k > 0 && k + 1 < m) {
+                            double tc = pl.terrainY[k];
+                            if (tc > pl.terrainY[k - 1] + 0.5 && tc > pl.terrainY[k + 1] + 0.5) {
+                                crestAll++;                          // 路径越过一道脊（局部凸点）
+                                double cut = tc - pl.surfaceY[k];
+                                crestCutSum += cut;
+                                crestCutMax = Math.max(crestCutMax, cut);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println("── ★ 骨架质量量化（谷穿 / 穿脊 / 坡向 / 出口）──");
+        System.out.printf("  折线段 %d（湖锚段 %d 已剔除）%n", segAll, segLake);
+        System.out.printf("  ★谷穿段（段中比两端都低 >%.1f 块 ⇒ 该拐进沟却直连）= %d (%.1f%%) · 最大 %.1f 块%n",
+                MONO_TOL_D, segValley, segAll == 0 ? 0.0 : 100.0 * segValley / segAll, worstValley);
+        System.out.printf("  穿脊段（段中比两端都高 >0.5 块）= %d (%.1f%%) · 最大段内超出=%.2f 块%n",
+                segRidge, segAll == 0 ? 0.0 : 100.0 * segRidge / segAll, worstRidge);
+        System.out.printf("  单调插点累计（RiverLineNetwork.monotoneInsertTotal）= %d 个节点%n",
+                RiverLineNetwork.monotoneInsertTotal.get());
+        System.out.printf("  需雕刻挖穿（段内最高地面 > 计划水面+3）= %d (%.1f%%) · 其中穿山级(>8)=%d · 最大需下切=%.2f 块%n",
+                segCanyon, segAll == 0 ? 0.0 : 100.0 * segCanyon / segAll, segCanyon8, worstCanyon);
+        System.out.printf("  坡向：有效节点 %d · 与下行方向夹角>60° = %d (%.1f%%) · 平均夹角 %.1f°%n",
+                nodeAll, nodeCross, nodeAll == 0 ? 0.0 : 100.0 * nodeCross / nodeAll,
+                nodeAll == 0 ? 0.0 : angSum / nodeAll);
+        System.out.printf("  路径越脊凸点 %d（占节点 %.1f%%）· 凸点平均需下切 %.2f 块 / 最大 %.2f 块%n",
+                crestAll, nodeAll + crestAll == 0 ? 0.0 : 100.0 * crestAll / (nodeAll + crestAll),
+                crestAll == 0 ? 0.0 : crestCutSum / crestAll, crestCutMax);
+        System.out.println("  越脊样例：");
+        samples.forEach(s -> System.out.println(s));
+        // ★★★ 2026-09-24【水文生命周期统计 —— 验收尺子】★★★
+        //   用户判据："使每条完整水系都能按预期经历全部生命周期阶段，并在输出中明确区分
+        //   不同阶段的标志或状态。"
+        //   口径：对窗口内每个 region 的骨架模拟结果汇总（含被建网缓存的结果）。
+        {
+            int src = 0, conf = 0, entry = 0, lakeS = 0, spill = 0,
+                    down = 0, sea = 0, rout = 0, invalid = 0, pathsAll = 0;
+            java.util.Map<String, int[]> byRegion = new java.util.LinkedHashMap<>();
+            for (int rgx = rgx0; rgx <= rgx1; rgx++) {
+                for (int rgz = rgz0; rgz <= rgz1; rgz++) {
+                    RiverLineRegion rr = net.region(rgx, rgz);
+                    pathsAll += rr.rivers.size();
+                }
+            }
+            System.out.printf("  ★生命周期：窗口内折线总数 = %d（阶段计数由 RiverLineNetwork 每 region 日志给出）%n",
+                    pathsAll);
+            System.out.println("    阶段定义：SOURCE 源头 · CHANNEL 河道 · BASIN_ENTRY 入洼"
+                    + " · LAKE_STORAGE 蓄水 · SPILLWAY 溢口 · DOWNSTREAM 续流"
+                    + " · CONFLUENCE 汇流 · SEA 入海 · REGION_OUTLET 区出口"
+                    + " · INVALID_TERMINATION 异常断头（验收目标 = 0）");
+            System.out.println("    判读：INVALID_TERMINATION > 0 ⇒ 仍有路径无合法归宿；"
+                    + "SPILLWAY/DOWNSTREAM > 0 ⇒ 洼地蓄水→溢口→续流已生效。");
+        }
+        // ★★★ 2026-09-24【骨架交叉检测 —— 用户判据③】★★★
+        //   用户实测："我看见图中有骨架交叉的情况。"
+        //   河流是树状（支流汇入干流），【视觉上不应出现两条折线交叉穿越】。
+        //   本段把所有参与渲染的骨架段收集起来，两两做【真交叉】判定
+        //   （忽略共享端点/贴合的汇合情形）⇒ 输出交叉次数 + 样例坐标。
+        //   判据：标准线段相交（叉积异号）+ 排除端点相接（共端点=合法汇合）。
+        {
+            List<double[]> segs = new java.util.ArrayList<>();   // {x0,z0,x1,z1}（块）
+            for (int rgx = rgx0; rgx <= rgx1; rgx++) {
+                for (int rgz = rgz0; rgz <= rgz1; rgz++) {
+                    RiverLineRegion rr = net.region(rgx, rgz);
+                    for (RiverLineRegion.RiverPolyline pl : rr.rivers) {
+                        for (int k = 0; k + 1 < pl.nodes.length; k++) {
+                            double ax2 = pl.nodes[k].x() * hsG, az2 = pl.nodes[k].z() * hsG;
+                            double cx2 = pl.nodes[k + 1].x() * hsG, cz2 = pl.nodes[k + 1].z() * hsG;
+                            if (Math.max(ax2, cx2) < bx - radius || Math.min(ax2, cx2) > bx + radius
+                                    || Math.max(az2, cz2) < bz - radius
+                                    || Math.min(az2, cz2) > bz + radius) {
+                                continue;
+                            }
+                            segs.add(new double[]{ax2, az2, cx2, cz2});
+                        }
+                    }
+                }
+            }
+            int cross = 0, touch = 0;
+            List<String> crossSamples = new java.util.ArrayList<>();
+            for (int i = 0; i < segs.size(); i++) {
+                double[] s1 = segs.get(i);
+                for (int j = i + 1; j < segs.size(); j++) {
+                    double[] s2 = segs.get(j);
+                    if (segmentsProperlyCross(s1, s2)) {
+                        cross++;
+                        if (crossSamples.size() < 10) {
+                            crossSamples.add(String.format(
+                                    "    交叉 #%d: (%.0f,%.0f)-(%.0f,%.0f) × (%.0f,%.0f)-(%.0f,%.0f)",
+                                    cross, s1[0], s1[1], s1[2], s1[3], s2[0], s2[1], s2[2], s2[3]));
+                        }
+                    } else if (segmentsTouch(s1, s2)) {
+                        touch++;
+                    }
+                }
+            }
+            System.out.printf("  ★骨架交叉：参与渲染段 %d · 【真交叉 %d 对】· 端点相接/贴合 %d 对%n",
+                    segs.size(), cross, touch);
+            System.out.println("    判读：交叉 > 0 ⇒ 树状河网出现了穿越（渲染直线跨过另一条线）；");
+            System.out.println("          端点相接 = 合法汇合（支流汇入干流），不计为交叉。");
+            crossSamples.forEach(System.out::println);
+        }
+        // ★ 2026-09-24【整条折线转储 —— 定位"水面恒定且与地形脱节"的源头】
+        //   只看中间段会误判（T1c/T2a 两轮教训）⇒ 打印【含脱节段的整条折线】全部节点。
+        //   判读：源头水面就已很低且下游全同值 ⇒ 后处理把整条钉死；源头正常、中段突变
+        //         ⇒ 突变点即写入者。
+        int dumped = 0;
+        for (int rgx = rgx0; rgx <= rgx1 && dumped < 3; rgx++) {
+            for (int rgz = rgz0; rgz <= rgz1 && dumped < 3; rgz++) {
+                RiverLineRegion rr = net.region(rgx, rgz);
+                for (RiverLineRegion.RiverPolyline pl : rr.rivers) {
+                    if (dumped >= 3) break;
+                    int m2 = pl.nodes.length;
+                    boolean bad = false;
+                    for (int k = 0; k < m2; k++) {
+                        double hh = pl.terrainY == null ? 0 : pl.terrainY[k];
+                        if (hh - pl.surfaceY[k] > 12.0) { bad = true; break; }
+                    }
+                    if (!bad) continue;
+                    dumped++;
+                    System.out.printf("  ── 转储折线 #%d（节点 %d，region(%d,%d)，湖段标记 %s）%n",
+                            dumped, m2, rgx, rgz, pl.lakeLevel != null ? "有" : "无");
+                    for (int k = 0; k < m2; k++) {
+                        double hh = pl.terrainY == null ? Double.NaN : pl.terrainY[k];
+                        String lv = pl.lakeLevel == null || Double.isNaN(pl.lakeLevel[k]) ? "-"
+                                : String.format("%.2f", pl.lakeLevel[k]);
+                        System.out.printf("     k=%-3d block(%d,%d) 地形=%.2f 水面=%.2f 差=%.2f 湖水位=%s%n",
+                                k, (int) Math.round(pl.nodes[k].x() * hsG),
+                                (int) Math.round(pl.nodes[k].z() * hsG),
+                                hh, pl.surfaceY[k], hh - pl.surfaceY[k], lv);
+                    }
+                }
+            }
+        }
+        // —— 出口开放性：填洼是否只认【单一出口】（TerrainFlowSim.simulate 的种子条件）——
+        double seaLevel = gen.heightCurve().seaLevelY();
+        int under = 0;
+        double lo = Double.MAX_VALUE;
+        int lox = 0, loz = 0;
+        int ext = radius + 128;
+        for (int z = bz - ext; z <= bz + ext; z += 16) {
+            for (int x = bx - ext; x <= bx + ext; x += 16) {
+                double hh = gen.sampleWu(x / hsG, z / hsG).height;
+                if (hh <= seaLevel) under++;
+                if (hh < lo) { lo = hh; lox = x; loz = z; }
+            }
+        }
+        int edgeDist = Math.min(Math.min(lox - (bx - ext), (bx + ext) - lox),
+                Math.min(loz - (bz - ext), (bz + ext) - loz));
+        System.out.printf("  出口开放性：窗口+margin 内 ≤ 海平面格数=%d · 地形最低点 block(%d,%d) h=%.2f"
+                        + " · 距边界 %d 块%s%n",
+                under, lox, loz, lo, edgeDist, under == 0 ? "  ⚠ 无海平面出口 ⇒ 填洼只认单一内部出口" : "");
+    }
+
+    /**
+     * ★ 2026-09-23 把生产骨架折线 + 湖域轮廓叠画到任意面板
+     *   （三联图 panels_3 与 skeleton.png 共用同一数据源，口径一致）。
+     *
+     * @return {画线段数, 其中湖段数}
+     */
+    private static int[] overlaySkeleton(BufferedImage img, GeoGenesisTerrain gt, TerrainParams tp,
+                                         long seed, int bx, int bz, int radius) {
+        RiverLineParams rlp = RiverLineParams.defaults();
+        double hsG = tp.horizontalScale();
+        int iw = img.getWidth(), ih = img.getHeight();
+        RiverLineNetwork net = gt.hydrologyNetwork() /* ★ 游戏同实例（勿自建） */;
+        net.setSeed(seed);
+        int rgx0 = (int) Math.floor((bx - radius) / hsG / rlp.regionSize()) - 1;
+        int rgz0 = (int) Math.floor((bz - radius) / hsG / rlp.regionSize()) - 1;
+        int rgx1 = (int) Math.floor((bx + radius) / hsG / rlp.regionSize()) + 1;
+        int rgz1 = (int) Math.floor((bz + radius) / hsG / rlp.regionSize()) + 1;
+        int drawn = 0, lakePts = 0;
+        for (int rgx = rgx0; rgx <= rgx1; rgx++) {
+            for (int rgz = rgz0; rgz <= rgz1; rgz++) {
+                RiverLineRegion rr = net.region(rgx, rgz);
+                for (RiverLineRegion.RiverPolyline pl : rr.rivers) {
+                    for (int k = 0; k + 1 < pl.nodes.length; k++) {
+                        boolean isLk = pl.lakeLevel != null
+                                && (!Double.isNaN(pl.lakeLevel[k]) || !Double.isNaN(pl.lakeLevel[k + 1]));
+                        int col = isLk ? 0x1E78D2 : 0x00B4A0;
+                        // ⚠ 2026-09-24【已撤回"渲染加密"尝试】：几何上不成立 ——
+                        //   两条【镜像对角】段（相邻格）在 2×2 格中心交叉，加密采样点
+                        //   不改变交叉拓扑（交叉点在格间，非采样疏密问题）。
+                        //   真因见 reportSkeletonQuality 的交叉检测输出：4 块格采样 +
+                        //   骨架路径【无防交叉守卫】⇒ 属生产几何问题（也影响雕刻）。
+                        drawn += drawSeg(img, pl.nodes[k].x() * hsG, pl.nodes[k].z() * hsG,
+                                pl.nodes[k + 1].x() * hsG, pl.nodes[k + 1].z() * hsG,
+                                bx, bz, radius, col);
+                        if (isLk) lakePts++;
+                    }
+                }
+                for (RiverLineRegion.LakeNode ln : rr.lakes) {
+                    if (ln.hasOutline()) {
+                        for (int ci = 0; ci < ln.cellX.length; ci++) {
+                            int px = (int) Math.round(ln.cellX[ci] * hsG) - (bx - radius);
+                            int pz = (int) Math.round(ln.cellZ[ci] * hsG) - (bz - radius);
+                            if (px >= 0 && pz >= 0 && px < iw && pz < ih) img.setRGB(px, pz, 0x0A3C7A);
+                        }
+                    }
+                }
+            }
+        }
+        return new int[]{drawn, lakePts};
     }
 
     private static BufferedImage shade(double[][] h, double mn, double mx) {

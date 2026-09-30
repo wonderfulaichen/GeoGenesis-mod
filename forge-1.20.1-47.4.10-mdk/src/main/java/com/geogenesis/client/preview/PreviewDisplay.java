@@ -401,7 +401,7 @@ public class PreviewDisplay extends AbstractWidget {
     //      · 产出不再依赖"邻居 tile 是否在缓存" ⇒ 旧预览缓存必须失效
     // 72 = 2026-09-17 ★ 湖岸粗格 BFS 12wu → 6wu（直边网格伪影）
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 72;   // ★ 72：湖岸粗格 BFS 12wu → 6wu（直边网格伪影）
+    private static final int CACHE_SCHEMA_VERSION = 73;   // ★ 73：唯一水文管线（洼地蓄水=湖 / 最低溢口 / 跨 tile 端口）⇒ 水文产出全变
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

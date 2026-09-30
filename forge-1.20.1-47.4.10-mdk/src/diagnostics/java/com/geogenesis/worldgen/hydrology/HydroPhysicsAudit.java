@@ -101,7 +101,10 @@ public final class HydroPhysicsAudit {
         flowSimCheapTerrain = args.length > 5 && "cheap".equals(args[5]);
         // ★ 2026-09-22 定向断点：追踪失败样本 block 的 carver 决策链（回答"命中在·水不在"）。
         //   样本 block(-444,-76) = 审计河尾无水 r(-1,-1)#26 k=141..144 所在（同湖多节点）。
-        HydrologyBlockCarver.TRACE_BLOCK = HydrologyBlockCarver.traceKey(-444, -76);
+        // ★ 2026-09-23 R-C1：args[7],args[8] 可改断点坐标（不传 = 旧行 -444,-76）。
+        int trX = args.length > 7 ? Integer.parseInt(args[7]) : -444;
+        int trZ = args.length > 8 ? Integer.parseInt(args[8]) : -76;
+        HydrologyBlockCarver.TRACE_BLOCK = HydrologyBlockCarver.traceKey(trX, trZ);
         // ★ 2026-09-21：审计【生产侧】时可选打开流体骨架路线（对比新/旧生产路线）
         if (args.length > 6 && "skeleton".equals(args[6])) {
             RiverLineNetwork.flowSkeletonRouting = true;
@@ -156,6 +159,7 @@ public final class HydroPhysicsAudit {
         runFlowSim = label.startsWith("NEW");
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(currentSeed);
+        staticGt = gt;   // ★ F1i：供 cellAtB 窗外取格（河尾可能落在窗口矩形外）
         Map<Long, Cell[]> cache = new HashMap<>();
         cellArr = new Cell[win * win];
         for (int j = 0; j < win; j++) {
@@ -674,6 +678,8 @@ public final class HydroPhysicsAudit {
      */
     private static void routeFidelity(List<RiverLineRegion> regions) {
         int steps = 0, uphill = 0, crossCut = 0, beyond45 = 0;
+        int upLegit = 0, upReal = 0;   // ★ F3 上坡二分类：合法(湖面/回水穿越) vs 真违例
+        int crLegit = 0, crReal = 0;    // ★ F3 横切二分类：同一"填洼面穿越"机理
         double angSum = 0, angAbsSum = 0, sinuSum = 0;
         int sinuN = 0;
         List<String> worst = new ArrayList<>();
@@ -694,7 +700,22 @@ public final class HydroPhysicsAudit {
                     if (d < 1e-6) continue;
                     steps++;
                     double h0 = heightAtBlock(bx0, bz0), h1 = heightAtBlock(bx1, bz1);
-                    if (h1 > h0 + 1e-6) uphill++;
+                    // ★ F3 沉水判据（上坡/横切共用）：步任一端在【本节点水面下】或湖格
+                    //   ⇒ 该步走在填洼/回水面上（对真实地形的夹角与上坡读数物理合法）。
+                    boolean sub = false;
+                    {
+                        Cell ca = cellAtB((int) Math.round(bx0), (int) Math.round(bz0));
+                        Cell cb = cellAtB((int) Math.round(bx1), (int) Math.round(bz1));
+                        double s0 = p.surfaceY[k - 1], s1 = p.surfaceY[k];
+                        if (ca != null && (ca.isLake
+                                || (ca.riverType != 0 && h0 < s0 - 0.5))) sub = true;
+                        if (cb != null && (cb.isLake
+                                || (cb.riverType != 0 && h1 < s1 - 0.5))) sub = true;
+                    }
+                    if (h1 > h0 + 1e-6) {
+                        uphill++;
+                        if (sub) upLegit++; else upReal++;
+                    }
                     // 局部最陡下降方向（中央差分，观察窗 ±6 块）
                     double[] g = descentDir(bx0, bz0);
                     if (g == null) continue;
@@ -705,10 +726,17 @@ public final class HydroPhysicsAudit {
                     if (ang > 45.0) beyond45++;
                     if (ang > 60.0) {
                         crossCut++;
-                        if (worst.size() < 4) {
-                            worst.add(String.format(
-                                    "       横切 %d° block(%.0f,%.0f)→(%.0f,%.0f) 高差 %.2f 局部梯度(%.2f,%.2f)",
-                                    (int) ang, bx0, bz0, bx1, bz1, h1 - h0, g[0], g[1]));
+                        // ★ F3：沉水步（填洼/回水面穿越）= 物理合法 —— 水沿 ε 微坡走，
+                        //   与真实地形最陡方向本就可垂直（等高线方向）；非沉水才计真违例。
+                        if (sub) {
+                            crLegit++;
+                        } else {
+                            crReal++;
+                            if (worst.size() < 4) {
+                                worst.add(String.format(
+                                        "       横切 %d° block(%.0f,%.0f)→(%.0f,%.0f) 高差 %.2f 局部梯度(%.2f,%.2f)",
+                                        (int) ang, bx0, bz0, bx1, bz1, h1 - h0, g[0], g[1]));
+                            }
                         }
                     }
                 }
@@ -726,6 +754,10 @@ public final class HydroPhysicsAudit {
                 steps, uphill, 100.0 * uphill / Math.max(1, steps),
                 crossCut, 100.0 * crossCut / Math.max(1, steps),
                 beyond45, 100.0 * beyond45 / Math.max(1, steps));
+        System.out.printf("  上坡二分类：湖面/回水穿越(物理合法) %d · 真路由违例 %d（目标 0）%n",
+                upLegit, upReal);
+        System.out.printf("  横切二分类：填洼面穿越(物理合法) %d · 真路由违例 %d（目标 0）%n",
+                crLegit, crReal);
         System.out.printf("  与最陡下降的平均夹角 %.1f° · 蜿蜒度(均值) %.2f%n",
                 angSum / Math.max(1, steps), sinuSum / Math.max(1, sinuN));
         worst.forEach(System.out::println);
@@ -763,7 +795,7 @@ public final class HydroPhysicsAudit {
         List<Double> widths = new ArrayList<>();
         double wMin = 0, wMed = 0, wMax = 0;
         double sea = gen.seaLevel();
-        List<String> dryEx = new ArrayList<>(), inlandEx = new ArrayList<>();
+        List<String> dryEx = new ArrayList<>(), inlandEx = new ArrayList<>(), upEx = new ArrayList<>();
 
         for (RiverLineRegion r : regions) {
             double bx0 = r.rx * 640.0, bz0 = r.rz * 640.0;
@@ -814,14 +846,41 @@ public final class HydroPhysicsAudit {
                     // 判据2：水面必须 > 河床（没有"水面低于河床"的倒置）
                     if (p.surfaceY[k] < p.surfaceY[k] - p.depth[k]) nodeUnder++;   // 恒 false，占位
                     // 判据3：沿程不得抬升
-                    if (k > 0 && p.surfaceY[k] > p.surfaceY[k - 1] + 1e-6) nodeUp++;
+                    if (k > 0 && p.surfaceY[k] > p.surfaceY[k - 1] + 1e-6) {
+                    nodeUp++;
+                    // ★ R-C1：补打抬升样例（坐标+两节点水面，定位是②河适应湖还是尾抬升）
+                    if (upEx.size() < 7) {
+                        upEx.add(String.format(
+                                "       水面抬升 r(%d,%d)#%d k=%d block(%d,%d) 上游=%.2f 本节点=%.2f"
+                                        + " 地形Y=%.2f lakeNode=%b",
+                                r.rx, r.rz, ri, k,
+                                (int) Math.round(p.nodes[k].x() * 2.0),
+                                (int) Math.round(p.nodes[k].z() * 2.0),
+                                p.surfaceY[k - 1], p.surfaceY[k],
+                                p.terrainY != null ? p.terrainY[k] : Double.NaN,
+                                p.lakeNodes != null && p.lakeNodes[k] != null));
+                    }
+                }
                 }
                 // 河尾
                 int tx = (int) Math.round(p.nodes[n - 1].x() * 2.0);
                 int tz = (int) Math.round(p.nodes[n - 1].z() * 2.0);
                 Cell tc = cellAtB(tx, tz);
                 boolean wet = tc != null && (tc.riverType != 0 || tc.isWater() || tc.isLake);
-                if (!wet) tailDry++;
+                if (!wet) {
+                    tailDry++;
+                    // ★ R-C1：补打河尾无水样例（原表只给计数，无坐标无法定位）
+                    if (dryEx.size() < 8) {
+                        dryEx.add(String.format(
+                                "       河尾无水 r(%d,%d)#%d k=%d/%d block(%d,%d) 折线水面=%.1f"
+                                        + " 地形Y=%.1f rt=%d surf=%.2f isLake=%b",
+                                r.rx, r.rz, ri, n - 1, n, tx, tz, p.surfaceY[n - 1],
+                                p.terrainY != null ? p.terrainY[n - 1] : Double.NaN,
+                                tc == null ? -1 : tc.riverType,
+                                tc == null ? -1 : tc.riverSurfaceY,
+                                tc != null && tc.isLake));
+                    }
+                }
                 // 判据4：终点语义
                 terminals++;
                 boolean isOcean = tc != null && tc.isWater();
@@ -841,13 +900,26 @@ public final class HydroPhysicsAudit {
                     junc++;
                     if (jn[1] > 0 && p.width[n - 1] > jn[1] * 1.10) juncBad++;
                 }
-                else if (inside) {
+                // ★ R-C1 判据修正：内陆 = 终点四分类【全 MISS】（非海/非湖/非汇/非出口）
+                //   且在区内。原写法挂在 jn==null 后 ⇒ 【终点是湖但不在汇合距离内】的
+                //   尾被误计内陆（实测 8/8 样例尾格 isLake=true 却进内陆桶）。
+                boolean endpointMiss = !isOcean && !isLake && !isJoin && !isOutlet;
+                if (endpointMiss && inside) {
                     inland++;
-                    if (inlandEx.size() < 5) {
+                    if (inlandEx.size() < 8) {
+                        // ★ R-C1：补"距最近湖"判据数据 —— 区分【尾在湖里但 isLake=false】
+                        //   （判据口径漏判，河口进了湖但格标志是河）vs 真死尾。
+                        double dl = Double.POSITIVE_INFINITY;
+                        for (RiverLineRegion.LakeNode ln : r.lakes) {
+                            dl = Math.min(dl, Math.hypot(
+                                    p.nodes[n - 1].x() - ln.x, p.nodes[n - 1].z() - ln.z) * 2.0);
+                        }
                         inlandEx.add(String.format(
-                                "       内陆终止 r(%d,%d)#%d 节点=%d 尾block(%d,%d) 折线水面=%.1f 地形=%.1f",
+                                "       内陆终止 r(%d,%d)#%d 节点=%d 尾block(%d,%d) 折线水面=%.1f"
+                                        + " 地形=%.1f 尾格rt=%d isLake=%b 距最近湖=%.0f块",
                                 r.rx, r.rz, ri, n, tx, tz, p.surfaceY[n - 1],
-                                p.terrainY != null ? p.terrainY[n - 1] : Double.NaN));
+                                p.terrainY != null ? p.terrainY[n - 1] : Double.NaN,
+                                tc == null ? -1 : tc.riverType, tc != null && tc.isLake, dl));
                     }
                 }
             }
@@ -892,14 +964,29 @@ public final class HydroPhysicsAudit {
             inlandEx.forEach(System.out::println);
             System.out.println();
         }
+        if (!upEx.isEmpty()) {
+            System.out.println("水面抬升前几例：");
+            upEx.forEach(System.out::println);
+            System.out.println();
+        }
         routeFidelity(regions);
     }
 
     private static Cell cellAtB(int bx, int bz) {
         int i = bx - x0, j = bz - z0;
-        if (i < 0 || j < 0 || i >= win || j >= win) return null;
+        if (i < 0 || j < 0 || i >= win || j >= win) {
+            // ★ F1i：窗外格不再假 null（原判据把"跨窗河尾"一律计成河尾无水，12 例中
+            //   至少 8 例实为窗口边缘尾 rt=-1）—— 改走生产取路给真实湿润状态。
+            GeoGenesisTerrain g = staticGt;
+            if (g == null) return null;
+            Cell[] cs = g.getChunkCells(bx >> 4, bz >> 4);
+            return cs[Math.floorMod(bx, 16) * 16 + Math.floorMod(bz, 16)];
+        }
         return cellArr[j * win + i];
     }
+
+    /** 生产地形（窗外取格回退用；在 runFlowSim 段随 gt 赋值）。 */
+    private static volatile GeoGenesisTerrain staticGt;
 
     private static Cell cellAt(GeoGenesisTerrain gt, Map<Long, Cell[]> cache, int bx, int bz,
                                Runnable onFail) {

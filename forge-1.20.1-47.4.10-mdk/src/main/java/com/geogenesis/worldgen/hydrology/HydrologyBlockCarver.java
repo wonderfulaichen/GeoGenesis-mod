@@ -146,6 +146,25 @@ public final class HydrologyBlockCarver {
      */
     public static volatile long TRACE_BLOCK = Long.MIN_VALUE;
 
+    /**
+     * ★★★ 2026-09-23【宽度雕刻旁路】（默认 true = 生产行为）★★★
+     *
+     * <p>用户判据（骨架调试期）："那些宽度应该不要运行 —— 现在的宽度等雕刻机制
+     * 非常垃圾，效果不好还容易干扰目前的骨架调试。"</p>
+     *
+     * <p>{@code false} 时：carveColumn 的【河分支】直接回传透传列
+     * （carved=original、erosion=0、mask=1、fillWater=false、水位=0）⇒
+     * 合成层写回等价于"该列无河线命中"（与无命中列逐位同构）：
+     * 地形 = 纯侵蚀、不挖宽谷、不放河水。湖分支在河分支【之前】返回 ⇒ 湖不受影响。</p>
+     *
+     * <p>用途：骨架路线（flowSkeletonRouting）形态调试图 —— 河只显示折线骨架，
+     * 无宽度/雕刻噪声。仅诊断探针可设；生产默认 true，确定性门禁不受影响。</p>
+     *
+     * <p>用法：{@code HydrologyBlockCarver.WIDTH_CARVE = false;}（须在首次
+     * getChunkCells 之前）。回退：改回 true 或去掉探针参数 {@code nocarve}。</p>
+     */
+    public static volatile boolean WIDTH_CARVE = true;
+
     /** 由 block 坐标构造断点键。 */
     public static long traceKey(int bx, int bz) {
         return ((long) bx << 32) ^ (bz & 0xffffffffL);
@@ -535,6 +554,19 @@ public final class HydrologyBlockCarver {
         if (TR) {
             System.out.println("[CARVE-TRACE]   ⇒ 未走湖分支 ⇒ 进入【河分支】"
                     + "（lakeSample 为 null 或 本列在河槽内）");
+        }
+        // ★★★ 2026-09-23【宽度雕刻旁路】（WIDTH_CARVE=false，骨架调试专用）★★★
+        //   透传列与"无命中列"在合成层逐位同构：erosion=0、mask=1 ⇒ 写回恒等于
+        //   eroded 地形（不挖宽谷）；fillWater=false ⇒ riverType=0（不灌河水）；
+        //   水位=0 ⇒ 无假水位。湖分支已在上方返回 ⇒ 湖水/湖域完全不受影响。
+        //   回退：探针去掉 nocarve 参数（WIDTH_CARVE 恢复 true）。
+        if (!WIDTH_CARVE) {
+            if (TR) {
+                System.out.println("[CARVE-TRACE]   ⇒ 出口=宽度旁路(WIDTH_CARVE=false) 透传列");
+            }
+            return new HydrologyBlockCarvedColumn(blockX, blockZ,
+                    original, original, 0.0, 0.0,
+                    0.0, 1.0, false, false);
         }
         // ★ 折痕根因：雕刻几何只用"最近段距离"dist，而折线距离场在弯角平分线 /
         //   region 边界处硬切（梯度方向跳变）→ 经 valleyT/outer 非线性放大成放射折痕。
@@ -998,6 +1030,19 @@ public final class HydrologyBlockCarver {
         //   完全嵌在沟里：潭缘列全高、横向边缘列贴坡变矮，水幕横向呈弧形
         //   （自然瀑布贴弧形崖面形态）。唇口列 lipY=surfaceY≤original 不受影响。
         if (lipSurfaceY > original) lipSurfaceY = original;
+        // ★ 灌水四门控逐项 trace（2026-09-30，判别测量：先看清哪一门误杀，再动门控）。
+        //   用法：HydrologyBlockCarver.TRACE_BLOCK = traceKey(x,z) 后重跑该列（探针专用）。
+        if (TR) {
+            System.out.printf("[CARVE-TRACE]门控 dist=%.2f nearestW=%.2f wetCore=%s%n",
+                    nearestDist, nearestWidth, wetCore);
+            System.out.printf("           carved=%.2f surf=%.2f orig=%.2f carveSurf=%.2f depth=%.2f punch=%s fall=%.1f%n",
+                    carved, waterSurface, original, carveSurfaceY, depth, punchedThrough,
+                    nearest.fallDrop());
+            System.out.printf("           ①dist≤w=%b ②carved<surf-0.5=%b ③a=%b ③b=%b ③c=%b ④terrOk=%b ⇒ fill=%b%n",
+                    nearestDist <= nearestWidth, carved < waterSurface - 0.5,
+                    (carveSurfaceY - carved) <= depth + 1.0, punchedThrough,
+                    original <= waterSurface - 1.0, terrainOk, anyFill);
+        }
         return new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                 waterSurface, lipSurfaceY, cut, erosionMask, anyFill, false);
     }

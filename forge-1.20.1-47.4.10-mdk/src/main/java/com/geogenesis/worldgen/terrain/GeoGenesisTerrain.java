@@ -298,7 +298,16 @@ public final class GeoGenesisTerrain {
         //   ② 结果依赖 tile 是否已缓存（冷启动 = 无侵蚀分类，tile 就绪后 = 有）；
         //      实测侵蚀 delta 在多数 tile 为小量或 0，故影响有界。
         generator.applyCachedTileDelta(cell, wux, wuz);
-        fillRiverDistance(cell, wux, wuz);
+        // ⚠ 2026-09-29【此处曾有 fillRiverDistance，已移除 —— 别加回来】：
+        //   快速路径的红线是"零 tile 生成"（本方法 javadoc：世界创建 9 分钟 → 秒级）。
+        //   绿洲距离改走新核心后，这里现场计算会 resolve 新核心 tile ⇒
+        //   erodedHeightForRouting 同步生成侵蚀 tile ⇒ ① 结构 ring 扫描（BiomeSource
+        //   多线程）触发它 = P0-1"结构阶段高频调用→卡死"重演；② 与 chunk 生成线程
+        //   并发写 solver 缓存 ⇒ 实测 CME 崩溃（crash-2026-09-29_23.52.55，栈顶
+        //   HydroWorldSolver.field）。绿洲只在【落块完整管线】(applyHydrologyValley)
+        //   判定；快速路径样例 cell 的 riverDistance 保持 ∞（无绿洲）——
+        //   出生点搜索/结构扫描在零星绿洲斑块上看到的 biome 与落块差一个
+        //   DESERT→SAVANNA 斑块（可接受近似，与"不含水文雕刻"同级，见上方残余注释）。
         return cell;
     }
 
@@ -380,7 +389,13 @@ public final class GeoGenesisTerrain {
     private void fillRiverDistance(Cell cell, double wuX, double wuZ) {
         if (!riversEnabled || hydrologyExperiment == null || cell == null) return;
         if (cell.biomeType != com.geogenesis.worldgen.climate.WhittakerType.DESERT) return;
-        cell.riverDistance = hydrologyExperiment.riverNetwork().distanceToWater(wuX, wuZ);
+        // ★ 2026-09-29【创建世界卡死修复】：原实现 hydrologyExperiment.riverNetwork()
+        //   .distanceToWater(...) 会在每个沙漠格触发【旧链 region 构建】（唯一管线化后
+        //   单 region 0.9~16.7s）+ 湖水位 sampleWu 同步生成远端侵蚀 tile
+        //   （日志实测 605 个、0.6~1.1s/个、坐标随 region 铺到 ±10224wu）⇒ 创建卡死十分钟级。
+        //   改走新核心：命中与雕刻同一个 solver/tile 缓存（本 chunk 的 calculate 必先跑）⇒
+        //   边际成本≈0，且绿洲看到的水 = 雕刻刻出来的水（单一事实来源）。
+        cell.riverDistance = hydrologyExperiment.distanceToWaterWu(wuX, wuZ);
     }
 
     /**
@@ -672,7 +687,8 @@ public final class GeoGenesisTerrain {
                 //   湖列【不雕刻】⇒ 湖水位不影响雕刻 ⇒ 无循环、可后算（单向化）。
                 //   回退：LAKE_ESCAPE_LEVEL = false。
                 double spill = column.waterSurfaceY();
-                if (LAKE_ESCAPE_LEVEL && column.lakeNode() != null) {
+                if (LAKE_ESCAPE_LEVEL && column.lakeNode() != null
+                        && !column.lakeNode().exactOutline) {
                     // ★ 地形采样 = **雕刻后的点态最终地形**（carved + rawDelta×mask），
                     //   与真实放置口径一致（实测差 0.005 块）。这是修"水位求解早于雕刻"的关键：
                     //   旧实现用的是侵蚀后但仍未雕刻的地形（同一份输入 ⇒ 逃逸高度反而更高、min 后不变）。
@@ -751,7 +767,13 @@ public final class GeoGenesisTerrain {
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
             cell.riverSurfaceY = column.waterSurfaceY();               // 计划水位（不跟 delta）
             cell.riverLipY = column.lipSurfaceY();
-            cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel;
+            // ★★★ 2026-09-30【isLake 语义修正 —— 修"整片水面都被当湖"】★★★
+            //   旧式：`fillWater && waterSurfaceY >= seaLevel` ⇒ 任何水面高于海平面的
+            //   【河】列都被标成湖（实测：某窗口 riverType≠0 共 7739 格，河只有 4 格，
+            //   其余全被算作"湖"）⇒ 预览/落块把整条河渲染成湖面，用户观感"到处是河/湖"。
+            //   正解：河与湖由【车床分支】区分（column.lakePlan()：湖分支 true，河分支 false），
+            //   而不是靠"水位是否高于海平面"。
+            cell.isLake = column.fillWater() && column.lakePlan();
             cell.lakeMask = cell.isLake;
             // ★ 2026-09-17：湖域内【被拒列】登记（carver 的 inFlood=false 早退）。
             //   本列行为与改前【完全一致】（仍不出水、riverSurfaceY 不变）：

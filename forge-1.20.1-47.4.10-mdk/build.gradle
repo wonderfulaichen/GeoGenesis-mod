@@ -1296,7 +1296,88 @@ task runTerrainStripeProbe(type: JavaExec) {
 task runWaterViewProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WaterViewProbe'
+    // ★ 2026-09-23：2g → 5g。eroded 模式（路由用侵蚀后地形）会额外保留窗口+margin 的
+    //   侵蚀 tile，并让路由/折线规模上升 —— 实测 2g 在 chunk 生成阶段 OutOfMemoryError。
+    maxHeapSize = '5g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// HydroRefProbe (2026-09-25, 用户提议): 物理参照模拟 —— 真水滴（惯量梯度下降）+
+// priority-flood 填洼在同一份侵蚀后地形上跑出"标准答案"，供与现有水文对照改进。
+//   gradlew runHydroRefProbe [-PprobeArgs="seed bx bz radius [margin streamThr lakeMinArea lakeMinDepth]"]
+task runHydroRefProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydroRefProbe'
+    maxHeapSize = '5g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// HydroPreviewProbe (2026-09-30, user: "好好渲染一个预览图" + "水文是 3D 的"):
+//   renders PRODUCTION placed water (getChunkCells) as hillshade + depth-tinted water
+//   (top-down, 1px = 1 block) PLUS vertical cross-sections (terrain line + water fill,
+//   vertical exaggeration 3x) so relief / valley fit / floating water are visible.
+//   gradlew runHydroPreviewProbe [-PprobeArgs="seed bx bz radius"]
+task runHydroPreviewProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydroPreviewProbe'
+    maxHeapSize = '4g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// HydroCarveDecisionProbe (2026-09-30): per-stage waterfall for the PLACEMENT chain
+// (state -> sample -> carver gates -> placed water) + CARVE-TRACE gate-level dump.
+// Decides WHERE the water disappears (user bug: "river stops short of lake / rivernet
+// doesn't look like rivers"). Uses production's own engine/carver/placement口径.
+//   gradlew runHydroCarveDecisionProbe [-PprobeArgs="seed bx bz radius"]
+task runHydroCarveDecisionProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.HydroCarveDecisionProbe'
+    maxHeapSize = '4g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// HydroLifecycleProbe (2026-09-29, user: "必须看到完整周期"): JUDGEMENT probe for the
+// full hydrology lifecycle on synthetic terrain (fast, no erosion tiles).
+//   Criteria: [L1] sources exist / [L2] >=1 full chain source->confluence->lake->
+//   spillway->downstream->sea / [L3] SOURCE only at chain head / [L4] LAND_SINK=0.
+//   gradlew runHydroLifecycleProbe [-PprobeArgs="seed"]
+task runHydroLifecycleProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.sim.HydroLifecycleProbe'
     maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// HydroCoreProbe (2026-09-29): adversarial verification of the new infinite-world
+// hydrology core (contract / lifecycle / spill minimax / conservation / cross-tile
+// order independence / infinite coordinates / wet-vs-arid / geometry separation).
+//   gradlew runHydroCoreProbe [-PprobeArgs="seed"]
+task runHydroCoreProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.sim.HydroCoreProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// HydroCoreViewProbe (2026-09-29): renders the NEW hydrology core
+// (terrain hillshade | core FlowState | basins + pending) for eye control.
+//   gradlew runHydroCoreViewProbe [-PprobeArgs="seed bx bz radius"]
+task runHydroCoreViewProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.sim.HydroCoreViewProbe'
+    maxHeapSize = '4g'
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     }
@@ -1529,6 +1610,8 @@ task runWorldgenGate {
     group = 'verification'
     description = '世界生成门禁：只跑当前实测 ALL PASS 的判据型探针（任一 FAIL 即构建失败）'
     dependsOn 'runHydrologyDeterminismProbe'
+    // 2026-09-29 用户裁定"必须看到完整周期"：完整生命周期判据（合成地形，秒级）。
+    dependsOn 'runHydroLifecycleProbe'
     dependsOn 'runTectonicWaveProbe'
     dependsOn 'runTerrainGrainProbe'
     dependsOn 'runStratumProbe'

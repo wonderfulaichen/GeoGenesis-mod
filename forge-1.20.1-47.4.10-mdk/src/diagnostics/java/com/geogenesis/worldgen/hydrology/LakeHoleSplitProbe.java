@@ -32,6 +32,16 @@ import java.util.Map;
  * 按湖中心聚合（赤字/其中域外/已灌湿），直接给出每湖欠灌率。</p>
  *
  * <p>用法：{@code gradlew runLakeHoleSplitProbe [-PprobeArgs="seed blockX blockZ radius"]}</p>
+ *
+ * <h3>⚠⚠ 口径警告（2026-09-29 唯一水文管线切换后，必读）</h3>
+ * <p><b>只有【第 1 层】与【B9 湖簇】是新口径可信数据</b>（都基于落块后的
+ * {@code Cell.riverType/isLake/surf}，即实际进游戏的水）。而 <b>B6 / P2-2 精确靶 /
+ * 第 2 层的"应淹"与"命中可达"锚在旧 {@link RiverLineNetwork} 的 {@code net.region().lakes}
+ * （旧 LakeNode 湖定义 + 旧 {@code net.sample} 命中）</b> —— 2026-09-29 起生产唯一管线是
+ * {@code hydrology/sim/} 新核心，旧链湖表不再参与落块 ⇒ 这些层数字是
+ * <b>"旧链湖定义 vs 新核心落块"的口径错配</b>，不代表真实欠灌（实测同窗口：第 1 层
+ * 该有水却干仅 0.04%，而 P2-2 却报 108 万块²）。修复方向：把应淹掩码换为新核心
+ * LAKE_STORAGE 掩码（{@code HydroWorldSolver}），旧链层数字在那之前【不得当判据】。</p>
  */
 public final class LakeHoleSplitProbe {
 
@@ -107,7 +117,7 @@ public final class LakeHoleSplitProbe {
                             samples, b4Hist)]++;
                 }
                 accumulateB6(hit, dry, lakeWet, c, x, z, hs, domTol,
-                        byLake, b6, b6Samples);
+                        byLake, b6, b6Samples, es8, floodGrid, rlp.gridCell());
                 accumulateB8(lakes, hit, dry, lakeWet, c, x, z, hs,
                         es8, floodGrid, rlp.gridCell(), b8, b8Samples);
             }
@@ -115,6 +125,8 @@ public final class LakeHoleSplitProbe {
 
         System.out.printf("=== LakeHoleSplitProbe seed=%d 窗口=%d×%d (%d,%d±%d) ===%n",
                 seed, w, w, bx, bz, radius);
+        System.out.println("⚠ 口径（2026-09-29 起）：仅【第1层/B9】为新管线可信数据；"
+                + "B6/P2-2/第2层锚在旧 RiverLineNetwork 湖表 = 口径错配，不得当判据（见类 javadoc）");
         System.out.printf("[第1层·放置水位] 该有水却干 合计=%d（占窗口 %.2f%%）%n",
                 placedTotal, 100.0 * placedTotal / (w * (double) w));
         printBucket(1, "湖欠灌·认领域内", bucket[1], placedTotal);
@@ -228,13 +240,27 @@ public final class LakeHoleSplitProbe {
                                      boolean lakeWet, Cell c, int x, int z,
                                      double hs, double domTol,
                                      Map<String, long[]> byLake, long[] b6,
-                                     List<String> b6Samples) {
+                                     List<String> b6Samples,
+                                     java.util.function.ToDoubleBiFunction<Double, Double> es,
+                                     double floodGrid, double claimGrid) {
         if (hit == null || !hit.isLake()) return;
         RiverLineRegion.LakeNode ln = hit.lake();
         if (ln == null) return;
         String key = (int) Math.round(ln.x) + "," + (int) Math.round(ln.z);
         long[] agg = byLake.computeIfAbsent(key, k -> new long[3]);
         if (dry && c.height < hit.surfaceY() - 0.5) {
+            // ★ 2026-09-23【B6 补连通性限定】（v2 注释本就声称"掩码可达"）：
+            //   湖命中带 inDomain halo ⇒ 掩码外的【隔离低于水位口袋】也会进桶 ——
+            //   lakeFineFlood 关停后这批格从 B8过量(702) 翻成 B6赤字(702)，
+            //   而 B8真欠灌恒 282/过量恒 0 ⇒ 掩码权威 = 物理不连通、本就该干。
+            //   无连通的格不计赤字（与 inBasinFlood 权威一致）。
+            double wuX = x / hs, wuZ = z / hs;
+            double lvl0 = hit.surfaceY();
+            if (!Double.isNaN(lvl0)
+                    && !ln.inBasinFlood(es, lvl0, floodGrid, claimGrid, wuX, wuZ)) {
+                agg[2] += lakeWet ? 1 : 0;   // 仅维护湿格统计，不计赤字
+                return;
+            }
             b6[0]++;
             agg[0]++;
             if (!ln.inDomain(x / hs, z / hs, domTol)) {

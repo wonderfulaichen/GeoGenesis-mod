@@ -857,19 +857,12 @@ public final class GeoGenesisConfig {
         //     用户根本不会去那里找。配置项的【归属段落】就是它的"文档"。
         builder.push("Hydrology");
         hydrologySkeletonRouting = builder.comment(
-                "Fluid-physics river skeleton routing (EXPERIMENTAL). true = river polylines are"
-                + " derived from a block-resolution fluid simulation (priority-flood -> D8 -> accumulation),"
-                + " so every step is strictly downhill (no cross-slope / uphill segments)."
-                + " false (default) = legacy 48-block D8 tracing + particle/meander decoration (bit-identical)."
-                + " KNOWN GAPS when true: tributary forking, waterfall stepping, estuary and cross-region"
-                + " outlet continuation are not yet wired (measured: dry river nodes 18.8%, rising water 23.2%)."
-                + " Takes effect on world (re)load; already-generated chunks are unchanged."
-                + " DEFAULT true since 2026-09-21 (user: the new routing must be visible in-game to be"
-                + " testable). Set false to revert to the legacy 48-block tracing.")
-                // ★ 2026-09-23 默认改为 false：骨架路线会顶替 09-19 已完成的湖拓扑，
-                //   导致湖泊变形（用户实测）。湖泊验收通过前保持关闭（见
-                //   RiverLineNetwork.flowSkeletonRouting 注释与 git 铁证）。
-                .define("hydrologySkeletonRouting", false);
+                "LEGACY COMPATIBILITY KEY. Production always uses the single flow-physics pipeline:"
+                + " source -> accumulation -> depression storage -> lowest spillway -> downstream -> sea."
+                + " This value is read only for migration diagnostics and is ignored for routing."
+                + " The old 48-block tracing / legacy lake pipeline is no longer a production fallback."
+                + " Takes effect on world (re)load; already-generated chunks are unchanged.")
+                .define("hydrologySkeletonRouting", true);
         hydrologyDecayEnabled = builder.comment(
                 "Water balance: downstream decay (evaporation / infiltration) along flow paths."
                 + " false (default) = OFF: pure accumulation, zero behaviour change (bit-identical)."

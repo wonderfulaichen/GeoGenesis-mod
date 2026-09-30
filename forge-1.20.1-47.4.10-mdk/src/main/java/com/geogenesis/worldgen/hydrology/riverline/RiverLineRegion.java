@@ -112,6 +112,11 @@ public final class RiverLineRegion {
         public final double[] rimX;
         /** 湖盆外圈溢出口坎格中心 wu。 */
         public final double[] rimZ;
+        /**
+         * true = 轮廓已经是最终湖格掩码（骨架模拟合成湖）。这类湖不得再由
+         * computeFlood/escapeWaterLevel 向轮廓外二次扩张，否则会把岸坡误判成水面。
+         */
+        public final boolean exactOutline;
         /** 侵蚀后短板水位缓存（lazy，carver 湖分支算一次；NaN=未算）。跨 chunk 复用。 */
         public volatile double erodedSpill = Double.NaN;
 
@@ -127,10 +132,17 @@ public final class RiverLineRegion {
         public LakeNode(double x, double z, double height, double radius, double depth,
                         double[] cellX, double[] cellZ, double cellHalf,
                         double[] rimX, double[] rimZ) {
+            this(x, z, height, radius, depth, cellX, cellZ, cellHalf, rimX, rimZ, false);
+        }
+
+        public LakeNode(double x, double z, double height, double radius, double depth,
+                        double[] cellX, double[] cellZ, double cellHalf,
+                        double[] rimX, double[] rimZ, boolean exactOutline) {
             this.x = x; this.z = z; this.height = height;
             this.radius = radius; this.depth = depth;
             this.cellX = cellX; this.cellZ = cellZ; this.cellHalf = cellHalf;
             this.rimX = rimX; this.rimZ = rimZ;
+            this.exactOutline = exactOutline;
         }
 
         /** 是否有逐格溢出口坎（决定能否做侵蚀短板重算）。 */
@@ -403,6 +415,9 @@ public final class RiverLineRegion {
                 double level, double gridCell, double claimGrid,
                 double wx, double wz) {
             if (cellX == null || cellX.length == 0) return false;
+            // 骨架模拟合成湖的 cellX/cellZ 已是最终 res.lake 掩码；再次 BFS 会跨出
+            // 模拟盆地，把低于水位且连通的山坡/邻洼地错误铺成湖。
+            if (exactOutline) return inDomain(wx, wz, 0.0);
             if (!inDomain(wx, wz, 72.0 + claimGrid)) return false;
             computeFlood(erodedY, level, gridCell, claimGrid);
             return inFlood(wx, wz);
