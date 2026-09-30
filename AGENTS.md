@@ -2,7 +2,9 @@
 
 > Minecraft Forge 1.20.1 模组，自定义 `ChunkGenerator` + `BiomeSource`，程序化生成地形，并按气候驱动生物群系。
 >
-> **👉 新对话接手请先读 [`HANDOFF.md`](HANDOFF.md)**（当前状态 / 残余边界 / 四把必跑的尺子 / 下一步候选）；本轮成果详见下方「当前工作焦点（2026-09-17/18）」。
+> **👉 新对话接手请先读 [`INDEX.md`](INDEX.md)（仓库导航 + 阅读顺序，2026-09-30 起为唯一入口）**：
+> 顺序 = 本文件（总规）→ `_handover/` 里**日期最新**的交接（当前进度）→ 按需下钻 PLAN/HANDOFF。
+> 旧述「先读 HANDOFF.md」已过时——`HANDOFF.md` 止于 09-20，最新交接在 `_handover/`。
 >
 > ⚠️ `docs/` 整个目录被 `.gitignore:52` 忽略 ⇒ **新文档放仓库根**才能入库（`HANDOFF.md` 即如此）。
 
