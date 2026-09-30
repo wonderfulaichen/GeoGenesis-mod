@@ -1358,6 +1358,29 @@ task runHydroLifecycleProbe(type: JavaExec) {
     }
 }
 
+// HydroFlatRoutingDiag (2026-09-30): 诊断 —— 完全平坦地形上的 D8 流向分布。
+//   用于验证生产出图"网格状笔直长直线"是否来自 priority-flood 的 ε 阶梯
+//   （= 到 window 边界的切比雪夫距离场 ⇒ 流向垂直于人工边界）。
+//   判据：流向高度集中于少数方向 ⇒ 假设成立；均匀散布 ⇒ 假设不成立。
+//   gradlew runHydroFlatRoutingDiag
+task runHydroFlatRoutingDiag(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.sim.HydroFlatRoutingDiag'
+    maxHeapSize = '2g'
+}
+
+// HydroRealRoutingDiag (2026-09-30): 真实地形上的 D8 流向与笔直游程测量。
+//   定位"平原网格直线"的确切来源（盆地占比 / 流向集中度 / 同向游程长度）。
+//   gradlew runHydroRealRoutingDiag [-PprobeArgs="seed tx tz nd"]
+task runHydroRealRoutingDiag(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.sim.HydroRealRoutingDiag'
+    maxHeapSize = '4g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // HydroCoreProbe (2026-09-29): adversarial verification of the new infinite-world
 // hydrology core (contract / lifecycle / spill minimax / conservation / cross-tile
 // order independence / infinite coordinates / wet-vs-arid / geometry separation).
