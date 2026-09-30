@@ -101,3 +101,13 @@ symcheck.ps1
 /probe_*.log
 /probe_*.txt
 /$dst
+
+# --- 2026-09-30 cleanup: temp artifacts / screenshot area (kept out of VCS) ---
+/_tmp_*
+/_trash/
+/__pycache__/
+*.pyc
+# screenshots & probe renders (references + dumps; large, regenerable)
+/_shots/
+# OpenBitFun internal data (local agent data, same class as .codebuddy/.prism)
+/.openbitfun/
