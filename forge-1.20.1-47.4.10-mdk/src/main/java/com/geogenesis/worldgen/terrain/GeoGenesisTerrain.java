@@ -123,9 +123,6 @@ public final class GeoGenesisTerrain {
     /** 逃逸水位专用的水文引擎（懒建一次，供点态最终地形采样复用）。 */
     private HydrologyExperimentEngine escapeEngine;
 
-    /** ★ 2026-09-17【临时诊断，取到结论后删】。 */
-    private static final boolean LAKE_ESCAPE_DIAG = false;
-
     // ===== ★★★ 2026-09-19（P2 判别测量）湖面不平的【分层归因】埋点 ★★★
     //
     //  【要回答的问题】同一个湖的各列，最终水位为什么不同（J1 实测纯湖 σ>0）？只可能是三层之一：
@@ -152,43 +149,7 @@ public final class GeoGenesisTerrain {
     //     ⇒ `isLake=true` 只表示"水位 ≥ 海平面"，**不表示这是湖**；河列同样为 true。
     //     ⇒ 那个 σ>0 的"纯湖"极可能是一条【按流向正常下降的河】（σ>0 对河物理正确）。
     //   ⇒ 连带影响：P2（水位收敛）与 P3（湖语义）的**前提被推翻**，不必再为它动刀。
-    static final boolean LAKE_LEVEL_SPLIT_DIAG = false;   // 已取到结论，关闭
-    private static final java.util.Map<Object, double[]> LAKE_SPLIT =
-            new java.util.concurrent.ConcurrentHashMap<>();
-    private static final java.util.concurrent.atomic.AtomicLong LAKE_SPLIT_N =
-            new java.util.concurrent.atomic.AtomicLong();
-    private static final java.util.concurrent.atomic.AtomicInteger LAKE_SPLIT_PRINTED =
-            new java.util.concurrent.atomic.AtomicInteger();
-
-    /** 记录一列：(waterSurfaceY 原值, 最终 spill)。每 5000 列打印一次逐湖汇总。 */
-    private static void lakeLevelSplitDiag(Object node, double rawSpill, double finalSpill) {
-        if (node == null) return;
-        double[] st = LAKE_SPLIT.computeIfAbsent(node,
-                k -> new double[]{0, Double.MAX_VALUE, -Double.MAX_VALUE,
-                                  Double.MAX_VALUE, -Double.MAX_VALUE});
-        st[0]++;
-        st[1] = Math.min(st[1], rawSpill);   st[2] = Math.max(st[2], rawSpill);
-        st[3] = Math.min(st[3], finalSpill); st[4] = Math.max(st[4], finalSpill);
-        long n = LAKE_SPLIT_N.incrementAndGet();
-        if (n % 5000 == 0 && LAKE_SPLIT_PRINTED.incrementAndGet() <= 8) {
-            LOGGER.info("[LAKE-SPLIT] 已处理 {} 列，共 {} 个湖：", n, LAKE_SPLIT.size());
-            int shown = 0;
-            for (java.util.Map.Entry<Object, double[]> e : LAKE_SPLIT.entrySet()) {
-                if (shown++ >= 6) break;
-                double[] v = e.getValue();
-                LOGGER.info("  湖{} 列数={}  spill原值∈[{}, {}] 跨度={}  |  最终水位∈[{}, {}] 跨度={}{}",
-                        System.identityHashCode(e.getKey()), (long) v[0],
-                        String.format("%.3f", v[1]), String.format("%.3f", v[2]),
-                        String.format("%.3f", v[2] - v[1]),
-                        String.format("%.3f", v[3]), String.format("%.3f", v[4]),
-                        String.format("%.3f", v[4] - v[3]),
-                        (v[2] - v[1] > 1e-6 ? "  ← ★①spill 本就逐列不同" : "  ← spill 恒定"));
-            }
-            LOGGER.info("[LAKE-SPLIT] 判读：上面若 spill 跨度≈0 而最终水位跨度>0 ⇒ 根因是②逐列 escape 求解。");
-        }
-    }
-    private static final java.util.concurrent.atomic.AtomicInteger escapeDiagCount =
-            new java.util.concurrent.atomic.AtomicInteger();
+    //   （对应埋点代码已于 2026-09-30 清理：LAKE_LEVEL_SPLIT_DIAG + lakeLevelSplitDiag）
 
     /** 侵蚀向河道软让步（方案 A，config erosionYieldToRiver，默认 true）。 */
     private final boolean erosionYieldToRiver;
@@ -713,22 +674,9 @@ public final class GeoGenesisTerrain {
                     //   "路径最高点 > 当前水位"的全部格（下一行本就是 min(spill, esc)，
                     //   那些路径无论通向何处都不会改变结果）⇒ 实测该段从占 hydro 54% 降下来。
                     double esc = column.lakeNode().escapeWaterLevel(finalGroundFn, 24.0, 6.0, spill);
-                    // ★ 临时诊断（取到结论后删）：确认逃逸高度是否真的被算出来、以及值是多少
-                    if (LAKE_ESCAPE_DIAG && escapeDiagCount.getAndIncrement() < 10) {
-                        LOGGER.info("[LAKE-ESC] block=({},{}) 旧spill={} 逃逸高度={} ⇒ 采用={}",
-                                column.blockX(), column.blockZ(),
-                                String.format("%.3f", column.waterSurfaceY()),
-                                String.format("%.3f", esc),
-                                String.format("%.3f", Double.isNaN(esc) ? column.waterSurfaceY()
-                                        : Math.min(column.waterSurfaceY(), esc)));
-                    }
                     if (!Double.isNaN(esc)) {
                         spill = Math.min(spill, esc);      // 只降不升
                     }
-                }
-                // ★ 2026-09-19（P2 判别测量）：记录本列 spill 原值 与 最终水位（见 lakeLevelSplitDiag）
-                if (LAKE_LEVEL_SPLIT_DIAG) {
-                    lakeLevelSplitDiag(column.lakeNode(), column.waterSurfaceY(), spill);
                 }
                 boolean flooded = cell.height < spill - 0.5;
                 // 湖不挖地；水柱保护：落块水放 (floor(height), floor(spill)]，若

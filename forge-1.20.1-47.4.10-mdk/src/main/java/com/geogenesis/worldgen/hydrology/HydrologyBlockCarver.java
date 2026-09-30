@@ -122,19 +122,13 @@ public final class HydrologyBlockCarver {
     //   其兜底种子（盆底最低格）已在本会话补上 ⇒ 不会再出现"零种子全干"。
     public static final boolean LAKE_CONTOUR_ONLY = false;
 
-    /**
-     * ★ 2026-09-17【临时诊断开关】—— 已取到结论，置 false（保留代码备查）。
-     *
-     * <p><b>结论（决定性）</b>：诊断日志显示水位来源链为
-     * {@code spill(无侵蚀) 167.074 → erodedWaterLevel 166.627 → 落块 166.627}，
-     * 且 {@code inFlood=true} ⇒ 代码路径<b>确实执行</b>、回传也生效，
-     * 但<b>短板迭代没能压到更低的盆沿</b>（它与 erodedWaterLevel 同值）。
-     * ⇒ 真因在 {@code computeFlood} 的<b>搜索窗/24wu 粗格分辨率</b>：
-     *    看不见真实低出口（紧邻旱地 140.551，差 26 块）⇒ 水位停在 166.627 ⇒ 悬空水板。</p>
-     */
-    private static final boolean LAKE_DIAG = false;
-    private static final java.util.concurrent.atomic.AtomicInteger lakeDiagCount =
-            new java.util.concurrent.atomic.AtomicInteger();
+    // ★ 2026-09-17【已删除的 LAKE_DIAG 探针——结论留痕，勿再重加】
+    //   诊断日志显示水位来源链为
+    //   {@code spill(无侵蚀) 167.074 → erodedWaterLevel 166.627 → 落块 166.627}，
+    //   且 {@code inFlood=true} ⇒ 该代码路径确实执行、回传也生效，
+    //   但短板迭代没能压到更低的盆沿（它与 erodedWaterLevel 同值）。
+    //   ⇒ 真因在 {@code computeFlood} 的搜索窗 / 24wu 粗格分辨率：
+    //     看不见真实低出口（紧邻旱地 140.551，差 26 块）⇒ 水位停在 166.627 ⇒ 悬空水板。
 
     private HydrologyBlockCarver() { }
 
@@ -390,17 +384,6 @@ public final class HydrologyBlockCarver {
             double spill = lakeSample.surfaceY();
             com.geogenesis.worldgen.hydrology.riverline.RiverLineRegion.LakeNode ln =
                     lakeSample.lake();
-            // ★ 2026-09-17【临时诊断，取到结论后删】确认这条路径是否真的被执行
-            if (LAKE_DIAG && ln != null && lakeDiagCount.getAndIncrement() < 8) {
-                org.apache.logging.log4j.LogManager.getLogger("geogenesis").info(
-                        "[LAKE-DIAG] block=({},{}) spill(无侵蚀)={} hasRim={} flange_eroded={} floodLevel={} inFlood={}",
-                        blockX, blockZ, String.format("%.3f", spill), ln.hasRim(),
-                        String.format("%.3f", ln.erodedWaterLevel(
-                                (a, b) -> terrain.sampleWu(a, b).height)),
-                        String.format("%.3f", ln.floodLevel()), ln.inFlood(
-                                blockX / (horizontalScale > 0.01 ? horizontalScale : 1.0),
-                                blockZ / (horizontalScale > 0.01 ? horizontalScale : 1.0)));
-            }
             if (LAKE_ERODED_SPILL && ln != null && ln.hasRim()) {
                 // 侵蚀后地形采样（rim 格紧邻湖盆，数量少；每湖只算一次并缓存）。
                 java.util.function.ToDoubleBiFunction<Double, Double> erodedY =
