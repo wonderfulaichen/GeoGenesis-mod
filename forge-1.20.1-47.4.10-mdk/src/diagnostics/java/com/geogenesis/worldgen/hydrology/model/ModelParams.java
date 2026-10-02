@@ -26,25 +26,31 @@ package com.geogenesis.worldgen.hydrology.model;
  * 走到收敛得到（否则"稳态"就是另一套魔法）。故本模型显式推进模型时间 {@code t}，
  * 直到水深变化率低于容差；{@code maxSteps} 是**收敛失败信号**而非正常出口。</p>
  *
- * @param cellSize   格边长（block）
- * @param manningN   曼宁糙率 {@code n}（s/block^{1/3}）；越大越"拖"，洪水越难铺开
- * @param rainRate   降水率 R（block/时间）；0 = 干旱
- * @param infilRate  入渗率上限 I（block/时间）；作用于**未饱和**格
- * @param evapRate   蒸发率 E（block/时间）；只作用于**有水**的格
- * @param dtMax      单步时间上限
- * @param steadyTol  <b>稳态判据（单位 1/时间）</b>：收敛当且仅当
- *                   {@code max|dd/dt| < steadyTol · max(1, dMax)}。
- *                   ⚠ 判据必须<b>与 dt 无关</b> —— 若改用"单步变化 {@code max|dd|}"，
- *                   把 dt 缩到极小就能让任何状态假装收敛（本探针实测踩过）。
- * @param maxSteps   步数上限（达到即报"未收敛"）
+ * <h2>两类损失项的实验区分</h2>
+ * <p>{@code evapRate} 为常率水深损失，{@code evapDepthCoeff} 为深度比例损失。
+ * 后者只用于研究反应项的影响，不是已经验证的蒸发物理定律，也不是无限世界
+ * 有限化的证明。真实蒸发需由气候、湿面积等决定；不得为了缩小halo默认启用它。</p>
+ *
+ * @param cellSize       格边长（block）
+ * @param manningN       曼宁糙率 {@code n}（s/block^{1/3}）；越大越"拖"，洪水越难铺开
+ * @param rainRate       降水率 R（block/时间）；0 = 干旱
+ * @param infilRate      入渗率上限 I（block/时间）；作用于**未饱和**格
+ * @param evapRate       <b>常率</b>蒸发 E（block/时间）；只作用于有水格
+ * @param evapDepthCoeff <b>深度比例</b>蒸发系数（1/时间）；0 = 关闭（默认）
+ * @param dtMax          单步时间上限
+ * @param steadyTol      水深变化率的相对容差（1/模型时间）：
+ *                       {@code max|Δd|/dt <= steadyTol · max(1, dMax)}，
+ *                       不以很小的单步变化或周期快照重复冒充稳态。
+ * @param maxSteps       步数上限（达到即报"未收敛"）
  */
 public record ModelParams(double cellSize, double manningN,
                           double rainRate, double infilRate, double evapRate,
+                          double evapDepthCoeff,
                           double dtMax, double steadyTol, int maxSteps) {
 
     /** 世界生成默认：1 块格、中等糙率、温和降水、可收敛。 */
     public static ModelParams defaults() {
-        return new ModelParams(1.0, 0.03, 1.0e-3, 2.0e-4, 1.0e-4, 0.2, 1.0e-4, 400_000);
+        return new ModelParams(1.0, 0.03, 1.0e-3, 2.0e-4, 1.0e-4, 0.0, 0.2, 1.0e-4, 400_000);
     }
 
     /**
@@ -55,19 +61,46 @@ public record ModelParams(double cellSize, double manningN,
      * 于是"体积守恒"必然失败：<b>那是判据构造错误，不是模型缺陷</b>。</p>
      */
     public static ModelParams still() {
-        return new ModelParams(1.0, 0.03, 0.0, 0.0, 0.0, 0.2, 1.0e-4, 400_000);
+        return new ModelParams(1.0, 0.03, 0.0, 0.0, 0.0, 0.0, 0.2, 1.0e-4, 400_000);
     }
 
     public ModelParams withRain(double r) {
-        return new ModelParams(cellSize, manningN, r, infilRate, evapRate, dtMax, steadyTol, maxSteps);
+        return new ModelParams(cellSize, manningN, r, infilRate, evapRate,
+                evapDepthCoeff, dtMax, steadyTol, maxSteps);
     }
 
     public ModelParams withCellSize(double c) {
-        return new ModelParams(c, manningN, rainRate, infilRate, evapRate, dtMax, steadyTol, maxSteps);
+        return new ModelParams(c, manningN, rainRate, infilRate, evapRate,
+                evapDepthCoeff, dtMax, steadyTol, maxSteps);
     }
 
     public ModelParams withMaxSteps(int n) {
-        return new ModelParams(cellSize, manningN, rainRate, infilRate, evapRate, dtMax, steadyTol, n);
+        return new ModelParams(cellSize, manningN, rainRate, infilRate, evapRate,
+                evapDepthCoeff, dtMax, steadyTol, n);
+    }
+
+    /** 设常率蒸发（P2 对照用）。 */
+    public ModelParams withEvapRate(double e) {
+        return new ModelParams(cellSize, manningN, rainRate, infilRate, e,
+                evapDepthCoeff, dtMax, steadyTol, maxSteps);
+    }
+
+    /** 设深度比例蒸发（P2 对照用）。 */
+    public ModelParams withEvapDepthCoeff(double k) {
+        return new ModelParams(cellSize, manningN, rainRate, infilRate, evapRate,
+                k, dtMax, steadyTol, maxSteps);
+    }
+
+    /** 设单步时间上限（收敛/稳定性对照用）。 */
+    public ModelParams withDtMax(double dt) {
+        return new ModelParams(cellSize, manningN, rainRate, infilRate, evapRate,
+                evapDepthCoeff, dt, steadyTol, maxSteps);
+    }
+
+    /** Tighten or explicitly specify the steady-state residual threshold. */
+    public ModelParams withSteadyTol(double tolerance) {
+        return new ModelParams(cellSize, manningN, rainRate, infilRate, evapRate,
+                evapDepthCoeff, dtMax, tolerance, maxSteps);
     }
 
     /** 格面积 A（block²）。 */
@@ -79,7 +112,7 @@ public record ModelParams(double cellSize, double manningN,
     public ModelParams {
         if (cellSize <= 0) throw new IllegalArgumentException("cellSize must be > 0");
         if (manningN <= 0) throw new IllegalArgumentException("manningN must be > 0");
-        if (rainRate < 0 || infilRate < 0 || evapRate < 0) {
+        if (rainRate < 0 || infilRate < 0 || evapRate < 0 || evapDepthCoeff < 0) {
             throw new IllegalArgumentException("rates must be >= 0");
         }
         if (dtMax <= 0) throw new IllegalArgumentException("dtMax must be > 0");

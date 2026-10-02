@@ -54,6 +54,8 @@ public final class ModelVerificationProbe {
         if (sel(11)) t11ResolutionConvergence();
         if (sel(12)) t12TimeStepConvergence();
         if (sel(13)) t13RotationalEquivariance();
+        if (sel(14)) t14UnsubmergedBarrier();
+        if (sel(15)) t15EnergyAndFailedConvergence();
 
         System.out.println();
         if (failures == 0) { System.out.println("ALL PASS"); System.exit(0); }
@@ -102,8 +104,9 @@ public final class ModelVerificationProbe {
     private static void t3ClosedBowl() {
         int n = 31;
         WaterGrid g = bowl(n, 1.0, 100.0, 0.02, WaterGrid.Boundary.CLOSED, 0);
-        DiffusiveWaveModel m = new DiffusiveWaveModel(g, ModelParams.still().withRain(0));
-        fill(m, 0, n, 0, n, 102.0);                    // 全碗灌到水位 102（尚未平衡）
+        DiffusiveWaveModel m = new DiffusiveWaveModel(g, ModelParams.still().withSteadyTol(1e-7));
+        fill(m, 0, n, 0, n, 102.0);
+        m.setDepth(n / 2, n / 2, m.depth(n / 2, n / 2) + 0.1); // 非平衡扰动
         double v0 = m.storage();
         m.steadyState();
         double etaRef = ModelOracle.levelForVolume(g, v0);      // 独立参照
@@ -310,10 +313,11 @@ public final class ModelVerificationProbe {
     private static void t11ResolutionConvergence() {
         double coarse = bowlLevelAt(1.0);
         double fine = bowlLevelAt(0.5);
-        double relDiff = Math.abs(coarse - fine) / Math.max(1e-9, Math.abs(fine - 99.0));
-        check("嵌套分辨率收敛（格距减半 ⇒ 平衡水位趋同）", relDiff < 0.05,
-                String.format("cs=1.0 → η=%.4f / cs=0.5 → η=%.4f 相对差=%.2f%%",
-                        coarse, fine, 100 * relDiff));
+        double diff = Math.abs(coarse - fine);
+        check("非平衡分辨率对照与独立库容参照一致",
+                diff < 1e-3 && Math.abs(coarse) < 1e-3 && Math.abs(fine) < 1e-3,
+                String.format("cs=1.0水位误差=%.3e cs=0.5水位误差=%.3e 两解误差差=%.3e",
+                        coarse, fine, diff));
     }
 
     /** 同几何、不同格距：灌同样的物理水位后的平衡水位。 */
@@ -327,14 +331,17 @@ public final class ModelVerificationProbe {
         }
         WaterGrid g = WaterGrid.of(n, n, cs, bed, WaterGrid.Boundary.CLOSED, 0);
         ModelParams base = ModelParams.still().withRain(0);
-        ModelParams p = new ModelParams(cs, base.manningN(), 0, 0, 0, base.dtMax(),
-                base.steadyTol(), base.maxSteps());
+        ModelParams p = base.withCellSize(cs);      // 用 wither ⇒ 加参数不必改这里
         DiffusiveWaveModel m = new DiffusiveWaveModel(g, p);
         // ★ 必须灌【同一个物理水位】：碗几何以 block 定义，与格距无关。
         //   （此前写成 100+2·cs ⇒ cs=0.5 时只灌到 101，两档根本不同题 ⇒ 假失败。）
         fill(m, 0, n, 0, n, 102.0);
+        double volume = m.storage();
+        m.setDepth(n / 2, n / 2, m.depth(n / 2, n / 2) + 0.1);
         m.steadyState();
-        return flatLevel(m, n);
+        if (!m.converged()) return Double.NaN;
+        double expected = ModelOracle.levelForVolume(g, volume + 0.1 * g.cellArea());
+        return flatLevel(m, n) - expected;
     }
 
     // ================= [12] 时步收敛 =================
@@ -342,8 +349,9 @@ public final class ModelVerificationProbe {
         double a = levelWithDt(0.05);
         double b = levelWithDt(0.005);
         double diff = Math.abs(a - b);
-        check("时步收敛（dt 缩小 10× ⇒ 平衡水位一致）", diff < 0.02,
-                String.format("dt=0.05 → η=%.5f / dt=0.005 → η=%.5f 差=%.2e", a, b, diff));
+        check("非平衡时步对照与独立库容参照一致",
+                diff < 1e-3 && Math.abs(a) < 1e-3 && Math.abs(b) < 1e-3,
+                String.format("dt=0.05水位误差=%.3e dt=0.005水位误差=%.3e 两解误差差=%.3e", a, b, diff));
     }
 
     private static double levelWithDt(double dt) {
@@ -354,13 +362,15 @@ public final class ModelVerificationProbe {
             bed[i * n + j] = 100.0 + 0.02 * (dx * dx + dz * dz);
         }
         WaterGrid g = WaterGrid.of(n, n, 1.0, bed, WaterGrid.Boundary.CLOSED, 0);
-        ModelParams base = ModelParams.still().withRain(0);
-        ModelParams p = new ModelParams(1.0, base.manningN(), 0, 0, 0, dt,
-                base.steadyTol(), base.maxSteps());
+        ModelParams p = ModelParams.still().withRain(0).withDtMax(dt);
         DiffusiveWaveModel m = new DiffusiveWaveModel(g, p);
         fill(m, 0, n, 0, n, 102.0);
+        double volume = m.storage();
+        m.setDepth(n / 2, n / 2, m.depth(n / 2, n / 2) + 0.1);
         m.steadyState();
-        return flatLevel(m, n);
+        if (!m.converged()) return Double.NaN;
+        double expected = ModelOracle.levelForVolume(g, volume + 0.1 * g.cellArea());
+        return flatLevel(m, n) - expected;
     }
 
     /** 湿区水面的平均水平（平衡时应为水平面）。 */
@@ -410,7 +420,7 @@ public final class ModelVerificationProbe {
         }
         boolean ok = maxDiff < 1e-6;
         check("旋转等价性（旋转地形 ⇒ 解同样旋转；无格方向偏置）", ok,
-                String.format("最大水深差=%.3e（D8 类模型在此必然失败）", maxDiff));
+                String.format("最大水深差=%.3e（仅验证方格的90度对称性，不证明任意角度无方向偏置）", maxDiff));
     }
 
     /** 在给定床面上推进到稳态并返回水深场。初值必须【旋转不变】才能做等价性对照。 */
@@ -421,13 +431,64 @@ public final class ModelVerificationProbe {
         //   ⇒ 两次求解根本不同题，"解不对应"是必然的（假失败）。
         fill(m, 0, n, 0, n, 104.0);                   // 全域灌到同一水位 ⇒ 旋转不变
         m.steadyState();
-        return m.depth().clone();
+        if (!m.converged()) {
+            double[] invalid = new double[n * n];
+            java.util.Arrays.fill(invalid, Double.NaN);
+            return invalid;
+        }
+        return m.depth();
     }
     /** 把矩形区域填到水位 {@code level}（水深有界 ⇒ 初值可分辨）。 */
     // ================= 工具 =================
     /** 把矩形区域填到水位 {@code level}（水深有界 ⇒ 初值可分辨）。 */
     private static void fill(DiffusiveWaveModel m, int i0, int i1, int j0, int j1, double level) {
         for (int i = i0; i < i1; i++) for (int j = j0; j < j1; j++) m.fillTo(i, j, level);
+    }
+
+    private static void t14UnsubmergedBarrier() {
+        double[] bed = {0, 10};
+        WaterGrid g = WaterGrid.of(2, 1, 1, bed, WaterGrid.Boundary.CLOSED, 0);
+        DiffusiveWaveModel m = new DiffusiveWaveModel(g, ModelParams.still());
+        m.setDepth(0, 0, 1);
+        for (int i = 0; i < 20; i++) m.step();
+        check("未淹没的床面高坎不透水", m.depth(0, 0) == 1 && m.depth(1, 0) == 0,
+                String.format("低床水深=%.6f 高床水深=%.6f", m.depth(0, 0), m.depth(1, 0)));
+    }
+
+    private static void t15EnergyAndFailedConvergence() {
+        WaterGrid g = bowl(11, 1, 0, 0.02, WaterGrid.Boundary.CLOSED, 0);
+        DiffusiveWaveModel m = new DiffusiveWaveModel(g, ModelParams.still().withMaxSteps(1));
+        fill(m, 0, 11, 0, 11, 1);
+        m.setDepth(5, 5, m.depth(5, 5) + 0.2);
+        double volume = m.storage();
+        double initial = potentialEnergy(m);
+        boolean dissipates = true;
+        double previous = initial;
+        for (int step = 0; step < 100; step++) {
+            m.step();
+            double current = potentialEnergy(m);
+            dissipates &= current <= previous + 1e-10;
+            previous = current;
+        }
+        DiffusiveWaveModel limited = new DiffusiveWaveModel(g, ModelParams.still().withMaxSteps(1));
+        fill(limited, 0, 11, 0, 11, 1);
+        limited.setDepth(5, 5, limited.depth(5, 5) + 0.2);
+        limited.steadyState();
+        check("封闭域势能下降且耗尽步数不伪装收敛",
+                dissipates && previous < initial && Math.abs(m.storage() - volume) < 1e-9
+                        && !limited.converged(),
+                String.format("能量 %.9f→%.9f 质量误差=%.3e 耗尽后converged=%b",
+                        initial, previous, m.storage() - volume, limited.converged()));
+    }
+
+    private static double potentialEnergy(DiffusiveWaveModel m) {
+        WaterGrid g = m.grid();
+        double energy = 0;
+        for (int i = 0; i < g.nx; i++) for (int j = 0; j < g.nz; j++) {
+            double depth = m.depth(i, j);
+            energy += g.cellArea() * (g.bed[g.idx(i, j)] * depth + depth * depth / 2);
+        }
+        return energy;
     }
 
     /** 抛物碗：{@code z = z0 + a·r²}。 */

@@ -64,7 +64,7 @@ public final class ModelOracle {
             if (cost > best[k]) continue;
             int i = g.ix(k), j = g.iz(k);
             // 边界格 ⇒ 可排水到域外，代价 = max(cost, outLevel)
-            if (g.isBorder(i, j)) return Math.max(cost, outLevel);
+            if (g.openSides(i, j) > 0) return Math.max(cost, outLevel);
             for (int t = 0; t < 4; t++) {
                 int ni = i + dx[t], nj = j + dz[t];
                 if (!g.inside(ni, nj)) continue;
