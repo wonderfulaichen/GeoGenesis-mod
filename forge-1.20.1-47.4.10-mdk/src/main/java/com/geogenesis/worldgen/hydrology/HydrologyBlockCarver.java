@@ -66,10 +66,11 @@ public final class HydrologyBlockCarver {
      *
      * <p><b>回退</b>：置 false ⇒ 逐位回到 {@code erodedWaterLevel} 旧行为。</p>
      */
-    // ★ 2026-09-23 回退 false：A/B 实测 HEAD（用户确认"湖正常"）走的是旧链
-    //   （erodedWaterLevel → computeFlood → floodLevel）。本会话的 minimax 改动
-    //   在 HEAD 基线下无净收益。留档供后续"统一水位链"专项重做。
-    public static final boolean LAKE_MINIMAX_LEVEL = false;
+    // ★★★ 2026-09-23【恢复 true（修环状湖）】★★★
+    //   A/B：false（旧链 eroded→flood）⇒ 湖内缺格 38571（环状）；
+    //        true（minimax 逃逸，多溢出口取最低）⇒ 534（实心）。
+    //   与 RiverLineNetwork.finalLakeLevel / domTol=0.5 是同一批修复，必须同开。
+    public static final boolean LAKE_MINIMAX_LEVEL = true;
 
     /**
      * ★★★ 2026-09-22【停用"弃湖"旧逻辑】★★★
@@ -84,9 +85,10 @@ public final class HydrologyBlockCarver {
      *
      * <p><b>回退</b>：置 false ⇒ 逐位回到"OOB 即弃湖"。</p>
      */
-    // ★ 2026-09-23 回退 false：回到 HEAD 的"OOB ⇒ 弃湖"语义
-    //   （AGENTS.md 用户规则：「填充范围内无法闭合的湖泊 ⇒ 就不生成这片湖」）。
-    public static final boolean LAKE_NO_ABANDON_ON_OOB = false;
+    // ★★★ 2026-09-23【恢复 true（修环状湖）】★★★
+    //   OOB 弃湖会让整片湖不出水 ⇒ 湖内大块空洞（与 domTol 48wu 叠加时尤其明显）。
+    //   新语义：OOB 不再弃湖，照常按等高线判水（水位由 LAKE_MINIMAX_LEVEL 保证）。
+    public static final boolean LAKE_NO_ABANDON_ON_OOB = true;
 
     /**
      * ★★★ 2026-09-22【湖判水 = 纯等高线，不再要求 inFlood 连通区】★★★
@@ -423,7 +425,15 @@ public final class HydrologyBlockCarver {
                 //   ⚠ 2026-09-15 曾【刻意不缩小 gridCell】（怕格数 ×4、怕撞弃湖阈值）——
                 //     该顾虑现由"弃湖阈值改为按【物理面积】判定"消解（见 computeFlood）。
                 //   回退：把 0.25 改回 0.5 一行。
-                boolean oob = ln.computeFlood(erodedY, spill, claimGrid * 0.25, claimGrid);
+                // ★ 2026-09-23【P2-2 掩码格距与发射侧统一】：lakeBasinHits=true 时用
+                //   块级格距（与 sampleRegion 的 inBasinMask 同参数 ⇒ 无论谁先触发，
+                //   缓存命中后参数被忽略，两处永远共用同一份掩码）；
+                //   lakeBasinHits=false（回退）⇒ 逐位走旧 6wu（claimGrid*0.25）。
+                boolean oob = ln.computeFlood(erodedY, spill,
+                        com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.lakeBasinHits
+                                ? com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.lakeBasinFloodGrid
+                                : claimGrid * 0.25,
+                        claimGrid);
                 if (TR) {
                     System.out.printf("[CARVE-TRACE]   computeFlood oob=%s spill(侵蚀后)=%.2f "
                                     + "floodLevel=%s%n", oob,
@@ -480,8 +490,23 @@ public final class HydrologyBlockCarver {
                         System.out.printf("[CARVE-TRACE]   ⇒ 出口=被拒列(inFlood=false) spill=%.2f "
                                         + "⇒ 交 lakeFineFlood 块级重判%n", spill);
                     }
+                    // ★★★ 2026-09-23【P2-1 幽灵水位修复】★★★
+                    //   旧写法 waterSurfaceY/lipSurfaceY = original（侵蚀前地形）——
+                    //   经合成层 `cell.riverSurfaceY = column.waterSurfaceY()` 落盘后，
+                    //   被侵蚀切低的列会挂着【高于地形的假水位】（CARVE-TRACE 实锤
+                    //   block(-400,-60)：original=192.84 vs 湖水位 173.28，Δ=+19.6）⇒
+                    //   绝对等高线判据"该有水却干"被污染（实测 B4 |Δ|>5 共 17,605 格），
+                    //   一切缺格/漏灌验收数字失真。
+                    //   改为回传 spill（与 lakeLevelY 同值同口径 = 湖列分支既有语义）。
+                    //   【零放水风险】落块灌水被 `cell.riverType != 0` 硬门控
+                    //   （GeoGenesisGenerator 灌水判定），riverType 仍由 fillWater /
+                    //   lakeFineFlood 决定 ⇒ 本改动不改变任何水块放置；
+                    //   lakeFineFlood 重判用 lakeLevelY（末参），同样不受影响。
+                    //   【未动】本文件 437 行"弃湖列"出口同款写法保持原样：
+                    //   ① LAKE_NO_ABANDON_ON_OOB=true 下是死路径；② 弃湖语义下无可信水位。
+                    //   回退：把 spill, spill 改回 original, original。
                     return new HydrologyBlockCarvedColumn(blockX, blockZ,
-                            original, original, original, original,
+                            original, original, spill, spill,
                             0.0, 1.0, false, false, ln, spill);
                 }
                 // ★★★ 2026-09-17 修复（实测定位：算出来的水位没人用）★★★

@@ -109,7 +109,16 @@ public final class GeoGenesisTerrain {
      * 门禁 {@code runHydrologyDeterminismProbe} 的 FAIL 经隔离实验确认是<b>既有问题</b>
      * （本开关关掉仍 FAIL；max|Δheight| = 0.0515，与本改动无关）。</p>
      */
-    static final boolean LAKE_FINE_FLOOD = true;
+    // ★★★ 2026-09-23【P2-2 收尾：默认关闭】（B9 簇扫描实锤）★★★
+    //   本机制的历史使命 = 补 6wu 粗格 inFlood 的误杀（452 干墙格）。
+    //   P2-2 把连通性换成 1 块分辨率掩码后，"被拒列"= 掩码外 = 本就不该出水的列，
+    //   本方法的"局部连通即出水"反而变成【掩码外灌水】——
+    //   实测（B9 簇扫描，seed 9139912035078620160）：坡地孤斑簇距母湖 88~102wu、
+    //   带母湖水位（173.28/189.05）、全部不在掩码内（如 (-256,-276) 19 格、
+    //   (-251,-269) 34 格、(-412,-49) 8 格、(-26,-419) 2 格）⇒ 用户实机圈出的
+    //   "坡地小水斑"（B8 过量蓄水 702 格同源）。
+    //   回退：改回 true（旧链语义原样恢复）。
+    static final boolean LAKE_FINE_FLOOD = false;
 
     /** 逃逸水位专用的水文引擎（懒建一次，供点态最终地形采样复用）。 */
     private HydrologyExperimentEngine escapeEngine;
@@ -678,6 +687,10 @@ public final class GeoGenesisTerrain {
                     //   侵蚀先于水文（extractFromTile → applyHydrologyValley），不违背"湖先于河"；
                     //   河雕刻对湖域的避让由 RiverLineNetwork.sampleAll 的湖域优先保证。
                     final double hsEscape = generator.params().horizontalScale();
+                    // ★★★ 2026-09-23【回到“采样器地形”版 —— 与 domTol=0.5 同批（修环状湖）】★★★
+                    //   实测：采样器版（侵蚀后、雕刻前）= 湖内缺格 534（基本实心）；
+                    //         HEAD 的点态雕刻后地形版 = 38571（环状）。
+                    //   ⚠ 这与早前 HANDOFF 的结论相反 —— 以【同 seed 同窗口的实测数字】为准。
                     java.util.function.ToDoubleBiFunction<Double, Double> finalGroundFn =
                             (a, b) -> generator.sampleWu(a, b).height;
                     // ★ 2026-09-17：把【当前水位】作为上界传入 ⇒ 逃逸求解可安全剪掉
@@ -886,6 +899,33 @@ public final class GeoGenesisTerrain {
                         seen[k] = true;
                         q.add(k);
                     }
+                }
+            }
+            // ★★★ 2026-09-23【③ 全盆地种子（修“环状/网状湖”＝湖内灰色空洞）】★★★
+            //
+            //   【被修的缺陷（用户实测：湖内出现成片灰色空洞）】
+            //   种子只有 ①（粗格已判出水列）与 ②b（pad 侧 inFlood 抽点）——
+            //   若某片湖盆列【粗格判为不出水】（inFlood=false，被 6wu 粗格连通性否决），
+            //   而它们在【块级】确实低于水位且属于本湖（lakeAny），就永远做不了种子
+            //   ⇒ 1 块精度洪泛从别处过不来（中间被高于水位的格隔断）⇒ 该片保持干
+            //   ⇒ 湖面出现成片灰色空洞（视觉上"环状/网状湖"）。
+            //
+            //   【正解（与用户设计一致：湖面恒定、填到实体边缘为止）】
+            //   本湖【域内】(lakeAny ∧ lakeOf==gi) 且【块级低于水位】(fineFloodWet) 的列
+            //   一律作为种子 —— 这天然满足"在盆地内 ∧ 低于水位"两条，不会外溢：
+            //     · lakeAny 已限定在本湖认领域内（不含无关地形）；
+            //     · fineFloodWet 仍要求 h < level−0.5（高于水位的盆壁不会被灌）。
+            //   ⚠ 与 ②b 的"稀疏抽点"不同：本段是【逐列】检查，故只在【本 chunk 16×16】
+            //     范围做（成本 O(256)，可忽略）；pad 区仍走 ②b 的稀疏路径。
+            for (int lz = 0; lz < 16; lz++) {
+                for (int lx = 0; lx < 16; lx++) {
+                    int i = lx * 16 + lz;
+                    if (!lakeAny[i] || lakeOf[i] != gi) continue;
+                    int k = (lz + pad) * w + (lx + pad);
+                    if (seen[k]) continue;
+                    if (!fineFloodWet(cells, cx, cz, pad, k % w, k / w, level)) continue;
+                    seen[k] = true;
+                    q.add(k);
                 }
             }
             // ② 1 块精度 4 邻洪泛

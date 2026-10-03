@@ -84,6 +84,9 @@ public final class HydrologyExperimentEngine {
         try {
             com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.erodedYSampler =
                     (a, b) -> terrain.sampleWu(a, b).height;
+            // ★ 2026-09-23【P2-2】湖盆连通掩码格距 = 1 块（hs wu/块）
+            com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.lakeBasinFloodGrid =
+                    Math.max(0.5, terrain.params().horizontalScale());
         } catch (RuntimeException ignore) {
             // 探针/无地形时保持 null ⇒ 退回无侵蚀 spill
         }

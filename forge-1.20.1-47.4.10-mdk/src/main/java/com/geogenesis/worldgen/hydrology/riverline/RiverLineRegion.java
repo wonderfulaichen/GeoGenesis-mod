@@ -380,6 +380,34 @@ public final class RiverLineRegion {
         /** 轮廓包围盒缓存（惰性一次计算；见 {@link #inDomain} 的性能说明）。 */
         private volatile double bboxMinX = Double.NaN, bboxMaxX, bboxMinZ, bboxMaxZ;
 
+        /**
+         * ★★★ 2026-09-23【P2-2 块分辨率湖盆连通掩码】★★★
+         *
+         * <p>惰性确保 {@link #computeFlood} 已按 {@code gridCell}（生产 = 1 块）建好
+         * 连通掩码，然后查 {@link #inFlood}。掩码格由 BFS 通行条件
+         * {@code h < level − 0.05} 构造保证 = <b>低于水位 ∧ 与盆底连通</b> ——
+         * 即"该淹"的完整物理谓词（替代"轮廓方格 + domTol"域壳的判水部分）。</p>
+         *
+         * <p>先用 {@link #inDomain}(margin=72wu+claimGrid) 做包围盒+轮廓预筛
+         * （掩码 BFS 窗 = 轮廓 bbox + 72wu pad，预筛是其超集 ⇒ 不漏判），
+         * 远离湖盆的点零开销返回。{@link #computeFlood} 自带"一次/湖"缓存
+         * （floodX 已算则直接复用，参数被忽略 ⇒ 谁先触发都用同一份掩码）。</p>
+         *
+         * @param erodedY   侵蚀后地形采样（生产 = terrain.sampleWu().height，与雕刻判水同源）
+         * @param level     湖水位（调用方传 finalLakeLevel / minimax 逃逸链）
+         * @param gridCell  掩码 BFS 格距（wu）；生产 = 1 块
+         * @param claimGrid 认领域基准格（= 原始 gridCell，与 BFS 分辨率解耦）
+         */
+        public boolean inBasinFlood(
+                java.util.function.ToDoubleBiFunction<Double, Double> erodedY,
+                double level, double gridCell, double claimGrid,
+                double wx, double wz) {
+            if (cellX == null || cellX.length == 0) return false;
+            if (!inDomain(wx, wz, 72.0 + claimGrid)) return false;
+            computeFlood(erodedY, level, gridCell, claimGrid);
+            return inFlood(wx, wz);
+        }
+
         /** 是否有逐格轮廓（false = 旧式圆盘湖，调用方需回退旧行为）。 */
         public boolean hasOutline() { return cellX != null && cellX.length > 0; }
 
