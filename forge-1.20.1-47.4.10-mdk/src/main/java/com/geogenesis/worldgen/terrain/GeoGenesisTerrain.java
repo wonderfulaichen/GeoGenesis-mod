@@ -192,6 +192,28 @@ public final class GeoGenesisTerrain {
 
     /** 侵蚀向河道软让步（方案 A，config erosionYieldToRiver，默认 true）。 */
     private final boolean erosionYieldToRiver;
+
+    /**
+     * ★★★ 2026-10【铁律：只下挖，placed ≤ eroded】—— 修"河道比原地形高" ★★★
+     *
+     * <p>{@code true}（默认）= 河列的下切量钳制为 {@code ≥ 0}，数学保证
+     * {@code placed = eroded − cut ≤ eroded}（河流只能切在地形上，绝不低于抬升）。</p>
+     *
+     * <p>{@code false} = 旧行为：河心（{@code mask=0}）时 {@code placed = original − erosion}
+     * 基于<b>无侵蚀</b>基准，在强侵蚀地形上会高于 {@code eroded}（实测凸起最大 14.26 块）。</p>
+     *
+     * <p>依据：{@code runRiverReliefProbe} 实测 + 用户实机"高架水渠"。</p>
+     */
+    public static volatile boolean RIVER_CUT_NONNEGATIVE = true;
+
+    static {
+        try {
+            String v = System.getProperty("geogenesis.riverCutNonNegative");
+            if (v != null) RIVER_CUT_NONNEGATIVE = Boolean.parseBoolean(v);
+        } catch (RuntimeException ignore) {
+            // 保持默认
+        }
+    }
     private final HydrologyChunkEngine hydrologyExperiment;
 
     /** 非阻塞高度查询降级计数（P0-3 埋点）：① 已生成 chunk 精确命中 / ② 廉价重算。 */
@@ -747,7 +769,29 @@ public final class GeoGenesisTerrain {
             //   去掉后：谷外缘 delta=rawDelta ⇒ 高度 = carved + rawDelta = original + rawDelta
             //   （carved→original）⇒ 数学恒等于隔壁"原侵蚀地形"，墙在构造上不可能出现。
             double delta = rawDelta * mask;
-            cell.height -= column.erosion() + (rawDelta - delta);     // = carved + delta
+            // ★★★ 2026-10【铁律：只下挖，placed ≤ eroded】—— 修"河道比原地形高" ★★★
+            //
+            //   【用户铁律】placed = eroded − cut 且 cut ≥ 0 ⇒ placed 恒 ≤ eroded。
+            //   即：河流只能【切】在原地形上，任何情况下都不得高于它。
+            //
+            //   【被修的缺陷（RiverReliefProbe 实测，用户坐标）】
+            //   展开上式：placed = original − erosion + rawDelta × mask
+            //     · mask=1（河外）：placed = eroded − erosion ⟹ 合法 ✓
+            //     · mask=0（河心）：placed = original − erosion
+            //       ← 这是【无侵蚀基准】的高度，与 eroded 无关！
+            //   实测侵蚀增量 rawDelta 达 −26 ~ −34 块 ⇒
+            //     original − erosion 常常【高于】eroded ⇒ cut < 0（负下切）
+            //   ⇒ 河床被【抬高】到侵蚀后地形之上 ⇒ 实机"高架水渠 + 两侧砂土岸"。
+            //   实测（seed 9139912035078620160 @ (-313,-165)±48）：
+            //     河床高于两岸 >0.5 块 = 35 列（7.9%），最大凸起 14.26 块。
+            //
+            //   【修法】下切量钳制为非负 ⇒ 数学上保证 placed ≤ eroded（铁律恒成立）。
+            //   语义：河心处若「计划 carved 已高于侵蚀后地形」，就不再抬（保持原地形），
+            //         宁可该列不出水，也不造凸起河道（用户明确判此为 bug）。
+            //   回退：RIVER_CUT_NONNEGATIVE = false。
+            double cut = column.erosion() + (rawDelta - delta);
+            if (RIVER_CUT_NONNEGATIVE && cut < 0.0) cut = 0.0;
+            cell.height -= cut;                                       // = eroded − cut ≤ eroded
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
             cell.riverSurfaceY = column.waterSurfaceY();               // 计划水位（不跟 delta）
             cell.riverLipY = column.lipSurfaceY();
