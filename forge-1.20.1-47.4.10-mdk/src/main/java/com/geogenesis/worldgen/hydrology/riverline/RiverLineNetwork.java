@@ -2313,7 +2313,57 @@ public final class RiverLineNetwork {
                     }
                 }
             }
-            so.rivers.add(new RiverPolyline(nodes, surf, wid, dep, fall, 1, lakeLv, terr, lakeNodeArr));
+            // ★★★ 2026-10【骨架折线复用 D8 的形态收尾链】★★★ —— 修"河道远不如旧 D8" ★★★
+            //
+            //   【被修的缺陷（用户实机："河道地形效果还是远不如我们之前的河流"）】
+            //   旧 D8 的 commitRiver 收尾是 `smoothPath(...)`，它做了 5 件事：
+            //     ① clampMonotonicDownstream —— 水面/宽/深沿程单调（下游不抬床）；
+            //     ② Catmull-Rom 细分        —— 折线变曲线；
+            //     ③ meander 多倍频正弦      —— 自然蜿蜒（河道形态的主要来源）；
+            //     ④ 平滑后再单调；
+            //     ⑤ applyWaterfalls          —— 跌水/瀑布阶梯。
+            //   而骨架路径此前是【直连输出】：
+            //     so.rivers.add(new RiverPolyline(nodes, surf, wid, dep, fall, 1, ...));
+            //   ⇒ 骨架只继承了 D8 的"追踪骨架"，把形态层【全部丢弃】。
+            //   这就是"新河不如旧河"的根因：不是骨架方向算错，而是没做形态加工。
+            //
+            //   【修法】骨架折线同样走 smoothPath。折线几何仍来自骨架（严格最陡下降），
+            //   形态加工（曲线化/蜿蜒/单调/跌水）复用 D8 已验证的实现 ⇒ 骨架成为
+            //   真正的"D8 升级版"（方向更优 + 形态不退化），而不是平行的新系统。
+            //   ⚠ meander 幅度沿用 D8 的 meanderScale=1.0（与旧路径一致）。
+            //   回退：SKELETON_SMOOTH = false。
+            RiverPolyline finalPl;
+            if (SKELETON_SMOOTH && m >= 3) {
+                finalPl = smoothPath(nodes, surf, wid, dep, 1, 1.0);
+                // ★ 湖段信息在形态重建后需重新挂回（保"河入湖不挖地"语义）。
+                //   smoothPath 内部重建了 nodes/lakeLevel（见其 6 参构造）⇒ 用最近节点回填。
+                int rn = finalPl.nodes.length;
+                double[] sLakeLv = finalPl.lakeLevel;
+                if (sLakeLv == null || sLakeLv.length != rn) {
+                    sLakeLv = new double[rn];
+                    java.util.Arrays.fill(sLakeLv, Double.NaN);
+                }
+                RiverLineRegion.LakeNode[] sLakeNodes = new RiverLineRegion.LakeNode[rn];
+                double[] sTerr = finalPl.terrainY;
+                if (sTerr == null || sTerr.length != rn) {
+                    sTerr = new double[rn];
+                    java.util.Arrays.fill(sTerr, Double.NaN);
+                }
+                for (int k = 0; k < m; k++) {
+                    if (!lakeNodeAt[k]) continue;
+                    int rk = nearestNodeIndex(finalPl, nodes[k].x(), nodes[k].z());
+                    if (rk < 0 || rk >= rn) continue;
+                    sLakeLv[rk] = lakeLevelAt[k];
+                    sLakeNodes[rk] = lakeNodeArr[k];
+                    sTerr[rk] = terr[k];
+                }
+                finalPl = new RiverPolyline(finalPl.nodes, finalPl.surfaceY,
+                        finalPl.width, finalPl.depth, finalPl.fallDrop,
+                        finalPl.level, sLakeLv, sTerr, sLakeNodes);
+            } else {
+                finalPl = new RiverPolyline(nodes, surf, wid, dep, fall, 1, lakeLv, terr, lakeNodeArr);
+            }
+            so.rivers.add(finalPl);
             // ★ 出口种子：河尾在裁剪边界之外（还会继续流）⇒ 交给邻区接续
             int endIdx = path[last];
             int ei = endIdx % gridN, ej = endIdx / gridN;
@@ -3981,6 +4031,21 @@ public final class RiverLineNetwork {
      * （region 160² = 25.6k 格，仍在百毫秒量级）。</p>
      */
     public static final int SKELETON_CELL_BLOCKS = 8;
+
+    /**
+     * ★★★ 2026-10【骨架折线复用 D8 形态收尾链】★★★ —— 修"新河不如旧河" ★★★
+     *
+     * <p>{@code true}（默认）= 骨架折线走 {@link #smoothPath}，与旧 D8 路径同一套
+     * 形态加工：Catmull-Rom 曲线化 · meander 多倍频蜿蜒 · 沿程单调（水面/宽/深）
+     * · applyWaterfalls 跌水阶梯。</p>
+     *
+     * <p>{@code false} = 骨架直连输出（仅折线，无任何形态加工）—— 实测此形态
+     * 明显不如旧 D8 河道（用户判据："河道地形效果远不如我们之前的河流"）。</p>
+     *
+     * <p>骨架的价值在于<b>追踪方向严格最陡下降</b>（D8 的方向场在填洼面上量化明显）；
+     * 形态层不应重造。</p>
+     */
+    public static volatile boolean SKELETON_SMOOTH = true;
 
     /**
      * ★ 2026-09-22【侵蚀后地形采样器】—— 河-湖水位对齐用。
