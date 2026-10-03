@@ -1302,6 +1302,17 @@ task runWaterViewProbe(type: JavaExec) {
     }
 }
 
+// River shape metrics: grid-lock ratio vs natural curvature (2026-10).
+//   gradlew runRiverShapeProbe [-PprobeArgs="seed regionX regionZ radius"]
+task runRiverShapeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverShapeProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // River relief audit: river bed must sit BELOW its banks (river cuts into terrain) (2026-10).
 //   gradlew runRiverReliefProbe [-PprobeArgs="seed blockX blockZ radius"]
 task runRiverReliefProbe(type: JavaExec) {
