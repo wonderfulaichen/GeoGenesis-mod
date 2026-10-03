@@ -1302,6 +1302,105 @@ task runWaterViewProbe(type: JavaExec) {
     }
 }
 
+// River relief audit: river bed must sit BELOW its banks (river cuts into terrain) (2026-10).
+//   gradlew runRiverReliefProbe [-PprobeArgs="seed blockX blockZ radius"]
+task runRiverReliefProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverReliefProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Erosion basis audit: is the river working on the ERODED terrain? (2026-10)
+//   gradlew runErosionBasisProbe [-PprobeArgs="seed blockX blockZ radius"]
+task runErosionBasisProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.ErosionBasisProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Lake rim measurement: where does terrain rise above lake level (2026-10).
+//   gradlew runLakeRimProbe [-PprobeArgs="seed regionX regionZ [idx] [maxDist]"]
+task runLakeRimProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeRimProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Deep-carve audit: find columns dug tens of blocks; attribute to river vs lake branch (2026-10).
+//   gradlew runDeepCarveProbe [-PprobeArgs="seed blockX blockZ radius [minDrop]"]
+task runDeepCarveProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.DeepCarveProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Single-lake outline shape: round basin vs along-valley band (2026-10).
+//   gradlew runLakeOutlineShapeProbe [-PprobeArgs="seed regionX regionZ [idx]"]
+task runLakeOutlineShapeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeOutlineShapeProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Lake census: list nearby production LakeNodes and their extent (2026-10).
+//   gradlew runLakeCensusProbe [-PprobeArgs="seed regionX regionZ radius"]
+task runLakeCensusProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeCensusProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// River bed audit: river bed must be CUT into terrain, never raised (2026-10).
+//   gradlew runRiverBedAuditProbe [-PprobeArgs="seed blockX blockZ radius"]
+task runRiverBedAuditProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverBedAuditProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Lake drain audit: lake/river water must be held by terrain (2026-10).
+//   gradlew runLakeDrainAuditProbe [-PprobeArgs="seed blockX blockZ radius [profZ]"]
+task runLakeDrainAuditProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeDrainAuditProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// River carve audit: water columns must be carved (river = cut into terrain) (2026-10).
+//   gradlew runRiverCarveAuditProbe [-PprobeArgs="seed blockX blockZ radius [step]"]
+task runRiverCarveAuditProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverCarveAuditProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Lake shore precise-intersection feasibility (2026-09-17, user's ray-tracing suggestion):
 //   gradlew runLakeEdgeRefineProbe [-PprobeArgs="seed blockX blockZ radiusBlocks"]
 task runLakeEdgeRefineProbe(type: JavaExec) {

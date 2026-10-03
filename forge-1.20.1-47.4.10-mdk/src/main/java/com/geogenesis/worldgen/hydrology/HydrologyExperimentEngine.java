@@ -126,7 +126,21 @@ public final class HydrologyExperimentEngine {
                                 cfg.hydrologyDecayExponent.get()));
             }
         } catch (IllegalStateException e) {
-            // 预览/探针进程：Forge 配置未加载 ⇒ 衰减关闭（与旧行为逐位一致）
+            // 预览/探针进程：Forge 配置未加载 ⇒ 衰减关闭（与旧行为逐位一致）。
+            // ★ 2026-10【诊断一致性】骨架开关原本只从 Forge 配置读，探针恒为 false
+            //   ⇒ 探针分析的河与游戏实际看到的河不是同一条（游戏 config=true）。
+            //   此处补系统属性覆盖，使探针能复现游戏路径；生产仍以 Forge 配置为准。
+            //   用法：-Dgeogenesis.skeletonRouting=true
+            try {
+                String v = System.getProperty("geogenesis.skeletonRouting");
+                if (v != null) {
+                    RiverLineNetwork.flowSkeletonRouting = Boolean.parseBoolean(v);
+                    LOGGER.info("[RIVER] skeletonRouting SYSTEM-PROPERTY={} => effective={}",
+                            v, RiverLineNetwork.flowSkeletonRouting);
+                }
+            } catch (RuntimeException ignore) {
+                // 保持默认
+            }
         }
     }
 
