@@ -601,13 +601,15 @@ public final class RiverLineNetwork {
                 int tl = levelAt[last];
                 if (tl > 0) level = tl + 1;
             }
-            // 入湖：记下"这个湖有河汇入"（决定是否发溢出续流河），并让河尾水面 = 湖面
+            // 入湖：记下"这个湖有河汇入"（决定是否发溢出续流河），并让河尾水面 = 湖的最终采用水位。
+            //   不能直接用 LakeNode.height（原始无侵蚀 spill）：carver/terrain 还会用
+            //   侵蚀短板 + minimax escape 把湖面进一步压低，直接用 height 会造成河尾高出湖面。
             double lakeSurface = Double.NaN;
             if (out.isLake && !out.cells.isEmpty()) {
                 int last = out.cells.get(out.cells.size() - 1);
                 int li = lakeAt[last];
                 if (li >= 0) {
-                    lakeSurface = lakes.get(li).height;
+                    lakeSurface = finalLakeLevel(lakes.get(li));
                     lakeHasInflow[li] = true;
                 }
             }
@@ -681,13 +683,13 @@ public final class RiverLineNetwork {
                     int tl = levelAt[last];
                     if (tl > 0) level = tl + 1;
                 }
-                // 续流也可能入湖（湖面继承，同普通源）
+                // 续流也可能入湖（湖面继承最终采用水位）
                 double lakeSurface2 = Double.NaN;
                 if (out.isLake && !out.cells.isEmpty()) {
                     int last = out.cells.get(out.cells.size() - 1);
                     int li = lakeAt[last];
                     if (li >= 0) {
-                        lakeSurface2 = lakes.get(li).height;
+                        lakeSurface2 = finalLakeLevel(lakes.get(li));
                         lakeHasInflow[li] = true;
                     }
                 }
@@ -739,8 +741,8 @@ public final class RiverLineNetwork {
                         allSegments, nx, nz, rx, rz, field.accumAt(outCell), lakeAt);
                 if (o != null && !outletOnlyToLake(o, lakeAt)) {
                     CommitOut c = commitRiver(field, o, 1, claimed, nodeE, nodeSurf,
-                            levelAt, allSegments, rivers, specs, lakes, accepted, nx, lk.height,
-                            rx, rz, null, Double.NaN, false);
+                            levelAt, allSegments, rivers, specs, lakes, accepted, nx,
+                            finalLakeLevel(lk), rx, rz, null, Double.NaN, false);
                     maxDischarge = Math.max(maxDischarge, c.maxDischarge());
                     if (c.reachedOcean()) outletOcean = true;
                     continue;
