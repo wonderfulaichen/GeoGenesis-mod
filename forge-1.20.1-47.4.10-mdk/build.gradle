@@ -1326,6 +1326,16 @@ task runFlatFlowDiagnosisProbe(type: JavaExec) {
     }
 }
 
+// ★ 河道中心线折线度：区分"栅格阶梯"与"真折角"（连通性度量对此完全盲）
+task runCenterlineKinkProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.CenterlineKinkProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 谷约束度：河道是否走在地形沟壑里（决定平行直纹是地形驱动还是欠分辨）
 task runValleyConfinementProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath

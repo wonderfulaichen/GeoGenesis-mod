@@ -28,8 +28,17 @@ public final class ViewSpec {
 
     /** 1 像素 = 1 方块。 */
     public static final int STEP = 1;
-    /** 半径（块）⇒ 图像边长 = 2·RADIUS + 1 = 1401。 */
-    public static final int RADIUS = 700;
+    /**
+     * 半径（块）⇒ 图像边长 = 2·RADIUS + 1。
+     *
+     * <p><b>2026-10 由 700 → 1000</b>（用户："现在这个渲染图显示面积还有小了一些，再大一些比较好"）。
+     * 改动后正典图为 <b>2001×2001</b>。</p>
+     *
+     * <p>⚠ 这是<b>正典常量</b>：改动它会使新旧图不可比（历史基线见 {@code HANDOFF.md}）。
+     * 确需小窗做快速探索时，走 {@link #assertCanonicalRadius} 的非严格模式，
+     * <b>并在结论里写明窗口</b>。</p>
+     */
+    public static final int RADIUS = 1000;
     public static final long SEED = 9139912035078620160L;
     public static final int CENTER_X = -140;
     public static final int CENTER_Z = 137;
@@ -42,6 +51,28 @@ public final class ViewSpec {
 
     /** 图像边长。 */
     public static int size() { return 2 * RADIUS + 1; }
+
+    /**
+     * ★ 断言半径是正典值，防止"随手传小窗"污染跨图比较。
+     *
+     * <p><b>缘起</b>（用户指出："为什么你这渲染图老是变化呢"）：
+     * 本轮我用 {@code r=300} 的图去印证 {@code r=700} 的结论，
+     * 而两者<b>色标自适应各自的窗口</b> ⇒ 灰度含义不同 ⇒ 结论无效。
+     * 历史教训已写过三次（944→272 块那次也源于传错半径），此处改为<b>硬断言</b>。</p>
+     *
+     * @param strict true = 非正典值直接抛异常（诊断结论类探针应开启）；
+     *                false = 只打印警告（探索性小窗允许）
+     */
+    public static void assertCanonicalRadius(int radius, boolean strict) {
+        if (radius == RADIUS) return;
+        String msg = String.format(
+                "半径 %d 非正典值（ViewSpec.RADIUS=%d）。%n"
+                + "  后果：色标按各自窗口自适应 ⇒ 两张图的灰度含义不同 ⇒ 【不可互相印证】。%n"
+                + "  若确为快速探索，请在结论中写明窗口，并改用 %s（固定色标）。",
+                radius, RADIUS, "ViewSpec.contourFixed");
+        if (strict) throw new IllegalArgumentException(msg);
+        System.out.println("[WARN] " + msg);
+    }
 
     /** 正典山体阴影（NW 光源）。{@code h} 为 row-major 的 {@code n×n} 高程数组。 */
     public static int shade(double[] h, int n, int i, int j) {
@@ -59,6 +90,30 @@ public final class ViewSpec {
     }
 
     /**
+     * <b>★ 正典等高线色标：固定档距 + 固定下界</b>（2026-10 修正）。
+     *
+     * <p><b>为什么必须固定</b>（用户指出："为什么你这渲染图老是变化呢"）：
+     * 此前各探针用 {@code band = (hMax - hMin) / 24}，即<b>按本图自身高程范围</b>自动缩放
+     * ⇒ 同一片地形，窗口不同则色彩映射不同 ⇒ <b>两张图的同一种灰度不代表同一高程</b>
+     * ⇒ 无法跨图比较，任何"两张图看起来不一样"的结论都不可靠。</p>
+     *
+     * <p>⇒ 改为<b>绝对高程</b>分档：下界固定 {@value #BAND_BASE} 块、
+     * 档距固定 {@value #BAND_BLOCKS} 块，<b>与窗口无关</b>。
+     * 这样任意两张图（任意 radius / 任意 seed）的灰度可逐格对比。</p>
+     *
+     * <p>⚠ 与 {@link #contour} 的旧签名并存是<b>有意的</b>：
+     * 旧签名保留给"需要看该图自身完整动态范围"的用途，
+     * 但<b>凡是要跨图比较，必须用本方法的固定色标</b>。</p>
+     */
+    public static final double BAND_BLOCKS = 8.0;
+    public static final double BAND_BASE = 0.0;
+
+    /** 正典固定色标的等高线着色（跨图可比）。 */
+    public static int contourFixed(double[] h, int n, int i, int j) {
+        return contour(h, n, i, j, BAND_BASE, BAND_BLOCKS);
+    }
+
+    /**
      * <b>★ 无光照等高线着色</b>（2026-10 新增，与 {@link #shade} 并存，默认用本法）。
      *
      * <p><b>为什么必须有无光照版本</b>：{@link #shade} 是 NW 光源 hillshade，
@@ -73,8 +128,12 @@ public final class ViewSpec {
      * <p>本法只用<b>高程分档</b>（每 {@code bandBlocks} 块一档），亮暗即真实高低，
      * 无任何方向性成分 ⇒ 不会把谷画成脊。</p>
      *
+     * <p>⚠ 本方法不自带色标作用域：{@code min}/{@code bandBlocks} 若由调用方
+     * <b>按图自适应</b>给出，则跨图不可比（见上方 {@link #BAND_BLOCKS} 的说明）。
+     * 跨图比较请用 {@link #contourFixed}。</p>
+     *
      * @param h        row-major 的 n×n 高程数组
-     * @param min      着色区间的下界（三图必须<b>共用</b>同一 min/band，否则颜色跨图不可比）
+     * @param min      着色区间的下界（<b>跨图比较时须固定</b>，见 {@link #contourFixed}）
      * @param bandBlocks 每档对应的高程跨度（块）
      */
     public static int contour(double[] h, int n, int i, int j, double min, double bandBlocks) {
