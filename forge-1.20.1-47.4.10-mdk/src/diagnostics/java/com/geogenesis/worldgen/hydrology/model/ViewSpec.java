@@ -58,5 +58,31 @@ public final class ViewSpec {
         return (g << 16) | (g << 8) | g;
     }
 
+    /**
+     * <b>★ 无光照等高线着色</b>（2026-10 新增，与 {@link #shade} 并存，默认用本法）。
+     *
+     * <p><b>为什么必须有无光照版本</b>：{@link #shade} 是 NW 光源 hillshade，
+     * <b>方向性光照会把【谷画成脊】</b> —— 亮的一侧是向光坡、暗的一侧是背光坡，
+     * 与"高/低"无关。本项目此前已因此误判过两次：
+     * ① 误以为"河流走在山脊上"（实为走在谷底，
+     *    {@code RiverProfileProbe} 实测 99.9% 河列在谷、0.1% 在脊）；
+     * ② 用户看到渲染图后反问"你这渲染图地形怎么反过来了"。
+     * 本项目铁律：<b>判定形态/伪影的最终依据是渲染图</b> ——
+     * 若渲染方式本身有系统性误导，则该依据失效。</p>
+     *
+     * <p>本法只用<b>高程分档</b>（每 {@code bandBlocks} 块一档），亮暗即真实高低，
+     * 无任何方向性成分 ⇒ 不会把谷画成脊。</p>
+     *
+     * @param h        row-major 的 n×n 高程数组
+     * @param min      着色区间的下界（三图必须<b>共用</b>同一 min/band，否则颜色跨图不可比）
+     * @param bandBlocks 每档对应的高程跨度（块）
+     */
+    public static int contour(double[] h, int n, int i, int j, double min, double bandBlocks) {
+        int band = (int) ((h[i * n + j] - min) / bandBlocks);
+        // 8 档循环 + 亮度渐变：高处更亮，且每 8 档重复一次以适应大高差
+        int g = (int) Math.max(0, Math.min(255, 30 + 225 * ((band & 7) / 7.0)));
+        return (g << 16) | (g << 8) | g;
+    }
+
     private ViewSpec() { }
 }

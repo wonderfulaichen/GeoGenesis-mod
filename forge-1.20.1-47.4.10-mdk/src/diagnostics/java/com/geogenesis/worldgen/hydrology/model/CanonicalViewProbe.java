@@ -45,6 +45,26 @@ public final class CanonicalViewProbe {
         Path dir = Path.of("build/hydro-reassessment/canonical-" + System.currentTimeMillis());
         Files.createDirectories(dir);
         BufferedImage img = new BufferedImage(n, n, BufferedImage.TYPE_INT_RGB);
+
+        // ★★ 底图着色：默认【无光照等高线】；-Dhydro.hillshade=true 切回 NW 光源 hillshade。
+        //
+        //   2026-10 用户指出"你这图明显是在山坡啊" —— 根因正是 hillshade：
+        //   方向性光照把【谷画成脊】。本项目已因此误判两次（见 ViewSpec.contour 的 javadoc）。
+        //   故默认改为等高线；hillshade 保留仅供对照地形大尺度形态。
+        final boolean hillshade = Boolean.getBoolean("hydro.hillshade");
+        // 等高线的下界与档距用【全图高程范围】⇒ 一图之内色标自洽。
+        double hMin = Double.MAX_VALUE, hMax = -Double.MAX_VALUE;
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                double v = r.bed()[i * n + j];
+                if (v < hMin) hMin = v;
+                if (v > hMax) hMax = v;
+            }
+        }
+        double bandBlocks = Math.max(4.0, (hMax - hMin) / 24.0);
+        System.out.printf("底图=%s 高程范围[%.1f, %.1f] 等高线档距=%.2f 块%n",
+                hillshade ? "hillshade(NW光源)" : "contour(无光照)", hMin, hMax, bandBlocks);
+
         int lake = 0, channel = 0, sea = 0, unresolvedWet = 0, unresolvedDry = 0;
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
@@ -65,9 +85,9 @@ public final class CanonicalViewProbe {
                     //     该格是否低于其 8 邻域最小值（= 局部洼地）⇒ 才可能积水。
                     boolean localDepression = isLocalDepression(r.bed(), n, i, j);
                     if (localDepression) { color = ViewSpec.UNRESOLVED_COLOR; unresolvedWet++; }
-                    else { color = ViewSpec.shade(r.bed(), n, i, j); unresolvedDry++; }
+                    else { color = terrainColor(r, n, i, j, hillshade, hMin, bandBlocks); unresolvedDry++; }
                 }
-                else color = ViewSpec.shade(r.bed(), n, i, j);
+                else color = terrainColor(r, n, i, j, hillshade, hMin, bandBlocks);
                 img.setRGB(i, j, color);
             }
         }
@@ -222,6 +242,13 @@ public final class CanonicalViewProbe {
             }
         }
         return true;
+    }
+
+    /** 地形底图着色：默认无光照等高线，{@code -Dhydro.hillshade=true} 切回 NW 光源。 */
+    private static int terrainColor(HydrologyPipeline.Result r, int n, int i, int j,
+                                    boolean hillshade, double hMin, double bandBlocks) {
+        return hillshade ? ViewSpec.shade(r.bed(), n, i, j)
+                         : ViewSpec.contour(r.bed(), n, i, j, hMin, bandBlocks);
     }
 
     /** 复算 3×3 平均（海格不参与），与 ContinuousRiverNetwork 的 smooth 口径一致。 */
