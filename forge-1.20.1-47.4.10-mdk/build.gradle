@@ -1326,6 +1326,16 @@ task runFlatFlowDiagnosisProbe(type: JavaExec) {
     }
 }
 
+// ★ 平行线归因：recover注入 vs 链传播 的插桩判别（用户圈定的高原平行线）
+task runParallelLineAttributionProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ParallelLineAttributionProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 河道中心线折线度：区分"栅格阶梯"与"真折角"（连通性度量对此完全盲）
 task runCenterlineKinkProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath

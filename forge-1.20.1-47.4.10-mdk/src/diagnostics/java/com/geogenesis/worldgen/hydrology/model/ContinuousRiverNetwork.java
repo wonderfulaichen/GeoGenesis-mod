@@ -270,13 +270,6 @@ public final class ContinuousRiverNetwork {
                 //   实测 A/B 证伪：平滑 159 分量 vs 原始 486 分量，【平滑明显更好】。
                 //   详见 {@link #channelUseRawFlux} 的完整实测表与机理解释。
                 double judge = channelUseRawFlux ? flux[k] : smooth[k];
-                if (channel[k]) {          // ★ 已由下游连续性判定成河（见下方传播）
-                    channelCells++;
-                    double ratio = smooth[k] / p.widthRef();
-                    width[k] = Math.min(p.maxWidth(),
-                            p.headWidth() * Math.pow(Math.max(1e-9, ratio), p.widthExponent()));
-                    continue;
-                }
                 if (judge < p.channelThreshold()) continue;
                 if (borderBufferCells > 0 && (i < borderBufferCells || j < borderBufferCells
                         || i >= nx - borderBufferCells || j >= nz - borderBufferCells)) {
@@ -474,6 +467,53 @@ public final class ContinuousRiverNetwork {
      * 单流线积分（主撒点与溢流注入<b>共用同一套规则</b>，杜绝两套路径逻辑漂移）：
      * 终止 = 越界 / 入海 / 入真湖；恢复 = 越过微洼地 / 停滞逃生（沿 parent）。
      */
+    // ★★★ 2026-10 诊断出口：折线（平行线）归因 ★★★
+    //
+    // 用户在正典图上圈出：高原平坦区出现【平行短线/折线】河道。
+    // 两个候选机制（修法完全不同，必须用数据区分）：
+    //   A【链传播】：propagateDownstream 沿 parent 链把成河往下传（0.5×门槛）。
+    //     平坦区 parent 由 EDT 指路 ⇒ 同一出口的 EDT 链是一组平行线
+    //     ⇒ 高原流量悬在 0.5~1.0×门槛 ⇒ 一处过门槛 ⇒ 沿 EDT 链拖出"半门槛河"。
+    //   B【recover 沉积】：流线停滞时 recover() 沿 parent 链逐格 crossings+1
+    //     （见 trace/recover：主积分每格只计 1 次，recover 每步 +1、无上限）。
+    //     基线 stagnant=1,225,770 次 ⇒ 同一条 EDT 链被成千上万条流线重复注入
+    //     ⇒ 流量在单格宽的链上堆积成条纹。
+    //
+    // 判别：parallelInk[k] = recover 注入占总流量的比例（0=全来自主积分，1=全来自恢复）。
+    // 若平行线区该比例 ≈1 ⇒ 机制 B；≈0 且被传播点亮 ⇒ 机制 A；两者都高 ⇒ 混合。
+    public static double[] lastParallelInk = null;
+    /** recover 注入的 crossings 总量（与主积分总量对照）。 */
+    public static long lastRecoverInk = 0;
+    /** 主积分（cell-entry）crossings 总量。 */
+    public static long lastMainInk = 0;
+
+    /**
+     * ★★★ 2026-10 修复 A/B：recover 沿链【不记墨水】（默认 false = 逐位不变）★★★
+     *
+     * <p><b>机制（ParallelLineAttributionProbe 插桩 + ab_diff 图实证）</b>：
+     * recover() 沿 parent 链逐格 {@code crossings+1}，而该链穿过的是
+     * <b>已被填平的水体</b>（洼地蓄满区）——那些格在水下，是湖床，不是河道。
+     * 链上墨水把【死水蓄量】记成了【河流水量】：
+     * <ul>
+     *   <li>基线 stagnant=122 万次/600k 样本，每次沿链数百格 ⇒ 同一条 EDT 链
+     *       被海量流线重复注入 ⇒ 流量堆过门槛 ⇒ <b>单格宽平行条纹</b>
+     *       （EDT 链指向同一出口 ⇒ 几何上就是平行线族 —— 用户圈出的形态）；</li>
+     *   <li>实测平行线区河道格流量 &gt;80% 来自 recover 注入。</li>
+     * </ul>
+     *
+     * <p><b>为什么不丢水</b>：流从溢出口（resume 点）重新积分，
+     * 下游墨水照常记账 ⇒ 下游水量不受影响（旧注释"丢格会让下游流量凭空缺失"
+     * 的担心不成立 —— 那些格本就在水体之下，不是过流河道）。</p>
+     *
+     * <p><b>⚠ 为什么不用 mainInkGate（已试、已否）</b>：主墨水门槛在
+     * 【成河判定】环节拦截，但 propagateDownstream 随后按
+     * {@code smooth ≥ 0.5×门槛} 把平行线<b>重新点亮</b>（它们 smooth≈0.85×门槛）
+     * ⇒ 30% 删除删在了真河上（ab_diff 图红洞），平行线原样健在。
+     * ⇒ 必须在【墨水来源】环节修，而不是在【判定】环节修。</p>
+     */
+    public static volatile boolean recoverNoInk =
+            !Boolean.getBoolean("hydro.recoverKeepChainInk");
+
     private static void trace(double[] bed, double[] level, boolean[] resolved,
                               int nx, int nz, double cellSize, double manning,
                               int maxSteps, double[] crossings,
@@ -509,6 +549,7 @@ public final class ContinuousRiverNetwork {
             if (k != lastCell) {
                 crossings[k] += 1.0;
                 lastCell = k;
+                lastMainInk++;                       // ★ 诊断：主积分记账
             }
             double[] v = velocity(bed, level, resolved, nx, nz, i, j, cellSize, manning);
             double speed = Math.hypot(v[0], v[1]);
@@ -599,7 +640,18 @@ public final class ContinuousRiverNetwork {
             if (lake != null && lake[cur]) return 1;
             int nxt = parent[cur];
             if (nxt < 0) return 2;
-            crossings[nxt] += 1.0;
+            // ★ 修复 A/B（默认关 = 逐位不变）：链上不记墨水。
+            //   链穿过的是被填平的水体（湖床），水在那里不成流；
+            //   流从溢出口（resume）重新积分 ⇒ 下游墨水不受影响。
+            //   开启后"死水蓄量"不再被记成"河流水量" ⇒ 平行条纹消失。
+            if (!recoverNoInk) crossings[nxt] += 1.0;
+            // ★ 诊断：recover 注入记账（见 lastParallelInk 的 javadoc —— 折线归因）
+            if (!recoverNoInk) {
+                lastRecoverInk++;
+                if (lastParallelInk != null && nxt >= 0 && nxt < lastParallelInk.length) {
+                    lastParallelInk[nxt] += 1.0;
+                }
+            }
             if (level[nxt] < level[k] - 1e-9) {     // 水位下降 = 越过溢出口
                 resumeAt[0] = (nxt / nz) + 0.5;
                 resumeAt[1] = (nxt % nz) + 0.5;
