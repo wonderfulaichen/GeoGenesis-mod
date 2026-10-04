@@ -83,13 +83,15 @@ public final class WaterViewProbe {
                 // ★ 2026-09-19 口径修正：与预览 RIVER_TYPE 层同口径（c.riverType != 0），
                 //   而不是 c.isLake —— 两者不同（riverType 含河列 + spill<seaLevel 的湖列）。
                 //   此前用 isLake ⇒ 与用户看到的预览形态对不上 ⇒ 定位错了位置。
-                lake[j][i] = c.riverType != 0;
-                river[j][i] = c.riverType != 0 && !c.isLake;   // ★ 河列（有水但非湖）
+                // ★ 2026-10 口径修正：lake[] 必须是【真湖】(c.isLake)，river[] 是【真河】(riverType!=0 && !isLake)。
+//   旧口径 lake[] = riverType!=0（含河列）⇒ 湖/河掩膜重叠，"河紧邻湖"永远 100%（假信号）。
+                lake[j][i] = c.isLake;
+                river[j][i] = c.riverType != 0 && !c.isLake;
                 ocean[j][i] = c.isWater();
                 flow[j][i] = c.riverNetDischarge;
                 if (c.riverNetDischarge > flowMax) flowMax = c.riverNetDischarge;
-                if (c.riverType != 0) nLake++;
-                if (c.isWater()) nOcean++;
+                if (lake[j][i]) nLake++;
+                if (ocean[j][i]) nOcean++;
                 if (river[j][i]) nRiver++;
             }
         }

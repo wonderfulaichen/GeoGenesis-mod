@@ -1302,6 +1302,28 @@ task runWaterViewProbe(type: JavaExec) {
     }
 }
 
+// River origin classification: which carver branch do "river" columns come from? (2026-10)
+//   gradlew runRiverOriginProbe [-PprobeArgs="seed blockX blockZ radius"]
+task runRiverOriginProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverOriginProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Lake-domain spread measurement — why rivers hug lake shores (2026-10).
+//   gradlew runLakeDomainSpreadProbe [-PprobeArgs="seed regionX regionZ"]
+task runLakeDomainSpreadProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.LakeDomainSpreadProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // River shape metrics: grid-lock ratio vs natural curvature (2026-10).
 //   gradlew runRiverShapeProbe [-PprobeArgs="seed regionX regionZ radius"]
 task runRiverShapeProbe(type: JavaExec) {
