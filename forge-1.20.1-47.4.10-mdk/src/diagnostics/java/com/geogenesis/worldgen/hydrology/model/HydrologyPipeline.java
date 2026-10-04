@@ -93,7 +93,8 @@ public final class HydrologyPipeline {
     public record Result(int nx, int nz, int cellBlocks, double[] bed, boolean[] sea,
                          boolean[] resolved, double[] level, double[] depth, boolean[] lake,
                          int[] parent, double[] discharge, boolean[] channel, double[] width,
-                         LakeWaterBalance.Result lakeResult, RiverNetwork.Result riverResult) { }
+                         LakeWaterBalance.Result lakeResult, RiverNetwork.Result riverResult,
+                         double[] deathMask) { }
 
     /** 湖↔河耦合的最大迭代轮次（实测通常 2~3 轮内收敛；上限用于防死循环）。 */
     private static final int COUPLING_ROUNDS = 4;
@@ -190,11 +191,14 @@ public final class HydrologyPipeline {
             lakeResult = balance.solve(request.climate(), built.drains(), borderMask, flow);
         }
         // 最终一轮：产出与所选模型一致的河网结果（含宽度/成河掩码）
+        double[] deathMask = null;
         if (request.riverModel() == RiverModel.CONTINUOUS) {
+            deathMask = new double[n * n];   // ★ 诊断：流线死亡格计数（河道碎块归因用）
             var c = ContinuousRiverNetwork.build(built.bed(), surface.level(), surface.resolved(),
                     n, n, step, ContinuousRiverNetwork.Params.forRunoff(lakeResult.runoffPerCell()),
                     request.streamSamples(), 0x5EEDL, request.borderBufferCells(),
-                    built.drains(), surface.parent(), lakeResult.lake(), lakeResult.overflowAt());
+                    built.drains(), surface.parent(), lakeResult.lake(), lakeResult.overflowAt(),
+                    deathMask);
             river = new RiverNetwork.Result(c.flux(), c.channel(), c.width(),
                     c.channelCells(), c.maxFlux(), 0, 0);
         } else {
@@ -212,7 +216,7 @@ public final class HydrologyPipeline {
 
         return new Result(n, n, step, built.bed(), built.drains(), surface.resolved(),
                 surface.level(), lakeResult.depth(), lakeResult.lake(), surface.parent(),
-                river.discharge(), river.channel(), river.width(), lakeResult, river);
+                river.discharge(), river.channel(), river.width(), lakeResult, river, deathMask);
     }
 
     /** 便捷统计，供探针与上层日志使用。 */

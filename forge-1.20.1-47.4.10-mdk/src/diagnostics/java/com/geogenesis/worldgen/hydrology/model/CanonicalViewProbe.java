@@ -88,13 +88,97 @@ public final class CanonicalViewProbe {
                 if (!lr && !ud) continue;
                 gapCount++;
                 if (gapCount <= 20) {
-                    gaps.append(String.format("gap(%d,%d) flux=%.3f resolved=%b%n",
-                            i, j, r.discharge()[k], r.resolved()[k]));
+                    // ★ 同时打印【原始 flux】与【3×3 平滑后的判定量】—— 决定性区分
+                    //   "河道真的没水"（两值都低）与"被平滑拖下门槛"（原始高、平滑低）。
+                    gaps.append(String.format(
+                            "gap(%d,%d) rawFlux=%.3f smooth=%.3f resolved=%b%n",
+                            i, j, r.discharge()[k], smoothAt(r, n, i, j), r.resolved()[k]));
                 }
             }
         }
         System.out.print(gaps);
         System.out.println("GAPS=" + gapCount + " (printed up to 20)");
+
+        // ★★★ 河道连通性（2026-10，用户："很多河流流动一点就断开了"）★★★
+        //
+        //   为什么必须量这个，而不是只数单格断口（GAPS）：
+        //   GAPS 只抓"两侧都是河、自己不是"的【单格】断口；若河流碎成【多段】短链，
+        //   段与段之间的空白是【多格】的 ⇒ 每段两侧不是河 ⇒ GAPS 完全不报
+        //   （实测 GAPS=31 而图上大面积虚线，正是这个盲区）。
+        //
+        //   正确度量 = 河道掩码的【4 连通分量】：一条正常的河 = 一个大连通分量。
+        //   若分量数远大于河流条数、且存在大量小块 ⇒ 河道被切碎（用户看到的虚线）。
+        //   同时报告"每分量的跨度(格)"，短跨度 = 流动一点就断。
+        int[] comp = new int[n * n];
+        java.util.Arrays.fill(comp, -1);
+        int comps = 0;
+        java.util.List<Integer> sizes = new java.util.ArrayList<>();
+        int[] stack = new int[n * n];
+        for (int k0 = 0; k0 < n * n; k0++) {
+            if (comp[k0] >= 0 || !r.channel()[k0]) continue;
+            int sp = 0;
+            stack[sp++] = k0;
+            comp[k0] = comps;
+            int size = 0;
+            while (sp > 0) {
+                int c = stack[--sp];
+                size++;
+                int ci = c / n, cj = c % n;
+                // 4 连通（河流是线状，对角接触不算连通）
+                if (ci > 0 && comp[c - n] < 0 && r.channel()[c - n]) { comp[c - n] = comps; stack[sp++] = c - n; }
+                if (ci < n - 1 && comp[c + n] < 0 && r.channel()[c + n]) { comp[c + n] = comps; stack[sp++] = c + n; }
+                if (cj > 0 && comp[c - 1] < 0 && r.channel()[c - 1]) { comp[c - 1] = comps; stack[sp++] = c - 1; }
+                if (cj < n - 1 && comp[c + 1] < 0 && r.channel()[c + 1]) { comp[c + 1] = comps; stack[sp++] = c + 1; }
+            }
+            sizes.add(size);
+            comps++;
+        }
+        java.util.Collections.sort(sizes);
+        int totalCh = 0;
+        for (int s : sizes) totalCh += s;
+        int maxComp = sizes.isEmpty() ? 0 : sizes.get(sizes.size() - 1);
+        int singletons = 0;
+        for (int s : sizes) if (s <= 2) singletons++;
+        System.out.printf("[连通性] 河道格=%d 连通分量=%d 最大分量=%d(%.1f%%) 孤立块(<=2格)=%d(%.1f%%)%n",
+                totalCh, comps, maxComp, 100.0 * maxComp / Math.max(1, totalCh),
+                singletons, 100.0 * singletons / Math.max(1, comps));
+        System.out.printf("[连通性] 分量大小分位: P50=%d P90=%d P99=%d max=%d%n",
+                pct(sizes, 0.50), pct(sizes, 0.90), pct(sizes, 0.99), maxComp);
+
+        // ★★★ 流线死亡热度图（2026-10）★★★
+        //   假设：河道碎块的成因是【流线死在坡上】⇒ 下游拿不到水 ⇒ 河道在此断。
+        //   若该假设成立，则死亡格应显著【集中在河道碎块的缺口处】。
+        //   判读：打印死亡格总数、每次平均死亡数、以及【死亡格中落在河道上的比例】
+        //   （若死亡格大量落在河道上/紧邻河道，则"流线死亡致断"成立）。
+        double[] death = r.deathMask();
+        if (death != null) {
+            double dsum = 0;
+            int onChannel = 0, nearChannel = 0, nDeath = 0;
+            for (int k = 0; k < n * n; k++) {
+                if (death[k] <= 0) continue;
+                nDeath++;
+                dsum += death[k];
+                if (r.channel()[k]) onChannel++;
+                else {
+                    int ci = k / n, cj = k % n;
+                    boolean near = false;
+                    for (int di = -2; di <= 2 && !near; di++) {
+                        for (int dj = -2; dj <= 2 && !near; dj++) {
+                            int a = ci + di, b = cj + dj;
+                            if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                            if (r.channel()[a * n + b]) near = true;
+                        }
+                    }
+                    if (near) nearChannel++;
+                }
+            }
+            System.out.printf("[死亡] 死亡格=%d 死亡事件合计=%.0f（占采样 %.2f%%）%n",
+                    nDeath, dsum, 100.0 * dsum / Math.max(1, 600000));
+            System.out.printf("[死亡] 落在河道上=%d(%.1f%%) 紧邻河道(±2格)=%d(%.1f%%) 二者合计=%.1f%%%n",
+                    onChannel, 100.0 * onChannel / Math.max(1, nDeath),
+                    nearChannel, 100.0 * nearChannel / Math.max(1, nDeath),
+                    100.0 * (onChannel + nearChannel) / Math.max(1, nDeath));
+        }
 
         StringBuilder log = new StringBuilder();
         log.append("canonical spec: 1 pixel = 1 block, radius 700 => 1401x1401 (ViewSpec)\n");
@@ -138,6 +222,29 @@ public final class CanonicalViewProbe {
             }
         }
         return true;
+    }
+
+    /** 复算 3×3 平均（海格不参与），与 ContinuousRiverNetwork 的 smooth 口径一致。 */
+    private static double smoothAt(HydrologyPipeline.Result r, int n, int i, int j) {
+        double sum = 0;
+        int cnt = 0;
+        for (int di = -1; di <= 1; di++) {
+            for (int dj = -1; dj <= 1; dj++) {
+                int a = i + di, b = j + dj;
+                if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                int kk = a * n + b;
+                if (r.sea()[kk]) continue;
+                sum += r.discharge()[kk];
+                cnt++;
+            }
+        }
+        return cnt > 0 ? sum / cnt : 0;
+    }
+
+    private static int pct(java.util.List<Integer> sorted, double q) {
+        if (sorted.isEmpty()) return 0;
+        int i = (int) Math.round(q * (sorted.size() - 1));
+        return sorted.get(Math.max(0, Math.min(sorted.size() - 1, i)));
     }
 
     private CanonicalViewProbe() { }

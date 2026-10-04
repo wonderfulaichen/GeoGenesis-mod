@@ -250,8 +250,23 @@ public final class EquilibriumWater {
     }
 
     /**
-     * 阶段A/B 共用的候选选择：接受 {@code nl ≤ level[k]}，取字典序
-     * {@code (level, EDT², index)} 最小的邻居。
+     * 阶段A/B 共用的候选选择：取【势函数】{@code (level, EDT², index)} 严格递减的邻居里
+     * 最小的那个。
+     *
+     * <h3>★ 关键：必须与 {@code k} 自己的势比较，而不是只在候选之间比（本轮修正）</h3>
+     * <p>旧实现的缺陷（实测暴露为 {@code recover} 的环长 6~8）：
+     * 候选过滤只要求 {@code nl ≤ level[k]}，平局时却在<b>候选之间</b>取 EDT 最小。
+     * 当 {@code k} 本身是邻域内 EDT 最小的格（离排水终端最近）时，
+     * 它仍会挑一个 EDT <b>更大</b>的邻居；而那个邻居按同一规则又指回 {@code k}
+     * （因为 {@code k} 的 EDT 更小）⇒ <b>2-环</b>，在父链上游走即表现为 6~8 长的环。</p>
+     *
+     * <p>正解：令势函数 {@code φ(c) = (level[c], edt[c], c)}，只接受
+     * {@code φ(next) < φ(k)} 的邻居。这样每跳势函数<b>严格递减</b>，
+     * 而有限格的严格递减序列<b>必然终止</b> ⇒ <b>数学上不可能有环</b>。</p>
+     *
+     * <p>是否会有"无候选"死胡同？不会（除种子外）：{@code edt} 是<b>精确欧氏距离变换</b>，
+     * 对任一非种子格，朝其最近种子迈一步的那个邻居 ED 严格更小
+     * （8 邻域下方向必落在某个八分区内）⇒ 必存在严格更小候选。</p>
      *
      * @param excludeChain 非 null 时（阶段B），排除 {@code state==1} 的整条链
      *                     —— 防止新父指回链前缀再造环。
@@ -260,6 +275,7 @@ public final class EquilibriumWater {
     private static int lexMinNeighbor(int k, int nx, int nz, double[] level, double[] edt,
                                       byte[] excludeChain) {
         int x = k / nz, z = k % nz;
+        final double kLevel = level[k], kEdt = edt[k];
         int best = -1;
         double bestLevel = Double.POSITIVE_INFINITY, bestStraight = Double.POSITIVE_INFINITY;
         for (int[] d : DIRS8) {
@@ -268,9 +284,13 @@ public final class EquilibriumWater {
             int next = a * nz + b;
             if (excludeChain != null && excludeChain[next] == 1) continue;
             double nl = level[next];
-            if (!Double.isFinite(nl) || nl > level[k]) continue;   // 严格不上坡（无 ε）
+            if (!Double.isFinite(nl)) continue;
             double nd = edt[next];
-            // 严格字典序比较（无 ε 糊带 ⇒ 无 2-环；三元组逐跳严格下降 ⇒ 无任何环）。
+            // ★ 必须以 k 自身为参照做严格递减判定（旧版只与候选互比 ⇒ 允许"走高" ⇒ 成环）。
+            boolean descends = nl < kLevel
+                    || (nl == kLevel && nd < kEdt)
+                    || (nl == kLevel && nd == kEdt && next < k);
+            if (!descends) continue;
             boolean better = nl < bestLevel
                     || (nl == bestLevel && nd < bestStraight)
                     || (nl == bestLevel && nd == bestStraight && next < best);

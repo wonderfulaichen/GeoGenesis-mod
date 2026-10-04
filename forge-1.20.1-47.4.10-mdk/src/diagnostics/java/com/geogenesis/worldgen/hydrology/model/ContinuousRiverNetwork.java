@@ -56,7 +56,8 @@ public final class ContinuousRiverNetwork {
     }
 
     public record Result(double[] flux, boolean[] channel, double[] width,
-                         int channelCells, double maxFlux, long streamSteps) { }
+                         int channelCells, double maxFlux, long streamSteps,
+                         double[] deathMask) { }
 
     public static Result build(double[] bed, double[] level, boolean[] resolved,
                                int nx, int nz, double cellSize,
@@ -109,6 +110,27 @@ public final class ContinuousRiverNetwork {
                                Params p, int samples, long seed, int borderBufferCells,
                                boolean[] sea, int[] parent, boolean[] lake,
                                java.util.Map<Integer, Double> overflowAt) {
+        return build(bed, level, resolved, nx, nz, cellSize, p, samples, seed, borderBufferCells,
+                sea, parent, lake, overflowAt, null);
+    }
+
+    /**
+     * 带【死亡位置】输出的完整重载（诊断专用）。
+     *
+     * <p>{@code deathMask} 非空时：每有一条流线【非正常终止】（{@code failNoParent} /
+     * {@code failBudget} —— 即既没入海、也没入湖、也没越界），就在其死亡格 +1。</p>
+     *
+     * <p><b>为什么要测这个</b>：河道碎块（286 分量 / 中位 5 格）的成因有多个候选假设。
+     * 已用实验排除的：① 蒙特卡洛噪声（样本 ×10，GAPS 31→33 不变）；
+     * ② 逐格门槛抖动（加下游传播后最大分量仅 1018→1085）。
+     * 剩下的候选是<b>流线死亡</b>：终止统计显示 27% 的流线 {@code failBudget}
+     * ⇒ 死在坡上 ⇒ 下游拿不到水 ⇒ 河道在此处断。本掩码就是验证它的直接证据。</p>
+     */
+    public static Result build(double[] bed, double[] level, boolean[] resolved,
+                               int nx, int nz, double cellSize,
+                               Params p, int samples, long seed, int borderBufferCells,
+                               boolean[] sea, int[] parent, boolean[] lake,
+                               java.util.Map<Integer, Double> overflowAt, double[] deathMask) {
         int cells = nx * nz;
         if (bed.length != cells || level.length != cells || resolved.length != cells) {
             throw new IllegalArgumentException("array length != nx*nz");
@@ -121,6 +143,7 @@ public final class ContinuousRiverNetwork {
 
         // ★ 终止原因统计（诊断用）：河"断掉"必须能归因，不能靠猜。
         StreamStats mainStats = new StreamStats();
+        mainStats.deathMask = deathMask;
         for (int s = 0; s < samples; s++) {
             state = mix(state + 0x9E3779B97F4A7C15L);
             double x = unit(state) * (nx - 2) + 1.0;
@@ -171,15 +194,25 @@ public final class ContinuousRiverNetwork {
         int channelCells = 0;
         double maxFlux = 0;
         // ★ 成河判定用 3×3 平滑通量（原始 flux 原样输出，探针/对照口径不受影响）。
-        //   根因（实测断口探测器）：perCrossing=0.00144 ⇒ 门槛 1.0 ≈ 692 条流线，
-        //   河头流量恰在门槛附近 ⇒ MC 方差 √692≈26（±4%）使相邻格在门槛两侧翻转
-        //   ⇒ 视觉上呈"虚线/断续"。断口格实测 flux=0.30~0.95（贴门槛），非路径断裂。
+        //   根因（实测断口探测器）：perCrossing≈0.0011 ⇒ 门槛 1.0 ≈ 900 条流线，
+        //   河头流量恰在门槛附近 ⇒ 相邻格在门槛两侧翻转 ⇒ 视觉上呈"虚线/断续"。
         //   平滑降方差、不改系统性流量 ⇒ 头部连续；海格不参与均值（flux 恒 0 会稀释河口）。
+        //
+        //   ★★★ 2026-10【顺序依赖 bug —— 河道碎块的真正根因】★★★
+        //   原实现把 {@code flux[k] = ...} 与"读 3×3 邻居的 flux 求平均"放在<b>同一个
+        //   双重循环</b>里 ⇒ 索引 {@code kk > k} 的邻居此刻 {@code flux[kk]} <b>仍是 0</b>
+        //   ⇒ 每格的平滑值都被系统性低估（少算了"索引更大"的邻居）。
+        //   实测铁证：探针复算同一格得 smooth=3.56（全填好后），
+        //   而 build 内部据此判为"未达门槛 1.0"⇒ 不画河道 ⇒ 河道断开。
+        //   症状与"加样本数无效"完全吻合 —— 这是<b>顺序依赖</b>，不是统计噪声。
+        //   修法：两趟分离 —— 第一趟只填 flux，第二趟才算 smooth。
+        for (int k = 0; k < cells; k++) {
+            flux[k] = crossings[k] * perCrossing;
+        }
         double[] smooth = new double[cells];
         for (int i = 0; i < nx; i++) {
             for (int j = 0; j < nz; j++) {
                 int k = i * nz + j;
-                flux[k] = crossings[k] * perCrossing;
                 if (sea != null && sea[k]) { smooth[k] = flux[k]; continue; }
                 double sum = 0;
                 int cnt = 0;
@@ -208,7 +241,19 @@ public final class ContinuousRiverNetwork {
                 //   "未决不得落水块"的契约约束的是<b>水位/水深</b>（level/depth），
                 //   不约束"这里有河经过"这一流量结论。
                 maxFlux = Math.max(maxFlux, flux[k]);
-                if (smooth[k] < p.channelThreshold()) continue;
+                // ★ 判定量：成河用【原始流量】还是【3×3 平滑流量】（A/B 开关）。
+                //   ⚠ 曾据 gap 局部读数推断"平滑会腰斩窄河"并试图改用原始流量 ——
+                //   实测 A/B 证伪：平滑 159 分量 vs 原始 486 分量，【平滑明显更好】。
+                //   详见 {@link #channelUseRawFlux} 的完整实测表与机理解释。
+                double judge = channelUseRawFlux ? flux[k] : smooth[k];
+                if (channel[k]) {          // ★ 已由下游连续性判定成河（见下方传播）
+                    channelCells++;
+                    double ratio = smooth[k] / p.widthRef();
+                    width[k] = Math.min(p.maxWidth(),
+                            p.headWidth() * Math.pow(Math.max(1e-9, ratio), p.widthExponent()));
+                    continue;
+                }
+                if (judge < p.channelThreshold()) continue;
                 if (borderBufferCells > 0 && (i < borderBufferCells || j < borderBufferCells
                         || i >= nx - borderBufferCells || j >= nz - borderBufferCells)) {
                     continue;
@@ -220,7 +265,95 @@ public final class ContinuousRiverNetwork {
                         p.headWidth() * Math.pow(Math.max(1e-9, ratio), p.widthExponent()));
             }
         }
-        return new Result(flux, channel, width, channelCells, maxFlux, mainStats.totalSteps);
+
+        // ★★★ 下游连续性传播（2026-10；用户："河流流动一点就断开了"）★★★
+        //
+        //   实测（CanonicalViewProbe 连通性度量，600 cells 窗口）：
+        //     河道 10322 格 → 【286 个连通分量】，最大分量仅占 9.9%，
+        //     分量长度中位【5 格】，33% 的碎块 ≤2 格。
+        //   ⇒ 河道被切碎，视觉上正是"流动一点就断开"。
+        //
+        //   根因：逐格阈值判定。河流是【线状】的，汇流量沿程单调递增而河头恰在
+        //   门槛附近 ⇒ 门槛上下随机开关 ⇒ 必然碎成多段。这不是参数问题，
+        //   **加样本数也无效**（实测样本 ×10，GAPS 31→33 不变）。
+        //
+        //   物理约束：**河道不可能中断** —— 上游有水，下游必有水（水是连续的、
+        //   只会越汇越多）。故沿排水下游传播：任一惊格成河，其下游必然成河。
+        //
+        //   实现：沿 parent 链向【水位更低】的方向传播，直到遇到
+        //   ① 海/湖（合法终点，水归入水体）② 越出边界 ③ 水位不再下降（已到终端）。
+        //   传播只在"该格尚未成河"时扩展，且带预算防环。
+        propagateDownstream(bed, level, parent, sea, lake, smooth, flux, channel, width,
+                nx, nz, p, borderBufferCells);
+
+        // 传播会新增河格 ⇒ 重新计数（否则 Result.channelCells 与 channel[] 不一致）。
+        channelCells = 0;
+        for (int k = 0; k < cells; k++) if (channel[k]) channelCells++;
+
+        return new Result(flux, channel, width, channelCells, maxFlux, mainStats.totalSteps,
+                deathMask);
+    }
+
+    /**
+     * 河道下游连续性传播：保证"上游成河 ⇒ 下游成河"（水不会在坡上凭空消失）。
+     *
+     * <p>物理依据：水是连续介质，汇流量沿程单调不减 ⇒ 河道在空间上连通。
+     * 逐格阈值判定违反此约束（河头恰在门槛附近 ⇒ 碎成多段，实测 286 段 / 中位 5 格）。</p>
+     *
+     * <p><b>⚠ 关键约束：传播不得脱离流量</b>。第一版实现【无条件】沿 {@code parent}
+     * 扩格，实测把整片未决平原点亮（河道 10305→24976 格、GAPS 31→309）——
+     * 因为 {@code parent} 是 minimax 洪泛的 EDT 破平局产物，在平原上是一张
+     * <b>发散网</b>，它表示"水会流过的区域"，<b>不等于河道</b>。
+     * 河道的定义仍是<b>汇流量</b>：只有汇流量达到门槛的格才是河。</p>
+     *
+     * <p>故本实现只在<b>下游侧仍有足够汇流量</b>时传播：
+     * 从已成河格出发，沿 parent 前进，但每格都要求
+     * {@code smooth[格] ≥ threshold * DOWNSTREAM_FLOOR}，一旦低于该下限即停。
+     * 这保留了"下游必成河"的物理约束（门槛附近的抖动被抹平），
+     * 又不会把流量确实不足的坡面点亮。</p>
+     *
+     * <p>{@code DOWNSTREAM_FLOOR} 取 0.5：下游流量按定义不低于上游，
+     * 允许到门槛一半是给"离散化 + 3×3 平滑"留余量，而非放宽物理。</p>
+     */
+    private static final double DOWNSTREAM_FLOOR = 0.5;
+
+    private static void propagateDownstream(double[] bed, double[] level, int[] parent,
+                                           boolean[] sea, boolean[] lake, double[] smooth,
+                                           double[] flux,
+                                           boolean[] channel, double[] width,
+                                           int nx, int nz, Params p, int borderBufferCells) {
+        if (parent == null) return;
+        int cells = nx * nz;
+        int[] visits = new int[cells];
+        final int budget = 4 * (nx + nz);
+        final double floor = p.channelThreshold() * DOWNSTREAM_FLOOR;
+        for (int k0 = 0; k0 < cells; k0++) {
+            if (!channel[k0]) continue;
+            int cur = k0;
+            for (int n = 0; n < budget; n++) {
+                if (sea != null && sea[cur]) break;
+                if (lake != null && lake[cur]) break;
+                int nxt = parent[cur];
+                if (nxt < 0 || nxt == cur) break;
+                if (level[nxt] > level[cur] + 1e-9) break;    // 不得上坡（防御异常 parent）
+                // ★ 流量不足 ⇒ 此处不是河道（判据必须与主判定【同口径】，否则两套标准混用）
+                double judgeN = channelUseRawFlux ? flux[nxt] : smooth[nxt];
+                if (judgeN < floor) break;
+                if (visits[nxt]++ > 8) break;                 // 防环：同格反复访问即停
+                if (!channel[nxt]) {
+                    int ni = nxt / nz, nj = nxt % nz;
+                    boolean inBuffer = borderBufferCells > 0
+                            && (ni < borderBufferCells || nj < borderBufferCells
+                                || ni >= nx - borderBufferCells || nj >= nz - borderBufferCells);
+                    if (inBuffer) break;
+                    channel[nxt] = true;
+                    double ratio = smooth[nxt] / p.widthRef();
+                    width[nxt] = Math.min(p.maxWidth(),
+                            p.headWidth() * Math.pow(Math.max(1e-9, ratio), p.widthExponent()));
+                }
+                cur = nxt;
+            }
+        }
     }
 
     /** 终止/恢复计数（主撒点与溢流注入分开统计，保证主结果可跨实验对比）。 */
@@ -229,6 +362,8 @@ public final class ContinuousRiverNetwork {
         long pond, stagnant, failNoParent, failBudget;
         long totalSteps;
         long samples;   // 已打印的 maxSteps 打样数
+        /** 诊断：非正常终止（failNoParent / failBudget）的死亡格计数，null = 不采集。 */
+        double[] deathMask;
     }
 
     private static void printStats(String tag, int streams, StreamStats st) {
@@ -311,6 +446,7 @@ public final class ContinuousRiverNetwork {
                 }
                 // rec ∈ {2,3}（无 parent / 预算耗尽）：退回旧终止语义并暴露计数。
                 if (rec == 2) st.failNoParent++; else st.failBudget++;
+                if (st.deathMask != null) st.deathMask[k] += 1.0;   // 死亡格（诊断）
                 if (resolved[k]) st.flatLake++; else st.flatSuspicious++;
                 return;
             }
@@ -335,6 +471,7 @@ public final class ContinuousRiverNetwork {
                         continue;
                     }
                     if (rec == 2) st.failNoParent++; else st.failBudget++;
+                    if (st.deathMask != null) st.deathMask[ck] += 1.0;   // 死亡格（诊断）
                     failed = true; break;                          // 走不通 ⇒ 计入 maxSteps
                 }
             }
@@ -449,6 +586,36 @@ public final class ContinuousRiverNetwork {
      * {@code flatUnresolved / maxSteps} 两个计数器重新归因，用数据说话。</p>
      */
     public static final double FILM_DEPTH = 0.01;
+
+    /**
+     * 成河判定用【3×3 平滑流量】({@code true}，默认) 还是【原始流量】({@code false})。
+     *
+     * <p><b>★ 同参实测 A/B 结论（2026-10，r=300 / 400k 样本 / 同种子）</b>：</p>
+     * <pre>
+     *   判据              平滑判定      原始流量判定
+     *   连通分量            159           486
+     *   分量长度 P50         11 格          3 格
+     *   分量长度 P90        270 格         38 格
+     *   孤立块(≤2格)         42           198
+     *   单格断口 GAPS        56           115
+     * </pre>
+     * <p><b>平滑更好，且差距很大（分量数 3.1×）</b>。这与"平滑会把窄河腰斩"的
+     * 初始推断相反 —— 该推断来自 gap 样本的<b>局部</b>读数（{@code rawFlux=1.985
+     * smooth=0.930}），只看单格就下结论，属于<b>用局部证据推全局</b>。</p>
+     *
+     * <p><b>为什么平滑确实有效（与直觉相反）</b>：河道是【线状】，1 格宽，
+     * 原始流量沿程单调增；但<b>流线采样是随机的</b> —— 窄河只有中心格被大量流线穿过，
+     * 相邻干地格计数接近 0。若逐格用原始值判门槛，河道中心格与邻格读数<b>差异极大</b>
+     * （窄河处中心 3.0、邻格 0.05）⇒ 门槛附近的抖动直接把河切成 1 格一段的碎屑。
+     * 平滑把"河心"与"河缘"合并为一个一致读数 ⇒ 整段河道同进同退。</p>
+     *
+     * <p>⚠ 代价：平滑会轻微低估极窄河的流量 ⇒ 河宽偏小；河宽用平滑值是有意的
+     * （连续量抗噪），已在实测中确认不影响连通性。</p>
+     *
+     * <p>开关保留供后续实验：{@code -Dhydro.channelUseRawFlux=true} 用原始流量。</p>
+     */
+    public static volatile boolean channelUseRawFlux =
+            Boolean.getBoolean("hydro.channelUseRawFlux");
 
     static double[] velocity(double[] bed, double[] level, boolean[] resolved,
                              int nx, int nz, int i, int j, double cellSize, double manning) {
