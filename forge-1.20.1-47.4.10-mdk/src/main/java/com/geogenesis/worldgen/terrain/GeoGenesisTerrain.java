@@ -206,6 +206,15 @@ public final class GeoGenesisTerrain {
      */
     public static volatile boolean RIVER_CUT_NONNEGATIVE = true;
 
+    /**
+     * ★ 2026-10【isLake 必须用"是否湖域"】—— 修"整世界没有一列河、水体全被当湖"。
+     *
+     * <p>{@code true}（默认）= 河列（{@code lakePlan=false && lakeNode==null}）不再标 {@code isLake}。</p>
+     *
+     * <p>旧判据只问"水位是否高于海平面"，而实测河面远高于海平面 ⇒ 每条河都被误判为湖。</p>
+     */
+    public static volatile boolean ISLAKE_NEEDS_DOMAIN = true;
+
     static {
         try {
             String v = System.getProperty("geogenesis.riverCutNonNegative");
@@ -795,7 +804,18 @@ public final class GeoGenesisTerrain {
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
             cell.riverSurfaceY = column.waterSurfaceY();               // 计划水位（不跟 delta）
             cell.riverLipY = column.lipSurfaceY();
-            cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel;
+            // ★★★ 2026-10【isLake 必须用"是否湖域"，不是"水位是否高于海平面"】★★★
+//
+//   【被修的缺陷（WaterViewProbe 三色渲染实测，用户的"河流全被当湖"）】
+//   旧判据 `column.waterSurfaceY() >= seaLevel`：只问"水位比海平面高吗"。
+//   而 seaLevel=63、实测河流水面 173~188 ⇒ 每一条河都满足 ⇒ isLake 恒为 true。
+//   ⇒ 全窗口统计【河流块 = 0】：整个世界里一列"河"都没有，水体全被当湖。
+//   正确判据 = 本列是否【落在湖域】（carver 的 lakePlan / lakeNode != null）。
+//   回退：ISLAKE_NEEDS_DOMAIN = false。
+cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel
+                    && (!ISLAKE_NEEDS_DOMAIN
+                        || column.lakePlan()
+                        || column.lakeNode() != null);
             cell.lakeMask = cell.isLake;
             // ★ 2026-09-17：湖域内【被拒列】登记（carver 的 inFlood=false 早退）。
             //   本列行为与改前【完全一致】（仍不出水、riverSurfaceY 不变）：
