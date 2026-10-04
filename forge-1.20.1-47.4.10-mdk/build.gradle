@@ -1326,6 +1326,26 @@ task runFlatFlowDiagnosisProbe(type: JavaExec) {
     }
 }
 
+// ★ 谷约束度：河道是否走在地形沟壑里（决定平行直纹是地形驱动还是欠分辨）
+task runValleyConfinementProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ValleyConfinementProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 河道终止原因分类：把"分量多"拆成 水体终止/窗口截断/有水未画/出口无水
+task runChannelTerminationProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelTerminationProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 有效水面 s = resolved ? level : bed 的"棋盘格"假说检验（只读，不改产出）
 task runEffectiveSurfaceProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
