@@ -1302,6 +1302,28 @@ task runWaterViewProbe(type: JavaExec) {
     }
 }
 
+// Shade-free contour view (river in valley vs ridge) — needs -Dgeogenesis.skeletonRouting=true
+//   gradlew runRiverPlainViewProbe [-PprobeArgs="seed bx bz radius zoom"]
+task runRiverPlainViewProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverPlainViewProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Is the river in the valley or on the ridge? (2026-10, user: "river route is wrong")
+//   gradlew runRiverProfileProbe [-PprobeArgs="seed blockX blockZ radius"]
+task runRiverProfileProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverProfileProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // River origin classification: which carver branch do "river" columns come from? (2026-10)
 //   gradlew runRiverOriginProbe [-PprobeArgs="seed blockX blockZ radius"]
 task runRiverOriginProbe(type: JavaExec) {

@@ -47,12 +47,23 @@ public final class WaterViewProbe {
 
         // ★ 2026-09-20：可选第 6 参 = 采样密度缩放（gridCell × scale；1.0 = 生产默认）。
         //   用于肉眼对比"格距更细 ⇒ 河线是否更自然"（0.5 ⇒ 24 block/格）。
+        // ★ 2026-09-20：可选第 6 参 = 采样密度缩放（gridCell × scale；1.0 = 生产默认）。
+        //   用于肉眼对比"格距更细 ⇒ 河线是否更自然"（0.5 ⇒ 24 block/格）。
         if (args.length > 5) {
             RiverLineParams.gridCellScale = Double.parseDouble(args[5]);
             System.out.printf("  [采样密度] gridCell × %.2f（1.0 = 生产默认）%n",
                     RiverLineParams.gridCellScale);
         }
+        // ★ 2026-10（用户"渲染图有点小"）：第 7 参 = 放大倍率（最近邻，不改数据）。
+        int zoom = args.length > 6 ? Math.max(1, Integer.parseInt(args[6])) : 1;
 
+        // ★ 2026-10：必须在【构造 GeoGenesisTerrain 之前】设开关（GeoGenesisTerrain 构造时
+        //   会建 engine 并缓存流路线开关，探针构造顺序不定 ⇒ 之前常常测到的是旧路径）。
+        String spSk = System.getProperty("geogenesis.skeletonRouting");
+        if (spSk != null) {
+            RiverLineNetwork.flowSkeletonRouting = Boolean.parseBoolean(spSk);
+            System.out.printf("  [强制] skeletonRouting=%s%n", RiverLineNetwork.flowSkeletonRouting);
+        }
         TerrainParams tp = TerrainParams.defaults();
         CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
         gen.seed(seed);
@@ -60,6 +71,7 @@ public final class WaterViewProbe {
         gt.seed(seed);
 
         int w = 2 * radius + 1;
+        if (zoom > 1) System.out.printf("  [渲染放大] %dx（%d×%d 像素）%n", zoom, w * zoom, w * zoom);
         double[][] h = new double[w][w];
         boolean[][] lake = new boolean[w][w];
         boolean[][] ocean = new boolean[w][w];
@@ -107,8 +119,9 @@ public final class WaterViewProbe {
 
             ImageIO.write(shade(h, mn, mx), "png", new File(dir, "hillshade.png"));
 
-            BufferedImage wv = new BufferedImage(w, w, BufferedImage.TYPE_INT_RGB);
+            BufferedImage wv = new BufferedImage(w * zoom, w * zoom, BufferedImage.TYPE_INT_RGB);
             double[][] hs = shadeGray(h, mn, mx);
+            int[][] rgbMap = new int[w][w];
             for (int y = 0; y < w; y++) {
                 for (int x = 0; x < w; x++) {
                     int g = (int) Math.max(0, Math.min(255, hs[y][x]));
@@ -116,7 +129,13 @@ public final class WaterViewProbe {
                     if (ocean[y][x])          rgb = 0x1040A0;   // 海洋：深蓝
                     else if (lake[y][x])        rgb = 0x1E78D2;   // 湖泊：亮蓝
                     else if (river[y][x])      rgb = 0xC07020;   // ★ 河流：橙（2026-10 用户指出）
-                    wv.setRGB(x, y, rgb);
+                    rgbMap[y][x] = rgb;
+                }
+            }
+            // ★ 2026-10（用户"渲染图有点小"）：最近邻放大，不改变任何采样数据。
+            for (int y = 0; y < w * zoom; y++) {
+                for (int x = 0; x < w * zoom; x++) {
+                    wv.setRGB(x, y, rgbMap[y / zoom][x / zoom]);
                 }
             }
             ImageIO.write(wv, "png", new File(dir, "water_view.png"));
