@@ -164,6 +164,21 @@ public final class HydrologyPipeline {
         EquilibriumWater.Surface surface = EquilibriumWater.compute(
                 built.bed(), n, n, built.drains(), built.exterior());
 
+        // ★ 平坦区破平局（诊断层 A/B，默认 baseline = 逐位不变）。
+        //   背景：minimax 洪泛在平坦高原上令大片 level 全等 ⇒ ∇η=0 ⇒ 速度场归零 ⇒
+        //   流线打转/只剩 EDT 径向。FastFlow Alg.6 的解法是沿受主图加 ε 单调坡度。
+        //   注意：只改【水面】，不改【床面】—— ε 是水面性质，不是地形性质。
+        //   ⚠ 边界：此处只改 surface.level()，而 surface.parent() 是按【原 level】算出的。
+        //     施加 ε 不会让 parent 失效（parent 已由严格字典序保证无环），
+        //     但"level 与 parent 的降序关系"可能被 ε 抬高到极小量级 —— 这是预期内的。
+        if (DirectionRule.epsilonSlope()) {
+            DirectionRule.applyEpsilonSlope(surface.level(), surface.parent(),
+                    built.drains(), n * n);
+        }
+        if (DirectionRule.noise()) {
+            FlatSurfaceJitter.apply(built.bed(), n, n, 0x5EEDL);
+        }
+
         boolean[] borderMask = new boolean[n * n];
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {

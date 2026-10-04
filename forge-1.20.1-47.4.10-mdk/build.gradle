@@ -1316,6 +1316,26 @@ task runCanonicalViewProbe(type: JavaExec) {
     }
 }
 
+// ★ 平坦区伪影归因 + 破平局机制同参 A/B（三种模式）
+task runFlatFlowDiagnosisProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.FlatFlowDiagnosisProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 有效水面 s = resolved ? level : bed 的"棋盘格"假说检验（只读，不改产出）
+task runEffectiveSurfaceProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.EffectiveSurfaceProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 耦合诊断：为何"不耦合有湖、耦合后全干"
 task runCouplingDiagnosisProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
