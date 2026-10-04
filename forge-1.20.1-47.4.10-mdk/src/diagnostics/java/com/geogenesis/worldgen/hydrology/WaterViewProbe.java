@@ -63,11 +63,15 @@ public final class WaterViewProbe {
         double[][] h = new double[w][w];
         boolean[][] lake = new boolean[w][w];
         boolean[][] ocean = new boolean[w][w];
+        // ★ 2026-10（用户指出"渲染图不区分湖泊和河流"）：河与湖必须【分色】，
+        //   否则无法判断"河道是否贴着湖岸走"这类形态问题。
+        //   口径：riverType!=0 且【非】isLake ⇒ 河列；isLake ⇒ 湖列。
+        boolean[][] river = new boolean[w][w];
         // ★ 流量图 = 液滴物理侵蚀的汇流累积（discharge 场）—— 【物理机制跑出来的结果】，
         //   作为"哪里该有水"的参照物（ground truth）。预览图层 RIVER_NETWORK 即此场。
         double[][] flow = new double[w][w];
 
-        int nLake = 0, nOcean = 0;
+        int nLake = 0, nOcean = 0, nRiver = 0;
         double flowMax = 0;
         for (int j = 0; j < w; j++) {
             for (int i = 0; i < w; i++) {
@@ -80,11 +84,13 @@ public final class WaterViewProbe {
                 //   而不是 c.isLake —— 两者不同（riverType 含河列 + spill<seaLevel 的湖列）。
                 //   此前用 isLake ⇒ 与用户看到的预览形态对不上 ⇒ 定位错了位置。
                 lake[j][i] = c.riverType != 0;
+                river[j][i] = c.riverType != 0 && !c.isLake;   // ★ 河列（有水但非湖）
                 ocean[j][i] = c.isWater();
                 flow[j][i] = c.riverNetDischarge;
                 if (c.riverNetDischarge > flowMax) flowMax = c.riverNetDischarge;
                 if (c.riverType != 0) nLake++;
                 if (c.isWater()) nOcean++;
+                if (river[j][i]) nRiver++;
             }
         }
 
@@ -105,8 +111,9 @@ public final class WaterViewProbe {
                 for (int x = 0; x < w; x++) {
                     int g = (int) Math.max(0, Math.min(255, hs[y][x]));
                     int rgb = (g << 16) | (g << 8) | g;
-                    if (ocean[y][x])      rgb = 0x1040A0;   // 海洋：深蓝
-                    else if (lake[y][x])  rgb = 0x1E78D2;   // 湖泊：亮蓝
+                    if (ocean[y][x])          rgb = 0x1040A0;   // 海洋：深蓝
+                    else if (lake[y][x])        rgb = 0x1E78D2;   // 湖泊：亮蓝
+                    else if (river[y][x])      rgb = 0xC07020;   // ★ 河流：橙（2026-10 用户指出）
                     wv.setRGB(x, y, rgb);
                 }
             }
@@ -135,8 +142,9 @@ public final class WaterViewProbe {
                         int r = (int) (255 * Math.min(1, t));
                         rgb = (r << 16) | ((int) (110 * t) << 8) | 0;
                     }
-                    if (ocean[y][x])     rgb = 0x1040A0;
-                    else if (lake[y][x]) rgb = 0x1E78D2;
+                    if (ocean[y][x])          rgb = 0x1040A0;
+                    else if (lake[y][x])        rgb = 0x1E78D2;
+                    else if (river[y][x])      rgb = 0xC07020;
                     ov.setRGB(x, y, rgb);
                 }
             }
@@ -146,20 +154,27 @@ public final class WaterViewProbe {
             System.out.printf("block=(%d,%d) radius=%d  窗口=%d×%d 块（1 像素 = 1 块）%n",
                     bx, bz, radius, w, w);
             System.out.printf("height 范围 = [%.1f, %.1f]%n", mn, mx);
-            System.out.printf("湖泊块 = %d (%.2f%%)   海洋块 = %d (%.2f%%)%n",
+            System.out.printf("湖泊块 = %d (%.2f%%)   河流块 = %d (%.2f%%)   海洋块 = %d (%.2f%%)%n",
                     nLake, 100.0 * nLake / (w * (double) w),
+                    nRiver, 100.0 * nRiver / (w * (double) w),
                     nOcean, 100.0 * nOcean / (w * (double) w));
+            System.out.println("  图例：深蓝=海洋  亮蓝=湖泊  橙=河流");
             System.out.printf("流量图 discharge max = %.4f（0 表示该格无汇流）%n", flowMax);
             // ★ 2026-09-19：直边度量（客观判据，取代"看图判断"）
             //   用户红圈标注的是【水平长直线】的水界 —— 那就是轴对齐粗格/方块并集的签名。
             //   本度量统计"水体边缘沿 X（水平）/沿 Z（竖直）连续 ≥ MIN 块"的段数。
             reportStraightEdges("湖泊", lake, w);
+            reportStraightEdges("河流", river, w);
             reportStraightEdges("海洋", ocean, w);
             boolean[][] all = new boolean[w][w];
             for (int j = 0; j < w; j++) {
                 for (int i = 0; i < w; i++) all[j][i] = lake[j][i] || ocean[j][i];
             }
             reportStraightEdges("水体合计", all, w);
+            // ★ 2026-10（用户指出"河道路线贴着湖泊岸边走"）：量化【河-湖相邻度】。
+            //   正常：河流从湖岸某一点入湖，与湖的相邻列数应很少（河宽量级）。
+            //   异常：整条河沿湖岸走 ⇒ 与湖相邻的河列占比很高。
+            reportRiverLakeAdjacency(river, lake, w);
             System.out.println("  ★ 上边界剖面（最能对应『上边界是水平直线』）：");
             reportTopEdgeProfile("湖泊", lake, w, 8);
             reportTopEdgeProfile("水体合计", all, w, 8);
@@ -269,6 +284,28 @@ public final class WaterViewProbe {
      *
      * <p>{@code MIN} 取 24 块（= 一个 region 的 gridCell）—— 短于此的阶梯属噪声级。</p>
      */
+    /**
+     * 河-湖相邻度（2026-10，用户指出"河道路线贴着湖泊岸边走"）。
+     *
+     * <p>统计【河列中至少有一个湖邻居的比例】。正常河流只在入湖口附近接触湖面，
+     * 该比例应很低；若很高 ⇒ 整条河沿湖岸走（路线生成有问题）。</p>
+     */
+    private static void reportRiverLakeAdjacency(boolean[][] river, boolean[][] lake, int w) {
+        int riverCols = 0, adjacent = 0;
+        for (int y = 1; y < w - 1; y++) {
+            for (int x = 1; x < w - 1; x++) {
+                if (!river[y][x]) continue;
+                riverCols++;
+                boolean touch = lake[y - 1][x] || lake[y + 1][x]
+                        || lake[y][x - 1] || lake[y][x + 1];
+                if (touch) adjacent++;
+            }
+        }
+        double rate = riverCols == 0 ? 0 : 100.0 * adjacent / riverCols;
+        System.out.printf("  · 河流块=%d  其中【紧邻湖泊】=%d (%.1f%%)  ← 越低越正常（过高=沿湖岸走）%n",
+                riverCols, adjacent, rate);
+    }
+
     private static void reportStraightEdges(String tag, boolean[][] wet, int w) {
         final int MIN = 24;
         int hRuns = 0, hMax = 0, vRuns = 0, vMax = 0;
