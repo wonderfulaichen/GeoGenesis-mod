@@ -162,10 +162,18 @@ public final class ContinuousRiverNetwork {
         //     69% 的格被误判成河 —— 是量纲错误，不是模型差异。
         double perCrossing = p.runoffPerCell() * (nx * (double) nz) / samples;
 
+        // ★ 溢流注入的全局预算（见下方注释：单出口上限曾形同虚设）。
+        //   取值与主撒点数同量级：注入的物理意义是"补上湖的下游汇水区"，
+        //   它不该超过主撒点本身的工作量。超预算则截断并打印，绝不静默。
+        final int perOutletCap = 5_000;
+        final int totalCap = samples;
+        int injected = 0;
+        boolean capped = false;
+
         // ★ 湖泊溢流注入（见方法 javadoc @param overflowAt）。
         if (overflowAt != null && !overflowAt.isEmpty()) {
             StreamStats ofStats = new StreamStats();
-            int outlets = 0, injected = 0;
+            int outlets = 0;
             for (var e : overflowAt.entrySet()) {
                 double outflow = e.getValue();
                 if (!(outflow > 0)) continue;
@@ -175,8 +183,23 @@ public final class ContinuousRiverNetwork {
                 int start = outletExit(k, lake, parent, sea, nz);
                 if (start < 0) continue;
                 outlets++;
-                // n = 溢流量 / 单流线贡献；上限 50k 防极端值（注入量同时打印，可审计）。
-                int n = (int) Math.min(50_000, Math.round(outflow / perCrossing));
+                // n = 溢流量 / 单流线贡献；上限防极端值（注入量同时打印，可审计）。
+                //
+                // ★★★ 2026-10 修复：单出口 50k 的上限【形同虚设】★★★。
+                //   诊断层 A/B 实测（jstack 定位）：主线 600k 条流线 ~150s，
+                //   而"湖溢流注入"跑到 45 分钟仍未结束（已注入 214,596 条并在增长）。
+                //   根因：该上限是【每个出口】的，不是【全局】的 ⇒ 溢出口越多，
+                //   总注入量 = Σ_outlets min(50k, …) 无上界；而叠加湖↔河耦合迭代
+                //   （COUPLING_ROUNDS=4，每轮重新 build）⇒ 量级被反复放大。
+                //   实测同一份代码 baseline/edgepsilon 两档各 ~50s，唯 noise 档卡死
+                //   ⇒ 说明"噪声造出大量微洼地 ⇒ 微湖 ⇒ 溢出口暴涨"是放大器。
+                //   修法：改成【全局预算】，与主撒点量级挂钩，并打印实际占比，
+                //   使"注入量是否已失控"可审计（不能静默截断）。
+                int n = (int) Math.min((double) perOutletCap, Math.round(outflow / perCrossing));
+                if (injected + n > totalCap) {
+                    n = Math.max(0, totalCap - injected);
+                    capped = true;
+                }
                 injected += n;
                 double cx = (start / nz) + 0.5, cz = (start % nz) + 0.5;
                 for (int s2 = 0; s2 < n; s2++) {
@@ -184,7 +207,8 @@ public final class ContinuousRiverNetwork {
                             sea, parent, lake, resumeAt, cx, cz, ofStats);
                 }
             }
-            System.out.printf("  [streams] overflow injection: outlets=%d streams=%d%n", outlets, injected);
+            System.out.printf("  [streams] overflow injection: outlets=%d streams=%d (cap=%d%s)%n",
+                    outlets, injected, totalCap, capped ? ", CAPPED - 注入被截断" : "");
             printStats("overflow", injected, ofStats);
         }
 
@@ -295,6 +319,37 @@ public final class ContinuousRiverNetwork {
     }
 
     /**
+     * 死亡细分：区分"物理上本来就该死"与"缺陷"。
+     *
+     * <p><b>真分水岭（deathFlatLevel，死亡是正确行为）</b>：
+     * 该格 {@code level > bed + 1e-9} ⇒ 水面高于床面 ⇒ 它是<b>洼地/盆地</b>，
+     * minimax 把它的水位抬到"翻越出口所需的最低高度"。此时沿 parent 链走，
+     * 水位<b>必须先不降</b>（走过盆地底）才能下降 —— 若 parent 链存在，
+     * {@code recover} 会在预算内找到下降点。
+     * 所以仍走到失败 ⇒ 说明该盆地<b>没有出口</b>（内流盆地），
+     * 流线死在这里<b>物理正确</b>：水确实到不了海。</p>
+     *
+     * <p><b>其它（deathOther，这一类才是缺陷）</b>：
+     * {@code level == bed}（排水通畅的坡面）却走不下去
+     * ⇒ 父指针链有问题（缺失、成环被强断、或指向窗外）
+     * ⇒ 这是<b>真缺陷</b>，是"河流流动一点就断开"的剩余成因。</p>
+     */
+    private static void classifyDeath(StreamStats st, double[] level, double[] bed,
+                                     int k, int[] parent, int nx, int nz) {
+        boolean basin = level[k] > bed[k] + 1e-9;     // 水面高于床面 = 洼地
+        if (basin) {
+            st.deathFlatLevel++;
+        } else {
+            st.deathOther++;
+            // 打样取证：坡面上走不下去是缺陷，取前 5 例定位。
+            if (st.deathOther <= 5 && parent != null) {
+                System.out.printf("  [death] 坡面死亡(%d,%d) level=%.3f bed=%.3f parent=%d%n",
+                        k / nz, k % nz, level[k], bed[k], parent[k]);
+            }
+        }
+    }
+
+    /**
      * 河道下游连续性传播：保证"上游成河 ⇒ 下游成河"（水不会在坡上凭空消失）。
      *
      * <p>物理依据：水是连续介质，汇流量沿程单调不减 ⇒ 河道在空间上连通。
@@ -356,7 +411,21 @@ public final class ContinuousRiverNetwork {
         }
     }
 
-    /** 终止/恢复计数（主撒点与溢流注入分开统计，保证主结果可跨实验对比）。 */
+    /**
+     * 终止/恢复计数（主撒点与溢流注入分开统计，保证主结果可跨实验对比）。
+     *
+     * <p><b>★ 死亡细分（2026-10）</b>：环修复收敛后，
+     * {@code [recover] budget exhausted} 与 {@code CYCLE} 打样已完全消失
+     * ⇒ 死因已变，但 {@code failNoParent}/{@code failBudget} 两个计数仍是黑盒。
+     * 故按<b>死亡格的水位是否等于所在格的 level</b>细分：
+     * <ul>
+     *   <li>{@code deathFlatLevel} —— 该格 level 已等于"到海路径上的最高点"，
+     *       沿 parent 走出去<b>必须翻越更高的地方</b> ⇒ 物理上就是分水岭，
+     *       流线死在这里<b>是正确行为</b>（水确实到不了海）；</li>
+     *   <li>{@code deathOther} —— 其它（含边界、父指针缺失等）。</li>
+     * </ul>
+     * 只有第二类才是缺陷。</p>
+     */
     private static final class StreamStats {
         long edge, sea, flatLake, flatSuspicious, maxSteps;
         long pond, stagnant, failNoParent, failBudget;
@@ -364,6 +433,10 @@ public final class ContinuousRiverNetwork {
         long samples;   // 已打印的 maxSteps 打样数
         /** 诊断：非正常终止（failNoParent / failBudget）的死亡格计数，null = 不采集。 */
         double[] deathMask;
+        /** 死亡细分：level 等于"到海路径最高点"（真分水岭，死亡是正确行为）。 */
+        long deathFlatLevel;
+        /** 死亡细分：其它（父指针缺失、边界等）—— 这一类才是缺陷。 */
+        long deathOther;
     }
 
     private static void printStats(String tag, int streams, StreamStats st) {
@@ -371,6 +444,13 @@ public final class ContinuousRiverNetwork {
                         + " | recovered: pond=%d stagnant=%d failNoParent=%d failBudget=%d%n",
                 tag, streams, st.edge, st.sea, st.flatLake, st.flatSuspicious, st.maxSteps,
                 st.pond, st.stagnant, st.failNoParent, st.failBudget);
+        // ★ 死亡细分：盆地死亡（物理正确，水到不了海）vs 坡面死亡（缺陷）。
+        long deaths = st.deathFlatLevel + st.deathOther;
+        if (deaths > 0) {
+            System.out.printf("    [death细分] 盆地/分水岭=%d(%.1f%%，物理正确) 坡面=%d(%.1f%%，缺陷) 合计=%d%n",
+                    st.deathFlatLevel, 100.0 * st.deathFlatLevel / deaths,
+                    st.deathOther, 100.0 * st.deathOther / deaths, deaths);
+        }
     }
 
     /**
@@ -447,6 +527,7 @@ public final class ContinuousRiverNetwork {
                 // rec ∈ {2,3}（无 parent / 预算耗尽）：退回旧终止语义并暴露计数。
                 if (rec == 2) st.failNoParent++; else st.failBudget++;
                 if (st.deathMask != null) st.deathMask[k] += 1.0;   // 死亡格（诊断）
+                classifyDeath(st, level, bed, k, parent, nx, nz);
                 if (resolved[k]) st.flatLake++; else st.flatSuspicious++;
                 return;
             }
@@ -472,6 +553,7 @@ public final class ContinuousRiverNetwork {
                     }
                     if (rec == 2) st.failNoParent++; else st.failBudget++;
                     if (st.deathMask != null) st.deathMask[ck] += 1.0;   // 死亡格（诊断）
+                    classifyDeath(st, level, bed, ck, parent, nx, nz);
                     failed = true; break;                          // 走不通 ⇒ 计入 maxSteps
                 }
             }
