@@ -2008,3 +2008,446 @@ task runRiverOasisProbe(type: JavaExec) {
 // RTF 鑼冨紡娌崇綉楠屾敹锛氳 runRiverTopologyProbe锛?026-08-26 閲嶆瀯鍚庣粺涓€鍏ュ彛锛?
 
 // River diagnostic probe (2026-08-25): gradlew runRiverDiagProbe [-PprobeArgs="seed"]
+
+// ============================================================
+// model/ 链的探针 task（2026-10-05 从 worktree 迁入，收敛单一代码线）
+// 指向 diagnostics 源集 com.geogenesis.worldgen.hydrology.model.*
+// ============================================================
+
+// ★ P1 物理模型原型验收（2026-09-30，plan §6.2 数值物理矩阵）。
+//   扩散波守恒模型 + 独立参照(Dijkstra minimax / 定义式库容二分)。
+//   12 判据：静水保持 / 零输入不蓄水 / 封闭碗解析加水 / 最低溢口 / 鞍口溢流 /
+//   嵌套盆地 / 陡坡账本 / 蒸发入渗账本 / 水深非负 / 全域账本 / 分辨率与时步收敛。
+//   gradlew runHydroModelProbe [-PprobeArgs=4]   ← 只跑第 4 项（调试用）
+task runHydroModelProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ModelVerificationProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Single-domain perturbation instrument, not an infinite-world feasibility proof.
+// Unconverged solutions must fail instead of supporting influence-range claims.
+//   gradlew runHydroDomainProbe [-PprobeArgs="N rained"]
+task runHydroDomainProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.DomainInfluenceProbe'
+    maxHeapSize = '3g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// Finite-domain partition ownership and independent temporal-method comparison.
+// This does not prove infinite upstream closure or a production boundary protocol.
+task runHydroPartitionProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.PartitionVerificationProbe'
+    maxHeapSize = '2g'
+}
+
+// Render computed synthetic basin states; unique output directory, no production claim.
+task runHydroBasinRender(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.BasinRenderProbe'
+    maxHeapSize = '2g'
+}
+
+// Exact finite-time stencil closure; does not prove infinite steady-state closure.
+task runHydroCausalProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.CausalDomainProbe'
+}
+
+// Preserve static spill bottlenecks through finite-domain boundary compression.
+task runHydroBoundarySummaryProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.BasinBoundarySummaryProbe'
+}
+
+task runHydroBasinOwnershipProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.BasinOwnershipProbe'
+}
+
+task runHydroFarUpstreamProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.FarUpstreamProbe'
+}
+
+task runHydroCausalQueryProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.CausalQueryProbe'
+}
+
+task runHydroCertifiedBasinProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.CertifiedBasinProbe'
+}
+
+// 真实地形【干地起报降雨蓄水】阶段图（P1 判别用；封闭裁剪，非世界边界）
+task runHydroRealRainProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.RealLakeRainProbe'
+    maxHeapSize = '6g'
+}
+
+// 解析/半解析对照（静水保持、Ritter 溃坝、M1 回水、守恒账本）
+task runHydroAnalyticProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.AnalyticFlowProbe'
+}
+
+// 局部惯性 vs 扩散波同场景对照
+task runHydroInertialComparisonProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LocalInertialComparisonProbe'
+}
+
+// geotransport固定速度场线性输运估计器 vs 独立解析期望
+task runGeotransportAnalyticProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.GeotransportAnalyticProbe'
+}
+
+// 同床面、同初态、同糙率、同物理时刻：局部惯性 vs 扩散波 vs Ritter解析解
+task runHydroDamBreakCompare(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.DamBreakModelComparison'
+}
+
+// ★ 世界查询契约：按 chunk 独立求解 vs 整窗，逐格比对
+task runHydroChunkSplitProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ChunkSplitContractProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 连续速度场河网 vs 均匀坡面解析期望
+task runHydroContinuousRiverAnalyticProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ContinuousRiverAnalyticProbe'
+    maxHeapSize = '8g'
+}
+
+// ★ 真实地形：D8 汇流图 vs 连续速度场河网（同水位同气候）
+task runHydroContinuousRiverView(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ContinuousRiverViewProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 大图规格湖—河—海出图（1 像素 = 1 方块，与既有预览同口径）
+task runHydroFullViewProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.HydroFullViewProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 决定性检验：模型探针地形 vs 生产 chunk 管线地形，是否同一个场
+task runTerrainAgreementProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.TerrainAgreementProbe'
+    maxHeapSize = '8g'
+}
+
+// ★ 新管线水叠加在【生产地形】上（同底对照）
+task runOverProductionTerrainProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.OverProductionTerrainProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 湖泊兜底语义 A/B（无来水盆地：满湖 vs 干涸）
+task runLakeFallbackProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeFallbackProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 正典规格出图（1 方块/像素、1401×1401，规格来自 ViewSpec）+ 湖↔河耦合
+task runCanonicalViewProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.CanonicalViewProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 平坦区伪影归因 + 破平局机制同参 A/B（三种模式）
+task runFlatFlowDiagnosisProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.FlatFlowDiagnosisProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 平行线归因：recover注入 vs 链传播 的插桩判别（用户圈定的高原平行线）
+task runParallelLineAttributionProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ParallelLineAttributionProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 河道中心线折线度：区分"栅格阶梯"与"真折角"（连通性度量对此完全盲）
+task runCenterlineKinkProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.CenterlineKinkProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 谷约束度：河道是否走在地形沟壑里（决定平行直纹是地形驱动还是欠分辨）
+task runValleyConfinementProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ValleyConfinementProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 河道终止原因分类：把"分量多"拆成 水体终止/窗口截断/有水未画/出口无水
+task runChannelTerminationProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelTerminationProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 有效水面 s = resolved ? level : bed 的"棋盘格"假说检验（只读，不改产出）
+task runEffectiveSurfaceProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.EffectiveSurfaceProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 全周期判据：源头→汇流→蓄水→溢口→下泄→入海（用户验收标准，逐链追踪）
+//   弱计数（各段都>0）不算通过；必须存在【按序走完六阶段】的完整链。
+task runLifecycleChainProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LifecycleChainProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 耦合诊断：为何"不耦合有湖、耦合后全干"
+task runCouplingDiagnosisProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.CouplingDiagnosisProbe'
+    maxHeapSize = '8g'
+}
+
+// 时步/隐式阻尼归因（判定"没到稳态"还是"通量律错"）
+task runHydroSteadyAchievabilityProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SteadyAchievabilityProbe'
+}
+
+// ★ 无限世界硬判据：同一世界点的水状态是否与计算窗口大小无关
+task runHydroWindowIndependenceProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.WindowIndependenceProbe'
+    maxHeapSize = '6g'
+}
+
+// 真实地形【平衡水面】出图（湖面/水深/溢口），不跑时间
+task runHydroEquilibriumView(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.EquilibriumLakeView'
+    maxHeapSize = '6g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 水量平衡：把"地形能蓄水"变成"实际有多少水"（防沙漠长湖）
+task runHydroLakeBalanceProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeBalanceProbe'
+    maxHeapSize = '6g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// 湖—河—海一体出图（平衡态，不跑时间）
+task runHydroRiverBalanceProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.RiverBalanceProbe'
+    maxHeapSize = '6g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 大图规格湖—河—海（1 像素 = 1 方块，radius 默认 700）+ 平地流向占比量化
+task runHydroBigView(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.BigLakeRiverView'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// 各向同性检验（合成平地：四邻域流向是否被锁到轴向）
+task runHydroIsotropyProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.IsotropyProbe'
+}
+
+// ★ 真实地形流向归因：直纹来自【平局规则】还是【地形缺排水结构】
+task runHydroFlowDirProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.RealFlowDirectionProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// 坡度分层 + 汇聚度：判定"平行流线"是均匀坡面必然结果，还是坡面缺横向沟壑
+task runHydroSlopeConvergenceProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SlopeConvergenceProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 无限世界可行性：查单点水位所需的最小域半径
+task runHydroQueryRadiusProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.QueryRadiusProbe'
+    maxHeapSize = '8g'
+}
+
+// ★ 决定性判据：所需域半径是否随"到海距离"增长
+task runHydroInlandRadiusProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.InlandRadiusProbe'
+    maxHeapSize = '8g'
+}
+
+// ★ 验证边界出口补全：用"窗外地形出口"替代"必须够到海"
+task runHydroOutletValidationProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.OutletValidationProbe'
+    maxHeapSize = '8g'
+}
+
+// ★ 端到端：整条管线（出口→平衡水位→水量平衡→河网）的窗口无关性
+task runHydroPipelineProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.PipelineEndToEndProbe'
+    maxHeapSize = '8g'
+}
+
+// ★ 整幅图一致性：两窗口重叠区逐格比较（分片可行性的最后关口）
+task runHydroOverlapProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.PipelineOverlapProbe'
+    maxHeapSize = '8g'
+}
+
+// ★ 管线出图（可选中心/半径）+ 未决区空间量化
+task runHydroViewProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.PipelineViewProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// 找内陆窗口中心（用于出图观察湖河）
+task runHydroLandFinderProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LandFinderProbe'
+    maxHeapSize = '8g'
+}
+
+// ★ 边界缓冲 A/B：缓冲前 vs 缓冲后（含按坡度分档的河格统计）
+task runHydroBufferProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.BufferCompareProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 汇流路由 A/B：D8（连通图）vs MFD（多流向）
+task runHydroRoutingProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.FlowRoutingCompare'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 三路由：D8 vs MFD vs geotransport式连续速度场流线积分（诊断，不是完整水动力）
+task runHydroContinuousTransportCompare(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ContinuousTransportCompare'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+task runLakeBasinGeometryProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeBasinGeometryProbe'
+}
+
+task runRealLakeGeometryView(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.RealLakeGeometryView'
+    maxHeapSize = '4g'
+}
+
+task runLakeSaddleExchangeProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeSaddleExchangeProbe'
+}
+
+task runBasinMergeStateProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.BasinMergeStateProbe'
+}
