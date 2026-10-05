@@ -227,9 +227,34 @@ public final class LakeWaterBalance {
             for (int k : group) {
                 sill = Math.max(sill, equilibrium[k]);
                 if (bed[k] < lowest) { lowest = bed[k]; seed = k; }
-                // ★ 出口键改用记忆化终端表（性能修复，语义同旧 outletOf）。
-                //   终端在湖格上是"入湖口"（湖盆出口）；在链端是自身。
-                if (terminal[k] >= 0) outletKey = terminal[k];
+            }
+            // ★★ 2026-10-05：出口 = 盆地【边界上 bed 最低】的非湖格（真·最低鞍口）★★
+            //
+            //   【为什么必须这样】（实测证据链）
+            //   此前用 nearestNonLake（最近的边界格）—— 错的：
+            //     键(702,139) 湖面 level=182.99，最近的边界格 bed=183.77
+            //     ⇒ 那格比湖面【高 0.78 块】⇒ 水根本流不过去。
+            //   而盆地真正的鞍口是该组 equilibrium 的最大值（= sill），
+            //   边界上必有一格 bed ≈ sill。找它，水才流得出去。
+            //
+            //   ⚠ 注意必须扫【整条边界】而非"最近格"：最近 ≠ 最低。
+            //   性能：只扫 group 的边界（O(周长)），不是 O(面积)。
+            double bestRim = Double.POSITIVE_INFINITY;
+            int rimKey = -1;
+            for (int k : group) {
+                int x = k / nz, z = k % nz;
+                for (int[] d : dirs) {
+                    int a = x + d[0], b = z + d[1];
+                    if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+                    int nb = a * nz + b;
+                    if (isLakePot[nb] || sea[nb]) continue;      // 只认非湖非海的边界格
+                    if (bed[nb] < bestRim) { bestRim = bed[nb]; rimKey = nb; }
+                }
+            }
+            // 盆地边缘被窗口截断时可能找不到边界格 ⇒ 退回 terminal（原语义）
+            outletKey = rimKey >= 0 ? rimKey : -1;
+            if (outletKey < 0) {
+                for (int k : group) if (terminal[k] >= 0) outletKey = terminal[k];
             }
             // ★ 伪洼地过滤：蓄满后【最深处不足一个 Minecraft 方块】的洼地，游戏里放不下任何水块。
             //   依据是显示单位的物理下限（1 方块），不是可调阈值：
