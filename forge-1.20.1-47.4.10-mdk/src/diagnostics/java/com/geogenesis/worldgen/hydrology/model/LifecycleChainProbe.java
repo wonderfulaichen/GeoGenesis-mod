@@ -194,6 +194,37 @@ public final class LifecycleChainProbe {
         log.append(String.format("  首次遇河道格的步数: %s%n", java.util.Arrays.toString(
                 java.util.Arrays.copyOf(outletDist, Math.min(oi, 8)))));
 
+        // ★★ 溢口格的 parent 状态（"parent缺失=54"的直接检查）★★
+        //    outletExit 失败原因全是 parent<0 ⇒ 必须看溢口格自身的 parent 指向。
+        log.append("%n[溢口格 parent 检查]\n");
+        int outParentNeg = 0, outParentSelf = 0, outParentLake = 0, outParentOk = 0;
+        int outSelfIsSea = 0, outSelfIsLake = 0, outSelfIsChannel = 0;
+        int sampleShown = 0;
+        for (Integer o : lakeRes.overflowAt().keySet()) {
+            if (o == null || o < 0 || o >= cells) continue;
+            if (sea[o]) outSelfIsSea++;
+            if (lake[o]) outSelfIsLake++;
+            if (ch[o]) outSelfIsChannel++;
+            int p = parent[o];
+            if (p < 0) outParentNeg++;
+            else if (p == o) outParentSelf++;
+            else if (lake[p]) outParentLake++;
+            else outParentOk++;
+            if (sampleShown < 6) {
+                sampleShown++;
+                log.append(String.format("    出口(%d,%d): sea=%b lake=%b channel=%b parent=%d %s%n",
+                        o / n, o % n, sea[o], lake[o], ch[o], p,
+                        p < 0 ? "【parent=-1 ⇒ outletExit 必失败】" : ""));
+            }
+        }
+        log.append(String.format("  出口格自身: 是海=%d 是湖=%d 是河道=%d%n",
+                outSelfIsSea, outSelfIsLake, outSelfIsChannel));
+        log.append(String.format("  出口格 parent: <0(断)=%d  自指=%d  指向湖=%d  其它=%d%n",
+                outParentNeg, outParentSelf, outParentLake, outParentOk));
+        log.append("  ⇒ 若 <0 占多数 ⇒【溢口格的下游父指针本身是断的】：\n");
+        log.append("     湖盆出口在 D8 图中没有下游（它已是洪泛的终端），\n");
+        log.append("     故 outletExit 沿 parent 走必然失败 ⇒ 溢流注入永远发生不了。\n");
+
         java.nio.file.Path dir = java.nio.file.Path.of("build/lifecycle");
         java.nio.file.Files.createDirectories(dir);
         javax.imageio.ImageIO.write(render(r, n, chainMark), "png",

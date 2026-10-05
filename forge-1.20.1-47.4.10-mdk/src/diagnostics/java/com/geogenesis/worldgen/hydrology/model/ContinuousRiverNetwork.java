@@ -174,14 +174,29 @@ public final class ContinuousRiverNetwork {
         if (overflowAt != null && !overflowAt.isEmpty()) {
             StreamStats ofStats = new StreamStats();
             int outlets = 0;
+            // ★ 诊断：溢流出口被跳过的原因分类（"64 个出口只注入 10 个"的归因）
+            int skipNoOutflow = 0, skipOutOfRange = 0, skipInSea = 0, skipExitNeg = 0;
+            int zeroStreams = 0;
+            int exitReasonSea = 0, exitReasonNoParent = 0, exitReasonBudget = 0;
             for (var e : overflowAt.entrySet()) {
                 double outflow = e.getValue();
-                if (!(outflow > 0)) continue;
+                if (!(outflow > 0)) { skipNoOutflow++; continue; }
                 int k = e.getKey();
-                if (k < 0 || k >= cells) continue;
-                if (sea != null && sea[k]) continue;          // 溢流入海：无需注入下游
-                int start = outletExit(k, lake, parent, sea, nz);
-                if (start < 0) continue;
+                if (k < 0 || k >= cells) { skipOutOfRange++; continue; }
+                if (sea != null && sea[k]) { skipInSea++; continue; }          // 溢流入海：无需注入下游
+                int start = overflowParentFallback
+                        ? outletExit(k, lake, parent, sea, nz, level, nx, nz)
+                        : outletExit(k, lake, parent, sea, nz);
+                if (start < 0) {
+                    skipExitNeg++;
+                    // ★ 细分失败原因：走到海(合理) / parent缺失(拓扑断) / 预算耗尽
+                    int[] rr = new int[1];
+                    outletExitDiag(k, lake, parent, sea, nz, rr);
+                    if (rr[0] == 1) exitReasonSea++;
+                    else if (rr[0] == 2) exitReasonNoParent++;
+                    else exitReasonBudget++;
+                    continue;
+                }
                 outlets++;
                 // n = 溢流量 / 单流线贡献；上限防极端值（注入量同时打印，可审计）。
                 //
@@ -201,6 +216,8 @@ public final class ContinuousRiverNetwork {
                     capped = true;
                 }
                 injected += n;
+                // ★ 诊断：n==0 的出口（溢流量 < 单流线贡献 ⇒ 一条流线都注不进）
+                if (n <= 0) zeroStreams++;
                 double cx = (start / nz) + 0.5, cz = (start % nz) + 0.5;
                 for (int s2 = 0; s2 < n; s2++) {
                     trace(bed, level, resolved, nx, nz, cellSize, p.manning(), maxSteps, crossings,
@@ -209,6 +226,13 @@ public final class ContinuousRiverNetwork {
             }
             System.out.printf("  [streams] overflow injection: outlets=%d streams=%d (cap=%d%s)%n",
                     outlets, injected, totalCap, capped ? ", CAPPED - 注入被截断" : "");
+            // ★ 归因：为何"64 个溢流出口只注入 10 个"（"溢口→下泄"断裂的直接证据）
+            System.out.printf("    [skip归因] overflowAt总数=%d | 无出流=%d 越界=%d 已在海=%d "
+                            + "outletExit失败=%d (其中: 走到海=%d parent缺失=%d 预算耗尽=%d)"
+                            + " | n<=0(注不进)=%d%n",
+                    overflowAt.size(), skipNoOutflow, skipOutOfRange, skipInSea,
+                    skipExitNeg, exitReasonSea, exitReasonNoParent, exitReasonBudget,
+                    zeroStreams);
             printStats("overflow", injected, ofStats);
         }
 
@@ -447,19 +471,95 @@ public final class ContinuousRiverNetwork {
     }
 
     /**
-     * 从溢出口格出发，沿 parent 走到<b>非湖格</b>作为注入起点。
+     * 从溢出口格出发，走到<b>非湖格</b>作为注入起点。
      *
-     * @return 起点格下标；-1 = 走到海/死路（无需或无法注入）。
+     * <h3>★★ 2026-10-05 修复：parent 断裂时改用【水面梯度】下降</h3>
+     *
+     * <p><b>实测缺陷（LifecycleChainProbe + skip 归因）</b>：全周期
+     * 「溢口→下泄→入海」整体断裂 —— 64 个溢流出口只有 10 个能注入，
+     * 细分原因：<b>parent 缺失 = 54 / 达到海 = 0 / 预算耗尽 = 0</b>。</p>
+     *
+     * <p><b>根因（结构性，非参数）</b>：{@code overflowAt} 的键来自
+     * {@code LakeWaterBalance.terminal[]}，而 terminal 在 parent 断开处被设成
+     * <b>该格自己</b>（{@code if (p < 0) result = c;}）。湖盆内部格的 parent
+     * 由 minimax 洪泛给出，常常 <b>parent = -1</b>（它们是洪泛终端）
+     * ⇒ 出口格自身 parent=-1（实测 56/64）⇒ 本方法第一步就必然失败
+     * ⇒ <b>溢流注入永远发生不了</b> ⇒ 湖与下游河网实际脱节。</p>
+     *
+     * <p><b>修法</b>：{@code parent < 0} 时不再放弃，改为沿<b>水面高程 level</b>
+     * 下降方向走 —— 这正是物理上"水从盆地最低溢口溢出"的方向
+     * （minimax 已把湖盆水位抬到溢出口高度 ⇒ 越过鞍口的方向就是 level 下降方向）。
+     * 走出湖域即得注入起点；若邻域全是湖且无更低水面，才判失败。</p>
+     *
+     * @return 起点格下标；-1 = 走到海（无需注入）或确实无法走出（湖水不下泄）。
      */
     private static int outletExit(int outlet, boolean[] lake, int[] parent, boolean[] sea, int nz) {
+        return outletExit(outlet, lake, parent, sea, nz, null, -1, -1);
+    }
+
+    /**
+     * @param level 水面高程（用于 parent 断裂时的梯度下降）；null = 关闭该修复（旧行为）
+     */
+    private static int outletExit(int outlet, boolean[] lake, int[] parent, boolean[] sea, int nz,
+                                  double[] level, int nx, int nz2) {
         int cur = outlet;
-        for (int n = 0; n < 4096; n++) {
+        int guard = 0;
+        while (guard++ < 4096) {
+            if (cur < 0) return -1;
             if (sea != null && sea[cur]) return -1;
             if (lake == null || !lake[cur]) return cur;
             int nxt = parent[cur];
-            if (nxt < 0) return -1;
+            if (nxt >= 0) { cur = nxt; continue; }
+            // ★ parent 断裂：改用【水面梯度】下降（仅当传入 level 时启用）
+            if (level == null || nx <= 0) return -1;
+            int step = descendByLevel(cur, lake, level, nx, nz2, sea);
+            if (step < 0) return -1;
+            cur = step;
+        }
+        return -1;
+    }
+
+    /**
+     * 在湖域内沿水面高程下降一步（8 邻域，取 level 最小且严格更低的邻格）。
+     *
+     * <p>物理依据：minimax 把湖盆水面抬到"最低溢口"高度 ⇒
+     * 湖内 level 近似为常数、在<b>鞍口处</b>出现向下台阶 ⇒
+     * 沿 level 下降即朝溢出口走。为处理"湖内 level 全等"的平地情形，
+     * 平级时用【到海 EDT 更近】破平局（与 {@code EquilibriumWater} 的破平局同源）。</p>
+     *
+     * @return 下一格；-1 = 无更低/更近的湖格（真·封闭盆地）。
+     */
+    private static int descendByLevel(int cur, boolean[] lake, double[] level, int nx, int nz,
+                                      boolean[] sea) {
+        int ci = cur / nz, cj = cur % nz;
+        double bestLevel = level[cur];
+        int best = -1;
+        for (int[] d : DIRS8) {
+            int a = ci + d[0], b = cj + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            int k = a * nz + b;
+            if (sea != null && sea[k]) return k;          // 直接走到海也算出口
+            double lv = level[k];
+            if (!Double.isFinite(lv)) continue;
+            // 只在【非湖格】或【更低水面的湖格】里选
+            if (!lake[k]) return k;                       // 走出湖域 ⇒ 就是我们要的起点
+            if (lv < bestLevel - 1e-9) { bestLevel = lv; best = k; }
+        }
+        return best;
+    }
+
+    /** ★ 诊断版 outletExit：记录失败原因（0=成功 1=走到海 2=parent缺失 3=预算耗尽）。 */
+    private static int outletExitDiag(int outlet, boolean[] lake, int[] parent, boolean[] sea,
+                                      int nz, int[] reasonOut) {
+        int cur = outlet;
+        for (int n = 0; n < 4096; n++) {
+            if (sea != null && sea[cur]) { reasonOut[0] = 1; return -1; }
+            if (lake == null || !lake[cur]) { reasonOut[0] = 0; return cur; }
+            int nxt = parent[cur];
+            if (nxt < 0) { reasonOut[0] = 2; return -1; }
             cur = nxt;
         }
+        reasonOut[0] = 3;
         return -1;
     }
 
@@ -750,6 +850,19 @@ public final class ContinuousRiverNetwork {
      */
     public static volatile boolean channelUseRawFlux =
             Boolean.getBoolean("hydro.channelUseRawFlux");
+
+    /**
+     * A/B 开关：溢流出口在 {@code parent} 断裂时是否改用【水面梯度】下降。
+     *
+     * <p>默认 <b>true</b>（本轮修复）。置 false = 旧行为（54/64 出口被丢弃）。</p>
+     */
+    public static volatile boolean overflowParentFallback = true;
+
+    /** 8 邻域（{@link #descendByLevel} 用于在湖域内找溢出口方向）。 */
+    private static final int[][] DIRS8 = {
+            {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+            {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+    };
 
     static double[] velocity(double[] bed, double[] level, boolean[] resolved,
                              int nx, int nz, int i, int j, double cellSize, double manning) {
