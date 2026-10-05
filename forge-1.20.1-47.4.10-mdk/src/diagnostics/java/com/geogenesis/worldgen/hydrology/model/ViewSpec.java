@@ -29,16 +29,15 @@ public final class ViewSpec {
     /** 1 像素 = 1 方块。 */
     public static final int STEP = 1;
     /**
-     * 半径（块）⇒ 图像边长 = 2·RADIUS + 1。
+     * 半径（块）⇒ 图像边长 = 2·RADIUS + 1 = 1401。
      *
-     * <p><b>2026-10 由 700 → 1000</b>（用户："现在这个渲染图显示面积还有小了一些，再大一些比较好"）。
-     * 改动后正典图为 <b>2001×2001</b>。</p>
-     *
-     * <p>⚠ 这是<b>正典常量</b>：改动它会使新旧图不可比（历史基线见 {@code HANDOFF.md}）。
-     * 确需小窗做快速探索时，走 {@link #assertCanonicalRadius} 的非严格模式，
-     * <b>并在结论里写明窗口</b>。</p>
+     * <p>⚠ <b>不要改这个值</b>。用户明确要求过渲染图"固定这样就好"。
+     * 本轮曾把它 700→1000（我误判为"用户要求放大"），用户随即指出
+     * "这个预览渲染图怎么又被改面积了" ⇒ <b>已回退到 700</b>。
+     * 历史教训见 {@code HANDOFF-ENV.md} §2「正典规格」：700 = 1401×1401 是定稿值，
+     * 改它会让新旧图不可比，也会让照文档传参的人对不上。</p>
      */
-    public static final int RADIUS = 1000;
+    public static final int RADIUS = 700;
     public static final long SEED = 9139912035078620160L;
     public static final int CENTER_X = -140;
     public static final int CENTER_Z = 137;
