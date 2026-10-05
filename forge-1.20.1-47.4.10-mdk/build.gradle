@@ -2252,6 +2252,16 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     }
 }
 
+// ★ 连通性度量口径检验：4 连通 vs 8 连通（验证"点状假河 = 对角锯齿"假设）
+task runConnectivityMetricProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ConnectivityMetricProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 溢口下潜路径逐步 dump（取代"猜机制"：看清"水出溢口又回湖"发生在哪一步）
 task runSpillPathDumpProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
