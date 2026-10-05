@@ -203,6 +203,101 @@ public final class CanonicalViewProbe {
         System.out.printf("[连通性] 分量大小分位: P50=%d P90=%d P99=%d max=%d%n",
                 pct(sizes, 0.50), pct(sizes, 0.90), pct(sizes, 0.99), maxComp);
 
+        // ★★★ 点状假河归因（2026-10-05，用户："出现非常多完全不是河流的点状假河流"）★★★
+        //
+        //   假设 A【注入残留】：孤立块是"溢流注入起点"留下的墨水团
+        //     —— 注入流线若在起点附近就终止（被推回湖），只有起点格有墨水
+        //     ⇒ 判据：孤立块是否【紧邻湖】或【紧邻溢口】
+        //   假设 B【门槛抖动】：平坦区逐格成河判定在门槛附近翻转
+        //     ⇒ 判据：孤立块是否集中在【低坡度区】
+        //   两个假设的修法完全不同 ⇒ 必须分开计数。
+        int isoNearLake = 0, isoNearSpill = 0, isoFlat = 0, isoOther = 0;
+        int isoTotal = 0;
+        // 溢口集合（用于判据）
+        java.util.Set<Integer> spillSet = new java.util.HashSet<>(r.lakeResult().overflowAt().keySet());
+        // 分量成员数（只对小分量即孤立块做归因）
+        int[] csize = new int[comps];
+        for (int k = 0; k < n * n; k++) if (comp[k] >= 0) csize[comp[k]]++;
+        for (int c = 0; c < comps; c++) {
+            if (csize[c] > 2) continue;              // 只看孤立块（≤2 格）
+            isoTotal++;
+            boolean nearLake = false, nearSpill = false, flat = false;
+            for (int k = 0; k < n * n; k++) {
+                if (comp[k] != c) continue;
+                int ci = k / n, cj = k % n;
+                // 判据 A1：8 邻域内有湖
+                for (int di = -1; di <= 1 && !nearLake; di++) {
+                    for (int dj = -1; dj <= 1 && !nearLake; dj++) {
+                        int a = ci + di, b = cj + dj;
+                        if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                        if (r.lake()[a * n + b]) nearLake = true;
+                    }
+                }
+                // 判据 A2：3 格内有溢口
+                for (int di = -3; di <= 3 && !nearSpill; di++) {
+                    for (int dj = -3; dj <= 3 && !nearSpill; dj++) {
+                        int a = ci + di, b = cj + dj;
+                        if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                        if (spillSet.contains(a * n + b)) nearSpill = true;
+                    }
+                }
+                // 判据 B：床面梯度 < 0.10（平坦）
+                if (ci > 0 && ci < n - 1 && cj > 0 && cj < n - 1) {
+                    double dx = (r.bed()[(ci + 1) * n + cj] - r.bed()[(ci - 1) * n + cj]) / 2;
+                    double dz = (r.bed()[ci * n + cj + 1] - r.bed()[ci * n + cj - 1]) / 2;
+                    if (Math.hypot(dx, dz) < 0.10) flat = true;
+                }
+            }
+            if (nearSpill) isoNearSpill++;
+            else if (nearLake) isoNearLake++;
+            else if (flat) isoFlat++;
+            else isoOther++;
+        }
+        System.out.printf("[点状假河归因] 孤立块(≤2格)总数=%d%n", isoTotal);
+        System.out.printf("  紧邻溢口(≤3格)=%d (%.1f%%)  紧邻湖(8邻域)=%d (%.1f%%)  平坦区=%d (%.1f%%)  其它=%d (%.1f%%)%n",
+                isoNearSpill, 100.0 * isoNearSpill / Math.max(1, isoTotal),
+                isoNearLake, 100.0 * isoNearLake / Math.max(1, isoTotal),
+                isoFlat, 100.0 * isoFlat / Math.max(1, isoTotal),
+                isoOther, 100.0 * isoOther / Math.max(1, isoTotal));
+        System.out.println("  ⇒ 判读：若『紧邻溢口』占多数 ⇒ 注入残留（修注入端）；");
+        System.out.println("     若『平坦区』占多数 ⇒ 门槛抖动（修成河判定）；两者修法不同。");
+
+        // ★★ 「其它」孤立块现场 dump（81% 归因不明 ⇒ 必须看现场，不许猜）★★
+        int dumped = 0;
+        for (int c = 0; c < comps && dumped < 6; c++) {
+            if (csize[c] > 2) continue;
+            // 只 dump 从未被上面分类的（重算一次分类判定）
+            int rep = -1;
+            for (int k = 0; k < n * n; k++) if (comp[k] == c) { rep = k; break; }
+            if (rep < 0) continue;
+            int ci = rep / n, cj = rep % n;
+            boolean nearSpill = false;
+            for (int di = -3; di <= 3 && !nearSpill; di++)
+                for (int dj = -3; dj <= 3 && !nearSpill; dj++) {
+                    int a = ci + di, b = cj + dj;
+                    if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                    if (spillSet.contains(a * n + b)) nearSpill = true;
+                }
+            if (nearSpill) continue;
+            boolean nearLake = false;
+            for (int di = -1; di <= 1 && !nearLake; di++)
+                for (int dj = -1; dj <= 1 && !nearLake; dj++) {
+                    int a = ci + di, b = cj + dj;
+                    if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                    if (r.lake()[a * n + b]) nearLake = true;
+                }
+            if (nearLake) continue;
+            double ddx = 0, ddz = 0;
+            if (ci > 0 && ci < n - 1) ddx = (r.bed()[(ci + 1) * n + cj] - r.bed()[(ci - 1) * n + cj]) / 2;
+            if (cj > 0 && cj < n - 1) ddz = (r.bed()[ci * n + cj + 1] - r.bed()[ci * n + cj - 1]) / 2;
+            double grad = Math.hypot(ddx, ddz);
+            System.out.printf("  [dump] (%4d,%4d) flux=%.4f smooth=%.4f 梯度=%.4f resolved=%b "
+                            + "depth=%.2f lake=%b sea=%b%n",
+                    ci, cj, r.discharge()[rep], smoothAt(r, n, ci, cj), grad,
+                    r.resolved()[rep], r.depth()[rep], r.lake()[rep], r.sea()[rep]);
+            dumped++;
+        }
+
         // ★★★ 流线死亡热度图（2026-10）★★★
         //   假设：河道碎块的成因是【流线死在坡上】⇒ 下游拿不到水 ⇒ 河道在此断。
         //   若该假设成立，则死亡格应显著【集中在河道碎块的缺口处】。
