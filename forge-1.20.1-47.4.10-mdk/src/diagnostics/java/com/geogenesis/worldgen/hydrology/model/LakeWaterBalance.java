@@ -155,6 +155,25 @@ public final class LakeWaterBalance {
                     break;
                 }
                 visitStamp[c] = stamp;
+                // ★★ 2026-10-05 修正：湖格的出口判定必须【先于】parent<0 兜底 ★★
+                //
+                //   旧顺序的缺陷（实测 SpillPathDumpProbe 决定性检验）：
+                //     minimax 洪泛在湖盆内部把水位抬平 ⇒ 湖内格 parent 大量为 -1
+                //     ⇒ 第 159 行 `if (p < 0) { result = c; }` 先命中 ⇒
+                //        terminal = 湖内死端格【自身】。
+                //     而真正的"入湖口"规则（湖→非湖交界）排在后面 ⇒ 永远轮不到。
+                //     实测后果：overflowAt 的键 83% 在湖内（54/65）、86% parent=-1，
+                //     且【全部】距盆地边缘仅 1 格（54/54 可达）—— 出口就在旁边，
+                //     却被错误地写成死端自身 ⇒ outletExit 沿 parent 走必然失败
+                //     ⇒ 「溢口→下泄→入海」整体断裂（54/64 注入失败）。
+                //
+                //   修正：湖格（isLakePot）的终端 = 【邻域最近的非湖格】（入湖口）；
+                //         只有非湖格的 parent<0 才取自身。
+                if (isLakePot[c]) {
+                    int edge = nearestNonLake(c, isLakePot, sea, nx, nz);
+                    if (edge >= 0) { result = edge; break; }
+                    // 邻域无非湖格（单格封闭湖）→ 落回 parent 逻辑
+                }
                 int p = parent[c];
                 if (p < 0) { result = c; break; }
                 if (isLakePot[c] && !isLakePot[p]) { result = p; break; }
@@ -319,5 +338,29 @@ public final class LakeWaterBalance {
 
     private void liquidate(double[] depth, boolean[] lake, List<Integer> group) {
         for (int k : group) { depth[k] = 0; lake[k] = false; }
+    }
+
+    /**
+     * 从 {@code c} 出发找最近的【非湖、非海】格（4 邻域 BFS，限深 2 层）。
+     *
+     * <p>依据（SpillPathDumpProbe 决定性检验）：54/54 个湖内溢口键
+     * 距盆地边缘全部为 1 格 ⇒ 浅层 BFS 足够，无需全湖搜索。</p>
+     *
+     * @return 边缘格下标；-1 = 2 层内无非湖格（单格封闭湖，理论边界情形）。
+     */
+    private int nearestNonLake(int c, boolean[] isLakePot, boolean[] sea, int nx2, int nz2) {
+        int ci = c / nz2, cj = c % nz2;
+        for (int layer = 1; layer <= 2; layer++) {
+            for (int di = -layer; di <= layer; di++) {
+                for (int dj = -layer; dj <= layer; dj++) {
+                    if (Math.max(Math.abs(di), Math.abs(dj)) != layer) continue;
+                    int a = ci + di, b = cj + dj;
+                    if (a < 0 || b < 0 || a >= nx2 || b >= nz2) continue;
+                    int k = a * nz2 + b;
+                    if (!isLakePot[k] && !sea[k]) return k;
+                }
+            }
+        }
+        return -1;
     }
 }
