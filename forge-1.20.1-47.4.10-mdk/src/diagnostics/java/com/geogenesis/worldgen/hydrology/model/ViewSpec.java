@@ -22,7 +22,7 @@ package com.geogenesis.worldgen.hydrology.model;
  * <p>NW 光源 {@code (-0.5, 0.7, 0.51)}，法线 {@code (-dx, 1, -dz)}，
  * 亮度 {@code 60 + 175·max(0, d)} —— 与 {@code HydroPreviewProbe.shade} 逐项相同。
  * 色调：海 {@code 0x1F4E79}、湖 {@code 0x4A90E2}、河 {@code 0x00E5D0}/{@code 0x00C8B4}、
- * 未决 {@code 0xC030C0}。</p>
+ * 未决 {@code 0xC030C0}、<b>溢流出口 {@code 0xFFFFFF}（白点，2026-10-05 新增）</b>。</p>
  */
 public final class ViewSpec {
 
