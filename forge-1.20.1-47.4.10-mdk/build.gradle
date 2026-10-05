@@ -2252,6 +2252,16 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     }
 }
 
+// ★ 「点状青色」尺寸全谱：用户看到的「点」落在哪个尺寸档 + 按尺寸分类着色出图
+task runChannelDotProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelDotProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ gap「有墨水却不成河」的口径核对（smoothed vs raw 判定量）
 task runChannelGapProbe2(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
