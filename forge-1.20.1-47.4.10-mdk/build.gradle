@@ -2252,6 +2252,16 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     }
 }
 
+// ★ 高海拔陡坡碎块成因：河道格按坡度分档看墨水密度（定位碎块区成因）
+task runSteepFragmentProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SteepFragmentProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 「点状青色」尺寸全谱：用户看到的「点」落在哪个尺寸档 + 按尺寸分类着色出图
 task runChannelDotProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
