@@ -185,7 +185,7 @@ public final class ContinuousRiverNetwork {
                 if (k < 0 || k >= cells) { skipOutOfRange++; continue; }
                 if (sea != null && sea[k]) { skipInSea++; continue; }          // 溢流入海：无需注入下游
                 int start = overflowParentFallback
-                        ? outletExit(k, lake, parent, sea, nz, level, nx, nz)
+                        ? outletExit(k, lake, parent, sea, nz, level, bed, nx, nz)
                         : outletExit(k, lake, parent, sea, nz);
                 if (start < 0) {
                     skipExitNeg++;
@@ -494,14 +494,15 @@ public final class ContinuousRiverNetwork {
      * @return 起点格下标；-1 = 走到海（无需注入）或确实无法走出（湖水不下泄）。
      */
     private static int outletExit(int outlet, boolean[] lake, int[] parent, boolean[] sea, int nz) {
-        return outletExit(outlet, lake, parent, sea, nz, null, -1, -1);
+        return outletExit(outlet, lake, parent, sea, nz, null, null, -1, -1);
     }
 
     /**
      * @param level 水面高程（用于 parent 断裂时的梯度下降）；null = 关闭该修复（旧行为）
+     * @param bed   床面高程（用于"最低鞍口"判定；null ⇒ 退化为用 level 比较）
      */
     private static int outletExit(int outlet, boolean[] lake, int[] parent, boolean[] sea, int nz,
-                                  double[] level, int nx, int nz2) {
+                                  double[] level, double[] bed, int nx, int nz2) {
         int cur = outlet;
         int guard = 0;
         while (guard++ < 4096) {
@@ -512,7 +513,7 @@ public final class ContinuousRiverNetwork {
             if (nxt >= 0) { cur = nxt; continue; }
             // ★ parent 断裂：改用【水面梯度】下降（仅当传入 level 时启用）
             if (level == null || nx <= 0) return -1;
-            int step = descendByLevel(cur, lake, level, nx, nz2, sea);
+            int step = descendByLevel(cur, lake, level, bed, nx, nz2, sea);
             if (step < 0) return -1;
             cur = step;
         }
@@ -520,32 +521,53 @@ public final class ContinuousRiverNetwork {
     }
 
     /**
-     * 在湖域内沿水面高程下降一步（8 邻域，取 level 最小且严格更低的邻格）。
+     * 在湖域内沿水面高程下降一步（8 邻域）。
      *
      * <p>物理依据：minimax 把湖盆水面抬到"最低溢口"高度 ⇒
      * 湖内 level 近似为常数、在<b>鞍口处</b>出现向下台阶 ⇒
-     * 沿 level 下降即朝溢出口走。为处理"湖内 level 全等"的平地情形，
-     * 平级时用【到海 EDT 更近】破平局（与 {@code EquilibriumWater} 的破平局同源）。</p>
+     * 朝 level 更低的方向走即朝溢出口走。</p>
      *
-     * @return 下一格；-1 = 无更低/更近的湖格（真·封闭盆地）。
+     * <h3>★★ 2026-10-05 修正：非湖邻居必须取【最低】而非【第一个】</h3>
+     * <p><b>实测缺陷</b>：正典图溢口标记显示"黄点贴湖、下游无河道"，
+     * 且注入统计 <code>lakeStill = 511537 / 600000</code>（<b>85% 注入流线又回到湖</b>）。</p>
+     * <p><b>根因（本方法的 bug）</b>：旧写法 {@code if (!lake[k]) return k;} 返回
+     * DIRS8 中遇到的<b>第一个</b>非湖格，<b>不比较高度</b> ⇒ 可能跳到朝内陆、
+     * 地势更高的格（甚至盆地内侧）⇒ 水很快又流回湖。</p>
+     * <p><b>修正</b>：在所有非湖邻居中取【床面最低】者（水从最低鞍口溢出，
+     * 这是"最低溢口"的定义）。床面未传入时退化为水面 level 最低者。</p>
+     *
+     * @return 下一格；-1 = 无更低邻格（真·封闭盆地）。
      */
     private static int descendByLevel(int cur, boolean[] lake, double[] level, int nx, int nz,
                                       boolean[] sea) {
+        return descendByLevel(cur, lake, level, null, nx, nz, sea);
+    }
+
+    private static int descendByLevel(int cur, boolean[] lake, double[] level, double[] bed,
+                                      int nx, int nz, boolean[] sea) {
         int ci = cur / nz, cj = cur % nz;
         double bestLevel = level[cur];
         int best = -1;
+        // 非湖邻居中取床面最低者（＝最低鞍口方向）；同时记录最低的湖格做兜底
+        double bestExitHeight = Double.POSITIVE_INFINITY;
+        int bestExit = -1;
         for (int[] d : DIRS8) {
             int a = ci + d[0], b = cj + d[1];
             if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
             int k = a * nz + b;
-            if (sea != null && sea[k]) return k;          // 直接走到海也算出口
+            if (sea != null && sea[k]) return k;          // 走到海 ⇒ 合法出口
             double lv = level[k];
             if (!Double.isFinite(lv)) continue;
-            // 只在【非湖格】或【更低水面的湖格】里选
-            if (!lake[k]) return k;                       // 走出湖域 ⇒ 就是我们要的起点
+            if (!lake[k]) {
+                // ★ 非湖：取【最低】者（旧写法直接 return 第一个 ⇒ 可能朝内陆）
+                double h = (bed != null) ? bed[k] : lv;
+                if (h < bestExitHeight) { bestExitHeight = h; bestExit = k; }
+                continue;
+            }
             if (lv < bestLevel - 1e-9) { bestLevel = lv; best = k; }
         }
-        return best;
+        // 优先走出湖域（到最低鞍口）；否则在湖内继续朝更低水位走
+        return bestExit >= 0 ? bestExit : best;
     }
 
     /** ★ 诊断版 outletExit：记录失败原因（0=成功 1=走到海 2=parent缺失 3=预算耗尽）。 */
