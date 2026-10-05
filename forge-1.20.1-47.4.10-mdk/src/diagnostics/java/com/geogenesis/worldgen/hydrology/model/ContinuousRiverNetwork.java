@@ -429,6 +429,46 @@ public final class ContinuousRiverNetwork {
     /** 访问上限（默认 8 = 旧行为）。设为 0 表示不限制。 */
     public static volatile int visitCap = Integer.getInteger("hydro.visitCap", 8);
 
+    /**
+     * <p><b>★ 2026-10-05 设计升级：从【全局常数】改为【局部相对判据】</b></p>
+     *
+     * <p><b>为什么全局常数是设计缺陷</b>：平台期扫描实测（floorMul 0.5/0.2/0.05/0）：
+     * <pre>
+     *   0.5  → 河道 23757，入海=0     （河流断续，用户说的"断流"）
+     *   0.05 → 河道 32532             （连贯但局部成块）
+     *   0    → 河道 133367（+461%）   （平原被点亮）
+     * </pre>
+     * 一个数<strong>同时</strong>要满足"陡坡低流量也应是河"与"平原低流量不该是河"——
+     * 这两者在绝对量纲上无法区分 ⇒ 必然二选一，无法两全。</p>
+     *
+     * <p><b>物理正解：局部相对判据（下游不低于上游）</b>。
+     * 水是连续介质、沿程只会越汇越多 ⇒ 沿下游走时</p>
+     * <pre>
+     *   smooth[下游] ≥ smooth[上游] × relFloor
+     * </pre>
+     * <p>这个判据<strong>自适应</strong>：</p>
+     * <ul>
+     *   <li>陡坡细沟：上游 smooth 本身小（如 0.3）⇒ 只需下游 ≥ 0.3×relFloor ⇒ 能延续；</li>
+     *   <li>平原宽河：上游 smooth 大（如 5.0）⇒ 下游必须 ≥ 5.0×relFloor ⇒ 不会突然塌到 0；</li>
+     *   <li><b>无需任何全局常数</b> ⇒ 不存在"阈值选在分布错侧"的问题。</li>
+     * </ul>
+     *
+     * <p><b>同时保留一条【绝对下界】作安全网</b>：{@code absFloorMul × threshold}。
+     * 因为完全不要绝对下界时（floorMul=0）会把平原点亮（实测 133367 格）——
+     * 说明存在"上游也接近 0、相对判据无法约束"的区域。绝对下界只用来兜这个底，
+     * 取很小值（默认 0.02）即可。</p>
+     *
+     * <p>参考对照：SimpleHydrology 干脆**没有任何流量闸门**（只在 age/体积/越界/入池终止），
+     * 因此无此问题；我们因为要在"一次性追踪"里定河宽，必须有判据 —— 相对判据是
+     * 最接近"无闸门"且仍能区分河/坡的形式。</p>
+     */
+    /** 相对下界：下游 smooth 不得低于【上游】的该比例（1.0 = 严格不减）。 */
+    public static volatile double relFloor =
+            Double.parseDouble(System.getProperty("hydro.relFloor", "0.0"));
+    /** 绝对下界系数（×门槛）；仅在 relFloor>0（启用相对判据）时作为安全网。 */
+    public static volatile double absFloorMul =
+            Double.parseDouble(System.getProperty("hydro.absFloorMul", "0.02"));
+
     private static void propagateDownstream(double[] bed, double[] level, int[] parent,
                                            boolean[] sea, boolean[] lake, double[] smooth,
                                            double[] flux,
@@ -439,6 +479,8 @@ public final class ContinuousRiverNetwork {
         int[] visits = new int[cells];
         final int budget = 4 * (nx + nz);
         final double floor = p.channelThreshold() * floorMul;
+        final double absFloor = p.channelThreshold() * absFloorMul;
+        final boolean useRel = relFloor > 0.0;
         // ★★ 断因计数器（2026-10-05）★★
         //   用户判据："河流应该一直流到湖/海才结束"。
         //   实测 STARVED 分量出口流量 P50=0.968（只差 3% 门槛）却停在半路
@@ -454,12 +496,19 @@ public final class ContinuousRiverNetwork {
                 int nxt = parent[cur];
                 if (nxt < 0 || nxt == cur) { stopNoParent++; break; }
                 if (level[nxt] > level[cur] + 1e-9) { stopUphill++; break; }   // 不得上坡（防御异常 parent）
-                // ★ 流量不足 ⇒ 此处不是河道（判据必须与主判定【同口径】，否则两套标准混用）
-                //   A/B：relaxFloorGate=true 时把下限降到 0（只要求"有流量"），
-                //   理由：用户要求"流到湖/海才结束"，且物理上"上游有水 ⇒ 下游必有水"。
+                // ★ 流量判据（详见上方 javadoc 的设计说明）
+                //   相对判据（relFloor>0，推荐）：下游 ≥ 上游×relFloor 且 ≥ absFloor
+                //   旧判据（relFloor=0）：下游 ≥ threshold×floorMul（默认 0.5）
                 double judgeN = channelUseRawFlux ? flux[nxt] : smooth[nxt];
-                double floorEff = relaxFloorGate ? 0.0 : floor;
-                if (judgeN < floorEff) { stopFloor++; break; }
+                double judgeCur = channelUseRawFlux ? flux[cur] : smooth[cur];
+                boolean passes;
+                if (useRel) {
+                    passes = judgeN >= absFloor && judgeN >= judgeCur * relFloor - 1e-9;
+                } else {
+                    double floorEff = relaxFloorGate ? 0.0 : floor;
+                    passes = judgeN >= floorEff;
+                }
+                if (!passes) { stopFloor++; break; }
                 // ★ 访问上限：visitCap<=0 ⇒ 不限制（旧行为 8；汇流处本就多条河经过）
                 if (visitCap > 0 && visits[nxt]++ > visitCap) { stopVisits++; break; }
                 if (!channel[nxt]) {
