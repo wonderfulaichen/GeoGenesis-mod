@@ -2252,6 +2252,26 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     }
 }
 
+// ★ 溢口下潜路径逐步 dump（取代"猜机制"：看清"水出溢口又回湖"发生在哪一步）
+task runSpillPathDumpProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SpillPathDumpProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 水文链契约审计：逐条核对上游产出与下游预期是否自洽（用户建议"好好检查代码"）
+task runContractAuditProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ContractAuditProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 全周期判据：源头→汇流→蓄水→溢口→下泄→入海（用户验收标准，逐链追踪）
 //   弱计数（各段都>0）不算通过；必须存在【按序走完六阶段】的完整链。
 task runLifecycleChainProbe(type: JavaExec) {
