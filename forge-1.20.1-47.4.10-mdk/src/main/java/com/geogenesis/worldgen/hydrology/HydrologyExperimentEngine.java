@@ -58,6 +58,23 @@ public final class HydrologyExperimentEngine {
         } catch (IllegalStateException e) {
             // 预览/探针进程：Forge 配置未加载 → 微自适应关闭（保持零 tile 依赖）
         }
+        // ⚠【2026-10 试验：河网基准对齐侵蚀后地形 —— 已撤销，理由见下】
+        //
+        //   试验内容：把选线场与地形基准都改为 terrainEQuick + peekErosionDeltaE
+        //   （只读已缓存 tile，理论上零冷生成），期望让河流走在落地地形上。
+        //
+        //   实测（RiverBasisProbe，seed 9139912035078620160, centre (-140,137), r=200）：
+        //     OFF  贴近无侵蚀 5666 (99.0%)  高出无侵蚀谷底 -14.92 / 高出含侵蚀谷底  -8.88
+        //     ON   贴近无侵蚀 6533 (99.1%)  高出无侵蚀谷底 -10.96 / 高出含侵蚀谷底  -5.04
+        //   ⇒ 偏差减 43%，但"更接近"仍 99%。**判据未达成，方案撤回。**
+        //
+        //   为什么无效：河网 region 是【懒构建】的，雕刻阶段（③）才用到它，
+        //   而那时该列所在侵蚀 tile 未必已生成 ⇒ peek 大量返回 empty ⇒ 退回无侵蚀基准。
+        //   若改用同步 erosionDeltaE，则正是本文件上方注释记录的旧陷阱
+        //   （建网覆盖整个 region 的 D8 网格 ⇒ 冷生成数百个 tile = 分钟级卡死）。
+        //
+        //   结论：河网建在无侵蚀地形上，是【有代价的性能取舍】，不是简单的 bug。
+        //   要真正对齐必须另立方案（例如把侵蚀纳入建网自身的地形场，且接受成本）。
         this.network = new RiverLineNetwork(terrain::terrainEQuick,
                 // ★ 2026-09-11 D13 修复（性能，零行为变化）：
                 //   RiverLineNetwork.groundYAt 的文档契约本就是"terrainEQuick 派生 →
