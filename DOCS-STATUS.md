@@ -23,38 +23,78 @@
 |---|---|
 | **工作区** | `D:\Office software\Development Project\GeoGenesis-mod\`（仓库根） |
 | **分支** | `fix/port-lake-p2-2` |
-| **HEAD** | `d58d9e2` |
+| **HEAD** | `ad4e7ad` |
 | **水文架构** | `hydrology/flowaccum/FlowField` + `hydrology/riverline/RiverLineNetwork` + `hydrology/flow/TerrainFlowSim` |
 | **未推送** | 是（`fix/port-lake-p2-2` 尚未推 origin） |
 
-⚠ **判断任何文档是否适用，先确认它描述的是这条线。**
+⚠ **判断任何文档是否适用，先确认它描述的是这条线**（本项目两条线的文档互相矛盾，见 §1）。
 
 ---
 
 ## 1. ⛔ 两条代码线（最常见的错误来源）
 
-本项目**同时存在两条水文实现**，磁盘上都可见，文档上互相矛盾：
+⚠ **2026-10-05 重大更正**：本节此前把 worktree 那条线描述为"实验线"，
+**这是错的，且它正是把局面搞乱的原因之一**。两条线不是同级的两个实验，
+而是**两种不同性质的工作**：
 
-| | **A 线 = 当前代码** | **B 线 = 另一条线** |
+| | **A 线 = 当前代码** | **B 线 = worktree** |
 |---|---|---|
-| 位置 | 仓库根工作区 | `_model_wt/`（git worktree） |
+| 性质 | **在现有水文上继续改进** | **一次全量重写（含删除旧链）** |
 | 分支 | `fix/port-lake-p2-2` | `fix/continuous-river-coherence` |
-| 水文核心 | `flowaccum/FlowField`、`riverline/RiverLineNetwork`、`flow/TerrainFlowSim` | `hydrology/sim/*`（`HydroWorldSolver` 等） |
-| 关键文件 | `HydrologyExperimentEngine`、`HydrologyBlockCarver` | 同名文件但内容不同 |
+| 分叉点 | `c12f76e`（两条线的共同祖先） | 同 |
+| 分叉后提交数 | **13** | **8**（其中 2026-10-05 的 8 个由 AI 产出） |
+| 改动规模 | **5 个生产文件** | **189 文件、+20552 / −20434** |
+| 水文实现 | `flowaccum/FlowField` + `riverline/RiverLineNetwork` + `flow/TerrainFlowSim` | 新增 `hydrology/sim/` 整包（14 类），**并删除** `flowaccum/` `flow/` |
+| HEAD | `ad4e7ad` | `6808a22` |
 
-**取证（2026-10-05，`git ls-tree` + `Test-Path`）**：
+**取证**（`git diff --name-only c12f76e <branch> -- .../src/main`）：
 
-| 类 | A 线磁盘 | B 线磁盘 | A 线 git | B 线 git |
-|---|---|---|---|---|
-| `hydrology/sim/HydroWorldSolver.java` | ❌ 无 | ✅ 有 | ✅ 有 | ✅ 有 |
-| `hydrology/flowaccum/FlowField.java` | ✅ 有 | ❌ 无 | ✅ 有 | ❌ 无 |
-| `hydrology/riverline/RiverLineNetwork.java` | ✅ 有 | ❌ 无 | ✅ 有 | ❌ 无 |
-| `hydrology/flow/TerrainFlowSim.java` | ✅ 有 | ❌ 无 | ❌ | ❌ |
+A 线改动的生产文件（5 个）：
+```
+hydrology/HydrologyBlockCarver.java
+hydrology/HydrologyExperimentEngine.java
+hydrology/riverline/RiverLineNetwork.java
+hydrology/riverline/RiverLineRegion.java
+terrain/GeoGenesisTerrain.java
+```
+提交主题：湖泊 P2-2 修复 → 河尾统一湖水位 → **河道只下挖铁律** → 骨架折线复用 D8 收尾 →
+isLake 口径 → 各种探针。
 
-⇒ **同一条 `sim/HydroWorldSolver.java` 在两个分支都存在，但 B 线的磁盘上没有它、却多了 `FlowField`。**
-这说明 B 线分支是"更晚的实验"，而 A 线是"正在改进的主线"。**两者都自称正确。**
+B 线改动的生产文件（**36 个**）：含 `hydrology/sim/*` 全新增（14 类）、
+`flowaccum/*`、`flow/*`、`riverline/*` 重写、`terrain/CellGenerator.java`、
+`terrain/GeoGenesisTerrain.java`、`config/GeoGenesisConfig.java`、
+`client/preview/PreviewDisplay.java`。
 
-**裁决状态：待用户裁决。** 本台账只记录，不判断。
+### ⚠ 为什么 B 线的文档会误导人
+
+`_model_wt/AGENTS.md` 写着「`TerrainFlowSim` / `FlowField` / `RiverLineNetwork` /
+`RiverLineRegion` **已被删除**」——**这句话对 B 线是真的**（那条分支确实删了），
+但**对 A 线完全无关**（A 线磁盘上这四个类都在，且正在被修改）。
+
+⇒ **误读路径**：打开 `_model_wt/AGENTS.md` → 看到"水文结论整体废止"＋语气权威的 ⛔ 警告
+→ 以为那是全项目现状 → **实际它只描述 B 线**。
+（2026-10-05 AI 因此连续 5 次给出错误结论，用户反馈"被你之前弄得乱了"。）
+
+### 3.2 环境实测对照（2026-10-05，同 seed / 同窗口实测）
+
+| 维度 | **A 线 = 当前代码** | **B 线 = worktree** |
+|---|---|---|
+| 编译 | ✅ BUILD SUCCESSFUL | ✅ BUILD SUCCESSFUL |
+| **门禁 `runWorldgenGate`** | ❌ **FAIL** | ✅ **ALL PASS** |
+| 正典图出图耗时 | 8m41s（`RiverPlainViewProbe`） | 1m45s（`CanonicalViewProbe`） |
+| 图上现象 | 河**几乎不成网**，5 条孤线直穿高地入海 | 河**碎成渣**：10,775 分量 / 83% ≤2 格 |
+| 改动规模 | 12 提交 / 27 文件 / +2714 −45 | 22 提交 / 189 文件 / +20552 −20434 |
+
+⚠ **A 线门禁 FAIL 的原因已定位（不是水文代码缺陷）**：
+`build.gradle` 的 `runWorldgenGate` 用 `dependsOn` 让 10 个探针**并行**，
+共享同一 `CellGenerator` 静态状态 ⇒ **探针间相互污染**。
+证据：单独跑 `runHydrologyDeterminismProbe` ⇒ **ALL PASS**（`max|A−B|=0`、
+`max|Δheight|=0`）；放进门禁就 FAIL。
+⇒ **这是 A 线的构建配置缺陷**，修法是让门禁探针串行（`mustRunAfter`）或隔离静态状态。
+**在修好之前，A 线的门禁不可作为回归依据。**
+
+⇒ 两线各有硬伤：**A 线**门禁配置有缺陷 + 河不成网；**B 线**河碎成渣。
+**都不适合直接作为"河网该长什么样"的答案。**
 
 ---
 
