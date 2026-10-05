@@ -181,5 +181,63 @@ public final class SpillPathDumpProbe {
                 total2, reachable, unreachable);
         System.out.println("  ⇒ 若【可达】占多数 ⇒ 修法明确：overflowAt 键应改为 BFS 找到的边缘格；");
         System.out.println("     若【不可达】多 ⇒ 湖与外界不连通，是更根本的问题。");
+
+        // ★★ 下泄路径追踪：从每个溢口注入点，沿【真实流线机制】走 200 格，逐段打印
+        //    成河判定（flux vs 门槛）—— 直接看"下泄河在哪一步失去成河资格"。
+        System.out.println("\n=== 下泄路径逐格追踪（溢口起点 → 200 格内每 10 格采样）===");
+        double[] flux = r.discharge();
+        double threshold = 1.0;   // Params.forRunoff 的 channelThreshold
+        int traced = 0;
+        for (Integer o : lr.overflowAt().keySet()) {
+            if (o == null || o < 0 || o >= cells) continue;
+            int st = outletExitLocal(o, lake, parent, sea, n, level, bed);
+            if (st < 0) continue;
+            if (traced++ >= 4) break;
+            System.out.printf("── 溢口(%d,%d) 注入起点(%d,%d) flux=%.3f%n",
+                    o / n, o % n, st / n, st % n, flux[st]);
+            int cur = st;
+            int steps = 0, toSea = 0, dead = 0;
+            StringBuilder path = new StringBuilder();
+            while (steps++ < 200 && cur >= 0) {
+                if (sea[cur]) { toSea++; break; }
+                int p = parent[cur];
+                if (p < 0 || p == cur) { dead++; break; }
+                if (steps % 10 == 0) {
+                    path.append(String.format("    [%3d] (%4d,%4d) flux=%6.3f %s%n",
+                            steps, cur / n, cur % n, flux[cur],
+                            flux[cur] >= threshold ? "成河" : "★断"));
+                }
+                cur = p;
+            }
+            System.out.print(path);
+            System.out.printf("    ⇒ 终态: %s（走了 %d 步）%n%n",
+                    toSea > 0 ? "入海 ✓" : (dead > 0 ? "parent 断（流线死亡）" : "步数耗尽"), steps);
+        }
+    }
+
+    /** outletExit 的本地副本（含 descendByLevel 修复），供路径追踪用。 */
+    private static int outletExitLocal(int outlet, boolean[] lake, int[] parent, boolean[] sea,
+                                       int nz, double[] level, double[] bed) {
+        int cur = outlet, guard = 0;
+        while (guard++ < 4096) {
+            if (cur < 0) return -1;
+            if (sea[cur]) return -1;
+            if (!lake[cur]) return cur;
+            int nxt = parent[cur];
+            if (nxt >= 0) { cur = nxt; continue; }
+            int ci = cur / nz, cj = cur % nz;
+            double bestExitH = Double.POSITIVE_INFINITY;
+            int bestExit = -1;
+            for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}}) {
+                int a = ci + d[0], b = cj + d[1];
+                if (a < 0 || b < 0 || a >= nz || b >= nz) continue;
+                int k = a * nz + b;
+                if (sea[k]) return k;
+                if (!lake[k] && bed[k] < bestExitH) { bestExitH = bed[k]; bestExit = k; }
+            }
+            if (bestExit < 0) return -1;
+            cur = bestExit;
+        }
+        return -1;
     }
 }
