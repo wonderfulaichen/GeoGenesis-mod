@@ -1382,6 +1382,17 @@ task runRoutingHeightEquivalenceProbe(type: JavaExec) {
     }
 }
 
+// ★ 全周期判据：源头→汇流→蓄水→溢口→下泄→入海（用户验收标准，逐链追踪）
+//   弱计数（各段都>0）不算通过；必须存在【按序走完六阶段】的完整链。
+task runLifecycleChainProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LifecycleChainProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 耦合诊断：为何"不耦合有湖、耦合后全干"
 task runCouplingDiagnosisProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
