@@ -1324,6 +1324,18 @@ task runRiverPlainViewProbe(type: JavaExec) {
     }
 }
 
+// Which terrain basis does the river network follow? Three-panel comparison (2026-10).
+//   Unique variable = terrain basis; all panels share one colour scale, no hillshade.
+//   gradlew runRiverBasisCompareViewProbe [-PprobeArgs="seed bx bz radius zoom"]
+task runRiverBasisCompareViewProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RiverBasisCompareViewProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // Is the river in the valley or on the ridge? (2026-10, user: "river route is wrong")
 //   gradlew runRiverProfileProbe [-PprobeArgs="seed blockX blockZ radius"]
 task runRiverProfileProbe(type: JavaExec) {

@@ -216,6 +216,11 @@ public final class HydrologyBlockCarver {
                                                           int blockX, int blockZ,
                                                           double horizontalScale) {
         RiverLineParams P = RiverLineParams.defaults();
+        // ⚠ 【管线 3】河网基准对齐侵蚀后地形，由 HydrologyExperimentEngine.networkErodedBasis
+        //   在【建网采样器】层完成（选线场 + 地形基准同源），不在这里平移。
+        //   本层若再平移 original/waterSurface，会与上面那套重复叠加（两个基准混算），
+        //   且实测无效：RiverBasisProbe 的 99.0%/1.0% 在此处平移后【逐位不变】
+        //   —— 因为平移常量改不了"河走哪条谷"，那由建网时的选线场决定。
         // 不再按高度淡出：河流由汇流场决定，山地也有溪（现实物理范式）。
         // 入海段：不能因"地形低于海平面"就完全停雕——那会让河道在海岸线处直接截断。
         // 参考 Farseek Mouth：河床继续向海延伸，按"地形处于海面下的深度"平滑淡出，
