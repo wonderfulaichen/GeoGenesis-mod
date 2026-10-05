@@ -645,6 +645,24 @@ public final class ContinuousRiverNetwork {
         double step = 0.5 * cellSize;
         int guard = 0;
         int lastCell = -1;
+        // ★★ 动量方向（2026-10-05）★★
+        //   【为什么需要】用户："那些位置从地形高度图上看明显不对，不应该成散点"。
+        //   实测碎块特征：陡坡(1.19 vs 0.75) / 高海拔(175 vs 115) / **流量反而更高**
+        //   ⇒ 陡坡上【墨水充足但分布破碎】⇒ 不是"没水"，是【流线方向乱跳】。
+        //   机制：velocity 方向 = -∇s/|∇s|，逐格独立。陡坡 |∇s| 大、地形粗糙
+        //   ⇒ 方向对局部噪声敏感 ⇒ 流线左右摆 ⇒ 停滞检测(净位移<2格)触发
+        //   ⇒ recover 沿 parent 瞬移（不留墨水）⇒ 路径断裂 ⇒ 散点。
+        //
+        //   【参考依据】SimpleHydrology `water.h::descend`：
+        //     speed += gravity·n̂ ;  fspeed = 该格历史动量 ;
+        //     if (|fspeed|>0 && |speed|>0)
+        //       speed += momentumTransfer·dot(f̂s, v̂)·fspeed / (volume+discharge)
+        //   ⇒ 粒子有【方向惯性】：与历史方向一致时加强、偏离时被拉回。
+        //     （`dot` 项：同向 ⇒ 正 ⇒ 加强；反向 ⇒ 负 ⇒ 抑制偏离）
+        //   本实现取其精神：方向 = normalize(α·上一方向 + (1−α)·当前梯度方向)。
+        //   α = 0 ⇒ 无动量（旧行为，逐位不变）；α > 0 ⇒ 有惯性。
+        double dirX = 0, dirZ = 0;   // 上一有效方向（单位向量）
+        boolean hasDir = false;
         // 停滞检测的检查点：每 40 步（20 格）回看净位移。
         //   每步固定走 0.5 格 ⇒ 40 步净位移应 ≥ ~19 格；
         //   净位移 < 2 格 ⇒ 必在原地打转（床面微洼地两格互跳是主要形态）。
@@ -694,8 +712,17 @@ public final class ContinuousRiverNetwork {
                 if (resolved[k]) st.flatLake++; else st.flatSuspicious++;
                 return;
             }
-            x += step * v[0] / speed;
-            z += step * v[1] / speed;
+            // ★★ 动量混合（A/B 开关，momentumWeight=0 ⇒ 逐位不变）★★
+            double mvx = v[0] / speed, mvz = v[1] / speed;
+            if (momentumWeight > 0 && hasDir) {
+                double bx = momentumWeight * dirX + (1 - momentumWeight) * mvx;
+                double bz = momentumWeight * dirZ + (1 - momentumWeight) * mvz;
+                double bl = Math.hypot(bx, bz);
+                if (bl > 1e-12) { mvx = bx / bl; mvz = bz / bl; }
+            }
+            dirX = mvx; dirZ = mvz; hasDir = true;
+            x += step * mvx;
+            z += step * mvz;
             st.totalSteps++;
             // ★ 停滞检测：净位移不足 ⇒ 沿 parent 逃生。
             if (++sinceCk >= 40) {
@@ -879,6 +906,21 @@ public final class ContinuousRiverNetwork {
      * <p>默认 <b>true</b>（本轮修复）。置 false = 旧行为（54/64 出口被丢弃）。</p>
      */
     public static volatile boolean overflowParentFallback = true;
+
+    /**
+     * ★★ 动量权重 α（A/B 开关，默认 0 = 逐位不变）★★
+     *
+     * <p>方向 = normalize(α·上一方向 + (1−α)·当前梯度方向)。</p>
+     * <p>参考 SimpleHydrology {@code water.h::descend} 的动量传递：
+     * 粒子保留方向惯性，与历史方向一致时加强、偏离时被拉回。
+     * 本参数是该精神的简化形式（无速度大小、只做方向惯性）。</p>
+     * <p><b>为何需要</b>：陡坡上层流（sheet flow）梯度方向逐格乱跳
+     * ⇒ 流线左右摆 ⇒ 停滞检测触发 ⇒ 沿 parent 瞬移不留墨水 ⇒ 散点。
+     * 加上惯性后流线沿大尺度坡向走 ⇒ 应形成"主流+支流"而非散点。</p>
+     * <p>取值实验：0.0（旧）/ 0.45（参考量级）/ 0.85（强惯性）。</p>
+     */
+    public static volatile double momentumWeight =
+            Double.parseDouble(System.getProperty("hydro.momentum", "0.0"));
 
     /** 8 邻域（{@link #descendByLevel} 用于在湖域内找溢出口方向）。 */
     private static final int[][] DIRS8 = {
