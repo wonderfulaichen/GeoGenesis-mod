@@ -19,6 +19,16 @@ import javax.imageio.ImageIO;
  */
 public final class CanonicalViewProbe {
 
+    /**
+     * 溢口标记色：纯黄。
+     * <p>配色排除法：海 0x1F4E79 / 湖 0x4A90E2 / 河 0x00E5D0 / 宽河 0x00C8B4 /
+     * 未决 0xC030C0 / 地形为灰阶 ⇒ <b>纯黄 0xFFFF00 在整个调色板中不存在</b>，
+     * 且与灰阶底图对比度最高。</p>
+     * <p>⚠ 先前误用 0xFFFFFF（白）：**与地形等高线的白色档撞车** ⇒ 用户看不出标记
+     * （原话："你没给溢出口位置显示颜色我怎么判断？"）。</p>
+     */
+    private static final int SPILL_MARK_COLOR = 0xFFFF00;
+
     public static void main(String[] args) throws Exception {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : ViewSpec.SEED;
         int cx = args.length > 1 ? Integer.parseInt(args[1]) : ViewSpec.CENTER_X;
@@ -66,6 +76,15 @@ public final class CanonicalViewProbe {
                 hillshade ? "hillshade(NW光源)" : "contour(无光照)", hMin, hMax, bandBlocks);
 
         int lake = 0, channel = 0, sea = 0, unresolvedWet = 0, unresolvedDry = 0;
+        // ★ 溢流出口标记（2026-10-05）。加它的理由：本轮修复的对象就是"溢口"，
+        //   而此前图上【没有任何溢口标记】⇒ 用户无法判断修复是否生效
+        //   （用户原话："你没给溢出口位置显示颜色我怎么判断？"）。
+        //   溢口来自 lakeResult().overflowAt() 的键（格下标）。
+        boolean[] isSpill = new boolean[n * n];
+        for (Integer o : r.lakeResult().overflowAt().keySet()) {
+            if (o != null && o >= 0 && o < n * n) isSpill[o] = true;
+        }
+        int spillShown = r.lakeResult().overflowAt().size();
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
                 int k = i * n + j;
@@ -89,6 +108,25 @@ public final class CanonicalViewProbe {
                 }
                 else color = terrainColor(r, n, i, j, hillshade, hMin, bandBlocks);
                 img.setRGB(i, j, color);
+            }
+        }
+        // ★★ 溢口标记【后处理】绘制（2026-10-05）
+        //   为什么必须后处理：① 在主循环里画会被邻格覆盖；
+        //   ② 实测教训：先前用 1 像素白色 `0xFFFFFF`，**与地形等高线的白色档撞车**
+        //      ⇒ 用户"根本看不出标了哪里"（原话："你没给溢出口位置显示颜色我怎么判断？"）。
+        //   ⇒ 改用【地形配色中不存在的饱和品红】+ 3×3 加号，确保任何底图上都可见。
+        //   ⚠ 图像尺寸/位置/seed 一律不变（用户明确要求可比）。
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (!isSpill[i * n + j]) continue;
+                for (int di = -1; di <= 1; di++) {
+                    for (int dj = -1; dj <= 1; dj++) {
+                        if (Math.abs(di) + Math.abs(dj) > 1) continue;   // 加号形
+                        int a = i + di, b = j + dj;
+                        if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                        img.setRGB(a, b, SPILL_MARK_COLOR);
+                    }
+                }
             }
         }
         ImageIO.write(img, "png", dir.resolve("canonical.png").toFile());
@@ -209,6 +247,8 @@ public final class CanonicalViewProbe {
         log.append(String.format("coupling: basins=%d dryBasins=%d runoffPerCell=%.6f overflowPoints=%d%n",
                 r.lakeResult().basins().size(), r.lakeResult().dryBasins(),
                 r.lakeResult().runoffPerCell(), r.lakeResult().overflowAt().size()));
+        log.append(String.format("spillways: 已标【黄点】的溢口格=%d（overflowAt 键数=%d）%n",
+                spillShown, r.lakeResult().overflowAt().size()));
         log.append(String.format("seed=%d centre=(%d,%d) radius=%d step=%d image=%dx%d precip=%.4f%n",
                 seed, cx, cz, radius, ViewSpec.STEP, n, n, precip));
         log.append(String.format("sea=%d (%.1f%%) lake=%d (%.2f%%) channel=%d (%.2f%%)%n",
