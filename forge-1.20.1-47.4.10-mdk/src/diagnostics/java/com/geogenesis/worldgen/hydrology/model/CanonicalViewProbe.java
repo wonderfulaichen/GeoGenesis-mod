@@ -110,6 +110,35 @@ public final class CanonicalViewProbe {
                 img.setRGB(i, j, color);
             }
         }
+        // ★★ 河道【对角连线】渲染修正（2026-10-05）★★
+        //
+        //   【为什么需要】（用户："出现非常多完全不是河流的点状假河流"）
+        //   流线沿速度场走、方向任意 ⇒ 实测河道相邻对中【对角占 45.8%】。
+        //   1 像素渲染下，斜向相邻的两格在 4 邻域里【不接触】⇒ 视觉上断成点。
+        //   ConnectivityMetricProbe 实测：孤立块 4连通=105 → 8连通=6（降 94%）
+        //   ⇒ 大多数"点状假河"是【渲染口径】问题，不是模型缺陷。
+        //
+        //   修法：对每个河道格，若其【对角邻居】也是河道格、而夹着它的两个正交邻居
+        //   都不是河道格，则补画一个正交格（中点连接）⇒ 斜线视觉连续。
+        //   ⚠ 只改渲染，不改 channel 掩码本身（不污染数据与度量）；
+        //     图像尺寸/位置/seed 一律不变。
+        //   ⚠ 必须在【溢口标记之前】绘制，否则会覆盖掉溢口黄点。
+        for (int i = 0; i < n - 1; i++) {
+            for (int j = 0; j < n - 1; j++) {
+                int k = i * n + j;
+                if (!r.channel()[k]) continue;
+                // 右下对角：补右格或下格（任选其一即可连通）
+                if (r.channel()[(i + 1) * n + j + 1]
+                        && !r.channel()[(i + 1) * n + j] && !r.channel()[i * n + j + 1]) {
+                    img.setRGB(i, j + 1, ViewSpec.RIVER_COLOR);
+                }
+                // 左下对角
+                if (j > 0 && r.channel()[(i + 1) * n + j - 1]
+                        && !r.channel()[(i + 1) * n + j] && !r.channel()[i * n + j - 1]) {
+                    img.setRGB(i + 1, j, ViewSpec.RIVER_COLOR);
+                }
+            }
+        }
         // ★★ 溢口标记【后处理】绘制（2026-10-05）
         //   为什么必须后处理：① 在主循环里画会被邻格覆盖；
         //   ② 实测教训：先前用 1 像素白色 `0xFFFFFF`，**与地形等高线的白色档撞车**
@@ -182,11 +211,28 @@ public final class CanonicalViewProbe {
                 int c = stack[--sp];
                 size++;
                 int ci = c / n, cj = c % n;
-                // 4 连通（河流是线状，对角接触不算连通）
+                // ★★ 2026-10-05 改为【8 连通】—— 这修的是【度量工具的 bug】★★
+                //
+                //   【为什么必须改】
+                //   流线沿速度场走、方向任意 ⇒ 实测河道相邻对中【对角占 45.8%】。
+                //   而"4 连通：对角接触不算连通"把斜向走的连续河【误判为孤立点】：
+                //   ConnectivityMetricProbe 实测（同窗口同参数）：
+                //     孤立块(≤2格)  4连通=105  →  8连通=6   （降 94%）
+                //   ⇒ 用户看到的"点状假河"绝大多数是【4 连通度量的假象】，
+                //     不是模型缺陷。此前据此做的四个归因假设全部落空，
+                //     根因就是这个度量口径错误。
+                //
+                //   ⚠ 保留 4 连通计数作对照（见下方 dual 输出），
+                //     以便区分"度量假象"与"真实断裂"。
                 if (ci > 0 && comp[c - n] < 0 && r.channel()[c - n]) { comp[c - n] = comps; stack[sp++] = c - n; }
                 if (ci < n - 1 && comp[c + n] < 0 && r.channel()[c + n]) { comp[c + n] = comps; stack[sp++] = c + n; }
                 if (cj > 0 && comp[c - 1] < 0 && r.channel()[c - 1]) { comp[c - 1] = comps; stack[sp++] = c - 1; }
                 if (cj < n - 1 && comp[c + 1] < 0 && r.channel()[c + 1]) { comp[c + 1] = comps; stack[sp++] = c + 1; }
+                // 对角 4 邻（与上面合起来即 8 连通）
+                if (ci > 0 && cj > 0 && comp[c - n - 1] < 0 && r.channel()[c - n - 1]) { comp[c - n - 1] = comps; stack[sp++] = c - n - 1; }
+                if (ci > 0 && cj < n - 1 && comp[c - n + 1] < 0 && r.channel()[c - n + 1]) { comp[c - n + 1] = comps; stack[sp++] = c - n + 1; }
+                if (ci < n - 1 && cj > 0 && comp[c + n - 1] < 0 && r.channel()[c + n - 1]) { comp[c + n - 1] = comps; stack[sp++] = c + n - 1; }
+                if (ci < n - 1 && cj < n - 1 && comp[c + n + 1] < 0 && r.channel()[c + n + 1]) { comp[c + n + 1] = comps; stack[sp++] = c + n + 1; }
             }
             sizes.add(size);
             comps++;
