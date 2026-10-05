@@ -1,5 +1,14 @@
 # AGENTS.md — GeoGenesis Mod
 
+> ## ⚠️ 开工前必读：[`DOCS-STATUS.md`](DOCS-STATUS.md)（文档状态台账）
+>
+> **本项目存在两条并行的水文代码线**（`fix/port-lake-p2-2` = 当前代码 /
+> `fix/continuous-river-coherence` = worktree 里的实验线），各自的文档会对同一问题
+> 给出**相反**的答案。本文描述的是**当前代码**（`fix/port-lake-p2-2`）。
+>
+> ⚠ **2026-10-05 实测事故**：曾因读了 `_model_wt/AGENTS.md`（另一条线、语气权威）
+> 而连续 5 次给出错误结论。**开工前先查台账确认文档适用哪条线。**
+
 > Minecraft Forge 1.20.1 模组，自定义 `ChunkGenerator` + `BiomeSource`，程序化生成地形，并按气候驱动生物群系。
 >
 > **👉 新对话接手请先读 [`HANDOFF.md`](HANDOFF.md)**（当前状态 / 残余边界 / 四把必跑的尺子 / 下一步候选）；本轮成果详见下方「当前工作焦点（2026-09-17/18）」。
