@@ -389,6 +389,46 @@ public final class ContinuousRiverNetwork {
      */
     private static final double DOWNSTREAM_FLOOR = 0.5;
 
+    /**
+     * ★★ 下游连续性传播的两道闸门（A/B，2026-10-05）★★
+     *
+     * <p><b>用户判据</b>：「河流应该一直流到湖/海才结束」。</p>
+     *
+     * <p><b>实测断因（runCanonicalViewProbe 的 [propagate] 行）</b>：</p>
+     * <pre>
+     *   流量不足 = 9761   ← 主因
+     *   访问上限 = 12187  ← 次因
+     *   入湖 = 939 / 无parent = 420 / ★上坡 = 0 / 缓冲带 = 0
+     * </pre>
+     * <p>（我原以为主因是"平坦区 level 上坡阻断"，<b>实测上坡=0，证伪</b>。）</p>
+     *
+     * <h3>闸门 1：{@code 流量不足}（{@code smooth < 0.5×门槛}）</h3>
+     * <p>与"水只到湖/海"直接冲突：下游流量若因离散化/平滑波动而略低，河就断在这里。
+     * 而物理上"上游有水 ⇒ 下游必有水"（水是连续的、只会越汇越多）。</p>
+     *
+     * <h3>闸门 2：{@code 访问上限}（{@code visits>8}）</h3>
+     * <p><b>这是最可疑的一条</b>：它的本意是"防环"，但<b>汇流处本来就该被多条河经过</b>
+     * ——那正是「主流+支流」的形态。把它当环掐断 ⇒ 主干在汇流点被截。
+     * 参考 SimpleHydrology 对照：粒子只在 {@code age>maxAge / 越界 / 入池} 三处终止，
+     * <b>没有任何"访问次数"闸门</b>。</p>
+     *
+     * <p>两个开关默认 false ⇒ 与改动前<b>逐位一致</b>；开启后做 A/B。</p>
+     */
+    public static volatile boolean relaxFloorGate =
+            Boolean.getBoolean("hydro.relaxFloorGate");
+    /**
+     * ★ 下游传播的【流量下限】系数（默认 {@value #DOWNSTREAM_FLOOR} = 旧行为）。
+     *
+     * <p>判据来自实测：{@code relaxFloorGate=true}（下限 0）时河道格 49524 → 133367
+     * （+169%，平原被点亮），说明"完全不设下限"不行；
+     * 而 {code visitCap=0} 单独放开【结果完全不变】⇒ 访问上限不是问题。
+     * ⇒ 真闸门是这个系数。本参数用于扫描合适值。</p>
+     */
+    public static volatile double floorMul =
+            Double.parseDouble(System.getProperty("hydro.floorMul", "0.5"));
+    /** 访问上限（默认 8 = 旧行为）。设为 0 表示不限制。 */
+    public static volatile int visitCap = Integer.getInteger("hydro.visitCap", 8);
+
     private static void propagateDownstream(double[] bed, double[] level, int[] parent,
                                            boolean[] sea, boolean[] lake, double[] smooth,
                                            double[] flux,
@@ -398,26 +438,36 @@ public final class ContinuousRiverNetwork {
         int cells = nx * nz;
         int[] visits = new int[cells];
         final int budget = 4 * (nx + nz);
-        final double floor = p.channelThreshold() * DOWNSTREAM_FLOOR;
+        final double floor = p.channelThreshold() * floorMul;
+        // ★★ 断因计数器（2026-10-05）★★
+        //   用户判据："河流应该一直流到湖/海才结束"。
+        //   实测 STARVED 分量出口流量 P50=0.968（只差 3% 门槛）却停在半路
+        //   ⇒ 必须量清 propagateDownstream 到底断在哪一句，不许猜。
+        long stopSea = 0, stopLake = 0, stopNoParent = 0, stopUphill = 0,
+             stopFloor = 0, stopVisits = 0, stopBuffer = 0;
         for (int k0 = 0; k0 < cells; k0++) {
             if (!channel[k0]) continue;
             int cur = k0;
             for (int n = 0; n < budget; n++) {
-                if (sea != null && sea[cur]) break;
-                if (lake != null && lake[cur]) break;
+                if (sea != null && sea[cur]) { stopSea++; break; }
+                if (lake != null && lake[cur]) { stopLake++; break; }
                 int nxt = parent[cur];
-                if (nxt < 0 || nxt == cur) break;
-                if (level[nxt] > level[cur] + 1e-9) break;    // 不得上坡（防御异常 parent）
+                if (nxt < 0 || nxt == cur) { stopNoParent++; break; }
+                if (level[nxt] > level[cur] + 1e-9) { stopUphill++; break; }   // 不得上坡（防御异常 parent）
                 // ★ 流量不足 ⇒ 此处不是河道（判据必须与主判定【同口径】，否则两套标准混用）
+                //   A/B：relaxFloorGate=true 时把下限降到 0（只要求"有流量"），
+                //   理由：用户要求"流到湖/海才结束"，且物理上"上游有水 ⇒ 下游必有水"。
                 double judgeN = channelUseRawFlux ? flux[nxt] : smooth[nxt];
-                if (judgeN < floor) break;
-                if (visits[nxt]++ > 8) break;                 // 防环：同格反复访问即停
+                double floorEff = relaxFloorGate ? 0.0 : floor;
+                if (judgeN < floorEff) { stopFloor++; break; }
+                // ★ 访问上限：visitCap<=0 ⇒ 不限制（旧行为 8；汇流处本就多条河经过）
+                if (visitCap > 0 && visits[nxt]++ > visitCap) { stopVisits++; break; }
                 if (!channel[nxt]) {
                     int ni = nxt / nz, nj = nxt % nz;
                     boolean inBuffer = borderBufferCells > 0
                             && (ni < borderBufferCells || nj < borderBufferCells
                                 || ni >= nx - borderBufferCells || nj >= nz - borderBufferCells);
-                    if (inBuffer) break;
+                    if (inBuffer) { stopBuffer++; break; }
                     channel[nxt] = true;
                     double ratio = smooth[nxt] / p.widthRef();
                     width[nxt] = Math.min(p.maxWidth(),
@@ -426,6 +476,10 @@ public final class ContinuousRiverNetwork {
                 cur = nxt;
             }
         }
+        // ★ 断因报告（判据：哪个原因占主导 ⇒ 决定修法）
+        System.out.printf("  [propagate] 传播终止原因: 入海=%d 入湖=%d 无parent=%d "
+                        + "★上坡=%d 流量不足=%d 访问上限=%d 缓冲带=%d%n",
+                stopSea, stopLake, stopNoParent, stopUphill, stopFloor, stopVisits, stopBuffer);
     }
 
     /**
