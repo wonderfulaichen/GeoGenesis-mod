@@ -821,17 +821,11 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
-// HydroRefProbe (2026-09-25, 用户提议): 物理参照模拟 —— 真水滴（惯量梯度下降）+
-// priority-flood 填洼在同一份侵蚀后地形上跑出"标准答案"，供与现有水文对照改进。
-//   gradlew runHydroRefProbe [-PprobeArgs="seed bx bz radius [margin streamThr lakeMinArea lakeMinDepth]"]
-task runHydroRefProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.HydroRefProbe'
-    maxHeapSize = '5g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
+// ⛔ 已移除（2026-10-05）：runHydroRefProbe / HydroRefProbe.java
+//   用户明确裁定「我从来就没说过这个参考图是对的…我早就废掉参考了」。
+//   该"物理参照模拟"曾把 priority-flood 填洼 + 水滴滴落当成"标准答案"，
+//   但从未被认定正确 ⇒ 长期误导（多次被当成 B 线的"应有形态"）。
+//   产物 52 张 ref_*.png 已归档至 _shots/archive-ref-0925/（留证不删）。
 
 // HydroPreviewProbe (2026-09-30, user: "好好渲染一个预览图" + "水文是 3D 的"):
 //   renders PRODUCTION placed water (getChunkCells) as hillshade + depth-tinted water
@@ -1371,6 +1365,18 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.EffectiveSurfaceProbe'
     maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 验证 erodedHeightForRouting（捷径取数）与 sampleWu().height（完整取数）是否逐位等价。
+//   B 线新增的 erodedHeightForRouting 被 HydroCoreViewProbe/sim 全面使用，
+//   若不等价 ⇒ 所有基于它的水文形态结论都是测量错误。前置门禁。
+task runRoutingHeightEquivalenceProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.RoutingHeightEquivalenceProbe'
+    maxHeapSize = '5g'
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     }
