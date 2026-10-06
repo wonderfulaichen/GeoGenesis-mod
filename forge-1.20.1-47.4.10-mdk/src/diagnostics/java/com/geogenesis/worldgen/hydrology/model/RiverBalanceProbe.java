@@ -129,6 +129,9 @@ public final class RiverBalanceProbe {
         Files.writeString(dir.resolve("metrics.txt"), log);
         System.out.print(log);
         System.out.println("IMAGE=" + dir.resolve("river.png").toAbsolutePath());
+        if (!monotone || !zeroRainNoRiver || !riverFromLake) {
+            System.exit(1);
+        }
     }
 
     private static int shade(double[] bed, int n, int i, int j) {

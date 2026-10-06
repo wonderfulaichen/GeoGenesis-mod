@@ -2380,6 +2380,24 @@ task runLifecycleChainProbe(type: JavaExec) {
     }
 }
 
+// ★ 中心线 + 横断面 vs 逐格过门槛 的同参对照（形态验收：抹开/散点/湿宽/确定性）
+task runCenterlineCrossSectionProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.CenterlineCrossSectionProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ P0 契约门禁：等高DAG累积 / 物理面积 / 溢流表示守恒 / 盆地出口归属
+//   失败时 exit 1 ⇒ 可作真门禁（不只打印 FAIL 仍 BUILD SUCCESSFUL）。
+task runHydrologyContractProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.HydrologyContractProbe'
+    maxHeapSize = '4g'
+}
+
 // ★ 耦合诊断：为何"不耦合有湖、耦合后全干"
 task runCouplingDiagnosisProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath

@@ -57,7 +57,15 @@ public final class ContinuousRiverNetwork {
 
     public record Result(double[] flux, boolean[] channel, double[] width,
                          int channelCells, double maxFlux, long streamSteps,
-                         double[] deathMask) { }
+                         double[] deathMask, double[] centerlineDistance,
+                         double[] centerlineWidth) {
+        public Result(double[] flux, boolean[] channel, double[] width,
+                      int channelCells, double maxFlux, long streamSteps,
+                      double[] deathMask) {
+            this(flux, channel, width, channelCells, maxFlux, streamSteps,
+                    deathMask, null, null);
+        }
+    }
 
     public static Result build(double[] bed, double[] level, boolean[] resolved,
                                int nx, int nz, double cellSize,
@@ -162,13 +170,15 @@ public final class ContinuousRiverNetwork {
         //     69% 的格被误判成河 —— 是量纲错误，不是模型差异。
         double perCrossing = p.runoffPerCell() * (nx * (double) nz) / samples;
 
-        // ★ 溢流注入的全局预算（见下方注释：单出口上限曾形同虚设）。
-        //   取值与主撒点数同量级：注入的物理意义是"补上湖的下游汇水区"，
-        //   它不该超过主撒点本身的工作量。超预算则截断并打印，绝不静默。
+        // 溢流注入预算只限制计算量，不改变出流的物理权重。
+        // 每条注入流线携带 outflow / n 的权重；因此总权重仍等于 outflow，
+        // 即使为了性能对 n 做上限采样，也不会把湖水静默删掉。
         final int perOutletCap = 5_000;
         final int totalCap = samples;
         int injected = 0;
         boolean capped = false;
+        /** 预算耗尽后【确实未被表示】的出流量（供账本核对，绝不静默）。 */
+        double unrepresentedOutflow = 0;
 
         // ★ 湖泊溢流注入（见方法 javadoc @param overflowAt）。
         if (overflowAt != null && !overflowAt.isEmpty()) {
@@ -210,22 +220,35 @@ public final class ContinuousRiverNetwork {
                 //   ⇒ 说明"噪声造出大量微洼地 ⇒ 微湖 ⇒ 溢出口暴涨"是放大器。
                 //   修法：改成【全局预算】，与主撒点量级挂钩，并打印实际占比，
                 //   使"注入量是否已失控"可审计（不能静默截断）。
-                int n = (int) Math.min((double) perOutletCap, Math.round(outflow / perCrossing));
+                int n = (int) Math.max(1.0,
+                        Math.min((double) perOutletCap, Math.round(outflow / perCrossing)));
                 if (injected + n > totalCap) {
-                    n = Math.max(0, totalCap - injected);
+                    int allowed = Math.max(0, totalCap - injected);
+                    if (allowed <= 0) {
+                        // 预算已尽：不丢水 —— 把剩余出水全部并入最后一条已有流线的… 不可行，
+                        // 故如实记录为未表示量（见下方 capped 报告），供账本核对。
+                        unrepresentedOutflow += outflow;
+                        capped = true;
+                        zeroStreams++;
+                        continue;
+                    }
+                    n = allowed;
                     capped = true;
                 }
                 injected += n;
-                // ★ 诊断：n==0 的出口（溢流量 < 单流线贡献 ⇒ 一条流线都注不进）
-                if (n <= 0) zeroStreams++;
+                // ★ 权重 = 出流量 / (流线数 × 单次穿越权重) ⇒ Σ(权重) × perCrossing = outflow。
+                //   预算截断只增加方差，不改变被表示的水量（旧实现直接丢差额）。
+                ofStats.weight = outflow / (n * perCrossing);
                 double cx = (start / nz) + 0.5, cz = (start % nz) + 0.5;
                 for (int s2 = 0; s2 < n; s2++) {
                     trace(bed, level, resolved, nx, nz, cellSize, p.manning(), maxSteps, crossings,
                             sea, parent, lake, resumeAt, cx, cz, ofStats);
                 }
             }
-            System.out.printf("  [streams] overflow injection: outlets=%d streams=%d (cap=%d%s)%n",
-                    outlets, injected, totalCap, capped ? ", CAPPED - 注入被截断" : "");
+            System.out.printf("  [streams] overflow injection: outlets=%d streams=%d (budget=%d%s)%n",
+                    outlets, injected, totalCap, capped ? ", 样本预算已用尽" : "");
+            System.out.printf("    [weighted] 每条注入流线带权重 ⇒ 表示水量 = 出流量"
+                            + "（未表示量=%.4f）%n", unrepresentedOutflow);
             // ★ 归因：为何"64 个溢流出口只注入 10 个"（"溢口→下泄"断裂的直接证据）
             System.out.printf("    [skip归因] overflowAt总数=%d | 无出流=%d 越界=%d 已在海=%d "
                             + "outletExit失败=%d (其中: 走到海=%d parent缺失=%d 预算耗尽=%d)"
@@ -580,6 +603,14 @@ public final class ContinuousRiverNetwork {
         long deathFlatLevel;
         /** 死亡细分：其它（父指针缺失、边界等）—— 这一类才是缺陷。 */
         long deathOther;
+        /**
+         * 每条流线携带的水量权重（主撒点 = 1.0）。
+         *
+         * <p>溢流注入按<b>样本数预算</b>截断时，必须用权重补齐总量
+         * （{@code outflow / (n · perCrossing)}）⇒ 预算只改变方差、
+         * 不改变被表示的水量。此前截断直接丢掉差额，是真实的水量不守恒。</p>
+         */
+        double weight = 1.0;
     }
 
     private static void printStats(String tag, int streams, StreamStats st) {
@@ -768,7 +799,14 @@ public final class ContinuousRiverNetwork {
                               boolean[] sea, int[] parent, boolean[] lake,
                               double[] resumeAt, double x0, double z0, StreamStats st) {
         double x = x0, z = z0;
-        double step = 0.5 * cellSize;
+        // ★ 步长【固定在网格空间】（半个格），不乘 cellSize。
+        //   x/z 是网格坐标（`int i = (int) x`），而 `velocity` 返回的方向是单位向量
+        //   ⇒ 旧写法 `0.5 * cellSize` 把"世界长度"混进"网格位移"：
+        //     step=1 → 半格；step=4 → 两格（跨格推进，跳过单元格）。
+        //   ⇒ 同一世界点在 step=1 与 step=4 下得到不同的河道掩码，而闸门/判据
+        //     默认 step=1 ⇒ 契约在非默认网格下静默失效。
+        //   修正后：路径采样密度与 step 无关，出图分辨率变化不再改变物理结论。
+        final double step = 0.5;
         int guard = 0;
         int lastCell = -1;
         // ★★ 动量方向（2026-10-05）★★
@@ -813,7 +851,9 @@ public final class ContinuousRiverNetwork {
             // ★ 只在【进入新格】时计一次，与 geotransport 的 cell-entry 累积同构。
             //   若每步都加，同一格会被重复计 2 次（步长=半格），且与"上游面积占比"口径不符。
             if (k != lastCell) {
-                crossings[k] += 1.0;
+                // ★ 权重记账（主撒点权重恒为 1.0 ⇒ 与旧行为逐位一致；
+                //   溢流注入用权重补齐被样本预算截断的水量，见 StreamStats.weight）。
+                crossings[k] += st.weight;
                 lastCell = k;
                 lastMainInk++;                       // ★ 诊断：主积分记账
             }
@@ -946,12 +986,12 @@ public final class ContinuousRiverNetwork {
             //   链穿过的是被填平的水体（湖床），水在那里不成流；
             //   流从溢出口（resume）重新积分 ⇒ 下游墨水不受影响。
             //   开启后"死水蓄量"不再被记成"河流水量" ⇒ 平行条纹消失。
-            if (!recoverNoInk) crossings[nxt] += 1.0;
+            if (!recoverNoInk) crossings[nxt] += st.weight;
             // ★ 诊断：recover 注入记账（见 lastParallelInk 的 javadoc —— 折线归因）
             if (!recoverNoInk) {
                 lastRecoverInk++;
                 if (lastParallelInk != null && nxt >= 0 && nxt < lastParallelInk.length) {
-                    lastParallelInk[nxt] += 1.0;
+                    lastParallelInk[nxt] += st.weight;
                 }
             }
             if (level[nxt] < level[k] - 1e-9) {     // 水位下降 = 越过溢出口

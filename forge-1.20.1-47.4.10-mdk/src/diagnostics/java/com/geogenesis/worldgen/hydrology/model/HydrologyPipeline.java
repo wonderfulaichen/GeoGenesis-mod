@@ -94,7 +94,26 @@ public final class HydrologyPipeline {
                          boolean[] resolved, double[] level, double[] depth, boolean[] lake,
                          int[] parent, double[] discharge, boolean[] channel, double[] width,
                          LakeWaterBalance.Result lakeResult, RiverNetwork.Result riverResult,
-                         double[] deathMask) { }
+                         double[] deathMask, double[] waterSurface,
+                         int couplingRounds, boolean couplingConverged, double couplingResidual) {
+
+        /**
+         * 权威水面高程（含水面有效性）。
+         *
+         * <p><b>为什么不能直接用 {@link #level()}</b>：`level` 是
+         * {@link EquilibriumWater} 的<b>几何逃逸高程</b>（minimax 洪泛），
+         * 表示"水刚好能溢出的高度"——它在湖内被抹平、在未决区是窗口残留。
+         * 而湖的<b>实际水面</b>由 {@link LakeWaterBalance} 的水量平衡给出
+         * （{@code bed + depth}）。两者不同是正常的，错在把前者当最终水面用。</p>
+         *
+         * <p>⇒ 对外统一从 {@code waterSurface[k]} 取水面；湖格 = {@code bed+depth}，
+         * 其余格 = 几何水面 {@code level}。需要区分"是否可信"仍看
+         * {@link #resolved()}。</p>
+         */
+        public double waterSurfaceAt(int k) {
+            return waterSurface != null ? waterSurface[k] : level[k];
+        }
+    }
 
     /** 湖↔河耦合的最大迭代轮次（实测通常 2~3 轮内收敛；上限用于防死循环）。 */
     private static final int COUPLING_ROUNDS = 4;
@@ -111,14 +130,20 @@ public final class HydrologyPipeline {
      */
     public enum RiverModel { D8, CONTINUOUS }
 
-    /** 两组流量场是否在容差内一致（耦合收敛判据）。 */
-    private static boolean nearlyEqual(double[] a, double[] b) {
-        if (a.length != b.length) return false;
+    /** 两组流量场的最大相对差（耦合收敛判据用的残差）。 */
+    private static double relativeResidual(double[] a, double[] b) {
+        if (a == null || b == null || a.length != b.length) return Double.POSITIVE_INFINITY;
+        double worst = 0;
         for (int k = 0; k < a.length; k++) {
             double scale = Math.max(1e-9, Math.max(Math.abs(a[k]), Math.abs(b[k])));
-            if (Math.abs(a[k] - b[k]) > 1e-6 * scale + 1e-9) return false;
+            worst = Math.max(worst, Math.abs(a[k] - b[k]) / scale);
         }
-        return true;
+        return worst;
+    }
+
+    /** 两组流量场是否在容差内一致（耦合收敛判据）。 */
+    private static boolean nearlyEqual(double[] a, double[] b) {
+        return relativeResidual(a, b) <= 1e-6;
     }
 
     /** 按所选模型计算汇流量场（耦合迭代用）。 */
@@ -204,12 +229,18 @@ public final class HydrologyPipeline {
         double[] flow = null;
         RiverNetwork.Result river = null;
         int rounds = 0;
+        // ★ 收敛必须是【可判定】的，而不是"跑满轮次就算完"（方案 §P1 明确要求）。
+        //   迭代上限用尽 ≠ 收敛 ⇒ 必须把 rounds / converged / residual 一并回传，
+        //   让调用方（与门禁）能区分"收敛"与"预算用尽"。
+        boolean converged = false;
+        double residual = Double.NaN;
         for (int it = 0; it < COUPLING_ROUNDS; it++) {
             double[] next = buildDischarge(request, n, step, built, surface, lakeResult);
             boolean same = flow != null && nearlyEqual(flow, next);
+            residual = flow == null ? Double.NaN : relativeResidual(flow, next);
             flow = next;
             rounds = it + 1;
-            if (same) break;
+            if (same) { converged = true; break; }
             lakeResult = balance.solve(request.climate(), built.drains(), borderMask, flow);
         }
         // 最终一轮：产出与所选模型一致的河网结果（含宽度/成河掩码）
@@ -231,14 +262,26 @@ public final class HydrologyPipeline {
         // ★ 耦合诊断（系统属性开启；默认不打印）：每轮湖格数与流量规模。
         //   加它的原因：耦合后 lake 从数千骤降到几百，**原因未知** ⇒ 必须打印取证，不得靠猜。
         if (System.getProperty("hydro.couplingDiagnostics") != null) {
-            System.out.printf("  [couple] rounds=%d finalLakeCells=%d basins=%d dryBasins=%d maxFlow=%.3f%n",
-                    rounds, countTrue(lakeResult.lake()), lakeResult.basins().size(),
-                    lakeResult.dryBasins(), river == null ? 0 : maxOf(river.discharge()));
+            System.out.printf("  [couple] rounds=%d converged=%b residual=%.3e finalLakeCells=%d"
+                            + " basins=%d dryBasins=%d maxFlow=%.3f%n",
+                    rounds, converged, residual, countTrue(lakeResult.lake()),
+                    lakeResult.basins().size(), lakeResult.dryBasins(),
+                    river == null ? 0 : maxOf(river.discharge()));
+        }
+
+        // ★ 权威水面：湖格取水量平衡面（bed+depth），其余取几何水面。
+        //   对外不再让调用方去猜"level 到底是不是最终水面"。
+        double[] waterSurface = new double[n * n];
+        boolean[] isLake = lakeResult.lake();
+        double[] lakeDepth = lakeResult.depth();
+        for (int k = 0; k < waterSurface.length; k++) {
+            waterSurface[k] = isLake[k] ? built.bed()[k] + lakeDepth[k] : surface.level()[k];
         }
 
         return new Result(n, n, step, built.bed(), built.drains(), surface.resolved(),
                 surface.level(), lakeResult.depth(), lakeResult.lake(), surface.parent(),
-                river.discharge(), river.channel(), river.width(), lakeResult, river, deathMask);
+                river.discharge(), river.channel(), river.width(), lakeResult, river, deathMask,
+                waterSurface, rounds, converged, residual);
     }
 
     /** 便捷统计，供探针与上层日志使用。 */
