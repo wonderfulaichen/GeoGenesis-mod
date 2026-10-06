@@ -2380,6 +2380,16 @@ task runLifecycleChainProbe(type: JavaExec) {
     }
 }
 
+// ★ region-contract：同一世界点跨窗口中心必须一致（接线前硬闸门，方案 §5.5）
+task runRegionContractProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.RegionContractProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 中心线 + 横断面 vs 逐格过门槛 的同参对照（形态验收：抹开/散点/湿宽/确定性）
 task runCenterlineCrossSectionProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
