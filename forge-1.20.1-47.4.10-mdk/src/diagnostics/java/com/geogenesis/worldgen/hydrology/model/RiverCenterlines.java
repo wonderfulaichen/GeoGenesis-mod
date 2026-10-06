@@ -36,35 +36,31 @@ import java.util.List;
  * <p>全部步骤为确定性遍历（细化的两趟子迭代、段内按索引定序、端点排序用
  * {@code (bed, index)} 字典序）⇒ 同输入逐位相同。</p>
  *
- * <h2>★★ 实测结论（2026-10，必读：本版【尚未】优于旧路径）★★</h2>
- * <p>{@code runCenterlineCrossSectionProbe}（r=400 / 150k，同参对照）：</p>
+ * <h2>★★ 实测结论（2026-10，走廊聚合 = 地形谷轴夹逼）★★</h2>
+ * <p>{@code runCenterlineCrossSectionProbe} 同参对照（阈值 {@code bankRise=0.25}）：</p>
  * <pre>
- *   旧掩码（flux≥门槛）    河道格 15,762  分量 164  抹开占比 18.19%
- *   新掩码（本类中心线+全宽）河道格 21,738  分量 152  抹开占比 31.47%   ← 更差
- *   ⇒ ①连通性 PASS ③散点 PASS（44→19）④湿宽比 1.47 PASS ⑤确定性 PASS
- *   ⇒ ②抹开 FAIL
+ *   r=400 / 150k：旧 18.09% → 新 8.81%（降 51%）；湿宽比 1.07；拆分数 0 ⇒ ALL PASS
+ *   r=700 / 600k：旧 22.47% → 新 12.68%（降 44%）；湿宽比 1.08；拆分数 0
  * </pre>
- * <p><b>根因（已定位，不是实现 bug）</b>：宽度来自 {@code flux}，而
- * <b>平坦区 flux 本身就被系统性抬高</b>（正是"抹开"的原始根因）⇒
- * 把"平行线骨架"按各自 inflated 的 Q 膨胀回去 ⇒ 抹开原样重现。
- * ⇒ <b>只做"细化 + 按 Q 定宽"不足以修复抹开</b>。</p>
- * <p><b>缺失的前置步骤 = 走廊聚合（方案 §4.1）</b>：必须在细化【之前】
- * 把同一汇流走廊内的多个平行候选**归并成唯一一条**（受谷地轴约束），
- * 否则骨架本身就是一张平行线网，怎么定宽都还是网。
- * 参考 FreeTerraForged 之所以没有此问题，是因为它的河道<b>不是</b>从逐格流量场
- * 派生的，而是"每 region 一条中心线"（几何构造）⇒ 结构上不存在平行网。</p>
+ * <p>⇒ <b>地形谷轴夹逼是本轮唯一有效的机制</b>：宽度取
+ * {@code min(水力几何, 法向岸高测量)} ⇒ 平坦浅沟（岸高仅零点几块）被夹成细条，
+ * 大河谷照常展宽。出图见 {@code build/centerline/}：高原与海岸带由"青色块"
+ * 变为"条状细线"。</p>
  *
- * <p>⚠ <b>已试并否决的走廊聚合做法</b>（勿重犯）：对证据掩码做
- * <b>横向通量非极大抑制</b>（剔除"存在横向更高通量邻居"的格，
- * 横向 = 排除上下游邻居）—— 实测<b>更糟</b>：抹开 18% → <b>62%</b>、
- * 骨架被打碎（1,293 条段几乎各自独立分量）、连通性判据 FAIL。
- * 机理：平坦区平行线上通量彼此接近，纯局部比较靠索引破平局 ⇒
- * 只在各并列组内留下零散格，既不形成单一走廊、又切断真实河道拐弯处的连接。
- * ⇒ **走廊聚合必须由【地形谷轴】约束（横断面局部最低），不能由通量局部比较实现。**
- * （该实验已按项目规范整体移除，不留死开关。）</p>
- * <p>⇒ <b>本类刻意【未接入】{@link HydrologyPipeline}</b>：当前状态下接线会让
- * 形态变差。它保留为已通过①②③④⑤中四项的**可复用部件**（细化/切段/定向/
- * 横断面查询）与上表的量化基线，供"走廊聚合"落地后直接复用。</p>
+ * <p><b>此前两次失败（已移除，勿重犯）</b>：</p>
+ * <ol>
+ *   <li><b>只做"细化 + 按 Q 定宽"</b>：18% → 31%（更差）。根因：宽度来自被
+ *       系统性抬高的平坦区 Q ⇒ 按各自虚高的 Q 膨胀平行骨架 ⇒ 网还是网。</li>
+ *   <li><b>走廊聚合改走"通量非极大抑制"</b>：18% → 62%（更糟）。根因：平坦区
+ *       平行线通量接近，纯局部比较只能靠索引破平局 ⇒ 骨架被打碎。
+ *       ⇒ <b>走廊聚合必须由地形约束，不能由通量局部比较实现</b>（本轮已证实）。</li>
+ * </ol>
+ *
+ * <p><b>★ 已知边界（重要）</b>：本轮修的是"<b>涂布</b>"（宽度），不是"<b>选线</b>"
+ * —— <b>骨架本身的平行性未变</b>。故 r=700 下仍有残余"窄而平行"的沟线
+ * （约 12.7% 的 5×5 高密度格；且该口径会把正常宽河/汇合区也算进去，
+ * 按方案 §5.4 只能作相对改善指标）。要根治需在<b>选线</b>阶段
+ * 由谷轴决定唯一中心线，属下一步工作。</p>
  *
  * <p><b>NOT VERIFIED</b>：方块铺设、实机渲染未覆盖。</p>
  */
@@ -96,10 +92,17 @@ public final class RiverCenterlines {
         public int mouthCell() { return cell[cell.length - 1]; }
     }
 
-    /** 参数（与 RiverNetwork/ContinuousRiverNetwork 的水力几何律保持一致，便于对照）。 */
+    /**
+     * 参数（与 RiverNetwork/ContinuousRiverNetwork 的水力几何律保持一致，便于对照）。
+     *
+     * @param bankRise 法向"岸高"阈值（block）：沿法向走到床面比河心高出此值即认为到岸。
+     *                 取值很小（默认 0.5）是<b>刻意</b>的：平坦高原上的分汊是<b>浅沟</b>，
+     *                 只有小阈值才能量出"这只是一条浅沟"⇒ 渠道保持细条、不被 Q 撑开。
+     * @param maxHalf  半宽上限（block）——法向测量与水力几何共同的上限。
+     */
     public record Params(double widthRef, double headWidth, double widthExponent, double maxWidth,
                          double depthRef, double headDepth, double maxDepth,
-                         double minSlope) {
+                         double minSlope, double bankRise, double maxHalf) {
         public Params {
             if (!(widthRef > 0) || !(headWidth > 0) || !(widthExponent > 0) || maxWidth < headWidth) {
                 throw new IllegalArgumentException("invalid width law");
@@ -107,10 +110,13 @@ public final class RiverCenterlines {
             if (!(depthRef > 0) || !(headDepth > 0) || maxDepth < headDepth || minSlope < 0) {
                 throw new IllegalArgumentException("invalid depth law");
             }
+            if (!(bankRise > 0) || !(maxHalf > 0)) {
+                throw new IllegalArgumentException("invalid valley constraints");
+            }
         }
         /** 与 {@code ContinuousRiverNetwork.Params.forRunoff} 同一套宽度律。 */
         public static Params defaults() {
-            return new Params(1.0, 1.5, 0.45, 12.0, 1.0, 0.6, 8.0, 0.002);
+            return new Params(1.0, 1.5, 0.45, 12.0, 1.0, 0.6, 8.0, 0.002, 0.5, 12.0);
         }
     }
 
@@ -217,13 +223,8 @@ public final class RiverCenterlines {
         Arrays.fill(normDist, Double.POSITIVE_INFINITY);
         boolean[] channel = new boolean[cells];
         for (Reach reach : reaches) {
-            for (int i = 1; i < reach.cell.length; i++) {
-                paintSegment(reach, reach.cell[i - 1], reach.cell[i], i - 1, i,
-                        nx, nz, normDist, halfW, depth, channel);
-            }
-            if (reach.cell.length == 1) {
-                paintSegment(reach, reach.cell[0], reach.cell[0], 0, 0,
-                        nx, nz, normDist, halfW, depth, channel);
+            for (int i = 0; i < reach.cell.length; i++) {
+                paintNode(reach, i, nx, nz, normDist, halfW, depth, channel);
             }
         }
         return new Result(reaches, normDist, halfW, depth, channel);
@@ -264,19 +265,99 @@ public final class RiverCenterlines {
         }
         int n = path.size();
         int[] cell = new int[n];
+        for (int i = 0; i < n; i++) cell[i] = path.get(i);
         double[] q = new double[n];
         double[] w = new double[n];
         double[] d = new double[n];
         for (int i = 0; i < n; i++) {
-            int k = path.get(i);
-            cell[i] = k;
+            int k = cell[i];
             q[i] = Math.max(0, flux[k]);
-            w[i] = fullWidth(q[i], params);
-            // 深度：由水量与【当地坡度】共同决定（陡则浅、缓则深），并受地形落差限制。
-            d[i] = depthFor(q[i], localSlope(bed, nx, nz, k), params);
+            // ★★ 宽度由【水力几何】与【地形谷轴】共同决定（方案 §4.3）★★
+            //
+            //   此前只用 W = Wref·(Q/Qref)^b ⇒ 平坦区 Q 虚高时宽度被撑开，
+            //   把平行线骨架糊成一片（实测抹开 18%→31%）。
+            //   现改为取二者较小者：狭/浅谷 ⇒ 宽度被地形夹住 ⇒ 渠道保持细条。
+            double halfQ = 0.5 * fullWidth(q[i], params);
+            double halfValley = valleyHalfWidth(bed, nx, nz, k,
+                    directionAt(cell, i, nz), params.bankRise(), params.maxHalf());
+            double half = Math.min(halfQ, halfValley);
+            half = Math.max(half, 0.5);                 // 至少半格：中心线本身必须有水
+            double dep = depthFor(q[i], localSlope(bed, nx, nz, k), params);
+            // ★ 地形夹逼不是"裁掉宽度丢掉流量"：宽度被钳时相应【加深】，
+            //   保持过水断面量级（方案 §4.3 明确要求）。
+            if (half < halfQ - 1e-9) {
+                dep = Math.min(params.maxDepth(), dep * Math.sqrt(halfQ / half));
+            }
+            w[i] = 2 * half;
+            d[i] = dep;
             if (sea != null && sea[k]) d[i] = Math.max(d[i], 0);
         }
         out.add(new Reach(cell, q, w, d, comp));
+    }
+
+    /**
+     * 中心线在节点 i 处的【下游单位方向】（网格空间）。
+     *
+     * <p>末节点无下游 ⇒ 沿用上一段方向；单节点段 ⇒ 退化为 (0,1)（确定性）。</p>
+     */
+    private static double[] directionAt(int[] cell, int i, int nz) {
+        int n = cell.length;
+        double dx, dz;
+        if (i + 1 < n) {
+            dx = cell[i + 1] / nz - cell[i] / nz;
+            dz = cell[i + 1] % nz - cell[i] % nz;
+        } else if (i > 0) {
+            dx = cell[i] / nz - cell[i - 1] / nz;
+            dz = cell[i] % nz - cell[i - 1] % nz;
+        } else {
+            dx = 0;
+            dz = 1;
+        }
+        double len = Math.hypot(dx, dz);
+        if (len < 1e-9) return new double[]{0, 1};
+        return new double[]{dx / len, dz / len};
+    }
+
+    /**
+     * <h2>法向"谷宽"测量：走廊聚合的地形判据</h2>
+     *
+     * <p>沿中心线的【法向】向两侧走，直到床面比河心高出 {@code bankRise}
+     * 即认为到岸 ⇒ 返回两侧的较小半宽。</p>
+     *
+     * <p><b>为什么这能治"抹开"</b>：平坦高原上的平行线是<b>浅沟</b>，
+     * 沟底与沟间脊的高差只有零点几块 ⇒ 用小 {@code bankRise}（0.5）
+     * 就能量出"这只是窄沟" ⇒ 半宽被夹到 1~2 格 ⇒ 渠道保持细条。
+     * 而真正的大河谷（岸高数十块）能容纳大宽度 ⇒ 不影响主河道展宽。</p>
+     *
+     * <p>⚠ <b>与"通量非极大抑制"的区别（那次实验已证否）</b>：本判据用
+     * <b>地形</b>（床面抬升），不比较通量 ⇒ 平坦区通量彼此接近时不会靠索引破平局
+     * 而把骨架打碎；它只限制【横向展开】，不动中心线本身。</p>
+     *
+     * @return 半宽（block），至少 1；两侧都走不到岸时返回 {@code maxHalf}
+     */
+    private static double valleyHalfWidth(double[] bed, int nx, int nz, int k,
+                                          double[] dir, double bankRise, double maxHalf) {
+        int x = k / nz, z = k % nz;
+        double base = bed[k];
+        // 法向 = 方向旋转 90°（在网格坐标里足够近似，测量本身对角度不敏感）
+        double nxn = -dir[1], nzn = dir[0];
+        double norm = Math.hypot(nxn, nzn);
+        if (norm < 1e-9) return maxHalf;
+        nxn /= norm;
+        nzn /= norm;
+        int limit = (int) Math.ceil(maxHalf);
+        double half = maxHalf;
+        for (int sign = -1; sign <= 1; sign += 2) {
+            int reached = limit;
+            for (int s = 1; s <= limit; s++) {
+                int a = (int) Math.round(x + sign * nxn * s);
+                int b = (int) Math.round(z + sign * nzn * s);
+                if (a < 0 || b < 0 || a >= nx || b >= nz) { reached = s - 1; break; }
+                if (bed[a * nz + b] > base + bankRise) { reached = s - 1; break; }
+            }
+            half = Math.min(half, Math.max(1, reached));
+        }
+        return Math.max(1.0, half);
     }
 
     /** 全宽 W = headWidth·(Q/widthRef)^b，上限 maxWidth。 */
@@ -324,38 +405,40 @@ public final class RiverCenterlines {
         return best;
     }
 
-    /** 把一个段沿其两端点展开成横断面（逐格取"最近段"的最小归一化距离）。 */
-    private static void paintSegment(Reach reach, int k0, int k1, int i0, int i1,
-                                     int nx, int nz, double[] normDist, double[] halfW,
-                                     double[] depth, boolean[] channel) {
-        // 每端向外多涂一轮，避免段间出现 1 格缝（相邻段必然共享顶点）
-        double half = Math.max(reach.width[i0], reach.width[i1]) * 0.5;
-        boolean sea0 = reach.depth[i0] <= 0 && reach.depth[i1] <= 0;
-        double depth0 = 0.5 * (reach.depth[i0] + reach.depth[i1]);
-        double qd = 0.5 * (reach.discharge[i0] + reach.discharge[i1]);
+    /**
+     * 在节点 i 处按【法向横断面】涂布宽度 —— 这才是"沿流线定宽"的几何实现。
+     *
+     * <p>此前用"以端点为圆心的方形块"涂布（{@code r = ceil(half)+1} 的方框），
+     * 那是<b>各向同性</b>的 ⇒ 河流被画成圆头/方块 ⇒ 与"条状"相反。
+     * 现改为：以节点为心、沿【法向】向两侧各铺 {@code half} 格
+     * （即经典"粗折线"渲染）⇒ 得到垂直于流向的横断面。</p>
+     */
+    private static void paintNode(Reach reach, int i, int nx, int nz,
+                                  double[] normDist, double[] halfW, double[] depth,
+                                  boolean[] channel) {
+        int k = reach.cell[i];
+        double half = reach.width[i] * 0.5;
         if (!(half > 0)) return;
-        // 段是相邻格对（也可能同格）⇒ 涂布半径取整
-        int r = (int) Math.ceil(half) + 1;
-        int nz2 = nz;
-        for (int k : new int[]{k0, k1}) {
-            int x = k / nz2, z = k % nz2;
-            for (int dx = -r; dx <= r; dx++) {
-                for (int dz = -r; dz <= r; dz++) {
-                    int a = x + dx, b = z + dz;
-                    if (a < 0 || b < 0 || a >= nx || b >= nz2) continue;
-                    int kk = a * nz2 + b;
-                    // 到段的距离（同格 ⇒ 0；相邻格 ⇒ 用中心距）
-                    double dist = Math.hypot(dx, dz);
-                    if (k0 == k1) dist = 0;
-                    double cn = dist / half;
-                    if (cn < normDist[kk]) {
-                        normDist[kk] = cn;
-                        halfW[kk] = half;
-                        depth[kk] = depth0;
-                    }
-                    if (cn <= 1.0 && !(sea0 && qd <= 0)) channel[kk] = true;
-                }
+        int x = k / nz, z = k % nz;
+        double[] dir = directionAt(reach.cell, i, nz);
+        double nxn = -dir[1], nzn = dir[0];
+        double norm = Math.hypot(nxn, nzn);
+        if (norm < 1e-9) { nxn = 0; nzn = 1; norm = 1; }
+        nxn /= norm;
+        nzn /= norm;
+        int steps = (int) Math.ceil(half);
+        for (int s = -steps; s <= steps; s++) {
+            int a = (int) Math.round(x + nxn * s);
+            int b = (int) Math.round(z + nzn * s);
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            int kk = a * nz + b;
+            double cn = Math.abs(s) / half;          // 0=河心 1=水边
+            if (cn < normDist[kk]) {
+                normDist[kk] = cn;
+                halfW[kk] = half;
+                depth[kk] = reach.depth[i];
             }
+            if (cn <= 1.0) channel[kk] = true;
         }
     }
 
