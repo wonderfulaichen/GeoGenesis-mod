@@ -400,6 +400,9 @@ public class PreviewDisplay extends AbstractWidget {
     // 71 = 2026-09-17 ★ blendTileDelta 确定性修复（tile 边界 blend 不再随机缺失）
     //      · 产出不再依赖"邻居 tile 是否在缓存" ⇒ 旧预览缓存必须失效
     // 72 = 2026-09-17 ★ 湖岸粗格 BFS 12wu → 6wu（直边网格伪影）
+    //  —— 2026-10-05 model 水文链开关 hydrologyModelPipelineEnabled 接入，**不升本版本**：
+    //     它已进 GeoGenesisConfig.configFingerprint（经下方 cfg 混入 hash）⇒ 切换开关
+    //     磁盘缓存自动失效重采；且默认 false = 产出逐位不变。留痕于此，免后人重复排查。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
     private static final int CACHE_SCHEMA_VERSION = 72;   // ★ 72：湖岸粗格 BFS 12wu → 6wu（直边网格伪影）
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */

@@ -150,11 +150,47 @@ public final class ModelPipelineAdapterProbe {
         List<HydrologyBlockCarvedColumn> rebuilt = provider.columnsFor(wx, wz, cells0);
         failures += check("纯函数（清缓存重建逐位相同）", () -> requireSame(cols0, rebuilt));
 
+        // ---- ⑤ 引擎级开关接线（三态：默认 legacy / 系统属性 true → model）----
+        //   GeoGenesisConfig.INSTANCE 在探针进程为 null ⇒ 构造器捕获后回落系统属性。
+        failures += check("引擎开关接线（默认 legacy、-D 开 model）", () -> {
+            // 默认（无 -D）：effective 必须 false ⇒ legacy 逐位不变的接线前提
+            System.clearProperty("geogenesis.modelPipeline");
+            var legacyEngine = new com.geogenesis.worldgen.hydrology.HydrologyChunkEngine(gen, seed);
+            var legacyCols = legacyEngine.calculate(wx, wz).carvedColumns();
+            require(legacyCols.size() == 256, "legacy 列数=" + legacyCols.size());
+            // -D 开启：走 model 提供者 ⇒ 必须产出与 provider 相同的列
+            System.setProperty("geogenesis.modelPipeline", "true");
+            var modelEngine = new com.geogenesis.worldgen.hydrology.HydrologyChunkEngine(gen, seed);
+            var modelCols = modelEngine.calculate(wx, wz).carvedColumns();
+            System.clearProperty("geogenesis.modelPipeline");
+            require(modelCols.size() == 256, "model 列数=" + modelCols.size());
+            // 两引擎产出必须不同（开关真的切了路径）且 model 侧与 provider 一致
+            boolean identical = true;
+            for (int i = 0; i < 256; i++) {
+                if (modelCols.get(i).lakePlan() != cols0.get(i).lakePlan()
+                        || modelCols.get(i).waterSurfaceY() != cols0.get(i).waterSurfaceY()) {
+                    identical = false;
+                    break;
+                }
+            }
+            require(identical, "引擎 model 路径产出与 provider 不一致（缓存未生效或走错分支）");
+            boolean differsFromLegacy = false;
+            for (int i = 0; i < 256; i++) {
+                if (legacyCols.get(i).carvedGroundY() != modelCols.get(i).carvedGroundY()
+                        || legacyCols.get(i).lakePlan() != modelCols.get(i).lakePlan()) {
+                    differsFromLegacy = true;
+                    break;
+                }
+            }
+            require(differsFromLegacy, "开关未生效：legacy 与 model 产出逐位相同（可能都走了同一分支）");
+            log.append("引擎开关：默认→legacy ✓  -D→model ✓（两路产出可区分）\n");
+        });
+
         // ---- ④ legacy 路径未受影响（开关关时 HydrologyChunkEngine 走 carveChunk）----
-        //   本探针不直接验 legacy（那需要 Forge 配置环境）；其回归由 runWorldgenGate 承担。
+        //   上面的引擎检查已直接覆盖：默认态 calculate 走 legacy 且产出 256 列。
         log.append(String.format("%n耗时：缓存命中 %.2f ms/chunk（冷解见上方 [HYDRO-MODEL] region 日志）%n",
                 warmMs));
-        log.append("边界：方块铺设/实机渲染/并发预热未覆盖（NOT VERIFIED）%n");
+        log.append("边界：方块铺设/实机渲染/并发预热未覆盖（NOT VERIFIED）\n");
         log.append(String.format("%n判定：%s%n", failures == 0 ? "ALL PASS" : "★ FAIL"));
 
         java.nio.file.Files.createDirectories(java.nio.file.Path.of("build/adapter"));
