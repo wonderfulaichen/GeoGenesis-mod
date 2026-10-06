@@ -149,16 +149,13 @@ public final class CenterlineCrossSectionProbe {
         boolean c1 = newComp <= oldComp;
         log.append(String.format("  ① 连通性不恶化：分量 %d → %d  %s%n", oldComp, newComp,
                 c1 ? "PASS" : "FAIL"));
-        // ★ 阈值口径（依方案 §5.4 原文："允许宽河和汇合区正常大面积，
-        //   **不再用 5×5 密度直接判失败**"）：
-        //   5×5 密度会把【正常宽河 + 汇合区 + 湖口】一并计入"块"，
-        //   故它只能作【相对改善】指标，不能作绝对判据。
-        //   真正的形态判据是 ④（湿宽 vs 设计宽）与 ③（不得碎片化）。
-        boolean c2 = newSmear <= oldSmear * 0.70;
-        log.append(String.format("  ② 抹开显著下降（阈值 ≤ 旧值的 70%%，见方案 §5.4 口径说明）："
-                        + "%.2f%% → %.2f%%（降 %.1f%%）  %s%n",
-                100 * oldSmear, 100 * newSmear,
-                100 * (1 - newSmear / Math.max(1e-9, oldSmear)), c2 ? "PASS" : "FAIL"));
+        // ★ ② 按方案 §5.4 原文降为【诊断】，不再作 FAIL 判据：
+        //   方案："允许宽河和汇合区正常大面积，不再用 5×5 密度直接判失败"。
+        //   该指标混同两种形态：(a) 单条粗河（真缺陷，由 ④ 湿宽比度量）与
+        //   (b) 密集平行细冲沟（用户已确认是地形正确形态，不得判失败）。
+        //   坐标契约修正后新区域恰以 (b) 为主 ⇒ 旧的"≤70%"相对阈值在此失效。
+        log.append(String.format("  ② 抹开占比（诊断，方案 §5.4 不作判据）：%.2f%% → %.2f%%%n",
+                100 * oldSmear, 100 * newSmear));
         boolean c3 = splits == 0;
         log.append(String.format("  ③ 无【真】碎片化（旧分量被拆成多个新分量）：拆分数=%d  %s%n",
                 splits, c3 ? "PASS" : "FAIL"));
@@ -182,7 +179,23 @@ public final class CenterlineCrossSectionProbe {
         boolean c7 = newBlobs <= oldBlobs;
         log.append(String.format("  ⑦ 无孤立团块（≤2格分量）：%d → %d  %s%n",
                 oldBlobs, newBlobs, c7 ? "PASS" : "FAIL"));
-        boolean all = c1 && c2 && c3 && c4 && deterministic && c6 && c7;
+        // ⑧ 河段网络有向无环（方案 §4.1："有向无环、有限进展"）
+        //   方向 = 每段上游→下游（按 bed 定向）；共享顶点连接段。
+        //   ⚠ 平坦区两端 bed 相等 ⇒ 定向可能互相背离 ⇒ 可能成环
+        //   （与早前 EquilibriumWater parent 2-环同型，必须度量）。
+        int cycles = reachGraphCycles(cl);
+        boolean c8 = cycles == 0;
+        log.append(String.format("  ⑧ 河段网络有向无环（环数）：%d  %s%n",
+                cycles, c8 ? "PASS（无环）" : "FAIL"));
+        if (cycles > 0) {
+            // 打样定位：找出首尾同格的段（自环）与真实的多段闭环
+            int selfLoops = 0;
+            for (var reach : cl.reaches) {
+                if (reach.nodeCount() >= 2 && reach.sourceCell() == reach.mouthCell()) selfLoops++;
+            }
+            log.append(String.format("     [诊断] 自环段（首尾同格）=%d%n", selfLoops));
+        }
+        boolean all = c1 && c3 && c4 && deterministic && c6 && c7 && c8;
         log.append(String.format("%n判定：%s%n", all ? "ALL PASS" : "★ 有判据 FAIL"));
 
         // ---- 出图（三图并排难以比较，故做成独立两张 + 一张差异图） ----
@@ -275,6 +288,62 @@ public final class CenterlineCrossSectionProbe {
             }
         }
         return breaks;
+    }
+
+    /**
+     * 河段有向图的环数（方案 §4.1：有向无环）。
+     *
+     * <p>建图：段 A 的【口】= 段 B 的【源】时连 A→B（水从 A 流入 B）。
+     * 自环（同段的源=口，纯环骨架）与闭环均计为环。DFS 三色标号计数。</p>
+     */
+    private static int reachGraphCycles(RiverCenterlines.Result cl) {
+        java.util.List<RiverCenterlines.Reach> rs = cl.reaches;
+        int m = rs.size();
+        // 口 → 段；源 → 段（同格可能多段共口 = 汇合）
+        java.util.Map<Integer, java.util.List<Integer>> byMouth = new java.util.HashMap<>();
+        java.util.Map<Integer, java.util.List<Integer>> byHead = new java.util.HashMap<>();
+        for (int i = 0; i < m; i++) {
+            RiverCenterlines.Reach r = rs.get(i);
+            if (r.nodeCount() < 2) continue;
+            byMouth.computeIfAbsent(r.mouthCell(), x -> new java.util.ArrayList<>()).add(i);
+            byHead.computeIfAbsent(r.sourceCell(), x -> new java.util.ArrayList<>()).add(i);
+        }
+        // 邻接：A→B（A 口是 B 源）
+        java.util.List<int[]> edges = new java.util.ArrayList<>();
+        for (var e : byMouth.entrySet()) {
+            java.util.List<Integer> heads = byHead.get(e.getKey());
+            if (heads == null) continue;
+            for (int a : e.getValue()) for (int b : heads) edges.add(new int[]{a, b});
+        }
+        @SuppressWarnings("unchecked")
+        java.util.List<Integer>[] adj = new java.util.List[m];
+        for (int i = 0; i < m; i++) adj[i] = new java.util.ArrayList<>();
+        for (int[] e : edges) {
+            if (e[0] == e[1]) return 1;                 // 自环（段头尾同格）
+            adj[e[0]].add(e[1]);
+        }
+        byte[] state = new byte[m];                     // 0=未访 1=在栈 2=已证无环
+        int cycles = 0;
+        for (int s = 0; s < m; s++) {
+            if (state[s] != 0) continue;
+            // 迭代 DFS（段数可达数千，避免递归栈）
+            java.util.ArrayDeque<int[]> stack = new java.util.ArrayDeque<>();
+            stack.push(new int[]{s, 0});
+            state[s] = 1;
+            while (!stack.isEmpty()) {
+                int[] top = stack.peek();
+                int u = top[0];
+                if (top[1] >= adj[u].size()) {
+                    state[u] = 2;
+                    stack.pop();
+                    continue;
+                }
+                int v = adj[u].get(top[1]++);
+                if (state[v] == 1) { cycles++; continue; }
+                if (state[v] == 0) { state[v] = 1; stack.push(new int[]{v, 0}); }
+            }
+        }
+        return cycles;
     }
 
     /**

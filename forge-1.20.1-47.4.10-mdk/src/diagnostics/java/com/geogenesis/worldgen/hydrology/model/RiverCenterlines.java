@@ -275,10 +275,30 @@ public final class RiverCenterlines {
             cur = next;
             if (path.size() > nx * nz) break;              // 防御：异常输入
         }
-        // 定向：若尾端床面更高，说明走反了 ⇒ 反转
-        int head = path.get(0), tail = path.get(path.size() - 1);
-        if (bed[tail] > bed[head] + 1e-12) {
+        // 定向（★ 保证有向无环，方案 §4.1）：
+        //   ① 床面降序：尾端更高 ⇒ 反转（精确比较，不用 ε —— 容差会留灰区，
+        //      使 bed[head] 可能略低于 mouth，破坏下述严格性论证）；
+        //   ② 严格等高才用【格索引】破平局（head 索引 > mouth 索引）。
+        //   ⇒ 恒有 φ = (bed, cellIndex) 满足 φ(head) > φ(mouth)：
+        //     床面严格降 ⇒ 第一分量严格大；床面相等 ⇒ 索引严格大。
+        //   段图中 A→B 要求 mouth(A)==head(B)（同一格 ⇒ 同 φ），绕环一圈即
+        //   φ 严格下降又回到自身 ⇒ 矛盾 ⇒ **数学上不可能有环**。
+        //   （实测背景：只按 bed 定向时平坦区出现过 1 个河段环；
+        //     等高段任意外定向是环的唯一来源 —— 与 EquilibriumWater parent 2-环同型。）
+        if (bed[path.get(path.size() - 1)] > bed[path.get(0)]) {
             java.util.Collections.reverse(path);
+        } else if (bed[path.get(path.size() - 1)] == bed[path.get(0)]
+                && path.get(0) < path.get(path.size() - 1)) {
+            java.util.Collections.reverse(path);        // 平地：head 索引 > mouth 索引
+        }
+        // ★ 环闭合修剪（实测抓到 1 个自环段）：路径绕回起点时首格==末格
+        //   ⇒ φ(head)==φ(mouth)，上面的严格不等式失效 ⇒ 段图自环。
+        //   去掉重复的【闭合顶点】即得开放路径：环几何仍完整绘出（只丢一次顶点记录），
+        //   且 (bed, index) 严格性恢复 ⇒ 段图无环。
+        //   形态来源：顶点处的环状枝（骨架的圈挂在分叉点上），
+        //   或纯环（无顶点）绕回起点 —— 两者修剪后均合法。
+        if (path.size() >= 2 && path.get(path.size() - 1).intValue() == path.get(0).intValue()) {
+            path.remove(path.size() - 1);
         }
         int n = path.size();
         int[] cell = new int[n];

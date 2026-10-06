@@ -22,7 +22,8 @@ public final class HydrologyContractProbe {
         failures += run("overflow representation is not capped", HydrologyContractProbe::overflowRepresentation);
         failures += run("basin identity chooses lowest rim", HydrologyContractProbe::basinIdentity);
         failures += run("grid step does not change the channel mask", HydrologyContractProbe::stepInvariance);
-        System.out.printf("contracts=%d failures=%d%n", 6, failures);
+        failures += run("world coordinate block-to-wu mapping", HydrologyContractProbe::worldCoordinateMapping);
+        System.out.printf("contracts=%d failures=%d%n", 7, failures);
         if (failures != 0) System.exit(1);
     }
 
@@ -196,6 +197,37 @@ public final class HydrologyContractProbe {
                         + " steps(step=4)=" + coarse.streamSteps());
         require(diff == 0,
                 "channel mask changed with grid step: differing cells=" + diff + "/" + onUnit);
+    }
+
+    /**
+     * 管线的地形回调必须做 block → wu 换算（{@code wu = block / horizontalScale}）。
+     *
+     * <p>{@code CellGenerator.sample/sampleWu} 的坐标语义是 <b>wu</b>，
+     * 而 {@link HydrologyPipeline} 的 Request 契约是 <b>block</b>
+     * （centerBlockX/radiusBlocks/step）。默认 {@code horizontalScale = 2.0}
+     * ⇒ 直接把 block 传进去会采到**错误的世界位置**（2 倍错位），
+     * 所有窗口产出的地形区域都不是契约声称的区域。</p>
+     *
+     * <p>判据：管线窗口中心格的 bed 必须等于 {@code sampleWu(cx/hs, cz/hs).height}。
+     * 修复前（直接传 block）与该值必然不同（hs=2 ⇒ 采样点差一倍）。</p>
+     */
+    private static void worldCoordinateMapping() {
+        com.geogenesis.worldgen.terrain.TerrainParams tp =
+                com.geogenesis.worldgen.terrain.TerrainParams.defaults();
+        double hs = tp.horizontalScale();
+        require(hs != 1.0, "fixture requires hs != 1 (default is 2.0); otherwise contract is vacuous");
+        com.geogenesis.worldgen.terrain.CellGenerator gen =
+                new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY());
+        gen.seed(9139912035078620160L);
+        var climate = new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
+        int cx = -140, cz = 137, radius = 64, step = 4;
+        HydrologyPipeline.Result r = HydrologyPipeline.run(gen, tp,
+                new HydrologyPipeline.Request(cx, cz, radius, step, climate,
+                        0, HydrologyPipeline.RiverModel.D8));
+        int n = r.nx();
+        int center = (n / 2) * n + n / 2;        // 中心格（n 为奇数）
+        double expected = gen.sampleWu(cx / hs, cz / hs).height;
+        requireClose(r.bed()[center], expected, "center bed (block→wu)");
     }
 
     private static SyntheticLake syntheticLake(int basinWidth, int basinHeight,
