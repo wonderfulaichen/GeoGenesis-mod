@@ -115,8 +115,20 @@ public final class HydrologyPipeline {
         }
     }
 
-    /** 湖↔河耦合的最大迭代轮次（实测通常 2~3 轮内收敛；上限用于防死循环）。 */
-    private static final int COUPLING_ROUNDS = 4;
+    /** 湖↔河耦合的最大迭代轮次。
+     *  ⚠ 2026-10 实测：first-capture 账本修复后（见 {@link ContinuousRiverNetwork.Ledger}），
+     *  正典窗在【第 5 轮】收敛（residual=0）——旧上限 4 轮恰好差一轮（4 轮时 residual=0.36
+     *  仍在单调下降）。放大环（每轮 ×5 几何发散）已被账本结构性切断，
+     *  故上限只决定"链条长度内传播几轮"，取 6 留余量。诊断旋钮 {@code hydro.couplingMaxRounds}。 */
+    private static final int COUPLING_ROUNDS = 6;
+
+    private static int couplingMaxRounds() {
+        String p = System.getProperty("hydro.couplingMaxRounds");
+        if (p == null) return COUPLING_ROUNDS;
+        try { return Math.max(1, Integer.parseInt(p)); } catch (NumberFormatException e) {
+            return COUPLING_ROUNDS;
+        }
+    }
 
     /**
      * 河网模型选择。
@@ -146,16 +158,42 @@ public final class HydrologyPipeline {
         return relativeResidual(a, b) <= 1e-6;
     }
 
-    /** 按所选模型计算汇流量场（耦合迭代用）。 */
+    /**
+     * 按所选模型计算汇流量场（耦合迭代用）。
+     *
+     * @param captureOut CONTINUOUS 时填入【首次截获账本】（方案 §4.2 的入流口径）；
+     *                   null = 不记账。D8 基线不记账（保持旧语义，见类 javadoc 的决策边界）。
+     *                   ⚠ 账本只写独立数组，<b>不改变 flux/channel/width 的任何一位</b>。
+     */
     private static double[] buildDischarge(Request request, int n, int step,
                                            WindowOutlets.Result built,
                                            EquilibriumWater.Surface surface,
-                                           LakeWaterBalance.Result lakeResult) {
+                                           LakeWaterBalance.Result lakeResult,
+                                           double[] captureOut) {
         if (request.riverModel() == RiverModel.CONTINUOUS) {
+            ContinuousRiverNetwork.Ledger ledger = null;
+            if (captureOut != null) {
+                java.util.Arrays.fill(captureOut, 0);
+                int[] outletBasin = new int[n * n];
+                java.util.Arrays.fill(outletBasin, -1);
+                int[] bo = lakeResult.basinOutlet();
+                if (bo != null) {
+                    for (int b = 0; b < bo.length; b++) {
+                        if (bo[b] >= 0 && bo[b] < outletBasin.length) outletBasin[bo[b]] = b;
+                    }
+                }
+                // ⚠ basinId/outletBasin 必须来自【同一份】lakeResult（索引一致性）：
+                //   干盆地会在本轮 solve 中被跳过 ⇒ 不同轮次的 basinId 索引可能错位，
+                //   而 capture 的求和按【组几何】（solve 内部重扫 isLakePot）而非索引 ⇒ 求和不受错位影响；
+                //   只有 sourceBasin==自家 的判定用索引 —— 它与同轮 outletBasin 同源 ⇒ 一致。
+                ledger = new ContinuousRiverNetwork.Ledger(
+                        lakeResult.basinId(), outletBasin, captureOut);
+            }
             var c = ContinuousRiverNetwork.build(built.bed(), surface.level(), surface.resolved(),
                     n, n, step, ContinuousRiverNetwork.Params.forRunoff(lakeResult.runoffPerCell()),
                     request.streamSamples(), 0x5EEDL, request.borderBufferCells(),
-                    built.drains(), surface.parent(), lakeResult.lake(), lakeResult.overflowAt());
+                    built.drains(), surface.parent(), lakeResult.lake(), lakeResult.overflowAt(),
+                    null, ledger);
             return c.flux();
         }
         return RiverNetwork.build(n, n, surface.level(), surface.parent(),
@@ -244,14 +282,111 @@ public final class HydrologyPipeline {
         //   让调用方（与门禁）能区分"收敛"与"预算用尽"。
         boolean converged = false;
         double residual = Double.NaN;
-        for (int it = 0; it < COUPLING_ROUNDS; it++) {
-            double[] next = buildDischarge(request, n, step, built, surface, lakeResult);
+        // 首次截获账本（CONTINUOUS）：solve 的来水口径 = Σ capture over group（方案 §4.2），
+        // 不再是 Σ flux over group（每格穿越重复计水 ⇒ 几何发散，见 Ledger javadoc）。
+        double[] capture = request.riverModel() == RiverModel.CONTINUOUS
+                ? new double[n * n] : null;
+        for (int it = 0; it < couplingMaxRounds(); it++) {
+            double[] next = buildDischarge(request, n, step, built, surface, lakeResult, capture);
             boolean same = flow != null && nearlyEqual(flow, next);
             residual = flow == null ? Double.NaN : relativeResidual(flow, next);
+            // ★ 逐轮取证（hydro.couplingDiagnostics）：worst-case 相对残差被【近零格】主导 ——
+            //   1e-6 vs 1e-5 的格相对差 0.9，但绝对差可忽略 ⇒ 必须同时看
+            //   『显著格』（scale ≥ 1e-3·maxFlux）的残差与两侧规模，否则会把
+            //   度量噪声误读成"物理不收敛"。
+            if (System.getProperty("hydro.couplingDiagnostics") != null) {
+                double mx = maxOf(next);
+                double worstSig = 0, worstAbs = 0;
+                int sigCells = 0, sigBad = 0, lakeCells = countTrue(lakeResult.lake());
+                int worstK = -1;
+                for (int k = 0; k < next.length; k++) {
+                    double sc = Math.max(Math.abs(flow == null ? 0 : flow[k]), Math.abs(next[k]));
+                    if (flow != null) {
+                        double ad = Math.abs(flow[k] - next[k]);
+                        if (ad > worstAbs) { worstAbs = ad; worstK = k; }
+                        if (sc >= 1e-3 * mx) {
+                            sigCells++;
+                            double rel = Math.abs(flow[k] - next[k]) / Math.max(1e-9, sc);
+                            worstSig = Math.max(worstSig, rel);
+                            if (rel > 1e-6) sigBad++;
+                        }
+                    }
+                }
+                // ★ 放大环定位：盆地账本总量 + 最恶格身份（本轮实测 maxFlux 每轮 ×5 ⇒
+                //   必须知道是"总出流在涨"还是"某单格在涨"，以及涨的是不是出口格）。
+                double sumIn = 0, sumOut = 0, sumOv = 0;
+                for (var b : lakeResult.basins()) { sumIn += b.inflow(); sumOut += b.outflow(); }
+                for (double v : lakeResult.overflowAt().values()) sumOv += v;
+                String worst = worstK < 0 ? "-" : String.format(
+                        "(%d,%d) f=%.2f→n=%.2f lake=%b out=%b",
+                        worstK / n, worstK % n, flow[worstK], next[worstK],
+                        lakeResult.lake()[worstK],
+                        lakeResult.overflowAt().containsKey(worstK));
+                System.out.printf(
+                        "  [couple#%d] residual=%.3e sig=%d/%d maxAbs=%.1f maxFlux=%.1f "
+                                + "lake=%d | ΣIn=%.1f ΣOut=%.1f ΣOv=%.1f | worst=%s%n",
+                        it, residual, sigBad, sigCells, worstAbs, mx, lakeCells,
+                        sumIn, sumOut, sumOv, worst);
+                // ★★ 吃水大户定位（放大环在哪个盆地）：打印 inflow 最大的 3 个盆地 ——
+                //   seed/outlet 坐标 + 其组内 flux 前 3 格。若某盆地 inflow 主要来自
+                //   【自己出口注入的流线又回到自己组内】⇒ 自环放大；若来自上游出口格
+                //   ⇒ 级联重复计数。
+                if (lakeResult.basins().size() > 0) {
+                    var sorted = new java.util.ArrayList<>(lakeResult.basins());
+                    sorted.sort((a, b) -> Double.compare(b.inflow(), a.inflow()));
+                    int basinId = 0;
+                    for (var b : sorted) {
+                        if (basinId++ >= 3) break;
+                        if (b.inflow() <= 0) continue;
+                        // 该盆地的格集 = basinId 匹配（借 lake 掩码不行：组是连通分量）
+                        int seedCell = b.seedCell();
+                        // 组内 flux 前 3：借 basinId 数组定位同组格
+                        double[][] top = new double[3][];
+                        for (int t = 0; t < 3; t++) top[t] = new double[]{-1, -1};
+                        int bid = lakeResult.basinId() != null && seedCell >= 0
+                                && seedCell < lakeResult.basinId().length
+                                ? lakeResult.basinId()[seedCell] : -1;
+                        double topSum = 0;
+                        int topN = 0;
+                        if (bid >= 0) {
+                            for (int k = 0; k < next.length; k++) {
+                                if (lakeResult.basinId()[k] != bid) continue;
+                                double f = next[k];
+                                if (f <= 0) continue;
+                                topSum += f;   // 注：topSum 累计全组（= inflow 口径）
+                                topN++;
+                                // 简易 top3 插入
+                                for (int t = 0; t < 3; t++) {
+                                    if (f > top[t][1]) {
+                                        for (int u = 2; u > t; u--) top[u] = top[u - 1];
+                                        top[t] = new double[]{k, f};
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        System.out.printf(
+                                "    [top basin] seed=(%d,%d) outlet=%s inflow=%.1f outflow=%.1f "
+                                        + "ov=%b | 组内flux格=%d Σ=%.1f | top3=%s%n",
+                                seedCell / n, seedCell % n,
+                                b.outflow() > 0 ? "有" : "无", b.inflow(), b.outflow(), b.overflow(),
+                                topN, topSum,
+                                String.format("(%d,%.0f)(%d,%.0f)(%d,%.0f)",
+                                        (int) top[0][0] / n, top[0][1],
+                                        (int) top[1][0] / n, top[1][1],
+                                        (int) top[2][0] / n, top[2][1]));
+                    }
+                }
+            }
             flow = next;
             rounds = it + 1;
             if (same) { converged = true; break; }
-            lakeResult = balance.solve(request.climate(), built.drains(), borderMask, flow);
+            // ★ 来水口径切换（本轮核心修复）：solve 的 inflow = Σ 来水 over 组。
+            //   CONTINUOUS 传 capture（首次截获，每条流线只记一次）；
+            //   D8 保持旧语义（flux=discharge 的 Ω 累积）—— 它是【对照基线】，
+            //   改它会同时改掉所有 d8 对照数字 ⇒ 刻意不动（决策边界，见方案 §6）。
+            lakeResult = balance.solve(request.climate(), built.drains(), borderMask,
+                    capture != null ? capture : flow);
         }
         // 最终一轮：产出与所选模型一致的河网结果（含宽度/成河掩码）
         double[] deathMask = null;

@@ -113,13 +113,43 @@ public final class ContinuousRiverNetwork {
      *                   按 {@code n = 溢流量 / perCrossing} 换算成等效流线，
      *                   从溢出口的<b>非湖侧</b>起继续积分（与主撒点同一套规则）。
      */
+    /**
+     * 首次截获账本（方案 §4.2：「每个源样本携带权重，第一次被盆地截获时向该盆地记账」）。
+     *
+     * <h3>为什么 inflow 不能用 Σ flux over group（本轮实测的几何放大环）</h3>
+     * <p>旧口径 {@code inflow = Σ_{k∈盆地组} flux[k]} 把<b>每格穿越</b>都记一次水：
+     * 同一条流线在组内穿 m 格 ⇒ 记 m 次。更糟的是溢流注入的 n 条流线
+     * <b>共用同一条确定性路径</b>（同起点、同速度场）⇒ 路径上每格都拿到
+     * {@code n × (outflow/(n·perCrossing)) × perCrossing = outflow} 的全额流量
+     * ⇒ 组内 5 格 ⇒ 下一轮 inflow = 5.08 × outflow，每轮 ×5 几何发散
+     * （实测 ΣIn 1694→3560→7917→20564→65418→251148→1093261；
+     *  maxFlux 每轮恰 ×5、residual 恒 0.800 = 1−1/5，皆为该机制的签名）。</p>
+     *
+     * <p><b>修正</b>：流线只在其<b>终止的那一个湖格</b>记一次权重（= 该流线携带的
+     * 全部水量）⇒ 与「穿越次数」解耦。跨盆地级联由溢流注入天然携带：
+     * A 的出流以注入流线形式在 B 的湖格终止 ⇒ 记 B 一次入流 —— 串联逐级传递、
+     * 同一水量在【每个盆地各记一次】是正确的（方案 §4.2）。</p>
+     *
+     * <h3>回流自家湖（returnedHome）为何不计入入流</h3>
+     * <p>实测 89% 的注入流线以 {@code lakeStill} 终止。若终点是<b>自己</b>的盆地
+     * ⇒ 出流绕回自家 ⇒ 计入入流会形成 {@code inflow = N + outflow} 的自环
+     * （每轮净增 N−evap ⇒ 仍发散）。物理语义：这部分水<b>没有离开</b>该盆地
+     * ⇒ 不产生新的入流，计入 {@code returnedHome} 计数暴露（路由缺陷的量化入口）。</p>
+     *
+     * @param basinId    逐格盆地编号（-1 = 非任何盆地）；null = 关闭账本（逐位旧行为）
+     * @param outletBasin 溢流出口格 → 所属盆地编号；用于识别"回流自家"
+     * @param capture    输出：逐格【首次截获】水量（weight 单位 × perCrossing 后为物理流量）；
+     *                   由调用方预分配，build 填充
+     */
+    public record Ledger(int[] basinId, int[] outletBasin, double[] capture) { }
+
     public static Result build(double[] bed, double[] level, boolean[] resolved,
                                int nx, int nz, double cellSize,
                                Params p, int samples, long seed, int borderBufferCells,
                                boolean[] sea, int[] parent, boolean[] lake,
                                java.util.Map<Integer, Double> overflowAt) {
         return build(bed, level, resolved, nx, nz, cellSize, p, samples, seed, borderBufferCells,
-                sea, parent, lake, overflowAt, null);
+                sea, parent, lake, overflowAt, null, null);
     }
 
     /**
@@ -133,12 +163,25 @@ public final class ContinuousRiverNetwork {
      * ② 逐格门槛抖动（加下游传播后最大分量仅 1018→1085）。
      * 剩下的候选是<b>流线死亡</b>：终止统计显示 27% 的流线 {@code failBudget}
      * ⇒ 死在坡上 ⇒ 下游拿不到水 ⇒ 河道在此处断。本掩码就是验证它的直接证据。</p>
+     *
+     * @param ledger 首次截获账本（见 {@link Ledger}）；null = 不记账（逐位旧行为，
+     *               flux/channel/width 的产出与账本<b>无关</b>——账本只写独立的 capture 数组）
      */
     public static Result build(double[] bed, double[] level, boolean[] resolved,
                                int nx, int nz, double cellSize,
                                Params p, int samples, long seed, int borderBufferCells,
                                boolean[] sea, int[] parent, boolean[] lake,
                                java.util.Map<Integer, Double> overflowAt, double[] deathMask) {
+        return build(bed, level, resolved, nx, nz, cellSize, p, samples, seed, borderBufferCells,
+                sea, parent, lake, overflowAt, deathMask, null);
+    }
+
+    public static Result build(double[] bed, double[] level, boolean[] resolved,
+                               int nx, int nz, double cellSize,
+                               Params p, int samples, long seed, int borderBufferCells,
+                               boolean[] sea, int[] parent, boolean[] lake,
+                               java.util.Map<Integer, Double> overflowAt, double[] deathMask,
+                               Ledger ledger) {
         int cells = nx * nz;
         if (bed.length != cells || level.length != cells || resolved.length != cells) {
             throw new IllegalArgumentException("array length != nx*nz");
@@ -149,9 +192,23 @@ public final class ContinuousRiverNetwork {
         int maxSteps = 4 * (nx + nz);
         double[] resumeAt = new double[2];   // recover 的回传位置（复用，避免热路径分配）
 
+        // ★ 单位必须与 RiverNetwork 一致，否则两法不可比（纯函数，先于采样计算）：
+        //   P(样本经过 c) = A_upstream(c)/A_domain（确定性流向下的恒等式）
+        //   ⇒ Q(c) = runoffPerCell · (nx·nz) · (crossings/N) = runoffPerCell · A_upstream_格数
+        //   即"上游格数 × 每格径流"，与 D8 累积同单位。
+        //   ⚠ 曾误用"单位面积率"作 runoff（差 5 个数量级），导致 maxFlux 比 D8 大 11 万倍、
+        //     69% 的格被误判成河 —— 是量纲错误，不是模型差异。
+        double perCrossing = p.runoffPerCell() * (nx * (double) nz) / samples;
+
         // ★ 终止原因统计（诊断用）：河"断掉"必须能归因，不能靠猜。
         StreamStats mainStats = new StreamStats();
         mainStats.deathMask = deathMask;
+        if (ledger != null) {
+            mainStats.capture = ledger.capture();
+            mainStats.basinId = ledger.basinId();
+            mainStats.perCrossing = perCrossing;
+            mainStats.sourceBasin = -1;      // 主撒点：无来源盆地，首个盆地即记账
+        }
         for (int s = 0; s < samples; s++) {
             state = mix(state + 0x9E3779B97F4A7C15L);
             double x = unit(state) * (nx - 2) + 1.0;
@@ -161,14 +218,6 @@ public final class ContinuousRiverNetwork {
                     sea, parent, lake, resumeAt, x, z, mainStats);
         }
         printStats("samples", samples, mainStats);
-
-        // ★ 单位必须与 RiverNetwork 一致，否则两法不可比：
-        //   P(样本经过 c) = A_upstream(c)/A_domain（确定性流向下的恒等式）
-        //   ⇒ Q(c) = runoffPerCell · (nx·nz) · (crossings/N) = runoffPerCell · A_upstream_格数
-        //   即"上游格数 × 每格径流"，与 D8 累积同单位。
-        //   ⚠ 曾误用"单位面积率"作 runoff（差 5 个数量级），导致 maxFlux 比 D8 大 11 万倍、
-        //     69% 的格被误判成河 —— 是量纲错误，不是模型差异。
-        double perCrossing = p.runoffPerCell() * (nx * (double) nz) / samples;
 
         // 溢流注入预算只限制计算量，不改变出流的物理权重。
         // 每条注入流线携带 outflow / n 的权重；因此总权重仍等于 outflow，
@@ -183,6 +232,12 @@ public final class ContinuousRiverNetwork {
         // ★ 湖泊溢流注入（见方法 javadoc @param overflowAt）。
         if (overflowAt != null && !overflowAt.isEmpty()) {
             StreamStats ofStats = new StreamStats();
+            if (ledger != null) {
+                ofStats.capture = ledger.capture();
+                ofStats.basinId = ledger.basinId();
+                ofStats.perCrossing = perCrossing;
+                // sourceBasin 逐出口设置（= 出流所属盆地），见 creditCapture 的回流判定
+            }
             int outlets = 0;
             // ★ 诊断：溢流出口被跳过的原因分类（"64 个出口只注入 10 个"的归因）
             int skipNoOutflow = 0, skipOutOfRange = 0, skipInSea = 0, skipExitNeg = 0;
@@ -194,6 +249,9 @@ public final class ContinuousRiverNetwork {
                 int k = e.getKey();
                 if (k < 0 || k >= cells) { skipOutOfRange++; continue; }
                 if (sea != null && sea[k]) { skipInSea++; continue; }          // 溢流入海：无需注入下游
+                if (ledger != null) {
+                    ofStats.sourceBasin = ledger.outletBasin() != null ? ledger.outletBasin()[k] : -1;
+                }
                 int start = overflowParentFallback
                         ? outletExit(k, lake, parent, sea, nz, level, bed, nx, nz)
                         : outletExit(k, lake, parent, sea, nz);
@@ -257,6 +315,14 @@ public final class ContinuousRiverNetwork {
                     skipExitNeg, exitReasonSea, exitReasonNoParent, exitReasonBudget,
                     zeroStreams);
             printStats("overflow", injected, ofStats);
+            // ★ 账本审计（Ledger）：截获总量 vs 回流自家 —— 回流占比高 = 出口路由缺陷
+            //   （出流没离开本盆地），是下一步路由修复的量化入口。
+            if (ledger != null) {
+                double captured = 0;
+                for (double v : ledger.capture()) captured += v;
+                System.out.printf("    [ledger] 首次截获总量=%.2f | 回流自家: streams=%d 水量=%.2f%n",
+                        captured, ofStats.returnedHome, ofStats.returnedHomeWeight);
+            }
         }
 
         double[] flux = new double[cells];
@@ -611,6 +677,24 @@ public final class ContinuousRiverNetwork {
          * 不改变被表示的水量。此前截断直接丢掉差额，是真实的水量不守恒。</p>
          */
         double weight = 1.0;
+        // ── 首次截获账本（Ledger；null = 关闭，逐位旧行为）────────────────────
+        /** 逐格【首次截获】水量输出（物理单位 = weight × perCrossing）。 */
+        double[] capture;
+        /** 逐格盆地编号（-1 = 非盆地）；与 {@link Ledger} 同源。 */
+        int[] basinId;
+        /** 单次穿越的物理水量（把 weight 换算成流量）。 */
+        double perCrossing;
+        /**
+         * 本条流线的【来源盆地】（主撒点 = -1；溢流注入 = 出流所属盆地）。
+         *
+         * <p>注入流线若首触即回自家盆地 ⇒ {@code returnedHome} 计数、<b>不入账</b>
+         * —— 否则 {@code inflow = N + outflow} 自环每轮净增（几何发散的第二机制）。
+         * 这部分水没有离开该盆地，物理上不产生新入流；计数即路由缺陷的量化入口。</p>
+         */
+        int sourceBasin = -1;
+        /** 回流自家的流线数 / 水量（物理单位），供 printStats 审计。 */
+        long returnedHome;
+        double returnedHomeWeight;
     }
 
     private static void printStats(String tag, int streams, StreamStats st) {
@@ -833,6 +917,9 @@ public final class ContinuousRiverNetwork {
         double ckX = x, ckZ = z;
         int sinceCk = 0;
         boolean failed = false;
+        // 首次截获状态（Ledger）：0=尚未被任何盆地截获 1=已记账 2=回流自家（已处理、不记账）。
+        //   每条流线最多处理一次 —— 这正是"第一次被盆地截获"语义的实现载体。
+        int capState = 0;
         while (guard++ < maxSteps) {
             int i = (int) x, j = (int) z;
             if (i < 1 || j < 1 || i >= nx - 1 || j >= nz - 1) { st.edge++; return; }
@@ -856,6 +943,11 @@ public final class ContinuousRiverNetwork {
                 crossings[k] += st.weight;
                 lastCell = k;
                 lastMainInk++;                       // ★ 诊断：主积分记账
+                // ★ 首次截获（Ledger，方案 §4.2）：水【第一次】进入湿湖格 ⇒ 向该盆地记账一次。
+                //   只认 wet lake 格（干边缘格上飞过 ≠ 被截获）；每条流线最多记一次。
+                if (st.capture != null && lake != null && lake[k]) {
+                    capState = creditCapture(st, k, capState);
+                }
             }
             double[] v = velocity(bed, level, resolved, nx, nz, i, j, cellSize, manning);
             double speed = Math.hypot(v[0], v[1]);
@@ -882,7 +974,15 @@ public final class ContinuousRiverNetwork {
                     return;
                 }
                 int rec = recover(crossings, level, nx, nz, k, parent, sea, lake, resumeAt, st);
-                if (rec == 1) { st.flatLake++; return; }          // 沿 parent 走到了真湖/海
+                if (rec == 1) {
+                    st.flatLake++;
+                    // ★ recover 终点记首次截获（resumeAt = 终点格；海 = -1 无账）
+                    if (st.capture != null && resumeAt[0] >= 0) {
+                        int tc = ((int) resumeAt[0]) * nz + ((int) resumeAt[1]);
+                        capState = creditCapture(st, tc, capState);
+                    }
+                    return;                                     // 沿 parent 走到了真湖/海
+                }
                 if (rec == 0) {
                     st.pond++;
                     x = resumeAt[0]; z = resumeAt[1];
@@ -918,7 +1018,15 @@ public final class ContinuousRiverNetwork {
                     if (ci < 1 || cj < 1 || ci >= nx - 1 || cj >= nz - 1) return;
                     int ck = ci * nz + cj;
                     int rec = recover(crossings, level, nx, nz, ck, parent, sea, lake, resumeAt, st);
-                    if (rec == 1) { st.flatLake++; return; }       // 走到了终端
+                    if (rec == 1) {
+                        st.flatLake++;                          // 走到了终端
+                        // ★ 同静水路径：recover 终点记首次截获
+                        if (st.capture != null && resumeAt[0] >= 0) {
+                            int tc = ((int) resumeAt[0]) * nz + ((int) resumeAt[1]);
+                            capState = creditCapture(st, tc, capState);
+                        }
+                        return;
+                    }
                     if (rec == 0) {
                         st.stagnant++;
                         x = resumeAt[0]; z = resumeAt[1];
@@ -969,6 +1077,31 @@ public final class ContinuousRiverNetwork {
      *         2 = 失败：无 parent 或走到 parent=-1 的非终端；
      *         3 = 失败：预算耗尽（水位始终不降 ⇒ plateau 远超预期，须暴露归因）。
      */
+    /**
+     * 首次截获记账（{@link Ledger}）：流线第一次进入【湿湖格】时，把其全部权重
+     * 记给该盆地 —— 每条流线至多记一次（方案 §4.2「第一次被盆地截获时记账」）。
+     *
+     * @param capState 0=未记账 1=已记给某盆地（终态） 2=回流自家已计数（可继续等下游盆地）
+     * @return 新状态
+     */
+    private static int creditCapture(StreamStats st, int cell, int capState) {
+        if (st.capture == null || st.basinId == null || capState == 1) return capState;
+        if (cell < 0 || cell >= st.basinId.length) return capState;
+        int b = st.basinId[cell];
+        if (b < 0) return capState;
+        if (b == st.sourceBasin) {
+            // 回流自家：水没有离开该盆地 ⇒ 不产生新入流；只计数一次（路由缺陷的量化入口）。
+            if (capState == 0) {
+                st.returnedHome++;
+                st.returnedHomeWeight += st.weight * st.perCrossing;
+                return 2;
+            }
+            return capState;
+        }
+        st.capture[cell] += st.weight * st.perCrossing;
+        return 1;
+    }
+
     private static int recover(double[] crossings, double[] level, int nx, int nz, int k,
                                int[] parent, boolean[] sea, boolean[] lake, double[] resumeAt,
                                StreamStats st) {
@@ -978,8 +1111,13 @@ public final class ContinuousRiverNetwork {
         final int budget = 4096;
         int cur = k;
         for (int n = 0; n < budget; n++) {
-            if (sea != null && sea[cur]) return 1;
-            if (lake != null && lake[cur]) return 1;
+            if (sea != null && sea[cur]) { resumeAt[0] = -1; resumeAt[1] = -1; return 1; }  // 海：无账可记
+            if (lake != null && lake[cur]) {
+                // ★ 终点格写回（Ledger）：recover 终止于真湖 ⇒ 调用方在此记首次截获。
+                resumeAt[0] = (cur / nz) + 0.5;
+                resumeAt[1] = (cur % nz) + 0.5;
+                return 1;
+            }
             int nxt = parent[cur];
             if (nxt < 0) return 2;
             // ★ 修复 A/B（默认关 = 逐位不变）：链上不记墨水。
