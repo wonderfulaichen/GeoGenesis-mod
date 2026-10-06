@@ -52,7 +52,40 @@ public final class LakeWaterBalance {
      */
     public record Result(double[] depth, boolean[] lake, List<Basin> basins, int dryBasins,
                          double runoffPerCell, java.util.Map<Integer, Double> overflowAt,
-                         java.util.Map<Integer, Double> basinLevelAt) { }
+                         java.util.Map<Integer, Double> basinLevelAt,
+                         int[] basinId, int[] basinOutlet) {
+        /**
+         * 兼容旧 7 参构造（探针 A/B 与小合成用例）。
+         * 不带盆地身份时 basinId/basinOutlet 为 null ⇒ 调用方须回退旧语义。
+         */
+        public Result(double[] depth, boolean[] lake, List<Basin> basins, int dryBasins,
+                      double runoffPerCell, java.util.Map<Integer, Double> overflowAt,
+                      java.util.Map<Integer, Double> basinLevelAt) {
+            this(depth, lake, basins, dryBasins, runoffPerCell, overflowAt, basinLevelAt,
+                    null, null);
+        }
+    }
+
+    /**
+     * 该湖格的盆地编号；{@code -1} = 非湖或身份未知（旧构造 / 未判定）。
+     *
+     * <p><b>为什么必须显式给出</b>：此前下游探针（如 {@code LifecycleChainProbe}）
+     * 靠"离哪个溢出口最近"猜盆地归属 —— 相邻两湖时必然猜错，
+     * 于是"全周期通过"可能只是把 A 湖的源头接到了 B 湖的出口。
+     * 盆地归属必须由产出方（本类）给出，而不是由消费方猜。</p>
+     */
+    public static int basinOf(Result r, int cell) {
+        return r.basinId() == null || cell < 0 || cell >= r.basinId().length
+                ? -1 : r.basinId()[cell];
+    }
+
+    /** 该盆地的出口格；{@code -1} = 无出口（内流盆地 / 未判定）。 */
+    public static int outletOf(Result r, int basinIndex) {
+        if (r.basinOutlet() == null || basinIndex < 0 || basinIndex >= r.basinOutlet().length) {
+            return -1;
+        }
+        return r.basinOutlet()[basinIndex];
+    }
 
     private final int nx, nz;
     private final double[] bed, equilibrium;
@@ -132,7 +165,7 @@ public final class LakeWaterBalance {
             !"false".equals(System.getProperty("hydro.dropTinyBasins"));
 
     /**
-     * 最小可见湖【面积】（格）。**默认 11**（用户 2026-10-05 批准）。
+     * 最小可见湖【物理面积】（block²）。**默认 11**（用户 2026-10-05 批准）。
      *
      * <p>依据（{@code runLakeSizeProbe} 尺寸谱 + 阈值扫描实测，r=400）：
      * <pre>
@@ -143,8 +176,9 @@ public final class LakeWaterBalance {
      *   21    28   20550(-1.48%) 66836
      *   31    24   20445(-1.99%) 66725
      * </pre>
-     * 取 11 消掉图上肉眼可见的散点（≤10 格档共 88 个分量），
-     * 代价仅 <b>0.55% 湖面积 / 0.21% 水量</b>。</p>
+     * 取 11 block² 消掉图上肉眼可见的散点（step=1 时约 11 格），
+     * 代价仅 <b>0.55% 湖面积 / 0.21% 水量</b>。阈值按物理面积计算，
+     * 不随诊断网格 step 改变。</p>
      *
      * <p>语义边界（勿误改）：判据是【几何面积】⇒ <b>不针对内陆湖</b>
      * —— 面积达标的湖无论有无出流都保留（用户明确"我又不是不允许内陆湖"）。</p>
@@ -276,6 +310,11 @@ public final class LakeWaterBalance {
         List<Basin> basins = new ArrayList<>();
         java.util.Map<Integer, Double> overflowAt = new java.util.HashMap<>();
         java.util.Map<Integer, Double> basinLevelAt = new java.util.HashMap<>();
+        // ★ 盆地身份（本轮新增）：逐格 basinId + 逐盆地 outlet。
+        //   下游不再需要"猜最近出口"；同时使"每个正出流湖必须接自己的下游"可被验证。
+        int[] basinId = new int[cells];
+        java.util.Arrays.fill(basinId, -1);
+        java.util.List<Integer> basinOutletList = new ArrayList<>();
         double runoffPerCell = climate.precipitation() * climate.runoffCoeff() * cellArea;
         int dry = 0;
 
@@ -383,7 +422,8 @@ public final class LakeWaterBalance {
             //     结果均【完全不变】）。
             //   本条是既有规则 MIN_VISIBLE_DEPTH（最小可见【深度】）的【面积】对应物，
             //   同属"显示单位的物理下限"。
-            if (dropTinyBasins && group.size() < MIN_VISIBLE_AREA) {
+            double physicalArea = group.size() * cellArea;
+            if (dropTinyBasins && physicalArea < MIN_VISIBLE_AREA) {
                 dry++;
                 liquidate(depth, lake, group);
                 continue;
@@ -414,9 +454,17 @@ public final class LakeWaterBalance {
             }
             basins.add(new Basin(seed, bed[seed], sill, level, areaCells, catchment,
                     inflow, evapOut, outflow, overflow, truncated));
+            int basinIndex = basins.size() - 1;
+            // ★ 记录盆地身份：逐格 basinId（供下游精确定位，取代"最近出口"猜测）
+            //   与逐盆地 outlet（-1 = 内流/无出口）。
+            basinOutletList.add(outletKey);
+            for (int k : group) basinId[k] = basinIndex;
             if (lake[seed]) basinLevelAt.put(seed, level);
         }
-        return new Result(depth, lake, basins, dry, runoffPerCell, overflowAt, basinLevelAt);
+        int[] basinOutlet = new int[basinOutletList.size()];
+        for (int i = 0; i < basinOutlet.length; i++) basinOutlet[i] = basinOutletList.get(i);
+        return new Result(depth, lake, basins, dry, runoffPerCell, overflowAt, basinLevelAt,
+                basinId, basinOutlet);
     }
 
     /**

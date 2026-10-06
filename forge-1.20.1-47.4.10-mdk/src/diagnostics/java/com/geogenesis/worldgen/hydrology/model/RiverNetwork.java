@@ -78,21 +78,29 @@ public final class RiverNetwork {
             Double extra = overflowAt.get(k);
             if (extra != null) discharge[k] += extra;
         }
-        // ★ 拓扑序 = 按【水面高程降序】。
-        //   平衡洪泛保证 parent[k] 的水位不高于 k 的水位（水流向下游），
-        //   故降序遍历时，k 的全部上游都已累加完毕，一次遍历即正确。
-        //   （此前我用"反复松弛算深度"，既慢又引入无谓假设，已弃用。）
-        Integer[] order = new Integer[cells];
-        for (int k = 0; k < cells; k++) order[k] = k;
-        final double[] levelFinal = level;
-        Arrays.sort(order, (a, b) -> {
-            int c = Double.compare(levelFinal[b], levelFinal[a]);
-            return c != 0 ? c : Integer.compare(a, b);
-        });
-        for (int idx = 0; idx < cells; idx++) {
-            int k = order[idx];
+        // 拓扑序必须由 parent 图本身决定，不能用 level/index 排序。
+        // 等高的合法 DAG 没有可靠的数值次序；按索引遍历会在汇流前
+        // 消费节点，静默丢掉上游水量。叶子优先的 Kahn 排序正好符合
+        // “每个节点的所有子节点先处理”的累积方向。
+        int[] childCount = new int[cells];
+        for (int k = 0; k < cells; k++) {
             int p = parent[k];
-            if (p >= 0) discharge[p] += discharge[k];
+            if (p >= 0 && p < cells && p != k) childCount[p]++;
+        }
+        ArrayDeque<Integer> queue = new ArrayDeque<>();
+        for (int k = 0; k < cells; k++) if (childCount[k] == 0) queue.add(k);
+        int processed = 0;
+        while (!queue.isEmpty()) {
+            int k = queue.removeFirst();
+            processed++;
+            int p = parent[k];
+            if (p >= 0 && p < cells && p != k) {
+                discharge[p] += discharge[k];
+                if (--childCount[p] == 0) queue.addLast(p);
+            }
+        }
+        if (processed != cells) {
+            throw new IllegalArgumentException("parent graph contains a cycle");
         }
         boolean[] channel = new boolean[cells];
         double[] width = new double[cells];
