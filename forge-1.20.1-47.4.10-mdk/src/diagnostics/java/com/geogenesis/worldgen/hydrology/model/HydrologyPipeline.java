@@ -186,7 +186,17 @@ public final class HydrologyPipeline {
         //   ⇒ 改用主工作区【已有且正确】的 `sampleWu().height`。
         //   ⚠ 代价：较慢（走完整 sample()）。若后续性能成问题，
         //     正确做法是修快那条捷径本身并证明等价，而不是用一条未证等价的路径。
-        WindowOutlets.Terrain terrain = (bx, bz) -> gen.sampleWu(bx, bz).height;
+        // ★ 坐标契约修正（block → wu）：本类 Request 的坐标全部是【block】
+        //   （centerBlockX/radiusBlocks/step=每格块数），而 CellGenerator.sample/sampleWu
+        //   的坐标语义是【wu】（wu = block / horizontalScale，见 sample() javadoc
+        //   「坐标语义 = wu」与 extractFromTile 的 wu 化核心）。
+        //   默认 horizontalScale = 2.0 ⇒ 此前直接传 block 会采到 2 倍错位的地形
+        //   （契约测试实测：中心格 bed 期望 134.44、实际 82.69）。
+        //   ⚠ 只有【地形采样坐标】需要换算；下游 cellSize/step 保持 block 单位：
+        //     cellArea = step² 是 block²（与 MIN_VISIBLE_AREA 同口径）、
+        //     速度场梯度 = dY_block/dX_block、Manning 坡度因此一致。
+        //     格间距 = step 块（= step/hs wu），但全场高度/面积均以 block 计 ⇒ 自洽。
+        WindowOutlets.Terrain terrain = (bx, bz) -> gen.sampleWu(bx / hs, bz / hs).height;
 
         // ①② 地形 + 边界出口
         var built = WindowOutlets.build(n, n, request.centerBlockX(), request.centerBlockZ(),
