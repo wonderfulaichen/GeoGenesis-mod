@@ -445,7 +445,7 @@ public final class ContinuousRiverNetwork {
      * 就是在水面上，流线应终止而非判死。本修复<b>只改终止，不改任何落块数据</b>。</p>
      */
     public static volatile boolean deadOnGeoWet =
-            Boolean.getBoolean("hydro.deadOnGeoWet");
+            !"false".equals(System.getProperty("hydro.deadOnGeoWet"));
 
     /** "几何上是水"的最小水深（块）。与 LakeGapProbe 的 GEO_WET_T 同口径。 */
     public static final double GEO_WET_T = 0.5;
@@ -483,12 +483,14 @@ public final class ContinuousRiverNetwork {
      * 因此无此问题；我们因为要在"一次性追踪"里定河宽，必须有判据 —— 相对判据是
      * 最接近"无闸门"且仍能区分河/坡的形式。</p>
      */
-    /** 相对下界：下游 smooth 不得低于【上游】的该比例（1.0 = 严格不减）。 */
+    /** 相对下界：下游 smooth 不得低于【上游】的该比例（1.0 = 严格不减）。
+     *  默认 0.5 = 已启用（用户 2026-10-05 批准）。回退：{@code -Dhydro.relFloor=0}。 */
     public static volatile double relFloor =
-            Double.parseDouble(System.getProperty("hydro.relFloor", "0.0"));
-    /** 绝对下界系数（×门槛）；仅在 relFloor>0（启用相对判据）时作为安全网。 */
+            Double.parseDouble(System.getProperty("hydro.relFloor", "0.5"));
+    /** 绝对下界系数（×门槛）；仅在 relFloor>0（启用相对判据）时作为安全网。
+     *  默认 0.002 = 已启用。 */
     public static volatile double absFloorMul =
-            Double.parseDouble(System.getProperty("hydro.absFloorMul", "0.02"));
+            Double.parseDouble(System.getProperty("hydro.absFloorMul", "0.002"));
 
     private static void propagateDownstream(double[] bed, double[] level, int[] parent,
                                            boolean[] sea, boolean[] lake, double[] smooth,
@@ -1059,7 +1061,7 @@ public final class ContinuousRiverNetwork {
     public static volatile boolean overflowParentFallback = true;
 
     /**
-     * ★★ 动量权重 α（A/B 开关，默认 0 = 逐位不变）★★
+     * ★★ 动量权重 α（默认 0.85 = 已启用，用户 2026-10-05 批准）★★
      *
      * <p>方向 = normalize(α·上一方向 + (1−α)·当前梯度方向)。</p>
      * <p>参考 SimpleHydrology {@code water.h::descend} 的动量传递：
@@ -1067,11 +1069,19 @@ public final class ContinuousRiverNetwork {
      * 本参数是该精神的简化形式（无速度大小、只做方向惯性）。</p>
      * <p><b>为何需要</b>：陡坡上层流（sheet flow）梯度方向逐格乱跳
      * ⇒ 流线左右摆 ⇒ 停滞检测触发 ⇒ 沿 parent 瞬移不留墨水 ⇒ 散点。
-     * 加上惯性后流线沿大尺度坡向走 ⇒ 应形成"主流+支流"而非散点。</p>
-     * <p>取值实验：0.0（旧）/ 0.45（参考量级）/ 0.85（强惯性）。</p>
+     * 加上惯性后流线沿大尺度坡向走 ⇒ 形成"主流+支流"而非散点。</p>
+     * <p><b>实测（正典口径 r=700 / 600k）</b>：</p>
+     * <pre>
+     *   α=0    → 分量 893 / ≤10格碎片 267(29.9%) / 碎块坡度 1.19（陡于全河道 0.75）
+     *   α=0.45 → 分量 235 / 碎片 85
+     *   α=0.85 → 分量 241 / 碎片 35(14.5%) / 碎块坡度 0.51（缓于全河道 0.88）
+     *           101+ 格主干占河道格 68.5% → 91.8%
+     * </pre>
+     * <p>⇒ 0.85 效果最好且碎块不再集中于陡坡（假设正面验证）。
+     * 回退：{@code -Dhydro.momentum=0.0}。</p>
      */
     public static volatile double momentumWeight =
-            Double.parseDouble(System.getProperty("hydro.momentum", "0.0"));
+            Double.parseDouble(System.getProperty("hydro.momentum", "0.85"));
 
     /** 8 邻域（{@link #descendByLevel} 用于在湖域内找溢出口方向）。 */
     private static final int[][] DIRS8 = {
