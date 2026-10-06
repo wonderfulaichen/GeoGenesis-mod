@@ -430,6 +430,27 @@ public final class ContinuousRiverNetwork {
     public static volatile int visitCap = Integer.getInteger("hydro.visitCap", 8);
 
     /**
+     * ★★ 修复 A1（A/B，默认 false = 旧行为）★★
+     *
+     * <p>静水时若【几何上是水】（{@code level - bed > }{@value #GEO_WET_T}），
+     * 让流线<b>合法终止</b>（计入"终止于水体"），而不是尝试 recover 后判死。</p>
+     *
+     * <p><b>实测依据</b>（LakeGapProbe，r=700 / 600k）：死格 4539 中
+     * <b>46.3%</b> 落在"几何湿却没标 lake"的格上（A1 未决占 39.1%，
+     * A1 总量 69,769 格）。这正是用户观察的"河流停在没填色的洼地"。</p>
+     *
+     * <p><b>为什么改流线而非湖判定</b>：`isLakePot` 要求 {@code resolved}
+     * 是既有契约（未决格水位依赖窗口切割、不可信，不得落块）。
+     * 但【流线终止语义】与【能否落块】是两件事 —— 水到了几何水面区
+     * 就是在水面上，流线应终止而非判死。本修复<b>只改终止，不改任何落块数据</b>。</p>
+     */
+    public static volatile boolean deadOnGeoWet =
+            Boolean.getBoolean("hydro.deadOnGeoWet");
+
+    /** "几何上是水"的最小水深（块）。与 LakeGapProbe 的 GEO_WET_T 同口径。 */
+    public static final double GEO_WET_T = 0.5;
+
+    /**
      * <p><b>★ 2026-10-05 设计升级：从【全局常数】改为【局部相对判据】</b></p>
      *
      * <p><b>为什么全局常数是设计缺陷</b>：平台期扫描实测（floorMul 0.5/0.2/0.05/0）：
@@ -799,6 +820,25 @@ public final class ContinuousRiverNetwork {
             if (speed < 1e-12) {
                 // 静水：真湖 = 合法终端；非湖（微洼地填平 / 未决残留平坦）= 越池续流。
                 if (lake != null && lake[k]) { st.flatLake++; return; }
+                // ★★ 2026-10-05 修复 A1：静水且【几何上是水】⇒ 合法终止（入湖），不再判死 ★★
+                //
+                //   【实测缺陷】LakeGapProbe 死格归因（r=700 / 600k）：
+                //     死格 4539 中，落在【几何湿(level-bed>0.5) 却没标 lake】= 2103（46.3%）
+                //     其中 A1【未决格】= 1774（39.1%）；A1 总量达 69,769 格。
+                //   【机制】LakeWaterBalance.isLakePot 要求 resolved[k] ⇒ 未决格永不入湖；
+                //     但 minimax 已把那些格水位抹平 ⇒ ∇s≈0 ⇒ 静水；
+                //     recover 沿 parent 逃生失败 ⇒ 河流【死在那里】。
+                //     ⇒ 用户观察「河流停在没填色但看起来能蓄水的洼地」正是此处。
+                //   【为什么改流线而不是改湖判定】"未决格不得落块"是既有契约
+                //     （其水位依赖窗口切割、不可信）⇒ 不能把它们标成湖去落水块。
+                //     但【流线的终止语义】与"能否落块"是两件事：
+                //     水到了几何上的水面区，就是在水面上，流线应【终止】而非【判死】。
+                //   ⇒ 本修复只改流线的终止，不改变任何落块/水位数据。
+                //   A/B: deadOnGeoWet=false ⇒ 旧行为（逐位不变）。
+                if (deadOnGeoWet && level[k] - bed[k] > GEO_WET_T) {
+                    st.flatLake++;                 // 归入"终止于水体"而非"死亡"
+                    return;
+                }
                 int rec = recover(crossings, level, nx, nz, k, parent, sea, lake, resumeAt, st);
                 if (rec == 1) { st.flatLake++; return; }          // 沿 parent 走到了真湖/海
                 if (rec == 0) {
@@ -845,6 +885,14 @@ public final class ContinuousRiverNetwork {
                         continue;
                     }
                     if (rec == 2) st.failNoParent++; else st.failBudget++;
+                    // ★★ 修复 A1（停滞路径）：几何上是水 ⇒ 合法终止，不判死 ★★
+                    //   依据：LakeGapProbe 实测死格 42% 落在"几何湿却没标 lake"的
+                    //   【未决】格上，而它们走的是本分支（停滞 recover 失败），
+                    //   不是静水分支 ⇒ 修静水分支对它们无效（实测 1765/1774 未变）。
+                    if (deadOnGeoWet && level[ck] - bed[ck] > GEO_WET_T) {
+                        st.flatLake++;             // 归入"终止于水体"而非"死亡"
+                        return;
+                    }
                     if (st.deathMask != null) st.deathMask[ck] += 1.0;   // 死亡格（诊断）
                     classifyDeath(st, level, bed, ck, parent, nx, nz);
                     failed = true; break;                          // 走不通 ⇒ 计入 maxSteps
