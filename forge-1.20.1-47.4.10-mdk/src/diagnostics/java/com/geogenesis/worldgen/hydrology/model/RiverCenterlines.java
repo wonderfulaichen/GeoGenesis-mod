@@ -57,10 +57,11 @@ import java.util.List;
  * </ol>
  *
  * <p><b>★ 已知边界（重要）</b>：本轮修的是"<b>涂布</b>"（宽度），不是"<b>选线</b>"
- * —— <b>骨架本身的平行性未变</b>。故 r=700 下仍有残余"窄而平行"的沟线
- * （约 12.7% 的 5×5 高密度格；且该口径会把正常宽河/汇合区也算进去，
- * 按方案 §5.4 只能作相对改善指标）。要根治需在<b>选线</b>阶段
- * 由谷轴决定唯一中心线，属下一步工作。</p>
+ * —— 骨架来自证据掩码的细化。<b>⚠ 河道的平行性【不是缺陷】</b>
+ * （用户已两次明确；且早有实测：{@code runValleyConfinementProbe} 显示
+ * 23.54% 河道格位于横坡局部低点 vs 陆地基线 6.54% = <b>3.60×</b>
+ * ⇒ 高原平行线就是<b>地形冲沟</b>，随谷走是正确行为）。
+ * 任何形式的"去平行化"都会破坏"河贴谷"，勿再立项。</p>
  *
  * <p><b>NOT VERIFIED</b>：方块铺设、实机渲染未覆盖。</p>
  */
@@ -131,14 +132,17 @@ public final class RiverCenterlines {
         public final double[] depth;
         /** 逐格：由距离场产生的河道掩码（normalizedDistance <= 1 且深度可见）。 */
         public final boolean[] channel;
+        /** 被过滤掉的过短碎段数（<2 节点，不绘；供核对，不静默）。 */
+        public final int droppedFragments;
 
         Result(List<Reach> reaches, double[] normalizedDistance, double[] halfWidth,
-               double[] depth, boolean[] channel) {
+               double[] depth, boolean[] channel, int droppedFragments) {
             this.reaches = reaches;
             this.normalizedDistance = normalizedDistance;
             this.halfWidth = halfWidth;
             this.depth = depth;
             this.channel = channel;
+            this.droppedFragments = droppedFragments;
         }
 
         public int reachCount() { return reaches.size(); }
@@ -204,30 +208,43 @@ public final class RiverCenterlines {
             }
             compCount++;
         }
-        // 先从【端点/分叉】出发切段；再从剩余的纯环（无顶点）出发
-        for (int pass = 0; pass < 2; pass++) {
+        // 先从【端点/分叉】出发切段；再从剩余的纯环（无顶点）出发；
+        // 最后兜底：骨架格未被任何段覆盖时单独成段（防分叉处丢枝 ⇒ 断流）。
+        for (int pass = 0; pass < 3; pass++) {
             for (int k = 0; k < cells; k++) {
                 if (!skeleton[k]) continue;
                 if (pass == 0 && !vertex[k]) continue;
                 if (pass == 1 && vertex[k]) continue;
-                if (visitedEdge[k]) continue;
+                if (pass < 2 && visitedEdge[k]) continue;
+                if (pass == 2 && visitedEdge[k]) continue;   // 兜底只捡漏
                 traceBranch(skeleton, vertex, visitedEdge, flux, bed, sea, nx, nz,
                         k, component[k], params, reaches);
             }
         }
 
-        // ③ 横断面距离场（把中心线按半宽展开成几何）
+        // ③ 横断面距离场（把中心线【沿折线扫掠】展开成几何）
         double[] normDist = new double[cells];
         double[] halfW = new double[cells];
         double[] depth = new double[cells];
         Arrays.fill(normDist, Double.POSITIVE_INFINITY);
         boolean[] channel = new boolean[cells];
+        int dropped = 0;
         for (Reach reach : reaches) {
-            for (int i = 0; i < reach.cell.length; i++) {
-                paintNode(reach, i, nx, nz, normDist, halfW, depth, channel);
+            // ★ 过短碎段不绘（<2 节点 = 孤立单格团）：它们是细化后的残渣，
+            //   不是河。数量打印出来供核对，绝不静默。
+            if (reach.cell.length < 2) { dropped++; continue; }
+            // ★★★ 连续性修复：按【线段扫掠圆盘】绘制（点到线段距离 ≤ half），
+            //   而不是逐节点垂直短杆 —— 后者方向逐节点翻转时必留断口
+            //   （用户："这河道也不连续啊，怎么一段段的？"）。
+            //   这正是参考项目 DynamicWaters `intersectDistanceSq` 与 Streams 样条的同一做法。
+            for (int i = 1; i < reach.cell.length; i++) {
+                paintSegment(reach, i - 1, i, nx, nz, normDist, halfW, depth, channel);
+            }
+            if (reach.cell.length == 1) {
+                paintSegment(reach, 0, 0, nx, nz, normDist, halfW, depth, channel);
             }
         }
-        return new Result(reaches, normDist, halfW, depth, channel);
+        return new Result(reaches, normDist, halfW, depth, channel, dropped);
     }
 
     /** 从 seed 沿骨架走一条段，尽量走直（优先非顶点邻居），并定向为上游→下游。 */
@@ -292,7 +309,43 @@ public final class RiverCenterlines {
             d[i] = dep;
             if (sea != null && sea[k]) d[i] = Math.max(d[i], 0);
         }
+        // ★★ 沿程平滑（治"串珠/团状"）★★
+        //   bankRise 逐点测量会被地形噪声抖动 ⇒ 宽度沿程忽大忽小
+        //   （用户："散点团状河流"）。参考项目同一做法：
+        //   Streams/Farseek 的河宽是样条上的连续量；本项目生产线
+        //   亦有 clampMonotonicDownstream（宽度/深度有限变化率，方案 §4.3）。
+        //   ⇒ 中值 3 滤波去孤立尖峰 + 相邻节点变化率限幅。
+        median3(w);
+        median3(d);
+        limitSlope(w, MAX_WIDTH_STEP);
+        limitSlope(d, MAX_WIDTH_STEP);
         out.add(new Reach(cell, q, w, d, comp));
+    }
+
+    /** 沿程宽度/深度的最大逐节点变化比（1+X ⇒ 单步最多涨 X%）。 */
+    private static final double MAX_WIDTH_STEP = 0.5;
+
+    /** 3 点中值滤波（原地；首尾不动，保持端点=汇口/河口语义）。 */
+    private static void median3(double[] a) {
+        if (a.length < 3) return;
+        double[] copy = a.clone();
+        for (int i = 1; i < a.length - 1; i++) {
+            double x = copy[i - 1], y = copy[i], z = copy[i + 1];
+            double m = Math.max(Math.min(x, y), Math.min(Math.max(x, y), z));
+            a[i] = m;
+        }
+    }
+
+    /** 相邻节点变化率限幅：双向各扫一遍（确定性），消除台阶与串珠。 */
+    private static void limitSlope(double[] a, double maxStep) {
+        for (int i = 1; i < a.length; i++) {
+            double limit = a[i - 1] * (1 + maxStep);
+            if (a[i] > limit) a[i] = limit;
+        }
+        for (int i = a.length - 2; i >= 0; i--) {
+            double limit = a[i + 1] * (1 + maxStep);
+            if (a[i] > limit) a[i] = limit;
+        }
     }
 
     /**
@@ -406,39 +459,54 @@ public final class RiverCenterlines {
     }
 
     /**
-     * 在节点 i 处按【法向横断面】涂布宽度 —— 这才是"沿流线定宽"的几何实现。
+     * <h2>沿折线【扫掠圆盘】绘制（连续性修复）</h2>
      *
-     * <p>此前用"以端点为圆心的方形块"涂布（{@code r = ceil(half)+1} 的方框），
-     * 那是<b>各向同性</b>的 ⇒ 河流被画成圆头/方块 ⇒ 与"条状"相反。
-     * 现改为：以节点为心、沿【法向】向两侧各铺 {@code half} 格
-     * （即经典"粗折线"渲染）⇒ 得到垂直于流向的横断面。</p>
+     * <p>用户实测反馈：「这河道也不连续啊，怎么一段段的？」
+     * 根因：此前用<b>逐节点垂直短杆</b>绘制 —— 节点方向逐格翻转时，
+     * 相邻两根短杆之间必留 1 格缝（尤其对角走向）⇒ 河道断成一段段。</p>
+     *
+     * <p><b>正解 = 点到线段距离场</b>：对每个线段，把包围盒内每格
+     * 与线段求距离，{@code dist ≤ half} 即属河道。
+     * 这是<b>连续几何</b>：相邻线段的圆盘在共享端点处必然重叠 ⇒ 无断口。
+     * 参考项目同一做法：DynamicWaters {@code intersectDistanceSq}
+     * （`HydrologyManager.txt`）、Streams 样条距离场、Farseek {@code Valley.carve}。</p>
+     *
+     * <p>半宽沿线段【线性插值】于两端节点 ⇒ 宽度沿程连续变化（无台阶）。</p>
      */
-    private static void paintNode(Reach reach, int i, int nx, int nz,
-                                  double[] normDist, double[] halfW, double[] depth,
-                                  boolean[] channel) {
-        int k = reach.cell[i];
-        double half = reach.width[i] * 0.5;
-        if (!(half > 0)) return;
-        int x = k / nz, z = k % nz;
-        double[] dir = directionAt(reach.cell, i, nz);
-        double nxn = -dir[1], nzn = dir[0];
-        double norm = Math.hypot(nxn, nzn);
-        if (norm < 1e-9) { nxn = 0; nzn = 1; norm = 1; }
-        nxn /= norm;
-        nzn /= norm;
-        int steps = (int) Math.ceil(half);
-        for (int s = -steps; s <= steps; s++) {
-            int a = (int) Math.round(x + nxn * s);
-            int b = (int) Math.round(z + nzn * s);
-            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
-            int kk = a * nz + b;
-            double cn = Math.abs(s) / half;          // 0=河心 1=水边
-            if (cn < normDist[kk]) {
-                normDist[kk] = cn;
-                halfW[kk] = half;
-                depth[kk] = reach.depth[i];
+    private static void paintSegment(Reach reach, int i0, int i1, int nx, int nz,
+                                     double[] normDist, double[] halfW, double[] depth,
+                                     boolean[] channel) {
+        int k0 = reach.cell[i0], k1 = reach.cell[i1];
+        int x0 = k0 / nz, z0 = k0 % nz;
+        int x1 = k1 / nz, z1 = k1 % nz;
+        double h0 = reach.width[i0] * 0.5, h1 = reach.width[i1] * 0.5;
+        double halfMax = Math.max(h0, h1);
+        if (!(halfMax > 0)) return;
+        // 包围盒（含半宽余量）
+        int r = (int) Math.ceil(halfMax) + 1;
+        int ax = Math.max(0, Math.min(x0, x1) - r), bx = Math.min(nx - 1, Math.max(x0, x1) + r);
+        int az = Math.max(0, Math.min(z0, z1) - r), bz = Math.min(nz - 1, Math.max(z0, z1) + r);
+        double dx = x1 - x0, dz = z1 - z0;
+        double segLen2 = dx * dx + dz * dz;
+        for (int a = ax; a <= bx; a++) {
+            for (int b = az; b <= bz; b++) {
+                // 点到线段距离（端点处 t 钳到 [0,1]，单节点段退化为点距离）
+                double t = segLen2 > 0
+                        ? Math.max(0, Math.min(1, ((a - x0) * dx + (b - z0) * dz) / segLen2))
+                        : 0;
+                double px = x0 + t * dx, pz = z0 + t * dz;
+                double dist = Math.hypot(a - px, b - pz);
+                double half = h0 + t * (h1 - h0);      // 半宽沿线性插值 ⇒ 沿程连续
+                if (dist > half || half <= 0) continue;
+                int kk = a * nz + b;
+                double cn = dist / half;               // 0=河心 1=水边
+                if (cn < normDist[kk]) {
+                    normDist[kk] = cn;
+                    halfW[kk] = half;
+                    depth[kk] = reach.depth[i0] + t * (reach.depth[i1] - reach.depth[i0]);
+                }
+                channel[kk] = true;
             }
-            if (cn <= 1.0) channel[kk] = true;
         }
     }
 

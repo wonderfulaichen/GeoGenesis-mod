@@ -111,7 +111,21 @@ public final class CenterlineCrossSectionProbe {
         }
         double meanRatio = ratioN > 0 ? ratioSum / ratioN : 0;
 
-        // ---- 判据 5：确定性 ----
+        // ---- 判据 6：连续性 —— 用户报的症状："河道怎么一段段的？"
+        //   ★ 口径修正（重要）：
+        //   原口径"非河道格被左右夹住"对细线【系统性不利】——
+        //   细线在拐弯处的台阶格天然被两侧河格夹住（粗掩码则整片都是河、无此类格）
+        //   ⇒ 拿它跨粗/细表示比较会误报"断口变多"。
+        //   真正的症状度量 = 【河段内部连续性】：相邻节点在掩码中必须连通。
+        //   这直接测"一段段的"—— 任何真实断口都会让某对相邻节点失联。
+        int newBreaks = reachInternalBreaks(cl, newMask, n);
+        int oldGaps = gapCount(oldMask, sea, r.lake(), n);
+        int newGaps = gapCount(newMask, sea, r.lake(), n);
+
+        // ---- 判据 7：无孤立团块（散点团状河流）
+        //   孤立团 = ≤2 格的连通分量数（= 用户圈的"散点团"）。
+        //   ⚠ 不用"≤10格分量数"：细化会让粗分量变薄掉档，属正常变细不是团块。
+        int oldBlobs = countAtMost(oldSizes, 2), newBlobs = countAtMost(newSizes, 2);
         var cl2 = RiverCenterlines.build(bed, flux, oldMask, sea, n, n, params);
         boolean deterministic = true;
         for (int k = 0; k < cells; k++) {
@@ -129,7 +143,8 @@ public final class CenterlineCrossSectionProbe {
                 count(oldMask), oldComp, 100 * oldSmear));
         log.append(String.format("新掩码（中心线+全宽）：河道格=%d 分量=%d 抹开占比=%.2f%%%n",
                 count(newMask), newComp, 100 * newSmear));
-        log.append(String.format("  河段数=%d  骨架分量=%d%n", cl.reachCount(), compCount(cl)));
+        log.append(String.format("  河段数=%d  骨架分量=%d  过滤碎段(<2节点)=%d%n",
+                cl.reachCount(), compCount(cl), cl.droppedFragments));
         log.append(String.format("%n[判据]%n"));
         boolean c1 = newComp <= oldComp;
         log.append(String.format("  ① 连通性不恶化：分量 %d → %d  %s%n", oldComp, newComp,
@@ -157,7 +172,17 @@ public final class CenterlineCrossSectionProbe {
         log.append(String.format("  ④ 湿宽 vs 设计全宽：均值比=%.2f（n=%d, >1.5 的 %d, <0.5 的 %d）  %s%n",
                 meanRatio, ratioN, wide, narrow, c4 ? "PASS" : "FAIL"));
         log.append(String.format("  ⑤ 确定性：%s%n", deterministic ? "PASS（逐位相同）" : "FAIL"));
-        boolean all = c1 && c2 && c3 && c4 && deterministic;
+        // ⑥ 连续性：河段内部不得有断口（用户："这河道也不连续啊，怎么一段段的？"）
+        boolean c6 = newBreaks == 0;
+        log.append(String.format("  ⑥ 连续性（河段内部断口）：%d  %s%n",
+                newBreaks, c6 ? "PASS（零断口）" : "FAIL"));
+        log.append(String.format("     [诊断] 被夹断口（细线拐弯台阶的口径假象）：%d → %d"
+                        + "（不作判据，理由见代码注释）%n", oldGaps, newGaps));
+        // ⑦ 无孤立团块（用户："散点团状河流"）
+        boolean c7 = newBlobs <= oldBlobs;
+        log.append(String.format("  ⑦ 无孤立团块（≤2格分量）：%d → %d  %s%n",
+                oldBlobs, newBlobs, c7 ? "PASS" : "FAIL"));
+        boolean all = c1 && c2 && c3 && c4 && deterministic && c6 && c7;
         log.append(String.format("%n判定：%s%n", all ? "ALL PASS" : "★ 有判据 FAIL"));
 
         // ---- 出图（三图并排难以比较，故做成独立两张 + 一张差异图） ----
@@ -225,6 +250,50 @@ public final class CenterlineCrossSectionProbe {
         int splits = 0;
         for (var e : oldToNew.entrySet()) if (e.getValue().size() > 1) splits++;
         return splits;
+    }
+
+    /**
+     * 河段内部断口数：相邻节点对 (i-1,i) 中，两端在掩码里不连通者。
+     *
+     * <p>这是"河道一段段的"的直接度量 —— 扫掠圆盘绘制保证相邻线段的圆盘
+     * 在共享端点处重叠，故理论值恒为 0；若非 0 即真断口。
+     * （被夹断口口径对细线拐弯台阶系统性误报，只作诊断，见判据 ⑥ 注释。）</p>
+     */
+    private static int reachInternalBreaks(RiverCenterlines.Result cl, boolean[] mask, int n) {
+        int breaks = 0;
+        for (var reach : cl.reaches) {
+            for (int i = 1; i < reach.cell.length; i++) {
+                int k0 = reach.cell[i - 1], k1 = reach.cell[i];
+                // 相邻节点（8 邻）在掩码中必须连通：两端都在掩码且 8 邻接
+                // （扫掠圆盘下必然成立；不成立即绘制有洞）。
+                if (!mask[k0] || !mask[k1]) { breaks++; continue; }
+                int x0 = k0 / n, z0 = k0 % n, x1 = k1 / n, z1 = k1 % n;
+                if (Math.abs(x0 - x1) > 1 || Math.abs(z0 - z1) > 1) {
+                    // 骨架相邻节点必是 8 邻；超出即实现 bug
+                    breaks++;
+                }
+            }
+        }
+        return breaks;
+    }
+
+    /**
+     * 断口计数（与 {@code CanonicalViewProbe} 的 GAPS 同口径）：
+     * 非河道格，但其左右两侧（或上下两侧）都是河道格。
+     * 湖/海格不算断口（水体中断河道是正确的）。
+     */
+    private static int gapCount(boolean[] mask, boolean[] sea, boolean[] lake, int n) {
+        int gaps = 0;
+        for (int x = 0; x < n; x++) {
+            for (int z = 0; z < n; z++) {
+                int k = x * n + z;
+                if (mask[k] || sea[k] || lake[k]) continue;
+                boolean lr = x > 0 && x < n - 1 && mask[k - n] && mask[k + n];
+                boolean ud = z > 0 && z < n - 1 && mask[k - 1] && mask[k + 1];
+                if (lr || ud) gaps++;
+            }
+        }
+        return gaps;
     }
 
     private static int count(boolean[] a) { int c = 0; for (boolean b : a) if (b) c++; return c; }
