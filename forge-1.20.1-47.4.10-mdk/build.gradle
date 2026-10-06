@@ -2390,6 +2390,16 @@ task runRegionContractProbe(type: JavaExec) {
     }
 }
 
+// ★ model 链列适配器验收（只下挖/水位自洽/确定性/纯函数，接线后端到端契约）
+task runModelPipelineAdapterProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ModelPipelineAdapterProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 中心线 + 横断面 vs 逐格过门槛 的同参对照（形态验收：抹开/散点/湿宽/确定性）
 task runCenterlineCrossSectionProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath

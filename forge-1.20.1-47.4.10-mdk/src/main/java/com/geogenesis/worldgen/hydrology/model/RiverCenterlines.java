@@ -173,6 +173,24 @@ public final class RiverCenterlines {
      */
     public static Result build(double[] bed, double[] flux, boolean[] evidence,
                                boolean[] sea, int nx, int nz, Params params) {
+        return build(bed, flux, evidence, sea, nx, nz, params, 1.0);
+    }
+
+    /**
+     * 带【网格间距】的构建。
+     *
+     * <p>{@code cellSize} = 每格多少 block（生产 step=4 ⇒ 4.0）。
+     * 宽度律/岸高/深度坡度全部是 block 物理量，而细化/绘制在格空间进行
+     * ⇒ 二者必须换算。step=1 时 cellSize=1.0 与旧入口逐位等价
+     * （本类全部既有验证都在 step=1 下取得，不得破坏）。</p>
+     *
+     * <p>⚠ 不带 cellSize 的旧入口隐含"1格=1块" —— 生产 step=4 下若用旧入口，
+     * 绘制距离被当成 block 会把半宽放大 4×（抹开回归）。故适配器必须走本入口。</p>
+     */
+    public static Result build(double[] bed, double[] flux, boolean[] evidence,
+                               boolean[] sea, int nx, int nz, Params params,
+                               double cellSize) {
+        if (!(cellSize > 0)) throw new IllegalArgumentException("cellSize must be > 0");
         int cells = nx * nz;
         if (bed.length != cells || flux.length != cells || evidence.length != cells) {
             throw new IllegalArgumentException("array length != nx*nz");
@@ -218,7 +236,7 @@ public final class RiverCenterlines {
                 if (pass < 2 && visitedEdge[k]) continue;
                 if (pass == 2 && visitedEdge[k]) continue;   // 兜底只捡漏
                 traceBranch(skeleton, vertex, visitedEdge, flux, bed, sea, nx, nz,
-                        k, component[k], params, reaches);
+                        k, component[k], params, cellSize, reaches);
             }
         }
 
@@ -238,20 +256,21 @@ public final class RiverCenterlines {
             //   （用户："这河道也不连续啊，怎么一段段的？"）。
             //   这正是参考项目 DynamicWaters `intersectDistanceSq` 与 Streams 样条的同一做法。
             for (int i = 1; i < reach.cell.length; i++) {
-                paintSegment(reach, i - 1, i, nx, nz, normDist, halfW, depth, channel);
+                paintSegment(reach, i - 1, i, nx, nz, normDist, halfW, depth, channel, cellSize);
             }
             if (reach.cell.length == 1) {
-                paintSegment(reach, 0, 0, nx, nz, normDist, halfW, depth, channel);
+                paintSegment(reach, 0, 0, nx, nz, normDist, halfW, depth, channel, cellSize);
             }
         }
         return new Result(reaches, normDist, halfW, depth, channel, dropped);
     }
 
-    /** 从 seed 沿骨架走一条段，尽量走直（优先非顶点邻居），并定向为上游→下游。 */
+    /** 从 seed 沿骨架走一条段，尽量走直（优先非顶点邻居），并定向为上游→下游。
+     *  {@code cellSize} = 每格块数：宽度/岸高/坡度是 block 物理量，走链/绘制在格空间。 */
     private static void traceBranch(boolean[] skeleton, boolean[] vertex, boolean[] used,
                                     double[] flux, double[] bed, boolean[] sea,
                                     int nx, int nz, int seed, int comp,
-                                    Params params, List<Reach> out) {
+                                    Params params, double cellSize, List<Reach> out) {
         ArrayList<Integer> path = new ArrayList<>();
         int prev = -1;
         int cur = seed;
@@ -316,10 +335,11 @@ public final class RiverCenterlines {
             //   现改为取二者较小者：狭/浅谷 ⇒ 宽度被地形夹住 ⇒ 渠道保持细条。
             double halfQ = 0.5 * fullWidth(q[i], params);
             double halfValley = valleyHalfWidth(bed, nx, nz, k,
-                    directionAt(cell, i, nz), params.bankRise(), params.maxHalf());
+                    directionAt(cell, i, nz), params.bankRise(), params.maxHalf(), cellSize);
             double half = Math.min(halfQ, halfValley);
-            half = Math.max(half, 0.5);                 // 至少半格：中心线本身必须有水
-            double dep = depthFor(q[i], localSlope(bed, nx, nz, k), params);
+            // 至少半格：中心线本身必须有水（cellSize=1 时即旧的 0.5）
+            half = Math.max(half, 0.5 * cellSize);
+            double dep = depthFor(q[i], localSlope(bed, nx, nz, k, cellSize), params);
             // ★ 地形夹逼不是"裁掉宽度丢掉流量"：宽度被钳时相应【加深】，
             //   保持过水断面量级（方案 §4.3 明确要求）。
             if (half < halfQ - 1e-9) {
@@ -409,7 +429,8 @@ public final class RiverCenterlines {
      * @return 半宽（block），至少 1；两侧都走不到岸时返回 {@code maxHalf}
      */
     private static double valleyHalfWidth(double[] bed, int nx, int nz, int k,
-                                          double[] dir, double bankRise, double maxHalf) {
+                                          double[] dir, double bankRise, double maxHalf,
+                                          double cellSize) {
         int x = k / nz, z = k % nz;
         double base = bed[k];
         // 法向 = 方向旋转 90°（在网格坐标里足够近似，测量本身对角度不敏感）
@@ -418,8 +439,9 @@ public final class RiverCenterlines {
         if (norm < 1e-9) return maxHalf;
         nxn /= norm;
         nzn /= norm;
-        int limit = (int) Math.ceil(maxHalf);
-        double half = maxHalf;
+        // 走格数 = 半宽(block) / 每格块数 —— cellSize=1 时即旧的 ceil(maxHalf)
+        int limit = (int) Math.ceil(maxHalf / cellSize);
+        double halfCells = limit;
         for (int sign = -1; sign <= 1; sign += 2) {
             int reached = limit;
             for (int s = 1; s <= limit; s++) {
@@ -428,9 +450,10 @@ public final class RiverCenterlines {
                 if (a < 0 || b < 0 || a >= nx || b >= nz) { reached = s - 1; break; }
                 if (bed[a * nz + b] > base + bankRise) { reached = s - 1; break; }
             }
-            half = Math.min(half, Math.max(1, reached));
+            halfCells = Math.min(halfCells, Math.max(1, reached));
         }
-        return Math.max(1.0, half);
+        // 格 → block（并夹回 maxHalf：limit 用 ceil ⇒ 不整除时可能超出）
+        return Math.min(maxHalf, Math.max(cellSize, halfCells * cellSize));
     }
 
     /** 全宽 W = headWidth·(Q/widthRef)^b，上限 maxWidth。 */
@@ -464,7 +487,7 @@ public final class RiverCenterlines {
      * 中心差分把"横向岸壁"也算进坡度 ⇒ 陡坡河段被系统性误判。
      * 沿流向的最大落差才对应"水在这一格掉多快"。</p>
      */
-    private static double localSlope(double[] bed, int nx, int nz, int k) {
+    private static double localSlope(double[] bed, int nx, int nz, int k, double cellSize) {
         int x = k / nz, z = k % nz;
         double here = bed[k];
         double best = 0;
@@ -472,7 +495,8 @@ public final class RiverCenterlines {
             int a = x + d[0], b = z + d[1];
             if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
             double drop = here - bed[a * nz + b];
-            double dist = (d[0] == 0 || d[1] == 0) ? 1.0 : Math.sqrt(2.0);
+            // 邻距（block）= 格距 × 每格块数 ⇒ slope 单位 = block/block（cellSize=1 即旧口径）
+            double dist = ((d[0] == 0 || d[1] == 0) ? 1.0 : Math.sqrt(2.0)) * cellSize;
             best = Math.max(best, drop / dist);
         }
         return best;
@@ -492,18 +516,22 @@ public final class RiverCenterlines {
      * （`HydrologyManager.txt`）、Streams 样条距离场、Farseek {@code Valley.carve}。</p>
      *
      * <p>半宽沿线段【线性插值】于两端节点 ⇒ 宽度沿程连续变化（无台阶）。</p>
+     *
+     * <p>单位：{@code half} 是 block（宽度律/岸测都是 block 物理量），
+     * 而点线距离在【格空间】计算 ⇒ 乘 {@code cellSize} 换算成 block 再比较
+     * （cellSize=1 时与旧版逐位一致）。</p>
      */
     private static void paintSegment(Reach reach, int i0, int i1, int nx, int nz,
                                      double[] normDist, double[] halfW, double[] depth,
-                                     boolean[] channel) {
+                                     boolean[] channel, double cellSize) {
         int k0 = reach.cell[i0], k1 = reach.cell[i1];
         int x0 = k0 / nz, z0 = k0 % nz;
         int x1 = k1 / nz, z1 = k1 % nz;
         double h0 = reach.width[i0] * 0.5, h1 = reach.width[i1] * 0.5;
         double halfMax = Math.max(h0, h1);
         if (!(halfMax > 0)) return;
-        // 包围盒（含半宽余量）
-        int r = (int) Math.ceil(halfMax) + 1;
+        // 包围盒（含半宽余量；半宽 block → 格）
+        int r = (int) Math.ceil(halfMax / cellSize) + 1;
         int ax = Math.max(0, Math.min(x0, x1) - r), bx = Math.min(nx - 1, Math.max(x0, x1) + r);
         int az = Math.max(0, Math.min(z0, z1) - r), bz = Math.min(nz - 1, Math.max(z0, z1) + r);
         double dx = x1 - x0, dz = z1 - z0;
@@ -515,11 +543,11 @@ public final class RiverCenterlines {
                         ? Math.max(0, Math.min(1, ((a - x0) * dx + (b - z0) * dz) / segLen2))
                         : 0;
                 double px = x0 + t * dx, pz = z0 + t * dz;
-                double dist = Math.hypot(a - px, b - pz);
+                double dist = Math.hypot(a - px, b - pz) * cellSize;   // 格距 → block
                 double half = h0 + t * (h1 - h0);      // 半宽沿线性插值 ⇒ 沿程连续
                 if (dist > half || half <= 0) continue;
                 int kk = a * nz + b;
-                double cn = dist / half;               // 0=河心 1=水边
+                double cn = dist / half;               // 0=河心 1=水边（无量纲，单位自洽）
                 if (cn < normDist[kk]) {
                     normDist[kk] = cn;
                     halfW[kk] = half;
