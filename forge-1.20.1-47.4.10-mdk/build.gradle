@@ -2252,6 +2252,16 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     }
 }
 
+// ★ 接线前置：HydrologyPipeline 单窗口耗时（判断能否接进世界生成）
+task runPipelinePerfProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.PipelinePerfProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 「洼地未蓄水」探针：几何上是湖却判干（用户："河流为什么停在没填色的洼地"）
 task runLakeGapProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
