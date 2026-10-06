@@ -1061,7 +1061,7 @@ public final class ContinuousRiverNetwork {
     public static volatile boolean overflowParentFallback = true;
 
     /**
-     * ★★ 动量权重 α（默认 0.85 = 已启用，用户 2026-10-05 批准）★★
+     * ★★ 动量权重 α（默认 **0.6**，用户 2026-10-05 批准）★★
      *
      * <p>方向 = normalize(α·上一方向 + (1−α)·当前梯度方向)。</p>
      * <p>参考 SimpleHydrology {@code water.h::descend} 的动量传递：
@@ -1070,18 +1070,26 @@ public final class ContinuousRiverNetwork {
      * <p><b>为何需要</b>：陡坡上层流（sheet flow）梯度方向逐格乱跳
      * ⇒ 流线左右摆 ⇒ 停滞检测触发 ⇒ 沿 parent 瞬移不留墨水 ⇒ 散点。
      * 加上惯性后流线沿大尺度坡向走 ⇒ 形成"主流+支流"而非散点。</p>
-     * <p><b>实测（正典口径 r=700 / 600k）</b>：</p>
+     *
+     * <p>★★ <b>α 必须双指标权衡（2026-10-05 实测，r=400 / 150k 同参对比）</b>：
+     * 高 α 治散点，但<b>过度惯性会"抹开"</b>——流线不随地形收敛、
+     * 铺进未决区再被 {@code propagateDownstream} 点亮成片。</p>
      * <pre>
-     *   α=0    → 分量 893 / ≤10格碎片 267(29.9%) / 碎块坡度 1.19（陡于全河道 0.75）
-     *   α=0.45 → 分量 235 / 碎片 85
-     *   α=0.85 → 分量 241 / 碎片 35(14.5%) / 碎块坡度 0.51（缓于全河道 0.88）
-     *           101+ 格主干占河道格 68.5% → 91.8%
+     *   α     河道格    8连通分量(散点↓好)  抹开占比(↓好)   抹开格未决占比
+     *   0.0   19,051        324             18.52%          —
+     *   0.3   17,222        303             17.46%          —
+     *   0.6   15,778        163(-46%)       18.15%          —
+     *   0.85  23,926         94(-71%)       45.19%(爆)      72.7%
      * </pre>
-     * <p>⇒ 0.85 效果最好且碎块不再集中于陡坡（假设正面验证）。
-     * 回退：{@code -Dhydro.momentum=0.0}。</p>
+     * ⇒ <b>0.6 = 双赢点</b>：碎片减半而抹开不动；0.85 虽碎片最少，
+     * 但抹开翻倍 + 河道格 +36%（多为未决区被传播点亮）⇒ 已弃用。
+     * <p>抹开的归因见 {@code runChannelSmearProbe}：C(本就达标)≈70% /
+     * A(平滑涂宽)≈20% / B(传播涂宽)≈10% ⇒ 主因是<b>均匀坡面流线不汇聚</b>
+     *（物理上真实），传播只是放大器 ⇒ α 降到 0.6 正是掐掉放大器。</p>
+     * <p>散点侧回退：{@code -Dhydro.momentum=0.0}（连通分量回到 324）。</p>
      */
     public static volatile double momentumWeight =
-            Double.parseDouble(System.getProperty("hydro.momentum", "0.85"));
+            Double.parseDouble(System.getProperty("hydro.momentum", "0.6"));
 
     /** 8 邻域（{@link #descendByLevel} 用于在湖域内找溢出口方向）。 */
     private static final int[][] DIRS8 = {

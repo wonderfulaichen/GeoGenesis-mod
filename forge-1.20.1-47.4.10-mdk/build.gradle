@@ -2252,7 +2252,17 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     }
 }
 
-// ★ 开关接线自检：-D 属性是否真的到达判定点（本轮"改了没生效"的排查工具）
+// ★ 河道「抹开」（成块不成条）归因：平滑涂宽 vs 传播涂宽（决定修法）
+task runChannelSmearProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelSmearProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+// ★ 开关接线自检：-D 属性是否真的到达判定点（"改了没生效"的排查工具）
 task runSwitchWiringProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.SwitchWiringProbe'
