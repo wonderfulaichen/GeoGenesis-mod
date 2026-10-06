@@ -81,6 +81,10 @@ public final class LifecycleChainProbe {
         //     （用户明确"我又不是不允许内陆湖"，方案 §4.2 亦要求保留）。
         int full = 0, toSeaNoLake = 0, endorheic = 0, lakeOverflowNoOutlet = 0, died = 0;
         int windowExit = 0;
+        // ★ 缺陷分解（本轮新增）：溢流湖缺陷的第二段 walk 有多种终止方式，
+        //   必须分清是「递归跳转引入的死路」还是「parent 链本身断」。
+        int dfNextEndorheic = 0, dfHopBudget = 0, dfParentLost = 0, dfGuard = 0, dfOther = 0;
+        String dfExample = "";
         int statSrc = 0, statCh = 0, statLake = 0, statSpill = 0, statDown = 0, statSea = 0;
         boolean[] chainMark = new boolean[cells];
         StringBuilder example = new StringBuilder();
@@ -122,21 +126,50 @@ public final class LifecycleChainProbe {
                     int cur2 = outlet;
                     int g2 = 0;
                     int lakeHops = 0;
+                    int endReason = -1;    // -1=见海 0=下一段遇内流湖 1=湖跳预算 2=parent断 3=guard
+                    // ★ 湖跳防环（本轮修正）：出口格的 parent 可能指向湖内格
+                    //   （平坦湖面 filler 欠定向，13/62 出口如此）⇒ 走 parent 一步进湖、
+                    //   又被递归逻辑跳回同一出口 ⇒ 走-跳交替 2-循环，烧光湖跳预算
+                    //   （实测 1752 例 100% 卡此，而出口级不跳湖 62/62 到海 ⇒ 链本身健康）。
+                    //   修法：已访问的出口不再跳，改为沿 parent 继续走 ——
+                    //   filler parent 全局无环 ⇒ 必达海；跳转只为记 sawSpill/sawDown。
+                    java.util.BitSet visitedOutlets = new java.util.BitSet();
+                    visitedOutlets.set(outlet);
+                    int dfLoop = 0;
                     while (g2++ < 4 * n && cur2 >= 0 && cur2 < cells) {
-                        if (sea[cur2]) { sawSea = true; break; }
+                        if (sea[cur2]) { sawSea = true; endReason = -1; break; }
                         if (lake[cur2]) {
                             // 进入下一湖：若其为溢流湖 ⇒ 继续沿它的出口走（递归）
                             Integer next = exactOutlet(lakeRes, cur2);
-                            if (next != null && next >= 0 && lakeHops++ < lakeRes.basins().size()) {
+                            if (next != null && next >= 0 && lakeHops++ < lakeRes.basins().size()
+                                    && !visitedOutlets.get(next)) {
+                                visitedOutlets.set(next);
                                 cur2 = next;
                                 continue;
                             }
-                            break;   // 内流湖（合法终端）或递归预算耗尽
+                            if (next != null && next >= 0 && visitedOutlets.get(next)) {
+                                dfLoop++;       // 跳转环：放弃跳转，沿 parent 走（下方 p2 路径）
+                            } else {
+                                endReason = (next == null || next < 0) ? 0 : 1;
+                                break;   // 内流湖（合法终端）或递归预算耗尽
+                            }
                         }
                         if (ch[cur2]) sawDown = true;
                         int p2 = parent[cur2];
-                        if (p2 < 0 || p2 == cur2) break;
+                        if (p2 < 0 || p2 == cur2) { endReason = 2; break; }
                         cur2 = p2;
+                    }
+                    if (g2 >= 4 * n && endReason == -1 && !sawSea) endReason = 3;
+                    if (endReason >= 0 && !sawSea) {
+                        // 缺陷路径样本：记下入口坐标便于复查
+                        if (dfExample.length() == 0) dfExample = String.format(
+                                "湖格(%d,%d)→出口(%d,%d) end=%d cur2=(%d,%d)",
+                                lakeCell / n, lakeCell % n, outlet / n, outlet % n,
+                                endReason, cur2 / n, cur2 % n);
+                        if (endReason == 0) dfNextEndorheic++;
+                        else if (endReason == 1) dfHopBudget++;
+                        else if (endReason == 2) dfParentLost++;
+                        else dfGuard++;
                     }
                 }
             }
@@ -189,6 +222,12 @@ public final class LifecycleChainProbe {
         log.append(String.format("  [合法] 入内流湖（无出流，就地消纳）= %d%n", endorheic));
         log.append(String.format("  [合法] 出窗口边界（边界端口，方案 §5.1）= %d%n", windowExit));
         log.append(String.format("  [缺陷] 入溢流湖却找不到自己的出口 = %d%n", lakeOverflowNoOutlet));
+        if (lakeOverflowNoOutlet > 0) {
+            log.append(String.format(
+                    "    分解：下一段又进内流湖=%d 湖跳预算尽=%d parent断=%d guard尽=%d 其它=%d%n",
+                    dfNextEndorheic, dfHopBudget, dfParentLost, dfGuard, dfOther));
+            if (dfExample.length() > 0) log.append(String.format("    例：%s%n", dfExample));
+        }
         log.append(String.format("  [缺陷] 中途消失（既未到海也未到湖也未出窗）= %d%n", died));
         if (example.length() > 0) log.append(String.format("  例：%s%n", example));
         log.append(String.format("  湖泊总数=%d  溢流出口数=%d  海格=%d%n",
