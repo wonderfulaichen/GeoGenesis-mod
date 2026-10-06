@@ -2252,6 +2252,23 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     }
 }
 
+// ★ 开关接线自检：-D 属性是否真的到达判定点（本轮"改了没生效"的排查工具）
+task runSwitchWiringProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SwitchWiringProbe'
+    maxHeapSize = '2g'
+}
+
+// ★ 湖泊尺寸谱：「极小散点蓄水坑」的规模与体积占比（决定能否安全过滤）
+task runLakeSizeProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeSizeProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ★ 接线前置：HydrologyPipeline 单窗口耗时（判断能否接进世界生成）
 task runPipelinePerfProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath

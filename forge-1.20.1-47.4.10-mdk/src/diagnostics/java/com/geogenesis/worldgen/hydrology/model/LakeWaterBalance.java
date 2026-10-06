@@ -79,6 +79,69 @@ public final class LakeWaterBalance {
      */
     private boolean assumeFullWhenUnfed = true;
 
+    /**
+     * ★★ 极小散点蓄水坑过滤（2026-10-05，A/B）★★
+     *
+     * <p><b>用户观察</b>：「湖泊还有一些极小的散点蓄水坑」。</p>
+     *
+     * <p><b>实测规模</b>（{@code runLakeSizeProbe}，r=700 / 600k）：
+     * <pre>
+     *   尺寸档        分量数   占比      ★体积占比
+     *   1 格            13    4.8%      0.00%
+     *   2-3 格          36   13.3%      0.02%
+     *   4-10 格         88   32.6%      0.15%
+     *   ...
+     *   501+ 格         23    8.5%     98.34%
+     *   ⇒ 散点坑(≤4格) 66 个(24.4%)，仅占水量 0.04%
+     * </pre>
+     * ⇒ <b>23 个大湖持 98.34% 水量，247 个小湖只占 1.66%</b>
+     * ⇒ 过滤小湖几乎不损失水量（安全）。</p>
+     *
+     * <h3>★ 为什么判据必须用【几何面积】而非"来水/流量"</h3>
+     * <p>实测（同一探针的盆地级诊断）：<b>所有盆地 inflow &gt; 0</b>
+     * （66 个盆地全部有来水；因为每个盆地至少含自身格）⇒
+     * 任何基于 inflow / fed / 出流的判据<b>原理上无法区分散点坑</b>。
+     * 实测踩过两次：{@code !fed}（fed 恒真）、{@code inflow < oneCellEvap}（inflow 恒大）
+     * —— 两次结果都<b>完全不变</b>（270 分量一个没少）。</p>
+     * <p>⇒ 只能用<b>几何量</b>。这也正是参考项目 FTF 的做法：
+     * {@code LakeConfig.sizeMin/sizeMax} 就是<b>几何尺寸</b>门槛。</p>
+     *
+     * <p><b>参考项目对照（三个项目没有一个保留无来水的洼地）</b>：</p>
+     * <ul>
+     *   <li><b>FreeTerraForged</b>：湖 = 河流一段加宽，且需<b>概率抽签</b>
+     *       （{@code shouldWidenOnPlateau}）+ <b>几何尺寸范围</b>
+     *       （{@code sizeMin/sizeMax}）⇒ 不会每个洼地都成湖；</li>
+     *   <li><b>FastFlow</b>：水体由流量阈值判定（无流量即非水体）；</li>
+     *   <li><b>SimpleHydrology</b>：无湖对象。</li>
+     * </ul>
+     *
+     * <p>⚠ 用户明确「我又不是不允许内陆湖」⇒ 本开关<b>不针对"内陆湖"</b>
+     * （面积达标的湖照常保留，无论有无出流），只过滤<b>面积过小的坑</b>。</p>
+     */
+    private boolean dropTinyBasins = DROP_TINY_BASINS;
+
+    /** 运行时切换（探针 A/B 用）。 */
+    public LakeWaterBalance dropTinyBasins(boolean value) {
+        this.dropTinyBasins = value;
+        return this;
+    }
+
+    /** 全局默认（供 A/B 用系统属性控制；默认 false = 旧行为）。 */
+    public static volatile boolean DROP_TINY_BASINS =
+            Boolean.getBoolean("hydro.dropTinyBasins");
+
+    /**
+     * 最小可见湖【面积】（格）。
+     *
+     * <p>依据（{@code runLakeSizeProbe} 尺寸谱）：散点坑集中在 ≤4 格
+     * （66 个 / 24.4% 分量，仅占水量 0.04%），而 4-10 格档也有 88 个（32.6%）。
+     * 取 <b>5</b> 可消掉 ≤4 格档（占 24.4% 分量数、0.04% 水量）。</p>
+     * <p>对照项目既有规则 {@link #MIN_VISIBLE_DEPTH}（最小可见【深度】= 1 块）
+     * —— 本条是其【面积】对应物，同样是"显示单位的物理下限"而非调参。</p>
+     */
+    public static volatile int MIN_VISIBLE_AREA =
+            Integer.getInteger("hydro.minVisibleArea", 5);
+
     /** 运行时切换兜底语义（探针 A/B 用）。 */
     public LakeWaterBalance assumeFullWhenUnfed(boolean value) {
         this.assumeFullWhenUnfed = value;
@@ -299,6 +362,19 @@ public final class LakeWaterBalance {
 
             // 水位—面积/容积曲线：把组内按床面排序，逐步加水求收支平衡。
             group.sort((a, b) -> Double.compare(bed[a], bed[b]));
+            // ★★ 极小散点蓄水坑过滤（判据 = 几何面积，详见 dropTinyBasins 的 javadoc）★★
+            //
+            //   ⚠ 判据必须用【几何面积】，不能用 inflow/fed/出流：
+            //     实测所有盆地 inflow>0（每盆地至少含自身格 ⇒ 恒有来水）
+            //     ⇒ 基于流量的判据原理上无法区分（已踩两次：!fed、inflow<oneCellEvap
+            //     结果均【完全不变】）。
+            //   本条是既有规则 MIN_VISIBLE_DEPTH（最小可见【深度】）的【面积】对应物，
+            //   同属"显示单位的物理下限"。
+            if (dropTinyBasins && group.size() < MIN_VISIBLE_AREA) {
+                dry++;
+                liquidate(depth, lake, group);
+                continue;
+            }
             double level = fed || !assumeFullWhenUnfed
                     ? solveLevel(group, inflow, climate.evaporation(), sill)
                     : sill - 1e-9;                            // 无来水信息 ⇒ 回落 sill（满湖）
