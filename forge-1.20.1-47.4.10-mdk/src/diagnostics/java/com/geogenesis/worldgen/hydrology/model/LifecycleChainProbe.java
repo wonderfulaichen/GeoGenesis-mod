@@ -74,11 +74,13 @@ public final class LifecycleChainProbe {
         // ---- 逐源头追踪六阶段 ----
         int[] guard = new int[1];
         // ★ 终止分类（本轮新增）：区分"合法终端"与"缺陷终端"。
-        //   合法：入海 / 内流湖（无出流，水就地蒸发消纳）/ 完整六阶段链。
-        //   缺陷：入溢流湖却找不到自己的出口 / 中途消失（既没到海也没到湖）。
+        //   合法：入海 / 内流湖（无出流，水就地蒸发消纳）/ 完整六阶段链 /
+        //        【窗口边界端口】（方案 §5.1 明确允许；流量截断是设计契约）。
+        //   缺陷：入溢流湖却找不到自己的出口 / 中途消失（既没到海也没到湖、也没出窗）。
         //   ⚠ 旧口径把"入湖但无溢口"一律当缺陷 —— 但**内流湖本就是合法终端**
         //     （用户明确"我又不是不允许内陆湖"，方案 §4.2 亦要求保留）。
         int full = 0, toSeaNoLake = 0, endorheic = 0, lakeOverflowNoOutlet = 0, died = 0;
+        int windowExit = 0;
         int statSrc = 0, statCh = 0, statLake = 0, statSpill = 0, statDown = 0, statSea = 0;
         boolean[] chainMark = new boolean[cells];
         StringBuilder example = new StringBuilder();
@@ -89,6 +91,7 @@ public final class LifecycleChainProbe {
             int cur = k0;
             guard[0] = 0;
             int lakeCell = -1;
+            boolean parentLost = false;     // 终止于 parent 耗尽（窗口端口的必要条件）
             while (guard[0]++ < 4 * n && cur >= 0 && cur < cells) {
                 if (sea[cur]) { sawSea = true; break; }
                 if (lake[cur]) {
@@ -98,9 +101,11 @@ public final class LifecycleChainProbe {
                 }
                 if (ch[cur]) sawCh = true;
                 int p = parent[cur];
-                if (p < 0 || p == cur) break;
+                if (p < 0 || p == cur) { parentLost = true; break; }
                 cur = p;
             }
+            // 首次遍历的终点（parent 链耗尽处）——窗口端口判定用
+            final int terminal = cur;
             boolean lakeOverflows = false;
             // 溢口 & 下泄：从入湖格所在盆地的出口继续
             if (sawLake && lakeCell >= 0) {
@@ -110,10 +115,24 @@ public final class LifecycleChainProbe {
                 Integer outlet = exactOutlet(lakeRes, lakeCell);
                 if (outlet != null && outlet >= 0) {
                     sawSpill = true;
-                    int cur2 = outlet; int g2 = 0;
+                    // ★ 递归过湖（方案 §5.1："允许流入下一湖，再递归至合法终端"）。
+                    //   旧实现遇第二湖即停且不计 sawDown ⇒ 洋流式湖链被误判缺陷。
+                    //   递归深度上限 = 湖数（防环；湖盆按 basinId 唯一，环仅可能来自
+                    //   病态数据 ⇒ 上限触达即记为缺陷退出）。
+                    int cur2 = outlet;
+                    int g2 = 0;
+                    int lakeHops = 0;
                     while (g2++ < 4 * n && cur2 >= 0 && cur2 < cells) {
                         if (sea[cur2]) { sawSea = true; break; }
-                        if (lake[cur2]) break;                     // 又入一湖，停止（不递归）
+                        if (lake[cur2]) {
+                            // 进入下一湖：若其为溢流湖 ⇒ 继续沿它的出口走（递归）
+                            Integer next = exactOutlet(lakeRes, cur2);
+                            if (next != null && next >= 0 && lakeHops++ < lakeRes.basins().size()) {
+                                cur2 = next;
+                                continue;
+                            }
+                            break;   // 内流湖（合法终端）或递归预算耗尽
+                        }
                         if (ch[cur2]) sawDown = true;
                         int p2 = parent[cur2];
                         if (p2 < 0 || p2 == cur2) break;
@@ -147,6 +166,11 @@ public final class LifecycleChainProbe {
                 // 入湖：溢流湖却找不到自己的出口 = 缺陷；无出流 = 合法内流湖。
                 if (lakeOverflows) lakeOverflowNoOutlet++;
                 else endorheic++;
+            } else if (parentLost && hitsWindowBorder(terminal, n)) {
+                // ★ 窗口边界终止 = 【明确边界端口】（方案 §5.1 合法终端之一）。
+                //   流量沿排水树累加、窗口截断外部上游是设计契约
+                //   （HydrologyPipeline javadoc 第 5 条），不是中途消失。
+                windowExit++;
             } else died++;
         }
         if (srcCount == 0) statSrc = 0;
@@ -163,8 +187,9 @@ public final class LifecycleChainProbe {
         log.append("终止分类：\n");
         log.append(String.format("  [合法] 到海但未经湖 = %d%n", toSeaNoLake));
         log.append(String.format("  [合法] 入内流湖（无出流，就地消纳）= %d%n", endorheic));
+        log.append(String.format("  [合法] 出窗口边界（边界端口，方案 §5.1）= %d%n", windowExit));
         log.append(String.format("  [缺陷] 入溢流湖却找不到自己的出口 = %d%n", lakeOverflowNoOutlet));
-        log.append(String.format("  [缺陷] 中途消失（既未到海也未到湖）= %d%n", died));
+        log.append(String.format("  [缺陷] 中途消失（既未到海也未到湖也未出窗）= %d%n", died));
         if (example.length() > 0) log.append(String.format("  例：%s%n", example));
         log.append(String.format("  湖泊总数=%d  溢流出口数=%d  海格=%d%n",
                 lakeRes.basins().size(), lakeRes.overflowAt().size(), count(sea)));
@@ -181,6 +206,9 @@ public final class LifecycleChainProbe {
         //   ⇒ 必须直接量【溢口格本身】，而不是靠"最近溢口"的近似归属。
         log.append("%n[出口级诊断] 逐个溢流出口格检查（排除探针归属近似）\n");
         int outletCh = 0, outletToSea = 0, outletToCh = 0, outletDead = 0;
+        // ★ 并集计数：同一出口可能"走河道再入海" ⇒ 河道与海两计数【重叠】，
+        //   判据若取两者之和会 >100%（实测 16/15=106.7% 的根因）。
+        int outletOk = 0;
         int[] outletDist = new int[Math.max(1, lakeRes.overflowAt().size())];
         int oi = 0;
         for (Integer o : lakeRes.overflowAt().keySet()) {
@@ -199,6 +227,7 @@ public final class LifecycleChainProbe {
             }
             if (sea2) outletToSea++;
             if (firstCh >= 0) outletToCh++;
+            if (sea2 || firstCh >= 0) outletOk++;
             else outletDead++;
             if (oi < outletDist.length) outletDist[oi++] = (firstCh < 0 ? -1 : firstCh);
         }
@@ -251,27 +280,79 @@ public final class LifecycleChainProbe {
         //   新判据三条，任一不满足即 FAIL：
         //     ① 出口自洽：正出流湖的出口必须至少能走到河道或海
         //        ⇒ 防止"湖与下游脱节"被算作通过；
-        //     ② 六阶段覆盖率 ≥ MIN_COVERAGE（有效源头中走完六阶段的比例）；
+        //     ② 合法终止率 ≥ MIN_TERMINAL_OK（方案 §5.1 合法终端：
+        //        湖/海/边界端口；不要求每条河经湖）；
         //     ③ 至少有一条完整链（保底，防覆盖率被小分母放大）。
         int effectiveSources = statSrc;
-        // ② 合法终止率：源头必须终止于【合法终端】（海 / 内流湖 / 走完溢口下泄）。
+        // ② 合法终止率：源头必须终止于【合法终端】（海 / 内流湖 / 窗口边界端口 / 走完溢口下泄）。
         //    ⚠ 不要求"每条河都经湖" —— 方案明确「不是要求所有河都必须经过湖」。
-        int validTerminals = full + toSeaNoLake + endorheic;
+        int validTerminals = full + toSeaNoLake + endorheic + windowExit;
         double terminalOk = effectiveSources > 0 ? validTerminals / (double) effectiveSources : 0;
+
+        // ★★ 「中途消失」终点打样（不打样就是猜 —— 本项目铁律）★★
+        //   1451 条链死在"非边框 + 非湖 + 非海"处。它们的终点长什么样？
+        //   分类：A) 终点 parent=-1（排水链端）但不在边框 —— 内部链端为何无下游？
+        //        B) 终点在【未决格】（水位依赖窗口切割）—— 窗口契约允许截断？
+        //        C) 终点处 level>bed 几何湿却非湖 —— 死在水里（已有 A1 类问题同型）
+        //        D) 守卫超时（4n 步未终止）
+        if (died > 0) {
+            log.append("%n[中途消失 终点打样]\n");
+            int pNeg = 0, unresolved = 0, geoWet = 0, guardHit = 0, other = 0;
+            int shown = 0;
+            // 重新遍历（轻量：只记终点分类）
+            int[] guard2 = new int[1];
+            for (int k0 = 0; k0 < cells; k0++) {
+                if (!ch[k0] || hasUpstream[k0]) continue;
+                boolean sawL = false, sawS = false;
+                int cur = k0;
+                guard2[0] = 0;
+                boolean exhausted = false;
+                while (guard2[0]++ < 4 * n && cur >= 0 && cur < cells) {
+                    if (sea[cur]) { sawS = true; break; }
+                    if (lake[cur]) { sawL = true; break; }
+                    int p = parent[cur];
+                    if (p < 0 || p == cur) { exhausted = true; break; }
+                    cur = p;
+                }
+                if (sawS || sawL) continue;
+                // 复现首次分类（含完整链/出窗等已合法的情况）
+                if (!exhausted) { guardHit++; continue; }   // 守卫超时
+                int p = parent[cur];
+                if (p < 0 && hitsWindowBorder(cur, n)) continue;   // 出窗（合法）
+                boolean unres = !r.resolved()[cur];
+                boolean wet = r.level()[cur] - r.bed()[cur] > 0.5;
+                if (unres) unresolved++;
+                else if (wet) geoWet++;
+                else if (p < 0) pNeg++;
+                else other++;
+                if (shown < 6) {
+                    shown++;
+                    log.append(String.format(
+                            "    终点(%d,%d): parent=%d resolved=%b level-bed=%.3f 河道=%b%n",
+                            cur / n, cur % n, p, r.resolved()[cur],
+                            r.level()[cur] - r.bed()[cur], ch[cur]));
+                }
+            }
+            log.append(String.format(
+                    "  分类：内部链端(p<0且非未决非湿)=%d  未决格=%d  几何湿未标湖=%d  守卫超时=%d  其它=%d%n",
+                    pNeg, unresolved, geoWet, guardHit, other));
+        }
+
         int overflowTotal = lakeRes.overflowAt().size();
         // ① 出口自洽：正出流湖的出口必须能走到河道或海（防"湖与下游脱节"）。
-        double outletOk = overflowTotal > 0
-                ? (outletToCh + outletToSea) / (double) overflowTotal : 1.0;
+        //   ⚠ 用【并集 outletOk】：走河道再入海的出口会被两个分项重复计数（曾得 106.7%）。
+        double outletOkRate = overflowTotal > 0
+                ? outletOk / (double) overflowTotal : 1.0;
         log.append(String.format("%n[验收判据]%n"));
-        log.append(String.format("  ① 出口自洽：正出流出口=%d 中能走到河道或海 = %d (%.1f%%)  阈值 ≥ %.0f%%%n",
-                overflowTotal, outletToCh + outletToSea, 100 * outletOk, 100 * MIN_OUTLET_OK));
-        log.append(String.format("  ② 合法终止率：合法终端 %d（到海 %d + 内流湖 %d + 完整链 %d）/ 源头 %d"
-                        + " = %.1f%%  阈值 ≥ %.0f%%%n",
-                validTerminals, toSeaNoLake, endorheic, full, effectiveSources,
+        log.append(String.format("  ① 出口自洽：正出流出口=%d 中能走到河道或海(并集) = %d (%.1f%%)  阈值 ≥ %.0f%%%n",
+                overflowTotal, outletOk, 100 * outletOkRate, 100 * MIN_OUTLET_OK));
+        log.append(String.format("  ② 合法终止率：合法终端 %d（到海 %d + 内流湖 %d + 出窗 %d + 完整链 %d）"
+                        + " / 源头 %d = %.1f%%  阈值 ≥ %.0f%%%n",
+                validTerminals, toSeaNoLake, endorheic, windowExit, full, effectiveSources,
                 100 * terminalOk, 100 * MIN_TERMINAL_OK));
         log.append(String.format("  ③ 缺陷终端 = %d（溢流湖无出口 %d + 中途消失 %d）%n",
                 lakeOverflowNoOutlet + died, lakeOverflowNoOutlet, died));
-        boolean ok = outletOk >= MIN_OUTLET_OK && terminalOk >= MIN_TERMINAL_OK && full > 0;
+        boolean ok = outletOkRate >= MIN_OUTLET_OK && terminalOk >= MIN_TERMINAL_OK && full > 0;
         log.append(String.format("判定：%s%n", ok
                 ? "PASS（出口自洽 + 合法终止率达标）"
                 : "★ FAIL（见上方判据，逐条给出实测值与阈值）"));
@@ -320,6 +401,13 @@ public final class LifecycleChainProbe {
      * <p>身份缺失（旧 7 参构造）时返回 null ⇒ 该链不计入"完整六阶段"，
      * 而不是退化成猜测（宁可少报，不可假报）。</p>
      */
+    /** 该格是否落在窗口边框（0 或 n−1 的行/列）= 明确的边界端口位置。 */
+    private static boolean hitsWindowBorder(int cell, int n) {
+        if (cell < 0 || cell >= n * n) return false;
+        int i = cell / n, j = cell % n;
+        return i == 0 || j == 0 || i == n - 1 || j == n - 1;
+    }
+
     /** 该湖格所属盆地是否**有正出流**（= 蓄满并溢流），而非内流湖。 */
     private static boolean basinOverflows(LakeWaterBalance.Result lr, int lakeCell) {
         int basin = LakeWaterBalance.basinOf(lr, lakeCell);
