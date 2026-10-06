@@ -126,21 +126,34 @@ public final class LakeWaterBalance {
         return this;
     }
 
-    /** 全局默认（供 A/B 用系统属性控制；默认 false = 旧行为）。 */
+    /** 全局默认（**默认 true = 已启用**，用户 2026-10-05 批准）。
+     *  回退：{@code -Dhydro.dropTinyBasins=false}。 */
     public static volatile boolean DROP_TINY_BASINS =
-            Boolean.getBoolean("hydro.dropTinyBasins");
+            !"false".equals(System.getProperty("hydro.dropTinyBasins"));
 
     /**
-     * 最小可见湖【面积】（格）。
+     * 最小可见湖【面积】（格）。**默认 11**（用户 2026-10-05 批准）。
      *
-     * <p>依据（{@code runLakeSizeProbe} 尺寸谱）：散点坑集中在 ≤4 格
-     * （66 个 / 24.4% 分量，仅占水量 0.04%），而 4-10 格档也有 88 个（32.6%）。
-     * 取 <b>5</b> 可消掉 ≤4 格档（占 24.4% 分量数、0.04% 水量）。</p>
+     * <p>依据（{@code runLakeSizeProbe} 尺寸谱 + 阈值扫描实测，r=400）：
+     * <pre>
+     *   阈值  分量  湖泊格        体积
+     *   无    61   20859      67214
+     *   5     52   20826(-0.16%) 67180
+     *   11    41   20745(-0.55%) 67072   ← 选中
+     *   21    28   20550(-1.48%) 66836
+     *   31    24   20445(-1.99%) 66725
+     * </pre>
+     * 取 11 消掉图上肉眼可见的散点（≤10 格档共 88 个分量），
+     * 代价仅 <b>0.55% 湖面积 / 0.21% 水量</b>。</p>
+     *
+     * <p>语义边界（勿误改）：判据是【几何面积】⇒ <b>不针对内陆湖</b>
+     * —— 面积达标的湖无论有无出流都保留（用户明确"我又不是不允许内陆湖"）。</p>
+     *
      * <p>对照项目既有规则 {@link #MIN_VISIBLE_DEPTH}（最小可见【深度】= 1 块）
-     * —— 本条是其【面积】对应物，同样是"显示单位的物理下限"而非调参。</p>
+     * —— 本条是其【面积】对应物，同属"显示单位的物理下限"而非调参。</p>
      */
     public static volatile int MIN_VISIBLE_AREA =
-            Integer.getInteger("hydro.minVisibleArea", 5);
+            Integer.getInteger("hydro.minVisibleArea", 11);
 
     /** 运行时切换兜底语义（探针 A/B 用）。 */
     public LakeWaterBalance assumeFullWhenUnfed(boolean value) {
