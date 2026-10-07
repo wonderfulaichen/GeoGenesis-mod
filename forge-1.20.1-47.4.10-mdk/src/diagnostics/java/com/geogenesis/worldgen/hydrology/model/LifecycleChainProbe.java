@@ -396,9 +396,41 @@ public final class LifecycleChainProbe {
                 100 * terminalOk, 100 * MIN_TERMINAL_OK));
         log.append(String.format("  ③ 缺陷终端 = %d（溢流湖无出口 %d + 中途消失 %d）%n",
                 lakeOverflowNoOutlet + died, lakeOverflowNoOutlet, died));
-        boolean ok = outletOkRate >= MIN_OUTLET_OK && terminalOk >= MIN_TERMINAL_OK && full > 0;
+        // ★★ ④ 水量收支（方案合同 2）★★
+        //
+        //   【为什么需要这条】(本轮实测的教训)：湖↔河耦合曾出现【每轮 ×5 的几何放大环】
+        //   （ΣIn 1694→…→1093261、maxFlux 每轮恰 ×5、residual 恒 0.800 = 1−1/5），
+        //   而**当时没有任何判据能抓住它** —— ①②③ 全 PASS。放大环是靠人工逐轮读
+        //   诊断输出才发现的。方案 §5「验收合同 2 水量」正是为此设计，此前未建。
+        //
+        //   判据 = 全局水量守恒：Σ(每盆地 inflow) 必须与【同一窗口的坡面径流总量】
+        //   同量级。放大环的签名是 ΣIn 远超物理水量（实测超出 464×）。
+        //   注意不要求精确相等：注入流线止于湖 ⇒ 同一水在【每个流经的盆地各记一次】
+        //   是正确的级联语义（方案 §4.2），故允许 ΣIn > 径流总量，但**上限是硬约束**。
+        double sumInflow = 0, sumOutflow = 0, sumEvap = 0;
+        for (var b : lakeRes.basins()) {
+            sumInflow += b.inflow();
+            sumOutflow += b.outflow();
+            sumEvap += b.evaporationOut();
+        }
+        // 坡面径流总量 = runoffPerCell × 非海非未决格数（同一单位：体积/时间）
+        double runoffTotal = 0;
+        for (int k = 0; k < cells; k++) {
+            if (r.sea()[k] || !r.resolved()[k]) continue;
+            runoffTotal += lakeRes.runoffPerCell();
+        }
+        // 上限：级联深度未知，取 10× 作宽限（放大环实测达 464× ⇒ 该阈值足以区分）。
+        //   ⚠ 刻意不设"必须相等"——那会把正确的级联语义判成 FAIL。
+        double inflowRatio = runoffTotal > 0 ? sumInflow / runoffTotal : 0;
+        boolean waterOk = sumInflow <= 10.0 * runoffTotal;
+        log.append(String.format(
+                "  ④ 水量收支：Σ盆地来水=%.1f Σ出流=%.1f Σ蒸发=%.1f | 坡面径流总量=%.1f"
+                        + " ⇒ 比值=%.2f×（上限 10×，防几何放大环）%n",
+                sumInflow, sumOutflow, sumEvap, runoffTotal, inflowRatio));
+        boolean ok = outletOkRate >= MIN_OUTLET_OK && terminalOk >= MIN_TERMINAL_OK && full > 0
+                && waterOk;
         log.append(String.format("判定：%s%n", ok
-                ? "PASS（出口自洽 + 合法终止率达标）"
+                ? "PASS（出口自洽 + 合法终止率达标 + 水量收支未放大）"
                 : "★ FAIL（见上方判据，逐条给出实测值与阈值）"));
 
         java.nio.file.Path dir = java.nio.file.Path.of("build/lifecycle");
