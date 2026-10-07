@@ -385,8 +385,10 @@ public final class HydrologyPipeline {
             //   CONTINUOUS 传 capture（首次截获，每条流线只记一次）；
             //   D8 保持旧语义（flux=discharge 的 Ω 累积）—— 它是【对照基线】，
             //   改它会同时改掉所有 d8 对照数字 ⇒ 刻意不动（决策边界，见方案 §6）。
+            //   ⚠ 诊断旋钮 hydro.ledgerOff=true ⇒ 退回旧口径（反向验证判据 ④ 用，
+            //     实测 14 轮下 Σ来水达 8058× ⇒ 判据如实 FAIL/exit=1）。
             lakeResult = balance.solve(request.climate(), built.drains(), borderMask,
-                    capture != null ? capture : flow);
+                    capture != null && !Boolean.getBoolean("hydro.ledgerOff") ? capture : flow);
         }
         // 最终一轮：产出与所选模型一致的河网结果（含宽度/成河掩码）
         double[] deathMask = null;
