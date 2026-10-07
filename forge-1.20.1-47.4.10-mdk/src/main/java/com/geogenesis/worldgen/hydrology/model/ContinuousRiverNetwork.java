@@ -252,9 +252,20 @@ public final class ContinuousRiverNetwork {
                 if (ledger != null) {
                     ofStats.sourceBasin = ledger.outletBasin() != null ? ledger.outletBasin()[k] : -1;
                 }
-                int start = overflowParentFallback
-                        ? outletExit(k, lake, parent, sea, nz, level, bed, nx, nz)
-                        : outletExit(k, lake, parent, sea, nz);
+                int start;
+                if (overflowParentFallback) {
+                    // ★★ 2026-10 修复：注入起点必须【完全脱离湖影响域】★★
+                    //   实测（回流步数分桶 [0,705,24991,655,630,0,0,0]）：旧逻辑返回
+                    //   "紧贴湖岸的第一个非湖格"，而湖是 level 面的局部最低碗 ⇒
+                    //   该格 -∇level 指向湖内 ⇒ 92.6% 的注入流线走 3 步就回流自家湖。
+                    //   与 FTF 的对照：FTF 湖区方向来自解析脊线（永不依赖平坦面梯度），
+                    //   本项目用等价的解析量 parent（已证无环、必达海）多走几格绕过湖面。
+                    //   A/B: hydro.overflowParentFallback=false ⇒ 旧行为（逐位不变）。
+                    start = exitLakeInfluence(k, lake, parent, sea, nx, nz);
+                    if (start < 0) start = outletExit(k, lake, parent, sea, nz, level, bed, nx, nz);
+                } else {
+                    start = outletExit(k, lake, parent, sea, nz);
+                }
                 if (start < 0) {
                     skipExitNeg++;
                     // ★ 细分失败原因：走到海(合理) / parent缺失(拓扑断) / 预算耗尽
@@ -322,6 +333,9 @@ public final class ContinuousRiverNetwork {
                 for (double v : ledger.capture()) captured += v;
                 System.out.printf("    [ledger] 首次截获总量=%.2f | 回流自家: streams=%d 水量=%.2f%n",
                         captured, ofStats.returnedHome, ofStats.returnedHomeWeight);
+                // 回流步数分桶：1/2/3/5/10/25/100/>100 —— 判定"起点问题"还是"路由问题"
+                System.out.printf("    [ledger] 回流步数分桶(1,2,3,5,10,25,100,>100)=%s%n",
+                        java.util.Arrays.toString(ofStats.homeReturnAt));
             }
         }
 
@@ -695,6 +709,17 @@ public final class ContinuousRiverNetwork {
         /** 回流自家的流线数 / 水量（物理单位），供 printStats 审计。 */
         long returnedHome;
         double returnedHomeWeight;
+        /**
+         * 回流自家时的【步数直方图】（分桶 1/2/3/5/10/25/100/&gt;100）。
+         *
+         * <p><b>为什么要分桶</b>：决定修法的关键分歧 ——
+         * ① 多数落在 1 步 ⇒ 是【注入起点/初始方向】问题（起点就在水面梯度指回湖内处）；
+         * ② 多数落在 &gt;25 步 ⇒ 是【下游路由】问题（水出去了又绕回来）。
+         * 两者的修法完全不同，必须量清再改。</p>
+         */
+        long[] homeReturnAt = new long[8];
+        /** 当前流线的步数（trace 循环的 guard），供回流分桶。 */
+        int stepNow;
     }
 
     private static void printStats(String tag, int streams, StreamStats st) {
@@ -736,6 +761,66 @@ public final class ContinuousRiverNetwork {
      */
     private static int outletExit(int outlet, boolean[] lake, int[] parent, boolean[] sea, int nz) {
         return outletExit(outlet, lake, parent, sea, nz, null, null, -1, -1);
+    }
+
+    /**
+     * 把注入起点从"紧贴湖岸的第一个非湖格"沿 {@code parent} 推到
+     * <b>完全离开湖影响域</b>（自身与 8 邻域皆非湖）的格。
+     *
+     * <h3>实测依据（回流步数分桶，本轮新增的判据）</h3>
+     * <p>旧行为：{@code outlet} 本身通常<b>已是</b>非湖格（rim = 湖盆边界上 bed 最低的
+     * 非湖格）⇒ {@link #outletExit} 第一句 {@code if (!lake[cur]) return cur;} 立即返回它。
+     * 而那格紧贴湖岸，其水面梯度 {@code -∇level} 指向<b>湖内</b>
+     * （湖是 {@code level} 面的局部最低碗：水面被 minimax 抬平成等高的"碗底"，
+     * 碗外的岸格梯度必然指回碗内）⇒ 注入流线走 ~3 步（1.5 格）就跨回湖内。</p>
+     * <p><b>实测分桶</b>（正典窗）：{@code [0, 705, 24991, 655, 630, 0, 0, 0]}
+     * ⇒ <b>92.6% 集中在"第 3 步"</b>，无一条超过 25 步
+     * ⇒ 不是"出去了又绕回来"（下游路由问题），而是<b>起点选择问题</b>。</p>
+     *
+     * <h3>修法依据（FTF 的解析方向）</h3>
+     * <p>FreeTerraForged 的湖区下游方向来自<b>解析脊线向量</b>
+     * （{@code UpliftRiverCarver.storeFlowDirection: dsX = dx/segmentLength}），
+     * <b>从不依赖平坦湖面的梯度</b> ⇒ 平坦区不会有方向噪声。
+     * 本项目已有等价解析量：{@code parent}（filler 链，<b>已证无环且必达海</b>）
+     * ⇒ 沿它多走几格即可绕过"湖面平坦"这一段。</p>
+     *
+     * <h3>为什么不丢水 / 不产生双河道</h3>
+     * <p>湖影响域内的格本就是<b>湖床</b>（静水、非过流河道）—— 与
+     * {@link #recoverNoInk} 的既有语义一致："链穿过的是被填平的水体，水在那里不成流"。
+     * 把起点推出去只改变墨迹<b>开始</b>的位置，下泄段照常记账 ⇒ 下游水量不受影响。</p>
+     *
+     * @return 起点格；-1 = 沿链入海（无需注入）或 4096 步内未脱离湖影响域
+     */
+    private static int exitLakeInfluence(int outlet, boolean[] lake, int[] parent, boolean[] sea,
+                                        int nx, int nz) {
+        int cur = outlet;
+        for (int guard = 0; guard < 4096; guard++) {
+            if (cur < 0) return -1;
+            if (sea != null && sea[cur]) return -1;
+            if (lake != null && lake[cur]) {                 // 仍在湖内 ⇒ 沿解析链继续
+                int nxt = parent[cur];
+                if (nxt < 0 || nxt == cur) return -1;
+                cur = nxt;
+                continue;
+            }
+            if (!touchesLake(cur, lake, nx, nz)) return cur;  // 已脱离湖影响域 ⇒ 可用梯度
+            int nxt = parent[cur];
+            if (nxt < 0 || nxt == cur) return -1;
+            cur = nxt;
+        }
+        return -1;
+    }
+
+    /** 当前格自身或 8 邻域是否触及湖（= 是否仍在湖影响域内）。 */
+    private static boolean touchesLake(int k, boolean[] lake, int nx, int nz) {
+        if (lake == null) return false;
+        int i = k / nz, j = k % nz;
+        for (int[] d : DIRS8) {
+            int a = i + d[0], b = j + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            if (lake[a * nz + b]) return true;
+        }
+        return false;
     }
 
     /**
@@ -921,6 +1006,7 @@ public final class ContinuousRiverNetwork {
         //   每条流线最多处理一次 —— 这正是"第一次被盆地截获"语义的实现载体。
         int capState = 0;
         while (guard++ < maxSteps) {
+            st.stepNow = guard;
             int i = (int) x, j = (int) z;
             if (i < 1 || j < 1 || i >= nx - 1 || j >= nz - 1) { st.edge++; return; }
             int k = i * nz + j;
@@ -1094,6 +1180,11 @@ public final class ContinuousRiverNetwork {
             if (capState == 0) {
                 st.returnedHome++;
                 st.returnedHomeWeight += st.weight * st.perCrossing;
+                // 步数分桶（见 homeReturnAt javadoc）：区分"起点即回流"与"绕远回流"
+                int s = st.stepNow;
+                int bucket = s <= 1 ? 0 : s <= 2 ? 1 : s <= 3 ? 2 : s <= 5 ? 3
+                        : s <= 10 ? 4 : s <= 25 ? 5 : s <= 100 ? 6 : 7;
+                st.homeReturnAt[bucket]++;
                 return 2;
             }
             return capState;

@@ -47,7 +47,12 @@ public final class LifecycleChainProbe {
         CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
         gen.seed(seed);
         var climate = new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
-        DirectionRule.setMode("baseline");
+        // ★ 破平局模式（-Dhydro.directionRule=...，默认 baseline 逐位不变）。
+        //   ⚠ 2026-10 实测：edgepsilon **被否决** —— 回流自家 26983→27441（不降）、
+        //     到海 5776→2498（腰斩）、stagnant 1453→1533182（×1056）、耗时 121→555s。
+        //   根因：applyEpsilonSlope 是【迭代松弛 + 64 轮上限】，而平坦链可长数百格
+        //     ⇒ 只有出口附近 64 跳内被抬起，湖体大片仍平坦 ⇒ 方向仍不可靠且更不一致。
+        DirectionRule.setMode(System.getProperty("hydro.directionRule", "baseline"));
 
         var r = HydrologyPipeline.run(gen, tp,
                 new HydrologyPipeline.Request(cx, cz, radius, ViewSpec.STEP, climate, 0,
