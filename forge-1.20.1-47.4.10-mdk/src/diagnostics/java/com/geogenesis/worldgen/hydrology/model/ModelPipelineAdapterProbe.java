@@ -35,7 +35,7 @@ public final class ModelPipelineAdapterProbe {
         CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
         gen.seed(seed);
 
-        ModelHydrologyProvider provider = new ModelHydrologyProvider(gen);
+        ModelHydrologyProvider provider = new ModelHydrologyProvider(gen, seed);
 
         // ★ 自动选窗：默认窗口可能恰好无水（湖占 region ~1%、中心线细化后更稀）。
         //   从给定 chunk 起螺旋扫描，选第一个【有湖或河】的 chunk ——
@@ -145,7 +145,28 @@ public final class ModelPipelineAdapterProbe {
 
         failures += check("确定性（缓存命中逐位相同）", () -> requireSame(cols0, warm));
 
-        // ---- ③ 清缓存重建：region 求解 = 纯函数 ----
+        // ---- ⑥ ★ 跨实例缓存共享（2026-10 实机缺陷 B 的守门判据）----
+        //
+        //   实机实测：存在多个地形实例（setWorldSeed 会置 sharedTerrain=null）
+        //   ⇒ 每个实例各持【实例级】缓存 ⇒ 每个 region 被求解两次
+        //   （单次 14~18 秒 ⇒ 一半算力白烧），且两次产出不同（违反纯函数铁律）。
+        //   修法：缓存改 static + 按 seed 键控。
+        //   本判据即守门：新建一个【独立实例】，同 seed ⇒ 必须命中共享缓存。
+        //
+        //   ⚠ 顺序敏感：必须放在 clear() 之前 —— clear() 会清空整个共享缓存，
+        //     之后新实例当然无缓存可命中（首轮实测：2174 ms = 完整冷解 ⇒ 误报 FAIL）。
+        failures += check("跨实例缓存共享（同 seed 不重复求解）", () -> {
+            var provider2 = new ModelHydrologyProvider(gen, seed);
+            long t = System.nanoTime();
+            List<HydrologyBlockCarvedColumn> cols2 = provider2.columnsFor(wx, wz, cells0);
+            double ms = (System.nanoTime() - t) / 1e6;
+            requireSame(cols0, cols2);
+            // 缓存命中应远快于冷解（冷解实机 14~18 秒、离线 2.2 秒）
+            require(ms < 500, "跨实例未命中共享缓存：耗时 " + ms + " ms（应 <500）");
+            log.append(String.format("跨实例缓存命中 %.2f ms（独立实例、同 seed）%n", ms));
+        });
+
+        // ---- ③ 清缓存重建：region 求解 = 纯函数（放在跨实例判据之后，见上） ----
         provider.clear();
         List<HydrologyBlockCarvedColumn> rebuilt = provider.columnsFor(wx, wz, cells0);
         failures += check("纯函数（清缓存重建逐位相同）", () -> requireSame(cols0, rebuilt));

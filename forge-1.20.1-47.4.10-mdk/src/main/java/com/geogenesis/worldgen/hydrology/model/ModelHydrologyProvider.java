@@ -101,15 +101,53 @@ public final class ModelHydrologyProvider {
     private final CellGenerator gen;
     /** block → wu 换算（sample/sampleWu 的坐标语义是 wu，见 CellGenerator.sample javadoc）。 */
     private final double invHs;
-    /** 内容缓存（LRU）。 */
-    private final LinkedHashMap<Long, RegionData> cache = new LinkedHashMap<>(32, 0.75f, true);
-    /** 单飞（single-flight）：同一 region 只求解一次，其余调用方等待同一 future。 */
-    private final ConcurrentHashMap<Long, CompletableFuture<RegionData>> inFlight = new ConcurrentHashMap<>();
+    /**
+     * 内容缓存（LRU）—— ★ static 共享，按 seed 键控。
+     *
+     * <h3>为什么必须 static（2026-10 实机实测驱动）</h3>
+     * <p>实机日志证实存在【多个地形实例】：
+     * {@code [HYDRO] modelPipeline} 与 {@code [RIVER] terrain init} 各出现 <b>5 次</b>
+     * （4 次在主菜单 Render thread、1 次世界生成 Worker-Main），
+     * 因为 {@code GeoGenesisGenerator.setWorldSeed} 会 {@code sharedTerrain = null}
+     * ⇒ 之后每个构造点各建一个实例、各持一份实例级缓存。</p>
+     * <p>后果（实测，两个 region 的原始日志）：
+     * <pre>
+     *   region (0,0) solved in  4933 ms (reaches=16,  lake=3,  channel=49)     ← 预览实例
+     *   region (0,0) solved in 13355 ms (reaches=218, lake=7,  channel=2719)   ← 世界实例
+     *   region (1,0) solved in  3823 ms (reaches=94,  lake=0,  channel=763)
+     *   region (1,0) solved in 18490 ms (reaches=774, lake=60, channel=5553)
+     * </pre>
+     * ① 每个 region 被求解两次（单次 14~18 秒 ⇒ 一半算力白烧）；
+     * ② <b>同一 (seed, region) 两次产出不同</b> —— 违反本类 javadoc 的
+     *    "缓存只改时序不改内容" 断言（差异来自不同 CellGenerator 实例的状态）。</p>
+     * <p>修法：缓存提升为 static，用 {@code seed} 做键的一部分 ⇒
+     * 任何实例对同一 (seed, region) 命中的是同一份结果，换 seed 自动失效。</p>
+     */
+    private static final LinkedHashMap<CacheKey, RegionData> SHARED_CACHE =
+            new LinkedHashMap<>(32, 0.75f, true);
+    /** 单飞（single-flight）：同一 (seed, region) 只求解一次。 */
+    private static final ConcurrentHashMap<CacheKey, CompletableFuture<RegionData>> SHARED_INFLIGHT =
+            new ConcurrentHashMap<>();
+
+    /** 缓存键 = (世界种子, region 坐标) —— 见 {@link #SHARED_CACHE} 的 javadoc。 */
+    private record CacheKey(long seed, int rx, int rz) { }
+
     private final ExecutorService preheat;
     private final AtomicInteger preheatQueue = new AtomicInteger();
+    /** 本实例的世界种子（缓存键的一部分；由 {@link #setSeed} 更新）。 */
+    private volatile long seed;
 
-    public ModelHydrologyProvider(CellGenerator gen) {
+    /**
+     * @param seed 世界种子 —— <b>必需参数</b>（缓存键的一部分，见 {@link #SHARED_CACHE}）。
+     *
+     * <p>⚠ 刻意<b>不提供</b>无参重载：静默默认 {@code seed=0} 会让调用方
+     * "忘了传种子"时以一个合法但错误的值缓存 region ⇒ 与传了真种子的实例
+     * 各缓存一份、且两者产出不同（正是实机缺陷 B 的形态）。
+     * 编译期强制显式传参，比运行期日志警告更可靠。</p>
+     */
+    public ModelHydrologyProvider(CellGenerator gen, long seed) {
         this.gen = gen;
+        this.seed = seed;
         double hs = Math.max(0.01, gen.params().horizontalScale());
         this.invHs = 1.0 / hs;
         this.preheat = Executors.newSingleThreadExecutor(r -> {
@@ -119,12 +157,26 @@ public final class ModelHydrologyProvider {
         });
     }
 
-    /** 世界/种子切换：清空全部缓存（旧世界内容绝不复用）。 */
-    public void clear() {
-        synchronized (cache) {
-            cache.clear();
+    /**
+     * 世界/种子切换：清空全部缓存（旧世界内容绝不复用）。
+     * ★ static 缓存下，"清空"改为按 seed 隔离 —— 只丢弃本实例以外种子的条目，
+     *   避免多实例并存时互相踩踏（实例 A 切种子不该毁掉实例 B 的有效缓存）。
+     */
+    public void setSeed(long newSeed) {
+        if (this.seed == newSeed) return;
+        this.seed = newSeed;
+        synchronized (SHARED_CACHE) {
+            SHARED_CACHE.keySet().removeIf(k -> k.seed() != newSeed);
         }
-        inFlight.clear();
+        SHARED_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
+    }
+
+    /** 兼容旧语义：完全清空共享缓存（换世界时由 setSeed 按 seed 处理）。 */
+    public void clear() {
+        synchronized (SHARED_CACHE) {
+            SHARED_CACHE.clear();
+        }
+        SHARED_INFLIGHT.clear();
     }
 
     /**
@@ -208,28 +260,28 @@ public final class ModelHydrologyProvider {
     /** 取 region 数据；缓存/单飞双层。失败 future 必须移除（绝不缓存半成品）。 */
     private RegionData regionFor(int blockX, int blockZ) {
         int rx = Math.floorDiv(blockX, REGION), rz = Math.floorDiv(blockZ, REGION);
-        long key = key(rx, rz);
-        synchronized (cache) {
-            RegionData hit = cache.get(key);
+        CacheKey key = new CacheKey(seed, rx, rz);
+        synchronized (SHARED_CACHE) {
+            RegionData hit = SHARED_CACHE.get(key);
             if (hit != null) return hit;
         }
-        CompletableFuture<RegionData> f = inFlight.computeIfAbsent(key, kk ->
+        CompletableFuture<RegionData> f = SHARED_INFLIGHT.computeIfAbsent(key, kk ->
                 CompletableFuture.supplyAsync(() -> solve(rx, rz), runnable -> {
                     // 复用预热线程池（单线程 ⇒ 求解串行，避免与 tile 生成争用放大）
                     preheat.execute(runnable);
                 }));
         try {
             RegionData data = f.join();
-            inFlight.remove(key, f);
-            synchronized (cache) {
-                cache.put(key, data);
-                while (cache.size() > CACHE_CAP) {
-                    cache.remove(cache.keySet().iterator().next());
+            SHARED_INFLIGHT.remove(key, f);
+            synchronized (SHARED_CACHE) {
+                SHARED_CACHE.put(key, data);
+                while (SHARED_CACHE.size() > CACHE_CAP) {
+                    SHARED_CACHE.remove(SHARED_CACHE.keySet().iterator().next());
                 }
             }
             return data;
         } catch (CompletionException e) {
-            inFlight.remove(key, f);            // ★ 失败绝不缓存
+            SHARED_INFLIGHT.remove(key, f);     // ★ 失败绝不缓存
             LOGGER.warn("[HYDRO-MODEL] region ({},{}) solve failed: {}", rx, rz,
                     String.valueOf(e.getCause()));
             throw e;
@@ -262,16 +314,16 @@ public final class ModelHydrologyProvider {
         int[][] d = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (int[] dd : d) {
             int nx = rx + dd[0], nz = rz + dd[1];
-            long key = key(nx, nz);
-            synchronized (cache) {
-                if (cache.containsKey(key)) continue;
+            CacheKey key = new CacheKey(seed, nx, nz);
+            synchronized (SHARED_CACHE) {
+                if (SHARED_CACHE.containsKey(key)) continue;
             }
-            if (inFlight.containsKey(key)) continue;
+            if (SHARED_INFLIGHT.containsKey(key)) continue;
             if (preheatQueue.incrementAndGet() > PREHEAT_QUEUE_CAP) {
                 preheatQueue.decrementAndGet();
                 return;
             }
-            CompletableFuture<RegionData> f = inFlight.computeIfAbsent(key, kk ->
+            CompletableFuture<RegionData> f = SHARED_INFLIGHT.computeIfAbsent(key, kk ->
                     CompletableFuture.supplyAsync(() -> {
                         try {
                             return solve(nx, nz);
@@ -280,22 +332,18 @@ public final class ModelHydrologyProvider {
                         }
                     }, preheat::execute));
             f.thenAccept(data -> {
-                inFlight.remove(key, f);
-                synchronized (cache) {
-                    cache.put(key, data);
-                    while (cache.size() > CACHE_CAP) {
-                        cache.remove(cache.keySet().iterator().next());
+                SHARED_INFLIGHT.remove(key, f);
+                synchronized (SHARED_CACHE) {
+                    SHARED_CACHE.put(key, data);
+                    while (SHARED_CACHE.size() > CACHE_CAP) {
+                        SHARED_CACHE.remove(SHARED_CACHE.keySet().iterator().next());
                     }
                 }
             }).exceptionally(ex -> {
-                inFlight.remove(key, f);        // ★ 预热失败同样不缓存
+                SHARED_INFLIGHT.remove(key, f);   // ★ 预热失败同样不缓存
                 return null;
             });
         }
-    }
-
-    private static long key(int rx, int rz) {
-        return ((long) rx << 32) ^ (rz & 0xffffffffL);
     }
 
     private static int clamp(int v, int n) {

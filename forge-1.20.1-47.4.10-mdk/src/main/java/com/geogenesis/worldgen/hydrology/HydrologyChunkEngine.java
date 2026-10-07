@@ -25,7 +25,7 @@ public final class HydrologyChunkEngine {
         this.generator = generator;
         this.horizontalScale = Math.max(0.01, generator.params().horizontalScale());
         this.hydrology = new HydrologyExperimentEngine(generator, seed);
-        this.modelProvider = new ModelHydrologyProvider(generator);
+        this.modelProvider = new ModelHydrologyProvider(generator, seed);
         boolean model = false;
         try {
             model = com.geogenesis.config.GeoGenesisConfig.INSTANCE.hydrologyModelPipelineEnabled.get();
@@ -51,7 +51,12 @@ public final class HydrologyChunkEngine {
 
     public void setSeed(long seed) {
         hydrology.setSeed(seed);
-        modelProvider.clear();          // ★ 换种子 ⇒ 旧 region 内容绝不复用（纯函数铁律）
+        // ★ 换种子 ⇒ 旧 region 内容绝不复用（纯函数铁律）。
+        //   model provider 的缓存现为【static 共享 + 按 seed 键控】⇒
+        //   这里传 seed 让它按 seed 隔离，同时使多个地形实例共享同一份 region
+        //   （实机实测：5 个地形实例各持实例级缓存 ⇒ 每个 region 被求解两次、
+        //    单次 14~18 秒 ⇒ 一半算力白烧，见 ModelHydrologyProvider.SHARED_CACHE）。
+        modelProvider.setSeed(seed);
     }
 
     public HydrologyChunkResult calculate(int chunkX, int chunkZ) {
