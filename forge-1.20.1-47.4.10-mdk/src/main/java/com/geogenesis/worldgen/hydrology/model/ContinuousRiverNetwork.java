@@ -336,6 +336,11 @@ public final class ContinuousRiverNetwork {
                 // 回流步数分桶：1/2/3/5/10/25/100/>100 —— 判定"起点问题"还是"路由问题"
                 System.out.printf("    [ledger] 回流步数分桶(1,2,3,5,10,25,100,>100)=%s%n",
                         java.util.Arrays.toString(ofStats.homeReturnAt));
+                // ★ 按语义拆分"终止于湖"：进入下游他家湖（级联，正确）vs 回自家（缺陷）
+                System.out.printf("    [ledger] 终止于湖细分：进入下游他家湖=%d（级联，正确）"
+                                + " 回自家=%d（缺陷） | 到海=%d 越界=%d%n",
+                        ofStats.intoOtherLake, ofStats.returnedHome,
+                        ofStats.sea, ofStats.edge);
             }
         }
 
@@ -720,6 +725,20 @@ public final class ContinuousRiverNetwork {
         long[] homeReturnAt = new long[8];
         /** 当前流线的步数（trace 循环的 guard），供回流分桶。 */
         int stepNow;
+        /**
+         * 注入流线终止于【他家湖】的流线数。
+         *
+         * <p><b>为什么必须与 returnedHome 分开：</b>两者都表现为
+         * {@code lakeStill}（终止于湖），但语义完全相反 ——
+         * <ul>
+         *   <li>{@code returnedHome}：回到<b>自己</b>这个盆地 ⇒ 水没走成 ⇒ <b>缺陷</b>；</li>
+         *   <li>{@code intoOtherLake}：进入<b>下游另一个</b>湖 ⇒ 方案 §4.2 明确要求的
+         *       级联（"允许流入下一湖，再递归至合法终端"）⇒ <b>正确行为</b>。</li>
+         * </ul>
+         * 合并统计会把正确的级联误读成缺陷（实测注入 52695 条中 lakeStill=30105
+         * 看似"57% 失败"，实际其中仅 425 条是自家回流）。</p>
+         */
+        long intoOtherLake;
     }
 
     private static void printStats(String tag, int streams, StreamStats st) {
@@ -1190,6 +1209,9 @@ public final class ContinuousRiverNetwork {
             return capState;
         }
         st.capture[cell] += st.weight * st.perCrossing;
+        // ★ 区分"进入下游他家湖"（级联，正确）与"回自家湖"（缺陷）：
+        //   注入流线（sourceBasin ≥ 0）首次入湖即记账 ⇒ 若来源非自家 ⇒ 这是级联。
+        if (st.sourceBasin >= 0) st.intoOtherLake++;
         return 1;
     }
 
