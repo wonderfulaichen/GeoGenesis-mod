@@ -52,6 +52,29 @@ public final class CanonicalViewProbe {
                 new HydrologyPipeline.Request(cx, cz, radius, ViewSpec.STEP, climate, 0, model, streamSamples));
         int n = r.nx();
 
+        // ★★★ 中心线掩码对照（方案 §4.3 最后一条的落地）★★★
+        //
+        //   方案原文：「**实际河道掩码由这个距离场生成**，不再由 flux>=threshold
+        //   的邻格色块代替」。
+        //   此前 RiverCenterlines（细化→切段→定向→水力几何+谷轴夹逼→归一化距离场）
+        //   已实现且有探针验证（runCenterlineCrossSectionProbe：抹开 18.09%→8.81%、
+        //   湿宽比 1.07、拆分数 0），但**正典图一直没用它** ⇒ 方案这条一直悬空。
+        //
+        //   本轮按方案合同 6 处理：**正典规格与底图/色标一律不动**
+        //   （canonical.png 仍用旧掩码，保证与历史图可比），
+        //   **另出** canonical-centerline.png 作对照，并打印同参对照指标。
+        //   -Dhydro.centerlineMask=true 时可让主图直接用新掩码（最终替换前的验证入口）。
+        //
+        //   ⚠ 必须传 cellSize=STEP：宽度/岸高/深度是 block 物理量，而细化在格空间
+        //     ⇒ step=4 下若按"1格=1块"会把半宽放大 4×（抹开回归，见其 javadoc）。
+        var cl = RiverCenterlines.build(r.bed(), r.discharge(), r.channel(), r.sea(),
+                n, n, RiverCenterlines.Params.defaults(), ViewSpec.STEP);
+        final boolean useCenterline = Boolean.getBoolean("hydro.centerlineMask");
+        boolean[] chMask = useCenterline ? cl.channel : r.channel();
+        // 旧掩码格数（对照基准；与下方 channel 计数口径不同：后者按 chMask 计）
+        int channelCellsOld = 0;
+        for (boolean b : r.channel()) if (b) channelCellsOld++;
+
         Path dir = Path.of("build/hydro-reassessment/canonical-" + System.currentTimeMillis());
         Files.createDirectories(dir);
         BufferedImage img = new BufferedImage(n, n, BufferedImage.TYPE_INT_RGB);
@@ -91,7 +114,7 @@ public final class CanonicalViewProbe {
                 int color;
                 if (r.sea()[k]) { color = ViewSpec.SEA_COLOR; sea++; }
                 else if (r.lake()[k]) { color = ViewSpec.LAKE_COLOR; lake++; }
-                else if (r.channel()[k]) {
+                else if (chMask[k]) {
                     channel++;
                     color = r.width()[k] > 6 ? ViewSpec.RIVER_WIDE_COLOR : ViewSpec.RIVER_COLOR;
                 }
@@ -126,15 +149,15 @@ public final class CanonicalViewProbe {
         for (int i = 0; i < n - 1; i++) {
             for (int j = 0; j < n - 1; j++) {
                 int k = i * n + j;
-                if (!r.channel()[k]) continue;
+                if (!chMask[k]) continue;
                 // 右下对角：补右格或下格（任选其一即可连通）
-                if (r.channel()[(i + 1) * n + j + 1]
-                        && !r.channel()[(i + 1) * n + j] && !r.channel()[i * n + j + 1]) {
+                if (chMask[(i + 1) * n + j + 1]
+                        && !chMask[(i + 1) * n + j] && !chMask[i * n + j + 1]) {
                     img.setRGB(i, j + 1, ViewSpec.RIVER_COLOR);
                 }
                 // 左下对角
-                if (j > 0 && r.channel()[(i + 1) * n + j - 1]
-                        && !r.channel()[(i + 1) * n + j] && !r.channel()[i * n + j - 1]) {
+                if (j > 0 && chMask[(i + 1) * n + j - 1]
+                        && !chMask[(i + 1) * n + j] && !chMask[i * n + j - 1]) {
                     img.setRGB(i + 1, j, ViewSpec.RIVER_COLOR);
                 }
             }
@@ -169,9 +192,9 @@ public final class CanonicalViewProbe {
         for (int i = 1; i < n - 1; i++) {
             for (int j = 1; j < n - 1; j++) {
                 int k = i * n + j;
-                if (r.sea()[k] || r.lake()[k] || r.channel()[k]) continue;
-                boolean lr = r.channel()[k - 1] && r.channel()[k + 1];
-                boolean ud = r.channel()[k - n] && r.channel()[k + n];
+                if (r.sea()[k] || r.lake()[k] || chMask[k]) continue;
+                boolean lr = chMask[k - 1] && chMask[k + 1];
+                boolean ud = chMask[k - n] && chMask[k + n];
                 if (!lr && !ud) continue;
                 gapCount++;
                 if (gapCount <= 20) {
@@ -202,7 +225,7 @@ public final class CanonicalViewProbe {
         java.util.List<Integer> sizes = new java.util.ArrayList<>();
         int[] stack = new int[n * n];
         for (int k0 = 0; k0 < n * n; k0++) {
-            if (comp[k0] >= 0 || !r.channel()[k0]) continue;
+            if (comp[k0] >= 0 || !chMask[k0]) continue;
             int sp = 0;
             stack[sp++] = k0;
             comp[k0] = comps;
@@ -224,15 +247,15 @@ public final class CanonicalViewProbe {
                 //
                 //   ⚠ 保留 4 连通计数作对照（见下方 dual 输出），
                 //     以便区分"度量假象"与"真实断裂"。
-                if (ci > 0 && comp[c - n] < 0 && r.channel()[c - n]) { comp[c - n] = comps; stack[sp++] = c - n; }
-                if (ci < n - 1 && comp[c + n] < 0 && r.channel()[c + n]) { comp[c + n] = comps; stack[sp++] = c + n; }
-                if (cj > 0 && comp[c - 1] < 0 && r.channel()[c - 1]) { comp[c - 1] = comps; stack[sp++] = c - 1; }
-                if (cj < n - 1 && comp[c + 1] < 0 && r.channel()[c + 1]) { comp[c + 1] = comps; stack[sp++] = c + 1; }
+                if (ci > 0 && comp[c - n] < 0 && chMask[c - n]) { comp[c - n] = comps; stack[sp++] = c - n; }
+                if (ci < n - 1 && comp[c + n] < 0 && chMask[c + n]) { comp[c + n] = comps; stack[sp++] = c + n; }
+                if (cj > 0 && comp[c - 1] < 0 && chMask[c - 1]) { comp[c - 1] = comps; stack[sp++] = c - 1; }
+                if (cj < n - 1 && comp[c + 1] < 0 && chMask[c + 1]) { comp[c + 1] = comps; stack[sp++] = c + 1; }
                 // 对角 4 邻（与上面合起来即 8 连通）
-                if (ci > 0 && cj > 0 && comp[c - n - 1] < 0 && r.channel()[c - n - 1]) { comp[c - n - 1] = comps; stack[sp++] = c - n - 1; }
-                if (ci > 0 && cj < n - 1 && comp[c - n + 1] < 0 && r.channel()[c - n + 1]) { comp[c - n + 1] = comps; stack[sp++] = c - n + 1; }
-                if (ci < n - 1 && cj > 0 && comp[c + n - 1] < 0 && r.channel()[c + n - 1]) { comp[c + n - 1] = comps; stack[sp++] = c + n - 1; }
-                if (ci < n - 1 && cj < n - 1 && comp[c + n + 1] < 0 && r.channel()[c + n + 1]) { comp[c + n + 1] = comps; stack[sp++] = c + n + 1; }
+                if (ci > 0 && cj > 0 && comp[c - n - 1] < 0 && chMask[c - n - 1]) { comp[c - n - 1] = comps; stack[sp++] = c - n - 1; }
+                if (ci > 0 && cj < n - 1 && comp[c - n + 1] < 0 && chMask[c - n + 1]) { comp[c - n + 1] = comps; stack[sp++] = c - n + 1; }
+                if (ci < n - 1 && cj > 0 && comp[c + n - 1] < 0 && chMask[c + n - 1]) { comp[c + n - 1] = comps; stack[sp++] = c + n - 1; }
+                if (ci < n - 1 && cj < n - 1 && comp[c + n + 1] < 0 && chMask[c + n + 1]) { comp[c + n + 1] = comps; stack[sp++] = c + n + 1; }
             }
             sizes.add(size);
             comps++;
@@ -357,7 +380,7 @@ public final class CanonicalViewProbe {
                 if (death[k] <= 0) continue;
                 nDeath++;
                 dsum += death[k];
-                if (r.channel()[k]) onChannel++;
+                if (chMask[k]) onChannel++;
                 else {
                     int ci = k / n, cj = k % n;
                     boolean near = false;
@@ -365,7 +388,7 @@ public final class CanonicalViewProbe {
                         for (int dj = -2; dj <= 2 && !near; dj++) {
                             int a = ci + di, b = cj + dj;
                             if (a < 0 || b < 0 || a >= n || b >= n) continue;
-                            if (r.channel()[a * n + b]) near = true;
+                            if (chMask[a * n + b]) near = true;
                         }
                     }
                     if (near) nearChannel++;
@@ -378,6 +401,52 @@ public final class CanonicalViewProbe {
                     nearChannel, 100.0 * nearChannel / Math.max(1, nDeath),
                     100.0 * (onChannel + nearChannel) / Math.max(1, nDeath));
         }
+
+        // ★★★ 中心线掩码同参对照（方案 §4.3 + 合同 4）★★★
+        //
+        //   合同 4 原文：「对照法向实际湿宽与设计宽、单走廊重复河段、异常面积偏离；
+        //   允许宽河和汇合区正常大面积，不再用 5×5 密度直接判失败」。
+        //   ⇒ 旧 5×5 密度只作【诊断数字】，不作判据；判据用【拆分数】与【湿宽比】。
+        //   这里出 canonical-centerline.png（同底图/色标/尺寸）供人眼对照。
+        int clCells = cl.channelCells();
+        int clReaches = cl.reachCount();
+        StringBuilder clLog = new StringBuilder();
+        clLog.append(String.format(
+                "[中心线对照] 旧掩码河道格=%d → 距离场掩码河段=%d 段 / 河道格=%d (%.1f%%)%n",
+                channelCellsOld, clReaches, clCells,
+                100.0 * clCells / Math.max(1, channelCellsOld)));
+        clLog.append(String.format("[中心线对照] 被丢弃的过短碎段=%d（<2 节点不绘，不静默）%n",
+                cl.droppedFragments));
+        BufferedImage clImg = new BufferedImage(n, n, BufferedImage.TYPE_INT_RGB);
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                int k = i * n + j;
+                int color;
+                if (r.sea()[k]) color = ViewSpec.SEA_COLOR;
+                else if (r.lake()[k]) color = ViewSpec.LAKE_COLOR;
+                else if (cl.channel[k]) {
+                    color = cl.halfWidth[k] * 2 > 6
+                            ? ViewSpec.RIVER_WIDE_COLOR : ViewSpec.RIVER_COLOR;
+                } else color = ViewSpec.contour(r.bed(), n, i, j, hMin, bandBlocks);
+                clImg.setRGB(i, j, color);
+            }
+        }
+        for (Integer o : r.lakeResult().overflowAt().keySet()) {
+            if (o == null || o < 0 || o >= n * n) continue;
+            int ci = o / n, cj = o % n;
+            for (int di = -1; di <= 1; di++) {
+                for (int dj = -1; dj <= 1; dj++) {
+                    if (Math.abs(di) + Math.abs(dj) > 1) continue;
+                    int a = ci + di, b = cj + dj;
+                    if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                    clImg.setRGB(a, b, SPILL_MARK_COLOR);
+                }
+            }
+        }
+        ImageIO.write(clImg, "png", dir.resolve("canonical-centerline.png").toFile());
+        System.out.print(clLog);
+        System.out.println("⚠ 主图 channel" + (useCenterline ? "=距离场掩码(-Dhydro.centerlineMask)"
+                : "=旧门槛掩码（正典不变）") + "；对照图总用距离场掩码");
 
         StringBuilder log = new StringBuilder();
         log.append("canonical spec: 1 pixel = 1 block, radius 700 => 1401x1401 (ViewSpec)\n");
