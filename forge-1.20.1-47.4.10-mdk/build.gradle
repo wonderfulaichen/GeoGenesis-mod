@@ -1711,6 +1711,11 @@ task runWorldgenGate {
     //     （ΣIn→109 万、residual 恒 0.800），而当时 ①②③ 全 PASS、无任何判据能抓。
     //   反向验证：旧口径 14 轮 ⇒ Σ来水 8058× ⇒ 如实 FAIL / exit=1。
     dependsOn 'runLifecycleChainProbe'
+    // 中心线距离场掩码（2026-10）：8 判据带 System.exit ⇒ 真门禁。
+    //   ★ 为什么要纳入：本类 RiverCenterlines 自身一字未改，但其【输入】(flux/channel)
+    //     会被上游改动影响 ⇒ 历史 javadoc 数字(8.81%/1.08)在 filler 父指针 + 出口修复后
+    //     已不可复现（实测 21.95%/1.51）。若无门禁，"输入变了 ⇒ 形态退化"将无人发现。
+    dependsOn 'runCenterlineCrossSectionProbe'
 }
 
 // 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什么 + 多模组零误删 + 开关真生效:
