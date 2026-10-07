@@ -70,6 +70,35 @@ public final class RiverNetwork {
     public static Result build(int nx, int nz, double[] level, int[] parent,
                                double runoffPerCell, Map<Integer, Double> overflowAt,
                                boolean[] resolved, Params params, int borderBufferCells) {
+        return build(nx, nz, level, parent, runoffPerCell, overflowAt, resolved, params,
+                borderBufferCells, null);
+    }
+
+    /**
+     * 带【盆地身份】的构建 —— 湖即汇（lake-as-sink，方案 §4.2，2026-10 骨架化）。
+     *
+     * <h3>语义</h3>
+     * <p>传入 {@code basinId}（非 null）后，Kahn 累积中<b>组内 → 组外</b>的边不传递水量：
+     * 湖盆截留进入的水，只以 {@code overflowAt} 注入的 {@code outflow = inflow − evap}
+     * 在【指定出口】下泄。每盆地水量守恒：
+     * <pre>inflow（本地径流 + 跨边界净流入）= outflow（出口注入）+ evap（solve 扣除）</pre>
+     * 组间直连边（G′→G）同样被拦截 ⇒ 水不越权穿盆，G′ 的水统一从 G′ 出口释放。</p>
+     *
+     * <h3>为什么旧口径会发散（实测）</h3>
+     * <p>不拦截时，穿过流已把上游水带到下游，{@code overflowAt} 又注入一遍
+     * ⇒ 同一份水双份计入下游入流；配合 solve 的 {@code Σ discharge over 组}
+     * （每格累积量重复计），6 轮耦合 ΣIn 发散到 1.3e14（residual 恒 0.996）。</p>
+     *
+     * <p>{@code basinId == null} ⇒ 不拦截（旧行为，逐位一致 —— 直接调用本类的
+     * 探针/对照全部走此路径，不受影响）。</p>
+     *
+     * <p><b>v1 已知边界</b>：出口回退路径（rimKey&lt;0 窗口截断时 outlet 可能落在组内）
+     * 的注入会被本拦截挡住 ⇒ 该稀有情形下下游少收这份水（窗口截断场景，可接受）。</p>
+     */
+    public static Result build(int nx, int nz, double[] level, int[] parent,
+                               double runoffPerCell, Map<Integer, Double> overflowAt,
+                               boolean[] resolved, Params params, int borderBufferCells,
+                               int[] basinId) {
         int cells = nx * nz;
         double[] discharge = new double[cells];
         // 源项：每格坡面径流 + 该格的湖泊溢流。
@@ -95,7 +124,11 @@ public final class RiverNetwork {
             processed++;
             int p = parent[k];
             if (p >= 0 && p < cells && p != k) {
-                discharge[p] += discharge[k];
+                // ★ 湖即汇：组内→组外的边不传递（水由出口注入的 outflow 代表）。
+                //   注意只拦截【累积】，不拦 childCount 记账（否则拓扑序判环会误报）。
+                boolean lakeSink = basinId != null && basinId[k] >= 0
+                        && (p >= basinId.length || basinId[p] != basinId[k]);
+                if (!lakeSink) discharge[p] += discharge[k];
                 if (--childCount[p] == 0) queue.addLast(p);
             }
         }
