@@ -294,7 +294,7 @@ public final class ModelHydrologyProvider {
         int centerZ = rz * REGION + REGION / 2;
         long t0 = System.nanoTime();
         var req = new HydrologyPipeline.Request(centerX, centerZ, RADIUS, STEP, CLIMATE, 0,
-                HydrologyPipeline.RiverModel.CONTINUOUS, SAMPLES);
+                riverModel(), SAMPLES);
         HydrologyPipeline.Result p = HydrologyPipeline.run(gen, gen.params(), req);
         // 中心线（距离场几何源；cellSize=STEP 换算 block 单位）
         RiverCenterlines.Result cl = RiverCenterlines.build(
@@ -302,10 +302,23 @@ public final class ModelHydrologyProvider {
                 RiverCenterlines.Params.defaults(), STEP);
         RegionData rd = new RegionData(p, cl, centerX - RADIUS, centerZ - RADIUS);
         double ms = (System.nanoTime() - t0) / 1e6;
-        LOGGER.info("[HYDRO-MODEL] region ({},{}) solved in {} ms (grid={}, reaches={}, lake={}, channel={})",
-                rx, rz, String.format("%.0f", ms), p.nx() + "x" + p.nz(),
+        LOGGER.info("[HYDRO-MODEL] region ({},{}) solved in {} ms (model={}, grid={}, reaches={}, lake={}, channel={})",
+                rx, rz, String.format("%.0f", ms), riverModel(), p.nx() + "x" + p.nz(),
                 cl.reachCount(), countTrue(p.lake()), countTrue(p.channel()));
         return rd;
+    }
+
+    /**
+     * 证据场模型：默认 {@link HydrologyPipeline.RiverModel#D8}（骨架化决策 2026-10-07，
+     * 用户选定）。D8 = priority-flood/D8 拓扑累积，<b>零随机数、O(n log n)</b>，
+     * 实测同参比 CONTINUOUS 快 ~3×（正典 r=700: 53s vs 150s）且水量账本可收敛。
+     * <p>{@code -Dgeogenesis.modelRiverModel=continuous} ⇒ 蒙特卡洛流线证据
+     * （50k 随机起点，湖↔河耦合首轮实测 14~18 秒/region）。</p>
+     */
+    private static HydrologyPipeline.RiverModel riverModel() {
+        String v = System.getProperty("geogenesis.modelRiverModel", "d8");
+        return v.toLowerCase().startsWith("c")
+                ? HydrologyPipeline.RiverModel.CONTINUOUS : HydrologyPipeline.RiverModel.D8;
     }
 
     /** 4 邻区异步预热（队列超限则跳过 —— 只是缓存优化，绝不能反压世界生成）。 */

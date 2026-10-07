@@ -161,20 +161,23 @@ public final class HydrologyPipeline {
     /**
      * 按所选模型计算汇流量场（耦合迭代用）。
      *
-     * @param captureOut CONTINUOUS 时填入【首次截获账本】（方案 §4.2 的入流口径）；
-     *                   null = 不记账。D8 基线不记账（保持旧语义，见类 javadoc 的决策边界）。
-     *                   ⚠ 账本只写独立数组，<b>不改变 flux/channel/width 的任何一位</b>。
+     * @param captureOut 【首次截获/边界入流账本】（方案 §4.2 的入流口径）；
+     *                   null = 不记账。⚠ 账本只写独立数组，
+     *                   <b>不改变 flux/channel/width 的任何一位</b>。
+     *                   CONTINUOUS = 流线首触记账；D8 = 边界净入流
+     *                   （本地径流 + 组外→组内的跨边界水量，与湖即汇拦截配套）。
      */
     private static double[] buildDischarge(Request request, int n, int step,
                                            WindowOutlets.Result built,
                                            EquilibriumWater.Surface surface,
                                            LakeWaterBalance.Result lakeResult,
                                            double[] captureOut) {
+        int cells = n * n;
         if (request.riverModel() == RiverModel.CONTINUOUS) {
             ContinuousRiverNetwork.Ledger ledger = null;
             if (captureOut != null) {
                 java.util.Arrays.fill(captureOut, 0);
-                int[] outletBasin = new int[n * n];
+                int[] outletBasin = new int[cells];
                 java.util.Arrays.fill(outletBasin, -1);
                 int[] bo = lakeResult.basinOutlet();
                 if (bo != null) {
@@ -196,9 +199,51 @@ public final class HydrologyPipeline {
                     null, ledger);
             return c.flux();
         }
-        return RiverNetwork.build(n, n, surface.level(), surface.parent(),
+        // ── D8 骨架（2026-10 切换，方案 §4.2 湖即汇）────────────────────────
+        //   ① 拦截组内→组外的累积：湖盆截留入流水，只经 overflowAt 出口下泄；
+        //   ② 边界入流账本 = 本地径流 + 组外(basinId<0)→组内的跨边界水量。
+        //      ⚠ 只认 basinId<0 的上游：组→组 的边已被 ① 拦截（水不越权穿盆），
+        //        若把 G′ 的 discharge 也算进 G 的入流，就是"记了不流的水"。
+        int[] basinId = lakeResult.basinId();
+        var res = RiverNetwork.build(n, n, surface.level(), surface.parent(),
                 lakeResult.runoffPerCell(), lakeResult.overflowAt(), surface.resolved(),
-                RiverNetwork.Params.defaults(), request.borderBufferCells()).discharge();
+                RiverNetwork.Params.defaults(), request.borderBufferCells(), basinId);
+        if (captureOut != null && basinId != null) {
+            java.util.Arrays.fill(captureOut, 0);
+            int[] parent = surface.parent();
+            double localRunoff = lakeResult.runoffPerCell();
+            for (int k = 0; k < cells; k++) {
+                if (basinId[k] >= 0) captureOut[k] = localRunoff;      // 本地径流（留在盆内）
+            }
+            // ★★ 自环回灌扣除（2026-10-08 实测根因）：
+            //   出口格 o 在组外而 parent[o] 在组内（自环 selfLoop）⇒ 注入 o 的本家
+            //   outflow 下一轮经 o→parent 成为本家 boundary inflow ⇒ 同一份水记两次
+            //   ⇒ I_{n+1} = I_n + c 恒定步长线性增长（实测 ΣIn +192.6/轮 90 轮不止）。
+            //   实测相关性完美：增长的 2 个盆地 selfLoop=true，收敛的 false。
+            //   修法：跨边界水量中扣掉【本家注入】（仅本家出口格的注入分量 ——
+            //   它是回灌的同一份水；他家注入流经此处属合法级联，照常计一次）。
+            int[] bo = lakeResult.basinOutlet();
+            int[] outletBasin = new int[cells];
+            java.util.Arrays.fill(outletBasin, -1);
+            if (bo != null) {
+                for (int b = 0; b < bo.length; b++) {
+                    if (bo[b] >= 0 && bo[b] < cells) outletBasin[bo[b]] = b;
+                }
+            }
+            var overflowAt = lakeResult.overflowAt();
+            for (int c = 0; c < cells; c++) {
+                if (basinId[c] >= 0) continue;                        // 组内源：不作边界入流
+                int p = parent[c];
+                if (p < 0 || p >= cells || basinId[p] < 0) continue;
+                double v = res.discharge()[c];                         // 组外→组内：跨边界水量
+                if (outletBasin[c] == basinId[p]) {                    // 本家出口回灌
+                    Double own = overflowAt.get(c);
+                    if (own != null) v -= own;
+                }
+                if (v > 0) captureOut[p] += v;
+            }
+        }
+        return res.discharge();
     }
 
     private static int countTrue(boolean[] a) {        int c = 0;
@@ -282,12 +327,16 @@ public final class HydrologyPipeline {
         //   让调用方（与门禁）能区分"收敛"与"预算用尽"。
         boolean converged = false;
         double residual = Double.NaN;
-        // 首次截获账本（CONTINUOUS）：solve 的来水口径 = Σ capture over group（方案 §4.2），
-        // 不再是 Σ flux over group（每格穿越重复计水 ⇒ 几何发散，见 Ledger javadoc）。
-        double[] capture = request.riverModel() == RiverModel.CONTINUOUS
-                ? new double[n * n] : null;
+        // 首次截获/边界入流账本：solve 的来水口径 = Σ capture over group（方案 §4.2），
+        // 不再是 Σ flux/discharge over group（每格累积重复计水 ⇒ 几何发散，见各 Ledger javadoc）。
+        //   CONTINUOUS = 流线首触；D8 = 边界净入流（与湖即汇拦截配套）。
+        //   ⚠ 诊断旋钮 hydro.ledgerOff=true ⇒ 退回旧口径（反向验证判据用：
+        //     CONTINUOUS 实测 14 轮 Σ来水 8058× ⇒ FAIL；D8 实测 6 轮 1.3e14 ⇒ FAIL）。
+        double[] capture = new double[n * n];
+        boolean ledgerOn = !Boolean.getBoolean("hydro.ledgerOff");
         for (int it = 0; it < couplingMaxRounds(); it++) {
-            double[] next = buildDischarge(request, n, step, built, surface, lakeResult, capture);
+            double[] next = buildDischarge(request, n, step, built, surface, lakeResult,
+                    ledgerOn ? capture : null);
             boolean same = flow != null && nearlyEqual(flow, next);
             residual = flow == null ? Double.NaN : relativeResidual(flow, next);
             // ★ 逐轮取证（hydro.couplingDiagnostics）：worst-case 相对残差被【近零格】主导 ——
@@ -375,20 +424,40 @@ public final class HydrologyPipeline {
                                         (int) top[0][0] / n, top[0][1],
                                         (int) top[1][0] / n, top[1][1],
                                         (int) top[2][0] / n, top[2][1]));
+                        // ★ 自环假设判定（2026-10-08 实测驱动）：ΣIn 恒定 +192.6/轮线性增长
+                        //   ⇒ 形如 I_{n+1} = I_n + c ⇒ 每轮有【固定新水】进入某组。
+                        //   最强嫌疑：出口 rim 的 parent 指回自家组内 ⇒ 注入的 outflow
+                        //   下一轮又成为本家 boundary inflow（自我循环）。
+                        //   判据：parent[outlet] 仍属本组 ⇒ 自环；再打 parent 指向。
+                        if (bid >= 0 && lakeResult.basinOutlet() != null
+                                && bid < lakeResult.basinOutlet().length) {
+                            int oc = lakeResult.basinOutlet()[bid];
+                            int[] par = surface.parent();
+                            if (oc >= 0 && oc < par.length) {
+                                int po = par[oc];
+                                int pBasin = po >= 0 && lakeResult.basinId() != null
+                                        && po < lakeResult.basinId().length
+                                        ? lakeResult.basinId()[po] : -1;
+                                System.out.printf(
+                                        "      [outlet?] cell=(%d,%d) parent=(%d,%d) parentBasin=%d"
+                                                + " selfLoop=%b%n",
+                                        oc / n, oc % n,
+                                        po >= 0 ? po / n : -1, po >= 0 ? po % n : -1,
+                                        pBasin, pBasin == bid);
+                            }
+                        }
                     }
                 }
             }
             flow = next;
             rounds = it + 1;
             if (same) { converged = true; break; }
-            // ★ 来水口径切换（本轮核心修复）：solve 的 inflow = Σ 来水 over 组。
-            //   CONTINUOUS 传 capture（首次截获，每条流线只记一次）；
-            //   D8 保持旧语义（flux=discharge 的 Ω 累积）—— 它是【对照基线】，
-            //   改它会同时改掉所有 d8 对照数字 ⇒ 刻意不动（决策边界，见方案 §6）。
-            //   ⚠ 诊断旋钮 hydro.ledgerOff=true ⇒ 退回旧口径（反向验证判据 ④ 用，
-            //     实测 14 轮下 Σ来水达 8058× ⇒ 判据如实 FAIL/exit=1）。
+            // ★ 来水口径切换（核心修复）：solve 的 inflow = Σ capture over 组。
+            //   CONTINUOUS = 首次截获；D8 = 边界净入流（与湖即汇拦截配套）。
+            //   旧口径 Σ flux/discharge over 组 = 每格累积重复计水 ⇒ 几何发散
+            //   （实测反向验证：CONTINUOUS 14 轮 8058×、D8 6 轮 1.3e14 ⇒ 判据 FAIL）。
             lakeResult = balance.solve(request.climate(), built.drains(), borderMask,
-                    capture != null && !Boolean.getBoolean("hydro.ledgerOff") ? capture : flow);
+                    ledgerOn ? capture : flow);
         }
         // 最终一轮：产出与所选模型一致的河网结果（含宽度/成河掩码）
         double[] deathMask = null;
@@ -402,9 +471,11 @@ public final class HydrologyPipeline {
             river = new RiverNetwork.Result(c.flux(), c.channel(), c.width(),
                     c.channelCells(), c.maxFlux(), 0, 0);
         } else {
+            // ★ 与耦合迭代同一语义（湖即汇拦截 + 出口注入），否则输出口径与账本口径分叉。
             river = RiverNetwork.build(n, n, surface.level(), surface.parent(),
                     lakeResult.runoffPerCell(), lakeResult.overflowAt(), surface.resolved(),
-                    RiverNetwork.Params.defaults(), request.borderBufferCells());
+                    RiverNetwork.Params.defaults(), request.borderBufferCells(),
+                    lakeResult.basinId());
         }
         // ★ 耦合诊断（系统属性开启；默认不打印）：每轮湖格数与流量规模。
         //   加它的原因：耦合后 lake 从数千骤降到几百，**原因未知** ⇒ 必须打印取证，不得靠猜。
