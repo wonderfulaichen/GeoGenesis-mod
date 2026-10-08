@@ -83,7 +83,7 @@ com.geogenesis
     │   ├── Cell.java                 # 单格数据（c/e/eLand/terrainType/provinceWeights/climate/river*）[ACTIVE]
     │   ├── CellGenerator.java        # 统一连续场采样 + 实现 HeightProvider + 连续分类 [ACTIVE]
     │   ├── ContinentField.java       # 大陆场 c∈[0,1]：FBM Simplex + Warp [ACTIVE]
-    │   ├── ~~LandShape.java~~        # ⚠ 2026-09-18 核查：**该文件不存在**（实际为 `TypeLandShape.java`；`AGENTS.md` 已标为已删，本表未同步）⇒ 原标 [ACTIVE] 是错的
+    │   ├── ~~LandShape.java~~        # ⚠ 2026-09-18 核查：**该文件不存在**（实际为 `TypeLandShape.java`）⇒ 原标 [ACTIVE] 是错的
     │   ├── SeaBedDetail.java         # 零均值海床细节（替代旧 OceanField 平台）[ACTIVE]
     │   ├── HeightCurve.java          # 单条 cubic Hermite Spline：eFromC / heightFromE（非对称）/ eFromHeightF [ACTIVE]
     │   ├── TerrainClass.java         # 12 类地形枚举（OCEAN/DEEP_OCEAN/LAKE/RIVER/BEACH/PLAIN/HILLS/PLATEAU/MOUNTAINS/PEAK/BASIN/SNOW）[ACTIVE]

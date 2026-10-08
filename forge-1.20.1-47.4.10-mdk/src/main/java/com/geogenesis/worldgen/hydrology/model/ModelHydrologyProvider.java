@@ -72,19 +72,91 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class ModelHydrologyProvider {
 
     /** region 边长（block，世界对齐）。必须整除于 step，且 halo 后的窗口半径整除于 step。 */
-    private static final int REGION = 512;
-    /** 窗口保护带（block）—— 与 RegionContractProbe 的 interior 口径一致。 */
-    private static final int HALO = 96;
+    /**
+     * ★ 2026-10-08【受控实验旋钮】：region 边长 / halo / 步长改为可配置，用于分离
+     * 「窗口截断上游」与「step=4 分辨率」这两个导致"游戏 ≠ 渲染图"的候选根因。
+     * 默认值 = 生产原值（512 / 96 / 4）⇒ 零行为变更。
+     * <p>用法（诊断）：{@code -Dgeogenesis.modelRegion=2048 -Dgeogenesis.modelHalo=0}</p>
+     * <p>⚠ 若某 region 放大后与"正典单窗口 r=700"的湖格数吻合 ⇒ 根因是【窗口截断】；
+     * 若仍不吻合但把 STEP 降到 1 后吻合 ⇒ 根因是【分辨率】。二者对策完全不同。</p>
+     */
+    private static final int REGION = Integer.getInteger("geogenesis.modelRegion", 512);
+    /**
+     * 窗口保护带（block）—— ★ 2026-10-09 仍是**待定项**。
+     *
+     * <h3>为什么这个值重要</h3>
+     * <p>窗口外的影响若没被充分吸收，会出现两类缺陷：
+     * ① 内陆 region 找不到海 ⇒ {@code EquilibriumWater} 的 {@code resolved} 全 false
+     * ⇒ 湖整块消失（实测 7 个 region 里 4 个如此）；
+     * ② 湖/河在 region 缝上断半截。</p>
+     *
+     * <h3>用户提示的参照：侵蚀 tile 的比例</h3>
+     * <p>用户："我记得我地形侵蚀也是按大陆来分的。" 核实 `CellGenerator:912`：
+     * <pre>
+     *   ERODE_TILE_CENTER = 48 wu    // 有效输出区（中心）
+     *   ERODE_TILE_BORDER = 40 wu    // 边界上下文（两侧）
+     *   ERODE_TILE_SIZE   = 128 wu   // 总窗口
+     * </pre>
+     * ⇒ border/center = **83%**（相邻 tile 共享约 60% 上下文）。
+     * 而水文原为 `HALO=96 / REGION=512` = **19%**，远小于侵蚀。</p>
+     *
+     * <h3>⚠ 实测结论：HALO 不是"越大越好"（本轮数据）</h3>
+     * <table border="1">
+     *   <tr><th>配置</th><th>湖</th><th>说明</th></tr>
+     *   <tr><td>HALO=96</td><td>0.53%</td><td>内陆 region 全灭（resolved=0）</td></tr>
+     *   <tr><td>HALO=96 + inlandResolved</td><td>3.72%（r=300 小窗）</td><td>靠放宽判据补回</td></tr>
+     *   <tr><td><b>HALO=512</b></td><td><b>4.98%（r=300 小窗）</b></td><td>窗口自然含海，<b>开关已无关</b></td></tr>
+     * </table>
+     * <p>⇒ <b>HALO 够大时 `inlandResolved` 完全无效</b>（两种配置结果逐位相同）
+     * —— 这证明"窗口够大"才是正解，放宽判据只是权宜。
+     * 但 HALO=512 的湖量（4.98%）高于 HALO=96 的 3.72%，因为**窗口越大看到的流域越多**。</p>
+     *
+     * <h3>⇒ 当前取值与理由</h3>
+     * <p><b>默认仍为 96（= 生产历史值，零行为变更）</b>，因为：
+     * ① HALO=512 未经完整验收（正典规格出图 >50 分钟未跑完）；
+     * ② 单次求解面积 ×2.6，世界加载代价未评估；
+     * ③ 湖量的"正确值"本身依赖窗口，无绝对基准。</p>
+     * <p>要实验：{@code -Dgeogenesis.modelHalo=512}。</p>
+     */
+    private static final int HALO = Integer.getInteger("geogenesis.modelHalo", 96);
     /** 网格步长（block）—— 生产形态（方案 P3 实测口径）。 */
-    private static final int STEP = 4;
+    private static final int STEP = Integer.getInteger("geogenesis.modelStep", 4);
     /** 流线采样数（生产形态实测 5.6s 的档位）。 */
     private static final int SAMPLES = 50_000;
     /** 窗口半径 = region 半 + halo。 */
     private static final int RADIUS = REGION / 2 + HALO;      // 352，/4 = 88 ✓
-    /** 内容 LRU 容量：单 region ≈ 3 MB ⇒ 12 ≈ 36 MB（有界，防长途探索内存失控）。 */
-    private static final int CACHE_CAP = 12;
+    /**
+     * 内容 LRU 容量 —— ★ 2026-10-09 改为【按 region 面积自适应】。
+     *
+     * <p>原为固定 12（注释写"单 region ≈ 3 MB ⇒ 12 ≈ 36 MB"）—— 那是在
+     * REGION=512/STEP=4（177² 格）下成立的估算。一旦放大 region / 缩小 step，
+     * 单 region 内存按 <b>格数 × 每格字节数</b> 增长：
+     * <pre>
+     *   REGION=512  STEP=4 ⇒ 177²  = 31k 格  ⇒ ~3 MB
+     *   REGION=1408 STEP=1 ⇒ 1409² = 2.0M 格 ⇒ ~190 MB
+     *   REGION=1408 STEP=1 +HALO=96 ⇒ 1601² = 2.6M 格 ⇒ ~250 MB
+     * </pre>
+     * 固定 12 会变成 <b>3 GB</b> ⇒ OOM。故改为"总预算 512 MB 内能放几个就放几个"，
+     * 下限 2（保证邻区预热/命中仍有意义）。</p>
+     */
+    private static final int CACHE_CAP = computeCacheCap();
+
+    private static int computeCacheCap() {
+        int n = 2 * RADIUS / STEP + 1;
+        long bytesPerRegion = (long) n * n * 96L;      // 粗估：~12 个 double/bool 数组
+        int byBudget = (int) Math.max(2, (512L << 20) / Math.max(1L, bytesPerRegion));
+        return Math.min(byBudget, Integer.getInteger("geogenesis.modelCacheCap", 12));
+    }
     /** 后台预热队列上限（超过则跳过本轮预热，防瞬移/高速移动时无限堆积）。 */
     private static final int PREHEAT_QUEUE_CAP = 8;
+
+    /**
+     * 跨区水量传递：窗外 margin 带宽（块，`-Dgeogenesis.modelMargin`）。
+     * ★ 默认 <b>0 = 关闭</b> —— 实测注入方式有伪影（见 computeMarginInflow javadoc）。
+     */
+    private static final int MARGIN_BLOCKS = Integer.getInteger("geogenesis.modelMargin", 0);
+    /** margin 带采样步长（块）。 */
+    private static final int MARGIN_STEP = 8;
 
     /** 与全部探针/契约验证一致的固定气候（空间化气候 = 后续工作，见类 javadoc）。 */
     private static final LakeWaterBalance.Climate CLIMATE =
@@ -138,6 +210,33 @@ public final class ModelHydrologyProvider {
     private volatile long seed;
 
     /**
+     * 求解线程数 —— ★ 2026-10-08 实机驱动的修复。
+     *
+     * <h3>为什么不能是单线程（事故记录）</h3>
+     * <p>原为 {@code newSingleThreadExecutor}。实机新建世界日志实测：
+     * <pre>
+     *   chunk(-3,-3) hydro=21303ms   ← 出生点预加载，单块水文 21.3 秒
+     *   chunk(0,-3)  hydro=18140ms
+     *   chunk(0,0)   hydro=9595ms
+     *   之后 chunk(2,*) = 34~74ms    ← 缓存命中
+     * </pre>
+     * 机理：出生点周围有 <b>多个 region 首次求解</b>（每个 5~8 秒），
+     * 而单线程池 + 每个 {@code regionFor} 都 {@code join()} 阻塞
+     * ⇒ 4 个 region <b>串行</b> 5~8 秒 = 20+ 秒，用户体感"打开非常慢"。
+     * （注意：骨架化把单次求解从 14~18s 降到 5~8s，但<b>串行叠加</b>吃掉了收益。）</p>
+     *
+     * <h3>为什么是 4 而不是核数</h3>
+     * <p>本机 20 逻辑核（实测）。世界生成同期的 CPU 消耗方还有：
+     * {@code Worker-Main}（地形 tile 采样）、{@code TileSampler}、
+     * {@code commonPool}（侵蚀内部并行）、预览线程。
+     * region 求解是<b>纯 CPU 密集</b>（单次 5~8s 打满一核），全给出去会饿死 tile 生成
+     * ⇒ 反而拖长整体加载（本项目 2026-09 已有"线程超额订阅"事故）。
+     * 4 是"并行吃掉串行叠加、又不抢光 tile 生成"的折中，可用
+     * {@code -Dgeogenesis.modelSolveThreads} 覆盖。</p>
+     */
+    private static final int SOLVE_THREADS = Integer.getInteger("geogenesis.modelSolveThreads", 4);
+
+    /**
      * @param seed 世界种子 —— <b>必需参数</b>（缓存键的一部分，见 {@link #SHARED_CACHE}）。
      *
      * <p>⚠ 刻意<b>不提供</b>无参重载：静默默认 {@code seed=0} 会让调用方
@@ -150,8 +249,12 @@ public final class ModelHydrologyProvider {
         this.seed = seed;
         double hs = Math.max(0.01, gen.params().horizontalScale());
         this.invHs = 1.0 / hs;
-        this.preheat = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "geogenesis-hydro-model-preheat");
+        // ★ 多线程求解（见 SOLVE_THREADS javadoc）：region 之间互不依赖（各自纯函数），
+        //   并行安全。solve() 路径内【零并行流】（已核查 HydrologyPipeline /
+        //   EquilibriumWater / LakeWaterBalance / WindowOutlets 均无 parallel/commonPool）
+        //   ⇒ 无嵌套并行死锁风险。
+        this.preheat = Executors.newFixedThreadPool(SOLVE_THREADS, r -> {
+            Thread t = new Thread(r, "geogenesis-hydro-model-solve");
             t.setDaemon(true);
             return t;
         });
@@ -177,6 +280,51 @@ public final class ModelHydrologyProvider {
             SHARED_CACHE.clear();
         }
         SHARED_INFLIGHT.clear();
+    }
+
+    /**
+     * 湖判定口径诊断（`-Dgeogenesis.lakeDiag=true`）——
+     * 分离「粗格布尔命中」「邻域放宽命中」「逐块精算命中」三者，
+     * 用于回答"游戏湖比正典少 95% 到底是哪一步丢的"。
+     */
+    static final boolean LAKE_DIAG = Boolean.getBoolean("geogenesis.lakeDiag");
+    static final java.util.concurrent.atomic.AtomicLong lakeDiagTotal =
+            new java.util.concurrent.atomic.AtomicLong();
+    static final java.util.concurrent.atomic.AtomicLong lakeDiagCoarse =
+            new java.util.concurrent.atomic.AtomicLong();
+    static final java.util.concurrent.atomic.AtomicLong lakeDiagNear =
+            new java.util.concurrent.atomic.AtomicLong();
+    static final java.util.concurrent.atomic.AtomicLong lakeDiagBlock =
+            new java.util.concurrent.atomic.AtomicLong();
+    static final java.util.concurrent.atomic.AtomicLong lakeDiagCoarseButNotBlock =
+            new java.util.concurrent.atomic.AtomicLong();
+    static final java.util.concurrent.atomic.AtomicLong lakeDiagGainedByRefine =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * 已求解 region 的【网格级湖格总数】累计（诊断用）——
+     * 用于判定"湖是窗口丢的还是适配层丢的"：
+     * 网格湖格 × step² ≈ 应有的方块湖面积，与探针实测湖列数比较即得保留率。
+     */
+    static final java.util.concurrent.atomic.AtomicLong regionLakeCells =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /** 网格级湖格累计（各 region 累加，含重叠区 ⇒ 仅为量级对照）。 */
+    public static long lastRegionLakeCells() {
+        return regionLakeCells.get();
+    }
+
+    /** 打印湖判定诊断汇总（探针在结束时调用）。 */
+    public static String lakeDiagReport() {        return String.format(
+                "【湖判定诊断】总列=%d%n"
+                + "  粗格布尔命中(coarseLake)=%d%n"
+                + "  邻域放宽后(nearLake)=%d%n"
+                + "  逐块精算命中(isLakeBlock)=%d%n"
+                + "  粗格真但精算否=%d  ← 精算【杀掉】的量%n"
+                + "  邻域放宽新增=%d%n",
+                lakeDiagTotal.get(), lakeDiagCoarse.get(), lakeDiagNear.get(),
+                lakeDiagBlock.get(), lakeDiagCoarseButNotBlock.get(),
+                lakeDiagGainedByRefine.get());
     }
 
     /**
@@ -207,6 +355,41 @@ public final class ModelHydrologyProvider {
         SegmentIndex segIndex = rd.centerline().reaches.isEmpty()
                 ? SegmentIndex.EMPTY : SegmentIndex.build(rd.centerline(), rd.originX(), rd.originZ(), n, STEP);
 
+        // ★★★ 2026-10-09【3×3 邻 region 合并 —— 修"region 缝上断半截"】★★★
+        //
+        // 【问题】原实现只用【本方块的 region】（`rd`）。相邻 region 各自求解
+        //   （各自的窗口、各自的海/无海、各自的盆地）⇒ 边界两侧判定不一致
+        //   ⇒ 视觉上"湖/河在 region 缝上断成半截"。
+        //
+        // 【实测】（1401² 出图，512 块 region 网格，逐缝统计）：
+        //   河-竖缝：跨缝对 414，单侧断开 146（35.3%）
+        //   河-横缝：跨缝对 383，单侧断开 223（58.2%）
+        //   湖-竖缝：跨缝对 172，单侧断开  76（44.2%）
+        //   ⇒ 横缝上 58% 的河道在边界处断开 —— 正是用户"放实机就断"的直接证据。
+        //
+        // 【正解 = legacy 链早已在做的做法】`RiverLineNetwork.sampleAll`
+        //   （第 4421-4427 行）对 **3×3 邻 region** 求并集：本区没有的水，
+        //   邻区若判定有则照常输出 ⇒ 缝两侧都能看到同一份水。
+        //   本处照搬：遍历 3×3 邻区，取（湖优先，其次最近的河道命中）。
+        //
+        // ⚠ 邻区求解走 `regionFor`（同步、有缓存、有单飞）⇒ 不引入顺序依赖
+        //   （region 内容是 (seed, 坐标) 纯函数，缓存只改时序）。
+        RegionData[] neigh = new RegionData[9];
+        SegmentIndex[] neighSeg = new SegmentIndex[9];
+        int[] neighDx = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
+        int[] neighDz = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
+        int rdRx = Math.floorDiv(centerBlockX, REGION), rdRz = Math.floorDiv(centerBlockZ, REGION);
+        for (int t = 0; t < 9; t++) {
+            RegionData rr = (t == 4) ? rd : regionFor((rdRx + neighDx[t]) * REGION + REGION / 2,
+                    (rdRz + neighDz[t]) * REGION + REGION / 2);
+            neigh[t] = rr;
+            // ★ 段索引按 region 缓存（原来每【方块】重建一次 ⇒ 256 倍浪费）
+            neighSeg[t] = (t == 4) ? segIndex
+                    : (rr.centerline().reaches.isEmpty() ? SegmentIndex.EMPTY
+                        : SegmentIndex.build(rr.centerline(), rr.originX(), rr.originZ(),
+                                rr.pipe().nx(), STEP));
+        }
+
         List<HydrologyBlockCarvedColumn> out = new ArrayList<>(256);
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
@@ -223,7 +406,49 @@ public final class ModelHydrologyProvider {
                 // 连续水位（双线性：湖面/河面在 4-block 网格上平滑）
                 double surface = bilinear(p.waterSurface(), n, gi, gj, rd.originX, rd.originZ, blockX, blockZ, STEP);
 
-                if (p.lake()[k]) {
+                // ★ 3×3 邻区求并集：湖优先（任一邻区判湖即湖），否则取"最近中心线命中"。
+                boolean isLakeBlock = p.lake()[k];
+                double half = 0, depth = 0, bestDist = Double.POSITIVE_INFINITY;
+                if (!isLakeBlock) {
+                    for (int t = 0; t < 9; t++) {
+                        RegionData rr = neigh[t];
+                        if (rr == null) continue;
+                        int nn = rr.pipe().nx();
+                        int ti = clamp((int) Math.round((blockX - rr.originX()) / (double) STEP), nn);
+                        int tj = clamp((int) Math.round((blockZ - rr.originZ()) / (double) STEP), nn);
+                        if (rr.pipe().lake()[ti * nn + tj]) { isLakeBlock = true; break; }
+                        SegmentIndex si = neighSeg[t];
+                        if (si == null || si.isEmpty()) continue;
+                        SegmentIndex.Hit h2 = si.nearest(blockX, blockZ);
+                        if (h2 != null && h2.half > 0 && h2.dist <= h2.half && h2.dist < bestDist) {
+                            bestDist = h2.dist;
+                            half = h2.half;
+                            depth = Math.max(0, h2.depth);
+                        }
+                    }
+                    if (isLakeBlock) half = 0;
+                }
+
+                // ★★★ 2026-10-08【湖判据最终定案：用模型原生 `p.lake()`】★★★
+                //
+                // 【为什么不再用"逐块比较水位与地形"】
+                //   我曾改成 `isLakeAt(eroded, surface)`（逐块判 `地形 < 水位 − 0.5`），
+                //   理由是"湖岸落在等高线上、无方块台阶"。**实测证明这是错的**：
+                //   非湖格的 `waterSurface` 是 EquilibriumWater 的【几何逃逸高程 level】，
+                //   它的定义就是"水刚好能溢出的高度" ⇒ **恒 > 床面** ⇒
+                //   该判据把【整个填洼谷地】都判成湖 ⇒ 湖 7.17% vs 正典 3.63%（**多一倍**）。
+                //
+                // （湖/河判定已在上方由 3×3 邻区并集完成，见那里的 javadoc）
+                // ★ 诊断（-Dgeogenesis.lakeDiag=true）：对照"粗格布尔"与"邻区并集"两口径。
+                if (LAKE_DIAG) {
+                    boolean coarseLake = p.lake()[k];
+                    lakeDiagTotal.incrementAndGet();
+                    if (coarseLake) lakeDiagCoarse.incrementAndGet();
+                    if (isLakeBlock) lakeDiagBlock.incrementAndGet();
+                    if (coarseLake && !isLakeBlock) lakeDiagCoarseButNotBlock.incrementAndGet();
+                    if (!coarseLake && isLakeBlock) lakeDiagGainedByRefine.incrementAndGet();
+                }
+                if (isLakeBlock) {
                     // 湖列：不雕刻，按水位洪泛；lakeNode=null ⇒ 写回跳过逃逸重算、按水位分组
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, original,
                             surface, surface, 0.0, 1.0,
@@ -231,15 +456,15 @@ public final class ModelHydrologyProvider {
                     continue;
                 }
 
-                // 河道：逐块求【点到中心线段】的精确距离（同一几何源 = paintSegment）
-                double half = 0, depth = 0;
-                if (!segIndex.isEmpty()) {
-                    SegmentIndex.Hit hit = segIndex.nearest(blockX, blockZ);
-                    if (hit != null && hit.dist <= hit.half && hit.half > 0) {
-                        half = hit.half;
-                        depth = Math.max(0, hit.depth);
-                    }
-                }
+                // 河道：`half`/`depth` 已由上方 3×3 邻区并集给出（"最近命中"）。
+                // ★ 2026-10-09【回退我引入的两个错误】：
+                //   【错误 A】曾加 `p.channel()[k]` 门控 —— 距离场本就是从 channel 细化而来，
+                //     再门控是"同条件过滤两次"，且两套索引体系交集易漏格。
+                //   【错误 B】曾加"距离场取不到就给最小可雕值" —— 会让每个
+                //     `p.channel()` 为真的格都成河（含远离中心线者）
+                //     ⇒ 实测打碎成 8803 个连通分量、32% 孤立点。
+                //   【正解】只认【距离场命中】（`hit.dist <= hit.half`），不补最小宽度。
+                //     `RiverCenterlines.paintSegment` 的扫掠圆盘已保证沿折线连续覆盖。
                 if (half > 0) {
                     double carved = eroded - depth;                 // 意图床面
                     boolean fill = surface > carved + 0.5;           // 至少 0.5 格水柱
@@ -257,28 +482,52 @@ public final class ModelHydrologyProvider {
         return out;
     }
 
-    /** 取 region 数据；缓存/单飞双层。失败 future 必须移除（绝不缓存半成品）。 */
+    /**
+     * 取 region 数据；缓存/单飞双层。失败的 future 必须移除（绝不缓存半成品）。
+     *
+     * <h3>★ 刚性求解在【调用线程】上跑，不进队列（2026-10-08 实机修复）</h3>
+     * <p>原实现把本 region 的求解也 {@code supplyAsync} 进 preheat 线程池再
+     * {@code join()} —— 当池子/队列被【邻区预热任务】占满时，刚性需求要排在
+     * 预热<b>后面</b>干等。实机出生点实测正是这个形态：
+     * {@code chunk(-3,-3) hydro=21303ms} ≈ 3 个预热任务（各 ~7s）排队 + 本解。
+     * 而调用方本来就要阻塞等结果 ⇒ 在调用线程上直接解，<b>零排队</b>；
+     * 线程池只服务"不阻塞任何人的"邻区预热。</p>
+     */
     private RegionData regionFor(int blockX, int blockZ) {
         int rx = Math.floorDiv(blockX, REGION), rz = Math.floorDiv(blockZ, REGION);
         CacheKey key = new CacheKey(seed, rx, rz);
+        // ① 缓存命中
         synchronized (SHARED_CACHE) {
             RegionData hit = SHARED_CACHE.get(key);
             if (hit != null) return hit;
         }
-        CompletableFuture<RegionData> f = SHARED_INFLIGHT.computeIfAbsent(key, kk ->
-                CompletableFuture.supplyAsync(() -> solve(rx, rz), runnable -> {
-                    // 复用预热线程池（单线程 ⇒ 求解串行，避免与 tile 生成争用放大）
-                    preheat.execute(runnable);
-                }));
+        // ② 已有在途求解（它在别人的线程/队列上）→ 等它
+        CompletableFuture<RegionData> existing = SHARED_INFLIGHT.get(key);
+        if (existing != null) return await(existing, key, rx, rz);
+        // ③ 抢占：赢家在【本线程】直接求解（不进池 ⇒ 不排队在预热后面）
+        CompletableFuture<RegionData> mine = new CompletableFuture<>();
+        CompletableFuture<RegionData> raced = SHARED_INFLIGHT.putIfAbsent(key, mine);
+        if (raced != null) return await(raced, key, rx, rz);   // 输了 → 等赢家
+        try {
+            RegionData data = solve(rx, rz);
+            mine.complete(data);
+            cachePut(key, data);
+            SHARED_INFLIGHT.remove(key, mine);
+            return data;
+        } catch (RuntimeException | Error e) {
+            mine.completeExceptionally(e);
+            SHARED_INFLIGHT.remove(key, mine);     // ★ 失败绝不缓存
+            LOGGER.warn("[HYDRO-MODEL] region ({},{}) solve failed: {}", rx, rz, e);
+            throw e;
+        }
+    }
+
+    /** 等待在途求解并入缓存（两个入口共用：输掉竞争的调用方 / 预热方）。 */
+    private RegionData await(CompletableFuture<RegionData> f, CacheKey key, int rx, int rz) {
         try {
             RegionData data = f.join();
             SHARED_INFLIGHT.remove(key, f);
-            synchronized (SHARED_CACHE) {
-                SHARED_CACHE.put(key, data);
-                while (SHARED_CACHE.size() > CACHE_CAP) {
-                    SHARED_CACHE.remove(SHARED_CACHE.keySet().iterator().next());
-                }
-            }
+            cachePut(key, data);
             return data;
         } catch (CompletionException e) {
             SHARED_INFLIGHT.remove(key, f);     // ★ 失败绝不缓存
@@ -288,13 +537,106 @@ public final class ModelHydrologyProvider {
         }
     }
 
+    /** 入 LRU 缓存（容量满时淘汰最久未用）。 */
+    private void cachePut(CacheKey key, RegionData data) {
+        synchronized (SHARED_CACHE) {
+            SHARED_CACHE.put(key, data);
+            while (SHARED_CACHE.size() > CACHE_CAP) {
+                SHARED_CACHE.remove(SHARED_CACHE.keySet().iterator().next());
+            }
+        }
+    }
+
+    /**
+     * 跨区水量传递：窗外 margin 带的最陡下降追踪（2026-10-08）。
+     *
+     * <p><b>⚠ 默认关闭（MARGIN_BLOCKS=0）—— 实测有伪影，未采纳</b>：
+     * margin 把窗外水量按【落点】注入窗框离散点（每 MARGIN_STEP 块一个），
+     * 大量水从边框离散点涌入 ⇒ 平坦区沿填洼 parent 图汇流时流向退化为直线
+     * ⇒ 图上出现【等长横条纹】（用户实测指出：平原上的密集等长横线）。
+     * 这与 HANDOFF §17.6 记录的"平坦区流向欠定"同源 —— 水一多，缺陷就显形。</p>
+     *
+     * <p>⇒ 保留代码供后续改用"沿真实 D8 路径推进窗内再入账"的方案，
+     * <b>默认不启用</b>。要复现历史实验：{@code -Dgeogenesis.modelMargin=384}。</p>
+     *
+     * @return 窗口网格上的逐格额外来水（格数当量），MARGIN_BLOCKS&lt;=0 时返回 null
+     */
+    private double[] computeMarginInflow(int centerX, int centerZ, int radius, int step, int n) {
+        int marginBlocks = MARGIN_BLOCKS;
+        if (marginBlocks <= 0) return null;
+        double hs = Math.max(0.01, gen.params().horizontalScale());
+        double sea = gen.seaLevel();
+        double[] extra = new double[n * n];
+        int ox = centerX - radius, oz = centerZ - radius;          // 窗口原点（块）
+        int mSteps = marginBlocks / MARGIN_STEP;                    // margin 带内采样步数
+        long t0 = System.nanoTime();
+        // 遍历窗外 margin 带（四条边），步长 MARGIN_STEP
+        for (int side = 0; side < 4; side++) {
+            for (int t = -mSteps; t <= mSteps; t++) {
+                for (int d = 1; d <= mSteps; d++) {
+                    // 带内样点（块坐标）：沿边方向 t、垂直边方向 d（窗外为正）
+                    int dx, dz;
+                    switch (side) {
+                        case 0 -> { dx = t * MARGIN_STEP; dz = -d * MARGIN_STEP; }   // 北
+                        case 1 -> { dx = t * MARGIN_STEP; dz = d * MARGIN_STEP; }    // 南
+                        case 2 -> { dx = -d * MARGIN_STEP; dz = t * MARGIN_STEP; }   // 西
+                        default -> { dx = d * MARGIN_STEP; dz = t * MARGIN_STEP; }   // 东
+                    }
+                    int bx = centerX + dx, bz = centerZ + dz;
+                    // 只处理窗外点（边框内一点由窗内自己算）
+                    if (Math.abs(dx) <= radius && Math.abs(dz) <= radius) continue;
+                    double h = gen.sampleWu(bx / hs, bz / hs).height;
+                    if (h <= sea) continue;                          // 海：无径流
+                    // 最陡下降追踪到窗框（步长 MARGIN_STEP，上限 mSteps*2 步）
+                    double cx2 = bx, cz2 = bz;
+                    boolean landed = false;
+                    for (int s = 0; s < mSteps * 2; s++) {
+                        // 8 邻最陡下降（步长 MARGIN_STEP）
+                        double best = Double.NaN; int bdx = 0, bdz = 0;
+                        for (int di = -1; di <= 1; di++) {
+                            for (int dj = -1; dj <= 1; dj++) {
+                                if (di == 0 && dj == 0) continue;
+                                double nx = cx2 + di * (double) MARGIN_STEP;
+                                double nz = cz2 + dj * (double) MARGIN_STEP;
+                                double nh = gen.sampleWu(nx / hs, nz / hs).height;
+                                if (Double.isNaN(best) || nh < best) { best = nh; bdx = di; bdz = dj; }
+                            }
+                        }
+                        if (Double.isNaN(best) || best >= h) break;  // 洼地/平地：丢弃（v1）
+                        cx2 += bdx * (double) MARGIN_STEP;
+                        cz2 += bdz * (double) MARGIN_STEP;
+                        // 已入窗？
+                        if (Math.abs(cx2 - centerX) <= radius && Math.abs(cz2 - centerZ) <= radius) {
+                            landed = true;
+                            break;
+                        }
+                        h = best;
+                    }
+                    if (!landed) continue;                           // 没到窗（洼地/到海/超步）
+                    // 落点 → 窗口网格索引（最近格点）
+                    int gi = (int) Math.round((cx2 - ox) / (double) step);
+                    int gj = (int) Math.round((cz2 - oz) / (double) step);
+                    if (gi < 0) gi = 0; else if (gi >= n) gi = n - 1;
+                    if (gj < 0) gj = 0; else if (gj >= n) gj = n - 1;
+                    extra[gi * n + gj] += 1;
+                }
+            }
+        }
+        marginMs = (System.nanoTime() - t0) / 1e6;
+        return extra;
+    }
+
+    /** margin 追踪耗时（诊断）。 */
+    private volatile double marginMs = 0;
+
     /** 求解一个 region 窗口（纯函数；耗时日志只打【求解】不打缓存命中）。 */
     private RegionData solve(int rx, int rz) {
         int centerX = rx * REGION + REGION / 2;
         int centerZ = rz * REGION + REGION / 2;
         long t0 = System.nanoTime();
+        double[] extra = computeMarginInflow(centerX, centerZ, RADIUS, STEP, 2 * RADIUS / STEP + 1);
         var req = new HydrologyPipeline.Request(centerX, centerZ, RADIUS, STEP, CLIMATE, 0,
-                riverModel(), SAMPLES);
+                riverModel(), SAMPLES, extra);
         HydrologyPipeline.Result p = HydrologyPipeline.run(gen, gen.params(), req);
         // 中心线（距离场几何源；cellSize=STEP 换算 block 单位）
         RiverCenterlines.Result cl = RiverCenterlines.build(
@@ -302,9 +644,18 @@ public final class ModelHydrologyProvider {
                 RiverCenterlines.Params.defaults(), STEP);
         RegionData rd = new RegionData(p, cl, centerX - RADIUS, centerZ - RADIUS);
         double ms = (System.nanoTime() - t0) / 1e6;
-        LOGGER.info("[HYDRO-MODEL] region ({},{}) solved in {} ms (model={}, grid={}, reaches={}, lake={}, channel={})",
+        int lakeCells = countTrue(p.lake());
+        regionLakeCells.addAndGet(lakeCells);       // ★ 诊断累计（见 lastRegionLakeCells）
+        // ★ 诊断（2026-10-09）：`resolved` 是 EquilibriumWater 的"与窗口切割无关"标志。
+        //   小窗口下若 resolved 大面积失效 ⇒ 盆地无法建立 ⇒ 湖丢失。
+        //   这是"小窗口丢湖"最可能的直接机理（此前未打印过）。
+        int resolvedN = countTrue(p.resolved());
+        int basinsN = p.lakeResult() == null ? -1 : p.lakeResult().basins().size();
+        int dryN = p.lakeResult() == null ? -1 : p.lakeResult().dryBasins();
+        LOGGER.info("[HYDRO-MODEL] region ({},{}) solved in {} ms (model={}, grid={}, reaches={}, lake={}, channel={}, margin={}ms, resolved={}/{} basins={} dry={})",
                 rx, rz, String.format("%.0f", ms), riverModel(), p.nx() + "x" + p.nz(),
-                cl.reachCount(), countTrue(p.lake()), countTrue(p.channel()));
+                cl.reachCount(), lakeCells, countTrue(p.channel()),
+                String.format("%.0f", marginMs), resolvedN, p.nx() * p.nz(), basinsN, dryN);
         return rd;
     }
 
@@ -346,12 +697,7 @@ public final class ModelHydrologyProvider {
                     }, preheat::execute));
             f.thenAccept(data -> {
                 SHARED_INFLIGHT.remove(key, f);
-                synchronized (SHARED_CACHE) {
-                    SHARED_CACHE.put(key, data);
-                    while (SHARED_CACHE.size() > CACHE_CAP) {
-                        SHARED_CACHE.remove(SHARED_CACHE.keySet().iterator().next());
-                    }
-                }
+                cachePut(key, data);
             }).exceptionally(ex -> {
                 SHARED_INFLIGHT.remove(key, f);   // ★ 预热失败同样不缓存
                 return null;
@@ -367,6 +713,21 @@ public final class ModelHydrologyProvider {
         int c = 0;
         for (boolean b : a) if (b) c++;
         return c;
+    }
+
+    /**
+     * ★ 湖泊判定的【连续口径】—— 与游戏落块层同一物理语义。
+     *
+     * <p>游戏在 {@code GeoGenesisTerrain} 用 {@code cell.height < spill − 0.5} 判湖，
+     * 其中 {@code cell.height} 是<b>侵蚀后</b>地形、{@code spill} 是水位。
+     * 本方法把同一判据用在【逐方块】上：{@code eroded} 是本块侵蚀后地形、
+     * {@code surface} 是双线性插值的水位 ⇒ 湖岸落在地形与水位面的交线上，
+     * 是连续曲线而非 4 块网格的直角台阶。</p>
+     *
+     * <p>{@code 0.5} 与游戏层一致（"至少半格水柱才算湖"）。</p>
+     */
+    private static boolean isLakeAt(double erodedGroundY, double waterSurfaceY) {
+        return erodedGroundY < waterSurfaceY - 0.5;
     }
 
     /** 4-block 网格上的双线性采样（水面是连续量 ⇒ 取最近格点会有 4 块台阶）。 */

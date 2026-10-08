@@ -189,6 +189,34 @@ public final class LakeWaterBalance {
     public static volatile int MIN_VISIBLE_AREA =
             Integer.getInteger("hydro.minVisibleArea", 11);
 
+    /**
+     * 湖水位局部化开关：`-Dgeogenesis.localLakeLevel=true`。**默认 false（未验收）**。
+     *
+     * <h3>它做什么</h3>
+     * <p>启用后湖水位 = 溢出口高程 {@code sill}（= 盆地 rim 最低点），
+     * 取代原 {@code solveLevel}（水量平衡 {@code inflow = E·A}）。</p>
+     *
+     * <h3>为什么提出</h3>
+     * <p>{@code solveLevel} 的 inflow 依赖<b>全流域汇水量</b>（数学上非局部）
+     * ⇒ 窗口必须大到覆盖整个流域。四个参考实现**全部**用局部量定湖水位：
+     * FTF `getComplexWaterHeight`（waterTable 纯函数）·
+     * PL-RGA `_applyRiverHeightSlopeDrop`（出口高 + 固定比降）·
+     * DW **无湖**（湖 = 河道加宽 `zone1Radius *= lakeMultiplier`）·
+     * Streams **无湖**（接口水位恒 = 海平面）。</p>
+     *
+     * <h3>⚠ 实测：它几乎不改变结果（故默认关闭）</h3>
+     * <p>同参数 A/B（正典规格走 provider）：启用 144,872 vs 关闭 144,760 湖格 ⇒ **差 0.08%**。
+     * ⇒ <b>"湖少"的主因不是水位公式，而是 {@code resolved} 全域失效</b>
+     * （见 {@code EquilibriumWater.INLAND_RESOLVED} 的实测证据）。</p>
+     * <p>本开关保留的理由：它是"湖水位局部化"这条参考路线的最小实现，
+     * 若日后要把 {@code HALO} 改小（窗口换性能），局部水位才有价值。</p>
+     *
+     * <p>启用后 {@code inflow}/{@code evap}/{@code outflow} 仍按原公式计算
+     * （供下游河网与账本用），只把【水位】换成 sill。</p>
+     */
+    public static final boolean LOCAL_LAKE_LEVEL =
+            Boolean.getBoolean("geogenesis.localLakeLevel");
+
     /** 运行时切换兜底语义（探针 A/B 用）。 */
     public LakeWaterBalance assumeFullWhenUnfed(boolean value) {
         this.assumeFullWhenUnfed = value;
@@ -208,7 +236,7 @@ public final class LakeWaterBalance {
 
     /** 无外部来水信息时的求解（来水按汇水格数估）。 */
     public Result solve(Climate climate, boolean[] sea, boolean[] borderMask) {
-        return solve(climate, sea, borderMask, null);
+        return solve(climate, sea, borderMask, null, null);
     }
 
     /**
@@ -222,6 +250,18 @@ public final class LakeWaterBalance {
      */
     public Result solve(Climate climate, boolean[] sea, boolean[] borderMask,
                         double[] upstreamFlow) {
+        return solve(climate, sea, borderMask, upstreamFlow, null);
+    }
+
+    /**
+     * @param extraInflow 窗外边界入流（格数当量，逐格）—— 由
+     *                    {@code ModelHydrologyProvider.computeMarginInflow} 计算
+     *                    （窗外 margin 带最陡下降追踪到窗框）。null = 无。
+     *                    仅在 geometric 口径（upstreamFlow==null）叠加；
+     *                    耦合轮走 upstreamFlow，边界水已随 extraSource 进入河网。
+     */
+    public Result solve(Climate climate, boolean[] sea, boolean[] borderMask,
+                        double[] upstreamFlow, double[] extraInflow) {
         int cells = nx * nz;
         // 找湖盆种子：平衡态下水位高于床面的格（潜在湖），且非海。
         //    只在"盆地最低点"处建立湖盆，避免同一湖被多次建立。
@@ -300,6 +340,21 @@ public final class LakeWaterBalance {
             if (sea[k] || !resolved[k]) continue;
             int t = terminal[k];
             if (t >= 0) inflowCells[t] += 1;
+        }
+        // ★ 跨区水量传递（2026-10-08）：窗外 margin 带的水量沿 parent 汇到窗内
+        //   边框格 ⇒ 把边框格的额外来水按其终端计入（与本地径流同口径：
+        //   单位 = 格数当量，后续 × runoffPerCell 换算成体积）。
+        //   这是"352 窗口看不到上游 ⇒ 大湖凑不够水"的修复。
+        //   upstreamFlow 传入时（耦合轮）也照加（upstreamFlow 已含边界水量则加 0）——
+        //   ⚠ v1 简化：upstreamFlow 模式下不再叠加 extraInflow（避免双计），
+        //     因为 buildDischarge 的 D8 账本已把 extraSource 传进 RiverNetwork
+        //     ⇒ 边界水会自然出现在 upstreamFlow 里。
+        if (extraInflow != null && upstreamFlow == null) {
+            for (int k = 0; k < cells; k++) {
+                if (extraInflow[k] <= 0 || sea[k] || !resolved[k]) continue;
+                int t = terminal[k];
+                if (t >= 0) inflowCells[t] += extraInflow[k];
+            }
         }
 
         // 3) 对每个湖盆求水量平衡水位。湖盆分组：按"连通湖格集合"分组。
@@ -428,9 +483,35 @@ public final class LakeWaterBalance {
                 liquidate(depth, lake, group);
                 continue;
             }
-            double level = fed || !assumeFullWhenUnfed
-                    ? solveLevel(group, inflow, climate.evaporation(), sill)
-                    : sill - 1e-9;                            // 无来水信息 ⇒ 回落 sill（满湖）
+            // ★★★ 2026-10-09【B 方案：湖水位局部化 —— 照参考项目】★★★
+            //
+            // 【为什么改】我们的湖水位原用 `solveLevel`（水量平衡：inflow = E·A），
+            //   而 inflow 依赖**全流域汇水量** ⇒ 数学上非局部 ⇒ 窗口必须大到覆盖
+            //   整个流域 ⇒ 小 region 下大湖"凑不够水"而不生成（实测 0.21% vs 正典 3.63%）。
+            //
+            // 【参考项目的一致答案】四个参考实现**全部**用【局部量】定湖水位：
+            //   · FTF   `ContinentalHydrology.getComplexWaterHeight:131-136` — waterTable 纯函数
+            //   · PL-RGA `_applyRiverHeightSlopeDrop`（platewisenetwork.py:479-529）— 出口高 + 固定比降
+            //   · DW    无湖（湖 = 河道加宽 `zone1Radius *= lakeMultiplier`）
+            //   · Streams 无湖（接口水位恒 = 海平面常数）
+            //   ⇒ 局部量 ⇒ 不需要大流域 ⇒ 小窗口也成立。
+            //
+            // 【本方案】水位 = 溢出口高程 `sill`（= 盆地的 rim 最低点 = 水刚好能溢出的高度）。
+            //   这是 `EquilibriumWater` 的 priority-flood **早已算出**的量，
+            //   只依赖【盆地自身 + 其 rim】⇒ **局部**，与流域大小无关。
+            //   物理含义：湖蓄满至溢出口（"满湖"），多余的水从 sill 流走 ⇒ 下游有径流。
+            //
+            // 【开关】`-Dgeogenesis.localLakeLevel=true` 启用；默认 false = 原行为（零变更）。
+            //   ⚠ 启用后 `inflowI/evap/overflow` 仍按原公式算（供下游河网与账本使用），
+            //     只把**水位**换成 sill ⇒ 下游溢流注入量仍守恒（outflow = inflow − evap）。
+            double level;
+            if (LOCAL_LAKE_LEVEL) {
+                level = sill - 1e-9;                          // 满湖：水面 = 溢出口
+            } else {
+                level = fed || !assumeFullWhenUnfed
+                        ? solveLevel(group, inflow, climate.evaporation(), sill)
+                        : sill - 1e-9;                        // 无来水信息 ⇒ 回落 sill（满湖）
+            }
             boolean overflow = level >= sill - 1e-9;
             double areaCells = 0;
             // ★ 淹没判据必须【含等号】：平坦湖底时所有格床面相同，
