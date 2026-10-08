@@ -158,6 +158,39 @@ public final class ModelHydrologyProvider {
     /** margin 带采样步长（块）。 */
     private static final int MARGIN_STEP = 8;
 
+    /**
+     * ★★★ 2026-10-09【骨架来源切换：复用 legacy 的 D8 骨架】★★★
+     *
+     * <h3>用户的定位（原话）</h3>
+     * <blockquote>「原来的 D8 应该是**取其精华**，我都说了应该是**升级关系**」</blockquote>
+     *
+     * <h3>为什么必须换</h3>
+     * <p>当前 model 链的骨架由「**窗口内** D8 汇流累积 → thin → 距离场」派生，
+     * 正典规格出图实测有两类伪影：</p>
+     * <ol>
+     *   <li><b>等距平行竖直长线</b>（海岸平原）：D8 在平坦区只能从 8 个离散方向选
+     *       ⇒ 相邻列各自独立选向（与旧文档 §17.6「平坦区流向欠定」同源）；</li>
+     *   <li><b>矩形结构</b>（region 边界）：窗口内的汇流累积在边界处不连续。</li>
+     * </ol>
+     *
+     * <h3>legacy 的 D8 骨架已经解决了这两点（这就是"精华"）</h3>
+     * <p>{@code RiverLineNetwork.buildSkeletonRivers}（第 1963 行起）：</p>
+     * <ul>
+     *   <li>region 窗口**外扩 {@code SKELETON_MARGIN_BLOCKS}** ⇒ 边界影响被吸收；</li>
+     *   <li>出窗河尾注册 {@code OutletSeed(dRX,dRZ, wx,wz, accum, tailSurface, level)}
+     *       ⇒ <b>双 pass 跨区续流</b>：邻区从种子处沿本地 D8 继续追 ⇒ **缝上不断**；</li>
+     *   <li>入湖锚点延伸（{@code LAKE_ANCHOR_EXT}）⇒ 河湖衔接由构造保证。</li>
+     * </ul>
+     *
+     * <h3>切换方式</h3>
+     * <p>{@code true} ⇒ 骨架取自 {@code RiverLineNetwork.region(rx,rz).rivers}
+     * （legacy 的 {@code RiverPolyline}，含上述跨区机制）；
+     * {@code false} ⇒ 保持原 {@link RiverCenterlines}（窗口局部）。
+     * <b>默认 true</b>（用户已定"model 是 legacy 的升级"，骨架必须继承 legacy 的精华）。</p>
+     */
+    private static final boolean USE_LEGACY_SKELETON =
+            !"false".equalsIgnoreCase(System.getProperty("geogenesis.legacySkeleton", "true"));
+
     /** 与全部探针/契约验证一致的固定气候（空间化气候 = 后续工作，见类 javadoc）。 */
     private static final LakeWaterBalance.Climate CLIMATE =
             new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
@@ -165,7 +198,14 @@ public final class ModelHydrologyProvider {
     private static final org.apache.logging.log4j.Logger LOGGER =
             org.apache.logging.log4j.LogManager.getLogger("geogenesis");
 
-    /** 单 region 求解产物（不可变；发布后只读 ⇒ LRU 淘汰不影响在途读者）。 */
+    /**
+     * 单 region 求解产物（不可变；发布后只读 ⇒ LRU 淘汰不影响在途读者）。
+     *
+     * @param centerline 骨架 + 距离场。★ 骨架来源由 {@link #USE_LEGACY_SKELETON} 决定：
+     *                   true = 复用 legacy 的 {@code RiverLineNetwork}（含 SKELETON_MARGIN
+     *                   外扩 + {@code OutletSeed} 双 pass 跨区续流）；false = 原
+     *                   窗口局部 D8 路径。
+     */
     private record RegionData(HydrologyPipeline.Result pipe,
                               RiverCenterlines.Result centerline,
                               int originX, int originZ) { }
@@ -173,6 +213,14 @@ public final class ModelHydrologyProvider {
     private final CellGenerator gen;
     /** block → wu 换算（sample/sampleWu 的坐标语义是 wu，见 CellGenerator.sample javadoc）。 */
     private final double invHs;
+    /**
+     * ★ legacy 骨架来源（{@link #USE_LEGACY_SKELETON} 为 true 时非 null）。
+     *
+     * <p>{@code RiverLineNetwork} 提供 {@code region(rx,rz).rivers}
+     * —— 含 SKELETON_MARGIN 外扩 + {@code OutletSeed} 双 pass 跨区续流
+     * + 入湖锚点延伸。这是"要继承的 D8 精华"。</p>
+     */
+    private final com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork legacyNetwork;
     /**
      * 内容缓存（LRU）—— ★ static 共享，按 seed 键控。
      *
@@ -258,6 +306,21 @@ public final class ModelHydrologyProvider {
             t.setDaemon(true);
             return t;
         });
+        // ★★★ 2026-10-09【复用 legacy 的 D8 骨架】（见 USE_LEGACY_SKELETON javadoc）
+        //
+        //   构造范式照抄生产接线（`HydrologyExperimentEngine:78-89`）：
+        //   eSampler = terrainEQuick；terrainY = heightFromE(terrainEQuick)；
+        //   curve / seed / horizontalScale / RiverLineParams.defaults()。
+        //   ⇒ 与 legacy 链【同源同参】⇒ 骨架逐位一致（不是"另建一套"）。
+        if (USE_LEGACY_SKELETON) {
+            this.legacyNetwork = new com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork(
+                    gen::terrainEQuick,
+                    (wx, wz) -> gen.heightCurve().heightFromE(gen.terrainEQuick(wx, wz)),
+                    gen.heightCurve(), seed, hs,
+                    com.geogenesis.worldgen.hydrology.riverline.RiverLineParams.defaults());
+        } else {
+            this.legacyNetwork = null;
+        }
     }
 
     /**
@@ -689,9 +752,20 @@ public final class ModelHydrologyProvider {
                 riverModel(), SAMPLES, extra);
         HydrologyPipeline.Result p = HydrologyPipeline.run(gen, gen.params(), req);
         // 中心线（距离场几何源；cellSize=STEP 换算 block 单位）
-        RiverCenterlines.Result cl = RiverCenterlines.build(
-                p.bed(), p.discharge(), p.channel(), p.sea(), p.nx(), p.nz(),
-                RiverCenterlines.Params.defaults(), STEP);
+        //
+        // ★★★ 2026-10-09【骨架来源切换】（见 USE_LEGACY_SKELETON 的 javadoc）★★★
+        //   legacy ⇒ 骨架取自 `RiverLineNetwork.region(rx,rz).rivers`
+        //            （含 SKELETON_MARGIN 外扩 + OutletSeed 双 pass 跨区续流
+        //             + 入湖锚点延伸）⇒ 跨区连续、平坦区不受 D8 退化影响；
+        //   否则   ⇒ 原 RiverCenterlines（窗口内 D8 + thin）。
+        RiverCenterlines.Result cl;
+        if (USE_LEGACY_SKELETON && legacyNetwork != null) {
+            cl = buildCenterlineFromLegacy(p, rx, rz, p.nx());
+        } else {
+            cl = RiverCenterlines.build(
+                    p.bed(), p.discharge(), p.channel(), p.sea(), p.nx(), p.nz(),
+                    RiverCenterlines.Params.defaults(), STEP);
+        }
         RegionData rd = new RegionData(p, cl, centerX - RADIUS, centerZ - RADIUS);
         double ms = (System.nanoTime() - t0) / 1e6;
         int lakeCells = countTrue(p.lake());
@@ -753,6 +827,87 @@ public final class ModelHydrologyProvider {
                 return null;
             });
         }
+    }
+
+    /**
+     * ★ 从 legacy 的 {@code RiverLineNetwork} 取骨架，适配成本类的
+     * {@link RiverCenterlines.Result}（见 {@link #USE_LEGACY_SKELETON}）。
+     *
+     * <h3>为什么这样接（"取 D8 的精华"）</h3>
+     * <p>legacy 的 {@code buildSkeletonRivers}（`RiverLineNetwork:1963`）已提供：
+     * ① region 窗口外扩 {@code SKELETON_MARGIN_BLOCKS}（吸收边界影响）；
+     * ② 出窗河尾注册 {@code OutletSeed} + 双 pass 从邻区种子续追（**跨区不断**）；
+     * ③ 入湖锚点延伸（河湖衔接由构造保证）。
+     * ⇒ 骨架与窗口无关、不受平坦区 D8 退化影响。</p>
+     *
+     * <h3>坐标系</h3>
+     * <p>{@code RiverPolyline.nodes} 是**世界坐标 wu**（legacy 全链以 wu 计），
+     * 而本类网格以 block 计 ⇒ 由 {@link RiverCenterlines#buildFromPolys} 换算
+     * （传 {@code hs} 与 grid origin）。</p>
+     *
+     * <h3>本 region 的窗口范围</h3>
+     * <p>legacy 的 region 边长 = {@code RiverLineParams.regionSize()}（wu），
+     * 而 model 的窗口是 {@code [centerX-RADIUS, centerX+RADIUS]}（block）。
+     * 两者的 region 划分**不同**（model 用 {@link #REGION}=512 block 网格）。
+     * ⇒ 本方法按 **model 的 region 覆盖的 legacy region 集合**取折线：
+     * model 窗口可能跨多个 legacy region（512 block vs 640wu×hs=1280block），
+     * 故取 3×3 legacy region 的并集，由 {@code buildFromPolys} 自动裁剪到窗口内。</p>
+     */
+    private RiverCenterlines.Result buildCenterlineFromLegacy(
+            HydrologyPipeline.Result p, int rx, int rz, int n) {
+        double hs = 1.0 / invHs;                     // wu = block × hs
+        int originX = rx * REGION - RADIUS;          // model 窗口原点（block）
+        int originZ = rz * REGION - RADIUS;
+        // legacy region 边长（wu）→ block
+        double legRegionWu = com.geogenesis.worldgen.hydrology.riverline
+                .RiverLineParams.defaults().regionSize();
+        double legRegionBlock = legRegionWu / hs;
+        // model 窗口中心（block）
+        double cx = rx * REGION + REGION * 0.5, cz = rz * REGION + REGION * 0.5;
+        // 覆盖窗口所需的 legacy region 索引范围（含 1 圈余量）
+        int lr0 = (int) Math.floor((cx - RADIUS) / legRegionBlock) - 1;
+        int lr1 = (int) Math.ceil((cx + RADIUS) / legRegionBlock) + 1;
+        int lz0 = (int) Math.floor((cz - RADIUS) / legRegionBlock) - 1;
+        int lz1 = (int) Math.ceil((cz + RADIUS) / legRegionBlock) + 1;
+
+        List<RiverCenterlines.Poly> polys = new ArrayList<>();
+        for (int lr = lr0; lr <= lr1; lr++) {
+            for (int lz = lz0; lz <= lz1; lz++) {
+                com.geogenesis.worldgen.hydrology.riverline.RiverLineRegion reg;
+                try {
+                    reg = legacyNetwork.region(lr, lz);
+                } catch (RuntimeException e) {
+                    continue;                        // 单区失败不影响其它
+                }
+                if (reg == null || reg.rivers == null) continue;
+                for (var rp : reg.rivers) {
+                    if (rp.nodes == null || rp.nodes.length < 2) continue;
+                    int len = rp.nodes.length;
+                    double[] wx = new double[len], wz = new double[len];
+                    double[] hw = new double[len], dp = new double[len];
+                    for (int i = 0; i < len; i++) {
+                        wx[i] = rp.nodes[i].x();
+                        wz[i] = rp.nodes[i].z();
+                        // ★★★ 2026-10-09【宽度暂用固定最小值 —— 用户明确要求】★★★
+                        //
+                        //   用户批注原文：「**这个目前不需要，因为如果有宽度会影响骨架判断的。
+                        //   可能会看错图。**」
+                        //
+                        //   ⇒ 本阶段只验【骨架形态】，宽度统一给最小可见值（半宽 0.5 块
+                        //     = 全宽 1 块）⇒ 图上就是 1 像素细线 ⇒ 骨架走向一眼可判。
+                        //
+                        //   ⚠ 不要在这里接 legacy 的 `rp.width`（那是【汇流面积驱动】的量，
+                        //     实测量级 10~20 块 ⇒ 图上糊成粗带 ⇒ 掩盖骨架走向）。
+                        //     宽度是【后续议题】（见 HYDROLOGY.md §〇②）。
+                        hw[i] = 0.5;
+                        dp[i] = 1.0;
+                    }
+                    polys.add(new RiverCenterlines.Poly(wx, wz, hw, dp));
+                }
+            }
+        }
+        return RiverCenterlines.buildFromPolys(polys, p.discharge(), null, n, n,
+                RiverCenterlines.Params.defaults(), originX, originZ, hs, STEP);
     }
 
     private static int clamp(int v, int n) {
