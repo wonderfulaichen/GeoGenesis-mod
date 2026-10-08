@@ -188,6 +188,78 @@ public final class RiverCenterlines {
     }
 
     /**
+     * ★★★ 2026-10-09【外部折线注入 —— 骨架来源切换】★★★
+     *
+     * <p><b>为什么需要</b>：本类原走「窗口内 D8 汇流累积 → {@code thin} → 骨架」，
+     * 正典出图实测有两类伪影（等距平行竖直长线 / region 边界矩形）——
+     * 根因是汇流累积**窗口局部**。</p>
+     *
+     * <p>而 legacy 的 {@code RiverLineNetwork} 已有**跨区连续**的 D8 骨架
+     * （SKELETON_MARGIN 外扩 + {@code OutletSeed} 双 pass 续流）。
+     * 用户定位「**model 是 legacy 的升级**」⇒ 骨架应**继承** legacy 的精华，
+     * 而不是另起一套。本入口即为此：把外部折线直接当作骨架，
+     * 下游（切段/距离场/雕刻）全部复用本类既有实现。</p>
+     *
+     * @param polys 外部折线（世界坐标 **wu**，见 {@link Poly}）
+     * @param flux  逐格流量（仅用于宽度律；骨架位置【不依赖它】）
+     * @param nx,nz 网格尺寸
+     * @param originX,originZ 网格原点（**block**）
+     * @param hs    block→wu 换算（wu = block × hs）
+     */
+    public static Result buildFromPolys(List<Poly> polys, double[] flux, boolean[] bed,
+                                        int nx, int nz, Params params, int originX, int originZ,
+                                        double hs, double cellSize) {
+        int cells = nx * nz;
+        List<Reach> reaches = new ArrayList<>();
+        int comp = 0;
+        for (Poly poly : polys) {
+            int n = poly.wx.length;
+            if (n < 2) continue;
+            int[] cell = new int[n];
+            double[] q = new double[n];
+            double[] w = new double[n];
+            double[] d = new double[n];
+            boolean ok = true;
+            for (int i = 0; i < n; i++) {
+                // wu → block → 格索引
+                int bx = (int) Math.round(poly.wx[i] / hs);
+                int bz = (int) Math.round(poly.wz[i] / hs);
+                int gi = Math.floorDiv(bx - originX, (int) cellSize);
+                int gj = Math.floorDiv(bz - originZ, (int) cellSize);
+                if (gi < 0 || gj < 0 || gi >= nx || gj >= nz) { ok = false; break; }
+                cell[i] = gi * nz + gj;
+                q[i] = i < flux.length && cell[i] < flux.length ? Math.max(0, flux[cell[i]]) : 0;
+                // ★ 宽度：legacy 的 width 是**半宽**（block）⇒ 本类的 width 是**全宽**
+                w[i] = Math.max(2 * MIN_HALF_BLOCKS, 2 * poly.halfWidth[i]);
+                d[i] = Math.max(0, poly.depth[i]);
+            }
+            if (!ok) continue;
+            reaches.add(new Reach(cell, q, w, d, comp++));
+        }
+        // ③ 横断面距离场（与 build 的 ③ 同一实现：线段扫掠圆盘）
+        double[] normDist = new double[cells];
+        double[] halfW = new double[cells];
+        double[] depth = new double[cells];
+        Arrays.fill(normDist, Double.POSITIVE_INFINITY);
+        boolean[] channel = new boolean[cells];
+        for (Reach reach : reaches) {
+            for (int i = 1; i < reach.cell.length; i++) {
+                paintSegment(reach, i - 1, i, nx, nz, normDist, halfW, depth, channel, cellSize);
+            }
+        }
+        return new Result(reaches, normDist, halfW, depth, channel, 0);
+    }
+
+    /**
+     * 外部折线（骨架来源切换用，见 {@link #buildFromPolys}）。
+     *
+     * @param wx,wz      节点世界坐标（**wu**）
+     * @param halfWidth  逐节点半宽（block）
+     * @param depth      逐节点水深（block）
+     */
+    public record Poly(double[] wx, double[] wz, double[] halfWidth, double[] depth) { }
+
+    /**
      * 带【网格间距】的构建。
      *
      * <p>{@code cellSize} = 每格多少 block（生产 step=4 ⇒ 4.0）。
