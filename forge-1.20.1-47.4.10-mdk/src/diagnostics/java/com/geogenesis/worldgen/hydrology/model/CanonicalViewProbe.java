@@ -586,6 +586,29 @@ public final class CanonicalViewProbe {
         }
         Path dir = Path.of("build/hydro-reassessment/canonical-" + System.currentTimeMillis());
         Files.createDirectories(dir);
+        // ★ 局部对比度模式（-Dhydro.relief=true）：7×7 邻域 min/max 预计算
+        final boolean relief = Boolean.getBoolean("hydro.relief");
+        int[][] localMin = null, localMax = null;
+        if (relief) {
+            localMin = new int[n][n];
+            localMax = new int[n][n];
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+                    for (int di = -3; di <= 3; di++) {
+                        for (int dj = -3; dj <= 3; dj++) {
+                            int a = i + di, b = j + dj;
+                            if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                            double v = bed[a * n + b];
+                            if (v < lo) lo = v;
+                            if (v > hi) hi = v;
+                        }
+                    }
+                    localMin[i][j] = (int) lo;
+                    localMax[i][j] = (int) hi;
+                }
+            }
+        }
         BufferedImage img = new BufferedImage(n, n, BufferedImage.TYPE_INT_RGB);
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
@@ -594,6 +617,9 @@ public final class CanonicalViewProbe {
                 if (isLake[k]) color = ViewSpec.LAKE_COLOR;
                 else if (isChannel[k]) color = ViewSpec.RIVER_COLOR;
                 else if (bed[k] < gen.seaLevel()) color = ViewSpec.SEA_COLOR;
+                // 正典默认 = contourFixed（定稿规格）；-Dhydro.relief=true 切局部对比（诊断用，不可比灰度）
+                else if (relief) color = ViewSpec.contourRelief(bed, n, i, j,
+                        ViewSpec.BAND_BASE, ViewSpec.BAND_BLOCKS, localMin, localMax);
                 else color = ViewSpec.contourFixed(bed, n, i, j);
                 img.setRGB(i, j, color);
             }

@@ -142,5 +142,27 @@ public final class ViewSpec {
         return (g << 16) | (g << 8) | g;
     }
 
+    /**
+     * ★ 局部对比度着色（诊断用，`-Dhydro.relief=true` 开启）——
+     *   解决"每 8 格一级 + 8 级循环"在【平缓区】分不清局部高低的问题。
+     *
+     * <p>做法：以本格 ±3 格的 7×7 邻域 min/max 做局部归一（高处亮、低处暗），
+     * 再与全图亮度 50/50 混合 ⇒ 既有整体海拔感，又能看清局部起伏。
+     * <b>这不是正典规格</b>（正典仍是 {@link #contour}）——仅用于"看局部形态"，
+     * 产出的图不可与正典图逐像素比灰度。</p>
+     */
+    public static int contourRelief(double[] h, int n, int i, int j,
+                                    double min, double bandBlocks, int[][] localMin, int[][] localMax) {
+        // 第一遍走全图时预计算 localMin/localMax（由调用方缓存）
+        int lo = localMin[i][j], hi = localMax[i][j];
+        double v = h[i * n + j];
+        double t = (hi > lo) ? (v - lo) / (hi - lo) : 0.5;   // 0..1 局部相对高
+        int band = (int) ((v - min) / bandBlocks);
+        int base = (int) Math.max(0, Math.min(255, 30 + 225 * ((band & 7) / 7.0)));
+        int relief = (int) Math.max(0, Math.min(255, 40 + 200 * t));
+        int g = (base + relief) / 2;
+        return (g << 16) | (g << 8) | g;
+    }
+
     private ViewSpec() { }
 }
