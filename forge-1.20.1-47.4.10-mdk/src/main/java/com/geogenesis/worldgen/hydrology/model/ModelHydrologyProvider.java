@@ -407,6 +407,20 @@ public final class ModelHydrologyProvider {
                 double surface = bilinear(p.waterSurface(), n, gi, gj, rd.originX, rd.originZ, blockX, blockZ, STEP);
 
                 // ★ 3×3 邻区求并集：湖优先（任一邻区判湖即湖），否则取"最近中心线命中"。
+                //
+                // ⚠⚠ 2026-10-09【严重 bug 修复：越界必须跳过，绝不能 clamp】⚠⚠
+                //
+                // 【伪影现象】实测出图后，沿 region 边界出现**矩形湖块**：
+                //   col i=358 从 j=51 连续 418 像素全判湖，i=362 与之逐位相同
+                //   ⇒ 完美的矩形，且 j=51 正是 region 边界（512×(-1)+563）。
+                //
+                // 【根因】原写法对**不在该邻区窗口内**的方块也去查询，并把索引
+                //   `clamp` 到邻区边界 ⇒ 查到的是"邻区边缘格" ⇒ 若边缘格判湖，
+                //   则在**整条 region 宽度**上都被误判成湖 ⇒ 矩形块。
+                //
+                // 【正解】越界 ⇒ `continue` 跳过该邻区（不查、不 clamp）。
+                //   3×3 邻区的**有效窗口**本就有重叠（RADIUS=352 > REGION/2=256），
+                //   所以"每个方块都能被至少一个邻区覆盖"—— 不需要靠 clamp 兜底。
                 boolean isLakeBlock = p.lake()[k];
                 double half = 0, depth = 0, bestDist = Double.POSITIVE_INFINITY;
                 if (!isLakeBlock) {
@@ -414,8 +428,9 @@ public final class ModelHydrologyProvider {
                         RegionData rr = neigh[t];
                         if (rr == null) continue;
                         int nn = rr.pipe().nx();
-                        int ti = clamp((int) Math.round((blockX - rr.originX()) / (double) STEP), nn);
-                        int tj = clamp((int) Math.round((blockZ - rr.originZ()) / (double) STEP), nn);
+                        int ti = (int) Math.round((blockX - rr.originX()) / (double) STEP);
+                        int tj = (int) Math.round((blockZ - rr.originZ()) / (double) STEP);
+                        if (ti < 0 || tj < 0 || ti >= nn || tj >= nn) continue;   // ★ 越界跳过
                         if (rr.pipe().lake()[ti * nn + tj]) { isLakeBlock = true; break; }
                         SegmentIndex si = neighSeg[t];
                         if (si == null || si.isEmpty()) continue;

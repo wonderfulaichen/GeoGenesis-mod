@@ -55,10 +55,14 @@ public final class ProductionViewProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : ViewSpec.SEED;
         int cx = args.length > 1 ? Integer.parseInt(args[1]) : ViewSpec.CENTER_X;
         int cz = args.length > 2 ? Integer.parseInt(args[2]) : ViewSpec.CENTER_Z;
-        // ★ 默认必须正典 radius（ViewSpec.RADIUS）；允许显式传参但会【警告】。
-        //   历史教训：传 300 会让色标/尺寸与正典不可比（用户已指出）。
+        // ★ 默认必须正典 radius（ViewSpec.RADIUS）。
+        //   ⚠ 2026-10-09：由"警告"改为【硬失败】—— 因为我在同一轮里**反复传 300**
+        //     并拿 601×601 的图与用户 1401×1401 的参照图对比（用户已两次指出）。
+        //     口头纪律无效 ⇒ 改为构造性拦截：非正典半径直接抛异常。
+        //     确需小窗探索时用 `-Dhydro.allowNonCanonicalRadius=true` 显式豁免。
         int radius = args.length > 3 ? Integer.parseInt(args[3]) : ViewSpec.RADIUS;
-        ViewSpec.assertCanonicalRadius(radius, false);
+        ViewSpec.assertCanonicalRadius(radius,
+                !Boolean.getBoolean("hydro.allowNonCanonicalRadius"));
 
         TerrainParams tp = TerrainParams.defaults();
         CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
