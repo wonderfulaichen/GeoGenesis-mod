@@ -35,8 +35,18 @@ package com.geogenesis.worldgen.hydrology.model;
  */
 public final class DirectionRule {
 
-    /** 当前破平局模式。默认 {@code "baseline"} = 现状，逐位不变。 */
-    private static volatile String mode = "baseline";
+    /**
+     * 当前破平局模式。
+     *
+     * <p>★ 2026-10-09【加系统属性入口】：原为 {@code volatile String mode = "baseline"}，
+     * 且**只有探针**调 {@code setMode} ⇒ 生产路径永远是 {@code baseline}
+     * ⇒ {@code epsilonSlope()} 恒 false ⇒ "实测无效"的结论**从未在生产口径上验证过**。</p>
+     *
+     * <p>现读 {@code -Dhydro.directionRule=baseline|edgepsilon|noise}，
+     * 使生产/探针可在同一入口 A/B。默认 {@code baseline} = 原行为（零变更）。</p>
+     */
+    private static volatile String mode =
+            System.getProperty("hydro.directionRule", "baseline");
 
     /**
      * ε 坡度增量（<b>水面单位 = 块</b>）。

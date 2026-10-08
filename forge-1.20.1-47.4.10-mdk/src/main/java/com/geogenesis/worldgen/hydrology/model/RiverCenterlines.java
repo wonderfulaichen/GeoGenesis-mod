@@ -403,7 +403,7 @@ public final class RiverCenterlines {
      * 4 块 ⇒ 实测 90.3% 的河道被顶在该地板上 ⇒ 宽度由地板而非水力几何决定
      * ⇒ **形态随 step 漂移**。改常量后 `STEP=4` 也能给出 1 块宽的河道。</p>
      */
-    private static final double MIN_HALF_BLOCKS = 0.5;
+    public static final double MIN_HALF_BLOCKS = 0.5;
 
     /** 3 点中值滤波（原地；首尾不动，保持端点=汇口/河口语义）。 */
     private static void median3(double[] a) {

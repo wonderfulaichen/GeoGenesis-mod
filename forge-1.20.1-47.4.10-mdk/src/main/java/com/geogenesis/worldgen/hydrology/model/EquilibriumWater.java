@@ -33,38 +33,38 @@ public final class EquilibriumWater {
                           int trueDrains, int exteriorExits, int unresolvedCells) { }
 
     /**
-     * 内陆窗口的可信判据开关：`-Dgeogenesis.inlandResolved=true`。**默认 false（未验收）**。
+     * 内陆窗口的可信判据开关：`-Dgeogenesis.inlandResolved=false` 可关闭。
+     * ★ **默认 true**（2026-10-09 改）—— 理由见下。
      *
-     * <h3>它解决什么</h3>
+     * <h3>它解决什么（model 链的必需项，不是可选项）</h3>
      * <p>窗口内无海（纯内陆）时，原实现把所有格标为 {@code resolved=false}
      * （因为收敛判据要求"只含真海"与"含窗外出口"两组结果相同，而 A 组不存在）
      * ⇒ 下游 {@code LakeWaterBalance.isLakePot} 要求 {@code resolved}
-     * ⇒ **一格湖都建不起来**。</p>
+     * ⇒ <b>一格湖都建不起来</b>。</p>
      * <p>实测（游戏配置 REGION=512/step=4，7 个 region）：
      * <b>4 个为纯内陆、{@code resolved=0/31329}、basins=0、lake=0</b>；
      * 含海的 3 个正常（basins 1/12/46）。⇒ 这是"游戏里湖没了"的直接机理。</p>
      *
-     * <h3>★ 为什么默认关闭（它的正解是"窗口够大"，不是"放宽判据"）</h3>
-     * <p>启用后无海窗口改用「B 组有有限水位」判可信。实测效果：</p>
+     * <h3>★ 为什么改为默认 true（我此前判错，纠正）</h3>
+     * <p>我原先写"它的正解是窗口够大，不是放宽判据"并默认关闭。
+     * 但实测（同 seed/中心）证明 <b>生产默认 HALO=96 下它必须开</b>：</p>
      * <table border="1">
-     *   <tr><th>HALO</th><th>开关</th><th>湖（r=300 小窗）</th></tr>
-     *   <tr><td>96</td><td>关</td><td>0.53%</td></tr>
-     *   <tr><td>96</td><td><b>开</b></td><td><b>3.72%</b>（补回内陆湖）</td></tr>
-     *   <tr><td><b>512</b></td><td>关/开</td><td><b>4.98%（两者逐位相同）</b></td></tr>
+     *   <tr><th>HALO</th><th>开关</th><th>湖</th></tr>
+     *   <tr><td>96（生产默认）</td><td>关</td><td><b>0.53%</b>（内陆区全灭）</td></tr>
+     *   <tr><td>96（生产默认）</td><td><b>开</b></td><td><b>3.72%</b>（补回内陆湖）</td></tr>
+     *   <tr><td>512</td><td>关/开</td><td>4.98%（两者逐位相同 ⇒ 开关已无必要）</td></tr>
      * </table>
-     * <p>⇒ <b>HALO 够大时该开关完全无效</b>（窗口自然含海）——
-     * 说明"扩大窗口"才是结构性正解，放宽判据只是权宜之计。</p>
+     * <p>⇒ 只有在 <b>HALO≥512</b> 时"扩大窗口"才替代它；
+     * 而 HALO=512 的正典出图耗时不可接受（>50 分钟）。
+     * ⇒ <b>当前生产形态下，本开关是 model 链能出湖的前提</b>，故默认开。</p>
      *
-     * <h3>已知偏差（未解决）</h3>
-     * <p>启用后湖偏多：正典规格实测 **5.58%** vs 参照图 **3.63%**（多 54%）。
-     * 位置一致度 93%，多出的 4.4 万格全部落在"参照判为陆地"处
-     * ⇒ 判据仍偏宽。曾试过"窗外出口水位 +1 块后结果是否改变"的
-     * 收敛式判据，使湖从 8.50% 降到 5.58%，但未收敛到 3.63%。</p>
-     *
-     * <p>⇒ 保留为诊断开关；**要用时须配合 `-Dgeogenesis.modelHalo=512`**（那时它已无必要）。</p>
+     * <h3>已知偏差（未解决，如实）</h3>
+     * <p>启用后湖偏多：正典规格实测 **5.26%** vs 参照图 **3.63%**（多 45%）。
+     * 位置一致度 93%（"该有湖的地方都有"），多出的落在"参照判为陆地"处
+     * ⇒ 判据仍偏宽，是后续议题。</p>
      */
     public static final boolean INLAND_RESOLVED =
-            Boolean.getBoolean("geogenesis.inlandResolved");
+            !"false".equalsIgnoreCase(System.getProperty("geogenesis.inlandResolved", "true"));
 
     private record Node(int cell, double level) implements Comparable<Node> {
         public int compareTo(Node o) {
