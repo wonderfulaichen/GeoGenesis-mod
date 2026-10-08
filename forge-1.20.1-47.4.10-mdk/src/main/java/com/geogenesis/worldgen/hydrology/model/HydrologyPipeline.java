@@ -329,6 +329,11 @@ public final class HydrologyPipeline {
         //   迭代后湖水位与【真实到达水量】一致，且溢流又反哺下游。
         //   收敛判据：水位变化 < 1e-6 或达到最大轮次（未收敛则如实保留最后结果）。
         LakeWaterBalance balance = new LakeWaterBalance(n, n, step, built.bed(), surface);
+        // ★ 2026-10-09【闭式水位场（WaterField）接线已实测否决，见 LakeWaterBalance.solve 的注释】
+        //   结论：WaterField 是 legacy 链 `WaterLevelSolver` 的"水位数据源"，
+        //   而 model 链的湖是**盆地机制**（需 sill/rim/resolved 才能蓄水成盆）
+        //   ⇒ 把"水位源"当"湖生成器"用属概念错位，实测只出零散水坑。
+        //   类与 LAKE_FIELD_MODE 开关保留（默认 false，无调用点）供将来参考。
         LakeWaterBalance.Result lakeResult =
                 balance.solve(request.climate(), built.drains(), borderMask,
                         null, request.extraSource());

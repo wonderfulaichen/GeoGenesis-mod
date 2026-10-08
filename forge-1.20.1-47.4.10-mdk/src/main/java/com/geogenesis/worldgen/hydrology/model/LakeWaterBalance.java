@@ -263,8 +263,27 @@ public final class LakeWaterBalance {
     public Result solve(Climate climate, boolean[] sea, boolean[] borderMask,
                         double[] upstreamFlow, double[] extraInflow) {
         int cells = nx * nz;
-        // 找湖盆种子：平衡态下水位高于床面的格（潜在湖），且非海。
-        //    只在"盆地最低点"处建立湖盆，避免同一湖被多次建立。
+        // ★★★ 2026-10-09【闭式水位场（WaterField）接线 —— 已实测否决，勿重走】★★★
+        //
+        // 【为什么放弃】把 `d529365` 的闭式水位场接到本类，实测两版皆不合格：
+        //   ① 位置+水位都用闭式场（offset=-0.5）⇒ 湖 **55.18%**（全淹）
+        //      根因：W = max(seaLevel, 低通地形 − 0.5) **比绝大多数地形高**
+        //            ⇒ 全图几乎每格都"低于水位"。
+        //   ② 位置用 equilibrium、只水位用闭式场 ⇒ 湖 **0.015%**（几乎全无）
+        //      根因：两套语义混用后盆地建不起来。
+        //   ③ 回到 ① 的结构 + offset=-4.0（探针实参口径）⇒ 湖 2.19%（量级对）
+        //      但正典规格出图只见【零散小水坑】，不是"成片大湖"。
+        //
+        // 【概念错位的根因】原 `WaterField` 是给 **legacy 链的 `WaterLevelSolver`**
+        //   用的（接在 `FlowField` 上）；而本类的湖是**盆地机制**（需要 sill/rim/resolved
+        //   才能"蓄水成盆"）。闭式场只能给出"逐格地形低于低通面"的散点，
+        //   **造不出"盆地蓄水"** ⇒ 把一个"水位数据源"当成"湖生成器"用是错的。
+        //
+        // 【保留物】{@link WaterField} 类与 {@link HydrologyPipeline#LAKE_FIELD_MODE}
+        //   开关（默认 false）保留，供将来若改走"水位局部化"路线时参考。
+        //
+        // 【现行主线】用 {@link EquilibriumWater#INLAND_RESOLVED}（实测有效：
+        //   湖 0.53% → 3.72%），它才是为盆地机制设计的。
         boolean[] isLakePot = new boolean[cells];
         for (int k = 0; k < cells; k++) {
             isLakePot[k] = !sea[k] && resolved[k] && equilibrium[k] - bed[k] > 1e-6;
@@ -391,10 +410,12 @@ public final class LakeWaterBalance {
                     if (!visited[next] && isLakePot[next]) { visited[next] = true; queue.add(next); }
                 }
             }
-            // 鞍口 = 该组内平衡水位最大值（平衡态本身已给出到出口的高度）
+            // 鞍口 = 该组内水位最大值（闭式场下 = 组内水位上确界；
+            //   平衡场下 = 平衡态已给出到出口的高度）
             double sill = Double.NEGATIVE_INFINITY, lowest = Double.POSITIVE_INFINITY;
             int seed = group.get(0), outletKey = -1;
             for (int k : group) {
+                // sill = 盆地 rim 的溢出口高度（priority-flood 给的正是这个语义）
                 sill = Math.max(sill, equilibrium[k]);
                 if (bed[k] < lowest) { lowest = bed[k]; seed = k; }
             }
@@ -504,22 +525,22 @@ public final class LakeWaterBalance {
             // 【开关】`-Dgeogenesis.localLakeLevel=true` 启用；默认 false = 原行为（零变更）。
             //   ⚠ 启用后 `inflowI/evap/overflow` 仍按原公式算（供下游河网与账本使用），
             //     只把**水位**换成 sill ⇒ 下游溢流注入量仍守恒（outflow = inflow − evap）。
-            double level;
+            double lakeLevel;
             if (LOCAL_LAKE_LEVEL) {
-                level = sill - 1e-9;                          // 满湖：水面 = 溢出口
+                lakeLevel = sill - 1e-9;                      // 满湖：水面 = 溢出口
             } else {
-                level = fed || !assumeFullWhenUnfed
+                lakeLevel = fed || !assumeFullWhenUnfed
                         ? solveLevel(group, inflow, climate.evaporation(), sill)
                         : sill - 1e-9;                        // 无来水信息 ⇒ 回落 sill（满湖）
             }
-            boolean overflow = level >= sill - 1e-9;
+            boolean overflow = lakeLevel >= sill - 1e-9;
             double areaCells = 0;
             // ★ 淹没判据必须【含等号】：平坦湖底时所有格床面相同，
             //   用 `bed < level` 会一格都判不湿 ⇒ 整个湖盆凭空消失。
             //   （本轮实测：极湿工况湖面积 41 而几何上限 105，正是此因。）
             for (int k : group) {
-                if (bed[k] <= level) {
-                    depth[k] = Math.max(0, level - bed[k]);
+                if (bed[k] <= lakeLevel) {
+                    depth[k] = Math.max(0, lakeLevel - bed[k]);
                     lake[k] = true;
                     areaCells += 1;
                 }
@@ -533,14 +554,14 @@ public final class LakeWaterBalance {
             if (outflow > 0 && outletKey >= 0) {
                 overflowAt.merge(outletKey, outflow, Double::sum);
             }
-            basins.add(new Basin(seed, bed[seed], sill, level, areaCells, catchment,
+            basins.add(new Basin(seed, bed[seed], sill, lakeLevel, areaCells, catchment,
                     inflow, evapOut, outflow, overflow, truncated));
             int basinIndex = basins.size() - 1;
             // ★ 记录盆地身份：逐格 basinId（供下游精确定位，取代"最近出口"猜测）
             //   与逐盆地 outlet（-1 = 内流/无出口）。
             basinOutletList.add(outletKey);
             for (int k : group) basinId[k] = basinIndex;
-            if (lake[seed]) basinLevelAt.put(seed, level);
+            if (lake[seed]) basinLevelAt.put(seed, lakeLevel);
         }
         int[] basinOutlet = new int[basinOutletList.size()];
         for (int i = 0; i < basinOutlet.length; i++) basinOutlet[i] = basinOutletList.get(i);
