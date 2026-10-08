@@ -103,25 +103,18 @@ public final class CanonicalViewProbe {
         //   方向性光照把【谷画成脊】。本项目已因此误判两次（见 ViewSpec.contour 的 javadoc）。
         //   故默认改为等高线；hillshade 保留仅供对照地形大尺度形态。
         final boolean hillshade = Boolean.getBoolean("hydro.hillshade");
-        // ★★★ 2026-10-09【底图色标统一为固定值 —— 跨图可比】★★★
-        //
-        // 【为什么必须改】本探针原有两条出图路径，色标**不一致**：
-        //   · 默认路径（viaProvider=false）：`band = max(4, (hMax−hMin)/24)` —— **按本图自适应**
-        //   · viaProvider=true（走生产 provider）：`ViewSpec.contourFixed` —— **固定**
-        // ⇒ 两张图的同一种灰度**不代表同一高程** ⇒ 我把它们并排对比时，
-        //   海岸带一边是浅灰、一边是黑的（用户会以为地形变了，实为渲染口径不同）。
-        //
-        // 【正解】统一用 `ViewSpec.contourFixed`（min=BAND_BASE, band=BAND_BLOCKS）
-        // —— `ViewSpec` 的 javadoc 明写这是"跨图可比"的唯一色标。
-        double hMin = ViewSpec.BAND_BASE;
-        double hMax = Double.NEGATIVE_INFINITY, hLo = Double.MAX_VALUE;
-        for (double v : r.bed()) {
-            if (v > hMax) hMax = v;
-            if (v < hLo) hLo = v;
+        // 等高线的下界与档距用【全图高程范围】⇒ 一图之内色标自洽。
+        double hMin = Double.MAX_VALUE, hMax = -Double.MAX_VALUE;
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                double v = r.bed()[i * n + j];
+                if (v < hMin) hMin = v;
+                if (v > hMax) hMax = v;
+            }
         }
-        double bandBlocks = ViewSpec.BAND_BLOCKS;
-        System.out.printf("底图=%s 固定色标(min=%.0f band=%.0f) 本图高程范围[%.1f, %.1f]%n",
-                hillshade ? "hillshade(NW光源)" : "contour(无光照)", hMin, bandBlocks, hLo, hMax);
+        double bandBlocks = Math.max(4.0, (hMax - hMin) / 24.0);
+        System.out.printf("底图=%s 高程范围[%.1f, %.1f] 等高线档距=%.2f 块%n",
+                hillshade ? "hillshade(NW光源)" : "contour(无光照)", hMin, hMax, bandBlocks);
 
         int lake = 0, channel = 0, sea = 0, unresolvedWet = 0, unresolvedDry = 0;
         // ★ 溢流出口标记（2026-10-05）。加它的理由：本轮修复的对象就是"溢口"，
