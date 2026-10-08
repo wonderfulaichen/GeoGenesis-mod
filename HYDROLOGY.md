@@ -6,6 +6,48 @@
 
 ---
 
+## 〇、⛔ 用户口径（最高优先级，2026-10-09 用户第三次重申）
+
+> **这三条推翻了我此前多次的错误表述。任何人（含 AI）动手前必须先读本节，
+> 不得再用旧说法。**
+
+### ① 参照图是 **model 链**跑的，不是 legacy
+
+`canonical-1791351869529`（用户多次引用的那张"目标图"）的 `metrics.txt` 实测：
+
+```
+river model = D8 (streamSamples=600000)      ← model 链（HydrologyPipeline, RiverModel.D8）
+radius 700 => 1401x1401
+sea=452778 lake=71340 (3.63%) channel=25503
+```
+
+**⚠ 我此前反复说"参照图是 legacy 出的"、"legacy 的湖是对的" —— 都是错的。**
+用户的判定是：**legacy 的湖泊也不完全对**。
+
+### ② 河流必须做成 **确定性骨架**，宽度等细节**后续解决**
+
+- **目标形态 = 骨架**（确定性、与窗口无关）
+- **宽度/深度等细节是后续议题**，不要因为"宽度不对"就否定骨架方向
+- **理由（用户的硬需求）**：只有确定性骨架才能**无限世界生成**
+
+⇒ 判据首选「骨架是否正确/连续/位置对」，**不要**先纠结宽度。
+
+### ③ **model 链是 legacy 链的升级版**
+
+- 不是"两条平行的可选方案"，而是 **model 取代 legacy** 的关系
+- 因此：**legacy 的既有优点（如跨区机制）必须被 model 继承**，而不是丢掉
+- 我此前"先回退到 legacy"的做法方向错了
+
+### ⇒ 由此推出的正确工作方向
+
+1. **让 model 链进游戏并能跑**（`hydrologyModelPipelineEnabled=true`），
+   而不是停在"legacy 是默认"的现状
+2. **把 model 链的骨架改成与窗口无关的确定性生成**
+   （参考 DW 的**共享锚点**：本区汇点 = 邻区源点，同公式 ⇒ 逐位相同）
+3. 宽度/深度在骨架正确之后再处理
+
+---
+
 ## 一、当前状态（唯一权威）
 
 | 项 | 值 |
@@ -34,8 +76,11 @@ HydrologyChunkEngine.calculate()
 | 入口 | `HydrologyBlockCarver.carveChunk` | `ModelHydrologyProvider.columnsFor` |
 | 河网 | `riverline/RiverLineNetwork`（region 640wu，D8 追踪 + 跨区续流 `OutletSeed`）| `model/HydrologyPipeline`（窗口 + 多 region 拼接）|
 | 湖 | `RiverLineRegion.LakeNode` + `spill` 溢出高程 | `EquilibriumWater`（priority-flood）+ `LakeWaterBalance`（水量平衡）|
-| 状态 | **用户确认：湖基本正常，河位置奇怪** | 开发中（修"河位置"问题的重写）|
-| 默认 | ✅ | ❌ |
+| 定位 | **被 model 链取代的旧版** | ★ **升级版（目标）** —— 见 §〇③ |
+| 默认 | ✅（现状，**但这是待改的**）| ❌ |
+
+⚠ **不要把"当前默认是 legacy"误读为"legacy 是正确目标"** ——
+用户的定位是 **model 取代 legacy**（§〇③），legacy 仅为现网跑着的旧版。
 
 **model 链内部还有两个模型**（`HydrologyPipeline.RiverModel`）：
 
@@ -117,9 +162,12 @@ gradlew runCanonicalViewProbe -Dhydro.viaProvider=true -Dgeogenesis.inlandResolv
 | FTF 边框 edge 恒 0 | `EdgeFunction` 的 `DISTANCE_2_DIV`（`distance2 - 1.0`）⇒ 边框处 `distance==distance2` ⇒ 值 0 |
 
 **对我们的启示**：
-- legacy 链的跨区机制（`sampleAll` 3×3 邻区 + `OutletSeed`）**方向正确**，与 DW/Streams 同源
+- **★ 骨架必须确定性、与窗口无关**（§〇②）—— 这是用户的硬需求（无限世界）。
+  DW 的**共享锚点**是直接可借鉴的正解：本区汇点 = 邻区源点（同种子公式 ⇒ 逐位相同）。
+- legacy 链**已有**跨区机制（`sampleAll` 3×3 邻区 + `OutletSeed`），与 DW/Streams 同源
+  ⇒ 这是 **model 链（升级版）必须继承的既有优点**（§〇③），不是"legacy 的专利"
 - model 链**丢了这两个机制**（只用本区、内陆窗口失效）⇒ 这是"进实机就断"的根因
-- **湖水位局部化**是可选路线（DW/Streams 干脆不做物理湖）；我们保留了物理湖
+- **湖水位局部化**：DW/Streams 干脆不做物理湖；我们保留物理湖（但要解决其窗口依赖）
 
 ---
 

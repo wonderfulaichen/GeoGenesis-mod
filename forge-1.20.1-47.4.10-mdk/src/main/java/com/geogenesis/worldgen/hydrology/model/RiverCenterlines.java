@@ -348,8 +348,25 @@ public final class RiverCenterlines {
             double halfValley = valleyHalfWidth(bed, nx, nz, k,
                     directionAt(cell, i, nz), params.bankRise(), params.maxHalf(), cellSize);
             double half = Math.min(halfQ, halfValley);
-            // 至少半格：中心线本身必须有水（cellSize=1 时即旧的 0.5）
-            half = Math.max(half, 0.5 * cellSize);
+            // ★★★ 2026-10-09【修复：最小河宽不得随 STEP 放大】★★★
+            //
+            // 【原写法】`half = Math.max(half, 0.5 * cellSize)` —— 地板值正比于步长
+            //   ⇒ **STEP=4 时最小全宽 4 块**（参照图只有 1~3 块）⇒ 河道粗 2~3 倍。
+            //
+            // 【实测证据】（`-Dgeogenesis.riverWidthDiag=true`，同 seed/中心）：
+            //   | step | half∈[0,1) | half∈[1,2) | half∈[2,3) | 最小全宽 |
+            //   |  4   |     0%    |     0%    |   **90.3%** | 4 块  ← 全部顶在地板 |
+            //   |  2   |     0%    |   64.3%   |    31.1%    | 2 块  |
+            //   |  1   |   14.3%   |  **74.5%**|    10.5%    | 1 块  ✅ 与参照图吻合
+            //   ⇒ 河道宽度实际上被【地板】而非【水力几何】支配 ⇒ 形态随 step 漂移。
+            //
+            // 【为什么地板本身是对的】"中心线本身必须有水"—— 而那需要 **1 个水面方块**，
+            //   与"网格步长"无关（游戏里水的最小单位恒为 1 块）。
+            //   原写法把"1 格"当成了 unit ⇒ step>1 时被放大 STEP 倍。
+            //
+            // 【正解】地板 = 固定 0.5 块（= 1 块全宽），**与 cellSize 解耦**。
+            //   这样 STEP=4 也能给出 1 块宽的河道：保留速度，形态不再随 step 漂移。
+            half = Math.max(half, MIN_HALF_BLOCKS);
             double dep = depthFor(q[i], localSlope(bed, nx, nz, k, cellSize), params);
             // ★ 地形夹逼不是"裁掉宽度丢掉流量"：宽度被钳时相应【加深】，
             //   保持过水断面量级（方案 §4.3 明确要求）。
@@ -375,6 +392,18 @@ public final class RiverCenterlines {
 
     /** 沿程宽度/深度的最大逐节点变化比（1+X ⇒ 单步最多涨 X%）。 */
     private static final double MAX_WIDTH_STEP = 0.5;
+
+    /**
+     * 河道【最小半宽】（block）—— ★ 与网格步长解耦（2026-10-09 修复）。
+     *
+     * <p>语义："中心线本身必须有水"需要 1 个水面方块 ⇒ 半宽 0.5 块（全宽 1 块）。
+     * <b>游戏里水的最小单位恒为 1 块，与网格步长无关</b> ⇒ 该值必须是常量。</p>
+     *
+     * <p>⚠ 原写法是 {@code 0.5 * cellSize}（地板正比于步长）⇒ `STEP=4` 时最小全宽
+     * 4 块 ⇒ 实测 90.3% 的河道被顶在该地板上 ⇒ 宽度由地板而非水力几何决定
+     * ⇒ **形态随 step 漂移**。改常量后 `STEP=4` 也能给出 1 块宽的河道。</p>
+     */
+    private static final double MIN_HALF_BLOCKS = 0.5;
 
     /** 3 点中值滤波（原地；首尾不动，保持端点=汇口/河口语义）。 */
     private static void median3(double[] a) {
@@ -464,7 +493,9 @@ public final class RiverCenterlines {
             halfCells = Math.min(halfCells, Math.max(1, reached));
         }
         // 格 → block（并夹回 maxHalf：limit 用 ceil ⇒ 不整除时可能超出）
-        return Math.min(maxHalf, Math.max(cellSize, halfCells * cellSize));
+        // ★ 2026-10-09：地板由 `cellSize` 改为 `MIN_HALF_BLOCKS` —— 与上处同一 bug
+        //   （原 `Math.max(cellSize, …)` 在 STEP=4 时把最小半宽抬到 4 块）。
+        return Math.min(maxHalf, Math.max(MIN_HALF_BLOCKS, halfCells * cellSize));
     }
 
     /** 全宽 W = headWidth·(Q/widthRef)^b，上限 maxWidth。 */

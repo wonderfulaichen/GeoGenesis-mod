@@ -301,6 +301,31 @@ public final class ModelHydrologyProvider {
     static final java.util.concurrent.atomic.AtomicLong lakeDiagGainedByRefine =
             new java.util.concurrent.atomic.AtomicLong();
 
+    /** 河道半宽直方图诊断（`-Dgeogenesis.riverWidthDiag=true`），桶 = floor(half) 0..15。 */
+    static final boolean RIVER_WIDTH_DIAG = Boolean.getBoolean("geogenesis.riverWidthDiag");
+    static final java.util.concurrent.atomic.AtomicLong[] riverHalfHist =
+            new java.util.concurrent.atomic.AtomicLong[16];
+    static {
+        for (int i = 0; i < riverHalfHist.length; i++) {
+            riverHalfHist[i] = new java.util.concurrent.atomic.AtomicLong();
+        }
+    }
+
+    /** 河道半宽分布报告。 */
+    public static String riverWidthReport() {
+        long tot = 0;
+        for (var a : riverHalfHist) tot += a.get();
+        StringBuilder sb = new StringBuilder("【河道半宽分布】(floor(half) 桶)\n");
+        for (int i = 0; i < riverHalfHist.length; i++) {
+            long v = riverHalfHist[i].get();
+            if (v == 0) continue;
+            sb.append(String.format("  half∈[%d,%d) : %d (%.1f%%)%n",
+                    i, i + 1, v, 100.0 * v / Math.max(1, tot)));
+        }
+        sb.append(String.format("  合计 %d%n", tot));
+        return sb.toString();
+    }
+
     /**
      * 已求解 region 的【网格级湖格总数】累计（诊断用）——
      * 用于判定"湖是窗口丢的还是适配层丢的"：
@@ -469,6 +494,16 @@ public final class ModelHydrologyProvider {
                             surface, surface, 0.0, 1.0,
                             true, true, null, surface));
                     continue;
+                }
+
+                // ★ 诊断（-Dgeogenesis.riverWidthDiag=true）：河道半宽分布。
+                //   目的：验证"河道精确率仅 19%"是否源于【宽度律饱和】——
+                //   `fullWidth(q) = min(maxWidth, headWidth × (q/widthRef)^0.45)`
+                //   在 widthRef=1.0（从 ContinuousRiverNetwork 继承的连续量口径）
+                //   而 discharge 是【格数累积】（1~数千）时会极早饱和 ⇒ 全部 12 块宽。
+                if (RIVER_WIDTH_DIAG && half > 0) {
+                    int b = (int) Math.min(15, Math.floor(half));
+                    riverHalfHist[b].incrementAndGet();
                 }
 
                 // 河道：`half`/`depth` 已由上方 3×3 邻区并集给出（"最近命中"）。
