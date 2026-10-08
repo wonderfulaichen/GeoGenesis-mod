@@ -251,13 +251,98 @@ public final class RiverCenterlines {
             }
         }
 
+        // ②b ★★★ 2026-10-09【源头间距裁剪 —— 治"分支的分支太多/梳齿"】★★★
+        //
+        // 【用户判据】「河流的分支的分支有点太多了。」
+        //
+        // 【参考项目的共同答案】（四家无一用"逐格阈值"当唯一过滤器，全靠结构性约束）：
+        //   · RTF：分叉 250 格相交排斥 + 海岸带不分叉 + 层级≤2 + 子河≥300；
+        //   · PL-RGA：源头配额(50/板块) + `min_source_spacing`（距任何已有河节点/线段
+        //     < 5 格 ⇒ 弃源头，rivers.cpp:394 + nearExistingRiver:104-123）；
+        //   · DW：20/50/9 格多重间距否决 + 分支≤3 级；
+        //   · Streams：主干走廊 512 格一条 + 非走廊 basin 至多 1 条支流。
+        //
+        // 【为什么阈值修不了】`channelThreshold` 只改密度不改拓扑 —— 海岸平原上
+        //   每条冲沟各自累积都能过阈 ⇒ 平行梳齿照旧（我们自己的历史实测：
+        //   阈值上下随机开关 ⇒ 碎成多段，`ContinuousRiverNetwork.java:424-427`）。
+        //
+        // 【本实现 = PL-RGA 同型的"以大吃小"】：
+        //   ① 把 reach 按【规模】（节点数×最大流量）降序排序 —— 大河优先保留；
+        //   ② 依次登记其折线到空间网格（40 块桶）；
+        //   ③ 小 reach：若其【源头】距任何"已保留的更大河" < MIN_SOURCE_DIST 块
+        //      ⇒ 删除（它的水由承接河代表）。
+        //   ⇒ 平原上互相平行的短枝因"源头贴着大河"被成批剪掉；
+        //     山区主干彼此相距远 ⇒ 不受影响。
+        //
+        // 【开关】`-Dgeogenesis.sourceSpacing=<block>`（0 = 关闭 = 原行为；默认 24）。
+        //   PL-RGA 用 5 格但那是"低分辨率路由格"；我们按 D8 格距 STEP=4 换算，
+        //   24 块 = 6 个骨架格 ≈ DW 的 20 格档。
+        int sourceSpacing = Integer.getInteger("geogenesis.sourceSpacing", 24);
+        int dropped = 0;   // 被裁剪/过短不绘的段数（②b 与 ③ 共用统计）
+        if (sourceSpacing > 0 && reaches.size() > 1) {
+            // 规模 = 节点数 × 最大流量（大河 = 长且水量大）
+            reaches.sort((a, b) -> {
+                double sa = a.nodeCount() * maxFluxOf(a);
+                double sb2 = b.nodeCount() * maxFluxOf(b);
+                return Double.compare(sb2, sa);
+            });
+            // 空间桶（40 块）：桶内登记已保留 reach 的采样点
+            final int BUCKET = 40;
+            java.util.Map<Long, java.util.List<int[]>> occupied = new java.util.HashMap<>();
+            List<Reach> kept = new ArrayList<>();
+            int pruned = 0;
+            for (Reach r : reaches) {
+                // reach 源头（上游端）的世界坐标
+                int hk = r.sourceCell();
+                int hx = hk / nz, hz = hk % nz;
+                // 查询附近桶内的已保留点
+                boolean tooClose = false;
+                int b0x = Math.floorDiv(hx - sourceSpacing, BUCKET);
+                int b1x = Math.floorDiv(hx + sourceSpacing, BUCKET);
+                int b0z = Math.floorDiv(hz - sourceSpacing, BUCKET);
+                int b1z = Math.floorDiv(hz + sourceSpacing, BUCKET);
+                outer:
+                for (int bx = b0x; bx <= b1x && !tooClose; bx++) {
+                    for (int bz = b0z; bz <= b1z && !tooClose; bz++) {
+                        var pts = occupied.get(((long) bx << 32) ^ (bz & 0xffffffffL));
+                        if (pts == null) continue;
+                        for (int[] pt : pts) {
+                            int ddx = pt[0] - hx, ddz = pt[1] - hz;
+                            if (ddx * ddx + ddz * ddz < sourceSpacing * (long) sourceSpacing) {
+                                tooClose = true;
+                                break outer;
+                            }
+                        }
+                    }
+                }
+                if (tooClose && kept.size() > 0) {
+                    pruned++;                          // 小枝贴大河 ⇒ 剪
+                    continue;
+                }
+                // 保留：沿折线每 BUCKET/2 块登记一个采样点
+                for (int i = 0; i < r.cell.length; i += Math.max(1, BUCKET / 2)) {
+                    int kk = r.cell[i];
+                    int px = kk / nz, pz = kk % nz;
+                    occupied.computeIfAbsent(
+                            ((long) Math.floorDiv(px, BUCKET) << 32) ^ (Math.floorDiv(pz, BUCKET) & 0xffffffffL),
+                            x -> new ArrayList<>()).add(new int[]{px, pz});
+                }
+                kept.add(r);
+            }
+            reaches = kept;
+            dropped += pruned;
+            if (pruned > 0) {
+                System.out.printf("[centerlines] source-spacing prune: %d reaches removed (spacing=%d)%n",
+                        pruned, sourceSpacing);
+            }
+        }
+
         // ③ 横断面距离场（把中心线【沿折线扫掠】展开成几何）
         double[] normDist = new double[cells];
         double[] halfW = new double[cells];
         double[] depth = new double[cells];
         Arrays.fill(normDist, Double.POSITIVE_INFINITY);
         boolean[] channel = new boolean[cells];
-        int dropped = 0;
         for (Reach reach : reaches) {
             // ★ 过短碎段不绘（<2 节点 = 孤立单格团）：它们是细化后的残渣，
             //   不是河。数量打印出来供核对，绝不静默。
@@ -388,6 +473,13 @@ public final class RiverCenterlines {
         limitSlope(w, MAX_WIDTH_STEP);
         limitSlope(d, MAX_WIDTH_STEP);
         out.add(new Reach(cell, q, w, d, comp));
+    }
+
+    /** reach 的规模度量（源头间距裁剪用）：最大节点流量。 */
+    private static double maxFluxOf(Reach r) {
+        double m = 0;
+        for (double v : r.discharge) m = Math.max(m, v);
+        return m;
     }
 
     /** 沿程宽度/深度的最大逐节点变化比（1+X ⇒ 单步最多涨 X%）。 */

@@ -570,12 +570,23 @@ public final class ModelHydrologyProvider {
                 //   距离场未覆盖时给最小可雕值（保证刻出河床 ⇒ 有水面）。
                 boolean onChannel = p.channel() != null && p.channel()[k];
                 if (onChannel) {
-                    if (half <= 0) {
-                        // 在流量掩码内、但距离场未覆盖（偏离中心线 > 半宽）：
-                        //   给最小可雕值 —— 与参照图"整条 channel 都算河"一致。
-                        half = RiverCenterlines.MIN_HALF_BLOCKS;
-                        depth = 1.0;
-                    }
+                    // ★★★ 2026-10-09【宽度统一固定为最小可见值 —— 用户的既定方针】★★★
+                    //
+                    // 【用户原话（已两次强调）】「宽度目前不需要，因为如果有宽度会影响
+                    //   骨架判断的，可能会看错图。」
+                    //
+                    // 【为什么必须固定（本轮实测）】宽度律
+                    //   `W = min(12, 1.5 × (q/1.0)^0.45)` 的 `widthRef=1.0` 是从
+                    //   【连续流量模型】继承的，而 D8 的 `q` 是【格数累积】（几百~几千）
+                    //   ⇒ 量纲错配 ⇒ (833)^0.45 ≈ 21 ⇒ **所有河全部饱和到 maxWidth=12**
+                    //   ⇒ 图上河道糊成 2~6 像素粗带 ⇒ 骨架走向完全被掩盖
+                    //     （我因此把骨架形态看错了好几轮）。
+                    //
+                    // ⇒ 本阶段只验【骨架形态】：半宽统一 0.5 块（全宽 1 块 = 1 像素细线）。
+                    //   宽度是【后续议题】（见 HYDROLOGY.md §〇②）：
+                    //   修它需要先把 widthRef 按 D8 的格数累积重新标定，而不是现在。
+                    half = RiverCenterlines.MIN_HALF_BLOCKS;
+                    depth = 1.0;
                 } else {
                     half = 0;
                     depth = 0;

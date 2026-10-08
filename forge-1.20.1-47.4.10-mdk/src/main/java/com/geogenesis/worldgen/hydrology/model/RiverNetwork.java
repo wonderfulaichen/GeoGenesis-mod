@@ -97,6 +97,15 @@ public final class RiverNetwork {
     }
 
     /**
+     * 诊断旋钮：关闭「湖即汇」累积拦截（`-Dgeogenesis.lakeSinkOff=true`）。
+     *
+     * <p>用途：验证"河尾接不到湖"是否由本拦截造成（见 {@code build} 内注释）。
+     * ⚠ **不可默认关** —— 本拦截是收敛性修复（不拦截时耦合 6 轮发散到 1.3e14）。</p>
+     */
+    private static final boolean LAKE_SINK_OFF =
+            Boolean.getBoolean("geogenesis.lakeSinkOff");
+
+    /**
      * 带【盆地身份】的构建 —— 湖即汇（lake-as-sink，方案 §4.2，2026-10 骨架化）。
      *
      * <h3>语义</h3>
@@ -174,7 +183,20 @@ public final class RiverNetwork {
             if (p >= 0 && p < cells && p != k) {
                 // ★ 湖即汇：组内→组外的边不传递（水由出口注入的 outflow 代表）。
                 //   注意只拦截【累积】，不拦 childCount 记账（否则拓扑序判环会误报）。
-                boolean lakeSink = basinId != null && basinId[k] >= 0
+                //
+                // ⚠⚠ 2026-10-09【待验证的"河接不到湖"嫌疑人】⚠⚠
+                //   用户实机现象：「河流并没达到入湖距离」——河尾在湖前**差一截**。
+                //   量化：河挨湖比例 生产 0.57% vs 参照图 5.23%（**低 9 倍**）。
+                //
+                //   机理推测：本拦截让**湖盆内**的格不再往下游累积
+                //   ⇒ 若"入湖前的最后几格"恰好被判为**盆内**（`basinId >= 0`），
+                //     它们的 `discharge` 就收不到上游来水 ⇒ 达不到成河阈值
+                //     ⇒ 河提前断在湖前。
+                //
+                //   实验旋钮：`-Dgeogenesis.lakeSinkOff=true` ⇒ 关闭本拦截，
+                //   看"河挨湖"比例是否回到参照图的量级（5% 级）。
+                //   ⚠ **不可默认关**：本拦截是收敛性修复（旧口径 6 轮发散到 1.3e14）。
+                boolean lakeSink = !LAKE_SINK_OFF && basinId != null && basinId[k] >= 0
                         && (p >= basinId.length || basinId[p] != basinId[k]);
                 if (!lakeSink) discharge[p] += discharge[k];
                 if (--childCount[p] == 0) queue.addLast(p);
