@@ -399,21 +399,36 @@ public final class ModelHydrologyProvider {
         //
         // ⚠ 邻区求解走 `regionFor`（同步、有缓存、有单飞）⇒ 不引入顺序依赖
         //   （region 内容是 (seed, 坐标) 纯函数，缓存只改时序）。
+        // ⚠⚠⚠ 2026-10-09【性能修复：邻区改为【惰性】加载 —— 别再无条件取 9 个】⚠⚠⚠
+        //
+        // 【事故】原写法在**每个 chunk** 开头无条件遍历 9 个邻区并调 `regionFor`：
+        //   ```
+        //   for (int t = 0; t < 9; t++) {
+        //       neigh[t] = regionFor(...);                     // ← 可能触发求解
+        //       neighSeg[t] = SegmentIndex.build(...);          // ← 还重建段索引
+        //   }
+        //   ```
+        //   ⇒ 每 chunk 的 region 工作量 **×9**。
+        //   实测（正典规格 8281 chunk）：**580s → 791s（+36%）**；
+        //   且 `-Dgeogenesis.modelStep=1` 下**直接跑不完**（用户："缩小都跑不完"）。
+        //
+        // 【正解】惰性：只在**本区判定为空**、且该方块**贴近 region 边界**时，
+        //   才去取对应邻区。理由：
+        //     · 本区窗口 = `[rx*REGION−HALO, rx*REGION+REGION+HALO]`
+        //       ⇒ 已完整覆盖本 region 并外扩 HALO=96 块 ⇒ **内部方块无需邻区**；
+        //     · 只有边界带（±HALO）才可能出现"本区说没有、邻区说有"。
+        //   ⇒ 绝大多数方块**零邻区开销**（原来每个方块都要扫 9 个）。
+        int rdRx = Math.floorDiv(centerBlockX, REGION), rdRz = Math.floorDiv(centerBlockZ, REGION);
+        // 本 region 的块范围（用于判断"是否贴近边界"）
+        int regLoX = rdRx * REGION, regHiX = regLoX + REGION;
+        int regLoZ = rdRz * REGION, regHiZ = regLoZ + REGION;
+        // 邻区缓存（惰性填充；下标 = t，与 neighDx/neighDz 对齐；未取 = null）
         RegionData[] neigh = new RegionData[9];
         SegmentIndex[] neighSeg = new SegmentIndex[9];
         int[] neighDx = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
         int[] neighDz = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
-        int rdRx = Math.floorDiv(centerBlockX, REGION), rdRz = Math.floorDiv(centerBlockZ, REGION);
-        for (int t = 0; t < 9; t++) {
-            RegionData rr = (t == 4) ? rd : regionFor((rdRx + neighDx[t]) * REGION + REGION / 2,
-                    (rdRz + neighDz[t]) * REGION + REGION / 2);
-            neigh[t] = rr;
-            // ★ 段索引按 region 缓存（原来每【方块】重建一次 ⇒ 256 倍浪费）
-            neighSeg[t] = (t == 4) ? segIndex
-                    : (rr.centerline().reaches.isEmpty() ? SegmentIndex.EMPTY
-                        : SegmentIndex.build(rr.centerline(), rr.originX(), rr.originZ(),
-                                rr.pipe().nx(), STEP));
-        }
+        neigh[4] = rd;
+        neighSeg[4] = segIndex;
 
         List<HydrologyBlockCarvedColumn> out = new ArrayList<>(256);
         for (int lx = 0; lx < 16; lx++) {
@@ -448,14 +463,41 @@ public final class ModelHydrologyProvider {
                 //   所以"每个方块都能被至少一个邻区覆盖"—— 不需要靠 clamp 兜底。
                 boolean isLakeBlock = p.lake()[k];
                 double half = 0, depth = 0, bestDist = Double.POSITIVE_INFINITY;
-                if (!isLakeBlock) {
+                // ★ 本区先判（零邻区开销）
+                if (!isLakeBlock && !segIndex.isEmpty()) {
+                    SegmentIndex.Hit h0 = segIndex.nearest(blockX, blockZ);
+                    if (h0 != null && h0.half > 0 && h0.dist <= h0.half) {
+                        bestDist = h0.dist;
+                        half = h0.half;
+                        depth = Math.max(0, h0.depth);
+                    }
+                }
+                // ★ 惰性邻区：仅当【本区无命中】且【远离本 region 中心、贴近边界带】时才查。
+                //   本区窗口已外扩 HALO（RADIUS = REGION/2 + HALO）⇒ 内部方块无需邻区。
+                boolean nearBorder = (blockX < regLoX + HALO) || (blockX >= regHiX - HALO)
+                        || (blockZ < regLoZ + HALO) || (blockZ >= regHiZ - HALO);
+                if (!isLakeBlock && half <= 0 && nearBorder) {
                     for (int t = 0; t < 9; t++) {
+                        if (t == 4) continue;
+                        // 只取"该方块靠近的那一侧"的邻区，避免无谓求解
+                        if (neighDx[t] < 0 && blockX >= regLoX + HALO) continue;
+                        if (neighDx[t] > 0 && blockX < regHiX - HALO) continue;
+                        if (neighDz[t] < 0 && blockZ >= regLoZ + HALO) continue;
+                        if (neighDz[t] > 0 && blockZ < regHiZ - HALO) continue;
+                        if (neigh[t] == null) {
+                            neigh[t] = regionFor((rdRx + neighDx[t]) * REGION + REGION / 2,
+                                    (rdRz + neighDz[t]) * REGION + REGION / 2);
+                            neighSeg[t] = neigh[t].centerline().reaches.isEmpty()
+                                    ? SegmentIndex.EMPTY
+                                    : SegmentIndex.build(neigh[t].centerline(),
+                                            neigh[t].originX(), neigh[t].originZ(),
+                                            neigh[t].pipe().nx(), STEP);
+                        }
                         RegionData rr = neigh[t];
-                        if (rr == null) continue;
                         int nn = rr.pipe().nx();
                         int ti = (int) Math.round((blockX - rr.originX()) / (double) STEP);
                         int tj = (int) Math.round((blockZ - rr.originZ()) / (double) STEP);
-                        if (ti < 0 || tj < 0 || ti >= nn || tj >= nn) continue;   // ★ 越界跳过
+                        if (ti < 0 || tj < 0 || ti >= nn || tj >= nn) continue;   // 越界跳过
                         if (rr.pipe().lake()[ti * nn + tj]) { isLakeBlock = true; break; }
                         SegmentIndex si = neighSeg[t];
                         if (si == null || si.isEmpty()) continue;
