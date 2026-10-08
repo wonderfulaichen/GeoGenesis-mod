@@ -122,24 +122,30 @@ public final class RiverNetwork {
                                boolean[] resolved, Params params, int borderBufferCells,
                                int[] basinId) {
         return build(nx, nz, level, parent, runoffPerCell, overflowAt, resolved, params,
-                borderBufferCells, basinId, null);
+                borderBufferCells, basinId, null, null);
     }
 
     /**
-     * 带额外源项的构建（★ 跨区水量传递，2026-10-08）。
+     * 带【湖面掩码】的构建 —— 河不入湖（2026-10-09，用户实机判据）。
      *
-     * <p>{@code extraSource[k]}（可 null）= 窗口边界入流：由
-     * {@code ModelHydrologyProvider.computeMarginInflow} 对窗外 margin 带做
-     * 最陡下降追踪得到 —— 窗外是纯函数地形，不必求解邻区 ⇒ 无依赖顺序问题、
-     * 无循环依赖、确定性。水在窗内沿 parent 图继续汇流，湖经 capture 账本
-     * 自动收到这份水（边界入流记在组外格，流入组内即成边界净入流）。</p>
+     * <p>用户判据（实机截图 + 原话）：「正常来说应该是**入湖后结束河流**，
+     * 等到**溢出再开始重新作为河流起点**向下连接。」</p>
      *
-     * <p>⚠ margin 的局部洼地与 margin 湖溢流 v1 未建模（洼地水丢弃）。</p>
+     * <p>⚠ 为什么用 {@code lakeMask}（真实水面）而**不是** {@code basinId}（湖盆身份）：
+     * 我在第一版用了 `basinId >= 0`，而 `basinId` 覆盖**整个湖盆**（含水面以上的干岸）
+     * ⇒ 河道在**湖盆边缘**就停住、离可见水面仍有距离
+     * （用户红圈："河流并没达到入湖距离"）。</p>
+     *
+     * <p>⇒ 正解：只用 {@code lakeMask}（= {@code LakeWaterBalance.Result.lake()}，
+     * 逐格"水位高于床面"的真水面）排除河道。水面之外的湖盆格**照常可以是河道**
+     * （那是入湖前的最后一段河）。</p>
+     *
+     * @param lakeMask 真实湖面掩码（null = 不排除，旧行为逐位一致）
      */
     public static Result build(int nx, int nz, double[] level, int[] parent,
                                double runoffPerCell, Map<Integer, Double> overflowAt,
                                boolean[] resolved, Params params, int borderBufferCells,
-                               int[] basinId, double[] extraSource) {
+                               int[] basinId, double[] extraSource, boolean[] lakeMask) {
         int cells = nx * nz;
         double[] discharge = new double[cells];
         // 源项：每格坡面径流 + 该格的湖泊溢流 + 窗外边界入流。
@@ -183,6 +189,22 @@ public final class RiverNetwork {
         double maxQ = 0;
         for (int k = 0; k < cells; k++) {
             if (!resolved[k]) { truncated++; continue; }
+            // ★★★ 2026-10-09【河不入湖：湖【水面】格不算河道】★★★
+            //
+            // 【用户判据（实机截图）】「正常来说应该是**入湖后结束河流**，
+            //   等到**溢出再开始重新作为河流起点**向下连接。」
+            //
+            // 【根因】本循环原先只排除 `!resolved` 与 `discharge < 阈值`
+            //   ⇒ 湖面格也会被标成 channel ⇒ 下游骨架 `thin(channel)` **穿过湖面**。
+            //
+            // 【正解】用 `lakeMask`（= `LakeWaterBalance.Result.lake()`，真实水面）
+            //   排除。⚠ **不用 `basinId`** —— 它覆盖整个湖盆（含干岸），
+            //   会让河在湖盆边缘就停住、离水面仍有距离（用户红圈指出过）。
+            //
+            // 物理路径：河 → 入湖水面（止）→ 湖盆蓄水 → `overflowAt` 出口下泄
+            //          → 出口格（不在水面内）重新成河 ⇒ 与用户描述一致。
+            boolean isLakeSurface = lakeMask != null && lakeMask[k];
+            if (isLakeSurface) continue;
             maxQ = Math.max(maxQ, discharge[k]);
             if (discharge[k] < params.channelThreshold()) continue;
             // 边界缓冲：距窗口边界 borderBufferCells 内的格不输出河。

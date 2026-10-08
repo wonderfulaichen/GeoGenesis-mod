@@ -548,18 +548,46 @@ public final class ModelHydrologyProvider {
                     riverHalfHist[b].incrementAndGet();
                 }
 
-                // 河道：`half`/`depth` 已由上方 3×3 邻区并集给出（"最近命中"）。
-                // ★ 2026-10-09【回退我引入的两个错误】：
-                //   【错误 A】曾加 `p.channel()[k]` 门控 —— 距离场本就是从 channel 细化而来，
-                //     再门控是"同条件过滤两次"，且两套索引体系交集易漏格。
-                //   【错误 B】曾加"距离场取不到就给最小可雕值" —— 会让每个
-                //     `p.channel()` 为真的格都成河（含远离中心线者）
-                //     ⇒ 实测打碎成 8803 个连通分量、32% 孤立点。
-                //   【正解】只认【距离场命中】（`hit.dist <= hit.half`），不补最小宽度。
-                //     `RiverCenterlines.paintSegment` 的扫掠圆盘已保证沿折线连续覆盖。
+                // 河道：`half`/`depth` 已由上方给出（本区 + 惰性邻区的最邻近中心线命中）。
+                // ★★★ 2026-10-09【河道掩码必须用 `p.channel()` —— 与参照图同口径】★★★
+                //
+                // 【为什么（用户判据："参考图里面的湖泊河流都基本达到我要求"）】
+                //   参照图 `CanonicalViewProbe:91` 的掩码来源是：
+                //     `boolean[] chMask = useCenterline ? cl.channel : r.channel();`
+                //   —— **默认就是 `r.channel()`（RiverNetwork 的【流量阈值掩码】）**。
+                //   而生产原先只用【距离场命中】(`hit.dist <= hit.half`)——
+                //   距离场 = `thin(channel)` 再按宽度扫掠 ⇒ **比原掩码宽 3.5 倍**
+                //   （实测：生产河道 4.51% vs 参照 1.30%）。
+                //
+                // 【我曾误判 A/B 为"错误"】（务必勿重犯）：
+                //   · "错误 A：加 `p.channel()` 门控 = 同条件过滤两次" —— **错**。
+                //     参照图正是用 `r.channel()` 直出；距离场只是"给宽度"，
+                //     不该拿它自己当"是不是河"的判据。
+                //   · "错误 B：给最小可雕值" —— 那次碎片化的真因不是补宽度，
+                //     而是【叠加了 `fillWater` 门槛】（见下方 fill 判定）。
+                //
+                // 【正解】`p.channel()[k]` 决定"是不是河"；距离场只提供宽度/深度；
+                //   距离场未覆盖时给最小可雕值（保证刻出河床 ⇒ 有水面）。
+                boolean onChannel = p.channel() != null && p.channel()[k];
+                if (onChannel) {
+                    if (half <= 0) {
+                        // 在流量掩码内、但距离场未覆盖（偏离中心线 > 半宽）：
+                        //   给最小可雕值 —— 与参照图"整条 channel 都算河"一致。
+                        half = RiverCenterlines.MIN_HALF_BLOCKS;
+                        depth = 1.0;
+                    }
+                } else {
+                    half = 0;
+                    depth = 0;
+                }
                 if (half > 0) {
                     double carved = eroded - depth;                 // 意图床面
-                    boolean fill = surface > carved + 0.5;           // 至少 0.5 格水柱
+                    // ★ 出水判定 = 至少 0.5 格水柱（**不得放宽**）
+                    //   依据（项目既有结论）："深度 < 0.5 块 = 地面与水面同一格、
+                    //   放不下任何一个水块 ⇒ 物理上本就该干"。
+                    //   ⚠ 我曾改成 `+1e-6` 图省事 —— 那会让"半格浅水"也出水，
+                    //     而这些格在 MC 里放不下水块 ⇒ 只是凭空加湿（伪影）。
+                    boolean fill = surface > carved + 0.5;
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                             surface, surface, depth, 1.0,
                             fill, false, null, Double.NaN));

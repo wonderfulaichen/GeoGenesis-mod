@@ -219,7 +219,8 @@ public final class HydrologyPipeline {
                 : RiverNetwork.Params.defaults();
         var res = RiverNetwork.build(n, n, surface.level(), surface.parent(),
                 lakeResult.runoffPerCell(), lakeResult.overflowAt(), surface.resolved(),
-                rp, request.borderBufferCells(), basinId, request.extraSource());
+                rp, request.borderBufferCells(), basinId, request.extraSource(),
+                lakeResult.lake());
         if (captureOut != null && basinId != null) {
             java.util.Arrays.fill(captureOut, 0);
             int[] parent = surface.parent();
@@ -498,7 +499,7 @@ public final class HydrologyPipeline {
             river = RiverNetwork.build(n, n, surface.level(), surface.parent(),
                     lakeResult.runoffPerCell(), lakeResult.overflowAt(), surface.resolved(),
                     rpF, request.borderBufferCells(),
-                    lakeResult.basinId(), request.extraSource());
+                    lakeResult.basinId(), request.extraSource(), lakeResult.lake());
         }
         // ★ 耦合诊断（系统属性开启；默认不打印）：每轮湖格数与流量规模。
         //   加它的原因：耦合后 lake 从数千骤降到几百，**原因未知** ⇒ 必须打印取证，不得靠猜。
