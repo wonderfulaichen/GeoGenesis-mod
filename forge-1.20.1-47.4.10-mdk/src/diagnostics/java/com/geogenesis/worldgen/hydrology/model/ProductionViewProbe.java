@@ -233,6 +233,9 @@ public final class ProductionViewProbe {
         if (ModelHydrologyProvider.LAKE_DIAG) {
             sb.append('\n').append(ModelHydrologyProvider.lakeDiagReport()).append('\n');
         }
+        if (ModelHydrologyProvider.RIVER_WIDTH_DIAG) {
+            sb.append('\n').append(ModelHydrologyProvider.riverWidthReport()).append('\n');
+        }
         sb.append(String.format("%n【河道连续性】河格=%d%n", riverCols));
         sb.append(String.format("  4邻域度：孤立0=%d (%.1f%%)  端点1=%d (%.1f%%)  "
                         + "通路2=%d (%.1f%%)  汇合3+=%d (%.1f%%)%n",
