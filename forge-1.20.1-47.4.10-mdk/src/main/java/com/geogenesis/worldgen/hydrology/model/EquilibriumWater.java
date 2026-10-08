@@ -32,6 +32,40 @@ public final class EquilibriumWater {
     public record Surface(double[] level, boolean[] resolved, int[] parent,
                           int trueDrains, int exteriorExits, int unresolvedCells) { }
 
+    /**
+     * 内陆窗口的可信判据开关：`-Dgeogenesis.inlandResolved=true`。**默认 false（未验收）**。
+     *
+     * <h3>它解决什么</h3>
+     * <p>窗口内无海（纯内陆）时，原实现把所有格标为 {@code resolved=false}
+     * （因为收敛判据要求"只含真海"与"含窗外出口"两组结果相同，而 A 组不存在）
+     * ⇒ 下游 {@code LakeWaterBalance.isLakePot} 要求 {@code resolved}
+     * ⇒ **一格湖都建不起来**。</p>
+     * <p>实测（游戏配置 REGION=512/step=4，7 个 region）：
+     * <b>4 个为纯内陆、{@code resolved=0/31329}、basins=0、lake=0</b>；
+     * 含海的 3 个正常（basins 1/12/46）。⇒ 这是"游戏里湖没了"的直接机理。</p>
+     *
+     * <h3>★ 为什么默认关闭（它的正解是"窗口够大"，不是"放宽判据"）</h3>
+     * <p>启用后无海窗口改用「B 组有有限水位」判可信。实测效果：</p>
+     * <table border="1">
+     *   <tr><th>HALO</th><th>开关</th><th>湖（r=300 小窗）</th></tr>
+     *   <tr><td>96</td><td>关</td><td>0.53%</td></tr>
+     *   <tr><td>96</td><td><b>开</b></td><td><b>3.72%</b>（补回内陆湖）</td></tr>
+     *   <tr><td><b>512</b></td><td>关/开</td><td><b>4.98%（两者逐位相同）</b></td></tr>
+     * </table>
+     * <p>⇒ <b>HALO 够大时该开关完全无效</b>（窗口自然含海）——
+     * 说明"扩大窗口"才是结构性正解，放宽判据只是权宜之计。</p>
+     *
+     * <h3>已知偏差（未解决）</h3>
+     * <p>启用后湖偏多：正典规格实测 **5.58%** vs 参照图 **3.63%**（多 54%）。
+     * 位置一致度 93%，多出的 4.4 万格全部落在"参照判为陆地"处
+     * ⇒ 判据仍偏宽。曾试过"窗外出口水位 +1 块后结果是否改变"的
+     * 收敛式判据，使湖从 8.50% 降到 5.58%，但未收敛到 3.63%。</p>
+     *
+     * <p>⇒ 保留为诊断开关；**要用时须配合 `-Dgeogenesis.modelHalo=512`**（那时它已无必要）。</p>
+     */
+    public static final boolean INLAND_RESOLVED =
+            Boolean.getBoolean("geogenesis.inlandResolved");
+
     private record Node(int cell, double level) implements Comparable<Node> {
         public int compareTo(Node o) {
             int c = Double.compare(level, o.level);
@@ -66,6 +100,30 @@ public final class EquilibriumWater {
         }
         int[] parentWhenNoTrueDrain = anyTrueDrain ? null : new int[cells];
         double[] levelB = flood(bed, nx, nz, drainsB, exteriorLevel, parentWhenNoTrueDrain);
+
+        // ★★★ 无海窗口的【第二组】：把窗外出口水位整体抬高 1 块再洪泛 ★★★
+        //
+        //   这是原 A/B 收敛判据（"只含真海 vs 再加窗外地形"）在【无海窗口】下的
+        //   等价形式：原判据测"关掉/打开窗外出口是否改变结果"，此处测
+        //   "窗外出口的水位变化是否传导到本格"。
+        //   ⇒ 若传导 ⇒ 该格结果依赖窗口边界 ⇒ **不可信**（窗口一变就变）。
+        //   ⇒ 若不传导 ⇒ 该格由窗内地形自身决定 ⇒ 可信。
+        //
+        // 【为什么必须这样（第一版教训）】我曾简单写成"B 组有有限水位即可信"
+        //   ⇒ 湖 8.50% vs 参照 3.63%（**多 2.3 倍**），因为几乎每格都有水位。
+        double[] levelC = null;
+        if (!anyTrueDrain && INLAND_RESOLVED) {
+            boolean[] drainsC = drains.clone();
+            double[] exteriorRaised = new double[cells];
+            System.arraycopy(exteriorLevel, 0, exteriorRaised, 0, cells);
+            for (int k = 0; k < cells; k++) {
+                if (Double.isFinite(exteriorRaised[k])) {
+                    drainsC[k] = true;
+                    exteriorRaised[k] += 1.0;              // ★ 抬高 1 块
+                }
+            }
+            levelC = flood(bed, nx, nz, drainsC, exteriorRaised, null);
+        }
         // 无真实终端时，A 组无意义：用 B 组结果作输出，但把 resolved 全置 false
         //   （"未验证"），因为无法用"计入窗外地形后是否改变"来判定。
         double[] levelOut = anyTrueDrain ? levelA : levelB;
@@ -74,8 +132,44 @@ public final class EquilibriumWater {
         boolean[] resolved = new boolean[cells];
         int unresolved = 0;
         for (int k = 0; k < cells; k++) {
-            boolean same = anyTrueDrain && Double.isFinite(levelA[k]) && Double.isFinite(levelB[k])
-                    && Math.abs(levelA[k] - levelB[k]) < 1e-9;
+            // ★★★ 2026-10-09【B 方案：内陆窗口也必须能产湖 —— 实测根因修复】★★★
+            //
+            // 【缺陷】原判据写成 `anyTrueDrain && ...`：
+            //   窗口内**没有海**（纯内陆）⇒ anyTrueDrain=false ⇒ **所有格 resolved=false**
+            //   ⇒ `LakeWaterBalance.isLakePot` 要求 resolved（第 262 行）⇒ **一格湖都建不起来**。
+            //
+            // 【实测证据】（游戏配置 REGION=512/step=4，7 个 region）：
+            //   region (0,-1)  resolved=0/31329   basins=0   lake=0   ← 完全内陆
+            //   region (-2,-1) resolved=0/31329   basins=0   lake=0
+            //   region (-1,-2) resolved=0/31329   basins=0   lake=0
+            //   region (-2,0)  resolved=0/31329   basins=0   lake=0
+            //   region (0,0)   resolved=31199/31329 basins=1 lake=2   ← 含海 ⇒ 正常
+            //   region (1,-1)  resolved=29919/31329 basins=12 lake=84
+            //   region (0,-2)  resolved=28394/31329 basins=46 lake=376
+            //   ⇒ **7 个里 4 个因"窗口无海"而全域失效** ⇒ 这就是"游戏里湖没了"的直接机理。
+            //
+            // 【为什么正典大窗口没暴露】r=700 窗口跨越海岸线 ⇒ 总能找到海 ⇒ 从不触发。
+            //
+            // 【正解（局部量路线）】无海窗口时，**窗口边界就是水流出本域的地方** ——
+            //   `WindowOutlets.exterior` 给的正是"窗外一格的真实地形高"，
+            //   水位低于它时边界通量为零（水出不去，正确）；高于它则成为出口。
+            //   ⇒ B 组（含窗外出口）的结果**在本窗口内是自洽且局部的**，应当信任。
+            //   ⇒ 无海时 `resolved` 取 true（不再要求"与 A 组相同"——A 组本就不存在）。
+            //
+            // 【开关】`-Dgeogenesis.intlandResolved=true` 启用；默认 false = 原行为（零变更）。
+            boolean same;
+            if (anyTrueDrain) {
+                same = Double.isFinite(levelA[k]) && Double.isFinite(levelB[k])
+                        && Math.abs(levelA[k] - levelB[k]) < 1e-9;
+            } else {
+                // 无海窗口：以【窗外出口水位 +1 块后结果是否改变】为可信判据
+                //   （原 A/B 收敛判据的等价局部化形式，见上方 levelC 的 javadoc）。
+                //   不改变 ⇒ 该格由窗内地形自身决定 ⇒ 可信；
+                //   改变   ⇒ 结果依赖窗口边界 ⇒ 不可信（窗口一变就变）。
+                same = INLAND_RESOLVED && levelC != null
+                        && Double.isFinite(levelB[k]) && Double.isFinite(levelC[k])
+                        && Math.abs(levelB[k] - levelC[k]) < 1e-9;
+            }
             resolved[k] = same;
             if (!same) unresolved++;
         }

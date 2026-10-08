@@ -84,7 +84,7 @@ minecraft {
         client {
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             property 'forge.enabledGameTestNamespaces', mod_id
-            // 2026-08-02/03锛歞ev 鐜鍫嗗唴瀛樻彁楂橈紙椋炶/澶ц璺濈敓鎴?tile 缂撳瓨闇€瑕侊級
+            // 2026-08-02/03锛歞ev 鐜鍫嗗唴瀛樻彁楂橈紙椋炶�?澶ц璺濈敓鎴?tile 缂撳瓨闇€瑕侊級
             jvmArgs '-Xmx6G'
         }
 
@@ -115,47 +115,47 @@ sourceSets {
     diagnostics {
         java.srcDirs = ['src/diagnostics/java']
         compileClasspath += sourceSets.main.output
-        // ★ 2026-09-15：补上 MC 类路径。
+        // �?2026-09-15：补�?MC 类路径�?
         //
-        //   此前只有 `sourceSets.main.output`（本项目自己的 class），**不含 MC jar**
-        //   ⇒ 诊断集事实上无法引用任何 `net.minecraft.*`。后果：凡是与 MC 耦合的
-        //   生产逻辑都【无法被测试】—— 典型即地表方块判定链
-        //   （`BiomeClassifier.surfaceOf` 依赖 `Biomes` 注册表）。
-        //   用户反馈"地表方块过渡不自然"时项目里竟无任何相关探针，根因在此。
+        //   此前只有 `sourceSets.main.output`（本项目自己�?class），**不含 MC jar**
+        //   �?诊断集事实上无法引用任何 `net.minecraft.*`。后果：凡是�?MC 耦合�?
+        //   生产逻辑都【无法被测试】—�?典型即地表方块判定链
+        //   （`BiomeClassifier.surfaceOf` 依赖 `Biomes` 注册表）�?
+        //   用户反馈"地表方块过渡不自�?时项目里竟无任何相关探针，根因在此�?
         //
-        //   ⚠ 实测结论（2026-09-15）：仅加类路径【不足以】让这类逻辑可测 ——
-        //     `Bootstrap.bootStrap()` 会连带 `NetworkHooks.init()` 引导 Forge 网络，
-        //     在无 Forge 运行时的诊断进程里抛 `NoSuchMethodException: NetworkEvent.<init>`；
-        //     而 `BuiltInRegistries.bootStrap()` 自身又要求已 bootstrap（循环依赖）。
-        //     故【需要 MC 注册表的探针仍不可行】（除非自建最小 registry 桩，
-        //     但那会引入"桩 ≠ 真"的漂移风险，与项目铁律相悖）。
-        //     类路径保留：它让【不需要注册表】的 MC 耦合逻辑（纯数学/纯 Cell 消费）
-        //     至少能编译与测试。
+        //   �?实测结论�?026-09-15）：仅加类路径【不足以】让这类逻辑可测 —�?
+        //     `Bootstrap.bootStrap()` 会连�?`NetworkHooks.init()` 引导 Forge 网络�?
+        //     在无 Forge 运行时的诊断进程里抛 `NoSuchMethodException: NetworkEvent.<init>`�?
+        //     �?`BuiltInRegistries.bootStrap()` 自身又要求已 bootstrap（循环依赖）�?
+        //     故【需�?MC 注册表的探针仍不可行】（除非自建最�?registry 桩，
+        //     但那会引�?�?�?�?的漂移风险，与项目铁律相悖）�?
+        //     类路径保留：它让【不需要注册表】的 MC 耦合逻辑（纯数学/�?Cell 消费�?
+        //     至少能编译与测试�?
         compileClasspath += sourceSets.main.compileClasspath
         runtimeClasspath += output + sourceSets.main.runtimeClasspath
     }
 }
 
-// ★ 2026-09-16 修复【坏门禁事故】：
-//   原判据是「任务名以 Probe 结尾」⇒ 挂诊断类路径。但 runTypeDist / runProfile /
-//   runQuickGradient 三个任务指向的是【诊断源树】的探针类，名字却不以 Probe 结尾
-//   ⇒ 它们拿到的仍是 main 的类路径 ⇒ **必然 ClassNotFound，永远跑不起来**（静默失效）。
-//   ⚠ runTypeDist 正是测量「类型场轴对齐直段」的探针 —— 那是本项目已记录的缺陷指标，
-//     而这个门禁坏了多久，该缺陷就有多久没被客观测量过。
-//   改为按【mainClass 所属源树】判定：只在诊断树、且不在 main 树 ⇒ 挂诊断类路径。
-//   ★ 刻意【保留】原有的「名字以 Probe 结尾」规则作为兜底 ⇒ 新判据是原判据的**超集**，
-//     不可能打破任何当前可用的任务（只可能多修好坏的）。
-// 判定：某个 JavaExec 任务是否需要【诊断源树】的类路径。
-//   规则：mainClass 对应的 .java 只存在于 src/diagnostics/java（且不存在于 main 树）。
-//   ★ 另保留「任务名以 Probe 结尾」作为兜底 ⇒ 是原判据的超集，不会打破现有可用任务。
+// �?2026-09-16 修复【坏门禁事故】：
+//   原判据是「任务名�?Probe 结尾」⇒ 挂诊断类路径。但 runTypeDist / runProfile /
+//   runQuickGradient 三个任务指向的是【诊断源树】的探针类，名字却不�?Probe 结尾
+//   �?它们拿到的仍�?main 的类路径 �?**必然 ClassNotFound，永远跑不起�?*（静默失效）�?
+//   �?runTypeDist 正是测量「类型场轴对齐直段」的探针 —�?那是本项目已记录的缺陷指标，
+//     而这个门禁坏了多久，该缺陷就有多久没被客观测量过�?
+//   改为按【mainClass 所属源树】判定：只在诊断树、且不在 main �?�?挂诊断类路径�?
+//   �?刻意【保留】原有的「名字以 Probe 结尾」规则作为兜�?�?新判据是原判据的**超集**�?
+//     不可能打破任何当前可用的任务（只可能多修好坏的）�?
+// 判定：某�?JavaExec 任务是否需要【诊断源树】的类路径�?
+//   规则：mainClass 对应�?.java 只存在于 src/diagnostics/java（且不存在于 main 树）�?
+//   �?另保留「任务名�?Probe 结尾」作为兜�?�?是原判据的超集，不会打破现有可用任务�?
 static String probeRelPath(String mainClass) {
     return mainClass == null ? null : mainClass.replace('.', '/') + '.java'
 }
 
 tasks.withType(JavaExec).configureEach {
-    // ★ 类路径在【执行期】判定：此时 mainClass 一定已设置
-    //   （配置期判定不可行 —— configureEach 在任务定义之前注册，那时 mainClass 还是 null，
-    //     这正是第一版修复仍然 ClassNotFound 的原因）。
+    // �?类路径在【执行期】判定：此时 mainClass 一定已设置
+    //   （配置期判定不可�?—�?configureEach 在任务定义之前注册，那时 mainClass 还是 null�?
+    //     这正是第一版修复仍�?ClassNotFound 的原因）�?
     doFirst {
         boolean need = (name.startsWith('run') && name.endsWith('Probe'))
         String rel = probeRelPath(mainClass.orNull?.toString())
@@ -172,7 +172,7 @@ tasks.withType(JavaExec).configureEach {
     }
 }
 
-// ★ 依赖（编译诊断集）必须在【配置期】加，但要在所有任务定义完之后 ⇒ 用 afterEvaluate。
+// �?依赖（编译诊断集）必须在【配置期】加，但要在所有任务定义完之后 �?�?afterEvaluate�?
 afterEvaluate {
     tasks.withType(JavaExec).each { t ->
         boolean need = (t.name.startsWith('run') && t.name.endsWith('Probe'))
@@ -286,8 +286,8 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
-    // 鎶戝埗 forRemoval 寮冪敤 API 鐨勬姤閿欙紙濡?ResourceLocation 鏋勯€犮€丮odLoadingContext.get() 绛夛級锛?
-    // 閬垮厤閲嶆瀯杩囨浮鏈熸暣妯″潡缂栬瘧澶辫触锛涘彂甯冨墠鍐嶇粺涓€杩佺Щ杩欎簺 API銆?
+    // 鎶戝�?forRemoval 寮冪�?API 鐨勬姤閿欙紙�?ResourceLocation 鏋勯€犮€丮odLoadingContext.get() 绛夛級锛?
+    // 閬垮厤閲嶆瀯杩囨浮鏈熸暣妯″潡缂栬瘧澶辫触锛涘彂甯冨墠鍐嶇粺涓€杩佺Щ杩欎簺 API�?
     options.compilerArgs << '-Xlint:-removal'
 }
 
@@ -812,9 +812,9 @@ task runPreview(type: JavaExec) {
     // args = ['12345']
 }
 
-// RTF 鑼冨紡娌崇綉楠屾敹鎺㈤拡锛?026-08-26锛夛細root 鍒版捣鐜?fork 涓嬪潯鐜?搴?姘村钩婊?dryRatio銆?
-// Usage: gradlew runRiverTopologyProbe --args="seed radius"锛坮adius=region 鍗婂緞锛岄粯璁?1锛?
-// 鎺ョ紳瀹氫綅鎺㈤拡锛?026-08-26锛夛細鎵弿楂樺害璺冲彉鐨勫懆鏈燂紙16=chunk/512=region/浠?0锛夈€?
+// RTF 鑼冨紡娌崇綉楠屾敹鎺㈤拡�?026-08-26锛夛細root 鍒版捣鐜?fork 涓嬪潯鐜?�?姘村钩婊?dryRatio�?
+// Usage: gradlew runRiverTopologyProbe --args="seed radius"锛坮adius=region 鍗婂緞锛岄粯�?1�?
+// 鎺ョ紳瀹氫綅鎺㈤拡�?026-08-26锛夛細鎵弿楂樺害璺冲彉鐨勫懆鏈燂紙16=chunk/512=region/�?0锛夈�?
 // Usage: gradlew runRiverSeamProbe --args="seed"
 // v7.5 per-layer discontinuity diagnostic + height distribution stats
 task runProbe(type: JavaExec) {
@@ -841,19 +841,19 @@ task runTypeDist(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.TypeDistributionProbe'
 }
 
-// Type field axis-alignment probe (2026-09-16): 类型场【轴向对齐】诊断。
-//   补回一条【遗失的门禁】：CHANGELOG/AGENTS 长期记着"最长水平直段 560 wu"，
-//   但当年那个 [G] 探针并未留在仓库里 —— 指标记下了，工具没了，
-//   导致该已知缺陷从那以后再没有被客观测量过。
-//   度量：4 个方向（+x/+z/两条对角）上"主导类型不变"的最长连续段，
-//   取 轴向/对角 之比作为方向比（≈1 = 有机；明显>1 = 被轴向直线主导）。
+// Type field axis-alignment probe (2026-09-16): 类型场【轴向对齐】诊断�?
+//   补回一条【遗失的门禁】：CHANGELOG/AGENTS 长期记着"最长水平直�?560 wu"�?
+//   但当年那�?[G] 探针并未留在仓库�?—�?指标记下了，工具没了�?
+//   导致该已知缺陷从那以后再没有被客观测量过�?
+//   度量�? 个方向（+x/+z/两条对角）上"主导类型不变"的最长连续段�?
+//   �?轴向/对角 之比作为方向比（�? = 有机；明�?1 = 被轴向直线主导）�?
 //   gradlew runTypeAxisProbe [-PprobeArgs="seed windowBlocks step"]
 task runTypeAxisProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.TypeAxisProbe'
-    // ⚠ 必须支持 probeArgs：本探针的核心用途就是【跨种子对照】
-    //   （初版漏了这段 ⇒ -PprobeArgs 被忽略 ⇒ 三种子跑出相同结果，
-    //     差点让人误判"种子仍然没生效"）。
+    // �?必须支持 probeArgs：本探针的核心用途就是【跨种子对照�?
+    //   （初版漏了这�?�?-PprobeArgs 被忽�?�?三种子跑出相同结果，
+    //     差点让人误判"种子仍然没生�?）�?
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     }
@@ -914,10 +914,10 @@ task runTerrainGrainProbe(type: JavaExec) {
     }
 }
 
-// Surface block probe (2026-09-15): 地表方块判定链诊断 ——
-//   用户反馈"群系之间过渡不自然，特别是地表方块"。
-//   镜像 fillTerrainColumn 的分支结构 + 同进程 A/B（GRADIENT_JITTER 开/关）
-//   + 检查"地表分类边界 vs 群系边界"的错位。
+// Surface block probe (2026-09-15): 地表方块判定链诊�?—�?
+//   用户反馈"群系之间过渡不自然，特别是地表方�?�?
+//   镜像 fillTerrainColumn 的分支结�?+ 同进�?A/B（GRADIENT_JITTER 开/关）
+//   + 检�?地表分类边界 vs 群系边界"的错位�?
 //   gradlew runSurfaceBlockProbe [-PprobeArgs="seed chunks"]
 task runSurfaceBlockProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -928,9 +928,9 @@ task runSurfaceBlockProbe(type: JavaExec) {
     }
 }
 
-// Lake edge probe (2026-09-15): 湖泊边缘诊断 ——
-//   用户反馈"湖泊填充容易没到地形边缘就结束，提前在前一个区块停止"。
-//   区分两个假设：① computeFill 边界圈强制泄水；② 每个 region 独立跑 fill 导致跨缝不一致。
+// Lake edge probe (2026-09-15): 湖泊边缘诊断 —�?
+//   用户反馈"湖泊填充容易没到地形边缘就结束，提前在前一个区块停�?�?
+//   区分两个假设：① computeFill 边界圈强制泄水；�?每个 region 独立�?fill 导致跨缝不一致�?
 //   gradlew runLakeEdgeProbe [-PprobeArgs="seed rx rz"]
 task runLakeEdgeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -941,12 +941,12 @@ task runLakeEdgeProbe(type: JavaExec) {
     }
 }
 
-// Water field probe (2026-09-19): 闭式水位场 W(x,z) —— T1.7 验收 ——
-//   对照 filledAt（实测跨 region 99.6% 不一致）vs W（闭式，期望不一致率 0）。
+// Water field probe (2026-09-19): 闭式水位�?W(x,z) —�?T1.7 验收 —�?
+//   对照 filledAt（实测跨 region 99.6% 不一致）vs W（闭式，期望不一致率 0）�?
 //   gradlew runWaterFieldProbe [-PprobeArgs="seed rx rz amplitude cInland"]
-// RiverLakeStealProbe (2026-09-19): 量化湖岸修复对河流的副作用 ——
-//   湖分支入口是"是否存在湖命中"，放宽湖认领后，河道内的列可能被拉进湖分支
-//   （carved = original ⇒ 河道不再下切）。
+// RiverLakeStealProbe (2026-09-19): 量化湖岸修复对河流的副作�?—�?
+//   湖分支入口是"是否存在湖命�?，放宽湖认领后，河道内的列可能被拉进湖分�?
+//   （carved = original �?河道不再下切）�?
 //   gradlew runRiverLakeStealProbe [-PprobeArgs="seed bx bz half step"]
 task runRiverLakeStealProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -957,9 +957,9 @@ task runRiverLakeStealProbe(type: JavaExec) {
     }
 }
 
-// TwoWaterBudgetProbe (2026-09-19): 「水文与侵蚀是一个整体」可行性测量 ——
-//   量【侵蚀 discharge 场】与【河网 D8 accum】的关系（相关性/量纲/分歧区），
-//   决定能否用 dis 取代 accum（ErosionEngine:273 注释写明但未做的目标）。
+// TwoWaterBudgetProbe (2026-09-19): 「水文与侵蚀是一个整体」可行性测�?—�?
+//   量【侵蚀 discharge 场】与【河�?D8 accum】的关系（相关�?量纲/分歧区）�?
+//   决定能否�?dis 取代 accum（ErosionEngine:273 注释写明但未做的目标）�?
 //   gradlew runTwoWaterBudgetProbe [-PprobeArgs="seed bx bz half step"]
 task runTwoWaterBudgetProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -970,8 +970,8 @@ task runTwoWaterBudgetProbe(type: JavaExec) {
     }
 }
 
-// UnifiedCriterionProbe (2026-09-19): P0-2 判据统一前的【先量后改】——
-//   量【河分支几何判水】vs【绝对等高线判水】的分歧（多灌/漏灌），以及水体面积净变化。
+// UnifiedCriterionProbe (2026-09-19): P0-2 判据统一前的【先量后改】—�?
+//   量【河分支几何判水】vs【绝对等高线判水】的分歧（多�?漏灌），以及水体面积净变化�?
 //   gradlew runUnifiedCriterionProbe [-PprobeArgs="seed bx bz half step"]
 task runUnifiedCriterionProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -982,12 +982,12 @@ task runUnifiedCriterionProbe(type: JavaExec) {
     }
 }
 
-// WaterFieldUnifyProbe (2026-09-19): T1.3（W 作湖水位）的【先量后改】——
-//   量 WaterField.W 与现行 LakeNode.spill 的差值分布，判断能否直接接线。
+// WaterFieldUnifyProbe (2026-09-19): T1.3（W 作湖水位）的【先量后改】—�?
+//   �?WaterField.W 与现�?LakeNode.spill 的差值分布，判断能否直接接线�?
 //   gradlew runWaterFieldUnifyProbe [-PprobeArgs="seed bx bz half step smoothWu offset"]
 
-// LakeNodeCensusProbe (2026-09-19): T2.4（湖节点合并）的【先量后改】——
-//   普查湖节点数量、洼地格数分布、碎湖占比、按水位合并潜力。
+// LakeNodeCensusProbe (2026-09-19): T2.4（湖节点合并）的【先量后改】—�?
+//   普查湖节点数量、洼地格数分布、碎湖占比、按水位合并潜力�?
 //   gradlew runLakeNodeCensusProbe [-PprobeArgs="seed rx rz regionCount"]
 task runLakeNodeCensusProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -998,7 +998,7 @@ task runLakeNodeCensusProbe(type: JavaExec) {
     }
 }
 
-// RiverWidthProfileProbe (2026-09-19): 河宽剖面 —— 验收"有的很宽/有的不变宽"+"没有源头"
+// RiverWidthProfileProbe (2026-09-19): 河宽剖面 —�?验收"有的很宽/有的不变�?+"没有源头"
 //   gradlew runRiverWidthProfileProbe [-PprobeArgs="seed rx0 rz0 rn"]
 task runRiverWidthProfileProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1009,9 +1009,9 @@ task runRiverWidthProfileProbe(type: JavaExec) {
     }
 }
 
-// HydroPhysicsAudit (2026-09-20): 按【用户的物理定义】审计水文 + 【左=最新改进 / 右=上一版本】对比出图。
-//   "水文就是水的流体物理运动形成的几种状态，堆积是湖/海，流动路线就是河流"。
-//   判据：河必有水 / 水在低处 / 沿程不升 / 终点必是湖海 / 汇合守恒 / 河宽分层。
+// HydroPhysicsAudit (2026-09-20): 按【用户的物理定义】审计水�?+ 【左=最新改�?/ �?上一版本】对比出图�?
+//   "水文就是水的流体物理运动形成的几种状态，堆积是湖/海，流动路线就是河流"�?
+//   判据：河必有�?/ 水在低处 / 沿程不升 / 终点必是湖海 / 汇合守恒 / 河宽分层�?
 //   gradlew runHydroPhysicsAudit -PprobeArgs="seed centerBX centerBZ windowBlocks [gridCellScale]"
 task runHydroPhysicsAudit(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1022,8 +1022,8 @@ task runHydroPhysicsAudit(type: JavaExec) {
     }
 }
 
-// ForkFeasibilityProbe (2026-09-20, 支流分叉 M0): 复刻 FTF generateForks 的布点规则在我方地形上
-//   能出多少条叉？—— dry-run【只统计不提交】，用于标定 ForkParams（不照搬 FTF 数值）。
+// ForkFeasibilityProbe (2026-09-20, 支流分叉 M0): 复刻 FTF generateForks 的布点规则在我方地形�?
+//   能出多少条叉？—�?dry-run【只统计不提交】，用于标定 ForkParams（不照搬 FTF 数值）�?
 //   gradlew runForkFeasibilityProbe [-PprobeArgs="seed rx0 rz0 rn frac lenMin lenMax clearance minParentLen"]
 task runForkFeasibilityProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1034,8 +1034,8 @@ task runForkFeasibilityProbe(type: JavaExec) {
     }
 }
 
-// RiverEndProbe (2026-09-20, 缺陷诊断): 河尾终止类型分布 —— 用户反馈"河流直接以河结束"。
-//   含【分叉开/关】单变量对照；含两点定位（是否同一条河）。零生产改动。
+// RiverEndProbe (2026-09-20, 缺陷诊断): 河尾终止类型分布 —�?用户反馈"河流直接以河结束"�?
+//   含【分叉开/关】单变量对照；含两点定位（是否同一条河）。零生产改动�?
 //   gradlew runRiverEndProbe -PprobeArgs="seed rx0 rz0 rn [blockX1 blockZ1 blockX2 blockZ2]"
 task runRiverEndProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1046,8 +1046,8 @@ task runRiverEndProbe(type: JavaExec) {
     }
 }
 
-// HydroWindowProbe (2026-09-20, 形态诊断): 窗口内【全水体 + 河身份 + 湖泊 + 定点剖面】的
-//   ASCII 逐格图（带大地坐标，能数格子）—— 用来定位"河在哪里断/哪里该有水却干"。
+// HydroWindowProbe (2026-09-20, 形态诊�?: 窗口内【全水体 + 河身�?+ 湖泊 + 定点剖面】的
+//   ASCII 逐格图（带大地坐标，能数格子）—�?用来定位"河在哪里�?哪里该有水却�?�?
 //   gradlew runHydroWindowProbe -PprobeArgs="seed blockX blockZ radiusBlocks step [profX profZ]"
 task runHydroWindowProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1058,8 +1058,8 @@ task runHydroWindowProbe(type: JavaExec) {
     }
 }
 
-// LakeLevelFlatnessProbe (2026-09-19, P3 判据 J1): 湖面是否绝对水平 ——
-//   按【连通水体】分组（无假设），统计各组 riverSurfaceY 的标准差，必须为 0。
+// LakeLevelFlatnessProbe (2026-09-19, P3 判据 J1): 湖面是否绝对水平 —�?
+//   按【连通水体】分组（无假设），统计各�?riverSurfaceY 的标准差，必须为 0�?
 //   gradlew runLakeLevelFlatnessProbe [-PprobeArgs="seed bx bz radius"]
 task runLakeLevelFlatnessProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1070,8 +1070,8 @@ task runLakeLevelFlatnessProbe(type: JavaExec) {
     }
 }
 
-// FlowDirectionHistogramProbe (2026-09-19, P1 验收): 连续流向场（动量）——
-//   ① W=0 时 flowTo/accum 逐位一致 ② 45° 聚集度下降 ③ 粒子追踪 sinuosity 进自然区间
+// FlowDirectionHistogramProbe (2026-09-19, P1 验收): 连续流向场（动量）—�?
+//   �?W=0 �?flowTo/accum 逐位一�?�?45° 聚集度下�?�?粒子追踪 sinuosity 进自然区�?
 //   gradlew runFlowDirectionHistogramProbe [-PprobeArgs="seed wuX wuZ R cell W1"]
 task runFlowDirectionHistogramProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1082,8 +1082,8 @@ task runFlowDirectionHistogramProbe(type: JavaExec) {
     }
 }
 
-// LakeDomainSweepProbe (2026-09-19): 架构第二刀（湖域过大）判决实验 ——
-//   扫描湖域容差 T，量【失水（硬边代价）】与【抑制河谷】此消彼长的关系。
+// LakeDomainSweepProbe (2026-09-19): 架构第二刀（湖域过大）判决实验 —�?
+//   扫描湖域容差 T，量【失水（硬边代价）】与【抑制河谷】此消彼长的关系�?
 //   gradlew runLakeDomainSweepProbe [-PprobeArgs="seed bx bz half step"]
 task runLakeDomainSweepProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1094,8 +1094,8 @@ task runLakeDomainSweepProbe(type: JavaExec) {
     }
 }
 
-// RiverLakeLevelGapProbe (2026-09-19): 架构第二刀（水位来源收敛）的前置测量 ——
-//   量【河水面 − 湖水位】的差值分布，判断"三套基准"是否真有可见代价。
+// RiverLakeLevelGapProbe (2026-09-19): 架构第二刀（水位来源收敛）的前置测�?—�?
+//   量【河水面 �?湖水位】的差值分布，判断"三套基准"是否真有可见代价�?
 //   gradlew runRiverLakeLevelGapProbe [-PprobeArgs="seed bx bz half step"]
 task runRiverLakeLevelGapProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1107,10 +1107,10 @@ task runRiverLakeLevelGapProbe(type: JavaExec) {
 }
 
 
-// Cave perf probe (2026-09-15): 洞穴【性能】诊断 ——
-//   ★ 补上缺口：现有性能探针（AbChunkProbe/ChunkTimeProbe）全走 getChunkCells，
-//     而洞穴在 applyCarvers，整条路径此前【无任何探针覆盖】。
-//   测：几何段 span 成本 + 写块数上界 + applyCarvers 读 Cell 缓存的命中/驱逐代价。
+// Cave perf probe (2026-09-15): 洞穴【性能】诊�?—�?
+//   �?补上缺口：现有性能探针（AbChunkProbe/ChunkTimeProbe）全�?getChunkCells�?
+//     而洞穴在 applyCarvers，整条路径此前【无任何探针覆盖】�?
+//   测：几何�?span 成本 + 写块数上�?+ applyCarvers �?Cell 缓存的命�?驱逐代价�?
 //   gradlew runCavePerfProbe [-PprobeArgs="seed chunks"]
 task runCavePerfProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1121,9 +1121,9 @@ task runCavePerfProbe(type: JavaExec) {
     }
 }
 
-// Cave config probe (2026-09-15): 洞穴配置档位诊断 ——
-//   验证"可开关配置"真的生效：OFF 确实无洞 / 档位密度单调 / 岩性门控开关 /
-//   层调制开关（防竖直贯穿）/ 分量开关 / 配置读取不拖慢热路径。
+// Cave config probe (2026-09-15): 洞穴配置档位诊断 —�?
+//   验证"可开关配�?真的生效：OFF 确实无洞 / 档位密度单调 / 岩性门控开�?/
+//   层调制开关（防竖直贯穿）/ 分量开�?/ 配置读取不拖慢热路径�?
 //   gradlew runCaveConfigProbe [-PprobeArgs="seed spanXY"]
 task runCaveConfigProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1134,9 +1134,9 @@ task runCaveConfigProbe(type: JavaExec) {
     }
 }
 
-// Cave biome probe (2026-09-15): 洞穴群系诊断 ——
-//   复用生产的零 MC 依赖纯函数 CaveBiomeSelector：分布 / 深度带（不破地表）/
-//   气候耦合（受控对照：干旱与极寒不得出繁茂）/ 与洞穴几何一致 / 性能。
+// Cave biome probe (2026-09-15): 洞穴群系诊断 —�?
+//   复用生产的零 MC 依赖纯函�?CaveBiomeSelector：分�?/ 深度带（不破地表�?
+//   气候耦合（受控对照：干旱与极寒不得出繁茂�? 与洞穴几何一�?/ 性能�?
 //   gradlew runCaveBiomeProbe [-PprobeArgs="seed spanXY"]
 task runCaveBiomeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1147,9 +1147,9 @@ task runCaveBiomeProbe(type: JavaExec) {
     }
 }
 
-// Ore vein perf probe (2026-09-15): 矿脉性能 ——
-//   矿脉接在方块铺设的逐体素层，既有性能探针只测到地形层 ⇒ 单独补测。
-//   含列级门控/深度剪枝/最坏上界，并与洞穴的 2.48ms/chunk 对照。
+// Ore vein perf probe (2026-09-15): 矿脉性能 —�?
+//   矿脉接在方块铺设的逐体素层，既有性能探针只测到地形层 �?单独补测�?
+//   含列级门�?深度剪枝/最坏上界，并与洞穴�?2.48ms/chunk 对照�?
 //   gradlew runOrePerfProbe [-PprobeArgs="seed chunks"]
 task runOrePerfProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1160,9 +1160,9 @@ task runOrePerfProbe(type: JavaExec) {
     }
 }
 
-// Ore vein probe (2026-09-15): 矿脉诊断 ——
-//   复用生产的零 MC 依赖纯函数 OreVeins：密度 / 矿种齐全 / 岩性耦合（受控对照）/
-//   深度带硬约束 / 脉体连通性 + 输出 Y-Z 与 X-Z 剖面图。
+// Ore vein probe (2026-09-15): 矿脉诊断 —�?
+//   复用生产的零 MC 依赖纯函�?OreVeins：密�?/ 矿种齐全 / 岩性耦合（受控对照）/
+//   深度带硬约束 / 脉体连通�?+ 输出 Y-Z �?X-Z 剖面图�?
 //   gradlew runOreVeinProbe [-PprobeArgs="seed spanXY [scan]"]
 task runOreVeinProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1173,9 +1173,9 @@ task runOreVeinProbe(type: JavaExec) {
     }
 }
 
-// Cave shape probe (2026-09-15): 洞穴几何诊断 ——
-//   复用生产的零 MC 依赖纯函数 CaveShape：体积占比 / 是否挖穿地表 /
-//   岩性耦合（石灰岩 vs 花岗岩）+ 输出 X-Y 垂直剖面图。
+// Cave shape probe (2026-09-15): 洞穴几何诊断 —�?
+//   复用生产的零 MC 依赖纯函�?CaveShape：体积占�?/ 是否挖穿地表 /
+//   岩性耦合（石灰岩 vs 花岗岩）+ 输出 X-Y 垂直剖面图�?
 //   gradlew runCaveShapeProbe [-PprobeArgs="seed chunksPerSide"]
 task runCaveShapeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1186,8 +1186,8 @@ task runCaveShapeProbe(type: JavaExec) {
     }
 }
 
-// Canyon profile probe (2026-09-14): 峡谷（大峡谷式）剖面诊断 ——
-//   先实测现状（岸高 → 谷壁坡度分布）+ 渲染对照图，再定峡谷参数。
+// Canyon profile probe (2026-09-14): 峡谷（大峡谷式）剖面诊断 —�?
+//   先实测现状（岸高 �?谷壁坡度分布�? 渲染对照图，再定峡谷参数�?
 //   gradlew runCanyonProfileProbe [-PprobeArgs="seed hs chunksPerSide"]
 task runCanyonProfileProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1198,8 +1198,8 @@ task runCanyonProfileProbe(type: JavaExec) {
     }
 }
 
-// Soil→biome crosstab probe (2026-09-14, Phase T12): 成土母质 × 群系 交叉表 ——
-//   受控 A/B（同点只切耦合）量化岩性→群系耦合的实际生效率与映射合法性。
+// Soil→biome crosstab probe (2026-09-14, Phase T12): 成土母质 × 群系 交叉�?—�?
+//   受控 A/B（同点只切耦合）量化岩性→群系耦合的实际生效率与映射合法性�?
 //   gradlew runSoilBiomeCrosstabProbe [-PprobeArgs="seed size step"]
 task runSoilBiomeCrosstabProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1209,8 +1209,8 @@ task runSoilBiomeCrosstabProbe(type: JavaExec) {
     }
 }
 
-// Deform visibility probe (2026-09-14): 构造地貌"看不见"归因 ——
-//   镜像 TectonicDeformation 数学（逐位自检）+ 多参数并排山体阴影渲染。
+// Deform visibility probe (2026-09-14): 构造地�?看不�?归因 —�?
+//   镜像 TectonicDeformation 数学（逐位自检�? 多参数并排山体阴影渲染�?
 //   gradlew runDeformVisibilityProbe [-PprobeArgs="seed size step ox oz"]
 task runDeformVisibilityProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1220,8 +1220,8 @@ task runDeformVisibilityProbe(type: JavaExec) {
     }
 }
 
-// Scree placement probe (2026-09-14): 碎石坡"出现在山脊"归因 ——
-//   量化 discharge(汇流累积) 作为"凹度"判据区分脊/沟的 AUC 与门控效果。
+// Scree placement probe (2026-09-14): 碎石�?出现在山�?归因 —�?
+//   量化 discharge(汇流累积) 作为"凹度"判据区分�?沟的 AUC 与门控效果�?
 //   gradlew runScreePlacementProbe [-PprobeArgs="seed chunks ox oz"]
 task runScreePlacementProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1251,7 +1251,7 @@ task runTectonicDeformProbe(type: JavaExec) {
 
 // Tectonic wave (parallel-band / concentric-ripple) probe (2026-09-12, 3rd regression guard):
 //   gradlew runTectonicWaveProbe [seed]
-//   判据：值能否由 dist 单变量解释 —— 补上阈值型探针（Grain/LandE/Deform）的原理盲区。
+//   判据：值能否由 dist 单变量解�?—�?补上阈值型探针（Grain/LandE/Deform）的原理盲区�?
 task runTectonicWaveProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.TectonicWaveProbe'
@@ -1289,7 +1289,7 @@ task runTerrainStripeProbe(type: JavaExec) {
     }
 }
 
-// Water view render (★ 2026-09-19): hillshade + blue water, for EYE-CONTROL of lake/river shore.
+// Water view render (�?2026-09-19): hillshade + blue water, for EYE-CONTROL of lake/river shore.
 //   The original blue-water renderer was lost during the hydrology refactor (no PNG probe drew
 //   blue water), so this restores it. 1 pixel = 1 block. Output: build/waterview/*.png
 //   gradlew runWaterViewProbe [-PprobeArgs="seed blockX blockZ radiusBlocks"]
@@ -1313,7 +1313,7 @@ task runRiverBasisProbe(type: JavaExec) {
     }
 }
 
-// Shade-free contour view (river in valley vs ridge) — needs -Dgeogenesis.skeletonRouting=true
+// Shade-free contour view (river in valley vs ridge) �?needs -Dgeogenesis.skeletonRouting=true
 //   gradlew runRiverPlainViewProbe [-PprobeArgs="seed bx bz radius zoom"]
 task runRiverPlainViewProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1358,7 +1358,7 @@ task runRiverOriginProbe(type: JavaExec) {
     }
 }
 
-// Lake-domain spread measurement — why rivers hug lake shores (2026-10).
+// Lake-domain spread measurement �?why rivers hug lake shores (2026-10).
 //   gradlew runLakeDomainSpreadProbe [-PprobeArgs="seed regionX regionZ"]
 task runLakeDomainSpreadProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1559,7 +1559,7 @@ task runRiverLakeLevelProbe(type: JavaExec) {
     }
 }
 
-// Unified water-graph billing probe (2026-09-17, hydrology 统一化 M1):
+// Unified water-graph billing probe (2026-09-17, hydrology 统一�?M1):
 //   gradlew runWaterGraphProbe [-PprobeArgs="seed regionX regionZ"]
 
 // Water physics audit: level vs required (minimax escape) + dry-wall count (2026-09-17):
@@ -1572,9 +1572,9 @@ task runWaterPhysicsProbe(type: JavaExec) {
     }
 }
 
-// 干墙格归因（2026-09-17）：逐格打印"是哪道闸门掐断了水"（cat A/B/C/D + 种子数 + 粗格余数）:
+// 干墙格归因（2026-09-17）：逐格打印"是哪道闸门掐断了�?（cat A/B/C/D + 种子�?+ 粗格余数�?
 //   gradlew runWallAttributionProbe [-PprobeArgs="seed wuX wuZ halfWu minDepth"]
-//     minDepth 默认 0.5：排除"浅水墙"（地面与水面同格、放不下水块 ⇒ 本就该干），否则淹没信号
+//     minDepth 默认 0.5：排�?浅水�?（地面与水面同格、放不下水块 �?本就该干），否则淹没信号
 task runWallAttributionProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.WallAttributionProbe'
@@ -1583,10 +1583,10 @@ task runWallAttributionProbe(type: JavaExec) {
     }
 }
 
-// 区块加载性能基准（2026-09-17）：扫 span×span chunk（真实工作集 + 驱逐），
+// 区块加载性能基准�?026-09-17）：�?span×span chunk（真实工作集 + 驱逐）�?
 //   统计 ms/chunk 与【侵蚀 tile 生成次数 / 触达不同 tile 数】（重复生成率）:
 //   gradlew runChunkLoadPerfProbe [-PprobeArgs="seed spanChunks regions"]
-//     regions = v2 的独立冷启动区域数（判据取 min，见 ChunkLoadPerfProbe 头部说明）
+//     regions = v2 的独立冷启动区域数（判据�?min，见 ChunkLoadPerfProbe 头部说明�?
 task runChunkLoadPerfProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.ChunkLoadPerfProbe'
@@ -1595,7 +1595,7 @@ task runChunkLoadPerfProbe(type: JavaExec) {
     }
 }
 
-// geotransport 算法可行性（2026-09-18）：图模式=fastflow? 噪声? region 边界? 洼地积水?
+// geotransport 算法可行性（2026-09-18）：图模�?fastflow? 噪声? region 边界? 洼地积水?
 //   gradlew runGeotransportFeasibilityProbe [-PprobeArgs="nx samples"]
 task runGeotransportFeasibilityProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1605,7 +1605,7 @@ task runGeotransportFeasibilityProbe(type: JavaExec) {
     }
 }
 
-// M0：geotransport 图模式接到【真实 D8 语义】+ 对抗性场景验证（2026-09-18）:
+// M0：geotransport 图模式接到【真�?D8 语义�? 对抗性场景验证（2026-09-18�?
 //   gradlew runGeotransportGraphOnRealD8Probe [-PprobeArgs="nx samples"]
 task runGeotransportGraphOnRealD8Probe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1615,7 +1615,7 @@ task runGeotransportGraphOnRealD8Probe(type: JavaExec) {
     }
 }
 
-// M1：geotransport 图模式 + 真实地形/真实 FlowField（2026-09-18）:
+// M1：geotransport 图模�?+ 真实地形/真实 FlowField�?026-09-18�?
 //   gradlew runGeotransportRealTerrainProbe [-PprobeArgs="seed gridN samples"]
 task runGeotransportRealTerrainProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1625,7 +1625,7 @@ task runGeotransportRealTerrainProbe(type: JavaExec) {
     }
 }
 
-// 全流程诊断 profiler 自检（2026-09-18）：验证"关闭零记录 / 开启有记录 / 占比自洽"
+// 全流程诊�?profiler 自检�?026-09-18）：验证"关闭零记�?/ 开启有记录 / 占比自洽"
 //   gradlew runProfilerSelfCheckProbe [-PprobeArgs="seed chunks"]
 task runProfilerSelfCheckProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1635,11 +1635,11 @@ task runProfilerSelfCheckProbe(type: JavaExec) {
     }
 }
 
-// 中断 → 重试风暴 离线复现（★ 2026-09-19）：验"中断线程跑 parallelRows 会抛
-// CancellationException ⇒ 不入缓存 ⇒ 逐格重试 ⇒ 单块烧几十秒 CPU"这条机制。
+// 中断 �?重试风暴 离线复现（★ 2026-09-19）：�?中断线程�?parallelRows 会抛
+// CancellationException �?不入缓存 �?逐格重试 �?单块烧几十秒 CPU"这条机制�?
 //   gradlew runInterruptStormProbe [-PprobeArgs="seed"]
-// 判据：中断态的 tile miss 不得多于常态、耗时不得慢一个量级。
-// ⚠ 反向验证（§D-1）：临时移除 CellGenerator 里的中断拦截 ⇒ 本探针必须 FAIL。
+// 判据：中断态的 tile miss 不得多于常态、耗时不得慢一个量级�?
+// �?反向验证（§D-1）：临时移除 CellGenerator 里的中断拦截 �?本探针必�?FAIL�?
 task runInterruptStormProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.diagnostics.InterruptStormProbe'
@@ -1648,7 +1648,7 @@ task runInterruptStormProbe(type: JavaExec) {
     }
 }
 
-// M2 可行性：水量平衡（D8 累积加沿程衰减 = 蒸发/入渗），不改生产代码（2026-09-18）:
+// M2 可行性：水量平衡（D8 累积加沿程衰�?= 蒸发/入渗），不改生产代码�?026-09-18�?
 //   gradlew runWaterBalanceProbe [-PprobeArgs="seed gridN"]
 task runWaterBalanceProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1660,7 +1660,7 @@ task runWaterBalanceProbe(type: JavaExec) {
 
 // Determinism / order-independence gate (2026-09-17, hydrology 重构 M1 基线):
 //   gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]
-//   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0）
+//   判据：不同生成顺序下所有比较字段必须【逐位相等】（diff == 0�?
 task runHydrologyDeterminismProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.HydrologyDeterminismProbe'
@@ -1670,30 +1670,30 @@ task runHydrologyDeterminismProbe(type: JavaExec) {
 }
 
 // ==================================================================
-// ★ 2026-09-18：世界生成【门禁】聚合入口
+// �?2026-09-18：世界生成【门禁】聚合入�?
 //   gradlew runWorldgenGate
 //
-// 背景（本轮核查结论）：仓库有 129+ 个探针 task，但绝大多数只是"打印给人看的仪表"；
-//   真正带 PASS/FAIL 判据、且能用【退出码】让构建失败的（= 真尺子）只有 18 个。
-//   而 HANDOFF 曾称的"四把尺子"里，WallAttributionProbe / ChunkLoadPerfProbe 其实
-//   【没有自动判据】（归因为人眼），WaterPhysicsProbe 的判据已过时（永远红）。
+// 背景（本轮核查结论）：仓库有 129+ 个探�?task，但绝大多数只是"打印给人看的仪表"�?
+//   真正�?PASS/FAIL 判据、且能用【退出码】让构建失败的（= 真尺子）只有 18 个�?
+//   �?HANDOFF 曾称�?四把尺子"里，WallAttributionProbe / ChunkLoadPerfProbe 其实
+//   【没有自动判据】（归因为人眼），WaterPhysicsProbe 的判据已过时（永远红）�?
 //
-// 纳入标准（务必遵守）：
-//   ① 必须有 PASS/FAIL 判据；② 必须以 System.exit(非零) 承载 FAIL；
-//   ③ 【当前实测必须 ALL PASS】—— 门禁从第一天就红 = 立刻被弃用。
+// 纳入标准（务必遵守）�?
+//   �?必须�?PASS/FAIL 判据；② 必须�?System.exit(非零) 承载 FAIL�?
+//   �?【当前实测必�?ALL PASS】—�?门禁从第一天就�?= 立刻被弃用�?
 //
 // 排除（已记录原因，勿无声加回）：
-//   · runLandEConformityProbe：2026-09-18 实测 FAIL（最大单步跳变 0.056e > 目标 0.02e）。
-//     这是【刻意保留的靶子】而非回归 —— 探针内注释明写"保持严格判据并如实报 FAIL，
-//     不为了让 CI 变绿而放宽阈值"，README「已知限制」亦有记录 ⇒ 勿为它放宽阈值
-//   · runWaterPhysicsProbe：判据 `viol<=0.5 && walls==0` 已过时
-//     （+7.088 是 ±96wu 窗口假象、13 个干墙是已接受的结构性上限）⇒ 永远不可能 PASS，需先修判据
+//   · runLandEConformityProbe�?026-09-18 实测 FAIL（最大单步跳�?0.056e > 目标 0.02e）�?
+//     这是【刻意保留的靶子】而非回归 —�?探针内注释明�?保持严格判据并如实报 FAIL�?
+//     不为了让 CI 变绿而放宽阈�?，README「已知限制」亦有记�?�?勿为它放宽阈�?
+//   · runWaterPhysicsProbe：判�?`viol<=0.5 && walls==0` 已过�?
+//     �?7.088 �?±96wu 窗口假象�?3 个干墙是已接受的结构性上限）�?永远不可�?PASS，需先修判据
 //
-// 若某个探针长期 FAIL：请【移出本门禁并单开议题】，而不是删除探针。
+// 若某个探针长�?FAIL：请【移出本门禁并单开议题】，而不是删除探针�?
 // ==================================================================
 task runWorldgenGate {
     group = 'verification'
-    description = '世界生成门禁：只跑当前实测 ALL PASS 的判据型探针（任一 FAIL 即构建失败）'
+    description = '世界生成门禁：只跑当前实�?ALL PASS 的判据型探针（任一 FAIL 即构建失败）'
     dependsOn 'runHydrologyDeterminismProbe'
     dependsOn 'runTectonicWaveProbe'
     dependsOn 'runTerrainGrainProbe'
@@ -1703,22 +1703,22 @@ task runWorldgenGate {
     dependsOn 'runOreVeinProbe'
     dependsOn 'runOreOverrideProbe'
     dependsOn 'runOreFilterBehaviorProbe'
-    // 支流分叉（2026-09-20 启用）：判据 = 循环真的执行 + 启用状态下必须有产出。
-    // 不加它 ⇒ 分叉日后被改坏（闸门/参数）会【静默】退化成"没有支流"，而门禁全绿。
+    // 支流分叉�?026-09-20 启用）：判据 = 循环真的执行 + 启用状态下必须有产出�?
+    // 不加�?�?分叉日后被改坏（闸门/参数）会【静默】退化成"没有支流"，而门禁全绿�?
     dependsOn 'runForkFeasibilityProbe'
-    // 全周期链（2026-10）：四条判据均带 System.exit ⇒ 真门禁。
-    //   ★ 判据 ④「水量收支」是【放大环守门】：湖↔河耦合曾每轮 ×5 几何发散
-    //     （ΣIn→109 万、residual 恒 0.800），而当时 ①②③ 全 PASS、无任何判据能抓。
-    //   反向验证：旧口径 14 轮 ⇒ Σ来水 8058× ⇒ 如实 FAIL / exit=1。
+    // 全周期链�?026-10）：四条判据均带 System.exit �?真门禁�?
+    //   �?判据 ④「水量收支」是【放大环守门】：湖↔河耦合曾每�?×5 几何发散
+    //     （ΣIn�?09 万、residual �?0.800），而当�?①②�?�?PASS、无任何判据能抓�?
+    //   反向验证：旧口径 14 �?�?Σ来水 8058× �?如实 FAIL / exit=1�?
     dependsOn 'runLifecycleChainProbe'
-    // 中心线距离场掩码（2026-10）：8 判据带 System.exit ⇒ 真门禁。
-    //   ★ 为什么要纳入：本类 RiverCenterlines 自身一字未改，但其【输入】(flux/channel)
-    //     会被上游改动影响 ⇒ 历史 javadoc 数字(8.81%/1.08)在 filler 父指针 + 出口修复后
-    //     已不可复现（实测 21.95%/1.51）。若无门禁，"输入变了 ⇒ 形态退化"将无人发现。
+    // 中心线距离场掩码�?026-10）：8 判据�?System.exit �?真门禁�?
+    //   �?为什么要纳入：本�?RiverCenterlines 自身一字未改，但其【输入�?flux/channel)
+    //     会被上游改动影响 �?历史 javadoc 数字(8.81%/1.08)�?filler 父指�?+ 出口修复�?
+    //     已不可复现（实测 21.95%/1.51）。若无门禁，"输入变了 �?形态退�?将无人发现�?
     dependsOn 'runCenterlineCrossSectionProbe'
 }
 
-// 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什么 + 多模组零误删 + 开关真生效:
+// 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什�?+ 多模组零误删 + 开关真生效:
 //   gradlew runOreFilterBehaviorProbe
 task runOreFilterBehaviorProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1728,7 +1728,7 @@ task runOreFilterBehaviorProbe(type: JavaExec) {
     }
 }
 
-// 矿物接管白名单正确性（2026-09-18）：校验 METAL_ORES 与 1.20.1 原版内容快照一致（防漏剔/误剔）:
+// 矿物接管白名单正确性（2026-09-18）：校验 METAL_ORES �?1.20.1 原版内容快照一致（防漏�?误剔�?
 //   gradlew runOreOverrideProbe
 task runOreOverrideProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1896,8 +1896,8 @@ task runOceanTypeProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.OceanTypeProbe'
 }
 
-// Ocean stage probe (★ 2026-09-13 T6：分阶段海洋管线 + 熔岩/弧/脊 PNG 目检)
-//   args = [seed] [originX] [originZ]，默认 12345 / 0 / 0
+// Ocean stage probe (�?2026-09-13 T6：分阶段海洋管线 + 熔岩/�?�?PNG 目检)
+//   args = [seed] [originX] [originZ]，默�?12345 / 0 / 0
 task runOceanStageProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.OceanStageProbe'
@@ -1906,8 +1906,8 @@ task runOceanStageProbe(type: JavaExec) {
     }
 }
 
-// Land feature probe (★ 2026-09-14：陆地火山分量 PNG 目检 + 竖线指标)
-//   args = [seed] [originX] [originZ]，默认世界种子 / 1077 / -833
+// Land feature probe (�?2026-09-14：陆地火山分�?PNG 目检 + 竖线指标)
+//   args = [seed] [originX] [originZ]，默认世界种�?/ 1077 / -833
 task runLandFeatProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.LandFeatProbe'
@@ -1916,7 +1916,7 @@ task runLandFeatProbe(type: JavaExec) {
     }
 }
 
-// Concurrent chunk probe (★ 2026-09-14：并发 chunk 生成压测，复现"卡在 0%"真实场景)
+// Concurrent chunk probe (�?2026-09-14：并�?chunk 生成压测，复�?卡在 0%"真实场景)
 //   args = [seed] [threads] [chunksPerThread]
 task runConcurrentChunkProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1926,7 +1926,7 @@ task runConcurrentChunkProbe(type: JavaExec) {
     }
 }
 
-// Spawn search probe (★ 2026-09-14：出生点搜索阶段耗时，定位"进度条前空闲期")
+// Spawn search probe (�?2026-09-14：出生点搜索阶段耗时，定�?进度条前空闲�?)
 //   args = [seed] [radiusQuart]
 task runSpawnSearchProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1937,7 +1937,7 @@ task runSpawnSearchProbe(type: JavaExec) {
     }
 }
 
-// Baseline A/B chunk probe (★ 2026-09-14：与基线 505c81f 直接对比性能)
+// Baseline A/B chunk probe (�?2026-09-14：与基线 505c81f 直接对比性能)
 //   args = [seed] [chunks] [threads]
 task runAbChunkProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1948,7 +1948,7 @@ task runAbChunkProbe(type: JavaExec) {
     }
 }
 
-// Chunk time probe (★ 2026-09-14：chunk 生成冷/热耗时分段实测)
+// Chunk time probe (�?2026-09-14：chunk 生成�?热耗时分段实测)
 //   args = [seed] [chunks]
 task runChunkTimeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1958,7 +1958,7 @@ task runChunkTimeProbe(type: JavaExec) {
     }
 }
 
-// Hardness race probe (★ 2026-09-14：硬度网格并发安全压测，复现/验证崩溃修复)
+// Hardness race probe (�?2026-09-14：硬度网格并发安全压测，复现/验证崩溃修复)
 //   args = [seed] [threads]
 task runHardnessRaceProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1968,7 +1968,7 @@ task runHardnessRaceProbe(type: JavaExec) {
     }
 }
 
-// Perf probe (★ 2026-09-14：地质系统性能基准，定位"卡在 0%"回归)
+// Perf probe (�?2026-09-14：地质系统性能基准，定�?卡在 0%"回归)
 //   args = [seed]
 task runPerfProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1978,7 +1978,7 @@ task runPerfProbe(type: JavaExec) {
     }
 }
 
-// Rock erosion probe (★ 2026-09-14 Phase T8/P3：岩性→侵蚀耦合验收)
+// Rock erosion probe (�?2026-09-14 Phase T8/P3：岩性→侵蚀耦合验收)
 //   args = [seed] [originX] [originZ]
 task runRockErosionProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -2015,20 +2015,20 @@ task runRiverOasisProbe(type: JavaExec) {
 
 
 
-// RTF 鑼冨紡娌崇綉楠屾敹锛氳 runRiverTopologyProbe锛?026-08-26 閲嶆瀯鍚庣粺涓€鍏ュ彛锛?
+// RTF 鑼冨紡娌崇綉楠屾敹锛氳 runRiverTopologyProbe�?026-08-26 閲嶆瀯鍚庣粺涓€鍏ュ彛锛?
 
 // River diagnostic probe (2026-08-25): gradlew runRiverDiagProbe [-PprobeArgs="seed"]
 
 // ============================================================
-// model/ 链的探针 task（2026-10-05 从 worktree 迁入，收敛单一代码线）
+// model/ 链的探针 task�?026-10-05 �?worktree 迁入，收敛单一代码线）
 // 指向 diagnostics 源集 com.geogenesis.worldgen.hydrology.model.*
 // ============================================================
 
-// ★ P1 物理模型原型验收（2026-09-30，plan §6.2 数值物理矩阵）。
-//   扩散波守恒模型 + 独立参照(Dijkstra minimax / 定义式库容二分)。
-//   12 判据：静水保持 / 零输入不蓄水 / 封闭碗解析加水 / 最低溢口 / 鞍口溢流 /
-//   嵌套盆地 / 陡坡账本 / 蒸发入渗账本 / 水深非负 / 全域账本 / 分辨率与时步收敛。
-//   gradlew runHydroModelProbe [-PprobeArgs=4]   ← 只跑第 4 项（调试用）
+// �?P1 物理模型原型验收�?026-09-30，plan §6.2 数值物理矩阵）�?
+//   扩散波守恒模�?+ 独立参照(Dijkstra minimax / 定义式库容二�?�?
+//   12 判据：静水保�?/ 零输入不蓄水 / 封闭碗解析加�?/ 最低溢�?/ 鞍口溢流 /
+//   嵌套盆地 / 陡坡账本 / 蒸发入渗账本 / 水深非负 / 全域账本 / 分辨率与时步收敛�?
+//   gradlew runHydroModelProbe [-PprobeArgs=4]   �?只跑�?4 项（调试用）
 task runHydroModelProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ModelVerificationProbe'
@@ -2097,7 +2097,7 @@ task runHydroCertifiedBasinProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.hydrology.model.CertifiedBasinProbe'
 }
 
-// 真实地形【干地起报降雨蓄水】阶段图（P1 判别用；封闭裁剪，非世界边界）
+// 真实地形【干地起报降雨蓄水】阶段图（P1 判别用；封闭裁剪，非世界边界�?
 task runHydroRealRainProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.RealLakeRainProbe'
@@ -2110,7 +2110,7 @@ task runHydroAnalyticProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.hydrology.model.AnalyticFlowProbe'
 }
 
-// 局部惯性 vs 扩散波同场景对照
+// 局部惯�?vs 扩散波同场景对照
 task runHydroInertialComparisonProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LocalInertialComparisonProbe'
@@ -2122,13 +2122,13 @@ task runGeotransportAnalyticProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.hydrology.model.GeotransportAnalyticProbe'
 }
 
-// 同床面、同初态、同糙率、同物理时刻：局部惯性 vs 扩散波 vs Ritter解析解
+// 同床面、同初态、同糙率、同物理时刻：局部惯�?vs 扩散�?vs Ritter解析�?
 task runHydroDamBreakCompare(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.DamBreakModelComparison'
 }
 
-// ★ 世界查询契约：按 chunk 独立求解 vs 整窗，逐格比对
+// �?世界查询契约：按 chunk 独立求解 vs 整窗，逐格比对
 task runHydroChunkSplitProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ChunkSplitContractProbe'
@@ -2138,14 +2138,14 @@ task runHydroChunkSplitProbe(type: JavaExec) {
     }
 }
 
-// ★ 连续速度场河网 vs 均匀坡面解析期望
+// �?连续速度场河�?vs 均匀坡面解析期望
 task runHydroContinuousRiverAnalyticProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ContinuousRiverAnalyticProbe'
     maxHeapSize = '8g'
 }
 
-// ★ 真实地形：D8 汇流图 vs 连续速度场河网（同水位同气候）
+// �?真实地形：D8 汇流�?vs 连续速度场河网（同水位同气候）
 task runHydroContinuousRiverView(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ContinuousRiverViewProbe'
@@ -2155,7 +2155,7 @@ task runHydroContinuousRiverView(type: JavaExec) {
     }
 }
 
-// ★ 大图规格湖—河—海出图（1 像素 = 1 方块，与既有预览同口径）
+// �?大图规格湖—河—海出图�? 像素 = 1 方块，与既有预览同口径）
 task runHydroFullViewProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.HydroFullViewProbe'
@@ -2165,14 +2165,14 @@ task runHydroFullViewProbe(type: JavaExec) {
     }
 }
 
-// ★ 决定性检验：模型探针地形 vs 生产 chunk 管线地形，是否同一个场
+// �?决定性检验：模型探针地形 vs 生产 chunk 管线地形，是否同一个场
 task runTerrainAgreementProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.TerrainAgreementProbe'
     maxHeapSize = '8g'
 }
 
-// ★ 新管线水叠加在【生产地形】上（同底对照）
+// �?新管线水叠加在【生产地形】上（同底对照）
 task runOverProductionTerrainProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.OverProductionTerrainProbe'
@@ -2182,7 +2182,7 @@ task runOverProductionTerrainProbe(type: JavaExec) {
     }
 }
 
-// ★ 湖泊兜底语义 A/B（无来水盆地：满湖 vs 干涸）
+// �?湖泊兜底语义 A/B（无来水盆地：满�?vs 干涸�?
 task runLakeFallbackProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeFallbackProbe'
@@ -2192,7 +2192,25 @@ task runLakeFallbackProbe(type: JavaExec) {
     }
 }
 
-// ★ 正典规格出图（1 方块/像素、1401×1401，规格来自 ViewSpec）+ 湖↔河耦合
+// �?正典规格出图�? 方块/像素�?401×1401，规格来�?ViewSpec�? 湖↔河耦合
+task runProductionChainCompareProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ProductionChainCompareProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
+task runProductionViewProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ProductionViewProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runCanonicalViewProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.CanonicalViewProbe'
@@ -2202,7 +2220,7 @@ task runCanonicalViewProbe(type: JavaExec) {
     }
 }
 
-// ★ 平坦区伪影归因 + 破平局机制同参 A/B（三种模式）
+// �?平坦区伪影归�?+ 破平局机制同参 A/B（三种模式）
 task runFlatFlowDiagnosisProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.FlatFlowDiagnosisProbe'
@@ -2212,7 +2230,7 @@ task runFlatFlowDiagnosisProbe(type: JavaExec) {
     }
 }
 
-// ★ 平行线归因：recover注入 vs 链传播 的插桩判别（用户圈定的高原平行线）
+// �?平行线归因：recover注入 vs 链传�?的插桩判别（用户圈定的高原平行线�?
 task runParallelLineAttributionProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ParallelLineAttributionProbe'
@@ -2222,7 +2240,7 @@ task runParallelLineAttributionProbe(type: JavaExec) {
     }
 }
 
-// ★ 河道中心线折线度：区分"栅格阶梯"与"真折角"（连通性度量对此完全盲）
+// �?河道中心线折线度：区�?栅格阶梯"�?真折�?（连通性度量对此完全盲�?
 task runCenterlineKinkProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.CenterlineKinkProbe'
@@ -2232,7 +2250,7 @@ task runCenterlineKinkProbe(type: JavaExec) {
     }
 }
 
-// ★ 谷约束度：河道是否走在地形沟壑里（决定平行直纹是地形驱动还是欠分辨）
+// �?谷约束度：河道是否走在地形沟壑里（决定平行直纹是地形驱动还是欠分辨）
 task runValleyConfinementProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ValleyConfinementProbe'
@@ -2242,7 +2260,7 @@ task runValleyConfinementProbe(type: JavaExec) {
     }
 }
 
-// ★ 河道终止原因分类：把"分量多"拆成 水体终止/窗口截断/有水未画/出口无水
+// �?河道终止原因分类：把"分量�?拆成 水体终止/窗口截断/有水未画/出口无水
 task runChannelTerminationProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelTerminationProbe'
@@ -2252,7 +2270,7 @@ task runChannelTerminationProbe(type: JavaExec) {
     }
 }
 
-// ★ 有效水面 s = resolved ? level : bed 的"棋盘格"假说检验（只读，不改产出）
+// �?有效水面 s = resolved ? level : bed �?棋盘�?假说检验（只读，不改产出）
 task runEffectiveSurfaceProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.EffectiveSurfaceProbe'
@@ -2262,7 +2280,7 @@ task runEffectiveSurfaceProbe(type: JavaExec) {
     }
 }
 
-// ★ 河道「抹开」（成块不成条）归因：平滑涂宽 vs 传播涂宽（决定修法）
+// �?河道「抹开」（成块不成条）归因：平滑涂�?vs 传播涂宽（决定修法）
 task runChannelSmearProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelSmearProbe'
@@ -2272,14 +2290,14 @@ task runChannelSmearProbe(type: JavaExec) {
     }
 }
 
-// ★ 开关接线自检：-D 属性是否真的到达判定点（"改了没生效"的排查工具）
+// �?开关接线自检�?D 属性是否真的到达判定点�?改了没生�?的排查工具）
 task runSwitchWiringProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.SwitchWiringProbe'
     maxHeapSize = '2g'
 }
 
-// ★ 湖泊尺寸谱：「极小散点蓄水坑」的规模与体积占比（决定能否安全过滤）
+// �?湖泊尺寸谱：「极小散点蓄水坑」的规模与体积占比（决定能否安全过滤�?
 task runLakeSizeProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeSizeProbe'
@@ -2289,7 +2307,7 @@ task runLakeSizeProbe(type: JavaExec) {
     }
 }
 
-// ★ 接线前置：HydrologyPipeline 单窗口耗时（判断能否接进世界生成）
+// �?接线前置：HydrologyPipeline 单窗口耗时（判断能否接进世界生成）
 task runPipelinePerfProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.PipelinePerfProbe'
@@ -2299,7 +2317,7 @@ task runPipelinePerfProbe(type: JavaExec) {
     }
 }
 
-// ★ 「洼地未蓄水」探针：几何上是湖却判干（用户："河流为什么停在没填色的洼地"）
+// �?「洼地未蓄水」探针：几何上是湖却判干（用户："河流为什么停在没填色的洼�?�?
 task runLakeGapProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeGapProbe'
@@ -2309,7 +2327,7 @@ task runLakeGapProbe(type: JavaExec) {
     }
 }
 
-// ★ 高海拔陡坡碎块成因：河道格按坡度分档看墨水密度（定位碎块区成因）
+// �?高海拔陡坡碎块成因：河道格按坡度分档看墨水密度（定位碎块区成因）
 task runSteepFragmentProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.SteepFragmentProbe'
@@ -2319,7 +2337,7 @@ task runSteepFragmentProbe(type: JavaExec) {
     }
 }
 
-// ★ 「点状青色」尺寸全谱：用户看到的「点」落在哪个尺寸档 + 按尺寸分类着色出图
+// �?「点状青色」尺寸全谱：用户看到的「点」落在哪个尺寸档 + 按尺寸分类着色出�?
 task runChannelDotProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelDotProbe'
@@ -2329,7 +2347,7 @@ task runChannelDotProbe(type: JavaExec) {
     }
 }
 
-// ★ gap「有墨水却不成河」的口径核对（smoothed vs raw 判定量）
+// �?gap「有墨水却不成河」的口径核对（smoothed vs raw 判定量）
 task runChannelGapProbe2(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelGapProbe2'
@@ -2339,7 +2357,7 @@ task runChannelGapProbe2(type: JavaExec) {
     }
 }
 
-// ★ 河道断口性质分析：剩余真实断裂是"近门槛"还是"无墨水"（决定修法）
+// �?河道断口性质分析：剩余真实断裂是"近门�?还是"无墨�?（决定修法）
 task runChannelGapProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ChannelGapProbe'
@@ -2349,7 +2367,7 @@ task runChannelGapProbe(type: JavaExec) {
     }
 }
 
-// ★ 连通性度量口径检验：4 连通 vs 8 连通（验证"点状假河 = 对角锯齿"假设）
+// �?连通性度量口径检验：4 连�?vs 8 连通（验证"点状假河 = 对角锯齿"假设�?
 task runConnectivityMetricProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ConnectivityMetricProbe'
@@ -2359,7 +2377,7 @@ task runConnectivityMetricProbe(type: JavaExec) {
     }
 }
 
-// ★ 溢口下潜路径逐步 dump（取代"猜机制"：看清"水出溢口又回湖"发生在哪一步）
+// �?溢口下潜路径逐步 dump（取�?猜机�?：看�?水出溢口又回�?发生在哪一步）
 task runSpillPathDumpProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.SpillPathDumpProbe'
@@ -2369,7 +2387,7 @@ task runSpillPathDumpProbe(type: JavaExec) {
     }
 }
 
-// ★ 水文链契约审计：逐条核对上游产出与下游预期是否自洽（用户建议"好好检查代码"）
+// �?水文链契约审计：逐条核对上游产出与下游预期是否自洽（用户建议"好好检查代�?�?
 task runContractAuditProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ContractAuditProbe'
@@ -2379,8 +2397,8 @@ task runContractAuditProbe(type: JavaExec) {
     }
 }
 
-// ★ 全周期判据：源头→汇流→蓄水→溢口→下泄→入海（用户验收标准，逐链追踪）
-//   弱计数（各段都>0）不算通过；必须存在【按序走完六阶段】的完整链。
+// �?全周期判据：源头→汇流→蓄水→溢口→下泄→入海（用户验收标准，逐链追踪�?
+//   弱计数（各段�?0）不算通过；必须存在【按序走完六阶段】的完整链�?
 task runLifecycleChainProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LifecycleChainProbe'
@@ -2390,7 +2408,7 @@ task runLifecycleChainProbe(type: JavaExec) {
     }
 }
 
-// ★ region-contract：同一世界点跨窗口中心必须一致（接线前硬闸门，方案 §5.5）
+// �?region-contract：同一世界点跨窗口中心必须一致（接线前硬闸门，方�?§5.5�?
 task runRegionContractProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.RegionContractProbe'
@@ -2400,7 +2418,7 @@ task runRegionContractProbe(type: JavaExec) {
     }
 }
 
-// ★ model 链列适配器验收（只下挖/水位自洽/确定性/纯函数，接线后端到端契约）
+// �?model 链列适配器验收（只下�?水位自洽/确定�?纯函数，接线后端到端契约�?
 task runModelPipelineAdapterProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ModelPipelineAdapterProbe'
@@ -2410,7 +2428,7 @@ task runModelPipelineAdapterProbe(type: JavaExec) {
     }
 }
 
-// ★ 中心线 + 横断面 vs 逐格过门槛 的同参对照（形态验收：抹开/散点/湿宽/确定性）
+// �?中心�?+ 横断�?vs 逐格过门�?的同参对照（形态验收：抹开/散点/湿宽/确定性）
 task runCenterlineCrossSectionProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.CenterlineCrossSectionProbe'
@@ -2420,28 +2438,28 @@ task runCenterlineCrossSectionProbe(type: JavaExec) {
     }
 }
 
-// ★ P0 契约门禁：等高DAG累积 / 物理面积 / 溢流表示守恒 / 盆地出口归属
-//   失败时 exit 1 ⇒ 可作真门禁（不只打印 FAIL 仍 BUILD SUCCESSFUL）。
+// �?P0 契约门禁：等高DAG累积 / 物理面积 / 溢流表示守恒 / 盆地出口归属
+//   失败�?exit 1 �?可作真门禁（不只打印 FAIL �?BUILD SUCCESSFUL）�?
 task runHydrologyContractProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.HydrologyContractProbe'
     maxHeapSize = '4g'
 }
 
-// ★ 耦合诊断：为何"不耦合有湖、耦合后全干"
+// �?耦合诊断：为�?不耦合有湖、耦合后全�?
 task runCouplingDiagnosisProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.CouplingDiagnosisProbe'
     maxHeapSize = '8g'
 }
 
-// 时步/隐式阻尼归因（判定"没到稳态"还是"通量律错"）
+// 时步/隐式阻尼归因（判�?没到稳�?还是"通量律错"�?
 task runHydroSteadyAchievabilityProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.SteadyAchievabilityProbe'
 }
 
-// ★ 无限世界硬判据：同一世界点的水状态是否与计算窗口大小无关
+// �?无限世界硬判据：同一世界点的水状态是否与计算窗口大小无关
 task runHydroWindowIndependenceProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.WindowIndependenceProbe'
@@ -2458,7 +2476,7 @@ task runHydroEquilibriumView(type: JavaExec) {
     }
 }
 
-// ★ 水量平衡：把"地形能蓄水"变成"实际有多少水"（防沙漠长湖）
+// �?水量平衡：把"地形能蓄�?变成"实际有多少水"（防沙漠长湖�?
 task runHydroLakeBalanceProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeBalanceProbe'
@@ -2468,7 +2486,7 @@ task runHydroLakeBalanceProbe(type: JavaExec) {
     }
 }
 
-// 湖—河—海一体出图（平衡态，不跑时间）
+// 湖—河—海一体出图（平衡态，不跑时间�?
 task runHydroRiverBalanceProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.RiverBalanceProbe'
@@ -2478,7 +2496,7 @@ task runHydroRiverBalanceProbe(type: JavaExec) {
     }
 }
 
-// ★ 大图规格湖—河—海（1 像素 = 1 方块，radius 默认 700）+ 平地流向占比量化
+// �?大图规格湖—河—海�? 像素 = 1 方块，radius 默认 700�? 平地流向占比量化
 task runHydroBigView(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.BigLakeRiverView'
@@ -2494,7 +2512,7 @@ task runHydroIsotropyProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.hydrology.model.IsotropyProbe'
 }
 
-// ★ 真实地形流向归因：直纹来自【平局规则】还是【地形缺排水结构】
+// �?真实地形流向归因：直纹来自【平局规则】还是【地形缺排水结构�?
 task runHydroFlowDirProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.RealFlowDirectionProbe'
@@ -2514,42 +2532,42 @@ task runHydroSlopeConvergenceProbe(type: JavaExec) {
     }
 }
 
-// ★ 无限世界可行性：查单点水位所需的最小域半径
+// �?无限世界可行性：查单点水位所需的最小域半径
 task runHydroQueryRadiusProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.QueryRadiusProbe'
     maxHeapSize = '8g'
 }
 
-// ★ 决定性判据：所需域半径是否随"到海距离"增长
+// �?决定性判据：所需域半径是否随"到海距离"增长
 task runHydroInlandRadiusProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.InlandRadiusProbe'
     maxHeapSize = '8g'
 }
 
-// ★ 验证边界出口补全：用"窗外地形出口"替代"必须够到海"
+// �?验证边界出口补全：用"窗外地形出口"替代"必须够到�?
 task runHydroOutletValidationProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.OutletValidationProbe'
     maxHeapSize = '8g'
 }
 
-// ★ 端到端：整条管线（出口→平衡水位→水量平衡→河网）的窗口无关性
+// �?端到端：整条管线（出口→平衡水位→水量平衡→河网）的窗口无关�?
 task runHydroPipelineProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.PipelineEndToEndProbe'
     maxHeapSize = '8g'
 }
 
-// ★ 整幅图一致性：两窗口重叠区逐格比较（分片可行性的最后关口）
+// �?整幅图一致性：两窗口重叠区逐格比较（分片可行性的最后关口）
 task runHydroOverlapProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.PipelineOverlapProbe'
     maxHeapSize = '8g'
 }
 
-// ★ 管线出图（可选中心/半径）+ 未决区空间量化
+// �?管线出图（可选中�?半径�? 未决区空间量�?
 task runHydroViewProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.PipelineViewProbe'
@@ -2559,14 +2577,14 @@ task runHydroViewProbe(type: JavaExec) {
     }
 }
 
-// 找内陆窗口中心（用于出图观察湖河）
+// 找内陆窗口中心（用于出图观察湖河�?
 task runHydroLandFinderProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LandFinderProbe'
     maxHeapSize = '8g'
 }
 
-// ★ 边界缓冲 A/B：缓冲前 vs 缓冲后（含按坡度分档的河格统计）
+// �?边界缓冲 A/B：缓冲前 vs 缓冲后（含按坡度分档的河格统计）
 task runHydroBufferProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.BufferCompareProbe'
@@ -2576,7 +2594,7 @@ task runHydroBufferProbe(type: JavaExec) {
     }
 }
 
-// ★ 汇流路由 A/B：D8（连通图）vs MFD（多流向）
+// �?汇流路由 A/B：D8（连通图）vs MFD（多流向�?
 task runHydroRoutingProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.FlowRoutingCompare'
@@ -2586,7 +2604,7 @@ task runHydroRoutingProbe(type: JavaExec) {
     }
 }
 
-// ★ 三路由：D8 vs MFD vs geotransport式连续速度场流线积分（诊断，不是完整水动力）
+// �?三路由：D8 vs MFD vs geotransport式连续速度场流线积分（诊断，不是完整水动力�?
 task runHydroContinuousTransportCompare(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.ContinuousTransportCompare'

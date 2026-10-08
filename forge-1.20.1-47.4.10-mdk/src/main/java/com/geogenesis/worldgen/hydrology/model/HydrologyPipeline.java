@@ -53,7 +53,8 @@ public final class HydrologyPipeline {
     /** 输入契约：中心块坐标、半径（块）、每格块数、气候、（可选）边界缓冲格数。 */
     public record Request(int centerBlockX, int centerBlockZ, int radiusBlocks, int step,
                           LakeWaterBalance.Climate climate, int borderBufferCells,
-                          RiverModel riverModel, int streamSamples) {
+                          RiverModel riverModel, int streamSamples,
+                          double[] extraSource) {
         public Request {
             if (radiusBlocks <= 0) throw new IllegalArgumentException("radius must be > 0");
             if (step <= 0) throw new IllegalArgumentException("step must be > 0");
@@ -64,15 +65,19 @@ public final class HydrologyPipeline {
         }
         /** 默认 D8（对照基线）。 */
         public Request(int cx, int cz, int radius, int step, LakeWaterBalance.Climate climate) {
-            this(cx, cz, radius, step, climate, 0, RiverModel.D8, 400_000);
+            this(cx, cz, radius, step, climate, 0, RiverModel.D8, 400_000, null);
         }
         public Request(int cx, int cz, int radius, int step, LakeWaterBalance.Climate climate,
                        int borderBufferCells) {
-            this(cx, cz, radius, step, climate, borderBufferCells, RiverModel.D8, 400_000);
+            this(cx, cz, radius, step, climate, borderBufferCells, RiverModel.D8, 400_000, null);
         }
         public Request(int cx, int cz, int radius, int step, LakeWaterBalance.Climate climate,
                        int borderBufferCells, RiverModel riverModel) {
-            this(cx, cz, radius, step, climate, borderBufferCells, riverModel, 400_000);
+            this(cx, cz, radius, step, climate, borderBufferCells, riverModel, 400_000, null);
+        }
+        public Request(int cx, int cz, int radius, int step, LakeWaterBalance.Climate climate,
+                       int borderBufferCells, RiverModel riverModel, int streamSamples) {
+            this(cx, cz, radius, step, climate, borderBufferCells, riverModel, streamSamples, null);
         }
     }
 
@@ -205,9 +210,16 @@ public final class HydrologyPipeline {
         //      ⚠ 只认 basinId<0 的上游：组→组 的边已被 ① 拦截（水不越权穿盆），
         //        若把 G′ 的 discharge 也算进 G 的入流，就是"记了不流的水"。
         int[] basinId = lakeResult.basinId();
+        // ★ 成河阈值口径（2026-10-08 诊断旋钮，默认 = 原行为 1.0）：
+        //   `-Dgeogenesis.riverThresholdFrac=0.003` ⇒ 按【面积比例】标定（同 legacy 口径）。
+        //   用于定位"生产河格 8.41% vs 正典流量掩码 1.90%"是否阈值过低所致。
+        double frac = Double.parseDouble(System.getProperty("geogenesis.riverThresholdFrac", "0"));
+        RiverNetwork.Params rp = frac > 0
+                ? RiverNetwork.Params.byAreaFraction(n, frac)
+                : RiverNetwork.Params.defaults();
         var res = RiverNetwork.build(n, n, surface.level(), surface.parent(),
                 lakeResult.runoffPerCell(), lakeResult.overflowAt(), surface.resolved(),
-                RiverNetwork.Params.defaults(), request.borderBufferCells(), basinId);
+                rp, request.borderBufferCells(), basinId, request.extraSource());
         if (captureOut != null && basinId != null) {
             java.util.Arrays.fill(captureOut, 0);
             int[] parent = surface.parent();
@@ -318,7 +330,8 @@ public final class HydrologyPipeline {
         //   收敛判据：水位变化 < 1e-6 或达到最大轮次（未收敛则如实保留最后结果）。
         LakeWaterBalance balance = new LakeWaterBalance(n, n, step, built.bed(), surface);
         LakeWaterBalance.Result lakeResult =
-                balance.solve(request.climate(), built.drains(), borderMask);
+                balance.solve(request.climate(), built.drains(), borderMask,
+                        null, request.extraSource());
         double[] flow = null;
         RiverNetwork.Result river = null;
         int rounds = 0;
@@ -471,11 +484,16 @@ public final class HydrologyPipeline {
             river = new RiverNetwork.Result(c.flux(), c.channel(), c.width(),
                     c.channelCells(), c.maxFlux(), 0, 0);
         } else {
-            // ★ 与耦合迭代同一语义（湖即汇拦截 + 出口注入），否则输出口径与账本口径分叉。
+            // ★ 与耦合迭代同一语义（湖即汇拦截 + 出口注入）与同一阈值参数，
+            //   否则输出口径与账本口径分叉。
+            double fracF = Double.parseDouble(System.getProperty("geogenesis.riverThresholdFrac", "0"));
+            RiverNetwork.Params rpF = fracF > 0
+                    ? RiverNetwork.Params.byAreaFraction(n, fracF)
+                    : RiverNetwork.Params.defaults();
             river = RiverNetwork.build(n, n, surface.level(), surface.parent(),
                     lakeResult.runoffPerCell(), lakeResult.overflowAt(), surface.resolved(),
-                    RiverNetwork.Params.defaults(), request.borderBufferCells(),
-                    lakeResult.basinId());
+                    rpF, request.borderBufferCells(),
+                    lakeResult.basinId(), request.extraSource());
         }
         // ★ 耦合诊断（系统属性开启；默认不打印）：每轮湖格数与流量规模。
         //   加它的原因：耦合后 lake 从数千骤降到几百，**原因未知** ⇒ 必须打印取证，不得靠猜。

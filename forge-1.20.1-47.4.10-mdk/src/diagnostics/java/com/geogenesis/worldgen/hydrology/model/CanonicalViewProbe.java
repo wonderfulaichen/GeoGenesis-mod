@@ -42,6 +42,24 @@ public final class CanonicalViewProbe {
         // 第 7 参：流线采样数（仅 continuous 用）
         int streamSamples = args.length > 6 ? Integer.parseInt(args[6]) : 600_000;
 
+        // ★★★ R1（2026-10-09）：`-Dhydro.viaProvider=true` ⇒ 正典图走【生产 provider】★★★
+        //
+        // 【为什么必须有这个开关 —— 用户核心要求"渲染图必须和游戏实机一样"】
+        //   本探针原本直接调 `HydrologyPipeline.run`（**一次大窗口**），
+        //   而游戏走 `ModelHydrologyProvider`（**按 region 分次求解再拼接**）
+        //   ⇒ 两条完全不同的执行模型 ⇒ 图与游戏必然不同
+        //   ⇒ 用户实测反复发现"图上有的、游戏里没有"。
+        //
+        //   本模式把出图改成【逐 chunk 调 provider】，参数与游戏完全一致
+        //   （REGION/HALO/STEP 全用生产默认值）⇒ 产出的图**就是游戏会落的水**。
+        //
+        //   ⚠ 因此本模式下 `radius`/`model`/`streamSamples` 参数【不适用】
+        //     （窗口由 REGION 决定）—— 会打印实际值以避免误解。
+        if (Boolean.getBoolean("hydro.viaProvider")) {
+            runViaProvider(seed, cx, cz, radius);
+            return;
+        }
+
         TerrainParams tp = TerrainParams.defaults();
         CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
         gen.seed(seed);
@@ -499,6 +517,105 @@ public final class CanonicalViewProbe {
                                     boolean hillshade, double hMin, double bandBlocks) {
         return hillshade ? ViewSpec.shade(r.bed(), n, i, j)
                          : ViewSpec.contour(r.bed(), n, i, j, hMin, bandBlocks);
+    }
+
+    /**
+     * ★ R1（2026-10-09）：走【生产 provider】出正典规格图 —— 图 = 游戏会落的水。
+     *
+     * <p>逐 chunk 调 {@code ModelHydrologyProvider.columnsFor}（与
+     * {@code HydrologyChunkEngine.calculate} 完全同一入口），判据与游戏落块层一致
+     * （湖 = {@code lakePlan}；河 = {@code fillWater && waterSurfaceY > carvedGroundY}）。</p>
+     *
+     * <p>规格严格用 {@link ViewSpec}：{@code radius=700/step=1 ⇒ 1401×1401}、
+     * 固定色标 {@link ViewSpec#contourFixed}、底图源 {@code sampleWu}
+     * （与 {@code HydrologyPipeline} 的 {@code WindowOutlets.Terrain} 同源）。</p>
+     */
+    private static void runViaProvider(long seed, int cx, int cz, int radius) throws Exception {
+        ViewSpec.assertCanonicalRadius(radius, false);
+        com.geogenesis.worldgen.terrain.TerrainParams tp =
+                com.geogenesis.worldgen.terrain.TerrainParams.defaults();
+        com.geogenesis.worldgen.terrain.CellGenerator gen =
+                new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY());
+        gen.seed(seed);
+        double hs = Math.max(0.01, tp.horizontalScale());
+        ModelHydrologyProvider provider = new ModelHydrologyProvider(gen, seed);
+
+        int n = 2 * radius + 1;
+        boolean[] isLake = new boolean[n * n];
+        boolean[] isChannel = new boolean[n * n];
+        long t0 = System.nanoTime();
+        int chunks = 0;
+        int c0 = Math.floorDiv(cx - radius, 16) - 1, c1 = Math.floorDiv(cx + radius, 16) + 1;
+        int d0 = Math.floorDiv(cz - radius, 16) - 1, d1 = Math.floorDiv(cz + radius, 16) + 1;
+        for (int chX = c0; chX <= c1; chX++) {
+            for (int chZ = d0; chZ <= d1; chZ++) {
+                com.geogenesis.worldgen.terrain.Cell[] cells =
+                        new com.geogenesis.worldgen.terrain.Cell[256];
+                for (int lz = 0; lz < 16; lz++) {
+                    for (int lx = 0; lx < 16; lx++) {
+                        cells[lx * 16 + lz] = gen.sample((chX * 16 + lx) / hs, (chZ * 16 + lz) / hs);
+                    }
+                }
+                java.util.List<com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn> cols
+                        = provider.columnsFor(chX, chZ, cells);
+                chunks++;
+                for (com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn col : cols) {
+                    int px = col.blockX() - (cx - radius);
+                    int pz = col.blockZ() - (cz - radius);
+                    if (px < 0 || pz < 0 || px >= n || pz >= n) continue;
+                    int k = px * n + pz;
+                    if (col.lakePlan()) isLake[k] = true;
+                    else if (col.fillWater() && col.waterSurfaceY() > col.carvedGroundY()) {
+                        isChannel[k] = true;
+                    }
+                }
+            }
+        }
+        double ms = (System.nanoTime() - t0) / 1e6;
+
+        int lakeCells = 0, chCells = 0;
+        for (int k = 0; k < n * n; k++) {
+            if (isLake[k]) lakeCells++;
+            else if (isChannel[k]) chCells++;
+        }
+        double[] bed = new double[n * n];
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                bed[i * n + j] = gen.sampleWu((cx - radius + i) / hs, (cz - radius + j) / hs).height;
+            }
+        }
+        Path dir = Path.of("build/hydro-reassessment/canonical-" + System.currentTimeMillis());
+        Files.createDirectories(dir);
+        BufferedImage img = new BufferedImage(n, n, BufferedImage.TYPE_INT_RGB);
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                int k = i * n + j;
+                int color;
+                if (isLake[k]) color = ViewSpec.LAKE_COLOR;
+                else if (isChannel[k]) color = ViewSpec.RIVER_COLOR;
+                else if (bed[k] < gen.seaLevel()) color = ViewSpec.SEA_COLOR;
+                else color = ViewSpec.contourFixed(bed, n, i, j);
+                img.setRGB(i, j, color);
+            }
+        }
+        ImageIO.write(img, "png", dir.resolve("canonical.png").toFile());
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== 正典规格图（走【生产 provider】⇒ 图 = 游戏会落的水）===\n");
+        sb.append(String.format("seed=%d centre=(%d,%d) radius=%d ⇒ %dx%d%n",
+                seed, cx, cz, radius, n, n));
+        sb.append(String.format("REGION=%s HALO=%s STEP=%s（生产生效值）%n",
+                System.getProperty("geogenesis.modelRegion", "512"),
+                System.getProperty("geogenesis.modelHalo", "96"),
+                System.getProperty("geogenesis.modelStep", "4")));
+        sb.append(String.format("chunks=%d 耗时=%.1fs%n", chunks, ms / 1000));
+        sb.append(String.format("湖格=%d (%.2f%%)  河道格=%d (%.2f%%)%n",
+                lakeCells, 100.0 * lakeCells / (n * n), chCells, 100.0 * chCells / (n * n)));
+        sb.append(String.format("%n⚠ 本模式下 radius/model/streamSamples 参数不适用（窗口由 REGION 决定）%n"));
+        sb.append("判据：湖=lakePlan；河=fillWater && waterSurfaceY>carvedGroundY（与 GeoGenesisGenerator:781 一致）\n");
+        sb.append("底图=ViewSpec.contourFixed（与 provider 探针同色标，跨图可比）\n");
+        sb.append("\nFILE=").append(dir.resolve("canonical.png").toAbsolutePath()).append('\n');
+        Files.writeString(dir.resolve("metrics.txt"), sb.toString());
+        System.out.print(sb);
     }
 
     /** 复算 3×3 平均（海格不参与），与 ContinuousRiverNetwork 的 smooth 口径一致。 */

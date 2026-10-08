@@ -42,6 +42,28 @@ public final class RiverNetwork {
         public static Params defaults() {
             return new Params(1.0, 1.0, 1.5, 0.45, 12.0);
         }
+
+        /**
+         * 按【面积比例】生成参数 —— ★ 2026-10-08 诊断入口（「河道 4 倍密集」归因）。
+         *
+         * <p><b>为什么需要它</b>：{@link #defaults()} 的 {@code channelThreshold=1.0}
+         * 是<b>绝对量</b>，而 {@code discharge} 的单位是【格数累积】
+         * （每格初值 {@code runoffPerCell} ⇒ 累积 ≈ 上游格数 × runoffPerCell）。
+         * 实测生产（177² 网格）河格占 <b>8.41%</b>、且 4 邻域 <b>3+ 度占 86.4%</b>
+         * ⇒ 河道交织成网（正典 r=700/step=1 的流量掩码仅 1.90%）
+         * ⇒ 疑似阈值过低：大量本应"坡面漫流"的浅沟被判成河道。</p>
+         *
+         * <p>对照：legacy 河网（{@code RiverLineNetwork}）用<b>面积比例</b>标定
+         * {@code thr = max(4, round(n²×0.003))}（177² ⇒ 94 格）。本方法把两者统一到
+         * 同一口径，便于 A/B 对比。</p>
+         *
+         * @param n 网格边长（格）
+         * @param frac 成河门槛 = 集水面积占窗口比例（legacy 链实测标定 0.003）
+         */
+        public static Params byAreaFraction(int n, double frac) {
+            double thr = Math.max(4.0, n * (double) n * frac);
+            return new Params(thr, thr, 1.5, 0.45, 12.0);
+        }
     }
 
     /** @param sinkX/sinkZ 最近排水终端坐标（用于缓冲带诊断）。 */
@@ -99,13 +121,33 @@ public final class RiverNetwork {
                                double runoffPerCell, Map<Integer, Double> overflowAt,
                                boolean[] resolved, Params params, int borderBufferCells,
                                int[] basinId) {
+        return build(nx, nz, level, parent, runoffPerCell, overflowAt, resolved, params,
+                borderBufferCells, basinId, null);
+    }
+
+    /**
+     * 带额外源项的构建（★ 跨区水量传递，2026-10-08）。
+     *
+     * <p>{@code extraSource[k]}（可 null）= 窗口边界入流：由
+     * {@code ModelHydrologyProvider.computeMarginInflow} 对窗外 margin 带做
+     * 最陡下降追踪得到 —— 窗外是纯函数地形，不必求解邻区 ⇒ 无依赖顺序问题、
+     * 无循环依赖、确定性。水在窗内沿 parent 图继续汇流，湖经 capture 账本
+     * 自动收到这份水（边界入流记在组外格，流入组内即成边界净入流）。</p>
+     *
+     * <p>⚠ margin 的局部洼地与 margin 湖溢流 v1 未建模（洼地水丢弃）。</p>
+     */
+    public static Result build(int nx, int nz, double[] level, int[] parent,
+                               double runoffPerCell, Map<Integer, Double> overflowAt,
+                               boolean[] resolved, Params params, int borderBufferCells,
+                               int[] basinId, double[] extraSource) {
         int cells = nx * nz;
         double[] discharge = new double[cells];
-        // 源项：每格坡面径流 + 该格的湖泊溢流。
+        // 源项：每格坡面径流 + 该格的湖泊溢流 + 窗外边界入流。
         for (int k = 0; k < cells; k++) {
             discharge[k] = runoffPerCell;
             Double extra = overflowAt.get(k);
             if (extra != null) discharge[k] += extra;
+            if (extraSource != null && extraSource[k] > 0) discharge[k] += extraSource[k];
         }
         // 拓扑序必须由 parent 图本身决定，不能用 level/index 排序。
         // 等高的合法 DAG 没有可靠的数值次序；按索引遍历会在汇流前

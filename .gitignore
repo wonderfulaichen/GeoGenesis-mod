@@ -119,3 +119,9 @@ symcheck.ps1
 # Gradle 输出重定向残渣（_tmp_*.txt）—— 已清理，加规则防复发
 /_tmp_*.txt
 /tmp_*.txt
+
+# ---- 2026-10-09 文档整理 ----
+# 根目录历史水文文档已归档到 _archive/hydrology/（**这些需要入库** ——
+# 它们是"当时看到什么"的证据，且是接手者理解"为什么这么改"的唯一来源）。
+# 所以 **不要** 忽略 _archive/。
+# 归档说明见 _archive/hydrology/README.md；现行事实来源是根目录 HYDROLOGY.md。
