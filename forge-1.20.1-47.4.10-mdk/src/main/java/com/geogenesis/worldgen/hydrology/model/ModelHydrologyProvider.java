@@ -326,6 +326,48 @@ public final class ModelHydrologyProvider {
         return sb.toString();
     }
 
+    // ==========================================================================
+    // ★★★ 2026-10-09【河道断点归因诊断 `-Dgeogenesis.riverBreakDiag=true`】★★★
+    //
+    // 【用户判据】「是真的有断的地方，不是视觉问题」。
+    //
+    // 【为什么需要】适配层有**两道门**，此前只诊断了第一道：
+    //   门 1 `p.channel()[k]`   —— 粗格布尔说"这里是不是河道"
+    //   门 2 `surface > carved + 0.5` —— 水柱 ≥0.5 格才真的出水
+    // ⇒ 两类"断"必须分开数，否则永远说不清断在哪一步：
+    //   (a) `onChannel=true` 但 `fill=false`  ⇒ 【有河道没水】= 真断（用户看到的）
+    //   (b) `onChannel=false` 但距离场命中  ⇒ 粗格布尔把它判掉了
+    // ==========================================================================
+    static final boolean RIVER_BREAK_DIAG = Boolean.getBoolean("geogenesis.riverBreakDiag");
+    static final java.util.concurrent.atomic.AtomicLong brkOnChannel =
+            new java.util.concurrent.atomic.AtomicLong();
+    static final java.util.concurrent.atomic.AtomicLong brkNoWater =
+            new java.util.concurrent.atomic.AtomicLong();
+    static final java.util.concurrent.atomic.AtomicLong brkDistHitButOff =
+            new java.util.concurrent.atomic.AtomicLong();
+    static final java.util.concurrent.atomic.AtomicLong brkWaterOk =
+            new java.util.concurrent.atomic.AtomicLong();
+    /** 断点样本（block 坐标 + 差值），最多记 12 个。 */
+    static final java.util.List<String> brkSamples =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+    public static String riverBreakReport() {
+        long on = brkOnChannel.get(), noW = brkNoWater.get();
+        long off = brkDistHitButOff.get(), ok = brkWaterOk.get();
+        StringBuilder sb = new StringBuilder("【河道断点归因】(方块级)\n");
+        sb.append(String.format("  onChannel=true  总格 = %d%n", on));
+        sb.append(String.format("   ├ 出水 √          = %d (%.1f%%)%n", ok,
+                100.0 * ok / Math.max(1, on)));
+        sb.append(String.format("   └ ★有河却没水 ✗    = %d (%.1f%%)  ← 真断（用户看到的）%n", noW,
+                100.0 * noW / Math.max(1, on)));
+        sb.append(String.format("  距离场命中但 onChannel=false = %d  ← 粗格布尔误杀%n", off));
+        sb.append("  断点样本（blockX,blockZ | surface,carved,差）:\n");
+        synchronized (brkSamples) {
+            for (String s : brkSamples) sb.append("    ").append(s).append('\n');
+        }
+        return sb.toString();
+    }
+
     /**
      * 已求解 region 的【网格级湖格总数】累计（诊断用）——
      * 用于判定"湖是窗口丢的还是适配层丢的"：
@@ -599,11 +641,28 @@ public final class ModelHydrologyProvider {
                     //   ⚠ 我曾改成 `+1e-6` 图省事 —— 那会让"半格浅水"也出水，
                     //     而这些格在 MC 里放不下水块 ⇒ 只是凭空加湿（伪影）。
                     boolean fill = surface > carved + 0.5;
+                    // ★ 断点归因诊断（默认关，零开销）
+                    if (RIVER_BREAK_DIAG) {
+                        brkOnChannel.incrementAndGet();
+                        if (fill) brkWaterOk.incrementAndGet();
+                        else {
+                            brkNoWater.incrementAndGet();
+                            if (brkSamples.size() < 12) {
+                                brkSamples.add(String.format(
+                                        "(%d,%d) surface=%.2f carved=%.2f diff=%.3f depth=%.2f",
+                                        blockX, blockZ, surface, carved, surface - carved, depth));
+                            }
+                        }
+                    }
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                             surface, surface, depth, 1.0,
                             fill, false, null, Double.NaN));
                 } else {
                     // 普通列：不雕刻、不出水（海洋水体由 fillFromNoise 的高度判定负责）
+                    // ★ 诊断：距离场命中却被粗格布尔判掉（"误杀"）
+                    if (RIVER_BREAK_DIAG && bestDist < Double.POSITIVE_INFINITY) {
+                        brkDistHitButOff.incrementAndGet();
+                    }
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, original,
                             surface, surface, 0.0, 1.0,
                             false, false, null, Double.NaN));
