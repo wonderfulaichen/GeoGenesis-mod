@@ -48,14 +48,74 @@ sea=452778 lake=71340 (3.63%) channel=25503
 
 ---
 
+## 〇b、★ 系统总账：模组里到底有几套河流/湖泊（2026-10-09 盘点，以代码调用关系为准）
+
+> **背景**：用户要求「我要确定现在模组里面有多少套河流与湖泊。不然老是被你搞乱。」
+> 本节 = 逐条核实 `src/main` 生产调用关系后的权威盘点。**以后任何讨论先读本节。**
+
+### 生产入口只有 1 个：`HydrologyChunkEngine.calculate`（二选一开关）
+
+```
+HydrologyChunkEngine.calculate()                          ← 游戏落块的唯一水文入口
+  ├─ hydrologyModelPipelineEnabled = true   →  【链 B】model 链
+  └─ hydrologyModelPipelineEnabled = false  →  【链 A】legacy 链（当前游戏默认）
+```
+
+### 链 A：legacy（当前默认）
+
+| 组件 | 文件 | 状态 |
+|---|---|---|
+| 河网 + 湖 | `riverline/RiverLineNetwork`（~5000 行）| ✅ 生产在用 |
+| 河道骨架来源 | `flow/TerrainFlowSim`（块分辨率流体模拟）| ✅ 生产在用（`flowSkeletonRouting` 默认开）|
+| 汇流累积 | `flowaccum/FlowField`（D8 + 降水加权）| ✅ 生产在用 |
+| 落块 | `HydrologyBlockCarver.carveChunk` | ✅ 生产在用 |
+| 门面 | `HydrologyExperimentEngine` | ✅ 生产在用 |
+
+### 链 B：model（开关 true 时）
+
+| 组件 | 文件 | 状态 |
+|---|---|---|
+| 窗口管线 | `model/HydrologyPipeline` | ✅ 在用 |
+| 区域适配 | `model/ModelHydrologyProvider`（region 缓存 + columnsFor）| ✅ 在用 |
+| 河网 | `model/RiverNetwork`（D8，默认）/ `ContinuousRiverNetwork` | ✅ 在用（`-Dgeogenesis.modelRiverModel` 切换）|
+| 湖 | `model/EquilibriumWater` + `LakeWaterBalance` | ✅ 在用 |
+| 中心线 | `model/RiverCenterlines` | ✅ 在用 |
+
+### 死代码（无生产调用点，勿再接回）
+
+| 组件 | 说明 |
+|---|---|
+| `model/WaterField` | **零调用点**。闭式水位场接线三版全部实测失败后回退，注释明写"勿重走"。类保留只作历史 |
+| `hydrology/sim/` 包 | **main 里不存在**（早期 sim 原型已删）。`infinite-hydrology-rebuild.plan.md` 规划的 `HydroTile*` 新核心**从未落地**，只有 `_archive` 探针残留 |
+| `riverline/MidpointDisplacement.generate()` | 死方法；但 `Node`/`ElevationSampler` 是生产类型，**类不能删**（AGENTS.md 既有警告）|
+
+### 结论（一句话）
+
+**生产实际只有 2 套**：legacy / model（开关二选一，**当前游戏跑 legacy**）；
+model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码；**不存在第三套**。
+
+### 当前开关一览（生产语义）
+
+| 开关 | 默认 | 作用 |
+|---|---|---|
+| `hydrologyModelPipelineEnabled`（config）| **false** | 两链二选一（`run/config/geogenesis-common.toml`）|
+| `geogenesis.modelRiverModel`（-D）| d8 | model 链内部 D8 / CONTINUOUS |
+| `geogenesis.modelRegion/modelHalo/modelStep`（-D）| 512/96/4 | model 窗口参数（诊断用）|
+| `geogenesis.riverThresholdFrac`（-D）| 0 | model 成河阈值面积比（0=关）|
+| `geogenesis.sourceSpacing`（-D）| 24 | model 中心线源头间距裁剪（0=关）|
+| `geogenesis.inlandResolved` | **true**（代码默认）| model 链内陆窗口可信判据（`f6aa223` 起默认开）|
+| `hydro.viaProvider`（-D，探针）| false | 正典图走生产 provider（出图必开，§三）|
+
+---
+
 ## 一、当前状态（唯一权威）
 
 | 项 | 值 |
 |---|---|
 | 工作区 | `D:\Office software\Development Project\GeoGenesis-mod`（仓库根） |
 | 分支 | `fix/port-lake-p2-2` |
-| HEAD | `e9f08ac`（**之上有未提交改动**，见 §六） |
-| 生产水文入口 | `HydrologyChunkEngine.calculate` → 二选一（见 §二） |
+| HEAD | `7eb8748`（之上有少量未提交改动，见 §六） |
+| 生产水文入口 | `HydrologyChunkEngine.calculate` → 二选一（见 §二 / §〇b） |
 | 未推送 | 是 |
 
 ⚠ **`_model_wt/` worktree 已不再是独立代码线** —— model 链已于 `848fdc1` 移入 `src/main`，
@@ -64,6 +124,8 @@ sea=452778 lake=71340 (3.63%) channel=25503
 ---
 
 ## 二、生产有两条链（由开关二选一）
+
+> 组件级明细见 **§〇b 系统总账**（权威盘点）；本节只讲两链的语义对照。
 
 ```
 HydrologyChunkEngine.calculate()
@@ -171,9 +233,12 @@ gradlew runCanonicalViewProbe -Dhydro.viaProvider=true -Dgeogenesis.inlandResolv
 
 ---
 
-## 六、2026-10-07~09 本轮改动（**全部未提交**）
+## 六、2026-10-07~09 本轮改动
 
-### 已修的真 bug
+> 状态更新（2026-10-09 晚）：`f6aa223`/`7eb8748` 已提交；**meander 噪声实验已全部撤销**
+> （`git checkout`，未提交）；未提交改动仅剩「断点归因诊断」（见 §六.3）。
+
+### 已修的真 bug（已提交）
 
 | # | bug | 根因 | 效果 |
 |---|---|---|---|
@@ -182,6 +247,40 @@ gradlew runCanonicalViewProbe -Dhydro.viaProvider=true -Dgeogenesis.inlandResolv
 | 3 | 我的工具判据用错 | 用 `erosion()>0` 判河（应用 `fillWater`）| 已改 |
 | 4 | 湖判定方块化 | 粗格布尔按最近格点摊派 | 已改逐块连续判据 |
 | 5 | 每 region 求解两次 | 实例级缓存 | 改 static 共享 + 按 seed 键控 |
+| 6 | 河穿过湖面 | `RiverNetwork` 成河循环不排除湖面 | 加 `lakeMask` 排除（`f6aa223`）|
+
+### ★ 2026-10-09 深夜：河"断流"的量化归因（**用户判据驱动，未修复**）
+
+**用户判据**：「很多河流被截断了」「河在平坦坡上突然消失」「是真的有断的地方，不是视觉问题」。
+
+**新增诊断** `-Dgeogenesis.riverBreakDiag=true`（`ModelHydrologyProvider`，方块级归因，
+`ProductionViewProbe` 打印 `riverBreakReport()`）—— 适配层两道门分开数：
+
+```
+【小窗 r=300 实测】
+onChannel=true  总格 = 31,336
+ ├ 出水 √（surface > carved + 0.5）= 31,018 (99.0%)
+ └ ★有河却没水 ✗                   =    318 (1.0%)  ← 断因 ①
+距离场命中但 onChannel=false        =  2,499 (8%)    ← 断因 ②（粗格布尔误杀）
+```
+
+- **断因 ①「有河却没水」**：断点样本的 `surface − carved` 全部落在 **0.18~0.50**
+  （刚好卡在 0.5 门槛下）⇒ `depth=1.0` 写死，平坦坡水位落差小 ⇒ 水柱不足 0.5 格
+  ⇒ 不放水块 ⇒ 河断。候选修法（**未实施，待用户确认**）：河床下挖深度按水位差自适应
+  （保证水面比床面高 ≥0.5）。
+- **断因 ②「粗格误杀」**：`columnsFor` 的落块门控是 `p.channel()[k]`（STEP=4 粗格布尔），
+  距离场（`SegmentIndex`，逐块精确）命中却被粗格判掉。粗格栅格化的像素级铁证：
+  河段起点 `x mod 4 = 2` 占比 **97.7%**（参照图 step=1 均匀分布 34%）。
+  候选修法（**未实施，待用户确认**）：粗格只算拓扑，落块用逐块距离场。
+
+**⇒ 两个断因均已定量，修复方案待用户指挥后实施。**
+
+### ⚠ meander 噪声实验（已撤销，勿重试同款参数）
+
+移植 worldgen-master `add_meander_noise`（amp=6）实测：主干最大连通分量 **12,636 → 3,931**
+（被切短 3 倍）⇒ 用户："肯定被你弄坏了"。已 `git checkout` 撤销。
+**教训**：在 priority-flood 前改床面的做法在我方地形上会切碎主干；若再试必须先过
+"连通性不回归"判据。
 
 ### 新增诊断旋钮（默认 = 生产原值 ⇒ 零行为变更）
 
