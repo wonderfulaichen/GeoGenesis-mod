@@ -2634,3 +2634,12 @@ task runBasinMergeStateProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.BasinMergeStateProbe'
 }
+
+task runSkeletonProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SkeletonProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}

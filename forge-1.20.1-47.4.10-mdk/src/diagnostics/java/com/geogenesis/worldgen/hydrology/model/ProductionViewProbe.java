@@ -239,6 +239,15 @@ public final class ProductionViewProbe {
         if (ModelHydrologyProvider.RIVER_BREAK_DIAG) {
             sb.append('\n').append(ModelHydrologyProvider.riverBreakReport()).append('\n');
         }
+        if (ModelHydrologyProvider.SKELETON_END_DIAG) {
+            sb.append("\n【DEAD_END 死点坐标】共 ")
+                    .append(ModelHydrologyProvider.SKELETON_ENDS.size()).append(" 个:\n");
+            synchronized (ModelHydrologyProvider.SKELETON_ENDS) {
+                for (String e : ModelHydrologyProvider.SKELETON_ENDS) {
+                    sb.append(e).append('\n');
+                }
+            }
+        }
         sb.append(String.format("%n【河道连续性】河格=%d%n", riverCols));
         sb.append(String.format("  4邻域度：孤立0=%d (%.1f%%)  端点1=%d (%.1f%%)  "
                         + "通路2=%d (%.1f%%)  汇合3+=%d (%.1f%%)%n",
