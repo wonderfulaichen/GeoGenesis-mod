@@ -200,6 +200,15 @@ public final class DeterministicSkeleton {
             !"false".equals(System.getProperty("geogenesis.flatBreak"));
 
     /**
+     * ★ 网络级连通性过滤开关（`-Dgeogenesis.networkFilter=false` 关；A/B 归因用）。
+     *
+     * <p>把 trace 按共享格并查集聚簇，只保留「簇内有链通向海/湖/窗口接力」的簇
+     * ⇒ 结构上消除孤立河段（用户判据：不应出现"既不连湖也不入海"的河）。</p>
+     */
+    static final boolean NETWORK_FILTER =
+            !"false".equals(System.getProperty("geogenesis.networkFilter"));
+
+    /**
      * 粒子方向惯性（治"揉团锯齿"：skelDump 铁证 = parent 弹出序交替折返，
      * CR 磨成圆钩 ⇒ 揉团）。本锚点偏移方向 = 本地 −∇bed ⊕ 上一锚点偏移 × 本系数
      * （legacy FlowField 动量语义的锚点层等价）。0 = 无惯性。
@@ -328,6 +337,7 @@ public final class DeterministicSkeleton {
         final int BUCKET = 16;
         java.util.Map<Long, List<int[]>> occupied = new java.util.HashMap<>();
         int droppedBySpacing = 0;
+        int droppedNetwork = 0;      // 网络级连通性过滤移除的链数（诊断）
         // ★★★ 2026-10-10【自并入守卫（legacy selfApproach 同义）】★★★
         //
         // 【缺陷（skelDump 铁证）】poly#74 = (-40,0)…(-40,8) 后【折返】回 (-40,4)。
@@ -409,6 +419,29 @@ public final class DeterministicSkeleton {
                 }
             }
         }
+        // ★★★ 2026-10-10【网络级连通性过滤 —— ★「河网是一棵树」★（用户核心要求）】★★★
+        //
+        // 【用户原话】「河流也许就像树一样，有一个主干（河湖海连接），其他分支应该像枝干
+        //   一样从主干生长出来」；「发现一小段孤立的河流，即不连接湖泊又不入海，
+        //   这个现象不应该出现」。
+        //
+        // 【为什么单链级回滚不够（实测）】孤立段 17~19 个，多为 {@code end=JOIN}
+        //   —— 单链【拓扑上】接上了，但整条链构成的【连通网络】不通向任何水体：
+        //   例 poly#A JOIN poly#B，而 poly#B 自己也以 DEAD_END/孤立告终
+        //   ⇒ 两条链连成一小簇，簇整体不入海不入湖 ⇒ 图上就是孤立河段。
+        //   单链回滚（orphanDeadEnd）只按【自身】end 判定 ⇒ 抓不到"整簇孤立"。
+        //
+        // 【PL-RGA 的对应机制】其输出保证「每个像素节点或到海/湖、或并入已有节点」
+        //   （rivers.cpp:408-463）；等价地，**不存在"两端都不接水体"的连通分量**。
+        //   本处按同一语义做【簇级】判定：把 trace 按共享格并查集聚簇，
+        //   簇内任一链通向海/湖/窗口接力 ⇒ 整簇保留；否则【整簇移除】。
+        //
+        // 【确定性】并查集按 trace 序号归并、判定只看"存在性" ⇒ 与遍历顺序无关。
+        if (NETWORK_FILTER && !traces.isEmpty()) {
+            int before = traces.size();
+            traces = filterUnconnected(traces, nx, nz);
+            droppedNetwork = before - traces.size();
+        }
         // ★★★ 2026-10-10【出口种子（双 pass 的另一半）】★★★
         //
         // 【证据】skelEndDiag 实测：全部 DEAD_END 的 mouth 格都是 frame=true, p=-1
@@ -430,6 +463,88 @@ public final class DeterministicSkeleton {
         }
         return new Result(traces, sourcesTotal, droppedBySpacing, outletStarts,
                 incomingStarts, exitSeeds);
+    }
+
+    /**
+     * ★★★ 2026-10-10【网络级连通性过滤 —— ★「河网是一棵树」★】★★★
+     *
+     * <h3>要解决的问题（用户判据）</h3>
+     * <p>「发现一小段孤立的河流，即不连接湖泊又不入海，这个现象不应该出现」。
+     * 实测孤立段 17~19 个，且多为 {@code end=JOIN}：单链拓扑上接上了，
+     * 但<b>整簇</b>不通向任何水体（链 A JOIN 链 B，而 B 自己也以孤立告终）
+     * ⇒ 图上就是一小段悬空河。单链级回滚按"自身 end"判定，抓不到"整簇孤立"。</p>
+     *
+     * <h3>做法（PL-RGA 语义的网络层等价）</h3>
+     * <p>PL-RGA 的输出保证「不存在两端都不接水体的连通分量」
+     * （{@code rivers.cpp:408-463}：要么到海/湖，要么并入已有节点，否则整条回滚）。
+     * 本处按同一语义在<b>簇</b>级判定：</p>
+     * <ol>
+     *   <li>把 trace 按<b>共享格</b>并查集聚簇（JOIN 终点即共享格 ⇒ 天然连边）；</li>
+     *   <li>簇内任一链「通向水体」⇒ 整簇保留。「通向水体」的定义：
+     *       {@code MOUTH_SEA} / {@code MOUTH_LAKE}，或 {@code DEAD_END} 且 mouth 在
+     *       窗口边框（跨区接力种子 —— 水下落到窗外，由邻区续流）；</li>
+     *   <li>否则<b>整簇移除</b>（不留半截孤立河）。</li>
+     * </ol>
+     *
+     * <p>⚠ 溢口段（{@code fromOutlet}）单独放行：其上游是湖，本身即"通向水体"，
+     * 即便本窗口内没能走远也不该删（SkeletonProbe [5] 要求溢口必有河起点）。</p>
+     *
+     * <p><b>确定性</b>：并查集按 trace 序号归并，判定只看"存在性"（不依赖顺序）⇒
+     * 纯函数性质不变（SkeletonProbe [8] 逐位相同仍成立）。</p>
+     *
+     * @param traces 全部已接受链（顺序 = 生成序）
+     * @param nz     格阵每行长度（{@code cell = i*nz + j}）
+     * @return 过滤后的链列表（保持原相对顺序）
+     */
+    private static List<Trace> filterUnconnected(List<Trace> traces, int nz, int nx) {
+        int n = traces.size();
+        int cells = nx * nz;
+        // ① 每个格归属哪条链（首占者）—— 用于把"共享格"变成并查集连边
+        int[] owner = new int[cells];
+        java.util.Arrays.fill(owner, -1);
+        int[] uf = new int[n];
+        for (int i = 0; i < n; i++) uf[i] = i;
+        for (int ti = 0; ti < n; ti++) {
+            for (int c : traces.get(ti).cell) {
+                if (c < 0 || c >= cells) continue;
+                int o = owner[c];
+                if (o < 0) owner[c] = ti;
+                else if (o != ti) uf[find(uf, o)] = find(uf, ti);
+            }
+        }
+        // ② 标记"通向水体"的簇
+        boolean[] rooted = new boolean[n];
+        for (int ti = 0; ti < n; ti++) {
+            Trace t = traces.get(ti);
+            boolean ok;
+            if (t.fromOutlet) {
+                ok = true;                                   // 溢口段：上游是湖（放行）
+            } else if (t.end == End.MOUTH_SEA || t.end == End.MOUTH_LAKE) {
+                ok = true;                                   // 直接入海/入湖
+            } else if (t.end == End.DEAD_END) {
+                int mc = t.mouthCell();
+                int mi = mc / nz, mj = mc % nz;
+                ok = mi == 0 || mj == 0 || mi == nx - 1 || mj == nz - 1;  // 窗口边框 ⇒ 接力
+            } else {
+                ok = false;                                  // 孤立（UNRESOLVED 等）
+            }
+            if (ok) rooted[find(uf, ti)] = true;
+        }
+        // ③ 只留"有根"的簇（保持原顺序 ⇒ 确定性）
+        List<Trace> kept = new ArrayList<>(n);
+        for (int ti = 0; ti < n; ti++) {
+            if (rooted[find(uf, ti)]) kept.add(traces.get(ti));
+        }
+        return kept;
+    }
+
+    /** 并查集查找（路径减半；迭代实现，避免深递归）。 */
+    private static int find(int[] uf, int x) {
+        while (uf[x] != x) {
+            uf[x] = uf[uf[x]];
+            x = uf[x];
+        }
+        return x;
     }
 
     /**
@@ -609,7 +724,7 @@ public final class DeterministicSkeleton {
             // 就近汇入：窗口内找「已 covered 且 level 不高于当前」的最优节点
             //   （排除本 trace 自己的节点 —— 否则平坦区会 join 到自己、提前终止+折返）
             int join = nearbyJoin(level, k, nx, nz, covered, joinWindow, selfStamp, stamp,
-                    segments);
+                    segments, bed);
             if (join >= 0) {
                 path.add(join);
                 end = End.JOIN;
@@ -631,7 +746,17 @@ public final class DeterministicSkeleton {
             //   与水位可信度无关。legacy 场（真实地形+ε）处处有定义 ⇒ 从不因此断河。
             // 【正解】继续沿 parent 走到底；未决只影响水位/湖判定（另一层）。
             if (lakeMask[p]) {
-                // 入湖：本段在当前格结束（下一格是湖面，不画进湖里）
+                // ★★★ 2026-10-10【入湖锚点延伸（legacy {@code LAKE_ANCHOR_EXT} 同义）】★★★
+                //
+                // 【原写法】只 `end = MOUTH_LAKE; break;` —— 折线止于【岸格中心】。
+                // 【实测缺陷】湖/海是【格级布尔】(4 块分辨率) 渲染的，而河是【连续折线】：
+                //   折线止于岸格中心 ⇒ 岸格内远离折线的方块不染色，而邻格（湖格）整格是水面
+                //   ⇒ 两者之间可隔 1~4 块 ⇒ **像素级孤立**（OrphanSeam 实测缝距 2~3 块
+                //   占 10/16）。
+                // 【正解】把终点【延入湖格】：折线末段穿过岸格→湖格，中间方块被扫掠染色
+                //   ⇒ 与湖面像素直接 8 连通。
+                // ⚠ 不标记 `covered[p]`：湖面格不参与"认领"，保持既有语义不变。
+                path.add(p);
                 end = End.MOUTH_LAKE;
                 break;
             }
@@ -677,10 +802,30 @@ public final class DeterministicSkeleton {
                     if (bed[c] < altBed - 1e-9) { altBed = bed[c]; alt = c; }
                 }
                 if (alt >= 0) {
+                    // ★★★ 2026-10-10【步骤级交叉守卫（PL-RGA wouldCross 同构）】★★★
+                    // PL-RGA 在【每一个候选步】上跑 wouldCross（rivers.cpp:183），
+                    //   而不只在接点时（rivers.cpp:233）。我们此前只有后者 ⇒
+                    //   破平局跳向别条沟时会横穿已有河段 ⇒ 图上"反复交叉"。
+                    // 【为什么不会误判自己】本链的段在 traceOne 返回【之后】才登记进
+                    //   segments（见 build 的登记循环）⇒ 追踪期间 segments 只含【别人】的段
+                    //   —— 这正是 PL-RGA "跳过共享端点段"的等价效果。
+                    if (!segments.isEmpty()
+                            && segmentCrossesAny(bi, bj, alt / nz, alt % nz, segments)) {
+                        end = End.DEAD_END;
+                        break;
+                    }
                     k = alt;
                     continue;      // 走真实下坡（等水位区内），本轮不前进 parent
                 }
                 // 无更低 bed 邻居（真平台）⇒ 沿 parent（径向兜底）
+            }
+            // ★ 步骤级交叉守卫（parent 迈步；同 PL-RGA wouldCross）
+            if (!segments.isEmpty()) {
+                int ki = k / nz, kj = k % nz, pi = p / nz, pj = p % nz;
+                if (segmentCrossesAny(ki, kj, pi, pj, segments)) {
+                    end = End.DEAD_END;
+                    break;
+                }
             }
             k = p;
             if (path.size() > cells) { end = End.DEAD_END; break; }  // 防御
@@ -711,7 +856,26 @@ public final class DeterministicSkeleton {
         //   且 SkeletonProbe [5] 要求「溢口必有河起点」⇒ **溢口段豁免长度下限**。
         //   （实测：不豁免时 [5] 报 1~4 个溢口无覆盖 = 湖边河凭空消失。）
         int minNodes = Math.max(2, params.minNodes());
-        if (path.size() < minNodes && !fromOutlet) {
+        // ★★★ 2026-10-10【路径级回滚（PL-RGA rolled_back 同构）—— 治"孤立段"】★★★
+        //
+        // 【用户判据】「发现一小段孤立的河流，即不连接湖泊又不入海，这个现象不应该出现」。
+        // 【实测】Orphan.cs 检出 17 个孤立段（≤60 格且不接湖/海）；skelDump 解剖
+        //   poly#18 n=238 end=DEAD_END（mouth 不在窗口边框）⇒ 链在陆地凭空死掉。
+        // 【PL-RGA 的做法（rivers.cpp:405-431）】路径无法继续时——
+        //   · 不安全（会撞板界 / 非 lake_safe）⇒ 整条回滚（segments.resize + nodes.resize）
+        //   · 安全死端 ⇒ 标 LocalMinimum（湖）
+        //   论文原话：「the entire path is discarded rather than truncated」。
+        // 【我们的正解】DEAD_END = 链没能接上海/湖/别条河 ⇒ 按 PL-RGA 语义【整条丢弃】，
+        //   不留半截悬空河。⚠ 两个例外：
+        //   ① 溢口段（fromOutlet）：湖后河本该继续（SkeletonProbe [5] 要求溢口必有河起点）；
+        //   ② ★【窗口边框的 DEAD_END】：它是【跨区续流的出口种子】（见下方 exitSeeds
+        //      收集），丢掉它 = 双 pass 续流失效 ⇒ 缝上重新断流。
+        //      （实测判据：mouth 落在 i==0/nx-1/j==0/nz-1 即边框。）
+        int mn = path.get(path.size() - 1);
+        int mi = mn / nz, mj = mn % nz;
+        boolean onFrame = mi == 0 || mj == 0 || mi == nx - 1 || mj == nz - 1;
+        boolean orphanDeadEnd = (end == End.DEAD_END) && !fromOutlet && !onFrame;
+        if ((path.size() < minNodes || orphanDeadEnd) && !fromOutlet) {
             // 只释放【本链新覆盖的格】：末位 JOIN 终点属别的链，不得释放（见上方 newlyClaimed 说明）
             for (int i = 0; i < path.size(); i++) {
                 int c = path.get(i);
@@ -790,54 +954,72 @@ public final class DeterministicSkeleton {
      * 就近汇入（legacy {@code nearbyDownhillNode} 同义）：
      * 窗口内已 covered 的节点，评分 {@code level + 1e-4·d²} 取最小（最低优先、等距就近）。
      *
-     * <p>★★ 2026-10-10【等高容差 —— 治"平区同角度平行链不并入"】（用户判据：
-     * "分支非常容易出现与其他段出现类似同角度重叠的情况"）：</p>
-     * <ul>
-     *   <li>legacy 的场 = {@code fillRoutingSurface}（真实地形 + 朝出口 ε 微坡）
-     *       ⇒ 平区也恒有严格更低邻居 ⇒ "严格更低"判据总能触发；</li>
-     *   <li>我们的场 = minimax {@code level}，平区【全等】⇒ 旧判据
-     *       {@code level[c] >= cur - ε ⇒ 跳过} 在平区<b>永不并入</b>
-     *       ⇒ 两条同角度平行链并行到头（重叠观感的直接来源）。</li>
-     *   <li>⇒ 放宽为【允许等高】（{@code level[c] > cur + ε} 才跳过）：
-     *       单调性不受损（等高 = 非升，判据 [1] 本就允许）；湖面格不参与
-     *       （lakeMask 链已在上游终止，covered 中无湖面格）。</li>
-     * </ul>
+     * <p>★★★ 2026-10-10【接点判据改回 PL-RGA 的【严格更低】+ bed 破平局兜底】★★★</p>
+     *
+     * <p>原文（等高容差）的理由是"平区 level 全等 ⇒ 严格更低永不触发 ⇒ 平行链不并入"。
+     * 但单变量 A/B 实测该容差的贡献 ≈0（关掉后河格 14119 vs 全开 14000，差 0.8%），
+     * 而 PL-RGA 用<b>严格更低</b>（{@code rivers.cpp:230}
+     * {@code nodes[id].height >= current - river_min_drop ⇒ continue}）有其结构意义：
+     * <b>保证支流接在主干的【下游侧】</b>，从而：（a）接完仍单调下降；
+     * （b）不会出现"支流接回主干上游"造成的树形错乱与视觉回环。</p>
+     *
+     * <p><b>平区兜底</b>：真平坦时严格更低确实无候选 ⇒ 退回【bed 更低】判据
+     * （真实地形微坡，与 {@code FLAT_BREAK} 同一口径）——两者都无（真平台）
+     * 才允许等高并入。这样既拿到 PL-RGA 的树形保证，又不丢平区并入能力。</p>
+     *
+     * @param bed 真实床面（可为 null ⇒ 跳过 bed 兜底，行为=严格更低）
      */
     private static int nearbyJoin(double[] level, int k, int nx, int nz,
                                   boolean[] covered, int joinWindow,
                                   int[] selfStamp, int stamp,
-                                  java.util.List<int[]> segments) {
+                                  java.util.List<int[]> segments, double[] bed) {
         if (joinWindow <= 0) return -1;
         int i = k / nz, j = k % nz;
+        // ★ 等水位区兜底：本格所在等水位连通区内是否有 bed 更低的候选（真地形下坡）
         double cur = level[k];
+        double curBed = bed != null ? bed[k] : 0;
         int best = -1;
         double bestScore = Double.POSITIVE_INFINITY;
+        int bestEq = -1;                 // 等高兜底候选（仅当无严格更低/无 bed 更低时启用）
+        double bestEqScore = Double.POSITIVE_INFINITY;
         for (int a = Math.max(0, i - joinWindow); a <= Math.min(nx - 1, i + joinWindow); a++) {
             for (int b = Math.max(0, j - joinWindow); b <= Math.min(nz - 1, j + joinWindow); b++) {
                 int c = a * nz + b;
                 if (c == k || !covered[c]) continue;
                 if (selfStamp[c] == stamp) continue;              // ★ 自并入守卫（selfApproach）
-                if (level[c] > cur + 1e-9) continue;              // 更高才拒绝；【等高允许】
-                // ★★★ 2026-10-10【交叉守卫 —— 补 legacy 遗漏的另一半】★★★
-                //
-                // 【用户判据】「河流/支流还会反复和其他分支交叉，类似重叠的情况」。
-                // 【legacy 的守卫】`nearbyDownhillNode` 在评分前有一道我此前漏掉的判据：
-                //     if (segmentCrossesAny(ci, cj, i, j, allSegments)) continue;
-                //   —— PL-RGA `_wouldCrossExistingSegments`：**汇入连线不得横穿任何已有河段**。
-                // 【缺它的后果】本链可以从【另一条河的上方横跨】去够一个更低的节点
-                //   ⇒ 图上就是"两条河交叉"（用户截图圈出的正是这类）。
+                // ★ 交叉守卫（PL-RGA _wouldCrossExistingSegments）：
+                //   汇入连线不得横穿任何已有河段（缺它 ⇒ "两条河交叉"）
                 if (segments != null && !segments.isEmpty()
                         && segmentCrossesAny(i, j, a, b, segments)) continue;
                 int ddi = a - i, ddj = b - j;
                 double score = level[c] + 1e-4 * (ddi * ddi + ddj * ddj);
-                if (score < bestScore - 1e-12
-                        || (Math.abs(score - bestScore) <= 1e-12 && c < best)) {
-                    bestScore = score;
-                    best = c;
+                double lv = level[c];
+                if (lv < cur - 1e-9) {
+                    // ① PL-RGA 主判据：严格更低（保证接在下游侧）
+                    if (score < bestScore - 1e-12
+                            || (Math.abs(score - bestScore) <= 1e-12 && c < best)) {
+                        bestScore = score;
+                        best = c;
+                    }
+                } else if (lv <= cur + 1e-9
+                        && bed != null && bed[c] < curBed - 1e-9) {
+                    // ② 等水位 + bed 更低（平区真实微坡）⇒ 视同"更低"
+                    if (score < bestScore - 1e-12
+                            || (Math.abs(score - bestScore) <= 1e-12 && c < best)) {
+                        bestScore = score;
+                        best = c;
+                    }
+                } else if (lv <= cur + 1e-9) {
+                    // ③ 真平台兜底（level 与 bed 都不更低）：只在 ①② 全空时用
+                    if (score < bestEqScore - 1e-12
+                            || (Math.abs(score - bestEqScore) <= 1e-12 && c < bestEq)) {
+                        bestEqScore = score;
+                        bestEq = c;
+                    }
                 }
             }
         }
-        return best;
+        return best >= 0 ? best : bestEq;
     }
 
     /** 段 (ax,ay)-(bx,by) 是否与任一已有段真交叉（legacy {@code segmentCrossesAny} 同义）。 */
@@ -897,9 +1079,36 @@ public final class DeterministicSkeleton {
         Simplex oct = new Simplex(0x5EE3);
         oct.seed(0x5EEDL, 0);
         List<Shaped> out = new ArrayList<>(traces.size());
+        // ★★★ 2026-10-10【共享锚点表（PL-RGA {@code nodeForPixel} 同构）—— 治"孤立段"】★★★
+        //
+        // 【根因铁证（skelDump）】三个孤立段全是 {@code end=JOIN} —— 拓扑上确实接上了，
+        //   但像素层断开。机理：
+        //   · 粒子偏移带【动量】（依赖本链前一个锚点）⇒ 同一个 JOIN 格在【发出链】
+        //     与【接收链】里算出【不同坐标】；
+        //   · CR 重采样后各自 {@code Math.rint} ⇒ 端点像素错开 1~2 格
+        //     ⇒ 8 连通检测判"悬空"（既没接湖也没接海 = 用户圈出的孤立段）。
+        //   实测佐证：关粒子孤立段 17→12（粒子放大错位）⇒ 但本身也有 12 个。
+        //
+        // 【PL-RGA 的做法】{@code nodeForPixel}（rivers.cpp:125-152）：**每个像素只对应
+        //   一个节点、一个世界坐标**，所有线段共享同一个节点 ⇒ 天然不可能错位。
+        //
+        // 【本处等价实现】同一【格索引】只算一次锚点坐标（首见者登记，后来者复用）。
+        //   · 链路顺序确定（build 的两 pass + 源降序）⇒ 登记顺序确定 ⇒ 纯函数不变；
+        //   · JOIN 目标格必被【更早的链】覆盖（{@code covered} 语义保证）⇒ 复用时
+        //     该链已登记过 ⇒ 两条链在该格产出【逐位相同】的锚点。
+        java.util.Map<Integer, double[]> anchorTable = new java.util.HashMap<>();
         for (Trace t : traces) {
             int m = t.cell.length;
-            if (m < 2) continue;
+            // ★★★ 2026-10-10【必须保索引对齐（否则下游全部读错对象）】★★★
+            // 原写法 `if (m < 2) continue;` 会让 shaped 与 traces 的【下标不再对应】——
+            //   `ModelHydrologyProvider` 里 `shaped.get(i)` ↔ `sk.traces.get(i)`
+            //   （端点缝合、SKEL-DUMP 归因、JOIN 诊断）全部错位。
+            //   实测后果：JOIN 点到"所属链"的距离出现 8/8、10/10 全 far 的假结论。
+            // ⇒ 改为【发一个空折线占位】，下标恒等。
+            if (m < 2) {
+                out.add(new Shaped(new double[0], new double[0]));
+                continue;
+            }
             // ① 锚点（block 坐标）+ 有界粒子偏移（治梯子纹：锚点沿 −∇bed 偏出格心）
             //
             // ★★★ 2026-10-10【揉团锯齿根因 + 动量修法】★★★
@@ -919,7 +1128,20 @@ public final class DeterministicSkeleton {
                 double wx = originX + (t.cell[i] / nz) * (double) step;
                 double wz = originZ + (t.cell[i] % nz) * (double) step;
                 offsetX[i] = 0; offsetZ[i] = 0;
-                if (bed != null) {
+                // ★★★ 2026-10-10【端锚定 —— 治"孤立段"】★★★
+                //
+                // 【单变量铁证】孤立段（≤60格不接湖海）：三项 PL-RGA 机制 18 个，
+                //   【关粒子】12 个 ⇒ **有界粒子贡献 6 个**。
+                // 【机理】粒子偏移按链历史（累计方向/动量）计算 ⇒ 同一个【共享格】
+                //   （JOIN 汇合点、跨区接力点）在【两条链】里算出不同像素
+                //   ⇒ 落块后两条链的像素在共享点处【错开 1~2 格】⇒ 8 连通检测判悬空。
+                // 【正解】首尾锚点【不偏移】（钉死格心）—— 与 meander 的"两端淡出
+                //   20%"同一思路（那里也是为保证汇合点两侧精确重合），
+                //   但这里必须【严格 0】，因为粒子是几何唯一来源。
+                //   · i==0（源头）与 i==m-1（河口/JOIN 终点）强制偏移 0；
+                //   · 中间锚点照常偏移 ⇒ 梯子纹改善保留。
+                boolean anchorEnd = (i == 0 || i == m - 1);
+                if (bed != null && !anchorEnd) {
                     int ci = t.cell[i] / nz, cj = t.cell[i] % nz;
                     // bed 双线性梯度（中心差分，界内才有效）
                     double bL = ci > 0 ? bed[(ci - 1) * nz + cj] : bed[t.cell[i]];
@@ -968,6 +1190,18 @@ public final class DeterministicSkeleton {
                 }
                 ax[i] = wx;
                 az[i] = wz;
+            }
+            // ★ 共享锚点表：同一格索引全链共用同一坐标（PL-RGA nodeForPixel 同构）。
+            //   【为什么必须放在粒子循环之后、CR 之前】粒子依赖本链历史（动量），
+            //   是"提议"；表是"最终裁决" —— 已登记的格一律以表为准。
+            for (int i = 0; i < m; i++) {
+                double[] shared = anchorTable.get(t.cell[i]);
+                if (shared != null) {
+                    ax[i] = shared[0];
+                    az[i] = shared[1];
+                } else {
+                    anchorTable.put(t.cell[i], new double[]{ax[i], az[i]});
+                }
             }
             // ② Catmull-Rom 重采样（1 block 间距）—— 折线变曲线
             double[][] res = catmullRomResample(ax, az, 1.0);

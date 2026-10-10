@@ -566,8 +566,16 @@ public final class ModelHydrologyProvider {
         int legacyToOurs = Math.max(1, 8 / STEP);                  // 8 block / STEP
         // ★ 单变量 A/B 开关（2026-10-10 归因用）—— 每项可独立关掉（0 = 关）：
         //   -Dgeogenesis.skeletonMinNodes=6 / skeletonSelfRadius=4 / skeletonMaxRivers=27
+        // ★★★ 2026-10-10【selfRadius 默认 0 —— 它无贡献且制造孤立段】★★★
+        // 【无贡献】单变量 A/B 实测：关它 14119 格 vs 全开 14000（差 0.8%）⇒
+        //   防交叉的主力是 segmentCrossesAny（交叉守卫），不是它。
+        // 【有害】用户圈出孤立段（既不连湖也不入海）⇒ skelDump 铁证：
+        //   poly#18 end=DEAD_END mouth=(-416,468) 不在窗口边框 —— 是自贴近守卫
+        //   误触发（大弯河曲相隔 >12 步 ⇒ 豁免放不过 ⇒ "贴着自己"就地终止）。
+        //   终止的链既不接湖也不接海 ⇒ 凭空断流。legacy 同名机制由"洼地续流"兜底，
+        //   我方无该兜底 ⇒ 直接关闭（候选：日后给自贴近终止加专用 End + 兜底）。
         int minNodes = Integer.getInteger("geogenesis.skeletonMinNodes", 3 * legacyToOurs);
-        int selfRadius = Integer.getInteger("geogenesis.skeletonSelfRadius", 2 * legacyToOurs);
+        int selfRadius = Integer.getInteger("geogenesis.skeletonSelfRadius", 0);
         int selfExempt = Integer.getInteger("geogenesis.skeletonSelfExempt", 6 * legacyToOurs);
         var skParams = new DeterministicSkeleton.Params(
                 spacingCells,
@@ -591,6 +599,41 @@ public final class ModelHydrologyProvider {
         var shaped = DeterministicSkeleton.shape(sk.traces, p.level(),
                 originX, originZ, STEP, n, n, skParams, p.bed());
         List<DeterministicSkeleton.Shaped> allPolys = shaped;
+        // ★ 诊断（`-Dgeogenesis.joinChk=true`）：JOIN 点的像素是否重合
+        //   —— 共享锚点表若生效，两条链在该格应产出【逐位相同】的像素。
+        if (Boolean.getBoolean("geogenesis.joinChk")) {
+            var cellOwner = new java.util.HashMap<Integer, Integer>();
+            for (int ti = 0; ti < shaped.size() && ti < sk.traces.size(); ti++) {
+                for (int c : sk.traces.get(ti).cell) cellOwner.putIfAbsent(c, ti);
+            }
+            int joins = 0, exact = 0, adjacent = 0, mid = 0, far = 0;
+            var hist = new java.util.TreeMap<Integer, Integer>();
+            for (int ti = 0; ti < shaped.size() && ti < sk.traces.size(); ti++) {
+                var tr = sk.traces.get(ti);
+                if (tr.end != DeterministicSkeleton.End.JOIN) continue;
+                var sh = shaped.get(ti);
+                if (sh.size() == 0) continue;
+                Integer ow = cellOwner.get(tr.mouthCell());
+                if (ow == null || ow == ti) continue;
+                joins++;
+                int px = (int) Math.rint(sh.x[sh.size() - 1]);
+                int pz = (int) Math.rint(sh.z[sh.size() - 1]);
+                var osh = shaped.get(ow);
+                int best = Integer.MAX_VALUE;
+                for (int i = 0; i < osh.size(); i++) {
+                    int d = Math.max(Math.abs((int) Math.rint(osh.x[i]) - px),
+                                     Math.abs((int) Math.rint(osh.z[i]) - pz));
+                    if (d < best) best = d;
+                }
+                hist.merge(Math.min(best, 9), 1, Integer::sum);
+                if (best == 0) exact++;
+                else if (best == 1) adjacent++;
+                else if (best <= 3) mid++;
+                else far++;
+            }
+            LOGGER.info("[JOINCHK] origin({},{}) joins={} exact={} adjacent={} 2-3={} far={} hist={}",
+                    originX, originZ, joins, exact, adjacent, mid, far, hist);
+        }
         // 断口现场：dump 折线点序列（`-Dgeogenesis.skelDump=x,z,r`，多框用 ';' 分隔）
         if (!SKEL_DUMP.isEmpty()) {
             for (String box : SKEL_DUMP.split(";")) {
@@ -1497,9 +1540,24 @@ public final class ModelHydrologyProvider {
          * （用户方针：宽度后续议题）。</p>
          */
         static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys) {
+            // ★★★ 2026-10-10【端点缝合 —— 治"拓扑已 JOIN、像素差 2~3 格"的孤立段】★★★
+            //
+            // 【实测依据（OrphanGap）】孤立段到最近河/湖/海的距离：**2 格 8 个、3 格 2 个**，
+            //   其余 ≥7 格 ⇒ **10/16 是 2~3 格的像素缝**（复查：折线自身必 8 连通，
+            //   所以缝只能出现在两条折线之间）。
+            // 【做法】把每条折线的【首/尾点】连到【另一条】折线 3 格内最近的点
+            //   （切比雪夫距离 2~3；=1 已 8 连通无需连、>3 属真正断裂不硬连）。
+            //   ⇒ 缝处补一个 2~3 块的短段 ⇒ 落块后像素连通。
+            // 【为什么不是"放宽半宽"】那会把所有河加粗（用户：宽度是后续议题）。
+            List<double[]> bridges = sewEndpoints(polys,
+                    Integer.getInteger("geogenesis.sewGap", 3));   // 0 = 关（A/B 归因）
+            if (!polys.isEmpty()) {
+                LOGGER.info("[SEW] polys={} bridges={} gap={}", polys.size(), bridges.size(),
+                        Integer.getInteger("geogenesis.sewGap", 3));
+            }
             int count = 0;
             for (var sh : polys) count += Math.max(0, sh.size() - 1);
-            double[] seg = new double[count * 8];
+            double[] seg = new double[(count + bridges.size()) * 8];
             Map<Long, List<Integer>> tiles = new HashMap<>();
             int idx = 0;
             for (var sh : polys) {
@@ -1516,7 +1574,69 @@ public final class ModelHydrologyProvider {
                     registerTile(tiles, si, x0, z0, x1, z1);
                 }
             }
+            for (double[] br : bridges) {
+                int si = idx++;
+                int o = si * 8;
+                seg[o] = br[0]; seg[o + 1] = br[1]; seg[o + 2] = br[2]; seg[o + 3] = br[3];
+                seg[o + 4] = RiverCenterlines.MIN_HALF_BLOCKS;
+                seg[o + 5] = RiverCenterlines.MIN_HALF_BLOCKS;
+                seg[o + 6] = 1.0;
+                seg[o + 7] = 1.0;
+                registerTile(tiles, si, br[0], br[1], br[2], br[3]);
+            }
             return new SegmentIndex(seg, tiles);
+        }
+
+        /**
+         * 端点缝合（见 {@link #buildFromNodes} 的说明）：
+         * 每条折线的首/尾点连到<b>另一条</b>折线在 {@code maxGap} 格内最近的点。
+         *
+         * @return 缝合段列表 {x0,z0,x1,z1}（双精度 block 坐标）
+         */
+        private static List<double[]> sewEndpoints(List<DeterministicSkeleton.Shaped> polys, int maxGap) {
+            final int PT = 8;                       // 点网格边长（块）
+            Map<Long, List<int[]>> grid = new HashMap<>();
+            if (maxGap <= 0) return new ArrayList<>();   // 关闭（A/B）
+            for (int pi = 0; pi < polys.size(); pi++) {
+                var sh = polys.get(pi);
+                for (int i = 0; i < sh.size(); i++) {
+                    int px = (int) Math.rint(sh.x[i]), pz = (int) Math.rint(sh.z[i]);
+                    long key = (((long) Math.floorDiv(px, PT)) << 32)
+                            ^ (Math.floorDiv(pz, PT) & 0xFFFFFFFFL);
+                    List<int[]> lst = grid.get(key);
+                    if (lst == null) { lst = new ArrayList<>(); grid.put(key, lst); }
+                    lst.add(new int[]{px, pz, pi});
+                }
+            }
+            List<double[]> out = new ArrayList<>();
+            int span = maxGap / PT + 2;
+            for (int pi = 0; pi < polys.size(); pi++) {
+                var sh = polys.get(pi);
+                if (sh.size() < 2) continue;
+                for (int k = 0; k < 2; k++) {
+                    int i = (k == 0) ? 0 : sh.size() - 1;
+                    int px = (int) Math.rint(sh.x[i]), pz = (int) Math.rint(sh.z[i]);
+                    int gx = Math.floorDiv(px, PT), gz = Math.floorDiv(pz, PT);
+                    int bx = 0, bz = 0, best = Integer.MAX_VALUE;
+                    for (int ax = gx - span; ax <= gx + span; ax++) {
+                        for (int az = gz - span; az <= gz + span; az++) {
+                            List<int[]> lst = grid.get((((long) ax) << 32) ^ (az & 0xFFFFFFFFL));
+                            if (lst == null) continue;
+                            for (int[] pt : lst) {
+                                if (pt[2] == pi) continue;                 // 不连自己
+                                int d = Math.max(Math.abs(pt[0] - px), Math.abs(pt[1] - pz));
+                                if (d > 1 && d <= maxGap && d < best) {
+                                    best = d; bx = pt[0]; bz = pt[1];
+                                }
+                            }
+                        }
+                    }
+                    if (best != Integer.MAX_VALUE) {
+                        out.add(new double[]{px, pz, bx, bz});
+                    }
+                }
+            }
+            return out;
         }
 
         /** 段 bbox + 半宽余量（≤16 < TILE=64 ⇒ 至多 2×2 tile）登记。 */
