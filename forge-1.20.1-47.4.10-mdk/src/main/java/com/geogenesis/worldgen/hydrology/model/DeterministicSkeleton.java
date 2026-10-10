@@ -195,6 +195,18 @@ public final class DeterministicSkeleton {
     static final double PARTICLE_AMP_FRAC =
             Double.parseDouble(System.getProperty("geogenesis.particleAmp", "0.25"));
 
+    /** 平地破平局开关（`-Dgeogenesis.flatBreak=false` 关；归因"揉团锯齿"用）。 */
+    static final boolean FLAT_BREAK =
+            !"false".equals(System.getProperty("geogenesis.flatBreak"));
+
+    /**
+     * 粒子方向惯性（治"揉团锯齿"：skelDump 铁证 = parent 弹出序交替折返，
+     * CR 磨成圆钩 ⇒ 揉团）。本锚点偏移方向 = 本地 −∇bed ⊕ 上一锚点偏移 × 本系数
+     * （legacy FlowField 动量语义的锚点层等价）。0 = 无惯性。
+     */
+    static final double MOMENTUM_FRAC =
+            Double.parseDouble(System.getProperty("geogenesis.particleMomentum", "0.6"));
+
     private DeterministicSkeleton() { }
 
     // ======================================================================
@@ -648,7 +660,8 @@ public final class DeterministicSkeleton {
             // 【单调性】候选 level == 当前 level（非升）⇒ SkeletonProbe [1] 仍过。
             // 【无环】候选必须 covered=false（下方自然满足：走到的格会标 covered），
             //   且候选不得是本 trace 节点（selfStamp 守卫同 parent 路径）。
-            if (bed != null && level[p] >= level[k] - 1e-9 && level[p] <= level[k] + 1e-9) {
+            // ★ 破平局开关（`-Dgeogenesis.flatBreak=false` 关）—— 归因"揉团锯齿"用。
+            if (FLAT_BREAK && bed != null && level[p] >= level[k] - 1e-9 && level[p] <= level[k] + 1e-9) {
                 int bi = k / nz, bj = k % nz;
                 double curBed = bed[k];
                 int alt = -1;
@@ -888,10 +901,24 @@ public final class DeterministicSkeleton {
             int m = t.cell.length;
             if (m < 2) continue;
             // ① 锚点（block 坐标）+ 有界粒子偏移（治梯子纹：锚点沿 −∇bed 偏出格心）
+            //
+            // ★★★ 2026-10-10【揉团锯齿根因 + 动量修法】★★★
+            // 【归因铁证】skelDump poly#8（z 655→669 段）14 点折返 4 次；
+            //   -Dgeogenesis.flatBreak=false 后【逐位相同】⇒ 抖动源 = parent 弹出序本身，
+            //   与破平局无关。Catmull-Rom 把每个锯齿磨成小圆钩 ⇒ 图上"揉团"。
+            // 【legacy 的解法（PARTICLE_POS + 动量语义）】粒子推进方向 =
+            //   【连续流向场 · g + 格步方向 · (1-g)】，且 FlowField 的 dirAtWu 含
+            //   上游累积动量 ⇒ 上一步的方向会延续 ⇒ 抖动被惯性平滑掉。
+            // 【本处的等价实现】在锚点层加【方向惯性】：每个锚点的偏移方向
+            //   与【上一锚点的偏移方向】混合（MOMENTUM_FRAC）——上一锚点向左偏、
+            //   本锚点若也向左偏则延续，若反向则被压半 ⇒ 相邻折返不再交替满幅。
+            double[] offsetX = new double[m], offsetZ = new double[m];
+            double lastOx = 0, lastOz = 0;
             double[] ax = new double[m], az = new double[m];
             for (int i = 0; i < m; i++) {
                 double wx = originX + (t.cell[i] / nz) * (double) step;
                 double wz = originZ + (t.cell[i] % nz) * (double) step;
+                offsetX[i] = 0; offsetZ[i] = 0;
                 if (bed != null) {
                     int ci = t.cell[i] / nz, cj = t.cell[i] % nz;
                     // bed 双线性梯度（中心差分，界内才有效）
@@ -917,14 +944,24 @@ public final class DeterministicSkeleton {
                             double oz = dz - sz2 * (dx * sx + dz * sz2);
                             double oLen = Math.sqrt(ox * ox + oz * oz);
                             if (oLen > 1e-6) {
-                                // 幅度 = ampFrac·step·|正交分量|（平行时 0、正交时最大）。
-                                // ★ 2026-10-10 实测标定：0.45（legacy 值）在 1-block 扫掠半径下
-                                //   让相邻段互相贴近 ⇒ 真+字 11→48、2×2 重叠 48→159（视觉贴线）。
-                                //   0.25 折中：仍够消梯子档距，贴线回落。可用
-                                //   -Dgeogenesis.particleAmp 调。
+                                ox /= oLen; oz /= oLen;
+                                // ★ 动量混合（治揉团锯齿）：本锚点偏移方向与上一锚点的
+                                //   混合 —— 反向（ox·lastOx < 0）时幅值减半 ⇒ 交替折返
+                                //   被压成单侧弧；同向则不受影响。
+                                double align = ox * lastOx + oz * lastOz;
                                 double amp = PARTICLE_AMP_FRAC * step * Math.min(1.0, Math.abs(cross));
-                                wx += ox / oLen * amp;
-                                wz += oz / oLen * amp;
+                                if (lastOx != 0 || lastOz != 0) {
+                                    if (align < 0) amp *= 0.5;          // 反向折返压半
+                                    double mixX = ox + lastOx * MOMENTUM_FRAC;
+                                    double mixZ = oz + lastOz * MOMENTUM_FRAC;
+                                    double mixLen = Math.sqrt(mixX * mixX + mixZ * mixZ);
+                                    if (mixLen > 1e-9) { ox = mixX / mixLen; oz = mixZ / mixLen; }
+                                }
+                                wx += ox * amp;
+                                wz += oz * amp;
+                                offsetX[i] = ox * amp;
+                                offsetZ[i] = oz * amp;
+                                lastOx = ox; lastOz = oz;
                             }
                         }
                     }
