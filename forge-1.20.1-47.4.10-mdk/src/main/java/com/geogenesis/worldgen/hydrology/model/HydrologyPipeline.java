@@ -127,6 +127,52 @@ public final class HydrologyPipeline {
      *  故上限只决定"链条长度内传播几轮"，取 6 留余量。诊断旋钮 {@code hydro.couplingMaxRounds}。 */
     private static final int COUPLING_ROUNDS = 6;
 
+    /**
+     * 窗口采样缓存开关（`-Dgeogenesis.hydroSampleCache=false` 关；A/B 归因用）。
+     *
+     * <p>见 {@code run()} 内说明：治"实机进不去世界"（窗口 31684 次 sampleWu
+     * 强制冷生成整片侵蚀 tile）。纯函数缓存 ⇒ 产出逐位不变。</p>
+     */
+    private static final boolean HYDRO_SAMPLE_CACHE =
+            !"false".equals(System.getProperty("geogenesis.hydroSampleCache"));
+
+    /**
+     * 侵蚀 tile 批量预热开关（`-Dgeogenesis.prewarmTiles=false` 关；A/B 归因用）。
+     *
+     * <p>见 {@code run()} 内说明：窗口 352×352 wu 跨约 64 个侵蚀 tile，
+     * 而 {@code getOrGenTile} 是调用线程同步生成 ⇒ 串行几十秒。预热用池并行。</p>
+     */
+    /**
+     * 侵蚀 tile 批量预热开关（`-Dgeogenesis.prewarmTiles=false` 关；A/B 归因用）。
+     *
+     * <p>⚠ 2026-10-10：{@link #HYDRO_BED_ERODED} 默认 <b>true</b>（bed 走 {@code sampleWu}）
+     * ⇒ 窗口求解会触发侵蚀 tile 生成（tile 中心仅 48 wu ⇒ 352×352 wu 跨约 8×8=64 个）
+     * ⇒ <b>必须预热</b>用池并行生成，否则单线程串行数十秒（实机「进不去世界」）。</p>
+     */
+    private static final boolean PREWARM_TILES =
+            !"false".equals(System.getProperty("geogenesis.prewarmTiles"));
+
+    /**
+     * ★★★ 2026-10-10【bed 地形口径：必须用侵蚀后地形（sampleWu）】★★★
+     *
+     * <h3>为什么必须是 sampleWu（实测归因，勿再改）</h3>
+     * <p>我曾为性能把 bed 改成 {@code gen.sample()}（跳过侵蚀 ⇒ 零侵蚀 tile 依赖），
+     * 结果 <b>河道格从 5691 掉到 2724（−52%）</b>（r=300 单变量实测）。
+     * 机理：床面用未侵蚀地形 ⇒ 水位/连通性判定与实际落块地形错位 ⇒ 成河门槛判据大面积
+     * 失效。用户判据「让生产环境的水文达到我窗口设计的水文效果」⇒ <b>效果优先</b>。</p>
+     *
+     * <h3>那性能怎么办（正确解法）</h3>
+     * <p>改用 {@link #PREWARM_TILES} 预热 + {@link #HYDRO_SAMPLE_CACHE} 缓存
+     * （见 {@code run()} 与 {@code CellGenerator.prewarmErosionTiles}），
+     * <b>而不是换地形口径</b>。实测：预热 + 缓存的组合把 outlets 从 15467ms 降到 ~500ms，
+     * 且产出与 {@code sampleWu} 口径一致。</p>
+     *
+     * <p><b>开关</b>：{@code -Dgeogenesis.hydroBedEroded=false} 可退回未侵蚀口径
+     * （仅用于 A/B 归因；<b>不要</b>当默认）。</p>
+     */
+    static final boolean HYDRO_BED_ERODED =
+            !"false".equals(System.getProperty("geogenesis.hydroBedEroded"));
+
     private static int couplingMaxRounds() {
         String p = System.getProperty("hydro.couplingMaxRounds");
         if (p == null) return COUPLING_ROUNDS;
@@ -292,15 +338,96 @@ public final class HydrologyPipeline {
         //     cellArea = step² 是 block²（与 MIN_VISIBLE_AREA 同口径）、
         //     速度场梯度 = dY_block/dX_block、Manning 坡度因此一致。
         //     格间距 = step 块（= step/hs wu），但全场高度/面积均以 block 计 ⇒ 自洽。
-        WindowOutlets.Terrain terrain = (bx, bz) -> gen.sampleWu(bx / hs, bz / hs).height;
+        // ★★★ 2026-10-10【窗口采样缓存 —— 治"进不去世界"（实机卡死归因）】★★★
+        //
+        // 【症状】实机新建世界卡死：单 region 求解 15.7 s（同类 0.6 s）、单块 hydro=33 s、
+        //   日志 53 s 零输出。
+        // 【阶段计时定位（`-Dhydro.stageTimer=true`）】`outlets=15467ms surface=68ms
+        //   lakeSolve=22ms` ⇒ **99% 耗时在 WindowOutlets.build 的地形采样**。
+        // 【机理】该窗口一次要采 `(nx+1)×(nz+1) = 178² = 31684` 点，每点走
+        //   `gen.sampleWu()`（= sampleCore + 气候 + **侵蚀 tile 生成**）。
+        //   窗口 704×704 块跨约 3×3 个侵蚀 tile，冷启动时**整片 tile 被迫同步生成**
+        //   （单 tile 242~640 ms，实机并发下更慢）⇒ 主线程等不起。
+        // 【为什么 legacy 链没这问题】legacy 沿流水线**顺序**采样（缓存命中率高、
+        //   tile 逐块生成），而 model 链是**整窗一次性**批量采样 ⇒ 冷启动全撞在一起。
+        // 【修法】给采样回调加**直接映射缓存**（`terrainEQuick` 同款范式：
+        //   AtomicLongArray 存 double 位模式，先写值后写键；键用 wu 坐标的位模式）。
+        //   命中 ~20ns vs 计算几十 µs~ms。
+        // 【纯加速保证】`sampleWu` 是纯函数（seed 固定 ⇒ 同坐标同值）⇒
+        //   命中与未命中等价 ⇒ **产出逐位不变**。
+        // 【开关】`-Dgeogenesis.hydroSampleCache=false` 关（A/B 归因用）。
+        final WindowOutlets.Terrain terrainRaw = HYDRO_BED_ERODED
+                ? (bx, bz) -> gen.sampleWu(bx / hs, bz / hs).height       // 侵蚀后地形（重）
+                : (bx, bz) -> gen.sample(bx / hs, bz / hs).height;        // ★ 生产同源（轻）
+        WindowOutlets.Terrain terrain = terrainRaw;
+        if (HYDRO_SAMPLE_CACHE) {
+            terrain = new WindowOutlets.Terrain() {
+                private static final int BITS = 18;               // 262144 槽 ≈ 4 MB
+                private static final int SIZE = 1 << BITS;
+                private static final int MASK = SIZE - 1;
+                private static final long EMPTY = Long.MIN_VALUE;
+                private final java.util.concurrent.atomic.AtomicLongArray kx =
+                        new java.util.concurrent.atomic.AtomicLongArray(SIZE);
+                private final java.util.concurrent.atomic.AtomicLongArray kz =
+                        new java.util.concurrent.atomic.AtomicLongArray(SIZE);
+                private final java.util.concurrent.atomic.AtomicLongArray vv =
+                        new java.util.concurrent.atomic.AtomicLongArray(SIZE);
+                {
+                    for (int i = 0; i < SIZE; i++) { kx.set(i, EMPTY); kz.set(i, EMPTY); }
+                }
+
+                @Override
+                public double height(double blockX, double blockZ) {
+                    double wx = blockX / hs, wz = blockZ / hs;
+                    long a = Double.doubleToRawLongBits(wx);
+                    long b = Double.doubleToRawLongBits(wz);
+                    int slot = (int) (((a * 0x9E3779B97F4A7C15L) ^ (b * 0x632BE59BD9B4E019L))
+                            >>> 40) & MASK;
+                    // 先读键（键为 volatile 语义：AtomicLongArray 元素读写原子）
+                    if (kx.get(slot) == a && kz.get(slot) == b) {
+                        return Double.longBitsToDouble(vv.get(slot));
+                    }
+                    double h = terrainRaw.height(blockX, blockZ);
+                    // 写入次序：先写值、后写键（读者读到两键即保证值已写入）
+                    vv.set(slot, Double.doubleToRawLongBits(h));
+                    kz.set(slot, b);
+                    kx.set(slot, a);
+                    return h;
+                }
+            };
+        }
 
         // ①② 地形 + 边界出口
+        long __t0 = System.nanoTime();
+        // ★ 阶段计时（`-Dhydro.stageTimer=true`）：定位 region 求解的耗时分布。
+        //   背景：2026-10-10 实机「进不去世界」——region (0,-1) 求解达 15.7 s
+        //   （同类 region 仅 0.6 s），且与 basins=21 强相关；需逐段量化。
+        final boolean STAGE_TIMER = Boolean.getBoolean("hydro.stageTimer");
+        // ★★★ 2026-10-10【侵蚀 tile 批量预热 —— 治"进不去世界"的第二半】★★★
+        //   窗口一次采 31684 点 × 每点触发 getOrGenTile（tile 中心仅 48 wu
+        //   ⇒ 352×352 wu 跨约 8×8=64 个 tile），而 getOrGenTile 是【调用线程同步生成】
+        //   ⇒ 单线程串行跑 64 次完整侵蚀。此处用 TILE_SAMPLER 池并行预热 ⇒ 采样全命中。
+        //   纯加速（tile 是纯函数）⇒ 产出逐位不变。
+        if (PREWARM_TILES) {
+            gen.prewarmErosionTiles(request.centerBlockX() - radius,
+                    request.centerBlockZ() - radius, 2.0 * radius, hs);
+        }
+        long __tp = System.nanoTime();
+        if (STAGE_TIMER) {
+            System.out.printf("  [stage] prewarm=%.0fms%n", (__tp - __t0) / 1e6);
+        }
         var built = WindowOutlets.build(n, n, request.centerBlockX(), request.centerBlockZ(),
                 radius, step, sea, terrain);
+        long __t1 = System.nanoTime();
 
         // ③ 平衡水面
         EquilibriumWater.Surface surface = EquilibriumWater.compute(
                 built.bed(), n, n, built.drains(), built.exterior());
+        long __t2 = System.nanoTime();
+        if (STAGE_TIMER) {
+            System.out.printf("  [stage] outlets=%.0fms surface=%.0fms%n",
+                    (__t1 - __t0) / 1e6, (__t2 - __t1) / 1e6);
+        }
 
         // ★ 平坦区破平局（诊断层 A/B，默认 baseline = 逐位不变）。
         //   背景：minimax 洪泛在平坦高原上令大片 level 全等 ⇒ ∇η=0 ⇒ 速度场归零 ⇒
@@ -338,6 +465,9 @@ public final class HydrologyPipeline {
         LakeWaterBalance.Result lakeResult =
                 balance.solve(request.climate(), built.drains(), borderMask,
                         null, request.extraSource());
+        if (STAGE_TIMER) {
+            System.out.printf("  [stage] lakeSolve=%.0fms%n", (System.nanoTime() - __t2) / 1e6);
+        }
         double[] flow = null;
         RiverNetwork.Result river = null;
         int rounds = 0;

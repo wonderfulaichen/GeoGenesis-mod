@@ -209,6 +209,17 @@ public final class DeterministicSkeleton {
             !"false".equals(System.getProperty("geogenesis.networkFilter"));
 
     /**
+     * 步骤级交叉守卫开关（`-Dgeogenesis.stepCrossGuard=false` 关；性能 A/B 用）。
+     *
+     * <p>⚠ 2026-10-10 性能事件：该守卫在<b>每个迈步</b>上线性扫描全部已有线段
+     * （{@link #segmentCrossesAny} 是 O(段数)）⇒ 单 region 的复杂度约
+     * {@code 链数 × 每链步数 × 段数} ≈ 10⁸~10⁹ 量级 ⇒ 实测 region 求解
+     * 611ms → <b>15746ms</b>（26×）。本开关用于量化该开销。</p>
+     */
+    static final boolean STEP_CROSS_GUARD =
+            !"false".equals(System.getProperty("geogenesis.stepCrossGuard"));
+
+    /**
      * 粒子方向惯性（治"揉团锯齿"：skelDump 铁证 = parent 弹出序交替折返，
      * CR 磨成圆钩 ⇒ 揉团）。本锚点偏移方向 = 本地 −∇bed ⊕ 上一锚点偏移 × 本系数
      * （legacy FlowField 动量语义的锚点层等价）。0 = 无惯性。
@@ -809,7 +820,7 @@ public final class DeterministicSkeleton {
                     // 【为什么不会误判自己】本链的段在 traceOne 返回【之后】才登记进
                     //   segments（见 build 的登记循环）⇒ 追踪期间 segments 只含【别人】的段
                     //   —— 这正是 PL-RGA "跳过共享端点段"的等价效果。
-                    if (!segments.isEmpty()
+                    if (STEP_CROSS_GUARD && !segments.isEmpty()
                             && segmentCrossesAny(bi, bj, alt / nz, alt % nz, segments)) {
                         end = End.DEAD_END;
                         break;
@@ -820,7 +831,7 @@ public final class DeterministicSkeleton {
                 // 无更低 bed 邻居（真平台）⇒ 沿 parent（径向兜底）
             }
             // ★ 步骤级交叉守卫（parent 迈步；同 PL-RGA wouldCross）
-            if (!segments.isEmpty()) {
+            if (STEP_CROSS_GUARD && !segments.isEmpty()) {
                 int ki = k / nz, kj = k % nz, pi = p / nz, pj = p % nz;
                 if (segmentCrossesAny(ki, kj, pi, pj, segments)) {
                     end = End.DEAD_END;

@@ -1785,6 +1785,74 @@ public final class CellGenerator {
      * 注意：InterruptedException 抛出时中断位已被 JVM 清除，无需（也禁止）重新 interrupt()——
      * 重新置位会让后续任务的 isInterrupted() 检查误判，且不参与取消语义（取消判据 = canceled 标志）。</p>
      */
+    /**
+     * ★★★ 2026-10-10【批量预热侵蚀 tile —— 治"实机进不去世界"】★★★
+     *
+     * <h3>问题（实机卡死归因）</h3>
+     * <p>水文窗口求解（{@link com.geogenesis.worldgen.hydrology.model.WindowOutlets#build}）
+     * 一次性采 {@code 178² = 31684} 点，每点走 {@code sampleWu} → {@code erosionDeltaE}
+     * → {@link #getOrGenTile}。<b>tile 中心格仅 48 wu</b>（{@code ERODE_TILE_CENTER}）
+     * ⇒ 水文窗口 352×352 wu 跨 <b>约 8×8 = 64 个 tile</b>，而 {@code getOrGenTile}
+     * 在<b>调用线程上同步生成</b> ⇒ 单线程串行跑 64 次完整侵蚀（每次数百 ms）
+     * ⇒ 实测 {@code outlets=15467ms}（阶段计时），实机并发下恶化为「进不去世界」。</p>
+     *
+     * <h3>为什么 legacy 链没这问题</h3>
+     * <p>legacy 沿流水线<b>顺序</b>采样（tile 逐个生成、边生成边用），
+     * 而 model 链是<b>整窗一次性</b>批量采样 ⇒ 冷启动全部撞在一起。</p>
+     *
+     * <h3>做法</h3>
+     * <p>按窗口范围算出覆盖的 tile 网格，用 {@link #TILE_SAMPLER} 池<b>并行</b>预热。
+     * 与 {@code getOrGenTile} 同一缓存 ⇒ 预热后采样全命中。</p>
+     *
+     * <p><b>纯加速保证</b>：tile 内容是纯函数（seed 固定）⇒ 预热与否产出逐位相同。
+     * 每个 tile 只生成一次（{@code putIfAbsent}）⇒ 并行安全。</p>
+     *
+     * @param blockX0 窗口左下角（块）
+     * @param blockZ0 窗口左下角（块）
+     * @param blockSpan 窗口边长（块）
+     * @param hs     水平缩放（block → wu）
+     */
+    public void prewarmErosionTiles(double blockX0, double blockZ0, double blockSpan, double hs) {
+        double wu0x = blockX0 / hs, wu0z = blockZ0 / hs;
+        double wu1x = (blockX0 + blockSpan) / hs, wu1z = (blockZ0 + blockSpan) / hs;
+        // tile 键用 floorDiv(wu, CENTER)*CENTER；边界外扩 1 个 tile 覆盖 blend 邻域
+        int t0x = Math.floorDiv((int) Math.floor(wu0x), ERODE_TILE_CENTER) * ERODE_TILE_CENTER
+                - ERODE_TILE_CENTER;
+        int t0z = Math.floorDiv((int) Math.floor(wu0z), ERODE_TILE_CENTER) * ERODE_TILE_CENTER
+                - ERODE_TILE_CENTER;
+        int t1x = Math.floorDiv((int) Math.floor(wu1x), ERODE_TILE_CENTER) * ERODE_TILE_CENTER
+                + ERODE_TILE_CENTER;
+        int t1z = Math.floorDiv((int) Math.floor(wu1z), ERODE_TILE_CENTER) * ERODE_TILE_CENTER
+                + ERODE_TILE_CENTER;
+        int nx = (t1x - t0x) / ERODE_TILE_CENTER + 1;
+        int nz = (t1z - t0z) / ERODE_TILE_CENTER + 1;
+        List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>(nx * nz);
+        for (int a = 0; a < nx; a++) {
+            for (int b = 0; b < nz; b++) {
+                final int cx = t0x + a * ERODE_TILE_CENTER;
+                final int cz = t0z + b * ERODE_TILE_CENTER;
+                if (tileCacheGet(tileKey(cx, cz)) != null) continue;   // 已缓存 ⇒ 跳过
+                futures.add(TILE_SAMPLER.submit(() -> {
+                    // ★ 直接走 generateErosionTile（不调 erosionDeltaE）：
+                    //   后者会连带 blend 邻域判定，而 generateErosionTile 内部【已有】
+                    //   8 邻预热（TILE_SAMPLER.submit 段）+ computeIfAbsent 原子生成
+                    //   ⇒ 用 erosionDeltaE 会重复触发一遍邻域逻辑。
+                    //   ⚠ 中断语义：池线程被中断时 generateErosionTile 抛 CancellationException
+                    //   （半成品不入缓存）—— 预热失败不致命，后续会同步补生成。
+                    erosionTileCache.computeIfAbsent(tileKey(cx, cz),
+                            k -> generateErosionTile(cx, cz));
+                }));
+            }
+        }
+        for (var f : futures) {
+            try {
+                f.get();
+            } catch (Exception e) {
+                // 预热失败不致命：后续 getOrGenTile 会同步补生成
+            }
+        }
+    }
+
     private ErosionTileResult getOrGenTile(int tileCX, int tileCZ) {
         long k = tileKey(tileCX, tileCZ);
         ErosionTileResult r = tileCacheGet(k);
