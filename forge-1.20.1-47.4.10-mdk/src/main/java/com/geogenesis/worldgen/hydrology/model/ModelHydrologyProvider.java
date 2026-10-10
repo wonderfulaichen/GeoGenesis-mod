@@ -581,7 +581,7 @@ public final class ModelHydrologyProvider {
         var sk = DeterministicSkeleton.build(
                 p.level(), p.parent(), p.resolved(), p.lake(), p.sea(),
                 p.discharge(), p.lakeResult() == null ? null : p.lakeResult().basinOutlet(),
-                n, n, skParams, incomingCells);
+                n, n, skParams, incomingCells, p.bed());
         if (SKELETON_END_DIAG || LOG_SRC) {
             LOGGER.info("[HYDRO-SRC] srcAccum={} runoff={} traces={} sources={} maxQ={}",
                     String.format("%.1f", srcAccum), String.format("%.5f", runoff),
@@ -589,7 +589,7 @@ public final class ModelHydrologyProvider {
         }
         // 亚格几何（Catmull-Rom + 格点吸附）→ SegmentIndex（落块用）
         var shaped = DeterministicSkeleton.shape(sk.traces, p.level(),
-                originX, originZ, STEP, n, n, skParams);
+                originX, originZ, STEP, n, n, skParams, p.bed());
         List<DeterministicSkeleton.Shaped> allPolys = shaped;
         // 断口现场：dump 折线点序列（`-Dgeogenesis.skelDump=x,z,r`，多框用 ';' 分隔）
         if (!SKEL_DUMP.isEmpty()) {

@@ -182,6 +182,19 @@ public final class DeterministicSkeleton {
      */
     private static final double MIN_MEANDER_WAVELENGTH = 6.0;
 
+    /** 平地破平局的邻居扫描序（与 {@code EquilibriumWater.DIRS8} 同序 ⇒ 确定性）。 */
+    private static final int[][] EQUAL_DIRS8 = {
+            {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+            {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+    };
+
+    /**
+     * 有界粒子最大偏移（× step）。legacy {@code PARTICLE_MAX_DEV_FRAC=0.45}，
+     * 我方实测 0.45 在 1-block 扫掠半径下让相邻段互相贴近 ⇒ 默认 0.25。
+     */
+    static final double PARTICLE_AMP_FRAC =
+            Double.parseDouble(System.getProperty("geogenesis.particleAmp", "0.25"));
+
     private DeterministicSkeleton() { }
 
     // ======================================================================
@@ -203,7 +216,6 @@ public final class DeterministicSkeleton {
         return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet,
                 nx, nz, params, List.of());
     }
-
     /**
      * 带【跨区续流】的构建（2026-10-10 双 pass，legacy {@code OutletSeed} 同构）。
      *
@@ -229,6 +241,34 @@ public final class DeterministicSkeleton {
                                boolean[] lakeMask, boolean[] sea, double[] discharge,
                                int[] basinOutlet, int nx, int nz, Params params,
                                List<Integer> incomingCells) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet,
+                nx, nz, params, incomingCells, null);
+    }
+
+    /**
+     * 完整入口（含 {@code bed} —— 平地破平局用）。
+     *
+     * <h3>★★★ 2026-10-10【平地径向直线伪影的追踪侧修复】★★★</h3>
+     * <p>用户圈出：两条笔直斜线横穿画面、与河道交叉。定性（非猜测）：
+     * minimax 洪泛把【水位全等的平地】的 parent 交给"弹出顺序"决定 ——
+     * {@code EquilibriumWater:244} 注释自述「同水位格的 parent = 首个弹出它的邻居
+     * ≈ 距种子更近者 ⇒ 单排水洞平地呈径向收敛」—— 即平地流向 =
+     * 【指向最近种子的直线族】（径向），与真实地形无关 ⇒ 图上笔直斜线。</p>
+     *
+     * <p><b>追踪侧破平局（HANDOFF §17.6 既定方案）</b>：沿 parent 走链时，若当前格的
+     * 下一步 {@code p} 与【替代候选】（bed 更低的邻居）处于同一等水位连通区
+     * （{@code level 相等}），说明 parent 的方向是"弹出序产物"而非地形产物
+     * ⇒ 改选【bed 最低的等水位邻居】（真实地形的微小坡度 = 水该走的方向）。
+     * 只有真正完全平坦（bed 也全等）才退回 parent。</p>
+     *
+     * <p>⚠ 单调性不破坏：候选与当前格 level 相等（非升），SkeletonProbe [1] 仍过。</p>
+     *
+     * @param bed 真实床面（{@code WindowOutlets.build} 的谷底 bed；null = 旧行为）
+     */
+    public static Result build(double[] level, int[] parent, boolean[] resolved,
+                               boolean[] lakeMask, boolean[] sea, double[] discharge,
+                               int[] basinOutlet, int nx, int nz, Params params,
+                               List<Integer> incomingCells, double[] bed) {
         int cells = nx * nz;
         // 源头候选：累积达标 + 汇流槽判据 + parent 存在（判据详见类 javadoc ①）
         List<Integer> sources = collectSources(level, parent, resolved, lakeMask, sea,
@@ -340,7 +380,7 @@ public final class DeterministicSkeleton {
                 int stamp = ++stampBox[0];
                 Trace t = traceOne(start, fromOutlet, level, parent, resolved,
                         lakeMask, sea, covered, nx, nz, params.joinWindow(),
-                        selfStamp, selfStep, stamp, params, segments);
+                        selfStamp, selfStep, stamp, params, segments, bed);
                 if (t == null) continue;
                 traces.add(t);
                 if (fromOutlet) outletStarts++;
@@ -518,7 +558,7 @@ public final class DeterministicSkeleton {
                                   boolean[] lakeMask, boolean[] sea, boolean[] covered,
                                   int nx, int nz, int joinWindow,
                                   int[] selfStamp, int[] selfStep, int stamp, Params params,
-                                  java.util.List<int[]> segments) {
+                                  java.util.List<int[]> segments, double[] bed) {
         int cells = nx * nz;
         List<Integer> path = new ArrayList<>();
         int k = start;
@@ -594,6 +634,40 @@ public final class DeterministicSkeleton {
                 path.add(p);
                 end = End.JOIN;
                 break;
+            }
+            // ★★★ 2026-10-10【平地破平局 —— 径向直线伪影的追踪侧修复（HANDOFF §17.6）】★★★
+            //
+            // 【用户圈出】两条笔直斜线横穿画面、与河道交叉（"不可能是伪影啊，我看图
+            //   明显有这问题啊"—— 对，这是真实缺陷，我此前误记为"观感可接受"）。
+            // 【定性（EquilibriumWater:244 自述）】minimax 洪泛把【水位全等平地】的
+            //   parent 交给"弹出顺序"决定 ≈ 指向最近种子的直线族（径向）
+            //   ⇒ 平地上的河是【几何直线】，与真实地形无关。
+            // 【破平局】若 parent 的目标格与当前格【level 相等】（同一等水位连通区内部），
+            //   说明这一步是"弹出序产物"而非地形产物 ⇒ 改选【bed 最低的等水位邻居】
+            //   （真实地形微小坡度 = 水该走的方向）。bed 也全等（真平台）才退回 parent。
+            // 【单调性】候选 level == 当前 level（非升）⇒ SkeletonProbe [1] 仍过。
+            // 【无环】候选必须 covered=false（下方自然满足：走到的格会标 covered），
+            //   且候选不得是本 trace 节点（selfStamp 守卫同 parent 路径）。
+            if (bed != null && level[p] >= level[k] - 1e-9 && level[p] <= level[k] + 1e-9) {
+                int bi = k / nz, bj = k % nz;
+                double curBed = bed[k];
+                int alt = -1;
+                double altBed = curBed;
+                for (int[] d : EQUAL_DIRS8) {
+                    int a = bi + d[0], b = bj + d[1];
+                    if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+                    int c = a * nz + b;
+                    if (c == p || c == k) continue;
+                    if (lakeMask[c] || sea[c] || !resolved[c]) continue;
+                    if (level[c] > level[k] + 1e-9) continue;          // 只走等水位区内部
+                    if (covered[c] || selfStamp[c] == stamp) continue; // 不撞别人/自己
+                    if (bed[c] < altBed - 1e-9) { altBed = bed[c]; alt = c; }
+                }
+                if (alt >= 0) {
+                    k = alt;
+                    continue;      // 走真实下坡（等水位区内），本轮不前进 parent
+                }
+                // 无更低 bed 邻居（真平台）⇒ 沿 parent（径向兜底）
             }
             k = p;
             if (path.size() > cells) { end = End.DEAD_END; break; }  // 防御
@@ -793,13 +867,19 @@ public final class DeterministicSkeleton {
      * 两端 20% 弧长平滑淡出 ⇒ 源头、入湖口、汇合点零位移
      * （汇合点在共享节点处，两侧段各自淡出到同一锚点 ⇒ 仍精确重合）。</p>
      *
-     * @param originX,originZ 窗口原点（block）；格 (i,j) → 块 (originX + i·step, …)
-     * @param step            格距（block，生产 STEP=4）
-     * @param params          形态参数（meanderAmp=0 ⇒ 仅 Catmull-Rom，不做蜿蜒）
+     * <p>★★★ 2026-10-10【有界粒子锚点（legacy PARTICLE_POS 同构）—— 治"梯子纹"】★★★</p>
+     * <p>用户圈出：缓坡河段呈"横档+小竖档"的梯子。根因：锚点钉死在 4-block 格心，
+     * 缓坡 D8 走"横 3~4 格、降 1 格" ⇒ CR 重采样把长横档磨成圆角但【档距】还在。
+     * legacy 2026-09-20 的解法：节点沿【连续坡向】偏移出格心（钳 0.45 格防绕圈）。
+     * 本处用 bed 双线性梯度给每个锚点一个有界偏移：
+     * 偏移方向 = −∇bed（下坡），幅度 ∝ 坡向与格步方向的偏差角（正交时最大 0.45·step，
+     * 平行时 0 —— 格步本身已沿坡向时不偏）。</p>
+     *
+     * @param bed 真实床面（谷底取小后；null = 关闭粒子，锚点=格心）
      */
     public static List<Shaped> shape(List<Trace> traces, double[] level,
                                      int originX, int originZ, int step,
-                                     int nx, int nz, Params params) {
+                                     int nx, int nz, Params params, double[] bed) {
         // 噪声固定 seed（管线惯例 0x5EEDL）+ 世界坐标驱动 ⇒ 跨窗口同坐标同值
         Simplex oct = new Simplex(0x5EE3);
         oct.seed(0x5EEDL, 0);
@@ -807,11 +887,50 @@ public final class DeterministicSkeleton {
         for (Trace t : traces) {
             int m = t.cell.length;
             if (m < 2) continue;
-            // ① 锚点（block 坐标）
+            // ① 锚点（block 坐标）+ 有界粒子偏移（治梯子纹：锚点沿 −∇bed 偏出格心）
             double[] ax = new double[m], az = new double[m];
             for (int i = 0; i < m; i++) {
-                ax[i] = originX + (t.cell[i] / nz) * (double) step;
-                az[i] = originZ + (t.cell[i] % nz) * (double) step;
+                double wx = originX + (t.cell[i] / nz) * (double) step;
+                double wz = originZ + (t.cell[i] % nz) * (double) step;
+                if (bed != null) {
+                    int ci = t.cell[i] / nz, cj = t.cell[i] % nz;
+                    // bed 双线性梯度（中心差分，界内才有效）
+                    double bL = ci > 0 ? bed[(ci - 1) * nz + cj] : bed[t.cell[i]];
+                    double bR = ci < nx - 1 ? bed[(ci + 1) * nz + cj] : bed[t.cell[i]];
+                    double bD = cj > 0 ? bed[ci * nz + cj - 1] : bed[t.cell[i]];
+                    double bU = cj < nz - 1 ? bed[ci * nz + cj + 1] : bed[t.cell[i]];
+                    double gx = (bR - bL) * 0.5, gz = (bU - bD) * 0.5;   // ∇bed
+                    double gLen = Math.sqrt(gx * gx + gz * gz);
+                    if (gLen > 1e-6) {
+                        // 下坡单位向量
+                        double dx = -gx / gLen, dz = -gz / gLen;
+                        // 本格到下一锚点的格步方向（首尾用邻格）
+                        int ni = i + 1 < m ? i + 1 : i - 1;
+                        double sx = (t.cell[ni] / nz) - ci, sz2 = (t.cell[ni] % nz) - cj;
+                        double sLen = Math.sqrt(sx * sx + sz2 * sz2);
+                        if (sLen > 1e-6) {
+                            sx /= sLen; sz2 /= sLen;
+                            // 坡向与格步的正交分量 = 梯子纹的"横档"来源 ⇒ 用它偏移
+                            double cross = dx * sz2 - dz * sx;   // 叉积（有符号）
+                            // 偏移方向 = 下坡方向在【垂直于格步】上的投影
+                            double ox = dx - sx * (dx * sx + dz * sz2);
+                            double oz = dz - sz2 * (dx * sx + dz * sz2);
+                            double oLen = Math.sqrt(ox * ox + oz * oz);
+                            if (oLen > 1e-6) {
+                                // 幅度 = ampFrac·step·|正交分量|（平行时 0、正交时最大）。
+                                // ★ 2026-10-10 实测标定：0.45（legacy 值）在 1-block 扫掠半径下
+                                //   让相邻段互相贴近 ⇒ 真+字 11→48、2×2 重叠 48→159（视觉贴线）。
+                                //   0.25 折中：仍够消梯子档距，贴线回落。可用
+                                //   -Dgeogenesis.particleAmp 调。
+                                double amp = PARTICLE_AMP_FRAC * step * Math.min(1.0, Math.abs(cross));
+                                wx += ox / oLen * amp;
+                                wz += oz / oLen * amp;
+                            }
+                        }
+                    }
+                }
+                ax[i] = wx;
+                az[i] = wz;
             }
             // ② Catmull-Rom 重采样（1 block 间距）—— 折线变曲线
             double[][] res = catmullRomResample(ax, az, 1.0);
