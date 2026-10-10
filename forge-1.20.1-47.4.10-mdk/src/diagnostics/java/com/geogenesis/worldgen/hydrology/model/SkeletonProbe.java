@@ -136,8 +136,8 @@ public final class SkeletonProbe {
         check(!convexUsed, "[合成] 凸坡源头被汇流槽判据否决", "convex 参与了追踪");
 
         // 形态 + 形态确定性 + 越界
-        var s1 = DeterministicSkeleton.shape(r1.traces, level, 0, 0, 1, nx, nz, params);
-        var s2 = DeterministicSkeleton.shape(r1.traces, level, 0, 0, 1, nx, nz, params);
+        var s1 = DeterministicSkeleton.shape(r1.traces, level, 0, 0, 1, nx, nz, params, null);
+        var s2 = DeterministicSkeleton.shape(r1.traces, level, 0, 0, 1, nx, nz, params, null);
         boolean same = s1.size() == s2.size();
         if (same) {
             for (int i = 0; i < s1.size(); i++) {
@@ -213,9 +213,9 @@ public final class SkeletonProbe {
         validateTraces(r1.traces, p.level(), p.parent(), p.lake(), p.sea(), p.resolved(), n, n, bo, "真实");
 
         var s1 = DeterministicSkeleton.shape(r1.traces, p.level(), cx - radius, cz - radius,
-                step, n, n, params);
+                step, n, n, params, null);
         var s2 = DeterministicSkeleton.shape(r1.traces, p.level(), cx - radius, cz - radius,
-                step, n, n, params);
+                step, n, n, params, null);
         boolean same = s1.size() == s2.size();
         if (same) {
             for (int i = 0; i < s1.size(); i++) {
