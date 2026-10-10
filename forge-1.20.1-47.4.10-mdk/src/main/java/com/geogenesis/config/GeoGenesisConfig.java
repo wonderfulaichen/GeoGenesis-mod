@@ -333,6 +333,18 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.BooleanValue hydrologyModelPipelineEnabled;
 
     /**
+     * ★ 2026-10-10【确定性骨架开关（从 -D 属性提升为配置项）】。
+     *
+     * <p><b>为什么必须提升</b>：此前是 `-Dgeogenesis.skeletonTrace` 纯系统属性 ⇒
+     * 探针（命令行恒带该属性）走骨架，而玩家启动游戏时该属性不存在 ⇒
+     * <b>实机一直走旧路径</b>，本会话全部形态修复在实机上零生效。</p>
+     *
+     * <p>true（默认）= {@code DeterministicSkeleton}；false = 旧 {@code RiverCenterlines}。
+     * 系统属性仍可覆盖（探针 A/B 用）。</p>
+     */
+    public final ForgeConfigSpec.BooleanValue hydrologyDeterministicSkeleton;
+
+    /**
      * ★ 2026-09-21【流体骨架路线】（实验）：{@code true} = 河道折线改由块分辨率流体物理
      * 模拟（{@code TerrainFlowSim}）产出 ⇒ 路线按构造物理正确（最陡下降，无横切/上坡）。
      *
@@ -912,6 +924,20 @@ public final class GeoGenesisConfig {
                 + " legacy network; no waterfalls. Takes effect on world (re)load; already-generated"
                 + " chunks are unchanged.")
                 .define("hydrologyModelPipelineEnabled", false);
+        hydrologyDeterministicSkeleton = builder.comment(
+                "★ Deterministic skeleton for the model hydrology pipeline (2026-10-10)."
+                + " true (default) = rivers are traced as a deterministic skeleton along the"
+                + " minimax parent tree (PL-RGA style: source-by-descending-discharge, join the"
+                + " nearest existing reach, per-step crossing guard, network-level connectivity"
+                + " filter, diagonal-gap fill, mouth extension into water) instead of the old"
+                + " RiverCenterlines path (accumulate -> threshold -> thin)."
+                + " false = old path (A/B baseline)."
+                + " ⚠ HISTORY: this switch used to be a -D system property only, so every probe"
+                + " (which always passed -Dgeogenesis.skeletonTrace=true) exercised the skeleton"
+                + " while the game silently ran the old path. Now it is a real config value;"
+                + " the -D property (if set) still overrides it for probes."
+                + " Only affects newly generated chunks.")
+                .define("hydrologyDeterministicSkeleton", true);
         builder.pop();
 
         // ===================== ★ 2026-09-18 全流程诊断（独立段落）=====================

@@ -409,16 +409,44 @@ public final class ModelHydrologyProvider {
     }
 
     // ==========================================================================
-    // 2026-10-10 确定性骨架（A/B 开关 `-Dgeogenesis.skeletonTrace=true`）
+    // 2026-10-10 确定性骨架（配置项 `hydrologyDeterministicSkeleton`）
     //
     // 用户方向（HYDROLOGY.md 用户口径②③ + 2026-10-10 会话）：
     //   河流做成确定性骨架（PL-RGA 式沿 minimax 树追踪 + 湖溢口续流），
     //   model 链是 legacy 链的升级版 —— legacy 的既有机制必须继承。
     //
     // 开关 true 时用 DeterministicSkeleton 替代 RiverCenterlines（累积->阈值->细化）；
-    // 默认 false = 旧路径逐位不变（A/B 对照基线）。
+    // false = 旧路径（A/B 对照基线）。
+    //
+    // ★★★ 2026-10-10【重大发现：此开关过去只在探针里生效，实机从未生效】★★★
+    // 【症状】用户判据「将测试窗口的水文转换适配生产环境」。
+    // 【根因】原实现是 `Boolean.getBoolean("geogenesis.skeletonTrace")` ——
+    //   **纯 `-D` 系统属性**：探针命令行总是带 `-Dgeogenesis.skeletonTrace=true`
+    //   ⇒ 探针走骨架；而**玩家启动游戏时不存在该属性** ⇒ 实机走【旧路径 RiverCenterlines】
+    //   ⇒ 本会话十几轮形态修复（孤立段 −53% / 交叉 −62% / 对角补点 / 末端伸入水体…）
+    //     **在实机上完全没有生效**。
+    // 【铁证】实机日志 `HYDRO-MODEL reaches=15~26`（旧路径：窄、少），
+    //   而探针日志 `skeleton routing ACTIVE ... 7~25 rivers` ⇒ 两条不同代码线。
+    // 【修法】改为**配置项优先**（`GeoGenesisConfig.hydrologyDeterministicSkeleton`，
+    //   默认 true）+ 系统属性可覆盖（探针 A/B 仍用 `-D...=false`）。
     // ==========================================================================
-    static final boolean SKELETON_TRACE = Boolean.getBoolean("geogenesis.skeletonTrace");
+    static final boolean SKELETON_TRACE = resolveSkeletonTrace();
+
+    /**
+     * 解析骨架开关：<b>配置项优先</b>，系统属性可覆盖（探针 A/B 用）。
+     *
+     * <p>无 Forge 环境（探针进程）时读配置会抛 ⇒ 回退系统属性（旧行为）。</p>
+     */
+    private static boolean resolveSkeletonTrace() {
+        String prop = System.getProperty("geogenesis.skeletonTrace");
+        if (prop != null) return Boolean.parseBoolean(prop);   // 探针显式指定优先
+        try {
+            return com.geogenesis.config.GeoGenesisConfig.INSTANCE
+                    .hydrologyDeterministicSkeleton.get();
+        } catch (RuntimeException e) {
+            return false;   // 无配置环境（探针未指定）⇒ 保持旧的默认
+        }
+    }
 
     /**
      * 双 pass 跨区续流总开关（`-Dgeogenesis.skeletonCrossPass=false` 关闭）。
