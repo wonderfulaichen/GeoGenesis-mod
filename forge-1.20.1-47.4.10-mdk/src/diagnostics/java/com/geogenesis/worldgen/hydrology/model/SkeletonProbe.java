@@ -306,6 +306,71 @@ public final class SkeletonProbe {
             check(orphan == 0, "[" + tag + "] [5] 溢口续流（溢口必有河起点）",
                     orphan + " 个溢口无 trace 覆盖:" + detail);
         }
+
+        // ★★★ [8] 自交叉审计（2026-10-10，**有牙齿版**）★★★
+        //
+        // 【为什么不能测"链间交叉"（我犯过的错，如实记录）】
+        //   第一版写的是"两条不同 trace 的线段是否交叉" ⇒ **恒为 0**：
+        //   `covered[]` 保证「一个格只被一条链认领」⇒ 各链的格集合天然互斥
+        //   ⇒ 格级线段结构上不可能相交。反向验证（临时关掉交叉守卫）仍 PASS
+        //   ⇒ 证明该判据**测不出任何东西**（违反"判据必须有牙齿"）。
+        //
+        // 【真正的风险点】`covered` 只约束**跨链**互斥 —— **单条链自身仍可能折返自交**
+        //   （skelDump 实测过：poly#8 在 z 655→669 段 14 点折返 4 次 = 图上"揉团"）。
+        //   用户判据「河流/支流还会反复和其他分支交叉，类似重叠的情况」中，
+        //   "同角度重叠"一类正来自这种自折返。⇒ 本判据测它。
+        //
+        // 【豁免】相邻段（共享端点）不算自交；间隔 ≤1 段的近邻不算（正常曲率）。
+        int selfCross = 0;
+        int selfTraces = 0;
+        StringBuilder selfDetail = new StringBuilder();
+        for (var t : traces) {
+            int m = t.cell.length;
+            if (m < 4) continue;
+            int[] ix = new int[m], iy = new int[m];
+            for (int i = 0; i < m; i++) { ix[i] = t.cell[i] / nz; iy[i] = t.cell[i] % nz; }
+            boolean hit = false;
+            for (int i = 1; i < m && !hit; i++) {
+                for (int j = i + 2; j < m; j++) {           // j>=i+2 ⇒ 跳过共享端点的相邻段
+                    if (segCross(ix[i - 1], iy[i - 1], ix[i], iy[i],
+                                 ix[j - 1], iy[j - 1], ix[j], iy[j])) {
+                        hit = true;
+                        if (selfCross < 5) {
+                            selfDetail.append(String.format(" [src(%d,%d) 段%d-%d 与 段%d-%d]",
+                                    ix[0], iy[0], i - 1, i, j - 1, j));
+                        }
+                        break;
+                    }
+                }
+            }
+            if (hit) selfCross++;
+            selfTraces++;
+        }
+        check(selfCross == 0, "[" + tag + "] [8] 单链无自交叉（折返重叠）",
+                selfCross + "/" + selfTraces + " 条链存在自交:" + selfDetail);
+    }
+
+    /** 标准叉积相交判据（含共线接触；整点坐标 ⇒ 无浮点误差）。 */
+    private static boolean segCross(int ax, int ay, int bx, int by,
+                                    int cx, int cy, int dx, int dy) {
+        long o1 = orient(ax, ay, bx, by, cx, cy);
+        long o2 = orient(ax, ay, bx, by, dx, dy);
+        long o3 = orient(cx, cy, dx, dy, ax, ay);
+        long o4 = orient(cx, cy, dx, dy, bx, by);
+        if (o1 == 0 && onSeg(ax, ay, bx, by, cx, cy)) return true;
+        if (o2 == 0 && onSeg(ax, ay, bx, by, dx, dy)) return true;
+        if (o3 == 0 && onSeg(cx, cy, dx, dy, ax, ay)) return true;
+        if (o4 == 0 && onSeg(cx, cy, dx, dy, bx, by)) return true;
+        return ((o1 > 0) != (o2 > 0)) && ((o3 > 0) != (o4 > 0));
+    }
+
+    private static long orient(int ax, int ay, int bx, int by, int cx, int cy) {
+        return (long) (bx - ax) * (cy - ay) - (long) (by - ay) * (cx - ax);
+    }
+
+    private static boolean onSeg(int ax, int ay, int bx, int by, int px, int py) {
+        return px >= Math.min(ax, bx) && px <= Math.max(ax, bx)
+                && py >= Math.min(ay, by) && py <= Math.max(ay, by);
     }
 
     private static int idx(int i, int j, int nz) {
