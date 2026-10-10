@@ -963,6 +963,15 @@ public final class CellGenerator {
      */
     private final ConcurrentHashMap<Long, java.util.concurrent.CompletableFuture<ErosionTileResult>>
             erosionTilesInFlight = new ConcurrentHashMap<>();
+
+    /**
+     * ★★★ 2026-10-10【预热上下文标记 —— 让 8 邻预热只扩一层】★★★
+     *
+     * <p>见 {@code generateErosionTile} 内 8 邻预热处的完整推导（级联波纹导致单 tile
+     * 最多被生成 5 次）。本 ThreadLocal 非空 = 当前线程正在执行"预热任务"
+     * ⇒ 该任务内部的 8 邻预热跳过，波纹不再扩散。</p>
+     */
+    private static final ThreadLocal<Boolean> IN_PREWARM_TASK = new ThreadLocal<>();
     /** 侵蚀 tile 缓存命中统计（P0-3 埋点）。 */
     private final CacheStats tileCacheStats = new CacheStats("erosionTile");
     /** LRU 逻辑时钟（P0-3）：每次访问自增，驱逐时取最小者。 */
@@ -1034,29 +1043,47 @@ public final class CellGenerator {
         //       2) 本 tile 直接同步计算（含 L1 河流，终态发布）→ 调用方立即拿到真 delta
         //       3) blend 阶段（extractFromTile）读邻居 null 时 → 同步懒生成该邻居（只算需要的 1-2 个）
         // 效果：chunk(0,0) 7s → 本 tile ~0.7s + 消费时懒邻居 ~0.7-1.4s
+        //
+        // ★★★ 2026-10-10【级联修复：本预热是"被预热调用"时不再预热的邻居】★★★
+        // 【实测问题】实机 3782 块：`侵蚀tile生成` <b>4283 次</b>（每块 1.13 次！），
+        //   单 tile 最多生成 <b>5 次</b>（689 次日志 / 510 唯一）。耗时 1446s = 62% 占比，
+        //   块均 24ms → 61.7ms ⇒ 用户实测"创建世界很久 + 进世界后时不时卡顿"。
+        // 【机理】级联：tile A 生成时提交 8 邻 {B…}；B 在池里执行时，<b>B 又提交自己的 8 邻</b>
+        //   {C…}（其中可能含 A 的其它邻居甚至是 A 的邻居的重复）⇒ 呈波纹扩散，
+        //   而"占位表检查 + 提交"之间存在窗口（占位在任务【执行时】才建）⇒ 重复提交。
+        // 【修法】<b>只预热一层</b>：用 ThreadLocal 标记"当前线程正在执行预热任务"，
+        //   该状态下 generateErosionTile 里的这段 8 邻预热直接跳过。
+        //   ⇒ 波纹不再扩散（每层只扩 1 圈，由外层懒生成按需补齐）。
         int[] dirs = {-1, 0, 1};
-        for (int dz : dirs) {
-            for (int dx : dirs) {
-                if (dx == 0 && dz == 0) continue; // 自己 → 下方同步计算
-                int ncx = tileCX + dx * ERODE_TILE_CENTER;
-                int ncz = tileCZ + dz * ERODE_TILE_CENTER;
-                long nk = tileKey(ncx, ncz);
-                if (erosionTileCache.containsKey(nk)) continue;
-                // ★★★ 2026-10-10【关键：已在生成中 ⇒ 不再重复提交】★★★
-                //   实测：仅查缓存不够 —— 父 tile 的 8 邻预热提交后，被提交的邻居
-                //   在【自己的】generateErosionTile 里又提交它的 8 邻 ⇒ 级联重复
-                //   （实测 408 次生成 / 192 个唯一 tile，成对甚至 ×4）。
-                //   加在途占位检查后，同一 tile 只会被提交一次。
-                if (erosionTilesInFlight.containsKey(nk)) continue;
-                // fire-and-forget：不 await，后台补全（结果确定性相同）
-                // ★ 2026-09-17【实测结论：保持 putIfAbsent，勿改 computeIfAbsent】
-                //   曾疑"与主路径的 neighborTile 重复生成同一 tile"，改 computeIfAbsent 去重；
-                //   实测（ChunkLoadPerfProbe 48×48 chunk）**无收益**：不同 tile 数 17 → 17。
-                //   而 `computeIfAbsent` 会在**整个生成期间持有 bin 锁**（tile 生成 100~700ms）
-                //   ⇒ 并发区块加载时可能阻塞其它线程（探针单线程测不出，故不冒险）。
-                //   ★ 2026-10-10 补充：新增 {@link #erosionTilesInFlight} 占位式去重后，
-                //     本预热走 getOrGenTileUnchecked（占位式，不持锁、不重复生成）。
-                TILE_SAMPLER.execute(() -> getOrGenTileUnchecked(ncx, ncz));
+        boolean prewarmContext = IN_PREWARM_TASK.get() != null;   // ★ 只预热一层（见上）
+        if (!prewarmContext) {
+            for (int dz : dirs) {
+                for (int dx : dirs) {
+                    if (dx == 0 && dz == 0) continue; // 自己 → 下方同步计算
+                    final int ncx = tileCX + dx * ERODE_TILE_CENTER;
+                    final int ncz = tileCZ + dz * ERODE_TILE_CENTER;
+                    if (erosionTileCache.containsKey(tileKey(ncx, ncz))) continue;
+                    // ★★★ 2026-10-10【统一占位：预热也走 getOrGenTileUnchecked】★★★
+                    // 【为什么必须统一】此前预热自建一份占位（ph），而求解/懒生成路径用
+                    //   getOrGenTileUnchecked 的 mine —— **两套占位互不识别** ⇒ 同一 tile
+                    //   可能被预热与懒生成各算一遍。实测残留重复 18/198（10%）。
+                    // 【本写法】只提交一个 Runnable，占位创建推迟到池线程执行
+                    //   getOrGenTileUnchecked 时 —— 与所有路径共用同一张 erosionTilesInFlight
+                    //   ⇒ 真正的"全局单飞"。（代价：池队列里可能有重复提交，但执行时会被
+                    //   占位挡住，不再重复生成。）
+                    try {
+                        TILE_SAMPLER.execute(() -> {
+                            IN_PREWARM_TASK.set(Boolean.TRUE);
+                            try {
+                                getOrGenTileUnchecked(ncx, ncz);
+                            } finally {
+                                IN_PREWARM_TASK.remove();
+                            }
+                        });
+                    } catch (java.util.concurrent.RejectedExecutionException e) {
+                        // 池已关闭（世界卸载）⇒ 放弃剩余预热（懒生成会兜底）
+                    }
+                }
             }
         }
         // 本 tile：占位式生成（★ 2026-10-10 替换 computeIfAbsent）
@@ -1377,7 +1404,13 @@ public final class CellGenerator {
             String perf = String.format("[PERF] erosion tile (%d,%d) took %.0fms [base=%.0f bicubic=%.0f skeleton=%.0f drops=%.0f delta=%.0f]",
                 tileCX, tileCZ, ms, bMs, bicMs, skMs, dMs, dltMs);
             LOGGER.info(perf);
-            System.out.println(perf);
+            // ★★★ 2026-10-10【删除重复的 System.out.println】★★★
+            // 【曾造成诊断假象】同一行既走 log4j（带 `[时间] [线程] [geogenesis/]:` 前缀）
+            //   又走 stdout（裸 `[PERF]` 行）⇒ 任何按行统计的工具都会把每个 tile 数成 2 次。
+            //   实测：日志 396 行 / 唯一 tile 180 ⇒ 误判"每个 tile 生成 2 次、重复率 100%"，
+            //   而真实生成 **198 次 / 唯一 180**（真重复 18 次 = 10%）。
+            //   ⇒ 排查性能时该假象会把人引向错误结论（我本人已据此白查一轮）。
+            //   log4j 已写入 latest.log ⇒ stdout 重复行只会污染终端与统计。
         }
         return res;
     }
