@@ -1203,6 +1203,37 @@ public final class DeterministicSkeleton {
                     anchorTable.put(t.cell[i], new double[]{ax[i], az[i]});
                 }
             }
+            // ★★★ 2026-10-10【末端伸入水体（治"河距湖/海 1~2 格"的像素缝）】★★★
+            //
+            // 【ASCII 现场实锤（WaterTouch）】主河网（4399 格 = 全部河像素 20%）与湖水
+            //   最近只差 2 块：河末端止步于水像素边界【前 1~2 格】。
+            // 【机理】湖/海是**逐块地形/水位**渲染的（1 块精度、边界即水岸线），
+            //   而河的折线锚点在**格心**（STEP=4 块）⇒ 末端格心距水岸线可达 2~3 块
+            //   ⇒ 落块后像素不相邻。入湖锚点延伸只加了一格（MOUTH_LAKE 的 `p`），
+            //   对"岸线斜切格"仍不够。
+            // 【修法】把 MOUTH_SEA / MOUTH_LAKE 的折线尾端沿末段方向【再伸 2 格】，
+            //   确保穿过水像素边界 ⇒ 与水体 8 连通。
+            //   ⚠ 只动几何末端，不改 end 语义/拓扑（SkeletonProbe 判据不受影响）。
+            if ((t.end == End.MOUTH_SEA || t.end == End.MOUTH_LAKE) && m >= 2) {
+                double dxs = ax[m - 1] - ax[m - 2];
+                double dzs = az[m - 1] - az[m - 2];
+                double sl = Math.sqrt(dxs * dxs + dzs * dzs);
+                if (sl > 1e-6) {
+                    dxs /= sl; dzs /= sl;
+                    int ext = 2;                     // 伸 2 格（8 块）——实测足够穿过岸线
+                    double[] ex = new double[m + ext];
+                    double[] ez = new double[m + ext];
+                    System.arraycopy(ax, 0, ex, 0, m);
+                    System.arraycopy(az, 0, ez, 0, m);
+                    for (int k = 0; k < ext; k++) {
+                        ex[m + k] = ax[m - 1] + dxs * step * (k + 1);
+                        ez[m + k] = az[m - 1] + dzs * step * (k + 1);
+                    }
+                    ax = ex;
+                    az = ez;
+                    m = m + ext;
+                }
+            }
             // ② Catmull-Rom 重采样（1 block 间距）—— 折线变曲线
             double[][] res = catmullRomResample(ax, az, 1.0);
             double[] rx = res[0], rz = res[1];
@@ -1225,9 +1256,51 @@ public final class DeterministicSkeleton {
                 rx[i] = Math.rint(rx[i]);
                 rz[i] = Math.rint(rz[i]);
             }
-            out.add(new Shaped(rx, rz));
+            // ★★★ 2026-10-10【对角针孔填充（8 连通补点）—— 治"河与湖/海隔 1~2 格"】★★★
+            //
+            // 【机理（WaterTouch + ASCII 现场实锤）】扫掠判据是"格心到线段距离 ≤ half(0.5)"：
+            //   对角步（|Δx|=|Δz|=1）时，两个格心之间的**另一侧**格心到线段距离 = 1/√2
+            //   ≈ 0.707 > 0.5 ⇒ 不染色 ⇒ 河道留 1 格斜向空洞
+            //   ⇒ 8 连通下"算连通"、但渲染像素断开（孤立段检测抓到的正是它）。
+            // 【实测】主河网（3329 格 = 全部河像素 20%）与湖水最近只差 2 块；
+            //   ASCII 现场：河伸到 img(436,631) 后止步于湖岸前 1 格，
+            //   而湖岸在此处是【斜向】的 ⇒ 正是对角针孔。
+            // 【修法】把相邻节点的对角步补成"两段正交步"（经过 (x1,z0) 或 (x0,z1)）
+            //   ⇒ 新节点与新老节点皆正交相邻 ⇒ 两段中段格心都 ≤0.5 ⇒ 必染色。
+            //   等价于 legacy 的"线段栅格化"语义。
+            double[][] filled = fillDiagonalGaps(rx, rz);
+            out.add(new Shaped(filled[0], filled[1]));
         }
         return out;
+    }
+
+    /**
+     * 8 连通补点：相邻节点的【对角步】拆成两段正交步（见调用处说明）。
+     *
+     * <p>拆点选 {@code (x1,z0)}（先横后竖）—— 与 {@code (x0,z1)} 二选一，
+     * 取定后即确定（纯函数）。两段各自：正交相邻 ⇒ 中段格心距线段 = 0.5 ≤ half ⇒ 染色。</p>
+     */
+    private static double[][] fillDiagonalGaps(double[] rx, double[] rz) {
+        if (rx.length < 2) return new double[][]{rx, rz};
+        List<double[]> pts = new ArrayList<>(rx.length + 8);
+        pts.add(new double[]{rx[0], rz[0]});
+        for (int i = 1; i < rx.length; i++) {
+            double px = rx[i - 1], pz = rz[i - 1];
+            double cx = rx[i], cz = rz[i];
+            boolean diag = Math.abs(cx - px) > 0.5 && Math.abs(cz - pz) > 0.5
+                    && Math.abs(cx - px) <= 1.5 && Math.abs(cz - pz) <= 1.5;
+            if (diag) {
+                pts.add(new double[]{cx, pz});   // 先横：保留 x1、沿用 z0
+            }
+            pts.add(new double[]{cx, cz});
+        }
+        double[] ox = new double[pts.size()];
+        double[] oz = new double[pts.size()];
+        for (int i = 0; i < pts.size(); i++) {
+            ox[i] = pts.get(i)[0];
+            oz[i] = pts.get(i)[1];
+        }
+        return new double[][]{ox, oz};
     }
 
     /**
