@@ -200,6 +200,16 @@ public final class DeterministicSkeleton {
             !"false".equals(System.getProperty("geogenesis.flatBreak"));
 
     /**
+     * 汇流槽判据开关（{@code -Dgeogenesis.valleyTrough=false} 关；<b>方案 A 的密度补偿</b>）。
+     *
+     * <p>见 {@code collectSources} 内说明：无侵蚀 bed 下源头数腰斩（37~61 → 12~30），
+     * 关掉本判据可让"缓坡上的源头"也起链，补偿密度。
+     * 默认开（保留 2026-09-01 确立的"源头应该在山谷中"）。</p>
+     */
+    static final boolean VALLEY_TROUGH =
+            !"false".equals(System.getProperty("geogenesis.valleyTrough"));
+
+    /**
      * ★ 网络级连通性过滤开关（`-Dgeogenesis.networkFilter=false` 关；A/B 归因用）。
      *
      * <p>把 trace 按共享格并查集聚簇，只保留「簇内有链通向海/湖/窗口接力」的簇
@@ -609,11 +619,19 @@ public final class DeterministicSkeleton {
             if (p >= 0 && p < cells && channel[p]) hasUpstream[p] = true;
         }
         // ③ 源头 = 河道格且入度为 0（+ 汇流槽判据，保留"源头应在谷中"的用户要求）
+        //
+        // ★★★ 2026-10-10【方案 A：放宽源头判据（无侵蚀 bed 的密度补偿）】★★★
+        // 【背景】求解 bed 改用无侵蚀 `sample()`（零 tile 依赖，治冷启动）后，
+        //   源头数从 37~61 掉到 12~30（约 −55%）—— <b>不是判据失效，是地形本身少了沟壑</b>
+        //   （侵蚀在地形上刻出沟槽 ⇒ 入度 0 的谷地更多）。实测 r=300：河道 5691→2724。
+        // 【本开关】关掉【汇流槽判据】（{@code inValleyTrough}）—— 该判据要求源头在谷中，
+        //   在平滑噪声场上会把"缓坡上的源头"大量否决。关掉后源头按入度 0 全部接受。
+        //   {@code -Dgeogenesis.valleyTrough=false} 关闭判据（= 方案 A）。
         List<Integer> sources = new ArrayList<>();
         for (int k = 0; k < cells; k++) {
             if (!channel[k] || hasUpstream[k]) continue;
             // 汇流槽判据（legacy inValleyTrough）：垂直于下坡方向两侧任一更低 ⇒ 凸坡否决
-            if (!inValleyTrough(level, parent, k, nx, nz)) continue;
+            if (VALLEY_TROUGH && !inValleyTrough(level, parent, k, nx, nz)) continue;
             sources.add(k);
         }
         sources.sort((a, b) -> {

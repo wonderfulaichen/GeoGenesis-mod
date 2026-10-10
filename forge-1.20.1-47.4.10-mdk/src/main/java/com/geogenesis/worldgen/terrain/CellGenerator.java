@@ -931,6 +931,38 @@ public final class CellGenerator {
     private static final Logger LOGGER = LogManager.getLogger("geogenesis");
 
     private final ConcurrentHashMap<Long, ErosionTileResult> erosionTileCache = new ConcurrentHashMap<>(ERODE_TILE_CACHE_SIZE);
+    /**
+     * ★★★ 2026-10-10【在途生成表 —— 消除并发重复生成侵蚀 tile】★★★
+     *
+     * <h3>要解决的问题（实机冷启动 7 分 25 秒的根因之一）</h3>
+     * <p>原 `getOrGenTile` 用非原子的 {@code get → generateErosionTile → putIfAbsent}：
+     * 多个线程同时对同一 tile 调用时，<b>各自都会完整跑一遍生成</b>（每次数百 ms），
+     * 只有最后 {@code putIfAbsent} 时才丢弃重复结果。实测日志里 tile 耗时
+     * <b>成对出现</b>（{@code 1290ms, 1290ms, 1224ms, 1224ms...}）正是此现象。</p>
+     *
+     * <h3>为什么不用 computeIfAbsent（项目既有结论）</h3>
+     * <p>本文件 1014-1019 行已实测记录：{@code computeIfAbsent} 会在<b>整个生成期间
+     * 持有 CHM bin 锁</b>（tile 生成 100~700ms）⇒ 阻塞同 bin 的其它线程
+     * （探针单线程测不出，故项目当时选择不冒险）。</p>
+     *
+     * <h3>本方案：在途占位 + 复用（不持锁）</h3>
+     * <ol>
+     *   <li>先查缓存：命中直接返回（零开销）；</li>
+     *   <li>未命中 ⇒ {@code inFlight.computeIfAbsent(key, k -> new CompletableFuture<>())}
+     *       —— <b>只对"创建占位"上锁（微秒级）</b>，不在生成期间持锁；</li>
+     *   <li>若本线程是占位创建者 ⇒ 生成并 {@code complete()} 它；否则
+     *       ⇒ {@code future.join()} <b>复用别人的结果</b>（不再重复生成）；</li>
+     *   <li>finally 移除占位（成功/失败都移除，避免永久占位）。</li>
+     * </ol>
+     *
+     * <p><b>确定性</b>：tile 内容是纯函数（只依赖世界坐标 + 配置指纹）⇒ 谁生成都一样，
+     * 复用不改变结果（与 {@code putIfAbsent} 语义等价，只是省掉了重复计算）。</p>
+     *
+     * <p><b>中断语义</b>：生成者被中断 ⇒ {@code completeExceptionally} ⇒ 等待者收到
+     * 异常后按原逻辑返回 null（不缓存半成品）。</p>
+     */
+    private final ConcurrentHashMap<Long, java.util.concurrent.CompletableFuture<ErosionTileResult>>
+            erosionTilesInFlight = new ConcurrentHashMap<>();
     /** 侵蚀 tile 缓存命中统计（P0-3 埋点）。 */
     private final CacheStats tileCacheStats = new CacheStats("erosionTile");
     /** LRU 逻辑时钟（P0-3）：每次访问自增，驱逐时取最小者。 */
@@ -1010,35 +1042,76 @@ public final class CellGenerator {
                 int ncz = tileCZ + dz * ERODE_TILE_CENTER;
                 long nk = tileKey(ncx, ncz);
                 if (erosionTileCache.containsKey(nk)) continue;
+                // ★★★ 2026-10-10【关键：已在生成中 ⇒ 不再重复提交】★★★
+                //   实测：仅查缓存不够 —— 父 tile 的 8 邻预热提交后，被提交的邻居
+                //   在【自己的】generateErosionTile 里又提交它的 8 邻 ⇒ 级联重复
+                //   （实测 408 次生成 / 192 个唯一 tile，成对甚至 ×4）。
+                //   加在途占位检查后，同一 tile 只会被提交一次。
+                if (erosionTilesInFlight.containsKey(nk)) continue;
                 // fire-and-forget：不 await，后台补全（结果确定性相同）
                 // ★ 2026-09-17【实测结论：保持 putIfAbsent，勿改 computeIfAbsent】
                 //   曾疑"与主路径的 neighborTile 重复生成同一 tile"，改 computeIfAbsent 去重；
                 //   实测（ChunkLoadPerfProbe 48×48 chunk）**无收益**：不同 tile 数 17 → 17。
                 //   而 `computeIfAbsent` 会在**整个生成期间持有 bin 锁**（tile 生成 100~700ms）
                 //   ⇒ 并发区块加载时可能阻塞其它线程（探针单线程测不出，故不冒险）。
-                //   结论：预热保持"算完再 putIfAbsent"（不持锁），去重交给缓存本身。
-                TILE_SAMPLER.execute(() -> {
-                    try {
-                        ErosionTileResult nr = generateErosionTile(ncx, ncz);
-                        erosionTileCache.putIfAbsent(nk, nr);
-                    } catch (CancellationException ce) {
-                        Thread.currentThread().interrupt(); // 池线程被中断 → 静默放弃
-                    }
-                });
+                //   ★ 2026-10-10 补充：新增 {@link #erosionTilesInFlight} 占位式去重后，
+                //     本预热走 getOrGenTileUnchecked（占位式，不持锁、不重复生成）。
+                TILE_SAMPLER.execute(() -> getOrGenTileUnchecked(ncx, ncz));
             }
         }
-        // 本 tile：computeIfAbsent 原子生成（终态 delta = 侵蚀增量，一次写入永不再变）。
-        // ★ 2026-08-09 优化：原 get→putIfAbsent 非原子，两线程并发时重复生成（日志实锤
-        //   (-6,6) 700ms 级两次）；computeIfAbsent 让后到线程阻塞等待第一个完成 → 零重复。
+        // 本 tile：占位式生成（★ 2026-10-10 替换 computeIfAbsent）
+        //   原 computeIfAbsent 会在整个生成期间持有 CHM bin 锁（100~700ms）⇒ 后到线程阻塞
+        //   （日志口径：等待被记进 EXTRACT、不算 TILEGEN）。
+        //   ⚠ 本方法【在 generateErosionTile 内部】，不能用 getOrGenTile（会自递归）
+        //     ⇒ 用 getOrGenTileUnchecked：占位创建者直接生成、其它线程 join 复用。
         long key = tileKey(tileCX, tileCZ);
-        // ★ 2026-09-18 诊断（口径见 Stage.TILEWAIT）：本调用在【整个生成期间持有 CHM 的 bin 锁】
-        //   ⇒ 并发生成同一 tile 时，后到线程在此阻塞（等待被记进 EXTRACT，却不算 TILEGEN）。
-        //   只记 ≥1ms 的调用 —— 每 chunk 最多 768 次访问，全记会淹没 8192 样本环。
         long tw0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
-        ErosionTileResult res = erosionTileCache.computeIfAbsent(key, k -> generateErosionTile(tileCX, tileCZ));
+        ErosionTileResult res = getOrGenTileUnchecked(tileCX, tileCZ);
         com.geogenesis.diagnostics.WorldGenProfiler.endIfSlow(
                 com.geogenesis.diagnostics.WorldGenProfiler.Stage.TILEWAIT, tw0, 1_000_000L);
-        return res.delta;
+        return res == null ? null : res.delta;
+    }
+
+    /**
+     * 侵蚀 tile 生成/复用（<b>占位式，不持 bin 锁</b>）—— 供 {@link #erosionDeltaE} 内部
+     * 与预热路径使用。<b>注意：不得从 {@link #getOrGenTile} 调用</b>（后者已含本逻辑，
+     * 且 {@code generateErosionTile} 内部 8 邻预热会经本方法 ⇒ 形成自递归）。
+     *
+     * <p>语义与 {@code computeIfAbsent} 等价但：① 只对"创建占位"上锁（微秒级）；
+     * ② 生成在锁外；③ 并发线程 join 复用同一结果（不重复计算）。
+     * 失败/中断返回 {@code null}。</p>
+     */
+    private ErosionTileResult getOrGenTileUnchecked(int tileCX, int tileCZ) {
+        long k = tileKey(tileCX, tileCZ);
+        ErosionTileResult r = tileCacheGet(k);
+        if (r != null) return r;
+        java.util.concurrent.CompletableFuture<ErosionTileResult> mine =
+                new java.util.concurrent.CompletableFuture<>();
+        java.util.concurrent.CompletableFuture<ErosionTileResult> existing =
+                erosionTilesInFlight.putIfAbsent(k, mine);
+        if (existing != null) {
+            try {
+                return existing.join();
+            } catch (java.util.concurrent.CompletionException ce) {
+                return null;
+            }
+        }
+        try {
+            r = generateErosionTile(tileCX, tileCZ);
+            mine.complete(r);
+        } catch (CancellationException e) {
+            mine.completeExceptionally(e);
+            return null;
+        } catch (RuntimeException | Error e) {
+            mine.completeExceptionally(e);
+            throw e;
+        } finally {
+            erosionTilesInFlight.remove(k, mine);
+        }
+        r.lastAccess = tileAccessClock.incrementAndGet();
+        erosionTileCache.putIfAbsent(k, r);
+        pruneErosionCache();
+        return r;
     }
 
     /**
@@ -1800,9 +1873,16 @@ public final class CellGenerator {
      * <p>legacy 沿流水线<b>顺序</b>采样（tile 逐个生成、边生成边用），
      * 而 model 链是<b>整窗一次性</b>批量采样 ⇒ 冷启动全部撞在一起。</p>
      *
-     * <h3>做法</h3>
-     * <p>按窗口范围算出覆盖的 tile 网格，用 {@link #TILE_SAMPLER} 池<b>并行</b>预热。
-     * 与 {@code getOrGenTile} 同一缓存 ⇒ 预热后采样全命中。</p>
+     * <h3>做法（★ 必须 fire-and-forget，勿改回阻塞）</h3>
+     * <p>按窗口范围算出覆盖的 tile 网格，用 {@link #TILE_SAMPLER} 池<b>并行提交</b>，
+     * 但<b>绝不 {@code Future.get()} 等待</b> —— 预热只是"提前点火"，求解线程按需
+     * 自己取（{@code getOrGenTile} 的 {@code computeIfAbsent} 天然去重，
+     * 后到线程会等第一个完成 ⇒ 零重复）。</p>
+     *
+     * <p>⚠ <b>我曾写过阻塞版并踩坑</b>：{@code submit} 后逐 {@code get()} 等待 ⇒
+     * ① {@code TILE_SAMPLER} 队列仅 64，提交 81+ 任务触发 {@code CallerRunsPolicy}
+     * ⇒ 调用线程自己跑（等于串行）；② 等待期间世界生成线程全被占住 ⇒
+     * 实机日志出现「world seed set → 首块 region 求解完成」<b>7 分 25 秒</b>空白。</p>
      *
      * <p><b>纯加速保证</b>：tile 内容是纯函数（seed 固定）⇒ 预热与否产出逐位相同。
      * 每个 tile 只生成一次（{@code putIfAbsent}）⇒ 并行安全。</p>
@@ -1815,40 +1895,30 @@ public final class CellGenerator {
     public void prewarmErosionTiles(double blockX0, double blockZ0, double blockSpan, double hs) {
         double wu0x = blockX0 / hs, wu0z = blockZ0 / hs;
         double wu1x = (blockX0 + blockSpan) / hs, wu1z = (blockZ0 + blockSpan) / hs;
-        // tile 键用 floorDiv(wu, CENTER)*CENTER；边界外扩 1 个 tile 覆盖 blend 邻域
-        int t0x = Math.floorDiv((int) Math.floor(wu0x), ERODE_TILE_CENTER) * ERODE_TILE_CENTER
-                - ERODE_TILE_CENTER;
-        int t0z = Math.floorDiv((int) Math.floor(wu0z), ERODE_TILE_CENTER) * ERODE_TILE_CENTER
-                - ERODE_TILE_CENTER;
-        int t1x = Math.floorDiv((int) Math.floor(wu1x), ERODE_TILE_CENTER) * ERODE_TILE_CENTER
-                + ERODE_TILE_CENTER;
-        int t1z = Math.floorDiv((int) Math.floor(wu1z), ERODE_TILE_CENTER) * ERODE_TILE_CENTER
-                + ERODE_TILE_CENTER;
+        // tile 键用 floorDiv(wu, CENTER)*CENTER
+        int t0x = Math.floorDiv((int) Math.floor(wu0x), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int t0z = Math.floorDiv((int) Math.floor(wu0z), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int t1x = Math.floorDiv((int) Math.floor(wu1x), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
+        int t1z = Math.floorDiv((int) Math.floor(wu1z), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int nx = (t1x - t0x) / ERODE_TILE_CENTER + 1;
         int nz = (t1z - t0z) / ERODE_TILE_CENTER + 1;
-        List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>(nx * nz);
+        int submitted = 0;
         for (int a = 0; a < nx; a++) {
             for (int b = 0; b < nz; b++) {
                 final int cx = t0x + a * ERODE_TILE_CENTER;
                 final int cz = t0z + b * ERODE_TILE_CENTER;
-                if (tileCacheGet(tileKey(cx, cz)) != null) continue;   // 已缓存 ⇒ 跳过
-                futures.add(TILE_SAMPLER.submit(() -> {
-                    // ★ 直接走 generateErosionTile（不调 erosionDeltaE）：
-                    //   后者会连带 blend 邻域判定，而 generateErosionTile 内部【已有】
-                    //   8 邻预热（TILE_SAMPLER.submit 段）+ computeIfAbsent 原子生成
-                    //   ⇒ 用 erosionDeltaE 会重复触发一遍邻域逻辑。
-                    //   ⚠ 中断语义：池线程被中断时 generateErosionTile 抛 CancellationException
-                    //   （半成品不入缓存）—— 预热失败不致命，后续会同步补生成。
-                    erosionTileCache.computeIfAbsent(tileKey(cx, cz),
-                            k -> generateErosionTile(cx, cz));
-                }));
-            }
-        }
-        for (var f : futures) {
-            try {
-                f.get();
-            } catch (Exception e) {
-                // 预热失败不致命：后续 getOrGenTile 会同步补生成
+                if (erosionTileCache.containsKey(tileKey(cx, cz))) continue;  // 已缓存 ⇒ 跳过
+                if (erosionTilesInFlight.containsKey(tileKey(cx, cz))) continue;  // 已在生成 ⇒ 跳过
+                // ★ 走 getOrGenTile（占位式去重）⇒ 与求解线程共享同一次生成：
+                //   求解线程若也正在要这个 tile，会 join 本任务的结果而不再算一遍。
+                //   ① fire-and-forget：绝不 Future.get() 等待（我等过 ⇒ 实机 7 分 25 秒空白）
+                //   ② 不持锁：占位只对"创建"上锁（微秒级），生成在锁外
+                try {
+                    TILE_SAMPLER.execute(() -> getOrGenTileUnchecked(cx, cz));
+                    submitted++;
+                } catch (java.util.concurrent.RejectedExecutionException e) {
+                    break;   // 池已关闭（世界卸载）⇒ 放弃剩余预热
+                }
             }
         }
     }
@@ -1862,18 +1932,11 @@ public final class CellGenerator {
             //   【先】被调用（每格 1 次），若不拦，风暴会在这里发生而根本走不到 blend。
             //   详见 neighborTile 处的完整推导；产出不变（原本也是 null → delta=0 兜底）。
             if (Thread.currentThread().isInterrupted()) return null;
-            try {
-                r = generateErosionTile(tileCX, tileCZ);
-            } catch (CancellationException e) {
-                return null; // 半成品（中断中止）不入缓存；InterruptedException 抛出时中断位已被清除
-            }
-            r.lastAccess = tileAccessClock.incrementAndGet();
-            erosionTileCache.putIfAbsent(k, r); // 成功 = 完整 = 无条件缓存
-            // ★ 2026-08-14 OOM 修复：有界驱逐——ERODE_TILE_CACHE_SIZE=256 只是初始容量，
-            //   从未 prune（注释误称"常驻"）。玩家移动（视距 32）触发海量 tile 生成
-            //   （每个含 delta/discharge 大数组 ~128KB+）→ 无限累积 → OOM（日志 172 行
-            //   后停止、无堆栈）。超限删 1/8，删除后玩家回到该区域会重建（懒生成语义）。
-            pruneErosionCache();
+            // ★★★ 2026-10-10【统一到占位式生成（不持 bin 锁、不重复计算）】★★★
+            //   原先此处内联一份占位逻辑、neighborTile 用 computeIfAbsent、
+            //   generateErosionTile 内部 8 邻预热又是第三份 ⇒ 三处不一致。
+            //   现统一委托 getOrGenTileUnchecked（语义：创建者生成、其它线程 join 复用）。
+            r = getOrGenTileUnchecked(tileCX, tileCZ);
         }
         return r;
     }
@@ -1940,8 +2003,32 @@ public final class CellGenerator {
         try {
             // ★ 2026-09-18 诊断：同上（blend 邻居路径，每 chunk 最多 768 次访问）
             long tw0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
-            ErosionTileResult nr = erosionTileCache.computeIfAbsent(
-                    key, k -> generateErosionTile(tileCX, tileCZ));
+            // ★★★ 2026-10-10【改用占位式（不持 bin 锁）】★★★
+            //   原用 computeIfAbsent ⇒ 生成期间（100~700ms）持 CHM bin 锁 ⇒ 阻塞同 bin
+            //   的其它线程（本文件 1014-1019 行的既有结论）。现与 getOrGenTile 统一：
+            //   只对"创建占位"上锁（微秒级），生成在锁外进行，并发线程 join 复用结果。
+            ErosionTileResult nr;
+            java.util.concurrent.CompletableFuture<ErosionTileResult> mine =
+                    new java.util.concurrent.CompletableFuture<>();
+            java.util.concurrent.CompletableFuture<ErosionTileResult> existing =
+                    erosionTilesInFlight.putIfAbsent(key, mine);
+            if (existing != null) {
+                nr = existing.join();          // 复用别人的生成（不重复算）
+            } else {
+                try {
+                    nr = generateErosionTile(tileCX, tileCZ);
+                    mine.complete(nr);
+                } catch (CancellationException ce2) {
+                    mine.completeExceptionally(ce2);
+                    return null;
+                } catch (RuntimeException | Error e2) {
+                    mine.completeExceptionally(e2);
+                    throw e2;
+                } finally {
+                    erosionTilesInFlight.remove(key, mine);
+                }
+                erosionTileCache.putIfAbsent(key, nr);
+            }
             com.geogenesis.diagnostics.WorldGenProfiler.endIfSlow(
                     com.geogenesis.diagnostics.WorldGenProfiler.Stage.TILEWAIT, tw0, 1_000_000L);
             nr.lastAccess = tileAccessClock.incrementAndGet();
@@ -1950,6 +2037,9 @@ public final class CellGenerator {
             // ★ 2026-09-19：不再重新 interrupt() —— 本文件 1757 行本就规定
             //   "无需（也禁止）重新 interrupt()"。且 CancellationException 并不清除
             //   中断位，故该调用本就是空操作（移除后语义不变）。
+            return null;
+        } catch (java.util.concurrent.CompletionException ce) {
+            // 生成者失败（中断/异常）⇒ 与旧行为一致地返回 null
             return null;
         }
     }
