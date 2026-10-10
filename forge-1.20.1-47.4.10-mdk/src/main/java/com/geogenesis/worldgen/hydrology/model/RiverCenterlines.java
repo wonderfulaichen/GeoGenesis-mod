@@ -361,6 +361,37 @@ public final class RiverCenterlines {
         return new Result(reaches, normDist, halfW, depth, channel, dropped);
     }
 
+    /**
+     * ★ 从现成河段表直接建距离场（2026-10-10 骨架 A/B 用）。
+     *
+     * <p>{@link DeterministicSkeleton} 的追踪结果转成 {@link Reach} 后，
+     * 走本入口跳过「累积→阈值→细化→切段」全流程，只做③距离场扫掠
+     * ⇒ 几何与旧路径同源（{@link #paintSegment}），只是河段来源不同。</p>
+     *
+     * @param cellSize 每格块数（生产 STEP=4 ⇒ 4.0）
+     */
+    public static Result fromReaches(List<Reach> reaches, int nx, int nz, double cellSize) {
+        int cells = nx * nz;
+        double[] normDist = new double[cells];
+        double[] halfW = new double[cells];
+        double[] depth = new double[cells];
+        Arrays.fill(normDist, Double.POSITIVE_INFINITY);
+        boolean[] channel = new boolean[cells];
+        int dropped = 0;
+        for (Reach reach : reaches) {
+            if (reach.cell.length < 2) { dropped++; continue; }
+            for (int i = 1; i < reach.cell.length; i++) {
+                paintSegment(reach, i - 1, i, nx, nz, normDist, halfW, depth, channel, cellSize);
+            }
+        }
+        return new Result(reaches, normDist, halfW, depth, channel, dropped);
+    }
+
+    /** {@code cellSize=1} 便捷入口。 */
+    public static Result fromReaches(List<Reach> reaches, int n) {
+        return fromReaches(reaches, n, n, 1.0);
+    }
+
     /** 从 seed 沿骨架走一条段，尽量走直（优先非顶点邻居），并定向为上游→下游。
      *  {@code cellSize} = 每格块数：宽度/岸高/坡度是 block 物理量，走链/绘制在格空间。 */
     private static void traceBranch(boolean[] skeleton, boolean[] vertex, boolean[] used,

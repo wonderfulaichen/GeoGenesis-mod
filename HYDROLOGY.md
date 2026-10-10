@@ -350,9 +350,78 @@ RiverCenterlines L496: max(cellSize, halfCells * cellSize)
 
 修法：地板改常量 `MIN_HALF_BLOCKS = 0.5`（游戏里水的最小单位恒为 1 块，与步长无关）。
 
+## 六b、★ 2026-10-10：确定性骨架 + 三项形态修复（**用户判据驱动，已落地**）
+
+> 本节是 `DeterministicSkeleton` 的当前事实。开关 `-Dgeogenesis.skeletonTrace=true`
+> （骨架模式，model 链内二选一）+ `-Dgeogenesis.skeletonCrossPass`（双 pass 续流，默认开）。
+
+### 用户判据（三轮迭代）
+
+1. 「河流必须确定性骨架」（§〇②）→ `DeterministicSkeleton` 落地；
+2. 「很多短碎河流 / 一小部分截断 / 反复交叉重叠」→ 三项修复（见下）；
+3. 「两湖太近导致河短」→ 溢口门限覆盖大半；「多段反复缠绕是垂直精度太高导致抖动」
+   → **谷底取小采样**（见下，用户的"垂直精度应对应独立单位"判断核实属实）。
+
+### 三项修复与量化（正典 r=700 同参 A/B）
+
+| # | 修复 | 根因 | 效果（用户截图版 → 现在） |
+|---|---|---|---|
+| 1 | **溢口起链加成河门限** | `basinOutlet` 无条件起链：湖占 5.24% ⇒ 每个盆地溢口都吐一条河。实测铁证 `[HYDRO-SRC] sources=0 traces=48`（源头筛光但河还在=全来自溢口）。**legacy 没有这一步**（河道全部来自流量掩码，湖只是终止条件） | 碎点≤5格 23→**6**（−74%）；短段≤20格 45→**10**（−78%） |
+| 2 | **成河门限改绝对集水** | 旧 `n²×0.003` 是"占窗口比例"：legacy 窗口 1536 block ⇒ 7078 block²；我方 708 block ⇒ 1504 block² = **legacy 的 1/4.7** ⇒ 遍地成河。新口径 `chanMinCells×runoff`（discharge 单位 = 上游格数×runoff，实测 runoff=0.0192 校准） | 河格 1.16%→**0.85%**（参照 1.30%） |
+| 3 | **谷底取小采样**（用户垂直精度判断） | bed 单点采样 ⇒ MC block 级垂直噪声泄漏进 D8"谁更低"判定 ⇒ 坡面流向逐格抖动=锯齿缠绕。legacy `buildSkeletonRivers` 2026-09-22 已做（4 角最小值）。实现于 `WindowOutlets.build`（`-Dgeogenesis.valleyMin=false` 退回） | **中位分量 37→111（×3）**；真断口 34→**8**（−76%） |
+
+另补齐 legacy 三件套：`minNodes=6`（legacy `minRiverNodes=3`×尺度2）、
+`selfApproach` 半径 4 豁免 12（legacy 2/6×尺度2）、**交叉守卫** `segmentCrossesAny`
+（legacy `nearbyDownhillNode` 里 `_wouldCrossExistingSegments`，我此前漏掉）。
+
+### 尺度换算表（★ 勿再推错）
+
+| 项 | legacy（`SKELETON_CELL_BLOCKS=8`）| 我方（`STEP=4`）| 换算 |
+|---|---|---|---|
+| 格距 | 8 block | 4 block | 我方 1 格 = legacy 半格 ⇒ legacy 格数阈值 ×2 |
+| 成河门限 | 110 格 | `chanMinCells=150` | 按实测 runoff 校准，非比例折算 |
+| `minRiverNodes` | 3 格 | 6 格 | ×2 |
+| `SELF_APPROACH_RADIUS` | 2 格 | 4 格 | ×2 |
+
+### ⚠ 我在本轮犯的错（防重犯）
+
+1. **`maxRivers=27` 亲手砍断主干**：凭"每 1000 block 折算 legacy 80"设了上限 ⇒
+   河道 −38%、最大连通分量 4252→1823。单变量 A/B 证否后回退默认 0。
+   **教训：legacy 的 `riverCount` 是"尝试数"且其 region 大我方 9 倍，数字不可移植。**
+2. **门限单位连错两次**：先当 block² 写 7078（>maxQ 234 ⇒ `sources=0`），
+   再除 STEP²（门限过激 ⇒ 多 region traces=0）。最后靠实测分布
+   `[discharge] max=234 P99=57 runoff=0.0192` 校准。**教训：单位先实测再推算。**
+3. **`minNodes` 丢弃链时整条释放 `covered`** ⇒ 把别的链的 JOIN 终点（别人内部节点）
+   也释放 ⇒ 后继链穿过 ⇒ `SkeletonProbe [4]` 双占 FAIL。改为只释放本链新占格。
+4. **跨区续流 v1 方向场接不上**（发送方窗外地形最陡下降 ≠ 接收方 minimax 树）
+   ⇒ 缝上断口 5→9 反增。改为 legacy 双 pass：pass-1 各区独立产 `ExitSeed`，
+   pass-2 由接收方用自己的 parent 追（`collectIncoming`）⇒ 缝上断口 5→1。
+
+### 残余（如实，2026-10-10 用户目检"还行"）
+
+1. **陡坡紧密阶梯**（度4+ 转角密集 415 个）—— D8 八方向量化 + parent 逐格决策，
+   用户确认观感可接受；候选修法 = legacy `traceStep=2` 跳格追踪（未做）。
+2. **平地径向直线**（125+ 格零弯曲对角线）—— minimax 洪泛"弹出顺序≈指向最近出口"
+   （`EquilibriumWater:244` 注释自述），即 HANDOFF §17.6 已定位的流向欠定。
+3. **真十字交叉 11 个 / 2×2 重叠 48 个** —— 量小，未处理。
+4. **最大分量 3322** vs 参照 12,636 —— 主干仍偏短，待用户目检后定方向。
+
+### 新增诊断旋钮（骨架）
+
+```
+-Dgeogenesis.skeletonTrace=true         骨架模式开关（model 链内二选一）
+-Dgeogenesis.skeletonCrossPass=false    双 pass 续流开关（默认开）
+-Dgeogenesis.channelMinCells=150        成河门限（绝对集水，格）
+-Dgeogenesis.valleyMin=false            谷底取小采样开关（默认开）
+-Dgeogenesis.skeletonMinNodes=6         长度下限（格）
+-Dgeogenesis.skeletonSelfRadius=4       自贴近半径（格）
+-Dgeogenesis.skeletonSelfExempt=12      自贴近豁免步数
+-Dgeogenesis.logSrc=true                打印 srcAccum/runoff/maxQ/traces 归因
+```
+
 ### 未解决（如实）
 
-1. **★ 河道确定性骨架**（§〇② 的核心目标）—— **尚未开工**，见上方两类伪影
+1. **★ 河道确定性骨架**（§〇② 的核心目标）—— **已开工并落地**（本节），残余见 §六b
 2. **R1 已修但未验收**：`-Dhydro.viaProvider=true` 可用，但尚未成为默认
 3. **湖精确率 63%**：位置对（93%），但偏宽（多 3.4 万格）
 4. **`HALO` 取值未定**：照侵蚀比例应为 `HALO ≥ REGION`，但实测湖量随之变化

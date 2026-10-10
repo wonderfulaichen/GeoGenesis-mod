@@ -168,6 +168,7 @@ public final class ModelHydrologyProvider {
     /** 单 region 求解产物（不可变；发布后只读 ⇒ LRU 淘汰不影响在途读者）。 */
     private record RegionData(HydrologyPipeline.Result pipe,
                               RiverCenterlines.Result centerline,
+                              SegmentIndex skeletonSeg,
                               int originX, int originZ) { }
 
     private final CellGenerator gen;
@@ -203,6 +204,37 @@ public final class ModelHydrologyProvider {
 
     /** 缓存键 = (世界种子, region 坐标) —— 见 {@link #SHARED_CACHE} 的 javadoc。 */
     private record CacheKey(long seed, int rx, int rz) { }
+
+    /**
+     * ★ 2026-10-10【pass-1（双 pass 续流的"发送"阶段）】。
+     *
+     * <h3>为什么要分出 pass-1</h3>
+     * <p>跨区续流必须让【接收方】用它自己的 {@code parent} 树追进来（方向场统一）。
+     * 但接收方要知道"哪个邻区朝我吐了河"⇒ 得先有邻区的出口种子；而出口种子
+     * 需要邻区跑完管线。若 {@code solve} 直接这么做，就会出现
+     * <b>solve → 8 邻 solve → 64 邻 solve…</b> 的递归爆炸。</p>
+     *
+     * <p>⇒ 拆成两层：{@link #regionPass1} <b>只跑管线 + 无接力的骨架</b>
+     * （产出 {@link DeterministicSkeleton.Result#exitSeeds}），<b>绝不触碰任何邻区</b>
+     * ⇒ 扇出恒为 1；{@link #solve} 才取 8 邻的 pass-1 拼出 {@code RegionData}。</p>
+     *
+     * <p>⚠ 这也是 {@link #schedulePreheat} 改为预热 <b>pass-1</b> 而非 {@code solve}
+     * 的原因 —— 否则 4 个预热各带 8 个邻区 ⇒ 32 次管线白跑。</p>
+     */
+    private static final LinkedHashMap<CacheKey, Pass1> P1_CACHE =
+            new LinkedHashMap<>(32, 0.75f, true);
+    private static final ConcurrentHashMap<CacheKey, CompletableFuture<Pass1>> P1_INFLIGHT =
+            new ConcurrentHashMap<>();
+
+    /**
+     * pass-1 产物：管线结果 + 出口种子（无接力时的骨架产出）。
+     *
+     * @param pipe      管线结果（本区窗口的 level/parent/lake/sea/discharge/basinOutlet）
+     * @param exitSeeds 走到本窗口边框的链（交给朝向的邻区接力）
+     */
+    private record Pass1(HydrologyPipeline.Result pipe,
+                         List<DeterministicSkeleton.ExitSeed> exitSeeds,
+                         int originX, int originZ) { }
 
     private final ExecutorService preheat;
     private final AtomicInteger preheatQueue = new AtomicInteger();
@@ -272,6 +304,10 @@ public final class ModelHydrologyProvider {
             SHARED_CACHE.keySet().removeIf(k -> k.seed() != newSeed);
         }
         SHARED_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
+        synchronized (P1_CACHE) {
+            P1_CACHE.keySet().removeIf(k -> k.seed() != newSeed);
+        }
+        P1_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
     }
 
     /** 兼容旧语义：完全清空共享缓存（换世界时由 setSeed 按 seed 处理）。 */
@@ -280,6 +316,10 @@ public final class ModelHydrologyProvider {
             SHARED_CACHE.clear();
         }
         SHARED_INFLIGHT.clear();
+        synchronized (P1_CACHE) {
+            P1_CACHE.clear();
+        }
+        P1_INFLIGHT.clear();
     }
 
     /**
@@ -368,6 +408,288 @@ public final class ModelHydrologyProvider {
         return sb.toString();
     }
 
+    // ==========================================================================
+    // 2026-10-10 确定性骨架（A/B 开关 `-Dgeogenesis.skeletonTrace=true`）
+    //
+    // 用户方向（HYDROLOGY.md 用户口径②③ + 2026-10-10 会话）：
+    //   河流做成确定性骨架（PL-RGA 式沿 minimax 树追踪 + 湖溢口续流），
+    //   model 链是 legacy 链的升级版 —— legacy 的既有机制必须继承。
+    //
+    // 开关 true 时用 DeterministicSkeleton 替代 RiverCenterlines（累积->阈值->细化）；
+    // 默认 false = 旧路径逐位不变（A/B 对照基线）。
+    // ==========================================================================
+    static final boolean SKELETON_TRACE = Boolean.getBoolean("geogenesis.skeletonTrace");
+
+    /**
+     * 双 pass 跨区续流总开关（`-Dgeogenesis.skeletonCrossPass=false` 关闭）。
+     *
+     * <p>关 = 完全不取邻区出口种子（等价于"无跨区续流"），用于 A/B 归因；
+     * 开（默认）= {@link #collectIncoming} 给 pass-2 注入接力种子。</p>
+     */
+    static final boolean CROSS_PASS =
+            !"false".equals(System.getProperty("geogenesis.skeletonCrossPass"));
+
+    /**
+     * 断口现场 watch（`-Dgeogenesis.gapWatch=x1,z1;x2,z2`）：
+     * 对指定世界坐标方块打印落块判据全链（isLake/half/dist/onChannel/fill/nearBorder）
+     * ⇒ 一次跑定位"断口是几何未覆盖、湖掩码覆盖、还是落块门控"。
+     */
+    static final java.util.Set<Long> GAP_WATCH = parseGapWatch();
+
+    private static java.util.Set<Long> parseGapWatch() {
+        java.util.Set<Long> s = new java.util.HashSet<>();
+        String v = System.getProperty("geogenesis.gapWatch", "");
+        for (String part : v.split(";")) {
+            String[] xy = part.trim().split(",");
+            if (xy.length != 2) continue;
+            try {
+                long x = Long.parseLong(xy[0].trim());
+                long z = Long.parseLong(xy[1].trim());
+                s.add((x << 32) ^ (z & 0xffffffffL));
+            } catch (NumberFormatException ignored) { }
+        }
+        return s;
+    }
+
+    /** 端点类型表收集（`-Dgeogenesis.skeletonEndDiag=true`，断口归因用）。 */
+    static final boolean SKELETON_END_DIAG = Boolean.getBoolean("geogenesis.skeletonEndDiag");
+
+    /** 源头门限诊断（`-Dgeogenesis.logSrc=true`）：打印 srcAccum / runoff / maxQ。 */
+    static final boolean LOG_SRC = Boolean.getBoolean("geogenesis.logSrc");
+
+    private static double maxDischarge(double[] d) {
+        double m = 0;
+        for (double v : d) if (Double.isFinite(v) && v > m) m = v;
+        return m;
+    }
+    static final java.util.List<String> SKELETON_ENDS =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+    /**
+     * 骨架折线 dump（`-Dgeogenesis.skelDump=x,z,r`）：
+     * 打印所有经过 [x±r, z±r] 方块的折线点序列 ⇒ 断口现场的直接证据
+     * （点序列有无洞、洞在哪两点之间，一次说清）。
+     */
+    static final String SKEL_DUMP = System.getProperty("geogenesis.skelDump", "");
+
+    /** 骨架模式的 region 产物：日志用 cl（Reach 表）+ 落块用亚格段索引 + 出口种子（接力用）。 */
+    private record SkeletonRegion(RiverCenterlines.Result cl, SegmentIndex seg,
+                                  List<DeterministicSkeleton.ExitSeed> exitSeeds) { }
+
+    /**
+     * 从 {@link DeterministicSkeleton} 构建 region 骨架。
+     *
+     * <p><b>参数口径</b>（全部对齐 legacy，见 {@code DeterministicSkeleton.Params}）：</p>
+     * <ul>
+     *   <li>源头间距 = {@code -Dgeogenesis.sourceSpacing}（默认 24 块，折算 /STEP 格）；</li>
+     *   <li>源头面积下限 = {@code n² × 0.003} 集水（legacy 骨架
+     *       {@code thr = gridN²×0.003} 同值；{@code -Dgeogenesis.skeletonSourceFrac} 可 A/B）；</li>
+     *   <li>就近汇入窗口 = 2 格（legacy {@code traceStep}）；</li>
+     *   <li>meander 默认关（amp=0，用户 2026-10-10："弯曲先移除，我后面重新设计"）；
+     *       重设计时用 {@code -Dgeogenesis.skeletonMeanderAmp}（legacy 默认 6.0 / 波长 24）开；</li>
+     *   <li>分支上限 {@code -Dgeogenesis.skeletonMaxRivers}（legacy {@code riverCount} 同义；0=关）。</li>
+     * </ul>
+     *
+     * <p><b>几何源</b>：形态收尾后是亚格 block 折线（Catmull-Rom + 格点吸附），
+     * 与落块侧 {@link SegmentIndex} 同一坐标语义 ⇒ 逐块连续、无 STEP 方块化。
+     * 宽度/深度恒定最小可见值（用户方针：宽度后续用流量平滑处理）。</p>
+     *
+     * @param incomingCells 接力种子（<b>本区</b>格索引；来自 8 邻 pass-1 的出口种子。
+     *                      空 = pass-1（不接力，只产出出口种子））
+     * @param primary       true = 主 pass（打日志 / 收集端点表）；
+     *                      false = pass-1（静音 —— 否则每个 region 的日志翻倍）
+     */
+    private SkeletonRegion skeletonRegion(HydrologyPipeline.Result p,
+                                          int originX, int originZ,
+                                          List<Integer> incomingCells, boolean primary) {
+        int n = p.nx();
+        // 源头间距（block）：legacy `sourceSpacingCells=2` × SKELETON_CELL_BLOCKS=8
+        //   ⇒ 16 block（其注释写"≈48wu"= 24wu ≈ 48 block，按 wu 口径；骨架路径按格 ⇒ 16 block）。
+        //   我方沿用 block 语义 ⇒ 默认 24 block（略宽于 legacy 16，抑制过密）。
+        int spacingBlocks = Integer.getInteger("geogenesis.sourceSpacing", 24);
+        int spacingCells = Math.max(1, Math.round(spacingBlocks / (float) STEP));
+        double runoff = p.lakeResult() == null ? 0.0 : p.lakeResult().runoffPerCell();
+        double meanderAmp = Double.parseDouble(
+                System.getProperty("geogenesis.skeletonMeanderAmp", "0.0"));
+        // ★★★ 2026-10-10【默认 0 = 不限制 —— 实测归因后的决定，勿凭"legacy 有 80"就照抄】★★★
+        //
+        // 【我曾设 27】理由："按每 1000 block 边长折算 legacy riverCount=80"。
+        // 【实测证否（同参 r=700 单变量 A/B）】：
+        //   全开(maxRivers=27) ⇒ 河道 14000 格 / 分量 5297
+        //   关掉(maxRivers=0)  ⇒ 河道 22475 格 / 分量 7995
+        //   ⇒ 河道 −38% 几乎【全是这个上限砍的】，且【最大连通分量 4252 → 1823（−57%）】
+        //      = 主干链被数量上限切断（用户判据"截断"反而恶化）。
+        // 【为什么 legacy 能用 80 而我方不能用】legacy `riverCount` 计的是
+        //   【commitRiver 的尝试数】，且它的 region 含 margin 后是 1536 block 边长
+        //   （640wu × hs2.0 = 1280 block，再加 SKELETON_MARGIN 128×2）⇒ 面积是我方的 9 倍。
+        //   且 legacy 的源头候选已被 `SOURCE_MIN_ACCUM_CELLS` 等判据大幅收窄，
+        //   80 是"上限"而非常规命中数。直接照抄数字 = 刻舟求剑。
+        // 【结论】不设上限，交给"源头判据 + minNodes + 自贴近"去控密度。
+        int maxRivers = Integer.getInteger("geogenesis.skeletonMaxRivers", 0);
+        // ★★★ 2026-10-10【成河门限改为【绝对集水面积】—— 这是"短碎河流"的真正根因】★★★
+        //
+        // 【旧口径（错）】门限 = n² × frac = 窗口格数的 0.3%。
+        // 【为什么错】"成河"是物理判据（绝对集水面积），不是"占窗口的比例"。
+        //     legacy 窗口 = 192 格 × 8 block ⇒ 0.3% = **110 格** ≈ 7078 block²
+        //     我方窗口 = 177 格 × 4 block ⇒ 0.3% = **94 格** ≈ 1504 block²
+        //   ⇒ 我方门限只有 legacy 的 1/4.7 ⇒ 遍地都是"河"。
+        //
+        // 【换算（★ 单位实测校准过，勿凭直觉改）】
+        //   `runoffPerCell = precipitation × runoffCoeff × cellArea`（LakeWaterBalance:392），
+        //   `RiverNetwork.build` 里 `discharge[k]` 初值就是它、沿 parent 累加
+        //   ⇒ **discharge 单位 = 上游格数 × runoffPerCell**。
+        //   实测（正典 r=300）：`runoff=0.01920`、`maxQ≈234`、`P99≈57`
+        //   ⇒ legacy 等价门限 = 440 格 × 0.0192 = **8.45**（不是 7078！）。
+        //   ⚠ 我一度把门限当成 block² 直接写 7078 ⇒ 高于 maxQ ⇒ `sources=0`，
+        //     而残存的河【全部来自 basinOutlet 强制起链】（见 DeterministicSkeleton
+        //     的溢口门限说明）⇒ 那才是"提高门限看似无效"的原因。
+        //
+        //   公式：srcAccum = 目标格数 × runoff，目标格数 = 110 × (8/STEP)² = 440
+        double chanMinCells = Double.parseDouble(
+                System.getProperty("geogenesis.channelMinCells", "150"));
+        double srcAccum = runoff > 0 ? chanMinCells * runoff : 0.0;
+        // ★★★ 2026-10-10【三项 legacy 机制补齐（用户判据驱动）】★★★
+        //
+        // 【用户报的三个问题】① 很多短碎河流 ② 一小部分截断 ③ 反复交叉/重叠。
+        // 【共同根因】我只移植了 legacy 的"追踪 + 汇入"，漏了它【过滤】的一半：
+        //   · minRiverNodes（长度下限）—— 短段不丢 ⇒ 短碎河流；
+        //   · riverCount（数量上限）—— 源头不限 ⇒ 河网过密；
+        //   · SELF_APPROACH（自贴近守卫）—— 只排自己节点 ⇒ 擦身绕行 = 交叉重叠。
+        //
+        // 【尺度换算（关键）】legacy `buildSkeletonRivers` 用 `SKELETON_CELL_BLOCKS=8`
+        //   （block），我方 STEP=4 ⇒ **我方 1 格 = legacy 半格** ⇒ legacy 的格数阈值
+        //   须**乘 2** 才等价：
+        //     minRiverNodes  3 格(legacy) × 8 ÷ 4 = **6 格**（我方）
+        //     SELF_APPROACH_RADIUS 2 格 × 8 ÷ 4 = **4 格**（我方）
+        //     SELF_APPROACH_EXEMPT 6 步 × 2 = **12 步**（我方）
+        //   ⚠ 若直接照抄 legacy 数字，判据会【过松】（半径 2 格在我方只覆盖 8 block）。
+        int legacyToOurs = Math.max(1, 8 / STEP);                  // 8 block / STEP
+        // ★ 单变量 A/B 开关（2026-10-10 归因用）—— 每项可独立关掉（0 = 关）：
+        //   -Dgeogenesis.skeletonMinNodes=6 / skeletonSelfRadius=4 / skeletonMaxRivers=27
+        int minNodes = Integer.getInteger("geogenesis.skeletonMinNodes", 3 * legacyToOurs);
+        int selfRadius = Integer.getInteger("geogenesis.skeletonSelfRadius", 2 * legacyToOurs);
+        int selfExempt = Integer.getInteger("geogenesis.skeletonSelfExempt", 6 * legacyToOurs);
+        var skParams = new DeterministicSkeleton.Params(
+                spacingCells,
+                srcAccum,                            // ★ 绝对集水面积门限（见上方 javadoc）
+                2,                                   // 就近汇入窗口（legacy traceStep）
+                meanderAmp, 24.0,
+                maxRivers,
+                minNodes,                            // legacy minRiverNodes=3
+                selfRadius,                          // legacy SELF_APPROACH_RADIUS=2
+                selfExempt);                         // legacy SELF_APPROACH_EXEMPT=6
+        var sk = DeterministicSkeleton.build(
+                p.level(), p.parent(), p.resolved(), p.lake(), p.sea(),
+                p.discharge(), p.lakeResult() == null ? null : p.lakeResult().basinOutlet(),
+                n, n, skParams, incomingCells);
+        if (SKELETON_END_DIAG || LOG_SRC) {
+            LOGGER.info("[HYDRO-SRC] srcAccum={} runoff={} traces={} sources={} maxQ={}",
+                    String.format("%.1f", srcAccum), String.format("%.5f", runoff),
+                    sk.traces.size(), sk.sourcesTotal, String.format("%.1f", maxDischarge(p.discharge())));
+        }
+        // 亚格几何（Catmull-Rom + 格点吸附）→ SegmentIndex（落块用）
+        var shaped = DeterministicSkeleton.shape(sk.traces, p.level(),
+                originX, originZ, STEP, n, n, skParams);
+        List<DeterministicSkeleton.Shaped> allPolys = shaped;
+        // 断口现场：dump 折线点序列（`-Dgeogenesis.skelDump=x,z,r`，多框用 ';' 分隔）
+        if (!SKEL_DUMP.isEmpty()) {
+            for (String box : SKEL_DUMP.split(";")) {
+                String[] pt = box.trim().split(",");
+                if (pt.length < 2) continue;
+                double qx = Double.parseDouble(pt[0].trim());
+                double qz = Double.parseDouble(pt[1].trim());
+                double qr = pt.length > 2 ? Double.parseDouble(pt[2].trim()) : 24;
+                boolean anyHit = false;
+                for (int pi = 0; pi < shaped.size(); pi++) {
+                    var sh = shaped.get(pi);
+                    boolean near = false;
+                    for (int i = 0; i < sh.size(); i++) {
+                        if (Math.abs(sh.x[i] - qx) <= qr && Math.abs(sh.z[i] - qz) <= qr) {
+                            near = true;
+                            break;
+                        }
+                    }
+                    if (!near) continue;
+                    anyHit = true;
+                    var tr = sk.traces.get(pi);
+                    int sc0 = tr.sourceCell(), mc0 = tr.mouthCell();
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < sh.size(); i++) {
+                        if (Math.abs(sh.x[i] - qx) <= qr + 10
+                                && Math.abs(sh.z[i] - qz) <= qr + 10) {
+                            sb.append(String.format("(%.1f,%.1f)", sh.x[i], sh.z[i]));
+                        }
+                    }
+                    LOGGER.info("[SKEL-DUMP] box({},{}) poly#{} n={} end={} fromOutlet={}"
+                                    + " src=({},{}) mouth=({},{}) 近区点: {}",
+                            qx, qz, pi, sh.size(), tr.end, tr.fromOutlet,
+                            originX + (sc0 / n) * STEP, originZ + (sc0 % n) * STEP,
+                            originX + (mc0 / n) * STEP, originZ + (mc0 % n) * STEP,
+                            sb);
+                }
+                if (!anyHit && Math.abs(originX - (qx - 352)) < 300) {
+                    LOGGER.info("[SKEL-DUMP] box({},{}) 本窗口无折线经过", qx, qz);
+                }
+            }
+        }
+        SegmentIndex seg = allPolys.isEmpty() ? SegmentIndex.EMPTY
+                : SegmentIndex.buildFromNodes(allPolys);
+        // 格路径 Reach（日志 reachCount 用；宽度恒最小可见值）
+        List<RiverCenterlines.Reach> reaches = new ArrayList<>();
+        for (var t : sk.traces) {
+            int m = t.nodeCount();
+            int[] cell = new int[m];
+            double[] q = new double[m];
+            double[] w = new double[m];
+            double[] d = new double[m];
+            for (int i = 0; i < m; i++) {
+                cell[i] = t.cell[i];
+                q[i] = p.discharge()[cell[i]];
+                w[i] = 1.0;    // 全宽 1 块（半宽 0.5）—— 用户方针：宽度后续再说
+                d[i] = 1.0;
+            }
+            reaches.add(new RiverCenterlines.Reach(cell, q, w, d, 0));
+        }
+        int mouthsLake = 0, mouthsSea = 0, joins = 0, unresolved = 0, deadEnd = 0;
+        for (var t : sk.traces) {
+            switch (t.end) {
+                case MOUTH_LAKE -> mouthsLake++;
+                case MOUTH_SEA -> mouthsSea++;
+                case JOIN -> joins++;
+                case UNRESOLVED -> unresolved++;
+                case DEAD_END -> deadEnd++;
+            }
+        }
+        // DEAD_END = parent=-1 且非海非湖（窗口排水根）—— 断口归因的头号嫌疑。
+        if (primary) {
+            LOGGER.info("[HYDRO-SKELETON] traces={} sources={} droppedBySpacing={} outletStarts={}"
+                            + " incomingStarts={} ends: lake={} sea={} join={} unresolved={}"
+                            + " DEAD_END={} exitSeeds={}",
+                    sk.traces.size(), sk.sourcesTotal, sk.sourcesDroppedBySpacing,
+                    sk.outletStarts, sk.incomingStarts, mouthsLake, mouthsSea, joins,
+                    unresolved, deadEnd, sk.exitSeeds.size());
+        }
+        // 端点表收集（与图上断口坐标对表用）
+        if (SKELETON_END_DIAG && primary && originX != Integer.MIN_VALUE) {
+            for (var t : sk.traces) {
+                int mc = t.mouthCell();
+                int wx = originX + (mc / n) * STEP;
+                int wz = originZ + (mc % n) * STEP;
+                String extra = "";
+                if (t.end == DeterministicSkeleton.End.DEAD_END) {
+                    // DEAD_END 属性（判定它是否窗口边框种子格）：parent / frame / level
+                    int mci = mc / n, mcj = mc % n;
+                    boolean frame = mci == 0 || mcj == 0 || mci == n - 1 || mcj == n - 1;
+                    extra = String.format(",p=%d,frame=%b,lvl=%.2f,sea=%b",
+                            p.parent()[mc], frame, p.level()[mc], p.sea()[mc]);
+                }
+                SKELETON_ENDS.add(wx + "," + wz + "," + t.end + extra);
+            }
+        }
+        return new SkeletonRegion(RiverCenterlines.fromReaches(reaches, n, n, STEP), seg,
+                sk.exitSeeds);
+    }
+
     /**
      * 已求解 region 的【网格级湖格总数】累计（诊断用）——
      * 用于判定"湖是窗口丢的还是适配层丢的"：
@@ -419,8 +741,11 @@ public final class ModelHydrologyProvider {
         int n = p.nx();
 
         // 段空间索引（每 region 建一次：tile → 段下标；64-block tile，容差 12 < 64）
-        SegmentIndex segIndex = rd.centerline().reaches.isEmpty()
-                ? SegmentIndex.EMPTY : SegmentIndex.build(rd.centerline(), rd.originX(), rd.originZ(), n, STEP);
+        // 骨架模式直接用求解期建好的亚格段索引（Catmull-Rom + 格点吸附后的连续折线）；
+        // 不能从 reaches 重建（那会退回网格锚点、丢掉曲线）。
+        SegmentIndex segIndex = rd.skeletonSeg() != null ? rd.skeletonSeg()
+                : (rd.centerline().reaches.isEmpty()
+                ? SegmentIndex.EMPTY : SegmentIndex.build(rd.centerline(), rd.originX(), rd.originZ(), n, STEP));
 
         // ★★★ 2026-10-09【3×3 邻 region 合并 —— 修"region 缝上断半截"】★★★
         //
@@ -516,6 +841,8 @@ public final class ModelHydrologyProvider {
                 }
                 // ★ 惰性邻区：仅当【本区无命中】且【远离本 region 中心、贴近边界带】时才查。
                 //   本区窗口已外扩 HALO（RADIUS = REGION/2 + HALO）⇒ 内部方块无需邻区。
+                //   （2026-10-10 双 pass 后无须再拓宽：接力折线由【接收方】在自己窗口内追出
+                //    ⇒ 段落全在接收方窗口内 ⇒ 原 HALO 带即可命中。）
                 boolean nearBorder = (blockX < regLoX + HALO) || (blockX >= regHiX - HALO)
                         || (blockZ < regLoZ + HALO) || (blockZ >= regHiZ - HALO);
                 if (!isLakeBlock && half <= 0 && nearBorder) {
@@ -529,11 +856,13 @@ public final class ModelHydrologyProvider {
                         if (neigh[t] == null) {
                             neigh[t] = regionFor((rdRx + neighDx[t]) * REGION + REGION / 2,
                                     (rdRz + neighDz[t]) * REGION + REGION / 2);
-                            neighSeg[t] = neigh[t].centerline().reaches.isEmpty()
+                            // 骨架模式用邻区求解期建好的亚格索引（同本区，勿从 reaches 重建）
+                            neighSeg[t] = neigh[t].skeletonSeg() != null ? neigh[t].skeletonSeg()
+                                    : (neigh[t].centerline().reaches.isEmpty()
                                     ? SegmentIndex.EMPTY
                                     : SegmentIndex.build(neigh[t].centerline(),
                                             neigh[t].originX(), neigh[t].originZ(),
-                                            neigh[t].pipe().nx(), STEP);
+                                            neigh[t].pipe().nx(), STEP));
                         }
                         RegionData rr = neigh[t];
                         int nn = rr.pipe().nx();
@@ -573,6 +902,12 @@ public final class ModelHydrologyProvider {
                     if (!coarseLake && isLakeBlock) lakeDiagGainedByRefine.incrementAndGet();
                 }
                 if (isLakeBlock) {
+                    // ★ 断口现场 watch
+                    if (!GAP_WATCH.isEmpty()
+                            && GAP_WATCH.contains((((long) blockX) << 32) ^ (blockZ & 0xffffffffL))) {
+                        LOGGER.info("[GAP-WATCH] ({},{}) => LAKE_COL region=({},{})",
+                                blockX, blockZ, rdRx, rdRz);
+                    }
                     // 湖列：不雕刻，按水位洪泛；lakeNode=null ⇒ 写回跳过逃逸重算、按水位分组
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, original,
                             surface, surface, 0.0, 1.0,
@@ -610,7 +945,17 @@ public final class ModelHydrologyProvider {
                 //
                 // 【正解】`p.channel()[k]` 决定"是不是河"；距离场只提供宽度/深度；
                 //   距离场未覆盖时给最小可雕值（保证刻出河床 ⇒ 有水面）。
-                boolean onChannel = p.channel() != null && p.channel()[k];
+                //
+                // 骨架 A/B（2026-10-10）：B 侧（skeletonTrace=true）= 距离场命中即河
+                //   （去粗格门控 —— 旧路径的粗格布尔导致 STEP=4 方块化，
+                //    像素铁证：河段起点 x mod 4 = 2 占 97.7%）；
+                //   A 侧保持旧口径，逐位不变。
+                boolean onChannel;
+                if (SKELETON_TRACE) {
+                    onChannel = half > 0;      // 距离场命中 = 河（连续几何，无粗格门控）
+                } else {
+                    onChannel = p.channel() != null && p.channel()[k];
+                }
                 if (onChannel) {
                     // ★★★ 2026-10-09【宽度统一固定为最小可见值 —— 用户的既定方针】★★★
                     //
@@ -629,6 +974,14 @@ public final class ModelHydrologyProvider {
                     //   修它需要先把 widthRef 按 D8 的格数累积重新标定，而不是现在。
                     half = RiverCenterlines.MIN_HALF_BLOCKS;
                     depth = 1.0;
+                    // 断因「有河却没水」修复（仅骨架侧；2026-10-10 断点归因）：
+                    //   实测 318/31336 格（1%）的 surface-carved 落 0.18~0.50
+                    //   （刚好卡在 0.5 水柱门槛下）⇒ depth=1.0 写死 + 平坦坡水位落差小
+                    //   ⇒ 河在缓坡上断成虚线。修法：河床下挖深度按水位差自适应
+                    //   （上限 4 块，防悬崖式深槽）。
+                    if (SKELETON_TRACE) {
+                        depth = Math.min(4.0, Math.max(depth, eroded - surface + 0.6));
+                    }
                 } else {
                     half = 0;
                     depth = 0;
@@ -654,6 +1007,14 @@ public final class ModelHydrologyProvider {
                             }
                         }
                     }
+                    // ★ 断口现场 watch（`-Dgeogenesis.gapWatch=x,z;...`）
+                    if (!GAP_WATCH.isEmpty()
+                            && GAP_WATCH.contains((((long) blockX) << 32) ^ (blockZ & 0xffffffffL))) {
+                        LOGGER.info("[GAP-WATCH] ({},{}) => RIVER_COL fill={} half={} bestDist={}"
+                                        + " depth={} surface={} carved={} region=({},{})",
+                                blockX, blockZ, fill, half, bestDist,
+                                depth, surface, carved, rdRx, rdRz);
+                    }
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, carved,
                             surface, surface, depth, 1.0,
                             fill, false, null, Double.NaN));
@@ -662,6 +1023,16 @@ public final class ModelHydrologyProvider {
                     // ★ 诊断：距离场命中却被粗格布尔判掉（"误杀"）
                     if (RIVER_BREAK_DIAG && bestDist < Double.POSITIVE_INFINITY) {
                         brkDistHitButOff.incrementAndGet();
+                    }
+                    // ★ 断口现场 watch —— 「无命中」就是断口的直接现场
+                    if (!GAP_WATCH.isEmpty()
+                            && GAP_WATCH.contains((((long) blockX) << 32) ^ (blockZ & 0xffffffffL))) {
+                        LOGGER.info("[GAP-WATCH] ({},{}) => PLAIN_COL(no hit) bestDist={}"
+                                        + " nearBorder={} region=({},{}) lakeCoarse={}",
+                                blockX, blockZ, bestDist,
+                                (blockX < regLoX + HALO) || (blockX >= regHiX - HALO)
+                                        || (blockZ < regLoZ + HALO) || (blockZ >= regHiZ - HALO),
+                                rdRx, rdRz, p.lake()[k]);
                     }
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, original,
                             surface, surface, 0.0, 1.0,
@@ -819,20 +1190,137 @@ public final class ModelHydrologyProvider {
     /** margin 追踪耗时（诊断）。 */
     private volatile double marginMs = 0;
 
+    /**
+     * ★ 双 pass 的 pass-1：跑本区管线 + 无接力骨架，产出出口种子。
+     *
+     * <p><b>绝不取任何邻区</b>（扇出恒为 1）—— 这是"不递归爆炸"的关键。
+     * 缓存/inflight 范式与 {@link #regionFor} 相同（含 seed 键控、失败不缓存）。</p>
+     */
+    private Pass1 regionPass1(int rx, int rz) {
+        CacheKey key = new CacheKey(seed, rx, rz);
+        synchronized (P1_CACHE) {
+            Pass1 hit = P1_CACHE.get(key);
+            if (hit != null) return hit;
+        }
+        CompletableFuture<Pass1> existing = P1_INFLIGHT.get(key);
+        if (existing != null) return awaitPass1(existing, key);
+        CompletableFuture<Pass1> mine = new CompletableFuture<>();
+        CompletableFuture<Pass1> raced = P1_INFLIGHT.putIfAbsent(key, mine);
+        if (raced != null) return awaitPass1(raced, key);
+        try {
+            Pass1 data = solvePass1(rx, rz);
+            mine.complete(data);
+            synchronized (P1_CACHE) {
+                P1_CACHE.put(key, data);
+                while (P1_CACHE.size() > CACHE_CAP) {
+                    P1_CACHE.remove(P1_CACHE.keySet().iterator().next());
+                }
+            }
+            P1_INFLIGHT.remove(key, mine);
+            return data;
+        } catch (RuntimeException | Error e) {
+            mine.completeExceptionally(e);
+            P1_INFLIGHT.remove(key, mine);          // ★ 失败绝不缓存
+            LOGGER.warn("[HYDRO-MODEL] pass1 ({},{}) failed: {}", rx, rz, String.valueOf(e));
+            throw e;
+        }
+    }
+
+    private Pass1 awaitPass1(CompletableFuture<Pass1> f, CacheKey key) {
+        try {
+            Pass1 data = f.join();
+            P1_INFLIGHT.remove(key, f);
+            synchronized (P1_CACHE) {
+                P1_CACHE.put(key, data);
+            }
+            return data;
+        } catch (CompletionException e) {
+            P1_INFLIGHT.remove(key, f);
+            throw e;
+        }
+    }
+
+    /** pass-1 实体：跑管线，骨架【不接力】（只需出口种子；traces 丢弃）。 */
+    private Pass1 solvePass1(int rx, int rz) {
+        int centerX = rx * REGION + REGION / 2;
+        int centerZ = rz * REGION + REGION / 2;
+        double[] extra = computeMarginInflow(centerX, centerZ, RADIUS, STEP, 2 * RADIUS / STEP + 1);
+        var req = new HydrologyPipeline.Request(centerX, centerZ, RADIUS, STEP, CLIMATE, 0,
+                riverModel(), SAMPLES, extra);
+        HydrologyPipeline.Result p = HydrologyPipeline.run(gen, gen.params(), req);
+        List<DeterministicSkeleton.ExitSeed> seeds = List.of();
+        if (SKELETON_TRACE) {
+            // 不接力（incoming = 空）⇒ 只产出出口种子。整条骨架白跑一遍是刻意的：
+            // 出口种子必须来自"本区独立追踪"的结果，否则会与接力链互相依赖。
+            var sr = skeletonRegion(p, centerX - RADIUS, centerZ - RADIUS, List.of(), false);
+            seeds = sr.exitSeeds();
+        }
+        return new Pass1(p, seeds, centerX - RADIUS, centerZ - RADIUS);
+    }
+
+    /**
+     * 收集接力种子：8 邻 pass-1 中【指向本区】的出口种子 → 换算成本区格索引。
+     *
+     * <p>换算按 legacy 的<b>方向匹配</b>（邻区出口指向本区 ⟺ dRX/dRZ 与本区
+     * 相对邻区的偏移同号反向）：</p>
+     * <pre>
+     *   邻区在 (rx+dRX, rz+dRZ)，其出口朝 (dRX,dRZ) ⇒ 接收方就是本区
+     * </pre>
+     * <p>落在本区窗口内才收（窗口外 = 该种子朝更远的区，与本区无关）。</p>
+     */
+    private List<Integer> collectIncoming(int rx, int rz, int n) {
+        List<Integer> out = new ArrayList<>();
+        for (int dRX = -1; dRX <= 1; dRX++) {
+            for (int dRZ = -1; dRZ <= 1; dRZ++) {
+                if (dRX == 0 && dRZ == 0) continue;
+                Pass1 nb = regionPass1(rx + dRX, rz + dRZ);
+                int dOriginX = (rx + dRX) * REGION + REGION / 2 - RADIUS;
+                int dOriginZ = (rz + dRZ) * REGION + REGION / 2 - RADIUS;
+                int myOriginX = rx * REGION + REGION / 2 - RADIUS;
+                int myOriginZ = rz * REGION + REGION / 2 - RADIUS;
+                for (DeterministicSkeleton.ExitSeed s : nb.exitSeeds()) {
+                    // 只收"朝本区"的方向：邻区相对本区的偏移是 (-dRX,-dRZ)，
+                    // 故其出口方向须为 (-dRX,-dRZ)。
+                    if (s.dRX() != -dRX || s.dRZ() != -dRZ) continue;
+                    int si = s.cell() / n, sj = s.cell() % n;
+                    // 邻区格 → 世界 → 本区格
+                    int wx = dOriginX + si * STEP, wz = dOriginZ + sj * STEP;
+                    int mi = Math.floorDiv(wx - myOriginX, STEP);
+                    int mj = Math.floorDiv(wz - myOriginZ, STEP);
+                    if (mi < 0 || mj < 0 || mi >= n || mj >= n) continue;   // 越界（朝更远的区）
+                    out.add(mi * n + mj);
+                }
+            }
+        }
+        return out;
+    }
+
     /** 求解一个 region 窗口（纯函数；耗时日志只打【求解】不打缓存命中）。 */
     private RegionData solve(int rx, int rz) {
         int centerX = rx * REGION + REGION / 2;
         int centerZ = rz * REGION + REGION / 2;
         long t0 = System.nanoTime();
-        double[] extra = computeMarginInflow(centerX, centerZ, RADIUS, STEP, 2 * RADIUS / STEP + 1);
-        var req = new HydrologyPipeline.Request(centerX, centerZ, RADIUS, STEP, CLIMATE, 0,
-                riverModel(), SAMPLES, extra);
-        HydrologyPipeline.Result p = HydrologyPipeline.run(gen, gen.params(), req);
-        // 中心线（距离场几何源；cellSize=STEP 换算 block 单位）
-        RiverCenterlines.Result cl = RiverCenterlines.build(
-                p.bed(), p.discharge(), p.channel(), p.sea(), p.nx(), p.nz(),
-                RiverCenterlines.Params.defaults(), STEP);
-        RegionData rd = new RegionData(p, cl, centerX - RADIUS, centerZ - RADIUS);
+        // ★ 双 pass：本区 pass-1（管线 + 出口种子）—— 复用缓存，绝不在 solve 里重跑管线。
+        Pass1 base = regionPass1(rx, rz);
+        HydrologyPipeline.Result p = base.pipe();
+        // 骨架 A/B（2026-10-10）：true = DeterministicSkeleton（沿 minimax 树追踪 +
+        //   湖溢口续流 + legacy 形态收尾）；false = RiverCenterlines（累积->阈值->细化的旧路径）。
+        RiverCenterlines.Result cl;
+        SegmentIndex skelSeg = null;
+        if (SKELETON_TRACE) {
+            // ★ 双 pass 续流：取 8 邻 pass-1 中【指向本区】的出口种子，换算成本区格索引，
+            //   由本区自己的 parent 树追进来（方向场统一 ⇒ 缝上不再断）。
+            List<Integer> incoming = CROSS_PASS ? collectIncoming(rx, rz, p.nx()) : List.of();
+            var sr = skeletonRegion(p, base.originX(), base.originZ(), incoming, true);
+            cl = sr.cl();
+            skelSeg = sr.seg();
+        } else {
+            // 中心线（距离场几何源；cellSize=STEP 换算 block 单位）
+            cl = RiverCenterlines.build(
+                    p.bed(), p.discharge(), p.channel(), p.sea(), p.nx(), p.nz(),
+                    RiverCenterlines.Params.defaults(), STEP);
+        }
+        RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ());
         double ms = (System.nanoTime() - t0) / 1e6;
         int lakeCells = countTrue(p.lake());
         regionLakeCells.addAndGet(lakeCells);       // ★ 诊断累计（见 lastRegionLakeCells）
@@ -869,27 +1357,35 @@ public final class ModelHydrologyProvider {
         for (int[] dd : d) {
             int nx = rx + dd[0], nz = rz + dd[1];
             CacheKey key = new CacheKey(seed, nx, nz);
-            synchronized (SHARED_CACHE) {
-                if (SHARED_CACHE.containsKey(key)) continue;
+            // ★ 2026-10-10 双 pass：预热【pass-1】而非 solve —— solve 会取 8 邻 pass-1
+            //   ⇒ 4 个预热各带 8 次管线 = 32 次白跑；pass-1 扇出恒为 1。
+            //   预热的 pass-1 正是 solve 随后最需要的（省掉刚性路径上的那次管线）。
+            synchronized (P1_CACHE) {
+                if (P1_CACHE.containsKey(key)) continue;
             }
-            if (SHARED_INFLIGHT.containsKey(key)) continue;
+            if (P1_INFLIGHT.containsKey(key)) continue;
             if (preheatQueue.incrementAndGet() > PREHEAT_QUEUE_CAP) {
                 preheatQueue.decrementAndGet();
                 return;
             }
-            CompletableFuture<RegionData> f = SHARED_INFLIGHT.computeIfAbsent(key, kk ->
+            CompletableFuture<Pass1> f = P1_INFLIGHT.computeIfAbsent(key, kk ->
                     CompletableFuture.supplyAsync(() -> {
                         try {
-                            return solve(nx, nz);
+                            return solvePass1(nx, nz);
                         } finally {
                             preheatQueue.decrementAndGet();
                         }
                     }, preheat::execute));
             f.thenAccept(data -> {
-                SHARED_INFLIGHT.remove(key, f);
-                cachePut(key, data);
+                P1_INFLIGHT.remove(key, f);
+                synchronized (P1_CACHE) {
+                    P1_CACHE.put(key, data);
+                    while (P1_CACHE.size() > CACHE_CAP) {
+                        P1_CACHE.remove(P1_CACHE.keySet().iterator().next());
+                    }
+                }
             }).exceptionally(ex -> {
-                SHARED_INFLIGHT.remove(key, f);   // ★ 预热失败同样不缓存
+                P1_INFLIGHT.remove(key, f);   // ★ 预热失败同样不缓存
                 return null;
             });
         }
@@ -970,7 +1466,6 @@ public final class ModelHydrologyProvider {
             double[] seg = new double[count * 8];
             Map<Long, List<Integer>> tiles = new HashMap<>();
             int idx = 0;
-            final int TILE = 64;
             for (RiverCenterlines.Reach r : cl.reaches) {
                 for (int i = 1; i < r.nodeCount(); i++) {
                     int c0 = r.cell[i - 1], c1 = r.cell[i];
@@ -987,20 +1482,57 @@ public final class ModelHydrologyProvider {
                     int o = si * 8;
                     seg[o] = x0; seg[o + 1] = z0; seg[o + 2] = x1; seg[o + 3] = z1;
                     seg[o + 4] = h0; seg[o + 5] = h1; seg[o + 6] = d0; seg[o + 7] = d1;
-                    // 覆盖段 bbox + 半宽余量（≤12 < TILE ⇒ 至多 2×2 tile）
-                    int tx0 = (int) Math.floor((Math.min(x0, x1) - 16) / TILE);
-                    int tx1 = (int) Math.floor((Math.max(x0, x1) + 16) / TILE);
-                    int tz0 = (int) Math.floor((Math.min(z0, z1) - 16) / TILE);
-                    int tz1 = (int) Math.floor((Math.max(z0, z1) + 16) / TILE);
-                    for (int tx = tx0; tx <= tx1; tx++) {
-                        for (int tz = tz0; tz <= tz1; tz++) {
-                            tiles.computeIfAbsent(((long) tx << 32) ^ (tz & 0xffffffffL),
-                                    x -> new ArrayList<>()).add(si);
-                        }
-                    }
+                    registerTile(tiles, si, x0, z0, x1, z1);
                 }
             }
             return new SegmentIndex(seg, tiles);
+        }
+
+        /**
+         * 从亚格 block 折线建段索引（骨架模式；2026-10-10）。
+         *
+         * <p>{@link DeterministicSkeleton.shape} 输出 Catmull-Rom + 格点吸附后的
+         * 连续折线 —— 节点不是网格点，故不能走 {@link #build}（它按
+         * {@code origin + cell·step} 换算）。半宽/深度恒定最小可见值
+         * （用户方针：宽度后续议题）。</p>
+         */
+        static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys) {
+            int count = 0;
+            for (var sh : polys) count += Math.max(0, sh.size() - 1);
+            double[] seg = new double[count * 8];
+            Map<Long, List<Integer>> tiles = new HashMap<>();
+            int idx = 0;
+            for (var sh : polys) {
+                for (int i = 1; i < sh.size(); i++) {
+                    double x0 = sh.x[i - 1], z0 = sh.z[i - 1];
+                    double x1 = sh.x[i], z1 = sh.z[i];
+                    int si = idx++;
+                    int o = si * 8;
+                    seg[o] = x0; seg[o + 1] = z0; seg[o + 2] = x1; seg[o + 3] = z1;
+                    seg[o + 4] = RiverCenterlines.MIN_HALF_BLOCKS;  // h0
+                    seg[o + 5] = RiverCenterlines.MIN_HALF_BLOCKS;  // h1
+                    seg[o + 6] = 1.0;                               // d0
+                    seg[o + 7] = 1.0;                               // d1
+                    registerTile(tiles, si, x0, z0, x1, z1);
+                }
+            }
+            return new SegmentIndex(seg, tiles);
+        }
+
+        /** 段 bbox + 半宽余量（≤16 < TILE=64 ⇒ 至多 2×2 tile）登记。 */
+        private static void registerTile(Map<Long, List<Integer>> tiles, int si,
+                                         double x0, double z0, double x1, double z1) {
+            final int TILE = 64;
+            int tx0 = (int) Math.floor((Math.min(x0, x1) - 16) / TILE);
+            int tx1 = (int) Math.floor((Math.max(x0, x1) + 16) / TILE);
+            int tz0 = (int) Math.floor((Math.min(z0, z1) - 16) / TILE);
+            int tz1 = (int) Math.floor((Math.max(z0, z1) + 16) / TILE);
+            for (int tx = tx0; tx <= tx1; tx++) {
+                for (int tz = tz0; tz <= tz1; tz++) {
+                    tiles.computeIfAbsent(((long) tx << 32) ^ (tz & 0xffffffffL),
+                            x -> new ArrayList<>()).add(si);
+                }
+            }
         }
 
         /** 该 block 到最近段的距离/半宽/深度；无候选 ⇒ null。 */
