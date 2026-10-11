@@ -207,6 +207,74 @@ public final class WorldGenProfiler {
 
     private WorldGenProfiler() { }
 
+    // #region agent log: 周期卡顿关联诊断，实机确认后清理
+    private static final boolean STUTTER_DIAG = Boolean.getBoolean("geogenesis.stutterDiag");
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> STUTTER_LAST =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.lang.management.OperatingSystemMXBean STUTTER_OS =
+            java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+    private static final java.util.List<java.lang.management.GarbageCollectorMXBean> STUTTER_GC =
+            java.lang.management.ManagementFactory.getGarbageCollectorMXBeans();
+    private static long lastGcMs;
+    private static long lastGcCount;
+    private static long lastFrameNs;
+    private static long serverTickNs;
+
+    public static boolean stutterEnabled() { return enabled || STUTTER_DIAG; }
+
+    public static void stutterLog(String hypothesis, String location, String detail) {
+        if (!stutterEnabled()) return;
+        long now = System.nanoTime();
+        String key = hypothesis + ":" + location;
+        Long previous = STUTTER_LAST.get(key);
+        if (!location.equals("frame-gc") && previous != null && now - previous < 1_000_000_000L) return;
+        STUTTER_LAST.put(key, now);
+        java.nio.file.Path root = java.nio.file.Paths.get(System.getProperty("user.dir"));
+        if (root.getFileName().toString().equals("run")) root = root.getParent();
+        if (root.getFileName().toString().startsWith("forge-")) root = root.getParent();
+        try {
+            java.nio.file.Files.writeString(root.resolve("debug-agent.log").toAbsolutePath(),
+                    System.currentTimeMillis() + " hypothesis=" + hypothesis + " loc=" + location
+                            + " thread=" + Thread.currentThread().getName() + " " + detail + "\n",
+                    java.nio.charset.StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (java.io.IOException ignored) { }
+    }
+
+    public static void stutterFrame(boolean inWorld) {
+        if (!stutterEnabled()) return;
+        long now = System.nanoTime();
+        long elapsed = lastFrameNs == 0 ? 0 : now - lastFrameNs;
+        lastFrameNs = now;
+        if (!inWorld) return;
+        Long previous = STUTTER_LAST.get("frame-sample");
+        if (elapsed < 100_000_000L && previous != null && now - previous < 1_000_000_000L) return;
+        STUTTER_LAST.put("frame-sample", now);
+        long gcMs = 0, gcCount = 0;
+        for (var gc : STUTTER_GC) {
+            gcMs += Math.max(0, gc.getCollectionTime());
+            gcCount += Math.max(0, gc.getCollectionCount());
+        }
+        double cpu = STUTTER_OS instanceof com.sun.management.OperatingSystemMXBean os
+                ? os.getProcessCpuLoad() : -1;
+        Runtime runtime = Runtime.getRuntime();
+        stutterLog("C", "frame-gc", "frameMs=" + elapsed / 1_000_000.0
+                + " gcDeltaMs=" + (gcMs - lastGcMs) + " gcDeltaCount=" + (gcCount - lastGcCount)
+                + " processCpu=" + cpu + " heapMB=" + (runtime.totalMemory() - runtime.freeMemory()) / 1048576);
+        lastGcMs = gcMs;
+        lastGcCount = gcCount;
+    }
+
+    public static void stutterTick(boolean start) {
+        if (!stutterEnabled()) return;
+        if (start) serverTickNs = System.nanoTime();
+        else if (serverTickNs != 0) {
+            long elapsed = System.nanoTime() - serverTickNs;
+            if (elapsed > 100_000_000L) stutterLog("D", "server-tick", "tickMs=" + elapsed / 1_000_000.0);
+        }
+    }
+    // #endregion
+
     // ==================================================================
     // 开关与生命周期
     // ==================================================================

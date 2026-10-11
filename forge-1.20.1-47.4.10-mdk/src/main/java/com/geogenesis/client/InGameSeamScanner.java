@@ -60,8 +60,8 @@ public final class InGameSeamScanner {
                     GeoGenesisConfig.INSTANCE.erosionStrength.get(),
                     GeoGenesisConfig.INSTANCE.erosionDropsMul.get());
                 CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
-                gen.seed(seed);
                 GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
+                terrain.seed(seed);
 
                 List<String> hits = new ArrayList<>();
                 long t0 = System.currentTimeMillis();

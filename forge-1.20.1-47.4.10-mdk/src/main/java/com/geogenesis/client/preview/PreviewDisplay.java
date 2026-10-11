@@ -403,8 +403,11 @@ public class PreviewDisplay extends AbstractWidget {
     //  —— 2026-10-05 model 水文链开关 hydrologyModelPipelineEnabled 接入，**不升本版本**：
     //     它已进 GeoGenesisConfig.configFingerprint（经下方 cfg 混入 hash）⇒ 切换开关
     //     磁盘缓存自动失效重采；且默认 false = 产出逐位不变。留痕于此，免后人重复排查。
+    // 73 = 2026-10-11 model 模式暂停 legacy 距离驱动的绿洲群系转换，旧 riverDistance 缓存失效。
+    //      河湖几何、侵蚀与水位不变；legacy 模式保留绿洲。
+    // 74 = 2026-10-11 预览必须 terrain.seed(seed)，修正只播地形却用水文seed=0的错误缓存。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 72;   // ★ 72：湖岸粗格 BFS 12wu → 6wu（直边网格伪影）
+    private static final int CACHE_SCHEMA_VERSION = 74;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

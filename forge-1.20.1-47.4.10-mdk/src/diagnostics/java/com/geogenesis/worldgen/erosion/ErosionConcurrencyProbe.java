@@ -44,7 +44,259 @@ public final class ErosionConcurrencyProbe {
 
     private ErosionConcurrencyProbe() {}
 
+    private static Object field(Object target, String name) throws Exception {
+        var f = target.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(target);
+    }
+
+    private static void setField(Object target, String name, Object value) throws Exception {
+        var f = target.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        f.set(target, value);
+    }
+
+    private static Object tile(CellGenerator gen, boolean neighbor) throws Exception {
+        var m = CellGenerator.class.getDeclaredMethod(neighbor ? "neighborTile"
+                : "getOrGenTileUnchecked", neighbor ? new Class<?>[]{long.class, int.class, int.class}
+                : new Class<?>[]{int.class, int.class});
+        m.setAccessible(true);
+        return neighbor ? m.invoke(gen, 0L, 0, 0) : m.invoke(gen, 0, 0);
+    }
+
+    private static CellGenerator newGenerator() {
+        var p = TerrainParams.defaults();
+        var g = new CellGenerator(p, p.minY(), p.maxY());
+        g.seed(9139912035078620160L);
+        return g;
+    }
+
+    private static boolean publicationCheck(boolean neighbor) throws Exception {
+        var gen = newGenerator();
+        @SuppressWarnings("unchecked")
+        var cache = (java.util.concurrent.ConcurrentHashMap<Long, Object>) field(gen, "erosionTileCache");
+        var unpublished = new AtomicInteger();
+        var flights = new java.util.concurrent.ConcurrentHashMap<Long,
+                java.util.concurrent.CompletableFuture<Object>>() {
+            @Override
+            public java.util.concurrent.CompletableFuture<Object> putIfAbsent(Long key,
+                    java.util.concurrent.CompletableFuture<Object> value) {
+                value.whenComplete((r, error) -> {
+                    if (error == null && cache.get(key) != r) unpublished.incrementAndGet();
+                });
+                return super.putIfAbsent(key, value);
+            }
+        };
+        setField(gen, "erosionTilesInFlight", flights);
+        Object result = tile(gen, neighbor);
+        boolean pass = result != null && unpublished.get() == 0 && cache.get(0L) == result
+                && flights.isEmpty();
+        System.out.printf("[singleflight] publish-before-complete neighbor=%s unpublished=%d %s%n",
+                neighbor, unpublished.get(), pass ? "PASS" : "FAIL");
+        return pass;
+    }
+
+    private static boolean staleMissCheck(boolean neighbor) throws Exception {
+        var gen = newGenerator();
+        var observedMiss = new CountDownLatch(1);
+        var resume = new CountDownLatch(1);
+        var first = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var cache = new java.util.concurrent.ConcurrentHashMap<Long, Object>() {
+            @Override
+            public Object get(Object key) {
+                Object result = super.get(key);
+                if (result == null && Thread.currentThread().getName().equals("delayed-miss")
+                        && first.compareAndSet(true, false)) {
+                    observedMiss.countDown();
+                    try {
+                        if (!resume.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("resume timeout");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                    }
+                }
+                return result;
+            }
+        };
+        setField(gen, "erosionTileCache", cache);
+        var worker = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            var t = new Thread(r, "delayed-miss"); t.setDaemon(true); return t;
+        });
+        try {
+            var delayed = worker.submit(() -> tile(gen, neighbor));
+            if (!observedMiss.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("miss timeout");
+            Object published = tile(gen, neighbor);
+            resume.countDown();
+            Object received = delayed.get(30, TimeUnit.SECONDS);
+            boolean pass = received == published;
+            System.out.printf("[singleflight] stale-miss-recheck neighbor=%s same-object=%s %s%n",
+                    neighbor, pass, pass ? "PASS" : "FAIL");
+            return pass;
+        } finally {
+            resume.countDown();
+            worker.shutdownNow();
+        }
+    }
+
+    private static boolean saturatedPrewarmCheck() throws Exception {
+        java.util.concurrent.ThreadPoolExecutor pool;
+        try {
+            var f = CellGenerator.class.getDeclaredField("TILE_PREHEATER");
+            f.setAccessible(true);
+            pool = (java.util.concurrent.ThreadPoolExecutor) f.get(null);
+        } catch (NoSuchFieldException e) {
+            pool = (java.util.concurrent.ThreadPoolExecutor) CellGenerator.TILE_SAMPLER;
+        }
+        int max = pool.getMaximumPoolSize();
+        var started = new CountDownLatch(max);
+        var release = new CountDownLatch(1);
+        Runnable blocker = () -> {
+            started.countDown();
+            try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        };
+        var gen = newGenerator();
+        var caller = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            var t = new Thread(r, "saturated-prewarm-caller"); t.setDaemon(true); return t;
+        });
+        try {
+            int capacity = pool.getQueue().remainingCapacity();
+            for (int i = 0; i < max + capacity; i++) pool.execute(blocker);
+            if (!started.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("pool saturation timeout");
+            var future = caller.submit(() -> gen.prewarmErosionTiles(0, 0, 0, 2));
+            future.get(2, TimeUnit.SECONDS);
+            boolean pass = gen.erosionTileCacheSize() == 0;
+            System.out.printf("[singleflight] saturated-prewarm no-inline-generation=%s %s%n",
+                    pass, pass ? "PASS" : "FAIL");
+            return pass;
+        } finally {
+            release.countDown();
+            caller.shutdownNow();
+        }
+    }
+
+    private static boolean mixedConcurrentCheck() throws Exception {
+        var gen = newGenerator();
+        var creations = new AtomicInteger();
+        var flights = new java.util.concurrent.ConcurrentHashMap<Long,
+                java.util.concurrent.CompletableFuture<Object>>() {
+            @Override
+            public java.util.concurrent.CompletableFuture<Object> putIfAbsent(Long key,
+                    java.util.concurrent.CompletableFuture<Object> value) {
+                var prior = super.putIfAbsent(key, value);
+                if (prior == null) creations.incrementAndGet();
+                return prior;
+            }
+        };
+        setField(gen, "erosionTilesInFlight", flights);
+        var start = new CountDownLatch(1);
+        var workers = java.util.concurrent.Executors.newFixedThreadPool(12, r -> {
+            var t = new Thread(r, "mixed-tile-caller"); t.setDaemon(true); return t;
+        });
+        try {
+            var results = new ArrayList<java.util.concurrent.Future<Object>>();
+            for (int i = 0; i < 12; i++) {
+                boolean neighbor = (i & 1) == 0;
+                results.add(workers.submit(() -> { start.await(); return tile(gen, neighbor); }));
+            }
+            start.countDown();
+            Object first = results.get(0).get(30, TimeUnit.SECONDS);
+            boolean pass = first != null;
+            for (var f : results) pass &= f.get(30, TimeUnit.SECONDS) == first;
+            var direct = CellGenerator.class.getDeclaredMethod("generateErosionTile", int.class, int.class);
+            direct.setAccessible(true);
+            Object baseline = direct.invoke(newGenerator(), 0, 0);
+            var delta = first.getClass().getDeclaredField("delta");
+            delta.setAccessible(true);
+            pass &= java.util.Arrays.deepEquals((float[][]) delta.get(first), (float[][]) delta.get(baseline));
+            pass &= creations.get() == 1 && flights.isEmpty();
+            System.out.printf("[singleflight] mixed-12-callers creations=%d direct-delta-identical=%s %s%n",
+                    creations.get(), pass, pass ? "PASS" : "FAIL");
+            return pass;
+        } finally {
+            start.countDown();
+            workers.shutdownNow();
+        }
+    }
+
+    private static void runSingleFlightRegression() throws Exception {
+        boolean pass = true;
+        for (boolean neighbor : new boolean[]{false, true}) {
+            pass &= publicationCheck(neighbor);
+            pass &= staleMissCheck(neighbor);
+        }
+        pass &= mixedConcurrentCheck();
+        if (Boolean.getBoolean("probe.saturation")) pass &= saturatedPrewarmCheck();
+        System.out.println(pass ? "=== SINGLEFLIGHT ALL PASS ===" : "=== SINGLEFLIGHT FAIL ===");
+        System.exit(pass ? 0 : 1);
+    }
+
+    private static void runOasisCostProbe(String[] args) throws Exception {
+        var gen = newGenerator();
+        var terrain = new com.geogenesis.worldgen.terrain.GeoGenesisTerrain(gen);
+        int bx = args.length > 1 ? Integer.parseInt(args[1]) : -6744;
+        int bz = args.length > 2 ? Integer.parseInt(args[2]) : -5752;
+        var base = gen.sample(bx / gen.params().horizontalScale(), bz / gen.params().horizontalScale());
+        System.out.println("[oasis] block=" + bx + "," + bz + " biome=" + base.biomeType);
+        com.geogenesis.diagnostics.WorldGenProfiler.configure(true, 0);
+        var worker = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            var t = new Thread(r, "oasis-fast-path"); t.setDaemon(true); return t;
+        });
+        try {
+            long start = System.nanoTime();
+            var cell = worker.submit(() -> terrain.sampleCellLight(bx, bz)).get(120, TimeUnit.SECONDS);
+            System.out.println("[oasis] ms=" + (System.nanoTime() - start) / 1e6
+                    + " tileCache=" + gen.erosionTileCacheSize() + " distance=" + cell.riverDistance);
+            if (Boolean.getBoolean("geogenesis.modelPipeline")) {
+                boolean pass = base.biomeType == com.geogenesis.worldgen.climate.WhittakerType.DESERT
+                        && gen.erosionTileCacheSize() == 0 && cell.riverDistance == Double.POSITIVE_INFINITY;
+                // 完整路径也共用门控；验证旧的有限距离不会残留。
+                var fill = terrain.getClass().getDeclaredMethod("fillRiverDistance",
+                        com.geogenesis.worldgen.terrain.Cell.class, double.class, double.class);
+                fill.setAccessible(true);
+                cell.riverDistance = 0;
+                fill.invoke(terrain, cell, bx / gen.params().horizontalScale(), bz / gen.params().horizontalScale());
+                pass &= cell.riverDistance == Double.POSITIVE_INFINITY;
+                for (int d : new int[]{-4, 0, 4}) {
+                    var nearby = terrain.sampleCellLight(bx + d, bz - d);
+                    pass &= nearby.riverDistance == Double.POSITIVE_INFINITY && gen.erosionTileCacheSize() == 0;
+                }
+                System.out.println("[oasis] model fast/full gating zero-cold-tiles " + (pass ? "PASS" : "FAIL"));
+                if (!pass) throw new AssertionError("model 群系查询触发 legacy/冷侵蚀，或测试未命中沙漠");
+            }
+            com.geogenesis.diagnostics.WorldGenProfiler.reportNow("oasis fast path cost");
+        } finally {
+            worker.shutdownNow();
+        }
+    }
+
+    private static void previewSeedCheck() throws Exception {
+        long seed = 9139912035078620160L;
+        var gen = newGenerator();
+        var terrain = new com.geogenesis.worldgen.terrain.GeoGenesisTerrain(gen);
+        var engine = field(terrain, "hydrologyExperiment");
+        var provider = field(engine, "modelProvider");
+        long before = (long) field(provider, "seed");
+        terrain.seed(seed);
+        long after = (long) field(provider, "seed");
+        boolean pass = before == 0L && after == seed;
+        System.out.printf("[preview-seed] before=%d after=%d expected=%d %s%n",
+                before, after, seed, pass ? "PASS" : "FAIL");
+        if (!pass) throw new AssertionError("terrain.seed 未播种生产水文引擎");
+    }
+
     public static void main(String[] args) throws Exception {
+        if (args.length > 0 && "preview-seed".equals(args[0])) {
+            previewSeedCheck();
+            return;
+        }
+        if (args.length > 0 && "oasis".equals(args[0])) {
+            runOasisCostProbe(args);
+            return;
+        }
+        if (args.length > 0 && "singleflight".equals(args[0])) {
+            runSingleFlightRegression();
+            return;
+        }
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         int threads = args.length > 1 ? Integer.parseInt(args[1]) : DEFAULT_THREADS;
         TerrainParams tp = TerrainParams.defaults();

@@ -2643,3 +2643,18 @@ task runSkeletonProbe(type: JavaExec) {
         setArgs(probeArgs.split(' ') as List)
     }
 }
+
+// ModelHydrologyProvider pass-1 single-flight concurrency regression.
+//   gradlew runModelProviderConcurrencyProbe
+//   Invariants: queued (not-yet-started) pass-1 tasks are atomically claimed by the
+//   demanding thread; solve happens exactly once; running tasks are still awaited;
+//   failures are evicted and retryable; preheat slot count never leaks and returns to 0;
+//   takeover path and preheat-pool path produce bit-identical pipeline output.
+task runModelProviderConcurrencyProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.ModelProviderConcurrencyProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}

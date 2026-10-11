@@ -410,8 +410,24 @@ public final class GeoGenesisTerrain {
      */
     private void fillRiverDistance(Cell cell, double wuX, double wuZ) {
         if (!riversEnabled || hydrologyExperiment == null || cell == null) return;
+        // model 模式暂停绿洲转换，避免群系快速查询反向构建 legacy 湖盆/侵蚀。
+        // 完整与快速路径共用此门控；河湖几何与水位仍由 model provider 产生。
+        if (hydrologyExperiment.usesModelPipeline()) {
+            cell.riverDistance = Double.POSITIVE_INFINITY;
+            return;
+        }
         if (cell.biomeType != com.geogenesis.worldgen.climate.WhittakerType.DESERT) return;
+        // #region agent log: 快速群系采样是否通过绿洲旁路冷生成侵蚀
+        boolean diagnose = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled();
+        long t0 = diagnose ? System.nanoTime() : 0;
+        int tilesBefore = diagnose ? generator.erosionTileCacheSize() : 0;
         cell.riverDistance = hydrologyExperiment.riverNetwork().distanceToWater(wuX, wuZ);
+        if (diagnose && System.nanoTime() - t0 > 100_000_000L) {
+            com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("E", "oasis-distance",
+                    "wu=" + wuX + "," + wuZ + " ms=" + (System.nanoTime() - t0) / 1e6
+                            + " tilesBefore=" + tilesBefore + " tilesAfter=" + generator.erosionTileCacheSize());
+        }
+        // #endregion
     }
 
     /**

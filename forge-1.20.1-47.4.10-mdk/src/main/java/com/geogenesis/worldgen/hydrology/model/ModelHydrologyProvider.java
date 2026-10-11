@@ -14,6 +14,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -223,7 +224,11 @@ public final class ModelHydrologyProvider {
      */
     private static final LinkedHashMap<CacheKey, Pass1> P1_CACHE =
             new LinkedHashMap<>(32, 0.75f, true);
-    private static final ConcurrentHashMap<CacheKey, CompletableFuture<Pass1>> P1_INFLIGHT =
+    /**
+     * 单飞在途表 —— 值是 {@link Pass1Task}（而非裸 {@code CompletableFuture}）：
+     * 让"排队未开跑"的任务可被需求线程原子接管执行（见 {@link Pass1Task}）。
+     */
+    private static final ConcurrentHashMap<CacheKey, Pass1Task> P1_INFLIGHT =
             new ConcurrentHashMap<>();
 
     /**
@@ -236,8 +241,154 @@ public final class ModelHydrologyProvider {
                          List<DeterministicSkeleton.ExitSeed> exitSeeds,
                          int originX, int originZ) { }
 
+    /**
+     * pass-1 单飞任务。{@code QUEUED→RUNNING} 的 CAS 是唯一执行入口 —— 池线程与需求线程都可抢，
+     * 抢到者在本线程跑、其余等待 {@link #future}。旧实现让"已入队未开跑"的预热任务也把需求线程
+     * 挡在 {@code join} 后面，故改为可被接管。结果由执行者唯一发布（缓存 → complete → 撤在途表）；
+     * 失败 {@code completeExceptionally} 且撤表 ⇒ 可重试、绝不缓存半成品。
+     * 预热名额由 {@code counted} 任务恰好归还一次。
+     */
+    private final class Pass1Task {
+        /** 0 = 已入队未开跑；1 = 正在执行；2 = 已落定（成功或失败）。 */
+        private static final int QUEUED = 0, RUNNING = 1, DONE = 2;
+        private final CacheKey key;
+        private final int rx, rz;
+        /** 是否占用预热队列名额 —— 只有 {@link #schedulePreheat} 入队的任务为 true。 */
+        private final boolean counted;
+        /** 名额是否仍被本任务持有（保证<b>恰好归还一次</b>）。 */
+        private final AtomicBoolean slotHeld = new AtomicBoolean();
+        private final AtomicInteger state = new AtomicInteger(QUEUED);
+        private final CompletableFuture<Pass1> future = new CompletableFuture<>();
+
+        Pass1Task(CacheKey key, int rx, int rz, boolean counted) {
+            this.key = key;
+            this.rx = rx;
+            this.rz = rz;
+            this.counted = counted;
+            this.slotHeld.set(counted);
+        }
+
+        /** 归还预热名额（幂等：CAS 保证至多一次）。 */
+        private void releaseSlot() {
+            if (counted && slotHeld.compareAndSet(true, false)) preheatQueue.decrementAndGet();
+        }
+
+        /**
+         * 入池（只排队；执行权由 {@link #runIfClaimed} 的 CAS 决定）。
+         * 池拒绝时归还名额并保持 {@code QUEUED}，任务留在在途表 ⇒ 由需求线程接管执行。
+         */
+        void enqueue() {
+            try {
+                preheat.execute(this::runIfClaimed);
+            } catch (java.util.concurrent.RejectedExecutionException e) {
+                releaseSlot();
+                LOGGER.warn("[HYDRO-MODEL] preheat rejected for ({},{}) — 留待需求线程执行: {}",
+                        rx, rz, String.valueOf(e));
+            }
+        }
+
+        /**
+         * 原子接管并在本线程执行 —— 池线程与需求线程共用同一入口。
+         *
+         * @return true = 本线程抢到并已执行完（结果/异常已在 {@link #future} 上）；
+         *         false = 别的线程正在执行或已落定 ⇒ 调用方应等待 {@link #future}
+         */
+        boolean runIfClaimed() {
+            if (!state.compareAndSet(QUEUED, RUNNING)) return false;
+            releaseSlot();                                    // 已由本线程代跑 ⇒ 不再算池积压
+            // 诊断：预热任务被【非池线程】抢走执行权 = 需求线程接管（下轮验收看这条计数）
+            if (counted && com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()
+                    && !Thread.currentThread().getName().contains("hydro-model-solve")) {
+                com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("D",
+                        "model-pass1-takeover", "region=(" + rx + "," + rz + ")"
+                                + " thread=" + Thread.currentThread().getName());
+            }
+            Pass1 data = null;
+            Throwable err = null;
+            try {
+                data = solvePass1(rx, rz);
+            } catch (RuntimeException | Error e) {
+                err = e;
+            }
+            try {
+                if (err == null) {
+                    cachePutPass1(key, data);                 // ★ 先发布缓存
+                    future.complete(data);                    //   再完成（等待者立刻可取）
+                } else {
+                    future.completeExceptionally(err);
+                }
+            } finally {
+                P1_INFLIGHT.remove(key, this);                // ★ 最后撤占位（失败同样撤 ⇒ 可重试）
+                state.set(DONE);
+            }
+            return true;
+        }
+    }
+
     private final ExecutorService preheat;
     private final AtomicInteger preheatQueue = new AtomicInteger();
+
+    // ---- 并发回归 hook（package-private；探针 ModelProviderConcurrencyProbe 消费）----
+    // 默认零开销：计数/注入仅在 `-Dgeogenesis.hydrologyConcurrencyDiag=true` 时启用。
+    // 只读视图（在途数/缓存命中/队列深度）探针用反射取字段，不在此加 getter。
+    private static boolean concurrencyDiag() {
+        return Boolean.getBoolean("geogenesis.hydrologyConcurrencyDiag");
+    }
+
+    /** region 键（{@code rx<<32 ^ rz}）。 */
+    private static long regionKey(int rx, int rz) {
+        return (((long) rx) << 32) ^ (rz & 0xffffffffL);
+    }
+
+    /** 每 region 的 pass-1 求解次数（诊断；证明"恰好一次"）。 */
+    private static final ConcurrentHashMap<Long, AtomicInteger> PASS1_SOLVES =
+            new ConcurrentHashMap<>();
+    /** 首次求解某 region 的线程名（诊断；证明"需求线程接管"）。 */
+    private static final ConcurrentHashMap<Long, String> PASS1_SOLVER_THREAD =
+            new ConcurrentHashMap<>();
+
+    private static void countPass1Solve(int rx, int rz) {
+        long k = regionKey(rx, rz);
+        PASS1_SOLVES.computeIfAbsent(k, x -> new AtomicInteger()).incrementAndGet();
+        PASS1_SOLVER_THREAD.putIfAbsent(k, Thread.currentThread().getName());
+    }
+
+    /** 诊断：某 region 的 pass-1 求解次数（0 = 未求解）。 */
+    static int pass1SolveCount(int rx, int rz) {
+        AtomicInteger c = PASS1_SOLVES.get(regionKey(rx, rz));
+        return c == null ? 0 : c.get();
+    }
+
+    /** 诊断：首次求解某 region 的线程名（null = 未求解）。 */
+    static String pass1SolverThread(int rx, int rz) {
+        return PASS1_SOLVER_THREAD.get(regionKey(rx, rz));
+    }
+
+    /** 诊断：清空求解计数（探针分段隔离）。 */
+    static void resetProbeCounters() {
+        PASS1_SOLVES.clear();
+        PASS1_SOLVER_THREAD.clear();
+    }
+
+    /**
+     * 诊断：失败注入 —— 列出的 region 其下一次 pass-1 求解抛异常，之后恢复正常。
+     * 仅 {@link #concurrencyDiag()} 开启时生效；默认空集 ⇒ 生产零开销、零行为变更。
+     */
+    private static final java.util.Set<Long> PASS1_FAIL_ONCE = ConcurrentHashMap.newKeySet();
+    /** 已注入过失败的 region（保证"只失败一次"；探针按段清空）。 */
+    static final java.util.Set<Long> PASS1_FAILED = ConcurrentHashMap.newKeySet();
+
+    /** 探针武装失败注入（须先开 {@code hydrologyConcurrencyDiag}）。 */
+    static void injectPass1Failure(int rx, int rz) {
+        PASS1_FAIL_ONCE.add(regionKey(rx, rz));
+    }
+
+    /** 探针解除失败注入。 */
+    static void clearPass1Failures() {
+        PASS1_FAIL_ONCE.clear();
+        PASS1_FAILED.clear();
+    }
+
     /** 本实例的世界种子（缓存键的一部分；由 {@link #setSeed} 更新）。 */
     private volatile long seed;
 
@@ -1262,10 +1413,8 @@ public final class ModelHydrologyProvider {
     private volatile double marginMs = 0;
 
     /**
-     * ★ 双 pass 的 pass-1：跑本区管线 + 无接力骨架，产出出口种子。
-     *
-     * <p><b>绝不取任何邻区</b>（扇出恒为 1）—— 这是"不递归爆炸"的关键。
-     * 缓存/inflight 范式与 {@link #regionFor} 相同（含 seed 键控、失败不缓存）。</p>
+     * 双 pass 的 pass-1：跑本区管线 + 无接力骨架，产出出口种子。
+     * <b>绝不取任何邻区</b>（扇出恒为 1）；缓存/inflight 范式同 {@link #regionFor}。
      */
     private Pass1 regionPass1(int rx, int rz) {
         CacheKey key = new CacheKey(seed, rx, rz);
@@ -1273,46 +1422,55 @@ public final class ModelHydrologyProvider {
             Pass1 hit = P1_CACHE.get(key);
             if (hit != null) return hit;
         }
-        CompletableFuture<Pass1> existing = P1_INFLIGHT.get(key);
-        if (existing != null) return awaitPass1(existing, key);
-        CompletableFuture<Pass1> mine = new CompletableFuture<>();
-        CompletableFuture<Pass1> raced = P1_INFLIGHT.putIfAbsent(key, mine);
-        if (raced != null) return awaitPass1(raced, key);
+        // ① 已有在途任务 → 先尝试【原子接管】（只有"排队未开跑"抢得到；RUNNING/DONE 抢不到）
+        Pass1Task existing = P1_INFLIGHT.get(key);
+        if (existing != null) {
+            existing.runIfClaimed();
+            return awaitPass1(existing);
+        }
+        // ② 抢占：赢家在本线程直接跑（counted=false ⇒ 不占预热名额、不进池、零排队）
+        Pass1Task mine = new Pass1Task(key, rx, rz, false);
+        Pass1Task raced = P1_INFLIGHT.putIfAbsent(key, mine);
+        if (raced != null) {
+            raced.runIfClaimed();
+            return awaitPass1(raced);
+        }
+        mine.runIfClaimed();
+        return awaitPass1(mine);
+    }
+
+    /**
+     * 等 pass-1 落定。发布与撤表都由执行者唯一负责 ⇒ 此处只等待
+     * （不重复发布、不撤表，避免"别人把我的占位撤了"的竞态）。
+     */
+    private Pass1 awaitPass1(Pass1Task t) {
         try {
-            Pass1 data = solvePass1(rx, rz);
-            mine.complete(data);
-            synchronized (P1_CACHE) {
-                P1_CACHE.put(key, data);
-                while (P1_CACHE.size() > CACHE_CAP) {
-                    P1_CACHE.remove(P1_CACHE.keySet().iterator().next());
-                }
-            }
-            P1_INFLIGHT.remove(key, mine);
-            return data;
-        } catch (RuntimeException | Error e) {
-            mine.completeExceptionally(e);
-            P1_INFLIGHT.remove(key, mine);          // ★ 失败绝不缓存
-            LOGGER.warn("[HYDRO-MODEL] pass1 ({},{}) failed: {}", rx, rz, String.valueOf(e));
+            return t.future.join();
+        } catch (CompletionException e) {
+            LOGGER.warn("[HYDRO-MODEL] pass1 failed: {}", String.valueOf(e.getCause()));
             throw e;
         }
     }
 
-    private Pass1 awaitPass1(CompletableFuture<Pass1> f, CacheKey key) {
-        try {
-            Pass1 data = f.join();
-            P1_INFLIGHT.remove(key, f);
-            synchronized (P1_CACHE) {
-                P1_CACHE.put(key, data);
+    /** pass-1 入 LRU（与 {@link #cachePut} 同容量策略；执行者调用一次）。 */
+    private static void cachePutPass1(CacheKey key, Pass1 data) {
+        synchronized (P1_CACHE) {
+            P1_CACHE.put(key, data);
+            while (P1_CACHE.size() > CACHE_CAP) {
+                P1_CACHE.remove(P1_CACHE.keySet().iterator().next());
             }
-            return data;
-        } catch (CompletionException e) {
-            P1_INFLIGHT.remove(key, f);
-            throw e;
         }
     }
 
     /** pass-1 实体：跑管线，骨架【不接力】（只需出口种子；traces 丢弃）。 */
     private Pass1 solvePass1(int rx, int rz) {
+        if (concurrencyDiag()) {
+            countPass1Solve(rx, rz);      // 统计"求解尝试次数"（含被注入失败的那次）
+            if (PASS1_FAIL_ONCE.contains(regionKey(rx, rz))
+                    && PASS1_FAILED.add(regionKey(rx, rz))) {
+                throw new IllegalStateException("injected pass1 failure for (" + rx + "," + rz + ")");
+            }
+        }
         int centerX = rx * REGION + REGION / 2;
         int centerZ = rz * REGION + REGION / 2;
         double[] extra = computeMarginInflow(centerX, centerZ, RADIUS, STEP, 2 * RADIUS / STEP + 1);
@@ -1373,6 +1531,8 @@ public final class ModelHydrologyProvider {
         long t0 = System.nanoTime();
         // ★ 双 pass：本区 pass-1（管线 + 出口种子）—— 复用缓存，绝不在 solve 里重跑管线。
         Pass1 base = regionPass1(rx, rz);
+        long baseDone = System.nanoTime();
+        long incomingNs = 0;
         HydrologyPipeline.Result p = base.pipe();
         // 骨架 A/B（2026-10-10）：true = DeterministicSkeleton（沿 minimax 树追踪 +
         //   湖溢口续流 + legacy 形态收尾）；false = RiverCenterlines（累积->阈值->细化的旧路径）。
@@ -1381,7 +1541,9 @@ public final class ModelHydrologyProvider {
         if (SKELETON_TRACE) {
             // ★ 双 pass 续流：取 8 邻 pass-1 中【指向本区】的出口种子，换算成本区格索引，
             //   由本区自己的 parent 树追进来（方向场统一 ⇒ 缝上不再断）。
+            long incomingStart = System.nanoTime();
             List<Integer> incoming = CROSS_PASS ? collectIncoming(rx, rz, p.nx()) : List.of();
+            incomingNs = System.nanoTime() - incomingStart;
             var sr = skeletonRegion(p, base.originX(), base.originZ(), incoming, true);
             cl = sr.cl();
             skelSeg = sr.seg();
@@ -1392,6 +1554,14 @@ public final class ModelHydrologyProvider {
                     RiverCenterlines.Params.defaults(), STEP);
         }
         RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ());
+        // #region agent log: D 冷区依赖成本拆分，实机确认后清理
+        if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
+            com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("D", "model-region-" + rx + "-" + rz,
+                    "seed=" + seed + " baseMs=" + (baseDone - t0) / 1e6
+                            + " neighborsMs=" + incomingNs / 1e6
+                            + " finalMs=" + (System.nanoTime() - baseDone - incomingNs) / 1e6);
+        }
+        // #endregion
         double ms = (System.nanoTime() - t0) / 1e6;
         int lakeCells = countTrue(p.lake());
         regionLakeCells.addAndGet(lakeCells);       // ★ 诊断累计（见 lastRegionLakeCells）
@@ -1421,44 +1591,34 @@ public final class ModelHydrologyProvider {
                 ? HydrologyPipeline.RiverModel.CONTINUOUS : HydrologyPipeline.RiverModel.D8;
     }
 
-    /** 4 邻区异步预热（队列超限则跳过 —— 只是缓存优化，绝不能反压世界生成）。 */
+    /**
+     * 4 邻区异步预热（队列超限则跳过 —— 只是缓存优化，绝不能反压世界生成）。
+     * 名额先占、再建任务；建不成（输 putIfAbsent 竞争）立刻归还，否则计数会虚增并顶死上限。
+     */
     private void schedulePreheat(int rx, int rz) {
         if (preheatQueue.get() >= PREHEAT_QUEUE_CAP) return;
         int[][] d = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (int[] dd : d) {
             int nx = rx + dd[0], nz = rz + dd[1];
             CacheKey key = new CacheKey(seed, nx, nz);
-            // ★ 2026-10-10 双 pass：预热【pass-1】而非 solve —— solve 会取 8 邻 pass-1
-            //   ⇒ 4 个预热各带 8 次管线 = 32 次白跑；pass-1 扇出恒为 1。
-            //   预热的 pass-1 正是 solve 随后最需要的（省掉刚性路径上的那次管线）。
+            // 预热 pass-1 而非 solve（solve 会取 8 邻 pass-1 ⇒ 4 个预热各带 8 次管线白跑）
             synchronized (P1_CACHE) {
                 if (P1_CACHE.containsKey(key)) continue;
             }
             if (P1_INFLIGHT.containsKey(key)) continue;
+            // 占名额（超限即归还并放弃本轮预热）
             if (preheatQueue.incrementAndGet() > PREHEAT_QUEUE_CAP) {
                 preheatQueue.decrementAndGet();
                 return;
             }
-            CompletableFuture<Pass1> f = P1_INFLIGHT.computeIfAbsent(key, kk ->
-                    CompletableFuture.supplyAsync(() -> {
-                        try {
-                            return solvePass1(nx, nz);
-                        } finally {
-                            preheatQueue.decrementAndGet();
-                        }
-                    }, preheat::execute));
-            f.thenAccept(data -> {
-                P1_INFLIGHT.remove(key, f);
-                synchronized (P1_CACHE) {
-                    P1_CACHE.put(key, data);
-                    while (P1_CACHE.size() > CACHE_CAP) {
-                        P1_CACHE.remove(P1_CACHE.keySet().iterator().next());
-                    }
-                }
-            }).exceptionally(ex -> {
-                P1_INFLIGHT.remove(key, f);   // ★ 预热失败同样不缓存
-                return null;
-            });
+            // 建任务；输竞争 ⇒ 归还名额（★ 原实现的计数泄漏点）
+            Pass1Task task = new Pass1Task(key, nx, nz, true);
+            Pass1Task raced = P1_INFLIGHT.putIfAbsent(key, task);
+            if (raced != null) {
+                preheatQueue.decrementAndGet();
+                continue;
+            }
+            task.enqueue();
         }
     }
 

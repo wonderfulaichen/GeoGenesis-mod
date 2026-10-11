@@ -44,5 +44,16 @@ public final class GeoGenesisForgeEvents {
         }
     }
 
+    // #region agent log: 实机帧停顿与 GC 关联
+    @SubscribeEvent
+    public static void onRenderTick(net.minecraftforge.event.TickEvent.RenderTickEvent event) {
+        if (event.phase == net.minecraftforge.event.TickEvent.Phase.END
+                && com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
+            Minecraft mc = Minecraft.getInstance();
+            com.geogenesis.diagnostics.WorldGenProfiler.stutterFrame(mc.level != null && mc.screen == null);
+        }
+    }
+    // #endregion
+
     private GeoGenesisForgeEvents() {}
 }

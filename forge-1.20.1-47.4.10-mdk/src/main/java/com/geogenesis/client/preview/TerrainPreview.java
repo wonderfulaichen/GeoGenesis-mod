@@ -80,8 +80,8 @@ public final class TerrainPreview {
         this.seed = seed;
         com.geogenesis.worldgen.terrain.CellGenerator gen =
             new com.geogenesis.worldgen.terrain.CellGenerator(params, params.minY(), params.maxY());
-        gen.seed(seed);
         this.terrain = new GeoGenesisTerrain(gen);
+        this.terrain.seed(seed);
         this.seaLevel = params.seaLevel();
         this.snowLine = (int) new com.geogenesis.worldgen.terrain.HeightCurve(params, params.minY(), params.maxY()).heightFromE(params.snowLine());
         this.maxY = params.maxY();
