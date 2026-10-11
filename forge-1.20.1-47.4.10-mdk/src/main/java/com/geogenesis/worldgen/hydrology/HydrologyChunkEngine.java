@@ -49,6 +49,11 @@ public final class HydrologyChunkEngine {
         return hydrology.network();
     }
 
+    /** model 模式暂不使用 legacy 离水距离驱动绿洲群系。 */
+    public boolean usesModelPipeline() {
+        return useModelPipeline;
+    }
+
     public void setSeed(long seed) {
         hydrology.setSeed(seed);
         // ★ 换种子 ⇒ 旧 region 内容绝不复用（纯函数铁律）。

@@ -24,6 +24,18 @@ import com.geogenesis.worldgen.terrain.TerrainParams;
 public final class ProfilerSelfCheckProbe {
 
     public static void main(String[] args) {
+        if (args.length > 0 && "stutter-switch".equals(args[0])) {
+            boolean forced = Boolean.getBoolean("geogenesis.stutterDiag");
+            WorldGenProfiler.configure(false, 0);
+            boolean off = WorldGenProfiler.stutterEnabled() == forced;
+            WorldGenProfiler.configure(true, 0);
+            boolean on = WorldGenProfiler.stutterEnabled();
+            WorldGenProfiler.configure(false, 0);
+            boolean disabled = WorldGenProfiler.stutterEnabled() == forced;
+            boolean pass = off && on && disabled;
+            System.out.println("[stutter-switch] profiler off/on/off: " + (pass ? "PASS" : "FAIL"));
+            System.exit(pass ? 0 : 1);
+        }
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 5436529513624899584L;
         int chunks = args.length > 1 ? Integer.parseInt(args[1]) : 24;
 

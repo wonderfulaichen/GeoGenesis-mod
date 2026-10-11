@@ -265,8 +265,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private void rebuildPreview() {
         TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
         CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
-        gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
+        terrain.seed(seed); // 同时播种地形与水文，不能只调用 gen.seed。
         if (preview == null) {
             // ★ 直接传 mode，构造器内设好 activeLayer + requestResample，无需 setMode
             preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p, currentMode);

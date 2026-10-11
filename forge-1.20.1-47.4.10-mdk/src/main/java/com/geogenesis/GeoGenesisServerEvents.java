@@ -52,5 +52,13 @@ public final class GeoGenesisServerEvents {
         }
     }
 
+    // #region agent log: 服务器 tick 停顿
+    @SubscribeEvent
+    public static void onServerTick(net.minecraftforge.event.TickEvent.ServerTickEvent event) {
+        com.geogenesis.diagnostics.WorldGenProfiler.stutterTick(
+                event.phase == net.minecraftforge.event.TickEvent.Phase.START);
+    }
+    // #endregion
+
     private GeoGenesisServerEvents() {}
 }
