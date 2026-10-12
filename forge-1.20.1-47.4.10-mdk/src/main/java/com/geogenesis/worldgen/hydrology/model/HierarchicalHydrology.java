@@ -177,6 +177,75 @@ public final class HierarchicalHydrology {
         return resolver.apply(Math.floorDiv(blockX, p.tract()), Math.floorDiv(blockZ, p.tract()));
     }
 
+    /**
+     * 粗层<b>盆地足迹</b>（格坐标；供跨缝筛查用）—— 不是权威，只是"哪个盆地铺在哪"的可复现记录。
+     *
+     * @param frameTouch 足迹触及窗口边框（集水被窗口截断）⇒ 调用方应判 NOT VERIFIED 并拒绝受控
+     */
+    public record BasinFootprint(int basinId, int cells, int minI, int minJ, int maxI, int maxJ,
+                                 boolean frameTouch) { }
+
+    /** 逐盆地足迹表（键 = 盆地 id ⇒ 遍历顺序确定）。 */
+    public static java.util.Map<Integer, BasinFootprint> basinFootprints(
+            HydrologyPipeline.Result pipe) {
+        java.util.Map<Integer, BasinFootprint> out = new java.util.TreeMap<>();
+        LakeWaterBalance.Result lr = pipe.lakeResult();
+        if (lr == null || lr.basinId() == null) return out;
+        int n = pipe.nx();
+        int[] bid = lr.basinId();
+        int[] cnt = new int[lr.basins().size()];
+        int[] mnI = new int[cnt.length], mnJ = new int[cnt.length];
+        int[] mxI = new int[cnt.length], mxJ = new int[cnt.length];
+        boolean[] frame = new boolean[cnt.length];
+        java.util.Arrays.fill(mnI, Integer.MAX_VALUE);
+        java.util.Arrays.fill(mnJ, Integer.MAX_VALUE);
+        java.util.Arrays.fill(mxI, Integer.MIN_VALUE);
+        java.util.Arrays.fill(mxJ, Integer.MIN_VALUE);
+        for (int k = 0; k < bid.length; k++) {
+            int b = bid[k];
+            if (b < 0 || b >= cnt.length) continue;
+            int i = k / n, j = k % n;
+            cnt[b]++;
+            mnI[b] = Math.min(mnI[b], i);
+            mxI[b] = Math.max(mxI[b], i);
+            mnJ[b] = Math.min(mnJ[b], j);
+            mxJ[b] = Math.max(mxJ[b], j);
+            if (i == 0 || j == 0 || i == n - 1 || j == n - 1) frame[b] = true;
+        }
+        for (int b = 0; b < cnt.length; b++) {
+            if (cnt[b] == 0) continue;
+            out.put(b, new BasinFootprint(b, cnt[b], mnI[b], mnJ[b], mxI[b], mxJ[b], frame[b]));
+        }
+        return out;
+    }
+
+    /** 粗层盆地足迹表（键 = 盆地 id）。 */
+    public static java.util.Map<Integer, BasinFootprint> basinFootprints(Coarse c) {
+        return basinFootprints(c.pipe());
+    }
+
+    /**
+     * 该粗足迹是否跨过<b>块坐标</b>缝线（粗足迹在 tract 粗窗内 → 换算到世界块）。
+     *
+     * @param axis 0 = 竖缝（跨 {@code blockX = line}），1 = 横缝（跨 {@code blockZ = line}）
+     */
+    public static boolean footprintCrossesBlock(BasinFootprint fp, Coarse c, int axis, int line) {
+        int lo = axis == 0 ? c.originX() + fp.minI() * c.step() : c.originZ() + fp.minJ() * c.step();
+        int hi = axis == 0 ? c.originX() + fp.maxI() * c.step() : c.originZ() + fp.maxJ() * c.step();
+        return lo < line && hi >= line;
+    }
+
+    /**
+     * 该足迹是否<b>跨过</b>缝（沿 {@code axis} 方向同时出现在缝两侧）。
+     *
+     * @param axis    0 = 竖缝（格 i 方向跨过 {@code seamCell}），1 = 横缝（格 j 方向）
+     * @param seamCell 缝在本域网格上的整数格坐标（{@code halfSpan / step}）
+     */
+    public static boolean footprintCrosses(BasinFootprint fp, int axis, int seamCell) {
+        return axis == 0 ? fp.minI() < seamCell && fp.maxI() >= seamCell
+                : fp.minJ() < seamCell && fp.maxJ() >= seamCell;
+    }
+
     // ======================================================================
     // 契约失败与校验结果
     // ======================================================================
@@ -667,6 +736,38 @@ public final class HierarchicalHydrology {
         /** parent 上出现环的格数（排水图应无环）⇒ 真实冲突，硬失败。 */
         public static final AtomicLong LOOP_CELLS = new AtomicLong();
 
+        // ---- ★ 2026-10-12 跨 tract 缝共享湖域（{@link SharedLakeDomain}；默认关）----
+        /** 缝域构建数（每个都要付一次同窗粗层筛选）。 */
+        public static final AtomicLong SHARED_DOMAINS = new AtomicLong();
+        /** 粗层筛选（同窗 D8，零 sampleWu/零 tile）。 */
+        public static final AtomicLong SHARED_COARSE_SCREENS = new AtomicLong();
+        /** 细层侵蚀求解数（只有确有跨缝盆地才会发生）。 */
+        public static final AtomicLong SHARED_FINE_SOLVES = new AtomicLong();
+        /** 粗筛选即止（无跨缝盆地）⇒ 细层未跑。 */
+        public static final AtomicLong SHARED_SKIPPED_NO_CROSSING = new AtomicLong();
+        /** 廉价屏幕：邻 tract 粗层里看到跨缝盆地（→ 需建 704² 对称窗）。 */
+        public static final AtomicLong SHARED_SCREEN_CROSS = new AtomicLong();
+        /** 廉价屏幕：邻 tract 粗层无跨缝盆地 ⇒ 跳过建窗（省一次粗筛选；安全侧）。 */
+        public static final AtomicLong SHARED_SCREENED_OUT = new AtomicLong();
+        /** 受控的粗盆地数。 */
+        public static final AtomicLong SHARED_CONTROLLED_BASINS = new AtomicLong();
+        /** 被共享域<b>改写</b>的列数（本地细窗说了无水，共享域判有水并给出水位）。 */
+        public static final AtomicLong SHARED_LAKE_COLUMNS = new AtomicLong();
+        /** 被共享域<b>抑制</b>的列数（本地细窗判有湖，共享域按同一盆地判无水；不剔除河）。 */
+        public static final AtomicLong SHARED_SUPPRESSED_COLUMNS = new AtomicLong();
+        /** 共享域覆盖但裁定为"无水"的列数（不等于抑制：抑制只统计本地有水的情况）。 */
+        public static final AtomicLong SHARED_CONTROLLED_COLUMNS = new AtomicLong();
+        /** 足迹触窗框 ⇒ 拒绝受控（集水截断，如实记录，不假装已修）。 */
+        public static final AtomicLong SHARED_REFUSED_TRUNCATED = new AtomicLong();
+        /** 盆地 bbox+干环 装不下 maxHalf 窗 ⇒ 拒绝（有界，不移墙）。 */
+        public static final AtomicLong SHARED_REFUSED_TOO_BIG = new AtomicLong();
+        /** 环上有水 / 多平面 ⇒ 拒绝受控（形态演化或真竞争）。 */
+        public static final AtomicLong SHARED_REFUSED_LEAK = new AtomicLong();
+        /** 粗候选在该域侵蚀地形下没有对应湖 ⇒ 记录（形态演化，非失败）。 */
+        public static final AtomicLong SHARED_BASIN_LOST = new AtomicLong();
+        /** 同一世界点被多个受控域覆盖（平面不一致）⇒ 未决：不并集、不改写、如实计数。 */
+        public static final AtomicLong SHARED_COMPETING = new AtomicLong();
+
         /** 全部计数器（reset 用；新增计数器须登记于此）。 */
         private static final AtomicLong[] ALL = {
                 COARSE_SOLVES, COARSE_SAMPLES, FINE_SOLVES, EXTERIOR_OVERRIDES, EXTERIOR_MISSES,
@@ -675,6 +776,13 @@ public final class HierarchicalHydrology {
                 TRUNCATED_CONTEXT, LEVEL_MISMATCH,
                 CONTRACT_UNSATISFIED, CHANNEL_CELLS, ORPHAN_CELLS, ORPHAN_CHAINS,
                 BOUNDARY_UNVERIFIED_CELLS, LOOP_CELLS,
+                SHARED_DOMAINS, SHARED_COARSE_SCREENS, SHARED_FINE_SOLVES,
+                SHARED_SKIPPED_NO_CROSSING, SHARED_SCREEN_CROSS, SHARED_SCREENED_OUT,
+                SHARED_CONTROLLED_BASINS, SHARED_LAKE_COLUMNS,
+                SHARED_SUPPRESSED_COLUMNS, SHARED_CONTROLLED_COLUMNS,
+                SHARED_REFUSED_TRUNCATED, SHARED_REFUSED_TOO_BIG,
+                SHARED_REFUSED_LEAK,
+                SHARED_BASIN_LOST, SHARED_COMPETING,
         };
 
         /** 逐层规模与阶段耗时：键 = {@code 层/指标}。 */
@@ -763,6 +871,40 @@ public final class HierarchicalHydrology {
             EXTERIOR_MISSES.addAndGet(misses);
         }
 
+        /** 跨缝共享湖域的耗时拆分（粗筛选 / 细解）。 */
+        public static void sharedTiming(long coarseMs, long fineMs) {
+            layer("sharedLake", "coarseMs", coarseMs);
+            layer("sharedLake", "fineMs", fineMs);
+        }
+
+        /** 共享湖域样本（上限 {@code CAP}，如实留痕拒绝/竞争现场）。 */
+        public static final List<String> SHARED_SAMPLES = samples();
+        private static final int SHARED_SAMPLE_CAP = 48;
+
+        /** 记录共享湖域的现场行（拒绝/竞争/域摘要）。 */
+        static void sharedSample(String line) {
+            append(SHARED_SAMPLES, List.of(line), SHARED_SAMPLE_CAP);
+        }
+
+        /** 跨缝共享湖域报告（含"移缝"风险的如实口径）。 */
+        public static String sharedReport() {
+            return String.format(
+                    "  跨缝共享湖域: 域=%d 粗筛选=%d 细解=%d 无跨缝即止=%d（廉价屏幕省下建窗=%d）%n"
+                            + "    受控盆地=%d 改写列(本区无水⇒共享判有水)=%d 抑制列(本区有水⇒共享判无水)=%d"
+                            + " 受控无水列=%d%n"
+                            + "    拒绝: 截断=%d 太大=%d 环上有水/多平面=%d 粗候选消失=%d"
+                            + " 竞争(未决,不并集)=%d%n"
+                            + "    ⇒ 受控 = 盆地级 canonical（闭合+干环+单平面+有限+装得下）；"
+                            + "其外仍由本区细窗裁决（不得声称整缝已消除）%n",
+                    SHARED_DOMAINS.get(), SHARED_COARSE_SCREENS.get(), SHARED_FINE_SOLVES.get(),
+                    SHARED_SKIPPED_NO_CROSSING.get(), SHARED_SCREENED_OUT.get(),
+                    SHARED_CONTROLLED_BASINS.get(),
+                    SHARED_LAKE_COLUMNS.get(), SHARED_SUPPRESSED_COLUMNS.get(),
+                    SHARED_CONTROLLED_COLUMNS.get(), SHARED_REFUSED_TRUNCATED.get(),
+                    SHARED_REFUSED_TOO_BIG.get(), SHARED_REFUSED_LEAK.get(),
+                    SHARED_BASIN_LOST.get(), SHARED_COMPETING.get());
+        }
+
         /** 细层近边界、本 tract 自身无命中。 */
         public static void inTractNoHit() {
             IN_TRACT_NO_HIT.incrementAndGet();
@@ -786,6 +928,7 @@ public final class HierarchicalHydrology {
             ORPHAN_SAMPLES.clear();
             GAP_SAMPLES.clear();
             VALIDATION_SAMPLES.clear();
+            SHARED_SAMPLES.clear();
         }
 
         /** 汇总报告（规模/阶段耗时 / 真实契约 / 形态对比 / 连通性 / 湖候选一致性 / 过滤状态）。 */
@@ -818,6 +961,8 @@ public final class HierarchicalHydrology {
                             ? " ⇒ 几何已被删，不得作连通 PASS\n"
                             : " ⇒ 几何完整（孤立已如实计入）\n");
             sb.append("  孤立根样本: ").append(join(ORPHAN_SAMPLES)).append('\n');
+            sb.append(sharedReport());
+            sb.append("  共享域样本: ").append(join(SHARED_SAMPLES)).append('\n');
             sb.append("  规模/阶段: ");
             for (String k : new java.util.TreeSet<>(LAYER.keySet())) {
                 sb.append(k).append('=').append(LAYER.get(k)).append(' ');
