@@ -2658,3 +2658,24 @@ task runModelProviderConcurrencyProbe(type: JavaExec) {
         setArgs(probeArgs.split(' ') as List)
     }
 }
+
+
+// Hierarchical hydrology controlled experiment -- controlled diagnostic verification
+//   (synthetic by default; real mode queries 4 fixed regions).
+//   gradlew runHierarchicalHydrologyProbe
+//   gradlew runHierarchicalHydrologyProbe -PprobeArgs="real"
+//   gradlew runHierarchicalHydrologyProbe -PprobeArgs="real det,conc"
+//   Invariants: the coarse layer is tile-free (erosion-tile cache + hit/miss/evict counters are
+//   unchanged across buildCoarse); the same world point has one owner authority (negative
+//   coordinates included); morphology differences are diagnostic, not failures;
+//   non-finite/out-of-domain data fail; self-loop and multi-cycle audits stay bounded;
+//   real mode collects lastFineValidation + lastFineConnectivity, prints every FAILED entry, and
+//   never counts boundary-unverified cells as a connectivity PASS.
+task runHierarchicalHydrologyProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.HierarchicalHydrologyProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}

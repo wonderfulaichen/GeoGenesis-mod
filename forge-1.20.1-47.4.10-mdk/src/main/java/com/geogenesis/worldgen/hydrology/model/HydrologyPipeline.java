@@ -335,8 +335,42 @@ public final class HydrologyPipeline {
         return m;
     }
 
+    /**
+     * ★ 分层受控实验（{@code -Dgeogenesis.hierarchicalHydrology=true}，默认关）的【最小】注入点。
+     *
+     * <p>只做三件事，不改任何既有默认行为（{@code layer == null} ⇒ 与旧路径逐位相同）：</p>
+     * <ul>
+     *   <li>{@code terrain} —— 替换床面地形回调（粗层注入 {@code terrainEQuick→heightFromE}，
+     *       细层注入 {@code sampleWu}）；</li>
+     *   <li>{@code boundary} —— 窗外一格外环的边界条件（细层注入粗层水位接口 =
+     *       向下游的权威水位）；返回 NaN ⇒ 退回本层地形；</li>
+     *   <li>{@code prewarm} —— 是否预热侵蚀 tile（<b>粗层必须 false</b>：零 tile 铁律）。</li>
+     * </ul>
+     */
+    record Layer(WindowOutlets.Terrain terrain, WindowOutlets.Terrain boundary,
+                 boolean prewarm, String tag) { }
+
+    /** 最近一次 {@code run} 的规模/阶段/采样读视图（包内可见，供探针直接读）。 */
+    static final class RunStats {
+        public int n, nz, cells, step, radiusBlocks, borderCells, prewarmSpanBlocks, couplingRounds;
+        public long terrainSamples, boundaryOverrides, boundaryMisses;
+        public double prewarmMs, outletsMs, surfaceMs, lakeMs, couplingResidual;
+        public boolean couplingConverged;
+        public String layerTag = "-";
+    }
+
+    private static final RunStats LAST_RUN = new RunStats();
+
+    /** 最近一次 run 的读视图（探针据此写阶段/采样/tile 规模判据）。 */
+    static RunStats lastRunStats() { return LAST_RUN; }
+
     /** 端到端执行。抛出异常仅用于"契约被违反"，不代表结果可信。 */
     public static Result run(CellGenerator gen, TerrainParams tp, Request request) {
+        return run(gen, tp, request, null);
+    }
+
+    /** 端到端执行（分层实验的最小重载；{@code layer == null} = 旧路径逐位不变）。 */
+    static Result run(CellGenerator gen, TerrainParams tp, Request request, Layer layer) {
         double sea = gen.seaLevel(), hs = tp.horizontalScale();
         int step = request.step(), radius = request.radiusBlocks();
         int n = 2 * radius / step + 1;
@@ -375,9 +409,27 @@ public final class HydrologyPipeline {
         // 【纯加速保证】`sampleWu` 是纯函数（seed 固定 ⇒ 同坐标同值）⇒
         //   命中与未命中等价 ⇒ **产出逐位不变**。
         // 【开关】`-Dgeogenesis.hydroSampleCache=false` 关（A/B 归因用）。
-        final WindowOutlets.Terrain terrainRaw = HYDRO_BED_ERODED
-                ? (bx, bz) -> gen.sampleWu(bx / hs, bz / hs).height       // 侵蚀后地形（重）
-                : (bx, bz) -> gen.sample(bx / hs, bz / hs).height;        // ★ 生产同源（轻）
+        // ★ 窗口地形采样计数（分层实验读视图用；⚠ 只在分层路径挂计数包装，
+        //   默认路径保持原 lambda 原样 ⇒ 零额外开销、产出逐位不变）。
+        final boolean layered = layer != null;
+        final java.util.concurrent.atomic.AtomicLong terrainSamples =
+                new java.util.concurrent.atomic.AtomicLong();
+        final java.util.concurrent.atomic.AtomicLong boundaryUses =
+                new java.util.concurrent.atomic.AtomicLong();
+        final java.util.concurrent.atomic.AtomicLong boundaryMisses =
+                new java.util.concurrent.atomic.AtomicLong();
+        final WindowOutlets.Terrain bedTerrain = layered && layer.terrain() != null
+                ? layer.terrain()                                               // ★ 分层地形（粗层=零 tile）
+                : (HYDRO_BED_ERODED
+                // ★ 2026-10-12【height-only】改调 erodedHeight：与 sampleWu().height 逐位等价，
+                //   但跳过气候/分类（本回调只读 height）。窗口 31684 点/窗 ⇒ 收益显著。
+                ? (bx, bz) -> gen.erodedHeight(bx / hs, bz / hs)          // 侵蚀后地形（等价、轻）
+                : (bx, bz) -> gen.sample(bx / hs, bz / hs).height);       // ★ 生产同源（轻）
+        final WindowOutlets.Terrain terrainRaw = layered
+                ? count(bedTerrain, terrainSamples) : bedTerrain;
+        // ★ 窗外一格外环的边界条件（细层注入粗层水位接口 = 向下游的权威；粗层为 null）。
+        final WindowOutlets.Terrain boundary = layer == null || layer.boundary() == null ? null
+                : count(layer.boundary(), boundaryUses);
         // ★★★ 2026-10-10【方案 B：轻量脊谷增强（零 tile 依赖的"沟壑"替代）】★★★
         //
         // 【动机】方案 A（仅放宽源头判据）实测最多补回 63%（3601 vs 含侵蚀的 5691）——
@@ -408,7 +460,9 @@ public final class HydrologyPipeline {
                 return concave > 0 ? c - concaveK * concave : c;
             };
         }
-        if (HYDRO_SAMPLE_CACHE) {
+        // ⚠ 分层粗层（prewarm=false）跳过本缓存：其地形本身就是 `terrainEQuick`（自带直接映射缓存），
+        //   再造一份 6 MB 逐窗缓存纯属浪费 —— 本缓存是纯记忆化 ⇒ 跳过不改变任何产出。
+        if (HYDRO_SAMPLE_CACHE && (layer == null || layer.prewarm())) {
             terrain = new WindowOutlets.Terrain() {
                 private static final int BITS = 18;               // 262144 槽 ≈ 4 MB
                 private static final int SIZE = 1 << BITS;
@@ -444,6 +498,26 @@ public final class HydrologyPipeline {
                 }
             };
         }
+        // ★ 分层细层：窗外一格外环的边界条件由【粗层水位接口】给出（下游权威）。
+        //   ⚠ 判据必须与 WindowOutlets 的采样坐标【精确】对齐，否则要么漏掉窗外环
+        //   （边界条件失效）、要么误改窗内（产出被偷偷改动）。逐点核对：
+        //     · 谷底角点（含窗内格心）：x = cx − radius − step/2 … cx + radius + step/2
+        //     · 窗外环（exterior）：x = cx − radius − step 与 cx + radius + step
+        //   ⇒ 窗外 ⟺ |dx| > radius + step/2（严格，含 1e-9 容差以排除恰好落在角点者）。
+        if (boundary != null) {
+            final WindowOutlets.Terrain inner = terrain;
+            final double edgeX = radius + step * 0.5;
+            final int cx = request.centerBlockX(), cz = request.centerBlockZ();
+            terrain = (bx, bz) -> {
+                if (!(Math.abs(bx - cx) > edgeX + 1e-9 || Math.abs(bz - cz) > edgeX + 1e-9)) {
+                    return inner.height(bx, bz);        // 窗内（含角点）⇒ 本层地形，逐位不变
+                }
+                double lv = boundary.height(bx, bz);
+                if (Double.isFinite(lv)) return lv;     // 粗层水位权威（下游接口）
+                boundaryMisses.incrementAndGet();
+                return inner.height(bx, bz);
+            };
+        }
 
         // ①② 地形 + 边界出口
         long __t0 = System.nanoTime();
@@ -456,7 +530,9 @@ public final class HydrologyPipeline {
         //   ⇒ 352×352 wu 跨约 8×8=64 个 tile），而 getOrGenTile 是【调用线程同步生成】
         //   ⇒ 单线程串行跑 64 次完整侵蚀。此处用 TILE_SAMPLER 池并行预热 ⇒ 采样全命中。
         //   纯加速（tile 是纯函数）⇒ 产出逐位不变。
-        if (PREWARM_TILES) {
+        //   ⚠ 分层粗层显式 prewarm=false ⇒ 走 terrainEQuick（零 tile）⇒ 绝不预热。
+        final boolean doPrewarm = layer == null ? PREWARM_TILES : layer.prewarm();
+        if (doPrewarm) {
             gen.prewarmErosionTiles(request.centerBlockX() - radius,
                     request.centerBlockZ() - radius, 2.0 * radius, hs);
         }
@@ -698,10 +774,46 @@ public final class HydrologyPipeline {
             waterSurface[k] = isLake[k] ? built.bed()[k] + lakeDepth[k] : surface.level()[k];
         }
 
+        // ★ 分层实验读视图发布（阶段/采样/tile 规模；默认路径也发布，探针可对照）。
+        synchronized (LAST_RUN) {
+            LAST_RUN.n = n; LAST_RUN.nz = n; LAST_RUN.cells = n * n;
+            LAST_RUN.step = step; LAST_RUN.radiusBlocks = radius;
+            LAST_RUN.borderCells = built.borderCells();
+            LAST_RUN.prewarmSpanBlocks = doPrewarm ? 2 * radius : 0;
+            LAST_RUN.couplingRounds = rounds;
+            LAST_RUN.couplingConverged = converged;
+            LAST_RUN.couplingResidual = residual;
+            LAST_RUN.terrainSamples = terrainSamples.get();
+            LAST_RUN.boundaryOverrides = boundaryUses.get();
+            LAST_RUN.boundaryMisses = boundaryMisses.get();
+            LAST_RUN.prewarmMs = (__tp - __t0) / 1e6;
+            LAST_RUN.outletsMs = (__t1 - __t0) / 1e6;
+            LAST_RUN.surfaceMs = (__t2 - __t1) / 1e6;
+            LAST_RUN.lakeMs = 0;
+            LAST_RUN.layerTag = layer == null ? "-" : layer.tag();
+        }
+        if (boundary != null) {     // 细层：窗外边界条件由粗层权威覆盖的规模（如实计数）
+            long uses = boundaryUses.get(), misses = boundaryMisses.get();
+            HierarchicalHydrology.Diag.exteriorAuthority((int) (uses - misses), (int) misses);
+        }
+        if (layer != null) {        // 分层阶段留痕（探针读；粗/细各一条）
+            HierarchicalHydrology.Diag.layer(layer.tag(), "prewarmMs", (__tp - __t0) / 1_000_000L);
+            HierarchicalHydrology.Diag.layer(layer.tag(), "outletsMs", (__t1 - __t0) / 1_000_000L);
+            HierarchicalHydrology.Diag.layer(layer.tag(), "surfaceMs", (__t2 - __t1) / 1_000_000L);
+            HierarchicalHydrology.Diag.layer(layer.tag(), "prewarmSpan", doPrewarm ? 2 * radius : 0);
+            HierarchicalHydrology.Diag.layer(layer.tag(), "samples", terrainSamples.get());
+            HierarchicalHydrology.Diag.layer(layer.tag(), "cells", (long) n * n);
+        }
         return new Result(n, n, step, built.bed(), built.drains(), surface.resolved(),
                 surface.level(), lakeResult.depth(), lakeResult.lake(), surface.parent(),
                 river.discharge(), river.channel(), river.width(), lakeResult, river, deathMask,
                 waterSurface, rounds, converged, residual);
+    }
+
+    /** 采样计数器包装（只读视图；不改产出）。 */
+    private static WindowOutlets.Terrain count(WindowOutlets.Terrain t,
+                                               java.util.concurrent.atomic.AtomicLong sink) {
+        return (bx, bz) -> { sink.incrementAndGet(); return t.height(bx, bz); };
     }
 
     /** 便捷统计，供探针与上层日志使用。 */
