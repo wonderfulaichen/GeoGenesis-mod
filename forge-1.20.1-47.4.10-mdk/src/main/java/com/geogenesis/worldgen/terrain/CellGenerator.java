@@ -566,28 +566,36 @@ public final class CellGenerator {
     //   → 天然 2× 冗余；跨 region 的 margin 重叠再放大。
     // 缓存命中 ~20ns vs 计算 ~6µs（runBench 实测 16384 次 = 97.61ms）。
     //
-    // ★ 并发铁律：terrainEQuick 会被【侵蚀 tile 并行行】与【水文多线程】调用，
-    //   故必须保证 64 位读写原子 —— 用 AtomicLongArray 存 double 的【位模式】，
-    //   不能用 double[]（JLS：非 volatile 的 long/double 数组元素读写不保证原子
-    //   → 会撕裂读并返回错误的 e，进而污染地形）。
-    //   写入次序：先写值、后写键（键为 volatile 写）→ 读者读到键即保证值已写入。
+    // ★ 并发铁律：terrainEQuick 会被【侵蚀 tile 并行行】与【水文多线程】调用。
+    //   两个不变量都必须成立：
+    //   ① 【单条读取 key+value 原子】—— 键与值必须由【同一不可变 entry】承载，
+    //      读者只取一次槽引用即同时拿到 key 与 value。旧实现用两个 AtomicLongArray
+    //      （eqKeys/eqVals 各写一次）：读者命中 key 之后、读 value 之前，若有另一线程
+    //      用【不同坐标】覆盖同一槽，则会读到【别人坐标的值】——这不是撕裂读，而是
+    //      静默错值（无任何异常/NaN 提示），且液滴并行与水文多线程下真实可发生。
+    //   ② 【槽只定位不当身份】—— 哈希槽只是哈希表定位，身份由 entry 内的完整
+    //      key（EQ 为 wu 位模式混合键；HR 为 qx/qz 量化坐标）比较决定；碰撞只是
+    //      增未命中，绝不返回异槽/异坐标的值。
+    //   容量不变（EQ_CACHE_SIZE / LF_CACHE_SIZE / HR_CACHE_SIZE），产出与旧实现同分布。
     private static final int EQ_CACHE_BITS = 17;                 // 131072 槽 ≈ 2 MB
     private static final int EQ_CACHE_SIZE = 1 << EQ_CACHE_BITS;
     private static final int EQ_CACHE_MASK = EQ_CACHE_SIZE - 1;
     /** 空槽哨兵（构造/播种时填充；真实键恰为此值者会被重映射，概率 2^-64）。 */
     private static final long EQ_EMPTY = Long.MIN_VALUE;
 
-    private final AtomicLongArray eqKeys = new AtomicLongArray(EQ_CACHE_SIZE);
-    private final AtomicLongArray eqVals = new AtomicLongArray(EQ_CACHE_SIZE);
+    /** 键值对的不可变快照（entry 为 null = 空槽）。替换引用 = 单条 API 的原子发布。 */
+    private record KeyedValue(long key, long bits) {}
+    private final AtomicReferenceArray<KeyedValue> eqEntries =
+            new AtomicReferenceArray<>(EQ_CACHE_SIZE);
     private final AtomicLong eqHits = new AtomicLong();
     private final AtomicLong eqMisses = new AtomicLong();
 
-    /** 清空 terrainEQuick 缓存（换种子/构造时调用）。 */
+    /** 清空 terrainEQuick 缓存（换种子/构造时调用）。按引用置 null 清空（与 seed/配置变更同义）。 */
     private void clearEqCache() {
-        for (int i = 0; i < EQ_CACHE_SIZE; i++) eqKeys.set(i, EQ_EMPTY);
+        for (int i = 0; i < EQ_CACHE_SIZE; i++) eqEntries.set(i, null);
         eqHits.set(0);
         eqMisses.set(0);
-        for (int i = 0; i < LF_CACHE_SIZE; i++) lfKeys.set(i, EQ_EMPTY);
+        for (int i = 0; i < LF_CACHE_SIZE; i++) lfEntries.set(i, null);
         clearRockResistanceCache();   // ★ P3：岩性硬度缓存（种子/配置变更时一并失效）
     }
 
@@ -598,12 +606,12 @@ public final class CellGenerator {
     //   【为何必须缓存】不加缓存时每次查询要重算"半个 sampleCore"
     //   （continent + 类型场 Voronoi + 海岸线扭曲 + 构造权重），而调用频率约
     //   0.7 次/采样点（单体 8%×9 邻居格 + 火山区 12%×9×区域占比）
-    //   ⇒ 实测开销约 +40%。与 terrainEQuick 同模式（AtomicLongArray 存 double
-    //   位模式，先写值后写键；键域用 LF_SALT 隔离，避免与 e 缓存互相覆盖）。
+    //   ⇒ 实测开销约 +40%。同地形 e 缓存（不可变 entry 单条原子读），
+    //   键域用 LF_SALT 隔离，避免与 e 缓存互相覆盖。
     private static final int LF_CACHE_BITS = 12;                 // 4096 槽 ≈ 64 KB
     private static final int LF_CACHE_SIZE = 1 << LF_CACHE_BITS;
-    private final AtomicLongArray lfKeys = new AtomicLongArray(LF_CACHE_SIZE);
-    private final AtomicLongArray lfVals = new AtomicLongArray(LF_CACHE_SIZE);
+    private final AtomicReferenceArray<KeyedValue> lfEntries =
+            new AtomicReferenceArray<>(LF_CACHE_SIZE);
     private static final long LF_SALT = 0x5DEECE66DL;
 
     /** 缓存命中/未命中统计（诊断用）。 */
@@ -623,14 +631,14 @@ public final class CellGenerator {
         long key = kx ^ Long.rotateLeft(kz, 32);
         if (key == EQ_EMPTY) key = Long.MAX_VALUE;               // 避开哨兵
         int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> (64 - EQ_CACHE_BITS));
-        if (eqKeys.get(slot) == key) {
+        KeyedValue entry = eqEntries.get(slot);                  // ★ 单条原子读取：key+value 同快照
+        if (entry != null && entry.key() == key) {
             eqHits.incrementAndGet();
-            return Double.longBitsToDouble(eqVals.get(slot));
+            return Double.longBitsToDouble(entry.bits());
         }
         eqMisses.incrementAndGet();
         double v = terrainEQuickCompute(wx, wz);
-        eqVals.set(slot, Double.doubleToRawLongBits(v));         // 先值
-        eqKeys.set(slot, key);                                   // 后键（volatile）
+        eqEntries.set(slot, new KeyedValue(key, Double.doubleToRawLongBits(v)));
         return v;
     }
 
@@ -669,8 +677,9 @@ public final class CellGenerator {
         long key = (kx ^ Long.rotateLeft(kz, 29)) + LF_SALT;
         if (key == EQ_EMPTY) key = Long.MAX_VALUE;
         int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> (64 - LF_CACHE_BITS));
-        if (lfKeys.get(slot) == key) {
-            return Double.longBitsToDouble(lfVals.get(slot));
+        KeyedValue entry = lfEntries.get(slot);                  // ★ 单条原子读取：key+value 同快照
+        if (entry != null && entry.key() == key) {
+            return Double.longBitsToDouble(entry.bits());
         }
         // ★★★ 2026-09-14 性能修复（用户"比几小时前慢"，卡在 0%）★★★
         //
@@ -688,14 +697,13 @@ public final class CellGenerator {
         //   两者在海岸带的细微差异，对"整座火山生成与否"无观感影响。
         double cBiased = continent.sample(wx, wz) - continentBias;
         double v = smoothstep(-0.01, 0.01, cBiased);
-        lfVals.set(slot, Double.doubleToRawLongBits(v));         // 先值
-        lfKeys.set(slot, key);                                   // 后键（volatile）
+        lfEntries.set(slot, new KeyedValue(key, Double.doubleToRawLongBits(v)));
         return v;
     }
 
     // ===== ★ 2026-09-14 Phase T8(P3)：岩性抗蚀性（软岩成谷、硬岩成脊）=====
     //   侵蚀引擎按【抗蚀性】调制侵蚀量，故需按世界坐标查"该点什么岩性、多硬"。
-    //   与 landFactorAt 同模式（AtomicLongArray 存 double 位模式 + 独立键域），
+    //   与 landFactorAt 同模式（不可变 entry 单条原子读 + 独立键域），
     //   因为 ErosionEngine 的硬度网格与液滴查表会反复命中同一批坐标。
     /**
      * ★ 岩性量化粒度（wu）：{@link #rockResistanceAt} 按此网格量化<b>缓存键与采样点</b>。
@@ -711,8 +719,9 @@ public final class CellGenerator {
     private static final int HR_CACHE_BITS = 13;                 // 8192 槽 ≈ 128 KB
     private static final int HR_CACHE_SIZE = 1 << HR_CACHE_BITS;
     private static final long HR_SALT = 0x27BB2EE687B0B0FDL;
-    private final AtomicLongArray hrKeys = new AtomicLongArray(HR_CACHE_SIZE);
-    private final AtomicLongArray hrVals = new AtomicLongArray(HR_CACHE_SIZE);
+    /** ★ 键 = 完整 qx/qz 量化坐标（哈希混合只用于选槽，绝不作为身份）。 */
+    private final AtomicReferenceArray<KeyedValue> hrEntries =
+            new AtomicReferenceArray<>(HR_CACHE_SIZE);
 
     /**
      * ★ 2026-09-14 Phase T8(P3)：<b>岩性抗蚀性</b>（供 {@code ErosionEngine} 注入）。
@@ -742,11 +751,13 @@ public final class CellGenerator {
         final int QUANT = ROCK_QUANT;
         long qx = Math.floorDiv((long) Math.floor(wx), QUANT);
         long qz = Math.floorDiv((long) Math.floor(wz), QUANT);
-        long key = (qx * 0x9E3779B97F4A7C15L) ^ (qz * 0xC2B2AE3D27D4EB4FL) ^ HR_SALT;
+        // 完整 qx/qz 连成 key（量化单位已归一到 ROCK_QUANT 网格 ⇒ 不需再进键域）
+        long key = ((qx << 32) ^ (qz & 0xFFFFFFFFL)) + HR_SALT;
         if (key == EQ_EMPTY) key = Long.MAX_VALUE;
         int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> (64 - HR_CACHE_BITS));
-        if (hrKeys.get(slot) == key) {
-            return Double.longBitsToDouble(hrVals.get(slot));
+        KeyedValue entry = hrEntries.get(slot);                  // ★ 单条原子读取：key+value 同快照
+        if (entry != null && entry.key() == key) {
+            return Double.longBitsToDouble(entry.bits());
         }
         // ★ 量化点采样：用【网格中心】而非调用者坐标 ⇒ 同一单元内所有调用得到同一值
         //   （避免"同单元不同点算出不同值"导致缓存值与直接计算不一致）。
@@ -755,14 +766,13 @@ public final class CellGenerator {
         TectonicField.Sample ts = tectonic.sample(sx, sz);
         int layer = strata.layerAt(sx, sz);
         double v = StratumField.resistanceAt(ts, TectonicField.shellFromC(cBiased) > 0.5, layer);
-        hrVals.set(slot, Double.doubleToLongBits(v));            // 先值
-        hrKeys.set(slot, key);                                   // 后键（volatile）
+        hrEntries.set(slot, new KeyedValue(key, Double.doubleToLongBits(v)));
         return v;
     }
 
-    /** 清空岩性硬度缓存（由 {@code clearEqCache} 统一调用）。 */
+    /** 清空岩性硬度缓存（由 {@code clearEqCache} 统一调用）。按引用置 null 清空。 */
     private void clearRockResistanceCache() {
-        for (int i = 0; i < HR_CACHE_SIZE; i++) hrKeys.set(i, EQ_EMPTY);
+        for (int i = 0; i < HR_CACHE_SIZE; i++) hrEntries.set(i, null);
     }
 
     /** 轻量地形 e 的【实际计算】（跳过气候/分类/height 映射/shape 赋值）。
@@ -1804,6 +1814,18 @@ public final class CellGenerator {
         Cell cell = sample(wuX, wuZ);
         applyTileDelta(cell, wuX, wuZ);
         return cell;
+    }
+
+    /**
+     * 仅采样侵蚀后高度，与 sampleWu().height 同源，跳过气候、分类和坡度计算。
+     * 增量后的第二次 softCap 必须保留；height-only 探针覆盖真实压缩窗口及负对照。
+     * 可触发侵蚀 tile 生成，不是非阻塞 peek。
+     */
+    public double erodedHeight(double wuX, double wuZ) {
+        double e0 = terrainEQuick(wuX, wuZ);
+        double ne = e0 + erosionDeltaE(wuX, wuZ);
+        if (Double.isNaN(ne) || Double.isInfinite(ne)) ne = e0;
+        return heightCurve.heightFromE(softCapLandE(ne));
     }
 
     /**

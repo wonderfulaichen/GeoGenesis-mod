@@ -176,6 +176,12 @@ public final class ModelHydrologyProvider {
     /** block → wu 换算（sample/sampleWu 的坐标语义是 wu，见 CellGenerator.sample javadoc）。 */
     private final double invHs;
     /**
+     * ★ 本实例的求解策略指纹（构造时确定，含 {@code gen.params} hash + Forge 配置指纹 +
+     * 实验系统参数）。进 {@link CacheKey} ⇒ 不同参数/配置的实例<b>绝不复用</b>彼此的缓存。
+     * 见 {@link #instanceStrategyFingerprint}。
+     */
+    private final long strategy;
+    /**
      * 内容缓存（LRU）—— ★ static 共享，按 seed 键控。
      *
      * <h3>为什么必须 static（2026-10 实机实测驱动）</h3>
@@ -203,8 +209,249 @@ public final class ModelHydrologyProvider {
     private static final ConcurrentHashMap<CacheKey, CompletableFuture<RegionData>> SHARED_INFLIGHT =
             new ConcurrentHashMap<>();
 
-    /** 缓存键 = (世界种子, region 坐标) —— 见 {@link #SHARED_CACHE} 的 javadoc。 */
-    private record CacheKey(long seed, int rx, int rz) { }
+    /** 缓存键 = (世界种子, region 坐标, 求解策略指纹)。
+     *
+     *  <p>★ 分层实验（2026-10-10）：{@code strategy} 把【分层/既有】两条求解策略的缓存彻底隔离
+     *  —— 旧键只有 (seed,rx,rz)，一旦开关切换就会命中另一策略的产物（静默返还错水）。
+     *  指纹含运行期配置（系统属性 + 配置项），故改了旋钮也不会复用旧缓存。</p>
+     */
+    private record CacheKey(long seed, int rx, int rz, long strategy) { }
+
+    /* ======================================================================
+     * ★★★ 2026-10-10【分层水文受控实验（`-Dgeogenesis.hierarchicalHydrology=true`）】★★★
+     *
+     * 契约（详见 {@link HierarchicalHydrology}）：
+     *   粗层 = 只读 `terrainEQuick→heightFromE`（零 sampleWu、零 tile 预热），pass-1 只跑粗层；
+     *   细层 = 本 region + 固定 halo 的 `sampleWu` 重管线，窗外一格外环取【粗层水位接口】
+     *          （下游权威），【绝不】求解任何邻区的完整重管线 —— 借邻区只借粗层端口；
+     *   盆地形态：粗层只是【候选】，细层真实侵蚀盆地为【最终】⇒ 候选消失/分裂/合并/移动/
+     *          水位变动【不判失败】；只有真实冲突（非有限水位/越域索引）才抛带坐标异常
+     *          （不回退、不无限扩域 —— 也不给它无限扩域）。
+     *
+     * 默认关：{@code HIER=false} ⇒ 全部走既有路径，产出逐位不变。
+     * ====================================================================== */
+    static final boolean HIER = Boolean.getBoolean("geogenesis.hierarchicalHydrology");
+    /**
+     * 粗层保护带。必须让粗域【覆盖】细层窗外一格外环（该环在 {@code ±(RADIUS + STEP)} 处）
+     * ⇒ 硬下限 {@code HALO + STEP}（= 100 ⇒ 粗半径 356，恰是该环所在的格点，且 356 % STEP == 0）。
+     * {@link HierarchicalHydrology.Params} 会在构造时再对齐同余，防手改出错。
+     */
+    private static final int HIER_COARSE_HALO =
+            Integer.getInteger("geogenesis.hierCoarseHalo", HALO + STEP);
+    private static final HierarchicalHydrology.Params HIER_PARAMS = HierarchicalHydrology.Params.of(
+            REGION, HALO, STEP, HIER_COARSE_HALO);
+
+    /**
+     * 会改变本链路产出的【实验系统属性】清单（显式维护；见实例指纹 javadoc 为何不用全枚举）。
+     */
+    private static final String[] EXPERIMENT_KEYS = {
+            // ---- 分层实验 ----
+            "geogenesis.hierarchicalHydrology", "geogenesis.hierCoarseHalo",
+            "geogenesis.hierStrictContract",
+            // ---- model 链拓扑 / 窗口 ----
+            "geogenesis.modelRiverModel", "geogenesis.modelRegion", "geogenesis.modelHalo",
+            "geogenesis.modelStep", "geogenesis.modelMargin",
+            // ---- 骨架 ----
+            "geogenesis.skeletonTrace", "geogenesis.skeletonCrossPass", "geogenesis.networkFilter",
+            "geogenesis.skeletonMinNodes", "geogenesis.skeletonSelfRadius",
+            "geogenesis.skeletonSelfExempt", "geogenesis.skeletonMaxRivers",
+            "geogenesis.skeletonMeanderAmp", "geogenesis.channelMinCells",
+            "geogenesis.sourceSpacing", "geogenesis.stepCrossGuard",
+            // ---- 地形口径 / 床面 ----
+            "geogenesis.hydroBedEroded", "geogenesis.valleyMin", "geogenesis.valleyTrough",
+            "geogenesis.bedConcave", "geogenesis.bedConcaveStep",
+            // ---- 湖 / 判据 ----
+            "geogenesis.lakeSinkOff", "geogenesis.localLakeLevel", "geogenesis.flatBreak",
+            "geogenesis.inlandResolved", "geogenesis.intlandResolved", "geogenesis.sewGap",
+            // ---- 几何收尾 ----
+            "geogenesis.particleAmp", "geogenesis.particleMomentum",
+            // ---- 阈值 / 耦合 / 流向 ----
+            "geogenesis.riverThresholdFrac", "hydro.couplingMaxRounds", "hydro.directionRule",
+            "hydro.visitCap", "hydro.floorMul", "hydro.absFloorMul", "hydro.relFloor",
+            "hydro.dropTinyBasins", "hydro.minVisibleArea", "hydro.channelUseRawFlux",
+            "hydro.deadOnGeoWet", "hydro.momentum", "hydro.recoverKeepChainInk",
+            "hydro.relaxFloorGate", "hydro.ledgerOff",
+    };
+
+    /**
+     * 纯诊断 / 纯记忆化开关 —— <b>不</b>纳入缓存身份。
+     *
+     * <p>纳入只会让身份无谓变化（例：{@code -Dgeogenesis.stutterDiag} 只影响日志，
+     * 改它不该让 region/预览缓存全部失效）。列在此处作为<b>留痕与自检</b>：若日后发现
+     * 其中某个键"改了会改产出"，说明它应从本清单移到 {@link #EXPERIMENT_KEYS}。</p>
+     */
+    private static final String[] DIAGNOSTIC_ONLY_KEYS = {
+            "geogenesis.stutterDiag", "geogenesis.lakeDiag", "geogenesis.riverBreakDiag",
+            "geogenesis.riverWidthDiag", "geogenesis.logSrc", "geogenesis.skeletonEndDiag",
+            "geogenesis.joinChk", "geogenesis.gapWatch", "geogenesis.skelDump",
+            "geogenesis.hydrologyConcurrencyDiag", "geogenesis.worldgenProfilerEnabled",
+            "geogenesis.worldgenProfilerEveryChunks", "geogenesis.modelCacheCap",
+            "geogenesis.modelSolveThreads", "hydro.stageTimer", "hydro.couplingDiagnostics",
+            "geogenesis.prewarmTiles", "geogenesis.hydroSampleCache",
+    };
+
+    /** 类加载自检：两个清单必须不相交（同一键既"改产出"又"纯诊断"是维护错误）。 */
+    private static void assertKeyListsDisjoint() {
+        java.util.Set<String> diag =
+                new java.util.HashSet<>(java.util.Arrays.asList(EXPERIMENT_KEYS));
+        for (String k : DIAGNOSTIC_ONLY_KEYS) {
+            if (diag.contains(k)) {
+                throw new IllegalStateException(
+                        "实验指纹键清单与纯诊断键清单重叠: " + k);
+            }
+        }
+    }
+
+    /**
+     * ★★ 实验系统参数的【纯函数】指纹 —— <b>只含系统实验参数</b>，不含 {@code gen.params}
+     * 与 Forge 配置。
+     *
+     * <h3>用途</h3>
+     * <p>{@code PreviewDisplay.cacheSchemaHash} 可把本值混入磁盘缓存键 ⇒ 实验旋钮一变，
+     * 预览缓存即失效。地形参数与 Forge 配置由该处<b>既有</b>的
+     * {@code params.hashCode() + GeoGenesisConfig.configFingerprint()} 负责，不在此重复。</p>
+     */
+    public static long outputStrategyFingerprint() {
+        return hashOf(EXPERIMENT_KEYS);
+    }
+
+    /** 对键集做 FNV-1a 指纹（排序 ⇒ 与字典序/枚举顺序无关，确定性）。 */
+    private static long hashOf(String[] keys) {
+        java.util.TreeSet<String> sorted = new java.util.TreeSet<>(java.util.Arrays.asList(keys));
+        StringBuilder sb = new StringBuilder(512);
+        for (String k : sorted) sb.append(k).append('=').append(System.getProperty(k, "-")).append('|');
+        long h = 0xcbf29ce484222325L;
+        for (int i = 0; i < sb.length(); i++) {
+            h ^= sb.charAt(i);
+            h *= 0x100000001b3L;
+        }
+        return h;
+    }
+
+    /**
+     * 实例级求解策略指纹：{@code gen.params} 完整 hash ⊕ Forge 配置指纹 ⊕ 实验系统参数。
+     *
+     * <h3>★ 为什么必须是【实例】而非 static（本轮修正）</h3>
+     * <p>原为 {@code static final STRATEGY = strategyFingerprint()} —— <b>类初始化只捕获第一次</b>
+     * ⇒ 预览在同一进程里打开<b>不同地形参数 / 不同配置</b>的世界时仍用第一次的指纹
+     * ⇒ <b>多配置混用同一份 region/粗层缓存</b>（静默返还错水）。</p>
+     * <p>⇒ 本方法在<b>构造时</b>调用，结果存入实例 {@code final strategy}：不同
+     * {@code params}/{@code config} 的实例必然得到不同键。</p>
+     */
+    private static long instanceStrategyFingerprint(CellGenerator gen) {
+        assertKeyListsDisjoint();       // 自检：清单绝不重叠（否则身份来源不清）
+        long h = 0xcbf29ce484222325L;
+        h = mix(h, gen.params() == null ? 0L : gen.params().hashCode());
+        try {
+            h = mix(h, com.geogenesis.config.GeoGenesisConfig.configFingerprint());
+            var cfg = com.geogenesis.config.GeoGenesisConfig.INSTANCE;
+            h = mix(h, cfg.hydrologyDeterministicSkeleton.get() ? 1 : 0);
+            h = mix(h, cfg.hydrologyModelPipelineEnabled.get() ? 1 : 0);
+            h = mix(h, cfg.hydrologySkeletonRouting.get() ? 1 : 0);
+            h = mix(h, cfg.hydrologyDecayEnabled.get() ? 1 : 0);
+            h = mix(h, cfg.riverEnabled.get() ? 1 : 0);
+        } catch (RuntimeException | LinkageError ignored) {
+            h = mix(h, 0L);     // 无 Forge 环境（探针）：不留未加载异常
+        }
+        return mix(h, outputStrategyFingerprint());
+    }
+
+    private static long mix(long h, long v) {
+        return (h ^ v) * 0x100000001b3L;
+    }
+
+    // ---- 分层实验读视图（package-private；主 agent 的探针据此写判据）----
+
+    /** 分层开关是否开启。 */
+    static boolean hierarchical() { return HIER; }
+
+    /** 分层固定域参数（探针与生产同源）。 */
+    static HierarchicalHydrology.Params hierParams() { return HIER_PARAMS; }
+
+    /** 求解策略指纹（缓存隔离用；探针可断言"开关切换 ⇒ 指纹变化"）。 */
+    long strategyFingerprintValue() { return strategy; }
+
+    /** 取某 tract 的粗层产物（探针直接校验端口/盆地权威/水位接口）。 */
+    HierarchicalHydrology.Coarse coarseLayerFor(int rx, int rz) { return coarseFor(rx, rz); }
+
+    /**
+     * ★ 最近一次细层求解的【盆地形态对比】结果（探针据此读诊断；null = 尚未求解）。
+     *
+     * <p><b>形态差异（候选消失/分裂/合并/出口移动/水位变动）不是失败</b> ——
+     * 粗层只是候选，细层真实侵蚀盆地才是最终形态。契约只看基本数据合法
+     * （{@link HierarchicalHydrology.MorphologyComparison#contractSatisfied()}）。</p>
+     */
+    private static volatile HierarchicalHydrology.MorphologyComparison LAST_FINE_VALIDATION = null;
+
+    /** 最近一次细层求解的【独立连通性审计】（孤立/环/边框未验证，探针据此判 FAIL）。 */
+    private static volatile HierarchicalHydrology.Connectivity LAST_FINE_CONNECTIVITY = null;
+
+    /** 读视图：最近一次细层盆地形态对比（探针用）。 */
+    static HierarchicalHydrology.MorphologyComparison lastFineValidation() {
+        return LAST_FINE_VALIDATION;
+    }
+
+    /** 读视图：最近一次细层连通性审计（探针用）。 */
+    static HierarchicalHydrology.Connectivity lastFineConnectivity() { return LAST_FINE_CONNECTIVITY; }
+
+    /**
+     * 粗层固定域缓存（分层实验）—— 与细层缓存独立，键同为 {@link CacheKey}（含策略指纹）。
+     * 粗层是 (seed, rx, rz, 配置) 的纯函数 ⇒ 缓存只改时序不改内容。
+     */
+    private static final LinkedHashMap<CacheKey, HierarchicalHydrology.Coarse> COARSE_CACHE =
+            new LinkedHashMap<>(32, 0.75f, true);
+    private static final ConcurrentHashMap<CacheKey, CompletableFuture<HierarchicalHydrology.Coarse>>
+            COARSE_INFLIGHT = new ConcurrentHashMap<>();
+
+    /**
+     * 取（或建）本 tract 的<b>粗层</b>固定域产物 —— pass-1 的唯一内容。
+     *
+     * <p><b>铁律</b>：粗层绝不 {@code sampleWu}、绝不预热侵蚀 tile（{@link HierarchicalHydrology#coarseTerrain}）；
+     * 也<b>绝不取任何邻区</b> ⇒ 扇出恒为 1、不依赖生成顺序。</p>
+     */
+    private HierarchicalHydrology.Coarse coarseFor(int rx, int rz) {
+        CacheKey key = new CacheKey(seed, rx, rz, strategy);
+        synchronized (COARSE_CACHE) {
+            HierarchicalHydrology.Coarse hit = COARSE_CACHE.get(key);
+            if (hit != null) return hit;
+        }
+        CompletableFuture<HierarchicalHydrology.Coarse> existing = COARSE_INFLIGHT.get(key);
+        if (existing != null) return awaitCoarse(existing);
+        CompletableFuture<HierarchicalHydrology.Coarse> mine = new CompletableFuture<>();
+        CompletableFuture<HierarchicalHydrology.Coarse> raced = COARSE_INFLIGHT.putIfAbsent(key, mine);
+        if (raced != null) return awaitCoarse(raced);
+        try {
+            HierarchicalHydrology.Coarse c =
+                    HierarchicalHydrology.buildCoarse(gen, HIER_PARAMS, rx, rz, CLIMATE);
+            cachePutCoarse(key, c);
+            mine.complete(c);
+            COARSE_INFLIGHT.remove(key, mine);
+            return c;
+        } catch (RuntimeException | Error e) {
+            mine.completeExceptionally(e);
+            COARSE_INFLIGHT.remove(key, mine);      // ★ 失败绝不缓存
+            throw e;
+        }
+    }
+
+    private static HierarchicalHydrology.Coarse awaitCoarse(
+            CompletableFuture<HierarchicalHydrology.Coarse> f) {
+        try {
+            return f.join();
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof RuntimeException re) throw re;
+            throw e;
+        }
+    }
+
+    private static void cachePutCoarse(CacheKey key, HierarchicalHydrology.Coarse c) {
+        synchronized (COARSE_CACHE) {
+            COARSE_CACHE.put(key, c);
+            while (COARSE_CACHE.size() > CACHE_CAP) {
+                COARSE_CACHE.remove(COARSE_CACHE.keySet().iterator().next());
+            }
+        }
+    }
 
     /**
      * ★ 2026-10-10【pass-1（双 pass 续流的"发送"阶段）】。
@@ -432,6 +679,8 @@ public final class ModelHydrologyProvider {
         this.seed = seed;
         double hs = Math.max(0.01, gen.params().horizontalScale());
         this.invHs = 1.0 / hs;
+        // ★ 实例指纹在此求值（不是 static）⇒ 多配置预览各持有自己的缓存身份。
+        this.strategy = instanceStrategyFingerprint(gen);
         // ★ 多线程求解（见 SOLVE_THREADS javadoc）：region 之间互不依赖（各自纯函数），
         //   并行安全。solve() 路径内【零并行流】（已核查 HydrologyPipeline /
         //   EquilibriumWater / LakeWaterBalance / WindowOutlets 均无 parallel/commonPool）
@@ -459,6 +708,11 @@ public final class ModelHydrologyProvider {
             P1_CACHE.keySet().removeIf(k -> k.seed() != newSeed);
         }
         P1_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
+        // ★ 分层实验的粗层缓存：同样按 seed 隔离（否则换世界后命中旧世界的粗层权威）。
+        synchronized (COARSE_CACHE) {
+            COARSE_CACHE.keySet().removeIf(k -> k.seed() != newSeed);
+        }
+        COARSE_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
     }
 
     /** 兼容旧语义：完全清空共享缓存（换世界时由 setSeed 按 seed 处理）。 */
@@ -471,6 +725,10 @@ public final class ModelHydrologyProvider {
             P1_CACHE.clear();
         }
         P1_INFLIGHT.clear();
+        synchronized (COARSE_CACHE) {
+            COARSE_CACHE.clear();
+        }
+        COARSE_INFLIGHT.clear();
     }
 
     /**
@@ -768,7 +1026,18 @@ public final class ModelHydrologyProvider {
         var sk = DeterministicSkeleton.build(
                 p.level(), p.parent(), p.resolved(), p.lake(), p.sea(),
                 p.discharge(), p.lakeResult() == null ? null : p.lakeResult().basinOutlet(),
-                n, n, skParams, incomingCells, p.bed());
+                n, n, skParams, incomingCells, p.bed(),
+                // ★★ 分层实验：**构建时显式关闭**网络过滤（Boolean.FALSE）。
+                //    理由（失败规范）：{@code filterUnconnected} 会整簇删除"不接水体"的链
+                //    ⇒ 拿它的产出当连通性证据 = 用删除掩盖"支流接不进下游接口"的失败。
+                //    只记日志然后继续 ❌ ⇒ 这里真的不删；孤立由独立审计如实计入并判 FAIL。
+                //    既有生产路径传 null ⇒ 逐位不变。
+                HIER ? Boolean.FALSE : null);
+        if (HIER) {
+            // 回传事实（探针可断言"实验构建确实关了过滤且未删链"）。
+            HierarchicalHydrology.Diag.skeletonBuild(sk.networkFilterEnabled,
+                    sk.droppedByNetworkFilter);
+        }
         if (SKELETON_END_DIAG || LOG_SRC) {
             LOGGER.info("[HYDRO-SRC] srcAccum={} runoff={} traces={} sources={} maxQ={}",
                     String.format("%.1f", srcAccum), String.format("%.5f", runoff),
@@ -1031,7 +1300,8 @@ public final class ModelHydrologyProvider {
 
                 // 侵蚀后地形（region 求解已把窗口内 tile 全部生成 ⇒ 此处命中缓存，廉价）
                 // ★ block → wu：sampleWu 的坐标语义是 wu（1 wu = hs 块）
-                double eroded = gen.sampleWu(blockX * invHs, blockZ * invHs).height;
+                // ★ 2026-10-12【height-only】只读 height ⇒ 改调 erodedHeight（逐位等价、跳过气候/分类）。
+                double eroded = gen.erodedHeight(blockX * invHs, blockZ * invHs);
                 // 连续水位（双线性：湖面/河面在 4-block 网格上平滑）
                 double surface = bilinear(p.waterSurface(), n, gi, gj, rd.originX, rd.originZ, blockX, blockZ, STEP);
 
@@ -1067,7 +1337,37 @@ public final class ModelHydrologyProvider {
                 //    ⇒ 段落全在接收方窗口内 ⇒ 原 HALO 带即可命中。）
                 boolean nearBorder = (blockX < regLoX + HALO) || (blockX >= regHiX - HALO)
                         || (blockZ < regLoZ + HALO) || (blockZ >= regHiZ - HALO);
-                if (!isLakeBlock && half <= 0 && nearBorder) {
+                // ★ 分层实验：near-border 补缝【只借粗层做候选/校验】，**不覆盖输出**。
+                //   禁止隐式重解邻区细层（既有路径的 `regionFor(邻居)` 会跑完整重管线 ×9）。
+                //   owner 按【绝对坐标】判定（floorDiv ⇒ 与生成顺序、缓存状态无关）：
+                //     · 本区拥有该点 ⇒ 本区细层说了算（无命中即"此处无水"，不借邻区）；
+                //     · 邻区拥有该点 ⇒ 用【owner 粗 tract】做<b>校验</b>：粗层判湖而本块真实
+                //       侵蚀地形不支持（`eroded ≥ 水面 − 0.5`）⇒ 记为【不一致】并如实计数
+                //       （正是"侵蚀打开出口漏水"的现场）；<b>绝不</b>用粗层旧湖面覆盖输出。
+                //     · 连粗域都不覆盖 ⇒ 契约缺口（清晰失败，不静默补缝）。
+                //   ⚠ 湖一律来自【细层】：{@code isLakeBlock} 只由 {@code p.lake()[k]}（下方
+                //     或既有 3×3 逻辑）决定；粗层无权改写落块。
+                boolean outerOwner = Math.floorDiv(blockX, REGION) != rdRx
+                        || Math.floorDiv(blockZ, REGION) != rdRz;
+                if (HIER && !isLakeBlock && half <= 0 && nearBorder) {
+                    if (!outerOwner) {
+                        HierarchicalHydrology.Diag.inTractNoHit();     // 本区无命中（如实计数）
+                    } else {
+                        HierarchicalHydrology.Coarse ct = coarseFor(
+                                Math.floorDiv(blockX, REGION), Math.floorDiv(blockZ, REGION));
+                        if (!ct.contains(blockX, blockZ)) {
+                            HierarchicalHydrology.Diag.contractGap(blockX, blockZ);
+                        } else if (ct.lakeAt(blockX, blockZ)) {
+                            double cs = ct.waterSurfaceAt(blockX, blockZ);
+                            // 粗层判湖 + 本块真实地形确实低于水面 ⇒ 候选一致（仅计数）。
+                            // 否则 ⇒ 侵蚀打开了出口（漏水）⇒ 如实计不一致，仍不覆盖输出。
+                            boolean terrainSupports =
+                                    Double.isFinite(cs) && eroded < cs - 0.5;
+                            HierarchicalHydrology.Diag.coarseLakeCandidate(terrainSupports);
+                        }
+                    }
+                }
+                if (!HIER && !isLakeBlock && half <= 0 && nearBorder) {
                     for (int t = 0; t < 9; t++) {
                         if (t == 4) continue;
                         // 只取"该方块靠近的那一侧"的邻区，避免无谓求解
@@ -1130,6 +1430,8 @@ public final class ModelHydrologyProvider {
                         LOGGER.info("[GAP-WATCH] ({},{}) => LAKE_COL region=({},{})",
                                 blockX, blockZ, rdRx, rdRz);
                     }
+                    // ★ 湖一律来自【细层】：水面取本区细层水位（`p.waterSurface()` 双线性）。
+                    //   粗层只做候选/校验，**不改写**落块（旧实现会用粗层水位覆盖 ⇒ 掩盖漏水）。
                     // 湖列：不雕刻，按水位洪泛；lakeNode=null ⇒ 写回跳过逃逸重算、按水位分组
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, original,
                             surface, surface, 0.0, 1.0,
@@ -1278,7 +1580,7 @@ public final class ModelHydrologyProvider {
      */
     private RegionData regionFor(int blockX, int blockZ) {
         int rx = Math.floorDiv(blockX, REGION), rz = Math.floorDiv(blockZ, REGION);
-        CacheKey key = new CacheKey(seed, rx, rz);
+        CacheKey key = new CacheKey(seed, rx, rz, strategy);
         // ① 缓存命中
         synchronized (SHARED_CACHE) {
             RegionData hit = SHARED_CACHE.get(key);
@@ -1368,7 +1670,8 @@ public final class ModelHydrologyProvider {
                     int bx = centerX + dx, bz = centerZ + dz;
                     // 只处理窗外点（边框内一点由窗内自己算）
                     if (Math.abs(dx) <= radius && Math.abs(dz) <= radius) continue;
-                    double h = gen.sampleWu(bx / hs, bz / hs).height;
+                    // ★ 2026-10-12【height-only】：只读 height ⇒ 改调 erodedHeight（逐位等价、更轻）。
+                    double h = gen.erodedHeight(bx / hs, bz / hs);
                     if (h <= sea) continue;                          // 海：无径流
                     // 最陡下降追踪到窗框（步长 MARGIN_STEP，上限 mSteps*2 步）
                     double cx2 = bx, cz2 = bz;
@@ -1381,7 +1684,8 @@ public final class ModelHydrologyProvider {
                                 if (di == 0 && dj == 0) continue;
                                 double nx = cx2 + di * (double) MARGIN_STEP;
                                 double nz = cz2 + dj * (double) MARGIN_STEP;
-                                double nh = gen.sampleWu(nx / hs, nz / hs).height;
+                                // ★ 2026-10-12【height-only】：只读 height ⇒ 改调 erodedHeight（逐位等价、更轻）。
+                                double nh = gen.erodedHeight(nx / hs, nz / hs);
                                 if (Double.isNaN(best) || nh < best) { best = nh; bdx = di; bdz = dj; }
                             }
                         }
@@ -1417,7 +1721,13 @@ public final class ModelHydrologyProvider {
      * <b>绝不取任何邻区</b>（扇出恒为 1）；缓存/inflight 范式同 {@link #regionFor}。
      */
     private Pass1 regionPass1(int rx, int rz) {
-        CacheKey key = new CacheKey(seed, rx, rz);
+        // ★ 分层实验：pass-1 内容 = 本 tract 的粗层固定域（零 sampleWu/零预热/零邻区）。
+        //   直接短路到粗层缓存，避免与 P1_CACHE 重复计算同一份粗产物。
+        if (HIER) {
+            HierarchicalHydrology.Coarse ct = coarseFor(rx, rz);
+            return new Pass1(ct.pipe(), coarseExitSeeds(ct), ct.originX(), ct.originZ());
+        }
+        CacheKey key = new CacheKey(seed, rx, rz, strategy);
         synchronized (P1_CACHE) {
             Pass1 hit = P1_CACHE.get(key);
             if (hit != null) return hit;
@@ -1471,6 +1781,11 @@ public final class ModelHydrologyProvider {
                 throw new IllegalStateException("injected pass1 failure for (" + rx + "," + rz + ")");
             }
         }
+        // ★ 分层实验：pass-1 【只跑粗层】—— 零 sampleWu、零 tile 预热、零邻区，扇出恒为 1。
+        if (HIER) {
+            HierarchicalHydrology.Coarse ct = coarseFor(rx, rz);
+            return new Pass1(ct.pipe(), coarseExitSeeds(ct), ct.originX(), ct.originZ());
+        }
         int centerX = rx * REGION + REGION / 2;
         int centerZ = rz * REGION + REGION / 2;
         double[] extra = computeMarginInflow(centerX, centerZ, RADIUS, STEP, 2 * RADIUS / STEP + 1);
@@ -1485,6 +1800,24 @@ public final class ModelHydrologyProvider {
             seeds = sr.exitSeeds();
         }
         return new Pass1(p, seeds, centerX - RADIUS, centerZ - RADIUS);
+    }
+
+    /**
+     * 粗层出口端口 → 接力种子（分层实验）。语义与既有 pass-1 的 {@code ExitSeed} 相同
+     * （"水从哪个格离开本 tract、指向哪个邻 tract"），但来源是<b>粗层水位接口</b>
+     * 而不是细层骨架 —— 邻区因此只需付粗层代价。
+     */
+    private static List<DeterministicSkeleton.ExitSeed> coarseExitSeeds(
+            HierarchicalHydrology.Coarse ct) {
+        List<DeterministicSkeleton.ExitSeed> out = new ArrayList<>();
+        for (HierarchicalHydrology.Port port : ct.ports()) {
+            if (port.dRX() == 0 && port.dRZ() == 0) continue;
+            int i = Math.round((port.blockX() - ct.originX()) / (float) ct.step());
+            int j = Math.round((port.blockZ() - ct.originZ()) / (float) ct.step());
+            if (i < 0 || j < 0 || i >= ct.n() || j >= ct.n()) continue;
+            out.add(new DeterministicSkeleton.ExitSeed(i * ct.n() + j, port.dRX(), port.dRZ()));
+        }
+        return out;
     }
 
     /**
@@ -1526,6 +1859,125 @@ public final class ModelHydrologyProvider {
 
     /** 求解一个 region 窗口（纯函数；耗时日志只打【求解】不打缓存命中）。 */
     private RegionData solve(int rx, int rz) {
+        return HIER ? solveHier(rx, rz) : solveProduction(rx, rz);
+    }
+
+    /**
+     * ★ 分层实验的【细层】：本 region + 固定 halo 跑重管线（{@code sampleWu}），
+     * 窗外一格外环取<b>坐标 owner 的粗层水位接口</b>（下游权威，不是本区近似）；
+     * 接力种子 = <b>邻区粗层主干端口</b> + <b>本区粗层主干源头</b>（两侧都沿侵蚀 parent 细化）
+     * —— <b>绝不</b>求解任何邻区的完整重管线。
+     */
+    private RegionData solveHier(int rx, int rz) {
+        int centerX = rx * REGION + REGION / 2;
+        int centerZ = rz * REGION + REGION / 2;
+        int originX = centerX - RADIUS, originZ = centerZ - RADIUS;
+        long t0 = System.nanoTime();
+        HierarchicalHydrology.Coarse ct = coarseFor(rx, rz);
+        // ★ 窗外一格外环的边界条件 = 【坐标 owner】的粗层水位接口。
+        //   旧写法用本区 `ct.levelAt` ⇒ 对窗外点而言那不是 owner（可能是另一个 tract）
+        //   ⇒ 违反"同坐标任何区拿同 authority"。改为按绝对坐标解析 owner。
+        WindowOutlets.Terrain bnd = (bx, bz) -> {
+            int qx = (int) Math.floor(bx), qz = (int) Math.floor(bz);
+            return HierarchicalHydrology.owner(qx, qz, HIER_PARAMS, this::coarseFor)
+                    .levelAt(qx, qz);
+        };
+        var req = new HydrologyPipeline.Request(centerX, centerZ, RADIUS, STEP, CLIMATE, 0,
+                riverModel(), SAMPLES, null);
+        HydrologyPipeline.Result p = HydrologyPipeline.run(gen, gen.params(), req,
+                new HydrologyPipeline.Layer(null, bnd, true, "fine"));
+        HierarchicalHydrology.Diag.FINE_SOLVES.incrementAndGet();
+        // ★ 盆地【形态对比】：粗层只是候选、细层真实侵蚀盆地为最终形态 ⇒
+        //   候选消失/分裂/合并/出口移动/水位变动一律【不判失败】，只如实记录。
+        //   真实冲突（非有限水位/越域索引）才抛带坐标异常（严格模式默认开）。
+        HierarchicalHydrology.MorphologyComparison v =
+                HierarchicalHydrology.validate(HIER_PARAMS, ct, p, originX, originZ, rx, rz);
+        LAST_FINE_VALIDATION = v;
+        LAST_FINE_CONNECTIVITY = HierarchicalHydrology.auditConnectivity(p);
+        HierarchicalHydrology.Diag.connectivity(LAST_FINE_CONNECTIVITY);
+        RiverCenterlines.Result cl;
+        SegmentIndex skelSeg = null;
+        if (SKELETON_TRACE) {
+            // 接力：本区粗层主干源头（细化主干）+ 邻区粗层主干端口（续流）。
+            // 两路都由【本区自己的侵蚀 parent】往里追 ⇒ 不是"只把边界换粗层"。
+            List<Integer> incoming = CROSS_PASS
+                    ? hierIncomingSeeds(rx, rz, p.nx(), originX, originZ) : List.of();
+            var sr = skeletonRegion(p, originX, originZ, incoming, true);
+            cl = sr.cl();
+            skelSeg = sr.seg();
+        } else {
+            cl = RiverCenterlines.build(p.bed(), p.discharge(), p.channel(), p.sea(),
+                    p.nx(), p.nz(), RiverCenterlines.Params.defaults(), STEP);
+        }
+        logRegionSolved(rx, rz, p, cl, t0, originX, originZ);
+        HierarchicalHydrology.Diag.fineTiming((System.nanoTime() - t0) / 1_000_000L, p.nx() * p.nx());
+        lastFineMs = (System.nanoTime() - t0) / 1e6;
+        return new RegionData(p, cl, skelSeg, originX, originZ);
+    }
+
+    /** 最近一次细层求解耗时（ms）——性能诊断（与 {@link HierarchicalHydrology.Diag#LAST_FINE_MS} 同源）。 */
+    private volatile double lastFineMs = -1;
+
+    /**
+     * 分层接力种子（本区格索引）= 本区粗层主干源头 + 邻区粗层主干端口。
+     *
+     * <p>语义：粗层给出<b>主干候选</b>（源头与跨区接口），细层用<b>侵蚀后地形</b>把主干
+     * 追踪出来并细化 —— 而不是"只把边界换成粗层、其余照旧"。</p>
+     */
+    private List<Integer> hierIncomingSeeds(int rx, int rz, int n,
+                                            int myOriginX, int myOriginZ) {
+        java.util.LinkedHashSet<Integer> out = new java.util.LinkedHashSet<>();
+        // ① 本区粗层主干源头（主干候选，交细层沿侵蚀 parent 追）。
+        //   ★ 只收【owner = 本 tract】的源头：粗域含 halo，会看到邻区主干，
+        //     不筛就会把别区源头当本区源头重复起河。
+        HierarchicalHydrology.Coarse mine = coarseFor(rx, rz);
+        HierarchicalHydrology.Params hp = HIER_PARAMS;
+        for (HierarchicalHydrology.TrunkSeed ts : mine.trunkSeeds()) {
+            if (Math.floorDiv(ts.blockX(), hp.tract()) != rx
+                    || Math.floorDiv(ts.blockZ(), hp.tract()) != rz) continue;   // 别区拥有
+            int mi = Math.floorDiv(ts.blockX() - myOriginX, STEP);
+            int mj = Math.floorDiv(ts.blockZ() - myOriginZ, STEP);
+            if (mi < 0 || mj < 0 || mi >= n || mj >= n) continue;
+            out.add(mi * n + mj);
+        }
+        // ② 邻区粗层主干端口（朝本区的那些）。
+        out.addAll(collectIncomingCoarse(rx, rz, n, myOriginX, myOriginZ));
+        return new ArrayList<>(out);
+    }
+
+    /**
+     * 接力种子（分层实验）：只取<b>邻区粗层端口</b>中指向本 tract 的那些。
+     * 邻区因此只付粗层代价 —— 不触发任何邻区细层求解（铁律）。
+     */
+    private List<Integer> collectIncomingCoarse(int rx, int rz, int n,
+                                                int myOriginX, int myOriginZ) {
+        List<Integer> out = new ArrayList<>();
+        for (int dRX = -1; dRX <= 1; dRX++) {
+            for (int dRZ = -1; dRZ <= 1; dRZ++) {
+                if (dRX == 0 && dRZ == 0) continue;
+                HierarchicalHydrology.Coarse nb = coarseFor(rx + dRX, rz + dRZ);
+                for (HierarchicalHydrology.Port port : nb.ports()) {
+                    // 邻区在 (rx+dRX)，其端口朝 (-dRX,-dRZ) ⇒ 接收方就是本 tract。
+                    if (port.dRX() != -dRX || port.dRZ() != -dRZ) continue;
+                    int mi = Math.floorDiv(port.blockX() - myOriginX, STEP);
+                    int mj = Math.floorDiv(port.blockZ() - myOriginZ, STEP);
+                    if (mi < 0 || mj < 0 || mi >= n || mj >= n) continue;
+                    out.add(mi * n + mj);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 【生产】region 求解（既有 model 链，非分层实验路径）。
+     *
+     * <p>⚠ 命名说明：原名 {@code solveLegacy} 易被误读为"legacy 链"——它实际是
+     * <b>本 model 链的既有版本</b>（{@code ModelHydrologyProvider} 自己的 3×3 惰性邻区 +
+     * 双 pass 续流），与 legacy（{@code HydrologyBlockCarver}）无关。本轮改名
+     * {@code solveProduction} 以消除歧义。</p>
+     */
+    private RegionData solveProduction(int rx, int rz) {
         int centerX = rx * REGION + REGION / 2;
         int centerZ = rz * REGION + REGION / 2;
         long t0 = System.nanoTime();
@@ -1562,20 +2014,25 @@ public final class ModelHydrologyProvider {
                             + " finalMs=" + (System.nanoTime() - baseDone - incomingNs) / 1e6);
         }
         // #endregion
+        logRegionSolved(rx, rz, p, cl, t0, base.originX(), base.originZ());
+        return rd;
+    }
+
+    /** region 求解日志（细层/既有路径共用；不改产出）。 */
+    private void logRegionSolved(int rx, int rz, HydrologyPipeline.Result p,
+                                 RiverCenterlines.Result cl, long t0, int originX, int originZ) {
         double ms = (System.nanoTime() - t0) / 1e6;
         int lakeCells = countTrue(p.lake());
         regionLakeCells.addAndGet(lakeCells);       // ★ 诊断累计（见 lastRegionLakeCells）
         // ★ 诊断（2026-10-09）：`resolved` 是 EquilibriumWater 的"与窗口切割无关"标志。
         //   小窗口下若 resolved 大面积失效 ⇒ 盆地无法建立 ⇒ 湖丢失。
-        //   这是"小窗口丢湖"最可能的直接机理（此前未打印过）。
         int resolvedN = countTrue(p.resolved());
         int basinsN = p.lakeResult() == null ? -1 : p.lakeResult().basins().size();
         int dryN = p.lakeResult() == null ? -1 : p.lakeResult().dryBasins();
-        LOGGER.info("[HYDRO-MODEL] region ({},{}) solved in {} ms (model={}, grid={}, reaches={}, lake={}, channel={}, margin={}ms, resolved={}/{} basins={} dry={})",
-                rx, rz, String.format("%.0f", ms), riverModel(), p.nx() + "x" + p.nz(),
+        LOGGER.info("[HYDRO-MODEL] region ({},{}) solved in {} ms (model={}, hier={}, grid={}, reaches={}, lake={}, channel={}, margin={}ms, resolved={}/{} basins={} dry={})",
+                rx, rz, String.format("%.0f", ms), riverModel(), HIER, p.nx() + "x" + p.nz(),
                 cl.reachCount(), lakeCells, countTrue(p.channel()),
                 String.format("%.0f", marginMs), resolvedN, p.nx() * p.nz(), basinsN, dryN);
-        return rd;
     }
 
     /**
@@ -1600,7 +2057,7 @@ public final class ModelHydrologyProvider {
         int[][] d = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (int[] dd : d) {
             int nx = rx + dd[0], nz = rz + dd[1];
-            CacheKey key = new CacheKey(seed, nx, nz);
+            CacheKey key = new CacheKey(seed, nx, nz, strategy);
             // 预热 pass-1 而非 solve（solve 会取 8 邻 pass-1 ⇒ 4 个预热各带 8 次管线白跑）
             synchronized (P1_CACHE) {
                 if (P1_CACHE.containsKey(key)) continue;

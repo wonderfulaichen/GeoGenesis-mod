@@ -148,15 +148,27 @@ public final class DeterministicSkeleton {
          * 与 legacy 相同 ⇒ 传递恰好一级、顺序无关、无递归。
          */
         public final List<ExitSeed> exitSeeds;
+        /**
+         * ★ 网络连通性过滤【本次是否启用】+ 它【删了几条链】。
+         *
+         * <p><b>为什么必须回传</b>：过滤会整簇删除"不接水体"的链 —— 拿它的产出当
+         * 连通性证据 = 用删除掩盖失败（分层实验的失败规范禁止）。调用方与探针必须能
+         * 区分「骨架几何完整」与「已被过滤」；后者<b>不得</b>判 PASS。</p>
+         */
+        public final boolean networkFilterEnabled;
+        public final int droppedByNetworkFilter;
 
         Result(List<Trace> traces, int sourcesTotal, int sourcesDroppedBySpacing,
-               int outletStarts, int incomingStarts, List<ExitSeed> exitSeeds) {
+               int outletStarts, int incomingStarts, List<ExitSeed> exitSeeds,
+               boolean networkFilterEnabled, int droppedByNetworkFilter) {
             this.traces = traces;
             this.sourcesTotal = sourcesTotal;
             this.sourcesDroppedBySpacing = sourcesDroppedBySpacing;
             this.outletStarts = outletStarts;
             this.incomingStarts = incomingStarts;
             this.exitSeeds = exitSeeds;
+            this.networkFilterEnabled = networkFilterEnabled;
+            this.droppedByNetworkFilter = droppedByNetworkFilter;
         }
     }
 
@@ -311,6 +323,29 @@ public final class DeterministicSkeleton {
                                boolean[] lakeMask, boolean[] sea, double[] discharge,
                                int[] basinOutlet, int nx, int nz, Params params,
                                List<Integer> incomingCells, double[] bed) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet,
+                nx, nz, params, incomingCells, bed, null);
+    }
+
+    /**
+     * 完整入口 + <b>网络过滤显式开关</b>（★ 分层实验失败规范要求）。
+     *
+     * <h3>为什么需要显式开关（而不是只念一句"-D 能关"）</h3>
+     * <p>{@link #filterUnconnected} 会整簇删除"不接水体"的链。若调用方（分层实验）只把
+     * "过滤开着"记进日志然后继续，就是<b>用删除掩盖"支流接不进下游接口"的失败</b>。</p>
+     * <p>⇒ 本重载让调用方在<b>构建时</b>就能关掉它，并把
+     * {@link Result#networkFilterEnabled}/{@link Result#droppedByNetworkFilter} 一并回传，
+     * 使"证据来自完整几何还是被删过的几何"可判定。</p>
+     *
+     * @param networkFilter {@code null} = 用类级默认 {@link #NETWORK_FILTER}（旧行为逐位不变）；
+     *                      {@code FALSE} = <b>本次不删任何链</b>（分层实验用）；
+     *                      {@code TRUE} = 强制开
+     */
+    public static Result build(double[] level, int[] parent, boolean[] resolved,
+                               boolean[] lakeMask, boolean[] sea, double[] discharge,
+                               int[] basinOutlet, int nx, int nz, Params params,
+                               List<Integer> incomingCells, double[] bed,
+                               Boolean networkFilter) {
         int cells = nx * nz;
         // 源头候选：累积达标 + 汇流槽判据 + parent 存在（判据详见类 javadoc ①）
         List<Integer> sources = collectSources(level, parent, resolved, lakeMask, sea,
@@ -458,7 +493,8 @@ public final class DeterministicSkeleton {
         //   簇内任一链通向海/湖/窗口接力 ⇒ 整簇保留；否则【整簇移除】。
         //
         // 【确定性】并查集按 trace 序号归并、判定只看"存在性" ⇒ 与遍历顺序无关。
-        if (NETWORK_FILTER && !traces.isEmpty()) {
+        final boolean filterOn = networkFilter == null ? NETWORK_FILTER : networkFilter;
+        if (filterOn && !traces.isEmpty()) {
             int before = traces.size();
             traces = filterUnconnected(traces, nx, nz);
             droppedNetwork = before - traces.size();
@@ -483,7 +519,7 @@ public final class DeterministicSkeleton {
             exitSeeds.add(new ExitSeed(mc, dRX, dRZ));
         }
         return new Result(traces, sourcesTotal, droppedBySpacing, outletStarts,
-                incomingStarts, exitSeeds);
+                incomingStarts, exitSeeds, filterOn, droppedNetwork);
     }
 
     /**

@@ -124,21 +124,27 @@ public final class ModelProviderConcurrencyProbe {
         return inflight().size();
     }
 
-    /** 某 region 的 pass-1 是否已入内容缓存（反射只读 {@code P1_CACHE}）。 */
+    /**
+     * 某 region 的 pass-1 是否已入内容缓存（反射只读 {@code P1_CACHE}）。
+     *
+     * <p>★ 键必须与生产一致：{@code CacheKey(seed, rx, rz, strategy)} 现在是<b>四参 record</b>
+     * （第四参 = 实例策略指纹）。用旧三参会 {@code NoSuchMethodException}
+     * ⇒ 反射取 {@code p.strategyFingerprintValue()}（package-private，探针同包可直读）。</p>
+     */
     @SuppressWarnings("unchecked")
-    private static boolean pass1Cached(long seed, int rx, int rz) throws Exception {
+    private static boolean pass1Cached(ModelHydrologyProvider p, long seed, int rx, int rz) throws Exception {
         Object cache = F_P1_CACHE.get(null);
         synchronized (cache) {
-            return ((java.util.Map<Object, ?>) cache).containsKey(cacheKey(seed, rx, rz));
+            return ((java.util.Map<Object, ?>) cache).containsKey(cacheKey(seed, rx, rz, p));
         }
     }
 
-    /** 反射构造 {@code CacheKey(seed,rx,rz)}。 */
-    private static Object cacheKey(long seed, int rx, int rz) throws Exception {
+    /** 反射构造 {@code CacheKey(seed,rx,rz,strategy)}（策略指纹取自 provider 实例）。 */
+    private static Object cacheKey(long seed, int rx, int rz, ModelHydrologyProvider p) throws Exception {
         Class<?> ck = Class.forName(ModelHydrologyProvider.class.getName() + "$CacheKey");
-        var c = ck.getDeclaredConstructor(long.class, int.class, int.class);
+        var c = ck.getDeclaredConstructor(long.class, int.class, int.class, long.class);
         c.setAccessible(true);
-        return c.newInstance(seed, rx, rz);
+        return c.newInstance(seed, rx, rz, p.strategyFingerprintValue());
     }
 
     /** 在途任务中仍持有预热名额的个数（= 队列计数应等于的值）。 */
@@ -338,7 +344,7 @@ public final class ModelProviderConcurrencyProbe {
                     LOG.append("  注入异常=").append(e.getCause()).append('\n');
                 }
                 require(threw, "未抛异常");
-                require(!pass1Cached(seed, fx, fz), "失败结果被缓存（违反『绝不缓存半成品』）");
+                require(!pass1Cached(p, seed, fx, fz), "失败结果被缓存（违反『绝不缓存半成品』）");
                 require(inflightCount() == 0, "失败未撤出在途表：inflight=" + inflightCount());
                 require(queueDepth(p) == 0, "队列=" + queueDepth(p));
                 require(ModelHydrologyProvider.pass1SolveCount(fx, fz) == 1,
@@ -349,7 +355,7 @@ public final class ModelProviderConcurrencyProbe {
                 disarmFailures();
                 Object pass1 = regionPass1(p, fx, fz);
                 require(pass1 != null, "重试返回 null");
-                require(pass1Cached(seed, fx, fz), "重试结果未入缓存");
+                require(pass1Cached(p, seed, fx, fz), "重试结果未入缓存");
                 require(inflightCount() == 0, "重试后在途未清=" + inflightCount());
                 require(ModelHydrologyProvider.pass1SolveCount(fx, fz) == 2,
                         "求解尝试=" + ModelHydrologyProvider.pass1SolveCount(fx, fz) + "（应 1 失败 + 1 成功）");
@@ -469,7 +475,7 @@ public final class ModelProviderConcurrencyProbe {
         ModelHydrologyProvider.resetProbeCounters();
         schedulePreheat(p, rx, rz);
         long t0 = System.nanoTime();
-        while (!pass1Cached(seed, nx, nz)) {
+        while (!pass1Cached(p, seed, nx, nz)) {
             require((System.nanoTime() - t0) < settleTimeoutSec * 1_000_000_000L, "等待预热池求解超时");
             Thread.sleep(50);
         }
