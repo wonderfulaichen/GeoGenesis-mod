@@ -242,12 +242,59 @@ public final class ModelHydrologyProvider {
             REGION, HALO, STEP, HIER_COARSE_HALO);
 
     /**
+     * ★★ 2026-10-12【跨 tract 缝共享湖域（{@link SharedLakeDomain}）】★★
+     *
+     * <p>实测现场（{@code scratch/FINDINGS.md}）：{@code (-513,-250)} 在两个相邻 tract 的窗口里
+     * <b>bed 逐位相同、湖布尔/水位不同</b>（176.89 vs 175.31）⇒ 缝上 377/489 像素是湖墙。</p>
+     *
+     * <p><b>只在分层实验链上生效</b>（{@code HIER=true}），并要求显式打开
+     * {@code -Dgeogenesis.sharedLakeDomains=true} ⇒ <b>默认关、HIER 关时彻底不参与</b>，
+     * 既有生产产出逐位不变。</p>
+     */
+    static final boolean SHARED_LAKE =
+            HIER && Boolean.getBoolean("geogenesis.sharedLakeDomains");
+    /**
+     * 单 chunk 候选缝域数的<b>告警阈值</b>（真上界 = 每轴 ≤2 boundary × ≤2 alongTile ⇒ ≤8；
+     * 实测 2~4）。<b>不是门</b>：超阈值只如实计数 + 留痕（见 {@link #sharedLakeDecision}）。
+     *
+     * <p><b>成本为何天然有界（不靠运行期预算门）</b>：每<b>点</b>候选恒为 1 竖 + 1 横（≤2）；
+     * 每 <b>chunk</b> 的四角并集 ≤8；每个缝键<b>全局只建一次</b>（域缓存，键含 seed+策略）。
+     * 故域构建总数 ≤ 该次扫描触及的缝键数（沿缝 ≈ 缝长/tract），与列数无关。
+     * 若改用"每 chunk 新取域数"预算，反而会让产出取决于"缓存里恰好有什么" ⇒ 禁止。</p>
+     */
+    private static final int SHARED_LAKE_CHUNK_WARN =
+            Integer.getInteger("geogenesis.sharedLakeChunkWarn", 8);
+    /**
+     * 共享域缓存容量。每个域 = 一次同窗粗筛选（≈0.4~0.7 s）；确有跨缝盆地时才再付一次
+     * 同窗<b>侵蚀</b>细解（≈数秒，与一次 tract 细解同量级）。
+     */
+    private static final int SHARED_LAKE_CACHE_CAP =
+            Integer.getInteger("geogenesis.sharedLakeDomainCap", 24);
+
+    /**
+     * 探针用 before/after 开关（<b>只影响列改写</b>，不改变任何缓存内容与域结果）。
+     * 生产恒 false；只有诊断在单 JVM 里做同坐标快照时才置位。
+     */
+    static volatile boolean sharedLakeProbeOff = false;
+
+    /** 共享湖域是否在本进程真正参与列裁决（生产 = {@link #SHARED_LAKE}）。 */
+    static boolean sharedActive() {
+        return SHARED_LAKE && !sharedLakeProbeOff;
+    }
+
+    /** 域缓存键 = (seed, 策略指纹, 缝键) —— 与 region/粗层缓存同一隔离原则。 */
+    private record DomKey(long seed, long strategy, int axis, int boundary, int alongTile) { }
+
+    /**
      * 会改变本链路产出的【实验系统属性】清单（显式维护；见实例指纹 javadoc 为何不用全枚举）。
      */
     private static final String[] EXPERIMENT_KEYS = {
             // ---- 分层实验 ----
             "geogenesis.hierarchicalHydrology", "geogenesis.hierCoarseHalo",
             "geogenesis.hierStrictContract",
+            // ---- 跨 tract 缝共享湖域（只在分层链上生效）----
+            "geogenesis.sharedLakeDomains",
+            "geogenesis.sharedLakeDomainCap", "geogenesis.sharedLakeChunkWarn",
             // ---- model 链拓扑 / 窗口 ----
             "geogenesis.modelRiverModel", "geogenesis.modelRegion", "geogenesis.modelHalo",
             "geogenesis.modelStep", "geogenesis.modelMargin",
@@ -451,6 +498,239 @@ public final class ModelHydrologyProvider {
                 COARSE_CACHE.remove(COARSE_CACHE.keySet().iterator().next());
             }
         }
+    }
+
+    // ======================================================================
+    // ★★ 2026-10-12【跨 tract 缝共享湖域】—— 有界 / 确定性 / 不借邻区细层
+    //
+    //   ① 每 chunk 预解析候选缝键（点→键唯一；【不设缝带门】—— 见 columnsFor 的说明）；
+    //   ② 候选缝域由世界坐标 + 固定域参数导出（与提问 region 无关），按稳定顺序遍历；
+    //   ③ 域 = 关于缝对称的 704² 块方窗（半边长 = REGION/2 + HALO = 现有窗口预算）；
+    //   ④ 先用【廉价粗层】同窗筛选：无跨缝盆地 ⇒ 立即返回（永不细解）；
+    //   ⑤ 确有跨缝盆地才付一次【真实侵蚀地形】同窗求解；
+    //   ⑥ 受控体 = 整个跨缝盆地（单平面 + 干环 + 不触框 + 在【最近键归属域】内），否则拒绝；
+    //   ⑦ 受控即【整盆地一并采用】（有则同一水位、无则一并判干）⇒ 缝两侧同裁决。
+    //   ⚠ 这里【绝不】调用 regionFor / 任何邻区细解，也不读"缓存里恰好有什么"。
+    // ======================================================================
+
+    /** 共享缝域缓存（LRU，键含 seed + 策略指纹；与 region/粗层缓存同一隔离原则）。 */
+    private static final LinkedHashMap<DomKey, SharedLakeDomain.Domain> DOMAIN_CACHE =
+            new LinkedHashMap<>(32, 0.75f, true);
+    /**
+     * 域单飞（single-flight）：同一 (seed, 策略, 缝键) 只构建一次。
+     * 无它时并发 {域未命中} 会各自重跑粗/细解（实测并发重复构建）⇒ 必须与 region/粗层同款。
+     */
+    private static final ConcurrentHashMap<DomKey, CompletableFuture<SharedLakeDomain.Domain>>
+            DOMAIN_INFLIGHT = new ConcurrentHashMap<>();
+
+    /** 取（或建）一个缝域 —— 纯函数 (seed, 策略, 缝键) ⇒ 缓存只改时序不改内容。 */
+    private SharedLakeDomain.Domain domainFor(SharedLakeDomain.Key key) {
+        DomKey k = new DomKey(seed, strategy, key.axis(), key.boundary(), key.alongTile());
+        synchronized (DOMAIN_CACHE) {
+            SharedLakeDomain.Domain hit = DOMAIN_CACHE.get(k);
+            if (hit != null) return hit;
+        }
+        CompletableFuture<SharedLakeDomain.Domain> existing = DOMAIN_INFLIGHT.get(k);
+        if (existing != null) return awaitDomain(existing);
+        CompletableFuture<SharedLakeDomain.Domain> mine = new CompletableFuture<>();
+        CompletableFuture<SharedLakeDomain.Domain> raced = DOMAIN_INFLIGHT.putIfAbsent(k, mine);
+        if (raced != null) return awaitDomain(raced);          // 输了 ⇒ 等赢家
+        try {
+            SharedLakeDomain.Domain d = buildDomain(key);
+            cachePutDomain(k, d);                              // ★ 先发布缓存
+            mine.complete(d);                                  //   再完成
+            DOMAIN_INFLIGHT.remove(k, mine);
+            return d;
+        } catch (RuntimeException | Error e) {
+            mine.completeExceptionally(e);
+            DOMAIN_INFLIGHT.remove(k, mine);                   // ★ 失败绝不缓存（可重试）
+            throw e;
+        }
+    }
+
+    /** 构建一个缝域：先廉价筛选（邻 tract 粗层无跨缝盆地 ⇒ 跳过建窗），否则对称窗求解。 */
+    private SharedLakeDomain.Domain buildDomain(SharedLakeDomain.Key key) {
+        //   廉价筛选（复用【已缓存】的相邻 tract 粗层）：两侧邻 tract 粗层都看不到跨这条缝线的盆地
+        //   ⇒ 无需建窗。⚠ 必要条件筛（非充分证明）：漏判只会"该点不受控"，绝不造假水位 ⇒ 安全侧。
+        return screenOut(key)
+                ? SharedLakeDomain.screened(key, HIER_PARAMS)
+                : SharedLakeDomain.build(sharedCtx(), key);
+    }
+
+    private static SharedLakeDomain.Domain awaitDomain(
+            CompletableFuture<SharedLakeDomain.Domain> f) {
+        try {
+            return f.join();
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof RuntimeException re) throw re;
+            throw e;
+        }
+    }
+
+    private static void cachePutDomain(DomKey k, SharedLakeDomain.Domain d) {
+        synchronized (DOMAIN_CACHE) {
+            DOMAIN_CACHE.put(k, d);
+            while (DOMAIN_CACHE.size() > SHARED_LAKE_CACHE_CAP) {
+                DOMAIN_CACHE.remove(DOMAIN_CACHE.keySet().iterator().next());
+            }
+        }
+    }
+
+    /** 相邻两 tract 的粗层里是否都看不到跨该缝线的盆地（true ⇒ 可跳过建窗）。 */
+    private boolean screenOut(SharedLakeDomain.Key key) {
+        HierarchicalHydrology.Params hp = HIER_PARAMS;
+        int line = key.boundary();
+        int lo = Math.floorDiv(line - 1, hp.tract());     // 缝线两侧的 tract
+        int hi = line / hp.tract();
+        HierarchicalHydrology.Coarse cLo = coarseFor(
+                key.axis() == 0 ? lo : key.alongTile(), key.axis() == 0 ? key.alongTile() : lo);
+        HierarchicalHydrology.Coarse cHi = coarseFor(
+                key.axis() == 0 ? hi : key.alongTile(), key.axis() == 0 ? key.alongTile() : hi);
+        return !anyCrosses(cLo, key.axis(), line) && !anyCrosses(cHi, key.axis(), line);
+    }
+
+    private static boolean anyCrosses(HierarchicalHydrology.Coarse c, int axis, int line) {
+        if (c == null) return false;
+        for (HierarchicalHydrology.BasinFootprint fp
+                : HierarchicalHydrology.basinFootprints(c).values()) {
+            if (HierarchicalHydrology.footprintCrossesBlock(fp, c, axis, line)) {
+                HierarchicalHydrology.Diag.SHARED_SCREEN_CROSS.incrementAndGet();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 构建上下文：与生产同源参数；窗外权威 = 坐标 owner 的粗层水位接口（与细层路径同口径）。 */
+    private SharedLakeDomain.Ctx sharedCtx() {
+        SharedLakeDomain.OwnerLevel owner = (bx, bz) ->
+                HierarchicalHydrology.owner(bx, bz, HIER_PARAMS, this::coarseFor).levelAt(bx, bz);
+        return new SharedLakeDomain.Ctx(gen, gen.params(), HIER_PARAMS, STEP, CLIMATE, owner);
+    }
+
+    /**
+     * 该世界点的共享域裁决（探针读视图 + 列消费入口）。
+     *
+     * <p>按候选缝域的<b>稳定顺序</b>遍历（轴 → 缝位置 → 沿缝 tile），收集所有"受控"裁决：
+     * 恰好一个受控 ⇒ 采用；零个 ⇒ 不受控；多个且<b>平面一致</b> ⇒ 采用同一平面；
+     * 多个且<b>平面不同</b> ⇒ {@code COMPETING}（未决：如实计数、不并集、不改写）。</p>
+     *
+     * <p><b>无"预算门"</b>：候选键由 chunk 盒几何导出（纯函数）⇒ 同 chunk 在任何顺序、
+     * 任何缓存状态下都得到同一组域。域内容也是纯函数 ⇒ 淘汰/重建不改产出。
+     * 只有 {@link #SHARED_LAKE_CHUNK_WARN} 会如实计数"异常多的候选"。</p>
+     *
+     * @param keys 候选缝键（按 chunk 预解析，稳定顺序）
+     */
+    SharedLakeDomain.Decision sharedLakeDecision(int worldX, int worldZ,
+                                                 List<SharedLakeDomain.Key> keys) {
+        if (!sharedActive()) return SharedLakeDomain.Decision.NONE;
+        SharedLakeDomain.Decision best = null;
+        for (SharedLakeDomain.Key key : keys) {
+            SharedLakeDomain.Decision d = domainFor(key).decide(worldX, worldZ);
+            if (!d.controlled()) continue;
+            if (best == null) {
+                best = d;
+                continue;
+            }
+            if (!samePlane(best, d)) {
+                HierarchicalHydrology.Diag.SHARED_COMPETING.incrementAndGet();
+                HierarchicalHydrology.Diag.sharedSample(String.format(
+                        "COMPETING (%d,%d) %s(%.2f) vs %s(%.2f) ⇒ 未决：不并集、不改写",
+                        worldX, worldZ, best.key().label(), best.surface(),
+                        d.key().label(), d.surface()));
+                return new SharedLakeDomain.Decision(false, false, Double.NaN, null, -1,
+                        SharedLakeDomain.Status.COMPETING);
+            }
+        }
+        return best == null ? SharedLakeDomain.Decision.NONE : best;
+    }
+
+    /** 单点查询（探针用）。 */
+    SharedLakeDomain.Decision sharedLakeDecision(int worldX, int worldZ) {
+        return sharedLakeDecision(worldX, worldZ,
+                SharedLakeDomain.candidates(worldX, worldZ, HIER_PARAMS));
+    }
+
+    /**
+     * 【按 chunk 预解析】该 chunk 的候选缝域（一次取域，避免逐列 {@code domainFor} 反复加锁/查询）。
+     * 返回值供逐列 {@link #decideShared} 只读使用（纯读、无分配）。
+     */
+    private List<SharedLakeDomain.Domain> resolveChunkDomains(int blockX0, int blockZ0) {
+        List<SharedLakeDomain.Key> keys = SharedLakeDomain.keysForBox(
+                blockX0, blockZ0, blockX0 + 15, blockZ0 + 15, HIER_PARAMS);
+        if (keys.size() > SHARED_LAKE_CHUNK_WARN) {
+            HierarchicalHydrology.Diag.layer("sharedLake", "chunkCandidatesOverWarn", keys.size());
+        }
+        List<SharedLakeDomain.Domain> doms = new ArrayList<>(keys.size());
+        for (SharedLakeDomain.Key k : keys) doms.add(domainFor(k));
+        return doms;
+    }
+
+    /**
+     * 逐列裁决（只读已解析域；无锁、无分配）。多域受控且平面不一致 ⇒ {@code COMPETING}。
+     *
+     * @param doms 本 chunk 预解析的候选缝域（{@link #resolveChunkDomains}）
+     */
+    private static SharedLakeDomain.Decision decideShared(List<SharedLakeDomain.Domain> doms,
+                                                          int worldX, int worldZ) {
+        SharedLakeDomain.Decision best = null;
+        for (int i = 0; i < doms.size(); i++) {
+            SharedLakeDomain.Decision d = doms.get(i).decide(worldX, worldZ);
+            if (!d.controlled()) continue;
+            if (best == null) { best = d; continue; }
+            if (!samePlane(best, d)) {
+                HierarchicalHydrology.Diag.SHARED_COMPETING.incrementAndGet();
+                return new SharedLakeDomain.Decision(false, false, Double.NaN, null, -1,
+                        SharedLakeDomain.Status.COMPETING);
+            }
+        }
+        return best == null ? SharedLakeDomain.Decision.NONE : best;
+    }
+
+    /** 两条裁决是否同一平面（同键，或同湖布尔且水位一致）。 */
+    private static boolean samePlane(SharedLakeDomain.Decision a, SharedLakeDomain.Decision b) {
+        if (a.key().equals(b.key())) return true;
+        return a.lake() == b.lake()
+                && (!a.lake() || Math.abs(a.surface() - b.surface()) <= 1e-9);
+    }
+
+    /** 探针收尾用：放弃全部域（连同 region 缓存）—— 绝不让实验产物泄漏到后续段。 */
+    static void clearSharedCaches() {
+        synchronized (DOMAIN_CACHE) {
+            DOMAIN_CACHE.clear();
+        }
+        DOMAIN_INFLIGHT.clear();
+    }
+
+    /** 域缓存规模（探针断言"有界"）。 */
+    static int sharedDomainCacheSize() {
+        synchronized (DOMAIN_CACHE) {
+            return DOMAIN_CACHE.size();
+        }
+    }
+
+    /** 域在途数（探针断言"单飞：并发同键只构建一次"）。 */
+    static int sharedDomainInflightSize() {
+        return DOMAIN_INFLIGHT.size();
+    }
+
+    // ---- 探针读视图（package-private；生产零影响）----
+
+    /** 显式开关值（不含探针 before/after 覆盖）：探针断言"默认关、只 HIER 生效"。 */
+    static boolean sharedDomainSwitch() { return SHARED_LAKE; }
+
+    /** 域缓存容量上限（探针断言有界）。 */
+    static int sharedDomainCacheCap() { return SHARED_LAKE_CACHE_CAP; }
+
+    /** 每 chunk 候选缝域数的告警阈值（每轴 ≤2×2 ⇒ ≤8；仅计数，不是门）。 */
+    static int sharedDomainChunkWarn() { return SHARED_LAKE_CHUNK_WARN; }
+
+    /** 探针 before/after：只关【列改写】，不动缓存与域结果。 */
+    static void setProbeSharedOff(boolean off) { sharedLakeProbeOff = off; }
+
+    /** 探针直取某缝域。 */
+    SharedLakeDomain.Domain domainForProbe(SharedLakeDomain.Key key) {
+        return sharedActive() ? domainFor(key) : null;
     }
 
     /**
@@ -713,6 +993,11 @@ public final class ModelHydrologyProvider {
             COARSE_CACHE.keySet().removeIf(k -> k.seed() != newSeed);
         }
         COARSE_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
+        // ★ 跨 tract 缝共享湖域：同样按 seed 隔离（否则换世界后命中旧世界的湖平面）。
+        synchronized (DOMAIN_CACHE) {
+            DOMAIN_CACHE.keySet().removeIf(k -> k.seed() != newSeed);
+        }
+        DOMAIN_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
     }
 
     /** 兼容旧语义：完全清空共享缓存（换世界时由 setSeed 按 seed 处理）。 */
@@ -729,6 +1014,7 @@ public final class ModelHydrologyProvider {
             COARSE_CACHE.clear();
         }
         COARSE_INFLIGHT.clear();
+        clearSharedCaches();
     }
 
     /**
@@ -1289,6 +1575,11 @@ public final class ModelHydrologyProvider {
         neighSeg[4] = segIndex;
 
         List<HydrologyBlockCarvedColumn> out = new ArrayList<>(256);
+        // ★ 跨 tract 缝共享湖域：逐 chunk 【一次】预解析候选缝域（键 ≤8/chunk），逐列只读裁决。
+        //   ⚠【不设缝带门】：控制体是整个跨缝盆地足迹（可达缝两侧 ±REGION/2）；按 ±HALO 门只查缝附近
+        //     会把足迹在带外的部分留给本区细窗 ⇒ 只是把墙挪 ±HALO。故每 chunk 都解析（键由世界坐标唯一导出）。
+        List<SharedLakeDomain.Domain> sharedDoms = sharedActive()
+                ? resolveChunkDomains(blockX0, blockZ0) : List.of();
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
                 int blockX = blockX0 + lx, blockZ = blockZ0 + lz;
@@ -1349,6 +1640,44 @@ public final class ModelHydrologyProvider {
                 //     或既有 3×3 逻辑）决定；粗层无权改写落块。
                 boolean outerOwner = Math.floorDiv(blockX, REGION) != rdRx
                         || Math.floorDiv(blockZ, REGION) != rdRz;
+                // ★★ 2026-10-12【跨 tract 缝共享湖域】★★
+                //   实测根因（FINDINGS.md）：缝两侧 bed 逐位相同、只有【湖布尔 + 水位】不同
+                //   ⇒ 同一盆地被两个 tract 窗口各截断一次、各算一个水位。
+                //   本段是【唯一改写点】：只在缝带内、且该点属于某个"跨缝 + 未截断 + 单平面"
+                //   盆地的粗层足迹时，用【共享域】（关于缝对称的同一窗、真实侵蚀地形）裁决，
+                //   并且【整个盆地足迹】一并采用（有则给同一水位、无则一并判干）。
+                //   ⚠ 不做"见缓存就用"：域是 (seed, 策略, 缝键) 的纯函数，与生成顺序无关。
+                //   ⚠ 仍是【缝带局部】：足迹外依旧由本区细窗裁决 ⇒ 缝可能只是移到足迹边缘
+                //     （共享诊断如实报告改写/抑制列数，不声称整缝已消除）。
+                boolean sharedLake = false;
+                double sharedSurface = Double.NaN;
+                if (!sharedDoms.isEmpty()) {
+                    SharedLakeDomain.Decision sd = decideShared(sharedDoms, blockX, blockZ);
+                    if (sd.controlled()) {
+                        HierarchicalHydrology.Diag.SHARED_CONTROLLED_COLUMNS.incrementAndGet();
+                        // ★ 只区分【真实湖面】：共享域只裁决湖。
+                        //   · sd.lake() ⇒ 用共享【实测均值水位】（= 真实 wet plane 常数）；
+                        //   · !sd.lake()（干环）⇒ 只抹掉本区【湖】判定，**绝不剔除河**（half>0 保留）。
+                        if (sd.lake()) {
+                            if (!isLakeBlock) {
+                                HierarchicalHydrology.Diag.SHARED_LAKE_COLUMNS.incrementAndGet();
+                            }
+                            isLakeBlock = true;
+                            half = 0;
+                            depth = 0;
+                            sharedLake = true;
+                            sharedSurface = sd.surface();
+                        } else if (isLakeBlock) {
+                            HierarchicalHydrology.Diag.SHARED_SUPPRESSED_COLUMNS.incrementAndGet();
+                            isLakeBlock = false;
+                        }
+                        if (!GAP_WATCH.isEmpty() && GAP_WATCH.contains(
+                                (((long) blockX) << 32) ^ (blockZ & 0xffffffffL))) {
+                            LOGGER.info("[GAP-WATCH] ({},{}) => SHARED_DOMAIN lake={} surf={} key={}",
+                                    blockX, blockZ, sd.lake(), sd.surface(), sd.key().label());
+                        }
+                    }
+                }
                 if (HIER && !isLakeBlock && half <= 0 && nearBorder) {
                     if (!outerOwner) {
                         HierarchicalHydrology.Diag.inTractNoHit();     // 本区无命中（如实计数）
@@ -1427,15 +1756,21 @@ public final class ModelHydrologyProvider {
                     // ★ 断口现场 watch
                     if (!GAP_WATCH.isEmpty()
                             && GAP_WATCH.contains((((long) blockX) << 32) ^ (blockZ & 0xffffffffL))) {
-                        LOGGER.info("[GAP-WATCH] ({},{}) => LAKE_COL region=({},{})",
-                                blockX, blockZ, rdRx, rdRz);
+                        LOGGER.info("[GAP-WATCH] ({},{}) => LAKE_COL region=({},{}) shared={}",
+                                blockX, blockZ, rdRx, rdRz, sharedLake);
                     }
                     // ★ 湖一律来自【细层】：水面取本区细层水位（`p.waterSurface()` 双线性）。
                     //   粗层只做候选/校验，**不改写**落块（旧实现会用粗层水位覆盖 ⇒ 掩盖漏水）。
+                    //   ★ 2026-10-12 唯一例外：跨 tract 缝的【共享域】受控列 —— 它的水面就是
+                    //     关于缝对称的同一个窗在真实侵蚀地形上算出的水位（同一平面），
+                    //     两个邻 tract 对该列因此得到同一个值 ⇒ 缝上的湖墙消失。
+                    //     非受控列（拒绝/竞争/足迹外）一概仍用本区细层水位。
+                    double lakeSurface = sharedLake && Double.isFinite(sharedSurface)
+                            ? sharedSurface : surface;
                     // 湖列：不雕刻，按水位洪泛；lakeNode=null ⇒ 写回跳过逃逸重算、按水位分组
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, original,
-                            surface, surface, 0.0, 1.0,
-                            true, true, null, surface));
+                            lakeSurface, lakeSurface, 0.0, 1.0,
+                            true, true, null, lakeSurface));
                     continue;
                 }
 

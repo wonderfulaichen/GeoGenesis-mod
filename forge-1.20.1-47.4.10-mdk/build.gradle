@@ -2679,3 +2679,31 @@ task runHierarchicalHydrologyProbe(type: JavaExec) {
         setArgs(probeArgs.split(' ') as List)
     }
 }
+
+// Shared-lake seam diagnostics (canonical SharedLakeDomain / cross-seam authority).
+//   gradlew runSharedLakeSeamProbe
+//   gradlew runSharedLakeSeamProbe -PprobeArgs="9139912035078620160"
+//   gradlew runSharedLakeSeamProbe -PprobeArgs="9139912035078620160 repro,basin"
+//   Sections: synth | repro | basin | det | fine | counts | neg  (default = all)
+//   Reproduced defect (seed 9139912035078620160, hierarchicalHydrology=true): the same
+//   physical basin was decided per-window on either side of the region seam at
+//   (-513,-250)/(-512,-250) -> a ~2.9 block water-level step (evidence:
+//   build/hierarchical-evaluation/scratch/FINDINGS.md).
+//   Criteria: canonical synthetic (closed bbox -> key; oversized -> null); repro left/right
+//   lake plane bit-identical + whole-lake wet/dry-ring transition over a +/-40 block band
+//   (no seam-line cut, not just the 2 seam pixels); real multi-basin gate >= 2 controlled
+//   domains plus the second example (512,-2336); cold/hot/reverse/concurrent columns bitwise;
+//   fine-solve delta == explicitly requested owner regions only (no 8-neighbour fan-out);
+//   counts (maxHalf <= 512, two-tier coarse tries, domain cache <= cap); negatives
+//   (no-crossing => coarse-only stop, truncated => never controlled). Read-only; clears the
+//   shared caches at the end; never writes the user config (working copy only).
+//   Residual is reported honestly (NOT VERIFIED) and never loosened to "all passed".
+//   Exits non-zero on FAIL.
+task runSharedLakeSeamProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SharedLakeSeamProbe'
+    maxHeapSize = '8g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
