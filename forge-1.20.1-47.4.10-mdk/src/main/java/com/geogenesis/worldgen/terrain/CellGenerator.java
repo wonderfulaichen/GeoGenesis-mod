@@ -1077,6 +1077,11 @@ public final class CellGenerator {
                     com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("B", "tile-wait",
                             "tile=" + tileCX + "," + tileCZ + " ms=" + (System.nanoTime() - waitStart) / 1e6);
                 }
+                // #region agent log: L5 每个冷tile的刚需等待，确认预热与采样同序的重叠
+                if (waitStart != 0) com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("L5",
+                        "tile-claim-wait-" + tileCX + "-" + tileCZ,
+                        "ms=" + (System.nanoTime() - waitStart) / 1e6);
+                // #endregion
             }
         }
         try {
@@ -1888,8 +1893,9 @@ public final class CellGenerator {
         int t1z = Math.floorDiv((int) Math.floor(wu1z), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int nx = (t1x - t0x) / ERODE_TILE_CENTER + 1;
         int nz = (t1z - t0z) / ERODE_TILE_CENTER + 1;
-        for (int a = 0; a < nx; a++) {
-            for (int b = 0; b < nz; b++) {
+        // 刚需从低坐标向高坐标扫描；预热从另一端推进，避免先占住刚需马上要取的tile。
+        for (int a = nx - 1; a >= 0; a--) {
+            for (int b = nz - 1; b >= 0; b--) {
                 if (!scheduleTilePreheat(t0x + a * ERODE_TILE_CENTER,
                         t0z + b * ERODE_TILE_CENTER)) return;
             }

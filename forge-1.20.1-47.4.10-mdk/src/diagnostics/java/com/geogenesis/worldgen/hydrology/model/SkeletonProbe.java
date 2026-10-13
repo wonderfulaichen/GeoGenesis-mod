@@ -47,6 +47,7 @@ public final class SkeletonProbe {
     public static void main(String[] args) {
         System.out.println("=== SkeletonProbe：确定性骨架判据 ===");
         runSynthetic();
+        runIncomingDiagnostics();
         runRealTerrain();
         System.out.println(failures == 0 ? "ALL PASS" : ("FAILED: " + failures + " 项"));
         System.exit(failures == 0 ? 0 : 1);
@@ -155,6 +156,49 @@ public final class SkeletonProbe {
             }
         }
         check(inBounds, "[7] 形态不越界（±10 容差）", "有节点飞出窗口");
+    }
+
+    private static void runIncomingDiagnostics() {
+        System.out.println("--- [incoming] 归因完整且诊断不改产出 ---");
+        int n = 12, cells = n * n;
+        double[] level = new double[cells], discharge = new double[cells];
+        int[] parent = new int[cells];
+        boolean[] resolved = new boolean[cells], lake = new boolean[cells], sea = new boolean[cells];
+        Arrays.fill(parent, -1);
+        Arrays.fill(resolved, true);
+        for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) level[idx(i, j, n)] = 100 - i;
+        for (int i = 1; i < n - 1; i++) parent[idx(i, 1, n)] = idx(i + 1, 1, n);
+        sea[idx(n - 1, 1, n)] = true;
+        lake[idx(1, 3, n)] = true;
+        sea[idx(1, 5, n)] = true;
+        parent[idx(1, 7, n)] = idx(2, 7, n);
+        lake[idx(2, 7, n)] = true;
+        for (int i = 1; i < 7; i++) parent[idx(i, 9, n)] = idx(i + 1, 9, n);
+        var params = new DeterministicSkeleton.Params(0, 0, 0, 0, 24, 0, 6, 0, 0);
+        List<Integer> incoming = List.of(-1, idx(1, 1, n), idx(2, 1, n), idx(1, 3, n),
+                idx(1, 5, n), idx(1, 7, n), idx(1, 9, n));
+        com.geogenesis.diagnostics.WorldGenProfiler.configure(false, 0);
+        var off = DeterministicSkeleton.build(level, parent, resolved, lake, sea, discharge,
+                null, n, n, params, incoming, null, false);
+        com.geogenesis.diagnostics.WorldGenProfiler.configure(true, 0);
+        DeterministicSkeleton.Result on;
+        try {
+            on = DeterministicSkeleton.build(level, parent, resolved, lake, sea, discharge,
+                    null, n, n, params, incoming, null, false);
+        } finally { com.geogenesis.diagnostics.WorldGenProfiler.configure(false, 0); }
+        var counts = new java.util.TreeMap<String, Integer>();
+        for (var d : on.incomingDiagnostics) counts.merge(d.status(), 1, Integer::sum);
+        check(on.incomingDiagnostics.size() == incoming.size()
+                        && counts.equals(java.util.Map.of("OUT_OF_WINDOW", 1, "ACCEPTED", 1,
+                        "COVERED", 1, "LAKE", 1, "SEA", 1, "SHORT", 1, "ORPHAN_DEAD_END", 1)),
+                "incoming 七种处置逐入口完整归因", "counts=" + counts);
+        boolean same = off.traces.size() == on.traces.size() && off.exitSeeds.equals(on.exitSeeds)
+                && off.incomingStarts == on.incomingStarts;
+        for (int i = 0; same && i < off.traces.size(); i++) {
+            var a = off.traces.get(i); var b = on.traces.get(i);
+            same = Arrays.equals(a.cell, b.cell) && a.end == b.end && a.fromOutlet == b.fromOutlet;
+        }
+        check(same, "诊断开/关 trace 与出口逐位相同", "产出改变");
     }
 
     // ======================================================================

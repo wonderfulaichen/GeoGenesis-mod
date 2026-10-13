@@ -57,7 +57,7 @@ public final class SharedLakeSeamProbe {
     /** 缝带扫描半宽（块）：证明过渡不止缝上 2px。 */
     static final int BAND = 40;
     static final Set<String> SECTIONS =
-            Set.of("synth", "repro", "basin", "det", "fine", "counts", "neg");
+            Set.of("synth", "repro", "basin", "det", "fine", "counts", "neg", "cost-on", "cost-off", "lazy", "river", "river-candidates");
     static final Path OUT = Path.of("build", "shared-lake-seam");
 
     static int failures;
@@ -98,6 +98,10 @@ public final class SharedLakeSeamProbe {
         chk(unknown.isEmpty(), "段名合法（未知段 ⇒ FAIL，不因『没跑』而静默 PASS）",
                 "未知 " + unknown + "（合法: " + SECTIONS + "）");
 
+        if (want.contains("cost-on") || want.contains("cost-off")) {
+            secCost(seed, want.contains("cost-off"), args.length > 2 ? Integer.parseInt(args[2]) : -54,
+                    args.length > 3 ? Integer.parseInt(args[3]) : -37);
+        }
         if (all || want.contains("synth")) secSynth();
         if (all || want.contains("repro")) secRepro();
         if (all || want.contains("basin")) secBasin();
@@ -105,6 +109,9 @@ public final class SharedLakeSeamProbe {
         if (all || want.contains("fine")) secFine();
         if (all || want.contains("counts")) secCounts();
         if (all || want.contains("neg")) secNeg();
+        if (all || want.contains("lazy")) secLazy();
+        if (want.contains("river")) secRiver();
+        if (want.contains("river-candidates")) secRiverCandidates();
         notVerified();
         log("\n" + HierarchicalHydrology.Diag.sharedReport());
         emit();
@@ -378,8 +385,10 @@ public final class SharedLakeSeamProbe {
     private static String fp(List<HydrologyBlockCarvedColumn> cols) {
         StringBuilder sb = new StringBuilder(cols.size() * 12);
         for (HydrologyBlockCarvedColumn c : cols) {
-            sb.append(c.lakePlan() ? '1' : '0').append(c.fillWater() ? '1' : '0')
-                    .append(Double.doubleToRawLongBits(c.waterSurfaceY())).append(':');
+            sb.append(c.blockX()).append(',').append(c.blockZ()).append(',')
+                    .append(c.lakePlan() ? '1' : '0').append(c.fillWater() ? '1' : '0')
+                    .append(Double.doubleToRawLongBits(c.waterSurfaceY())).append(',')
+                    .append(Double.doubleToRawLongBits(c.carvedGroundY())).append(':');
         }
         return sb.toString();
     }
@@ -488,6 +497,180 @@ public final class SharedLakeSeamProbe {
         chk(violated == 0, "REFUSED_TRUNCATED 盆地覆盖点 ⇒ 一律不受控（拒绝给湖，不搞 no-head 假 PASS）",
                 "违规 " + violated + " 次");
     }
+
+    private static void secRiver() throws Exception {
+        log("\n=== [river] 出区接口现状，仅诊断，不造桥 ===");
+        PROV.clear();
+        ModelHydrologyProvider.setProbeSharedOff(true);
+        com.geogenesis.diagnostics.WorldGenProfiler.configure(true, 0);
+        int sampled = 0;
+        boolean finite = true;
+        for (int[] q : new int[][]{{-513, 194}, {-1, -169}}) {
+            int rx = Math.floorDiv(q[0], hp().tract()), rz = Math.floorDiv(q[1], hp().tract());
+            var upstream = PROV.coarseLayerFor(rx, rz);
+            log("tract=" + rx + "," + rz + " ports=" + upstream.ports());
+            for (int dx = -1; dx <= 2; dx++) {
+                int x = q[0] + dx, z = q[1];
+                int cx = Math.floorDiv(x, 16), cz = Math.floorDiv(z, 16);
+                var cols = PROV.columnsFor(cx, cz, sampleChunk(GEN, cx, cz));
+                for (var c : cols) {
+                    if (c.blockX() != x || c.blockZ() != z) continue;
+                    double eroded = bed(x, z), delta = eroded - c.waterSurfaceY();
+                    sampled++;
+                    finite &= Double.isFinite(eroded) && Double.isFinite(c.waterSurfaceY());
+                    String line = "point=" + x + "," + z + " lake=" + c.lakePlan()
+                            + " fill=" + c.fillWater() + " surface=" + c.waterSurfaceY()
+                            + " eroded=" + eroded + " carved=" + c.carvedGroundY()
+                            + " delta=" + delta + " depthLimitWouldReject=" + (delta >= 3.5);
+                    log(line);
+                    com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("R3", "river-point-" + x + "-" + z, line);
+                }
+            }
+            riverConnectivity(q[0], q[1], 16);
+        }
+        chk(sampled == 8 && finite, "河流病例八列非空转且高度有限", "sampled=" + sampled);
+        log("NOT VERIFIED: 同行干湿不等于断河；缝带8邻连通只证本病例，不代表全河网连续。");
+        Files.writeString(OUT.resolve("river-" + System.currentTimeMillis() + ".txt"), LOG.toString());
+        ModelHydrologyProvider.setProbeSharedOff(false);
+        com.geogenesis.diagnostics.WorldGenProfiler.configure(false, 0);
+    }
+
+    private static void secRiverCandidates() throws Exception {
+        log("\n=== [river-candidates] 新候选生产列复核（共享开启，与最新面板同口径）===");
+        PROV.clear();
+        com.geogenesis.diagnostics.WorldGenProfiler.configure(true, 0);
+        try {
+            for (int[] q : new int[][]{{-710, 511, 1}, {-650, 511, 1}, {-582, 511, 1},
+                    {-78, 511, 1}, {-513, 359, 0}, {-513, 447, 0}}) {
+                int rx = Math.floorDiv(q[0], hp().tract()), rz = Math.floorDiv(q[1], hp().tract());
+                log("candidate=" + q[0] + "," + q[1] + " ports=" + PROV.coarseLayerFor(rx, rz).ports());
+                riverConnectivity(q[0], q[1], 16, q[2]);
+            }
+        } finally { com.geogenesis.diagnostics.WorldGenProfiler.configure(false, 0); }
+        log("NOT VERIFIED: connectedAcross=false仅证局部断口，仍须排除湖海/上游源头和约束不可达。");
+    }
+
+    private static void riverConnectivity(int x, int z, int radius) throws Exception {
+        riverConnectivity(x, z, radius, 0);
+    }
+
+    private static void riverConnectivity(int x, int z, int radius, int axis) throws Exception {
+        Map<Long, List<HydrologyBlockCarvedColumn>> chunks = new HashMap<>();
+        Set<Long> wet = new LinkedHashSet<>();
+        StringBuilder mask = new StringBuilder();
+        for (int bz = z - radius; bz <= z + radius; bz++) {
+            for (int bx = x - radius; bx <= x + radius; bx++) {
+                int cx = Math.floorDiv(bx, 16), cz = Math.floorDiv(bz, 16);
+                long ck = ((long) cx << 32) ^ (cz & 0xffffffffL);
+                var cols = chunks.computeIfAbsent(ck,
+                        k -> PROV.columnsFor(cx, cz, sampleChunk(GEN, cx, cz)));
+                boolean river = false;
+                for (var c : cols) {
+                    if (c.blockX() == bx && c.blockZ() == bz) {
+                        river = !c.lakePlan() && c.fillWater() && c.waterSurfaceY() > c.carvedGroundY();
+                        break;
+                    }
+                }
+                if (river) wet.add(((long) bx << 32) ^ (bz & 0xffffffffL));
+                mask.append(river ? '#' : '.');
+            }
+            mask.append('\n');
+        }
+        long start = ((long) x << 32) ^ (z & 0xffffffffL);
+        Set<Long> seen = new LinkedHashSet<>();
+        java.util.ArrayDeque<Long> queue = new java.util.ArrayDeque<>();
+        if (wet.contains(start)) { seen.add(start); queue.add(start); }
+        int far = 0, crossings = 0;
+        while (!queue.isEmpty()) {
+            long k = queue.remove();
+            int bx = (int) (k >> 32), bz = (int) k;
+            if (axis == 0 ? bx > x : bz > z) far++;
+            for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                long nb = ((long) (bx + dx) << 32) ^ ((bz + dz) & 0xffffffffL);
+                if (!wet.contains(nb)) continue;
+                if (axis == 0 ? bx == x && dx == 1 : bz == z && dz == 1) crossings++;
+                if (seen.add(nb)) queue.add(nb);
+            }
+        }
+        log("river8 point=" + x + "," + z + " wet=" + wet.size() + " component=" + seen.size()
+                + " axis=" + axis + " farCells=" + far + " seamCrossings=" + crossings
+                + " connectedAcross=" + (far > 0 && crossings > 0));
+        chk(wet.contains(start) && !seen.isEmpty(), "缝带连通诊断非空转 " + x + "," + z, "起点非河");
+        Files.writeString(OUT.resolve("river-mask-" + x + "-" + z + ".txt"), mask);
+    }
+
+    private static void secLazy() throws Exception {
+        log("\n=== [lazy] 实际窗口之外零 fine、边界舍入一致、并发延迟求解单飞 ===");
+        PROV.clear();
+        var key = new SharedLakeDomain.Key(1, -512, -3);
+        long fine0 = HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.get();
+        var d = PROV.preparedDomainForProbe(key);
+        chk(d.status() == SharedLakeDomain.Status.PENDING, "真实候选完成粗准备", d.label());
+        chk(HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.get() == fine0,
+                "粗准备不跑共享 fine", "fine 增加");
+        chk(!d.intersectsBox(-864, -592, -849, -577)
+                        && HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.get() == fine0,
+                "只落在最大候选范围但不在实际窗的 chunk 不触发 fine", "提前细解");
+        var g = d.geom();
+        int lo = g.originX() - g.step() / 2;
+        int hi = g.originX() + g.n() * g.step() - g.step() / 2 - 1;
+        chk(d.cellAt(lo, g.centerZ()) >= 0 && d.cellAt(lo - 1, g.centerZ()) < 0
+                        && d.cellAt(hi, g.centerZ()) >= 0 && d.cellAt(hi + 1, g.centerZ()) < 0,
+                "实际窗口相交判据与 cellAt 最近格舍入边界一致", "边界差一格");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            List<java.util.concurrent.Future<SharedLakeDomain.Domain>> futures = new ArrayList<>();
+            for (int i = 0; i < 4; i++) futures.add(pool.submit(() -> PROV.domainForProbe(key)));
+            var first = futures.get(0).get(600, TimeUnit.SECONDS);
+            boolean same = true;
+            for (var f : futures) same &= f.get(600, TimeUnit.SECONDS) == first;
+            chk(same && HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.get() - fine0 == 1,
+                    "冷共享域并发只解一次且复用同产物", "重复细解或不同产物");
+        } finally { pool.shutdownNow(); }
+    }
+
+    // #region agent log: L1/L2 共享冷区 matched runs，实机确认后清理
+    private static void secCost(long seed, boolean off, int cx, int cz) throws Exception {
+        com.geogenesis.diagnostics.WorldGenProfiler.configure(true, 0);
+        GEN = newGen(TP, seed);
+        PROV = new ModelHydrologyProvider(GEN, seed);
+        PROV.clear();
+        HierarchicalHydrology.Diag.reset();
+        ModelHydrologyProvider.setProbeSharedOff(off);
+        String cold = null;
+        for (String phase : List.of("cold", "hot")) {
+            long t0 = System.nanoTime();
+            String result = fp(PROV.columnsFor(cx, cz, sampleChunk(GEN, cx, cz)));
+            String line = "shared=" + !off + " phase=" + phase + " chunk=" + cx + "," + cz
+                    + " ms=" + (System.nanoTime() - t0) / 1e6
+                    + " tiles=" + GEN.erosionTileCacheSize() + " misses=" + GEN.tileCacheStats().misses()
+                    + " evictions=" + GEN.tileCacheStats().evictions()
+                    + " localFine=" + HierarchicalHydrology.Diag.FINE_SOLVES.get()
+                    + " sharedFine=" + HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.get()
+                    + " domains=" + HierarchicalHydrology.Diag.SHARED_DOMAINS.get()
+                    + " screens=" + HierarchicalHydrology.Diag.SHARED_COARSE_SCREENS.get();
+            log(line);
+            com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("L1", "shared-cost-" + phase, line);
+            if (cold == null) cold = result;
+            else chk(cold.equals(result), "冷/热列指纹逐位相同", "有差异");
+            Files.writeString(OUT.resolve("cost-" + (off ? "off" : "on") + "-" + cx + "-" + cz
+                    + "-" + phase + "-columns.txt"), result);
+        }
+        com.geogenesis.diagnostics.WorldGenProfiler.reportNow("shared-cost");
+        if (!off) {
+            for (var key : SharedLakeDomain.keysForBox(cx * 16, cz * 16, cx * 16 + 15, cz * 16 + 15, hp())) {
+                var d = PROV.preparedDomainForProbe(key);
+                log("candidate " + d.label() + " geom=" + d.geom());
+            }
+        }
+        log(HierarchicalHydrology.Diag.report());
+        Files.writeString(OUT.resolve("cost-" + (off ? "off" : "on") + "-" + cx + "-" + cz
+                + "-" + System.currentTimeMillis() + ".txt"), LOG.toString());
+        ModelHydrologyProvider.setProbeSharedOff(false);
+        com.geogenesis.diagnostics.WorldGenProfiler.configure(false, 0);
+    }
+    // #endregion
 
     // ---- 收尾 -------------------------------------------------------------------
     private static void notVerified() {

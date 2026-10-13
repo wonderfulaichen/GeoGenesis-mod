@@ -134,6 +134,10 @@ public final class DeterministicSkeleton {
      */
     public record ExitSeed(int cell, int dRX, int dRZ) { }
 
+    // #region agent log: R5 incoming 逐入口归因，实机确认后清理
+    record IncomingDiagnostic(int start, String status, int nodes, int mouth, End end) { }
+    // #endregion
+
     /** 结果：河段表（确定性顺序）+ 诊断计数 + 出口种子。 */
     public static final class Result {
         public final List<Trace> traces;
@@ -157,6 +161,7 @@ public final class DeterministicSkeleton {
          */
         public final boolean networkFilterEnabled;
         public final int droppedByNetworkFilter;
+        List<IncomingDiagnostic> incomingDiagnostics = List.of();
 
         Result(List<Trace> traces, int sourcesTotal, int sourcesDroppedBySpacing,
                int outletStarts, int incomingStarts, List<ExitSeed> exitSeeds,
@@ -413,6 +418,8 @@ public final class DeterministicSkeleton {
         java.util.List<int[]> segments = new java.util.ArrayList<>();
         int sourceTraces = 0;
         int incomingStarts = 0;
+        List<IncomingDiagnostic> incomingDiag = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()
+                ? new ArrayList<>() : null;
         // ★★★ 2026-10-10【双 pass 续流：三段起点，接力种子最高优先】★★★
         //
         // 【为什么接力必须最先追】它是【邻区已存在的干流】延续，不是本区新分支：
@@ -434,9 +441,13 @@ public final class DeterministicSkeleton {
                     break;
                 }
                 int start = starts.get(idx);
-                if (start < 0 || start >= cells) continue;      // 接力种子防御
                 boolean fromOutlet = pass == 1;
                 boolean fromIncoming = pass == 0;
+                if (start < 0 || start >= cells) {
+                    if (fromIncoming && incomingDiag != null) incomingDiag.add(
+                            new IncomingDiagnostic(start, "OUT_OF_WINDOW", 0, -1, null));
+                    continue;
+                }
                 // ★★★ 源头间距判据（2026-10-10 升级：补齐 PL-RGA nearExistingRiver 另一半）★★★
                 //
                 // 【原缺陷】occupied 只登记【源头位置】⇒ 源头可以贴着大河 2~6 格起链，
@@ -451,14 +462,24 @@ public final class DeterministicSkeleton {
                         continue;
                     }
                 }
-                if (covered[start]) continue;
+                if (covered[start]) {
+                    if (fromIncoming && incomingDiag != null) incomingDiag.add(
+                            new IncomingDiagnostic(start, "COVERED", 0, start, End.JOIN));
+                    continue;
+                }
                 // 接力种子落在湖/海格 ⇒ 该处水体已由湖/海表达，无需再画河。
                 // ★ 只对【接力】生效 —— 源头/溢口的 lake/sea 过滤不在本类（改动会变基线产出）。
-                if (fromIncoming && (lakeMask[start] || sea[start])) continue;
+                if (fromIncoming && (lakeMask[start] || sea[start])) {
+                    if (incomingDiag != null) incomingDiag.add(new IncomingDiagnostic(start,
+                            lakeMask[start] ? "LAKE" : "SEA", 0, start,
+                            lakeMask[start] ? End.MOUTH_LAKE : End.MOUTH_SEA));
+                    continue;
+                }
                 int stamp = ++stampBox[0];
                 Trace t = traceOne(start, fromOutlet, level, parent, resolved,
                         lakeMask, sea, covered, nx, nz, params.joinWindow(),
-                        selfStamp, selfStep, stamp, params, segments, bed);
+                        selfStamp, selfStep, stamp, params, segments, bed,
+                        fromIncoming ? incomingDiag : null);
                 if (t == null) continue;
                 traces.add(t);
                 if (fromOutlet) outletStarts++;
@@ -518,8 +539,10 @@ public final class DeterministicSkeleton {
             if (dRX == 0 && dRZ == 0) continue;      // 非边框 DEAD_END（防御，不外传）
             exitSeeds.add(new ExitSeed(mc, dRX, dRZ));
         }
-        return new Result(traces, sourcesTotal, droppedBySpacing, outletStarts,
+        Result result = new Result(traces, sourcesTotal, droppedBySpacing, outletStarts,
                 incomingStarts, exitSeeds, filterOn, droppedNetwork);
+        if (incomingDiag != null) result.incomingDiagnostics = List.copyOf(incomingDiag);
+        return result;
     }
 
     /**
@@ -750,7 +773,8 @@ public final class DeterministicSkeleton {
                                   boolean[] lakeMask, boolean[] sea, boolean[] covered,
                                   int nx, int nz, int joinWindow,
                                   int[] selfStamp, int[] selfStep, int stamp, Params params,
-                                  java.util.List<int[]> segments, double[] bed) {
+                                  java.util.List<int[]> segments, double[] bed,
+                                  List<IncomingDiagnostic> incomingDiag) {
         int cells = nx * nz;
         List<Integer> path = new ArrayList<>();
         int k = start;
@@ -941,6 +965,10 @@ public final class DeterministicSkeleton {
         boolean onFrame = mi == 0 || mj == 0 || mi == nx - 1 || mj == nz - 1;
         boolean orphanDeadEnd = (end == End.DEAD_END) && !fromOutlet && !onFrame;
         if ((path.size() < minNodes || orphanDeadEnd) && !fromOutlet) {
+            // #region agent log: R5 回滚原因与终点，只读不改追踪
+            if (incomingDiag != null) incomingDiag.add(new IncomingDiagnostic(start,
+                    path.size() < minNodes ? "SHORT" : "ORPHAN_DEAD_END", path.size(), mn, end));
+            // #endregion
             // 只释放【本链新覆盖的格】：末位 JOIN 终点属别的链，不得释放（见上方 newlyClaimed 说明）
             for (int i = 0; i < path.size(); i++) {
                 int c = path.get(i);
@@ -951,6 +979,8 @@ public final class DeterministicSkeleton {
             if (newlyClaimed >= path.size()) covered[path.get(path.size() - 1)] = false;
             return null;
         }
+        if (incomingDiag != null) incomingDiag.add(
+                new IncomingDiagnostic(start, "ACCEPTED", path.size(), mn, end));
         return new Trace(toArray(path), end, fromOutlet);
     }
 
