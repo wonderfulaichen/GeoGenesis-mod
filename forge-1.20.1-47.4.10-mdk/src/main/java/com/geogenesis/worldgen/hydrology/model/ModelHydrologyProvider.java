@@ -170,7 +170,8 @@ public final class ModelHydrologyProvider {
     private record RegionData(HydrologyPipeline.Result pipe,
                               RiverCenterlines.Result centerline,
                               SegmentIndex skeletonSeg,
-                              int originX, int originZ) { }
+                              int originX, int originZ,
+                              ProductionDrainageAudit.Snapshot drainage) { }
 
     private final CellGenerator gen;
     /** block → wu 换算（sample/sampleWu 的坐标语义是 wu，见 CellGenerator.sample javadoc）。 */
@@ -330,7 +331,7 @@ public final class ModelHydrologyProvider {
     private static final String[] DIAGNOSTIC_ONLY_KEYS = {
             "geogenesis.stutterDiag", "geogenesis.lakeDiag", "geogenesis.riverBreakDiag",
             "geogenesis.riverWidthDiag", "geogenesis.logSrc", "geogenesis.skeletonEndDiag",
-            "geogenesis.joinChk", "geogenesis.gapWatch", "geogenesis.skelDump",
+            "geogenesis.joinChk", "geogenesis.gapWatch", "geogenesis.skelDump", "geogenesis.drainageAudit",
             "geogenesis.hydrologyConcurrencyDiag", "geogenesis.worldgenProfilerEnabled",
             "geogenesis.worldgenProfilerEveryChunks", "geogenesis.modelCacheCap",
             "geogenesis.modelSolveThreads", "hydro.stageTimer", "hydro.couplingDiagnostics",
@@ -1269,7 +1270,16 @@ public final class ModelHydrologyProvider {
 
     /** 骨架模式的 region 产物：日志用 cl（Reach 表）+ 落块用亚格段索引 + 出口种子（接力用）。 */
     private record SkeletonRegion(RiverCenterlines.Result cl, SegmentIndex seg,
-                                  List<DeterministicSkeleton.ExitSeed> exitSeeds) { }
+                                  List<DeterministicSkeleton.ExitSeed> exitSeeds,
+                                  ProductionDrainageAudit.Snapshot drainage) { }
+
+    ProductionDrainageAudit.Snapshot drainageForProbe(int rx, int rz) {
+        return regionFor(rx * REGION + REGION / 2, rz * REGION + REGION / 2).drainage();
+    }
+
+    HydrologyPipeline.Result pipeForProbe(int blockX, int blockZ) {
+        return regionFor(blockX, blockZ).pipe();
+    }
 
     /**
      * 从 {@link DeterministicSkeleton} 构建 region 骨架。
@@ -1554,7 +1564,9 @@ public final class ModelHydrologyProvider {
             }
         }
         return new SkeletonRegion(RiverCenterlines.fromReaches(reaches, n, n, STEP), seg,
-                sk.exitSeeds);
+                sk.exitSeeds, primary && HIER && Boolean.getBoolean("geogenesis.drainageAudit")
+                ? ProductionDrainageAudit.capture(p, sk, shaped,
+                originX, originZ, REGION) : null);
     }
 
     /**
@@ -2322,6 +2334,7 @@ public final class ModelHydrologyProvider {
         HierarchicalHydrology.Diag.connectivity(LAST_FINE_CONNECTIVITY);
         RiverCenterlines.Result cl;
         SegmentIndex skelSeg = null;
+        ProductionDrainageAudit.Snapshot drainage = null;
         if (SKELETON_TRACE) {
             // 接力：本区粗层主干源头（细化主干）+ 邻区粗层主干端口（续流）。
             // 两路都由【本区自己的侵蚀 parent】往里追 ⇒ 不是"只把边界换粗层"。
@@ -2336,6 +2349,7 @@ public final class ModelHydrologyProvider {
             // #endregion
             cl = sr.cl();
             skelSeg = sr.seg();
+            drainage = sr.drainage();
         } else {
             cl = RiverCenterlines.build(p.bed(), p.discharge(), p.channel(), p.sea(),
                     p.nx(), p.nz(), RiverCenterlines.Params.defaults(), STEP);
@@ -2343,7 +2357,7 @@ public final class ModelHydrologyProvider {
         logRegionSolved(rx, rz, p, cl, t0, originX, originZ);
         HierarchicalHydrology.Diag.fineTiming((System.nanoTime() - t0) / 1_000_000L, p.nx() * p.nx());
         lastFineMs = (System.nanoTime() - t0) / 1e6;
-        return new RegionData(p, cl, skelSeg, originX, originZ);
+        return new RegionData(p, cl, skelSeg, originX, originZ, drainage);
     }
 
     /** 最近一次细层求解耗时（ms）——性能诊断（与 {@link HierarchicalHydrology.Diag#LAST_FINE_MS} 同源）。 */
@@ -2440,6 +2454,7 @@ public final class ModelHydrologyProvider {
         //   湖溢口续流 + legacy 形态收尾）；false = RiverCenterlines（累积->阈值->细化的旧路径）。
         RiverCenterlines.Result cl;
         SegmentIndex skelSeg = null;
+        ProductionDrainageAudit.Snapshot drainage = null;
         if (SKELETON_TRACE) {
             // ★ 双 pass 续流：取 8 邻 pass-1 中【指向本区】的出口种子，换算成本区格索引，
             //   由本区自己的 parent 树追进来（方向场统一 ⇒ 缝上不再断）。
@@ -2449,13 +2464,14 @@ public final class ModelHydrologyProvider {
             var sr = skeletonRegion(p, base.originX(), base.originZ(), incoming, true);
             cl = sr.cl();
             skelSeg = sr.seg();
+            drainage = sr.drainage();
         } else {
             // 中心线（距离场几何源；cellSize=STEP 换算 block 单位）
             cl = RiverCenterlines.build(
                     p.bed(), p.discharge(), p.channel(), p.sea(), p.nx(), p.nz(),
                     RiverCenterlines.Params.defaults(), STEP);
         }
-        RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ());
+        RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ(), drainage);
         // #region agent log: D 冷区依赖成本拆分，实机确认后清理
         if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
             com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("D", "model-region-" + rx + "-" + rz,

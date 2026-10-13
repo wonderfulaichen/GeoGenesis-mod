@@ -333,8 +333,10 @@ public final class SharedLakeDomain {
         // ★ coarseBasinId 必须【投影到细层网格】（gc→gf 坐标投影一次）；否则 decide/cellAt
         //   用细索引去读粗尺寸数组 ⇒ OOB/错 id（两者半边长不同时尤为明显）。不强行让网格形状一致。
         int[] cbidFine = projectBasinId(cbid, gc, gf);
-        return new Domain(key, gf, st, cbidFine, ps.fineBasinId, fine.lake(), ps.planeOfCell,
+        Domain domain = new Domain(key, gf, st, cbidFine, ps.fineBasinId, fine.lake(), ps.planeOfCell,
                 ps.planes, basinPlane, basinStatus, coarseMs, fineMs, fine.nx() * fine.nx(), ok);
+        if (Boolean.getBoolean("geogenesis.drainageAudit")) domain.auditPipe = fine;
+        return domain;
     }
 
     /** 半边长向上对齐到 step 的倍数（两窗原点同余 ⇒ 投影精确）。 */
@@ -633,6 +635,9 @@ public final class SharedLakeDomain {
         private final int fineCells, controlledBasins;
         private java.util.function.Supplier<Domain> solver;
         private volatile Domain completed;
+        private HydrologyPipeline.Result auditPipe;
+
+        HydrologyPipeline.Result pipeForProbe() { return resolved().auditPipe; }
 
         boolean intersectsBox(int x0, int z0, int x1, int z1) {
             int loX = g.originX() - g.step() / 2, loZ = g.originZ() - g.step() / 2;
