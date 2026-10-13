@@ -44,6 +44,7 @@ public final class SharedLakeDomain {
     /** 裁决状态（如实区分"受控 / 拒绝 / 竞争"）。 */
     public enum Status {
         NONE,               // 不落在任何候选缝窗内
+        PENDING,            // 粗筛完成，实际窗口尚未被查询（未触发侵蚀细解）
         NOT_ELIGIBLE,       // 在窗内，但不在受控盆地足迹（含干环）里
         NO_CROSSING,        // 窗内没有跨缝盆地 ⇒ 粗筛选即止（永不细解）
         CONTROLLED,         // 闭合 + 干环 + 单平面 + 有限 + canonical ⇒ 受控
@@ -229,6 +230,10 @@ public final class SharedLakeDomain {
      * （粗解对窗敏感 ⇒ 不能一次就用 maxHalf：那会改变盆地本身。）</p>
      */
     public static Domain build(Ctx c, Key key) {
+        return prepare(c, key).resolved();
+    }
+
+    static Domain prepare(Ctx c, Key key) {
         HierarchicalHydrology.Diag.SHARED_DOMAINS.incrementAndGet();
         int step = c.step(), pad = step;
         int[] halves = baseHalf(c.p()) == maxHalf(c.p())
@@ -245,7 +250,6 @@ public final class SharedLakeDomain {
             if (cbid == null) continue;
             Map<Integer, HierarchicalHydrology.BasinFootprint> fps =
                     HierarchicalHydrology.basinFootprints(coarse);
-            Map<Integer, Integer> basinPlane = new TreeMap<>();
             Map<Integer, Status> basinStatus = new TreeMap<>();
             int chosen = -1, eligible = 0;
             for (HierarchicalHydrology.BasinFootprint fp : fps.values()) {
@@ -277,9 +281,21 @@ public final class SharedLakeDomain {
             }
             aggStatus.putAll(basinStatus);
             if (chosen < 0) continue;                       // 本半边长无可用 canonical 盆地 ⇒ 试更大
-            Domain d = fineStage(c, key, gc, coarse, chosen, basinStatus, coarseMs);
-            if (d != null) return d;
-            aggStatus.putAll(basinStatus);
+            HierarchicalHydrology.BasinFootprint fp = fps.get(chosen);
+            int[] bb = blockBbox(fp, gc);
+            Integer need = neededHalf(bb[0], bb[1], bb[2], bb[3], c.p(), pad);
+            if (need == null || need > maxHalf(c.p())) {
+                basinStatus.put(chosen, Status.REFUSED_TOO_BIG);
+                aggStatus.putAll(basinStatus);
+                continue;
+            }
+            int h = Math.min(maxHalf(c.p()), align(Math.max(baseHalf(c.p()), need), step));
+            Geom gf = geom(key, c.p(), step, h);
+            final int selected = chosen;
+            final long ms = coarseMs;
+            Domain pending = empty(key, gf, Status.PENDING, null, Map.of(), Map.of(), ms);
+            pending.solver = () -> fineStage(c, key, gc, gf, cbid, fp, selected, basinStatus, ms);
+            return pending;
         }
         // 两档都无可用 ⇒ 如实回传【拒绝原因】（不吞成 NO_CROSSING），供 decide 给出明确 reason。
         Status st = aggStatus.isEmpty() ? Status.NO_CROSSING : domainStatus(aggStatus);
@@ -287,28 +303,17 @@ public final class SharedLakeDomain {
         return empty(key, g, st, null, new TreeMap<>(), aggStatus, coarseMs);
     }
 
-    /** 细层：解析所选粗盆地、整盆地校验、标记受控。{@code null} = 本轮不可用（试更大窗）。 */
-    private static Domain fineStage(Ctx c, Key key, Geom gc, HydrologyPipeline.Result coarse,
-                                    int chosen, Map<Integer, Status> basinStatus, long coarseMs) {
-        int step = c.step(), pad = step;
-        HierarchicalHydrology.BasinFootprint fp =
-                HierarchicalHydrology.basinFootprints(coarse).get(chosen);
-        int[] bb = blockBbox(fp, gc);
-        Integer need = neededHalf(bb[0], bb[1], bb[2], bb[3], c.p(), pad);
-        if (need == null || need > maxHalf(c.p())) {
-            basinStatus.put(chosen, Status.REFUSED_TOO_BIG); return null;
-        }
-        // ★ 半边长对齐 step：使粗/细两窗原点同余（origin ≡ center mod step）⇒ 坐标投影精确、
-        //   WindowOutlets 采样 n 自洽。对齐只放大窗口 ⇒ 容纳性不破；再夹到 maxHalf。
-        int h = Math.min(maxHalf(c.p()), align(Math.max(baseHalf(c.p()), need), step));
-        Geom gf = geom(key, c.p(), step, h);
+    /** 细层：解析已准备好的所选粗盆地，整盆地校验并标记受控。 */
+    private static Domain fineStage(Ctx c, Key key, Geom gc, Geom gf, int[] cbid,
+                                    HierarchicalHydrology.BasinFootprint fp, int chosen,
+                                    Map<Integer, Status> basinStatus, long coarseMs) {
+        int pad = c.step(), h = gf.halfSpan();
         long t1 = System.nanoTime();
         HydrologyPipeline.Result fine = fineSolve(c, gf);
         long fineMs = (System.nanoTime() - t1) / 1_000_000L;
         HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.incrementAndGet();
         HierarchicalHydrology.Diag.sharedTiming(coarseMs, fineMs);
         PlaneSet ps = candidatePlanes(fine, key, gf, c.p(), pad);
-        int[] cbid = coarse.lakeResult().basinId();
         int rep = pickRepresentative(ps, cbid, fp, gc, gf);
         Map<Integer, Integer> basinPlane = new TreeMap<>();
         if (rep >= 0) {
@@ -626,6 +631,29 @@ public final class SharedLakeDomain {
         private final Map<Integer, Status> basinStatus;
         private final long coarseMs, fineMs;
         private final int fineCells, controlledBasins;
+        private java.util.function.Supplier<Domain> solver;
+        private volatile Domain completed;
+
+        boolean intersectsBox(int x0, int z0, int x1, int z1) {
+            int loX = g.originX() - g.step() / 2, loZ = g.originZ() - g.step() / 2;
+            int hiX = g.originX() + g.n() * g.step() - g.step() / 2 - 1;
+            int hiZ = g.originZ() + g.n() * g.step() - g.step() / 2 - 1;
+            return x1 >= loX && x0 <= hiX && z1 >= loZ && z0 <= hiZ;
+        }
+
+        Domain resolved() {
+            if (status != Status.PENDING) return this;
+            Domain hit = completed;
+            if (hit != null) return hit;
+            synchronized (this) {
+                if (completed == null) {
+                    Domain d = solver.get();
+                    completed = d;
+                    solver = null;
+                }
+                return completed;
+            }
+        }
 
         @SuppressWarnings("checkstyle:ParameterNumber")
         Domain(Key key, Geom g, Status status, int[] coarseBasinId, int[] fineBasinId,
@@ -677,7 +705,9 @@ public final class SharedLakeDomain {
          */
         public Decision decide(int blockX, int blockZ) {
             int k = cellAt(blockX, blockZ);
-            if (k < 0 || planeOfCell == null) return Decision.NONE;
+            if (k < 0) return Decision.NONE;
+            if (status == Status.PENDING) return resolved().decide(blockX, blockZ);
+            if (planeOfCell == null) return Decision.NONE;
             int b = coarseBasinId == null ? -1 : coarseBasinId[k];
             int mark = planeOfCell[k];
             if (mark == CONTROLLED_DRY) return new Decision(true, false, Double.NaN, key, b, Status.CONTROLLED);

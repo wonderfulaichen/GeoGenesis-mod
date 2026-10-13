@@ -522,6 +522,34 @@ public final class ModelHydrologyProvider {
      */
     private static final ConcurrentHashMap<DomKey, CompletableFuture<SharedLakeDomain.Domain>>
             DOMAIN_INFLIGHT = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<DomKey, CompletableFuture<SharedLakeDomain.Domain>>
+            DOMAIN_FINE_INFLIGHT = new ConcurrentHashMap<>();
+
+    private SharedLakeDomain.Domain resolveDomain(SharedLakeDomain.Domain prepared) {
+        if (prepared.status() != SharedLakeDomain.Status.PENDING) return prepared;
+        var key = prepared.key();
+        DomKey k = new DomKey(seed, strategy, key.axis(), key.boundary(), key.alongTile());
+        synchronized (DOMAIN_CACHE) {
+            var hit = DOMAIN_CACHE.get(k);
+            if (hit != null && hit.status() != SharedLakeDomain.Status.PENDING) return hit;
+        }
+        var mine = new CompletableFuture<SharedLakeDomain.Domain>();
+        var raced = DOMAIN_FINE_INFLIGHT.putIfAbsent(k, mine);
+        if (raced != null) return awaitDomain(raced);
+        try {
+            SharedLakeDomain.Domain d;
+            synchronized (DOMAIN_CACHE) { d = DOMAIN_CACHE.get(k); }
+            if (d == null || d.status() == SharedLakeDomain.Status.PENDING) d = prepared.resolved();
+            cachePutDomain(k, d);
+            mine.complete(d);
+            return d;
+        } catch (RuntimeException | Error e) {
+            mine.completeExceptionally(e);
+            throw e;
+        } finally {
+            DOMAIN_FINE_INFLIGHT.remove(k, mine);
+        }
+    }
 
     /** 取（或建）一个缝域 —— 纯函数 (seed, 策略, 缝键) ⇒ 缓存只改时序不改内容。 */
     private SharedLakeDomain.Domain domainFor(SharedLakeDomain.Key key) {
@@ -536,7 +564,11 @@ public final class ModelHydrologyProvider {
         CompletableFuture<SharedLakeDomain.Domain> raced = DOMAIN_INFLIGHT.putIfAbsent(k, mine);
         if (raced != null) return awaitDomain(raced);          // 输了 ⇒ 等赢家
         try {
-            SharedLakeDomain.Domain d = buildDomain(key);
+            SharedLakeDomain.Domain d;
+            synchronized (DOMAIN_CACHE) { d = DOMAIN_CACHE.get(k); }
+            var fine = DOMAIN_FINE_INFLIGHT.get(k);
+            if (fine != null) d = awaitDomain(fine);
+            else if (d == null) d = buildDomain(key);
             cachePutDomain(k, d);                              // ★ 先发布缓存
             mine.complete(d);                                  //   再完成
             DOMAIN_INFLIGHT.remove(k, mine);
@@ -554,7 +586,7 @@ public final class ModelHydrologyProvider {
         //   ⇒ 无需建窗。⚠ 必要条件筛（非充分证明）：漏判只会"该点不受控"，绝不造假水位 ⇒ 安全侧。
         return screenOut(key)
                 ? SharedLakeDomain.screened(key, HIER_PARAMS)
-                : SharedLakeDomain.build(sharedCtx(), key);
+                : SharedLakeDomain.prepare(sharedCtx(), key);
     }
 
     private static SharedLakeDomain.Domain awaitDomain(
@@ -569,6 +601,9 @@ public final class ModelHydrologyProvider {
 
     private static void cachePutDomain(DomKey k, SharedLakeDomain.Domain d) {
         synchronized (DOMAIN_CACHE) {
+            var existing = DOMAIN_CACHE.get(k);
+            if (d.status() == SharedLakeDomain.Status.PENDING && existing != null
+                    && existing.status() != SharedLakeDomain.Status.PENDING) return;
             DOMAIN_CACHE.put(k, d);
             while (DOMAIN_CACHE.size() > SHARED_LAKE_CACHE_CAP) {
                 DOMAIN_CACHE.remove(DOMAIN_CACHE.keySet().iterator().next());
@@ -584,9 +619,18 @@ public final class ModelHydrologyProvider {
         int hi = line / hp.tract();
         HierarchicalHydrology.Coarse cLo = coarseFor(
                 key.axis() == 0 ? lo : key.alongTile(), key.axis() == 0 ? key.alongTile() : lo);
+        long beforeHi = HierarchicalHydrology.Diag.COARSE_SOLVES.get();
         HierarchicalHydrology.Coarse cHi = coarseFor(
                 key.axis() == 0 ? hi : key.alongTile(), key.axis() == 0 ? key.alongTile() : hi);
-        return !anyCrosses(cLo, key.axis(), line) && !anyCrosses(cHi, key.axis(), line);
+        boolean lowCross = anyCrosses(cLo, key.axis(), line);
+        // #region agent log: L4 低侧已确认候选时，高侧是否仍发生无必要粗求解
+        if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
+            com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("L4", "screen-high-" + key.label(),
+                    "lowCross=" + lowCross + " highCoarseSolves="
+                            + (HierarchicalHydrology.Diag.COARSE_SOLVES.get() - beforeHi));
+        }
+        // #endregion
+        return !lowCross && !anyCrosses(cHi, key.axis(), line);
     }
 
     private static boolean anyCrosses(HierarchicalHydrology.Coarse c, int axis, int line) {
@@ -626,7 +670,9 @@ public final class ModelHydrologyProvider {
         if (!sharedActive()) return SharedLakeDomain.Decision.NONE;
         SharedLakeDomain.Decision best = null;
         for (SharedLakeDomain.Key key : keys) {
-            SharedLakeDomain.Decision d = domainFor(key).decide(worldX, worldZ);
+            SharedLakeDomain.Domain prepared = domainFor(key);
+            if (prepared.cellAt(worldX, worldZ) < 0) continue;
+            SharedLakeDomain.Decision d = resolveDomain(prepared).decide(worldX, worldZ);
             if (!d.controlled()) continue;
             if (best == null) {
                 best = d;
@@ -662,7 +708,27 @@ public final class ModelHydrologyProvider {
             HierarchicalHydrology.Diag.layer("sharedLake", "chunkCandidatesOverWarn", keys.size());
         }
         List<SharedLakeDomain.Domain> doms = new ArrayList<>(keys.size());
-        for (SharedLakeDomain.Key k : keys) doms.add(domainFor(k));
+        for (SharedLakeDomain.Key k : keys) {
+            // #region agent log: L2 候选缝域首次成本及真实半径，实机确认后清理
+            boolean diagnostic = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled();
+            long t0 = diagnostic ? System.nanoTime() : 0;
+            int tiles = diagnostic ? gen.erosionTileCacheSize() : 0;
+            long evictions = diagnostic ? gen.tileCacheStats().evictions() : 0;
+            SharedLakeDomain.Domain d = domainFor(k);
+            if (d.intersectsBox(blockX0, blockZ0, blockX0 + 15, blockZ0 + 15)) {
+                d = resolveDomain(d);
+                doms.add(d);
+            }
+            if (diagnostic && System.nanoTime() - t0 > 10_000_000L) {
+                com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("L2", "shared-domain-" + k.label(),
+                        "chunk=" + Math.floorDiv(blockX0, 16) + "," + Math.floorDiv(blockZ0, 16)
+                                + " ms=" + (System.nanoTime() - t0) / 1e6 + " " + d.label()
+                                + " half=" + d.geom().halfSpan() + " fineCells=" + d.fineCells()
+                                + " tiles=" + tiles + "->" + gen.erosionTileCacheSize()
+                                + " evictions=" + (gen.tileCacheStats().evictions() - evictions));
+            }
+            // #endregion
+        }
         return doms;
     }
 
@@ -700,6 +766,7 @@ public final class ModelHydrologyProvider {
             DOMAIN_CACHE.clear();
         }
         DOMAIN_INFLIGHT.clear();
+        DOMAIN_FINE_INFLIGHT.clear();
     }
 
     /** 域缓存规模（探针断言"有界"）。 */
@@ -711,7 +778,7 @@ public final class ModelHydrologyProvider {
 
     /** 域在途数（探针断言"单飞：并发同键只构建一次"）。 */
     static int sharedDomainInflightSize() {
-        return DOMAIN_INFLIGHT.size();
+        return DOMAIN_INFLIGHT.size() + DOMAIN_FINE_INFLIGHT.size();
     }
 
     // ---- 探针读视图（package-private；生产零影响）----
@@ -728,9 +795,13 @@ public final class ModelHydrologyProvider {
     /** 探针 before/after：只关【列改写】，不动缓存与域结果。 */
     static void setProbeSharedOff(boolean off) { sharedLakeProbeOff = off; }
 
+    SharedLakeDomain.Domain preparedDomainForProbe(SharedLakeDomain.Key key) {
+        return sharedActive() ? domainFor(key) : null;
+    }
+
     /** 探针直取某缝域。 */
     SharedLakeDomain.Domain domainForProbe(SharedLakeDomain.Key key) {
-        return sharedActive() ? domainFor(key) : null;
+        return sharedActive() ? resolveDomain(domainFor(key)) : null;
     }
 
     /**
@@ -998,6 +1069,7 @@ public final class ModelHydrologyProvider {
             DOMAIN_CACHE.keySet().removeIf(k -> k.seed() != newSeed);
         }
         DOMAIN_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
+        DOMAIN_FINE_INFLIGHT.keySet().removeIf(k -> k.seed() != newSeed);
     }
 
     /** 兼容旧语义：完全清空共享缓存（换世界时由 setSeed 按 seed 处理）。 */
@@ -1323,6 +1395,24 @@ public final class ModelHydrologyProvider {
             // 回传事实（探针可断言"实验构建确实关了过滤且未删链"）。
             HierarchicalHydrology.Diag.skeletonBuild(sk.networkFilterEnabled,
                     sk.droppedByNetworkFilter);
+            // #region agent log: R2 incoming 被吃掉的总量（不改几何）
+            if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
+                com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("R2", "incoming-" + originX + "-" + originZ,
+                        "requested=" + (incomingCells == null ? 0 : incomingCells.size())
+                                + " accepted=" + sk.incomingStarts + " fineWindowExits=" + sk.exitSeeds.size());
+                for (var d : sk.incomingDiagnostics) {
+                    int bx = originX + (d.start() / n) * STEP;
+                    int bz = originZ + (d.start() % n) * STEP;
+                    com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("R5",
+                            "incoming-detail-" + originX + "-" + originZ + "-" + d.start(),
+                            "point=" + bx + "," + bz + " status=" + d.status()
+                                    + " nodes=" + d.nodes() + " end=" + d.end()
+                                    + " mouth=" + (d.mouth() < 0 ? "-" :
+                                    (originX + (d.mouth() / n) * STEP) + ","
+                                            + (originZ + (d.mouth() % n) * STEP)));
+                }
+            }
+            // #endregion
         }
         if (SKELETON_END_DIAG || LOG_SRC) {
             LOGGER.info("[HYDRO-SRC] srcAccum={} runoff={} traces={} sources={} maxQ={}",
@@ -2238,6 +2328,12 @@ public final class ModelHydrologyProvider {
             List<Integer> incoming = CROSS_PASS
                     ? hierIncomingSeeds(rx, rz, p.nx(), originX, originZ) : List.of();
             var sr = skeletonRegion(p, originX, originZ, incoming, true);
+            // #region agent log: R1 细层出口目前未消费，先量化再改边界几何
+            if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
+                com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("R1", "hier-ports-" + rx + "-" + rz,
+                        "incomingSeeds=" + incoming.size() + " fineWindowExitsUnused=" + sr.exitSeeds().size());
+            }
+            // #endregion
             cl = sr.cl();
             skelSeg = sr.seg();
         } else {
@@ -2274,6 +2370,13 @@ public final class ModelHydrologyProvider {
             int mj = Math.floorDiv(ts.blockZ() - myOriginZ, STEP);
             if (mi < 0 || mj < 0 || mi >= n || mj >= n) continue;
             out.add(mi * n + mj);
+            // #region agent log: R6 本地主干候选与跨缝端口分开留痕
+            if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
+                com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("R6",
+                        "local-trunk-" + rx + "-" + rz + "-" + (mi * n + mj),
+                        "cell=" + (mi * n + mj) + " point=" + ts.blockX() + "," + ts.blockZ());
+            }
+            // #endregion
         }
         // ② 邻区粗层主干端口（朝本区的那些）。
         out.addAll(collectIncomingCoarse(rx, rz, n, myOriginX, myOriginZ));
@@ -2293,10 +2396,22 @@ public final class ModelHydrologyProvider {
                 HierarchicalHydrology.Coarse nb = coarseFor(rx + dRX, rz + dRZ);
                 for (HierarchicalHydrology.Port port : nb.ports()) {
                     // 邻区在 (rx+dRX)，其端口朝 (-dRX,-dRZ) ⇒ 接收方就是本 tract。
-                    if (port.dRX() != -dRX || port.dRZ() != -dRZ) continue;
+                    boolean directed = port.dRX() == -dRX && port.dRZ() == -dRZ;
                     int mi = Math.floorDiv(port.blockX() - myOriginX, STEP);
                     int mj = Math.floorDiv(port.blockZ() - myOriginZ, STEP);
-                    if (mi < 0 || mj < 0 || mi >= n || mj >= n) continue;
+                    boolean inside = mi >= 0 && mj >= 0 && mi < n && mj < n;
+                    // #region agent log: R4 粗端口发射/拒绝/落点，仅诊断
+                    if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
+                        com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("R4", "coarse-port-" + rx + "-" + rz
+                                        + "-" + (rx + dRX) + "-" + (rz + dRZ)
+                                        + "-" + port.blockX() + "-" + port.blockZ(),
+                                "from=" + (rx + dRX) + "," + (rz + dRZ) + " cell=" + (mi * n + mj)
+                                        + " point=" + port.blockX() + "," + port.blockZ()
+                                        + " status=" + (!directed ? "DIR_MISMATCH" : inside ? "TAKEN" : "OUT_OF_WINDOW")
+                                        + " levelUnused=" + port.level());
+                    }
+                    // #endregion
+                    if (!directed || !inside) continue;
                     out.add(mi * n + mj);
                 }
             }

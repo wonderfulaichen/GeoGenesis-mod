@@ -803,6 +803,16 @@ public final class HydrologyPipeline {
             HierarchicalHydrology.Diag.layer(layer.tag(), "prewarmSpan", doPrewarm ? 2 * radius : 0);
             HierarchicalHydrology.Diag.layer(layer.tag(), "samples", terrainSamples.get());
             HierarchicalHydrology.Diag.layer(layer.tag(), "cells", (long) n * n);
+            // #region agent log: L3 分离粗筛/本区/共享 fine 地形与水文成本，实机确认后清理
+            if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
+                com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("L3", "hydro-layer-" + layer.tag()
+                                + "-" + request.centerBlockX() + "-" + request.centerBlockZ() + "-" + radius,
+                        "radius=" + radius + " samples=" + terrainSamples.get()
+                                + " outletsMs=" + (__t1 - __t0) / 1e6
+                                + " surfaceMs=" + (__t2 - __t1) / 1e6
+                                + " balanceMs=" + (System.nanoTime() - __t2) / 1e6);
+            }
+            // #endregion
         }
         return new Result(n, n, step, built.bed(), built.drains(), surface.resolved(),
                 surface.level(), lakeResult.depth(), lakeResult.lake(), surface.parent(),
