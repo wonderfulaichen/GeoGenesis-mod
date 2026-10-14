@@ -1639,6 +1639,8 @@ public final class CellGenerator {
         // 作废：探针 ridge=2.0 vs 游戏 toml 0.75，hs 未参数化；现已全部对齐）。
         // 依据：液滴 delta 场在 tile 左缘（= 模拟域西界，液滴出生/截断不对称）固有突变
         // （x=-288 实测 3.6 块台阶，基础场 0.1 块连续）→ 需要 blend 吸收，单侧 10wu 不够。
+        // 邻居权重在边界趋于 1/2，两侧使用同一平均值；角点四 tile 各占 1/4。
+        // 原权重趋于 1 会在归属切换时交换两份独立 delta，形成确定性阶跃。
         // X/Z 方向独立 smoothstep 因子 + 4 tile 双线性组合（不顺序覆盖，角块正确）。
         double w = 16 - BLEND_START;
         double rightEdge = tileCX + (double) ERODE_TILE_CENTER;
@@ -1646,21 +1648,21 @@ public final class CellGenerator {
         double fx = 0; int ncx = tileCX;
         if (rightEdge - wuX <= w) {
             double b = 1.0 - (rightEdge - wuX) / w;
-            fx = b * b * (3.0 - 2.0 * b);
+            fx = 0.5 * b * b * (3.0 - 2.0 * b);
             ncx = tileCX + ERODE_TILE_CENTER;
         } else if (wuX - tileCX < w) {
             double b = 1.0 - (wuX - tileCX) / w;
-            fx = b * b * (3.0 - 2.0 * b);
+            fx = 0.5 * b * b * (3.0 - 2.0 * b);
             ncx = tileCX - ERODE_TILE_CENTER;
         }
         double fz = 0; int ncz = tileCZ;
         if (bottomEdge - wuZ <= w) {
             double b = 1.0 - (bottomEdge - wuZ) / w;
-            fz = b * b * (3.0 - 2.0 * b);
+            fz = 0.5 * b * b * (3.0 - 2.0 * b);
             ncz = tileCZ + ERODE_TILE_CENTER;
         } else if (wuZ - tileCZ < w) {
             double b = 1.0 - (wuZ - tileCZ) / w;
-            fz = b * b * (3.0 - 2.0 * b);
+            fz = 0.5 * b * b * (3.0 - 2.0 * b);
             ncz = tileCZ - ERODE_TILE_CENTER;
         }
         if (fx > 0 || fz > 0) {

@@ -408,8 +408,10 @@ public class PreviewDisplay extends AbstractWidget {
     // 74 = 2026-10-11 预览必须 terrain.seed(seed)，修正只播地形却用水文seed=0的错误缓存。
     // 75 = 分层水文受控实验：策略指纹纳入预览键，实验与当前生产缓存互不混用。
     // 76 = 分层跨区湖域共享求解：同一候选盆地不再按区块窗口分别裁决水位。
+    // 77 = 2026-10-14 侵蚀 tile 边界对称半权重混合，消除归属切换时 delta 互换阶跃。
+    //      边界带地形及其派生河湖产出变化，旧预览缓存必须失效。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 76;
+    private static final int CACHE_SCHEMA_VERSION = 77;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

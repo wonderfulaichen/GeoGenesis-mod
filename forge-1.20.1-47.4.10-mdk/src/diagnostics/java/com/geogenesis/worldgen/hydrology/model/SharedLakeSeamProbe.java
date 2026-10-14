@@ -57,7 +57,7 @@ public final class SharedLakeSeamProbe {
     /** 缝带扫描半宽（块）：证明过渡不止缝上 2px。 */
     static final int BAND = 40;
     static final Set<String> SECTIONS =
-            Set.of("synth", "repro", "basin", "det", "fine", "counts", "neg", "cost-on", "cost-off", "lazy", "river", "river-candidates", "contract", "contract-baseline", "boundary", "boundary-local", "local-synth", "closure", "local-view", "outer", "outer-view", "shore", "shore-view", "cell-contract", "cell-view", "block-synth", "block-boundary", "block-view", "transfer-synth", "transfer-view", "summary-synth", "summary-view");
+            Set.of("synth", "repro", "basin", "det", "fine", "counts", "neg", "cost-on", "cost-off", "lazy", "river", "river-candidates", "contract", "contract-baseline", "boundary", "boundary-local", "local-synth", "closure", "local-view", "outer", "outer-view", "shore", "shore-view", "cell-contract", "cell-view", "block-synth", "block-boundary", "block-view", "transfer-synth", "transfer-view", "summary-synth", "summary-view", "direction-synth", "direction-view", "sink-synth", "sink-view", "channel-origin", "common-acceptance", "erosion-blend", "source-synth", "source-directory", "owner-sources", "owner-source-acceptance");
     static final Path OUT = Path.of("build", "shared-lake-seam");
 
     static int failures;
@@ -82,7 +82,7 @@ public final class SharedLakeSeamProbe {
                 || want.contains("boundary") || want.contains("boundary-local")
                 || want.contains("outer") || want.contains("outer-view")
                 || want.contains("shore") || want.contains("shore-view") || want.contains("cell-view")
-                || want.contains("block-boundary") || want.contains("block-view"))
+                || want.contains("block-boundary") || want.contains("block-view") || want.contains("direction-view") || want.contains("sink-view"))
             System.setProperty("geogenesis.drainageAudit", "true");
 
         chk(loadCfg(), "用户 toml 复制为工作副本并 cfg.load()（原件只读、绝不写回）",
@@ -135,6 +135,20 @@ public final class SharedLakeSeamProbe {
         if (want.contains("transfer-view")) secTransferView();
         if (want.contains("summary-synth")) summarySynthetic();
         if (want.contains("summary-view")) secSummaryView();
+        if (want.contains("direction-synth")) directionSynthetic();
+        if (want.contains("direction-view")) secDirectionView();
+        if (want.contains("sink-synth")) sinkSynthetic();
+        if (want.contains("sink-view")) secSinkView();
+        if (want.contains("channel-origin")) secChannelOrigin();
+        if (want.contains("common-acceptance")) {
+            System.setProperty("geogenesis.commonNodeAcceptance", "true");
+            secChannelOrigin();
+        }
+        if (want.contains("erosion-blend")) secErosionBlend(seed);
+        if (want.contains("source-synth")) sourceDirectorySynthetic();
+        if (want.contains("source-directory")) secSourceDirectory();
+        if (want.contains("owner-sources") || want.contains("owner-source-acceptance"))
+            secOwnerSources(seed, want.contains("owner-source-acceptance"));
         notVerified();
         log("\n" + HierarchicalHydrology.Diag.sharedReport());
         emit();
@@ -755,6 +769,2246 @@ public final class SharedLakeSeamProbe {
 
     private static boolean domainFrame(SharedBlockDrainage.Domain d, int x, int z) {
         return x == d.originX() || z == d.originZ() || x == d.originX() + d.sizeX() - 1 || z == d.originZ() + d.sizeZ() - 1;
+    }
+
+    private static void directionSynthetic() throws Exception {
+        log("\n=== [direction-synth] 真实四邻下降与完整平地出口，不消费容量树parent ===");
+        WindowOutlets.Terrain terrace = (x, z) -> Math.abs(z) <= 1 && x >= -4 && x <= 4 ? (x == 4 ? 90 : 100) : 120;
+        var a = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, terrace, (x, z) -> false, false);
+        var route = SharedBlockDrainage.direction(a, false);
+        var t = route.trace(-4, 0);
+        chk(t.end() == SharedBlockDrainage.DirectionEnd.BASIN_PENDING && t.flatEdges() > 0
+                        && t.maxBedRise() == 0 && t.path().get(t.path().size() - 1).x() == 4 && continuous(t.path()),
+                "完整平地先统一真实下降出口，再以距离递减抵达洼地待决", t.toString());
+        var b = SharedBlockDrainage.buildAt(4, 0, 8, 4, 0, terrace, (x, z) -> false, true);
+        var other = SharedBlockDrainage.direction(b, true);
+        boolean overlap = true;
+        for (int x = -4; x <= 4; x++) for (int z = -1; z <= 1; z++) overlap &= route.at(x, z).equals(other.at(x, z));
+        chk(overlap, "完整平地跨重叠窗口方向与距离同值", "different");
+        var flat = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, (x, z) -> 100, (x, z) -> false, false);
+        chk(SharedBlockDrainage.direction(flat, false).trace(0, 0).end() == SharedBlockDrainage.DirectionEnd.UNKNOWN_FRAME,
+                "触框平地没有出口权威，不按坐标造坡", "false terminal");
+        var clipped = SharedBlockDrainage.buildAt(-8, 0, 8, 4, 0, terrace, (x, z) -> false, false);
+        chk(SharedBlockDrainage.direction(clipped, false).trace(-4, 0).end() == SharedBlockDrainage.DirectionEnd.UNKNOWN_FRAME,
+                "同平地被裁切时待决，不能冒用完整组件的出口", "missed truncation");
+        var ocean = SharedBlockDrainage.buildAt(0, 0, 8, 4, 95, terrace, (x, z) -> x == 4 && z == 0, false);
+        var sea = SharedBlockDrainage.direction(ocean, false).trace(-4, 0);
+        chk(sea.end() == SharedBlockDrainage.DirectionEnd.OCEAN_CANDIDATE && sea.maxBedRise() == 0,
+                "方向到已知海候选不冒充全球入海证书", sea.toString());
+        var equalOcean = SharedBlockDrainage.buildAt(0, 0, 8, 4, 105,
+                (x, z) -> Math.abs(x) <= 4 && Math.abs(z) <= 1 ? 100 : 120, (x, z) -> x == 4 && z == 0, false);
+        chk(SharedBlockDrainage.direction(equalOcean, false).trace(-4, 0).end() == SharedBlockDrainage.DirectionEnd.OCEAN_CANDIDATE,
+                "等床海候选以平地距离递减终止，不循环", "wrong equal-level route");
+        directionBoundarySynthetic();
+        diagonalGeometrySynthetic();
+        lookaheadSynthetic();
+        segmentGeometrySynthetic();
+        continuationSynthetic();
+        directionTransferSynthetic(route, a, flat);
+        directionOracleChecks();
+        var shifted = SharedBlockDrainage.buildAt(-32, -16, 8, 4, 0,
+                (x, z) -> terrace.height(x + 32, z + 16), (x, z) -> false, true);
+        var translated = SharedBlockDrainage.direction(shifted, false).trace(-36, -16);
+        chk(t.path().stream().map(c -> new SharedBoundaryDrainage.WorldCell(c.x() - 32, c.z() - 16)).toList()
+                        .equals(translated.path()) && t.end() == translated.end(), "负坐标平移完整方向通路一致", "different");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            var futures = new ArrayList<java.util.concurrent.Future<SharedBlockDrainage.Direction>>();
+            for (int i = 0; i < 4; i++) futures.add(pool.submit(() -> SharedBlockDrainage.direction(a, true)));
+            boolean same = true;
+            var channelEdges = route.channels(7).edges(4);
+            for (var f : futures) {
+                var cold = f.get(30, TimeUnit.SECONDS);
+                same &= route.sameDirection(cold) && channelEdges.equals(cold.channels(7).edges(4));
+            }
+            chk(same, "四线程方向数组与选中边逐位同值", "different");
+        } finally { pool.shutdownNow(); }
+        boolean cancel = false;
+        try { Thread.currentThread().interrupt(); SharedBlockDrainage.direction(a, false); }
+        catch (java.util.concurrent.CancellationException e) { cancel = true; }
+        finally { Thread.interrupted(); }
+        chk(cancel && route.sameDirection(SharedBlockDrainage.direction(a, false)), "取消方向求解不发布半产物，重试同值", "missed");
+    }
+
+    private static void continuationSynthetic() throws Exception {
+        var a = new SharedBoundaryDrainage.WorldCell(-4, -2); var b = new SharedBoundaryDrainage.WorldCell(-4, 2);
+        var outside = new SharedBoundaryDrainage.WorldCell(-40, 20);
+        var sources = List.of(new SharedBlockDrainage.ContinuationSource(a, a), new SharedBlockDrainage.ContinuationSource(b, b),
+                new SharedBlockDrainage.ContinuationSource(outside, null));
+        var d = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, (x, z) -> 100 - x + z * z, (x, z) -> false, false);
+        var direction = SharedBlockDrainage.direction(d, false); var before = direction.channels(10000).edges(4);
+        var actual = direction.continueSources(sources, 4);
+        chk(!actual.edges().isEmpty() && actual.edges().stream().anyMatch(e -> e.sources().size() == 2)
+                        && actual.sources().size() == 3 && actual.sources().stream().filter(e -> e.entry() == null)
+                        .allMatch(e -> e.terminal() == null && e.state() == SharedBlockDrainage.DirectionEnd.UNKNOWN_FRAME)
+                        && before.isEmpty() && before.equals(direction.channels(10000).edges(4)),
+                "已选源接续不以本地面积再筛，合流共边且域外未知，不注入Q/面积", actual.toString());
+        var reversed = new ArrayList<>(sources); java.util.Collections.reverse(reversed); reversed.add(sources.get(0));
+        chk(actual.equals(direction.continueSources(reversed, 4)), "源身份逆序/重复只记录一次，无重复河边", "different");
+        boolean conflict = false;
+        try { direction.continueSources(List.of(sources.get(0), new SharedBlockDrainage.ContinuationSource(a, null)), 4); }
+        catch (IllegalArgumentException e) { conflict = true; }
+        chk(conflict, "同源不同入口不能静默采用先到者", "missed conflict");
+        var shifted = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(-32, -16, 8, 4, 0,
+                (x, z) -> 100 - (x + 32) + (z + 16) * (z + 16), (x, z) -> false, false), false);
+        var translatedSources = sources.stream().map(s -> new SharedBlockDrainage.ContinuationSource(
+                new SharedBoundaryDrainage.WorldCell(s.source().x() - 32, s.source().z() - 16), s.entry() == null ? null
+                : new SharedBoundaryDrainage.WorldCell(s.entry().x() - 32, s.entry().z() - 16))).toList();
+        var translated = shifted.continueSources(translatedSources, 4);
+        chk(actual.edges().stream().map(e -> new SharedBlockDrainage.ContinuationEdge(new SharedBlockDrainage.DirectionEdgeId(
+                        new SharedBoundaryDrainage.WorldCell(e.id().from().x() - 32, e.id().from().z() - 16),
+                        new SharedBoundaryDrainage.WorldCell(e.id().to().x() - 32, e.id().to().z() - 16), 4),
+                        e.sources().stream().map(s -> new SharedBoundaryDrainage.WorldCell(s.x() - 32, s.z() - 16)).toList())).toList()
+                        .equals(translated.edges()), "世界源与接续边负坐标平移同值", "different");
+        var many = new ArrayList<SharedBlockDrainage.ContinuationSource>();
+        for (int i = 0; i < 32; i++) many.add(new SharedBlockDrainage.ContinuationSource(new SharedBoundaryDrainage.WorldCell(100 + i, 100), a));
+        chk(direction.continueSources(many, 4).edges().stream().allMatch(e -> e.sources().size() == 32),
+                "32源上限含最高身份位不丢失，合流共边每源一次", "lost identity");
+        boolean limit = false; many.add(new SharedBlockDrainage.ContinuationSource(outside, null));
+        try { direction.continueSources(many, 4); } catch (IllegalArgumentException e) { limit = true; }
+        chk(limit && direction.continueSources(List.of(), 4).edges().isEmpty(), "显式源预算有界，空输入不自行选源", "missed bound");
+        for (int seed = 0; seed < 8; seed++) {
+            final int s = seed;
+            var domain = SharedBlockDrainage.buildAt(-16, -32, 8, 4, 0,
+                    (x, z) -> Math.floorMod((int) x * 17 + (int) z * 23 + s * 11, 7), (x, z) -> false, false);
+            var route = SharedBlockDrainage.direction(domain, false); var inputs = new ArrayList<SharedBlockDrainage.ContinuationSource>();
+            for (int i = 0; i < 12; i++) {
+                var cell = new SharedBoundaryDrainage.WorldCell(domain.originX() + 1 + i, domain.originZ() + 2 + i % 9);
+                inputs.add(new SharedBlockDrainage.ContinuationSource(cell, cell));
+            }
+            var ledger = route.continueSources(inputs, 4); boolean valid = true;
+            for (var input : inputs) {
+                var trace = route.trace(input.entry().x(), input.entry().z()); var expected = new java.util.HashSet<SharedBlockDrainage.DirectionEdgeId>();
+                for (int i = 1; i < trace.path().size(); i++) expected.add(new SharedBlockDrainage.DirectionEdgeId(trace.path().get(i - 1), trace.path().get(i), 4));
+                var found = new java.util.HashSet<SharedBlockDrainage.DirectionEdgeId>();
+                for (var e : ledger.edges()) if (e.sources().contains(input.source())) found.add(e.id());
+                valid &= found.equals(expected);
+                valid &= ledger.sources().stream().anyMatch(e -> e.source().equals(input.source()) && e.state() == trace.end()
+                        && e.terminal().equals(trace.path().get(trace.path().size() - 1)));
+            }
+            valid &= ledger.edges().stream().map(e -> e.id().from()).distinct().count() == ledger.edges().size();
+            chk(valid, "每个源接续边集合/终端独立逐源oracle（负坐标含平地） seed=" + seed, "different");
+        }
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            var futures = new ArrayList<java.util.concurrent.Future<SharedBlockDrainage.Continuations>>();
+            for (int i = 0; i < 4; i++) futures.add(pool.submit(() -> direction.continueSources(sources, 4)));
+            boolean same = true; for (var f : futures) same &= actual.equals(f.get(30, TimeUnit.SECONDS));
+            chk(same, "四线程接续账本逐位一致，不改原方向/面积", "different");
+        } finally { pool.shutdownNow(); }
+        boolean cancel = false;
+        try { Thread.currentThread().interrupt(); direction.continueSources(sources, 4); }
+        catch (java.util.concurrent.CancellationException e) { cancel = true; } finally { Thread.interrupted(); }
+        chk(cancel && actual.equals(direction.continueSources(sources, 4)), "取消不发布部分源接续，重试同值", "missed");
+    }
+
+    private static void directionBoundarySynthetic() {
+        WindowOutlets.Terrain east = (x, z) -> 100 - x + 0.01 * z * z;
+        WindowOutlets.Terrain west = (x, z) -> 100 + x + 0.01 * z * z;
+        var e = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, east, (x, z) -> false, false), false);
+        var w = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, west, (x, z) -> false, true), true);
+        chk(e.at(0, 0).next().x() == 1 && w.at(0, 0).next().x() == -1,
+                "真实坡面决定东西相反方向，不按坐标指定下游", "wrong direction");
+        WindowOutlets.Terrain tie = (x, z) -> z == 0 && Math.abs(x) <= 4 ? (Math.abs(x) == 4 ? 90 : 100) : 120;
+        var td = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, tie, (x, z) -> false, false);
+        chk(SharedBlockDrainage.direction(td, false).trace(0, 0).path().get(3).x() == -3
+                        && SharedBlockDrainage.direction(td, false).sameDirection(SharedBlockDrainage.direction(td, true)),
+                "平地只在等下降出口间稳定破平局，两侧方向不会相反", "different");
+        WindowOutlets.Terrain slope = (x, z) -> 200 - x - z;
+        var a = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, slope, (x, z) -> false, false);
+        var b = SharedBlockDrainage.buildAt(8, 8, 8, 4, 0, slope, (x, z) -> false, true);
+        var combined = SharedBlockDrainage.combine(List.of(a, b));
+        var direction = SharedBlockDrainage.direction(combined, false);
+        chk(direction.sameDirection(SharedBlockDrainage.direction(SharedBlockDrainage.combine(List.of(b, a)), true)),
+                "缺角双域方向组合顺序同值", "different");
+        boolean gap = false;
+        try { direction.at(-10, 14); } catch (IllegalArgumentException ex) { gap = true; }
+        chk(gap && direction.trace(-8, -8).maxBedRise() == 0,
+                "未覆盖缺角不能补成地形，路径不逆坡", "missed gap");
+        WindowOutlets.Terrain bowl = (x, z) -> x * x + z * z;
+        var d = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, bowl, (x, z) -> false, false);
+        var capacity = d.seaWitness(0, 0); var route = SharedBlockDrainage.direction(d, false).trace(0, 0);
+        chk(route.end() == SharedBlockDrainage.DirectionEnd.BASIN_PENDING && route.path().size() == 1
+                        && capacity.end() == SharedBlockDrainage.End.UNKNOWN_FRAME,
+                "最低点不能用容量逃逸parent强行出流，也不伪装已闭流湖", route.toString());
+    }
+
+    private static void directionTransferSynthetic(SharedBlockDrainage.Direction direction,
+            SharedBlockDrainage.Domain domain, SharedBlockDrainage.Domain clippedFlat) {
+        var transfers = direction.transfers(4);
+        var expected = new ArrayList<SharedBlockDrainage.DirectionTransfer>();
+        for (int x = domain.originX(); x < domain.originX() + domain.sizeX(); x++)
+            for (int z = domain.originZ(); z < domain.originZ() + domain.sizeZ(); z++) {
+                var at = direction.at(x, z); var next = at.next(); if (next == null) continue;
+                if (Math.floorDiv(x, 4) == Math.floorDiv(next.x(), 4) && Math.floorDiv(z, 4) == Math.floorDiv(next.z(), 4)) continue;
+                var trace = direction.trace(next.x(), next.z()); int axis = x == next.x() ? 1 : 0;
+                expected.add(new SharedBlockDrainage.DirectionTransfer(at.point(), next, axis,
+                        axis == 0 ? Math.max(x, next.x()) : Math.max(z, next.z()), 4, trace.end(), trace.path().get(trace.path().size() - 1)));
+            }
+        chk(!transfers.isEmpty() && transfers.equals(expected) && transfers.stream().distinct().count() == transfers.size(),
+                "全部方块过界边等价逐点父边/终端oracle，无触缝重复", "different");
+        chk(transfers.equals(SharedBlockDrainage.direction(domain, true).transfers(4)), "逆序求方向不改接口世界身份", "different");
+        chk(SharedBlockDrainage.direction(clippedFlat, false).transfers(4).isEmpty(),
+                "触框平地未选父边时不虚构过界接口", "invented transfers");
+        WindowOutlets.Terrain slope = (x, z) -> 100 - x + 0.01 * z * z;
+        var shifted = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(-32, -16, 8, 4, 0,
+                (x, z) -> slope.height(x + 32, z + 16), (x, z) -> false, false), false).transfers(4);
+        var normal = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, 0,
+                slope, (x, z) -> false, false), false).transfers(4);
+        var translated = normal.stream().map(t -> new SharedBlockDrainage.DirectionTransfer(
+                new SharedBoundaryDrainage.WorldCell(t.from().x() - 32, t.from().z() - 16),
+                new SharedBoundaryDrainage.WorldCell(t.to().x() - 32, t.to().z() - 16), t.axis(),
+                t.boundary() - (t.axis() == 0 ? 32 : 16), t.tract(), t.end(),
+                new SharedBoundaryDrainage.WorldCell(t.terminal().x() - 32, t.terminal().z() - 16))).toList();
+        chk(shifted.equals(translated) && normal.stream().anyMatch(t -> t.end() == SharedBlockDrainage.DirectionEnd.UNKNOWN_FRAME),
+                "负坐标接口平移同值，域外终端仍未知不假入海", "different");
+        var wider = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(4, 0, 8, 4, 0,
+                slope, (x, z) -> false, true), true).transfers(4);
+        var edge = normal.stream().filter(t -> t.from().equals(new SharedBoundaryDrainage.WorldCell(-1, 0))).findFirst().orElseThrow();
+        var sameEdge = wider.stream().filter(t -> t.id().equals(edge.id())).findFirst().orElseThrow();
+        chk(edge.boundary() == 0 && edge.to().x() == 0 && !edge.terminal().equals(sameEdge.terminal()),
+                "同真实边ID不含窗口或局部终端，域变化的未知终端不可冒充全球权威", "different");
+        var west = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, 0,
+                (x, z) -> 100 + x + 0.01 * z * z, (x, z) -> false, false), false).transfers(4);
+        var south = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, 0,
+                (x, z) -> 100 + z + 0.01 * x * x, (x, z) -> false, false), false).transfers(4);
+        chk(west.stream().anyMatch(t -> t.from().x() == 0 && t.to().x() == -1 && t.axis() == 0 && t.boundary() == 0)
+                        && south.stream().anyMatch(t -> t.from().z() == 0 && t.to().z() == -1 && t.axis() == 1 && t.boundary() == 0),
+                "负向跨零边界与Z轴使用floorDiv，四邻角点只跨一条轴", "missing");
+        boolean cancelled = false;
+        try { Thread.currentThread().interrupt(); direction.transfers(4); }
+        catch (java.util.concurrent.CancellationException ex) { cancelled = true; }
+        finally { Thread.interrupted(); }
+        chk(cancelled && transfers.equals(direction.transfers(4)), "取消接口提取不污染方向重试同值", "missed");
+        boolean channelCancel = false;
+        try { Thread.currentThread().interrupt(); direction.channels(7); }
+        catch (java.util.concurrent.CancellationException ex) { channelCancel = true; }
+        finally { Thread.interrupted(); }
+        chk(channelCancel && direction.channels(7).edges(4).equals(direction.channels(7).edges(4)), "取消面积累积不发布半拓扑", "missed");
+        boolean invalid = true;
+        for (double threshold : new double[]{0, -1, Double.NaN, Double.POSITIVE_INFINITY}) {
+            boolean rejected = false;
+            try { direction.channels(threshold); } catch (IllegalArgumentException ex) { rejected = true; }
+            invalid &= rejected;
+        }
+        chk(invalid, "面积门槛有限正值，不能零阈值把所有排水边当河", "accepted");
+    }
+
+    private static void channelOracleChecks(SharedBlockDrainage.Domain d, SharedBlockDrainage.Direction direction) {
+        long[] expected = new long[d.nodes()]; boolean[] pending = new boolean[d.nodes()];
+        var starts = new java.util.HashSet<SharedBoundaryDrainage.WorldCell>();
+        for (int k = 0; k < d.nodes(); k++) {
+            if (!d.coveredAtIndex(k)) continue;
+            int x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ();
+            if (domainFrame(d, x, z) || direction.at(x, z).state() == SharedBlockDrainage.DirectionEnd.UNKNOWN_FRAME) {
+                starts.add(new SharedBoundaryDrainage.WorldCell(x, z));
+                for (int[] dir : new int[][]{{-1, 0}, {0, -1}, {0, 1}, {1, 0}}) {
+                    int px = x + dir[0], pz = z + dir[1];
+                    if (px >= d.originX() && pz >= d.originZ() && px < d.originX() + d.sizeX() && pz < d.originZ() + d.sizeZ())
+                        starts.add(new SharedBoundaryDrainage.WorldCell(px, pz));
+                }
+            }
+            if (!d.oceanAtIndex(k)) for (var c : direction.trace(x, z).path())
+                expected[(c.x() - d.originX()) * d.sizeZ() + c.z() - d.originZ()]++;
+        }
+        for (var start : starts) for (var c : direction.trace(start.x(), start.z()).path())
+            pending[(c.x() - d.originX()) * d.sizeZ() + c.z() - d.originZ()] = true;
+        int mismatch = 0;
+        for (double threshold : new double[]{1, 7, 7.5, 300}) {
+            var channels = direction.channels(threshold); var ids = new java.util.HashSet<SharedBlockDrainage.DirectionEdgeId>();
+            for (var edge : channels.edges(4)) ids.add(edge.id());
+            for (int k = 0; k < d.nodes(); k++) {
+                int x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ();
+                var cell = channels.at(x, z); var at = direction.at(x, z);
+                var state = expected[k] >= threshold ? SharedBlockDrainage.ChannelState.SELECTED_LOCAL
+                        : pending[k] ? SharedBlockDrainage.ChannelState.INPUT_PENDING : SharedBlockDrainage.ChannelState.BELOW_LOCAL_THRESHOLD;
+                if (cell.contributingBlocks() != expected[k] || cell.inputPending() != pending[k] || cell.state() != state
+                        || (at.next() != null && ids.contains(new SharedBlockDrainage.DirectionEdgeId(at.point(), at.next(), 4)) != (expected[k] >= threshold))) mismatch++;
+                if (at.next() != null && expected[k] >= threshold && channels.at(at.next().x(), at.next().z()).contributingBlocks() < expected[k]) mismatch++;
+            }
+            if (!channels.edges(4).equals(SharedBlockDrainage.direction(d, true).channels(threshold).edges(4))) mismatch++;
+        }
+        chk(mismatch == 0, "选中面积/未知传播独立逐源追踪oracle，合流一次、达标后不丢短接续 step=" + d.step(), "mismatch=" + mismatch);
+    }
+
+    private static void directionOracleChecks() {
+        for (int step : new int[]{2, 4, 8}) for (int seed = 0; seed < 4; seed++) {
+            final int s = seed;
+            WindowOutlets.Terrain terrain = (x, z) -> Math.floorMod((int) x * 7 + (int) z * 13 + (int) x * (int) z + s, 5);
+            var d = SharedBlockDrainage.buildAt(0, 0, 8, step, 0, terrain, (x, z) -> false, false);
+            var forward = SharedBlockDrainage.direction(d, false); var reverse = SharedBlockDrainage.direction(d, true);
+            int mismatches = 0;
+            for (int k = 0; k < d.nodes(); k++) {
+                int x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ();
+                var actual = forward.at(x, z); var expected = directionOracle(d, x, z);
+                var trace = forward.trace(x, z);
+                if (!actual.equals(expected) || !continuous(trace.path()) || trace.maxBedRise() != 0
+                        || trace.path().stream().distinct().count() != trace.path().size()) mismatches++;
+            }
+            chk(mismatches == 0 && forward.sameDirection(reverse),
+                    "独立逐查询平地BFS/最陡出口oracle step=" + step + " seed=" + seed + " nodes=" + d.nodes(),
+                    "mismatch=" + mismatches);
+            channelOracleChecks(d, forward);
+        }
+    }
+
+    private static SharedBlockDrainage.DirectionStep directionOracle(SharedBlockDrainage.Domain d, int x, int z) {
+        var start = new SharedBoundaryDrainage.WorldCell(x, z);
+        double bed = d.bedAtIndex((x - d.originX()) * d.sizeZ() + z - d.originZ());
+        var members = new java.util.TreeSet<SharedBoundaryDrainage.WorldCell>(java.util.Comparator
+                .comparingInt(SharedBoundaryDrainage.WorldCell::x).thenComparingInt(SharedBoundaryDrainage.WorldCell::z));
+        var pending = new java.util.ArrayDeque<SharedBoundaryDrainage.WorldCell>(); pending.add(start); members.add(start);
+        boolean exposed = false; double bestDrop = -1;
+        SharedBoundaryDrainage.WorldCell inner = null, outer = null;
+        int[][] dirs = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
+        while (!pending.isEmpty()) {
+            var c = pending.remove();
+            for (int[] dir : dirs) {
+                int bx = c.x() + dir[0], bz = c.z() + dir[1];
+                if (bx < d.originX() || bz < d.originZ() || bx >= d.originX() + d.sizeX() || bz >= d.originZ() + d.sizeZ()) {
+                    exposed = true; continue;
+                }
+                double h = d.bedAtIndex((bx - d.originX()) * d.sizeZ() + bz - d.originZ());
+                var p = new SharedBoundaryDrainage.WorldCell(bx, bz);
+                if (h == bed && members.add(p)) pending.add(p);
+            }
+        }
+        for (var c : members) for (int[] dir : dirs) {
+            int bx = c.x() + dir[0], bz = c.z() + dir[1];
+            if (bx < d.originX() || bz < d.originZ() || bx >= d.originX() + d.sizeX() || bz >= d.originZ() + d.sizeZ()) continue;
+            double h = d.bedAtIndex((bx - d.originX()) * d.sizeZ() + bz - d.originZ());
+            if (h < bed && bed - h > bestDrop) { bestDrop = bed - h; inner = c; outer = new SharedBoundaryDrainage.WorldCell(bx, bz); }
+        }
+        if (exposed || outer == null) return new SharedBlockDrainage.DirectionStep(start, null, bed, bed, -1,
+                exposed ? SharedBlockDrainage.DirectionEnd.UNKNOWN_FRAME : SharedBlockDrainage.DirectionEnd.BASIN_PENDING);
+        if (start.equals(inner)) return new SharedBlockDrainage.DirectionStep(start, outer, bed, bed - bestDrop, 0,
+                SharedBlockDrainage.DirectionEnd.DOWNHILL);
+        var distance = new HashMap<SharedBoundaryDrainage.WorldCell, Integer>(); pending.add(inner); distance.put(inner, 0);
+        var parents = new HashMap<SharedBoundaryDrainage.WorldCell, SharedBoundaryDrainage.WorldCell>();
+        while (!pending.isEmpty()) {
+            var c = pending.remove();
+            for (int[] dir : dirs) {
+                var p = new SharedBoundaryDrainage.WorldCell(c.x() + dir[0], c.z() + dir[1]);
+                if (members.contains(p) && !distance.containsKey(p)) {
+                    distance.put(p, distance.get(c) + 1); parents.put(p, c); pending.add(p);
+                }
+            }
+        }
+        return new SharedBlockDrainage.DirectionStep(start, parents.get(start), bed, bed, distance.get(start),
+                SharedBlockDrainage.DirectionEnd.FLAT_ROUTE);
+    }
+
+    private static void sinkSynthetic() throws Exception {
+        log("\n=== [sink-synth] 局部汇水与成对最低岸线，不发布湖/出流 ===");
+        WindowOutlets.Terrain terrain = (x, z) -> Math.abs(z) <= 1 && x >= -3 && x <= 4
+                ? (x <= 0 ? x * x + z * z : x == 1 ? 5 : 4 - x) : 20;
+        var d = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, terrain, (x, z) -> false, false);
+        var direction = SharedBlockDrainage.direction(d, false);
+        var basin = direction.basinAt(0, 0);
+        chk(basin.state() == SharedBlockDrainage.BasinState.SHORE_CANDIDATE && !basin.storage().isEmpty()
+                        && basin.capacity() > 0 && basin.lowestShores().stream().allMatch(s -> s.sill() == 5),
+                "最低成对鞍口5而非外侧最低床0，汇水与储水分开", basin.toString());
+        var same = SharedBlockDrainage.direction(d, true).basinAt(0, 0);
+        chk(basin.equals(same), "逆序汇水与全部最低岸线同值", "different");
+        WindowOutlets.Terrain edge = (x, z) -> x * x + z * z;
+        var clipped = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, edge, (x, z) -> false, false);
+        var unknown = SharedBlockDrainage.direction(clipped, false).basinAt(0, 0);
+        chk(unknown.state() == SharedBlockDrainage.BasinState.UNKNOWN_FRAME && unknown.catchment().isEmpty()
+                        && unknown.storage().isEmpty() && unknown.lowestShores().isEmpty(),
+                "触框汇水不发布部分盆体或假最低鞍口", unknown.toString());
+        var shifted = SharedBlockDrainage.buildAt(-32, -16, 8, 4, 0,
+                (x, z) -> terrain.height(x + 32, z + 16), (x, z) -> false, true);
+        var translated = SharedBlockDrainage.direction(shifted, false).basinAt(-32, -16);
+        chk(basin.capacity() == translated.capacity() && basin.catchment().stream()
+                        .map(c -> new SharedBoundaryDrainage.WorldCell(c.x() - 32, c.z() - 16)).toList().equals(translated.catchment()),
+                "负坐标平移完整汇水/容量同值", "different");
+        boolean cancel = false;
+        try { Thread.currentThread().interrupt(); direction.basinAt(0, 0); }
+        catch (java.util.concurrent.CancellationException ex) { cancel = true; }
+        finally { Thread.interrupted(); }
+        chk(cancel && basin.equals(direction.basinAt(0, 0)), "取消盆体分析不污染方向视图", "missed");
+        WindowOutlets.Terrain flatBottom = (x, z) -> Math.abs(z) <= 1 && x >= -3 && x <= 4
+                ? (x <= 0 ? 0 : x == 1 ? 5 : 4 - x) : 20;
+        var flatDir = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, 0,
+                flatBottom, (x, z) -> false, false), false);
+        var left = flatDir.basinAt(-2, 0); var right = flatDir.basinAt(0, 0);
+        chk(left.state() == SharedBlockDrainage.BasinState.SHORE_CANDIDATE
+                        && left.catchment().equals(right.catchment()) && left.storage().equals(right.storage())
+                        && left.capacity() == right.capacity() && left.lowestShores().equals(right.lowestShores()),
+                "同连通平底多终点不拆盆且岸线同值", "different flat basin");
+        WindowOutlets.Terrain twoExits = (x, z) -> Math.abs(z) <= 1 && Math.abs(x) <= 5
+                ? (Math.abs(x) <= 2 ? x * x + z * z : Math.abs(x) == 3 ? 10 : Math.abs(x) == 4 ? 5 : 0) : 20;
+        var tiedDirection = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, 1,
+                twoExits, (x, z) -> Math.abs(x) == 5 && Math.abs(z) <= 1, false), false);
+        var tied = tiedDirection.basinAt(0, 0);
+        chk(tied.state() == SharedBlockDrainage.BasinState.SHORE_CANDIDATE
+                        && tied.lowestShores().stream().anyMatch(s -> s.outer().x() < 0)
+                        && tied.lowestShores().stream().anyMatch(s -> s.outer().x() > 0)
+                        && tied.lowestShores().stream().allMatch(s -> s.sill() == 10
+                            && s.downstream().end() == SharedBlockDrainage.DirectionEnd.OCEAN_CANDIDATE),
+                "同高多岸线全部保留，不按坐标强选唯一出流", tied.toString());
+        relationSynthetic(flatDir, tiedDirection, SharedBlockDrainage.direction(clipped, false));
+        sinkCatchmentOracle();
+    }
+
+    private static void relationSynthetic(SharedBlockDrainage.Direction flat,
+            SharedBlockDrainage.Direction tied, SharedBlockDrainage.Direction unknown) throws Exception {
+        var a = new SharedBoundaryDrainage.WorldCell(-4, 0); var b = new SharedBoundaryDrainage.WorldCell(2, 0);
+        WindowOutlets.Terrain terrain = (x, z) -> z == 0 && x >= -6 && x <= 6
+                ? new double[]{8, 6, 4, 6, 8, 10, 4, 2, 0, 2, 5, 0, -2}[(int) x + 6] : 20;
+        var d = SharedBlockDrainage.buildAt(0, 0, 8, 4, -1, terrain, (x, z) -> x == 6 && z == 0, false);
+        var direction = SharedBlockDrainage.direction(d, false);
+        var graph = direction.relations(List.of(a, b));
+        chk(graph.relations().get(0).state() == SharedBlockDrainage.RelationEnd.NEXT_BASIN
+                        && graph.relations().get(0).target().equals(b)
+                        && graph.relations().get(1).state() == SharedBlockDrainage.RelationEnd.OCEAN_CANDIDATE,
+                "显式两盆链按真实鞍口下降接续，不凭可见湖掩码", graph.toString());
+        chk(graph.equals(direction.relations(List.of(b, a, b)))
+                        && graph.equals(SharedBlockDrainage.direction(d, true).relations(List.of(a, b))),
+                "关系输入逆序/重复sink与冷方向逆序逐位同值", "different");
+        budgetSynthetic(graph, direction.relations(List.of(b, a, b)));
+        var members = new java.util.HashSet<SharedBoundaryDrainage.WorldCell>();
+        int count = 0; for (var basin : graph.basins()) for (var cell : basin.catchment()) { count++; members.add(cell); }
+        chk(count == members.size() && count == graph.assignedLocalCells()
+                        && graph.assignedLocalCells() + graph.unassignedCoveredCells() == d.nodes(),
+                "本地源成员只归属一次，未分配覆盖保留未知非零出流", "duplicate or lost local members");
+        chk(direction.relations(List.of(a)).relations().get(0).state() == SharedBlockDrainage.RelationEnd.OUTSIDE_SET,
+                "未显式给下一盆不递归扩域/冒充入海", "not outside set");
+        var blocked = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, -1,
+                (x, z) -> x == 4 && z == 0 ? 12 : terrain.height(x, z), (x, z) -> x == 6 && z == 0, false), false);
+        var equalSaddles = blocked.relations(List.of(a, b));
+        chk(equalSaddles.relations().stream().allMatch(r -> r.state() == SharedBlockDrainage.RelationEnd.NONDESCENDING),
+                "同鞍口互指盆保持合并待决、不发布循环下泄", equalSaddles.toString());
+        chk(SharedBlockDrainage.fullBudgets(equalSaddles, new LakeWaterBalance.Climate(1, 0, 0.5), sink -> 0)
+                        .basins().stream().allMatch(v -> Double.isNaN(v.conditionalRelease())),
+                "循环/同鞍口即使来水充足也不发布零或正出流", "released invalid relation");
+        var flatGraph = flat.relations(List.of(new SharedBoundaryDrainage.WorldCell(-2, 0), new SharedBoundaryDrainage.WorldCell(0, 0)));
+        chk(flatGraph.basins().size() == 1 && flatGraph.equals(flat.relations(List.of(new SharedBoundaryDrainage.WorldCell(0, 0)))),
+                "同平底不同终点统一世界身份、不双算集水", flatGraph.toString());
+        chk(tied.relations(List.of(new SharedBoundaryDrainage.WorldCell(0, 0))).relations().get(0).state()
+                        == SharedBlockDrainage.RelationEnd.AMBIGUOUS_SHORE,
+                "最低岸线平局保持待决而非坐标强选出流", "not ambiguous");
+        var u = unknown.relations(List.of(new SharedBoundaryDrainage.WorldCell(0, 0)));
+        chk(u.assignedLocalCells() == 0 && u.relations().get(0).state() == SharedBlockDrainage.RelationEnd.UNKNOWN_FRAME,
+                "未知盆不分配部分成员/伪出流", u.toString());
+        var unresolved = SharedBlockDrainage.direction(SharedBlockDrainage.buildAt(0, 0, 8, 4, -1,
+                (x, z) -> x == 2 && z >= 1 ? 2 : terrain.height(x, z), (x, z) -> false, false), false);
+        var unresolvedGraph = unresolved.relations(List.of(a, b));
+        chk(unresolvedGraph.relations().get(0).state() == SharedBlockDrainage.RelationEnd.UNKNOWN_FRAME
+                        && unresolvedGraph.relations().get(1).state() == SharedBlockDrainage.RelationEnd.UNKNOWN_FRAME,
+                "已知下一盆身份但盆体触框时传播未知，不误报OUTSIDE_SET", unresolvedGraph.relations().toString());
+        boolean cancelled = false;
+        try { Thread.currentThread().interrupt(); direction.relations(List.of(a, b)); }
+        catch (java.util.concurrent.CancellationException ex) { cancelled = true; }
+        finally { Thread.interrupted(); }
+        chk(cancelled && graph.equals(direction.relations(List.of(a, b))), "取消关系提取不污染输入，重试同值", "missed");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            var futures = new ArrayList<java.util.concurrent.Future<SharedBlockDrainage.BasinRelations>>();
+            for (int i = 0; i < 4; i++) futures.add(pool.submit(() -> direction.relations(List.of(a, b))));
+            boolean same = true; for (var future : futures) same &= graph.equals(future.get());
+            chk(same, "四线程关系产物逐位同值（不共享可变账本）", "different");
+        } finally { pool.shutdownNow(); }
+    }
+
+    private static void budgetSynthetic(SharedBlockDrainage.BasinRelations graph,
+            SharedBlockDrainage.BasinRelations reverse) {
+        var climate = new LakeWaterBalance.Climate(1, 0.25, 0.5);
+        var wet = SharedBlockDrainage.fullBudgets(graph, climate, sink -> 2);
+        var a = wet.basins().get(0); var b = wet.basins().get(1);
+        double land = 0, rain = 0, evap = 0;
+        for (var budget : wet.basins()) { land += budget.landRunoff(); rain += budget.lakeRain(); evap += budget.fullEvaporation(); }
+        chk(wet.basins().stream().allMatch(v -> v.state() == SharedBlockDrainage.BudgetEnd.FULL_SURPLUS_CANDIDATE)
+                        && b.upstreamRelease() == a.conditionalRelease()
+                        && Math.abs(b.conditionalRelease() + evap - land - rain - 4) < 1e-12,
+                "满盆条件账本收支守恒，A下泄只注入B一次", wet.toString());
+        chk(a.landRunoff() == (graph.basins().get(0).catchment().size() - graph.basins().get(0).storage().size()) * 0.5
+                        && a.lakeRain() == graph.basins().get(0).storage().size(),
+                "满盆湖面降水替代该格陆地径流，不同时双计", a.toString());
+        chk(wet.equals(SharedBlockDrainage.fullBudgets(reverse, climate, sink -> 2)), "逆序/重复sink不改水量账本", "different");
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var counted = SharedBlockDrainage.fullBudgets(reverse, climate, sink -> { calls.incrementAndGet(); return 2; });
+        chk(calls.get() == graph.basins().size() && wet.equals(counted), "外来源每个统一盆身份只读取一次", "double counted");
+        var balanced = SharedBlockDrainage.fullBudgets(graph, new LakeWaterBalance.Climate(0, 1, 0.5),
+                sink -> graph.basins().stream().filter(v -> v.sink().equals(sink)).findFirst().orElseThrow().storage().size());
+        chk(balanced.basins().stream().allMatch(v -> v.state() == SharedBlockDrainage.BudgetEnd.FULL_NOT_SUPPORTED
+                        && v.conditionalRelease() == 0), "非零来水恰等于满盆蒸发时无净出流", balanced.toString());
+        var dry = SharedBlockDrainage.fullBudgets(graph, new LakeWaterBalance.Climate(0, 1, 0.5), sink -> 0);
+        chk(dry.basins().stream().allMatch(v -> v.state() == SharedBlockDrainage.BudgetEnd.FULL_NOT_SUPPORTED
+                        && v.conditionalRelease() == 0), "已知零来水/高蒸发不强造满湖出流", dry.toString());
+        var zero = SharedBlockDrainage.fullBudgets(graph, new LakeWaterBalance.Climate(0, 0, 0), sink -> 0);
+        chk(zero.basins().stream().allMatch(v -> v.state() == SharedBlockDrainage.BudgetEnd.FULL_NOT_SUPPORTED
+                        && v.conditionalRelease() == 0), "零损失但零来水也不能认证溢流", zero.toString());
+        var unknown = SharedBlockDrainage.fullBudgets(graph, climate, sink -> sink.equals(a.sink()) ? Double.NaN : 0);
+        chk(unknown.basins().stream().allMatch(v -> v.state() == SharedBlockDrainage.BudgetEnd.UNKNOWN_INPUT
+                        && Double.isNaN(v.conditionalRelease())) && Double.isNaN(unknown.basins().get(1).upstreamRelease()),
+                "未知外来水沿盆链传播，标量上游不能冒充区间下界", unknown.toString());
+        boolean bad = false, cancel = false;
+        try { SharedBlockDrainage.fullBudgets(graph, climate, sink -> -1); }
+        catch (IllegalArgumentException ex) { bad = true; }
+        try { Thread.currentThread().interrupt(); SharedBlockDrainage.fullBudgets(graph, climate, sink -> 2); }
+        catch (java.util.concurrent.CancellationException ex) { cancel = true; }
+        finally { Thread.interrupted(); }
+        chk(bad && cancel && wet.equals(SharedBlockDrainage.fullBudgets(graph, climate, sink -> 2)),
+                "非法外来水拒绝、取消不发布半账本且重试同值", "missed");
+        budgetRangeSynthetic(graph, climate, wet);
+    }
+
+    private static void budgetRangeSynthetic(SharedBlockDrainage.BasinRelations graph, LakeWaterBalance.Climate climate,
+            SharedBlockDrainage.BasinBudgets exact) {
+        var bounded = SharedBlockDrainage.fullBudgetRanges(graph, climate, sink -> new SharedBlockDrainage.RateRange(1, 3));
+        boolean enclosed = true;
+        for (int i = 0; i < exact.basins().size(); i++) {
+            double q = exact.basins().get(i).conditionalRelease(); var r = bounded.basins().get(i).conditionalRelease();
+            enclosed &= r.lower() <= q && q <= r.upper();
+        }
+        chk(enclosed, "有限输入区间包住独立标量情景，不重复注入上游", bounded.toString());
+        var unknown = SharedBlockDrainage.fullBudgetRanges(graph, climate,
+                sink -> new SharedBlockDrainage.RateRange(0, Double.POSITIVE_INFINITY));
+        chk(unknown.basins().stream().allMatch(b -> b.state() == SharedBlockDrainage.RangeBudgetEnd.POSITIVE_LOWER_BOUND
+                        && b.conditionalRelease().lower() > 0 && b.conditionalRelease().upper() == Double.POSITIVE_INFINITY),
+                "非负未知来水不抹掉固定满盆模型已有正盈余下界（非实际溢流）", unknown.toString());
+        var dry = SharedBlockDrainage.fullBudgetRanges(graph, new LakeWaterBalance.Climate(0, 1, 0),
+                sink -> new SharedBlockDrainage.RateRange(0, 0));
+        chk(dry.basins().stream().allMatch(b -> b.state() == SharedBlockDrainage.RangeBudgetEnd.NO_POSITIVE_UPPER_BOUND
+                        && b.conditionalRelease().upper() == 0), "已知上界也不足蒸发，无正满盆下泄", dry.toString());
+        var undecided = SharedBlockDrainage.fullBudgetRanges(graph, new LakeWaterBalance.Climate(0, 1, 0),
+                sink -> new SharedBlockDrainage.RateRange(0, Double.POSITIVE_INFINITY));
+        chk(undecided.basins().stream().allMatch(b -> b.state() == SharedBlockDrainage.RangeBudgetEnd.UNRESOLVED
+                        && b.conditionalRelease().lower() == 0), "跨越零盈余区间仍待决，不自动当干湖或满湖", undecided.toString());
+        int invalid = 0;
+        for (double[] r : new double[][]{{-1, 1}, {2, 1}, {Double.NaN, 1}, {0, Double.NaN}, {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY}}) {
+            try { new SharedBlockDrainage.RateRange(r[0], r[1]); }
+            catch (IllegalArgumentException ex) { invalid++; }
+        }
+        chk(invalid == 5, "非法/倒置/NaN区间拒绝，未知用显式非负上界", "accepted invalid");
+        boolean corners = true;
+        for (double qa : new double[]{1, 3}) for (double qb : new double[]{1, 3}) {
+            double upstream = 0;
+            for (int i = 0; i < graph.basins().size(); i++) {
+                var basin = graph.basins().get(i);
+                double q = Math.max(0, (basin.catchment().size() - basin.storage().size()) * climate.precipitation() * climate.runoffCoeff()
+                        + basin.storage().size() * (climate.precipitation() - climate.evaporation()) + upstream + (i == 0 ? qa : qb));
+                var r = bounded.basins().get(i).conditionalRelease(); corners &= q >= r.lower() && q <= r.upper(); upstream = q;
+            }
+        }
+        chk(corners, "区间四角独立两盆代数oracle均被包含", "outside range");
+        boolean cancel = false;
+        try { Thread.currentThread().interrupt(); SharedBlockDrainage.fullBudgetRanges(graph, climate,
+                sink -> new SharedBlockDrainage.RateRange(1, 3)); }
+        catch (java.util.concurrent.CancellationException ex) { cancel = true; }
+        finally { Thread.interrupted(); }
+        chk(cancel && bounded.equals(SharedBlockDrainage.fullBudgetRanges(graph, climate,
+                sink -> new SharedBlockDrainage.RateRange(1, 3))), "取消区间不发布半产物且重试同值", "different");
+    }
+
+    private static void sinkCatchmentOracle() {
+        for (int step : new int[]{2, 4, 8}) for (int seed = 0; seed < 4; seed++) {
+            final int s = seed;
+            WindowOutlets.Terrain terrain = (x, z) -> Math.abs(x) >= 5 || Math.abs(z) >= 5
+                    ? 20 : Math.floorMod((int) x * 7 + (int) z * 13 + s, 9);
+            var d = SharedBlockDrainage.buildAt(0, 0, 8, step, 0, terrain, (x, z) -> false, false);
+            var direction = SharedBlockDrainage.direction(d, false);
+            int sinks = 0, mismatches = 0;
+            for (int k = 0; k < d.nodes(); k++) {
+                int x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ();
+                var at = direction.at(x, z);
+                if (at.state() != SharedBlockDrainage.DirectionEnd.BASIN_PENDING) continue;
+                var basin = direction.basinAt(x, z);
+                if (basin.state() == SharedBlockDrainage.BasinState.UNKNOWN_FRAME) continue;
+                var expected = new LinkedHashSet<SharedBoundaryDrainage.WorldCell>();
+                for (int p = 0; p < d.nodes(); p++) {
+                    var t = direction.trace(d.originX() + p / d.sizeZ(), d.originZ() + p % d.sizeZ());
+                    var end = t.path().get(t.path().size() - 1);
+                    if (sameBottomComponent(direction, at.point(), end))
+                        expected.add(new SharedBoundaryDrainage.WorldCell(d.originX() + p / d.sizeZ(), d.originZ() + p % d.sizeZ()));
+                }
+                if (!expected.equals(new java.util.HashSet<>(basin.catchment()))) mismatches++;
+                var memberSet = new java.util.HashSet<>(basin.catchment());
+                double expectedSill = thresholdTerminalOracle(at.point(), terrain, d.originX(), d.originX() + d.sizeX() - 1,
+                        (bx, bz) -> !memberSet.contains(new SharedBoundaryDrainage.WorldCell(bx, bz)), Double.NEGATIVE_INFINITY);
+                for (var shore : basin.lowestShores()) if (!basin.catchment().contains(shore.inner())
+                        || basin.catchment().contains(shore.outer()) || shore.downstream().path().contains(at.point())
+                        || shore.sill() != expectedSill) mismatches++;
+                var storage = new java.util.HashSet<SharedBoundaryDrainage.WorldCell>();
+                if (terrain.height(x, z) < expectedSill) storage.add(at.point());
+                boolean changed;
+                do {
+                    changed = false;
+                    for (int bx = d.originX(); bx < d.originX() + d.sizeX(); bx++)
+                        for (int bz = d.originZ(); bz < d.originZ() + d.sizeZ(); bz++) {
+                            var c = new SharedBoundaryDrainage.WorldCell(bx, bz);
+                            if (storage.contains(c) || terrain.height(bx, bz) >= expectedSill) continue;
+                            if (storage.contains(new SharedBoundaryDrainage.WorldCell(bx - 1, bz))
+                                    || storage.contains(new SharedBoundaryDrainage.WorldCell(bx + 1, bz))
+                                    || storage.contains(new SharedBoundaryDrainage.WorldCell(bx, bz - 1))
+                                    || storage.contains(new SharedBoundaryDrainage.WorldCell(bx, bz + 1))) changed |= storage.add(c);
+                        }
+                } while (changed);
+                double capacity = 0;
+                for (int bx = d.originX(); bx < d.originX() + d.sizeX(); bx++)
+                    for (int bz = d.originZ(); bz < d.originZ() + d.sizeZ(); bz++)
+                        if (storage.contains(new SharedBoundaryDrainage.WorldCell(bx, bz))) capacity += expectedSill - terrain.height(bx, bz);
+                if (capacity != basin.capacity() || !storage.equals(new java.util.HashSet<>(basin.storage()))) mismatches++;
+                sinks++;
+            }
+            chk(sinks > 0 && mismatches == 0, "逐节点追方向对照逆向汇水 step=" + step + " seed=" + seed + " sinks=" + sinks,
+                    "mismatch=" + mismatches);
+        }
+    }
+
+    private static boolean sameBottomComponent(SharedBlockDrainage.Direction direction,
+            SharedBoundaryDrainage.WorldCell from, SharedBoundaryDrainage.WorldCell to) {
+        if (from.equals(to)) return true;
+        var a = direction.at(from.x(), from.z()); var b = direction.at(to.x(), to.z());
+        if (b.state() != SharedBlockDrainage.DirectionEnd.BASIN_PENDING || a.bed() != b.bed()) return false;
+        var seen = new java.util.HashSet<SharedBoundaryDrainage.WorldCell>();
+        var queue = new java.util.ArrayDeque<SharedBoundaryDrainage.WorldCell>(); queue.add(from); seen.add(from);
+        while (!queue.isEmpty()) {
+            var c = queue.remove();
+            for (int[] dir : new int[][]{{-1, 0}, {0, -1}, {0, 1}, {1, 0}}) {
+                var p = new SharedBoundaryDrainage.WorldCell(c.x() + dir[0], c.z() + dir[1]);
+                var step = direction.at(p.x(), p.z());
+                if (step.state() != SharedBlockDrainage.DirectionEnd.BASIN_PENDING || step.bed() != a.bed()) continue;
+                if (p.equals(to)) return true;
+                if (seen.add(p)) queue.add(p);
+            }
+        }
+        return false;
+    }
+
+    private static void secSinkView() throws Exception {
+        log("\n=== [sink-view] A粗格漏小盆/B已有湖/C下游嵌套或未知 ===");
+        double hs = TP.horizontalScale();
+        WindowOutlets.Terrain terrain = (x, z) -> GEN.erodedHeight(x / hs, z / hs);
+        java.util.function.BiPredicate<Integer, Integer> ocean = (x, z) -> GEN.sample(x / hs, z / hs).terrainType.isOcean();
+        var d = SharedBlockDrainage.buildAt(-768, 512, 256, 4, TP.seaLevel(), terrain, ocean, false);
+        var direction = SharedBlockDrainage.direction(d, false);
+        var basins = new ArrayList<SharedBlockDrainage.LocalBasin>();
+        for (int[] sink : new int[][]{{-655, 653}, {-582, 581}}) {
+            long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+            var basin = direction.basinAt(sink[0], sink[1]); basins.add(basin);
+            chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "盆体/岸线分析无邻fine求解", "increased");
+            log("BLOCK_BASIN sink=" + basin.sink() + " state=" + basin.state() + " catchment=" + basin.catchment().size()
+                    + " storage=" + basin.storage().size() + " capacity=" + basin.capacity() + " shoreCount=" + basin.lowestShores().size());
+            for (var shore : basin.lowestShores()) log("BLOCK_SHORE inner=" + shore.inner() + " outer=" + shore.outer()
+                    + " sill=" + shore.sill() + " downstream=" + shore.downstream().end()
+                    + " terminal=" + shore.downstream().path().get(shore.downstream().path().size() - 1));
+            auditSinkProduction(basin);
+            renderSink(basin);
+            chk(basin.state() == SharedBlockDrainage.BasinState.SHORE_CANDIDATE
+                            && basin.lowestShores().stream().allMatch(s -> s.downstream().end() == SharedBlockDrainage.DirectionEnd.OCEAN_CANDIDATE),
+                    "最低局部岸线有海候选闭合（仅推广门，未证明水量/全球终端）", basin.state().toString());
+        }
+        auditSinkPair(basins);
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+        var relations = direction.relations(basins.stream().map(SharedBlockDrainage.LocalBasin::sink).toList());
+        log("SINK_RELATIONS assigned=" + relations.assignedLocalCells() + " unassigned=" + relations.unassignedCoveredCells()
+                + " covered=" + d.nodes() + " budget=UNKNOWN external inflow not certified");
+        for (var relation : relations.relations()) log("SINK_RELATION=" + relation);
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "显式两盆关系提取零邻fine", "increased");
+        chk(relations.relations().size() == 2
+                        && relations.relations().get(0).state() == SharedBlockDrainage.RelationEnd.OCEAN_CANDIDATE
+                        && relations.relations().get(1).state() == SharedBlockDrainage.RelationEnd.NEXT_BASIN
+                        && relations.assignedLocalCells() == basins.stream().mapToInt(b -> b.catchment().size()).sum(),
+                "真实浅盆接续与成员一次归属（几何关系非出流发布）", relations.relations().toString());
+        // Same fixed rates as current provider; explicit zero-external scenario is NOT an external-inflow certificate.
+        var climate = new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
+        for (var budget : SharedBlockDrainage.fullBudgets(relations, climate, sink -> 0).basins())
+            log("SINK_FULL_ZERO_EXTERNAL_SCENARIO=" + budget);
+        var unknownBudget = SharedBlockDrainage.fullBudgets(relations, climate, sink -> Double.NaN);
+        for (var budget : unknownBudget.basins()) log("SINK_ACTUAL_EXTERNAL_UNKNOWN=" + budget);
+        chk(unknownBudget.basins().stream().allMatch(b -> b.state() == SharedBlockDrainage.BudgetEnd.UNKNOWN_INPUT
+                        && Double.isNaN(b.conditionalRelease())), "真实外来水未知不能用条件盈余冒充已发布出流", unknownBudget.toString());
+        var ranges = SharedBlockDrainage.fullBudgetRanges(relations, climate,
+                sink -> new SharedBlockDrainage.RateRange(0, Double.POSITIVE_INFINITY));
+        for (var budget : ranges.basins()) log("SINK_FIXED_FULL_MODEL_RANGE=" + budget);
+        chk(ranges.basins().stream().allMatch(b -> b.state() == SharedBlockDrainage.RangeBudgetEnd.POSITIVE_LOWER_BOUND),
+                "固定成员/满盆/恒气候模型的正盈余下界（不认证实际水面或全球路由）", ranges.toString());
+        auditCoarseIncoming(direction, d, relations);
+        var transfers = auditDirectionTransfers(direction, d, relations);
+        var channels = auditChannels(direction, d, transfers);
+        renderBasinOverview(relations, ranges, transfers, channels);
+        Files.writeString(OUT.resolve("sink.txt"), LOG.toString());
+    }
+
+    private static void auditCoarseIncoming(SharedBlockDrainage.Direction direction, SharedBlockDrainage.Domain domain,
+            SharedBlockDrainage.BasinRelations relations) {
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get(); int directed = 0, covered = 0, unresolved = 0;
+        for (int rx = -3; rx <= -1; rx++) for (int rz = 0; rz <= 2; rz++) {
+            if (rx == -2 && rz == 1) continue;
+            var coarse = PROV.coarseLayerFor(rx, rz);
+            for (var port : coarse.ports()) {
+                if (rx + port.dRX() != -2 || rz + port.dRZ() != 1) continue;
+                directed++; int k = coarse.cellAt(port.blockX(), port.blockZ());
+                boolean resolved = k >= 0 && coarse.pipe().resolved()[k]; if (!resolved) unresolved++;
+                int x = port.blockX(), z = port.blockZ();
+                boolean inside = x >= domain.originX() && z >= domain.originZ()
+                        && x < domain.originX() + domain.sizeX() && z < domain.originZ() + domain.sizeZ();
+                String mapping = "OUTSIDE_FIXED_PATCH";
+                if (inside) {
+                    covered++; var trace = direction.trace(x, z); var terminal = trace.path().get(trace.path().size() - 1);
+                    mapping = trace.end() + " terminal=" + terminal;
+                    for (var basin : relations.basins()) if (basin.catchment().contains(terminal)) mapping += " basin=" + basin.sink();
+                }
+                log("COARSE_INCOMING from=" + rx + "," + rz + " port=" + port + " windowResolved=" + resolved
+                        + " localWindowQ=" + (k < 0 ? Double.NaN : coarse.pipe().discharge()[k]) + " mapping=" + mapping
+                        + " fluxCertificate=NONE (Port carries no Q/complete upstream coverage)");
+            }
+        }
+        log("COARSE_INCOMING_AUDIT directed=" + directed + " insideFixedPatch=" + covered + " windowUnresolved=" + unresolved);
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "粗incoming只读取证不新增邻fine", "increased");
+    }
+
+    private static List<SharedBlockDrainage.DirectionTransfer> auditDirectionTransfers(
+            SharedBlockDrainage.Direction direction, SharedBlockDrainage.Domain domain,
+            SharedBlockDrainage.BasinRelations relations) throws Exception {
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+        var transfers = direction.transfers(hp().tract());
+        var owner = new HashMap<SharedBoundaryDrainage.WorldCell, Integer>();
+        for (int i = 0; i < relations.basins().size(); i++)
+            for (var cell : relations.basins().get(i).catchment()) owner.put(cell, i);
+        var counts = new java.util.TreeMap<String, Integer>();
+        var csv = new StringBuilder("fromX,fromZ,toX,toZ,axis,boundary,tract,end,terminalX,terminalZ,localBasin\n");
+        int mismatches = 0;
+        for (var t : transfers) {
+            var trace = direction.trace(t.to().x(), t.to().z());
+            if (trace.end() != t.end() || !trace.path().get(trace.path().size() - 1).equals(t.terminal())
+                    || trace.maxBedRise() != 0 || !direction.at(t.from().x(), t.from().z()).next().equals(t.to())) mismatches++;
+            int basin = owner.getOrDefault(t.terminal(), -1);
+            String key = "axis=" + t.axis() + " boundary=" + t.boundary() + " sign="
+                    + (t.axis() == 0 ? t.to().x() - t.from().x() : t.to().z() - t.from().z())
+                    + " end=" + t.end() + " localBasin=" + basin;
+            counts.merge(key, 1, Integer::sum);
+            csv.append(t.from().x()).append(',').append(t.from().z()).append(',').append(t.to().x()).append(',')
+                    .append(t.to().z()).append(',').append(t.axis()).append(',').append(t.boundary()).append(',')
+                    .append(t.tract()).append(',').append(t.end()).append(',').append(t.terminal().x()).append(',')
+                    .append(t.terminal().z()).append(',').append(basin).append('\n');
+        }
+        log("DIRECTION_TRANSFERS total=" + transfers.size() + " unique=" + transfers.stream().distinct().count()
+                + " surfaceDrainageOnly=true channelSelection=NONE fluxCertificate=NONE");
+        counts.forEach((key, value) -> log("DIRECTION_TRANSFER_GROUP " + key + " count=" + value));
+        chk(mismatches == 0 && transfers.stream().distinct().count() == transfers.size(),
+                "真实全部过界边与逐父边/逐追终端一致，无逆坡/重复", "mismatch=" + mismatches);
+        for (int rx = Math.floorDiv(domain.originX(), hp().tract());
+                rx <= Math.floorDiv(domain.originX() + domain.sizeX() - 1, hp().tract()); rx++)
+            for (int rz = Math.floorDiv(domain.originZ(), hp().tract());
+                    rz <= Math.floorDiv(domain.originZ() + domain.sizeZ() - 1, hp().tract()); rz++) {
+                var coarse = PROV.coarseLayerFor(rx, rz);
+                for (var port : coarse.ports()) {
+                    final int sourceX = rx, sourceZ = rz;
+                    long pairEdges = transfers.stream().filter(t -> Math.floorDiv(t.from().x(), hp().tract()) == sourceX
+                            && Math.floorDiv(t.from().z(), hp().tract()) == sourceZ
+                            && Math.floorDiv(t.to().x(), hp().tract()) == sourceX + port.dRX()
+                            && Math.floorDiv(t.to().z(), hp().tract()) == sourceZ + port.dRZ()).count();
+                    log("COARSE_TRANSFER_PAIR source=" + rx + "," + rz + " port=" + port + " blockEdgesInSameTractPair="
+                            + pairEdges + " correspondence=NOT_CERTIFIED (coarse channel ports != all surface drainage)");
+                }
+            }
+        for (int[] start : new int[][]{{-712, 504}, {-648, 504}, {-580, 504}}) {
+            var trace = direction.trace(start[0], start[1]); var edges = new ArrayList<SharedBlockDrainage.DirectionTransfer>();
+            for (int i = 1; i < trace.path().size(); i++) {
+                var from = trace.path().get(i - 1); var to = trace.path().get(i);
+                transfers.stream().filter(t -> t.from().equals(from) && t.to().equals(to)).forEach(edges::add);
+            }
+            log("SCENE_DIRECTION_HANDOFF start=" + start[0] + "," + start[1] + " edges=" + edges);
+        }
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "全部过界接口与粗端口对照零邻fine", "increased");
+        Files.writeString(OUT.resolve("direction-transfers.csv"), csv.toString());
+        return transfers;
+    }
+
+    private static SharedBlockDrainage.Channels auditChannels(SharedBlockDrainage.Direction direction,
+            SharedBlockDrainage.Domain domain, List<SharedBlockDrainage.DirectionTransfer> transfers) throws Exception {
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+        double threshold = Double.parseDouble(System.getProperty("geogenesis.channelMinCells", "150")) * hp().step() * hp().step();
+        var channels = direction.channels(threshold); var edges = channels.edges(hp().tract());
+        var selected = channels.transfers(hp().tract());
+        var allIds = new java.util.HashSet<SharedBlockDrainage.DirectionEdgeId>(); for (var t : transfers) allIds.add(t.id());
+        int pending = 0, below = 0, terminal = 0, mismatch = 0; long conserved = 0, land = 0;
+        var csv = new StringBuilder("fromX,fromZ,toX,toZ,tract,localAreaBlocks,inputPending\n");
+        for (var edge : edges) {
+            var id = edge.id(); var next = channels.at(id.to().x(), id.to().z());
+            if (!direction.at(id.from().x(), id.from().z()).next().equals(id.to())
+                    || next.contributingBlocks() < edge.contributingBlocks() || next.state() != SharedBlockDrainage.ChannelState.SELECTED_LOCAL) mismatch++;
+            csv.append(id.from().x()).append(',').append(id.from().z()).append(',').append(id.to().x()).append(',')
+                    .append(id.to().z()).append(',').append(id.tract()).append(',').append(edge.contributingBlocks()).append(',')
+                    .append(edge.inputPending()).append('\n');
+        }
+        for (var t : transfers) {
+            var cell = channels.at(t.from().x(), t.from().z());
+            if (cell.state() == SharedBlockDrainage.ChannelState.INPUT_PENDING) pending++;
+            if (cell.state() == SharedBlockDrainage.ChannelState.BELOW_LOCAL_THRESHOLD) below++;
+        }
+        for (int k = 0; k < domain.nodes(); k++) {
+            if (!domain.coveredAtIndex(k)) continue;
+            int x = domain.originX() + k / domain.sizeZ(), z = domain.originZ() + k % domain.sizeZ();
+            if (!domain.oceanAtIndex(k)) land++;
+            if (direction.at(x, z).next() == null) {
+                conserved += channels.at(x, z).contributingBlocks();
+                if (channels.at(x, z).state() == SharedBlockDrainage.ChannelState.SELECTED_LOCAL) terminal++;
+            }
+        }
+        log("CHANNEL_FIXED_GRAPH thresholdBlocks=" + threshold + " selectedEdges=" + edges.size() + " selectedTransfers="
+                + selected.size() + " pendingTransfers=" + pending + " belowTransfers=" + below + " selectedTerminals=" + terminal
+                + " land=" + land + " terminalArea=" + conserved + " areaOnly=true fluxCertificate=NONE basinRelease=NOT_INJECTED");
+        chk(mismatch == 0 && conserved == land && selected.stream().allMatch(e -> allIds.contains(e.id())),
+                "共同方向图选中边下游不丢失/集水一次守恒/接口复用世界ID", "mismatch=" + mismatch);
+        int sceneCoverage = 0;
+        for (int[] start : new int[][]{{-712, 511}, {-648, 511}, {-580, 511}}) {
+            var cell = channels.at(start[0], start[1]); log("CHANNEL_SCENE=" + cell);
+            if (cell.state() == SharedBlockDrainage.ChannelState.SELECTED_LOCAL) sceneCoverage++;
+        }
+        chk(sceneCoverage == 3, "选中拓扑覆盖三个既有河路接口（不可删河或调低门槛凑PASS）", "matched=" + sceneCoverage + "/3");
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "选中拓扑无邻fine且不注入粗窗口Q", "increased");
+        Files.writeString(OUT.resolve("selected-channel-edges.csv"), csv.toString());
+        return channels;
+    }
+
+    private static Set<Integer> sourceCandidates(HydrologyPipeline.Result p, double threshold) throws Exception {
+        var method = DeterministicSkeleton.class.getDeclaredMethod("collectSources", double[].class, int[].class,
+                boolean[].class, boolean[].class, boolean[].class, double[].class, int.class, int.class,
+                DeterministicSkeleton.Params.class);
+        method.setAccessible(true);
+        var params = new DeterministicSkeleton.Params(0, threshold, 0, 0, 24, 0, 2, 0, 0);
+        @SuppressWarnings("unchecked")
+        var cells = (List<Integer>) method.invoke(null, p.level(), p.parent(), p.resolved(), p.lake(), p.sea(),
+                p.discharge(), p.nx(), p.nz(), params);
+        return new TreeSet<>(cells);
+    }
+
+    private static Set<SharedBoundaryDrainage.WorldCell> sourceWorld(Set<Integer> cells,
+            HydrologyPipeline.Result pipe, int ox, int oz) {
+        var result = new java.util.HashSet<SharedBoundaryDrainage.WorldCell>();
+        for (int k : cells) result.add(new SharedBoundaryDrainage.WorldCell(
+                ox + k / pipe.nz() * pipe.cellBlocks(), oz + k % pipe.nz() * pipe.cellBlocks()));
+        return result;
+    }
+
+    private static void sourceDirectorySynthetic() {
+        log("\n=== [source-synth] 先门限后选源不等于零门限选叶后过滤 ===");
+        int n = 9; var level = new double[n * n]; var q = new double[n * n]; var parent = new int[n * n];
+        var resolved = new boolean[n * n]; var sea = new boolean[n * n]; var lake = new boolean[n * n];
+        for (int x = 0; x < n; x++) for (int z = 0; z < n; z++) {
+            int k = x * n + z; level[k] = 100 - z; q[k] = z + 1; resolved[k] = true;
+            parent[k] = z == n - 1 ? -1 : k + 1; sea[k] = z == n - 1;
+        }
+        var zero = DeterministicSkeleton.build(level, parent, resolved, lake, sea, q, null, n, n,
+                new DeterministicSkeleton.Params(0, 0, 0, 0, 24, 0, 2, 0, 0), List.of(), null, false);
+        var before = DeterministicSkeleton.build(level, parent, resolved, lake, sea, q, null, n, n,
+                new DeterministicSkeleton.Params(0, 3, 0, 0, 24, 0, 2, 0, 0), List.of(), null, false);
+        long after = zero.traces.stream().filter(t -> q[t.sourceCell()] >= 3).count();
+        chk(after == 0 && before.traces.size() == n && before.traces.stream().allMatch(t -> t.sourceCell() % n == 2),
+                "真实build反例：零门限选叶再过滤漏掉全部达标主干，先门限仍有9源", "after=" + after + " before=" + before.traces.size());
+        var reversedQ = q.clone(); var reversedLevel = level.clone(); var reversedParent = parent.clone(); var reversedSea = sea.clone();
+        for (int x = 0; x < n; x++) for (int z = 0; z < n; z++) {
+            int k = x * n + z; reversedQ[k] = n - z; reversedLevel[k] = 100 + z;
+            reversedParent[k] = z == 0 ? -1 : k - 1; reversedSea[k] = z == 0;
+        }
+        var opposite = DeterministicSkeleton.build(reversedLevel, reversedParent, resolved, lake, reversedSea,
+                reversedQ, null, n, n, new DeterministicSkeleton.Params(0, 3, 0, 0, 24, 0, 2, 0, 0), List.of(), null, false);
+        chk(opposite.traces.size() == n && opposite.traces.stream().allMatch(t -> t.sourceCell() % n == n - 3),
+                "反向坡面同样先门限选起点，不按坐标指定下游", "count=" + opposite.traces.size());
+        for (int threshold : new int[]{1, 2, 4, 8, 10}) {
+            var actual = DeterministicSkeleton.build(level, parent, resolved, lake, sea, q, null, n, n,
+                    new DeterministicSkeleton.Params(0, threshold, 0, 0, 24, 0, 2, 0, 0), List.of(), null, false);
+            int expected = threshold <= n - 1 ? n : 0;
+            chk(actual.traces.size() == expected && actual.traces.stream().allMatch(t -> t.sourceCell() % n == threshold - 1),
+                    "多门限独立坡面起点oracle threshold=" + threshold, "found=" + actual.traces.size());
+        }
+        boolean unchanged = true;
+        for (int x = 0; x < n; x++) for (int z = 0; z < n; z++) {
+            int k = x * n + z; unchanged &= level[k] == 100 - z && q[k] == z + 1
+                    && parent[k] == (z == n - 1 ? -1 : k + 1);
+        }
+        chk(unchanged, "选源实验不改输入床面/父树/来水", "mutated");
+    }
+
+    private static void secSourceDirectory() throws Exception {
+        log("\n=== [source-directory] A粗层选源顺序/B地形位置差异/C竞争准入；NOT SOURCE AUTHORITY ===");
+        sourceDirectorySynthetic();
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+        var coarse = PROV.coarseLayerFor(-2, 0); var cp = coarse.pipe();
+        double cells = Double.parseDouble(System.getProperty("geogenesis.channelMinCells", "150"));
+        double coarseThreshold = cells * cp.lakeResult().runoffPerCell();
+        var coarseBefore = sourceWorld(sourceCandidates(cp, coarseThreshold), cp, coarse.originX(), coarse.originZ());
+        var coarseAfter = sourceCandidates(cp, 0); coarseAfter.removeIf(k -> cp.discharge()[k] < coarseThreshold);
+        var coarseAfterWorld = sourceWorld(coarseAfter, cp, coarse.originX(), coarse.originZ());
+        var directory = new java.util.HashSet<SharedBoundaryDrainage.WorldCell>();
+        for (var s : coarse.trunkSeeds()) directory.add(new SharedBoundaryDrainage.WorldCell(s.blockX(), s.blockZ()));
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "粗目录与候选提取零fine依赖", "fine increased");
+        var experiment = DeterministicSkeleton.build(cp.level(), cp.parent(), cp.resolved(), cp.lake(), cp.sea(),
+                cp.discharge(), cp.lakeResult().basinOutlet(), cp.nx(), cp.nz(),
+                new DeterministicSkeleton.Params(Integer.getInteger("geogenesis.sourceSpacing", 24) / 4,
+                        coarseThreshold, 0, 0, 24, 0, 1, 0, 0));
+        var experimentSeeds = new java.util.HashSet<SharedBoundaryDrainage.WorldCell>();
+        for (var t : experiment.traces) {
+            var w = new SharedBoundaryDrainage.WorldCell(coarse.originX() + t.sourceCell() / cp.nz() * cp.cellBlocks(),
+                    coarse.originZ() + t.sourceCell() % cp.nz() * cp.cellBlocks());
+            if (Math.floorDiv(w.x(), hp().tract()) == -2 && Math.floorDiv(w.z(), hp().tract()) == 0
+                    && !cp.lake()[t.sourceCell()] && !cp.sea()[t.sourceCell()]) experimentSeeds.add(w);
+        }
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "门限前移实验只复用同一粗pipe，无邻fine/侵蚀", "fine increased");
+        log("D1 COARSE beforeThreshold=" + coarseBefore.size() + " zeroThenFilter=" + coarseAfterWorld.size()
+                + " ownerPublished=" + directory.size() + " thresholdFirstOwnerExperiment=" + experimentSeeds.size()
+                + " threshold=" + coarseThreshold + " directory=" + directory + " experiment=" + experimentSeeds);
+        chk(coarseBefore.size() > coarseAfterWorld.size(), "真实粗窗也复现零门限选叶后过滤的信息丢失", "no difference");
+        int cx = -768, cz = 256, radius = hp().fineRadius(), ox = cx - radius, oz = cz - radius;
+        var pipe = PROV.pipeForProbe(cx, cz); var reaches = PROV.reachesForProbe(cx, cz);
+        double fineThreshold = cells * pipe.lakeResult().runoffPerCell();
+        var candidates = sourceCandidates(pipe, fineThreshold);
+        var csv = new StringBuilder("reach,x,z,owned,crossesTract,coarseDirectory,coarseBeforeThreshold,coarseZeroThenFilter,fineCandidate,outlet,coarseQ,fineQ\n");
+        var points = new ArrayList<SharedBoundaryDrainage.WorldCell>(); var missing = new ArrayList<SharedBoundaryDrainage.WorldCell>();
+        int owned = 0, crossed = 0, covered = 0;
+        for (int r = 0; r < reaches.size(); r++) {
+            var reach = reaches.get(r); int s = reach.sourceCell();
+            var world = new SharedBoundaryDrainage.WorldCell(ox + s / pipe.nz() * pipe.cellBlocks(), oz + s % pipe.nz() * pipe.cellBlocks());
+            boolean owner = Math.floorDiv(world.x(), hp().tract()) == -2 && Math.floorDiv(world.z(), hp().tract()) == 0;
+            boolean cross = false;
+            for (int k : reach.cell) if (Math.floorDiv(ox + k / pipe.nz() * pipe.cellBlocks(), hp().tract()) != -2
+                    || Math.floorDiv(oz + k % pipe.nz() * pipe.cellBlocks(), hp().tract()) != 0) cross = true;
+            boolean outlet = java.util.Arrays.stream(pipe.lakeResult().basinOutlet()).anyMatch(k -> k == s);
+            points.add(world); if (owner) owned++;
+            if (owner && cross) { crossed++; if (directory.contains(world)) covered++; else missing.add(world); }
+            int ck = coarse.cellAt(world.x(), world.z()); double coarseQ = ck < 0 ? Double.NaN : cp.discharge()[ck];
+            csv.append(r).append(',').append(world.x()).append(',').append(world.z()).append(',').append(owner).append(',')
+                    .append(cross).append(',').append(directory.contains(world)).append(',').append(coarseBefore.contains(world))
+                    .append(',').append(coarseAfterWorld.contains(world)).append(',').append(candidates.contains(s))
+                    .append(',').append(outlet).append(',').append(coarseQ).append(',').append(pipe.discharge()[s]).append('\n');
+            log("D2 source=" + world + " owned=" + owner + " crosses=" + cross + " directory=" + directory.contains(world)
+                    + " coarseBefore=" + coarseBefore.contains(world) + " fineCandidate=" + candidates.contains(s)
+                    + " outlet=" + outlet + " coarseQ=" + coarseQ + " fineQ=" + pipe.discharge()[s]);
+        }
+        log("D3 FINE owned=" + owned + " ownedCrossing=" + crossed + " exactDirectoryCovered=" + covered
+                + " missing=" + missing + " fineThreshold=" + fineThreshold + " noNearestMatching=true"
+                + " thresholdFirstExperimentExact=" + missing.stream().filter(experimentSeeds::contains).count());
+        renderSourceDirectory(points, directory, coarseBefore, csv.toString(), cx, cz, radius);
+        chk(crossed > 0 && covered == crossed, "粗owner源目录必须覆盖已发布跨缝源，不能用删河/最近点替代", "covered=" + covered + "/" + crossed);
+        // #region agent log: D1/D2/D3 source authority hypotheses, read-only production evidence
+        Files.writeString(Path.of("..", "debug-agent.log").toAbsolutePath(), LOG.toString(), java.nio.file.StandardOpenOption.APPEND);
+        // #endregion
+    }
+
+    private static void renderSourceDirectory(List<SharedBoundaryDrainage.WorldCell> fine,
+            Set<SharedBoundaryDrainage.WorldCell> directory, Set<SharedBoundaryDrainage.WorldCell> before,
+            String csv, int cx, int cz, int radius) throws Exception {
+        Path out = OUT.resolve("source-directory-" + System.currentTimeMillis()); Files.createDirectories(out);
+        var mask = HierarchicalComparisonView.sampleAll(GEN, PROV, cx, cz, radius);
+        var raw = HierarchicalComparisonView.render(mask, GEN);
+        writeLocalImage(out.resolve("production.png"), raw, cx, cz, radius, "CURRENT PRODUCTION / SCHEMA77 / SOURCE DIRECTORY NOT APPLIED");
+        var g = raw.createGraphics(); int ox = cx - radius, oz = cz - radius;
+        for (var point : before) {
+            g.setColor(java.awt.Color.YELLOW); g.drawRect(point.x() - ox - 2, point.z() - oz - 2, 4, 4);
+        }
+        for (var point : directory) {
+            g.setColor(java.awt.Color.GREEN); g.fillRect(point.x() - ox - 2, point.z() - oz - 2, 5, 5);
+        }
+        for (var point : fine) {
+            g.setColor(directory.contains(point) ? java.awt.Color.WHITE : java.awt.Color.RED);
+            g.drawOval(point.x() - ox - 4, point.z() - oz - 4, 8, 8);
+        }
+        g.dispose(); writeLocalImage(out.resolve("directory.png"), raw, cx, cz, radius,
+                "RED PUBLISHED START ABSENT IN DIRECTORY / GREEN OWNER DIRECTORY / YELLOW BEFORE-THRESHOLD CANDIDATE / NOT NEW WATER");
+        Files.writeString(out.resolve("sources.csv"), csv);
+        Files.writeString(out.resolve("manifest.txt"), "Fine published starts are NOT all physical headwaters: may be incoming/outlet/join split.\n"
+                + "Exact coordinate coverage diagnoses replacement loss, not nearest-route parity or global Q.\n"
+                + "Threshold-first candidates are not an accepted source set. No routing domains expanded.\n" + LOG);
+        chk(mask.failCount == 0, "源目录大范围底图来自实际provider列，无失败像素", "fail=" + mask.failCount);
+        log("SOURCE_DIRECTORY_DIR=" + out.toAbsolutePath());
+    }
+
+    private record OwnerSourcePath(SharedBoundaryDrainage.WorldCell source, List<Integer> path, String end) {
+        OwnerSourcePath { path = List.copyOf(path); }
+    }
+
+    private static HydrologyPipeline.Result ownerSourcePipe(CellGenerator gen, int rx, int rz, boolean prewarm) {
+        int cx = rx * hp().tract() + hp().tract() / 2, cz = rz * hp().tract() + hp().tract() / 2;
+        WindowOutlets.Terrain boundary = (x, z) -> HierarchicalHydrology.owner((int) Math.floor(x),
+                (int) Math.floor(z), hp(), PROV::coarseLayerFor).levelAt((int) Math.floor(x), (int) Math.floor(z));
+        var req = new HydrologyPipeline.Request(cx, cz, hp().fineRadius(), hp().step(),
+                new LakeWaterBalance.Climate(0.004, 0.002, 0.3), 0, HydrologyPipeline.RiverModel.D8, 1, null);
+        return HydrologyPipeline.run(gen, TP, req, new HydrologyPipeline.Layer(null, boundary, prewarm, "owner-source-probe"));
+    }
+
+    private static List<OwnerSourcePath> ownerCandidatePaths(HydrologyPipeline.Result p, int rx, int rz) throws Exception {
+        int ox = rx * hp().tract() - hp().halo(), oz = rz * hp().tract() - hp().halo();
+        double threshold = Double.parseDouble(System.getProperty("geogenesis.channelMinCells", "150"))
+                * p.lakeResult().runoffPerCell();
+        var result = new ArrayList<OwnerSourcePath>();
+        for (int s : sourceCandidates(p, threshold)) {
+            var world = new SharedBoundaryDrainage.WorldCell(ox + s / p.nz() * p.cellBlocks(), oz + s % p.nz() * p.cellBlocks());
+            if (Math.floorDiv(world.x(), hp().tract()) != rx || Math.floorDiv(world.z(), hp().tract()) != rz) continue;
+            var path = new ArrayList<Integer>(); int k = s; String end = "CYCLE_OR_LIMIT";
+            var seen = new java.util.BitSet(p.nx() * p.nz());
+            while (k >= 0 && k < p.parent().length && !seen.get(k)) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+                seen.set(k); path.add(k);
+                if (p.sea()[k]) { end = "LOCAL_SEA"; break; }
+                if (p.lake()[k]) { end = "LOCAL_LAKE_BUDGET_PENDING"; break; }
+                if (!p.resolved()[k]) { end = "UNRESOLVED"; break; }
+                if (p.parent()[k] < 0) { end = "UNKNOWN_FRAME_OR_SINK"; break; }
+                k = p.parent()[k];
+            }
+            result.add(new OwnerSourcePath(world, path, end));
+        }
+        return List.copyOf(result);
+    }
+
+    private static boolean sameSourcePipe(HydrologyPipeline.Result a, HydrologyPipeline.Result b) {
+        return a.nx() == b.nx() && a.nz() == b.nz() && a.cellBlocks() == b.cellBlocks()
+                && java.util.Arrays.equals(a.bed(), b.bed()) && java.util.Arrays.equals(a.parent(), b.parent())
+                && java.util.Arrays.equals(a.level(), b.level()) && java.util.Arrays.equals(a.discharge(), b.discharge())
+                && java.util.Arrays.equals(a.lake(), b.lake()) && java.util.Arrays.equals(a.sea(), b.sea())
+                && java.util.Arrays.equals(a.resolved(), b.resolved()) && java.util.Arrays.equals(a.waterSurface(), b.waterSurface());
+    }
+
+    private static void secOwnerSources(long seed, boolean acceptance) throws Exception {
+        log("\n=== [owner-sources] E侵蚀固定owner候选/F共享入口/G准入依赖；NOT WATER ===");
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get(), shared0 = HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.get();
+        var source = ownerSourcePipe(GEN, -2, 0, true);
+        var receiving = ownerSourcePipe(GEN, -2, 1, true);
+        var paths = ownerCandidatePaths(source, -2, 0); var recipientPaths = ownerCandidatePaths(receiving, -2, 1);
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get() && shared0 == HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.get(),
+                "两个显式owner候选求解只读地形/粗层，零finalfine/共享fine依赖", "fine increased");
+        var fresh = newGen(TP, seed);
+        var reverseReceiver = ownerSourcePipe(fresh, -2, 1, false);
+        var reverseSource = ownerSourcePipe(fresh, -2, 0, false);
+        chk(sameSourcePipe(source, reverseSource) && sameSourcePipe(receiving, reverseReceiver)
+                        && paths.equals(ownerCandidatePaths(reverseSource, -2, 0)),
+                "独立fresh逆owner顺序且关预热，候选/父树/来水/水面逐位同值", "different");
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get() && shared0 == HierarchicalHydrology.Diag.SHARED_FINE_SOLVES.get(),
+                "冷逆序重建仍零finalfine，不读取邻区最终结果", "fine increased");
+        var published = PROV.pipeForProbe(-768, 256); var reaches = PROV.reachesForProbe(-768, 256);
+        chk(sameSourcePipe(source, published), "独立固定owner基础pipe与实际生产owner逐位一致（不是新河网）", "different");
+        int ox = -1024 - hp().halo(), oz = -hp().halo(), matched = 0, owned = 0;
+        var candidateIds = paths.stream().map(OwnerSourcePath::source).collect(java.util.stream.Collectors.toSet());
+        for (var reach : reaches) {
+            int k = reach.sourceCell(); var w = new SharedBoundaryDrainage.WorldCell(ox + k / source.nz() * hp().step(), oz + k % source.nz() * hp().step());
+            if (Math.floorDiv(w.x(), hp().tract()) == -2 && Math.floorDiv(w.z(), hp().tract()) == 0) {
+                owned++; if (candidateIds.contains(w)) matched++;
+            }
+        }
+        log("E1 OWNER candidates=" + paths.size() + " receiverCandidates=" + recipientPaths.size()
+                + " publishedOwnedStarts=" + owned + " covered=" + matched + " thresholdSupport=LOCAL_Q_NOT_GLOBAL"
+                + " spacingAndOccupiedNotApplied=true incomingAndOutletNotHeadwater=true");
+        chk(owned > 0 && matched == owned, "侵蚀owner候选必须覆盖本区已发布起点，不用最近点或回删", "matched=" + matched + "/" + owned);
+        auditOwnerOverlap(source, receiving, acceptance);
+        boolean cancelled = false;
+        try { Thread.currentThread().interrupt(); ownerCandidatePaths(source, -2, 0); }
+        catch (java.util.concurrent.CancellationException e) { cancelled = true; } finally { Thread.interrupted(); }
+        chk(cancelled && paths.equals(ownerCandidatePaths(source, -2, 0)), "候选追踪取消不发布部分结果，重试同值", "missed");
+        boolean immutable = false;
+        try { paths.get(0).path().add(0); } catch (UnsupportedOperationException e) { immutable = true; }
+        chk(immutable, "owner候选身份和路径列表发布只读", "mutable");
+        var csv = auditOwnerEntries(source, receiving, paths, acceptance);
+        renderOwnerSources(source, paths, csv);
+        if (acceptance) chk(false, "固定候选尚非全局源准入/盆地出流/连续几何权威，禁止推广", "OWNER_SOURCE_AUTHORITY_PENDING");
+        // #region agent log: E/F/G independent owner candidate evidence, no production mutation
+        Files.writeString(Path.of("..", "debug-agent.log").toAbsolutePath(), LOG.toString(), java.nio.file.StandardOpenOption.APPEND);
+        // #endregion
+    }
+
+    private static void auditOwnerOverlap(HydrologyPipeline.Result a, HydrologyPipeline.Result b, boolean acceptance) {
+        int step = hp().step(), ox = -1024 - hp().halo(), az = -hp().halo(), bz = hp().tract() - hp().halo();
+        int bedMismatch = 0, parentMismatch = 0, qMismatch = 0, levelMismatch = 0, count = 0, interiorMismatch = 0;
+        var samples = new ArrayList<String>();
+        for (int x = ox; x <= ox + (a.nx() - 1) * step; x += step)
+            for (int z = bz + step; z <= az + (a.nz() - 2) * step; z += step) {
+                int i = (x - ox) / step * a.nz() + (z - az) / step;
+                int j = (x - ox) / step * b.nz() + (z - bz) / step;
+                count++; if (Double.doubleToLongBits(a.bed()[i]) != Double.doubleToLongBits(b.bed()[j])) bedMismatch++;
+                int ap = a.parent()[i], bp = b.parent()[j];
+                boolean same = ap < 0 && bp < 0 || ap >= 0 && bp >= 0 && ap / a.nz() == bp / b.nz()
+                        && az + ap % a.nz() * step == bz + bp % b.nz() * step;
+                if (!same) {
+                    parentMismatch++;
+                    if (x > ox && x < ox + (a.nx() - 1) * step) {
+                        interiorMismatch++; if (samples.size() < 8) samples.add(x + "," + z + " parents=" + ap + "/" + bp);
+                    }
+                }
+                if (Double.doubleToLongBits(a.discharge()[i]) != Double.doubleToLongBits(b.discharge()[j])) qMismatch++;
+                if (Double.doubleToLongBits(a.level()[i]) != Double.doubleToLongBits(b.level()[j])) levelMismatch++;
+            }
+        log("F3 OWNER_OVERLAP nodes=" + count + " bedMismatch=" + bedMismatch + " parentMismatch=" + parentMismatch
+                + " interiorParentMismatch=" + interiorMismatch + " levelMismatch=" + levelMismatch
+                + " localQMismatch=" + qMismatch + " samples=" + samples);
+        chk(count > 0 && bedMismatch == 0, "两固定owner完整重叠带（排除z外框）真实床面一致", "count=" + count + " bed=" + bedMismatch);
+        if (acceptance) chk(parentMismatch == 0, "共享入口推广需重叠方向一致，首步一致不能代替全带", "parents=" + parentMismatch);
+    }
+
+    private static String auditOwnerEntries(HydrologyPipeline.Result p, HydrologyPipeline.Result receiver,
+            List<OwnerSourcePath> paths, boolean acceptance) {
+        int ox = -1024 - hp().halo(), oz = -hp().halo(), rox = ox, roz = hp().tract() - hp().halo();
+        int crossings = 0, bedMismatch = 0, downstreamMismatch = 0; var terminals = new java.util.TreeMap<String, Integer>();
+        var csv = new StringBuilder("sourceX,sourceZ,fromX,fromZ,toX,toZ,receiverNextX,receiverNextZ,bedEqual,nextEqual,sourceQ,receiverQ\n");
+        for (var trace : paths) {
+            terminals.merge(trace.end(), 1, Integer::sum);
+            for (int i = 1; i < trace.path().size(); i++) {
+                int a = trace.path().get(i - 1), b = trace.path().get(i);
+                int ax = ox + a / p.nz() * p.cellBlocks(), az = oz + a % p.nz() * p.cellBlocks();
+                int bx = ox + b / p.nz() * p.cellBlocks(), bz = oz + b % p.nz() * p.cellBlocks();
+                if (az >= hp().tract() || bz < hp().tract() || Math.floorDiv(bx, hp().tract()) != -2) continue;
+                int rk = (bx - rox) / receiver.cellBlocks() * receiver.nz() + (bz - roz) / receiver.cellBlocks();
+                int next = receiver.parent()[rk], original = p.parent()[b];
+                boolean bed = Double.doubleToLongBits(p.bed()[b]) == Double.doubleToLongBits(receiver.bed()[rk]);
+                int nx = next < 0 ? Integer.MIN_VALUE : rox + next / receiver.nz() * receiver.cellBlocks();
+                int nz = next < 0 ? Integer.MIN_VALUE : roz + next % receiver.nz() * receiver.cellBlocks();
+                boolean same = original >= 0 && nx == ox + original / p.nz() * p.cellBlocks()
+                        && nz == oz + original % p.nz() * p.cellBlocks();
+                int agreed = 0, cursor = b; String stop = "SOURCE_LOCAL_TERMINAL";
+                var visited = new java.util.BitSet(p.parent().length);
+                while (cursor >= 0 && !visited.get(cursor)) {
+                    visited.set(cursor); int wx = ox + cursor / p.nz() * p.cellBlocks(), wz = oz + cursor % p.nz() * p.cellBlocks();
+                    if (wx < rox || wx >= rox + receiver.nx() * receiver.cellBlocks() || wz < roz
+                            || wz >= roz + receiver.nz() * receiver.cellBlocks()) { stop = "OUTSIDE_RECEIVER"; break; }
+                    int recv = (wx - rox) / receiver.cellBlocks() * receiver.nz() + (wz - roz) / receiver.cellBlocks();
+                    int sp = p.parent()[cursor], rp = receiver.parent()[recv];
+                    if (sp < 0) { stop = "SOURCE_LOCAL_TERMINAL"; break; }
+                    if (rp < 0 || ox + sp / p.nz() * p.cellBlocks() != rox + rp / receiver.nz() * receiver.cellBlocks()
+                            || oz + sp % p.nz() * p.cellBlocks() != roz + rp % receiver.nz() * receiver.cellBlocks()) {
+                        stop = "DIRECTION_CONFLICT"; break;
+                    }
+                    agreed++; cursor = sp;
+                }
+                String terminalEvidence = "";
+                if (stop.equals("SOURCE_LOCAL_TERMINAL") && cursor >= 0) {
+                    int wx = ox + cursor / p.nz() * p.cellBlocks(), wz = oz + cursor % p.nz() * p.cellBlocks();
+                    int recv = (wx - rox) / receiver.cellBlocks() * receiver.nz() + (wz - roz) / receiver.cellBlocks();
+                    terminalEvidence = " point=" + wx + "," + wz + " senderFrame="
+                            + (cursor / p.nz() == 0 || cursor / p.nz() == p.nx() - 1
+                            || cursor % p.nz() == 0 || cursor % p.nz() == p.nz() - 1)
+                            + " receiverParentExists=" + (receiver.parent()[recv] >= 0) + " receiverResolved=" + receiver.resolved()[recv]
+                            + " receiverLake=" + receiver.lake()[recv] + " receiverSea=" + receiver.sea()[recv];
+                }
+                log("F4 SHARED_SUFFIX source=" + trace.source() + " agreedEdges=" + agreed + " stop=" + stop
+                        + terminalEvidence + " terminalNotCertified=true");
+                if (acceptance) chk(!stop.equals("DIRECTION_CONFLICT"), "逐源共享后缀不得分叉 " + trace.source(), stop);
+                crossings++; if (!bed) bedMismatch++; if (!same) downstreamMismatch++;
+                csv.append(trace.source().x()).append(',').append(trace.source().z()).append(',').append(ax).append(',').append(az)
+                        .append(',').append(bx).append(',').append(bz).append(',').append(nx).append(',').append(nz).append(',')
+                        .append(bed).append(',').append(same).append(',').append(p.discharge()[b]).append(',').append(receiver.discharge()[rk]).append('\n');
+                log("F1 OWNER_ENTRY source=" + trace.source() + " edge=" + ax + "," + az + "->" + bx + "," + bz
+                        + " receiverNext=" + nx + "," + nz + " bedEqual=" + bed + " nextEqual=" + same
+                        + " Q=" + p.discharge()[b] + "/" + receiver.discharge()[rk] + " Q_NOT_TRANSFERRED");
+            }
+        }
+        log("F2 OWNER crossings=" + crossings + " bedMismatch=" + bedMismatch + " nextMismatch=" + downstreamMismatch
+                + " terminals=" + terminals + " localCandidateParentsOnly=true");
+        chk(crossings > 0 && bedMismatch == 0, "真实跨缝候选边非空且两owner相同坐标床面逐位相同", "crossings=" + crossings + " bedMismatch=" + bedMismatch);
+        if (acceptance) chk(downstreamMismatch == 0, "共享入口不能只保源ID，接收下游方向必须同权威", "different=" + downstreamMismatch);
+        return csv.toString();
+    }
+
+    private static void renderOwnerSources(HydrologyPipeline.Result p, List<OwnerSourcePath> paths, String csv) throws Exception {
+        int cx = -768, cz = 256, radius = hp().fineRadius(), ox = cx - radius, oz = cz - radius;
+        Path out = OUT.resolve("owner-sources-" + System.currentTimeMillis()); Files.createDirectories(out);
+        var mask = HierarchicalComparisonView.sampleAll(GEN, PROV, cx, cz, radius);
+        var raw = HierarchicalComparisonView.render(mask, GEN);
+        writeLocalImage(out.resolve("production.png"), raw, cx, cz, radius, "CURRENT PRODUCTION / SCHEMA77 / OWNER CANDIDATES NOT APPLIED");
+        var g = raw.createGraphics(); g.setColor(java.awt.Color.YELLOW);
+        for (var trace : paths) for (int i = 1; i < trace.path().size(); i++) {
+            int a = trace.path().get(i - 1), b = trace.path().get(i);
+            g.drawLine(a / p.nz() * p.cellBlocks(), a % p.nz() * p.cellBlocks(), b / p.nz() * p.cellBlocks(), b % p.nz() * p.cellBlocks());
+        }
+        for (var trace : paths) {
+            g.setColor(java.awt.Color.GREEN); g.fillRect(trace.source().x() - ox - 2, trace.source().z() - oz - 2, 5, 5);
+            int end = trace.path().get(trace.path().size() - 1); g.setColor(java.awt.Color.RED);
+            g.drawRect(end / p.nz() * p.cellBlocks() - 2, end % p.nz() * p.cellBlocks() - 2, 4, 4);
+        }
+        g.dispose(); writeLocalImage(out.resolve("candidates.png"), raw, cx, cz, radius,
+                "YELLOW OWNER CANDIDATE PARENT / GREEN CANDIDATE / RED LOCAL TERMINAL / NOT GENERATED WATER OR GLOBAL AUTHORITY");
+        Files.writeString(out.resolve("entries.csv"), csv);
+        Files.writeString(out.resolve("sources.txt"), paths.toString());
+        Files.writeString(out.resolve("manifest.txt"), "Two explicit owner pipes reconstructed from erosion and coarse boundary, no finalfine read.\n"
+                + "Candidates precede spacing/covered/incoming/outlet admission; LOCAL_Q only. No shared entry direction repair.\n" + LOG);
+        chk(mask.failCount == 0, "侵蚀owner候选大范围底图走生产provider无失败", "fail=" + mask.failCount);
+        log("OWNER_SOURCES_DIR=" + out.toAbsolutePath());
+    }
+
+    private static void secChannelOrigin() throws Exception {
+        log("\n=== [channel-origin] A位置错配/B旧父树与追踪不一致/C四邻分散 ===");
+        double hs = TP.horizontalScale();
+        var domain = SharedBlockDrainage.buildAt(-768, 512, 256, 4, TP.seaLevel(),
+                (x, z) -> GEN.erodedHeight(x / hs, z / hs),
+                (x, z) -> GEN.sample(x / hs, z / hs).terrainType.isOcean(), false);
+        var direction = SharedBlockDrainage.direction(domain, false); var channels = direction.channels(2400);
+        var pipe = PROV.pipeForProbe(-768, 256); var reaches = PROV.reachesForProbe(-768, 256);
+        int ox = -768 - hp().fineRadius(), oz = 256 - hp().fineRadius(), matched = 0;
+        var rows = new StringBuilder("reach,node,x,z,oldQ,oldParent,nextTrace,bed,level,localArea,inPatch\n");
+        var selectedSources = new ArrayList<SharedBlockDrainage.ContinuationSource>();
+        for (int r = 0; r < reaches.size(); r++) {
+            var reach = reaches.get(r); boolean hit = false;
+            for (int i = 1; i < reach.cell.length; i++) {
+                int a = reach.cell[i - 1], b = reach.cell[i];
+                int ax = ox + a / pipe.nz() * pipe.cellBlocks(), az = oz + a % pipe.nz() * pipe.cellBlocks();
+                int bx = ox + b / pipe.nz() * pipe.cellBlocks(), bz = oz + b % pipe.nz() * pipe.cellBlocks();
+                if (az < 512 && bz >= 512 && Math.max(ax, bx) >= -730 && Math.min(ax, bx) <= -550) hit = true;
+            }
+            if (!hit) continue;
+            matched++; int source = reach.sourceCell(), changed = 0, rises = 0; double maxRise = 0, minQ = Double.POSITIVE_INFINITY;
+            for (int i = 0; i < reach.cell.length; i++) {
+                int k = reach.cell[i], next = i + 1 < reach.cell.length ? reach.cell[i + 1] : -1;
+                int x = ox + k / pipe.nz() * pipe.cellBlocks(), z = oz + k % pipe.nz() * pipe.cellBlocks();
+                boolean inside = x >= domain.originX() && z >= domain.originZ()
+                        && x < domain.originX() + domain.sizeX() && z < domain.originZ() + domain.sizeZ();
+                minQ = Math.min(minQ, pipe.discharge()[k]);
+                if (next >= 0) { if (next != pipe.parent()[k]) changed++;
+                    double rise = pipe.bed()[next] - pipe.bed()[k]; if (rise > 1e-9) rises++; maxRise = Math.max(maxRise, rise); }
+                rows.append(r).append(',').append(i).append(',').append(x).append(',').append(z).append(',')
+                        .append(pipe.discharge()[k]).append(',').append(pipe.parent()[k]).append(',').append(next).append(',')
+                        .append(pipe.bed()[k]).append(',').append(pipe.level()[k]).append(',')
+                        .append(inside ? channels.at(x, z).contributingBlocks() : -1).append(',').append(inside).append('\n');
+                if (z >= 504 && z <= 520) log("A/B REACH_SCENE r=" + r + " node=" + i + " point=" + x + "," + z
+                        + " oldQ=" + pipe.discharge()[k] + " next=" + next + " oldParent=" + pipe.parent()[k]
+                        + " local=" + (inside ? channels.at(x, z) : "OUTSIDE_FIXED_PATCH"));
+            }
+            var sourcePoint = new SharedBoundaryDrainage.WorldCell(ox + source / pipe.nz() * pipe.cellBlocks(),
+                    oz + source % pipe.nz() * pipe.cellBlocks());
+            boolean sourceInside = sourcePoint.x() >= domain.originX() && sourcePoint.z() >= domain.originZ()
+                    && sourcePoint.x() < domain.originX() + domain.sizeX() && sourcePoint.z() < domain.originZ() + domain.sizeZ();
+            selectedSources.add(new SharedBlockDrainage.ContinuationSource(sourcePoint, sourceInside ? sourcePoint : null));
+            log("B REACH_ORIGIN r=" + r + " source=" + (ox + source / pipe.nz() * pipe.cellBlocks()) + ","
+                    + (oz + source % pipe.nz() * pipe.cellBlocks()) + " sourceQ=" + pipe.discharge()[source]
+                    + " runoff=" + pipe.lakeResult().runoffPerCell() + " nodes=" + reach.cell.length
+                    + " changedParent=" + changed + " bedRises=" + rises + " maxRise=" + maxRise + " minQ=" + minQ);
+        }
+        for (int x : new int[]{-712, -648, -580}) {
+            long maxArea = 0; int maxX = x;
+            for (int px = x - 8; px <= x + 8; px++) {
+                long area = channels.at(px, 511).contributingBlocks(); if (area > maxArea) { maxArea = area; maxX = px; }
+            }
+            log("A/C SCENE_NEAR x=" + x + " maxAreaWithin8=" + maxArea + " atX=" + maxX
+                    + " realBed=" + direction.at(x, 511).bed() + " actualNext=" + direction.at(x, 511).next());
+        }
+        chk(matched >= 3, "实际Reach跨缝病例非空转", "matched=" + matched);
+        var moved = riverConnectivity(-713, 511, 16, 1);
+        log("SOURCE_SUPPORTED_MOVED_SEAM original=-710,511 current=-713,511 source=-776,376 connected=" + moved.connected()
+                + " (supplemental evidence; old fixed-start FAIL retained, no nearest-line bridge)");
+        Files.writeString(OUT.resolve("channel-origin.csv"), rows.toString());
+        auditDiagonalSelection(domain, direction, channels);
+        auditSourceContinuations(domain, direction, selectedSources);
+        // #region agent log: A/B/C fixed-domain versus published source evidence, never consumed by production
+        Files.writeString(Path.of("..", "debug-agent.log").toAbsolutePath(), LOG.toString(), java.nio.file.StandardOpenOption.APPEND);
+        // #endregion
+    }
+
+    private static void auditSourceContinuations(SharedBlockDrainage.Domain domain, SharedBlockDrainage.Direction direction,
+            List<SharedBlockDrainage.ContinuationSource> sources) throws Exception {
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+        var ledger = direction.continueSources(sources, hp().tract());
+        var reverse = new ArrayList<>(sources); java.util.Collections.reverse(reverse);
+        chk(ledger.equals(direction.continueSources(reverse, hp().tract())), "实际已选源接续账本逆序同值，无Q/面积注入", "different");
+        int known = 0, crossed = 0;
+        for (var source : ledger.sources()) {
+            boolean crossing = ledger.edges().stream().anyMatch(e -> e.sources().contains(source.source())
+                    && e.id().from().z() == 511 && e.id().to().z() == 512);
+            if (source.entry() != null) { known++; if (crossing) crossed++; }
+            log("S1 SOURCE_OBLIGATION=" + source + " crossesZ512=" + crossing + " lifecycleCertified=false selectedByProductionOnly=true");
+        }
+        chk(known == 2 && crossed == 2 && ledger.sources().size() == 3,
+                "实际两域内源的接续义务跨缝，第三域外源仍明确未知（非修复）", "known=" + known + " crossed=" + crossed);
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "源接续不读取邻fine或改变原方向", "fine increased");
+        Path out = OUT.resolve("source-continuation-" + System.currentTimeMillis()); Files.createDirectories(out);
+        var mask = HierarchicalComparisonView.sampleAll(GEN, PROV, -768, 512, 256);
+        var raw = HierarchicalComparisonView.render(mask, GEN);
+        writeLocalImage(out.resolve("production.png"), raw, -768, 512, 256, "CURRENT PRODUCTION / SCHEMA77 / SOURCE OBLIGATION NOT APPLIED");
+        var g = raw.createGraphics(); var csv = new StringBuilder("fromX,fromZ,toX,toZ,sourceX,sourceZ,localArea,inputPending\n");
+        var areas = direction.channels(2400);
+        for (var edge : ledger.edges()) {
+            var a = edge.id().from(); var b = edge.id().to();
+            g.setColor(edge.sources().size() > 1 ? java.awt.Color.ORANGE : java.awt.Color.YELLOW);
+            g.drawLine(a.x() + 1024, a.z() - 256, b.x() + 1024, b.z() - 256);
+            var area = areas.at(a.x(), a.z());
+            for (var source : edge.sources()) csv.append(a.x()).append(',').append(a.z()).append(',').append(b.x()).append(',')
+                    .append(b.z()).append(',').append(source.x()).append(',').append(source.z()).append(',')
+                    .append(area.contributingBlocks()).append(',').append(area.inputPending()).append('\n');
+        }
+        for (var source : ledger.sources()) {
+            if (source.entry() != null) { g.setColor(java.awt.Color.GREEN); g.fillRect(source.entry().x() + 1022, source.entry().z() - 258, 5, 5); }
+            if (source.terminal() != null) { g.setColor(java.awt.Color.RED); g.fillRect(source.terminal().x() + 1022, source.terminal().z() - 258, 5, 5); }
+        }
+        g.dispose(); writeLocalImage(out.resolve("obligations.png"), raw, -768, 512, 256,
+                "YELLOW SOURCE OBLIGATION / ORANGE MERGED IDs / GREEN ENTRY / RED PENDING / NOT WATER OR GLOBAL AUTHORITY");
+        Files.writeString(out.resolve("edges.csv"), csv.toString());
+        Files.writeString(out.resolve("manifest.txt"), "Explicit selected sources read from actual published Reach. Only in-domain source entry allowed.\n"
+                + "No oldQ injection or nearest-line bridge. One existing direction graph; terminals pending.\n" + ledger.sources() + "\n" + LOG);
+        chk(mask.failCount == 0, "源义务底图来自生产列且无采样失败", "fail=" + mask.failCount);
+        if (Boolean.getBoolean("geogenesis.commonNodeAcceptance"))
+            chk(false, "显式生产源只是诊断输入，全球源选择/共享入口与盆地出流仍不得推广", "SOURCE_AUTHORITY_AND_LIFECYCLE_PENDING");
+        log("SOURCE_CONTINUATION_DIR=" + out.toAbsolutePath());
+    }
+
+    private static int diagonalMiddle(SharedBlockDrainage.Domain d, int from, int to) {
+        int a = to / d.sizeZ() * d.sizeZ() + from % d.sizeZ();
+        int b = from / d.sizeZ() * d.sizeZ() + to % d.sizeZ();
+        for (int middle : new int[]{Math.min(a, b), Math.max(a, b)})
+            if (d.bedAtIndex(from) >= d.bedAtIndex(middle) && d.bedAtIndex(middle) >= d.bedAtIndex(to)) return middle;
+        return -1;
+    }
+
+    private static int[] diagonalParents(SharedBlockDrainage.Domain d, SharedBlockDrainage.Direction direction) {
+        int[] parent = new int[d.nodes()];
+        for (int k = 0; k < d.nodes(); k++) {
+            var at = direction.at(d.originX() + k / d.sizeZ(), d.originZ() + k % d.sizeZ());
+            parent[k] = at.next() == null ? -1 : (at.next().x() - d.originX()) * d.sizeZ() + at.next().z() - d.originZ();
+            if (at.next() == null || at.state() != SharedBlockDrainage.DirectionEnd.DOWNHILL) continue;
+            double bestSlope = at.bed() - at.nextBed();
+            for (int dx : new int[]{-1, 1}) for (int dz : new int[]{-1, 1}) {
+                int i = k / d.sizeZ() + dx, j = k % d.sizeZ() + dz;
+                if (i < 0 || j < 0 || i >= d.sizeX() || j >= d.sizeZ()) continue;
+                int p = i * d.sizeZ() + j;
+                double slope = (at.bed() - d.bedAtIndex(p)) / Math.sqrt(2);
+                if (slope <= bestSlope || diagonalMiddle(d, k, p) < 0) continue;
+                bestSlope = slope; parent[k] = p;
+            }
+        }
+        return parent;
+    }
+
+    private static void diagonalGeometrySynthetic() {
+        for (int dx : new int[]{-1, 1}) for (int dz : new int[]{-1, 1}) {
+            double[][] cases = {{12, 13}, {-2, -1}, {-2, 8}, {8, 9}, {10, 12}, {0, 12}};
+            for (double[] heights : cases) {
+                WindowOutlets.Terrain terrain = (x, z) -> x == 0 && z == 0 ? 10 : x == dx && z == dz ? 0
+                        : x == dx && z == 0 ? heights[0] : x == 0 && z == dz ? heights[1] : 30;
+                var d = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, terrain, (x, z) -> false, false);
+                int ix = -d.originX(), iz = -d.originZ();
+                int k = ix * d.sizeZ() + iz, p = (ix + dx) * d.sizeZ() + iz + dz;
+                boolean feasible = heights[0] >= 0 && heights[0] <= 10 || heights[1] >= 0 && heights[1] <= 10;
+                int middle = diagonalMiddle(d, k, p);
+                chk((middle >= 0) == feasible, "斜角中间格须在两端床面之间 " + dx + "," + dz
+                        + " beds=" + java.util.Arrays.toString(heights), "wrong witness");
+                var direction = SharedBlockDrainage.direction(d, false); int[] parent = diagonalParents(d, direction);
+                chk(feasible || parent[k] != p, "高岸隔开的低角/先降后升不得跳连", "crossed barrier or rose");
+                if (heights[0] == 8 && heights[1] == 9)
+                    chk(parent[k] == p, "可证两步下降的优势斜向保留", "valid diagonal lost");
+            }
+        }
+        for (int seed = 0; seed < 12; seed++) {
+            var random = new java.util.Random(seed); double[][] beds = new double[17][17];
+            for (int x = 0; x < 17; x++) for (int z = 0; z < 17; z++) beds[x][z] = random.nextInt(12);
+            var d = SharedBlockDrainage.buildAt(-16, -32, 8, 4, 0,
+                    (x, z) -> beds[(int) x + 26][(int) z + 42], (x, z) -> false, false);
+            var direction = SharedBlockDrainage.direction(d, false); int[] actual = diagonalParents(d, direction);
+            boolean same = java.util.Arrays.equals(actual, diagonalParents(d, SharedBlockDrainage.direction(d, true)));
+            for (int k = 0; k < d.nodes(); k++) {
+                int x = k / d.sizeZ(), z = k % d.sizeZ(); var at = direction.at(d.originX() + x, d.originZ() + z);
+                int expected = at.next() == null ? -1 : (at.next().x() - d.originX()) * d.sizeZ() + at.next().z() - d.originZ();
+                if (at.state() == SharedBlockDrainage.DirectionEnd.DOWNHILL) {
+                    double best = at.bed() - at.nextBed();
+                    for (int i : new int[]{x - 1, x + 1}) for (int j : new int[]{z - 1, z + 1}) {
+                        if (i < 0 || j < 0 || i >= 17 || j >= 17) continue;
+                        boolean ok = beds[x][z] >= beds[i][z] && beds[i][z] >= beds[i][j]
+                                || beds[x][z] >= beds[x][j] && beds[x][j] >= beds[i][j];
+                        double slope = (beds[x][z] - beds[i][j]) / Math.sqrt(2);
+                        if (ok && slope > best) { best = slope; expected = i * 17 + j; }
+                    }
+                }
+                same &= actual[k] == expected;
+            }
+            chk(same, "负坐标随机含平地斜向候选等价独立两步oracle/逆序 seed=" + seed, "different");
+        }
+    }
+
+    private static void lookaheadSynthetic() throws Exception {
+        WindowOutlets.Terrain junction = (x, z) -> x == 0 && z == 0 ? 10 : x == 1 && z == 0 ? 9
+                : x == 0 && z == 1 ? 11 : x == 1 && z == 1 ? 0 : x == 2 && z == 0 ? -5 : 30;
+        var d = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, junction, (x, z) -> false, false);
+        var route = SharedBlockDrainage.directionWithLookahead(d, false);
+        var trace = route.trace(0, 0);
+        chk(trace.path().subList(0, 3).equals(List.of(new SharedBoundaryDrainage.WorldCell(0, 0),
+                        new SharedBoundaryDrainage.WorldCell(1, 0), new SharedBoundaryDrainage.WorldCell(2, 0))),
+                "两步优势只选第一步，中间世界节点服从自身唯一下游（不跳向低角）", trace.toString());
+        var channels = route.channels(1);
+        chk(channels.at(2, 0).contributingBlocks() >= channels.at(1, 0).contributingBlocks()
+                        && channels.at(1, 0).contributingBlocks() >= channels.at(0, 0).contributingBlocks(),
+                "汇入中间格后集水沿同一父边归账，不跨节点漏汇", "lost contribution");
+        WindowOutlets.Terrain flat = (x, z) -> x == 0 && z == 0 || x == 1 && z == 0 ? 10
+                : x == 1 && z == 1 ? 0 : 30;
+        var f = SharedBlockDrainage.buildAt(0, 0, 8, 4, 0, flat, (x, z) -> false, false);
+        chk(SharedBlockDrainage.direction(f, false).sameDirection(SharedBlockDrainage.directionWithLookahead(f, true)),
+                "等床中间格不得绕开完整平地距离规则", "flat changed");
+        for (int seed = 0; seed < 12; seed++) lookaheadOracle(seed);
+        for (int step : new int[]{2, 4, 8}) {
+            WindowOutlets.Terrain slope = (x, z) -> 100 - 0.4 * x - z;
+            var a = SharedBlockDrainage.buildAt(0, 0, 8, step, 0, slope, (x, z) -> false, false);
+            var b = SharedBlockDrainage.buildAt(step, step, 8, step, 0, slope, (x, z) -> false, true);
+            var ra = SharedBlockDrainage.directionWithLookahead(a, false); var rb = SharedBlockDrainage.directionWithLookahead(b, true);
+            var union = SharedBlockDrainage.combine(List.of(a, b));
+            boolean same = SharedBlockDrainage.directionWithLookahead(union, false).sameDirection(
+                    SharedBlockDrainage.directionWithLookahead(SharedBlockDrainage.combine(List.of(b, a)), true));
+            for (int x = b.originX() + 2; x < a.originX() + a.sizeX() - 2; x++)
+                for (int z = b.originZ() + 2; z < a.originZ() + a.sizeZ() - 2; z++) same &= ra.at(x, z).equals(rb.at(x, z));
+            chk(same, "两步完整邻域重叠/缺角组合顺序同值 step=" + step, "scope-dependent interior");
+            boolean transfersOk = true;
+            for (var transfer : ra.transfers(4)) {
+                var downstream = ra.trace(transfer.to().x(), transfer.to().z());
+                transfersOk &= ra.at(transfer.from().x(), transfer.from().z()).next().equals(transfer.to())
+                        && downstream.end() == transfer.end()
+                        && downstream.path().get(downstream.path().size() - 1).equals(transfer.terminal());
+            }
+            chk(transfersOk && !ra.transfers(4).isEmpty(), "共同节点过界边等价逐点父边与终端 step=" + step, "transfer mismatch");
+        }
+        var shifted = SharedBlockDrainage.buildAt(-32, -16, 8, 4, 0,
+                (x, z) -> junction.height(x + 32, z + 16), (x, z) -> false, true);
+        chk(trace.path().stream().map(c -> new SharedBoundaryDrainage.WorldCell(c.x() - 32, c.z() - 16)).toList()
+                        .equals(SharedBlockDrainage.directionWithLookahead(shifted, true).trace(-32, -16).path()),
+                "共同节点两步选择负坐标平移一致", "translated path differs");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            var jobs = new ArrayList<java.util.concurrent.Future<SharedBlockDrainage.Direction>>();
+            for (int i = 0; i < 4; i++) jobs.add(pool.submit(() -> SharedBlockDrainage.directionWithLookahead(d, true)));
+            boolean same = true; for (var job : jobs) same &= route.sameDirection(job.get(30, TimeUnit.SECONDS));
+            chk(same, "四线程共同节点下游全数组同值", "different");
+        } finally { pool.shutdownNow(); }
+        boolean cancelled = false;
+        try { Thread.currentThread().interrupt(); SharedBlockDrainage.directionWithLookahead(d, true); }
+        catch (java.util.concurrent.CancellationException ex) { cancelled = true; }
+        finally { Thread.interrupted(); }
+        chk(cancelled && route.sameDirection(SharedBlockDrainage.directionWithLookahead(d, false)),
+                "取消共同节点方向不发布半产物，重试同值", "cancel/retry");
+    }
+
+    private static void lookaheadOracle(int seed) {
+        var random = new java.util.Random(seed); double[][] beds = new double[17][17];
+        for (int x = 0; x < 17; x++) for (int z = 0; z < 17; z++) beds[x][z] = random.nextInt(12);
+        var d = SharedBlockDrainage.buildAt(-16, -32, 8, 4, 3,
+                (x, z) -> beds[(int) x + 26][(int) z + 42], (x, z) -> x > -16, false);
+        var base = SharedBlockDrainage.direction(d, false); var actual = SharedBlockDrainage.directionWithLookahead(d, false);
+        var channels = actual.channels(7); long[] counts = new long[d.nodes()]; boolean same = actual.sameDirection(
+                SharedBlockDrainage.directionWithLookahead(d, true));
+        for (int k = 0; k < d.nodes(); k++) {
+            int x = k / d.sizeZ(), z = k % d.sizeZ(); var at = base.at(d.originX() + x, d.originZ() + z);
+            var expected = at.next(); double best = at.bed() - at.nextBed();
+            int bestMiddle = Integer.MAX_VALUE, bestTarget = Integer.MAX_VALUE;
+            if (at.state() == SharedBlockDrainage.DirectionEnd.DOWNHILL)
+                for (int mx = Math.max(0, x - 1); mx <= Math.min(16, x + 1); mx++)
+                    for (int mz = Math.max(0, z - 1); mz <= Math.min(16, z + 1); mz++) {
+                        if (Math.abs(mx - x) + Math.abs(mz - z) != 1 || beds[mx][mz] >= beds[x][z]) continue;
+                        for (int tx : new int[]{x - 1, x + 1}) for (int tz : new int[]{z - 1, z + 1}) {
+                            if (tx < 0 || tz < 0 || tx >= 17 || tz >= 17 || Math.abs(tx - mx) + Math.abs(tz - mz) != 1
+                                    || beds[mx][mz] < beds[tx][tz]) continue;
+                            double score = (beds[x][z] - beds[tx][tz]) / Math.sqrt(2);
+                            int middle = mx * 17 + mz, target = tx * 17 + tz;
+                            if (score > best || (score == best && bestMiddle != Integer.MAX_VALUE
+                                    && (middle < bestMiddle || middle == bestMiddle && target < bestTarget))) {
+                                best = score; bestMiddle = middle; bestTarget = target;
+                                expected = new SharedBoundaryDrainage.WorldCell(d.originX() + mx, d.originZ() + mz);
+                            }
+                        }
+                    }
+            same &= java.util.Objects.equals(expected, actual.at(d.originX() + x, d.originZ() + z).next());
+            var trace = actual.trace(d.originX() + x, d.originZ() + z); same &= trace.maxBedRise() == 0;
+            if (!d.oceanAtIndex(k)) for (var cell : trace.path()) counts[(cell.x() - d.originX()) * 17 + cell.z() - d.originZ()]++;
+        }
+        for (int k = 0; k < counts.length; k++) same &= counts[k] == channels.at(d.originX() + k / 17, d.originZ() + k % 17).contributingBlocks();
+        chk(same, "共同节点方向/集水逐源oracle，平地海候选负坐标/逆序 seed=" + seed, "different");
+    }
+
+    private record SegmentProfile(double maxSampleRise, double totalSampleRise, double peakAboveStart,
+                                  int samples, boolean finite) { }
+
+    private static SegmentProfile segmentProfile(double x, double z, double px, double pz, int intervals,
+            WindowOutlets.Terrain terrain) {
+        if (intervals < 1 || intervals > 64) throw new IllegalArgumentException("one to 64 fixed intervals");
+        double start = terrain.height(x, z), previous = start, maxRise = 0, totalRise = 0, peak = 0;
+        boolean finite = Double.isFinite(start);
+        for (int i = 1; i <= intervals; i++) {
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("segment profile");
+            double t = (double) i / intervals, bed = terrain.height(x + t * (px - x), z + t * (pz - z));
+            finite &= Double.isFinite(bed); double rise = Math.max(0, bed - previous);
+            maxRise = Math.max(maxRise, rise); totalRise += rise; peak = Math.max(peak, bed - start); previous = bed;
+        }
+        return new SegmentProfile(maxRise, totalRise, peak, intervals + 1, finite);
+    }
+
+    private static java.util.SortedMap<Long, int[]> diagonalCrossings(SharedBlockDrainage.Domain d, int[] parent, long[] area) {
+        var squares = new java.util.TreeMap<Long, int[]>();
+        for (int k = 0; k < parent.length; k++) {
+            int p = parent[k]; if (p < 0 || area[k] < 2400) continue;
+            int dx = p / d.sizeZ() - k / d.sizeZ(), dz = p % d.sizeZ() - k % d.sizeZ();
+            if (dx == 0 || dz == 0) continue;
+            if (Math.abs(dx) != 1 || Math.abs(dz) != 1) throw new IllegalArgumentException("unit diagonal required");
+            int x = d.originX() + Math.min(k / d.sizeZ(), p / d.sizeZ());
+            int z = d.originZ() + Math.min(k % d.sizeZ(), p % d.sizeZ());
+            long key = ((long) x << 32) ^ (z & 0xffffffffL); int type = dx * dz > 0 ? 0 : 1;
+            var pair = squares.computeIfAbsent(key, ignored -> new int[]{-1, -1});
+            if (pair[type] >= 0 && pair[type] != k) throw new IllegalStateException("opposite directed same segment");
+            pair[type] = k;
+        }
+        squares.values().removeIf(pair -> pair[0] < 0 || pair[1] < 0);
+        return squares;
+    }
+
+    private static void segmentGeometrySynthetic() {
+        WindowOutlets.Terrain downhill = (x, z) -> 10 - x - z;
+        chk(segmentProfile(0, 0, 1, 1, 16, downhill).maxSampleRise() == 0,
+                "真实线段采样下降正例", "rise");
+        var hill = segmentProfile(0, 0, 1, 1, 16, (x, z) -> 10 - x - z + 12 * x * (1 - x));
+        chk(hill.maxSampleRise() > 0 && hill.peakAboveStart() > 0,
+                "端点下降不能掩盖线段中间高岸", hill.toString());
+        var dip = segmentProfile(0, 0, 1, 1, 16, (x, z) -> 10 - x - z - 12 * x * (1 - x));
+        chk(dip.maxSampleRise() > 0 && dip.peakAboveStart() == 0,
+                "低于起点的先降后升也须检出", dip.toString());
+        WindowOutlets.Terrain narrowHill = (x, z) -> 10 - x - z + 0.2 * Math.pow(Math.sin(16 * Math.PI * x), 2);
+        var narrow = segmentProfile(0, 0, 1, 1, 16, narrowHill);
+        chk(narrow.maxSampleRise() == 0 && segmentProfile(0, 0, 1, 1, 64, narrowHill).maxSampleRise() > 0,
+                "有限采样确实漏窄峰，密采检出但仍不宣称连续证书", narrow.toString());
+        var d = SharedBlockDrainage.buildAt(-16, -32, 8, 4, 0, downhill, (x, z) -> false, false);
+        int[] parent = new int[d.nodes()]; java.util.Arrays.fill(parent, -1); long[] area = new long[d.nodes()]; java.util.Arrays.fill(area, 2400);
+        int a = 8 * d.sizeZ() + 8, b = 9 * d.sizeZ() + 8;
+        parent[a] = 9 * d.sizeZ() + 9; parent[b] = 8 * d.sizeZ() + 9;
+        var cross = diagonalCrossings(d, parent, area);
+        long expected = ((long) (d.originX() + 8) << 32) ^ ((d.originZ() + 8) & 0xffffffffL);
+        chk(cross.size() == 1 && cross.containsKey(expected), "负坐标真X交点使用绝对单位方格身份", "wrong cross");
+        parent[b] = 9 * d.sizeZ() + 9;
+        chk(diagonalCrossings(d, parent, area).isEmpty(), "共同整数端点是汇流，不是X交点或两步中间格冲突", "false intersection");
+        chk(!segmentProfile(0, 0, 1, 1, 16, (x, z) -> Double.NaN).finite(), "非有限剖面不得认证", "NaN accepted");
+    }
+
+    private static void auditDiagonalSelection(SharedBlockDrainage.Domain d, SharedBlockDrainage.Direction direction,
+            SharedBlockDrainage.Channels four) throws Exception {
+        int[] parent = diagonalParents(d, direction), indegree = new int[d.nodes()], queue = new int[d.nodes()];
+        long[] area = new long[d.nodes()]; int changed = 0, size = 0, invalidWitness = 0;
+        for (int k = 0; k < d.nodes(); k++) {
+            int p = parent[k];
+            if (p >= 0 && k / d.sizeZ() != p / d.sizeZ() && k % d.sizeZ() != p % d.sizeZ()) {
+                changed++;
+                int middle = diagonalMiddle(d, k, p);
+                if (middle < 0 || d.bedAtIndex(k) < d.bedAtIndex(middle) || d.bedAtIndex(middle) < d.bedAtIndex(p)) invalidWitness++;
+            }
+            area[k] = d.oceanAtIndex(k) ? 0 : 1;
+        }
+        for (int p : parent) if (p >= 0) indegree[p]++;
+        for (int k = 0; k < parent.length; k++) if (indegree[k] == 0) queue[size++] = k;
+        for (int head = 0; head < size; head++) {
+            int k = queue[head], p = parent[k]; if (p < 0) continue;
+            area[p] += area[k]; if (--indegree[p] == 0) queue[size++] = p;
+        }
+        long conserved = 0; int crossings = 0;
+        for (int k = 0; k < parent.length; k++) {
+            int p = parent[k]; if (p < 0) { conserved += area[k]; continue; }
+            if (area[k] >= 2400 && d.originZ() + k % d.sizeZ() < 512 && d.originZ() + p % d.sizeZ() >= 512) crossings++;
+        }
+        log("C DIAGONAL_FIXED changed=" + changed + " diagonal=" + changed + " processed=" + size
+                + " terminalArea=" + conserved + " selectedZ512=" + crossings
+                + " invalidTwoStepWitness=" + invalidWitness + " diagnosticOnly=true");
+        long land = 0; for (int k = 0; k < d.nodes(); k++) if (!d.oceanAtIndex(k)) land++;
+        chk(size == d.nodes() && conserved == land && invalidWitness == 0,
+                "斜向对照两步真实床面非升/无环/面积守恒，非生产替换", "geometry/cycle/conservation");
+        for (int x : new int[]{-712, -648, -580}) {
+            int k = (x - d.originX()) * d.sizeZ() + 511 - d.originZ(); long max = 0; int maxX = x;
+            for (int px = x - 8; px <= x + 8; px++) {
+                long value = area[(px - d.originX()) * d.sizeZ() + 511 - d.originZ()]; if (value > max) { max = value; maxX = px; }
+            }
+            log("C DIAGONAL_SCENE x=" + x + " fourArea=" + four.at(x, 511).contributingBlocks()
+                    + " diagonalArea=" + area[k] + " maxWithin8=" + max + " atX=" + maxX);
+        }
+        auditDiagonalSources(d, direction, parent, area);
+        auditCommonNodes(d, parent, area);
+        renderDiagonalSelection(d, parent, area, four);
+    }
+
+    private static void auditDiagonalSources(SharedBlockDrainage.Domain d, SharedBlockDrainage.Direction direction,
+            int[] parent, long[] area) {
+        for (int[] source : new int[][]{{-776, 376}, {-712, 128}, {-676, 404}}) {
+            if (source[0] < d.originX() || source[1] < d.originZ() || source[0] >= d.originX() + d.sizeX() || source[1] >= d.originZ() + d.sizeZ()) {
+                log("C DIAGONAL_SOURCE source=" + source[0] + "," + source[1] + " status=OUTSIDE_FIXED_PATCH (not zero flow)"); continue;
+            }
+            int k = (source[0] - d.originX()) * d.sizeZ() + source[1] - d.originZ(), nodes = 0;
+            var cross = new ArrayList<String>();
+            while (parent[k] >= 0 && nodes++ <= parent.length) {
+                int p = parent[k], x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ();
+                int px = d.originX() + p / d.sizeZ(), pz = d.originZ() + p % d.sizeZ();
+                if (z < 512 && pz >= 512) cross.add(x + "," + z + "->" + px + "," + pz + " area=" + area[k]);
+                k = p;
+            }
+            int x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ();
+            log("C DIAGONAL_SOURCE source=" + source[0] + "," + source[1] + " nodes=" + nodes + " crossings=" + cross
+                    + " terminal=" + x + "," + z + " state=" + direction.at(x, z).state() + " terminalArea=" + area[k]);
+            chk(nodes <= parent.length, "真实源头斜向对照终止，不以附近达标冒充原河续接", "cycle");
+        }
+    }
+
+    private static void auditCommonNodes(SharedBlockDrainage.Domain d, int[] diagonal, long[] area) {
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+        var geometry = new HashMap<Integer, java.util.Set<Integer>>();
+        for (int k = 0; k < diagonal.length; k++) {
+            int p = diagonal[k]; if (p < 0 || area[k] < 2400) continue;
+            int m = k / d.sizeZ() != p / d.sizeZ() && k % d.sizeZ() != p % d.sizeZ() ? diagonalMiddle(d, k, p) : k;
+            if (m != k) geometry.computeIfAbsent(k, key -> new java.util.TreeSet<>()).add(m);
+            geometry.computeIfAbsent(m, key -> new java.util.TreeSet<>()).add(p);
+        }
+        long conflicts = geometry.values().stream().filter(next -> next.size() > 1).count();
+        var route = SharedBlockDrainage.directionWithLookahead(d, false); var channels = route.channels(2400);
+        int changed = 0; long terminalArea = 0, land = 0; boolean geometryOk = true;
+        var original = SharedBlockDrainage.direction(d, false);
+        for (int k = 0; k < d.nodes(); k++) {
+            int x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ(); var at = route.at(x, z);
+            if (!java.util.Objects.equals(at.next(), original.at(x, z).next())) changed++;
+            if (!d.oceanAtIndex(k)) land++;
+            if (at.next() == null) terminalArea += channels.at(x, z).contributingBlocks();
+            else geometryOk &= Math.abs(at.next().x() - x) + Math.abs(at.next().z() - z) == 1 && at.nextBed() <= at.bed();
+        }
+        log("J1 COMMON_NODE oldSelectedGeometryConflicts=" + conflicts + " changedCardinalParents=" + changed
+                + " selectedEdges=" + channels.edges(hp().tract()).size() + " selectedTransfers=" + channels.transfers(hp().tract()).size()
+                + " land=" + land + " terminalArea=" + terminalArea + " singleParent=true diagnosticOnly=true");
+        chk(geometryOk && land == terminalArea && route.sameDirection(SharedBlockDrainage.directionWithLookahead(d, true)),
+                "共同世界节点唯一四邻下游、非升、面积守恒及逆序同值", "geometry/conservation/order");
+        for (int[] source : new int[][]{{-776, 376}, {-712, 128}, {-676, 404}}) {
+            if (source[1] < d.originZ()) { log("J2 COMMON_SOURCE source=" + source[0] + "," + source[1] + " OUTSIDE_FIXED_PATCH UNKNOWN"); continue; }
+            var trace = route.trace(source[0], source[1]); var crossings = new ArrayList<String>();
+            for (int i = 1; i < trace.path().size(); i++) {
+                var a = trace.path().get(i - 1); var b = trace.path().get(i);
+                if (a.z() < 512 && b.z() >= 512) crossings.add(a + "->" + b + " " + channels.at(a.x(), a.z()));
+            }
+            var end = trace.path().get(trace.path().size() - 1);
+            log("J2 COMMON_SOURCE source=" + source[0] + "," + source[1] + " nodes=" + trace.path().size()
+                    + " crossings=" + crossings + " end=" + trace.end() + " terminal=" + end + " maxRise=" + trace.maxBedRise());
+        }
+        var relations = route.relations(List.of(new SharedBoundaryDrainage.WorldCell(-655, 653), new SharedBoundaryDrainage.WorldCell(-582, 581)));
+        log("J3 COMMON_BASINS assigned=" + relations.assignedLocalCells() + " unassigned=" + relations.unassignedCoveredCells());
+        for (var relation : relations.relations()) log("J3 COMMON_RELATION=" + relation);
+        if (Boolean.getBoolean("geogenesis.commonNodeAcceptance")) {
+            int selectedSources = 0;
+            for (int[] source : new int[][]{{-776, 376}, {-676, 404}}) {
+                var path = route.trace(source[0], source[1]).path();
+                for (int i = 1; i < path.size(); i++) {
+                    var a = path.get(i - 1); var b = path.get(i);
+                    if (a.z() < 512 && b.z() >= 512 && channels.at(a.x(), a.z()).state() == SharedBlockDrainage.ChannelState.SELECTED_LOCAL)
+                        selectedSources++;
+                }
+            }
+            chk(selectedSources == 2, "共同节点推广保留域内已发布源的成河接续（不得以少河凑通过）", "selected=" + selectedSources + "/2");
+            chk(relations.relations().stream().allMatch(r -> r.state() == SharedBlockDrainage.RelationEnd.NEXT_BASIN
+                            || r.state() == SharedBlockDrainage.RelationEnd.OCEAN_CANDIDATE),
+                    "共同节点下游不得停于固定域未知边界", "unknown terminal");
+            chk(false, "域外原源与实际蓄水/出口共同权威尚未实现，不准推广", "GLOBAL_SOURCE_AND_BASIN_PENDING");
+        }
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "共同节点选择/源追踪/盆关系零邻fine", "fine increased");
+    }
+
+    private static void renderDiagonalSelection(SharedBlockDrainage.Domain d, int[] parent, long[] area,
+            SharedBlockDrainage.Channels four) throws Exception {
+        int cx = -768, cz = 512, radius = 256;
+        Path out = OUT.resolve("channel-direction-ab-" + System.currentTimeMillis()); Files.createDirectories(out);
+        var mask = HierarchicalComparisonView.sampleAll(GEN, PROV, cx, cz, radius);
+        chk(mask.failCount == 0, "方向对照底图取生产列无失败", "fail=" + mask.failCount);
+        var raw = HierarchicalComparisonView.render(mask, GEN);
+        writeLocalImage(out.resolve("production.png"), raw, cx, cz, radius, "CURRENT PRODUCTION / SYMMETRIC BLEND / SCHEMA77 / NOT LIFECYCLE ACCEPTANCE");
+        renderChannels(out, raw, cx, cz, radius, four);
+        Files.copy(OUT.resolve("channel-origin.csv"), out.resolve("channel-origin.csv"));
+        var g = raw.createGraphics(); g.setColor(java.awt.Color.YELLOW);
+        var rows = new StringBuilder("fromX,fromZ,middleX,middleZ,toX,toZ,fromBed,middleBed,toBed,localArea\n");
+        for (int k = 0; k < parent.length; k++) {
+            int p = parent[k]; if (p < 0 || area[k] < 2400) continue;
+            int middle = k / d.sizeZ() != p / d.sizeZ() && k % d.sizeZ() != p % d.sizeZ() ? diagonalMiddle(d, k, p) : k;
+            int x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ();
+            int mx = d.originX() + middle / d.sizeZ(), mz = d.originZ() + middle % d.sizeZ();
+            int px = d.originX() + p / d.sizeZ(), pz = d.originZ() + p % d.sizeZ();
+            g.drawLine(x - cx + radius, z - cz + radius, mx - cx + radius, mz - cz + radius);
+            g.drawLine(mx - cx + radius, mz - cz + radius, px - cx + radius, pz - cz + radius);
+            rows.append(x).append(',').append(z).append(',').append(mx).append(',').append(mz).append(',')
+                    .append(px).append(',').append(pz).append(',').append(d.bedAtIndex(k)).append(',')
+                    .append(d.bedAtIndex(middle)).append(',').append(d.bedAtIndex(p)).append(',').append(area[k]).append('\n');
+        }
+        Files.writeString(out.resolve("diagonal-witness-edges.csv"), rows.toString());
+        g.dispose(); writeLocalImage(out.resolve("diagonal-channels.png"), raw, cx, cz, radius,
+                "TWO-STEP NONRISING BED WITNESS / AREA >=2400 / NOT WATER / NO BASIN RELEASE / NOT ACCEPTED");
+        var common = new java.awt.image.BufferedImage(mask.n, mask.n, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var cg = common.createGraphics(); cg.drawImage(HierarchicalComparisonView.render(mask, GEN), 0, 0, null); cg.dispose();
+        var commonDir = out.resolve("common-node"); Files.createDirectories(commonDir);
+        renderChannels(commonDir, common, cx, cz, radius, SharedBlockDrainage.directionWithLookahead(d, false).channels(2400));
+        auditDirectSegments(out, mask, d, parent, area);
+        Files.writeString(out.resolve("manifest.txt"), "Fixed same patch. Cyan current provider water with symmetric erosion blend/schema77; yellow diagnostic area-selected two-step witness only.\n"
+                + "Middle pixels certify local geometry, NOT shared graph joins or runoff injection. No continuous sub-block proof.\n"
+                + "common-node/ shows one cardinal downstream edge per world block; two-step preference does not bypass middle node. NOT production.\n" + LOG);
+        log("CHANNEL_DIRECTION_AB_DIR=" + out.toAbsolutePath());
+    }
+
+    private static void auditDirectSegments(Path out, HierarchicalComparisonView.Mask mask,
+            SharedBlockDrainage.Domain d, int[] parent, long[] area) throws Exception {
+        WindowOutlets.Terrain terrain = (x, z) -> GEN.erodedHeight(x / TP.horizontalScale(), z / TP.horizontalScale());
+        var image = HierarchicalComparisonView.render(mask, GEN); var g = image.createGraphics();
+        var csv = new StringBuilder("fromX,fromZ,toX,toZ,area,maxRise16,totalRise16,peak16,maxRise32,totalRise32,peak32,finite\n");
+        int selected = 0, rises16 = 0, rises32 = 0; double maxRise = 0, maxPeak = 0;
+        var profiles = new HashMap<Integer, SegmentProfile>(); long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+        for (int k = 0; k < parent.length; k++) {
+            int p = parent[k]; if (p < 0 || area[k] < 2400) continue;
+            int x = d.originX() + k / d.sizeZ(), z = d.originZ() + k % d.sizeZ();
+            int px = d.originX() + p / d.sizeZ(), pz = d.originZ() + p % d.sizeZ();
+            var a = segmentProfile(x, z, px, pz, 16, terrain); var b = segmentProfile(x, z, px, pz, 32, terrain);
+            profiles.put(k, b); selected++;
+            if (b.totalSampleRise() > 1e-9) auditSegmentRise(x, z, px, pz, terrain);
+            if (a.totalSampleRise() > 1e-9) rises16++; if (b.totalSampleRise() > 1e-9) rises32++;
+            maxRise = Math.max(maxRise, b.maxSampleRise()); maxPeak = Math.max(maxPeak, b.peakAboveStart());
+            g.setColor(!b.finite() || b.totalSampleRise() > 1e-9 ? java.awt.Color.RED : java.awt.Color.YELLOW);
+            g.drawLine(x + 1024, z - 256, px + 1024, pz - 256);
+            csv.append(x).append(',').append(z).append(',').append(px).append(',').append(pz).append(',').append(area[k]).append(',')
+                    .append(a.maxSampleRise()).append(',').append(a.totalSampleRise()).append(',').append(a.peakAboveStart()).append(',')
+                    .append(b.maxSampleRise()).append(',').append(b.totalSampleRise()).append(',').append(b.peakAboveStart()).append(',')
+                    .append(a.finite() && b.finite()).append('\n');
+        }
+        var crossings = diagonalCrossings(d, parent, area);
+        for (long key : crossings.keySet()) {
+            int x = (int) (key >> 32), z = (int) key;
+            g.setColor(java.awt.Color.MAGENTA); g.fillRect(x + 1024, z - 256, 2, 2);
+        }
+        g.dispose(); writeLocalImage(out.resolve("direct-segment-profile.png"), image, -768, 512, 256,
+                "DIRECT SEGMENTS / RED SAMPLED BED RISE / YELLOW NO SAMPLED RISE / MAGENTA TRUE X / NOT CONTINUOUS CERTIFICATE OR WATER");
+        Files.writeString(out.resolve("direct-segment-profile.csv"), csv.toString());
+        log("G1 DIRECT_SEGMENTS selected=" + selected + " rise16=" + rises16 + " rise32=" + rises32
+                + " maxIncrement32=" + maxRise + " peakAboveStart=" + maxPeak + " properX=" + crossings.size()
+                + " sampleOnly=true geometryNotTwoStep=true");
+        for (int[] source : new int[][]{{-776, 376}, {-676, 404}}) {
+            int k = (source[0] - d.originX()) * d.sizeZ() + source[1] - d.originZ(), bad = 0, edges = 0, selectedEdges = 0;
+            while (parent[k] >= 0 && edges++ < parent.length) {
+                int p = parent[k]; var profile = profiles.get(k);
+                if (profile != null) selectedEdges++;
+                else profile = segmentProfile(d.originX() + k / d.sizeZ(), d.originZ() + k % d.sizeZ(),
+                        d.originX() + p / d.sizeZ(), d.originZ() + p % d.sizeZ(), 32, terrain);
+                if (!profile.finite() || profile.totalSampleRise() > 1e-9) bad++;
+                k = p;
+            }
+            log("G2 DIRECT_SOURCE source=" + source[0] + "," + source[1] + " edges=" + edges
+                    + " selectedEdges=" + selectedEdges + " sampledRiseEdges=" + bad + " productionPromotable=false");
+        }
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "直接线段采样不新增邻fine或改变provider水柱", "fine increased");
+        if (Boolean.getBoolean("geogenesis.commonNodeAcceptance"))
+            chk(rises32 == 0 && crossings.isEmpty(), "直接中心线采样无逆坡且实际交点已闭合，不能用两步见证代替", "rises=" + rises32 + " X=" + crossings.size());
+    }
+
+    private static void auditSegmentRise(int x, int z, int px, int pz, WindowOutlets.Terrain terrain) {
+        double previous = terrain.height(x, z), max = 0; int at = 0;
+        for (int i = 1; i <= 32; i++) {
+            double t = i / 32.0, bed = terrain.height(x + t * (px - x), z + t * (pz - z));
+            if (bed - previous > max) { max = bed - previous; at = i; } previous = bed;
+        }
+        double t = at / 32.0, bx = x + t * (px - x), bz = z + t * (pz - z);
+        double eps = 1e-6, left = terrain.height(bx - eps * (px - x), bz - eps * (pz - z));
+        double right = terrain.height(bx + eps * (px - x), bz + eps * (pz - z));
+        double hs = TP.horizontalScale(), baseLeft = GEN.terrainEQuick((bx - eps * (px - x)) / hs, (bz - eps * (pz - z)) / hs);
+        double baseRight = GEN.terrainEQuick((bx + eps * (px - x)) / hs, (bz + eps * (pz - z)) / hs);
+        double deltaLeft = GEN.erosionDeltaE((bx - eps * (px - x)) / hs, (bz - eps * (pz - z)) / hs);
+        double deltaRight = GEN.erosionDeltaE((bx + eps * (px - x)) / hs, (bz + eps * (pz - z)) / hs);
+        double beforeT = (at - 1) / 32.0, beforeX = x + beforeT * (px - x), beforeZ = z + beforeT * (pz - z);
+        double quickBefore = GEN.terrainEQuick(beforeX / hs, beforeZ / hs), uncachedBefore = GEN.terrainE(beforeX / hs, beforeZ / hs);
+        double quickAt = GEN.terrainEQuick(bx / hs, bz / hs), uncachedAt = GEN.terrainE(bx / hs, bz / hs);
+        log("G4 HEIGHT_SOURCE from=" + x + "," + z + " at=" + bx + "," + bz
+                + " beforeQuick=" + quickBefore + " beforeFull=" + uncachedBefore + " atQuick=" + quickAt + " atFull=" + uncachedAt
+                + " beforeHeight=" + terrain.height(beforeX, beforeZ) + " beforeSampleWu=" + GEN.sampleWu(beforeX / hs, beforeZ / hs).height
+                + " atHeight=" + terrain.height(bx, bz) + " atSampleWu=" + GEN.sampleWu(bx / hs, bz / hs).height);
+        log("G3 RISE_DETAIL from=" + x + "," + z + " to=" + px + "," + pz + " maxRise32=" + max
+                + " at=" + bx + "," + bz + " epsilonHeightDelta=" + (right - left)
+                + " epsilonBaseEDelta=" + (baseRight - baseLeft) + " epsilonErosionDelta=" + (deltaRight - deltaLeft)
+                + " totalRise64=" + segmentProfile(x, z, px, pz, 64, terrain).totalSampleRise());
+    }
+
+    private record BlendParts(double actual, double rebuilt, String weights) { }
+
+    private static final class BlendInspector {
+        final java.lang.reflect.Method tile, sample, blend;
+        final java.lang.reflect.Field delta, ox, oz;
+        final int center, width;
+        BlendInspector() throws Exception {
+            Class<?> result = Class.forName(CellGenerator.class.getName() + "$ErosionTileResult");
+            tile = CellGenerator.class.getDeclaredMethod("getOrGenTileUnchecked", int.class, int.class);
+            sample = CellGenerator.class.getDeclaredMethod("sampleTileField", float[][].class, int.class, int.class, double.class, double.class);
+            blend = CellGenerator.class.getDeclaredMethod("blendTileDelta", result, double.class, double.class, int.class, int.class, boolean.class);
+            for (var m : List.of(tile, sample, blend)) m.setAccessible(true);
+            delta = result.getDeclaredField("delta"); ox = result.getDeclaredField("originX"); oz = result.getDeclaredField("originZ");
+            for (var f : List.of(delta, ox, oz)) f.setAccessible(true);
+            var c = CellGenerator.class.getDeclaredField("ERODE_TILE_CENTER"); c.setAccessible(true); center = c.getInt(null);
+            var b = CellGenerator.class.getDeclaredField("BLEND_START"); b.setAccessible(true); width = 16 - b.getInt(null);
+        }
+        BlendParts inspect(CellGenerator gen, double x, double z) throws Exception {
+            int cx = Math.floorDiv((int) Math.floor(x), center) * center, cz = Math.floorDiv((int) Math.floor(z), center) * center;
+            double fx = factor(x - cx), fz = factor(z - cz);
+            int nx = cx + (center - (x - cx) <= width ? center : x - cx < width ? -center : 0);
+            int nz = cz + (center - (z - cz) <= width ? center : z - cz < width ? -center : 0);
+            int[] xs = {cx, nx, cx, nx}, zs = {cz, cz, nz, nz};
+            double[] weights = {(1 - fx) * (1 - fz), fx * (1 - fz), (1 - fx) * fz, fx * fz};
+            double[] values = new double[4]; var text = new StringBuilder(); Object main = null;
+            for (int i = 0; i < 4; i++) {
+                if (i > 0 && weights[i] == 0) continue;
+                Object r = tile.invoke(gen, xs[i], zs[i]); if (i == 0) main = r;
+                double value = ((Number) sample.invoke(null, delta.get(r), ox.getInt(r), oz.getInt(r), x, z)).doubleValue();
+                values[i] = value;
+                text.append(xs[i]).append(':').append(zs[i]).append('@').append(weights[i]).append('=').append(value).append(';');
+            }
+            double rebuilt = values[0] * (1 - fx) * (1 - fz) + values[1] * fx * (1 - fz)
+                    + values[2] * (1 - fx) * fz + values[3] * fx * fz;
+            double actual = ((Number) blend.invoke(gen, main, x, z, cx, cz, true)).doubleValue();
+            return new BlendParts(actual, rebuilt, text.toString());
+        }
+        private double factor(double local) {
+            double b = center - local <= width ? 1 - (center - local) / width : local < width ? 1 - local / width : 0;
+            return 0.5 * b * b * (3 - 2 * b);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void blendSynthetic(BlendInspector reader) throws Exception {
+        var gen = newGen(TP, DEF_SEED);
+        var cacheField = CellGenerator.class.getDeclaredField("erosionTileCache"); cacheField.setAccessible(true);
+        var cache = (java.util.Map<Long, Object>) cacheField.get(gen);
+        Class<?> type = reader.delta.getDeclaringClass(); var constructor = type.getDeclaredConstructor(); constructor.setAccessible(true);
+        var key = CellGenerator.class.getDeclaredMethod("tileKey", int.class, int.class); key.setAccessible(true);
+        var sizeField = CellGenerator.class.getDeclaredField("ERODE_TILE_SIZE"); sizeField.setAccessible(true); int size = sizeField.getInt(null);
+        var borderField = CellGenerator.class.getDeclaredField("ERODE_TILE_BORDER"); borderField.setAccessible(true); int border = borderField.getInt(null);
+        chk(gen.peekErosionDeltaE(-48, 48).isEmpty() && gen.erosionTileCacheSize() == 0,
+                "冷窥探不生成侵蚀tile，保持非阻塞契约", "generated");
+        for (int boundary : new int[]{-48, 0, 48}) {
+            cache.clear();
+            for (int ix = -2; ix <= 1; ix++) for (int iz = -2; iz <= 1; iz++) {
+                int cx = boundary + ix * reader.center, cz = boundary + iz * reader.center;
+                Object tile = constructor.newInstance(); float[][] values = new float[size][size];
+                for (float[] row : values) java.util.Arrays.fill(row, 10 + ix * 3 + iz * 5);
+                reader.delta.set(tile, values); reader.ox.setInt(tile, cx - border); reader.oz.setInt(tile, cz - border);
+                cache.put(((Number) key.invoke(null, cx, cz)).longValue(), tile);
+            }
+            double interior = boundary + reader.center / 2.0, expectedCorner = 6;
+            boolean sides = true, corners = true, band = true;
+            for (int axis = 0; axis < 2; axis++) {
+                double expected = axis == 0 ? 8.5 : 7.5;
+                for (int owner : new int[]{boundary - reader.center, boundary}) {
+                    int cx = axis == 0 ? owner : boundary, cz = axis == 1 ? owner : boundary;
+                    Object tile = cache.get(((Number) key.invoke(null, cx, cz)).longValue());
+                    double value = ((Number) reader.blend.invoke(gen, tile, axis == 0 ? (double) boundary : interior,
+                            axis == 1 ? (double) boundary : interior, cx, cz, false)).doubleValue();
+                    sides &= value == expected;
+                }
+                for (double eps : new double[]{1e-3, 1e-6, 1e-8}) for (int side : new int[]{-1, 1}) {
+                    double x = axis == 0 ? boundary + side * eps : interior, z = axis == 1 ? boundary + side * eps : interior;
+                    sides &= Math.abs(reader.inspect(gen, x, z).actual() - expected) <= 10 * eps * eps + 1e-14;
+                }
+            }
+            for (int cx : new int[]{boundary - reader.center, boundary}) for (int cz : new int[]{boundary - reader.center, boundary}) {
+                Object tile = cache.get(((Number) key.invoke(null, cx, cz)).longValue());
+                corners &= ((Number) reader.blend.invoke(gen, tile, (double) boundary, (double) boundary, cx, cz, false)).doubleValue() == expectedCorner;
+            }
+            for (int sx : new int[]{-1, 1}) for (int sz : new int[]{-1, 1}) {
+                double value = reader.inspect(gen, boundary + sx * 1e-6, boundary + sz * 1e-6).actual();
+                corners &= Math.abs(value - expectedCorner) < 1e-12;
+            }
+            for (int axis = 0; axis < 2; axis++) for (double local : new double[]{reader.width, reader.center - reader.width, reader.center / 2.0}) {
+                double x = boundary + (axis == 0 ? local : reader.center / 2.0);
+                double z = boundary + (axis == 1 ? local : reader.center / 2.0);
+                band &= reader.inspect(gen, x, z).actual() == 10;
+            }
+            int count = cache.size(); var p = gen.peekErosionDeltaE(boundary, boundary);
+            chk(sides, "四向真实混合边界50/50且两侧收敛 boundary=" + boundary, "side mismatch");
+            chk(corners, "四象限真实混合角点四tile各1/4 boundary=" + boundary, "corner mismatch");
+            chk(band, "混合带外/带起点只取本tile（不移动边界） boundary=" + boundary, "band mismatch");
+            chk(p.isPresent() && p.getAsDouble() == expectedCorner && cache.size() == count,
+                    "热窥探复用同一角点公式且不生成tile boundary=" + boundary, "peek mismatch");
+        }
+    }
+
+    private static void secErosionBlend(long seed) throws Exception {
+        log("\n=== [erosion-blend] G5 actual tile fields/weights; G6 real carved columns; diagnostic only ===");
+        var reader = new BlendInspector(); blendSynthetic(reader);
+        var fresh = newGen(TP, seed);
+        Path out = OUT.resolve("erosion-blend-" + System.currentTimeMillis()); Files.createDirectories(out);
+        var csv = new StringBuilder("case,epsilonWu,side,wuX,wuZ,actualDelta,rebuiltDelta,height,weights\n");
+        double hs = TP.horizontalScale();
+        double[][] cases = {{-913 / hs, 480 / hs, 0, 1}, {-681 / hs, 480 / hs, 0, 1}, {-665 / hs, 480 / hs, 0, 1},
+                {-240, -216.25, 1, 0}, {-240, 240, 1, 1}, {0, 0, 1, 1}};
+        for (int id = cases.length - 1; id >= 0; id--) for (int side : new int[]{-1, 1})
+            reader.inspect(fresh, cases[id][0] + side * 1e-8 * cases[id][2], cases[id][1] + side * 1e-8 * cases[id][3]);
+        int observed = 0;
+        for (int id = 0; id < cases.length; id++) {
+            double[] point = cases[id]; double lastJump = 0;
+            for (double eps : new double[]{1e-3, 1e-6, 1e-8}) {
+                double[] values = new double[2];
+                for (int side : new int[]{1, -1}) {
+                    double x = point[0] + side * eps * point[2], z = point[1] + side * eps * point[3];
+                    var p = reader.inspect(GEN, x, z); var q = reader.inspect(fresh, x, z);
+                    chk(Math.abs(p.actual() - p.rebuilt()) < 1e-18, "两侧贡献重建 case=" + id + " eps=" + eps + " side=" + side,
+                            "actual=" + p.actual() + " rebuilt=" + p.rebuilt());
+                    chk(Double.doubleToRawLongBits(p.actual()) == Double.doubleToRawLongBits(q.actual())
+                                    && Double.doubleToRawLongBits(p.actual()) == Double.doubleToRawLongBits(GEN.erosionDeltaE(x, z)),
+                            "独立冷生成/直接生产blend逐位一致 case=" + id + " eps=" + eps + " side=" + side, "mismatch");
+                    values[side == -1 ? 0 : 1] = GEN.erodedHeight(x, z);
+                    csv.append(id).append(',').append(eps).append(',').append(side).append(',').append(x).append(',').append(z).append(',')
+                            .append(p.actual()).append(',').append(p.rebuilt()).append(',').append(GEN.erodedHeight(x, z)).append(',').append(p.weights()).append('\n');
+                    if (eps == 1e-8) log("G5 TILE_PARTS case=" + id + " side=" + side + " actual=" + p.actual() + " parts=" + p.weights());
+                }
+                lastJump = values[1] - values[0];
+                log("G5 EPSILON_HEIGHT case=" + id + " epsWu=" + eps + " delta=" + lastJump);
+            }
+            chk(Math.abs(lastJump) < 1e-6, "真实边界 epsilon 缩小时不残留原阶跃 case=" + id, "jump=" + lastJump);
+            if (Math.abs(lastJump) > 1e-4) observed++;
+        }
+        chk(observed == 0, "原现场/负坐标/角点无原尺度的混合阶跃（不代表完整水文通过）", "observed=" + observed);
+        Files.writeString(out.resolve("tile-parts.csv"), csv.toString());
+        renderBlendProfiles(out);
+        Files.writeString(out.resolve("manifest.txt"), "Actual private tile/blend/sample methods read via reflection; symmetric half-weight production blend, schema77.\n"
+                + "G5 weights reconstruction + independent generator bits. G6 integer columns only: no fractional water interpolation.\n" + LOG);
+        // #region agent log: G5/G6 bounded tile seam reproduction
+        Files.writeString(Path.of("..", "debug-agent.log").toAbsolutePath(), LOG.toString(), java.nio.file.StandardOpenOption.APPEND);
+        // #endregion
+        log("EROSION_BLEND_DIR=" + out.toAbsolutePath());
+    }
+
+    private static HydrologyBlockCarvedColumn blendColumn(int x, int z) {
+        int cx = Math.floorDiv(x, 16), cz = Math.floorDiv(z, 16);
+        return PROV.columnsFor(cx, cz, sampleChunk(GEN, cx, cz)).stream()
+                .filter(c -> c.blockX() == x && c.blockZ() == z).findFirst().orElseThrow();
+    }
+
+    private static void renderBlendProfiles(Path out) throws Exception {
+        var image = new java.awt.image.BufferedImage(1200, 690, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var g = image.createGraphics(); g.setColor(java.awt.Color.WHITE); g.fillRect(0, 0, 1200, 690);
+        g.setColor(java.awt.Color.BLACK); g.drawString("G5 TILE SEAM / BLACK RAW ERODED BED / ORANGE CARVED BED / CYAN REAL WET SURFACE", 20, 20);
+        g.drawString("Fractional black samples are diagnostics, NOT placed blocks. Water at integer columns only. SYMMETRIC BLEND / SCHEMA77.", 20, 40);
+        var rows = new StringBuilder("x,z,erodedBed,carvedGround,waterSurface,fillWater,lakePlan,wet\n");
+        int panel = 0;
+        for (int x : new int[]{-913, -681, -665}) {
+            int left = 60 + panel * 390, top = 100; double lo = Double.POSITIVE_INFINITY, hi = Double.NEGATIVE_INFINITY;
+            double[] heights = new double[769]; var columns = new ArrayList<HydrologyBlockCarvedColumn>();
+            for (int i = 0; i < heights.length; i++) {
+                heights[i] = GEN.erodedHeight(x / TP.horizontalScale(), (474 + i / 64.0) / TP.horizontalScale());
+                lo = Math.min(lo, heights[i]); hi = Math.max(hi, heights[i]);
+            }
+            for (int z = 474; z <= 486; z++) {
+                var c = blendColumn(x, z); columns.add(c); lo = Math.min(lo, c.carvedGroundY()); hi = Math.max(hi, c.carvedGroundY());
+                boolean wet = c.fillWater() && c.waterSurfaceY() > c.carvedGroundY();
+                if (wet) hi = Math.max(hi, c.waterSurfaceY());
+                rows.append(x).append(',').append(z).append(',').append(bed(x, z)).append(',').append(c.carvedGroundY()).append(',')
+                        .append(c.waterSurfaceY()).append(',').append(c.fillWater()).append(',').append(c.lakePlan()).append(',').append(wet).append('\n');
+                log("G6 PRODUCTION_COLUMN x=" + x + " z=" + z + " raw=" + bed(x, z) + " carved=" + c.carvedGroundY()
+                        + " surface=" + c.waterSurfaceY() + " fill=" + c.fillWater() + " lake=" + c.lakePlan() + " wet=" + wet);
+            }
+            double span = Math.max(0.1, hi - lo); lo -= span * 0.1; span *= 1.2;
+            g.setColor(java.awt.Color.BLACK); g.drawString("x=" + x + " z474..486", left, 75);
+            g.drawString(String.format(java.util.Locale.ROOT, "Y %.4f .. %.4f", lo, lo + span), left, 92);
+            g.setColor(java.awt.Color.LIGHT_GRAY); g.drawRect(left, top, 330, 500); g.drawLine(left + 165, top, left + 165, top + 500);
+            for (int i = 1; i < heights.length; i++) {
+                g.setColor(java.awt.Color.BLACK); g.drawLine(left + (i - 1) * 330 / 768, top + 500 - (int) ((heights[i - 1] - lo) * 500 / span),
+                        left + i * 330 / 768, top + 500 - (int) ((heights[i] - lo) * 500 / span));
+            }
+            for (int i = 0; i < columns.size(); i++) {
+                var c = columns.get(i); int px = left + i * 330 / 12;
+                g.setColor(java.awt.Color.ORANGE); g.fillOval(px - 3, top + 500 - (int) ((c.carvedGroundY() - lo) * 500 / span) - 3, 6, 6);
+                if (c.fillWater() && c.waterSurfaceY() > c.carvedGroundY()) {
+                    g.setColor(java.awt.Color.CYAN); g.fillRect(px - 4, top + 500 - (int) ((c.waterSurfaceY() - lo) * 500 / span) - 3, 8, 6);
+                }
+            }
+            g.setColor(java.awt.Color.BLACK); g.drawString("474                       480 tile seam                   486", left - 15, 620); panel++;
+        }
+        g.dispose(); javax.imageio.ImageIO.write(image, "png", out.resolve("profiles.png").toFile());
+        Files.writeString(out.resolve("production-columns.csv"), rows.toString());
+    }
+
+    private static void renderBasinOverview(SharedBlockDrainage.BasinRelations relations,
+            SharedBlockDrainage.BasinBudgetRanges ranges, List<SharedBlockDrainage.DirectionTransfer> transfers,
+            SharedBlockDrainage.Channels channels) throws Exception {
+        int cx = -768, cz = 512, radius = 256;
+        Path out = OUT.resolve("basin-overview-" + System.currentTimeMillis()); Files.createDirectories(out);
+        var mask = HierarchicalComparisonView.sampleAll(GEN, PROV, cx, cz, radius);
+        chk(mask.failCount == 0, "盆地整域概览来自生产列且无采样失败", "fail=" + mask.failCount);
+        var raw = HierarchicalComparisonView.render(mask, GEN);
+        writeLocalImage(out.resolve("production.png"), raw, cx, cz, radius, "PRODUCTION WATER / UNCHANGED");
+        renderDirectionTransfers(out, raw, cx, cz, radius, relations, transfers);
+        renderChannels(out, raw, cx, cz, radius, channels);
+        var g = raw.createGraphics();
+        for (int i = 0; i < relations.basins().size(); i++) {
+            var basin = relations.basins().get(i);
+            var members = new java.util.HashSet<>(basin.catchment());
+            g.setColor(i == 0 ? java.awt.Color.GREEN : java.awt.Color.MAGENTA);
+            for (var c : members) {
+                boolean rim = false;
+                for (int[] d : new int[][]{{-1, 0}, {0, -1}, {0, 1}, {1, 0}})
+                    rim |= !members.contains(new SharedBoundaryDrainage.WorldCell(c.x() + d[0], c.z() + d[1]));
+                if (rim) g.fillRect(c.x() - cx + radius, c.z() - cz + radius, 1, 1);
+            }
+            g.setColor(java.awt.Color.ORANGE);
+            for (var c : basin.storage()) g.fillRect(c.x() - cx + radius, c.z() - cz + radius, 1, 1);
+            g.setColor(java.awt.Color.YELLOW);
+            for (var shore : basin.lowestShores()) for (var c : shore.downstream().path())
+                g.fillRect(c.x() - cx + radius, c.z() - cz + radius, 1, 1);
+        }
+        g.dispose(); writeLocalImage(out.resolve("catchments.png"), raw, cx, cz, radius,
+                "GREEN/MAGENTA = LOCAL CATCHMENT RIMS / ORANGE = STORAGE / YELLOW = DESCENT / NOT WATER");
+        var labels = raw.createGraphics(); labels.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 10));
+        for (int i = 0; i < ranges.basins().size(); i++) {
+            var budget = ranges.basins().get(i); int x = budget.sink().x() - cx + radius, z = budget.sink().z() - cz + radius;
+            String label = String.format(java.util.Locale.ROOT, "B%d FULL Q=[%.3f,+INF] MODEL ONLY", i, budget.conditionalRelease().lower());
+            int labelWidth = labels.getFontMetrics().stringWidth(label) + 3;
+            int lx = Math.max(0, Math.min(raw.getWidth() - labelWidth, x - 100)), lz = Math.max(12, z - 10);
+            labels.setColor(java.awt.Color.BLACK); labels.fillRect(lx, lz - 10, labelWidth, 13);
+            labels.setColor(java.awt.Color.WHITE); labels.drawString(label, lx + 1, lz);
+        }
+        labels.dispose(); writeLocalImage(out.resolve("budget-ranges.png"), raw, cx, cz, radius,
+                "FIXED FULL MODEL / NONNEGATIVE EXTERNAL INPUT / Q BOUNDS NOT ACTUAL WATER OR CERTIFIED FLOW");
+        Files.writeString(out.resolve("manifest.txt"), "513x513 raw data area, displayed x3. Fixed diagnostic patch, not canonical radius700.\n"
+                + "Current provider water unchanged. Rims are local membership, not global runoff authority.\n" + LOG);
+        log("BASIN_OVERVIEW_DIR=" + out.toAbsolutePath());
+    }
+
+    private static void renderDirectionTransfers(Path out, java.awt.image.BufferedImage production,
+            int cx, int cz, int radius, SharedBlockDrainage.BasinRelations relations,
+            List<SharedBlockDrainage.DirectionTransfer> transfers) throws Exception {
+        var image = new java.awt.image.BufferedImage(production.getWidth(), production.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var g = image.createGraphics(); g.drawImage(production, 0, 0, null);
+        g.setColor(java.awt.Color.GRAY);
+        for (int x = Math.floorDiv(cx - radius, hp().tract()) * hp().tract(); x <= cx + radius; x += hp().tract())
+            g.drawLine(x - cx + radius, 0, x - cx + radius, image.getHeight() - 1);
+        for (int z = Math.floorDiv(cz - radius, hp().tract()) * hp().tract(); z <= cz + radius; z += hp().tract())
+            g.drawLine(0, z - cz + radius, image.getWidth() - 1, z - cz + radius);
+        var owner = new HashMap<SharedBoundaryDrainage.WorldCell, Integer>();
+        for (int i = 0; i < relations.basins().size(); i++)
+            for (var cell : relations.basins().get(i).catchment()) owner.put(cell, i);
+        for (var t : transfers) {
+            int basin = owner.getOrDefault(t.terminal(), -1);
+            g.setColor(basin == 0 ? java.awt.Color.GREEN : basin == 1 ? java.awt.Color.MAGENTA
+                    : t.end() == SharedBlockDrainage.DirectionEnd.OCEAN_CANDIDATE ? java.awt.Color.BLUE
+                    : t.end() == SharedBlockDrainage.DirectionEnd.UNKNOWN_FRAME ? java.awt.Color.RED : java.awt.Color.ORANGE);
+            g.drawLine(t.from().x() - cx + radius, t.from().z() - cz + radius,
+                    t.to().x() - cx + radius, t.to().z() - cz + radius);
+        }
+        g.dispose(); writeLocalImage(out.resolve("direction-transfers.png"), image, cx, cz, radius,
+                "SURFACE EDGES NOT RIVERS / GREEN B0 / MAGENTA B1 / BLUE SEA CANDIDATE / RED UNKNOWN / ORANGE OTHER SINK");
+        Files.copy(OUT.resolve("direction-transfers.csv"), out.resolve("direction-transfers.csv"));
+    }
+
+    private static void renderChannels(Path out, java.awt.image.BufferedImage production,
+            int cx, int cz, int radius, SharedBlockDrainage.Channels channels) throws Exception {
+        var image = new java.awt.image.BufferedImage(production.getWidth(), production.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var g = image.createGraphics(); g.drawImage(production, 0, 0, null);
+        for (var edge : channels.edges(hp().tract())) {
+            g.setColor(edge.inputPending() ? java.awt.Color.ORANGE : java.awt.Color.YELLOW);
+            var a = edge.id().from(); var b = edge.id().to();
+            g.drawLine(a.x() - cx + radius, a.z() - cz + radius, b.x() - cx + radius, b.z() - cz + radius);
+        }
+        g.dispose(); writeLocalImage(out.resolve("selected-channels.png"), image, cx, cz, radius,
+                "FIXED GRAPH AREA SELECTION / YELLOW LOCAL / ORANGE INPUT PENDING / NOT GENERATED WATER / BASIN RELEASE NOT INJECTED");
+        var csv = new StringBuilder("fromX,fromZ,toX,toZ,tract,localAreaBlocks,inputPending\n");
+        for (var edge : channels.edges(hp().tract())) {
+            var id = edge.id();
+            csv.append(id.from().x()).append(',').append(id.from().z()).append(',').append(id.to().x()).append(',')
+                    .append(id.to().z()).append(',').append(id.tract()).append(',').append(edge.contributingBlocks())
+                    .append(',').append(edge.inputPending()).append('\n');
+        }
+        Files.writeString(out.resolve("selected-channel-edges.csv"), csv.toString());
+    }
+
+    private static void auditSinkProduction(SharedBlockDrainage.LocalBasin basin) {
+        int x = basin.sink().x(), z = basin.sink().z();
+        var pipe = PROV.pipeForProbe(x, z);
+        int ox = Math.floorDiv(x, hp().tract()) * hp().tract() + hp().tract() / 2 - hp().fineRadius();
+        int oz = Math.floorDiv(z, hp().tract()) * hp().tract() + hp().tract() / 2 - hp().fineRadius();
+        int k = Math.floorDiv(x - ox, pipe.cellBlocks()) * pipe.nz() + Math.floorDiv(z - oz, pipe.cellBlocks());
+        int id = LakeWaterBalance.basinOf(pipe.lakeResult(), k);
+        var decision = PROV.sharedLakeDecision(x, z);
+        double bed = GEN.erodedHeight(x / TP.horizontalScale(), z / TP.horizontalScale());
+        double sill = basin.lowestShores().isEmpty() ? Double.NaN : basin.lowestShores().get(0).sill();
+        log("SINK_DEPTH realBed=" + bed + " blockSill=" + sill + " blockDepth=" + (sill - bed)
+                + " coarseDepth=" + (pipe.level()[k] - pipe.bed()[k]) + " minVisibleDepth=" + LakeWaterBalance.MIN_VISIBLE_DEPTH);
+        auditCoarsePotential(pipe, k);
+        log("SINK_PRODUCTION point=" + x + "," + z + " ownerBasin=" + id + " ownerLake=" + pipe.lake()[k]
+                + " coarseBed=" + pipe.bed()[k] + " ownerSurface=" + pipe.waterSurfaceAt(k) + " shared=" + decision);
+        if (id >= 0) log("SINK_OWNER_BALANCE=" + pipe.lakeResult().basins().get(id));
+        if (decision.controlled()) {
+            var shared = PROV.domainForProbe(decision.key()); var p = shared.pipeForProbe();
+            int b = LakeWaterBalance.basinOf(p.lakeResult(), shared.cellAt(x, z));
+            log("SINK_SHARED_BASIN=" + b + " balance=" + (b < 0 ? "none" : p.lakeResult().basins().get(b)));
+        }
+        Map<Long, List<HydrologyBlockCarvedColumn>> chunks = new HashMap<>();
+        Map<Integer, Integer> ownerIds = new java.util.TreeMap<>(); int lakes = 0, wet = 0;
+        for (var c : basin.storage()) {
+            // All sampled storage must be in the same owner pipe before comparing identities.
+            if (Math.floorDiv(c.x(), hp().tract()) == Math.floorDiv(x, hp().tract())
+                    && Math.floorDiv(c.z(), hp().tract()) == Math.floorDiv(z, hp().tract())) {
+                int cell = Math.floorDiv(c.x() - ox, pipe.cellBlocks()) * pipe.nz() + Math.floorDiv(c.z() - oz, pipe.cellBlocks());
+                ownerIds.merge(LakeWaterBalance.basinOf(pipe.lakeResult(), cell), 1, Integer::sum);
+            }
+            int cx = Math.floorDiv(c.x(), 16), cz = Math.floorDiv(c.z(), 16);
+            var cols = chunks.computeIfAbsent(((long) cx << 32) ^ (cz & 0xffffffffL),
+                    key -> PROV.columnsFor(cx, cz, sampleChunk(GEN, cx, cz)));
+            for (var col : cols) if (col.blockX() == c.x() && col.blockZ() == c.z()) {
+                if (col.lakePlan()) lakes++;
+                if (col.fillWater() && col.waterSurfaceY() > col.carvedGroundY()) wet++;
+            }
+        }
+        log("SINK_STORAGE_PRODUCTION ownerIds=" + ownerIds + " lakeCols=" + lakes + " wetCols=" + wet + "/" + basin.storage().size());
+    }
+
+    private static void auditCoarsePotential(HydrologyPipeline.Result pipe, int start) {
+        var seen = new java.util.HashSet<Integer>(); var queue = new java.util.ArrayDeque<Integer>();
+        boolean potential = !pipe.sea()[start] && pipe.resolved()[start]
+                && pipe.level()[start] - pipe.bed()[start] > 1e-6;
+        if (potential) { seen.add(start); queue.add(start); }
+        double sill = Double.NEGATIVE_INFINITY, lowest = Double.POSITIVE_INFINITY;
+        int published = 0;
+        while (!queue.isEmpty()) {
+            int k = queue.remove(); sill = Math.max(sill, pipe.level()[k]); lowest = Math.min(lowest, pipe.bed()[k]);
+            if (LakeWaterBalance.basinOf(pipe.lakeResult(), k) >= 0) published++;
+            for (int[] dir : new int[][]{{-1, 0}, {0, -1}, {0, 1}, {1, 0}}) {
+                int x = k / pipe.nz() + dir[0], z = k % pipe.nz() + dir[1];
+                if (x < 0 || z < 0 || x >= pipe.nx() || z >= pipe.nz()) continue;
+                int p = x * pipe.nz() + z;
+                if (!pipe.sea()[p] && pipe.resolved()[p] && pipe.level()[p] - pipe.bed()[p] > 1e-6
+                        && seen.add(p)) queue.add(p);
+            }
+        }
+        double depth = sill - lowest;
+        log("SINK_COARSE_POTENTIAL cells=" + seen.size() + " sill=" + sill + " lowest=" + lowest
+                + " maxDepth=" + depth + " publishedCells=" + published + " resolved=" + pipe.resolved()[start]);
+        chk(potential && depth > 0 && depth < LakeWaterBalance.MIN_VISIBLE_DEPTH && published == 0,
+                "整粗格潜盆已识别但最深不足可见门槛（非粗格漏盆/已有湖）", "depth=" + depth + " published=" + published);
+    }
+
+    private static void auditSinkPair(List<SharedBlockDrainage.LocalBasin> basins) {
+        var larger = basins.get(0); var smaller = basins.get(1);
+        if (larger.lowestShores().size() != 1 || smaller.lowestShores().size() != 1) {
+            chk(false, "两盆成对关系非空且出口单一（不强选平局）", "missing or ambiguous shores"); return;
+        }
+        var a = larger.lowestShores().get(0); var b = smaller.lowestShores().get(0);
+        var end = b.downstream().path().get(b.downstream().path().size() - 1);
+        var catchment = new java.util.HashSet<>(larger.catchment());
+        int overlap = 0; for (var c : smaller.catchment()) if (catchment.contains(c)) overlap++;
+        boolean returns = a.downstream().path().stream().anyMatch(smaller.catchment()::contains);
+        log("SINK_PAIR smallerSill=" + b.sill() + " largerSill=" + a.sill() + " mapsToLarger=" + end.equals(larger.sink())
+                + " overlapCatchment=" + overlap + " returnToSmaller=" + returns
+                + " netOutflow=UNKNOWN (volume/catchment size is not a runoff or overflow certificate)");
+        chk(end.equals(larger.sink()) && b.sill() > a.sill() && overlap == 0 && !returns,
+                "真实小盆→大盆方向、鞍口下降与成员单归属（几何证据非水量）", "invalid pair");
+        Path out = OUT.resolve("sink-chain-view-" + System.currentTimeMillis());
+        try {
+            Files.createDirectories(out);
+            int cx = -620, cz = 630, radius = 112;
+            var mask = HierarchicalComparisonView.sampleAll(GEN, PROV, cx, cz, radius);
+            chk(mask.failCount == 0, "两盆链图取生产列无失败", "fail=" + mask.failCount);
+            var raw = HierarchicalComparisonView.render(mask, GEN);
+            writeLocalImage(out.resolve("production.png"), raw, cx, cz, radius, "PRODUCTION WATER / UNCHANGED");
+            var g = raw.createGraphics(); g.setColor(java.awt.Color.ORANGE);
+            for (var basin : basins) for (var c : basin.storage()) g.fillRect(c.x() - cx + radius, c.z() - cz + radius, 1, 1);
+            g.setColor(java.awt.Color.YELLOW);
+            for (var basin : basins) for (var s : basin.lowestShores()) {
+                for (var c : s.downstream().path()) g.fillRect(c.x() - cx + radius, c.z() - cz + radius, 1, 1);
+                g.setColor(java.awt.Color.RED); g.drawOval(s.inner().x() - cx + radius - 2, s.inner().z() - cz + radius - 2, 4, 4);
+                g.setColor(java.awt.Color.YELLOW);
+            }
+            g.dispose(); writeLocalImage(out.resolve("chain.png"), raw, cx, cz, radius, "ORANGE = STORAGE / YELLOW = DESCENT / NO OUTFLOW CLAIM");
+            Files.writeString(out.resolve("manifest.txt"), "provider water unchanged; geometric small basin -> large basin -> ocean candidate; volume NOT flux\n" + LOG);
+            log("SINK_CHAIN_VIEW_DIR=" + out.toAbsolutePath());
+        } catch (Exception ex) { chk(false, "两盆链图写入", ex.toString()); }
+        chk(false, "生产推广需要盆体水量/出口原子权威（当前未实现，不以几何链PASS替代）", "WATER_BUDGET_PENDING");
+    }
+
+    private static void renderSink(SharedBlockDrainage.LocalBasin basin) throws Exception {
+        int cx = basin.sink().x(), cz = basin.sink().z(), radius = 48;
+        Path dir = OUT.resolve("sink-view-" + cx + "-" + cz + "-" + System.currentTimeMillis()); Files.createDirectories(dir);
+        var mask = HierarchicalComparisonView.sampleAll(GEN, PROV, cx, cz, radius);
+        chk(mask.failCount == 0, "洼地底图取生产列无失败", "fail=" + mask.failCount);
+        var raw = HierarchicalComparisonView.render(mask, GEN);
+        writeLocalImage(dir.resolve("production.png"), raw, cx, cz, radius, "PRODUCTION WATER / UNCHANGED");
+        var g = raw.createGraphics(); g.setColor(java.awt.Color.ORANGE);
+        for (var c : basin.storage()) g.fillRect(c.x() - cx + radius, c.z() - cz + radius, 1, 1);
+        g.setColor(java.awt.Color.YELLOW);
+        for (var s : basin.lowestShores()) {
+            for (var c : s.downstream().path()) g.fillRect(c.x() - cx + radius, c.z() - cz + radius, 1, 1);
+            g.setColor(java.awt.Color.RED); g.drawOval(s.inner().x() - cx + radius - 2, s.inner().z() - cz + radius - 2, 4, 4);
+            g.setColor(java.awt.Color.YELLOW);
+        }
+        g.dispose(); writeLocalImage(dir.resolve("basin.png"), raw, cx, cz, radius, "ORANGE = STORAGE / YELLOW = SHORE DESCENT / NOT WATER");
+        Files.writeString(dir.resolve("manifest.txt"), "provider columnsFor water unchanged; diagnostic local catchment/storage NOT published lake membership\n" + LOG);
+        log("SINK_VIEW_DIR=" + dir.toAbsolutePath());
+    }
+
+    private static void secDirectionView() throws Exception {
+        log("\n=== [direction-view] 真实方块方向层，生产水不变 ===");
+        double hs = TP.horizontalScale();
+        WindowOutlets.Terrain terrain = (x, z) -> GEN.erodedHeight(x / hs, z / hs);
+        java.util.function.BiPredicate<Integer, Integer> ocean = (x, z) -> GEN.sample(x / hs, z / hs).terrainType.isOcean();
+        long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+        var a = SharedBlockDrainage.buildAt(-768, 512, 256, 4, TP.seaLevel(), terrain, ocean, false);
+        var b = SharedBlockDrainage.buildAt(-256, 512, 256, 4, TP.seaLevel(), terrain, ocean, true);
+        var da = SharedBlockDrainage.direction(a, false);
+        var whole = SharedBlockDrainage.combine(List.of(a, b)); var direction = SharedBlockDrainage.direction(whole, false);
+        chk(direction.sameDirection(SharedBlockDrainage.direction(whole, true)), "真实方向逆序全数组一致", "different");
+        int checked = 0, mismatch = 0;
+        for (int x = -1024; x <= -516; x += 4) for (int z = 260; z <= 764; z += 4) {
+            var local = da.at(x, z); var combined = direction.at(x, z);
+            if (local.state() == SharedBlockDrainage.DirectionEnd.UNKNOWN_FRAME) continue;
+            checked++; if (!local.equals(combined)) mismatch++;
+        }
+        log("DIRECTION_SCOPE checked=" + checked + " mismatches=" + mismatch);
+        chk(checked > 0 && mismatch == 0, "完整组件方向不随同覆盖扩展改变（待决不伪装一致）", "mismatch=" + mismatch);
+        chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "方向层零邻fine求解", "increased");
+        var traces = new ArrayList<SharedBlockDrainage.DirectionTrace>();
+        for (int x : new int[]{-712, -648, -580}) {
+            var trace = direction.trace(x, 504); traces.add(trace);
+            log("DIRECTION_SCENE x=" + x + " end=" + trace.end() + " nodes=" + trace.path().size()
+                    + " flatEdges=" + trace.flatEdges() + " maxRise=" + trace.maxBedRise()
+                    + " terminal=" + trace.path().get(trace.path().size() - 1));
+            chk(continuous(trace.path()) && trace.maxBedRise() == 0, "真实方向通路四邻连续/床面非升 x=" + x, trace.toString());
+        }
+        renderDirection(traces);
+        directionCoverage(terrain, ocean);
+        chk(traces.stream().allMatch(t -> t.end() == SharedBlockDrainage.DirectionEnd.OCEAN_CANDIDATE),
+                "三现场方向链抵达已知海候选（洼地/未知不宽松通过）", traces.stream().map(SharedBlockDrainage.DirectionTrace::end).toList().toString());
+        log("NOT VERIFIED: 海候选不是全球海证书；BASIN_PENDING不是闭流湖；方向不等于水面或已生成河道。");
+        Files.writeString(OUT.resolve("direction.txt"), LOG.toString());
+    }
+
+    private static void directionCoverage(WindowOutlets.Terrain terrain,
+            java.util.function.BiPredicate<Integer, Integer> ocean) {
+        Map<SharedBoundaryDrainage.Key, List<ProductionDrainageAudit.Crossing>> groups = new java.util.LinkedHashMap<>();
+        for (int[] r : new int[][]{{-2, 0}, {-1, 0}, {-1, -1}, {0, -1}}) {
+            var snapshot = PROV.drainageForProbe(r[0], r[1]);
+            for (var event : snapshot.crossings()) {
+                if (!event.upstream().equals(snapshot.region())) continue;
+                double along = event.axis() == 0 ? event.point().z() : event.point().x();
+                var key = new SharedBoundaryDrainage.Key(event.axis(), event.boundary(), (int) Math.floor(along / hp().tract()));
+                groups.computeIfAbsent(key, k -> new ArrayList<>()).add(event);
+            }
+        }
+        int events = 0, matched = 0, sea = 0;
+        Map<SharedBlockDrainage.DirectionEnd, Integer> ends = new java.util.EnumMap<>(SharedBlockDrainage.DirectionEnd.class);
+        for (var group : groups.entrySet()) {
+            long fine0 = HierarchicalHydrology.Diag.FINE_SOLVES.get();
+            var d = SharedBlockDrainage.build(group.getKey(), hp().tract(), hp().fineRadius(), hp().step(), TP.seaLevel(), terrain, ocean);
+            var direction = SharedBlockDrainage.direction(d, false);
+            chk(fine0 == HierarchicalHydrology.Diag.FINE_SOLVES.get(), "全过界方向零邻fine " + group.getKey(), "increased");
+            for (var event : group.getValue()) {
+                int x = (int) Math.round(event.point().x() - 2 * hp().step() * event.tangent().x());
+                int z = (int) Math.round(event.point().z() - 2 * hp().step() * event.tangent().z());
+                var trace = direction.trace(x, z);
+                boolean hit = blockPathCrossings(event.segment(), trace.path()).stream().anyMatch(c -> c.axis() == event.axis()
+                        && c.boundary() == event.boundary() && c.upstream().equals(event.upstream()) && c.downstream().equals(event.downstream()));
+                events++; if (hit) matched++; if (trace.end() == SharedBlockDrainage.DirectionEnd.OCEAN_CANDIDATE) sea++;
+                ends.merge(trace.end(), 1, Integer::sum);
+                chk(continuous(trace.path()) && trace.maxBedRise() == 0, "全过界真实下降连续", trace.end().toString());
+                log("DIRECTION_EVENT=" + event + " matched=" + hit + " end=" + trace.end() + " nodes=" + trace.path().size()
+                        + " terminal=" + trace.path().get(trace.path().size() - 1));
+            }
+        }
+        log("DIRECTION_COVERAGE events=" + events + " matched=" + matched + " oceanCandidates=" + sea + " terminals=" + ends);
+        chk(events > 0 && matched == events, "方向层覆盖全部旧实际过界（不删河凑PASS）", "matched=" + matched + "/" + events);
+        chk(events > 0 && sea == events, "全部方向链有海候选接续（洼地/未知保留FAIL，仍非生命周期认证）", "sea=" + sea + "/" + events);
+    }
+
+    private static void renderDirection(List<SharedBlockDrainage.DirectionTrace> traces) throws Exception {
+        int cx = -650, cz = 512, radius = 96;
+        Path dir = OUT.resolve("direction-view-" + System.currentTimeMillis()); Files.createDirectories(dir);
+        var mask = HierarchicalComparisonView.sampleAll(GEN, PROV, cx, cz, radius);
+        chk(mask.failCount == 0, "方向对照底图来自生产列且无失败", "fail=" + mask.failCount);
+        var raw = HierarchicalComparisonView.render(mask, GEN);
+        writeLocalImage(dir.resolve("production.png"), raw, cx, cz, radius, "PRODUCTION WATER / UNCHANGED");
+        var g = raw.createGraphics();
+        for (var trace : traces) {
+            g.setColor(java.awt.Color.YELLOW);
+            for (var c : trace.path()) g.fillRect(c.x() - cx + radius, c.z() - cz + radius, 1, 1);
+            var end = trace.path().get(trace.path().size() - 1);
+            g.setColor(java.awt.Color.RED); g.drawOval(end.x() - cx + radius - 2, end.z() - cz + radius - 2, 4, 4);
+        }
+        g.dispose(); writeLocalImage(dir.resolve("direction.png"), raw, cx, cz, radius, "YELLOW = TERRAIN DIRECTION / RED = TERMINAL / NOT WATER");
+        Files.writeString(dir.resolve("manifest.txt"), "provider columnsFor actual water unchanged; center(-650,512)radius96 1pixel/block x3\n"
+                + "yellow=full-four-neighbour terrain direction, NOT generated water; red=pending or candidate terminal\n" + LOG);
+        log("DIRECTION_VIEW_DIR=" + dir.toAbsolutePath());
     }
 
     private static void summarySynthetic() throws Exception {

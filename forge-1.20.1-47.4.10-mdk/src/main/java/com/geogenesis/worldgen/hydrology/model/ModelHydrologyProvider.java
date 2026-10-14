@@ -1281,6 +1281,10 @@ public final class ModelHydrologyProvider {
         return regionFor(blockX, blockZ).pipe();
     }
 
+    List<RiverCenterlines.Reach> reachesForProbe(int blockX, int blockZ) {
+        return List.copyOf(regionFor(blockX, blockZ).centerline().reaches);
+    }
+
     /**
      * 从 {@link DeterministicSkeleton} 构建 region 骨架。
      *
