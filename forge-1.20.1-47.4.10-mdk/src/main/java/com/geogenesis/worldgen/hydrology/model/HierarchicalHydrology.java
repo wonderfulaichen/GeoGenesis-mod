@@ -954,12 +954,14 @@ public final class HierarchicalHydrology {
             sb.append(String.format("  边框未验证格=%d(%s) 成环格=%d ⇒ 二者皆不得当连通 PASS%n",
                     BOUNDARY_UNVERIFIED_CELLS.get(),
                     pct(BOUNDARY_UNVERIFIED_CELLS.get(), CHANNEL_CELLS.get()), LOOP_CELLS.get()));
-            sb.append("  骨架网络过滤: 生产默认=").append(skeletonFilterDefault())
+            if (LAST_SKELETON_FILTER_DROPPED < 0)
+                sb.append("  旧窗口骨架网络过滤: 未观测/不适用；世界边完整性须核对实际发布图，不作连通 PASS\n");
+            else sb.append("  骨架网络过滤: 生产默认=").append(skeletonFilterDefault())
                     .append(" 实验最近一次构建=").append(LAST_SKELETON_FILTER_ENABLED)
                     .append("(删=").append(LAST_SKELETON_FILTER_DROPPED).append("条)")
-                    .append(LAST_SKELETON_FILTER_ENABLED
+                    .append(LAST_SKELETON_FILTER_DROPPED > 0
                             ? " ⇒ 几何已被删，不得作连通 PASS\n"
-                            : " ⇒ 几何完整（孤立已如实计入）\n");
+                            : " ⇒ 未观测到网络过滤删除；不等于连通已证明\n");
             sb.append("  孤立根样本: ").append(join(ORPHAN_SAMPLES)).append('\n');
             sb.append(sharedReport());
             sb.append("  共享域样本: ").append(join(SHARED_SAMPLES)).append('\n');

@@ -84,6 +84,40 @@ final class ProductionDrainageAudit {
                 List.copyOf(crossings), List.copyOf(chains), sk.networkFilterEnabled);
     }
 
+    static Snapshot captureWorld(WorldDrainage.Result world, HydrologyPipeline.Result p, int ox, int oz, int tract,
+                                 WorldDrainage drainage, List<RiverCenterlines.Reach> published) {
+        var region = new Region(Math.floorDiv(ox + p.nx() / 2 * p.cellBlocks(), tract),
+                Math.floorDiv(oz + p.nz() / 2 * p.cellBlocks(), tract));
+        var starts = new HashMap<WorldDrainage.Point, Integer>();
+        for (int i = 0; i < world.edges().size(); i++) starts.put(world.edges().get(i).from(), i);
+        var segments = new ArrayList<Segment>(); var crossings = new ArrayList<Crossing>();
+        for (int i = 0; i < world.edges().size(); i++) {
+            var edge = world.edges().get(i); var a = edge.from(); var b = edge.to();
+            var id = new SegmentId(region, i); int next = starts.getOrDefault(b, -1);
+            boolean external = Math.floorDiv(b.x(), tract) != region.x() || Math.floorDiv(b.z(), tract) != region.z();
+            var end = next >= 0 ? DeterministicSkeleton.End.JOIN : DeterministicSkeleton.End.UNRESOLVED;
+            if (next < 0 && drainage.at(b).state() == WorldDrainage.State.BELOW_SEA)
+                end = DeterministicSkeleton.End.MOUTH_SEA;
+            if (external && next < 0 && drainage.at(b).state() == WorldDrainage.State.DOWNHILL)
+                end = DeterministicSkeleton.End.DEAD_END;
+            var from = new Point(a.x(), a.z()); var to = new Point(b.x(), b.z());
+            segments.add(new Segment(id, from, to, end, false, next, -1, external,
+                    Math.hypot(b.x() - a.x(), b.z() - a.z())));
+            crossings.addAll(crossings(id, from, to, tract));
+        }
+        var chains = new ArrayList<Chain>(); var lakes = lakeNodes(p, ox, oz, Map.of());
+        for (var segment : segments) chains.add(follow(segment.id(), segments, lakes));
+        boolean filtered = published.size() != world.edges().size();
+        for (int i = 0; !filtered && i < published.size(); i++) {
+            var edge = world.edges().get(i);
+            int a = (edge.from().x() - ox) / p.cellBlocks() * p.nz() + (edge.from().z() - oz) / p.cellBlocks();
+            int b = (edge.to().x() - ox) / p.cellBlocks() * p.nz() + (edge.to().z() - oz) / p.cellBlocks();
+            var cells = published.get(i).cell;
+            filtered = cells.length != 2 || cells[0] != a || cells[1] != b;
+        }
+        return new Snapshot(region, List.copyOf(segments), lakes, List.copyOf(crossings), List.copyOf(chains), filtered);
+    }
+
     private static List<Lake> lakeNodes(HydrologyPipeline.Result p, int ox, int oz,
                                         Map<Integer, Integer> starts) {
         List<Lake> result = new ArrayList<>();

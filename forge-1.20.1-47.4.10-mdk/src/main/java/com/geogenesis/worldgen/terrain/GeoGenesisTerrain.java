@@ -293,6 +293,8 @@ public final class GeoGenesisTerrain {
     /** 河流开关（配置 riverEnabled） */
     public boolean riversEnabled() { return riversEnabled; }
 
+    public boolean usesModelPipeline() { return hydrologyExperiment.usesModelPipeline(); }
+
     /**
      * 采样世界高度。
      */

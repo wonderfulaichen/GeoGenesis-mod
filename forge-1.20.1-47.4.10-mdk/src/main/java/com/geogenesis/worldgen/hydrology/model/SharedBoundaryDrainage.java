@@ -123,6 +123,382 @@ final class SharedBoundaryDrainage {
         }
     }
 
+    enum ClaimState { AGREED_EDGE, DIRECTION_CONFLICT, INPUT_PENDING }
+    record DirectionClaim(ProductionDrainageAudit.Region owner, WorldCell point, WorldCell next) { }
+    record ClaimAgreement(WorldCell point, WorldCell next, ClaimState state, List<DirectionClaim> claims) {
+        ClaimAgreement { claims = List.copyOf(claims); }
+    }
+
+    /** Diagnostic equality only: agreement between local windows is NOT global direction or a water certificate. */
+    static List<ClaimAgreement> agreeClaims(List<ProductionDrainageAudit.Region> owners, List<DirectionClaim> claims) {
+        if (owners.size() != 2 || owners.get(0).equals(owners.get(1)) || claims.size() > 131072)
+            throw new IllegalArgumentException("two distinct owners and bounded claims required");
+        var order = java.util.Comparator.comparingInt(WorldCell::x).thenComparingInt(WorldCell::z);
+        var grouped = new java.util.TreeMap<WorldCell, java.util.Map<ProductionDrainageAudit.Region, DirectionClaim>>(order);
+        for (var claim : claims) {
+            checkClaimCancellation();
+            if (!owners.contains(claim.owner)) throw new IllegalArgumentException("foreign claim owner");
+            var at = grouped.computeIfAbsent(claim.point, ignored -> new java.util.HashMap<>());
+            var old = at.putIfAbsent(claim.owner, claim);
+            if (old != null && !old.equals(claim)) throw new IllegalArgumentException("same owner has conflicting declarations");
+        }
+        var ownerOrder = java.util.Comparator.comparingInt(ProductionDrainageAudit.Region::x)
+                .thenComparingInt(ProductionDrainageAudit.Region::z);
+        var result = new ArrayList<ClaimAgreement>();
+        for (var entry : grouped.entrySet()) {
+            checkClaimCancellation();
+            var values = entry.getValue().values().stream().sorted(java.util.Comparator.comparing(DirectionClaim::owner, ownerOrder)).toList();
+            WorldCell next = values.get(0).next;
+            ClaimState state = values.size() != 2 || next == null || values.get(1).next == null ? ClaimState.INPUT_PENDING
+                    : next.equals(values.get(1).next) ? ClaimState.AGREED_EDGE : ClaimState.DIRECTION_CONFLICT;
+            result.add(new ClaimAgreement(entry.getKey(), state == ClaimState.AGREED_EDGE ? next : null, state, values));
+        }
+        assertClaimAcyclic(result);
+        return List.copyOf(result);
+    }
+
+    private static void assertClaimAcyclic(List<ClaimAgreement> agreements) {
+        var edges = new java.util.HashMap<WorldCell, WorldCell>();
+        for (var a : agreements) if (a.state == ClaimState.AGREED_EDGE) edges.put(a.point, a.next);
+        var done = new java.util.HashSet<WorldCell>();
+        for (var start : edges.keySet()) {
+            checkClaimCancellation(); var seen = new java.util.HashSet<WorldCell>(); WorldCell point = start;
+            while (point != null && !done.contains(point)) {
+                checkClaimCancellation();
+                if (!seen.add(point)) throw new IllegalArgumentException("agreed direction cycle");
+                point = edges.get(point);
+            }
+            done.addAll(seen);
+        }
+    }
+
+    private static void checkClaimCancellation() {
+        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("direction claims");
+    }
+
+    record WorldPolicy(long seed, long config, int version, int tract, int step) {
+        WorldPolicy {
+            if (version < 1 || tract < 1 || step < 1 || tract % step != 0)
+                throw new IllegalArgumentException("aligned world policy");
+        }
+    }
+    enum WorldState { NEXT, OCEAN_CANDIDATE, BASIN_PENDING, INPUT_PENDING, OUTSIDE_INPUT, CYCLE, NONDESCENDING, LIMIT }
+    record WorldNode(WorldCell point, WorldCell next, double bed, double level, WorldState state) { }
+    record WorldPiece(WorldPolicy policy, ProductionDrainageAudit.Region owner, java.util.Map<WorldCell, WorldNode> nodes) {
+        WorldPiece {
+            nodes = java.util.Map.copyOf(nodes);
+            if (nodes.size() > 131072) throw new IllegalArgumentException("bounded world piece");
+            for (var e : nodes.entrySet()) {
+                if (!e.getKey().equals(e.getValue().point) || !worldOwner(policy, e.getKey()).equals(owner)
+                        || Math.floorMod(e.getKey().x, policy.step) != 0 || Math.floorMod(e.getKey().z, policy.step) != 0
+                        || !Double.isFinite(e.getValue().bed) || !Double.isFinite(e.getValue().level)
+                        || (e.getValue().state != WorldState.NEXT && e.getValue().state != WorldState.OCEAN_CANDIDATE
+                            && e.getValue().state != WorldState.BASIN_PENDING && e.getValue().state != WorldState.INPUT_PENDING)
+                        || (e.getValue().state == WorldState.NEXT) != (e.getValue().next != null))
+                    throw new IllegalArgumentException("invalid owned world node");
+            }
+        }
+    }
+    record WorldSource(WorldCell identity, WorldCell entry) { }
+    record WorldOrigin(WorldCell identity, double localDischarge, double threshold) { }
+    record OriginPolicy(int radius, double threshold, boolean valleyTrough) {
+        OriginPolicy {
+            if (radius < 1 || !Double.isFinite(threshold) || threshold < 0)
+                throw new IllegalArgumentException("fixed origin policy");
+        }
+    }
+    record WorldProduct(WorldPiece piece, OriginPolicy admission, List<WorldOrigin> origins) {
+        WorldProduct {
+            origins = List.copyOf(origins);
+            if (origins.size() > 4096) throw new IllegalArgumentException("bounded world origins");
+            var seen = new java.util.HashSet<WorldCell>();
+            for (var origin : origins) {
+                var node = piece.nodes.get(origin.identity);
+                if (!seen.add(origin.identity) || node == null || node.state != WorldState.NEXT && node.state != WorldState.BASIN_PENDING
+                        || !Double.isFinite(origin.localDischarge) || !Double.isFinite(origin.threshold)
+                        || origin.threshold != admission.threshold || origin.localDischarge < origin.threshold)
+                    throw new IllegalArgumentException("invalid owned world origin");
+            }
+            origins = origins.stream().sorted(java.util.Comparator.comparingInt((WorldOrigin o) -> o.identity.x)
+                    .thenComparingInt(o -> o.identity.z)).toList();
+        }
+    }
+    record WorldEdge(WorldCell from, WorldCell to) { }
+    record WorldRoute(java.util.List<WorldCell> path, WorldState state) {
+        WorldRoute { path = java.util.List.copyOf(path); }
+    }
+    record WorldProjection(java.util.Map<WorldSource, WorldRoute> routes,
+                           java.util.Map<WorldEdge, java.util.Set<WorldCell>> support) {
+        WorldProjection {
+            routes = java.util.Map.copyOf(routes);
+            var copy = new java.util.HashMap<WorldEdge, java.util.Set<WorldCell>>();
+            support.forEach((edge, sources) -> copy.put(edge, java.util.Set.copyOf(sources)));
+            support = java.util.Map.copyOf(copy);
+        }
+    }
+
+    private static ProductionDrainageAudit.Region worldOwner(WorldPolicy policy, WorldCell point) {
+        return new ProductionDrainageAudit.Region(Math.floorDiv(point.x, policy.tract), Math.floorDiv(point.z, policy.tract));
+    }
+
+    /** Source-free frozen owner result. Raw parent is a candidate, not a certified physical river. */
+    static WorldPiece worldPiece(WorldPolicy policy, ProductionDrainageAudit.Region owner,
+                                 int ox, int oz, HydrologyPipeline.Result p) {
+        checkClaimCancellation();
+        if (p.cellBlocks() != policy.step || p.bed().length > 131072)
+            throw new IllegalArgumentException("world piece sampling policy");
+        var nodes = new java.util.HashMap<WorldCell, WorldNode>();
+        for (int k = 0; k < p.bed().length; k++) {
+            checkClaimCancellation();
+            WorldCell point = planePoint(ox, oz, policy.step, p.nz(), k);
+            if (!worldOwner(policy, point).equals(owner)) continue;
+            int parent = p.parent()[k]; WorldCell next = null; WorldState state;
+            if (!p.resolved()[k]) state = WorldState.INPUT_PENDING;
+            else if (p.sea()[k]) state = WorldState.OCEAN_CANDIDATE;
+            else if (p.lake()[k] || p.bed()[k] < p.level()[k]) state = WorldState.BASIN_PENDING;
+            else if (parent < 0 || parent >= p.bed().length || parent == k) state = WorldState.INPUT_PENDING;
+            else { state = WorldState.NEXT; next = planePoint(ox, oz, policy.step, p.nz(), parent); }
+            nodes.put(point, new WorldNode(point, next, p.bed()[k], p.level()[k], state));
+        }
+        return new WorldPiece(policy, owner, nodes);
+    }
+
+    /** Fixed-owner local admission, not a global discharge certificate; no selected traces are consumed. */
+    static WorldProduct worldProduct(WorldPolicy policy, ProductionDrainageAudit.Region owner,
+                                     int ox, int oz, HydrologyPipeline.Result p, DeterministicSkeleton.Params params) {
+        checkClaimCancellation();
+        long spanX = (long) (p.nx() - 1) * policy.step, spanZ = (long) (p.nz() - 1) * policy.step;
+        if (spanX != spanZ || spanX < policy.tract || 2L * ox + spanX != 2L * owner.x() * policy.tract + policy.tract
+                || 2L * oz + spanZ != 2L * owner.z() * policy.tract + policy.tract)
+            throw new IllegalArgumentException("fixed owner-centered origin context required");
+        var piece = worldPiece(policy, owner, ox, oz, p);
+        if (!Double.isFinite(params.minSourceAccum()) || params.minSourceAccum() < 0)
+            throw new IllegalArgumentException("finite nonnegative origin threshold");
+        var origins = new ArrayList<WorldOrigin>();
+        for (int k : DeterministicSkeleton.collectSources(p.level(), p.parent(), p.resolved(), p.lake(), p.sea(),
+                p.discharge(), p.nx(), p.nz(), params)) {
+            checkClaimCancellation();
+            var at = planePoint(ox, oz, policy.step, p.nz(), k);
+            if (worldOwner(policy, at).equals(owner)) origins.add(new WorldOrigin(at, p.discharge()[k], params.minSourceAccum()));
+        }
+        return new WorldProduct(piece, new OriginPolicy((int) (spanX / 2), params.minSourceAccum(), DeterministicSkeleton.VALLEY_TROUGH), origins);
+    }
+
+    static WorldProjection projectProducts(WorldPolicy policy, List<WorldProduct> products, int maxNodes) {
+        checkClaimCancellation();
+        if (products.size() > 4) throw new IllegalArgumentException("bounded world products");
+        var owners = new java.util.HashMap<ProductionDrainageAudit.Region, WorldProduct>();
+        for (var product : products) {
+            checkClaimCancellation();
+            if (!products.get(0).admission.equals(product.admission)) throw new IllegalArgumentException("different origin policy");
+            var old = owners.putIfAbsent(product.piece.owner, product);
+            if (old != null && !old.equals(product)) throw new IllegalArgumentException("conflicting owner source product");
+        }
+        var sources = new ArrayList<WorldSource>();
+        for (var product : owners.values()) for (var origin : product.origins) {
+            if (sources.size() == 4096) throw new IllegalArgumentException("world origin budget");
+            sources.add(new WorldSource(origin.identity, origin.identity));
+        }
+        return projectWorld(policy, products.stream().map(WorldProduct::piece).toList(), sources, maxNodes);
+    }
+
+    /** Explicit finite pieces only: never fetch a missing owner or reinterpret it as dry/sea. */
+    static WorldProjection projectWorld(WorldPolicy policy, List<WorldPiece> pieces, List<WorldSource> sources, int maxNodes) {
+        checkClaimCancellation();
+        if (sources.size() > 4096 || maxNodes < 1 || maxNodes > 4096)
+            throw new IllegalArgumentException("bounded world projection");
+        var owners = worldOwners(policy, pieces);
+        return projectNodes(policy, at -> {
+            var piece = owners.get(worldOwner(policy, at)); return piece == null ? null : piece.nodes.get(at);
+        }, sources, maxNodes);
+    }
+
+    static WorldProjection projectConditional(SharedBoundaryTransfer.ConditionalRouting routing, List<WorldSource> sources, int maxNodes) {
+        return projectNodes(routing.policy(), routing.nodes()::get, sources, maxNodes);
+    }
+
+    private static WorldProjection projectNodes(WorldPolicy policy, java.util.function.Function<WorldCell, WorldNode> nodes,
+                                                List<WorldSource> sources, int maxNodes) {
+        checkClaimCancellation();
+        if (sources.size() > 4096 || maxNodes < 1 || maxNodes > 4096) throw new IllegalArgumentException("bounded world projection");
+        var routes = new java.util.HashMap<WorldSource, WorldRoute>();
+        var entries = new java.util.HashMap<WorldCell, WorldCell>();
+        var support = new java.util.HashMap<WorldEdge, java.util.Set<WorldCell>>(); int pairs = 0;
+        for (var source : sources) {
+            checkClaimCancellation();
+            var entry = entries.putIfAbsent(source.identity, source.entry);
+            if (entry != null && !entry.equals(source.entry)) throw new IllegalArgumentException("conflicting source entry");
+            if (routes.containsKey(source)) continue;
+            var route = followWorld(policy, nodes, source.entry, maxNodes); routes.put(source, route);
+            if (route.state == WorldState.CYCLE || route.state == WorldState.NONDESCENDING) continue;
+            for (int i = 1; i < route.path.size(); i++) {
+                var edge = new WorldEdge(route.path.get(i - 1), route.path.get(i));
+                if (support.computeIfAbsent(edge, ignored -> new java.util.HashSet<>()).add(source.identity) && ++pairs > 1048576)
+                    throw new IllegalArgumentException("world source-edge budget");
+            }
+        }
+        return new WorldProjection(routes, support);
+    }
+
+    private static WorldRoute followWorld(WorldPolicy policy, java.util.function.Function<WorldCell, WorldNode> nodes,
+                                          WorldCell start, int maxNodes) {
+        var path = new ArrayList<WorldCell>(); var seen = new java.util.HashSet<WorldCell>(); WorldCell at = start;
+        WorldNode previous = null;
+        while (true) {
+            checkClaimCancellation();
+            if (!seen.add(at)) return new WorldRoute(path, WorldState.CYCLE);
+            var node = nodes.apply(at);
+            if (node == null) return new WorldRoute(path, WorldState.OUTSIDE_INPUT);
+            if (path.size() == maxNodes) return new WorldRoute(path, WorldState.LIMIT);
+            path.add(at);
+            if (previous != null && node.level > previous.level + 1e-9) return new WorldRoute(path, WorldState.NONDESCENDING);
+            if (node.state != WorldState.NEXT) return new WorldRoute(path, node.state);
+            long dx = (long) node.next.x - at.x, dz = (long) node.next.z - at.z;
+            if (Math.abs(dx) > policy.step || Math.abs(dz) > policy.step || dx % policy.step != 0 || dz % policy.step != 0
+                    || (dx == 0 && dz == 0)) throw new IllegalArgumentException("nonlocal world successor");
+            previous = node; at = node.next;
+        }
+    }
+
+    private static java.util.Map<ProductionDrainageAudit.Region, WorldPiece> worldOwners(WorldPolicy policy, List<WorldPiece> pieces) {
+        checkClaimCancellation();
+        if (pieces.size() > 4) throw new IllegalArgumentException("bounded world pieces");
+        var owners = new java.util.HashMap<ProductionDrainageAudit.Region, WorldPiece>(); int nodes = 0;
+        for (var piece : pieces) {
+            checkClaimCancellation();
+            if (!policy.equals(piece.policy)) throw new IllegalArgumentException("different world policy");
+            var old = owners.putIfAbsent(piece.owner, piece);
+            if (old != null && !old.equals(piece)) throw new IllegalArgumentException("conflicting owner product");
+            if (old == null) nodes += piece.nodes.size();
+        }
+        if (nodes > 131072) throw new IllegalArgumentException("world projection node budget");
+        return owners;
+    }
+
+    enum WorldRimState { HIGHER, LOWER_CANDIDATE, OCEAN_CANDIDATE, INPUT_PENDING, OUTSIDE_INPUT }
+    record WorldRim(WorldEdge edge, WorldRimState state) { }
+    record WorldPlane(WorldPolicy policy, WorldCell anchor, double level, PlaneState state,
+                      List<WorldCell> members, List<WorldRim> rim, int filledCells) {
+        WorldPlane { members = List.copyOf(members); rim = List.copyOf(rim); }
+    }
+
+    /** Finite equal-level grid component and ALL rim edges; neither a physical basin nor an outflow certificate. */
+    static WorldPlane worldPlane(WorldPolicy policy, List<WorldPiece> pieces, WorldCell start) {
+        var owners = worldOwners(policy, pieces);
+        var piece = owners.get(worldOwner(policy, start)); var first = piece == null ? null : piece.nodes.get(start);
+        if (first == null || first.state != WorldState.BASIN_PENDING)
+            throw new IllegalArgumentException("known pending basin entry required");
+        double level = first.level; var seen = new java.util.HashSet<WorldCell>();
+        var queue = new java.util.ArrayDeque<WorldCell>(); var rim = new ArrayList<WorldRim>();
+        seen.add(start); queue.add(start); int filled = 0; boolean pending = false;
+        while (!queue.isEmpty()) {
+            checkClaimCancellation(); var at = queue.remove(); var node = owners.get(worldOwner(policy, at)).nodes.get(at);
+            if (node.bed > level) throw new IllegalArgumentException("invalid equal-level bed");
+            if (node.bed < level) filled++;
+            for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                var next = new WorldCell(Math.addExact(at.x, Math.multiplyExact(dx, policy.step)),
+                        Math.addExact(at.z, Math.multiplyExact(dz, policy.step)));
+                var otherPiece = owners.get(worldOwner(policy, next)); var other = otherPiece == null ? null : otherPiece.nodes.get(next);
+                WorldRimState state;
+                if (other == null) state = WorldRimState.OUTSIDE_INPUT;
+                else if (other.state == WorldState.INPUT_PENDING) state = WorldRimState.INPUT_PENDING;
+                else if (other.state == WorldState.OCEAN_CANDIDATE) state = WorldRimState.OCEAN_CANDIDATE;
+                else if (other.level == level) {
+                    if (seen.add(next)) queue.add(next);
+                    continue;
+                } else state = other.level < level ? WorldRimState.LOWER_CANDIDATE : WorldRimState.HIGHER;
+                pending |= state == WorldRimState.OUTSIDE_INPUT || state == WorldRimState.INPUT_PENDING;
+                rim.add(new WorldRim(new WorldEdge(at, next), state));
+            }
+        }
+        var order = java.util.Comparator.comparingInt(WorldCell::x).thenComparingInt(WorldCell::z);
+        var members = seen.stream().sorted(order).toList();
+        rim.sort(java.util.Comparator.comparing((WorldRim r) -> r.edge.from, order).thenComparing(r -> r.edge.to, order));
+        return new WorldPlane(policy, members.get(0), level, pending ? PlaneState.INPUT_PENDING : PlaneState.LOCAL_COMPLETE,
+                members, rim, filled);
+    }
+
+    enum SlopeState { DESCENT_CANDIDATE, BASIN_PENDING, INPUT_PENDING }
+    record BedSample(WorldCell point, double bed) { }
+    record SlopeStep(WorldCell point, WorldCell next, double bed, double nextBed, SlopeState state) { }
+
+    /** Complete nine-point bed stencil only; not a filled-basin, ocean, subcell or river-selection certificate. */
+    static SlopeStep drySlope(WorldCell point, int step, List<BedSample> samples) {
+        checkClaimCancellation();
+        if (step <= 0 || samples.size() > 9) throw new IllegalArgumentException("bounded slope stencil");
+        var beds = new java.util.HashMap<WorldCell, Double>();
+        for (var sample : samples) {
+            checkClaimCancellation();
+            long dx = (long) sample.point.x - point.x, dz = (long) sample.point.z - point.z;
+            if (!Double.isFinite(sample.bed) || Math.abs(dx) > step || Math.abs(dz) > step
+                    || dx % step != 0 || dz % step != 0) throw new IllegalArgumentException("invalid bed sample");
+            var old = beds.putIfAbsent(sample.point, sample.bed);
+            if (old != null && Double.doubleToLongBits(old) != Double.doubleToLongBits(sample.bed))
+                throw new IllegalArgumentException("contradictory bed samples");
+        }
+        double bed = beds.getOrDefault(point, Double.NaN);
+        if (beds.size() != 9) return new SlopeStep(point, null, bed, Double.NaN, SlopeState.INPUT_PENDING);
+        WorldCell next = null; double best = 0, nextBed = bed;
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+            if (dx == 0 && dz == 0) continue;
+            var candidate = new WorldCell(Math.addExact(point.x, Math.multiplyExact(dx, step)),
+                    Math.addExact(point.z, Math.multiplyExact(dz, step)));
+            double height = beds.get(candidate), slope = (bed - height) / (step * Math.hypot(dx, dz));
+            if (slope > best) { best = slope; next = candidate; nextBed = height; }
+        }
+        return new SlopeStep(point, next, bed, nextBed, next == null ? SlopeState.BASIN_PENDING : SlopeState.DESCENT_CANDIDATE);
+    }
+
+    enum PlaneState { LOCAL_COMPLETE, INPUT_PENDING }
+    record PlaneExit(WorldCell inner, WorldCell outer, double innerBed, double outerBed, double outerLevel) { }
+    record EscapePlane(WorldCell identity, double level, PlaneState state, List<WorldCell> members,
+                       List<PlaneExit> exits, List<WorldCell> framePorts, int filledCells, int unresolvedCells, boolean touchesFrame) {
+        EscapePlane { members = List.copyOf(members); exits = List.copyOf(exits); framePorts = List.copyOf(framePorts); }
+    }
+
+    /** Local equal-escape-level component, including dry rim cells; never an actual lake or global outlet certificate. */
+    static EscapePlane escapePlane(int ox, int oz, int step, int nx, int nz, double[] bed, double[] level,
+                                   boolean[] resolved, int start) {
+        checkClaimCancellation();
+        if (step <= 0 || nx < 1 || nz < 1 || (long) nx * nz > 131072 || start < 0 || start >= nx * nz
+                || bed.length != nx * nz || level.length != bed.length || resolved.length != bed.length)
+            throw new IllegalArgumentException("bounded plane arrays");
+        double plane = level[start];
+        if (!Double.isFinite(plane)) throw new IllegalArgumentException("nonfinite escape plane");
+        var seen = new java.util.BitSet(bed.length); var queue = new java.util.ArrayDeque<Integer>();
+        var indices = new ArrayList<Integer>(); var exits = new ArrayList<PlaneExit>();
+        seen.set(start); queue.add(start); int filled = 0, unresolved = 0; boolean frame = false;
+        while (!queue.isEmpty()) {
+            checkClaimCancellation(); int k = queue.remove(); indices.add(k);
+            if (!Double.isFinite(bed[k]) || bed[k] > plane) throw new IllegalArgumentException("invalid plane bed");
+            if (bed[k] < plane) filled++; if (!resolved[k]) unresolved++;
+            int x = k / nz, z = k % nz;
+            frame |= x == 0 || z == 0 || x == nx - 1 || z == nz - 1;
+            for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0 || x + dx < 0 || z + dz < 0 || x + dx >= nx || z + dz >= nz) continue;
+                int next = (x + dx) * nz + z + dz;
+                if (!Double.isFinite(level[next]) || !Double.isFinite(bed[next]) || bed[next] > level[next])
+                    throw new IllegalArgumentException("invalid neighbor plane");
+                if (level[next] == plane) { if (!seen.get(next)) { seen.set(next); queue.add(next); } }
+                else if (level[next] < plane) exits.add(new PlaneExit(planePoint(ox, oz, step, nz, k),
+                        planePoint(ox, oz, step, nz, next), bed[k], bed[next], level[next]));
+            }
+        }
+        indices.sort(Integer::compareTo);
+        var members = indices.stream().map(k -> planePoint(ox, oz, step, nz, k)).toList();
+        var ports = indices.stream().filter(k -> k / nz == 0 || k % nz == 0 || k / nz == nx - 1 || k % nz == nz - 1)
+                .map(k -> planePoint(ox, oz, step, nz, k)).toList();
+        exits.sort(java.util.Comparator.comparingInt((PlaneExit e) -> e.inner.x).thenComparingInt(e -> e.inner.z)
+                .thenComparingInt(e -> e.outer.x).thenComparingInt(e -> e.outer.z));
+        return new EscapePlane(members.get(0), plane, frame || unresolved > 0 ? PlaneState.INPUT_PENDING : PlaneState.LOCAL_COMPLETE,
+                members, exits, ports, filled, unresolved, frame);
+    }
+
+    private static WorldCell planePoint(int ox, int oz, int step, int nz, int k) {
+        return new WorldCell(Math.addExact(ox, Math.multiplyExact(k / nz, step)), Math.addExact(oz, Math.multiplyExact(k % nz, step)));
+    }
+
     enum LocalStatus { DOWNHILL, SPILL_CANDIDATE, FLAT_CANDIDATE, SEA, BASIN_PENDING, DOMAIN_LIMIT, SELF_RETURN, MERGE_PENDING }
     record WorldCell(int x, int z) { }
     record LocalStep(WorldCell cell, WorldCell next, double bed, double downstreamBed, LocalStatus status) { }

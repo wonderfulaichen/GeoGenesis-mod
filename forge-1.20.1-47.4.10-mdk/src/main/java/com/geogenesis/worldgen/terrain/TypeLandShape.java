@@ -201,13 +201,13 @@ public final class TypeLandShape {
         double[] sharpW = new double[lands.length + 2];
         for (int i = 0; i < lands.length; i++) {
             double w = tw[lands[i].ordinal()];
-            double s = w <= 0.001 ? 0.0 : Math.pow(w, BLEND_SHARPEN);
+            double s = w <= 0.0 ? 0.0 : Math.pow(w, BLEND_SHARPEN);
             sharpW[i] = s;
             sumSharp += s;
         }
         int oi = lands.length;
-        sharpW[oi] = tw[OCEAN_ORD] <= 0.001 ? 0.0 : Math.pow(tw[OCEAN_ORD], OCEAN_SHARP);
-        sharpW[oi + 1] = tw[DEEP_OCEAN_ORD] <= 0.001 ? 0.0 : Math.pow(tw[DEEP_OCEAN_ORD], OCEAN_SHARP);
+        sharpW[oi] = tw[OCEAN_ORD] <= 0.0 ? 0.0 : Math.pow(tw[OCEAN_ORD], OCEAN_SHARP);
+        sharpW[oi + 1] = tw[DEEP_OCEAN_ORD] <= 0.0 ? 0.0 : Math.pow(tw[DEEP_OCEAN_ORD], OCEAN_SHARP);
         sumSharp += sharpW[oi] + sharpW[oi + 1];
         if (sumSharp <= 1e-6) sumSharp = 1.0; // 退化兜底（不锐化）
         double blendLo = 0.0, blendHi = 0.0;

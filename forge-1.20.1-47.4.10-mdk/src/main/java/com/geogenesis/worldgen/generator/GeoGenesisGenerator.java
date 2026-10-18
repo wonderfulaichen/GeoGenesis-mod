@@ -724,6 +724,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //   而给水文采样改 sampleWu 的首修又让河网构建期触发侵蚀 tile 冷生成
         //   （预览开窗即卡）。终版：建网无侵蚀（快），侵蚀在落块合成时叠加（生效）。
         boolean hydrologyOn = terrain.riversEnabled();
+        boolean stableWaterSurface = terrain.usesModelPipeline();
         Cell[] cells = terrain.getChunkCells(pos.x, pos.z);
         long t3 = System.nanoTime();
 
@@ -731,10 +732,11 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
-                fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell, hydrologyOn);
+                fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell, hydrologyOn, stableWaterSurface);
             }
         }
         long t4 = System.nanoTime();
+        acceptanceWaterTrace("NOISE", chunk);
 
         // ★ 2026-09-18 全流程诊断：无条件记账（既有插桩只在 >100ms 时打印 ⇒ 看不到分布）
         WGP.record(WGP.Stage.ENSURE, t1 - t0);
@@ -768,7 +770,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      */
     private void fillTerrainColumn(ChunkAccess chunk, BlockPos.MutableBlockPos mPos,
                                    int wx, int wz, Cell cell,
-                                   boolean hydrologyOn) {
+                                   boolean hydrologyOn, boolean stableWaterSurface) {
         // ★ RTF 范式（2026-08-26）：河谷已由 generateChunk 雕刻回写 cell.height（Zone1-4
         //   平滑谷），此处不再二次雕刻，仅按 waterTable 水面做灌水判定（Streams isStreamBed：
         //   雕刻后地面 < 水面 − 0.5 才灌水；岸坡/漫滩只塑形不上水）。
@@ -981,12 +983,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             } else if (y == surfaceY) {
                 state = top;                                      // 地表最顶块
             } else if (water && y <= fillTopBlock) {
-                if (y > waterTopBlock) {
-                    state = FLOWING_WATER;          // 瀑布水幕：垂直悬挂的流动水
-                } else {
-                    // 表层用流动水（方案 B 流动观感）；其余静水预填，确定性、永不断裂
-                    state = (y == waterTopBlock) ? FLOWING_WATER : WATER; // 水柱（水面以下）
-                }
+                state = waterState(stableWaterSurface,y,waterTopBlock);
             } else {
                 break;                                            // 地表/水面以上：默认 AIR，跳过
             }
@@ -1002,6 +999,12 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 chunk.setBlockState(mPos, SNOW, false);
             }
         }
+    }
+
+    private static BlockState waterState(boolean model,int y,int waterTopBlock) {
+        // 瀑布水幕不改；model普通水面用源水，避免无来源level1在原版tick中衰减。
+        if(y>waterTopBlock || (!model && y==waterTopBlock))return FLOWING_WATER;
+        return WATER;
     }
 
     // ===== 基础覆写 =====
@@ -1048,9 +1051,34 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //   而本项目的 BASIN(干旱)→desert、LAKE→swamp ⇒ 已自动获得，无需自研。
         // 地表已由 fillFromNoise 在 NOISE 阶段铺好（草/沙/砾石顶块），
         // 装饰在 FEATURES 阶段叠加，顺序正确。
+        acceptanceDecorationTrace("BEFORE_FEATURES", level, chunk);
         super.applyBiomeDecoration(level, chunk, structureManager);
+        acceptanceDecorationTrace("AFTER_FEATURES", level, chunk);
         WGP.end(WGP.Stage.DECORATE, tDec);
     }
+
+    // #region agent log: G48-D one-column phase evidence, isolated acceptance only
+    private void acceptanceDecorationTrace(String stage, WorldGenLevel level, ChunkAccess source) {
+        if (!Boolean.getBoolean("geogenesis.acceptance"))return;
+        var pos=source.getPos();
+        if (Math.abs(pos.x+37)>1 || Math.abs(pos.z-36)>1 || !level.hasChunk(-37,36))return;
+        var target=level.getChunk(-37,36,net.minecraft.world.level.chunk.ChunkStatus.EMPTY,false);
+        if (target!=null)acceptanceWaterTrace(stage+" source="+pos+" thread="+Thread.currentThread().getName(),target);
+    }
+    private void acceptanceWaterTrace(String stage, ChunkAccess chunk) {
+        if (!Boolean.getBoolean("geogenesis.acceptance") || chunk.getPos().x != -37 || chunk.getPos().z != 36)return;
+        var p = new BlockPos(-588,64,580);
+        var cell = terrain.peekChunk(-37,36);
+        String message = "G48-D stage="+stage+" state="+chunk.getBlockState(p)+" below="+chunk.getBlockState(p.below())
+                +" above="+chunk.getBlockState(p.above())+" cell="+(cell==null?"missing":cell[4*16+4].height+","+cell[4*16+4].riverSurfaceY);
+        LOGGER.info("[ACCEPT-PHASE] {}",message);
+        try {
+            java.nio.file.Files.writeString(java.nio.file.Path.of("D:/Office software/Development Project/GeoGenesis-mod/debug-agent.log"),
+                    message+System.lineSeparator(),java.nio.charset.StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE,java.nio.file.StandardOpenOption.APPEND);
+        } catch (java.io.IOException failure) { LOGGER.warn("acceptance phase log failed",failure); }
+    }
+    // #endregion
 
     @Override
     public void applyCarvers(WorldGenRegion level, long seed, RandomState random,
@@ -1094,7 +1122,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             WGP.end(WGP.Stage.CARVE, tCarve);
             return;
         }
+        acceptanceWaterTrace("BEFORE_CARVERS", chunk);
         CaveCarver.carve(chunk, cells, WORLD_MIN_Y, getSeaLevel());
+        acceptanceWaterTrace("AFTER_CARVERS", chunk);
         WGP.end(WGP.Stage.CARVE, tCarve);
     }
 

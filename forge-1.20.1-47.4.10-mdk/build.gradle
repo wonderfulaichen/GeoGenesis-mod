@@ -2707,3 +2707,64 @@ task runSharedLakeSeamProbe(type: JavaExec) {
         setArgs(probeArgs.split(' ') as List)
     }
 }
+// World-coordinate drainage contracts; explicit tasks, not automatically added to the full gate.
+task runWorldDrainageProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.WorldDrainageProbe'
+    maxHeapSize = '6g'
+}
+
+task runWorldBasinProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.WorldBasinProbe'
+    maxHeapSize = '6g'
+}
+
+task runWorldDrainageProductionProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.WorldDrainageProductionProbe'
+    maxHeapSize = '6g'
+}
+
+// Isolated real Forge client acceptance; never packaged into the production jar.
+sourceSets {
+    acceptance {
+        java.srcDirs = ['src/acceptance/java']
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += output + sourceSets.main.runtimeClasspath
+    }
+}
+minecraft {
+    runs {
+        acceptance {
+            main 'cpw.mods.bootstraplauncher.BootstrapLauncher'
+            client true
+            workingDirectory project.file('run-accept')
+            property 'forge.logging.console.level', 'info'
+            jvmArgs '-Xmx6G', '-Dgeogenesis.acceptance=true', '-Dgeogenesis.hierarchicalHydrology=true', '-Dgeogenesis.skeletonTrace=true', '-Dgeogenesis.skeletonCrossPass=true', '-Dgeogenesis.acceptance.expectModel=true', '-Dgeogenesis.acceptance.expectHier=true'
+            mods {
+                geogenesis { source sourceSets.acceptance }
+            }
+        }
+    }
+}
+tasks.register('runAcceptanceSelfCheck', JavaExec) {
+    dependsOn tasks.named('classes'), tasks.named('acceptanceClasses')
+    classpath = sourceSets.acceptance.runtimeClasspath
+    mainClass = 'com.geogenesis.acceptance.AcceptanceSelfCheck'
+}
+tasks.register('runDemandFlowProbe', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.DemandFlowProbe'
+    maxHeapSize = '6g'
+}
+tasks.register('runWorldBasinRoutingProbe', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.WorldBasinRoutingProbe'
+    maxHeapSize = '6g'
+}
+
+// Client userdev metadata is populated after project evaluation.
+gradle.projectsEvaluated {
+    minecraft.runs.acceptance.merge(minecraft.runs.client, false)
+}

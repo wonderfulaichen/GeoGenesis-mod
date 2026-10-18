@@ -171,7 +171,13 @@ public final class ModelHydrologyProvider {
                               RiverCenterlines.Result centerline,
                               SegmentIndex skeletonSeg,
                               int originX, int originZ,
-                              ProductionDrainageAudit.Snapshot drainage) { }
+                              ProductionDrainageAudit.Snapshot drainage,
+                              WorldDrainage.Result world, WorldBasinFlow.Region worldWater) {
+        RegionData(HydrologyPipeline.Result pipe, RiverCenterlines.Result centerline, SegmentIndex skeletonSeg,
+                   int originX, int originZ, ProductionDrainageAudit.Snapshot drainage) {
+            this(pipe, centerline, skeletonSeg, originX, originZ, drainage, null, null);
+        }
+    }
 
     private final CellGenerator gen;
     /** block → wu 换算（sample/sampleWu 的坐标语义是 wu，见 CellGenerator.sample javadoc）。 */
@@ -401,6 +407,7 @@ public final class ModelHydrologyProvider {
         } catch (RuntimeException | LinkageError ignored) {
             h = mix(h, 0L);     // 无 Forge 环境（探针）：不留未加载异常
         }
+        if(HIER && SKELETON_TRACE && CROSS_PASS)h=mix(h,WorldBasinFlow.POLICY_VERSION);
         return mix(h, outputStrategyFingerprint());
     }
 
@@ -1285,6 +1292,42 @@ public final class ModelHydrologyProvider {
         return List.copyOf(regionFor(blockX, blockZ).centerline().reaches);
     }
 
+    WorldDrainage.Result worldForProbe(int rx, int rz) {
+        return regionFor(rx * REGION + REGION / 2, rz * REGION + REGION / 2).world();
+    }
+
+    WorldBasinFlow.Region worldWaterForProbe(int rx,int rz) {
+        return regionFor(rx*REGION+REGION/2,rz*REGION+REGION/2).worldWater();
+    }
+
+    WorldDrainage worldDrainage() {
+        double minCells = Double.parseDouble(System.getProperty("geogenesis.channelMinCells", "150"));
+        if (!Double.isFinite(minCells) || minCells < 1 || minCells > 4096)
+            throw new IllegalArgumentException("world source threshold must be 1..4096 cells");
+        return new WorldDrainage(STEP, (int) Math.ceil(minCells), gen.params().seaLevel(),
+                (x, z) -> gen.erodedHeight(x * invHs, z * invHs));
+    }
+
+    private SkeletonRegion worldRegion(WorldDrainage.Result world, HydrologyPipeline.Result p, int ox, int oz) {
+        var polys = new ArrayList<DeterministicSkeleton.Shaped>();
+        var reaches = new ArrayList<RiverCenterlines.Reach>();
+        for (var edge : world.edges()) {
+            var a = edge.from(); var b = edge.to();
+            polys.add(new DeterministicSkeleton.Shaped(new double[]{a.x(), b.x()}, new double[]{a.z(), b.z()}));
+            int ca = (a.x() - ox) / STEP * p.nz() + (a.z() - oz) / STEP;
+            int cb = (b.x() - ox) / STEP * p.nz() + (b.z() - oz) / STEP;
+            reaches.add(new RiverCenterlines.Reach(new int[]{ca, cb}, new double[]{Double.NaN, Double.NaN},
+                    new double[]{1, 1}, new double[]{1, 1}, 0));
+        }
+        int n = p.bed().length;
+        var cl = new RiverCenterlines.Result(List.copyOf(reaches), new double[n], new double[n],
+                new double[n], new boolean[n], 0);
+        var index = SegmentIndex.buildExactNodes(polys);
+        if (index.seg.length / 8 != world.edges().size() || reaches.size() != world.edges().size())
+            throw new IllegalStateException("world edge publication lost geometry");
+        return new SkeletonRegion(cl, index, List.of(), null);
+    }
+
     /**
      * 从 {@link DeterministicSkeleton} 构建 region 骨架。
      *
@@ -1684,7 +1727,7 @@ public final class ModelHydrologyProvider {
         // ★ 跨 tract 缝共享湖域：逐 chunk 【一次】预解析候选缝域（键 ≤8/chunk），逐列只读裁决。
         //   ⚠【不设缝带门】：控制体是整个跨缝盆地足迹（可达缝两侧 ±REGION/2）；按 ±HALO 门只查缝附近
         //     会把足迹在带外的部分留给本区细窗 ⇒ 只是把墙挪 ±HALO。故每 chunk 都解析（键由世界坐标唯一导出）。
-        List<SharedLakeDomain.Domain> sharedDoms = sharedActive()
+        List<SharedLakeDomain.Domain> sharedDoms = sharedActive() && rd.worldWater()==null
                 ? resolveChunkDomains(blockX0, blockZ0) : List.of();
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
@@ -1717,7 +1760,18 @@ public final class ModelHydrologyProvider {
                 // 【正解】越界 ⇒ `continue` 跳过该邻区（不查、不 clamp）。
                 //   3×3 邻区的**有效窗口**本就有重叠（RADIUS=352 > REGION/2=256），
                 //   所以"每个方块都能被至少一个邻区覆盖"—— 不需要靠 clamp 兜底。
-                boolean isLakeBlock = p.lake()[k];
+                var worldPoint = new WorldDrainage.Point(Math.floorDiv(blockX,STEP)*STEP, Math.floorDiv(blockZ,STEP)*STEP);
+                var worldWater = rd.worldWater()==null ? null : rd.worldWater().water().get(worldPoint);
+                if(rd.worldWater()!=null) {
+                    if(worldWater==null)throw new IllegalStateException("missing world water at "+worldPoint);
+                    if(worldWater!=null && !worldWater.known())throw new IllegalStateException("unknown world water at "+worldPoint);
+                    surface=eroded;
+                }
+                boolean isLakeBlock = rd.worldWater()==null && p.lake()[k];
+                if(worldWater!=null && worldWater.known() && worldWater.basin()!=null) {
+                    isLakeBlock=eroded<worldWater.level()-0.5;
+                    if(isLakeBlock)surface=worldWater.level();
+                }
                 double half = 0, depth = 0, bestDist = Double.POSITIVE_INFINITY;
                 // ★ 本区先判（零邻区开销）
                 if (!isLakeBlock && !segIndex.isEmpty()) {
@@ -2339,7 +2393,24 @@ public final class ModelHydrologyProvider {
         RiverCenterlines.Result cl;
         SegmentIndex skelSeg = null;
         ProductionDrainageAudit.Snapshot drainage = null;
-        if (SKELETON_TRACE) {
+        WorldDrainage.Result world = null;
+        WorldBasinFlow.Region worldWater = null;
+        if (SKELETON_TRACE && CROSS_PASS) {
+            var graph = worldDrainage();
+            var routing = new WorldBasinRouting(graph, (x,z)->gen.erodedHeight(x*invHs,z*invHs), STEP, 131072);
+            var flow = new WorldBasinFlow(graph, routing, CLIMATE, STEP, 32768);
+            worldWater = flow.region(rx, rz, REGION);
+            LOGGER.info("[HYDRO-DEMAND] region ({},{}) policy={} stats={}",rx,rz,WorldBasinFlow.POLICY_VERSION,flow.stats());
+            if(worldWater.unresolved()!=0)
+                throw new IllegalStateException("world water unresolved region="+rx+","+rz+" nodes="+worldWater.unresolved());
+            world = worldWater.graph();
+            var sr = worldRegion(world, p, originX, originZ);
+            cl = sr.cl(); skelSeg = sr.seg();
+            if (Boolean.getBoolean("geogenesis.drainageAudit"))
+                drainage = ProductionDrainageAudit.captureWorld(world, p, originX, originZ, REGION, graph, cl.reaches);
+            LOGGER.info("[HYDRO-WORLD] region ({},{}) edges={} pendingBasins={} nodes={} terrainSamples={} neighborPipelines=0",
+                    rx, rz, world.edges().size(), world.pendingBasins().size(), world.sampledNodes(), world.terrainSamples());
+        } else if (SKELETON_TRACE) {
             // 接力：本区粗层主干源头（细化主干）+ 邻区粗层主干端口（续流）。
             // 两路都由【本区自己的侵蚀 parent】往里追 ⇒ 不是"只把边界换粗层"。
             List<Integer> incoming = CROSS_PASS
@@ -2361,7 +2432,7 @@ public final class ModelHydrologyProvider {
         logRegionSolved(rx, rz, p, cl, t0, originX, originZ);
         HierarchicalHydrology.Diag.fineTiming((System.nanoTime() - t0) / 1_000_000L, p.nx() * p.nx());
         lastFineMs = (System.nanoTime() - t0) / 1e6;
-        return new RegionData(p, cl, skelSeg, originX, originZ, drainage);
+        return new RegionData(p, cl, skelSeg, originX, originZ, drainage, world, worldWater);
     }
 
     /** 最近一次细层求解耗时（ms）——性能诊断（与 {@link HierarchicalHydrology.Diag#LAST_FINE_MS} 同源）。 */
@@ -2654,6 +2725,17 @@ public final class ModelHydrologyProvider {
          * {@code origin + cell·step} 换算）。半宽/深度恒定最小可见值
          * （用户方针：宽度后续议题）。</p>
          */
+        static SegmentIndex buildExactNodes(List<DeterministicSkeleton.Shaped> polys) {
+            int count=0; for(var p:polys)count+=Math.max(0,p.size()-1);
+            double[] seg=new double[count*8];var tiles=new HashMap<Long,List<Integer>>();int index=0;
+            for(var p:polys)for(int i=1;i<p.size();i++) {
+                int o=index*8;seg[o]=p.x[i-1];seg[o+1]=p.z[i-1];seg[o+2]=p.x[i];seg[o+3]=p.z[i];
+                seg[o+4]=seg[o+5]=RiverCenterlines.MIN_HALF_BLOCKS;seg[o+6]=seg[o+7]=1;
+                registerTile(tiles,index++,seg[o],seg[o+1],seg[o+2],seg[o+3]);
+            }
+            return new SegmentIndex(seg,tiles);
+        }
+
         static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys) {
             // ★★★ 2026-10-10【端点缝合 —— 治"拓扑已 JOIN、像素差 2~3 格"的孤立段】★★★
             //
