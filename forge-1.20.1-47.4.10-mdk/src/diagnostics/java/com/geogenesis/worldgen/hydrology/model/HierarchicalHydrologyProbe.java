@@ -551,6 +551,12 @@ public final class HierarchicalHydrologyProbe {
                 solved++;
                 chk('R', HierarchicalHydrology.Diag.FINE_SOLVES.get() - before == 1, "region(" + rx + "," + rz + ") 细解恰好 1 次（无邻区细解）", "Δ=" + (HierarchicalHydrology.Diag.FINE_SOLVES.get() - before));
                 reportRegion(rx, rz, ModelHydrologyProvider.lastFineValidation(), ModelHydrologyProvider.lastFineConnectivity());
+                var world = provider.worldForProbe(rx, rz);
+                if (world != null) {
+                    var reaches = provider.reachesForProbe(rx * hp.tract() + hp.tract() / 2, rz * hp.tract() + hp.tract() / 2);
+                    chk('C', !world.edges().isEmpty() && reaches.size() == world.edges().size(),
+                            "世界骨架候选边与实际发布段一一对应（不拿旧过滤统计冒充）", "edges=" + world.edges().size() + " published=" + reaches.size());
+                }
             } else if (outcome == 2) aborts++;
         }
         if (aborts == 0) chk('R', solved == regions.size(), "全部给定 region 完成求解", solved + "/" + regions.size());
@@ -635,7 +641,9 @@ public final class HierarchicalHydrologyProbe {
         chk('C', HierarchicalHydrology.Diag.CONTRACT_GAPS.get() == 0, "聚合：契约缺口=0（粗域覆盖近边界点）", "gaps=" + HierarchicalHydrology.Diag.CONTRACT_GAPS.get());
         chk('C', HierarchicalHydrology.Diag.EXTERIOR_MISSES.get() == 0, "聚合：窗外权威缺失=0", "misses=" + HierarchicalHydrology.Diag.EXTERIOR_MISSES.get());
         chk('R', HierarchicalHydrology.Diag.EXTERIOR_OVERRIDES.get() > 0, "聚合：窗外权威确实被使用（>0）⇒ 细层边界来自粗层接口", "overrides=" + HierarchicalHydrology.Diag.EXTERIOR_OVERRIDES.get());
-        if (HierarchicalHydrology.Diag.LAST_SKELETON_FILTER_DROPPED < 0) log("  ⚠ 骨架网络过滤状态【未观测】：有 region 在骨架构建前即中止 ⇒ NOT VERIFIED");
+        if (ModelHydrologyProvider.SKELETON_TRACE && ModelHydrologyProvider.CROSS_PASS)
+            log("  世界骨架不调用旧窗口网络过滤；已逐region核对实际发布边，旧过滤统计 NOT APPLICABLE");
+        else if (HierarchicalHydrology.Diag.LAST_SKELETON_FILTER_DROPPED < 0) log("  ⚠ 骨架网络过滤状态【未观测】：有 region 在骨架构建前即中止 ⇒ NOT VERIFIED");
         else {
             chk('C', !HierarchicalHydrology.Diag.LAST_SKELETON_FILTER_ENABLED, "聚合：分层构建显式关闭骨架网络过滤（不用删除掩盖失败）", "enabled=" + HierarchicalHydrology.Diag.LAST_SKELETON_FILTER_ENABLED);
             chk('C', HierarchicalHydrology.Diag.LAST_SKELETON_FILTER_DROPPED == 0, "聚合：网络过滤删链数=0（几何完整）", "dropped=" + HierarchicalHydrology.Diag.LAST_SKELETON_FILTER_DROPPED);

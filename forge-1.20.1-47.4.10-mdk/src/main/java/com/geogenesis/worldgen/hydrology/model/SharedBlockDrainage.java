@@ -12,6 +12,10 @@ import java.util.function.BiPredicate;
 final class SharedBlockDrainage {
     enum End { CERTIFIED_SEA, SEA_CANDIDATE, UNKNOWN_FRAME }
     record Capacity(double sea, double unknown) { }
+    record FirstTerminalCapacity(double declaredSea, double landUnknown) { }
+    record FirstTerminals(java.util.Map<SharedBoundaryDrainage.WorldCell, FirstTerminalCapacity> capacities) {
+        FirstTerminals { capacities = java.util.Map.copyOf(capacities); }
+    }
     record Trace(End end, double barrier, double unknownBound,
                  List<SharedBoundaryDrainage.WorldCell> path) {
         Trace { path = List.copyOf(path); }
@@ -207,6 +211,34 @@ final class SharedBlockDrainage {
             }
         }
         return result;
+    }
+
+    /** Conditional on the supplied ocean declarations: an unknown land path cannot cross an absorbing sea terminal. */
+    static FirstTerminals firstTerminals(Domain d, List<SharedBoundaryDrainage.WorldCell> queries) {
+        if (queries.size() > 128) throw new IllegalArgumentException("bounded terminal queries");
+        cancelled();
+        byte[] full = new byte[d.nodes()], land = new byte[d.nodes()];
+        boolean[] frame = exposed(d.covered, d.nx, d.nz);
+        for (int k = 0; k < d.nodes(); k++) {
+            cancelled(); if (!d.covered[k]) continue;
+            frame[k] &= !d.ocean[k];
+            for (int dir = 0; dir < DIRS.length; dir++) {
+                int x = k / d.nz + DIRS[dir][0], z = k % d.nz + DIRS[dir][1];
+                if (x < 0 || z < 0 || x >= d.nx || z >= d.nz) continue;
+                int next = x * d.nz + z; if (!d.covered[next]) continue;
+                full[k] |= (byte) (1 << dir);
+                if (!d.ocean[k] && !d.ocean[next]) land[k] |= (byte) (1 << dir);
+            }
+        }
+        // A capacity MST preserves unrestricted minimax, not minimax after removing terminal vertices.
+        var sea = flood(full, d.bed, d.nx, d.nz, d.seaLevel, d.ocean);
+        var unknown = flood(land, d.bed, d.nx, d.nz, Double.NEGATIVE_INFINITY, frame);
+        var result = new java.util.HashMap<SharedBoundaryDrainage.WorldCell, FirstTerminalCapacity>();
+        for (var at : queries) {
+            cancelled(); int k = d.index(at.x(), at.z());
+            result.put(at, new FirstTerminalCapacity(sea.barrier[k], unknown.barrier[k]));
+        }
+        return new FirstTerminals(result);
     }
 
     private static int compose(byte[] graph, double[] bed, int ox, int oz, int n, int step, boolean reverse) {

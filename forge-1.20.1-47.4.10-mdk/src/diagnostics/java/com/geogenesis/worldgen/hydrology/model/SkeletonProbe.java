@@ -48,7 +48,18 @@ public final class SkeletonProbe {
         System.out.println("=== SkeletonProbe：确定性骨架判据 ===");
         runSynthetic();
         runIncomingDiagnostics();
-        runRealTerrain();
+        runShortIncoming();
+        runSeaRollback();
+        runSeaClaims();
+        runCrossingOracle();
+        runEndpointJoin();
+        runTraceSegmentsOracle();
+        runCrossingParentOracle();
+        runFlatDetour();
+        runBasinEscape();
+        runBlockedFlatCandidate();
+        runParentForestOracle();
+        if (args.length == 0 || !args[0].equals("synthetic")) runRealTerrain();
         System.out.println(failures == 0 ? "ALL PASS" : ("FAILED: " + failures + " 项"));
         System.exit(failures == 0 ? 0 : 1);
     }
@@ -189,9 +200,9 @@ public final class SkeletonProbe {
         var counts = new java.util.TreeMap<String, Integer>();
         for (var d : on.incomingDiagnostics) counts.merge(d.status(), 1, Integer::sum);
         check(on.incomingDiagnostics.size() == incoming.size()
-                        && counts.equals(java.util.Map.of("OUT_OF_WINDOW", 1, "ACCEPTED", 1,
-                        "COVERED", 1, "LAKE", 1, "SEA", 1, "SHORT", 1, "ORPHAN_DEAD_END", 1)),
-                "incoming 七种处置逐入口完整归因", "counts=" + counts);
+                        && counts.equals(java.util.Map.of("OUT_OF_WINDOW", 1, "ACCEPTED", 2,
+                        "COVERED", 1, "LAKE", 1, "SEA", 1, "ORPHAN_DEAD_END", 1)),
+                "incoming 逐入口完整归因，合法短入湖连接被接受", "counts=" + counts);
         boolean same = off.traces.size() == on.traces.size() && off.exitSeeds.equals(on.exitSeeds)
                 && off.incomingStarts == on.incomingStarts;
         for (int i = 0; same && i < off.traces.size(); i++) {
@@ -199,6 +210,335 @@ public final class SkeletonProbe {
             same = Arrays.equals(a.cell, b.cell) && a.end == b.end && a.fromOutlet == b.fromOutlet;
         }
         check(same, "诊断开/关 trace 与出口逐位相同", "产出改变");
+    }
+
+    private static void runShortIncoming() {
+        System.out.println("--- [short-incoming] 接力连接不是独立源头 ---");
+        int n = 9, cells = n * n; var level = new double[cells]; var dis = new double[cells];
+        var parent = new int[cells]; var resolved = new boolean[cells]; var lake = new boolean[cells]; var sea = new boolean[cells];
+        Arrays.fill(parent, -1); Arrays.fill(resolved, true);
+        for (int k = 0; k < cells; k++) level[k] = 100 - k / n;
+        int start = idx(5, 4, n), end = idx(6, 4, n); parent[start] = end;
+        var params = new DeterministicSkeleton.Params(0, 0, 0, 0, 24, 0, 6, 0, 0);
+        for (boolean waterIsLake : new boolean[]{true, false}) {
+            lake[end] = waterIsLake; sea[end] = !waterIsLake;
+            var r = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis,
+                    null, n, n, params, List.of(start), null, false);
+            check(r.incomingStarts == 1 && r.traces.size() == 1 && r.traces.get(0).cell.length == 2
+                    && r.traces.get(0).end == (waterIsLake ? DeterministicSkeleton.End.MOUTH_LAKE : DeterministicSkeleton.End.MOUTH_SEA),
+                    "两格接力入" + (waterIsLake ? "湖" : "海") + "不得因独立源长度门限丢失", "traces=" + r.traces.size());
+        }
+        lake[end] = false; sea[end] = false;
+        var orphan = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis,
+                null, n, n, params, List.of(start), null, false);
+        check(orphan.traces.isEmpty(), "内部无合法终端接力仍拒绝，不创造悬河", "accepted");
+        int nearFrame = idx(7, 4, n), frame = idx(8, 4, n); parent[nearFrame] = frame;
+        var handoff = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis,
+                null, n, n, params, List.of(nearFrame), null, false);
+        check(handoff.incomingStarts == 1 && handoff.exitSeeds.size() == 1, "两格到框接力保留接口，不冒充入海", "dropped");
+        int joinStart = idx(7, 5, n); parent[joinStart] = nearFrame;
+        var joined = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis,
+                null, n, n, params, List.of(joinStart, nearFrame, joinStart), null, false);
+        check(joined.incomingStarts == 2 && joined.traces.stream().anyMatch(t -> t.end == DeterministicSkeleton.End.JOIN
+                && t.cell.length == 2), "两格接力汇入既有段保留，重复入口不重复生成", "traces=" + joined.traces.size());
+        sea[end] = true; dis[start] = 10; dis[end] = 11;
+        var sourceParams = new DeterministicSkeleton.Params(0, 1, 0, 0, 24, 0, 6, 0, 0);
+        var sourceOnly = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis,
+                null, n, n, sourceParams, List.of(), null, false);
+        check(sourceOnly.sourcesTotal > 0 && sourceOnly.traces.isEmpty(), "已达面积门限的独立短源仍受长度门限", "accepted or no source");
+        int singleFrame = idx(8, 0, n);
+        var single = DeterministicSkeleton.build(level, parent, resolved, lake, sea, new double[cells],
+                null, n, n, params, List.of(singleFrame), null, false);
+        check(single.traces.isEmpty(), "单格接口不生成零长接力段", "accepted");
+    }
+
+    private static void runSeaRollback() {
+        System.out.println("--- [sea-rollback] 被丢弃短链不得留下海格幽灵认领 ---");
+        for (int direction : new int[]{-1, 1}) for (boolean lakeTerminal : new boolean[]{false, true}) {
+            int n = 11, cells = n * n, mouth = idx(5, 5, n), shortStart = idx(5 - direction, 5, n);
+            double[] level = new double[cells], dis = new double[cells]; int[] parent = new int[cells];
+            boolean[] resolved = new boolean[cells], lake = new boolean[cells], sea = new boolean[cells];
+            Arrays.fill(level, 200); Arrays.fill(parent, -1); Arrays.fill(resolved, true);
+            lake[mouth] = lakeTerminal; sea[mouth] = !lakeTerminal; level[mouth] = 0;
+            parent[shortStart] = mouth; level[shortStart] = 10; dis[shortStart] = 100;
+            for (int j = 1; j <= 4; j++) { int k = idx(5, j, n); parent[k] = idx(5, j + 1, n); level[k] = 60 - j * 10; dis[k] = 10; }
+            var params = new DeterministicSkeleton.Params(0, 1, 2, 0, 24, 0, 4, 0, 0);
+            var aloneDis = dis.clone(); aloneDis[shortStart] = 0;
+            var alone = DeterministicSkeleton.build(level, parent, resolved, lake, sea, aloneDis, null, n, n, params, List.of(), null, false);
+            var together = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis, null, n, n, params, List.of(), null, false);
+            boolean same = alone.traces.size() == 1 && together.traces.size() == 1;
+            if (same) same = Arrays.equals(alone.traces.get(0).cell, together.traces.get(0).cell)
+                    && alone.traces.get(0).end == together.traces.get(0).end;
+            System.out.println("SEA_ROLLBACK direction=" + direction + " lake=" + lakeTerminal + " alone=" + alone.traces.size()
+                    + " withDiscarded=" + together.traces.size());
+            check(same, "短链丢弃不改后续合法入" + (lakeTerminal ? "湖" : "海") + "链 direction=" + direction, "ghost coverage changed route");
+        }
+    }
+
+    private static void runSeaClaims() {
+        try {
+            var trace = DeterministicSkeleton.class.getDeclaredMethod("traceOne", int.class, boolean.class, boolean.class,
+                    double[].class, int[].class, boolean[].class, boolean[].class, boolean[].class, boolean[].class,
+                    int.class, int.class, int.class, int[].class, int[].class, int.class, DeterministicSkeleton.Params.class,
+                    java.util.List.class, double[].class, DeterministicSkeleton.ParentForest.class, java.util.List.class);
+            trace.setAccessible(true);
+            for (boolean preclaimed : new boolean[]{false, true}) for (boolean outlet : new boolean[]{false, true}) {
+                int n = 7, cells = n * n, start = idx(3, 3, n), mouth = idx(3, 4, n);
+                double[] level = new double[cells]; int[] parent = new int[cells];
+                boolean[] resolved = new boolean[cells], lake = new boolean[cells], sea = new boolean[cells], covered = new boolean[cells];
+                Arrays.fill(level, 100); Arrays.fill(parent, -1); Arrays.fill(resolved, true);
+                parent[start] = mouth; level[mouth] = 0; sea[mouth] = true; covered[mouth] = preclaimed;
+                var before = covered.clone();
+                var params = new DeterministicSkeleton.Params(0, 1, 0, 0, 24, 0, 6, 0, 0);
+                var result = (DeterministicSkeleton.Trace) trace.invoke(null, start, outlet, false, level, parent, resolved,
+                        lake, sea, covered, n, n, 0, new int[cells], new int[cells], 1, params, List.of(), null, null, null);
+                boolean correct = outlet ? result != null && covered[start] && covered[mouth]
+                        : result == null && Arrays.equals(before, covered);
+                check(correct, "海口认领事务 outlet=" + outlet + " preclaimed=" + preclaimed, "rollback released existing claim or kept new claim");
+            }
+        } catch (ReflectiveOperationException e) { throw new IllegalStateException(e); }
+    }
+
+    private static void runCrossingOracle() {
+        try {
+            var method = DeterministicSkeleton.class.getDeclaredMethod("segmentsCross", int.class, int.class, int.class, int.class,
+                    int.class, int.class, int.class, int.class); method.setAccessible(true);
+            int mismatches = 0, cases = 0, positives = 0;
+            for (int ax = -1; ax <= 1; ax++) for (int az = -1; az <= 1; az++)
+                for (int bx = -1; bx <= 1; bx++) for (int bz = -1; bz <= 1; bz++)
+                    for (int cx = -1; cx <= 1; cx++) for (int cz = -1; cz <= 1; cz++)
+                        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+                            int ux = bx - ax, uz = bz - az, vx = dx - cx, vz = dz - cz;
+                            int determinant = ux * vz - uz * vx;
+                            double t = determinant == 0 ? -1 : ((cx - ax) * vz - (cz - az) * vx) / (double) determinant;
+                            double s = determinant == 0 ? -1 : ((cx - ax) * uz - (cz - az) * ux) / (double) determinant;
+                            boolean expected = t > 0 && t < 1 && s > 0 && s < 1;
+                            boolean actual = (boolean) method.invoke(null, ax, az, bx, bz, cx, cz, dx, dz);
+                            if (expected) positives++; if (actual != expected) mismatches++; cases++;
+                        }
+            System.out.println("CROSS_ORACLE cases=" + cases + " proper=" + positives + " mismatches=" + mismatches);
+            check(cases == 6561 && positives > 0 && mismatches == 0,
+                    "真交叉独立参数方程oracle：反向/端点/共线/退化全枚举", "mismatches=" + mismatches);
+        } catch (ReflectiveOperationException e) { throw new IllegalStateException(e); }
+    }
+
+    private static void runEndpointJoin() {
+        for (int rotation = 0; rotation < 4; rotation++) {
+            int n = 11, cells = n * n; double[] level = new double[cells], dis = new double[cells];
+            int[] parent = new int[cells]; boolean[] resolved = new boolean[cells], lake = new boolean[cells], sea = new boolean[cells];
+            Arrays.fill(level, 200); Arrays.fill(parent, -1); Arrays.fill(resolved, true);
+            int[][] trunk = {{3, 3}, {4, 3}, {5, 3}, {6, 3}, {7, 3}, {8, 3}};
+            int[] chain = new int[trunk.length];
+            for (int i = 0; i < trunk.length; i++) {
+                int x = trunk[i][0] - 5, z = trunk[i][1] - 5;
+                for (int r = 0; r < rotation; r++) { int tmp = x; x = -z; z = tmp; }
+                chain[i] = idx(x + 5, z + 5, n); level[chain[i]] = 100 - i * 5; dis[chain[i]] = 10;
+            }
+            linkChain(chain, parent); sea[chain[chain.length - 1]] = true;
+            int x = -1, z = -1;
+            for (int r = 0; r < rotation; r++) { int tmp = x; x = -z; z = tmp; }
+            int feeder = idx(x + 5, z + 5, n); level[feeder] = 110; parent[feeder] = chain[1]; dis[feeder] = 2;
+            var params = new DeterministicSkeleton.Params(0, 1, 2, 0, 24, 0, 2, 0, 0);
+            var result = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis, null, n, n,
+                    params, List.of(), null, false);
+            var branch = result.traces.stream().filter(t -> t.sourceCell() == feeder).findFirst().orElse(null);
+            boolean direct = branch != null && branch.end == DeterministicSkeleton.End.JOIN
+                    && branch.cell.length == 2 && branch.mouthCell() == chain[3];
+            System.out.println("ENDPOINT_JOIN rotation=" + rotation + " feeder=" + feeder
+                    + " cells=" + (branch == null ? "MISSING" : Arrays.toString(branch.cell)));
+            check(direct, "共享端点合法下坡汇流不受线段方向影响 rotation=" + rotation, "legal closest downstream join rejected");
+        }
+    }
+
+    private static boolean properCrossOracle(int a, int b, int c, int d, int nz) {
+        double ux=b/nz-a/nz,uz=b%nz-a%nz,vx=d/nz-c/nz,vz=d%nz-c%nz,wx=c/nz-a/nz,wz=c%nz-a%nz;
+        double den=ux*vz-uz*vx;if(den==0)return false;
+        double t=(wx*vz-wz*vx)/den,s=(wx*uz-wz*ux)/den;return t>0 && t<1 && s>0 && s<1;
+    }
+
+    private static void runTraceSegmentsOracle() {
+        int n=33;var random=new java.util.Random(3807);var index=new DeterministicSkeleton.TraceSegments(n);
+        var edges=new java.util.ArrayList<int[]>();boolean same=true;int positives=0;
+        for(int insert=0;insert<200;insert++) {
+            int a=random.nextInt(n*n),b=random.nextInt(n*n);index.add(a,b);edges.add(new int[]{a,b});
+            for(int query=0;query<30;query++) {
+                int c=random.nextInt(n*n),d=random.nextInt(n*n);boolean expected=false;
+                for(var e:edges)expected|=properCrossOracle(c,d,e[0],e[1],n);
+                same &= expected==index.crosses(c,d);if(expected)positives++;
+            }
+        }
+        check(same && positives>0,"本链空间桶6000查询等价独立参数交叉oracle（跨桶/长段/退化）","mismatch");
+    }
+
+    private static void runCrossingParentOracle() {
+        try {
+            var method=DeterministicSkeleton.class.getDeclaredMethod("markCrossingParents",int.class,int.class,int.class,
+                    int[].class,DeterministicSkeleton.ParentForest.class,java.util.TreeMap.class);method.setAccessible(true);
+            int n=17,cells=n*n;var random=new java.util.Random(6123);boolean same=true;int marked=0;
+            for(int test=0;test<16;test++) {
+                int[] parent=new int[cells];java.util.Arrays.fill(parent,-1);
+                for(int x=0;x<n;x++)for(int z=0;z+1<n;z++) {
+                    int dx=random.nextInt(3)-1;if(x+dx>=0 && x+dx<n)parent[x*n+z]=(x+dx)*n+z+1;
+                }
+                var forest=new DeterministicSkeleton.ParentForest(parent);var ranges=new java.util.TreeMap<Integer,Integer>();
+                var pathEdges=new java.util.ArrayList<int[]>();
+                for(int add=0;add<32;add++) {
+                    int x=random.nextInt(n-1),z=random.nextInt(n-1),a=x*n+z,b=(x+1)*n+z+1;
+                    if(random.nextBoolean()){a=x*n+z+1;b=(x+1)*n+z;}
+                    method.invoke(null,a,b,n,parent,forest,ranges);pathEdges.add(new int[]{a,b});
+                    for(int c=0;c<cells;c++) {
+                        boolean expected=false;
+                        for(int at=c;at>=0 && parent[at]>=0;at=parent[at])for(var e:pathEdges)
+                            expected|=properCrossOracle(at,parent[at],e[0],e[1],n);
+                        same &= expected==forest.returnsTo(c,ranges);if(expected)marked++;
+                    }
+                }
+            }
+            check(same && marked>0,"父链几何穿回禁入区等价独立逐父边oracle：16图×32边×289格","mismatch");
+        } catch(ReflectiveOperationException e){throw new IllegalStateException(e);}
+    }
+
+    private static void runFlatDetour() {
+        System.out.println("--- [flat-detour] 原父树无环不代表改道后无环 ---");
+        int n = 9, cells = n * n;
+        for (int direction : new int[]{-1, 1}) {
+            double[] level = new double[cells], bed = new double[cells], dis = new double[cells];
+            int[] parent = new int[cells]; boolean[] resolved = new boolean[cells];
+            boolean[] lake = new boolean[cells], sea = new boolean[cells];
+            Arrays.fill(level, 100); Arrays.fill(bed, 105); Arrays.fill(parent, -1); Arrays.fill(resolved, true);
+            int start = idx(4, 4, n), upstream = idx(4, 4 - direction, n);
+            int next = idx(4, 4 + direction, n), mouth = idx(4, 4 + 2 * direction, n);
+            parent[upstream] = start; parent[start] = next; parent[next] = mouth;
+            bed[start] = 99; bed[upstream] = 98; bed[next] = 99; bed[mouth] = 97; sea[mouth] = true;
+            var params = new DeterministicSkeleton.Params(0, 1, 0, 0, 24, 0, 6, 0, 0);
+            var r = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis,
+                    null, n, n, params, List.of(start), bed, false);
+            boolean valid = r.traces.size() == 1 && r.traces.get(0).end == DeterministicSkeleton.End.MOUTH_SEA
+                    && r.traces.get(0).sourceCell() == start && r.traces.get(0).mouthCell() == mouth;
+            for (var trace : r.traces) {
+                var seen = new java.util.HashSet<Integer>();
+                for (int cell : trace.cell) valid &= seen.add(cell);
+            }
+            System.out.println("FLAT_DETOUR direction=" + direction + " traces=" + r.traces.size()
+                    + (r.traces.isEmpty() ? "" : " end=" + r.traces.get(0).end + " cells=" + Arrays.toString(r.traces.get(0).cell)));
+            check(valid, "等水位更低床面邻居若原父链返回本链，不得自JOIN或删源 direction=" + direction, "loop or lost source");
+            int alternative = idx(3, 4, n);
+            bed[upstream] = 101; bed[alternative] = 98; parent[alternative] = mouth;
+            var allowed = DeterministicSkeleton.build(level, parent, resolved, lake, sea, dis,
+                    null, n, n, params, List.of(start), bed, false);
+            check(allowed.traces.size() == 1 && allowed.traces.get(0).cell[1] == alternative
+                    && allowed.traces.get(0).end == DeterministicSkeleton.End.MOUTH_SEA,
+                    "不回本链的真实下坡改道仍保留 direction=" + direction, "legal detour lost");
+        }
+    }
+
+    private static void runBasinEscape() {
+        System.out.println("--- [basin-escape] 等水位脱困不得反复掉回盆底 ---");
+        int n=15,cells=n*n;
+        for(int direction:new int[]{-1,1}) for(boolean nextBasin:new boolean[]{false,true}) {
+            var level=new double[cells];var bed=new double[cells];var dis=new double[cells];var parent=new int[cells];
+            var resolved=new boolean[cells];var lake=new boolean[cells];var sea=new boolean[cells];
+            Arrays.fill(level,100);Arrays.fill(bed,105);Arrays.fill(parent,-1);Arrays.fill(resolved,true);
+            int start=idx(7,4,n),rise=idx(7+direction,4,n),exit=idx(7+2*direction,4,n);
+            int trap=idx(7+direction,5,n),slope=idx(7+3*direction,4,n),normal=idx(7+4*direction,4,n);
+            int second=idx(7+4*direction,5,n),mouth=idx(7+5*direction,6,n);
+            parent[start]=rise;parent[rise]=exit;parent[exit]=slope;parent[trap]=exit;parent[slope]=normal;parent[normal]=mouth;parent[second]=mouth;
+            bed[start]=90;bed[rise]=91;bed[exit]=92;bed[trap]=90.5;bed[slope]=80;bed[normal]=79.5;bed[second]=79;bed[mouth]=70;
+            level[slope]=level[normal]=level[second]=level[mouth]=nextBasin?99:100;sea[mouth]=true;
+            var params=new DeterministicSkeleton.Params(0,1,0,0,24,0,2,0,0);
+            var result=DeterministicSkeleton.build(level,parent,resolved,lake,sea,dis,null,n,n,params,List.of(start),bed,false);
+            var expected=nextBasin?new int[]{start,rise,exit,slope,second,mouth}:new int[]{start,rise,exit,slope,normal,mouth};
+            boolean ok=result.traces.size()==1 && Arrays.equals(result.traces.get(0).cell,expected)
+                    && result.traces.get(0).end==DeterministicSkeleton.End.MOUTH_SEA;
+            System.out.println("BASIN_ESCAPE direction="+direction+" nextBasin="+nextBasin+" cells="
+                    +(result.traces.isEmpty()?"MISSING":Arrays.toString(result.traces.get(0).cell)));
+            check(ok,"脱困沿同水位父链，严格降水位后允许新盆下坡 direction="+direction+" nextBasin="+nextBasin,"repeated detour or permanent disable");
+        }
+    }
+
+    private static void runBlockedFlatCandidate() {
+        try {
+            var trace=DeterministicSkeleton.class.getDeclaredMethod("traceOne",int.class,boolean.class,boolean.class,
+                    double[].class,int[].class,boolean[].class,boolean[].class,boolean[].class,boolean[].class,
+                    int.class,int.class,int.class,int[].class,int[].class,int.class,DeterministicSkeleton.Params.class,
+                    java.util.List.class,double[].class,DeterministicSkeleton.ParentForest.class,java.util.List.class);
+            trace.setAccessible(true);var evidence=new StringBuilder();int n=13,cells=n*n;
+            for(int rotation=0;rotation<4;rotation++) for(boolean reverse:new boolean[]{false,true})
+                for(boolean alternative:new boolean[]{false,true}) {
+                    var level=new double[cells];var bed=new double[cells];var parent=new int[cells];
+                    var resolved=new boolean[cells];var lake=new boolean[cells];var sea=new boolean[cells];var covered=new boolean[cells];
+                    Arrays.fill(level,100);Arrays.fill(bed,110);Arrays.fill(parent,-1);Arrays.fill(resolved,true);
+                    int start=rotatedCell(0,0,rotation,n),next=rotatedCell(0,-1,rotation,n),mouth=rotatedCell(-1,-1,rotation,n);
+                    int blocked=rotatedCell(1,1,rotation,n),allowed=rotatedCell(-1,0,rotation,n);
+                    int edgeA=rotatedCell(0,1,rotation,n),edgeB=rotatedCell(1,0,rotation,n);
+                    covered[edgeA]=covered[edgeB]=true;
+                    parent[start]=next;parent[next]=mouth;parent[blocked]=rotatedCell(2,2,rotation,n);parent[allowed]=mouth;
+                    bed[start]=100;bed[next]=100;bed[mouth]=90;bed[blocked]=98;bed[allowed]=alternative?99:110;sea[mouth]=true;
+                    var edge=reverse?new int[]{edgeB/n,edgeB%n,edgeA/n,edgeA%n}:new int[]{edgeA/n,edgeA%n,edgeB/n,edgeB%n};
+                    check(properCrossOracle(start,blocked,edgeA,edgeB,n) && !properCrossOracle(start,allowed,edgeA,edgeB,n)
+                                    && !properCrossOracle(start,next,edgeA,edgeB,n),
+                            "候选交叉fixture独立oracle rotation="+rotation+" reverse="+reverse+" alt="+alternative,"fixture invalid");
+                    var params=new DeterministicSkeleton.Params(0,1,0,0,24,0,2,0,0);
+                    var result=(DeterministicSkeleton.Trace)trace.invoke(null,start,false,true,level,parent,resolved,lake,sea,
+                            covered,n,n,0,new int[cells],new int[cells],1,params,List.of(edge),bed,new DeterministicSkeleton.ParentForest(parent),null);
+                    int expected=alternative?allowed:next;
+                    boolean ok=result!=null && result.end==DeterministicSkeleton.End.MOUTH_SEA
+                            && Arrays.equals(result.cell,new int[]{start,expected,mouth});
+                    String row="G32 FLAT_CANDIDATE rotation="+rotation+" reverse="+reverse+" alt="+alternative
+                            +" expected="+expected+" actual="+(result==null?"DISCARDED":Arrays.toString(result.cell));
+                    System.out.println(row);evidence.append(row).append('\n');
+                    check(ok,"交叉最低候选应跳过而非整河回滚 rotation="+rotation+" reverse="+reverse+" alt="+alternative,"legal downstream lost");
+                }
+            // #region agent log: G32 候选筛选的实际traceOne复现，保留历史证据
+            java.nio.file.Files.writeString(java.nio.file.Path.of("..","debug-agent.log").toAbsolutePath(),evidence,
+                    java.nio.file.StandardOpenOption.APPEND);
+            // #endregion
+        } catch(ReflectiveOperationException|java.io.IOException e){throw new IllegalStateException(e);}
+    }
+
+    private static int rotatedCell(int x,int z,int rotation,int n) {
+        for(int i=0;i<rotation;i++){int old=x;x=-z;z=old;}
+        return (x+n/2)*n+z+n/2;
+    }
+
+    private static void runParentForestOracle() {
+        var random = new java.util.Random(7319); boolean same = true;
+        for (int test = 0; test < 32; test++) {
+            int[] parent = new int[128];
+            for (int cell = 0; cell < parent.length; cell++) parent[cell] = cell == 0 || random.nextInt(8) == 0 ? -1 : random.nextInt(cell);
+            var order = new java.util.ArrayList<Integer>();
+            for (int cell = 0; cell < parent.length; cell++) order.add(cell);
+            java.util.Collections.shuffle(order, random); int[] permuted = new int[parent.length];
+            for (int cell = 0; cell < parent.length; cell++) permuted[order.get(cell)] = parent[cell] < 0 ? -1 : order.get(parent[cell]);
+            parent = permuted;
+            var forest = new DeterministicSkeleton.ParentForest(parent);
+            var ranges = new java.util.TreeMap<Integer, Integer>(); var marked = new java.util.BitSet(parent.length);
+            for (int add = 0; add < 32; add++) {
+                int mark = random.nextInt(parent.length); marked.set(mark); forest.mark(mark, ranges);
+                for (int cell = 0; cell < parent.length; cell++) {
+                    boolean expected = false;
+                    for (int at = cell; at >= 0; at = parent[at]) expected |= marked.get(at);
+                    same &= expected == forest.returnsTo(cell, ranges);
+                }
+            }
+        }
+        check(same, "父树区间并集等价独立多步父链oracle：32树×32更新×128节点", "different");
+        int[] chain = new int[100000];
+        for (int i = 0; i < chain.length; i++) chain[i] = i - 1;
+        var deep = new DeterministicSkeleton.ParentForest(chain); var marks = new java.util.TreeMap<Integer, Integer>();
+        deep.mark(70000, marks);
+        check(deep.returnsTo(99999, marks) && !deep.returnsTo(69999, marks), "深10万节点树迭代索引不递归溢栈", "different");
+        boolean cancelled = false;
+        try { Thread.currentThread().interrupt(); new DeterministicSkeleton.ParentForest(chain); }
+        catch (java.util.concurrent.CancellationException e) { cancelled = true; } finally { Thread.interrupted(); }
+        check(cancelled, "父树索引取消不发布半结果", "ignored");
+        var unusual = new DeterministicSkeleton.ParentForest(new int[]{1, 0, 0, 3, 99, -1, 5});
+        var ranges = new java.util.TreeMap<Integer, Integer>(); unusual.mark(2, ranges);
+        check(ranges.isEmpty() && unusual.returnsTo(0, ranges) && unusual.returnsTo(1, ranges)
+                && unusual.returnsTo(2, ranges) && !unusual.returnsTo(3, ranges), "含环及其上游改道拒绝，合法根仍可用", "different");
+        unusual.mark(3, ranges); unusual.mark(4, ranges); unusual.mark(5, ranges);
+        check(unusual.returnsTo(3, ranges) && unusual.returnsTo(4, ranges) && unusual.returnsTo(6, ranges),
+                "自根/越界父根/独立根的子树区间正确", "different");
     }
 
     // ======================================================================

@@ -410,6 +410,7 @@ public final class DeterministicSkeleton {
         //   ⇒ 我们补上等价守卫：join 候选不得是本 trace 自己的节点。
         // 【实现】selfStamp[c] == stamp 表示 c 属于当前 trace（每 region 复用一个数组，
         //   solve 之间互不共享 ⇒ 线程安全）。
+        ParentForest parentForest = FLAT_BREAK && bed != null ? new ParentForest(parent) : null;
         int[] selfStamp = new int[cells];
         int[] selfStep = new int[cells];        // 自贴近豁免用：格 → 该 trace 内步序号
         int[] stampBox = {0};
@@ -476,9 +477,9 @@ public final class DeterministicSkeleton {
                     continue;
                 }
                 int stamp = ++stampBox[0];
-                Trace t = traceOne(start, fromOutlet, level, parent, resolved,
+                Trace t = traceOne(start, fromOutlet, fromIncoming, level, parent, resolved,
                         lakeMask, sea, covered, nx, nz, params.joinWindow(),
-                        selfStamp, selfStep, stamp, params, segments, bed,
+                        selfStamp, selfStep, stamp, params, segments, bed, parentForest,
                         fromIncoming ? incomingDiag : null);
                 if (t == null) continue;
                 traces.add(t);
@@ -653,7 +654,7 @@ public final class DeterministicSkeleton {
      *
      * @return 源头格列表（按上游面积降序 —— 大河优先，语义与 legacy 的扫描序一致）
      */
-    private static List<Integer> collectSources(double[] level, int[] parent, boolean[] resolved,
+    static List<Integer> collectSources(double[] level, int[] parent, boolean[] resolved,
                                                 boolean[] lakeMask, boolean[] sea,
                                                 double[] discharge, int nx, int nz,
                                                 Params params) {
@@ -768,14 +769,15 @@ public final class DeterministicSkeleton {
      *                  （join 必须排除自己的节点 —— legacy {@code selfApproach} 同义）
      * @param params    只读 {@code minNodes}（长度下限）；其余不参与追踪
      */
-    private static Trace traceOne(int start, boolean fromOutlet,
+    private static Trace traceOne(int start, boolean fromOutlet, boolean fromIncoming,
                                   double[] level, int[] parent, boolean[] resolved,
                                   boolean[] lakeMask, boolean[] sea, boolean[] covered,
                                   int nx, int nz, int joinWindow,
                                   int[] selfStamp, int[] selfStep, int stamp, Params params,
-                                  java.util.List<int[]> segments, double[] bed,
+                                  java.util.List<int[]> segments, double[] bed, ParentForest parentForest,
                                   List<IncomingDiagnostic> incomingDiag) {
         int cells = nx * nz;
+        java.util.TreeMap<Integer, Integer> visited = parentForest == null ? null : new java.util.TreeMap<>();
         List<Integer> path = new ArrayList<>();
         int k = start;
         End end = End.DEAD_END;
@@ -784,8 +786,17 @@ public final class DeterministicSkeleton {
         //   置 false，会把别人已占的内部节点释放掉 ⇒ 后继链穿过它 = SkeletonProbe [4] 双占。
         //   （实测：minNodes 丢弃逻辑加"整条释放"后 [4] 立刻报 4 个格双占。）
         int newlyClaimed = 0;
+        var ownSegments = new TraceSegments(nz);
+        double escapeLevel = Double.NaN;
         while (true) {
+            if (level[k] < escapeLevel - 1e-9) escapeLevel = Double.NaN;
+            if (!path.isEmpty()) {
+                int previous = path.get(path.size() - 1);
+                ownSegments.add(previous, k);
+                if (visited != null) markCrossingParents(previous, k, nz, parent, parentForest, visited);
+            }
             path.add(k);
+            if (visited != null) parentForest.mark(k, visited);
             if (!covered[k]) newlyClaimed++;
             covered[k] = true;
             selfStamp[k] = stamp;              // 自并入守卫：标记本 trace 节点
@@ -804,7 +815,7 @@ public final class DeterministicSkeleton {
                 int esc = outletEscape(k, level, resolved, lakeMask, sea, nx, nz);
                 if (esc >= 0 && esc != k) {
                     if (covered[esc]) { path.add(esc); end = End.JOIN; break; }
-                    if (sea[esc]) { path.add(esc); covered[esc] = true; end = End.MOUTH_SEA; break; }
+                    if (sea[esc]) { path.add(esc); newlyClaimed++; covered[esc] = true; end = End.MOUTH_SEA; break; }
                     k = esc;
                     continue;
                 }
@@ -814,7 +825,7 @@ public final class DeterministicSkeleton {
             //   （排除本 trace 自己的节点 —— 否则平坦区会 join 到自己、提前终止+折返）
             int join = nearbyJoin(level, k, nx, nz, covered, joinWindow, selfStamp, stamp,
                     segments, bed);
-            if (join >= 0) {
+            if (join >= 0 && !ownSegments.crosses(k, join)) {
                 path.add(join);
                 end = End.JOIN;
                 break;
@@ -834,6 +845,7 @@ public final class DeterministicSkeleton {
             //   而骨架走的是 parent 链 —— 其无环与 level 单调性是【构造性质】，
             //   与水位可信度无关。legacy 场（真实地形+ε）处处有定义 ⇒ 从不因此断河。
             // 【正解】继续沿 parent 走到底；未决只影响水位/湖判定（另一层）。
+            if ((lakeMask[p] || sea[p] || covered[p]) && ownSegments.crosses(k, p)) { end = End.DEAD_END; break; }
             if (lakeMask[p]) {
                 // ★★★ 2026-10-10【入湖锚点延伸（legacy {@code LAKE_ANCHOR_EXT} 同义）】★★★
                 //
@@ -851,6 +863,7 @@ public final class DeterministicSkeleton {
             }
             if (sea[p]) {
                 path.add(p);
+                if (!covered[p]) newlyClaimed++;
                 covered[p] = true;
                 end = End.MOUTH_SEA;
                 break;
@@ -875,7 +888,8 @@ public final class DeterministicSkeleton {
             // 【无环】候选必须 covered=false（下方自然满足：走到的格会标 covered），
             //   且候选不得是本 trace 节点（selfStamp 守卫同 parent 路径）。
             // ★ 破平局开关（`-Dgeogenesis.flatBreak=false` 关）—— 归因"揉团锯齿"用。
-            if (FLAT_BREAK && bed != null && level[p] >= level[k] - 1e-9 && level[p] <= level[k] + 1e-9) {
+            if (FLAT_BREAK && bed != null && Double.isNaN(escapeLevel)
+                    && level[p] >= level[k] - 1e-9 && level[p] <= level[k] + 1e-9) {
                 int bi = k / nz, bj = k % nz;
                 double curBed = bed[k];
                 int alt = -1;
@@ -888,27 +902,22 @@ public final class DeterministicSkeleton {
                     if (lakeMask[c] || sea[c] || !resolved[c]) continue;
                     if (level[c] > level[k] + 1e-9) continue;          // 只走等水位区内部
                     if (covered[c] || selfStamp[c] == stamp) continue; // 不撞别人/自己
-                    if (bed[c] < altBed - 1e-9) { altBed = bed[c]; alt = c; }
+                    if (bed[c] < altBed - 1e-9 && !parentForest.returnsTo(c, visited)
+                            && !ownSegments.crosses(k, c)) {
+                        // 不可行候选只排除自己，不能抢占最低值后使整条河回滚。
+                        if (STEP_CROSS_GUARD && !segments.isEmpty()
+                                && segmentCrossesAny(bi, bj, a, b, segments)) continue;
+                        altBed = bed[c]; alt = c;
+                    }
                 }
                 if (alt >= 0) {
-                    // ★★★ 2026-10-10【步骤级交叉守卫（PL-RGA wouldCross 同构）】★★★
-                    // PL-RGA 在【每一个候选步】上跑 wouldCross（rivers.cpp:183），
-                    //   而不只在接点时（rivers.cpp:233）。我们此前只有后者 ⇒
-                    //   破平局跳向别条沟时会横穿已有河段 ⇒ 图上"反复交叉"。
-                    // 【为什么不会误判自己】本链的段在 traceOne 返回【之后】才登记进
-                    //   segments（见 build 的登记循环）⇒ 追踪期间 segments 只含【别人】的段
-                    //   —— 这正是 PL-RGA "跳过共享端点段"的等价效果。
-                    if (STEP_CROSS_GUARD && !segments.isEmpty()
-                            && segmentCrossesAny(bi, bj, alt / nz, alt % nz, segments)) {
-                        end = End.DEAD_END;
-                        break;
-                    }
                     k = alt;
                     continue;      // 走真实下坡（等水位区内），本轮不前进 parent
                 }
                 // 无更低 bed 邻居（真平台）⇒ 沿 parent（径向兜底）
             }
             // ★ 步骤级交叉守卫（parent 迈步；同 PL-RGA wouldCross）
+            if (ownSegments.crosses(k, p)) { end = End.DEAD_END; break; }
             if (STEP_CROSS_GUARD && !segments.isEmpty()) {
                 int ki = k / nz, kj = k % nz, pi = p / nz, pj = p % nz;
                 if (segmentCrossesAny(ki, kj, pi, pj, segments)) {
@@ -916,6 +925,9 @@ public final class DeterministicSkeleton {
                     break;
                 }
             }
+            // 等水位盆底开始沿父链爬升脱困后，不再逐步改道掉回盆底；降至下一水位才恢复。
+            if (FLAT_BREAK && bed != null && Math.abs(level[p] - level[k]) <= 1e-9
+                    && bed[p] > bed[k] + 1e-9) escapeLevel = level[k];
             k = p;
             if (path.size() > cells) { end = End.DEAD_END; break; }  // 防御
             // ★★★ 2026-10-10【自贴近守卫（legacy selfApproach 同义）】★★★
@@ -964,7 +976,9 @@ public final class DeterministicSkeleton {
         int mi = mn / nz, mj = mn % nz;
         boolean onFrame = mi == 0 || mj == 0 || mi == nx - 1 || mj == nz - 1;
         boolean orphanDeadEnd = (end == End.DEAD_END) && !fromOutlet && !onFrame;
-        if ((path.size() < minNodes || orphanDeadEnd) && !fromOutlet) {
+        boolean connectedIncoming = fromIncoming && path.size() >= 2
+                && (end == End.MOUTH_LAKE || end == End.MOUTH_SEA || end == End.JOIN || onFrame);
+        if (((path.size() < minNodes && !connectedIncoming) || orphanDeadEnd) && !fromOutlet) {
             // #region agent log: R5 回滚原因与终点，只读不改追踪
             if (incomingDiag != null) incomingDiag.add(new IncomingDiagnostic(start,
                     path.size() < minNodes ? "SHORT" : "ORPHAN_DEAD_END", path.size(), mn, end));
@@ -1117,6 +1131,42 @@ public final class DeterministicSkeleton {
         return best >= 0 ? best : bestEq;
     }
 
+    // 单位对角边只可能被同一方格的另一条对角父边严格穿越；把该父边上游子树加入禁入区。
+    private static void markCrossingParents(int from, int to, int nz, int[] parent,
+                                            ParentForest forest, java.util.TreeMap<Integer, Integer> ranges) {
+        int ax = from / nz, az = from % nz, bx = to / nz, bz = to % nz;
+        if (Math.abs(ax - bx) != 1 || Math.abs(az - bz) != 1) return;
+        int c = ax * nz + bz, d = bx * nz + az;
+        if (parent[c] == d) forest.mark(c, ranges);
+        if (parent[d] == c) forest.mark(d, ranges);
+    }
+
+    // 本链未提交到全局segments，须单独索引；8格桶只检查候选线段覆盖的局部范围。
+    static final class TraceSegments {
+        private final int nz;
+        private final java.util.Map<Long, List<int[]>> buckets = new java.util.HashMap<>();
+
+        TraceSegments(int nz) { this.nz = nz; }
+
+        void add(int from, int to) {
+            int ax = from / nz, az = from % nz, bx = to / nz, bz = to % nz;
+            int[] edge = {ax, az, bx, bz};
+            for (int x = Math.floorDiv(Math.min(ax, bx), 8); x <= Math.floorDiv(Math.max(ax, bx), 8); x++)
+                for (int z = Math.floorDiv(Math.min(az, bz), 8); z <= Math.floorDiv(Math.max(az, bz), 8); z++)
+                    buckets.computeIfAbsent(((long) x << 32) ^ (z & 0xffffffffL), ignored -> new ArrayList<>()).add(edge);
+        }
+
+        boolean crosses(int from, int to) {
+            int ax = from / nz, az = from % nz, bx = to / nz, bz = to % nz;
+            for (int x = Math.floorDiv(Math.min(ax, bx), 8); x <= Math.floorDiv(Math.max(ax, bx), 8); x++)
+                for (int z = Math.floorDiv(Math.min(az, bz), 8); z <= Math.floorDiv(Math.max(az, bz), 8); z++) {
+                    var edges = buckets.get(((long) x << 32) ^ (z & 0xffffffffL));
+                    if (edges != null && segmentCrossesAny(ax, az, bx, bz, edges)) return true;
+                }
+            return false;
+        }
+    }
+
     /** 段 (ax,ay)-(bx,by) 是否与任一已有段真交叉（legacy {@code segmentCrossesAny} 同义）。 */
     private static boolean segmentCrossesAny(int ax, int ay, int bx, int by,
                                              java.util.List<int[]> segs) {
@@ -1133,11 +1183,62 @@ public final class DeterministicSkeleton {
         int o2 = orientation(ax, ay, bx, by, dx, dy);
         int o3 = orientation(cx, cy, dx, dy, ax, ay);
         int o4 = orientation(cx, cy, dx, dy, bx, by);
-        return ((o1 > 0) != (o2 > 0)) && ((o3 > 0) != (o4 > 0));
+        return o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0
+                && ((o1 > 0) != (o2 > 0)) && ((o3 > 0) != (o4 > 0));
     }
 
     private static int orientation(int ax, int ay, int bx, int by, int cx, int cy) {
         return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    }
+
+    // 父树子树是DFS半开区间：候选原父链触及本链，等价于候选位于某已走节点的子树。
+    static final class ParentForest {
+        private final int[] entry, exit;
+
+        ParentForest(int[] parent) {
+            int n = parent.length;
+            entry = new int[n]; exit = new int[n];
+            java.util.Arrays.fill(entry, -1);
+            int[] head = new int[n], next = new int[n], stack = new int[n];
+            java.util.Arrays.fill(head, -1);
+            for (int cell = 0; cell < n; cell++) {
+                int p = parent[cell];
+                if (p >= 0 && p < n && p != cell) { next[cell] = head[p]; head[p] = cell; }
+            }
+            int time = 0;
+            for (int root = 0; root < n; root++) {
+                if (parent[root] >= 0 && parent[root] < n && parent[root] != root) continue;
+                int top = 0; stack[0] = root; entry[root] = time++;
+                while (top >= 0) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+                    int cell = stack[top], child = head[cell];
+                    if (child < 0) { exit[cell] = time; top--; }
+                    else {
+                        head[cell] = next[child]; stack[++top] = child; entry[child] = time++;
+                    }
+                }
+            }
+        }
+
+        void mark(int cell, java.util.TreeMap<Integer, Integer> ranges) {
+            if (entry[cell] < 0) return;
+            int lo = entry[cell], hi = exit[cell];
+            var prior = ranges.floorEntry(lo);
+            if (prior != null && prior.getValue() >= hi) return;
+            if (prior != null && prior.getValue() >= lo) { lo = prior.getKey(); ranges.remove(lo); }
+            var next = ranges.ceilingEntry(lo);
+            while (next != null && next.getKey() < hi) {
+                hi = Math.max(hi, next.getValue()); ranges.remove(next.getKey()); next = ranges.ceilingEntry(lo);
+            }
+            ranges.put(lo, hi);
+        }
+
+        boolean returnsTo(int cell, java.util.TreeMap<Integer, Integer> ranges) {
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+            if (entry[cell] < 0) return true;
+            var prior = ranges.floorEntry(entry[cell]);
+            return prior != null && prior.getValue() > entry[cell];
+        }
     }
 
     private static int[] toArray(List<Integer> list) {
