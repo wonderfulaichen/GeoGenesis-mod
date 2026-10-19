@@ -1,0 +1,15 @@
+// Diagnostic-only entry points; no modification of production tasks or world generation settings.
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    project.tasks.register('localFlowClasspath') {
+        dependsOn project.tasks.named('compileDiagnosticsJava')
+        doLast {
+            def dir = project.layout.buildDirectory.dir('local-flow-reassessment').get().asFile
+            dir.mkdirs()
+            def sources = project.sourceSets
+            new File(dir, 'classpath.txt').setText(
+                (sources.diagnostics.output + sources.main.output + sources.main.compileClasspath + sources.diagnostics.runtimeClasspath).asPath,
+                'UTF-8')
+        }
+    }
+}
