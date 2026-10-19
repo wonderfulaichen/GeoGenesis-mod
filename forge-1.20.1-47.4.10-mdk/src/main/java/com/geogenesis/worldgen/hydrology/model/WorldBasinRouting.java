@@ -198,15 +198,8 @@ final class WorldBasinRouting {
         var g=outlet.geometry();var face=outlet.face();
         var members=new HashSet<>(g.members());
         if(!face.equals(pathFace(g)))return unknown("selected spill lip missing from witness");
-        var next=new LinkedHashMap<Point,Point>();var q=new ArrayDeque<Point>();
-        next.put(face.inner(),face.outer());q.add(face.inner());
-        while(!q.isEmpty()) {
-            cancelled();Point from=q.remove();
-            for(var p:neighbours(from))if(members.contains(p) && !next.containsKey(p) && crest(from,p)<g.sill()) {
-                next.put(p,from);q.add(p);
-            }
-        }
-        if(next.size()!=members.size())return unknown("incomplete lake route");
+        var next=new LinkedHashMap<>(BasinStorageRouting.build(g.members(),face.inner(),face.outer(),
+                g.sill(),this::height,this::neighbours,this::crest));
         int first=g.path().indexOf(face.outer());if(first<0)return unknown("missing spill lip");
         var corridor=new ArrayList<Point>();
         for(int i=first;i<g.path().size();i++) {

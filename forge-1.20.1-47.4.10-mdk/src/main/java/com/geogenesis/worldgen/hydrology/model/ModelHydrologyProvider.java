@@ -407,7 +407,11 @@ public final class ModelHydrologyProvider {
         } catch (RuntimeException | LinkageError ignored) {
             h = mix(h, 0L);     // 无 Forge 环境（探针）：不留未加载异常
         }
-        if(HIER && SKELETON_TRACE && CROSS_PASS)h=mix(h,WorldBasinFlow.POLICY_VERSION);
+        if(HIER && SKELETON_TRACE && CROSS_PASS) {
+            h=mix(h,WorldBasinFlow.POLICY_VERSION);
+            h=mix(h,WorldLakeSurface.POLICY_VERSION);
+            h=mix(h,1L); // Same-basin corridor plane policy.
+        }
         return mix(h, outputStrategyFingerprint());
     }
 
@@ -1308,7 +1312,8 @@ public final class ModelHydrologyProvider {
                 (x, z) -> gen.erodedHeight(x * invHs, z * invHs));
     }
 
-    private SkeletonRegion worldRegion(WorldDrainage.Result world, HydrologyPipeline.Result p, int ox, int oz) {
+    private SkeletonRegion worldRegion(WorldBasinFlow.Region water, HydrologyPipeline.Result p, int ox, int oz) {
+        var world = water.graph();
         var polys = new ArrayList<DeterministicSkeleton.Shaped>();
         var reaches = new ArrayList<RiverCenterlines.Reach>();
         for (var edge : world.edges()) {
@@ -1323,6 +1328,18 @@ public final class ModelHydrologyProvider {
         var cl = new RiverCenterlines.Result(List.copyOf(reaches), new double[n], new double[n],
                 new double[n], new boolean[n], 0);
         var index = SegmentIndex.buildExactNodes(polys);
+        int edgeIndex=0;
+        for(var edge:world.edges()) {
+            var wa=water.water().get(edge.from());
+            var wb=water.water().get(edge.to());
+            if(wa!=null && wb!=null && wa.basin()!=null && wb.basin()!=null
+                    && wa.basin().identity().equals(wb.basin().identity())) {
+                if(Double.doubleToLongBits(wa.level())!=Double.doubleToLongBits(wb.level()))
+                    throw new IllegalStateException("same-basin corridor has two water planes");
+                index.surface[edgeIndex]=wa.level();
+            }
+            edgeIndex++;
+        }
         if (index.seg.length / 8 != world.edges().size() || reaches.size() != world.edges().size())
             throw new IllegalStateException("world edge publication lost geometry");
         return new SkeletonRegion(cl, index, List.of(), null);
@@ -1724,6 +1741,7 @@ public final class ModelHydrologyProvider {
         neighSeg[4] = segIndex;
 
         List<HydrologyBlockCarvedColumn> out = new ArrayList<>(256);
+        Map<WorldDrainage.Point,WorldLakeSurface.Cell> lakeCells=new HashMap<>();
         // ★ 跨 tract 缝共享湖域：逐 chunk 【一次】预解析候选缝域（键 ≤8/chunk），逐列只读裁决。
         //   ⚠【不设缝带门】：控制体是整个跨缝盆地足迹（可达缝两侧 ±REGION/2）；按 ±HALO 门只查缝附近
         //     会把足迹在带外的部分留给本区细窗 ⇒ 只是把墙挪 ±HALO。故每 chunk 都解析（键由世界坐标唯一导出）。
@@ -1760,17 +1778,16 @@ public final class ModelHydrologyProvider {
                 // 【正解】越界 ⇒ `continue` 跳过该邻区（不查、不 clamp）。
                 //   3×3 邻区的**有效窗口**本就有重叠（RADIUS=352 > REGION/2=256），
                 //   所以"每个方块都能被至少一个邻区覆盖"—— 不需要靠 clamp 兜底。
-                var worldPoint = new WorldDrainage.Point(Math.floorDiv(blockX,STEP)*STEP, Math.floorDiv(blockZ,STEP)*STEP);
-                var worldWater = rd.worldWater()==null ? null : rd.worldWater().water().get(worldPoint);
-                if(rd.worldWater()!=null) {
-                    if(worldWater==null)throw new IllegalStateException("missing world water at "+worldPoint);
-                    if(worldWater!=null && !worldWater.known())throw new IllegalStateException("unknown world water at "+worldPoint);
-                    surface=eroded;
-                }
                 boolean isLakeBlock = rd.worldWater()==null && p.lake()[k];
-                if(worldWater!=null && worldWater.known() && worldWater.basin()!=null) {
-                    isLakeBlock=eroded<worldWater.level()-0.5;
-                    if(isLakeBlock)surface=worldWater.level();
+                if(rd.worldWater()!=null) {
+                    int cellX=Math.floorDiv(blockX,STEP)*STEP, cellZ=Math.floorDiv(blockZ,STEP)*STEP;
+                    var cellKey=new WorldDrainage.Point(cellX,cellZ);
+                    var wet=lakeCells.computeIfAbsent(cellKey, key -> WorldLakeSurface.resolve(
+                            key.x(),key.z(),STEP,rd.worldWater().water(),
+                            (x,z)->gen.erodedHeight(x*invHs,z*invHs)));
+                    double level=wet.levelAt(blockX,blockZ);
+                    isLakeBlock=Double.isFinite(level);
+                    surface=isLakeBlock?level:eroded;
                 }
                 double half = 0, depth = 0, bestDist = Double.POSITIVE_INFINITY;
                 // ★ 本区先判（零邻区开销）
@@ -1780,6 +1797,7 @@ public final class ModelHydrologyProvider {
                         bestDist = h0.dist;
                         half = h0.half;
                         depth = Math.max(0, h0.depth);
+                        if(Double.isFinite(h0.surface))surface=h0.surface;
                     }
                 }
                 // ★ 惰性邻区：仅当【本区无命中】且【远离本 region 中心、贴近边界带】时才查。
@@ -1919,12 +1937,9 @@ public final class ModelHydrologyProvider {
                         LOGGER.info("[GAP-WATCH] ({},{}) => LAKE_COL region=({},{}) shared={}",
                                 blockX, blockZ, rdRx, rdRz, sharedLake);
                     }
-                    // ★ 湖一律来自【细层】：水面取本区细层水位（`p.waterSurface()` 双线性）。
-                    //   粗层只做候选/校验，**不改写**落块（旧实现会用粗层水位覆盖 ⇒ 掩盖漏水）。
-                    //   ★ 2026-10-12 唯一例外：跨 tract 缝的【共享域】受控列 —— 它的水面就是
-                    //     关于缝对称的同一个窗在真实侵蚀地形上算出的水位（同一平面），
-                    //     两个邻 tract 对该列因此得到同一个值 ⇒ 缝上的湖墙消失。
-                    //     非受控列（拒绝/竞争/足迹外）一概仍用本区细层水位。
+                    // 世界骨架分支：surface 已由 WorldLakeSurface 的盆身份和单平面裁决。
+                    // 非世界分支：surface 来自本区细层 p.waterSurface() 的双线性采样，
+                    // 仅 sharedDoms 受控列采用跨 tract 共享域单平面；粗层候选不覆盖落块。
                     double lakeSurface = sharedLake && Double.isFinite(sharedSurface)
                             ? sharedSurface : surface;
                     // 湖列：不雕刻，按水位洪泛；lakeNode=null ⇒ 写回跳过逃逸重算、按水位分组
@@ -2404,7 +2419,7 @@ public final class ModelHydrologyProvider {
             if(worldWater.unresolved()!=0)
                 throw new IllegalStateException("world water unresolved region="+rx+","+rz+" nodes="+worldWater.unresolved());
             world = worldWater.graph();
-            var sr = worldRegion(world, p, originX, originZ);
+            var sr = worldRegion(worldWater, p, originX, originZ);
             cl = sr.cl(); skelSeg = sr.seg();
             if (Boolean.getBoolean("geogenesis.drainageAudit"))
                 drainage = ProductionDrainageAudit.captureWorld(world, p, originX, originZ, REGION, graph, cl.reaches);
@@ -2678,12 +2693,15 @@ public final class ModelHydrologyProvider {
         /** 段参数平铺：x0,z0,x1,z1（block）, h0,h1（半宽 block）, d0,d1（深度 block）。 */
         private final double[] seg;
         private final Map<Long, List<Integer>> tiles;
+        private final double[] surface;
 
-        private record Hit(double dist, double half, double depth) { }
+        private record Hit(double dist, double half, double depth, double surface) { }
 
         private SegmentIndex(double[] seg, Map<Long, List<Integer>> tiles) {
             this.seg = seg;
             this.tiles = tiles;
+            this.surface = new double[seg.length/8];
+            java.util.Arrays.fill(this.surface,Double.NaN);
         }
 
         boolean isEmpty() { return seg.length == 0; }
@@ -2858,7 +2876,7 @@ public final class ModelHydrologyProvider {
             List<Integer> cand = tiles.get(((long) Math.floorDiv(blockX, TILE) << 32)
                     ^ (Math.floorDiv(blockZ, TILE) & 0xffffffffL));
             if (cand == null) return null;
-            double best = Double.POSITIVE_INFINITY, half = 0, depth = 0;
+            double best = Double.POSITIVE_INFINITY, half = 0, depth = 0, waterSurface = Double.NaN;
             for (int si : cand) {
                 int o = si * 8;
                 double x0 = seg[o], z0 = seg[o + 1], x1 = seg[o + 2], z1 = seg[o + 3];
@@ -2869,13 +2887,17 @@ public final class ModelHydrologyProvider {
                         : 0;
                 double px = x0 + t * dx, pz = z0 + t * dz;
                 double dist = Math.hypot(blockX - px, blockZ - pz);
-                if (dist < best) {
+                if (dist == 0 && best == 0 && Double.isFinite(waterSurface) && Double.isFinite(surface[si])
+                        && Double.doubleToLongBits(waterSurface)!=Double.doubleToLongBits(surface[si]))
+                    throw new IllegalStateException("competing corridor planes at "+blockX+","+blockZ);
+                if (dist < best || (dist == best && !Double.isFinite(waterSurface) && Double.isFinite(surface[si]))) {
                     best = dist;
                     half = seg[o + 4] + t * (seg[o + 5] - seg[o + 4]);
                     depth = seg[o + 6] + t * (seg[o + 7] - seg[o + 6]);
+                    waterSurface = surface[si];
                 }
             }
-            return best == Double.POSITIVE_INFINITY ? null : new Hit(best, half, depth);
+            return best == Double.POSITIVE_INFINITY ? null : new Hit(best, half, depth, waterSurface);
         }
     }
 }
