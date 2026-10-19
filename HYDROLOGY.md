@@ -207,7 +207,16 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 - **修正后主线程最终复跑**：契约编译/探针exit0，局部储水编译/88断言exit0，自然投影编译成功但227双后继及6149起点入环两断言仍exit1，具体反例独立编译/回放exit1，生产输入核验exit0。储水日志与代理冷JVM逐字节一致，自然探针日志除elapsed外逐行相同；[final-exit-codes.txt](forge-1.20.1-47.4.10-mdk/build/g57-unified/verification/final-exit-codes.txt) 明确标为候选REJECTED，不能把验证流程如期拒绝误读成原型验收PASS。计划正文未改；Todo状态同步将exact-storage从in_progress改为pending，因而文件总SHA256相应变化，未把未完成项标成完成。
 - **未完成/未实测**：exact-storage完整回水与原冲突盆上下游闭包、合法自然路由、流量/provider迁移、新provider多seed/跨区/取消完整验证、1401²新实验生产入口大图、Forge落块、完整链路成本均未完成。没有新的G57生产大图，不援用旧G55图或局部示意图验收。既有G56补全门禁11绿/1红及HEAD两红归因保留，本轮隔离失败实验未重跑全部WorldgenGate。不提交、不推送、不替换实例，保留既有dirty源码、日志和图片；停止候选不等于完成六项计划，更不等于证明统一图方向不可行。
 
-## 一、当前状态（历史快照；新实验状态见〇c—〇l）
+### 〇m、局部累积与流式接口差异实验（已完成实验，未接生产）
+
+- 撤回“无限河流骨架必须先求任意大流域精确完整Q”的扩大前提。生产侵蚀dis确为局部反馈过程；新增诊断 `LocalFlowEvents` 则明确是冻结 `erodedHeight` 上的有限寿命输运，不冒充SH反馈、完整稳态Q或水面权威。世界出生事件含seed/config/格坐标/轮次，目标外扩寿命L枚举全部可能贡献；owner不截路径。局部有限事件的按需定义不要求枚举无限世界全部河源。
+- `LocalFlowOwnershipProbe` 32项检查通过，覆盖真实不同依赖域、独立解析平面oracle、owner/相位/负坐标、冷重建、三并发及取消重试。四个build副本代码变异（漏halo、查询域种子、先到覆盖、去掉事件去重）均exit1且指定断言红；默认seed和12345局部场均通过。原dis双tile同561个wu坐标实测：默认seed8处不同/maxAbs0.09880659，12345有337处/maxAbs2.56690812；诊断阈值0.01的准入差分别0/61，未改生产源准入。
+- `LocalFlowJoinProbe` 反射复用G42原积分器，69硬判据绿；五轨迹固定窗33/37/33/34/35节点，滚窗312/561/226/167/82节点，冷逆序/相位/阈值同值，终点仍局部低地pending。4个真实列碰撞候选归一位置只保留来向后共同尾部0，清动量对照最多19节点；不能将同整数列称已实现真实汇合。合成无记忆规则双/三入流后缀394/390、三臂贡献精确相加及负平移通过，仅局部候选，不称自然路线改善。G42任意世界完整源目录仍NOT_ESTABLISHED，因此exit2；五已知源索引一致不等于无限发现已解决。
+- `LocalFlowBasinProbe` 直接复用G44与生产几何/按需账本：串盆回水、零来水、蒸发耗尽、足够下界及UNKNOWN分开验证。真实block最低点(-428,-94)的非空单位四邻证书9成员/14割/26采样、escape162.74098449818717，独立strict重洪泛与全部割闭合；不是旧两竞争盆的整盆闭包。默认seed59检查/0候选断言失败/2未解决/0基础设施失败，exit1，两旧异盆竞争仍红。12345独立复跑57检查通过、exit0，仅代表该seed样本。粗step4与block单位四邻不混用，`CertifiedBasinQuery.cellSize`仅缩放容量面积。
+- 两个冷JVM的13份CSV/PNG逐字节一致；指标仅归一输出目录/耗时。入口为MDK下 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-local-flow-reassessment.ps1`，默认整套预期exit1，必须检查各探针verdict，不能把编译成功当生产验收。完整证据本地保存在 `build/local-flow-reassessment/decision.txt` 与 `verification/evidence.txt`，不纳入源码提交；独立init script导出classpath，runner现场生成输入哈希，不依赖被忽略的旧计划才能启动。
+- 用户已批准将schema97依赖与实验分批本地提交；生产依赖检查点 `f0ba855` 保留现有红灯，不等于可发布。实机验收工具改动、图片/日志/配置/存档不在提交范围。实验没有改变生产产出或缓存版本，未做新的provider迁移、1401²生产图、Forge新块、完整WorldgenGate或全链路性能验收，不提交这些未实测结论。
+
+## 一、当前状态（历史快照；新实验状态见〇c—〇m）
 
 | 项 | 值 |
 |---|---|
