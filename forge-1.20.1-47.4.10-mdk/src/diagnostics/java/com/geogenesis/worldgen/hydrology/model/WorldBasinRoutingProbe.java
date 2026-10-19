@@ -38,6 +38,7 @@ public final class WorldBasinRoutingProbe {
         negativeOffsets();stepFourCrest();
         crossSaddlePublishes();separateSaddlesSameReceiverUnknown();sharedSaddleContracts();saddleDecisionNegatives();
         basinSupportClosure();deepBasinChain();hiddenLipMembership();sharedSaddleBalance();firstReceivingPan();
+        storageDryTrunkCoverage();
         System.out.println("FAILURES="+failures);System.exit(failures==0?0:1);
     }
     private static void hiddenLipMembership() {
@@ -698,18 +699,50 @@ public final class WorldBasinRoutingProbe {
                 "exactly one basin-external node clears the threshold and enters the pan: "+entries);
         var closure=closureToLip(b,flow,entries);
         var lip=b.outlet().outer();
-        check(closure.containsAll(Set.of(new Point(0,1),new Point(1,0),new Point(2,0),new Point(3,0)))
-                        && closure.size()==4,
-                "the entry's support spine walks (0,1)->(1,0)->(2,0)->(3,0): "+closure);
+        check(closure.equals(Set.of(new Point(0,1),new Point(0,0),new Point(1,0),new Point(2,0),new Point(3,0))),
+                "the support spine visits storage bottom (0,0) before taking the unique outlet trunk: "+closure);
         var from=edgeFrom(region);
         check(from.contains(lip),"the spill itself stays published: "+lip+" in "+from);
         check(from.stream().filter(members::contains).toList().stream().allMatch(closure::contains),
                 "no member publishes outside the support spine, so no fishbone: "
                         +from.stream().filter(members::contains).toList());
         check(from.containsAll(closure),"every support spine node is actually published: "+closure);
-        check(members.stream().filter(m->!closure.contains(m)).count()==4,
-                "at least one non-supported member is dropped (four of eight here)");
+        check(members.stream().filter(m->!closure.contains(m)).count()==3,
+                "all three non-supported members remain unpublished, not a full-basin fishbone");
         check(inflowsReachLip(region,flow,b),"no pan inflow is truncated: every supported one still ends at the lip");
+    }
+    private static void storageDryTrunkCoverage() {
+        for(int offset:new int[]{0,-100}) {
+            var bottom=new Point(offset,offset);var trunk=new Point(offset+1,offset);
+            var lip=new Point(offset+2,offset);var outer=new Point(offset+3,offset);
+            var bridge=new Point(offset,offset+1);var preferred=new Point(offset+1,offset+1);
+            var blocked=new Point(offset+2,offset+1);
+            var members=List.of(bottom,trunk,lip,bridge,preferred,blocked);
+            var graph=Map.of(bottom,List.of(trunk,bridge),trunk,List.of(lip,bottom),
+                    lip,List.of(trunk,preferred,blocked),bridge,List.of(bottom,preferred),
+                    preferred,List.of(lip,bridge),blocked,List.of(lip));
+            java.util.function.ToDoubleFunction<Point> height=p->p.equals(bottom)?0:p.equals(trunk)?1:9.8;
+            java.util.function.BiFunction<Point,Point,Double> crest=(a,b)->Math.max(height.applyAsDouble(a),height.applyAsDouble(b));
+            Map<Point,Point> next;
+            try { next=BasinStorageRouting.build(members,lip,outer,10,height,graph::get,crest); }
+            catch(IllegalStateException failure) {
+                check(false,"dry trunk must not hide a connected side pocket: "+failure.getMessage());continue;
+            }
+            check(next.keySet().equals(new HashSet<>(members)),"storage tree covers dry-trunk side pocket at "+offset);
+            check(lip.equals(next.get(blocked)),"cut-off pocket joins its only physical trunk connection");
+            check(bridge.equals(next.get(preferred)) && bottom.equals(next.get(bridge)),
+                    "wet-first path is retained even when the dry lip offers a shorter attachment");
+            boolean acyclic=true;
+            for(var start:members) {
+                var seen=new HashSet<Point>();Point p=start;
+                while(next.containsKey(p) && seen.add(p))p=next.get(p);
+                if(!outer.equals(p))acyclic=false;
+            }
+            check(acyclic,"every storage member has exactly one acyclic route to the same outlet");
+            var reversed=new ArrayList<>(members);Collections.reverse(reversed);
+            check(next.equals(BasinStorageRouting.build(reversed,lip,outer,10,height,graph::get,crest)),
+                    "member enumeration order does not change wet-first completion");
+        }
     }
     private static void unsupportedPanPublishesLipOnly() {
         var t=supportPan(false);var raw=new WorldDrainage(1,2,-10,t);var sink=new Point(0,0);

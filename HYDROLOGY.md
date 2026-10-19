@@ -149,7 +149,65 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 - 首轮新世界1792302099170、36邻块FULL、6点与3link通过、181/181计划湿列全部匹配且普通非源水0；**总体仍FAIL/exit1**：全列审计在ALL_FULL后200tick观察期检出18个新增计划外水格（总计划外26），位于扩展chunk附近(556..557, y6..10, -2385..-2380)地下。尚未与修改前相同全列审计独立对照，不能断言18格全由本次源水试验导致；扩散风险未排除。7个其它计划外源水格在ALL_FULL时已存在，不能据此声称无生成期扩散。报告/CSV/WGP/log保留 `build/hierarchical-evaluation/g50-forge-source-forward`，原世界保存完成，原run TOML哈希不变。
 - 用户新增截图的湖岸锯齿、贴岸河、长直/直角路线正在只读生产路径归因；没有实施噪声扰动、PNG平滑或路由架构改写，也不把“有动量”当未经验证的通用修复。稳定水面正逆序/扩散归因与形态验收尚未完成。本次按用户要求保存代码检查点，不表示可发布；历史图片、日志、build和存档不纳入Git提交，不推送。
 
-## 一、当前状态（历史快照；新实验状态见〇c/〇d/〇e/〇f）
+### 〇g、G51 背景水因果对照与形态归因（2026-10-18，进行中）
+
+- 从本地检查点 `3fc780a` 续接，本轮尚未改 main 产出，schema93/policy4及原run TOML不变。G50的18个地下新增水格已通过新世界实际写入栈确认：源(557,10,-2380)来自 `SpringFeature.place:71`，后续18格由 `FlowingFluid.spread` 扩散；7个地表计划外源水来自 `StructureTemplate.placeInWorld`。build-only agent仅打印，证据 `g51-forensics/origin-writes.utf8.log`；历史G49原件先复制并SHA256核对，再在副本读到同源/同水路/7结构水，未修改存档原件。
+- 验收schema5保留 `newUnplannedWater` / `rawSpreadVerdict` 原始结果，另外保存全部计划外水（含生成期）与seed、完整TOML/参数/系统开关、9216列计划哈希、加载顺序、200tick、世界高度、generator class资源哈希。候选必须与旧策略独立新世界对照的**全部**计划外水坐标和BlockState集合相同；新增、删除、状态变化、元数据/36目标chunk集合不符均不绿，不按高度/固定坐标/连通豁免。无对照不得通过，reference臂本身永不作为验收绿。对照只在build-only agent中将原 `waterState` 的model参数置false，不改生产源码/默认。class资源哈希只覆盖generator，不能冒充整个构建指纹。
+- 最终 `g51-final-static-build.log` 编译main/diagnostics/acceptance、全部验收自检与build通过/exit0；生产未改，完整WorldgenGate未跑，实机整体仍红。build-only去水集合/去chunk集合/去meta比较三变异，分别在新增水、同数量换块、seed错配断言真实失败。新增自检曾错误要求reference自比较绿，实际触发红后已纠正为必须红；原失败日志保留。隔离实机一次因原版 `pauseOnLostFocus` 暂停在10块，线程/日志证实后经验收自身 `abort` 保存退出，报告ERROR及 `saveCompleted=true` 留在 `g51-reference-forward-paused-incomplete`；仅acceptance支线禁止失焦暂停，不动正常run配置。
+- 正序同条件对照：旧策略新世界1792308324451，36FULL/200tick，175/181计划湿匹配、ordinaryNonSources175、offPlan26/new18；候选新世界1792308583100，181/181匹配、ordinaryNonSources0、同26个计划外水坐标与BlockState逐位相同、meta一致，**定向PASS/exit0且保存完成**（`g51-reference-forward` / `g51-candidate-forward`）。原G50 FAIL不覆盖，不升级为全世界验收。
+- **逆序新增真实红灯**：旧策略1792308851311，36FULL/200tick，174/181匹配、offPlan111/new92；候选1792310884142，179/181匹配、ordinaryNonSources0、offPlan117/new95，六个额外地表水格在(553..555,y87,-2400..-2398)，全部level5..7。严格背景差分报added6、coverage报partial179/181，**FAIL/exit1并保存完成**。逆序宽范围trace新世界1792312261931曾181/181且背景MATCHED/PASS，但无agent复跑1792312666646再次179/181/FAIL（背景MATCHED），不能用trace的单次绿覆盖真实失败。两条缺列(-644,64,688)、(-643,64,689)在保存NBT副本及新增 `planned-columns.csv` 均为oak_leaves、waterlogged=true，不是空气/水流体消失；现验收刻意排除含水固体，因此开放水体判据仍红，不能直接改成通过。
+- 六格扩散已窄范围真实复现：新世界1792312885625，181/181计划湿匹配但背景added6、offPlan117/new95，FAIL/exit1且保存完成（`g51-candidate-reverse-narrow`）。(555/554/553,87,-2400)level5/6/7的实际写入栈全部是 `FlowingFluid.spreadTo:253 → spreadToSides:146 → spread:125 → tick:418`，见 `g51-forensics/confirmed-surface-spread.txt`。副本NBT显示来源邻chunk(34,-151)的model河源水（z=-2404，真实provider相应列fillWater=true/lakePlan=false），对照该河表层衰减后相邻chunk(34,-150)六格无水。因此**稳定源水仍有真实侧向扩散风险**，不能作为地下背景水豁免。诊断曾把provider无侵蚀original当最终地面、误称0.4块侵蚀差是落块错位，主线程复核完整 `terrain.sampleCell→getChunkCells→generateChunk` 后已撤回该错误归因；真实干岸地面y86并无已证错位，纠偏在 `build/g51-route/CORRECTION-2026-10-18.md`。未改生产拦水、装饰或含水判据，下一步须确认保留原版流体扩散还是在model落块计划中显式约束岸线/供水，legacy与瀑布不动。
+- 形态只读归因：真实provider四窗口逐列与同 `gen.erodedHeight` 回调对照，湖岸 `floorDiv(block/4)` 的盆身份门每4×4整块切换；W1 x=-560..-556,z=-288地形179.727→172.061连续下降，但直到x=-556才获盆身份、水位177.191120。该64²窗口provider湖掩码与schema92正典图4096/4096一致；西岸mod4=0相位88.9%，同平面地形水平集27.5%。去成员门的196列仅为**反事实差值，不是安全扩湖证明**，须先证同盆真实连通，不能改成最近盆铺水。跨缝补测与纠偏数据在 `g51-shore`；早稿把lake也算river导致贴岸/相位错误结论已撤回，不能引用早稿。
+- 长直归因：build-only真实回调逐查x=-224,z260..596的85格点，84步rawD8同向+z，routing.baseNext85/85与raw相同、0盆参与；这条337像素直线不是region接缝或盆内BFS造成。现存owner(-2,1)完整1027边中974与raw同后继，53处差异全部盆内；正确区分入度1转角与汇流后，本owner唯一90°转角及多个90°汇流由 `publish` 的盆内BFS改向造成。证据 `build/g51-route`。旧CSV的canonicalNext/rawNext未引号含逗号，必须按位置解析，不能用错位DictReader得结论；旧pipeline field床面不是world erodedHeight oracle。未实施16方向、惯性或曲线插值，不承诺未经A/B的收益。
+
+### 〇h、G52 形态根因修复（2026-10-18，实施中）
+
+- 用户明确要求优先修湖岸锯齿、贴岸河与非自然路线，复杂水机制暂缓；随后选择“允许根因修复”，允许修改D8/BFS后继及由此变化的汇水/部分湖泊，但世界坐标确定性、唯一后继和跨区一致仍为硬要求。源水侧漏、含水植被的G51红灯保留，不作为本轮形态修复前置，也不改成已通过。
+- 第一批新增 `WorldLakeSurface`，仅接入世界骨架分支 `columnsFor`：固定世界对齐STEP单元的四角提供已决盆身份/单平面，采样单元内全部整数列，从真实湿角按四邻面连通判湖；低角不再代表整4×4。没有最近盆选择、跨region洪泛、不同水位插值或未知静默判干；不同盆争夺同列、同身份不同水位、缺失/UNKNOWN均明确失败。只在chunk内临时缓存cell；非世界model及legacy路径不改。湖面优先于河，盆几何/水位/水量账本本批未改；schema94、湿面策略1。
+- `g52-compile.log` main/diagnostics编译通过；`WorldLakeSurfaceProbe` 10项含单块脊/对角阻断/异盆冲突/缺失UNKNOWN/负平移通过，退出0；DemandFlow19项、routing既有整套与WorldDrainage37项均0FAIL/exit0。完整门禁、全图与跨缝仍在进行，不能将局部通过当整体验收。
+- 同seed/TOML实际provider W1（x[-576,-513],z[-304,-241]、4096列）湖3040→3236，新增196/删除0；riverOnly15→3；西岸mod4=0从88.9%→27.5%，与真实地形同水位水平集一致。这里196列实际由cell内连通证书纳入，不再援用旧nearest反事实作安全证明。六倍最近邻同底局部对比 [W1-compare.png](forge-1.20.1-47.4.10-mdk/build/hierarchical-evaluation/g52-shore/W1-compare.png)，数据在同目录W1；旧G51规则检查此时196处不符正是规则已改，不能当新规则验证器。图是生产计划代理，不是运行后Forge全验收。
+- 该细化只证明固定cell内到某同盆湿角的连通，不是全盆所有逐块分量的完备证明；窄支湾如四角均干仍可能遗漏。独立真实W2湖2481→2609、HUG1046→1063、NEG河344逐位不变，接缝两owner与独立新JVM正逆序样本一致，仍不代表整体绿。
+- **1401²大图真实FAIL，禁止发布/宣称完成**：`g52-shore/canonical-panel.metrics.txt` 两region报不同盆争同列(-370,-93)、(-108,-520)，仅7508成功chunk、773失败域，退出0只是既有绘图工具不传播FAIL，不能视为通过。`conflict.log` 实际worldWater和5×5整数地形复核：前者大盆177.191120与单格小盆177.546765相邻，后者单格盆185.142599与186.539335相邻；粗对角边沿crest仍阻断，但绕开的逐块面连通路径使两候选重叠。说明仅有同盆湿角的连通**不足以裁决异盆边界**，不能用最高/最低水位、最近盆、保持旧判或判干掩盖。当前main为明确抛错的未完成试验，未提交；下一步先处理这些真实冲突再跑大图，不能继续扩大接线。
+- D8长直与盆内BFS直角尚未修改生产。build/g52-route原型报告与终稿摘要存在口径差异（文档仍描述FA、摘要改为连续梯度跳长L≤3），只作为待主线程复核材料；长边是否越过未汇流交叉、反向前驱闭包及盆内crest仍未完成生产验证，不能直接采用或以单线变弯宣称根治。
+
+### 〇i、G53/G54 用户圈图精确复核与盆内修复（进行中）
+
+- 用户继续指出串湖贴边、直角与南部平行长直；再次授权重启子代理。中断/额度错误的代理不算通过，重启结果逐项复核。旧 `g53-lifecycle` 的东盆(132,-460)不是用户图1，18/62为潜在入流而非可见河，实际published外入0；其baseNext所报回流还漏了spillChain。上述“18条可见河绕岸/生命周期自环”的表述撤回。正确圈1在x[-730,-610],z[-40,110]，盆(-728,16)201成员、同平面158.0646、末端lip(-632,88)→(-628,92)；图上多片蓝色不是多盆。两个实际published入流均过湿面，真正geometricNext续流218点到海、无循环。圈2大盆(-640,-236)。原图裁切亲验，见 `build/g53-lifecycle/actual-circle-0.png` / `actual-circle-1.png`。
+- 真正生产缺陷：世界非湖河列 `surface=eroded` 使盆内廊道沿地形起伏，圈1实际列顺流抬水15次/max0.3754。main已修同盆published edge携单平面到SegmentIndex/Hit/columnsFor；等距endpoint优先有平面段，不同finite平面在同零距列仍明确失败。圈1实际155列、2入口，圈2 225列、11入口均surface==level、0抬升、0平面丢失，独立新JVM实测exit0；旧tie导致(-716,12)157.7253而非158.0646的FAIL保留。湖mask不变，不能把此项称贴岸几何已修，schema95；legacy/流体策略未动。证据 `g53-real-circle/surface-after-tie`。
+- 新 `BasinStorageRouting` 接入publish：先蓄水低部到唯一lip主干，再从主干湿段接其它成员，干出口主干不作为额外支流的直达目标；无半格可见湿部的浅盆保持唯一溢流树，不造湖面。共享出口/净流/盆身份及预算不改；schema96/policy5。首次routing探针2红为旧精确BFS spine期望（4点）与新过底部spine（5点）不同，保留原日志；迁移为必须经过底部、仍不发布其余三成员后，routing整套与DemandFlow19项编译/运行0FAIL/exit0（`g53-storage-regression-final.log`）。实际圈图A/B与全图仍在验证，不宣称自然路线完成。
+- `WorldChannelGeometry` 仍未接生产：真实5×5证明直边crest制造假微盆，但全面换minimax通道会引入同物理出口的虚假多face竞争，需全消费者一致；原单label(crest,length)最短路径有实缺陷，已修crest-only Dijkstra后固定C* BFS，探针8项绿；build独立19683穷举/200000随机/1352真实边0长度差。不同粗边微通道可能共享列却分向，因此不可直接画通道当唯一河路。原型日志保留。
+- 南部长直未修：L3长跳/局部valley-phase均因真实不汇流交叉否决；固定canonical reach可跨owner一致但下游junction距真实连续下降路径约151格，固定端点优化仍313格直段，不接生产冒充根治。规则网格地形自适应位置原型正在build限定评估。完整WorldgenGate/实机/独立最终CodeReview尚未完成；G52两异盆全图红灯不豁免。
+
+### 〇j、G54 大图覆盖回归与 G55 修复（进行中）
+
+- G54/schema96真实生产1401²图仍 **TRUE_FAILURE**：成功5900/8281chunk，7失败tract、620827像素/31.63%；六tract首错 `storage tree does not cover basin`，另保留(-370,-93)异盆竞争。图和metrics在 `build/hierarchical-evaluation/g54-storage/`；绘图工具exit0不代表成功。
+- G55仅helper叠层观察，在四独立新JVM owner(-2,-2)/(0,-2)/(-1,-2)/(1,-1)复现新增覆盖错误。完整lip BFS分别5/5、5/5、5/5、16/16，而湿优先树4/5、4/5、4/5、12/16；缺失节点全部邻接已占用干主干节点。主干干点已写next却不入队、被 `!next.containsKey` 当墙，非成员不连通或选错出口。主线程亲跑真实高度表JDK独立fixture复现同异常；原失败与debug日志保留，见 `build/g55-storage-capture/`（报告部分干/湿汉字颠倒，以height<sill−.5及代码为准）。
+- main修复为两阶段：湿主干优先attach完全结束后，仅对尚缺分量从原主干再attach；不覆盖第一阶段既定后继，不把有湿通路的支流提前接到干lip。浅盆保持原树；schema97/policy6。新增正/负平移fixture同时断言完整覆盖、被隔支湾唯一物理接入、湿段优先即使干lip更近、全成员无环到同出口、枚举逆序一致。main/diagnostics编译、routing全套（新增10断言）/Demand19/Drainage37 exit0，`g55-storage-regression.log`。真实四owner均noThrow/0unresolved，薄adapter直接调用main四真实fixture全覆盖/无环/同出口/crest合规、member逆序完整Map相等；旧helper叠层负控四份全红。邻居列表逆序是改变tie规则、非查询顺序测试，不援用其“另一合法树”冒充世界一致。两圈图实际columnsFor独立JVM：2/2及11/11入口平面一致、0抬水/0平面冲突；inventory冷逆序正文相同。G55/schema97全图7508/8281chunk、仅剩原两异盆冲突、288256像素/14.69%，新增覆盖回归已消失，但整体仍TRUE_FAILURE，不可验收。
+- 全量通道crest的build叠层未合入：owner(-1,-1)原prefix规则16322未知，证实33个分叉分支回升被整体拒绝、7个鞍点恰在outer无后续列。下一实验改只排除回升分支/保留并列未知，但实际provider仍14078未知，主因selected spill path EXHAUSTED；不得据此增预算或吞UNKNOWN。原型报告将850k整region采样误称共享预算，实际每sink独立new solver；尚需精确归因prefix/suffix耗尽，不能当已确认根因或直接采用缓存建议。后续splice复用已采样同sill外部连接与旧witness后缀，EX_THROUGH/采样cap归零但仍14078未知，否证“预算是主因”；移除代理擅加的prefix4096局部cap（误拒4645成员大盆），纠正block鞍点与coarse path不一致/endpoint continuation键，再降为6009未知，仍exit1未合入。剩余分叉回升节点均低于sill，部分微坑还低于coarse floor，**只能证明当前粗图和所选通道候选不完备，不能证明物理无出口**；代理“真实地形拒绝”结论已撤回。原型到此停止，不接受6009未知/不升预算/不吞失败。生产仍使用直边crest，异盆竞争与自然路线任务未完成。
+
+- `runWorldgenGate` 本轮真实exit1，停在 `runCenterlineCrossSectionProbe`：组件126→141、内部端点23两红，CaveShape已绿，其余门禁未执行。已用HEAD3fc780a三生产类编译叠层隔离对照：baseline/current独立JVM均exit1、12指标相同、4产物SHA256逐位相同（主线程亲验）；class-load两臂142个项目类相同，本轮四改类/三helper加载均0。因此确认为HEAD既有门禁失败，未放宽阈值/修无关路径，但不能称完整门禁绿。证据 `build/g55-gate-baseline/`，原日志 `build/g55-worldgen-gate.log`（PowerShell重定向UTF16LE，归因目录有UTF8副本）。
+- G55 valley-mesh仅build评估：±1–2格重嵌入虽缩短部分长直，但真实连续下降谷仍偏离67–71块、成本约10.3倍、且未全链迁移；主线程已目检走廊图不接受小抖动冒充根治，未接生产。报告的 `e=2仍满足e<S/2` 与取整后的幅度证明有误，不能援用为全局几何证明。后续build-only G55U非规则采样+Delaunay最陡下降，主线程已读实现并目检：该单seed目标段max谷偏89.4→7.3块（J=.8），确实离开D8长直靠向连续谷；但不是生产验收。节点密度S固定不变，J阈值不能叫密度阈值/非偶然证明；ring2..5有限一致不能当无限世界完备性证明；精确点集0交叉而块取整4交叉是真gap。报告已纠正Gabriel/Delaunay定义、单射界、完备性越界，列出尚未验证的ring推导、最终block拓扑、身份/位置接口与非规则面积水量账本。因此只保留为有价值可行性证据，未接src、未改配置/预算。
+
+- 独立只读审查在首次上游502、第二次中断后重启完成：未给出新确证P1/P2。接受并修正了provider湖面注释仍称“全部取细层”的过时表述；`List.contains`盆成员性能疑点未计时，保留为未证实，不额外做性能重构。审查未运行实机/探针，不能替代验收。注释修正后main/diagnostics编译及routing/Demand19/Drainage37再次exit0（`g55-final-regression.log`）。
+
+### 〇k、G56 表示层可行性与补全门禁（尚未接生产）
+
+- `runWorldgenGate --continue --offline --console=plain` 已补全运行12探针，11通过，仅CenterlineCrossSectionProbe原两判据红；Gradle最终exit1。已通过：CaveShape、ForkFeasibility、HydrologyDeterminism、LifecycleChain、OreFilterBehavior、OreOverride、OreVein、Stratum、TectonicContinuity、TectonicWave、TerrainGrain。原日志 `build/g55-worldgen-gate-continue.log`，不得说“门禁全绿”。
+- G55 integer-topology代理首次交付只有一份未编译源码，却声称测量完成；主线程列目录后要求撤回，代理确认全部数字无证据作废。保留原草稿，不援用任何数字。后由独立实现代理在 `build/g56-integer-verify/` 真正完成探针/runner/日志/PNG，修正原稿按drop而非坡率选边、crest与绘制列覆盖不一致两问题。
+- G56IT固定S4/J=.8 round/clamp±1后在**最终整数点**上建立精确有理Delaunay邻接。真实目标段endpoint-only与crest-gated分别测得112边、max谷偏20.5/mean3.4、z[260,619]，同终点(-41,619)、0crest违规；同底图已目检，确实离开红D8长直靠向青色Euler路径。7215节点窗口有8个微洼/6个crest阻断，8263共享列对未见不共享节点冲突，负域4225点身份/邻接对称与冷逆序289点一致。按本轮原型严格判据真实exit1，未接生产；微洼是待盆地层处理的正常候选，不能单凭存在微洼证明方案原理无效。ring4/5有限相等非无限世界证明；亚块稠密rint覆盖不是精确supercover。面积账本/盆出口/世界identity迁移仍未做，不能称整河已修。
+- `build/g56-cell-quotient/` 真地形两冲突cell精确25整数列/40四邻边局部merge tree：各25阈值与暴力图0差，邻接双cell各45阈值及496port对0差；上界49树节点、16边界port，能保留粗角图看不到的微坑。生产两异盆冲突仍可复现，差异身份在真实水平集连通。**这只证明局部连通表示可行，不提供水量/合法水位/全局盆身份**；WorldLakeSurface已经exact5×5洪泛，单换merge tree仍会看到同样冲突，必须与身份生产者一起迁移，不能只改surface掩盖。树临时id不能跨cell当世界id，49是构造上界非最小性证明。原报告25/300回调“12倍”覆盖域不同、边界共享且生产缓存dedup，已撤回实际提速说法；日志原证据保留并在报告纠正。全图/实机/多seed尚未验收。
+
+### 〇l、G57 统一图候选触发停止条件（2026-10-19，未形成完整链路）
+
+- 按获批计划在 `build/g57-unified/` 隔离实现契约、局部储水与整数mesh投影；**候选失败，拒绝迁入生产**。生产仍为 schema97/policy6，四个生产输入源码与原run TOML经基线SHA256核对未变；provider副本仍与生产源码逐字节相同，未编译或接入新图。`worldWaterForProbe`、`columnsFor` 和绘图消费者**没有迁移**，不能把副本存在说成完整provider已实现。计划的75/86/98行要求前置失败即停，不靠增预算、丢边、坐标选口或绘制遮盖继续接线。
+- **投影失败已独立复现**：固定S4/J=.8/round/clamp±1，真实9443条选边覆盖48377块列，有227列双后继；换角桥规则仍191列。单调平面 `h=x+z` 也有119处冲突，不能归因于真实地形微坑。无自身冲突的起点中6149个最终进入环（是起点数，非独立环数）；目标段339步后在(-194,531)遇冲突。唯一高度采样133140/524288，未耗尽，不是预算不足造成。详见 [routing.log](forge-1.20.1-47.4.10-mdk/build/g57-unified/natural/routing.log)，进程exit1，两个硬断言真实红。
+- **最小反例**：seed9139912035078620160，已记录选边A=(-375,629)→B=(-377,633)→C=(-375,635)。AB逐块通路在P=(-376,633)要求西行至(-377,633)，BC在同P要求南行至(-376,634)；mesh链本身无环，独立投影却不是单后继函数。主线程具体回放正反边枚举均拒绝、exit1；该回放固定已记录选边，只单独证明投影冲突，真实选边来源由完整探针核实。[反例示意图](forge-1.20.1-47.4.10-mdk/build/g57-unified/verification/projection-counterexample.png) **不是游戏/生产渲染图**，不能用作形态验收。
+- **局部储水不等于完整盆地**：25列/40边cell索引与暴力水平集一致，局部微盆、负平移、冷逆序、预算拒绝等探针88 PASS/0 FAIL；两冲突cell的微盆闭包分别只有1/2成员，旧身份对应小闭包相互分离，尚未完成回水合并、下游链认证或净流账本。第一湿水平集完整分量73512列，第二在131072局部预算内明确拒绝；这不是两旧冲突盆已统一。原生产两处身份竞争仍由探针真实复现。详见 [exact-block-storage.log](forge-1.20.1-47.4.10-mdk/build/g57-unified/storage/logs/exact-block-storage.log)。
+- **独立审查发现并收束**：原局部出口规则中所有rim outer高度都等于sill，“最低outer”实际退化为XY选口，且可能与见证离盆方向不同。已删除该代表选口；仅一个rim face且见证跨越同face才发布局部出口，多个face即UNKNOWN、无outlet/next，保留完整几何；这只是诚实拒绝，不是多面出口已解决。路由的未覆盖严格下降平局改抛显式未决异常，不再与真实sink一起返回null；前驱枚举返回完整四邻候选，消费者必须确认后继并传播UNKNOWN，不跳过冲突而漏雨源。地形预算改专用异常，储水层不再广捕拓扑异常当耗尽。路由memo容量/独立展开预算仍未完成，故不准接下游；删除无计数器支持的“已实测最大cell距离”注释。
+- **修正后主线程最终复跑**：契约编译/探针exit0，局部储水编译/88断言exit0，自然投影编译成功但227双后继及6149起点入环两断言仍exit1，具体反例独立编译/回放exit1，生产输入核验exit0。储水日志与代理冷JVM逐字节一致，自然探针日志除elapsed外逐行相同；[final-exit-codes.txt](forge-1.20.1-47.4.10-mdk/build/g57-unified/verification/final-exit-codes.txt) 明确标为候选REJECTED，不能把验证流程如期拒绝误读成原型验收PASS。计划正文未改；Todo状态同步将exact-storage从in_progress改为pending，因而文件总SHA256相应变化，未把未完成项标成完成。
+- **未完成/未实测**：exact-storage完整回水与原冲突盆上下游闭包、合法自然路由、流量/provider迁移、新provider多seed/跨区/取消完整验证、1401²新实验生产入口大图、Forge落块、完整链路成本均未完成。没有新的G57生产大图，不援用旧G55图或局部示意图验收。既有G56补全门禁11绿/1红及HEAD两红归因保留，本轮隔离失败实验未重跑全部WorldgenGate。不提交、不推送、不替换实例，保留既有dirty源码、日志和图片；停止候选不等于完成六项计划，更不等于证明统一图方向不可行。
+
+## 一、当前状态（历史快照；新实验状态见〇c—〇l）
 
 | 项 | 值 |
 |---|---|

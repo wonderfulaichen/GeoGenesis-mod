@@ -426,8 +426,12 @@ public class PreviewDisplay extends AbstractWidget {
     // 91 = 2026-10-18 后继统一整数列可通过屏障，修溢口成员被raw跨脊归入另盆的双重雨源身份。
     // 92 = 2026-10-18 全首割Face共享唯一整数鞍点时按严格唯一外向坡率选口，重建见证并统一首接收盆。
     // 93 = 2026-10-18 model普通水面试用稳定源水，避免原版fluid tick衰减；legacy与瀑布水幕不变。
+    // 94 = 2026-10-18 世界盆湖岸按固定cell四角同盆水位和逐块面连通细化，不再整4×4取低角身份。
+    // 95 = 2026-10-19 世界同盆已发布河廊消费盆单平面，不再以逐列地形充当河面而顺流爬坡。
+    // 96 = 2026-10-19 盆内树从蓄水低部连接唯一出口主干，再接入支流，避免纯lip BFS绕岸。
+    // 97 = 2026-10-19 湿段优先接入后补齐被固定干主干隔开的支湾，保持已有后继而不漏盆成员。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 93;
+    private static final int CACHE_SCHEMA_VERSION = 97;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

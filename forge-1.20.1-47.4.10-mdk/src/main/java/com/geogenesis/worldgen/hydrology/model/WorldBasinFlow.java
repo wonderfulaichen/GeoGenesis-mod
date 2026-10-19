@@ -6,7 +6,7 @@ import java.util.concurrent.CancellationException;
 
 /** Demand certificates on the canonical world graph; a lower bound is never an exact discharge. */
 final class WorldBasinFlow {
-    static final int POLICY_VERSION = 4;
+    static final int POLICY_VERSION = 6;
     record Water(DemandFlow.Amount amount, double level, WorldBasinRouting.Basin basin, String reason) {
         boolean known() { return amount.known(); }
         double discharge() { return amount.exactValue(); }
