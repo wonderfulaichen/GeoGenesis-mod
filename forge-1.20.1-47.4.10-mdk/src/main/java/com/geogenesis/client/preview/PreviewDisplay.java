@@ -432,8 +432,11 @@ public class PreviewDisplay extends AbstractWidget {
     // 97 = 2026-10-19 湿段优先接入后补齐被固定干主干隔开的支湾，保持已有后继而不漏盆成员。
     // 98 = 2026-10-20 生产移除 legacy RiverCenterlines 线：骨架成唯一河网线（SKELETON_TRACE 恒 true），
     //      探针/实机从此同线；riverModel 证据场不变。产出含河网几何变化 ⇒ 旧缓存必须失效。
+    // 99 = 2026-10-20 legacy 水文链整体退役：HydrologyChunkEngine 恒走 model 链（实机水从 legacy
+    //      切到 model 链产出）；湖逃逸重算/湖岸精修随 legacy LakeNode 移除，isLake 判据化简为
+    //      lakePlan；绿洲河距永久旁路（恒 ∞）。实机产出整体变化 ⇒ 旧缓存必须失效。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 98;
+    private static final int CACHE_SCHEMA_VERSION = 99;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

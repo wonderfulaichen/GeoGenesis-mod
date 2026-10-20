@@ -727,17 +727,6 @@ task runLakeShapeProbe(type: JavaExec) {
     }
 }
 
-// Lake locate probe (2026-09-09): reverse-lookup the lake/water at a game block
-// coord (player F3 position) - hit type, spill vs eroded rim heights.
-// gradlew runLakeLocateProbe -PprobeArgs="seed blockX blockZ"
-task runLakeLocateProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.LakeLocateProbe'
-    maxHeapSize = '2g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split('\\s+') as List)
-    }
-}
 
 // Lake survey probe (2026-09-10): print all basin lakes' spill/OOB/flood coverage
 // to locate the "lake not filling the whole basin" case.
@@ -970,17 +959,6 @@ task runTwoWaterBudgetProbe(type: JavaExec) {
     }
 }
 
-// UnifiedCriterionProbe (2026-09-19): P0-2 判据统一前的【先量后改】—�?
-//   量【河分支几何判水】vs【绝对等高线判水】的分歧（多�?漏灌），以及水体面积净变化�?
-//   gradlew runUnifiedCriterionProbe [-PprobeArgs="seed bx bz half step"]
-task runUnifiedCriterionProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.UnifiedCriterionProbe'
-    maxHeapSize = '3g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
 
 // WaterFieldUnifyProbe (2026-09-19): T1.3（W 作湖水位）的【先量后改】—�?
 //   �?WaterField.W 与现�?LakeNode.spill 的差值分布，判断能否直接接线�?
@@ -1446,16 +1424,6 @@ task runLakeCensusProbe(type: JavaExec) {
     }
 }
 
-// River bed audit: river bed must be CUT into terrain, never raised (2026-10).
-//   gradlew runRiverBedAuditProbe [-PprobeArgs="seed blockX blockZ radius"]
-task runRiverBedAuditProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.RiverBedAuditProbe'
-    maxHeapSize = '2g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
 
 // Lake drain audit: lake/river water must be held by terrain (2026-10).
 //   gradlew runLakeDrainAuditProbe [-PprobeArgs="seed blockX blockZ radius [profZ]"]
@@ -1572,16 +1540,6 @@ task runWaterPhysicsProbe(type: JavaExec) {
     }
 }
 
-// 干墙格归因（2026-09-17）：逐格打印"是哪道闸门掐断了�?（cat A/B/C/D + 种子�?+ 粗格余数�?
-//   gradlew runWallAttributionProbe [-PprobeArgs="seed wuX wuZ halfWu minDepth"]
-//     minDepth 默认 0.5：排�?浅水�?（地面与水面同格、放不下水块 �?本就该干），否则淹没信号
-task runWallAttributionProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.WallAttributionProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
 
 // 区块加载性能基准�?026-09-17）：�?span×span chunk（真实工作集 + 驱逐）�?
 //   统计 ms/chunk 与【侵蚀 tile 生成次数 / 触达不同 tile 数】（重复生成率）:

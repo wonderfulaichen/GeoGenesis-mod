@@ -244,8 +244,19 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 - **行为变化（重要）**：① 无配置环境下探针从此与实机同线（此前探针默认测 legacy）；② 旧 TOML 的 `hydrologyDeterministicSkeleton=true` 行不再有意义，删除该键即可；③ `CROSS_PASS=false` 的 `-D` 仍可切到纯 `DeterministicSkeleton` 几何（A/B 归因用），但这仍是"世界图 vs 骨架谁出几何"的待合并项，不是 legacy 复活。
 - **未做/下一阶段（第二阶段，先出方案再动手）**：`worldRegion` 的两点直连废掉、corridor 几何改消费骨架形态收尾折线（世界图只管湖面/盆身份/跨区接力/水量）；正面修平行直线/动线不自然（meander amp=0 是用户 2026-10-10 指示关闭，重设计由用户拍板）与入湖贴边。本轮**不声称**平行直线已修——图上仍可见，量化见 `inspect-canonical-figure.py`（最长直段 116/118 px）。未跑完整 WorldgenGate、未做实机 Forge 验收、未提交。
 
+### 〇q、legacy 水文链整体退役：实机水第一次真的走 model 链（2026-10-20）
 
-## 一、当前状态（历史快照；新实验状态见〇c—〇p）
+- **触发**：用户指出"移除 legacy 后应该只有唯一一套才对"。第一阶段只删了 model 链**内部**的旧分支，而 `HydrologyChunkEngine` 层仍留着"model 链 vs legacy 链"二选一，且**默认是 legacy**——游戏日志实测（`run/logs/latest.log`，2026-10-12 用户最后一次开游戏）：`[HYDRO] modelPipeline config=false => effective=false` ⇒ **用户在游戏里自始至终看的是 legacy 链的水**，而我们几轮修的、出图的都是 model 链。本阶段把这层也去掉。
+- **改动**（main）：`HydrologyChunkEngine` 删 `useModelPipeline` 开关与 `HydrologyExperimentEngine`/`HydrologyBlockCarver` 分支，`calculate` 恒走 `modelProvider.columnsFor`；`GeoGenesisConfig.hydrologyModelPipelineEnabled` 退化为 no-op 常量 true（保留注册以便旧 TOML 无警告加载），并从 `configFingerprint` 移除（它不再区分任何产出）；`ModelHydrologyProvider` 身份指纹同步移除该键。`GeoGenesisTerrain`：`fillRiverDistance` 的 legacy 河距旁路**转正为永久语义**（恒 ∞，绿洲群系待后续重接线）；湖列**逃逸重算**（依赖 legacy `LakeNode.escapeWaterLevel`）移除 ⇒ 湖水位 = model 链盆单平面；`lakeFineFlood`（1 块精度湖岸精修，恒关且依赖 legacy `LakeNode.inFlood`）整方法删除；`isLake` 判据化简为 `column.lakePlan()`；`lakeGroupOf`/`LakeGroup`/湖域登记数组随之删除。
+- **类迁移而非删除**：`HydrologyBlockCarver`/`HydrologyExperimentEngine`/`HydrologyBlockSample`/`RiverOutlet`/`riverline/*`/`flowaccum/*`/`TerrainFlowSim` 从 `src/main` **移入 `src/diagnostics`**（包名不变）——诊断树有 86 个文件、264 处引用它们，迁移后**引用零改动、诊断全部仍可编译运行**，而生产路径不再含 legacy 代码（git 留档：分支 `backup/pre-legacy-chain-removal-20261020` @ `b9b55ee`）。
+- **退役 4 个 legacy 专用探针**：`LakeLocateProbe`/`RiverBedAuditProbe`/`UnifiedCriterionProbe`/`WallAttributionProbe`（都用已删的 `chunkEngine.riverNetwork()` 或 `carveColumnAt(engine,…)` 新签名）。核查确认它们**不在任何现役门禁脚本**中，只被历史归档文档引用 ⇒ 随 legacy 链一并退役，`build.gradle` 对应 4 个 task 用**字节级删除**移除（该文件为逐行混合编码，GBK 往返会损坏中文注释——已实测到损坏并 `git checkout` 回退一次，现按 raw bytes 处理，除删块外零字节改动）。
+- **`PreviewDisplay.CACHE_SCHEMA_VERSION` 98→99**（清单留痕）：实机产出从 legacy 切到 model 链 ⇒ 旧预览缓存必须失效。
+- **验证**：main/diagnostics/acceptance 三树 Gradle 编译通过；DemandFlow19/WorldDrainage/WorldLakeSurface/WorldChannelGeometry/WorldBasinRouting 回归全 0 失败（`build/hydro-regression/stage3/`）；1401² provider 大图两冷 JVM **逐字节一致**且与第三阶段前**完全相同**（SHA256 `AE0C861C…`，湖 102947/5.24%、河 25107/1.28%，`canonical-1792486392835/` 与 `-1792487147792/`）⇒ 证明本次只删 legacy、未改 model 链产出。
+- **行为变化（重要，必须让用户知情）**：① **游戏里的水第一次换成 model 链产出**（此前一直是 legacy），旧存档已生成区块不变，新区块才用新链；② 绿洲（沙漠离水距离）暂时全失效（恒 ∞），这是 model 链 v1 已知限制，legacy 距离源退役后无替代；③ 湖水位不再逐列"escape 压低"，改由世界盆路由单平面给出；④ `isLake` 判据化简后，model 链非湖列不再可能被误标为湖。
+- **未实测/未做**：**未做实机 Forge 验收**（新世界的真实水形、是否贴岸、是否有水墙，均未亲眼验证）——这是本阶段最大的缺口；未跑完整 WorldgenGate；未做第二阶段（骨架接几何正身 + 动线自然化 + 入湖贴边）；未提交。
+
+
+## 一、当前状态（历史快照；新实验状态见〇c—〇q）
 
 | 项 | 值 |
 |---|---|

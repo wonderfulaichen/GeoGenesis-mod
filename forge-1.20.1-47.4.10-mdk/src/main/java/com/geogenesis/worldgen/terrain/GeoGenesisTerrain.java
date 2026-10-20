@@ -2,11 +2,8 @@ package com.geogenesis.worldgen.terrain;
 
 import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
-import com.geogenesis.worldgen.hydrology.HydrologyBlockCarver;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkEngine;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
-import com.geogenesis.worldgen.hydrology.HydrologyExperimentEngine;
-import com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork;
 import com.geogenesis.worldgen.noise.NoiseUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -47,84 +44,23 @@ public final class GeoGenesisTerrain {
     private final boolean riversEnabled;
 
     /**
-     * ★ 2026-09-17【M2，默认 false】湖水位是否改用"雕刻后最终地形上的逃逸高度"。
+     * ★ 2026-09-17【M2】湖水位逃逸重算 —— 2026-10-20 随 legacy 链退役【恒关】。
      *
-     * <p>修的是<b>阶段错位</b>：旧水位在【侵蚀后、雕刻前】地形上求，而雕刻会把山脊挖穿、
-     * 开出新排水口 ⇒ 水悬在"现已能排干"的河谷上方（实测 21.6% 的水格紧邻 1~2 块内
-     * 有低 8.75 块的旱地却无水）。详见 {@code applyHydrologyValley} 湖分支的注释。</p>
-     *
-     * <h4>★ 2026-09-17 A/B 实测：本实现【尚不完整】（故默认关闭）</h4>
-     * <p>启用后窗口水格由 362 → 136（确有变化），但<b>目标最坏点未改善</b>（仍 166.63 / +8.747 块）。
-     * 原因：本实现用 {@code generator.sampleWu} 作为地形——那是<b>侵蚀后、但仍未雕刻</b>的地形，
-     * 与旧实现<b>同一份输入</b> ⇒ 逃逸高度（167.539）反而高于旧水位（166.627）⇒ {@code min} 后不变。</p>
-     *
-     * <h4>★★ 2026-09-17 二次 A/B（地形口径已修正为点态最终地形）：仍无改善</h4>
-     * <p>修正后再测：窗口水格仍 136、最坏点仍 166.63 / +8.747 块。
-     * ⇒ <b>水位不是主因</b>。结合决策链 [10]（边界 44/44 来自 {@code inFlood} 连通区）
-     * 与块级地图（水边界为一条跨约 24 块的斜线）⇒ <b>真正的主因是
-     * {@code computeFlood} 的 BFS 网格粒度：{@code claimGrid/2 = 12wu（= 24 块）}</b>，
-     * 与 {@code floodHalf = 6wu}。水边界因此被<b>量化到 12wu 网格</b>，
-     * 而不是贴合"侵蚀后 height &lt; spill"的等高线 ⇒
-     * 紧邻水边、低于水位却是干的格（实测 263 格）正是"量化边界之外"的格。</p>
-     * <p>⇒ <b>下一步应改 {@code inFlood} 的边界精度</b>（加密网格或落块侧按等高线精修），
-     * 而不是继续调水位。水位重算能力本身（{@code escapeWaterLevel} + 点态雕刻）仍然有效，
-     * 可在边界修好后作为"统一水位"接入。</p>
-     *
-     * <h4>★ 先前的结构结判断（已由点态雕刻【推翻】）</h4>
-     * <p>水位必须在<b>雕刻后的地形</b>上求解；但<b>雕刻是逐 chunk 的</b>，而逃逸路径要跨几十个 chunk ⇒
-     * 在 {@code applyHydrologyValley} 内部读"其它 chunk 的已雕刻地形"会递归触发
-     * {@code getChunkCells → generateChunk → applyHydrologyValley → 逃逸计算 → getChunkCells …}。</p>
-     * <p>⇒ <b>水位与雕刻必须处于同一层级</b>：先把 region 级地形"侵蚀 + 雕刻"定型，
-     * 再在其上求水位 —— 即本例程所属的「世界水文模型」重构核心（见
-     * {@code .codebuddy/plans/世界水文模型-重构设计.md} §2.3）。
-     * <b>在该结构调整完成前，本开关保持 false。</b></p>
+     * <p>原机制依赖 legacy {@code RiverLineRegion.LakeNode.escapeWaterLevel}（legacy 链湖节点）。
+     * model 链湖列恒 {@code lakeNode=null} ⇒ 该分支永久短路；model 链湖水位来自
+     * 世界盆路由单平面（WorldLakeSurface / WorldBasinRouting），不再逐列压低。
+     * 常量保留为 false 仅存档语义，勿再启用。</p>
      */
-    static final boolean LAKE_ESCAPE_LEVEL = true;    // ★ 与"湖域判定修复"配套启用（见类注释）
+    static final boolean LAKE_ESCAPE_LEVEL = false;
 
     /**
-     * ★ 2026-09-17【湖岸 1 块精度精修】开关。<b>当前 = true（A/B 验证中）</b>。
+     * ★ 湖岸 1 块精度精修（lakeFineFlood）—— 2026-10-20【删除】。
      *
-     * <p>修的是<b>覆盖缺陷</b>（不是水位）：水体物理审计实测（runWaterPhysicsProbe）
-     * 显示「水位 166.627 vs 真盆沿 167.706 ⇒ 水位正确（短板生效）；但干墙 451 格」——
-     * 水边界被 12wu 粗格洪泛区切死 ⇒ 垂直水墙 + 水不贴岸（用户截图）。
-     * 详见 {@link #lakeFineFlood}。</p>
-     *
-     * <h4>★ 2026-09-17：v1（失败）→ v2（有效，本版）</h4>
-     * <p><b>v1 = 只重判 {@code lakePlan=true} 的列</b>：干墙 451 → 452、面积 +2
-     * ⇒ <b>纯开销零收益</b>。原因：那些干墙格全是被 {@code inFlood} <b>拒绝</b>过的列
-     * （carver 走"非湖列"早退分支，v1 的登记根本看不到它们）⇒ <b>够不着目标</b>。</p>
-     * <p><b>v2（本版）</b>：carver 对<b>被拒列也回传"湖节点 + 水位"</b>
-     * （{@code lakeNode} + {@code lakeLevelY}，{@code lakePlan} 仍为 false），
-     * 本方法再对<b>所有受该湖影响的列</b>做块级洪泛、<b>只增不减</b>（避免空洞）。
-     * 实测（{@code runWaterPhysicsProbe}，seed 5436529513624899584 @ wu(12,316)±96wu）：</p>
-     * <pre>
-     *   水位 166.627 → 166.627   （**一字未动** ⇒ 只修覆盖、不动水位）
-     *   面积 26739   → 28586     （+6.9%，补上该淹而没淹的格）
-     *   干墙 451     → 158       （−65%）
-     * </pre>
-     * <p>水体视图 {@code build/seam/water_view.png} 已确认岸线基本贴合地形（不再是直角水板）。
-     * <b>残余 158 格待查</b>（疑为：弃湖列 / 本 chunk 无粗格种子的岸线格 ——
-     * 后者可考虑用 {@code LakeNode.inFlood} 作 pad 侧种子，但它是线性扫描，需先评估开销）。</p>
-     * <p>⚠ 本实现自身<b>顺序无关</b>（只读本 chunk 最终高度 + 纯采样）；
-     * 门禁 {@code runHydrologyDeterminismProbe} 的 FAIL 经隔离实验确认是<b>既有问题</b>
-     * （本开关关掉仍 FAIL；max|Δheight| = 0.0515，与本改动无关）。</p>
+     * <p>历史使命 = 补 6wu 粗格 inFlood 的误杀（452 干墙格）；P2-2 换 1 块分辨率掩码后
+     * 反而制造"坡地小水斑"（掩码外灌水，B9 簇扫描实锤），2026-09-23 起恒关。
+     * 其 pad 侧种子依赖 legacy {@code RiverLineRegion.LakeNode.inFlood}（legacy 链 API），
+     * legacy 链退役 ⇒ 无存在基础，方法与开关整体移除（git 留档）。</p>
      */
-    // ★★★ 2026-09-23【P2-2 收尾：默认关闭】（B9 簇扫描实锤）★★★
-    //   本机制的历史使命 = 补 6wu 粗格 inFlood 的误杀（452 干墙格）。
-    //   P2-2 把连通性换成 1 块分辨率掩码后，"被拒列"= 掩码外 = 本就不该出水的列，
-    //   本方法的"局部连通即出水"反而变成【掩码外灌水】——
-    //   实测（B9 簇扫描，seed 9139912035078620160）：坡地孤斑簇距母湖 88~102wu、
-    //   带母湖水位（173.28/189.05）、全部不在掩码内（如 (-256,-276) 19 格、
-    //   (-251,-269) 34 格、(-412,-49) 8 格、(-26,-419) 2 格）⇒ 用户实机圈出的
-    //   "坡地小水斑"（B8 过量蓄水 702 格同源）。
-    //   回退：改回 true（旧链语义原样恢复）。
-    static final boolean LAKE_FINE_FLOOD = false;
-
-    /** 逃逸水位专用的水文引擎（懒建一次，供点态最终地形采样复用）。 */
-    private HydrologyExperimentEngine escapeEngine;
-
-    /** ★ 2026-09-17【临时诊断，取到结论后删】。 */
-    private static final boolean LAKE_ESCAPE_DIAG = false;
 
     // ===== ★★★ 2026-09-19（P2 判别测量）湖面不平的【分层归因】埋点 ★★★
     //
@@ -152,43 +88,7 @@ public final class GeoGenesisTerrain {
     //     ⇒ `isLake=true` 只表示"水位 ≥ 海平面"，**不表示这是湖**；河列同样为 true。
     //     ⇒ 那个 σ>0 的"纯湖"极可能是一条【按流向正常下降的河】（σ>0 对河物理正确）。
     //   ⇒ 连带影响：P2（水位收敛）与 P3（湖语义）的**前提被推翻**，不必再为它动刀。
-    static final boolean LAKE_LEVEL_SPLIT_DIAG = false;   // 已取到结论，关闭
-    private static final java.util.Map<Object, double[]> LAKE_SPLIT =
-            new java.util.concurrent.ConcurrentHashMap<>();
-    private static final java.util.concurrent.atomic.AtomicLong LAKE_SPLIT_N =
-            new java.util.concurrent.atomic.AtomicLong();
-    private static final java.util.concurrent.atomic.AtomicInteger LAKE_SPLIT_PRINTED =
-            new java.util.concurrent.atomic.AtomicInteger();
-
-    /** 记录一列：(waterSurfaceY 原值, 最终 spill)。每 5000 列打印一次逐湖汇总。 */
-    private static void lakeLevelSplitDiag(Object node, double rawSpill, double finalSpill) {
-        if (node == null) return;
-        double[] st = LAKE_SPLIT.computeIfAbsent(node,
-                k -> new double[]{0, Double.MAX_VALUE, -Double.MAX_VALUE,
-                                  Double.MAX_VALUE, -Double.MAX_VALUE});
-        st[0]++;
-        st[1] = Math.min(st[1], rawSpill);   st[2] = Math.max(st[2], rawSpill);
-        st[3] = Math.min(st[3], finalSpill); st[4] = Math.max(st[4], finalSpill);
-        long n = LAKE_SPLIT_N.incrementAndGet();
-        if (n % 5000 == 0 && LAKE_SPLIT_PRINTED.incrementAndGet() <= 8) {
-            LOGGER.info("[LAKE-SPLIT] 已处理 {} 列，共 {} 个湖：", n, LAKE_SPLIT.size());
-            int shown = 0;
-            for (java.util.Map.Entry<Object, double[]> e : LAKE_SPLIT.entrySet()) {
-                if (shown++ >= 6) break;
-                double[] v = e.getValue();
-                LOGGER.info("  湖{} 列数={}  spill原值∈[{}, {}] 跨度={}  |  最终水位∈[{}, {}] 跨度={}{}",
-                        System.identityHashCode(e.getKey()), (long) v[0],
-                        String.format("%.3f", v[1]), String.format("%.3f", v[2]),
-                        String.format("%.3f", v[2] - v[1]),
-                        String.format("%.3f", v[3]), String.format("%.3f", v[4]),
-                        String.format("%.3f", v[4] - v[3]),
-                        (v[2] - v[1] > 1e-6 ? "  ← ★①spill 本就逐列不同" : "  ← spill 恒定"));
-            }
-            LOGGER.info("[LAKE-SPLIT] 判读：上面若 spill 跨度≈0 而最终水位跨度>0 ⇒ 根因是②逐列 escape 求解。");
-        }
-    }
-    private static final java.util.concurrent.atomic.AtomicInteger escapeDiagCount =
-            new java.util.concurrent.atomic.AtomicInteger();
+    //   2026-10-20：lakeNode 随 legacy 链退役 ⇒ 该诊断与 lakeLevelSplitDiag 一并删除。
 
     /** 侵蚀向河道软让步（方案 A，config erosionYieldToRiver，默认 true）。 */
     private final boolean erosionYieldToRiver;
@@ -205,15 +105,6 @@ public final class GeoGenesisTerrain {
      * <p>依据：{@code runRiverReliefProbe} 实测 + 用户实机"高架水渠"。</p>
      */
     public static volatile boolean RIVER_CUT_NONNEGATIVE = true;
-
-    /**
-     * ★ 2026-10【isLake 必须用"是否湖域"】—— 修"整世界没有一列河、水体全被当湖"。
-     *
-     * <p>{@code true}（默认）= 河列（{@code lakePlan=false && lakeNode==null}）不再标 {@code isLake}。</p>
-     *
-     * <p>旧判据只问"水位是否高于海平面"，而实测河面远高于海平面 ⇒ 每条河都被误判为湖。</p>
-     */
-    public static volatile boolean ISLAKE_NEEDS_DOMAIN = true;
 
     static {
         try {
@@ -266,22 +157,6 @@ public final class GeoGenesisTerrain {
     /** 实验专用水文 chunk 结果；默认游戏路径不调用。 */
     public HydrologyChunkResult calculateHydrologyChunk(int chunkX, int chunkZ) {
         return hydrologyExperiment.calculate(chunkX, chunkZ);
-    }
-
-    /**
-     * ★ 2026-09-21 诊断用只读暴露：本地形实例【生产中正在使用】的那份河线网络。
-     *
-     * <p><b>为什么必须有这个 getter</b>：诊断探针若要判"河线与生成的 Cell 是否自洽"，
-     * 必须拿【同一份】网络去比。此前探针自建 {@code new RiverLineNetwork(gen::terrainEQuick,
-     * null, ...)} —— 少了生产接线里的 {@code precipSampler}（降水加权汇流）与
-     * {@code horizontalScale=2.0}，河线路由与生产雕刻的**不是同一条河**
-     * ⇒ 那些"干河节点"多是<b>假阳性</b>（实测干节点样本里出现"折线水面 166.2 而 Cell
-     * 水面 178.0"这种自相矛盾，正是两套网络各说各话）。</p>
-     *
-     * <p><b>不改变任何生产逻辑</b>（只读返回内部引用）。</p>
-     */
-    public RiverLineNetwork hydrologyNetwork() {
-        return hydrologyExperiment.riverNetwork();
     }
 
     /** 海平面 Y */
@@ -411,25 +286,11 @@ public final class GeoGenesisTerrain {
      * 全域查询会无谓地实例化大量河网 region（region 是懒加载的）。
      */
     private void fillRiverDistance(Cell cell, double wuX, double wuZ) {
-        if (!riversEnabled || hydrologyExperiment == null || cell == null) return;
-        // model 模式暂停绿洲转换，避免群系快速查询反向构建 legacy 湖盆/侵蚀。
-        // 完整与快速路径共用此门控；河湖几何与水位仍由 model provider 产生。
-        if (hydrologyExperiment.usesModelPipeline()) {
-            cell.riverDistance = Double.POSITIVE_INFINITY;
-            return;
-        }
-        if (cell.biomeType != com.geogenesis.worldgen.climate.WhittakerType.DESERT) return;
-        // #region agent log: 快速群系采样是否通过绿洲旁路冷生成侵蚀
-        boolean diagnose = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled();
-        long t0 = diagnose ? System.nanoTime() : 0;
-        int tilesBefore = diagnose ? generator.erosionTileCacheSize() : 0;
-        cell.riverDistance = hydrologyExperiment.riverNetwork().distanceToWater(wuX, wuZ);
-        if (diagnose && System.nanoTime() - t0 > 100_000_000L) {
-            com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("E", "oasis-distance",
-                    "wu=" + wuX + "," + wuZ + " ms=" + (System.nanoTime() - t0) / 1e6
-                            + " tilesBefore=" + tilesBefore + " tilesAfter=" + generator.erosionTileCacheSize());
-        }
-        // #endregion
+        if (!riversEnabled || cell == null) return;
+        // ★ 绿洲距离永久旁路（model 链 v1 限制，2026-10-20 随 legacy 链移除转正）：
+        //   legacy RiverLineNetwork 是唯一距离源，其生产接线已退役 ⇒ 河流绿洲群系
+        //   暂拿不到河距（恒 ∞）。恢复属于第二阶段之后的绿洲重接线，不在本次范围。
+        cell.riverDistance = Double.POSITIVE_INFINITY;
     }
 
     /**
@@ -684,16 +545,6 @@ public final class GeoGenesisTerrain {
         }
         com.geogenesis.diagnostics.WorldGenProfiler.end(
                 com.geogenesis.diagnostics.WorldGenProfiler.Stage.HYDIST, hy1);
-        // ★ 2026-09-17：湖【影响】登记（供 chunk 级【块精度】洪泛重判湖岸，见 LAKE_FINE_FLOOD）
-        //   ⚠ 必须包含【被拒列】（carver 的 inFlood=false 早退：lakePlan=false 但带湖节点）
-        //     —— 水体物理审计实测：452 个"干墙"格 100% 来自这一类列；
-        //     只登记 lakePlan 列则本法【够不着】它们（首版 A/B 无效的直接原因）。
-        java.util.List<LakeGroup> lakeGroups = new java.util.ArrayList<>();
-        boolean[] lakeAny = new boolean[256];    // 受某湖影响的列（含被拒列）
-        boolean[] lakeSeed = new boolean[256];   // 粗格已判出水 ⇒ 块级洪泛的种子
-        int[] lakeOf = new int[256];             // 列 → lakeGroups 下标
-        java.util.Arrays.fill(lakeOf, -1);
-        int lakeCount = 0;
         for (HydrologyBlockCarvedColumn column : result.carvedColumns()) {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
@@ -703,66 +554,10 @@ public final class GeoGenesisTerrain {
             //   cell.height < spill − 0.5 → 出水。湖岸 = 侵蚀后地形与 spill 的等高线。
             //   侵蚀切深盆底 → 淹更多；侵蚀淤积垫高 → 湖岸内缩/该格变滩（物理正确）。
             //   这是湖"吃侵蚀后地形"的真正落点（carver 的 original 是无侵蚀基线，判不得）。
+            // ★ 2026-10-20：model 链湖列恒 lakeNode=null ⇒ 逃逸重算永久短路，
+            //   湖水位 = model 链发布的盆单平面（WorldLakeSurface / WorldBasinRouting）。
             if (column.lakePlan()) {
-                // ★★★ 2026-09-17【M2】湖水位改用【雕刻后最终地形】上的逃逸高度 ★★★
-                //
-                // 【被修的缺陷（实机 + 路径剖面实证）】
-                //   旧：水位 = erodedWaterLevel（在【侵蚀后、雕刻前】地形上求，且只取 rim 圈）。
-                //   实测（块(-15,661)，湖心块(17,752)）：
-                //     · 水位求解=166.627 —— 对"侵蚀后雕刻前"地形【正确】
-                //       （两法互证：priority-flood filledAt 167.117、逃逸高度 167.539）
-                //     · 但【雕刻】随后把山脊挖穿、开出新排水口：
-                //       已雕刻地形上，湖心→违反点路径最高仅 162.150
-                //     · 水位没有重算 ⇒ 水悬在"现已能排干"的河谷上方
-                //       ⇒ 紧邻 1~2 块内有低 8.75 块的旱地却无水（21.6% 的水格如此）
-                //
-                // 【修法】在【已雕刻的最终地形】上重算逃逸高度（minimax escape height），
-                //   并只降不升（不高于旧水位，避免引入新变形）。
-                //   湖列【不雕刻】⇒ 湖水位不影响雕刻 ⇒ 无循环、可后算（单向化）。
-                //   回退：LAKE_ESCAPE_LEVEL = false。
                 double spill = column.waterSurfaceY();
-                if (LAKE_ESCAPE_LEVEL && column.lakeNode() != null) {
-                    // ★ 地形采样 = **雕刻后的点态最终地形**（carved + rawDelta×mask），
-                    //   与真实放置口径一致（实测差 0.005 块）。这是修"水位求解早于雕刻"的关键：
-                    //   旧实现用的是侵蚀后但仍未雕刻的地形（同一份输入 ⇒ 逃逸高度反而更高、min 后不变）。
-                    // ⚠ 引擎必须复用（懒建一次）；此前写在逐列循环内 ⇒ 每列都新建，极浪费。
-                    // ★★★ 2026-09-22【湖先于河】（用户裁定："湖泊应该在河流生成前。
-                    //   因为河流生成后会改变地形，这是目前河流的机制导致的。"）★★★
-                    //
-                    //   旧实现 finalGroundFn = sampleWu 基线 + carveColumnAt 的雕刻量
-                    //   ⇒ 逃逸水位的地形输入【含河雕刻】⇒ 湖水位依赖河雕刻结果 = 湖在河后。
-                    //   河一旦挖低湖坎/开出新排水口，湖水位跟着河变 —— 顺序颠倒。
-                    //   修法：地形输入 = 【侵蚀后、雕刻前】的 sampleWu。
-                    //   侵蚀先于水文（extractFromTile → applyHydrologyValley），不违背"湖先于河"；
-                    //   河雕刻对湖域的避让由 RiverLineNetwork.sampleAll 的湖域优先保证。
-                    final double hsEscape = generator.params().horizontalScale();
-                    // ★★★ 2026-09-23【回到“采样器地形”版 —— 与 domTol=0.5 同批（修环状湖）】★★★
-                    //   实测：采样器版（侵蚀后、雕刻前）= 湖内缺格 534（基本实心）；
-                    //         HEAD 的点态雕刻后地形版 = 38571（环状）。
-                    //   ⚠ 这与早前 HANDOFF 的结论相反 —— 以【同 seed 同窗口的实测数字】为准。
-                    java.util.function.ToDoubleBiFunction<Double, Double> finalGroundFn =
-                            (a, b) -> generator.sampleWu(a, b).height;
-                    // ★ 2026-09-17：把【当前水位】作为上界传入 ⇒ 逃逸求解可安全剪掉
-                    //   "路径最高点 > 当前水位"的全部格（下一行本就是 min(spill, esc)，
-                    //   那些路径无论通向何处都不会改变结果）⇒ 实测该段从占 hydro 54% 降下来。
-                    double esc = column.lakeNode().escapeWaterLevel(finalGroundFn, 24.0, 6.0, spill);
-                    // ★ 临时诊断（取到结论后删）：确认逃逸高度是否真的被算出来、以及值是多少
-                    if (LAKE_ESCAPE_DIAG && escapeDiagCount.getAndIncrement() < 10) {
-                        LOGGER.info("[LAKE-ESC] block=({},{}) 旧spill={} 逃逸高度={} ⇒ 采用={}",
-                                column.blockX(), column.blockZ(),
-                                String.format("%.3f", column.waterSurfaceY()),
-                                String.format("%.3f", esc),
-                                String.format("%.3f", Double.isNaN(esc) ? column.waterSurfaceY()
-                                        : Math.min(column.waterSurfaceY(), esc)));
-                    }
-                    if (!Double.isNaN(esc)) {
-                        spill = Math.min(spill, esc);      // 只降不升
-                    }
-                }
-                // ★ 2026-09-19（P2 判别测量）：记录本列 spill 原值 与 最终水位（见 lakeLevelSplitDiag）
-                if (LAKE_LEVEL_SPLIT_DIAG) {
-                    lakeLevelSplitDiag(column.lakeNode(), column.waterSurfaceY(), spill);
-                }
                 boolean flooded = cell.height < spill - 0.5;
                 // 湖不挖地；水柱保护：落块水放 (floor(height), floor(spill)]，若
                 // floor 相同则无水块 → 只在必需时把地面压到 floor(spill)-1 以下（<1 格）
@@ -774,15 +569,6 @@ public final class GeoGenesisTerrain {
                 cell.riverLipY = spill;
                 cell.isLake = flooded && spill >= seaLevel;
                 cell.lakeMask = cell.isLake;
-                // ★ 登记本列（湖列：粗格已判出水 ⇒ 块级洪泛的种子；水位优先采用它）
-                int lgi = lakeGroupOf(lakeGroups, column.lakeNode(), spill);
-                LakeGroup lg = lakeGroups.get(lgi);
-                lg.level = spill;        // 湖列水位（可能已被 escape 压低）优先级最高
-                lg.accepted = true;
-                lakeAny[lx * 16 + lz] = true;
-                lakeSeed[lx * 16 + lz] = flooded;
-                lakeOf[lx * 16 + lz] = lgi;
-                lakeCount++;
                 continue;
             }
             double rawDelta = cell.height - column.originalGroundY(); // 本列侵蚀增量（全量）
@@ -822,283 +608,15 @@ public final class GeoGenesisTerrain {
             cell.riverType = (byte) (column.fillWater() ? 1 : 0);
             cell.riverSurfaceY = column.waterSurfaceY();               // 计划水位（不跟 delta）
             cell.riverLipY = column.lipSurfaceY();
-            // ★★★ 2026-10【isLake 必须用"是否湖域"，不是"水位是否高于海平面"】★★★
-//
-//   【被修的缺陷（WaterViewProbe 三色渲染实测，用户的"河流全被当湖"）】
-//   旧判据 `column.waterSurfaceY() >= seaLevel`：只问"水位比海平面高吗"。
-//   而 seaLevel=63、实测河流水面 173~188 ⇒ 每一条河都满足 ⇒ isLake 恒为 true。
-//   ⇒ 全窗口统计【河流块 = 0】：整个世界里一列"河"都没有，水体全被当湖。
-//   正确判据 = 本列是否【落在湖域】（carver 的 lakePlan / lakeNode != null）。
-//   回退：ISLAKE_NEEDS_DOMAIN = false。
-cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel
-                    && (!ISLAKE_NEEDS_DOMAIN
-                        || column.lakePlan()
-                        || column.lakeNode() != null);
+            // ★ 2026-10【isLake 必须用"是否湖域"，不是"水位是否高于海平面"】——
+            //   旧判据只问水位 ≥ 海平面 ⇒ 每条河都被误判为湖（WaterViewProbe 实测）。
+            //   2026-10-20：lakeNode 随 legacy 链退役 ⇒ 判据化简为 lakePlan。
+            cell.isLake = column.fillWater() && column.waterSurfaceY() >= seaLevel
+                    && column.lakePlan();
             cell.lakeMask = cell.isLake;
-            // ★ 2026-09-17：湖域内【被拒列】登记（carver 的 inFlood=false 早退）。
-            //   本列行为与改前【完全一致】（仍不出水、riverSurfaceY 不变）：
-            //   只是把"湖 + 水位"登记下来，交给 lakeFineFlood 做 1 块精度重判。
-            if (!column.lakePlan() && column.lakeNode() != null) {
-                int lgi = lakeGroupOf(lakeGroups, column.lakeNode(), column.lakeLevelY());
-                LakeGroup lg = lakeGroups.get(lgi);
-                if (!lg.accepted && !Double.isNaN(column.lakeLevelY())) {
-                    lg.level = column.lakeLevelY();   // 湖列水位优先（它已含 escape 压低）
-                }
-                lakeAny[lx * 16 + lz] = true;
-                lakeOf[lx * 16 + lz] = lgi;
-                lakeCount++;
-            }
         }
-        // ★ 2026-09-17：湖岸 1 块精度精修（见 LAKE_FINE_FLOOD）
-        if (LAKE_FINE_FLOOD && lakeCount > 0) {
-            // ★ 2026-09-19 诊断：水文雕刻子项 ③ —— 湖岸 1 块精度 BFS 精修
-            long hy2 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
-            try {
-                lakeFineFlood(cells, cx, cz, lakeAny, lakeSeed, lakeOf, lakeGroups);
-            } finally {
-                com.geogenesis.diagnostics.WorldGenProfiler.end(
-                        com.geogenesis.diagnostics.WorldGenProfiler.Stage.HYFLOOD, hy2);
-            }
-        }
-    }
-
-    /**
-     * ★ 2026-09-17：<b>湖岸 1 块精度精修</b>（开关 {@link #LAKE_FINE_FLOOD}）。
-     *
-     * <h4>被修的缺陷（水体物理审计实测）</h4>
-     * <p>{@code runWaterPhysicsProbe} 在用户报告点实测（seed 5436529513624899584）：</p>
-     * <pre>
-     *   水体：水位 166.627  面积 26739 格  盆底 153.145
-     *   【应有水位】159.540（±96wu 窗口）/ 165.498（稳定值，96~288 块）/ 167.706（真盆沿，384 块）
-     *   ⇒ 水位 166.627 < 真盆沿 167.706 ⇒ **水位本身是对的**（短板生效）
-     *   但【干墙 = 451 格】—— 与水相邻、低于水位、却是干的
-     * </pre>
-     * <p>⇒ 水边界既不是水位等高线、也不是地形，而是 <b>12wu 粗格洪泛区的边界</b>
-     * （{@code computeFlood} 的 BFS 网格）⇒ 视觉上就是<b>垂直水墙 + 水不贴岸</b>。</p>
-     *
-     * <h4>修法</h4>
-     * <p>以【本 chunk 内的湖列】（= 粗格洪泛内）为<b>种子</b>，在
-     * {@code chunk + 32 块 pad} 的窗口内做 <b>1 块精度 4 邻洪泛</b>
-     * （只通过 {@code 高度 < 水位 − 0.5} 的格）⇒ 水边界回归水位等高线。
-     * ★ 覆盖范围 = <b>所有受该湖影响的列</b>（含 carver 因 {@code inFlood=false} 早退的
-     * "被拒列"）—— 实测干墙格 100% 来自被拒列，只重判湖列是够不着的（首版 A/B 无效的教训）。
-     * ★ 写入策略 = <b>只增不减</b>：粗格已判出水的列一律保留（避免出现空洞），
-     * 只把"1 块精度洪泛连通得到"的列补成水；河列出水列（非湖种子）不抢。</p>
-     *
-     * <h4>为何是局部（而非全局）</h4>
-     * <p>种子已由粗格洪泛给出（保证大范围正确），本步只做<b>边界精修</b>
-     * ⇒ 窗口只需覆盖岸边，成本 O((16+32)²) ≈ 2.3k 格/chunk，可忽略。
-     * pad 内的高度用<b>不带侵蚀</b>的廉价采样（{@code sample}）：它只参与连通性判断，
-     * 而侵蚀 delta 为亚块级；<b>刻意不用 {@code sampleWu}</b>——那会为 pad 触发侵蚀 tile 生成。</p>
-     */
-    private void lakeFineFlood(Cell[] cells, int cx, int cz, boolean[] lakeAny,
-                               boolean[] lakeSeed, int[] lakeOf, java.util.List<LakeGroup> groups) {
-        final int pad = 16;          // 只做【岸边】精修 ⇒ 一个粗格（6wu/12wu）足够
-        final int w = 16 + 2 * pad;
-        double seaLevel = generator.seaLevel();
-        final double hsFlood = generator.params().horizontalScale() > 0.01
-                ? generator.params().horizontalScale() : 1.0;
-        boolean[] seen = new boolean[w * w];
-        java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
-        final int[] dxx = {1, -1, 0, 0};
-        final int[] dzz = {0, 0, 1, -1};
-        for (int gi = 0; gi < groups.size(); gi++) {
-            LakeGroup g = groups.get(gi);
-            double level = g.level;
-            if (Double.isNaN(level)) continue;
-            java.util.Arrays.fill(seen, false);
-            q.clear();
-            // ① 种子 = 本 chunk 内【粗格已判出水】的湖列（大范围正确性由粗格保证）
-            for (int lz = 0; lz < 16; lz++) {
-                for (int lx = 0; lx < 16; lx++) {
-                    int i = lx * 16 + lz;
-                    if (!lakeSeed[i] || lakeOf[i] != gi) continue;
-                    int k = (lz + pad) * w + (lx + pad);
-                    if (!seen[k] && fineFloodWet(cells, cx, cz, pad, k % w, k / w, level)) {
-                        seen[k] = true;
-                        q.add(k);
-                    }
-                }
-            }
-            // ②b 【pad 侧种子】—— 跨 chunk 边界起步（★ 2026-09-17 归因后新增）
-            //    动机（WallAttributionProbe 实测，用户标注的轴对齐直边）：有一类 chunk
-            //    【本 chunk 内一个种子都没有】（其列全是被拒列，lakeSeed 全 false），
-            //    但隔壁 chunk 就是水体 ⇒ 洪泛无从起步 ⇒ 水边界停在【粗格边界】上
-            //    （6wu=12 块网格对齐 ⇒ 横平竖直的直边，正是用户圈的两处）。
-            //    做法：在 pad 内【稀疏抽点】(步长 4 块)，用粗格判水 API node.inFlood(wu)
-            //    取种子 —— 粗格本身 6wu=12 块，步长 4 块足以覆盖；点数 ≤169。
-            //    ⚠ 必须稀疏：inFlood 是 O(淹没格数) 线性扫描，逐格调用会白烧 CPU。
-            //    ⚠ 只取粗格【已认领】的格作种子 ⇒ 水仍不会长到认领域之外，
-            //      也不违反"填充范围内无法闭合就不生成"（弃湖节点根本不会回传到这里）。
-            if (g.node != null) {
-                var node = (com.geogenesis.worldgen.hydrology.riverline
-                        .RiverLineRegion.LakeNode) g.node;
-                for (int gz = 0; gz < w; gz += 4) {
-                    for (int gx = 0; gx < w; gx += 4) {
-                        int lx = gx - pad, lz = gz - pad;
-                        if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) continue;  // 本 chunk 已按列判定
-                        int k = gz * w + gx;
-                        if (seen[k]) continue;
-                        if (!node.inFlood((cx * 16 + lx) / hsFlood, (cz * 16 + lz) / hsFlood)) continue;
-                        if (!fineFloodWet(cells, cx, cz, pad, gx, gz, level)) continue;
-                        seen[k] = true;
-                        q.add(k);
-                    }
-                }
-            }
-            // ★★★ 2026-09-22【③ 兜底种子：盆底最低格】★★★
-            //
-            //   【被修的缺陷（审计命中诊断 + 判据钉死）】
-            //   种子只有 ①（本 chunk 粗格已出水列）与 ②b（pad 侧 inFlood 抽点）。
-            //   若某湖的列【全部】被 inFlood 粗格连通判定拒绝（6wu 网格量化 + 格心单点
-            //   采样的隧穿问题，见本类 L292-297 的自述）⇒ lakeSeed 全 false、②b 也不命中
-            //   ⇒ 本湖【零种子】⇒ 1 块精度重判无从起步 ⇒ **整个湖不出水**。
-            //   实测后果：该湖所有入湖河尾列 riverType=0 / water=false
-            //   （审计"河尾无水 19/58 = 32.8% FAIL"几乎全部落在少数几个这样的湖上，
-            //    样本 r(-1,-1)#26 k=141..144 同属一湖）。
-            //
-            //   【物理依据（用户语义）】"湖 = 水位以下的连通水域"：
-            //   盆底必然低于水面（水位 ≥ 盆底是构造保证）⇒ 盆底最低格是【天然合法种子】。
-            //   洪泛只通过 `h < level − 0.5` 的格 ⇒ 水位低于真盆沿时水【不可能】漫出湖盆
-            //   ⇒ 与"最低溢出口定湖面"的语义完全一致，不会多淹。
-            //
-            //   【触发条件】仅当本湖在 ①+②b 下【一个种子都没有】时启用（q.isEmpty()）
-            //   ⇒ 对原行为零影响（有种子时此段不执行）。
-            if (q.isEmpty()) {
-                int bestI = -1;
-                double bestH = Double.MAX_VALUE;
-                for (int lz = 0; lz < 16; lz++) {
-                    for (int lx = 0; lx < 16; lx++) {
-                        int i = lx * 16 + lz;
-                        if (!lakeAny[i] || lakeOf[i] != gi) continue;
-                        if (cells[i].height < bestH) { bestH = cells[i].height; bestI = i; }
-                    }
-                }
-                if (bestI >= 0) {
-                    int lx = bestI % 16, lz = bestI / 16;
-                    int k = (lz + pad) * w + (lx + pad);
-                    if (fineFloodWet(cells, cx, cz, pad, k % w, k / w, level)) {
-                        seen[k] = true;
-                        q.add(k);
-                    }
-                }
-            }
-            // ★★★ 2026-09-23【③ 全盆地种子（修“环状/网状湖”＝湖内灰色空洞）】★★★
-            //
-            //   【被修的缺陷（用户实测：湖内出现成片灰色空洞）】
-            //   种子只有 ①（粗格已判出水列）与 ②b（pad 侧 inFlood 抽点）——
-            //   若某片湖盆列【粗格判为不出水】（inFlood=false，被 6wu 粗格连通性否决），
-            //   而它们在【块级】确实低于水位且属于本湖（lakeAny），就永远做不了种子
-            //   ⇒ 1 块精度洪泛从别处过不来（中间被高于水位的格隔断）⇒ 该片保持干
-            //   ⇒ 湖面出现成片灰色空洞（视觉上"环状/网状湖"）。
-            //
-            //   【正解（与用户设计一致：湖面恒定、填到实体边缘为止）】
-            //   本湖【域内】(lakeAny ∧ lakeOf==gi) 且【块级低于水位】(fineFloodWet) 的列
-            //   一律作为种子 —— 这天然满足"在盆地内 ∧ 低于水位"两条，不会外溢：
-            //     · lakeAny 已限定在本湖认领域内（不含无关地形）；
-            //     · fineFloodWet 仍要求 h < level−0.5（高于水位的盆壁不会被灌）。
-            //   ⚠ 与 ②b 的"稀疏抽点"不同：本段是【逐列】检查，故只在【本 chunk 16×16】
-            //     范围做（成本 O(256)，可忽略）；pad 区仍走 ②b 的稀疏路径。
-            for (int lz = 0; lz < 16; lz++) {
-                for (int lx = 0; lx < 16; lx++) {
-                    int i = lx * 16 + lz;
-                    if (!lakeAny[i] || lakeOf[i] != gi) continue;
-                    int k = (lz + pad) * w + (lx + pad);
-                    if (seen[k]) continue;
-                    if (!fineFloodWet(cells, cx, cz, pad, k % w, k / w, level)) continue;
-                    seen[k] = true;
-                    q.add(k);
-                }
-            }
-            // ② 1 块精度 4 邻洪泛
-            //    ★ 可通行性【惰性求值】：只对洪泛真正访问到的格算高度 ——
-            //    若预生成全窗口掩码，每 chunk 要多算 (48²−16²)=2048 次 generator.sample()
-            //    （实测 sample ≈ 10~15µs/格 ⇒ +20~30ms/chunk，且绝大多数是白算的）。
-            while (!q.isEmpty()) {
-                int cur = q.poll();
-                int gx = cur % w, gz = cur / w;
-                for (int d = 0; d < 4; d++) {
-                    int nx = gx + dxx[d], nz = gz + dzz[d];
-                    if (nx < 0 || nx >= w || nz < 0 || nz >= w) continue;
-                    int ni = nz * w + nx;
-                    if (seen[ni]) continue;
-                    if (!fineFloodWet(cells, cx, cz, pad, nx, nz, level)) continue;
-                    seen[ni] = true;
-                    q.add(ni);
-                }
-            }
-            // ④ 回写：本 chunk 内【受该湖影响】的列（含被拒列）—— 只增不减
-            for (int lz = 0; lz < 16; lz++) {
-                for (int lx = 0; lx < 16; lx++) {
-                    int i = lx * 16 + lz;
-                    if (!lakeAny[i] || lakeOf[i] != gi) continue;
-                    if (cells[i].riverType != 0 && !lakeSeed[i]) continue;   // 河列出水：不抢
-                    if (!seen[(lz + pad) * w + (lx + pad)]) continue;        // 未连通 ⇒ 不动
-                    Cell cell = cells[i];
-                    if (cell.height >= Math.floor(level) - 1e-9) {
-                        cell.height = Math.min(level - 0.75, Math.floor(level) - 1e-9);
-                    }
-                    cell.riverType = 1;
-                    cell.riverSurfaceY = level;
-                    cell.riverLipY = level;
-                    cell.isLake = level >= seaLevel;
-                    cell.lakeMask = cell.isLake;
-                }
-            }
-        }
-    }
-
-    /**
-     * 块级洪泛的【可通行】判据：该格是否低于水位 − 0.5。
-     *
-     * <p>本 chunk 用 {@code cell.height}（最终高度，含雕刻）；pad 用
-     * {@code generator.sample()} 的廉价采样 —— 只参与<b>连通性</b>判断，
-     * 而侵蚀 delta 为亚块级；<b>刻意不用 sampleWu</b>：那会为 pad 触发侵蚀 tile 生成。</p>
-     */
-    private boolean fineFloodWet(Cell[] cells, int cx, int cz, int pad,
-                                 int gx, int gz, double level) {
-        int lx = gx - pad, lz = gz - pad;
-        double h;
-        if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) {
-            h = cells[lx * 16 + lz].height;
-        } else {
-            h = generator.sample(toWu(cx * 16 + lx), toWu(cz * 16 + lz)).height;
-        }
-        return h < level - 0.5;
-    }
-
-    /** 一个 chunk 内的湖分组（块级洪泛按【湖身份】分组，避免不同湖共用同一水位判据）。 */
-    private static final class LakeGroup {
-        final Object node;
-        double level = Double.NaN;
-        /** 是否已有"湖列水位"：湖列水位（已含 escape 压低）优先于被拒列的湖水位。 */
-        boolean accepted;
-        LakeGroup(Object node) { this.node = node; }
-    }
-
-    /**
-     * 取（或新建）某湖在分组列表中的下标。
-     * <p>节点非 null 时按【身份】匹配；节点为 null（理论上罕见）时按【水位】匹配。</p>
-     *
-     * <p>★ 2026-09-17 实测注记（勿再重复尝试）：曾把分组键放宽到"同水位即合并"
-     *   （假设残余真·干墙里"本 chunk 无种子"的格能借到邻居水体的种子），
-     *   实测（runWallAttributionProbe，minDepth=0.5）<b>真·干墙 12 → 12，分类不变</b>。<br>
-     *   根因：那 8 个 C 类格紧邻的水<b>本身就是块级精修造出来的</b>（不是粗格洪泛水），
-     *   故 {@code node.inFlood} 在那里必为 false —— 与分组、与抽样步长（4→2 亦无效）都无关。<br>
-     *   要接上它们必须有"跨 chunk 的精修水状态"，而那会令结果依赖生成顺序 ⇒ 违反纯函数铁律。</p>
-     */
-    private static int lakeGroupOf(java.util.List<LakeGroup> groups, Object node, double level) {
-        for (int i = 0; i < groups.size(); i++) {
-            LakeGroup g = groups.get(i);
-            if (node != null ? g.node == node
-                    : (g.node == null && Math.abs(g.level - level) < 1e-6)) {
-                return i;
-            }
-        }
-        LakeGroup g = new LakeGroup(node);
-        if (node == null) g.level = level;
-        groups.add(g);
-        return groups.size() - 1;
+        // 湖岸 1 块精度精修（lakeFineFlood / LAKE_FINE_FLOOD）已删除（2026-10-20）：
+        // 依赖 legacy RiverLineRegion.LakeNode，且 P2-2 实锤"掩码外灌水"后恒关。
     }
 
     /**
