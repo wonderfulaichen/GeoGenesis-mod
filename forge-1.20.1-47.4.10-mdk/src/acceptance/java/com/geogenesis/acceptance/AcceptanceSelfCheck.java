@@ -6,7 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 验收支线的离线自检（不需要 MC Bootstrap，只要类路径上有 MC jar）。
@@ -22,7 +24,9 @@ import java.util.List;
  *   <li><b>计划断口</b>：计划不连通时 link 必须 {@code UNVERIFIED}（不是 pass）；</li>
  *   <li>计划连通但实际缺列 ⇒ link {@code FAIL}；</li>
  *   <li>零计划湿列 ⇒ coverage {@code MISSING} 且门禁不绿；</li>
- *   <li>水面之上有植被时连通性仍成立（植被不遮水）。</li>
+ *   <li>水面之上有植被时连通性仍成立（植被不遮水）；</li>
+ *   <li><b>背景水基线</b>（{@link AcceptanceProbe#backgroundGate}）：两臂格式/元数据/坐标
+ *       集合的每一条都要有正控与负控（见 {@link #checkBackgroundGate}）。</li>
  * </ul>
  */
 public final class AcceptanceSelfCheck {
@@ -36,6 +40,7 @@ public final class AcceptanceSelfCheck {
         checkChunkCoords();
         checkGates();
         checkReportAndTopView();
+        checkBackgroundGate();
         System.out.println("[accept-selfcheck] ALL PASS");
     }
 
@@ -275,13 +280,18 @@ public final class AcceptanceSelfCheck {
                 new AcceptanceProbe.Coverage("extChunk", 1, 256, 0, 0, "MISSING", ""),
                 new AcceptanceProbe.Coverage("loaded3x3", 9, 2304, 3, 3, "VERIFIED", ""));
 
+        List<String> header = List.of(
+                "schema=geogenesis-acceptance/5",
+                "verdict=FAIL",
+                "exitCode=1",
+                "reportKind=BlockStateReadback");
         Path dir = Path.of("build", "accept-selfcheck");
         Path report = dir.resolve("acceptance-report.txt");
-        AcceptanceProbe.writeReport(report,
-                List.of("schema=geogenesis-acceptance/4", "verdict=FAIL"),
-                chunks, points, links, coverages);
+        AcceptanceProbe.writeReport(report, header, chunks, points, links, coverages);
         String text = Files.readString(report, StandardCharsets.UTF_8);
         String[] required = {
+                "schema=geogenesis-acceptance/5",
+                "exitCode=1",
                 "[links]", "link=axis status=PASS pass=true",
                 "link=gap status=UNVERIFIED pass=false",
                 "[coverage]", "coverage=extChunk status=MISSING pass=false",
@@ -303,6 +313,243 @@ public final class AcceptanceSelfCheck {
         if (!Files.isRegularFile(png) || Files.size(png) < 1000L) fail("topview png not written");
         System.out.println("[accept-selfcheck] report=" + report.toAbsolutePath()
                 + " bytes=" + Files.size(report) + " topview=" + Files.size(png) + "B");
+    }
+
+    // ===== 背景水基线（backgroundGate）自检 =====
+
+    /**
+     * 正控：两臂仅 arm 不同 ⇒ 绿；18 条新增背景水<b>两臂相同</b> ⇒ 仍绿；行序无关 ⇒ 绿。
+     * 负控：两臂水行集合/元数据/格式的任一条不合契约都必须红（见下两个方法）。
+     */
+    private static void checkBackgroundGate() {
+        List<String> ref = background("reference", 0, -30);
+        List<String> cand = background("candidate", 0, -30);
+        List<String> ref18 = background("reference", 18, -30);
+        List<String> cand18 = background("candidate", 18, -30);
+        expect("bgEqualArmsGreen", AcceptanceProbe.backgroundGate(ref, cand) == null);
+        expect("bgReferenceCannotSelfApprove",
+                AcceptanceProbe.backgroundGate(ref, new ArrayList<>(ref)) != null);
+        expect("bg18NewBackgroundBothArmsGreen",
+                AcceptanceProbe.backgroundGate(ref18, cand18) == null);
+        // 行序无关：chunk 集合与 water 集合比对，不依赖行序
+        expect("bgLineOrderIrrelevantGreen",
+                AcceptanceProbe.backgroundGate(ref18, reversed(cand18)) == null);
+        expect("bgNullReportFails", AcceptanceProbe.backgroundGate(null, cand) != null);
+        expect("bgEmptyReportFails",
+                AcceptanceProbe.backgroundGate(List.of(), List.of()) != null);
+        checkBackgroundWater(ref, cand);
+        checkBackgroundMeta(ref, cand);
+        checkChunkSet();
+        checkOverflow();
+    }
+
+    /** 负控：water 行的新增/删除/状态变化/重复坐标/重复行/缺失块/越界。 */
+    private static void checkBackgroundWater(List<String> ref, List<String> cand) {
+        String plain = "water=2,-8,2,minecraft:water";
+        String flowing = "water=2,-8,2,minecraft:water[level=1]";
+        gate("bgCandidateOnlyFails", ref, add(cand, plain), "added=1");
+        gate("bgCandidateRemovalFails", add(ref, plain), cand, "removed=1");
+        gate("bgSourceToFlowFails", add(ref, plain), add(cand, flowing), "changed=1");
+        gate("bgDuplicateCoordFails", ref, add(add(cand, plain), flowing),
+                "DuplicateWaterCoord");
+        gate("bgDuplicateLineFails", ref, add(add(cand, plain), plain), "DuplicateLine");
+        gate("bgDuplicateChunkCoordFails", ref, add(cand, "chunk=00,00"), "DuplicateChunkCoord");
+        gate("bgMissingChunkFails", ref, remove(cand, "chunk=5,5"), "ChunkCount(35)");
+        gate("bgWaterOutsideChunksFails", ref, add(cand, "water=3000,-8,2,minecraft:water"),
+                "WaterOutsideChunks");
+        gate("bgWaterOutsideHeightFails", ref, add(cand, "water=2,9999,2,minecraft:water"),
+                "WaterOutsideWorldHeight");
+        gate("bgWaterStateCommaFails", ref, add(cand, "water=2,-8,2,minecraft:water,"),
+                "waterStateHasComma");
+        gate("bgWaterEmptyStateFails", ref, add(cand, "water=2,-8,2,"), "waterEmptyState");
+        gate("bgWaterBlankStateFails", ref, add(cand, "water=2,-8,2, "), "waterEmptyState");
+    }
+
+    /**
+     * 负控：<b>chunk 集合</b>必须两臂相等 —— 36 个 chunk 全不同、water 完全相同不得假绿。
+     *
+     * <p>换走的 chunk 必须<b>不含水</b>，否则会被 {@code WaterOutsideChunks} 先抓住、
+     * 测不到 chunk 集合比较本身。</p>
+     */
+    private static void checkChunkSet() {
+        List<String> ref = background("reference", 18, -30);
+        List<String> cand = background("candidate", 18, -30);
+        expect("bgEqualChunkSetsGreen", AcceptanceProbe.backgroundGate(ref, cand) == null);
+        // 35 + 换一个（仍 36）：chunk(5,5) 无水 ⇒ 只可能由 chunk 集合差异触发
+        gate("bgChunkSwapKeepsSameCountFails", ref, replace(cand, "chunk=5,5", "chunk=9,9"),
+                "chunkSetMismatch");
+        // ★ 关键漏项：两臂 water 均为空（集合相等），但 36 个 chunk 全不同 ⇒ 必须红
+        gate("bgAllChunksDifferDryFails", background("reference", 0, -30),
+                shiftChunks(background("candidate", 0, -30), 1000), "chunkSetMismatch");
+        checkExpectedChunkSet();
+    }
+
+    /**
+     * 三参版本：candidate 的 chunk 集必须<b>恰等于</b>期望集。
+     *
+     * <p>关键负控 = <b>两臂同错</b>（同一批错 chunk，两参版本会绿）⇒ 三参必须红。</p>
+     */
+    private static void checkExpectedChunkSet() {
+        Set<String> expected = chunkKeys(background("candidate", 0, -30));
+        List<String> ref = background("reference", 18, -30);
+        List<String> cand = background("candidate", 18, -30);
+        expect("bgExpectedChunkSetGreen",
+                AcceptanceProbe.backgroundGate(ref, cand, expected) == null);
+        // 两臂同错：同一 delta 平移两臂（dry ⇒ 无 water 行，不会被 WaterOutsideChunks 先拦）
+        // ⇒ 两参绿、三参必须红。这是两参版本无法覆盖的假绿形态。
+        List<String> refBad = shiftChunks(background("reference", 0, -30), 1000);
+        List<String> candBad = shiftChunks(background("candidate", 0, -30), 1000);
+        expect("bgSameWrongSetPassesTwoArg",
+                AcceptanceProbe.backgroundGate(refBad, candBad) == null);
+        gate3("bgSameWrongSetFailsThreeArg", refBad, candBad, expected,
+                "unexpectedChunkSet");
+        gate3("bgExpectedMissingFails", ref, cand, Set.of(), "expectedChunksMissing");
+        gate3("bgOneUnexpectedKeyFails", ref, cand,
+                without(expected, "5,5"), "actualOnly:5,5");
+        gate3("bgOneExpectedOnlyFails", ref, cand,
+                with(expected, "99,99"), "expectedOnly:99,99");
+        // 三参不改两参语义：两参该红的仍然红
+        gate3("bgThreeArgInheritsTwoArgFailure", ref, add(cand, "water=2,-8,2,minecraft:water"),
+                expected, "added=1");
+    }
+
+    /** chunk 键集（纯 cx,cz）。 */
+    private static Set<String> chunkKeys(List<String> report) {
+        Set<String> out = new LinkedHashSet<>();
+        for (String line : report) {
+            if (line.startsWith("chunk=")) out.add(line.substring(6));
+        }
+        return out;
+    }
+
+    private static Set<String> without(Set<String> keys, String key) {
+        Set<String> out = new LinkedHashSet<>(keys);
+        out.remove(key);
+        return out;
+    }
+
+    private static Set<String> with(Set<String> keys, String key) {
+        Set<String> out = new LinkedHashSet<>(keys);
+        out.add(key);
+        return out;
+    }
+
+    /** 负控：meta 键缺失/多余/空空白值/取值不符（seed/config/plan/order/ticks/height/source）+ 格式。 */
+    private static void checkBackgroundMeta(List<String> ref, List<String> cand) {
+        String seed = "meta.seed=9139912035078620160";
+        gate("bgMissingMetaFails", ref, remove(cand, "meta.plan=deadbeef"), "MetaMissing(plan)");
+        gate("bgEmptyMetaFails", ref, replace(cand, seed, "meta.seed="), "metaEmptyValue");
+        gate("bgBlankMetaFails", ref, replace(cand, seed, "meta.seed= "), "metaEmptyValue");
+        gate("bgUnknownMetaKeyFails", ref, add(cand, "meta.extra=1"), "metaUnknownKey");
+        gate("bgSeedMismatchFails", ref, replace(cand, seed, "meta.seed=1"), "seed");
+        gate("bgConfigMismatchFails", ref,
+                replace(cand, "meta.config=model=true,hier=true", "meta.config=model=false"), "config");
+        gate("bgPlanMismatchFails", ref, replace(cand, "meta.plan=deadbeef", "meta.plan=cafe"), "plan");
+        gate("bgOrderMismatchFails", ref, replace(cand, "meta.order=forward", "meta.order=reverse"), "order");
+        gate("bgSourceMismatchFails", ref, replace(cand, "meta.source=sha256:abc123", "meta.source=sha256:zz"), "source");
+        gate("bgTicksMismatchFails", ref, replace(cand, "meta.ticks=200", "meta.ticks=199"), "MetaTicks");
+        gate("bgHeightZeroFails", ref, replace(cand, "meta.height=384", "meta.height=0"), "MetaHeight");
+        gate("bgArmWrongFails", ref, replace(cand, "arm=candidate", "arm=reference"), "Arm");
+        gate("bgCandidateVsCandidateFails", cand, cand, "referenceArm(candidate)");
+        gate("bgSchemaValueFails", ref, replace(cand, "schema=" + AcceptanceProbe.WATER_SCHEMA,
+                "schema=geogenesis-water-background/0"), "schemaValue");
+        gate("bgUnknownLineFails", ref, add(cand, "extra=1"), "unknownLine");
+    }
+
+    /**
+     * 正控：极值但合法的 {@code minY/height} 不得被错误判越界（{@code minY+height} 用 int 会溢出）。
+     *
+     * <p>{@code minY=1000, height=2147483647} ⇒ 真实上界 2147484647，水 {@code y=2000} 合法。
+     * 旧写法 {@code minY+height}（int）溢出为 {@code -2147482649} ⇒
+     * {@code 2000 >= -2147482649} 成立 ⇒ 误报 {@code WaterOutsideWorldHeight}（假红）；
+     * long 写法必须绿。</p>
+     */
+    private static void checkOverflow() {
+        List<String> ref = hugeWorld("reference");
+        List<String> cand = hugeWorld("candidate");
+        expect("bgExtremeHeightNoFalseRed", AcceptanceProbe.backgroundGate(ref, cand) == null);
+    }
+
+    private static List<String> hugeWorld(String arm) {
+        return replace(replace(background(arm, 1, 2000),
+                "meta.minY=-64", "meta.minY=1000"),
+                "meta.height=384", "meta.height=2147483647");
+    }
+
+    /** 背景水报告构造：arm + 8 meta + 36 chunk + N 条水（坐标必落在 chunk(0,0) 与世界高度内）。 */
+    private static List<String> background(String arm, int waterCells, int startY) {
+        List<String> out = new ArrayList<>();
+        out.add("schema=" + AcceptanceProbe.WATER_SCHEMA);
+        out.add("arm=" + arm);
+        out.add("meta.seed=9139912035078620160");
+        out.add("meta.config=model=true,hier=true");
+        out.add("meta.plan=deadbeef");
+        out.add("meta.order=forward");
+        out.add("meta.ticks=" + AcceptanceProbe.WATER_TICKS);
+        out.add("meta.minY=-64");
+        out.add("meta.height=384");
+        out.add("meta.source=sha256:abc123");
+        for (int i = 0; i < AcceptanceProbe.WATER_CHUNKS; i++) {
+            out.add("chunk=" + (i % 6) + "," + (i / 6));
+        }
+        for (int i = 0; i < waterCells; i++) {
+            out.add("water=" + (i % 16) + "," + (startY + i) + "," + ((i / 16) % 2)
+                    + ",minecraft:water");
+        }
+        return out;
+    }
+
+    private static List<String> add(List<String> report, String line) {
+        List<String> out = new ArrayList<>(report);
+        out.add(line);
+        return out;
+    }
+
+    private static List<String> remove(List<String> report, String line) {
+        List<String> out = new ArrayList<>(report);
+        out.remove(line);
+        return out;
+    }
+
+    private static List<String> replace(List<String> report, String from, String to) {
+        List<String> out = new ArrayList<>(report);
+        out.set(out.indexOf(from), to);
+        return out;
+    }
+
+    private static List<String> reversed(List<String> report) {
+        List<String> out = new ArrayList<>(report);
+        java.util.Collections.reverse(out);
+        return out;
+    }
+
+    /** 把全部 {@code chunk=} 行整体平移（保持 36 个、互不相同），用于"两臂 chunk 全不同"负控。 */
+    private static List<String> shiftChunks(List<String> report, int delta) {
+        List<String> out = new ArrayList<>(report.size());
+        for (String line : report) {
+            if (!line.startsWith("chunk=")) { out.add(line); continue; }
+            int comma = line.indexOf(',', 6);
+            out.add("chunk=" + (Integer.parseInt(line.substring(6, comma)) + delta)
+                    + "," + (Integer.parseInt(line.substring(comma + 1)) + delta));
+        }
+        return out;
+    }
+
+    /** 断言门禁为红，且失败说明含给定片段。 */
+    private static void gate(String name, List<String> ref, List<String> cand, String mustContain) {
+        String why = AcceptanceProbe.backgroundGate(ref, cand);
+        boolean ok = why != null && why.contains(mustContain);
+        System.out.println((ok ? "PASS " : "FAIL ") + name + " -> " + why);
+        if (!ok) System.exit(1);
+    }
+
+    /** 断言三参（含期望 chunk 集）门禁为红，且失败说明含给定片段。 */
+    private static void gate3(String name, List<String> ref, List<String> cand,
+                              Set<String> expected, String mustContain) {
+        String why = AcceptanceProbe.backgroundGate(ref, cand, expected);
+        boolean ok = why != null && why.contains(mustContain);
+        System.out.println((ok ? "PASS " : "FAIL ") + name + " -> " + why);
+        if (!ok) System.exit(1);
     }
 
     // ===== helpers =====

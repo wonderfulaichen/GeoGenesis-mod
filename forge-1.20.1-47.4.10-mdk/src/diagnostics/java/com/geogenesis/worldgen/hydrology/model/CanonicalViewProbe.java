@@ -1,5 +1,8 @@
 package com.geogenesis.worldgen.hydrology.model;
 
+import com.electronwill.nightconfig.core.file.CommentedFileConfig;
+import com.electronwill.nightconfig.toml.TomlFormat;
+import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 
@@ -530,8 +533,39 @@ public final class CanonicalViewProbe {
      * 固定色标 {@link ViewSpec#contourFixed}、底图源 {@code sampleWu}
      * （与 {@code HydrologyPipeline} 的 {@code WindowOutlets.Terrain} 同源）。</p>
      */
+    /**
+     * Load the user's TOML through the production spec, so the figure runs the code line the player configured.
+     *
+     * <p><b>Why this exists</b>: {@code ModelHydrologyProvider.SKELETON_TRACE} resolves as
+     * "system property, else {@code GeoGenesisConfig}, else {@code false}". A probe JVM has no Forge config
+     * environment, so without this the getter throws and the whole figure silently runs the legacy
+     * {@code RiverCenterlines} path even when the user's TOML says {@code hydrologyDeterministicSkeleton = true}.
+     * That exact mismatch is what made an earlier figure look like it ignored the skeleton.</p>
+     *
+     * <p>The file is read into a copy first; the user's TOML bytes are verified unchanged afterwards by the caller.</p>
+     */
+    private static void loadUserConfig() {
+        Path src = Path.of("run", "config", "geogenesis-common.toml");
+        if (!Files.exists(src)) {
+            System.out.println("[canonical] WARNING: " + src.toAbsolutePath()
+                    + " missing ⇒ provider falls back to defaults (skeleton switch may resolve false)");
+            return;
+        }
+        try {
+            Path copy = Path.of("build", "hydro-reassessment", "canonical-config.toml");
+            Files.createDirectories(copy.getParent());
+            Files.copy(src, copy, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            CommentedFileConfig cfg = CommentedFileConfig.of(copy, TomlFormat.instance());
+            cfg.load();
+            GeoGenesisConfig.SPEC.setConfig(cfg);
+        } catch (RuntimeException | java.io.IOException failure) {
+            System.out.println("[canonical] WARNING: could not apply user TOML: " + failure);
+        }
+    }
+
     private static void runViaProvider(long seed, int cx, int cz, int radius) throws Exception {
         ViewSpec.assertCanonicalRadius(radius, false);
+        loadUserConfig();
         com.geogenesis.worldgen.terrain.TerrainParams tp =
                 com.geogenesis.worldgen.terrain.TerrainParams.defaults();
         com.geogenesis.worldgen.terrain.CellGenerator gen =
@@ -633,6 +667,7 @@ public final class CanonicalViewProbe {
                 System.getProperty("geogenesis.modelRegion", "512"),
                 System.getProperty("geogenesis.modelHalo", "96"),
                 System.getProperty("geogenesis.modelStep", "4")));
+        sb.append(describeCodeLine());
         sb.append(String.format("chunks=%d 耗时=%.1fs%n", chunks, ms / 1000));
         sb.append(String.format("湖格=%d (%.2f%%)  河道格=%d (%.2f%%)%n",
                 lakeCells, 100.0 * lakeCells / (n * n), chCells, 100.0 * chCells / (n * n)));
@@ -642,6 +677,24 @@ public final class CanonicalViewProbe {
         sb.append("\nFILE=").append(dir.resolve("canonical.png").toAbsolutePath()).append('\n');
         Files.writeString(dir.resolve("metrics.txt"), sb.toString());
         System.out.print(sb);
+    }
+
+    /**
+     * Which river-topology code line this figure actually ran, read from the production flags themselves.
+     *
+     * <p>Since 2026-10-20 the legacy line is removed; {@code SKELETON_TRACE} is constant true and two branches
+     * remain: skeleton+world (CROSS_PASS, worldRegion two-point edges) or plain skeleton (DeterministicSkeleton).
+     * Printing the resolved branch makes it impossible to mistake one line's output for another's — the mistake
+     * that produced an earlier "skeleton" figure which was actually the legacy path.</p>
+     */
+    private static String describeCodeLine() {
+        boolean skeleton = ModelHydrologyProvider.SKELETON_TRACE;
+        boolean crossPass = ModelHydrologyProvider.CROSS_PASS;
+        String line = skeleton ? crossPass
+                ? "SKELETON+WORLD WorldBasinFlow 世界图（worldRegion）"
+                : "SKELETON DeterministicSkeleton（minimax 树 + JOIN + 形态收尾）"
+                : "LEGACY（已移除；出现此行即为编译/静态字段异常，必须报错）";
+        return String.format("SKELETON_TRACE=%s CROSS_PASS=%s ⇒ 实际代码线=%s%n", skeleton, crossPass, line);
     }
 
     /** 复算 3×3 平均（海格不参与），与 ContinuousRiverNetwork 的 smooth 口径一致。 */

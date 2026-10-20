@@ -28,7 +28,10 @@ try {
     $runs=@(
         @('ownership','com.geogenesis.worldgen.hydrology.model.LocalFlowOwnershipProbe'),
         @('join','com.geogenesis.worldgen.hydrology.model.LocalFlowJoinProbe'),
-        @('basin','com.geogenesis.worldgen.hydrology.model.LocalFlowBasinProbe')
+        @('basin','com.geogenesis.worldgen.hydrology.model.LocalFlowBasinProbe'),
+        @('rolling','com.geogenesis.worldgen.hydrology.model.LocalFlowRollingProbe'),
+        @('receiver','com.geogenesis.worldgen.hydrology.model.LocalFlowReceiverProbe'),
+        @('block-handoff','com.geogenesis.worldgen.hydrology.model.LocalFlowBlockHandoffProbe')
     )
     $summary=[Collections.Generic.List[string]]::new()
     $failed=$false

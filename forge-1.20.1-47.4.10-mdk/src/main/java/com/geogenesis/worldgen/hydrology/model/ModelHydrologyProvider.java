@@ -399,7 +399,6 @@ public final class ModelHydrologyProvider {
         try {
             h = mix(h, com.geogenesis.config.GeoGenesisConfig.configFingerprint());
             var cfg = com.geogenesis.config.GeoGenesisConfig.INSTANCE;
-            h = mix(h, cfg.hydrologyDeterministicSkeleton.get() ? 1 : 0);
             h = mix(h, cfg.hydrologyModelPipelineEnabled.get() ? 1 : 0);
             h = mix(h, cfg.hydrologySkeletonRouting.get() ? 1 : 0);
             h = mix(h, cfg.hydrologyDecayEnabled.get() ? 1 : 0);
@@ -407,7 +406,7 @@ public final class ModelHydrologyProvider {
         } catch (RuntimeException | LinkageError ignored) {
             h = mix(h, 0L);     // 无 Forge 环境（探针）：不留未加载异常
         }
-        if(HIER && SKELETON_TRACE && CROSS_PASS) {
+        if(HIER && CROSS_PASS) {
             h=mix(h,WorldBasinFlow.POLICY_VERSION);
             h=mix(h,WorldLakeSurface.POLICY_VERSION);
             h=mix(h,1L); // Same-basin corridor plane policy.
@@ -1188,44 +1187,19 @@ public final class ModelHydrologyProvider {
     }
 
     // ==========================================================================
-    // 2026-10-10 确定性骨架（配置项 `hydrologyDeterministicSkeleton`）
+    // 2026-10-20【legacy 线移除（用户决定）】—— 生产只保留骨架线。
     //
-    // 用户方向（HYDROLOGY.md 用户口径②③ + 2026-10-10 会话）：
-    //   河流做成确定性骨架（PL-RGA 式沿 minimax 树追踪 + 湖溢口续流），
-    //   model 链是 legacy 链的升级版 —— legacy 的既有机制必须继承。
+    // 历史教训（为什么不能再留开关）：`SKELETON_TRACE` 曾是"系统属性 → 配置项 → false"三级回退，
+    //   探针进程无 Forge 配置环境 ⇒ 探针长期走 false 分支（旧 RiverCenterlines），
+    //   而实机按 TOML 走骨架 ⇒ "探针绿、实机不对"，两线产出互不约束。
+    //   2026-10-09 的注释（本文件 §2026-10-09）记录过同一陷阱的第一次，本处是第二次。
     //
-    // 开关 true 时用 DeterministicSkeleton 替代 RiverCenterlines（累积->阈值->细化）；
-    // false = 旧路径（A/B 对照基线）。
-    //
-    // ★★★ 2026-10-10【重大发现：此开关过去只在探针里生效，实机从未生效】★★★
-    // 【症状】用户判据「将测试窗口的水文转换适配生产环境」。
-    // 【根因】原实现是 `Boolean.getBoolean("geogenesis.skeletonTrace")` ——
-    //   **纯 `-D` 系统属性**：探针命令行总是带 `-Dgeogenesis.skeletonTrace=true`
-    //   ⇒ 探针走骨架；而**玩家启动游戏时不存在该属性** ⇒ 实机走【旧路径 RiverCenterlines】
-    //   ⇒ 本会话十几轮形态修复（孤立段 −53% / 交叉 −62% / 对角补点 / 末端伸入水体…）
-    //     **在实机上完全没有生效**。
-    // 【铁证】实机日志 `HYDRO-MODEL reaches=15~26`（旧路径：窄、少），
-    //   而探针日志 `skeleton routing ACTIVE ... 7~25 rivers` ⇒ 两条不同代码线。
-    // 【修法】改为**配置项优先**（`GeoGenesisConfig.hydrologyDeterministicSkeleton`，
-    //   默认 true）+ 系统属性可覆盖（探针 A/B 仍用 `-D...=false`）。
+    // 现状：骨架是唯一生产河网线。legacy `RiverCenterlines.build` 算法已从 main 移除
+    //   （git 历史 + 诊断探针 CenterlineCrossSectionProbe/CanonicalViewProbe 保留作 A/B 工具）；
+    //   `RiverCenterlines` 类型本身保留 —— 它是骨架/世界图发布折线的几何容器（Reach/Result）。
+    // ⚠ `CROSS_PASS` 分支仍是"世界图 vs 骨架谁出几何"的待合并项（第二阶段），不在本次范围。
     // ==========================================================================
-    static final boolean SKELETON_TRACE = resolveSkeletonTrace();
-
-    /**
-     * 解析骨架开关：<b>配置项优先</b>，系统属性可覆盖（探针 A/B 用）。
-     *
-     * <p>无 Forge 环境（探针进程）时读配置会抛 ⇒ 回退系统属性（旧行为）。</p>
-     */
-    private static boolean resolveSkeletonTrace() {
-        String prop = System.getProperty("geogenesis.skeletonTrace");
-        if (prop != null) return Boolean.parseBoolean(prop);   // 探针显式指定优先
-        try {
-            return com.geogenesis.config.GeoGenesisConfig.INSTANCE
-                    .hydrologyDeterministicSkeleton.get();
-        } catch (RuntimeException e) {
-            return false;   // 无配置环境（探针未指定）⇒ 保持旧的默认
-        }
-    }
+    static final boolean SKELETON_TRACE = true;
 
     /**
      * 双 pass 跨区续流总开关（`-Dgeogenesis.skeletonCrossPass=false` 关闭）。
@@ -1980,16 +1954,11 @@ public final class ModelHydrologyProvider {
                 // 【正解】`p.channel()[k]` 决定"是不是河"；距离场只提供宽度/深度；
                 //   距离场未覆盖时给最小可雕值（保证刻出河床 ⇒ 有水面）。
                 //
-                // 骨架 A/B（2026-10-10）：B 侧（skeletonTrace=true）= 距离场命中即河
+                // 骨架线（唯一生产线，legacy 分支已删 2026-10-20）：距离场命中即河
                 //   （去粗格门控 —— 旧路径的粗格布尔导致 STEP=4 方块化，
-                //    像素铁证：河段起点 x mod 4 = 2 占 97.7%）；
-                //   A 侧保持旧口径，逐位不变。
+                //    像素铁证：河段起点 x mod 4 = 2 占 97.7%）。
                 boolean onChannel;
-                if (SKELETON_TRACE) {
-                    onChannel = half > 0;      // 距离场命中 = 河（连续几何，无粗格门控）
-                } else {
-                    onChannel = p.channel() != null && p.channel()[k];
-                }
+                onChannel = half > 0;      // 距离场命中 = 河（连续几何，无粗格门控）
                 if (onChannel) {
                     // ★★★ 2026-10-09【宽度统一固定为最小可见值 —— 用户的既定方针】★★★
                     //
@@ -2008,14 +1977,12 @@ public final class ModelHydrologyProvider {
                     //   修它需要先把 widthRef 按 D8 的格数累积重新标定，而不是现在。
                     half = RiverCenterlines.MIN_HALF_BLOCKS;
                     depth = 1.0;
-                    // 断因「有河却没水」修复（仅骨架侧；2026-10-10 断点归因）：
+                    // 断因「有河却没水」修复（骨架线；2026-10-10 断点归因）：
                     //   实测 318/31336 格（1%）的 surface-carved 落 0.18~0.50
                     //   （刚好卡在 0.5 水柱门槛下）⇒ depth=1.0 写死 + 平坦坡水位落差小
                     //   ⇒ 河在缓坡上断成虚线。修法：河床下挖深度按水位差自适应
                     //   （上限 4 块，防悬崖式深槽）。
-                    if (SKELETON_TRACE) {
-                        depth = Math.min(4.0, Math.max(depth, eroded - surface + 0.6));
-                    }
+                    depth = Math.min(4.0, Math.max(depth, eroded - surface + 0.6));
                 } else {
                     half = 0;
                     depth = 0;
@@ -2303,12 +2270,10 @@ public final class ModelHydrologyProvider {
                 riverModel(), SAMPLES, extra);
         HydrologyPipeline.Result p = HydrologyPipeline.run(gen, gen.params(), req);
         List<DeterministicSkeleton.ExitSeed> seeds = List.of();
-        if (SKELETON_TRACE) {
-            // 不接力（incoming = 空）⇒ 只产出出口种子。整条骨架白跑一遍是刻意的：
-            // 出口种子必须来自"本区独立追踪"的结果，否则会与接力链互相依赖。
-            var sr = skeletonRegion(p, centerX - RADIUS, centerZ - RADIUS, List.of(), false);
-            seeds = sr.exitSeeds();
-        }
+        // 不接力（incoming = 空）⇒ 只产出出口种子。整条骨架白跑一遍是刻意的：
+        // 出口种子必须来自"本区独立追踪"的结果，否则会与接力链互相依赖。
+        var sr = skeletonRegion(p, centerX - RADIUS, centerZ - RADIUS, List.of(), false);
+        seeds = sr.exitSeeds();
         return new Pass1(p, seeds, centerX - RADIUS, centerZ - RADIUS);
     }
 
@@ -2410,7 +2375,7 @@ public final class ModelHydrologyProvider {
         ProductionDrainageAudit.Snapshot drainage = null;
         WorldDrainage.Result world = null;
         WorldBasinFlow.Region worldWater = null;
-        if (SKELETON_TRACE && CROSS_PASS) {
+        if (CROSS_PASS) {
             var graph = worldDrainage();
             var routing = new WorldBasinRouting(graph, (x,z)->gen.erodedHeight(x*invHs,z*invHs), STEP, 131072);
             var flow = new WorldBasinFlow(graph, routing, CLIMATE, STEP, 32768);
@@ -2425,11 +2390,10 @@ public final class ModelHydrologyProvider {
                 drainage = ProductionDrainageAudit.captureWorld(world, p, originX, originZ, REGION, graph, cl.reaches);
             LOGGER.info("[HYDRO-WORLD] region ({},{}) edges={} pendingBasins={} nodes={} terrainSamples={} neighborPipelines=0",
                     rx, rz, world.edges().size(), world.pendingBasins().size(), world.sampledNodes(), world.terrainSamples());
-        } else if (SKELETON_TRACE) {
+        } else {
             // 接力：本区粗层主干源头（细化主干）+ 邻区粗层主干端口（续流）。
             // 两路都由【本区自己的侵蚀 parent】往里追 ⇒ 不是"只把边界换粗层"。
-            List<Integer> incoming = CROSS_PASS
-                    ? hierIncomingSeeds(rx, rz, p.nx(), originX, originZ) : List.of();
+            List<Integer> incoming = List.of();
             var sr = skeletonRegion(p, originX, originZ, incoming, true);
             // #region agent log: R1 细层出口目前未消费，先量化再改边界几何
             if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
@@ -2440,9 +2404,6 @@ public final class ModelHydrologyProvider {
             cl = sr.cl();
             skelSeg = sr.seg();
             drainage = sr.drainage();
-        } else {
-            cl = RiverCenterlines.build(p.bed(), p.discharge(), p.channel(), p.sea(),
-                    p.nx(), p.nz(), RiverCenterlines.Params.defaults(), STEP);
         }
         logRegionSolved(rx, rz, p, cl, t0, originX, originZ);
         HierarchicalHydrology.Diag.fineTiming((System.nanoTime() - t0) / 1_000_000L, p.nx() * p.nx());
@@ -2540,27 +2501,19 @@ public final class ModelHydrologyProvider {
         long baseDone = System.nanoTime();
         long incomingNs = 0;
         HydrologyPipeline.Result p = base.pipe();
-        // 骨架 A/B（2026-10-10）：true = DeterministicSkeleton（沿 minimax 树追踪 +
-        //   湖溢口续流 + legacy 形态收尾）；false = RiverCenterlines（累积->阈值->细化的旧路径）。
+        // 骨架是唯一生产线（legacy 分支已删，2026-10-20）。
         RiverCenterlines.Result cl;
         SegmentIndex skelSeg = null;
         ProductionDrainageAudit.Snapshot drainage = null;
-        if (SKELETON_TRACE) {
-            // ★ 双 pass 续流：取 8 邻 pass-1 中【指向本区】的出口种子，换算成本区格索引，
-            //   由本区自己的 parent 树追进来（方向场统一 ⇒ 缝上不再断）。
-            long incomingStart = System.nanoTime();
-            List<Integer> incoming = CROSS_PASS ? collectIncoming(rx, rz, p.nx()) : List.of();
-            incomingNs = System.nanoTime() - incomingStart;
-            var sr = skeletonRegion(p, base.originX(), base.originZ(), incoming, true);
-            cl = sr.cl();
-            skelSeg = sr.seg();
-            drainage = sr.drainage();
-        } else {
-            // 中心线（距离场几何源；cellSize=STEP 换算 block 单位）
-            cl = RiverCenterlines.build(
-                    p.bed(), p.discharge(), p.channel(), p.sea(), p.nx(), p.nz(),
-                    RiverCenterlines.Params.defaults(), STEP);
-        }
+        // ★ 双 pass 续流：取 8 邻 pass-1 中【指向本区】的出口种子，换算成本区格索引，
+        //   由本区自己的 parent 树追进来（方向场统一 ⇒ 缝上不再断）。
+        long incomingStart = System.nanoTime();
+        List<Integer> incoming = CROSS_PASS ? collectIncoming(rx, rz, p.nx()) : List.of();
+        incomingNs = System.nanoTime() - incomingStart;
+        var sr = skeletonRegion(p, base.originX(), base.originZ(), incoming, true);
+        cl = sr.cl();
+        skelSeg = sr.seg();
+        drainage = sr.drainage();
         RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ(), drainage);
         // #region agent log: D 冷区依赖成本拆分，实机确认后清理
         if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
