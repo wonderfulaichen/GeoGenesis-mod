@@ -323,12 +323,11 @@ public final class GeoGenesisConfig {
     /** 软化指数（&lt;1 ⇒ 半干旱区也有明显衰减）。默认 0.5。范围 [0.1, 3.0] */
     public final ForgeConfigSpec.DoubleValue hydrologyDecayExponent;
     /**
-     * ★ model 河湖链（区域缓存 + 中心线距离场）接管雕刻计划。
+     * ★ model 河湖链（区域缓存 + 骨架几何）—— 2026-10-20 起【唯一】水文实现。
      *
-     * <p><b>默认 false = 零行为变更</b>（逐位走 legacy {@code HydrologyBlockCarver}）。
-     * true = {@link com.geogenesis.worldgen.hydrology.model.ModelHydrologyProvider}
-     * 按 512 区域求解窗口（halo 96、step=4、50k 流线），产出列走同一写回代数；
-     * 首个区域首次求解约 5.6 秒（后台邻区预热摊薄）。改动只影响【新生成】区块。</p>
+     * <p>原 "config → 系统属性 → false" 开关已删除（legacy HydrologyBlockCarver 整体退役，
+     * git 留档）。{@code usesModelPipeline()} 恒 true；本字段保留仅为缓存身份指纹兼容，
+     * 不再读配置。</p>
      */
     public final ForgeConfigSpec.BooleanValue hydrologyModelPipelineEnabled;
 
@@ -906,15 +905,10 @@ public final class GeoGenesisConfig {
                 + " Values below 1 give semi-arid regions noticeable decay too. Default 0.5. Range [0.1, 3.0]")
                 .defineInRange("hydrologyDecayExponent", 0.5, 0.1, 3.0);
         hydrologyModelPipelineEnabled = builder.comment(
-                "Model hydrology pipeline (EXPERIMENTAL): river/lake carve plans come from the"
-                + " window-solved model chain (512-block regions, halo 96, centerline distance field)"
-                + " instead of the legacy riverline carver. false (default) = legacy, bit-identical."
-                + " true = model regions are solved on first use (~5.6s each) with background"
-                + " preheating of neighbouring regions; results are cached and deterministic."
-                + " Known v1 limits: fixed climate constants; river-oasis distance still uses the"
-                + " legacy network; no waterfalls. Takes effect on world (re)load; already-generated"
-                + " chunks are unchanged.")
-                .define("hydrologyModelPipelineEnabled", false);
+                "Deprecated no-op (2026-10-20): the model pipeline is the ONLY hydrology line;"
+                        + " the legacy riverline carver has been removed and this key is ignored."
+                        + " Kept registered so old config files load without warnings.")
+                .define("hydrologyModelPipelineEnabled", true);
         // `hydrologyDeterministicSkeleton` 已删除（2026-10-20，用户决定移除 legacy 线）：
         // 骨架是唯一生产河网线，不存在开关。历史教训（探针/实机走不同代码线）见
         // ModelHydrologyProvider SKELETON_TRACE 注释；旧 TOML 里的该键会被 Forge 配置
@@ -1098,9 +1092,8 @@ public final class GeoGenesisConfig {
             h = h * 31 + Double.doubleToLongBits(INSTANCE.coastlineWarpScale.get());
             h = h * 31 + INSTANCE.coastlineWarpOctaves.get();
             h = h * 31 + Double.doubleToLongBits(INSTANCE.coastlineWarpPersistence.get());
-            // ★ model 链开关（2026-10-05）：切换会改变 lakeMask/riverDistance/河道掩码
-            //   ⇒ 预览磁盘缓存必须失效（否则"改了配置没变化"，本指纹存在的全部意义）。
-            h = h * 31 + (INSTANCE.hydrologyModelPipelineEnabled.get() ? 1 : 0);
+            // hydrologyModelPipelineEnabled 已从指纹移除（2026-10-20）：它退化为 no-op 常量
+            // true，不再区分任何产出；legacy 链移除本身由 PreviewDisplay CACHE_SCHEMA_VERSION 升版承载。
             return h;
         } catch (IllegalStateException e) {
             // Forge 配置未加载（探针/独立预览等非 MC 环境）→ 返回 0（无指纹，缓存不失效）

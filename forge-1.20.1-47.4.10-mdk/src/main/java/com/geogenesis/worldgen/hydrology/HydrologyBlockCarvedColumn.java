@@ -1,63 +1,52 @@
 package com.geogenesis.worldgen.hydrology;
 
-/** 单个 Minecraft block 列的水文雕刻计划。 */
-public record HydrologyBlockCarvedColumn(int blockX, int blockZ,
-                                         double originalGroundY, double carvedGroundY,
-                                         double waterSurfaceY,
-                                         /** 瀑布水幕顶（唇口水位）：仅跌水列 &gt; waterSurfaceY；普通列等于 waterSurfaceY。 */
-                                         double lipSurfaceY,
-                                         double erosion,
-                                         /**
-                                          * 侵蚀让步系数（方案 A，RTF 式 erosionMask，2026-09-09）：
-                                          * 本列河床应吃多少侵蚀 delta。河心→0（河床严格等于计划
-                                          * carved，与计划水面自洽、单调、无干滩/阶梯），谷外→1
-                                          * （全量侵蚀）。[width, valley] 间 smoothstep 过渡 → 与
-                                          * 雕刻量 cut 的淡出同步归零，边界连续无断面墙。
-                                          */
-                                         double erosionMask,
-                                         boolean fillWater,
+/**
+ * 单列雕刻计划（model 链唯一列语义；legacy 链已于 2026-10-20 退役）。
+ *
+ * @param blockX          方块 X（世界坐标）
+ * @param blockZ          方块 Z（世界坐标）
+ * @param originalGroundY 无侵蚀基线高度
+ * @param carvedGroundY   计划雕刻后床面高度（湖列 = original：湖不雕刻）
+ * @param waterSurfaceY   计划水面高度（不出水列 = carved）
+ * @param lipSurfaceY     岸沿（lip）水面高度 —— 与 waterSurfaceY 之差即瀑布水幕
+ * @param erosion         河床下切量（≥0；湖列 0）
+ * @param erosionMask     侵蚀让步掩码：河心 0（床面不吃侵蚀 delta）、谷外 1
+ *                        —— 雕刻量 cut 的淡出同步归零，边界连续无断面墙
+ * @param fillWater       本列是否放水
+ * @param lakePlan        本列是否湖水面（model 链：世界盆路由发布的单平面湖列）
+ * @param lakeNode        恒 null（2026-10-20）：legacy LakeNode 已随 legacy 链退役；
+ *                        字段保留以维持落块层签名兼容，消费方（逃逸重算/洪泛精修）均已移除
+ * @param lakeLevelY      湖水位（model 链 = 盆单平面；非湖列 NaN）
+ */
+public record HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
+                                         double carvedGroundY, double waterSurfaceY,
+                                         double lipSurfaceY, double erosion,
+                                         double erosionMask, boolean fillWater,
                                          boolean lakePlan,
-                                         /**
-                                          * ★ 2026-09-17：湖节点引用（仅湖列非 null）。
-                                          * 供落块层在【雕刻后的最终地形】上重算湖水位
-                                          * （{@code LakeNode.escapeWaterLevel}）——
-                                          * 修"水位求解早于雕刻"的阶段错位。见
-                                          * {@code GeoGenesisTerrain.LAKE_ESCAPE_LEVEL}。
-                                          */
-                                         com.geogenesis.worldgen.hydrology.riverline
-                                                 .RiverLineRegion.LakeNode lakeNode,
-                                         /**
-                                          * ★ 2026-09-17：本列所属湖的<b>水位</b>（NaN = 不受湖影响）。
-                                          * <p>关键：被 {@code inFlood} 判为"非湖列"的列
-                                          * （{@code lakePlan=false}）<b>也会带上湖节点 + 本水位</b>
-                                          * —— 实测"低于水位却干"的岸线格全部来自这一类列
-                                          * （粗格 BFS 把它们错杀），需要由落块层的
-                                          * <b>1 块精度洪泛</b>在同一水位上重判。
-                                          * 见 {@code GeoGenesisTerrain.LAKE_FINE_FLOOD}。</p>
-                                          */
+                                         Object lakeNode,
                                          double lakeLevelY) {
 
-                                         /** 兼容旧调用（无湖节点 / 无湖水位）。 */
-                                         public HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
-                                         double carvedGroundY, double waterSurfaceY,
-                                         double lipSurfaceY, double erosion,
-                                         double erosionMask, boolean fillWater,
-                                         boolean lakePlan) {
-                                         this(blockX, blockZ, originalGroundY, carvedGroundY, waterSurfaceY, lipSurfaceY,
-                                         erosion, erosionMask, fillWater, lakePlan, null, Double.NaN);
-                                         }
+    /** 兼容旧调用（无湖节点 / 无湖水位）。 */
+    public HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
+                                      double carvedGroundY, double waterSurfaceY,
+                                      double lipSurfaceY, double erosion,
+                                      double erosionMask, boolean fillWater,
+                                      boolean lakePlan) {
+        this(blockX, blockZ, originalGroundY, carvedGroundY, waterSurfaceY, lipSurfaceY,
+             erosion, erosionMask, fillWater, lakePlan, null, Double.NaN);
+    }
 
-                                         /** 兼容：有湖节点、无独立湖水位（lakeLevelY = NaN）。 */
-                                         public HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
-                                         double carvedGroundY, double waterSurfaceY,
-                                         double lipSurfaceY, double erosion,
-                                         double erosionMask, boolean fillWater,
-                                         boolean lakePlan,
-                                         com.geogenesis.worldgen.hydrology.riverline
-                                               .RiverLineRegion.LakeNode lakeNode) {
-                                         this(blockX, blockZ, originalGroundY, carvedGroundY, waterSurfaceY, lipSurfaceY,
-                                         erosion, erosionMask, fillWater, lakePlan, lakeNode, Double.NaN);
-                                         }
+    /** 兼容：有湖节点、无独立湖水位（lakeLevelY = NaN）。 */
+    public HydrologyBlockCarvedColumn(int blockX, int blockZ, double originalGroundY,
+                                      double carvedGroundY, double waterSurfaceY,
+                                      double lipSurfaceY, double erosion,
+                                      double erosionMask, boolean fillWater,
+                                      boolean lakePlan,
+                                      Object lakeNode) {
+        this(blockX, blockZ, originalGroundY, carvedGroundY, waterSurfaceY, lipSurfaceY,
+             erosion, erosionMask, fillWater, lakePlan, lakeNode, Double.NaN);
+    }
+
     /** 水幕高度（block）：0 = 普通列。 */
     public double fallDrop() {
         double d = lipSurfaceY - waterSurfaceY;

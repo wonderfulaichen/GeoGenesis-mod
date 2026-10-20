@@ -399,7 +399,7 @@ public final class ModelHydrologyProvider {
         try {
             h = mix(h, com.geogenesis.config.GeoGenesisConfig.configFingerprint());
             var cfg = com.geogenesis.config.GeoGenesisConfig.INSTANCE;
-            h = mix(h, cfg.hydrologyModelPipelineEnabled.get() ? 1 : 0);
+            // hydrologyModelPipelineEnabled 已是 no-op（legacy 链移除），不再混入身份。
             h = mix(h, cfg.hydrologySkeletonRouting.get() ? 1 : 0);
             h = mix(h, cfg.hydrologyDecayEnabled.get() ? 1 : 0);
             h = mix(h, cfg.riverEnabled.get() ? 1 : 0);
