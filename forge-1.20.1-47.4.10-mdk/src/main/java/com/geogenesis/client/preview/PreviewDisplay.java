@@ -430,8 +430,10 @@ public class PreviewDisplay extends AbstractWidget {
     // 95 = 2026-10-19 世界同盆已发布河廊消费盆单平面，不再以逐列地形充当河面而顺流爬坡。
     // 96 = 2026-10-19 盆内树从蓄水低部连接唯一出口主干，再接入支流，避免纯lip BFS绕岸。
     // 97 = 2026-10-19 湿段优先接入后补齐被固定干主干隔开的支湾，保持已有后继而不漏盆成员。
+    // 98 = 2026-10-20 生产移除 legacy RiverCenterlines 线：骨架成唯一河网线（SKELETON_TRACE 恒 true），
+    //      探针/实机从此同线；riverModel 证据场不变。产出含河网几何变化 ⇒ 旧缓存必须失效。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 97;
+    private static final int CACHE_SCHEMA_VERSION = 98;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

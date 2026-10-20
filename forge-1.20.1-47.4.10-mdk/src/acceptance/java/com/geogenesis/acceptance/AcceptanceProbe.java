@@ -8,9 +8,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import javax.imageio.ImageIO;
@@ -56,6 +58,13 @@ import net.minecraft.world.level.material.MapColor;
  *       <b>计划水柱区间 [surfaceY+1, fillTop]</b> 内确实有水体 ——
  *       于是地下洞穴水不会被当成"地表水连通"。</li>
  * </ol>
+ *
+ * <h3>背景水基线（reference vs candidate）</h3>
+ * <p>本类另承载 {@link #backgroundGate}：把"全部 off-plan 水"（含生成期原版特征/结构水）
+ * 逐格导出为文本报告，两臂（build-only 水策略 false vs candidate）按<b>整行集合</b>比对。
+ * 该门禁<b>不按高度/坐标/连通性豁免</b>，也不放宽既有 {@code newUnplannedWater} 原始计数：
+ * 它只把"已证实由原版背景产生的同一批水"在对拍中抵消，任何单侧新增（计划泄漏或新增地下水）、
+ * 单侧缺失（背景水丢失）、状态变化（source→flow）都判红。见 {@link #WATER_SCHEMA}。</p>
  */
 final class AcceptanceProbe {
 
@@ -872,6 +881,358 @@ final class AcceptanceProbe {
     private static void plot(BufferedImage img, int x, int y, int rgb) {
         if (x < 0 || y < 0 || x >= img.getWidth() || y >= img.getHeight()) return;
         img.setRGB(x, y, rgb);
+    }
+
+    // ===== 背景水基线比对（reference vs candidate）=====
+
+    /** 背景水报告 schema 值（格式契约的唯一事实来源；改格式须同时改此串）。 */
+    static final String WATER_SCHEMA = "geogenesis-water-background/1";
+
+    /** meta 键的权威清单：8 个键各恰一次，两臂必须逐键全等。 */
+    static final List<String> WATER_META_KEYS = List.of(
+            "seed", "config", "plan", "order", "ticks", "minY", "height", "source");
+
+    /** chunk 行必须恰为 36 个（验收固定目标 chunk 集）。 */
+    static final int WATER_CHUNKS = 36;
+
+    /** 观测 tick 数必须恰为 200（两臂同一时间点）。 */
+    static final int WATER_TICKS = 200;
+
+    /**
+     * 背景水报告基线比对：reference（build-only，水策略 false）vs candidate。
+     *
+     * <h3>行型（见 {@link #WATER_SCHEMA} / {@link #WATER_META_KEYS}）</h3>
+     * <ul>
+     *   <li>{@code schema=geogenesis-water-background/1} —— 恰 1 行，值精确相等；</li>
+     *   <li>{@code arm=reference|candidate} —— 恰 1 行，且与本臂身份严格一致；</li>
+     *   <li>{@code meta.<key>=<value>} —— 8 键各恰 1 次、无多余键、值非空白；
+     *       {@code ticks==200}、{@code height>0}；</li>
+     *   <li>{@code chunk=<cx>,<cz>} —— 恰 36 行；坐标（整数归一化后）唯一；
+     *       且<b>两臂集合必须完全相等</b>（36 个不同 chunk 也能被抓住）；</li>
+     *   <li>{@code water=<x>,<y>,<z>,<BlockState>} —— <b>全部 off-plan 水</b>（含生成期水），
+     *       世界坐标，state 非空且<b>不含逗号</b>；坐标 (x,y,z) 唯一（同坐标不同 state 亦判重）。</li>
+     * </ul>
+     *
+     * <h3>判定（无豁免）</h3>
+     * <p>两臂仅允许 {@code arm=} 行不同；其余全部行必须逐字符相等。
+     * {@code meta} 全等 ⟺ seed / config / plan 指纹 / 加载顺序 / tick 数 / 世界高度 /
+     * source 指纹全等（任一不等 ⇒ 红）。{@code water} 行按<b>整行集合</b>比对：
+     * 新增（含计划泄漏与新增地下水）、删除（基线背景水丢失）、状态变化（source→flow）都 ⇒ 红。</p>
+     *
+     * @return {@code null} 仅当两臂严格合法且 water 整行集合完全相等；否则为失败说明单行
+     * @see #backgroundGate(List, List, Set) 生产路径应改用三参版本（本两参版本只做两臂纯格式
+     *      互比，<b>两臂同错</b>的 chunk 集会被放过，仅供合成自检使用）
+     */
+    static String backgroundGate(List<String> reference, List<String> current) {
+        if (reference == null || current == null) return "backgroundGate=nullReport";
+        String side = sideGate("reference", reference);
+        if (side != null) return "backgroundGate=" + side;
+        side = sideGate("candidate", current);
+        if (side != null) return "backgroundGate=" + side;
+        Map<String, String> refMeta = metaOf(reference);
+        Map<String, String> curMeta = metaOf(current);
+        if (!refMeta.equals(curMeta)) {
+            return "backgroundGate=metaMismatch(" + metaDiff(refMeta, curMeta) + ")";
+        }
+        String chunks = setDiff("chunkSet", chunkSet(reference), chunkSet(current));
+        if (chunks != null) return "backgroundGate=" + chunks;
+        String diff = setDiff("water", waterMap(reference), waterMap(current));
+        return diff == null ? null : "backgroundGate=" + diff;
+    }
+
+    /**
+     * 背景水基线比对（<b>含期望 chunk 集</b>）：先跑两参纯格式比较，再要求 candidate 的
+     * chunk 集<b>恰等于</b> {@code expectedChunkKeys}。
+     *
+     * <p>为何必须：两参版本只保证"两臂集合互等"，因此<b>两臂同错</b>（都换了同一批 chunk）
+     * 会假绿 —— 而"同错"正是写盘侧换错 3x3 / 换错目标集的故障形态。
+     * {@code meta.plan} 也拦不住：它是按已加载列算的哈希，两臂同错时哈希相同。</p>
+     *
+     * @param expectedChunkKeys 期望的 chunk 键集，键为纯 {@code cx,cz}（如 {@code -37,36}），
+     *                          由 {@code planChunks(TARGETS)} 的实际结果给出
+     * @return {@code null} 仅当两参通过<b>且</b> chunk 集恰等于期望；否则失败说明单行
+     */
+    static String backgroundGate(List<String> reference, List<String> current,
+                                 Set<String> expectedChunkKeys) {
+        String base = backgroundGate(reference, current);
+        if (base != null) return base;
+        if (expectedChunkKeys == null || expectedChunkKeys.isEmpty()) {
+            return "backgroundGate=expectedChunksMissing";
+        }
+        Set<String> actual = chunkSet(current).keySet();
+        if (!actual.equals(expectedChunkKeys)) {
+            return "backgroundGate=unexpectedChunkSet(actual=" + actual.size()
+                    + " expected=" + expectedChunkKeys.size()
+                    + " firstUnexpected=" + firstUnexpected(actual, expectedChunkKeys) + ")";
+        }
+        return null;
+    }
+
+    /** 首个差异 chunk 键（先报"实际多出的"，再报"期望缺失的"）。 */
+    private static String firstUnexpected(Set<String> actual, Set<String> expected) {
+        for (String key : actual) if (!expected.contains(key)) return "actualOnly:" + key;
+        for (String key : expected) if (!actual.contains(key)) return "expectedOnly:" + key;
+        return "none";
+    }
+
+    /** 单臂合法性：逐行格式 → 行唯一 → arm 身份 → 形状/值 → 坐标范围。null = 合法。 */
+    private static String sideGate(String side, List<String> lines) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String line : lines) {
+            String bad = lineGate(line);
+            if (bad != null) return side + "BadLine(" + bad + ")";
+            if (counts.merge(line, 1, Integer::sum) > 1) {
+                return side + "DuplicateLine(" + line + ")";
+            }
+        }
+        String arm = oneValue(lines, "arm=");
+        if (!side.equals(arm)) return side + "Arm(" + arm + ")";
+        String shape = shapeGate(lines);
+        return shape == null ? null : side + shape;
+    }
+
+    /** 单行格式（不含跨行一致性）。null = 合法。 */
+    private static String lineGate(String line) {
+        if (line == null || line.isBlank()) return "blank";
+        if (line.startsWith("schema=")) {
+            return WATER_SCHEMA.equals(line.substring(7)) ? null : "schemaValue(" + line + ")";
+        }
+        if (line.startsWith("arm=")) {
+            // 取值合法性只在本行判；"哪一臂"由 sideGate 判（arm 互换必须红）
+            String value = line.substring(4);
+            return "reference".equals(value) || "candidate".equals(value)
+                    ? null : "armValue(" + line + ")";
+        }
+        if (line.startsWith("meta.")) return metaLineGate(line);
+        if (line.startsWith("chunk=")) return intsGate("chunk", line.substring(6), 2);
+        if (line.startsWith("water=")) return waterLineGate(line.substring(6));
+        return "unknownLine(" + line + ")";
+    }
+
+    /** {@code meta.<key>=<value>}：键必须在清单内、值非空（全空白也算空）。 */
+    private static String metaLineGate(String line) {
+        int eq = line.indexOf('=', 5);
+        if (eq < 0) return "metaNoEquals(" + line + ")";
+        String key = line.substring(5, eq);
+        if (!WATER_META_KEYS.contains(key)) return "metaUnknownKey(" + key + ")";
+        if (line.substring(eq + 1).isBlank()) return "metaEmptyValue(" + key + ")";
+        return null;
+    }
+
+    /** {@code water=<x>,<y>,<z>,<state>}：三段整数 + 非空且无逗号的 state。 */
+    private static String waterLineGate(String body) {
+        int c1 = body.indexOf(',');
+        if (c1 < 0) return "waterShape(" + body + ")";
+        int c2 = body.indexOf(',', c1 + 1);
+        if (c2 < 0) return "waterShape(" + body + ")";
+        int c3 = body.indexOf(',', c2 + 1);
+        if (c3 < 0) return "waterShape(" + body + ")";
+        String state = body.substring(c3 + 1);
+        if (state.isBlank()) return "waterEmptyState(" + body + ")";
+        if (state.indexOf(',') >= 0) return "waterStateHasComma(" + body + ")";
+        if (intOf(body.substring(0, c1)) == null || intOf(body.substring(c1 + 1, c2)) == null
+                || intOf(body.substring(c2 + 1, c3)) == null) {
+            return "waterCoord(" + body + ")";
+        }
+        return null;
+    }
+
+    /** {@code <int>,<int>} 形状（chunk 行）。 */
+    private static String intsGate(String what, String body, int fields) {
+        String rest = body;
+        for (int i = 0; i < fields; i++) {
+            int comma = rest.indexOf(',');
+            String piece = comma < 0 ? rest : rest.substring(0, comma);
+            if (intOf(piece) == null) return what + "Int(" + body + ")";
+            if (comma < 0) return i == fields - 1 ? null : what + "Arity(" + body + ")";
+            rest = rest.substring(comma + 1);
+        }
+        return rest.isEmpty() ? null : what + "Arity(" + body + ")";
+    }
+
+    /**
+     * 形状 + meta 值 + 世界范围一致性。
+     *
+     * @return null = 合法；否则失败片段（调用方加臂名前缀）
+     */
+    private static String shapeGate(List<String> lines) {
+        int schema = 0, arm = 0;
+        Map<String, String> meta = new LinkedHashMap<>();
+        Set<String> chunks = new LinkedHashSet<>();
+        Set<String> coords = new LinkedHashSet<>();
+        List<int[]> waters = new ArrayList<>();
+        for (String line : lines) {
+            if (line.startsWith("schema=")) { schema++; continue; }
+            if (line.startsWith("arm=")) { arm++; continue; }
+            if (line.startsWith("meta.")) {
+                if (meta.put(metaKeyOf(line), metaValueOf(line)) != null) {
+                    return "MetaDuplicate(" + metaKeyOf(line) + ")";
+                }
+                continue;
+            }
+            if (line.startsWith("chunk=")) {
+                // 归一化后去重："3,4" 与 "03,4" 是同一 chunk（文本不同但坐标相同 ⇒ 判重）
+                int[] c = pairOf(line.substring(6));
+                if (!chunks.add(c[0] + "," + c[1])) {
+                    return "DuplicateChunkCoord(" + c[0] + "," + c[1] + ")";
+                }
+                continue;
+            }
+            if (line.startsWith("water=")) {
+                int[] p = waterTriple(line);
+                if (!coords.add(p[0] + "," + p[1] + "," + p[2])) {
+                    return "DuplicateWaterCoord(" + p[0] + "," + p[1] + "," + p[2] + ")";
+                }
+                waters.add(p);
+            }
+        }
+        if (schema != 1) return "SchemaLines(" + schema + ")";
+        if (arm != 1) return "ArmLines(" + arm + ")";
+        if (chunks.size() != WATER_CHUNKS) return "ChunkCount(" + chunks.size() + ")";
+        for (String key : WATER_META_KEYS) {
+            if (!meta.containsKey(key)) return "MetaMissing(" + key + ")";
+        }
+        if (meta.size() != WATER_META_KEYS.size()) return "MetaExtraKeys(" + meta.size() + ")";
+        return geometryGate(meta, chunks, waters);
+    }
+
+    /** meta 值约束（ticks==200 / height>0 / minY 可解析）+ 水坐标在 chunk 集与世界高度内。 */
+    private static String geometryGate(Map<String, String> meta, Set<String> chunks,
+                                       List<int[]> waters) {
+        Integer minY = intOf(meta.get("minY"));
+        Integer height = intOf(meta.get("height"));
+        Integer ticks = intOf(meta.get("ticks"));
+        if (ticks == null || ticks != WATER_TICKS) return "MetaTicks(" + meta.get("ticks") + ")";
+        if (height == null || height <= 0) return "MetaHeight(" + meta.get("height") + ")";
+        if (minY == null) return "MetaMinY(" + meta.get("minY") + ")";
+        // long：minY 可为 -64，height 极端值下 int 相加会溢出（溢出后范围判定会静默放行）
+        long topExclusive = (long) minY + height;
+        for (int[] p : waters) {
+            if (!chunks.contains((p[0] >> 4) + "," + (p[2] >> 4))) {
+                return "WaterOutsideChunks(" + p[0] + "," + p[1] + "," + p[2] + ")";
+            }
+            if (p[1] < minY || p[1] >= topExclusive) {
+                return "WaterOutsideWorldHeight(y=" + p[1] + ")";
+            }
+        }
+        return null;
+    }
+
+    /** {@code meta.<key>=<value>} 的键。 */
+    private static String metaKeyOf(String line) {
+        int eq = line.indexOf('=', 5);
+        return eq < 0 ? line.substring(5) : line.substring(5, eq);
+    }
+
+    /** {@code meta.<key>=<value>} 的值（可能为空串）。 */
+    private static String metaValueOf(String line) {
+        int eq = line.indexOf('=', 5);
+        return eq < 0 ? "" : line.substring(eq + 1);
+    }
+
+    /** meta 键 → 值（只读；形状由 {@link #shapeGate} 保证）。 */
+    private static Map<String, String> metaOf(List<String> lines) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String line : lines) {
+            if (line.startsWith("meta.")) out.put(metaKeyOf(line), metaValueOf(line));
+        }
+        return out;
+    }
+
+    /** 首个 {@code prefix}（含 {@code =}）行的值；无则 null。 */
+    private static String oneValue(List<String> lines, String prefix) {
+        for (String line : lines) if (line.startsWith(prefix)) return line.substring(prefix.length());
+        return null;
+    }
+
+    /** 水坐标 (x,y,z) → 整行（供整行集合比对）。 */
+    private static Map<String, String> waterMap(List<String> lines) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String line : lines) {
+            if (line.startsWith("water=")) out.put(coordKey(line), line);
+        }
+        return out;
+    }
+
+    /** water 行的 (x,y,z) 文本键。 */
+    private static String coordKey(String line) {
+        String body = line.substring(6);
+        int c1 = body.indexOf(',');
+        int c2 = body.indexOf(',', c1 + 1);
+        int c3 = body.indexOf(',', c2 + 1);
+        return body.substring(0, c3);
+    }
+
+    /** 解析 {@code <int>,<int>}（形状已由 {@link #intsGate} 保证）。 */
+    private static int[] pairOf(String body) {
+        int comma = body.indexOf(',');
+        return new int[]{Integer.parseInt(body.substring(0, comma)),
+                Integer.parseInt(body.substring(comma + 1))};
+    }
+
+    /** 解析 water 行的 (x,y,z)（形状已由 {@link #waterLineGate} 保证）。 */
+    private static int[] waterTriple(String line) {
+        String body = line.substring(6);
+        int c1 = body.indexOf(',');
+        int c2 = body.indexOf(',', c1 + 1);
+        int c3 = body.indexOf(',', c2 + 1);
+        return new int[]{Integer.parseInt(body.substring(0, c1)),
+                Integer.parseInt(body.substring(c1 + 1, c2)),
+                Integer.parseInt(body.substring(c2 + 1, c3))};
+    }
+
+    /** 归一化 chunk 坐标集（键 {@code cx,cz}）→ 原行；两臂必须完全相等。 */
+    private static Map<String, String> chunkSet(List<String> lines) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String line : lines) {
+            if (line.startsWith("chunk=")) {
+                int[] c = pairOf(line.substring(6));
+                out.put(c[0] + "," + c[1], line);
+            }
+        }
+        return out;
+    }
+
+    /** null = 两臂集合完全相等；否则首个差异说明（{@code what=Mismatch(...)}）。 */
+    private static String setDiff(String what, Map<String, String> ref, Map<String, String> cur) {
+        List<String> added = new ArrayList<>();
+        List<String> removed = new ArrayList<>();
+        List<String> changed = new ArrayList<>();
+        for (Map.Entry<String, String> en : cur.entrySet()) {
+            if (!ref.containsKey(en.getKey())) added.add(en.getKey());
+        }
+        for (Map.Entry<String, String> en : ref.entrySet()) {
+            String now = cur.get(en.getKey());
+            if (now == null) removed.add(en.getKey());
+            else if (!now.equals(en.getValue())) changed.add(en.getKey());
+        }
+        if (added.isEmpty() && removed.isEmpty() && changed.isEmpty()) return null;
+        return what + "Mismatch(added=" + added.size() + " removed=" + removed.size()
+                + " changed=" + changed.size() + " firstAdded=" + first(added)
+                + " firstRemoved=" + first(removed) + " firstChanged=" + first(changed) + ")";
+    }
+
+    /** 首个差异 meta 键（含两臂取值）。 */
+    private static String metaDiff(Map<String, String> ref, Map<String, String> cur) {
+        for (String key : WATER_META_KEYS) {
+            if (!java.util.Objects.equals(ref.get(key), cur.get(key))) {
+                return key + ":ref=" + ref.get(key) + " now=" + cur.get(key);
+            }
+        }
+        return "keySet";
+    }
+
+    private static String first(List<String> values) {
+        return values.isEmpty() ? "none" : values.get(0);
+    }
+
+    private static Integer intOf(String value) {
+        if (value == null || value.isEmpty()) return null;
+        try {
+            return Integer.valueOf(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     // ===== 数据载体 =====

@@ -122,6 +122,8 @@ public final class ForgeHydrologyAcceptance {
     private static final Map<Long,java.util.BitSet> initialWater=new LinkedHashMap<>();
     private static int newlyUnplannedWater;
     private static int ordinaryNonSources;
+    private static String backgroundGate = "backgroundNotAudited";
+    private static final boolean REFERENCE_POLICY = Boolean.getBoolean("geogenesis.acceptance.referencePolicy");
 
     // #region agent log: G49-D FULL/tick evidence; never generates a chunk or changes water
     @SubscribeEvent
@@ -159,6 +161,7 @@ public final class ForgeHydrologyAcceptance {
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (!ENABLED || event.phase != TickEvent.Phase.END || shutdownStarted) return;
+        Minecraft.getInstance().options.pauseOnLostFocus=false;
         if (startedAt == 0L) startedAt = System.currentTimeMillis();
         if (System.currentTimeMillis() - startedAt > TIMEOUT_MS) {
             abort(2, "client timeout in " + clientPhase + " after " + chunkDone + " chunks");
@@ -317,8 +320,13 @@ public final class ForgeHydrologyAcceptance {
                 if(++observationTicks>=200)serverPhase=ServerPhase.READ;
             }
             case READ -> {
-                readTargets();
-                serverPhase = ServerPhase.REPORT;
+                try {
+                    readTargets();
+                    serverPhase = ServerPhase.REPORT;
+                } catch(RuntimeException failure) {
+                    LOG.error("[accept] readback failed",failure);
+                    abort(2,"readback failed: "+failure);
+                }
             }
             case REPORT -> finishAndStop();
             default -> { }
@@ -394,20 +402,20 @@ public final class ForgeHydrologyAcceptance {
             method.setAccessible(true);
             for(boolean model:new boolean[]{false,true})for(int y:new int[]{63,64,65}) {
                 var state=(net.minecraft.world.level.block.state.BlockState)method.invoke(null,model,y,64);
-                boolean expectedSource=y<64 || (model && y==64);
+                boolean expectedSource=y<64 || (!REFERENCE_POLICY && model && y==64);
                 if(!state.is(net.minecraft.world.level.block.Blocks.WATER) || state.getFluidState().isSource()!=expectedSource)
                     throw new IllegalStateException("water policy mismatch model="+model+" y="+y+" state="+state);
             }
-            LOG.info("[accept] real production water policy: model source / legacy flowing / waterfall flowing PASS");
+            LOG.info("[accept] water policy verified: arm={} legacy/waterfall flowing", REFERENCE_POLICY ? "reference" : "candidate");
         } catch(ReflectiveOperationException e){throw new IllegalStateException(e);}
     }
 
     private static java.util.BitSet waterBits(LevelChunk chunk) {
         var bits=new java.util.BitSet();var pos=new net.minecraft.core.BlockPos.MutableBlockPos();
-        int min=chunk.getMinBuildHeight();
+        int min=chunk.getMinBuildHeight(),height=chunk.getHeight();
         for(int x=0;x<16;x++)for(int z=0;z<16;z++)for(int y=min;y<chunk.getMaxBuildHeight();y++) {
             pos.set(chunk.getPos().getMinBlockX()+x,y,chunk.getPos().getMinBlockZ()+z);
-            if(AcceptanceProbe.isWaterBody(chunk.getBlockState(pos)))bits.set((x*16+z)*384+y-min);
+            if(AcceptanceProbe.isWaterBody(chunk.getBlockState(pos)))bits.set((x*16+z)*height+y-min);
         }
         return bits;
     }
@@ -416,11 +424,13 @@ public final class ForgeHydrologyAcceptance {
     }
     private static void auditWaterPlacement() {
         var rows=new ArrayList<String>();rows.add("x,y,z,state,planned,initiallyWet");
+        var background=backgroundMetadata();
         int source=0,flowing=0,offPlan=0;newlyUnplannedWater=0;
         for(var entry:chunks.entrySet()) {
-            var chunk=entry.getValue();var bits=waterBits(chunk);int min=chunk.getMinBuildHeight();
+            var chunk=entry.getValue();var bits=waterBits(chunk);int min=chunk.getMinBuildHeight(),height=chunk.getHeight();
+            background.add("chunk="+chunk.getPos().x+","+chunk.getPos().z);
             for(int bit=bits.nextSetBit(0);bit>=0;bit=bits.nextSetBit(bit+1)) {
-                int col=bit/384,y=min+bit%384,x=chunk.getPos().getMinBlockX()+col/16,z=chunk.getPos().getMinBlockZ()+col%16;
+                int col=bit/height,y=min+bit%height,x=chunk.getPos().getMinBlockX()+col/16,z=chunk.getPos().getMinBlockZ()+col%16;
                 var p=AcceptanceProbe.plan(terrain.sampleCell(x,z),terrain.riversEnabled(),terrain.seaLevel());
                 boolean planned=p.water() && y>p.surfaceY() && y<=p.waterTopY();
                 var state=chunk.getBlockState(new net.minecraft.core.BlockPos(x,y,z));
@@ -431,14 +441,100 @@ public final class ForgeHydrologyAcceptance {
                     offPlan++;boolean initial=initialWater.get(entry.getKey()).get(bit);
                     if(!initial)newlyUnplannedWater++;
                     rows.add(x+","+y+","+z+",\""+state+"\",false,"+initial);
+                    background.add("water="+x+","+y+","+z+","+state);
                 }
             }
         }
+        checkBackground(background);
         ordinaryNonSources=flowing;
         rows.add("# ordinarySources="+source+" ordinaryNonSources="+flowing+" offPlan="+offPlan+" newOffPlan="+newlyUnplannedWater);
         try { Files.createDirectories(outDir());Files.write(outDir().resolve("water-placement.csv"),rows,StandardCharsets.UTF_8); }
         catch(IOException e){throw new IllegalStateException(e);}
         LOG.info("[accept] water placement sources={} nonSources={} offPlan={} newOffPlan={}",source,flowing,offPlan,newlyUnplannedWater);
+    }
+
+    private static List<String> backgroundMetadata() {
+        var level=server.overworld();
+        var lines=new ArrayList<String>();
+        lines.add("schema=geogenesis-water-background/1");
+        lines.add("arm="+(REFERENCE_POLICY?"reference":"candidate"));
+        lines.add("meta.seed="+level.getSeed());
+        lines.add("meta.config="+configurationEvidence());
+        lines.add("meta.order="+(Boolean.getBoolean("geogenesis.acceptance.reverse")?"reverse":"forward"));
+        lines.add("meta.ticks="+observationTicks);
+        lines.add("meta.minY="+level.getMinBuildHeight());
+        lines.add("meta.height="+level.getHeight());
+        var columns=new java.util.TreeMap<String,String>();
+        for(var chunk:chunks.values())for(int x=0;x<16;x++)for(int z=0;z<16;z++) {
+            int wx=chunk.getPos().getMinBlockX()+x,wz=chunk.getPos().getMinBlockZ()+z;
+            var plan=AcceptanceProbe.plan(terrain.sampleCell(wx,wz),terrain.riversEnabled(),terrain.seaLevel());
+            columns.put(wx+","+wz,plan.toString());
+        }
+        writeColumnEvidence();
+        lines.add("meta.plan="+sha256(columns.toString().getBytes(StandardCharsets.UTF_8)));
+        try(var in=GeoGenesisGenerator.class.getResourceAsStream("GeoGenesisGenerator.class")) {
+            if(in==null)throw new IOException("generator class missing");
+            lines.add("meta.source="+sha256(in.readAllBytes()));
+        } catch(IOException e){throw new IllegalStateException(e);}
+        return lines;
+    }
+
+    private static void writeColumnEvidence() {
+        var rows=new ArrayList<String>();
+        rows.add("x,z,groundY,waterTop,water,matched,actualStates");
+        for(var chunk:chunks.values())for(int x=0;x<16;x++)for(int z=0;z<16;z++) {
+            int wx=chunk.getPos().getMinBlockX()+x,wz=chunk.getPos().getMinBlockZ()+z;
+            var plan=AcceptanceProbe.plan(terrain.sampleCell(wx,wz),terrain.riversEnabled(),terrain.seaLevel());
+            if(!plan.water())continue;
+            var states=new ArrayList<String>();boolean matched=true;
+            for(int y=plan.surfaceY()+1;y<=plan.waterTopY();y++) {
+                var state=chunk.getBlockState(new net.minecraft.core.BlockPos(wx,y,wz));
+                states.add(y+":"+state);matched&=AcceptanceProbe.isWaterBody(state);
+            }
+            rows.add(wx+","+wz+","+plan.groundY()+","+plan.waterTopY()+",true,"+matched+",\""+states+"\"");
+        }
+        try { Files.createDirectories(outDir());Files.write(outDir().resolve("planned-columns.csv"),rows,StandardCharsets.UTF_8); }
+        catch(IOException e){throw new IllegalStateException(e);}
+    }
+
+    private static String configurationEvidence() {
+        var properties=new java.util.TreeMap<String,String>();
+        System.getProperties().forEach((k,v)-> {
+            String key=k.toString();
+            if(key.startsWith("geogenesis.") && !key.startsWith("geogenesis.acceptance"))properties.put(key,v.toString());
+        });
+        try {
+            Path config=Minecraft.getInstance().gameDirectory.toPath().resolve("config/geogenesis-common.toml");
+            return sha256(Files.readAllBytes(config))+";"+GeoGenesisGenerator.resolveParams()+";"+properties+";"+envLines();
+        } catch(IOException e){throw new IllegalStateException("acceptance config evidence unavailable",e);}
+    }
+
+    private static String sha256(byte[] bytes) {
+        try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes)); }
+        catch(java.security.NoSuchAlgorithmException e){throw new IllegalStateException(e);}
+    }
+
+    private static void checkBackground(List<String> current) {
+        try {
+            Files.createDirectories(outDir());
+            Files.write(outDir().resolve("water-background.txt"),current,StandardCharsets.UTF_8);
+            String reference=System.getProperty("geogenesis.acceptance.backgroundReference");
+            if(REFERENCE_POLICY)backgroundGate="referenceArmNotAcceptance";
+            else if(reference==null)backgroundGate="backgroundReferenceMissing";
+            else {
+                var path=Path.of(reference);
+                String report=Files.readString(path.resolveSibling("acceptance-report.txt"),StandardCharsets.UTF_8);
+                if(!report.lines().anyMatch("saveCompleted=true"::equals))backgroundGate="referenceSaveUnverified";
+                else {
+                    var expected=new ArrayDeque<AcceptanceProbe.ChunkJob>();
+                    AcceptanceProbe.planChunks(AcceptanceProbe.TARGETS,expected);
+                    var keys=new java.util.HashSet<String>();
+                    for(var job:expected)keys.add(job.cx()+","+job.cz());
+                    backgroundGate=AcceptanceProbe.backgroundGate(Files.readAllLines(path,StandardCharsets.UTF_8),current,keys);
+                }
+            }
+        } catch(IOException e){backgroundGate="backgroundReadError:"+e.getClass().getSimpleName();}
+        LOG.info("[accept] background comparison {}",backgroundGate==null?"MATCHED":backgroundGate);
     }
 
     /** 一次验收读回的上下文（计划查询 + 计划窗口匹配 + 逐点/link/覆盖检查）。 */
@@ -592,7 +688,7 @@ public final class ForgeHydrologyAcceptance {
             String g = AcceptanceProbe.coverageGate(c);
             if (g != null) coverageGates.add(g);
         }
-        if(newlyUnplannedWater>0)coverageGates.add("newUnplannedWater="+newlyUnplannedWater);
+        if(backgroundGate!=null)coverageGates.add("waterBackground="+backgroundGate);
         if(terrain.usesModelPipeline() && ordinaryNonSources>0)coverageGates.add("ordinaryNonSources="+ordinaryNonSources);
         boolean loaderOk = defects == 0 && chunkFailures == 0 && !points.isEmpty();
         boolean waterOk = linkGate == null && coverageGates.isEmpty();
@@ -641,7 +737,7 @@ public final class ForgeHydrologyAcceptance {
         lines.add("# geogenesis acceptance — BlockState readback (NOT a game screenshot)");
         lines.add("# scope: 1 seed, 6 target points, 3 explicit links, coverage scan — NOT a full acceptance");
         lines.add("# exitCode 0=green 1=planMismatch 2=envError 3=loaderPassedButWaterCoveragePending");
-        lines.add("schema=geogenesis-acceptance/4");
+        lines.add("schema=geogenesis-acceptance/5");
         lines.add("verdict=" + verdictText(code));
         lines.add("exitCode=" + code);
         lines.add("loaderVerdict=" + (code == 3 ? "PASSED" : code == 0 ? "PASSED" : "CHECK"));
@@ -665,7 +761,10 @@ public final class ForgeHydrologyAcceptance {
         lines.add("postFullObservationTicks="+observationTicks);
         lines.add("ordinaryNonSources="+ordinaryNonSources);
         lines.add("newUnplannedWater="+newlyUnplannedWater);
-        lines.add("spreadScope=loaded36ChunksAfterAllFULL_vs200Ticks;preFULLSpreadNotExcluded");
+        lines.add("waterPolicyArm="+(REFERENCE_POLICY?"reference":"candidate"));
+        lines.add("waterBackground="+(backgroundGate==null?"MATCHED":backgroundGate));
+        lines.add("rawSpreadVerdict="+(newlyUnplannedWater>0?"FAIL":"PASS"));
+        lines.add("spreadScope=allOffPlanCellsComparedAt200TicksWithSamePlanConfigOrderSource;rawDeltaRetained");
         lines.add("points=" + points.size());
         lines.add("defects=" + defects);
         lines.add("links=" + links.size());
@@ -706,8 +805,9 @@ public final class ForgeHydrologyAcceptance {
         lines.add("modelPipelineEffective=" + modelEffective());
         lines.add("hierarchicalHydrology=" + hierEffective());
         lines.add("hierStrictContract=" + System.getProperty("geogenesis.hierStrictContract", "true"));
-        lines.add("skeletonDeterministic="
-                + ConfigSafe.bool(GeoGenesisConfig.INSTANCE.hydrologyDeterministicSkeleton, true));
+        // 2026-10-20 legacy 线移除后骨架是唯一生产线、无开关（ModelHydrologyProvider.SKELETON_TRACE
+        // 为包私有常量 true，这里镜像同值；若生产端改名/改义，此处同步会由编译期 grep 校验）。
+        lines.add("skeletonDeterministic=true");
         return lines;
     }
 
@@ -826,7 +926,7 @@ public final class ForgeHydrologyAcceptance {
             Files.createDirectories(outDir());
             List<String> lines = new ArrayList<>();
             lines.add("# geogenesis acceptance — BlockState readback (NOT a game screenshot)");
-            lines.add("schema=geogenesis-acceptance/4");
+            lines.add("schema=geogenesis-acceptance/5");
             lines.add("verdict=ERROR");
             lines.add("exitCode=" + code);
             lines.add("loaderVerdict=ERROR");

@@ -216,7 +216,36 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 - 两个冷JVM的13份CSV/PNG逐字节一致；指标仅归一输出目录/耗时。入口为MDK下 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-local-flow-reassessment.ps1`，默认整套预期exit1，必须检查各探针verdict，不能把编译成功当生产验收。完整证据本地保存在 `build/local-flow-reassessment/decision.txt` 与 `verification/evidence.txt`，不纳入源码提交；独立init script导出classpath，runner现场生成输入哈希，不依赖被忽略的旧计划才能启动。
 - 用户已批准将schema97依赖与实验分批本地提交；生产依赖检查点 `f0ba855` 保留现有红灯，不等于可发布。实机验收工具改动、图片/日志/配置/存档不在提交范围。实验没有改变生产产出或缓存版本，未做新的provider迁移、1401²生产图、Forge新块、完整WorldgenGate或全链路性能验收，不提交这些未实测结论。
 
-## 一、当前状态（历史快照；新实验状态见〇c—〇m）
+### 〇n、G42 世界有限出生事件接线（诊断推进，未接生产）
+
+- 已按用户确认分批本地提交：`f0ba855` 保存schema97依赖，`d0165b0` 保存〇m实验；均未推送。此前实机验收工具、图片/存档/日志未混入。runner在本地计划缺席时也可启动，并现场生成生产输入哈希；仍须用户TOML作为真实地形输入。
+- 新增 `LocalFlowRollingProbe`：复用 `LocalFlowEvents.events` 的世界seed/config/出生格/轮次目录，直接调用同一G42薄适配，不再只为5个固定起点建立索引。G42的L是最多L次移动、最多L+1状态，与四邻事件L次访问不同；每次连续移动≤1，按floor映射方块列，出生halo=L+1保守覆盖浮点边界，查询框只裁输出、不截轨迹。每列按事件身份保存状态次数、质量和原terminal，不将多亚块访问算成多次雨源，不把pending变干或冒充完整河路。
+- 默认seed与12345各31项检查/0失败，独立冷JVM的3CSV及metrics逐字节一致。包含独立轴向解析oracle（L次移动终点也计入）、真正更大出生域对照、owner/逆序/窗口相位/负坐标角点、下游先查、三并发、取消重试、漏窗外源与寿命off-by-one负控。默认真地形70出生事件、1750状态、26950原始高度采样、280换窗、62输出列；12345为66出生事件、1537状态、28840采样、28输出列，其中11个局部低地pending。采样为每轨迹未缓存回调次数之和，不是唯一世界地形采样或provider全成本；未采集sampler cache峰，事件目录/贡献实体化内存另计。
+- 三个新增build副本代码变异（漏halo、负坐标int截断替代floor、固定工作窗）均exit1且指定失败命中；与既有四个事件变异共7例，编译失败不算检出。主线程已重编main/diagnostics，整套runner仍真实exit1：ownership0/join2/basin1/rolling0。两竞争盆和完整河网源目录红灯没有被新增局部发现正例覆盖；旧join仍测原5源契约，不偷偷删open gap。
+- 证据本地 `build/local-flow-reassessment/rolling-final/`、`rolling-cold/`、`rolling-12345/`、`rolling-cold-evidence.txt`、`continued-variation.log`；原生产源码/配置哈希不变，缓存版本不变。未新出生产图/Forge验收，不把该有限过程接线称“无限河网已完成”。下一关键接口仍是世界共同接收状态/共同后缀与盆出口/回水身份，而不是再要求所有列精确全Q。
+
+### 〇o、共同接收状态与块级盆身份交接（诊断推进，未接生产）- **定义了一个明确的共同接收状态**，而不是让每条轨迹带着自己的动量继续走。每个方块列被当作一个**声明的控制体**：同一世界里所有经过它的有限事件各贡献一次来向与质量，按**世界事件身份**（seed/config/出生格/轮次）排序后求和，再据**这一列的合并来向**决定唯一下一列。事件不读接收图，因此 `L+1` halo 仍然成立，没有隐藏的递归影响半径。⚠ 这是**新的**图语义，不是"未改动的 G42"：G42 的连续轨迹本身仍然保留各自来向、会在同一点再分叉。
+- 判决规则本身都是可反向验证的：候选边必须是**连续次邻**且整段 8 采样严格下降（`descendingEdge`），打平则 `EQUAL_RECEIVER_SCORE_PENDING`，无下降边则 `BLOCK_LOCAL_MINIMUM_OR_FLAT_PENDING`——**两者都不代表"干"或"已入海"**。合成三臂汇流在同一世界列之后走**完全相同**的后缀（证明源动量未存活），而"只用第一个到的事件"的规则会在同一地形给出不同结果，作为负控。
+- **真实地形实测**（默认 seed，TOML 拷贝读取，原文件哈希不变）：37 项检查 0 失败。出生事件 70 个、1750 个 G42 原始状态、26950 次原始高度回调、62 个输出列，其中 **23 列是真实多事件控制体**；0 个 pending；一条真实上游路径的后缀与"冷重建 + 下游先查"逐项相等。`12345` 独立复跑 35 项 0 失败（3 个多事件列、28 列、1 个 pending）。
+- **块级盆身份**：共同接收状态从粗格点 `(-428,-92)` 走到块级最低点 `(-428,-94)@162.48945`，交接给一个**独立闭合**的块证书（9 成员、14 条边界割、`atSill=1`、`belowSill=0`、`escape=162.74098`），且与独立的 Kruskal 激活算法解一致。沿唯一首口（`(-428,-96)`）跨平台到接收床 `(-428,-97)`，再降到下游块盆 `(-428,-98)`，其首口 **升高**到 `163.35624`（+0.61526），在 `163.35624` 处的合并体（170 成员）**包含**原 9 成员盆且为**单连通分量**——这是该样本上"存在回水合并"的实测证据，**不是湖水位、也不是水量放行**。
+- **生产接口缺口仍然真实存在，而且比"无法表达"更糟**（本轮 2 个 `UNRESOLVED`）：生产的合并谓词 `downstream.members().containsAll(initial.members())` 在 **step-4 格点**上求值，而块证书的 9 个成员里**只有 1 个**是格点 ⇒ 该谓词连主语都命名不了。**但没有停在这里**：实测了两种可辩护的"提升"（cover = floor-div 覆盖粗格；strict = 只保留本身是格点的列），结果是 **两种提升都让谓词返回 `true`**，而它们分别只有 2 格和 1 格、都不是那 9 列块体 ⇒ **"containment 通过"是假通过，不能认证身份**。决定性负控：`containsAll(∅)` 同样为 `true`，所以该谓词对"整盆"和"空集"给同一答案。加上 blockEscape `162.74098` 与 coarseSill `163.03260859616427` 是**不同算子的值**（差 −0.2916），⇒ 生产要接这份块证书，必须**声明一个块→粗提升 + 一个层级换算**，二者都不能靠挑坐标或放宽谓词绕过。
+- **自底发现并修掉的三个新诊断缺陷**（都由独立反例驱动，不是"改到绿"）：① 平台下游用 FIFO 取第一个低于 sill 的列 ⇒ 对称双盆下换遍历顺序就换接收盆；改为**收集全部边界列 + 按严格低于 level 的连通分量去重**，0 个 / ≥2 个 / 触框一律 pending。② 等高平台会被当成汇点 ⇒ 改为"等高分量闭合且无更低边界"才算 sink，且**逐格走出连续等高路径**到排水列（`Move.PATH` 记录中途列，不瞬移），单格 pit floor 与平台分开命名。③ 几何发布处用 `EPS` 比较割高 ⇒ 会把只高 `1e-12` 的细条并进 at-sill 集、**凭空造出 `MULTIPLE_OUTLETS`**；改为**精确比较**，并用该细条作双向负控（精确判 1 个、EPS 判 ≥2 个）。
+- **断言语义修正**：`strictFourMinimum` 的名字撒谎（它只表示"无更低的邻居"，平台也满足），已补 `weakNoDescent` 别名与真正的 `strictAllNeighboursHigher`；主线程交接调用改用后者。`mergeAt` 增加"合并集触框即 pending"，且不再把中断吞成几何结论。
+- 证据本地 `build/local-flow-reassessment/shared-final3/`、`shared-cold3/`、`verification/shared-verify3.log`：**35 份** CSV/result 在独立冷 JVM 下**逐字节一致**（metrics 仅归一输出目录/耗时）。**16 个** build 副本变异全部 `exit=1` 且命中指定断言：既有 4 个事件变异 + 3 个滚窗变异 + 9 个新增/扩展（首事件优先、按插入序归约、漏 halo、忽略沿程 crest、允许触框闭合、平台下游先到优先、等高平台当汇、EPS 判 sill、lift 静默通过）。函数均 ≤80 行。`block-handoff` 75 检查 / 0 断言失败 / 2 未解决 / 4 差异；`receiver` 37 检查 / 0 失败。
+- 整套 runner 仍**真实 `exit=1`**：`ownership 0 / join 2 / basin 1 / rolling 0 / receiver 0 / block-handoff 1`。`join=2` 仍是原 5 源契约的 open gap，`basin=1` 仍是两个真实竞争的盆；本轮**没有**用新绿覆盖它们。**未做**：生产 provider 迁移、1401² 生产大图、Forge 新块目检、完整 WorldgenGate、全链路成本、任意世界完整源目录、自然河网全生命周期。缓存版本与生产产出未变。
+- ⚠ 本轮未对 `LocalFlowBlockHandoffProbe`（2127 行）做文件拆分，仍是单一诊断文件；按规定它不属于 `src/main`，不影响生产，但后续若要长期维护应先拆分。
+
+### 〇p、legacy 线移除：骨架成唯一生产河网线（第一阶段已实施，2026-10-20）
+
+- **背景**：model 链内部曾有三条共存代码线（旧 `RiverCenterlines` 累积→阈值→细化 / `worldRegion` 世界图两点连线 / `DeterministicSkeleton` 骨架），靠 `SKELETON_TRACE`（系统属性→配置项→false 三级回退）+ `CROSS_PASS` 两个开关组合选择。**探针进程无 Forge 配置 ⇒ `SKELETON_TRACE` 长期回退 false ⇒ 探针测的一直是 legacy 线，而实机按 TOML 走骨架**——"探针绿、实机不对"的第二次踩坑（第一次见 §2026-10-10 注释）。多轮叠加从未合并 ⇒ 用户判定"应该只有一条"，决定 **legacy 线移除、git 留档**。
+- **本次改动**（main）：`resolveSkeletonTrace()` 删除，`SKELETON_TRACE` 恒 `true`；两处 `else` legacy 分支删除（`solveFine` 的 2418 与 `solveProduction` 的 2529 区域，删除后 main 无 `RiverCenterlines.build` 调用）；落块门控处 `onChannel = half > 0`（距离场命中即河）与水位差自适应深度无条件生效；instance 指纹不再混入 `hydrologyDeterministicSkeleton`。`GeoGenesisConfig.hydrologyDeterministicSkeleton` 配置项删除（旧 TOML 残键被 Forge 忽略，用户 TOML 已同步清理）；acceptance 横幅改为镜像常量 true；`CanonicalViewProbe.describeCodeLine()` 保留三态打印（出现 LEGACY 即异常）。`RiverCenterlines` **类型保留**——它是骨架/世界图发布折线的几何容器（Reach/Result/SegmentIndex 消费），不是 legacy 算法本身；`riverModel()` 的 D8/CONTINUOUS 证据场选择不变。
+- **`PreviewDisplay.CACHE_SCHEMA_VERSION` 97→98**（清单留痕）：产出含河网几何口径变化 ⇒ 旧预览缓存必须失效。
+- **验证**：main/diagnostics/acceptance 三树 Gradle 编译通过（`build/full-compile.log`）；DemandFlow19/WorldDrainage/WorldLakeSurface/WorldChannelGeometry/WorldBasinRouting 回归全 0 失败（`build/hydro-regression/post-legacy-removal/`）；1401² provider 大图两冷 JVM **逐字节一致**（SHA256 `AE0C861C…`，湖 102947/5.24%、河 25107/1.28%、8281 chunks，`build/hydro-reassessment/canonical-1792482262452/` 与 `-1792482580625/`）。图与移除前默认路径（AB-skeleton-world）**完全一致**——证明本次只删线、未改默认几何。
+- **行为变化（重要）**：① 无配置环境下探针从此与实机同线（此前探针默认测 legacy）；② 旧 TOML 的 `hydrologyDeterministicSkeleton=true` 行不再有意义，删除该键即可；③ `CROSS_PASS=false` 的 `-D` 仍可切到纯 `DeterministicSkeleton` 几何（A/B 归因用），但这仍是"世界图 vs 骨架谁出几何"的待合并项，不是 legacy 复活。
+- **未做/下一阶段（第二阶段，先出方案再动手）**：`worldRegion` 的两点直连废掉、corridor 几何改消费骨架形态收尾折线（世界图只管湖面/盆身份/跨区接力/水量）；正面修平行直线/动线不自然（meander amp=0 是用户 2026-10-10 指示关闭，重设计由用户拍板）与入湖贴边。本轮**不声称**平行直线已修——图上仍可见，量化见 `inspect-canonical-figure.py`（最长直段 116/118 px）。未跑完整 WorldgenGate、未做实机 Forge 验收、未提交。
+
+
+## 一、当前状态（历史快照；新实验状态见〇c—〇p）
 
 | 项 | 值 |
 |---|---|
