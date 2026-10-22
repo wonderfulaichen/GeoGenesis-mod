@@ -126,3 +126,26 @@ symcheck.ps1
 # 它们是"当时看到什么"的证据，且是接手者理解"为什么这么改"的唯一来源）。
 # 所以 **不要** 忽略 _archive/。
 # 归档说明见 _archive/hydrology/README.md；现行事实来源是根目录 HYDROLOGY.md。
+
+# ---- 2026-10-22 仓库玄关清理 ----
+# 理由：交接文档已两次指出「git status 里 30+ 项未跟踪产物，看不清哪些才要提交」。
+# 以下都是**本地证据/中间产物**，保留在磁盘上供回溯，但不应污染 `git status`。
+# ⚠ 注意：_archive/、handoff/*.md、src/** 一律**不**忽略（它们是入库内容）。
+
+# 根目录对照图（A-before / B-now / AB-* / HYDRO-HIER-3way-* 等）
+# 证据价值保留在磁盘，但形态验收以每次新出的生产图为准，旧图不入库。
+/*.png
+
+# 取证中间产物（从会话/预览里抽出的代码片段、探针清单）
+/_extracted_edits/
+/_ca_extracted.txt
+
+# AI agent 调试日志
+/debug-agent.log
+
+# 探针输出的孤立河清单等一次性 txt（根目录）
+/孤立河清单.txt
+
+# 根目录 build/（refdump 参考项目源码、local-flow 临时脚本）——
+# 真工程 build/ 已在上面单独忽略；这条覆盖仓库根的这个。
+/build/
