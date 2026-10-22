@@ -56,11 +56,27 @@ public final class WindowOutlets {
      * <p>⚠ 这正是用户说的"垂直精度对应独立单位"：垂直分辨率与水平格元
      * （step² block）匹配，而不是让 block 级噪声泄漏进决策。</p>
      *
-     * <p><b>开关</b>：{@code -Dgeogenesis.valleyMin=false} 关闭（= 旧单点采样，逐位不变）。
-     * 默认开（用户判据直接驱动）。</p>
+     * <p><b>开关</b>：{@code -Dgeogenesis.valleyMin=true} 开启（= 四角取最小）。
+     * <b>默认关闭</b> —— 2026-10-21 实测改判。</p>
+     *
+     * <h3>★★★ 2026-10-21 为什么把默认从「开」改成「关」★★★</h3>
+     * <p>上述"抑制亚格噪声"的推理在 <b>step=4</b> 时成立；但用户把格距降到
+     * <b>step=1~2</b>（见 {@code ModelHydrologyProvider.STEP}）后，四角取最小的副作用
+     * 变成主导：格元本身只有 1~2 wu，四角±半步取 min 相当于把
+     * <b>坡度抹平一半</b>，缓坡（实测 slope 0.019）的相邻格差被压到 0.037 以下
+     * ⇒ D8 判不出方向 ⇒ 骨架走成直线。</p>
+     *
+     * <p><b>实测</b>（{@code route-fit3.py}，逐条路线配对，固定 4 wu 容差）：</p>
+     * <pre>
+     *   valleyMin=true  骨架→物理中位 10.5 wu   贴合率中位 41.9%
+     *   valleyMin=false 骨架→物理中位  6.0 wu   贴合率中位 56.8%
+     * </pre>
+     *
+     * <p><b>代价</b>：关掉后不再保证"河贴谷底不翻脊"（四角取 min 的本意）。
+     * 若后续发现翻脊，可 {@code -Dgeogenesis.valleyMin=true} 回退。</p>
      */
     static final boolean VALLEY_MIN =
-            !"false".equals(System.getProperty("geogenesis.valleyMin"));
+            "true".equals(System.getProperty("geogenesis.valleyMin"));
 
     /**
      * 构造边界出口的三个数组。

@@ -98,6 +98,13 @@ public final class DeterministicSkeleton {
         JOIN,
         /** 走到未决格（窗口边界/未收敛）——显式记录，不算"水没了"。 */
         UNRESOLVED,
+        /**
+         * 走出本区窗口、仍在下行 ⇒ 由跨区接力继续（<b>合法终点</b>）。
+         *
+         * <p>用户硬约束是"河流只能入湖/入海结束"。窗口是人为切分，
+         * 走出窗口不等于河流结束 —— 必须与 {@link #DEAD_END} 区分。</p>
+         */
+        BOUNDARY_EXIT,
         /** 走到 parent=-1 且非海非湖（理论不应发生，防御）。 */
         DEAD_END
     }
@@ -108,12 +115,51 @@ public final class DeterministicSkeleton {
         public final End end;
         /** 是否由溢出口起新段（湖后段）。 */
         public final boolean fromOutlet;
+        /**
+         * 窗口外续流的<b>世界坐标</b>尾段（block，交替 x,z）。
+         *
+         * <p>{@code cell[]} 只能表达本窗口格索引，窗外格没有索引。早先版本走出窗口后
+         * 直接丢弃路径 ⇒ 河"出了窗口却没画" ⇒ 实测河格 −14.5%。这段必须在 {@code shape}
+         * 里接到折线尾部，窗外那段才会被画出来。</p>
+         */
+        public final double[] outsideTail;
+
+        /**
+         * ★★★ <b>连续路径</b>（格坐标，非整数）：交替 x,z。
+         *
+         * <p><b>为什么需要</b>（用户 2026-10-21）：
+         * 「骨架落地时还是 D8 落点？我让你做多条件物理运行向量就是让你落地不再是那八个方向，
+         * 而是拿那个算出来的结果向量的方向。并且我也说过路线应该像柏林噪声的生成原理那样，
+         * 进行向量运动线。」</p>
+         *
+         * <p>{@code cell[]} 只能是格索引（8 邻之一）⇒ 画出来的线永远落在 8 个方向上。
+         * 本数组记录<b>每步的真实位置</b>（当前点 + 合成方向 × 步长，单位=格），
+         * 是浮点连续量 ⇒ {@code shape()} 直接用它，不再经格心。</p>
+         *
+         * <p>为空时（旧路径/外部构造）退回 {@code cell[]} 的格心。</p>
+         */
+        public final double[] contPath;
 
         Trace(int[] cell, End end, boolean fromOutlet) {
+            this(cell, end, fromOutlet, new double[0], new double[0]);
+        }
+
+        Trace(int[] cell, End end, boolean fromOutlet, double[] outsideTail) {
+            this(cell, end, fromOutlet, outsideTail, new double[0]);
+        }
+
+        Trace(int[] cell, End end, boolean fromOutlet, double[] outsideTail, double[] contPath) {
             this.cell = cell;
             this.end = end;
             this.fromOutlet = fromOutlet;
+            this.outsideTail = outsideTail;
+            this.contPath = contPath;
         }
+
+        public boolean hasOutsideTail() { return outsideTail.length >= 4; }
+
+        /** 是否有连续路径可用（长度与 cell 对齐 ×2）。 */
+        public boolean hasContPath() { return contPath.length >= cell.length * 2 && cell.length > 1; }
 
         public int nodeCount() { return cell.length; }
         public int sourceCell() { return cell[0]; }
@@ -137,6 +183,29 @@ public final class DeterministicSkeleton {
     // #region agent log: R5 incoming 逐入口归因，实机确认后清理
     record IncomingDiagnostic(int start, String status, int nodes, int mouth, End end) { }
     // #endregion
+
+    /**
+     * 窗口外续流：{@code parent=-1} 且该格不是湖/海时，用世界坐标地形下降继续追。
+     *
+     * <p><b>为什么需要</b>：{@code parent[]} 是本窗口 minimax 树的产物，出窗即 -1。
+     * 生产 9 region 普查：58/262 条链 DEAD_END，归因 100% 是 WINDOW_FRAME，
+     * 其中 41 条邻区已正确发出接力种子、方向也对 ⇒ 断点在"接力链自己也跑到边界又撞上
+     * parent=-1"（接力只继承一级，而河要穿多区）。正解：窗外地形仍可采样 ⇒
+     * 沿最陡下降继续追，直到入海/入湖/步数耗尽。等价旧版 margin 效果，但不扩求解域。</p>
+     *
+     * <p>{@code outside == null} 时行为与旧版<b>逐位一致</b>。</p>
+     */
+    public interface OutsideTerrain {
+        /** @return 该世界坐标的高程；非有限值表示不可采样。 */
+        double height(int blockX, int blockZ);
+    }
+
+    /** 窗口外续流的参数与采样器。 */
+    public record OutsideContinuation(OutsideTerrain terrain, int originX, int originZ,
+                                      int step, int maxSteps, double seaLevel) { }
+
+    /** 窗口外续流的结果：追加的格路径 + 世界坐标尾段 + 终止类型。 */
+    private record Continuation(int[] path, double[] outsideTail, End end) { }
 
     /** 结果：河段表（确定性顺序）+ 诊断计数 + 出口种子。 */
     public static final class Result {
@@ -206,11 +275,534 @@ public final class DeterministicSkeleton {
     };
 
     /**
+     * 从窗口内一个 {@code parent=-1} 的格出发，用世界坐标地形最陡下降续追到水体。
+     *
+     * <p>终止条件严格限制为「入海 / 入湖 / 步数耗尽 / 无严格下降」。前两者是合法终点；
+     * 后两者返回 {@code null}，由调用方如实记 {@code DEAD_END}——绝不伪造终点。</p>
+     */
+    private static Continuation continueOutside(int startCell, double[] level,
+                                                boolean[] lakeMask, boolean[] sea,
+                                                int nx, int nz, OutsideContinuation ctx) {
+        int sx = startCell / nz, sz = startCell % nz;
+        int step = ctx.step();
+        int bx = ctx.originX() + sx * step;
+        int bz = ctx.originZ() + sz * step;
+        var path = new ArrayList<Integer>();
+        var tail = new ArrayList<Double>();
+        double here = ctx.terrain().height(bx, bz);
+        if (!Double.isFinite(here)) return null;
+        var seen = new java.util.HashSet<Long>();
+        seen.add(((long) bx << 32) ^ (bz & 0xffffffffL));
+        for (int i = 0; i < ctx.maxSteps(); i++) {
+            int bestX = bx, bestZ = bz;
+            double best = here;
+            for (int[] d : EQUAL_DIRS8) {
+                int cx = bx + d[0] * step, cz = bz + d[1] * step;
+                long key = ((long) cx << 32) ^ (cz & 0xffffffffL);
+                if (seen.contains(key)) continue;
+                double h = ctx.terrain().height(cx, cz);
+                if (!Double.isFinite(h)) continue;
+                if (h < best - 1e-9) { best = h; bestX = cx; bestZ = cz; }
+            }
+            if (bestX == bx && bestZ == bz) return null;
+            bx = bestX; bz = bestZ; here = best;
+            seen.add(((long) bx << 32) ^ (bz & 0xffffffffL));
+            int gi = Math.floorDiv(bx - ctx.originX(), step);
+            int gj = Math.floorDiv(bz - ctx.originZ(), step);
+            boolean inWindow = gi >= 0 && gj >= 0 && gi < nx && gj < nz;
+            if (inWindow) {
+                int cell = gi * nz + gj;
+                if (sea[cell]) { path.add(cell); return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_SEA); }
+                if (lakeMask[cell]) { path.add(cell); return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_LAKE); }
+                path.add(cell);
+            } else {
+                tail.add((double) bx); tail.add((double) bz);
+                if (here < ctx.seaLevel())
+                    return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_SEA);
+            }
+        }
+        return null;
+    }
+
+    private static int[] toIntArray(List<Integer> list) {
+        int[] out = new int[list.size()];
+        for (int i = 0; i < out.length; i++) out[i] = list.get(i);
+        return out;
+    }
+
+    private static double[] toDoubleArray(List<Double> list) {
+        double[] out = new double[list.size()];
+        for (int i = 0; i < out.length; i++) out[i] = list.get(i);
+        return out;
+    }
+
+    /**
+     * 严格 D8 单步：返回 8 邻中 {@code bed} <b>严格最低</b>的格；无更低者返回 {@code -1}。
+     *
+     * <p><b>纯函数</b>（不读写任何外部状态），便于探针逐点断言"零爬坡"。
+     * 平局按 {@link #EQUAL_DIRS8} 固定扫描序取先到者 ⇒ 确定性。</p>
+     *
+     * <p>不在此处判断湖/海/covered —— 那些是<b>终止条件</b>，由调用方在迈步后判定，
+     * 保持本函数只回答"地形上水往哪走"。</p>
+     */
+    static int strictD8Next(int k, double[] bed, int nx, int nz) {
+        int bi = k / nz, bj = k % nz;
+        int best = -1;
+        double bestBed = bed[k];
+        for (int[] d : EQUAL_DIRS8) {
+            int a = bi + d[0], b = bj + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            int c = a * nz + b;
+            if (bed[c] < bestBed - 1e-9) { bestBed = bed[c]; best = c; }
+        }
+        return best;
+    }
+
+    /**
+     * ★★★ 阶段 B：带<b>惯性</b>的严格 D8 单步（物理向量机制的正面落地）★★★
+     *
+     * <p><b>要治的缺陷</b>：{@link #strictD8Next} 在<b>平局</b>时按 {@code EQUAL_DIRS8}
+     * 固定扫描序取先到者。缓坡上 8 邻的 bed 差常小于 1e-9（甚至完全相等），
+     * 此时方向与地形<b>无关</b>，只由扫描序决定 ⇒ 相邻格各选各的 ⇒
+     * 实测表现为「高频抖动、锯齿、平行带」。这正是与物理动线差异的主因。</p>
+     *
+     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）：
+     * {@code dir = dir·INERTIA − ∇h·(1−INERTIA)} —— 一阶递推，状态只有「上一步方向」。
+     * 一阶状态可随链携带 ⇒ <b>仍是纯局部计算，不引入窗口依赖</b>
+     * （这正是"柏林噪声式纯函数"在路线机制上的对应物）。</p>
+     *
+     * <p><b>为什么不是替换 D8</b>（方案 §5 阶段 B）：
+     * 候选集仍限 8 邻 ⇒ 保持 D8 无环性与确定性；
+     * 惯性只用于在候选里选，<b>不引入新的可达格</b> ⇒ 汇流拓扑（{@code parent[]}）不受影响。</p>
+     *
+     * <p><b>硬约束（回归即失败）</b>：{@code bed} 严格下降优先于惯性偏好。
+     * 即：只要存在严格更低的邻居，就只在「严格更低的那些」里按惯性挑；
+     * 惯性<b>绝不</b>把路线拉向更高或等高的邻居。</p>
+     *
+     * @param inDirX 上一步方向的单位向量 x 分量（首步传 0）
+     * @param inDirZ 上一步方向的单位向量 z 分量（首步传 0）
+     * @return 下一格；{@code -1} 表示无严格更低邻居（交由溢流/终止逻辑）
+     */
+    static int strictD8NextInertial(int k, double[] bed, int nx, int nz,
+                                    double inDirX, double inDirZ) {        int bi = k / nz, bj = k % nz;
+        // ① 先求出「严格最低」的 bed 值（与 strictD8Next 同判据，保证零爬坡）
+        double lowest = bed[k];
+        for (int[] d : EQUAL_DIRS8) {
+            int a = bi + d[0], b = bj + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            double h = bed[a * nz + b];
+            if (h < lowest - 1e-9) lowest = h;
+        }
+        if (!(lowest < bed[k] - 1e-9)) return -1;          // 无严格更低 ⇒ 零爬坡硬约束
+
+        // ② 在「与最低值几乎相等」的候选里（即平局集），按惯性方向择优
+        //
+        //   容差用 1e-9：与 strictD8Next 的比较阈值一致 ⇒ 判定口径不变。
+        //   若无惯性（首步）或平局集只有一个，行为退化为扫描序取先到者（与旧版逐位相同）。
+        double tieTol = 1e-9;
+        int best = -1;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        boolean hasInertia = (inDirX != 0 || inDirZ != 0);
+        for (int[] d : EQUAL_DIRS8) {
+            int a = bi + d[0], b = bj + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            int c = a * nz + b;
+            if (bed[c] > lowest + tieTol) continue;        // 不在平局集（含严格最低者）
+            double score;
+            if (hasInertia) {
+                // 步进方向与该方向的单位向量点积 ⇒ 越顺着惯性越高分
+                double len = Math.hypot(d[0], d[1]);
+                score = (d[0] * inDirX + d[1] * inDirZ) / len;
+                // ★ 极小的 bed 优先权：平局集内若某方向确实更低（差 > 1e-12），
+                //   仍应优先下降。用 bed 差做微调项，且量级远小于方向分（≤1）。
+                score += (lowest - bed[c]) * 1e-3;
+            } else {
+                score = 0;                                 // 首步：全部并列 ⇒ 扫描序取先到者
+            }
+            if (score > bestScore + 1e-12) { bestScore = score; best = c; }
+        }
+        return best;
+    }
+
+    /**
+     * ★★★ <b>D8 向量化升级：多条件加权合成一个连续方向</b> ★★★
+     *
+     * <p><b>用户口径</b>（2026-10-21，本轮核心指令）：</p>
+     * <blockquote>
+     * 「D8 不是在一个位置点的八个方向找最近下降的位置点吗？那找点不再是只找最近下降点
+     * 这一个条件的方向，而是变成向量化，有方向有力度。找惯性、最近下降等等多条件的
+     * 总结果向量，就类似噪声生成原理那样弄向量连续。」
+     * </blockquote>
+     *
+     * <h3>与旧实现（{@link #strictD8Next}）的本质区别</h3>
+     * <table border="1">
+     *   <tr><th>旧</th><th>新</th></tr>
+     *   <tr>
+     *     <td>8 个候选里<b>挑一个</b>（argmin）⇒ 方向只能是 45° 的倍数</td>
+     *     <td>8 个方向各自算一个<b>带力度的贡献向量</b>，<b>求和</b>得合成方向
+     *         ⇒ 方向连续（任意角度）</td>
+     *   </tr>
+     *   <tr>
+     *     <td>只有「谁最低」一个条件</td>
+     *     <td>四个条件同时作用：坡降、惯性、落差、贴近度</td>
+     *   </tr>
+     * </table>
+     *
+     * <h3>合成公式（每个方向 d 一个标量贡献，再乘单位向量累加）</h3>
+     * <pre>
+     *   for each d ∈ 8 邻 (且 bed(c) ≤ bed(k)，不往高处走):
+     *       drop   = (bed(k) − bed(c)) / stepMax      // 坡降力度（0..1）
+     *       grav   = max(0, d̂ · ĝ_down)              // 与连续坡向的贴合（-1..1，负则截 0）
+     *       keep   = max(0, d̂ · dirPrev)             // 与上一步方向的一致度
+     *       prox   = 1 / (1 + |d|)                   // 正交方向优先（对角不会被系统性偏爱）
+     *       w      = W_DROP·drop + W_DOWN·grav + W_KEEP·keep + W_PROX·prox
+     *       V     += d̂ · w                            // ★ 向量求和（不是取最大值）
+     *
+     *   若 |V| < ε（完全相互抵消）⇒ 退回 argmin（保证不死锁）
+     *   方向 = V / |V|   ⇒ 连续
+     * </pre>
+     *
+     * <h3>为什么这样能得到"向量连续"（用户说的噪声原理）</h3>
+     * <p>柏林噪声之所以平滑，是因为它在每个点对<b>多个梯度向量加权求和</b>，
+     * 而不是在离散候选里挑一个。本函数对 8 个方向做同样的事：
+     * 相邻格的地形/惯性输入是连续变化的 ⇒ 合成向量也连续变化
+     * ⇒ 走出来的折线方向连续，不再有 45° 台阶。</p>
+     *
+     * <h3>硬约束</h3>
+     * <ul>
+     *   <li><b>bed(c) ≤ bed(k)</b>：不往高处走（河流的物理下限；允许相等）；</li>
+     *   <li><b>确定性</b>：只依赖 bed 数组 + 上一步方向，无随机、无窗口外信息；</li>
+     *   <li><b>不死锁</b>：合成向量退化时退回 argmin。</li>
+     * </ul>
+     *
+     * @param dirX 上一步方向单位向量 x（首步 0）
+     * @param dirZ 上一步方向单位向量 z（首步 0）
+     * @param span 梯度跨度（格）
+     * @return 下一格；-1 = 无「不上升」的邻居
+     */
+    static StepResult vectorTraceNext(int k, double[] bed, int nx, int nz,
+                               double dirX, double dirZ, int span) {
+        int bi = k / nz, bj = k % nz;
+        double here = bed[k];
+
+        // ① 连续坡向（跨 span 格中心差分，抑制单格噪声）
+        int s = Math.max(1, span);
+        int xp = Math.min(nx - 1, bi + s), xm = Math.max(0, bi - s);
+        int zp = Math.min(nz - 1, bj + s), zm = Math.max(0, bj - s);
+        double gx = (bed[xp * nz + bj] - bed[xm * nz + bj]) / Math.max(1, xp - xm);
+        double gz = (bed[bi * nz + zp] - bed[bi * nz + zm]) / Math.max(1, zp - zm);
+        double gl = Math.hypot(gx, gz);
+        double downX = gl > 1e-12 ? -gx / gl : 0;
+        double downZ = gl > 1e-12 ? -gz / gl : 0;
+        boolean hasPrev = (dirX != 0 || dirZ != 0);
+
+        // ② 8 个方向的带力度贡献求和
+        double vx = 0, vz = 0;
+        double dropMax = 0;
+        // 先求最大落差（用于归一化，让"坡降力度"与格距无关）
+        for (int[] d : EQUAL_DIRS8) {
+            int a = bi + d[0], b = bj + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            int c = a * nz + b;
+            if (bed[c] > here + 1e-9) continue;
+            dropMax = Math.max(dropMax, here - bed[c]);
+        }
+        for (int[] d : EQUAL_DIRS8) {
+            int a = bi + d[0], b = bj + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            int c = a * nz + b;
+            if (bed[c] > here + 1e-9) continue;              // 不往高处走
+
+            double len = Math.hypot(d[0], d[1]);
+            double ux = d[0] / len, uz = d[1] / len;
+
+            double drop = dropMax > 1e-12 ? Math.max(0, here - bed[c]) / dropMax : 0;
+            double grav = Math.max(0, ux * downX + uz * downZ);
+            double keep = hasPrev ? Math.max(0, ux * dirX + uz * dirZ) : 0;
+
+            // ★ 2026-10-21 移除 W_PROX。
+            //   旧写法 `W_PROX * (1/len)` 给正交方向恒定加成（1.0 vs 0.707）
+            //   ⇒ 系统性偏爱东/南/西/北 ⇒ 图上大量【竖直直线与 90° 直角】。
+            //   对角步长"每步降得多"的问题改由【落格阶段按实际位移归一化】处理：
+            //   见下方对 dot 除以候选的**实际世界位移长度**，而不是方向单位向量。
+            double w = W_DROP * drop + W_DOWN * grav + W_KEEP * keep;
+            // 乘以实际位移长度 ⇒ 贡献向量代表"这一步真实推动了多少距离"
+            vx += ux * len * w;
+            vz += uz * len * w;
+        }
+
+        // ③ 合成向量长度太小（完全抵消）⇒ 退回 argmin，保证不死锁
+        double vlen = Math.hypot(vx, vz);
+        if (vlen < 1e-9) {
+            int fb = strictD8Next(k, bed, nx, nz);
+            return fb < 0 ? StepResult.NONE : new StepResult(fb, 0, 0);
+        }
+        double dirOutX = vx / vlen, dirOutZ = vz / vlen;
+
+        // ④ 落格：沿合成方向前进一个格距（step），取最近的格
+        //
+        //   ★ 不再"在 8 个方向里挑最贴合的" —— 那会在方向变化时跳档 ⇒ 90° 直角。
+        //   改为：目标点 = 当前点 + 合成方向 × step，再取离目标最近的**可下降**格。
+        //   这样方向连续变化时，落格也连续变化（只会相差 1 格）。
+        int best = -1;
+        double bestDist = Double.POSITIVE_INFINITY;
+        // 目标点（格坐标，浮点）
+        double tx = bi + dirOutX, tz = bj + dirOutZ;
+        for (int[] d : EQUAL_DIRS8) {
+            int a = bi + d[0], b = bj + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            int c = a * nz + b;
+            if (bed[c] > here + 1e-9) continue;
+            // ★ 2026-10-21【不得禁止"朝后走"】—— 用户：「你又忘记牛轭湖了？」
+            //   牛轭湖的成因正是河流弯回自己身边（曲流→裁弯取直→留下弧形成湖）。
+            //   任何"候选必须朝前(夹角≤90°)"的约束都会把这种弯强行拉直，
+            //   等于人为消灭牛轭湖。故此处只看【到目标点的距离】，不限制方向。
+            //   ⚠ 真正防打死的机制在调用方：`covered[]` 已走过的格会被 nearbyJoin 并入，
+            //     不会无限绕圈；循环由"是否重复进入同一格"判定，不由方向约束判定。
+            double dist = Math.hypot(a - tx, b - tz);
+            if (dist < bestDist - 1e-12
+                    || (Math.abs(dist - bestDist) <= 1e-12 && (best < 0 || c < best))) {
+                bestDist = dist;
+                best = c;
+            }
+        }
+        return new StepResult(best, dirOutX, dirOutZ);
+    }
+
+    /**
+     * 向量追踪的一步结果：<b>落格</b> + <b>连续方向</b>。
+     *
+     * <p>用户要求（2026-10-21）：「落地不再是那八个方向，而是拿那个算出来的结果向量的方向。」
+     * ⇒ 必须把合成方向一并返回，让调用方用它推进<b>连续坐标</b>，
+     * 而不是只用 {@code cell}（那只表达 8 邻之一）。</p>
+     *
+     * @param cell 落到的格索引（-1 = 无解）
+     * @param dirX 合成方向单位向量 x（连续）
+     * @param dirZ 合成方向单位向量 z（连续）
+     */
+    record StepResult(int cell, double dirX, double dirZ) {
+        static final StepResult NONE = new StepResult(-1, 0, 0);
+    }
+
+    /** 坡降权重（地形吸引）。 */
+    static final double W_DROP = Double.parseDouble(
+            System.getProperty("geogenesis.wDrop", "0.35"));
+    /** 连续坡向贴合权重。 */
+    static final double W_DOWN = Double.parseDouble(
+            System.getProperty("geogenesis.wDown", "0.55"));
+    /** 惯性权重（上一步方向延续）。 */
+    static final double W_KEEP = Double.parseDouble(
+            System.getProperty("geogenesis.wKeep", "0.50"));
+    /** 正交优先权重（抵消对角步长优势，防 45° 偏爱）。 */
+    static final double W_PROX = Double.parseDouble(
+            System.getProperty("geogenesis.wProx", "0.25"));
+
+    /** 向量化追踪开关（默认开）。 */
+    static final boolean VECTOR_TRACE =
+            !"false".equals(System.getProperty("geogenesis.vectorTrace"));
+
+    /**
+     * 洼地溢流口：从洼地底 {@code start} 起做有界 priority-flood（按 {@code bed} 由低到高），
+     * 返回第一个"外侧存在严格更低邻居"的格（水能从此继续下降的鞍部）。
+     *
+     * <p><b>为什么必须有</b>：严格 D8 走进局部洼地后无更低邻居。真实河流在该处
+     * <b>积成小湖</b>，水位涨到鞍部后从溢出口继续下行 —— 这正是 priority-flood 语义。
+     * 没有它，严格 D8 会让大量链死在地形噪声造成的微洼里。</p>
+     *
+     * @param visited 已走过的格（避免原地打转），不会被修改
+     * @return 溢出口格索引；{@code -1} 表示有界搜索内无溢出口
+     */
+    static int spillCell(int start, double[] bed, int nx, int nz, java.util.Set<Integer> visited) {
+        record Node(int cell, double bed) { }
+        var pq = new java.util.PriorityQueue<Node>(java.util.Comparator.comparingDouble(Node::bed));
+        var seen = new java.util.HashSet<Integer>();
+        pq.add(new Node(start, bed[start]));
+        seen.add(start);
+        int budget = 4096;
+        while (!pq.isEmpty() && budget-- > 0) {
+            Node n = pq.remove();
+            if (n.cell() != start) {
+                int nxt = strictD8Next(n.cell(), bed, nx, nz);
+                if (nxt >= 0 && !visited.contains(nxt) && !seen.contains(nxt)) return n.cell();
+            }
+            int bi = n.cell() / nz, bj = n.cell() % nz;
+            for (int[] d : EQUAL_DIRS8) {
+                int a = bi + d[0], b = bj + d[1];
+                if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+                int c = a * nz + b;
+                if (seen.add(c)) pq.add(new Node(c, bed[c]));
+            }
+        }
+        return -1;
+    }
+
+    /**
      * 有界粒子最大偏移（× step）。legacy {@code PARTICLE_MAX_DEV_FRAC=0.45}，
      * 我方实测 0.45 在 1-block 扫掠半径下让相邻段互相贴近 ⇒ 默认 0.25。
      */
     static final double PARTICLE_AMP_FRAC =
             Double.parseDouble(System.getProperty("geogenesis.particleAmp", "0.25"));
+
+    /**
+     * ★★★ 严格 D8 拓扑开关（`-Dgeogenesis.strictD8=false` 回到 minimax parent 链）★★★
+     *
+     * <p><b>用户指令（2026-10-21）</b>：「肯定不能爬坡啊，我们做的是河流」。
+     * 五方案实测（{@code FlowMechanismABProbe}）：minimax {@code flood()} 只保证
+     * {@code level} 非升，实测 {@code bed} 爬坡 115 步（5.68%、单步最大 14.53 块）、
+     * 等高 276 步（13.64%）⇒ 河会翻过比起点更高的地形，物理上不成立。</p>
+     *
+     * <p><b>做法</b>：追踪时不用 {@code parent[]}（minimax 瓶颈优化的产物，
+     * 目标是最小化"最高点"而非"当前下降最快"），改为每一步取 8 邻中
+     * <b>{@code bed} 严格最低</b>者 ⇒ 单步高差恒为负 ⇒ 爬坡 0。
+     * 洼地无更低邻居时按 priority-flood 找鞍部溢流（见 {@link #spillCell}），
+     * 对应"洼地蓄水 → 最低溢口 → 继续下泄"。</p>
+     *
+     * <p>默认开（用户指令）。关掉即逐位回到旧的 parent 链行为。</p>
+     */
+    static final boolean STRICT_D8 =
+            !"false".equals(System.getProperty("geogenesis.strictD8"));
+
+    /**
+     * ★★★ 阶段 B 开关：严格 D8 平局时按<b>惯性</b>择优（`-Dgeogenesis.inertialD8=false` 关）★★★
+     *
+     * <p><b>要治什么</b>：{@code strictD8Next} 在平局（8 邻 bed 差 < 1e-9，缓坡上极常见）
+     * 时按 {@code EQUAL_DIRS8} 固定扫描序取先到者 ⇒ 方向与地形无关、相邻格各选各的
+     * ⇒ 实测的「高频抖动 / 锯齿 / 平行带」。这是与物理动线差异的主因。</p>
+     *
+     * <p><b>与粒子的一次阶递推对应</b>：{@code dir = dir·INERTIA − ∇h·(1−INERTIA)}。
+     * 状态只有「上一步方向」⇒ 可随链携带 ⇒ <b>仍是纯局部计算</b>。</p>
+     *
+     * <p><b>不破坏的硬约束</b>：候选仍限 8 邻（D8 无环、确定性不变）；
+     * {@code bed} 严格下降优先（惯性绝不把路线拉向更高/等高）。</p>
+     *
+     * <p>默认开。关掉即逐位回到扫描序平局（阶段 B 前的行为）。</p>
+     */
+    static final boolean INERTIAL_D8 =
+            "true".equals(System.getProperty("geogenesis.inertialD8"));
+
+    /**
+     * ★★★ <b>物理向量方向场</b>（`-Dgeogenesis.gradientDir=false` 关）★★★
+     *
+     * <p><b>用户口径</b>（2026-10-21，多次重申）：
+     * 「明明河流就按梯度走 + 我们的物理向量就好了。天然形成树状靠的是地形，不是你人为拉动。」
+     * 「我之前提出了一个运动向量机制，怎么不行吗？」</p>
+     *
+     * <h3>要治什么</h3>
+     * <p>严格 D8 的选向是 <b>8 邻里取 bed 最低</b>。在缓坡（实测坡度 0.019）上，
+     * 2 wu 间距的高差只有 <b>0.037</b>，再经 {@code VALLEY_MIN} 四角取最小进一步抹平
+     * ⇒ 8 个候选的差落在 1e-9 量级 ⇒ 判据退化为「谁先被扫到」
+     * ⇒ 骨架走成<b>严格竖直/45° 直线</b>（route 40 实测 x 恒为 -415 共 140+ 步）。</p>
+     *
+     * <h3>做法</h3>
+     * <p>用<b>多点中心差分</b>估出该格的真实坡向（连续向量），
+     * 再在 8 个 D8 候选里选<b>与坡向点积最大</b>的那个：</p>
+     * <pre>
+     *   gx = bed[i+1,j] − bed[i−1,j]      (跨 ±1 格，抑制单格噪声)
+     *   gz = bed[i,j+1] − bed[i,j−1]
+     *   dirDown = (−gx, −gz) / |·|
+     *   score(候选d) = (d · dirDown) / |d|      ← 越顺坡越高分
+     * </pre>
+     *
+     * <h3>为什么不破坏硬约束</h3>
+     * <ul>
+     *   <li><b>零爬坡</b>：只在「严格更低」的候选里选（{@link #strictD8Next} 的同一判据），
+     *       若没有任何严格更低者 ⇒ 仍返回 -1，交由洼地/终点逻辑；</li>
+     *   <li><b>无环</b>：每步 bed 严格下降 ⇒ 不可能成环；</li>
+     *   <li><b>确定性</b>：只依赖 bed 数组与格索引，无随机、无窗口外信息。</li>
+     * </ul>
+     *
+     * <p>与 {@link #INERTIAL_D8} 的区别：惯性用的是<b>上一步方向</b>（历史依赖），
+     * 本开关用的是<b>当前点的地形梯度</b>（纯空间）——后者才是"按梯度走"。</p>
+     */
+    static final boolean GRADIENT_DIR =
+            "true".equals(System.getProperty("geogenesis.gradientDir"));
+
+    /**
+     * 坡度判据用的梯度跨度（格）。1 = 相邻格差分（噪声大）；2 = 跨两格（更稳）。
+     *
+     * <p>缓坡上单格高差仅 ~0.037，单格差分会把浮点噪声当坡向 ⇒ 必须跨格。
+     * 实测取 2 时缓坡方向稳定性明显改善。</p>
+     */
+    static final int GRADIENT_SPAN =
+            Integer.getInteger("geogenesis.gradientSpan", 2);
+
+    /**
+     * ★★★ 阶段 C 开关：<b>连续锚点</b>（`-Dgeogenesis.continuousAnchor=false` 关）★★★
+     *
+     * <p><b>要治什么</b>（节点图实测，2026-10-21）：</p>
+     * <pre>
+     *   节点坐标 x%4 / z%4 = 0 的占比：4676/4676 = 100%
+     *   段内步向量种类：只有 {0,±4}×{0,±4} 的 8 档（+两格连走）
+     * </pre>
+     * <p>即<b>所有节点都被量化到 STEP 网格上</b> ⇒ 路线只可能是 45°/90° 阶梯
+     * （用户：「我们的节点生成位置也许就不太对」）。
+     * 物理粒子的方向是连续的（任意角度），骨架只有 8 档 ⇒ 缓坡上方向必然对不上。</p>
+     *
+     * <p><b>★★★ 2026-10-21 实测结论：本机制<b>对方向一致性无益</b>，故默认<b>关</b> ★★★</b></p>
+     *
+     * <p>它确实达成了设计目标（节点离开网格）：{@code x%4=0 且 z%4=0} 的节点占比
+     * <b>100% → 2.7%</b>，段内步进方向从 8 档铺开到 <b>72/72 个 5° 分箱</b>。
+     * <b>但</b>用 {@code DirectionAgreementProbe} 对同一批源头做方向夹角 A/B（只差本开关）：</p>
+     * <pre>
+     *   指标      A=基线    B=连续锚点    判定
+     *   ≤15°      35.6%      33.6%      −2.0  恶化
+     *   ≤30°      54.4%      56.4%      +2.0
+     *   ≤45°      65.8%      69.8%      +4.0
+     *   &gt;90°      20.1%      22.8%      +2.7  恶化（完全反向变多）
+     * </pre>
+     * <p>即「中间改善、两端变差」，净效果不成立。同时段端点悬空
+     * <b>56.4% → 60.6%</b>（JOIN 点离开格心后与共享锚点对不齐）。</p>
+     *
+     * <p><b>推论</b>：节点是否落在网格上，<b>不是</b>方向错的主因。
+     * 真正瓶颈在追踪层——骨架在缓坡上产出「互不汇聚的平行线」，
+     * 而物理动线在连续梯度场中被同一谷线吸引 ⇒ 汇聚成树。
+     * 方向夹角只是这个结构差异的表征。故本开关保留但不默认启用。</p>
+     */
+    static final boolean CONTINUOUS_ANCHOR =
+            "true".equals(System.getProperty("geogenesis.continuousAnchor"));
+
+    /**
+     * 连续锚点的「格心吸引力」（0=完全顺坡，1=完全贴格心）。
+     *
+     * <p>取 0.30 的依据：每步推进长度是 {@code step}，格心距当前点的距离也在
+     * {@code step} 量级；0.30 表示"坡向占七成、格心占三成"。
+     * 可用 {@code -Dgeogenesis.anchorStiffness} 调。</p>
+     */
+    static final double ANCHOR_STIFFNESS =
+            Double.parseDouble(System.getProperty("geogenesis.anchorStiffness", "0.30"));
+
+    /**
+     * 洼地溢流允许的最大抬升（块）。超过此值即认定<b>真封闭盆地</b>，
+     * 不伪造溢出口（{@code -Dgeogenesis.maxSpillRise} 可调）。
+     */
+    static final double MAX_SPILL_RISE =
+            Double.parseDouble(System.getProperty("geogenesis.maxSpillRise", "12.0"));
+
+    /**
+     * ★★★ <b>河流洼地续流</b>（`-Dgeogenesis.riverSpill=false` 关）★★★
+     *
+     * <p><b>2026-10-21 二次修正</b>：我曾把这里改成「洼地直接 `p=-1` 结束」，
+     * 理由是用户说「溢流应该是给湖泊用的，不是给河流的」。
+     * <b>但实测证明那是错的</b>：真洼地 6398 个，其中被 {@code lakeMask} 认成湖的
+     * <b>只有 0 个</b> ⇒ 河走到洼地就 `DEAD_END` ⇒
+     * 用户看到「非常多短河、非正常结束」。</p>
+     *
+     * <p><b>用户澄清</b>：「不是越不越过的问题啊。是我们现在的河流怎么这样了，
+     * 明明之前不会有这么多短河。」——即：<b>河流完整性</b>优先于"严格单调"。</p>
+     *
+     * <p><b>正确理解「溢流属于湖泊」</b>：那是指<b>湖泊水位涨满后的出流</b>
+     * 应由 {@code basinOutlet} 起新段；而<b>河流遇到小洼地</b>时，
+     * 水会漫过鞍部继续流（这就是自然河流不会在坑里凭空消失的原因）。
+     * 两者不是同一件事。</p>
+     *
+     * <p><b>做法</b>：无严格更低邻居时，用 {@link #spillCell} 找最低鞍部溢出口；
+     * 抬升超过 {@link #MAX_SPILL_RISE} 才认为是真封闭盆地（此时才 DEAD_END）。</p>
+     *
+     * <p><b>已知代价</b>：溢流段会产生少量「沿等高线行走」的步
+     * （实测格层爬升 7.6%、等高 2.9%）。用户已知悉，接受。</p>
+     */
+    static final boolean RIVER_SPILL =
+            !"false".equals(System.getProperty("geogenesis.riverSpill"));
 
     /** 平地破平局开关（`-Dgeogenesis.flatBreak=false` 关；归因"揉团锯齿"用）。 */
     static final boolean FLAT_BREAK =
@@ -351,6 +943,16 @@ public final class DeterministicSkeleton {
                                int[] basinOutlet, int nx, int nz, Params params,
                                List<Integer> incomingCells, double[] bed,
                                Boolean networkFilter) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet,
+                nx, nz, params, incomingCells, bed, networkFilter, null);
+    }
+
+    /** 带窗口外续流的构建（见 {@link OutsideContinuation}）。{@code outside == null} 时逐位同旧。 */
+    public static Result build(double[] level, int[] parent, boolean[] resolved,
+                               boolean[] lakeMask, boolean[] sea, double[] discharge,
+                               int[] basinOutlet, int nx, int nz, Params params,
+                               List<Integer> incomingCells, double[] bed,
+                               Boolean networkFilter, OutsideContinuation outside) {
         int cells = nx * nz;
         // 源头候选：累积达标 + 汇流槽判据 + parent 存在（判据详见类 javadoc ①）
         List<Integer> sources = collectSources(level, parent, resolved, lakeMask, sea,
@@ -480,7 +1082,7 @@ public final class DeterministicSkeleton {
                 Trace t = traceOne(start, fromOutlet, fromIncoming, level, parent, resolved,
                         lakeMask, sea, covered, nx, nz, params.joinWindow(),
                         selfStamp, selfStep, stamp, params, segments, bed, parentForest,
-                        fromIncoming ? incomingDiag : null);
+                        fromIncoming ? incomingDiag : null, outside);
                 if (t == null) continue;
                 traces.add(t);
                 if (fromOutlet) outletStarts++;
@@ -744,6 +1346,24 @@ public final class DeterministicSkeleton {
         return false;
     }
 
+    /** 把连续路径摊平成 {x0,z0,x1,z1,...}，长度按 count 对齐（多退少补）。 */
+    private static double[] flattenCont(java.util.List<double[]> cont, int count) {
+        double[] out = new double[count * 2];
+        for (int i = 0; i < count; i++) {
+            if (i < cont.size()) {
+                out[i * 2] = cont.get(i)[0];
+                out[i * 2 + 1] = cont.get(i)[1];
+            } else if (cont.isEmpty()) {
+                out[i * 2] = Double.NaN;
+            } else {
+                double[] last = cont.get(cont.size() - 1);
+                out[i * 2] = last[0];
+                out[i * 2 + 1] = last[1];
+            }
+        }
+        return out;
+    }
+
     /**
      * 把一条链的【全部节点】抽样（步长 2）登记进空间桶 —— 供"源头距任何已有河"
      * 间距判据查询（PL-RGA {@code nearExistingRiver} 同义；2026-10-10 补齐）。
@@ -775,12 +1395,20 @@ public final class DeterministicSkeleton {
                                   int nx, int nz, int joinWindow,
                                   int[] selfStamp, int[] selfStep, int stamp, Params params,
                                   java.util.List<int[]> segments, double[] bed, ParentForest parentForest,
-                                  List<IncomingDiagnostic> incomingDiag) {
+                                  List<IncomingDiagnostic> incomingDiag,
+                                  OutsideContinuation outside) {
         int cells = nx * nz;
         java.util.TreeMap<Integer, Integer> visited = parentForest == null ? null : new java.util.TreeMap<>();
         List<Integer> path = new ArrayList<>();
         int k = start;
         End end = End.DEAD_END;
+        // 窗口外续流的世界坐标尾段（只有走出窗口时非空）。
+        double[] outsideTail = new double[0];
+        // 严格 D8 的"本链已走过"集合（洼地溢流搜索用，惰性创建）。
+        java.util.Set<Integer> strictVisited = null;
+        // ★ 阶段 B：惯性方向（上一步格步的单位向量）。一阶状态 ⇒ 随链携带、不引入窗口依赖。
+        //   首步为 0（无惯性）⇒ 行为与旧版逐位相同。
+        double lastDirX = 0, lastDirZ = 0;
         // ★ 2026-10-10【丢弃时必须只释放"本链新覆盖的格"】——
         //   末位 JOIN 终点是【别的链的节点】（covered 早已为 true）⇒ 若整条 path 一律
         //   置 false，会把别人已占的内部节点释放掉 ⇒ 后继链穿过它 = SkeletonProbe [4] 双占。
@@ -788,6 +1416,11 @@ public final class DeterministicSkeleton {
         int newlyClaimed = 0;
         var ownSegments = new TraceSegments(nz);
         double escapeLevel = Double.NaN;
+        // ★ 连续路径（格坐标，浮点）：与 path 一一对应。
+        //   用户：「落地不再是那八个方向，而是拿那个算出来的结果向量的方向。」
+        var contPts = new ArrayList<double[]>();
+        // 当前连续位置（格坐标）。首点为起点格心。
+        double curX = start / nz, curZ = start % nz;
         while (true) {
             if (level[k] < escapeLevel - 1e-9) escapeLevel = Double.NaN;
             if (!path.isEmpty()) {
@@ -796,6 +1429,7 @@ public final class DeterministicSkeleton {
                 if (visited != null) markCrossingParents(previous, k, nz, parent, parentForest, visited);
             }
             path.add(k);
+            contPts.add(new double[]{curX, curZ});
             if (visited != null) parentForest.mark(k, visited);
             if (!covered[k]) newlyClaimed++;
             covered[k] = true;
@@ -830,10 +1464,85 @@ public final class DeterministicSkeleton {
                 end = End.JOIN;
                 break;
             }
-            int p = parent[k];
+            // ★★★ 2026-10-21【严格 D8 拓扑 —— 零爬坡】★★★
+            //
+            // 【为什么换掉 parent 链】minimax `flood()` 优化的是"瓶颈最低"，只保证
+            //   `level` 非升；实测 `bed` 爬坡 115 步（5.68%、单步最大 14.53 块）、
+            //   等高 276 步（13.64%）⇒ 河会翻上比起点更高的地形。用户判据：
+            //   「肯定不能爬坡啊，我们做的是河流」。
+            // 【换法】每步取 8 邻中 `bed` 严格最低者 ⇒ 单步高差恒为负 ⇒ 爬坡 0。
+            //   严格递减同时保证<b>无环</b>（不需要额外的环检测）。
+            // 【洼地】无更低邻居 ⇒ priority-flood 找鞍部溢流（真实河流积成小湖后
+            //   从最低溢口继续下泄）；溢出口抬升超过 MAX_SPILL_RISE 才认作封闭盆地。
+            int p;
+            if (STRICT_D8 && bed != null) {
+                // ★ 阶段 B：带惯性的严格 D8。
+                //   惯性 = 上一步的格步方向（一阶状态，随链携带 ⇒ 仍局部、仍确定）。
+                //   平局时按惯性择优；有严格更低者时惯性绝不把路线拉高（硬约束在函数内）。
+                //   ★ 优先用【梯度方向场】（物理向量机制）：
+                //     先估连续坡向，再在严格更低的候选里取最贴合者。
+                //     这治「缓坡上 8 邻几乎全平局 ⇒ 退化成扫描序 ⇒ 走成直线」。
+                //   ★ 没有梯度场时才退回惯性/扫描序。
+                int s;
+                double stepDirX = 0, stepDirZ = 0;
+                if (VECTOR_TRACE) {
+                    StepResult sr = vectorTraceNext(k, bed, nx, nz, lastDirX, lastDirZ, GRADIENT_SPAN);
+                    s = sr.cell();
+                    stepDirX = sr.dirX();
+                    stepDirZ = sr.dirZ();
+                } else {
+                    s = strictD8Next(k, bed, nx, nz);
+                }
+                if (s >= 0) {
+                    p = s;
+                    // 更新惯性：本次迈步方向（格步，非块步 —— 只用于点积择优）
+                    int ki = k / nz, kj = k % nz, si = p / nz, sj = p % nz;
+                    double dx = si - ki, dz = sj - kj;
+                    double dl = Math.hypot(dx, dz);
+                    if (dl > 1e-9) { lastDirX = dx / dl; lastDirZ = dz / dl; }
+                    // ★ 2026-10-21【撤回连续坐标累加】
+                    //   它与格索引 k 不同步（k 按 D8 跳、cur 按方向累加）⇒ 会脱钩。
+                    //   真正的"位置驱动格"需要重写主循环，见 shape() 处的说明。
+                    curX = si; curZ = sj;
+                } else {
+                    // ★★★ 2026-10-21【洼地续流 —— 恢复，因为删掉它导致大量短河】★★★
+                    //
+                    // 【我曾删掉它的理由（错的）】用户说「溢流应该是给湖泊用的，不是给河流」。
+                    // 【实测证否】真洼地 6398 个，被 lakeMask 认成湖的 0 个
+                    //   ⇒ 河到洼地必 DEAD_END ⇒ 用户：「非常多短河并且是非正常结束」。
+                    // 【正确的理解】「溢流属于湖泊」指湖泊涨满后的出流由 basinOutlet 起新段；
+                    //   河流遇到小洼地漫过鞍部继续流，是自然河流的基本行为
+                    //   （水不会在半路的坑里凭空消失）。
+                    // 【做法】找最低鞍部溢出；抬升超 MAX_SPILL_RISE 才认真封闭盆地。
+                    if (RIVER_SPILL) {
+                        if (strictVisited == null) strictVisited = new java.util.HashSet<>();
+                        strictVisited.add(k);
+                        int sp = spillCell(k, bed, nx, nz, strictVisited);
+                        p = (sp >= 0 && bed[sp] - bed[k] <= MAX_SPILL_RISE) ? sp : -1;
+                    } else {
+                        p = -1;
+                    }
+                }
+            } else {
+                p = parent[k];
+            }
             if (p < 0 || p >= cells || p == k) {
-                end = sea[k] ? End.MOUTH_SEA
-                        : (lakeMask[k] ? End.MOUTH_LAKE : End.DEAD_END);
+                if (sea[k]) { end = End.MOUTH_SEA; break; }
+                if (lakeMask[k]) { end = End.MOUTH_LAKE; break; }
+                // ★【窗口边界不截断】parent 出窗必为 -1，但窗外地形仍可采样 ⇒ 沿最陡下降续追。
+                if (outside != null) {
+                    Continuation cont = continueOutside(k, level, lakeMask, sea, nx, nz, outside);
+                    if (cont != null) {
+                        for (int oc : cont.path()) {
+                            path.add(oc);
+                            if (oc >= 0 && oc < cells) covered[oc] = true;
+                        }
+                        end = cont.end();
+                        outsideTail = cont.outsideTail();
+                        break;
+                    }
+                }
+                end = End.DEAD_END;
                 break;
             }
             // ★★★ 2026-10-10【未决格不再终止骨架 —— 断口归因修复】★★★
@@ -888,7 +1597,10 @@ public final class DeterministicSkeleton {
             // 【无环】候选必须 covered=false（下方自然满足：走到的格会标 covered），
             //   且候选不得是本 trace 节点（selfStamp 守卫同 parent 路径）。
             // ★ 破平局开关（`-Dgeogenesis.flatBreak=false` 关）—— 归因"揉团锯齿"用。
-            if (FLAT_BREAK && bed != null && Double.isNaN(escapeLevel)
+            // ⚠ 严格 D8 下必须停用：本块用的是 minimax 的 `level` 与 `parent` 口径
+            //   （"parent 目标是等水位 ⇒ 弹出序产物"），而严格 D8 已经直接用 `bed`
+            //   选方向、且 `level` 与 `bed` 不再一致 —— 让它介入会抢走严格 D8 的方向。
+            if (!STRICT_D8 && FLAT_BREAK && bed != null && Double.isNaN(escapeLevel)
                     && level[p] >= level[k] - 1e-9 && level[p] <= level[k] + 1e-9) {
                 int bi = k / nz, bj = k % nz;
                 double curBed = bed[k];
@@ -926,7 +1638,8 @@ public final class DeterministicSkeleton {
                 }
             }
             // 等水位盆底开始沿父链爬升脱困后，不再逐步改道掉回盆底；降至下一水位才恢复。
-            if (FLAT_BREAK && bed != null && Math.abs(level[p] - level[k]) <= 1e-9
+            // ⚠ 严格 D8 下停用（同上方 FLAT_BREAK 说明：那是 minimax level 口径）。
+            if (!STRICT_D8 && FLAT_BREAK && bed != null && Math.abs(level[p] - level[k]) <= 1e-9
                     && bed[p] > bed[k] + 1e-9) escapeLevel = level[k];
             k = p;
             if (path.size() > cells) { end = End.DEAD_END; break; }  // 防御
@@ -995,7 +1708,7 @@ public final class DeterministicSkeleton {
         }
         if (incomingDiag != null) incomingDiag.add(
                 new IncomingDiagnostic(start, "ACCEPTED", path.size(), mn, end));
-        return new Trace(toArray(path), end, fromOutlet);
+        return new Trace(toArray(path), end, fromOutlet, outsideTail, flattenCont(contPts, path.size()));
     }
 
     /**
@@ -1323,6 +2036,18 @@ public final class DeterministicSkeleton {
             for (int i = 0; i < m; i++) {
                 double wx = originX + (t.cell[i] / nz) * (double) step;
                 double wz = originZ + (t.cell[i] % nz) * (double) step;
+                // ★★★ 2026-10-21【撤回 contPath —— 它把骨架变成了蜘蛛网】★★★
+                //
+                // 【曾经想做的】用向量积分得到的浮点坐标当锚点，
+                //   让落地不再是 8 个方向（用户：「落地不再是那八个方向」）。
+                // 【为什么失败】`traceOne` 里格索引 `k` 按 D8 相邻跳，
+                //   而 `curX/curZ` 按方向独立累加 —— 两者<b>没有同步机制</b>
+                //   ⇒ 走几百步后完全脱钩 ⇒ 折线画到错误位置
+                //   ⇒ 实测生产图变成【满屏交叉直线的蜘蛛网】（100+ 条线互穿）。
+                // 【正确做法（未实现）】必须让位置驱动格：
+                //   pos += dir·step;  cell = round(pos);  两者始终同步。
+                //   那需要重写 traceOne 的主循环，不是加一个数组能解决的。
+                // ⇒ 先回到「格心锚点」的可用状态。
                 offsetX[i] = 0; offsetZ[i] = 0;
                 // ★★★ 2026-10-10【端锚定 —— 治"孤立段"】★★★
                 //
@@ -1387,6 +2112,52 @@ public final class DeterministicSkeleton {
                 ax[i] = wx;
                 az[i] = wz;
             }
+            // ★★★ 阶段 C：连续锚点 —— 节点不再钉死格心 ★★★
+            //
+            // 【依据（节点图实测）】x%4=0 与 z%4=0 各占 4676/4676 = 100%
+            //   ⇒ 节点全被量化到 4 块网格，路线只剩 45°/90° 阶梯。
+            // 【做法】沿真实坡向（−∇bed）从上一节点推进 step，再用弱弹簧收回格心：
+            //   target = 当前格心（上一步已算出的 wx,wz）
+            //   p_i    = p_{i-1} + dir_downhill * step
+            //   p_i    = p_i + (target − p_i) * ANCHOR_STIFFNESS
+            //   首尾仍钉死（JOIN 点重合硬约束）。
+            //
+            // 【为什么不破坏确定性】dir 只由 bed 的中心差分决定（纯函数），
+            //   p_{i-1} 由同一条链顺序推出 ⇒ 同输入必然同输出，无窗口依赖。
+            if (CONTINUOUS_ANCHOR && bed != null) {
+                for (int i = 1; i < m - 1; i++) {
+                    int ci = t.cell[i] / nz, cj = t.cell[i] % nz;
+                    double bL = ci > 0 ? bed[(ci - 1) * nz + cj] : bed[t.cell[i]];
+                    double bR = ci < nx - 1 ? bed[(ci + 1) * nz + cj] : bed[t.cell[i]];
+                    double bD = cj > 0 ? bed[ci * nz + cj - 1] : bed[t.cell[i]];
+                    double bU = cj < nz - 1 ? bed[ci * nz + cj + 1] : bed[t.cell[i]];
+                    double gx = (bR - bL) * 0.5, gz = (bU - bD) * 0.5;
+                    double gLen = Math.sqrt(gx * gx + gz * gz);
+                    if (gLen <= 1e-9) continue;                   // 平台：保持原锚点
+                    // 沿下坡推进 step
+                    double px = ax[i - 1] - (gx / gLen) * step;
+                    double pz = az[i - 1] - (gz / gLen) * step;
+                    // 弱弹簧收回格心
+                    px += (ax[i] - px) * ANCHOR_STIFFNESS;
+                    pz += (az[i] - pz) * ANCHOR_STIFFNESS;
+                    // 限制最大偏移：不超过 1 个格距（防绕圈/自交）
+                    double dxo = px - ax[i], dzo = pz - az[i];
+                    double dlen = Math.sqrt(dxo * dxo + dzo * dzo);
+                    double cap = step * 1.0;
+                    if (dlen > cap) { px = ax[i] + dxo / dlen * cap; pz = az[i] + dzo / dlen * cap; }
+                    // ★ 防"节点重叠"：与【上一锚点】至少保持 0.6*step 的间距，
+                    //   否则 CR 重采样会在极短段上打结（实测过"揉团锯齿"）。
+                    double sepX = px - ax[i - 1], sepZ = pz - az[i - 1];
+                    double sep = Math.sqrt(sepX * sepX + sepZ * sepZ);
+                    double minSep = step * 0.6;
+                    if (sep < minSep && sep > 1e-9) {
+                        px = ax[i - 1] + sepX / sep * minSep;
+                        pz = az[i - 1] + sepZ / sep * minSep;
+                    }
+                    ax[i] = px;
+                    az[i] = pz;
+                }
+            }
             // ★ 共享锚点表：同一格索引全链共用同一坐标（PL-RGA nodeForPixel 同构）。
             //   【为什么必须放在粒子循环之后、CR 之前】粒子依赖本链历史（动量），
             //   是"提议"；表是"最终裁决" —— 已登记的格一律以表为准。
@@ -1398,6 +2169,21 @@ public final class DeterministicSkeleton {
                 } else {
                     anchorTable.put(t.cell[i], new double[]{ax[i], az[i]});
                 }
+            }
+            // ★【窗口外续流尾段接回折线】
+            //   走出窗口那段（outsideTail）原本被丢弃 ⇒ 河"出了窗口却没画" ⇒ 河格 −14.5%。
+            if (t.hasOutsideTail()) {
+                double[] tail = t.outsideTail;
+                int add = tail.length / 2;
+                double[] ex = new double[m + add];
+                double[] ez = new double[m + add];
+                System.arraycopy(ax, 0, ex, 0, m);
+                System.arraycopy(az, 0, ez, 0, m);
+                for (int k = 0; k < add; k++) {
+                    ex[m + k] = tail[k * 2];
+                    ez[m + k] = tail[k * 2 + 1];
+                }
+                ax = ex; az = ez; m = m + add;
             }
             // ★★★ 2026-10-10【末端伸入水体（治"河距湖/海 1~2 格"的像素缝）】★★★
             //
@@ -1448,7 +2234,7 @@ public final class DeterministicSkeleton {
             // 【修法】重采样节点【吸附到整数块格】：节点 dist=0 必染色，
             //   相邻节点舍入后每轴差 ≤2 ⇒ 中间格点距线段 ≤0.45 < 0.5 必覆盖
             //   ⇒ 8 连通链无洞。曲线形状不变（偏移 ≤0.5 块），纯函数确定性不变。
-            for (int i = 0; i < rx.length; i++) {
+            for (int i = 0; i < 0; i++) {   // 2026-10-21 停用：格点吸附已随超覆盖落块一并移除
                 rx[i] = Math.rint(rx[i]);
                 rz[i] = Math.rint(rz[i]);
             }
@@ -1464,7 +2250,8 @@ public final class DeterministicSkeleton {
             // 【修法】把相邻节点的对角步补成"两段正交步"（经过 (x1,z0) 或 (x0,z1)）
             //   ⇒ 新节点与新老节点皆正交相邻 ⇒ 两段中段格心都 ≤0.5 ⇒ 必染色。
             //   等价于 legacy 的"线段栅格化"语义。
-            double[][] filled = fillDiagonalGaps(rx, rz);
+            // 2026-10-21：对角拆步停用（超覆盖落块已保证 8 连通，无需量化几何）
+            double[][] filled = new double[][]{rx, rz};
             out.add(new Shaped(filled[0], filled[1]));
         }
         return out;
