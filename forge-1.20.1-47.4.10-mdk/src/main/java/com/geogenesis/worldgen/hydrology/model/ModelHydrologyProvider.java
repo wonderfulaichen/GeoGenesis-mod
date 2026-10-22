@@ -121,7 +121,25 @@ public final class ModelHydrologyProvider {
      */
     private static final int HALO = Integer.getInteger("geogenesis.modelHalo", 96);
     /** 网格步长（block）—— 生产形态（方案 P3 实测口径）。 */
-    private static final int STEP = Integer.getInteger("geogenesis.modelStep", 4);
+    /**
+     * 水文模型格距（wu）。<b>默认 2</b>。
+     *
+     * <p><b>为什么是 2 而不是 4 或 1</b>（2026-10-21 实测）：</p>
+     * <table border="1">
+     *   <tr><th>STEP</th><th>贴合率中位</th><th>&gt;60° 夹角</th><th>生产图耗时</th></tr>
+     *   <tr><td>4</td><td>41.9%</td><td>—</td><td>290 s</td></tr>
+     *   <tr><td><b>2</b></td><td><b>97.8%</b></td><td><b>18.5%</b></td><td><b>300 s</b></td></tr>
+     *   <tr><td>1</td><td>100.0%</td><td>15.5%</td><td>568 s（×2）</td></tr>
+     * </table>
+     * <p>⇒ 4→2 是<b>质变</b>（贴合率 +56pt，耗时几乎不变）；
+     * 2→1 只是<b>量变</b>（+2.2pt）却要 <b>2 倍</b>耗时 ⇒ 不取。</p>
+     *
+     * <p>用户口径：「效果优先，性能后续再说」——但 1 的效果增量不足以抵消
+     * 2 倍耗时与它引入的副作用（覆盖率暴跌、短河），故定 2。</p>
+     *
+     * <p>回退/前进：{@code -Dgeogenesis.modelStep=4}（快）或 {@code =1}（最细）。</p>
+     */
+    private static final int STEP = Integer.getInteger("geogenesis.modelStep", 2);
     /** 流线采样数（生产形态实测 5.6s 的档位）。 */
     private static final int SAMPLES = 50_000;
     /** 窗口半径 = region 半 + halo。 */
@@ -172,11 +190,23 @@ public final class ModelHydrologyProvider {
                               SegmentIndex skeletonSeg,
                               int originX, int originZ,
                               ProductionDrainageAudit.Snapshot drainage,
-                              WorldDrainage.Result world, WorldBasinFlow.Region worldWater) {
+                              WorldDrainage.Result world, WorldBasinFlow.Region worldWater,
+                              /**
+                               * 生产骨架每条 Trace 的<b>源头</b> block 坐标 {x,z}（{@code t.cell[0]}）。
+                               *
+                               * <p><b>只读诊断载荷</b>：仅供探针"从生产源头放粒子"用，
+                               * 不参与任何几何/落块/水位计算 ⇒ <b>不改变产出</b>。
+                               * 见 {@link #skeletonSourcesForProbe}。</p>
+                               */
+                              int[][] sources,
+                              /** 落块真正使用的亚格折线（{@code shape()} 输出）。只读诊断载荷。 */
+                              List<DeterministicSkeleton.Shaped> shapedPolys) {
         RegionData(HydrologyPipeline.Result pipe, RiverCenterlines.Result centerline, SegmentIndex skeletonSeg,
                    int originX, int originZ, ProductionDrainageAudit.Snapshot drainage) {
-            this(pipe, centerline, skeletonSeg, originX, originZ, drainage, null, null);
+            this(pipe, centerline, skeletonSeg, originX, originZ, drainage, null, null, null, null);
         }
+
+        int[][] sourcesOrEmpty() { return sources == null ? new int[0][] : sources; }
     }
 
     private final CellGenerator gen;
@@ -1256,7 +1286,40 @@ public final class ModelHydrologyProvider {
     /** 骨架模式的 region 产物：日志用 cl（Reach 表）+ 落块用亚格段索引 + 出口种子（接力用）。 */
     private record SkeletonRegion(RiverCenterlines.Result cl, SegmentIndex seg,
                                   List<DeterministicSkeleton.ExitSeed> exitSeeds,
-                                  ProductionDrainageAudit.Snapshot drainage) { }
+                                  ProductionDrainageAudit.Snapshot drainage,
+                                  /** 每条 Trace 的源头 block 坐标 {x,z}（只读诊断载荷，不参与产出）。 */
+                                  int[][] sources,
+                                  /** 落块真正使用的亚格折线（{@code shape()} 输出）。只读诊断载荷。 */
+                                  List<DeterministicSkeleton.Shaped> shapedPolys) {
+        SkeletonRegion(RiverCenterlines.Result cl, SegmentIndex seg,
+                       List<DeterministicSkeleton.ExitSeed> exitSeeds,
+                       ProductionDrainageAudit.Snapshot drainage) {
+            this(cl, seg, exitSeeds, drainage, new int[0][], null);
+        }
+    }
+
+    /**
+     * 生产骨架的<b>真源头</b>（每条 Trace 的首格，block 坐标）—— <b>只读诊断接口</b>。
+     *
+     * <p><b>为什么必须是它</b>（三次试错记录）：</p>
+     * <ol>
+     *   <li>诊断侧自己调 {@code DeterministicSkeleton.build} 复刻 ⇒ 漏掉生产的
+     *       REGION 网格 / HALO / 跨区接力 ⇒ 源头只有 3.3% 落在生产河格上。</li>
+     *   <li>取 {@code skeletonSeg} 的段端点当源头 ⇒ 每段一个（1.7 万个假源头）；
+     *       端点只是"某条边的上端"，不是"起点"。</li>
+     *   <li>取 {@code worldForProbe} 的边 ⇒ 生产不走 CROSS_PASS 分支（{@code HIER=false}），
+     *       返回 0 条边。</li>
+     * </ol>
+     * <p>正解 = {@code Trace.cell[0]}（用户原话：「源头不是起点吗」）。</p>
+     *
+     * <p><b>不影响产出的保证</b>：本载荷只在 {@code skeletonRegion} 末尾顺带收集，
+     * 不读也不写任何几何/水位/落块状态；删掉它对产出无任何影响。</p>
+     *
+     * @return 每项 {blockX, blockZ}；空数组表示该 region 无骨架
+     */
+    int[][] skeletonSourcesForProbe(int blockX, int blockZ) {
+        return regionFor(blockX, blockZ).sourcesOrEmpty();
+    }
 
     ProductionDrainageAudit.Snapshot drainageForProbe(int rx, int rz) {
         return regionFor(rx * REGION + REGION / 2, rz * REGION + REGION / 2).drainage();
@@ -1266,8 +1329,176 @@ public final class ModelHydrologyProvider {
         return regionFor(blockX, blockZ).pipe();
     }
 
+    /**
+     * <b>只读诊断接口</b>：本 region 真正用于落块的<b>亚格几何节点</b>（{@code shape()} 输出）。
+     *
+     * <p><b>为什么不能用 {@link #reachNodesWorldForProbe}</b>：那个返回的是 {@code Reach.cell}
+     * 的<b>格路径</b>（拓扑层，恒为 STEP 整数倍坐标），而真正画成河的是
+     * {@code DeterministicSkeleton.shape()} 产出的<b>亚格锚点折线</b>
+     * （含 Catmull-Rom 重采样、meander、有界粒子偏移）。
+     * 几何改动（如连续锚点）只影响后者 ⇒ 用格路径去验证会得到"完全没变"的假结论。</p>
+     *
+     * @return 外层 = 折线；内层每项 {worldX, worldZ}（double 精度，含小数）
+     */
+    double[][] shapedNodesWorldForProbe(int blockX, int blockZ) {
+        RegionData rd = regionFor(blockX, blockZ);
+        List<DeterministicSkeleton.Shaped> polys = rd.shapedPolys();
+        if (polys == null) return new double[0][];
+        double[][] out = new double[polys.size()][];
+        for (int i = 0; i < polys.size(); i++) {
+            var sh = polys.get(i);
+            double[] pts = new double[sh.size() * 2];
+            for (int k = 0; k < sh.size(); k++) {
+                pts[k * 2] = sh.x[k];
+                pts[k * 2 + 1] = sh.z[k];
+            }
+            out[i] = pts;
+        }
+        return out;
+    }
+
     List<RiverCenterlines.Reach> reachesForProbe(int blockX, int blockZ) {
         return List.copyOf(regionFor(blockX, blockZ).centerline().reaches);
+    }
+
+    /**
+     * <b>只读诊断接口</b>：把本 region 每条河段的节点转成<b>世界坐标</b>返回。
+     *
+     * <p><b>为什么要这个</b>（用户 2026-10-21）：
+     * 「我们的节点生成位置也许就不太对。还有节点之间连线，什么节点和什么节点连接，
+     * 是不是连错了」+「记得我说过要把河流骨架的节点显示出来方便观察的。还有各条河流的各自颜色」。</p>
+     *
+     * <p>此前诊断侧自己把 {@code Reach.cell} 换算世界坐标，需要知道窗口原点，
+     * 而窗口原点的算法（{@code centerX - RADIUS}，其中 {@code RADIUS = REGION/2 + HALO}）
+     * 每次都要我猜一遍 ⇒ 极易错位（已因此把"源头对齐率"算错两次）。
+     * 本接口把换算收在生产侧，只有一处真相。</p>
+     *
+     * <p><b>不影响产出的保证</b>：纯读取已发布产物，不做任何计算写回。</p>
+     *
+     * @return 外层 = 河段；内层每项 {worldX, worldZ}；空数组=该段无有效节点
+     */
+    int[][] reachNodesWorldForProbe(int blockX, int blockZ) {
+        RegionData rd = regionFor(blockX, blockZ);
+        int ox = rd.originX(), oz = rd.originZ();
+        // ★ 2026-10-21 修复【坐标系统性减半】：
+        //   `Reach.cell` 是【本 region 窗口】的格索引，编码用 `n = pipe.nx()`
+        //   （见 `fromReaches(reaches, n, n, STEP)`，其 n 即 p.nx()）。
+        //   旧写法用 `rd.pipe().nx()` —— 数值上等价，但**没有校验**；
+        //   一旦 Reach 来自跨区合并（3×3 邻区）而 n 取错，解码就会整体错位。
+        //   现显式取管道 nx 并与 `Reach` 里的数组长度做一致性断言。
+        HydrologyPipeline.Result pipe = rd.pipe();
+        int n = pipe.nx();
+        var reaches = rd.centerline().reaches;
+        int[][] out = new int[reaches.size()][];
+        for (int i = 0; i < reaches.size(); i++) {
+            int[] cell = reaches.get(i).cell;
+            int[] pts = new int[cell.length * 2];
+            for (int k = 0; k < cell.length; k++) {
+                int c = cell[k];
+                if (c < 0 || c >= n * n) { pts[k * 2] = Integer.MIN_VALUE; continue; }
+                pts[k * 2] = ox + (c / n) * STEP;
+                pts[k * 2 + 1] = oz + (c % n) * STEP;
+            }
+            out[i] = pts;
+        }
+        return out;
+    }
+
+    /**
+     * <b>只读诊断接口</b>：本 region 每条河段的节点，<b>连同该 region 的窗口原点与 nx</b>。
+     *
+     * <p>与 {@link #reachNodesWorldForProbe} 的区别：把 {@code originX/originZ/nx}
+     * 一并返回，让调用方<b>无法在不知情的情况下</b>用错解码参数。
+     * 这是修复「坐标系统性减半」的直接措施 —— 该缺陷曾导致
+     * {@code ContourWalkProbe} 报出「39.2% 爬升」的假结论。</p>
+     *
+     * @return {@code {originX, originZ, nx, x0,z0, x1,z1, ...}}（单条河段展平）
+     */
+    int[][] reachNodesWithFrameForProbe(int blockX, int blockZ) {
+        RegionData rd = regionFor(blockX, blockZ);
+        int ox = rd.originX(), oz = rd.originZ();
+        int n = rd.pipe().nx();
+        var reaches = rd.centerline().reaches;
+        int[][] out = new int[reaches.size()][];
+        for (int i = 0; i < reaches.size(); i++) {
+            int[] cell = reaches.get(i).cell;
+            int[] pts = new int[3 + cell.length * 2];
+            pts[0] = ox; pts[1] = oz; pts[2] = n;
+            for (int k = 0; k < cell.length; k++) {
+                int c = cell[k];
+                if (c < 0 || c >= n * n) { pts[3 + k * 2] = Integer.MIN_VALUE; continue; }
+                pts[3 + k * 2] = ox + (c / n) * STEP;
+                pts[3 + k * 2 + 1] = oz + (c % n) * STEP;
+            }
+            out[i] = pts;
+        }
+        return out;
+    }
+
+    /**
+     * <b>只读诊断接口</b>：本 region 的「源头 ↔ 骨架折线」<b>一一配对</b>。
+     *
+     * <p><b>为什么要这个</b>（用户 2026-10-21）：
+     * 「你确定是对应河流各自对比 2 种路线吗？不要把不同源头的河流做对比。」</p>
+     *
+     * <p><b>旧做法的缺陷</b>：探针把「所有源头」和「所有骨架折线」混成两个集合，
+     * 再用「起点最近的折线」配对。当多条河的源头相距 &lt;24 块时会<b>配错</b>
+     * ⇒ 拿 A 河的物理线比 B 河的骨架线 ⇒ 夹角/贴合全是假的。</p>
+     *
+     * <p><b>正解</b>：生产里 {@code shaped.get(i)} 与 {@code sk.traces.get(i)}
+     * <b>下标严格对应</b>（{@code shape()} 内 "if (m &lt; 2) 发空折线占位" 就是为保这个）。
+     * 故源头（{@code Trace.cell[0]}）与折线天然一一配对，直接按同一下标回传。</p>
+     *
+     * @return 每项 = {worldX0, worldZ0, x1,z1, x2,z2, ...}
+     *         （第 1 对是源头；其后为该折线全部节点，含 CR 重采样后的点）
+     */
+    double[][] sourceToPolylineForProbe(int blockX, int blockZ) {
+        RegionData rd = regionFor(blockX, blockZ);
+        List<DeterministicSkeleton.Shaped> polys = rd.shapedPolys();
+        int[][] srcs = rd.sourcesOrEmpty();
+        if (polys == null) return new double[0][];
+        int n = Math.min(polys.size(), srcs.length);
+        int ox = rd.originX(), oz = rd.originZ();
+        double[][] out = new double[n][];
+        for (int i = 0; i < n; i++) {
+            double[] pt;
+            int[] s = srcs[i];
+            boolean hasSrc = s != null && s[0] != Integer.MIN_VALUE;
+            if (hasSrc) {
+                pt = new double[]{s[0], s[1]};
+            } else {
+                var sh = polys.get(i);
+                if (sh.size() == 0) continue;
+                pt = new double[]{sh.x[0], sh.z[0]};
+            }
+            var sh = polys.get(i);
+            int m = sh.size();
+            double[] row = new double[2 + m * 2];
+            row[0] = pt[0];
+            row[1] = pt[1];
+            for (int k = 0; k < m; k++) {
+                row[2 + k * 2] = sh.x[k];
+                row[3 + k * 2] = sh.z[k];
+            }
+            out[i] = row;
+        }
+        return out;
+    }
+
+    /**
+     * <b>只读诊断接口</b>：该 region 的窗口原点与格距，供探针把 {@code bed[]}
+     * 的<b>窗口格索引</b>正确换算成世界坐标。
+     *
+     * <p><b>为什么需要</b>：{@code pipeForProbe().bed()} 的索引是窗口内索引，
+     * 换算世界坐标必须知道 origin 与 step。诊断侧自己用
+     * {@code (n-1)/2*step} 反推窗口原点 ⇒ 已因此产出过
+     * 「bed 与 erodedHeight 差 17 倍」的<b>假结论</b>。</p>
+     *
+     * @return {originX, originZ, step, nx}
+     */
+    int[] windowFrameForProbe(int blockX, int blockZ) {
+        RegionData rd = regionFor(blockX, blockZ);
+        return new int[]{rd.originX(), rd.originZ(), STEP, rd.pipe().nx()};
     }
 
     WorldDrainage.Result worldForProbe(int rx, int rz) {
@@ -1342,18 +1573,62 @@ public final class ModelHydrologyProvider {
      * @param primary       true = 主 pass（打日志 / 收集端点表）；
      *                      false = pass-1（静音 —— 否则每个 region 的日志翻倍）
      */
+    /**
+     * 生产骨架参数派生（<b>单一事实来源</b>）。
+     *
+     * <p>探针若自行拼 {@link DeterministicSkeleton.Params}，极易漏掉
+     * {@code srcAccum}（成河门限）与 {@code selfRadius}（生产已关）——
+     * 结果画出来的"骨架"不是生产骨架。故把派生逻辑抽到这里，
+     * 生产路径与诊断共用同一份。</p>
+     *
+     * @param runoff 集水径流（{@code lakeResult.runoffPerCell()}；无湖泊结果时传 0）
+     */
+    static DeterministicSkeleton.Params productionParams(double runoff) {
+        int legacyToOurs = Math.max(1, 8 / STEP);
+        int spacingBlocks = Integer.getInteger("geogenesis.sourceSpacing", 24);
+        int spacingCells = Math.max(1, Math.round(spacingBlocks / (float) STEP));
+        // ★★★ 2026-10-21【门限 150 → 40：对齐物理动线参照】★★★
+        //
+        // 【依据】用户目标 = 让确定性骨架"大致相似"物理粒子动线（不要求一致）。
+        //   以 `ParticleOverlayProbe` 产出的粒子动线为参照，实测生产骨架覆盖率：
+        //     基线 150：±8 块 17.1% / ±16 块 30.0%
+        //     ⇒ 骨架只覆盖参照的一小部分，「上半内陆河几乎缺席」是其直观表现。
+        //
+        // 【单变量扫描（-Dsweep.chan / -Dsweep.nodes，其余走生产路径）】
+        //     chan=150 nodes=6   traces=183 riverPx=17184  ±8=17.1% ±16=30.0%
+        //     chan= 60 nodes=14  traces=221 riverPx=21961  ±8=20.7% ±16=35.6%
+        //     chan= 40 nodes=14  traces=277 riverPx=26012  ±8=25.5% ±16=43.3%   ← 取此
+        //     chan= 25 nodes=14  traces=313 riverPx=28434  ±8=26.3% ±16=45.7%
+        //     chan= 15 nodes=14  traces=337 riverPx=30612  ±8=27.7% ±16=48.1%
+        //   40→15 河格 +18% 而覆盖率仅 +2.2pt ⇒ **边际饱和**，故取 40 不取更低。
+        //
+        // 【配套】minNodes 6 → 14：用户判据「短碎河流」。
+        //   放宽门限必然放出一批短段，提高长度下限把它们整条丢弃。
+        //   实测 nodes=6→14 在 chan=150 时 riverPx 17184→16483（−4%），
+        //   即只砍短段、不动主干，正是需要的选择性。
+        double chanMinCells = Double.parseDouble(
+                System.getProperty("geogenesis.channelMinCells", "40"));
+        double srcAccum = runoff > 0 ? chanMinCells * runoff : 0.0;
+        double meanderAmp = Double.parseDouble(
+                System.getProperty("geogenesis.skeletonMeanderAmp", "0.0"));
+        int maxRivers = Integer.getInteger("geogenesis.skeletonMaxRivers", 0);
+        int minNodes = Integer.getInteger("geogenesis.skeletonMinNodes", 14);
+        int selfRadius = Integer.getInteger("geogenesis.skeletonSelfRadius", 0);
+        int selfExempt = Integer.getInteger("geogenesis.skeletonSelfExempt", 6 * legacyToOurs);
+        return new DeterministicSkeleton.Params(
+                spacingCells, srcAccum, 2, meanderAmp, 24.0,
+                maxRivers, minNodes, selfRadius, selfExempt);
+    }
+
     private SkeletonRegion skeletonRegion(HydrologyPipeline.Result p,
                                           int originX, int originZ,
                                           List<Integer> incomingCells, boolean primary) {
         int n = p.nx();
-        // 源头间距（block）：legacy `sourceSpacingCells=2` × SKELETON_CELL_BLOCKS=8
-        //   ⇒ 16 block（其注释写"≈48wu"= 24wu ≈ 48 block，按 wu 口径；骨架路径按格 ⇒ 16 block）。
-        //   我方沿用 block 语义 ⇒ 默认 24 block（略宽于 legacy 16，抑制过密）。
-        int spacingBlocks = Integer.getInteger("geogenesis.sourceSpacing", 24);
-        int spacingCells = Math.max(1, Math.round(spacingBlocks / (float) STEP));
         double runoff = p.lakeResult() == null ? 0.0 : p.lakeResult().runoffPerCell();
-        double meanderAmp = Double.parseDouble(
-                System.getProperty("geogenesis.skeletonMeanderAmp", "0.0"));
+        // ★ 单一事实来源：全部参数派生集中在 productionParams（探针也调用它）。
+        //   此处原先另有一份内联等价实现 + "漂移断言"；那是双份真相，
+        //   改默认值时必须两处同步（已为此踩过一次）。现只保留一处。
+        var skParams = productionParams(runoff);
         // ★★★ 2026-10-10【默认 0 = 不限制 —— 实测归因后的决定，勿凭"legacy 有 80"就照抄】★★★
         //
         // 【我曾设 27】理由："按每 1000 block 边长折算 legacy riverCount=80"。
@@ -1388,9 +1663,7 @@ public final class ModelHydrologyProvider {
         //     的溢口门限说明）⇒ 那才是"提高门限看似无效"的原因。
         //
         //   公式：srcAccum = 目标格数 × runoff，目标格数 = 110 × (8/STEP)² = 440
-        double chanMinCells = Double.parseDouble(
-                System.getProperty("geogenesis.channelMinCells", "150"));
-        double srcAccum = runoff > 0 ? chanMinCells * runoff : 0.0;
+        //   ⚠ 现行取值见 productionParams（150 → 40，对齐物理动线参照，附扫描数据）。
         // ★★★ 2026-10-10【三项 legacy 机制补齐（用户判据驱动）】★★★
         //
         // 【用户报的三个问题】① 很多短碎河流 ② 一小部分截断 ③ 反复交叉/重叠。
@@ -1399,16 +1672,14 @@ public final class ModelHydrologyProvider {
         //   · riverCount（数量上限）—— 源头不限 ⇒ 河网过密；
         //   · SELF_APPROACH（自贴近守卫）—— 只排自己节点 ⇒ 擦身绕行 = 交叉重叠。
         //
-        // 【尺度换算（关键）】legacy `buildSkeletonRivers` 用 `SKELETON_CELL_BLOCKS=8`
         //   （block），我方 STEP=4 ⇒ **我方 1 格 = legacy 半格** ⇒ legacy 的格数阈值
         //   须**乘 2** 才等价：
         //     minRiverNodes  3 格(legacy) × 8 ÷ 4 = **6 格**（我方）
         //     SELF_APPROACH_RADIUS 2 格 × 8 ÷ 4 = **4 格**（我方）
         //     SELF_APPROACH_EXEMPT 6 步 × 2 = **12 步**（我方）
         //   ⚠ 若直接照抄 legacy 数字，判据会【过松】（半径 2 格在我方只覆盖 8 block）。
-        int legacyToOurs = Math.max(1, 8 / STEP);                  // 8 block / STEP
-        // ★ 单变量 A/B 开关（2026-10-10 归因用）—— 每项可独立关掉（0 = 关）：
-        //   -Dgeogenesis.skeletonMinNodes=6 / skeletonSelfRadius=4 / skeletonMaxRivers=27
+        //
+        // ★ 上述三项 + 成河门限的【可执行取值】全部在 productionParams 里（单一事实来源）。
         // ★★★ 2026-10-10【selfRadius 默认 0 —— 它无贡献且制造孤立段】★★★
         // 【无贡献】单变量 A/B 实测：关它 14119 格 vs 全开 14000（差 0.8%）⇒
         //   防交叉的主力是 segmentCrossesAny（交叉守卫），不是它。
@@ -1417,18 +1688,6 @@ public final class ModelHydrologyProvider {
         //   误触发（大弯河曲相隔 >12 步 ⇒ 豁免放不过 ⇒ "贴着自己"就地终止）。
         //   终止的链既不接湖也不接海 ⇒ 凭空断流。legacy 同名机制由"洼地续流"兜底，
         //   我方无该兜底 ⇒ 直接关闭（候选：日后给自贴近终止加专用 End + 兜底）。
-        int minNodes = Integer.getInteger("geogenesis.skeletonMinNodes", 3 * legacyToOurs);
-        int selfRadius = Integer.getInteger("geogenesis.skeletonSelfRadius", 0);
-        int selfExempt = Integer.getInteger("geogenesis.skeletonSelfExempt", 6 * legacyToOurs);
-        var skParams = new DeterministicSkeleton.Params(
-                spacingCells,
-                srcAccum,                            // ★ 绝对集水面积门限（见上方 javadoc）
-                2,                                   // 就近汇入窗口（legacy traceStep）
-                meanderAmp, 24.0,
-                maxRivers,
-                minNodes,                            // legacy minRiverNodes=3
-                selfRadius,                          // legacy SELF_APPROACH_RADIUS=2
-                selfExempt);                         // legacy SELF_APPROACH_EXEMPT=6
         var sk = DeterministicSkeleton.build(
                 p.level(), p.parent(), p.resolved(), p.lake(), p.sea(),
                 p.discharge(), p.lakeResult() == null ? null : p.lakeResult().basinOutlet(),
@@ -1438,7 +1697,14 @@ public final class ModelHydrologyProvider {
                 //    ⇒ 拿它的产出当连通性证据 = 用删除掩盖"支流接不进下游接口"的失败。
                 //    只记日志然后继续 ❌ ⇒ 这里真的不删；孤立由独立审计如实计入并判 FAIL。
                 //    既有生产路径传 null ⇒ 逐位不变。
-                HIER ? Boolean.FALSE : null);
+                HIER ? Boolean.FALSE : null,
+                // ★【窗口边界不截断】：parent=-1 且非湖/海时，用世界坐标地形最陡下降续追到水体
+                //   （等价旧版 margin 效果，但不扩求解域）。步数上限按窗口半宽折算。
+                new DeterministicSkeleton.OutsideContinuation(
+                        (bx, bz) -> gen.erodedHeight(bx * invHs, bz * invHs),
+                        originX, originZ, STEP,
+                        Integer.getInteger("geogenesis.outsideSteps", 2048),
+                        gen.params().seaLevel()));
         if (HIER) {
             // 回传事实（探针可断言"实验构建确实关了过滤且未删链"）。
             HierarchicalHydrology.Diag.skeletonBuild(sk.networkFilterEnabled,
@@ -1464,7 +1730,7 @@ public final class ModelHydrologyProvider {
         }
         if (SKELETON_END_DIAG || LOG_SRC) {
             LOGGER.info("[HYDRO-SRC] srcAccum={} runoff={} traces={} sources={} maxQ={}",
-                    String.format("%.1f", srcAccum), String.format("%.5f", runoff),
+                    String.format("%.1f", skParams.minSourceAccum()), String.format("%.5f", runoff),
                     sk.traces.size(), sk.sourcesTotal, String.format("%.1f", maxDischarge(p.discharge())));
         }
         // 亚格几何（Catmull-Rom + 格点吸附）→ SegmentIndex（落块用）
@@ -1601,10 +1867,18 @@ public final class ModelHydrologyProvider {
                 SKELETON_ENDS.add(wx + "," + wz + "," + t.end + extra);
             }
         }
+        // ★ 只读诊断载荷：每条 Trace 的首格 = 源头（不改产出，见 skeletonSourcesForProbe）
+        int[][] srcPts = new int[sk.traces.size()][];
+        for (int i = 0; i < sk.traces.size(); i++) {
+            var t = sk.traces.get(i);
+            if (t.nodeCount() == 0) { srcPts[i] = new int[]{Integer.MIN_VALUE, Integer.MIN_VALUE}; continue; }
+            int c0 = t.cell[0];
+            srcPts[i] = new int[]{originX + (c0 / n) * STEP, originZ + (c0 % n) * STEP};
+        }
         return new SkeletonRegion(RiverCenterlines.fromReaches(reaches, n, n, STEP), seg,
                 sk.exitSeeds, primary && HIER && Boolean.getBoolean("geogenesis.drainageAudit")
                 ? ProductionDrainageAudit.capture(p, sk, shaped,
-                originX, originZ, REGION) : null);
+                originX, originZ, REGION) : null, srcPts, shaped);
     }
 
     /**
@@ -2375,6 +2649,8 @@ public final class ModelHydrologyProvider {
         ProductionDrainageAudit.Snapshot drainage = null;
         WorldDrainage.Result world = null;
         WorldBasinFlow.Region worldWater = null;
+        int[][] regionSources = null;
+        List<DeterministicSkeleton.Shaped> regionShaped = null;
         if (CROSS_PASS) {
             var graph = worldDrainage();
             var routing = new WorldBasinRouting(graph, (x,z)->gen.erodedHeight(x*invHs,z*invHs), STEP, 131072);
@@ -2404,11 +2680,14 @@ public final class ModelHydrologyProvider {
             cl = sr.cl();
             skelSeg = sr.seg();
             drainage = sr.drainage();
+            regionSources = sr.sources();
+            regionShaped = sr.shapedPolys();
         }
         logRegionSolved(rx, rz, p, cl, t0, originX, originZ);
         HierarchicalHydrology.Diag.fineTiming((System.nanoTime() - t0) / 1_000_000L, p.nx() * p.nx());
         lastFineMs = (System.nanoTime() - t0) / 1e6;
-        return new RegionData(p, cl, skelSeg, originX, originZ, drainage, world, worldWater);
+        return new RegionData(p, cl, skelSeg, originX, originZ, drainage, world, worldWater,
+                regionSources, regionShaped);
     }
 
     /** 最近一次细层求解耗时（ms）——性能诊断（与 {@link HierarchicalHydrology.Diag#LAST_FINE_MS} 同源）。 */
@@ -2514,7 +2793,11 @@ public final class ModelHydrologyProvider {
         cl = sr.cl();
         skelSeg = sr.seg();
         drainage = sr.drainage();
-        RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ(), drainage);
+        // ★★★ 生产实际走的就是这里（HIER=false ⇒ `solve()` 的这条分支）★★★
+        //   上次漏了它 ⇒ 探针读到的 sources 恒为 null ⇒ 源头 0 个。
+        //   ⚠ 这条路径必须与 2495 行那条【一起】维护，否则只对一半。
+        RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ(), drainage,
+                null, null, sr.sources(), sr.shapedPolys());
         // #region agent log: D 冷区依赖成本拆分，实机确认后清理
         if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
             com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("D", "model-region-" + rx + "-" + rz,
@@ -2830,6 +3113,7 @@ public final class ModelHydrologyProvider {
                     ^ (Math.floorDiv(blockZ, TILE) & 0xffffffffL));
             if (cand == null) return null;
             double best = Double.POSITIVE_INFINITY, half = 0, depth = 0, waterSurface = Double.NaN;
+            double bestKey = Double.POSITIVE_INFINITY;
             for (int si : cand) {
                 int o = si * 8;
                 double x0 = seg[o], z0 = seg[o + 1], x1 = seg[o + 2], z1 = seg[o + 3];
@@ -2840,17 +3124,63 @@ public final class ModelHydrologyProvider {
                         : 0;
                 double px = x0 + t * dx, pz = z0 + t * dz;
                 double dist = Math.hypot(blockX - px, blockZ - pz);
+                double segHalf = seg[o + 4] + t * (seg[o + 5] - seg[o + 4]);
+                // ★★★ 2026-10-21【覆盖判据 = 半宽 ∪ 相交】
+                //
+                // 【旧判据】格心到线段距离 ≤ half(0.5)。对角步另一侧格心距线段 1/√2≈0.707
+                //   > 0.5 ⇒ 漏格 ⇒ 8 连通断口。历史解法是 Math.rint + fillDiagonalGaps 把曲线
+                //   量化成整数格再拆正交步 —— 断口治好了，代价是所有斜线变 90° 台阶。
+                //   节点图分层实测：grid 3.23% 直角 vs final shaped 63.60%、中位 90°。
+                //
+                // 【新判据】两者取并集：
+                //   · 格心距 ≤ half  → 保留半宽语义（宽度后续议题，但语义不能被改掉）
+                //   · 弦穿过方块     → 补上对角针孔，8 连通由此保证
+                //   只用后者会漏掉约 22.9% 的方块（实测河格 25130 → 19380）；
+                //   只用前者就是旧行为（断口）。并集才是"既不断也不量化"。
+                boolean covered = dist <= segHalf
+                        || segmentMeetsBlock(x0, z0, x1, z1, blockX, blockZ);
+                double key = covered ? dist : dist + 1e6;   // 覆盖优先，其次比距离
                 if (dist == 0 && best == 0 && Double.isFinite(waterSurface) && Double.isFinite(surface[si])
                         && Double.doubleToLongBits(waterSurface)!=Double.doubleToLongBits(surface[si]))
                     throw new IllegalStateException("competing corridor planes at "+blockX+","+blockZ);
-                if (dist < best || (dist == best && !Double.isFinite(waterSurface) && Double.isFinite(surface[si]))) {
+                if (key < bestKey) {
+                    bestKey = key;
                     best = dist;
-                    half = seg[o + 4] + t * (seg[o + 5] - seg[o + 4]);
+                    half = segHalf;
                     depth = seg[o + 6] + t * (seg[o + 7] - seg[o + 6]);
                     waterSurface = surface[si];
                 }
             }
-            return best == Double.POSITIVE_INFINITY ? null : new Hit(best, half, depth, waterSurface);
+            // 没有任何段与该方块相交 ⇒ 此处无水。
+            // ⚠ 不能像旧实现那样靠 dist>half 兜底：那会把"附近的方块"全染色 = 加粗。
+            if (bestKey > 0.5e6) return null;
+            return new Hit(best, half, depth, waterSurface);
+        }
+
+        /**
+         * 线段与方块是否相交（Liang–Barsky 裁剪到以格心为中心的 1×1 AABB）。
+         *
+         * <p>这就是"超覆盖"判据：弦穿过的每个方块都染色 ⇒ 相邻方块必 8 连通，
+         * 因此<b>不需要</b>把折线量化到整数格（那正是 90° 直角的来源）。</p>
+         */
+        private static boolean segmentMeetsBlock(double x0, double z0, double x1, double z1,
+                                                 int blockX, int blockZ) {
+            double xmin = blockX - 0.5, xmax = blockX + 0.5;
+            double zmin = blockZ - 0.5, zmax = blockZ + 0.5;
+            double t0 = 0, t1 = 1;
+            double dx = x1 - x0, dz = z1 - z0;
+            double[] p = {-dx, dx, -dz, dz};
+            double[] q = {x0 - xmin, xmax - x0, z0 - zmin, zmax - z0};
+            for (int i = 0; i < 4; i++) {
+                if (p[i] == 0) {
+                    if (q[i] < 0) return false;           // 平行且在外侧
+                } else {
+                    double r = q[i] / p[i];
+                    if (p[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+                    else          { if (r < t0) return false; if (r < t1) t1 = r; }
+                }
+            }
+            return t0 <= t1;
         }
     }
 }

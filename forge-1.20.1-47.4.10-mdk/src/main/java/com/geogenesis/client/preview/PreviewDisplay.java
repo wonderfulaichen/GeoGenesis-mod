@@ -435,8 +435,12 @@ public class PreviewDisplay extends AbstractWidget {
     // 99 = 2026-10-20 legacy 水文链整体退役：HydrologyChunkEngine 恒走 model 链（实机水从 legacy
     //      切到 model 链产出）；湖逃逸重算/湖岸精修随 legacy LakeNode 移除，isLake 判据化简为
     //      lakePlan；绿洲河距永久旁路（恒 ∞）。实机产出整体变化 ⇒ 旧缓存必须失效。
+    // 100 = 2026-10-21 河网密度对齐物理动线参照：成河门限 channelMinCells 150 → 40、
+    //       河段长度下限 skeletonMinNodes 6 → 14。河格 +51%、参照覆盖率 +8.4pt；
+    //       同时把参数派生收敛到 ModelHydrologyProvider.productionParams 单一来源。
+    //       产出河网整体变化 ⇒ 旧缓存必须失效。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 99;
+    private static final int CACHE_SCHEMA_VERSION = 100;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
