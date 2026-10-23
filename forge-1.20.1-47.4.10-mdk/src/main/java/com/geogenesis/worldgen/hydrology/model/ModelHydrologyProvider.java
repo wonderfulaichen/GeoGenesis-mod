@@ -337,6 +337,7 @@ public final class ModelHydrologyProvider {
             "geogenesis.modelStep", "geogenesis.modelMargin",
             // ---- 骨架 ----
             "geogenesis.skeletonTrace", "geogenesis.skeletonCrossPass", "geogenesis.networkFilter",
+            "geogenesis.handoffStart", "geogenesis.selfJoinFix", "geogenesis.frameEscape",
             "geogenesis.skeletonMinNodes", "geogenesis.skeletonSelfRadius",
             "geogenesis.skeletonSelfExempt", "geogenesis.skeletonMaxRivers",
             "geogenesis.skeletonMeanderAmp", "geogenesis.channelMinCells",
@@ -1876,7 +1877,7 @@ public final class ModelHydrologyProvider {
             srcPts[i] = new int[]{originX + (c0 / n) * STEP, originZ + (c0 % n) * STEP};
         }
         return new SkeletonRegion(RiverCenterlines.fromReaches(reaches, n, n, STEP), seg,
-                sk.exitSeeds, primary && HIER && Boolean.getBoolean("geogenesis.drainageAudit")
+                sk.exitSeeds, primary && Boolean.getBoolean("geogenesis.drainageAudit")
                 ? ProductionDrainageAudit.capture(p, sk, shaped,
                 originX, originZ, REGION) : null, srcPts, shaped);
     }
@@ -2041,7 +2042,8 @@ public final class ModelHydrologyProvider {
                 // ★ 本区先判（零邻区开销）
                 if (!isLakeBlock && !segIndex.isEmpty()) {
                     SegmentIndex.Hit h0 = segIndex.nearest(blockX, blockZ);
-                    if (h0 != null && h0.half > 0 && h0.dist <= h0.half) {
+                    // nearest 已验证半宽覆盖或真实穿块，不能再按格心距离剔除穿块命中。
+                    if (h0 != null && h0.half > 0) {
                         bestDist = h0.dist;
                         half = h0.half;
                         depth = Math.max(0, h0.depth);
@@ -2052,8 +2054,13 @@ public final class ModelHydrologyProvider {
                 //   本区窗口已外扩 HALO（RADIUS = REGION/2 + HALO）⇒ 内部方块无需邻区。
                 //   （2026-10-10 双 pass 后无须再拓宽：接力折线由【接收方】在自己窗口内追出
                 //    ⇒ 段落全在接收方窗口内 ⇒ 原 HALO 带即可命中。）
-                boolean nearBorder = (blockX < regLoX + HALO) || (blockX >= regHiX - HALO)
-                        || (blockZ < regLoZ + HALO) || (blockZ >= regHiZ - HALO);
+                // ★★ 2026-10-22【低侧边界带必须含端点 —— 实测 294 列河被裁】★★
+                //   低侧原为 `<`，高侧为 `>=` ⇒ 低侧少算一整行。实测南北接缝：
+                //   北区窗口 originZ=-96/半径352/STEP2 ⇒ 折线到 z=608.63；
+                //   南区 regLoZ=512、regLoZ+HALO=608 ⇒ z=608 恰落在带外 ⇒ 不查北区
+                //   ⇒ 已有北区几何的 294 列不雕刻不 fill。两侧统一为【闭区间】。
+                boolean nearBorder = (blockX <= regLoX + HALO) || (blockX >= regHiX - HALO)
+                        || (blockZ <= regLoZ + HALO) || (blockZ >= regHiZ - HALO);
                 // ★ 分层实验：near-border 补缝【只借粗层做候选/校验】，**不覆盖输出**。
                 //   禁止隐式重解邻区细层（既有路径的 `regionFor(邻居)` 会跑完整重管线 ×9）。
                 //   owner 按【绝对坐标】判定（floorDiv ⇒ 与生成顺序、缓存状态无关）：
@@ -2125,10 +2132,12 @@ public final class ModelHydrologyProvider {
                 if (!HIER && !isLakeBlock && half <= 0 && nearBorder) {
                     for (int t = 0; t < 9; t++) {
                         if (t == 4) continue;
-                        // 只取"该方块靠近的那一侧"的邻区，避免无谓求解
-                        if (neighDx[t] < 0 && blockX >= regLoX + HALO) continue;
+                        // 只取"该方块靠近的那一侧"的邻区，避免无谓求解。
+                        // ★ 与 nearBorder 同一闭区间口径：低侧带端点必须能取低侧邻区，
+                        //   否则上面放行到 z==regLoZ+HALO 后仍在这里被剔除（同一行又丢一次）。
+                        if (neighDx[t] < 0 && blockX > regLoX + HALO) continue;
                         if (neighDx[t] > 0 && blockX < regHiX - HALO) continue;
-                        if (neighDz[t] < 0 && blockZ >= regLoZ + HALO) continue;
+                        if (neighDz[t] < 0 && blockZ > regLoZ + HALO) continue;
                         if (neighDz[t] > 0 && blockZ < regHiZ - HALO) continue;
                         if (neigh[t] == null) {
                             neigh[t] = regionFor((rdRx + neighDx[t]) * REGION + REGION / 2,
@@ -2150,7 +2159,7 @@ public final class ModelHydrologyProvider {
                         SegmentIndex si = neighSeg[t];
                         if (si == null || si.isEmpty()) continue;
                         SegmentIndex.Hit h2 = si.nearest(blockX, blockZ);
-                        if (h2 != null && h2.half > 0 && h2.dist <= h2.half && h2.dist < bestDist) {
+                        if (h2 != null && h2.half > 0 && h2.dist < bestDist) {
                             bestDist = h2.dist;
                             half = h2.half;
                             depth = Math.max(0, h2.depth);

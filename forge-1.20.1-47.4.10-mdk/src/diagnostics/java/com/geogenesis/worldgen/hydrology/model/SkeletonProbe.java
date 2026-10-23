@@ -280,7 +280,8 @@ public final class SkeletonProbe {
             var trace = DeterministicSkeleton.class.getDeclaredMethod("traceOne", int.class, boolean.class, boolean.class,
                     double[].class, int[].class, boolean[].class, boolean[].class, boolean[].class, boolean[].class,
                     int.class, int.class, int.class, int[].class, int[].class, int.class, DeterministicSkeleton.Params.class,
-                    java.util.List.class, double[].class, DeterministicSkeleton.ParentForest.class, java.util.List.class);
+                    java.util.List.class, double[].class, DeterministicSkeleton.ParentForest.class, java.util.List.class,
+                    DeterministicSkeleton.OutsideContinuation.class);
             trace.setAccessible(true);
             for (boolean preclaimed : new boolean[]{false, true}) for (boolean outlet : new boolean[]{false, true}) {
                 int n = 7, cells = n * n, start = idx(3, 3, n), mouth = idx(3, 4, n);
@@ -291,7 +292,7 @@ public final class SkeletonProbe {
                 var before = covered.clone();
                 var params = new DeterministicSkeleton.Params(0, 1, 0, 0, 24, 0, 6, 0, 0);
                 var result = (DeterministicSkeleton.Trace) trace.invoke(null, start, outlet, false, level, parent, resolved,
-                        lake, sea, covered, n, n, 0, new int[cells], new int[cells], 1, params, List.of(), null, null, null);
+                        lake, sea, covered, n, n, 0, new int[cells], new int[cells], 1, params, List.of(), null, null, null, null);
                 boolean correct = outlet ? result != null && covered[start] && covered[mouth]
                         : result == null && Arrays.equals(before, covered);
                 check(correct, "海口认领事务 outlet=" + outlet + " preclaimed=" + preclaimed, "rollback released existing claim or kept new claim");
@@ -461,7 +462,8 @@ public final class SkeletonProbe {
             var trace=DeterministicSkeleton.class.getDeclaredMethod("traceOne",int.class,boolean.class,boolean.class,
                     double[].class,int[].class,boolean[].class,boolean[].class,boolean[].class,boolean[].class,
                     int.class,int.class,int.class,int[].class,int[].class,int.class,DeterministicSkeleton.Params.class,
-                    java.util.List.class,double[].class,DeterministicSkeleton.ParentForest.class,java.util.List.class);
+                    java.util.List.class,double[].class,DeterministicSkeleton.ParentForest.class,java.util.List.class,
+                    DeterministicSkeleton.OutsideContinuation.class);
             trace.setAccessible(true);var evidence=new StringBuilder();int n=13,cells=n*n;
             for(int rotation=0;rotation<4;rotation++) for(boolean reverse:new boolean[]{false,true})
                 for(boolean alternative:new boolean[]{false,true}) {
@@ -480,7 +482,7 @@ public final class SkeletonProbe {
                             "候选交叉fixture独立oracle rotation="+rotation+" reverse="+reverse+" alt="+alternative,"fixture invalid");
                     var params=new DeterministicSkeleton.Params(0,1,0,0,24,0,2,0,0);
                     var result=(DeterministicSkeleton.Trace)trace.invoke(null,start,false,true,level,parent,resolved,lake,sea,
-                            covered,n,n,0,new int[cells],new int[cells],1,params,List.of(edge),bed,new DeterministicSkeleton.ParentForest(parent),null);
+                            covered,n,n,0,new int[cells],new int[cells],1,params,List.of(edge),bed,new DeterministicSkeleton.ParentForest(parent),null,null);
                     int expected=alternative?allowed:next;
                     boolean ok=result!=null && result.end==DeterministicSkeleton.End.MOUTH_SEA
                             && Arrays.equals(result.cell,new int[]{start,expected,mouth});
