@@ -1,0 +1,179 @@
+{
+  "compileExit": 0,
+  "results": [
+    {
+      "arm": "cold-1",
+      "exit": 1,
+      "reproduced": true,
+      "summary": "REPRODUCED: condition D8 reaches sea with explicit relay; production pass1-only discovery loses second-hop.\nForward/downstream-first equal, both missing C/D. Negative coordinates reproduced.\nAcceptance FAIL: four-region independent discovery is not satisfied.\n"
+    },
+    {
+      "arm": "cold-2",
+      "exit": 1,
+      "reproduced": true,
+      "summary": "REPRODUCED: condition D8 reaches sea with explicit relay; production pass1-only discovery loses second-hop.\nForward/downstream-first equal, both missing C/D. Negative coordinates reproduced.\nAcceptance FAIL: four-region independent discovery is not satisfied.\n"
+    },
+    {
+      "arm": "production-1",
+      "exit": 1,
+      "reproduced": true,
+      "summary": "REPRODUCED: condition D8 reaches sea with explicit relay; production pass1-only discovery loses second-hop.\nForward/downstream-first equal, both missing C/D. Negative coordinates reproduced.\nAcceptance FAIL: four-region independent discovery is not satisfied.\n"
+    },
+    {
+      "arm": "production-2",
+      "exit": 1,
+      "reproduced": true,
+      "summary": "REPRODUCED: condition D8 reaches sea with explicit relay; production pass1-only discovery loses second-hop.\nForward/downstream-first equal, both missing C/D. Negative coordinates reproduced.\nAcceptance FAIL: four-region independent discovery is not satisfied.\n"
+    }
+  ],
+  "coldByteIdentical": true,
+  "components": [
+    {
+      "name": "ReverseOrdinaryProbe",
+      "cold": 1,
+      "exit": 0,
+      "summary": "origin=0 tailSources=2 tailWork=2349 midSources=2 midWork=1701 clippedSources=0 tailTransitionChecks=2430 tailSampleCalls=60750 tailUniqueSamples=442\norigin=-40 tailSources=2 tailWork=2349 midSources=2 midWork=1701 clippedSources=0 tailTransitionChecks=2430 tailSampleCalls=60750 tailUniqueSamples=442\nlongDependency complete=false expanded=4096 transitions=4311 uniqueSamples=747\nCOMPONENT PASS checks=14214\nScope: finite synthetic universe; actual vectorTraceNext and discrete incoming heading.\nNOT CERTIFIED: production admitted-source enumeration, spill/JOIN/crossing/spacing guards, arbitrary target chunks, geometry or wet columns.\n"
+    },
+    {
+      "name": "ReverseOrdinaryProbe",
+      "cold": 2,
+      "exit": 0,
+      "summary": "origin=0 tailSources=2 tailWork=2349 midSources=2 midWork=1701 clippedSources=0 tailTransitionChecks=2430 tailSampleCalls=60750 tailUniqueSamples=442\norigin=-40 tailSources=2 tailWork=2349 midSources=2 midWork=1701 clippedSources=0 tailTransitionChecks=2430 tailSampleCalls=60750 tailUniqueSamples=442\nlongDependency complete=false expanded=4096 transitions=4311 uniqueSamples=747\nCOMPONENT PASS checks=14214\nScope: finite synthetic universe; actual vectorTraceNext and discrete incoming heading.\nNOT CERTIFIED: production admitted-source enumeration, spill/JOIN/crossing/spacing guards, arbitrary target chunks, geometry or wet columns.\n"
+    },
+    {
+      "name": "ContextDependencyProbe",
+      "cold": 1,
+      "exit": 0,
+      "summary": "sameBedHeading ordinary=49 emptyJoin=-1 coveredJoin=58 crossingJoin=-1\nsameBedParent sourcesBelowThreshold=[] sourcesAboveThreshold=[40] threshold=40.0\nactualBuild sameIncoming successorWithoutBase=577 successorWithBase=610\nCONTEXT COUNTEREXAMPLES PASS checks=6\nNot a river-network repair or world-discovery certificate.\n"
+    },
+    {
+      "name": "ContextDependencyProbe",
+      "cold": 2,
+      "exit": 0,
+      "summary": "sameBedHeading ordinary=49 emptyJoin=-1 coveredJoin=58 crossingJoin=-1\nsameBedParent sourcesBelowThreshold=[] sourcesAboveThreshold=[40] threshold=40.0\nactualBuild sameIncoming successorWithoutBase=577 successorWithBase=610\nCONTEXT COUNTEREXAMPLES PASS checks=6\nNot a river-network repair or world-discovery certificate.\n"
+    },
+    {
+      "name": "ResumableDiscoveryProbe",
+      "cold": 1,
+      "exit": 0,
+      "summary": "origin=0 expanded=2349 transitions=17001 calls=425025 uniqueSamples=442 states=2349\norigin=-40 expanded=2349 transitions=17001 calls=425025 uniqueSamples=442 states=2349\nlong expanded=4096 status=LIMIT reason=expansions\nRESUMABLE COMPONENT PASS checks=130\nScope: in-memory immutable checkpoints; finite ordinary-flow fixture only; logical sampling charged even on cache hit.\nNOT CERTIFIED: production admission/guards/spill/provider cancellation, durable checkpoint format, cache bytes or infinite-world completeness.\n"
+    },
+    {
+      "name": "ResumableDiscoveryProbe",
+      "cold": 2,
+      "exit": 0,
+      "summary": "origin=0 expanded=2349 transitions=17001 calls=425025 uniqueSamples=442 states=2349\norigin=-40 expanded=2349 transitions=17001 calls=425025 uniqueSamples=442 states=2349\nlong expanded=4096 status=LIMIT reason=expansions\nRESUMABLE COMPONENT PASS checks=130\nScope: in-memory immutable checkpoints; finite ordinary-flow fixture only; logical sampling charged even on cache hit.\nNOT CERTIFIED: production admission/guards/spill/provider cancellation, durable checkpoint format, cache bytes or infinite-world completeness.\n"
+    }
+  ],
+  "componentColdByteIdentical": true,
+  "mutations": [
+    {
+      "name": "local-only",
+      "compileExit": 0,
+      "runExit": 1,
+      "expectedAssertion": "downstream-only must discover remote admitted source",
+      "caught": true
+    },
+    {
+      "name": "unknown-as-complete",
+      "compileExit": 0,
+      "runExit": 1,
+      "expectedAssertion": "budget exhaustion cannot certify absence",
+      "caught": true
+    },
+    {
+      "name": "reset-checkpoint-budget",
+      "compileExit": 0,
+      "runExit": 1,
+      "expectedAssertion": "checkpoint restores queue and logical counters exactly",
+      "caught": true
+    },
+    {
+      "name": "drop-checkpoint-queue",
+      "compileExit": 0,
+      "runExit": 1,
+      "expectedAssertion": "checkpoint restores queue and logical counters exactly",
+      "caught": true
+    },
+    {
+      "name": "cache-discounts-logical-work",
+      "compileExit": 0,
+      "runExit": 1,
+      "expectedAssertion": "batch/resume/cache eviction must preserve all logical evidence",
+      "caught": true
+    },
+    {
+      "name": "drop-predecessor-cursor",
+      "compileExit": 0,
+      "runExit": 1,
+      "expectedAssertion": "cancel cold restore equals uninterrupted result",
+      "caught": true
+    }
+  ],
+  "protectedUnchanged": true,
+  "protectedBefore": {
+    "..\\.openbitfun\\plans\\hydro-deterministic-spill-contract.plan.md": "f47e86d2f42b5f7ccfcf8d4e53a6670cd8ed5d4548f582fceb43dbe705be1127",
+    "run\\config\\geogenesis-common.toml": "8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3",
+    "src\\main\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java": "8cb57c6f454c7ea21bd9103eafd858fab009d32c53fb2fc2c3887133f912035e",
+    "src\\main\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider.java": "ea49062fc34d43e60d9e55e1e9c15a5a4ef159a4104ad42e14de5200fb800eec"
+  },
+  "candidateClassSha": {
+    "BoundaryPort.class": "4a828918c399c2209408174c94d51e53f6ad36764fe8af766e51fa36d1eabff5",
+    "DeterministicSkeleton$1.class": "7ddbe21591ec031357baa1328d4e7ff293eac93cbf4d5f121d3d4090e9e7cb12",
+    "DeterministicSkeleton$1Node.class": "c7e060a9a4a615db190957ae2d0864dd1f2a6bbf87fdfc9cc7d75cd07a0ad7b5",
+    "DeterministicSkeleton$Continuation.class": "845c77e43abde04dce33c1259e88f6d2bfef22c92ed00de9c54de1f17a390104",
+    "DeterministicSkeleton$End.class": "bc488432e40f659f4a176f68f6330fe9f03e01c592d388f69e0c379d2899ce01",
+    "DeterministicSkeleton$ExitSeed.class": "5bacaa998d330f1567115e383e11c47f4253bd3aa6c8feb72434c62a185ed4df",
+    "DeterministicSkeleton$IncomingDiagnostic.class": "6eaf841b4df261d7445d53c8c9f9d3681c761f85fdc8db801088f1f5febe2cf6",
+    "DeterministicSkeleton$JoinKind.class": "07fc826f6b3aa5289aaff4c9e5041508a5932cdfeb128f6962d48bf76e470b54",
+    "DeterministicSkeleton$MergeEvidence.class": "d04541697629cbfc3112313367ece1e899607805cc156c3a7f83feb98a3a9cef",
+    "DeterministicSkeleton$OutsideContinuation.class": "753db5e1fe55a0d71d4a63b6fdc2b77fa83e2828a3205956a1dc74b4c8f32096",
+    "DeterministicSkeleton$OutsideTerrain.class": "4da5001a5da7c9d2b60b08e345f23d2536895d8ca1ee7512f3a42a98c934c7a5",
+    "DeterministicSkeleton$Params.class": "d73852cdd0050148df66a6a67d8c21bbda3c9a88cd3345d742057558410fbccf",
+    "DeterministicSkeleton$ParentForest.class": "6eb330d92542af8474098d5dc77f8af635e77499683e2eb55dc235dd46735590",
+    "DeterministicSkeleton$PassRole.class": "4aa54d9ce6a0ab7b617cd3722a8fbd91b4e52ea9ee2a9e38c2ea3aa7414a62e8",
+    "DeterministicSkeleton$Result.class": "b802f14cdf459e4b3ce6577bbf4ebf526e99d0cd54cce9e0c745024186dde5fa",
+    "DeterministicSkeleton$Shaped.class": "b370fbef5622f571eb58d54a107eba9aeeef15ec584bd15940ea36cf96ff1608",
+    "DeterministicSkeleton$StepResult.class": "6b7857474acdd6af442fbd1762e695a0760dfc8368fe33888eef707cd35d24f2",
+    "DeterministicSkeleton$Trace.class": "aeaeea945308f57fb689d205531a2f7baf459e7c94992ecfac67fa3272594158",
+    "DeterministicSkeleton$TraceSegments.class": "6d09faa1128ec5f5b49b9d1858f3be993c3ebee1a9b75d4fe9924782fa530285",
+    "DeterministicSkeleton.class": "c5fabac07eb35271361237cd72fdfb78a42d2dd57bac214285f2c09c4b46434b",
+    "ModelHydrologyProvider$1.class": "6c04238f99c2dd3df743e9908fdfbfb125b44ad4ced5054321e507f79602f641",
+    "ModelHydrologyProvider$CacheKey.class": "fcb6ca1debb12f4ff08d0c9551856f53e6367e2dfc5fd91cdf883147e7168bc1",
+    "ModelHydrologyProvider$DomKey.class": "4b295bf7253b5dbe33b8747978f9cedf552053d84da6715d0d1fce959f2cd281",
+    "ModelHydrologyProvider$Pass1.class": "3c792a393e5ac0c255e338a6278e61ae2fde9947ca9d5efcdf2a5ed4e223e17f",
+    "ModelHydrologyProvider$Pass1Task.class": "ff6b46d65c1e6cfd196cc96a726edcd998e50c8f6691b51ca31fc512feee7ba1",
+    "ModelHydrologyProvider$RegionData.class": "be72beb578dfdd31758f19a65f493de8a4206268119d125d50724a3485d88072",
+    "ModelHydrologyProvider$SegmentIndex$Hit.class": "36c229f8fc4286cf78aee59b578cd0515c32c473d00a971cbfefcf312a0f0015",
+    "ModelHydrologyProvider$SegmentIndex.class": "19639c567799ea1b531ea6e671163f7ec1b689d336d87c58d75103df75775ef1",
+    "ModelHydrologyProvider$SkeletonRegion.class": "942f4ed6e6665a0613e39af8ef3af7dd954d989cde35d7c96bff7a6cbac9f214",
+    "ModelHydrologyProvider.class": "00d5e4f364dfb8894db6a3c6150d1bbc4de1e4883bf96b46083c4dd529565e6f",
+    "OrderedSpillSearch$Guards.class": "4e73f77b9ebf61d3b5624504617604bacafa8582b0a4a93fd95b35679e4feb73",
+    "OrderedSpillSearch$Node.class": "c0d8f93e6a6d81dcadc4e981fc6f22315aaec50e15db2793dc222a40caea84e1",
+    "OrderedSpillSearch$Result.class": "c5e6879e737bca269e8ccfc9b0bfc48221f478f9ec0db9c572d8dbd8bb5c9c2a",
+    "OrderedSpillSearch$Status.class": "40804cfced44e4e0f906ad701fd5b323a2874e163a5d1c62b2a6e8d738a7305d",
+    "OrderedSpillSearch.class": "3e9867c7d9eddb3757c0e45c93a0940fe1bd1a2c2ae554bf2fe269c075cc2047",
+    "PortEgress.class": "1b1d4fcda1fe8d36b5a22236cadb1577792f9541f4ebf0cf41993d5a58f74afe",
+    "PortWireAudit$Paths.class": "0a183471ca6712e394629a278d9b3c7b8e467dac50a7ab2718648162a73085e2",
+    "PortWireAudit$Tally.class": "76df500474aacb3b592063fbfb4dc8ca7eaceca3ec1c0e806dfe66f91bb8caf8",
+    "PortWireAudit.class": "44942e67b6252426d7ae8e1b7c195923aba8b12a2eea817b721cc1fc7c535f79",
+    "ProductionDrainageAudit$1.class": "a6041d501e15b05f83c5cee8dbcb84a85299d30c1d20f1457fdd3952df3ceb6e",
+    "ProductionDrainageAudit$Chain.class": "8905f47863a587785034a7c15aa3d979322c834a724f4e145e3568c2f2e06bee",
+    "ProductionDrainageAudit$Crossing.class": "bb06d8e1de2fbe070ce398dcb5283be0e4cc4dcd3eb89437c3a39db1a223b29d",
+    "ProductionDrainageAudit$Lake.class": "47fdb5fd92cb8d631fa6b43a5352587b2d57e7f0a1c2d98b2c6e99002e11580e",
+    "ProductionDrainageAudit$Point.class": "f146d86aa8f94be6d88f81d2874b20cde5b90f8ed883428451c030f3890f9a09",
+    "ProductionDrainageAudit$Region.class": "784768ef284a6fabdde329a75afbb2d5b2dc8f938863803d3f1f2759788ca29c",
+    "ProductionDrainageAudit$Segment.class": "c27dd102bdbd4ae5c1e55622e15bfaf0bdb2282def4bb84831b1c5b0d94a1f56",
+    "ProductionDrainageAudit$SegmentId.class": "c41e9404248f7dd5a62f0213c67b5b00c4c19c5b62068ae5dfffa41b217b162e",
+    "ProductionDrainageAudit$Snapshot.class": "1e3d0f9c286c9e3573fc69cc4dcc6deb3d9549a3716a9100f81d16ab251871de",
+    "ProductionDrainageAudit$Terminal.class": "049c3bf17190930f82a528589aacf5f0dc35721e635b8ad22b4ec0324ebd4fb2",
+    "ProductionDrainageAudit.class": "ee4fde83bd0cd857b524f738b28973c6205dd2539a437fcc02e5da81b8327f4a",
+    "ProductionViewProbe$ConfigInput.class": "ce332931f9f041523815824651e489d9453a1fd9a1b8e00031b8f20f06eb4528",
+    "ProductionViewProbe$Sample.class": "ba402c90f44fa83d64d011e6e08954ccd7326d7f8fd37c1ff8376d9682bc04cf",
+    "ProductionViewProbe.class": "47a07741bfbd0a38497d3207beda091a822c08b30cf35fd9252576a992957da8",
+    "WireIn.class": "360186713d0af388ffdb347dd7188d65a333aa570aecb688296d61246a534a18",
+    "WireReject.class": "cbab63cb0e55688538005e4e6aa2edbdc595a1d2f1c4a7ffce1b5a4ba57bfe62"
+  },
+  "requiredDiscoveryAcceptance": false,
+  "scope": "Synthetic flow fixture; actual DS.build and actual provider incoming assembler; no real pipeline or wet-column acceptance."
+}

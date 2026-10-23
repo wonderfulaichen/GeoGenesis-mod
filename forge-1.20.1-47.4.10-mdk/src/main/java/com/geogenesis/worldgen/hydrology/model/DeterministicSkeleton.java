@@ -88,6 +88,23 @@ public final class DeterministicSkeleton {
         }
     }
 
+    /**
+     * JOIN 的具体产生边（2026-10-22，只读归因）。
+     *
+     * <p>{@link End#JOIN} 只表示"接入已有格"，但"接的是谁"决定它是真汇流还是缺陷。
+     * 本枚举把三条产生边分开，供日志与审计使用；<b>不改变 {@link End} 或任何路由</b>。</p>
+     */
+    enum JoinKind {
+        /** {@code nearbyJoin} 主动就近汇入 —— 真汇流候选。 */
+        NEARBY,
+        /** 沿下游走到别的链已占格 —— 树语义并流。 */
+        PARENT,
+        /** 目标格属于本链自己 —— 不是汇流，是绕回自身。 */
+        SELF,
+        /** 溢口首步逃逸后落到已占格。 */
+        OUTLET_ESCAPE
+    }
+
     /** 河段终止类型（显式，不假装有水）。 */
     public enum End {
         /** 入湖：下一格是湖水面。 */
@@ -123,6 +140,8 @@ public final class DeterministicSkeleton {
          * 里接到折线尾部，窗外那段才会被画出来。</p>
          */
         public final double[] outsideTail;
+        /** 有序世界尾段开始前的格路径前缀长度；再入窗格仍保留在 cell 中供拓扑审计。 */
+        final int geometryPrefixNodes;
 
         /**
          * ★★★ <b>连续路径</b>（格坐标，非整数）：交替 x,z。
@@ -149,6 +168,11 @@ public final class DeterministicSkeleton {
         }
 
         Trace(int[] cell, End end, boolean fromOutlet, double[] outsideTail, double[] contPath) {
+            this(cell, end, fromOutlet, outsideTail, contPath, cell.length);
+        }
+
+        Trace(int[] cell, End end, boolean fromOutlet, double[] outsideTail, double[] contPath, int geometryPrefixNodes) {
+            this.geometryPrefixNodes = geometryPrefixNodes;
             this.cell = cell;
             this.end = end;
             this.fromOutlet = fromOutlet;
@@ -156,7 +180,7 @@ public final class DeterministicSkeleton {
             this.contPath = contPath;
         }
 
-        public boolean hasOutsideTail() { return outsideTail.length >= 4; }
+        public boolean hasOutsideTail() { return outsideTail.length >= 2; }
 
         /** 是否有连续路径可用（长度与 cell 对齐 ×2）。 */
         public boolean hasContPath() { return contPath.length >= cell.length * 2 && cell.length > 1; }
@@ -205,7 +229,7 @@ public final class DeterministicSkeleton {
                                       int step, int maxSteps, double seaLevel) { }
 
     /** 窗口外续流的结果：追加的格路径 + 世界坐标尾段 + 终止类型。 */
-    private record Continuation(int[] path, double[] outsideTail, End end) { }
+    private record Continuation(int[] path, double[] outsideTail, End end, int prefixNodes) { }
 
     /** 结果：河段表（确定性顺序）+ 诊断计数 + 出口种子。 */
     public static final class Result {
@@ -289,6 +313,7 @@ public final class DeterministicSkeleton {
         int bz = ctx.originZ() + sz * step;
         var path = new ArrayList<Integer>();
         var tail = new ArrayList<Double>();
+        int prefixNodes = -1;
         double here = ctx.terrain().height(bx, bz);
         if (!Double.isFinite(here)) return null;
         var seen = new java.util.HashSet<Long>();
@@ -310,15 +335,18 @@ public final class DeterministicSkeleton {
             int gi = Math.floorDiv(bx - ctx.originX(), step);
             int gj = Math.floorDiv(bz - ctx.originZ(), step);
             boolean inWindow = gi >= 0 && gj >= 0 && gi < nx && gj < nz;
+            // 首次出窗后，所有后续点（包括再入窗）都留在同一有序尾段。
+            // 否则 shape 先接 path 再接 tail，会把出窗/再入窗的真实时序倒置。
+            if (!inWindow && prefixNodes < 0) prefixNodes = path.size();
+            if (prefixNodes >= 0) { tail.add((double) bx); tail.add((double) bz); }
             if (inWindow) {
                 int cell = gi * nz + gj;
-                if (sea[cell]) { path.add(cell); return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_SEA); }
-                if (lakeMask[cell]) { path.add(cell); return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_LAKE); }
                 path.add(cell);
-            } else {
-                tail.add((double) bx); tail.add((double) bz);
-                if (here < ctx.seaLevel())
-                    return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_SEA);
+                int prefix = prefixNodes < 0 ? path.size() : prefixNodes;
+                if (sea[cell]) return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_SEA, prefix);
+                if (lakeMask[cell]) return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_LAKE, prefix);
+            } else if (here < ctx.seaLevel()) {
+                return new Continuation(toIntArray(path), toDoubleArray(tail), End.MOUTH_SEA, prefixNodes);
             }
         }
         return null;
@@ -634,6 +662,130 @@ public final class DeterministicSkeleton {
             }
         }
         return -1;
+    }
+
+    /**
+     * ★★★ 2026-10-22【修复 B 开关：边框处优先出窗】★★★
+     * （`-Dgeogenesis.frameEscape=true` 才开。**当前默认关闭** —— 见下方实测。）
+     *
+     * <p><b>要治什么</b>：链走到窗口最后一行/列后，`vectorTraceNext` 的 8 邻越界检查
+     * 会跳过<b>窗外</b>候选，于是只能在【同一个边框行/列内】找更低的格
+     * ⇒ 沿边框横走几百块的水平长直。实测 owner(-1,0) 的 `reach#0`
+     * 在 `z=608` 行内横走 <b>292 块</b>（128 个节点），而同一段窗外确实更低
+     * （如 x=-456：内 64.315 / 外 64.296）。</p>
+     *
+     * <p><b>⚠ 为什么默认关（2026-10-22 实测）</b>：从该边框格按窗外真实地形下降
+     * 实际走 92 步后停在 `(-366,653)`，h=63.834，**8 邻全更高（真实洼地）**，
+     * 高于海平面 63.0 却无处可走 ⇒ `continueOutside` 如实返回 null
+     * ⇒ 本开关<b>救不出这条链</b>，打开与否产出一致（FrameEscapeProbe 仍报 128 步）。</p>
+     *
+     * <p>⇒ 真相是 <b>「边框横向长直」与「窗外洼地」两个问题叠加</b>：
+     * 前者是窗口裁剪，后者是洼地缺出口。只修前者不够；必须先有盆/溢流出口，
+     * 或让跨区契约在窗外也能找到下游。开关保留供后续实验。</p>
+     */
+    static final boolean FRAME_ESCAPE =
+            "true".equals(System.getProperty("geogenesis.frameEscape"));
+
+    /**
+     * ★★★ 2026-10-22【修复 A 开关：绕回自己不算汇流】★★★
+     * （`-Dgeogenesis.selfJoinFix=true` 才开。**当前默认关闭** —— 见下方实测。）
+     *
+     * <p><b>治什么</b>：`covered[p]` 不区分"别人占的格"与"本链自己占过的格"，
+     * 于是河流绕回自身时也被记为 {@code End.JOIN}。实测 owner(-1,0) 922 条 trace 中
+     * <b>74 条（15.5% 的 JOIN）</b>是自汇，源→终点中位 44 块、最长绕 217 格。</p>
+     *
+     * <p><b>⚠ 为什么默认关（2026-10-22 单变量 A/B 实测）</b>：
+     * 开启后河道 38326→39959（+1633），但<b>水平长直从 26 条涨到 32 条</b>，
+     * 并新增 141 块@z=96、93 块@z=-416、75 块@z=96、60 块@z=-88 四条横向长线；
+     * 用户要治的 `z=608` 那两条（403/225 块）<b>一字未变</b>。</p>
+     *
+     * <p><b>机理</b>：自汇原本会提前"截短"一条链；改成 {@code DEAD_END} 后该链
+     * 继续沿别的路径走，在别处形成新的横向串接。⇒ 自汇在本实现里其实起到了
+     * <b>意外的终止保护</b>，直接删掉会把问题转移到别处。</p>
+     *
+     * <p><b>结论</b>：单点改这一处不足以修好；{@code z=608} 是缺陷 B（边框 NEARBY 假汇流），
+     * 必须先修跨区契约，再回来评估自汇。开关保留供后续实验。</p>
+     *
+     * <p><b>不做的</b>：不改变"牛轭湖"允许几何靠近自身的语义 —— 那是 shape 层的事，
+     * 本开关只禁止【拓扑上】把自己当作下游。</p>
+     */
+    static final boolean SELF_JOIN_FIX =
+            "true".equals(System.getProperty("geogenesis.selfJoinFix"));
+
+    /**
+     * ★★★ 2026-10-22【接力起点容错开关】★★★（`-Dgeogenesis.handoffStart=false` 关）
+     *
+     * <p>默认开。关掉即逐位回到"种子格无下坡就原地判死"的旧行为，供单变量 A/B 归因。</p>
+     */
+    static final boolean HANDOFF_START =
+            !"false".equals(System.getProperty("geogenesis.handoffStart"));
+
+    /**
+     * 接力起点容错允许的最大抬升（block）。
+     *
+     * <p>种子落局部极小后，改选的邻格必然比坑底<b>高</b>（坑底就是最低点）。
+     * 若只按坡降率择优，会选到坑外远处的陡坡 ⇒ 等于让河为找出路先翻山
+     * （探针②的用例抓到过）。故先按抬升量择优，并设上限。
+     * 与既有 {@code MAX_SPILL_RISE=12} 同量级但更保守：接力只是"微调起点"。</p>
+     */
+    static final double HANDOFF_MAX_RISE = Double.parseDouble(
+            System.getProperty("geogenesis.handoffMaxRise", "4.0"));
+
+    /**
+     * ★★★ 2026-10-22【接力起点容错 —— 移植 legacy {@code bestHandoffStart}】★★★
+     *
+     * <p><b>为什么必须补</b>（legacy {@code RiverLineNetwork:3843-3864} 原文即为此而写）：
+     * 邻区栅格与上游栅格存在偏移，种子换算到本窗后可能<b>恰好落在一个局部极小</b>
+     * （8 邻无严格更低）⇒ 续流第一步就走不动 ⇒ 该接力链原地死掉。
+     * 下游看到的就是「缝那侧明明有河，这侧没有」。</p>
+     *
+     * <p><b>实测依据</b>（本仓 {@code -Dgeogenesis.lifecycleDiag=true}）：接力种子到达后
+     * 记为 {@code NO_RECEIVER}／{@code SELF_CROSS} 的比例，正是「种子到了却起链即死」。</p>
+     *
+     * <p><b>做法</b>（与 legacy 同构，但加抬升上限）：种子格本身有可下降邻格则原样使用；
+     * 否则在 1 格窗口内改选一个<b>自身有可下降邻格</b>的格：
+     * 先取<b>抬升最小</b>者（≤ {@link #HANDOFF_MAX_RISE}），抬升相同再按<b>坡降率</b>
+     * （{@code (bed[c] − bed[next]) / 距离}）取更顺者。
+     * 平局按 {@link #EQUAL_DIRS8} 固定扫描序 ⇒ 确定性不变。
+     * 找不到就如实返回原格，由既有规则判死 —— <b>不伪造终点</b>。</p>
+     *
+     * <p>⚠ 两条不能动的取舍（我各踩过一次）：
+     * ① 不要要求"候选 bed 低于种子"——种子通常正是局部最低点，会永远选不出；
+     * ② 不要只按坡降率择优——会选到坑外远处陡坡，等于让河先翻山。</p>
+     *
+     * @param covered 已被占用格（改选时避开，避免起点一落地就 JOIN）
+     * @return 实际起链格；始终落在 {@code start} 的 1 格窗口内
+     */
+    static int bestHandoffStart(int start, double[] bed, int nx, int nz, boolean[] covered) {
+        if (bed == null) return start;
+        if (strictD8Next(start, bed, nx, nz) >= 0) return start;
+        int ci = start / nz, cj = start % nz;
+        int best = start;
+        double bestRise = Double.POSITIVE_INFINITY;
+        double bestSlope = 0;
+        for (int[] d : EQUAL_DIRS8) {
+            int a = ci + d[0], b = cj + d[1];
+            if (a < 0 || b < 0 || a >= nx || b >= nz) continue;
+            int c = a * nz + b;
+            if (covered != null && covered[c]) continue;
+            int next = strictD8Next(c, bed, nx, nz);
+            if (next < 0) continue;                       // 改选后仍走不动 ⇒ 无意义
+            // ★ 候选的"下坡目标"若就是坑底自己，等于原地打转（探针②抓到的第二处错）。
+            if (next == start) continue;
+            // ★ 与 legacy 同口径：不要求"候选比坑底更低"（坑底通常就是局部最低点，
+            //   那会永远选不出）。但**必须限制抬升量** —— 否则会选到坑外远处的陡坡，
+            //   等于为了找出路让河先爬一座山（本探针②抓住的错）。
+            //   取舍：先取抬升最小者；抬升相同再按坡降率取更顺的。
+            double rise = bed[c] - bed[start];
+            if (rise > HANDOFF_MAX_RISE + 1e-9) continue;
+            double slope = (bed[c] - bed[next]) / Math.hypot(d[0], d[1]);
+            if (rise < bestRise - 1e-12 || (Math.abs(rise - bestRise) <= 1e-12 && slope > bestSlope)) {
+                bestRise = Math.max(0, rise);
+                bestSlope = slope;
+                best = c;
+            }
+        }
+        return best;
     }
 
     /**
@@ -1078,6 +1230,18 @@ public final class DeterministicSkeleton {
                             lakeMask[start] ? End.MOUTH_LAKE : End.MOUTH_SEA));
                     continue;
                 }
+                // ★★★ 2026-10-22【接力起点容错（移植 legacy bestHandoffStart）】★★★
+                //   种子可能恰落局部极小 ⇒ 续流第一步就走不动 ⇒ 缝那侧有河、这侧没有。
+                //   只对【接力】生效，并在改选后重走上面两道门（占用/湖海），
+                //   避免把起点"挪"进别人的格或水体里。改选失败则保留原格、如实判死。
+                if (fromIncoming && HANDOFF_START && bed != null) {
+                    int moved = bestHandoffStart(start, bed, nx, nz, covered);
+                    if (moved != start && !covered[moved] && !lakeMask[moved] && !sea[moved]) {
+                        if (incomingDiag != null) incomingDiag.add(new IncomingDiagnostic(
+                                start, "HANDOFF_MOVED", 0, moved, null));
+                        start = moved;
+                    }
+                }
                 int stamp = ++stampBox[0];
                 Trace t = traceOne(start, fromOutlet, fromIncoming, level, parent, resolved,
                         lakeMask, sea, covered, nx, nz, params.joinWindow(),
@@ -1092,11 +1256,7 @@ public final class DeterministicSkeleton {
                 if (params.minSourceSpacingCells() > 0) {
                     registerTraceNodes(occupied, t.cell, nz, BUCKET);
                 }
-                // ★ 交叉守卫用：登记本链的全部线段（格坐标），供后续 nearbyJoin 判"连线是否横穿"
-                for (int si = 1; si < t.cell.length; si++) {
-                    int a0 = t.cell[si - 1], b0 = t.cell[si];
-                    segments.add(new int[]{a0 / nz, a0 % nz, b0 / nz, b0 % nz});
-                }
+                registerSegments(t, nz, outside, segments);
             }
         }
         // ★★★ 2026-10-10【网络级连通性过滤 —— ★「河网是一棵树」★（用户核心要求）】★★★
@@ -1146,6 +1306,22 @@ public final class DeterministicSkeleton {
                 incomingStarts, exitSeeds, filterOn, droppedNetwork);
         if (incomingDiag != null) result.incomingDiagnostics = List.copyOf(incomingDiag);
         return result;
+    }
+
+    /** 交叉守卫使用同一有序路径，不把出窗格直接连到再入窗格。 */
+    static void registerSegments(Trace trace, int nz, OutsideContinuation outside, List<int[]> segments) {
+        for (int i = 1; i < trace.geometryPrefixNodes; i++) {
+            int a = trace.cell[i - 1], b = trace.cell[i];
+            segments.add(new int[]{a / nz, a % nz, b / nz, b % nz});
+        }
+        if (outside == null || !trace.hasOutsideTail()) return;
+        int last = trace.cell[trace.geometryPrefixNodes - 1];
+        int x = last / nz, z = last % nz;
+        for (int i = 0; i < trace.outsideTail.length; i += 2) {
+            int nx = (int) Math.round((trace.outsideTail[i] - outside.originX()) / outside.step());
+            int nz0 = (int) Math.round((trace.outsideTail[i + 1] - outside.originZ()) / outside.step());
+            segments.add(new int[]{x, z, nx, nz0}); x = nx; z = nz0;
+        }
     }
 
     /**
@@ -1402,8 +1578,25 @@ public final class DeterministicSkeleton {
         List<Integer> path = new ArrayList<>();
         int k = start;
         End end = End.DEAD_END;
+        String stopReason = "NO_RECEIVER";
+        /**
+         * 2026-10-22【JOIN 归因分离】—— 只读判定，不改变任何路由。
+         *
+         * <p>{@code End.JOIN} 有三条产生边，语义完全不同：</p>
+         * <ul>
+         *   <li>{@link JoinKind#NEARBY}：{@code nearbyJoin} 主动就近汇入（真汇流候选）；</li>
+         *   <li>{@link JoinKind#PARENT}：沿下游走到【别的链】已占格（树语义并流）；</li>
+         *   <li>{@link JoinKind#SELF}：目标格属于本链自己 —— <b>这不是汇流</b>，
+         *       是绕回自身，被 {@code covered[]} 误当成"已并入"；</li>
+         *   <li>{@link JoinKind#OUTLET_ESCAPE}：溢口首步逃逸后落到已占格。</li>
+         * </ul>
+         * <p>此前这三类在日志里都只显示 {@code JOIN}，导致「54.5% 汇流率」无法判断
+         * 真假，也无法解释图上窗口边框处的水平长直。</p>
+         */
+        JoinKind joinKind = null;
         // 窗口外续流的世界坐标尾段（只有走出窗口时非空）。
         double[] outsideTail = new double[0];
+        int geometryPrefixNodes = -1;
         // 严格 D8 的"本链已走过"集合（洼地溢流搜索用，惰性创建）。
         java.util.Set<Integer> strictVisited = null;
         // ★ 阶段 B：惯性方向（上一步格步的单位向量）。一阶状态 ⇒ 随链携带、不引入窗口依赖。
@@ -1448,7 +1641,17 @@ public final class DeterministicSkeleton {
             if (fromOutlet && path.size() == 1) {
                 int esc = outletEscape(k, level, resolved, lakeMask, sea, nx, nz);
                 if (esc >= 0 && esc != k) {
-                    if (covered[esc]) { path.add(esc); end = End.JOIN; break; }
+                    if (covered[esc]) {
+                        boolean selfTarget = selfStamp[esc] == stamp;
+                        if (selfTarget && SELF_JOIN_FIX) {
+                            joinKind = JoinKind.SELF;
+                            stopReason = "SELF_JOIN";
+                            end = End.DEAD_END;
+                            break;
+                        }
+                        joinKind = selfTarget ? JoinKind.SELF : JoinKind.OUTLET_ESCAPE;
+                        path.add(esc); end = End.JOIN; break;
+                    }
                     if (sea[esc]) { path.add(esc); newlyClaimed++; covered[esc] = true; end = End.MOUTH_SEA; break; }
                     k = esc;
                     continue;
@@ -1460,6 +1663,16 @@ public final class DeterministicSkeleton {
             int join = nearbyJoin(level, k, nx, nz, covered, joinWindow, selfStamp, stamp,
                     segments, bed);
             if (join >= 0 && !ownSegments.crosses(k, join)) {
+                // ★ 2026-10-22【修复 A】：`nearbyJoin` 已排除自己，这里再守一道，
+                //   防止将来改动该判据时静默退化成"自汇"。绕回自己不是汇流。
+                boolean selfTarget = selfStamp[join] == stamp;
+                if (selfTarget && SELF_JOIN_FIX) {
+                    joinKind = JoinKind.SELF;
+                    stopReason = "SELF_JOIN";
+                    end = End.DEAD_END;
+                    break;
+                }
+                joinKind = selfTarget ? JoinKind.SELF : JoinKind.NEARBY;
                 path.add(join);
                 end = End.JOIN;
                 break;
@@ -1495,7 +1708,36 @@ public final class DeterministicSkeleton {
                 }
                 if (s >= 0) {
                     p = s;
-                    // 更新惯性：本次迈步方向（格步，非块步 —— 只用于点积择优）
+                    // ★★★ 2026-10-22【修复 B：边框处优先出窗，禁止沿边框横向延伸】★★★
+                    //
+                    // 【实测根因（owner(-1,0)，seed 9139912035078620160）】reach#0 沿 x=-458
+                    //   南下到 z=608（窗口最后一行）后，**在行内横走 292 块**（128 个节点）。
+                    //   实测同一段窗外地形：x=-456 窗内 64.315 / 窗外 64.296；
+                    //   x=-442 64.273/64.254；x=-386 64.131/64.115 ⇒ **窗外一律更低**。
+                    //   即：水本该继续南下，只因为 `vectorTraceNext` 的 8 邻越界检查
+                    //   跳过了窗外候选，只能在【行内】找更低的格 ⇒ 横向长直伪影。
+                    // 【修法】站在边框格上且该步仍在边框行/列内移动时，改走窗外续流
+                    //   （`continueOutside` 用真实世界地形下降，且已有跨区尾段接线）。
+                    // 【不变】不伪造终点：续流失败即回落到原步（记录 willStepOffFrame=false）。
+                    if (FRAME_ESCAPE && outside != null) {
+                        int ki = k / nz, kj = k % nz;
+                        boolean onFrameNow = ki == 0 || kj == 0 || ki == nx - 1 || kj == nz - 1;
+                        if (onFrameNow) {
+                            Continuation cont = continueOutside(k, level, lakeMask, sea, nx, nz, outside);
+                            // 只有当【窗外确实能继续下降】时才改走室外；
+                            // 否则保留原步（不得因为站在边框就强行终止一条正常链）。
+                            if (cont != null && cont.end() != End.DEAD_END) {
+                                geometryPrefixNodes = path.size() + cont.prefixNodes();
+                                for (int oc : cont.path()) {
+                                    path.add(oc);
+                                    if (oc >= 0 && oc < cells) covered[oc] = true;
+                                }
+                                end = cont.end();
+                                outsideTail = cont.outsideTail();
+                                break;
+                            }
+                        }
+                    }
                     int ki = k / nz, kj = k % nz, si = p / nz, sj = p % nz;
                     double dx = si - ki, dz = sj - kj;
                     double dl = Math.hypot(dx, dz);
@@ -1533,6 +1775,7 @@ public final class DeterministicSkeleton {
                 if (outside != null) {
                     Continuation cont = continueOutside(k, level, lakeMask, sea, nx, nz, outside);
                     if (cont != null) {
+                        geometryPrefixNodes = path.size() + cont.prefixNodes();
                         for (int oc : cont.path()) {
                             path.add(oc);
                             if (oc >= 0 && oc < cells) covered[oc] = true;
@@ -1554,7 +1797,9 @@ public final class DeterministicSkeleton {
             //   而骨架走的是 parent 链 —— 其无环与 level 单调性是【构造性质】，
             //   与水位可信度无关。legacy 场（真实地形+ε）处处有定义 ⇒ 从不因此断河。
             // 【正解】继续沿 parent 走到底；未决只影响水位/湖判定（另一层）。
-            if ((lakeMask[p] || sea[p] || covered[p]) && ownSegments.crosses(k, p)) { end = End.DEAD_END; break; }
+            if ((lakeMask[p] || sea[p] || covered[p]) && ownSegments.crosses(k, p)) {
+                stopReason = "SELF_CROSS_BEFORE_WATER_OR_JOIN"; end = End.DEAD_END; break;
+            }
             if (lakeMask[p]) {
                 // ★★★ 2026-10-10【入湖锚点延伸（legacy {@code LAKE_ANCHOR_EXT} 同义）】★★★
                 //
@@ -1579,6 +1824,26 @@ public final class DeterministicSkeleton {
             }
             if (covered[p]) {
                 // 沿 parent 正好走到 covered ⇒ 并入（共享节点，树语义）
+                // #region agent log: C 区分「并入别的链」与「绕回自己」——后者不是汇流
+                joinKind = selfStamp[p] == stamp ? JoinKind.SELF : JoinKind.PARENT;
+                if (selfStamp[p] == stamp) stopReason = "SELF_JOIN";
+                // #endregion
+                if (selfStamp[p] == stamp && SELF_JOIN_FIX) {
+                    // ★★★ 2026-10-22【修复 A：绕回自己不是汇流】★★★
+                    //
+                    // 【实测依据（owner(-1,0)，922 条 trace）】`End.JOIN` 里 **15.5%（74 条）**
+                    //   的终点属于【本链自己】：源→终点中位 44 块、最大 384 块；
+                    //   走的格数中位 27、最大 217 ⇒ 「走了两百多格后回到自己」也被记成合法汇流。
+                    // 【后果】① 图上悬空短棒/自我成环被当作已汇入，`fromOutlet` 豁免还让它发布；
+                    //   ② 汇流率虚高 15.5%，掩盖真自交；③ 审计里大量 BROKEN_JOIN
+                    //   （终点只被自己包含，没有任何下游段承载）。
+                    // 【正解】绕回自己 = 有向闭环，不是并流 ⇒ 如实记 DEAD_END，
+                    //   由既有回滚/网络过滤决定去留；**不追加 path.add(p)**，
+                    //   否则几何会把"回到自己"画成一笔折返。
+                    // ⚠ 牛轭湖语义允许【几何靠近】自身，但那是 shape 的事，不能冒充拓扑汇流。
+                    end = End.DEAD_END;
+                    break;
+                }
                 path.add(p);
                 end = End.JOIN;
                 break;
@@ -1629,10 +1894,11 @@ public final class DeterministicSkeleton {
                 // 无更低 bed 邻居（真平台）⇒ 沿 parent（径向兜底）
             }
             // ★ 步骤级交叉守卫（parent 迈步；同 PL-RGA wouldCross）
-            if (ownSegments.crosses(k, p)) { end = End.DEAD_END; break; }
+            if (ownSegments.crosses(k, p)) { stopReason = "SELF_CROSS"; end = End.DEAD_END; break; }
             if (STEP_CROSS_GUARD && !segments.isEmpty()) {
                 int ki = k / nz, kj = k % nz, pi = p / nz, pj = p % nz;
                 if (segmentCrossesAny(ki, kj, pi, pj, segments)) {
+                    stopReason = "OTHER_CROSS";
                     end = End.DEAD_END;
                     break;
                 }
@@ -1642,7 +1908,7 @@ public final class DeterministicSkeleton {
             if (!STRICT_D8 && FLAT_BREAK && bed != null && Math.abs(level[p] - level[k]) <= 1e-9
                     && bed[p] > bed[k] + 1e-9) escapeLevel = level[k];
             k = p;
-            if (path.size() > cells) { end = End.DEAD_END; break; }  // 防御
+            if (path.size() > cells) { stopReason = "STEP_LIMIT"; end = End.DEAD_END; break; }  // 防御
             // ★★★ 2026-10-10【自贴近守卫（legacy selfApproach 同义）】★★★
             //
             // 【用户判据（2026-10-10）】「河流/支流还会反复和其他分支交叉，类似重叠的情况」。
@@ -1657,6 +1923,7 @@ public final class DeterministicSkeleton {
             if (params.selfApproachRadius() > 0
                     && selfApproach(selfStamp, selfStep, stamp, p, nx, nz,
                             params.selfApproachRadius(), path.size(), params.selfApproachExempt())) {
+                stopReason = "SELF_APPROACH";
                 end = End.DEAD_END;
                 break;
             }
@@ -1691,7 +1958,12 @@ public final class DeterministicSkeleton {
         boolean orphanDeadEnd = (end == End.DEAD_END) && !fromOutlet && !onFrame;
         boolean connectedIncoming = fromIncoming && path.size() >= 2
                 && (end == End.MOUTH_LAKE || end == End.MOUTH_SEA || end == End.JOIN || onFrame);
-        if (((path.size() < minNodes && !connectedIncoming) || orphanDeadEnd) && !fromOutlet) {
+        boolean rollback = ((path.size() < minNodes && !connectedIncoming) || orphanDeadEnd) && !fromOutlet;
+        // #region agent log: B 记录每次追踪，包含回滚而非只数最终保留链
+        if (Boolean.getBoolean("geogenesis.lifecycleDiag")) lifecycleLog(start, mn, nz, path.size(),
+                fromOutlet, fromIncoming, end, stopReason, rollback, onFrame, outside, joinKind);
+        // #endregion
+        if (rollback) {
             // #region agent log: R5 回滚原因与终点，只读不改追踪
             if (incomingDiag != null) incomingDiag.add(new IncomingDiagnostic(start,
                     path.size() < minNodes ? "SHORT" : "ORPHAN_DEAD_END", path.size(), mn, end));
@@ -1708,8 +1980,32 @@ public final class DeterministicSkeleton {
         }
         if (incomingDiag != null) incomingDiag.add(
                 new IncomingDiagnostic(start, "ACCEPTED", path.size(), mn, end));
-        return new Trace(toArray(path), end, fromOutlet, outsideTail, flattenCont(contPts, path.size()));
+        return new Trace(toArray(path), end, fromOutlet, outsideTail, flattenCont(contPts, path.size()),
+                geometryPrefixNodes < 0 ? path.size() : geometryPrefixNodes);
     }
+
+    // #region agent log: B 临时只读取证，不改变追踪/回滚/过滤策略
+    private static synchronized void lifecycleLog(int start, int mouth, int nz, int nodes,
+            boolean outlet, boolean incoming, End end, String reason, boolean rollback,
+            boolean frame, OutsideContinuation outside, JoinKind joinKind) {
+        if (outside == null) return;
+        String line = String.format(java.util.Locale.ROOT,
+                "{\"hypothesisId\":\"B\",\"location\":\"traceOne\",\"ox\":%d,\"oz\":%d,"
+                + "\"sourceX\":%d,\"sourceZ\":%d,\"mouthX\":%d,\"mouthZ\":%d,"
+                + "\"nodes\":%d,\"outlet\":%b,\"incoming\":%b,\"end\":\"%s\","
+                + "\"reason\":\"%s\",\"joinKind\":\"%s\",\"rollback\":%b,\"frame\":%b}%n",
+                outside.originX(), outside.originZ(), outside.originX()+start/nz*outside.step(),
+                outside.originZ()+start%nz*outside.step(), outside.originX()+mouth/nz*outside.step(),
+                outside.originZ()+mouth%nz*outside.step(), nodes, outlet, incoming, end,
+                end == End.DEAD_END || "SELF_JOIN".equals(reason) ? reason : end.name(),
+                joinKind == null ? "-" : joinKind.name(), rollback, frame);
+        try {
+            java.nio.file.Files.writeString(java.nio.file.Path.of(
+                    "D:/Office software/Development Project/GeoGenesis-mod/debug-agent.log"), line,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
+    }
+    // #endregion
 
     /**
      * 自贴近判据（legacy {@code selfApproach} 同义，2026-10-10）：
@@ -2007,14 +2303,14 @@ public final class DeterministicSkeleton {
         //     该链已登记过 ⇒ 两条链在该格产出【逐位相同】的锚点。
         java.util.Map<Integer, double[]> anchorTable = new java.util.HashMap<>();
         for (Trace t : traces) {
-            int m = t.cell.length;
+            int m = t.geometryPrefixNodes;
             // ★★★ 2026-10-10【必须保索引对齐（否则下游全部读错对象）】★★★
             // 原写法 `if (m < 2) continue;` 会让 shaped 与 traces 的【下标不再对应】——
             //   `ModelHydrologyProvider` 里 `shaped.get(i)` ↔ `sk.traces.get(i)`
             //   （端点缝合、SKEL-DUMP 归因、JOIN 诊断）全部错位。
             //   实测后果：JOIN 点到"所属链"的距离出现 8/8、10/10 全 far 的假结论。
             // ⇒ 改为【发一个空折线占位】，下标恒等。
-            if (m < 2) {
+            if (m + t.outsideTail.length / 2 < 2) {
                 out.add(new Shaped(new double[0], new double[0]));
                 continue;
             }

@@ -439,8 +439,24 @@ public class PreviewDisplay extends AbstractWidget {
     //       河段长度下限 skeletonMinNodes 6 → 14。河格 +51%、参照覆盖率 +8.4pt；
     //       同时把参数派生收敛到 ModelHydrologyProvider.productionParams 单一来源。
     //       产出河网整体变化 ⇒ 旧缓存必须失效。
+    // 101 = 2026-10-22 本区/邻区落块保留 SegmentIndex 的真实穿块命中，移除重复格心距离筛选。
+    //       不改河线、半宽或水位，恢复被误丢的穿块列；旧预览缓存必须失效。
+    // 102 = 2026-10-22 窗外续流保留出窗/再入窗的真实顺序，单点窗外尾段也参与几何。
+    //       cell 保留再入窗拓扑终点，几何仅用出窗前缀接有序世界尾段，避免重排长弦。
+    // 103 = 2026-10-22 本区/邻区边界带改为闭区间（低侧原漏一整行）。实测南北接缝 z=regLoZ+HALO
+    //       处已有邻区几何却不查询 ⇒ 294 列不雕刻不出水；河列与相邻 region 接缝恢复。
+    // 104 = 2026-10-22 移植 legacy bestHandoffStart：接力种子落局部极小时在 1 格窗口内
+    //       改选有真实下坡的格，避免"种子到了却起链即死"（缝那侧有河这侧没有）。
+    //       仅作用于【接力】起点，不改变源头/溢口，也不伪造终点（默认样例 0 次触发）。
+    // 105 = 2026-10-22 JOIN 归因分离（JoinKind，只读）+ 修复 A 开关入库。**产出未变**：
+    //       修复 A 单变量 A/B 实测开启后水平长直 26→32 条（新增 z=96/-416/-88 数条），
+    //       用户要治的 z=608 两条一字未变 ⇒ 默认关闭，保持既有产出。
+    // 106 = 2026-10-22 修复 B 开关入库（frameEscape）。**产出未变**：实测从边框格按窗外
+    //       真实地形下降 92 步停在 (-366,653)，该处 8 邻全更高（真实洼地）⇒ 窗外续流
+    //       如实返回 null，开关开/关产出一致。真相是「边框横向长直」+「窗外洼地」叠加，
+    //       需先有盆/溢流出口才能修。默认关闭。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 100;
+    private static final int CACHE_SCHEMA_VERSION = 106;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
