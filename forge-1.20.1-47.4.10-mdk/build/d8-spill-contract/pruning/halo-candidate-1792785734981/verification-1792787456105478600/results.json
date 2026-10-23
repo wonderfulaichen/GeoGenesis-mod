@@ -1,0 +1,59 @@
+{
+  "runs": [
+    {
+      "label": "compile",
+      "exit": 0
+    },
+    {
+      "label": "HaloComponentProbe",
+      "exit": 0
+    },
+    {
+      "label": "PruneDisconnectedProbe",
+      "exit": 0
+    },
+    {
+      "label": "PruneLengthChainProbe",
+      "exit": 0
+    },
+    {
+      "label": "bypass-compile",
+      "exit": 0
+    },
+    {
+      "label": "bypass-run",
+      "exit": 1
+    },
+    {
+      "label": "no-core-protection-compile",
+      "exit": 0
+    },
+    {
+      "label": "no-core-protection-run",
+      "exit": 1
+    },
+    {
+      "label": "incoming-source-only-compile",
+      "exit": 0
+    },
+    {
+      "label": "incoming-source-only-run",
+      "exit": 1
+    },
+    {
+      "label": "upper-inclusive-compile",
+      "exit": 0
+    },
+    {
+      "label": "upper-inclusive-run",
+      "exit": 1
+    }
+  ],
+  "protectedBefore": {
+    "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\DeterministicSkeleton.java": "62a75dceee25aa5315886d1345353f923254520042fedafe6499e5a379f862ff",
+    "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\ModelHydrologyProvider.java": "43a25a9a145e3c38fc0a0a825b684d9271552e9564d3e8366390b434aadd6e08",
+    "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\run\\config\\geogenesis-common.toml": "8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3"
+  },
+  "protectedUnchanged": true,
+  "scope": "113 halo cases, existing37+16 regression, four compile-success assertion-negative controls; not world determinism."
+}

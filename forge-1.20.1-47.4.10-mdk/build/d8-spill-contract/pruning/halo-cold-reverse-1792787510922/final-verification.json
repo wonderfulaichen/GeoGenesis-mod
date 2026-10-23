@@ -1,0 +1,150 @@
+{
+  "status": "REVERSE_EQUIVALENCE_PASS_ORIGINAL_SHAPE_STILL_RED",
+  "reverseComparison": "REVERSE_COLD_IDENTICAL",
+  "requiredIdentical": "90/90",
+  "failures": [],
+  "codeSource": {
+    "ModelHydrologyProvider": {
+      "forwardSHA256": "dcae58e78e7da674e317871dce91d19a44b90ac89cc0f581fc14539985560fa4",
+      "reverseSHA256": "dcae58e78e7da674e317871dce91d19a44b90ac89cc0f581fc14539985560fa4",
+      "same": true,
+      "forwardSource": [
+        "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/classes/"
+      ],
+      "reverseSource": [
+        "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/classes/"
+      ]
+    },
+    "DeterministicSkeleton": {
+      "forwardSHA256": "46052018e25165999527942303999582eeeca3fc66766447a661fb9d3670b7d9",
+      "reverseSHA256": "46052018e25165999527942303999582eeeca3fc66766447a661fb9d3670b7d9",
+      "same": true,
+      "forwardSource": [
+        "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/classes/"
+      ],
+      "reverseSource": [
+        "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/classes/"
+      ]
+    },
+    "CellGenerator": {
+      "forwardSHA256": "4d56e0f4ea92054b3df7e44a197a5e221068a26ec7f64e30e77ee3785d86218d",
+      "reverseSHA256": "4d56e0f4ea92054b3df7e44a197a5e221068a26ec7f64e30e77ee3785d86218d",
+      "same": true,
+      "forwardSource": [
+        "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/classes/java/main/"
+      ],
+      "reverseSource": [
+        "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/classes/java/main/"
+      ]
+    }
+  },
+  "codeSourceRowsCompared": 3,
+  "codeSourceGaps": [
+    {
+      "rowClass": "BoundaryPort",
+      "presentForward": true,
+      "presentReverse": false,
+      "reason": "Class line absent from the mandated exporter provenance; NOT compared and NOT counted as equal."
+    },
+    {
+      "rowClass": "OrderedSpillSearch",
+      "presentForward": true,
+      "presentReverse": false,
+      "reason": "Class line absent from the mandated exporter provenance; NOT compared and NOT counted as equal."
+    },
+    {
+      "rowClass": "GeoGenesisConfig",
+      "presentForward": true,
+      "presentReverse": false,
+      "reason": "Class line absent from the mandated exporter provenance; NOT compared and NOT counted as equal."
+    },
+    {
+      "rowClass": "ShortRiverAudit",
+      "presentForward": true,
+      "presentReverse": false,
+      "reason": "Class line absent from the mandated exporter provenance; NOT compared and NOT counted as equal."
+    },
+    {
+      "rowClass": "CachedBaseEvidence",
+      "presentForward": true,
+      "presentReverse": false,
+      "reason": "Class line absent from the mandated exporter provenance; NOT compared and NOT counted as equal."
+    }
+  ],
+  "auditHelperClasses": {
+    "ShortRiverAudit": {
+      "reverseSHA256": "0eb783631178e60eeca87cf7cd5f8a0e584f23ace1455e525ab86b8a8527828b",
+      "forwardSHA256": "0eb783631178e60eeca87cf7cd5f8a0e584f23ace1455e525ab86b8a8527828b",
+      "byteIdentical": true
+    },
+    "CachedBaseEvidence": {
+      "reverseSHA256": "ff6abd3542ab860fcd9cea15979e8b0dde842b3858f228a78bfac5fd9099e872",
+      "forwardSHA256": "ff6abd3542ab860fcd9cea15979e8b0dde842b3858f228a78bfac5fd9099e872",
+      "byteIdentical": true
+    }
+  },
+  "coverageGaps": [
+    {
+      "file": "trace-arrays.csv",
+      "presentInReverseRun": false,
+      "reason": "Generated only by HaloAudit (observation wrapper), which this run was not permitted to use. Not compared and NOT counted as a match."
+    },
+    {
+      "file": "cache-owners.csv",
+      "presentInReverseRun": false,
+      "reason": "Generated only by HaloAudit (observation wrapper), which this run was not permitted to use. Not compared and NOT counted as a match."
+    }
+  ],
+  "protectedFiles": 21666,
+  "protectedUnchanged": true,
+  "changedProtected": [],
+  "config": {
+    "originalRuntimeToml": {
+      "path": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\run\\config\\geogenesis-common.toml",
+      "sha256AtAuditStart": "8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3",
+      "sha256Now": "8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3",
+      "unchanged": true
+    },
+    "copiedIntoRunDirectory": true,
+    "copySHA256": "8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3",
+    "runInputConfig": {
+      "path": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-cold-reverse-1792787510922\\audit\\config-input.toml",
+      "sha256": "8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3"
+    },
+    "effectiveConfig": {
+      "path": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-cold-reverse-1792787510922\\audit\\config-effective.toml",
+      "sha256": "cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f"
+    },
+    "originalTomlPassedToFileConfig": false,
+    "loadedConfig": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-cold-reverse-1792787510922\\audit\\config-effective.toml",
+    "copyMatchesOriginalRuntime": true
+  },
+  "candidate": {
+    "sourceSHA256": "62a75dceee25aa5315886d1345353f923254520042fedafe6499e5a379f862ff",
+    "providerSHA256": "43a25a9a145e3c38fc0a0a825b684d9271552e9564d3e8366390b434aadd6e08",
+    "prepareSourceSHA256": "62a75dceee25aa5315886d1345353f923254520042fedafe6499e5a379f862ff",
+    "prepareProviderSHA256": "43a25a9a145e3c38fc0a0a825b684d9271552e9564d3e8366390b434aadd6e08",
+    "candidateCompileExit": 0,
+    "classDS": "46052018e25165999527942303999582eeeca3fc66766447a661fb9d3670b7d9",
+    "classProvider": "dcae58e78e7da674e317871dce91d19a44b90ac89cc0f581fc14539985560fa4",
+    "sourceUnchanged": true,
+    "providerUnchanged": true
+  },
+  "scope": {
+    "regionExpansion": false,
+    "recursiveFinalCalls": false,
+    "extraPass2": false,
+    "budgetWidthDepthChanges": false,
+    "ownerCount": 7,
+    "note": "ShortRiverAudit reads each owner final skeleton and cached P1 only; no other final asked."
+  },
+  "originalRedPreserved": {
+    "haloRealRunnerExit": 1,
+    "haloRealAnalysisExit": 1,
+    "haloRealAnalysisExpected": 0,
+    "unchangedByThisAudit": true,
+    "note": "Original exact-shape FAIL and its expected=0 remain untouched; not re-run, not re-scored."
+  },
+  "determinismScope": "Finite: seven FINAL owners, one cold reverse-order JVM vs the earlier forward-order run. Not a global/all-world or Forge determinism claim.",
+  "exitPolicy": "exit0 only because every required table and all compared code-source rows are identical; coverage gaps are listed and excluded from the count, not treated as matches."
+}

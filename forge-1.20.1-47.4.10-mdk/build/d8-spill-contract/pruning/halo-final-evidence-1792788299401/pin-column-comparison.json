@@ -1,0 +1,191 @@
+{
+  "patches": [
+    {
+      "center": [
+        -318,
+        96
+      ],
+      "bounds": [
+        -330,
+        84,
+        -306,
+        108
+      ],
+      "oldWet": 39,
+      "newWet": 39,
+      "added": 0,
+      "removed": 0,
+      "allFieldChanged": 0,
+      "connectivity": [
+        {
+          "neighbors": 4,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        },
+        {
+          "neighbors": 8,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        }
+      ]
+    },
+    {
+      "center": [
+        -382,
+        96
+      ],
+      "bounds": [
+        -394,
+        84,
+        -370,
+        108
+      ],
+      "oldWet": 44,
+      "newWet": 44,
+      "added": 0,
+      "removed": 0,
+      "allFieldChanged": 0,
+      "connectivity": [
+        {
+          "neighbors": 4,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        },
+        {
+          "neighbors": 8,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        }
+      ]
+    },
+    {
+      "center": [
+        -220,
+        96
+      ],
+      "bounds": [
+        -232,
+        84,
+        -208,
+        108
+      ],
+      "oldWet": 25,
+      "newWet": 25,
+      "added": 0,
+      "removed": 0,
+      "allFieldChanged": 0,
+      "connectivity": [
+        {
+          "neighbors": 4,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        },
+        {
+          "neighbors": 8,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        }
+      ]
+    },
+    {
+      "center": [
+        -708,
+        96
+      ],
+      "bounds": [
+        -720,
+        84,
+        -696,
+        108
+      ],
+      "oldWet": 36,
+      "newWet": 36,
+      "added": 0,
+      "removed": 0,
+      "allFieldChanged": 0,
+      "connectivity": [
+        {
+          "neighbors": 4,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        },
+        {
+          "neighbors": 8,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        }
+      ]
+    },
+    {
+      "center": [
+        -740,
+        96
+      ],
+      "bounds": [
+        -752,
+        84,
+        -728,
+        108
+      ],
+      "oldWet": 29,
+      "newWet": 28,
+      "added": 0,
+      "removed": 1,
+      "allFieldChanged": 1,
+      "connectivity": [
+        {
+          "neighbors": 4,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        },
+        {
+          "neighbors": 8,
+          "oldComponents": 1,
+          "newComponents": 1,
+          "oldGroupsSplitAmongSurvivingWetPixels": []
+        }
+      ]
+    }
+  ],
+  "columnDeltas": [
+    {
+      "patch": -740,
+      "x": -739,
+      "z": 94,
+      "old": {
+        "patch": "-740",
+        "x": "-739",
+        "z": "94",
+        "ground": "146.33231065643224",
+        "surface": "147.33480757719974",
+        "lip": "147.33480757719974",
+        "type": "1",
+        "lake": "false",
+        "kind": "3",
+        "blocks": "1"
+      },
+      "new": {
+        "patch": "-740",
+        "x": "-739",
+        "z": "94",
+        "ground": "147.33231065643224",
+        "surface": "147.33480757719974",
+        "lip": "147.33480757719974",
+        "type": "0",
+        "lake": "false",
+        "kind": "0",
+        "blocks": "0"
+      }
+    }
+  ],
+  "scope": "Five actual-production 25x25 patches around changed pin controls. Pixel connectivity only, not hydraulic or whole-river proof. Strict shape identity still FAIL."
+}
