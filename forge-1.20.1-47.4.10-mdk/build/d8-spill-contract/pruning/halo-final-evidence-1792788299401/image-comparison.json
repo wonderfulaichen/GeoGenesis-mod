@@ -1,0 +1,303 @@
+{
+  "vs949": {
+    "baseline": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\hydro-production\\prod-1792781015668\\production.png",
+    "baselineSHA256": "634bb7022b1ca678b56004ed0359857b26fa9c8ba864d71bc5b5fe3022f582d6",
+    "baselineConsumedConfig": "provenance toml = run/config/geogenesis-common.toml",
+    "candidate": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\hydro-production\\prod-1792788395219\\production.png",
+    "candidateSHA256": "1dcc412bef442b2a4df4f2ee833f31d06705a2b3af874a19517d70b60995a058",
+    "candidateConsumedConfig": "provenance toml = run/config/geogenesis-common.toml",
+    "size": [
+      1401,
+      1401
+    ],
+    "byteIdentical": false,
+    "categories": {
+      "river": {
+        "baseline": 36560,
+        "candidate": 35788,
+        "delta": -772,
+        "relativeChangePercent": -2.111597374179431,
+        "baselineImagePercent": 1.8626442517606216,
+        "candidateImagePercent": 1.8233127046501403,
+        "added": 5,
+        "removed": 777
+      },
+      "lake": {
+        "baseline": 91336,
+        "candidate": 91336,
+        "delta": 0,
+        "relativeChangePercent": 0.0,
+        "baselineImagePercent": 4.653349983008975,
+        "candidateImagePercent": 4.653349983008975,
+        "added": 0,
+        "removed": 0
+      },
+      "sea": {
+        "baseline": 452661,
+        "candidate": 452661,
+        "delta": 0,
+        "relativeChangePercent": 0.0,
+        "baselineImagePercent": 23.061991511110907,
+        "candidateImagePercent": 23.061991511110907,
+        "added": 0,
+        "removed": 0
+      },
+      "dryGray": {
+        "baseline": 1382244,
+        "candidate": 1383016,
+        "delta": 772,
+        "relativeChangePercent": 0.05585121006132058,
+        "baselineImagePercent": 70.42201425411949,
+        "candidateImagePercent": 70.46134580122998,
+        "added": 777,
+        "removed": 5
+      }
+    },
+    "exactRGBChangedPixels": 782,
+    "exactRGBChangedPercent": 0.03984102310932183,
+    "unchangedPixels": 1962019,
+    "unchangedPercent": 99.96015897689068,
+    "transitions": {
+      "river->dryGray": 777,
+      "dryGray->river": 5
+    },
+    "commonDryGrayPixels": 1382239,
+    "commonDryGrayRGBChanged": 0,
+    "riverComponents4Connected": {
+      "baseline": 165,
+      "candidate": 149
+    },
+    "riverDensityAllPixelsPercent": {
+      "baseline": 1.8626442517606216,
+      "candidate": 1.8233127046501403
+    },
+    "riverDensityNonSeaPixelsPercent": {
+      "baseline": 2.4209675924086507,
+      "candidate": 2.3698465042976147
+    },
+    "effectiveConfigByteIdentical": true,
+    "terrainParamsByteIdentical": true,
+    "scope": "Exact original 1401-square production RGB comparison; no invented or redrawn rivers; density is water-pixel coverage, not source or skeleton density.",
+    "changedBoundingBoxPixelExclusive": [
+      70,
+      16,
+      1401,
+      1316
+    ],
+    "changedBoundingBoxWorldInclusive": [
+      -770,
+      -547,
+      560,
+      752
+    ],
+    "changedTiles256Top": [
+      {
+        "tile": [
+          1,
+          4
+        ],
+        "changed": 310
+      },
+      {
+        "tile": [
+          1,
+          0
+        ],
+        "changed": 113
+      },
+      {
+        "tile": [
+          3,
+          2
+        ],
+        "changed": 65
+      },
+      {
+        "tile": [
+          3,
+          1
+        ],
+        "changed": 55
+      },
+      {
+        "tile": [
+          5,
+          0
+        ],
+        "changed": 43
+      },
+      {
+        "tile": [
+          0,
+          2
+        ],
+        "changed": 38
+      },
+      {
+        "tile": [
+          2,
+          2
+        ],
+        "changed": 36
+      },
+      {
+        "tile": [
+          1,
+          5
+        ],
+        "changed": 36
+      }
+    ]
+  },
+  "vsOriginal": {
+    "baseline": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\hydro-production\\prod-1792770100074\\production.png",
+    "baselineSHA256": "1af180b4112be6c40698314d7d741f5d42679ec530ccddae3984bf4ea2774988",
+    "baselineConsumedConfig": "provenance toml = build/d8-spill-contract/discovery/layer-render-1792770035536/config-input.toml",
+    "candidate": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\hydro-production\\prod-1792788395219\\production.png",
+    "candidateSHA256": "1dcc412bef442b2a4df4f2ee833f31d06705a2b3af874a19517d70b60995a058",
+    "candidateConsumedConfig": "provenance toml = run/config/geogenesis-common.toml",
+    "size": [
+      1401,
+      1401
+    ],
+    "byteIdentical": false,
+    "categories": {
+      "river": {
+        "baseline": 41128,
+        "candidate": 35788,
+        "delta": -5340,
+        "relativeChangePercent": -12.983855281073721,
+        "baselineImagePercent": 2.0953728880309312,
+        "candidateImagePercent": 1.8233127046501403,
+        "added": 5,
+        "removed": 5345
+      },
+      "lake": {
+        "baseline": 90799,
+        "candidate": 91336,
+        "delta": 537,
+        "relativeChangePercent": 0.5914162050242844,
+        "baselineImagePercent": 4.625991121871245,
+        "candidateImagePercent": 4.653349983008975,
+        "added": 537,
+        "removed": 0
+      },
+      "sea": {
+        "baseline": 452661,
+        "candidate": 452661,
+        "delta": 0,
+        "relativeChangePercent": 0.0,
+        "baselineImagePercent": 23.061991511110907,
+        "candidateImagePercent": 23.061991511110907,
+        "added": 0,
+        "removed": 0
+      },
+      "dryGray": {
+        "baseline": 1378213,
+        "candidate": 1383016,
+        "delta": 4803,
+        "relativeChangePercent": 0.34849475371368577,
+        "baselineImagePercent": 70.21664447898692,
+        "candidateImagePercent": 70.46134580122998,
+        "added": 4808,
+        "removed": 5
+      }
+    },
+    "exactRGBChangedPixels": 5351,
+    "exactRGBChangedPercent": 0.2726206069795155,
+    "unchangedPixels": 1957450,
+    "unchangedPercent": 99.72737939302048,
+    "transitions": {
+      "river->dryGray": 4808,
+      "river->lake": 537,
+      "dryGray->river": 5
+    },
+    "commonDryGrayPixels": 1378208,
+    "commonDryGrayRGBChanged": 1,
+    "riverComponents4Connected": {
+      "baseline": 233,
+      "candidate": 149
+    },
+    "riverDensityAllPixelsPercent": {
+      "baseline": 2.0953728880309312,
+      "candidate": 1.8233127046501403
+    },
+    "riverDensityNonSeaPixelsPercent": {
+      "baseline": 2.723456103407631,
+      "candidate": 2.3698465042976147
+    },
+    "effectiveConfigByteIdentical": true,
+    "terrainParamsByteIdentical": true,
+    "scope": "Exact original 1401-square production RGB comparison; no invented or redrawn rivers; density is water-pixel coverage, not source or skeleton density.",
+    "changedBoundingBoxPixelExclusive": [
+      70,
+      0,
+      1401,
+      1316
+    ],
+    "changedBoundingBoxWorldInclusive": [
+      -770,
+      -563,
+      560,
+      752
+    ],
+    "changedTiles256Top": [
+      {
+        "tile": [
+          1,
+          1
+        ],
+        "changed": 1278
+      },
+      {
+        "tile": [
+          1,
+          0
+        ],
+        "changed": 1179
+      },
+      {
+        "tile": [
+          2,
+          0
+        ],
+        "changed": 808
+      },
+      {
+        "tile": [
+          2,
+          1
+        ],
+        "changed": 646
+      },
+      {
+        "tile": [
+          1,
+          4
+        ],
+        "changed": 336
+      },
+      {
+        "tile": [
+          3,
+          1
+        ],
+        "changed": 243
+      },
+      {
+        "tile": [
+          3,
+          0
+        ],
+        "changed": 130
+      },
+      {
+        "tile": [
+          0,
+          2
+        ],
+        "changed": 113
+      }
+    ]
+  }
+}

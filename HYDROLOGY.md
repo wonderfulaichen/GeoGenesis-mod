@@ -847,7 +847,324 @@ F(C)仍不消费F(B)，所以不只是冷缓存的问题。
   不标“既有/无关”；不放宽断言。此红灯与四区红灯一起随检查点保留，后续仍须查证。
 - 完整WorldgenGate、Forge实机均未运行。检查点是保存未完成工作，不是发布验收版本。
 
-## 一、当前状态（历史快照；新实验状态见〇c—〇p）
+### 〇af、提交后继续：带历史JOIN的反向候选范围（2026-10-23，隔离组件）
+
+本地检查点已完成：`3621c863b60664badf32736bd139b6ac4e76fdbd`，73文件；未推送。
+提交后继续第一关，不改生产/计划/配置：
+
+- 扩展既有 `ContextDependencyProbe`，反射同一个 `nearbyJoin`。对已知目标，枚举以目标为中心、
+  半径=生产joinWindow=2的候选格，每格用给定covered/selfStamp/segments/level执行真实守卫。
+  这是JOIN循环范围反演，不是为样本任意加宽D8或扩大区域发现半径。
+- 全33×33逐格正查作为独立枚举范围oracle；半径2反查集合逐项相等（本fixture22候选）。
+  包含真实SECOND_PASS已复现的(16,16)→(18,16)边；只枚举八邻会漏该前驱。
+  给连接边加交叉段后前驱被拒；把目标标成本链selfStamp后全部拒绝。
+- 最新 `verify-1792748856684593700/results.json`：编译0，两个上下文组件冷JVM各11断言通过，
+  其余组件及冷摘要相同；七源码变异均编译成功并被指定断言捕获。第七变异把反查半径截回1，
+  由全格oracle对照抓红。完整runner仍因四区发现缺口exit1，不将其改为PASS。
+- 仅给定上下文下的**JOIN候选覆盖**得到验证，不能证明上下文本身独立可得、全体incoming完整，
+  也未包含ownSegments二次守卫、PortEgress/typed首步/溢流优先级、跨区溢流或真实湿列；
+  不能把候选集合直接当发布河网。下一步仍需统一这些分支的覆盖证据和历史身份。
+
+### 〇ag、批注14后继续：上下文前缀与typed早退校验（2026-10-23，仍隔离）
+
+- `ContextPrefixProbe` 使用65²解析床面、真实 `DS.build` 和 `productionParams`，三个已给定incoming
+  按锚点排序。完整清单中的目标粗路径可由base＋较早incoming前缀回放；漏掉较早项会改变目标路径。
+  上下文摘要含fixture世界标识/base/prefix/target；**不是生产稳定河身份，也不证明清单完整**。
+- 原候选另复现：incoming已落在base覆盖格时，非相邻next＋零方向可绕过typed校验，仍计merged。
+  原因是covered/水体早退位于 `traceOne` 中首步/方向检查之前；当趟较早incoming覆盖又直接记COVERED。
+- [validate-context.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/validate-context.py)
+  只生成新时间戳副本，未覆盖旧候选/main：在covered/水体前预校验typed；合并时actual next必须与承诺相同；
+  当趟覆盖也走后继审计。后者的authority包含base＋当趟已保留traces，避免JOIN入base后误判无后缀。
+- [ContextValidationProbe.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/ContextValidationProbe.java)：
+  20个非法组合（五种payload×base/空base×水体/非水体）、合法普通/水体/base合并、当趟相同/冲突后继、
+  当趟JOIN入base共50检查。最新两冷JVM摘要逐字节同；基线与四次单项撤修均先compile0，再指定AssertionError红。
+  这里只认证局部payload及声明上下文中的后继，不认证跨窗共同后继或全链无环。
+- 合并发现runner最新证据
+  [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/verify-1792751388622267700/results.json)：
+  四组件各两冷JVM通过/摘要同；九源码变异均compile0后命中指定断言（新增漏前缀、身份漏前缀）。
+  四个多区反例继续exit1，runner整体exit1，`requiredDiscoveryAcceptance=false`。
+
+### 〇ah、最终shape也依赖较晚入流，不能发布前缀结果（2026-10-23）
+
+- 新增 [ContextPublicationProbe.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/ContextPublicationProbe.java)。
+  在上述修复副本调用真实build＋shape：first锚点290，later锚点420；later是同一粗路径上合法相邻承诺，
+  被明确合并且无reject。完整与prefix的粗路径/终点逐位相同，最终shape却由65节点变67节点。
+  把完整traces配prefix pins后又与prefix shape逐位相同，单变量定位为later新增钉点，而非D8选步变化。
+- 原因：`shape` 在所有trace处理前先读完整 `anchorPins`；后来合并的入口也能把较早链内部锚点钉住，
+  改变粒子偏移及CR重采样。粗路径只依赖排序前缀，不代表最终几何也只依赖前缀。
+  **因此前缀回放不能单独作为可发布几何/湿列接口**，必须先得到完整合法钉点依赖及覆盖证据；
+  不以丢钉点、冻结首到者或禁用现有shape机制换绿。该实验是新接口候选的反例，未证明现有固定清单的运行时查询顺序不确定。
+- 两冷JVM均6检查、摘要同。另在STEP2、原点(-29999000,-29999000)及(29998000,29998000)
+  的合法MC范围内复现（节点128→130）；不是完整坐标/溢流/窗口转换验收。
+  去掉shape钉点消费的源码反控先javac0，再命中预期反例断言。最新组件证据：
+  [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/context-validation-1792752195520210900/results.json)，
+  wrapper exit0只表示局部修复及反例检查符合预期，**不覆盖主发现exit1**。
+- 真实provider回归：复制原run TOML再由Forge SPEC载入（Forge可能纠正副本；原件不变），seed沿正典。
+  owner(-1,0)/(-2,0)/(0,-1)三处骨架分别66/78/151、端口23/24/34，修复后reject/unsatisfied均0。
+  原候选与修复副本的edges/shape/汇总逐字节同；修复副本独立冷JVM正/逆owner查询的上述三表及attempts亦逐字节同。
+  [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/real-comparison-1792751967522697900/results.json)。
+  修复源码SHA256为 `742bb48889d602b3c1b43c49b6003db9833dd34daf494daf01303e3e84f57376`，与最终组件批使用副本逐字节同。
+- 本轮生产DS/provider、原TOML、计划文件指纹不变，未迁候选、未升schema、未再提交/推送。
+  新实验文件仍在被忽略的build目录，普通git status不会列出，不能当作文件不存在或已经入库。
+
+**当前接口边界与下一步：** 已知完整incoming清单时，可按生产顺序重建追踪上下文；发布还要完整pins。
+但从目标独立枚举这份清单仍未解决：普通D8九来向＋给定上下文的JOIN范围只覆盖局部前驱，
+不覆盖溢流/历史守卫/全链来源；排序前缀在单窗内递减也不能充当跨owner依赖的全局进展量。
+不得递归邻区final、反复pass2、靠热缓存目录或扩大固定半径代替。第一关仍in_progress，其余五关pending；
+旧66全账本、跨窗溢流/无环、完整湿列、provider取消/并发/淘汰、完整WorldgenGate、大图/Forge未验收。
+
+### 〇ai、批注16：参考机制回查、普通端口候选覆盖与预声明钉点试验（2026-10-23）
+
+用户要求继续，并建议查看参考。并行只读研究后回源核验，沉淀至
+[HYDRO-REFERENCE-RESEARCH-20261014.md §7](HYDRO-REFERENCE-RESEARCH-20261014.md#L162)。
+Streams可借“邻段出口不依赖整条上游、最终几何仍须完整入流”的职责分开；PL-RGA以禁止跨区闭合，
+不能照搬。未复制参考代码，未改变D8、源准入、水量、宽度或生产预算。
+legacy归档 `RiverLineNetwork.region` 同样只消费8邻pass1；这能保留其跨缝经验，但不能从接口外形推出任意多跳证明。
+
+**普通端口的必要候选集合（不是有效入流集合）：**
+
+- 新隔离 [PortCandidateCoverageProbe.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/PortCandidateCoverageProbe.java)。
+  发送窗轴范围 `[s·REGION−HALO, s·REGION+REGION+HALO]`；普通获选next至多再走STEP。
+  与目标owner core `[r·REGION,(r+1)·REGION−1]` 求区间相交，用long乘加与floorDiv/ceilDiv推发送owner范围。
+  当前REGION512/HALO96/STEP2推得每轴r−1..r+1，排除自身为8邻；**是推导，不是扩半径碰样本**。
+- `PortEgress` 只有发送窗边框才可能返回端口；对边框去重的1408格×九种来向跑真实egress。
+  九态适用当前普通D8/typed/相邻spill步的归一化格步来向及首步零态；不声称覆盖未来连续惯性。
+  这里不消耗生产求解预算，也不把检查数量藏作“4096以内”：实验含全格oracle共18146448次谓词调用、
+  405504次边框patch评估；每窗bed全采样，未实现生产稀疏采样或累计暂停记账。
+- 正平移与负平移两个fixture各707条候选边，边框枚举与全353²×九态egress oracle逐项相等。
+  真实DS.build从A输出显式传递给B的诊断正控产生的B→C端口在候选中；原C的pass1-only装配仍incoming=0。
+  这只证明必要候选不漏该普通端口，不证明它的来源、守卫、实际存活或可发布。
+- 接入既有runner：五组件各两冷JVM通过/摘要同，11源码变异均compile0后命中指定断言
+  （新增漏东边框、漏西发送owner）。证据：
+  [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/verify-1792753668719984700/results.json)。
+  四个原多区用例依然exit1，runner整体exit1，生产DS/provider、原TOML与计划指纹不变。
+- **边界：** 以上是当前普通egress的候选覆盖；跨窗认证溢流目前尚未定义出口语义，不能外推；
+  也未检查每条候选的source reachability、历史covered/segments、回滚或完整pins。候选集在无准入源时也可非空，
+  禁止直接把这707条候选当成河起点，否则会新增无来源河。
+
+**实窗钉点反例与候选解耦：**
+
+- 新隔离 [ProductionFramePinProbe.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/ProductionFramePinProbe.java)，
+  不再用任意内部WireIn：REGION512/HALO96/STEP2，西owner(-1,0)真实egress给(96,90)→(98,90)，
+  北owner(0,-1)真实egress给(116,96)→(118,98)，均指owner(0,0)。接收端build合法合并、拓扑同，
+  later钉点仍改变earlier shape。发送端只是egress候选，**没有生产源可达证书**。
+- 参考共享node单一权威的职责，试验把本窗与候选发送窗所有重叠边框格预声明为格心钉点，当前2808点。
+  同一套declared pins用于prefix/full，反例中的earlier shape逐位相同；不根据实际incoming到达决定坐标。
+  它仅传给shape，未新增河/改build，且**确实改变旧shape**；不能声称保留原形态或已消除全体拓扑依赖。
+  来源/covered守卫仍未解决，跨区两侧完整shape、真实大图/湿列未验收。策略尚未采纳到候选或main。
+- 最终组件批 [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/context-validation-1792754188912713800/results.json)：
+  50项局部校验、65²反例和实窗反例/候选策略各两冷JVM通过且摘要同；两大坐标STEP2旧反例通过；
+  忽略pins与清空declared策略两反控均先compile0，再命中预期AssertionError；四项撤修反控继续有效。
+  wrapper exit0仅为组件/反例验证成功，不能覆盖发现主runner的exit1。
+
+下一步：在不把潜在端口当真实河的前提下，验证来源与有序历史上下文的有限依赖；若跨owner回到依赖中，
+须区分“任务互依”与“水流环”，不能用删依赖/判干/重复pass2修饰。预声明钉点需独立真实形态对照后再决定是否采用。
+仍停第一关；证书、旧66、完整无环/湿列/生命周期、provider并发取消与生产迁移均未完成。
+新实验仍位于ignored build，未暂存/再提交/推送；未动计划/TOML/缓存版本或生产源码。
+
+### 〇aj、继续来源取证并出图：前缀存在性与真实生产路径钉点对照（2026-10-23）
+
+**来源与前缀试验：**
+
+- 新增 [PortPrefixEvidenceProbe.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/PortPrefixEvidenceProbe.java)，
+  用353²实际build、productionParams、空本区base及显式提供的三条incoming。正/负平移各有一条新端口链。
+  按**产生该链的incoming起点**截取排序前缀，可逐位重放目标粗路径/端口；删除较晚项不改变该端口。
+  出口锚点与链起点不同，不能按出口锚点截前缀。pass1基项还包含湖outlet，不可只算collectSources。
+- 新增反例：同一条第二incoming独立追时发端口，在完整清单中却JOIN且无自身端口；
+  **缺少更早上下文可增加假出口，不只是漏河**。因此逐条独立追踪再取并集不能作为合法发现。
+- 38项检查覆盖上述两个平移，仍为显式供给清单的局部命题，不是来源独立发现/闭包证明。
+  没运行真实源枚举、跨owner历史闭包、完整pins/湿列或溢流认证。不能把前缀PASS用来宣称四区已修。
+- [validate-context.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/validate-context.py) 最新批：
+  [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/context-validation-1792756737073329600/results.json)，
+  四组件各两个冷JVM摘要同、全compile0/run0；撤修/钉点反控有效，新增漏目标wire、删除上游清单反控均先compile0再指定断言红。
+  过程中 `context-validation-1792756406953620200` 因并行JVM争用默认Log4j日志、系统GBK异常文本导致runner解码中断，
+  **不记验收成功**；后续改为各批console-only UTF-8 Log4j配置，保留旧失败证据且复跑通过。
+
+**按用户要求补图（生产路径，隔离候选策略对照，不是迁入游戏）：**
+
+- [render-context.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/render-context.py)
+  新建时间戳副本，只修改shape前置钉点：世界坐标mod512为96/416的行列预置格心。
+  这是当前512/96/STEP2布局下的实验策略，不是通用参数化实现；不改D8/build/源准入/宽深。
+- 两臂均重新编译DS及原ProductionViewProbe，自检14＋2000放置oracle成功；冷JVM分别走
+  `GeoGenesisTerrain.getChunkCells → HydrologyChunkEngine → 候选ModelHydrologyProvider → shape/columnsFor`，
+  原TOML只复制到输出目录，Forge校正副本，两臂effective配置逐字节同。真实生产入口目前model恒真，
+  TOML中旧 `hydrologyModelPipelineEnabled=false` 已不是开关（HydrologyChunkEngine:12-17/35-39），不能据旧文档判图走legacy。
+- seed9139912035078620160、中心(-140,137)、r700、step1，两个1401²图各8281chunks、uncovered0，固定无光照等高线色带。
+  基线 [production.png](forge-1.20.1-47.4.10-mdk/build/hydro-production/prod-1792755953098/production.png)：
+  river41128/lake90799/sea452661；预声明钉点
+  [production.png](forge-1.20.1-47.4.10-mdk/build/hydro-production/prod-1792756330348/production.png)：
+  river41113/lake90799/sea452661。变化59像素，新增河22/减少河37；湖/海着色相同，4连通分量两者233。
+  这不证明逐列地面/水面不变，两个columns SHA不同，也不证明跨区流体连通。
+- [全幅对照](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/render-1792755950235852400/comparison.png)、
+  [原图裁切放大](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/render-1792755950235852400/detail.png)、
+  [变化像素](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/render-1792755950235852400/difference.png)、
+  [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/render-1792755950235852400/results.json)。
+  人眼检查：全图长直/非湖海终点仍可见，钉点策略不修此现象；局部只有少量1块偏移，没有据图宣称形态改善。
+- 出图的两个Java进程均exit0；初次Python后处理因本机Pillow7.2不支持Image.Resampling失败，保留日志；
+  改用Image.NEAREST并只恢复既有原图后处理成功，没有重跑/修改地形产物。恢复前核对DS源码与原日志FILE/metrics。
+  首次渲染的编译类路径与完整指纹在各自provenance中，非合成床面/假端口渲染。
+
+**当前状态：** 本轮主发现runner未改语义，最近四区主验收仍为〇ai的exit1；未证明完整来源闭包。
+预声明钉点仍未采纳进生产，未改main/原TOML/计划/schema，未再次提交推送。
+下一步继续验证真实来源与较早incoming的依赖是否有限闭合；现有局部前缀命题不允许递归邻区final或重复pass2。
+Forge方块/装饰/流体tick、旧66全账本、跨窗证书/无环及生产迁移仍未验收。
+
+### 〇ak、按用户要求收敛回现有D8：生产输入对照、短段图与实际停止原因（2026-10-23）
+
+用户明确要求：底座没换，不要按重建水文推进；继续现有条件D8，几格独立短河可舍，但不能切断长河的局部短连接。本轮不改main、源准入、湖水量、宽深、惯性、生产预算、原TOML、计划或schema；未提交推送。
+
+**先纠正此前反例的适用范围，不删除原红灯：**
+
+- 原四区fixture直接供给流量：只有A一个格超过门限、B/C/D所有格Q=0，parent亦人工设置。它有效证明“只有远端源、无本地承诺”这一接口条件下两趟不能多跳；但未证明真实管线必然产生此条件，不能据此直接授权另一套世界图或通用反向发现系统。
+- 扩展既有 `MultiRegionDiscoveryProbe.java`，默认原反例原样保留；新增隔离对照：①同parent用实际RiverNetwork逐格径流累积；②解析床面最陡D8 parent＋实际累积；③现有HydrologyPipeline完整计算bed/水面/parent/流量/湖，再交既有build与真实incoming装配。第三臂仅经既有Layer接口注入解析谷地、禁止侵蚀预热，不是实际噪声地形或生产provider全链验收。
+- [verify-physical-flow.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/verify-physical-flow.py) 最新 [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/physical-flow-1792761074467912100/results.json)：原反例两冷JVM均exit1；三个流量对照各两冷JVM均exit0，正/负四区、下游只查D、正逆查询一致。完整pipeline臂按精确共享anchor/next连接，能从A沿942个粗图访问节点到海；删除跨owner连接负控命中指定断言、exit1。粗图非逐列湿连接，不能据此宣布所有地形独立发现通过。
+- 原主runner另复跑 [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/verify-1792761091189572400/results.json)：四个原反例仍exit1、五组件各两冷通过、11变异均编译成功后指定断言红，整体exit1。没有用新正控覆盖原红灯。
+
+**真实provider与短段，只读审计：**
+
+- [短段完整标注图](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/short-river-audit/run-20261023-204333/short-river-full-1401.png) 沿同正典seed/config，实际候选provider导出全部16个图涉owner，再叠加到既有1401²生产合成底图；不是新模拟，不是已迁生产的修复图。
+- 1367条trace包含各owner halo，不等于去重河数。355条小于14节点：189湖口、166跨区；图内各自core可见86条（54湖口、32跨区）。E1只有3节点/7.13块，但粗连接图已有521个上游节点、下游还能追154节点到海。短trace不能直接剪。另有98条本地源到首汇合点短分支候选，全球来源完整性仍UNKNOWN，未据此删河。
+- 16owner实际PRIMARY/FINAL端口按完整key及receiver/方向载荷直接比较：284=284、差集与载荷差异均0，不依赖pending=0推断。内部206个接收（191 exact-next、15水体元数据），其余78个UNKNOWN恰好全部是样本范围外receiver；水体元数据不是湿列证书。
+- 独立冷同序重建148文件相同（summary仅排除计时）；原始trace/node/shape逐字节一致。证据 [summary.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/short-river-audit/ports-cold-1792760505035414600/summary.json)。seed12345三个owner额外44端口仍P1=FINAL；seed42同位置为空，不作有河正例。证据 [summary.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/short-river-audit/seed-ports-1792761190530183700/summary.json)。有限样本没找到second-only，不等于不存在；停止继续扩建通用发现层，优先真实断头。
+
+**真实停止原因已取证，下一步的具体修复靶点：**
+
+- 16owner快照有26条UNRESOLVED、3条DEAD_END（含halo重复），不是短段门限问题。本轮对五owner现有搜索调用只加观测；不改守卫/域/算法/上限。编译、provider退出0，最终15份trace/node/shape表与无插桩基线逐字节同，保护文件哈希未变。
+- [audit-spill-reasons.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/audit-spill-reasons.py) 记录1980次调用（包含pass1依赖和重复，不是1980条河）：1779 ESCAPE、96 JOIN、103 DOMAIN_PENDING、2 NO_ESCAPE，未见EXHAUSTED。
+- 五owner最终14条问题trace按origin/source/pit逐项匹配：13条DOMAIN_PENDING、1条NO_ESCAPE。后者湖口(-598,-148)走171节点到(-388,-200)，现有守卫下展开56即NO_ESCAPE；不是预算耗尽，也不能据此宣称真实闭盆。13条未决包含7次展开就停的边界样本(-420,-222)，不应加预算或当无水。
+- [逐条停止原因](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/spill-reasons-1792761442680538800/final-terminal-reasons.csv)、[完整地形停止点图](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/spill-reasons-1792761442680538800/actual-stop-map-1401.png)、[插桩等价验证](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/spill-reasons-1792761442680538800/results.json)。图只标五owner本core内终点，其余位置没圈不等于无问题。
+- 后续在原D8溢流分支逐个查上述真实未决/守卫死端，复用既有OrderedSpillSearch与接收机制，不另建世界图、不递归final、不凭看图删河。尚未实施行为修复；跨窗认证、旧66、完整湿列/生命周期/无环、WorldgenGate及Forge仍未验收，第一关仍in_progress。
+
+### 〇al、继续实际断点：排除守卫误杀，修正同层边界过拒（2026-10-23，隔离局部修复）
+
+用户批准沿〇ak继续，不加预算、不删河掩盖断头、不换底座。生产源码、原TOML、原计划、缓存schema与既有副本保持未改；本轮仅新增/扩展build隔离探针和修复副本，未提交推送。
+
+**NO_ESCAPE真实原因，不再猜守卫：**
+
+- [SpillGuardProbe.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/SpillGuardProbe.java) 捕获真实(-388,-200)的同一bed/self/receiver/边交叉守卫，逐项撤守卫只作诊断，不将重放结果送入河网。actual展开56，关闭自身占用后63；关闭own/other交叉或全关仍NO_ESCAPE，边界Infinity，无receiver命中。最终owner(-1,-1)的trace/node/shape与无插桩基线逐字节同。
+- [guard-arms.csv](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/guard-capture-1792768014869631500/guard-arms.csv)；同一已捕获床面额外无守卫/无抬升截断的**诊断**minimax找到更低终点(-52,90)，crest183.87718287136818，起点bed136.26394332698206，需rise47.61323954438612（现上限12）。仅用于解释上限内为何无出口；不授权提高rise，不是全球最优出口或湖水位证书。完整路径484点、展开41177，见 [terrain-minimax-summary.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/guard-capture-1792768014869631500/terrain-minimax-summary.json)。不能称此死端已修。
+
+**已落地的最小局部修复：**
+
+- 现有OrderedSpillSearch在同crest BFS整层完成后先判`touchesUnknown`，再判`chosen`，导致同层存在内域已知目标/已知receiver也被边框遮蔽。按相邻距离，真实窗外未知终点至少还多一步；较早层或更低crest的未知边界仍拒绝。
+- 最终修复副本：[OrderedSpillSearch.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/boundary-layer-1792768869349893800/candidate/OrderedSpillSearch.java)，SHA256=`7569a90397b3777457d61cbf851d58180baa54f38905adecb9d4966cfed60056`。只让已知内域goal/receiver参与同层chosen，再在整层结束优先接受该已知目标。未知边框lower本身不冒充认证出口，整层继续结算，不改crest优先/排序/守卫/上限/4096批次。
+- **失败试验保留**：1792768498794505400首版仅换判断先后，把未知边框lower也接受，既有SearchProbe真实2FAIL，拒绝采用；1792768642646309000次版只事后检查chosen，237旧回归绿，但未知边框最小索引仍遮蔽同层已知goal，五owner逐字节不变。最终版在选chosen时排除未知目标，避免上述两缺陷，不用失败臂的真实图/计数宣称改善。
+- [verify-boundary-layer.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/verify-boundary-layer.py) / [SpillBoundaryLayerProbe.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/SpillBoundaryLayerProbe.java)：同层已知目标、较早边框仍未决、未知边框lower仍未决、未知lower不能遮蔽receiver、批大小1/2/7/4096、正/负大坐标；再用独立Chebyshev距离oracle枚举1200种平场起点/receiver组合。累计crest+BFS预算不变时部分EXHAUSTED仍未决，不要求强行几何完成。共1230检查绿；基线/撤修/放行未知goal/遮蔽known-goal四臂均先compile0再命中指定AssertionError。
+- 最新 [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/boundary-layer-1792771196729756200/results.json)，最终源码与886版逐字节同。既有SearchProbe完整237 PASS/0 FAIL，含原真实95点路径及预算/取消检查，见 [search-probe-report.txt](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/boundary-layer-1792768869349893800/regression/out/search-probe-report.txt)。新增oracle初跑将EXHAUSTED误当几何失败，保留1792771045285192400红日志，后修的是测试对累计预算的错误预期，不增加实现预算。
+
+**真实效果与明确未解决项：**
+
+- 五owner冷实际provider：搜索1980次（含重复依赖）中ESCAPE1779→1781、DOMAIN_PENDING103→101，JOIN96/NO_ESCAPE2不变。确切变更为owner(0,-1)，源(174,-562)在坑(176,-600)两次搜索从DOMAIN_PENDING→ESCAPE；该支流现在29节点JOIN到(158,-604)。最终trace由151→153；是新增支流接回未决主干，**不是主干到海**。
+- 五owner原14问题终点仍13 DOMAIN_PENDING＋1NO_ESCAPE，**断头数未下降**。新窄改没有实现跨窗溢流证书/上坡交接，未直接将DOMAIN_PENDING变端口。数据 [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/spill-reasons-1792769971123113600/results.json)。另一独立冷JVM同序五owner30份trace/node/shape/port/incoming/merge表逐字节同，见 [cold-comparison.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/spill-reasons-1792770886742787500/cold-comparison.json)；非冷逆序/并发证明。
+- 同TOML/seed/中心(-140,137)/r700/step1完整生产合成新图 [production.png](forge-1.20.1-47.4.10-mdk/build/hydro-production/prod-1792770100074/production.png)：8281chunk/0未覆盖，PNG及columns摘要与原基线逐字节同。变化位置在北界之外；不以大图不变说补丁没加载，实际类来源已核验。
+- 另用同一生产入口冷JVM A/B，中心(174,-580)/r128/step1，两臂361chunk/0未覆盖，257²局部实际新增17个河水像素、删除0，湖1278不变，河2246→2263。变化x157..171/z-606..-602；原图最近邻标注仅展示，不补画河。[局部对照](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/comparison-nearest3-annotated.png)、[results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/results.json)。图片不是Forge落块或流体验收。
+
+**下一工作靶点仍是13条真实未决，特别是owner(-1,-1)核心终点(-192,-452)。** 其原因不能再混作守卫或预算；跨窗仍需消费真实已认证相邻路径，不伪造端口/改为普通河爬坡。其余旧66、完整生命周期/湿列/无环、生产缓存、门禁与Forge未完成，仍不迁main。
+
+### 〇am、按新授权舍弃极短河与不通水支系：隔离剪枝、大图与跨区未闭合（2026-10-24）
+
+用户进一步允许非常短的主/支河不生成、少量无法接入湖海的河系整支消失，认为当前密度偏高。这覆盖〇al此前“不删河”的范围限制；**不授权切掉长河的局部短连接**。仍沿现有model条件D8，不另建水文、不递归邻区final、不重复pass2、不加预算或rise、不改水量/宽深/惯性。生产源码、原TOML、原计划、schema106未改，未提交推送。
+
+**当前隔离规则与范围：**
+
+- [prepare.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/prepare.py) 在既有base/fresh合并后统一有向剪枝，JOIN沿真实后继判连通；不再因湖口或incoming身份而豁免死端；冲突/无终点环不保留。真实BOUNDARY_EXIT端口仍是暂保交接候选，**不等于已证明到湖海**。
+- 短段按连接后的去重节点最长链判断，不按每个trace切片独立判断；保护长上游馈入、incoming与真实outsideTail。取消无上游、无incoming、无outsideTail的单节点源端口豁免；2节点及以上端口暂保。不是全局河系长度证书。
+- 最新候选 [DeterministicSkeleton.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/candidate-1792779496954846600/DeterministicSkeleton.java)，SHA256=`a6ce20199d833838a7f3364bc465501a214177b31ff53f3b47c0dd2d208c7a2a`；依赖〇al最终搜索修复及既有integrated provider。
+
+**函数验证与失败证据：**
+
+- [verify.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/verify.py) 最新 [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/verification-1792781068561597200/results.json)：编译0，37场景/184调用与16项整链/单点检查均PASS；四个变异均编译0后命中指定断言，旧246版逐切片误删的反控亦编译0后红。源配置与候选保护哈希未变。这里只证明函数规则，不证明跨区终点闭合。
+- 首次949验证的单点fixture误把port.next同时填成outsideTail，导致14 PASS/1 FAIL；生产真实反例无tail。已将fixture改为无tail，另加带4点真实world tail必须保留的正控；原红日志保留于 [lengthchain.log](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/verification-1792779840705542200/baseline/lengthchain.log)。不能把改测试说成修复生产逻辑，也不能把该失真fixture的581红灯当有效反控。
+
+**真实收发审计：**
+
+- 五owner候选从581的442条trace降至416：删除11个单节点源端口，级联删除15条typed中转（原9入湖/6 JOIN），没有新增。已在本样本确认7个中转锚点来自被舍弃的单点源；另8个来源在样本外，未证明其全部上游。没有据此宣称所有长河连接都已保护。
+- 121个FINAL端口中，内部46个发送/接收manifest逐项一致：40有exact final边、6为水体接收元数据。目标坏承诺`-1:0@-26,-96→-26,-98`随无长度源一起消失，是删除承诺，**不是接通该河**。
+- 对此前“剩6缺口”的审计表述作更正：这6个内部无final边项均为LAKE元数据，不是真实PRUNED；它们尚无实际湿列证书。另有接收方(-2,-1)两处真实PRUNED锚点`(-554,-416)`、`(-536,-416)`，每处有两个外部发送方manifest行。口径及更正见 [clarification.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-real-1792779544329/clarification.json)。不能混合outgoing内部计数与所有incoming行计数。
+- 独立冷JVM只查发送方(-2,-2)、(-1,-2)，确认两方均在PRIMARY和FINAL继续发布上述两个端口，4/4完整payload与receiver精确相同；对应17/25节点ORDINARY_SOURCE，非单点源，全部仅在发送方halo，anchor位于receiver core。receiver仍ACCEPTED后PRUNED、无final覆盖。**确有未完成交接，不是旧P1残留**；也不能据发送方halo几何推断实际core水道被切断。证据 [final-verification.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-senders-1792782130255/final-verification.json)、[sender-vs-receiver-verdict.csv](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-senders-1792782130255/sender-vs-receiver-verdict.csv)。未继续扩大region样本。
+
+**同参完整生产入口大图：**
+
+- [production.png](forge-1.20.1-47.4.10-mdk/build/hydro-production/prod-1792781015668/production.png)，1401²、8281chunk、0未覆盖；原样ProductionViewProbe→getChunkCells→实际provider合成，不后处理补河。JVM code source确认DS来自949、搜索来自〇al最终版，配置与地形参数同基线逐字节相同。
+- 相对〇al基线：river41128→36560（河水像素覆盖下降11.1068%，不是河条数），lake90799→91336，sea452661不变。4569个RGB像素变化：4031河→干、537河→湖，另1灰底灰度变化。相对581只减少506河像素、全部河→干，湖海不变；不是路由接通收益。
+- [原尺寸三栏对照](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-render-1792780702450/baseline-comparison-original-size.png)、[comparison.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-render-1792780702450/comparison.json)。差值图只表示RGB绝对差、不表示增删方向。原图已目检，南部长直仍明显，不能以减密度宣称形态或连通性已验收。
+
+**两处缺口的只读根因补查：**
+
+- receiver先临时接受`(-554,-416)`的73节点链，止于`(-420,-404)`、UNRESOLVED；再接受`(-536,-416)`的11节点链，JOIN到`(-522,-394)`。该JOIN格不在base/final内；根据incoming顺序与占用来源，归属前一条未决incoming。二者在有向终点可达性阶段一起被剪，**不是短链阈值误删**。旧raw未保存过滤前cell数组，不能复原完整路径/JOIN下标；spill子状态也未导出，不能猜DOMAIN_PENDING或EXHAUSTED。
+- sender的42个去重路径点与receiver保留base/final零重叠，receiver对应床面未导出，不能据sender床面判断两窗一致。更重要的是，integrated provider在本区无命中、非湖、边界带且非HIER时，允许借邻区SegmentIndex；这些halo前缀满足几何方向门的候选条件，**“sender core无点所以生产绝不会出图”不成立**。未做实际segment hit/湿列检查，只能说存在借用入口，不能宣布已落水或已连续。
+- [analysis.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-rootcause-1792782638407/analysis.json) 同时列出合法halo端口带sender core前缀的反例，故不能全删halo port，也不能只删port却留可借几何。本轮只读，1937个旧输入保护文件未变。
+
+**状态与下一靶点：** 第一关仍in_progress。下一次在现有单次solve中捕获这两条过滤前路径、spill子状态与JOIN对象，再决定整支舍弃的一致边界；同时核验provider借图，避免残留可见前缀。不以本地端口存在当湖海证明，不为少量可舍支系扩建世界图。全局来源/共同后继/湿列/无环，负大坐标全链、下游先查、冷逆序、缓存淘汰、并发取消重试、旧66、WorldgenGate与Forge仍未通过，本候选不得迁入main或升schema冒充验收完成。
+
+### 〇an、两处incoming单次求解捕获与真实湿前缀核验（2026-10-24，仅诊断）
+
+用户批注批准继续〇am最后的定点取证：捕获过滤前路径、具体停止原因，检查可见前缀。本轮未改剪枝/源准入/预算/rise，不递归final、不重复pass2，不迁生产、不升schema、不提交推送。
+
+**三项假设与实际证据：**
+
+- A（具体停止原因）：949隔离副本在原有同一次receiver(-2,-1) solve定点记录，A锚点`(-554,-416)`完整73节点。先在`(-432,-412)`发生ESCAPE（expanded9，3点真实见证已应用）；最终在`(-420,-404)`发生**DOMAIN_PENDING**，expanded12，crest与boundary同为`159.37953902145267`。返回候选路径`(-420,-404)→(-418,-404)→(-416,-402)`触到未知边框，**未应用**。坑bed159.2965231515597、rise上限仍12；不是EXHAUSTED，不支持加预算或将候选路径直接发成端口。
+- C（JOIN归属）：B锚点`(-536,-416)`完整11节点，`JoinKind.NEARBY`，终点`(-522,-394)`命中A的零基index20（第21节点），前一trace source=99995、end=UNRESOLVED。已由真实cell数组交叉断言，不再仅用排除法推断。B日志原始reason仍为初始化NO_RECEIVER，不能以此否定JOIN；end/joinKind/对象命中才是归因依据。
+- A/C证据：[results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/target-capture-1792783602763/results.json)、[prefilter-paths.csv](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/target-capture-1792783602763/prefilter-paths.csv)、[diagnosis.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/target-capture-1792783602763/diagnosis.json)。84节点、91事件；13份非计时final/base/port/incoming/shape等导出与原949逐字节一致。插桩不消费随机数、不修改路径/搜索结果。
+- B（实际可见前缀）：独立未插桩949，真实CellGenerator→GeoGenesisTerrain.getChunkCells，16chunk，窄采样`x=-584..-530,z=-452..-408`共2475列：**112河水列、2363干列、0湖/海**。两目标几何分别44/68湿列，每列恰1整块水柱；本地receiver和东邻SegmentIndex无命中，两sender均命中同一目标段。归因依赖实际缓存nearest与原选择代码，不冒充inline selector观测。
+- 锚点`(-554,-416)`ground215.0231700453758、水面216.0231700453758，Y216有水；承诺next`(-552,-414)`无水。锚点`(-536,-416)`ground213.93612750967708、水面214.93612750967708，Y214有水；next`(-536,-414)`无水。`z=-415..-408`的440采样列全干。两条捕获路径在范围内均index0湿、index1..4干，另外74节点未采样。故**“前缀出水但续段被剪”已是实际生产列现象，不只是metadata风险**。
+- 不能将断点单因归于方向门：即使忽略该门，两sender折线在后侧也无nearest覆盖。实际湿列 [actual-columns.csv](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/prefix-wetcheck-1792783649717863800/actual-columns.csv)，综合 [branch-B-report.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/prefix-wetcheck-1792783649717863800/branch-B-report.json)，[局部真实湿列标注图](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/prefix-wetcheck-1792783649717863800/support-actual-wet-annotated.png)。图由55×45原始湿列最近邻放大，不画预测河；标注线不是河。
+
+**本地支撑核查及边界：** 两sender、PRIMARY/FINAL的8项反向可达核查，目标上游组均只含自身17/25节点trace，没有已导出的其他core馈入、typed incoming、湖口trace或basin outlet支撑。见 [support-summary.csv](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/prefix-wetcheck-1792783649717863800/support-summary.csv)。只证明本地已保留图无支撑，不是全球无上游或回滚前图证明。不能全删halo port（〇am已有合法反例），不能只删端口仍暴露可借几何。若后续选择整支舍弃，应在既有P1源/有向支撑组内统一几何与发布资格，同时保护core馈入和typed接力；这是产出准入语义变更，不是无损诊断修补。
+
+**执行、保护与异常如实记录：**
+
+- A分支compile/provider/分析exit0；插桩版重新跑37场景184调用与16项整链检查均PASS。最初PowerShell未引用`-Dfile.encoding=UTF-8`导致Java找不到主类，失败日志保留；引用参数后实际测试通过，不把启动失败算测试判据红灯。
+- 原debug-agent.log先记录大小8101549字节/35581行，复制并校验SHA后才清空；新日志仅91条定点事件，完整副本保留在target-capture目录。插桩只存在本次新增副本，未清理或污染生产。
+- B首次探针错误使用原文件支持的CommentedFileConfig，触发Forge自动校正写原TOML；发现后中止（0列），从保护原件逐字节恢复SHA=`8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3`，随后成功运行改为内存解析。**最终哈希一致不等于原配置从未被写过**。证据 [aborted-load.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/prefix-wetcheck-1792783649717863800/aborted-load.json)，不得引用首次中止臂产物作验收。
+- B compile/production/analysis均exit0；最终7633项保护一致，追加支撑/图片分析7705项保护一致。正常columnsFor依赖观测4个final、12个P1 owner，没有主动额外final查询。与既有同参大图2475分类点全部一致，仅作交叉核验。
+
+**结论：** 定点诊断完成，原第一关整体仍未完成。根因链为“halo独立源仍发布并可借图→接收后到未知边框未决→连同其JOIN支流被局部剪掉→上游可见前缀残留”。修复应选择一致舍弃该类无本地支撑源组件或在既有契约内保留并解决其续流；本轮没有擅自改准入/强保未决。Forge方块、装饰、流体tick、全局湖海连接及确定性门禁仍未验证。
+
+### 〇ao、用户选择“一致舍弃候选”：halo源组件统一准入（2026-10-24，隔离候选，未验收）
+
+用户在两条修复路线中明确选择**一致舍弃候选（推荐）**。允许改隔离产出准入，不授权全删halo出口、硬编码两锚点或迁生产。新候选 [prepare.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/prepare.py) 生成独立DS与provider；两者实际class均首命中新目录，不覆盖949或main。
+
+**规则及影响面：**
+
+- provider显式传入core的世界坐标半开矩形`[origin+HALO, origin+HALO+REGION)`，不在DS猜窗口margin。原build公共重载保留，无core上下文仍走旧949行为；PRIMARY与SECOND_PASS共用新增内部入口。
+- 在已有有向终点/短链过滤后，按共享粗节点保守聚合组件；只有含真实BOUNDARY_EXIT+port，且整组没有core节点、incoming锚点、fromOutlet、真实outsideTail或MOUTH_LAKE/SEA的组件才整体舍弃。**几何和端口使用同一最终trace列表**，不是只藏metadata。共享节点聚组只是源准入保护，不当成到湖海证明；不改路由、预算、水量、宽深或惯性。
+- DS源码SHA=`62a75dceee25aa5315886d1345353f923254520042fedafe6499e5a379f862ff`，provider源码SHA=`43a25a9a145e3c38fc0a0a825b684d9271552e9564d3e8366390b434aadd6e08`；见 [prepare.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/prepare.json)。最终湿列所用DS class SHA=`46052018e25165999527942303999582eeeca3fc66766447a661fb9d3670b7d9`，provider class SHA=`dcae58e78e7da674e317871dce91d19a44b90ac89cc0f581fc14539985560fa4`。
+
+**函数与反控：** [HaloComponentProbe.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-tests/HaloComponentProbe.java) 独立显式预期113场景、607排列、2428次调用全部PASS，涵盖多级JOIN组、core馈入/typed/outlet/tail/水体保护、半开边界、正负大坐标、身份/数组/幂等及null上下文；旧37场景184调用和16整链检查全过。四个变异（不删、撤core保护、incoming只看源头、上界包含）均先compile0后AssertionError。最终 [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/verification-1792787456105478600/results.json)；初次runner因变异替换不唯一、次次因断言匹配文字错误退出，旧失败目录保留，未将runner故障冒充实现反控。
+
+**实际目标：已一致消失，不是接通：**
+
+- 独立冷JVM同16chunk/2475列，旧A44湿列+B68湿列共112列全部变干，无新增水；其余2363列所有导出字段逐字相同。112列ground均恢复恰1格（不再下切河槽），riverType1→0、整块水柱1→0；surface metadata本身不变，不能仅看水面数值误报残留。
+- 两sender×PRIMARY/FINAL×两anchor共8项：目标trace/port/pending均0，receiver目标incoming诊断0。端口和可借几何一起消失，9900次现有缓存nearest查询无命中。参数、seed与原配置一致。实际 [final-report.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-wetcheck-1792785858963332100/final-report.json)；配置改用内存解析，本分支未写原TOML，9879个保护文件一致。
+
+**七区审计：目标过，但精确shape保护仍红：**
+
+- 同旧五owner加两sender共7区，FINAL619→501，删除118、新增0；95个无支撑P1组共110条trace被舍弃，另8条typed FINAL因manifest消失级联删除。三条指定合法halo主干反例原粗trace/shape/port均保留。
+- 74个FINAL端口：11 exact-next、6水体metadata、57 receiver在样本外；内部无PRUNED或缺manifest。7区P1/FINAL端口差集均0。57外部未知与6水体metadata不能当完整湿连通。
+- 59/59带core支撑的旧出口粗路径及端口都保留，但仅54/59 shape逐字相同；全部501存活trace里30条shape改变。审计analysis明确exit1、expected0，未改成全绿。数据 [final-report.txt](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/final-report.txt)、[protected-halo-exits.csv](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-halo-exits.csv)。
+- 只读数值取证确认30条均是**被舍弃发送方对应的已兑现incoming pin消失**：每条仅一个控制锚点从格心恢复该链自身偏移，shared表首写者变化0，29条不与本区删除trace共享节点。shape方法及加载class指令一致，并非随机数/路由改变。
+- 例`-1:0@-304,608`的内部控制点`(-318,96)`移动0.058829块，port端点不动；最大同下标差1.260116来自某CR段采样2→3后的数组错位，实际双向顶点到折线约0.088787，不是全河平移。离线pin-only复现全部30项误差≤约5.7e-13，仅用于归因，不放宽原逐字判据。证据 [selected-final.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/shape-cause-1792786526188/selected-final.json)、[report.txt](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/shape-cause-1792786526188/report.txt)。尚未证明这些湿列变化无害，不保留失效pin来造假绿。
+
+**有限冷逆序：** 新7owner反向查询一次冷JVM，90/90必需表逐字相同，summary排除seconds后同，DS/provider/CellGenerator来源与SHA同；原shape保护红灯继续保留。仅HaloAudit导出的trace-arrays/cache-owners与额外类provenance行在本导出器不存在，明记未比较，不计相等。见 [final-verification.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/final-verification.json)。这不覆盖多seed/缓存淘汰/并发取消或全世界确定性。
+
+**补验已完成，但原shape逐字保护红灯不撤：** 最初两个独立分支因模型提供商403额度拒绝未完成、未产生有效图/列；主线程接管到 [run.py](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-final-evidence-1792788299401/run.py)，compile/self-test/render/pin-old/pin-new均exit0，最后保护哈希无变化。
+
+- 同参1401²生产入口新图 [production.png](forge-1.20.1-47.4.10-mdk/build/hydro-production/prod-1792788395219/production.png)：8281chunk/0未覆盖，river35788/lake91336/sea452661。相对949河36560→35788（净-772，-2.1116%），实际777河→干、5干→河，湖海分类均不变；不是纯删像素。相对原基线41128净减5340（约12.98%）。地形参数及校正配置与旧949逐字同，实际DS/provider来源为本候选。
+- [完整原尺寸对照](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-final-evidence-1792788299401/comparison-original-size.png)、[image-comparison.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-final-evidence-1792788299401/image-comparison.json)。已目检：南部长直依然明显，不以减密度宣称形态验收。
+- 5个core支持出口丢失pin的控制点分别`(-318,96),(-382,96),(-220,96),(-708,96),(-740,96)`，各25×25真生产列A/B，每臂3125列/22chunk；前4块所有导出字段逐字同，最后一块29→28湿列，减少1列、无新增。5块原湿组在4/8邻接下均保持1组、未出现原共同湿像素被分裂。证据 [pin-column-comparison.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-final-evidence-1792788299401/pin-column-comparison.json)。只覆盖局部，不证明全河流体连续，也不覆盖其余25条变形trace。
+
+**状态：** 局部一致舍弃与有限7区冷逆序通过；原精确shape保护仍FAIL，不能擅自改expected或迁main。生产源码、缓存schema、原计划均未改，未提交推送。下一步需要决定是否接受“失效incoming pin撤销造成的局部形态变化”，或进一步约束候选以保持旧几何；全世界确定性、57个外部端口、完整湖海/湿列/无环、门禁及Forge仍未通过。
+
+### 〇ap、用户裁定南部长直为地形路线；保存隔离候选检查点（2026-10-24）
+
+用户明确说明：**南部长直不需要解决，之前已测试物理路线，同样如此，是地形导致的河流路线，不是bug。** 此结论覆盖〇am—〇ao中将该外观作为待改善或未验收现象的措辞；历史图与观察保留，但不再据此安排修复、调弯曲度或改变地形。该物理路线对照为用户既有验证，本轮未重新运行。
+
+本次按用户“先提交”保存当前隔离halo一致舍弃候选、949对照源码、独立测试与关键验证摘要；不迁生产、不升缓存、不推送。已有其他研究/发现探针/旧交接改动保留，不混入本次候选提交。大图、批量raw、class、运行缓存仍保留本地，不整目录强制入库。
+
+下一步只围绕保留河系的正确性：先补足其余25条受pin撤销影响的河线湿列/真实JOIN保护，区分合理局部重采样与实际断流；再核验保留端口的接收、共同后继与湖海终点。随后补多seed/负大坐标/下游先查/缓存淘汰/并发取消重试，关卡通过后才迁生产、升缓存、跑门禁与Forge验收。原shape逐字比较的失败证据保留，不把它自动视为断流，也不为凑逐字一致而保留失效交接pin。南部长直不在后续修复清单。
+
+## 一、当前状态（历史快照；新实验状态见〇c—〇ap）
 
 | 项 | 值 |
 | --- | --- |

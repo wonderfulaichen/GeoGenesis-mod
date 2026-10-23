@@ -1,0 +1,40 @@
+STATUS: CAUSE IDENTIFIED; ORIGINAL ACCEPTANCE FAIL REMAINS.
+Scope: only new shape-cause directory written; zero provider/JVM/compile calls, no implementation/old script/expected edits.
+
+1. Equality and cause
+949 and halo source shape() plus subsequent helpers are text-identical. Actual class shape/pinsOf/CR resolved bytecode instructions are identical too.
+Both DS sources contain no endpointSet. Endpoint status of each surviving trace is unchanged; no global endpoint-set shape mechanism was found.
+501 survivors: exactly 30 lose an accepted incoming anchor pin, exactly those 30 change shape; other 471 unchanged.
+No shared-anchor first writer changes. 29/30 changed traces share no coarse cell with any deleted local FINAL trace; one shares cells but first writer still unchanged.
+pinsOf(final traces,wiredAccepted,wireByAnchor) drops pins as P1 handoffs disappear; shape preloads pins, then ports, then shared first-writer table.
+A surviving source trace consequently registers its own particle-offset control instead of the former exact world-cell pin.
+All 30: exactly one coarse control changes, at the vanished accepted pin. Pin-only substitution plus deterministic mouth extension explains all new sampled raw, maximum replay error 5.684341886080801e-13.
+This tiny numeric replay error is not a tolerance change to byte-identity acceptance.
+
+2. Protected example -1:0@-304,608->-306,610
+Old/new trace16, 270 coarse nodes, same port, 771->771 shaped points.
+Control6 cell51281 (-318,96): old pin (-318,96) from -1:-1@-318,96->-318,98; new particle control (-317.943849055362,95.9824514196066).
+Control displacement .05882925511648647. Only CR segments4..7 are affected; raw indices13,14,16,17,18,19,21,22 change. No count shift.
+The protected outgoing endpoint (-304,608) is not moving; change is near removed incoming pin (-318,96), not near the outgoing port.
+No deleted local trace shares this trace cells. This rejects the deleted-trace-first-writer explanation for this case.
+
+3. Largest same-index displacement/count-change example
+Owner(-2,0) old trace42 -> new38, 148 identical coarse nodes, JOIN; shaped403->404.
+Control35 cell33984 (-928,96): old (-928,96), new (-927.9239822266302,95.95261684570004), shift .08957603016163698.
+Removed pin was -2:-1@-928,96->-928,98, receiver MERGED_BASE_SUCCESSOR. No deleted local trace shares receiver trace cells.
+Segment35 ceil(chord length/1) rises 2->3, adding one sample; indexed suffix comparison then shifts by one.
+Old reported same-array-index max1.2601156344417843 is NOT maximum geometric displacement. Symmetric sampled vertex-to-polyline distance=.08878678487697.
+Actual affected CR support is segments33..36. Beyond it, segment-aligned suffix is bit-exact. Keep the byte/count FAIL, but do not describe it as a 1.26-block route movement.
+
+4. Important source/class discrepancy (not a new-vs-old shape change)
+The Java source c1 uses t0, c2 uses t1; both actually loaded class files use t1 and t2 respectively in those middle interpolation denominators/weights.
+Source-based offline replay failed; logs numeric-initial-failure.log and numeric.log retained. Loaded-class equations then reproduce all30.
+Do not silently recompile or treat current source text as bytecode authority. This task made no such correction.
+
+5. Must fix or reasonable side effect?
+It is an explained, deterministic dependency effect: removal of real handoff pins changes geometry, even when surviving coarse traces remain identical.
+It is not evidence of random routing corruption or a new shape algorithm. It also does NOT prove safety: local channel coverage/continuity has not been tested here.
+Under the unchanged requirement to preserve exact protected old shape, these five protected failures still block acceptance. A correction is required to meet that requirement; no relaxation or stale-pin prescription is authorized by this analysis.
+The evidence alone does not establish that exact historical pin positions are a universal physical requirement; any change of acceptance policy is a separate decision, not an automatic green.
+
+Evidence: source-comparison.json, ds-source.diff.txt, provider-source.diff.txt, bytecode-summary.json, old/new-*.bytecode.txt, all-surviving-shape-inputs.csv, accepted-pin-delta.csv, all30-causes.csv, changed-controls.csv, numeric-all30.csv, selected-final.json, selected-donor-chain.json, selected-chord-and-ceil.csv, conclusion.json, execution.json.

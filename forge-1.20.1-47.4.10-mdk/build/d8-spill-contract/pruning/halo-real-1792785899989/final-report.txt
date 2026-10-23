@@ -1,0 +1,29 @@
+FINAL AUDIT REPORT: FAIL (do not migrate candidate based on target-only success).
+compile=0 provider=0 analysis=1 expectedAnalysis=0; candidate prepare compile=0. No retry changed expected.
+Only this halo-real directory written by this audit. ShortRiverAudit + CachedBaseEvidence copied byte-identical.
+Input TOML copied into this directory before CommentedFileConfig/SPEC.setConfig; original not loaded.
+Seven requested FINAL owners only; ordinary P1 dependencies. P1 final cache is LRU, not total solve count.
+Owner               P1 old->new FINAL old->new FINAL ports old->new
+(-1, -1)  74->44  76->44  31->7
+(-2, -1)  104->91  106->91  20->8
+(0, -1)  116->87  118->87  34->10
+(-1, 0)  49->45  50->45  12->8
+(-2, 0)  66->57  66->57  24->16
+(-2, -2)  97->88  97->88  20->11
+(-1, -2)  105->89  106->89  28->14
+All 95 unsupported PRIMARY groups (110 traces) removed; no supported PRIMARY coarse trace removed.
+Additional 8 old typed FINAL traces removed by lost incoming manifests (9 feeder rows, including duplicate senders).
+619->501 FINAL coarse traces: 118 removed, 0 added. Surviving parent/bed/level/Q/lake/sea/resolved/basin values unchanged.
+30 surviving shaped polylines changed; see changed-shapes.csv and shape-pin-change-evidence.csv. No epsilon used.
+Targets (-554,-416),(-536,-416): all 4 sender-port cases source cells/shape absent, PRIMARY/FINAL port gone, receiver manifest gone.
+Explicit protected old exits -2:-2@-770,-416->-772,-414; -2:-2@-416,-1100->-414,-1102; -1:-2@-310,-1120->-308,-1122 all keep exact old trace+shape+port.
+ALL core-supported old halo exits: port+coarse kept 59/59, exact old shaped trace 54/59 -> FAIL.
+Five shape failures: -1:0@-304,608->-306,610; -1:0@-428,608->-428,610; -1:0@-220,608->-220,610; -2:0@-714,608->-712,610; -2:0@-814,608->-814,610.
+All 74 FINAL outgoing ports: EXACT_NEXT=11 WATER_METADATA=6 PRUNED=0 MISSING_MANIFEST=0 UNVERIFIED=0 OUTSIDE=57.
+20 incoming manifests: 17 exact sender FINAL payload matches, 3 sender outside seven-owner sample.
+P1/FINAL port symmetric difference zero for all seven OLD and NEW owners. Trace difference OLD FINAL-only=8, NEW=0; P1-only=0.
+Water metadata is not integer-column wetness. OUTSIDE=57 remains unverified. No global/Forge/wet-column acceptance, no image.
+All 21139 pre-existing protected file hashes unchanged at final closure: True.
+Original execution protectedUnchanged=false preserved: other concurrent verification/wetcheck outputs appeared outside this directory; no pre-existing hash changed. Do not call entire tree membership unchanged.
+Code sources and classpath verified: new halo DS+provider first, fallback old949 -> boundary-layer -> integrated -> regular classpath.
+Evidence: summary.json, final-verification.json, supplement.json, owner-delta.csv, file-delta.csv, changed-traces.csv, changed-shapes.csv, typed-cascade-attribution.csv, port-delta.csv, p1-final-*-difference*.csv, protected-halo-exits.csv, target-verdicts.csv, outgoing-receivers.csv, incoming-senders.csv, hash-closure.json.

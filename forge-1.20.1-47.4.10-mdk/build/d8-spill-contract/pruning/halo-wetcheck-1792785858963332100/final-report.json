@@ -1,0 +1,369 @@
+{
+  "conclusion": "局部一致舍弃成立：旧112湿前缀全部消失，无新水；不是河流接通或全局验收。",
+  "productionJVMCount": 1,
+  "exitCodes": {
+    "compile": {
+      "exit": 0,
+      "seconds": 4.2189999999827705
+    },
+    "production": {
+      "exit": 0,
+      "seconds": 115.71899999998277
+    },
+    "comparison": {
+      "exit": 0
+    }
+  },
+  "candidateCompileExit": 0,
+  "oldWet": 112,
+  "newWet": 0,
+  "removed": 112,
+  "added": 0,
+  "unchangedOtherColumns": 2363,
+  "prefixBreakdown": [
+    {
+      "target": "anchor_-554",
+      "oldWet": 44,
+      "nowDry": 44,
+      "remainingWet": 0
+    },
+    {
+      "target": "anchor_-536",
+      "oldWet": 68,
+      "nowDry": 68,
+      "remainingWet": 0
+    }
+  ],
+  "fieldEffect": {
+    "groundDeltaMin": 1.0,
+    "groundDeltaMax": 1.0,
+    "groundDeltaExactlyOne": 112,
+    "groundDeltaSlightlyDifferentFromOne": 0,
+    "surfaceChanged": 0
+  },
+  "allSampledIndexQueries": 9900,
+  "actualIndexHits": {},
+  "targetCacheChecks": [
+    {
+      "owner": "-1:-2",
+      "stage": "FINAL",
+      "anchorX": "-554",
+      "anchorZ": "-416",
+      "targetTraces": "0",
+      "targetPorts": "0",
+      "targetPending": "0",
+      "skelTraceCount": "89"
+    },
+    {
+      "owner": "-1:-2",
+      "stage": "FINAL",
+      "anchorX": "-536",
+      "anchorZ": "-416",
+      "targetTraces": "0",
+      "targetPorts": "0",
+      "targetPending": "0",
+      "skelTraceCount": "89"
+    },
+    {
+      "owner": "-2:-2",
+      "stage": "FINAL",
+      "anchorX": "-554",
+      "anchorZ": "-416",
+      "targetTraces": "0",
+      "targetPorts": "0",
+      "targetPending": "0",
+      "skelTraceCount": "88"
+    },
+    {
+      "owner": "-2:-2",
+      "stage": "FINAL",
+      "anchorX": "-536",
+      "anchorZ": "-416",
+      "targetTraces": "0",
+      "targetPorts": "0",
+      "targetPending": "0",
+      "skelTraceCount": "88"
+    },
+    {
+      "owner": "-1:-2",
+      "stage": "PRIMARY",
+      "anchorX": "-554",
+      "anchorZ": "-416",
+      "targetTraces": "0",
+      "targetPorts": "0",
+      "targetPending": "0",
+      "skelTraceCount": "89"
+    },
+    {
+      "owner": "-1:-2",
+      "stage": "PRIMARY",
+      "anchorX": "-536",
+      "anchorZ": "-416",
+      "targetTraces": "0",
+      "targetPorts": "0",
+      "targetPending": "0",
+      "skelTraceCount": "89"
+    },
+    {
+      "owner": "-2:-2",
+      "stage": "PRIMARY",
+      "anchorX": "-554",
+      "anchorZ": "-416",
+      "targetTraces": "0",
+      "targetPorts": "0",
+      "targetPending": "0",
+      "skelTraceCount": "88"
+    },
+    {
+      "owner": "-2:-2",
+      "stage": "PRIMARY",
+      "anchorX": "-536",
+      "anchorZ": "-416",
+      "targetTraces": "0",
+      "targetPorts": "0",
+      "targetPending": "0",
+      "skelTraceCount": "88"
+    }
+  ],
+  "receiverTargetDiagnostics": 0,
+  "manifest": {
+    "observedTargetRows": 0,
+    "missingNeighbors": [
+      "-3:-2",
+      "-3:-1",
+      "-3:0"
+    ],
+    "meaning": "Target senders both PRIMARY and FINAL gone, receiver actual solve has no target diagnostics; cached manifest subset agrees, but does not reproduce all eight neighbors. No additional query made."
+  },
+  "classes": [
+    {
+      "class": "com.geogenesis.worldgen.hydrology.model.PrefixWetcheck",
+      "sha256": "55bf789a481ae5b1095293ac72b05d3708534a1731ffc5bd0744cddeb8db6c82",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-wetcheck-1792785858963332100/classes/",
+      "csvLine": 2
+    },
+    {
+      "class": "com.geogenesis.worldgen.hydrology.model.ModelHydrologyProvider",
+      "sha256": "dcae58e78e7da674e317871dce91d19a44b90ac89cc0f581fc14539985560fa4",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/classes/",
+      "csvLine": 3
+    },
+    {
+      "class": "com.geogenesis.worldgen.hydrology.model.ModelHydrologyProvider$SegmentIndex",
+      "sha256": "1d2d35284a9da83f7a47ac2786e44e3ed3466a804dcda38e692ebe28ee8b2939",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/classes/",
+      "csvLine": 4
+    },
+    {
+      "class": "com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton",
+      "sha256": "46052018e25165999527942303999582eeeca3fc66766447a661fb9d3670b7d9",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-candidate-1792785734981/classes/",
+      "csvLine": 5
+    },
+    {
+      "class": "com.geogenesis.worldgen.hydrology.model.OrderedSpillSearch",
+      "sha256": "8f6e4880e7c5c4ed48e16d7126e4ccc6bffeed3796cb3950ff099cd594854f09",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/boundary-layer-1792768869349893800/candidate/classes/",
+      "csvLine": 6
+    },
+    {
+      "class": "com.geogenesis.worldgen.terrain.CellGenerator",
+      "sha256": "4d56e0f4ea92054b3df7e44a197a5e221068a26ec7f64e30e77ee3785d86218d",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/classes/java/main/",
+      "csvLine": 7
+    },
+    {
+      "class": "com.geogenesis.worldgen.terrain.GeoGenesisTerrain",
+      "sha256": "58cf5390f98210deba5534fa74d9f45f19743ba4070cf6c70d6edbd33031be6b",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/classes/java/main/",
+      "csvLine": 8
+    },
+    {
+      "class": "com.geogenesis.config.GeoGenesisConfig",
+      "sha256": "417a8aaca4af97c5ac48d68d90cc4e9c8c59f1f3360cbf51955809c8c9613c50",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/classes/java/main/",
+      "csvLine": 9
+    },
+    {
+      "class": "com.geogenesis.worldgen.hydrology.model.ProductionViewProbe",
+      "sha256": "47a07741bfbd0a38497d3207beda091a822c08b30cf35fd9252576a992957da8",
+      "codeSource": "file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/boundary-repair-v2/integrated-1792736719405609000/classes/",
+      "csvLine": 10
+    }
+  ],
+  "parametersSameOld": true,
+  "originalCSVKeys": [
+    {
+      "x": "-584",
+      "z": "-426",
+      "oldCsvLine": "168",
+      "newCsvLine": "168",
+      "oldGround": "226.39643663294396",
+      "newGround": "227.39643663294396",
+      "groundDelta": "1.0",
+      "oldSurface": "227.39643663294396",
+      "newSurface": "227.39643663294396",
+      "oldRiverType": "1",
+      "newRiverType": "0",
+      "oldWaterKind": "3",
+      "newWaterKind": "0",
+      "oldWaterBlocks": "1",
+      "newWaterBlocks": "0",
+      "changedFields": "groundY;riverType;riverGate;waterTop;firstWaterBlock;lastWaterBlock;wholeWaterBlocks;waterKind;wholeRiver"
+    },
+    {
+      "x": "-568",
+      "z": "-450",
+      "oldCsvLine": "396",
+      "newCsvLine": "396",
+      "oldGround": "226.73023839977097",
+      "newGround": "227.73023839977097",
+      "groundDelta": "1.0",
+      "oldSurface": "227.73023839977097",
+      "newSurface": "227.73023839977097",
+      "oldRiverType": "1",
+      "newRiverType": "0",
+      "oldWaterKind": "3",
+      "newWaterKind": "0",
+      "oldWaterBlocks": "1",
+      "newWaterBlocks": "0",
+      "changedFields": "groundY;riverType;riverGate;waterTop;firstWaterBlock;lastWaterBlock;wholeWaterBlocks;waterKind;wholeRiver"
+    },
+    {
+      "x": "-554",
+      "z": "-416",
+      "oldCsvLine": "1712",
+      "newCsvLine": "1712",
+      "oldGround": "215.0231700453758",
+      "newGround": "216.0231700453758",
+      "groundDelta": "1.0",
+      "oldSurface": "216.0231700453758",
+      "newSurface": "216.0231700453758",
+      "oldRiverType": "1",
+      "newRiverType": "0",
+      "oldWaterKind": "3",
+      "newWaterKind": "0",
+      "oldWaterBlocks": "1",
+      "newWaterBlocks": "0",
+      "changedFields": "groundY;riverType;riverGate;waterTop;firstWaterBlock;lastWaterBlock;wholeWaterBlocks;waterKind;wholeRiver"
+    },
+    {
+      "x": "-552",
+      "z": "-414",
+      "oldCsvLine": "1732",
+      "newCsvLine": "1732",
+      "oldGround": "215.97857448655253",
+      "newGround": "215.97857448655253",
+      "groundDelta": "0.0",
+      "oldSurface": "215.97857448655253",
+      "newSurface": "215.97857448655253",
+      "oldRiverType": "0",
+      "newRiverType": "0",
+      "oldWaterKind": "0",
+      "newWaterKind": "0",
+      "oldWaterBlocks": "0",
+      "newWaterBlocks": "0",
+      "changedFields": ""
+    },
+    {
+      "x": "-536",
+      "z": "-416",
+      "oldCsvLine": "2414",
+      "newCsvLine": "2414",
+      "oldGround": "213.93612750967708",
+      "newGround": "214.93612750967708",
+      "groundDelta": "1.0",
+      "oldSurface": "214.93612750967708",
+      "newSurface": "214.93612750967708",
+      "oldRiverType": "1",
+      "newRiverType": "0",
+      "oldWaterKind": "3",
+      "newWaterKind": "0",
+      "oldWaterBlocks": "1",
+      "newWaterBlocks": "0",
+      "changedFields": "groundY;riverType;riverGate;waterTop;firstWaterBlock;lastWaterBlock;wholeWaterBlocks;waterKind;wholeRiver"
+    },
+    {
+      "x": "-536",
+      "z": "-414",
+      "oldCsvLine": "2416",
+      "newCsvLine": "2416",
+      "oldGround": "214.84183826960614",
+      "newGround": "214.84183826960614",
+      "groundDelta": "0.0",
+      "oldSurface": "214.84183826960614",
+      "newSurface": "214.84183826960614",
+      "oldRiverType": "0",
+      "newRiverType": "0",
+      "oldWaterKind": "0",
+      "newWaterKind": "0",
+      "oldWaterBlocks": "0",
+      "newWaterBlocks": "0",
+      "changedFields": ""
+    }
+  ],
+  "scope": {
+    "requestedBounds": [
+      -584,
+      -530,
+      -452,
+      -408
+    ],
+    "chunks": 16,
+    "columns": 2475,
+    "roundedChunkFootprint": [
+      -592,
+      -529,
+      -464,
+      -401
+    ],
+    "finals": [
+      {
+        "owner": "-1:-1",
+        "objectId": "2018220300"
+      },
+      {
+        "owner": "-1:-2",
+        "objectId": "1027319653"
+      },
+      {
+        "owner": "-2:-1",
+        "objectId": "633079302"
+      },
+      {
+        "owner": "-2:-2",
+        "objectId": "1561745898"
+      }
+    ],
+    "primaryOwners": [
+      "-1:-1",
+      "-1:-2",
+      "-1:-3",
+      "-1:0",
+      "-2:-1",
+      "-2:-2",
+      "-2:-3",
+      "-2:0",
+      "0:-1",
+      "0:-2",
+      "0:-3",
+      "0:0"
+    ],
+    "dependencies": "Normal provider dependencies allowed; no extra final/P1 invocation or repeated pass2"
+  },
+  "protected": {
+    "count": 9879,
+    "unchanged": true,
+    "changed": {},
+    "configMemoryOnly": true,
+    "inputCopySHA256": "8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3",
+    "originalConfigSHA256": "8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3",
+    "debugAgentLog": "NOT_READ_NOT_WRITTEN"
+  },
+  "limitations": [
+    "Narrow 2475-column local discard check only; not global or full-image regression/whole-river connectivity acceptance.",
+    "Cached manifest export covers observed retained P1 objects only; missing neighbors are explicit, no extra P1/final query used.",
+    "Candidate function tests are separate main-thread work, not certified by this probe.",
+    "No Forge block placement, caves, decoration or fluid ticks."
+  ]
+}
