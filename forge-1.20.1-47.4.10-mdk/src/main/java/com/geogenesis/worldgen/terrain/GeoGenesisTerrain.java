@@ -558,7 +558,19 @@ public final class GeoGenesisTerrain {
             //   湖水位 = model 链发布的盆单平面（WorldLakeSurface / WorldBasinRouting）。
             if (column.lakePlan()) {
                 double spill = column.waterSurfaceY();
-                boolean flooded = cell.height < spill - 0.5;
+                // ★ 湖岸出水判据与【方块放置】对齐（2026-10-25）
+                //
+                // 【缺陷】原判据 `height < spill - 0.5` 要求水柱≥半格，而 MC 放水只要
+                //   (floor(height), floor(spill)] 非空。两者之间的岸格被判为干 ⇒
+                //   provider 认定的湖格在图上不出水，湖岸留下 1~21 块宽的干圈；
+                //   河流的湿线止于圈外 ⇒ 表现为「河没接到湖」与「孤立河」。
+                //
+                // 【修法】湖域判据放宽为「水面严格高于地面」；能否放下水块交给下方
+                //   既有「水柱保护」保证（它把地面压到 floor(spill)−1e-9 以下）。
+                //   ⚠ 不要直接把这里换成 `floor(spill) > floor(height)`：那会绕过
+                //     保护分支，使「地面在整数高度、spill 小数≥0.5」的岸格由湿变干
+                //     （实测 −2508 格退化）。
+                boolean flooded = cell.height < spill - 1e-9;
                 // 湖不挖地；水柱保护：落块水放 (floor(height), floor(spill)]，若
                 // floor 相同则无水块 → 只在必需时把地面压到 floor(spill)-1 以下（<1 格）
                 if (flooded && cell.height >= Math.floor(spill) - 1e-9) {
