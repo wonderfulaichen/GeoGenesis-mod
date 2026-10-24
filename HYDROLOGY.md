@@ -1164,7 +1164,160 @@ Forge方块/装饰/流体tick、旧66全账本、跨窗证书/无环及生产迁
 
 下一步只围绕保留河系的正确性：先补足其余25条受pin撤销影响的河线湿列/真实JOIN保护，区分合理局部重采样与实际断流；再核验保留端口的接收、共同后继与湖海终点。随后补多seed/负大坐标/下游先查/缓存淘汰/并发取消重试，关卡通过后才迁生产、升缓存、跑门禁与Forge验收。原shape逐字比较的失败证据保留，不把它自动视为断流，也不为凑逐字一致而保留失效交接pin。南部长直不在后续修复清单。
 
-## 一、当前状态（历史快照；新实验状态见〇c—〇ap）
+### 〇aq、用户再次确认全周期、连续终点与简单性（2026-10-24，后续验收硬条件）
+
+用户认可〇ap后续顺序，并再次强调：**水文全周期；河流结束必须入湖/入海，不能非正常结束；河流骨架从头到尾连续不中断；不能过度复杂化。**
+
+执行口径：
+
+1. 每条保留河系沿真实有向后继核验源头、支流JOIN、跨区接力直到湖/海；JOIN、BOUNDARY_EXIT、临时ACCEPTED、pending=0和本地有向过滤PASS都不单独充当完整终点证书。UNRESOLVED、EXHAUSTED或DOMAIN_PENDING不能当闭盆、干涸或合法终止。
+2. 入湖是河段合法终点，不等于水文生命周期全部完成。复核既有湖泊来水、蓄水/蒸发、水量平衡和达到既定条件后的溢口出流，继续核验出湖河直到下一湖/海。真实无溢出的终端湖可以是合法终点，不能为了“最终到海”强造出流；未认证边界不冒充真实终端湖。
+3. 保留骨架连续且真实生产水列不在源—JOIN—接力—河口间残留缺口；像素局部4/8连通只作定位，不替代全链/流体验收。允许舍弃的极短/孤立支系必须几何、端口及可借前缀整体一致消失，不以删除长河局部短连接换绿。
+4. 沿现有model D8与已有湖/接力机制收尾，不另建水文/世界图，不递归邻final、不重复pass2、不加预算、不改宽深或惯性掩盖断头；南部长直按〇ap非缺陷处理。
+
+当前固定检查点为`50123978596fa56eeda9f3b19c35f2668822b3b8`，未推送；上述硬条件尚未整体通过。本轮先启动其余25处pin变化的真实生产列A/B，只读取固定候选并新增隔离探针，不改产出规则。端口后继及湖泊全周期核验接着进行，不混用早期world分支历史绿灯。
+
+### 〇ar、按全周期口径继续验收：25处局部回归与57端口接收（2026-10-24，未改产出）
+
+**pin撤销的剩余25处：** 固定5012397中的halo候选与旧949，各一个冷JVM真实getChunkCells，25个25×25窗口、每臂15625样本/114chunk，compile/old/new均exit0；1149个旧输入保护哈希一致。初始 [comparison.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/remaining-pins-1792790132931/comparison.json) 用river-only四邻图发现`(-925,-168)`少一水列、旧1组→新2组，analysis真实exit1保留。逐Y复核发现该处真实接收湖参与：Y176的`(-926,-168)河→(-926,-167)湖→(-926,-166)湖→(-925,-166)湖→(-925,-167)河`面相邻连通，不能把排除合法湖面的river-only误报当河流断口。另立 [water-volume-comparison.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/remaining-pins-1792790132931/water-volume-comparison.json) 记录更正，不覆盖原红报告。
+
+25处加入湖海实际整块水柱后的3D六邻图，未出现“旧共存河水体被新版本额外分裂”；19个字段变化样本、河样本980→965（重叠窗口按各patch计），其中一旧独立组整体消失，不能据此自动断言安全。**多个旧/新局部3D水组本来就不连续，故这只是未新增局部回归，不是绝对全程连续证明。** 所有30条变形存活trace的真实JOIN粗节点与shape共享顶点检查通过，见 [join-geometry-check.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/remaining-pins-1792790132931/join-geometry-check.json)；仍不替代JOIN湿列、全河后继与Forge。
+
+**57个原样本外端口：有限13receiver单跳导出完成。** 新 [receiver-lifecycle目录](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/FINAL-REPORT.txt) 只求解原57条对应的13个receiver，每个FINAL一次；旧7owner从raw读取，没有递归final或重复pass2，不追新16个范围外端口。原TOML先复制再加载副本，原件哈希保持；21968项保护一致。
+
+- 57/57发送/接收完整payload匹配；55条有exact promised next，2条LAKE元数据。单跳未出现已发布却接收方PRUNED，不等于湿列/完整全周期通过。
+- 在已导出的20owner粗图内，48条沿真实边/明确handoff到SEA；9条停在尚无已保留溢口起链的湖盆。其中receiver `(-1,-3)`盆0占5条、`(-3,-2)`盆52占2条、`(-3,-3)`盆2占2条；前两盆outlet在core，最后一盆在halo。皆有真实入流、overflow=true、正outflow、outlet Q过既有成河门限，但导出保留trace无该起点。
+- **原因尚UNKNOWN：** 没有过滤前trace/实际seed清单，不知是未准入、追踪后回滚、已有覆盖，还是有向/短组过滤移除。`droppedPrimary`总数不能证明具体outlet何时被删；禁止靠恢复fromOutlet豁免强保未决来补绿。halo组件过滤只删`hasPort&&!supported`，fromOutlet明确受保护，不能把缺出流归因到“halo/port-less组按设计被删”。
+- 独立 [lifecycle-gate.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/lifecycle-gate.json)：**exit1，9/57全周期未闭合**；compile/provider/导出analysis0只证明取证完成，不算验收绿。
+
+**本轮观察器错误不删除：** 分支原FINAL-REPORT将9条停点误归4盆，其中两条跨owner后停在(-1,-3)却按首接收方(-2,-3)同世界格查到无关小盆。更正为上述3盆，逐项权威来源见 [final-57-explicit.csv](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/final-57-explicit.csv) 和 [CORRECTIONS.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/CORRECTIONS.json)。原报告及原walk保留，不再引用错误4盆/halo豁免归因。旧ProductionDrainageAudit.follow无BOUNDARY_EXIT分支，会重复原segment得到伪CYCLE；不能用旧导出器结果冒充真实环，不改生产审计器来造水文修复。
+
+**下一具体靶点：** 仅对上述两个core正出流盆，在现有同一次solve定点捕获basinOutlet准入、过滤前trace与停止原因，解释为何无保留出湖链。当前全周期关卡仍红、绝对连续仍未认证；不改候选/生产/TOML/预算/宽深/惯性、不升缓存、不提交推送，不因为57单跳有接收就越过全周期验收。
+
+### 〇as、两个core湖盆出口定点捕获：回到原湖与短湖间连接被删（2026-10-24，仅诊断）
+
+用户批准继续〇ar的两个具体湖盆取证。本轮仍只读固定halo候选，在新build副本观察实际PRIMARY求解与过滤阶段；两个目标FINAL各一次，未递归邻FINAL、未重复pass2。另一次PRIMARY-only导出直接读取原候选的湖盆身份及9×9邻域，不重放追踪、不试跑候选出口。未改生产、候选规则、TOML、预算/rise、宽深/惯性或schema，未提交推送。
+
+**假设与实测：** A=未准入；B=已覆盖/追踪回滚或未决；C=过滤移除。两处均明确准入，Q分别105.04480000000953、25.568000000009263，门限0.19199999999999998；实际pass1起链、covered=false、rollback=false、无spill搜索。均通过有向过滤，但在随后短段过滤消失，halo过滤不是首次删除点。
+
+| owner / 源盆 | 实际过滤前路径（格索引） | 真实接收身份 | 已确认问题 |
+|---|---|---|---|
+| (-1,-3) / 盆0，出口(-314,-1220) | 52097→51744；2节点，MOUTH_LAKE | 仍是盆0，终点(-316,-1220)，同一个出口52097 | 半径2内没有符合现有outletEscape判据的非湖下降格；逃逸失败后普通追踪返回原湖。这不是合法出湖，更不是“短段删掉所以没问题” |
+| (-3,-2) / 盆52，出口(-1100,-562) | 94177→94531→94532；3节点，MOUTH_LAKE | 盆54，终点(-1098,-558)，其出口恰为中间格94531 | 真实湖间短连接被短段过滤删除；盆54也overflow且正出流，不能把这里视为最终闭湖 |
+
+第二处盆54出口94531同在已准入outlets列表，但已被盆52路径经过并认领，过滤前没有从94531另起的trace。结合现有`covered[start]→continue`分支可归因其后续起链被覆盖跳过；**没有单独捕获94531的TRACE_BEGIN/COVERED_BY事件，不能将此控制流归因冒充额外运行日志。** 只保留盆52三点段仍不足以证明盆54之后有真实下游。
+
+**修复边界：** 不能恢复fromOutlet总豁免强留两条短线：第一条只回到原湖，第二条之后仍缺下游。必须先让既有湖盆出口和真实出湖方向一致，并区分“出口格被经过”与“出口已具有有效后继”；随后仅保护认证的湖间连接，不将其当可删除的独立短支流。尚未选择/实施出口修法，不能提高预算或把未决改称闭盆。本轮不是全周期修复完成。
+
+**证据与验证：** [diagnosis.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-capture-1792817716435/diagnosis.json)及同目录events/identity-events保存逐阶段和实际盆身份。javac/provider、身份导出javac/provider及分析断言均exit0；26份非计时owner导出与固定旧审计逐字节相同，1253项源码/候选/旧证据/计划/TOML保护哈希无变化，分析含正负整行平移校验。初次PowerShell管道Python因BOM解析失败，后改为文件脚本运行通过，失败不算判据反控。捕获中的raw `reason=NO_RECEIVER`是初始化未更新字符串，实际结束分支为MOUTH_LAKE，不能照字面误报“无接收者”。旧debug日志先备份并核SHA再清空，捕获与身份日志分别保存。
+
+**仍未通过：** 原57端口中9条全周期未闭合的关卡保持红；本轮没有新的真实湿列/全河连续性或Forge验收，也没有解决第三个halo盆。南部长直不是bug，不纳入修复。
+
+### 〇at、出口根因隔离修复与真实水柱红灯（2026-10-24，未迁生产）
+
+用户批准继续修现有出口接续，不加豁免、不另建水文、不加预算。新候选位于`build/d8-spill-contract/pruning/outlet-candidate-1792821818176`，原5012397/halo候选和生产源码保持不变。
+
+**根因再收窄：** 原LakeWaterBalance按四邻扫描最低dry rim；EquilibriumWater父树却是八邻。盆0/54各有唯一真实parent出盆边，恰为对角边，外侧格bed精确等于sill，四邻rim扫描看不到它，选中的是parent指回湖内的入流岸。现有证据的完整member/rim/跨出边和原parent指针walk见`outlet-boundary-evidence`。原parent长链局部有爬坡，不能把它整条当作合法河路；本轮只复用出口见证与第一步，后续仍走现有条件D8/spill。
+
+**隔离实现：**
+- LakeWaterBalance选口改消费成员的parent跨出边，要求目标非潜湖/非海、resolved、bed≤本盆sill；沿既有parent在下降到低于sill前不得回本盆。没有额外地形采样/新求解或更高预算。无见证返回-1，但正outflow不改称闭湖。原Result/public API不改，旧假rim不再注入。
+- provider显式向内部build传同份lakeResult；旧公共build入口保持兼容。带上下文的出口首步使用parent[outlet]，回原盆/无身份/缺parent诚实未决。covered出口只归因直接后继，不重追制造共享格双后继，也不把存在后继当全程通水证书。
+- 短滤仅额外保护有同份盆身份、fromOutlet且真实到海/不同盆的湖间连接；不对fromOutlet总豁免，有向过滤和既有port/incoming/tail保护保持。生产默认、TOML、宽深/惯性/rise及缓存schema未改。
+
+**真实两盆结果（新FINAL各一次）：** 盆0出口52097→51723（-316,-1262），193节点到SEA；盆52保留94177→94531→94532三点入盆54，盆54改从94577（-1098,-468）起24节点入盆58，再6节点入盆62，再3节点到显式port。不是重复pass2或父树整链直画。两个目标盆inflow/outflow/level/area/seed与旧审计逐字相同；不是整个世界账本不变的证明。两owner无共享格双后继。
+
+**不能验收：真实getChunkCells水柱仍红。** [report.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-wet-check-1792821818176/report.json)独立新旧JVM四个25×25patch、每臂2500样本，逐Y水柱六邻图：盆52河头到盆54入口已连通，但盆0/54出湖河头与实际湖面无共享面，两个原湖边member点本身实际干。盆0局部湖188列与河16列分离，盆54湖23列与全部河分量分离。走廊实测有高于湖面的逐块干脊，且近岸计划湖格深度不足0.5在生产不灌水；这不是有向出口修复已完成湿列连续。另有薄河水面高度跳变导致正交相邻水柱无共面，不能靠二维像素相邻判绿。新旧73样本变化（51干→河、22河→干），不能称本轮新造这两处缺口，也不能称已修。下一具体项是既有骨架从实际湿湖面到出湖河头的完整几何衔接，不加宽深或直接补水。
+
+**20owner/原57端口回归：** 全部owner在新候选独立重算FINAL各一次，不拼旧7owner图，不递归追范围外final。56原端口仍发送且接收；55有真实LAND_EDGE、另2是promised格真实入湖（不是陆边失败）。沿当前实边及湖盆账本53行到SEA，4行到固定20owner外，不能当完整闭环。1个原端口`-2:-1@-1108,-608`消失，附近替身与同河身份未经认证：**变更未认证，不等于已证断口，也不等于安全平移**。两处目标独立复现；整导出无双后继。完整关卡 [gate.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/gate.json)仍exit1（4范围外+1原承诺变化，有重叠行）。初版gate把EXTERNAL当soft、把近邻替身当安全迁移，均已撤回，原版备份保留。统计中91个正出流出口无已保留边：3截断、1低准入、9过门限无边未归因、78缺同候选门限证据；另24无出口格。不能把91个逐一叫bug或用旧候选Q替新候选门限判定。
+
+**验证与限制：** [final-results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-candidate-1792821818176/final-results.json)：最终三类源码编译0；LakeOutlet24断言、OutletContinuation16场景、既有halo113/剪枝37/整链16均exit0。3个反控（旧四邻selector、去短链认证、允许自回湖认证）全部先compile0再指定断言红。首次LakeOutlet fixture无真实来水却要求正outflow，原红保留，改显式upstreamFlow输入后通过。最终端口一致性55断言exit0，完整全周期及独立湿列gate均exit1；水列导出工具自身exit0仅表示取证完成。生产/配置/旧候选保护哈希未改。
+
+运行大范围/湿列时DS class仍含后来删去的covered诊断早退；其余66/67方法逐指令相同，实导出该诊断分支出现0次。主线程最终重编同步源码/class并复跑全部合成与反控，未重复20owner/湿列求解；不能把此前实测说成最终class整份hash相同。未做1401²新大图、全确定性矩阵、完整WorldgenGate、Forge方块/装饰/流体tick或生产迁移；不升schema、不提交推送。南部长直不处理。
+
+### 〇au、实际湖面到出湖河头的最小前缀（2026-10-24，隔离局部样本通过，整体仍红）
+
+用户批准继续〇at的几何衔接。本轮原生产、TOML、debug日志、旧候选与旧证据全部保护；无提交推送、不升schema、不迁main。没有改半宽/深度参数、湖水位、水量、惯性或搜索预算，也没有直接补水。
+
+**先臂与收敛：** 第一臂`outlet-prefix-1792837898724`从盆seed沿parent到选定出口，截取最后粗格湿点后的suffix；真实三盆都接上，但seed并不构造性保证经过所选出口，故不作为最终候选。保留原证据，不用“这三盆刚好有效”替一般契约。当前候选为 [OutletLakePrefix.java](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-prefix-nearest-1792842919611/OutletLakePrefix.java)：只在provider已有shape完成后，沿**现有parent的反向八邻关系**找最近同盆湿候选，取其原parent到既定outlet的最短跳数前缀，前插到该fromOutlet折线。无新地形搜索/新世界图/求解pass；环、异盆和缺湿点返回空，不凭空造见证。湿候选仍由同盆lake/bed<level−0.5选出，**算法本身尚未保证每种配置下首点真实生产湿**；本轮必须额外核实实际首点，不把粗格判据当湿列证明。
+
+**前缀几何而非调宽深：** 仅provider插入一处attach调用；trace、end、source/mouth、port、原shape全部尾部保持不变，新增段交给现有SegmentIndex和雕刻管线。新增覆盖处实际地面沿用既有河道规则降低1块，不能说“地形完全未动”；这是缺失路径恢复产生的雕刻，不是额外加深参数或手工填水。没有画整湖parent树；输出只含最近湿候选到出口的必要段。没有把prefix当新ordinary source或改变准入。
+
+**同参生产入口实测（独立JVM，真实getChunkCells）：**
+
+| owner / 盆 | 前缀首点 → 出口 | path点数 / 新前插点数 | 实际首点 / 衔接 |
+|---|---|---|---|
+| (-1,-3) / 0 | (-320,-1260) → (-316,-1262) | 3 / 2 | lake，Y78，实际湖面到出口河头六邻面连通 |
+| (-3,-2) / 52 | (-1104,-566) → (-1100,-562) | 3 / 2 | lake，Y210，原湖间连接继续保留且接出连通 |
+| (-3,-2) / 54 | (-1102,-480) → (-1098,-468) | 7 / 6 | lake，Y210，实际湖面到出口河头六邻面连通 |
+
+四个25×25窗口2500样本与无prefix的outlet候选对照，47样本干→河，改变仅在新增几何附近；第一臂为54列，第二臂只缩短盆0。三处prefix首点都在旧/新臂是真实湖列、水位一致；前缀全部节点实际湿，同盆/parent关系/窗口内检查通过。**STEP=2的粗节点彼此本不面邻接**，真正判据是中间逐方块水列的3D六邻洪泛，不是对两个粗节点只比较Y范围。三处每条prefix在±2块实采框中同一水分量；原2500样本patch的指定湖岸—河头锚点四处均连通，不能推广为全河连通。
+
+**原尾部与相交核验：** 三条旧shape尾部548/12/72点以17位导出逐点一致；trace计数69/139、目标trace元数据与原候选相同。两个owner全208条折线的有限几何审计无新增跨折线非共享节点交点，前缀无自交/重复列；另4条自交trace均无prefix，原红不修、不归给本次。不声称完整世界不相交或跨owner顺序无关。证据 [features.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-prefix-nearest-wet-1792842919611/features.json)、[poly-tail-bitwise.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-prefix-nearest-wet-1792842919611/poly-tail-bitwise.json)。
+
+**验证与红灯分开：** 编译、LakePrefixNearest24断言（含seed不在出口祖先链、异盆、环/无湿点、负坐标、attach索引对齐/原尾部bitwise/输入与trace不可变）、LakeOutlet24、OutletContinuation16、halo113、剪枝37/整链16均exit0。两个源码变异（不发prefix/穿过异盆）先编译0再指定断言exit1；独立湿列分裂负控保持红。[evidence-verification.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-prefix-nearest-1792842919611/evidence-verification.json)仅认证三处有限prefix，不改写原gate。
+
+**完整连续性仍未通过：** 原7对薄河水柱Y跳1块、相邻却无共面仍逐项相同，两gate仍exit1（shore脚本也纳入这7对，因此其总verdict亦红；不把标签叫shore就掩掉）。这7处在既有无prefix参考臂独立存在，不能用“与本次无关”把全程连续要求关掉。〇at的4条范围外后继、1处端口身份变更及其它盆出口未分类缺口仍未解决，未重跑20owner/57端口全导出。下一靶点为**已有河段水柱降一级时的纵向衔接归因**，不是继续延长湖内前缀或加宽深；若需要改变水面/落块语义，须先说明取舍。未做新1401²大图、多seed/查询顺序/缓存淘汰/并发取消矩阵、完整门禁与Forge流体tick，当前候选仍不可发布。南部长直不处理。
+
+### 〇av、7处河段纵向断接归因：逐列取整与未发布lip（2026-10-24，仅诊断，待语义决策）
+
+用户批准继续〇au归因，并保留“涉及水面/落块规则变化先说明取舍”的边界。本轮不改任何候选或生产行为，复用既有真实getChunkCells列与有序shape逐项分析，不新增solve、不重放pass2、不新增插桩或清理旧debug。取证脚本及结果在`build/d8-spill-contract/pruning/vertical-step-1792847183851`。
+
+**已证实而非猜测：** 7/7对均是同一有序trace、A→B沿下游，连续surface差仅0.0702916747至0.4079314589；14/14列实际lip==surface、都是river、各1整块水。独立floor后高列水Y=N/低列水Y=N−1；Y=N处低侧是空气，Y=N−1处高侧是实心床顶。25×25已有样本内无六邻水路绕行；1对跨chunk，其余6对同chunk，不支持“全是区块接缝问题”。与无prefix参考臂7对逐字相同。此处确认的是初始生产计划水体无共享面，不替代流体tick后的实机结论，也不把连续落差小于1直接当“真瀑布”。
+
+**机制链：** 骨架provider河列发布`surface, surface`（waterSurfaceY/lipSurfaceY），普通水面来自同区双线性waterSurface。HydrologyBlockCarvedColumn已有lip通道，GeoGenesisTerrain原样传入cell.riverLipY；GeoGenesisGenerator按`max(floor(waterTop),floor(lip))`放水，超过普通waterTopBlock部分用FLOWING_WATER。因此纵向水幕消费链已存在，但骨架从未发布高于本列surface的lip。无需新水文底座，也不能把旁边任意高水面当上游。
+
+**现有方向信息的边界：** shape/trace有源→口顺序，SegmentIndex已计算段号与投影t，但Hit不保留poly身份/弧长；sew bridge本身无天然下游身份。若修复，必须从同一有向河段消费真实上游，不读邻chunk生成结果，也不做四邻waterSurface max（会串接旁边别河）。生成顺序与跨区方向仍需专门验证。
+
+**最小候选取舍（尚未实施）：** 复用lip，在真实同河顺流、正交相邻、普通水面floor降1且缺共享面时，仅将低列lip补到上游连接高度；这7对局部反事实每处需新增1水体素，床面/普通waterSurface/半宽/深度参数均可保持。但**额外流动水块就是出水体素语义变化**，不是“完全不改水面/不补水”；必须用户确认，并在Forge验证是否保住、是否扩散、是否受装饰/加载顺序影响。不能把7对反事实计算说成一般规则只会新增7块。另一选择是改变普通水位的链式离散化，影响更大；仅放宽六邻判据则不满足当前已确认的实际连续要求，不擅自采用。既有水tick衰减/扩散历史不能证明本7对会自动修复或必定失败。
+
+**验证：** [report.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/vertical-step-1792847183851/report.json)保留7对原列值、同trace弧长、两层切片及implemented=false的lip反事实；分析退出0，15个正负高度解析通例验证floor台阶结构，源码/配置/候选/debug哈希保护不变。未跑Forge/全图/完整门禁，不改之前全连续exit1、4范围外后继及1端口身份未决，不迁生产、不升schema、不提交推送。南部长直不处理。
+
+### 〇aw、用户纠偏：体素台阶不等于骨架中断，停止lip方向（2026-10-24）
+
+用户明确指出MC体素地形出现台阶正常，要求停止偏离骨架目标的水方块工作、直接出当前水文效果图。**覆盖〇au/〇av的错误验收解释：** 7处已有同trace有序相邻段的水柱无六邻共享面，只能说明初始水块离散形态，不能据此判河流骨架断裂，也不能将其作为必须补lip的依据。原始测量和exit1报告保留，但这些报告不再直接充当骨架连续性失败证书；流体tick效果未实测，不猜测会或不会自行连接。
+
+此前受限lip方案曾获同意，随后已被用户明确叫停。`lip-candidate-1792847183851`与`lip-wet-1792847183851`只保留为停止的隔离实验，不纳入本次出图、不迁生产，不声称已通过。当前出图组合为`outlet-prefix-nearest-1792842919611`及其既有出口候选依赖，沿用原seed/中心/半径700、1401×1401逐块生产`getChunkCells`入口，不改变水方块规则、宽深、惯性或预算。范围外4条后继与1处端口身份变化仍未认证；不能把本次纠偏变成全周期已完成。南部长直按用户确认是地形路线，不处理。
+
+**本次完整出图已生成：** [production.png](forge-1.20.1-47.4.10-mdk/build/hydro-production/prod-1792855942489/production.png)，seed9139912035078620160、中心(-140,137)、1401×1401、step1。真实getChunkCells完成8281chunk、uncovered=0；湖91336、海452661、河37304。对上次halo整图：湖海掩码逐像素不变，2150列干→河、634列河→干，河净增1516；其余干地灰阶未变化，不把面积增加当全周期已通过。加载来源核实为nearest-prefix provider与outlet-candidate骨架，无lip候选；1704个源码/配置/依赖class保护哈希未变，原TOML哈希保持。编译/绘图自检/实际渲染均exit0。后处理初次读取混合编码console日志报错，未重跑求解，只修runner日志读取并对已生成原图完成核验，结果见 [results.json](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/current-view-1792855900486/results.json)。本图是隔离候选的生产路径离线效果，不是main默认、不是Forge运行后验收；未迁生产、未升schema、未提交推送。
+
+### 〇ax、三类可见缺陷的修复（2026-10-25，隔离候选三补丁，未迁生产）
+
+用户指出三点：① 部分河流没接到湖；② 湖边有超短河（应可剔除）；③ 有既不入湖也不入海的孤立河。
+本轮只用只读取证定位，再在隔离候选改三处，**未改 src/main、未改 TOML、未升 schema、未提交**。
+
+**根因（三处，互不相同）：**
+
+| \# | 缺陷 | 根因（代码位置） | 证据 |
+|---|---|---|---|
+| ① ③ | 河没接到湖 / 孤立河 | `GeoGenesisTerrain` 湖列判据 `height < spill − 0.5` 要求水柱≥半格，而 MC 放水只要 `(floor(height), floor(spill)]` 非空 ⇒ 湖岸留一圈干缝 | 548 条名义入湖/入海终点，粗格掩码全 true、像素却干；终点到真实湖面距离 p50=1、p90=8、最大 21 |
+| ② | 湖边超短河 | `traceOne` 的 `&& !fromOutlet` **无条件**豁免长度下限 ⇒ 2~5 节点溢口段全部存活；另有 11/19 的短棒根本没有 trace 覆盖，来自 `shape()` 对入湖折线**无条件延长 2 格（8 块）** | 85 条 <6 节点溢口段存活（2:16/3:38/4:8/5:23）；19 个湖边短段中 11 个反查 trace 覆盖为 0 |
+| — | 拓扑层本身无断点 | 20 owner / 1441 trace：`DEAD_END=0`、`UNRESOLVED=0` | 起点不在"忘了写终点"，而在判据与几何 |
+
+**三处修改（均带开关，可逐位回退）：**
+1. 湖域判据改为 `height < spill − 1e-9`，水块能否放下交给**既有**「水柱保护」分支保证。
+   ⚠ 首版直接换成 `floor(spill) > floor(height)` 被实测否证：绕过保护分支 ⇒ **−2508 格湖→干**、孤立河 17→22，已撤。
+2. `traceOne` 溢口段不再无条件豁免：只有真正入海、或入湖且**离开源盆**的才保留。
+3. `shape()` 末端延伸只对 `nodeCount >= MIN_TAIL_EXTEND_NODES`（默认 6）生效，短段不再凭空伸出 8 块。
+
+**同参 1401² 实测（`GeoGenesisTerrain.getChunkCells` 生产路径，8281 chunk，uncovered=0）：**
+
+| 指标 | 基线 | 仅湖岸 | 三补丁 |
+|---|---|---|---|
+| 湖格 | 91336 | 105172 | **105182** |
+| 河格 | 37304 | 37304 | 37270 |
+| 湖→干退化 | — | **0** | **0** |
+| 孤立河分量 | 17（1818 px） | 6（311 px） | **6（311 px）** |
+| 河终点距湖 >6 格 | 20 | 0 | **0** |
+| 湖边短段 | 19（86 px） | 20（88 px） | **18（74 px）** |
+
+图：[production.png](forge-1.20.1-47.4.10-mdk/build/hydro-production/prod-1792862777733/production.png)；
+证据与可复跑脚本：[lake-shore-1792860057138](forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-shore-1792860057138)（`verify4.json`、`gate-compare.json`、`stub-diff.json`）。
+
+**门禁等价性（有牙齿）：** `SkeletonProbe` 用基线类与补丁类各跑一遍，断言行**逐条 diff = 0**（22 PASS / 1 FAIL / exit 1 两臂相同）⇒ 补丁未改变任何既有门禁判定。该 22 PASS/1 FAIL 是 HEAD **既有**红灯，非本轮引入（`git status src/main` 为空）。另 `ShoreCriterionProbe` 240274 项通过，且两个反控有效：被否证的首版变体检出 59401 个干湖格；旧判据与方块放置有 59165 处不等价。
+
+**仍未解决（如实）：** 剩余 6 个孤立河中，3 个 `end=JOIN` 但整簇离水 154~185 格、3 个 `end=MOUTH_LAKE` 但离湖 19~40 格 —— 与用户圈出的形态**不是同一成因**，属另一条独立缺陷，未在本轮处理。短段仅 19→18，改进有限，不宣称"已剔除"。未跑 Forge 实机、未跑完整 WorldgenGate、未迁 main、未升 schema。
+
+## 一、当前状态（历史快照；新实验状态见〇c—〇ax）
 
 | 项 | 值 |
 | --- | --- |

@@ -1,0 +1,22 @@
+toml=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\run\config\geogenesis-common.toml
+sha256=8dc968236445a74a75357d84122b61e1f1a54c07500b829276f9b48f42c223e3
+loaded=true
+corrected=true
+fingerprint=-8622715032661991989
+cascade=0.5
+gully=0.65
+REGION=512
+HALO=96
+STEP=2
+SAMPLES=50000
+HIER=false
+CROSS_PASS=true
+MAX_SPILL_RISE=12.0
+com.geogenesis.worldgen.hydrology.model.ProductionViewProbe sha256=47a07741bfbd0a38497d3207beda091a822c08b30cf35fd9252576a992957da8 source=file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/boundary-repair-v2/integrated-1792736719405609000/classes/
+com.geogenesis.worldgen.hydrology.model.ModelHydrologyProvider sha256=1a22c478bf5b9a1d89b5b6b68ad66006aade01c36b13d1bc04c41fece5a347b7 source=file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-prefix-nearest-1792842919611/classes/
+com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton sha256=31b137e19d7270df07adbacc2d39312215c504ea17f56819b2b44b22f423aa92 source=file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-shore-1792860057138/classes/
+com.geogenesis.worldgen.terrain.GeoGenesisTerrain sha256=9c60ff553a11bef0f83c298020372638517c7fe8883dfc1bd98ff4f7c4810e2f source=file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-shore-1792860057138/classes/
+com.geogenesis.worldgen.terrain.CellGenerator sha256=4d56e0f4ea92054b3df7e44a197a5e221068a26ec7f64e30e77ee3785d86218d source=file:/D:/Office%20software/Development%20Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk/build/classes/java/main/
+geogenesis.boundaryPorts=true
+geogenesis.lifecycleDiag=false
+geogenesis.stutterDiag=false
