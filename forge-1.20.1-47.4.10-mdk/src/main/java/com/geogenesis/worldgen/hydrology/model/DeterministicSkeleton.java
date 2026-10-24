@@ -105,6 +105,18 @@ public final class DeterministicSkeleton {
         OUTLET_ESCAPE
     }
 
+
+    /**
+     * ★ v2：本趟角色（显式，不再用"有没有 base"去猜）。
+     *
+     * <ul>
+     *   <li>{@link #PRIMARY}：pass1 —— 本区独立追踪，<b>发出</b>端口承诺；</li>
+     *   <li>{@link #SECOND_PASS}：pass2 —— 消费本区 pass1 的 base，<b>兑现</b>承诺；
+     *       任一出口若没有 pass1 承诺 ⇒ {@link Result#pendingExits} 显式未决。</li>
+     * </ul>
+     */
+    public enum PassRole { PRIMARY, SECOND_PASS }
+
     /** 河段终止类型（显式，不假装有水）。 */
     public enum End {
         /** 入湖：下一格是湖水面。 */
@@ -171,13 +183,22 @@ public final class DeterministicSkeleton {
             this(cell, end, fromOutlet, outsideTail, contPath, cell.length);
         }
 
-        Trace(int[] cell, End end, boolean fromOutlet, double[] outsideTail, double[] contPath, int geometryPrefixNodes) {
+        /** ★ ports 模块：显式出窗端口（仅 {@code end == BOUNDARY_EXIT} 时非空）。 */
+        public final BoundaryPort port;
+
+        Trace(int[] cell, End end, boolean fromOutlet, double[] outsideTail, double[] contPath,
+              int geometryPrefixNodes, BoundaryPort port) {
             this.geometryPrefixNodes = geometryPrefixNodes;
             this.cell = cell;
             this.end = end;
             this.fromOutlet = fromOutlet;
             this.outsideTail = outsideTail;
             this.contPath = contPath;
+            this.port = port;
+        }
+
+        Trace(int[] cell, End end, boolean fromOutlet, double[] outsideTail, double[] contPath, int geometryPrefixNodes) {
+            this(cell, end, fromOutlet, outsideTail, contPath, geometryPrefixNodes, null);
         }
 
         public boolean hasOutsideTail() { return outsideTail.length >= 2; }
@@ -254,6 +275,51 @@ public final class DeterministicSkeleton {
          */
         public final boolean networkFilterEnabled;
         public final int droppedByNetworkFilter;
+        /**
+         * ★ ports 模块：显式出窗端口（<b>未盖 region 身份</b> —— 骨架只产出窗口内事实，
+         * 身份由 provider 用 {@link BoundaryPort#stamp} 盖）。
+         */
+        public List<BoundaryPort> ports = List.of();
+        /** ★ pass2 新出口<b>无 pass1 承诺</b> ⇒ 显式未决（不得当全局完成）。 */
+        public List<BoundaryPort> pendingExits = List.of();
+        /** ★ incoming 起点已由 base 下游满足 ⇒ 合并数（不新增链、不伪造 JOIN）。 */
+        public int mergedIncoming = 0;
+
+        // ==================================================================
+        // ★ v2 补丁字段（只增载荷，不改既有字段语义）
+        // ==================================================================
+
+        /** ★ v2：本趟角色。pass1 = 发承诺；pass2 = 兑现承诺（必须消费 base）。 */
+        public PassRole passRole = PassRole.PRIMARY;
+        /**
+         * ★ v2：角色与 base 自相矛盾 ⇒ <b>显式记录</b>。
+         *
+         * <p>旧缺陷（v1）：provider 走的 base 重载把 {@code secondPass} 硬写成 {@code false}
+         * ⇒ pass2 实际被当成 pass1 ⇒ {@link #pendingExits} 永远为空（"未承诺出口"从未上报）。
+         * v2 不再靠一个布尔默认值：角色由调用方显式给出；与 base 是否为空不一致时记本标志，
+         * 审计据此判红，<b>不</b>静默按 pass1 处理。</p>
+         */
+        public boolean roleConflict = false;
+        /** ★ v2：typed 接力被拒 / 未通过后继审计的逐项留痕（空 = 全部兑现）。 */
+        public List<WireReject> wireRejects = List.of();
+        /** ★ v2：真正兑现「首步 = 发送端 next」的 typed 接力链数。 */
+        public int wiredIncoming = 0;
+        /**
+         * ★ v2：锚点钉死表（格索引 → 世界坐标）。
+         *
+         * <p>端口锚点与 typed 接力锚点共用同一张表，`shape()` 先用它占住共享锚点表，
+         * 之后任何粒子偏移/连续锚点都不得覆盖 ⇒ 收发两侧逐位同坐标。</p>
+         */
+        public java.util.Map<Integer, double[]> anchorPins = java.util.Map.of();
+        /**
+         * ★ v2：base 覆盖格上每一条 incoming 的<b>后继审计证据</b>（含实际 next）。
+         *
+         * <p>既有"兑现"的，也有"没兑现"的 —— 审计据此回答：<b>实际 next 是谁</b>、
+         * <b>沿哪条链走的</b>、<b>为什么没到水体</b>。{@link #unsatisfiedIncoming} 是它的子集。</p>
+         */
+        public List<MergeEvidence> mergeEvidence = List.of();
+        /** ★ v2：后继审计<b>未</b>通过的 incoming（既非合并、也非水体）—— 如实留痕。 */
+        public List<MergeEvidence> unsatisfiedIncoming = List.of();
         List<IncomingDiagnostic> incomingDiagnostics = List.of();
 
         Result(List<Trace> traces, int sourcesTotal, int sourcesDroppedBySpacing,
@@ -291,6 +357,16 @@ public final class DeterministicSkeleton {
      * 每 ~3 个节点翻转方向 ⇒ 高频打卷（用户实测"河流打转"）—— 截断它。
      */
     private static final double MIN_MEANDER_WAVELENGTH = 6.0;
+
+    /**
+     * 入湖/入海折线末端额外延伸的最小 trace 节点数。
+     *
+     * <p>延伸 2 个格距（{@code step×2} 块）原本是为了让长河的折线穿过岸线、与水体
+     * 像素 8 连通。对短段（2~5 节点）而言这段延伸会越过湖面，产出没有 trace 支撑的
+     * 孤立短棒 —— 实测 19 个湖边超短段里 11 个属此类。此阈值以下不延伸。</p>
+     */
+    static final int MIN_TAIL_EXTEND_NODES =
+            Integer.getInteger("geogenesis.minTailExtendNodes", 6);
 
     /** 平地破平局的邻居扫描序（与 {@code EquilibriumWater.DIRS8} 同序 ⇒ 确定性）。 */
     private static final int[][] EQUAL_DIRS8 = {
@@ -1105,10 +1181,133 @@ public final class DeterministicSkeleton {
                                int[] basinOutlet, int nx, int nz, Params params,
                                List<Integer> incomingCells, double[] bed,
                                Boolean networkFilter, OutsideContinuation outside) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet,
+                nx, nz, params, incomingCells, bed, networkFilter, outside, null);
+    }
+
+    /**
+     * ★ ports 模块：<b>带 base 的内部入口</b>（pass2 专用；{@code base == null} 时逐位同旧）。
+     *
+     * <p>{@code base} = 本区 pass1 的 {@link Result}。语义：</p>
+     * <ol>
+     *   <li>先占 base 的 traces/segments/occupied ⇒ <b>不重追 local 源</b>，pass1 几何原样保留；</li>
+     *   <li>只追 incoming（接力），追加到 base 图之后；</li>
+     *   <li>incoming 起点若落在 base 覆盖格：有同一下游 ⇒ 记为合并；无 ⇒ <b>抛显式异常</b>；</li>
+     *   <li>最终几何做「共享格后继唯一」断言，冲突直接抛，不删源、不伪 JOIN。</li>
+     * </ol>
+     */
+    /**
+     * 15 参兼容重载：只给 {@code base} 不说角色。
+     *
+     * <p>角色<b>由 base 推出</b>（{@code null} ⇒ PRIMARY，非空 ⇒ SECOND_PASS）——
+     * 这正是 v1 里被硬写成 {@code false} 的那一格。v2 不再允许"有 base 却自称 pass1"。</p>
+     */
+    public static Result build(double[] level, int[] parent, boolean[] resolved,
+                               boolean[] lakeMask, boolean[] sea, double[] discharge,
+                               int[] basinOutlet, int nx, int nz, Params params,
+                               List<Integer> incomingCells, double[] bed,
+                               Boolean networkFilter, OutsideContinuation outside, Result base) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet,
+                nx, nz, params, incomingCells, List.of(), bed, networkFilter, outside, base,
+                base == null ? PassRole.PRIMARY : PassRole.SECOND_PASS);
+    }
+
+    public static Result build(double[] level, int[] parent, boolean[] resolved,
+                               boolean[] lakeMask, boolean[] sea, double[] discharge,
+                               int[] basinOutlet, int nx, int nz, Params params,
+                               List<Integer> incomingCells, double[] bed,
+                               Boolean networkFilter, OutsideContinuation outside, Result base,
+                               PassRole role) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet,
+                nx, nz, params, incomingCells, List.of(), bed, networkFilter, outside, base, role);
+    }
+
+    /**
+     * ★ v2 兼容重载：老调用点传布尔 {@code secondPass}。
+     *
+     * <p>⚠ 只作兼容：布尔与 base 自相矛盾时（{@code base != null} 却传 {@code false}）
+     * <b>不</b>静默降级成 pass1，而是照传 {@link PassRole#PRIMARY} 并在结果上记
+     * {@link Result#roleConflict} ⇒ 审计判红。这正是 v1 那个"base 重载实际 pass1"缺陷的护栏。</p>
+     */
+    public static Result build(double[] level, int[] parent, boolean[] resolved,
+                               boolean[] lakeMask, boolean[] sea, double[] discharge,
+                               int[] basinOutlet, int nx, int nz, Params params,
+                               List<Integer> incomingCells, double[] bed,
+                               Boolean networkFilter, OutsideContinuation outside, Result base,
+                               boolean secondPass) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet,
+                nx, nz, params, incomingCells, List.of(), bed, networkFilter, outside, base,
+                secondPass ? PassRole.SECOND_PASS : PassRole.PRIMARY);
+    }
+
+    /**
+     * ★ v2 <b>typed 接力入口</b>：与上一版唯一的区别是多一个 {@code incomingWires}。
+     *
+     * <p>{@code incomingWires} 携带发送端承诺的<b>共享锚点 + 真实下一步 + 来向</b>
+     * （见 {@link WireIn}）。给了 wires 就以 wires 为准；{@code incomingCells} 仅供
+     * 兼容调用方（旧 {@code List<Integer>} API）使用。</p>
+     */
+    public static Result build(double[] level, int[] parent, boolean[] resolved,
+                               boolean[] lakeMask, boolean[] sea, double[] discharge,
+                               int[] basinOutlet, int nx, int nz, Params params,
+                               List<Integer> incomingCells, List<WireIn> incomingWires,
+                               double[] bed, Boolean networkFilter, OutsideContinuation outside,
+                               Result base, PassRole role) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet, nx, nz,
+                params, incomingCells, incomingWires, bed, networkFilter, outside, base, role, null);
+    }
+
+    record CoreBounds(int minX, int minZ, int maxX, int maxZ) {
+        boolean contains(int x, int z) {
+            return x >= minX && x < maxX && z >= minZ && z < maxZ;
+        }
+    }
+
+    static Result build(double[] level, int[] parent, boolean[] resolved,
+                        boolean[] lakeMask, boolean[] sea, double[] discharge,
+                        int[] basinOutlet, int nx, int nz, Params params,
+                        List<Integer> incomingCells, List<WireIn> incomingWires,
+                        double[] bed, Boolean networkFilter, OutsideContinuation outside,
+                        Result base, PassRole role, CoreBounds core) {
+        return build(level, parent, resolved, lakeMask, sea, discharge, basinOutlet, nx, nz,
+                params, incomingCells, incomingWires, bed, networkFilter, outside, base, role,
+                core, null);
+    }
+
+    /**
+     * ★★ 带【湖泊水量平衡上下文】的内部入口（本阶段唯一消费者 = provider 显式传
+     * {@code p.lakeResult()}）。
+     *
+     * <h3>它解决什么（已确认的缺陷）</h3>
+     * <p>{@code parent} 树是<b>八邻</b>的，而 {@link LakeWaterBalance} 的 rim 扫描用的是四邻
+     * ⇒ 溢口格可能落在<b>入流岸</b>上（溢口与湖面 level 相等 ⇒ minimax 破平局把 parent
+     * 交给"弹出顺序"，不是"水能流出的方向"）。旧的首步只能用"半径 2 内 level 更低者"猜，
+     * 猜错就把出流河接回<b>自己这个湖</b>（图上"湖里长出一条河又回去了"）。</p>
+     *
+     * <p><b>最小消费</b>：只消费一个离散事实 —— {@code parent[outlet]} 指向窗内相邻格、
+     * 且该格<b>不属于源盆</b>。达成即用；达不成 ⇒ 诚实未决。不调预算、不造见证。</p>
+     *
+     * <p>{@code lakes == null} ⇒ <b>逐位</b>回到旧行为（半径 2 逃逸）。</p>
+     */
+    static Result build(double[] level, int[] parent, boolean[] resolved,
+                        boolean[] lakeMask, boolean[] sea, double[] discharge,
+                        int[] basinOutlet, int nx, int nz, Params params,
+                        List<Integer> incomingCells, List<WireIn> incomingWires,
+                        double[] bed, Boolean networkFilter, OutsideContinuation outside,
+                        Result base, PassRole role, CoreBounds core,
+                        LakeWaterBalance.Result lakes) {
         int cells = nx * nz;
+        // ★ v2：角色由调用方显式给出；与 base 是否为空不符 ⇒ 记冲突（不当 pass1 静默处理）。
+        final boolean roleConflict = (base != null) != (role == PassRole.SECOND_PASS);
+        final List<WireReject> wireRejects = new ArrayList<>();
+        final List<MergeEvidence> mergeEvidence = new ArrayList<>();
+        final List<MergeEvidence> unsatisfied = new ArrayList<>();
+        int wiredIncoming = 0;
+        java.util.Set<Integer> wiredAccepted = new java.util.LinkedHashSet<>();
         // 源头候选：累积达标 + 汇流槽判据 + parent 存在（判据详见类 javadoc ①）
-        List<Integer> sources = collectSources(level, parent, resolved, lakeMask, sea,
-                discharge, nx, nz, params);
+        List<Integer> sources = base == null
+                ? collectSources(level, parent, resolved, lakeMask, sea, discharge, nx, nz, params)
+                : List.of();                       // base 已含本区源头链 ⇒ 不重追
         int sourcesTotal = sources.size();
 
         // 溢出口：每盆地出口格作"必追踪"新段起点（湖后段）。
@@ -1145,6 +1344,7 @@ public final class DeterministicSkeleton {
             }
             outlets.sort(Integer::compare);
         }
+        if (base != null) outlets.clear();          // base 已含溢口续流段 ⇒ 不重追
 
         boolean[] covered = new boolean[cells];
         List<Trace> traces = new ArrayList<>();
@@ -1173,8 +1373,11 @@ public final class DeterministicSkeleton {
         java.util.List<int[]> segments = new java.util.ArrayList<>();
         int sourceTraces = 0;
         int incomingStarts = 0;
-        List<IncomingDiagnostic> incomingDiag = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()
-                ? new ArrayList<>() : null;
+        // ★ ports 模块：pass2（base != null）时无条件收集裁定，审计才能回答"为什么没接上"。
+        //   默认路径 base == null 且 stutter 关闭 ⇒ 仍是 null，逐位不变。
+        // ★ 有湖泊上下文时也分配：未决/被占的溢口必须可被审计看到（只增诊断，不改几何）。
+        List<IncomingDiagnostic> incomingDiag = (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()
+                || base != null || lakes != null) ? new ArrayList<>() : null;
         // ★★★ 2026-10-10【双 pass 续流：三段起点，接力种子最高优先】★★★
         //
         // 【为什么接力必须最先追】它是【邻区已存在的干流】延续，不是本区新分支：
@@ -1182,7 +1385,23 @@ public final class DeterministicSkeleton {
         //   接力链一落地就 JOIN ⇒ 白追；且 maxSources 上限会被本区源耗掉。
         // 【legacy】`build(rx, rz, handoff=true, incoming)` 把 incoming 作强制续流源。
         // 【口径】接力/溢口段都不计入 maxSources（都是干流延续，不是新分支）。
-        List<Integer> incoming = new ArrayList<>(incomingCells == null ? List.of() : incomingCells);
+        // ★ ports 模块：pass2 先占 base（pass1 几何原样保留在前，只追加 incoming）
+        //   baseMask 单独记录"这格来自 base"，因为 covered 还会被本轮新链占用 ⇒
+        //   incoming 落在 covered 上时必须区分"base 覆盖"与"本轮别的接力链占用"。
+        boolean[] baseMask = new boolean[cells];
+        seedFromBase(base, covered, baseMask, segments, occupied, nz, nx, outside,
+                params.minSourceSpacingCells(), BUCKET);
+        int mergedIncoming = 0;
+        // ★ v2：typed 接力上下文（锚点格 → 发送端承诺）。wires 非空时以它为准，
+        //   旧 List<Integer> 自动降级成"只有锚点格"的兼容投影（不丢旧 API）。
+        java.util.Map<Integer, WireIn> wireByAnchor = new java.util.TreeMap<>();
+        if (incomingWires != null) {
+            for (WireIn w : incomingWires) {
+                if (w != null) wireByAnchor.putIfAbsent(w.anchorCell(), w);
+            }
+        }
+        List<Integer> incoming = new ArrayList<>(wireByAnchor.isEmpty()
+                ? (incomingCells == null ? List.of() : incomingCells) : wireByAnchor.keySet());
         incoming.sort(Integer::compare);          // 确定性：不依赖邻区种子到达顺序
         @SuppressWarnings("unchecked")
         List<Integer>[] passList = new List[]{incoming, outlets, sources};
@@ -1217,9 +1436,64 @@ public final class DeterministicSkeleton {
                         continue;
                     }
                 }
+                WireIn promisedWire = fromIncoming ? wireByAnchor.get(start) : null;
+                if (promisedWire != null) {
+                    int promisedNext = wireFirstStep(promisedWire, start, bed, nx, nz, incomingDiag, wireRejects);
+                    if (promisedNext < 0 || !wireDirMatches(promisedWire, start, promisedNext, nz, incomingDiag, wireRejects)) continue;
+                }
                 if (covered[start]) {
+                    // ★ ports 模块：base 覆盖格上的 incoming 必须在 base 里定位到同一有效下游。
+                    //   ① base 有从该格出发的边 ⇒ 合并（不新增链、不伪造 JOIN）；
+                    //   ② 该格是 base 某条链的末端，且末端是水体/接力出口 ⇒ 合并（下游确实存在）；
+                    //   ③ 该格被【本轮别的接力链】占用（baseMask=false）⇒ 跳过，不误判冲突；
+                    //   ④ 否则（base 末端是 DEAD_END/UNRESOLVED）⇒ 显式异常。
+                    //   ⚠ 不删源、不伪 JOIN：冲突就让调用方看见并停在这里。
+                    if (fromIncoming && base != null && (baseMask[start] || promisedWire != null)) {
+                        Result authority = baseMask[start] ? base
+                                : new Result(List.copyOf(mergeBase(base, traces)), 0, 0, 0, 0, List.of(), false, 0);
+                        // ★ v2【缺陷 ④ 修复】JOIN/末端<b>必须过后继审计</b>才算兑现：
+                        //   旧的 validTerminal() 把 End.JOIN 直接当"下游存在"⇒ 两条链互相并入
+                        //   后一起悬空也会被判成合并成功。现在改为沿 base 后继链走到水体/接力
+                        //   出口，并把【实际 next + 实际路径】留成证据；证不出来 ⇒ 记 reject
+                        //   （不删源、不伪 JOIN、不抛异常中断整区）。
+                        MergeEvidence ev = auditEvidence(authority, start, nz);
+                        mergeEvidence.add(ev);
+                        if (!ev.resolved()) {
+                            WireIn w0 = wireByAnchor.get(start);
+                            String status = joinRefusalStatus(authority, start, nz);
+                            if (wireRejects != null) {
+                                wireRejects.add(new WireReject(start,
+                                        w0 == null ? Integer.MIN_VALUE : w0.anchorX(),
+                                        w0 == null ? Integer.MIN_VALUE : w0.anchorZ(), status));
+                            }
+                            unsatisfied.add(ev);
+                            if (incomingDiag != null) incomingDiag.add(new IncomingDiagnostic(
+                                    start, status, ev.steps(), ev.next() >= 0 ? ev.next() : start,
+                                    baseTerminal(authority, start)));
+                            continue;
+                        }
+                        if (promisedWire != null && ev.next() >= 0 && ev.next() != promisedWire.nextCell()) {
+                            refuseWire(promisedWire, "BASE_SUCCESSOR_MISMATCH", incomingDiag, wireRejects);
+                            unsatisfied.add(ev);
+                            continue;
+                        }
+                        wiredAccepted.add(start);
+                        mergedIncoming++;
+                        if (incomingDiag != null) incomingDiag.add(new IncomingDiagnostic(
+                                start, ev.next() >= 0 ? "MERGED_BASE_SUCCESSOR" : "MERGED_BASE_AUDITED",
+                                ev.steps(), ev.next() >= 0 ? ev.next() : start,
+                                baseTerminal(authority, start)));
+                        continue;
+                    }
                     if (fromIncoming && incomingDiag != null) incomingDiag.add(
                             new IncomingDiagnostic(start, "COVERED", 0, start, End.JOIN));
+                    // ★ 溢口座落在别的链已占的格上：**不重追**（重追会造出共享格双后继），
+                    //   只如实归因。若既有路径的后继指回源盆，绝不能被读成"已接出流"。
+                    if (fromOutlet && lakes != null) {
+                        String status = coveredOutletStatus(base, traces, start, lakes);
+                        if (incomingDiag != null) incomingDiag.add(
+                                new IncomingDiagnostic(start, status, 0, start, null));
+                    }
                     continue;
                 }
                 // 接力种子落在湖/海格 ⇒ 该处水体已由湖/海表达，无需再画河。
@@ -1234,7 +1508,14 @@ public final class DeterministicSkeleton {
                 //   种子可能恰落局部极小 ⇒ 续流第一步就走不动 ⇒ 缝那侧有河、这侧没有。
                 //   只对【接力】生效，并在改选后重走上面两道门（占用/湖海），
                 //   避免把起点"挪"进别人的格或水体里。改选失败则保留原格、如实判死。
-                if (fromIncoming && HANDOFF_START && bed != null) {
+                // ★ v2：typed 接力的锚点是【收发双方逐位相同的共享坐标】⇒ 禁止 bestHandoffStart
+                //   把它挪到邻格（挪了就等于换了承诺坐标，缝上必然错位）。只记诊断，不改道。
+                WireIn wireHere = fromIncoming ? wireByAnchor.get(start) : null;
+                if (wireHere != null && incomingDiag != null) {
+                    incomingDiag.add(new IncomingDiagnostic(start, "HANDOFF_DISABLED_TYPED",
+                            0, start, null));
+                }
+                if (fromIncoming && HANDOFF_START && bed != null && wireHere == null) {
                     int moved = bestHandoffStart(start, bed, nx, nz, covered);
                     if (moved != start && !covered[moved] && !lakeMask[moved] && !sea[moved]) {
                         if (incomingDiag != null) incomingDiag.add(new IncomingDiagnostic(
@@ -1242,13 +1523,27 @@ public final class DeterministicSkeleton {
                         start = moved;
                     }
                 }
+                if (fromOutlet && lakes != null && incomingDiag != null) {
+                    int witness = outletFirstStep(start, parent, lakes, level, resolved,
+                            lakeMask, sea, nx, nz);
+                    boolean noWitness = witness == OUTLET_NO_WITNESS;
+                    incomingDiag.add(new IncomingDiagnostic(start,
+                            noWitness ? "OUTLET_NO_WITNESS" : "OUTLET_WITNESS",
+                            0, noWitness ? start : witness,
+                            noWitness ? End.UNRESOLVED : null));
+                }
                 int stamp = ++stampBox[0];
                 Trace t = traceOne(start, fromOutlet, fromIncoming, level, parent, resolved,
                         lakeMask, sea, covered, nx, nz, params.joinWindow(),
                         selfStamp, selfStep, stamp, params, segments, bed, parentForest,
-                        fromIncoming ? incomingDiag : null, outside);
+                        fromIncoming ? incomingDiag : null, outside, wireHere, wireRejects,
+                        lakes);
                 if (t == null) continue;
                 traces.add(t);
+                if (fromIncoming && wireHere != null) {
+                    wiredIncoming++;
+                    wiredAccepted.add(start);
+                }
                 if (fromOutlet) outletStarts++;
                 else if (fromIncoming) incomingStarts++;
                 else sourceTraces++;
@@ -1278,11 +1573,6 @@ public final class DeterministicSkeleton {
         //
         // 【确定性】并查集按 trace 序号归并、判定只看"存在性" ⇒ 与遍历顺序无关。
         final boolean filterOn = networkFilter == null ? NETWORK_FILTER : networkFilter;
-        if (filterOn && !traces.isEmpty()) {
-            int before = traces.size();
-            traces = filterUnconnected(traces, nx, nz);
-            droppedNetwork = before - traces.size();
-        }
         // ★★★ 2026-10-10【出口种子（双 pass 的另一半）】★★★
         //
         // 【证据】skelEndDiag 实测：全部 DEAD_END 的 mouth 格都是 frame=true, p=-1
@@ -1292,20 +1582,518 @@ public final class DeterministicSkeleton {
         // 【角格只发对角】角格同时在两条框上，但两个轴向接收方拿到的都会落在
         //   【它们自己的边框格】上（parent=-1 ⇒ 单格即死），只有对角接收方落在窗内
         //   ⇒ 只发 (dRX,dRZ) 对角种子（实测：轴向种子 i 或 j 恰为 0/nn-1 ⇒ 无用）。
-        List<ExitSeed> exitSeeds = new ArrayList<>();
+        // ★ ports 模块：base 在前、新链在后（pass1 几何逐位保留；不做几何并集）
+        List<Trace> merged = mergeBase(base, traces);
+        // ★ 溢口认证（只在上下文里产生）：短滤据此豁免"真的把水接到别处"的湖后河。
+        java.util.Set<Integer> certifiedOutletStarts = certifiedOutlets(merged, lakes);
+        if (filterOn) {
+            int before = merged.size();
+            merged = pruneDisconnected(merged, nx, nz, params.minNodes(),
+                    new java.util.HashSet<>(incoming), certifiedOutletStarts);
+            merged = pruneHaloComponents(merged, nz, new java.util.HashSet<>(incoming), outside, core);
+            droppedNetwork = before - merged.size();
+            java.util.Set<Integer> retained = new java.util.HashSet<>();
+            for (Trace t : merged) for (int c : t.cell) retained.add(c);
+            wiredAccepted.retainAll(retained);
+            if (incomingDiag != null) for (int c : incoming) {
+                if (!retained.contains(c) && !lakeMask[c] && !sea[c]) incomingDiag.add(
+                        new IncomingDiagnostic(c, "PRUNED_NO_LAKE_OR_SEA", 0, c, null));
+            }
+        }
+        List<ExitSeed> exitSeeds = exitSeedsOf(merged, nx, nz);
+        List<BoundaryPort> ports = portsOf(merged);
+        Result result = new Result(merged, sourcesTotal, droppedBySpacing, outletStarts,
+                incomingStarts, exitSeeds, filterOn, droppedNetwork);
+        result.ports = List.copyOf(ports);
+        result.passRole = role;
+        result.roleConflict = roleConflict;
+        result.wireRejects = List.copyOf(wireRejects);
+        result.wiredIncoming = wiredIncoming;
+        // ★ v2【缺陷 ②】只有真的是 pass2 才谈"未承诺出口"；角色说谎已由 roleConflict 记红。
+        result.pendingExits = List.copyOf(pendingOf(ports, base, role == PassRole.SECOND_PASS));
+        result.anchorPins = pinsOf(merged, wiredAccepted, wireByAnchor);
+        result.mergeEvidence = List.copyOf(mergeEvidence);
+        result.unsatisfiedIncoming = List.copyOf(unsatisfied);
+        result.mergedIncoming = mergedIncoming;
+        if (incomingDiag != null) result.incomingDiagnostics = List.copyOf(incomingDiag);
+        if (!ports.isEmpty() || base != null) {
+            verifyPortAnchors(ports, merged);
+            assertUniqueSuccessors(merged, nz);
+        }
+        return result;
+    }
+
+
+    // ======================================================================
+    // ★ ports 模块（2026-10-23，隔离实现；默认关闭 ⇒ 默认产出逐位不变）
+    // ======================================================================
+
+    /**
+     * 显式出窗端口开关（{@code -Dgeogenesis.boundaryPorts=true} 才开）。
+     *
+     * <p>默认<b>关</b>：关时 {@code traceOne} 不做完整候选出窗判定 ⇒ 产出与既有逐位相同。
+     * 生成端口的唯一条件是【同一向量规则在加宽候选下真的选中窗外格】，不是"站在边框上"。</p>
+     */
+    static final boolean PORT_EGRESS = Boolean.getBoolean("geogenesis.boundaryPorts");
+
+    /**
+     * 把 base（= 本区 pass1 产物）的链<b>预先占用</b>进 covered / segments / occupied。
+     *
+     * <h3>为什么必须这样（用户口径）</h3>
+     * <p>"pass2 追加 incoming 但必须不消掉 pass1 端口"：若 pass2 重新从源头追一遍，
+     * 本区源头会先把谷底占掉，pass1 发出的端口那条链就被覆盖/截短 ⇒ 端口从最终几何消失。
+     * 正解 = <b>先占 base</b>，只追 incoming，最后以 base 几何在前、新链在后的顺序合并
+     * （不是两套几何简单取并集：共享格的后继必须是唯一的那一条）。</p>
+     */
+    private static void seedFromBase(Result base, boolean[] covered, boolean[] baseMask,
+                                     java.util.List<int[]> segments,
+                                     java.util.Map<Long, List<int[]>> occupied, int nz, int nx,
+                                     OutsideContinuation outside, int spacing, int bucket) {
+        if (base == null) return;
+        int cells = nx * nz;
+        for (Trace t : base.traces) {
+            for (int c : t.cell) {
+                if (c < 0 || c >= cells) continue;
+                covered[c] = true;
+                baseMask[c] = true;
+            }
+            if (spacing > 0) registerTraceNodes(occupied, t.cell, nz, bucket);
+            registerSegments(t, nz, outside, segments);
+        }
+    }
+
+    /**
+     * base 在 {@code start} 处的唯一后继（-1 = base 没有从该格出发的边）。
+     *
+     * <p>用于 incoming 起点<b>已落在 base 覆盖格</b>时的裁决：能定位到同一有效下游 ⇒ 视为
+     * 承诺已被 base 满足（合并，不新增链、不伪造 JOIN）；定位不到 ⇒ 调用方抛显式异常。</p>
+     */
+    private static int baseSuccessor(Result base, int start, int nz) {
+        if (base == null) return -1;
+        for (Trace t : base.traces) {
+            int[] c = t.cell;
+            for (int i = 1; i < c.length; i++) if (c[i - 1] == start) return c[i];
+        }
+        return -1;
+    }
+
+    /**
+     * 溢口格已被别的链占用时的<b>诚实归因</b>（只记诊断串，不改几何、不加边）。
+     *
+     * <p>这里只归因第一步，不把存在后继当作全程通水证书：</p>
+     * <ul>
+     *   <li>{@code OUTLET_COVERED_RETURNS_TO_BASIN}：既有后继落回<b>源盆</b>
+     *       ⇒ 该路径不是出流，<b>不得</b>当作已接通；</li>
+     *   <li>{@code OUTLET_COVERED_DOWNSTREAM} / {@code OUTLET_COVERED_NO_SUCCESSOR}：
+     *       既有后继离开源盆 / 该格没有任何出边。</li>
+     * </ul>
+     */
+    static String coveredOutletStatus(Result base, List<Trace> tracesSoFar, int outlet,
+                                      LakeWaterBalance.Result lakes) {
+        int next = base == null ? -1 : successorIn(base.traces, outlet);
+        if (next < 0) next = successorIn(tracesSoFar, outlet);
+        if (next < 0) return "OUTLET_COVERED_NO_SUCCESSOR";
+        int source = sourceBasinOf(lakes, outlet);
+        if (source >= 0 && LakeWaterBalance.basinOf(lakes, next) == source) {
+            return "OUTLET_COVERED_RETURNS_TO_BASIN";
+        }
+        return "OUTLET_COVERED_DOWNSTREAM";
+    }
+
+    /** 从 {@code start} 出发的唯一后继（诊断用；几何层已保证共享格后继唯一）。 */
+    static int successorIn(List<Trace> traces, int start) {
+        if (traces == null) return -1;
         for (Trace t : traces) {
-            if (t.end != End.DEAD_END) continue;
+            for (int i = 1; i < t.cell.length; i++) if (t.cell[i - 1] == start) return t.cell[i];
+        }
+        return -1;
+    }
+
+    /**
+     * base 是否在 {@code start} 处<b>收尾</b>（该格是某条 base 链的末格），返回其终点类型。
+     *
+     * <p><b>为什么需要</b>（真实区实测）：incoming 锚点可能恰好落在 base 的<b>末端格</b>
+     * （例如 base 那条链已 {@code MOUTH_LAKE} 或端口出窗）。此时 base 没有"后继"，
+     * 但下游<b>确实存在</b> —— 就是该末端的水体/接力出口。把它当冲突是错的：
+     * 真正要拒绝的是"base 在此处以 DEAD_END/UNRESOLVED 收尾"（下游不存在）。</p>
+     *
+     * @return 终点类型；{@code null} = 该格不是任何 base 链的末格
+     */
+    private static End baseTerminal(Result base, int start) {
+        if (base == null) return null;
+        for (Trace t : base.traces) {
+            if (t.cell.length > 0 && t.cell[t.cell.length - 1] == start) return t.end;
+        }
+        return null;
+    }
+
+    /** base 末端是否为"有效下游"（水体或显式接力出口）。 */
+    private static boolean validTerminal(End end) {
+        return end == End.MOUTH_LAKE || end == End.MOUTH_SEA
+                || end == End.BOUNDARY_EXIT || end == End.JOIN;
+    }
+
+    /** base 在前、新链在后（pass1 几何逐位保留；不做几何并集）。 */
+    private static List<Trace> mergeBase(Result base, List<Trace> fresh) {
+        if (base == null || base.traces.isEmpty()) return fresh;
+        List<Trace> merged = new ArrayList<>(base.traces.size() + fresh.size());
+        merged.addAll(base.traces);
+        merged.addAll(fresh);
+        return merged;
+    }
+
+    /**
+     * 出口种子（<b>兼容载荷</b>，不改 {@link ExitSeed}）。
+     *
+     * <p>既有 {@code DEAD_END} 在边框的老口径保留（逐位不变），
+     * 另把 {@code BOUNDARY_EXIT} 一并导出，{@code List<Integer>} 调用方无需改动。</p>
+     */
+    private static List<ExitSeed> exitSeedsOf(List<Trace> traces, int nx, int nz) {
+        List<ExitSeed> out = new ArrayList<>();
+        for (Trace t : traces) {
+            if (t.end != End.DEAD_END && t.end != End.BOUNDARY_EXIT) continue;
             int mc = t.mouthCell();
             int mi = mc / nz, mj = mc % nz;
             int dRX = mi == 0 ? -1 : (mi == nx - 1 ? 1 : 0);
             int dRZ = mj == 0 ? -1 : (mj == nz - 1 ? 1 : 0);
-            if (dRX == 0 && dRZ == 0) continue;      // 非边框 DEAD_END（防御，不外传）
-            exitSeeds.add(new ExitSeed(mc, dRX, dRZ));
+            if (t.end == End.BOUNDARY_EXIT && t.port != null) {
+                dRX = t.port.dRX();
+                dRZ = t.port.dRZ();
+            }
+            if (dRX == 0 && dRZ == 0) continue;      // 非边框（防御，不外传）
+            out.add(new ExitSeed(mc, dRX, dRZ));
         }
-        Result result = new Result(traces, sourcesTotal, droppedBySpacing, outletStarts,
-                incomingStarts, exitSeeds, filterOn, droppedNetwork);
-        if (incomingDiag != null) result.incomingDiagnostics = List.copyOf(incomingDiag);
-        return result;
+        return out;
+    }
+
+    /** 端口去重（同锚点同下一步 = 同一个承诺）。 */
+    private static List<BoundaryPort> portsOf(List<Trace> traces) {
+        List<BoundaryPort> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Trace t : traces) {
+            if (t.port == null) continue;
+            if (seen.add(t.port.key())) out.add(t.port);
+        }
+        return out;
+    }
+
+    /**
+     * pass2 新出口无 pass1 承诺 ⇒ 未决（不得算作全局已解决）。
+     *
+     * <p>判据只在<b>确实是 pass2</b>（{@code secondPass}）时成立：pass1 自己是承诺的发出方，
+     * 它的端口天然"还没有对应"（对应关系要等 pass2 才建立），记成未决会把每个端口数错一次。
+     * 而"pass2 却没有 base"正是契约未覆盖的形态 ⇒ 此时<b>所有</b>端口都是未决。</p>
+     */
+    private static List<BoundaryPort> pendingOf(List<BoundaryPort> ports, Result base,
+                                                boolean secondPass) {
+        if (!secondPass || ports.isEmpty()) return List.of();
+        java.util.Set<String> promised = new java.util.HashSet<>();
+        if (base != null) for (BoundaryPort p : base.ports) promised.add(p.key());
+        List<BoundaryPort> pending = new ArrayList<>();
+        for (BoundaryPort p : ports) if (!promised.contains(p.key())) pending.add(p);
+        return pending;
+    }
+
+    /** 每个端口锚点必须仍在最终发布几何里（删源 = 契约失败）。 */
+    private static void verifyPortAnchors(List<BoundaryPort> ports, List<Trace> traces) {
+        for (BoundaryPort p : ports) {
+            boolean anchored = false;
+            for (Trace t : traces) {
+                for (int c : t.cell) if (c == p.cell()) { anchored = true; break; }
+                if (anchored) break;
+            }
+            if (!anchored) {
+                throw new IllegalStateException(
+                        "boundary port anchor missing from published geometry: " + p);
+            }
+        }
+    }
+
+    /**
+     * ★ v2【缺陷 ③】：锚点钉死表 = 端口锚点 ∪ 已兑现的 typed 接力锚点。
+     *
+     * <p>顺序确定（按格索引升序）⇒ 纯函数性质不变。`shape()` 用它<b>先占</b>共享锚点表，
+     * 于是不论端口锚点先被谁登记，收发两侧拿到的都是同一个世界坐标。</p>
+     */
+    private static java.util.Map<Integer, double[]> pinsOf(List<Trace> traces,
+                                                           java.util.Set<Integer> wiredAccepted,
+                                                           java.util.Map<Integer, WireIn> wireByAnchor) {
+        java.util.TreeMap<Integer, double[]> pins = new java.util.TreeMap<>();
+        for (Trace t : traces) {
+            if (t.port == null || t.port.anchorX() == Integer.MIN_VALUE) continue;
+            pins.putIfAbsent(t.port.cell(),
+                    new double[]{t.port.anchorX(), t.port.anchorZ()});
+        }
+        for (int cell : wiredAccepted) {
+            WireIn w = wireByAnchor.get(cell);
+            if (w == null || w.anchorX() == Integer.MIN_VALUE) continue;
+            pins.putIfAbsent(cell, new double[]{w.anchorX(), w.anchorZ()});
+        }
+        return java.util.Collections.unmodifiableMap(pins);
+    }
+
+    /**
+     * 共享格后继唯一性（"不简单几何并集"的硬判据）。
+     *
+     * <p>同一格若在不同链里出现，其<b>后继</b>必须一致；不一致即显式冲突 ——
+     * 绝不靠删源或伪造 JOIN 掩盖。端口锚点的"出窗下一步"不在窗内，不参与比较。</p>
+     */
+    private static void assertUniqueSuccessors(List<Trace> traces, int nz) {
+        java.util.Map<Integer, Integer> next = new java.util.HashMap<>();
+        for (Trace t : traces) {
+            if (t.port != null) {
+                BoundaryPort port = t.port;
+                int dx = port.nextX() - port.anchorX(), dz = port.nextZ() - port.anchorZ();
+                int step = Math.max(Math.abs(dx), Math.abs(dz));
+                if (step <= 0) throw new IllegalStateException("zero-length port " + port);
+                int to = port.cell() + dx / step * nz + dz / step;
+                Integer prior = next.putIfAbsent(port.cell(), to);
+                if (prior != null && prior != to) throw new IllegalStateException("port successor conflict " + port);
+            }
+            int[] c = t.cell;
+            for (int i = 1; i < c.length; i++) {
+                Integer prior = next.putIfAbsent(c[i - 1], c[i]);
+                if (prior != null && prior != c[i]) {
+                    throw new IllegalStateException("shared cell successor conflict: cell="
+                            + c[i - 1] + " (" + (c[i - 1] / nz) + "," + (c[i - 1] % nz) + ")"
+                            + " successors=" + prior + "/" + c[i]);
+                }
+            }
+        }
+    }
+
+
+    // ======================================================================
+    // ★ v2 typed 接力（端口装配修复，2026-10-23；默认关闭 ⇒ 默认产出逐位不变）
+    // ======================================================================
+
+    /**
+     * typed 接力的首步校验：<b>必须</b>正好落在发送端承诺的 {@code next}，且不爬坡。
+     *
+     * <h3>为什么必须硬校验而不是"尽量靠近"</h3>
+     * <p>旧实现把端口降级成 {@code List<Integer>}（只剩锚点格索引）：接收方拿回一个数字，
+     * 只能重新用<b>自己</b>的地形猜第一步。两端猜法不同 ⇒ 缝上出现"锚点有、下一步没有"
+     * 的假接力。v2 把发送端选中的下一步一起带过来，并且<b>只接受它</b>。</p>
+     *
+     * @return 首步格；{@code -1} = 拒收（原因写进 {@code rejects}，绝不改道、绝不猜）
+     */
+    private static int wireFirstStep(WireIn w, int k, double[] bed, int nx, int nz,
+                                     List<IncomingDiagnostic> diag, List<WireReject> rejects) {
+        if (w == null) return -1;
+        if (k != w.anchorCell()) return refuseWire(w, "WIRE_ANCHOR_MOVED", diag, rejects);
+        int p = w.nextCell();
+        if (p < 0 || p >= nx * nz) return refuseWire(w, "WIRE_NEXT_OUT_OF_WINDOW", diag, rejects);
+        int ki = k / nz, kj = k % nz, pi = p / nz, pj = p % nz;
+        if (Math.max(Math.abs(pi - ki), Math.abs(pj - kj)) != 1) {
+            return refuseWire(w, "WIRE_NEXT_NOT_ADJACENT", diag, rejects);
+        }
+        if (bed != null && bed[p] > bed[k] + 1e-9) {
+            return refuseWire(w, "WIRE_NEXT_CLIMBS", diag, rejects);
+        }
+        return p;
+    }
+
+    /**
+     * 来向一致性校验：端口声明的来向必须等于<b>接收方真实出边方向</b>（锚点→next）。
+     *
+     * <h3>语义（不许过度声明）</h3>
+     * <p>本方法<b>不</b>声称"复现发送端的合成向量"。它只要求两个<b>离散</b>事实一致：
+     * 发送端说水从 anchor 流向 next，接收方的网格边也是 anchor→next。
+     * 惯性初值取的是这条<b>真实出边方向</b>；发送端来向只作校验。
+     * ⇒ 校验不过（被清空 / 与网格边不符）即拒收，不拿一个零向量假装惯性。</p>
+     */
+    private static boolean wireDirMatches(WireIn w, int k, int p, int nz,
+                                         List<IncomingDiagnostic> diag, List<WireReject> rejects) {
+        double dx = p / nz - k / nz, dz = p % nz - k % nz;
+        double len = Math.hypot(dx, dz);
+        if (len < 1e-9) {
+            refuseWire(w, "WIRE_DIR_MISSING", diag, rejects);
+            return false;
+        }
+        double ux = dx / len, uz = dz / len;
+        if (Math.abs(w.dirX()) < 1e-12 && Math.abs(w.dirZ()) < 1e-12) {
+            refuseWire(w, "WIRE_DIR_MISSING", diag, rejects);
+            return false;
+        }
+        if (Math.abs(w.dirX() - ux) > 1e-6 || Math.abs(w.dirZ() - uz) > 1e-6) {
+            refuseWire(w, "WIRE_DIR_MISMATCH", diag, rejects);
+            return false;
+        }
+        return true;
+    }
+
+    /** 记录一条 typed 接力拒收（同时进 incoming 诊断与 wireRejects，两条证据都留）。 */
+    private static int refuseWire(WireIn w, String status, List<IncomingDiagnostic> diag,
+                                  List<WireReject> rejects) {
+        if (rejects != null) {
+            rejects.add(new WireReject(w.anchorCell(), w.anchorX(), w.anchorZ(), status));
+        }
+        if (diag != null) {
+            diag.add(new IncomingDiagnostic(w.anchorCell(), status, 0, w.anchorCell(), End.DEAD_END));
+        }
+        return -1;
+    }
+
+    /**
+     * 从 base 的某格沿<b>唯一后继</b>往下走，判断这条下游是否真的通向水体/接力出口。
+     *
+     * <h3>为什么 JOIN 不能直接算水体（v1 缺陷 ④）</h3>
+     * <p>{@code End.JOIN} 只表示"接上了 base 里另一条链"，<b>并不</b>保证那条链通向湖/海：
+     * 两条链可以互相并入后一起悬空。所以"base 末端是 JOIN ⇒ 合并成功"是错的。
+     * 正解：沿 base 的后继链走到底，只有命中 {@code MOUTH_LAKE}/{@code MOUTH_SEA}/
+     * {@code BOUNDARY_EXIT} 才算兑现；走到 {@code DEAD_END}/{@code UNRESOLVED}/成环/步数耗尽
+     * 一律判<b>未兑现</b>（由调用方记 reject，不删源、不伪 JOIN）。</p>
+     *
+     * @return 命中的水体/接力终止类型；{@code null} = 下游不存在或不可证
+     */
+    private static End auditedDownstream(Result base, int start, int nz, int budget) {
+        if (base == null) return null;
+        int cur = start;
+        for (int step = 0; step < budget; step++) {
+            int next = baseSuccessor(base, cur, nz);
+            if (next < 0) {
+                return waterTerminal(base, cur);
+            }
+            cur = next;
+            if (waterTerminal(base, cur) != null) return waterTerminal(base, cur);
+        }
+        return null;                               // 步数预算内证不出来 ⇒ 不当水体
+    }
+
+    /**
+     * 该格若同时是 base 某条链的<b>末端</b>，返回"可算水体"的终止类型，否则 {@code null}。
+     *
+     * <p>⚠ 关键：一个格可能既是"链 A 的 JOIN 终点"又是"链 B 的真水体终点"。
+     * 旧的 {@code baseTerminal} 按 trace 顺序取<b>首个</b>命中 ⇒ 会随机拿到 JOIN 那条，
+     * 把真水体判成"不可证"（v2 自测就踩到：JOIN→LAKE 的 base 被误拒）。
+     * ⇒ 本方法遍历<b>全部</b>命中该末格的链，只要有一条是水体/接力出口就算可证。</p>
+     */
+    private static End waterTerminal(Result base, int cell) {
+        for (Trace t : base.traces) {
+            if (t.cell.length == 0 || t.cell[t.cell.length - 1] != cell) continue;
+            if (t.end == End.MOUTH_LAKE || t.end == End.MOUTH_SEA || t.end == End.BOUNDARY_EXIT) {
+                return t.end;
+            }
+        }
+        return null;
+    }
+
+    /** JOIN 是否已通过后继审计（未通过 ⇒ 不得兑现承诺）。 */
+    private static boolean joinAudited(Result base, int start, int nz) {
+        return auditedDownstream(base, start, nz, 4096) != null;
+    }
+
+    /**
+     * 拒收状态串（把"为什么不算水"说清楚，而不是一句 boolean）。
+     *
+     * <p>三种形态必须分开：base 有后继但走得断（{@code BASE_JOIN_WITHOUT_DOWNSTREAM}）、
+     * 该格在 base 里根本没有几何（{@code BASE_NO_SUCCESSOR}）、末端是非水类型
+     * （{@code BASE_TERMINAL_NOT_WATER:<End>}）。</p>
+     */
+    private static String joinRefusalStatus(Result base, int start, int nz) {
+        int down = baseSuccessor(base, start, nz);
+        End terminal = baseTerminal(base, start);
+        if (down >= 0) return "BASE_JOIN_WITHOUT_DOWNSTREAM";
+        if (terminal == null) return "BASE_NO_SUCCESSOR";
+        return "BASE_TERMINAL_NOT_WATER:" + terminal;
+    }
+
+    /**
+     * ★ v2：base 覆盖格上"承诺已被 base 满足"的<b>后继审计证据</b>（逐条留痕）。
+     *
+     * <h3>为什么要证据而不是一个布尔</h3>
+     * <p>旧实现只回答"有没有下游"（{@code validTerminal(JOIN)} 甚至直接答 yes）。
+     * 但审计要能回答三个问题：<b>实际 next 是谁</b>、<b>沿哪条链走的</b>、
+     * <b>在哪一格证出来（或证不出）</b>。所以把 {anchor, next, resolution, steps, chain}
+     * 一起存下来；<b>只有</b> {@code RESOLVED:WATER_*} / {@code RESOLVED:PORT_EXIT} 算兑现，
+     * {@code UNRESOLVED:JOIN_WITHOUT_DOWNSTREAM} 之类一律不算水体。</p>
+     *
+     * @param anchor     被合并/被拒的 incoming 起点格
+     * @param next       base 在该格的<b>实际</b>后继（-1 = 该格是 base 链末格）
+     * @param resolution {@code RESOLVED:*|UNRESOLVED:*}（见 {@link #auditEvidence}）
+     * @param steps      实际跟随格数（有界）
+     * @param chain      跟随到的格路径前缀（定长数组，按 steps 读；勿改）
+     */
+    public record MergeEvidence(int anchor, int next, String resolution, int steps, int[] chain) {
+
+        /** 是否真的接上了水体或显式接力出口（<b>只有这两种</b>算下游存在）。 */
+        public boolean resolved() { return resolution.startsWith("RESOLVED:"); }
+
+        /** 证据路径（世界格索引，逗号分隔；空 = 未跟随）。 */
+        public String pathText() {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < steps && i < chain.length; i++) {
+                if (i > 0) sb.append('>');
+                sb.append(chain[i]);
+            }
+            return sb.toString();
+        }
+    }
+
+    /**
+     * 逐格审计 base 在 {@code anchor} 处的下游，产出 {@link MergeEvidence}。
+     *
+     * <p>判据（<b>不</b>用 validTerminal 的一刀切）：</p>
+     * <ol>
+     *   <li>沿 base 的<b>实际后继</b>一路走；JOIN 只代表"接进另一条链"⇒ 继续跟那条链；</li>
+     *   <li>命中 {@code MOUTH_LAKE}/{@code MOUTH_SEA}/{@code BOUNDARY_EXIT} ⇒ RESOLVED；</li>
+     *   <li>走到 {@code DEAD_END}/{@code UNRESOLVED}/成环/步数耗尽 ⇒ UNRESOLVED（<b>不算水</b>）。</li>
+     * </ol>
+     */
+    private static MergeEvidence auditEvidence(Result base, int anchor, int nz) {
+        int[] chain = new int[EVIDENCE_CHAIN_MAX];
+        int[] used = {0};
+        int next = base == null ? -1 : baseSuccessor(base, anchor, nz);
+        String res;
+        if (next >= 0) {
+            res = followChain(base, next, nz, chain, used);
+        } else {
+            chain[0] = anchor;
+            used[0] = 1;
+            End water = waterTerminal(base, anchor);
+            End terminal = base == null ? null : baseTerminal(base, anchor);
+            if (water != null) res = label(water);
+            else if (terminal == End.JOIN) res = followChain(base, anchor, nz, chain, used);
+            else if (terminal == End.UNRESOLVED) res = "UNRESOLVED";
+            else if (terminal == null) res = "NO_GEOMETRY";
+            else res = "DEAD_END";
+        }
+        boolean ok = res.equals("WATER_LAKE") || res.equals("WATER_SEA") || res.equals("PORT_EXIT");
+        return new MergeEvidence(anchor, next, (ok ? "RESOLVED:" : "UNRESOLVED:") + res,
+                used[0], chain);
+    }
+
+    /** 证据链长度上限（只读载荷；超出只截断路径，不影响结论）。 */
+    static final int EVIDENCE_CHAIN_MAX = 96;
+
+    /** 终止类型 → 证据标签（{@code null} = base 在该格根本没有几何）。 */
+    private static String label(End end) {
+        if (end == null) return "NO_GEOMETRY";
+        if (end == End.MOUTH_LAKE) return "WATER_LAKE";
+        if (end == End.MOUTH_SEA) return "WATER_SEA";
+        if (end == End.BOUNDARY_EXIT) return "PORT_EXIT";
+        if (end == End.UNRESOLVED) return "UNRESOLVED";
+        return "DEAD_END";
+    }
+
+    /**
+     * 从 {@code from} 沿 base 唯一后继走到底，写入 {@code chain}。
+     *
+     * @return 终止语义（不带 RESOLVED/UNRESOLVED 前缀）
+     */
+    private static String followChain(Result base, int from, int nz, int[] chain, int[] used) {
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        int cur = from;
+        for (int step = 0; step < 4096; step++) {
+            if (!seen.add(cur)) return "CYCLE";
+            if (used[0] < chain.length) { chain[used[0]] = cur; used[0]++; }
+            int next = baseSuccessor(base, cur, nz);
+            if (next >= 0) { cur = next; continue; }
+            End water = waterTerminal(base, cur);
+            if (water != null) return label(water);
+            return label(baseTerminal(base, cur));
+        }
+        return "BOUND";
     }
 
     /** 交叉守卫使用同一有序路径，不把出窗格直接连到再入窗格。 */
@@ -1355,7 +2143,163 @@ public final class DeterministicSkeleton {
      * @param nz     格阵每行长度（{@code cell = i*nz + j}）
      * @return 过滤后的链列表（保持原相对顺序）
      */
+    // Local directed reachability. A frame port remains a handoff candidate, NOT a lake/sea proof.
+    static List<Trace> pruneDisconnected(List<Trace> traces, int nx, int nz, int minNodes,
+                                          java.util.Set<Integer> incomingStarts) {
+        // 兼容入口（既有 37 + 16 回归用例逐字使用本签名）：无溢口认证 ⇒ 旧行为逐位不变。
+        return pruneDisconnected(traces, nx, nz, minNodes, incomingStarts, java.util.Set.of());
+    }
+
+    /**
+     * 带【溢口认证】的网络过滤（新增重载，不改旧签名）。
+     *
+     * <p>{@code certifiedOutletStarts} 只由 {@link #certifiedOutlets} 在有湖泊上下文时产出：
+     * 源盆已知、{@code fromOutlet}、且 mouth 实达【海】或【另一个湖盆】。它<b>只</b>豁免
+     * 长度下限，不豁免有向可达性（本方法先做可达性、再调 {@code pruneShortLeaves}）——
+     * 所以"认证"与"真的通了"是同一件事，无法靠标签蒙过。</p>
+     */
+    static List<Trace> pruneDisconnected(List<Trace> traces, int nx, int nz, int minNodes,
+                                          java.util.Set<Integer> incomingStarts,
+                                          java.util.Set<Integer> certifiedOutletStarts) {
+        int cells = nx * nz;
+        int[] next = new int[cells]; java.util.Arrays.fill(next, -1);
+        for (Trace t : traces) for (int i = 1; i < t.cell.length; i++) {
+            int a = t.cell[i - 1], b = t.cell[i];
+            if (a < 0 || b < 0 || a >= cells || b >= cells) continue;
+            if (next[a] == -1) next[a] = b;
+            else if (next[a] != b) next[a] = -2;
+        }
+        java.util.List<java.util.List<Integer>> previous = new ArrayList<>(cells);
+        for (int c = 0; c < cells; c++) previous.add(null);
+        for (int a = 0; a < cells; a++) if (next[a] >= 0) {
+            int b = next[a];
+            if (previous.get(b) == null) previous.set(b, new ArrayList<>());
+            previous.get(b).add(a);
+        }
+        boolean[] reachesTerminal = new boolean[cells];
+        java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
+        for (Trace t : traces) {
+            boolean terminal = t.end == End.MOUTH_LAKE || t.end == End.MOUTH_SEA
+                    || t.end == End.BOUNDARY_EXIT && t.port != null;
+            int c = t.mouthCell();
+            if (terminal && next[c] != -2 && !reachesTerminal[c]) {
+                reachesTerminal[c] = true; queue.addLast(c);
+            }
+        }
+        while (!queue.isEmpty()) {
+            var upstream = previous.get(queue.removeFirst());
+            if (upstream == null) continue;
+            for (int c : upstream) if (!reachesTerminal[c]) {
+                reachesTerminal[c] = true; queue.addLast(c);
+            }
+        }
+        List<Trace> kept = new ArrayList<>();
+        for (Trace t : traces) {
+            boolean connected = true;
+            for (int c : t.cell) if (c < 0 || c >= cells || !reachesTerminal[c]) { connected = false; break; }
+            if (connected) kept.add(t);
+        }
+        return pruneShortLeaves(kept, minNodes, incomingStarts, certifiedOutletStarts);
+    }
+
+    // Source admission only: shared-node grouping is not a downstream water certificate.
+    static List<Trace> pruneHaloComponents(List<Trace> traces, int nz,
+            java.util.Set<Integer> incomingStarts, OutsideContinuation outside, CoreBounds core) {
+        if (outside == null || core == null || traces.isEmpty()) return traces;
+        int n = traces.size();
+        int[] groups = new int[n];
+        java.util.Map<Integer, Integer> owner = new java.util.HashMap<>();
+        for (int i = 0; i < n; i++) groups[i] = i;
+        for (int i = 0; i < n; i++) for (int c : traces.get(i).cell) {
+            Integer prior = owner.putIfAbsent(c, i);
+            if (prior != null) groups[find(groups, prior)] = find(groups, i);
+        }
+        boolean[] supported = new boolean[n], hasPort = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            Trace t = traces.get(i);
+            int root = find(groups, i);
+            hasPort[root] |= t.end == End.BOUNDARY_EXIT && t.port != null;
+            supported[root] |= t.fromOutlet || t.hasOutsideTail()
+                    || t.end == End.MOUTH_LAKE || t.end == End.MOUTH_SEA;
+            for (int c : t.cell) {
+                int x = outside.originX() + c / nz * outside.step();
+                int z = outside.originZ() + c % nz * outside.step();
+                supported[root] |= core.contains(x, z) || incomingStarts.contains(c);
+            }
+        }
+        List<Trace> kept = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            int root = find(groups, i);
+            if (!hasPort[root] || supported[root]) kept.add(traces.get(i));
+        }
+        return kept;
+    }
+
+    private static List<Trace> pruneShortLeaves(List<Trace> traces, int minNodes,
+                                               java.util.Set<Integer> incomingStarts,
+                                               java.util.Set<Integer> certifiedOutletStarts) {
+        int minimum = Math.max(2, minNodes);
+        java.util.Map<Integer, Integer> node = new java.util.HashMap<>();
+        for (Trace t : traces) if (t.nodeCount() < minimum)
+            for (int c : t.cell) node.computeIfAbsent(c, k -> node.size());
+        int size = node.size();
+        int[] uf = new int[size], next = new int[size], indegree = new int[size], longest = new int[size];
+        java.util.Arrays.fill(next, -1); java.util.Arrays.fill(longest, 1);
+        for (int i = 0; i < size; i++) uf[i] = i;
+        boolean[] protectedNode = new boolean[size];
+        for (Trace t : traces) {
+            if (t.nodeCount() >= minimum) {
+                for (int i = 0; i < t.cell.length; i++) {
+                    Integer n = node.get(t.cell[i]);
+                    if (n != null && i > 0) protectedNode[n] = true;
+                }
+                continue;
+            }
+            for (int i = 0; i < t.cell.length; i++) {
+                int c = t.cell[i], n = node.get(c);
+                // ★ 溢口认证：仅"源盆已知 + 实达海/别的湖"的湖后河不因长度被删。
+                //   （旧口径按 fromOutlet 一律放行 ⇒ 自回湖的假出口也被保护，见认证判据。）
+                if (incomingStarts.contains(c) || t.port != null && t.nodeCount() > 1
+                        || t.hasOutsideTail() || certifiedOutletStarts.contains(c)) {
+                    protectedNode[n] = true;
+                }
+                if (i > 0) {
+                    int a = node.get(t.cell[i - 1]);
+                    uf[find(uf, a)] = find(uf, n);
+                    if (next[a] < 0) { next[a] = n; indegree[n]++; }
+                }
+            }
+        }
+        java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
+        for (int i = 0; i < size; i++) if (indegree[i] == 0) queue.addLast(i);
+        while (!queue.isEmpty()) {
+            int a = queue.removeFirst(), b = next[a];
+            if (b >= 0) {
+                longest[b] = Math.max(longest[b], longest[a] + 1);
+                if (--indegree[b] == 0) queue.addLast(b);
+            }
+        }
+        boolean[] retainedGroup = new boolean[size];
+        for (int i = 0; i < size; i++) if (protectedNode[i] || longest[i] >= minimum)
+            retainedGroup[find(uf, i)] = true;
+        List<Trace> kept = new ArrayList<>();
+        for (Trace t : traces) if (t.nodeCount() >= minimum || retainedGroup[find(uf, node.get(t.sourceCell()))])
+            kept.add(t);
+        return kept;
+    }
+
     private static List<Trace> filterUnconnected(List<Trace> traces, int nz, int nx) {
+        return filterUnconnected(traces, nz, nx, null);
+    }
+
+    /**
+     * ★ ports 模块重载：{@code promised} = 已由邻区端口承诺的起链格（格索引掩码）。
+     *
+     * <p>见调用处的实测归因：接力段常只有 2 个节点，整簇不接水体就会被删，
+     * 于是<b>已承诺的锚点从接收方发布几何里消失</b>。</p>
+     */
+    private static List<Trace> filterUnconnected(List<Trace> traces, int nz, int nx,
+                                                 boolean[] promised) {
         int n = traces.size();
         int cells = nx * nz;
         // ① 每个格归属哪条链（首占者）—— 用于把"共享格"变成并查集连边
@@ -1380,6 +2324,13 @@ public final class DeterministicSkeleton {
                 ok = true;                                   // 溢口段：上游是湖（放行）
             } else if (t.end == End.MOUTH_SEA || t.end == End.MOUTH_LAKE) {
                 ok = true;                                   // 直接入海/入湖
+            } else if (t.end == End.BOUNDARY_EXIT) {
+                ok = true;                                   // 显式端口：待邻区接力（合法终点）
+            } else if (promised != null && t.sourceCell() < promised.length
+                    && promised[t.sourceCell()]) {
+                // ★ ports 模块：本链起点是【邻区已承诺的锚点】⇒ 不得因"整簇不接水体"被删。
+                //   删了就等于让已发布的承诺从接收方几何里消失（实测 23/92 正是这条）。
+                ok = true;
             } else if (t.end == End.DEAD_END) {
                 int mc = t.mouthCell();
                 int mi = mc / nz, mj = mc % nz;
@@ -1572,7 +2523,9 @@ public final class DeterministicSkeleton {
                                   int[] selfStamp, int[] selfStep, int stamp, Params params,
                                   java.util.List<int[]> segments, double[] bed, ParentForest parentForest,
                                   List<IncomingDiagnostic> incomingDiag,
-                                  OutsideContinuation outside) {
+                                  OutsideContinuation outside, WireIn wire,
+                                  List<WireReject> wireRejects,
+                                  LakeWaterBalance.Result lakes) {
         int cells = nx * nz;
         java.util.TreeMap<Integer, Integer> visited = parentForest == null ? null : new java.util.TreeMap<>();
         List<Integer> path = new ArrayList<>();
@@ -1597,17 +2550,24 @@ public final class DeterministicSkeleton {
         // 窗口外续流的世界坐标尾段（只有走出窗口时非空）。
         double[] outsideTail = new double[0];
         int geometryPrefixNodes = -1;
+        // ★ ports 模块：本链的显式出窗端口（只有 BOUNDARY_EXIT 时非空）。
+        BoundaryPort exitPort = null;
         // 严格 D8 的"本链已走过"集合（洼地溢流搜索用，惰性创建）。
         java.util.Set<Integer> strictVisited = null;
         // ★ 阶段 B：惯性方向（上一步格步的单位向量）。一阶状态 ⇒ 随链携带、不引入窗口依赖。
         //   首步为 0（无惯性）⇒ 行为与旧版逐位相同。
         double lastDirX = 0, lastDirZ = 0;
+        // ★ v2：typed 接力的初始惯性 = 【接收方真实出边方向】（锚点→发送端承诺的 next）。
+        //   ⚠ 语义声明：这里<b>不</b>声称复现发送端的合成向量 —— 只声称"上一格步方向"这一
+        //   个离散事实，且必须与发送端声明的来向一致（{@link #wireDirMatches} 校验）。
+        boolean wiredFirstStep = fromIncoming && wire != null;
         // ★ 2026-10-10【丢弃时必须只释放"本链新覆盖的格"】——
         //   末位 JOIN 终点是【别的链的节点】（covered 早已为 true）⇒ 若整条 path 一律
         //   置 false，会把别人已占的内部节点释放掉 ⇒ 后继链穿过它 = SkeletonProbe [4] 双占。
         //   （实测：minNodes 丢弃逻辑加"整条释放"后 [4] 立刻报 4 个格双占。）
         int newlyClaimed = 0;
         var ownSegments = new TraceSegments(nz);
+        java.util.ArrayDeque<Integer> spillSteps = new java.util.ArrayDeque<>();
         double escapeLevel = Double.NaN;
         // ★ 连续路径（格坐标，浮点）：与 path 一一对应。
         //   用户：「落地不再是那八个方向，而是拿那个算出来的结果向量的方向。」
@@ -1639,7 +2599,21 @@ public final class DeterministicSkeleton {
             //   8 邻域内非湖、resolved、level 严格更低的格中取最低（平局取小索引）。
             //   找到且已 covered ⇒ 并入；找到且是海 ⇒ 入海；否则作为新链头正常续走。
             if (fromOutlet && path.size() == 1) {
-                int esc = outletEscape(k, level, resolved, lakeMask, sea, nx, nz);
+                // ★★★ 溢口首步：有上下文时只认 parent[outlet] 的真实外出方向 ★★★
+                //
+                // 【缺陷】旧实现用 outletEscape 在半径 2 内挑"level 更低者"—— 那既不是
+                //   parent 树的方向，也不检查"是否还在本盆里" ⇒ 溢口被接到自己这个湖的
+                //   另一侧岸，发布出去就是"闭合湖"。
+                // 【正解】parent 树是八邻的，且是唯一带"盆地外侧"语义的方向场。只消费这一格：
+                //   源盆已知 + parent 步相邻 + 该格不在源盆 ⇒ 用它。否则诚实未决。
+                // 【不变】无上下文（旧调用方）仍走 outletEscape ⇒ 逐位不变。
+                int esc = outletFirstStep(k, parent, lakes, level, resolved, lakeMask, sea,
+                        nx, nz);
+                if (esc == OUTLET_NO_WITNESS) {
+                    stopReason = "OUTLET_NO_WITNESS";
+                    end = End.UNRESOLVED;
+                    break;
+                }
                 if (esc >= 0 && esc != k) {
                     if (covered[esc]) {
                         boolean selfTarget = selfStamp[esc] == stamp;
@@ -1653,15 +2627,42 @@ public final class DeterministicSkeleton {
                         path.add(esc); end = End.JOIN; break;
                     }
                     if (sea[esc]) { path.add(esc); newlyClaimed++; covered[esc] = true; end = End.MOUTH_SEA; break; }
+                    if (lakeMask[esc]) {
+                        // ★ 溢口注入【另一个湖】：沿用入湖锚点延伸语义（不标记 covered）。
+                        //   旧 outletEscape 永不返回湖格 ⇒ 本分支只在 parent 见证下成立。
+                        path.add(esc);
+                        end = End.MOUTH_LAKE;
+                        stopReason = "OUTLET_INTO_LAKE";
+                        break;
+                    }
                     k = esc;
                     continue;
                 }
                 // 逃逸失败（盆外无下坡/全被湖占）⇒ 沿原 parent 兜底（可能单格终止）
             }
+            // ★★★ ports 模块：完整候选 + 同一向量规则下的<b>显式出窗</b> ★★★
+            //
+            // 用户口径：「在边缘使用完整真实候选及同一向量规则；只有获选下一步确实出窗时
+            // 才建立显式端口。边缘不等于出口；自然沿边走也不能一律禁止。」
+            // ⇒ 只在【加宽候选】下跑同一个 vectorTraceNext，且必须【选中的是窗外格】才出口。
+            //   获选仍在窗内 ⇒ 返回 null，链照常沿边走（真横坡不被强迫出窗）。
+            if (PORT_EGRESS && !(wiredFirstStep && path.size() == 1) && spillSteps.isEmpty()
+                    && STRICT_D8 && VECTOR_TRACE && bed != null && outside != null) {
+                BoundaryPort cand = PortEgress.egress(k, bed, nx, nz, lastDirX, lastDirZ,
+                        GRADIENT_SPAN, outside);
+                if (cand != null) {
+                    exitPort = cand;
+                    end = End.BOUNDARY_EXIT;
+                    stopReason = "PORT_EGRESS";
+                    break;
+                }
+            }
             // 就近汇入：窗口内找「已 covered 且 level 不高于当前」的最优节点
             //   （排除本 trace 自己的节点 —— 否则平坦区会 join 到自己、提前终止+折返）
-            int join = nearbyJoin(level, k, nx, nz, covered, joinWindow, selfStamp, stamp,
-                    segments, bed);
+            // ★ v2：typed 接力的<b>首步</b>由发送端承诺决定 ⇒ 首步不许被 nearbyJoin 抢走。
+            boolean forceWireStep = wiredFirstStep && path.size() == 1;
+            int join = forceWireStep || !spillSteps.isEmpty() ? -1 : nearbyJoin(level, k, nx, nz, covered, joinWindow,
+                    selfStamp, stamp, segments, bed);
             if (join >= 0 && !ownSegments.crosses(k, join)) {
                 // ★ 2026-10-22【修复 A】：`nearbyJoin` 已排除自己，这里再守一道，
                 //   防止将来改动该判据时静默退化成"自汇"。绕回自己不是汇流。
@@ -1688,7 +2689,25 @@ public final class DeterministicSkeleton {
             // 【洼地】无更低邻居 ⇒ priority-flood 找鞍部溢流（真实河流积成小湖后
             //   从最低溢口继续下泄）；溢出口抬升超过 MAX_SPILL_RISE 才认作封闭盆地。
             int p;
-            if (STRICT_D8 && bed != null) {
+            if (forceWireStep) {
+                // ★ v2【缺陷 ①】：首步必须发送端 next（校验失败 ⇒ 拒收，不改道）
+                int w = wireFirstStep(wire, k, bed, nx, nz, incomingDiag, wireRejects);
+                if (w < 0 || !wireDirMatches(wire, k, w, nz, incomingDiag, wireRejects)) {
+                    stopReason = "WIRE_FIRST_STEP_REJECTED";
+                    end = End.DEAD_END;
+                    break;
+                }
+                p = w;
+                double wdx = (p / nz) - (k / nz), wdz = (p % nz) - (k % nz);
+                double wlen = Math.hypot(wdx, wdz);
+                if (wlen > 1e-9) { lastDirX = wdx / wlen; lastDirZ = wdz / wlen; }
+            } else if (!spillSteps.isEmpty()) {
+                p = spillSteps.removeFirst();
+                curX = p / nz; curZ = p % nz;
+                double dx = p / nz - k / nz, dz = p % nz - k % nz;
+                double len = Math.hypot(dx, dz);
+                if (len > 0) { lastDirX = dx / len; lastDirZ = dz / len; }
+            } else if (STRICT_D8 && bed != null) {
                 // ★ 阶段 B：带惯性的严格 D8。
                 //   惯性 = 上一步的格步方向（一阶状态，随链携带 ⇒ 仍局部、仍确定）。
                 //   平局时按惯性择优；有严格更低者时惯性绝不把路线拉高（硬约束在函数内）。
@@ -1719,7 +2738,7 @@ public final class DeterministicSkeleton {
                     // 【修法】站在边框格上且该步仍在边框行/列内移动时，改走窗外续流
                     //   （`continueOutside` 用真实世界地形下降，且已有跨区尾段接线）。
                     // 【不变】不伪造终点：续流失败即回落到原步（记录 willStepOffFrame=false）。
-                    if (FRAME_ESCAPE && outside != null) {
+                    if (!PORT_EGRESS && FRAME_ESCAPE && outside != null) {
                         int ki = k / nz, kj = k % nz;
                         boolean onFrameNow = ki == 0 || kj == 0 || ki == nx - 1 || kj == nz - 1;
                         if (onFrameNow) {
@@ -1757,10 +2776,36 @@ public final class DeterministicSkeleton {
                     //   （水不会在半路的坑里凭空消失）。
                     // 【做法】找最低鞍部溢出；抬升超 MAX_SPILL_RISE 才认真封闭盆地。
                     if (RIVER_SPILL) {
-                        if (strictVisited == null) strictVisited = new java.util.HashSet<>();
-                        strictVisited.add(k);
-                        int sp = spillCell(k, bed, nx, nz, strictVisited);
-                        p = (sp >= 0 && bed[sp] - bed[k] <= MAX_SPILL_RISE) ? sp : -1;
+                        final int spillStart = k;
+                        OrderedSpillSearch.Guards guards = new OrderedSpillSearch.Guards() {
+                            public boolean blocked(int c) { return selfStamp[c] == stamp && c != spillStart; }
+                            public boolean receiver(int c) { return lakeMask[c] || sea[c]
+                                    || covered[c] && selfStamp[c] != stamp; }
+                            public boolean blockedEdge(int a, int b) {
+                                return ownSegments.crosses(a, b) || STEP_CROSS_GUARD
+                                        && segmentCrossesAny(a / nz, a % nz, b / nz, b % nz, segments);
+                            }
+                        };
+                        OrderedSpillSearch.Result spill = new OrderedSpillSearch(bed, nx, nz, k,
+                                MAX_SPILL_RISE, outside == null ? 0 : outside.originX(),
+                                outside == null ? 0 : outside.originZ(), outside == null ? 1 : outside.step(),
+                                cells, guards).find();
+                        if (outside != null && outside.originX() + k / nz * outside.step() == -362
+                                && outside.originZ() + k % nz * outside.step() == 652) {
+                            System.out.println("[BOUNDARY-SPILL-TARGET] " + spill.status()
+                                    + " crest=" + spill.crest() + " boundary=" + spill.boundaryBound()
+                                    + " expanded=" + spill.expanded() + " path=" + spill.path().length);
+                            dumpSpillFixture(bed, covered, selfStamp, stamp, spillStart, guards);
+                        }
+                        if (spill.accepted()) {
+                            for (int q = 1; q < spill.path().length; q++) spillSteps.addLast(spill.path()[q]);
+                            p = spillSteps.removeFirst();
+                            curX = p / nz; curZ = p % nz;
+                        } else if (spill.status() == OrderedSpillSearch.Status.NO_ESCAPE) {
+                            p = -1;
+                        } else {
+                            stopReason = "SPILL_" + spill.status(); end = End.UNRESOLVED; break;
+                        }
                     } else {
                         p = -1;
                     }
@@ -1958,7 +3003,10 @@ public final class DeterministicSkeleton {
         boolean orphanDeadEnd = (end == End.DEAD_END) && !fromOutlet && !onFrame;
         boolean connectedIncoming = fromIncoming && path.size() >= 2
                 && (end == End.MOUTH_LAKE || end == End.MOUTH_SEA || end == End.JOIN || onFrame);
-        boolean rollback = ((path.size() < minNodes && !connectedIncoming) || orphanDeadEnd) && !fromOutlet;
+        // ★ ports 模块：已建立显式端口的链<b>不因长度下限回滚</b> —— 回滚会让已承诺的
+        //   端口从发送方最终几何里消失（正是本阶段要治的缺陷），故端口链豁免。
+        boolean rollback = ((path.size() < minNodes && !connectedIncoming) || orphanDeadEnd)
+                && !fromOutlet && exitPort == null;
         // #region agent log: B 记录每次追踪，包含回滚而非只数最终保留链
         if (Boolean.getBoolean("geogenesis.lifecycleDiag")) lifecycleLog(start, mn, nz, path.size(),
                 fromOutlet, fromIncoming, end, stopReason, rollback, onFrame, outside, joinKind);
@@ -1981,7 +3029,7 @@ public final class DeterministicSkeleton {
         if (incomingDiag != null) incomingDiag.add(
                 new IncomingDiagnostic(start, "ACCEPTED", path.size(), mn, end));
         return new Trace(toArray(path), end, fromOutlet, outsideTail, flattenCont(contPts, path.size()),
-                geometryPrefixNodes < 0 ? path.size() : geometryPrefixNodes);
+                geometryPrefixNodes < 0 ? path.size() : geometryPrefixNodes, exitPort);
     }
 
     // #region agent log: B 临时只读取证，不改变追踪/回滚/过滤策略
@@ -2032,6 +3080,94 @@ public final class DeterministicSkeleton {
             }
         }
         return false;
+    }
+
+    /** 溢口首步的"无见证"哨兵（区别于 -1 = 无下坡）。 */
+    static final int OUTLET_NO_WITNESS = -2;
+
+    /**
+     * 溢口首步。
+     *
+     * <ul>
+     *   <li>{@code lakes == null} ⇒ 旧行为（{@link #outletEscape} 半径 2 挑点，逐位不变）；</li>
+     *   <li>有上下文 ⇒ 只认 {@code parent[outlet]}，且必须离开<b>源盆</b>；</li>
+     *   <li>源盆查不到（{@code basinOutlet} 里没有该格 / 两盆共用一格）或 parent 步不合法
+     *       ⇒ {@link #OUTLET_NO_WITNESS}（诚实未决，绝不挑点顶替）。</li>
+     * </ul>
+     */
+    static int outletFirstStep(int k, int[] parent, LakeWaterBalance.Result lakes,
+                               double[] level, boolean[] resolved,
+                               boolean[] lakeMask, boolean[] sea, int nx, int nz) {
+        if (lakes == null) return outletEscape(k, level, resolved, lakeMask, sea, nx, nz);
+        int basin = sourceBasinOf(lakes, k);
+        if (basin < 0) return OUTLET_NO_WITNESS;
+        int step = outletParentStep(k, parent, lakes, basin, nx, nz);
+        return step < 0 ? OUTLET_NO_WITNESS : step;
+    }
+
+    /**
+     * 源盆反查：{@code basinOutlet} 里哪一盆把这个格当出口。
+     *
+     * @return 盆地序号；{@code -1} = 未知（数组缺失 / 不在表里 / 两盆共用一个溢口格 ⇒ 歧义）
+     */
+    static int sourceBasinOf(LakeWaterBalance.Result lakes, int outlet) {
+        if (lakes == null || outlet < 0) return -1;
+        int[] outlets = lakes.basinOutlet();
+        if (outlets == null || lakes.basinId() == null) return -1;
+        int found = -1;
+        for (int b = 0; b < outlets.length; b++) {
+            if (outlets[b] != outlet) continue;
+            if (found >= 0) return -1;               // 歧义 ⇒ 不认证
+            found = b;
+        }
+        return found;
+    }
+
+    /**
+     * {@code parent[outlet]} 的真实外出方向。
+     *
+     * @return 目标格；{@code -1} = 无见证（无 parent / 越界 / 非相邻 / 回到源盆）
+     */
+    static int outletParentStep(int outlet, int[] parent, LakeWaterBalance.Result lakes,
+                                int sourceBasin, int nx, int nz) {
+        if (parent == null || outlet < 0 || outlet >= nx * nz) return -1;
+        if (sourceBasin < 0) return -1;
+        int step = parent[outlet];
+        if (step < 0 || step >= nx * nz || step == outlet) return -1;
+        int dx = Math.abs(step / nz - outlet / nz);
+        int dz = Math.abs(step % nz - outlet % nz);
+        if (Math.max(dx, dz) != 1) return -1;
+        if (LakeWaterBalance.basinOf(lakes, step) == sourceBasin) return -1;   // 回本盆 = 没流出
+        return step;
+    }
+
+    /**
+     * 溢口认证集合（**唯一**允许短滤豁免的来源）。
+     *
+     * <p>认证条件全部为真才收：① 有湖泊上下文；② {@code fromOutlet}；③ 源盆可反查；
+     * ④ 终点实达水体 —— {@code MOUTH_SEA}，或 {@code MOUTH_LAKE} 且<b>接收湖盆 ≠ 源盆</b>。</p>
+     *
+     * <p>⚠ 单凭 {@code fromOutlet + MOUTH_LAKE} 视为足够是错的：自回湖（旧反例）正是这种形态。
+     * 也不认证 JOIN / DEAD_END / UNRESOLVED / BOUNDARY_EXIT（未决不是通水）。</p>
+     */
+    static java.util.Set<Integer> certifiedOutlets(List<Trace> traces,
+                                                   LakeWaterBalance.Result lakes) {
+        if (lakes == null || traces == null || traces.isEmpty()) return java.util.Set.of();
+        java.util.TreeSet<Integer> out = new java.util.TreeSet<>();
+        for (Trace t : traces) {
+            if (!t.fromOutlet || t.nodeCount() == 0) continue;
+            int start = t.sourceCell();
+            int source = sourceBasinOf(lakes, start);
+            if (source < 0) continue;
+            if (t.end == End.MOUTH_SEA) {
+                out.add(start);
+                continue;
+            }
+            if (t.end != End.MOUTH_LAKE) continue;
+            int receiving = LakeWaterBalance.basinOf(lakes, t.mouthCell());
+            if (receiving >= 0 && receiving != source) out.add(start);
+        }
+        return out;
     }
 
     /**
@@ -2280,6 +3416,20 @@ public final class DeterministicSkeleton {
     public static List<Shaped> shape(List<Trace> traces, double[] level,
                                      int originX, int originZ, int step,
                                      int nx, int nz, Params params, double[] bed) {
+        return shape(traces, level, originX, originZ, step, nx, nz, params, bed, null);
+    }
+
+    /**
+     * ★ v2【缺陷 ③】：带<b>锚点钉死表</b>的形态收尾。
+     *
+     * <p>钉死表（{@link Result#anchorPins}）= 端口锚点 ∪ 已兑现 typed 接力锚点。
+     * 它们在粒子偏移/Catmull-Rom 之前就占住共享锚点表，且首尾本就被钉在格心
+     * ⇒ 发送端链末格与接收端链首格产出<b>逐位相同</b>的世界坐标。</p>
+     */
+    public static List<Shaped> shape(List<Trace> traces, double[] level,
+                                     int originX, int originZ, int step,
+                                     int nx, int nz, Params params, double[] bed,
+                                     java.util.Map<Integer, double[]> pins) {
         // 噪声固定 seed（管线惯例 0x5EEDL）+ 世界坐标驱动 ⇒ 跨窗口同坐标同值
         Simplex oct = new Simplex(0x5EE3);
         oct.seed(0x5EEDL, 0);
@@ -2302,6 +3452,21 @@ public final class DeterministicSkeleton {
         //   · JOIN 目标格必被【更早的链】覆盖（{@code covered} 语义保证）⇒ 复用时
         //     该链已登记过 ⇒ 两条链在该格产出【逐位相同】的锚点。
         java.util.Map<Integer, double[]> anchorTable = new java.util.HashMap<>();
+        // ★ v2【缺陷 ③】：钉死表（端口锚点 + typed 接力锚点）先占，顺序 = 格索引升序。
+        if (pins != null) {
+            for (java.util.Map.Entry<Integer, double[]> e : new java.util.TreeMap<>(pins).entrySet()) {
+                anchorTable.putIfAbsent(e.getKey(), e.getValue().clone());
+            }
+        }
+        // ★ ports 模块：端口锚点【先占】共享锚点表。
+        //   用户口径："边界锚点 shape 端锚定跨区同坐标，注意锚点复用可能覆盖"。
+        //   同一格若先被别的链当内部节点登记（带粒子偏移），端口锚点会被覆盖成非格心坐标
+        //   ⇒ 收发两侧对不齐。先占 = 以端口承诺的世界坐标为准。
+        for (Trace t : traces) {
+            if (t.port == null || t.port.anchorX() == Integer.MIN_VALUE) continue;
+            anchorTable.putIfAbsent(t.port.cell(),
+                    new double[]{t.port.anchorX(), t.port.anchorZ()});
+        }
         for (Trace t : traces) {
             int m = t.geometryPrefixNodes;
             // ★★★ 2026-10-10【必须保索引对齐（否则下游全部读错对象）】★★★
@@ -2311,7 +3476,9 @@ public final class DeterministicSkeleton {
             //   实测后果：JOIN 点到"所属链"的距离出现 8/8、10/10 全 far 的假结论。
             // ⇒ 改为【发一个空折线占位】，下标恒等。
             if (m + t.outsideTail.length / 2 < 2) {
-                out.add(new Shaped(new double[0], new double[0]));
+                if (t.port != null && m == 1) {
+                    out.add(new Shaped(new double[]{t.port.anchorX()}, new double[]{t.port.anchorZ()}));
+                } else out.add(new Shaped(new double[0], new double[0]));
                 continue;
             }
             // ① 锚点（block 坐标）+ 有界粒子偏移（治梯子纹：锚点沿 −∇bed 偏出格心）
@@ -2492,7 +3659,13 @@ public final class DeterministicSkeleton {
             // 【修法】把 MOUTH_SEA / MOUTH_LAKE 的折线尾端沿末段方向【再伸 2 格】，
             //   确保穿过水像素边界 ⇒ 与水体 8 连通。
             //   ⚠ 只动几何末端，不改 end 语义/拓扑（SkeletonProbe 判据不受影响）。
-            if ((t.end == End.MOUTH_SEA || t.end == End.MOUTH_LAKE) && m >= 2) {
+            // ★ 2026-10-25【短段末端不再额外延伸】
+            //   原实现无条件延伸 ext=2（2 个格距 = 8 块）。对只有 2~5 个格节点的短段，
+            //   再往湖里伸 8 块会越过湖面，形成**没有 trace 支撑**的孤立短棒
+            //   （实测 19 个湖边超短段里 11 个反查 trace 覆盖为 0）。
+            //   延伸只为给长河补齐"岸线斜切格"的 1~2 格缝 ⇒ 短段不需要。
+            if ((t.end == End.MOUTH_SEA || t.end == End.MOUTH_LAKE) && m >= 2
+                    && t.nodeCount() >= MIN_TAIL_EXTEND_NODES) {
                 double dxs = ax[m - 1] - ax[m - 2];
                 double dzs = az[m - 1] - az[m - 2];
                 double sl = Math.sqrt(dxs * dxs + dzs * dzs);
@@ -2642,7 +3815,7 @@ public final class DeterministicSkeleton {
                 double c2z = ((t3 - t) * b2z + (t - t2) * b3z) / (t3 - t2);
                 double x = ((t2 - t) * c1x + (t - t1) * c2x) / (t2 - t1);
                 double z = ((t2 - t) * c1z + (t - t1) * c2z) / (t2 - t1);
-                pts.add(new double[]{x, z});
+                pts.add(s == steps ? new double[]{p2x, p2z} : new double[]{x, z});
             }
         }
         double[] xs = new double[pts.size()];
@@ -2723,5 +3896,18 @@ public final class DeterministicSkeleton {
 
     private static double smoothstep(double t) {
         return t * t * (3 - 2 * t);
+    }
+
+    private static void dumpSpillFixture(double[] bed, boolean[] covered, int[] selfStamp,
+                                        int stamp, int start, OrderedSpillSearch.Guards guards) {
+        String target = System.getProperty("geogenesis.spillFixture");
+        if (target == null) return;
+        try (var out = new java.io.DataOutputStream(new java.io.FileOutputStream(target))) {
+            out.writeInt(bed.length); out.writeInt(start);
+            for (int i = 0; i < bed.length; i++) {
+                out.writeDouble(bed[i]); out.writeBoolean(guards.blocked(i));
+                out.writeBoolean(guards.receiver(i));
+            }
+        } catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
     }
 }

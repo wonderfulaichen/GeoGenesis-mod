@@ -456,7 +456,12 @@ public class PreviewDisplay extends AbstractWidget {
     //       如实返回 null，开关开/关产出一致。真相是「边框横向长直」+「窗外洼地」叠加，
     //       需先有盆/溢流出口才能修。默认关闭。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 106;
+    // 107 = 2026-10-25 迁移用户确认的目标效果：湖岸出水判据对齐方块放置（①）、
+    //       溢口短段不再无条件豁免长度下限（②）、入湖末端延伸仅对 ≥6 节点（③），
+    //       并把 boundaryPorts 默认置开（跨区端口/typed 接力/双 pass）。**产出有变**：
+    //       湖 91336→105182、河 37304→37270、孤立河 17→6、河终点距湖>6格 20→0。
+    //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
+    private static final int CACHE_SCHEMA_VERSION = 107;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

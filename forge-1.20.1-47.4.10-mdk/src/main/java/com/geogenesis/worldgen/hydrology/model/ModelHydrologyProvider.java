@@ -200,10 +200,17 @@ public final class ModelHydrologyProvider {
                                */
                               int[][] sources,
                               /** 落块真正使用的亚格折线（{@code shape()} 输出）。只读诊断载荷。 */
-                              List<DeterministicSkeleton.Shaped> shapedPolys) {
+                              List<DeterministicSkeleton.Shaped> shapedPolys,
+                              /**
+                               * ★ v2：<b>最终发布</b>（pass2）的骨架结果。
+                               *
+                               * <p>只读诊断载荷。<b>审计必须读它而不是 pass1</b>：
+                               * pass1 只是承诺，pass2 才是真正发布的几何。</p>
+                               */
+                              DeterministicSkeleton.Result skel) {
         RegionData(HydrologyPipeline.Result pipe, RiverCenterlines.Result centerline, SegmentIndex skeletonSeg,
                    int originX, int originZ, ProductionDrainageAudit.Snapshot drainage) {
-            this(pipe, centerline, skeletonSeg, originX, originZ, drainage, null, null, null, null);
+            this(pipe, centerline, skeletonSeg, originX, originZ, drainage, null, null, null, null, null);
         }
 
         int[][] sourcesOrEmpty() { return sources == null ? new int[0][] : sources; }
@@ -879,7 +886,15 @@ public final class ModelHydrologyProvider {
      */
     private record Pass1(HydrologyPipeline.Result pipe,
                          List<DeterministicSkeleton.ExitSeed> exitSeeds,
-                         int originX, int originZ) { }
+                         int originX, int originZ,
+                         /** ★ ports 模块：pass1 骨架本体（pass2 作 base 复用）。 */
+                         DeterministicSkeleton.Result skeleton) {
+        /** 兼容构造（分层实验路径不产出骨架 ⇒ null）。 */
+        Pass1(HydrologyPipeline.Result pipe, List<DeterministicSkeleton.ExitSeed> exitSeeds,
+              int originX, int originZ) {
+            this(pipe, exitSeeds, originX, originZ, null);
+        }
+    }
 
     /**
      * pass-1 单飞任务。{@code QUEUED→RUNNING} 的 CAS 是唯一执行入口 —— 池线程与需求线程都可抢，
@@ -1242,6 +1257,21 @@ public final class ModelHydrologyProvider {
             !"false".equals(System.getProperty("geogenesis.skeletonCrossPass"));
 
     /**
+     * ★ ports 模块开关（{@code -Dgeogenesis.boundaryPorts}，<b>默认开</b>）。
+     *
+     * <p>打开后：pass1 保留骨架、pass2 以本区 pass1 作 base（不重追 local 源，端口承诺不被抹掉）、
+     * 接力改用<b>typed 端口</b>（世界锚点 + 真实下一步 + 实际接收 owner），并打印显式边界计数。</p>
+     *
+     * <p>★★ 2026-10-25【默认由关改为开】★★
+     * 用户确认的目标效果（1401² 正典图，production.png SHA256 {@code 74E9DC00…B456E3}）
+     * 就是在该开关打开时产出的；关掉它跨区端口/typed 接力/双 pass 全部停用，
+     * 游戏里会退回另一套几何。故默认置开。
+     * <b>回退</b>：{@code -Dgeogenesis.boundaryPorts=false} 即逐位回到关闭时的旧行为。</p>
+     */
+    static final boolean BOUNDARY_PORTS =
+            !"false".equals(System.getProperty("geogenesis.boundaryPorts"));
+
+    /**
      * 断口现场 watch（`-Dgeogenesis.gapWatch=x1,z1;x2,z2`）：
      * 对指定世界坐标方块打印落块判据全链（isLake/half/dist/onChannel/fill/nearBorder）
      * ⇒ 一次跑定位"断口是几何未覆盖、湖掩码覆盖、还是落块门控"。
@@ -1291,7 +1321,15 @@ public final class ModelHydrologyProvider {
                                   /** 每条 Trace 的源头 block 坐标 {x,z}（只读诊断载荷，不参与产出）。 */
                                   int[][] sources,
                                   /** 落块真正使用的亚格折线（{@code shape()} 输出）。只读诊断载荷。 */
-                                  List<DeterministicSkeleton.Shaped> shapedPolys) {
+                                  List<DeterministicSkeleton.Shaped> shapedPolys,
+                                  /** ★ ports 模块：本次骨架结果（含端口/未决出口）。只读载荷。 */
+                                  DeterministicSkeleton.Result skel) {
+        SkeletonRegion(RiverCenterlines.Result cl, SegmentIndex seg,
+                       List<DeterministicSkeleton.ExitSeed> exitSeeds,
+                       ProductionDrainageAudit.Snapshot drainage,
+                       int[][] sources, List<DeterministicSkeleton.Shaped> shapedPolys) {
+            this(cl, seg, exitSeeds, drainage, sources, shapedPolys, null);
+        }
         SkeletonRegion(RiverCenterlines.Result cl, SegmentIndex seg,
                        List<DeterministicSkeleton.ExitSeed> exitSeeds,
                        ProductionDrainageAudit.Snapshot drainage) {
@@ -1624,6 +1662,33 @@ public final class ModelHydrologyProvider {
     private SkeletonRegion skeletonRegion(HydrologyPipeline.Result p,
                                           int originX, int originZ,
                                           List<Integer> incomingCells, boolean primary) {
+        return skeletonRegion(p, originX, originZ, incomingCells, primary, null);
+    }
+
+    /**
+     * ★ ports 模块：带 base 的骨架构建（pass2 专用）。
+     *
+     * @param base 本区 pass1 的骨架结果；{@code null} = 旧行为（逐位不变）
+     */
+    private SkeletonRegion skeletonRegion(HydrologyPipeline.Result p,
+                                          int originX, int originZ,
+                                          List<Integer> incomingCells, boolean primary,
+                                          DeterministicSkeleton.Result base) {
+        // ★ v2：角色<b>由 base 是否存在推出</b>并显式传入（旧缺陷 ②：base 重载硬写 false）。
+        return skeletonRegion(p, originX, originZ, incomingCells, List.of(), primary, base,
+                base == null ? DeterministicSkeleton.PassRole.PRIMARY
+                             : DeterministicSkeleton.PassRole.SECOND_PASS);
+    }
+
+    /**
+     * ★ v2 typed 入口：带 {@code incomingWires} 与显式 {@link DeterministicSkeleton.PassRole}。
+     */
+    private SkeletonRegion skeletonRegion(HydrologyPipeline.Result p,
+                                          int originX, int originZ,
+                                          List<Integer> incomingCells,
+                                          List<WireIn> incomingWires, boolean primary,
+                                          DeterministicSkeleton.Result base,
+                                          DeterministicSkeleton.PassRole role) {
         int n = p.nx();
         double runoff = p.lakeResult() == null ? 0.0 : p.lakeResult().runoffPerCell();
         // ★ 单一事实来源：全部参数派生集中在 productionParams（探针也调用它）。
@@ -1692,7 +1757,7 @@ public final class ModelHydrologyProvider {
         var sk = DeterministicSkeleton.build(
                 p.level(), p.parent(), p.resolved(), p.lake(), p.sea(),
                 p.discharge(), p.lakeResult() == null ? null : p.lakeResult().basinOutlet(),
-                n, n, skParams, incomingCells, p.bed(),
+                n, n, skParams, incomingCells, incomingWires, p.bed(),
                 // ★★ 分层实验：**构建时显式关闭**网络过滤（Boolean.FALSE）。
                 //    理由（失败规范）：{@code filterUnconnected} 会整簇删除"不接水体"的链
                 //    ⇒ 拿它的产出当连通性证据 = 用删除掩盖"支流接不进下游接口"的失败。
@@ -1705,7 +1770,14 @@ public final class ModelHydrologyProvider {
                         (bx, bz) -> gen.erodedHeight(bx * invHs, bz * invHs),
                         originX, originZ, STEP,
                         Integer.getInteger("geogenesis.outsideSteps", 2048),
-                        gen.params().seaLevel()));
+                        gen.params().seaLevel()),
+                // ★ v2：wires 与角色一起进 build（不再有"有 base 就自动 pass1"的默认）。
+                base, role,
+                new DeterministicSkeleton.CoreBounds(originX + HALO, originZ + HALO,
+                        originX + HALO + REGION, originZ + HALO + REGION),
+                // ★ 显式传湖泊水量平衡上下文：溢口首步用 parent[outlet] 的真实外出方向，
+                //   并以 basinOutlet/basinId 做短滤认证。（不传 ⇒ 旧行为逐位不变。）
+                p.lakeResult());
         if (HIER) {
             // 回传事实（探针可断言"实验构建确实关了过滤且未删链"）。
             HierarchicalHydrology.Diag.skeletonBuild(sk.networkFilterEnabled,
@@ -1736,7 +1808,8 @@ public final class ModelHydrologyProvider {
         }
         // 亚格几何（Catmull-Rom + 格点吸附）→ SegmentIndex（落块用）
         var shaped = DeterministicSkeleton.shape(sk.traces, p.level(),
-                originX, originZ, STEP, n, n, skParams, p.bed());
+                originX, originZ, STEP, n, n, skParams, p.bed(), sk.anchorPins);
+        shaped = OutletLakePrefix.attach(sk.traces, shaped, p, originX, originZ, STEP);
         List<DeterministicSkeleton.Shaped> allPolys = shaped;
         // ★ 诊断（`-Dgeogenesis.joinChk=true`）：JOIN 点的像素是否重合
         //   —— 共享锚点表若生效，两条链在该格应产出【逐位相同】的像素。
@@ -1833,6 +1906,7 @@ public final class ModelHydrologyProvider {
             reaches.add(new RiverCenterlines.Reach(cell, q, w, d, 0));
         }
         int mouthsLake = 0, mouthsSea = 0, joins = 0, unresolved = 0, deadEnd = 0;
+        int boundaryExits = 0;                       // ★ ports 模块：显式出窗数
         for (var t : sk.traces) {
             switch (t.end) {
                 case MOUTH_LAKE -> mouthsLake++;
@@ -1840,16 +1914,19 @@ public final class ModelHydrologyProvider {
                 case JOIN -> joins++;
                 case UNRESOLVED -> unresolved++;
                 case DEAD_END -> deadEnd++;
+                case BOUNDARY_EXIT -> boundaryExits++;
             }
         }
         // DEAD_END = parent=-1 且非海非湖（窗口排水根）—— 断口归因的头号嫌疑。
         if (primary) {
             LOGGER.info("[HYDRO-SKELETON] traces={} sources={} droppedBySpacing={} outletStarts={}"
                             + " incomingStarts={} ends: lake={} sea={} join={} unresolved={}"
-                            + " DEAD_END={} exitSeeds={}",
+                            + " DEAD_END={} BOUNDARY_EXIT={} exitSeeds={} ports={} pending={}"
+                            + " mergedIncoming={}",
                     sk.traces.size(), sk.sourcesTotal, sk.sourcesDroppedBySpacing,
                     sk.outletStarts, sk.incomingStarts, mouthsLake, mouthsSea, joins,
-                    unresolved, deadEnd, sk.exitSeeds.size());
+                    unresolved, deadEnd, boundaryExits, sk.exitSeeds.size(),
+                    sk.ports.size(), sk.pendingExits.size(), sk.mergedIncoming);
         }
         // 端点表收集（与图上断口坐标对表用）
         if (SKELETON_END_DIAG && primary && originX != Integer.MIN_VALUE) {
@@ -1876,10 +1953,11 @@ public final class ModelHydrologyProvider {
             int c0 = t.cell[0];
             srcPts[i] = new int[]{originX + (c0 / n) * STEP, originZ + (c0 % n) * STEP};
         }
+        logBoundaryPorts(sk, originX, originZ, n, primary);
         return new SkeletonRegion(RiverCenterlines.fromReaches(reaches, n, n, STEP), seg,
                 sk.exitSeeds, primary && Boolean.getBoolean("geogenesis.drainageAudit")
                 ? ProductionDrainageAudit.capture(p, sk, shaped,
-                originX, originZ, REGION) : null, srcPts, shaped);
+                originX, originZ, REGION) : null, srcPts, shaped, sk);
     }
 
     /**
@@ -2186,6 +2264,30 @@ public final class ModelHydrologyProvider {
                     if (isLakeBlock) lakeDiagBlock.incrementAndGet();
                     if (coarseLake && !isLakeBlock) lakeDiagCoarseButNotBlock.incrementAndGet();
                     if (!coarseLake && isLakeBlock) lakeDiagGainedByRefine.incrementAndGet();
+                }
+                if (BOUNDARY_PORTS && isLakeBlock
+                        && !isLakeAt(eroded, sharedLake ? sharedSurface : surface)) {
+                    SegmentIndex.Hit shoreHit = segIndex.nearest(blockX, blockZ);
+                    if (shoreHit == null && nearBorder) {
+                        for (int t = 0; t < 9; t++) {
+                            if (t == 4) continue;
+                            if (neighDx[t] < 0 && blockX > regLoX + HALO) continue;
+                            if (neighDx[t] > 0 && blockX < regHiX - HALO) continue;
+                            if (neighDz[t] < 0 && blockZ > regLoZ + HALO) continue;
+                            if (neighDz[t] > 0 && blockZ < regHiZ - HALO) continue;
+                            RegionData rr = neigh[t] != null ? neigh[t] : regionFor(
+                                    (rdRx + neighDx[t]) * REGION + REGION / 2,
+                                    (rdRz + neighDz[t]) * REGION + REGION / 2);
+                            if (rr.skeletonSeg() == null) continue;
+                            SegmentIndex.Hit h = rr.skeletonSeg().nearest(blockX, blockZ);
+                            if (h != null && (shoreHit == null || h.dist < shoreHit.dist)) shoreHit = h;
+                        }
+                    }
+                    if (shoreHit != null && shoreHit.half > 0) {
+                        isLakeBlock = false;
+                        half = shoreHit.half; depth = shoreHit.depth; bestDist = shoreHit.dist;
+                        if (Double.isFinite(shoreHit.surface)) surface = shoreHit.surface;
+                    }
                 }
                 if (isLakeBlock) {
                     // ★ 断口现场 watch
@@ -2557,7 +2659,8 @@ public final class ModelHydrologyProvider {
         // 出口种子必须来自"本区独立追踪"的结果，否则会与接力链互相依赖。
         var sr = skeletonRegion(p, centerX - RADIUS, centerZ - RADIUS, List.of(), false);
         seeds = sr.exitSeeds();
-        return new Pass1(p, seeds, centerX - RADIUS, centerZ - RADIUS);
+        // ★ ports 模块：把 pass1 骨架一并缓存 —— pass2 以它为 base，才能保住已发出的端口。
+        return new Pass1(p, seeds, centerX - RADIUS, centerZ - RADIUS, sr.skel());
     }
 
     /**
@@ -2613,6 +2716,309 @@ public final class ModelHydrologyProvider {
             }
         }
         return out;
+    }
+
+
+    /**
+     * ★ ports 模块：显式边界计数日志（发送端口 / 锚点精确率 / 未决出口 / 合并数）。
+     *
+     * <p>用户要求"ModelHydrologyProvider 日志显式 boundary 数" ⇒ 每次构建都打一行，
+     * 并逐条列出 pending（pass2 出口无 pass1 承诺 = 未决，不得当全局完成）。</p>
+     */
+    private void logBoundaryPorts(DeterministicSkeleton.Result sk, int originX, int originZ,
+                                  int n, boolean primary) {
+        if (!BOUNDARY_PORTS || sk.ports.isEmpty() && sk.pendingExits.isEmpty()) return;
+        int exact = 0;
+        for (BoundaryPort port : sk.ports) {
+            int px = originX + (port.cell() / n) * STEP;
+            int pz = originZ + (port.cell() % n) * STEP;
+            if (px == port.anchorX() && pz == port.anchorZ()) exact++;
+            else LOGGER.warn("[HYDRO-BOUNDARY] anchor mismatch cell=({},{}) grid=({},{}) got=({},{})",
+                    port.cell() / n, port.cell() % n, px, pz, port.anchorX(), port.anchorZ());
+        }
+        LOGGER.info("[HYDRO-BOUNDARY] origin({},{}) role={} roleConflict={} ports={}"
+                        + " anchorExact={} pendingExits={} wiredIncoming={} wireRejects={}"
+                        + " mergedIncoming={} mergeEvidence={} unsatisfied={}",
+                originX, originZ, sk.passRole, sk.roleConflict, sk.ports.size(), exact,
+                sk.pendingExits.size(), sk.wiredIncoming, sk.wireRejects.size(),
+                sk.mergedIncoming, sk.mergeEvidence.size(), sk.unsatisfiedIncoming.size());
+        for (WireReject r : sk.wireRejects) {
+            LOGGER.warn("[HYDRO-WIRE-REJECT] {}", r);
+        }
+        for (DeterministicSkeleton.MergeEvidence ev : sk.mergeEvidence) {
+            LOGGER.info("[HYDRO-WIRE-MERGE] anchor={} next={} {} steps={} path={}",
+                    ev.anchor(), ev.next(), ev.resolution(), ev.steps(), ev.pathText());
+        }
+        for (DeterministicSkeleton.MergeEvidence ev : sk.unsatisfiedIncoming) {
+            LOGGER.warn("[HYDRO-WIRE-UNSATISFIED] anchor={} next={} {} steps={}",
+                    ev.anchor(), ev.next(), ev.resolution(), ev.steps());
+        }
+        // 接收侧归因（只读）：本区 pass2 对每个 incoming 的裁定，供审计回答"为什么没接上"
+        if (primary) {
+            java.util.List<String> diag = new ArrayList<>();
+            for (var d : sk.incomingDiagnostics) {
+                int bx = originX + (d.start() / n) * STEP;
+                int bz = originZ + (d.start() % n) * STEP;
+                int mx = d.mouth() < 0 ? Integer.MIN_VALUE : originX + (d.mouth() / n) * STEP;
+                int mz = d.mouth() < 0 ? Integer.MIN_VALUE : originZ + (d.mouth() % n) * STEP;
+                diag.add(bx + "," + bz + "@" + d.status() + ":" + d.end() + ":" + d.nodes()
+                        + ":mouth=" + mx + "," + mz);
+            }
+            int cell = Math.floorDiv(originX + (n / 2) * STEP, REGION);
+            int cellZ = Math.floorDiv(originZ + (n / 2) * STEP, REGION);
+            RECEIVER_DIAG.put(cell + ":" + cellZ, java.util.List.copyOf(diag));
+            for (String line : diag) {
+                LOGGER.info("[HYDRO-RECEIVER] region({},{}) {}", cell, cellZ, line);
+            }
+        }
+        for (BoundaryPort port : sk.pendingExits) {
+            LOGGER.info("[HYDRO-BOUNDARY-PENDING] {} — pass2 出口无 pass1 承诺 ⇒ 未决", port);
+        }
+    }
+
+    /**
+     * ★ ports 模块 <b>typed 接力入口</b>（生产内部用；外部 {@code List<Integer>} API 保持兼容）。
+     *
+     * <p>与 {@link #collectIncoming} 的区别：<b>不用"落在哪条框就推对角"</b>，
+     * 而是逐端口核对<b>实际接收 owner</b>（由真实下一步世界坐标 floorDiv 得出），
+     * 并用<b>共享世界锚点</b>换算本区格索引；锚点若无法在接收网格上逐位重现 ⇒ 显式异常。</p>
+     */
+    private List<Integer> collectIncomingTyped(int rx, int rz, int n,
+                                               int myOriginX, int myOriginZ) {
+        List<Integer> out = new ArrayList<>();
+        for (WireIn w : collectIncomingWires(rx, rz, n, myOriginX, myOriginZ)) out.add(w.anchorCell());
+        return out;
+    }
+
+    /**
+     * ★ v2 <b>typed 接力装配</b>：端口 → {@link WireIn}（锚点格 + 真实下一步格 + 来向）。
+     *
+     * <h3>与旧 {@code collectIncomingTyped} 的区别</h3>
+     * <p>旧版只回 {@code List<Integer>}（锚点格索引）：<b>方向与 next 全部丢失</b>，
+     * 接收方只能拿自己的地形重猜第一步 ⇒ 缝上"锚点有、下一步没"的假接力。
+     * 新版把三件事一起带过去，并在这里就做<b>几何可判定</b>的拒收：</p>
+     * <ul>
+     *   <li>锚点必须逐位落在本区网格（否则 {@code ANCHOR_OFF_GRID}）；</li>
+     *   <li>next 必须逐位落在本区窗口内（否则 {@code PENDING_NEXT_OTHER_OWNER}：
+     *       端口指向更远的区 ⇒ 本区不接，如实未决）；</li>
+     *   <li>next 必须与锚点相邻（否则 {@code NEXT_NOT_ADJACENT}）；</li>
+     *   <li>同一个锚点被多个发送方承诺且 next 不同 ⇒ 保留首个并记 {@code DUPLICATE_ANCHOR}。</li>
+     * </ul>
+     * <p>拒收<b>不改道、不猜</b>；全部写进 {@link #WIRE_ASSEMBLY_REJECTS} 供审计与日志。</p>
+     */
+    private List<WireIn> collectIncomingWires(int rx, int rz, int n,
+                                              int myOriginX, int myOriginZ) {
+        List<WireIn> out = new ArrayList<>();
+        java.util.Map<Integer, WireIn> byAnchor = new java.util.TreeMap<>();
+        List<String> rejects = new ArrayList<>();
+        for (BoundaryPort port : typedIncomingPorts(rx, rz)) {
+            int ai = Math.floorDiv(port.anchorX() - myOriginX, STEP);
+            int aj = Math.floorDiv(port.anchorZ() - myOriginZ, STEP);
+            if (myOriginX + ai * (long) STEP != port.anchorX()
+                    || myOriginZ + aj * (long) STEP != port.anchorZ()) {
+                rejects.add("ANCHOR_OFF_GRID " + port);
+                continue;
+            }
+            int ni = Math.floorDiv(port.nextX() - myOriginX, STEP);
+            int nj = Math.floorDiv(port.nextZ() - myOriginZ, STEP);
+            if (myOriginX + ni * (long) STEP != port.nextX()
+                    || myOriginZ + nj * (long) STEP != port.nextZ()) {
+                rejects.add("NEXT_OFF_GRID " + port);
+                continue;
+            }
+            if (ni < 0 || nj < 0 || ni >= n || nj >= n) {
+                // next 落在本区窗口之外 ⇒ 端口指向更远的区；本区不接，如实未决。
+                rejects.add("PENDING_NEXT_OTHER_OWNER " + port);
+                continue;
+            }
+            int anchorCell = ai * n + aj, nextCell = ni * n + nj;
+            WireIn w = new WireIn(anchorCell, nextCell, port.dirX(), port.dirZ(),
+                    port.anchorX(), port.anchorZ(), port.nextX(), port.nextZ());
+            WireIn prior = byAnchor.get(anchorCell);
+            if (prior != null) {
+                if (prior.nextCell() != nextCell) rejects.add("DUPLICATE_ANCHOR " + port);
+                continue;
+            }
+            byAnchor.put(anchorCell, w);
+        }
+        out.addAll(byAnchor.values());
+        if (!rejects.isEmpty()) {
+            WIRE_ASSEMBLY_REJECTS.put(rx + ":" + rz, List.copyOf(rejects));
+            for (String r : rejects) LOGGER.warn("[HYDRO-WIRE-ASSEMBLY] region({},{}) {}", rx, rz, r);
+        }
+        return out;
+    }
+
+    /** typed 装配期拒收（端口→WireIn）——只读诊断，键 = {@code rx:rz}。
+     *
+     * <p>★ <b>实例级</b>（非 static）：static 诊断表会被多实例 / 多 seed / 多并发求解污染，
+     * 且测完无法回收（本类 {@code SHARED_CACHE} 已踩过同类教训）。</p>
+     */
+    private final java.util.Map<String, java.util.List<String>> WIRE_ASSEMBLY_REJECTS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 8 邻 pass1 中<b>实际接收 owner = 本区</b>的端口（按锚点排序 ⇒ 顺序无关）。 */
+    private List<BoundaryPort> typedIncomingPorts(int rx, int rz) {
+        List<BoundaryPort> out = new ArrayList<>();
+        for (int dRX = -1; dRX <= 1; dRX++) {
+            for (int dRZ = -1; dRZ <= 1; dRZ++) {
+                if (dRX == 0 && dRZ == 0) continue;
+                Pass1 nb = regionPass1(rx + dRX, rz + dRZ);
+                if (nb.skeleton() == null) continue;
+                for (BoundaryPort raw : nb.skeleton().ports) {
+                    BoundaryPort p = raw.stamp(rx + dRX, rz + dRZ, REGION);
+                    if (p.receiverRegionX() != rx || p.receiverRegionZ() != rz) continue;
+                    out.add(p);
+                }
+            }
+        }
+        out.sort(java.util.Comparator.comparingInt(BoundaryPort::anchorX)
+                .thenComparingInt(BoundaryPort::anchorZ)
+                .thenComparingInt(BoundaryPort::senderRegionX)
+                .thenComparingInt(BoundaryPort::senderRegionZ));
+        return out;
+    }
+
+    // ---- ports 模块只读探针入口（供 build 侧审计程序调用；不参与生产路径）----
+
+    /**
+     * pass2 的 incoming 逐入口裁定（{@code "point@status:end"} 列表）——只读诊断。
+     *
+     * <p>用于回答"接收方为什么没接上"：是锚点被湖/海吞掉、被占用、太短回滚，
+     * 还是根本没有下坡。写进 {@code RECEIVER_DIAG} 的时机在 {@code skeletonRegion}。</p>
+     */
+    // ★ v2：**实例级**（非 static）。static 表会被多实例 / 多 seed / 并发求解互相覆盖
+    //   ⇒ 审计读到别区的裁定（用户口径：不要再扩 static 污染面）。
+    private final java.util.Map<String, java.util.List<String>> RECEIVER_DIAG =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 取某 region 上次 pass2 的 incoming 裁定（空 = 尚未求解或开关关闭）。 */
+    java.util.List<String> incomingDiagForProbe(int rx, int rz) {
+        return RECEIVER_DIAG.getOrDefault(rx + ":" + rz, java.util.List.of());
+    }
+
+    /**
+     * ★★ 主线程集成的<b>唯一只读入口</b>：该 region 的<b>最终结果</b>（= 落块真正用的那份）。
+     *
+     * <h3>语义（写死，别扩读）</h3>
+     * <ul>
+     *   <li>{@code final} = <b>pass2</b> 产物（base 几何在前 + 接收链在后，已合并）；
+     *       分层实验路径不产 typed 端口 ⇒ 如实返回 {@code null}（<b>不</b>拿 pass1 冒充）；</li>
+     *   <li>端口 / 未决出口 / 合并证据 / 后继冲突<b>全部来自这一份</b> ⇒ 审计不会读到
+     *       "承诺期"的乐观数据（v1 的错就在这里：拿 {@code regionPass1} 判接收方）；</li>
+     *   <li>惰性触发：owner 未求解时本条<b>会触发一次求解</b>（{@code regionFor} 自带缓存 + 单飞）；</li>
+     *   <li><b>只读</b>：返回对象与缓存共享，调用方不得改写（要副本请自行 copy）。</li>
+     * </ul>
+     *
+     * <p>与 {@code shape()} 输出<b>逐下标同序</b>（{@link #shapeAlignedForProbe} 可断言）。</p>
+     */
+    DeterministicSkeleton.Result finalSkeletonForProbe(int rx, int rz) {
+        DeterministicSkeleton.Result sk =
+                regionFor(rx * REGION + REGION / 2, rz * REGION + REGION / 2).skel();
+        if (sk == null) {
+            LOGGER.warn("[HYDRO-WIRE] region ({},{}) final skeleton is null (hier path or off)", rx, rz);
+        }
+        return sk;
+    }
+
+    /** 兼容别名（v2 早期名字）。 */
+    DeterministicSkeleton.Result finalSkeleton(int rx, int rz) {
+        return finalSkeletonForProbe(rx, rz);
+    }
+
+    /** 最终骨架的端口（已盖身份；按锚点 + 接收 owner 排序 ⇒ 顺序无关）。 */
+    java.util.List<BoundaryPort> finalPortsForProbe(int rx, int rz) {
+        DeterministicSkeleton.Result sk = finalSkeletonForProbe(rx, rz);
+        if (sk == null) return java.util.List.of();
+        java.util.List<BoundaryPort> out = new ArrayList<>(sk.ports.size());
+        for (BoundaryPort raw : sk.ports) out.add(raw.stamp(rx, rz, REGION));
+        out.sort(java.util.Comparator.comparingInt(BoundaryPort::anchorX)
+                .thenComparingInt(BoundaryPort::anchorZ)
+                .thenComparingInt(BoundaryPort::receiverRegionX)
+                .thenComparingInt(BoundaryPort::receiverRegionZ));
+        return out;
+    }
+
+    /** 最终骨架的<b>未决</b>出口（PASS2 下无 pass1 承诺 ⇒ 契约未覆盖，不得当完成）。 */
+    java.util.List<BoundaryPort> finalPendingForProbe(int rx, int rz) {
+        DeterministicSkeleton.Result sk = finalSkeletonForProbe(rx, rz);
+        if (sk == null) return java.util.List.of();
+        java.util.List<BoundaryPort> out = new ArrayList<>(sk.pendingExits.size());
+        for (BoundaryPort raw : sk.pendingExits) out.add(raw.stamp(rx, rz, REGION));
+        return out;
+    }
+
+    /** 最终骨架的 trace 表（与 {@code shapedPolys} 逐下标同序；只读）。 */
+    java.util.List<DeterministicSkeleton.Trace> finalTracesForProbe(int rx, int rz) {
+        DeterministicSkeleton.Result sk = finalSkeletonForProbe(rx, rz);
+        return sk == null ? java.util.List.of() : sk.traces;
+    }
+
+    /** 最终骨架的 trace 数与落块折线数是否相等（true = 可按下标互查）。 */
+    boolean shapeAlignedForProbe(int rx, int rz) {
+        DeterministicSkeleton.Result sk = finalSkeletonForProbe(rx, rz);
+        RegionData rd = regionFor(rx * REGION + REGION / 2, rz * REGION + REGION / 2);
+        if (sk == null || rd.shapedPolys() == null) return false;
+        return sk.traces.size() == rd.shapedPolys().size();
+    }
+
+    /** base 覆盖格上每条 incoming 的后继审计证据（实际 next + 实际路径；只读）。 */
+    java.util.List<DeterministicSkeleton.MergeEvidence> finalMergeEvidenceForProbe(int rx, int rz) {
+        DeterministicSkeleton.Result sk = finalSkeletonForProbe(rx, rz);
+        return sk == null ? java.util.List.of() : sk.mergeEvidence;
+    }
+
+    /** 后继审计<b>未</b>通过（追不到水体/端口）的 incoming —— 不是合并、也不算水。 */
+    java.util.List<DeterministicSkeleton.MergeEvidence> finalUnsatisfiedForProbe(int rx, int rz) {
+        DeterministicSkeleton.Result sk = finalSkeletonForProbe(rx, rz);
+        return sk == null ? java.util.List.of() : sk.unsatisfiedIncoming;
+    }
+
+    /** typed 装配期的拒收（端口→WireIn），供审计逐项列出。 */
+    java.util.List<String> wireAssemblyRejectsForProbe(int rx, int rz) {
+        return WIRE_ASSEMBLY_REJECTS.getOrDefault(rx + ":" + rz, java.util.List.of());
+    }
+
+    /** pass1 的显式端口（已盖 identity）。{@code -Dgeogenesis.boundaryPorts} 关闭时为空。 */
+    java.util.List<BoundaryPort> pass1PortsForProbe(int rx, int rz) {
+        Pass1 p = regionPass1(rx, rz);
+        if (p.skeleton() == null) return java.util.List.of();
+        java.util.List<BoundaryPort> out = new ArrayList<>();
+        for (BoundaryPort raw : p.skeleton().ports) out.add(raw.stamp(rx, rz, REGION));
+        return out;
+    }
+
+    /** pass1 的未决出口（pass2 出口无 pass1 承诺 = 未决）。 */
+    java.util.List<BoundaryPort> pass1PendingForProbe(int rx, int rz) {
+        Pass1 p = regionPass1(rx, rz);
+        if (p.skeleton() == null) return java.util.List.of();
+        java.util.List<BoundaryPort> out = new ArrayList<>();
+        for (BoundaryPort raw : p.skeleton().pendingExits) out.add(raw.stamp(rx, rz, REGION));
+        return out;
+    }
+
+    /** 接收方 pass1 中该锚点是否有"几何 + 后继"（返回 {hasAnchor, hasSuccessor}）。 */
+    boolean[] receiverAnchorForProbe(int rx, int rz, int anchorX, int anchorZ) {
+        Pass1 p = regionPass1(rx, rz);
+        if (p.skeleton() == null) return new boolean[]{false, false};
+        int n = p.pipe().nx();
+        int cell = Math.floorDiv(anchorX - p.originX(), STEP) * n
+                + Math.floorDiv(anchorZ - p.originZ(), STEP);
+        boolean has = false, successor = false;
+        for (DeterministicSkeleton.Trace t : p.skeleton().traces) {
+            for (int i = 0; i < t.cell.length; i++) {
+                if (t.cell[i] != cell) continue;
+                has = true;
+                if (i + 1 < t.cell.length) successor = true;
+            }
+        }
+        return new boolean[]{has, successor};
+    }
+
+    /** 接收方窗口原点/n（探针换算用）。 */
+    int[] receiverFrameForProbe(int rx, int rz) {
+        Pass1 p = regionPass1(rx, rz);
+        return new int[]{p.originX(), p.originZ(), STEP, p.pipe().nx()};
     }
 
     /** 求解一个 region 窗口（纯函数；耗时日志只打【求解】不打缓存命中）。 */
@@ -2695,8 +3101,9 @@ public final class ModelHydrologyProvider {
         logRegionSolved(rx, rz, p, cl, t0, originX, originZ);
         HierarchicalHydrology.Diag.fineTiming((System.nanoTime() - t0) / 1_000_000L, p.nx() * p.nx());
         lastFineMs = (System.nanoTime() - t0) / 1e6;
+        // ★ v2：分层实验路径不产出 typed 端口 ⇒ 最终骨架载荷如实为 null（不冒充 pass2）。
         return new RegionData(p, cl, skelSeg, originX, originZ, drainage, world, worldWater,
-                regionSources, regionShaped);
+                regionSources, regionShaped, null);
     }
 
     /** 最近一次细层求解耗时（ms）——性能诊断（与 {@link HierarchicalHydrology.Diag#LAST_FINE_MS} 同源）。 */
@@ -2796,9 +3203,18 @@ public final class ModelHydrologyProvider {
         // ★ 双 pass 续流：取 8 邻 pass-1 中【指向本区】的出口种子，换算成本区格索引，
         //   由本区自己的 parent 树追进来（方向场统一 ⇒ 缝上不再断）。
         long incomingStart = System.nanoTime();
-        List<Integer> incoming = CROSS_PASS ? collectIncoming(rx, rz, p.nx()) : List.of();
+        List<WireIn> incomingWires = BOUNDARY_PORTS && CROSS_PASS
+                ? collectIncomingWires(rx, rz, p.nx(), base.originX(), base.originZ())
+                : List.of();
+        List<Integer> incoming = !CROSS_PASS ? List.of()
+                : BOUNDARY_PORTS
+                ? incomingWires.stream().map(WireIn::anchorCell).toList()
+                : collectIncoming(rx, rz, p.nx());
         incomingNs = System.nanoTime() - incomingStart;
-        var sr = skeletonRegion(p, base.originX(), base.originZ(), incoming, true);
+        var sr = skeletonRegion(p, base.originX(), base.originZ(), incoming, incomingWires, true,
+                BOUNDARY_PORTS ? base.skeleton() : null,
+                BOUNDARY_PORTS ? DeterministicSkeleton.PassRole.SECOND_PASS
+                               : DeterministicSkeleton.PassRole.PRIMARY);
         cl = sr.cl();
         skelSeg = sr.seg();
         drainage = sr.drainage();
@@ -2806,7 +3222,7 @@ public final class ModelHydrologyProvider {
         //   上次漏了它 ⇒ 探针读到的 sources 恒为 null ⇒ 源头 0 个。
         //   ⚠ 这条路径必须与 2495 行那条【一起】维护，否则只对一半。
         RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ(), drainage,
-                null, null, sr.sources(), sr.shapedPolys());
+                null, null, sr.sources(), sr.shapedPolys(), sr.skel());
         // #region agent log: D 冷区依赖成本拆分，实机确认后清理
         if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
             com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("D", "model-region-" + rx + "-" + rz,
