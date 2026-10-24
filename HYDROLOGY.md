@@ -1315,34 +1315,78 @@ Forge方块/装饰/流体tick、旧66全账本、跨窗证书/无环及生产迁
 
 **门禁等价性（有牙齿）：** `SkeletonProbe` 用基线类与补丁类各跑一遍，断言行**逐条 diff = 0**（22 PASS / 1 FAIL / exit 1 两臂相同）⇒ 补丁未改变任何既有门禁判定。该 22 PASS/1 FAIL 是 HEAD **既有**红灯，非本轮引入（`git status src/main` 为空）。另 `ShoreCriterionProbe` 240274 项通过，且两个反控有效：被否证的首版变体检出 59401 个干湖格；旧判据与方块放置有 59165 处不等价。
 
-**仍未解决（如实）：** 剩余 6 个孤立河中，3 个 `end=JOIN` 但整簇离水 154~185 格、3 个 `end=MOUTH_LAKE` 但离湖 19~40 格 —— 与用户圈出的形态**不是同一成因**，属另一条独立缺陷，未在本轮处理。短段仅 19→18，改进有限，不宣称"已剔除"。未跑 Forge 实机、未跑完整 WorldgenGate、未迁 main、未升 schema。
+**仍未解决（如实）：** 剩余 6 个孤立河中，3 个 `end=JOIN` 但整簇离水 154~185 格、3 个 `end=MOUTH_LAKE` 但离湖 19~40 格 —— 与用户圈出的形态**不是同一成因**，属另一条独立缺陷，未在本轮处理。短段仅 19→18，改进有限，不宣称"已剔除"。
 
-## 一、当前状态（历史快照；新实验状态见〇c—〇ax）
+### 〇ay、★ 迁移入库（2026-10-25，**已进 src/main，用户实机确认一致**）
+
+〇ax 的三处修复与之前多轮隔离实验，此前只存在于 `build/`（被 `.gitignore` 忽略，git 无法保护）。
+用户确认目标效果后，本轮把它们迁入 `src/main` 并验证。
+
+**迁移清单（10 个生产类 + 1 个缓存版本）：**
+
+| 文件 | 变化 |
+|---|---|
+| `DeterministicSkeleton` | 覆盖（含补丁②溢口短段下限、③末端延伸限制） |
+| `ModelHydrologyProvider` | 覆盖（含湖岸前缀 attach）；`BOUNDARY_PORTS` 默认由关改为**开** |
+| `LakeWaterBalance` | 覆盖 —— 出口算法由「边界最低 bed」改为 `drainageOutlet`（八邻 parent 见证） |
+| `GeoGenesisTerrain` | 覆盖（含补丁①湖岸出水判据） |
+| `OutletLakePrefix` / `OrderedSpillSearch` / `BoundaryPort` / `WireIn` / `WireReject` / `PortEgress` | **新增**（此前 src/main 缺失的依赖类） |
+| `PreviewDisplay.CACHE_SCHEMA_VERSION` | 106 → **107** |
+
+**迁移是真的等价，不是"编译过了"：**
+
+- 10 个生产类逐个用 `javac` 默认选项重编 ⇒ class 字节与目标图所用版本**逐字节相同**。
+- 用同一方式重建后出图：`production.png` SHA256 = `74e9dc00…b456e3`、
+  `columnsSHA256` = `7f21a5cf…f61879e`，与用户确认的目标图**两者皆逐位相同**。
+- 湖 105182 / 河 37270 / 海 452661 / 8281 chunk / uncovered=0。
+- 用户已在 `runClient` 新建世界实机目检：效果与图一致。
+
+**⚠ 迁移过程中我踩的两个坑（防重犯）：**
+
+1. **class 哈希不同 ≠ 行为不同。** Gradle 默认带 `-g`（全调试信息），目标图用 javac 默认选项
+   ⇒ 同一份源码产物字节也不同。判据应是「**用相同编译选项能否逐字节复现**」，不是直接比哈希。
+   实测：默认选项 → 82304 B（与目标一致）；`-g` → 102857 B。
+2. **`provenance.txt` 只记录 5 个类，其余同包类会被候选目录静默覆盖。**
+   首轮迁移漏了 `LakeWaterBalance`（出口算法不同），出图河 37270→24868。
+   必须**按 classpath 顺序全量比对**，不能只看 provenance 里列出的那几个。
+
+**分支与标签：** 本分支已由 `backup/pre-legacy-chain-removal-20261020` 改名为
+**`feat/hydrology-target`**（作为事实主线）；安全标签 `archive/pre-hydrology-target-20261025`、
+`backup-main-20260930` 保留回退点。
+
+**仍未做：** 完整 `runWorldgenGate`；多 seed；负坐标 / 下游先查 / 缓存淘汰 / 并发取消矩阵。
+用户已指出仍有细节待后续调整 —— 不声称"全周期完成"。
+
+## 一、当前状态（历史快照；新实验状态见〇c—〇ay）
 
 | 项 | 值 |
 | --- | --- |
 | 工作区 | `D:\Office software\Development Project\GeoGenesis-mod`（仓库根） |
-| 分支 | `fix/port-lake-p2-2` |
-| HEAD | `7eb8748`（之上有少量未提交改动，见 §六） |
+| 分支 | `feat/hydrology-target`（2026-10-25 由 `backup/pre-legacy-chain-removal-20261020` 改名） |
+| HEAD | 见 `git log -1`（迁移提交：目标效果入库 src/main） |
 | 生产水文入口 | `HydrologyChunkEngine.calculate` → 二选一（见 §二 / §〇b） |
 | 未推送 | 是 |
 
-⚠ **`_model_wt/` worktree 已不再是独立代码线** —— model 链已于 `848fdc1` 移入 `src/main`，
-现由开关切换。旧文档里"两条并行代码线"的描述**已失效**。
+⚠ **`_model_wt/` worktree 已不再是独立代码线** —— model 链已于 `848fdc1` 移入 `src/main`。
 
 ---
 
-## 二、生产有两条链（由开关二选一）
+## 二、生产只有一条链（legacy 已于 2026-10-20 删除）
 
-> 组件级明细见 **§〇b 系统总账**（权威盘点）；本节只讲两链的语义对照。
+> ⚠ **本节曾写「两条链由开关二选一」，那是过时描述。**
+> legacy 链（`HydrologyBlockCarver` / `riverline/*`）已整体删除（git 留档），
+> `HydrologyChunkEngine` 现在只有 60 行，`usesModelPipeline()` 恒 `return true`，
+> `calculate()` 无条件调用 `modelProvider.columnsFor(...)`。
+> TOML 里残留的 `hydrologyModelPipelineEnabled` 键**已无代码读取**，改它不会有任何效果。
 
 ```
-HydrologyChunkEngine.calculate()
-  ├─ hydrologyModelPipelineEnabled = true  →  model 链（ModelHydrologyProvider）
-  └─ hydrologyModelPipelineEnabled = false →  legacy 链（HydrologyBlockCarver）   ← 当前默认
+HydrologyChunkEngine.calculate()   ← 唯一水文入口
+  └─ ModelHydrologyProvider.columnsFor()   （model 链，无分支）
 ```
 
-|  | legacy 链 | model 链 |
+下表是 legacy 与 model 的**历史语义对照**，仅供考古，不表示 legacy 仍存在：
+
+|  | legacy 链（已删除） | model 链（唯一实现） |
 | --- | --- | --- |
 | 入口 | `HydrologyBlockCarver.carveChunk` | `ModelHydrologyProvider.columnsFor` |
 | 河网 | `riverline/RiverLineNetwork`（region 640wu，D8 追踪 + 跨区续流 `OutletSeed`） | `model/HydrologyPipeline`（窗口 + 多 region 拼接） |

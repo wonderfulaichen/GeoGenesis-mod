@@ -1,0 +1,86 @@
+    /**
+     * 连续几何推进：从当前连续位置走向目标格 {@code targetCell}，返回 {新X, 新Z, 方向X, 方向Z}。
+     *
+     * <p><b>只负责几何</b>：拓扑（去哪个格）已由调用方决定。这里决定的是
+     * "在格内如何走、落在哪" —— 也就是动线是否自然。</p>
+     *
+     * <p><b>方向 = 梯度 + 动量 + 确定性扰动</b>（与 {@code ErosionEngine:623-641} 同语义）：</p>
+     * <ul>
+     *   <li>梯度用 3×3 Sobel 抗单格噪声；</li>
+     *   <li>动量保上一步方向 ⇒ 不会每步重新选向（直角转弯的根源）；</li>
+     *   <li>扰动用<b>世界坐标</b> hash ⇒ 跨窗口/跨区域一致，且给山坡长直段自然曲率
+     *       （探针实测：最长直段 154 → 5 步）。</li>
+     * </ul>
+     *
+     * <p><b>落点约束</b>：最终位置被钳在目标格内（±半个格），保证几何不会跑到
+     * 拓扑未认领的格 —— 这是双坐标能并存的关键不变量。</p>
+     */
+    private static double[] continuousAdvance(double curX, double curZ, int targetCell,
+                                              double prevDirX, double prevDirZ,
+                                              double[] bed, double[] level, int nz,
+                                              int originX, int originZ, int step) {
+        int ti = targetCell / nz, tj = targetCell % nz;
+        double tx = originX + ti * (double) step;
+        double tz = originZ + tj * (double) step;
+        // ① 3×3 Sobel 梯度（用 level：与追踪单调判据同源）
+        double gx = 0, gy = 0;
+        int ci = (int) Math.floor((curX - originX) / step);
+        int cj = (int) Math.floor((curZ - originZ) / step);
+        for (int[] d : SOBEL_3x3) {
+            int a = ci + d[0], b = cj + d[1];
+            int idx = a * nz + b;
+            if (a < 0 || b < 0 || idx < 0 || idx >= level.length) continue;
+            gx += d[2] * level[idx];
+            gy += d[2] * level[idx];
+        }
+        gx /= 8.0; gy /= 8.0;
+        // ② 梯度 + 动量
+        final double MOMENTUM = 0.20, WOBBLE = 0.25;
+        double w = 1.0 - MOMENTUM;
+        double dx = w * (-gx) + MOMENTUM * prevDirX;
+        double dz = w * (-gy) + MOMENTUM * prevDirZ;
+        // ③ 世界坐标确定性扰动（跨窗口一致）
+        long hx = hashWorld((int) Math.floor(curX * 7), (int) Math.floor(curZ * 7));
+        long hz = hashWorld((int) Math.floor(curZ * 11), (int) Math.floor(curX * 11));
+        dx += (((hx & 0xFFFF) / 65536.0) - 0.5) * WOBBLE;
+        dz += (((hz & 0xFFFF) / 65536.0) - 0.5) * WOBBLE;
+        double len = Math.sqrt(dx * dx + dz * dz);
+        if (len < 1e-12) {
+            // 退化：直接朝目标格走
+            dx = tx - curX; dz = tz - curZ;
+            len = Math.sqrt(dx * dx + dz * dz);
+            if (len < 1e-12) return new double[]{curX, curZ, prevDirX, prevDirZ};
+        }
+        dx /= len; dz /= len;
+        // ④ 步长 = 一格距离；落点钳在目标格内（±0.45 格，留边避免跨界）
+        double nx = curX + dx * step;
+        double nz2 = curZ + dz * step;
+        double half = step * 0.45;
+        nx = Math.max(tx - half, Math.min(tx + half, nx));
+        nz2 = Math.max(tz - half, Math.min(tz + half, nz2));
+        double outDx = nx - curX, outDz = nz2 - curZ;
+        double olen = Math.sqrt(outDx * outDx + outDz * outDz);
+        if (olen > 1e-12) { outDx /= olen; outDz /= olen; } else { outDx = dx; outDz = dz; }
+        return new double[]{nx, nz2, outDx, outDz};
+    }
+
+    /** 世界坐标确定性 hash（跨窗口/跨区域一致）。 */
+    private static long hashWorld(int x, int z) {
+        long v = (long) x * 0x9E3779B97F4A7C15L + (long) z * 0xC2B2AE3D27D4EB4FL;
+        v ^= v >>> 33; v *= 0xFF51AFD7ED558CCDL;
+        v ^= v >>> 33; v *= 0xC4CEB9FE1A85EC53L;
+        return v ^ (v >>> 33);
+    }
+
+    /**
+     * 3×3 Sobel 权重（dx, dz, weight）—— 与 {@code ErosionEngine:623-624} 同式，
+     * 本处用于连续几何推进的梯度（抗单格噪声）。
+     */
+    private static final int[][] SOBEL_3x3 = {
+            {-1, -1, -1}, {0, -1, -2}, {1, -1, -1},
+            {-1, 0, -2},                {1, 0, 2},
+            {-1, 1, 1},  {0, 1, 2},  {1, 1, 1}
+    };
+
+    /**
+     * 窗口外续流：当本区 {@code parent=-1} 且该格不是湖/海时，用世界坐标地形下降继续追。
