@@ -1,0 +1,70 @@
+  [PASS] 用户 toml 复制为工作副本并 cfg.load()（原件只读、绝不写回）
+=== SharedLakeSeamProbe ===
+seed=9139912035078620160 hier=true hs=2.000 sea=63 baseHalf=352 maxHalf=512 abstMax=512 sections=[synth, repro, det, fine, lazy]
+  [PASS] 开关：hierarchicalHydrology + sharedLakeDomains ⇒ 共享域参与裁决
+  [PASS] 段名合法（未知段 ⇒ FAIL，不因『没跑』而静默 PASS）
+
+=== [synth] canonical（闭合 / 超限）+ 几何自洽 + 半边长上限 ===
+  [PASS] baseHalf = 生产窗半径（352）
+  [PASS] maxHalf = min(tract, ABS_MAX_HALF)（512）
+  [PASS] maxHalf ≤ 512（硬上限）
+  [PASS] 合成闭合 bbox（跨 x=0）⇒ canonical 竖缝键
+  [PASS] 几何自洽：n = 2·half/step + 1 且缝格在窗内（n=177 seamCell=88）
+  [PASS] 默认 geom 半边长 = baseHalf（352）
+  [PASS] 超 maxHalf 的 bbox ⇒ canonical = null（交由调用方记 REFUSED_TOO_BIG，不移墙）
+  [PASS] keysForBox 非空且盒被某候选窗包含（候选=10 覆盖=6）
+  [PASS] screened() 给出廉价 NO_CROSSING 域（不建窗）
+  [PASS] 粗细不同半径按世界坐标投影，细索引不再访问粗尺寸数组
+
+=== [repro] (-513,-250) 两侧湖+平面一致 + 整湖湿/干环过渡（缝带 ±40）===
+    左 ctl=true;lake=true;surfBits=4640427857723845449;key=V@-512/t-1;basin=0;st=CONTROLLED
+    右 ctl=true;lake=true;surfBits=4640427857723845449;key=V@-512/t-1;basin=0;st=CONTROLLED
+  [PASS] 复现前置：缝两侧均被共享域受控（否则复现被拒绝 ⇒ FAIL 保留证据）
+  [PASS] 缝两侧均判湖（同一盆地同湖旗标）
+  [PASS] 缝两侧【水面逐位一致】（同一平面）
+  [PASS] 缝两侧同粗盆地 id（0）
+    缝带扫描 ±40 块（z 步 10）：湿格=713 最长湿连段∈[55,81] 缝上切开行=0 足迹内残余分段行=1
+  [PASS] 缝带扫描非空转（确有湿格）
+  [PASS] 整湖过渡：无【缝上切开】行（缝线两侧都湿却被缝线处干格隔断）——不止缝上 2px
+    ⚠ 足迹内残余分段行=1：非缝线处（域边缘/天然干斑）⇒ 受控只覆盖 canonical 盆地足迹，如实登记残余；不宽松为『整湖全 passed』。
+  [PASS] chunk 索引自洽（z-chunk=-16）
+
+=== [det] 冷 / 热 / 逆序 / 并发 列指纹逐位一致 ===
+  [PASS] 热缓存命中 ⇒ 列指纹逐位相同
+  [PASS] 冷起重跑 ⇒ 列指纹逐位相同（纯函数；缓存只改时序）
+  [PASS] 另一 provider 实例（同 seed/参数）⇒ 列指纹逐位相同（跨实例缓存身份）
+  [PASS] 逆序取列 ⇒ 各 chunk 指纹与正序逐位相同（无顺序依赖）
+  [PASS] 并发同 chunk 全部返回（无死锁）
+  [PASS] 并发各线程列指纹逐位相同（单飞身份）
+  [PASS] 并发同 chunk（已热）0 次新增细解
+
+=== [fine] 细解 Δ 只 = 显式请求的 owner region 数（不多解八邻）===
+    chunk(-33,-16) region=-2,-1 新解 Δ=1（首个=true）
+  [PASS] 请求 1 个 chunk ⇒ 细解 Δ=1（新 region 恰 1 次；旧 region 0 次 ⇒ 无八邻扇出）
+    chunk(-32,-16) region=-1,-1 新解 Δ=1（首个=true）
+  [PASS] 请求 2 个 chunk ⇒ 细解 Δ=1（新 region 恰 1 次；旧 region 0 次 ⇒ 无八邻扇出）
+    chunk(32,-146) region=1,-5 新解 Δ=1（首个=true）
+  [PASS] 请求 3 个 chunk ⇒ 细解 Δ=1（新 region 恰 1 次；旧 region 0 次 ⇒ 无八邻扇出）
+  [PASS] 触及 region 数 ≤ 4（复现轻量：实际 3）
+
+=== [lazy] 实际窗口之外零 fine、边界舍入一致、并发延迟求解单飞 ===
+  [PASS] 真实候选完成粗准备
+  [PASS] 粗准备不跑共享 fine
+  [PASS] 只落在最大候选范围但不在实际窗的 chunk 不触发 fine
+  [PASS] 实际窗口相交判据与 cellAt 最近格舍入边界一致
+  [PASS] 冷共享域并发只解一次且复用同产物
+
+=== NOT VERIFIED / 残余（明确登记，不声称为已证）===
+ 1. 只证【缝两侧一致 + 缝带湿区连通】；不证全局唯一水位，不声称【整湖已修】——受控范围只覆盖 canonical 跨缝盆地足迹，缝可能只是【移到】足迹边缘。
+ 2. 未做全图像素对照 / 端到端实机确认（由 main 在生产落地后跑真实 + 渲染）。
+ 3. 无 Forge 生命周期；配置取用户 toml 工作副本（原件只读，已 cfg.load）。
+ 4. 探针只读缓存、收尾 clearSharedCaches；不改生产产出，不画掩码补桥。
+ 5. 残余（若 [repro] 报『缝上切开行>0』或『足迹内残余分段』）：如实报告，不宽松为『全 passed』。
+
+  跨缝共享湖域: 域=43 粗筛选=43 细解=28 无跨缝即止=0（廉价屏幕省下建窗=41）
+    受控盆地=28 改写列(本区无水⇒共享判有水)=87008 抑制列(本区有水⇒共享判无水)=0 受控无水列=187504
+    拒绝: 截断=0 太大=0 环上有水/多平面=0 粗候选消失=0 竞争(未决,不并集)=0
+    ⇒ 受控 = 盆地级 canonical（闭合+干环+单平面+有限+装得下）；其外仍由本区细窗裁决（不得声称整缝已消除）
+
+
+判定：ALL PASS

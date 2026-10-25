@@ -1,0 +1,175 @@
+{
+  "scope": "Local evidence retained in place; files under ignored build/ are not distributed by git. skel-out pixelsA/B=0 is invalid; dump-out metrics are historical, not lifecycle acceptance.",
+  "files": [
+    {
+      "path": ".openbitfun/plans/legacy-river-mechanism-research.plan.md",
+      "bytes": 16658,
+      "sha256": "ed538797868d3b02483f664ad1bf58d64e35744b999f195506b1e1a18d39e276"
+    },
+    {
+      "path": "handoff/migration-checkpoint-20261025/TARGET.md",
+      "bytes": 4360,
+      "sha256": "0d500668ca1e1ceaa6af9c3df07f06ac5b11b112f96adb74dfac60b5eb65c3f4"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/SkeletonCompareProbe.java",
+      "bytes": 9951,
+      "sha256": "8bf3ed756ca0ef55558fc8b776032878f20bbee18926baeaf78a9563813fdd41"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/SkeletonDumpProbe.java",
+      "bytes": 12719,
+      "sha256": "9a03e60fa7d6aba50a6d0c0770e2bf4af2d962d644102cdb437411abc6f72688"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/run-skeleton-compare.py",
+      "bytes": 1748,
+      "sha256": "796a511920ac5f95d22b2da8551519653267e805a4e79d78e6f2b57f4f2b4c38"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/run-skeleton-dump.py",
+      "bytes": 1790,
+      "sha256": "4c88e0473d75758454211d986654d7638a0acbc1e4175bf7986eb290859d741a"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/render-dedup.py",
+      "bytes": 7385,
+      "sha256": "dd0463d2434d0863f6cc73ecb1177d937806b8b5f81be5fbfcd2c1ba355f6b23"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/seam-cuts.py",
+      "bytes": 4640,
+      "sha256": "d4ef2a46d1b4712b4289fd377dec796a0fe33c5fd184be208f55d01a918ae545"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/make-ab-zoom.py",
+      "bytes": 4650,
+      "sha256": "1d545c0ee6c7215471926a55300f0b2a9eafbd64aace8f831e9fc64e67283be9"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/measure-degree.py",
+      "bytes": 4195,
+      "sha256": "855d164eaa1a19e6a2826948e71ac080507229b7a7f29ffd25f5e40a1131cdc2"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/make-ab.py",
+      "bytes": 1624,
+      "sha256": "cdb6b74b1f8ba847bef9e4a52cbe07baefd8b4e980b037bf8a036778123695cb"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/A-trace.png",
+      "bytes": 347350,
+      "sha256": "2c8ca6692da014f327159316a4b5a7630fa4e55f859926a897d661cca0f88fef"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/AB-cut-zoom.png",
+      "bytes": 17763,
+      "sha256": "5987ddd4324016d100aa6ad80d5587d5e0bdda06523d08d87a0725aefaede702"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/AB-dedup-zoom.png",
+      "bytes": 15696,
+      "sha256": "374282233f0e8f3b58edbf69bbe3648eedad7a3d5325bfd7860260223262dc6d"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/AB-dedup.png",
+      "bytes": 142763,
+      "sha256": "8c7119fd1a5c186a482f7761c47ca7a19280e09a20076303e93d949e822b4214"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/AB-skeleton-zoom.png",
+      "bytes": 35416,
+      "sha256": "8708633f22e209b8621b2138065a34b0af06756d46d82146720d06a2d318a0e4"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/AB-skeleton.png",
+      "bytes": 196661,
+      "sha256": "e47bb90cd73997a7315df85278c50c00f62fb1e66640d5bc221063d1d5d09b21"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/B-river.png",
+      "bytes": 340642,
+      "sha256": "0778b493c110b407033edba91e95057324a743bdb5f5f1554aeb41e44e13947f"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/config-effective.toml",
+      "bytes": 31726,
+      "sha256": "cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/cutpoints.png",
+      "bytes": 187831,
+      "sha256": "59a7fd935be9569e9e448810bebbfd3a23f117240c6e841b750b643bc7fb318a"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/join-downstream.csv",
+      "bytes": 23639,
+      "sha256": "89f0bc409e530da7c70884d108f422f365c5d4ffc77bdbe9303bf1c10e3df088"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/polys.csv",
+      "bytes": 7028355,
+      "sha256": "7dd21c881528123b0355b4f5678d9ebaefca846326a490de1c3e26916bdf6105"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/rivers.csv",
+      "bytes": 58684,
+      "sha256": "acb9c121cc1849f1036cb2e71db13057a4abee64a3da0fc1fd8d81b820119acd"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/trace-river-map.csv",
+      "bytes": 24655,
+      "sha256": "0e99d1312627cf4734204bd125b36650b75a7b922d4073c6d00b72e22f8050d0"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/traces.csv",
+      "bytes": 68741,
+      "sha256": "772fa8d6a9e354f1bf38af9a717dba57d734eee70863966fbf610f9a506121fb"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/verdict-full.png",
+      "bytes": 62071,
+      "sha256": "e96ad3569e18d5d1d9aca754167f681126af8591ab0114a09c47920a491d4130"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/verdict.png",
+      "bytes": 63020,
+      "sha256": "0f019354110c7f3d0b2a61041b244b863297dae2009dd8af13c02ded094745d2"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/water-mask.png",
+      "bytes": 8951,
+      "sha256": "ec22054c4e87652fae6a54b5ed6b2761c32af4201774d8e4205851c907d62c09"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/dump-out/water.csv",
+      "bytes": 28191746,
+      "sha256": "4a43c588d2c6383b6f2ef15b8b44b648ff1d0ad866aa867a4f7f2ac90d73462d"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/skel-out/A-skeleton-trace.png",
+      "bytes": 8854,
+      "sha256": "8ab75285a1ad8a167c02c59335039c5aeed4b62f771c978721a161700d23f589"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/skel-out/AB-skeleton-full.png",
+      "bytes": 50032,
+      "sha256": "eccdd9594a5994f5b53572392900c088b94609be669d2bb65b46138af8740cdc"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/skel-out/AB-skeleton-zoom.png",
+      "bytes": 18852,
+      "sha256": "b285497174505d79725b7dbb74be174f1e1eeab60e7689a7c3150bb62341ef09"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/skel-out/B-skeleton-river.png",
+      "bytes": 8854,
+      "sha256": "8ab75285a1ad8a167c02c59335039c5aeed4b62f771c978721a161700d23f589"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-edge-1792872387157/skel-out/config-effective.toml",
+      "bytes": 31726,
+      "sha256": "cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f"
+    }
+  ]
+}

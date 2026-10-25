@@ -1,0 +1,41 @@
+  [PASS] 用户 toml 复制为工作副本并 cfg.load()（原件只读、绝不写回）
+=== SharedLakeSeamProbe ===
+seed=9139912035078620160 hier=true hs=2.000 sea=63 baseHalf=352 maxHalf=512 abstMax=512 sections=[river-candidates]
+  [PASS] 开关：hierarchicalHydrology + sharedLakeDomains ⇒ 共享域参与裁决
+  [PASS] 段名合法（未知段 ⇒ FAIL，不因『没跑』而静默 PASS）
+
+=== [river-candidates] 新候选生产列复核（共享开启，与最新面板同口径）===
+candidate=-710,511 ports=[Port[blockX=-516, blockZ=200, level=111.01487086404299, dRX=1, dRZ=0]]
+river8 point=-710,511 wet=34 component=34 axis=1 farCells=0 seamCrossings=0 connectedAcross=false
+  [PASS] 缝带连通诊断非空转 -710,511
+candidate=-650,511 ports=[Port[blockX=-516, blockZ=200, level=111.01487086404299, dRX=1, dRZ=0]]
+river8 point=-650,511 wet=34 component=34 axis=1 farCells=0 seamCrossings=0 connectedAcross=false
+  [PASS] 缝带连通诊断非空转 -650,511
+candidate=-582,511 ports=[Port[blockX=-516, blockZ=200, level=111.01487086404299, dRX=1, dRZ=0]]
+river8 point=-582,511 wet=34 component=34 axis=1 farCells=0 seamCrossings=0 connectedAcross=false
+  [PASS] 缝带连通诊断非空转 -582,511
+candidate=-78,511 ports=[Port[blockX=-4, blockZ=176, level=97.70791604192237, dRX=1, dRZ=0], Port[blockX=-360, blockZ=508, level=65.3872162576336, dRX=0, dRZ=1], Port[blockX=-456, blockZ=508, level=65.5932429165403, dRX=0, dRZ=1], Port[blockX=-512, blockZ=156, level=126.05332052331863, dRX=-1, dRZ=0], Port[blockX=-4, blockZ=28, level=171.88775651977994, dRX=1, dRZ=0]]
+river8 point=-78,511 wet=34 component=34 axis=1 farCells=0 seamCrossings=0 connectedAcross=false
+  [PASS] 缝带连通诊断非空转 -78,511
+candidate=-513,359 ports=[Port[blockX=-516, blockZ=200, level=111.01487086404299, dRX=1, dRZ=0]]
+river8 point=-513,359 wet=42 component=28 axis=0 farCells=0 seamCrossings=0 connectedAcross=false
+  [PASS] 缝带连通诊断非空转 -513,359
+candidate=-513,447 ports=[Port[blockX=-516, blockZ=200, level=111.01487086404299, dRX=1, dRZ=0]]
+river8 point=-513,447 wet=34 component=34 axis=0 farCells=0 seamCrossings=0 connectedAcross=false
+  [PASS] 缝带连通诊断非空转 -513,447
+NOT VERIFIED: connectedAcross=false仅证局部断口，仍须排除湖海/上游源头和约束不可达。
+
+=== NOT VERIFIED / 残余（明确登记，不声称为已证）===
+ 1. 只证【缝两侧一致 + 缝带湿区连通】；不证全局唯一水位，不声称【整湖已修】——受控范围只覆盖 canonical 跨缝盆地足迹，缝可能只是【移到】足迹边缘。
+ 2. 未做全图像素对照 / 端到端实机确认（由 main 在生产落地后跑真实 + 渲染）。
+ 3. 无 Forge 生命周期；配置取用户 toml 工作副本（原件只读，已 cfg.load）。
+ 4. 探针只读缓存、收尾 clearSharedCaches；不改生产产出，不画掩码补桥。
+ 5. 残余（若 [repro] 报『缝上切开行>0』或『足迹内残余分段』）：如实报告，不宽松为『全 passed』。
+
+  跨缝共享湖域: 域=1 粗筛选=1 细解=1 无跨缝即止=0（廉价屏幕省下建窗=14）
+    受控盆地=1 改写列(本区无水⇒共享判有水)=0 抑制列(本区有水⇒共享判无水)=0 受控无水列=0
+    拒绝: 截断=0 太大=0 环上有水/多平面=0 粗候选消失=0 竞争(未决,不并集)=0
+    ⇒ 受控 = 盆地级 canonical（闭合+干环+单平面+有限+装得下）；其外仍由本区细窗裁决（不得声称整缝已消除）
+
+
+判定：ALL PASS

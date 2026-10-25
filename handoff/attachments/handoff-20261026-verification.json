@@ -1,0 +1,19 @@
+{
+  "mainCompile": "Gradle compileJava UP-TO-DATE (success)",
+  "diagnosticsCompile": "PASS",
+  "skeletonProbe": "FAIL: synthetic outlet missing, then NoSuchMethodException traceOne; subsequent checks not executed",
+  "baseline9de0e15": "same failures reproduced from isolated baseline DS; no workspace checkout",
+  "riverJoin": "known middle-JOIN prefix defect reproduced, acceptance FAIL",
+  "discoverySources": "6 javac PASS; run.py ast PASS; semantic runner not rerun",
+  "gate": "not run",
+  "forge": "not run",
+  "schema": 108,
+  "configSha256": "cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f",
+  "legacyBlobMatches": {
+    "HydrologyBlockCarver.java": "98c1178268c69f134d756ff57e5cd42127cb4954",
+    "HydrologyExperimentEngine.java": "7fb4db7ab38725468297a1b94c8343182643bdaf",
+    "riverline/RiverLineNetwork.java": "aec93ca2e6c5dba9c54eac610b43178ad2fe32a8",
+    "riverline/RiverLineRegion.java": "79794e187528c9ea911ad7f9311fffcb8b59349b",
+    "riverline/RiverLineParams.java": "6c903fefb5e5b07fd9786983eceae58024a44c17"
+  }
+}
