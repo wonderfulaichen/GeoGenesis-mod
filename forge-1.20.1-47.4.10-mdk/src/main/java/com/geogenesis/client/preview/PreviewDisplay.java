@@ -460,8 +460,11 @@ public class PreviewDisplay extends AbstractWidget {
     //       溢口短段不再无条件豁免长度下限（②）、入湖末端延伸仅对 ≥6 节点（③），
     //       并把 boundaryPorts 默认置开（跨区端口/typed 接力/双 pass）。**产出有变**：
     //       湖 91336→105182、河 37304→37270、孤立河 17→6、河终点距湖>6格 20→0。
+    // 108 = 2026-10-25 河形改用物理向量连续位置（贝塞尔素材，CONT_BLEND 默认 0.75）
+    //       + 湖列判据放宽到「地面 == 水面」以触发水柱保护。**产出有变**：
+    //       湖 105182→106026、河 37270→37587；河由格心共线直线变为带连续曲率的曲线。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 107;
+    private static final int CACHE_SCHEMA_VERSION = 108;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

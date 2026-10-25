@@ -1257,6 +1257,14 @@ public final class ModelHydrologyProvider {
             !"false".equals(System.getProperty("geogenesis.skeletonCrossPass"));
 
     /**
+     * 湖缘逐块精修的 epsilon（块）。
+     *
+     * <p>判据 {@code eroded < surface - LAKE_EDGE_EPS}：只有地形确实低于湖面才算湖。
+     * 取 1e-9 与 {@code GeoGenesisTerrain} 湖列判据同一口径，避免两处门槛再次不一致。</p>
+     */
+    static final double LAKE_EDGE_EPS = 1e-9;
+
+    /**
      * ★ ports 模块开关（{@code -Dgeogenesis.boundaryPorts}，<b>默认开</b>）。
      *
      * <p>打开后：pass1 保留骨架、pass2 以本区 pass1 作 base（不重追 local 源，端口承诺不被抹掉）、
@@ -2106,6 +2114,26 @@ public final class ModelHydrologyProvider {
                 //   3×3 邻区的**有效窗口**本就有重叠（RADIUS=352 > REGION/2=256），
                 //   所以"每个方块都能被至少一个邻区覆盖"—— 不需要靠 clamp 兜底。
                 boolean isLakeBlock = rd.worldWater()==null && p.lake()[k];
+                // ★★★ 2026-10-25【湖缘方块级精修 —— 用户要求「边缘高精度、内部粗格」】★★★
+                //
+                // 【缺陷】`p.lake()` 是 STEP=2 的粗格布尔 ⇒ 同一 2×2 格内四个方块要么全湖、
+                //   要么全非湖 ⇒ 湖缘必然是 2 方块阶梯，达不到方块级。
+                //   实测该窗口 coarseLakeCells=1258（粗格），边缘呈规则台阶。
+                //
+                // 【修法】保留粗格提供【湖身份】（哪个盆、湖面高度 surface），
+                //   但【是否本块是湖】改成逐块比较「侵蚀地形 vs 该点水位」：
+                //     eroded < surface − EPS  ⇒ 该方块真的在水下 ⇒ 湖
+                //   这样湖缘会沿着真实地形的等高线走，精度 = 1 方块。
+                //
+                // 【为什么安全】
+                //   · 湖【内部】eroded 远低于 surface ⇒ 判据恒真，不与粗格冲突；
+                //   · 只有【边缘】那一圈会被精修裁掉/补上 ⇒ 面积变化局限在岸线；
+                //   · 不改变 coarse 湖身份、不改变路由/水量/预算，只是把「粗格整块」细化为「逐块」。
+                //   · surface 在非湖格也可能是 EquilibriumWater 的逃逸高程（会误扩湖），
+                //     故本精修【只在粗格判湖处】执行，不用它去扩张新湖域。
+                if (isLakeBlock) {
+                    isLakeBlock = eroded < surface - LAKE_EDGE_EPS;
+                }
                 if(rd.worldWater()!=null) {
                     int cellX=Math.floorDiv(blockX,STEP)*STEP, cellZ=Math.floorDiv(blockZ,STEP)*STEP;
                     var cellKey=new WorldDrainage.Point(cellX,cellZ);

@@ -565,12 +565,20 @@ public final class GeoGenesisTerrain {
                 //   provider 认定的湖格在图上不出水，湖岸留下 1~21 块宽的干圈；
                 //   河流的湿线止于圈外 ⇒ 表现为「河没接到湖」与「孤立河」。
                 //
-                // 【修法】湖域判据放宽为「水面严格高于地面」；能否放下水块交给下方
+                // 【修法】湖域判据放宽为「水面 >= 地面」；能否放下水块交给下方
                 //   既有「水柱保护」保证（它把地面压到 floor(spill)−1e-9 以下）。
-                //   ⚠ 不要直接把这里换成 `floor(spill) > floor(height)`：那会绕过
-                //     保护分支，使「地面在整数高度、spill 小数≥0.5」的岸格由湿变干
-                //     （实测 −2508 格退化）。
-                boolean flooded = cell.height < spill - 1e-9;
+                //
+                // ★★ 2026-10-25 二次修正【湖缘缺一块】★★
+                //   【缺陷】上一版写 `height < spill - 1e-9`（严格小于）。但 provider 发布的
+                //     湖面水常【恰好等于】该列侵蚀后地面（实测 (-344,-472) cellH=surf=170.2109，
+                //     (-340,-468) cellH=surf=174.6871，(-342,-470) 亦相等）⇒ 严格小于不成立
+                //     ⇒ flooded=false ⇒ 水柱保护不触发、地面不压低 ⇒ fill 判据 `surface > height`
+                //     亦不成立 ⇒ 该列被 provider 标为 lakePlan 却不出水 ⇒ 图上湖缘平白缺一块。
+                //   【修法】把「恰好等于水面」也算进湖域（`<= spill + 1e-9`）。这不新增湖域：
+                //     lakePlan 已由 provider 按盆身份裁定，这里只决定「是否压低地面以放下水块」。
+                //   【安全】仍受下方保护约束：只有 floor 相同才压低，且压到 spill−0.75，
+                //     不会把岸抬高、也不会漫过 sill（level 本身已 < sill）。
+                boolean flooded = cell.height <= spill + 1e-9;
                 // 湖不挖地；水柱保护：落块水放 (floor(height), floor(spill)]，若
                 // floor 相同则无水块 → 只在必需时把地面压到 floor(spill)-1 以下（<1 格）
                 if (flooded && cell.height >= Math.floor(spill) - 1e-9) {
