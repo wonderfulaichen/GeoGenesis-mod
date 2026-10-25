@@ -19,6 +19,7 @@ public final class MultiRegionDiscoveryProbe {
     }
     final int first;
     final boolean productionParams=Boolean.getBoolean("probe.productionParams");
+    final boolean physicalFlow=Boolean.getBoolean("probe.physicalFlow");
     final ModelHydrologyProvider provider;
     final Map<Region,DeterministicSkeleton.Result> primary=new HashMap<>(), finals=new HashMap<>();
     final Method incoming;
@@ -43,9 +44,33 @@ public final class MultiRegionDiscoveryProbe {
     }
 
     Frame frame(Region r) { return new Frame(r.x*REGION-HALO,r.z*REGION-HALO); }
-    double height(int x,int z) { return 10000.0-x+10.0*Math.abs(z-256); }
+    double height(int x,int z) {
+        return (Boolean.getBoolean("probe.fullPipeline") ? 63.0+(first+3)*REGION+256 : 10000.0)
+                -x+10.0*Math.abs(z-256);
+    }
+
+    final Map<Region,HydrologyPipeline.Result> pipes=new HashMap<>();
+    DeterministicSkeleton.Result buildPipeline(Region r,List<WireIn> wires,DeterministicSkeleton.Result base) {
+        Frame f=frame(r);
+        var p=pipes.computeIfAbsent(r, key -> {
+            var tp=TerrainParams.defaults();
+            var gen=new CellGenerator(tp,-64,320); gen.seed(SEED);
+            var req=new HydrologyPipeline.Request(r.x*REGION+REGION/2,r.z*REGION+REGION/2,
+                    REGION/2+HALO,STEP,new LakeWaterBalance.Climate(0.25,0,1));
+            return HydrologyPipeline.run(gen,tp,req,new HydrologyPipeline.Layer(
+                    (x,z)->height((int)x,(int)z),null,false,"synthetic-valley-production-pipeline"));
+        });
+        require(p.nx()==N && p.nz()==N,"pipeline frame dimensions");
+        var params=ModelHydrologyProvider.productionParams(p.lakeResult().runoffPerCell());
+        var outside=new DeterministicSkeleton.OutsideContinuation(this::height,f.ox,f.oz,STEP,2048,63);
+        return DeterministicSkeleton.build(p.level(),p.parent(),p.resolved(),p.lake(),p.sea(),
+                p.discharge(),p.lakeResult().basinOutlet(),N,N,params,
+                wires.stream().map(WireIn::anchorCell).toList(),wires,p.bed(),null,outside,base,
+                base==null?DeterministicSkeleton.PassRole.PRIMARY:DeterministicSkeleton.PassRole.SECOND_PASS);
+    }
 
     DeterministicSkeleton.Result build(Region r,List<WireIn> wires,DeterministicSkeleton.Result base) {
+        if (Boolean.getBoolean("probe.fullPipeline")) return buildPipeline(r,wires,base);
         Frame f=frame(r); int cells=N*N;
         double[] bed=new double[cells], flow=new double[cells]; int[] parent=new int[cells];
         boolean[] resolved=new boolean[cells], lake=new boolean[cells], sea=new boolean[cells];
@@ -55,11 +80,27 @@ public final class MultiRegionDiscoveryProbe {
             bed[c]=height(x,z); sea[c]=x>=(first+3)*REGION+256;
             if(i+1<N) parent[c]=c+N;
         }
-        // Exactly one admitted source, and only in A's pass1; downstream has no local source.
         var params=productionParams ? ModelHydrologyProvider.productionParams(1.0)
                 : new DeterministicSkeleton.Params(0,1.0,0,0,24,0,2,0,12);
-        if(base==null && r.equals(new Region(first,0)))
+        if (physicalFlow) {
+            if (Boolean.getBoolean("probe.steepestParent")) {
+                for (int i=0;i<N;i++) for (int j=0;j<N;j++) {
+                    int k=i*N+j, best=-1; double slope=0;
+                    for (int di=-1;di<=1;di++) for (int dj=-1;dj<=1;dj++) {
+                        if (di==0 && dj==0 || i+di<0 || i+di>=N || j+dj<0 || j+dj>=N) continue;
+                        int p=(i+di)*N+j+dj;
+                        double drop=(bed[k]-bed[p])/Math.hypot(di,dj);
+                        if (drop>slope) { slope=drop; best=p; }
+                    }
+                    parent[k]=best;
+                }
+            }
+            flow=RiverNetwork.build(N,N,bed,parent,1.0,Map.of(),resolved,
+                    RiverNetwork.Params.defaults()).discharge();
+        } else if(base==null && r.equals(new Region(first,0))) {
+            // Original interface counterexample: intentionally non-conserved supplied flow.
             flow[f.cell(first*REGION+16,256)]=params.minSourceAccum()+1;
+        }
         var outside=new DeterministicSkeleton.OutsideContinuation(this::height,f.ox,f.oz,STEP,2048,-100000);
         return DeterministicSkeleton.build(bed,parent,resolved,lake,sea,flow,null,N,N,params,
                 wires.stream().map(WireIn::anchorCell).toList(),wires,bed,
@@ -168,8 +209,77 @@ public final class MultiRegionDiscoveryProbe {
         System.out.print(line);
     }
 
+    int followPhysicalChain() {
+        record Node(Region owner,int cell) { }
+        Map<Node,Set<Node>> next=new HashMap<>(); Set<Node> seas=new HashSet<>();
+        for(var entry:finals.entrySet()) {
+            Region r=entry.getKey(); var sk=entry.getValue(); Frame f=frame(r);
+            for(var t:sk.traces) {
+                for(int i=1;i<t.cell.length;i++) next.computeIfAbsent(new Node(r,t.cell[i-1]),k->new HashSet<>())
+                        .add(new Node(r,t.cell[i]));
+                if(t.end==DeterministicSkeleton.End.MOUTH_SEA) seas.add(new Node(r,t.mouthCell()));
+            }
+            for(var raw:sk.ports) {
+                var p=raw.stamp(r.x,r.z,REGION); Region receiver=new Region(p.receiverRegionX(),p.receiverRegionZ());
+                if(!finals.containsKey(receiver)) continue;
+                Frame rf=frame(receiver); Node a=new Node(r,f.cell(p.anchorX(),p.anchorZ()));
+                Node b=new Node(receiver,rf.cell(p.anchorX(),p.anchorZ()));
+                Node promised=new Node(receiver,rf.cell(p.nextX(),p.nextZ()));
+                require(next.getOrDefault(b,Set.of()).contains(promised)
+                        || finals.get(receiver).traces.stream().anyMatch(t-> {
+                            for(int j=1;j<t.cell.length;j++) if(t.cell[j-1]==b.cell && t.cell[j]==promised.cell) return true;
+                            return false;
+                        }),"physical receiver must contain exact promised next");
+                if (!Boolean.getBoolean("probe.dropPhysicalLinks"))
+                    next.computeIfAbsent(a,k->new HashSet<>()).add(b);
+            }
+        }
+        Region a=new Region(first,0); Frame f=frame(a);
+        var root=primary(a).traces.stream().filter(t->Arrays.stream(t.cell).anyMatch(c->f.z(c)==256))
+                .findFirst().orElseThrow(()->new AssertionError("no physical valley source in A"));
+        ArrayDeque<Node> todo=new ArrayDeque<>(); Set<Node> seen=new HashSet<>(); todo.add(new Node(a,root.sourceCell()));
+        while(!todo.isEmpty()) {
+            Node node=todo.removeFirst(); if(!seen.add(node)) continue;
+            if(seas.contains(node)) return seen.size();
+            todo.addAll(next.getOrDefault(node,Set.of()));
+        }
+        throw new AssertionError("physical A valley chain has no linked path to sea across four owners");
+    }
+
+    static void runPhysicalCase(Path out,int first) throws Exception {
+        var solo=new MultiRegionDiscoveryProbe(first);
+        var isolated=solo.query(new Region(first+3,0),"physical-downstream-only");
+        require(solo.finals.size()==1 && !solo.primary.containsKey(new Region(first,0)),
+                "physical downstream query cannot warm remote A");
+        require(!isolated.traces.isEmpty() && reachesSea(isolated),
+                "physical downstream-only must independently contain a sea-reaching chain");
+        var forward=new MultiRegionDiscoveryProbe(first);
+        for(int x=first;x<first+4;x++) forward.query(new Region(x,0),"physical-forward");
+        int linked=forward.followPhysicalChain();
+        var reverse=new MultiRegionDiscoveryProbe(first);
+        for(int x=first+3;x>=first;x--) reverse.query(new Region(x,0),"physical-reverse");
+        require(forward.digest().equals(reverse.digest()),"physical flow query order changed geometry");
+        Files.writeString(out.resolve("regions-"+first+".csv"),forward.csv.toString()
+                +reverse.csv.substring(reverse.csv.indexOf("\n")+1)
+                +solo.csv.substring(solo.csv.indexOf("\n")+1));
+        Files.writeString(out.resolve("geometry-"+first+".txt"),forward.digest());
+        String line="{\"hypothesisId\":\"D8-PHYSICAL-FLOW\",\"location\":\"actualIncoming\",\"firstRegion\":"+first
+                +",\"D_has_chain\":"+!isolated.traces.isEmpty()+",\"D_reaches_sea\":"+reachesSea(isolated)
+                +",\"orderIdentical\":true,\"linkedCoarseNodes\":"+linked
+                +",\"fullPipeline\":"+Boolean.getBoolean("probe.fullPipeline")
+                +",\"steepestParent\":"+Boolean.getBoolean("probe.steepestParent")+"}\n";
+        Files.writeString(DEBUG,line,StandardOpenOption.CREATE,StandardOpenOption.APPEND);
+        System.out.print(line);
+    }
+
     public static void main(String[] args) throws Exception {
         Path out=Path.of(args[0]); Files.createDirectories(out);
+        if (Boolean.getBoolean("probe.physicalFlow")) {
+            runPhysicalCase(out,0); runPhysicalCase(out,-4);
+            Files.writeString(out.resolve("summary.txt"),"PHYSICAL FLOW DIAGNOSTIC COMPLETE. Full pipeline="
+                    +Boolean.getBoolean("probe.fullPipeline")+"; synthetic valley, existing D8 accumulator/build/assembler. Linked coarse A-to-sea path and cold query order checked; not global continuity or wet-column acceptance.\n");
+            return;
+        }
         require(DeterministicSkeleton.PORT_EGRESS,"boundaryPorts must be true");
         System.out.println("PARAMETERS production="+Boolean.getBoolean("probe.productionParams")
                 +" values="+ModelHydrologyProvider.productionParams(1.0)

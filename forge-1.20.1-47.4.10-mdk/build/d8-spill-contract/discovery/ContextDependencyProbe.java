@@ -82,8 +82,46 @@ public final class ContextDependencyProbe {
                 +" successorWithBase="+successor(second,cell)+"\n";
     }
 
+    static Set<Integer> reverseJoin(int target,int n,int radius,double[] level,boolean[] covered,
+                                    int[] stamps,List<int[]> segments) throws Exception {
+        Method method=DeterministicSkeleton.class.getDeclaredMethod("nearbyJoin",double[].class,int.class,
+                int.class,int.class,boolean[].class,int.class,int[].class,int.class,List.class,double[].class);
+        method.setAccessible(true); Set<Integer> result=new TreeSet<>();
+        int tx=target/n,tz=target%n;
+        for(int x=Math.max(0,tx-radius);x<=Math.min(n-1,tx+radius);x++)
+            for(int z=Math.max(0,tz-radius);z<=Math.min(n-1,tz+radius);z++) {
+                int candidate=x*n+z;
+                if((int)method.invoke(null,level,candidate,n,n,covered,2,stamps,1,segments,level)==target)
+                    result.add(candidate);
+            }
+        return result;
+    }
+
+    static String reverseJoinCoverage() throws Exception {
+        int n=33,target=18*n+16,current=16*n+16;
+        double[] level=new double[n*n]; boolean[] covered=new boolean[n*n]; int[] stamps=new int[n*n];
+        for(int x=0;x<n;x++)for(int z=0;z<n;z++)level[x*n+z]=100-x+3.0*(z-16)*(z-16);
+        covered[target]=true;
+        Set<Integer> full=reverseJoin(target,n,2,level,covered,stamps,List.of());
+        Set<Integer> oracle=new TreeSet<>();
+        Method join=DeterministicSkeleton.class.getDeclaredMethod("nearbyJoin",double[].class,int.class,
+                int.class,int.class,boolean[].class,int.class,int[].class,int.class,List.class,double[].class);
+        join.setAccessible(true);
+        for(int k=0;k<n*n;k++)if((int)join.invoke(null,level,k,n,n,covered,2,stamps,1,List.of(),level)==target)oracle.add(k);
+        check(full.equals(oracle),"radius two JOIN reverse candidates equal exhaustive all-cell oracle");
+        check(full.contains(current),"reverse JOIN includes actual SECOND_PASS two-cell edge");
+        check(!reverseJoin(target,n,1,level,covered,stamps,List.of()).contains(current),
+                "D8-only reverse search misses actual JOIN predecessor");
+        List<int[]> cross=Collections.singletonList(new int[]{17,15,17,17});
+        check(!reverseJoin(target,n,2,level,covered,stamps,cross).contains(current),"reverse JOIN respects crossing history");
+        stamps[target]=1;
+        check(reverseJoin(target,n,2,level,covered,stamps,List.of()).isEmpty(),"reverse JOIN excludes own trace receiver");
+        return "reverseJoin fullCandidates="+full.size()+" actualPredecessor="+current+" target="+target
+                +" ordinaryRadiusMiss=true crossedRejected=true selfRejected=true\n";
+    }
+
     public static void main(String[] args) throws Exception {
-        String evidence=join()+admission()+buildContext()+"CONTEXT COUNTEREXAMPLES PASS checks="+checks
+        String evidence=join()+admission()+buildContext()+reverseJoinCoverage()+"CONTEXT COUNTEREXAMPLES PASS checks="+checks
                 +"\nNot a river-network repair or world-discovery certificate.\n";
         Files.writeString(Path.of(args[0]),evidence); System.out.print(evidence);
     }
