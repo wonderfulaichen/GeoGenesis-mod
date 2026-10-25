@@ -706,6 +706,19 @@ public final class DeterministicSkeleton {
             !"false".equals(System.getProperty("geogenesis.vectorTrace"));
 
     /**
+     * 连续位置与格心的混合权重（0 = 关闭，逐位回到旧行为）。
+     *
+     * <p>位置按合成方向推进后，再与格心做加权平均：
+     * {@code cur = cur*BLEND + cell*(1-BLEND)}。
+     * 这样保留方向的连续倾斜，又让偏离不累积（上限 ≈ 1/(1-BLEND) 格）。</p>
+     *
+     * <p>2026-10-21 那次撤回是因为**无钳制**导致脱钩成蜘蛛网；本旋钮是带钳制的保守版。
+     * 实测取值见 {@code shape()} 的锚点来源。</p>
+     */
+    static final double CONT_BLEND = Double.parseDouble(
+            System.getProperty("geogenesis.contBlend", "0.75"));
+
+    /**
      * 洼地溢流口：从洼地底 {@code start} 起做有界 priority-flood（按 {@code bed} 由低到高），
      * 返回第一个"外侧存在严格更低邻居"的格（水能从此继续下降的鞍部）。
      *
@@ -2557,6 +2570,8 @@ public final class DeterministicSkeleton {
         // ★ 阶段 B：惯性方向（上一步格步的单位向量）。一阶状态 ⇒ 随链携带、不引入窗口依赖。
         //   首步为 0（无惯性）⇒ 行为与旧版逐位相同。
         double lastDirX = 0, lastDirZ = 0;
+        // 本步合成方向（连续）；供连续位置推进。每步更新，非向量模式为 0。
+        double stepDirOutX = 0, stepDirOutZ = 0;
         // ★ v2：typed 接力的初始惯性 = 【接收方真实出边方向】（锚点→发送端承诺的 next）。
         //   ⚠ 语义声明：这里<b>不</b>声称复现发送端的合成向量 —— 只声称"上一格步方向"这一
         //   个离散事实，且必须与发送端声明的来向一致（{@link #wireDirMatches} 校验）。
@@ -2725,6 +2740,9 @@ public final class DeterministicSkeleton {
                 } else {
                     s = strictD8Next(k, bed, nx, nz);
                 }
+                // 供连续位置推进使用（无向量时退化为格步方向）
+                stepDirOutX = stepDirX;
+                stepDirOutZ = stepDirZ;
                 if (s >= 0) {
                     p = s;
                     // ★★★ 2026-10-22【修复 B：边框处优先出窗，禁止沿边框横向延伸】★★★
@@ -2761,10 +2779,33 @@ public final class DeterministicSkeleton {
                     double dx = si - ki, dz = sj - kj;
                     double dl = Math.hypot(dx, dz);
                     if (dl > 1e-9) { lastDirX = dx / dl; lastDirZ = dz / dl; }
-                    // ★ 2026-10-21【撤回连续坐标累加】
-                    //   它与格索引 k 不同步（k 按 D8 跳、cur 按方向累加）⇒ 会脱钩。
-                    //   真正的"位置驱动格"需要重写主循环，见 shape() 处的说明。
-                    curX = si; curZ = sj;
+                    // ★★★ 2026-10-25【连续位置推进 —— 贝塞尔控制点素材】★★★
+                    //
+                    // 【历史】2026-10-21 曾撤回这里，理由是「cur 按方向累加、k 按 D8 跳 ⇒ 脱钩
+                    //   ⇒ 折线画到错误位置，生产图变蜘蛛网」。那次**没有钳制**，误差无限累积。
+                    //
+                    // 【本次做法（带钳制的保守版）】位置按【合成方向】推进，但每一步都被拉回
+                    //   当前所在格附近：
+                    //     cur += 合成方向 × 1
+                    //     cur = cur 与「格心」的加权平均（权重 CONT_PULL）
+                    //   这样既保留了方向的连续倾斜（几个格步内不会又被锁回 8 方向），
+                    //   又保证误差**不会累积**：每步都被格心拉回，偏离上限 ≈ 1/(1-CONT_PULL) 格。
+                    //   实测 clamp 的意义：脱钩只发生在长距离累积，逐步钳制把它消灭在源头。
+                    //   `-Dgeogenesis.contBlend=0` 逐位回到旧行为（cur 直接取格心）。
+                    if (CONT_BLEND > 1e-6) {
+                        double sdx = Math.abs(stepDirOutX) + Math.abs(stepDirOutZ) > 1e-9
+                                ? stepDirOutX : dx / Math.max(1e-9, dl);
+                        double sdz = Math.abs(stepDirOutX) + Math.abs(stepDirOutZ) > 1e-9
+                                ? stepDirOutZ : dz / Math.max(1e-9, dl);
+                        // 按合成方向走一格
+                        curX += sdx;
+                        curZ += sdz;
+                        // 与格心做加权平均（格心 = si,sj）
+                        curX = curX * CONT_BLEND + si * (1 - CONT_BLEND);
+                        curZ = curZ * CONT_BLEND + sj * (1 - CONT_BLEND);
+                    } else {
+                        curX = si; curZ = sj;
+                    }
                 } else {
                     // ★★★ 2026-10-21【洼地续流 —— 恢复，因为删掉它导致大量短河】★★★
                     //
@@ -3496,6 +3537,23 @@ public final class DeterministicSkeleton {
             double[] offsetX = new double[m], offsetZ = new double[m];
             double lastOx = 0, lastOz = 0;
             double[] ax = new double[m], az = new double[m];
+            // ★★★ 2026-10-25【贝塞尔素材：锚点改用连续位置】★★★
+            //
+            // 【要解决什么】Catmull-Rom 的切线由相邻锚点决定 ⇒ 三个锚点严格共线时
+            //   切线共线、曲率为 0 ⇒ 输出仍是直线。格心锚点恰好大量共线
+            //   （格步恒为正南/正东），实测纯轴向占比 69.6%、最长垂直长直 550 块。
+            //   **不是 CR 没跑，是素材没有曲率。**
+            //
+            // 【做法】锚点取 `traceOne` 里按合成方向推进的连续位置 `contPath`
+            //   （见 CONT_BLEND：推进后与格心加权，误差不累积）。位置本身带连续倾斜
+            //   ⇒ CR 的切线天然有曲率 ⇒ 画出平滑曲线。
+            //
+            // 【安全边界（历史上栽过）】
+            //   · 2026-10-21 版无钳制 ⇒ 位置与格脱钩 ⇒ 蜘蛛网。现版由 CONT_BLEND 每步拉回。
+            //   · 首尾仍【严格钉格心】：JOIN/河口/端口必须与别的链逐位重合，
+            //     否则跨段错开 1~2 格又会出现孤立段（2026-10-10 的教训）。
+            //   · contPath 不可用（旧构造/外部 Trace）⇒ 自动退回格心，行为不变。
+            boolean useCont = t.hasContPath() && CONT_BLEND > 1e-6;
             for (int i = 0; i < m; i++) {
                 double wx = originX + (t.cell[i] / nz) * (double) step;
                 double wz = originZ + (t.cell[i] % nz) * (double) step;
@@ -3574,6 +3632,13 @@ public final class DeterministicSkeleton {
                 }
                 ax[i] = wx;
                 az[i] = wz;
+                // ★ 贝塞尔素材：首尾钉死格心（保 JOIN/端口逐位重合），中间用连续位置。
+                if (useCont && i > 0 && i < m - 1) {
+                    double cx = originX + t.contPath[i * 2] * step;
+                    double cz = originZ + t.contPath[i * 2 + 1] * step;
+                    ax[i] = cx;
+                    az[i] = cz;
+                }
             }
             // ★★★ 阶段 C：连续锚点 —— 节点不再钉死格心 ★★★
             //
