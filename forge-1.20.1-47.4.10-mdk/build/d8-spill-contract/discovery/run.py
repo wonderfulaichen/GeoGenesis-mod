@@ -20,7 +20,8 @@ with (out / 'compile.log').open('wb') as f:
     result = subprocess.run(['javac', '-proc:none', '-encoding', 'UTF-8', '-cp', cp,
                              '-d', str(classes), str(root / 'MultiRegionDiscoveryProbe.java'),
                              str(root / 'ReverseOrdinaryProbe.java'), str(root / 'ContextDependencyProbe.java'),
-                             str(root / 'ResumableDiscoveryProbe.java')],
+                             str(root / 'ResumableDiscoveryProbe.java'), str(root / 'ContextPrefixProbe.java'),
+                             str(root / 'PortCandidateCoverageProbe.java')],
                             stdout=f, stderr=subprocess.STDOUT)
 if result.returncode:
     print((out / 'compile.log').read_text(errors='replace'))
@@ -40,11 +41,12 @@ for arm in ['cold-1', 'cold-2', 'production-1', 'production-2']:
                     'summary': (dest / 'summary.txt').read_text() if (dest / 'summary.txt').exists() else ''})
     print(arm, 'exit', result.returncode, 'reproduced', reproduced)
 components = []
-for name in ['ReverseOrdinaryProbe', 'ContextDependencyProbe', 'ResumableDiscoveryProbe']:
+for name in ['ReverseOrdinaryProbe', 'ContextDependencyProbe', 'ResumableDiscoveryProbe', 'ContextPrefixProbe', 'PortCandidateCoverageProbe']:
     for cold in [1, 2]:
         summary = out / (name + '-' + str(cold) + '.txt')
         with (out / (name + '-' + str(cold) + '.log')).open('wb') as f:
-            result = subprocess.run(['java', '-Dfile.encoding=UTF-8', '-cp', str(classes) + ';' + cp,
+            result = subprocess.run(['java', '-Xmx2G', '-Dgeogenesis.boundaryPorts=true', '-Dprobe.productionParams=true',
+                                     '-Dfile.encoding=UTF-8', '-cp', str(classes) + ';' + cp,
                                      'com.geogenesis.worldgen.hydrology.model.' + name, str(summary)],
                                     stdout=f, stderr=subprocess.STDOUT)
         components.append({'name': name, 'cold': cold, 'exit': result.returncode,
@@ -52,7 +54,7 @@ for name in ['ReverseOrdinaryProbe', 'ContextDependencyProbe', 'ResumableDiscove
         print(name, cold, 'exit', result.returncode)
 component_same = all((out / (name + '-1.txt')).exists() and (out / (name + '-2.txt')).exists()
                      and (out / (name + '-1.txt')).read_bytes() == (out / (name + '-2.txt')).read_bytes()
-                     for name in ['ReverseOrdinaryProbe', 'ContextDependencyProbe', 'ResumableDiscoveryProbe'])
+                     for name in ['ReverseOrdinaryProbe', 'ContextDependencyProbe', 'ResumableDiscoveryProbe', 'ContextPrefixProbe', 'PortCandidateCoverageProbe'])
 compared = ['regions-0.csv', 'regions--4.csv', 'geometry-0.txt', 'geometry--4.txt']
 same = all((out / (prefix + '1') / p).exists() and (out / (prefix + '2') / p).exists()
            and (out / (prefix + '1') / p).read_bytes() == (out / (prefix + '2') / p).read_bytes()
@@ -71,7 +73,18 @@ for filename, name, old, new, assertion in [
          'if(!terrain.transitions.containsKey(candidate))transitions++; calls+=',
          'batch/resume/cache eviction must preserve all logical evidence'),
         ('ResumableDiscoveryProbe', 'drop-predecessor-cursor', 'cursor=saved.cursor;', 'cursor=0;',
-         'cancel cold restore equals uninterrupted result')]:
+         'cancel cold restore equals uninterrupted result'),
+        ('ContextDependencyProbe', 'join-reverse-d8-only', 'reverseJoin(target,n,2,level,covered,stamps,List.of());',
+         'reverseJoin(target,n,1,level,covered,stamps,List.of());',
+         'radius two JOIN reverse candidates equal exhaustive all-cell oracle'),
+        ('ContextPrefixProbe', 'omit-context-prefix', 'w.anchorCell()<target.anchorCell()', 'false',
+         'prefix replay preserves actual target geometry'),
+        ('ContextPrefixProbe', 'identity-forgets-prefix', 'world+"/"+base+"/"+prefix+"/"+target',
+         'world+"/"+base+"/"+target', 'same target with different prefix cannot share context identity'),
+        ('PortCandidateCoverageProbe', 'omit-east-perimeter', 'result.add((N-1)*N+j);',
+         '/* missing east boundary */', 'perimeter candidates equal exhaustive all-cell egress oracle'),
+        ('PortCandidateCoverageProbe', 'omit-west-sender', 'return Math.toIntExact(-Math.floorDiv(-numerator,REGION));',
+         'return receiver;', 'derived owner range matches interval-intersection oracle')]:
     original = (root / (filename + '.java')).read_text(encoding='utf-8')
     assert original.count(old) == 1
     folder = out / ('mutation-' + name)
@@ -85,7 +98,8 @@ for filename, name, old, new, assertion in [
     log = ''
     if compiled.returncode == 0:
         with (folder / 'run.log').open('wb') as f:
-            failed = subprocess.run(['java', '-Dfile.encoding=UTF-8', '-cp', str(folder) + ';' + str(classes) + ';' + cp,
+            failed = subprocess.run(['java', '-Xmx2G', '-Dgeogenesis.boundaryPorts=true', '-Dprobe.productionParams=true',
+                                     '-Dfile.encoding=UTF-8', '-cp', str(folder) + ';' + str(classes) + ';' + cp,
                                      'com.geogenesis.worldgen.hydrology.model.' + filename,
                                      str(folder / 'summary.txt')], stdout=f, stderr=subprocess.STDOUT)
         run_exit = failed.returncode
