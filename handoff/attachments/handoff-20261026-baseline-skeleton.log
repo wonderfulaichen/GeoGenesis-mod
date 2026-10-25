@@ -1,0 +1,43 @@
+=== SkeletonProbe：确定性骨架判据 ===
+--- [A] 合成地形 ---
+2026-10-26 01:40:15,926 main WARN Advanced terminal features are not available in this environment
+  [PASS] [6] 确定性（段数）
+  [PASS] [合成] [1] 单调下降（level 非升）
+  [PASS] [合成] [2] 入湖终止语义（止于湖岸、不穿湖）
+  [PASS] [合成] [3] 入海终止语义
+  [PASS] [合成] [4] 无双占（内部节点唯一）
+  [FAIL] [合成] [5] 溢口续流（溢口必有河起点） —— 1 个溢口无 trace 覆盖: [outlet o=(4,6) parent=(5,6) parentLake=false oResolved=true level=87.00]
+  [PASS] [合成] [8] 单链无自交叉（折返重叠）
+  [PASS] [合成] 凸坡源头被汇流槽判据否决
+  [PASS] [6] 形态确定性（shape 逐位相同）
+  [PASS] [7] 形态不越界（±10 容差）
+--- [incoming] 归因完整且诊断不改产出 ---
+[01:40:16] [main/INFO] [geogenesis-wgp/]: [WGP] 全流程诊断已启用（每 0 块打一次滚动汇总；世界卸载时打总计）
+[01:40:16] [main/INFO] [geogenesis-wgp/]: [WGP] 阶段：engine 初始化 地形采样 侵蚀tile提取 水文雕刻 方块铺设 原版装饰 洞穴雕刻 地表构建 初始生物 侵蚀tile生成 tile等待(阻塞) 停顿(未占CPU) 提取内-取tile 提取内-blend 提取内-落格 水文-计算 水文-河距 水文-湖岸精修
+[01:40:16] [main/INFO] [geogenesis-wgp/]: [WGP] 全流程诊断已关闭
+  [PASS] incoming 逐入口完整归因，合法短入湖连接被接受
+  [PASS] 诊断开/关 trace 与出口逐位相同
+--- [short-incoming] 接力连接不是独立源头 ---
+  [PASS] 两格接力入湖不得因独立源长度门限丢失
+  [PASS] 两格接力入海不得因独立源长度门限丢失
+  [PASS] 内部无合法终端接力仍拒绝，不创造悬河
+  [PASS] 两格到框接力保留接口，不冒充入海
+  [PASS] 两格接力汇入既有段保留，重复入口不重复生成
+  [PASS] 已达面积门限的独立短源仍受长度门限
+  [PASS] 单格接口不生成零长接力段
+--- [sea-rollback] 被丢弃短链不得留下海格幽灵认领 ---
+SEA_ROLLBACK direction=-1 lake=false alone=1 withDiscarded=1
+  [PASS] 短链丢弃不改后续合法入海链 direction=-1
+SEA_ROLLBACK direction=-1 lake=true alone=1 withDiscarded=1
+  [PASS] 短链丢弃不改后续合法入湖链 direction=-1
+SEA_ROLLBACK direction=1 lake=false alone=1 withDiscarded=1
+  [PASS] 短链丢弃不改后续合法入海链 direction=1
+SEA_ROLLBACK direction=1 lake=true alone=1 withDiscarded=1
+  [PASS] 短链丢弃不改后续合法入湖链 direction=1
+Exception in thread "main" java.lang.IllegalStateException: java.lang.NoSuchMethodException: com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton.traceOne(int,boolean,boolean,[D,[I,[Z,[Z,[Z,[Z,int,int,int,[I,[I,int,com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton$Params,java.util.List,[D,com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton$ParentForest,java.util.List,com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton$OutsideContinuation)
+	at com.geogenesis.worldgen.hydrology.model.SkeletonProbe.runSeaClaims(SkeletonProbe.java:300)
+	at com.geogenesis.worldgen.hydrology.model.SkeletonProbe.main(SkeletonProbe.java:53)
+Caused by: java.lang.NoSuchMethodException: com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton.traceOne(int,boolean,boolean,[D,[I,[Z,[Z,[Z,[Z,int,int,int,[I,[I,int,com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton$Params,java.util.List,[D,com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton$ParentForest,java.util.List,com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton$OutsideContinuation)
+	at java.base/java.lang.Class.getDeclaredMethod(Class.java:2850)
+	at com.geogenesis.worldgen.hydrology.model.SkeletonProbe.runSeaClaims(SkeletonProbe.java:280)
+	... 1 more

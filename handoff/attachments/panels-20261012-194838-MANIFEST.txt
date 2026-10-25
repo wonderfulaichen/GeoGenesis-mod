@@ -1,0 +1,20 @@
+=== HYDRO-HIER 3-way manifest (20261012-194838 UTC) ===
+repo=D:\Office software\Development Project\GeoGenesis-mod
+mdk=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk
+cfg=run/config/geogenesis-common.toml  sha256=CE9B6F2CCBC91CCD4B1C769298139F55E6BBA7C0B7806A9E8FF82B69A73B4C6B
+props=-Dgeogenesis.skeletonTrace=true -Dgeogenesis.hierarchicalHydrology=true -Dgeogenesis.hierStrictContract=false
+inheritedJAVA_TOOL_OPTIONS=-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dgeogenesis.sharedLakeDomains=true
+expLabel=REVERSE PREHEAT (NOT ACCEPTED)
+mode=ExperimentOnly
+gitHead=c3536907435ad42ba96c4c6f9d257d11b4e58337
+git7a1a45a=7a1a45a687646258eec5a09fda75d76c6e0bfcbf
+git a70e87b=a70e87b4e00f7e85aa796c36c5570b80c4da5ef1
+sourceDiffCount=7
+sourceDiffFingerprintSHA256=48E897370D84066A970899DA194BAD1FFB76301C46A5E22AED15266B69E6D155
+sourceDiffList=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\hierarchical-evaluation\panels-20261012-194838\source-diff-fingerprint.txt
+pinnedBaselines=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\hierarchical-evaluation\baselines\PINNED-BASELINE-PANELS.txt sha256=F228FB643B9E6545E3F011FB2914977C5273E4E01A324A2B06637093CB83D5E1
+panel 7a1a45a.png sha256=E732B4F2AEEDFAC214BECC808B0E3371DE1135024AA72D016FF269E953F8C922
+panel a70e87b.png sha256=2AF80B6C041D2249C925A28495566B9263C393EB9976D9ABD4AC175433C3F0AC
+panel experiment.png sha256=510B8846F39AC6ED77B1EDC2E6563BBA50191CFAF5B245BD3AF062CAA4B1B608
+montage=D:\Office software\Development Project\GeoGenesis-mod\HYDRO-HIER-3way-20261012-194838.png sha256=1855E384652ED4F52E4BF8DD5F31CF1E798EB2754FCCE927A239C8A25E7B5335
+NOTE: panels 1-2 are IMMUTABLE baselines (NOT re-rendered this round); panel 3 (experiment) is EXPLORATORY. If its basemap differs from an older experiment panel, that is the production atomics/memoization fix changing results -- old-image equality is NOT required.

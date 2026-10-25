@@ -157,4 +157,49 @@ HEAD `16dbc43`（`feat(hydro): 保存边界容量摘要与河湖生命周期诊�
 
 ---
 
-*本文为 2026-10-14 调研快照；[`HYDROLOGY.md`](HYDROLOGY.md) 仍是水文唯一事实来源。*
+*上文为 2026-10-14 调研快照；[HYDROLOGY.md](HYDROLOGY.md) 仍是水文唯一事实来源。*
+
+## 7. 2026-10-23补查：独立入流发现与几何权威（批注16）
+
+本次只读研究、未运行参考程序、未复制实现。两条研究分支并行核查，关键结论再回源确认。
+不要把参考项目的不同前提合称为“都已解决当前条件D8的多区问题”。
+
+### 7.1 Streams真正值得借的是“出口不依赖整条上游”
+
+- MIT已重读 [LICENSE](参考/river/Farseek-Mods/LICENSE#L1-L13)。实际源码在Farseek-Mods；单独Streams目录没有生成源码。
+- [StreamsGenerator.scala:107-138](参考/river/Farseek-Mods/src/mainStreams/scala/streams/world/gen/StreamsGenerator.scala#L107-L138)：
+  未创建的东邻不递归创建，而以 `mouthOutlets.isEmpty` 预测分类；已缓存时读既有分类。
+  这**不是只查热缓存**，也不是通用地形排水发现证书。支流分类另会创建其主干下游盆，不能笼统说全部依赖只有一个盆。
+- [Reach.scala:14-21](参考/river/Farseek-Mods/src/mainStreams/scala/streams/world/gen/segments/Reach.scala#L14-L21)
+  给主干下游方向、offset和截面常量；
+  [UpstreamSegment.scala:19-53](参考/river/Farseek-Mods/src/mainStreams/scala/streams/world/gen/segments/UpstreamSegment.scala#L19-L53)
+  的outlet只读本盆边界、截面、局部地形和水位，不读inlets。inlets再取最多三个配向邻段的outlet。
+  因而查询主干入口截面不需要沿全部主干递归上溯。hashCode种子是否全部为稳定内容哈希本次未证明。
+- [Segment.scala:42-75](参考/river/Farseek-Mods/src/mainStreams/scala/streams/world/gen/segments/Segment.scala#L42-L75)：
+  下游入口派生自上游截面（有一格平移/瀑布调整），本盆几何最后仍依赖完整inlets＋outlets。
+  不能把“出口独立”误写成“最终几何完全不依赖入流”。
+- **不能照搬**：西流拓扑、海平面常数、固定截面表和它的源布局。改宽度到拓扑阶数或对列做min/max合并，
+  既不解决我方源存在/covered上下文，也不是本次授权修复；研究中提出的这种推论不采纳。
+
+### 7.2 PL-RGA的闭合来自“不跨区”，不是更强的发现
+
+- CC-BY-4.0已重读 [LICENSE](参考/river/plate-local-river-generation-main/LICENSE#L1-L9)。
+- [terrain.cpp:304-320](参考/river/plate-local-river-generation-main/flat_infinite/src/terrain.cpp#L304-L320)
+  以border_safe/lake_safe限制规划域；
+  [rivers.cpp:384-463](参考/river/plate-local-river-generation-main/flat_infinite/src/rivers.cpp#L384-L463)
+  从全域源序列重放守卫，不能过边界时整条回滚。
+- [rivers.cpp:84-151](参考/river/plate-local-river-generation-main/flat_infinite/src/rivers.cpp#L84-L151)
+  的源全枚举和整数node主键可借鉴其证据形式；不能借删跨区河、挡河或把自环改湖来消除当前红灯。
+- 我方legacy归档源码也只读邻区pass1：
+  [RiverLineNetwork.java:371-407](forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/hydrology/riverline/RiverLineNetwork.java#L371-L407)。
+  这不是否定legacy已有跨缝优点，但不能由旧图连续或该接口外形推出“任意长度无本地源接力已证明”。
+
+### 7.3 本轮借鉴的落点与未决
+
+将“几何上可能的普通端口”与“源/历史上下文证明后的有效入流”分开。新隔离候选枚举不读邻区final：
+由REGION/HALO/STEP推发送owner范围，在发送窗边框枚举九种来向，复用真实PortEgress。
+它已包含旧pass1-only遗漏的第二跳，但候选不等于实际河。
+
+进一步隔离测试：为所有潜在边框锚点预先声明世界格心，可在实窗反例中消除后来入流对较早shape的钉点影响。
+**这是改变亚格几何的候选策略，不是零变化修复，未被采纳进生产。** 未证明源可达、JOIN/溢流守卫闭包、
+完整发现/总预算完成，未做真实形态大图/湿列。新事实及复跑路径见 [HYDROLOGY.md](HYDROLOGY.md) §〇ai。

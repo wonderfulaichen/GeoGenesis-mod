@@ -1,0 +1,32 @@
+=== HierarchicalComparisonView 面板 ===
+label=REVERSE PREHEAT (NOT ACCEPTED)
+git=c3536907435ad42ba96c4c6f9d257d11b4e58337
+toml=run\config\geogenesis-common.toml sha256=ce9b6f2ccbc91ccd4b1c769298139f55e6bba7c0b7806a9e8ff82b69a73b4c6b
+config: applied=true tomlCorrected=false  CommentedFileConfig.of+setConfig ok isLoaded=true riverEnabled=true fingerprint=-9049748980588029035 params=buildParams() toml 键全部合法
+hier: -Dgeogenesis.hierarchicalHydrology=true hierStrictContract=false
+skeleton: -Dgeogenesis.skeletonTrace=true （toml hydrologyDeterministicSkeleton 见 config 段；-D 覆盖 toml）
+seed=9139912035078620160 centre=(-140,137) radius=700 n=1401 底图=contourFixed(min=0 band=8) 数据源=sampleWu
+elapsed=95.6s chunks=8281
+湖格=176916 (9.01%) 河格=17551 (0.89%) 未覆盖=0
+result=NO_TRUE_FAILURE(exploratory)
+真实冲突：失败 tract=0 已跑 chunk=8281 其它(非ContractViolation) tract=0 失败域像素=0 (0.00%)
+（核心已取消粗细层【同出口】刚性约束 ⇒ 盆地形态差异不再计失败；只有非有限水位/越域索引 = 真实冲突）
+provider 列：湖列=176916 河列=17551 （chunks×256=2119936）
+侵蚀 tile：misses(查询未命中，非唯一生成数)=1882 hits=16191031 evictions=128 cacheSize=490
+provider region 网格湖格累计（含重叠，仅量级对照）=17787
+河格 8 邻分量：count=120 cells=17551 max=1830 p50=66 p90=361 小分量(<=4)=12/24 不接湖海边框=1/1
+region(512) 接缝（逐列）：跨缝对=8406 单侧断=112 (1.33%)
+相邻水位跳变：对=366009 >1.0块=1045 >2.0块=142 max=2.92 块
+河掩码自交（像素级 X 交叉）：像素=17551 X型=7087 （代理：骨架折线几何未取得）
+【逐 chunk 性能（完整 8281 chunk；成功 8281 / 失败域 0）】
+  合计=95.6s 均值=11.5ms  P50=4.9ms P95=6.3ms max=16486.2ms
+  冷（region 未命中）n=18 合计=46.4s  ; 热 n=8263 合计=49.2s
+  最慢 Top8 (chX,chZ,ms,cold): (-54,-37,16486ms,cold) (-7,-37,3353ms,cold) (-39,-37,3100ms,cold) (25,-37,3061ms,cold) (-32,-37,2332ms,cold) (-54,0,2304ms,cold) (0,-37,2146ms,cold) (32,-37,1876ms,cold)
+provenance: imgSha256=510b8846f39ac6ed77b1edc2e6563bba50191cfaf5b245bd3af062caa4b1b608
+provenance: configFingerprint=-9049748980588029035
+provenance: rendererSourceSha256=bc28bfbfcc0078d71b43f3a9282e2f9c803ab1d527134ff3b4f81825dd83e6b9
+NOT VERIFIED：
+  - 骨架折线自交：NOT VERIFIED（骨架几何未在公共 API 暴露 ⇒ 只有像素级 X 交叉代理）；
+  - 接缝只按【水体掩码逐列】判定，未覆盖湖/河/海类别内的错分；
+  - 离线探针：未做方块铺设与实机端到端确认。
+img=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\hierarchical-evaluation\panels-20261012-194838\experiment.png
