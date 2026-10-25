@@ -4,7 +4,7 @@
 > 归档原因：那些文档彼此矛盾、多数已过时（详见 `_archive/hydrology/README.md`），
 > 继续放在根目录会误导接手者 —— 本项目已因此连续出错多轮。
 >
-> **2026-10-26冷启动入口：** [最新交接](handoff/GeoGenesis-handoff-20261026.md)及本文件§〇bf。§〇b保留的是2026-10-09盘点，里面“两条生产链/legacy默认”等说法已过时；生产现状以§二（仅model）及当前调用点为准。§〇az—〇bd中的旧归因已由§〇bf明确撤回。
+> **2026-10-26冷启动入口：** [最新交接](handoff/GeoGenesis-handoff-20261026.md)、本文件§〇bf及实施续记§〇bg。§〇b保留的是2026-10-09盘点，里面“两条生产链/legacy默认”等说法已过时；生产现状以§二（仅model）及当前调用点为准。§〇az—〇bd中的旧归因已由§〇bf明确撤回。
 
 ---
 
@@ -1374,6 +1374,37 @@ Forge方块/装饰/流体tick、旧66全账本、跨窗证书/无环及生产迁
 - **更正断面归因**：half不在最终列结构不等于断面必未计算；应看实际公式。当前生产仍为固定depth加兜底，没有随横向距离变浅的断面；这是未完成功能，但尚未证明它是所有“一节节”现象的唯一原因。
 - 当前优先级是先继承**局部连接契约**，不是强制全局River ID。下一轮先验证中段JOIN有序后缀，再选同区JOIN与跨区接力各一处，核对真实接点两侧的Q/半宽/深度/水面。仅整理提交不授权继续实现。
 - 本次不改路由、配置或缓存schema（代码当前108）。旧25处/57端口及确定性矩阵、全门禁与Forge全周期验收不能凭历史PASS或本次编译绿宣告完成。
+
+### 〇bg、River局部连接修正与定点取证（2026-10-26；未接河道消费）
+
+用户批准局部连接方案后实施；本节更新〇bf中“中段JOIN未修”的检查点状态，不改变其它纠偏。
+
+- `River`改为局部有向单元：唯一首尾串联才合并；中段/多支流共享下游用`downstreamRiver + downstreamNode`指向真实后缀，保留下游前缀，不由`used`抢走共同后继。缺失、歧义、环和空路径单列状态，不伪装入湖/海。索引仅在当前`Result.rivers`内有效，不是全局ID。
+- 生产shape、SegmentIndex、宽深仍消费traces；本次没有接入新的属性策略、修改D8路线/预算/默认宽深。缓存schema保持108，因为未改变实际地形/水文列产出。新聚合仍有分配开销，未做性能基准。
+- `RiverConnectionProbe`实际Java断言1137项通过，覆盖中段/首点JOIN、多支流共享、32次输入顺序变化、环/缺失/歧义、相邻重复尾节点及1万段串联。隔离编译本次修改前HEAD `baf5bb5`的骨架类覆盖classpath，反向测试在中段JOIN断言失败（不是编译失败）。
+- 同seed `9139912035078620160`、同TOML副本，region(0,0)，默认与显式`-Dgeogenesis.boundaryPorts=true`分组取证。每组分别与隔离旧骨架对照：pipe/traces/shaped/segIndex/boundary/采样列的64位指纹逐项相同。默认合计`-2639223944564017712`，显式组`-2789750574405632679`。这是局部非改产出检查，不是全世界逐块证明或完整出图验收。
+- 默认组同区JOIN：trace2→trace0，第16个粗格节点，格坐标(132,-94)；支流实际shaped尾(131.472803467,-93.320006528)到已确认接收折线投影距离0.028761；支流尾段半宽0.878390、接收投影半宽0.879058，而生产`propagateConfluence`仍取承接链首0.878279。只能证明引用位置不同，不能由最终值反推压缩量。接点前/接点/后所采列均有水；不由三列宣布整河连续。
+- **开关不一致新证据（未修）**：provider的`BOUNDARY_PORTS`默认true，骨架`PORT_EGRESS=Boolean.getBoolean(...)`默认false。未显式设属性的本次默认组无typed端口；显式组有7个邻区pass1承诺被`mergeEvidence`以同anchor、同next审计接入base。显式组不是当前游戏启动参数的证明。
+- 显式组样本：发送(-1,-1)→接收(0,0)，anchor(2,96)、next(2,98)，接收base trace8第26格，`mergeNext==port.next`、审计`RESOLVED:WATER_SEA`。发送pass1 Q10.6512、接收Q11.0736；发送/接收粗水面均131.390213。anchor列fill=true且水柱1，next列fill=false、erosion=0。这证明该采样下拓扑审计与实际湿列不等价；**不等于骨架中心线中断，不据此改路线**。发送侧最终半宽/深度尚未采，跨区属性连续仍未验收。
+- `RiverJunctionEvidenceProbe`只读现有缓存与生产列；按目标trace的Shaped坐标定位段，**粗格节点序号不能当重采样节点序号**。本轮早期`evidence/`及`v2-*`半宽取证已作废，不能使用；有效结果是MDK `build/river-local-contract/final-default/`、`final-typed/`及对应`baseline-*`。列采样允许既有边缘惰性邻区求解，JSON记录新增final键，未改依赖架构。
+- TOML原件SHA256仍`CC5D985F7554E4CFB316708E88373530241B9520E4CE983F745A6DEFCF50C16F`。`SkeletonProbe synthetic`本次与隔离旧骨架均复现溢口(4,6)未覆盖及`traceOne`反射签名异常，后续断言未执行；不称全绿。未跑全门禁/Forge/新大图/多seed和并发矩阵，未提交或push。
+
+运行新探针（MDK目录，Java21）：
+
+```powershell
+.\gradlew.bat --offline --console=plain -I tools/local-flow-reassessment.gradle runRiverConnectionProbe
+.\gradlew.bat --offline --console=plain -I tools/local-flow-reassessment.gradle runRiverJunctionEvidenceProbe -PprobeArgs="9139912035078620160 0 0 build/river-local-contract/new-default"
+# 显式端口对照，非默认实机证据：
+.\gradlew.bat --offline --console=plain -I tools/local-flow-reassessment.gradle runRiverJunctionEvidenceProbe -PjunctionTypedPorts=true -PprobeArgs="9139912035078620160 0 0 build/river-local-contract/new-typed"
+```
+
+后续：先核实游戏/JVM实际端口开关，再决定是否统一默认；以现有接点证据设计沿程属性衔接，不能直接照搬旧累积公式或用附近max Q掩盖；正式断面及改变河道产出的A/B仍在后续范围。
+
+**用户再次明确的出图契约（同日，优先）**：骨架仅是路线，中心线必须固定1像素；截面形态、宽度、深度属于河道落地生成，不能混入骨架图。用户指的是后期骨架、关闭宽度但保留其它内容，不是早期迁移版本，也不是同时关蜿蜒的`OFF_all`。因此下述默认开关的带宽度生产图**撤回作为骨架对照**，它只能证明该组条件下非改产出，不能代表用户指定基线。新骨架对照显式保留`boundaryPorts=true`、不覆盖`skeletonMeanderAmp`，关闭`widthFromAnchors/widthBlend/bankJitter/widthMonotone/widthSmooth`；渲染只消费生产`shapedPolys`的坐标，不读湿列/half/depth，不用宽度缩成细河冒充中心线。原生图无抗锯齿、无膨胀，湖海底色来自同次pipe、不是方块放水验收。
+
+**正确口径骨架图已补齐**：MDK `build/river-local-contract/skeleton-width-off/`下`before/after`各跑36区，均1720条trace，未关闭蜿蜒；直接对生产shape作无抗锯齿Bresenham单像素栅格化。全幅3269²、正典裁图1401²；全幅中心线135426像素，两臂掩码及着色/底色差异均0，shape.csv SHA256均`eb1841d6ae88c282b67c71a0e38a8d1a08cdcf9436b2e5967d08813b5987cb13`。与保留的后期`dump-out/polys.csv`按原存储3位小数、保留每条折线节点顺序及方向逐条比对一致（28个非空区/1720折线；其余8区无线），不是早期版本。图见[骨架A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/skeleton-ab.png)、[修复前全幅](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/before/skeleton-full.png)、[修复后全幅](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/after/skeleton-full.png)。结果证明本轮连接表示修正未改变这批shape路线，不代表全周期已通过。没有改生产默认值或TOML。
+
+**先前后补图记录（非骨架验收）**：已用现有`ProductionViewProbe`生产`GeoGenesisTerrain.getChunkCells`入口重跑修改前/后各1401²正典大图（同seed/中心/当前TOML、默认JVM开关）。每臂8281 chunk、uncovered=0；PNG逐像素差异`0 / 1962801`，两臂PNG SHA256均`1226674f61bd31681eb535ac7cbfd4083f33cc1af2cdb3766747a9ba51a52257`，列SHA256均`ae92afd33d6a6fef30979f13032576ef6d7746335d07c7901ba599cc46a626e2`。没有复用旧目标图。结果见[生产A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/production-ab.png)、[Java合成反例连接A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/connection-ab.png)及同目录metrics/provenance；后者不是游戏效果图。修复后首轮出图被后台线程`Comparison method violates its general contract`异常经PowerShell Stop中断，没有有效PNG；保留日志，未修改生产代码，同参数重跑退出0并完成对照。异常根因及归属未定，不宣称已修。
 
 <details>
 <summary>2026-10-25原始诊断旧稿（含已撤回归因，仅作历史证据；不得按其方案直接实施）</summary>
