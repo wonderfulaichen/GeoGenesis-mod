@@ -1358,6 +1358,18 @@ public final class ModelHydrologyProvider {
         }
     }
 
+    /** 只读诊断：取 SkeletonRegion 里的 traces（null-safe）。 */
+    static List<DeterministicSkeleton.Trace> skeletonTracesForProbe(Object skeletonRegion) {
+        if (!(skeletonRegion instanceof SkeletonRegion sr) || sr.skel() == null) return null;
+        return sr.skel().traces;
+    }
+
+    /** 只读诊断：取 SkeletonRegion 里重建出的河流（{@code buildRivers} 的产出）。 */
+    static List<DeterministicSkeleton.River> skeletonRiversForProbe(Object skeletonRegion) {
+        if (!(skeletonRegion instanceof SkeletonRegion sr) || sr.skel() == null) return null;
+        return sr.skel().rivers;
+    }
+
     /**
      * 生产骨架的<b>真源头</b>（每条 Trace 的首格，block 坐标）—— <b>只读诊断接口</b>。
      *
