@@ -212,6 +212,138 @@ public final class DeterministicSkeleton {
     }
 
     /**
+     * ★★★ 2026-10-25【河流（River）—— 骨架对外的"河道单元"】★★★
+     *
+     * <h3>为什么必须引入这一层</h3>
+     * <p>{@link Trace} 是<b>追踪单元</b>：遇到 JOIN / 跨区接力 / 重试就会截断并另起一条。
+     * 而用户看到的是<b>河流</b>：一条视觉连续的河可能由多条 trace 首尾相接而成。</p>
+     *
+     * <p><b>实测证据（trace 着色图）</b>：整图 106 条 trace 拼出约 30 条可见河，
+     * 每千个河像素有 69 处"变色边界"。宽度与水面此前按 trace 各自计算
+     * ⇒ 接缝两侧独立求值 ⇒ 宽度突变、水面错开。</p>
+     *
+     * <h3>River 的定义</h3>
+     * <p>把 trace 按<b>有向后继关系</b>串成链：</p>
+     * <ul>
+     *   <li>{@code t.end == JOIN} ⇒ 其 {@code mouthCell} 落在另一条 trace 上，后者是下游；</li>
+     *   <li>一条 River = 从某个"无上游"的 trace 出发，沿下游一路串到底；</li>
+     *   <li>汇合处（多条上游并入同一 trace）⇒ 该 trace 属于<b>下游 River</b>，
+     *       上游各自成 River（各自有自己的水面/宽度），但下游 River 的流量
+     *       = 各上游之和 ⇒ 宽度必然比任一上游宽（物理正确）。</li>
+     * </ul>
+     *
+     * <h3>对下游的契约</h3>
+     * <p>{@link #cells} 是<b>源→口</b>的完整格序列（可能跨多条 trace），
+     * {@code traceOf[i]} 记录第 i 个节点来自哪条 trace（诊断/回溯用）。
+     * 河道生成（宽度/深度/水面/断面）应<b>以 River 为单位</b>计算，
+     * 而不是以 trace 为单位 —— 这样同一条河只求值一次，接缝自然消失。</p>
+     */
+    public static final class River {
+        /** 本河包含的 trace 下标（源→口顺序）。单条 trace 的河就是长度 1。 */
+        public final int[] traceIdx;
+        /** 源→口的完整格序列（已去除相邻重复）。 */
+        public final int[] cells;
+        /** 每个节点来自哪条 trace（与 {@link #cells} 等长，诊断用）。 */
+        public final int[] traceOf;
+        /** 终点语义（取最后一条 trace 的 end）。 */
+        public final End end;
+        /** 河源所在 trace 是否为溢口段（湖后河）。 */
+        public final boolean fromOutlet;
+        /** 该 River 所属窗口的格阵每行长度（{@code cell = i*nz + j}）—— 换算世界坐标必需。 */
+        public final int nz;
+
+        River(int[] traceIdx, int[] cells, int[] traceOf, End end, boolean fromOutlet, int nz) {
+            this.traceIdx = traceIdx;
+            this.cells = cells;
+            this.traceOf = traceOf;
+            this.end = end;
+            this.fromOutlet = fromOutlet;
+            this.nz = nz;
+        }
+
+        public int nodeCount() { return cells.length; }
+        public int sourceCell() { return cells.length == 0 ? -1 : cells[0]; }
+        public int mouthCell() { return cells.length == 0 ? -1 : cells[cells.length - 1]; }
+    }
+
+    /**
+     * 从 trace 列表重建河流（见 {@link River} 的说明）。
+     *
+     * <p><b>算法</b>（一轮、确定性、不重走 parent）：</p>
+     * <ol>
+     *   <li>建 {@code cell → 拥有它的 trace}（多个时取<b>最先出现</b>者，与 first-wins 一致）；</li>
+     *   <li>对每条 trace，若 {@code end == JOIN}，用 mouthCell 找下游 trace ⇒ 记 {@code next[i]}；</li>
+     *   <li>找所有"没有上游"的 trace（即不在任何 next 的目标集合里）作为河流起点；</li>
+     *   <li>从每个起点沿 next 串到底，拼出 cells（跳过与上一段重复的首格）。</li>
+     * </ol>
+     *
+     * <p>汇合处（多个上游指向同一 trace）：该 trace 只会被串一次 —— 由<b>其中一条</b>
+     * 上游带走，其余上游各自成一条 River 并在汇合点终止。这是有意的：
+     * 各支流有自己的水面/宽度，汇合后的干流由带走它的那条链代表。</p>
+     */
+    static java.util.List<River> buildRivers(java.util.List<Trace> traces, int nz) {
+        int n = traces.size();
+        if (n == 0) return List.of();
+        // ① cell → trace（first-wins）
+        java.util.Map<Integer, Integer> cellOwner = new java.util.HashMap<>();
+        for (int i = 0; i < n; i++) for (int c : traces.get(i).cell) cellOwner.putIfAbsent(c, i);
+        // ② next[i] = 下游 trace
+        int[] next = new int[n];
+        java.util.Arrays.fill(next, -1);
+        for (int i = 0; i < n; i++) {
+            var t = traces.get(i);
+            if (t.end != End.JOIN || t.cell.length == 0) continue;
+            Integer d = cellOwner.get(t.mouthCell());
+            if (d != null && d != i) next[i] = d;
+        }
+        // ③ 起点：不是任何 next 目标的 trace
+        boolean[] hasUpstream = new boolean[n];
+        for (int i = 0; i < n; i++) if (next[i] >= 0) hasUpstream[next[i]] = true;
+        java.util.List<River> out = new java.util.ArrayList<>();
+        boolean[] used = new boolean[n];
+        for (int s = 0; s < n; s++) {
+            if (hasUpstream[s] || used[s]) continue;
+            // ④ 沿 next 串到底
+            java.util.List<Integer> chain = new java.util.ArrayList<>();
+            java.util.List<Integer> cellList = new java.util.ArrayList<>();
+            java.util.List<Integer> fromList = new java.util.ArrayList<>();
+            int cur = s;
+            while (cur >= 0 && !used[cur]) {
+                used[cur] = true;
+                chain.add(cur);
+                var t = traces.get(cur);
+                for (int c : t.cell) {
+                    // 跳过与上一段末格重复的首格（JOIN 点共享）
+                    if (!cellList.isEmpty() && cellList.get(cellList.size() - 1) == c) continue;
+                    cellList.add(c);
+                    fromList.add(cur);
+                }
+                cur = next[cur];
+            }
+            if (chain.isEmpty()) continue;
+            var last = traces.get(chain.get(chain.size() - 1));
+            out.add(new River(toIntArr(chain), toIntArr(cellList), toIntArr(fromList),
+                    last.end, traces.get(s).fromOutlet, nz));
+        }
+        // ⑤ 兜底：环或断链导致的未使用 trace 各自成河（不丢几何）
+        for (int s = 0; s < n; s++) {
+            if (used[s]) continue;
+            used[s] = true;
+            var t = traces.get(s);
+            out.add(new River(new int[]{s}, t.cell.clone(),
+                    new int[t.cell.length], t.end, t.fromOutlet, nz));
+            java.util.Arrays.fill(out.get(out.size() - 1).traceOf, s);
+        }
+        return out;
+    }
+
+    private static int[] toIntArr(java.util.List<Integer> list) {
+        int[] a = new int[list.size()];
+        for (int i = 0; i < a.length; i++) a[i] = list.get(i);
+        return a;
+    }
+
+    /**
      * 出口种子（legacy {@code RiverLineRegion.OutletSeed} 同构，2026-10-10 双 pass 续流）。
      *
      * <p>链走到本窗口<b>边框</b>（DEAD_END 且 mouth 落在 frame 上）⇒ 记下
@@ -254,8 +386,7 @@ public final class DeterministicSkeleton {
 
     /** 结果：河段表（确定性顺序）+ 诊断计数 + 出口种子。 */
     public static final class Result {
-        public final List<Trace> traces;
-        public final int sourcesTotal;
+        public final List<Trace> traces;        public final int sourcesTotal;
         public final int sourcesDroppedBySpacing;
         public final int outletStarts;
         /** ★ 接力种子实际起链数（诊断：判定双 pass 是否真的接到邻区的水）。 */
@@ -282,6 +413,14 @@ public final class DeterministicSkeleton {
         public List<BoundaryPort> ports = List.of();
         /** ★ pass2 新出口<b>无 pass1 承诺</b> ⇒ 显式未决（不得当全局完成）。 */
         public List<BoundaryPort> pendingExits = List.of();
+        /**
+         * ★★★ 2026-10-25【河流重建结果】★★★
+         *
+         * <p>由 {@link #buildRivers} 从本结果的 traces 聚合而成。
+         * <b>河道生成（宽度/深度/水面/断面）必须以它为单位计算</b>，
+         * 不能再用 traces —— trace 是追踪单元，同一条河会被切成多条。</p>
+         */
+        public java.util.List<River> rivers = java.util.List.of();
         /** ★ incoming 起点已由 base 下游满足 ⇒ 合并数（不新增链、不伪造 JOIN）。 */
         public int mergedIncoming = 0;
 
@@ -1617,6 +1756,8 @@ public final class DeterministicSkeleton {
         List<BoundaryPort> ports = portsOf(merged);
         Result result = new Result(merged, sourcesTotal, droppedBySpacing, outletStarts,
                 incomingStarts, exitSeeds, filterOn, droppedNetwork);
+        // ★ 河流重建：把被截断的 trace 串成完整河流（河道生成的单位）
+        result.rivers = List.copyOf(buildRivers(merged, nz));
         result.ports = List.copyOf(ports);
         result.passRole = role;
         result.roleConflict = roleConflict;
