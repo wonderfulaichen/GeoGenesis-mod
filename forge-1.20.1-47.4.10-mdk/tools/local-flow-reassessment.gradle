@@ -12,4 +12,18 @@ gradle.projectsEvaluated {
                 'UTF-8')
         }
     }
+    ['RiverConnectionProbe', 'RiverJunctionEvidenceProbe'].each { probe ->
+        project.tasks.register("run${probe}", JavaExec) {
+            dependsOn project.tasks.named('compileDiagnosticsJava')
+            classpath = project.sourceSets.diagnostics.runtimeClasspath
+            mainClass = "com.geogenesis.worldgen.hydrology.model.${probe}"
+            maxHeapSize = '6g'
+            if (project.hasProperty('probeArgs')) {
+                args project.property('probeArgs').toString().split(' ')
+            }
+            if (project.hasProperty('junctionTypedPorts')) {
+                systemProperty 'geogenesis.boundaryPorts', project.property('junctionTypedPorts').toString()
+            }
+        }
+    }
 }

@@ -211,54 +211,41 @@ public final class DeterministicSkeleton {
         public int mouthCell() { return cell[cell.length - 1]; }
     }
 
+    /** 局部连接事实；TERMINAL 只表示不再 JOIN，并不保证已经入湖或入海。 */
+    public enum RiverLink { TERMINAL, CONNECTED, MISSING_RECEIVER, AMBIGUOUS_RECEIVER, CYCLE, EMPTY_PATH }
+
     /**
-     * ★★★ 2026-10-25【河流（River）—— 骨架对外的"河道单元"】★★★
-     *
-     * <h3>为什么必须引入这一层</h3>
-     * <p>{@link Trace} 是<b>追踪单元</b>：遇到 JOIN / 跨区接力 / 重试就会截断并另起一条。
-     * 而用户看到的是<b>河流</b>：一条视觉连续的河可能由多条 trace 首尾相接而成。</p>
-     *
-     * <p><b>实测证据（trace 着色图）</b>：整图 106 条 trace 拼出约 30 条可见河，
-     * 每千个河像素有 69 处"变色边界"。宽度与水面此前按 trace 各自计算
-     * ⇒ 接缝两侧独立求值 ⇒ 宽度突变、水面错开。</p>
-     *
-     * <h3>River 的定义</h3>
-     * <p>把 trace 按<b>有向后继关系</b>串成链：</p>
-     * <ul>
-     *   <li>{@code t.end == JOIN} ⇒ 其 {@code mouthCell} 落在另一条 trace 上，后者是下游；</li>
-     *   <li>一条 River = 从某个"无上游"的 trace 出发，沿下游一路串到底；</li>
-     *   <li>汇合处（多条上游并入同一 trace）⇒ 该 trace 属于<b>下游 River</b>，
-     *       上游各自成 River（各自有自己的水面/宽度），但下游 River 的流量
-     *       = 各上游之和 ⇒ 宽度必然比任一上游宽（物理正确）。</li>
-     * </ul>
-     *
-     * <h3>对下游的契约</h3>
-     * <p>{@link #cells} 是<b>源→口</b>的完整格序列（可能跨多条 trace），
-     * {@code traceOf[i]} 记录第 i 个节点来自哪条 trace（诊断/回溯用）。
-     * 河道生成（宽度/深度/水面/断面）应<b>以 River 为单位</b>计算，
-     * 而不是以 trace 为单位 —— 这样同一条河只求值一次，接缝自然消失。</p>
+     * 骨架内部的局部河流单元。只合并唯一、首尾相接的串联段；共享下游不复制、不独占。
+     * {@code cells} 是本单元的有序几何，不承诺已经包含到湖海的全路径。
+     * JOIN 后从 {@code downstreamRiver} 的 {@code downstreamNode} 继续，不能从其源头重走。
+     * 本表示不计算流量或属性，也不替代跨区端口和湖泊出口契约。
      */
     public static final class River {
-        /** 本河包含的 trace 下标（源→口顺序）。单条 trace 的河就是长度 1。 */
         public final int[] traceIdx;
-        /** 源→口的完整格序列（已去除相邻重复）。 */
+        /** 本单元源→尾的格序列，仅去掉相邻重复。 */
         public final int[] cells;
-        /** 每个节点来自哪条 trace（与 {@link #cells} 等长，诊断用）。 */
         public final int[] traceOf;
-        /** 终点语义（取最后一条 trace 的 end）。 */
+        /** 保留最后一条 trace 的终止语义；异常连接由 link 单独报告。 */
         public final End end;
-        /** 河源所在 trace 是否为溢口段（湖后河）。 */
         public final boolean fromOutlet;
-        /** 该 River 所属窗口的格阵每行长度（{@code cell = i*nz + j}）—— 换算世界坐标必需。 */
         public final int nz;
+        /** 本次 Result.rivers 内的局部下标；没有确定接收者时为 -1。 */
+        public final int downstreamRiver;
+        /** 接收单元中的真实汇入节点（包含共享汇入格），没有确定接收者时为 -1。 */
+        public final int downstreamNode;
+        public final RiverLink link;
 
-        River(int[] traceIdx, int[] cells, int[] traceOf, End end, boolean fromOutlet, int nz) {
+        River(int[] traceIdx, int[] cells, int[] traceOf, End end, boolean fromOutlet, int nz,
+              int downstreamRiver, int downstreamNode, RiverLink link) {
             this.traceIdx = traceIdx;
             this.cells = cells;
             this.traceOf = traceOf;
             this.end = end;
             this.fromOutlet = fromOutlet;
             this.nz = nz;
+            this.downstreamRiver = downstreamRiver;
+            this.downstreamNode = downstreamNode;
+            this.link = link;
         }
 
         public int nodeCount() { return cells.length; }
@@ -266,75 +253,119 @@ public final class DeterministicSkeleton {
         public int mouthCell() { return cells.length == 0 ? -1 : cells[cells.length - 1]; }
     }
 
-    /**
-     * 从 trace 列表重建河流（见 {@link River} 的说明）。
-     *
-     * <p><b>算法</b>（一轮、确定性、不重走 parent）：</p>
-     * <ol>
-     *   <li>建 {@code cell → 拥有它的 trace}（多个时取<b>最先出现</b>者，与 first-wins 一致）；</li>
-     *   <li>对每条 trace，若 {@code end == JOIN}，用 mouthCell 找下游 trace ⇒ 记 {@code next[i]}；</li>
-     *   <li>找所有"没有上游"的 trace（即不在任何 next 的目标集合里）作为河流起点；</li>
-     *   <li>从每个起点沿 next 串到底，拼出 cells（跳过与上一段重复的首格）。</li>
-     * </ol>
-     *
-     * <p>汇合处（多个上游指向同一 trace）：该 trace 只会被串一次 —— 由<b>其中一条</b>
-     * 上游带走，其余上游各自成一条 River 并在汇合点终止。这是有意的：
-     * 各支流有自己的水面/宽度，汇合后的干流由带走它的那条链代表。</p>
-     */
+    private record RiverJoin(int trace, int node, RiverLink link) { }
+
+    /** 线性于输入节点数；不重走 parent，不修改 traces 或生产 shape。 */
     static java.util.List<River> buildRivers(java.util.List<Trace> traces, int nz) {
         int n = traces.size();
-        if (n == 0) return List.of();
-        // ① cell → trace（first-wins）
-        java.util.Map<Integer, Integer> cellOwner = new java.util.HashMap<>();
-        for (int i = 0; i < n; i++) for (int c : traces.get(i).cell) cellOwner.putIfAbsent(c, i);
-        // ② next[i] = 下游 trace
-        int[] next = new int[n];
-        java.util.Arrays.fill(next, -1);
+        RiverJoin[] joins = riverJoins(traces);
+        boolean[] cyclic = riverCycles(joins);
+        int[] incoming = new int[n], predecessor = new int[n];
+        java.util.Arrays.fill(predecessor, -1);
+        for (var join : joins) if (join.trace >= 0) incoming[join.trace]++;
+        int[] merge = new int[n];
+        java.util.Arrays.fill(merge, -1);
         for (int i = 0; i < n; i++) {
+            var j = joins[i];
+            if (j.trace < 0 || cyclic[i] || cyclic[j.trace] || j.node != 0
+                    || incoming[j.trace] != 1 || traces.get(j.trace).fromOutlet) continue;
+            merge[i] = j.trace;
+            predecessor[j.trace] = i;
+        }
+        List<River> units = new ArrayList<>();
+        int[] owner = new int[n];
+        int[][] nodeMap = new int[n][];
+        for (int s = 0; s < n; s++) {
+            if (predecessor[s] >= 0) continue;
+            units.add(riverUnit(s, merge, traces, nz, units.size(), owner, nodeMap));
+        }
+        List<River> out = new ArrayList<>(units.size());
+        for (var r : units) {
+            int last = r.traceIdx[r.traceIdx.length - 1];
+            var j = joins[last];
+            RiverLink link = cyclic[last] ? RiverLink.CYCLE : j.link;
+            int down = j.trace < 0 ? -1 : owner[j.trace];
+            int node = j.trace < 0 ? -1 : nodeMap[j.trace][j.node];
+            out.add(new River(r.traceIdx, r.cells, r.traceOf, r.end, r.fromOutlet, nz, down, node, link));
+        }
+        return List.copyOf(out);
+    }
+
+    private static RiverJoin[] riverJoins(List<Trace> traces) {
+        java.util.Map<Integer, RiverJoin> receivers = new java.util.HashMap<>();
+        for (int i = 0; i < traces.size(); i++) {
             var t = traces.get(i);
-            if (t.end != End.JOIN || t.cell.length == 0) continue;
-            Integer d = cellOwner.get(t.mouthCell());
-            if (d != null && d != i) next[i] = d;
-        }
-        // ③ 起点：不是任何 next 目标的 trace
-        boolean[] hasUpstream = new boolean[n];
-        for (int i = 0; i < n; i++) if (next[i] >= 0) hasUpstream[next[i]] = true;
-        java.util.List<River> out = new java.util.ArrayList<>();
-        boolean[] used = new boolean[n];
-        for (int s = 0; s < n; s++) {
-            if (hasUpstream[s] || used[s]) continue;
-            // ④ 沿 next 串到底
-            java.util.List<Integer> chain = new java.util.ArrayList<>();
-            java.util.List<Integer> cellList = new java.util.ArrayList<>();
-            java.util.List<Integer> fromList = new java.util.ArrayList<>();
-            int cur = s;
-            while (cur >= 0 && !used[cur]) {
-                used[cur] = true;
-                chain.add(cur);
-                var t = traces.get(cur);
-                for (int c : t.cell) {
-                    // 跳过与上一段末格重复的首格（JOIN 点共享）
-                    if (!cellList.isEmpty() && cellList.get(cellList.size() - 1) == c) continue;
-                    cellList.add(c);
-                    fromList.add(cur);
-                }
-                cur = next[cur];
+            int limit = t.cell.length;
+            // JOIN 尾格（含相邻重复）声明的是来流，不是接收者；非相邻回访仍须暴露。
+            if (t.end == End.JOIN && limit > 0) {
+                int mouth = t.mouthCell();
+                while (limit > 0 && t.cell[limit - 1] == mouth) limit--;
             }
-            if (chain.isEmpty()) continue;
-            var last = traces.get(chain.get(chain.size() - 1));
-            out.add(new River(toIntArr(chain), toIntArr(cellList), toIntArr(fromList),
-                    last.end, traces.get(s).fromOutlet, nz));
+            for (int k = 0; k < limit; k++) {
+                if (k > 0 && t.cell[k] == t.cell[k - 1]) continue;
+                var candidate = new RiverJoin(i, k, RiverLink.CONNECTED);
+                var old = receivers.putIfAbsent(t.cell[k], candidate);
+                if (old != null) receivers.put(t.cell[k], new RiverJoin(-1, -1, RiverLink.AMBIGUOUS_RECEIVER));
+            }
         }
-        // ⑤ 兜底：环或断链导致的未使用 trace 各自成河（不丢几何）
-        for (int s = 0; s < n; s++) {
-            if (used[s]) continue;
-            used[s] = true;
-            var t = traces.get(s);
-            out.add(new River(new int[]{s}, t.cell.clone(),
-                    new int[t.cell.length], t.end, t.fromOutlet, nz));
-            java.util.Arrays.fill(out.get(out.size() - 1).traceOf, s);
+        RiverJoin[] joins = new RiverJoin[traces.size()];
+        for (int i = 0; i < traces.size(); i++) {
+            var t = traces.get(i);
+            if (t.cell.length == 0) joins[i] = new RiverJoin(-1, -1, RiverLink.EMPTY_PATH);
+            else if (t.end != End.JOIN) joins[i] = new RiverJoin(-1, -1, RiverLink.TERMINAL);
+            else joins[i] = receivers.getOrDefault(t.mouthCell(),
+                    new RiverJoin(-1, -1, RiverLink.MISSING_RECEIVER));
         }
-        return out;
+        return joins;
+    }
+
+    private static boolean[] riverCycles(RiverJoin[] joins) {
+        int[] state = new int[joins.length];
+        boolean[] cyclic = new boolean[joins.length];
+        for (int s = 0; s < joins.length; s++) {
+            if (state[s] != 0) continue;
+            int cur = s;
+            while (cur >= 0 && state[cur] == 0) {
+                state[cur] = 1;
+                cur = joins[cur].trace;
+            }
+            if (cur >= 0 && state[cur] == 1) {
+                int start = cur;
+                do {
+                    cyclic[cur] = true;
+                    cur = joins[cur].trace;
+                } while (cur != start);
+            }
+            cur = s;
+            while (cur >= 0 && state[cur] == 1) {
+                state[cur] = 2;
+                cur = joins[cur].trace;
+            }
+        }
+        return cyclic;
+    }
+
+    private static River riverUnit(int start, int[] merge, List<Trace> traces, int nz, int id,
+                                   int[] owner, int[][] nodeMap) {
+        List<Integer> chain = new ArrayList<>(), cells = new ArrayList<>(), from = new ArrayList<>();
+        int last = start;
+        for (int cur = start; cur >= 0; cur = merge[cur]) {
+            last = cur;
+            chain.add(cur);
+            owner[cur] = id;
+            var t = traces.get(cur);
+            nodeMap[cur] = new int[t.cell.length];
+            for (int k = 0; k < t.cell.length; k++) {
+                int c = t.cell[k];
+                if (cells.isEmpty() || cells.get(cells.size() - 1) != c) {
+                    cells.add(c);
+                    from.add(cur);
+                }
+                nodeMap[cur][k] = cells.size() - 1;
+            }
+        }
+        return new River(toIntArr(chain), toIntArr(cells), toIntArr(from), traces.get(last).end,
+                traces.get(start).fromOutlet, nz, -1, -1, RiverLink.TERMINAL);
     }
 
     private static int[] toIntArr(java.util.List<Integer> list) {
@@ -414,11 +445,8 @@ public final class DeterministicSkeleton {
         /** ★ pass2 新出口<b>无 pass1 承诺</b> ⇒ 显式未决（不得当全局完成）。 */
         public List<BoundaryPort> pendingExits = List.of();
         /**
-         * ★★★ 2026-10-25【河流重建结果】★★★
-         *
-         * <p>由 {@link #buildRivers} 从本结果的 traces 聚合而成。
-         * <b>河道生成（宽度/深度/水面/断面）必须以它为单位计算</b>，
-         * 不能再用 traces —— trace 是追踪单元，同一条河会被切成多条。</p>
+         * 骨架内部局部连接结果；几何由串联单元保存，共享下游通过真实节点索引连接。
+         * 当前生产 shape/宽深仍消费 traces；本字段不证明属性连续或全周期完成。
          */
         public java.util.List<River> rivers = java.util.List.of();
         /** ★ incoming 起点已由 base 下游满足 ⇒ 合并数（不新增链、不伪造 JOIN）。 */
