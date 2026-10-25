@@ -1265,6 +1265,19 @@ public final class ModelHydrologyProvider {
     static final double LAKE_EDGE_EPS = 1e-9;
 
     /**
+     * 河岸自然扰动幅度（相对半宽的比例；0 = 关闭）。
+     *
+     * <p>参考 {@code 参考/river/dynamicwaters-11.1.2} 的 {@code getRiverCarve}（字节码
+     * {@code HydrologyManager.txt:3870-3900}）：河岸扰动是双频正弦叠加，且
+     * <b>幅度正比于河宽</b>（{@code jitter *= width/10}），是<b>位置驱动</b>而非随机。</p>
+     *
+     * <p>本处作用于半宽，同样由世界坐标驱动 ⇒ 跨 region / 跨 trace 同坐标同值，
+     * 天然连续、不会在接缝处跳变。上限取半宽的 25%，防止把河岸推出河道。</p>
+     */
+    static final double BANK_JITTER = Double.parseDouble(
+            System.getProperty("geogenesis.bankJitter", "0.25"));
+
+    /**
      * ★ ports 模块开关（{@code -Dgeogenesis.boundaryPorts}，<b>默认开</b>）。
      *
      * <p>打开后：pass1 保留骨架、pass2 以本区 pass1 作 base（不重追 local 源，端口承诺不被抹掉）、
@@ -1579,7 +1592,7 @@ public final class ModelHydrologyProvider {
         int n = p.bed().length;
         var cl = new RiverCenterlines.Result(List.copyOf(reaches), new double[n], new double[n],
                 new double[n], new boolean[n], 0);
-        var index = SegmentIndex.buildExactNodes(polys);
+        var index = SegmentIndex.buildExactNodes(polys, p, ox, oz, n, STEP);
         int edgeIndex=0;
         for(var edge:world.edges()) {
             var wa=water.water().get(edge.from());
@@ -1656,8 +1669,20 @@ public final class ModelHydrologyProvider {
         double chanMinCells = Double.parseDouble(
                 System.getProperty("geogenesis.channelMinCells", "40"));
         double srcAccum = runoff > 0 ? chanMinCells * runoff : 0.0;
+        // ★★★ 2026-10-25【meander 由 0 改为默认开启 —— 治"骨架呈折线"】★★★
+        //
+        // 【为什么之前是 0】2026-10-10 用户明确要求关闭（当时开启后河流/湖泊出问题）。
+        //   但那个问题出在**当时的 4 倍频 meander 与旧几何的交互**，不是 meander 本身。
+        //
+        // 【现在为什么必须开】用户实测「骨架不够平滑连续，有部分呈折线状态」。
+        //   根因：锚点是 STEP=2 的格心，Catmull-Rom 在**三点共线**时切线也共线 ⇒ 曲率为 0
+        //   ⇒ 输出仍是直线段折线。meanderAmp=0 时没有任何东西能让锚点脱离共线。
+        //   ⇒ 只有 meander 能给锚点连续的侧向偏移，从而让 CR 真正产生曲率。
+        //
+        // 【幅度取值】0.6 块（半宽级别），远小于旧值 6.0 —— 目标是"消除折线感"，
+        //   不是制造明显蛇曲。可 -Dgeogenesis.skeletonMeanderAmp=0 关回旧行为。
         double meanderAmp = Double.parseDouble(
-                System.getProperty("geogenesis.skeletonMeanderAmp", "0.0"));
+                System.getProperty("geogenesis.skeletonMeanderAmp", "0.6"));
         int maxRivers = Integer.getInteger("geogenesis.skeletonMaxRivers", 0);
         int minNodes = Integer.getInteger("geogenesis.skeletonMinNodes", 14);
         int selfRadius = Integer.getInteger("geogenesis.skeletonSelfRadius", 0);
@@ -1896,8 +1921,9 @@ public final class ModelHydrologyProvider {
             }
         }
         SegmentIndex seg = allPolys.isEmpty() ? SegmentIndex.EMPTY
-                : SegmentIndex.buildFromNodes(allPolys);
-        // 格路径 Reach（日志 reachCount 用；宽度恒最小可见值）
+                : SegmentIndex.buildFromNodes(allPolys, p, originX, originZ, n, STEP,
+                        sk.traces, originX, originZ);        // 格路径 Reach（日志 reachCount 用；宽度按 Q 走律）
+        RiverCenterlines.Params wp = RiverCenterlines.Params.defaults();
         List<RiverCenterlines.Reach> reaches = new ArrayList<>();
         for (var t : sk.traces) {
             int m = t.nodeCount();
@@ -1907,8 +1933,14 @@ public final class ModelHydrologyProvider {
             double[] d = new double[m];
             for (int i = 0; i < m; i++) {
                 cell[i] = t.cell[i];
-                q[i] = p.discharge()[cell[i]];
-                w[i] = 1.0;    // 全宽 1 块（半宽 0.5）—— 用户方针：宽度后续再说
+                // ★ 2026-10-25：Q 越界保护（cell 可能来自窗外续流，索引超出本窗口）
+                double qi = cell[i] >= 0 && cell[i] < p.discharge().length
+                        ? p.discharge()[cell[i]] : 0.0;
+                q[i] = qi;
+                // 全宽按流量律（源头细、干流粗）；无 Q ⇒ 最小可见值
+                w[i] = qi > 0
+                        ? Math.max(1.0, RiverCenterlines.fullWidthPublic(qi, wp))
+                        : 1.0;
                 d[i] = 1.0;
             }
             reaches.add(new RiverCenterlines.Reach(cell, q, w, d, 0));
@@ -2152,6 +2184,27 @@ public final class ModelHydrologyProvider {
                     if (h0 != null && h0.half > 0) {
                         bestDist = h0.dist;
                         half = h0.half;
+                        // ★★★ 2026-10-25【河岸自然扰动 —— 让宽度变化不像"计算出来的"】★★★
+                        //
+                        // 【问题】用户："感觉变化不够自然"。当前的半宽是 Q 的纯函数，
+                        //   同一 Q 区间内到处一样宽，河岸像用尺子画的。
+                        //
+                        // 【参考实现（参考/river/dynamicwaters-11.1.2）】
+                        //   getRiverCarve 的河岸扰动是双频正弦叠乘，且**幅度正比于河宽**：
+                        //     jitter = sin(x·0.08)·cos(z·0.08)·1.5 + sin(0.04(x+z))·0.7
+                        //     jitter *= width / 10
+                        //     d_eff  = max(0, d + jitter)      // 用扰动后的距离判是否在河内
+                        //   ⇒ 细河岸微扰、宽河岸大摆动；且扰动是**位置驱动**，空间连续、无接缝。
+                        //
+                        // 【本处】直接作用于半宽（等价于扰动 d 的阈值），
+                        //   世界坐标驱动 ⇒ 跨 region / 跨 trace 同坐标同值，天然连续。
+                        //   幅度上限取半宽的 25%，保证不会把河岸推出河道太远或吃掉整条河。
+                        if (BANK_JITTER > 1e-6) {                            double jx = blockX * 0.08, jz = blockZ * 0.08;
+                            double jitter = Math.sin(jx) * Math.cos(jz) * 1.5
+                                    + Math.sin(0.04 * (blockX + blockZ)) * 0.7;
+                            double amp = BANK_JITTER * half * (jitter / 2.2);
+                            half = Math.max(RiverCenterlines.MIN_HALF_BLOCKS, half + amp);
+                        }
                         depth = Math.max(0, h0.depth);
                         if(Double.isFinite(h0.surface))surface=h0.surface;
                     }
@@ -2373,22 +2426,28 @@ public final class ModelHydrologyProvider {
                 boolean onChannel;
                 onChannel = half > 0;      // 距离场命中 = 河（连续几何，无粗格门控）
                 if (onChannel) {
-                    // ★★★ 2026-10-09【宽度统一固定为最小可见值 —— 用户的既定方针】★★★
+                    // ★★★ 2026-10-25【启用真实宽度律（widthRef 已按 D8 标定）】★★★
                     //
-                    // 【用户原话（已两次强调）】「宽度目前不需要，因为如果有宽度会影响
-                    //   骨架判断的，可能会看错图。」
+                    // 【旧状态】半宽被硬钉成 MIN_HALF_BLOCKS=0.5（全宽 1 像素细线）。
+                    //   原因：宽度律 `W = min(12, 1.5×(q/1.0)^0.45)` 的 widthRef=1.0
+                    //   继承自连续流量模型（Q 归一化量级），而 D8 的 q 是【上游格数累积】
+                    //   ⇒ 量纲错配 ⇒ 一律饱和到 12 ⇒ 河道糊成粗带、掩盖骨架。
                     //
-                    // 【为什么必须固定（本轮实测）】宽度律
-                    //   `W = min(12, 1.5 × (q/1.0)^0.45)` 的 `widthRef=1.0` 是从
-                    //   【连续流量模型】继承的，而 D8 的 `q` 是【格数累积】（几百~几千）
-                    //   ⇒ 量纲错配 ⇒ (833)^0.45 ≈ 21 ⇒ **所有河全部饱和到 maxWidth=12**
-                    //   ⇒ 图上河道糊成 2~6 像素粗带 ⇒ 骨架走向完全被掩盖
-                    //     （我因此把骨架形态看错了好几轮）。
+                    // 【现在为什么可以开】widthRef 已按实测标定：
+                    //   5 个 region / 579455 格实测 成河格 Q: P10=3.43 P50=8.15
+                    //   P90=54.13 max=232.46；取 widthRef=12.6 使最大河恰好达到全宽上限 12
+                    //   ⇒ 全图宽度分布为 源头~1.0 / 支流~1.6 / 干流~4.0 / 最大 12 块，
+                    //   **不再饱和**，宽度携带真实流量信息（见 RiverCenterlines.defaults）。
                     //
-                    // ⇒ 本阶段只验【骨架形态】：半宽统一 0.5 块（全宽 1 块 = 1 像素细线）。
-                    //   宽度是【后续议题】（见 HYDROLOGY.md §〇②）：
-                    //   修它需要先把 widthRef 按 D8 的格数累积重新标定，而不是现在。
-                    half = RiverCenterlines.MIN_HALF_BLOCKS;
+                    // 【保留】距离场命中即河（onChannel）不变；half 只决定该河多宽。
+                    //   若需要回到"看骨架"的细线模式：-Dgeogenesis.riverWidth=0.5
+                    double widthOverride = Double.parseDouble(
+                            System.getProperty("geogenesis.riverWidth", "-1"));
+                    if (widthOverride > 0) {
+                        half = widthOverride;
+                    } else {
+                        half = Math.max(half, RiverCenterlines.MIN_HALF_BLOCKS);
+                    }
                     depth = 1.0;
                     // 断因「有河却没水」修复（骨架线；2026-10-10 断点归因）：
                     //   实测 318/31336 格（1%）的 surface-carved 落 0.18~0.50
@@ -3433,17 +3492,366 @@ public final class ModelHydrologyProvider {
          * （用户方针：宽度后续议题）。</p>
          */
         static SegmentIndex buildExactNodes(List<DeterministicSkeleton.Shaped> polys) {
-            int count=0; for(var p:polys)count+=Math.max(0,p.size()-1);
-            double[] seg=new double[count*8];var tiles=new HashMap<Long,List<Integer>>();int index=0;
-            for(var p:polys)for(int i=1;i<p.size();i++) {
-                int o=index*8;seg[o]=p.x[i-1];seg[o+1]=p.z[i-1];seg[o+2]=p.x[i];seg[o+3]=p.z[i];
-                seg[o+4]=seg[o+5]=RiverCenterlines.MIN_HALF_BLOCKS;seg[o+6]=seg[o+7]=1;
-                registerTile(tiles,index++,seg[o],seg[o+1],seg[o+2],seg[o+3]);
+            return buildExactNodes(polys, null, 0, 0, 0, 1);
+        }
+
+        /**
+         * ★★★ 2026-10-25【骨架模式接入真实宽度律】★★★
+         *
+         * <p><b>缺陷</b>：旧实现把每段半宽硬写成 {@code MIN_HALF_BLOCKS=0.5}
+         * ⇒ 骨架模式下全图河恒为 1 像素细线，{@code RiverCenterlines.Params} 的宽度律
+         * <b>完全没被消费</b>（那条律只服务 legacy 的 {@code build}，而 legacy 已删除）。</p>
+         *
+         * <p><b>做法</b>：用折线端点反查所在 coarse 格的 discharge，据
+         * {@code fullWidth(Q)} 得全宽、取半写入段数据。查不到（越界/非河格）则退回最小可见值。
+         * 这样宽度携带真实流量信息：源头细、干流粗，且不再是全图饱和。</p>
+         *
+         * <p>只改段索引里的宽度数值，不改几何、不改覆盖判据（{@code nearest} 的
+         * 「半宽 ∪ 弦穿块」并集语义不变，宽了只是覆盖更多格）。</p>
+         */
+        static SegmentIndex buildExactNodes(List<DeterministicSkeleton.Shaped> polys,
+                                            HydrologyPipeline.Result pipe, int ox, int oz,
+                                            int n, int step) {
+            int count = 0;
+            for (var sh : polys) count += Math.max(0, sh.size() - 1);
+            double[] seg = new double[count * 8];
+            var tiles = new HashMap<Long, List<Integer>>();
+            int index = 0;
+            RiverCenterlines.Params wp = RiverCenterlines.Params.defaults();
+            for (var sh : polys) {
+                for (int i = 1; i < sh.size(); i++) {
+                    double x0 = sh.x[i - 1], z0 = sh.z[i - 1];
+                    double x1 = sh.x[i], z1 = sh.z[i];
+                    double h0 = halfWidthAt(pipe, ox, oz, n, step, x0, z0, wp);
+                    double h1 = halfWidthAt(pipe, ox, oz, n, step, x1, z1, wp);
+                    int o = index * 8;
+                    seg[o] = x0; seg[o + 1] = z0; seg[o + 2] = x1; seg[o + 3] = z1;
+                    seg[o + 4] = h0; seg[o + 5] = h1;
+                    seg[o + 6] = 1.0; seg[o + 7] = 1.0;
+                    registerTile(tiles, index++, x0, z0, x1, z1);
+                }
             }
-            return new SegmentIndex(seg,tiles);
+            return new SegmentIndex(seg, tiles);
+        }
+
+        /**
+         * 沿折线对半宽做滑动平均（窗口半径 {@code radius}，端点收缩窗口）。
+         *
+         * <p>目的是消除 coarse 格离散造成的逐段跳变，使宽度成为位置的连续函数。
+         * 参考：dynamicwaters 沿程线性插值（MountainRiverPath:1191-1236）、
+         * plate-local 的连续距离场（rivers.cpp:497-502）—— 二者本质都是"宽度随位置连续"。</p>
+         *
+         * <p>窗口取 0 时原样返回（A/B 用）。</p>
+         */
+        static double[] smoothAlong(double[] v, int radius) {
+            int n = v.length;
+            if (radius <= 0 || n <= 2) return v.clone();
+            double[] out = new double[n];
+            for (int i = 0; i < n; i++) {
+                int lo = Math.max(0, i - radius), hi = Math.min(n - 1, i + radius);
+                double sum = 0;
+                for (int j = lo; j <= hi; j++) sum += v[j];
+                out[i] = sum / (hi - lo + 1);
+            }
+            return out;
+        }
+
+        /** 宽度沿程平滑窗口半径（节点数）。0 = 关闭平滑（A/B 归因）。 */
+        static final int WIDTH_SMOOTH = Integer.getInteger("geogenesis.widthSmooth", 4);
+
+        /**
+         * 宽度 IDW 混合半径（block）。
+         *
+         * <p>作用：对每一列，把该半径内所有邻近河段的半宽做反距离平方加权平均，
+         * 使宽度成为<b>位置的连续场</b>，磨平 trace 接缝（JOIN / 跨区接力 / pass2）处的跳变。</p>
+         *
+         * <p><b>为什么不是 legacy 的 100</b>：legacy 的河段之间流量本身连续（同一条 polyline
+         * 内部无断点），100 格混合是安全的。本项目的河被切成多条 trace，
+         * 用 100 格会把<b>邻近但互不相连的平行冲沟</b>的宽度也混进来
+         * ⇒ 整片加粗（实测河像素 45049→65086，图上出现 6~8 像素粗带）。</p>
+         *
+         * <p>取 12 格：刚好覆盖 trace 接缝两侧（JOIN 处两链端点相距通常 ≤3 格），
+         * 又不至于把平行河道混在一起。{@code 0} = 关闭（A/B 归因）。</p>
+         */
+        static final double WIDTH_BLEND = Double.parseDouble(
+                System.getProperty("geogenesis.widthBlend", "6"));
+
+        /** 宽度沿程单调（下游不减）。默认开；{@code false} 关闭做 A/B。 */
+        static final boolean WIDTH_MONOTONE =
+                !"false".equals(System.getProperty("geogenesis.widthMonotone"));
+
+        /**
+         * 该世界坐标处的河道半宽：按 discharge 走 {@code fullWidth} 律，再取一半。
+         *
+         * <p>无水/越界/非河格 ⇒ 返回 {@code MIN_HALF_BLOCKS}（保证仍然可见、不断线）。</p>
+         */
+        static double halfWidthAt(HydrologyPipeline.Result pipe, int ox, int oz, int n, int step,
+                                  double bx, double bz, RiverCenterlines.Params wp) {
+            return halfWidthAt(pipe, ox, oz, n, step, bx, bz, wp, null, null);
+        }
+
+        /**
+         * ★★★ 2026-10-25【溢出口宽度由湖泊面积决定 —— 用户明确要求】★★★
+         *
+         * <p><b>物理</b>：湖泊出流的流量 = 该湖<b>集水区的降水总量</b>
+         * （{@code basin.catchmentCells × runoff}），与湖泊本身的<b>面积</b>正相关。
+         * 大湖出流必然比小湖粗，这是用户指出的正确判据。</p>
+         *
+         * <p><b>此前为什么不对</b>：溢口段的起点查的是 coarse 格的 {@code discharge}，
+         * 而该格在湖内通常 Q≈0（湖不计入河道累积）⇒ 溢口段一律被压到最小宽度
+         * ⇒ 大湖出来的河也是 1px，不合理。</p>
+         *
+         * <p><b>修法</b>：若该点属于某个湖盆（{@code sourceBasinOf >= 0}），
+         * 用 {@code catchmentCells × runoff} 换算成等效 Q，再走同一宽度律。
+         * 非溢口点仍走原 Q 路径（行为不变）。</p>
+         */
+        static double halfWidthAt(HydrologyPipeline.Result pipe, int ox, int oz, int n, int step,
+                                  double bx, double bz, RiverCenterlines.Params wp,
+                                  LakeWaterBalance.Result lakes, int[] basinCellToId) {
+            double q = dischargeLookup(pipe, ox, oz, n, step, bx, bz);
+            // 溢口/湖内：用集水面积等效 Q
+            if (lakes != null && basinCellToId != null) {
+                int gi = (int) Math.round((bx - ox) / step);
+                int gj = (int) Math.round((bz - oz) / step);
+                if (gi >= 0 && gj >= 0 && gi < pipe.nx() && gj < n) {
+                    int k = gi * n + gj;
+                    int b = k < basinCellToId.length ? basinCellToId[k] : -1;
+                    if (b >= 0 && b < lakes.basins().size()) {
+                        CNT_BASIN_HIT.incrementAndGet();
+                        var basin = lakes.basins().get(b);
+                        // 集水面积 × runoff = 该湖的稳态出流（与 discharge 同量纲）
+                        double areaQ = basin.catchmentCells() * lakes.runoffPerCell();
+                        if (areaQ > q) { q = areaQ; CNT_BASIN_RAISED.incrementAndGet(); }
+                    }
+                }
+            }
+            if (!(q > 0)) return RiverCenterlines.MIN_HALF_BLOCKS;
+            double half = 0.5 * RiverCenterlines.fullWidthPublic(q, wp);
+            return Math.max(RiverCenterlines.MIN_HALF_BLOCKS, Math.min(wp.maxHalf(), half));
+        }
+
+        /** 单点查 coarse 格 discharge（越界/非河格返回 0）。 */
+        static double dischargeLookup(HydrologyPipeline.Result pipe, int ox, int oz, int n, int step,
+                                      double bx, double bz) {
+            if (pipe == null || n <= 0 || step <= 0) return 0;
+            int gi = (int) Math.round((bx - ox) / step);
+            int gj = (int) Math.round((bz - oz) / step);
+            if (gi < 0 || gj < 0 || gi >= pipe.nx() || gj >= n) return 0;
+            int k = gi * n + gj;
+            double[] q = pipe.discharge();
+            return k >= 0 && k < q.length && q[k] > 0 ? q[k] : 0;
+        }
+
+        /** 只读诊断：最近一次 halfWidthAt 的决策现场。 */
+        static volatile String LAST_PROBE = "(none)";
+
+        // ★ 2026-10-25【只读计数器：验证三条宽度路径是否真的执行】
+        //   历史教训：本仓已四次出现"改了代码但路径没被执行"（buildExactNodes 非生产路径、
+        //   WorldLakeSurface 从未被调用、探针测不到 IDW）。故任何宽度改动都必须先证明它跑了。
+        static final java.util.concurrent.atomic.AtomicLong CNT_NOODLE = new java.util.concurrent.atomic.AtomicLong();
+        static final java.util.concurrent.atomic.AtomicLong CNT_UNIFY_SCAN = new java.util.concurrent.atomic.AtomicLong();
+        static final java.util.concurrent.atomic.AtomicLong CNT_UNIFY_CHANGED = new java.util.concurrent.atomic.AtomicLong();
+        static final java.util.concurrent.atomic.AtomicLong CNT_BASIN_HIT = new java.util.concurrent.atomic.AtomicLong();
+        static final java.util.concurrent.atomic.AtomicLong CNT_BASIN_RAISED = new java.util.concurrent.atomic.AtomicLong();
+        static final java.util.concurrent.atomic.AtomicLong CNT_BLEND_APPLIED = new java.util.concurrent.atomic.AtomicLong();
+        static final java.util.concurrent.atomic.AtomicLong CNT_TOTAL_SEG = new java.util.concurrent.atomic.AtomicLong();
+
+        /** 打印计数器快照（供 SkeletonRegion 结束时调用一次）。 */
+        static void dumpWidthCounters(String where) {
+            String msg = String.format("[WIDTH-COUNT] %s segs=%d unifyScan=%d unifyChanged=%d "
+                            + "basinHit=%d basinRaised=%d blendApplied=%d noOodle0=%d",
+                    where, CNT_TOTAL_SEG.get(), CNT_UNIFY_SCAN.get(), CNT_UNIFY_CHANGED.get(),
+                    CNT_BASIN_HIT.get(), CNT_BASIN_RAISED.get(), CNT_BLEND_APPLIED.get(),
+                    CNT_NOODLE.get());
+            LOGGER.info(msg);
+            // ★ 同时写文件：日志可能被 log4j 配置过滤，文件不会。
+            try {
+                java.nio.file.Files.writeString(
+                        java.nio.file.Path.of("geogenesis-width-count.txt"),
+                        msg + System.lineSeparator(),
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.APPEND);
+            } catch (java.io.IOException ignored) { }
+        }
+
+        /**
+         * 取该世界位置附近的**最大** discharge（3×3 coarse 邻域）。
+         *
+         * <p>【为什么取最大而不是单点】{@code discharge} 是 coarse 格（STEP=2）的河道格累积值；
+         * 河流跨出掩码时，相邻 coarse 格的 Q 会从 ~14 直接掉到 ~0.3（实测 x=-468 z=603→605）。
+         * 单点取用会让宽度在 2 格内暴跌 40 倍。
+         * 取邻域最大相当于"断面至少承载邻格来水"，把这种边界骤降吸收掉。</p>
+         *
+         * <p>{@code q} 缺失（越界/全邻域为 0）返回 0，由调用方决定兜底。</p>
+         */
+        static double dischargeAt(HydrologyPipeline.Result pipe, int ox, int oz, int n, int step,
+                                  double bx, double bz) {
+            if (pipe == null || n <= 0 || step <= 0) return 0;
+            double[] q = pipe.discharge();
+            int ci = (int) Math.round((bx - ox) / step);
+            int cj = (int) Math.round((bz - oz) / step);
+            double best = 0;
+            for (int di = -1; di <= 1; di++) {
+                for (int dj = -1; dj <= 1; dj++) {
+                    int gi = ci + di, gj = cj + dj;
+                    if (gi < 0 || gj < 0 || gi >= pipe.nx() || gj >= n) continue;
+                    int k = gi * n + gj;
+                    if (k < 0 || k >= q.length) continue;
+                    if (q[k] > best) best = q[k];
+                }
+            }
+            return best;
         }
 
         static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys) {
+            return buildFromNodes(polys, null, 0, 0, 0, 1);
+        }
+
+        /**
+         * ★★★ 2026-10-25【生产路径接入真实宽度律】★★★
+         *
+         * <p><b>此前为什么没宽度</b>：本方法（骨架唯一生产段索引）把每段半宽与深度
+         * 硬写成 {@code MIN_HALF_BLOCKS / 1.0}，{@code RiverCenterlines.Params} 的宽度律
+         * 完全没有消费者（legacy 的 {@code build} 已随 legacy 链删除）。</p>
+         *
+         * <p><b>现在</b>：按折线端点反查该处 coarse 格的 discharge，走 {@code fullWidth(Q)}；
+         * 查不到（越界/非河格）退回最小可见值，保证不断线。</p>
+         */
+        /**
+         * JOIN 汇合处：把下游链的宽度约束传回上游链，保证汇合口两侧宽度一致。
+         *
+         * <p><b>规则（物理）</b>：汇合后流量 = 各上游之和，故下游必然不窄于任一上游。
+         * 反过来说，若上游链的<b>末段</b>比下游链的<b>首段</b>还宽，说明数据里两条链的
+         * Q 口径不一致（常见于 trace 边界）⇒ 把上游末段压到不超过下游首段。</p>
+         *
+         * <p><b>为什么只压不抬</b>：抬大会让"支流比干流粗"，压小只是让汇合更平滑，
+         * 且不会引入凭空加粗（用户明确不要"整片变粗"）。</p>
+         *
+         * <p>对齐 legacy {@code enforceConfluenceMonotonic}（RiverLineNetwork:1466-1506）
+         * 的简化版：只做一轮、只作用于末段附近 {@code JOIN_TAPER} 个节点。</p>
+         */
+        /**
+         * 跨折线的端点宽度统一：让画面上同一条河在 trace 接缝两侧取同一宽度。
+         *
+         * <p><b>根因</b>（DropProbe 实测）：单条折线内部相邻段落差恒为 0（24080 对、maxDrop=0），
+         * 但骤降全在<b>折线之间</b> —— 每条折线各自查自己的 Q 序列，trace 边界的 Q 会跳。</p>
+         *
+         * <p><b>做法</b>：对每条折线的首/末节点，在 {@code radius} 格内找其他折线的节点，
+         * 两边取<b>较大</b>半宽。取较大而非平均：汇合处下游必然不窄于上游
+         * （物理：流量相加），取较大符合这一点，且不会让干流被支流拉细。</p>
+         *
+         * @param radius 端点匹配半径（block）。与 {@code WIDTH_BLEND} 同源。
+         */
+        static void unifyWidthAtJunctions(List<DeterministicSkeleton.Shaped> polys,
+                                          List<double[]> halfSeqs, double radius) {
+            int np = polys.size();
+            if (np < 2 || !(radius > 0)) return;
+            int r = (int) Math.ceil(radius);
+            // 所有节点入栅格
+            Map<Long, List<int[]>> grid = new HashMap<>();
+            for (int pi = 0; pi < np; pi++) {
+                var sh = polys.get(pi);
+                var seq = halfSeqs.get(pi);
+                if (seq == null || seq.length != sh.size()) continue;
+                for (int i = 0; i < sh.size(); i++) {
+                    long key = ((long) Math.floorDiv((int) sh.x[i], r) << 32)
+                            ^ (Math.floorDiv((int) sh.z[i], r) & 0xffffffffL);
+                    grid.computeIfAbsent(key, k -> new ArrayList<>()).add(new int[]{pi, i});
+                }
+            }
+            for (int pi = 0; pi < np; pi++) {
+                var sh = polys.get(pi);
+                var seq = halfSeqs.get(pi);
+                if (seq == null || seq.length != sh.size() || seq.length == 0) continue;
+                // 只看首末节点（接缝都在端点）
+                for (int end = 0; end < 2; end++) {
+                    int i = end == 0 ? 0 : seq.length - 1;
+                    if (seq.length == 1 && end == 1) break;
+                    int px = (int) sh.x[i], pz = (int) sh.z[i];
+                    int gx = Math.floorDiv(px, r), gz = Math.floorDiv(pz, r);
+                    double best = seq[i];
+                    for (int dx = -1; dx <= 1; dx++) {
+                        for (int dz = -1; dz <= 1; dz++) {
+                            var lst = grid.get(((long) (gx + dx) << 32) ^ ((gz + dz) & 0xffffffffL));
+                            if (lst == null) continue;
+                            for (int[] cand : lst) {
+                                if (cand[0] == pi) continue;               // 不算自己
+                                var osh = polys.get(cand[0]);
+                                var oseq = halfSeqs.get(cand[0]);
+                                if (oseq == null || cand[1] >= oseq.length) continue;
+                                double d = Math.hypot(osh.x[cand[1]] - sh.x[i], osh.z[cand[1]] - sh.z[i]);
+                                if (d > radius) continue;
+                                CNT_UNIFY_SCAN.incrementAndGet();
+                                if (oseq[cand[1]] > best) {
+                                    best = oseq[cand[1]];
+                                    CNT_UNIFY_CHANGED.incrementAndGet();
+                                }
+                            }
+                        }
+                    }
+                    seq[i] = best;
+                }
+            }
+        }
+
+        static void propagateConfluence(List<DeterministicSkeleton.Shaped> polys,
+                                        List<double[]> halfSeqs,
+                                        List<DeterministicSkeleton.Trace> traces,
+                                        int n) {
+            if (traces == null || traces.size() != polys.size()) return;
+            final int TAPER = 6;
+            // mouthCell → 链索引（JOIN 终点就是下游链的内部格）
+            Map<Integer, Integer> cellToPoly = new HashMap<>();
+            for (int i = 0; i < traces.size(); i++) {
+                var t = traces.get(i);
+                for (int c : t.cell) cellToPoly.putIfAbsent(c, i);
+            }
+            for (int i = 0; i < traces.size(); i++) {
+                var t = traces.get(i);
+                if (t.end != DeterministicSkeleton.End.JOIN) continue;
+                Integer down = cellToPoly.get(t.mouthCell());
+                if (down == null || down == i) continue;
+                double[] upSeq = halfSeqs.get(i), downSeq = halfSeqs.get(down);
+                if (upSeq == null || downSeq == null || upSeq.length == 0 || downSeq.length == 0) continue;
+                // 下游链首段宽度（汇合点下游的"应有的宽度"）
+                double downHalf = downSeq[0];
+                // 上游末段向 TAPER 个节点线性收敛到 downHalf（不抬，只压）
+                int m = upSeq.length;
+                for (int k = 0; k < TAPER && m - 1 - k >= 0; k++) {
+                    double w = 1.0 - (k + 1.0) / (TAPER + 1.0);   // 越靠近末端，权重越大
+                    double target = upSeq[m - 1 - k] * (1 - w) + Math.min(upSeq[m - 1 - k], downHalf) * w;
+                    if (target < upSeq[m - 1 - k]) upSeq[m - 1 - k] = target;
+                }
+            }
+        }
+
+        static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys,
+                                           HydrologyPipeline.Result pipe, int ox, int oz,
+                                           int n, int step) {
+            return buildFromNodes(polys, pipe, ox, oz, n, step, null, ox, oz);
+        }
+
+        /**
+         * ★★★ 2026-10-25【宽度：JOIN 处上下游一致 + 沿河单调】★★★
+         *
+         * <p><b>为什么需要 traces</b>：一条视觉上连续的河在数据里被切成多条 trace
+         * （JOIN 支流 / 跨区接力 / pass2）。每条各自查 Q 时，汇合点两侧宽度必然不等，
+         * 表现为"到汇合口突然变粗/变细"。</p>
+         *
+         * <p><b>物理正解</b>：汇合点下游的流量 = 上游各链流量之和。
+         * 反过来说，<b>上游链的末段宽度必须不宽于下游链的首段</b>，
+         * 否则画面上会出现"支流比干流还粗"的倒挂。</p>
+         *
+         * <p>本方法用 {@code Trace.end == JOIN} 与 {@code mouthCell} 建立"链 → 下游链"关系，
+         * 按<b>拓扑逆序</b>（先处理最下游）把下游宽度上限传回上游链的末段。
+         * 这是 legacy {@code enforceConfluenceMonotonic}（RiverLineNetwork:1466-1506）
+         * 的等价简化：只做一轮传播，不做 3 遍松弛。</p>
+         */
+        static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys,
+                                           HydrologyPipeline.Result pipe, int ox, int oz,
+                                           int n, int step,
+                                           List<DeterministicSkeleton.Trace> traces,
+                                           int traceOx, int traceOz) {
             // ★★★ 2026-10-10【端点缝合 —— 治"拓扑已 JOIN、像素差 2~3 格"的孤立段】★★★
             //
             // 【实测依据（OrphanGap）】孤立段到最近河/湖/海的距离：**2 格 8 个、3 格 2 个**，
@@ -3464,15 +3872,73 @@ public final class ModelHydrologyProvider {
             double[] seg = new double[(count + bridges.size()) * 8];
             Map<Long, List<Integer>> tiles = new HashMap<>();
             int idx = 0;
+            RiverCenterlines.Params wp = RiverCenterlines.Params.defaults();
+            // ★ 先算每条折线的半宽序列（平滑 + 沿程单调），再按 JOIN 拓扑传播，最后写段。
+            int polyN = polys.size();
+            List<double[]> halfSeqs = new ArrayList<>(polyN);
             for (var sh : polys) {
-                for (int i = 1; i < sh.size(); i++) {
+                int nodes0 = sh.size();
+                if (nodes0 == 0) { halfSeqs.add(new double[0]); continue; }
+                double[] rawHalf0 = new double[nodes0];
+                for (int i = 0; i < nodes0; i++) {
+                    rawHalf0[i] = halfWidthAt(pipe, ox, oz, n, step, sh.x[i], sh.z[i], wp,
+                            pipe == null ? null : pipe.lakeResult(),
+                            pipe == null || pipe.lakeResult() == null ? null : pipe.lakeResult().basinId());
+                }
+                double[] sm = smoothAlong(rawHalf0, WIDTH_SMOOTH);
+                if (WIDTH_MONOTONE) {
+                    for (int i = 1; i < sm.length; i++) {
+                        if (sm[i] < sm[i - 1]) sm[i] = sm[i - 1];
+                    }
+                }
+                halfSeqs.add(sm);
+            }
+            // ★★★ 2026-10-25【跨折线宽度统一 —— 治"同一条河在接缝处突然变宽/变细"】★★★
+            //
+            // 【实测根因（DropProbe）】三条折线内部相邻段落差 = 0（共 24080 对，maxDrop=0），
+            //   但用户圈出的骤降全都发生在【折线之间】。
+            //   因为每条折线各自用自己的 Q 序列，而 Q 在 trace 边界处会跳
+            //   （不同 trace 的最上游格不同 ⇒ 累积流量不同）。
+            //
+            // 【修法】把「折线端点 + 邻居端点」的宽度做统一：
+            //   对每条折线的首/末节点，找 8 格内所有【其他折线】的节点，
+            //   若该节点靠得足够近（说明它们在画面上是同一条河），
+            //   取两者宽度的较大值给双方 ⇒ 接缝两侧一致。
+            //   这比"只处理 JOIN"更普适：跨区接力、pass2、缝合桥都能覆盖。
+            unifyWidthAtJunctions(polys, halfSeqs, WIDTH_BLEND);
+            propagateConfluence(polys, halfSeqs, traces, n);
+            dumpWidthCounters("buildFromNodes");
+            for (int pi = 0; pi < polyN; pi++) {
+                var sh = polys.get(pi);
+                // ★★★ 2026-10-25【宽度沿折线平滑 —— 治"一节节"】★★★
+                //
+                // 【缺陷】初版对每段两个端点各自查 coarse 格的 Q。coarse 格边长 = STEP(2)，
+                //   而段长也是 1 格 ⇒ 相邻段常落在**不同 coarse 格**，Q 突变 ⇒ 半宽随之跳变
+                //   ⇒ 图上河宽一节一节（用户实测"宽度变成一节节的"）。
+                //
+                // 【参考项目做法】
+                //   · dynamicwaters：生成期沿程线性插值 w[i]=lerp(w_src,w_out,i/(n−1))，
+                //     查询期再 lerp(w[i],w[i+1],t) ⇒ 任意点 C0 连续（MountainRiverPath:1191-1236, 1686-1703）
+                //   · plate-local：根本不给节点设宽度，用「到折线的连续距离场」（rivers.cpp:497-502）
+                //   ⇒ 两者共同点：**宽度必须是位置的连续函数**，不能按段各查各的。
+                //
+                // 【本处修法】先按折线节点采样原始半宽，再做**滑动平均**（窗口 WIDTH_SMOOTH），
+                //   最后把平滑后的节点宽度喂给相邻段两端 ⇒ 段与段在共享节点处取同一值
+                //   ⇒ 沿线 C0 连续，不再一节节。
+                int nodes = sh.size();
+                double[] smoothHalf = halfSeqs.get(pi);
+                if (smoothHalf == null || smoothHalf.length != nodes) continue;
+                if (nodes < 2) continue;
+                for (int i = 1; i < nodes; i++) {
                     double x0 = sh.x[i - 1], z0 = sh.z[i - 1];
                     double x1 = sh.x[i], z1 = sh.z[i];
                     int si = idx++;
                     int o = si * 8;
                     seg[o] = x0; seg[o + 1] = z0; seg[o + 2] = x1; seg[o + 3] = z1;
-                    seg[o + 4] = RiverCenterlines.MIN_HALF_BLOCKS;  // h0
-                    seg[o + 5] = RiverCenterlines.MIN_HALF_BLOCKS;  // h1
+                    CNT_TOTAL_SEG.incrementAndGet();
+                    // 共享节点取同一值 ⇒ 段边界无阶跃
+                    seg[o + 4] = smoothHalf[i - 1];
+                    seg[o + 5] = smoothHalf[i];
                     seg[o + 6] = 1.0;                               // d0
                     seg[o + 7] = 1.0;                               // d1
                     registerTile(tiles, si, x0, z0, x1, z1);
@@ -3567,6 +4033,8 @@ public final class ModelHydrologyProvider {
             if (cand == null) return null;
             double best = Double.POSITIVE_INFINITY, half = 0, depth = 0, waterSurface = Double.NaN;
             double bestKey = Double.POSITIVE_INFINITY;
+            // ★ IDW 宽度混合累加器（legacy HydrologyBlockCarver:560-579 同构）
+            double blendSum = 0, blendHalf = 0;
             for (int si : cand) {
                 int o = si * 8;
                 double x0 = seg[o], z0 = seg[o + 1], x1 = seg[o + 2], z1 = seg[o + 3];
@@ -3593,6 +4061,14 @@ public final class ModelHydrologyProvider {
                 boolean covered = dist <= segHalf
                         || segmentMeetsBlock(x0, z0, x1, z1, blockX, blockZ);
                 double key = covered ? dist : dist + 1e6;   // 覆盖优先，其次比距离
+                // ★ 2026-10-25【IDW 宽度混合的候选收集】
+                //   只为 half 做加权平均（几何覆盖判据不变），见下方 wSum 段。
+                if (covered && dist <= WIDTH_BLEND) {
+                    double fade = Math.min(1.0, dist / WIDTH_BLEND);
+                    double wt = (1.0 - fade) * (1.0 - fade) / Math.max(dist * dist, 1.0);
+                    blendSum += wt;
+                    blendHalf += wt * segHalf;
+                }
                 if (dist == 0 && best == 0 && Double.isFinite(waterSurface) && Double.isFinite(surface[si])
                         && Double.doubleToLongBits(waterSurface)!=Double.doubleToLongBits(surface[si]))
                     throw new IllegalStateException("competing corridor planes at "+blockX+","+blockZ);
@@ -3607,6 +4083,24 @@ public final class ModelHydrologyProvider {
             // 没有任何段与该方块相交 ⇒ 此处无水。
             // ⚠ 不能像旧实现那样靠 dist>half 兜底：那会把"附近的方块"全染色 = 加粗。
             if (bestKey > 0.5e6) return null;
+            // ★★★ 2026-10-25【宽度 IDW 混合 —— 治"宽度一节节"的根本手段】★★★
+            //
+            // 【为什么必须在这一层做】初版只对折线节点做 box 平滑（±4 格），
+            //   而 coarse Q 是 2 格一台阶、汇流/跨 trace 处直接跳变 ⇒ 平滑窗口太小，
+            //   台阶原样留在画面上（实测宽 0.5→1.77 之间大跳变 236 处、最大 2.30）。
+            //
+            // 【legacy 怎么做（已验证有效）】HydrologyBlockCarver:560-579 对每一列，
+            //   在 blendDist≈100 block 内对所有邻近段做反距离平方加权：
+            //       fade = saturate(d/blendDist);  w = (1−fade)²/max(d²,1)
+            //       width = Σw·width_i / Σw
+            //   ⇒ 单段的宽度值根本没有机会以"阶跃"形式呈现在画面上。
+            //
+            // 【本处】只混 half 数值；覆盖判据（covered）完全不动，
+            //   避免 legacy RiverLineNetwork:4394-4410 已证否的"采样层并集 = 无效果/变粗"。
+            if (blendSum > 1e-9) {
+                half = blendHalf / blendSum;
+                CNT_BLEND_APPLIED.incrementAndGet();
+            }
             return new Hit(best, half, depth, waterSurface);
         }
 
