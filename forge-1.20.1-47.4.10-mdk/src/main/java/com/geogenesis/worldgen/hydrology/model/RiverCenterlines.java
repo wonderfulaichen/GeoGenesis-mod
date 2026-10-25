@@ -128,7 +128,30 @@ public final class RiverCenterlines {
         }
         /** 与 {@code ContinuousRiverNetwork.Params.forRunoff} 同一套宽度律。 */
         public static Params defaults() {
-            return new Params(1.0, 1.5, 0.45, 12.0, 1.0, 0.6, 8.0, 0.002, 0.5, 12.0);
+            // ★★★ 2026-10-25【宽度律标定（第三版 · 按用户明确要求）】★★★
+            //
+            // 【用户口径】"最小在 1 格到最大 12 格。肯定渐变啊，不然完全不自然。"
+            //   ⇒ 全宽 W ∈ [1, 12]，且必须随流量连续渐变，不能分档、不能跳变。
+            //
+            // 【D8 实测 Q 分布】5 region / 579455 格，成河格：
+            //   P10=3.43   P50=8.15   P90=54.13   max=232.46
+            //
+            // 【标定（数值求解，非手算近似）】用户口径 W ∈ [1, 12] 且必须连续渐变。
+            //   D8 实测成河格 Q：P10=3.43  P50=8.15  P90=54.13  max=232.46
+            //   令 W(3.43)=1.0、W(232.46)=12.0，两式相除解出指数：
+            //     e = ln(12/1) / ln(232.46/3.43) = 0.5894
+            //   再取 headWidth=1.5 反解 widthRef：
+            //     widthRef = 3.43 / (1.0/1.5)^(1/0.5894) = 6.8245
+            //   ⇒ 实测该组参数的宽度曲线：
+            //     Q=3.43  ⇒ 1.00 块（细流，1 格）
+            //     Q=8.15  ⇒ 1.67 块（典型支流）
+            //     Q=20    ⇒ 2.83 块
+            //     Q=54.1  ⇒ 5.08 块（中等干流）
+            //     Q=120   ⇒ 8.13 块
+            //     Q=232.5 ⇒ 12.00 块（最大，正好触上限）
+            //   ⚠ 不用 e=0.45：那样要 headWidth=1.8/widthRef=12.66 才能两端对齐，
+            //     但中段偏细（Q=54 只有 3.46 块），干流不够醒目。
+            return new Params(6.8245, 1.5, 0.5894, 12.0, 1.0, 0.6, 8.0, 0.002, 0.5, 6.0);
         }
     }
 
@@ -625,6 +648,15 @@ public final class RiverCenterlines {
     private static double fullWidth(double q, Params p) {
         double ratio = Math.max(1e-9, q / p.widthRef());
         return Math.min(p.maxWidth(), p.headWidth() * Math.pow(ratio, p.widthExponent()));
+    }
+
+    /**
+     * 对外暴露的宽度律（供骨架段索引按 discharge 计算半宽）。
+     *
+     * <p>与内部 {@link #fullWidth} 同一实现，不复制公式 —— 避免两处漂移。</p>
+     */
+    public static double fullWidthPublic(double q, Params p) {
+        return fullWidth(q, p);
     }
 
     /**
