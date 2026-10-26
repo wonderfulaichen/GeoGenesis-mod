@@ -56,6 +56,33 @@ import java.util.Map;
  */
 public final class RiverWidthProfile {
 
+    /**
+     * <h2>★★ 宽度约束优先级（唯一权威，冲突时按此仲裁）★★</h2>
+     *
+     * <p>用户多次指出："判定要先排好优先级，不然就会冲突"。此前所有反复都源于
+     * <b>没有单一优先级表</b>，各处各自 {@code min}/{@code max}，谁后执行谁赢。故在此定死：</p>
+     *
+     * <ol>
+     *   <li><b>P0 结构骨架</b>（不可违反）：1 格 ≤ 全宽 ≤ 12 格；骨架坐标不动。
+     *       —— 超出即 {@code clampRow}，无例外。</li>
+     *   <li><b>P1 输入语义</b>（不可违反）：出湖净出流/湖尺度只作<b>上限</b>，绝不抬粗；
+     *       Q 是宽度来源；集水面积不参与定宽。</li>
+     *   <li><b>P2 跨区约定</b>（硬契约）：typed 端口宽度双方必须一致；
+     *       边界 pin 在其位置上精确。</li>
+     *   <li><b>P3 接点拓扑</b>（硬契约）：串联段共用断面；汇流后接收段 ≥ 任一入流。</li>
+     *   <li><b>P4 过渡可行性</b>（本轮新增，压过 P5）：<b>起点宽度必须能在本河长度内平缓收到末端</b>。
+     *       给不出足够长度时，<b>压低起点</b>，而不是让斜率变陡。
+     *       见 {@link #feasibleStartHalf}。</li>
+     *   <li><b>P5 湖泊规模</b>（软，受 P4 约束）：出湖起点按源湖横向尺度，全宽 ≤ 6 格；
+     *       真源头固定 1 格全宽。</li>
+     *   <li><b>P6 局部变化</b>（最软）：中间段允许局部浮动（{@link #LOCAL_DEVIATION}），
+     *       但不得破坏 P0–P4。</li>
+     * </ol>
+     *
+     * <p><b>冲突示例（本轮实测）</b>：源湖横向 47 格 ⇒ P5 要求起点全宽 5.88；
+     * 但该河仅 32 格长、末端流入横向 6 格的小湖（P3 要求末端 ≈1.0）。
+     * P4 判定"做不到"，于是把起点压到 2.0 —— <b>细没问题，陡才是问题</b>（用户原话）。</p>
+     */
     private RiverWidthProfile() { }
 
     /** 接缝过渡弧长（block）。两侧各 32 ⇒ 平台相距 &gt;64 时正中必回原剖面。 */
@@ -142,7 +169,8 @@ public final class RiverWidthProfile {
         double[][] arc = arcLengths(polys);
         List<List<double[]>> pins = pinsByShape(boundaryHalf, polys, arc, traces, ox, oz, n, step);
         anchorBoundaryLimits(envelope.limits(), pins, arc);
-        taperSources(out, polys, arc, traces, rivers, continuedHeads, pins);
+        taperSources(out, polys, arc, traces, rivers, continuedHeads, pins,
+                envelope.interfaces(), envelope.limits());
         inheritAlong(out, polys, arc, traces, inheritedHalf, ox, oz, n, step);
         for (int p = 0; p < np; p++) {
             applyPinPlan(out.get(p), arc[p], pins.get(p));
@@ -166,105 +194,71 @@ public final class RiverWidthProfile {
         for (var junction : envelope.interfaces()) {
             if (!junction.applied()) continue;
             int p = junction.poly();
-            int i = junction.kind().equals(LakeWidthEnvelope.KIND_SOURCE) ? 0 : out.get(p).length-1;
+            if (junction.kind().equals(LakeWidthEnvelope.KIND_SOURCE)) {
+                // ★ 出湖起点宽度已由湖泊规模定死（全宽 ≤ MAX_OUTLET_FULL_WIDTH），
+                //   这是用户口径下的"源头宽度"，不再被"该湖横向尺度"的几何上限二次压细。
+                //   两者的职责区分：湖泊规模决定**起点**，横向几何上限约束**入湖端**。
+                continue;
+            }
+            int i = out.get(p).length - 1;
             out.get(p)[i] = Math.min(out.get(p)[i], junction.maxHalf());
             envelope.limits().get(p)[i] = Math.min(envelope.limits().get(p)[i], junction.maxHalf());
         }
         constrainUpstreamTails(out, polys, arc, rivers);
-        enforceDownstreamMonotone(out, polys, arc, rivers);
-        enforceExitPortMonotone(out, polys, arc, traces, boundaryHalf, outletHalfByWorld, ox, oz, n, step);
         return new Result(out, envelope.limits(), envelope.interfaces());
     }
 
     /**
-     * ★ 跨区单调：本窗口里"流出边界"的那一端，不得比下游窗口的接收宽度更粗。
+     * ★ 用户硬约束：<b>同一条河的上游不得宽于下游</b>。
      *
-     * <p><b>为什么需要单独一步</b>：{@link #enforceDownstreamMonotone} 只在<b>本窗口</b>的
-     * {@code chainEdges} 图里传播；另一侧的河段在邻区，本窗口看不到它的宽度，
-     * 于是"上游窗口末端 5.14、下游窗口起点 1.62"这种倒挂会从<b>窗口边界</b>漏过去
-     * （实测 5 处、最大半宽差 3.52）。</p>
+     * <h3>作用域（关键，曾被做错过）</h3>
+     * <p>只在<b>单条 trace 内部</b>做运行最小：节点 i 的半宽取其自身与<b>同一 trace 内所有更下游节点</b>
+     * 的较小者。<b>不跨 trace、不跨汇流</b>。</p>
      *
-     * <p><b>为什么不能靠 boundary pin 自己</b>：{@code boundaryWidths} 把<b>本区自己发出的端口</b>
-     * 也写进了 pin（发送方语义），于是刚被单调压细的出口又被 pin 抬回原值 —— 实测端口差
-     * 在加了本步之后<b>一个都没变</b>（21 处数值逐位相同）。故本步必须在 pin 之后、且只对
-     * <b>出口格</b>施加 {@code min}，允许它覆盖 pin 的上抬。</p>
+     * <p><b>为什么不能向"源头"全局传播</b>：那样等价于"整棵汇流树都不得宽于最终出口段"。
+     * 实测后果（36 区 1597 条 ≥20 节点河道）：<b>370 条剖面被压平</b>（stdev 降 &gt;65%）、
+     * <b>340 条最大宽度被削掉 &gt;1 格</b>；`(-3,0) trace1` 由 4.73–12.00 变成<b>全 3.24 常量</b>。
+     * 支流本来就该比干流细，把它们一起压到最细出口是错的。</p>
+     *
+     * <h3>与汇流的配合</h3>
+     * <p>汇流处<b>不做向下压</b>，只保留 {@code reconcileConfluences} 的"合流后不窄于任一入流"。
+     * 因此本步必须在 {@code reconcileConfluences} <b>之前</b>执行：先让每条河自身单调，
+     * 再由汇流把接收段的下游抬到 ≥ 来流；两者方向一致，不会互相打回。</p>
+     *
+     * <p>串联段（同一 {@code River} 的相邻 trace）由 {@code joinTailPin} 保证 {@code A尾 == B头}，
+     * 而 A、B 各自单调 ⇒ 整条接力链自然单调，无需跨 trace 传播。</p>
+     *
+     * <h3>pin 的优先级（外部硬约定不能被单调改写）</h3>
+     * <p>{@code boundaryWidths} 的端口值是<b>与邻区的约定</b>，它的"精确"是正确性的一部分；
+     * 单调只能调整 pin <b>之外</b>的节点。故运行最小在这里<b>只看非 pin 节点</b>，
+     * pin 节点保持原值。若某 pin 与单调天然冲突（上游更粗），那属于上游侧的问题，
+     * 由下游侧的 pin 与端口检查暴露，而不是在这里把约定值悄悄改掉。</p>
      */
-    private static void enforceExitPortMonotone(List<double[]> prof, List<DeterministicSkeleton.Shaped> polys,
-                                                double[][] arc, List<DeterministicSkeleton.Trace> traces,
-                                                Map<Integer, Double> boundaryHalf,
-                                                Map<Long, Double> outletHalfByWorld,
-                                                int ox, int oz, int n, int step) {
-        if (traces == null) return;
-        if ((boundaryHalf == null || boundaryHalf.isEmpty())
-                && (outletHalfByWorld == null || outletHalfByWorld.isEmpty())) return;
-        for (int p = 0; p < prof.size() && p < traces.size(); p++) {
-            var t = traces.get(p);
+    static void enforceDownstreamMonotone(List<double[]> prof, List<List<double[]>> pins, double[][] arc) {
+        for (int p = 0; p < prof.size(); p++) {
             double[] row = prof.get(p);
-            if (t == null || row.length == 0 || t.cell.length == 0) continue;
-            if (t.end != DeterministicSkeleton.End.BOUNDARY_EXIT) continue;
-            Double agreed = agreedAtCell(boundaryHalf, outletHalfByWorld, t.mouthCell(), ox, oz, n, step);
-            if (agreed == null) continue;
-            // 从末端向源头做运行最小：出口被下游约定值封顶后，整条上游也随之下压。
-            double ceiling = agreed;
-            for (int i = row.length - 1; i >= 0; i--) {
-                ceiling = Math.min(ceiling, row[i]);
-                row[i] = Math.max(RiverCenterlines.MIN_HALF_BLOCKS, ceiling);
-            }
-        }
-    }
-
-    /** 该格（先边界 pin，再出湖约定）的跨区约定半宽；都没有 ⇒ null。 */
-    private static Double agreedAtCell(Map<Integer, Double> boundaryHalf, Map<Long, Double> outletHalfByWorld,
-                                       int cell, int ox, int oz, int n, int step) {
-        Double pin = boundaryHalf == null ? null : boundaryHalf.get(cell);
-        if (pin != null && Double.isFinite(pin)) return pin;
-        if (outletHalfByWorld == null || n <= 0) return null;
-        Double outlet = outletHalfByWorld.get(worldKey(ox + (cell / n) * (double) step,
-                oz + (cell % n) * (double) step));
-        return outlet != null && Double.isFinite(outlet) ? outlet : null;
-    }
-
-    /**
-     * ★ 用户硬约束：<b>同一条河沿下游不得变窄</b>（上游半宽 ≤ 下游半宽）。
-     *
-     * <p><b>为什么必须作为最后一道</b>：湖口上限是"以接口为顶点、按弧长向两侧放宽"的锥，
-     * 天然允许<b>靠近小湖的一段更细、远离小湖的一段更粗</b> ⇒ 顺流看就是"上游粗、下游细"。
-     * 此前用 32 block 衰减的上游收束只能压到河口附近，远处依旧保留宽值，
-     * 于是短河上出现整条从粗收到细的楔形（实测 73 格河段 5.44→1.25）。</p>
-     *
-     * <p><b>算法</b>：按 DAG 逆拓扑（下游先定稿）逐 trace 从河口向源头做运行最小：
-     * 每个节点取"自身与<b>所有更下游</b>值"的较小者。串联/汇流经 {@code chainEdges} 的后继边
-     * 跨 trace 传递，故整条有向路径一次收敛；成环节点不跨边传递（与其它接点处理一致）。</p>
-     *
-     * <p>只减不增 ⇒ 不会放大任何既有上限，也不改变骨架。若某个 boundary pin 被本步压低，
-     * 说明该 pin 与"下游不得变窄"冲突，由 {@code WidthContinuityProbe} 的端口差检查暴露，
-     * 不在这里静默掩盖。</p>
-     */
-    private static void enforceDownstreamMonotone(List<double[]> prof, List<DeterministicSkeleton.Shaped> polys,
-                                                  double[][] arc, List<DeterministicSkeleton.River> rivers) {
-        int np = prof.size();
-        int[] succ = new int[np];
-        Arrays.fill(succ, -1);
-        if (rivers != null) for (var r : rivers) chainEdges(succ, r, np, rivers);
-        boolean[] cyc = cycleNodes(succ, np);
-        for (int u : postOrder(succ, np)) {
-            double[] row = prof.get(u);
-            if (row.length == 0) continue;
-            int d = succ[u];
+            if (row == null || row.length == 0) continue;
+            double[] pinArc = arc == null || p >= arc.length ? null : arc[p];
+            List<double[]> own = pins == null || p >= pins.size() ? List.of() : pins.get(p);
             double ceiling = Double.POSITIVE_INFINITY;
-            if (d >= 0 && d < np && !cyc[u] && !cyc[d] && prof.get(d).length > 0) {
-                var sh = polys.get(u);
-                if (sh.size() > 0) {
-                    double[] hit = projectOnto(polys.get(d), arc[d],
-                            sh.x[sh.size() - 1], sh.z[sh.size() - 1]);
-                    if (hit != null) ceiling = lerpAt(prof.get(d), hit);
-                }
-            }
             for (int i = row.length - 1; i >= 0; i--) {
+                boolean pinned = isPinned(own, pinArc, i);
                 ceiling = Math.min(ceiling, row[i]);
-                row[i] = Math.max(RiverCenterlines.MIN_HALF_BLOCKS, ceiling);
+                if (!pinned) row[i] = Math.max(RiverCenterlines.MIN_HALF_BLOCKS, ceiling);
             }
         }
+    }
+
+    /** 该节点是否落在某个 pin 平台内（与 {@code applyPinPlan} 的"平台内精确"同一判据）。 */
+    private static boolean isPinned(List<double[]> own, double[] arcN, int i) {
+        if (own == null || own.isEmpty() || arcN == null || i < 0 || i >= arcN.length) return false;
+        double s = arcN[i];
+        for (double[] pin : own) {
+            if (pin != null && pin.length >= 3 && s >= pin[0] - ARC_EPS && s <= pin[1] + ARC_EPS) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 双方端口值已由同一pass1代表裁定；局部弧长差不能再改变该平台的覆盖上限。 */
@@ -283,15 +277,26 @@ public final class RiverWidthProfile {
     // ① 原始采样
 
     /**
-    /**
-     * 逐节点取 Q 宽度。{@code pipe == null} 时 {@code halfWidthAt} 内部查 Q 得 0
-     * ⇒ 返回最小可见半宽（"输入 width disabled ⇒ 最小半宽"的唯一来源就是该既有方法）。
+     * ★ 出湖起点的全宽上限（block）：<b>6 格</b>。
      *
-     * <p><b>出湖宽度的语义 = 上限，不是下限</b>（用户 2026-10-27 明确纠正）：
-     * 该湖的净出流只说明"这条河最多能有多宽"，<b>不得</b>用它把上游整段抬粗。
-     * 早期实现写成 {@code Math.max(h, outletHalf)} ⇒ 上游被顶到出湖量级、下游又被小湖上限压细，
-     * 于是出现"上游比下游宽"的楔形（实测 73 格河段 5.44→1.25）。改为 {@code Math.min} 后，
-     * 出湖段仍然不会细于最小可见宽，但也不会凭空比来流更宽。</p>
+     * <p>用户 2026-10-27 明确：出湖起点不是从 1 格开始（那是真源头），而是<b>按湖泊规模</b>定，
+     * 但"<b>不能超过 6 格，不然后续宽度就很难有变化</b>"。全图河道全宽上限 12 格，
+     * 出湖起点只占一半 ⇒ 下游仍有翻倍空间做平缓增宽。</p>
+     */
+    static final double MAX_OUTLET_FULL_WIDTH = 6.0;
+
+    /**
+     * 逐节点取 Q 宽度。
+     *
+     * <h3>三种起点的宽度语义（用户 2026-10-27 定稿）</h3>
+     * <ul>
+     *   <li><b>真源头</b>（普通河头）：从 <b>1 格全宽</b>起步，见 {@link #taperSources}；</li>
+     *   <li><b>出湖起点</b>（{@code fromOutlet}）：<b>按湖泊规模</b>定，全宽
+     *       <b>不超过 {@value #MAX_OUTLET_FULL_WIDTH} 格</b>，见 {@link #outletSourceHalf}；</li>
+     *   <li><b>续流/串联起点</b>：沿用上游来流宽度，不重新收尖。</li>
+     * </ul>
+     * <p>三者都<b>只作用于起点</b>；中间段与下游保留本来的 Q 剖面（局部平缓变化），
+     * 由 {@link #linearSource} 从起点线性展宽到首个接点。</p>
      */
     private static double[] rawRow(DeterministicSkeleton.Shaped sh, HydrologyPipeline.Result pipe,
                                    int ox, int oz, int n, int step,
@@ -299,16 +304,6 @@ public final class RiverWidthProfile {
                                    DeterministicSkeleton.Trace trace, Map<Long, Double> outletHalfByWorld) {
         int m = sh.size();
         double[] raw = new double[m];
-        var lakes = pipe == null ? null : pipe.lakeResult();
-        int basin = trace == null || !trace.fromOutlet || trace.cell.length == 0 ? -1
-                : DeterministicSkeleton.sourceBasinOf(lakes, trace.sourceCell());
-        double outletHalf = basin < 0 ? Double.NaN
-                : halfFromQ(lakes.basins().get(basin).outflow(), wp);
-        if (Double.isFinite(outletHalf) && trace != null) {
-            Double agreed = outletHalfByWorld.get(worldKey(ox + (trace.sourceCell() / n) * (double) step,
-                    oz + (trace.sourceCell() % n) * (double) step));
-            if (agreed != null) outletHalf = agreed;
-        }
         for (int i = 0; i < m; i++) {
             // 共享汇口格的 Q 属于接收河，不能反向抬高整条支流的末端剖面。
             if (trace != null && trace.end == DeterministicSkeleton.End.JOIN && trace.cell.length > 1) {
@@ -319,16 +314,65 @@ public final class RiverWidthProfile {
                 if (Math.hypot(sh.x[i] - mx, sh.z[i] - mz) <= step * 1.5) {
                     raw[i] = ModelHydrologyProvider.SegmentIndex.halfWidthAt(pipe, ox, oz, n, step,
                             ox + trace.cell[k] / n * (double) step, oz + trace.cell[k] % n * (double) step, wp);
-                    if (Double.isFinite(outletHalf)) raw[i] = Math.min(raw[i], outletHalf);
                     continue;
                 }
             }
             double h = ModelHydrologyProvider.SegmentIndex.halfWidthAt(
                     pipe, ox, oz, n, step, sh.x[i], sh.z[i], wp);
-            if (Double.isFinite(outletHalf)) h = Math.min(h, outletHalf);
             raw[i] = Math.max(RiverCenterlines.MIN_HALF_BLOCKS, Math.min(maxHalf, h));
         }
         return raw;
+    }
+
+    /**
+     * 出湖起点的<b>半宽</b>：由<b>湖泊横向尺度</b>（{@link LakeInterfaceScale}）决定，
+     * 再把<b>全宽夹到 {@value #MAX_OUTLET_FULL_WIDTH} 格</b>以内（⇒ 半宽 ≤ 3）。
+     *
+     * <p><b>为什么是湖泊尺度而不是净出流</b>（用户口径"这个看湖泊大小"）：
+     * 尺度直接来自该接口处的湖面横向湿宽，是"湖有多大"的直观度量；
+     * 净出流是水量账本量，受集水区/蒸发影响，和"湖看起来多大"不一致。</p>
+     *
+     * <p><b>为什么封顶 6 格</b>（用户原话）："不能超过 6 格，不然后续宽度就很难有变化"。
+     * 全图上限 12 格，起点只占一半 ⇒ 下游仍有一倍空间做平缓增宽。</p>
+     *
+     * @param scaleHalf 该接口的湖尺度半宽上限（来自 envelope 的 LAKE_SOURCE 测量）；NaN/未知 ⇒ 退回最小可见宽
+     */
+    static double outletSourceHalf(double scaleHalf) {
+        if (!Double.isFinite(scaleHalf)) return RiverCenterlines.MIN_HALF_BLOCKS;
+        double cap = 0.5 * MAX_OUTLET_FULL_WIDTH;
+        return Math.max(RiverCenterlines.MIN_HALF_BLOCKS, Math.min(cap, scaleHalf));
+    }
+
+    /** 该接口（折线 + 是否出湖端）的湖尺度半宽上限；无测量 ⇒ NaN。 */
+    static double scaleHalfOf(List<LakeWidthEnvelope.Interface> interfaces, int poly, boolean source) {
+        if (interfaces == null) return Double.NaN;
+        String kind = source ? LakeWidthEnvelope.KIND_SOURCE : LakeWidthEnvelope.KIND_MOUTH;
+        for (var it : interfaces) {
+            if (it.poly() == poly && kind.equals(it.kind()) && it.applied()) return it.maxHalf();
+        }
+        return Double.NaN;
+    }
+
+    /**
+     * <b>P4 过渡可行性</b>：把"想要的起点半宽"压到本河长度能承受的范围。
+     *
+     * <p>半宽沿程允许的最大变化率是 {@link LakeWidthEnvelope#HALF_GROWTH_PER_BLOCK}（1/32 半宽每格）。
+     * 从起点到末端跨越 {@code arcLen} 格时，两端半宽差最多 {@code slope × arcLen}。
+     * 若"想要的起点"减"末端"超过这个预算，<b>削起点</b>（用户："细没问题啊"）。</p>
+     *
+     * <p>这条规则把"短河突变"从几何上消除：短河不可能拥有一个它收不回来的粗起点。</p>
+     *
+     * @param wantStart 按湖泊尺度想要的起点半宽
+     * @param endHalf   末端的实际半宽（无末端约束时传 0）
+     * @param arcLen    起点到末端的弧长（block）
+     * @return 可行起点半宽，恒 ≤ {@code wantStart}
+     */
+    static double feasibleStartHalf(double wantStart, double endHalf, double arcLen) {
+        if (!Double.isFinite(wantStart)) return RiverCenterlines.MIN_HALF_BLOCKS;
+        double tail = Double.isFinite(endHalf) ? Math.max(0, endHalf) : 0;
+        double budget = LakeWidthEnvelope.HALF_GROWTH_PER_BLOCK * Math.max(0, arcLen);
+        double feasible = tail + budget;
+        return Math.max(RiverCenterlines.MIN_HALF_BLOCKS, Math.min(wantStart, feasible));
     }
 
     private static double halfFromQ(double q, RiverCenterlines.Params wp) {
@@ -384,10 +428,22 @@ public final class RiverWidthProfile {
         return out;
     }
 
+    /**
+     * ★ 起点收尖：<b>真源头从 1 格起步</b>，<b>出湖起点按湖泊规模起步</b>（全宽 ≤ 6 格），
+     * 续流/串联起点不重做。
+     *
+     * <p>与旧实现的差别：旧版把 {@code fromOutlet} 直接 {@code continue} 掉 ⇒ 出湖段<b>完全没有起点处理</b>，
+     * 于是整条段按 Q 全宽铺开，源头看着"很粗"。用户口径：出湖起点也是源头的一种，
+     * 只是它的起步宽度由湖泊规模决定，而不是固定 1 格。</p>
+     *
+     * <p>"起步宽度"落成节点 0 上的零长 pin（精确值），再由 {@link #linearSource} 从该值
+     * 线性展宽到首个接点 ⇒ 中间段是平缓线性，不会突变。</p>
+     */
     private static void taperSources(List<double[]> prof, List<DeterministicSkeleton.Shaped> polys,
                                       double[][] arc, List<DeterministicSkeleton.Trace> traces,
                                       List<DeterministicSkeleton.River> rivers,
-                                      java.util.Set<Integer> continuedHeads, List<List<double[]>> pins) {
+                                      java.util.Set<Integer> continuedHeads, List<List<double[]>> pins,
+                                      List<LakeWidthEnvelope.Interface> interfaces, List<double[]> limits) {
         if (traces == null) return;
         boolean[] continuation = new boolean[prof.size()];
         int[] checked = new int[prof.size()];
@@ -406,15 +462,30 @@ public final class RiverWidthProfile {
         }
         for (int p = 0; p < prof.size() && p < traces.size(); p++) {
             var t = traces.get(p);
-            if (t.cell.length == 0 || t.fromOutlet || continuation[p]
+            if (t.cell.length == 0 || continuation[p]
                     || continuedHeads.contains(t.sourceCell())) continue;
             double[] w = prof.get(p);
-            if (w.length > 0) pins.get(p).add(new double[]{0, 0, RiverCenterlines.MIN_HALF_BLOCKS});
+            if (w.length == 0) continue;
+            // ★ 优先级仲裁（见类头 P0–P6）：
+            //   P5 想要的起点 = 源湖横向尺度（≤6 格全宽）；真源头 = 1 格全宽。
+            //   P4 可行性 = 该起点必须能在【本河长度】内平缓收/放到末端；做不到就削起点。
+            //   末端参考 = 本河入湖/入海接口的尺度（无则 0）⇒ 预算 = 斜率 × 弧长。
+            double wantStart = t.fromOutlet
+                    ? outletSourceHalf(scaleHalfOf(interfaces, p, true))
+                    : RiverCenterlines.MIN_HALF_BLOCKS;
+            double arcLen = arc[p].length == 0 ? 0 : arc[p][arc[p].length - 1];
+            double endRef = scaleHalfOf(interfaces, p, false);
+            double startHalf = feasibleStartHalf(wantStart, endRef, arcLen);
+            pins.get(p).add(new double[]{0, 0, startHalf});
+            // ★ 起点是精确 pin，它比"按几何外推的湖口锥上限"更权威：
+            //   把节点 0 的上限同步抬到起点值，否则后面 `min(width, cap)` 会把起点再压回去
+            //   （实测 30 处节点 half > widthLimits，最大超出 1.59）。
+            limits.get(p)[0] = Math.max(limits.get(p)[0], startHalf);
             double reach = arc[p].length == 0 ? TRANSITION_BLOCKS
                     : Math.min(TRANSITION_BLOCKS, arc[p][arc[p].length - 1]);
             for (int i = 0; i < w.length; i++) {
                 double alpha = smoothstep01(arc[p][i] / Math.max(ARC_EPS, reach));
-                w[i] = RiverCenterlines.MIN_HALF_BLOCKS + (w[i] - RiverCenterlines.MIN_HALF_BLOCKS) * alpha;
+                w[i] = startHalf + (w[i] - startHalf) * alpha;
             }
         }
     }
@@ -512,8 +583,19 @@ public final class RiverWidthProfile {
             for (int i = 0; i < prof.get(u).length; i++) {
                 prof.get(u)[i] = Math.min(prof.get(u)[i], limits.get(u)[i]);
             }
-            if (own.stream().anyMatch(p -> p[0] == 0 && p[1] == 0
-                    && p[2] == RiverCenterlines.MIN_HALF_BLOCKS)) {
+            // 起点 pin（零长平台）存在 ⇒ 该 trace 有明确起点宽度：真源头 1 格，或出湖按湖泊尺度。
+            // ★ 两者展宽范围不同（这是关键区别）：
+            //   · 真源头是 1 格 ⇒ 可以沿【整程】平缓展宽（用户要求"线性、不突变"）；
+            //   · 出湖起点已经按湖泊尺度（最多 6 格）起步 ⇒ 只展宽【起点附近】一小段，
+            //     否则当末端被上限压细时，整条长河会被拉成"起点 6 格 → 末端 1 格"的楔形
+            //     （实测 35 条、最长 317 节点、差 5 格）。
+            // 起点 pin 的值本身就是判据：真源头被钉在 MIN_HALF_BLOCKS（1 格全宽），
+            // 出湖起点按湖泊尺度、通常大于它（也可能因小湖恰好等于它）。
+            double startPin = Double.NaN;
+            for (double[] pin : own) {
+                if (pin[0] <= ARC_EPS && pin[1] <= ARC_EPS && Double.isFinite(pin[2])) startPin = pin[2];
+            }
+            if (Double.isFinite(startPin)) {
                 double end = arc[u].length == 0 ? 0 : arc[u][arc[u].length - 1];
                 for (double[] pin : plan) if (pin[0] > ARC_EPS) end = Math.min(end, pin[0]);
                 for (int upstream = 0; upstream < np; upstream++) {
@@ -523,12 +605,27 @@ public final class RiverWidthProfile {
                     double[] hit = projectOnto(polys.get(u), arc[u], sh.x[sh.size()-1], sh.z[sh.size()-1]);
                     if (hit != null && hit[0] > ARC_EPS) end = Math.min(end, hit[0]);
                 }
+                // 起点宽度明显大于 1 格 ⇒ 这是按湖泊尺度起步的出湖段：只展宽起点附近，
+                // 避免整条长河被拉成"起点 6 格 → 末端 1 格"的楔形。
+                if (startPin > RiverCenterlines.MIN_HALF_BLOCKS + 1e-9) {
+                    end = Math.min(end, TRANSITION_BLOCKS);
+                }
                 linearSource(prof.get(u), arc[u], end);
             }
         }
     }
 
-    /** 真河源到首个属性接点按弧长均匀展宽，必须在继承与pin之后执行，避免被再次顶粗。 */
+    /**
+     * 从<b>起点实际宽度</b>线性展宽到首个接点宽度（按弧长均匀）。
+     *
+     * <p>起点宽度由 {@code applyPinPlan} 精确写入节点 0：</p>
+     * <ul>
+     *   <li><b>真源头</b> ⇒ 1 格全宽（半宽 {@code MIN_HALF_BLOCKS}）；</li>
+     *   <li><b>出湖起点</b> ⇒ 按湖泊规模，全宽 ≤ {@value #MAX_OUTLET_FULL_WIDTH} 格。</li>
+     * </ul>
+     * <p>因此这里<b>不能</b>再硬编码 {@code MIN_HALF_BLOCKS} 作起点，否则出湖起点会被二次拉回 1 格
+     * （这正是用户看到的"出湖和真源头一样细"）。</p>
+     */
     static void linearSource(double[] width, double[] arc, double end) {
         if (width.length < 2 || end <= ARC_EPS) return;
         int k = 0;
@@ -536,9 +633,9 @@ public final class RiverWidthProfile {
         int next = Math.min(k + 1, width.length - 1);
         double t = (end - arc[k]) / Math.max(ARC_EPS, arc[next] - arc[k]);
         double target = width[k] + (width[next] - width[k]) * t;
+        double start = width[0];
         for (int i = 0; i < width.length && arc[i] <= end; i++) {
-            width[i] = RiverCenterlines.MIN_HALF_BLOCKS
-                    + (target - RiverCenterlines.MIN_HALF_BLOCKS) * (arc[i] / end);
+            width[i] = start + (target - start) * (arc[i] / end);
         }
     }
 
