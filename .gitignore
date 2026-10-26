@@ -149,3 +149,4 @@ symcheck.ps1
 # 根目录 build/（refdump 参考项目源码、local-flow 临时脚本）——
 # 真工程 build/ 已在上面单独忽略；这条覆盖仓库根的这个。
 /build/
+/.prism/search/flashgrep-index/

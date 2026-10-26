@@ -1,0 +1,94 @@
+﻿java : Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8
+所在位置 行:8 字符: 1
++ java -cp $cp com.geogenesis.worldgen.hydrology.model.LakeInterfaceSca ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Picked up JAVA_....encoding=UTF-8:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+=== LakeInterfaceScale（河湖接口横向尺度）===
+REACH=96 pitch=1.0 half=width/16 clamps=[0.5,6.0] smallBodyWidth=8 window=400
+
+[OK]   小湖: 湿宽=2（两侧各 1 格） | width=2.0
+[OK]   小湖: 半宽夹到下限 0.5 | half=0.5
+[OK]   小湖: status=OK_SMALL_BODY（<8 格的比例离散例外） | OK_SMALL_BODY
+[OK]   小湖: 上限与集水面积/流量无关（只看湿区几何） | half=0.5
+[OK]   大湖: 湿宽=80（z 方向 ±40） | width=80.0
+[OK]   大湖: 半宽=湿宽/16=5（未触上下限） | half=5.0
+[OK]   大湖: status=OK | OK
+[OK]   大湖: 半宽不超过 6 | half=5.0
+  [info] 狭长湖: 面积等效直径≈36.1 ⇒ 面积判据允许半宽 2.26；本判据给出 0.50
+[OK]   狭长湖: 湿宽=2（横向仅 3 格） | width=2.0
+[OK]   狭长湖: 半宽=0.5，未按面积放宽 | half=0.5
+[OK]   狭长湖: 严格小于面积等效直径允许值 | half=0.5
+[OK]   狭长湖: 沿长轴走廊仍命中水（不是 UNKNOWN_DRY） | OK_SMALL_BODY
+  [info] 饱和: width=192.0（下界 192）half=6.00 samples=3880
+[OK]   饱和: status=OK_SATURATED | OK_SATURATED
+[OK]   饱和: 湿宽 ≥ 192（96×2 的下界） | width=192.0
+[OK]   饱和: 半宽饱和到 6 | half=6.0
+[OK]   饱和: 采样仍在解析上界内（湖外 10 格干岸 ⇒ 每偏移 ~21 次） | samples=3880
+[OK]   饱和: 不是 UNKNOWN（有界采样足够给结论） | status=OK_SATURATED
+  [info] 湖内接口: samples=194（≈2×97 首样本命中）width=192.0
+[OK]   饱和: 湖内接口每偏移首样本即命中 ⇒ samples ≤ 2×97+4 | samples=194
+[OK]   饱和: 湖内接口同样误判为饱和（几何一致） | OK_SATURATED
+[OK]   身份缺失: basinId==null ⇒ UNKNOWN_NO_IDENTITY | UNKNOWN_NO_IDENTITY
+[OK]   身份缺失: 上限 NaN（不得当小湖） | half=NaN
+[OK]   身份缺失: usable()==false | usable=false
+[OK]   身份缺失: 干岸接口 basinId=-1 ⇒ UNKNOWN_NO_IDENTITY | UNKNOWN_NO_IDENTITY
+[OK]   身份缺失: 上限 NaN | half=NaN
+[OK]   身份缺失: 显式 basin<0 ⇒ UNKNOWN_NO_IDENTITY | UNKNOWN_NO_IDENTITY
+[OK]   身份缺失: lake[]==null ⇒ UNKNOWN_NO_IDENTITY | UNKNOWN_NO_IDENTITY
+[OK]   身份缺失: lakes==null ⇒ UNKNOWN_NO_IDENTITY（不 NPE） | UNKNOWN_NO_IDENTITY
+[OK]   身份缺失: lakes==null ⇒ NaN | half=NaN
+  [info] 防串盆: A 宽=12.0 B 宽=12.0（若串盆两者都会到 25）
+[OK]   防串盆: 本盆湿宽=12（B 湖不计入） | width=12.0
+[OK]   防串盆: 对侧盆地同样只量到自己 | width=12.0
+[OK]   防串盆: 半宽=12/16=0.75 | half=0.75
+[OK]   截断: 横向撞窗 ⇒ UNKNOWN_CLIPPED | UNKNOWN_CLIPPED
+[OK]   截断: 上限 NaN（不得当小湖） | half=NaN
+[OK]   截断: usable()==false | usable=false
+[OK]   截断: 走廊撞窗 ⇒ UNKNOWN_CLIPPED（保守，不当小湖） | UNKNOWN_CLIPPED
+[OK]   截断: 走廊撞窗时上限 NaN | half=NaN
+  [info] step=1: width=40.0 half=2.500 status=OK samples=1394
+[OK]   step=1: status=OK（真实湿宽 40 格） | OK
+[OK]   step=1: width≈40（格心取整误差 ≤ 2·step） | width=40.0
+[OK]   step=1: 半宽在 [0.5,6] 内 | half=2.5
+  [info] step=2: width=41.0 half=2.563 status=OK samples=710
+[OK]   step=2: status=OK（真实湿宽 40 格） | OK
+[OK]   step=2: width≈40（格心取整误差 ≤ 2·step） | width=41.0
+[OK]   step=2: 半宽在 [0.5,6] 内 | half=2.5625
+  [info] step=4: width=43.0 half=2.688 status=OK samples=368
+[OK]   step=4: status=OK（真实湿宽 40 格） | OK
+[OK]   step=4: width≈40（格心取整误差 ≤ 2·step） | width=43.0
+[OK]   step=4: 半宽在 [0.5,6] 内 | half=2.6875
+  [info] step 泛化: 最大宽度偏差=3.0 block 最大半宽偏差=0.188
+[OK]   step 泛化: 宽度偏差 ≤ 2·step_max=8（世界距离量测，不随 step 放大） | worstWidth=3.0
+[OK]   step 泛化: 半宽偏差 ≤ step_max/8=0.5（= 2·step/16 的推论） | worstHalf=0.1875
+[OK]   方向: 对向接口给出同一湿宽 | 80.0 vs 80.0
+[OK]   方向: 对向接口给出同一半宽 | 5.0 vs 5.0
+[OK]   方向: 缩放 inward 结果不变（内部归一化） | 5.0 width=80.0
+[OK]   方向: 斜向 inward 仍可用（有限、在域内、宽度非零） | half=6.0 width=113.0
+[OK]   方向: 零向量 ⇒ UNKNOWN_DEGENERATE | UNKNOWN_DEGENERATE
+[OK]   方向: 零向量 ⇒ NaN | half=NaN
+[OK]   方向: NaN ⇒ UNKNOWN_DEGENERATE | UNKNOWN_DEGENERATE
+[OK]   方向: 指离湖 ⇒ UNKNOWN_DRY（不是小湖） | UNKNOWN_DRY
+[OK]   方向: 指离湖 ⇒ NaN | half=NaN
+[OK]   干岸接口: 沿 inward 找到真实湿湖（宽=20，非 0） | width=20.0
+[OK]   干岸接口: 半宽=20/16=1.25（避开岸零宽） | half=1.25
+[OK]   干岸接口: status=OK | OK
+[OK]   显式 basin: 隐式身份缺失 ⇒ UNKNOWN_NO_IDENTITY | UNKNOWN_NO_IDENTITY
+[OK]   显式 basin: 传入 sourceBasinOf=0 ⇒ 正常测量（宽=20） | width=20.0
+[OK]   显式 basin: 不存在的 basin ⇒ UNKNOWN_DRY（不借相邻湖） | UNKNOWN_DRY
+[OK]   显式 basin: 不存在 basin 时上限 NaN | half=NaN
+[OK]   显式 basin: 隐式身份在湖内格可用（= basinId[cell]） | width=20.0
+[OK]   误用: nx=0 ⇒ IllegalArgumentException 
+[OK]   误用: step=0 ⇒ IllegalArgumentException 
+[OK]   误用: cell 越界 ⇒ IllegalArgumentException 
+[OK]   误用: lake.length != nx*nz ⇒ IllegalArgumentException 
+  [info] 最坏采样（全干窗口）: samples=386（解析上界 37442）status=UNKNOWN_DRY
+[OK]   采样: 全干窗口仍 ≤ 2×97×193 次数组读 | samples=386
+[OK]   采样: 全干 ⇒ UNKNOWN_DRY | UNKNOWN_DRY
+[OK]   采样: 同参数重复调用逐位相同（确定性） | samples=2026/2026
+[OK]   采样: 正常湖每次调用远低于上界 | samples=2026
+
+CHECKS=72 FAILURES=0
+PASS: 合成掩码下的量测契约成立（比例好坏未评，需生产大图 A/B）

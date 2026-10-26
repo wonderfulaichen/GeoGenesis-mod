@@ -1,0 +1,31 @@
+﻿=== Lake width envelope / interface scale verification ===
+timestamp_utc : 2026-10-26T13:47:25.1295039Z
+java          : openjdk version "21.0.11" 2026-04-21 LTS
+javac         : javac 21.0.11
+
+COMMAND (no Gradle involved):
+  javac -d build/tmp-verify -cp build/tmp-verify;forge-1.20.1-47.4.10-mdk/build/classes/java/main \
+        RiverWidthProfile.java LakeInterfaceScale.java LakeWidthEnvelope.java
+  javac -d build/tmp-verify -cp <same> EnvelopeProbe.java LakeInterfaceScaleProbe.java
+  java -cp build/tmp-verify;<prebuilt main tree> <Probe>   # JAVA_TOOL_OPTIONS=-Dstdout.encoding=UTF-8
+
+WHY source-first classpath ordering is REQUIRED:
+  the prebuilt tree's RiverWidthProfile.class predates the visibility change,
+  so chainEdges/receiverTrace are still private there -> IllegalAccessError.
+  Recompiling RiverWidthProfile from source into build/tmp-verify puts the
+  package-private version first. No build.gradle change was made.
+
+RESULTS:
+  EnvelopeProbe            CHECKS=76 FAILURES=0  exit 0
+  LakeInterfaceScaleProbe  CHECKS=72 FAILURES=0  exit 0
+
+These logs live under handoff/attachments/ (trackable), NOT under build/,
+so 'gradlew clean' cannot delete them.
+
+NOT VERIFIED / NOT RUN:
+  - Gradle build, Forge runClient/runServer, runWorldgenGate, 1401^2 production A/B
+  - the 1/8 mouth-width ratio and 1/32 taper slope are engineering values,
+    not yet accepted by production image comparison
+  - real-terrain behaviour of the envelope is untested; probes use synthetic
+    lake[]/basinId[] masks only
+
