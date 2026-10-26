@@ -1406,6 +1406,40 @@ Forge方块/装饰/流体tick、旧66全账本、跨窗证书/无环及生产迁
 
 **先前后补图记录（非骨架验收）**：已用现有`ProductionViewProbe`生产`GeoGenesisTerrain.getChunkCells`入口重跑修改前/后各1401²正典大图（同seed/中心/当前TOML、默认JVM开关）。每臂8281 chunk、uncovered=0；PNG逐像素差异`0 / 1962801`，两臂PNG SHA256均`1226674f61bd31681eb535ac7cbfd4083f33cc1af2cdb3766747a9ba51a52257`，列SHA256均`ae92afd33d6a6fef30979f13032576ef6d7746335d07c7901ba599cc46a626e2`。没有复用旧目标图。结果见[生产A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/production-ab.png)、[Java合成反例连接A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/connection-ab.png)及同目录metrics/provenance；后者不是游戏效果图。修复后首轮出图被后台线程`Comparison method violates its general contract`异常经PowerShell Stop中断，没有有效PNG；保留日志，未修改生产代码，同参数重跑退出0并完成对照。异常根因及归属未定，不宣称已修。
 
+### 〇bn、宽度约束优先级表 + 过渡可行性 P4（2026-10-27；优先于〇bm）
+
+用户第三次纠偏：**「我之前就提过判定要排好优先级，不然就会冲突」**，并确认 **「细没问题啊」**。此前所有反复（出湖 floor 顶粗、全局单调削平汇流树、起宽上限导致楔形）都源于**没有单一优先级表**，各处各自 `min`/`max`、谁后执行谁赢。本轮把它写进 `RiverWidthProfile` 类头，作为唯一仲裁依据。
+
+**P0–P6 优先级（代码即文档，见类头 javadoc）**
+
+| 级 | 约束 | 性质 |
+|---|---|---|
+| P0 | 1 ≤ 全宽 ≤ 12 格；骨架坐标不动 | 不可违反 |
+| P1 | 出湖净出流/湖尺度**只作上限**；Q 是宽度来源；集水面积不参与 | 不可违反 |
+| P2 | typed 端口双方一致；边界 pin 精确定位 | 硬契约 |
+| P3 | 串联共用断面；汇流后接收段 ≥ 任一入流 | 硬契约 |
+| **P4** | **起点必须能在本河长度内平缓收到末端；做不到就削起点** | **本轮新增，压过 P5** |
+| P5 | 出湖起点按源湖横向尺度，全宽 ≤ 6 格；真源头 1 格 | 软，受 P4 约束 |
+| P6 | 中间段局部浮动（LOCAL_DEVIATION） | 最软 |
+
+**P4 的实现**：`feasibleStartHalf(wantStart, endHalf, arcLen)`
+= `min(wantStart, endHalf + HALF_GROWTH_PER_BLOCK × arcLen)`，只减不增。
+
+- 实测冲突案例：源湖横向 47 格 ⇒ P5 想要 5.88 格起点；但该河仅 32 格长、末端流入横向 6 格小湖（P3 要求末端 ≈1.0）。P4 判定"物理上收不回来"，把起点压到 2.0。
+- **效果**：最陡变化率 **0.1579 → 0.0625 格/格**，正好等于设计斜率 1/32；30 条残余楔形**无一超限**。
+- 残余 30 条 wedge 均为短河在斜率上限内的正常收窄（如 16 格河 2.01→1.00，rate=0.0625），**不是突变**。
+
+**同时修正的三处语义错误**（均由此前缺优先级表导致）：
+1. `enforceDownstreamMonotone` 改为**只在单条 trace 内**传播，不跨汇流——旧的"向源头全局运行最小"把整棵汇流树削到最细出口（实测 370 条剖面被压平、340 条最大宽度削掉 >1 格，`(-3,0) trace1` 由 4.73–12.00 变成全 3.24 常量）。
+2. 出湖起点由 `Math.min` 铺满整条 trace 改为**只作用于起点**；`fromOutlet` 不再被排除在源头处理之外（它也是源头的一种）。
+3. 起点 pin 是精确值，同步抬高节点 0 的上限；否则 `min(width, cap)` 会把起点重新压回（实测 30 处 `half > widthLimits`，最大超出 1.59）。
+
+**验证**：宽度 172 断言（含 P4 专项 `testFeasibleStartPriority`）全通过；连接 1137、覆盖探针通过；36 区 **843/843 汇流、137/137 端口、227894 节点零越限、732 接口零越界、contractFailures=0、allGreen=true**。生产图 `prod-1793054183489`：8281 chunk、uncovered=0、河 61785。
+
+交付：[完整 A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/priority-production-ab.png)、[局部放大 A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/priority-zoom-ab.png)、[沿程曲线](forge-1.20.1-47.4.10-mdk/build/river-width-trend/priority-curves.png)、[证据 JSON](forge-1.20.1-47.4.10-mdk/build/river-width-trend/priority-evidence.json)。
+
+未测：Forge 实机、完整 worldgen 门禁、隔离性能基准。
+
 ### 〇bm、出湖宽度改为上限 + 顺流不得变窄（2026-10-27；优先于〇bl）
 
 用户两次纠偏：①「一条河的上游怎么可能大于下游」；②「出湖 floor 是你自己加的限制，我说是只有至多」。**第②条推翻了〇bl 的语义前提**：〇bl 仍在用 `Math.max(h, outletHalf)` 把净出流当**下限**，这本身就是上游被顶粗的直接原因。本轮按用户口径改掉。

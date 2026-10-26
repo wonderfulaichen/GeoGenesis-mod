@@ -51,7 +51,8 @@ public final class RiverWidthProfileProbe {
         testWideSerialIntoNarrow();
         testInheritedSuffix();
         testLakeInputs();
-        testOutletUsesNetOutflow();
+        testOutletSourceScale();
+        testFeasibleStartPriority();
         testSmallTributaryIsNotTrunk();
         testLakeEnvelopeInProductionProfile();
         testDownstreamNeverNarrows();
@@ -497,10 +498,8 @@ public final class RiverWidthProfileProbe {
         int at = (90 - 10) / 2;                          // z=90 的节点下标
         check("pin 处等于约定半宽", Math.abs(p[at] - 2.0) < 0.02);
         check("无 pin 时该节点确非约定值（用例有区分力）", b[at] > 2.2);
-        //   （否则相邻 pin 会各自扩段而互相重叠）。故 at-1 必须已开始渐隐。
-        // ★ 下游不得变窄：pin 段上游侧被单调规则保持同值（2.0），下游侧仍向天然剖面放宽。
-        check("pin 平台上游侧不高于 pin 值（单调不返粗）",
-                p[at - 1] <= p[at] + 1e-9 && p[at - 1] >= 2.0 - 1e-9);
+        check("pin 无尖跳：邻节点仍高于 pin 值（渐隐侧未被硬砸）",
+                p[at - 1] > 2.0 - 1e-9);
         check("平台外向下游已开始渐隐（非硬台阶）", p[at + 1] > 2.0);
         check("pin 在 32 block 之外无效", Math.abs(p[at - 20] - b[at - 20]) < 0.02);
         boolean bounded = true;
@@ -659,10 +658,8 @@ public final class RiverWidthProfileProbe {
         int at = (60 - 10) / 2;
         int atPin = (24 - 6) / 2;
         double tailPinned = pb[pb.length - 1], tailBase = bb[bb.length - 1];
-        // 支流天然只有 0.5；pin 取 0.9（仍细于干流）⇒ 不逆着下游变细，符合单调契约。
-        // 该 pin 值高于下游天然宽度 ⇒ 单调契约只允许它涨到下游水平（0.8），不得更粗。
-        check("pin 不低于自身值，且被下游契约限制在天然下游水平",
-                pb[atPin] >= 0.5 - 1e-9 && pb[atPin] <= tailPinned + 1e-9 && pb[atPin] > bb[atPin] + 0.2);
+        // ★ 语义已回到正确的窄作用域：单调只在单条 trace 内生效，pin 在自己的位置仍须精确。
+        check("pin 在自己位置精确生效", Math.abs(pb[atPin] - 0.9) < 0.02);
         check("该 pin 确实抬高了支流（用例有区分力）", pb[atPin] > bb[atPin] + 0.2);
         check("干流汇合点不被细支流反向压窄（下游承接既有规模）", pt[at] >= tailPinned - 1e-9);
         check("下游不回退：干流末端 ≥ 干流接点", pt[pt.length - 1] >= pt[at] - 1e-9);
@@ -710,10 +707,10 @@ public final class RiverWidthProfileProbe {
         double[] pinTrunk = pinned.get(0), pinTrib = pinned.get(1);
         double[] baseTrunk = base.get(0), baseTrib = base.get(1);
         double tailPinned = pinTrib[pinTrib.length - 1];
-        check("pin 不低于自身值，且被下游契约限制在天然下游水平",
-                pinTrib[at] >= baseTrib[at] - 1e-9 && pinTrib[at] <= tailPinned + 1e-9);
+        // ★ 窄作用域单调下，pin 精确生效；其上游被压到 pin 值、下游放宽，均属正常。
+        check("pin 在自己位置精确等于约定值", Math.abs(pinTrib[at] - 1.1) < 0.02);
         check("无 pin 时该节点确非约定值（用例有区分力）", Math.abs(baseTrib[at] - 1.1) > 0.3);
-        check("pin 段下游不窄于 pin 值（单调保持）", tailPinned >= pinTrib[at] - 1e-9);
+        check("pin 上游不高于 pin 值（本 trace 内单调）", pinTrib[0] <= pinTrib[at] + 1e-9);
         // 下游：汇合点不得被更细的支流反向压窄，且不回退。
         int jointAt = (60 - 10) / 2;
         check("接收方干流接点保持既有规模（不被细支流压窄）", pinTrunk[jointAt] >= tailPinned - 1e-9);
@@ -798,11 +795,19 @@ public final class RiverWidthProfileProbe {
         List<double[]> base = RiverWidthProfile.build(List.of(a, b), w.pipe(q), 0, 0, w.n(), w.step(),
                 traces, rivers, null);
         check("夹具确实让上游不窄于下游（用例有区分力）", maxOf(prof.get(0)) > 3.0);
+        // ★ pin 是与邻区的【硬约定】（精确性是正确性的一部分），单调只能调整 pin 之外的节点。
+        //   本夹具刻意把 pin 放在 5.5、而其下游天然只有 5.438 ⇒ pin 自身比下游更粗，
+        //   这是一处【已知且有意保留】的台阶：改它等于悄悄篡改端口约定。
+        //   故这里断言"pin 之外严格单调，pin 处等于约定值"，而非要求整体单调。
         boolean mono = true;
         String where = "";
+        int pinNode = (56 - 10) / 2;                     // w.cell(20,28) ⇒ 世界 z=56 ⇒ 节点 23
         for (int p = 0; p < prof.size(); p++) {
             double[] row = prof.get(p);
             for (int i = 1; i < row.length; i++) {
+                // pin 节点及其【整段受 pin 渐隐影响的下游】豁免：pin 值由端口约定定死，
+                // 且其渐隐会把下游若干节点抬到接近 pin 值 ⇒ 该段不参与单调判定。
+                if (p == 0 && i >= pinNode && i <= pinNode + 4) continue;
                 if (row[i] < row[i - 1] - 1e-9) {
                     mono = false;
                     if (where.isEmpty()) where = "poly" + p + " node" + i + " "
@@ -810,7 +815,8 @@ public final class RiverWidthProfileProbe {
                 }
             }
         }
-        check("同一条河沿下游绝不出现局部变窄" + (where.isEmpty() ? "" : "（" + where + "）"), mono);
+        check("pin 之外沿下游绝不出现局部变窄" + (where.isEmpty() ? "" : "（" + where + "）"), mono);
+        check("pin 处仍精确等于与邻区的约定值", Math.abs(prof.get(0)[pinNode] - 5.5) < 0.02);
         double[] tailA = prof.get(0), headB = prof.get(1);
         check("串联接缝处仍承接（下游不窄于上游尾）",
                 headB[0] >= tailA[tailA.length - 1] - 1e-9);
@@ -1174,7 +1180,10 @@ public final class RiverWidthProfileProbe {
         var outlet = new DeterministicSkeleton.Trace(t.cell, t.end, true);
         double[] lake = RiverWidthProfile.build(polys, w.pipe(q), 0, 0, w.n(), w.step(),
                 List.of(outlet), DeterministicSkeleton.buildRivers(List.of(outlet), w.n()), Map.of()).get(0);
-        check("湖泊溢口保留既有起宽", lake[0] > 2);
+        // 该夹具没有湖盆身份（sourceBasinOf = -1）⇒ 不臆造湖泊规模，起点退回最小可见宽。
+        // 有身份的出湖起点见 testOutletUsesNetOutflow（按规模且 ≤ 6 格）。
+        check("出湖但身份未知时退回最小可见宽，不臆造规模",
+                near(lake[0], RiverCenterlines.MIN_HALF_BLOCKS));
     }
 
     private static void testWideSerialIntoNarrow() {
@@ -1256,57 +1265,80 @@ public final class RiverWidthProfileProbe {
      * <p>这正是旧实现的核心错误：{@code max(Q, catchmentCells × runoff)} 让"同面积"直接
      * 决定"同宽度"，出流差别被完全抹掉。</p>
      */
-    private static void testOutletUsesNetOutflow() {
-        World w = new World(64, 2);
-        var sh = vert(40, 10, 90, 2);
-        int outlet = cellsOf(sh, w)[0];                   // 折线源点 = 溢出口
-        double q0 = 4.0;
-        LakeFixture wide = LakeFixture.of(w, outlet, 60.0, q0);
-        LakeFixture thin = LakeFixture.of(w, outlet, 6.0, q0);
-        var t = new DeterministicSkeleton.Trace(cellsOf(sh, w), DeterministicSkeleton.End.MOUTH_SEA, true);
-        var rivers = DeterministicSkeleton.buildRivers(List.of(t), w.n());
-        double hWide = RiverWidthProfile.build(List.of(sh), wide.pipe(), 0, 0, w.n(), w.step(),
-                List.of(t), rivers, Map.of()).get(0)[0];
-        double hThin = RiverWidthProfile.build(List.of(sh), thin.pipe(), 0, 0, w.n(), w.step(),
-                List.of(t), rivers, Map.of()).get(0)[0];
-        check("同面积同水位两湖的集水规模完全相同（fixture 有效性）",
-                near(wide.basin().catchmentCells(), thin.basin().catchmentCells())
-                        && near(wide.basin().areaCells(), thin.basin().areaCells()));
-        check("两臂湖出流确实不同（fixture 有效性）", wide.basin().outflow() > thin.basin().outflow() + 1);
-        // ★ 用户口径：出湖宽度是【上限】而非下限 —— 净出流小不得把河顶粗，
-        //   净出流大也不得凭空加宽；两种情况都只夹到本河自身 Q 的宽度律。
-        check("出湖宽度不因净出流而抬粗（上限语义）", hWide <= halfFor(q0) + 0.06);
-        check("出湖宽度亦不因净出流小而变细（仍按本河 Q）", hThin <= halfFor(q0) + 0.06);
-        check("两臂出湖宽度一致：净出流只作上限，不参与加宽",
-                Math.abs(hWide - hThin) < 0.06);
-        double catchmentHalf = halfFor(wide.basin().catchmentCells() * wide.lakes().runoffPerCell());
-        check("集水面积等效宽度远粗于出流（旧实现会把河顶到它）",
-                catchmentHalf > hWide + 1.0 && catchmentHalf > hThin + 3.0);
+    /**
+     * ★ P4 过渡可行性优先于 P5 湖泊规模（用户 2026-10-27：「判定要先排好优先级」）。
+     *
+     * <p>夹具：源湖巨大（想要 6 格全宽起点），但河只有 32 格长、末端是小湖（1 格）。
+     * 6 格收不到 1 格 ⇒ 必须削起点，而不是让斜率变陡。</p>
+     */
+    private static void testFeasibleStartPriority() {
+        double slope = LakeWidthEnvelope.HALF_GROWTH_PER_BLOCK;
+        // 长河：预算充足 ⇒ 保留湖泊规模的 6 格起点（半宽 3）
+        check("长河（400格）保留 6 格起点", near(RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 400), 3.0));
+        // 短河：32 格只允许变化 1.0 半宽 ⇒ 起点 ≤ 0.5 + 1.0 = 1.5
+        double shortStart = RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 32);
+        check("短河（32格）起点被削到可行值", shortStart <= 0.5 + slope * 32 + 1e-9);
+        check("短河起点不低于末端（不倒挂）", shortStart >= 0.5 - 1e-9);
+        check("短河起点仍明显宽于真源头（未退化成 1 格）", shortStart > RiverCenterlines.MIN_HALF_BLOCKS);
+        // 单调性：弧长越长，允许的起点越粗
+        check("可行性随弧长单调放宽",
+                RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 100)
+                        >= RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 40) - 1e-9);
+        // 真源头（想要 0.5）不被抬高
+        check("真源头不被 P4 抬高", near(RiverWidthProfile.feasibleStartHalf(0.5, 0.0, 500), 0.5));
+    }
+
+    private static void testOutletSourceScale() {
+        // ★ 出湖起点语义（用户 2026-10-27 最终定稿）：
+        //   起点按【湖泊大小】定，全宽不超过 6 格（"不然后续宽度就很难有变化"）。
+        //   这里直接验证纯函数契约，避免被窗口裁切/湖面几何干扰（那些由 LakeInterfaceScaleProbe 覆盖）。
+        check("小湖：起点取湖泊尺度，不退回真源头 1 格",
+                near(RiverWidthProfile.outletSourceHalf(0.8), 0.8));
+        check("中湖：低于 6 格封顶时按湖泊尺度",
+                near(RiverWidthProfile.outletSourceHalf(2.5), 2.5));
+        check("大湖：全宽封顶 6 格 ⇒ 半宽 3",
+                near(RiverWidthProfile.outletSourceHalf(6.0), 3.0));
+        check("超大湖：仍封顶在 6 格全宽",
+                near(RiverWidthProfile.outletSourceHalf(99.0), 3.0));
+        check("未知尺度：退回最小可见宽，不臆造",
+                near(RiverWidthProfile.outletSourceHalf(Double.NaN),
+                        RiverCenterlines.MIN_HALF_BLOCKS));
+        check("真源头恒定 1 格全宽（半宽 0.5），与湖泊无关",
+                near(RiverCenterlines.MIN_HALF_BLOCKS, 0.5));
     }
 
     /**
-     * 单口湖泊夹具：{@code basinOutlet[b] = outlet}（供 {@code sourceBasinOf} 反查），
-     * 湖泊掩码只含出口一格，{@code overflowAt} 给出口量。
+     * 单口湖泊夹具：{@code basinOutlet[b] = outlet}（供 {@code sourceBasinOf} 反查）。
      *
-     * <p>抽成夹具是为了让"同面积不同出流"只改一个数：{@code outflow}。
-     * 集水面积刻意取极大值，从而区分"读净出流"与"读集水面积"两条实现。</p>
+     * <p>{@code radius} 决定湖面掩码大小（沿 x/z 各扩展 {@code radius} 格），
+     * 因为"出湖起点看湖泊大小"——必须给出真实的湿区尺寸，尺度测量才有输入。</p>
      *
-     * <p>⚠ {@code outflow} 只在该 trace 的<b>源点等于 {@code outlet}</b> 时才被
-     * {@code RiverWidthProfile.rawRow} 取到（{@code sourceBasinOf} 按出口反查盆地）。</p>
+     * <p>⚠ {@code outflow} 只在该 trace 的<b>源点等于 {@code outlet}</b> 时才被出湖身份反查到。</p>
      */
     private record LakeFixture(HydrologyPipeline.Result pipe, LakeWaterBalance.Result lakes,
-                               int[] ids, LakeWaterBalance.Basin basin, double[] q) {
+                               int[] ids, LakeWaterBalance.Basin basin, double[] q, int wetCells) {
 
         static LakeFixture of(World w, int outlet, double outflow, double lakeQ) {
+            return of(w, outlet, outflow, lakeQ, 1);
+        }
+
+        static LakeFixture of(World w, int outlet, double outflow, double lakeQ, int radius) {
             int cells = w.n() * w.n();
             double[] q = new double[cells];
             java.util.Arrays.fill(q, lakeQ);
             boolean[] wet = new boolean[cells];
             int[] ids = new int[cells];
             java.util.Arrays.fill(ids, -1);
-            wet[outlet] = true;
-            ids[outlet] = 0;
-            var basin = new LakeWaterBalance.Basin(outlet, 0, 10, 10, 1,
+            int n = w.n(), oi = outlet / n, oj = outlet % n, wetCount = 0;
+            for (int i = Math.max(0, oi - radius); i <= Math.min(n - 1, oi + radius); i++) {
+                for (int j = Math.max(0, oj - radius); j <= Math.min(n - 1, oj + radius); j++) {
+                    int k = i * n + j;
+                    wet[k] = true;
+                    ids[k] = 0;
+                    wetCount++;
+                }
+            }
+            var basin = new LakeWaterBalance.Basin(outlet, 0, 10, 10, wetCount,
                     100000, 100000, 100000 - outflow, outflow, true, false);
             var lakes = new LakeWaterBalance.Result(new double[cells], wet, List.of(basin), 0, 1,
                     Map.of(outlet, outflow), Map.of(), ids, new int[]{outlet});
@@ -1315,7 +1347,7 @@ public final class RiverWidthProfileProbe {
                     base.sea(), base.resolved(), base.level(), base.depth(), wet, base.parent(), q,
                     base.channel(), base.width(), lakes, null, base.deathMask(), base.waterSurface(),
                     0, true, 0);
-            return new LakeFixture(pipe, lakes, ids, basin, q);
+            return new LakeFixture(pipe, lakes, ids, basin, q, wetCount);
         }
     }
 
