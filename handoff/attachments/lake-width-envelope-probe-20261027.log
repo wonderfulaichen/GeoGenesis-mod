@@ -1,0 +1,97 @@
+﻿java : Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8
+所在位置 行:6 字符: 1
++ java -cp $cp com.geogenesis.worldgen.hydrology.model.EnvelopeProbe 2> ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Picked up JAVA_....encoding=UTF-8:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+=== LakeWidthEnvelope ===
+MAX_HALF=6.0 MIN_HALF=0.5 slope=1/32
+
+[OK]   无湖: 全 MAX_HALF | [6.000..6.000] n=201
+[OK]   无湖: 无证据 | 
+[OK]   无湖: 行长 == 点数 | 
+[OK]   无湖: applied=0 | 
+  [info] 接口: scale=2.5000 末=2.5000 首=6.0000 [LAKE_MOUTH:b=0:OK ]
+[OK]   接口: basin=0 | [LAKE_MOUTH:b=0:OK ]
+[OK]   接口: 末节点 cap == scale | 2.5 vs 2.5
+[OK]   接口: 已被收紧 | 
+[OK]   接口: 首节点 = 6（手算 scale+130/32 已饱和） | cap0=6.0
+[OK]   接口: 单调收紧 | [6.000..2.500] n=131
+[OK]   接口: 值域 OK | 
+[OK]   接口: 连续 | worst=0.03125
+  [info] 三段: scale=2.5000 A首=6.0000 A尾=5.0000 B首=4.9688 B尾=3.7500 C首=3.7188
+[OK]   三段: C 首 = scale + 39/32 | 3.71875 vs 3.71875
+[OK]   三段: B 尾 = scale + 40/32（1 间隙 + 39） | 3.75 vs 3.75
+[OK]   三段: B 首 = scale + 79/32（B 内 39 + 40） | 4.96875 vs 4.96875
+[OK]   三段: A 尾 = scale + 80/32（79 + 1 间隙） | 5.0 vs 5.0
+[OK]   三段: 接缝不重置 —— 越上游越宽（A尾 > B尾 > C首） | 5.0 > 3.75 > 3.71875
+[OK]   三段: 全部单调朝接口 | 
+[OK]   三段: 全部连续 | 
+  [info] 中段: scale=2.5000 干流@join=5.6250 干流上游1=5.6563 支流尾=5.6563 支流首=6.0000
+[OK]   中段: 干流@join = scale + 100/32 | 5.625 vs 5.625
+[OK]   中段: 干流@join-1 = scale + 101/32 | 5.65625 vs 5.65625
+[OK]   中段: 支流尾 = scale + 101/32（1 间隙 + 100，不是 199） | 5.65625 vs 5.65625
+[OK]   中段: 支流尾 ≠ 按干流首节点算的 scale+199/32（证明用 joinArc） | got=5.65625
+[OK]   中段: 支流首饱和到 6 | trib0=6.0
+[OK]   中段: 支流单调朝接点收紧 | 
+[OK]   中段: 干流接点上游比接点宽 | 
+[OK]   中段: 干流接点下游不宽于接点 | 
+  [info] 重采样: shapeLen=601 cellLen=301 scale=1.3125 干流@join=2.2500 支流尾=2.3125
+[OK]   重采样: shape 长度 ≠ cells 长度（确实走了不同索引） | 601 vs 601
+[OK]   重采样: 全行连续（无索引错位锯齿） | mainWorst=0.03125
+[OK]   重采样: 接口仍在末节点收紧 | capT=1.3125
+[OK]   重采样: 干流@join = scale + 30/32（手算 block 距离） | 2.25 vs 2.25
+[OK]   重采样: 支流尾 = scale + 32/32（joinArc 未被 cells 下标污染） | 2.3125 vs 2.3125
+[OK]   重采样: 若误用 cells 下标当 shape 下标，支流尾会算成 scale+数倍的错值 | got=2.3125
+[OK]   重采样: 干流各节点单调朝接口 | 
+  [info] 双接口: 首=2.500 中=6.000 尾=2.500 [LAKE_SOURCE:b=0:OK LAKE_MOUTH:b=1:OK ]
+[OK]   双接口: 认出两个接口 | [LAKE_SOURCE:b=0:OK LAKE_MOUTH:b=1:OK ]
+[OK]   双接口: 都施加限制 | 2
+[OK]   双接口: 源接口 basin=0 | 
+[OK]   双接口: 两端收紧 | 
+[OK]   双接口: 中段高于两端 | mid=6.0
+[OK]   双接口: 连续 | worst=0.03125
+[OK]   双接口: 值域 OK | 
+[OK]   干岸: UNKNOWN_NO_IDENTITY | [LAKE_MOUTH:b=-1:UNKNOWN_NO_IDENTITY ]
+[OK]   干岸: 不施加限制 | 
+[OK]   干岸: applied=0 | 
+[OK]   身份缺失: 不限制 | 
+[OK]   身份缺失: 两条证据 | [LAKE_SOURCE:b=-1:UNKNOWN_NO_IDENTITY LAKE_MOUTH:b=-1:UNKNOWN_NO_IDENTITY ]
+[OK]   身份缺失: applied=0 | 
+[OK]   身份缺失: LAKE_SOURCE NaN + status | UNKNOWN_NO_IDENTITY
+[OK]   身份缺失: LAKE_MOUTH NaN + status | UNKNOWN_NO_IDENTITY
+  [info] 锚点: 首=1.000 中=4.125 尾=1.000
+[OK]   锚点: 首=1.0 | 1.0
+[OK]   锚点: 尾=1.0 | 1.0
+[OK]   锚点: 中段 = 1 + 100/32 | 4.125
+[OK]   锚点: 连续 | worst=0.03125
+[OK]   锚点: 无证据行 | 
+  [info] 无 rivers: A首=6.000 A尾=6.000 B首=4.531 B尾=2.500
+[OK]   无 rivers: B 尾收紧 | 
+[OK]   无 rivers: A 段不受影响（接口不在 A 上） | [6.000..6.000] n=66
+[OK]   无 rivers: 各段自身连续（闭合兜底） | 
+[OK]   无 rivers: 接缝可不等 —— 已知限制，不是缺陷 | Atail=6.0 B0=4.53125
+[OK]   环路: cycleNodes 认出 | 
+[OK]   环路: 不崩溃 | 
+[OK]   环路: 各段连续 | 
+[OK]   环路: 本 trace 内仍收紧 | 
+[OK]   退化: 空折线 | 
+[OK]   退化: 单节点 | 
+[OK]   退化: 全 null | 
+[OK]   退化: inherited=null | 
+[OK]   证据: 一条 | 
+[OK]   证据: kind | LAKE_MOUTH
+[OK]   证据: poly=0 | 
+[OK]   证据: cell=末节点 | 
+[OK]   证据: basin=7 | 7
+[OK]   证据: samples>0 | 428
+[OK]   证据: transverse 有限 | 
+[OK]   证据: applied | 
+[OK]   证据: maxHalf == limits 末节点 | 
+  [info] 证据: Interface[kind=LAKE_MOUTH, poly=0, cell=60200, basin=7, status=OK, maxHalf=2.5, transverse=40.0, samples=428]
+[OK]   确定性: 逐位相同 | 
+[OK]   确定性: 接口数一致 | 
+
+CHECKS=76 FAILURES=0
+PASS

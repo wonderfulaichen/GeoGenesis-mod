@@ -357,6 +357,8 @@ public final class ModelHydrologyProvider {
             "geogenesis.inlandResolved", "geogenesis.intlandResolved", "geogenesis.sewGap",
             // ---- 几何收尾 ----
             "geogenesis.particleAmp", "geogenesis.particleMomentum",
+            "geogenesis.boundaryPorts", "geogenesis.widthSmooth", "geogenesis.widthMonotone",
+            "geogenesis.bankJitter", "geogenesis.riverWidth",
             // ---- 阈值 / 耦合 / 流向 ----
             "geogenesis.riverThresholdFrac", "hydro.couplingMaxRounds", "hydro.directionRule",
             "hydro.visitCap", "hydro.floorMul", "hydro.absFloorMul", "hydro.relFloor",
@@ -888,7 +890,14 @@ public final class ModelHydrologyProvider {
                          List<DeterministicSkeleton.ExitSeed> exitSeeds,
                          int originX, int originZ,
                          /** ★ ports 模块：pass1 骨架本体（pass2 作 base 复用）。 */
-                         DeterministicSkeleton.Result skeleton) {
+                         DeterministicSkeleton.Result skeleton,
+                         Map<WidthEdge, double[]> widths) {
+        Pass1(HydrologyPipeline.Result pipe, List<DeterministicSkeleton.ExitSeed> exitSeeds,
+              int originX, int originZ, DeterministicSkeleton.Result skeleton) {
+            this(pipe, exitSeeds, originX, originZ, skeleton,
+                    pass1Widths(pipe, skeleton, originX, originZ));
+        }
+
         /** 兼容构造（分层实验路径不产出骨架 ⇒ null）。 */
         Pass1(HydrologyPipeline.Result pipe, List<DeterministicSkeleton.ExitSeed> exitSeeds,
               int originX, int originZ) {
@@ -1932,9 +1941,19 @@ public final class ModelHydrologyProvider {
                 }
             }
         }
+        WidthInheritance inherited = primary && BOUNDARY_PORTS && !HIER
+                ? inheritedWidths(sk, originX, originZ, n) : new WidthInheritance(new HashMap<>(), new java.util.HashSet<>(), new HashMap<>());
+        Map<Integer, Double> boundary = primary && BOUNDARY_PORTS && !HIER
+                ? boundaryWidths(sk, incomingWires, inherited, originX, originZ, n) : Map.of();
+        // 同一世界出口格在相邻窗口可能判成不同源盆 ⇒ 出湖宽度必须取双方较小者，
+        // 否则上游窗口按大盆出流抬粗、下游窗口按小盆压细，整条短河被迫收窄。
+        // ⚠ 门控必须与 inheritedWidths 完全一致（primary + BOUNDARY_PORTS + !HIER）：
+        //   pass1 内部也走本方法，若无 primary 门控就会在 pass1 里再求邻区 pass1 ⇒ 连锁扇出。
+        Map<Long, Double> outletHalf = primary && BOUNDARY_PORTS && !HIER && p != null && sk.traces != null
+                ? agreedOutletHalves(sk, p, originX, originZ, n) : Map.of();
         SegmentIndex seg = allPolys.isEmpty() ? SegmentIndex.EMPTY
                 : SegmentIndex.buildFromNodes(allPolys, p, originX, originZ, n, STEP,
-                        sk.traces, originX, originZ);        // 格路径 Reach（日志 reachCount 用；宽度按 Q 走律）
+                        sk.traces, sk.rivers, boundary, inherited, outletHalf);
         RiverCenterlines.Params wp = RiverCenterlines.Params.defaults();
         List<RiverCenterlines.Reach> reaches = new ArrayList<>();
         for (var t : sk.traces) {
@@ -2196,27 +2215,6 @@ public final class ModelHydrologyProvider {
                     if (h0 != null && h0.half > 0) {
                         bestDist = h0.dist;
                         half = h0.half;
-                        // ★★★ 2026-10-25【河岸自然扰动 —— 让宽度变化不像"计算出来的"】★★★
-                        //
-                        // 【问题】用户："感觉变化不够自然"。当前的半宽是 Q 的纯函数，
-                        //   同一 Q 区间内到处一样宽，河岸像用尺子画的。
-                        //
-                        // 【参考实现（参考/river/dynamicwaters-11.1.2）】
-                        //   getRiverCarve 的河岸扰动是双频正弦叠乘，且**幅度正比于河宽**：
-                        //     jitter = sin(x·0.08)·cos(z·0.08)·1.5 + sin(0.04(x+z))·0.7
-                        //     jitter *= width / 10
-                        //     d_eff  = max(0, d + jitter)      // 用扰动后的距离判是否在河内
-                        //   ⇒ 细河岸微扰、宽河岸大摆动；且扰动是**位置驱动**，空间连续、无接缝。
-                        //
-                        // 【本处】直接作用于半宽（等价于扰动 d 的阈值），
-                        //   世界坐标驱动 ⇒ 跨 region / 跨 trace 同坐标同值，天然连续。
-                        //   幅度上限取半宽的 25%，保证不会把河岸推出河道太远或吃掉整条河。
-                        if (BANK_JITTER > 1e-6) {                            double jx = blockX * 0.08, jz = blockZ * 0.08;
-                            double jitter = Math.sin(jx) * Math.cos(jz) * 1.5
-                                    + Math.sin(0.04 * (blockX + blockZ)) * 0.7;
-                            double amp = BANK_JITTER * half * (jitter / 2.2);
-                            half = Math.max(RiverCenterlines.MIN_HALF_BLOCKS, half + amp);
-                        }
                         depth = Math.max(0, h0.depth);
                         if(Double.isFinite(h0.surface))surface=h0.surface;
                     }
@@ -2907,10 +2905,15 @@ public final class ModelHydrologyProvider {
      */
     private List<WireIn> collectIncomingWires(int rx, int rz, int n,
                                               int myOriginX, int myOriginZ) {
+        return assembleIncomingWires(rx, rz, n, myOriginX, myOriginZ, typedIncomingPorts(rx, rz));
+    }
+
+    private List<WireIn> assembleIncomingWires(int rx, int rz, int n, int myOriginX, int myOriginZ,
+                                              List<BoundaryPort> ports) {
         List<WireIn> out = new ArrayList<>();
         java.util.Map<Integer, WireIn> byAnchor = new java.util.TreeMap<>();
         List<String> rejects = new ArrayList<>();
-        for (BoundaryPort port : typedIncomingPorts(rx, rz)) {
+        for (BoundaryPort port : ports) {
             int ai = Math.floorDiv(port.anchorX() - myOriginX, STEP);
             int aj = Math.floorDiv(port.anchorZ() - myOriginZ, STEP);
             if (myOriginX + ai * (long) STEP != port.anchorX()
@@ -2976,6 +2979,162 @@ public final class ModelHydrologyProvider {
                 .thenComparingInt(BoundaryPort::senderRegionX)
                 .thenComparingInt(BoundaryPort::senderRegionZ));
         return out;
+    }
+
+    private record WidthEdge(int x, int z, int nx, int nz) { }
+
+    /** 独立 pass1 的有向边属性。仅沿真实路径取值，不叠加重叠窗口的水量。 */
+    private static Map<WidthEdge, double[]> pass1Widths(HydrologyPipeline.Result pipe,
+                                                       DeterministicSkeleton.Result sk, int ox, int oz) {
+        if (sk == null) return Map.of();
+        int n = pipe.nz();
+        List<DeterministicSkeleton.Shaped> grid = new ArrayList<>();
+        for (var t : sk.traces) {
+            double[] x = new double[t.cell.length], z = new double[x.length];
+            for (int i = 0; i < x.length; i++) {
+                x[i] = ox + (t.cell[i] / n) * STEP;
+                z[i] = oz + (t.cell[i] % n) * STEP;
+            }
+            grid.add(new DeterministicSkeleton.Shaped(x, z));
+        }
+        var profile = RiverWidthProfile.buildDetailed(grid, pipe, ox, oz, n, STEP, sk.traces, sk.rivers,
+                Map.of(), Map.of(), java.util.Set.of(), Map.of());
+        var widths = profile.widths();
+        Map<WidthEdge, double[]> out = new HashMap<>();
+        for (int p = 0; p < grid.size(); p++) {
+            var sh = grid.get(p);
+            for (int i = 0; i + 1 < sh.size(); i++) {
+                WidthEdge edge = new WidthEdge((int) sh.x[i], (int) sh.z[i], (int) sh.x[i + 1], (int) sh.z[i + 1]);
+                double[] value = {widths.get(p)[i], widths.get(p)[i + 1], i == 0 ? 0 : 1,
+                        profile.limits().get(p)[i], profile.limits().get(p)[i + 1]};
+                out.merge(edge, value, ModelHydrologyProvider::mergeWidthEdge);
+            }
+        }
+        return Map.copyOf(out);
+    }
+
+    private static double[] mergeWidthEdge(double[] a, double[] b) {
+        return new double[]{Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.max(a[2], b[2]),
+                Math.min(a[3], b[3]), Math.min(a[4], b[4])};
+    }
+
+    private record WidthInheritance(Map<Integer, Double> half, java.util.Set<Integer> continued,
+                                    Map<Integer, Double> limits) { }
+
+    /** 匹配同向且两端完全相同的骨架格边；不把空间邻近的其它河或逆流边混进来。 */
+    private WidthInheritance inheritedWidths(DeterministicSkeleton.Result sk, int ox, int oz, int n) {
+        int rx = Math.floorDiv(ox + HALO, REGION), rz = Math.floorDiv(oz + HALO, REGION);
+        Map<WidthEdge, double[]> shared = new HashMap<>();
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+            var base = regionPass1(rx + dx, rz + dz);
+            for (var e : base.widths().entrySet()) shared.merge(e.getKey(), e.getValue(),
+                    ModelHydrologyProvider::mergeWidthEdge);
+        }
+        Map<Integer, Double> half = new HashMap<>();
+        Map<Integer, Double> limits = new HashMap<>();
+        java.util.Set<Integer> continued = new java.util.HashSet<>();
+        for (var t : sk.traces) for (int k = 0; k + 1 < t.cell.length; k++) {
+            int a = t.cell[k], b = t.cell[k + 1];
+            var edge = new WidthEdge(ox + (a / n) * STEP, oz + (a % n) * STEP,
+                    ox + (b / n) * STEP, oz + (b % n) * STEP);
+            double[] w = shared.get(edge);
+            if (w == null) continue;
+            half.merge(a, w[0], Math::max);
+            half.merge(b, w[1], Math::max);
+            limits.merge(a, w[3], Math::min);
+            limits.merge(b, w[4], Math::min);
+            if (k == 0 && w[2] > 0) continued.add(a);
+        }
+        return new WidthInheritance(half, continued, limits);
+    }
+
+    /**
+     * 同一世界出口格的出湖半宽：本区与相邻区 pass1 各自按源盆净出流算，取<b>较小者</b>。
+     *
+     * <p>为什么必须跨窗口统一：源盆身份由各窗口自己的盆地解算给出，同一出口格在相邻窗口
+     * 可以判成不同盆地（实测 (160,-486) 一侧 basin 18、另一侧 17/23）⇒ 净出流不同
+     * ⇒ 同一条河在两个窗口得到不同起宽，下游又被小湖上限压细，整段被迫从上游粗收到下游细。
+     * 取较小者与 typed 端口同一口径：双方共用同一个约定值，不放大任何一侧。</p>
+     *
+     * <p>只读邻区 <b>pass1</b>（与 {@link #inheritedWidths} 同源），不递归邻区 final。
+     * <b>调用方必须已按 primary + BOUNDARY_PORTS + !HIER 门控</b>：pass1 自身也走同一条
+     * build 路径，无门控会在 pass1 内再次触发邻区 pass1 ⇒ 连锁扇出。</p>
+     */
+    private Map<Long, Double> agreedOutletHalves(DeterministicSkeleton.Result sk,
+                                                 HydrologyPipeline.Result pipe, int ox, int oz, int n) {
+        Map<Long, Double> agreed = new HashMap<>();
+        collectOutletHalves(agreed, sk, pipe, ox, oz, n);
+        int rx = Math.floorDiv(ox + HALO, REGION), rz = Math.floorDiv(oz + HALO, REGION);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+            var base = regionPass1(rx + dx, rz + dz);
+            if (base == null || base.skeleton() == null) continue;
+            collectOutletHalves(agreed, base.skeleton(), base.pipe(),
+                    base.originX(), base.originZ(), base.pipe() == null ? n : base.pipe().nz());
+        }
+        return Map.copyOf(agreed);
+    }
+
+    private static void collectOutletHalves(Map<Long, Double> agreed, DeterministicSkeleton.Result sk,
+                                            HydrologyPipeline.Result pipe, int ox, int oz, int n) {
+        if (sk == null || sk.traces == null || n <= 0) return;
+        for (var t : sk.traces) {
+            double half = RiverWidthProfile.outletHalfOf(pipe, t);
+            if (!Double.isFinite(half)) continue;
+            long key = RiverWidthProfile.worldKey(ox + (t.sourceCell() / n) * (double) STEP,
+                    oz + (t.sourceCell() % n) * (double) STEP);
+            agreed.merge(key, half, Math::min);
+        }
+    }
+
+    private Map<Integer, Double> boundaryWidths(DeterministicSkeleton.Result sk, List<WireIn> wires,
+                                                WidthInheritance inherited, int ox, int oz, int n) {
+        Map<Integer, Double> pins = new HashMap<>();
+        int rx = Math.floorDiv(ox + HALO, REGION), rz = Math.floorDiv(oz + HALO, REGION);
+        for (var raw : sk.ports) {
+            var p = raw.stamp(rx, rz, REGION);
+            pins.merge(raw.cell(), portHalf(p.anchorX(), p.anchorZ(), p.nextX(), p.nextZ()), Math::max);
+        }
+        for (var w : wires) {
+            boolean accepted = sk.mergeEvidence.stream().anyMatch(e -> e.anchor() == w.anchorCell()
+                    && e.next() == w.nextCell() && e.resolved());
+            accepted |= sk.traces.stream().anyMatch(t -> t.cell.length > 1
+                    && t.cell[0] == w.anchorCell() && t.cell[1] == w.nextCell());
+            if (!accepted) continue;
+            double half = portHalf(w.anchorX(), w.anchorZ(), w.nextX(), w.nextZ());
+            pins.merge(w.anchorCell(), half, Math::max);
+            inherited.half().merge(w.anchorCell(), half, Math::max);
+            inherited.continued().add(w.anchorCell());
+        }
+        return pins;
+    }
+
+    /**
+     * 端口的约定半宽：所有能覆盖该锚点+next 的 pass1 候选<b>取最细者</b>。
+     *
+     * <p><b>为什么是最细而不是最粗</b>：注释沿用了旧写法 {@code Math.max}，但两端各自只看
+     * 自己能看到的那批 pass1 候选 ⇒ 收/发两边可能取到不同值，端口就必然对不上
+     * （单调收束启用后实测 21 处 gap）。取 {@code min} 时双方都等于"所有候选里最细的那个"，
+     * 只要可见集合相同就<b>逐位相等</b>，与"下游不得比上游宽"的单向语义也一致。</p>
+     */
+    private double portHalf(int ax, int az, int nx, int nz) {
+        double half = Double.POSITIVE_INFINITY, limit = 6.0;
+        int minRx = Math.floorDiv(ax - HALO - 1, REGION), maxRx = Math.floorDiv(ax + HALO, REGION);
+        int minRz = Math.floorDiv(az - HALO - 1, REGION), maxRz = Math.floorDiv(az + HALO, REGION);
+        for (int rx = minRx; rx <= maxRx; rx++) for (int rz = minRz; rz <= maxRz; rz++) {
+            var base = regionPass1(rx, rz);
+            for (var e : base.widths().entrySet()) {
+                if (e.getKey().x() == ax && e.getKey().z() == az) limit = Math.min(limit, e.getValue()[3]);
+                if (e.getKey().nx() == ax && e.getKey().nz() == az) limit = Math.min(limit, e.getValue()[4]);
+            }
+            for (var t : base.skeleton().traces) {
+                if (t.port == null || t.port.anchorX() != ax || t.port.anchorZ() != az
+                        || t.port.nextX() != nx || t.port.nextZ() != nz) continue;
+                for (var e : base.widths().entrySet()) if (e.getKey().nx() == ax && e.getKey().nz() == az)
+                    half = Math.min(half, e.getValue()[1]);
+            }
+        }
+        if (!Double.isFinite(half)) half = RiverCenterlines.MIN_HALF_BLOCKS;
+        return Math.min(half, limit);
     }
 
     // ---- ports 模块只读探针入口（供 build 侧审计程序调用；不参与生产路径）----
@@ -3302,8 +3461,10 @@ public final class ModelHydrologyProvider {
         // ★ 双 pass 续流：取 8 邻 pass-1 中【指向本区】的出口种子，换算成本区格索引，
         //   由本区自己的 parent 树追进来（方向场统一 ⇒ 缝上不再断）。
         long incomingStart = System.nanoTime();
+        List<BoundaryPort> widthIncoming = BOUNDARY_PORTS && CROSS_PASS
+                ? typedIncomingPorts(rx, rz) : List.of();
         List<WireIn> incomingWires = BOUNDARY_PORTS && CROSS_PASS
-                ? collectIncomingWires(rx, rz, p.nx(), base.originX(), base.originZ())
+                ? assembleIncomingWires(rx, rz, p.nx(), base.originX(), base.originZ(), widthIncoming)
                 : List.of();
         List<Integer> incoming = !CROSS_PASS ? List.of()
                 : BOUNDARY_PORTS
@@ -3454,6 +3615,8 @@ public final class ModelHydrologyProvider {
         private final double[] seg;
         private final Map<Long, List<Integer>> tiles;
         private final double[] surface;
+        private double[] widthLimits;
+        private List<LakeWidthEnvelope.Interface> lakeInterfaces = List.of();
 
         private record Hit(double dist, double half, double depth, double surface) { }
 
@@ -3584,6 +3747,9 @@ public final class ModelHydrologyProvider {
          *
          * <p>取 12 格：刚好覆盖 trace 接缝两侧（JOIN 处两链端点相距通常 ≤3 格），
          * 又不至于把平行河道混在一起。{@code 0} = 关闭（A/B 归因）。</p>
+         *
+         * <p><b>现状</b>：列级 IDW 混合已随宽度统一迁入 {@link RiverWidthProfile}，
+         * 本常量在生产路径<b>无消费者</b>；保留仅因 {@code WidthContinuityProbe} 仍静态反射读取它做元信息。</p>
          */
         static final double WIDTH_BLEND = Double.parseDouble(
                 System.getProperty("geogenesis.widthBlend", "6"));
@@ -3602,41 +3768,11 @@ public final class ModelHydrologyProvider {
             return halfWidthAt(pipe, ox, oz, n, step, bx, bz, wp, null, null);
         }
 
-        /**
-         * ★★★ 2026-10-25【溢出口宽度由湖泊面积决定 —— 用户明确要求】★★★
-         *
-         * <p><b>物理</b>：湖泊出流的流量 = 该湖<b>集水区的降水总量</b>
-         * （{@code basin.catchmentCells × runoff}），与湖泊本身的<b>面积</b>正相关。
-         * 大湖出流必然比小湖粗，这是用户指出的正确判据。</p>
-         *
-         * <p><b>此前为什么不对</b>：溢口段的起点查的是 coarse 格的 {@code discharge}，
-         * 而该格在湖内通常 Q≈0（湖不计入河道累积）⇒ 溢口段一律被压到最小宽度
-         * ⇒ 大湖出来的河也是 1px，不合理。</p>
-         *
-         * <p><b>修法</b>：若该点属于某个湖盆（{@code sourceBasinOf >= 0}），
-         * 用 {@code catchmentCells × runoff} 换算成等效 Q，再走同一宽度律。
-         * 非溢口点仍走原 Q 路径（行为不变）。</p>
-         */
+        /** 普通采样只消费本河 Q；湖净出流由 RiverWidthProfile 的显式出口身份注入。 */
         static double halfWidthAt(HydrologyPipeline.Result pipe, int ox, int oz, int n, int step,
                                   double bx, double bz, RiverCenterlines.Params wp,
                                   LakeWaterBalance.Result lakes, int[] basinCellToId) {
             double q = dischargeLookup(pipe, ox, oz, n, step, bx, bz);
-            // 溢口/湖内：用集水面积等效 Q
-            if (lakes != null && basinCellToId != null) {
-                int gi = (int) Math.round((bx - ox) / step);
-                int gj = (int) Math.round((bz - oz) / step);
-                if (gi >= 0 && gj >= 0 && gi < pipe.nx() && gj < n) {
-                    int k = gi * n + gj;
-                    int b = k < basinCellToId.length ? basinCellToId[k] : -1;
-                    if (b >= 0 && b < lakes.basins().size()) {
-                        CNT_BASIN_HIT.incrementAndGet();
-                        var basin = lakes.basins().get(b);
-                        // 集水面积 × runoff = 该湖的稳态出流（与 discharge 同量纲）
-                        double areaQ = basin.catchmentCells() * lakes.runoffPerCell();
-                        if (areaQ > q) { q = areaQ; CNT_BASIN_RAISED.incrementAndGet(); }
-                    }
-                }
-            }
             if (!(q > 0)) return RiverCenterlines.MIN_HALF_BLOCKS;
             double half = 0.5 * RiverCenterlines.fullWidthPublic(q, wp);
             return Math.max(RiverCenterlines.MIN_HALF_BLOCKS, Math.min(wp.maxHalf(), half));
@@ -3719,151 +3855,48 @@ public final class ModelHydrologyProvider {
             return buildFromNodes(polys, null, 0, 0, 0, 1);
         }
 
-        /**
-         * ★★★ 2026-10-25【生产路径接入真实宽度律】★★★
-         *
-         * <p><b>此前为什么没宽度</b>：本方法（骨架唯一生产段索引）把每段半宽与深度
-         * 硬写成 {@code MIN_HALF_BLOCKS / 1.0}，{@code RiverCenterlines.Params} 的宽度律
-         * 完全没有消费者（legacy 的 {@code build} 已随 legacy 链删除）。</p>
-         *
-         * <p><b>现在</b>：按折线端点反查该处 coarse 格的 discharge，走 {@code fullWidth(Q)}；
-         * 查不到（越界/非河格）退回最小可见值，保证不断线。</p>
-         */
-        /**
-         * JOIN 汇合处：把下游链的宽度约束传回上游链，保证汇合口两侧宽度一致。
-         *
-         * <p><b>规则（物理）</b>：汇合后流量 = 各上游之和，故下游必然不窄于任一上游。
-         * 反过来说，若上游链的<b>末段</b>比下游链的<b>首段</b>还宽，说明数据里两条链的
-         * Q 口径不一致（常见于 trace 边界）⇒ 把上游末段压到不超过下游首段。</p>
-         *
-         * <p><b>为什么只压不抬</b>：抬大会让"支流比干流粗"，压小只是让汇合更平滑，
-         * 且不会引入凭空加粗（用户明确不要"整片变粗"）。</p>
-         *
-         * <p>对齐 legacy {@code enforceConfluenceMonotonic}（RiverLineNetwork:1466-1506）
-         * 的简化版：只做一轮、只作用于末段附近 {@code JOIN_TAPER} 个节点。</p>
-         */
-        /**
-         * 跨折线的端点宽度统一：让画面上同一条河在 trace 接缝两侧取同一宽度。
-         *
-         * <p><b>根因</b>（DropProbe 实测）：单条折线内部相邻段落差恒为 0（24080 对、maxDrop=0），
-         * 但骤降全在<b>折线之间</b> —— 每条折线各自查自己的 Q 序列，trace 边界的 Q 会跳。</p>
-         *
-         * <p><b>做法</b>：对每条折线的首/末节点，在 {@code radius} 格内找其他折线的节点，
-         * 两边取<b>较大</b>半宽。取较大而非平均：汇合处下游必然不窄于上游
-         * （物理：流量相加），取较大符合这一点，且不会让干流被支流拉细。</p>
-         *
-         * @param radius 端点匹配半径（block）。与 {@code WIDTH_BLEND} 同源。
-         */
-        static void unifyWidthAtJunctions(List<DeterministicSkeleton.Shaped> polys,
-                                          List<double[]> halfSeqs, double radius) {
-            int np = polys.size();
-            if (np < 2 || !(radius > 0)) return;
-            int r = (int) Math.ceil(radius);
-            // 所有节点入栅格
-            Map<Long, List<int[]>> grid = new HashMap<>();
-            for (int pi = 0; pi < np; pi++) {
-                var sh = polys.get(pi);
-                var seq = halfSeqs.get(pi);
-                if (seq == null || seq.length != sh.size()) continue;
-                for (int i = 0; i < sh.size(); i++) {
-                    long key = ((long) Math.floorDiv((int) sh.x[i], r) << 32)
-                            ^ (Math.floorDiv((int) sh.z[i], r) & 0xffffffffL);
-                    grid.computeIfAbsent(key, k -> new ArrayList<>()).add(new int[]{pi, i});
-                }
-            }
-            for (int pi = 0; pi < np; pi++) {
-                var sh = polys.get(pi);
-                var seq = halfSeqs.get(pi);
-                if (seq == null || seq.length != sh.size() || seq.length == 0) continue;
-                // 只看首末节点（接缝都在端点）
-                for (int end = 0; end < 2; end++) {
-                    int i = end == 0 ? 0 : seq.length - 1;
-                    if (seq.length == 1 && end == 1) break;
-                    int px = (int) sh.x[i], pz = (int) sh.z[i];
-                    int gx = Math.floorDiv(px, r), gz = Math.floorDiv(pz, r);
-                    double best = seq[i];
-                    for (int dx = -1; dx <= 1; dx++) {
-                        for (int dz = -1; dz <= 1; dz++) {
-                            var lst = grid.get(((long) (gx + dx) << 32) ^ ((gz + dz) & 0xffffffffL));
-                            if (lst == null) continue;
-                            for (int[] cand : lst) {
-                                if (cand[0] == pi) continue;               // 不算自己
-                                var osh = polys.get(cand[0]);
-                                var oseq = halfSeqs.get(cand[0]);
-                                if (oseq == null || cand[1] >= oseq.length) continue;
-                                double d = Math.hypot(osh.x[cand[1]] - sh.x[i], osh.z[cand[1]] - sh.z[i]);
-                                if (d > radius) continue;
-                                CNT_UNIFY_SCAN.incrementAndGet();
-                                if (oseq[cand[1]] > best) {
-                                    best = oseq[cand[1]];
-                                    CNT_UNIFY_CHANGED.incrementAndGet();
-                                }
-                            }
-                        }
-                    }
-                    seq[i] = best;
-                }
-            }
-        }
-
-        static void propagateConfluence(List<DeterministicSkeleton.Shaped> polys,
-                                        List<double[]> halfSeqs,
-                                        List<DeterministicSkeleton.Trace> traces,
-                                        int n) {
-            if (traces == null || traces.size() != polys.size()) return;
-            final int TAPER = 6;
-            // mouthCell → 链索引（JOIN 终点就是下游链的内部格）
-            Map<Integer, Integer> cellToPoly = new HashMap<>();
-            for (int i = 0; i < traces.size(); i++) {
-                var t = traces.get(i);
-                for (int c : t.cell) cellToPoly.putIfAbsent(c, i);
-            }
-            for (int i = 0; i < traces.size(); i++) {
-                var t = traces.get(i);
-                if (t.end != DeterministicSkeleton.End.JOIN) continue;
-                Integer down = cellToPoly.get(t.mouthCell());
-                if (down == null || down == i) continue;
-                double[] upSeq = halfSeqs.get(i), downSeq = halfSeqs.get(down);
-                if (upSeq == null || downSeq == null || upSeq.length == 0 || downSeq.length == 0) continue;
-                // 下游链首段宽度（汇合点下游的"应有的宽度"）
-                double downHalf = downSeq[0];
-                // 上游末段向 TAPER 个节点线性收敛到 downHalf（不抬，只压）
-                int m = upSeq.length;
-                for (int k = 0; k < TAPER && m - 1 - k >= 0; k++) {
-                    double w = 1.0 - (k + 1.0) / (TAPER + 1.0);   // 越靠近末端，权重越大
-                    double target = upSeq[m - 1 - k] * (1 - w) + Math.min(upSeq[m - 1 - k], downHalf) * w;
-                    if (target < upSeq[m - 1 - k]) upSeq[m - 1 - k] = target;
-                }
-            }
-        }
-
         static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys,
                                            HydrologyPipeline.Result pipe, int ox, int oz,
                                            int n, int step) {
             return buildFromNodes(polys, pipe, ox, oz, n, step, null, ox, oz);
         }
 
-        /**
-         * ★★★ 2026-10-25【宽度：JOIN 处上下游一致 + 沿河单调】★★★
-         *
-         * <p><b>为什么需要 traces</b>：一条视觉上连续的河在数据里被切成多条 trace
-         * （JOIN 支流 / 跨区接力 / pass2）。每条各自查 Q 时，汇合点两侧宽度必然不等，
-         * 表现为"到汇合口突然变粗/变细"。</p>
-         *
-         * <p><b>物理正解</b>：汇合点下游的流量 = 上游各链流量之和。
-         * 反过来说，<b>上游链的末段宽度必须不宽于下游链的首段</b>，
-         * 否则画面上会出现"支流比干流还粗"的倒挂。</p>
-         *
-         * <p>本方法用 {@code Trace.end == JOIN} 与 {@code mouthCell} 建立"链 → 下游链"关系，
-         * 按<b>拓扑逆序</b>（先处理最下游）把下游宽度上限传回上游链的末段。
-         * 这是 legacy {@code enforceConfluenceMonotonic}（RiverLineNetwork:1466-1506）
-         * 的等价简化：只做一轮传播，不做 3 遍松弛。</p>
-         */
+        /** 半宽（JOIN 汇合匹配 / 边界约定 / 沿程平滑与单调趋势）全部由 {@link RiverWidthProfile} 算出，本方法只落几何。 */
         static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys,
                                            HydrologyPipeline.Result pipe, int ox, int oz,
                                            int n, int step,
                                            List<DeterministicSkeleton.Trace> traces,
                                            int traceOx, int traceOz) {
+            List<DeterministicSkeleton.River> rivers = traces == null ? List.of()
+                    : DeterministicSkeleton.buildRivers(traces, n);
+            return buildFromNodes(polys, pipe, ox, oz, n, step, traces, rivers, Map.of());
+        }
+
+        static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys,
+                                           HydrologyPipeline.Result pipe, int ox, int oz, int n, int step,
+                                           List<DeterministicSkeleton.Trace> traces,
+                                           List<DeterministicSkeleton.River> rivers,
+                                           Map<Integer, Double> boundaryHalf) {
+            return buildFromNodes(polys, pipe, ox, oz, n, step, traces, rivers, boundaryHalf,
+                    new WidthInheritance(Map.of(), java.util.Set.of(), Map.of()));
+        }
+
+        static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys,
+                                           HydrologyPipeline.Result pipe, int ox, int oz, int n, int step,
+                                           List<DeterministicSkeleton.Trace> traces,
+                                           List<DeterministicSkeleton.River> rivers,
+                                           Map<Integer, Double> boundaryHalf, WidthInheritance inherited) {
+            return buildFromNodes(polys, pipe, ox, oz, n, step, traces, rivers, boundaryHalf, inherited,
+                    Map.of());
+        }
+
+        /** 生产 final 入口：除边界/继承外，还消费跨窗口一致的出湖半宽。 */
+        static SegmentIndex buildFromNodes(List<DeterministicSkeleton.Shaped> polys,
+                                           HydrologyPipeline.Result pipe, int ox, int oz, int n, int step,
+                                           List<DeterministicSkeleton.Trace> traces,
+                                           List<DeterministicSkeleton.River> rivers,
+                                           Map<Integer, Double> boundaryHalf, WidthInheritance inherited,
+                                           Map<Long, Double> outletHalfByWorld) {
             // ★★★ 2026-10-10【端点缝合 —— 治"拓扑已 JOIN、像素差 2~3 格"的孤立段】★★★
             //
             // 【实测依据（OrphanGap）】孤立段到最近河/湖/海的距离：**2 格 8 个、3 格 2 个**，
@@ -3884,41 +3917,13 @@ public final class ModelHydrologyProvider {
             double[] seg = new double[(count + bridges.size()) * 8];
             Map<Long, List<Integer>> tiles = new HashMap<>();
             int idx = 0;
-            RiverCenterlines.Params wp = RiverCenterlines.Params.defaults();
-            // ★ 先算每条折线的半宽序列（平滑 + 沿程单调），再按 JOIN 拓扑传播，最后写段。
             int polyN = polys.size();
-            List<double[]> halfSeqs = new ArrayList<>(polyN);
-            for (var sh : polys) {
-                int nodes0 = sh.size();
-                if (nodes0 == 0) { halfSeqs.add(new double[0]); continue; }
-                double[] rawHalf0 = new double[nodes0];
-                for (int i = 0; i < nodes0; i++) {
-                    rawHalf0[i] = halfWidthAt(pipe, ox, oz, n, step, sh.x[i], sh.z[i], wp,
-                            pipe == null ? null : pipe.lakeResult(),
-                            pipe == null || pipe.lakeResult() == null ? null : pipe.lakeResult().basinId());
-                }
-                double[] sm = smoothAlong(rawHalf0, WIDTH_SMOOTH);
-                if (WIDTH_MONOTONE) {
-                    for (int i = 1; i < sm.length; i++) {
-                        if (sm[i] < sm[i - 1]) sm[i] = sm[i - 1];
-                    }
-                }
-                halfSeqs.add(sm);
-            }
-            // ★★★ 2026-10-25【跨折线宽度统一 —— 治"同一条河在接缝处突然变宽/变细"】★★★
-            //
-            // 【实测根因（DropProbe）】三条折线内部相邻段落差 = 0（共 24080 对，maxDrop=0），
-            //   但用户圈出的骤降全都发生在【折线之间】。
-            //   因为每条折线各自用自己的 Q 序列，而 Q 在 trace 边界处会跳
-            //   （不同 trace 的最上游格不同 ⇒ 累积流量不同）。
-            //
-            // 【修法】把「折线端点 + 邻居端点」的宽度做统一：
-            //   对每条折线的首/末节点，找 8 格内所有【其他折线】的节点，
-            //   若该节点靠得足够近（说明它们在画面上是同一条河），
-            //   取两者宽度的较大值给双方 ⇒ 接缝两侧一致。
-            //   这比"只处理 JOIN"更普适：跨区接力、pass2、缝合桥都能覆盖。
-            unifyWidthAtJunctions(polys, halfSeqs, WIDTH_BLEND);
-            propagateConfluence(polys, halfSeqs, traces, n);
+            var profile = RiverWidthProfile.buildDetailed(polys, pipe, ox, oz, n, step,
+                    traces, rivers, boundaryHalf, inherited.half(), inherited.continued(), inherited.limits(),
+                    outletHalfByWorld);
+            List<double[]> halfSeqs = profile.widths();
+            double[] widthLimits = new double[(count + bridges.size()) * 2];
+            java.util.Arrays.fill(widthLimits, 6.0);
             dumpWidthCounters("buildFromNodes");
             for (int pi = 0; pi < polyN; pi++) {
                 var sh = polys.get(pi);
@@ -3951,6 +3956,8 @@ public final class ModelHydrologyProvider {
                     // 共享节点取同一值 ⇒ 段边界无阶跃
                     seg[o + 4] = smoothHalf[i - 1];
                     seg[o + 5] = smoothHalf[i];
+                    widthLimits[si * 2] = profile.limits().get(pi)[i - 1];
+                    widthLimits[si * 2 + 1] = profile.limits().get(pi)[i];
                     seg[o + 6] = 1.0;                               // d0
                     seg[o + 7] = 1.0;                               // d1
                     registerTile(tiles, si, x0, z0, x1, z1);
@@ -3966,7 +3973,10 @@ public final class ModelHydrologyProvider {
                 seg[o + 7] = 1.0;
                 registerTile(tiles, si, br[0], br[1], br[2], br[3]);
             }
-            return new SegmentIndex(seg, tiles);
+            var result = new SegmentIndex(seg, tiles);
+            result.widthLimits = widthLimits;
+            result.lakeInterfaces = profile.interfaces();
+            return result;
         }
 
         /**
@@ -4045,8 +4055,7 @@ public final class ModelHydrologyProvider {
             if (cand == null) return null;
             double best = Double.POSITIVE_INFINITY, half = 0, depth = 0, waterSurface = Double.NaN;
             double bestKey = Double.POSITIVE_INFINITY;
-            // ★ IDW 宽度混合累加器（legacy HydrologyBlockCarver:560-579 同构）
-            double blendSum = 0, blendHalf = 0;
+            double bankScale = bankScale(blockX, blockZ);
             for (int si : cand) {
                 int o = si * 8;
                 double x0 = seg[o], z0 = seg[o + 1], x1 = seg[o + 2], z1 = seg[o + 3];
@@ -4057,7 +4066,10 @@ public final class ModelHydrologyProvider {
                         : 0;
                 double px = x0 + t * dx, pz = z0 + t * dz;
                 double dist = Math.hypot(blockX - px, blockZ - pz);
-                double segHalf = seg[o + 4] + t * (seg[o + 5] - seg[o + 4]);
+                double limit = widthLimits == null ? 6.0
+                        : widthLimits[si * 2] + t * (widthLimits[si * 2 + 1] - widthLimits[si * 2]);
+                double segHalf = Math.min(limit,
+                        clampHalf((seg[o + 4] + t * (seg[o + 5] - seg[o + 4])) * bankScale));
                 // ★★★ 2026-10-21【覆盖判据 = 半宽 ∪ 相交】
                 //
                 // 【旧判据】格心到线段距离 ≤ half(0.5)。对角步另一侧格心距线段 1/√2≈0.707
@@ -4073,14 +4085,6 @@ public final class ModelHydrologyProvider {
                 boolean covered = dist <= segHalf
                         || segmentMeetsBlock(x0, z0, x1, z1, blockX, blockZ);
                 double key = covered ? dist : dist + 1e6;   // 覆盖优先，其次比距离
-                // ★ 2026-10-25【IDW 宽度混合的候选收集】
-                //   只为 half 做加权平均（几何覆盖判据不变），见下方 wSum 段。
-                if (covered && dist <= WIDTH_BLEND) {
-                    double fade = Math.min(1.0, dist / WIDTH_BLEND);
-                    double wt = (1.0 - fade) * (1.0 - fade) / Math.max(dist * dist, 1.0);
-                    blendSum += wt;
-                    blendHalf += wt * segHalf;
-                }
                 if (dist == 0 && best == 0 && Double.isFinite(waterSurface) && Double.isFinite(surface[si])
                         && Double.doubleToLongBits(waterSurface)!=Double.doubleToLongBits(surface[si]))
                     throw new IllegalStateException("competing corridor planes at "+blockX+","+blockZ);
@@ -4095,25 +4099,22 @@ public final class ModelHydrologyProvider {
             // 没有任何段与该方块相交 ⇒ 此处无水。
             // ⚠ 不能像旧实现那样靠 dist>half 兜底：那会把"附近的方块"全染色 = 加粗。
             if (bestKey > 0.5e6) return null;
-            // ★★★ 2026-10-25【宽度 IDW 混合 —— 治"宽度一节节"的根本手段】★★★
-            //
-            // 【为什么必须在这一层做】初版只对折线节点做 box 平滑（±4 格），
-            //   而 coarse Q 是 2 格一台阶、汇流/跨 trace 处直接跳变 ⇒ 平滑窗口太小，
-            //   台阶原样留在画面上（实测宽 0.5→1.77 之间大跳变 236 处、最大 2.30）。
-            //
-            // 【legacy 怎么做（已验证有效）】HydrologyBlockCarver:560-579 对每一列，
-            //   在 blendDist≈100 block 内对所有邻近段做反距离平方加权：
-            //       fade = saturate(d/blendDist);  w = (1−fade)²/max(d²,1)
-            //       width = Σw·width_i / Σw
-            //   ⇒ 单段的宽度值根本没有机会以"阶跃"形式呈现在画面上。
-            //
-            // 【本处】只混 half 数值；覆盖判据（covered）完全不动，
-            //   避免 legacy RiverLineNetwork:4394-4410 已证否的"采样层并集 = 无效果/变粗"。
-            if (blendSum > 1e-9) {
-                half = blendHalf / blendSum;
-                CNT_BLEND_APPLIED.incrementAndGet();
-            }
             return new Hit(best, half, depth, waterSurface);
+        }
+
+        /** 世界坐标驱动的局部岸宽起伏，在覆盖判断之前应用，收发侧相同点取相同倍率。 */
+        static double bankHalf(double half, double x, double z) {
+            return clampHalf(half * bankScale(x, z));
+        }
+
+        private static double bankScale(double x, double z) {
+            double jitter = Math.sin(x * 0.08) * Math.cos(z * 0.08) * 1.5
+                    + Math.sin(0.04 * (x + z)) * 0.7;
+            return 1.0 + BANK_JITTER * jitter / 2.2;
+        }
+
+        private static double clampHalf(double half) {
+            return Math.max(RiverCenterlines.MIN_HALF_BLOCKS, Math.min(6.0, half));
         }
 
         /**

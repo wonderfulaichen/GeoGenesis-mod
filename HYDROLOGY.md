@@ -4,7 +4,7 @@
 > 归档原因：那些文档彼此矛盾、多数已过时（详见 `_archive/hydrology/README.md`），
 > 继续放在根目录会误导接手者 —— 本项目已因此连续出错多轮。
 >
-> **2026-10-26冷启动入口：** [最新交接](handoff/GeoGenesis-handoff-20261026.md)、本文件§〇bf及实施续记§〇bg。§〇b保留的是2026-10-09盘点，里面“两条生产链/legacy默认”等说法已过时；生产现状以§二（仅model）及当前调用点为准。§〇az—〇bd中的旧归因已由§〇bf明确撤回。
+> **2026-10-26冷启动入口：** [最新交接](handoff/GeoGenesis-handoff-20261026.md)、本文件§〇bf及实施续记§〇bg—〇bj（宽度最新状态）。§〇b保留的是2026-10-09盘点，里面“两条生产链/legacy默认”等说法已过时；生产现状以§二（仅model）及当前调用点为准。§〇az—〇bd中的旧归因已由§〇bf明确撤回。
 
 ---
 
@@ -1405,6 +1405,113 @@ Forge方块/装饰/流体tick、旧66全账本、跨窗证书/无环及生产迁
 **正确口径骨架图已补齐**：MDK `build/river-local-contract/skeleton-width-off/`下`before/after`各跑36区，均1720条trace，未关闭蜿蜒；直接对生产shape作无抗锯齿Bresenham单像素栅格化。全幅3269²、正典裁图1401²；全幅中心线135426像素，两臂掩码及着色/底色差异均0，shape.csv SHA256均`eb1841d6ae88c282b67c71a0e38a8d1a08cdcf9436b2e5967d08813b5987cb13`。与保留的后期`dump-out/polys.csv`按原存储3位小数、保留每条折线节点顺序及方向逐条比对一致（28个非空区/1720折线；其余8区无线），不是早期版本。图见[骨架A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/skeleton-ab.png)、[修复前全幅](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/before/skeleton-full.png)、[修复后全幅](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/after/skeleton-full.png)。结果证明本轮连接表示修正未改变这批shape路线，不代表全周期已通过。没有改生产默认值或TOML。
 
 **先前后补图记录（非骨架验收）**：已用现有`ProductionViewProbe`生产`GeoGenesisTerrain.getChunkCells`入口重跑修改前/后各1401²正典大图（同seed/中心/当前TOML、默认JVM开关）。每臂8281 chunk、uncovered=0；PNG逐像素差异`0 / 1962801`，两臂PNG SHA256均`1226674f61bd31681eb535ac7cbfd4083f33cc1af2cdb3766747a9ba51a52257`，列SHA256均`ae92afd33d6a6fef30979f13032576ef6d7746335d07c7901ba599cc46a626e2`。没有复用旧目标图。结果见[生产A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/production-ab.png)、[Java合成反例连接A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/connection-ab.png)及同目录metrics/provenance；后者不是游戏效果图。修复后首轮出图被后台线程`Comparison method violates its general contract`异常经PowerShell Stop中断，没有有效PNG；保留日志，未修改生产代码，同参数重跑退出0并完成对照。异常根因及归属未定，不宣称已修。
+
+### 〇bm、出湖宽度改为上限 + 顺流不得变窄（2026-10-27；优先于〇bl）
+
+用户两次纠偏：①「一条河的上游怎么可能大于下游」；②「出湖 floor 是你自己加的限制，我说是只有至多」。**第②条推翻了〇bl 的语义前提**：〇bl 仍在用 `Math.max(h, outletHalf)` 把净出流当**下限**，这本身就是上游被顶粗的直接原因。本轮按用户口径改掉。
+
+- **语义修正**：`RiverWidthProfile.rawRow` 两处 `Math.max(h, outletHalf)` → `Math.min`。出湖净出流现在只夹**上限**，不再把上游整段抬粗；下限仍由 `MIN_HALF_BLOCKS` 保证可见。
+- **新增硬约束** `enforceDownstreamMonotone`：按 `chainEdges` 后序，从河口向源头做**运行最小**，保证同一有向路径上"上游半宽 ≤ 下游半宽"。这是用户明确要求的硬约束，作为最终步骤放在所有 pin/上限之后。
+- **实测（36区，`mono-port-36`）**：
+  - 「起>尾+0.5」河段 **19 → 0**
+  - 任何局部变窄的河段 **518 → 0**
+  - 用户圈的那条 `(0,-2)` trace15：`5.44→1.25` 变为 **`1.12→1.25`**（顺流变宽，楔形消失）
+- **断言同步**：宽度 165 项全通过、连接 1137 项、覆盖探针通过。其中 4 项原断言"大出流必须更宽"正是被否定的语义，已改为验证"出湖只作上限、两臂出湖宽度一致"；3 项 pin 用例因"pin 值高于下游天然值会被单调压住"改为按下游契约断言，并新增 `testDownstreamNeverNarrows` 正面守门。
+- 生产大图 `prod-1793040462782`：8281chunk、uncovered0，河 61702→**53501**（去掉人为抬粗后变细，符合预期）。
+- **未解决（如实记录，不得当作已修）**：跨区端口出现 **21 处宽度不等**。按量级分：**12 处 <1e-4（浮点噪声）**、4 处 0.01–0.1、**4 处 ≥0.5（最大半宽差 3.52，即真实的上游宽于下游）**。正典大图范围 `x[-840,561) z[-563,838)` 内只有 3 处、最大半宽差 0.0097（≈0.02格，不可见）。
+  - 成因：`boundaryWidths` 把**本区自己发出的端口**也写进 pin（发送方语义），单调压细的出口又被 pin 抬回原值。**三次尝试均无效**（`portHalf` 改 min、两次 `enforceExitPortMonotone`），21 处数值**逐位不变** ⇒ 发送方窗口根本不消费自己发出的端口值，该方向需"反向端口传播"的结构性改动，留待下一轮。
+- 缓存 schema 113（〇bl 已升，本轮产出再变，故沿用并已在条目中记录）。
+
+未测：Forge 实机、完整 worldgen 门禁、隔离性能基准；跨区反向端口传播未做。
+
+### 〇bl、出湖宽度跨窗口一致（2026-10-27；优先于〇bk；**其"floor"语义已被〇bm 推翻**）
+
+> ⚠ 本节的出发点是"让出湖 floor 跨窗口一致"，但〇bm 已确认 **floor 本身就是错误语义**（用户：出湖只有至多）。阅读时以〇bm 为准；本节保留的是跨窗口取小的机制（`outletHalfByWorld`）与实测数据。
+
+用户指出少数河段"上游比下游宽、短河变化过快"，怀疑与出/入湖判定优先级冲突。定点复现确认两类原因并存，且只占少数：
+
+- 归因证据：区域`(0,-2)` trace15 `(160,-486)→(182,-540)` 全长73.7格，全宽5.44→1.25，**79个节点全部等于湖口上限**（整条就是一根锥）。隔离重跑：只去掉出湖净出流floor ⇒ 起宽降到2.97；只去掉湖口包络 ⇒ 起宽5.86但末端5.92。⇒ **是出湖floor把上游顶粗**，湖口锥再把下游压细。
+- 根因：同一世界出口格在相邻窗口被判成**不同源盆**（实测(160,-486)一侧basin 18、另一侧17/23）⇒ 净出流不同 ⇒ 同一条河两份几何起宽 5.44 vs 2.98（差45%）。
+- 修法：`RiverWidthProfile`新增`outletHalfByWorld`（世界整块坐标为键），`ModelHydrologyProvider.agreedOutletHalves`只读**本区+邻区pass1**的源盆净出流，同格取**较小者**（与typed端口同口径，不放大任一侧）。**门控必须与inheritedWidths完全一致（primary && BOUNDARY_PORTS && !HIER）**：首次实现漏了primary，pass1内部再求邻区pass1 ⇒ 连锁扇出（实测侵蚀tile跑到-12576，已终止并修正）。缓存schema升113。
+- 效果：目标河段起宽5.44→3.02，与邻窗2.98一致；收窄幅度4.19→1.77格，变化率0.0569→0.0241（减半）。36区契约仍全绿（843连接、137端口、732接口），有序shape逐字节不变，生产PNG与旧版仅差20像素（下游两版本就相同）。
+- **未解决（如实记录）**：全图"起>尾+0.5"仍19条，其中跨窗口起宽不一致9→7组。剩余7组里4组是**同一上限但宽度不同**、3组是**湖口上限本身在窗口间不同**（最大半宽差5.5，即一处湖被判OK 6.0、另一处OK_SMALL_BODY 0.5）。⇒ 方案A只解决"出湖floor跨窗口不一致"这一支，湖口尺度测量的窗口一致性仍未统一，不能宣称该类异常已消除。
+
+交付：[圈内河段A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-agreed-circle-ab.png)、[完整生产A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-agreed-production-ab.png)、[右侧对照](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-agreed-right-ab.png)、[沿程曲线](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-agreed-curves.png)、[证据JSON](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-agreed-evidence.json)。基线`prod-1793032532930`，候选`prod-1793037002221`（8281chunk、uncovered0、河61682）。
+
+未测：Forge实机、完整worldgen门禁、隔离性能基准；未提交或push。
+
+### 〇bk、河湖海接点尺度匹配候选（2026-10-27；优先于〇bj）
+
+按已批准的`river-junction-scale-matching.plan.md`实施；没有修改方案、用户TOML、骨架/D8/湖面/水位或搜索预算。不新增邻区final递归或pass2。预览缓存schema升112。仍待用户目检比例，不是水文全周期完成。
+
+- 普通宽度采样不再把`catchmentCells × runoff`当湖面积/净出流；入湖不借整盆Q。只有明确`fromOutlet + sourceBasinOf`才注入该源盆`outflow`，未知身份不借最近湖。JOIN末格属于接收河，支流采样使用其自身末段，避免干流Q反向撑粗。
+- 新`LakeInterfaceScale`只读既有湿区和盆地身份：沿明确入湖/出湖方向的有界走廊测横向湿宽；半宽上限=湿宽/16（全宽1/8），夹到0.5—6。狭长湖不按面积等效直径放宽；撞窗/身份未知记录UNKNOWN，不当小湖。比例是视觉候选，不是物理定律。该走廊测的是湿区投影跨度，并非严格局部法向切面，方向会影响尺度。
+- 新`LakeWidthEnvelope`把接口上限按弧长展开，距离跨真实串联/汇流接点累加，接点位置用shape投影，不误用River.cells下标。既有同向pass1边额外携带两端上限；final仅沿相同有向格边复用，取上限min，不叠加Q。列级bank jitter不能突破最终段上限。
+- 串联保留同断面，真正支流不强制等于干流宽。先承接来流，再对下游硬约束逆拓扑收束上游末段；源头/typed边界平台和湖口上限均有独立检查。没有把河头倒挂或上限例外当正常变化豁免。
+- 验证：针对性Gradle编译通过；宽度163断言、连接1137断言、覆盖展宽1317/收窄1131及cap0.5/1.25实际nearest覆盖通过；尺度72与包络76断言通过。详见MDK `build/river-width-trend/junction-final-unit/`。smooth0/8通过为中间同逻辑版本证据，最终默认另测。隔离变异恢复入湖借盆Q、禁生产包络、恢复支流等宽、移除jitter上限均编译成功、基线退出0而目标断言失败退出1；`junction-negative-delivery/`保留最终源码对应的编译、基线和UTF8失败日志及SHA；不使用此前代理基线本身失败时声称PROVEN的无效结果。
+- 最终36区`junction-complete-36/summary.json`：采集失败0、契约失败0；843处连接（4串联/839汇流）通过，137已消费唯一端口gap≤1e-9；227894节点未越段上限，732施加约束的湖接口未越接口上限。925接口中193未施加（详见status），不能说所有湖接口都已约束；空河区无上限数组属无样本，不当0。有序shape与`owner-current-36`逐字节一致；未消费/不唯一端口仍保留分类，不作全周期通过。
+- 生成顺序复查：最终同版本正序36区与逆序9区的共同45757行宽度/上限/shape字段逐字相同，逆序契约失败0，见`junction-complete-reverse9/`与`junction-order-comparison.json`。另一种子12345单区31连接、2唯一端口及38湖接口通过（在最后仅修外圈串联上限前采集）；不冒充多种子完整36区矩阵。
+- 最终正典1401²生产图`prod-1793032532930`：8281chunk、uncovered0，河61702、湖105738、海452384；列SHA `2bb77f4e1ec431c3674c348696b6a27072ed50d1490d2409113a874eddc5326c`。A图用〇bj `prod-1793015404233`，PNG差3725像素；TOML SHA仍`cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f`。中间图全部保留，不把它们叫最终版本。
+- 生产大图本次实测450.3秒、旧基线493.7秒；采集存在并行竞争/缓存影响，**不是隔离性能基准，不据此宣称性能改善**。新增接口数组采样和路径属性有成本，最终36区925接口共562154次数组样本（含未知接口），逐项记录samples；未做独立冷区/峰值内存A/B。
+
+交付：[完整生产A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-production-ab.png)、[左侧小湖A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-left-lake-ab.png)、[右侧河湖A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-right-lakes-ab.png)、[汇流A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-confluence-ab.png)、[入海A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-sea-ab.png)、[宽度曲线](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-width-curves.png)、[证据JSON](forge-1.20.1-47.4.10-mdk/build/river-width-trend/junction-delivery-evidence.json)。JSON中的法向河色格心计数是独立生产PNG采样（含弦穿块/抖动/附近河），不是连续精确湿宽或水量证明。
+
+未测：Forge实际放块/洞穴/装饰/流体tick、完整worldgen门禁、全域Q/正式宽深联算。未提交或push。
+
+### 〇bj、真河源沿程线性展宽（2026-10-26；优先于〇bi）
+
+用户认可〇bi整体改善，但指出宽度不能从1格在短距离内突然到粗河，需要线性渐进变化。定点复测确认：`(226,-478)`全长53.368格，旧固定32格smoothstep叠加继承/pin后，第13.13格全宽1.466、第26.28格4.430、第31.22格5.328，增长集中而非均匀。没有把该样本说成实测12格；12格是用户指出的通用上限情形。
+
+本次仅改`RiverWidthProfile`真源头最终剖面：源头0.5半宽标记保留；继承、JOIN与pin计算完后，按到首个显式pin、实际来流接点或当前河口的弧长线性插值，目标接点宽度保持。这样不会被继承值在河头短距离顶粗。明确续流、湖口不执行该线性河头；其它沿程仍保留原局部变化。骨架坐标、全宽上限、宽度接力协议未改。缓存schema升111。线性化只覆盖本trace到首个接点，尚未证明拆分trace无论如何都得同一条全程直线；不宣称全局流量已正确。
+
+- 定点新结果：第13.13/26.28/39.26/53.37格全宽2.082/3.166/4.235/5.398。原始日志`head-ramp-before.log`、`head-ramp-after.log`，曲线`linear-head-curves.png`；均在MDK `build/river-width-trend/`。
+- `linear-head-verification.log`：编译通过，宽度108断言、连接1137断言、覆盖探针通过。旧pin有界渐隐测试改用明确续流夹具，避免与新增真源头全程展宽契约混测；无硬接点的继承夹具改验线性分布，另测明确续流保留中段宽度。删除`linearSource`调用的隔离变异编译成功、3项相关断言失败退出1，见`linear-head-negative/`。
+- `linear-head-9/summary.json`：9区有序shape.csv与〇bi逐字节相同，171处JOIN差0、26处已消费唯一端口差0，6个未消费/拒收保留。每block半宽变化P99从0.10424降到0.06701，max从0.57314降到0.36108。这些只是段属性证据，不是全周期证明。
+- 正典1401²生产图`prod-1793015404233`，8281chunk、uncovered0，河62607（上一版59525）、湖105727（不变）、海452391（上一版452384）。河像素增加说明线性重分布不只是削窄局部，也抬高了部分先细后粗长段；需用户看整图判断。列SHA `5ac230508ead9271796800d9335050188f6575c7587812194300ce20daeb9043`，TOML SHA仍为原值。
+
+交付：[源头放大A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/linear-source-ab.png)、[完整生产A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/linear-production-ab.png)、[沿程宽度曲线](forge-1.20.1-47.4.10-mdk/build/river-width-trend/linear-head-curves.png)。Forge、完整门禁、最终36区及多种子矩阵、真实12格河头定位与正式断面未测；未提交或push。
+
+### 〇bi、真源头起宽与跨段重置修正候选（2026-10-26；优先于〇bh）
+
+用户指出〇bh候选仍有两项缺陷：真源头过粗、同一路线入海前重新收尖；要求先核对legacy，再授权试修。已复读旧普通路线的OutletSeed.accum/水面携带、续流不重复河头淡出、汇合宽深向下游传播、smoothPath同步插值。未恢复旧链，未照搬initialAccum+localAccum。
+
+- 实际复现：`(226,-478)`非溢口源头半宽2.64774；`(518,96)`上游窗口Q=210.5056，接收窗局部Q显著较小。〇bh用接收方pass1小值钉双方，把上游反压细；只做接点渐变不能消除属性重置。原始定点证据在根目录`debug-agent.log`及MDK `build/river-width-trend/circle-diagnosis.log`。
+- `RiverWidthProfile`新增真源头最小半宽0.5与平滑河头，串联后继、明确续流、湖泊溢口不重复淡出；源头约束与JOIN尾约束合并处理，防止近处继承覆盖源头。已连接上游尾宽先传到实际接收shape的后缀，再逆拓扑匹配接点。仍保留原剖面允许的局部浮动，不将全河宽度强制严格单调。
+- `Pass1`保存独立格路径的有向边宽度；final仅对两端和方向完全相同的格边复用属性，沿程携带宽度到后缀，不累加不同窗口的Q。实际owner切换发生在halo端口之前，因此重叠路径也需接力，不能只钉halo末点。明确typed wire被消费后补续流标志与宽度，双方以同anchor+next的pass1端口代表约定值。端口代表查询只枚举能覆盖anchor的窗口（含边框等号），不再查询next owner任意九窗；后者曾造成额外pass1扇出，已撤销。
+- 骨架、D8、shape、湖泊解算和搜索预算未改；无邻区final递归、不新增pass2。预览缓存schema已升110。新增pass1属性缓存、逐路径查表与投影扫描有开销，尚无隔离性能基准；不能宣称零性能成本。HIER实验链不启用跨区宽度继承。
+- 最终编译与针对性探针：MDK `build/river-width-trend/inheritance-last-verification.log`，宽度106断言、River连接1137断言、覆盖展宽1317/收窄1131样本通过。隔离删除河头/下游传播/路径继承三种变异均编译成功、由相应断言失败退出1，见`inheritance-negative-final/`。中间4组宽度旋钮通过；未把中间运行等同最终全部矩阵。
+- 最终9区取证：`typed-bounded-9/summary.json`，171处JOIN差0、26处已消费且唯一跨区接点差0；32个incoming中6个未消费/拒收保留。有序shape.csv与`owner-current-9`逐字节相同。每block半宽变化P99=0.10424，max=0.57314。默认端口属性未设的单区抽查18处JOIN差0、typed端口0；seed12345显式端口单区抽查31处JOIN、2处唯一接点差0，见`default-single/`、`seed12345-single/`。
+- 中间36区`inheritance-36-v2`虽然shape完全相同、843处JOIN差0，但137处唯一端口最大差5.5，**不是最终通过证据**；该失败推动补typed属性接力。后续`typed-final-9`和`production-typed-final`旧端口范围版本被主动停止，不能引用为完成结果。最终只重测9区，未声称36区最终全绿。
+- 最终完整1401²生产图：`prod-1793013690458`，8281chunk、uncovered0，河59525像素；相对本轮前`prod-1792998576834`河54553像素，PNG差6014像素。列SHA `0cc0343748e237a181e1f39dd4a3fbc8cc976bf343ab24cfa85bd9a8243eaaa8`，配置SHA仍为原值。真实源头缩细、目标入海河不再退成细线；湖/海分类可能随宽度覆盖与旧湖岸fallback略变，不宣称水体分类不变。
+
+本轮交付：[完整生产A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/production-final-ab.png)、[源头放大](forge-1.20.1-47.4.10-mdk/build/river-width-trend/source-final-ab.png)、[入海段放大](forge-1.20.1-47.4.10-mdk/build/river-width-trend/mouth-final-ab.png)，证据`final-ab-evidence.json`。均为生产合成离线图，不替代Forge运行后验收。
+
+仍未验收：用户目检、Forge、完整worldgen门禁、多种子完整矩阵、最终36区/缓存淘汰/并发顺序矩阵、任意长度河流的全局流量累计与正式横断面。独立审查指出短支流两端pin可能把中段拉成渐变斜坡、重叠路径判续流仍依赖局部结构、逐点投影复杂度，未宣称这些全部解决。本轮尚未提交或push；保留ignored构建证据，禁止clean。
+
+### 〇bh、河道宽度候选：总体趋宽、局部浮动与接点连续（2026-10-26）
+
+用户先要求本地提交再修宽度，局部连接检查点已提交 `a9ff137`，未push。随后再次纠偏：**不是逐点严格单调，而是总体向下游趋宽，局部可适当浮动，河道变化连续平滑即可**。此前助手由“严格单调”推导必须多区递归的说法不再作为方案前提。
+
+- 新 `RiverWidthProfile` 在河道层计算逐shape节点半宽：原Q宽度平滑、沿程趋势与局部偏离；消费骨架内部 `Result.rivers` 的真实有向接收关系。JOIN使用支流真实末端向已确认接收shape投影处宽度，不再取下游源头。连接与边界约定合并成同一份沿弧长的平滑约束；近邻约束之间插值，远处仅32block渐隐。没有修改骨架生成或shape坐标。
+- 跨区宽度由**真实next owner的独立pass1**裁定，同一锚点的多个halo发送代表读取同值；不是发送/接收max，更不是附近max Q或重复累加水量。初版两窗max在9区仍有3处不等（最大半宽差2.78596），已用定点日志确认同锚点多发送代表，撤销该算法。仅final河道属性读取既有邻区pass1，pass1自身不读邻区，不递归邻区final、不新增pass2；有额外查表与路径扫描开销，未做性能基准。
+- 退役 `unifyWidthAtJunctions/propagateConfluence`；nearest不再把相近河段宽度IDW混合。原bank jitter只改命中后的half、未改覆盖，已移入覆盖判断前，本区/邻区/湖岸fallback共用，并将有效半宽限制0.5—6（全宽1—12）。固定depth及正式横断面**仍未实现**，本轮不把宽度修复说成完整河道生成完成。
+- 当前缓存schema **109**。TOML原件SHA仍 `CC5D985F7554E4CFB316708E88373530241B9520E4CE983F745A6DEFCF50C16F`。未统一provider与骨架的端口默认值；本轮图与跨区取证均显式 `-Dgeogenesis.boundaryPorts=true`、保留默认蜿蜒，不能冒充未设JVM属性的默认游戏证据。
+- 主线程最终针对性验证：`compileJava/compileDiagnosticsJava`成功，River连接1137断言、宽度剖面94断言通过；覆盖探针验证局部展宽1317样本、收窄1131样本确实影响覆盖。日志在MDK `build/river-width-trend/final-verification.log`。代理声称的11组/10变异无持久日志，不列为本轮正式证据；主线程另在 `variants/` 保存实际运行的旋钮组及反控。
+- 9区提交前完整main类副本与候选独立JVM对照：有序shape.csv逐字节相同；171处已测JOIN半宽差从max2.20481降为0；26处已接收且唯一配对端口差从max4.80937降为0。最终36区：843处已测JOIN差0，137处唯一端口差0。161个incoming中139被证明消费；**2处NOT_UNIQUE**各含一个无段宽的退化发送候选与一个差0的有效候选，另22处未消费/拒收，全部保留为缺口，不算全周期通过。曲线只证明段属性，不等于实际湿列/水面/断面验收。
+- 36区227896个有序shape节点与此前用户指定后期骨架逐项相同（方向/顺序/raw double均保留），不依赖湿列猜骨架。1px图与河道图分开交付。候选每block半宽变化max0.8132，P99=0.13573；允许局部起伏，不以严格不减作为测试。
+- 同参1401²生产河道A/B：提交前 `prod-1792992339398`，候选 `prod-1792998576834`；每臂8281chunk、uncovered0。河像素57832→54553，完整PNG差6885/1962801；候选列SHA `cc88a7285a81e5b1e872220fc67144c0105dd52419d48c3841610fe2d1f9b405`。湖/海像素也略变（并非骨架变动）：宽度覆盖影响既有湖岸fallback与河/海分类，未宣称水体分类逐位不变。
+
+交付图：[生产河道A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/production-ab.png)、[段宽曲线](forge-1.20.1-47.4.10-mdk/build/river-width-trend/width-curves.png)、[1px骨架A/B](forge-1.20.1-47.4.10-mdk/build/river-width-trend/skeleton-ab.png)。证据见同目录 `owner-current-36/summary.json`、`before-9/`、`owner-current-9/`、`visual-check.json`。这些ignored build产物必须保留，禁止clean。
+
+补充泛化检查：默认未设端口属性的seed原样本region(0,0)采集退出0，18处JOIN差0、typed端口如实为0；显式端口seed12345的region(0,0)采集退出0，31处JOIN和2处被接收的唯一端口差0。分别在 `default-final-1/`、`seed12345-final-1/`，只是单区抽查，不代替多种子完整矩阵。主线程4组旋钮运行均退出0；“取下游头”和“跳过边界pin”两个隔离变异均编译成功、运行契约失败退出1，日志及结果在 `variants/`。
+
+未验收：用户目检本轮效果、Forge、完整worldgen门禁（旧SkeletonProbe合成溢口及反射错误未修）、多种子完整区域/缓存淘汰/并发取消矩阵、完整每源到湖海有向路径、实际横断面。宽度修复本身尚未再提交或push。
+
+运行（MDK，Java21）：
+```powershell
+.\gradlew.bat --offline --console=plain -I tools/local-flow-reassessment.gradle runRiverConnectionProbe runModelWidthProfileProbe runWidthCoverageProbe
+.\gradlew.bat --offline --console=plain -I tools/local-flow-reassessment.gradle runWidthContinuityProbe -PjunctionTypedPorts=true -PprobeArgs="build/river-width-trend/new-evidence -3 2"
+```
 
 <details>
 <summary>2026-10-25原始诊断旧稿（含已撤回归因，仅作历史证据；不得按其方案直接实施）</summary>

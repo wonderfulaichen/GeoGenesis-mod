@@ -464,7 +464,12 @@ public class PreviewDisplay extends AbstractWidget {
     //       + 湖列判据放宽到「地面 == 水面」以触发水柱保护。**产出有变**：
     //       湖 105182→106026、河 37270→37587；河由格心共线直线变为带连续曲率的曲线。
     //  ⚠ 本清单是【唯一留痕处】：新增产出改动请先在此补条目，再改下面的常量值。
-    private static final int CACHE_SCHEMA_VERSION = 108;
+    // 109 = 2026-10-26 河道沿程宽度改为平滑趋势与真实JOIN/typed边界属性衔接；骨架坐标不变。
+    // 110 = 2026-10-26 真源头最小起宽，同向路径携带pass1宽度并向下游继承，避免跨段重新收尖。
+    // 111 = 2026-10-26 真河源到首个接点按弧长线性展宽，避免固定32格内突然恢复粗河。
+    // 112 = 2026-10-26 河湖接口按实际湿宽限幅，出湖用净出流，真支流不再钉成干流宽度。
+    // 113 = 2026-10-27 出湖半宽改为跨窗口取较小者（同一出口格在相邻窗口可能判成不同源盆）。
+    private static final int CACHE_SCHEMA_VERSION = 113;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
