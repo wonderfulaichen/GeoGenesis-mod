@@ -61,6 +61,14 @@ import java.util.TreeSet;
  * </ul>
  * <p>落块层 <b>bank jitter cap</b> 不在本探针口径内（由 {@code WidthCoverageProbe} 另测）。</p>
  *
+ * <h2>中心深度诊断</h2>
+ * <p>{@code depths.csv} 只读真实 {@code seg[o+6/o+7]}；原 shape/width CSV 格式不动。
+ * 仅生产 {@code RIVER_CROSS_SECTION=true} 才施加等深契约：全部 succ 串联/真汇流尾对接收投影，
+ * 已消费且原候选唯一的端口在同一对 trace 的 anchor/next 分别比较；next 另须双方真实
+ * 几何投影距离 ≤1e-9，否则记录无 next 几何，不用钳末端的异点值判等深。深度容差固定 1e-9，
+ * 不套用宽度例外，不豁免 cross-window。缺段深度保留 UNKNOWN，不能按宽度重建假证据。
+ * 关模式只记录、不增加深度断言/失败；中心深度仍不代表最终整数水柱深度。</p>
+ *
  * <h2>退出码（采集成功 ≠ 验收）</h2>
  * <ul>
  *   <li>{@code 0} —— 采集完成且契约通过；<b>仍不是全周期验收</b>，且要求 {@code allGreen=true}；</li>
@@ -106,6 +114,17 @@ public final class WidthContinuityProbe {
      * 那正是历史上跨区属性重置的形态。</p>
      */
     static final double PORT_GAP_TOL = 1e-9;
+    /** 中心深度等值契约仅容忍浮点噪声；串联、真汇流、跨窗一律同标准，无宽度例外。 */
+    static final double DEPTH_GAP_TOL = 1e-9;
+    /** next 必须被双方真实几何覆盖，不能用钳到端点的异点深度参与等深契约。 */
+    static final double DEPTH_NEXT_GEOMETRY_TOL = 1e-9;
+    static final Map<String, Integer> DEPTH_NEXT_ELIGIBILITY = new java.util.TreeMap<>();
+    static final DepthStats DEPTH_SERIAL = new DepthStats();
+    static final DepthStats DEPTH_CONFLUENCE = new DepthStats();
+    static final DepthStats DEPTH_PORT_ANCHOR = new DepthStats();
+    static final DepthStats DEPTH_PORT_NEXT = new DepthStats();
+    static long depthNodeChecks, depthNodeViolations, depthMissingNodes, singletonDepthFallbacks;
+    static final Map<String, Integer> DEPTH_PORT_STATUS = new java.util.TreeMap<>();
     /** 节点半宽不得超过生产 {@code widthLimits} 的容差（同 MAX_HALF 量级噪声）。 */
     static final double LIMIT_VIOLATION_TOL = 1e-9;
     /** 河头线性展宽窗口（block），与 {@code RiverWidthProfile.linearSource} 的 {@code TRANSITION_BLOCKS} 同源。 */
@@ -189,13 +208,14 @@ public final class WidthContinuityProbe {
         List<Map<String, Object>> regions = new ArrayList<>();
         try (BufferedWriter shapeCsv = open("shape.csv", "rx,rz,poly,node,x,z");
              BufferedWriter widthCsv = open("widths.csv",
-                     "rx,rz,poly,node,x,z,half,arc,end,fromOutlet,limit,succTrace")) {
+                     "rx,rz,poly,node,x,z,half,arc,end,fromOutlet,limit,succTrace");
+             BufferedWriter depthCsv = open("depths.csv", "rx,rz,poly,node,x,z,centerDepth")) {
             boolean reverse = Boolean.getBoolean("geogenesis.widthReverseOrder");
             for (int ix = minR; ix <= maxR; ix++) {
                 for (int iz = minR; iz <= maxR; iz++) {
                     int rx = reverse ? maxR - (ix - minR) : ix;
                     int rz = reverse ? maxR - (iz - minR) : iz;
-                    regions.add(collectRegion(rx, rz, shapeCsv, widthCsv));
+                    regions.add(collectRegion(rx, rz, shapeCsv, widthCsv, depthCsv));
                 }
             }
         }
@@ -245,6 +265,14 @@ public final class WidthContinuityProbe {
         m.put("seaLevel", tp.seaLevel());
         m.put("systemProperties", sysProps());
         m.put("widthKnobs", widthKnobs());
+        m.put("riverCrossSection", ModelHydrologyProvider.RIVER_CROSS_SECTION);
+        m.put("depthSource", "真实 SegmentIndex.seg[o+6/o+7]；仅 size==1 无段 shape 可读"
+                + " shape 对齐的 SegmentIndex.nodeDepths[poly][0] 兜底；不重算剖面或宽度公式，不猜1");
+        m.put("depthContract", "仅 riverCrossSection=true：全部 succ 串联/真汇流尾中心深度等于接收投影；"
+                + "已消费且原 anchor 候选唯一的端口，在同一对 trace 的 anchor 与 next 分别等深；"
+                + "next 另须双方深度投影 residual <= " + DEPTH_NEXT_GEOMETRY_TOL
+                + "，否则记录 SENDER_NO_NEXT_GEOMETRY / RECEIVER_NO_NEXT_GEOMETRY，不比较异点深度；"
+                + "深度容差=" + DEPTH_GAP_TOL + "，无上限/河头/跨窗豁免；具备几何资格却缺实测值=采集失败");
         m.put("judgeRules", judgeRules());
         m.put("evidenceAdded", "SegmentIndex.widthLimits（每段 2 端点上限，生产 clamp 依据）与 "
                 + "SegmentIndex.lakeInterfaces（LakeWidthEnvelope.Interface：河湖接口横向湿宽与允许上限）");
@@ -291,7 +319,8 @@ public final class WidthContinuityProbe {
     static List<String> classSources() {
         List<String> list = new ArrayList<>();
         for (Class<?> c : new Class<?>[]{WidthContinuityProbe.class, ModelHydrologyProvider.class,
-                DeterministicSkeleton.class, RiverWidthProfile.class, ModelHydrologyProvider.SegmentIndex.class}) {
+                DeterministicSkeleton.class, RiverWidthProfile.class, RiverDepthProfile.class,
+                ModelHydrologyProvider.SegmentIndex.class}) {
             list.add(c.getName() + " sha256=" + classSha(c) + " source=" + codeSource(c));
         }
         return list;
@@ -315,13 +344,15 @@ public final class WidthContinuityProbe {
     // ---------------- 单区 ----------------
 
     static Map<String, Object> collectRegion(int rx, int rz, BufferedWriter shapeCsv,
-                                             BufferedWriter widthCsv) throws Exception {
+                                             BufferedWriter widthCsv, BufferedWriter depthCsv) throws Exception {
         Map<String, Object> sec = new LinkedHashMap<>();
         sec.put("region", List.of(rx, rz));
         View v = view(rx, rz);       // 取数失败直接抛（不吞），由 run() 走 FATAL/非零退出
         probed++;
         Stats st = new Stats();
         sec.put("curveRows", writeCurves(v, shapeCsv, widthCsv, st));
+        sec.put("depthCurveRows", writeDepthCurves(v, depthCsv));
+        sec.put("depthConnections", collectDepthConnections(v));
         GLOBAL.merge(st);
         sec.put("traces", v.traces.size());
         sec.put("polys", v.shapes.size());
@@ -563,6 +594,135 @@ public final class WidthContinuityProbe {
         return rows;
     }
 
+    /** 独立输出，不改旧 CSV；单点优先用生产 nodeDepths 证据，无证据仍记 NaN。 */
+    static int writeDepthCurves(View v, BufferedWriter csv) throws Exception {
+        int rows = 0;
+        for (int p = 0; p < v.shapes.size(); p++) {
+            double[] x = v.shapes.get(p)[0], z = v.shapes.get(p)[1], depth = v.depths.get(p);
+            for (int j = 0; j < x.length; j++) {
+                csv.write(v.rx + "," + v.rz + "," + p + "," + j + "," + Double.toString(x[j]) + ","
+                        + Double.toString(z[j]) + "," + Double.toString(depth[j]) + "\n");
+                if (!Double.isFinite(depth[j])) depthMissingNodes++;
+                rows++;
+            }
+        }
+        return rows;
+    }
+
+    /** 全部生产 succ 边各测一次，含同 River 内串联；不能只枚举 CONNECTED 而漏掉内部链。 */
+    static Map<String, Object> collectDepthConnections(View v) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        DepthStats serial = new DepthStats(), confluence = new DepthStats();
+        singletonDepthFallbacks += v.singletonDepthEvidence;
+        if (ModelHydrologyProvider.RIVER_CROSS_SECTION) {
+            depthNodeChecks += v.depthSharedNodes;
+            depthNodeViolations += v.depthSharedMismatch;
+            contractFailures += v.depthSharedMismatch;
+            if (v.depthSharedMismatch > 0) CONTRACT_VIOLATIONS.add("[depth-node] r(" + v.rx + "," + v.rz
+                    + ") shared endpoint mismatches=" + v.depthSharedMismatch);
+        }
+        for (int up = 0; up < v.succ.length; up++) {
+            int recv = v.succ[up];
+            if (recv < 0) continue;
+            boolean isSerial = RiverWidthProfile.serialEdge(up, recv, v.rivers, v.succ);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("upstreamTraceIndex", up);
+            row.put("receiverTraceIndex", recv);
+            row.put("kind", isSerial ? KIND_SERIAL : KIND_CONFLUENCE);
+            double[] x = v.shapes.get(up)[0], z = v.shapes.get(up)[1];
+            int last = x.length - 1;
+            Map<String, Object> projection = last < 0 ? Map.of() : project(v, recv, x[last], z[last]);
+            row.put("upTailWorld", last < 0 ? null : List.of(x[last], z[last]));
+            row.put("receiverProjection", projection);
+            Double a = last < 0 ? null : finiteDepth(v.depths.get(up)[last]);
+            Double b = finiteDepth(projection.get("centerDepth"));
+            judgeDepth(v, row, a, b, isSerial ? serial : confluence,
+                    "[depth-" + (isSerial ? "serial" : "confluence") + "] up=" + up + " recv=" + recv);
+            rows.add(row);
+        }
+        DEPTH_SERIAL.merge(serial);
+        DEPTH_CONFLUENCE.merge(confluence);
+        Map<String, Object> sec = new LinkedHashMap<>();
+        sec.put("enabled", ModelHydrologyProvider.RIVER_CROSS_SECTION);
+        sec.put("source", "RiverWidthProfile.chainEdges 的完整 succ 图；真实 seg 中心深度");
+        sec.put("sharedNodeChecks", v.depthSharedNodes);
+        sec.put("sharedNodeMismatches", v.depthSharedMismatch);
+        sec.put("nodeDepthMetadataPresent", v.rawNodeDepths != null);
+        sec.put("nodeDepthMetadataShapeAligned", v.rawNodeDepths != null
+                && v.rawNodeDepths.size() == v.shapes.size());
+        sec.put("singletonNodeDepthFallbacks", v.singletonDepthEvidence);
+        sec.put("serial", serial.summary());
+        sec.put("confluence", confluence.summary());
+        sec.put("rows", rows);
+        return sec;
+    }
+
+    static Double finiteDepth(Object value) {
+        return value instanceof Double d && Double.isFinite(d) ? d : null;
+    }
+
+    /** 深度沿用 RiverDepthProfile 的生产投影规则（含 tie），不改变旧宽度投影。 */
+    static Map<String, Object> depthProjection(View v, int poly, double px, double pz) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("centerDepth", null);
+        double[] x = v.shapes.get(poly)[0], z = v.shapes.get(poly)[1];
+        m.put("depthProjection", null);
+        if (x.length == 1) {
+            Double depth = finiteDepth(v.depths.get(poly)[0]);
+            m.put("centerDepth", depth);
+            m.put("depthSource", depth == null ? "MISSING_SINGLETON_NODE_DEPTH" : "SegmentIndex.nodeDepths");
+            m.put("depthProjection", Map.of("nodeIndex", 0, "segmentIndex", -1, "fraction", 0.0,
+                    "arc", 0.0, "residual", Math.hypot(px - x[0], pz - z[0])));
+            return m;
+        }
+        double[] hit = RiverWidthProfile.projectOnto(new DeterministicSkeleton.Shaped(x, z),
+                v.arcs.get(poly), px, pz);
+        m.put("depthSource", "SegmentIndex.seg[o+6/o+7]");
+        if (hit == null) return m;
+        int node = (int) hit[1];
+        double t = hit[2];
+        m.put("depthProjection", Map.of("segmentIndex", node, "fraction", t, "arc", hit[0],
+                "residual", Math.hypot(px - (x[node] + t * (x[node + 1] - x[node])),
+                        pz - (z[node] + t * (z[node + 1] - z[node])))));
+        Double a = finiteDepth(v.depths.get(poly)[node]), b = finiteDepth(v.depths.get(poly)[node + 1]);
+        m.put("centerDepth", a == null || b == null ? null : RiverWidthProfile.lerpAt(v.depths.get(poly), hit));
+        return m;
+    }
+
+    /** 只追加诊断；关模式绝不改变 fail/contractFailures。缺证据不能冒充断言通过。 */
+    static void judgeDepth(View v, Map<String, Object> row, Double a, Double b, DepthStats stats, String label) {
+        row.put("upstreamCenterDepth", a);
+        row.put("receiverCenterDepth", b);
+        Double gap = a == null || b == null ? null : a - b;
+        row.put("depthGap", gap);
+        row.put("depthContractChecked", false);
+        row.put("depthContractOk", null);
+        row.put("depthStatus", gap == null ? "UNKNOWN_DEPTH" : "MEASURED");
+        if (gap != null) stats.gaps.add(Math.abs(gap));
+        if (!ModelHydrologyProvider.RIVER_CROSS_SECTION) {
+            row.put("depthVerdict", "DISABLED");
+            return;
+        }
+        if (gap == null) {
+            stats.missing++;
+            fail++;
+            row.put("depthVerdict", "NOT_COLLECTED");
+            NOTES.add(label + " r(" + v.rx + "," + v.rz + ") missing segment depth");
+            return;
+        }
+        stats.checked++;
+        boolean ok = Math.abs(gap) <= DEPTH_GAP_TOL;
+        row.put("depthContractChecked", true);
+        row.put("depthContractOk", ok);
+        row.put("depthVerdict", ok ? VERDICT_OK : VERDICT_VIOLATION);
+        if (!ok) {
+            stats.violations++;
+            contractFailures++;
+            CONTRACT_VIOLATIONS.add(label + " r(" + v.rx + "," + v.rz + ") upstreamDepth=" + a
+                    + " receiverDepth=" + b + " gap=" + gap + " tol=" + DEPTH_GAP_TOL);
+        }
+    }
+
     // ---------------- 视图（尽量直取，仅段索引需反射） ----------------
 
     static View view(int rx, int rz) {
@@ -589,6 +749,7 @@ public final class WidthContinuityProbe {
         v.seg = ev.seg();
         v.segIndex = segMap(v.seg);
         v.rawLimits = ev.limits();
+        v.rawNodeDepths = ev.nodeDepths();
         v.ifaces = ev.interfaces();
         for (double[] xy : nodes) {
             int m = xy.length / 2;
@@ -609,7 +770,8 @@ public final class WidthContinuityProbe {
     }
 
     /** 段索引 + 新增宽度证据（上限数组、湖接口行）；一次反射取齐。 */
-    record Evidence(double[] seg, double[] limits, List<LakeWidthEnvelope.Interface> interfaces) { }
+    record Evidence(double[] seg, double[] limits, List<LakeWidthEnvelope.Interface> interfaces,
+                    List<double[]> nodeDepths) { }
 
     /**
      * 唯一反射点：private {@code regionFor} → private record {@code RegionData.skeletonSeg()}
@@ -636,10 +798,32 @@ public final class WidthContinuityProbe {
             @SuppressWarnings("unchecked")
             List<LakeWidthEnvelope.Interface> ifaces = (List<LakeWidthEnvelope.Interface>) ifF.get(si);
             return new Evidence((double[]) segF.get(si), (double[]) limF.get(si),
-                    ifaces == null ? List.of() : List.copyOf(ifaces));
+                    ifaces == null ? List.of() : List.copyOf(ifaces), nodeDepthEvidence(si));
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("region " + rx + ":" + rz + " 段索引/宽度证据不可读", e);
         }
+    }
+
+    /** 兼容未带节点元数据的旧构建：缺失仍无证据，不造默认深度、不漏掉后续接边断言。 */
+    static List<double[]> nodeDepthEvidence(Object si) throws IllegalAccessException {
+        Field field;
+        try {
+            field = si.getClass().getDeclaredField("nodeDepths");
+        } catch (NoSuchFieldException absent) {
+            return null;
+        }
+        field.setAccessible(true);
+        Object value = field.get(si);
+        if (value == null) return null;
+        if (!(value instanceof List<?> rows)) throw new IllegalStateException("nodeDepths is not a List");
+        List<double[]> copy = new ArrayList<>(rows.size());
+        for (Object row : rows) {
+            if (row != null && !(row instanceof double[])) {
+                throw new IllegalStateException("nodeDepths row is not double[]");
+            }
+            copy.add(row == null ? null : ((double[]) row).clone());
+        }
+        return copy;
     }
 
     /**
@@ -659,9 +843,10 @@ public final class WidthContinuityProbe {
     static void nodeHalves(View v, int p) {
         double[] x = v.shapes.get(p)[0], z = v.shapes.get(p)[1];
         int m = x.length;
-        double[] arc = new double[m], half = new double[m], limit = new double[m];
+        double[] arc = new double[m], half = new double[m], limit = new double[m], depth = new double[m];
         Arrays.fill(half, Double.NaN);
         Arrays.fill(limit, Double.NaN);
+        Arrays.fill(depth, Double.NaN);
         for (int j = 1; j < m; j++) arc[j] = arc[j - 1] + Math.hypot(x[j] - x[j - 1], z[j] - z[j - 1]);
         int base = v.baseIndex(p);
         boolean haveLimits = v.rawLimits != null;
@@ -672,16 +857,31 @@ public final class WidthContinuityProbe {
             if (j == 0) half[0] = v.seg[o + 4];
             if (j > 0 && Double.isFinite(half[j]) && !bits(half[j], v.seg[o + 4])) v.nodeHalfMismatch++;
             half[j + 1] = v.seg[o + 5];
+            if (j == 0) depth[0] = v.seg[o + 6];
+            if (j > 0) {
+                v.depthSharedNodes++;
+                if (!Double.isFinite(depth[j]) || !Double.isFinite(v.seg[o + 6])
+                        || Math.abs(depth[j] - v.seg[o + 6]) > DEPTH_GAP_TOL) v.depthSharedMismatch++;
+            }
+            depth[j + 1] = v.seg[o + 7];
             if (haveLimits) {
                 // 生产布局：widthLimits[si*2] / [si*2+1] 与 seg 的 h0 / h1 同序同下标。
                 if (j == 0) limit[0] = limitAt(v, idx * 2);
                 limit[j + 1] = limitAt(v, idx * 2 + 1);
             }
         }
+        if (m == 1 && v.rawNodeDepths != null && v.rawNodeDepths.size() == v.shapes.size()) {
+            double[] evidence = v.rawNodeDepths.get(p);
+            if (evidence != null && evidence.length == 1 && Double.isFinite(evidence[0])) {
+                depth[0] = evidence[0]; // 仅单点无段兜底；多点始终读 seg，不覆盖缺段/不一致。
+                v.singletonDepthEvidence++;
+            }
+        }
         for (double h : half) if (!Double.isFinite(h)) v.unmatchedNodes++;
         v.arcs.add(arc);
         v.halves.add(half);
         v.limits.add(limit);
+        v.depths.add(depth);
     }
 
     /** 段端点上限；缺失/越界 ⇒ NaN（= 无约束证据，不当 0 也不当 6）。 */
@@ -880,6 +1080,11 @@ public final class WidthContinuityProbe {
         row.put("upTailWorld", List.of(ux[last], uz[last]));
         row.put("upTailHalf", upHalf);
         row.put("receiverProjection", proj);
+        Double upDepth = finiteDepth(v.depths.get(up)[last]);
+        Double recvDepth = finiteDepth(proj.get("centerDepth"));
+        row.put("upTailCenterDepth", upDepth);
+        row.put("receiverCenterDepth", recvDepth);
+        row.put("depthGap", upDepth == null || recvDepth == null ? null : upDepth - recvDepth);
         Object rh = proj.get("half");
         if (!(rh instanceof Double d) || !Double.isFinite(d) || !Double.isFinite(upHalf)) {
             fail++;
@@ -1052,6 +1257,7 @@ public final class WidthContinuityProbe {
             double d = Math.hypot(px - x[j] - t * dx, pz - z[j] - t * dz);
             if (d < bestD) { bestD = d; bestT = t; best = j; }
         }
+        m.putAll(depthProjection(v, poly, px, pz));
         m.put("polyIndex", poly);
         m.put("residual", best < 0 ? null : bestD);
         m.put("segmentIndex", best);
@@ -1155,7 +1361,96 @@ public final class WidthContinuityProbe {
         if ("UNIQUE".equals(uniq.get("status"))) CNT[4]++;
         else if ("NOT_UNIQUE".equals(uniq.get("status"))) CNT[5]++;
         judgePort(v, row, uniq, p, srx, srz);
+        collectPortDepth(v, row, uniq, p, srx, srz, recv, send);
         return row;
+    }
+
+    /** 原 acceptance(anchor+next) 与原唯一候选决定是否可判；next 不另选最近河或新配对。 */
+    static void collectPortDepth(View v, Map<String, Object> row, Map<String, Object> uniq,
+                                 BoundaryPort p, int srx, int srz,
+                                 List<Map<String, Object>> recv, List<Map<String, Object>> send) {
+        String status = Boolean.TRUE.equals(row.get("rejectedByReceiver")) ? "REJECTED"
+                : !Boolean.TRUE.equals(row.get("onGrid")) ? "OFF_GRID" : String.valueOf(uniq.get("status"));
+        row.put("depthPairStatus", status);
+        DEPTH_PORT_STATUS.merge(status, 1, Integer::sum);
+        List<Map<String, Object>> pairs = new ArrayList<>();
+        View sender = view(srx, srz);
+        for (Map<String, Object> rc : recv) for (Map<String, Object> sc : send) {
+            int rp = (Integer) rc.get("traceIndex"), sp = (Integer) sc.get("traceIndex");
+            Map<String, Object> pair = new LinkedHashMap<>();
+            pair.put("receiverTrace", rp);
+            pair.put("senderTrace", sp);
+            Map<String, Object> ra = projectionOf(rc), sa = projectionOf(sc);
+            Map<String, Object> rn = rp < v.shapes.size() ? project(v, rp, p.nextX(), p.nextZ()) : Map.of();
+            Map<String, Object> sn = sp < sender.shapes.size()
+                    ? project(sender, sp, p.nextX(), p.nextZ()) : Map.of();
+            pair.put("anchor", portDepthPoint(v, sa, ra, "UNIQUE".equals(status), DEPTH_PORT_ANCHOR,
+                    "[depth-port-anchor] send=" + srx + ":" + srz + " anchor=" + p.anchorX() + ":" + p.anchorZ()));
+            pair.put("next", portNextDepthPoint(v, sn, rn, status,
+                    "[depth-port-next] send=" + srx + ":" + srz + " next=" + p.nextX() + ":" + p.nextZ()));
+            pairs.add(pair);
+        }
+        row.put("depthCandidatePairs", pairs);
+        row.put("depthUnknownReason", pairs.isEmpty() ? "NO_CANDIDATE_PAIR" : null);
+    }
+
+    /** 使用深度本身的投影 residual，不用宽度投影或钳制后的端点值冒充同世界点。 */
+    static Double depthProjectionResidual(Map<String, Object> projection) {
+        Object hit = projection.get("depthProjection");
+        return hit instanceof Map<?, ?> m ? finiteDepth(m.get("residual")) : null;
+    }
+
+    static Map<String, Object> portNextDepthPoint(View v, Map<String, Object> send,
+                                                 Map<String, Object> recv, String pairStatus, String label) {
+        Double sr = depthProjectionResidual(send), rr = depthProjectionResidual(recv);
+        boolean senderCovers = sr != null && sr <= DEPTH_NEXT_GEOMETRY_TOL;
+        boolean receiverCovers = rr != null && rr <= DEPTH_NEXT_GEOMETRY_TOL;
+        String geometryStatus = !senderCovers ? "SENDER_NO_NEXT_GEOMETRY"
+                : !receiverCovers ? "RECEIVER_NO_NEXT_GEOMETRY" : "BOTH_COVER_NEXT";
+        String eligibility = "UNIQUE".equals(pairStatus) ? geometryStatus : pairStatus;
+        DEPTH_NEXT_ELIGIBILITY.merge(eligibility, 1, Integer::sum);
+        Map<String, Object> point = portDepthPoint(v, send, recv,
+                "UNIQUE".equals(pairStatus) && senderCovers && receiverCovers, DEPTH_PORT_NEXT, label);
+        point.put("senderNextProjectionResidual", sr);
+        point.put("receiverNextProjectionResidual", rr);
+        point.put("senderCoversNext", senderCovers);
+        point.put("receiverCoversNext", receiverCovers);
+        point.put("nextGeometryStatus", geometryStatus);
+        point.put("nextEligibility", eligibility);
+        if (!senderCovers || !receiverCovers) {
+            // 留存异点数值供归因，但不让它混进同点 gap 或任何断言/失败统计。
+            point.put("unqualifiedProjectedDepthGap", point.get("depthGap"));
+            point.put("depthGap", null);
+            point.put("depthStatus", geometryStatus);
+        }
+        return point;
+    }
+
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> projectionOf(Map<String, Object> candidate) {
+        Object projection = candidate.get("projection");
+        return projection instanceof Map<?, ?> ? (Map<String, Object>) projection : Map.of();
+    }
+
+    static Map<String, Object> portDepthPoint(View v, Map<String, Object> send,
+                                             Map<String, Object> recv, boolean eligible,
+                                             DepthStats stats, String label) {
+        Map<String, Object> point = new LinkedHashMap<>();
+        point.put("senderProjection", send);
+        point.put("receiverProjection", recv);
+        Double a = finiteDepth(send.get("centerDepth")), b = finiteDepth(recv.get("centerDepth"));
+        point.put("senderCenterDepth", a);
+        if (eligible) {
+            judgeDepth(v, point, a, b, stats, label);
+        } else {
+            point.put("receiverCenterDepth", b);
+            point.put("depthGap", a == null || b == null ? null : a - b);
+            point.put("depthStatus", a == null || b == null ? "UNKNOWN_DEPTH" : "MEASURED");
+            point.put("depthContractChecked", false);
+            point.put("depthContractOk", null);
+            point.put("depthVerdict", "NOT_ELIGIBLE");
+        }
+        return point;
     }
 
     /**
@@ -1290,6 +1585,38 @@ public final class WidthContinuityProbe {
 
     // ---------------- 汇总 / 输出 ----------------
 
+    static Map<String, Object> depthSummary() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("enabled", ModelHydrologyProvider.RIVER_CROSS_SECTION);
+        m.put("tolerance", DEPTH_GAP_TOL);
+        m.put("assertions", depthNodeChecks + DEPTH_SERIAL.checked + DEPTH_CONFLUENCE.checked
+                + DEPTH_PORT_ANCHOR.checked + DEPTH_PORT_NEXT.checked);
+        m.put("violations", depthNodeViolations + DEPTH_SERIAL.violations + DEPTH_CONFLUENCE.violations
+                + DEPTH_PORT_ANCHOR.violations + DEPTH_PORT_NEXT.violations);
+        m.put("collectionFailures", DEPTH_SERIAL.missing + DEPTH_CONFLUENCE.missing
+                + DEPTH_PORT_ANCHOR.missing + DEPTH_PORT_NEXT.missing);
+        m.put("sharedNodeAssertions", depthNodeChecks);
+        m.put("sharedNodeViolations", depthNodeViolations);
+        m.put("csvNodesWithoutSegmentDepth", depthMissingNodes);
+        m.put("singletonNodeDepthFallbacks", singletonDepthFallbacks);
+        m.put("csvMissingDepthRule", "csvNodesWithoutSegmentDepth 为 seg 或合法单点 nodeDepths 兜底后"
+                + "仍无有限 Hc 的节点数；单点兜底不取消接边断言，也不改变原宽度 NaN");
+        m.put("serial", DEPTH_SERIAL.summary());
+        m.put("confluence", DEPTH_CONFLUENCE.summary());
+        m.put("portAnchor", DEPTH_PORT_ANCHOR.summary());
+        m.put("portNext", DEPTH_PORT_NEXT.summary());
+        m.put("portNextGeometryTolerance", DEPTH_NEXT_GEOMETRY_TOL);
+        m.put("portNextEligibility", new LinkedHashMap<>(DEPTH_NEXT_ELIGIBILITY));
+        m.put("portNextRule", "原已消费且唯一配对不变；双方深度投影 residual <= "
+                + DEPTH_NEXT_GEOMETRY_TOL + " 才比较 next 同点深度；SENDER_NO_NEXT_GEOMETRY / "
+                + "RECEIVER_NO_NEXT_GEOMETRY 不计断言/违约/采集失败，非深度容差豁免；"
+                + "portNextEligibility 按候选对计数，拒收/不唯一/未消费保持原分类");
+        m.put("portPairStatus", new LinkedHashMap<>(DEPTH_PORT_STATUS));
+        m.put("scope", "seg 中心深度，不是最终整数湿列或流量；UNKNOWN/拒收/未消费分别留证，"
+                + "不重新配对；关模式只观测，不改变原宽度契约或退出码");
+        return m;
+    }
+
     static Map<String, Object> globalSummary(int regionCount) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("regions", regionCount);
@@ -1337,6 +1664,7 @@ public final class WidthContinuityProbe {
         m.put("portGapContractChecked", PORT_CNT[0]);
         m.put("portGapViolations", PORT_CNT[1]);
         m.put("portTolerance", PORT_GAP_TOL);
+        m.put("depth", depthSummary());
         m.put("contractFailures", contractFailures);
         m.put("contractViolations", List.copyOf(CONTRACT_VIOLATIONS));
         m.put("knownExceptions", List.copyOf(LIMIT_EXCEPTIONS));
@@ -1347,9 +1675,10 @@ public final class WidthContinuityProbe {
                 + "真汇流只在接收方比上游更细时违约（河头线性段【不】豁免）");
         m.put("mustFail", "① 串联 |gap|>1e-9；② 真汇流 receiverHalf<upHalf；"
                 + "③ 已消费且唯一的跨区端口 |gap|>1e-9（无 1 格容差）；"
-                + "④ 节点 half>widthLimits；⑤ 接口 half>maxHalf");
+                + "④ 节点 half>widthLimits；⑤ 接口 half>maxHalf；"
+                + "⑥ 仅 riverCrossSection=true：串联/真汇流/已消费且唯一端口的中心深度差>1e-9");
         m.put("notCoveredHere", "落块层 bank jitter cap 不在本探针口径内（由 WidthCoverageProbe 另测）；"
-                + "本探针不含湿列/水深/断面");
+                + "深度只测 seg 中心属性，不含最终整数湿列/水柱深度/横断面落块");
         m.put("greenPolicy", "allGreen 只在 采集失败=0 且 违约=0 且 limitedShortening=0 时为 true；"
                 + "有 LIMIT_EXCEPTION 时不得声称总体全绿（待上限在接点两侧统一后复测）");
         m.put("aggregation", "全局统计只含主动采集的 region；neighborViewsLoaded 是边界顺带加载的邻区");
@@ -1403,6 +1732,7 @@ public final class WidthContinuityProbe {
                 + " ok=" + JOIN_CNT[3] + " limitException=" + JOIN_CNT[4]
                 + " headRampExplainedViolations=" + JOIN_CNT[5] + " notCollected=" + JOIN_CNT[7]);
         System.out.println("# allGreen=" + allGreen() + "（limitException>0 或任何违约/采集失败 ⇒ 不得声称全绿）");
+        System.out.println("# depth " + GSON.toJson(depthSummary()).replace('\n', ' '));
         System.out.println("# ports checked=" + PORT_CNT[0] + " gapViolations=" + PORT_CNT[1]
                 + " tol=" + PORT_GAP_TOL + "（已消费且唯一才计；无 1 格容差）");
         System.out.println("# limits checkedNodes=" + LIMIT_CHK[0] + " overLimit=" + LIMIT_CHK[1]
@@ -1490,10 +1820,14 @@ public final class WidthContinuityProbe {
         int rx, rz, ox, oz, n, step;
         boolean aligned;
         int unmatchedSeg, unmatchedNodes, baseOffsetMisses, nodeHalfMismatch;
+        int depthSharedNodes, depthSharedMismatch, singletonDepthEvidence;
         String shapeSha;
         List<double[][]> shapes = new ArrayList<>();
         List<double[]> arcs = new ArrayList<>();
         List<double[]> halves = new ArrayList<>();
+        List<double[]> depths = new ArrayList<>();
+        /** 生产逐 shape 节点 Hc 证据；只给 size==1 的无段形状兜底。 */
+        List<double[]> rawNodeDepths;
         /** 逐节点生产宽度上限（{@code SegmentIndex.widthLimits}，缺证据时全 NaN）。 */
         List<double[]> limits = new ArrayList<>();
         List<DeterministicSkeleton.Trace> traces = List.of();
@@ -1525,6 +1859,27 @@ public final class WidthContinuityProbe {
             int base = 0;
             for (int i = 0; i < poly && i < shapes.size(); i++) base += Math.max(0, shapes.get(i)[0].length - 1);
             return base;
+        }
+    }
+
+    static final class DepthStats {
+        long checked, violations, missing;
+        final DoubleBuf gaps = new DoubleBuf();
+
+        void merge(DepthStats other) {
+            checked += other.checked;
+            violations += other.violations;
+            missing += other.missing;
+            gaps.merge(other.gaps);
+        }
+
+        Map<String, Object> summary() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("assertions", checked);
+            m.put("violations", violations);
+            m.put("collectionFailures", missing);
+            m.put("gapAbsStats", gaps.stats());
+            return m;
         }
     }
 

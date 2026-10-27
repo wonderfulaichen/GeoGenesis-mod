@@ -358,7 +358,7 @@ public final class ModelHydrologyProvider {
             // ---- 几何收尾 ----
             "geogenesis.particleAmp", "geogenesis.particleMomentum",
             "geogenesis.boundaryPorts", "geogenesis.widthSmooth", "geogenesis.widthMonotone",
-            "geogenesis.bankJitter", "geogenesis.riverWidth",
+            "geogenesis.bankJitter", "geogenesis.riverWidth", "geogenesis.riverCrossSection",
             // ---- 阈值 / 耦合 / 流向 ----
             "geogenesis.riverThresholdFrac", "hydro.couplingMaxRounds", "hydro.directionRule",
             "hydro.visitCap", "hydro.floorMul", "hydro.absFloorMul", "hydro.relFloor",
@@ -408,6 +408,10 @@ public final class ModelHydrologyProvider {
     public static long outputStrategyFingerprint() {
         return hashOf(EXPERIMENT_KEYS);
     }
+
+    /** 深度断面候选：默认关闭，先与当前生产版同参比较。 */
+    static final boolean RIVER_CROSS_SECTION =
+            Boolean.getBoolean("geogenesis.riverCrossSection");
 
     /** 对键集做 FNV-1a 指纹（排序 ⇒ 与字典序/枚举顺序无关，确定性）。 */
     private static long hashOf(String[] keys) {
@@ -2458,13 +2462,19 @@ public final class ModelHydrologyProvider {
                     } else {
                         half = Math.max(half, RiverCenterlines.MIN_HALF_BLOCKS);
                     }
-                    depth = 1.0;
-                    // 断因「有河却没水」修复（骨架线；2026-10-10 断点归因）：
-                    //   实测 318/31336 格（1%）的 surface-carved 落 0.18~0.50
-                    //   （刚好卡在 0.5 水柱门槛下）⇒ depth=1.0 写死 + 平坦坡水位落差小
-                    //   ⇒ 河在缓坡上断成虚线。修法：河床下挖深度按水位差自适应
-                    //   （上限 4 块，防悬崖式深槽）。
-                    depth = Math.min(4.0, Math.max(depth, eroded - surface + 0.6));
+                    if (RIVER_CROSS_SECTION) {
+                        // 命中段携带的是目标水深；列字段 erosion 仍表达相对侵蚀地形的下挖量。
+                        if (eroded < gen.heightCurve().seaLevelY()) {
+                            depth = 0.0; // 已在海平面下的原海床不再雕刻，海水由原落块分支负责。
+                        } else {
+                            // 保持现有湿宽：浅接口仍须在整数层放得下一块水，不放宽fill门槛。
+                            depth = eroded - RiverCrossSection.wetBed(eroded, surface, depth);
+                        }
+                    } else {
+                        depth = 1.0;
+                        // 原生产基线：防断水补挖，上限为下挖量4格（不是水深4格）。
+                        depth = Math.min(4.0, Math.max(depth, eroded - surface + 0.6));
+                    }
                 } else {
                     half = 0;
                     depth = 0;
@@ -3617,6 +3627,16 @@ public final class ModelHydrologyProvider {
         private final double[] surface;
         private double[] widthLimits;
         private List<LakeWidthEnvelope.Interface> lakeInterfaces = List.of();
+        private List<double[]> nodeDepths = List.of();
+        /** Ordinary segments retain their trace/shape identity; spatial sew bridges remain -1. */
+        private final int[] segmentPoly;
+        private List<JunctionSection> junctionSections = List.of();
+        private List<List<JunctionSection>> junctionsByPoly = List.of();
+
+        /** Measured projection evidence, not a nearest-river/component association. */
+        private record JunctionSection(int up, int down, double x, double z,
+                                       double receiverX, double receiverZ, double gap,
+                                       double maxHalf) { }
 
         private record Hit(double dist, double half, double depth, double surface) { }
 
@@ -3625,6 +3645,8 @@ public final class ModelHydrologyProvider {
             this.tiles = tiles;
             this.surface = new double[seg.length/8];
             java.util.Arrays.fill(this.surface,Double.NaN);
+            this.segmentPoly = RIVER_CROSS_SECTION ? new int[seg.length/8] : new int[0];
+            java.util.Arrays.fill(this.segmentPoly, -1);
         }
 
         boolean isEmpty() { return seg.length == 0; }
@@ -3702,7 +3724,8 @@ public final class ModelHydrologyProvider {
                     int o = index * 8;
                     seg[o] = x0; seg[o + 1] = z0; seg[o + 2] = x1; seg[o + 3] = z1;
                     seg[o + 4] = h0; seg[o + 5] = h1;
-                    seg[o + 6] = 1.0; seg[o + 7] = 1.0;
+                    seg[o + 6] = RIVER_CROSS_SECTION ? RiverCrossSection.centerDepth(h0 * 2) : 1.0;
+                    seg[o + 7] = RIVER_CROSS_SECTION ? RiverCrossSection.centerDepth(h1 * 2) : 1.0;
                     registerTile(tiles, index++, x0, z0, x1, z1);
                 }
             }
@@ -3922,6 +3945,9 @@ public final class ModelHydrologyProvider {
                     traces, rivers, boundaryHalf, inherited.half(), inherited.continued(), inherited.limits(),
                     outletHalfByWorld);
             List<double[]> halfSeqs = profile.widths();
+            List<double[]> depthSeqs = RIVER_CROSS_SECTION
+                    ? RiverDepthProfile.build(polys, pipe, ox, oz, n, step, traces, rivers, halfSeqs, boundaryHalf)
+                    : List.of();
             double[] widthLimits = new double[(count + bridges.size()) * 2];
             java.util.Arrays.fill(widthLimits, 6.0);
             dumpWidthCounters("buildFromNodes");
@@ -3958,8 +3984,8 @@ public final class ModelHydrologyProvider {
                     seg[o + 5] = smoothHalf[i];
                     widthLimits[si * 2] = profile.limits().get(pi)[i - 1];
                     widthLimits[si * 2 + 1] = profile.limits().get(pi)[i];
-                    seg[o + 6] = 1.0;                               // d0
-                    seg[o + 7] = 1.0;                               // d1
+                    seg[o + 6] = RIVER_CROSS_SECTION ? depthSeqs.get(pi)[i - 1] : 1.0;
+                    seg[o + 7] = RIVER_CROSS_SECTION ? depthSeqs.get(pi)[i] : 1.0;
                     registerTile(tiles, si, x0, z0, x1, z1);
                 }
             }
@@ -3969,14 +3995,86 @@ public final class ModelHydrologyProvider {
                 seg[o] = br[0]; seg[o + 1] = br[1]; seg[o + 2] = br[2]; seg[o + 3] = br[3];
                 seg[o + 4] = RiverCenterlines.MIN_HALF_BLOCKS;
                 seg[o + 5] = RiverCenterlines.MIN_HALF_BLOCKS;
-                seg[o + 6] = 1.0;
-                seg[o + 7] = 1.0;
+                seg[o + 6] = RIVER_CROSS_SECTION
+                        ? projectedDepth(polys, depthSeqs, br[0], br[1]) : 1.0;
+                seg[o + 7] = RIVER_CROSS_SECTION
+                        ? projectedDepth(polys, depthSeqs, br[2], br[3]) : 1.0;
                 registerTile(tiles, si, br[0], br[1], br[2], br[3]);
             }
             var result = new SegmentIndex(seg, tiles);
             result.widthLimits = widthLimits;
             result.lakeInterfaces = profile.interfaces();
+            result.nodeDepths = depthSeqs;
+            result.indexJunctionSections(polys, halfSeqs, rivers);
             return result;
+        }
+
+        /** Only chainEdges direct successors; no transitive component or spatial sew inference. */
+        private void indexJunctionSections(List<DeterministicSkeleton.Shaped> polys,
+                                            List<double[]> halves,
+                                            List<DeterministicSkeleton.River> rivers) {
+            if (!RIVER_CROSS_SECTION) return;
+            int si = 0;
+            for (int p = 0; p < polys.size(); p++) {
+                int nodes = polys.get(p).size();
+                if (halves.get(p) == null || halves.get(p).length != nodes) continue;
+                for (int i = 1; i < nodes; i++) segmentPoly[si++] = p;
+            }
+            if (rivers == null || rivers.isEmpty()) return;
+            List<List<JunctionSection>> byPoly = new ArrayList<>(polys.size());
+            for (int p = 0; p < polys.size(); p++) byPoly.add(new ArrayList<>());
+            int[] succ = new int[polys.size()];
+            java.util.Arrays.fill(succ, -1);
+            for (var river : rivers) RiverWidthProfile.chainEdges(succ, river, polys.size(), rivers);
+            boolean[] cycles = RiverWidthProfile.cycleNodes(succ, polys.size());
+            double[][] arcs = RiverWidthProfile.arcLengths(polys);
+            List<JunctionSection> sections = new ArrayList<>();
+            for (int up = 0; up < succ.length; up++) {
+                int down = succ[up];
+                if (down < 0 || cycles[up] || cycles[down]) continue;
+                var a = polys.get(up);
+                var b = polys.get(down);
+                if (a.size() < 2 || b.size() < 2) continue;
+                double x = a.x[a.size() - 1], z = a.z[a.size() - 1];
+                double[] hit = RiverWidthProfile.projectOnto(b, arcs[down], x, z);
+                if (hit == null) continue;
+                int k = (int) hit[1];
+                double rx = b.x[k] + hit[2] * (b.x[k + 1] - b.x[k]);
+                double rz = b.z[k] + hit[2] * (b.z[k + 1] - b.z[k]);
+                double gap = Math.hypot(x - rx, z - rz);
+                // chainEdges proves the pair; shaped meander offsets are evidence, not a topology gate.
+                if (!Double.isFinite(gap)) continue;
+                double maxHalf = 0;
+                for (double h : halves.get(up)) maxHalf = Math.max(maxHalf, h);
+                for (double h : halves.get(down)) maxHalf = Math.max(maxHalf, h);
+                var section = new JunctionSection(up, down, x, z, rx, rz, gap, maxHalf);
+                sections.add(section);
+                byPoly.get(up).add(section);
+                byPoly.get(down).add(section);
+            }
+            junctionSections = List.copyOf(sections);
+            for (int p = 0; p < byPoly.size(); p++) byPoly.set(p, List.copyOf(byPoly.get(p)));
+            junctionsByPoly = List.copyOf(byPoly);
+        }
+
+        private static double projectedDepth(List<DeterministicSkeleton.Shaped> polys,
+                                             List<double[]> depths, double x, double z) {
+            double best = Double.POSITIVE_INFINITY, value = 1.0;
+            for (int p = 0; p < polys.size(); p++) {
+                var sh = polys.get(p);
+                for (int i = 1; i < sh.size(); i++) {
+                    double dx = sh.x[i] - sh.x[i - 1], dz = sh.z[i] - sh.z[i - 1];
+                    double len = dx * dx + dz * dz;
+                    double t = len == 0 ? 0 : Math.max(0, Math.min(1,
+                            ((x - sh.x[i - 1]) * dx + (z - sh.z[i - 1]) * dz) / len));
+                    double d = Math.hypot(x - sh.x[i - 1] - t * dx, z - sh.z[i - 1] - t * dz);
+                    if (d < best) {
+                        best = d;
+                        value = depths.get(p)[i - 1] + t * (depths.get(p)[i] - depths.get(p)[i - 1]);
+                    }
+                }
+            }
+            return value;
         }
 
         /**
@@ -4055,6 +4153,7 @@ public final class ModelHydrologyProvider {
             if (cand == null) return null;
             double best = Double.POSITIVE_INFINITY, half = 0, depth = 0, waterSurface = Double.NaN;
             double bestKey = Double.POSITIVE_INFINITY;
+            int bestSegment = -1;
             double bankScale = bankScale(blockX, blockZ);
             for (int si : cand) {
                 int o = si * 8;
@@ -4089,17 +4188,82 @@ public final class ModelHydrologyProvider {
                         && Double.doubleToLongBits(waterSurface)!=Double.doubleToLongBits(surface[si]))
                     throw new IllegalStateException("competing corridor planes at "+blockX+","+blockZ);
                 if (key < bestKey) {
+                    bestSegment = si;
                     bestKey = key;
                     best = dist;
                     half = segHalf;
-                    depth = seg[o + 6] + t * (seg[o + 7] - seg[o + 6]);
+                    double centerDepth = seg[o + 6] + t * (seg[o + 7] - seg[o + 6]);
+                    depth = RIVER_CROSS_SECTION
+                            ? RiverCrossSection.targetDepth(centerDepth, dist, segHalf) : centerDepth;
                     waterSurface = surface[si];
                 }
             }
             // 没有任何段与该方块相交 ⇒ 此处无水。
             // ⚠ 不能像旧实现那样靠 dist>half 兜底：那会把"附近的方块"全染色 = 加粗。
             if (bestKey > 0.5e6) return null;
+            depth = junctionDepth(blockX, blockZ, cand, bestSegment, depth, bankScale);
             return new Hit(best, half, depth, waterSurface);
+        }
+
+        /**
+         * H only: winner/coverage/half/surface are immutable. In the full-strength core,
+         * H=1+max(extra_up,extra_down); extra=(Hc-1)*(1-r*r)^2 vanishes at r>=1.
+         * Outside the core only the additional depth fades, returning EXACTLY to the old H.
+         * C0 at winner switches is promised inside the core for these two compatible traces,
+         * not in the outer fade (which retains the original winner field), nor for Hc<1.
+         * Two NaNs mean this SAME pipe's ordinary river: columnsFor applies ONE authoritative
+         * S to the composed H via wetBed. Finite-vs-NaN/different finite planes never mix.
+         */
+        private double junctionDepth(double x, double z, List<Integer> candidates, int winner,
+                                       double original, double bankScale) {
+            if (!RIVER_CROSS_SECTION || winner < 0 || junctionSections.isEmpty() || original < 1) {
+                return original;
+            }
+            int poly = segmentPoly[winner];
+            if (poly < 0 || poly >= junctionsByPoly.size()) return original;
+            double result = original;
+            for (var join : junctionsByPoly.get(poly)) {
+                if (poly != join.up() && poly != join.down()) continue;
+                double distance = Math.hypot(x - join.x(), z - join.z());
+                // Tail-centred patch includes the measured receiver point in its full-strength core.
+                double radius = 16 + join.maxHalf() + join.gap(), core = 2 * join.maxHalf() + join.gap();
+                if (distance >= radius) continue;
+                double up = sectionExtra(x, z, candidates, join.up(), surface[winner], bankScale);
+                double down = sectionExtra(x, z, candidates, join.down(), surface[winner], bankScale);
+                if (up < 0 || down < 0) continue;
+                double fade = 1 - RiverWidthProfile.smoothstep01((distance - core) / (radius - core));
+                double shared = 1 + Math.max(up, down);
+                result = Math.max(result, original + fade * Math.max(0, shared - original));
+            }
+            return result;
+        }
+
+        /** Max of compact-support extras, not max of whole H outside a candidate's width. */
+        private double sectionExtra(double x, double z, List<Integer> candidates, int poly,
+                                      double waterSurface, double bankScale) {
+            double extra = -1;
+            for (int si : candidates) {
+                if (segmentPoly[si] != poly || !compatibleSectionSurface(waterSurface, surface[si])) continue;
+                int o = si * 8;
+                double dx = seg[o + 2] - seg[o], dz = seg[o + 3] - seg[o + 1];
+                double len2 = dx * dx + dz * dz;
+                double t = len2 > 0 ? Math.max(0, Math.min(1,
+                        ((x - seg[o]) * dx + (z - seg[o + 1]) * dz) / len2)) : 0;
+                double hc = seg[o + 6] + t * (seg[o + 7] - seg[o + 6]);
+                if (!Double.isFinite(hc) || hc < 1) continue; // Preserve shallow/dry interface semantics.
+                double limit = widthLimits == null ? 6.0
+                        : widthLimits[si * 2] + t * (widthLimits[si * 2 + 1] - widthLimits[si * 2]);
+                double half = Math.min(limit, clampHalf(
+                        (seg[o + 4] + t * (seg[o + 5] - seg[o + 4])) * bankScale));
+                double dist = Math.hypot(x - seg[o] - t * dx, z - seg[o + 1] - t * dz);
+                extra = Math.max(extra, RiverCrossSection.targetDepth(hc, dist, half) - 1);
+            }
+            return extra;
+        }
+
+        private static boolean compatibleSectionSurface(double a, double b) {
+            return Double.isNaN(a) && Double.isNaN(b)
+                    || Double.isFinite(a) && Double.isFinite(b) && a == b;
         }
 
         /** 世界坐标驱动的局部岸宽起伏，在覆盖判断之前应用，收发侧相同点取相同倍率。 */
