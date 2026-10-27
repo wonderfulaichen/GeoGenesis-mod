@@ -864,6 +864,30 @@ public final class DeterministicSkeleton {
     /** 惯性权重（上一步方向延续）。 */
     static final double W_KEEP = Double.parseDouble(
             System.getProperty("geogenesis.wKeep", "0.50"));
+
+    /**
+     * ★★★ 2026-10-27【惯性输入：用连续合成方向，不是 D8 格步】★★★
+     *
+     * <p><b>用户口径</b>：「我说的那些条件都应该是连续的，只是选点命中是 D8 ——
+     * 这些条件在连续状态下计算得出的结果再命中 D8，这样落点是 D8，
+     * 条件又能给曲线提供不同向力。」</p>
+     *
+     * <p><b>原来的缺陷</b>：{@code lastDirX/lastDirZ} 被赋成 {@code (si−ki)/dl}
+     * （<b>整数格差</b>归一化）⇒ 只能是 8 个离散方向之一
+     * ⇒ {@code keep = max(0, u·dir)} 只有 3 档（1.0 / 0.707 / 0）
+     * ⇒ 惯性只是"继续朝这八个方向之一"的开关量，无法携带连续动量。
+     * 而同一式里的重力项 {@code grav} 用的是连续坡向 ⇒ 两项量纲不一致。</p>
+     *
+     * <p><b>本开关</b>：true ⇒ 惯性改用 {@link #vectorTraceNext} 返回的
+     * <b>连续合成方向</b>（与 {@code −∇bed} 同一量纲，可逐格微调）；
+     * 无向量结果的格步（wire/spill/溢口）仍退回格步方向。</p>
+     *
+     * <p><b>历史</b>：2026-10-27 首测（当时无软约束）折角反而变多
+     * （P90 22.8°→24.8°），原因是连续目标点在格边界反复抖动、且没有后处理吸收。
+     * 软约束平滑上线后重新评估。</p>
+     */
+    static final boolean CONTINUOUS_INERTIA =
+            !"false".equals(System.getProperty("geogenesis.continuousInertia"));
     /** 正交优先权重（抵消对角步长优势，防 45° 偏爱）。 */
     static final double W_PROX = Double.parseDouble(
             System.getProperty("geogenesis.wProx", "0.25"));
@@ -919,6 +943,35 @@ public final class DeterministicSkeleton {
      */
     static final int BEZIER_HANDLE_WINDOW =
             Integer.getInteger("geogenesis.bezierHandleWindow", 1);
+
+    /**
+     * ★★★ 2026-10-27【软约束骨架平滑：节点 = 牵引力，不是必经点】★★★
+     *
+     * <p><b>用户口径</b>：「让节点不再是骨架线段的格心，而是变成一个牵引力引导。
+     * 这样只有起点和终点是确定重叠在节点上。」「只要节点不动必然出现折线。」</p>
+     *
+     * <p><b>为什么之前的两种做法都不行</b>：Catmull-Rom（硬插值）与贝塞尔手柄
+     * （端点=节点）都把每个节点当<b>必经点</b>。D8 台阶本质是斜线的量化近似，
+     * 硬插值把每个台阶角钉死 ⇒ 永远回不到斜线 ⇒ 只能是「直线段+折角」。</p>
+     *
+     * <p><b>本开关</b>：true ⇒ 在锚点确定后、重采样前做固定次数的 Jacobi 平滑：</p>
+     * <pre>
+     *   最小化  Σ w·|p_i − t_i|²  +  Σ |p_{i+1} − 2p_i + p_{i−1}|²
+     *   硬钉    p_0 , p_{m−1} , 以及所有【跨链共享锚点】
+     * </pre>
+     * <p>台阶被相邻点均值拉向对角线 ⇒ 还原成平滑斜线；本来就是直线的地方不动。
+     * 默认 <b>true</b>（{@code -Dgeogenesis.softAnchor=false} 逐位回到旧 Catmull-Rom）。</p>
+     */
+    static final boolean SOFT_ANCHOR =
+            Boolean.parseBoolean(System.getProperty("geogenesis.softAnchor", "true"));
+
+    /** 软约束的牵引刚度：越大越贴原节点（越小越平滑）。 */
+    static final double SOFT_ANCHOR_STIFFNESS = Double.parseDouble(
+            System.getProperty("geogenesis.softAnchorStiffness", "0.45"));
+
+    /** 软约束 Jacobi 迭代次数（固定次数 ⇒ 纯函数、结果与顺序无关）。 */
+    static final int SOFT_ANCHOR_ITERS =
+            Integer.getInteger("geogenesis.softAnchorIters", 16);
 
     /**
      * 洼地溢流口：从洼地底 {@code start} 起做有界 priority-flood（按 {@code bed} 由低到高），
@@ -2794,6 +2847,11 @@ public final class DeterministicSkeleton {
         // 当前连续位置（格坐标）。首点为起点格心。
         double curX = start / nz, curZ = start % nz;
         while (true) {
+            // ★ 2026-10-27【本步没有向量结果时必须清零】
+            //   wire/spill/溢口分支不设置 stepDirOut ⇒ 否则会沿用【上一步】的残留值，
+            //   被下面误当成"本步合成方向"喂给惯性。
+            stepDirOutX = 0;
+            stepDirOutZ = 0;
             if (level[k] < escapeLevel - 1e-9) escapeLevel = Double.NaN;
             if (!path.isEmpty()) {
                 int previous = path.get(path.size() - 1);
@@ -2982,7 +3040,25 @@ public final class DeterministicSkeleton {
                     int ki = k / nz, kj = k % nz, si = p / nz, sj = p % nz;
                     double dx = si - ki, dz = sj - kj;
                     double dl = Math.hypot(dx, dz);
-                    if (dl > 1e-9) { lastDirX = dx / dl; lastDirZ = dz / dl; }
+                    // ★★★ 2026-10-27【惯性 = 连续合成方向（治"惯性没起作用"）】★★★
+                    //
+                    // 【原写法】`lastDir = (si−ki)/dl` —— 整数格差归一化 ⇒ 恒为 8 个方向之一。
+                    //   于是 `keep = max(0, u·dir)` 只有 3 档，惯性退化成
+                    //   "继续朝北/东北…"的开关量，无法把上一步的连续动量带到下一步
+                    //   ⇒ 路线只能在 45° 档位上跳，画不出自然 S 弯。
+                    // 【现写法】用 vectorTraceNext 已经算好的【连续合成方向】stepDirOut；
+                    //   它本身就是 drop/grav/keep 三项在连续域的合矢量
+                    //   ⇒ 惯性、重力、坡降三者量纲一致，方向可以逐格微调。
+                    // 【落点仍是 D8】合成方向只用于"目标点"，选格仍由最近的 8 邻决定
+                    //   （见 vectorTraceNext ④）⇒ 用户口径「条件连续、命中 D8」完整成立。
+                    // 【退化】wire/spill/溢口没有向量结果（已在循环顶部清零）⇒ 退回格步方向。
+                    if (CONTINUOUS_INERTIA
+                            && Math.abs(stepDirOutX) + Math.abs(stepDirOutZ) > 1e-9) {
+                        lastDirX = stepDirOutX;
+                        lastDirZ = stepDirOutZ;
+                    } else if (dl > 1e-9) {
+                        lastDirX = dx / dl; lastDirZ = dz / dl;
+                    }
                     // ★★★ 2026-10-25【连续位置推进 —— 贝塞尔控制点素材】★★★
                     //
                     // 【历史】2026-10-21 曾撤回这里，理由是「cur 按方向累加、k 按 D8 跳 ⇒ 脱钩
@@ -3893,12 +3969,38 @@ public final class DeterministicSkeleton {
             // ★ 共享锚点表：同一格索引全链共用同一坐标（PL-RGA nodeForPixel 同构）。
             //   【为什么必须放在粒子循环之后、CR 之前】粒子依赖本链历史（动量），
             //   是"提议"；表是"最终裁决" —— 已登记的格一律以表为准。
+            boolean[] pinAnchor = SOFT_ANCHOR ? new boolean[m] : null;
             for (int i = 0; i < m; i++) {
                 double[] shared = anchorTable.get(t.cell[i]);
                 if (shared != null) {
                     ax[i] = shared[0];
                     az[i] = shared[1];
+                    // 已被更早的链登记 ⇒ 该点是跨链共享锚点（JOIN/接力/端口）
+                    // ⇒ 软约束平滑【不得移动它】，否则两条链各自平滑出不同坐标 ⇒ 新缝隙。
+                    if (pinAnchor != null) pinAnchor[i] = true;
                 } else {
+                    anchorTable.put(t.cell[i], new double[]{ax[i], az[i]});
+                }
+            }
+            // ★★★ 2026-10-27【软约束平滑：节点是牵引力，不是必经点】★★★
+            //
+            // 【用户口径】「让节点不再是骨架线段的格心，而是变成一个牵引力引导。
+            //   这样只有起点和终点是确定重叠在节点上。」
+            //   「只要节点不动必然出现折线」—— 实测确认。
+            //
+            // 【为什么硬插值必然失败】Catmull-Rom / 贝塞尔手柄都把每个节点当【必经点】。
+            //   D8 台阶本质是斜线的量化近似，硬插值把每个台阶角都钉死 ⇒ 永远回不到斜线。
+            //
+            // 【本方案】节点降级为【软约束】：数据结构
+            //     E = Σ w·|p_i − t_i|²  +  Σ |p_{i+1} − 2p_i + p_{i−1}|²   （membrane 近似）
+            //   用固定次数 Jacobi 迭代求解，首尾与跨链共享锚点【硬钉】。
+            //   台阶被相邻点均值拉向对角线 ⇒ 还原成原来的平滑斜线；本来就是直线的不动。
+            //
+            // 【不碰什么】D8 路线、湖海判定、端口接力、跨区契约全部不变（首尾仍逐位对齐）。
+            if (SOFT_ANCHOR && m >= 4) {
+                softenAnchors(ax, az, m, pinAnchor);
+                // 回写：本链平滑后的坐标成为后续链的既定事实，避免后链按未平滑值吸附。
+                for (int i = 0; i < m; i++) {
                     anchorTable.put(t.cell[i], new double[]{ax[i], az[i]});
                 }
             }
@@ -4189,6 +4291,46 @@ public final class DeterministicSkeleton {
             zs[i] = pts.get(i)[1];
         }
         return new double[][]{xs, zs};
+    }
+
+    /**
+     * 软约束平滑：把节点当<b>牵引力目标</b>而不是必经点。
+     *
+     * <p>固定次数 Jacobi 迭代求解 {@code Σw|p−t|² + Σ|p_{i+1}−2p_i+p_{i−1}|²} 的驻点。
+     * 每次把点拉向「自己的目标」与「左右相邻点均值」的加权平均：</p>
+     * <pre>
+     *   p_i ← ( w·t_i + p_{i−1} + p_{i+1} ) / ( w + 2 )
+     * </pre>
+     *
+     * <p><b>为什么能还原斜线</b>：D8 台阶的相邻点均值落在对角线上 ⇒ 迭代把它拉向对角线；
+     * 而本来就是直线的一段，均值等于自身 ⇒ 完全不动。这正是硬插值做不到的。</p>
+     *
+     * <p><b>硬钉</b>：首尾（保 JOIN/端口逐位对齐）与跨链共享锚点（保两条链在同一点重合）。</p>
+     *
+     * @param ax,az 锚点（原地修改）
+     * @param m     参与平滑的节点数
+     * @param pin   非 null 时 {@code pin[i]=true} 表示该点必须保持原值
+     */
+    static void softenAnchors(double[] ax, double[] az, int m, boolean[] pin) {
+        if (m < 4) return;
+        double w = SOFT_ANCHOR_STIFFNESS;
+        int iters = Math.max(0, SOFT_ANCHOR_ITERS);
+        if (iters == 0) return;
+        double[] px = ax.clone(), pz = az.clone();
+        double[] qx = new double[m], qz = new double[m];
+        for (int it = 0; it < iters; it++) {
+            qx[0] = ax[0]; qz[0] = az[0];
+            qx[m - 1] = ax[m - 1]; qz[m - 1] = az[m - 1];
+            for (int i = 1; i < m - 1; i++) {
+                if (pin != null && pin[i]) { qx[i] = ax[i]; qz[i] = az[i]; continue; }
+                qx[i] = (w * ax[i] + px[i - 1] + px[i + 1]) / (w + 2.0);
+                qz[i] = (w * az[i] + pz[i - 1] + pz[i + 1]) / (w + 2.0);
+            }
+            double[] t = px; px = qx; qx = t;
+            t = pz; pz = qz; qz = t;
+        }
+        System.arraycopy(px, 0, ax, 0, m);
+        System.arraycopy(pz, 0, az, 0, m);
     }
 
     /**
