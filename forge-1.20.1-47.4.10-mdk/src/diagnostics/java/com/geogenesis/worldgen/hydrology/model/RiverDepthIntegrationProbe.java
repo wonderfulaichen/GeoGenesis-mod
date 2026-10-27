@@ -20,11 +20,10 @@ import com.geogenesis.worldgen.hydrology.model.ModelHydrologyProvider.SegmentInd
  * Production SegmentIndex.buildFromNodes -> nearest integration, using synthetic geometry.
  * No provider instance, terrain sampling, region solves, columns or Minecraft startup.
  *
- * <p>Run main with no arguments to fork OFF/ON x bankJitter=0/0.25 in separate JVMs.
- * Each child explicitly sets the candidate switch before Provider initialization and uses
- * a temporary working directory (the production builder writes width-counter diagnostics).
- * Direct child invocation requires --case OFF|ON 0|0.25 and matching -D settings;
- * an absent/mismatched property is a FAIL, not an inferred expectation.</p>
+ * <p>Run main with no arguments to fork OFF/ON/DEFAULT x bankJitter=0/0.25 in separate JVMs.
+ * OFF/ON children explicitly set the switch; DEFAULT omits it and must still enable depth.
+ * Each uses a temporary working directory (the builder writes width-counter diagnostics).
+ * Direct child invocation requires --case OFF|ON|DEFAULT 0|0.25 and matching settings.</p>
  *
  * <p>The null-pipe width/depth baseline is first verified as 0.5/1. Only the isolated
  * nearest fixtures then replace private seg endpoint half/depth values. OFF retains its
@@ -48,15 +47,20 @@ public final class RiverDepthIntegrationProbe {
             if (args.length == 0) {
                 isolatedMatrix();
             } else {
-                require(args.length == 3 && args[0].equals("--case"), "usage: --case OFF|ON 0|0.25");
-                require(args[1].equals("ON") || args[1].equals("OFF"), "unknown mode");
-                boolean on = args[1].equals("ON");
+                require(args.length == 3 && args[0].equals("--case"), "usage: --case OFF|ON|DEFAULT 0|0.25");
+                require(List.of("ON", "OFF", "DEFAULT").contains(args[1]), "unknown mode");
+                boolean on = !args[1].equals("OFF");
+                if (args[1].equals("DEFAULT")) {
+                    require(System.getProperty(SWITCH) == null, "default must not pass depth property");
+                    check("ordinary startup enables width-dependent depth", ModelHydrologyProvider.RIVER_CROSS_SECTION);
+                }
                 double jitter = Double.parseDouble(args[2]);
-                verifySettings(on, jitter);
+                verifySettings(args[1], on, jitter);
                 nearestSection(on, jitter);
                 shallowAndDryNearest(on);
                 bankJitterKeepsCenter(on, jitter);
                 bridgeUsesActualEndpoint(on);
+                interpolatedTerrainSlope();
                 System.out.printf("CASE %s bankJitter=%s PASS=%d FAIL=%d%n", args[1], args[2], pass, fail);
             }
         } catch (Throwable ex) {
@@ -70,13 +74,14 @@ public final class RiverDepthIntegrationProbe {
     private static void isolatedMatrix() throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String cp = absoluteClasspath();
-        for (String mode : List.of("OFF", "ON")) for (String jitter : List.of("0", "0.25")) {
+        for (String mode : List.of("OFF", "ON", "DEFAULT")) for (String jitter : List.of("0", "0.25")) {
             Path work = Files.createTempDirectory("geogenesis-depth-integration-");
             List<String> command = new ArrayList<>(List.of(java, "-Dfile.encoding=UTF-8",
-                    "-D" + SWITCH + "=" + mode.equals("ON"), "-Dgeogenesis.bankJitter=" + jitter,
+                    "-Dgeogenesis.bankJitter=" + jitter,
                     "-Dgeogenesis.sewGap=3", "-Dgeogenesis.widthSmooth=4",
                     "-Dgeogenesis.widthMonotone=true", "-cp", cp,
                     RiverDepthIntegrationProbe.class.getName(), "--case", mode, jitter));
+            if (!mode.equals("DEFAULT")) command.add(1, "-D" + SWITCH + "=" + mode.equals("ON"));
             System.out.printf("FORK mode=%s jitter=%s work=%s%n", mode, jitter, work);
             Process child = new ProcessBuilder(command).directory(work.toFile()).inheritIO().start();
             if (!child.waitFor(60, TimeUnit.SECONDS)) {
@@ -94,8 +99,9 @@ public final class RiverDepthIntegrationProbe {
                 .map(s -> Path.of(s.isEmpty() ? "." : s).toAbsolutePath().toString()).toList());
     }
 
-    private static void verifySettings(boolean on, double jitter) {
-        require(Boolean.toString(on).equals(System.getProperty(SWITCH)), "explicit candidate switch required");
+    private static void verifySettings(String mode, boolean on, double jitter) {
+        require(mode.equals("DEFAULT") ? System.getProperty(SWITCH) == null
+                : Boolean.toString(on).equals(System.getProperty(SWITCH)), "requested depth mode required");
         require(jitter == 0 || jitter == 0.25, "matrix jitter must be 0 or 0.25");
         require(System.getProperty("geogenesis.bankJitter") != null, "explicit bankJitter required");
         require(Double.parseDouble(System.getProperty("geogenesis.bankJitter")) == jitter, "jitter mismatch");
@@ -154,17 +160,17 @@ public final class RiverDepthIntegrationProbe {
         SegmentIndex index = SegmentIndex.buildFromNodes(List.of(line(8, 8, 48, 8)));
         double[] seg = segments(index);
         seg[4] = seg[5] = 3;
-        if (on) seg[6] = seg[7] = 2.6607499349512365;
+        if (on) seg[6] = seg[7] = 2.804884822187466;
         for (int x : new int[]{16, 32}) {
             Sample sample = hit(index, x, 8);
             near("jitter sample really on centerline x=" + x, 0, sample.dist());
             near("jitter does not recompute Hc from effective width x=" + x,
-                    on ? 2.6607499349512365 : 1, sample.depth());
+                    on ? 2.804884822187466 : 1, sample.depth());
             near("Hit half consumes actual bankHalf x=" + x, SegmentIndex.bankHalf(3, x, 8), sample.half());
             check("jitter effective width change is actually exercised x=" + x,
                     jitter == 0 ? sample.half() == 3 : Math.abs(sample.half() - 3) > 1e-3);
             near("query leaves nominal half unchanged", 3, seg[4]);
-            near("query leaves stored center depth unchanged", on ? 2.6607499349512365 : 1, seg[6]);
+            near("query leaves stored center depth unchanged", on ? 2.804884822187466 : 1, seg[6]);
             System.out.printf("JITTER on=%s jitter=%s x=%d effectiveHalf=%.12f Hc=%.12f%n",
                     on, jitter, x, sample.half(), sample.depth());
         }
@@ -200,6 +206,31 @@ public final class RiverDepthIntegrationProbe {
         near("bridge projection uses actual t, not nearest node or head", 3, projected);
         System.out.printf("BRIDGE on=%s endpointDepths=%.6f/%.6f nearestMid=%.6f%n",
                 on, seg[30], seg[31], hit(index, 41, 24).depth());
+    }
+
+    private static void interpolatedTerrainSlope() throws Exception {
+        Method slope = ModelHydrologyProvider.class.getDeclaredMethod("terrainSlope",
+                HydrologyPipeline.Result.class, int.class, int.class, int.class, int.class);
+        slope.setAccessible(true);
+        int n = 9;
+        for (int step : new int[]{1, 2, 4}) {
+            double[] bed = new double[n*n], empty = new double[n*n];
+            boolean[] dry = new boolean[n*n];
+            for (int x = 0; x < n; x++) for (int z = 0; z < n; z++) {
+                bed[x*n+z] = 100 + 0.6*x*step + 0.8*z*step;
+            }
+            var pipe = new HydrologyPipeline.Result(n, n, step, bed, dry, dry, bed, empty,
+                    dry, new int[n*n], empty, dry, empty, null, null, empty, bed, 0, true, 0);
+            double[] before = bed.clone();
+            for (int x : new int[]{0, 1, 3*step+1, 8*step}) {
+                near("plane gradient independent of step/origin x=" + x, 1,
+                        (double) slope.invoke(null, pipe, -512, -768, -512+x, -768+3*step));
+            }
+            check("slope sampling leaves bed untouched", Arrays.equals(before, bed));
+            for (int x = 0; x < n; x++) for (int z = 0; z < n; z++) bed[x*n+z] = x*x*step*step;
+            near("interpolated quadratic gradient not nearest grid step=" + step, 2*(3*step+1),
+                    (double) slope.invoke(null, pipe, -512, -768, -512+3*step+1, -768+3*step));
+        }
     }
 
     private static Shaped line(double x0, double z0, double x1, double z1) {
