@@ -469,7 +469,8 @@ public class PreviewDisplay extends AbstractWidget {
     // 111 = 2026-10-26 真河源到首个接点按弧长线性展宽，避免固定32格内突然恢复粗河。
     // 112 = 2026-10-26 河湖接口按实际湿宽限幅，出湖用净出流，真支流不再钉成干流宽度。
     // 113 = 2026-10-27 出湖半宽改为跨窗口取较小者（同一出口格在相邻窗口可能判成不同源盆）。
-    private static final int CACHE_SCHEMA_VERSION = 113;
+    // 114 = 河深/横断面候选接入（默认关闭），实验开关纳入缓存身份；保留认可的骨架/宽度。
+    private static final int CACHE_SCHEMA_VERSION = 114;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
