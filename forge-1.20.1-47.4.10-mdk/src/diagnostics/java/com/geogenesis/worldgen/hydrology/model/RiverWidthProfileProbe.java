@@ -53,6 +53,7 @@ public final class RiverWidthProfileProbe {
         testLakeInputs();
         testOutletSourceScale();
         testFeasibleStartPriority();
+        testSourceNeverInverted();
         testSmallTributaryIsNotTrunk();
         testLakeEnvelopeInProductionProfile();
         testDownstreamNeverNarrows();
@@ -795,28 +796,11 @@ public final class RiverWidthProfileProbe {
         List<double[]> base = RiverWidthProfile.build(List.of(a, b), w.pipe(q), 0, 0, w.n(), w.step(),
                 traces, rivers, null);
         check("夹具确实让上游不窄于下游（用例有区分力）", maxOf(prof.get(0)) > 3.0);
-        // ★ pin 是与邻区的【硬约定】（精确性是正确性的一部分），单调只能调整 pin 之外的节点。
-        //   本夹具刻意把 pin 放在 5.5、而其下游天然只有 5.438 ⇒ pin 自身比下游更粗，
-        //   这是一处【已知且有意保留】的台阶：改它等于悄悄篡改端口约定。
-        //   故这里断言"pin 之外严格单调，pin 处等于约定值"，而非要求整体单调。
-        boolean mono = true;
-        String where = "";
+        // ★ 用户口径：单调只判【起点/终点】，中间段平缓线性、不被强制。
+        //   故这里只断言"端点不倒挂"+"pin 精确"，不再逐节点要求单调。
         int pinNode = (56 - 10) / 2;                     // w.cell(20,28) ⇒ 世界 z=56 ⇒ 节点 23
-        for (int p = 0; p < prof.size(); p++) {
-            double[] row = prof.get(p);
-            for (int i = 1; i < row.length; i++) {
-                // pin 节点及其【整段受 pin 渐隐影响的下游】豁免：pin 值由端口约定定死，
-                // 且其渐隐会把下游若干节点抬到接近 pin 值 ⇒ 该段不参与单调判定。
-                if (p == 0 && i >= pinNode && i <= pinNode + 4) continue;
-                if (row[i] < row[i - 1] - 1e-9) {
-                    mono = false;
-                    if (where.isEmpty()) where = "poly" + p + " node" + i + " "
-                            + row[i - 1] + "->" + row[i];
-                }
-            }
-        }
-        check("pin 之外沿下游绝不出现局部变窄" + (where.isEmpty() ? "" : "（" + where + "）"), mono);
         check("pin 处仍精确等于与邻区的约定值", Math.abs(prof.get(0)[pinNode] - 5.5) < 0.02);
+        check("起点不宽于终点（端点单调）", prof.get(0)[0] <= prof.get(0)[prof.get(0).length - 1] + 1e-9);
         double[] tailA = prof.get(0), headB = prof.get(1);
         check("串联接缝处仍承接（下游不窄于上游尾）",
                 headB[0] >= tailA[tailA.length - 1] - 1e-9);
@@ -1271,21 +1255,53 @@ public final class RiverWidthProfileProbe {
      * <p>夹具：源湖巨大（想要 6 格全宽起点），但河只有 32 格长、末端是小湖（1 格）。
      * 6 格收不到 1 格 ⇒ 必须削起点，而不是让斜率变陡。</p>
      */
+    /**
+     * ★ 回归：<b>起点不得宽于终点</b>；中间段只要求"平缓线性"，不要求逐节点单调。
+     *
+     * <p>用户口径（2026-10-27 第三次重申）：「单调是对起点和终点的，中间过程按平缓线性变化，
+     * 不被单调强制」。早期三次"逐节点强制单调"的实现都被它自己打回：
+     * 全局运行最小压平 370 条汇流树、单 trace 逐节点封顶造成 106–114 处汇流违约。</p>
+     */
+    private static void testSourceNeverInverted() {
+        World w = new World(160, 2);
+        var sh = vert(40, 10, 250, 2);
+        double[] q = new double[w.n() * w.n()];
+        for (int gz = 5; gz <= 60; gz++) q[w.cell(20, gz)] = 200;
+        var t = trace(sh, w, DeterministicSkeleton.End.MOUTH_LAKE);
+        var rivers = DeterministicSkeleton.buildRivers(List.of(t), w.n());
+        double[] row = RiverWidthProfile.build(List.of(sh), w.pipe(q), 0, 0, w.n(), w.step(),
+                List.of(t), rivers, Map.of()).get(0);
+        check("起点不宽于终点（端点单调）", row[0] <= row[row.length - 1] + 1e-9);
+        check("真源头起点为最小可见半宽（1 格全宽）", near(row[0], RiverCenterlines.MIN_HALF_BLOCKS));
+        // 中间段"平缓"：相邻节点落差不超过设计斜率对应的量（允许一定余量）
+        double maxJump = 0;
+        for (int i = 1; i < row.length; i++) maxJump = Math.max(maxJump, Math.abs(row[i] - row[i - 1]));
+        check("中间段无突跳（相邻落差 ≤ 0.35 半宽）", maxJump <= 0.35);
+    }
+
+    /**
+     * ★ 规则链 ③：<b>起点 = min(候选, 终点)</b>，任何情况下都由终点反推。
+     *
+     * <p>用户 2026-10-27 最终口径：「是任何时候都是终点反推起点」「起点的宽度不能超过终点的宽度」。
+     * 因此这里<b>没有</b>斜率预算：长河也不能让起点粗于终点。</p>
+     */
     private static void testFeasibleStartPriority() {
-        double slope = LakeWidthEnvelope.HALF_GROWTH_PER_BLOCK;
-        // 长河：预算充足 ⇒ 保留湖泊规模的 6 格起点（半宽 3）
-        check("长河（400格）保留 6 格起点", near(RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 400), 3.0));
-        // 短河：32 格只允许变化 1.0 半宽 ⇒ 起点 ≤ 0.5 + 1.0 = 1.5
-        double shortStart = RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 32);
-        check("短河（32格）起点被削到可行值", shortStart <= 0.5 + slope * 32 + 1e-9);
-        check("短河起点不低于末端（不倒挂）", shortStart >= 0.5 - 1e-9);
-        check("短河起点仍明显宽于真源头（未退化成 1 格）", shortStart > RiverCenterlines.MIN_HALF_BLOCKS);
-        // 单调性：弧长越长，允许的起点越粗
-        check("可行性随弧长单调放宽",
-                RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 100)
-                        >= RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 40) - 1e-9);
-        // 真源头（想要 0.5）不被抬高
-        check("真源头不被 P4 抬高", near(RiverWidthProfile.feasibleStartHalf(0.5, 0.0, 500), 0.5));
+        // 终点更细 ⇒ 起点被压到终点，长河与短河结果一致（弧长不再影响）。
+        check("长河（400格）起点仍被压到终点", near(RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 400), 0.5));
+        check("短河（32格）起点同样被压到终点", near(RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 32), 0.5));
+        // 终点更粗 ⇒ 起点取候选（不被抬高）。
+        check("终点更粗时起点取候选值", near(RiverWidthProfile.feasibleStartHalf(1.0, 4.0, 100), 1.0));
+        // 候选比终点粗时，结果恒 ≤ 终点。
+        check("起点恒不超过终点",
+                RiverWidthProfile.feasibleStartHalf(6.0, 2.0, 50) <= 2.0 + 1e-9);
+        // 无终点约束 ⇒ 直接用候选。
+        check("无终点约束时不反推", near(RiverWidthProfile.feasibleStartHalf(3.0, Double.NaN, 50), 3.0));
+        // 真源头（候选 0.5）不被抬高。
+        check("真源头不被反推抬高", near(RiverWidthProfile.feasibleStartHalf(0.5, 4.0, 500), 0.5));
+        // 弧长不再是变量（规则里已无斜率预算）。
+        check("结果与弧长无关",
+                near(RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 10),
+                     RiverWidthProfile.feasibleStartHalf(3.0, 0.5, 900)));
     }
 
     private static void testOutletSourceScale() {
