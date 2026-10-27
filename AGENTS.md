@@ -63,7 +63,7 @@ worldgenProfilerEveryChunks = 200   # 每 200 块打一次滚动汇总
 ## ★ 原版复用边界（动笔写新世界生成内容前先读）
 
 > **本项目已四次重复实现原版已有之物**（岩块团块 / 金属矿 / 紫水晶洞 / 化石）。
-> 完整审计见 `docs/analysis/原版复用对照审计-2026-09-16.md`。
+> 完整审计见 `audit/原版复用对照审计-2026-09-16.md`（2026-10-28 从被忽略的 `docs/analysis/` 复制入库）。
 
 **判据（决定性）**：`applyBiomeDecoration` 委托 `super`（原版实现）
 ⇒ **只要某特征在该群系的 `BiomeGenerationSettings` 里，它就一定在生成**。
@@ -196,10 +196,18 @@ gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"
 | 位置 | 内容 |
 |---|---|
 | `README.md` | 项目速览、目录地图、许可 |
-| `HYDROLOGY.md` | ★ **水文唯一事实来源** |
+| `HYDROLOGY.md` | ★ **水文唯一事实来源**：§〇 用户口径 · §二 生产唯一链 · §三 铁律 · §四 正典规格 · §〇b* 最近实施记录 · §七 接手须知 |
 | `ARCHITECTURE.md` | 核心架构、配置表、注册流程 |
 | `AGENTS.md`（本文件）| 项目规则、架构速览、硬约束、用户规则 |
 | `forge-.../CHANGELOG.md` | 版本发布记录 |
-| `docs/` | 设计/计划/修复/分析（⚠ 被 `.gitignore` 忽略，不进版本库）|
+| `audit/` | ★ **需要版本保护的审计/需求台账**（原版复用审计、守门门禁矩阵、用户需求记录）。改动世界生成前必读 |
+| `handoff/` | 交接与专项记录（**全部是历史快照**，见其 `README.md` 的逐份状态表）|
 | `_archive/hydrology/` | 历史水文文档（只读，结论多已被推翻）|
+| `_archive/hydrology/HYDROLOGY-history-20261028.md` | `HYDROLOGY.md` 移出的 61 段逐日实验记录（编号与主文件一致）|
+| `docs/` | 本地研究/工作笔记区（⚠ 被 `.gitignore` 忽略，**不进版本库**；含约 1.5 MB 聊天记录，勿当规格）|
 | `参考/` | 参考项目源码与调研（⚠ 被忽略）|
+
+> ⚠ **`HYDROLOGY.md` 的分工（2026-10-28 整理后）**：主文件只写当前事实与用户裁定；
+> 逐日实验流水移入 `_archive/hydrology/HYDROLOGY-history-20261028.md`，
+> 主文件为每个已归档编号保留一行「结论 + 指针」，**编号不变**，按 `§〇` + 编号的引用仍可定位。
+> 引用归档段前必须确认该结论是否已被后续段落推翻。
