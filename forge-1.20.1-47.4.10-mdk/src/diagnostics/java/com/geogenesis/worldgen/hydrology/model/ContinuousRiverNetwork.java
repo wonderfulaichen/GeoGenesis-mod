@@ -174,14 +174,17 @@ public final class ContinuousRiverNetwork {
         if (overflowAt != null && !overflowAt.isEmpty()) {
             StreamStats ofStats = new StreamStats();
             int outlets = 0;
+            // ★ 诊断：溢流出口被跳过的原因分类（"64 个出口只注入 10 个"的归因）
+            int skipNoOutflow = 0, skipOutOfRange = 0, skipInSea = 0, skipExitNeg = 0;
+            int zeroStreams = 0;
             for (var e : overflowAt.entrySet()) {
                 double outflow = e.getValue();
-                if (!(outflow > 0)) continue;
+                if (!(outflow > 0)) { skipNoOutflow++; continue; }
                 int k = e.getKey();
-                if (k < 0 || k >= cells) continue;
-                if (sea != null && sea[k]) continue;          // 溢流入海：无需注入下游
+                if (k < 0 || k >= cells) { skipOutOfRange++; continue; }
+                if (sea != null && sea[k]) { skipInSea++; continue; }          // 溢流入海：无需注入下游
                 int start = outletExit(k, lake, parent, sea, nz);
-                if (start < 0) continue;
+                if (start < 0) { skipExitNeg++; continue; }
                 outlets++;
                 // n = 溢流量 / 单流线贡献；上限防极端值（注入量同时打印，可审计）。
                 //
@@ -201,6 +204,8 @@ public final class ContinuousRiverNetwork {
                     capped = true;
                 }
                 injected += n;
+                // ★ 诊断：n==0 的出口（溢流量小于单流线贡献 ⇒ 注不进任何流线）
+                if (n <= 0) zeroStreams++;
                 double cx = (start / nz) + 0.5, cz = (start % nz) + 0.5;
                 for (int s2 = 0; s2 < n; s2++) {
                     trace(bed, level, resolved, nx, nz, cellSize, p.manning(), maxSteps, crossings,
@@ -209,6 +214,11 @@ public final class ContinuousRiverNetwork {
             }
             System.out.printf("  [streams] overflow injection: outlets=%d streams=%d (cap=%d%s)%n",
                     outlets, injected, totalCap, capped ? ", CAPPED - 注入被截断" : "");
+            // ★ 归因：64 个出口为何只注入 10 个（本行是"溢口→下泄"断裂的直接证据）
+            System.out.printf("    [skip归因] overflowAt 总数=%d | 无出流=%d 越界=%d 已在海=%d "
+                            + "outletExit失败=%d | n<=0(注不进)=%d%n",
+                    overflowAt.size(), skipNoOutflow, skipOutOfRange, skipInSea,
+                    skipExitNeg, zeroStreams);
             printStats("overflow", injected, ofStats);
         }
 
