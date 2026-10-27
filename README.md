@@ -110,21 +110,28 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 > `ConfigBinding.java` / `FactorCategoryBar.java` **七个文件全部不存在**（历史名）；
 > `WorldHeightBar` / `SnowLineChart` / `ScalePreview` 实际位于 `mixer/` 下。
 
-### 文档（`docs/`）
+### 文档
 
 > ⚠️ **2026-09-18 重要更正**：`docs/` **真实存在且内容完整**（`01-架构设计/` `02-功能设计/`
 > `03-实施计划/` `04-修复记录/` `05-分析诊断/` `06-历史归档/` + `analysis/` `design/`
-> `plans/` + `INDEX.md`）。它只是被 `.gitignore:52` 忽略 ⇒ **本地可见、不进版本库**。
+> `plans/` + `INDEX.md`）。它只是被 `.gitignore:53` 忽略 ⇒ **本地可见、不进版本库**。
 > 本文前一版曾误写"不存在"，原因是**用受 .gitignore 过滤的搜索工具做存在性判断** —— 见 `docs/INDEX.md`。
-> **★ 改动世界生成前必读**：`docs/analysis/守门门禁清单-2026-09-16.md`（115 个探针的
-> 「改什么 ⇒ 必跑什么」矩阵 + 实测基线 + 使用纪律）与 `docs/analysis/原版复用对照审计-2026-09-16.md`。
+>
+> **★ 改动世界生成前必读**：`audit/守门门禁清单-2026-09-16.md`（探针的
+> 「改什么 ⇒ 必跑什么」矩阵 + 实测基线 + 使用纪律）与 `audit/原版复用对照审计-2026-09-16.md`。
+>
+> ⚠️ **2026-10-28 更正**：上面这两份原先只在被忽略的 `docs/analysis/` 里，是**唯一副本、无版本保护**。
+> 已复制到受版本管理的 `audit/`（`docs/` 原件保留未删）。两边冲突时以 `audit/` 为准。
 
 | 目录 | 内容 |
 |------|------|
-| `docs/01-架构设计/` … `docs/06-历史归档/` | 编号分类（`ARCHITECTURE.md` 采用此方案） |
-| `docs/analysis/` | 分析与审计（**改动前必读**） |
-| `docs/design/` `docs/plans/` | 设计 / 计划 |
-| `docs/INDEX.md` | 文档分类索引（**含每篇时效性标注**，查新旧以此为准） |
+| `audit/` | ★ 受版本管理的审计与需求台账（原版复用审计、守门门禁矩阵、用户需求记录）|
+| `handoff/` | 交接与专项记录（历史快照，见其 `README.md` 的逐份状态表）|
+| `_archive/hydrology/` | 历史水文文档 + `HYDROLOGY.md` 移出的逐日实验记录 |
+| `docs/01-架构设计/` … `docs/06-历史归档/` | 编号分类（`ARCHITECTURE.md` 采用此方案；⚠ 不进版本库） |
+| `docs/analysis/` | 分析与审计（⚠ 不进版本库，权威副本见 `audit/`） |
+| `docs/design/` `docs/plans/` | 设计 / 计划（⚠ 不进版本库） |
+| `docs/INDEX.md` | 文档分类索引（**含每篇时效性标注**，查新旧以此为准；⚠ 不进版本库） |
 
 ### 其他目录
 
@@ -144,9 +151,10 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 ## 快速开始
 
 1. **接手项目**：先读 **`HYDROLOGY.md`**（若涉及水文）与 **`ARCHITECTURE.md`**（整体架构）
-2. **改世界生成前先查门禁矩阵**：`docs/analysis/守门门禁清单-2026-09-16.md` 的 A 节
-3. **文档索引**：`docs/INDEX.md`（含每篇时效性标注）
+2. **改世界生成前先查门禁矩阵**：`audit/守门门禁清单-2026-09-16.md` 的 A 节
+3. **文档索引**：`docs/INDEX.md`（本地，含每篇时效性标注；受版本管理的审计见 `audit/README.md`）
 4. **历史水文文档**：`_archive/hydrology/`（只读；其中的结论多数已被推翻，勿直接采信）
+5. **最近一次交接**：`handoff/GeoGenesis-handoff-20261026.md`，逐份状态见 `handoff/README.md`
 
 ## 开发环境
 
@@ -155,8 +163,8 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 
 ## 注意事项
 
-- **根目录只保留 4 份文档**：`README.md`（本文件）· `HYDROLOGY.md`（水文唯一事实来源）· `ARCHITECTURE.md` · `forge-.../CHANGELOG.md`。其余历史文档已归档到 `_archive/`（只读）
+- **根目录只保留 4 份文档**：`README.md`（本文件）· `HYDROLOGY.md`（水文唯一事实来源）· `ARCHITECTURE.md` · `forge-.../CHANGELOG.md`。其余历史文档已归档到 `_archive/`（只读）；需要版本保护的审计/需求台账在 `audit/`
 - ⚠️ **文档里抄数值 = 必然漂移**（2026-09-18 教训：旧 `AGENTS.md` 长期写 `CACHE_SCHEMA_VERSION` 当前 69，而代码已到 72；又写"域扭曲已启用 40"，实际回退为 0）。凡会变的数字一律写"以代码常量 X 为准"并指路，不要复述
 - ⚠️ **带判据的探针必须以 `System.exit(非零)` 承载 FAIL**，否则 Gradle 报 `BUILD SUCCESSFUL`、门禁名存实亡（实测：252 个诊断类里只有 36 个做对了）
-- 设计/计划/修复文档已分类到 `docs/` 子目录（⚠ `docs/` 被 `.gitignore` 忽略 ⇒ 本地可见、不进版本库）
+- 设计/计划/修复文档已分类到 `docs/` 子目录（⚠ `docs/` 被 `.gitignore` 忽略 ⇒ 本地可见、不进版本库）。**唯一副本、又必须长期有效的审计类文档请放 `audit/`**
 - ⚠️ **不要用受 `.gitignore` 过滤的搜索工具判断"文件是否存在"**（2026-09-18 踩坑：据此误判 `docs/`、`参考/`、`logs/` 等为"不存在"，并改错了本文件）。**权威做法是 `git status --ignored` 或显式路径列目录**
