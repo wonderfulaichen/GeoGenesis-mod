@@ -886,6 +886,41 @@ public final class DeterministicSkeleton {
             System.getProperty("geogenesis.contBlend", "0.75"));
 
     /**
+     * ★★★ 2026-10-27【矢量钢笔式贝塞尔：端点=节点，控制点独立】★★★
+     *
+     * <p><b>要治什么</b>：{@link #catmullRomResample} 的控制点 b1/b2 是
+     * {@code p0,p1} 与 {@code p1,p2} 的<b>凸组合</b> ⇒ 必然落在折线上。
+     * 三个节点共线时 4 个控制点全部共线，三次贝塞尔退化成直线 ⇒
+     * 无论怎么调参都是折线。这正是用户指出的「控制点没起到弯曲作用」。</p>
+     *
+     * <p><b>本开关的做法</b>：端点仍是节点（位置逐位不变），
+     * 但控制点改成 {@code 节点 ± 手柄方向 × 段长 × 强度}，
+     * 手柄方向取自<b>独立的地形场</b>（下坡方向 −∇bed，与相邻节点无关）。
+     * 真实坡向与格步弦几乎不可能共线 ⇒ 曲线真正弯曲。</p>
+     *
+     * <p><b>默认 0 = 完全关闭</b>（走原 Catmull-Rom，逐位不变）。
+     * 建议先用 0.33（三次贝塞尔的标准手柄长度 1/3 段长）做 A/B。</p>
+     */
+    static final double BEZIER_HANDLE_STRENGTH = Double.parseDouble(
+            System.getProperty("geogenesis.bezierHandleStrength", "0"));
+
+    /**
+     * 手柄方向中「坡向」所占权重（0=纯弦方向≡不弯曲，1=纯坡向）。
+     * 与弦方向混合而不是直接取坡向，是为了让急弯处的手柄仍顺流、不甩出走廊。
+     */
+    static final double BEZIER_HANDLE_MIX = Double.parseDouble(
+            System.getProperty("geogenesis.bezierHandleMix", "0.6"));
+
+    /**
+     * 估算手柄方向时「弦」的回看窗口（节点数）。
+     *
+     * <p>取 1 = 只看前后各一个节点（手柄会跟着台阶抖）；取 3~5 = 看整体走向，
+     * 能把「轴向台阶」拉成一条平滑斜线。这是治折线的关键旋钮。</p>
+     */
+    static final int BEZIER_HANDLE_WINDOW =
+            Integer.getInteger("geogenesis.bezierHandleWindow", 1);
+
+    /**
      * 洼地溢流口：从洼地底 {@code start} 起做有界 priority-flood（按 {@code bed} 由低到高），
      * 返回第一个"外侧存在严格更低邻居"的格（水能从此继续下降的鞍部）。
      *
@@ -3919,8 +3954,20 @@ public final class DeterministicSkeleton {
                     m = m + ext;
                 }
             }
-            // ② Catmull-Rom 重采样（1 block 间距）—— 折线变曲线
-            double[][] res = catmullRomResample(ax, az, 1.0);
+            // ② 重采样 —— 折线变曲线
+            //
+            // ★ 2026-10-27【两条路并存，默认走原路】
+            //   `bezierHandleStrength=0`（默认）⇒ 原 Catmull-Rom，逐位不变；
+            //   >0 ⇒ 矢量钢笔式贝塞尔：端点=节点，控制点由独立坡向场决定。
+            //   端点坐标在两路中都是 `ax/az` 原值 ⇒ JOIN/端口对齐不受影响。
+            double[][] res;
+            if (BEZIER_HANDLE_STRENGTH > 1e-6) {
+                double[] hx = new double[m], hz = new double[m];
+                handleDirs(ax, az, m, bed, nx, nz, t.cell, hx, hz);
+                res = resampleWithHandles(ax, az, 1.0, hx, hz);
+            } else {
+                res = catmullRomResample(ax, az, 1.0);
+            }
             double[] rx = res[0], rz = res[1];
             // ③ 4 倍频 meander（两端淡出）
             if (params.meanderAmp() > 0.01 && rx.length >= 3) {
@@ -4050,6 +4097,89 @@ public final class DeterministicSkeleton {
                 double x = ((t2 - t) * c1x + (t - t1) * c2x) / (t2 - t1);
                 double z = ((t2 - t) * c1z + (t - t1) * c2z) / (t2 - t1);
                 pts.add(s == steps ? new double[]{p2x, p2z} : new double[]{x, z});
+            }
+        }
+        double[] xs = new double[pts.size()];
+        double[] zs = new double[pts.size()];
+        for (int i = 0; i < pts.size(); i++) {
+            xs[i] = pts.get(i)[0];
+            zs[i] = pts.get(i)[1];
+        }
+        return new double[][]{xs, zs};
+    }
+
+    /**
+     * 逐节点的<b>手柄方向</b>（单位向量）：弦方向与地形下坡方向按
+     * {@link #BEZIER_HANDLE_MIX} 混合。
+     *
+     * <p>弦方向 = 前后节点连线；下坡方向 = {@code −∇bed}（中心差分），并翻转符号使其顺流。
+     * 用坡向而非邻居节点做手柄，正是为了在<b>节点共线</b>时仍能给出不共线的控制点。</p>
+     *
+     * <p>地形平坦（梯度≈0）或越界（窗口外尾段）⇒ 手柄退回弦方向 ⇒ 该段行为与原实现一致。</p>
+     */
+    private static void handleDirs(double[] ax, double[] az, int m, double[] bed,
+                                   int nx, int nz, int[] cell, double[] hx, double[] hz) {
+        for (int i = 0; i < m; i++) {
+            int a = Math.max(0, i - BEZIER_HANDLE_WINDOW);
+            int b = Math.min(m - 1, i + BEZIER_HANDLE_WINDOW);
+            double cx = ax[b] - ax[a], cz = az[b] - az[a];
+            double cl = Math.hypot(cx, cz);
+            if (cl < 1e-9) { hx[i] = 0; hz[i] = 0; continue; }
+            cx /= cl; cz /= cl;
+            double gx = 0, gz = 0;
+            if (bed != null && i < cell.length) {
+                int c = cell[i];
+                int ci = c / nz, cj = c % nz;
+                double bL = ci > 0 ? bed[(ci - 1) * nz + cj] : bed[c];
+                double bR = ci < nx - 1 ? bed[(ci + 1) * nz + cj] : bed[c];
+                double bD = cj > 0 ? bed[ci * nz + cj - 1] : bed[c];
+                double bU = cj < nz - 1 ? bed[ci * nz + cj + 1] : bed[c];
+                double dgx = (bR - bL) * 0.5, dgz = (bU - bD) * 0.5;
+                double gl = Math.hypot(dgx, dgz);
+                if (gl > 1e-6) {
+                    gx = -dgx / gl; gz = -dgz / gl;                  // 下坡
+                    if (gx * cx + gz * cz < 0) { gx = -gx; gz = -gz; } // 保证顺流
+                }
+            }
+            if (gx == 0 && gz == 0) { hx[i] = cx; hz[i] = cz; continue; }
+            double mx = cx * (1 - BEZIER_HANDLE_MIX) + gx * BEZIER_HANDLE_MIX;
+            double mz = cz * (1 - BEZIER_HANDLE_MIX) + gz * BEZIER_HANDLE_MIX;
+            double ml = Math.hypot(mx, mz);
+            if (ml < 1e-9) { hx[i] = cx; hz[i] = cz; }
+            else { hx[i] = mx / ml; hz[i] = mz / ml; }
+        }
+    }
+
+    /**
+     * 三次贝塞尔重采样：<b>端点 = 节点</b>，控制点 = 端点 + 手柄 × 段长 × 强度。
+     *
+     * <p>与 {@link #catmullRomResample} 的本质区别：后者的控制点是邻居节点的凸组合
+     * （必然在折线上，共线时无曲率）；这里的控制点方向来自独立场，可以脱离弦。</p>
+     *
+     * <p>端点严格取 {@code ax/az} 原值 ⇒ 相邻 trace 的 JOIN/端口仍逐位重合。
+     * 采样密度 {@code ceil(段长/spacing)} 与原实现一致，输出点数同量级。</p>
+     */
+    private static double[][] resampleWithHandles(double[] ax, double[] az, double spacing,
+                                                  double[] hx, double[] hz) {
+        int m = ax.length;
+        double span = Math.abs(ax[m - 1] - ax[0]) + Math.abs(az[m - 1] - az[0]);
+        List<double[]> pts = new ArrayList<>((int) (span / spacing) + m + 8);
+        pts.add(new double[]{ax[0], az[0]});
+        for (int i = 0; i < m - 1; i++) {
+            double p0x = ax[i], p0z = az[i];
+            double p3x = ax[i + 1], p3z = az[i + 1];
+            double segLen = Math.hypot(p3x - p0x, p3z - p0z);
+            if (segLen < 1e-9) { pts.add(new double[]{p3x, p3z}); continue; }
+            double k = segLen * BEZIER_HANDLE_STRENGTH;
+            double p1x = p0x + hx[i] * k, p1z = p0z + hz[i] * k;
+            double p2x = p3x - hx[i + 1] * k, p2z = p3z - hz[i + 1] * k;
+            int steps = Math.max(1, (int) Math.ceil(segLen / spacing));
+            for (int s = 1; s <= steps; s++) {
+                if (s == steps) { pts.add(new double[]{p3x, p3z}); continue; }
+                double t = s / (double) steps, u = 1 - t;
+                double w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
+                pts.add(new double[]{w0 * p0x + w1 * p1x + w2 * p2x + w3 * p3x,
+                        w0 * p0z + w1 * p1z + w2 * p2z + w3 * p3z});
             }
         }
         double[] xs = new double[pts.size()];
