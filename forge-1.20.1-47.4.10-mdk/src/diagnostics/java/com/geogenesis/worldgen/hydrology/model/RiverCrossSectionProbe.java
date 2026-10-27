@@ -73,6 +73,9 @@ public final class RiverCrossSectionProbe {
         testWaterBlocksFractionalDepth();
         testWaterBlocksNonFinite();
         testSectionColumnProfile();
+        testNarrowRiverPhases();
+        testRiverSurfaceContainment();
+        testSteepExtraDepth();
 
         System.out.printf("%n=== RiverCrossSectionProbe: PASS=%d FAIL=%d ===%n", pass, fail);
         for (String f : FAILS) System.out.println("  FAIL: " + f);
@@ -98,21 +101,21 @@ public final class RiverCrossSectionProbe {
     }
 
     /**
-     * 1..12 全量字面量（独立算得：{@code 1+3·((W−1)/11)^0.75}，由外部工具在写码前产出）。
+     * 1..12 全量字面量（外部按W1→1、W3→2、W12→4确定指数后独立算得）。
      */
     private static void testCenterDepthIndependentSamples() {
         double[][] expected = {
                 {1, 1.0},
-                {2, 1.4966800782285106},
-                {3, 1.835312994620578},
-                {4, 2.1321857433707407},
-                {5, 2.4048234055825786},
-                {6, 2.6607499349512365},
-                {7, 2.9041018660036357},
-                {8, 3.137471195312568},
-                {9, 3.362621931637811},
-                {10, 3.5808253917971946},
-                {11, 3.7930373338666685},
+                {2, 1.6397399140644862},
+                {3, 2.0},
+                {4, 2.2986158772715566},
+                {5, 2.5631352335774364},
+                {6, 2.804884822187466},
+                {7, 3.0299122326462427},
+                {8, 3.2419226452402716},
+                {9, 3.4433917584511873},
+                {10, 3.636076254782165},
+                {11, 3.8212790581103757},
                 {12, 4.0},
         };
         for (double[] e : expected) near("标定 W=" + (int) e[0], e[1], RiverCrossSection.centerDepth(e[0]), TOL);
@@ -232,8 +235,9 @@ public final class RiverCrossSectionProbe {
         double[][] rows = {
                 // W,  half, Hc,                              H(r=0.25),          H(r=0.5)
                 {1, 0.5, 1.0, 1.0, 1.0},
-                {4, 2.0, 2.1321857433707407, 1.9950851260094402, 1.6368544806460417},
-                {6, 3.0, 2.6607499349512365, 2.459643497515735, 1.9341718384100706},
+                {3, 1.5, 2.0, 1.87890625, 1.5625},
+                {4, 2.0, 2.2986158772715566, 2.1413616108832043, 1.7304714309652507},
+                {6, 3.0, 2.804884822187466, 2.5863245507507027, 2.0152477124804498},
                 {12, 6.0, 4.0, 3.63671875, 2.6875},
         };
         for (double[] r : rows) {
@@ -512,6 +516,49 @@ public final class RiverCrossSectionProbe {
         double target = RiverCrossSection.targetDepth(hc, distance, width / 2.0);
         double b = RiverCrossSection.bed(surface, surface, target);
         return RiverCrossSection.waterBlocks(surface, b);
+    }
+
+    private static void testNarrowRiverPhases() {
+        for (double s : new double[]{64, 64.5, 64.9, -0.1}) {
+            eqInt("W3 center two blocks S=" + s, 2, columnBlocks(3, s, 0));
+            eqInt("W3 near-center two blocks S=" + s, 2, columnBlocks(3, s, 0.25));
+            eqInt("W4 center phase S=" + s, s == 64 ? 3 : 2, columnBlocks(4, s, 0));
+            for (int width : new int[]{3, 4}) {
+                eqInt("narrow bank remains one block W=" + width + " S=" + s,
+                        1, columnBlocks(width, s, width / 2.0));
+            }
+        }
+        near("W3 continuous center", 2, RiverCrossSection.centerDepth(3), TOL);
+        near("W4 continuous center", 2.2986158772715566, RiverCrossSection.centerDepth(4), TOL);
+    }
+
+    private static void testRiverSurfaceContainment() {
+        for (double[] c : new double[][]{{193.1952, 208.7713, 193.1952}, {70, 69.5, 69.5},
+                {70, 70, 70}, {-0.1, 4, -0.1}, {-64.2, -65, -65}}) {
+            double s = RiverCrossSection.containedSurface(c[0], c[1]);
+            near("ordinary river contained surface", c[2], s, 0);
+            check("water top no higher than original solid top", Math.floor(s) <= Math.floor(c[0]), "S=" + s);
+            double b = RiverCrossSection.wetBed(c[0], s, 2);
+            near("contained two-block depth", 2, s - b, TOL);
+        }
+    }
+
+    private static void testSteepExtraDepth() {
+        for (double[] c : new double[][]{{0, 0}, {0.1696, 0}, {0.5, 0}, {0.625, 0.15625},
+                {0.75, 0.5}, {0.875, 0.84375}, {1, 1}, {8, 1}}) {
+            near("steep extra slope=" + c[0], c[1], RiverCrossSection.steepExtraDepth(c[0]), TOL);
+        }
+        for (double edge : new double[]{0.5, 1}) {
+            check("steep transition continuous at " + edge,
+                    Math.abs(RiverCrossSection.steepExtraDepth(edge - 1e-6)
+                            - RiverCrossSection.steepExtraDepth(edge + 1e-6)) < 1e-9, "");
+        }
+        for (double s : new double[]{197.1, 197.9, -0.1}) {
+            double bed = RiverCrossSection.wetBed(s, s, 0.6);
+            double extra = RiverCrossSection.steepExtraDepth(2);
+            eqInt("one extra block after wet-floor protection S=" + s,
+                    RiverCrossSection.waterBlocks(s, bed) + 1, RiverCrossSection.waterBlocks(s, bed - extra));
+        }
     }
 
     // 输出与断言工具

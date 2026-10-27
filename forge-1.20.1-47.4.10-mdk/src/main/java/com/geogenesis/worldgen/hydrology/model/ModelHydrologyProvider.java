@@ -207,10 +207,12 @@ public final class ModelHydrologyProvider {
                                * <p>只读诊断载荷。<b>审计必须读它而不是 pass1</b>：
                                * pass1 只是承诺，pass2 才是真正发布的几何。</p>
                                */
-                              DeterministicSkeleton.Result skel) {
+                              DeterministicSkeleton.Result skel,
+                              double[] bankLowering) {
         RegionData(HydrologyPipeline.Result pipe, RiverCenterlines.Result centerline, SegmentIndex skeletonSeg,
                    int originX, int originZ, ProductionDrainageAudit.Snapshot drainage) {
-            this(pipe, centerline, skeletonSeg, originX, originZ, drainage, null, null, null, null, null);
+            this(pipe, centerline, skeletonSeg, originX, originZ, drainage, null, null, null, null, null,
+                    RIVER_BANK_HEIGHT ? RiverBankHeight.build(pipe) : null);
         }
 
         int[][] sourcesOrEmpty() { return sources == null ? new int[0][] : sources; }
@@ -359,6 +361,7 @@ public final class ModelHydrologyProvider {
             "geogenesis.particleAmp", "geogenesis.particleMomentum",
             "geogenesis.boundaryPorts", "geogenesis.widthSmooth", "geogenesis.widthMonotone",
             "geogenesis.bankJitter", "geogenesis.riverWidth", "geogenesis.riverCrossSection",
+            "geogenesis.riverBankHeight",
             // ---- 阈值 / 耦合 / 流向 ----
             "geogenesis.riverThresholdFrac", "hydro.couplingMaxRounds", "hydro.directionRule",
             "hydro.visitCap", "hydro.floorMul", "hydro.absFloorMul", "hydro.relFloor",
@@ -409,9 +412,11 @@ public final class ModelHydrologyProvider {
         return hashOf(EXPERIMENT_KEYS);
     }
 
-    /** 深度断面候选：默认关闭，先与当前生产版同参比较。 */
+    /** 已接入普通客户端；显式false仅供旧断面A/B，不再要求额外JVM参数才能按河宽定深。 */
     static final boolean RIVER_CROSS_SECTION =
-            Boolean.getBoolean("geogenesis.riverCrossSection");
+            !"false".equals(System.getProperty("geogenesis.riverCrossSection"));
+    /** 岸水高差候选：与深度断面独立，默认关闭，先交局部生产对照。 */
+    static final boolean RIVER_BANK_HEIGHT = Boolean.getBoolean("geogenesis.riverBankHeight");
 
     /** 对键集做 FNV-1a 指纹（排序 ⇒ 与字典序/枚举顺序无关，确定性）。 */
     private static long hashOf(String[] keys) {
@@ -2181,6 +2186,8 @@ public final class ModelHydrologyProvider {
                 //   3×3 邻区的**有效窗口**本就有重叠（RADIUS=352 > REGION/2=256），
                 //   所以"每个方块都能被至少一个邻区覆盖"—— 不需要靠 clamp 兜底。
                 boolean isLakeBlock = rd.worldWater()==null && p.lake()[k];
+                // 湖是单平面，不能把相邻非湖格的逃逸高程插进湖岸。
+                double localLakeSurface = isLakeBlock ? p.waterSurface()[k] : Double.NaN;
                 // ★★★ 2026-10-25【湖缘方块级精修 —— 用户要求「边缘高精度、内部粗格」】★★★
                 //
                 // 【缺陷】`p.lake()` 是 STEP=2 的粗格布尔 ⇒ 同一 2×2 格内四个方块要么全湖、
@@ -2199,7 +2206,7 @@ public final class ModelHydrologyProvider {
                 //   · surface 在非湖格也可能是 EquilibriumWater 的逃逸高程（会误扩湖），
                 //     故本精修【只在粗格判湖处】执行，不用它去扩张新湖域。
                 if (isLakeBlock) {
-                    isLakeBlock = eroded < surface - LAKE_EDGE_EPS;
+                    isLakeBlock = eroded < localLakeSurface - LAKE_EDGE_EPS;
                 }
                 if(rd.worldWater()!=null) {
                     int cellX=Math.floorDiv(blockX,STEP)*STEP, cellZ=Math.floorDiv(blockZ,STEP)*STEP;
@@ -2257,6 +2264,7 @@ public final class ModelHydrologyProvider {
                 //     （共享诊断如实报告改写/抑制列数，不声称整缝已消除）。
                 boolean sharedLake = false;
                 double sharedSurface = Double.NaN;
+                double borrowedLakeSurface = Double.NaN;
                 if (!sharedDoms.isEmpty()) {
                     SharedLakeDomain.Decision sd = decideShared(sharedDoms, blockX, blockZ);
                     if (sd.controlled()) {
@@ -2328,7 +2336,12 @@ public final class ModelHydrologyProvider {
                         int ti = (int) Math.round((blockX - rr.originX()) / (double) STEP);
                         int tj = (int) Math.round((blockZ - rr.originZ()) / (double) STEP);
                         if (ti < 0 || tj < 0 || ti >= nn || tj >= nn) continue;   // 越界跳过
-                        if (rr.pipe().lake()[ti * nn + tj]) { isLakeBlock = true; break; }
+                        if (rr.pipe().lake()[ti * nn + tj]) {
+                            isLakeBlock = true;
+                            // 湖标记与水位必须同源；不能给邻区的湖填本区非湖格的逃逸水位。
+                            borrowedLakeSurface = rr.pipe().waterSurface()[ti * nn + tj];
+                            break;
+                        }
                         SegmentIndex si = neighSeg[t];
                         if (si == null || si.isEmpty()) continue;
                         SegmentIndex.Hit h2 = si.nearest(blockX, blockZ);
@@ -2360,8 +2373,11 @@ public final class ModelHydrologyProvider {
                     if (coarseLake && !isLakeBlock) lakeDiagCoarseButNotBlock.incrementAndGet();
                     if (!coarseLake && isLakeBlock) lakeDiagGainedByRefine.incrementAndGet();
                 }
+                double resolvedLakeSurface = sharedLake && Double.isFinite(sharedSurface) ? sharedSurface
+                        : Double.isFinite(borrowedLakeSurface) ? borrowedLakeSurface
+                        : rd.worldWater()==null && Double.isFinite(localLakeSurface) ? localLakeSurface : surface;
                 if (BOUNDARY_PORTS && isLakeBlock
-                        && !isLakeAt(eroded, sharedLake ? sharedSurface : surface)) {
+                        && !isLakeAt(eroded, resolvedLakeSurface)) {
                     SegmentIndex.Hit shoreHit = segIndex.nearest(blockX, blockZ);
                     if (shoreHit == null && nearBorder) {
                         for (int t = 0; t < 9; t++) {
@@ -2391,11 +2407,9 @@ public final class ModelHydrologyProvider {
                         LOGGER.info("[GAP-WATCH] ({},{}) => LAKE_COL region=({},{}) shared={}",
                                 blockX, blockZ, rdRx, rdRz, sharedLake);
                     }
-                    // 世界骨架分支：surface 已由 WorldLakeSurface 的盆身份和单平面裁决。
-                    // 非世界分支：surface 来自本区细层 p.waterSurface() 的双线性采样，
-                    // 仅 sharedDoms 受控列采用跨 tract 共享域单平面；粗层候选不覆盖落块。
-                    double lakeSurface = sharedLake && Double.isFinite(sharedSurface)
-                            ? sharedSurface : surface;
+                    // 世界/共享湖沿用权威水面；借来的湖沿用命中邻区的同一湖水面。
+                    // 单独保留resolvedLakeSurface，湖岸退回河列时不改河道原来的surface。
+                    double lakeSurface = resolvedLakeSurface;
                     // 湖列：不雕刻，按水位洪泛；lakeNode=null ⇒ 写回跳过逃逸重算、按水位分组
                     out.add(new HydrologyBlockCarvedColumn(blockX, blockZ, original, original,
                             lakeSurface, lakeSurface, 0.0, 1.0,
@@ -2462,18 +2476,33 @@ public final class ModelHydrologyProvider {
                     } else {
                         half = Math.max(half, RiverCenterlines.MIN_HALF_BLOCKS);
                     }
+                    // 普通河水只能占据原地形中挖出的空间；minimax逃逸高程不是可悬空填水的许可。
+                    // 湖列已在上方返回，海水仍由落块层按海平面补灌。
+                    surface = RiverCrossSection.containedSurface(eroded, surface);
+                    double steepExtra = RiverCrossSection.steepExtraDepth(
+                            terrainSlope(p, rd.originX(), rd.originZ(), blockX, blockZ));
+                    double bankLowering = 0;
+                    if (RIVER_BANK_HEIGHT) {
+                        double lowering = bilinear(rd.bankLowering(), n, gi, gj, rd.originX, rd.originZ,
+                                blockX, blockZ, STEP);
+                        double lowered = RiverBankHeight.surface(surface, lowering, gen.heightCurve().seaLevelY());
+                        bankLowering = surface - lowered;
+                        surface = lowered;
+                    }
                     if (RIVER_CROSS_SECTION) {
                         // 命中段携带的是目标水深；列字段 erosion 仍表达相对侵蚀地形的下挖量。
                         if (eroded < gen.heightCurve().seaLevelY()) {
                             depth = 0.0; // 已在海平面下的原海床不再雕刻，海水由原落块分支负责。
                         } else {
-                            // 保持现有湿宽：浅接口仍须在整数层放得下一块水，不放宽fill门槛。
                             depth = eroded - RiverCrossSection.wetBed(eroded, surface, depth);
+                            // 在整数水柱保护之后补挖，陡坡的额外1格不会被保护量吞掉。
+                            if (depth > 0) depth += steepExtra;
                         }
                     } else {
                         depth = 1.0;
                         // 原生产基线：防断水补挖，上限为下挖量4格（不是水深4格）。
-                        depth = Math.min(4.0, Math.max(depth, eroded - surface + 0.6));
+                        depth = Math.min(4.0, Math.max(depth, eroded - (surface + bankLowering) + 0.6));
+                        depth += bankLowering + steepExtra;
                     }
                 } else {
                     half = 0;
@@ -2534,6 +2563,24 @@ public final class ModelHydrologyProvider {
             }
         }
         return out;
+    }
+
+    /** 双线性插值既有侵蚀网格的梯度，不新增地形采样或最近格坡度台阶。 */
+    private static double terrainSlope(HydrologyPipeline.Result p, int ox, int oz, int bx, int bz) {
+        int nx = p.nx(), nz = p.nz(), step = p.cellBlocks();
+        double gx = (bx - ox) / (double) step, gz = (bz - oz) / (double) step;
+        int x0 = clamp((int) Math.floor(gx), nx), z0 = clamp((int) Math.floor(gz), nz);
+        double tx = Math.max(0, Math.min(1, gx - x0)), tz = Math.max(0, Math.min(1, gz - z0));
+        double dx = 0, dz = 0;
+        for (int ix = 0; ix < 2; ix++) for (int iz = 0; iz < 2; iz++) {
+            int x = Math.min(nx - 1, x0 + ix), z = Math.min(nz - 1, z0 + iz);
+            int xm = Math.max(0, x - 1), xp = Math.min(nx - 1, x + 1);
+            int zm = Math.max(0, z - 1), zp = Math.min(nz - 1, z + 1);
+            double w = (ix == 0 ? 1 - tx : tx) * (iz == 0 ? 1 - tz : tz);
+            dx += w * (p.bed()[xp*nz+z] - p.bed()[xm*nz+z]) / Math.max(step, (xp-xm)*step);
+            dz += w * (p.bed()[x*nz+zp] - p.bed()[x*nz+zm]) / Math.max(step, (zp-zm)*step);
+        }
+        return Math.hypot(dx, dz);
     }
 
     /**
@@ -3371,7 +3418,7 @@ public final class ModelHydrologyProvider {
         lastFineMs = (System.nanoTime() - t0) / 1e6;
         // ★ v2：分层实验路径不产出 typed 端口 ⇒ 最终骨架载荷如实为 null（不冒充 pass2）。
         return new RegionData(p, cl, skelSeg, originX, originZ, drainage, world, worldWater,
-                regionSources, regionShaped, null);
+                regionSources, regionShaped, null, RIVER_BANK_HEIGHT ? RiverBankHeight.build(p) : null);
     }
 
     /** 最近一次细层求解耗时（ms）——性能诊断（与 {@link HierarchicalHydrology.Diag#LAST_FINE_MS} 同源）。 */
@@ -3492,7 +3539,8 @@ public final class ModelHydrologyProvider {
         //   上次漏了它 ⇒ 探针读到的 sources 恒为 null ⇒ 源头 0 个。
         //   ⚠ 这条路径必须与 2495 行那条【一起】维护，否则只对一半。
         RegionData rd = new RegionData(p, cl, skelSeg, base.originX(), base.originZ(), drainage,
-                null, null, sr.sources(), sr.shapedPolys(), sr.skel());
+                null, null, sr.sources(), sr.shapedPolys(), sr.skel(),
+                RIVER_BANK_HEIGHT ? bankLowering(base, rx, rz) : null);
         // #region agent log: D 冷区依赖成本拆分，实机确认后清理
         if (com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) {
             com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("D", "model-region-" + rx + "-" + rz,
@@ -3503,6 +3551,23 @@ public final class ModelHydrologyProvider {
         // #endregion
         logRegionSolved(rx, rz, p, cl, t0, base.originX(), base.originZ());
         return rd;
+    }
+
+    /** 只读固定8邻pass1的湖海掩码；不依赖邻区final，不再跑骨架或管线。 */
+    private double[] bankLowering(Pass1 base, int rx, int rz) {
+        HydrologyPipeline.Result p = base.pipe();
+        boolean[] water = new boolean[p.nx() * p.nz()];
+        RiverBankHeight.mergeWater(water, p, base.originX(), base.originZ(),
+                p, base.originX(), base.originZ());
+        if (BOUNDARY_PORTS && CROSS_PASS) {
+            for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                Pass1 neighbor = regionPass1(rx + dx, rz + dz);
+                RiverBankHeight.mergeWater(water, p, base.originX(), base.originZ(),
+                        neighbor.pipe(), neighbor.originX(), neighbor.originZ());
+            }
+        }
+        return RiverBankHeight.build(p, water);
     }
 
     /** region 求解日志（细层/既有路径共用；不改产出）。 */

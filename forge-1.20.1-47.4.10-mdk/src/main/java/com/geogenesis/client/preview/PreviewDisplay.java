@@ -470,7 +470,10 @@ public class PreviewDisplay extends AbstractWidget {
     // 112 = 2026-10-26 河湖接口按实际湿宽限幅，出湖用净出流，真支流不再钉成干流宽度。
     // 113 = 2026-10-27 出湖半宽改为跨窗口取较小者（同一出口格在相邻窗口可能判成不同源盆）。
     // 114 = 河深/横断面候选接入（默认关闭），实验开关纳入缓存身份；保留认可的骨架/宽度。
-    private static final int CACHE_SCHEMA_VERSION = 114;
+    // 115 = 跨区借湖时同步借用命中湖的水位，修正区域边界整齐水面错层；不改河道断面。
+    // 116 = 岸水高差候选（默认关闭）：按地形坡度下移河面0—1格，同步河床，湖海附近渐隐。
+    // 117 = 普通河面不超侵蚀地形，陡坡额外向下补挖1格；宽深断面默认接入，W3中心2格。
+    private static final int CACHE_SCHEMA_VERSION = 117;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

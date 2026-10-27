@@ -24,8 +24,8 @@ package com.geogenesis.worldgen.hydrology.model;
  *
  * <h2>规则（几何约定，非物理）</h2>
  * <ol>
- *   <li><b>中心水深</b>：{@code u = clamp((W−1)/11, 0, 1)}，{@code Hc = 1 + (Hmax−1)·u^0.75}
- *       ⇒ {@code W=1 → 1}、{@code W=12 → 4}，中间平缓展宽（{@code W=4 ≈ 2.13}、{@code W=6 ≈ 2.66}）。</li>
+ *   <li><b>中心水深</b>：{@code u = clamp((W−1)/11, 0, 1)}，{@code Hc = 1 + (Hmax−1)·u^0.64444259751338}
+ *       ⇒ {@code W=1 → 1}、{@code W=3 → 2}、{@code W=4 ≈ 2.30}、{@code W=12 → 4}。</li>
  *   <li><b>横断面</b>：{@code r = clamp(|d|/effectiveHalf, 0, 1)}，
  *       {@code H(r) = Hedge + (Hc−Hedge)·(1−r²)²}，{@code Hc=max(0,centerDepth)}，
  *       {@code Hedge = min(1,Hc)}；浅接口不反向加深，{@code Hc=0} 明确表示无水。
@@ -56,9 +56,9 @@ package com.geogenesis.worldgen.hydrology.model;
  *   <tr><td>{@link #waterBlocks} 任一参数非有限</td><td>0 块</td></tr>
  * </table>
  *
- * <h2>不在本轮范围</h2>
- * <p>接点过渡（串联 / 汇流 / 湖口 / 跨区）所需的混合曲线<b>本轮不实现</b>；
- * 生产接入另立任务。本类不生成任何方块，也不决定群系。</p>
+ * <h2>职责边界</h2>
+ * <p>沿程与接点过渡由 {@link RiverDepthProfile} 处理，普通河列由
+ * {@link ModelHydrologyProvider} 接入。本类不生成方块，也不决定群系。</p>
  */
 final class RiverCrossSection {
 
@@ -74,8 +74,8 @@ final class RiverCrossSection {
     /** 标定的最小全宽（格）：真源头。 */
     static final double MIN_FULL_WIDTH = 1.0;
 
-    /** 宽度展宽指数（{@code u^0.75}：前段涨得快、后段趋缓）。 */
-    static final double WIDTH_EXPONENT = 0.75;
+    /** W=3恰好2格目标中心水深，同时保留W=1→1、W=12→4。 */
+    static final double WIDTH_EXPONENT = 0.64444259751338;
 
     private RiverCrossSection() { }
 
@@ -84,7 +84,7 @@ final class RiverCrossSection {
      *
      * <pre>{@code
      *   u  = clamp((W − 1) / 11, 0, 1)
-     *   Hc = 1 + (CENTER_DEPTH_MAX − 1) · u^0.75
+     *   Hc = 1 + (CENTER_DEPTH_MAX − 1) · u^WIDTH_EXPONENT
      * }</pre>
      *
      * <p>输入是 {@link RiverWidthProfile} 定稿的<b>名义全宽</b>，不是 bank jitter 后的逐列宽度
@@ -127,6 +127,17 @@ final class RiverCrossSection {
         double r = radiusFraction(distance, effectiveHalf);
         double fall = 1.0 - r * r;                 // 岸缘 0、中心 1
         return edge + (center - edge) * fall * fall;
+    }
+
+    /** 普通河面不得高于雕刻前地形；湖列提前返回，海水由落块层独立补灌。 */
+    static double containedSurface(double eroded, double surface) {
+        return Math.min(eroded, surface);
+    }
+
+    /** 26.6°以下不补挖，45°及以上额外1格，中间smoothstep，避免等坡度线硬切。 */
+    static double steepExtraDepth(double slope) {
+        double t = clamp01((slope - 0.5) / 0.5);
+        return t * t * (3 - 2 * t);
     }
 
     /**
