@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "baseline": {
+    "commit": "cbb44b6361e1b91d592f6e179cef86ca8be18fd4",
+    "previewSchema": 119,
+    "seed": 9139912035078620160,
+    "center": [-140, 137],
+    "radiusBlocks": 700,
+    "imageStepBlocks": 1,
+    "horizontalScale": 2.0,
+    "jvmWorldgenProperties": {},
+    "configSHA256": "cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f",
+    "pngSHA256": "2309e45ff73e7635f5fe521eeb05288080616c183255598af7e1dc9a2a208ffa",
+    "columnsSHA256": "17b17bc6170ce0e1507b0188ab7ee292c35d70834fab0b0c0a0162b058fa4ada"
+  },
+  "stages": {
+    "baseE": {"entry": "CellGenerator.terrainE / terrainEQuick / sample.e", "coordinate": "wu", "value": "dimensionless e", "includes": "tectonics, land/ocean features, deformation, soft cap", "excludes": "erosion, model carving, decoration"},
+    "baseY": {"entry": "CellGenerator.sample.height", "coordinate": "wu", "value": "world Y", "conversion": "HeightCurve.heightFromE; asymmetric land/ocean mapping"},
+    "erodedY": {"entry": "CellGenerator.erodedHeight / sampleWu.height", "coordinate": "wu", "value": "world Y", "includes": "production erosion tile delta", "excludes": "model column carving"},
+    "finalColumn": {"entry": "GeoGenesisTerrain.getChunkCells", "coordinate": "integer chunk coordinates; cells[lx*16+lz]", "value": "Cell.height / riverSurfaceY / riverLipY / isLake", "includes": "production erosion and model column plan", "excludes": "Forge block placement, caves, decoration, fluid ticks"}
+  },
+  "invariants": [
+    "block to wu conversion occurs exactly once using frozen horizontalScale",
+    "height-only and full Cell must agree bitwise at the same stage",
+    "base queries never trigger erosion or model recursion",
+    "candidate core uses the same production erosion/model entry points",
+    "seed, configuration and algorithm version invalidate corresponding caches",
+    "schema119 default is not replaced before visual acceptance",
+    "preview default basin 0.05 versus Forge default 0.08 is recorded, not silently resolved"
+  ],
+  "scopeOfImpact": {
+    "centerCache": ["TerrainCharacterField.sampleBlend", "TypeLandShape.sampleBlend", "CellGenerator.sampleCore", "CellGenerator.terrainEQuickCompute", "cold/warm/eviction/reseed/concurrent probes"],
+    "composition": ["TypeLandShape.sample overloads", "CellGenerator.sampleCore", "CellGenerator.terrainEQuickCompute", "climate height callbacks", "erosion height input", "model erodedHeight input"],
+    "macroEnvironment": ["ocean base", "coast cEdge", "land/ocean blending", "type classification", "feature-center predicates", "quick/full paths"],
+    "families": ["TypeNoiseProvider.computeNoise", "all five land families", "seed traversal", "TerrainShapeProbe", "stripe/component gradient diagnostics"],
+    "integration": ["PreviewDisplay.CACHE_SCHEMA_VERSION", "GeoGenesisTerrain.generateChunkBody", "ModelHydrologyProvider.columnsForBody", "BiomeSource light path", "final production render", "Forge runtime verification"]
+  }
+}
