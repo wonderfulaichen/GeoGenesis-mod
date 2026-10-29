@@ -290,7 +290,7 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 
 **先前后补图记录（非骨架验收）**：已用现有`ProductionViewProbe`生产`GeoGenesisTerrain.getChunkCells`入口重跑修改前/后各1401²正典大图（同seed/中心/当前TOML、默认JVM开关）。每臂8281 chunk、uncovered=0；PNG逐像素差异`0 / 1962801`，两臂PNG SHA256均`1226674f61bd31681eb535ac7cbfd4083f33cc1af2cdb3766747a9ba51a52257`，列SHA256均`ae92afd33d6a6fef30979f13032576ef6d7746335d07c7901ba599cc46a626e2`。没有复用旧目标图。结果见[生产A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/production-ab.png)、[Java合成反例连接A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/connection-ab.png)及同目录metrics/provenance；后者不是游戏效果图。修复后首轮出图被后台线程`Comparison method violates its general contract`异常经PowerShell Stop中断，没有有效PNG；保留日志，未修改生产代码，同参数重跑退出0并完成对照。异常根因及归属未定，不宣称已修。
 
-### 〇bv、★ 源头按比例均匀抽稀（2026-10-29；用户看图确认，schema 119）
+### 〇bv、★ 源头按比例均匀抽稀（2026-10-29；**用户实机认可，schema 119 = 现行标准图**）
 
 **用户诉求（原话）**：「源头似乎有点密集，感觉每个沟壑出现河流的概率有点高」→
 「我的要求是随机减少几条密集支流源头而已」→「不然太密集了」。
@@ -332,6 +332,36 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 
 图：[A/B 对比](forge-1.20.1-47.4.10-mdk/build/source-dist/AB-keep.png)、
 [差异高亮](forge-1.20.1-47.4.10-mdk/build/source-dist/diff-keep.png)。
+版本库留档：[A/B](handoff/attachments/source-thinning-ab-keep.png)、
+[差异](handoff/attachments/source-thinning-diff-keep.png)、
+[基准全图](handoff/attachments/baseline-schema119-production.png)。
+
+#### ★ 验收结论（2026-10-29，实机）—— 本图成为现行「标准图」
+
+用户实机（`runClient`，**不带任何 `-D`**，同种子 `9139912035078620160`）原话：
+「左侧水系看起来正常了，支流源头比之前稀一点，密度可以。**这个效果就这样定下来吧**。」
+
+⇒ `SOURCE_KEEP_FRAC = 0.7` 定稿；**`2309e45f…` / river=52286 / lake=104341 取代
+`20bde1c8…` / river=59250 成为新的对比基准**。此后任何水文改动的对拍，
+必须与本节这张图比，**不得再引用 `20bde1c8…` 当基准**（它是抽稀前口径）。
+
+**完整可复现口径**（按 AGENTS.md「出图对照的正确口径」要求写全）：
+`python build/bisect/verify-default.py`｜**无任何 `-D`**｜
+config `build/hydrology-perf/baseline/config-input.toml`
+SHA256 `cc5d985f…`（与 `run/config/geogenesis-common.toml` 同哈希）｜
+seed/center/radius/step = `9139912035078620160` / `(-140,137)` / `700` / `1`。
+PNG SHA256 `2309e45ff73e7635f5fe521eeb05288080616c183255598af7e1dc9a2a208ffa`，
+columns SHA256 `17b17bc6170ce0e1507b0188ab7ee292c35d70834fab0b0c0a0162b058fa4ada`，
+chunks=8281 uncovered=0 dry=1353342 sea=452832。
+元数据全文 + 实机日志佐证：[baseline-schema119-metadata-20261029.txt](handoff/attachments/baseline-schema119-metadata-20261029.txt)。
+
+**实机佐证（同一次启动的 `run/logs/latest.log`）**：`role=SECOND_PASS` 9 条（ports=8/10）、
+`role=PRIMARY` 42 条且 ports min=2/max=18/均 10.1（**无一条 ports=0**）、
+`HYDRO-WIRE-MERGE` 16 条（PORT_EXIT 8 / WATER_LAKE 5 / WATER_SEA 3，mergedIncoming=3）、
+`HYDRO-SKELETON DEAD_END=0 unresolved=0` ⇒ 端口半接线问题在默认启动下确认不复现。
+
+**仍未覆盖**：旧已生成区块不会自动重雕（本基准只描述新生成区域）；门禁红项
+`CenterlineCrossSectionProbe` 照旧（既有，与本项无关）。
 
 #### 附带交付：源头分布取证探针
 
@@ -349,13 +379,15 @@ gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [半径] [tol] [k=
 单变量关掉间距过滤后比值仍 3.32 ⇒ 成排来自**河网掩码的几何上游边界**（D8 入度为 0 的等值线），
 不是筛选规则造成的。**该问题本轮未修**，见下一节。
 
-**未验收**：未进游戏实机、未跑 Forge 流体 tick、未跑门禁（本提交只涉及骨架源头集合，
-门禁项与源头数量无关）。旧已生成区块不会自动重雕。
+**未做**：未跑 Forge 流体 tick；「成排」问题本轮未修（见上）。旧已生成区块不会自动重雕。
+实机验收已补，见本节前面「★ 验收结论（2026-10-29，实机）」。
 
 ### 〇bu、★ 端口开关默认相反导致游戏默认水系残缺（2026-10-29；已修，schema 118）
 
-**用户口径先行**：用户认可的"标准图"是 `20bde1c8…`（river=59250、lake=105766、左带河道 24824）。
+**用户口径先行**：本轮（2026-10-29 白天）对拍的"标准图"是 `20bde1c8…`（river=59250、lake=105766、左带河道 24824）。
 本轮全部结论以这张图为准，**不以 `ab404ad7…` 为准**。
+⚠ **该标准图已被 §〇bv 取代**：源头抽稀 0.7（schema 119）经用户实机认可后，
+现行基准是 `2309e45f…`（river=52286）。本节数字只对"抽稀前口径"成立，**不要再拿它当对拍基准**。
 
 **根因（证据链，非推断）**：同一个系统属性 `geogenesis.boundaryPorts` 被两处读取，默认值相反：
 
