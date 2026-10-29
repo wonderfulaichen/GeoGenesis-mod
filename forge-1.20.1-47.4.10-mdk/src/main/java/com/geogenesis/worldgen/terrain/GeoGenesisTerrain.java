@@ -1,6 +1,7 @@
 package com.geogenesis.worldgen.terrain;
 
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.diagnostics.HydrologyMetrics;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkEngine;
 import com.geogenesis.worldgen.hydrology.HydrologyChunkResult;
@@ -31,6 +32,9 @@ public final class GeoGenesisTerrain {
 
     /** 缓存命中统计（P0-3）；须在 cache 之前初始化（LruMap 构造引用它）。 */
     private final CacheStats chunkCacheStats = new CacheStats("chunkCell");
+    // 【性能测量·默认关】hit/miss/evict 的既有口径就在上面这个计数器 —— HydrologyMetrics
+    //   （-Dgeogenesis.hydrologyMetrics=true）只额外区分 sum.chunk.request（完整请求，含命中）
+    //   与 sum.chunk.generate（实际生成），并用 stage.hydro.chunk.generate 给生成本身计时。
 
     /**
      * chunk Cell 缓存 —— 访问序（<b>真 LRU</b>）有界 Map。
@@ -297,6 +301,10 @@ public final class GeoGenesisTerrain {
      * 获取 chunk 内所有 Cell（用于 fillFromNoise 逐格遍历）。
      */
     public Cell[] getChunkCells(int chunkX, int chunkZ) {
+        // 【测量】"完整请求"计数（含缓存命中）。命中率本身仍由 {@link CacheStats} 记（{@link #cachedChunk}）
+        //   —— 此处不重复记 hit/miss，只区分「请求」与「实际生成」（{@link #generateChunk}）。
+        //   默认关（-Dgeogenesis.hydrologyMetrics=true 才开）⇒ 立即返回。
+        HydrologyMetrics.add("chunk.request", 1L);
         long key = pack(chunkX, chunkZ);
         Cell[] cells = cachedChunk(chunkX, chunkZ);
         if (cells == null) {
@@ -437,13 +445,30 @@ public final class GeoGenesisTerrain {
 
     // === 内部 ===
 
+    /** 记录实际生成，与含缓存命中的 chunk.request 区分；既有内部 WGP 分段保留。 */
     private Cell[] generateChunk(int cx, int cz) {
+        HydrologyMetrics.add("chunk.generate", 1L);
+        var scope = HydrologyMetrics.begin("hydro.chunk.generate", cx, cz);
+        try {
+            return generateChunkBody(cx, cz);
+        } catch (RuntimeException | Error e) {
+            HydrologyMetrics.add("chunk.generate.failed", 1L);
+            throw e;
+        } finally {
+            HydrologyMetrics.end(scope);
+        }
+    }
+
+    private Cell[] generateChunkBody(int cx, int cz) {
         long ts0 = System.nanoTime();
         // ★ 2026-09-18 诊断：本线程 CPU 起点 —— 与末尾配合算"停顿"（墙钟 − 本线程CPU），
         //   用于区分「真在算 108 秒」与「根本没被调度 108 秒」（见 Stage.STALL）。
         //   诊断关闭时 threadCpuNow() 返回 0 ⇒ recordStall 静默跳过 ⇒ 零开销。
         long cpu0 = com.geogenesis.diagnostics.WorldGenProfiler.threadCpuNow();
         Cell[] cells = new Cell[16 * 16];
+        // toWu 与 HydrologyChunkSampling 在有效 hs 下使用同一除法；侵蚀会就地改写 Cell。
+        double hs = generator.params().horizontalScale();
+        double[] originalHeights = riversEnabled && hs > 0.01 ? new double[cells.length] : null;
         int baseX = cx << CHUNK_SHIFT;
         int baseZ = cz << CHUNK_SHIFT;
         for (int lz = 0; lz < 16; lz++) {
@@ -451,6 +476,7 @@ public final class GeoGenesisTerrain {
                 // 2026-08-10 wu 化：块坐标 → wu（÷horizontalScale）交给引擎
                 cells[lx * 16 + lz] = generator.sample(
                     toWu(baseX + lx), toWu(baseZ + lz));
+                if (originalHeights != null) originalHeights[lx * 16 + lz] = cells[lx * 16 + lz].height;
             }
         }
         long ts1 = System.nanoTime();
@@ -462,7 +488,7 @@ public final class GeoGenesisTerrain {
         // ★ 水文河谷雕刻回写 cell.height：预览/群系采样与游戏落块看到同一条河
         //   （旧 RTF 河网已下线，雕刻改由水文模型统一提供）。
         if (riversEnabled) {
-            applyHydrologyValley(cells, cx, cz);
+            applyHydrologyValley(cells, cx, cz, originalHeights);
         }
         long ts3 = System.nanoTime();
 
@@ -527,10 +553,12 @@ public final class GeoGenesisTerrain {
      *     隔壁原侵蚀地形，垂直墙在构造上不可能出现（旧 0.5 钳幅为历史残留，已删）。</li>
      * </ol>
      */
-    private void applyHydrologyValley(Cell[] cells, int cx, int cz) {
+    private void applyHydrologyValley(Cell[] cells, int cx, int cz, double[] originalHeights) {
         // ★ 2026-09-19 诊断：水文雕刻子项 ① —— 计算（河网 region 懒建 / FlowField / 雕刻计划）
         long hy0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
-        HydrologyChunkResult result = hydrologyExperiment.calculate(cx, cz);
+        var columns = originalHeights != null
+                ? hydrologyExperiment.calculateColumns(cx, cz, originalHeights)
+                : hydrologyExperiment.calculate(cx, cz).carvedColumns();
         com.geogenesis.diagnostics.WorldGenProfiler.end(
                 com.geogenesis.diagnostics.WorldGenProfiler.Stage.HYCALC, hy0);
         double seaLevel = generator.seaLevel();
@@ -545,7 +573,7 @@ public final class GeoGenesisTerrain {
         }
         com.geogenesis.diagnostics.WorldGenProfiler.end(
                 com.geogenesis.diagnostics.WorldGenProfiler.Stage.HYDIST, hy1);
-        for (HydrologyBlockCarvedColumn column : result.carvedColumns()) {
+        for (HydrologyBlockCarvedColumn column : columns) {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
             Cell cell = cells[lx * 16 + lz];

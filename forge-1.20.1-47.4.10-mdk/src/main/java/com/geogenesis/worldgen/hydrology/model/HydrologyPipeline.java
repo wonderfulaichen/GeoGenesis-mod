@@ -1,5 +1,6 @@
 package com.geogenesis.worldgen.hydrology.model;
 
+import com.geogenesis.diagnostics.HydrologyMetrics;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 
@@ -135,6 +136,12 @@ public final class HydrologyPipeline {
      */
     private static final boolean HYDRO_SAMPLE_CACHE =
             !"false".equals(System.getProperty("geogenesis.hydroSampleCache"));
+
+    // 窗口采样局部计数槽位：逐点只写 long[]，成功 run 末批量提交，避免逐点访问 map/LongAdder。
+    private static final int WS_CALLS = 0;
+    private static final int WS_HITS = 1;
+    private static final int WS_MISSES = 2;
+    private static final int WS_COMPUTES = 3;
 
     /**
      * 侵蚀 tile 批量预热开关（`-Dgeogenesis.prewarmTiles=false` 关；A/B 归因用）。
@@ -409,8 +416,7 @@ public final class HydrologyPipeline {
         // 【纯加速保证】`sampleWu` 是纯函数（seed 固定 ⇒ 同坐标同值）⇒
         //   命中与未命中等价 ⇒ **产出逐位不变**。
         // 【开关】`-Dgeogenesis.hydroSampleCache=false` 关（A/B 归因用）。
-        // ★ 窗口地形采样计数（分层实验读视图用；⚠ 只在分层路径挂计数包装，
-        //   默认路径保持原 lambda 原样 ⇒ 零额外开销、产出逐位不变）。
+        // 分层读视图计数仅在 layered 路径包装；测量开关控制的包装见下方。
         final boolean layered = layer != null;
         final java.util.concurrent.atomic.AtomicLong terrainSamples =
                 new java.util.concurrent.atomic.AtomicLong();
@@ -418,13 +424,31 @@ public final class HydrologyPipeline {
                 new java.util.concurrent.atomic.AtomicLong();
         final java.util.concurrent.atomic.AtomicLong boundaryMisses =
                 new java.util.concurrent.atomic.AtomicLong();
-        final WindowOutlets.Terrain bedTerrain = layered && layer.terrain() != null
+        // 测量默认关闭（-Dgeogenesis.hydrologyMetrics=true 开启），不承诺零开销或耗时相同。
+        // taskId 关联 JFR 中同一次 run 的阶段；LAST_RUN 仍是共享最近值。
+        // 逐点使用局部 long[]，仅成功 run 末批量提交；阶段通过 finally 结束。
+        final boolean metricsOn = HydrologyMetrics.enabled();
+        final long metricsTask = HydrologyMetrics.newTaskId();
+        final int metricsCx = request.centerBlockX(), metricsCz = request.centerBlockZ();
+        // 窗口局部计数（关闭时 null）：[0]调用 [1]命中 [2]未命中 [3]bedSource 调用。
+        final long[] windowStats = metricsOn ? new long[4] : null;
+        // 缓存构建和计数包装共用此判定。
+        final boolean windowCacheBuilt = HYDRO_SAMPLE_CACHE && (layer == null || layer.prewarm());
+        final WindowOutlets.Terrain bedSource = layered && layer.terrain() != null
                 ? layer.terrain()                                               // ★ 分层地形（粗层=零 tile）
                 : (HYDRO_BED_ERODED
                 // ★ 2026-10-12【height-only】改调 erodedHeight：与 sampleWu().height 逐位等价，
                 //   但跳过气候/分类（本回调只读 height）。窗口 31684 点/窗 ⇒ 收益显著。
                 ? (bx, bz) -> gen.erodedHeight(bx / hs, bz / hs)          // 侵蚀后地形（等价、轻）
                 : (bx, bz) -> gen.sample(bx / hs, bz / hs).height);       // ★ 生产同源（轻）
+        // 仅开启测量时包装；WS_COMPUTES 记录 bedSource.height 调用次数，不代表更下层缓存未命中。
+        final WindowOutlets.Terrain bedTerrain = windowStats != null
+                ? (bx, bz) -> {
+                    if (!windowCacheBuilt) windowStats[WS_CALLS]++;   // 无缓存：调用即真实采样
+                    windowStats[WS_COMPUTES]++;
+                    return bedSource.height(bx, bz);
+                }
+                : bedSource;
         final WindowOutlets.Terrain terrainRaw = layered
                 ? count(bedTerrain, terrainSamples) : bedTerrain;
         // ★ 窗外一格外环的边界条件（细层注入粗层水位接口 = 向下游的权威；粗层为 null）。
@@ -462,9 +486,9 @@ public final class HydrologyPipeline {
         }
         // ⚠ 分层粗层（prewarm=false）跳过本缓存：其地形本身就是 `terrainEQuick`（自带直接映射缓存），
         //   再造一份 6 MB 逐窗缓存纯属浪费 —— 本缓存是纯记忆化 ⇒ 跳过不改变任何产出。
-        if (HYDRO_SAMPLE_CACHE && (layer == null || layer.prewarm())) {
+        if (windowCacheBuilt) {
             terrain = new WindowOutlets.Terrain() {
-                private static final int BITS = 18;               // 262144 槽 ≈ 4 MB
+                private static final int BITS = 18;               // 262144 槽，三数组 long 元素共 6 MiB
                 private static final int SIZE = 1 << BITS;
                 private static final int MASK = SIZE - 1;
                 private static final long EMPTY = Long.MIN_VALUE;
@@ -475,11 +499,22 @@ public final class HydrologyPipeline {
                 private final java.util.concurrent.atomic.AtomicLongArray vv =
                         new java.util.concurrent.atomic.AtomicLongArray(SIZE);
                 {
-                    for (int i = 0; i < SIZE; i++) { kx.set(i, EMPTY); kz.set(i, EMPTY); }
+                    // 三数组已按 kx/kz/vv 顺序分配；本 scope 仅含 INIT 记账和两组键共 524288 次哨兵写入。
+                    HydrologyMetrics.Scope mInit = HydrologyMetrics.begin("hydro.cache.init",
+                            metricsCx, metricsCz, -1, metricsTask);
+                    try {
+                        HydrologyMetrics.cache(HydrologyMetrics.Cache.WINDOW_SAMPLE,
+                                HydrologyMetrics.Outcome.INIT);      // 每次缓存构建记一次，非逐点
+                        for (int i = 0; i < SIZE; i++) { kx.set(i, EMPTY); kz.set(i, EMPTY); }
+                    } finally {
+                        HydrologyMetrics.end(mInit);
+                    }
                 }
 
                 @Override
                 public double height(double blockX, double blockZ) {
+                    final long[] ws = windowStats;                    // null = 测量关闭
+                    if (ws != null) ws[WS_CALLS]++;
                     double wx = blockX / hs, wz = blockZ / hs;
                     long a = Double.doubleToRawLongBits(wx);
                     long b = Double.doubleToRawLongBits(wz);
@@ -487,8 +522,10 @@ public final class HydrologyPipeline {
                             >>> 40) & MASK;
                     // 先读键（键为 volatile 语义：AtomicLongArray 元素读写原子）
                     if (kx.get(slot) == a && kz.get(slot) == b) {
+                        if (ws != null) ws[WS_HITS]++;
                         return Double.longBitsToDouble(vv.get(slot));
                     }
+                    if (ws != null) ws[WS_MISSES]++;
                     double h = terrainBase.height(blockX, blockZ);
                     // 写入次序：先写值、后写键（读者读到两键即保证值已写入）
                     vv.set(slot, Double.doubleToRawLongBits(h));
@@ -533,20 +570,42 @@ public final class HydrologyPipeline {
         //   ⚠ 分层粗层显式 prewarm=false ⇒ 走 terrainEQuick（零 tile）⇒ 绝不预热。
         final boolean doPrewarm = layer == null ? PREWARM_TILES : layer.prewarm();
         if (doPrewarm) {
-            gen.prewarmErosionTiles(request.centerBlockX() - radius,
-                    request.centerBlockZ() - radius, 2.0 * radius, hs);
+            // 仅在调用预热入口时计时，不包含异步 tile 完成所需的等待时间。
+            HydrologyMetrics.Scope mPrewarm = HydrologyMetrics.begin("hydro.prewarm",
+                    metricsCx, metricsCz, -1, metricsTask);
+            try {
+                gen.prewarmErosionTiles(request.centerBlockX() - radius,
+                        request.centerBlockZ() - radius, 2.0 * radius, hs);
+            } finally {
+                HydrologyMetrics.end(mPrewarm);
+            }
         }
         long __tp = System.nanoTime();
         if (STAGE_TIMER) {
             System.out.printf("  [stage] prewarm=%.0fms%n", (__tp - __t0) / 1e6);
         }
-        var built = WindowOutlets.build(n, n, request.centerBlockX(), request.centerBlockZ(),
-                radius, step, sea, terrain);
+        // hydro.outlets 仅包围 build；既有 stageTimer 的时间戳和输出口径保留。
+        HydrologyMetrics.Scope mOutlets = HydrologyMetrics.begin("hydro.outlets",
+                metricsCx, metricsCz, -1, metricsTask);
+        WindowOutlets.Result built;
+        try {
+            built = WindowOutlets.build(n, n, request.centerBlockX(), request.centerBlockZ(),
+                    radius, step, sea, terrain);
+        } finally {
+            HydrologyMetrics.end(mOutlets);
+        }
         long __t1 = System.nanoTime();
 
         // ③ 平衡水面
-        EquilibriumWater.Surface surface = EquilibriumWater.compute(
-                built.bed(), n, n, built.drains(), built.exterior());
+        HydrologyMetrics.Scope mEquilibrium = HydrologyMetrics.begin("hydro.equilibrium",
+                metricsCx, metricsCz, -1, metricsTask);
+        EquilibriumWater.Surface surface;
+        try {
+            surface = EquilibriumWater.compute(
+                    built.bed(), n, n, built.drains(), built.exterior());
+        } finally {
+            HydrologyMetrics.end(mEquilibrium);
+        }
         long __t2 = System.nanoTime();
         if (STAGE_TIMER) {
             System.out.printf("  [stage] outlets=%.0fms surface=%.0fms%n",
@@ -586,9 +645,8 @@ public final class HydrologyPipeline {
         //   而 model 链的湖是**盆地机制**（需 sill/rim/resolved 才能蓄水成盆）
         //   ⇒ 把"水位源"当"湖生成器"用属概念错位，实测只出零散水坑。
         //   类与 LAKE_FIELD_MODE 开关保留（默认 false，无调用点）供将来参考。
-        LakeWaterBalance.Result lakeResult =
-                balance.solve(request.climate(), built.drains(), borderMask,
-                        null, request.extraSource());
+        LakeWaterBalance.Result lakeResult = lakeSolveFirst(balance, request, built, borderMask,
+                metricsCx, metricsCz, metricsTask);
         if (STAGE_TIMER) {
             System.out.printf("  [stage] lakeSolve=%.0fms%n", (System.nanoTime() - __t2) / 1e6);
         }
@@ -608,8 +666,15 @@ public final class HydrologyPipeline {
         double[] capture = new double[n * n];
         boolean ledgerOn = !Boolean.getBoolean("hydro.ledgerOff");
         for (int it = 0; it < couplingMaxRounds(); it++) {
-            double[] next = buildDischarge(request, n, step, built, surface, lakeResult,
-                    ledgerOn ? capture : null);
+            HydrologyMetrics.Scope mDischarge = HydrologyMetrics.begin("hydro.discharge",
+                    metricsCx, metricsCz, it, metricsTask);
+            double[] next;
+            try {
+                next = buildDischarge(request, n, step, built, surface, lakeResult,
+                        ledgerOn ? capture : null);
+            } finally {
+                HydrologyMetrics.end(mDischarge);
+            }
             boolean same = flow != null && nearlyEqual(flow, next);
             residual = flow == null ? Double.NaN : relativeResidual(flow, next);
             // ★ 逐轮取证（hydro.couplingDiagnostics）：worst-case 相对残差被【近零格】主导 ——
@@ -729,31 +794,43 @@ public final class HydrologyPipeline {
             //   CONTINUOUS = 首次截获；D8 = 边界净入流（与湖即汇拦截配套）。
             //   旧口径 Σ flux/discharge over 组 = 每格累积重复计水 ⇒ 几何发散
             //   （实测反向验证：CONTINUOUS 14 轮 8058×、D8 6 轮 1.3e14 ⇒ 判据 FAIL）。
-            lakeResult = balance.solve(request.climate(), built.drains(), borderMask,
-                    ledgerOn ? capture : flow);
+            HydrologyMetrics.Scope mBalance = HydrologyMetrics.begin("hydro.balance",
+                    metricsCx, metricsCz, it, metricsTask);
+            try {
+                lakeResult = balance.solve(request.climate(), built.drains(), borderMask,
+                        ledgerOn ? capture : flow);
+            } finally {
+                HydrologyMetrics.end(mBalance);
+            }
         }
         // 最终一轮：产出与所选模型一致的河网结果（含宽度/成河掩码）
         double[] deathMask = null;
-        if (request.riverModel() == RiverModel.CONTINUOUS) {
-            deathMask = new double[n * n];   // ★ 诊断：流线死亡格计数（河道碎块归因用）
-            var c = ContinuousRiverNetwork.build(built.bed(), surface.level(), surface.resolved(),
-                    n, n, step, ContinuousRiverNetwork.Params.forRunoff(lakeResult.runoffPerCell()),
-                    request.streamSamples(), 0x5EEDL, request.borderBufferCells(),
-                    built.drains(), surface.parent(), lakeResult.lake(), lakeResult.overflowAt(),
-                    deathMask);
-            river = new RiverNetwork.Result(c.flux(), c.channel(), c.width(),
-                    c.channelCells(), c.maxFlux(), 0, 0);
-        } else {
-            // ★ 与耦合迭代同一语义（湖即汇拦截 + 出口注入）与同一阈值参数，
-            //   否则输出口径与账本口径分叉。
-            double fracF = Double.parseDouble(System.getProperty("geogenesis.riverThresholdFrac", "0"));
-            RiverNetwork.Params rpF = fracF > 0
-                    ? RiverNetwork.Params.byAreaFraction(n, fracF)
-                    : RiverNetwork.Params.defaults();
-            river = RiverNetwork.build(n, n, surface.level(), surface.parent(),
-                    lakeResult.runoffPerCell(), lakeResult.overflowAt(), surface.resolved(),
-                    rpF, request.borderBufferCells(),
-                    lakeResult.basinId(), request.extraSource(), lakeResult.lake());
+        HydrologyMetrics.Scope mRiver = HydrologyMetrics.begin("hydro.river",
+                metricsCx, metricsCz, rounds, metricsTask);
+        try {
+            if (request.riverModel() == RiverModel.CONTINUOUS) {
+                deathMask = new double[n * n];   // ★ 诊断：流线死亡格计数（河道碎块归因用）
+                var c = ContinuousRiverNetwork.build(built.bed(), surface.level(), surface.resolved(),
+                        n, n, step, ContinuousRiverNetwork.Params.forRunoff(lakeResult.runoffPerCell()),
+                        request.streamSamples(), 0x5EEDL, request.borderBufferCells(),
+                        built.drains(), surface.parent(), lakeResult.lake(), lakeResult.overflowAt(),
+                        deathMask);
+                river = new RiverNetwork.Result(c.flux(), c.channel(), c.width(),
+                        c.channelCells(), c.maxFlux(), 0, 0);
+            } else {
+                // ★ 与耦合迭代同一语义（湖即汇拦截 + 出口注入）与同一阈值参数，
+                //   否则输出口径与账本口径分叉。
+                double fracF = Double.parseDouble(System.getProperty("geogenesis.riverThresholdFrac", "0"));
+                RiverNetwork.Params rpF = fracF > 0
+                        ? RiverNetwork.Params.byAreaFraction(n, fracF)
+                        : RiverNetwork.Params.defaults();
+                river = RiverNetwork.build(n, n, surface.level(), surface.parent(),
+                        lakeResult.runoffPerCell(), lakeResult.overflowAt(), surface.resolved(),
+                        rpF, request.borderBufferCells(),
+                        lakeResult.basinId(), request.extraSource(), lakeResult.lake());
+            }
+        } finally {
+            HydrologyMetrics.end(mRiver);
         }
         // ★ 耦合诊断（系统属性开启；默认不打印）：每轮湖格数与流量规模。
         //   加它的原因：耦合后 lake 从数千骤降到几百，**原因未知** ⇒ 必须打印取证，不得靠猜。
@@ -792,6 +869,23 @@ public final class HydrologyPipeline {
             LAST_RUN.lakeMs = 0;
             LAST_RUN.layerTag = layer == null ? "-" : layer.tag();
         }
+        // 成功 run 的计数累加到全局汇总；JFR note 按 taskId 携带 rounds/converged/residual。
+        if (metricsOn) {
+            HydrologyMetrics.count("hydro.run.count");
+            HydrologyMetrics.count("hydro.rounds", rounds);
+            HydrologyMetrics.count("hydro.converged", converged ? 1 : 0);
+            HydrologyMetrics.count("hydro.cells", (long) n * n);
+            // 窗口采样批量交账；仅启用窗口缓存时 calls=hits+misses，无缓存时只记 calls/computes。
+            HydrologyMetrics.count("hydro.window.samples", windowStats[WS_CALLS]);
+            HydrologyMetrics.cache(HydrologyMetrics.Cache.WINDOW_SAMPLE,
+                    HydrologyMetrics.Outcome.HIT, windowStats[WS_HITS]);
+            HydrologyMetrics.cache(HydrologyMetrics.Cache.WINDOW_SAMPLE,
+                    HydrologyMetrics.Outcome.MISS, windowStats[WS_MISSES]);
+            HydrologyMetrics.cache(HydrologyMetrics.Cache.WINDOW_SAMPLE,
+                    HydrologyMetrics.Outcome.COMPUTE, windowStats[WS_COMPUTES]);
+            HydrologyMetrics.note("hydro.run.done", metricsCx, metricsCz, rounds, metricsTask,
+                    converged ? 1L : 0L, residual);
+        }
         if (boundary != null) {     // 细层：窗外边界条件由粗层权威覆盖的规模（如实计数）
             long uses = boundaryUses.get(), misses = boundaryMisses.get();
             HierarchicalHydrology.Diag.exteriorAuthority((int) (uses - misses), (int) misses);
@@ -818,6 +912,21 @@ public final class HydrologyPipeline {
                 surface.level(), lakeResult.depth(), lakeResult.lake(), surface.parent(),
                 river.discharge(), river.channel(), river.width(), lakeResult, river, deathMask,
                 waterSurface, rounds, converged, residual);
+    }
+
+    /** 首次湖水量平衡求解；finally 在求解正常返回或抛出时结束 hydro.lake.first。 */
+    private static LakeWaterBalance.Result lakeSolveFirst(LakeWaterBalance balance, Request request,
+                                                          WindowOutlets.Result built,
+                                                          boolean[] borderMask,
+                                                          int cx, int cz, long taskId) {
+        HydrologyMetrics.Scope scope = HydrologyMetrics.begin("hydro.lake.first",
+                cx, cz, -1, taskId);
+        try {
+            return balance.solve(request.climate(), built.drains(),
+                    borderMask, null, request.extraSource());
+        } finally {
+            HydrologyMetrics.end(scope);
+        }
     }
 
     /** 采样计数器包装（只读视图；不改产出）。 */

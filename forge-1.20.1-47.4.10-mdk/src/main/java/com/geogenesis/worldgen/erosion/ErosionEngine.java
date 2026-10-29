@@ -158,6 +158,15 @@ public class ErosionEngine {
         }
     }
 
+    /**
+     * 单次侵蚀调用独占的 8 邻居工作区；引擎可被并发调用，不能放在共享字段中。
+     * cascadeLocal 每次重填有效区段 [0,num)，保持原邻居与排序顺序。
+     */
+    private static final class CascadeScratch {
+        final float[] nh = new float[8];
+        final int[] ni = new int[8];
+    }
+
     /** 注入岩性抗蚀性提供者（{@code CellGenerator} 调用；传 {@code null} 即退回无耦合行为）。 */
     public void setHardnessProvider(java.util.function.DoubleBinaryOperator provider) {
         this.hardnessProvider = provider;
@@ -375,6 +384,9 @@ public class ErosionEngine {
         final float densF = DROPS_F / 256f * (float) dropsMul;
         final float densXS = DROPS_XS / 256f * (float) dropsMul;
 
+        // 避免每次级联分配两个小数组；只在本次调用内复用，不改变液滴和级联顺序。
+        final CascadeScratch cas = new CascadeScratch();
+
         // ===== SH 多轮迭代：每轮清 track → 重撒全部液滴 → 轮末 lrate 平滑进稳态场 =====
         for (int it = 0; it < iterations; it++) {
             Arrays.fill(disT, 0f);
@@ -390,7 +402,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hC >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffC, bWgtC, bnC, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_C * strE, DEPOSIT_C, LIFE_C, SEG_LEN_C, DIS_EXTRA_C, ox, oz, hard,
+                                ERODE_C * strE, DEPOSIT_C, LIFE_C, SEG_LEN_C, DIS_EXTRA_C, ox, oz, hard, cas,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     long hM = hash(gx * 131 + 7, gz * 131 + 11) * 31L + 17L;
@@ -400,7 +412,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hM >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffM, bWgtM, bnM, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_M * strE, DEPOSIT_M, LIFE_M, 0, 0, ox, oz, hard,
+                                ERODE_M * strE, DEPOSIT_M, LIFE_M, 0, 0, ox, oz, hard, cas,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     long hF = hash(gx * 131 + 7, gz * 131 + 11) * 97L + 23L;
@@ -410,7 +422,7 @@ public class ErosionEngine {
                                 pad + (gz - oz) + ((hF >>> 48) & 0xFFFF) / 65536f,
                                 pad, gx, gz, bOffF, bWgtF, bnF, locked, sz, dis, disT,
                                 momX, momY, momXT, momYT, momTransfer,
-                                ERODE_F * strE, DEPOSIT_F, LIFE_F, 0, 0, ox, oz, hard,
+                                ERODE_F * strE, DEPOSIT_F, LIFE_F, 0, 0, ox, oz, hard, cas,
                                 (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
                     }
                     if (xsEnabled) {
@@ -421,7 +433,7 @@ public class ErosionEngine {
                                     pad + (gz - oz) + ((hXS >>> 48) & 0xFFFF) / 65536f,
                                     pad, gx, gz, bOffXS, bWgtXS, bnXS, locked, sz, dis, disT,
                                     momX, momY, momXT, momYT, momTransfer,
-                                    ERODE_XS * strE, DEPOSIT_XS, LIFE_XS, 0, 0, ox, oz, hard,
+                                    ERODE_XS * strE, DEPOSIT_XS, LIFE_XS, 0, 0, ox, oz, hard, cas,
                                     (float) casStr, seaNorm, hs, SPDCAP_XS, STALL_SPEED_XS, STALL_DELTA_XS);
                         }
                     }
@@ -508,7 +520,7 @@ public class ErosionEngine {
                          float[] momX, float[] momY, float[] momXT, float[] momYT,
                          float momTransfer,
                          float erodeSpeed, float depositSpeed, int lifetime, int segLen, int disExtra,
-                         int ox, int oz, HardGrid hard,
+                         int ox, int oz, HardGrid hard, CascadeScratch cas,
                          float cascadeStrength, float seaNorm, float hs,
                          float spdCap, float stallSpeed, float stallDelta) {
         if (px < 1 || px >= bufSize - 1 || py < 1 || py >= bufSize - 1) return;
@@ -554,7 +566,7 @@ public class ErosionEngine {
         simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
                      bOff, bWgt, bn, locked, pad, baseSize,
                      dis, disT, momX, momY, momXT, momYT, momTransfer,
-                     erodeSpeed, depositSpeed, lifetime, segLen, disExtra, ox, oz, hard,
+                     erodeSpeed, depositSpeed, lifetime, segLen, disExtra, ox, oz, hard, cas,
                      cascadeStrength, hs, spdCap, stallSpeed, stallDelta);
     }
 
@@ -566,7 +578,7 @@ public class ErosionEngine {
                               float[] momX, float[] momY, float[] momXT, float[] momYT,
                               float momTransfer,
                              float erodeSpeed, float depositSpeed, int lifetime, int segLen, int disExtra,
-                             int ox, int oz, HardGrid hard,
+                             int ox, int oz, HardGrid hard, CascadeScratch cas,
                              float cascadeStrength, float hs,
                              float spdCap, float stallSpeed, float stallDelta) {
         float dirX = 0, dirY = 0, sed = 0, spd = 1f, wat = 1f;
@@ -740,7 +752,7 @@ public class ErosionEngine {
             // ---- 局部 cascade（每 CASCADE_INTERVAL 步执行，对齐 SH 每步语义） ----
             // ★ 2026-08-14 tracking / disOnly 跳过 cascade（不扰动地形）
             if (!tracking && !disOnly && cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
-                cascadeLocal(flat, bufSize, nix, niy, cascadeStrength, hs);
+                cascadeLocal(flat, bufSize, nix, niy, cascadeStrength, hs, cas);
             }
 
             // NaN/Inf 守卫：陡峭下坡（dh 很负）可能导致 spd² + dh*GRAVITY < 0 → sqrt(NaN)
@@ -765,11 +777,14 @@ public class ErosionEngine {
     }
 
     /** 局部 cascade：8 邻居按高度排序 + 距离加权 settling（SH 原版语义）。
-     *  hs：wu→块 换算（dist 为 wu 格距，×hs 还原块距离，2026-08-10 wu 化）。 */
-    private void cascadeLocal(float[] flat, int bufSize, int cx, int cz, float strength, float hs) {
-        // 收集 8 邻居
-        float[] nh = new float[8];
-        int[] ni = new int[8];
+     *  hs：wu→块 换算（dist 为 wu 格距，×hs 还原块距离，2026-08-10 wu 化）。
+     *  cas：本次 {@code runErosionOnFlat} 独占的邻居 scratch（★ 2026-10-28 R3 分配热点修复）——
+     *  由调用方一次分配、逐调用复用；<b>每次调用必须重填 num</b>，且只读 {@code [0,num)}。 */
+    private void cascadeLocal(float[] flat, int bufSize, int cx, int cz, float strength, float hs,
+                              CascadeScratch cas) {
+        // 收集 8 邻居（scratch 复用：只写 [0,num)，未用槽位不读）
+        final float[] nh = cas.nh;
+        final int[] ni = cas.ni;
         int num = 0;
         for (int dz = -1; dz <= 1; dz++) {
             for (int dx = -1; dx <= 1; dx++) {

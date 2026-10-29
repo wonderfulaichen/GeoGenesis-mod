@@ -1,0 +1,36 @@
+// Isolated performance/verification entry points; no production run configuration changes.
+gradle.projectsEvaluated {
+    def p = gradle.rootProject
+    p.tasks.register('hydrologyPerfClasspath') {
+        dependsOn p.tasks.named('compileJava'), p.tasks.named('compileDiagnosticsJava'), p.tasks.named('processResources')
+        doLast {
+            def out = p.file('build/hydrology-perf')
+            out.mkdirs()
+            new File(out, 'classpath.txt').text = p.sourceSets.diagnostics.runtimeClasspath.asPath
+            def launcher = p.javaToolchains.launcherFor {
+                languageVersion = JavaLanguageVersion.of(17)
+            }.get()
+            new File(out, 'java.txt').text = launcher.executablePath.asFile.absolutePath
+        }
+    }
+    def java17 = p.javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+    [runHydrologyPerfProbe: 'com.geogenesis.worldgen.hydrology.model.HydrologyPerfProbe',
+     runHydrologyHeightSnapshotProbe: 'com.geogenesis.worldgen.hydrology.HydrologyHeightSnapshotProbe',
+     runErosionScratchProbe: 'com.geogenesis.worldgen.erosion.ErosionScratchProbe',
+     runSegmentClipProbe: 'com.geogenesis.worldgen.hydrology.model.SegmentClipProbe'].each { taskName, entry ->
+        p.tasks.register(taskName, JavaExec) {
+            dependsOn p.tasks.named('compileJava'), p.tasks.named('compileDiagnosticsJava'), p.tasks.named('processResources')
+            classpath = p.sourceSets.diagnostics.runtimeClasspath
+            mainClass.set(entry)
+            javaLauncher.set(java17)
+            minHeapSize = '512m'
+            maxHeapSize = '3g'
+            systemProperty 'file.encoding', 'UTF-8'
+            if (p.hasProperty('probeArgs')) {
+                args p.property('probeArgs').toString().split('\\s+').findAll { !it.isEmpty() }
+            }
+        }
+    }
+}
