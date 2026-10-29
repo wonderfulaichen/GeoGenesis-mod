@@ -66,7 +66,13 @@ Minecraft Forge 1.20.1 模组，自定义 `ChunkGenerator` + `BiomeSource`，程
 |---|---:|---:|---|---|
 | 用户认可的「标准图」`20bde1c8…` | 59250 | 105766 | `20bde1c8…` | `92eb64a7…` |
 | 修复端口后 `c15e5f32…`（schema 118） | 58918 | 104313 | `c15e5f32…` | `d611419f…` |
-| **当前 HEAD 默认（schema 119，抽稀 0.7）** | **52286** | **104341** | **`2309e45ff73e7635`** | **`17b17bc6170ce0e1`** |
+| **当前 HEAD 默认（schema 119，抽稀 0.7）＝现行标准图** | **52286** | **104341** | **`2309e45ff73e7635`** | **`17b17bc6170ce0e1`** |
+
+> ✅ **2026-10-29 实机认可**（`runClient`，不带任何 `-D`，同种子）：用户原话
+> 「左侧水系看起来正常了，支流源头比之前稀一点，密度可以。**这个效果就这样定下来吧**。」
+> ⇒ schema 119 成为**现行对比基准**，`20bde1c8…` 降为「抽稀前口径」仅供历史对拍。
+> 完整可复现口径（JVM 属性/TOML 哈希/像素计数/实机日志佐证）见
+> [baseline-schema119-metadata-20261029.txt](attachments/baseline-schema119-metadata-20261029.txt)。
 
 ⚠ **`ab404ad7…`（river=41928）不是标准图**，那是"端口开关只开一半"的坏几何。
 历史文档多处把它当基准，已在 `HYDROLOGY.md` §〇bu 标注纠正。
@@ -83,23 +89,30 @@ python build/bisect/verify-default.py
 
 | 项 | 状态 |
 |---|---|
-| **schema 119（抽稀 0.7）实机效果** | ❌ **未进游戏**。只在离线 1401² 图上由用户确认「就是这个效果」。 |
+| **schema 119（抽稀 0.7）实机效果** | ✅ **2026-10-29 已进游戏并由用户认可**（左侧水系正常、支流密度合适）⇒ 见 §2.3 与 [元数据](attachments/baseline-schema119-metadata-20261029.txt) |
 | **`44cfb19` 的 0.2% 残余差异** | ❌ 未归因。相对标准图，`44cfb19` 起 river 59250→58918（少 2867 px，左带 352，均为沿湖岸零散单点）。已证明不是本次开关修复引入。已知单独关 `riverCrossSection` 回不到标准图，说明差异不只来自断面开关。**用户明确说「不需要扣这点像素」。** |
 | **源头「成排」** | ❌ 未修。已量化（轴对齐比 3.33，见 §6.3），已记录在 `HYDROLOGY.md` §〇bv 末尾。 |
 | **源头多样性** | 🅿️ 用户 2026-10-29 明确「搁置」，半成品代码已回退（见 §6.4）。 |
 | **Forge 实机验收** | ❌ 无自动化入口。`runAcceptance` 硬编码 `hierarchicalHydrology=true`，与生产默认不符（详见 `HYDROLOGY.md` §〇bt 末段）。 |
 
-### 2.5 证据文件清单（`build/` 下，**不入库**，fresh clone 没有）
+### 2.5 证据文件清单（★ 关键 6 张已于 2026-10-29 归档进版本库）
+
+> ✅ 已复制到 `handoff/attachments/`，fresh clone 也有：
+> `baseline-schema119-production.png`（现行基准）、`baseline-schema118-keep1.0.png`、
+> `source-thinning-ab-keep.png`、`source-thinning-diff-keep.png`、
+> `sources-scatter-keep0.7.png`、`port-fix-three-arm-full.png`
+> ＋ provenance 全文 `baseline-schema119-metadata-20261029.txt`。
+> 下表其余 `build/` 路径仍**不入库**（`build/` 被 gitignore）。
 
 | 路径 | 内容 | PNG SHA256 前 16 位 |
 |---|---|---|
-| `build/river-depth/A/production.png` | **用户认可的标准图** | `20bde1c80b05f0fa` |
-| `build/source-dist/production-keep1.0.png` | 抽稀关闭（=schema 118 几何） | `c15e5f321947c5ef` |
-| `build/source-dist/production-keep0.7.png` | **当前 HEAD 默认**（抽稀 0.7） | `2309e45ff73e7635` |
-| `build/source-dist/AB-keep.png` | 抽稀 A/B 并排大图（用户据此刻确认效果） | — |
-| `build/source-dist/sources-scatter.png` | 源头散点全幅图（成排可视化） | — |
+| `build/river-depth/A/production.png` | 抽稀前标准图（`20bde1c8…`，river=59250；**已被 schema 119 取代**） | `20bde1c80b05f0fa` |
+| `build/source-dist/production-keep1.0.png` | 抽稀关闭（=schema 118 几何）→ 已归档 | `c15e5f321947c5ef` |
+| `build/source-dist/production-keep0.7.png` | **现行基准**（抽稀 0.7，schema 119）→ 已归档 | `2309e45ff73e7635` |
+| `build/source-dist/AB-keep.png` | 抽稀 A/B 并排大图（用户据此确认效果）→ 已归档 | — |
+| `build/source-dist/sources-scatter.png` | 源头散点全幅图（成排可视化）→ 已归档 | — |
 | `build/source-dist/sources-zoom.png` | 源头局部放大 | — |
-| `build/bisect/flagrange/fix-three-arm-full.png` | 端口修复三臂对比 | — |
+| `build/bisect/flagrange/fix-three-arm-full.png` | 端口修复三臂对比 → 已归档 | — |
 | `build/bisect/flagrange/fix-left-band.png` | 端口修复左带放大 | — |
 
 ⚠ **`build/bisect/verify/production.png` 每次跑 `verify-default.py` 都会被覆盖**，
@@ -272,8 +285,8 @@ git revert 033e96f          # 只撤销源头抽稀，回到 schema 118 那版�
 
 | # | 事项 | 卡在谁身上 |
 |---|---|---|
-| 1 | **本轮证据图/脚本只在 `build/`，不入库。** 是否需要挑关键图（`AB-keep.png`、`sources-scatter.png`、`fix-three-arm-full.png`）复制进 `handoff/attachments/`？ | 用户决定 |
-| 2 | **schema 119 需实机确认。** 抽稀 0.7 只在离线图确认过。开游戏看左侧水系是否仍正常、支流密度是否合适。 | 用户实机 |
+| 1 | **本轮证据图只在 `build/`（gitignored）。** ✅ 2026-10-29 已归档 6 张进 `handoff/attachments/`（现行基准图、keep=1.0 对照、A/B、差异、源头散点、端口修复三臂）+ provenance 元数据。 | 已完成 |
+| 2 | **schema 119 实机确认。** ✅ 2026-10-29 已开 `runClient`（无 `-D`，同种子）：左侧水系正常、支流源头比之前稀、密度可接受 ⇒ 用户认可并定为基准。 | 已完成 |
 | 3 | **是否推送这 3 个提交。** 目前只在本地。 | 用户决定 |
 | 4 | **`44cfb19` 的 0.2% 残余差异** 归因未做。用户说「不需要扣这点像素」⇒ 默认不做。 | 用户已在口头放弃 |
 | 5 | **源头「成排」** 未修。方案已写（见 §6.3 尾注），做法二选一：①源头起点沿河道下移 1~4 格（只动起点，不动河网）②成河门限加哈希抖动（治根，但动河道形态）。 | 用户选择 |

@@ -1,0 +1,80 @@
+GeoGenesis 认可基准 — schema 119（源头按比例抽稀 0.7）
+=====================================================
+记录时间：2026-10-29
+状态：**用户已实机认可，作为现行「标准图」**。取代此前的 20bde1c8…（抽稀前口径）。
+
+用户裁定（原话，2026-10-29 实机）：
+  「左侧水系看起来正常了，支流源头比之前稀一点，密度可以。这个效果就这样定下来吧。」
+
+-----------------------------------------------------
+1. 产出这对图的完整口径（缺一项都不可复现）
+-----------------------------------------------------
+代码版本：feat/hydrology-target @ 544d145（工作树干净，与其后无未提交改动）
+命令：    python build/bisect/verify-default.py
+          （该脚本先 javac --release 17 编译工作树 src/main 全部 180 个源文件，
+            再用 ProductionViewProbe 出图；不会跑成冻结基线类）
+JVM 属性：**一个都不带**（无任何 -D）。全部默认值是本基准的一部分：
+          geogenesis.boundaryPorts   = true   （两处读取同式 !"false".equals(...)，
+                                               DeterministicSkeleton:1935 / ModelHydrologyProvider:1330）
+          geogenesis.sourceKeepFrac  = 0.7    （DeterministicSkeleton:1329）
+          geogenesis.skeletonSourceCells = 40
+          geogenesis.channelMinCells = 150
+配置：    build/hydrology-perf/baseline/config-input.toml
+          SHA256 = cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f
+          （与 run/config/geogenesis-common.toml 同哈希）
+视图：    seed     = 9139912035078620160
+          center   = (-140, 137)
+          radius   = 700   step = 1   ⇒ 1401×1401 像素
+
+-----------------------------------------------------
+2. 像素计数与哈希
+-----------------------------------------------------
+PNG           = baseline-schema119-production.png
+              SHA256 = 2309e45ff73e7635f5fe521eeb05288080616c183255598af7e1dc9a2a208ffa
+columnsSHA256 = 17b17bc6170ce0e1507b0188ab7ee292c35d70834fab0b0c0a0162b058fa4ada
+chunks=8281  uncovered=0
+dry=1353342  sea=452832  lake=104341  river=52286
+
+对照臂（抽稀关闭，= schema 118 几何）：
+PNG           = baseline-schema118-keep1.0.png
+              SHA256 = c15e5f321947c5ef16d098fa78f072e7a0286124fcc60c59b882a524adc704ef
+              river=58918  lake=104313
+复现方式：python build/source-dist/render-keep.py 1.0
+（等价于 -Dgeogenesis.sourceKeepFrac=1.0；逐位回到 c15e5f32…）
+
+抽稀 A/B 与原图对照：
+  source-thinning-ab-keep.png     并排 A/B 大图（用户据此刻确认效果）
+  source-thinning-diff-keep.png   差异高亮（改道像素 2946 = 1.8%）
+  sources-scatter-keep0.7.png     源头散点全幅图（「成排」问题取证，仍未修）
+
+端口修复三臂对照：port-fix-three-arm-full.png
+（半接线 / 只开 Provider / 两处都开；说明 A/B 口径必须写全 JVM 属性）
+
+-----------------------------------------------------
+3. 实机佐证（run/logs/latest.log，2026-10-29 09:08 启动，无 -D）
+-----------------------------------------------------
+世界种子 = 9139912035078620160（与出图同种子），spawn region 21.2s 生成完毕。
+  [HYDRO-BOUNDARY] role=SECOND_PASS ports=8/10 …   9 条（端口真的在发）
+  [HYDRO-BOUNDARY] role=PRIMARY 共 42 条，ports min=2 max=18 均 10.1 ⇒ 无一条 ports=0
+   [HYDRO-WIRE-MERGE] 16 条：PORT_EXIT 8 / WATER_LAKE 5 / WATER_SEA 3，
+                     mergedIncoming=3 mergeEvidence=3
+  [HYDRO-SKELETON]  DEAD_END=0 unresolved=0
+⇒ §6.1 的「端口半接线」在游戏默认启动下不再出现。
+
+-----------------------------------------------------
+4. 本基准何时失效（失效即须重测，不可继续引用本文件的数字）
+-----------------------------------------------------
+- PreviewDisplay.CACHE_SCHEMA_VERSION != 119
+- 上列任一默认值 / config-input.toml 变更
+- 改动任何影响水文产出的代码（骨架、宽度、深度、湖、端口、抽稀）
+- 换 seed / center / radius / step（不同视图的图互不可印证）
+
+-----------------------------------------------------
+5. 已知未覆盖（不要据本文件宣称这些已通过）
+-----------------------------------------------------
+- 旧已生成区块不会自动重雕：本基准只描述新生成区域。
+- 源头「成排」（轴对齐比 3.33）本轮未修。
+- 源头多样性（山泉口等）用户 2026-10-29 明确搁置。
+- runWorldgenGate 的 CenterlineCrossSectionProbe 是 44cfb19 起的既存红项，
+  跑门禁需 -x runCenterlineCrossSectionProbe（其余 11 项 PASS）。
+- 44cfb19 起相对旧标准图的 0.2% 残余差异未归因；用户已表示「不需要扣这点像素」。
