@@ -91,9 +91,15 @@ public final class TerrainCharacterField {
     private static final double WARP_FREQ = 1.0 / 500.0;
 
     // ===== 混合结果 =====
+    /**
+     * 类型混合结果。
+     *
+     * <p>⚠ 2026-10-29：已删除 {@code lo}/{@code hi} 两个字段。它们自 v8 改走
+     * {@link TypeLandShape} 的三层嵌套样条后<b>恒为 0.0</b>，但 {@code DiscontinuityProbe}
+     * 仍拿它们反推 {@code typeWeighted = (eLand-lo)/range}，range=0 ⇒ 该图层恒 0.5，
+     * 打印出一整列假梯度统计。保留死字段只会继续骗人，故删除。</p>
+     */
     public static final class BlendResult {
-        public double lo;             // 不再使用，恒 0.0
-        public double hi;             // 不再使用，恒 0.0
         public TerrainClass dominantType;
         public double alpha;          // 主导类型归一化权重
         public double[] typeWeights;  // [TerrainClass.COUNT]，仅陆地类型非零
@@ -183,8 +189,6 @@ public final class TerrainCharacterField {
         result.typeWeights = weights;
         result.dominantType = TerrainClass.values()[bestOrd];
         result.alpha = bestW;
-        result.lo = 0.0;
-        result.hi = 0.0;
         return result;
     }
 

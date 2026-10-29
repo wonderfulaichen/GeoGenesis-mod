@@ -9,22 +9,22 @@ import com.geogenesis.worldgen.noise.*;
  */
 public final class DiscontinuityProbe {
 
-    // 图层名称 — 匹配 v7.5 typeWeighted 流水线
+    // 图层名称 — 匹配 v8 三层嵌套样条流水线
+    // ⚠ 2026-10-29：删掉了原 0/1（blend.lo / blend.hi）与 8（typeWeighted）。
+    //   前两者自 v8 起恒 0.0（字段已删除）；8 是由恒 0 的 lo/hi 反推出来的假量（恒 0.5）。
+    //   保留它们只会打印一整列假梯度统计。若将来需要类似量，请接真实来源再新增。
     private static final String[] LAYER_NAMES = {
-        "blend.lo",                // 0: Voronoi lo
-        "blend.hi",                // 1: Voronoi hi
-        "blend.alpha",             // 2: 最近 2 cell 权重比
-        "typeW_PLAIN",             // 3: PLAIN 连续权重
-        "typeW_HILLS",             // 4
-        "typeW_MOUNTAINS",         // 5
-        "typeW_PLATEAU",           // 6
-        "typeW_BASIN",             // 7
-        "typeWeighted",            // 8: Sigma wx typeNoise/Sigma w (v7.5)
-        "eLand_v7.5",              // 9: lo + range x typeWeighted
-        "continent(c)",            // 10: 大陆性 [-1,1]
-        "eOcean",                  // 11: c falls to eFromC
-        "eFull(v8_twoStage)",      // 12: two-stage blend (eOcean fade + eLand ramp)
-        "dominant_argmax",         // 13: argmax(PLAIN..BASIN weights) ordinal 5,6,8,7,10
+        "blend.alpha",             // 0: 最近 2 cell 权重比
+        "typeW_PLAIN",             // 1: PLAIN 连续权重
+        "typeW_HILLS",             // 2
+        "typeW_MOUNTAINS",         // 3
+        "typeW_PLATEAU",           // 4
+        "typeW_BASIN",             // 5
+        "eLand_v8",                // 6: 三层嵌套样条输出
+        "continent(c)",            // 7: 大陆性 [-1,1]
+        "eOcean",                  // 8: c falls to eFromC
+        "eFull(v8_twoStage)",      // 9: two-stage blend (eOcean fade + eLand ramp)
+        "dominant_argmax",         // 10: argmax(PLAIN..BASIN weights) ordinal
     };
 
     public static void main(String[] args) {
@@ -67,38 +67,31 @@ public final class DiscontinuityProbe {
 
                 // 1. 连续类型混合
                 TerrainCharacterField.BlendResult blend = landShape.sampleBlend(wx, wz);
-                layers[0][x][z] = blend.lo;
-                layers[1][x][z] = blend.hi;
-                layers[2][x][z] = blend.alpha;
+                layers[0][x][z] = blend.alpha;
 
                 // 2. 类型连续权重
                 double[] tw = blend.typeWeights;
-                layers[3][x][z] = tw[TerrainClass.PLAIN.ordinal()];
-                layers[4][x][z] = tw[TerrainClass.HILLS.ordinal()];
-                layers[5][x][z] = tw[TerrainClass.MOUNTAINS.ordinal()];
-                layers[6][x][z] = tw[TerrainClass.PLATEAU.ordinal()];
-                layers[7][x][z] = tw[TerrainClass.BASIN.ordinal()];
+                layers[1][x][z] = tw[TerrainClass.PLAIN.ordinal()];
+                layers[2][x][z] = tw[TerrainClass.HILLS.ordinal()];
+                layers[3][x][z] = tw[TerrainClass.MOUNTAINS.ordinal()];
+                layers[4][x][z] = tw[TerrainClass.PLATEAU.ordinal()];
+                layers[5][x][z] = tw[TerrainClass.BASIN.ordinal()];
 
                 // 3. 大陆性 c（需在 CoastlineField 之前计算）
                 double c = continent.sample(wx, wz);
                 double cBiased = c - continentBias;
-                layers[10][x][z] = c;
+                layers[7][x][z] = c;
 
                 // 4. TypeLandShape.sample() — 使用海岸线位移后的有效 c（v8）
                 double cEdge = cBiased + coastline.warpDisplacement(wx, wz, cBiased);
                 double eLand = landShape.sample(blend, wx, wz, cEdge);
-                layers[9][x][z] = eLand;
+                layers[6][x][z] = eLand;
 
-                // 5. 提取 typeWeighted（by inverting formula: tw = (eLand-lo)/range）
-                double range = blend.hi - blend.lo;
-                double typeWeighted = (range > 1e-10) ? (eLand - blend.lo) / range : 0.5;
-                layers[8][x][z] = typeWeighted;
-
-                // 6. eOcean
+                // 5. eOcean
                 double eOcean = curve.eFromC(cBiased);
                 eOcean = Math.min(eOcean, 0.0);
                 eOcean = eOcean < -1 ? -1 : eOcean;
-                layers[11][x][z] = eOcean;
+                layers[8][x][z] = eOcean;
 
                 // 7. eFull (v8 two-stage blend + coastline warp)
                 double oceanFadeStart = p.oceanFadeStart();
@@ -109,7 +102,7 @@ public final class DiscontinuityProbe {
                 double t2 = smoothstep(coastLoc, landRampEnd, cEdge);
                 double eLandStage = eLand * t2;
                 double eFull = eOceanStage + eLandStage;
-                layers[12][x][z] = eFull;
+                layers[9][x][z] = eFull;
 
                 // 8. dominant argmax
                 int best = TerrainClass.PLAIN.ordinal();
@@ -118,7 +111,7 @@ public final class DiscontinuityProbe {
                 for (int t : landTypes) {
                     if (tw[t] > tw[best]) best = t;
                 }
-                layers[13][x][z] = best;
+                layers[10][x][z] = best;
             }
             if ((x + 1) % 100 == 0) System.out.print(".");
         }
@@ -180,8 +173,8 @@ public final class DiscontinuityProbe {
             int jumps = 0, total = 0;
             for (int x = 1; x < W; x++) {
                 for (int z = 1; z < H; z++) {
-                    if (layers[13][x][z] != layers[13][x - 1][z]) jumps++;
-                    if (layers[13][x][z] != layers[13][x][z - 1]) jumps++;
+                    if (layers[10][x][z] != layers[10][x - 1][z]) jumps++;
+                    if (layers[10][x][z] != layers[10][x][z - 1]) jumps++;
                     total += 2;
                 }
             }
@@ -208,11 +201,11 @@ public final class DiscontinuityProbe {
 
         for (int x = 0; x < W; x++) {
             for (int z = 0; z < H; z++) {
-                double c = layers[10][x][z];      // continent(c)
+                double c = layers[7][x][z];       // continent(c)
                 if (c < 0.45) continue;           // 仅内陆样本（c 低处样条随 c 压低，eLand 无类型区分度）
-                double eLand = layers[9][x][z];
+                double eLand = layers[6][x][z];
                 if (eLand <= 0) continue;
-                int domType = (int) layers[13][x][z];
+                int domType = (int) layers[10][x][z];
                 double mcY = 63.0 + eLand * 257.0;
                 typeHeights.get(domType).add(mcY);
                 typeELands.get(domType).add(eLand);
@@ -261,10 +254,10 @@ public final class DiscontinuityProbe {
         java.util.ArrayList<Double> transELands = new java.util.ArrayList<>();
         for (int x = 0; x < W; x++) {
             for (int z = 0; z < H; z++) {
-                double wP = layers[6][x][z];
-                double wM = layers[5][x][z];
+                double wP = layers[4][x][z];      // typeW_PLATEAU
+                double wM = layers[3][x][z];      // typeW_MOUNTAINS
                 if (wP > 0.10 && wM > 0.10) {
-                    double eLand = layers[9][x][z];
+                    double eLand = layers[6][x][z];
                     if (eLand > 0) {
                         transELands.add(eLand);
                         transHeights.add(63.0 + eLand * 257.0);

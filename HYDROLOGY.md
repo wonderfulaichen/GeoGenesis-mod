@@ -55,17 +55,23 @@ sea=452778 lake=71340 (3.63%) channel=25503
 > 本节 = 逐条核实 `src/main` 生产调用关系后的权威盘点。**以后任何讨论先读本节。**
 >
 > ⚠ **2026-10-28 更新**：本节 2026-10-09 的原稿写「两条链由开关二选一、当前游戏跑 legacy」，**那与代码相反**。legacy 链已于 2026-10-20 整体删除（git 留档）：
-> `HydrologyChunkEngine` 现在是无分支薄壳，`usesModelPipeline()` 恒 `return true`，
-> `calculate()` 无条件调用 `modelProvider.columnsFor(...)`；TOML 残留的
+> `HydrologyChunkEngine.usesModelPipeline()` 恒 `return true`；完整结果接口 `calculate()` 与
+> 地形合成的高度快照接口 `calculateColumns()` 共用 model provider 列判定。TOML 残留的
 > `hydrologyModelPipelineEnabled` 键**已无代码读取**，改它没有任何效果（详见 §二）。
 > 下面的 legacy 表仅作考古，不表示仍在生产。
 
-### 生产入口只有 1 个：`HydrologyChunkEngine.calculate`（无分支）
+### 生产实现只有 1 套：model（原始高度快照与公开重采样共用列计算）
 
 ```
-HydrologyChunkEngine.calculate()   ← 游戏落块的唯一水文入口
-  └─ ModelHydrologyProvider.columnsFor()   （model 链，无分支）
+GeoGenesisTerrain.getChunkCells()   ← 游戏/生产预览
+  └─ 侵蚀前 height 快照 → HydrologyChunkEngine.calculateColumns()
+       └─ ModelHydrologyProvider.columnsForHeights() → 同一列判定
+
+HydrologyChunkEngine.calculate()   ← 公开完整结果接口，保留独立 originalCells
+  └─ 原始重采样 → ModelHydrologyProvider.columnsFor() → 同一列判定
 ```
+
+两入口共用 `columnsForBody`，不是两条水文链。快照只在原始坐标表达式等价的 `hs>0.01` 时复用；特殊 hs 保留原重采样回落。
 
 ### 链 A：legacy（❌ 已于 2026-10-20 删除，下表仅考古）
 
@@ -262,7 +268,7 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 - `RiverConnectionProbe`实际Java断言1137项通过，覆盖中段/首点JOIN、多支流共享、32次输入顺序变化、环/缺失/歧义、相邻重复尾节点及1万段串联。隔离编译本次修改前HEAD `baf5bb5`的骨架类覆盖classpath，反向测试在中段JOIN断言失败（不是编译失败）。
 - 同seed `9139912035078620160`、同TOML副本，region(0,0)，默认与显式`-Dgeogenesis.boundaryPorts=true`分组取证。每组分别与隔离旧骨架对照：pipe/traces/shaped/segIndex/boundary/采样列的64位指纹逐项相同。默认合计`-2639223944564017712`，显式组`-2789750574405632679`。这是局部非改产出检查，不是全世界逐块证明或完整出图验收。
 - 默认组同区JOIN：trace2→trace0，第16个粗格节点，格坐标(132,-94)；支流实际shaped尾(131.472803467,-93.320006528)到已确认接收折线投影距离0.028761；支流尾段半宽0.878390、接收投影半宽0.879058，而生产`propagateConfluence`仍取承接链首0.878279。只能证明引用位置不同，不能由最终值反推压缩量。接点前/接点/后所采列均有水；不由三列宣布整河连续。
-- **开关不一致新证据（未修）**：provider的`BOUNDARY_PORTS`默认true，骨架`PORT_EGRESS=Boolean.getBoolean(...)`默认false。未显式设属性的本次默认组无typed端口；显式组有7个邻区pass1承诺被`mergeEvidence`以同anchor、同next审计接入base。显式组不是当前游戏启动参数的证明。
+- **开关不一致新证据（★2026-10-29 已在〇bu修复）**：provider的`BOUNDARY_PORTS`默认true，骨架`PORT_EGRESS=Boolean.getBoolean(...)`默认false。未显式设属性的本次默认组无typed端口；显式组有7个邻区pass1承诺被`mergeEvidence`以同anchor、同next审计接入base。显式组不是当前游戏启动参数的证明。**后续在〇bu量化为"旧默认会吃掉整条左侧水系"（左带河道 24824→10771），已把骨架默认改为开。**
 - 显式组样本：发送(-1,-1)→接收(0,0)，anchor(2,96)、next(2,98)，接收base trace8第26格，`mergeNext==port.next`、审计`RESOLVED:WATER_SEA`。发送pass1 Q10.6512、接收Q11.0736；发送/接收粗水面均131.390213。anchor列fill=true且水柱1，next列fill=false、erosion=0。这证明该采样下拓扑审计与实际湿列不等价；**不等于骨架中心线中断，不据此改路线**。发送侧最终半宽/深度尚未采，跨区属性连续仍未验收。
 - `RiverJunctionEvidenceProbe`只读现有缓存与生产列；按目标trace的Shaped坐标定位段，**粗格节点序号不能当重采样节点序号**。本轮早期`evidence/`及`v2-*`半宽取证已作废，不能使用；有效结果是MDK `build/river-local-contract/final-default/`、`final-typed/`及对应`baseline-*`。列采样允许既有边缘惰性邻区求解，JSON记录新增final键，未改依赖架构。
 - TOML原件SHA256仍`CC5D985F7554E4CFB316708E88373530241B9520E4CE983F745A6DEFCF50C16F`。`SkeletonProbe synthetic`本次与隔离旧骨架均复现溢口(4,6)未覆盖及`traceOne`反射签名异常，后续断言未执行；不称全绿。未跑全门禁/Forge/新大图/多seed和并发矩阵，未提交或push。
@@ -283,6 +289,120 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 **正确口径骨架图已补齐**：MDK `build/river-local-contract/skeleton-width-off/`下`before/after`各跑36区，均1720条trace，未关闭蜿蜒；直接对生产shape作无抗锯齿Bresenham单像素栅格化。全幅3269²、正典裁图1401²；全幅中心线135426像素，两臂掩码及着色/底色差异均0，shape.csv SHA256均`eb1841d6ae88c282b67c71a0e38a8d1a08cdcf9436b2e5967d08813b5987cb13`。与保留的后期`dump-out/polys.csv`按原存储3位小数、保留每条折线节点顺序及方向逐条比对一致（28个非空区/1720折线；其余8区无线），不是早期版本。图见[骨架A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/skeleton-ab.png)、[修复前全幅](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/before/skeleton-full.png)、[修复后全幅](forge-1.20.1-47.4.10-mdk/build/river-local-contract/skeleton-width-off/after/skeleton-full.png)。结果证明本轮连接表示修正未改变这批shape路线，不代表全周期已通过。没有改生产默认值或TOML。
 
 **先前后补图记录（非骨架验收）**：已用现有`ProductionViewProbe`生产`GeoGenesisTerrain.getChunkCells`入口重跑修改前/后各1401²正典大图（同seed/中心/当前TOML、默认JVM开关）。每臂8281 chunk、uncovered=0；PNG逐像素差异`0 / 1962801`，两臂PNG SHA256均`1226674f61bd31681eb535ac7cbfd4083f33cc1af2cdb3766747a9ba51a52257`，列SHA256均`ae92afd33d6a6fef30979f13032576ef6d7746335d07c7901ba599cc46a626e2`。没有复用旧目标图。结果见[生产A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/production-ab.png)、[Java合成反例连接A/B](forge-1.20.1-47.4.10-mdk/build/river-local-contract/visual-20261026/connection-ab.png)及同目录metrics/provenance；后者不是游戏效果图。修复后首轮出图被后台线程`Comparison method violates its general contract`异常经PowerShell Stop中断，没有有效PNG；保留日志，未修改生产代码，同参数重跑退出0并完成对照。异常根因及归属未定，不宣称已修。
+
+### 〇bu、★ 端口开关默认相反导致游戏默认水系残缺（2026-10-29；已修，schema 118）
+
+**用户口径先行**：用户认可的"标准图"是 `20bde1c8…`（river=59250、lake=105766、左带河道 24824）。
+本轮全部结论以这张图为准，**不以 `ab404ad7…` 为准**。
+
+**根因（证据链，非推断）**：同一个系统属性 `geogenesis.boundaryPorts` 被两处读取，默认值相反：
+
+| 位置 | 表达式 | 不带 `-D` 时 |
+|---|---|---|
+| `ModelHydrologyProvider.BOUNDARY_PORTS` | `!"false".equals(getProperty(...))` | **true** |
+| `DeterministicSkeleton.PORT_EGRESS` | `Boolean.getBoolean(...)` | **false** |
+
+游戏正常启动不带该属性 ⇒ Provider 按"端口开"走双 pass + typed 接力，
+骨架却从不发出窗口端口 ⇒ 半接线。**这是 `〇bg` 已记录但一直标"未修"的那条。**
+
+**量化（1401² 正典图，seed `9139912035078620160`、中心(-140,137)、r=700、同 TOML `cc5d985f…`）**：
+
+| 臂 | river 列 | 左带河道像素 | 全图河道像素 | PNG SHA256 |
+|---|---:|---:|---:|---|
+| 标准（`3c998e0`/`2c2e36a`/`8310b71` + 开关开） | **59250** | **24824** | **165016** | `20bde1c8…` |
+| 修复前游戏默认（开关关） | 41928 | 10771 | 146420 | `ab404ad7…` |
+| 修复后默认（本轮） | 58918 | 24507 | 163231 | `c15e5f32…` |
+
+- 相对标准图：修复前丢 **28074** 河道像素（左带 14960，成片消失并出现平行直线束）；
+  修复后只剩 **2867**（左带 352），且为沿湖岸/河岸的零散单像素，**无成片丢失**。
+- 逐提交二分（**带正确开关**）确认：`3c998e0`/`2c2e36a`/`8310b71` 三提交**逐字节等于标准图**；
+  `44cfb19` 起偏移（river 59250→58918，lake 105766→104313），HEAD 与之一致。
+  即 `44cfb19` 还有一层约 0.2% 的既有差异，与本次开关修复是两件事，尚未处理。
+
+**修法**：`DeterministicSkeleton.PORT_EGRESS` 改为与 Provider 同式
+`!"false".equals(System.getProperty(...))`，默认开；`-Dgeogenesis.boundaryPorts=false`
+仍是逐位回退到旧行为的开关。`CACHE_SCHEMA_VERSION` 117→**118**（产出变，必须失效旧缓存）。
+
+**验证**：
+- 编译当前工作树（180 源）后**不带任何 `-D`** 出图 = `c15e5f32…`、river=58918，与"提交版 + 显式开关"逐字节相同
+  ⇒ 修复生效，且**此前的性能无损优化结论仍成立**（同一开关口径下零差）。
+- 门禁 `runWorldgenGate`：11 项全绿。唯一红项 `CenterlineCrossSectionProbe`
+  用**旧默认变体类覆盖**（`build/bisect/oldport/`）重跑，输出数字逐项相同
+  （连通 119→153、拆分 25、孤立 7→9，exit 1）⇒ 是 `44cfb19` 起的既存红，与本次无关。
+- 图：[三臂全图](forge-1.20.1-47.4.10-mdk/build/bisect/flagrange/fix-three-arm-full.png)、
+  [左带对比](forge-1.20.1-47.4.10-mdk/build/bisect/flagrange/fix-left-band.png)、
+  [修复后残差高亮](forge-1.20.1-47.4.10-mdk/build/bisect/flagrange/fix-diff-after.png)。
+
+**★★ 口径纠正（重要）**：`〇bt` 与更早各节把 `ab404ad7…` 当作正典产出图，
+**那是开关关（=旧游戏默认）的几何，不是用户认可的标准图**。
+此后凡引用"正典大图 SHA"必须先确认该臂是否显式带 `-Dgeogenesis.boundaryPorts=true`；
+不带而产出的 `ab404ad7…` 只能代表旧的半接线几何。
+
+**同批清理（2026-10-29，消除"注释说谎"，产出零变）**：
+- 删 `ModelHydrologyProvider.collectIncomingTyped` / `collectIncomingWires`（零调用，
+  注释却写"生产内部用"；生产入口是 `assembleIncomingWires`）。
+- 删 `DeterministicSkeleton.auditedDownstream` / `joinAudited`（零调用的旧布尔审计链，
+  已被带证据载荷的 `auditEvidence` 取代）；"v1 缺陷④ JOIN≠通向水体"的知识
+  已并入 `auditEvidence` javadoc。
+- `solveHier` else 分支注释曾称"接力：本区粗层主干源头 + 邻区粗层主干端口"，
+  实际传 `List.of()`（恒空）⇒ 已改为如实说明"当前不做跨区接力"，
+  并标注 `hierIncomingSeeds` 仅被 `SharedLakeSeamProbe` 反射调用。
+- 过时默认值注释三处已修：`meander`（实为默认开 amp=0.6）、`v2 typed 接力`、`ports 模块`。
+- `geogenesis.channelMinCells` 一属性两义（世界排水 150 / 骨架源门限 40）⇒ 骨架侧
+  拆出 `geogenesis.skeletonSourceCells`（默认仍 40，已纳入实验键指纹）。
+- `TerrainCharacterField.BlendResult.lo/hi` 删除：自 v8 走三层嵌套样条后恒 0.0，
+  但 `DiscontinuityProbe`（`runProbe`）仍用它反推 `typeWeighted=(eLand-lo)/range`
+  ⇒ range=0 ⇒ 该图层恒 0.5，**打印出一整列假梯度统计**。已删字段并去掉该假图层，
+  探针改为只输出真实量。
+  清理后连跑两次 1401² 图仍为 `c15e5f32…` / columnsSHA `d611419f…` / river=58918 ⇒ **逐字节零变**。
+
+**防再犯规则已写入 [`AGENTS.md`](AGENTS.md) §「开关（`-D`）四条铁律」**：
+同一属性名只许一个默认值、一属性只表达一件事、注释默认值必须与代码同源、
+默认值一变必升 schema 并重出图对拍。
+
+**未验收**：未进游戏实机、未验新世界生成、未跑 Forge 流体 tick；本次只做离线生产图 + 门禁。
+旧已生成区块不会自动重雕。
+
+### 〇bt、水文无损性能优化（2026-10-28；分配量下降，尚未证明实机加载提速）
+
+用户批准方案后实施；基线为 `54ef89b`（生产源码与 `44cfb19` 一致）。**不改骨架、宽深、水位、采样精度、搜索/迭代预算、正式 TOML 或存档。** 本节只报告本轮新采证据，不把旧实机认可当成本轮验收。
+
+**实际保留的改动**：
+- R2：`SegmentIndex.segmentMeetsBlock` 去掉两份 `double[4]`，保留四面裁剪顺序、比较和除法；未改距离公式、候选顺序或覆盖规则。
+- R3：每次 `runErosionOnFlat` 独占一份 8 邻居工作区，向下传递；每次级联重填有效区段，不放到 static/实例共享字段，不改液滴、排序或更新顺序。
+- R1-a：chunk 原采样后、侵蚀就地改写前保存 `double[256]` 高度，传入同一 provider 列判定，省掉第二次完整 Cell/气候采样。公开 `calculate()` 仍返回完整、独立的 `originalCells`；特殊 hs 保留重采样回落。原始高度的 `/hs` 与侵蚀的 `*(1/hs)` 没有强行统一。
+- 加入默认关闭的 `HydrologyMetrics` 阶段/缓存观测及独立诊断入口；不替换原日志或宽度追加文件。关闭仍有类初始化/调用/分支成本，不宣称零开销。
+
+**评估后保原**：C4 宽度后继图复用无稳定收益，已撤回；C1 逐窗采样缓存保留已有默认，开关 A/B 不支持关闭后稳定更快。侵蚀高度复用、chunk 单飞、细候选桶、D8 末轮复用、湖盆静态缓存与 pass1 丢弃载荷均未落地。pass1 失败校验及诊断 I/O 语义不变，不为清单强改架构。
+
+**最终 v2 隔离测量**：每样本新 JVM、同冻结 runner、Java 17.0.17、`-Xms512m -Xmx3g`、真实 TOML 副本；AB/BA 串行，共31样本、15对，逐 chunk 全字段摘要均相等。分配是请求线程/worker累计字节，**不是进程 RSS**；CPU 同样不是进程总 CPU。下表 MB/GB 用十进制，wall 是整次工作负载，不是每个 chunk 耗时。
+
+| 负载 | 每臂样本 | wall 中位数，前→后 | 分配中位数，前→后 | 结论 |
+|---|---:|---:|---:|---|
+| 冷区首 chunk | 5 | 23905.46→23839.48 ms | 6.918→2.740 GB（-60.39%） | wall -0.28%，配对有正有负，不能宣称稳定提速 |
+| 热 region、24个 chunk 缓存 miss | 5 | 469.61→463.65 ms | 217.313→19.706 MB（-90.93%） | wall -1.27%，配对 -9.70%～+23.81%，不能宣称稳定提速 |
+| 完整 chunk 缓存命中负载 | 2 | 4.611→4.455 ms | 0.480176→0.480288 MB | 样本少且量级小，不作稳定收益依据 |
+| 同 chunk，8线程 | 1 | 23808.03→24552.66 ms | 5.693→1.847 GB | wall +3.13%，单对只作观测 |
+| 相邻 chunk，2线程 | 1 | 24160.40→24388.08 ms | 7.802→2.543 GB | wall +0.94%，单对只作观测 |
+| 远隔 chunk，2线程 | 1 | 43158.30→42832.12 ms | 10.752→4.437 GB | wall -0.76%，单对只作观测 |
+
+冷区 GC 次数中位数60→25，GC记录耗时218→108ms。**本轮已证实的是分配/GC压力降低，不是已证实实机加载更快。** 初版 v1 的60样本（含1/2/4/8线程）与最终 v2 分开保存，不混算，也不拿带 JFR 的基线全图耗时与无 JFR 的候选图相减报提速。
+
+基线 JFR 执行采样指向噪声/侵蚀算术，分配采样突出 `cascadeLocal` 两个小数组和河段裁剪数组；这支持选 R2/R3，不等于精确 CPU 占比。最终开启观测的热区样本中，24次生成448.01ms、provider列计划156.89ms、后台13次tile求解累计456.56ms；**阶段存在嵌套、跨线程和窗口外后台任务，不能相加或除wall当CPU占比**。快照差的 `maxNs` 也不是本窗口最大值。原始样本：[summary.json](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/isolated-v2/summary.json)、[results.json](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/isolated-v2/results.json)。
+
+**效果与契约证据**：
+- 默认、岸高差ON、深度OFF三组，各五固定窗：Cell/列30份raw文件逐字节相同；骨架、shape、宽深、limits和端口摘要亦同。[quality-v2](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/quality-v2/results.json)。三组各自对基线，不互相混算。
+- 正典1401×1401生产图走 `getChunkCells`：8281chunk、uncovered=0，1962801像素零差；PNG SHA256 `ab404ad7c2183f3dab9d869125160e9b40596cb46b1bd4631b273402e4f1c70a`，columns SHA256 `0be06550c7da004221f6a2d75ed994a2532a1ac9ba1dac255a927857c7f7c524` 两臂相同。[全图A/B](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/final-v2/production-ab.png)、[对照结果](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/final-v2/production-comparison.json)。这是生产路径离线图，非Forge截图。⚠ **该 `ab404ad7` 是未带 `-Dgeogenesis.boundaryPorts=true` 时旧默认几何（见〇bu），零差结论本身成立，但不能当作用户认可的标准图。**
+- 裁剪独立oracle338613检查通过；侵蚀真实TOML下21矩阵例、同engine4线程、预置取消/清位后fresh-buffer重试及两种变异反控通过（共36检查）。[checks-v2](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/checks-v2/results.json)。
+- 最新高度快照探针Java17自检18项、真实TOML轻+heavy161项通过，包含57水列、256列全字段、公开结果独立性、新旧入口异常类型及旧长度异常文案。hs=1/2/1.3/0.5/8覆盖的是原始采样映射，只有真实hs=2跑了整列水文；特殊hs仅镜像门控，不能扩大结论。鲜shell的两个Gradle入口及性能探针137项自检通过。[最终探针契约](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/final-probe-contract/complete.json)。正式计时继续使用原冻结runner，后续仅修正诊断scope文案，不回写旧样本。
+- 湖缝725检查/0失败，55282列patch（22689湖列）的seams/patches CSV与本轮基线逐字节相同；HardnessRace 8线程48tile无异常、singleflight、缓存原子性3×48000检查、height-only369点及8线程对拍与反控均退出0。[补充回归](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/extra-contract-v2/complete.json)、[湖缝对照](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/extra-contract-v2/lake-baseline-comparison.json)。这些是各探针声明的局部契约，不证明整个provider取消生命周期或Forge效果。
+- 两seed的正序、倒序、下游先查和完成chunk受控清理后重建摘要一致。[orders-v2](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/orders-v2/complete.json)。只证明本矩阵；不是自然LRU/provider/tile淘汰或任意取消阶段全周期证明。
+- 断面、深度profile/六子JVM集成、汇流、宽度、连接、覆盖、岸高差与生产放水自检均退出0。[final-v2](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/final-v2/quality-complete.json)。
+- 完整 `runWorldgenGate` 的12项均实际执行：11绿、1红，Gradle退出1。唯一红项 `CenterlineCrossSectionProbe` 的报告及三图与冻结基线重放逐字节相同（连通119→153、拆分25、孤立7→9），非本轮新增差异；没有放宽或移除门禁。[门禁结果](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/gate-v2-offline/result.json)。首轮停在ForgeGradle联网预检的日志与线程转储保留于 `gate-v2`；仅重跑命令加插件官方 `-Dnet.minecraftforge.gradle.check.certs=false` 跳过联网预检，依赖仍离线、探针仍Java17，未改仓库配置。
+
+**身份与剩余边界**：冻结baseline1200项、candidate-v1的1243项、candidate-v2的1778项保护哈希复核均未变化；最终交付复核当前180个生产Java源码、516个生产class与冻结候选一致，30份raw文件及原图再次对拍相同。[交付核对](forge-1.20.1-47.4.10-mdk/build/hydrology-perf/delivery-check.json)。按有效classpath全量比对，最终候选有36个生产class变化（含内嵌类/新增观测类），不是“只有3个类不同”。正式TOML SHA256仍 `cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f`，缓存schema保持117，未改产出规则所以不靠升版本清缓存。**Forge新区域/WGP、实际方块/洞穴/装饰/流体tick、非默认hs的整链侵蚀水文及完整自然淘汰/取消矩阵仍未验收**，不把局部/离线相等扩大为全世界实机已完成。未提交、未推送、未启动或重启游戏。
+
+**Forge验收入口核查（只读，未运行）**：现有 `runAcceptance` 硬编码 `hierarchicalHydrology=true/expectHier=true`（[build.gradle:2697-2705](forge-1.20.1-47.4.10-mdk/build.gradle#L2697-L2705)），不是当前默认路径；其隔离TOML还开启WGP、保留旧model键与额外旧骨架键。当前验收类依赖水策略参考臂及背景元数据匹配（[ForgeHydrologyAcceptance.java:500-537](forge-1.20.1-47.4.10-mdk/src/acceptance/java/com/geogenesis/acceptance/ForgeHydrologyAcceptance.java#L500-L537)），不是直接给优化前后两臂跑一次就能复用：缺参考会判红，设置referencePolicy又会要求旧水策略。固定6点/36chunk的FULL+200tick只做水计划落块回读，没有洞穴/装饰相等断言或性能门禁；既有调试还向仓库根绝对路径追加日志。故本轮未擅自启动旧入口、未更改它或放宽判据；后续须先适配同默认参数的独立验收入口及基线，再做Forge对照。
 
 ### 〇bs、普通河水越地形、陡坡补挖与窄河深度（2026-10-28；局部生产验证完成，待修后实机）
 
@@ -308,6 +428,8 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 - [方块剖面A/B](forge-1.20.1-47.4.10-mdk/build/river-water-fix/river-water-sections-ab.png)、[生产俯视A/B](forge-1.20.1-47.4.10-mdk/build/river-water-fix/river-water-production-ab.png)均从本节默认生产CSV绘制；前者按真实整数放水公式还原，非游戏截图、非认证法向。完整判据与哈希在 `comparison-final.json` / `image-manifest.json`。
 
 **必须保留的边界**：131对河湖邻列中，`(-555,-144)`普通河因原地形仅166.9078，不能保留旧167.3589河面；邻湖167.3533保持权威，水顶因此新增1层差（连续差0.4455格）。这是满足“不超地形”后的明确接口变化，不标成接口全不变，也不为消除它抬高普通河水。额外1格仅修已测整层空隙，不证明任意悬崖四邻水面接触、无反坡或全周期。未运行新Forge世界/流体tick/全门禁或全图；未提交、未push，旧已生成区块不会自动重雕。默认新增逐河列梯度算术及深度剖面成本，未做隔离性能基准，不称零开销。
+
+**★ 2026-10-29 补测（〇bu 二分副产品）**：在**正确开关**（`-Dgeogenesis.boundaryPorts=true`）下，本节是最后一个改变全图产出的提交——`8310b71` 仍逐字节等于用户标准图 `20bde1c8…`，本节起变为 `c15e5f32…`：river 59250→58918、lake 105766→104313、全图差 4030 像素（其中河道丢失 2867、左带仅 352 且为沿湖岸/河岸的零散单像素）。这不是本次开关修复引入的，是本节改动本身的既有代价。已用 `-Dgeogenesis.riverCrossSection=false` 单独回退断面（river→59333、`27ab9a86…`）也回不到标准图，说明差异不只来自断面开关；**具体归因（水面 cap / 陡坡补挖 / 宽深指数）尚未隔离**，未据此改任何判据。
 
 ### 〇br、坡度岸水高差候选（2026-10-28；历史实施记录，用户后续实机认可见〇bs）
 
@@ -495,14 +617,10 @@ minimize  Σ w·|p_i − t_i|²  +  Σ |p_{i+1} − 2p_i + p_{i−1}|²
 
 > ⚠ **本节曾写「两条链由开关二选一」，那是过时描述。**
 > legacy 链（`HydrologyBlockCarver` / `riverline/*`）已整体删除（git 留档），
-> `HydrologyChunkEngine` 现在只有 60 行，`usesModelPipeline()` 恒 `return true`，
-> `calculate()` 无条件调用 `modelProvider.columnsFor(...)`。
+> `HydrologyChunkEngine.usesModelPipeline()` 恒 `return true`，
+> `calculate()` 保留完整原始 Cell 重采样；游戏路径可通过 `calculateColumns()` 复用侵蚀前高度。
+> 两入口最终调用同一 provider 列判定，完整调用图见 §〇b。
 > TOML 里残留的 `hydrologyModelPipelineEnabled` 键**已无代码读取**，改它不会有任何效果。
-
-```
-HydrologyChunkEngine.calculate()   ← 唯一水文入口
-  └─ ModelHydrologyProvider.columnsFor()   （model 链，无分支）
-```
 
 下表是 legacy 与 model 的**历史语义对照**，仅供考古，不表示 legacy 仍存在：
 

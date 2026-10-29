@@ -1860,16 +1860,26 @@ public final class DeterministicSkeleton {
 
 
     // ======================================================================
-    // ★ ports 模块（2026-10-23，隔离实现；默认关闭 ⇒ 默认产出逐位不变）
+    // ★ ports 模块（2026-10-23；2026-10-29 默认改为开，与 Provider.BOUNDARY_PORTS 统一）
     // ======================================================================
 
     /**
-     * 显式出窗端口开关（{@code -Dgeogenesis.boundaryPorts=true} 才开）。
+     * 显式出窗端口开关（{@code -Dgeogenesis.boundaryPorts=false} 才关）。
      *
-     * <p>默认<b>关</b>：关时 {@code traceOne} 不做完整候选出窗判定 ⇒ 产出与既有逐位相同。
+     * <p>关时 {@code traceOne} 不做完整候选出窗判定。
      * 生成端口的唯一条件是【同一向量规则在加宽候选下真的选中窗外格】，不是"站在边框上"。</p>
+     *
+     * <p>★★ 2026-10-29【默认由关改为开】★★
+     * 本项与 {@code ModelHydrologyProvider.BOUNDARY_PORTS} 读同一个属性，但过去两者默认相反
+     * （Provider 默认 {@code true}、本处 {@code Boolean.getBoolean} 默认 {@code false}）。
+     * 游戏正常启动不带 {@code -D} ⇒ Provider 以为端口开着、骨架却从不发端口，
+     * 双 pass 与 typed 接力半接线。1401² 生产图实测：左带河道像素 24824 → 10771，
+     * 全图河道 165016 → 146420，左侧水系成片消失并出现平行直线束。
+     * 已认可的标准图（PNG {@code 20bde1c8…}、river=59250）就是本开关打开时产出的。
+     * 故默认置开；{@code -Dgeogenesis.boundaryPorts=false} 即回到关闭时的旧行为。</p>
      */
-    static final boolean PORT_EGRESS = Boolean.getBoolean("geogenesis.boundaryPorts");
+    static final boolean PORT_EGRESS =
+            !"false".equals(System.getProperty("geogenesis.boundaryPorts"));
 
     /**
      * 把 base（= 本区 pass1 产物）的链<b>预先占用</b>进 covered / segments / occupied。
@@ -2099,7 +2109,8 @@ public final class DeterministicSkeleton {
 
 
     // ======================================================================
-    // ★ v2 typed 接力（端口装配修复，2026-10-23；默认关闭 ⇒ 默认产出逐位不变）
+    // ★ v2 typed 接力（端口装配修复，2026-10-23）
+    //   2026-10-29 起随 PORT_EGRESS 默认开启（默认产出已变，见 PORT_EGRESS 注释与 HYDROLOGY §〇bu）
     // ======================================================================
 
     /**
@@ -2170,32 +2181,6 @@ public final class DeterministicSkeleton {
     }
 
     /**
-     * 从 base 的某格沿<b>唯一后继</b>往下走，判断这条下游是否真的通向水体/接力出口。
-     *
-     * <h3>为什么 JOIN 不能直接算水体（v1 缺陷 ④）</h3>
-     * <p>{@code End.JOIN} 只表示"接上了 base 里另一条链"，<b>并不</b>保证那条链通向湖/海：
-     * 两条链可以互相并入后一起悬空。所以"base 末端是 JOIN ⇒ 合并成功"是错的。
-     * 正解：沿 base 的后继链走到底，只有命中 {@code MOUTH_LAKE}/{@code MOUTH_SEA}/
-     * {@code BOUNDARY_EXIT} 才算兑现；走到 {@code DEAD_END}/{@code UNRESOLVED}/成环/步数耗尽
-     * 一律判<b>未兑现</b>（由调用方记 reject，不删源、不伪 JOIN）。</p>
-     *
-     * @return 命中的水体/接力终止类型；{@code null} = 下游不存在或不可证
-     */
-    private static End auditedDownstream(Result base, int start, int nz, int budget) {
-        if (base == null) return null;
-        int cur = start;
-        for (int step = 0; step < budget; step++) {
-            int next = baseSuccessor(base, cur, nz);
-            if (next < 0) {
-                return waterTerminal(base, cur);
-            }
-            cur = next;
-            if (waterTerminal(base, cur) != null) return waterTerminal(base, cur);
-        }
-        return null;                               // 步数预算内证不出来 ⇒ 不当水体
-    }
-
-    /**
      * 该格若同时是 base 某条链的<b>末端</b>，返回"可算水体"的终止类型，否则 {@code null}。
      *
      * <p>⚠ 关键：一个格可能既是"链 A 的 JOIN 终点"又是"链 B 的真水体终点"。
@@ -2211,11 +2196,6 @@ public final class DeterministicSkeleton {
             }
         }
         return null;
-    }
-
-    /** JOIN 是否已通过后继审计（未通过 ⇒ 不得兑现承诺）。 */
-    private static boolean joinAudited(Result base, int start, int nz) {
-        return auditedDownstream(base, start, nz, 4096) != null;
     }
 
     /**
@@ -2267,6 +2247,13 @@ public final class DeterministicSkeleton {
 
     /**
      * 逐格审计 base 在 {@code anchor} 处的下游，产出 {@link MergeEvidence}。
+     *
+     * <h3>为什么 JOIN 不能直接算水体（v1 缺陷 ④）</h3>
+     * <p>{@code End.JOIN} 只表示"接上了 base 里另一条链"，<b>并不</b>保证那条链通向湖/海：
+     * 两条链可以互相并入后一起悬空。所以"base 末端是 JOIN ⇒ 合并成功"是错的。
+     * 正解：沿 base 的后继链走到底，只有命中 {@code MOUTH_LAKE}/{@code MOUTH_SEA}/
+     * {@code BOUNDARY_EXIT} 才算兑现；走到 {@code DEAD_END}/{@code UNRESOLVED}/成环/步数耗尽
+     * 一律判<b>未兑现</b>（由调用方记 reject，不删源、不伪 JOIN）。</p>
      *
      * <p>判据（<b>不</b>用 validTerminal 的一刀切）：</p>
      * <ol>

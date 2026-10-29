@@ -473,7 +473,11 @@ public class PreviewDisplay extends AbstractWidget {
     // 115 = 跨区借湖时同步借用命中湖的水位，修正区域边界整齐水面错层；不改河道断面。
     // 116 = 岸水高差候选（默认关闭）：按地形坡度下移河面0—1格，同步河床，湖海附近渐隐。
     // 117 = 普通河面不超侵蚀地形，陡坡额外向下补挖1格；宽深断面默认接入，W3中心2格。
-    private static final int CACHE_SCHEMA_VERSION = 117;
+    // 118 = 2026-10-29 骨架 PORT_EGRESS 默认由关改为开，与 Provider.BOUNDARY_PORTS 统一。
+    //       此前游戏默认（无 -D）只开 Provider 一侧 ⇒ typed 端口/双 pass 半接线，
+    //       1401² 生产图左带河道 24824→10771、全图 165016→146420，左侧水系成片消失。
+    //       修复后默认产出即已认可标准图（PNG 20bde1c8…、river=59250）。
+    private static final int CACHE_SCHEMA_VERSION = 118;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
