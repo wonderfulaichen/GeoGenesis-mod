@@ -358,7 +358,8 @@ public final class ModelHydrologyProvider {
             "geogenesis.handoffStart", "geogenesis.selfJoinFix", "geogenesis.frameEscape",
             "geogenesis.skeletonMinNodes", "geogenesis.skeletonSelfRadius",
             "geogenesis.skeletonSelfExempt", "geogenesis.skeletonMaxRivers",
-            "geogenesis.skeletonMeanderAmp", "geogenesis.channelMinCells",
+            "geogenesis.skeletonMeanderAmp", "geogenesis.skeletonSourceCells",
+            "geogenesis.channelMinCells", "geogenesis.sourceKeepFrac",
             "geogenesis.sourceSpacing", "geogenesis.stepCrossGuard",
             // ---- 地形口径 / 床面 ----
             "geogenesis.hydroBedEroded", "geogenesis.valleyMin", "geogenesis.valleyTrough",
