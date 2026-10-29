@@ -477,7 +477,10 @@ public class PreviewDisplay extends AbstractWidget {
     //       此前游戏默认（无 -D）只开 Provider 一侧 ⇒ typed 端口/双 pass 半接线，
     //       1401² 生产图左带河道 24824→10771、全图 165016→146420，左侧水系成片消失。
     //       修复后默认产出即已认可标准图（PNG 20bde1c8…、river=59250）。
-    private static final int CACHE_SCHEMA_VERSION = 118;
+    // 119 = 2026-10-29 源头按比例均匀抽稀（sourceKeepFrac 默认 0.7）。用户看图确认：
+    //       源头 1119→约783（−30%）、左带河道 −5.9%、最大连通分量 −1.4%（只少支流）。
+    //       ⚠ 与 spacing/maxSources 不同——那两个会成片抹掉支流并打断主干，已实测否决。
+    private static final int CACHE_SCHEMA_VERSION = 119;
     /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
     private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

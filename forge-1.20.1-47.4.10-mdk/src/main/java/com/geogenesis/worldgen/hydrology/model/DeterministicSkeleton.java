@@ -1300,6 +1300,57 @@ public final class DeterministicSkeleton {
             !"false".equals(System.getProperty("geogenesis.stepCrossGuard"));
 
     /**
+     * ★ 源头【按比例均匀抽稀】开关（2026-10-29）：{@code -Dgeogenesis.sourceKeepFrac=0.7}
+     * ⇒ 只保留 70% 的源头，其余整条不追。
+     *
+     * <h3>为什么不用现有两个"减密度"旋钮</h3>
+     * <p>实测（1401² 生产图，seed 9139912035078620160）：</p>
+     * <ul>
+     *   <li>{@code minSourceSpacingCells} 24→28：左带河道 <b>24507→10142（−58.6%）</b>，
+     *       且新增 8789 px 改道 —— 间距是<b>按距离成片判负</b>，海岸平原那排天然间距
+     *       24~30 block 的平行支流会被<b>整群同时</b>丢掉，不是均匀抽稀。</li>
+     *   <li>{@code maxSources}：代码上方 2026-10-10 实测已证否（最大连通分量 −57%）。</li>
+     *   <li>{@code minSourceAccum} 40→80：源头仅 −9.8%，且它改的是"多小的沟算河"，
+     *       会动河道形态。</li>
+     * </ul>
+     * <p>本开关只回答一件事：<b>这条支流要不要</b>。掩码、门限、间距、几何全不动。</p>
+     *
+     * <h3>为什么必须用世界坐标哈希</h3>
+     * <p>同一世界格会出现在多个相互重叠的窗口里（HALO 重叠 + pass1/pass2）。
+     * 若按<b>窗内索引</b>取哈希，同一位置在不同窗口会得到不同结论 ⇒ 接缝处
+     * "这边有河那边没有"。故按 {@code (worldX, worldZ)} 哈希 ⇒ 全局一致、可复现、
+     * 与遍历顺序无关。</p>
+     *
+     * <p>默认 <b>0.7</b>（用户 2026-10-29 看图确认的效果）：
+     * 1401² 生产图源头 1119 → 约 783（−30%）、左带河道 24507 → 23064（−5.9%）、
+     * 最大连通分量 43770 → 43173（−1.4%）⇒ <b>只少支流，主干不动</b>。
+     * 取值 1.0 = 全保留（回到旧产出，供 A/B）。</p>
+     */
+    static final double SOURCE_KEEP_FRAC = clampFrac(
+            Double.parseDouble(System.getProperty("geogenesis.sourceKeepFrac", "0.7")));
+
+    private static double clampFrac(double v) {
+        if (!Double.isFinite(v)) return 1.0;
+        if (v < 0) return 0.0;
+        return Math.min(v, 1.0);
+    }
+
+    /**
+     * 世界坐标确定性哈希 → {@code [0,1)}。SplitMix64 变体（无外包依赖、无状态）。
+     *
+     * <p>只用坐标本身，不掺世界种子：同一存档内稳定；换种子时地形/源头集合本就全变，
+     * 不需要额外的种子混淆。掺种子反而会让"同坐标不同窗口"在跨存档对比时失去可比性。</p>
+     */
+    private static double worldHash01(int worldX, int worldZ) {
+        long z = ((long) worldX << 32) ^ (worldZ & 0xffffffffL);
+        z += 0x9E3779B97F4A7C15L;
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        z = z ^ (z >>> 31);
+        return (z >>> 11) * 0x1.0p-53;          // 53 位尾数 → [0,1)
+    }
+
+    /**
      * 粒子方向惯性（治"揉团锯齿"：skelDump 铁证 = parent 弹出序交替折返，
      * CR 磨成圆钩 ⇒ 揉团）。本锚点偏移方向 = 本地 −∇bed ⊕ 上一锚点偏移 × 本系数
      * （legacy FlowField 动量语义的锚点层等价）。0 = 无惯性。
@@ -1541,6 +1592,9 @@ public final class DeterministicSkeleton {
         List<Integer> sources = base == null
                 ? collectSources(level, parent, resolved, lakeMask, sea, discharge, nx, nz, params)
                 : List.of();                       // base 已含本区源头链 ⇒ 不重追
+        // ★ 2026-10-29【按比例均匀抽稀源头】：只决定"这条支流要不要"，不动掩码/门限/间距/几何。
+        //   必须按世界坐标哈希（见 SOURCE_KEEP_FRAC javadoc）⇒ 同一位置在任何窗口结论一致。
+        sources = thinSources(sources, outside, nz);
         int sourcesTotal = sources.size();
 
         // 溢出口：每盆地出口格作"必追踪"新段起点（湖后段）。
@@ -2650,6 +2704,23 @@ public final class DeterministicSkeleton {
             return c != 0 ? c : Integer.compare(a, b);
         });
         return sources;
+    }
+
+    /**
+     * 按 {@link #SOURCE_KEEP_FRAC} 抽稀源头；{@code frac >= 1} 或拿不到世界原点时原样返回。
+     *
+     * <p>哈希键 = 世界 block 坐标，<b>不用窗内索引</b>：同一世界格会出现在相互重叠的多个
+     * 窗口（HALO 重叠、pass1/pass2）里，用窗内索引会算出不同结论 ⇒ 接缝错位。</p>
+     */
+    private static List<Integer> thinSources(List<Integer> src, OutsideContinuation outside, int nz) {
+        if (SOURCE_KEEP_FRAC >= 1.0 || src.isEmpty() || outside == null) return src;
+        List<Integer> kept = new ArrayList<>(src.size());
+        for (int k : src) {
+            int wx = outside.originX() + (k / nz) * outside.step();
+            int wz = outside.originZ() + (k % nz) * outside.step();
+            if (worldHash01(wx, wz) < SOURCE_KEEP_FRAC) kept.add(k);
+        }
+        return kept;
     }
 
     /**

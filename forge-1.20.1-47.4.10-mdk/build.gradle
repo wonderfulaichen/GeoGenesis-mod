@@ -2602,6 +2602,19 @@ task runSkeletonProbe(type: JavaExec) {
     }
 }
 
+// River source spatial distribution (2026-10-29): axis-alignment vs uniform random,
+// density, and a 32-block occupancy map. Read-only: uses production regionFor sources.
+//   gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [radiusBlock] [tol]"
+task runSourceDistributionProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SourceDistributionProbe'
+    maxHeapSize = '8g'
+    jvmArgs '-Dfile.encoding=UTF-8'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // ModelHydrologyProvider pass-1 single-flight concurrency regression.
 //   gradlew runModelProviderConcurrencyProbe
 //   Invariants: queued (not-yet-started) pass-1 tasks are atomically claimed by the
