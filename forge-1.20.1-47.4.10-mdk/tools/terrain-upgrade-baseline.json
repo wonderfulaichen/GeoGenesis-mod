@@ -1,0 +1,91 @@
+{
+  "_comment": "基础地形升级沙箱的可复现 baseline。所有改动仅位于 src/diagnostics 与 tools/，生产代码零改动（HEAD cbb44b6）。",
+  "generated_at": "2026-10-29",
+  "git_head": "cbb44b6",
+  "production_untouched": true,
+
+  "coordinate_spec": {
+    "seed": 9139912035078620160,
+    "center_blocks": [-140, 137],
+    "wide": { "size": 701, "step_blocks": 10, "cover_blocks": 7010 },
+    "close": { "size": 401, "step_blocks": 1, "cover_blocks": 401 }
+  },
+
+  "frozen_inputs": {
+    "toml": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/config-input.toml",
+    "classpath": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/classpath-jars.txt"
+  },
+
+  "reproduce": {
+    "compile": "javac --release 17 -encoding UTF-8 -cp <baseline/classes;baseline/src-main/resources;jars> -d build/terrain-upgrade/candidate-test-classes src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/*.java",
+    "render_wide": "java -Xmx6g -Dfile.encoding=UTF-8 -cp <classes;cp> com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery <toml> <outDir> 701 10 -140 137",
+    "render_close": "java -Xmx6g -Dfile.encoding=UTF-8 -cp <classes;cp> com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery <toml> <outDir> 401 1 -140 137",
+    "draw_wide": "python tools/render-sharp.py <outDir> wide \"<subtitle>\"",
+    "draw_close": "python tools/render-sharp.py <outDir> close \"<subtitle>\"",
+    "probe_orogen": "java -Xmx6g -Dfile.encoding=UTF-8 -cp <classes;cp> com.geogenesis.worldgen.terrain.candidate.OrogenFieldProbe <toml> <outDir> 601 16 -140 137"
+  },
+
+  "arm_parameters": {
+    "compose-production": "现行 TypeLandShape 加性混合（对照基准，不是升级目标）",
+    "compose-ocean": "参考组装原样：RegionLerper border = 平原（makeBorder）",
+    "compose-regional": "按区域选择 border 模式：模式场 Perlin(scale=3600wu, 3 oct)，Clamp(0.30,0.70) 后 Map 到 [0,1]，smoothstep(0.52, 0.78)",
+    "compose-regional-typed": "同一地形；类型图补构造带宽判据",
+    "compose-inverted": "全局边界反转（border = 山地），仅作对照",
+    "compose-tectonic": "σ=80 orogen/rift 构造偏置（已判定效果不明显）",
+    "compose-coherent": "连带放置（格子 id 改低频噪声），已判定不产生带状"
+  },
+
+  "key_parameters": {
+    "REGION_SCALE_wu": 1200,
+    "REGION_WARP_scale_wu": 400,
+    "REGION_WARP_strength_wu": 200,
+    "cell_jitter": 0.7,
+    "edge_min_max": [0.0, 0.5],
+    "MOUNTAIN_SHAPE_SCALE_wu": 2250,
+    "MTN_BLEND_LOW": 0.55,
+    "MTN_BLEND_HIGH": 0.78,
+    "MTN_BLEND_SPLIT": 0.575,
+    "GROUND_E": 0.02,
+    "E_SPAN": 1.50,
+    "border_mode_scale_wu": 3600,
+    "border_mode_smoothstep": [0.52, 0.78],
+    "border_cat_min_mode": 0.35,
+    "border_cat_edge_span": 0.55,
+    "border_cat_threshold": 0.22,
+    "OCEAN_DEPTH_blocks": 63,
+    "control_points": { "deepOcean": 0.1, "shallowOcean": 0.25, "coast": 0.448, "inland": 0.502 }
+  },
+
+  "slot_weights": {
+    "mixable": { "plains": 2.0, "steppe": 1.0, "dales": 1.5, "hills1": 2.0, "hills2": 2.0 },
+    "unmixable": { "plateau": 5.0, "badlands": 3.0, "basin": 4.0, "mountains": 5.0 },
+    "note": "RegionSelector.getWeightedArray 按最小权重归一展开槽位；mixable 5 条扩为 15 条（5 原始 + 10 复合），共 28 槽；独立四类共 17 槽 ⇒ 低地 62%"
+  },
+
+  "artifacts": {
+    "wide_png": { "path": "gallery-wide/sharp-wide.png", "sha256": "becafa402666cc684bff56f1809290ebe1d464aefcba4b784df0d56fa9a7986f" },
+    "close_png": { "path": "gallery-close/sharp-close.png", "sha256": "0a4c293c77cd596f35b771296d0afd180a6d46e0295b02cd2999f9ea6b8a5d26" },
+    "orogen_probe_png": { "path": "probe-orogen/orogen-probe.png", "sha256": "dc86ad9767891acd038d72c6f321168fed0f2e17b90a88ac543d5503a68191b7" },
+    "raws": {
+      "wide/compose-production": "f39cf29714876539",
+      "wide/compose-ocean": "757da488568ae83b",
+      "wide/compose-regional": "e38115c553f2868f",
+      "close/compose-production": "5df12112018c4b73",
+      "close/compose-ocean": "182b254003a20333",
+      "close/compose-regional": "269fcfa612c461b1"
+    },
+    "note": "compose-regional 与 compose-regional-typed 的 raw 哈希相同属预期：两者地形一致，只有类型图判据不同"
+  },
+
+  "type_shares_wide": {
+    "compose-production":          { "basin": 6.0,  "plain": 75.0, "hills": 6.0,  "plateau": 6.0, "mountains": 7.0 },
+    "compose-ocean":               { "basin": 11.2, "plain": 19.1, "hills": 52.5, "plateau": 7.2, "mountains": 10.0 },
+    "compose-regional-typed":      { "basin": 10.0, "plain": 17.6, "hills": 46.5, "plateau": 7.1, "mountains": 18.8 }
+  },
+
+  "terrain_stats_wide": {
+    "compose-production":     { "relief": 247, "medianSlope": 0.14, "p99Slope": 1.52, "yRange": [19, 265] },
+    "compose-ocean":          { "relief": 244, "medianSlope": 0.22, "p99Slope": 0.95, "yRange": [3, 248] },
+    "compose-regional":       { "relief": 264, "medianSlope": 0.22, "p99Slope": 0.95, "yRange": [3, 267] }
+  }
+}
