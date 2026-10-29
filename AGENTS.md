@@ -135,6 +135,34 @@ gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"
 **改动地形/水文产出必须升 `PreviewDisplay.CACHE_SCHEMA_VERSION`**，否则预览**静默复用旧磁盘缓存**
 → 表现为"改了没生效"。**当前值以代码常量为准**（常量上方的注释清单是唯一留痕处）。
 
+## ⛔ 开关（`-D`）四条铁律 —— 2026-10-29 用整条左侧水系换来的
+
+> **事故**：`geogenesis.boundaryPorts` 被两处读取，Provider 默认**开**、骨架默认**关**。
+> 游戏正常启动不带 `-D` ⇒ 端口半接线，1401² 生产图左带河道 24824→10771，
+> **左侧水系成片消失**（还伴随平行直线束）。它毁掉的是"已认可标准图"，且
+> `HYDROLOGY.md` 里早就把它记成"开关不一致（未修）"却无人量化 —— 见 §〇bu。
+
+1. **同一属性名，必须只有一个默认值。** 新增/修改开关前先全仓 `grep` 该属性名，
+   确认**每一处读取**的默认口径完全一致。两种惯用法只许选一种：
+   - 默认**开**：`!"false".equals(System.getProperty(KEY))`
+   - 默认**关**：`Boolean.getBoolean(KEY)` 或 `"true".equals(System.getProperty(KEY))`
+   `Boolean.getBoolean(KEY)` 与 `!"false".equals(...)` 放在同一属性上 = **必然的半接线 bug**。
+2. **一个属性只表达一件事。** 两个默认值不同 / 语义不同 ⇒ **拆成两个键**
+   （例：`channelMinCells` 世界 150 与骨架 40 已拆为 `skeletonSourceCells`）。
+3. **注释里的"默认开/关"必须与代码同源。** 改默认值时，同一提交内改掉所有相关注释；
+   违反后果见 §〇bu（`PORT_EGRESS`、`meander`、`v2 typed 接力` 三处注释曾长期反向说谎）。
+4. **默认值一变 ⇒ 必须升 `CACHE_SCHEMA_VERSION` 并重出 1401² 生产图对拍。**
+   对拍必须与"用户认可的标准图"比，不能拿自己上一次的产出当基准。
+
+### ★ 出图对照的正确口径（2026-10-29 补）
+- 用户认可的**标准图**是 `PNG 20bde1c8…`、river=59250、lake=105766（左带河道 24824）。
+- 产出它的命令**显式带** `-Dgeogenesis.boundaryPorts=true`。任何"正典大图"记录
+  **必须写明该臂的完整 JVM 属性**，否则无法复现。
+- **`ab404ad7…`（river=41928）是旧默认半接线几何，不是标准图。** 历史文档多处误当基准，
+  已在 `HYDROLOGY.md` §〇bt/§〇bu 标注；引用旧 SHA 前先确认其属性口径。
+- 判"水文坏了"的**首选量化**：1401² 图里**左带（x<430, y 500..1390）河道像素**。
+  标准 24824；跌破 ~11000 ⇒ 端口半接线。
+
 ## 调试开关与探针铁律
 
 - **探针 = `diagnostics/**/*Probe.java` 独立 main 工具（`src/diagnostics` 共 252 个 `.java`，不启动 MC）。**
@@ -164,6 +192,25 @@ gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"
 ⇒ 照注释去"清理旧参数"会**静默改变生产产出**。
 
 历史备份见 `backups/`（若存在）。
+
+### 2026-10-29 清理（同批消除"注释说谎"）
+- 删除 `ModelHydrologyProvider.collectIncomingTyped` / `collectIncomingWires`：
+  零调用，但注释写着"生产内部用" ⇒ 会让读者以为外部 `List<Integer>` API 仍在用。
+  真正的生产入口是 `assembleIncomingWires`。
+- 删除 `DeterministicSkeleton.auditedDownstream` / `joinAudited`：零调用的旧版布尔审计链，
+  已被 `auditEvidence`（带证据载荷）取代。其"v1 缺陷 ④：JOIN 不等于通向水体"的知识
+  已并入 `auditEvidence` 的 javadoc，未丢失。
+- `solveHier` 的 else 分支注释曾写"接力：本区粗层主干源头 + 邻区粗层主干端口"，
+  而代码传的是 `List.of()`（**恒空**）。已改为如实说明"当前不做跨区接力"，
+  并标注 `hierIncomingSeeds` 仅被 `SharedLakeSeamProbe` 反射调用。
+- `geogenesis.channelMinCells` 一属性两义（世界排水默认 150 / 骨架源门限默认 40）
+  ⇒ 骨架侧拆出独立键 `geogenesis.skeletonSourceCells`（默认仍 40，产出零变）。
+- 删 `TerrainCharacterField.BlendResult.lo/hi`：自 v8 起恒 0.0，但 `DiscontinuityProbe`
+  仍用它反推 `typeWeighted=(eLand-lo)/range` ⇒ range=0 ⇒ 图层恒 0.5，
+  **探针打印一整列假梯度统计**。字段已删除，探针改为只输出真实量。
+
+**教训**：死代码本身不可怕，**"死代码 + 声称它在生产路径上"的注释**才可怕 ——
+它会让人修错地方。删死代码时先把注释里的领域知识搬进仍在用的方法。
 
 ## 测试
 

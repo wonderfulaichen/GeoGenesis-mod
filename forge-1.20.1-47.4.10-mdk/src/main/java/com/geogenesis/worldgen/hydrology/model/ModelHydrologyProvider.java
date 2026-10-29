@@ -1668,8 +1668,9 @@ public final class ModelHydrologyProvider {
      *   <li>源头面积下限 = {@code n² × 0.003} 集水（legacy 骨架
      *       {@code thr = gridN²×0.003} 同值；{@code -Dgeogenesis.skeletonSourceFrac} 可 A/B）；</li>
      *   <li>就近汇入窗口 = 2 格（legacy {@code traceStep}）；</li>
-     *   <li>meander 默认关（amp=0，用户 2026-10-10："弯曲先移除，我后面重新设计"）；
-     *       重设计时用 {@code -Dgeogenesis.skeletonMeanderAmp}（legacy 默认 6.0 / 波长 24）开；</li>
+     *   <li>meander 默认<b>开</b>（amp=0.6）。历史：2026-10-10 用户曾要求关闭
+     *       （"弯曲先移除，我后面重新设计"），2026-10-25 因"骨架呈折线"改为默认开；
+     *       用 {@code -Dgeogenesis.skeletonMeanderAmp=0} 可回到关闭态做 A/B；</li>
      *   <li>分支上限 {@code -Dgeogenesis.skeletonMaxRivers}（legacy {@code riverCount} 同义；0=关）。</li>
      * </ul>
      *
@@ -1715,8 +1716,11 @@ public final class ModelHydrologyProvider {
         //   放宽门限必然放出一批短段，提高长度下限把它们整条丢弃。
         //   实测 nodes=6→14 在 chan=150 时 riverPx 17184→16483（−4%），
         //   即只砍短段、不动主干，正是需要的选择性。
+        //   ⚠【2026-10-29 拆分属性】本处原与 `geogenesis.channelMinCells` 共用属性名，
+//     但两处默认值不同（骨架 40 / 世界排水 150）。调世界门限会**静默**把骨架源密度
+//     改掉 3.75 倍，与 boundaryPorts 那次同类的坑。故拆为独立键，默认值不变。
         double chanMinCells = Double.parseDouble(
-                System.getProperty("geogenesis.channelMinCells", "40"));
+                System.getProperty("geogenesis.skeletonSourceCells", "40"));
         double srcAccum = runoff > 0 ? chanMinCells * runoff : 0.0;
         // ★★★ 2026-10-25【meander 由 0 改为默认开启 —— 治"骨架呈折线"】★★★
         //
@@ -3063,23 +3067,9 @@ public final class ModelHydrologyProvider {
     }
 
     /**
-     * ★ ports 模块 <b>typed 接力入口</b>（生产内部用；外部 {@code List<Integer>} API 保持兼容）。
-     *
-     * <p>与 {@link #collectIncoming} 的区别：<b>不用"落在哪条框就推对角"</b>，
-     * 而是逐端口核对<b>实际接收 owner</b>（由真实下一步世界坐标 floorDiv 得出），
-     * 并用<b>共享世界锚点</b>换算本区格索引；锚点若无法在接收网格上逐位重现 ⇒ 显式异常。</p>
-     */
-    private List<Integer> collectIncomingTyped(int rx, int rz, int n,
-                                               int myOriginX, int myOriginZ) {
-        List<Integer> out = new ArrayList<>();
-        for (WireIn w : collectIncomingWires(rx, rz, n, myOriginX, myOriginZ)) out.add(w.anchorCell());
-        return out;
-    }
-
-    /**
      * ★ v2 <b>typed 接力装配</b>：端口 → {@link WireIn}（锚点格 + 真实下一步格 + 来向）。
      *
-     * <h3>与旧 {@code collectIncomingTyped} 的区别</h3>
+     * <h3>为什么必须带 next 而不是只回锚点格</h3>
      * <p>旧版只回 {@code List<Integer>}（锚点格索引）：<b>方向与 next 全部丢失</b>，
      * 接收方只能拿自己的地形重猜第一步 ⇒ 缝上"锚点有、下一步没"的假接力。
      * 新版把三件事一起带过去，并在这里就做<b>几何可判定</b>的拒收：</p>
@@ -3092,11 +3082,6 @@ public final class ModelHydrologyProvider {
      * </ul>
      * <p>拒收<b>不改道、不猜</b>；全部写进 {@link #WIRE_ASSEMBLY_REJECTS} 供审计与日志。</p>
      */
-    private List<WireIn> collectIncomingWires(int rx, int rz, int n,
-                                              int myOriginX, int myOriginZ) {
-        return assembleIncomingWires(rx, rz, n, myOriginX, myOriginZ, typedIncomingPorts(rx, rz));
-    }
-
     private List<WireIn> assembleIncomingWires(int rx, int rz, int n, int myOriginX, int myOriginZ,
                                               List<BoundaryPort> ports) {
         List<WireIn> out = new ArrayList<>();
@@ -3539,8 +3524,11 @@ public final class ModelHydrologyProvider {
             LOGGER.info("[HYDRO-WORLD] region ({},{}) edges={} pendingBasins={} nodes={} terrainSamples={} neighborPipelines=0",
                     rx, rz, world.edges().size(), world.pendingBasins().size(), world.sampledNodes(), world.terrainSamples());
         } else {
-            // 接力：本区粗层主干源头（细化主干）+ 邻区粗层主干端口（续流）。
-            // 两路都由【本区自己的侵蚀 parent】往里追 ⇒ 不是"只把边界换粗层"。
+            // ⚠【本分支当前**不做**跨区接力】incoming 恒为空列表（历史遗留，勿据注释误解）。
+            //   曾经的意图是"本区粗层主干源头 + 邻区粗层主干端口"两路细化；
+            //   实际实现里 {@link #hierIncomingSeeds} 只被诊断探针反射调用，
+            //   生产这条路径从未接线 ⇒ 该分支的骨架只由本区侵蚀 parent 生成。
+            //   若要真接上，必须同时验证 CROSS_PASS/HIER 的独立产出，不能只改这一行。
             List<Integer> incoming = List.of();
             var sr = skeletonRegion(p, originX, originZ, incoming, true);
             // #region agent log: R1 细层出口目前未消费，先量化再改边界几何
@@ -3571,6 +3559,10 @@ public final class ModelHydrologyProvider {
      *
      * <p>语义：粗层给出<b>主干候选</b>（源头与跨区接口），细层用<b>侵蚀后地形</b>把主干
      * 追踪出来并细化 —— 而不是"只把边界换成粗层、其余照旧"。</p>
+     *
+     * <p>⚠ <b>生产路径当前不调用本方法</b>（{@code solveHier} 的 else 分支传空列表）。
+     * 目前只有诊断探针 {@code SharedLakeSeamProbe} 通过反射拿它做对照。
+     * 改动前请先确认是要"真接上"还是"继续只给探针用"。</p>
      */
     private List<Integer> hierIncomingSeeds(int rx, int rz, int n,
                                             int myOriginX, int myOriginZ) {
