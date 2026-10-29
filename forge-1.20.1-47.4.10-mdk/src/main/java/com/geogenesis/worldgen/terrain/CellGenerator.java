@@ -1,6 +1,9 @@
 package com.geogenesis.worldgen.terrain;
 
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.diagnostics.HydrologyMetrics;
+import com.geogenesis.diagnostics.HydrologyMetrics.Cache;
+import com.geogenesis.diagnostics.HydrologyMetrics.Outcome;
 import com.geogenesis.worldgen.climate.ClimateRegion;
 import com.geogenesis.worldgen.climate.ClimateSpline;
 import com.geogenesis.worldgen.climate.Latitude;
@@ -959,6 +962,10 @@ public final class CellGenerator {
 
     /** 侵蚀 tile 缓存命中统计（P0-3 埋点）。 */
     private final CacheStats tileCacheStats = new CacheStats("erosionTile");
+    // 【性能测量·默认关】命中/驱逐的既有口径就在上面这两个计数器（tileCacheGet 太热 ⇒ 刻意不加字符串计数）。
+    //   HydrologyMetrics（-Dgeogenesis.hydrologyMetrics=true）只补三样：
+    //   inflight 等待 hydro.tile.wait + cache.EROSION_TILE.WAIT、实体生成 hydro.tile.solve + .COMPUTE、
+    //   驱逐 .EVICT —— 用于把"等待别人"与"真在算"分开。
     /** LRU 逻辑时钟（P0-3）：每次访问自增，驱逐时取最小者。 */
     private final AtomicLong tileAccessClock = new AtomicLong();
     /** 侵蚀配置指纹快照（2026-08-06）：配置改动 → 侵蚀/河流 tile 缓存失效，避免旧配置结果被复用 */
@@ -1066,13 +1073,19 @@ public final class CellGenerator {
         java.util.concurrent.CompletableFuture<ErosionTileResult> existing =
                 erosionTilesInFlight.putIfAbsent(k, mine);
         if (existing != null) {
+            // 【测量】inflight 等待（别人正在生成同一 tile）：只补 WAIT 计数与等待时长；
+            //   命中率仍由既有 tileCacheStats 记 —— 刻意【不】在 tileCacheGet 里加字符串计数（太热）。
+            HydrologyMetrics.cache(Cache.EROSION_TILE, Outcome.WAIT);
+            var waitScope = HydrologyMetrics.begin("hydro.tile.wait", tileCX, tileCZ);
             long waitStart = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()
                     ? System.nanoTime() : 0;
             try {
                 return existing.join();
             } catch (java.util.concurrent.CompletionException ce) {
+                HydrologyMetrics.add("tile.wait.failed", 1L);
                 return null;
             } finally {
+                HydrologyMetrics.end(waitScope);
                 if (waitStart != 0 && System.nanoTime() - waitStart > 100_000_000L) {
                     com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("B", "tile-wait",
                             "tile=" + tileCX + "," + tileCZ + " ms=" + (System.nanoTime() - waitStart) / 1e6);
@@ -1089,7 +1102,14 @@ public final class CellGenerator {
             r = tileCacheGet(k);
             if (r == null) {
                 if (Thread.currentThread().isInterrupted()) throw new CancellationException();
-                r = generateErosionTile(tileCX, tileCZ);
+                // 【测量】实体生成（一次真实 tile 求解）：成功才记 COMPUTE（取消/失败另计）。
+                var solveScope = HydrologyMetrics.begin("hydro.tile.solve", tileCX, tileCZ);
+                try {
+                    r = generateErosionTile(tileCX, tileCZ);
+                    HydrologyMetrics.cache(Cache.EROSION_TILE, Outcome.COMPUTE);
+                } finally {
+                    HydrologyMetrics.end(solveScope);
+                }
                 r.lastAccess = tileAccessClock.incrementAndGet();
                 erosionTileCache.putIfAbsent(k, r);
                 pruneErosionCache();
@@ -1098,9 +1118,11 @@ public final class CellGenerator {
             mine.complete(r);
             return r;
         } catch (CancellationException e) {
+            HydrologyMetrics.add("tile.solve.cancelled", 1L);
             mine.completeExceptionally(e);
             return null;
         } catch (RuntimeException | Error e) {
+            HydrologyMetrics.add("tile.solve.failed", 1L);
             mine.completeExceptionally(e);
             throw e;
         } finally {
@@ -1861,6 +1883,8 @@ public final class CellGenerator {
 
     /** 探针专用：直接生成/取 tile 结果（ErosionPeriodProbe 用，不经 getOrGenTile 的中断捕获）。 */
     public ErosionTileResult getErosionTileResultForProbe(int tileCX, int tileCZ) {
+        // ⚠【测量口径】本入口刻意【不】走 getOrGenTileUnchecked ⇒ 不计入
+        //   hydro.tile.solve / cache.EROSION_TILE.COMPUTE，否则探针会把生产统计污染掉。
         long k = tileKey(tileCX, tileCZ);
         ErosionTileResult r = erosionTileCache.get(k);
         if (r == null) {
@@ -2045,7 +2069,10 @@ public final class CellGenerator {
             new ArrayList<>(erosionTileCache.entrySet());
         entries.sort(Comparator.comparingLong(e -> e.getValue().lastAccess));
         for (int i = 0; i < toRemove && i < entries.size(); i++) {
-            if (erosionTileCache.remove(entries.get(i).getKey()) != null) tileCacheStats.evicted();
+            if (erosionTileCache.remove(entries.get(i).getKey()) != null) {
+                tileCacheStats.evicted();
+                HydrologyMetrics.cache(Cache.EROSION_TILE, Outcome.EVICT);
+            }
         }
     }
 

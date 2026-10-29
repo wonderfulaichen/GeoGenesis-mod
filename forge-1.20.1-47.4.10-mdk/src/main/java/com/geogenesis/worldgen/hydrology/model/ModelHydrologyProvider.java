@@ -1,5 +1,8 @@
 package com.geogenesis.worldgen.hydrology.model;
 
+import com.geogenesis.diagnostics.HydrologyMetrics;
+import com.geogenesis.diagnostics.HydrologyMetrics.Cache;
+import com.geogenesis.diagnostics.HydrologyMetrics.Outcome;
 import com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
@@ -69,6 +72,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>无瀑布/水幕（lipSurfaceY = waterSurfaceY）；</li>
  *   <li>并发与冷 tile 竞争未实机压测。</li>
  * </ul>
+ *
+ * <h2>可选性能测量（{@code -Dgeogenesis.hydrologyMetrics=true}，默认关）</h2>
+ * <p>{@link HydrologyMetrics} 记录 region/pass1 缓存、求解与等待，以及骨架、shape、宽深、
+ * 索引、fromReaches、columns 阶段；不参与数值决策，不替换原日志或追加文件。
+ * 聚合项跨任务求和，不能相加嵌套阶段推导总耗时；JFR 可结合线程与时间范围定位。
+ * HIER/共享湖域内部缓存、margin 和逐段 nearest 未单独计量。</p>
  */
 public final class ModelHydrologyProvider {
 
@@ -978,10 +987,20 @@ public final class ModelHydrologyProvider {
             }
             Pass1 data = null;
             Throwable err = null;
+            // 【测量】pass-1 实体任务（pipeline + skeleton 的父 scope；两者在 solvePass1 内另有子 scope）。
+            long task = HydrologyMetrics.newTaskId();
+            var taskScope = HydrologyMetrics.begin("hydro.pass1.task", rx, rz, -1, task);
             try {
                 data = solvePass1(rx, rz);
             } catch (RuntimeException | Error e) {
                 err = e;
+            } finally {
+                HydrologyMetrics.end(taskScope);
+            }
+            if (err == null) {
+                HydrologyMetrics.cache(Cache.PASS1, Outcome.COMPUTE);
+            } else {
+                HydrologyMetrics.add("pass1.task.failed", 1L);
             }
             try {
                 if (err == null) {
@@ -1817,7 +1836,11 @@ public final class ModelHydrologyProvider {
         //   误触发（大弯河曲相隔 >12 步 ⇒ 豁免放不过 ⇒ "贴着自己"就地终止）。
         //   终止的链既不接湖也不接海 ⇒ 凭空断流。legacy 同名机制由"洼地续流"兜底，
         //   我方无该兜底 ⇒ 直接关闭（候选：日后给自贴近终止加专用 End + 兜底）。
-        var sk = DeterministicSkeleton.build(
+        // 【测量】骨架本体（pass1 与 final 都走这里；父级 scope 分别是 hydro.pass1.skeleton / hydro.region.solve）
+        DeterministicSkeleton.Result sk;
+        var skelBuildScope = HydrologyMetrics.begin("hydro.skel.build", originX, originZ);
+        try {
+            sk = DeterministicSkeleton.build(
                 p.level(), p.parent(), p.resolved(), p.lake(), p.sea(),
                 p.discharge(), p.lakeResult() == null ? null : p.lakeResult().basinOutlet(),
                 n, n, skParams, incomingCells, incomingWires, p.bed(),
@@ -1841,6 +1864,9 @@ public final class ModelHydrologyProvider {
                 // ★ 显式传湖泊水量平衡上下文：溢口首步用 parent[outlet] 的真实外出方向，
                 //   并以 basinOutlet/basinId 做短滤认证。（不传 ⇒ 旧行为逐位不变。）
                 p.lakeResult());
+        } finally {
+            HydrologyMetrics.end(skelBuildScope);
+        }
         if (HIER) {
             // 回传事实（探针可断言"实验构建确实关了过滤且未删链"）。
             HierarchicalHydrology.Diag.skeletonBuild(sk.networkFilterEnabled,
@@ -1870,9 +1896,16 @@ public final class ModelHydrologyProvider {
                     sk.traces.size(), sk.sourcesTotal, String.format("%.1f", maxDischarge(p.discharge())));
         }
         // 亚格几何（Catmull-Rom + 格点吸附）→ SegmentIndex（落块用）
-        var shaped = DeterministicSkeleton.shape(sk.traces, p.level(),
-                originX, originZ, STEP, n, n, skParams, p.bed(), sk.anchorPins);
-        shaped = OutletLakePrefix.attach(sk.traces, shaped, p, originX, originZ, STEP);
+        // 【测量】shape 阶段 = 亚格折线化 + 出湖前缀拼接（final 的几何主体）
+        List<DeterministicSkeleton.Shaped> shaped;
+        var shapeScope = HydrologyMetrics.begin("hydro.skel.shape", originX, originZ);
+        try {
+            shaped = DeterministicSkeleton.shape(sk.traces, p.level(),
+                    originX, originZ, STEP, n, n, skParams, p.bed(), sk.anchorPins);
+            shaped = OutletLakePrefix.attach(sk.traces, shaped, p, originX, originZ, STEP);
+        } finally {
+            HydrologyMetrics.end(shapeScope);
+        }
         List<DeterministicSkeleton.Shaped> allPolys = shaped;
         // ★ 诊断（`-Dgeogenesis.joinChk=true`）：JOIN 点的像素是否重合
         //   —— 共享锚点表若生效，两条链在该格应产出【逐位相同】的像素。
@@ -1950,19 +1983,36 @@ public final class ModelHydrologyProvider {
                 }
             }
         }
-        WidthInheritance inherited = primary && BOUNDARY_PORTS && !HIER
-                ? inheritedWidths(sk, originX, originZ, n) : new WidthInheritance(new HashMap<>(), new java.util.HashSet<>(), new HashMap<>());
-        Map<Integer, Double> boundary = primary && BOUNDARY_PORTS && !HIER
-                ? boundaryWidths(sk, incomingWires, inherited, originX, originZ, n) : Map.of();
-        // 同一世界出口格在相邻窗口可能判成不同源盆 ⇒ 出湖宽度必须取双方较小者，
-        // 否则上游窗口按大盆出流抬粗、下游窗口按小盆压细，整条短河被迫收窄。
-        // ⚠ 门控必须与 inheritedWidths 完全一致（primary + BOUNDARY_PORTS + !HIER）：
-        //   pass1 内部也走本方法，若无 primary 门控就会在 pass1 里再求邻区 pass1 ⇒ 连锁扇出。
-        Map<Long, Double> outletHalf = primary && BOUNDARY_PORTS && !HIER && p != null && sk.traces != null
-                ? agreedOutletHalves(sk, p, originX, originZ, n) : Map.of();
-        SegmentIndex seg = allPolys.isEmpty() ? SegmentIndex.EMPTY
-                : SegmentIndex.buildFromNodes(allPolys, p, originX, originZ, n, STEP,
-                        sk.traces, sk.rivers, boundary, inherited, outletHalf);
+        // 【测量】profile 的输入层（宽度继承 / 边界约定 / 跨窗出湖半宽）；
+        //   真正的 RiverWidthProfile 求解在 buildFromNodes 内（hydro.profile.width）。
+        WidthInheritance inherited;
+        Map<Integer, Double> boundary;
+        Map<Long, Double> outletHalf;
+        var widthScope = HydrologyMetrics.begin("hydro.skel.width", originX, originZ);
+        try {
+            inherited = primary && BOUNDARY_PORTS && !HIER
+                    ? inheritedWidths(sk, originX, originZ, n) : new WidthInheritance(new HashMap<>(), new java.util.HashSet<>(), new HashMap<>());
+            boundary = primary && BOUNDARY_PORTS && !HIER
+                    ? boundaryWidths(sk, incomingWires, inherited, originX, originZ, n) : Map.of();
+            // 同一世界出口格在相邻窗口可能判成不同源盆 ⇒ 出湖宽度必须取双方较小者，
+            // 否则上游窗口按大盆出流抬粗、下游窗口按小盆压细，整条短河被迫收窄。
+            // ⚠ 门控必须与 inheritedWidths 完全一致（primary + BOUNDARY_PORTS + !HIER）：
+            //   pass1 内部也走本方法，若无 primary 门控就会在 pass1 里再求邻区 pass1 ⇒ 连锁扇出。
+            outletHalf = primary && BOUNDARY_PORTS && !HIER && p != null && sk.traces != null
+                    ? agreedOutletHalves(sk, p, originX, originZ, n) : Map.of();
+        } finally {
+            HydrologyMetrics.end(widthScope);
+        }
+        // 【测量】index 阶段 = SegmentIndex 构建（内含 profile/depth/诊断 I/O 三个子 scope）
+        SegmentIndex seg;
+        var indexScope = HydrologyMetrics.begin("hydro.skel.index", originX, originZ);
+        try {
+            seg = allPolys.isEmpty() ? SegmentIndex.EMPTY
+                    : SegmentIndex.buildFromNodes(allPolys, p, originX, originZ, n, STEP,
+                            sk.traces, sk.rivers, boundary, inherited, outletHalf);
+        } finally {
+            HydrologyMetrics.end(indexScope);
+        }
         RiverCenterlines.Params wp = RiverCenterlines.Params.defaults();
         List<RiverCenterlines.Reach> reaches = new ArrayList<>();
         for (var t : sk.traces) {
@@ -2034,7 +2084,14 @@ public final class ModelHydrologyProvider {
             srcPts[i] = new int[]{originX + (c0 / n) * STEP, originZ + (c0 % n) * STEP};
         }
         logBoundaryPorts(sk, originX, originZ, n, primary);
-        return new SkeletonRegion(RiverCenterlines.fromReaches(reaches, n, n, STEP), seg,
+        RiverCenterlines.Result centerlines;
+        var reachesScope = HydrologyMetrics.begin("hydro.skel.fromReaches", originX, originZ);
+        try {
+            centerlines = RiverCenterlines.fromReaches(reaches, n, n, STEP);
+        } finally {
+            HydrologyMetrics.end(reachesScope);
+        }
+        return new SkeletonRegion(centerlines, seg,
                 sk.exitSeeds, primary && Boolean.getBoolean("geogenesis.drainageAudit")
                 ? ProductionDrainageAudit.capture(p, sk, shaped,
                 originX, originZ, REGION) : null, srcPts, shaped, sk);
@@ -2075,7 +2132,35 @@ public final class ModelHydrologyProvider {
      * @return 256 列（顺序与调用方惯例一致：{@code cells[lx*16+lz]}）
      */
     public List<HydrologyBlockCarvedColumn> columnsFor(int chunkX, int chunkZ, Cell[] originalCells) {
-        if (originalCells == null || originalCells.length != 256) {
+        return measuredColumns(chunkX, chunkZ, originalCells, null);
+    }
+
+    /** 地形合成内部入口：只读侵蚀前快照，不持有或发布可变 Cell 别名。 */
+    public List<HydrologyBlockCarvedColumn> columnsForHeights(int chunkX, int chunkZ, double[] originalHeights) {
+        if (originalHeights == null || originalHeights.length != 256) {
+            throw new IllegalArgumentException("originalHeights must be 256");
+        }
+        return measuredColumns(chunkX, chunkZ, null, originalHeights);
+    }
+
+    private List<HydrologyBlockCarvedColumn> measuredColumns(int chunkX, int chunkZ,
+                                                             Cell[] originalCells, double[] originalHeights) {
+        // 【测量】chunk 级"列计划"完整请求（内含 regionFor 的命中/等待/求解与逐列最近段查询）。
+        var scope = HydrologyMetrics.begin("hydro.columns", chunkX, chunkZ);
+        try {
+            return columnsForBody(chunkX, chunkZ, originalCells, originalHeights);
+        } catch (RuntimeException | Error e) {
+            HydrologyMetrics.add("columns.failed", 1L);
+            throw e;
+        } finally {
+            HydrologyMetrics.end(scope);
+        }
+    }
+
+    /** 两个入口共用全部列判定；Cell 入口保持原长度校验及逐列读取时机。 */
+    private List<HydrologyBlockCarvedColumn> columnsForBody(int chunkX, int chunkZ,
+                                                           Cell[] originalCells, double[] originalHeights) {
+        if (originalHeights == null && (originalCells == null || originalCells.length != 256)) {
             throw new IllegalArgumentException("originalCells must be 256");
         }
         int blockX0 = chunkX * 16, blockZ0 = chunkZ * 16;
@@ -2157,7 +2242,8 @@ public final class ModelHydrologyProvider {
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
                 int blockX = blockX0 + lx, blockZ = blockZ0 + lz;
-                double original = originalCells[lx * 16 + lz].height;
+                double original = originalHeights != null ? originalHeights[lx * 16 + lz]
+                        : originalCells[lx * 16 + lz].height;
                 // 网格索引（4-block 网格 → 最近格点）
                 int gi = clamp((int) Math.round((blockX - rd.originX) / (double) STEP), n);
                 int gj = clamp((int) Math.round((blockZ - rd.originZ) / (double) STEP), n);
@@ -2600,8 +2686,12 @@ public final class ModelHydrologyProvider {
         // ① 缓存命中
         synchronized (SHARED_CACHE) {
             RegionData hit = SHARED_CACHE.get(key);
-            if (hit != null) return hit;
+            if (hit != null) {
+                HydrologyMetrics.cache(Cache.REGION, Outcome.HIT);
+                return hit;
+            }
         }
+        HydrologyMetrics.cache(Cache.REGION, Outcome.MISS);
         // ② 已有在途求解（它在别人的线程/队列上）→ 等它
         CompletableFuture<RegionData> existing = SHARED_INFLIGHT.get(key);
         if (existing != null) return await(existing, key, rx, rz);
@@ -2610,7 +2700,19 @@ public final class ModelHydrologyProvider {
         CompletableFuture<RegionData> raced = SHARED_INFLIGHT.putIfAbsent(key, mine);
         if (raced != null) return await(raced, key, rx, rz);   // 输了 → 等赢家
         try {
-            RegionData data = solve(rx, rz);
+            // 【测量】region 实体求解：task-local scope（每 region 一次，非逐块热路径）。
+            long task = HydrologyMetrics.newTaskId();
+            var solveScope = HydrologyMetrics.begin("hydro.region.solve", rx, rz, -1, task);
+            RegionData data;
+            try {
+                data = solve(rx, rz);
+                HydrologyMetrics.cache(Cache.REGION, Outcome.COMPUTE);
+            } catch (RuntimeException | Error e) {
+                HydrologyMetrics.add("region.solve.failed", 1L);
+                throw e;
+            } finally {
+                HydrologyMetrics.end(solveScope);
+            }
             mine.complete(data);
             cachePut(key, data);
             SHARED_INFLIGHT.remove(key, mine);
@@ -2625,17 +2727,24 @@ public final class ModelHydrologyProvider {
 
     /** 等待在途求解并入缓存（两个入口共用：输掉竞争的调用方 / 预热方）。 */
     private RegionData await(CompletableFuture<RegionData> f, CacheKey key, int rx, int rz) {
+        // 【测量】本方法只被 regionFor 的"别人正在解"的两条分支调用 ⇒ 每次都是一次真实 inflight 等待。
+        HydrologyMetrics.cache(Cache.REGION, Outcome.WAIT);
+        var waitScope = HydrologyMetrics.begin("hydro.region.wait", rx, rz);
+        RegionData data;
         try {
-            RegionData data = f.join();
-            SHARED_INFLIGHT.remove(key, f);
-            cachePut(key, data);
-            return data;
+            data = f.join();
         } catch (CompletionException e) {
+            HydrologyMetrics.add("region.wait.failed", 1L);
             SHARED_INFLIGHT.remove(key, f);     // ★ 失败绝不缓存
             LOGGER.warn("[HYDRO-MODEL] region ({},{}) solve failed: {}", rx, rz,
                     String.valueOf(e.getCause()));
             throw e;
+        } finally {
+            HydrologyMetrics.end(waitScope);
         }
+        SHARED_INFLIGHT.remove(key, f);
+        cachePut(key, data);
+        return data;
     }
 
     /** 入 LRU 缓存（容量满时淘汰最久未用）。 */
@@ -2644,6 +2753,7 @@ public final class ModelHydrologyProvider {
             SHARED_CACHE.put(key, data);
             while (SHARED_CACHE.size() > CACHE_CAP) {
                 SHARED_CACHE.remove(SHARED_CACHE.keySet().iterator().next());
+                HydrologyMetrics.cache(Cache.REGION, Outcome.EVICT);
             }
         }
     }
@@ -2739,6 +2849,8 @@ public final class ModelHydrologyProvider {
     private Pass1 regionPass1(int rx, int rz) {
         // ★ 分层实验：pass-1 内容 = 本 tract 的粗层固定域（零 sampleWu/零预热/零邻区）。
         //   直接短路到粗层缓存，避免与 P1_CACHE 重复计算同一份粗产物。
+        //   ⚠【测量缺口·如实标注】HIER 分支不进 P1_CACHE ⇒ 它的 cache.PASS1.* 计数与
+        //     hydro.pass1.* scope 都【不出现】；粗层缓存（COARSE_CACHE）本身未插桩。
         if (HIER) {
             HierarchicalHydrology.Coarse ct = coarseFor(rx, rz);
             return new Pass1(ct.pipe(), coarseExitSeeds(ct), ct.originX(), ct.originZ());
@@ -2746,19 +2858,24 @@ public final class ModelHydrologyProvider {
         CacheKey key = new CacheKey(seed, rx, rz, strategy);
         synchronized (P1_CACHE) {
             Pass1 hit = P1_CACHE.get(key);
-            if (hit != null) return hit;
+            if (hit != null) {
+                HydrologyMetrics.cache(Cache.PASS1, Outcome.HIT);
+                return hit;
+            }
         }
+        HydrologyMetrics.cache(Cache.PASS1, Outcome.MISS);
         // ① 已有在途任务 → 先尝试【原子接管】（只有"排队未开跑"抢得到；RUNNING/DONE 抢不到）
         Pass1Task existing = P1_INFLIGHT.get(key);
         if (existing != null) {
-            existing.runIfClaimed();
+            // 接管成功 = 本线程真跑（算 COMPUTE，由 Pass1Task 记）；否则是纯等待。
+            if (!existing.runIfClaimed()) HydrologyMetrics.cache(Cache.PASS1, Outcome.WAIT);
             return awaitPass1(existing);
         }
         // ② 抢占：赢家在本线程直接跑（counted=false ⇒ 不占预热名额、不进池、零排队）
         Pass1Task mine = new Pass1Task(key, rx, rz, false);
         Pass1Task raced = P1_INFLIGHT.putIfAbsent(key, mine);
         if (raced != null) {
-            raced.runIfClaimed();
+            if (!raced.runIfClaimed()) HydrologyMetrics.cache(Cache.PASS1, Outcome.WAIT);
             return awaitPass1(raced);
         }
         mine.runIfClaimed();
@@ -2784,6 +2901,7 @@ public final class ModelHydrologyProvider {
             P1_CACHE.put(key, data);
             while (P1_CACHE.size() > CACHE_CAP) {
                 P1_CACHE.remove(P1_CACHE.keySet().iterator().next());
+                HydrologyMetrics.cache(Cache.PASS1, Outcome.EVICT);
             }
         }
     }
@@ -2807,11 +2925,25 @@ public final class ModelHydrologyProvider {
         double[] extra = computeMarginInflow(centerX, centerZ, RADIUS, STEP, 2 * RADIUS / STEP + 1);
         var req = new HydrologyPipeline.Request(centerX, centerZ, RADIUS, STEP, CLIMATE, 0,
                 riverModel(), SAMPLES, extra);
-        HydrologyPipeline.Result p = HydrologyPipeline.run(gen, gen.params(), req);
+        // 【测量】pass-1 两层的父级拆分：① 管线求解 ② 骨架构建
+        //   （② 内部的 shape / width / index 子阶段在 skeletonRegion / buildFromNodes 内各自计时）
+        HydrologyPipeline.Result p;
+        var pipeScope = HydrologyMetrics.begin("hydro.pass1.pipeline", rx, rz);
+        try {
+            p = HydrologyPipeline.run(gen, gen.params(), req);
+        } finally {
+            HydrologyMetrics.end(pipeScope);
+        }
         List<DeterministicSkeleton.ExitSeed> seeds = List.of();
         // 不接力（incoming = 空）⇒ 只产出出口种子。整条骨架白跑一遍是刻意的：
         // 出口种子必须来自"本区独立追踪"的结果，否则会与接力链互相依赖。
-        var sr = skeletonRegion(p, centerX - RADIUS, centerZ - RADIUS, List.of(), false);
+        SkeletonRegion sr;
+        var skelScope = HydrologyMetrics.begin("hydro.pass1.skeleton", rx, rz);
+        try {
+            sr = skeletonRegion(p, centerX - RADIUS, centerZ - RADIUS, List.of(), false);
+        } finally {
+            HydrologyMetrics.end(skelScope);
+        }
         seeds = sr.exitSeeds();
         // ★ ports 模块：把 pass1 骨架一并缓存 —— pass2 以它为 base，才能保住已发出的端口。
         return new Pass1(p, seeds, centerX - RADIUS, centerZ - RADIUS, sr.skel());
@@ -3044,6 +3176,16 @@ public final class ModelHydrologyProvider {
     private static Map<WidthEdge, double[]> pass1Widths(HydrologyPipeline.Result pipe,
                                                        DeterministicSkeleton.Result sk, int ox, int oz) {
         if (sk == null) return Map.of();
+        var scope = HydrologyMetrics.begin("hydro.pass1.widthEdges", ox, oz);
+        try {
+            return pass1WidthEdges(pipe, sk, ox, oz);
+        } finally {
+            HydrologyMetrics.end(scope);
+        }
+    }
+
+    private static Map<WidthEdge, double[]> pass1WidthEdges(HydrologyPipeline.Result pipe,
+                                                          DeterministicSkeleton.Result sk, int ox, int oz) {
         int n = pipe.nz();
         List<DeterministicSkeleton.Shaped> grid = new ArrayList<>();
         for (var t : sk.traces) {
@@ -4006,16 +4148,34 @@ public final class ModelHydrologyProvider {
             Map<Long, List<Integer>> tiles = new HashMap<>();
             int idx = 0;
             int polyN = polys.size();
-            var profile = RiverWidthProfile.buildDetailed(polys, pipe, ox, oz, n, step,
-                    traces, rivers, boundaryHalf, inherited.half(), inherited.continued(), inherited.limits(),
-                    outletHalfByWorld);
+            RiverWidthProfile.Result profile;
+            var profileScope = HydrologyMetrics.begin("hydro.profile.width", ox, oz);
+            try {
+                profile = RiverWidthProfile.buildDetailed(polys, pipe, ox, oz, n, step,
+                        traces, rivers, boundaryHalf, inherited.half(), inherited.continued(), inherited.limits(),
+                        outletHalfByWorld);
+            } finally {
+                HydrologyMetrics.end(profileScope);
+            }
             List<double[]> halfSeqs = profile.widths();
-            List<double[]> depthSeqs = RIVER_CROSS_SECTION
-                    ? RiverDepthProfile.build(polys, pipe, ox, oz, n, step, traces, rivers, halfSeqs, boundaryHalf)
-                    : List.of();
+            List<double[]> depthSeqs;
+            var depthScope = HydrologyMetrics.begin("hydro.profile.depth", ox, oz);
+            try {
+                depthSeqs = RIVER_CROSS_SECTION
+                        ? RiverDepthProfile.build(polys, pipe, ox, oz, n, step, traces, rivers, halfSeqs, boundaryHalf)
+                        : List.of();
+            } finally {
+                HydrologyMetrics.end(depthScope);
+            }
             double[] widthLimits = new double[(count + bridges.size()) * 2];
             java.util.Arrays.fill(widthLimits, 6.0);
-            dumpWidthCounters("buildFromNodes");
+            // 【测量】诊断 I/O（日志 + geogenesis-width-count.txt 追加）：只计时，不改内容/频率/落点。
+            var dumpScope = HydrologyMetrics.begin("hydro.diag.widthCounters", ox, oz);
+            try {
+                dumpWidthCounters("buildFromNodes");
+            } finally {
+                HydrologyMetrics.end(dumpScope);
+            }
             for (int pi = 0; pi < polyN; pi++) {
                 var sh = polys.get(pi);
                 // ★★★ 2026-10-25【宽度沿折线平滑 —— 治"一节节"】★★★
@@ -4358,15 +4518,21 @@ public final class ModelHydrologyProvider {
             double zmin = blockZ - 0.5, zmax = blockZ + 0.5;
             double t0 = 0, t1 = 1;
             double dx = x1 - x0, dz = z1 - z0;
-            double[] p = {-dx, dx, -dz, dz};
-            double[] q = {x0 - xmin, xmax - x0, z0 - zmin, zmax - z0};
+            // 保持四个裁剪面的原顺序与除法，只移除逐候选分配的两个数组。
             for (int i = 0; i < 4; i++) {
-                if (p[i] == 0) {
-                    if (q[i] < 0) return false;           // 平行且在外侧
+                double p = switch (i) { case 0 -> -dx; case 1 -> dx; case 2 -> -dz; default -> dz; };
+                double q = switch (i) {
+                    case 0 -> x0 - xmin;
+                    case 1 -> xmax - x0;
+                    case 2 -> z0 - zmin;
+                    default -> zmax - z0;
+                };
+                if (p == 0) {
+                    if (q < 0) return false;              // 平行且在外侧
                 } else {
-                    double r = q[i] / p[i];
-                    if (p[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
-                    else          { if (r < t0) return false; if (r < t1) t1 = r; }
+                    double r = q / p;
+                    if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+                    else       { if (r < t0) return false; if (r < t1) t1 = r; }
                 }
             }
             return t0 <= t1;

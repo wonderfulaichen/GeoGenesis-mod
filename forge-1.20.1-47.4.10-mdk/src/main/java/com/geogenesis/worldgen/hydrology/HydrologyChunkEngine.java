@@ -1,5 +1,6 @@
 package com.geogenesis.worldgen.hydrology;
 
+import com.geogenesis.diagnostics.HydrologyMetrics;
 import com.geogenesis.worldgen.hydrology.model.ModelHydrologyProvider;
 import com.geogenesis.worldgen.terrain.Cell;
 import com.geogenesis.worldgen.terrain.CellGenerator;
@@ -48,21 +49,58 @@ public final class HydrologyChunkEngine {
     }
 
     public HydrologyChunkResult calculate(int chunkX, int chunkZ) {
-        Cell[] cells = sampleOriginal(chunkX, chunkZ);
-        List<HydrologyBlockCarvedColumn> columns = modelProvider.columnsFor(chunkX, chunkZ, cells);
-        int water = 0;
-        double maxErosion = 0.0;
-        long hash = 0xcbf29ce484222325L;
-        for (HydrologyBlockCarvedColumn column : columns) {
-            if (column.fillWater()) water++;
-            maxErosion = Math.max(maxErosion, column.erosion());
-            hash ^= Double.doubleToLongBits(column.carvedGroundY());
-            hash *= 0x100000001b3L;
+        // 【测量】三种粒度分开：完整请求 / 原始重采样 / provider 列计划。
+        //   默认关（-Dgeogenesis.hydrologyMetrics=true 才开）⇒ 全部 begin/end 立即返回。
+        var scope = HydrologyMetrics.begin("hydro.chunk.calculate", chunkX, chunkZ);
+        try {
+            Cell[] cells = sampleOriginal(chunkX, chunkZ);
+            List<HydrologyBlockCarvedColumn> columns;
+            var columnsScope = HydrologyMetrics.begin("hydro.chunk.providerColumns", chunkX, chunkZ);
+            try {
+                columns = modelProvider.columnsFor(chunkX, chunkZ, cells);
+            } finally {
+                HydrologyMetrics.end(columnsScope);
+            }
+            int water = 0;
+            double maxErosion = 0.0;
+            long hash = 0xcbf29ce484222325L;
+            for (HydrologyBlockCarvedColumn column : columns) {
+                if (column.fillWater()) water++;
+                maxErosion = Math.max(maxErosion, column.erosion());
+                hash ^= Double.doubleToLongBits(column.carvedGroundY());
+                hash *= 0x100000001b3L;
+            }
+            return new HydrologyChunkResult(cells, columns, water, maxErosion, hash);
+        } catch (RuntimeException | Error e) {
+            HydrologyMetrics.add("chunk.calculate.failed", 1L);
+            throw e;
+        } finally {
+            HydrologyMetrics.end(scope);
         }
-        return new HydrologyChunkResult(cells, columns, water, maxErosion, hash);
+    }
+
+    /** 仅供地形合成复用侵蚀前高度；公开 calculate 仍返回完整、独立的 originalCells。 */
+    public List<HydrologyBlockCarvedColumn> calculateColumns(int chunkX, int chunkZ, double[] originalHeights) {
+        var scope = HydrologyMetrics.begin("hydro.chunk.calculate", chunkX, chunkZ);
+        var columnsScope = HydrologyMetrics.begin("hydro.chunk.providerColumns", chunkX, chunkZ);
+        try {
+            return modelProvider.columnsForHeights(chunkX, chunkZ, originalHeights);
+        } catch (RuntimeException | Error e) {
+            HydrologyMetrics.add("chunk.calculate.failed", 1L);
+            throw e;
+        } finally {
+            HydrologyMetrics.end(columnsScope);
+            HydrologyMetrics.end(scope);
+        }
     }
 
     private Cell[] sampleOriginal(int chunkX, int chunkZ) {
-        return HydrologyChunkSampling.sample(generator, horizontalScale, chunkX, chunkZ);
+        // 无侵蚀的原始 Cell 重采样，与 provider 内的侵蚀高度查询分开计时。
+        var scope = HydrologyMetrics.begin("hydro.chunk.sampleOriginal", chunkX, chunkZ);
+        try {
+            return HydrologyChunkSampling.sample(generator, horizontalScale, chunkX, chunkZ);
+        } finally {
+            HydrologyMetrics.end(scope);
+        }
     }
 }
