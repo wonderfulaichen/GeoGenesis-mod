@@ -9,6 +9,12 @@
 
 | 文件 | 内容 | 状态 |
 |---|---|---|
+| [skeleton-overlay-failed-20261030.md](skeleton-overlay-failed-20261030.md) | 2026-10-30 骨架侵蚀「后置叠加」验证**失败**：delta 从生产 ±5 块放大到 ±188 格（37 倍）；局部七类窗口暴露放射星（海岸带）、山地抹平、幅度失控。根因=接入点错误（骨架应在地形流水线内，不是后处理）。**用户决定：等沙箱地形正式接入生产后再验证骨架** | ✅ 现行；`src/main` 零改动；实验代码已清理 |
+| [segment-field-conclusions-20261030.md](segment-field-conclusions-20261030.md) | 2026-10-30 `RefNoise.Erosion`（线段距离场）放射星调查：**用户假说「多线段共用格心」证实**，但修掉共用格心就失去锐度（锐度与星芒同源）。八轮尝试全否决，最终改用骨架侵蚀 | ✅ 现行（结论有效） |
+| [erosion-operator-conclusions-20261030.md](erosion-operator-conclusions-20261030.md) | 2026-10-30 侵蚀算子改进的**否决性结论**：方案 A/B/C、低地骨架、软化 RefNoise、DirectionWarped —— 全部实测否决 | ✅ 现行 |
+| [erosion-operator-review-20261030.md](erosion-operator-review-20261030.md) | 2026-10-30 侵蚀算子实现评审：生产 2 套（`ErosionEngine` 液滴 / `RidgeValleyErosion` 条纹）结构详解、5 个已知缺陷、5 条改进提案 | ⚠ 缺陷清单有效；**提案 P1（低地骨架）已被实测否决** |
+| [GeoGenesis-20261030-b.md](GeoGenesis-20261030-b.md) | 2026-10-30 下午轮：浅海群岛三步法 + 海岸剖面重构（沙箱）；丘陵 `DALES_LO` 去高频（**用户认可**）；4 轮翻转实验否决记录 | ✅ 现行；`src/main` 零改动，沙箱未提交 |
+| [GeoGenesis-20261030.md](GeoGenesis-20261030.md) | 2026-10-30 冷启动交接：地形升级沙箱入库（`33a508d`），**群岛/弧岛实验全部回退**；`src/main` 零改动；用户明确叫停"自行发挥" | ✅ 现行（仅 §6.1 四个决策点待用户裁定） |
 | [GeoGenesis-20261029.md](GeoGenesis-20261029.md) | 2026-10-29 冷启动交接：端口开关默认相反的真 bug、死代码清理、源头抽稀 0.7、三提交未推送。**当日晚 schema 119 已经用户实机认可见证并定为现行标准图**（口径见 `attachments/baseline-schema119-metadata-20261029.txt`） | ✅ 截至 2026-10-29 有效（仅"待推送"仍未决） |
 | [GeoGenesis-handoff-20261026.md](GeoGenesis-handoff-20261026.md) | 2026-10-26 冷启动交接：不可变用户要求、半成品边界、旧机制可继承经验、runbook | ⚠ 其 §1 的 HEAD/schema 已过期；结论性纠偏仍有效 |
 
@@ -37,6 +43,7 @@
 
 | 路径 | 内容 | 状态 |
 |---|---|---|
+| [attachments/revert-baseline-20261030/](attachments/revert-baseline-20261030/) | 回退群岛/弧岛后的三臂基线图 + 冻结 TOML | ✅ 现行基础地形沙箱基线 |
 | [migration-checkpoint-20261025/](migration-checkpoint-20261025/) | 迁移入库时的目标/基线 PNG、provenance、`TARGET.md` | 只作历史基准；参数与源码来源须重核 |
 
 ## attachments/
