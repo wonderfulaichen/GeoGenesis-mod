@@ -100,14 +100,6 @@ public final class TypeCandidateGallery {
                         (x, z) -> curve.heightFromE(plateau.e(x, z))));
             }
         }
-        if (group.equals("all") || group.equals("basin")) {
-            for (BasinCandidate.Variant v : BasinCandidate.Variant.values()) {
-                BasinCandidate basin = new BasinCandidate(v);
-                basin.seed(9139912035078620160L);
-                entries.add(new Entry("BASIN-" + v.id(), basin.label(),
-                        (x, z) -> curve.heightFromE(basin.e(x, z))));
-            }
-        }
         if (entries.isEmpty()) throw new IllegalArgumentException("unknown group: " + group);
 
         // 原点必须与 bakeShaded 完全一致：都用整数中心 size/2（不是 size/2.0），

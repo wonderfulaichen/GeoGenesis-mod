@@ -86,24 +86,47 @@ public final class CombineCandidate {
      *
      * <p>本项目的 {@code HeightCurve} 以 e=0 为海平面、正向更陆。要让"基准面 = 基准面"，
      * 共享地面必须取 e 空间的一个常量，然后所有族的配方输出都当作<b>相对</b>它的增量。
-     * 取 0.02 e ≈ 5 格（{@code HeightCurve} 陆侧约 236 格/e）。参考的
-     * {@code groundY = min(waterLevel, terrainScaleFactor)} ⇒ 约水位上方 1 格，
-     * 数量级一致。</p>
+     *
+     * <h3>★ 2026-10-30：取值几经反复，最终回到 0.02</h3>
+     * <p><b>经过</b>：用户圈出"平原深处一大片没有起伏的浅色区"⇒ 曾把它调到
+     * {@code 0.2461}（参考 {@code ground} 真值），实测陆地 P50 从 93 格抬到 137 格
+     * （{@code +44}），<b>整体浮起</b>，被用户当场指出"平原应该在接近海平面"⇒ 回退。</p>
+     *
+     * <h3>为什么 0.02 其实是对的</h3>
+     * <p>真正的问题<b>不在基准厚度</b>，而在 {@code max(0)} 的位置（见 {@link #height01}
+     * 的说明）。各族输出的最小值只有 <b>{@code -0.02}</b>（steppe，与参考一致），
+     * 所以 {@code GROUND_E=0.02} <b>刚好</b>能把负值抬到 0，{@code max} 不触发。</p>
+     * <p>此前触发是因为先对 {@code height} 做了 {@code max}、再加基准 —— 顺序错了。
+     * 修正顺序后，0.02 足够。</p>
+     *
+     * <h3>为什么 0.03 也不行（2026-10-30 实测）</h3>
+     * <p>曾以为 {@code GROUND_E >= 0.02×1.50 = 0.03} 就能让 {@code max(0)} 永不触发，实测否决：</p>
+     * <pre>
+     *   方案               Y=67.73平台   Y=70.09平台   假平台最大单值   与原版相同
+     *   原版 (G=0.02)        2946 px        84 px     2633 px (11.1%)     —
+     *   方案A (G=0.02+修正)   796 px        84 px      601 px (2.7%)    99.85%
+     *   方案B (G=0.03)         82 px       750 px      591 px (2.7%)    35.10%
+     * </pre>
+     * <p><b>平台只是从 67.73 搬到 70.09，总量没变</b>（796→832），还改动了 65% 的像素。
+     * 根因是触发 {@code max(0)} 的是 {@code regionHeight} 本身接近 0，与 {@code GROUND_E} 无关。</p>
+     *
+     * <p>剩余约 600 px 的极平区经 {@code SelectedFamilyProbe} 确认 <b>100% 是 steppe 族</b>：
+     * 全局 {@code P10=-0.001, P50=+0.011, P90=+0.023}，跨度仅 0.024（≈8.5 格）——
+     * 这是参考 {@code makeSteppe} 的设定（{@code height*0.08-0.02}），
+     * <b>"草原本来就平"，不是缺陷</b>。</p>
      */
     public static final double GROUND_E = 0.02;
 
     /**
      * 从基准面到 e 上界的跨度。
      *
-     * <p><b>2026-10-29 实测修正</b>：各族的原始输出并<b>不</b>铺满 0..1 —— 实测
-     * （{@code AmplitudeProbe}，4000 点黄金角螺旋）最大的是山地 {@code max=0.607}，
-     * 平原只有 {@code max=0.096}。原先取 {@code E_SPAN=0.96}（假设输出铺满 0..1），
-     * 结果整幅地形只用到垂直范围的 4%–24%，所有类型被压在同一条窄带里
-     * ⇒ 大尺度上读作"一片均匀的中等皱褶"，看不出地貌分区。</p>
+     * <p><b>2026-10-30 回退到 1.50</b>：曾随 {@code GROUND_E} 提到 0.2461 而缩到 1.14
+     * （为了压住顶点）。基准回到 0.02 后，跨度也回到 1.50 —— 这是用户认可那版的口径，
+     * 实测地形层次最丰富（山地占 0.02→0.93 e，平原占 0.02→0.16 e，对比 5.4 倍）。</p>
      *
-     * <p>按实测峰值 0.607 反推：要让山地顶到 e≈0.93，跨度需 ≈1.5。
-     * 这样山地占 0.02→0.93 e（约 215 格），平原占 0.02→0.16 e（约 38 格），
-     * 对比度 5.4 倍，与参考"山地是平原的 5 倍高"一致。</p>
+     * <p>各族的原始输出并<b>不</b>铺满 0..1 —— 实测最大是山地 {@code max=0.617}，
+     * 平原只有 {@code max=0.106}。若取 {@code E_SPAN=0.96}（假设铺满 0..1），
+     * 整幅地形只用到垂直范围的 4%–24%，读作"一片均匀的中等皱褶"。</p>
      */
     public static final double E_SPAN = 1.50;
 
@@ -509,18 +532,39 @@ public final class CombineCandidate {
     private static double clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
     /**
-     * 最终陆地 {@code cell.height} 的等价量：{@code max(ground + heightNoise, 0)}。
+     * 最终陆地高度的等价量（<b>未</b>加 {@code GROUND_E}，返回 e 空间增量）。
      *
-     * <p>与参考 {@code TerrainPopulator.apply} 同构：族输出是相对基准的增量，基准是常量，
-     * 相加后只有总量。这里 blender 内部已保证非负，max 只是照抄参考的收尾。</p>
+     * <h3>★ 2026-10-30 修正：{@code max(0)} 的位置错了</h3>
+     * <p>参考 {@code TerrainPopulator.apply}（{@code Populators.java:21}）是：</p>
+     * <pre>
+     *   cell.height = Math.max(base + height, 0.0F);   // ← max 包住 base+height
+     * </pre>
+     * <p>而本类此前写成：</p>
+     * <pre>
+     *   height01 = Math.max(blender.apply(x,z), 0)     // ← max 只包 height
+     *   e        = GROUND_E + height01 * E_SPAN        // ← 基准在削平【之后】才加
+     * </pre>
+     * <p><b>后果</b>：{@code steppe} 族输出 {@code [-0.02, +0.06]}（与参考一致），
+     * 负值部分被 {@code max(0)} 先削平，之后再加 {@code GROUND_E} 已经救不回来
+     * ⇒ 图上出现大片 {@code Y=GROUND_E 对应值}的平顶。
+     * 调 {@code GROUND_E} 只会让平台<b>换位置</b>（实测 67.73 → 121.19），平台本身不消失。</p>
+     *
+     * <p>现在改为返回<b>未截断</b>的原始增量，由 {@link #e} 在加完基准后再截断，
+     * 与参考同构。负值深度最多 {@code -0.02}（steppe），
+     * 相对 {@code GROUND_E=0.2461} 有 12 倍余量 ⇒ {@code max} 实际不触发。</p>
      */
     public double height01(double x, double z) {
-        return Math.max(blender.apply(x, z), 0.0);
+        return blender.apply(x, z);
     }
 
-    /** 换算到 e：{@code GROUND_E + h·E_SPAN}（补齐共享地面基准后的最终口径）。 */
+    /**
+     * 换算到 e：{@code max(GROUND_E + h·E_SPAN, 0)}。
+     *
+     * <p>与参考 {@code Math.max(base + height, 0)} <b>同构</b>：基准与增量<b>先相加再截断</b>，
+     * 而不是先截断增量。这是 2026-10-30 修正的核心 —— 见 {@link #height01} 的说明。</p>
+     */
     public double e(double x, double z) {
-        return GROUND_E + height01(x, z) * E_SPAN;
+        return Math.max(GROUND_E + height01(x, z) * E_SPAN, 0.0);
     }
 
     /** 未加共享基准的直译口径（{@code h × 1.08}），仅用于与上一版对照。 */
@@ -531,6 +575,40 @@ public final class CombineCandidate {
     /** 主导类别（类型图着色用）。 */
     public Category category(double x, double z) {
         return blender.category(x, z);
+    }
+
+    // ==================== 诊断访问器（供 FlatSpotCauseProbe 归因）====================
+
+    /** 区域层原始高度（{@code RegionLerper} 输出，<b>未经</b> {@code max(...,0)} 截断）。 */
+    public double debugRegionHeight(double x, double z) {
+        return regionHeight(x, z);
+    }
+
+    /** {@code Blender.apply} 原始输出（− 山形遮罩混合，同样未截断）。 */
+    public double debugBlenderApply(double x, double z) {
+        return blender.apply(x, z);
+    }
+
+    /** 山形遮罩值 [0,1]。 */
+    public float debugMountainMask(double x, double z) {
+        return blender.mask(x, z);
+    }
+
+    /** 区域边缘程度 [0,1]（1 = 纯族区）。 */
+    public float debugEdge(double x, double z) {
+        return partition.sample((float) x, (float) z).edge();
+    }
+
+    /** 边界地形高度（{@code borderAt}）。 */
+    public double debugBorderAt(double x, double z) {
+        return borderAt(x, z);
+    }
+
+    /** 选中族的原始高度（未经 {@code edge} 混合）。 */
+    public double debugSelected(double x, double z) {
+        RegionPartition.Sample s = partition.sample((float) x, (float) z);
+        int idx = RegionPartition.selectIndex(s.regionId(), slots.length);
+        return slots[idx].height01(x, z);
     }
 
     /**

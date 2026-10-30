@@ -68,10 +68,6 @@ public final class LandCompositionGallery {
         TerrainCharacterField character = new TerrainCharacterField(continent, params.continentBias());
         character.seed(SEED);
 
-        LandCompositionCandidate recipe = new LandCompositionCandidate(
-                LandCompositionCandidate.Mode.RECIPE, character);
-        recipe.seed(SEED);
-
         // 复刻臂：参考的组装方式（区域划分 + 公共边界过渡），不是加权混合。
         RegionCompositionCandidate regionRef = new RegionCompositionCandidate();
         regionRef.seed(SEED);
@@ -156,6 +152,19 @@ public final class LandCompositionGallery {
                 (x, z) -> curve.heightFromE(oceanCoast.e(x, z)),
                 (x, z) -> combineSlotToClass(regional.category(x, z)));
 
+        // ★ 浅海群岛：地基(FBM 平方) + 类型地形 + 离岸过渡 + 纯加法叠到 compose-coastal 上。
+        //   对照臂 compose-islands-only 只画抬升增量本身（0 = 无群岛），用来单独看地基与类型分布。
+        ShallowSeaIslandCandidate islands = new ShallowSeaIslandCandidate(SEED + 900);
+        ShallowSeaIslandCandidate.Seabed seabed = oceanCoast::e;
+        ShallowSeaIslandCandidate.OffshoreSampler offshore = continent::sample;
+        arm("compose-coastal-islands", out, size, step, cx, cz, curve,
+                (x, z) -> curve.heightFromE(islands.apply(seabed, offshore, x, z)),
+                (x, z) -> islandClass(islands, seabed, offshore, x, z),
+                (x, z) -> islandClassAlways(islands, x, z));
+        arm("compose-islands-only", out, size, step, cx, cz, curve,
+                (x, z) -> curve.heightFromE(islands.delta(seabed, offshore, x, z)),
+                (x, z) -> islandClassAlways(islands, x, z));
+
         // ★ 大陆层替换：Voronoi 领地（65% 陆地，锚点 0.0445）—— 已否决，仅保留作对照
         ProvinceContinentField province = new ProvinceContinentField(SEED);
         OceanAssemblyCandidate oceanProv = new OceanAssemblyCandidate(regional, province, SEED + 3);
@@ -208,7 +217,6 @@ public final class LandCompositionGallery {
         HillsCandidate dales = new HillsCandidate(HillsCandidate.Variant.DALES_GEO);
         PlateauCandidate plateau = new PlateauCandidate(PlateauCandidate.Variant.REF);
         BadlandsCandidate badlands = new BadlandsCandidate();
-        BasinCandidate basin = new BasinCandidate(BasinCandidate.Variant.B1);
         MountainsCandidate m1 = new MountainsCandidate(MountainsCandidate.Variant.M1_GEO);
         plains.seed(seed);
         steppe.seed(seed);
@@ -217,7 +225,6 @@ public final class LandCompositionGallery {
         dales.seed(seed + 33);
         plateau.seed(seed + 44);
         badlands.seed(seed + 55);
-        basin.seed(seed + 66);
         m1.seed(seed + 77);
 
         CombineCandidate.Family[] mixable = {
@@ -232,29 +239,36 @@ public final class LandCompositionGallery {
         float[] mixWeights = {2.0f, 1.0f, 1.5f, 2.0f, 2.0f};
 
         CombineCandidate.Family[] unmixable = {
-                plateau::height01, badlands::height01, basinNorm(basin), m1::height01
+                plateau::height01, badlands::height01, m1::height01
         };
         CombineCandidate.Category[] unmixCats = {
                 CombineCandidate.Category.PLATEAU, CombineCandidate.Category.BADLANDS,
-                CombineCandidate.Category.BASIN, CombineCandidate.Category.MOUNTAINS
+                CombineCandidate.Category.MOUNTAINS
         };
-        float[] unmixWeights = {5.0f, 3.0f, 4.0f, 5.0f};
+        float[] unmixWeights = {5.0f, 3.0f, 5.0f};
 
         return new CombineCandidate(seed, mixable, mixCats, mixWeights,
                 unmixable, unmixCats, unmixWeights, borderRecipe(),
                 RegionPartition.IdMode.COHERENT, scale, anisoX, anisoZ);
     }
 
-    /** 与 {@link #buildCombine} 同配置，但额外启用 σ=80 的 orogen/rift 构造偏置。 */
+    /**
+     * 与 {@link #buildCombine} 同配置，但额外启用 σ=80 的 orogen/rift 构造偏置。
+     *
+     * <p><b>2026-10-30</b>：盆地族已删除（参考无对应，自创），rift 端原来接
+     * {@code basinNorm}，现改用<b>低地组复合</b>作对照端 —— 这保留"构造低地"的语义，
+     * 但不再依赖自创的盆地配方。</p>
+     */
     private static CombineCandidate buildCombineTectonic(long seed) {
         CombineCandidate c = buildCombine(null);
         MountainsCandidate m1 = new MountainsCandidate(MountainsCandidate.Variant.M1_GEO);
-        BasinCandidate basin = new BasinCandidate(BasinCandidate.Variant.B1);
+        PlainsCandidate plains = new PlainsCandidate(PlainsCandidate.Variant.PLAINS_GEO);
         m1.seed(seed + 77);
-        basin.seed(seed + 66);
+        plains.seed(seed);
         com.geogenesis.worldgen.terrain.TectonicField field =
                 new com.geogenesis.worldgen.terrain.TectonicField(seed);
-        c.enableTectonicBias(field, m1::height01, basinNorm(basin));
+        // rift 端：低地（平原压到 0.35，与盆地原本在族序中的低位相当）
+        c.enableTectonicBias(field, m1::height01, (x, z) -> plains.height01(x, z) * 0.35);
         return c;
     }
 
@@ -291,7 +305,6 @@ public final class LandCompositionGallery {
         HillsCandidate dales = new HillsCandidate(HillsCandidate.Variant.DALES_GEO);
         PlateauCandidate plateau = new PlateauCandidate(PlateauCandidate.Variant.REF);
         BadlandsCandidate badlands = new BadlandsCandidate();
-        BasinCandidate basin = new BasinCandidate(BasinCandidate.Variant.B1);
         MountainsCandidate m1 = new MountainsCandidate(MountainsCandidate.Variant.M1_GEO);
         plains.seed(seed);
         steppe.seed(seed);
@@ -300,16 +313,14 @@ public final class LandCompositionGallery {
         dales.seed(seed + 33);
         plateau.seed(seed + 44);
         badlands.seed(seed + 55);
-        basin.seed(seed + 66);
         m1.seed(seed + 77);
 
         // 权重取自 Presets.java:37-45（默认预设）：
         //   steppe 1.0 · plains 2.0 · hills 2.0 · dales 1.5 · plateau 1.5
         //   badlands 1.0 · torridonian 2.0 · mountains 2.5 · volcano 5.0
-        // 盆地无参考对应，按低地族给 1.0。
         //
         // 【方案 C】mixable 只保留低地组（平原/草原/谷地/丘陵），其余作为独立条目。
-        // 理由：combine 会把两个族的形态取中值，把山地/台地/劣地/盆地的极端形态抹平。
+        // 理由：combine 会把两个族的形态取中值，把山地/台地/劣地的极端形态抹平。
         // 低地组之间形态差异小（都是缓起伏），复合反而是有益的"质地多样"。
         CombineCandidate.Family[] mixable = {
                 plains::height01, steppe::height01, dales::height01,
@@ -322,21 +333,21 @@ public final class LandCompositionGallery {
         };
         float[] mixWeights = {2.0f, 1.0f, 1.5f, 2.0f, 2.0f};
 
-        // 独立条目：台地/劣地/盆地/山地 —— 不进复合，保留各自的原生形态。
+        // 独立条目：台地/劣地/山地 —— 不进复合，保留各自的原生形态。
         CombineCandidate.Family[] unmixable = {
-                plateau::height01, badlands::height01, basinNorm(basin), m1::height01
+                plateau::height01, badlands::height01, m1::height01
         };
         CombineCandidate.Category[] unmixCats = {
                 CombineCandidate.Category.PLATEAU, CombineCandidate.Category.BADLANDS,
-                CombineCandidate.Category.BASIN, CombineCandidate.Category.MOUNTAINS
+                CombineCandidate.Category.MOUNTAINS
         };
         // 【方案 C1】权重按票数反推，不是拍脑袋：
         //   combine 把 5 个低地原始扩成 15 条（5 原始 + 10 复合），票数从 9 涨到 28，
-        //   独立四类只有 7 票 ⇒ 低地占 80%，台地/劣地/盆地被压到个位数。
-        //   目标配比：低地 62%、台地 11%、劣地 7%、盆地 9%、山地 11%。
-        //   总票数 = 28 / 0.62 ≈ 45 ⇒ 独立四类需 17 票：
-        //   台地 5、劣地 3、盆地 4、山地 5（山地面积另受山形遮罩主导，见 Blender.category）。
-        float[] unmixWeights = {5.0f, 3.0f, 4.0f, 5.0f};
+        //   独立三类只有 13 票 ⇒ 低地占 68%，台地/劣地被压到个位数。
+        //   目标配比：低地 62%、台地 11%、劣地 7%、山地 11%（盆地已删，其 9% 按比例并入）。
+        //   总票数 = 28 / 0.62 ≈ 45 ⇒ 独立三类需 17 票：
+        //   台地 5、劣地 3、山地 9（山地面积另受山形遮罩主导，见 Blender.category）。
+        float[] unmixWeights = {5.0f, 3.0f, 9.0f};
 
         // 边界地形 = makeBorder（Populators.java:419-421）= makePlains(plains 噪声, steppe 缩放)
         return new CombineCandidate(seed, mixable, mixCats, mixWeights,
@@ -352,7 +363,6 @@ public final class LandCompositionGallery {
         HillsCandidate dales = new HillsCandidate(HillsCandidate.Variant.DALES_GEO);
         PlateauCandidate plateau = new PlateauCandidate(PlateauCandidate.Variant.REF);
         BadlandsCandidate badlands = new BadlandsCandidate();
-        BasinCandidate basin = new BasinCandidate(BasinCandidate.Variant.B1);
         MountainsCandidate m1 = new MountainsCandidate(MountainsCandidate.Variant.M1_GEO);
         plains.seed(seed);
         steppe.seed(seed);
@@ -361,21 +371,20 @@ public final class LandCompositionGallery {
         dales.seed(seed + 33);
         plateau.seed(seed + 44);
         badlands.seed(seed + 55);
-        basin.seed(seed + 66);
         m1.seed(seed + 77);
 
         CombineCandidate.Family[] mixable = {
                 plains::height01, steppe::height01, dales::height01,
                 h1::height01, h2::height01, plateau::height01,
-                badlands::height01, basinNorm(basin)
+                badlands::height01
         };
         CombineCandidate.Category[] mixCats = {
                 CombineCandidate.Category.PLAIN, CombineCandidate.Category.PLAIN,
                 CombineCandidate.Category.HILLS, CombineCandidate.Category.HILLS,
                 CombineCandidate.Category.HILLS, CombineCandidate.Category.PLATEAU,
-                CombineCandidate.Category.BADLANDS, CombineCandidate.Category.BASIN
+                CombineCandidate.Category.BADLANDS
         };
-        float[] mixWeights = {2.0f, 1.0f, 1.5f, 2.0f, 2.0f, 1.5f, 1.0f, 1.0f};
+        float[] mixWeights = {2.0f, 1.0f, 1.5f, 2.0f, 2.0f, 1.5f, 1.0f};
         CombineCandidate.Family[] unmixable = {m1::height01};
         CombineCandidate.Category[] unmixCats = {CombineCandidate.Category.MOUNTAINS};
         float[] unmixWeights = {2.5f};
@@ -392,28 +401,45 @@ public final class LandCompositionGallery {
      * 所以边界地形的共享基准只有普通平原的一半高，正好把区域边缘的落差压下来。
      * 上一版直接用普通平原当边界地形，导致每个区域被一圈深沟包围。</p>
      */
+    /**
+     * {@code makeBorder}（{@code Populators.java:419-421}）：
+     * <pre>
+     * makeBorder(seed, ground, plainsSettings, steppeSettings, verticalScale)
+     *   → makePlains(seed, ground, noiseSettings=plainsSettings,
+     *                scalingSettings=steppeSettings, verticalScale)
+     * </pre>
+     * <p>{@code makePlains} 内部（{@code Populators.java:95-113}）：</p>
+     * <ul>
+     *   <li>{@code noiseSettings} 只决定噪声尺度（{@code scaleH = 250 × horizontalScale}）</li>
+     *   <li>{@code scalingSettings} 决定 {@code baseScale} / {@code verticalScale}
+     *       （传给 {@code TerrainPopulator.make}）</li>
+     * </ul>
+     *
+     * <h3>★ 2026-10-30 修正：{@code ×0.5} 去掉</h3>
+     * <p>此前返回 {@code plains.height01 * 0.5}，注释称"steppe 的缩放＝基准 ×0.5（2.0 → 1.0）"。
+     * 核对两个预设的真实数值后发现<b>那是 legacy 的系数</b>：</p>
+     * <pre>
+     *   RTF 默认预设（Presets.java:35-46）  steppe baseScale=2.0, plains baseScale=2.0 ⇒ ×1.0
+     *   legacy 预设  （Presets.java:81-92）  steppe baseScale=1.0, plains baseScale=2.0 ⇒ ×0.5
+     * </pre>
+     * <p>本沙箱对齐的是 <b>RTF 默认预设</b>（{@code makeRTFDefault}），所以边界地形
+     * 应当就是 {@code plains.height01}，<b>不乘任何系数</b>。</p>
+     *
+     * <h3>影响量化（{@code BorderScaleImpactProbe}，30 万样本）</h3>
+     * <pre>
+     *   边界带面积（edge&lt;0.999）: 70.4%
+     *   mean|ΔY|                 : 2.51 格
+     *   max|ΔY|                  : 18.39 格
+     *   |ΔY|&gt;1 的像素            : 55.4%
+     *   |ΔY|&gt;5 的像素            : 19.9%
+     * </pre>
+     * <p>幅度可控：边界带抬升但不失控。</p>
+     */
     private static CombineCandidate.Family borderRecipe() {
         PlainsCandidate noise = new PlainsCandidate(PlainsCandidate.Variant.PLAINS_GEO);
         noise.seed(SEED);
-        // steppe 的缩放＝基准 ×0.5（2.0 → 1.0），即边界地形是平原形态压到一半高度
-        return (x, z) -> noise.height01(x, z) * 0.5;
-    }
-
-    /**
-     * 盆地 B1 的 e → 0..1 归一化。
-     *
-     * <p><b>2026-10-29 实测修正</b>：B1 的实测 e 区间是 {@code [-0.052, +0.006]}（Y 56–65），
-     * 跨度只有 0.058 e。原先把区间写成 {@code [-0.06, +0.02]}（跨度 0.08），
-     * 归一化后盆地被抬到 0..0.99，比山地还高 —— 完全反了，盆地应当是最低洼的类型。
-     * 现在按实测收紧到 [-0.055, +0.01]，并统一乘 0.35 让它落在各族里最低。</p>
-     */
-    private static CombineCandidate.Family basinNorm(BasinCandidate basin) {
-        return (x, z) -> {
-            double e = basin.e(x, z);
-            double u = (e + 0.055) / 0.065;
-            u = u < 0 ? 0 : (u > 1 ? 1 : u);
-            return u * 0.35;
-        };
+        // 参考 RTF 默认预设：steppe 与 plains 的 baseScale 同为 2.0 ⇒ 边界地形 = plains.height01
+        return noise::height01;
     }
 
     private static TerrainClass combineSlotToClass(CombineCandidate.Category c) {
@@ -445,10 +471,39 @@ public final class LandCompositionGallery {
         TerrainClass at(double x, double z);
     }
 
+    private interface IslandClassFn {
+        TerrainClass at(double x, double z);
+    }
+
+    /**
+     * 海岛臂的类型：陆地判据与水面一致（读<b>实际高度</b>），抬出水面才记岛的类型，
+     * 否则沿用陆地层原本的类型（海侧本来就会被抹成 PLAIN 位，与其它臂口径相同）。
+     */
+    private static TerrainClass islandClass(ShallowSeaIslandCandidate islands,
+                                            ShallowSeaIslandCandidate.Seabed seabed,
+                                            ShallowSeaIslandCandidate.OffshoreSampler offshore,
+                                            double x, double z) {
+        if (!islands.emerges(seabed, offshore, x, z)) return TerrainClass.PLAIN;
+        return ShallowSeaIslandCandidate.terrainClassOf(islands.type(x, z));
+    }
+
+    /** 只看地基分布用：无视是否出水，直接按档位记类型（数清抬升带的形状与面积）。 */
+    private static TerrainClass islandClassAlways(ShallowSeaIslandCandidate islands,
+                                                  double x, double z) {
+        return ShallowSeaIslandCandidate.terrainClassOf(islands.type(x, z));
+    }
+
     private static void arm(String id, Path out, int size, int step, double cx, double cz,
                             HeightCurve curve, HeightFn height, TypeFn type) throws Exception {
+        arm(id, out, size, step, cx, cz, curve, height, type, null);
+    }
+
+    private static void arm(String id, Path out, int size, int step, double cx, double cz,
+                            HeightCurve curve, HeightFn height, TypeFn type,
+                            IslandClassFn islandType) throws Exception {
         double[] ys = new double[size * size];
         byte[] types = new byte[size * size];
+        long[] islandCount = new long[5];
         double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
         for (int z = 0; z < size; z++) {
             double wz = cz + (z - size / 2.0) * step;
@@ -460,6 +515,14 @@ public final class LandCompositionGallery {
                 if (y < lo) lo = y;
                 if (y > hi) hi = y;
                 types[z * size + x] = (byte) typeIndex(type.at(wx, wz));
+                if (islandType != null) {
+                    switch (islandType.at(wx, wz)) {
+                        case PLAIN -> islandCount[1]++;
+                        case HILLS -> islandCount[2]++;
+                        case MOUNTAINS -> islandCount[3]++;
+                        default -> islandCount[0]++;
+                    }
+                }
             }
         }
         try (DataOutputStream s = new DataOutputStream(
@@ -468,7 +531,13 @@ public final class LandCompositionGallery {
         }
         Files.write(out.resolve("types-" + id + ".u8"), types);
         System.out.printf(Locale.ROOT, "%-22s Y=%.2f..%.2f relief=%.2f%n", id, lo, hi, hi - lo);
-        System.out.println("  curve=" + curve.seaLevelY());
+        if (islandType != null) {
+            double total = (double) size * size;
+            System.out.printf(Locale.ROOT,
+                    "  islands: none=%.1f%% plain=%.1f%% hills=%.1f%% mountains=%.1f%%%n",
+                    islandCount[0] * 100 / total, islandCount[1] * 100 / total,
+                    islandCount[2] * 100 / total, islandCount[3] * 100 / total);
+        }
     }
 
     /**
