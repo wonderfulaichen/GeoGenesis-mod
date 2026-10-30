@@ -1,0 +1,58 @@
+﻿浅海群岛大图 2026-10-30
+=====================
+seed            : 9139912035078620160
+grid            : 1401^2 采样点, step=5 块 => 覆盖 7005 x 7005 块
+center block    : (-140, 137)
+1 pixel         : 5 blocks (无缩放)
+toml            : build/terrain-upgrade/baseline/config-input.toml (frozen)
+JVM 属性        : 一个都没有 (无 -D)
+classpath       : candidate-test-classes;baseline/classes;baseline/src-main/resources;<jars>
+
+臂 (arms)
+---------
+compose-coastal         改前基线 = 陆地层(regional) + 三段海岸剖面
+compose-coastal-islands 叠加浅海群岛
+compose-islands-only    只画群岛增量 (基线水面对照)
+
+实测指标
+--------
+compose-coastal          Y=5.14..269.14  relief=264.00  水面 35.93%
+compose-coastal-islands  Y=5.14..269.14  relief=264.00  水面 33.07%
+compose-islands-only     Y=63.00..136.78 relief=73.78
+
+叠加效果
+--------
+identical pixels    1691562 / 1962801   (86.2% 未变)
+changed >0.01       241774 px
+max lift            66.39 blocks
+max drop            0.00 blocks          (只抬不压)
+water -> land       56200 px
+land  -> water      0 px
+mean|diff| (changed) 3.562 blocks
+
+群岛统计 (连通域, 4-邻域)
+--------------------------
+island count        628
+size px   P50=4    P90=193   max=2876
+size blk  P50=100  P90=4830  max=71900
+最大岛 2876 px, bbox z648..752 x740..842 (采样点)
+
+复现命令
+--------
+# 1) 编译沙箱 (整目录, 排除 3 个 province 探针)
+#    见 handoff/GeoGenesis-20261030.md 4.1
+# 2) 出数据 (~260 s)
+java -Xmx8g "-Dfile.encoding=UTF-8" -cp <cp> \\
+  com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery \\
+  build/terrain-upgrade/baseline/config-input.toml build/terrain-upgrade/out 1401 5 -140 137
+# 3) 全幅 A/B 大图
+python tools/render-islands-big.py build/terrain-upgrade/out build/terrain-upgrade/out "副标题"
+# 4) 1:1 局部特写
+python tools/show-islands-closeup.py build/terrain-upgrade/out 240 "副标题"
+
+图档
+----
+islands-pair.png      全幅 A/B 并排 (改前 / 叠加后)
+islands-only.png      只有叠加后
+islands-diff.png      差异图 (抬升=暖色, 下沉=冷色)
+islands-closeups.png  6 个 1200x1200 块 1:1 特写

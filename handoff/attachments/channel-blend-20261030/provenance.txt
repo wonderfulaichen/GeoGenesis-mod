@@ -1,0 +1,84 @@
+﻿三通道混合（height / erosion / weirdness）验证 2026-10-30
+========================================================
+目标：按参考 RegionLerper.java:17-41 用<b>同一个 alpha</b>
+      （cell.terrainRegionEdge）混合三个量。
+
+参考依据
+--------
+RegionLerper.java:28-40
+  cell.height    = lerp(lowerHeight,    upperHeight,    alpha);
+  cell.erosion   = lerp(lowerErosion,   upperErosion,   alpha);
+  cell.weirdness = lerp(lowerWeirdness, upperWeirdness, alpha);
+
+erosion / weirdness 的语义（关键，容易误读）
+-------------------------------------------
+它们是<b>原版 Minecraft 的生物群系参数</b>，值域 [-1,1]，不是地形中间量：
+  Erosion  : 7 档，LEVEL_0(-1.0,-0.78) … LEVEL_6(0.55,1.0)，低=崎岖 高=平坦
+  Weirdness: 13 档，中段 VALLEY(-0.05,0.05)
+参考给每个地形族各自产出一段区间，由 RegionLerper 在边界带线性混合，
+使生物群系参数连续过渡。
+
+逐族配方（Populators.java）
+---------------------------
+  族              参考位置            erosion 区间          weirdness
+  PLAINS/STEPPE   :90 / :110          LEVEL_2..LEVEL_4      negativeWeirdnessVariation
+  HILLS_1/2/DALES :167/:187/:211      LEVEL_1..LEVEL_5      negativeWeirdnessVariation
+  PLATEAU         :153                LEVEL_1..LEVEL_4      由 valleyBase 派生 *
+  BADLANDS        :256                LEVEL_1..LEVEL_3      negativeWeirdnessVariation
+  M1/M2/M3        :412                LEVEL_0..LEVEL_3      negativeWeirdnessVariation
+  BASIN           (参考无)            LEVEL_4..LEVEL_6      VALLEY(-0.05,0.05)
+  border(makeBorder)
+                  :419-421 → makePlains  LEVEL_2..LEVEL_4  negativeWeirdnessVariation
+
+  * 台地近似：参考 makePlateau:150-152 读内部量 valleyBase；我们的
+    PlateauCandidate 只对外给归一化 height01，故用 height01 代替。
+    单调关系一致，差别只在台地表面细节略钝。这是唯一近似，已在代码标注。
+
+噪声口径
+--------
+parameterVariation(:423-426)        = perlin(seed+48291, scale=200, oct=2) → map(from.min, to.max)
+negativeWeirdnessVariation(:428-438)= perlin(seed+73519, scale=300, oct=2) → map(-0.40, -0.06)
+RefNoise.Perlin 与 Noises.perlin 同源（CURVE3/hermite，输出 [0,1]）。
+
+实测验证（ChannelBlendProbe，4 项全 PASS）
+------------------------------------------
+[1] 高度通道逐位未变
+    40000 样本  max|新-老| = 5.551e-17 e   ← 浮点级，等于逐位相同
+[2] 三通道共用同一 alpha
+    3304 样本   max|反解alpha − terrainRegionEdge| = 6.120e-05
+[3] 每族通道区间全部落在参考配方区间内
+    PLAINS    erosion [-0.3245,-0.0070]  weirdness [-0.3696,-0.1034]
+    STEPPE    erosion [-0.3308,-0.0028]  weirdness [-0.3754,-0.1079]
+    HILLS_1   erosion [-0.6110,+0.2968]  weirdness [-0.3596,-0.1062]
+    HILLS_2   erosion [-0.6381,+0.3044]  weirdness [-0.3612,-0.1155]
+    DALES     erosion [-0.6906,+0.2961]  weirdness [-0.3705,-0.1169]
+    M1        erosion [-0.9227,-0.3207]  weirdness [-0.3723,-0.0920]
+    M2        erosion [-0.9166,-0.3180]  weirdness [-0.3670,-0.1097]
+    M3        erosion [-0.9005,-0.2579]  weirdness [-0.3598,-0.0928]
+    PLATEAU   erosion [-0.6584,-0.0415]  weirdness [-0.2518,-0.1564]
+    BADLANDS  erosion [-0.7183,-0.3127]  weirdness [-0.3578,-0.1001]
+    BASIN     erosion [+0.1203,+0.4866]  weirdness [-0.0373,+0.0367]
+[4] 穿过区域边界的剖面无阶跃（40 条剖面 × 4000 点，2 块步长）
+    max|Δheight|    = 0.1556 e
+    max|Δerosion|   = 0.0147
+    max|Δweirdness| = 0.0382
+
+图档
+----
+alpha-consistency.png  三通道反解 alpha 与 terrainRegionEdge 重合（偏差 1.5e-05）
+                       ← 这是"三通道同步过渡"最直接的证据
+channels-panel.png     三通道并排图（erosion / weirdness 各自的分布）
+channels-profile.png   中间行剖面（三通道归一化叠画，仅作形态参考）
+
+复现
+----
+java -Xmx6g "-Dfile.encoding=UTF-8" -cp <cp> \
+  com.geogenesis.worldgen.terrain.candidate.ChannelBlendProbe \
+  build/terrain-upgrade/out-chan 501 9 -140 137
+python tools/show-channels.py       build/terrain-upgrade/out-chan 501 9 "副标题"
+python tools/show-alpha-consistency.py build/terrain-upgrade/out-chan/profile-alpha.txt "副标题"
+
+影响
+----
+地形高度产出<b>零变化</b>（[1] 已证）。erosion/weirdness 目前无任何消费方 ——
+它们是为将来接原版 biome 参数 / BiomeClassifier 准备的。src/main 零改动。
