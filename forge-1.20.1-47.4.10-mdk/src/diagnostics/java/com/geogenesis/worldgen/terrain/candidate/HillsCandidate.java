@@ -50,22 +50,42 @@ public final class HillsCandidate {
          * 会把谷底与丘坡打碎成噪点。收到 2.5 后最高倍频约 {@code 300/2.5³ ≈ 19} 格，
          * 谷底变宽、坡面变缓，符合真实谷地"宽底缓坡"的形态。</p>
          */
-        DALES_GEO("dales-geo", "地理修正 dales（billow lac 4.0→2.5）", 400f, 2.5f);
+        DALES_GEO("dales-geo", "地理修正 dales（billow lac 4.0→2.5）", 400f, 2.5f),
+        /**
+         * ★ 去高频 dales（用户 2026-10-30："把这个 dales 的高频去了看看，我就是嫌这个"）。
+         *
+         * <p>{@code DALES_GEO} 的碎纹来自两套 billow 的<b>第 3、4 倍频</b>：
+         * {@code 300/2.5² ≈ 48} 格、{@code 300/2.5³ ≈ 19} 格 —— 红圈圈住的正是这些
+         * 波纹状细纹。本变体把两套 billow 的倍频压到 <b>2</b>，最高波长变为
+         * {@code 300/2.5 = 120} 格、{@code 350/2.5 = 140} 格，碎纹消失，
+         * 而 selector / warp / 混合结构与 dales 完全一致（单变量 A/B）。</p>
+         */
+        DALES_LO("dales-lo", "去高频 dales（billow 倍频 4/3 → 2，最高波长 120 格）", 400f, 2.5f, 2, 2);
 
         private final String id;
         private final String label;
         private final float envelopeScale;
         private final float dalesLacunarity;
+        /** 两套 billow 的倍频数（DALES_LO = 2/2 去高频，其余 = 参考 4/3）。 */
+        private final int billowOct1;
+        private final int billowOct2;
 
         Variant(String id, String label, float envelopeScale) {
-            this(id, label, envelopeScale, 4f);
+            this(id, label, envelopeScale, 4f, 4, 3);
         }
 
         Variant(String id, String label, float envelopeScale, float dalesLacunarity) {
+            this(id, label, envelopeScale, dalesLacunarity, 4, 3);
+        }
+
+        Variant(String id, String label, float envelopeScale, float dalesLacunarity,
+                int billowOct1, int billowOct2) {
             this.id = id;
             this.label = label;
             this.envelopeScale = envelopeScale;
             this.dalesLacunarity = dalesLacunarity;
+            this.billowOct1 = billowOct1;
+            this.billowOct2 = billowOct2;
         }
 
         public String id() { return id; }
@@ -118,20 +138,26 @@ public final class HillsCandidate {
                 h = new RefNoise.Mul(h, scaler2);
                 return new RefNoise.Mul(h, new RefNoise.Constant(0.55f));
             }
-            case DALES, DALES_GEO -> {
-                return dales(next, variant.dalesLacunarity);
+            case DALES, DALES_GEO, DALES_LO -> {
+                return dales(next, variant.dalesLacunarity, variant.billowOct1, variant.billowOct2);
             }
             default -> throw new IllegalStateException("unknown variant " + variant);
         }
     }
 
-    /** dales：两套 billow 由慢变 selector 混合，得到"谷地/丘坡"两种质地。 */
-    private static RefNoise.Node dales(java.util.function.IntSupplier next, float lacunarity) {
-        RefNoise.Node hills1 = RefNoise.Billow.ofScale(next.getAsInt(), 300f, 4, lacunarity, 0.8f);
+    /**
+     * dales：两套 billow 由慢变 selector 混合，得到"谷地/丘坡"两种质地。
+     *
+     * @param oct1 hills1 billow 倍频（参考 4；DALES_LO 用 2 去掉碎纹）
+     * @param oct2 hills2 billow 倍频（参考 3；DALES_LO 用 2）
+     */
+    private static RefNoise.Node dales(java.util.function.IntSupplier next, float lacunarity,
+                                       int oct1, int oct2) {
+        RefNoise.Node hills1 = RefNoise.Billow.ofScale(next.getAsInt(), 300f, oct1, lacunarity, 0.8f);
         hills1 = RefNoise.PowerCurve.of(hills1, 0.5f, 0f, 1f);
         hills1 = new RefNoise.Mul(hills1, new RefNoise.Constant(0.75f));
 
-        RefNoise.Node hills2 = RefNoise.Billow.ofScale(next.getAsInt(), 350f, 3, lacunarity, 0.8f);
+        RefNoise.Node hills2 = RefNoise.Billow.ofScale(next.getAsInt(), 350f, oct2, lacunarity, 0.8f);
         hills2 = new RefNoise.Power(hills2, 1.25f);
 
         RefNoise.Node selector = RefNoise.Perlin.ofScale(next.getAsInt(), 400f, 1);

@@ -494,6 +494,18 @@ abstract class RefNoise {
      * <p>参考的 {@code Heightmap.java:115} 用的是这一种（不是 {@link WorleyEdge} 里的
      * {@code DISTANCE_2}）。两者形态不同：{@code d1+d2−1} 在细胞边界给出连续抬升的
      * "鞍形"，而 {@code d2−1} 给出的是"细胞内部平坦、边界一条线"。山形遮罩要前者。</p>
+     *
+     * <h3>⚠ 2026-10-30 回滚说明（勿再"对齐"本类）</h3>
+     * <p>曾把这里改成参考的<b>平方距离</b>（{@code dx²+dy²}，无 sqrt）并把
+     * {@code map(0,1)} 补成 {@code value/0.9}。虽然那两处确实与参考逐位一致
+     * （{@code WorleyParityProbe} 30 万样本 {@code max|ours-ref|=0}），
+     * <b>但本类是共享底层</b> —— {@code CombineCandidate:584} 也用它，
+     * 而那一条路线已用本类的<b>旧分布</b>标定过阈值 {@code 0.55/0.78}。
+     * 改底层 ⇒ {@code compose-coastal}/{@code compose-regional} 的地形整体改变
+     * （用户实机认可的图无法重现）。</p>
+     *
+     * <p>结论：<b>本类保持 sqrt 版不动</b>。若将来某条路线需要"参考口径"，
+     * 应新建独立的节点类（如 {@code WorleyEdgeAddRef}）而不是改这里。</p>
      */
     static final class WorleyEdgeAdd implements Node {
         private final int seed;

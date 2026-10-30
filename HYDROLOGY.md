@@ -439,8 +439,16 @@ gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [半径] [tol] [k=
   已被带证据载荷的 `auditEvidence` 取代）；"v1 缺陷④ JOIN≠通向水体"的知识
   已并入 `auditEvidence` javadoc。
 - `solveHier` else 分支注释曾称"接力：本区粗层主干源头 + 邻区粗层主干端口"，
-  实际传 `List.of()`（恒空）⇒ 已改为如实说明"当前不做跨区接力"，
+  实际传 `List.of()`（恒空）⇒ 已改为如实说明该分支不做跨区接力，
   并标注 `hierIncomingSeeds` 仅被 `SharedLakeSeamProbe` 反射调用。
+  > ⚠ **这句话只描述 `solveHier` 的 else 分支，不要说成"生产不做跨区接力"。**
+  > `solveHier` 整体只在 `-Dgeogenesis.hierarchicalHydrology=true` 时才跑（`HIER`，默认 **false**）；
+  > 默认生产走 `solveProduction`（`ModelHydrologyProvider:3469`），
+  > 那里的 `incoming` 由 `typedIncomingPorts` + `assembleIncomingWires` 按 8 邻 pass-1 端口填充
+  > （`L3656-3664`），**跨区接力是开着的**（`CROSS_PASS` / `BOUNDARY_PORTS` 默认均 true，
+  > `L1294-1295` / `L1330-1331`）。
+  > 判据：§〇bu 记录的 `boundaryPorts` 半接线事故——若中继机制不存在，
+  > 端口开关不可能造成"左侧水系成片消失（24824→10771）"。
 - 过时默认值注释三处已修：`meander`（实为默认开 amp=0.6）、`v2 typed 接力`、`ports 模块`。
 - `geogenesis.channelMinCells` 一属性两义（世界排水 150 / 骨架源门限 40）⇒ 骨架侧
   拆出 `geogenesis.skeletonSourceCells`（默认仍 40，已纳入实验键指纹）。

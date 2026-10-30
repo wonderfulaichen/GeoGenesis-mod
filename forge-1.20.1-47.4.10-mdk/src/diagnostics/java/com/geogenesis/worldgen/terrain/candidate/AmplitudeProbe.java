@@ -22,7 +22,6 @@ public final class AmplitudeProbe {
         recordMtn(out, n, seed, MountainsCandidate.Variant.M1_GEO);
         recordPlateau(out, n, seed, PlateauCandidate.Variant.REF);
         recordBadlands(out, n, seed);
-        recordBasin(out, n, seed);
         System.out.print(out);
     }
 
@@ -72,12 +71,5 @@ public final class AmplitudeProbe {
         BadlandsCandidate c = new BadlandsCandidate();
         c.seed(seed);
         stats(sb, "badlands", c::height01, cnt);
-    }
-
-    private static void recordBasin(StringBuilder sb, int cnt, long seed) {
-        BasinCandidate c = new BasinCandidate(BasinCandidate.Variant.B1);
-        c.seed(seed);
-        // 盆地直接给 e，换回 0..1 便于对比
-        stats(sb, "basin", (x, z) -> (c.e(x, z) + 0.06) / 0.08, cnt);
     }
 }

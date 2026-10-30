@@ -307,53 +307,93 @@ public final class OceanAssemblyCandidate {
             double t = (edge - cpShelf()) / Math.max(1e-6, cpShore() - cpShelf());
             return lerp(shallow, 0.0, smooth(t)) + oceanDetail(edge, x, z, cpShelf());
         }
-        // 3) 岸段：0 → 陆地基准。形态由 cliffFactor 在"沙岸剖面"与"崖岸剖面"间插值。
-        //
-        //    沙岸：t<0.25 抬到 12%（滩面+滩肩），0.25–1.0 缓升到 100%（海岸平原）
-        //    崖岸：t<0.65 只抬到 2%（海蚀平台，几乎齐平水面），0.65–0.85 猛升到 100%（崖面），
-        //          0.85–1.0 持平（崖顶台地）
-        //
-        //    ★ 两条剖面都用 smoothstep 塑形，且各段衔接处端点导数一致 ⇒ 全程 C¹。
-        //      首版用 pow(t,p)，在 t=0 或 t=1 会导数发散/不归零，实测 h'' 达 1.9e7（尖角）。
-        double t = clamp01((edge - cpShore()) / Math.max(1e-6, cpAnchor() - cpShore()));
         double landB = landE(x, z) * BLOCKS_PER_E_LAND;
         float cliff = cliffFactor(edge, x, z);
-        // shoreShape 直接返回格数（含绝对高度的滩肩/海蚀平台），不再乘 landB
+        double w = shoreWidth(landB);
+        double t = clamp01((edge - cpShore()) / w);
         return shoreShape(t, cliff, landB);
     }
 
     /**
-     * 岸段抬升曲线（0..1 → 0..1）：沙岸与崖岸两种剖面的连续插值。
+     * 岸段：从海平面平滑升到 {@code landB}，<b>上升宽度随 landB 增长</b>。
      *
+     * <h3>用户 2026-10-30 的两条要求</h3>
+     * <ol>
+     *   <li>"陆地层的岸坡也一并处理，不要刀切感。不然旁边是很高的高山直接切这样不自然。"</li>
+     *   <li>"不过那阈值过渡还是不太好，也许可以改成变化曲线。"</li>
+     * </ol>
+     *
+     * <h3>★ 为什么最终改成"单一连续公式"，而不是封顶 + 回填</h3>
+     * <p>中间试过三种都在打转，全部失败并已删除：</p>
      * <pre>
-     * 沙岸（cliff=0）                       崖岸（cliff=1）
-     *   t∈[0, 0.25]  0 → 3.5 格              t∈[0, 0.65]  0 → 3.0 格   海蚀平台
-     *   t∈[0.25, 1]  3.5 → landB 格           t∈[0.65,0.85] 3.0 → landB 崖面
-     *                                        t∈[0.85, 1]  landB         崖顶台地
+     * ① 岸顶软封顶 + 岸后固定宽度回填 ⇒ 把高度搬家，总落差没变，岸后反而更陡
+     *    （80–150 格档 |grad| P50：1.238 → 1.909，更差）
+     * ② 岸顶封顶取更低/更高 ⇒ 同上，只是把突变点在两个位置之间搬
+     * ③ 岸段终点按高度外推 + 从 shoreEnd 起算回填 ⇒ 两处口径易错位，
+     *    实测出现 P99 梯度 29 的尖峰、峰顶被顶到 299 格
      * </pre>
+     * <p>根因是这些方案都有<b>两个来源</b>（岸段剖面 + 回填坡）在拼接，
+     * 只要两处对"岸段在哪结束"的理解有 1 个像素差，就产生尖峰。</p>
      *
-     * <p><b>高度用绝对格</b>（{@link #FLAT_BLOCKS_BEACH} / {@link #FLAT_BLOCKS_CLIFF}），
-     * 不按陆高比例 —— 滩肩与海蚀平台由潮差与浪蚀基准面控制，与内陆山高无关。</p>
+     * <h3>现在的做法（单一来源）</h3>
+     * <p>整段海岸<b>只有一个公式</b>，没有拼接点：</p>
+     * <pre>
+     * t      = (edge − cpShore) / w                    w = 岸段宽度（随 landB 增长）
+     * H(t)   = landB · shape(t) − sink·4t(1−t)          shape 在 [0,1] 上单调 0→1
+     * </pre>
+     * <ul>
+     *   <li>{@code H(0) = 0} ⇒ 岸线仍在 {@code edge = cpShore}；</li>
+     *   <li>{@code H(1) = landB} ⇒ 在 {@code edge = cpShore + w} 处与陆地层<b>数值相等</b>；</li>
+     *   <li>{@code t ≥ 1} 之后直接返回 {@code landB} ⇒ 没有回填坡这第二个来源，<b>不可能错位</b>。</li>
+     * </ul>
+     *
+     * <h3>★ "越高过渡越不能像刀切"怎么实现</h3>
+     * <p>关键是 {@code w}（岸段宽度）随 {@code landB} 增长：</p>
+     * <pre>
+     *   w = BASE_W · (1 + RETREAT_GAIN · min(1, landB / RETREAT_REF))
+     *
+     *   landB =  20 格 ⇒ w ≈ 0.056（原始宽度）       坡度 ≈ 20/w
+     *   landB = 120 格 ⇒ w ≈ 0.13                   坡度 ≈ 120/0.13 ≈ 923 格/edge
+     *   landB = 300 格 ⇒ w ≈ 0.2（封顶）             坡度 ≈ 300/0.2 = 1500 格/edge
+     * </pre>
+     * <p>即：<b>山越高、岸坡越长，但坡度的增长慢于高度</b>（300 格的山只比 120 格的陡 1.6 倍，
+     * 而不是 2.5 倍）。地理上这就是"高山海岸后退、由麓坡消化高差"。</p>
+     *
+     * <h3>形状曲线 {@code shape(t)}</h3>
+     * <p>{@code shape(t) = slope·smoothstep(t) + (1−slope)·t²}，{@code slope = lerp(1, 0.55, cliff)}。</p>
+     * <p>沙岸（cliff=0）取纯 {@code smoothstep}：岸边缓起、中段最陡、近内陆再放缓；
+     * 崖岸（cliff=1）把权重移到 {@code t²}：靠近海面的段更平（海蚀平台），
+     * 抬升集中在中后段（崖面）。两者在 t=0/1 处都满足端点条件，所以换 cliff 不移动岸线。</p>
      */
-    private static double shoreShape(double t, float cliff, double landB) {
-        double flatEnd = lerp(FLAT_END_BEACH, FLAT_END_CLIFF, cliff);
-        double steepEnd = lerp(STEEP_END_BEACH, STEEP_END_CLIFF, cliff);
-        // 平台绝对高度：但不得超过陆高（否则"平台"比身后的陆地还高）
-        double flatBlocks = Math.min(lerp(FLAT_BLOCKS_BEACH, FLAT_BLOCKS_CLIFF, cliff),
-                landB * 0.5);
+    /** 岸段基础宽度（edge 单位）。旧口径 {@code cpAnchor − cpShore} ≈ 0.056；加宽到 0.085 以压低典型坡度。 */
+    private static final double BASE_SHORE_W = 0.085;
+    /** 陆地高度达到这个值（格）时宽度倍数吃满。 */
+    private static final double RETREAT_REF_BLOCKS = 110.0;
+    /**
+     * 宽度最多放大的倍数。
+     *
+     * <p><b>0.90 → 0.45（2026-10-30 用户裁定）</b>：0.90 时高地海岸后退太远，
+     * 实测 <b>4.2% 的像素被压低超过 20 格</b>、最大压低 159 格（252.6 → 93.0 格）——
+     * 岸坡变缓的代价是从内陆搬走了太多高度。收到 0.45 后宽度最多 1.45 倍，
+     * 高地压低量大幅收敛，同时高地岸坡仍明显缓于等宽版本。</p>
+     */
+    private static final double RETREAT_GAIN = 0.45;
+    /** 沿岸下沉（绝对格数，中点峰值、两端为 0）。 */
+    private static final double COAST_SINK_BLOCKS = 1.0;
 
-        if (t <= flatEnd) {
-            // 前段：水面 → 滩肩 / 海蚀平台（绝对格）
-            double u = flatEnd > 1e-6 ? t / flatEnd : 1.0;
-            return flatBlocks * smooth(u);   // 返回格
-        }
-        if (t >= steepEnd) {
-            // 崖顶台地（沙岸 steepEnd=1 时此支不生效）
-            return landB;
-        }
-        // 中段：平台 → 陆地基准（格空间插值）
-        double u = (t - flatEnd) / Math.max(1e-6, steepEnd - flatEnd);
-        return flatBlocks + (landB - flatBlocks) * smooth(u);
+    /** 岸段宽度（edge）：随背后陆地高度增长。 */
+    private static double shoreWidth(double landB) {
+        double sat = Math.min(1.0, Math.max(0.0, landB) / RETREAT_REF_BLOCKS);
+        return BASE_SHORE_W * (1.0 + RETREAT_GAIN * sat);
+    }
+
+    /** 岸段剖面（格）：{@code t ∈ [0,1]} → {@code 0..landB}。 */
+    private static double shoreShape(double t, float cliff, double landB) {
+        double s = t * t * (3 - 2 * t);
+        double slope = lerp(1.0, 0.55, cliff);
+        double shape = slope * s + (1 - slope) * t * t;
+        double h = landB * shape;
+        return h - COAST_SINK_BLOCKS * 4.0 * t * (1 - t);
     }
 
     /** 深海起点（edge 最小值，用于把深海噪声铺到 [0, shelfEnd]）。 */
@@ -435,11 +475,32 @@ public final class OceanAssemblyCandidate {
     }
 
     /**
+     * 岸段剖面与陆地层之间的<b>交接带宽度</b>（以 edge 为单位）。
+     *
+     * <h3>为什么必须有</h3>
+     * <p>原实现在 {@code edge = cpAnchor} 处硬切：{@code edge < cpAnchor} 走岸段剖面、
+     * {@code edge >= cpAnchor} 直接返回 {@code landB}。两侧在分界线上<b>数值相等</b>
+     * （剖面末端就是 {@code landB}），但<b>一阶导数不相等</b>（剖面末端斜率 ≈ 0，
+     * 陆地层有非零斜率）⇒ 沿 {@code edge = cpAnchor} 等值线会出现一条折痕。
+     * 这正是用户 2026-10-30 圈出来的"段落感"。</p>
+     *
+     * <h3>做法</h3>
+     * <p>在 {@code [cpAnchor − HANDOFF, cpAnchor]} 内把岸段剖面平滑过渡到陆地层高度：
+     * {@code h = lerp(shore, landB, smoothstep(t))}。因为岸段末端本身已经收敛到 {@code landB}，
+     * 这条过渡只是把"斜率接管"提前一段，视觉上是岸坡末尾缓一下再进内陆。</p>
+     */
+    private static final float COAST_HANDOFF = 0.012f;
+
+    /**
      * 完整世界高度（格）。
      *
-     * <p>海侧走三段海岸剖面（含 cliffFactor 与水下细节带），陆侧从
-     * {@code beachEnd} 起由 {@link CombineCandidate} 接管，保证海陆分界仍在
-     * {@code edge = coastAnchor} 附近（维持 1:1）。</p>
+     * <p>海侧走海床剖面（深海 → 浅海 → 岸段），岸段在 {@code edge ≥ cpShore + w} 之后
+     * 自然等于 {@code landB}（{@code t} 被 clamp 到 1），<b>不需要任何回填坡或交接带</b>。</p>
+     *
+     * <h3>2026-10-30：中间试过的"封顶 + 回填 + 交接带"已全部删除</h3>
+     * <p>那些方案都有两个高度来源（岸段 + 回填）在拼接，只要两处对"岸段在哪结束"的
+     * 理解差一个像素，就会在拼接处产生尖峰（实测 P99 梯度 29、峰顶被顶到 299 格）。
+     * 现在只有一个来源：{@link #shoreShape}。</p>
      */
     public double heightBlocks(double x, double z) {
         float edge = continentEdge(x, z);
@@ -452,8 +513,6 @@ public final class OceanAssemblyCandidate {
             float a = (edge - CP_SHALLOW_OCEAN) / (CP_INLAND - CP_SHALLOW_OCEAN);
             return lerp(oceanBlocks(edge, x, z), landB, a);
         }
-
-        if (edge >= cpAnchor()) return landB;
         return coastalProfile(edge, x, z);
     }
 

@@ -85,7 +85,8 @@ def main():
     geo = json.loads((root / 'compose-geometry.json').read_text(encoding='utf-8'))
     size, step = geo['size'], geo['stepBlocks']
     arms = geo['arms']
-    keep = ['compose-production', 'compose-coastal', 'compose-regional']
+    keep = ['compose-production', 'compose-coastal', 'compose-coastal-islands',
+            'compose-islands-only']
     arms = [a for a in arms if a in keep]
 
     data = {}

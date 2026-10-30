@@ -47,8 +47,7 @@ public final class RegionCompositionCandidate {
         HILLS_1("hills1"), HILLS_2("hills2"), DALES("dales"),
         M1("m1"), M2("m2"), M3("m3"),
         PLATEAU("plateau"),
-        BADLANDS("badlands"),
-        BASIN("basin");
+        BADLANDS("badlands");
 
         final String id;
 
@@ -60,15 +59,14 @@ public final class RegionCompositionCandidate {
      *
      * <p>参考的实际配比里 plains 与 steppe 是高频项、山地与台地是低频项。这里按
      * "低地多、高地少"的地理事实给名额：平原类 5 席、丘陵类 4 席、山地 2 席、
-     * 台地 1 席、劣地 1 席、盆地 1 席 = 14 席。</p>
+     * 台地 1 席、劣地 1 席 = 13 席。</p>
      */
     private static final Kind[] SLOTS = {
             Kind.PLAINS, Kind.PLAINS, Kind.STEPPE, Kind.PLAINS, Kind.STEPPE,
             Kind.HILLS_1, Kind.HILLS_2, Kind.DALES, Kind.HILLS_1,
             Kind.M1, Kind.M2,
             Kind.PLATEAU,
-            Kind.BADLANDS,
-            Kind.BASIN
+            Kind.BADLANDS
     };
 
     /** 各族的归一化高度求值器。 */
@@ -100,7 +98,6 @@ public final class RegionCompositionCandidate {
         MountainsCandidate m3 = new MountainsCandidate(MountainsCandidate.Variant.M3_GEO);
         PlateauCandidate plateau = new PlateauCandidate(PlateauCandidate.Variant.REF);
         BadlandsCandidate badlands = new BadlandsCandidate();
-        BasinCandidate basin = new BasinCandidate(BasinCandidate.Variant.B1);
         plains.seed(worldSeed);
         steppe.seed(worldSeed);
         h1.seed(worldSeed + 101L);
@@ -111,7 +108,6 @@ public final class RegionCompositionCandidate {
         m3.seed(worldSeed + 606L);
         plateau.seed(worldSeed + 707L);
         badlands.seed(worldSeed + 808L);
-        basin.seed(worldSeed + 909L);
 
         families[Kind.PLAINS.ordinal()] = plains::height01;
         families[Kind.STEPPE.ordinal()] = steppe::height01;
@@ -123,7 +119,6 @@ public final class RegionCompositionCandidate {
         families[Kind.M3.ordinal()] = m3::height01;
         families[Kind.PLATEAU.ordinal()] = plateau::height01;
         families[Kind.BADLANDS.ordinal()] = badlands::height01;
-        families[Kind.BASIN.ordinal()] = basin::e;   // 盆地直接给 e，见类注释
 
         border = plains;
         RefNoise.Node wx = RefNoise.Perlin.ofScale(next.getAsInt(), 400f, 1);
@@ -131,7 +126,6 @@ public final class RegionCompositionCandidate {
         partition = new RegionPartition(next.getAsInt(), wx, wz);
 
         // 同一名额表展开成 blender 的族数组（槽位顺序一致，面积配比才一致）。
-        // blender 内部是纯高度混合，所有族必须同口径（0..1），故盆地先归一化。
         TerrainBlenderCandidate.Family[] fam = new TerrainBlenderCandidate.Family[SLOTS.length];
         for (int i = 0; i < SLOTS.length; i++) {
             Kind k = SLOTS[i];
@@ -140,17 +134,10 @@ public final class RegionCompositionCandidate {
         blender = new TerrainBlenderCandidate(worldSeed, fam);
     }
 
-    /** 族的 0..1 归一化高度（盆地由 e 线性拉进同一区间）。 */
+    /** 族的 0..1 归一化高度（各族本就同口径；保留方法以便将来插例外）。 */
     private double normalizedHeight(Kind kind, double wx, double wz) {
-        double v = families[kind.ordinal()].height01(wx, wz);
-        if (kind != Kind.BASIN) return v;
-        double u = (v - BASIN_E_LO) / (BASIN_E_HI - BASIN_E_LO);
-        return u < 0 ? 0 : (u > 1 ? 1 : u);
+        return families[kind.ordinal()].height01(wx, wz);
     }
-
-    /** 盆地 B1 的 e 区间（实测 Y 54–65 对应 e 约 -0.06…+0.02）。 */
-    private static final double BASIN_E_LO = -0.06;
-    private static final double BASIN_E_HI = 0.02;
 
     /** 合成后的 e（未做海陆，陆地类型层专用）。 */
     public double e(double wx, double wz) {
@@ -175,10 +162,10 @@ public final class RegionCompositionCandidate {
         return blender.debugFamily((float) wx, (float) wz);
     }
 
-    /** 该类的地形 e。盆地直接给 e，其余按参考单位换算。 */
+    /** 该类的地形 e（各族同口径：参考单位 × 1.08）。 */
     private double familyE(Kind kind, double wx, double wz) {
         double v = families[kind.ordinal()].height01(wx, wz);
-        return kind == Kind.BASIN ? v : v * E_PER_REF_UNIT * E_SCALE_TO_E;
+        return v * E_PER_REF_UNIT * E_SCALE_TO_E;
     }
 
     /**
