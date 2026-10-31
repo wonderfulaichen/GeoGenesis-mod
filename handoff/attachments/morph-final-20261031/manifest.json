@@ -1,0 +1,195 @@
+{
+  "status": "final_independent_prototype",
+  "selected": "A_fixed_240",
+  "width_blocks": 240,
+  "half_width": 120,
+  "offset": 0,
+  "progress": "smoothstep(clamp((x-center+120)/240,0,1))",
+  "world_seed": "9139912035078620160",
+  "terrain_jvm_overrides": [],
+  "jvm_encoding": "UTF-8",
+  "assets": {
+    "hills_plateau": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/hills-plateau-reference-range-20261031/spatial-native.png",
+        "sha256": "2471c483e0b788283099b54a692dda1e4f49584536b4abcae73bd344b2fd5676"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/hills-plateau-reference-range-20261031/height-profiles.png",
+        "sha256": "c38b95b2af2e88867e5a2b8fd074da7d6a215a7b23320c4fb2b54e4ae37e2a20"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/hills-plateau-reference-range-20261031/stages-panel.png",
+        "sha256": "b301dbcd98225a9a807207c897f11e81eabbac4b0d00fb0afe34a49cc000d991"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/hills-plateau-reference-range-20261031/profiles.csv",
+        "sha256": "2b6bb50b0568d0e49dbf077c9ec115a8989ceb5c86d0720d2d80d3995fef023b"
+      }
+    },
+    "plain_hills": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plain_hills/spatial-native.png",
+        "sha256": "29bed08ff5ca268478de7c4e3d7150333c3b9cdb6a55792fb6ec0969f1c70ef3"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plain_hills/height-profiles.png",
+        "sha256": "90fc318843aef2054c3c3185e7791b356cc923cc0f792f79bbcb06761e10d35d"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plain_hills/stages-panel.png",
+        "sha256": "f1e6321c7376343f048797e035abde434b77f9cf50a60c8a88091dba0ef9f747"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plain_hills/profiles.csv",
+        "sha256": "5efe3fc1b4fa9d09be951ccb7c65c5d4ff8907ceef994984a75fec2813d92f64"
+      }
+    },
+    "hills_mountains": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/hills_mountains/spatial-native.png",
+        "sha256": "eb518a9e58ae3b54acb874acd35b81953d855b206ec490220ee54d020924dc10"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/hills_mountains/height-profiles.png",
+        "sha256": "58970ac487fe28ee8d5f47d0dab07bcafbff188a647678d358d3dc524562f441"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/hills_mountains/stages-panel.png",
+        "sha256": "5bd5ac0ffb80b3d1392c120e3242990677a0b8199af4d3ad35ade642dc0d8966"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/four-pair-morph-20261031/hills_mountains/profiles.csv",
+        "sha256": "e96eab18c671062d92dad68eefb6fc58a91adc5ab5979b0b772961e99907d82f"
+      }
+    },
+    "plateau_mountains": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plateau_mountains/spatial-native.png",
+        "sha256": "bd296ab1519c69a3a8a7925351b043a6dfce14bbc05d65f59a30e7212806846b"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plateau_mountains/height-profiles.png",
+        "sha256": "ce4c196804b08eab25be616c53495f0f25333babeb60b55d536303884e8563b0"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plateau_mountains/stages-panel.png",
+        "sha256": "e1a857ba3849a14e6d8f147bf50494cb23695f74ad632ca5346cb36ff7f54591"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plateau_mountains/profiles.csv",
+        "sha256": "4c2401aac3026457439d762c087961b6326a75d663b267faf03adbc289a5b5da"
+      }
+    },
+    "plateau_badlands": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plateau_badlands/spatial-native.png",
+        "sha256": "99441dc063da65725e8342a6ec98f0fd0525a0db8316d8ca89f30aa1456d7656"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plateau_badlands/height-profiles.png",
+        "sha256": "1f69485a01a22d2679f6130694c909ff02c40150e1e6ed22bfe408b22e844574"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plateau_badlands/stages-panel.png",
+        "sha256": "18caf08fcd78595faed4d4ec7e70724fa7c90774bd222e24d92f4102b8bdb6c6"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/four-pair-morph-20261031/plateau_badlands/profiles.csv",
+        "sha256": "bce0fb5954ef40613d0e5cba126c83e4f8dcf9f7dba84277a384a68967f14983"
+      }
+    },
+    "plain_plateau": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_plateau/spatial-native.png",
+        "sha256": "8e1d6e7fadd07794ed4ab6a94f1fc1ba017c5393542176ceef575407fd4299c2"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_plateau/height-profiles.png",
+        "sha256": "5a1d1e9658db50d036202ce3834dbb25110d0e6e2706856170ec2a0e74a5c5d3"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_plateau/stages-panel.png",
+        "sha256": "a49c8fd1f4593dffc9a049621631f510de0ecb0df7c35eda5eb644de16e98cb0"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_plateau/profiles.csv",
+        "sha256": "e369922413e54b5bda82647e99288c4364878525724fbc454924b253fde244f6"
+      }
+    },
+    "plain_mountains": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_mountains/spatial-native.png",
+        "sha256": "266364a28958a0e3fc197172a3fd68286b011b0b5afd160b7a03fef32dcb171d"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_mountains/height-profiles.png",
+        "sha256": "e486cdf6c5b433543542ee834c792dc9188b7f65437c0093dde1d1843938d560"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_mountains/stages-panel.png",
+        "sha256": "1838545b27611f067e0858db0ebeb28df6e2d16e3082165e6c362282c2156b50"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_mountains/profiles.csv",
+        "sha256": "16f3abe967624288d9125e01255f1ad254640026d0a30f6d823a904a22b80812"
+      }
+    },
+    "plain_badlands": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_badlands/spatial-native.png",
+        "sha256": "6ab4700eb4e8303a7aca51d114bd3ad8a0e4a84800202fe8b3b859da47230097"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_badlands/height-profiles.png",
+        "sha256": "e4133ab75d5312abe331324da19e9295c54bf7846ae0458af28f21cb56c90545"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_badlands/stages-panel.png",
+        "sha256": "83f6bcd7fc9afdfaac72ed236fcb768bb6df514ffe922a8365856cde0f5b1318"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/plain_badlands/profiles.csv",
+        "sha256": "f6621b856c46bcdf87d172f81c44f00b3ee4836c71fb801116e8ddf5678cfb9a"
+      }
+    },
+    "hills_badlands": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/hills_badlands/spatial-native.png",
+        "sha256": "03a0b0e80479415c3178f9421ec0ec48b3f13af191dd38a13c087601f423b0bc"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/hills_badlands/height-profiles.png",
+        "sha256": "f611048b8a5c98cb807a5bc85ae501e705e43d45741ae2c102cc8aeb35697db2"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/hills_badlands/stages-panel.png",
+        "sha256": "40b60a1cfd75d8082a6b1f4108a4dc2a856eceaad94130b9aed4e94d7f7331c4"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/hills_badlands/profiles.csv",
+        "sha256": "09bba35866b9e84cdb5edc37d1c02d72fb0b819c878a232a1841d7a07b2c2062"
+      }
+    },
+    "mountains_badlands": {
+      "spatial-native.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/mountains_badlands/spatial-native.png",
+        "sha256": "6e84956c03ebafc226ce2ff4e40d31c39737926604f293a910918424b49d7684"
+      },
+      "height-profiles.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/mountains_badlands/height-profiles.png",
+        "sha256": "95abf261c25f4dc2bd76f7e4cf702d14a229c7ba161437cc3e774d24b47a4a56"
+      },
+      "stages-panel.png": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/mountains_badlands/stages-panel.png",
+        "sha256": "4bf8cc8e74d29b4e977cacc292fd928e90e668a236a8a7c1799e2f09028b4d74"
+      },
+      "profiles.csv": {
+        "path": "handoff/attachments/remaining-five-morph-20261031/mountains_badlands/profiles.csv",
+        "sha256": "257f1d08f5bfd8f41dbc3210faf4e8dd86f5304bd2e83b39492b17309512a652"
+      }
+    }
+  },
+  "protected_existing_files_unchanged": 1158,
+  "not_integrated": true
+}

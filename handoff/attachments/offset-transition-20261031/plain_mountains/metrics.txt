@@ -1,0 +1,6 @@
+pair=PLAIN_MOUNTAINS
+seed=9139912035078620160 offset_min=-60.024171 offset_max=50.192424 negative_control=0.666667
+seed=1 offset_min=-53.598023 offset_max=46.571058 negative_control=0.666667
+seed=-817263 offset_min=-60.476074 offset_max=49.719986 negative_control=0.666667
+checks_cumulative=749525 PASS
+No performance optimization or integration. Visual acceptance remains separate.

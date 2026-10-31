@@ -1,0 +1,6 @@
+pair=MOUNTAINS_BADLANDS
+seed=9139912035078620160 offset_min=-56.845602 offset_max=56.032236 negative_control=0.666667
+seed=1 offset_min=-76.110293 offset_max=53.986381 negative_control=0.666667
+seed=-817263 offset_min=-59.826679 offset_max=69.014348 negative_control=0.666667
+checks_cumulative=1499049 PASS
+No performance optimization or integration. Visual acceptance remains separate.

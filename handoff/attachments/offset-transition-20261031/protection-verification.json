@@ -1,0 +1,21 @@
+{
+  "protected_existing_files_unchanged": 1107,
+  "pairs": {
+    "plain_mountains": {
+      "A_B_byte_identical_to_previous": true,
+      "width_unchanged": true,
+      "offset_min": -52.699247163,
+      "offset_max": 8.004162262,
+      "C_core_equals_A": true,
+      "C_sha256": "764b0a3acafeb4ec3032b5d8a2dbdfe3fbf26376a03fac13624191bcc0b8ca9d"
+    },
+    "mountains_badlands": {
+      "A_B_byte_identical_to_previous": true,
+      "width_unchanged": true,
+      "offset_min": -58.911108579,
+      "offset_max": 5.238295899,
+      "C_core_equals_A": true,
+      "C_sha256": "5a46de218b4075c45f28095cadb2ecc780fdf1d4387f5844785b13da507784e3"
+    }
+  }
+}

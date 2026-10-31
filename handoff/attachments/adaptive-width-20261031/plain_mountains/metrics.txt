@@ -1,0 +1,7 @@
+pair=PLAIN_MOUNTAINS
+seed=9139912035078620160 width_min=328.927674 width_max=601.105741 negative_control_jump=0.222222
+seed=1 width_min=312.436668 width_max=599.745003 negative_control_jump=0.222222
+seed=-817263 width_min=286.516411 width_max=594.683943 negative_control_jump=0.222222
+benchmark_points=800 rounds=5 median_A_ms=4.312600 median_B_uncached_ms=101.711500 ratio=23.584728 guide_endpoint_calls=120000
+checks_cumulative=781745 PASS
+Sampled numerical checks only; visual acceptance is separate.
