@@ -1,0 +1,45 @@
+{
+  "existing_files_unchanged": 831,
+  "pairs": {
+    "hills_mountains": {
+      "interior_contraction_ratios": [
+        9.996488147484573,
+        9.956293706275758
+      ],
+      "seam_error_h01_at_epsilon_0p001": 2.98023223877e-08,
+      "stage-0.f64be_sha256": "c926248ddb68a495dad60e5640452f74f38470413b44607afda047b673215303",
+      "stage-4.f64be_sha256": "179041d75bc306692d111568558e254fa914aa4782c2040a37843c83d651063c",
+      "spatial.f64be_sha256": "0899951ec22c326f90a6c794109e9942cef981dfe8ec47a1c309b44ebd32993e"
+    },
+    "plain_hills": {
+      "interior_contraction_ratios": [
+        9.997014537967347,
+        9.953488372091007
+      ],
+      "seam_error_h01_at_epsilon_0p001": 0.0,
+      "stage-0.f64be_sha256": "17d5ca7e890ca8e94bf325bd5e13dc29e9682fee04f282768243edc2d77edfac",
+      "stage-4.f64be_sha256": "c926248ddb68a495dad60e5640452f74f38470413b44607afda047b673215303",
+      "spatial.f64be_sha256": "598f2479ea26853badc6d58ed307fbbfdb30385974a21ab18dddf1afc5876830"
+    },
+    "plateau_badlands": {
+      "interior_contraction_ratios": [
+        10.04126633081085,
+        9.987712112349165
+      ],
+      "seam_error_h01_at_epsilon_0p001": 0.0,
+      "stage-0.f64be_sha256": "eed1a770c50efaa19203ba60f744e1ecd4f22297f5d3f2c86b8fecbb4a06e54b",
+      "stage-4.f64be_sha256": "4a40597e67e471c8a115a8ffd1a616454acc4d103b7336b01fe0324a1c286b8e",
+      "spatial.f64be_sha256": "bc91c5a954e45619a2533bad7b5feae70bf158d31be8e08045bd4a39b5983cad"
+    },
+    "plateau_mountains": {
+      "interior_contraction_ratios": [
+        10.037724640945632,
+        9.619529837296401
+      ],
+      "seam_error_h01_at_epsilon_0p001": 2.98023223877e-08,
+      "stage-0.f64be_sha256": "eed1a770c50efaa19203ba60f744e1ecd4f22297f5d3f2c86b8fecbb4a06e54b",
+      "stage-4.f64be_sha256": "179041d75bc306692d111568558e254fa914aa4782c2040a37843c83d651063c",
+      "spatial.f64be_sha256": "db53616c075348adfd7a3802d72e48616f96f385dc66c0eed7485dbebdbfa7f6"
+    }
+  }
+}

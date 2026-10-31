@@ -1,0 +1,98 @@
+{
+  "protected_files": 941,
+  "allowed_changes": [
+    "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FourPairMorphCandidate.java",
+    "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FourPairMorphProbe.java",
+    "forge-1.20.1-47.4.10-mdk/tools/render-four-pair-morph.py"
+  ],
+  "other_existing_files_unchanged": 938,
+  "previous_four_regression_byte_identical": [
+    "hills_mountains\\finished-lerp.f64be",
+    "hills_mountains\\interior-scan.csv",
+    "hills_mountains\\profiles.csv",
+    "hills_mountains\\seams.csv",
+    "hills_mountains\\spatial.f64be",
+    "hills_mountains\\stage-0.f64be",
+    "hills_mountains\\stage-1.f64be",
+    "hills_mountains\\stage-2.f64be",
+    "hills_mountains\\stage-3.f64be",
+    "hills_mountains\\stage-4.f64be",
+    "plain_hills\\finished-lerp.f64be",
+    "plain_hills\\interior-scan.csv",
+    "plain_hills\\profiles.csv",
+    "plain_hills\\seams.csv",
+    "plain_hills\\spatial.f64be",
+    "plain_hills\\stage-0.f64be",
+    "plain_hills\\stage-1.f64be",
+    "plain_hills\\stage-2.f64be",
+    "plain_hills\\stage-3.f64be",
+    "plain_hills\\stage-4.f64be",
+    "plateau_badlands\\finished-lerp.f64be",
+    "plateau_badlands\\interior-scan.csv",
+    "plateau_badlands\\profiles.csv",
+    "plateau_badlands\\seams.csv",
+    "plateau_badlands\\spatial.f64be",
+    "plateau_badlands\\stage-0.f64be",
+    "plateau_badlands\\stage-1.f64be",
+    "plateau_badlands\\stage-2.f64be",
+    "plateau_badlands\\stage-3.f64be",
+    "plateau_badlands\\stage-4.f64be",
+    "plateau_mountains\\finished-lerp.f64be",
+    "plateau_mountains\\interior-scan.csv",
+    "plateau_mountains\\profiles.csv",
+    "plateau_mountains\\seams.csv",
+    "plateau_mountains\\spatial.f64be",
+    "plateau_mountains\\stage-0.f64be",
+    "plateau_mountains\\stage-1.f64be",
+    "plateau_mountains\\stage-2.f64be",
+    "plateau_mountains\\stage-3.f64be",
+    "plateau_mountains\\stage-4.f64be"
+  ],
+  "baseline_sha256": {
+    "compose-coastal": "5a8bb721ba191c7949c583b90d7b76baaf5c6ac9e08c4619021afd2f60261d28",
+    "compose-coastal-islands": "94ba83f7359526df1267572aac181ad3922e1c41f7bca31d6b6c5ccb9be271a1",
+    "compose-regional": "02cebf399b4dd7effa59526ad563fc3445d3dea58e589f5ba34057f72975c3f4"
+  },
+  "pairs": {
+    "plain_plateau": {
+      "interior_contraction_ratios": [
+        10.015507409146661,
+        9.887197501940532
+      ],
+      "seam_error_h01_epsilon_0p001": 0.0,
+      "spatial_sha256": "e69dc0db17a39b69cdb6fc2197461d02addd3eae5fc213d4664f01561f7e83b7"
+    },
+    "plain_mountains": {
+      "interior_contraction_ratios": [
+        9.994447429661362,
+        9.969642857178242
+      ],
+      "seam_error_h01_epsilon_0p001": 1.49011611938e-08,
+      "spatial_sha256": "a575b43c15900838b952cb36be507645c9b8a55fec6d04fa698f173aac9af26d"
+    },
+    "plain_badlands": {
+      "interior_contraction_ratios": [
+        9.935326764085724,
+        10.007934708670897
+      ],
+      "seam_error_h01_epsilon_0p001": 0.0,
+      "spatial_sha256": "db3465b5cc0a612c5301881a92c099a0d2b031e17feb4cfff2e86823a0ad5c8f"
+    },
+    "hills_badlands": {
+      "interior_contraction_ratios": [
+        9.818340953088352,
+        10.003708281836483
+      ],
+      "seam_error_h01_epsilon_0p001": 0.0,
+      "spatial_sha256": "b829f601c95373f9b974aac21260f6c7aa8b10616828136125ed87bea4d0493e"
+    },
+    "mountains_badlands": {
+      "interior_contraction_ratios": [
+        9.929152747576863,
+        10.036678667857746
+      ],
+      "seam_error_h01_epsilon_0p001": 0.0,
+      "spatial_sha256": "189c951352370ece1f1d20312804ca88a83e913e1d710f7b0c5e9cc6d5d278cd"
+    }
+  }
+}

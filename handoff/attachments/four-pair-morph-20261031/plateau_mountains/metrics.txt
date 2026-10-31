@@ -1,0 +1,6 @@
+pair=PLATEAU_MOUNTAINS
+seed=9139912035078620160 max_endpoint_h01=0.00000000000 max_difference_vs_finished_lerp=0.100072553
+seed=1 max_endpoint_h01=0.00000000000 max_difference_vs_finished_lerp=0.098830817
+seed=-817263 max_endpoint_h01=0.00000000000 max_difference_vs_finished_lerp=0.098014305
+checks_cumulative=9883837 PASS
+Numerical endpoint/finite/determinism PASS; visual acceptance and internal cliff attribution remain separate.

@@ -1,0 +1,25 @@
+{
+  "protected_existing_files_unchanged": 1060,
+  "pairs": {
+    "plain_mountains": {
+      "A_matches_previous_bytes": true,
+      "width_min": 418.31070832,
+      "width_max": 587.121472671,
+      "width_median": 534.451436612,
+      "center_offset": 0,
+      "pure_core_equal": true,
+      "fixed_sha256": "a575b43c15900838b952cb36be507645c9b8a55fec6d04fa698f173aac9af26d",
+      "adaptive_sha256": "2d8e7235b41b70d4bd73acd504cdfb7daf631b44212d483f11c237f9815f6c80"
+    },
+    "mountains_badlands": {
+      "A_matches_previous_bytes": true,
+      "width_min": 273.265562784,
+      "width_max": 519.17357461,
+      "width_median": 393.121013164,
+      "center_offset": 0,
+      "pure_core_equal": true,
+      "fixed_sha256": "189c951352370ece1f1d20312804ca88a83e913e1d710f7b0c5e9cc6d5d278cd",
+      "adaptive_sha256": "59a71193062d90b9b8b13e6a0ea43e1112c737eb1108d10b4686e235d18f4eb1"
+    }
+  }
+}

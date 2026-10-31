@@ -1,0 +1,29 @@
+范围：仅平原→山地、山地→劣地的B2交接偏移实验；A固定240、B原自适应宽度、C同B宽度+偏移。
+不改已有源码、配方、随机种子、基准、旧图；1107个保护文件全部未变。仅新增OffsetTransitionCandidate/OffsetTransitionProbe/render-offset-transition.py。
+不做性能优化、性能扫描、全图接入或游戏验收。无持久缓存，不改变噪声世界坐标。
+世界种子9139912035078620160；原族种子与FourPairMorphCandidate保持一致；HeightCurve及冻结TOML不变。
+A/B高度数据与adaptive-width/data中旧fixed/adaptive文件逐字节一致；C带宽CSV与B1带宽逐行精确一致。
+三个compose-coastal/compose-coastal-islands/compose-regional基准高度SHA256未变。
+偏移候选dx=-160,-120,-80,-40,0,40,80,120,160，中心先验exp(-.5*dx^2/120^2)。
+每候选相容度：固定端点高度，在候选周围3x3采样step32，权重[1,2,1]乘积/16，计算均值及方差。
+cost=roundedAbs(meanA-meanB,r2)+.75*roundedAbs(sqrt(varA+1)-sqrt(varB+1),r1)。
+连续软权重=prior*exp(-cost/32)，rawOffset=sum(weight*dx)/sum(weight)，无argmin切换。
+rawOffset再沿Z以[-128,-64,0,64,128]和[1,4,6,4,1]/16平滑；理论偏移界±160块。
+C p=clamp(.5+(x-center-offset(z))/B1width(z),0,1)，原sample内部仅一次smoothstep。
+C只移动参数坐标，不平移地形源；最大影响包络center±520=360半宽+160偏移，外部核心精确等于A。
+空间图1201x601、step1、中心(-140,137)，x[-740,460]、z[-163,437]；原生PNG不缩放。
+剖面Z=-23/137/297，step.5；高度和梯度不平滑。三版图中金线仅标注带缘，C棕线标注50%进度。
+当前窗口平原→山地宽418.310708..587.121473，偏移-52.699247..8.004162块。
+当前窗口山地→劣地宽273.265563..519.173575，偏移-58.911109..5.238296块。
+Java21 javac --release17 -encoding UTF-8 -nowarn，独立classes=build/terrain-upgrade/offset-transition/classes。
+编译集合RegionCellTable,RefNoise,HillsCandidate,PlateauCandidate,HillsPlateauMorphCandidate,FourPairMorphCandidate,AdaptiveWidthCandidate,OffsetTransitionCandidate,OffsetTransitionProbe。
+类路径=独立classes;baseline/classes;baseline/src-main/resources;baseline/classpath-jars.txt里的依赖。
+运行java -Xmx2g -Dfile.encoding=UTF-8 -cp <上述classpath> com.geogenesis.worldgen.terrain.candidate.OffsetTransitionProbe <冻结TOML> build/terrain-upgrade/offset-transition/data。
+JVM地形覆盖属性无；编码属性file.encoding=UTF-8。
+绘图python -B tools/render-offset-transition.py build/terrain-upgrade/offset-transition/data ../handoff/attachments/offset-transition-20261031。
+三种种子每组40个随机Z：宽度不变、偏移有界、确定性、法向进度单调、核心端点和同坐标接头验证通过。
+硬偏移反向检查能检出参数阶跃.666667；带内21条Z线、epsilon .1/.01/.001，偏移及高度差收缩比约9.38..10.27。
+总1499049次断言包含大量图像有限值检查，不是同等数量的独立连续性测试，不证明处处C1。
+图像判断：50%参数线已弯曲，但局部横向细纹仍可见；不能宣称已消除所有直线观感或原族纹理伪影。
+未密集调参，未改变B1范围，未执行后续推广。视觉验收由用户决定。
+产物：transition-abc.png、a/b/c-native.png（无标线）、closeup-abc.png、height-profiles-abc.png、offset-progress.png、offsets.png及CSV、metrics和保护验证JSON。

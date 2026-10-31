@@ -1,0 +1,31 @@
+B1 ONLY: adaptive width for plain_mountains and mountains_badlands. No offset; center X=-140.
+Only new files: AdaptiveWidthCandidate.java, AdaptiveWidthProbe.java, render-adaptive-width.py. All 1060 existing protected files unchanged.
+No shared code/recipe/seed/weight change, no full terrain integration or in-game acceptance.
+A fixed240 raw data byte-identical to remaining-five-morph/data/<pair>/spatial.f64be; three production baseline hashes unchanged.
+Seed=9139912035078620160; endpoints and morph chain delegated unchanged to FourPairMorphCandidate.
+HeightCurve and frozen config-input.toml unchanged; e=max(.02+1.5*h01,0).
+Guide reads fixed endpoint world heights at X=center+[-64,0,64], Z=z+[-128,-64,0,64,128].
+Normal weights=[1,2,1], tangent weights=[1,4,6,4,1], product/64; 15 samples per endpoint, total30 calls.
+Height gap=sqrt((meanA-meanB)^2+2^2)-2; roughness= sqrt(weightedVariance+1); roughnessGap=sqrt((roughA-roughB)^2+1)-1.
+score=heightGap+.75*roughnessGap; width=240+480*score^2/(score^2+80^2). No tuning sweep performed.
+Width depends only on Z, p=clamp(.5+(x-center)/width,0,1); original sample applies smoothstep once.
+No offset and p(center,z)=.5 exactly; width bounded240..720, normal progress monotone. X outside center±360 pure core unchanged.
+Guide is finite weighted sample average, not a continuous convolution: residual high-frequency wiggles remain possible and visible along guide lines.
+Rows reuse the same computed width locally when rendering, with exact equality to uncached sample verified. No persistent/global cache.
+Spatial 1201x601 step1 center(-140,137); x[-740,460] z[-163,437]. Profiles Z=-23,137,297, step.5; no height/gradient smoothing.
+Actual window widths: plain_mountains418.310708..587.121473 median534.451437; mountains_badlands273.265563..519.173575 median393.121013.
+Java21 javac --release17 -encoding UTF-8 -nowarn; frozen baseline classpath; independent output build/terrain-upgrade/adaptive-width/classes.
+Compile set=RegionCellTable,RefNoise,HillsCandidate,PlateauCandidate,HillsPlateauMorphCandidate,FourPairMorphCandidate,AdaptiveWidthCandidate,AdaptiveWidthProbe.
+Run java -Xmx2g -Dfile.encoding=UTF-8 -cp <independent classes;baseline/classes;baseline/src-main/resources;frozen jars> com.geogenesis.worldgen.terrain.candidate.AdaptiveWidthProbe <frozen TOML> build/terrain-upgrade/adaptive-width/data.
+No JVM terrain override properties; encoding property=file.encoding=UTF-8.
+Renderer=python -B tools/render-adaptive-width.py build/terrain-upgrade/adaptive-width/data ../handoff/attachments/adaptive-width-20261031.
+Verification3seeds x180 randomizedZ per pair: width bounds, fixed center, monotonic progress, pure cores, same-coordinate endpoint seam, finite/determinism/order tests.
+Initial seam assertion incorrectly compared different world coordinates, including natural slope, failed2.156943e-6; corrected test compares adaptive and endpoint at SAME coordinate; algorithm unchanged.
+Negative control injects hard width change240->720 and detects progress jump .222222. Sampled convergence at epsilon .1/.01/.001 contracts approximately10x.
+Probe1563489 checks includes map finite checks; not proof of globalC1. Finite sampling cannot rule out all inherited original morphology discontinuities.
+Performance 800random transition points, warmup100,5alternating trials, uncached pointwise guide: plain_mountains A4.3126ms B101.7115ms ratio23.5847; mountains_badlands A9.0820ms B199.8605ms ratio22.0062.
+Guide endpoint calls per benchmark pair=120000 (30 per Bpoint x800 x5). Timings are local microbenchmark, not in-game chunk timings; allocations not measured.
+Rendered row reuse is cheaper than uncached random point evaluation; report does not claim zero-overhead or production suitability.
+Visual limitation: some transverse texture streaks and small jagged band-edge annotations remain, particularly mountains_badlands; do not declare straight-cut artifact fully solved.
+Center50percent is still a straight line by design because offset is disabled. No B2 was added; no further parameter tuning without user direction.
+Artifacts: transition-ab.png(with actual band outlines),fixed-native.png/adaptive-native.png(no outlines),height-profiles-ab.png,widths.png,hillshade-progress.png,closeup-ab.png,raw CSV/metrics and protection-verification.json.

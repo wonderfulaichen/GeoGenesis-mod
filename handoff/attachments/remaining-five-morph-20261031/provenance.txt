@@ -1,0 +1,26 @@
+本轮范围：平原→台地、平原→山地、平原→劣地、丘陵→劣地、山地→劣地；仅独立受控原型。
+未接 Gallery/Combine/区域布局/生产路径，未跑整幅世界或实机验收。
+世界种子=9139912035078620160；平原=world；丘陵=world+11；台地=world+44；山地=world+77；劣地=world+55。
+端点配方=PLAINS_GEO、HILLS_1_GEO、参考声明值域0..0.9的PLATEAU REF、M1_GEO、原BadlandsCandidate。
+台地端点沿用已确认的独立修正，不等于共享PlateauCandidate的旧值域产出。
+原始信号在塑形之前混合，非线性算子强度、振幅、偏置渐变；不是两份最终高度直接混合，仍可能发生信号相消。
+山地→劣地：方向扰动与固定原山地侵蚀纹理逐步淡出，Steps及劣地调制链渐入；不基于混合源重选侵蚀路由。
+Steps/Terrace级数固定；随机种子固定，无枚举/级数取整插值。
+窗口中心=(-140,137)；空间图1201x601、step1，x[-740,460]、z[-163,437]；过渡带x[-260,-20]共240块。
+五阶段601x601、step2，x[-740,460]、z[-463,737]；position=0/.25/.5/.75/1再用smoothstep。
+高度剖面z=-23/137/297、step0.5，不平滑；沿用冻结TOML与HeightCurve，e=max(.02+1.5*h01,0)。
+编译：Java21 javac --release17 -encoding UTF-8 -nowarn；独立输出build/terrain-upgrade/remaining-five-morph/classes。
+编译集合=RegionCellTable,RefNoise,PlainsCandidate,HillsCandidate,PlateauCandidate,MountainsCandidate,BadlandsCandidate,HillsPlateauMorphCandidate,FourPairMorphCandidate,FourPairMorphProbe。
+类路径=baseline/classes;baseline/src-main/resources;baseline/classpath-jars.txt中的依赖。
+运行：java -Xmx2g -Dfile.encoding=UTF-8 -cp <独立classes及冻结classpath> com.geogenesis.worldgen.terrain.candidate.FourPairMorphProbe <冻结TOML> <新data目录> remaining。
+JVM地形覆盖属性=无；编码属性=file.encoding=UTF-8。
+绘图：python -B tools/render-four-pair-morph.py build/terrain-upgrade/remaining-five-morph/data ../handoff/attachments/remaining-five-morph-20261031 remaining。
+五组探针exit0；每组三种种子×3000位置，双端点误差均0，核心区、确定性、有限值检查通过。
+五组共16473061次检查包含大量图像采样有限值检查，不能当作同等数量的独立连续性测试。
+接头epsilon=1/.1/.01/.001；内部抽样21条z线×239个x位置，epsilon=.1/.01/.001，高度差收缩比9.82..10.04。
+上述收敛仅为抽样证据，不证明处处C1或消除了原族自身陡坎。
+旧四组回归：在新目录重跑，40个原始高度/剖面/接头/内部扫描文件逐字节一致；不覆盖旧图和旧数据。
+保护快照941文件：仅允许修改独立FourPairMorphCandidate、FourPairMorphProbe、render-four-pair-morph.py，其他938文件未变。
+三个现行基准高度SHA256未变；详见protection-verification.json。
+至此五大类共10种无序两两组合都有独立原型出图；不代表子配方/复合项、三细胞交汇、多类型统一参数场已覆盖。
+未测试性能、游戏实机、多向邻接、全世界生成。五组整体视觉效果仍待用户确认。

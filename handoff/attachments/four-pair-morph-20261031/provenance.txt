@@ -1,0 +1,25 @@
+Four independent pairs ONLY: plain_hills, hills_mountains, plateau_mountains, plateau_badlands.
+No changes to existing source/tool/attachment files: all 831 preexisting protected files unchanged.
+Only new sources: FourPairMorphCandidate.java, FourPairMorphProbe.java; new renderer render-four-pair-morph.py.
+No full-world render, no Gallery/Combine/shared code integration, no src/main change.
+Original baseline raw SHA256 unchanged for compose-coastal, compose-coastal-islands, compose-regional.
+World seed=9139912035078620160; plain=world, hills=world+11, plateau=world+44, mountain=world+77, badlands=world+55.
+Endpoints: PLAINS_GEO, HILLS_1_GEO, reference-range PLATEAU REF, M1_GEO, original BadlandsCandidate.
+The plateau endpoint is the previously approved independent 0..0.9 reference-metadata correction, not legacy PlateauCandidate output.
+Source signal mixing is present before nonlinear shaping/scaling; cancellation remains possible. Not finished-height lerp.
+Mountain erosion uses a fixed original mountain source for routing; its strength and direction warp gradually enter.
+No routing is recalculated from the mixed source, avoiding parameter-dependent discrete neighbor selection.
+Mountain endpoint still inherits the existing erosion texture and its own potential geometry limitations.
+Terrace/Steps stage counts are fixed, no rounding of interpolated counts or seeds.
+Spatial center=(-140,137), 1201x601 step1 x[-740,460] z[-163,437], transition x[-260,-20].
+Stages=601x601 step2 x[-740,460] z[-463,737], position0/.25/.5/.75/1 uses smoothstep.
+Profiles=z[-23,137,297], step0.5, HeightCurve frozen TOML max(.02+1.5*h01,0), no profile smoothing.
+Java21 javac --release17 -encoding UTF-8 -nowarn, frozen baseline classpath, independent classes dir.
+JVM=-Xmx2g -Dfile.encoding=UTF-8; no terrain override properties.
+Probe main=com.geogenesis.worldgen.terrain.candidate.FourPairMorphProbe.
+Compile set=RegionCellTable,RefNoise,PlainsCandidate,HillsCandidate,PlateauCandidate,MountainsCandidate,BadlandsCandidate,HillsPlateauMorphCandidate,FourPairMorphCandidate,FourPairMorphProbe.
+Tests=3 seeds per pair x3000 points; endpoint/core equality, finite/bounded, determinism, difference from finished-height lerp.
+Seam epsilon=1/.1/.01/.001; interior scans=21 z lines x239 x samples, epsilon=.1/.01/.001.
+Interior differences contract by approximately10x per10x epsilon decrease; this is sampled evidence, not proof of continuity everywhere.
+13,178,449 total checks includes finite checks over rendered samples, not that many independent continuity tests.
+Visual acceptance, the five remaining untested major-type pairs, other subrecipes/composites, triple intersections, in-game integration and performance are NOT covered; hills-to-plateau was tested in the preceding independent prototype.

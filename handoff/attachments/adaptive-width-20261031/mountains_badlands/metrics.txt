@@ -1,0 +1,7 @@
+pair=MOUNTAINS_BADLANDS
+seed=9139912035078620160 width_min=240.537496 width_max=587.734860 negative_control_jump=0.222222
+seed=1 width_min=240.036503 width_max=580.712666 negative_control_jump=0.222222
+seed=-817263 width_min=240.135506 width_max=573.782438 negative_control_jump=0.222222
+benchmark_points=800 rounds=5 median_A_ms=9.082000 median_B_uncached_ms=199.860500 ratio=22.006221 guide_endpoint_calls=120000
+checks_cumulative=1563489 PASS
+Sampled numerical checks only; visual acceptance is separate.
