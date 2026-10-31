@@ -1,0 +1,15 @@
+﻿seed=9139912035078620160
+hills seed=worldSeed+11; plateau seed=worldSeed+44
+height conversion=existing HeightCurve with frozen baseline TOML; max(0.02+1.50*h01,0)
+stage maps=601x601 samples, step=2; x [-740,460], z [-463,737]
+spatial map=1201x601 samples, step=1; x [-740,460], z [-163,437]
+spatial transition=x[-260,-20] (center=-140), single straight artificial boundary, total width=240 blocks
+profile=step0.5 block; z=-23,137,297
+JVM terrain overrides=none; JVM encoding=-Dfile.encoding=UTF-8
+No Gallery/Combine/RegionPartition/src/main changes. No full terrain render or integration.
+Input signals=original hills body and plateau pre-Terrace base with their original seeds.
+Morph=source lerp before nonlinear Terrace; Terrace strength 0->1; detail strength 0->1; amplitude 0.6->0.475; smoothstep parameter.
+This includes signal-level mixing, NOT finished-height lerp. No new shared noise.
+Endpoint tests=3 seeds x 12000 points, exact equality at both endpoints plus left/right cores.
+KNOWN LIMITATION=original Terrace has discontinuities (at input 0.75 approximately 0.298796356 unscaled units); smooth-continuity acceptance NOT passed.
+No performance benchmark or in-game acceptance performed.

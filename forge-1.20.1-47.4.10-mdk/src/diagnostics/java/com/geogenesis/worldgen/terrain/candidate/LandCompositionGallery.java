@@ -334,6 +334,17 @@ public final class LandCompositionGallery {
         float[] mixWeights = {2.0f, 1.0f, 1.5f, 2.0f, 2.0f};
 
         // 独立条目：台地/劣地/山地 —— 不进复合，保留各自的原生形态。
+        //
+        // 【方案 C1】权重按票数反推，不是拍脑袋：
+        //   combine 把 5 个低地原始扩成 15 条（5 原始 + 10 复合），票数从 9 涨到 28，
+        //   独立三类只有 13 票 ⇒ 低地占 68%，台地/劣地被压到个位数。
+        //   目标配比：低地 62%、台地 11%、劣地 7%、山地 11%（盆地已删，其 9% 按比例并入）。
+        //   总票数 = 28 / 0.62 ≈ 45 ⇒ 独立三类需 17 票：
+        //   台地 5、劣地 3、山地 9（山地面积另受山形遮罩主导，见 Blender.category）。
+        //
+        // ★ 2026-10-31：本函数是 compose-coastal / compose-coastal-islands /
+        //   compose-regional 的【共享】构建路径 —— 保持原样，勿在此试验。
+        //   任何改动都要另开独立臂，否则会破坏已认可的基准。
         CombineCandidate.Family[] unmixable = {
                 plateau::height01, badlands::height01, m1::height01
         };
@@ -341,12 +352,6 @@ public final class LandCompositionGallery {
                 CombineCandidate.Category.PLATEAU, CombineCandidate.Category.BADLANDS,
                 CombineCandidate.Category.MOUNTAINS
         };
-        // 【方案 C1】权重按票数反推，不是拍脑袋：
-        //   combine 把 5 个低地原始扩成 15 条（5 原始 + 10 复合），票数从 9 涨到 28，
-        //   独立三类只有 13 票 ⇒ 低地占 68%，台地/劣地被压到个位数。
-        //   目标配比：低地 62%、台地 11%、劣地 7%、山地 11%（盆地已删，其 9% 按比例并入）。
-        //   总票数 = 28 / 0.62 ≈ 45 ⇒ 独立三类需 17 票：
-        //   台地 5、劣地 3、山地 9（山地面积另受山形遮罩主导，见 Blender.category）。
         float[] unmixWeights = {5.0f, 3.0f, 9.0f};
 
         // 边界地形 = makeBorder（Populators.java:419-421）= makePlains(plains 噪声, steppe 缩放)
