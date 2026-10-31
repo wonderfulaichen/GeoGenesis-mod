@@ -9,6 +9,7 @@
 
 | 文件 | 内容 | 状态 |
 |---|---|---|
+| [GeoGenesis-20261031.md](GeoGenesis-20261031.md) | **2026-10-31 冷启动交接：地形形态过渡四层（单条双族→十组→真实边界三向→18配方+完整沙箱1401）**。8 个提交按功能分组已入库；含 7 个提交各自可独立编译的验证、runbook、7 条实际踩过的坑、接生产的 6 项前置条件 | ✅ 现行；`src/main` 自 `5996807` 逐字节未变；**未接生产、未跑 Minecraft** |
 | [terrain-morph-final-20261031.md](terrain-morph-final-20261031.md) | 五大类10组独立形态过渡定稿：综合效果与A/B/C采样实测，选A固定240块；B/C仅留实验；横纹不再处理 | 独立原型定稿；未接整幅地形，基准未改 |
 | [skeleton-overlay-failed-20261030.md](skeleton-overlay-failed-20261030.md) | 2026-10-30 骨架侵蚀「后置叠加」验证**失败**：delta 从生产 ±5 块放大到 ±188 格（37 倍）；局部七类窗口暴露放射星（海岸带）、山地抹平、幅度失控。根因=接入点错误（骨架应在地形流水线内，不是后处理）。**用户决定：等沙箱地形正式接入生产后再验证骨架** | ✅ 现行；`src/main` 零改动；实验代码已清理 |
 | [segment-field-conclusions-20261030.md](segment-field-conclusions-20261030.md) | 2026-10-30 `RefNoise.Erosion`（线段距离场）放射星调查：**用户假说「多线段共用格心」证实**，但修掉共用格心就失去锐度（锐度与星芒同源）。八轮尝试全否决，最终改用骨架侵蚀 | ✅ 现行（结论有效） |
@@ -44,6 +45,11 @@
 
 | 路径 | 内容 | 状态 |
 |---|---|---|
+| [attachments/full-morph-20261031/](attachments/full-morph-20261031/) | 完整沙箱六臂 1401² 同窗口并排大图（基准/仅台地改动/新形态过渡 × 有无群岛）+ 差图 + 三臂归因 | ✅ 现行；主对比 `pair-islands.png`；基准两臂 SHA 内置硬对拍 |
+| [attachments/recipe-junctions-20261031/](attachments/recipe-junctions-20261031/) | 18 配方 20 场景局部图（5 真实 + 10 大类三向 + 4 复合 + 1 子配方），原生 601² + 三条剖面 | ✅ 现行；`index.html` 为总入口 |
+| [attachments/real-boundary-local-20261031/](attachments/real-boundary-local-20261031/) | 真实 Voronoi 边界几何 + 三向局部验证（含观测普查与几何 12 项判据） | ✅ 现行；限制见其 provenance |
+| [attachments/hills-plateau-reference-range-20261031/](attachments/hills-plateau-reference-range-20261031/) | 台地 Terrace 值域修正（1.05→0.9）的换档检查与空间对照 | ✅ 现行 |
+| [attachments/morph-final-20261031/](attachments/morph-final-20261031/) | A/B/C 三方案性能实测（perf.csv）与十组定稿资产 manifest | ✅ 现行；B/C 未采用 |
 | [attachments/revert-baseline-20261030/](attachments/revert-baseline-20261030/) | 回退群岛/弧岛后的三臂基线图 + 冻结 TOML | ✅ 现行基础地形沙箱基线 |
 | [migration-checkpoint-20261025/](migration-checkpoint-20261025/) | 迁移入库时的目标/基线 PNG、provenance、`TARGET.md` | 只作历史基准；参数与源码来源须重核 |
 
