@@ -78,7 +78,12 @@ checks=910，result=PASS。
 5. 图为采样图（step=5），不是方块级地形；e 空间与 Y 混用之处均已在图注标明。
 6. 除 OceanAssemblyCandidate 的一处函数接口改动外，1424 个冻结文件逐字节未变（见 verification.json）。
 
-复现（forge-1.20.1-47.4.10-mdk 内，PowerShell）
+复现（PowerShell）
+⚠ 注意脚本位置不一致：Java 侧命令在 forge-1.20.1-47.4.10-mdk 内执行，
+   但渲染脚本 render-full-morph.py 在【仓库根】的 tools/ 下（不在 mdk/tools/）。
+   在 mdk 目录里直接跑 tools/render-full-morph.py 会 FileNotFoundError（已实测）。
+
+# 第一段：cd 到 forge-1.20.1-47.4.10-mdk 后执行
 $java='D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin'
 $jars=(Get-Content build/terrain-upgrade/baseline/classpath-jars.txt -Raw).Trim()
 $out='build/terrain-upgrade/full-morph/final-classes'
@@ -88,6 +93,14 @@ $files=(Get-ChildItem src/diagnostics/java/com/geogenesis/worldgen/terrain/candi
 & "$java/javac.exe" --release 17 -encoding UTF-8 -nowarn -cp $cp -d $out $files
 & "$java/java.exe" -Xmx3g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.FullMorphLandCheck build/terrain-upgrade/full-morph/final-land-check
 & "$java/java.exe" -Xmx6g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.FullMorphGallery build/terrain-upgrade/baseline/config-input.toml build/terrain-upgrade/full-morph/data-v2
-python -B tools/render-full-morph.py "build/terrain-upgrade/full-morph/data-v2" "../handoff/attachments/full-morph-20261031"
+
+# 第二段：cd 到【仓库根】GeoGenesis-mod 后执行
+python -B tools/render-full-morph.py "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/full-morph/data-v2" "handoff/attachments/full-morph-20261031"
+
 完整 JVM 属性：仅 file.encoding=UTF-8；无任何地形 -D 覆盖。堆上限 -Xmx3g/-Xmx6g 仅影响速度。
 实测耗时：land-check 约 94 s（10 个 section），1401² 全图生成约 65 s，渲染约 31 s。
+注意 build/ 不入库：build/ 整体被 .gitignore 忽略，classpath-jars.txt /
+   baseline/classes / out-clean 基准 raw / data-v2 全部不进版本库。换机器或清理
+   build 后必须先重建这些才能复现 —— 基准 raw 的数值口径已在
+   handoff/attachments/rollback-baseline-20261031 与 full-morph verification.json
+   的 SHA 中留存，但文件本身不在版本库。
