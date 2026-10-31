@@ -1,0 +1,80 @@
+真实边界与三向形态局部验证 — 2026-10-31
+
+授权范围
+用户：先按方案做第一阶段，再做真实边界和三种地形交汇的局部验证，出图和高度剖面。先别接整幅，基准不要动。
+本轮仅新增诊断源码及出图工具；不接Gallery新臂、不改src/main、不升生产缓存schema、不提交或推送。
+
+图像口径
+world seed=9139912035078620160；局部中心=(-362.3561,-977.0970)。
+601×601，step=1块，整数索引减SIZE/2；局部图不缩放、不做高度平滑。
+配色/光照只读复用render-islands-big.py的render函数。未用AI图片生成。
+高度换算沿用定稿原型：HeightCurve(max(CombineCandidate.GROUND_E + h*E_SPAN,0))。
+冻结TOML逐字节复制自build/terrain-upgrade/baseline/config-input.toml。
+本轮是基础形态局部实验，不是海陆/群岛/水文生产验收图。
+
+真实身份与受控身份必须分清
+cell(-1,-2),slot15 = 原始M1_GEO；实验仍M1_GEO(seed+77)。
+cell(0,-1),slot29 = 原始DALES_GEO；实验明确替换HILLS_1_GEO(seed+11)。
+cell(-1,-1),slot24 = 原始PLAINS_GEO；实验仍PLAINS_GEO(seed)。
+这不是修改slot表；只是独立Probe在真实几何上另作受控赋值。未改DALES相关复合项。
+actual-context.png显示同位置实际槽位/旧border/旧覆盖层，另列受控实验，不能把全部差异归因于过渡。
+controlled-comparison.png对照受控三族直接切换、节点参数过渡、成品高度平均负控和权重。
+height-profiles.png为穿过交汇点的0/60/120度剖面，步0.5块；斜剖面不标±120带缘。
+ordinary-boundary-profile.png为距交汇212.214块的真实普通边法向剖面，步0.5块，单侧120块。
+
+阶段一（inventory/）
+18逻辑条目=5低地原始+10复合+3独立；45加权票槽。
+25个全局种子消费、shuffle45/45复现；26项判据通过。
+Gallery.buildCombine固定SEED；buildCombineRegional的seed形参仅到regionalBorder的M1，不改变partition/selector/族种子。
+覆盖层实际用unmixable[0]=台地，标签却MOUNTAINS；本轮如实记录，不修。
+1401²step5普查是栅格邻接和近格配方普查，不是拓扑证明，也不是120块内参与候选统计。
+
+局部几何（geometry-check/）
+复用原RegionPartition的warp、站点表、NATURAL势和slot身份。
+u平面按abs折点分矩形作解析势差裁剪；world以反warp的数值根形成折线。
+候选界：世界查询盒+120halo+位移界，再用中心格站点势上界F和站点势下界确定有限候选范围；不硬取最近两/三格。
+44521点与原sample对拍身份/slot/edge无差异；160个边校验点未见第三站点遮挡。
+8→4→2块最大段长加密：4对2全二维网格最大距离差0.0079块。
+最大反解残差0.00028257块；阈0.02块。局部图弦容差0.02块、最大段长2块。
+换窗口360点、共同权重556项与带内距离392项对拍无差异。
+普通真实边641个法向样点仅两格参与；完全0/1饱和的最近样点均为距中心120.00块。
+三交汇点三权重约各1/3，不把Category当作实际配方。
+
+重要限制（阻止全幅接入的门槛仍在）
+world距离是折线近似，反解残差和密度对拍不是解析误差上界。
+未证明warp单射；小残差不能排除多根的另一分支。因此不宣称严格世界SDF或无限世界完整性已解决。
+远坐标float量化、额外几何种子、极短边和四域近交汇尚未完成专门验证。
+本轮只验证PHM代表配方三角形；不支持DALES/hills2/steppe/复合树的真实形态过渡。
+未扩展另外9种代表三族组合；台地/劣地三向没有被本轮结果证明。
+原图是数值局部原型；未跑Minecraft、runWorldgenGate或完整1401²新地形臂。
+未测块级性能，不以局部探针耗时推导游戏耗时。
+
+形态验证（morph-check/）
+权重只消费一次，不二次smoothstep；mountain权重控制固定源方向扰动与固定侵蚀纹理强度。
+先混raw信号，再执行形态算子和渐变振幅/偏置；不是三份成品高度平均。
+4seed三双边回归最大差1.1920929e-7（容差2e-7）；端点对原族逐位一致。
+116249检查通过：置换、重复同配方归并、严格RecipeId、负权重抵消负控、纯区短路、单纯形抽样收敛。
+局部空间邻点差epsilon=.1/.01/.001依次约.00070868/.00007077/.00000685 h01；抽样通过不等于全域连续证明。
+
+保护
+protection-verification.json核验1127个本轮前文件全部未变（含旧源码、定稿图/CSV、out-clean/out-rollback）。
+coastal SHA256=5a8bb721ba191c7949c583b90d7b76baaf5c6ac9e08c4619021afd2f60261d28
+coastal-islands SHA256=94ba83f7359526df1267572aac181ad3922e1c41f7bca31d6b6c5ccb9be271a1
+regional SHA256=02cebf399b4dd7effa59526ad563fc3445d3dea58e589f5ba34057f72975c3f4
+这里的基准是当前地形沙箱基准，不是旧水文schema119。
+
+复现（Windows PowerShell，在forge-1.20.1-47.4.10-mdk下）
+$java='D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin'
+$jars=(Get-Content build/terrain-upgrade/baseline/classpath-jars.txt -Raw).Trim()
+$root='build/terrain-upgrade/real-boundary-local'
+$cp="$root/final-classes;build/terrain-upgrade/baseline/classes;build/terrain-upgrade/baseline/src-main/resources;$jars"
+$exclude=@('ProvinceDebugProbe.java','ProvinceSampleCheck.java','SkipRateProbe.java')
+$files=(Get-ChildItem src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/*.java | Where-Object {$_.Name -notin $exclude}).FullName
+& "$java/javac.exe" --release 17 -encoding UTF-8 -nowarn -cp $cp -d "$root/final-classes" $files
+& "$java/java.exe" '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.SandboxInventoryProbe "--out=$root/final-inventory"
+& "$java/java.exe" '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.LocalThreeMorphCheck "$root/final-check"
+& "$java/java.exe" -Xmx2g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometryProbe "$root/final-geometry" -362.3561 -977.0970 450
+& "$java/java.exe" -Xmx2g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.LocalThreeMorphProbe build/terrain-upgrade/baseline/config-input.toml "$root/final-data" "$root/final-geometry/normal-profile.csv"
+python -B tools/render-local-three-morph.py "$root/final-data" ../handoff/attachments/real-boundary-local-20261031
+JVM属性完整清单：仅file.encoding=UTF-8；没有其他-D属性。Xmx仅指定堆上限。
+每条验证命令实测exit0；三个旧Province探针缺sampleEdge的问题保持不动，显式排除。

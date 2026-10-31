@@ -1,0 +1,46 @@
+slot,entry,label,category,recipeWeight,votesOfEntry
+0,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+1,15,PLATEAU-ref[REF],PLATEAU,5.0,5
+2,3,hills1-geo[HILLS_1_GEO],HILLS,2.0,2
+3,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+4,7,plains-geo[PLAINS_GEO] + hills1-geo[HILLS_1_GEO],HILLS,2.0,2
+5,3,hills1-geo[HILLS_1_GEO],HILLS,2.0,2
+6,11,steppe[STEPPE] + hills2[HILLS_2],HILLS,1.5,2
+7,15,PLATEAU-ref[REF],PLATEAU,5.0,5
+8,14,hills1-geo[HILLS_1_GEO] + hills2[HILLS_2],HILLS,2.0,2
+9,5,plains-geo[PLAINS_GEO] + steppe[STEPPE],PLAIN,1.5,2
+10,16,ref,BADLANDS,3.0,3
+11,16,ref,BADLANDS,3.0,3
+12,16,ref,BADLANDS,3.0,3
+13,15,PLATEAU-ref[REF],PLATEAU,5.0,5
+14,7,plains-geo[PLAINS_GEO] + hills1-geo[HILLS_1_GEO],HILLS,2.0,2
+15,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+16,0,plains-geo[PLAINS_GEO],PLAIN,2.0,2
+17,13,dales-geo[DALES_GEO] + hills2[HILLS_2],HILLS,1.75,2
+18,10,steppe[STEPPE] + hills1-geo[HILLS_1_GEO],HILLS,1.5,2
+19,11,steppe[STEPPE] + hills2[HILLS_2],HILLS,1.5,2
+20,9,steppe[STEPPE] + dales-geo[DALES_GEO],HILLS,1.25,1
+21,4,hills2[HILLS_2],HILLS,2.0,2
+22,2,dales-geo[DALES_GEO],HILLS,1.5,2
+23,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+24,0,plains-geo[PLAINS_GEO],PLAIN,2.0,2
+25,8,plains-geo[PLAINS_GEO] + hills2[HILLS_2],HILLS,2.0,2
+26,1,steppe[STEPPE],PLAIN,1.0,1
+27,12,dales-geo[DALES_GEO] + hills1-geo[HILLS_1_GEO],HILLS,1.75,2
+28,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+29,2,dales-geo[DALES_GEO],HILLS,1.5,2
+30,15,PLATEAU-ref[REF],PLATEAU,5.0,5
+31,4,hills2[HILLS_2],HILLS,2.0,2
+32,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+33,10,steppe[STEPPE] + hills1-geo[HILLS_1_GEO],HILLS,1.5,2
+34,15,PLATEAU-ref[REF],PLATEAU,5.0,5
+35,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+36,8,plains-geo[PLAINS_GEO] + hills2[HILLS_2],HILLS,2.0,2
+37,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+38,5,plains-geo[PLAINS_GEO] + steppe[STEPPE],PLAIN,1.5,2
+39,17,m1-geo[M1_GEO],MOUNTAINS,9.0,9
+40,13,dales-geo[DALES_GEO] + hills2[HILLS_2],HILLS,1.75,2
+41,14,hills1-geo[HILLS_1_GEO] + hills2[HILLS_2],HILLS,2.0,2
+42,6,plains-geo[PLAINS_GEO] + dales-geo[DALES_GEO],HILLS,1.75,2
+43,6,plains-geo[PLAINS_GEO] + dales-geo[DALES_GEO],HILLS,1.75,2
+44,12,dales-geo[DALES_GEO] + hills1-geo[HILLS_1_GEO],HILLS,1.75,2

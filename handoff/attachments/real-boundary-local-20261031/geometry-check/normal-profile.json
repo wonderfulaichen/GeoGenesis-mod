@@ -1,0 +1,13 @@
+{
+  "segId": 17,
+  "alongIndex": 146,
+  "centerBlocks": [-236.967433, -805.888628],
+  "normal": [0.794597335, -0.607136784],
+  "cellA": [0, -1],
+  "cellB": [-1, -1],
+  "minJunctionGapBlocks": 212.214,
+  "worldLengthBlocks": 418.528,
+  "halfSpanBlocks": 160.0,
+  "stepBlocks": 0.500,
+  "columns": "x,z,distanceAlongNormal,s_*,w_*,weightA,weightB,activeCount"
+}

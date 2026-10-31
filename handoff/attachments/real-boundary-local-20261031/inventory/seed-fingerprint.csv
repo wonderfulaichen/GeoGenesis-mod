@@ -1,0 +1,27 @@
+index,purpose,expectedObservedSeq,observed,independent,evidence,match
+0,"composites[5].selector Perlin(600,1)",1878702482,1878702482,true,Warped.input.seed,true
+1,"composites[5].selector warpPerlin(300,2)",1878702483,1878702483,true,Warped.wx.seed (wz = +1),true
+2,"composites[6].selector Perlin(600,1)",1878702484,1878702484,true,Warped.input.seed,true
+3,"composites[6].selector warpPerlin(300,2)",1878702485,1878702485,true,Warped.wx.seed (wz = +1),true
+4,"composites[7].selector Perlin(600,1)",1878702486,1878702486,true,Warped.input.seed,true
+5,"composites[7].selector warpPerlin(300,2)",1878702487,1878702487,true,Warped.wx.seed (wz = +1),true
+6,"composites[8].selector Perlin(600,1)",1878702488,1878702488,true,Warped.input.seed,true
+7,"composites[8].selector warpPerlin(300,2)",1878702489,1878702489,true,Warped.wx.seed (wz = +1),true
+8,"composites[9].selector Perlin(600,1)",1878702490,1878702490,true,Warped.input.seed,true
+9,"composites[9].selector warpPerlin(300,2)",1878702491,1878702491,true,Warped.wx.seed (wz = +1),true
+10,"composites[10].selector Perlin(600,1)",1878702492,1878702492,true,Warped.input.seed,true
+11,"composites[10].selector warpPerlin(300,2)",1878702493,1878702493,true,Warped.wx.seed (wz = +1),true
+12,"composites[11].selector Perlin(600,1)",1878702494,1878702494,true,Warped.input.seed,true
+13,"composites[11].selector warpPerlin(300,2)",1878702495,1878702495,true,Warped.wx.seed (wz = +1),true
+14,"composites[12].selector Perlin(600,1)",1878702496,1878702496,true,Warped.input.seed,true
+15,"composites[12].selector warpPerlin(300,2)",1878702497,1878702497,true,Warped.wx.seed (wz = +1),true
+16,"composites[13].selector Perlin(600,1)",1878702498,1878702498,true,Warped.input.seed,true
+17,"composites[13].selector warpPerlin(300,2)",1878702499,1878702499,true,Warped.wx.seed (wz = +1),true
+18,"composites[14].selector Perlin(600,1)",1878702500,1878702500,true,Warped.input.seed,true
+19,"composites[14].selector warpPerlin(300,2)",1878702501,1878702501,true,Warped.wx.seed (wz = +1),true
+20,Collections.shuffle(new Random(int)),1878702502,1878702502,true,bytecode order: buildComposites -> expandByWeight -> shuffle,true
+21,"partition.warpX Perlin(400,1)",1878702503,1878702503,true,partition.warpX.seed,true
+22,"partition.warpZ Perlin(400,1)",1878702504,1878702504,true,partition.warpZ.seed,true
+23,RegionPartition(int seed) — WHITE cell hash,1878702505,1878702505,true,partition.seed,true
+24,"Blender.mask warpPerlin(333,2,250)",1878702506,1878702506,true,mask chain Warped.wx.seed,true
+25,Blender.mask warpPerlin wz (=前一个 int+1，非独立消费),1878702507,1878702507,false,RefNoise.warpPerlin uses seed+1 for wz,true

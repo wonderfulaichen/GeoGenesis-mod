@@ -1,0 +1,7 @@
+checks=116249
+seeds=[9139912035078620160, 1, -817263, -42]
+edges=[PLAIN_HILLS, PLAIN_MOUNTAINS, HILLS_MOUNTAINS]
+points_per_edge_t=1000
+fixed_t=[0.0, 0.25, 0.5, 0.75, 1.0]
+tolerance=2.000e-07
+check_domain=PLAIN_GEO / HILLS1_GEO / M1_GEO only

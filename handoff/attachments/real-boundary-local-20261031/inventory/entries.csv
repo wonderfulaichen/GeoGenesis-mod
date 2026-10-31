@@ -1,0 +1,19 @@
+entry,kind,label,recipeClass,variant,category,weight,votes,shareOfSlots,treeDigest,seedFields,identityClass,identityHash
+0,ORIGINAL,plains-geo[PLAINS_GEO],PlainsCandidate,PLAINS_GEO,PLAIN,2.0,2,0.044444,b5b8ee1130fd76bc,6,com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery$$Lambda/0x000001f0ab010640,1919892312
+1,ORIGINAL,steppe[STEPPE],PlainsCandidate,STEPPE,PLAIN,1.0,1,0.022222,fdf8bbbaf4d64414,6,com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery$$Lambda/0x000001f0ab010868,1143839598
+2,ORIGINAL,dales-geo[DALES_GEO],HillsCandidate,DALES_GEO,HILLS,1.5,2,0.044444,9d6c76eda1218895,5,com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery$$Lambda/0x000001f0ab010a90,250075633
+3,ORIGINAL,hills1-geo[HILLS_1_GEO],HillsCandidate,HILLS_1_GEO,HILLS,2.0,2,0.044444,d95d9d38676a6b9f,5,com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery$$Lambda/0x000001f0ab010cb8,358699161
+4,ORIGINAL,hills2[HILLS_2],HillsCandidate,HILLS_2,HILLS,2.0,2,0.044444,6dc8a811b669ada0,6,com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery$$Lambda/0x000001f0ab010ee0,517938326
+5,COMPOSITE,plains-geo[PLAINS_GEO] + steppe[STEPPE],,,PLAIN,1.5,2,0.044444,375a13f2546eeae8,3,,0
+6,COMPOSITE,plains-geo[PLAINS_GEO] + dales-geo[DALES_GEO],,,HILLS,1.75,2,0.044444,a02f4fd1dbd92c02,3,,0
+7,COMPOSITE,plains-geo[PLAINS_GEO] + hills1-geo[HILLS_1_GEO],,,HILLS,2.0,2,0.044444,401b0aad4bb3cd5a,3,,0
+8,COMPOSITE,plains-geo[PLAINS_GEO] + hills2[HILLS_2],,,HILLS,2.0,2,0.044444,dc3b4e5f51336d68,3,,0
+9,COMPOSITE,steppe[STEPPE] + dales-geo[DALES_GEO],,,HILLS,1.25,1,0.022222,be82ea1957066c51,3,,0
+10,COMPOSITE,steppe[STEPPE] + hills1-geo[HILLS_1_GEO],,,HILLS,1.5,2,0.044444,06b808b71b67bf92,3,,0
+11,COMPOSITE,steppe[STEPPE] + hills2[HILLS_2],,,HILLS,1.5,2,0.044444,1e1a785e1855157e,3,,0
+12,COMPOSITE,dales-geo[DALES_GEO] + hills1-geo[HILLS_1_GEO],,,HILLS,1.75,2,0.044444,4589fbc09a85eea9,3,,0
+13,COMPOSITE,dales-geo[DALES_GEO] + hills2[HILLS_2],,,HILLS,1.75,2,0.044444,40894817dd88f656,3,,0
+14,COMPOSITE,hills1-geo[HILLS_1_GEO] + hills2[HILLS_2],,,HILLS,2.0,2,0.044444,0caf68af17d89379,3,,0
+15,UNMIXABLE,PLATEAU-ref[REF],PlateauCandidate,REF,PLATEAU,5.0,5,0.111111,49d42a1419b8ed41,11,com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery$$Lambda/0x000001f0ab011300,1973538135
+16,UNMIXABLE,ref,BadlandsCandidate,,BADLANDS,3.0,3,0.066667,71a63fb303efa251,6,com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery$$Lambda/0x000001f0ab011528,1023487453
+17,UNMIXABLE,m1-geo[M1_GEO],MountainsCandidate,M1_GEO,MOUNTAINS,9.0,9,0.200000,b39fbd877fbecf5e,5,com.geogenesis.worldgen.terrain.candidate.LandCompositionGallery$$Lambda/0x000001f0ab011750,1865127310

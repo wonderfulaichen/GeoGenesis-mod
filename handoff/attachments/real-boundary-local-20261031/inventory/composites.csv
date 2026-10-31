@@ -1,0 +1,11 @@
+compositeIndex,pairIndex,labelA,labelB,category,weight,votes,selectorDigest,selectorSeedFields,formulaVerified
+5,0,plains-geo[PLAINS_GEO],steppe[STEPPE],PLAIN,1.5,2,375a13f2546eeae8,3,true
+6,1,plains-geo[PLAINS_GEO],dales-geo[DALES_GEO],HILLS,1.75,2,a02f4fd1dbd92c02,3,true
+7,2,plains-geo[PLAINS_GEO],hills1-geo[HILLS_1_GEO],HILLS,2.0,2,401b0aad4bb3cd5a,3,true
+8,3,plains-geo[PLAINS_GEO],hills2[HILLS_2],HILLS,2.0,2,dc3b4e5f51336d68,3,true
+9,4,steppe[STEPPE],dales-geo[DALES_GEO],HILLS,1.25,1,be82ea1957066c51,3,true
+10,5,steppe[STEPPE],hills1-geo[HILLS_1_GEO],HILLS,1.5,2,06b808b71b67bf92,3,true
+11,6,steppe[STEPPE],hills2[HILLS_2],HILLS,1.5,2,1e1a785e1855157e,3,true
+12,7,dales-geo[DALES_GEO],hills1-geo[HILLS_1_GEO],HILLS,1.75,2,4589fbc09a85eea9,3,true
+13,8,dales-geo[DALES_GEO],hills2[HILLS_2],HILLS,1.75,2,40894817dd88f656,3,true
+14,9,hills1-geo[HILLS_1_GEO],hills2[HILLS_2],HILLS,2.0,2,0caf68af17d89379,3,true

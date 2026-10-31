@@ -1,0 +1,23 @@
+metric,value
+windowPixels,1962801
+size,1401
+stepBlocks,5
+recipeTransitionPixelPairs,19144
+entryFlipsRightDown,9141
+entryFlipsSameCell,0
+nearestEqualsSecondRecipe,65327
+nearestDiffersSecondRecipe,1897474
+nearestEqualsSecondButThirdDiffers,65327
+pixelsWith3DistinctNearRecipes,1648630
+distinctRecipesMin,5
+distinctRecipesAmong9WindowCells_1,0
+distinctRecipesAmong9WindowCells_2,0
+distinctRecipesAmong9WindowCells_3,0
+distinctRecipesAmong9WindowCells_4,0
+distinctRecipesAmong9WindowCells_5,4580
+distinctRecipesAmong9WindowCells_6,378181
+distinctRecipesAmong9WindowCells_7,747608
+distinctRecipesAmong9WindowCells_8,658496
+distinctRecipesAmong9WindowCells_9,173936
+note_distinctRecipesAmong9WindowCells,"counts the 9 jittered Voronoi cells of the query 3x3 window (span up to 2400 blocks), NOT the candidates within a 120-block reach; it shows recipe scattering, not transition topology"
+note_nearestEqualsSecondRecipe,"pixels whose two nearest cells map to the SAME logical recipe (same-recipe edge, should stay seamless); share=0.033283"

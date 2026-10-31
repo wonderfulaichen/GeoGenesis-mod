@@ -1,0 +1,3 @@
+PASS checks=2538467
+Controlled PHM only; actual slots are M1/DALES/PLAIN.
+World boundary polyline is numerical, not an analytic exact world SDF.

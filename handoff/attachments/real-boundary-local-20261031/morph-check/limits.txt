@@ -1,0 +1,5 @@
+coverage=PLAIN_GEO / HILLS1_GEO / M1_GEO triangle only
+not_covered=PLATEAU, BADLANDS, real composite terms, full-map wiring
+proven=edge/vertex numerical reduction, order independence, epsilon continuity inside the triangle, pure-region short circuit, weights consumed once (no second ease), strict recipe-id and per-component weight contract
+not_proven=visual acceptability, cliff attribution, plateau/badlands behaviour, chunk-generation cost
+note=continuity is checked pointwise (epsilon sweep), not proven globally
