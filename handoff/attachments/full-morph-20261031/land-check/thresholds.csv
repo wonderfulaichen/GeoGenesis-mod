@@ -1,0 +1,4 @@
+constant,value,source,reference_value,equals_reference
+MTN_BLEND_LOW,0.550000,CombineCandidate(reflection),0.300000,false
+MTN_BLEND_HIGH,0.780000,CombineCandidate(reflection),0.800000,false
+coverage_family,unmixable[0],reflection,na,true

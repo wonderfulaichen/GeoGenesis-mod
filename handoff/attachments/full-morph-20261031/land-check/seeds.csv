@@ -1,0 +1,5 @@
+seed,layer,endpoints,points_per_entry,max_abs_diff,tolerance
+9139912035078620160,engine,18,60,3.345e-08,2.0e-07
+1,engine,18,60,3.482e-08,2.0e-07
+-42,engine,18,60,3.432e-08,2.0e-07
+extra_seed_rejected_by_FullMorphLand,na,na,na,0,==UnsupportedOperationException

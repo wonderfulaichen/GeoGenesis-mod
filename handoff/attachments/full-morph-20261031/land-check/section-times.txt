@@ -1,0 +1,10 @@
+thresholds,12
+seams,7694
+windows,3092
+overlay,70849
+entries,22997
+seeds,16
+performance,662
+sample-table,4
+geometry,0
+mask-distribution,18

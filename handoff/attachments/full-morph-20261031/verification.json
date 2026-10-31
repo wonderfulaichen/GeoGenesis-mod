@@ -1,0 +1,23 @@
+{
+  "protectedFiles": 1424,
+  "changed": [
+    "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate.java"
+  ],
+  "changedReason": "OceanAssemblyCandidate: land field -> DoubleBinaryOperator + new overload; old ctor delegates this(land::e,...); 2000-point bitwise replay equal",
+  "srcMainStatus": "",
+  "baselineSha": {
+    "coastal": "5a8bb721ba191c7949c583b90d7b76baaf5c6ac9e08c4619021afd2f60261d28",
+    "islands": "94ba83f7359526df1267572aac181ad3922e1c41f7bca31d6b6c5ccb9be271a1"
+  },
+  "morphSha": {
+    "morph-coastal": "7be0418369d097ce107eeef58b8d02c6776782f1d7fbc6ad6c5e0e5728d7a238",
+    "morph-islands": "955ba2cc02a6dee7a2b1c6415f2a18c818c3a6286ce768099e932cff35f65a2a",
+    "plateau-only-coastal": "d8b0802eac41ecf26bb494b026a0ef66cec49590e6f02dfcd13803e59a85d871",
+    "plateau-only-islands": "4b9d3b8b6c5f2396d56ad95d92eacbec40f86c3104cc41d353358a3ca6483b18"
+  },
+  "pairImageSize": [
+    2922,
+    1647
+  ],
+  "pngVerified": 15
+}

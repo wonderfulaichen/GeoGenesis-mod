@@ -1,0 +1,93 @@
+完整沙箱独立实验臂：18 配方形态过渡接入 1401² 全图 — 2026-10-31
+
+用户指令
+「新增独立实验臂，把这套形态过渡接入完整沙箱，出同窗口的1401大图和基准并排对比。原基准保留，先别改生产代码。」
+本轮只新增诊断侧实验臂与出图；生产 src/main 零改动（git status --short src/main 为空），旧臂（compose-coastal / compose-coastal-islands）逻辑未动。
+
+窗口与口径
+world seed=9139912035078620160；1401×1401；step=5 块；中心 (-140,137)；覆盖 7005×7005 块。
+采样坐标 x = centerX + (i - size/2)*step（沿用旧 Gallery 的 size/2.0 循环，原点 -3642.5/-3365.5，未"纠正"坐标）。
+高度换算 e = max(GROUND_E + h*E_SPAN, 0)，与 compose-coastal 同一 HeightCurve。
+海陆剖面、三段海岸、cliffFactor、水下细节带、浅海群岛 全部沿用原实现；群岛作为纯增量叠在同一 base 上。
+冻结 TOML 取自 build/terrain-upgrade/baseline/config-input.toml，SPEC 门禁通过后原样复制进输出目录。
+
+六条臂
+baseline-coastal        旧陆地层（原 Combine.Blender / 原 border）+ 原海陆剖面
+baseline-islands        同上 + 原 ShallowSeaIslandCandidate 增量
+plateau-only-coastal    旧陆地层，但仅把"区域选中台地"换成已认可修正值域 0..0.9；覆盖层仍是旧台地 1.05
+plateau-only-islands    同上 + 群岛
+morph-coastal           新：真实 45 票槽 + 18 配方节点形态过渡（240 块带）+ 原覆盖层 + 原海陆剖面
+morph-islands           同上 + 群岛
+
+新陆地层的实际接线
+局部 Voronoi 权重：世界固定 1024 块 tile，每 tile 建 LocalBoundaryGeometry（query 半径 728 块、弦 0.02、最大段长 2 块），
+  tile 内任一点（含对角）都在 query 圆内 ⇒ 不靠"最近 tile"取巧；权重带 ±120 块。
+按配方归并：site → slot → catalog.slotEntry(slot) → 18 个 RecipeId；同配方相邻格求和再归一，
+  绝不按 Category 降级（真实场景已实测出现 3~4 个参与配方）。
+节点过渡：RecipeJunctionMorph.sample(x,z,w[18])，固定阶段顺序
+  raw → 台地 Terrace+surface（强度 w15）→ 固定山地 erosion（强度 w17）→ 劣地 Steps/shape（强度 w16）
+  → 振幅/偏置 → 复合条目 max(0)（强度 Σw_composite）。权重只 ease 一次。
+覆盖层：完全沿用原 CombineCandidate.Blender —— mask 节点反射同一对象，阈值反射
+  MTN_BLEND_LOW=0.55 / HIGH=0.78（本地标定，不是参考 0.3/0.8），覆盖族 = 实际 unmixable[0] 旧台地 1.05。
+  未把覆盖族改成 M1，也未修"高度是台地、标签写 MOUNTAINS"的既有不一致。
+
+基准一致性（硬对拍）
+baseline-coastal.f64be SHA256 = 5a8bb721ba191c7949c583b90d7b76baaf5c6ac9e08c4619021afd2f60261d28
+baseline-islands.f64be SHA256 = 94ba83f7359526df1267572aac181ad3922e1c41f7bca31d6b6c5ccb9be271a1
+两者与用户认可的现行沙箱基准逐位相同 ⇒ 同窗口、同配置、同坐标的参照系成立。
+regional 基准 02cebf399b4dd7effa59526ad563fc3445d3dea58e589f5ba34057f72975c3f4 未被本臂改动。
+
+对 OceanAssemblyCandidate 的唯一改动
+把陆地采样从"持有 CombineCandidate 字段"改为 DoubleBinaryOperator 函数接口，新增一个构造重载；
+旧构造器委托 this(land::e, ...)，采样顺序与参数完全不变（2000 点逐位相等已校验）。
+这是为了让独立实验臂能注入不同的陆地层而不复制海陆剖面代码；不涉及 src/main，不影响旧臂数值。
+
+量化结果（metrics.csv 实测，Y 为格）
+baseline-coastal        Y 5.145..277.858  中位 79.180  水面 35.818%
+baseline-islands        Y 5.145..277.858  中位 79.508  水面 32.979%
+plateau-only-coastal    Y 5.145..277.858  中位 79.168  水面 35.819%
+morph-coastal           Y 5.145..277.858  中位 79.409  水面 35.813%
+morph-islands           Y 5.145..277.858  中位 79.815  水面 32.983%
+islands 口径 新-旧： 中位差 +0.307；|Δ| 中位 0.0、P95 45.81、max 175.38；
+  陆变海 1672 像素、海变陆 1609 像素、水面 +0.003 个百分点、变化像素 968668/1962801（49.4%）。
+plateau-only islands 相对 baseline islands：|Δ| max 35.67、P95 0.0、变化像素 52595（2.7%）⇒ 台地值域修正本身是局部项。
+
+交付图（全部 1401² 原生、不缩放、同一色带光照）
+pair-islands.png                主对比：基准 islands（左）vs 新实验 islands（右）
+pair-coastal.png                无群岛对比
+attrib-three-arms-islands.png   三臂归因：基准 → 仅台地改动 → 完整形态过渡
+diff-islands.png / diff-coastal.png / diff-plateau-only-islands.png   暖=抬升、冷=下沉（已校验极性，未复用旧 diff 的反色实现）
+native-<arm>.png ×6             各臂单图
+recipe-dominant.png             新区域权重 argmax（含 BADLANDS 单列；不是生物群系标签）
+participants.png                每像素参与配方数
+coverage-mask.png               旧 Blender mask 原值（非 alpha、非 0/1）
+image-metrics.json / metrics.csv
+
+局部验证（FullMorphLandCheck，与本节同一份源码）
+checks=910，result=PASS。
+跨 tile 接缝：336 组、判据 |Δe| ≤ 0.05*dist + 1e-4（Lipschitz），全部通过；未用缝上 finallerp 兜底。
+换窗口回归：6 组窗口/半径，权重差 ≤2.6e-6，与 LocalBoundaryGeometry.query 同对象逐位一致。
+覆盖层回放：阈值与覆盖族均来自反射实测（0.55/0.78、unmixable[0]）。
+本节另有"未改 seed/未加 -D"的检查。
+
+限制（不得在此之外宣称）
+1. world 折线是反 warp 牛顿近似；warp 单射未证，多根时小残差不排除落错分支。不承诺无限世界正确。
+2. 新臂移除了旧公共 border 并换成 240 块形态过渡 ⇒ 轮廓与形态都可能改变，不能读成"纯边界变形、轮廓保持"。
+3. 覆盖层仍是旧台地 1.05 且标签仍写 MOUNTAINS：本轮如实保留，其与新臂的差异不可全部归因于形态过渡。
+4. 未跑 Minecraft、runWorldgenGate、runPreview；未升生产缓存 schema；未做块级性能测量。
+5. 图为采样图（step=5），不是方块级地形；e 空间与 Y 混用之处均已在图注标明。
+6. 除 OceanAssemblyCandidate 的一处函数接口改动外，1424 个冻结文件逐字节未变（见 verification.json）。
+
+复现（forge-1.20.1-47.4.10-mdk 内，PowerShell）
+$java='D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin'
+$jars=(Get-Content build/terrain-upgrade/baseline/classpath-jars.txt -Raw).Trim()
+$out='build/terrain-upgrade/full-morph/final-classes'
+$cp="$out;build/terrain-upgrade/baseline/classes;build/terrain-upgrade/baseline/src-main/resources;$jars"
+$exclude=@('ProvinceDebugProbe.java','ProvinceSampleCheck.java','SkipRateProbe.java')
+$files=(Get-ChildItem src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/*.java|Where-Object {$_.Name -notin $exclude}).FullName
+& "$java/javac.exe" --release 17 -encoding UTF-8 -nowarn -cp $cp -d $out $files
+& "$java/java.exe" -Xmx3g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.FullMorphLandCheck build/terrain-upgrade/full-morph/final-land-check
+& "$java/java.exe" -Xmx6g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.FullMorphGallery build/terrain-upgrade/baseline/config-input.toml build/terrain-upgrade/full-morph/data-v2
+python -B tools/render-full-morph.py "build/terrain-upgrade/full-morph/data-v2" "../handoff/attachments/full-morph-20261031"
+完整 JVM 属性：仅 file.encoding=UTF-8；无任何地形 -D 覆盖。堆上限 -Xmx3g/-Xmx6g 仅影响速度。
+实测耗时：land-check 约 94 s（10 个 section），1401² 全图生成约 65 s，渲染约 31 s。

@@ -1,0 +1,24 @@
+metric,value,kind,tolerance
+entries.max_abs_diff_vs_catalog_reference,1.062995e-08,max,<=2.0e-07
+entries.tiles_scanned,8.900000e+01,max,<=2.0e-07
+geometry.tiles_built,5.030000e+02,max,reported_only
+mask.max_in_1401_window,3.889823e-01,max,reported_only
+mask.points_above_high,0.000000e+00,max,reported_only
+mask.points_above_low,0.000000e+00,max,reported_only
+overlay.alpha_recovery_abs_diff,8.951173e-16,max,<=1e-9
+overlay.max_abs_diff_old_coverage,0.000000e+00,max,==0
+overlay.max_abs_diff_replay_vs_legacy,0.000000e+00,max,==0
+overlay.whenregionold_max_separation,2.334358e-01,max,reported_only
+overlay.whenregionold_min_separation,0.000000e+00,min,reported_only
+overlay.whenregionold_synthetic_abs_diff,0.000000e+00,max,reported_only
+performance.geometry_ms_per_point,1.184890e-02,max,<=2.0 ms
+performance.ms_per_point,1.229680e-02,max,<=2.0 ms
+sample.dominant_entries_seen,1.800000e+01,max,reported_only
+sample.sampled_points,5.428000e+03,max,reported_only
+seam.max_abs_de_over_dist,1.203210e-02,max,slope<=0.050
+seam.max_slope_ratio,2.406420e-01,max,slope<=0.050
+seeds.max_abs_diff,3.481662e-08,max,<=2.0e-07
+thresholds.high,7.800000e-01,max,reported_only
+thresholds.low,5.500000e-01,max,reported_only
+windows.max_diff_vs_query,0.000000e+00,max,<=1.0e-04
+windows.max_rebuild_drift,2.599366e-06,max,<=1.0e-04

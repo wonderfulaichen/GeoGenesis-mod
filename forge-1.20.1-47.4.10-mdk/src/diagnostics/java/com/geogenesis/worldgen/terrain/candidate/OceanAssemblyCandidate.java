@@ -66,7 +66,7 @@ public final class OceanAssemblyCandidate {
     /** 海洋类型（供类型图着色）。 */
     public enum Sea { DEEP_OCEAN, SHALLOW_OCEAN, COAST, LAND }
 
-    private final CombineCandidate land;
+    private final java.util.function.DoubleBinaryOperator land;
     /** 大陆性采样器：可切换 FBM（生产）与 Voronoi 领地（候选）。 */
     private final EdgeSource edgeSource;
     private final RefNoise.Node deepOcean;
@@ -88,6 +88,12 @@ public final class OceanAssemblyCandidate {
     }
 
     public OceanAssemblyCandidate(CombineCandidate land, EdgeSource source, long worldSeed) {
+        this(land::e, source, worldSeed);
+    }
+
+    /** 独立实验臂的陆地e接口；旧构造器保持相同采样顺序与参数。 */
+    public OceanAssemblyCandidate(java.util.function.DoubleBinaryOperator land, EdgeSource source,
+                                  long worldSeed) {
         this.land = land;
         this.edgeSource = source;
         int base = (int) (worldSeed ^ (worldSeed >>> 32));
@@ -471,7 +477,7 @@ public final class OceanAssemblyCandidate {
 
     /** 陆地段高度（e）。 */
     private double landE(double x, double z) {
-        return land.e(x, z);
+        return land.applyAsDouble(x, z);
     }
 
     /**
