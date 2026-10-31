@@ -1,0 +1,21 @@
+case,shuffles,bitwise_identical,message
+duplicate+shuffle,200,true,reference=0.17491279542446136
+category_short_plain,0,true,expected IllegalArgumentException
+category_short_hills,0,true,expected IllegalArgumentException
+category_short_mountains,0,true,expected IllegalArgumentException
+category_short_all_three,0,true,expected IllegalArgumentException
+unsupported_recipe,0,true,expected IllegalArgumentException
+lowercase_recipe,0,true,expected IllegalArgumentException
+length_mismatch,0,true,expected IllegalArgumentException
+off_simplex_pair,0,true,expected IllegalArgumentException
+cancel_negative_plus_over,0,true,expected IllegalArgumentException
+cancel_tiny_negative,0,true,expected IllegalArgumentException
+cancel_over_one,0,true,expected IllegalArgumentException
+nan_component,0,true,expected IllegalArgumentException
+infinite_component,0,true,expected IllegalArgumentException
+triplet_tiny_negative,0,true,expected IllegalArgumentException
+triplet_over_one,0,true,expected IllegalArgumentException
+triplet_negative,0,true,expected IllegalArgumentException
+triplet_nan,0,true,expected IllegalArgumentException
+triplet_sum_off,0,true,expected IllegalArgumentException
+invalid_rejects,0,true,all listed rejections observed

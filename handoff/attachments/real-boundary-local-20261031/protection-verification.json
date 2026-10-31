@@ -1,0 +1,30 @@
+{
+  "protected_files": 1127,
+  "changed": [],
+  "baseline_raw_sha256": {
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-blender.f64be.raw": "96401227a63c9e8ebc31c64361e91cb4fcb95167d6fa37a06fe65ed65450b995",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-coastal-islands.f64be.raw": "94ba83f7359526df1267572aac181ad3922e1c41f7bca31d6b6c5ccb9be271a1",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-coastal.f64be.raw": "5a8bb721ba191c7949c583b90d7b76baaf5c6ac9e08c4619021afd2f60261d28",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-coherent.f64be.raw": "6e26e00b680bbbcb30b7a22e3e39b176cdf8f90289e72a08acc2ed897e536ca7",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-combine.f64be.raw": "b9eb9ae1065a45d0061e3407d3299d30fcdc9b094c1f29c34aacf364503d5d2f",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-ground-base.f64be.raw": "ad0842c424ee64649d171e4e31ff27ec54cb6e10478400e5c4412558a73fc889",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-inverted.f64be.raw": "275e33558f8751006539152a307ce8fa5562da6fbdadf3d32865754838902da4",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-islands-only.f64be.raw": "b9ab7d2957a98963ce96ca37236f621dc59ee9dece5e370aadf84907ee7a8b4e",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-ocean-allmixed.f64be.raw": "337be90e57d8686fbfd1f1599347d1039bf24fada649d2dabe4b384089d6fa07",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-ocean.f64be.raw": "ca775e7a68af39b74bbd39fb81d7f87d4d1f3ae6bfcbd985aef4a0c9326da253",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-production.f64be.raw": "9e88630776c75d46756ba97768b0ea13d95912f8dfb2a1eae99fa5ffaeabc5ac",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-province.f64be.raw": "ac37e3fc9610166505a74e3d6dc77a8b9a32536ae441a355cb0c4487562efbd3",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-region-ref.f64be.raw": "bdf01f84addc09333775be034aa21610d6e163a4d638026cbe782bf0ed582d19",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-regional-typed.f64be.raw": "02cebf399b4dd7effa59526ad563fc3445d3dea58e589f5ba34057f72975c3f4",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-regional.f64be.raw": "02cebf399b4dd7effa59526ad563fc3445d3dea58e589f5ba34057f72975c3f4",
+    "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/out-clean/compose-tectonic.f64be.raw": "54e8f05bd6927a83ac1b73a443d6525e823a598a4c6da6db0d13e440ff834f9e"
+  },
+  "new_sources_sha256": {
+    "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalBoundaryGeometry.java": "f2f94d661ccd64b628bd20a13b06968861b1826f95e0ebe2be7e3281585b3afa",
+    "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalBoundaryGeometryProbe.java": "810dd1a49d96deb3b35f9bac69f71f2d2c939c458efaca65ac8e65033771e893",
+    "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphCandidate.java": "6f529bd7d4854fb72a5ec2914db701c9aad47e229438afcc42ac28fdf62d71f9",
+    "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphCheck.java": "ce5ba46f41d32b651a52dc97de9d0e92c2b251cd811728732ecae73f5de92929",
+    "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphProbe.java": "946e77c3bd0af94fbd6ade50983d350308ca99ee8c48421ef9cb48401826b0c7",
+    "forge-1.20.1-47.4.10-mdk\\tools\\render-local-three-morph.py": "8cbeccd2607ffc5cc96a65c9a1ba919f5d1f4c9aa8b9f12b10aabca765f7513f"
+  }
+}

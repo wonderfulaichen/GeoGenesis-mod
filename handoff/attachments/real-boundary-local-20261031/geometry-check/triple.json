@@ -1,0 +1,10 @@
+[
+  {
+    "warpPlaneCells": [-0.3228, -0.8160],
+    "worldBlocks": [-362.3561, -977.0970],
+    "cells": [[-1, -2], [0, -1], [-1, -1]],
+    "slots": [15, 29, 24],
+    "categories": ["MOUNTAINS", "HILLS", "PLAIN"],
+    "segmentCounts": [12, 16, 17]
+  }
+]

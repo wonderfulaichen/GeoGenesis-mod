@@ -1,0 +1,27 @@
+id,result,detail
+gallery.seed,PASS,reflected LandCompositionGallery.SEED=9139912035078620160 base(int)=1878702482
+gallery.buildRegional,PASS,"reflected buildCombineRegional(9139912035078620160, 3600.0f)"
+gallery.fixedFamilySeed,PASS,family noise seeds identical for build arg seed=9139912035078620160 and seed=9139912035078620161 => buildCombine hardcodes SEED; 11 `seed` fields compared on unmixable[0]
+gallery.selectorIgnoresArg,PASS,"selector seed for arg seed+1 build=1878702482 expected base(SEED)=1878702482 (i.e. CombineCandidate is built from SEED, not from the method argument)"
+gallery.argReachesBorderM1,PASS,"mountainBorder seed chain == MountainsCandidate(M1_GEO).seed(arg+77): arg=SEED match=true, arg=SEED+1 match=true (5 seed fields); this is the ONLY place the build argument reaches a recipe"
+inv.mixable,PASS,mixable=5
+inv.pairs,PASS,composites=15 = 5 originals + 10 pairs
+inv.unmixable,PASS,unmixable=3
+inv.entries,PASS,logical entries=18 (expected 18)
+inv.slots,PASS,weighted vote slots=45 (expected 45)
+inv.border,PASS,"border=plains recipe, mountainBorder=m1-geo recipe, modeNoise=true"
+inv.identityMap,PASS,unmapped slots=0 (0 => each slot is one of the 18 entries by reference identity)
+inv.votesSum,PASS,sum(votes)=45 slots=45
+desc.compositeTree,PASS,"composites reproduced as max(a+(b-a)*alpha,0) with reflected (sel,a,b): 10/10"
+desc.atomTree,PASS,atom recipes with recovered noise tree: 8/8 (recipe object -> RefNoise.Node via reflection)
+seed.sequence,PASS,"global cursor replayed: 0 mismatch(es) over 26 rows (25 independent consumptions, expected 25)"
+seed.sequenceCount,PASS,independent seed ints consumed=25 expected=25
+shuffle.preShuffleCount,PASS,"expandByWeight replica produced 45 slots (weights / min weight, Math.round)"
+shuffle.replay,PASS,Collections.shuffle(new Random(1878702502)) reproduces per-entry slot position sets; mismatchedEntries=0; exactSlotMatches=45/45
+mirror.warpStrength,PASS,reflected WARP_STRENGTH=200.0 (units: pre-region-scale blocks)
+mirror.pointwise,PASS,random points=4096 slotMismatch=0 regionIdMismatch=0 edgeMismatch=0 maxEdgeDiff=0.0
+mirror.lattice,PASS,gallery-lattice points=1681 mismatches=0
+mirror.selectedHeight,PASS,"combine.debugSelected == slots[mirrorSlot].height01 on 4096 points, nonBitEqual=0 maxDiff=0.0"
+cover.identity,PASS,Blender.mountain identity -> entry#15 label=PLATEAU-ref[REF] category=PLATEAU || mask>=midpoint labels MOUNTAINS (Blender.category)
+cover.pureCoverageIsPlateau,PASS,"pure coverage band (mask>=0.78): samples=0 maxDiff=0.0 (band EMPTY in this window => the check is carried by the blend band instead, see cover.heightSourceIsPlateau)"
+cover.heightSourceIsPlateau,PASS,"Blender.apply replayed with the coverage family substituted: coverage=plateau matches 30976/30976 (mismatch=0); coverage=m1-geo would match only 26133/30976 => heights are the plateau recipe everywhere the mask takes over, while the type label there is MOUNTAINS"

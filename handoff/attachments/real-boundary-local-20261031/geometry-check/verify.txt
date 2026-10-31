@@ -1,0 +1,107 @@
+gallerySeed            = 9139912035078620160
+partitionSeed          = 1878702505
+slotCount              = 45
+slots                  = MOUNTAINS,PLATEAU,HILLS,MOUNTAINS,HILLS,HILLS,HILLS,PLATEAU,HILLS,PLAIN,BADLANDS,BADLANDS,BADLANDS,PLATEAU,HILLS,MOUNTAINS,PLAIN,HILLS,HILLS,HILLS,HILLS,HILLS,HILLS,MOUNTAINS,PLAIN,HILLS,PLAIN,HILLS,MOUNTAINS,HILLS,PLATEAU,HILLS,MOUNTAINS,HILLS,PLATEAU,MOUNTAINS,HILLS,MOUNTAINS,PLAIN,MOUNTAINS,HILLS,HILLS,HILLS,HILLS,HILLS
+center                 = (-362.3561, -977.0970) blocks
+centerCell             = -1,-1
+queryRadius(declared)  = 450.0 blocks
+halo / boxHalfWorld    = 120.0 / 570.0 blocks
+bandTotal / bandHalf   = 240.0 / 120.0 blocks
+siteCount              = 18  (included 18, excluded 18)
+warpPlaneBox           = [-0.94363, 0.33970] x [-1.45591, -0.17258] cells
+warpEdgeCount          = 32
+worldSegmentCount      = 32
+chordTol / maxSeg      = 0.500 / 2.000 blocks
+sceneBuildMs           = 237
+
+[1] 赢家/槽位/edge 与 RegionPartition.sample 对拍（211x211 = 44521 点）
+    grid-cell identity mismatch = 0
+    regionId / slot mismatch    = 0
+    edge mismatch (|d|>1e-6)     = 0  max|d edge| = 0.000e+00
+    PASS
+
+[2] 候选站点完整性（闭式，不是采样断言）
+    F = fUpper(盒中心格站点) = 4.708605631（格单位，NATURAL）
+    dmax = sqrt(F) = 2.169932173 格（f >= |delta|^2 ⇒ 可能获胜者轴向位移 <= dmax）
+    枚举整数格 = 36，纳入 18，排除 18，测试 36
+    排除：1) 枚举窗口外（cell 距 box > dmax + jitter 界）⇒ 永不可能获胜（含无限外部）；
+          2) 窗口内但 fLower(site, box) > F ⇒ 盒内每点都输。
+    窗口内被排除者最小 fLower = 4.829285204
+    PASS
+    枚举窗口外抽查 400 格（越界 0.05~2.05 格）：fLower > F 的占 400/400
+
+[3] world 反解残差（超 tol 时几何层直接抛异常）
+    max residual = 2.8257e-04 blocks, tol = 2.0000e-02 blocks
+    ⚠ world 折线是<b>近似</b>：signedDistance 误差量级 = 残差 + 弦偏差，不是精确值
+    ⚠ 残差小<b>不能</b>证明原像唯一：若 warp 折叠存在多根，每个根都可残差很小
+    PASS（1.4% of tol）
+
+[4] world 折线密度 8 -> 4 -> 2 块（弦与段长同时收紧，全 2D 网格对拍）
+    max |ds| 8-vs-4 = 0.0301 blocks
+    max |ds| 4-vs-2 = 0.0079 blocks
+    max |ds| 8-vs-2 = 0.0301 blocks（最粗档真实偏差）
+    PASS（4 -> 2 收敛 <= 0.25 块）
+
+[5] 边有效性（每段端点/四分点/中点逐点核验）
+    检验点数 = 160（边数 32 × 5）
+    不在平分线上 = 0（f_a != f_b）
+    被第三站点遮挡 = 0（存在 c 使 f_c < 中点势）
+    符号矩形数 = 56，候选对测试 = 1649，退化对 = 0
+    PASS
+
+[6] 双腿边界两侧反对称性（s_A + s_B 在边界上应 ~ 0）
+    样本 n = 2602，max|s_A + s_B| = 0.0000 blocks
+    PASS（< 1 block）
+
+[7] 普通真实边沿法向 ±120 块的权重演变 + 饱和位置距离
+    判定口径：仅取中点落在声明查询域内的真实边；越域 offset 跳过
+    seg 7: 权重进入 0.001/0.999 饱和带时的 |s| = 120.0 块（A）/ 120.0 块（B）
+    seg 14: 权重进入 0.001/0.999 饱和带时的 |s| = 120.0 块（A）/ 120.0 块（B）
+    seg 15: 权重进入 0.001/0.999 饱和带时的 |s| = 120.0 块（A）/ 120.0 块（B）  [三向近邻]
+    seg 16: 权重进入 0.001/0.999 饱和带时的 |s| = 120.0 块（A）/ 120.0 块（B）  [三向近邻]
+    seg 17: 权重进入 0.001/0.999 饱和带时的 |s| = 120.0 块（A）/ 120.0 块（B）
+    采样普通边 = 3；三向近邻致非单调（设计内）= 2；无解释非单调 = 0
+    最远饱和距离：A 侧 120.0 块，B 侧 120.0 块（带宽 120 块 ⇒ 应在 ~120 附近）
+    PASS（纯双腿边权重单调；三向近邻另计）
+
+[8] query 声明域（域外必须抛异常，不许静默返回）
+    域外探针 24 个：抛异常 24，静默返回 0
+    PASS
+    域内边缘 32 点全部可查（32）
+
+[9] activeCount = weight > 0 的实际数目（1377 点）
+    不一致点数 = 0
+    PASS
+
+[10] 换窗口一致性（赢家 + 共同点全部非零权重 + |sd|<=120 的距离）
+    阈值：距离 0.050 块、权重 1e-03；|sd| > 120.0 块的距离不比较（盒裁剪会改它们）
+    比较点 = 360（赢家一致 360）
+    共同权重比较 = 556 项，max|dw| = 0.000e+00
+    带宽内距离比较 = 392 项，max|ds| = 0.0000 块
+    PASS
+
+[11] 三域交汇（warp 平面三边共点 => 真 Voronoi 顶点）
+    交汇点数 = 1，三格类别互异者 = 1
+    * world = (-362.3561, -977.0970) blocks
+      三格 = (-1,-2) / (0,-1) / (-1,-1)
+      槽位 = 15 / 29 / 24
+      类别 = MOUNTAINS / HILLS / PLAIN
+      交点实测（三格权重应 ~1/3 且与遍历顺序无关）：
+        m-1_n-2 slot=15 MOUNTAINS  s=-0.0000  w=0.333333
+        m0_n-1 slot=29 HILLS  s=-0.0000  w=0.333333
+        m-1_n-1 slot=24 PLAIN  s=+0.0000  w=0.333333
+
+[12] 普通真实弯边法向剖面（带宽曲线用；距三交汇 >=200 块，±160 块 / 步 0.5）
+    候选普通边数（未截断、距交汇 >=200、跨度在域内、全程 2 候选）= 1
+    已导出：segId=17 center=(-236.967,-805.889) normal=(0.794597,-0.607137)
+    cellA=(0,-1) cellB=(-1,-1)，距最近交汇 212.214 块
+    行数 = 641，A/B 之外出现正权重 = 0
+    max|wA + wB - 1| = 0.000e+00（双腿互补）
+    wA 方向翻转次数 = 0（双腿应 <= 1）
+    t 范围 [-160.0, 160.0]，wA 端点 0.0000 -> 1.0000
+    完全饱和位置（距中心最近的样点）：wA=1 在 |t| = 120.00 块；wA=0 在 |t| = 120.00 块
+    PASS（全线仅 A/B 两格、权重互补、单次单调过渡）
+
+dump: radius=140.0 blocks -> dump.csv（赢家 + s_i + w_i，非整幅距离图）
+
+RESULT: PASS（fails=0, warns=0）
