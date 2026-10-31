@@ -1,0 +1,126 @@
+{
+  "protectedFiles": 1111,
+  "changed": [],
+  "scenes": {
+    "c01": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c02": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c03": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c04": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c05": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c06": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c07": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c08": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c09": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "c10": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "x01": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "x02": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "x03": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "x04": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "x05": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "s01": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "s02": {
+      "channels": 4,
+      "maxParticipants": 4,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "s03": {
+      "channels": 4,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "s04": {
+      "channels": 3,
+      "maxParticipants": 3,
+      "weightSumMaxError": 2.220446049250313e-16
+    },
+    "s05": {
+      "channels": 4,
+      "maxParticipants": 4,
+      "weightSumMaxError": 3.3306690738754696e-16
+    }
+  },
+  "controlledCoveredEntries": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+  ]
+}

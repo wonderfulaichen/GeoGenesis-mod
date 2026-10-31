@@ -1,0 +1,12 @@
+checks=18201
+seeds=[9139912035078620160, 1, -817263, -42]
+entries=18
+slots=45
+points_per_entry=300
+atom_tolerance=2.000e-07
+composite_points=300
+gallery_seed=9139912035078620160
+original_only_for=9139912035078620160
+compiled_against=frozen baseline classpath build/terrain-upgrade/baseline/classpath-jars.txt
+java=21 javac --release17 -encoding UTF-8 -nowarn
+jvm=-Xmx2g -Dfile.encoding=UTF-8 (no terrain override properties)

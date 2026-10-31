@@ -1,0 +1,4 @@
+seed,points,min_abs_diff_vs_legacy,max_abs_diff_vs_legacy,mean_abs_diff_vs_legacy,min_required
+9139912035078620160,200,0.000e+00,9.745e-02,2.973e-02,0.01
+1,200,0.000e+00,1.003e-01,2.946e-02,0.01
+-42,200,0.000e+00,9.955e-02,2.811e-02,0.01

@@ -1,0 +1,9 @@
+entry=com.geogenesis.worldgen.terrain.candidate.RecipeJunctionMorphCheck <outDir>
+compile=javac --release 17 -encoding UTF-8 -nowarn -cp build/classes/java/main -d build/terrain-upgrade/recipe-junctions/check-classes <the 15 sources: RefNoise, RegionCellTable, RegionPartition, Plains/Hills/Mountains/Plateau/Badlands/Combine/FourPairMorph/HillsPlateauMorph/LocalThreeMorph candidates, RecipeMorphCatalog, RecipeJunctionMorph, this class>
+run_cp_order=check-classes;<aux dir with LandCompositionGallery for the seed constant>;build/classes/java/main;night-config core
+run=java -Xmx2g -Dfile.encoding=UTF-8 -cp <run_cp_order> com.geogenesis.worldgen.terrain.candidate.RecipeJunctionMorphCheck build/terrain-upgrade/recipe-junctions/check
+engine_input=weights only (double[18], already eased); old implementations get position only
+no_cache=every sample is a fresh node evaluation; no shared or static mutable state
+outputs=endpoints/edges/local-triple/structure-all-pairs/triangles-epsilon/triangles-interior/negative-control/rejects/plateau-reference/witness/failures/metrics/limits
+csv=comma separated, no embedded commas; recipe id lists use '|'
+witness=every metric row names the CSV it came from, its tolerance and its verdict

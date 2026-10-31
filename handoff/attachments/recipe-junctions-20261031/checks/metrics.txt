@@ -1,0 +1,24 @@
+checks=443538
+seeds=[9139912035078620160, 1, -42]
+endpoint_points=1000
+edge_points=1000
+local_three_points=500
+structure_points=64
+epsilon_points=128
+interior_points_per_triple=200
+tolerance_endpoint=2.0e-07
+tolerance_regression=3.0e-07
+epsilon_ladder=[0.1, 0.01, 0.001, 1.0E-4]
+epsilon_limit=1.0e-03
+negative_control_min=0.02
+plateau_legacy_min=0.01
+value_limit=100.0
+class_triples=10
+all_pairs=153
+witness_metrics=25
+edge_collapse_ladder=[0.01, 0.001, 1.0E-4]
+edge_collapse_limit=1.0e-03
+quads=3
+quints=2
+endpoint_target=catalog.entry(id).reference (plateau id 15 = reference-corrected, not PlateauCandidate.REF 1.05)
+result=PASS

@@ -1,0 +1,14 @@
+seed=9139912035078620160 (fixed, frozen baseline)
+scenes total=20 real=5 controlled=15 by group={"CATEGORY": 10, "COMPOSITE": 4, "REAL": 5, "SUBRECIPE": 1}
+sample size=601x601 step=1.0 (native, no scaling)
+local geometry radius=450 blocks, world polyline maxSeg=2 blocks
+profiles=3 angles 0/60/120 deg through the junction, step 0.5 blocks, half span 300 blocks
+triangular profiles are NOT labelled +-120: the 240-block band edge is only defined along one edge normal, so it does not apply to oblique cuts
+real scenes merge weights through the real 45-slot table (catalog.slotEntry), never by Category; every participating entry is kept and there is no participant cap
+controlled arm covers all 18 entries: 10 five-class triples + 4 lowland-composite triples (composites 5..14) + 1 sub-recipe triple (1,2,4)
+scene labels use exact recipe ids; Category names appear nowhere in the figures
+finished-lerp formula=sum_i w_i * y(reference_i)  [not y(sum_i w_i * reference_i)]  (convert-then-blend; NOT y(sum w_i*reference_i), because HeightCurve.heightFromE is non-linear)
+layers are LAND COMPOSITION ONLY: no Blender, no sea/land assembly, no hydrology. The only legacy layer is <scene>-hard-old (plateau 0..1.05), kept purely as a scale reference: new-vs-old differences in plateau scenes cannot be attributed to the transition algorithm alone
+config gate: frozen TOML is verified on a throwaway copy before setConfig, so ForgeConfigSpec cannot silently auto-correct values into the figures
+no full-frame render; JVM terrain overrides=none
+production-output invariance is NOT asserted by this renderer: no baseline hash was measured here. The owning agent reports the baseline hash for this run separately.

@@ -1,0 +1,17 @@
+case,threw,expected
+length17,true,IllegalArgumentException
+length19,true,IllegalArgumentException
+sum_off_plus,true,IllegalArgumentException
+sum_off_minus,true,IllegalArgumentException
+negative,true,IllegalArgumentException
+over_one,true,IllegalArgumentException
+nan,true,IllegalArgumentException
+infinite,true,IllegalArgumentException
+ids_length_mismatch,true,IllegalArgumentException
+ids_empty,true,IllegalArgumentException
+id_negative,true,IllegalArgumentException
+id_out_of_range,true,IllegalArgumentException
+ids_negative_weight,true,IllegalArgumentException
+ids_sum_off,true,IllegalArgumentException
+ids_nan,true,IllegalArgumentException
+valid_control,false,false
