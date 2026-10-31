@@ -9,6 +9,7 @@
 
 | 文件 | 内容 | 状态 |
 |---|---|---|
+| [terrain-morph-final-20261031.md](terrain-morph-final-20261031.md) | 五大类10组独立形态过渡定稿：综合效果与A/B/C采样实测，选A固定240块；B/C仅留实验；横纹不再处理 | 独立原型定稿；未接整幅地形，基准未改 |
 | [skeleton-overlay-failed-20261030.md](skeleton-overlay-failed-20261030.md) | 2026-10-30 骨架侵蚀「后置叠加」验证**失败**：delta 从生产 ±5 块放大到 ±188 格（37 倍）；局部七类窗口暴露放射星（海岸带）、山地抹平、幅度失控。根因=接入点错误（骨架应在地形流水线内，不是后处理）。**用户决定：等沙箱地形正式接入生产后再验证骨架** | ✅ 现行；`src/main` 零改动；实验代码已清理 |
 | [segment-field-conclusions-20261030.md](segment-field-conclusions-20261030.md) | 2026-10-30 `RefNoise.Erosion`（线段距离场）放射星调查：**用户假说「多线段共用格心」证实**，但修掉共用格心就失去锐度（锐度与星芒同源）。八轮尝试全否决，最终改用骨架侵蚀 | ✅ 现行（结论有效） |
 | [erosion-operator-conclusions-20261030.md](erosion-operator-conclusions-20261030.md) | 2026-10-30 侵蚀算子改进的**否决性结论**：方案 A/B/C、低地骨架、软化 RefNoise、DirectionWarped —— 全部实测否决 | ✅ 现行 |
