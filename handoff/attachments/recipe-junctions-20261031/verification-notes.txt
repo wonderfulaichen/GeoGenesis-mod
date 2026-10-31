@@ -1,0 +1,63 @@
+真实子配方、复合项与台地/劣地三向局部验证 — 2026-10-31
+
+范围
+用户认可上轮PHM局部图后，授权补真实DALES、其他子配方、复合项及含台地/劣地三交汇，出图剖面；不接整幅，基准不动。
+新增6个Recipe*.java和1个renderer；全部既有源码、共享噪声、上轮Local*、原配方、Gallery/Combine与生产均未编辑。
+
+实现
+目录18条目：5低地原子(PLAIN_GEO/STEPPE/DALES_GEO/HILLS1_GEO/HILLS2)、10低地两两复合、PLATEAU_REF/BADLANDS/M1_GEO。
+原子raw剥除末道振幅/偏置，DALES内部Power/Blend/warp及HILLS2调制保留；不使用成品高度除振幅冒充raw。
+复合保留真实selector种子、原alpha窗口、两子树和末道max(0)。raw/amp/bias是原低地复合的节点描述；数学恒等但float不保证逐位。
+区域过渡阶段：raw→台地Terrace/surface→固定山地erosion→劣地Steps/shape→振幅/偏置→复合截断强度。
+权重只ease一次；所有多族进入同一次节点求值，没有先AB再C的顺序依赖。
+台地沿用认可独立原型的参考声明值域0..0.9；共享旧1.05完全不动，另出legacy对照，不把该差异全算过渡效果。
+
+图集
+20场景：c01..c10五大类全部10种三取三组合；x01..x04让十个复合5..14全部真实参与；x05=STEPPE/DALES_GEO/HILLS2；s01..s05=真实45票槽布局。
+20张morph-native均601×601，1px=1块，不缩放；overview仅缩略索引，不作形态验收替代。
+所有场景都有0/60/120度穿交点剖面，步0.5块、±300；原始高度无平滑。不把斜剖面误标±120法向带缘。
+真实场景按cell/slot映射精确RecipeId，不用Category降级；出现第四区域照常保留，无参与数上限。
+s01中心(-362.3561,-977.0970)：真实PLAIN/DALES/M1，不再用HILLS1替代DALES。
+s02中心(-3337.4512,-3875.0452)：复合项与山地，第四格真实参与。
+s03中心(1018.5286,2217.8775)：真实台地、HILLS2、平原与复合项。
+s04中心(704.5049,-1794.3608)：真实劣地、DALES、HILLS2。
+s05中心(-2767.7629,-178.2140)：真实台地、劣地、HILLS1与复合项，第四格参与。
+图中只有局部陆地成分，不含Blender、海陆组装、群岛、水文或方块生成。
+成品平均诊断明确采用sum(w_i*y(reference_i))；和上轮y(sum(w_i*reference_i))不是同一口径，两轮蓝线不直接作回归基准。
+
+验证
+RecipeMorphCatalogCheck：4seed，18201 checks PASS。真实45槽与selector/种子对拍一致。
+RecipeJunctionMorphCheck：3seed，443538 checks PASS。
+18端点对目录reference最大误差4.453425e-8(阈2e-7)。
+10个认可双族路径最大误差1.192093e-7(阈3e-7)，仅mountain/bad float尾差非零。
+上轮LocalThree回归max8.940697e-8。
+全部153配方对、额外四/五候选：有限、确定、置换/同配方拆分归并通过。
+10组三向内部抽样、趋顶点、第三权重趋0退双边通过；edge-collapse最终max3.678873e-4(阈1e-3)。
+20场景所有输出finite、权重和1、participants逐像素等于weight>0计数；18条目全部在受控图实际参与，不是只在图例出现。
+冻结输入使用build/terrain-upgrade/baseline/config-input.toml，不是run/config；SPEC门禁通过、文件SHA相等。
+1111个本轮前文件逐字节未变，verification.json记录；含旧图/CSV/源码和out-clean/out-rollback。
+coastal=5a8bb721ba191c7949c583b90d7b76baaf5c6ac9e08c4619021afd2f60261d28
+islands=94ba83f7359526df1267572aac181ad3922e1c41f7bca31d6b6c5ccb9be271a1
+regional=02cebf399b4dd7effa59526ad563fc3445d3dea58e589f5ba34057f72975c3f4
+
+限制
+没有接整幅、生产、Minecraft、世界生成门禁，不升缓存schema；未测游戏块级性能。
+真实几何仍继承上轮数值world折线限制：未证明warp单射，小残差不能排除反解多根；不宣称严格世界SDF或无限世界验收完成。
+端点/退边/epsilon检查是抽样参数退化，不是所有位置C0/C1证明；原族Terrace/Steps/侵蚀纹理仍可能有尖坎。
+没有穷举C(18,3)=816种三配方组合的视觉测试；本轮全部18端点、153对数值检查、10大类三向与5个真实场景。
+没有以指标替用户判图。新图不是新基准，等用户验收。
+
+复现（工程目录内PowerShell）
+$java='D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin'
+$jars=(Get-Content build/terrain-upgrade/baseline/classpath-jars.txt -Raw).Trim()
+$root='build/terrain-upgrade/recipe-junctions'
+$cp="$root/final-classes;build/terrain-upgrade/baseline/classes;build/terrain-upgrade/baseline/src-main/resources;$jars"
+$exclude=@('ProvinceDebugProbe.java','ProvinceSampleCheck.java','SkipRateProbe.java')
+$files=(Get-ChildItem src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/*.java | Where-Object {$_.Name -notin $exclude}).FullName
+& "$java/javac.exe" --release 17 -encoding UTF-8 -nowarn -cp $cp -d "$root/final-classes" $files
+& "$java/java.exe" -Xmx2g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.RecipeMorphCatalogCheck "$root/final-catalog"
+& "$java/java.exe" -Xmx2g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.RecipeJunctionMorphCheck "$root/final-check"
+& "$java/java.exe" -Xmx3g '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.RecipeJunctionGallery build/terrain-upgrade/baseline/config-input.toml "$root/final-gallery" "--scenes=$root/scenes.csv"
+python -B tools/render-recipe-junctions.py "$root/final-gallery" ../handoff/attachments/recipe-junctions-20261031
+完整JVM属性：仅file.encoding=UTF-8，无地形-D覆盖。堆上限Xmx如命令。不运行Gradle整workspace，不修旧Province坏探针。
+原始raw保留build内；归档图/剖面CSV/场景身份/验证输出/manifest在当前目录，无classes/jar。

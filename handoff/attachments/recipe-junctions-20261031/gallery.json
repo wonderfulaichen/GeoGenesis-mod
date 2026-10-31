@@ -1,0 +1,10 @@
+{
+  "seed": "9139912035078620160",
+  "size": 601,
+  "step": 1.0,
+  "profileHalf": 300.0,
+  "profileStep": 0.5,
+  "finishedLerpFormula": "sum_i w_i * y(reference_i)  [not y(sum_i w_i * reference_i)]",
+  "configSpecCorrect": true,
+  "scenes": ["c01", "c02", "c03", "c04", "c05", "c06", "c07", "c08", "c09", "c10", "x01", "x02", "x03", "x04", "x05", "s01", "s02", "s03", "s04", "s05"]
+}

@@ -1,0 +1,6 @@
+case,threw,message
+entry_negative,true,expected contract violation
+entry_at_count,true,expected contract violation
+slot_negative,true,expected contract violation
+slot_at_count,true,expected contract violation
+original_off_canonical_seed,true,expected contract violation

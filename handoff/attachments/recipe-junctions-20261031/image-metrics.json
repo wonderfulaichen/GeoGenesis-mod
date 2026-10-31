@@ -1,0 +1,536 @@
+{
+  "c01": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO",
+      "HILLS1_GEO",
+      "PLATEAU_REF"
+    ],
+    "centerWeights": "PLATEAU_REF=0.333　HILLS1_GEO=0.333　PLAIN_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 69.85171315588168,
+    "yMax": 174.78508462433814,
+    "maxAbsDiffVs_finished-lerp": 32.79317278174008,
+    "maxAbsDiffVs_hard": 51.051261908412,
+    "maxAbsDiffVs_participants": 173.78508462433814,
+    "maxAbsDiffVs_hard-old": 51.051261908412
+  },
+  "c02": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO",
+      "HILLS1_GEO",
+      "BADLANDS"
+    ],
+    "centerWeights": "BADLANDS=0.333　HILLS1_GEO=0.333　PLAIN_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 76.58875352935046,
+    "yMax": 204.1326262397051,
+    "maxAbsDiffVs_finished-lerp": 13.381650455138725,
+    "maxAbsDiffVs_hard": 48.78967026919126,
+    "maxAbsDiffVs_participants": 203.1326262397051
+  },
+  "c03": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO",
+      "HILLS1_GEO",
+      "M1_GEO"
+    ],
+    "centerWeights": "M1_GEO=0.333　HILLS1_GEO=0.333　PLAIN_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 78.75504288313091,
+    "yMax": 244.34765000586512,
+    "maxAbsDiffVs_finished-lerp": 20.031649881433395,
+    "maxAbsDiffVs_hard": 69.00951155036691,
+    "maxAbsDiffVs_participants": 243.34765000586512
+  },
+  "c04": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO",
+      "PLATEAU_REF",
+      "BADLANDS"
+    ],
+    "centerWeights": "BADLANDS=0.333　PLATEAU_REF=0.333　PLAIN_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 69.05325717834867,
+    "yMax": 204.1326262397051,
+    "maxAbsDiffVs_finished-lerp": 33.80016791793889,
+    "maxAbsDiffVs_hard": 68.41434278279542,
+    "maxAbsDiffVs_participants": 203.1326262397051,
+    "maxAbsDiffVs_hard-old": 68.0580913254619
+  },
+  "c05": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO",
+      "PLATEAU_REF",
+      "M1_GEO"
+    ],
+    "centerWeights": "M1_GEO=0.333　PLATEAU_REF=0.333　PLAIN_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 69.05325717834867,
+    "yMax": 244.34765000586512,
+    "maxAbsDiffVs_finished-lerp": 34.87677527954426,
+    "maxAbsDiffVs_hard": 69.00951155036691,
+    "maxAbsDiffVs_participants": 243.34765000586512,
+    "maxAbsDiffVs_hard-old": 69.00951155036691
+  },
+  "c06": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO",
+      "BADLANDS",
+      "M1_GEO"
+    ],
+    "centerWeights": "M1_GEO=0.333　BADLANDS=0.333　PLAIN_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 76.59530013212114,
+    "yMax": 244.34765000586512,
+    "maxAbsDiffVs_finished-lerp": 16.02812587901738,
+    "maxAbsDiffVs_hard": 69.00951155036691,
+    "maxAbsDiffVs_participants": 243.34765000586512
+  },
+  "c07": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "HILLS1_GEO",
+      "PLATEAU_REF",
+      "BADLANDS"
+    ],
+    "centerWeights": "BADLANDS=0.333　PLATEAU_REF=0.333　HILLS1_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 69.05325717834867,
+    "yMax": 204.1326262397051,
+    "maxAbsDiffVs_finished-lerp": 33.80016791793889,
+    "maxAbsDiffVs_hard": 68.41434278279542,
+    "maxAbsDiffVs_participants": 203.1326262397051,
+    "maxAbsDiffVs_hard-old": 51.985294990539586
+  },
+  "c08": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "HILLS1_GEO",
+      "PLATEAU_REF",
+      "M1_GEO"
+    ],
+    "centerWeights": "M1_GEO=0.333　PLATEAU_REF=0.333　HILLS1_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 69.05325717834867,
+    "yMax": 244.34765000586512,
+    "maxAbsDiffVs_finished-lerp": 34.46372574522947,
+    "maxAbsDiffVs_hard": 69.00132598478348,
+    "maxAbsDiffVs_participants": 243.34765000586512,
+    "maxAbsDiffVs_hard-old": 69.09547270565294
+  },
+  "c09": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "HILLS1_GEO",
+      "BADLANDS",
+      "M1_GEO"
+    ],
+    "centerWeights": "M1_GEO=0.333　BADLANDS=0.333　HILLS1_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 76.5952988109097,
+    "yMax": 244.34765000586512,
+    "maxAbsDiffVs_finished-lerp": 17.957856783191062,
+    "maxAbsDiffVs_hard": 63.43046363890173,
+    "maxAbsDiffVs_participants": 243.34765000586512
+  },
+  "c10": {
+    "group": "CATEGORY",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLATEAU_REF",
+      "BADLANDS",
+      "M1_GEO"
+    ],
+    "centerWeights": "M1_GEO=0.333　BADLANDS=0.333　PLATEAU_REF=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 76.59489121717513,
+    "yMax": 244.34765000586512,
+    "maxAbsDiffVs_finished-lerp": 32.69746551628731,
+    "maxAbsDiffVs_hard": 83.97829962797464,
+    "maxAbsDiffVs_participants": 243.34765000586512,
+    "maxAbsDiffVs_hard-old": 84.30587022699416
+  },
+  "x01": {
+    "group": "COMPOSITE",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO+STEPPE",
+      "PLAIN_GEO+DALES_GEO",
+      "PLAIN_GEO+HILLS1_GEO"
+    ],
+    "centerWeights": "PLAIN_GEO+HILLS1_GEO=0.333　PLAIN_GEO+DALES_GEO=0.333　PLAIN_GEO+STEPPE=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 72.99107293126285,
+    "yMax": 211.80055702869893,
+    "maxAbsDiffVs_finished-lerp": 8.710502693547511,
+    "maxAbsDiffVs_hard": 55.8147999751568,
+    "maxAbsDiffVs_participants": 210.80055702869893
+  },
+  "x02": {
+    "group": "COMPOSITE",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO+HILLS2",
+      "STEPPE+DALES_GEO",
+      "STEPPE+HILLS1_GEO"
+    ],
+    "centerWeights": "STEPPE+HILLS1_GEO=0.333　STEPPE+DALES_GEO=0.333　PLAIN_GEO+HILLS2=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 69.76904644136428,
+    "yMax": 211.80055702869893,
+    "maxAbsDiffVs_finished-lerp": 10.323435710220735,
+    "maxAbsDiffVs_hard": 46.80540619969369,
+    "maxAbsDiffVs_participants": 210.80055702869893
+  },
+  "x03": {
+    "group": "COMPOSITE",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "STEPPE+HILLS2",
+      "DALES_GEO+HILLS1_GEO",
+      "DALES_GEO+HILLS2"
+    ],
+    "centerWeights": "DALES_GEO+HILLS2=0.333　DALES_GEO+HILLS1_GEO=0.333　STEPPE+HILLS2=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 70.33667455610932,
+    "yMax": 166.39411293809414,
+    "maxAbsDiffVs_finished-lerp": 12.245762854562841,
+    "maxAbsDiffVs_hard": 45.61132633309812,
+    "maxAbsDiffVs_participants": 165.39411293809414
+  },
+  "x04": {
+    "group": "COMPOSITE",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "HILLS1_GEO+HILLS2",
+      "PLATEAU_REF",
+      "BADLANDS"
+    ],
+    "centerWeights": "BADLANDS=0.333　PLATEAU_REF=0.333　HILLS1_GEO+HILLS2=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 69.05325717834867,
+    "yMax": 204.1326262397051,
+    "maxAbsDiffVs_finished-lerp": 33.80016791793889,
+    "maxAbsDiffVs_hard": 68.41434278279542,
+    "maxAbsDiffVs_participants": 203.1326262397051,
+    "maxAbsDiffVs_hard-old": 50.20617806643253
+  },
+  "x05": {
+    "group": "SUBRECIPE",
+    "realLayout": false,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "STEPPE",
+      "DALES_GEO",
+      "HILLS2"
+    ],
+    "centerWeights": "HILLS2=0.333　DALES_GEO=0.333　STEPPE=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 69.54810470845662,
+    "yMax": 196.2466955602646,
+    "maxAbsDiffVs_finished-lerp": 13.651401069858707,
+    "maxAbsDiffVs_hard": 53.02822232097387,
+    "maxAbsDiffVs_participants": 195.2466955602646
+  },
+  "s01": {
+    "group": "REAL",
+    "realLayout": true,
+    "center": [
+      -362.3561,
+      -977.097
+    ],
+    "channelCount": 3,
+    "channels": [
+      "PLAIN_GEO",
+      "DALES_GEO",
+      "M1_GEO"
+    ],
+    "centerWeights": "PLAIN_GEO=0.333　DALES_GEO=0.333　M1_GEO=0.333",
+    "participantPixels": {
+      "1": 152515,
+      "2": 158581,
+      "3": 50105
+    },
+    "maxParticipants": 3,
+    "yMin": 67.27132128444612,
+    "yMax": 241.4888760728121,
+    "maxAbsDiffVs_finished-lerp": 11.159405526611295,
+    "maxAbsDiffVs_hard": 68.85148409038786,
+    "maxAbsDiffVs_participants": 240.4888760728121
+  },
+  "s02": {
+    "group": "REAL",
+    "realLayout": true,
+    "center": [
+      -3337.4512,
+      -3875.0452
+    ],
+    "channelCount": 4,
+    "channels": [
+      "PLAIN_GEO+STEPPE",
+      "STEPPE+DALES_GEO",
+      "STEPPE+HILLS2",
+      "M1_GEO"
+    ],
+    "centerWeights": "M1_GEO=0.315　PLAIN_GEO+STEPPE=0.315　STEPPE+HILLS2=0.315　STEPPE+DALES_GEO=0.056",
+    "participantPixels": {
+      "1": 129431,
+      "2": 158584,
+      "3": 45335,
+      "4": 27851
+    },
+    "maxParticipants": 4,
+    "yMin": 67.7288,
+    "yMax": 229.13792712812426,
+    "maxAbsDiffVs_finished-lerp": 16.652738041242856,
+    "maxAbsDiffVs_hard": 68.98915960907937,
+    "maxAbsDiffVs_participants": 227.13792712812426
+  },
+  "s03": {
+    "group": "REAL",
+    "realLayout": true,
+    "center": [
+      1018.5286,
+      2217.8775
+    ],
+    "channelCount": 4,
+    "channels": [
+      "PLAIN_GEO",
+      "HILLS2",
+      "DALES_GEO+HILLS2",
+      "PLATEAU_REF"
+    ],
+    "centerWeights": "PLATEAU_REF=0.333　PLAIN_GEO=0.333　HILLS2=0.333",
+    "participantPixels": {
+      "1": 153847,
+      "2": 139315,
+      "3": 68039
+    },
+    "maxParticipants": 3,
+    "yMin": 66.60493261327147,
+    "yMax": 226.8870373017073,
+    "maxAbsDiffVs_finished-lerp": 33.93823293611146,
+    "maxAbsDiffVs_hard": 96.06545417189602,
+    "maxAbsDiffVs_participants": 225.8870373017073,
+    "maxAbsDiffVs_hard-old": 68.12759761780501
+  },
+  "s04": {
+    "group": "REAL",
+    "realLayout": true,
+    "center": [
+      704.5049,
+      -1794.3608
+    ],
+    "channelCount": 3,
+    "channels": [
+      "DALES_GEO",
+      "HILLS2",
+      "BADLANDS"
+    ],
+    "centerWeights": "DALES_GEO=0.333　BADLANDS=0.333　HILLS2=0.333",
+    "participantPixels": {
+      "1": 152423,
+      "2": 160996,
+      "3": 47782
+    },
+    "maxParticipants": 3,
+    "yMin": 68.8918964670144,
+    "yMax": 222.90771750752927,
+    "maxAbsDiffVs_finished-lerp": 13.654503959440206,
+    "maxAbsDiffVs_hard": 52.58042940661309,
+    "maxAbsDiffVs_participants": 221.90771750752927
+  },
+  "s05": {
+    "group": "REAL",
+    "realLayout": true,
+    "center": [
+      -2767.7629,
+      -178.214
+    ],
+    "channelCount": 4,
+    "channels": [
+      "HILLS1_GEO",
+      "PLAIN_GEO+STEPPE",
+      "PLATEAU_REF",
+      "BADLANDS"
+    ],
+    "centerWeights": "BADLANDS=0.301　HILLS1_GEO=0.301　PLATEAU_REF=0.301　PLAIN_GEO+STEPPE=0.097",
+    "participantPixels": {
+      "1": 125205,
+      "2": 166211,
+      "3": 37152,
+      "4": 32633
+    },
+    "maxParticipants": 4,
+    "yMin": 69.56343802802377,
+    "yMax": 184.04591022496226,
+    "maxAbsDiffVs_finished-lerp": 33.00189539919822,
+    "maxAbsDiffVs_hard": 82.5944191476703,
+    "maxAbsDiffVs_participants": 182.04591022496226,
+    "maxAbsDiffVs_hard-old": 82.5944191476703
+  }
+}
