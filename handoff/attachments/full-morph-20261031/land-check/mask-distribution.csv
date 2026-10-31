@@ -1,0 +1,2 @@
+case,points,min,max,mean,p10,p50,p90,above_low,above_high,blend_low,blend_high
+mask_1401_window,40401,0.113756,0.388982,0.175558,0.116736,0.162675,0.251134,0,0,0.55,0.78
