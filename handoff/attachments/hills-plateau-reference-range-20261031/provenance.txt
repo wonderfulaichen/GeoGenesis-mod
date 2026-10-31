@@ -1,0 +1,18 @@
+Independent prototype only; no Gallery/Combine/RegionPartition/PlateauCandidate/RefNoise/src/main edits.
+seed=9139912035078620160; hills=seed+11; plateau=seed+44.
+Terrace declared max=0.75f*0.6f+0.3f+0.15f (reference metadata, approximately 0.9), min=0.
+Only change to shape: Terrace spacing follows reference declared range; all other recipes/seeds/scales unchanged.
+Endpoint=original hills and independently evaluated reference-range plateau; NOT unchanged legacy PlateauCandidate endpoint.
+Stages=601x601 step2; spatial=1201x601 step1; center=(-140,137); transition x[-260,-20].
+Profiles=z[-23,137,297], step0.5; same HeightCurve/frozen TOML, max(.02+1.50*h01,0).
+JVM terrain overrides=none; JVM encoding=-Dfile.encoding=UTF-8; Java21 --release17; max heap2g.
+Compile six diagnostic sources into build/terrain-upgrade/hills-plateau-reference-range/classes.
+Probe main=com.geogenesis.worldgen.terrain.candidate.HillsPlateauMorphProbe; args=baseline/config-input.toml reference-range/data.
+Renderer=python -B tools/render-hills-plateau-morph.py <new-data> <attachments> <old-prototype-data>.
+No full terrain integration, full world render, in-game acceptance, or performance benchmark.
+Switch tests at .25/.50/.75 use adjacent floats; old range is negative control.
+20,001 input samples compare against independent reference Step[] evaluator; 3 seeds x12,000 endpoint/core samples.
+705 existing files protected; exactly 3 allowed files changed; other 702 unchanged. Three baseline hashes unchanged.
+Hills stage-0 and pure hills spatial core bit-identical to prior prototype.
+Terrace transfer graph excludes surface detail and isolates scalar input; world profiles are raw, unsmoothed.
+This fixes the switch jump; it does not assert C1 everywhere or visual acceptance of all remaining cliffs.

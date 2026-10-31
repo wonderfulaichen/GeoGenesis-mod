@@ -1,0 +1,20 @@
+﻿seed=9139912035078620160
+window=1401x1401 samples, step=5 blocks => 7005x7005 blocks, 1 px = 5 blocks
+center block = (-140, 137), origin = (-3640, -3363)
+JVM properties: NONE (no -D flags)
+
+arm            Y range        relief   water%
+compose-coastal 5.14..277.86   272.71   35.82%
+
+type share (of land):
+  PLAIN   22.09%   Y P50  81.4  P95 136.7
+  HILLS   53.05%   Y P50  98.8  P95 157.0
+  PLATEAU  4.22%   Y P50  92.0  P95 188.4
+  MOUNTAINS 20.64% Y P50 123.0  P95 189.5
+
+boundary |dY| by type pair (land only):
+  HILLS-MOUNTAINS  P50 0.73  P90 5.01  P99 49.15  max 88.78
+  PLAIN-HILLS      P50 0.46  P90 4.45  P99 53.43  max 62.63
+  PLAIN-MOUNTAINS  P50 0.78  P90 5.11  P99 87.01  max 114.67
+  HILLS-PLATEAU    P50 0.37  P90 2.44  P99 25.92  max 55.86
+  PLATEAU-MOUNTAINS P50 0.84 P90 39.15 P99 72.98  max 80.01

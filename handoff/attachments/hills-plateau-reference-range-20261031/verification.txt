@@ -1,0 +1,7 @@
+max_h01_difference_from_finished_lerp=0.088435077
+terrace_range=reference_declared_0_to_0.9
+switch_0.25_left=0.299999982 at=0.299999982 right=0.299999982
+switch_0.50_left=0.599999964 at=0.599999964 right=0.599999964
+switch_0.75_left=0.899999976 at=0.899999976 right=0.899999976
+negative_control_old_jump_0.75=0.298796356
+checks=3433614 PASS

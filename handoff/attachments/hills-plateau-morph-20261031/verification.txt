@@ -1,0 +1,3 @@
+checks=164002 PASS
+max_h01_difference_from_finished_lerp=0.102224485
+inherited_terrace_jump_at_input_0.75=0.298796356
