@@ -170,3 +170,55 @@ __pycache__/
 /handoff/attachments/continent-multifrequency-20261102/
 /handoff/attachments/self-consistent-coast-sandbox-20261102/
 /handoff/attachments/m1a-m1b-20261101/
+
+# ---- 2026-11-03 补充：其余未跟踪实验目录（全仓零文档引用）----
+# 与上面同批处理：都是重写前的一次性实验产物，保留在磁盘、永不进 git。
+/handoff/attachments/coast-identity-2d-experiment-20261102/
+/handoff/attachments/continent-attribution-20261102/
+/handoff/attachments/fbm-anchor-identity-20261103/
+/handoff/attachments/fbm-coast-followup-20261102/
+/handoff/attachments/fbm-coast-sandbox-20261102/
+/handoff/attachments/identity-boundary-independent-20261103/
+/handoff/attachments/identity-canonical-combination-check-20261103/
+/handoff/attachments/layered-coast-independent-20261103/
+/handoff/attachments/ocean-evaluation-endpoint-20261103/
+/handoff/attachments/ratio-drift-investigation-20261103/
+/handoff/attachments/ratio-gate-remap-20261103/
+/handoff/attachments/recipe-coast-independent-20261102/
+/handoff/attachments/seam-canonical-experiment-20261102/
+/handoff/attachments/seam-isolation-20261102/
+
+# 从已失效的 git worktree 里抢救出来的 3 个探针（主仓原本没有）。
+# 保留在磁盘作为归档，但不再进库：它们属已废弃代码线，且未被任何探针/门禁引用。
+/handoff/attachments/orphan-worktree-probes-20261103/
+
+# ---- 两个"混合目录"：只忽略未跟踪的原始数据，已入库的证据必须保留 ----
+# large-area-sea-land：report.json/meta.json/sea-land-*.png/closeup/*.png 已入库，
+# 不要整目录忽略，否则会连已入库文件一起藏掉。
+/handoff/attachments/large-area-sea-land-20261103/raw-smooth/macro-c.f64be
+/handoff/attachments/large-area-sea-land-20261103/raw-smooth/ocean-probability.f64be
+/handoff/attachments/large-area-sea-land-20261103/raw-smooth/side.u8
+/handoff/attachments/large-area-sea-land-20261103/raw-smooth/sampling.txt
+/handoff/attachments/large-area-sea-land-20261103/raw-smooth/local/macro-c.f64be
+/handoff/attachments/large-area-sea-land-20261103/raw-smooth/local/ocean-probability.f64be
+/handoff/attachments/large-area-sea-land-20261103/raw-smooth/local/side.u8
+/handoff/attachments/large-area-sea-land-20261103/raw-smooth/local/sampling.txt
+/handoff/attachments/large-area-sea-land-20261103/classes/
+# b1-wide-sea：b1-experimental-arm.diff 已入库，只忽略失败臂原始数据。
+/handoff/attachments/b1-wide-sea-failed-20261103/wide-sea-coastal.f64be
+
+# ---- candidate/ 下 12 个 tectonic 线探针（已废弃代码线）----
+# 文件留在磁盘供复查，但不入库。注意：不要写成 candidate/ 整目录忽略，
+# 该目录下另有 460 个已入库探针必须继续被追踪。
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriver.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriverCheck.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagation.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationCheck.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationGallery.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/DistProbe.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/DistProbe2.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/JumpProbe.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/MorphInUseProbe.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/PartitionProbe.java
+/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/WorldProbe.java
