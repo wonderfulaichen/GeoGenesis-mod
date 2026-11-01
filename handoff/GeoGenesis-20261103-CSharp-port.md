@@ -8,6 +8,51 @@
 
 ---
 
+## ★ 克隆仓库前必读（2026-11-03 历史重写）
+
+仓库在 2026-11-03 做过一次**历史重写**：把 `handoff/attachments` 下 591 个大实验图
+（448.5 MB）从全部历史中移除，只保留 2026-11-03 的 14 张定稿图。
+`.git` 从 407 MB 降到 **42.5 MB**。
+
+### 如果你曾经 clone 过这个仓库
+
+**旧的本地副本已经和远程分叉，不能直接 `git pull`。** 会出现
+`fatal: refusing to merge unrelated histories` 或大量冲突。请**重新 clone**：
+
+```bash
+# 备份你本地的改动（如果有）
+git diff > my-changes.patch
+
+# 删除旧副本，重新克隆
+rm -rf GeoGenesis-mod
+git clone https://github.com/wonderfulaichen/GeoGenesis-mod.git
+cd GeoGenesis-mod
+git checkout feat/hydrology-target
+```
+
+### 克隆后的注意事项
+
+| 项 | 说明 |
+|---|---|
+| **检出分支** | 必须是 `feat/hydrology-target`（`main` 是旧的，不含定稿） |
+| **历史不可追溯** | 2026-11-03 之前的提交哈希**全部改变**，旧 SHA 无法解析 |
+| **旧图无法找回** | 被移除的 591 张大图不在历史里了；需要时从旧克隆或备份取 |
+| **定稿图仍在** | `handoff/attachments/commit-selection-20261103/` 等 4 个目录保留 |
+| **不要 `git gc` 后惊讶** | 42.5 MB 是正常的，不是数据丢失 |
+
+### 验证克隆是否完整
+
+```bash
+# 定稿数据必须存在且 SHA 正确
+sha256sum forge-1.20.1-47.4.10-mdk/build/main-verify-restore/out/morph-coastal.f64be
+# 期望 7be0418369d097ce107eeef58b8d02c6776782f1d7fbc6ad6c5e0e5728d7a238
+
+# 定稿图应在（14 张）
+ls handoff/attachments/commit-selection-20261103/*.png
+```
+
+---
+
 ## 〇、先看这一节：你要移植的是什么
 
 定稿地形 = **一份 1401×1401 的高度数组** + **一套生成它的算法**。
