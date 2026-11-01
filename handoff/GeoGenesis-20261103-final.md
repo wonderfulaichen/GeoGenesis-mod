@@ -200,10 +200,15 @@ python -B tools/cmp-render-versions.py
 python -B tools/verify-light-convention.py
 ```
 
-依赖：JDK 21（`D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot`）、
-基线 classpath 三件套（均位于 `forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/`）：
-`classes/`、`src-main/resources/`、`classpath-jars.txt`。
-⚠ `classpath-jars.txt` 是本机绝对路径，**新克隆不可直接复用**。
+依赖：JDK 21（`D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot`）。
+
+⚠ **基线 classpath 不在仓库里**（2026-11-03 从索引撤除）：
+`baseline/classes/`（编译产物）、`baseline/diagnostics/`、`classpath-jars.txt`（本机绝对路径）
+都**没有入库**。新克隆只有定稿数据 `morph-coastal.f64be` 和 `baseline/config-input.toml`。
+
+要重跑 Java 侧，需自己重建基线：先用 `gradlew.bat build` 编译 `src/main`，
+再把 `build/classes/java/main` 指到 `-cp` 首位，并补 Forge 依赖 jar。
+`classpath-jars.txt` 里的路径形如 `D:\.gradle\caches\...`，是**本机专属**，不能照抄。
 
 ---
 

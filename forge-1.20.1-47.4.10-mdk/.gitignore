@@ -28,21 +28,24 @@ run
 forge*changelog.txt
 
 # ============================================================
-# 2026-11-03 定稿交接：放行可复现产物
+# 2026-11-03 定稿交接：只放行「数据 + 配置」，不放行编译产物
 #
 # 上面的 `build/*` 只排除 build/ 下的子项，所以下面的 `!` 规则能生效。
-# 放行内容合计约 20 MB：
-#   - 定稿地形数据 morph-coastal.f64be（15 MB）
-#   - 基线 classpath（src/main 编译产物，约 5 MB）
 #
-# 其余臂（baseline-coastal 等）与 baseline/diagnostics 仍然忽略。
-# 若朋友能从源码重建基线，可删除本段并在文档指引下自建。
+# 入库：
+#   - 定稿地形数据 morph-coastal.f64be（15 MB，唯一需要的二进制）
+#   - baseline/config-input.toml（复现所需的冻结配置）
+#
+# 不入库（仍被忽略）：
+#   - baseline/classes/**         ← 编译产物（.class），517 个文件，已于
+#                                    2026-11-03 从索引撤除；需要时由 src/main 重建
+#   - baseline/diagnostics/**     ← 同上
+#   - 其余六个实验臂的 *.f64be    ← 非定稿
 # ============================================================
 !build/terrain-upgrade/
 build/terrain-upgrade/*
 !build/terrain-upgrade/baseline/
 build/terrain-upgrade/baseline/*
-!build/terrain-upgrade/baseline/classes/
 !build/terrain-upgrade/baseline/config-input.toml
 !build/main-verify-restore/
 build/main-verify-restore/*
