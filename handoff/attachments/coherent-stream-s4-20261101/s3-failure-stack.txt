@@ -1,0 +1,17 @@
+seed=9139912035078620160
+x=1000000.0 z=1000000.0
+input=new CoherentMorphWorld().sample(1000000,1000000);original seed guard retained
+java.lang.IllegalStateException: warp inverse residual 7.1913e+00 blocks > tol 2.0000e-02 at u=(1666.044433594,1664.999977410); world polyline would be untrustworthy
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.toWorld(LocalBoundaryGeometry.java:872)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.densify(LocalBoundaryGeometry.java:835)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.buildWorldEdges(LocalBoundaryGeometry.java:803)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.build(LocalBoundaryGeometry.java:536)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.<init>(LocalBoundaryGeometry.java:151)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.of(LocalBoundaryGeometry.java:192)
+	at com.geogenesis.worldgen.terrain.candidate.FullMorphLand.tileFor(FullMorphLand.java:410)
+	at com.geogenesis.worldgen.terrain.candidate.FullMorphLand.tileAt(FullMorphLand.java:238)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentMorphWorld.tileAt(CoherentMorphWorld.java:35)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentMorphWorld.sample(CoherentMorphWorld.java:46)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.completeS3(CoherentCoordinateCheck.java:421)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.run(CoherentCoordinateCheck.java:57)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.main(CoherentCoordinateCheck.java:35)

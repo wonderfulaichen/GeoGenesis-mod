@@ -1,0 +1,3 @@
+path,oldCoverageFromReflection,expected
+"context","false","false"
+"legacy","true","true"

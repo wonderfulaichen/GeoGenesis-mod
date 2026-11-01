@@ -1,0 +1,13 @@
+{
+  "frozenOldSources": 110,
+  "oldDrift": [],
+  "productionDiff": [],
+  "s2WinnerSHA": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+  "newSourceSHA": {
+    "RecipeBoundaryWeights.java": "f53a063ff0dc397c6dd11d63c012afd19941610c051ac4af20598e596c32c0a0",
+    "CoherentMorphWorld.java": "7bf6587d9c8175aa39ec90fe7060f1f967c6751c7f5b7ec2ef5f01de867cf605",
+    "CoherentMorphGallery.java": "dc0d2c9d7e0c518cd453ef7f37ce3f33cd981725ee8ce640fc274248d0626391",
+    "CoherentMorphCheck.java": "f987a2038fd93b9f621990fe24eec6a9f4fe87513ea9c73f23ee130c02ea92a7"
+  },
+  "rendererSHA": "461c276bf0e75c9b5ec55b9b0dba31d6beec49621d87f10ddff923f53b0f9590"
+}

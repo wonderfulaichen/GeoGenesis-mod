@@ -1,0 +1,46 @@
+{
+  "scope": "P0-P2 only; no spatial world/coast/production integration",
+  "seed": "9139912035078620160",
+  "jvmProperties": [
+    "file.encoding=UTF-8"
+  ],
+  "landBitwiseSamples": 14400,
+  "oceanApiBitwiseSamples": 120000,
+  "nodeChecks": 617318,
+  "endpointMaxAbsDiff": 0.0,
+  "sampledPureSeaMaximumE": -0.0176506793498993,
+  "thirdWeight1e6EdgeMaxAbsDiff": 3.405972409109559e-07,
+  "negativeClampControl": "expected nonzero FAIL confirmed",
+  "frozenSourcesUnchanged": [
+    "UnifiedWorld.java",
+    "CoastalAssembler.java",
+    "CoastRecipeCatalog.java",
+    "OceanMorphConcepts.java",
+    "FullMorphLand.java",
+    "RecipeMorphCatalog.java"
+  ],
+  "sevenArmsSha256": {
+    "baseline-coastal": "5a8bb721ba191c7949c583b90d7b76baaf5c6ac9e08c4619021afd2f60261d28",
+    "baseline-islands": "94ba83f7359526df1267572aac181ad3922e1c41f7bca31d6b6c5ccb9be271a1",
+    "morph-coastal": "7be0418369d097ce107eeef58b8d02c6776782f1d7fbc6ad6c5e0e5728d7a238",
+    "morph-islands": "955ba2cc02a6dee7a2b1c6415f2a18c818c3a6286ce768099e932cff35f65a2a",
+    "plateau-only-coastal": "d8b0802eac41ecf26bb494b026a0ef66cec49590e6f02dfcd13803e59a85d871",
+    "plateau-only-islands": "4b9d3b8b6c5f2396d56ad95d92eacbec40f86c3104cc41d353358a3ca6483b18",
+    "shelf-coastal": "2604533841943d213fff21401e89e539487f79dc705a53124f2f3be58ccc2b6e"
+  },
+  "distanceBUnchanged": "5af5df1fd9d78c45d91398deda1a3773bc49635a8573515a63d97daba433befe",
+  "sourceSha256": {
+    "MorphRecipe.java": "ad1de9a08cc69a9dc862c4709d728c996be202465f0463875e4b49c330dba746",
+    "MorphCatalog.java": "dfe3be26d6f91cafaea038e3f102e96685d5c2239953c2eff2302b6187c0f594",
+    "NodeMorphEngine.java": "afe727c0866821062e9fbc8b0021c8892b51c60711f5ecd4f3ce78a31c16ea1a",
+    "RecipeJunctionMorph.java": "bf33d2fa1d4439e6f4f5ca12a6b33e9929a51007c299df875f98f5949cc8fbd7",
+    "OceanRecipeCatalog.java": "b6b3550a0a721cdf86922ccdbe473e898dea4f92f3ff199e0ff9a72f22a61c3c",
+    "NodeMorphEngineCheck.java": "e9843257526ade8f82383b94d3f05237ffad6dba9e50a2f8c57177fab877e62a"
+  },
+  "limits": [
+    "sampled checks, not global C1 proof",
+    "local weight profiles, not spatial terrain",
+    "legacy transition check retains obsolete coast-internal terminology; compatibility only",
+    "no infinite world/chunk performance/Minecraft verification"
+  ]
+}

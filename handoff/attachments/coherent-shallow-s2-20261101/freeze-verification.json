@@ -1,0 +1,13 @@
+{
+  "oldCandidateFilesUnchanged": 107,
+  "changedOldFiles": [],
+  "productionGitDiff": [],
+  "CtypeSHA": "5680442dcec0000952d767db86898d50fa2befb0acc56ed12e903c8bbfec2937",
+  "cellsSHA": "0358f77326e362146afa132c5525c2da302637d96e0e25486359c56c883eed08",
+  "S1currentTypeSHA": "5680442dcec0000952d767db86898d50fa2befb0acc56ed12e903c8bbfec2937",
+  "newSourceSHA": {
+    "ShallowRegionMatcher.java": "2c5ca4ea36f2911695b1966fe8a6bb1141b7b75e585c1f657f1e08246f431852",
+    "CoherentShallowGallery.java": "79b72c81da64b65150b0e75b499a95df1845e52ae802dfcc05762bb3262d19d0",
+    "CoherentShallowCheck.java": "1b7a02d4a8ee6a6fcf443923966a8cd543b5c344a7668ee22b87606bd6a4efdc"
+  }
+}

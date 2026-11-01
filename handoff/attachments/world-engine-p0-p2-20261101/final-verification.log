@@ -1,0 +1,242 @@
+OCEAN FINGERPRINT samples=120000 out=build\world-engine-p0-p2\evidence\old-ocean.f64be
+LAND FINGERPRINT samples=14400 out=build\world-engine-p0-p2\evidence\new-land.f64be
+FROZEN land BITWISE PASS
+OCEAN FINGERPRINT samples=120000 out=build\world-engine-p0-p2\evidence\new-ocean.f64be
+FROZEN ocean BITWISE PASS
+plateau oldReference==shared max=0.000e+00; corrected differs on 3877/4000 points max=0.100489
+multi-seed 9139912035078620160 votesOk=true det=true sens=false original=false endpointMaxDiff=2.670e-08 independentSlots=45/45 compositeMaxDiff=4.058e-08
+multi-seed 1 votesOk=true det=true sens=true original=true endpointMaxDiff=3.562e-08 independentSlots=45/45 compositeMaxDiff=2.708e-08
+multi-seed -817263 votesOk=true det=true sens=true original=true endpointMaxDiff=2.666e-08 independentSlots=45/45 compositeMaxDiff=3.287e-08
+multi-seed -42 votesOk=true det=true sens=true original=true endpointMaxDiff=3.106e-08 independentSlots=45/45 compositeMaxDiff=2.235e-08
+PASS checks=18201 out=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\world-engine-p0-p2\evidence\RecipeMorphCatalogCheck
+PASS checks=443538 out=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\world-engine-p0-p2\evidence\RecipeJunctionMorphCheck
+PASS checks=910 out=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\world-engine-p0-p2\evidence\FullMorphLandCheck
+checks=617318 endpointMax=0.0 seaMax=-0.0176506793498993 edgeMax=3.405972409109559E-7 failures=0
+NODE MORPH PASS
+OceanRecipeCatalog seed=9139912035079520160 entries=5 slots=12
+  [0] ABYSSAL_PLAIN      weight=5.0  depth=[-0.42, -0.30] e  (blocks -53..-38)
+  [1] MID_OCEAN_RIDGE    weight=2.0  depth=[-0.42, -0.20] e  (blocks -53..-25)
+  [2] SEAMOUNT_FIELD     weight=2.0  depth=[-0.42, -0.10] e  (blocks -53..-13)
+  [3] CANYON             weight=1.0  depth=[-0.55, -0.30] e  (blocks -70..-38)
+  [4] SHELF_RIDGE        weight=3.0  depth=[-0.10, +0.00] e  (blocks -13..+0)
+sampled 263169 points per recipe (8192x8192 step=16)
+=== ���䷽ height01 �ֲ���0=��ƽ��, -1=����ף�===
+  id  recipe              n      min      P01      P50      P99      max    blocks(P50)
+  0   ABYSSAL_PLAIN      263169  -0.3840  -0.3780  -0.3611  -0.3458  -0.3440   -45.9
+  1   MID_OCEAN_RIDGE    263169  -0.3483  -0.3368  -0.2646  -0.2290  -0.2087   -33.6
+  2   SEAMOUNT_FIELD     263169  -0.3600  -0.3600  -0.3600  -0.3064  -0.2303   -45.7
+  3   CANYON             263169  -0.5323  -0.5141  -0.4483  -0.3610  -0.3601   -56.9
+  4   SHELF_RIDGE        263169  -0.0700  -0.0700  -0.0631  -0.0205  -0.0100   -8.0
+R1  ABYSSAL_PLAIN      min                         -0.384008  PASS
+R1  ABYSSAL_PLAIN      max                         -0.344031  PASS
+R1  MID_OCEAN_RIDGE    min                         -0.348313  PASS
+R1  MID_OCEAN_RIDGE    max                         -0.208726  PASS
+R1  SEAMOUNT_FIELD     min                         -0.360000  PASS
+R1  SEAMOUNT_FIELD     max                         -0.230280  PASS
+R1  CANYON             min                         -0.532334  PASS
+R1  CANYON             max                         -0.360105  PASS
+R1  SHELF_RIDGE        min                        -0.0700000  PASS
+R1  SHELF_RIDGE        max                        -0.0100000  PASS
+R2  ABYSSAL_PLAIN      min-vs-lo                   0.0359919  PASS
+R2  ABYSSAL_PLAIN      max-vs-hi                  -0.0440314  PASS
+R2  MID_OCEAN_RIDGE    min-vs-lo                   0.0716873  PASS
+R2  MID_OCEAN_RIDGE    max-vs-hi                 -0.00872638  PASS
+R2  SEAMOUNT_FIELD     min-vs-lo                   0.0600000  PASS
+R2  SEAMOUNT_FIELD     max-vs-hi                   -0.130280  PASS
+R2  CANYON             min-vs-lo                   0.0176659  PASS
+R2  CANYON             max-vs-hi                  -0.0601051  PASS
+R2  SHELF_RIDGE        min-vs-lo                   0.0300000  PASS
+R2  SHELF_RIDGE        max-vs-hi                  -0.0100000  PASS
+R3  CANYON             median-below-plain          0.0872400  PASS
+R4  CANYON             median-gap-vs-plain         0.0872400  PASS
+R4  CANYON             p01-gap-vs-plain             0.136060  PASS
+R4  MID_OCEAN_RIDGE    median-above-plain          0.0964415  PASS
+R5  -                  recipes-above-sea-level        0.00000  PASS
+R6  -                  non-finite-samples            0.00000  PASS
+R7  ABYSSAL_PLAIN      spread-p01-p99              0.0321787  PASS
+R7  MID_OCEAN_RIDGE    spread-p01-p99               0.107745  PASS
+R7  SEAMOUNT_FIELD     spread-p01-p99              0.0536103  PASS
+R7  CANYON             spread-p01-p99               0.153096  PASS
+R7  SHELF_RIDGE        spread-p01-p99              0.0495497  PASS
+R9  -                  pairs                         10.0000  PASS
+R9  -                  indistinguishable-pairs        0.00000  PASS
+R8  -                  points                        10682.0  PASS
+R8  -                  bitwise-diff                  0.00000  PASS
+PASS checks=35 out=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\world-engine-p0-p2\evidence\OceanRecipeCheck
+M1   violations-at-t0                              0.00000  PASS
+M1   violations-at-t1                              0.00000  PASS
+M2   monotonic-violations                          0.00000  PASS
+M3   mid-shape-gap                                0.112500  PASS
+M3   cliff-flatter-early                         0.0288000  PASS
+M4   factor-at-0                                   1.00000  PASS
+M4   factor-at-ref                                 1.45000  PASS
+M4   factor-capped                                 1.45000  PASS
+M4   monotonic                                     1.00000  PASS
+M6   peak-value                                    1.00000  PASS
+M5   stress-only                               1.52300e-08  PASS
+M5   dist-only                                     0.00000  PASS
+M7   convergent-nonzero                            0.00000  PASS
+M5   dist-monotonic                               0.864665  PASS
+M0   plain-conceptMorph                            0.00000  PASS
+M0   concept-conceptMorph                          1.00000  PASS
+M9   ridge-differs-changed-pixels                  66049.0  PASS
+M9   ridge-differs-max-abs                        0.150687  PASS
+M9   ridge-differs-mean-abs                      0.0641381  PASS
+M10  MID_OCEAN_RIDGE-plain-in-band                 1.00000  PASS
+M10  MID_OCEAN_RIDGE-concept-in-band               1.00000  PASS
+M11  MID_OCEAN_RIDGE-plain-no-island             -0.209313  PASS
+M11  MID_OCEAN_RIDGE-concept-no-island           -0.208425  PASS
+PASS checks=23 out=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\world-engine-p0-p2\evidence\OceanMorphConceptsCheck
+CoastRecipeCatalog seed=9139912035080420160 entries=5 slots=10
+  [0] SANDY_BEACH    weight=4.0  e=[-0.012, +0.070]  (blocks -2.8..+16.5)
+  [1] SEA_CLIFF      weight=3.0  e=[+0.020, +0.300]  (blocks +4.7..+70.8)
+  [2] REEF_FLAT      weight=2.0  e=[-0.012, +0.085]  (blocks -2.8..+20.1)
+  [3] TIDAL_FLAT     weight=2.0  e=[-0.025, +0.035]  (blocks -5.9..+8.3)
+  [4] DELTA          weight=1.0  e=[-0.015, +0.060]  (blocks -3.5..+14.2)
+OceanTransitionCatalog seed=9139912035079520160
+  sea-sea    : 10 (auto C(5,2))
+  land-coast : 8 (½�ؽӺ���)
+  coast-sea  : 9 (�����Ӻ���)
+  total      : 27
+  --- sea?sea ---
+    ABYSSAL_PLAIN?MID_OCEAN_RIDGE
+    ABYSSAL_PLAIN?SEAMOUNT_FIELD
+    ABYSSAL_PLAIN?CANYON
+    ABYSSAL_PLAIN?SHELF_RIDGE
+    MID_OCEAN_RIDGE?SEAMOUNT_FIELD
+    MID_OCEAN_RIDGE?CANYON
+    MID_OCEAN_RIDGE?SHELF_RIDGE
+    SEAMOUNT_FIELD?CANYON
+    SEAMOUNT_FIELD?SHELF_RIDGE
+    CANYON?SHELF_RIDGE
+  --- land?coast ---
+    BASIN?TIDAL_FLAT
+    PLAIN?SANDY_BEACH
+    PLAIN?DELTA
+    HILLS?SANDY_BEACH
+    HILLS?REEF_FLAT
+    PLATEAU?SEA_CLIFF
+    PLATEAU?REEF_FLAT
+    MOUNTAINS?SEA_CLIFF
+  --- coast?sea ---
+    SANDY_BEACH?SHELF_RIDGE
+    SANDY_BEACH?ABYSSAL_PLAIN
+    SEA_CLIFF?ABYSSAL_PLAIN
+    SEA_CLIFF?CANYON
+    REEF_FLAT?SEAMOUNT_FIELD
+    REEF_FLAT?SHELF_RIDGE
+    TIDAL_FLAT?SHELF_RIDGE
+    DELTA?SHELF_RIDGE
+    DELTA?ABYSSAL_PLAIN
+L1  coast-internal                        5.00000  PASS
+L1  ocean-internal                        5.00000  PASS
+L1  sea-sea                               10.0000  PASS
+L1  land-coast                            8.00000  PASS
+L1  coast-sea                             9.00000  PASS
+L1  total-transitions                     27.0000  PASS
+L1  no-land-sea-direct                    1.00000  PASS
+--- �����䷽ʵ�⣨��ҪӦ��ˮ��֮�ϣ�---
+  recipe            min       max     median    pos%   spread
+  SANDY_BEACH       -0.0120   +0.0700   +0.0345   85.9  0.0820
+  SEA_CLIFF         +0.0200   +0.3000   +0.1792  100.0  0.2800
+  REEF_FLAT         -0.0220   +0.1550   +0.0188   64.3  0.1770
+  TIDAL_FLAT        -0.0369   +0.0450   +0.0066   68.7  0.0819
+  DELTA             -0.0161   +0.0714   +0.0049   60.4  0.0875
+C1  recipes-with-form                     5.00000  PASS
+C2  recipes-median-above-sea              5.00000  PASS
+C2b recipes-have-land-relief              5.00000  PASS
+C3  pairs                                 10.0000  PASS
+C3  indistinguishable                     0.00000  PASS
+--- ������ ---
+  SEA_SEA      ABYSSAL_PLAIN?MID_OCEAN_RIDGE     neg 100.0%  pos   0.0%  
+  SEA_SEA      ABYSSAL_PLAIN?SEAMOUNT_FIELD      neg 100.0%  pos   0.0%  
+  SEA_SEA      ABYSSAL_PLAIN?CANYON              neg 100.0%  pos   0.0%  
+  SEA_SEA      ABYSSAL_PLAIN?SHELF_RIDGE         neg 100.0%  pos   0.0%  
+  SEA_SEA      MID_OCEAN_RIDGE?SEAMOUNT_FIELD    neg 100.0%  pos   0.0%  
+  SEA_SEA      MID_OCEAN_RIDGE?CANYON            neg 100.0%  pos   0.0%  
+  SEA_SEA      MID_OCEAN_RIDGE?SHELF_RIDGE       neg 100.0%  pos   0.0%  
+  SEA_SEA      SEAMOUNT_FIELD?CANYON             neg 100.0%  pos   0.0%  
+  SEA_SEA      SEAMOUNT_FIELD?SHELF_RIDGE        neg 100.0%  pos   0.0%  
+  SEA_SEA      CANYON?SHELF_RIDGE                neg 100.0%  pos   0.0%  
+X1  sea-sea-crossing                      0.00000  PASS
+--- ������ ---
+  LAND_COAST   BASIN?TIDAL_FLAT                  neg   5.0%  pos  95.0%  
+  LAND_COAST   PLAIN?SANDY_BEACH                 neg   4.2%  pos  95.8%  
+  LAND_COAST   PLAIN?DELTA                       neg  10.7%  pos  89.3%  CROSSES
+  LAND_COAST   HILLS?SANDY_BEACH                 neg   0.8%  pos  99.2%  
+  LAND_COAST   HILLS?REEF_FLAT                   neg   1.5%  pos  98.5%  
+  LAND_COAST   PLATEAU?SEA_CLIFF                 neg   0.0%  pos 100.0%  
+  LAND_COAST   PLATEAU?REEF_FLAT                 neg   0.6%  pos  99.4%  
+  LAND_COAST   MOUNTAINS?SEA_CLIFF               neg   0.0%  pos 100.0%  
+X2  land-coast-crossing                   1.00000  PASS
+--- ������ ---
+  COAST_SEA    SANDY_BEACH?SHELF_RIDGE           neg  58.6%  pos  41.4%  CROSSES
+  COAST_SEA    SANDY_BEACH?ABYSSAL_PLAIN         neg  55.9%  pos  44.1%  CROSSES
+  COAST_SEA    SEA_CLIFF?ABYSSAL_PLAIN           neg  47.8%  pos  52.2%  CROSSES
+  COAST_SEA    SEA_CLIFF?CANYON                  neg  56.5%  pos  43.5%  CROSSES
+  COAST_SEA    REEF_FLAT?SEAMOUNT_FIELD          neg  72.8%  pos  27.2%  CROSSES
+  COAST_SEA    REEF_FLAT?SHELF_RIDGE             neg  67.4%  pos  32.6%  CROSSES
+  COAST_SEA    TIDAL_FLAT?SHELF_RIDGE            neg  63.5%  pos  36.5%  CROSSES
+  COAST_SEA    DELTA?SHELF_RIDGE                 neg  68.8%  pos  31.2%  CROSSES
+  COAST_SEA    DELTA?ABYSSAL_PLAIN               neg  68.0%  pos  32.0%  CROSSES
+X3  coast-sea-crossing                    9.00000  PASS
+X3  coast-sea-crossing-fraction           9.00000  PASS
+F1  non-finite                            0.00000  PASS
+F2  out-of-range                          0.00000  PASS
+D1  count-identical                       27.0000  PASS
+D2  points                                10800.0  PASS
+D3  bitwise-diff                          0.00000  PASS
+PASS checks=21 out=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\world-engine-p0-p2\evidence\OceanTransitionCheck
+DISTANCE FIELD PASS checks=48712 axis800=800 diagonal=1131.370849898476
+checks=617318 endpointMax=0.5278224090053895 seaMax=-0.0176506793498993 edgeMax=3.405972409109559E-7 failures=30
+java.exe : Exception in thread "main" java.lang.AssertionError: endpoint id=18 seed=9139912035078620160 error=0.3537456
+500530243
+所在位置 D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\tools\verify-world-engine.ps1:35 字符
+: 5
++     & "$java/java.exe" -Xmx4g '-Dfile.encoding=UTF-8' -cp $cp com.geo ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Exception in th...537456500530243:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+	at com.geogenesis.worldgen.terrain.candidate.NodeMorphEngineCheck.main(NodeMorphEngineCheck.java:28)
+NEGATIVE CLAMP EXPECTED FAIL CONFIRMED
+2026-11-01 00:14:55,528 main WARN Advanced terminal features are not available in this environment
+full row=0
+full row=50
+full row=100
+full row=150
+full row=200
+full row=250
+full row=300
+full row=350
+full row=400
+full row=450
+full row=500
+full row=550
+full row=600
+full row=650
+full row=700
+full row=750
+full row=800
+full row=850
+full row=900
+full row=950
+full row=1000
+full row=1050
+full row=1100
+full row=1150
+full row=1200
+full row=1250
+full row=1300
+full row=1350
+full row=1400
+SHELF ARM PASS changed=205250 maxAbs=1.094 blocks aboveSea=0
+FULL MORPH GALLERY PASS
+SEVEN ARM SAME baseline-coastal
+SEVEN ARM SAME baseline-islands
+SEVEN ARM SAME plateau-only-coastal
+SEVEN ARM SAME plateau-only-islands
+SEVEN ARM SAME morph-coastal
+SEVEN ARM SAME morph-islands
+SEVEN ARM SAME shelf-coastal
+WORLD ENGINE P0-P2 VERIFY PASS

@@ -1,0 +1,74 @@
+[
+  {
+    "path": "profiles.csv",
+    "s3": "8c9b4149dabf831629725fc4d82737a92e01fab203e30fd0ca3c1f0575bf5697",
+    "n2": "8c9b4149dabf831629725fc4d82737a92e01fab203e30fd0ca3c1f0575bf5697",
+    "equal": true
+  },
+  {
+    "path": "winner.u8",
+    "s3": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+    "n2": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+    "equal": true
+  },
+  {
+    "path": "arm-after/active.u8",
+    "s3": "95386888aca5b55d79da883ec8affa8fe283af086640a3dc1a711c0de92ac809",
+    "n2": "95386888aca5b55d79da883ec8affa8fe283af086640a3dc1a711c0de92ac809",
+    "equal": true
+  },
+  {
+    "path": "arm-after/height.f64be",
+    "s3": "af207c94935c86b55ddd00e7155a4b375bfa2f1254a227c10811960cefafdc29",
+    "n2": "af207c94935c86b55ddd00e7155a4b375bfa2f1254a227c10811960cefafdc29",
+    "equal": true
+  },
+  {
+    "path": "arm-after/meta.json",
+    "s3": "2ac1bd69d259623002fff9871885f8b64c2f61a3c18152d80447af7d28b717e0",
+    "n2": "2ac1bd69d259623002fff9871885f8b64c2f61a3c18152d80447af7d28b717e0",
+    "equal": true
+  },
+  {
+    "path": "arm-after/sea-weight.f64be",
+    "s3": "b536341752aceb141ac2611817e879f6692270716e72f4dd1ec8e04b3cfbefd5",
+    "n2": "b536341752aceb141ac2611817e879f6692270716e72f4dd1ec8e04b3cfbefd5",
+    "equal": true
+  },
+  {
+    "path": "arm-after/type.u8",
+    "s3": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+    "n2": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+    "equal": true
+  },
+  {
+    "path": "arm-before/active.u8",
+    "s3": "95386888aca5b55d79da883ec8affa8fe283af086640a3dc1a711c0de92ac809",
+    "n2": "95386888aca5b55d79da883ec8affa8fe283af086640a3dc1a711c0de92ac809",
+    "equal": true
+  },
+  {
+    "path": "arm-before/height.f64be",
+    "s3": "dd74f4a0ab03a0190a5153f164047c02cc0eb47be023d103a2ae31a0580c2dd1",
+    "n2": "dd74f4a0ab03a0190a5153f164047c02cc0eb47be023d103a2ae31a0580c2dd1",
+    "equal": true
+  },
+  {
+    "path": "arm-before/meta.json",
+    "s3": "2ac1bd69d259623002fff9871885f8b64c2f61a3c18152d80447af7d28b717e0",
+    "n2": "2ac1bd69d259623002fff9871885f8b64c2f61a3c18152d80447af7d28b717e0",
+    "equal": true
+  },
+  {
+    "path": "arm-before/sea-weight.f64be",
+    "s3": "d1c20bfdd21cf8d71b92aec50124621e0f0568239a654177faf018b86fe14d66",
+    "n2": "d1c20bfdd21cf8d71b92aec50124621e0f0568239a654177faf018b86fe14d66",
+    "equal": true
+  },
+  {
+    "path": "arm-before/type.u8",
+    "s3": "fa3a9e212928f01653b3cdce36c1eec83c5a8522f8d7ed07e6fd00944b5e96db",
+    "n2": "fa3a9e212928f01653b3cdce36c1eec83c5a8522f8d7ed07e6fd00944b5e96db",
+    "equal": true
+  }
+]

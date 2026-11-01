@@ -1,0 +1,6 @@
+item,status
+"global injectivity of world->u","NOT PROVEN (sup row-sum L>1)"
+"coverage outside scanned cells","NOT SCANNED"
+"multi-octave / other warp configs","NOT COVERED (primitive rejects octaves!=1)"
+"integer hash collisions between cells","NOT ANALYSED"
+"height chain / production wiring","OUT OF SCOPE (N2)"

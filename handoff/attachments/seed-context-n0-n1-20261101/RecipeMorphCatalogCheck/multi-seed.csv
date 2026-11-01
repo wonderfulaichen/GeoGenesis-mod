@@ -1,0 +1,5 @@
+seed,entries,slots,votesOk,deterministic,seedSensitive,originalThrows,endpointMaxDiff,independentSlots,independentSlotMismatches,independentCompositePoints,independentCompositeMaxDiff,status
+9139912035078620160,18,45,true,true,false,false,2.670e-08,45,0,600,4.058e-08,PASS
+1,18,45,true,true,true,true,3.562e-08,45,0,600,2.708e-08,PASS
+-817263,18,45,true,true,true,true,2.666e-08,45,0,600,3.287e-08,PASS
+-42,18,45,true,true,true,true,3.106e-08,45,0,600,2.235e-08,PASS

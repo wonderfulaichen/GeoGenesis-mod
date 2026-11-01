@@ -1,0 +1,7 @@
+entry=com.geogenesis.worldgen.terrain.candidate.FullMorphLandCheck <outDir>
+compile=javac -cp <main classes>;<baseline jars> -sourcepath src/diagnostics/java;src/main/java --release 17 -encoding UTF-8 -nowarn -d <classes> FullMorphLand.java FullMorphLandCheck.java
+run=java -Xmx3g -cp <classes>;<main classes>;<baseline jars> <this class> <outDir>
+baseline_jars=build/terrain-upgrade/baseline/classpath-jars.txt
+no_terrain_overrides=this arm sets no -Dgeogenesis.* property
+production=untouched: no existing class is modified, no switch added; the baseline arm and the 1401 production map stay as they are
+outputs=thresholds/seams/windows/overlay/entries/seeds/performance/sample-table/geometry/witness/failures/metrics/limits

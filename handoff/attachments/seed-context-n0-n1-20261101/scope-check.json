@@ -1,0 +1,25 @@
+{
+  "changedExistingCandidate": [
+    "CoherentMorphGallery.java",
+    "CoherentMorphWorld.java",
+    "FullMorphLand.java",
+    "LocalBoundaryGeometry.java",
+    "RegionalMorphWorld.java"
+  ],
+  "newCandidate": [
+    "LandRegionContext.java",
+    "LandRegionContextCheck.java"
+  ],
+  "protectedMainConfigCount": 191,
+  "protectedMainConfigUnchanged": true,
+  "geometryAfterRemovingOnlyNewFactoryEqualsN0": true,
+  "unchangedKeyFiles": {
+    "RegionPartition.java": true,
+    "RefNoise.java": true,
+    "NodeMorphEngine.java": true,
+    "RecipeMorphCatalog.java": true,
+    "CombineCandidate.java": true,
+    "ShallowRegionMatcher.java": true,
+    "RecipeBoundaryWeights.java": true
+  }
+}

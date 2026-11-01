@@ -1,0 +1,322 @@
+{
+  "tool": "render-full-morph",
+  "geometry": {
+    "seed": "9139912035078620160",
+    "size": 1401,
+    "step": 5,
+    "center": [
+      -140.0,
+      137.0
+    ],
+    "sampleOrigin": [
+      -3642.5,
+      -3365.5
+    ],
+    "extentBlocks": [
+      7005,
+      7005
+    ]
+  },
+  "renderer": "render-islands-big.py (same render / LIGHT / ANCHORS / COLORS / SEA)",
+  "seaLevel": 63.0,
+  "optionalInputs": {
+    "recipe": true,
+    "participants": true,
+    "coverage": true
+  },
+  "diffRule": "warm = candidate raised vs baseline, cool = lowered; symmetric clip at P99.5; legacy render-islands-big.diff_img NOT reused (its warm/cool is inverted)",
+  "recipeIds": [
+    "PLAIN_GEO",
+    "STEPPE",
+    "DALES_GEO",
+    "HILLS1_GEO",
+    "HILLS2",
+    "PLAIN_GEO+STEPPE",
+    "PLAIN_GEO+DALES_GEO",
+    "PLAIN_GEO+HILLS1_GEO",
+    "PLAIN_GEO+HILLS2",
+    "STEPPE+DALES_GEO",
+    "STEPPE+HILLS1_GEO",
+    "STEPPE+HILLS2",
+    "DALES_GEO+HILLS1_GEO",
+    "DALES_GEO+HILLS2",
+    "HILLS1_GEO+HILLS2",
+    "PLATEAU_REF",
+    "BADLANDS",
+    "M1_GEO"
+  ],
+  "armValues": {
+    "baseline-coastal": {
+      "minY": 5.1448796119003575,
+      "maxY": 277.8583289230347,
+      "medianY": 79.17980390890719,
+      "p95Y": 155.09529224042893,
+      "waterPct": 35.817691146478936,
+      "relief": 272.71344931113435
+    },
+    "baseline-islands": {
+      "minY": 5.1448796119003575,
+      "maxY": 277.8583289230347,
+      "medianY": 79.50780857672174,
+      "p95Y": 155.09529224042893,
+      "waterPct": 32.97945130453877,
+      "relief": 272.71344931113435
+    },
+    "plateau-only-coastal": {
+      "minY": 5.1448796119003575,
+      "maxY": 277.8583289230347,
+      "medianY": 79.16846354643012,
+      "p95Y": 155.2248627547782,
+      "waterPct": 35.818710098476615,
+      "relief": 272.71344931113435
+    },
+    "plateau-only-islands": {
+      "minY": 5.1448796119003575,
+      "maxY": 277.8583289230347,
+      "medianY": 79.49770085304792,
+      "p95Y": 155.2248627547782,
+      "waterPct": 32.98021551853703,
+      "relief": 272.71344931113435
+    },
+    "morph-coastal": {
+      "minY": 5.1448796119003575,
+      "maxY": 277.8583289230347,
+      "medianY": 79.40905048173964,
+      "p95Y": 163.17859077219964,
+      "waterPct": 35.813054914889484,
+      "relief": 272.71344931113435
+    },
+    "morph-islands": {
+      "minY": 5.1448796119003575,
+      "maxY": 277.8583289230347,
+      "medianY": 79.81528997455835,
+      "p95Y": 163.17859077219964,
+      "waterPct": 32.982661003331465,
+      "relief": 272.71344931113435
+    },
+    "shelf-coastal": {
+      "minY": 5.1448796119003575,
+      "maxY": 277.8583289230347,
+      "medianY": 79.17980390890719,
+      "p95Y": 155.09529224042893,
+      "waterPct": 35.817691146478936,
+      "relief": 272.71344931113435
+    }
+  },
+  "comparisons": {
+    "diff-islands.png": {
+      "maxAbsDiff": 175.3846978038032,
+      "medianAbsDiff": 0.0,
+      "p95AbsDiff": 45.809239898983094,
+      "meanSignedDiff": 3.464255990740862,
+      "maxRise": 168.66325500427337,
+      "maxDrop": -175.3846978038032,
+      "rawDeltaMax": 168.66325500427337,
+      "rawDeltaMin": -175.3846978038032,
+      "changedPixels": 968668,
+      "landToSea": 1672,
+      "seaToLand": 1609,
+      "waterDeltaPts": 0.0032096987926948373
+    },
+    "diff-coastal.png": {
+      "maxAbsDiff": 175.3846978038032,
+      "medianAbsDiff": 0.0,
+      "p95AbsDiff": 45.809239898983094,
+      "meanSignedDiff": 3.4650969162805114,
+      "maxRise": 168.66325500427337,
+      "maxDrop": -175.3846978038032,
+      "rawDeltaMax": 168.66325500427337,
+      "rawDeltaMin": -175.3846978038032,
+      "changedPixels": 968668,
+      "landToSea": 2096,
+      "seaToLand": 2187,
+      "waterDeltaPts": -0.004636231589451256
+    },
+    "diff-plateau-only-islands.png": {
+      "maxAbsDiff": 35.66603458553553,
+      "medianAbsDiff": 0.0,
+      "p95AbsDiff": 0.0,
+      "meanSignedDiff": -0.038524066460980916,
+      "maxRise": 35.66603458553553,
+      "maxDrop": -16.84635507345203,
+      "rawDeltaMax": 35.66603458553553,
+      "rawDeltaMin": -16.84635507345203,
+      "changedPixels": 52595,
+      "landToSea": 23,
+      "seaToLand": 8,
+      "waterDeltaPts": 0.0007642139982593221
+    },
+    "diff-shelf-coastal.png": {
+      "maxAbsDiff": 1.0943182523792743,
+      "medianAbsDiff": 0.0,
+      "p95AbsDiff": 0.16902986587057,
+      "meanSignedDiff": 0.0013388358261935784,
+      "maxRise": 1.0943182523792743,
+      "maxDrop": -1.0943182407431564,
+      "rawDeltaMax": 1.0943182523792743,
+      "rawDeltaMin": -1.0943182407431564,
+      "changedPixels": 205250,
+      "landToSea": 0,
+      "seaToLand": 0,
+      "waterDeltaPts": 0.0
+    }
+  },
+  "diffClamps": {
+    "diff-islands.png": 89.17148807415263,
+    "diff-coastal.png": 89.17148807415263,
+    "diff-plateau-only-islands.png": 8.423177536726001,
+    "diff-shelf-coastal.png": 1.0
+  },
+  "figures": {
+    "pair-islands.png": {
+      "size": [
+        2922,
+        1647
+      ],
+      "pixelsPreserved": true
+    },
+    "pair-coastal.png": {
+      "size": [
+        2922,
+        1647
+      ],
+      "pixelsPreserved": true
+    },
+    "pair-shelf-coastal.png": {
+      "size": [
+        2922,
+        1707
+      ],
+      "pixelsPreserved": true
+    },
+    "attrib-three-arms-islands.png": {
+      "size": [
+        4363,
+        1707
+      ],
+      "pixelsPreserved": true
+    },
+    "diff-islands.png": {
+      "size": [
+        2061,
+        1611
+      ],
+      "pixelsPreserved": true
+    },
+    "diff-coastal.png": {
+      "size": [
+        2061,
+        1611
+      ],
+      "pixelsPreserved": true
+    },
+    "diff-plateau-only-islands.png": {
+      "size": [
+        2061,
+        1611
+      ],
+      "pixelsPreserved": true
+    },
+    "diff-shelf-coastal.png": {
+      "size": [
+        2061,
+        1611
+      ],
+      "pixelsPreserved": true
+    },
+    "native-baseline-coastal.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "pixelsPreserved": true
+    },
+    "native-baseline-islands.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "pixelsPreserved": true
+    },
+    "native-plateau-only-coastal.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "pixelsPreserved": true
+    },
+    "native-plateau-only-islands.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "pixelsPreserved": true
+    },
+    "native-morph-coastal.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "pixelsPreserved": true
+    },
+    "native-morph-islands.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "pixelsPreserved": true
+    },
+    "native-shelf-coastal.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "pixelsPreserved": true
+    },
+    "recipe-dominant.png": {
+      "size": [
+        2061,
+        1611
+      ],
+      "pixelsPreserved": true
+    },
+    "participants.png": {
+      "size": [
+        2061,
+        1611
+      ],
+      "pixelsPreserved": true
+    },
+    "coverage-mask.png": {
+      "size": [
+        2061,
+        1611
+      ],
+      "pixelsPreserved": true
+    },
+    "delta-shelf-band.png": {
+      "size": [
+        2061,
+        1641
+      ],
+      "pixelsPreserved": true
+    }
+  },
+  "semantics": {
+    "recipe.u8": "新区域权重 argmax；含 BADLANDS(16)；不是最终覆盖层，也不是生物群系标签",
+    "participants.u8": "权重 > 0 的配方条目数",
+    "coverage.f64be": "旧 Blender mask 原值（非 alpha、非 0/1 覆盖）；覆盖区高度仍走台地 1.05 口径，旧 MOUNTAINS 标签与高度的不一致本工具不修。"
+  },
+  "attribution": {
+    "arm plateau-only": "台地 0.9 修正（Terrace 1.05 → 0.9）",
+    "arm morph": "移除旧公共 border + 新 240 块形态过渡",
+    "forbiddenReading": "不能读成\"纯边界变形、轮廓保持\"：旧公共 border 已被移除，过渡带改为新的 240 块，轮廓与形态都可能改变"
+  },
+  "notes": [
+    "each native tile is 1:1; pasted tiles verified pixel-identical, no resampling",
+    "production code untouched; this renderer only reads exported raw grids",
+    "baseline raw SHA equality against the accepted baseline is the owning agent's check, not asserted here",
+    "this renderer asserts neither performance nor real production effect",
+    "provenance is written by the owning agent, not by this script"
+  ]
+}

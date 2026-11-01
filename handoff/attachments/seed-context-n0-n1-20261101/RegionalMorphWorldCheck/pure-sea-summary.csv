@@ -1,0 +1,3 @@
+case,points,bitwise,max_abs_diff,tolerance,cover_guard_fired,max_sea_active,sea_sea_points,mask_max_in_image
+pure_sea_vs_engine.sampleE,60,60,0.000e+00,0.0,0,2,11,0.5327
+structural_note,landWeight==0 makes the coverage term landWeight*delta exactly 0, so a pure sea sample can only equal the bare engine evaluation

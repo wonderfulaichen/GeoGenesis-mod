@@ -1,0 +1,78 @@
+READ-ONLY AUDIT COMMAND RECOMMENDATIONS (NOT EXECUTED)
+Run from D:/Office software/Development Project/GeoGenesis-mod/forge-1.20.1-47.4.10-mdk.
+These are recommendations for the main agent. Compilation/check output is outside this auditor's JSON/TXT-only authorization.
+
+1. Existing Gradle diagnostic compile task (whole src/diagnostics tree, Java 17 toolchain target):
+$env:JAVA_HOME = 'D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot'
+$env:Path = "$env:JAVA_HOME/bin;$env:Path"
+& .\gradlew.bat --offline --no-daemon --console=plain compileDiagnosticsJava
+if ($LASTEXITCODE -ne 0) { throw "compileDiagnosticsJava failed: $LASTEXITCODE" }
+
+The diagnostics task is auto-created by sourceSets.diagnostics (build.gradle:113-137), not an explicit task declaration.
+JDK21 is the Gradle runtime; java.toolchain.languageVersion is 17 (line 16). Missing local toolchain/dependencies can make --offline fail. This audit did not run Gradle or verify local JDK17 toolchain discovery.
+No Coherent-named task is present in build.gradle. runWorldgenGate exists (line 1652), but is not an S3/S4/N1 acceptance gate.
+
+2. Reusable runtime/compile classpath, all 119 entries existed at audit:
+$java = 'D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin'
+$cp = [System.IO.File]::ReadAllText((Join-Path (Get-Location) 'build/coherent-stream-s4/coordinate/classpath.txt')).Trim()
+# Equivalent construction:
+$base = 'build/terrain-upgrade/baseline'
+$jars = [System.IO.File]::ReadAllText((Join-Path (Get-Location) "$base/classpath-jars.txt")).Trim()
+$cp = "build/classes/java/diagnostics;build/classes/java/main;$base/classes;$base/src-main/resources;$jars"
+
+Existing classpath.txt and compile-classpath.txt are identical SHA256:
+71ed1d7f97c0cf823a88204bd6694bcd5e8b7ae989c3c5ea5bd45a57b750dfd9
+classpath-jars.txt: 115 jar entries, no missing paths; SHA256:
+3ece824863785e249e537dbecae7c7aa5db66898ba13bbe0a61739477d2fb1ff
+
+Classpath order matters: fresh diagnostics/classes MUST precede historical baseline classes.
+Existing class files were not proven current or fully rebuilt. Baseline contains candidate classes too.
+Do not prepend build/coherent-stream-s4/coordinate/classes to a current N1 run: it shadows fresh classes.
+Do not use a jars-only classpath for these checks: main output/resources are also required.
+
+3. Existing check entry example, after successful compile (writes CSV/TXT; MAIN AGENT ONLY):
+$name = 'n1-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8)
+$out = "build/context-n0-n1/$name-morph-check"
+if (Test-Path $out) { throw "Refusing existing output: $out" }
+& "$java/java.exe" -Xmx3g '-Dfile.encoding=UTF-8' -cp $cp `
+    com.geogenesis.worldgen.terrain.candidate.CoherentMorphCheck `
+    $out 'build/coherent-morph-s3/frozen-s2'
+if ($LASTEXITCODE -ne 0) { throw "CoherentMorphCheck failed: $LASTEXITCODE" }
+
+CoherentMorphCheck reads sites.csv only; its historical PASS (10672 checks) does not prove multi-seed full heights.
+Other existing mains:
+- NodeMorphEngineCheck OUT [truncate-negative]
+- CoherentStreamingCheck OUT [window-only]
+- CoherentMorphGallery FROZEN_S2 OUT (writes full raw raster; not a lightweight check)
+- CoherentCoordinateCheck NEW_OUT [s3-only]
+CoordinateCheck enforces NEW_OUT under build/coherent-stream-s4/coordinate (frozen source lines 43-46), so it CANNOT be run into context-n0-n1 without a scope change or source change. Do not change source for this auditor.
+The matrix has 214 FAIL / 3 BLOCKED; s3-only returns 1 on actual failure, otherwise 2 (coverage BLOCKED), never full S4 PASS.
+
+4. Existing selective javac pattern (MAIN AGENT ONLY, safe fresh output), from coordinate/reproduce.ps1:
+# Select source files explicitly and compile the changed dependency closure together.
+# N1 closure must include all changed seed-context classes; the old 8-file S4 list is not automatically sufficient.
+# For a historical freeze, use files from frozen-source only and exclude live diagnostics classes.
+# $classes must be a NEW dedicated directory, not any baseline directory.
+& "$java/javac.exe" --release 17 -encoding UTF-8 -proc:none `
+    -sourcepath $classes -cp $cp -d $classes $files
+if ($LASTEXITCODE -ne 0) { throw "javac failed: $LASTEXITCODE" }
+# Runtime: -cp "$classes;$cp"
+# Do NOT pass -sourcepath '' in Windows PowerShell 5.1: the empty argument can disappear.
+# -proc:none avoids incidental Mixin annotation processing; it does not change geometry math.
+
+5. Historical S4 reproduction script (DISCOVERED ONLY, DO NOT RUN IN THIS AUDIT):
+build/coherent-stream-s4/coordinate/reproduce.ps1
+It resolves java/javac from PATH, reads LIVE source, writes under coordinate/, and does not freeze the whole classpath. Use explicit JDK paths and an isolated frozen compilation for archival attribution.
+Historical flags: javac --release 17 -encoding UTF-8 -proc:none; java -Xmx3g -Dfile.encoding=UTF-8; no terrain JVM properties. Runtime Temurin 21.0.11+10, class major 61.
+
+6. build.gradle encoding:
+Strict utf-8-sig, gbk and gb18030 decoding each fail on existing mixed/malformed comment bytes.
+Read-only Python strategy: Path('build.gradle').read_bytes().decode('utf-8', errors='replace').splitlines().
+ASCII executable declarations remain intact. Do not normalize or rewrite this file.
+
+Known gaps:
+- No Gradle build/check rerun; no benchmark or concurrent shared-instance test.
+- PNG SHA parity is not visual-quality acceptance or proof of production-path equivalence.
+- Historical macro/micro/S1 seam checks do not establish multi-seed S2/S3 full-height coverage.
+- Frozen candidate source is not a complete build environment snapshot (src/main/config/resources/jars/helper renderers are not all frozen here).
+- Current N1 source differences are expected concurrent work, not N0 freeze invalidation.

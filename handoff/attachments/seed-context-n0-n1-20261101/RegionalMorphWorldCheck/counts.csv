@@ -1,0 +1,7 @@
+tiles,samples,class,count,fraction
+64,3136,land_single,1449,0.462054
+64,3136,land_land,669,0.213329
+64,3136,sea_single,560,0.178571
+64,3136,sea_sea,150,0.047832
+64,3136,mixed_land_sea,308,0.098214
+64,3136,degenerate,0,0.000000

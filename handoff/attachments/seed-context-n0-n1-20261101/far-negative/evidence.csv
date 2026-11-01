@@ -1,0 +1,18 @@
+stage,seed,x,z,status,input,output,exception_class,exception_exact,exception_stack
+"scope","0","0.0","0.0","INFO","scale=600;radius=728;reqHalf=4;chord=.02;maxSeg=2;seamTol=.002","Finite evidence only; float step collapse alone is NOT FAIL; no production or default edits","","",""
+"coverage","9139912035078620160","1000000.0","1000000.0","BLOCKED","supplement-only","Only requested actual S3 far point; earlier full evidence is separate, not re-run","","",""
+"complete-S3-far","9139912035078620160","1000000.0","1000000.0","FAIL","new CoherentMorphWorld().sample(1000000,1000000);original seed guard retained","","java.lang.IllegalStateException","warp inverse residual 7.1913e+00 blocks > tol 2.0000e-02 at u=(1666.044433594,1664.999977410); world polyline would be untrustworthy","java.lang.IllegalStateException: warp inverse residual 7.1913e+00 blocks > tol 2.0000e-02 at u=(1666.044433594,1664.999977410); world polyline would be untrustworthy
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.toWorld(LocalBoundaryGeometry.java:885)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.densify(LocalBoundaryGeometry.java:848)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.buildWorldEdges(LocalBoundaryGeometry.java:816)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.build(LocalBoundaryGeometry.java:549)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.<init>(LocalBoundaryGeometry.java:151)
+	at com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.of(LocalBoundaryGeometry.java:192)
+	at com.geogenesis.worldgen.terrain.candidate.FullMorphLand.tileFor(FullMorphLand.java:431)
+	at com.geogenesis.worldgen.terrain.candidate.FullMorphLand.tileAt(FullMorphLand.java:257)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentMorphWorld.tileAt(CoherentMorphWorld.java:46)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentMorphWorld.sample(CoherentMorphWorld.java:57)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.completeS3(CoherentCoordinateCheck.java:421)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.run(CoherentCoordinateCheck.java:57)
+	at com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.main(CoherentCoordinateCheck.java:35)
+"

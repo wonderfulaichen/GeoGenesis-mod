@@ -1,0 +1,1 @@
+checks=617318 endpointMax=0.0 seaMax=-0.0176506793498993 edgeMax=3.405972409109559E-7 failures=0

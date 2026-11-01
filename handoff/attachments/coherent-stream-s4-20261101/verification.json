@@ -1,0 +1,20 @@
+{
+  "oldSourcesUnchanged": 114,
+  "S3ArtifactsUnchanged": 14,
+  "newProbeSHA": {
+    "CoherentStreamingCheck.java": "2c1a01bb8eee62b0b503e5ac3928291998e649f1b669db972714a8189c6abf6a",
+    "CoherentCoordinateCheck.java": "76d5c2e8068f9c39787cf1ba30f55dc141e82ddba25f39512b8b6e2322c47538"
+  },
+  "productionGitDiff": [],
+  "status": "S4_FAIL",
+  "streamFinalExit": 0,
+  "coordinateMatrixExit": 1,
+  "completeS3MainReproductionExit": 1,
+  "windowMixedExit": 0,
+  "notes": [
+    "initial stream shifted-window fixture used bare partition with no slot table: probe error, corrected only probe; initial failure retained under build, not worldgen defect",
+    "stream-final used corrected window fixture; window-mixed adds 8 nonempty mixed boundary points",
+    "full S3 heights only canonical seed; multi-seed shallow/geometry tests not equivalent to full height coverage",
+    "concurrent shared-instance sampling not verified"
+  ]
+}

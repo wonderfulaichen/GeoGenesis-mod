@@ -1,0 +1,2 @@
+landNonShelfBefore=57
+landNonShelfAfter=0

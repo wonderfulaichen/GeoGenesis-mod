@@ -211,6 +211,16 @@ public final class OceanAssemblyCandidate {
     private static float cpShore() { return USE_PROVINCE_CONTROLS ? PROVINCE_SHORE : FBM_SHORE; }
     private static float cpAnchor() { return USE_PROVINCE_CONTROLS ? PROVINCE_ANCHOR : FBM_ANCHOR; }
 
+    /** 诊断/探针用：岸段的三锚点（{@code edge} 单位）。不改变任何产出。 */
+    static float cpShelfOf() { return cpShelf(); }
+
+    static float cpShoreOf() { return cpShore(); }
+
+    static float cpAnchorOf() { return cpAnchor(); }
+
+    /** 诊断/探针用：暴露大陆性来源，便于按 {@code edge} 值定位样本。不改变任何产出。 */
+    EdgeSource edgeSourceOf() { return edgeSource; }
+
     /**
      * 岸型参数（按地貌学）。
      *
@@ -308,10 +318,11 @@ public final class OceanAssemblyCandidate {
             double a = Math.pow(smooth(t), 1.2);
             return lerp(deep, shallow, a) + oceanDetail(edge, x, z, cpShelf());
         }
-        // 2) 浅陆架 → 海岸线：浅海常数面 → 0
+        // 2) 浅陆架 → 海岸线：浅海常数面 → 0（乘法形态调制，见 shallowDetail）
         if (edge < cpShore()) {
             double t = (edge - cpShelf()) / Math.max(1e-6, cpShore() - cpShelf());
-            return lerp(shallow, 0.0, smooth(t)) + oceanDetail(edge, x, z, cpShelf());
+            double base = lerp(shallow, 0.0, smooth(t));
+            return base + shallowDetail(t, base, x, z) + oceanDetail(edge, x, z, cpShelf());
         }
         double landB = landE(x, z) * BLOCKS_PER_E_LAND;
         float cliff = cliffFactor(edge, x, z);
@@ -428,8 +439,11 @@ public final class OceanAssemblyCandidate {
     /** 深海/浅海噪声（edge 用）。 */
     private RefNoise.Node cliffNoise;
     private RefNoise.Node detailNoise;
+    private RefNoise.Node shallowNode;
     /** 是否启用"三段海岸 + cliffFactor + 水下细节"。false ⇒ 走参考原样的两层线性插值。 */
     private boolean coastalDetail = false;
+    /** 是否启用浅海段形态项（{@link #enableShallowDetail}）。默认关 ⇒ 产出逐位不变。 */
+    private boolean shallowDetail = false;
 
     /** 启用三段海岸 + cliffFactor。{@code seed} 用于派生噪声。 */
     public OceanAssemblyCandidate enableCoastalDetail(long seed) {
@@ -443,6 +457,123 @@ public final class OceanAssemblyCandidate {
         this.detailNoise = RefNoise.PerlinRidge.ofScale(base + 6260, 420f, 2);
         return this;
     }
+
+    // ==================== 浅海段形态项（2026-11-01） ====================
+    //
+    // 动机：三段海岸里，深海段有 hills↔canyons 形态、岸段有 cliffFactor + 宽度渐变，
+    // 只有浅海段 [cpShelf, cpShore] 是"lerp(−7, 0, smooth(t))"纯斜面，且 oceanDetail
+    // 在这段精确为 0（shoreFade 在 edge ≥ shelfEnd 时恒 0）⇒ 视觉上是一张光滑的坡。
+    //
+    // ★ 为什么用"乘法调制"而不是"加法叠加"
+    //   加法 h += A·g(t) 有两个结构性麻烦：
+    //     ① t 小处会把 h 压到 −7 以下，若压破 −9 格，sea() 的浅海阈值对齐就被破坏；
+    //     ② 端点要额外证明一阶连续，且 A 必须小于 min_t smooth(t)/g(t) 才能不越界
+    //        （实测该比值最小 0.131 ⇒ A 只能取 0.13，形态项弱到几乎看不见）。
+    //   乘法 h = base·(1 + A·n·bump) 没有这两个问题：
+    //     · base ≤ 0 且因子 > 0（A<1）⇒ h 与 base **同号** ⇒ 水面占比严格不变；
+    //     · h = 0 ⟺ base = 0 ⇒ 岸线位置在数学上不可能移动；
+    //     · 端点只需 bump 值 0 ⇒ 高度不变，无需证明导数（下面仍证明，见 C4）。
+    //
+    // ★ 端点条件（代数恒等式，不是调参得来的）
+    //      u        = clamp(t / W, 0, 1)
+    //      bump(u)  = 16·u²(1−u)²          峰值 1.0（在 u=0.5）
+    //   ⇒ bump(0)=bump(1)=0 且 bump'(0)=bump'(1)=0
+    //   ⇒ 在 cpShelf、cpShore 两处高度值与一阶导都不变（AGENTS.md 硬约束 ④ 平滑渐隐）。
+    //   注意首版直接用 t²(1−t)² **未归一化**（峰值仅 0.0625）⇒ 门禁实测最大改动只有
+    //   0.062 格，等于没加；归一化后峰值 1.0，实际改动进入可见量级。
+    //
+    // ★ W：形态只占带宽前段，后段回落到 0（关键）
+    //   浅海带右端 (t→1) 紧接岸段，岸段从 0 格起升。若形态一直延伸到 t=1，就会在
+    //   **海滩**（玩家最易看到处）出现起伏，并与岸段 cliffFactor 叠加成读不懂的台阶。
+    //   让窗在 t = W 前收完、之后恒 0，形态只出现在陆架中段，岸线一带完全干净。
+    //
+    // ★ 振幅量纲：A 无量纲，实际改动 = base·A（base 是当时的本地深度，最大 7 格）。
+    //   实测带内水深中位 −2.88 格、带链宽 103 块（P10 267 / P90 56，ShallowShelfProbe）。
+
+    /**
+     * 浅海形态调制振幅（无量纲 0..1）。
+     *
+     * <p>{@code 0.22} 由<b>阈值对齐</b>反推，不是拍的：带内最深 base = −7 格，
+     * 调制因子最坏 {@code 1 + A ⇒ 1.22}，故最深处 ≤ {@code 7 × 1.22 = 8.54 格}，
+     * 仍浅于 {@code sea()} 的浅海阈值 −9 格 ⇒ 不会漏判成深海。
+     * 若取 0.30，最深处达 9.1 格 &gt; 9 ⇒ 会出现 DEEP_OCEAN 误判。</p>
+     */
+    static final double SHALLOW_DETAIL_AMP = 0.22;
+    /**
+     * 浅海形态噪声尺度（块）。
+     *
+     * <p>{@code 260} 取实测带链宽 P90(56)~P10(267) 的<b>上半段</b>：只让最长的那批岸段
+     * 内部出现 2~3 个起伏。取更小（如 120）会在窄带里挤进高频细节、读作"噪声贴图"；
+     * 取更大（如 500）则整段带只有半个起伏、等于没加。</p>
+     */
+    static final float SHALLOW_DETAIL_SCALE = 260f;
+
+    /** 形态窗占带宽的比例；之后恒 0，保证海滩一带干净。 */
+    static final double SHALLOW_W = 0.78;
+
+    /**
+     * 启用浅海段形态项。<b>必须显式调用</b>；不调用时 {@link #shallowDetail} 为 0 贡献。
+     *
+     * <h3>为什么要把噪声展宽到 [0,1] 再取 [−1,1]</h3>
+     * <p>首版直接 {@code perlin*2−1}：{@code RefNoise.Perlin} 是多倍频<b>归一化和</b>，
+     * 实测输出 P0=0.045 / P10=0.352 / 中位 0.500 / P90=0.649 / P100=0.929。</p>
+     * <p>若直接用 {@code 2v−1}，绝大部分像素落在 ±0.3 以内，只有极少数接近 ±1
+     * ⇒ 门禁量到 {@code max |ΔY| = 0.889 格，但 P99 = 0.382、中位仅 0.050 格}，
+     * 画面上一回事都没有。这是"算子看起来在算、实际什么都没做"的典型陷阱。</p>
+     *
+     * <h3>★ 必须用 {@link RefNoise.Clamped} 包一层</h3>
+     * <p>{@code RefNoise.Mapped} <b>不做 clamp</b>：窗口外的值会线性外推。
+     * 首版只写了 {@code Mapped}（漏了 {@code Clamped}），窗宽 0.12 时实测把噪声放大到
+     * ±7 倍，带内最深被拉到 {@code −12.77 格}（穿破 {@code sea()} 的深海阈值 −9 格）。
+     * {@link #cliffFactor} 用的是 {@code Clamped} + {@code Mapped} 同一组合，此处照抄。</p>
+     *
+     * <h3>窗口取 [0.34, 0.66]</h3>
+     * <p>对准实测分布：{@code a = (v−0.34)/0.32} ⇒ 中位落到 0.5、P10 落到 0.0375、
+     * P90 落到 0.966，即<b>中间 80% 的像素铺满整个 [0,1]</b>，只有两端各 ~10% 轻微饱和。
+     * 取更窄（如 0.44~0.56）会大面积饱和成"二值噪声"、读作梯田；
+     * 取更宽（如 0.25~0.75）则中间 80% 只用掉 30% 值域，等于没放大。</p>
+     *
+     * <p>{@code seed} 与 {@link #enableCoastalDetail} 同源，但派生偏移不同，两者不共享噪声。</p>
+     */
+    public OceanAssemblyCandidate enableShallowDetail(long seed) {
+        this.shallowDetail = true;
+        int base = (int) (seed ^ (seed >>> 32));
+        RefNoise.Node raw = RefNoise.Perlin.ofScale(base + 7310, SHALLOW_DETAIL_SCALE, 3);
+        this.shallowNode = new RefNoise.Mapped(
+                new RefNoise.Clamped(raw, SHALLOW_NORM_LO, SHALLOW_NORM_HI),
+                SHALLOW_NORM_LO, SHALLOW_NORM_HI, 0f, 1f);
+        return this;
+    }
+
+    /** 噪声展宽窗口（作用在 {@code Perlin} 的原始 [0,1] 输出上）；对准实测 P10/P90。 */
+    static final float SHALLOW_NORM_LO = 0.34f;
+    static final float SHALLOW_NORM_HI = 0.66f;
+
+    /**
+     * 浅海段形态调制（<b>格</b>）：返回要加到 base 高度上的量。
+     *
+     * <p>在带外（{@code edge ∉ [cpShelf, cpShore]}）以及 {@code t ≥ W} 处恒返回 0，
+     * 故不改变深海段、岸段与海滩带。</p>
+     *
+     * @param base 该点的浅海段基准高度（{@code ≤ 0}），由调用方已经算好
+     */
+    private double shallowDetail(double t, double base, double x, double z) {
+        if (!shallowDetail || shallowNode == null) return 0.0;
+        double bump = shallowBump(t);
+        if (bump <= 0.0) return 0.0;
+        double n = shallowNode.compute((float) x, (float) z) * 2.0 - 1.0;   // [0,1] → [−1,1]
+        return base * SHALLOW_DETAIL_AMP * n * bump;
+    }
+
+    /** 形态窗：{@code 16·u²(1−u)²}，峰值 1.0，两端值与一阶导都为 0。 */
+    static double shallowBump(double t) {
+        double u = t / SHALLOW_W;
+        if (u <= 0.0 || u >= 1.0) return 0.0;
+        double v = u * (1.0 - u);
+        return 16.0 * v * v;
+    }
+
+
 
     private static double smooth(double t) {
         double c = t < 0 ? 0 : (t > 1 ? 1 : t);

@@ -1,0 +1,51 @@
+{
+  "ocean-type": {
+    "a": [
+      328,
+      238
+    ],
+    "b": [
+      329,
+      238
+    ],
+    "Ya": 33.69610459791865,
+    "Yb": 17.91056198358536,
+    "jump": 15.785542614333288,
+    "oldNoStepGate": "EXPECTED_FAIL"
+  },
+  "coast-type": {
+    "a": [
+      100,
+      209
+    ],
+    "b": [
+      100,
+      210
+    ],
+    "Ya": 77.85311284291316,
+    "Yb": 167.7424877256665,
+    "jump": 89.88937488275334,
+    "oldNoStepGate": "EXPECTED_FAIL"
+  },
+  "same-cliff": {
+    "a": [
+      194,
+      302
+    ],
+    "b": [
+      194,
+      303
+    ],
+    "Ya": 112.79294523276235,
+    "Yb": 87.09515144197144,
+    "jump": 25.69779379079091,
+    "oldNoStepGate": "EXPECTED_FAIL"
+  },
+  "cliff-water-limit": {
+    "shore": 0.02,
+    "anchor": 0.3,
+    "landLimit": 0.039599999999999996,
+    "gap": 0.0196,
+    "closureGate": "EXPECTED_FAIL"
+  }
+}

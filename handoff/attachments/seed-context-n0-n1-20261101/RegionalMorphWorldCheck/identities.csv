@@ -1,0 +1,13 @@
+geomA,geomB,shared_cells,identical,recipe_equal,max_field_diff,note
+0,1,18,18,18,0,two independent worlds
+0,2,19,19,19,0,two independent worlds
+0,3,23,23,23,0,two independent worlds
+0,4,23,23,23,0,two independent worlds
+1,2,15,15,15,0,two independent worlds
+1,3,21,21,21,0,two independent worlds
+1,4,21,21,21,0,two independent worlds
+2,3,24,24,24,0,two independent worlds
+2,4,24,24,24,0,two independent worlds
+3,4,85,85,85,0,two independent worlds
+tile0,reverse,23,23,23,0,reverse traversal via a fresh independent world
+tile0,forward,23,23,23,0,forward traversal via a fresh independent world

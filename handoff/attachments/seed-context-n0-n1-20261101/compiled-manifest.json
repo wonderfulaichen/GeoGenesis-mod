@@ -1,0 +1,44 @@
+[
+  {
+    "source": "src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/LandRegionContext.java",
+    "sourceSHA": "68bead0bd504a7e909a43289ef97528c6477e27d77ebc155b6b0a7da97a6c790",
+    "classSHA": "1e93a19c84c0d6d7506e2dca7212cc6a37ae8a722dc20c8dceae18f60e07da98",
+    "major": 61
+  },
+  {
+    "source": "src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck.java",
+    "sourceSHA": "82bc462f0f9fede771477a58aa6b9116e261271e2ab7d90cb19e2d45b9b16436",
+    "classSHA": "bad42811a6c5d4dc3bd715ed1a658e2d0737325e6bfdf1a501dfe77f85fc42f5",
+    "major": 61
+  },
+  {
+    "source": "src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FullMorphLand.java",
+    "sourceSHA": "7883949b075b5aa9922d4f27397cae544c1d46b0909bf93aab82225c89e50bca",
+    "classSHA": "de5694eb013f0101944a5f8bc06fa62ccaef92a73c72a9256afe3a4427ea9033",
+    "major": 61
+  },
+  {
+    "source": "src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorld.java",
+    "sourceSHA": "471e53011e1ee6770b07b43ddf67c7ff3fc7574c31244927fe1674ec116229c5",
+    "classSHA": "31104a1a8f4ecaf9866d794eca65f36e32f11eafbb3f40e311116a3ae25c2f63",
+    "major": 61
+  },
+  {
+    "source": "src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/CoherentMorphWorld.java",
+    "sourceSHA": "30a6b6763e7238f8501c9f68b1fde23ffb8173257937c27a284bb23eda2f747d",
+    "classSHA": "bff772e3de1c6a686e1b151e081933f3ba1dd0d60a391ceb0ae9d743fabb66e5",
+    "major": 61
+  },
+  {
+    "source": "src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry.java",
+    "sourceSHA": "001035f6fbac75c82a2356628f94d3ac916afe7e3bffae010ce46cfa2e5ed890",
+    "classSHA": "5145dde487615fc63c8f94a8dedfe42eb2325301f1da252e602fd9ee093cfbed",
+    "major": 61
+  },
+  {
+    "source": "src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/CoherentMorphGallery.java",
+    "sourceSHA": "b6f8c200b9befd58fcc8505c90fd7ce3b50e4759c15170d32c2161c693c34328",
+    "classSHA": "9ccd6a81842a71a41a1dcb1c06f6cd6b38d3e7b5d6f04eeffd90a5c3d6ec0511",
+    "major": 61
+  }
+]

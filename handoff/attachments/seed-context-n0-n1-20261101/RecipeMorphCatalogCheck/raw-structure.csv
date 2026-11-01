@@ -1,0 +1,6 @@
+index,id,childIdentityOfOrigin,nodes,outerLayerStripped,internalOperators,ok
+0,PLAIN_GEO,true,10,true,[],true
+1,STEPPE,true,10,true,[],true
+2,DALES_GEO,true,14,true,[Power, Blend, PowerCurve],true
+3,HILLS1_GEO,true,10,true,[],true
+4,HILLS2,true,13,true,[PerlinRidge],true

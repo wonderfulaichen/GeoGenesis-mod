@@ -1,0 +1,1719 @@
+{
+  "tool": "render-regional-world",
+  "status": "rendered",
+  "geometry": {
+    "seed": "9139912035078620160",
+    "size": 1401,
+    "step": 5,
+    "center": [
+      -140.0,
+      137.0
+    ],
+    "origin": [
+      -3642.5,
+      -3365.5
+    ],
+    "extent": [
+      7005,
+      7005
+    ],
+    "jvmProperties": [
+      "file.encoding=UTF-8"
+    ],
+    "metaKeys": [
+      "bandTotal",
+      "center",
+      "coastProcessing",
+      "jvmProperties",
+      "origin",
+      "seaLevel",
+      "seed",
+      "size",
+      "step"
+    ]
+  },
+  "seaLevel": 63.0,
+  "heightAxis": [
+    -64.0,
+    320.0
+  ],
+  "inputs": {
+    "sha256": {
+      "baseline-a.f64be": "5af5df1fd9d78c45d91398deda1a3773bc49635a8573515a63d97daba433befe",
+      "baseline-base.f64be": "bab325a601f3cf6269a0d482163cd5c7848bb4ecba272fa14d79e2341348415f",
+      "regional-hard.f64be": "5032617da86fab014d1f99c6980e92c445c66e64ef2a92904e96c17b72633df9",
+      "regional-morph.f64be": "7941b81484200c5d99b96b212b9c15b9a5dcb361ca2aedc763f379b04aca3803",
+      "type-a.u8": "20d1111fbaa5802bd2090f25d76080208829a3d5086b695e9906b543506c3d6b",
+      "type-b.u8": "5df2650071239c2a60d9f4f59c6f15105f981dcffc5a58a7519dba5e942de887",
+      "type-hard.u8": "cfeb1d8a8508eae41c7d1ea4e42c51c9419b29d8bcd6fc59aa884f0443cac474",
+      "sea-weight.f64be": "ec549b0d2447de32ccb07f02a7cdad85cbf2e1fdb6d367b8e8bf450d3968fdf0",
+      "active.u8": "f063204c7057c036edafb9fe4b002c7e3c2424dbd6ccbdccca1d337cb3e72e63"
+    }
+  },
+  "arms": {
+    "baseline-a": {
+      "minY": 15.89649841904641,
+      "maxY": 271.15310678963664,
+      "medianY": 89.4357176247716,
+      "p95Y": 167.1844299227476,
+      "relief": 255.25660837059024,
+      "waterPct": 29.74606187789796
+    },
+    "baseline-base": {
+      "minY": -1.3573880271074756,
+      "maxY": 271.15310678963664,
+      "medianY": 92.16170716394782,
+      "p95Y": 169.9358052188635,
+      "relief": 272.5104948167441,
+      "waterPct": 29.51124439003241
+    },
+    "regional-hard": {
+      "minY": -2.8023820634110024,
+      "maxY": 275.28308696870806,
+      "medianY": 88.66710946557224,
+      "p95Y": 170.74484112744332,
+      "relief": 278.0854690321191,
+      "waterPct": 29.411030461060495
+    },
+    "regional-morph": {
+      "minY": -1.310726911307853,
+      "maxY": 271.15310678963664,
+      "medianY": 89.69522865799368,
+      "p95Y": 166.53666164827166,
+      "relief": 272.4638337009445,
+      "waterPct": 29.571973929094185
+    }
+  },
+  "comparisons": {
+    "full": {
+      "waterPctBase": 29.74606187789796,
+      "waterPctCand": 29.571973929094185,
+      "waterDeltaPts": -0.17408794880377698,
+      "waterFlipLandToSea": 107867,
+      "waterFlipSeaToLand": 111284,
+      "waterFlipTotal": 219151,
+      "maxAbsDiff": 234.60802575592996,
+      "medianAbsDiff": 0.0,
+      "p99AbsDiff": 150.30514012352282,
+      "meanSignedDiff": 2.5524000601631154,
+      "maxRise": 201.01981316978288,
+      "maxDrop": -234.60802575592996,
+      "changedPixels": 641034,
+      "changedPixelsOver0p5": 570495
+    },
+    "ordinary": {
+      "waterPctBase": 29.51124439003241,
+      "waterPctCand": 29.571973929094185,
+      "waterDeltaPts": 0.06072953906177503,
+      "waterFlipLandToSea": 110359,
+      "waterFlipSeaToLand": 109167,
+      "waterFlipTotal": 219526,
+      "maxAbsDiff": 234.60802575592996,
+      "medianAbsDiff": 0.0,
+      "p99AbsDiff": 155.99495049839018,
+      "meanSignedDiff": 1.8360094659251485,
+      "maxRise": 207.70206177418234,
+      "maxDrop": -234.60802575592996,
+      "changedPixels": 598102,
+      "changedPixelsOver0p5": 527715
+    },
+    "smoothing": {
+      "waterPctBase": 29.411030461060495,
+      "waterPctCand": 29.571973929094185,
+      "waterDeltaPts": 0.16094346803368964,
+      "waterFlipLandToSea": 13513,
+      "waterFlipSeaToLand": 10354,
+      "waterFlipTotal": 23867,
+      "maxAbsDiff": 157.56952897342163,
+      "medianAbsDiff": 0.0,
+      "p99AbsDiff": 44.52338334649801,
+      "meanSignedDiff": 0.02038273895887886,
+      "maxRise": 77.56831804923712,
+      "maxDrop": -157.56952897342163,
+      "changedPixels": 676896,
+      "changedPixelsOver0p5": 545723
+    }
+  },
+  "waterFlipRule": "按\"像素等级\"数 (>=63 与 <63 互换)；不由高度差推断任何选型",
+  "types": {
+    "rule": "面积/占比只由 u8 配方 id 直方图统计；id = 该像素被选中 / 加权主导 / 胜出的那一条，不代表所有参与过选择的候选（把候选都当\"实际\"会让每格变成全 23 类）",
+    "idSpace": "0..17 = 陆地 18 条（RecipeMorphCatalog 顺序）+ 18..22 = 海洋 5 条（OceanRecipeCatalog.Recipe 顺序），拼接顺序同 MorphCatalog.world()；这里是「下标空间」，不表示每条都会在某臂出现",
+    "absenceRule": "某臂某 id 计数为 0 → 只说明该臂没选中它，不表示该配方不存在，也不能反推\"只有出现的这几条存在\"",
+    "arms": {
+      "type-a": {
+        "pixels": 1962801,
+        "families": {
+          "land": [
+            {
+              "id": 0,
+              "slug": "PLAIN_GEO",
+              "name": "平原",
+              "family": "land",
+              "pixels": 123505,
+              "sharePct": 6.2923,
+              "absent": false
+            },
+            {
+              "id": 1,
+              "slug": "STEPPE",
+              "name": "草原",
+              "family": "land",
+              "pixels": 17736,
+              "sharePct": 0.9036,
+              "absent": false
+            },
+            {
+              "id": 2,
+              "slug": "DALES_GEO",
+              "name": "谷地",
+              "family": "land",
+              "pixels": 147188,
+              "sharePct": 7.4989,
+              "absent": false
+            },
+            {
+              "id": 3,
+              "slug": "HILLS1_GEO",
+              "name": "丘陵1",
+              "family": "land",
+              "pixels": 90500,
+              "sharePct": 4.6108,
+              "absent": false
+            },
+            {
+              "id": 4,
+              "slug": "HILLS2",
+              "name": "丘陵2",
+              "family": "land",
+              "pixels": 62220,
+              "sharePct": 3.17,
+              "absent": false
+            },
+            {
+              "id": 5,
+              "slug": "PLAIN_GEO+STEPPE",
+              "name": "平原+草原",
+              "family": "land",
+              "pixels": 105732,
+              "sharePct": 5.3868,
+              "absent": false
+            },
+            {
+              "id": 6,
+              "slug": "PLAIN_GEO+DALES_GEO",
+              "name": "平原+谷地",
+              "family": "land",
+              "pixels": 0,
+              "sharePct": 0.0,
+              "absent": true
+            },
+            {
+              "id": 7,
+              "slug": "PLAIN_GEO+HILLS1_GEO",
+              "name": "平原+丘陵1",
+              "family": "land",
+              "pixels": 37399,
+              "sharePct": 1.9054,
+              "absent": false
+            },
+            {
+              "id": 8,
+              "slug": "PLAIN_GEO+HILLS2",
+              "name": "平原+丘陵2",
+              "family": "land",
+              "pixels": 99901,
+              "sharePct": 5.0897,
+              "absent": false
+            },
+            {
+              "id": 9,
+              "slug": "STEPPE+DALES_GEO",
+              "name": "草原+谷地",
+              "family": "land",
+              "pixels": 110910,
+              "sharePct": 5.6506,
+              "absent": false
+            },
+            {
+              "id": 10,
+              "slug": "STEPPE+HILLS1_GEO",
+              "name": "草原+丘陵1",
+              "family": "land",
+              "pixels": 47848,
+              "sharePct": 2.4377,
+              "absent": false
+            },
+            {
+              "id": 11,
+              "slug": "STEPPE+HILLS2",
+              "name": "草原+丘陵2",
+              "family": "land",
+              "pixels": 412,
+              "sharePct": 0.021,
+              "absent": false
+            },
+            {
+              "id": 12,
+              "slug": "DALES_GEO+HILLS1_GEO",
+              "name": "谷地+丘陵1",
+              "family": "land",
+              "pixels": 0,
+              "sharePct": 0.0,
+              "absent": true
+            },
+            {
+              "id": 13,
+              "slug": "DALES_GEO+HILLS2",
+              "name": "谷地+丘陵2",
+              "family": "land",
+              "pixels": 158790,
+              "sharePct": 8.09,
+              "absent": false
+            },
+            {
+              "id": 14,
+              "slug": "HILLS1_GEO+HILLS2",
+              "name": "丘陵1+丘陵2",
+              "family": "land",
+              "pixels": 37838,
+              "sharePct": 1.9278,
+              "absent": false
+            },
+            {
+              "id": 15,
+              "slug": "PLATEAU_REF",
+              "name": "台地",
+              "family": "land",
+              "pixels": 109423,
+              "sharePct": 5.5748,
+              "absent": false
+            },
+            {
+              "id": 16,
+              "slug": "BADLANDS",
+              "name": "劣地",
+              "family": "land",
+              "pixels": 67007,
+              "sharePct": 3.4138,
+              "absent": false
+            },
+            {
+              "id": 17,
+              "slug": "M1_GEO",
+              "name": "山地",
+              "family": "land",
+              "pixels": 167145,
+              "sharePct": 8.5156,
+              "absent": false
+            }
+          ],
+          "ocean": [
+            {
+              "id": 18,
+              "slug": "ABYSSAL_PLAIN",
+              "name": "深海平原",
+              "family": "ocean",
+              "pixels": 336701,
+              "sharePct": 17.1541,
+              "absent": false
+            },
+            {
+              "id": 19,
+              "slug": "MID_OCEAN_RIDGE",
+              "name": "洋中脊",
+              "family": "ocean",
+              "pixels": 146528,
+              "sharePct": 7.4652,
+              "absent": false
+            },
+            {
+              "id": 20,
+              "slug": "SEAMOUNT_FIELD",
+              "name": "海山群",
+              "family": "ocean",
+              "pixels": 95812,
+              "sharePct": 4.8814,
+              "absent": false
+            },
+            {
+              "id": 21,
+              "slug": "CANYON",
+              "name": "海底峡谷",
+              "family": "ocean",
+              "pixels": 206,
+              "sharePct": 0.0105,
+              "absent": false
+            },
+            {
+              "id": 22,
+              "slug": "SHELF_RIDGE",
+              "name": "陆架沙脊",
+              "family": "ocean",
+              "pixels": 0,
+              "sharePct": 0.0,
+              "absent": true
+            }
+          ]
+        },
+        "entries": [
+          {
+            "id": 0,
+            "slug": "PLAIN_GEO",
+            "name": "平原",
+            "family": "land",
+            "pixels": 123505,
+            "sharePct": 6.2923,
+            "absent": false
+          },
+          {
+            "id": 1,
+            "slug": "STEPPE",
+            "name": "草原",
+            "family": "land",
+            "pixels": 17736,
+            "sharePct": 0.9036,
+            "absent": false
+          },
+          {
+            "id": 2,
+            "slug": "DALES_GEO",
+            "name": "谷地",
+            "family": "land",
+            "pixels": 147188,
+            "sharePct": 7.4989,
+            "absent": false
+          },
+          {
+            "id": 3,
+            "slug": "HILLS1_GEO",
+            "name": "丘陵1",
+            "family": "land",
+            "pixels": 90500,
+            "sharePct": 4.6108,
+            "absent": false
+          },
+          {
+            "id": 4,
+            "slug": "HILLS2",
+            "name": "丘陵2",
+            "family": "land",
+            "pixels": 62220,
+            "sharePct": 3.17,
+            "absent": false
+          },
+          {
+            "id": 5,
+            "slug": "PLAIN_GEO+STEPPE",
+            "name": "平原+草原",
+            "family": "land",
+            "pixels": 105732,
+            "sharePct": 5.3868,
+            "absent": false
+          },
+          {
+            "id": 6,
+            "slug": "PLAIN_GEO+DALES_GEO",
+            "name": "平原+谷地",
+            "family": "land",
+            "pixels": 0,
+            "sharePct": 0.0,
+            "absent": true
+          },
+          {
+            "id": 7,
+            "slug": "PLAIN_GEO+HILLS1_GEO",
+            "name": "平原+丘陵1",
+            "family": "land",
+            "pixels": 37399,
+            "sharePct": 1.9054,
+            "absent": false
+          },
+          {
+            "id": 8,
+            "slug": "PLAIN_GEO+HILLS2",
+            "name": "平原+丘陵2",
+            "family": "land",
+            "pixels": 99901,
+            "sharePct": 5.0897,
+            "absent": false
+          },
+          {
+            "id": 9,
+            "slug": "STEPPE+DALES_GEO",
+            "name": "草原+谷地",
+            "family": "land",
+            "pixels": 110910,
+            "sharePct": 5.6506,
+            "absent": false
+          },
+          {
+            "id": 10,
+            "slug": "STEPPE+HILLS1_GEO",
+            "name": "草原+丘陵1",
+            "family": "land",
+            "pixels": 47848,
+            "sharePct": 2.4377,
+            "absent": false
+          },
+          {
+            "id": 11,
+            "slug": "STEPPE+HILLS2",
+            "name": "草原+丘陵2",
+            "family": "land",
+            "pixels": 412,
+            "sharePct": 0.021,
+            "absent": false
+          },
+          {
+            "id": 12,
+            "slug": "DALES_GEO+HILLS1_GEO",
+            "name": "谷地+丘陵1",
+            "family": "land",
+            "pixels": 0,
+            "sharePct": 0.0,
+            "absent": true
+          },
+          {
+            "id": 13,
+            "slug": "DALES_GEO+HILLS2",
+            "name": "谷地+丘陵2",
+            "family": "land",
+            "pixels": 158790,
+            "sharePct": 8.09,
+            "absent": false
+          },
+          {
+            "id": 14,
+            "slug": "HILLS1_GEO+HILLS2",
+            "name": "丘陵1+丘陵2",
+            "family": "land",
+            "pixels": 37838,
+            "sharePct": 1.9278,
+            "absent": false
+          },
+          {
+            "id": 15,
+            "slug": "PLATEAU_REF",
+            "name": "台地",
+            "family": "land",
+            "pixels": 109423,
+            "sharePct": 5.5748,
+            "absent": false
+          },
+          {
+            "id": 16,
+            "slug": "BADLANDS",
+            "name": "劣地",
+            "family": "land",
+            "pixels": 67007,
+            "sharePct": 3.4138,
+            "absent": false
+          },
+          {
+            "id": 17,
+            "slug": "M1_GEO",
+            "name": "山地",
+            "family": "land",
+            "pixels": 167145,
+            "sharePct": 8.5156,
+            "absent": false
+          },
+          {
+            "id": 18,
+            "slug": "ABYSSAL_PLAIN",
+            "name": "深海平原",
+            "family": "ocean",
+            "pixels": 336701,
+            "sharePct": 17.1541,
+            "absent": false
+          },
+          {
+            "id": 19,
+            "slug": "MID_OCEAN_RIDGE",
+            "name": "洋中脊",
+            "family": "ocean",
+            "pixels": 146528,
+            "sharePct": 7.4652,
+            "absent": false
+          },
+          {
+            "id": 20,
+            "slug": "SEAMOUNT_FIELD",
+            "name": "海山群",
+            "family": "ocean",
+            "pixels": 95812,
+            "sharePct": 4.8814,
+            "absent": false
+          },
+          {
+            "id": 21,
+            "slug": "CANYON",
+            "name": "海底峡谷",
+            "family": "ocean",
+            "pixels": 206,
+            "sharePct": 0.0105,
+            "absent": false
+          },
+          {
+            "id": 22,
+            "slug": "SHELF_RIDGE",
+            "name": "陆架沙脊",
+            "family": "ocean",
+            "pixels": 0,
+            "sharePct": 0.0,
+            "absent": true
+          }
+        ],
+        "distinctIds": 20,
+        "absentIds": [
+          6,
+          12,
+          22
+        ],
+        "absenceRule": "某臂计数为 0 = 该臂没有选中这条配方，不表示配方不存在，也不表示\"只有出现的这些存在\""
+      },
+      "type-b": {
+        "pixels": 1962801,
+        "families": {
+          "land": [
+            {
+              "id": 0,
+              "slug": "PLAIN_GEO",
+              "name": "平原",
+              "family": "land",
+              "pixels": 131151,
+              "sharePct": 6.6818,
+              "absent": false
+            },
+            {
+              "id": 1,
+              "slug": "STEPPE",
+              "name": "草原",
+              "family": "land",
+              "pixels": 17736,
+              "sharePct": 0.9036,
+              "absent": false
+            },
+            {
+              "id": 2,
+              "slug": "DALES_GEO",
+              "name": "谷地",
+              "family": "land",
+              "pixels": 144027,
+              "sharePct": 7.3378,
+              "absent": false
+            },
+            {
+              "id": 3,
+              "slug": "HILLS1_GEO",
+              "name": "丘陵1",
+              "family": "land",
+              "pixels": 98831,
+              "sharePct": 5.0352,
+              "absent": false
+            },
+            {
+              "id": 4,
+              "slug": "HILLS2",
+              "name": "丘陵2",
+              "family": "land",
+              "pixels": 62220,
+              "sharePct": 3.17,
+              "absent": false
+            },
+            {
+              "id": 5,
+              "slug": "PLAIN_GEO+STEPPE",
+              "name": "平原+草原",
+              "family": "land",
+              "pixels": 112687,
+              "sharePct": 5.7411,
+              "absent": false
+            },
+            {
+              "id": 6,
+              "slug": "PLAIN_GEO+DALES_GEO",
+              "name": "平原+谷地",
+              "family": "land",
+              "pixels": 0,
+              "sharePct": 0.0,
+              "absent": true
+            },
+            {
+              "id": 7,
+              "slug": "PLAIN_GEO+HILLS1_GEO",
+              "name": "平原+丘陵1",
+              "family": "land",
+              "pixels": 70913,
+              "sharePct": 3.6128,
+              "absent": false
+            },
+            {
+              "id": 8,
+              "slug": "PLAIN_GEO+HILLS2",
+              "name": "平原+丘陵2",
+              "family": "land",
+              "pixels": 96407,
+              "sharePct": 4.9117,
+              "absent": false
+            },
+            {
+              "id": 9,
+              "slug": "STEPPE+DALES_GEO",
+              "name": "草原+谷地",
+              "family": "land",
+              "pixels": 111518,
+              "sharePct": 5.6816,
+              "absent": false
+            },
+            {
+              "id": 10,
+              "slug": "STEPPE+HILLS1_GEO",
+              "name": "草原+丘陵1",
+              "family": "land",
+              "pixels": 47848,
+              "sharePct": 2.4377,
+              "absent": false
+            },
+            {
+              "id": 11,
+              "slug": "STEPPE+HILLS2",
+              "name": "草原+丘陵2",
+              "family": "land",
+              "pixels": 412,
+              "sharePct": 0.021,
+              "absent": false
+            },
+            {
+              "id": 12,
+              "slug": "DALES_GEO+HILLS1_GEO",
+              "name": "谷地+丘陵1",
+              "family": "land",
+              "pixels": 0,
+              "sharePct": 0.0,
+              "absent": true
+            },
+            {
+              "id": 13,
+              "slug": "DALES_GEO+HILLS2",
+              "name": "谷地+丘陵2",
+              "family": "land",
+              "pixels": 160347,
+              "sharePct": 8.1693,
+              "absent": false
+            },
+            {
+              "id": 14,
+              "slug": "HILLS1_GEO+HILLS2",
+              "name": "丘陵1+丘陵2",
+              "family": "land",
+              "pixels": 35797,
+              "sharePct": 1.8238,
+              "absent": false
+            },
+            {
+              "id": 15,
+              "slug": "PLATEAU_REF",
+              "name": "台地",
+              "family": "land",
+              "pixels": 91723,
+              "sharePct": 4.6731,
+              "absent": false
+            },
+            {
+              "id": 16,
+              "slug": "BADLANDS",
+              "name": "劣地",
+              "family": "land",
+              "pixels": 53985,
+              "sharePct": 2.7504,
+              "absent": false
+            },
+            {
+              "id": 17,
+              "slug": "M1_GEO",
+              "name": "山地",
+              "family": "land",
+              "pixels": 149919,
+              "sharePct": 7.638,
+              "absent": false
+            }
+          ],
+          "ocean": [
+            {
+              "id": 18,
+              "slug": "ABYSSAL_PLAIN",
+              "name": "深海平原",
+              "family": "ocean",
+              "pixels": 205391,
+              "sharePct": 10.4642,
+              "absent": false
+            },
+            {
+              "id": 19,
+              "slug": "MID_OCEAN_RIDGE",
+              "name": "洋中脊",
+              "family": "ocean",
+              "pixels": 140007,
+              "sharePct": 7.133,
+              "absent": false
+            },
+            {
+              "id": 20,
+              "slug": "SEAMOUNT_FIELD",
+              "name": "海山群",
+              "family": "ocean",
+              "pixels": 37758,
+              "sharePct": 1.9237,
+              "absent": false
+            },
+            {
+              "id": 21,
+              "slug": "CANYON",
+              "name": "海底峡谷",
+              "family": "ocean",
+              "pixels": 49304,
+              "sharePct": 2.5119,
+              "absent": false
+            },
+            {
+              "id": 22,
+              "slug": "SHELF_RIDGE",
+              "name": "陆架沙脊",
+              "family": "ocean",
+              "pixels": 144820,
+              "sharePct": 7.3782,
+              "absent": false
+            }
+          ]
+        },
+        "entries": [
+          {
+            "id": 0,
+            "slug": "PLAIN_GEO",
+            "name": "平原",
+            "family": "land",
+            "pixels": 131151,
+            "sharePct": 6.6818,
+            "absent": false
+          },
+          {
+            "id": 1,
+            "slug": "STEPPE",
+            "name": "草原",
+            "family": "land",
+            "pixels": 17736,
+            "sharePct": 0.9036,
+            "absent": false
+          },
+          {
+            "id": 2,
+            "slug": "DALES_GEO",
+            "name": "谷地",
+            "family": "land",
+            "pixels": 144027,
+            "sharePct": 7.3378,
+            "absent": false
+          },
+          {
+            "id": 3,
+            "slug": "HILLS1_GEO",
+            "name": "丘陵1",
+            "family": "land",
+            "pixels": 98831,
+            "sharePct": 5.0352,
+            "absent": false
+          },
+          {
+            "id": 4,
+            "slug": "HILLS2",
+            "name": "丘陵2",
+            "family": "land",
+            "pixels": 62220,
+            "sharePct": 3.17,
+            "absent": false
+          },
+          {
+            "id": 5,
+            "slug": "PLAIN_GEO+STEPPE",
+            "name": "平原+草原",
+            "family": "land",
+            "pixels": 112687,
+            "sharePct": 5.7411,
+            "absent": false
+          },
+          {
+            "id": 6,
+            "slug": "PLAIN_GEO+DALES_GEO",
+            "name": "平原+谷地",
+            "family": "land",
+            "pixels": 0,
+            "sharePct": 0.0,
+            "absent": true
+          },
+          {
+            "id": 7,
+            "slug": "PLAIN_GEO+HILLS1_GEO",
+            "name": "平原+丘陵1",
+            "family": "land",
+            "pixels": 70913,
+            "sharePct": 3.6128,
+            "absent": false
+          },
+          {
+            "id": 8,
+            "slug": "PLAIN_GEO+HILLS2",
+            "name": "平原+丘陵2",
+            "family": "land",
+            "pixels": 96407,
+            "sharePct": 4.9117,
+            "absent": false
+          },
+          {
+            "id": 9,
+            "slug": "STEPPE+DALES_GEO",
+            "name": "草原+谷地",
+            "family": "land",
+            "pixels": 111518,
+            "sharePct": 5.6816,
+            "absent": false
+          },
+          {
+            "id": 10,
+            "slug": "STEPPE+HILLS1_GEO",
+            "name": "草原+丘陵1",
+            "family": "land",
+            "pixels": 47848,
+            "sharePct": 2.4377,
+            "absent": false
+          },
+          {
+            "id": 11,
+            "slug": "STEPPE+HILLS2",
+            "name": "草原+丘陵2",
+            "family": "land",
+            "pixels": 412,
+            "sharePct": 0.021,
+            "absent": false
+          },
+          {
+            "id": 12,
+            "slug": "DALES_GEO+HILLS1_GEO",
+            "name": "谷地+丘陵1",
+            "family": "land",
+            "pixels": 0,
+            "sharePct": 0.0,
+            "absent": true
+          },
+          {
+            "id": 13,
+            "slug": "DALES_GEO+HILLS2",
+            "name": "谷地+丘陵2",
+            "family": "land",
+            "pixels": 160347,
+            "sharePct": 8.1693,
+            "absent": false
+          },
+          {
+            "id": 14,
+            "slug": "HILLS1_GEO+HILLS2",
+            "name": "丘陵1+丘陵2",
+            "family": "land",
+            "pixels": 35797,
+            "sharePct": 1.8238,
+            "absent": false
+          },
+          {
+            "id": 15,
+            "slug": "PLATEAU_REF",
+            "name": "台地",
+            "family": "land",
+            "pixels": 91723,
+            "sharePct": 4.6731,
+            "absent": false
+          },
+          {
+            "id": 16,
+            "slug": "BADLANDS",
+            "name": "劣地",
+            "family": "land",
+            "pixels": 53985,
+            "sharePct": 2.7504,
+            "absent": false
+          },
+          {
+            "id": 17,
+            "slug": "M1_GEO",
+            "name": "山地",
+            "family": "land",
+            "pixels": 149919,
+            "sharePct": 7.638,
+            "absent": false
+          },
+          {
+            "id": 18,
+            "slug": "ABYSSAL_PLAIN",
+            "name": "深海平原",
+            "family": "ocean",
+            "pixels": 205391,
+            "sharePct": 10.4642,
+            "absent": false
+          },
+          {
+            "id": 19,
+            "slug": "MID_OCEAN_RIDGE",
+            "name": "洋中脊",
+            "family": "ocean",
+            "pixels": 140007,
+            "sharePct": 7.133,
+            "absent": false
+          },
+          {
+            "id": 20,
+            "slug": "SEAMOUNT_FIELD",
+            "name": "海山群",
+            "family": "ocean",
+            "pixels": 37758,
+            "sharePct": 1.9237,
+            "absent": false
+          },
+          {
+            "id": 21,
+            "slug": "CANYON",
+            "name": "海底峡谷",
+            "family": "ocean",
+            "pixels": 49304,
+            "sharePct": 2.5119,
+            "absent": false
+          },
+          {
+            "id": 22,
+            "slug": "SHELF_RIDGE",
+            "name": "陆架沙脊",
+            "family": "ocean",
+            "pixels": 144820,
+            "sharePct": 7.3782,
+            "absent": false
+          }
+        ],
+        "distinctIds": 21,
+        "absentIds": [
+          6,
+          12
+        ],
+        "absenceRule": "某臂计数为 0 = 该臂没有选中这条配方，不表示配方不存在，也不表示\"只有出现的这些存在\""
+      },
+      "type-hard": {
+        "pixels": 1962801,
+        "families": {
+          "land": [
+            {
+              "id": 0,
+              "slug": "PLAIN_GEO",
+              "name": "平原",
+              "family": "land",
+              "pixels": 131366,
+              "sharePct": 6.6928,
+              "absent": false
+            },
+            {
+              "id": 1,
+              "slug": "STEPPE",
+              "name": "草原",
+              "family": "land",
+              "pixels": 17736,
+              "sharePct": 0.9036,
+              "absent": false
+            },
+            {
+              "id": 2,
+              "slug": "DALES_GEO",
+              "name": "谷地",
+              "family": "land",
+              "pixels": 143927,
+              "sharePct": 7.3327,
+              "absent": false
+            },
+            {
+              "id": 3,
+              "slug": "HILLS1_GEO",
+              "name": "丘陵1",
+              "family": "land",
+              "pixels": 98931,
+              "sharePct": 5.0403,
+              "absent": false
+            },
+            {
+              "id": 4,
+              "slug": "HILLS2",
+              "name": "丘陵2",
+              "family": "land",
+              "pixels": 62319,
+              "sharePct": 3.175,
+              "absent": false
+            },
+            {
+              "id": 5,
+              "slug": "PLAIN_GEO+STEPPE",
+              "name": "平原+草原",
+              "family": "land",
+              "pixels": 112597,
+              "sharePct": 5.7365,
+              "absent": false
+            },
+            {
+              "id": 6,
+              "slug": "PLAIN_GEO+DALES_GEO",
+              "name": "平原+谷地",
+              "family": "land",
+              "pixels": 0,
+              "sharePct": 0.0,
+              "absent": true
+            },
+            {
+              "id": 7,
+              "slug": "PLAIN_GEO+HILLS1_GEO",
+              "name": "平原+丘陵1",
+              "family": "land",
+              "pixels": 70913,
+              "sharePct": 3.6128,
+              "absent": false
+            },
+            {
+              "id": 8,
+              "slug": "PLAIN_GEO+HILLS2",
+              "name": "平原+丘陵2",
+              "family": "land",
+              "pixels": 96511,
+              "sharePct": 4.917,
+              "absent": false
+            },
+            {
+              "id": 9,
+              "slug": "STEPPE+DALES_GEO",
+              "name": "草原+谷地",
+              "family": "land",
+              "pixels": 111619,
+              "sharePct": 5.6867,
+              "absent": false
+            },
+            {
+              "id": 10,
+              "slug": "STEPPE+HILLS1_GEO",
+              "name": "草原+丘陵1",
+              "family": "land",
+              "pixels": 47848,
+              "sharePct": 2.4377,
+              "absent": false
+            },
+            {
+              "id": 11,
+              "slug": "STEPPE+HILLS2",
+              "name": "草原+丘陵2",
+              "family": "land",
+              "pixels": 412,
+              "sharePct": 0.021,
+              "absent": false
+            },
+            {
+              "id": 12,
+              "slug": "DALES_GEO+HILLS1_GEO",
+              "name": "谷地+丘陵1",
+              "family": "land",
+              "pixels": 0,
+              "sharePct": 0.0,
+              "absent": true
+            },
+            {
+              "id": 13,
+              "slug": "DALES_GEO+HILLS2",
+              "name": "谷地+丘陵2",
+              "family": "land",
+              "pixels": 160122,
+              "sharePct": 8.1578,
+              "absent": false
+            },
+            {
+              "id": 14,
+              "slug": "HILLS1_GEO+HILLS2",
+              "name": "丘陵1+丘陵2",
+              "family": "land",
+              "pixels": 35797,
+              "sharePct": 1.8238,
+              "absent": false
+            },
+            {
+              "id": 15,
+              "slug": "PLATEAU_REF",
+              "name": "台地",
+              "family": "land",
+              "pixels": 91723,
+              "sharePct": 4.6731,
+              "absent": false
+            },
+            {
+              "id": 16,
+              "slug": "BADLANDS",
+              "name": "劣地",
+              "family": "land",
+              "pixels": 53985,
+              "sharePct": 2.7504,
+              "absent": false
+            },
+            {
+              "id": 17,
+              "slug": "M1_GEO",
+              "name": "山地",
+              "family": "land",
+              "pixels": 149715,
+              "sharePct": 7.6276,
+              "absent": false
+            }
+          ],
+          "ocean": [
+            {
+              "id": 18,
+              "slug": "ABYSSAL_PLAIN",
+              "name": "深海平原",
+              "family": "ocean",
+              "pixels": 205613,
+              "sharePct": 10.4755,
+              "absent": false
+            },
+            {
+              "id": 19,
+              "slug": "MID_OCEAN_RIDGE",
+              "name": "洋中脊",
+              "family": "ocean",
+              "pixels": 140000,
+              "sharePct": 7.1327,
+              "absent": false
+            },
+            {
+              "id": 20,
+              "slug": "SEAMOUNT_FIELD",
+              "name": "海山群",
+              "family": "ocean",
+              "pixels": 37758,
+              "sharePct": 1.9237,
+              "absent": false
+            },
+            {
+              "id": 21,
+              "slug": "CANYON",
+              "name": "海底峡谷",
+              "family": "ocean",
+              "pixels": 49304,
+              "sharePct": 2.5119,
+              "absent": false
+            },
+            {
+              "id": 22,
+              "slug": "SHELF_RIDGE",
+              "name": "陆架沙脊",
+              "family": "ocean",
+              "pixels": 144605,
+              "sharePct": 7.3673,
+              "absent": false
+            }
+          ]
+        },
+        "entries": [
+          {
+            "id": 0,
+            "slug": "PLAIN_GEO",
+            "name": "平原",
+            "family": "land",
+            "pixels": 131366,
+            "sharePct": 6.6928,
+            "absent": false
+          },
+          {
+            "id": 1,
+            "slug": "STEPPE",
+            "name": "草原",
+            "family": "land",
+            "pixels": 17736,
+            "sharePct": 0.9036,
+            "absent": false
+          },
+          {
+            "id": 2,
+            "slug": "DALES_GEO",
+            "name": "谷地",
+            "family": "land",
+            "pixels": 143927,
+            "sharePct": 7.3327,
+            "absent": false
+          },
+          {
+            "id": 3,
+            "slug": "HILLS1_GEO",
+            "name": "丘陵1",
+            "family": "land",
+            "pixels": 98931,
+            "sharePct": 5.0403,
+            "absent": false
+          },
+          {
+            "id": 4,
+            "slug": "HILLS2",
+            "name": "丘陵2",
+            "family": "land",
+            "pixels": 62319,
+            "sharePct": 3.175,
+            "absent": false
+          },
+          {
+            "id": 5,
+            "slug": "PLAIN_GEO+STEPPE",
+            "name": "平原+草原",
+            "family": "land",
+            "pixels": 112597,
+            "sharePct": 5.7365,
+            "absent": false
+          },
+          {
+            "id": 6,
+            "slug": "PLAIN_GEO+DALES_GEO",
+            "name": "平原+谷地",
+            "family": "land",
+            "pixels": 0,
+            "sharePct": 0.0,
+            "absent": true
+          },
+          {
+            "id": 7,
+            "slug": "PLAIN_GEO+HILLS1_GEO",
+            "name": "平原+丘陵1",
+            "family": "land",
+            "pixels": 70913,
+            "sharePct": 3.6128,
+            "absent": false
+          },
+          {
+            "id": 8,
+            "slug": "PLAIN_GEO+HILLS2",
+            "name": "平原+丘陵2",
+            "family": "land",
+            "pixels": 96511,
+            "sharePct": 4.917,
+            "absent": false
+          },
+          {
+            "id": 9,
+            "slug": "STEPPE+DALES_GEO",
+            "name": "草原+谷地",
+            "family": "land",
+            "pixels": 111619,
+            "sharePct": 5.6867,
+            "absent": false
+          },
+          {
+            "id": 10,
+            "slug": "STEPPE+HILLS1_GEO",
+            "name": "草原+丘陵1",
+            "family": "land",
+            "pixels": 47848,
+            "sharePct": 2.4377,
+            "absent": false
+          },
+          {
+            "id": 11,
+            "slug": "STEPPE+HILLS2",
+            "name": "草原+丘陵2",
+            "family": "land",
+            "pixels": 412,
+            "sharePct": 0.021,
+            "absent": false
+          },
+          {
+            "id": 12,
+            "slug": "DALES_GEO+HILLS1_GEO",
+            "name": "谷地+丘陵1",
+            "family": "land",
+            "pixels": 0,
+            "sharePct": 0.0,
+            "absent": true
+          },
+          {
+            "id": 13,
+            "slug": "DALES_GEO+HILLS2",
+            "name": "谷地+丘陵2",
+            "family": "land",
+            "pixels": 160122,
+            "sharePct": 8.1578,
+            "absent": false
+          },
+          {
+            "id": 14,
+            "slug": "HILLS1_GEO+HILLS2",
+            "name": "丘陵1+丘陵2",
+            "family": "land",
+            "pixels": 35797,
+            "sharePct": 1.8238,
+            "absent": false
+          },
+          {
+            "id": 15,
+            "slug": "PLATEAU_REF",
+            "name": "台地",
+            "family": "land",
+            "pixels": 91723,
+            "sharePct": 4.6731,
+            "absent": false
+          },
+          {
+            "id": 16,
+            "slug": "BADLANDS",
+            "name": "劣地",
+            "family": "land",
+            "pixels": 53985,
+            "sharePct": 2.7504,
+            "absent": false
+          },
+          {
+            "id": 17,
+            "slug": "M1_GEO",
+            "name": "山地",
+            "family": "land",
+            "pixels": 149715,
+            "sharePct": 7.6276,
+            "absent": false
+          },
+          {
+            "id": 18,
+            "slug": "ABYSSAL_PLAIN",
+            "name": "深海平原",
+            "family": "ocean",
+            "pixels": 205613,
+            "sharePct": 10.4755,
+            "absent": false
+          },
+          {
+            "id": 19,
+            "slug": "MID_OCEAN_RIDGE",
+            "name": "洋中脊",
+            "family": "ocean",
+            "pixels": 140000,
+            "sharePct": 7.1327,
+            "absent": false
+          },
+          {
+            "id": 20,
+            "slug": "SEAMOUNT_FIELD",
+            "name": "海山群",
+            "family": "ocean",
+            "pixels": 37758,
+            "sharePct": 1.9237,
+            "absent": false
+          },
+          {
+            "id": 21,
+            "slug": "CANYON",
+            "name": "海底峡谷",
+            "family": "ocean",
+            "pixels": 49304,
+            "sharePct": 2.5119,
+            "absent": false
+          },
+          {
+            "id": 22,
+            "slug": "SHELF_RIDGE",
+            "name": "陆架沙脊",
+            "family": "ocean",
+            "pixels": 144605,
+            "sharePct": 7.3673,
+            "absent": false
+          }
+        ],
+        "distinctIds": 21,
+        "absentIds": [
+          6,
+          12
+        ],
+        "absenceRule": "某臂计数为 0 = 该臂没有选中这条配方，不表示配方不存在，也不表示\"只有出现的这些存在\""
+      }
+    },
+    "selectionChanged": {
+      "changedPixels": 508592,
+      "changedPct": 25.91154172022533,
+      "samePixels": 1454209
+    },
+    "hardVsDominant": {
+      "changedPixels": 1176,
+      "changedPct": 0.05991437746363488,
+      "note": "type-hard（胜出站点配方）vs type-b（DOMINANT 主导配方）：两者布局相同，差异来自\"胜出 vs 加权主导\"的口径差，不是过渡"
+    }
+  },
+  "seaWeight": {
+    "min": 0.0,
+    "max": 1.0000000000000002,
+    "mean": 0.2938859111517368,
+    "median": 0.0,
+    "p01": 0.0,
+    "p99": 1.0,
+    "fractionEq0": 0.6584911053132743,
+    "fractionEq1": 0.24328243158628918,
+    "fractionOver0": 0.34150889468672574,
+    "fractionOverHalf": 0.2942641663622548,
+    "outside0to1": 11,
+    "outsideBeyondUlp": 0,
+    "ulpTolerance": 1e-12,
+    "outOfRangeMaxAmount": 2.220446049250313e-16,
+    "outOfRangeMinAmount": 2.220446049250313e-16,
+    "outOfRangeClass": "float-roundoff",
+    "outOfRangePixels": 11,
+    "outOfRangeAmounts": [
+      2.220446049250313e-16
+    ]
+  },
+  "active": {
+    "distinct": 4,
+    "min": 1,
+    "max": 4,
+    "histogram": [
+      {
+        "value": 1,
+        "pixels": 1273310
+      },
+      {
+        "value": 2,
+        "pixels": 584174
+      },
+      {
+        "value": 3,
+        "pixels": 98090
+      },
+      {
+        "value": 4,
+        "pixels": 7227
+      }
+    ],
+    "histogramTruncated": false
+  },
+  "diffClamps": {
+    "diff.png": 161.5221081617169,
+    "diff-smoothing.png": 56.33758353338392
+  },
+  "profiles": {
+    "localLines": 3,
+    "fullLines": 6,
+    "gridCrossCheck": {
+      "row-116": {
+        "pixelRow": 116,
+        "samples": 1401,
+        "maxAbsDeviationBySeries": {
+          "base": 0.0,
+          "a": 0.0,
+          "hard": 0.0,
+          "morph": 0.0
+        }
+      },
+      "row-350": {
+        "pixelRow": 350,
+        "samples": 1401,
+        "maxAbsDeviationBySeries": {
+          "base": 0.0,
+          "a": 0.0,
+          "hard": 0.0,
+          "morph": 0.0
+        }
+      },
+      "row-583": {
+        "pixelRow": 583,
+        "samples": 1401,
+        "maxAbsDeviationBySeries": {
+          "base": 0.0,
+          "a": 0.0,
+          "hard": 0.0,
+          "morph": 0.0
+        }
+      },
+      "row-817": {
+        "pixelRow": 817,
+        "samples": 1401,
+        "maxAbsDeviationBySeries": {
+          "base": 0.0,
+          "a": 0.0,
+          "hard": 0.0,
+          "morph": 0.0
+        }
+      },
+      "row-1050": {
+        "pixelRow": 1050,
+        "samples": 1401,
+        "maxAbsDeviationBySeries": {
+          "base": 0.0,
+          "a": 0.0,
+          "hard": 0.0,
+          "morph": 0.0
+        }
+      },
+      "row-1284": {
+        "pixelRow": 1284,
+        "samples": 1401,
+        "maxAbsDeviationBySeries": {
+          "base": 0.0,
+          "a": 0.0,
+          "hard": 0.0,
+          "morph": 0.0
+        }
+      }
+    },
+    "maxDeviationUntilNow": 0.0,
+    "contractRows": [
+      116,
+      350,
+      583,
+      817,
+      1050,
+      1284
+    ],
+    "rowsMatchContract": true
+  },
+  "figures": {
+    "native-a.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "panels": 0,
+      "panelsPixelIdentical": true
+    },
+    "native-base.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "panels": 0,
+      "panelsPixelIdentical": true
+    },
+    "native-hard.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "panels": 0,
+      "panelsPixelIdentical": true
+    },
+    "native-b.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "panels": 0,
+      "panelsPixelIdentical": true
+    },
+    "native-types-a.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "panels": 0,
+      "panelsPixelIdentical": true
+    },
+    "native-types-b.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "panels": 0,
+      "panelsPixelIdentical": true
+    },
+    "pair-full.png": {
+      "size": [
+        2922,
+        1733
+      ],
+      "panels": 2,
+      "panelsPixelIdentical": true
+    },
+    "pair-ordinary.png": {
+      "size": [
+        2922,
+        1733
+      ],
+      "panels": 2,
+      "panelsPixelIdentical": true
+    },
+    "pair-smoothing.png": {
+      "size": [
+        2922,
+        1733
+      ],
+      "panels": 2,
+      "panelsPixelIdentical": true
+    },
+    "pair-types.png": {
+      "size": [
+        2922,
+        2153
+      ],
+      "panels": 2,
+      "panelsPixelIdentical": true
+    },
+    "transition-map.png": {
+      "size": [
+        2922,
+        2103
+      ],
+      "panels": 2,
+      "panelsPixelIdentical": true
+    },
+    "diff.png": {
+      "size": [
+        1481,
+        1813
+      ],
+      "panels": 1,
+      "panelsPixelIdentical": true
+    },
+    "diff-smoothing.png": {
+      "size": [
+        1481,
+        1813
+      ],
+      "panels": 1,
+      "panelsPixelIdentical": true
+    },
+    "profiles-full.png": {
+      "size": [
+        1480,
+        1976
+      ],
+      "panels": 0,
+      "panelsPixelIdentical": true
+    },
+    "profiles-local.png": {
+      "size": [
+        1480,
+        974
+      ],
+      "panels": 0,
+      "panelsPixelIdentical": true
+    }
+  },
+  "semantics": {
+    "baseline-a": "旧链 + 旧海岸；= 此前\"距离修复后\"那条 B",
+    "baseline-base": "旧链去掉海岸",
+    "regional-hard": "新站点类型 + 硬切换（无常态过渡）；布局 = 新",
+    "regional-morph": "新公共节点输出（P3B）+ 无海岸；布局 = 新",
+    "pair-full": "A 含旧海岸 vs B 无海岸 → 不同源，不能归因单条改动",
+    "pair-ordinary": "无海岸 OLD(base) vs 新(B)，但布局仍不同 → 布局 + 过渡",
+    "pair-smoothing": "hard vs B，布局完全相同 → 唯一单变量对照",
+    "type-a": "旧链「海岸处理之前」的内部配方 id（海侧分支 / 陆地 dominant 口径）；既不是最终的\"实际海岸配方\"，也不是全部潜在候选",
+    "type-b": "新链「加权 DOMINANT 主导」配方 id（加权后的最终主导，同样不等于全部候选）",
+    "type-hard": "新链「胜出站点」配方 id（硬选、未加权）",
+    "typeArmsComparable": "三臂口径互不相同（海岸前内部 / 加权主导 / 胜出站点）→ 面积表不可当成\"同一件事的三个版本\"直接横向比较",
+    "sea-weight": "原值直出，不假设归一化、不裁剪数据；越界像素标品红，但文字区分\"1-ULP 归一化舍入\"（≤1e-12）与\"真越界\"（>该容差）",
+    "active": "语义由导出方定义，本工具只按实测取值上色，不解释业务含义"
+  },
+  "notes": [
+    "每块面板都是 1401²（或本图 size²）原生像素，粘贴处已逐像素校验，无缩放/重采样",
+    "local-* 剖面沿法向按 1 块采样，与地形栅格步长（meta.step）不是同一口径",
+    "本工具只读导出 raw；不改生产代码、不加 -D 开关、不运行生成器",
+    "标准图 SHA 与生产口径由导出方负责，本工具不断言",
+    "本工具不断言性能、也不断言实机效果"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "scope": "S3 (600 micro / 1200 macro) replay of the archived coherent-morph-s3 arm",
+  "why": "P3 archive is the superseded 1200 layout; 600 came later and is the accepted micro scale",
+  "scale": 600,
+  "macroScale": 1200,
+  "bandTotal": 240,
+  "seed": "9139912035078620160",
+  "jvm": [
+    "-Xmx6g",
+    "-Dfile.encoding=UTF-8"
+  ],
+  "terrainProperties": {},
+  "reproduced": {
+    "rawFiles": 12,
+    "pngFiles": 10,
+    "allSHAEqual": true
+  },
+  "note": "Replay only; no source, parameter, default or production change. S3 remains the current 600 representative arm; P4 will add coast on top of this layout."
+}

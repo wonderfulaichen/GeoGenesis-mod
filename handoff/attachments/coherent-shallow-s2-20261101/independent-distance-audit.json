@@ -1,0 +1,231 @@
+{
+  "method": "S1 extended10block raw winner raster EDT; approximate independent check, not exact240 certificate",
+  "conservativeMissBelow220": [],
+  "unexpectedChangesAbove270": [],
+  "cells": [
+    {
+      "cell": "-30064771066",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-25769803778",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-25769803774",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-25769803773",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-21474836484",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-21474836483",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-21474836482",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-21474836481",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-17179869190",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-17179869189",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-17179869188",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-17179869181",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-17179869180",
+      "before": 18,
+      "after": 18,
+      "rasterMinToLand10blocks": 304.7950130825634,
+      "polylineDistance": "Infinity"
+    },
+    {
+      "cell": "-12884901894",
+      "before": 20,
+      "after": 20,
+      "rasterMinToLand10blocks": 380.13155617496426,
+      "polylineDistance": "Infinity"
+    },
+    {
+      "cell": "-12884901893",
+      "before": 20,
+      "after": 20,
+      "rasterMinToLand10blocks": 541.2947441089743,
+      "polylineDistance": "Infinity"
+    },
+    {
+      "cell": "-12884901892",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-12884901884",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-12884901883",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-8589934598",
+      "before": 20,
+      "after": 20,
+      "rasterMinToLand10blocks": 407.0626487409524,
+      "polylineDistance": "Infinity"
+    },
+    {
+      "cell": "-8589934597",
+      "before": 18,
+      "after": 18,
+      "rasterMinToLand10blocks": 568.8585061331157,
+      "polylineDistance": "Infinity"
+    },
+    {
+      "cell": "-8589934596",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 36.05551275463989,
+      "polylineDistance": "24.183947996710966"
+    },
+    {
+      "cell": "-8589934595",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-8589934587",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-4294967302",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-4294967301",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 28.284271247461902,
+      "polylineDistance": "13.01697277535521"
+    },
+    {
+      "cell": "-4294967300",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-5",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "-4",
+      "before": 20,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "4294967291",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "4294967292",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "4294967293",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    },
+    {
+      "cell": "8589934588",
+      "before": 18,
+      "after": 22,
+      "rasterMinToLand10blocks": 10.0,
+      "polylineDistance": "0.0"
+    }
+  ]
+}

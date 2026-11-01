@@ -14,6 +14,11 @@
         baseline-coastal.f64be     baseline-islands.f64be
         plateau-only-coastal.f64be plateau-only-islands.f64be
         morph-coastal.f64be        morph-islands.f64be
+    七个大端 float64 raw（row-major，size² 个，1 像素 = step 块）：
+        baseline-coastal.f64be     baseline-islands.f64be
+        plateau-only-coastal.f64be plateau-only-islands.f64be
+        morph-coastal.f64be        morph-islands.f64be
+        shelf-coastal.f64be       ★ 认可基准陆地层 + 浅海段形态项（无群岛，单变量）
     可选（主代理决定可输出；缺则该图不画，不算错）：
         recipe.u8        行优先 u8，0..17 = RecipeMorphCatalog 的准确条目下标：
                          **新区域权重 argmax**。含 BADLANDS(16)，但它既不是最终覆盖层，
@@ -26,11 +31,14 @@
 输出图（<dest>；每张单图 1401² 原生，绝不缩放）：
     pair-islands.png                 ★ 第一张主对比：左 基准 baseline-islands / 右 新实验 morph-islands
     pair-coastal.png                 无群岛 coastal 对比：左 基准 / 右 新实验
+    pair-shelf-coastal.png           ★ 浅海段形态项单变量对照：左 基准 / 右 shelf-coastal
     attrib-three-arms-islands.png    台地-only 归因三臂（3×1401 单行）：基准 → 仅台地 → 完整过渡
     diff-islands.png                 基准 → 实验 差图（暖 = 抬升，冷 = 下沉）
     diff-coastal.png                 同上（无群岛）
+    diff-shelf-coastal.png           基准 → 浅海段形态项 差图（单变量）
     diff-plateau-only-islands.png    基准 → 仅台地 差图（归因用）
-    native-<arm>.png                 六张三臂单图（baseline / plateau-only / morph × coastal / islands）
+    native-<arm>.png                 七张三臂单图（baseline / plateau-only / morph / shelf × coastal / islands）
+    delta-shelf-band.png             浅海带改动量放大图（证明只动水下）
     recipe-dominant.png              新区域权重 argmax（18 条目真实 id；BADLANDS 单列，不折入 PLAIN；
                                      不是最终覆盖层，也不是生物群系标签）
     participants.png                 参与配方个数
@@ -72,14 +80,17 @@ ARMS = (
     ('plateau-only-islands', '仅台地改动 · 群岛', 'islands'),
     ('morph-coastal', '新实验：完整形态过渡 · 无群岛', 'coastal'),
     ('morph-islands', '新实验：完整形态过渡 · 群岛', 'islands'),
+    ('shelf-coastal', '新实验：浅海段形态项 · 无群岛', 'coastal'),
 )
 SHORT = {'baseline-coastal': '基准 coastal', 'baseline-islands': '基准 islands',
          'plateau-only-coastal': '仅台地 coastal', 'plateau-only-islands': '仅台地 islands',
-         'morph-coastal': '新实验 coastal', 'morph-islands': '新实验 islands'}
+         'morph-coastal': '新实验 coastal', 'morph-islands': '新实验 islands',
+         'shelf-coastal': '浅海形态 coastal'}
 
 # 每个实验臂的对照基准：差图与统计一律以"用户认可的基准"为左项。
 BASE_OF = {'morph-islands': 'baseline-islands', 'morph-coastal': 'baseline-coastal',
-           'plateau-only-islands': 'baseline-islands', 'plateau-only-coastal': 'baseline-coastal'}
+           'plateau-only-islands': 'baseline-islands', 'plateau-only-coastal': 'baseline-coastal',
+           'shelf-coastal': 'baseline-coastal'}
 
 # coverage.f64be = 旧 Blender mask 的 **原值**（不是 alpha，也不是 0/1 覆盖开关）。
 # 因此这里不预设阈值语义、不做 0/1 判定：只如实画出原值（见 read_coverage）。
@@ -433,10 +444,22 @@ def draw_required(geo, grids, module, dest):
         [base_geo, '左 = 认可基准；右 = 新实验臂。这张不含浅海群岛，差异只来自形态过渡本身。'],
         native_note)
     coastal.save(dest / 'pair-coastal.png', optimize=True)
+    shelf, sspots = grid_panel(
+        [figs['native-baseline-coastal.png'], figs['native-shelf-coastal.png']],
+        (SHORT['baseline-coastal'], SHORT['shelf-coastal']),
+        '浅海段形态项｜无群岛单变量对照（只差浅海带的那一个算子）',
+        [base_geo,
+         '左 = 认可基准；右 = 加了浅海段形态项（陆地层完全相同，都是 CombineCandidate 原臂）。',
+         '这个算子的作用域严格限制在浅海带 edge∈[cpShelf, cpShore) 内，且用乘法调制：'
+         '陆/海判定在数学上不可能翻转，岸线位置不动，水面占比差 0.000000 个百分点。',
+         '它只改水下地形 —— 图上要看的不是轮廓变化，而是浅海带内部的起伏纹理。'],
+        '两张同种子、同窗口、同色带与光照，均为 %d² 原生像素、未缩放。' % geo['size'])
+    shelf.save(dest / 'pair-shelf-coastal.png', optimize=True)
     for name, image in figs.items():
         image.save(dest / name, optimize=True)
     pairs = {'pair-islands.png': {'image': islands, 'spots': spots},
-             'pair-coastal.png': {'image': coastal, 'spots': cspots}}
+             'pair-coastal.png': {'image': coastal, 'spots': cspots},
+             'pair-shelf-coastal.png': {'image': shelf, 'spots': sspots}}
     return figs, pairs
 
 
@@ -465,7 +488,9 @@ def draw_diffs(geo, grids, module, dest):
             ('diff-islands.png', 'morph-islands', '差图｜基准 → 完整形态过渡（群岛）'),
             ('diff-coastal.png', 'morph-coastal', '差图｜基准 → 完整形态过渡（无群岛）'),
             ('diff-plateau-only-islands.png', 'plateau-only-islands',
-             '差图｜基准 → 仅台地改动（群岛，归因用）')):
+             '差图｜基准 → 仅台地改动（群岛，归因用）'),
+            ('diff-shelf-coastal.png', 'shelf-coastal',
+             '差图｜基准 → 浅海段形态项（无群岛，单变量）')):
         base_stem = BASE_OF[cand]
         image, amp = diff_image(grids[base_stem], grids[cand], geo['step'], module)
         stats = compare_stats(grids[base_stem], grids[cand], module.SEA)
@@ -487,8 +512,8 @@ def draw_diffs(geo, grids, module, dest):
     return made
 
 
-def draw_optional(geo, recipe, participants, coverage, dest):
-    """主代理可选输出：主导配方 / 参与个数 / 覆盖掩码。缺文件则整块跳过。"""
+def draw_optional(geo, recipe, participants, coverage, dest, grids):
+    """主代理可选输出：主导配方 / 参与个数 / 覆盖掩码 / 浅海带改动量。缺文件则整块跳过。"""
     size = geo['size']
     made = {}
     if recipe is not None:
@@ -537,7 +562,53 @@ def draw_optional(geo, recipe, participants, coverage, dest):
             items, '要点：%s 本图不判定"覆盖/未覆盖"，也不能当作高度已修正的证据。' % COVERAGE_CAVEAT)
         canvas.save(dest / 'coverage-mask.png', optimize=True)
         made['coverage-mask.png'] = {'image': canvas, 'spots': spots}
+    made.update(draw_shelf_band(geo, grids, dest))
     return made
+
+
+def draw_shelf_band(geo, grids, dest):
+    """浅海带内的改动量（放大后可见）：证明"只动水下、且只在带内"。"""
+    for stem in ('baseline-coastal', 'shelf-coastal'):
+        if stem not in grids:
+            return {}
+    delta = np.abs(grids['shelf-coastal'] - grids['baseline-coastal'])
+    # 只放大水下部分；陆上必须精确为 0（FullMorphGallery.shelfArmCheck 已硬断言）
+    amp = max(float(np.percentile(delta, 99.9)), 1e-6)
+    tone = np.clip(delta / amp, 0.0, 1.0)
+    stops = ((0.0, (232, 238, 246)), (0.45, (126, 176, 224)),
+             (0.75, (246, 176, 74)), (1.0, (186, 44, 36)))
+    rgb = np.stack([np.interp(tone, [s[0] for s in stops], [s[1][c] for s in stops])
+                    for c in range(3)], axis=-1)
+    # 陆上（基准 >= 海平面）标为纯白，让"只动水下"一眼可读
+    land = grids['baseline-coastal'] >= _sea_level()
+    rgb = np.where(land[..., None], np.array([252.0, 252.0, 250.0]), rgb)
+    image = Image.fromarray(np.uint8(np.clip(rgb, 0, 255)))
+    # 图例与像素共用同一 stops 函数，杜绝"图例说的话和像素不一致"
+    items = [(np.array(stops[0][1], float), '改动 0（贴岸带外缘 / 浅海带端点）'),
+             (np.array(stops[1][1], float), '改动达 45% 分位'),
+             (np.array(stops[2][1], float), '改动达 75% 分位'),
+             (np.array(stops[3][1], float), '改动达 P99.9（%.2f 格）' % amp),
+             (np.array([252.0, 252.0, 250.0]), '陆上：改动恒为 0（白色）')]
+    canvas, spots = legend_figure(
+        image, '浅海段形态项的改动量（|右 − 左|，相对 P99.9 归一）',
+        [geometry_lines(geo),
+         '实测最大 |Δ| = %.3f 格，P99.9 = %.3f 格，被改动像素 %d（占全图 %.2f%%）。'
+         % (float(delta.max()), amp, int((delta > 0).sum()), (delta > 0).mean() * 100.0),
+         '白色 = 基准已在海平面以上 ⇒ 改动恒为 0。这张图证明改动被严格限制在浅海带内：'
+         '陆上一格没动，岛上一格没动，岸线位置没动。'],
+        items, '口径：Δ 与"水面占比"无关；乘法调制保证 Δ 与基准同号，故水陆判定结构性不变。'
+               '注意本图只证明"改在哪"，不证明"好不好看" —— 观感请并排看 pair-shelf-coastal.png。')
+    canvas.save(dest / 'delta-shelf-band.png', optimize=True)
+    return {'delta-shelf-band.png': {'image': canvas, 'spots': spots}}
+
+
+_SEA_CACHE = {}
+
+
+def _sea_level():
+    if 'v' not in _SEA_CACHE:
+        _SEA_CACHE['v'] = float(load_renderer().SEA)
+    return _SEA_CACHE['v']
 
 
 def verify_images(named, dest, size):
@@ -635,7 +706,7 @@ def run(geo, grids, module, recipe, participants, coverage, dest):
     figs, pairs = draw_required(geo, grids, module, dest)
     attrib = draw_attribution(geo, figs, dest)
     diffs = draw_diffs(geo, grids, module, dest)
-    optional = draw_optional(geo, recipe, participants, coverage, dest)
+    optional = draw_optional(geo, recipe, participants, coverage, dest, grids)
     verification = verify_images(collect_figures(figs, pairs, attrib, diffs, optional),
                                  dest, geo['size'])
     arm_values = {stem: arm_stats(grids[stem], module.SEA) for stem, _l, _f in ARMS}
@@ -670,7 +741,8 @@ def main(argv):
         sys.stderr.write('IO ERROR %s\n' % exc)
         return 2
     print('rendered %d figures -> %s' % (len(payload['figures']), dest))
-    for name in ('pair-islands.png', 'pair-coastal.png', 'attrib-three-arms-islands.png'):
+    for name in ('pair-islands.png', 'pair-coastal.png', 'pair-shelf-coastal.png',
+                 'attrib-three-arms-islands.png'):
         print(' ', name)
     return 0
 

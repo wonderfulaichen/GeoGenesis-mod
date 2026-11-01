@@ -1,0 +1,4 @@
+case,trap_vectors,finite,mixed_semantics_bitwise,distinguishable,took_mixed,max_abs_diff_vs_mixed,max_eps_that_keeps_sum_at_1,sea_recipe
+landWeight1_positiveSeaComponent,240,240,240,240,240,0.000e+00,1.0e-18,18
+why=w[0]=1.0 plus a positive ocean component eps keeps BOTH the in-order land sum and the full sum at exactly 1.0 (1.0 + eps rounds back to 1.0), so any sum-based pure-land test misclassifies the vector and NodeMorphEngine.sampleLand rejects it with 'land-only weights required'
+fix_pinned=pure-land detection must inspect whether any ocean component is actually > 0, not whether the sum equals 1

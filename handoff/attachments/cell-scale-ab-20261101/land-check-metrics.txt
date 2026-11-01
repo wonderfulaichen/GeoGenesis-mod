@@ -1,0 +1,11 @@
+checks=910
+seed=9139912035078620160
+extra_seeds=[1, -42]
+seam_criterion=Lipschitz: |de| <= 0.0500*dist + 1.0e-04
+window_rebuild_drift_tolerance=1.0e-04 (>= the measured 1e-6 rebuild noise; the bitwise gate is vs LocalBoundaryGeometry.query on the same object)
+endpoint_tolerance=2.0e-07
+perf_cap_ms=2.0
+mask_thresholds=reflected from CombineCandidate (not the reference 0.3/0.8)
+old_coverage=CombineCandidate.unmixable[0] (shared PlateauCandidate, 1.05); NOT M1_GEO and NOT the reference-corrected 0.9
+category_label=NOT fixed: the override family is a plateau while CombineCandidate.category() still says MOUNTAINS; recorded, not changed
+result=PASS

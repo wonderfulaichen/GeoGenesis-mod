@@ -1,0 +1,1135 @@
+{
+  "task": "N0-N1 read-only forensic audit; no compilation, source edits, or check execution",
+  "observed_at": "2026-11-01T07:14:07.261005+08:00",
+  "workspace": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk",
+  "integrity_basis": "Frozen paths are compared against captured manifests. Concurrent live N1 source changes are INFORMATION ONLY, never a frozen integrity failure.",
+  "source_before_sha256": "a0d578baf6eb07f6cb00c831ad9b072797dd053673fb4fe293d9175c16ccdb0a",
+  "frozen_source": {
+    "comparison": {
+      "left_count": 116,
+      "right_count": 116,
+      "only_left": [],
+      "only_right": [],
+      "different": []
+    },
+    "inventory": {
+      "AdaptiveWidthCandidate.java": {
+        "size": 2642,
+        "sha256": "321431148499105569e01720ecddc8eb16df814636e2370632d34d522e00d197"
+      },
+      "AdaptiveWidthProbe.java": {
+        "size": 9494,
+        "sha256": "2c5b18d5e67e2330883667668169a9e83d6868e55f9423fafa9d763ee635a83e"
+      },
+      "AmplitudeProbe.java": {
+        "size": 3025,
+        "sha256": "1f1b6cfdf507e2ffc73b67192d037ca0fc21f336f79a9abef8f6aed800c30afc"
+      },
+      "BadlandsCandidate.java": {
+        "size": 4214,
+        "sha256": "1a874198564796ca92c06b9d3b767607d0bf8bc09aa07e0221b9b6e1bcf77394"
+      },
+      "BorderScaleImpactProbe.java": {
+        "size": 6980,
+        "sha256": "fdb7ed5129c050eda3a04182cffee3bfe90023d0a84a67f68237923545224169"
+      },
+      "CliffShareProbe.java": {
+        "size": 5583,
+        "sha256": "26bc6e2d79957644ef951a19fdb0740d566544bcdfcea469fd8a775b44a78828"
+      },
+      "CoastalAssembler.java": {
+        "size": 40119,
+        "sha256": "ab53ae10dc9b10390832487a2ba0f427e2f51e0e95ec155f9c68c8322152bab9"
+      },
+      "CoastalProfileProbe.java": {
+        "size": 4939,
+        "sha256": "94ef2bc34e9ed0fb27370c24e934f80e7de9f1b72dc9095f27cabd1e80974f0a"
+      },
+      "CoastBandProbe.java": {
+        "size": 5622,
+        "sha256": "324d7aab6eb3cc4eadfc97e9cbad55ebfd2272a60cf8690bd47722f54beb6ab9"
+      },
+      "CoastDistributionAudit.java": {
+        "size": 12187,
+        "sha256": "55eb4606c0ca6f2862d20adb9d45c765b781def2833641f7b7a3362246175ade"
+      },
+      "CoastRecipeCatalog.java": {
+        "size": 26146,
+        "sha256": "3c4bf80d6aaac5272557a5a9cb5d6bd0b222c10f0e220c29dfdd761e4e56ee26"
+      },
+      "CoherentCoordinateCheck.java": {
+        "size": 28194,
+        "sha256": "76d5c2e8068f9c39787cf1ba30f55dc141e82ddba25f39512b8b6e2322c47538"
+      },
+      "CoherentLayoutCheck.java": {
+        "size": 5127,
+        "sha256": "59b2a69590d3ad257fc9ce9178e7cfe22ea800c3f8329f2cf9102f49adf125f3"
+      },
+      "CoherentLayoutGallery.java": {
+        "size": 7056,
+        "sha256": "7348b71387e5d89875073b5b7ca90f3cf1fedf81e7ef0922aad75721e35ade63"
+      },
+      "CoherentMorphCheck.java": {
+        "size": 27854,
+        "sha256": "f987a2038fd93b9f621990fe24eec6a9f4fe87513ea9c73f23ee130c02ea92a7"
+      },
+      "CoherentMorphGallery.java": {
+        "size": 5797,
+        "sha256": "dc0d2c9d7e0c518cd453ef7f37ce3f33cd981725ee8ce640fc274248d0626391"
+      },
+      "CoherentMorphWorld.java": {
+        "size": 4022,
+        "sha256": "7bf6587d9c8175aa39ec90fe7060f1f967c6751c7f5b7ec2ef5f01de867cf605"
+      },
+      "CoherentRegionDistribution.java": {
+        "size": 4200,
+        "sha256": "ba172e9fcd1b4ec5080a63097412fdd238ad461234cbc57ab2e8b1112d1184d2"
+      },
+      "CoherentShallowCheck.java": {
+        "size": 3323,
+        "sha256": "1b7a02d4a8ee6a6fcf443923966a8cd543b5c344a7668ee22b87606bd6a4efdc"
+      },
+      "CoherentShallowGallery.java": {
+        "size": 5210,
+        "sha256": "79b72c81da64b65150b0e75b499a95df1845e52ae802dfcc05762bb3262d19d0"
+      },
+      "CoherentStreamingCheck.java": {
+        "size": 10799,
+        "sha256": "2c1a01bb8eee62b0b503e5ac3928291998e649f1b669db972714a8189c6abf6a"
+      },
+      "CombineCandidate.java": {
+        "size": 38696,
+        "sha256": "19b72a05c15c7407e53c05441cde4853178c2c1e58da42044c62250d28121638"
+      },
+      "ContinentEdgeProbe.java": {
+        "size": 4143,
+        "sha256": "9c6ff335d6090fbac96556d5d8fd264e50b17ab58c866b2d069d930b9afb4363"
+      },
+      "ContinentFlagProbe.java": {
+        "size": 1766,
+        "sha256": "873b17096e88b291c73011df6de268cdf9b14e87d5f0b6e2787a2a9e3307f771"
+      },
+      "ContinentNoiseDistributionProbe.java": {
+        "size": 2187,
+        "sha256": "2d9c81d7d6794803aecb55f849cb3a5c65598d37c2bd6157d6b354f6995402f7"
+      },
+      "ContinentShapeProbe.java": {
+        "size": 7469,
+        "sha256": "26b0d9b99c48984913faac0bf1618dd40415b2d269a92d0d7a378b9f402c61ca"
+      },
+      "DistanceFieldCheck.java": {
+        "size": 2574,
+        "sha256": "91eb08868f7947e5b462d0820f18e3202e216b1c0aacef192437f8d10265045f"
+      },
+      "DistanceFixWorldCheck.java": {
+        "size": 5036,
+        "sha256": "180e35b3c4992b60cf7b8096d870693a6c376d398b7c95f4a18e02f338b98af3"
+      },
+      "DistProbe.java": {
+        "size": 2483,
+        "sha256": "68cd6961e5b137f9cc556ca643569f9ea2fc2012409c5e209852ad3dd23fa199"
+      },
+      "DistProbe2.java": {
+        "size": 2434,
+        "sha256": "e5ab5aa4d1fcec43cf54d379e0f2f7c69f64f348aee1b23c790600389be396ee"
+      },
+      "EngineLandFingerprint.java": {
+        "size": 1916,
+        "sha256": "8366b27f4f0463f6a4825cab637434010822c793a12a2465919f16843f14b859"
+      },
+      "EngineOceanFingerprint.java": {
+        "size": 1423,
+        "sha256": "73f6f10df49d830eb2d8a58b8b8f59eb26bf518b75300a3baf00fbe828e3441b"
+      },
+      "FamilyRangeProbe.java": {
+        "size": 5364,
+        "sha256": "79949b1a61d644e46bac241375b33fc641ed39d1ab7f10d8ed569a5849607098"
+      },
+      "FieldDiagnostic.java": {
+        "size": 2621,
+        "sha256": "6e63a8b7304b6fe071926721df2e4a0d7ac2626da2ca8906b5d0cac221e6d898"
+      },
+      "FlatSpotCauseProbe.java": {
+        "size": 5442,
+        "sha256": "dbd76950a6636a71a3ca0b0e94c2f70c427d95695ddabad4c2c32ebae268842a"
+      },
+      "FlatZoneDiagnoseProbe.java": {
+        "size": 5351,
+        "sha256": "428fa03c649a68680ee8ea306c880ae649c727ecc6d15ee553f08991d9c4fb9c"
+      },
+      "FourPairMorphCandidate.java": {
+        "size": 8455,
+        "sha256": "10e6862736233ac731a781123e6b1c91a76c390999796fa3879bee3360d96705"
+      },
+      "FourPairMorphProbe.java": {
+        "size": 9632,
+        "sha256": "eb97feb7319627e4692287d26dd8452b8c69822199a78f2875267872eb70e105"
+      },
+      "FullMorphGallery.java": {
+        "size": 12080,
+        "sha256": "b2406d1215aed0c0e6b48038f256fe407ec06b4ac7d32703e3afdad8c8c51813"
+      },
+      "FullMorphLand.java": {
+        "size": 32981,
+        "sha256": "b0dad97c1617fdbe4162dec6ded7cbdf6559572395372d62215bf1075d6b8b5c"
+      },
+      "FullMorphLandCheck.java": {
+        "size": 50491,
+        "sha256": "8e333d9a70f767424998167d3f946616c38017224d4d4780c91e5937a62d5063"
+      },
+      "HeightmapExport.java": {
+        "size": 5414,
+        "sha256": "3468f6e548285ac6a3b75dbaa9c2f2599950185d30eabd757ae8e99ebc939af4"
+      },
+      "HillsCandidate.java": {
+        "size": 9163,
+        "sha256": "a7f4b8ca85c0142cf6db3bd1497803b4e951febcb6b0d647839bfb0f8af653b8"
+      },
+      "HillsPlateauMorphCandidate.java": {
+        "size": 3065,
+        "sha256": "e467d6dd0e6b87d852e21c30dbe798ffdf22d5552fef9467de76449fe0511a73"
+      },
+      "HillsPlateauMorphProbe.java": {
+        "size": 11232,
+        "sha256": "3386f95736286b48094823d4e48fd12ca9a8b4f42833406be2caefb077688205"
+      },
+      "HillsRegionCandidate.java": {
+        "size": 3860,
+        "sha256": "14b989551d9893df44f896cfd81514a94de84139495972de02d30d730d2d65fb"
+      },
+      "JumpProbe.java": {
+        "size": 2135,
+        "sha256": "9350b490e7e25ffc50c0aec12c2a8686a3679dda4fb38080cd1ce7ee6f5bb86e"
+      },
+      "LandCompositionGallery.java": {
+        "size": 31062,
+        "sha256": "cb4dadbd762d9b2c9b7ef0ed98f11a28e6564be55859c1bea04bf16529b5a668"
+      },
+      "LocalBoundaryGeometry.java": {
+        "size": 62429,
+        "sha256": "ce24f874b27204694bff0dedd05649825976f99672d10324b9737ca802274161"
+      },
+      "LocalBoundaryGeometryProbe.java": {
+        "size": 51348,
+        "sha256": "810dd1a49d96deb3b35f9bac69f71f2d2c939c458efaca65ac8e65033771e893"
+      },
+      "LocalThreeMorphCandidate.java": {
+        "size": 10867,
+        "sha256": "6f529bd7d4854fb72a5ec2914db701c9aad47e229438afcc42ac28fdf62d71f9"
+      },
+      "LocalThreeMorphCheck.java": {
+        "size": 25561,
+        "sha256": "ce5ba46f41d32b651a52dc97de9d0e92c2b251cd811728732ecae73f5de92929"
+      },
+      "LocalThreeMorphProbe.java": {
+        "size": 9014,
+        "sha256": "946e77c3bd0af94fbd6ade50983d350308ca99ee8c48421ef9cb48401826b0c7"
+      },
+      "MaskDistributionProbe.java": {
+        "size": 2313,
+        "sha256": "5018cc582def7a58b4695032b557141b90ca7abfd581de26b9beca45ad7abd17"
+      },
+      "MorphCatalog.java": {
+        "size": 1386,
+        "sha256": "dfe3be26d6f91cafaea038e3f102e96685d5c2239953c2eff2302b6187c0f594"
+      },
+      "MorphChoicePerfProbe.java": {
+        "size": 3967,
+        "sha256": "fe7fc647e02df88d4c49c75948b58589a2d35fc4b34366f207aca88f28de5302"
+      },
+      "MorphInUseProbe.java": {
+        "size": 2402,
+        "sha256": "c2d2f864cf122cbd2db584e214c70dbaf0d0ceb7cbeceaf6c79e3d03c8b76907"
+      },
+      "MorphRecipe.java": {
+        "size": 520,
+        "sha256": "ad1de9a08cc69a9dc862c4709d728c996be202465f0463875e4b49c330dba746"
+      },
+      "MountainsCandidate.java": {
+        "size": 7689,
+        "sha256": "9e85e5b5f72cf16cce781ea85c9c795c86199395c36b95c6f4f0c4090fe8baf2"
+      },
+      "MountainsRegionCandidate.java": {
+        "size": 3053,
+        "sha256": "6c37cd387d8856f48c8b2f811715852a4644047d42ebc16448af787fd1b9b9fc"
+      },
+      "NodeMorphEngine.java": {
+        "size": 9170,
+        "sha256": "afe727c0866821062e9fbc8b0021c8892b51c60711f5ecd4f3ce78a31c16ea1a"
+      },
+      "NodeMorphEngineCheck.java": {
+        "size": 8711,
+        "sha256": "e9843257526ade8f82383b94d3f05237ffad6dba9e50a2f8c57177fab877e62a"
+      },
+      "OceanAssemblyCandidate.java": {
+        "size": 38493,
+        "sha256": "159e4c3482f4410938a49d964d3163ed97a343b988bae44ce7530bf8c4be7f2d"
+      },
+      "OceanMorphConcepts.java": {
+        "size": 11778,
+        "sha256": "f25695be4ccce2027142366d0eadab8b3da45c248a86a486e2e4203ed2b02829"
+      },
+      "OceanMorphConceptsCheck.java": {
+        "size": 13746,
+        "sha256": "3d67580c0e393eb5104e80f6fe24808a343687d3e5cedf434f30f7bc0de8096e"
+      },
+      "OceanRecipeCatalog.java": {
+        "size": 28301,
+        "sha256": "b6b3550a0a721cdf86922ccdbe473e898dea4f92f3ff199e0ff9a72f22a61c3c"
+      },
+      "OceanRecipeCheck.java": {
+        "size": 14470,
+        "sha256": "fffa3d5549c881ee1f63c167ab3f322ec1fb16c959cbf0210b7849ddede8c051"
+      },
+      "OceanTransitionCatalog.java": {
+        "size": 20277,
+        "sha256": "eaeaa5a09823c58912ec8aaf95f8712d88bbb5c69ade4b1babadfe0166bc0442"
+      },
+      "OceanTransitionCheck.java": {
+        "size": 13351,
+        "sha256": "9dd1ca18b0d3c95a6e8b3ac6524f4cd7f3b2a103faf2a9647c117c9c7fd77366"
+      },
+      "OceanTransitionExport.java": {
+        "size": 6377,
+        "sha256": "caac0d3451d8e6a15cd9bd623c45221f77db67577571f02a3899de98fcbf7733"
+      },
+      "OffsetTransitionCandidate.java": {
+        "size": 3049,
+        "sha256": "961201b5426e7f2af1ed80f8a298bcb422d3f1682e75d2d1a728b0c0d30a3fbc"
+      },
+      "OffsetTransitionProbe.java": {
+        "size": 8319,
+        "sha256": "98a989a4e1e9a46cdc031b6a10656d28521d1fe63e1aa6a75ad13cc989735d4c"
+      },
+      "OrogenFieldProbe.java": {
+        "size": 13280,
+        "sha256": "ad035b21e3a7fa344e5d61ccf3b17ac2f0a131072f8c41ee2760156bbf35d3c7"
+      },
+      "PartitionProbe.java": {
+        "size": 6383,
+        "sha256": "b316df89056f8a9c1e83f92aedfd68dcece07fe21eda29ea032ed9150ca96756"
+      },
+      "PlainsCandidate.java": {
+        "size": 6011,
+        "sha256": "0731a0a1c02c62d91ad68771cccfc7936b8b88af0fca027631be3f9f2fe1c4fe"
+      },
+      "PlateauCandidate.java": {
+        "size": 6012,
+        "sha256": "385ac78045f741aa693603e4955ac4b2144b810fe0baed13e4916ac7de750682"
+      },
+      "PlateauStageDiagnostic.java": {
+        "size": 2621,
+        "sha256": "d31859cf423a1b481b3124893483b066815ae394e35fcc3eb4a6ee28809d3050"
+      },
+      "ProbeSupport.java": {
+        "size": 1128,
+        "sha256": "00786d6f7cceec20e1c0695623447d7c9c563055779375b16f1cbe9e2ba081a2"
+      },
+      "ProvinceContinentField.java": {
+        "size": 10620,
+        "sha256": "f704b745797ebe3da645e92699bebdc48f40fc1bf1cbf8f513d86a22e199e7b9"
+      },
+      "RecipeBoundaryWeights.java": {
+        "size": 3207,
+        "sha256": "f53a063ff0dc397c6dd11d63c012afd19941610c051ac4af20598e596c32c0a0"
+      },
+      "RecipeJunctionGallery.java": {
+        "size": 48163,
+        "sha256": "976f969bdf3684b6dc482fb7fbda10e2e107fb61b61745c6856a78881b0f4c0f"
+      },
+      "RecipeJunctionMorph.java": {
+        "size": 623,
+        "sha256": "bf33d2fa1d4439e6f4f5ca12a6b33e9929a51007c299df875f98f5949cc8fbd7"
+      },
+      "RecipeJunctionMorphCheck.java": {
+        "size": 60262,
+        "sha256": "413adf70c8251e97c05f0a92d517063d4a177f990b7ec703c07f22e04f821c38"
+      },
+      "RecipeJunctionSceneSearch.java": {
+        "size": 50367,
+        "sha256": "dede3509458b14bdc7da874b2a52b119c86edf7f38c5078428fbb43c2eb687e7"
+      },
+      "RecipeMorphCatalog.java": {
+        "size": 44065,
+        "sha256": "3add80646cf7a6f1119fff93a3a21a3fc18db2a4751794386918c5fff2740168"
+      },
+      "RecipeMorphCatalogCheck.java": {
+        "size": 72453,
+        "sha256": "4cf85b040903eb495b69e25906d13fb2cce435c8ba639270a1e82e02f589a4d7"
+      },
+      "RefNoise.java": {
+        "size": 35913,
+        "sha256": "d3119580254ac96103a9bb580d622c62784334403c44feff36c18ca4de2b0cd2"
+      },
+      "RegionalMorphGallery.java": {
+        "size": 8422,
+        "sha256": "40025a5089bc8ba60c9ecb5a2b3079800af9cb92db2baaac4820b8d32e2b2b37"
+      },
+      "RegionalMorphWorld.java": {
+        "size": 7525,
+        "sha256": "4d8e3bfc93cef1f4367c7bbaa7dc6912642f953d23af21a117fd9c1544540083"
+      },
+      "RegionalMorphWorldCheck.java": {
+        "size": 146006,
+        "sha256": "c106f870e9c030a7e5001f2af37cad4524dd423735d2b420c67222259f86c43c"
+      },
+      "RegionCellTable.java": {
+        "size": 10855,
+        "sha256": "f34f16e159b87164902976380d9118d94cda08542105a1960a3915393d8b6eed"
+      },
+      "RegionCompositionCandidate.java": {
+        "size": 9534,
+        "sha256": "1ab01df3486f2b0ed2b053ba22feba40c2131a5dc9feee9baf097165c5c879f8"
+      },
+      "RegionHeightProbe.java": {
+        "size": 5540,
+        "sha256": "f6cc88751d5c6df519198f889cb4fc5b57009b86438334b92b72bbbd1cacc444"
+      },
+      "RegionPartition.java": {
+        "size": 7957,
+        "sha256": "5b56ad7887ac8b30d22f8d6c0caad960e95bccde1522ea6342f724a0c3842092"
+      },
+      "RegionScaleCheck.java": {
+        "size": 10150,
+        "sha256": "bc04646a3fea9ec5cf523fd57c356429dc8dfa1e99bd7ac42b234e8705b686af"
+      },
+      "RegionScaleGallery.java": {
+        "size": 6979,
+        "sha256": "384099f1967f96dc89c2ba5a25cc9c557d2ecc0f83138691d9673b7e8299f4a2"
+      },
+      "SandboxInventoryProbe.java": {
+        "size": 93909,
+        "sha256": "6f8469597bd56cf29bf5125f7850f3a9ff54a19feeca0d1cec548b75478ffba2"
+      },
+      "SeabedLayerProbe.java": {
+        "size": 5293,
+        "sha256": "b703e840f31647c6354e53212e12f2bfed1cc5fe76074f81148dc77570bf63b1"
+      },
+      "SeaMorphAudit.java": {
+        "size": 9251,
+        "sha256": "52045cfa1b85da98f573c7e406834e8c00eedca4e26eb4770dc3f7a9d0e8a79f"
+      },
+      "SeaUnlockCheck.java": {
+        "size": 6972,
+        "sha256": "c4fcff70eaaf5d3affb5caa82874a7efb6bf3f736719abdd99852cecacdd0ca4"
+      },
+      "SelectedFamilyProbe.java": {
+        "size": 6497,
+        "sha256": "360c9e4200556ec4d7424c3f45c2fb4f4b0aeef794a8957959a15561ff13e929"
+      },
+      "ShallowCloseupProbe.java": {
+        "size": 5998,
+        "sha256": "24cc8e0607767049546e4fe8d05cafea1f28fd7dfe1cca688a0fb1d47349625b"
+      },
+      "ShallowDetailCheck.java": {
+        "size": 24263,
+        "sha256": "41f788ab366b2f37a85d6aa366479a9c3c043a1ed923a576740acd6b1c0f7243"
+      },
+      "ShallowRegionMatcher.java": {
+        "size": 7821,
+        "sha256": "2c5ca4ea36f2911695b1966fe8a6bb1141b7b75e585c1f657f1e08246f431852"
+      },
+      "ShallowSeaIslandCandidate.java": {
+        "size": 22165,
+        "sha256": "d11ffef59cde0dacd0032e8dc565851d115aab460fb169479dfdaa2027779e35"
+      },
+      "ShallowShelfProbe.java": {
+        "size": 5037,
+        "sha256": "dd8d05ed29c4ef93bd636f9ee247ac9eb898032393595487ede04a3201517428"
+      },
+      "ShoreAnchorProbe.java": {
+        "size": 5699,
+        "sha256": "2f3a0053c2dfa935aa2a3cce73a2dd2765090bf676f465e3a8641a704f7c48f4"
+      },
+      "SoftSteps.java": {
+        "size": 3972,
+        "sha256": "aff2401a3cf9b3440c0d599d8829831742bb3cfe4787ccf4ca199f523df54541"
+      },
+      "TerrainBlenderCandidate.java": {
+        "size": 11631,
+        "sha256": "f1527be73b5f48c01a4f6ae42ea19a07d2346c2e59ca155359faa403c22ed0b3"
+      },
+      "TypeCandidateGallery.java": {
+        "size": 8229,
+        "sha256": "6c55cd31cd4fd46159b55ed07cc0df89c4f73a20bf1be76a03db7f1cc9fc384c"
+      },
+      "UnifiedTerrainCatalog.java": {
+        "size": 15482,
+        "sha256": "9771d4d42482e8691682fe9fd526730d5e7c3a82cea9737b9f2cb066d8a3449c"
+      },
+      "UnifiedTerrainCheck.java": {
+        "size": 16422,
+        "sha256": "6cee79dc7b5aae18d7522dde98760e3ab82721ee8c9a969271b1a90d3272ada9"
+      },
+      "UnifiedTerrainFullCheck.java": {
+        "size": 19883,
+        "sha256": "3398cbba1c53d0d84705e027fd4c8d7f14345e96c670d5ab47d85aa55797f5f7"
+      },
+      "UnifiedWorld.java": {
+        "size": 29450,
+        "sha256": "81b2a6df5677f37a15169ff966e08b700110666875f6b6ee04f81a082ced4b3f"
+      },
+      "WarpMagnitudeProbe.java": {
+        "size": 1777,
+        "sha256": "156ad63e359e129948413040934b841deb63e2c407af30dda57238c17366a715"
+      },
+      "WorldProbe.java": {
+        "size": 2651,
+        "sha256": "df0b4a0312ad30c8bdb7cbe340707fcda36b71913493347f15c4dbeee2a4b9ff"
+      }
+    },
+    "historical_manifests": {
+      "build/coherent-morph-s3/source-before.json": {
+        "count": 110,
+        "missing_from_N0": [],
+        "different_from_N0": [],
+        "N0_extras": [
+          "CoherentCoordinateCheck.java",
+          "CoherentMorphCheck.java",
+          "CoherentMorphGallery.java",
+          "CoherentMorphWorld.java",
+          "CoherentStreamingCheck.java",
+          "RecipeBoundaryWeights.java"
+        ]
+      },
+      "build/coherent-stream-s4/source-before.json": {
+        "count": 114,
+        "missing_from_N0": [],
+        "different_from_N0": [],
+        "N0_extras": [
+          "CoherentCoordinateCheck.java",
+          "CoherentStreamingCheck.java"
+        ]
+      }
+    }
+  },
+  "frozen_s3": {
+    "comparison_to_original_data": {
+      "left_count": 14,
+      "right_count": 14,
+      "only_left": [],
+      "only_right": [],
+      "different": []
+    },
+    "inventory": {
+      "arm-after/active.u8": {
+        "size": 1962801,
+        "sha256": "95386888aca5b55d79da883ec8affa8fe283af086640a3dc1a711c0de92ac809"
+      },
+      "arm-after/height.f64be": {
+        "size": 15702408,
+        "sha256": "af207c94935c86b55ddd00e7155a4b375bfa2f1254a227c10811960cefafdc29"
+      },
+      "arm-after/meta.json": {
+        "size": 243,
+        "sha256": "2ac1bd69d259623002fff9871885f8b64c2f61a3c18152d80447af7d28b717e0"
+      },
+      "arm-after/sea-weight.f64be": {
+        "size": 15702408,
+        "sha256": "b536341752aceb141ac2611817e879f6692270716e72f4dd1ec8e04b3cfbefd5"
+      },
+      "arm-after/type.u8": {
+        "size": 1962801,
+        "sha256": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c"
+      },
+      "arm-before/active.u8": {
+        "size": 1962801,
+        "sha256": "95386888aca5b55d79da883ec8affa8fe283af086640a3dc1a711c0de92ac809"
+      },
+      "arm-before/height.f64be": {
+        "size": 15702408,
+        "sha256": "dd74f4a0ab03a0190a5153f164047c02cc0eb47be023d103a2ae31a0580c2dd1"
+      },
+      "arm-before/meta.json": {
+        "size": 243,
+        "sha256": "2ac1bd69d259623002fff9871885f8b64c2f61a3c18152d80447af7d28b717e0"
+      },
+      "arm-before/sea-weight.f64be": {
+        "size": 15702408,
+        "sha256": "d1c20bfdd21cf8d71b92aec50124621e0f0568239a654177faf018b86fe14d66"
+      },
+      "arm-before/type.u8": {
+        "size": 1962801,
+        "sha256": "fa3a9e212928f01653b3cdce36c1eec83c5a8522f8d7ed07e6fd00944b5e96db"
+      },
+      "final-stats.txt": {
+        "size": 290,
+        "sha256": "0257cf2b37b11a56def3eb80f4b2e3e5e40b58e5d39d171cc9927570abb037d5"
+      },
+      "profiles.csv": {
+        "size": 3320529,
+        "sha256": "8c9b4149dabf831629725fc4d82737a92e01fab203e30fd0ca3c1f0575bf5697"
+      },
+      "sampling-stats.txt": {
+        "size": 314,
+        "sha256": "490c930f227ed031270464509b1e7229248219ea7ea95bf69225b9351475103e"
+      },
+      "winner.u8": {
+        "size": 1962801,
+        "sha256": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c"
+      }
+    },
+    "metrics_input_matches": {
+      "arm-before/meta.json": true,
+      "arm-after/meta.json": true,
+      "arm-before/height.f64be": true,
+      "arm-before/sea-weight.f64be": true,
+      "arm-before/type.u8": true,
+      "arm-before/active.u8": true,
+      "arm-after/height.f64be": true,
+      "arm-after/sea-weight.f64be": true,
+      "arm-after/type.u8": true,
+      "arm-after/active.u8": true,
+      "winner.u8": true,
+      "profiles.csv": true
+    },
+    "S4_raw_manifest_comparison": {
+      "left_count": 14,
+      "right_count": 14,
+      "only_left": [],
+      "only_right": [],
+      "different": []
+    },
+    "meta": {
+      "seed": "9139912035078620160",
+      "size": 1401,
+      "step": 5,
+      "origin": [
+        -3642.5,
+        -3365.5
+      ],
+      "center": [
+        -140,
+        137
+      ],
+      "scale": 600,
+      "macroScale": 1200,
+      "seaLevel": 63,
+      "bandTotal": 240,
+      "coastProcessing": false,
+      "jvmProperties": [
+        "file.encoding=UTF-8"
+      ],
+      "layout": "frozen S2"
+    }
+  },
+  "S3_PNG": {
+    "directory": "D:\\Office software\\Development Project\\GeoGenesis-mod\\handoff\\attachments\\coherent-morph-s3-20261101",
+    "files": [
+      {
+        "file": "native-after.png",
+        "size": 2283717,
+        "dimensions": [
+          1401,
+          1401
+        ],
+        "sha256": "d7c10fa86ede7757e21127cfa59612b6cb7c040934ca52ac5b36a1fef82676ca",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "native-before.png",
+        "size": 2282384,
+        "dimensions": [
+          1401,
+          1401
+        ],
+        "sha256": "b164430e773bd04c9de71c3ae7cbe853c326008c6c050d98f4095e9eb4def3e2",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "pair-active.png",
+        "size": 194915,
+        "dimensions": [
+          2922,
+          1737
+        ],
+        "sha256": "5eda6158cdbdcaec22e758997acde972f1d29d04f4ea3a6497923bd88c797e75",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "pair-full.png",
+        "size": 2833868,
+        "dimensions": [
+          2922,
+          1707
+        ],
+        "sha256": "43ee7caf4099913b1760fad683091db7322e74b781cc46abc960d2d0c19dde0b",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "pair-local-active.png",
+        "size": 144121,
+        "dimensions": [
+          1360,
+          1026
+        ],
+        "sha256": "4e3cc958604f136be9c3d8d8b9d3d90c17cfd10c7a2e275a2656b9990e5663b7",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "pair-local-height.png",
+        "size": 461117,
+        "dimensions": [
+          1360,
+          996
+        ],
+        "sha256": "1e4f258257cd45974d04b904c66bbbf5a4a0325bd3c3b734e224aa4dede36752",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "pair-local-types.png",
+        "size": 171351,
+        "dimensions": [
+          1360,
+          1282
+        ],
+        "sha256": "a5a72b712d7a91b6cad700e7af03d3978b61785c9bce3b1f0c72676f74078712",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "pair-types.png",
+        "size": 220425,
+        "dimensions": [
+          2922,
+          1993
+        ],
+        "sha256": "b795d7b915adff7b332f777c0f1f7d94fdb1d8ba166d4e45bbce34667cfdb6db",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "profiles-full.png",
+        "size": 171566,
+        "dimensions": [
+          1480,
+          1446
+        ],
+        "sha256": "6fca06cc7b4076bcc7e56fc836c79c498d39c35a94a78e14c6eb034edde53673",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      },
+      {
+        "file": "profiles-local.png",
+        "size": 137799,
+        "dimensions": [
+          1480,
+          894
+        ],
+        "sha256": "56ed39f950f7decef779aa75516ff51945d89478320e52d53e3702282ab259f5",
+        "sha256sums_match": true,
+        "metrics_output_match": true
+      }
+    ],
+    "sha256sums_all_entries": {
+      "metrics.json": true,
+      "native-after.png": true,
+      "native-before.png": true,
+      "pair-active.png": true,
+      "pair-full.png": true,
+      "pair-local-active.png": true,
+      "pair-local-height.png": true,
+      "pair-local-types.png": true,
+      "pair-types.png": true,
+      "profiles-full.png": true,
+      "profiles-local.png": true
+    },
+    "sha256sums_sha256": "a8e6f5dda93519f386c522137d306df6a06b50c1274e93fecca863d28af98a64",
+    "metrics_sha256": "90338ddb57b4b7040aafe7fb8d91614ec780dd69b3d84c27d658d7eb3de44e41"
+  },
+  "S4": {
+    "artifact_manifest_checks": {
+      "failures-selected.csv": true,
+      "s3-failure-stack.txt": true,
+      "s3-raw-before.json": true,
+      "source-before.json": true,
+      "verification.json": true,
+      "coordinate-matrix\\check.txt": true,
+      "coordinate-matrix\\evidence.csv": true,
+      "s3-main-confirm\\check.txt": true,
+      "s3-main-confirm\\evidence.csv": true,
+      "s3-main-confirm\\exit-code.txt": true,
+      "stream-final\\exit-code.txt": true,
+      "stream-final\\failures.txt": true,
+      "stream-final\\samples.csv": true,
+      "stream-final\\stream.txt": true,
+      "window-mixed\\exit-code.txt": true,
+      "window-mixed\\failures.txt": true,
+      "window-mixed\\samples.csv": true,
+      "window-mixed\\stream.txt": true
+    },
+    "summary": {
+      "oldSourcesUnchanged": 114,
+      "S3ArtifactsUnchanged": 14,
+      "newProbeSHA": {
+        "CoherentStreamingCheck.java": "2c1a01bb8eee62b0b503e5ac3928291998e649f1b669db972714a8189c6abf6a",
+        "CoherentCoordinateCheck.java": "76d5c2e8068f9c39787cf1ba30f55dc141e82ddba25f39512b8b6e2322c47538"
+      },
+      "productionGitDiff": [],
+      "status": "S4_FAIL",
+      "streamFinalExit": 0,
+      "coordinateMatrixExit": 1,
+      "completeS3MainReproductionExit": 1,
+      "windowMixedExit": 0,
+      "notes": [
+        "initial stream shifted-window fixture used bare partition with no slot table: probe error, corrected only probe; initial failure retained under build, not worldgen defect",
+        "stream-final used corrected window fixture; window-mixed adds 8 nonempty mixed boundary points",
+        "full S3 heights only canonical seed; multi-seed shallow/geometry tests not equivalent to full height coverage",
+        "concurrent shared-instance sampling not verified"
+      ]
+    },
+    "csv_counts": {
+      "coordinate-matrix": {
+        "rows": 6821,
+        "statuses": {
+          "INFO": 5392,
+          "PASS": 1212,
+          "FAIL": 214,
+          "BLOCKED": 3
+        }
+      },
+      "s3-main-confirm": {
+        "rows": 3,
+        "statuses": {
+          "INFO": 1,
+          "BLOCKED": 1,
+          "FAIL": 1
+        }
+      }
+    },
+    "frozen_failure_inventory": {
+      "check.txt": {
+        "size": 962,
+        "sha256": "a5487d2f5a92b32536ecab7655eea546f1ef18670c42059fb593ed598c6acb31"
+      },
+      "evidence.csv": {
+        "size": 2331,
+        "sha256": "7f6d38be426ba403906b30984555b50bc3e6aec11d044874f27894b5227c99b4"
+      },
+      "exit-code.txt": {
+        "size": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      }
+    },
+    "comparison_frozen_to_original_s3_main_confirm": {
+      "left_count": 3,
+      "right_count": 3,
+      "only_left": [],
+      "only_right": [],
+      "different": []
+    },
+    "comparison_frozen_to_attachment_s3_main_confirm": {
+      "left_count": 3,
+      "right_count": 3,
+      "only_left": [],
+      "only_right": [],
+      "different": []
+    },
+    "failure_stack": "seed=9139912035078620160\nx=1000000.0 z=1000000.0\ninput=new CoherentMorphWorld().sample(1000000,1000000);original seed guard retained\njava.lang.IllegalStateException: warp inverse residual 7.1913e+00 blocks > tol 2.0000e-02 at u=(1666.044433594,1664.999977410); world polyline would be untrustworthy\n\tat com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.toWorld(LocalBoundaryGeometry.java:872)\n\tat com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.densify(LocalBoundaryGeometry.java:835)\n\tat com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.buildWorldEdges(LocalBoundaryGeometry.java:803)\n\tat com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.build(LocalBoundaryGeometry.java:536)\n\tat com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.<init>(LocalBoundaryGeometry.java:151)\n\tat com.geogenesis.worldgen.terrain.candidate.LocalBoundaryGeometry.of(LocalBoundaryGeometry.java:192)\n\tat com.geogenesis.worldgen.terrain.candidate.FullMorphLand.tileFor(FullMorphLand.java:410)\n\tat com.geogenesis.worldgen.terrain.candidate.FullMorphLand.tileAt(FullMorphLand.java:238)\n\tat com.geogenesis.worldgen.terrain.candidate.CoherentMorphWorld.tileAt(CoherentMorphWorld.java:35)\n\tat com.geogenesis.worldgen.terrain.candidate.CoherentMorphWorld.sample(CoherentMorphWorld.java:46)\n\tat com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.completeS3(CoherentCoordinateCheck.java:421)\n\tat com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.run(CoherentCoordinateCheck.java:57)\n\tat com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck.main(CoherentCoordinateCheck.java:35)\n",
+    "reproduce_script": "# Run from the forge-1.20.1-47.4.10-mdk directory. Writes only under coordinate/.\n# No terrain/system properties; -Dfile.encoding=UTF-8 is the only -D argument.\nparam([string]$RunName = ('repeat-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))\n$ErrorActionPreference = 'Stop'\n$out = 'build/coherent-stream-s4/coordinate'\n$base = 'build/terrain-upgrade/baseline'\n$jars = (Get-Content \"$base/classpath-jars.txt\" -Raw).Trim()\n$cp = \"build/classes/java/diagnostics;build/classes/java/main;$base/classes;$base/src-main/resources;$jars\"\n$src = 'src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate'\n$files = @('CoherentCoordinateCheck','CoherentRegionDistribution','ShallowRegionMatcher',\n    'LocalBoundaryGeometry','RecipeBoundaryWeights','FullMorphLand','RegionalMorphWorld','RegionPartition') |\n    ForEach-Object { \"$src/$_.java\" }\n$classes = \"$out/$RunName-classes\"\nif (Test-Path $classes) { throw \"Refusing existing classes: $classes\" }\nif (Test-Path \"$out/$RunName\") { throw \"Refusing existing evidence: $RunName\" }\nNew-Item -ItemType Directory $classes | Out-Null\n& javac --release 17 -encoding UTF-8 -proc:none -sourcepath $classes -cp $cp -d $classes $files\nif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n& java -Xmx3g '-Dfile.encoding=UTF-8' -cp \"$classes;$cp\" `\n    com.geogenesis.worldgen.terrain.candidate.CoherentCoordinateCheck \"$out/$RunName\"\nexit $LASTEXITCODE\n",
+    "environment_scope": {
+      "readOnlyDependencies": {
+        "CoherentRegionDistribution": {
+          "sameAsS4FrozenSource": true,
+          "sha256": "ba172e9fcd1b4ec5080a63097412fdd238ad461234cbc57ab2e8b1112d1184d2"
+        },
+        "ShallowRegionMatcher": {
+          "sameAsS4FrozenSource": true,
+          "sha256": "2c5ca4ea36f2911695b1966fe8a6bb1141b7b75e585c1f657f1e08246f431852"
+        },
+        "LocalBoundaryGeometry": {
+          "sameAsS4FrozenSource": true,
+          "sha256": "ce24f874b27204694bff0dedd05649825976f99672d10324b9737ca802274161"
+        },
+        "RecipeBoundaryWeights": {
+          "sameAsS4FrozenSource": true,
+          "sha256": "f53a063ff0dc397c6dd11d63c012afd19941610c051ac4af20598e596c32c0a0"
+        },
+        "FullMorphLand": {
+          "sameAsS4FrozenSource": true,
+          "sha256": "b0dad97c1617fdbe4162dec6ded7cbdf6559572395372d62215bf1075d6b8b5c"
+        },
+        "RegionalMorphWorld": {
+          "sameAsS4FrozenSource": true,
+          "sha256": "4d8e3bfc93cef1f4367c7bbaa7dc6912642f953d23af21a117fd9c1544540083"
+        },
+        "RegionPartition": {
+          "sameAsS4FrozenSource": true,
+          "sha256": "5b56ad7887ac8b30d22f8d6c0caad960e95bccde1522ea6342f724a0c3842092"
+        }
+      },
+      "javaVersion": "openjdk version \"21.0.11\" 2026-04-21 LTS\nOpenJDK Runtime Environment Temurin-21.0.11+10 (build 21.0.11+10-LTS)\nOpenJDK 64-Bit Server VM Temurin-21.0.11+10 (build 21.0.11+10-LTS, mixed mode, sharing)\n",
+      "actualNearMatchers": [
+        {
+          "stage": "matcher-near",
+          "seed": "9139912035078620160",
+          "x": "-1402.4142265319824",
+          "z": "-1613.0773544311523",
+          "status": "PASS",
+          "input": "cell=(-3,-3);site=-2.3373570442199707,-2.688462257385254",
+          "output": "Match[before=18, after=22, distance=0.0, margin=0.081953125, boundarySegments=1677];builds=16;cache=16",
+          "exception_class": "",
+          "exception_exact": ""
+        },
+        {
+          "stage": "matcher-near",
+          "seed": "0",
+          "x": "-836.9205951690674",
+          "z": "-1700.8498191833496",
+          "status": "PASS",
+          "input": "cell=(-2,-3);site=-1.3948676586151123,-2.834749698638916",
+          "output": "Match[before=20, after=22, distance=0.0, margin=0.081953125, boundarySegments=1643];builds=16;cache=16",
+          "exception_class": "",
+          "exception_exact": ""
+        },
+        {
+          "stage": "matcher-near",
+          "seed": "-419",
+          "x": "1305.2174091339111",
+          "z": "-1147.2945928573608",
+          "status": "PASS",
+          "input": "cell=(2,-2);site=2.1753623485565186,-1.912157654762268",
+          "output": "Match[before=20, after=22, distance=0.0, margin=0.081953125, boundarySegments=2124];builds=16;cache=16",
+          "exception_class": "",
+          "exception_exact": ""
+        },
+        {
+          "stage": "matcher-near",
+          "seed": "12345",
+          "x": "1226.9054889678955",
+          "z": "163.12353014945984",
+          "status": "PASS",
+          "input": "cell=(2,0);site=2.044842481613159,0.27187255024909973",
+          "output": "Match[before=20, after=22, distance=0.0, margin=0.081953125, boundarySegments=1520];builds=16;cache=16",
+          "exception_class": "",
+          "exception_exact": ""
+        }
+      ],
+      "onlyNewJava": "src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/CoherentCoordinateCheck.java",
+      "compileNote": "Initial PowerShell empty -sourcepath argument was dropped and javac exited 1. Retried with coordinate/classes as sourcepath; javac exit 0. Run exit 1 is actual validation FAIL."
+    },
+    "historical_coordinate_verification_source_hash_note": "coordinate/verification.json records CoherentCoordinateCheck b36514... intermediate source; N0 frozen source is 76d5c2... final, adding completeS3; matrix has 214 FAIL/3 BLOCKED, final supplement separately has 1 FAIL/1 coverage BLOCKED. Do not treat these as one identical compiled probe."
+  },
+  "build": {
+    "build_gradle_sha256": "dcf2f75c0655515b8424c43d2d5d20dcedc9105d9c60dc8e3ab86b295d24e441",
+    "strict_decode_results": {
+      "utf-8-sig": "'utf-8' codec can't decode bytes in position 4466-4467: invalid continuation byte",
+      "gbk": "'gbk' codec can't decode byte 0xa5 in position 4452: illegal multibyte sequence",
+      "gb18030": "'gb18030' codec can't decode byte 0x80 in position 5796: illegal multibyte sequence"
+    },
+    "read_strategy": "UTF-8 errors=replace for mixed/malformed comments, ASCII declarations preserved; no file rewrite",
+    "excerpts": {
+      "15-18": [
+        "15: // Mojang ships Java 17 to end users in 1.18+, so your mod should target Java 17.",
+        "16: java.toolchain.languageVersion = JavaLanguageVersion.of(17)",
+        "17: ",
+        "18: println \"Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}\""
+      ],
+      "113-137": [
+        "113: // Keep diagnostics in a separate source tree while retaining package names and run tasks.",
+        "114: sourceSets {",
+        "115:     diagnostics {",
+        "116:         java.srcDirs = ['src/diagnostics/java']",
+        "117:         compileClasspath += sourceSets.main.output",
+        "118:         // �?2026-09-15：补�?MC 类路径�?",
+        "119:         //",
+        "120:         //   此前只有 `sourceSets.main.output`（本项目自己�?class），**不含 MC jar**",
+        "121:         //   �?诊断集事实上无法引用任何 `net.minecraft.*`。后果：凡是�?MC 耦合�?",
+        "122:         //   生产逻辑都【无法被测试】—�?典型即地表方块判定链",
+        "123:         //   （`BiomeClassifier.surfaceOf` 依赖 `Biomes` 注册表）�?",
+        "124:         //   用户反馈\"地表方块过渡不自�?时项目里竟无任何相关探针，根因在此�?",
+        "125:         //",
+        "126:         //   �?实测结论�?026-09-15）：仅加类路径【不足以】让这类逻辑可测 —�?",
+        "127:         //     `Bootstrap.bootStrap()` 会连�?`NetworkHooks.init()` 引导 Forge 网络�?",
+        "128:         //     在无 Forge 运行时的诊断进程里抛 `NoSuchMethodException: NetworkEvent.<init>`�?",
+        "129:         //     �?`BuiltInRegistries.bootStrap()` 自身又要求已 bootstrap（循环依赖）�?",
+        "130:         //     故【需�?MC 注册表的探针仍不可行】（除非自建最�?registry 桩，",
+        "131:         //     但那会引�?�?�?�?的漂移风险，与项目铁律相悖）�?",
+        "132:         //     类路径保留：它让【不需要注册表】的 MC 耦合逻辑（纯数学/�?Cell 消费�?",
+        "133:         //     至少能编译与测试�?",
+        "134:         compileClasspath += sourceSets.main.compileClasspath",
+        "135:         runtimeClasspath += output + sourceSets.main.runtimeClasspath",
+        "136:     }",
+        "137: }"
+      ],
+      "151-191": [
+        "151: static String probeRelPath(String mainClass) {",
+        "152:     return mainClass == null ? null : mainClass.replace('.', '/') + '.java'",
+        "153: }",
+        "154: ",
+        "155: tasks.withType(JavaExec).configureEach {",
+        "156:     // �?类路径在【执行期】判定：此时 mainClass 一定已设置",
+        "157:     //   （配置期判定不可�?—�?configureEach 在任务定义之前注册，那时 mainClass 还是 null�?",
+        "158:     //     这正是第一版修复仍�?ClassNotFound 的原因）�?",
+        "159:     doFirst {",
+        "160:         boolean need = (name.startsWith('run') && name.endsWith('Probe'))",
+        "161:         String rel = probeRelPath(mainClass.orNull?.toString())",
+        "162:         if (rel != null) {",
+        "163:             boolean inDiag = project.file(\"src/diagnostics/java/${rel}\").exists()",
+        "164:             boolean inMain = project.file(\"src/main/java/${rel}\").exists()",
+        "165:             if (inDiag && !inMain) {",
+        "166:                 need = true",
+        "167:             }",
+        "168:         }",
+        "169:         if (need) {",
+        "170:             classpath = sourceSets.diagnostics.runtimeClasspath",
+        "171:         }",
+        "172:     }",
+        "173: }",
+        "174: ",
+        "175: // �?依赖（编译诊断集）必须在【配置期】加，但要在所有任务定义完之后 �?�?afterEvaluate�?",
+        "176: afterEvaluate {",
+        "177:     tasks.withType(JavaExec).each { t ->",
+        "178:         boolean need = (t.name.startsWith('run') && t.name.endsWith('Probe'))",
+        "179:         String rel = probeRelPath(t.mainClass.orNull?.toString())",
+        "180:         if (rel != null) {",
+        "181:             boolean inDiag = project.file(\"src/diagnostics/java/${rel}\").exists()",
+        "182:             boolean inMain = project.file(\"src/main/java/${rel}\").exists()",
+        "183:             if (inDiag && !inMain) {",
+        "184:                 need = true",
+        "185:             }",
+        "186:         }",
+        "187:         if (need) {",
+        "188:             t.dependsOn sourceSets.diagnostics.classesTaskName",
+        "189:         }",
+        "190:     }",
+        "191: }"
+      ],
+      "287-292": [
+        "287: tasks.withType(JavaCompile).configureEach {",
+        "288:     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation",
+        "289:     // 鎶戝�?forRemoval 寮冪�?API 鐨勬姤閿欙紙�?ResourceLocation 鏋勯€犮€丮odLoadingContext.get() 绛夛級锛?",
+        "290:     // 閬垮厤閲嶆瀯杩囨浮鏈熸暣妯″潡缂栬瘧澶辫触锛涘彂甯冨墠鍐嶇粺涓€杩佺Щ杩欎簺 API�?",
+        "291:     options.compilerArgs << '-Xlint:-removal'",
+        "292: }"
+      ],
+      "1652-1685": [
+        "1652: task runWorldgenGate {",
+        "1653:     group = 'verification'",
+        "1654:     description = '世界生成门禁：只跑当前实�?ALL PASS 的判据型探针（任一 FAIL 即构建失败）'",
+        "1655:     dependsOn 'runHydrologyDeterminismProbe'",
+        "1656:     dependsOn 'runTectonicWaveProbe'",
+        "1657:     dependsOn 'runTerrainGrainProbe'",
+        "1658:     dependsOn 'runStratumProbe'",
+        "1659:     dependsOn 'runCaveShapeProbe'",
+        "1660:     dependsOn 'runTectonicContinuityProbe'",
+        "1661:     dependsOn 'runOreVeinProbe'",
+        "1662:     dependsOn 'runOreOverrideProbe'",
+        "1663:     dependsOn 'runOreFilterBehaviorProbe'",
+        "1664:     // 支流分叉�?026-09-20 启用）：判据 = 循环真的执行 + 启用状态下必须有产出�?",
+        "1665:     // 不加�?�?分叉日后被改坏（闸门/参数）会【静默】退化成\"没有支流\"，而门禁全绿�?",
+        "1666:     dependsOn 'runForkFeasibilityProbe'",
+        "1667:     // 全周期链�?026-10）：四条判据均带 System.exit �?真门禁�?",
+        "1668:     //   �?判据 ④「水量收支」是【放大环守门】：湖↔河耦合曾每�?×5 几何发散",
+        "1669:     //     （ΣIn�?09 万、residual �?0.800），而当�?①②�?�?PASS、无任何判据能抓�?",
+        "1670:     //   反向验证：旧口径 14 �?�?Σ来水 8058× �?如实 FAIL / exit=1�?",
+        "1671:     dependsOn 'runLifecycleChainProbe'",
+        "1672:     // 中心线距离场掩码�?026-10）：8 判据�?System.exit �?真门禁�?",
+        "1673:     //   �?为什么要纳入：本�?RiverCenterlines 自身一字未改，但其【输入�?flux/channel)",
+        "1674:     //     会被上游改动影响 �?历史 javadoc 数字(8.81%/1.08)�?filler 父指�?+ 出口修复�?",
+        "1675:     //     已不可复现（实测 21.95%/1.51）。若无门禁，\"输入变了 �?形态退�?将无人发现�?",
+        "1676:     dependsOn 'runCenterlineCrossSectionProbe'",
+        "1677: }",
+        "1678: ",
+        "1679: // 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什�?+ 多模组零误删 + 开关真生效:",
+        "1680: //   gradlew runOreFilterBehaviorProbe",
+        "1681: task runOreFilterBehaviorProbe(type: JavaExec) {",
+        "1682:     classpath = sourceSets.main.runtimeClasspath",
+        "1683:     mainClass = 'com.geogenesis.worldgen.ore.OreFilterBehaviorProbe'",
+        "1684:     if (project.hasProperty('probeArgs')) {",
+        "1685:         setArgs(probeArgs.split(' ') as List)"
+      ]
+    },
+    "coherent_named_entries_in_build_gradle": [],
+    "classpath_files": [
+      {
+        "file": "build/terrain-upgrade/baseline/classpath-jars.txt",
+        "sha256": "3ece824863785e249e537dbecae7c7aa5db66898ba13bbe0a61739477d2fb1ff",
+        "characters": 16074,
+        "entry_count": 115,
+        "missing": [],
+        "nonjar_entries": []
+      },
+      {
+        "file": "build/coherent-stream-s4/coordinate/classpath.txt",
+        "sha256": "71ed1d7f97c0cf823a88204bd6694bcd5e8b7ae989c3c5ea5bd45a57b750dfd9",
+        "characters": 16218,
+        "entry_count": 119,
+        "missing": [],
+        "nonjar_entries": [
+          "build/classes/java/diagnostics",
+          "build/classes/java/main",
+          "build/terrain-upgrade/baseline/classes",
+          "build/terrain-upgrade/baseline/src-main/resources"
+        ]
+      },
+      {
+        "file": "build/coherent-stream-s4/coordinate/compile-classpath.txt",
+        "sha256": "71ed1d7f97c0cf823a88204bd6694bcd5e8b7ae989c3c5ea5bd45a57b750dfd9",
+        "characters": 16218,
+        "entry_count": 119,
+        "missing": [],
+        "nonjar_entries": [
+          "build/classes/java/diagnostics",
+          "build/classes/java/main",
+          "build/terrain-upgrade/baseline/classes",
+          "build/terrain-upgrade/baseline/src-main/resources"
+        ]
+      }
+    ],
+    "toolchain": "Java 17 target in build.gradle:16; JDK21 required for Gradle runtime",
+    "java_version_exit": 0,
+    "java_version": "openjdk version \"21.0.11\" 2026-04-21 LTS\nOpenJDK Runtime Environment Temurin-21.0.11+10 (build 21.0.11+10-LTS)\nOpenJDK 64-Bit Server VM Temurin-21.0.11+10 (build 21.0.11+10-LTS, mixed mode, sharing)\n",
+    "environment_variables": {
+      "JAVA_HOME": null,
+      "JAVA_TOOL_OPTIONS": null,
+      "JDK_JAVA_OPTIONS": null,
+      "GRADLE_OPTS": null
+    },
+    "wrapper": "distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-8.8-bin.zip\nnetworkTimeout=10000\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n"
+  },
+  "limitations": [
+    "No Gradle invocation: it would write .gradle/build outside the allowed JSON/TXT-only evidence scope and could race main-agent compilation.",
+    "No checks re-run: existing checks write CSV/data, and CoherentCoordinateCheck restricts output to build/coherent-stream-s4/coordinate, outside this authorization.",
+    "No new PNG render or visual-quality acceptance; hashes establish integrity and linkage to S3 raw metrics, not current production equivalence.",
+    "Historical S4 macro/micro and S1 seams are not full multi-seed S2/S3 height coverage. Concurrent shared-instance sampling was not verified.",
+    "Original reproduction script reads live source, resolves unqualified java/javac from PATH and can mix cached classes. For frozen reproduction isolate classes, use explicit JDK, explicitly compile frozen dependency closure and preserve classpath order.",
+    "115 jar paths exist; jar binary provenance/content integrity and fresh Gradle dependency resolution were not verified.",
+    "N0 source snapshot covers candidate Java only, not all src/main, config inputs, resource tree, class outputs or every renderer helper.",
+    "Historical environment captures Java21 and launch JVM properties, but not a complete historical OS/process-environment dump.",
+    "Existing helper scripts are discovery evidence only: they write outside the allowed scope and some force-create output paths; do not run during this task."
+  ],
+  "live_sources_info_only": [
+    {
+      "file": "CoherentMorphGallery.java",
+      "sha256_when_read": "b6f8c200b9befd58fcc8505c90fd7ce3b50e4759c15170d32c2161c693c34328",
+      "interpretation": "concurrent N1 work, not frozen corruption"
+    },
+    {
+      "file": "CoherentMorphWorld.java",
+      "sha256_when_read": "30a6b6763e7238f8501c9f68b1fde23ffb8173257937c27a284bb23eda2f747d",
+      "interpretation": "concurrent N1 work, not frozen corruption"
+    },
+    {
+      "file": "FullMorphLand.java",
+      "sha256_when_read": "42d1991a924c255511fe78af754b0ec2e0654ce0f033f9c304ce919597a2e250",
+      "interpretation": "concurrent N1 work, not frozen corruption"
+    },
+    {
+      "file": "LocalBoundaryGeometry.java",
+      "sha256_when_read": "001035f6fbac75c82a2356628f94d3ac916afe7e3bffae010ce46cfa2e5ed890",
+      "interpretation": "concurrent N1 work, not frozen corruption"
+    },
+    {
+      "file": "RegionalMorphWorld.java",
+      "sha256_when_read": "471e53011e1ee6770b07b43ddf67c7ff3fc7574c31244927fe1674ec116229c5",
+      "interpretation": "concurrent N1 work, not frozen corruption"
+    }
+  ]
+}

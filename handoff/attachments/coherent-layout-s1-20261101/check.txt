@@ -1,0 +1,3 @@
+macro finite bound vs expanded brute force: queries=4000, maxCandidates=16, seedDifferent=3000; query domain +/-30000000
+explicit seed context vs original Gallery geometry points=800: bitwise winner/site parity
+independent reverse cross-window site identities=64; neighboring pairs sameAnchor=274/625

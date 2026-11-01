@@ -1,0 +1,7 @@
+case,centerX,centerZ,radius,kind,points,max_entry_weight_diff,max_weight_diff_vs_query,query_bitwise,tolerance
+window,0.0,0.0,728.0,default,120,1.164e-06,0.000e+00,true,1.0e-04
+window,0.0,0.0,728.0,default,120,1.164e-06,0.000e+00,true,1.0e-04
+window,300.0,-220.0,728.0,alternate,120,1.085e-08,0.000e+00,true,1.0e-04
+window,-300.0,200.0,728.0,alternate,120,1.846e-06,0.000e+00,true,1.0e-04
+window,0.0,0.0,900.0,alternate,120,2.279e-13,0.000e+00,true,1.0e-04
+window,1200.0,900.0,2000.0,alternate,120,2.599e-06,0.000e+00,true,1.0e-04
