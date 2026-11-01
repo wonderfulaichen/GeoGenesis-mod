@@ -298,13 +298,17 @@ HEAD      fb833613cae90c970547e2cd86e49cad9ff8759b（2026-11-03 历史重写后�
 | B1 失败证据（diff） | `handoff/attachments/b1-wide-sea-failed-20261103/b1-experimental-arm.diff` |
 | 验收工具 | `tools/verify-final-render.py`（定稿）、`tools/verify-light-convention.py`（光照） |
 
-⚠ **以下已在 2026-11-03 历史重写中移除**（见 §7.1），不再存在于仓库：
+⚠ **以下已于 2026-11-03 历史重写中移出 git**（见 §7.1）。注意区分两种状态：
 
-| 已移除 | 说明 |
-|---|---|
-| `backup-20261103-pre-handoff/` | 工作区完整备份（备份对象本身） |
-| `b1-wide-sea-failed-20261103/wide-sea-coastal.f64be` | 15 MB B1 失败臂原始数据（保留了 diff） |
-| `large-area-sea-land-20261103/raw-smooth/` | 60 MB 中间数据（可由 M0 数据重算） |
-| 其余 591 张大实验图 | 2026-10-30 ~ 11-02 各轮淘汰实验的 PNG |
+| 项 | git 状态 | 磁盘状态 |
+|---|---|---|
+| `backup-20261103-pre-handoff/` | 移出 | 已于 2026-11-03 清理时移出仓库，现存于 `../GeoGenesis-offrepo-20261103/` |
+| `b1-wide-sea-failed-20261103/wide-sea-coastal.f64be` | 移出（仅保留 diff） | **仍在磁盘，未跟踪**（15 MB） |
+| `large-area-sea-land-20261103/raw-smooth/` | 移出 | **仍在磁盘，未跟踪**（68 MB，可由 M0 数据重算） |
+| 其余 591 张大实验图 | 移出 | 已随历史重写从历史移除，磁盘上保留的为后续新产出 |
 
-定稿相关证据（上面表格里的 14 张图 + 全部 csv/json/txt 文本）**完整保留**。
+> 上面两行“仍在磁盘、未跟踪”的文件不是漏洞：它们可由已入库的代码与 `report.json`/`meta.json` 重算。
+> 保留在磁盘上是为了就近回溯，但它们**不属于仓库证据**——引用时须写明“仅本地存在”。
+> 判定口径：`git ls-files <path>` 返回空 ⇒ 该路径不可作为仓库内证据引用。
+
+定稿相关证据（上面表格里的 14 张图 + 全部 csv/json/txt 文本）**完整保留在 git 中**。

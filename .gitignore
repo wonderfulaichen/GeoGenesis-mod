@@ -153,3 +153,20 @@ symcheck.ps1
 # 真工程 build/ 已在上面单独忽略；这条覆盖仓库根的这个。
 /build/
 /.prism/search/flashgrep-index/
+
+# Python 字节码（tools/*.py 被 import 时生成，产物不应入库）
+__pycache__/
+*.pyc
+
+# ---- 2026-11-03 未跟踪实验目录永久忽略 ----
+# 理由：以下 6 个目录是 2026-11-01 历史重写前产生的临时实验产物
+# （最大文件 mtime 均早于重写时刻 11-01 23:35），全仓零文档引用；
+# 主体是逐列采样 CSV 与中间 .f64be，可由已入库代码重算。
+# 保留在磁盘上供回溯，但永不进入 git —— 防止 `git add -A` 误入库约 690 MB。
+# 逐个写全路径而非通配：日后若某目录转为正式证据，删掉对应行即可入库。
+/handoff/attachments/tectonic-driver-r3-r4-20261101/
+/handoff/attachments/tectonic-driver-r0-r2-20261101/
+/handoff/attachments/continent-candidate-20261102/
+/handoff/attachments/continent-multifrequency-20261102/
+/handoff/attachments/self-consistent-coast-sandbox-20261102/
+/handoff/attachments/m1a-m1b-20261101/
