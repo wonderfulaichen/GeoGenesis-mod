@@ -1,0 +1,29 @@
+{
+  "tag": {
+    "image": "handoff\\attachments\\surrounded-continent-20261103\\surrounded-continent-tag-56000.png",
+    "kind": "base side labels",
+    "window_blocks": [
+      27600.0,
+      27280.0
+    ],
+    "step": 40.0,
+    "landmass_blocks": [
+      18000.0,
+      17680.0
+    ],
+    "pixels": 48058,
+    "touches_window_edge": false
+  },
+  "height": {
+    "image": "handoff\\attachments\\surrounded-continent-20261103\\surrounded-continent-height-7000.png",
+    "kind": "height Y=63",
+    "window_blocks": [
+      7000.0,
+      7000.0
+    ],
+    "step": 5.0,
+    "water_fraction": 0.35813054914889486,
+    "minY": 5.1448796119003575,
+    "maxY": 277.8583289230347
+  }
+}

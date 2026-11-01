@@ -1,6 +1,9 @@
 # Gradle
 forge-1.20.1-47.4.10-mdk/.gradle/
-forge-1.20.1-47.4.10-mdk/build/
+# 注意：原为 `forge-1.20.1-47.4.10-mdk/build/`。裸目录规则会让 Git 不再进入
+# 其中匹配，导致子级 .gitignore 的 `!` 白名单失效（定稿数据无法入库）。
+# 改为 `build/*` 只排除子项；定稿白名单见 mdk/.gitignore 末尾。
+forge-1.20.1-47.4.10-mdk/build/*
 forge-1.20.1-47.4.10-mdk/out/
 forge-1.20.1-47.4.10-mdk/logs/
 forge-1.20.1-47.4.10-mdk/run/
