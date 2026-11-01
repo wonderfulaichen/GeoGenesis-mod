@@ -23,7 +23,12 @@ from PIL import Image
 ROOT = Path('D:/Office software/Development Project/GeoGenesis-mod')
 FINAL_SHA = '7BE0418369D097CE107EEEF58B8D02C6776782F1D7FBC6AD6C5E0E5728D7A238'
 DELIVERED = ROOT / 'handoff/attachments/commit-selection-20261103/height-morph-coastal-d47de74.png'
-NEW_DATA = ROOT / 'forge-1.20.1-47.4.10-mdk/build/main-clean-check/out/morph-coastal.f64be'
+# 优先校验刚重跑出来的产物；若未重跑，回退到已入库的定稿副本（两者 SHA 相同）。
+_DATA_CANDIDATES = [
+    ROOT / 'forge-1.20.1-47.4.10-mdk/build/main-clean-check/out/morph-coastal.f64be',
+    ROOT / 'forge-1.20.1-47.4.10-mdk/build/main-verify-restore/out/morph-coastal.f64be',
+]
+NEW_DATA = next((p for p in _DATA_CANDIDATES if p.exists()), _DATA_CANDIDATES[-1])
 
 
 def load_shader():
