@@ -1,0 +1,8 @@
+frozen C 1401^2 cells/base recipes bitwise identical; sea=493780
+202 actual geometry winners/labels/float forward bitwise identical (not float3x3 oracle)
+seed=9139912035078620160 expanded+8/cold shuffled 400 samples; max candidates=16
+seed=0 expanded+8/cold shuffled 400 samples; max candidates=16
+seed=-419 expanded+8/cold shuffled 400 samples; max candidates=16
+seed=12345 expanded+8/cold shuffled 400 samples; max candidates=16
+S2 side unchanged full-window; ocean-subtype substitutions=349705; no S2 subtype map advertised as final water; jitter witness=100
+M0 CHECK PASS assertions=5892214

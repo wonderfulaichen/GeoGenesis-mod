@@ -3,11 +3,11 @@ name: 大陆分布、可靠几何与P4海岸统一主线
 overview: 保留当前600/S3架构及冻结图，先出不改参数的大范围真实海陆分布总览，用户看图决定比例与大陆形态，再以独立候选衔接可靠几何和P4海岸；不把并案视为整链实施授权。
 todos:
   - id: wide-distribution-baseline
-    content: 先导出当前规则约56000×56000块海陆标签与连通形态总览，标出原S3窗口，不改参数或求高度
-    status: pending
+    content: 已完成56000×56000块基础海陆标签与连通形态总览，标出原S3窗口；参数与高度链不动，证据见§7
+    status: completed
   - id: confirm-distribution-target
-    content: 用户看原状图后分别确认海陆比例与大陆连通形态目标，必要时另批单变量分布候选
-    status: pending
+    content: 已定稿海陆判定偏移 +0.30（沿原大陆场收窄陆地），废弃大洲组织路线；见§8
+    status: completed
   - id: verify-geometry-foundation
     content: 复核N2证据边界，再按授权推进N3～N5数值几何候选，保留旧S3与既有容差
     status: pending
@@ -35,7 +35,7 @@ todos:
 - [far-coordinate-geometry-repair.plan.md](far-coordinate-geometry-repair.plan.md)：保留N0～N5数值几何详细契约。
 - [coherent-600-world-distribution.plan.md](coherent-600-world-distribution.plan.md)：600/S1～S3的现行分布、浅海、外边权重规则与历史证据。
 
-**本轮只形成方案，没有新出图或改代码。** 用户选定首步出图口径，不等于批准新的比例值、分布算法、N3～N5或立即开始P4。实施时先做下节M0；M0交图后停下等待比例/形态决策。
+**最初为只写方案；随后用户授权“先提交，然后按并案方案先做M0”**，现已完成本地提交及M0原状出图，见§7。未授权新的比例值、分布算法、N3～N5或P4；M0交图后停下等待比例/形态决策。
 
 ## 2. 基线与统一关系
 
@@ -130,3 +130,84 @@ P4沿用户确认后的600体系，继续原方案特殊加工契约：海陆真
 近期顺序明确：**M0原状分布总览 → 用户看图定方向 → 单变量分布候选（若需要）→ P4局部 → 合流整图**。数值几何按实际阻塞插入，不要求为首张分布图先完成全部N阶段，也不能绕过失败进入全域验收。
 
 最终完整图必须走同一真实S3/候选求值链，分别统计标签海陆、最终水面、海岸加工变化；保留海底图、同色带大图、局部、六全幅与三局部真实剖面，完成窗口/跨tile/顺序/缓存/多seed门禁。生产迁移、预览schema与实机另行授权。
+
+## 7. M0实施与交付（2026-11-01，已完成后停止）
+
+### 7.1 提交与范围
+
+先完成本地提交 `c165e92`（530路径），未push。提交保留此前全部正式沙箱成果和证据；6个临时Java探针及2个pyc未入库、未删除。**M0是在该提交之后新增，尚未另行提交。**
+
+M0仅新增诊断侧 `M0DistributionSampler/Gallery/Check.java` 与根工具 `tools/render-m0-overview.py`，另回写本方案。703份原工程文件（含生产、配置、既有diagnostics与mdk工具）SHA未变，旧S3 raw与PNG对冻结内容一致。不改600/1200、warp参数、240带、配方/默认/生产/cache schema；不做P4、N3或全幅高度。
+
+采样器严格复刻旧float前向和站点float相加，再用double NATURAL势；中心格势上界给完整候选枚举，赢家并列按真实站点vz/vx/cellX排序。复用原 `CoherentRegionDistribution.choose`，不另造宏分布、不调比例。无反warp、无world折线、无高度求值，S2前海洋内部配方不冒称最终S3类型。
+
+### 7.2 结果与图
+
+证据目录：[world-distribution-m0-20261101](../../handoff/attachments/world-distribution-m0-20261101/metrics.json)。
+
+- [原状双色总览](../../handoff/attachments/world-distribution-m0-20261101/overview.png)：样点跨度56000×56000块，1401²、step40、同seed同中心；橙框为原S3窗口。
+- [4邻接连片图](../../handoff/attachments/world-distribution-m0-20261101/components.png)：主要陆块/海盆分色，触边逐项标明。
+- [原S3局部标签](../../handoff/attachments/world-distribution-m0-20261101/local-side.png)：step5独立真实导出，不从总览放大。
+- [统计](../../handoff/attachments/world-distribution-m0-20261101/metrics.json)、[组件CSV](../../handoff/attachments/world-distribution-m0-20261101/components.csv)、[原始数据压缩包](../../handoff/attachments/world-distribution-m0-20261101/raw-data.zip)、[验证记录](../../handoff/attachments/world-distribution-m0-20261101/verification.json)。
+
+总览陆标签1485831（75.6995%）、海标签476970（24.3005%）。4/8邻接统计本图一致：陆5片（4触边），最大陆片占陆标签99.9283%；海106片（34触边、72未触边），最大海片占海标签7.1128%、全窗1.7284%。在本窗内更像一大片连通陆地中散布海域，而非多个大陆被广阔连通海洋包围；**这是标签与近似连通观察，不是最终水面或无限世界结论**。面积估计=像素×1600块²，不能与首末样点跨度平方混同；窄海峡/地桥仍有40块采样局限。
+
+### 7.3 实际验证与复现
+
+- Java21运行、target17；`gradlew.bat --offline --no-daemon --console=plain compileDiagnosticsJava` 成功。
+- `M0DistributionCheck`：5892214断言，0失败。原窗1401²细胞键及基础类型逐像素一致；202点与真实geometry.exactWinner/warpForward一致；4seed各400点扩大8格枚举及冷实例乱序一致；原窗S2替换349705像素配方但海陆侧全部不变。
+- 原窗导出SHA：type=`5680442dcec0000952d767db86898d50fa2befb0acc56ed12e903c8bbfec2937`；cells=`0358f77326e362146afa132c5525c2da302637d96e0e25486359c56c883eed08`，与S1冻结逐字节一致。
+- 渲染自检通过；主代理另用行段并查集独立核对4邻接数量、面积、最大片与触边数一致，PNG面板1401²原生色块无插值。三张PNG均回读通过，输入/产物SHA核对通过。
+- JVM只带 `-Xmx3g -Dfile.encoding=UTF-8`，没有任何geogenesis覆盖属性。首次未给PowerShell的-D参数加引号导致主类加载失败（检查main未运行），引号修正后正常；未放宽生成判据。
+
+从mdk工作目录，用 `build/coherent-stream-s4/coordinate/classpath.txt` 的完整classpath（diagnostics/main优先），执行：
+
+```powershell
+$java = 'D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot/bin/java.exe'
+$cp = (Get-Content -Raw 'build/coherent-stream-s4/coordinate/classpath.txt').Trim()
+& $java '-Xmx3g' '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.M0DistributionCheck build/m0-repeat-check build/coherent-shallow-s2/frozen-c
+& $java '-Xmx3g' '-Dfile.encoding=UTF-8' -cp $cp com.geogenesis.worldgen.terrain.candidate.M0DistributionGallery build/m0-repeat-data
+# 回到仓库根后渲染；所有输出路径必须尚不存在
+python tools/render-m0-overview.py forge-1.20.1-47.4.10-mdk/build/m0-repeat-data handoff/attachments/m0-repeat
+```
+
+原始数据含总览及local的meta/type/side/cells/c/probability和采样统计。验证记录明确区分工具退出结果转录与原始日志；本次没有游戏实机/高度剖面/全水文门禁，亦未宣称修复旧远坐标反解。
+
+## 8. 海陆判定偏移定稿 +0.30（2026-11-01）
+
+### 8.1 结论与范围
+
+用户先要求“把海陆判断的位置往大陆范围收窄”，随后指定 0.30 并定稿。实现为**只平移原大陆场的判别点**：`probability = seaProbability(c − 0.30)`。原 c 噪声、seed、1200 锚点抽签、配方、600 几何、240 带、旧 S3 基准和生产默认全部不动。
+
+诊断侧仅三处小改：`CoherentRegionDistribution` 增加显式 `(seed, landThreshold)` 构造（无参仍为 0，`choice` 内部与原算式逐行相同）、`M0DistributionSampler` 转发、`M0DistributionGallery` 接受可选第二参数并写入 meta；新增 `LandThresholdCheck`。**未改 `RegionalMorphWorld.seaProbability` 本身，未接高度链、S2 注入、P4 或生产。**
+
+已废弃并删除前面的大洲组织实验路线（`ContinentOrganization`/`ContinentDistribution`/两个 Gallery/其 Check/`tools/render-continent-d1.py`、对应 3 个 `continent-d0-d1*` 证据目录、`land-threshold-shift-20261101` 0.20 中间档及该轮方案文件）。其中为那条路线抽出的 `recipeOnSide` 已还原为内联原算式，避免留下无人调用的悬空接口。**保留 `land-threshold-shift030-20261101` 作为定稿证据。**
+
+### 8.2 同窗口实测（seed 9139912035078620160，1401²/step40/56000块）
+
+| 臂 | 陆标签 | 海标签 | 海片(4邻接) | 最大海片占海 |
+|---|---:|---:|---:|---:|
+| 原状 0 | 75.6995% | 24.3005% | 106 | 7.1128% |
+| **定稿 0.30** | **33.0670%** | **66.9330%** | **18** | **97.3407%** |
+
+0→0.30 共 836792 像素由陆转海，反向 0；阈值增大只把原判海的位置推向更深海侧，单调性成立。最大海片占海升到 97.34%，最大陆片占陆降到 8.11%、陆组分 84 片——**说明旧场在更低陆占比下露出更多孤立陆块，不是“几块大洲”**；形态仍由旧 c 场决定，未做任何海岸或高度加工。
+
+证据：[三档并排（原状/0.20/0.30）](../../handoff/attachments/land-threshold-shift030-20261101/abc.png)、[A/B](../../handoff/attachments/land-threshold-shift030-20261101/ab.png)、[0.30 单幅](../../handoff/attachments/land-threshold-shift030-20261101/b/overview.png)、[统计](../../handoff/attachments/land-threshold-shift030-20261101/metrics.json)、[原始数据](../../handoff/attachments/land-threshold-shift030-20261101/raw-data.zip)。ABC 图中的 0.20 仅作历史参照，其证据目录已删除。
+
+### 8.3 验证与复现
+
+- `compileDiagnosticsJava` 成功（清理后重新编译）。
+- `LandThresholdCheck`：52488 样本 × 4 seed，0.20/0.30 双档独立偏移公式、海概率单调、旧海不变陆、同侧配方不变、零偏移与无参构造完全等价、NaN 被拒绝；全部通过。
+- 零偏移主窗/局部 12 个 meta/type/side/cells/c/probability 文件与冻结 M0 逐字节一致；0.30 的 cells 与原 c 也与原状逐字节一致（几何与噪声未变）。
+- 清理重构后重新生成 0.30 主窗/局部 9 个文件，与已交付压缩包内字节完全一致，证明清理没有改动产出。
+- 旧 S3 冻结 raw 仍逐字节一致（after 高度 SHA `af207c94…`）；M0 冻结 side SHA `0f607e31…`。清理后全仓已无大洲路线标识符引用。
+- 未接高度链/P4，未改生产默认，未 commit/push。
+
+复现（mdk 目录，Java21，`-Xmx3g -Dfile.encoding=UTF-8`，classpath 沿既有 `coordinate/classpath.txt`）：
+
+```powershell
+& $java -cp $cp com.geogenesis.worldgen.terrain.candidate.LandThresholdCheck
+& $java -cp $cp com.geogenesis.worldgen.terrain.candidate.M0DistributionGallery build/m0-threshold030 0.30
+```
+
+**0.30 定位为定稿的标签口径，但仍是基础海陆标签而非最终水面。** 后续若要把该口径接入 S2/S3 完整高度链或生产，需要另行授权；本轮到此为止。
