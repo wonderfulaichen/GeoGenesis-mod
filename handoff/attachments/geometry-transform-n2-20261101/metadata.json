@@ -1,0 +1,17 @@
+{
+  "task": "N2 continuous geometry primitive / derivative / injectivity",
+  "authorized": "N2 only; no height chain, no new inverse, no production, no S3/parameter/240-band/default edits",
+  "runtime": "Temurin 21.0.11+10, javac --release 17, class major 61",
+  "jvm": [
+    "-Xmx3g",
+    "-Dfile.encoding=UTF-8"
+  ],
+  "terrainProperties": {},
+  "guard": "GeometryTransform rejects warp nodes with octaves != 1 and mismatched warpX/warpZ frequencies",
+  "unproven": [
+    "global injectivity of world->u (sup row-sum L = 2.2222 > 1)",
+    "cells outside the 121x121 scanned per seed",
+    "integer hash collisions between noise cells",
+    "height chain / production wiring (out of scope)"
+  ]
+}

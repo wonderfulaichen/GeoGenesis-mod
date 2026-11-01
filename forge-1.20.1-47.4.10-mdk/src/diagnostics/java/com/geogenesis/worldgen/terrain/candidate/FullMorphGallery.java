@@ -14,19 +14,31 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Locale;
 
-/** 完整沙箱独立入口；不改变旧Gallery，不接生产生成器。 */
+/**
+ * 完整沙箱独立入口；不改变旧Gallery，不接生产生成器。
+ *
+ * <h3>ABB 臂（2026-11-01 新增 {@code shelf-coastal}）</h3>
+ * <p>{@code shelf-coastal} = 认可基准的陆地层 + <b>浅海段形态项</b>（{@link
+ * OceanAssemblyCandidate#enableShallowDetail}）。它<b>不</b>含形态过渡，所以是
+ * "海陆过渡改造"的<b>单变量实验臂</b>，与 {@code baseline-coastal} 只差这一个算子 ——
+ * 出图时据此把改动归因到浅海形态，而不是归因到 {#link FullMorphLand}。</p>
+ *
+ * <p>⚠ 该臂只出 coastal（无群岛）一档：群岛臂 {@code ShallowSeaIslandCandidate} 会叠加
+ * 到目标准则最深处以外，两者同时开会把"浅海形态"与"群岛"混在一起，无法归因。</p>
+ */
 public final class FullMorphGallery {
     private static final long SEED = 9139912035078620160L;
     private static final int SIZE = 1401, STEP = 5;
     private static final double CX = -140, CZ = 137;
+    /** 臂顺序固定：前 6 个是既有认可臂（{@code render-full-morph.py} 的 schema 依赖它），第 7 个是新增。 */
     private static final String[] ARMS = {"baseline-coastal", "baseline-islands", "plateau-only-coastal",
-            "plateau-only-islands", "morph-coastal", "morph-islands"};
+            "plateau-only-islands", "morph-coastal", "morph-islands", "shelf-coastal"};
     private final RecipeMorphCatalog catalog = new RecipeMorphCatalog(SEED);
     private final CombineCandidate original = catalog.original();
     private final FullMorphLand morph = new FullMorphLand(catalog);
     private final HeightCurve curve;
     private final ContinentField continent;
-    private final OceanAssemblyCandidate baseline, plateauOnly, experiment;
+    private final OceanAssemblyCandidate baseline, plateauOnly, experiment, shelf;
     private final ShallowSeaIslandCandidate islands = new ShallowSeaIslandCandidate(SEED + 900);
 
     private FullMorphGallery(Path input, Path out) throws Exception {
@@ -44,6 +56,9 @@ public final class FullMorphGallery {
         baseline = new OceanAssemblyCandidate(original, continent, SEED + 3).enableCoastalDetail(SEED);
         plateauOnly = new OceanAssemblyCandidate(this::plateauOnlyE, continent::sample, SEED + 3).enableCoastalDetail(SEED);
         experiment = new OceanAssemblyCandidate(morph::e, continent::sample, SEED + 3).enableCoastalDetail(SEED);
+        // 单变量臂：陆地层与 baseline 完全相同（同一 original），只多开浅海形态项。
+        shelf = new OceanAssemblyCandidate(original, continent, SEED + 3)
+                .enableCoastalDetail(SEED).enableShallowDetail(SEED);
     }
 
     public static void main(String[] args) throws Exception {
@@ -53,6 +68,7 @@ public final class FullMorphGallery {
         g.interfaceCheck();
         g.render(out);
         g.baselineCheck(out);
+        shelfArmCheck(out);
         Files.writeString(out.resolve("geometry.json"), "{\"seed\":\"" + SEED + "\",\"size\":1401,\"step\":5,"
                 + "\"center\":[-140,137],\"sampleOrigin\":[-3642.5,-3365.5],\"jvmProperties\":[\"file.encoding=UTF-8\"]}\n");
         System.out.println("FULL MORPH GALLERY PASS");
@@ -124,6 +140,10 @@ public final class FullMorphGallery {
                         streams[k * 2].writeDouble(y);
                         streams[k * 2 + 1].writeDouble(iy);
                     }
+                    // 第 7 臂：shelf-coastal（无群岛；单变量只差浅海形态项）
+                    double shelfY = curve.heightFromE(shelf.e(x, z));
+                    require(Double.isFinite(shelfY), "nonfinite shelf map");
+                    streams[6].writeDouble(shelfY);
                     double[] w = morph.weights(x, z);
                     int best = 0, active = 0;
                     for (int k = 0; k < w.length; k++) {
@@ -144,6 +164,49 @@ public final class FullMorphGallery {
     private static void baselineCheck(Path out) throws Exception {
         require(sha(out.resolve("baseline-coastal.f64be")).equals("5a8bb721ba191c7949c583b90d7b76baaf5c6ac9e08c4619021afd2f60261d28"), "coastal baseline drift");
         require(sha(out.resolve("baseline-islands.f64be")).equals("94ba83f7359526df1267572aac181ad3922e1c41f7bca31d6b6c5ccb9be271a1"), "islands baseline drift");
+    }
+
+    /**
+     * shelf 臂的<b>归因守门</b>：它必须与 {@code baseline-coastal} 不同（否则浅海形态没生效、
+     * 图上看不出任何东西），且差异必须<b>只出现在水面以下</b>（否则它就不是"浅海段形态"而是
+     * 改到了岸线/陆地）。
+     *
+     * <p>这是出图前的硬门禁，不通过直接 AssertionError —— 与 {@link #baselineCheck} 同级。</p>
+     */
+    private static void shelfArmCheck(Path out) throws Exception {
+        double[] base = readF64(out.resolve("baseline-coastal.f64be"));
+        double[] shelf = readF64(out.resolve("shelf-coastal.f64be"));
+        require(base.length == shelf.length, "shelf arm length mismatch");
+        int changed = 0;
+        int changedAboveSea = 0;
+        double maxAbs = 0.0;
+        for (int i = 0; i < base.length; i++) {
+            double d = shelf[i] - base[i];
+            if (d == 0.0) continue;
+            changed++;
+            maxAbs = Math.max(maxAbs, Math.abs(d));
+            // 两条臂的水面判定必须一致（乘法调制同号 ⇒ 结构性保证）
+            require((base[i] < SEA_BLOCKS) == (shelf[i] < SEA_BLOCKS),
+                    "shelf arm flipped water/land at pixel " + i);
+            if (base[i] >= SEA_BLOCKS) changedAboveSea++;
+        }
+        require(changed > base.length / 200,
+                "shelf arm changed only " + changed + " / " + base.length + " pixels (operator inert)");
+        require(changedAboveSea == 0,
+                "shelf arm changed " + changedAboveSea + " LAND pixels (must be underwater only)");
+        System.out.printf(Locale.ROOT,
+                "SHELF ARM PASS changed=%d maxAbs=%.3f blocks aboveSea=0%n", changed, maxAbs);
+    }
+
+    /** 与 {@code render-islands-big.py} 的 {@code SEA} 同值（脚本里写死 63.0）。 */
+    private static final double SEA_BLOCKS = 63.0;
+
+    private static double[] readF64(Path file) throws Exception {
+        byte[] raw = Files.readAllBytes(file);
+        double[] out = new double[raw.length / 8];
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.wrap(raw);
+        for (int i = 0; i < out.length; i++) out[i] = buf.getDouble();
+        return out;
     }
 
     private static String sha(Path file) throws Exception {

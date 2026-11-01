@@ -1,0 +1,38 @@
+N0-N1 only; scale=600; unchanged float forward/inverse geometry; no -D overrides set.
+Main grid: [-1800,1800]^2 step=300 (169 actual S3 samples per seed, not endpoints).
+Supplement: finite rings radius=2400/3600/4800/6000 step=600; at most 192 actual queries/seed.
+Oracles: canonical catalog.original() reflection; other seeds private independentCombine(long).
+JVM input arguments=[-Xmx3g, -Dfile.encoding=UTF-8]
+Synthetic mask branches are separate from natural mask and actual S3 land/sea/mixed counts.
+Scheduling prerequisite (main agent): canonical small check PASS and two full Gallery SHA matches before multiseed.
+This check does not generate/verify those full rasters; multiseed is a separately invoked mode, never automatic.
+Finite near-window evidence is NOT an infinite-world, injectivity, far-coordinate or raster proof.
+legacy-negative-controls PASS elapsedMs=87
+natural mask seed=9139912035078620160 scale=1200.0 low/mid/high=[582, 110, 21]
+synthetic overlay seed=9139912035078620160 scale=1200.0 low/mid/high=[6, 15, 6] double-alpha counterexamples=9
+natural mask seed=9139912035078620160 scale=600.0 low/mid/high=[582, 110, 21]
+synthetic overlay seed=9139912035078620160 scale=600.0 low/mid/high=[6, 15, 6] double-alpha counterexamples=9
+canonical-context PASS elapsedMs=125
+canonical-S3-scale-guard PASS elapsedMs=38
+canonical real S3 points=169 multiSupport=71 overlayPoints=15
+actual S3 seed=9139912035078620160 points=169 after land/sea/mixed=[153, 5, 11]
+actual S3 before seed=9139912035078620160 land/sea/mixed=[153, 5, 11]
+seed=9139912035078620160 forward/reverse/fixed-shuffle/cold full point sets=169
+canonical context world stats:
+samples=507
+tilesBuilt=120
+buildNanos=76970150299
+oldWeightNanos=9647205
+newWeightNanos=4731592
+oldEvalNanos=6065794
+newEvalNanos=2469493
+keptSegmentsBuilt=672320
+removedSegmentsBuilt=625974
+newDistanceTests=39522
+labelCacheSize=212
+patchBuilds=95
+patchCacheSize=95
+
+canonical-actual-S3 PASS elapsedMs=191366
+canonical-coverage-provenance PASS elapsedMs=1
+mode=canonical status=PASS checks=34994 failures=0 bitwiseComparisons=676

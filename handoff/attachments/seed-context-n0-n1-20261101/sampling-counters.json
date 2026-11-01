@@ -1,0 +1,38 @@
+[
+  {
+    "path": "replay-old",
+    "counters": {
+      "samples": "2012910",
+      "tilesBuilt": "120",
+      "buildNanos": "125434877002",
+      "oldWeightNanos": "23195324323",
+      "newWeightNanos": "3642882756",
+      "oldEvalNanos": "5533442439",
+      "newEvalNanos": "4994057072",
+      "keptSegmentsBuilt": "653449",
+      "removedSegmentsBuilt": "632415",
+      "newDistanceTests": "143797837",
+      "labelCacheSize": "481",
+      "patchBuilds": "210",
+      "patchCacheSize": "128"
+    }
+  },
+  {
+    "path": "replay-context",
+    "counters": {
+      "samples": "2012910",
+      "tilesBuilt": "120",
+      "buildNanos": "132568528707",
+      "oldWeightNanos": "25981863135",
+      "newWeightNanos": "3741740453",
+      "oldEvalNanos": "6072900726",
+      "newEvalNanos": "5650045425",
+      "keptSegmentsBuilt": "653449",
+      "removedSegmentsBuilt": "632415",
+      "newDistanceTests": "143797837",
+      "labelCacheSize": "481",
+      "patchBuilds": "210",
+      "patchCacheSize": "128"
+    }
+  }
+]

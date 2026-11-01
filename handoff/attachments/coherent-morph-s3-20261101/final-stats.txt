@@ -1,0 +1,13 @@
+samples=2012910
+tilesBuilt=120
+buildNanos=134598820400
+oldWeightNanos=25591646900
+newWeightNanos=3996550500
+oldEvalNanos=6133210200
+newEvalNanos=5552732000
+keptSegmentsBuilt=653449
+removedSegmentsBuilt=632415
+newDistanceTests=143797837
+labelCacheSize=481
+patchBuilds=210
+patchCacheSize=128

@@ -1,0 +1,11 @@
+case,observed,expected,ok
+index_constants,PLATEAU/BADLANDS/MOUNTAIN,PLATEAU/BADLANDS/MOUNTAIN,true
+plateau_surface_finite,0.023599257692694664,finite,true
+plateau_terrace_finite,0.3790740966796875,finite,true
+low_surface_nan,NaN,NaN,true
+mountain_terrace_nan,NaN,NaN,true
+plateau_old_vs_new_present,0.03136188164353371,finite,true
+low_old_equals_new,0.0,0.0,true
+badlands_signals,warpX/warpZ/scaler,non-null,true
+mountain_signals,direction/erosionSeed,non-null,true
+plateau_surface_node,surface()/terrace(),non-null,true

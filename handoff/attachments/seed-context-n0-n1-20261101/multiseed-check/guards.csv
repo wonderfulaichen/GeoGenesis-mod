@@ -1,0 +1,10 @@
+seed,constructor,exception,message
+"0","original","java.lang.UnsupportedOperationException","original() only exists for the canonical Gallery seed; seed=0 would silently reuse the SEED-hardcoded arm"
+"0","FullMorphLand(catalog)","java.lang.UnsupportedOperationException","FullMorphLand needs the canonical Gallery arm: seed=0 != 9139912035078620160 (original()/geometry would silently reuse the SEED-hardcoded arm)"
+"0","FullMorphLand(catalog,600)","java.lang.UnsupportedOperationException","FullMorphLand needs the canonical Gallery arm: seed=0 != 9139912035078620160 (original()/geometry would silently reuse the SEED-hardcoded arm)"
+"-419","original","java.lang.UnsupportedOperationException","original() only exists for the canonical Gallery seed; seed=-419 would silently reuse the SEED-hardcoded arm"
+"-419","FullMorphLand(catalog)","java.lang.UnsupportedOperationException","FullMorphLand needs the canonical Gallery arm: seed=-419 != 9139912035078620160 (original()/geometry would silently reuse the SEED-hardcoded arm)"
+"-419","FullMorphLand(catalog,600)","java.lang.UnsupportedOperationException","FullMorphLand needs the canonical Gallery arm: seed=-419 != 9139912035078620160 (original()/geometry would silently reuse the SEED-hardcoded arm)"
+"12345","original","java.lang.UnsupportedOperationException","original() only exists for the canonical Gallery seed; seed=12345 would silently reuse the SEED-hardcoded arm"
+"12345","FullMorphLand(catalog)","java.lang.UnsupportedOperationException","FullMorphLand needs the canonical Gallery arm: seed=12345 != 9139912035078620160 (original()/geometry would silently reuse the SEED-hardcoded arm)"
+"12345","FullMorphLand(catalog,600)","java.lang.UnsupportedOperationException","FullMorphLand needs the canonical Gallery arm: seed=12345 != 9139912035078620160 (original()/geometry would silently reuse the SEED-hardcoded arm)"

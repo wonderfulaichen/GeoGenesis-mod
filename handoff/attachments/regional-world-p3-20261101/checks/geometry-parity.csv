@@ -1,0 +1,4 @@
+tileX,tileZ,points,sites,winner_mismatch,max_site_weight_diff,site_bitwise,max_merged_diff,merged_bitwise,max_progress_ratio_diff,ratio_bitwise,ratio_points,query_radius,in_circle
+0,0,120,23,0,0.000e+00,true,0.000e+00,true,0.000e+00,120,120,728.0,true
+1,0,120,21,0,0.000e+00,true,0.000e+00,true,0.000e+00,120,120,728.0,true
+0,1,120,24,0,0.000e+00,true,0.000e+00,true,0.000e+00,120,120,728.0,true

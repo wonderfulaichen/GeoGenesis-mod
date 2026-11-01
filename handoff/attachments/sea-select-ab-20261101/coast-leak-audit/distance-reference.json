@@ -1,0 +1,15 @@
+{
+  "reference": "scipy.ndimage.distance_transform_edt; independent brute-force at worst point",
+  "distance_definition": "nearest opposite-class node on unchanged 8-block base grid; not exact continuous shoreline",
+  "changed_pixels": 736596,
+  "changed_beyond_reference_116": 591487,
+  "A_land_changed_beyond_reference_116": 385361,
+  "max_reference_abs_d_on_changed": 1598.3191212168858,
+  "reference_symmetric_116_band_pixels": 222518,
+  "worst_nearest_sea_node_distance_bruteforce": 1057.6469165085293,
+  "worst_reference_distance_bilinear": 1057.6544492017802,
+  "worst_old_distance": 97.20069226192862,
+  "arm_A_sha256": "a10ebcc30ba83ec1c482914f72ed4ee24cf4964fd941b476c720648550106394",
+  "arm_C_sha256": "e41ff08dddfbf4cf9aff84dbd4c955522b2570c1706074c3144e9af2bb908e9e",
+  "distance_criterion": "FAIL: old distance is not Euclidean; no generator fix in this audit"
+}

@@ -1,0 +1,5 @@
+case,cells,slots,slots_reachable,slots_missing,unit_min,unit_max,max_slot_reachable_by_draw,choose_cells,choose_mismatch,choose_inverse_failures,choose_sea_sites,choose_land_sites,wide_cells,wide_sea_hits,ocean_recipes_seen,wide_slots_reachable
+ocean_slot_reachability,10201,12,12,0,0.000000,0.999986,11,10201,0,0,2576,7625,157780,39621,5,12
+why=RefNoise.hash2D ends with 'hash ^= hash >> 13' (ARITHMETIC shift), which copies the sign bit back in and therefore leaves the sign bit at 0: the result is a 31-bit non-negative int, not uint32. unit(h) = h * 2^-32 then yields draw in [0,0.5), so (int)(draw*12) can only reach slots 0..5 and the upper six ocean slots -- plus any recipe that only occupies them -- never appear
+fix_pinned=unit(h) must be h * 2^-31 so the draw spans [0,1]. This check reads the implementation's own unit()/base() reflectively, recomputes the slot independently of oceanSlots, and then requires choose() to agree cell by cell
+not_self_proof=the gate is 'all 12 slots reachable' and 'each of the 5 ocean recipes is chosen at least once'. No count is compared against buildOceanSlots' expansion table, so the check cannot pass by agreeing with itself

@@ -1,0 +1,5 @@
+case,points,millis,ms_per_point,note
+full_sample,1000,17.376,0.017376,geometry+engine
+engine_only_onehot_2,1000,0.823,0.000823,upper bound
+geometry_share,1000,16.553,0.016553,full minus engine
+four_calls_same_point,1000,13.717,0.013717,last-(x,z) cache

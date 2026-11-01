@@ -1,0 +1,70 @@
+{
+  "1200": {
+    "edges": 112,
+    "landSeaAdjacencyByOceanRecipe": {
+      "18": 10,
+      "19": 6,
+      "20": 2,
+      "21": 3,
+      "22": 7
+    },
+    "statistics": {
+      "samples": "1962801",
+      "activeMean": "1.4086175827299863",
+      "activeMax": "4",
+      "sampleNanos": "25572505400",
+      "siteSelectionNanos": "3901000",
+      "uniqueSites": "136",
+      "geometry": "Stats[tilesBuilt=64, tileEvictions=56, tilesCached=8, points=0, cachedPoints=0, oldCoverageFromReflection=true, blendLow=0.55, blendHigh=0.78]",
+      "exportNanos": "39201828000",
+      "siteGridStep": "50",
+      "siteGridSamples": "19881",
+      "sitePure": "12720",
+      "siteActiveMean": "1.426588199788743",
+      "siteActiveMax": "4"
+    },
+    "sha256": {
+      "active.u8": "f063204c7057c036edafb9fe4b002c7e3c2424dbd6ccbdccca1d337cb3e72e63",
+      "adjacency.csv": "7c86cf166478a010ac9cfc2c27dbf2ce97beebcf5aa11c6b2e13eb653f187cd3",
+      "height.f64be": "7941b81484200c5d99b96b212b9c15b9a5dcb361ca2aedc763f379b04aca3803",
+      "meta.json": "0c761f0a28b457bdaac8ccb59a740e845ecf71b31748d81ce188c588a5dde76a",
+      "sampling-stats.txt": "c422c7817ab3898758c7aa0bea70fd72c0294640da1982b4859c63c4544f70be",
+      "sea-weight.f64be": "ec549b0d2447de32ccb07f02a7cdad85cbf2e1fdb6d367b8e8bf450d3968fdf0",
+      "type.u8": "5df2650071239c2a60d9f4f59c6f15105f981dcffc5a58a7519dba5e942de887"
+    }
+  },
+  "600": {
+    "edges": 431,
+    "landSeaAdjacencyByOceanRecipe": {
+      "18": 26,
+      "19": 9,
+      "20": 14,
+      "21": 5,
+      "22": 11
+    },
+    "statistics": {
+      "samples": "1962801",
+      "activeMean": "1.8193846446990805",
+      "activeMax": "4",
+      "sampleNanos": "29835462300",
+      "siteSelectionNanos": "3719700",
+      "uniqueSites": "481",
+      "geometry": "Stats[tilesBuilt=64, tileEvictions=56, tilesCached=8, points=0, cachedPoints=0, oldCoverageFromReflection=true, blendLow=0.55, blendHigh=0.78]",
+      "exportNanos": "56946743000",
+      "siteGridStep": "50",
+      "siteGridSamples": "19881",
+      "sitePure": "6814",
+      "siteActiveMean": "1.9382827825562094",
+      "siteActiveMax": "5"
+    },
+    "sha256": {
+      "active.u8": "c214d4dfa6bfff6e9eb5f32227c147c9db468515886c519f209b25e02cea7efc",
+      "adjacency.csv": "7c870bcb8027da636ac1ad1986aeb64c81186a8d97c9999855be3cd7602d32d1",
+      "height.f64be": "033745573517406e8165fd3da839ad7a5a39d31c7ac0295e23af2ab8e066cc15",
+      "meta.json": "786fe81a40d71fa28518ff53ebf6984aaff5c5a38d12b350ab6d7e3642feb8a6",
+      "sampling-stats.txt": "f623edbf8c4264c94676c2bf429350e61c58c362989e1d1955db3863694118e1",
+      "sea-weight.f64be": "db403d025e97db1900606c45036fddf8b1a8bec58e8765bbd86b52048ce0c9d6",
+      "type.u8": "f070caa43fa3b5865bf2f4221e945d125da2d012ecfdc5d8f50cdaef40625ba1"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+N2 only: continuous primitive + derivative + Jacobian. No height chain, no new inverse,
+no RegionPartition replacement, no S3 baseline / parameter / 240-band / default / production edits.
+JVM input arguments=[-Xmx3g, -Dfile.encoding=UTF-8]
+seed=9139912035078620160 near-window max |Δoffset| = 1.439917339363106E-4 (coarse-ulp points skipped=0, kept for record only)
+seed=0 near-window max |Δoffset| = 1.6559270110150237E-4 (coarse-ulp points skipped=0, kept for record only)
+seed=-419 near-window max |Δoffset| = 1.3830405544013047E-4 (coarse-ulp points skipped=0, kept for record only)
+seed=12345 near-window max |Δoffset| = 1.2553517014790572E-4 (coarse-ulp points skipped=0, kept for record only)
+source-alignment PASS elapsedMs=75
+analytic vs central difference (h=1e-2..1e-5, 4 seeds, 4000 pts each): max |Δ| = 1.1188754936719558E-6
+derivative-identity PASS elapsedMs=32
+all 4096 corner-gradient combos: polynomial == analytic derivative, max |Δ| = 0.0
+cell-polynomial PASS elapsedMs=112
+GLOBAL (all 8^4 combos, every point of the plane): |∂n/∂u| <= 5.5 -> world 1.527777784101573; sup row-sum L <= 2.22222223142047
+=> the 2-D Banach condition L<1 does NOT hold; global injectivity is NOT proven here.
+global-bound PASS elapsedMs=42
+seed=9139912035078620160 121x121 warp-noise cells: rigorous min det J = 0.04669019527850543
+seed=0 121x121 warp-noise cells: rigorous min det J = 0.015438877120291322
+seed=-419 121x121 warp-noise cells: rigorous min det J = 0.03383607705206476
+seed=12345 121x121 warp-noise cells: rigorous min det J = 0.021700631725066782
+PROVEN: on 58564 scanned warp-noise cells (4 seeds), det J > 0 strictly (worst 0.015438877120291322 at seed=0 noiseCell=(-37,-39)) => warp is locally invertible there.
+enclosure sanity: 2000 random points all inside their rigorous det J box
+per-cell-injectivity PASS elapsedMs=4576
+float ULP at 3e7 loses up to 0.005 u-cells per quantum (info only; no threshold set)
+limits PASS elapsedMs=0
+mode=N2-continuous-geometry status=PASS checks=2021 failures=0

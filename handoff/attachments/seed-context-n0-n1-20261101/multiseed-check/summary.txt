@@ -1,0 +1,77 @@
+N0-N1 only; scale=600; unchanged float forward/inverse geometry; no -D overrides set.
+Main grid: [-1800,1800]^2 step=300 (169 actual S3 samples per seed, not endpoints).
+Supplement: finite rings radius=2400/3600/4800/6000 step=600; at most 192 actual queries/seed.
+Oracles: canonical catalog.original() reflection; other seeds private independentCombine(long).
+JVM input arguments=[-Xmx3g, -Dfile.encoding=UTF-8]
+Synthetic mask branches are separate from natural mask and actual S3 land/sea/mixed counts.
+Scheduling prerequisite (main agent): canonical small check PASS and two full Gallery SHA matches before multiseed.
+This check does not generate/verify those full rasters; multiseed is a separately invoked mode, never automatic.
+Finite near-window evidence is NOT an infinite-world, injectivity, far-coordinate or raster proof.
+legacy-negative-controls PASS elapsedMs=92
+natural mask seed=0 scale=600.0 low/mid/high=[482, 178, 53]
+synthetic overlay seed=0 scale=600.0 low/mid/high=[6, 15, 6] double-alpha counterexamples=9
+actual S3 seed=0 points=169 after land/sea/mixed=[150, 3, 16]
+actual S3 before seed=0 land/sea/mixed=[150, 3, 16]
+seed=0 forward/reverse/fixed-shuffle/cold full point sets=169
+seed=0 real world stats:
+samples=507
+tilesBuilt=120
+buildNanos=69797893701
+oldWeightNanos=12863394
+newWeightNanos=7584224
+oldEvalNanos=8968601
+newEvalNanos=3077099
+keptSegmentsBuilt=736424
+removedSegmentsBuilt=577851
+newDistanceTests=44613
+labelCacheSize=214
+patchBuilds=80
+patchCacheSize=80
+
+multiseed-0 PASS elapsedMs=133117
+natural mask seed=-419 scale=600.0 low/mid/high=[581, 127, 5]
+synthetic overlay seed=-419 scale=600.0 low/mid/high=[6, 15, 6] double-alpha counterexamples=9
+actual S3 seed=-419 points=169 after land/sea/mixed=[138, 17, 14]
+actual S3 before seed=-419 land/sea/mixed=[138, 17, 14]
+seed=-419 forward/reverse/fixed-shuffle/cold full point sets=169
+seed=-419 real world stats:
+samples=507
+tilesBuilt=120
+buildNanos=77150209100
+oldWeightNanos=8175996
+newWeightNanos=2678823
+oldEvalNanos=3817784
+newEvalNanos=1429994
+keptSegmentsBuilt=589774
+removedSegmentsBuilt=704744
+newDistanceTests=27969
+labelCacheSize=208
+patchBuilds=94
+patchCacheSize=94
+
+multiseed--419 PASS elapsedMs=145459
+natural mask seed=12345 scale=600.0 low/mid/high=[572, 130, 11]
+synthetic overlay seed=12345 scale=600.0 low/mid/high=[6, 15, 6] double-alpha counterexamples=9
+actual S3 seed=12345 points=169 after land/sea/mixed=[71, 60, 38]
+actual S3 before seed=12345 land/sea/mixed=[71, 60, 38]
+seed=12345 forward/reverse/fixed-shuffle/cold full point sets=169
+seed=12345 real world stats:
+samples=507
+tilesBuilt=120
+buildNanos=77961883295
+oldWeightNanos=7720403
+newWeightNanos=1475392
+oldEvalNanos=4669384
+newEvalNanos=1613088
+keptSegmentsBuilt=655745
+removedSegmentsBuilt=641965
+newDistanceTests=35994
+labelCacheSize=208
+patchBuilds=108
+patchCacheSize=108
+
+multiseed-12345 PASS elapsedMs=148557
+Cross-seed isolation: three independent live contexts; all points interleaved, then each branch revisited.
+cross-seed-interleaved PASS elapsedMs=117467
+same-point-seed-sensitivity PASS elapsedMs=3
+mode=multiseed status=PASS checks=63730 failures=0 bitwiseComparisons=2037

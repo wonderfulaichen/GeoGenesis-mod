@@ -1,0 +1,6 @@
+case,points,max_abs_diff,bitwise,extra,tolerance
+replay_vs_legacy_blender,400,0.000e+00,true,0.000e+00,==0
+old_coverage_vs_shared_plateau,400,0.000e+00,true,0.000e+00,==0
+whenregionold_natural,200,0.233436,bitwise,separated=85/mean=0.0601/min=0.0000/max=0.2334,0.05
+whenregionold_synthetic,9,0.000000,bitwise,alpha_mid=0.500000,na
+alpha_recovery,200,8.951e-16,na,band_points=200,<=1e-9

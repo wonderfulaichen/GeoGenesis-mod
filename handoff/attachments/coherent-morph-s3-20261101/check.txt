@@ -1,0 +1,39 @@
+Bounded synthetic/local samples; NOT an infinite-world or warp-injectivity proof.
+Active support may stay identical. No gate requires active/onehot proportions to improve.
+Internal segments are excluded from NEW distance tests; OLD test count is uninstrumented/unknown.
+Gallery owns full raster/frozen pixel parity; this check reads sites.csv only.
+synthetic: all-A removed=2 tests=0; A/A/B BSupport=0.0740740740740741; A/B/A and closed hole use min distance to the same A union, not summed sides
+synthetic-unions PASS elapsedMs=152
+band points=961 maxAbs=2.220446049250313E-16 doubleEaseCounterexamples=462
+band240-single-ease PASS elapsedMs=12
+indexed Line2D exhaustive: segments=64 points=1200 negativeCoordinatePoints=897 multiSupport=583 maxAbs=5.306866057708248E-14 newDistanceTests=1593
+indexed-vs-exhaustive PASS elapsedMs=22
+forced same-point x=0/1024 seamPairs=62 blendedPairs=41 maxNewWeightAbs=2.7071627235475404E-6 maxNewEAbs=1.7881393432617188E-7 tolerance=0.002
+actual-forced-tile-seams PASS elapsedMs=26471
+real edge midpoint records: internal=781 external=1027 farInternalSamples=16 oldAlsoOnehot=16; this CSV is edge evidence, NOT a raster/pixel mask or active-ratio claim
+actual-boundaries PASS elapsedMs=29
+frame endpoints=55 minGap=479.57186966814 thirdSupport=31 hardOnehot=101
+frame-and-real-union PASS elapsedMs=6501
+independent raster probes=243 (EDT cross-check belongs to main agent)
+raster-probes PASS elapsedMs=4
+engine regression negativeE=60 tinySea=36 maxSeaAbs=0.0 maxTinyAbs=0.0
+signed-e-and-tiny-sea PASS elapsedMs=6
+frozen S2=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\coherent-morph-s3\frozen-s2 identityRows=165 S2ChangedRows=27 seaRows=40 mismatches=0; reverse traversal, no raster regenerated
+frozen-s2-identities PASS elapsedMs=4379
+actual geometry.query/oracle points=171 maxNewWeightAbs=7.771561172376096E-16 maxOldQueryWeightAbs=1.1102230246251565E-16 maxEvaluateAbs=0.0
+world stats (this bounded check only):
+samples=272
+tilesBuilt=8
+buildNanos=32864268400
+oldWeightNanos=10929200
+newWeightNanos=1758400
+oldEvalNanos=7258300
+newEvalNanos=3173100
+keptSegmentsBuilt=45481
+removedSegmentsBuilt=38473
+newDistanceTests=20483
+labelCacheSize=218
+patchBuilds=89
+patchCacheSize=89
+
+checks=10672 failures=0

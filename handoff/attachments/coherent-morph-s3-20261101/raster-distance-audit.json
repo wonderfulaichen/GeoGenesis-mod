@@ -1,0 +1,8 @@
+{
+  "method": "independent per-recipe union EDT from frozen S2 5-block winner raster; bilinear signed distance then literal single smoothstep/normalize",
+  "samples": 243,
+  "maxWeightError": 0.024599889894934557,
+  "p95WeightError": 0.014132917124304192,
+  "diagnosticTolerance": 0.06,
+  "limitation": "raster sampling approximation, not analytic polyline/warp certificate; no production tolerance changed"
+}

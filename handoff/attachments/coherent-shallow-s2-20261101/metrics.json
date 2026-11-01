@@ -1,0 +1,256 @@
+{
+  "tool": "render-coherent-shallow",
+  "geometry": {
+    "seed": "9139912035078620160",
+    "size": 1401,
+    "step": 5,
+    "origin": [
+      -3642.5,
+      -3365.5
+    ],
+    "roi": [
+      0,
+      0,
+      620,
+      660
+    ],
+    "microScale": 600,
+    "macroScale": 1200,
+    "reach": 240,
+    "shallowMatching": true,
+    "internalEdgeSuppression": false,
+    "heightEvaluated": false,
+    "jvmProperties": [
+      "file.encoding=UTF-8"
+    ],
+    "distanceGeometry": "world polyline approximation; far=Infinity"
+  },
+  "scope": "S2 raw labels only; no S3 / internal-edge suppression / height",
+  "declaredFixedLayout": {
+    "cellSpacing": 600,
+    "macroSpacing": 1200
+  },
+  "recipeNames": [
+    "平原",
+    "草原",
+    "谷地",
+    "丘陵1",
+    "丘陵2",
+    "平原+草原",
+    "平原+谷地",
+    "平原+丘陵1",
+    "平原+丘陵2",
+    "草原+谷地",
+    "草原+丘陵1",
+    "草原+丘陵2",
+    "谷地+丘陵1",
+    "谷地+丘陵2",
+    "丘陵1+丘陵2",
+    "台地",
+    "劣地",
+    "山地",
+    "深海平原",
+    "洋中脊",
+    "海山群",
+    "海底峡谷",
+    "陆架沙脊"
+  ],
+  "rawSHA256": {
+    "meta.json": "a1f89c5dd235fde49bfec84e13bb977bc77185431d62f132aeab2ee7ff638314",
+    "before.u8": "5680442dcec0000952d767db86898d50fa2befb0acc56ed12e903c8bbfec2937",
+    "after.u8": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+    "changed.u8": "cc798e4bcce44ad3f76db4f530a20cc7ae1f445256890a6e08d1e97f9ab98e72",
+    "sites.csv": "8711e61fea6017695327edbf4d68a5a2e8e2762051b97f2f2ce251b2fa6d16a2",
+    "cells.i64be": "0358f77326e362146afa132c5525c2da302637d96e0e25486359c56c883eed08"
+  },
+  "full": {
+    "pixels": 1962801,
+    "changedPixels": 349705,
+    "recipeHist": {
+      "before": [
+        65216,
+        0,
+        0,
+        70340,
+        82362,
+        287763,
+        72878,
+        172816,
+        81007,
+        93585,
+        8342,
+        104488,
+        68479,
+        0,
+        56783,
+        118387,
+        2098,
+        184477,
+        271252,
+        0,
+        128535,
+        0,
+        93993
+      ],
+      "after": [
+        65216,
+        0,
+        0,
+        70340,
+        82362,
+        287763,
+        72878,
+        172816,
+        81007,
+        93585,
+        8342,
+        104488,
+        68479,
+        0,
+        56783,
+        118387,
+        2098,
+        184477,
+        22168,
+        0,
+        27914,
+        0,
+        443698
+      ]
+    },
+    "shelf22": {
+      "before": 93993,
+      "after": 443698
+    },
+    "landPixels": 1469021,
+    "oceanPixels": 493780
+  },
+  "local": {
+    "pixels": 409200,
+    "changedPixels": 182379,
+    "recipeHist": {
+      "before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        76131,
+        2298,
+        107732,
+        223,
+        0,
+        802,
+        1365,
+        0,
+        0,
+        0,
+        0,
+        0,
+        327,
+        113259,
+        0,
+        107063,
+        0,
+        0
+      ],
+      "after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        76131,
+        2298,
+        107732,
+        223,
+        0,
+        802,
+        1365,
+        0,
+        0,
+        0,
+        0,
+        0,
+        327,
+        10029,
+        0,
+        27914,
+        0,
+        182379
+      ]
+    },
+    "shelf22": {
+      "before": 0,
+      "after": 182379
+    },
+    "landPixels": 188878,
+    "oceanPixels": 220322
+  },
+  "sites": {
+    "records": 165,
+    "changedRecords": 27,
+    "rasterAgreementChecked": true
+  },
+  "validation": {
+    "changedMaskEqualsDiff": true,
+    "changesOnlyOceanToShelf22": true,
+    "allLandRecipesIdentical": true,
+    "oceanLandLabelSideIdentical": true
+  },
+  "geometryEvidence": {
+    "sharedCellMapProvided": true,
+    "independentBeforeAfterGeometryCheck": "not available: only one shared map allowed",
+    "matching": "Java exporter responsibility; not recomputed or certified here"
+  },
+  "figures": {
+    "pair-types-full.png": {
+      "size": [
+        2922,
+        1963
+      ],
+      "panels": 2,
+      "pixelsPreserved": true
+    },
+    "pair-types-local.png": {
+      "size": [
+        1360,
+        1252
+      ],
+      "panels": 2,
+      "pixelsPreserved": true
+    },
+    "native-before.png": {
+      "size": [
+        1481,
+        1963
+      ],
+      "panels": 1,
+      "pixelsPreserved": true
+    },
+    "native-after.png": {
+      "size": [
+        1481,
+        1963
+      ],
+      "panels": 1,
+      "pixelsPreserved": true
+    },
+    "changed-mask.png": {
+      "size": [
+        1481,
+        1677
+      ],
+      "panels": 1,
+      "pixelsPreserved": true
+    },
+    "changed-mask-local.png": {
+      "size": [
+        978,
+        966
+      ],
+      "panels": 1,
+      "pixelsPreserved": true
+    }
+  }
+}

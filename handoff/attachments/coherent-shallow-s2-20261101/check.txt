@@ -1,0 +1,34 @@
+segment controls: parallel239/241/crossing PASS
+independent reverse order/cold cache all sites=165 PASS; bounded patch cache=79
+fineGeometry cell=8589934588 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=4294967293 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=4294967292 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=4294967291 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-4 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-5 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-4294967300 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-4294967301 coarseDistance=13.01697277535521 fineDistance=13.01697277535521 after=22
+fineGeometry cell=-4294967302 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-8589934587 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-8589934595 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-8589934596 coarseDistance=24.183947996710966 fineDistance=24.183947996710966 after=22
+fineGeometry cell=-8589934597 coarseDistance=Infinity fineDistance=Infinity after=18
+fineGeometry cell=-8589934598 coarseDistance=Infinity fineDistance=Infinity after=20
+fineGeometry cell=-12884901883 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-12884901884 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-12884901892 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-12884901893 coarseDistance=Infinity fineDistance=Infinity after=20
+fineGeometry cell=-12884901894 coarseDistance=Infinity fineDistance=Infinity after=20
+fineGeometry cell=-17179869180 coarseDistance=Infinity fineDistance=Infinity after=18
+fineGeometry cell=-17179869181 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-17179869188 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-17179869189 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-17179869190 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-21474836481 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-21474836482 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-21474836483 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-21474836484 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-25769803773 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-25769803774 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-25769803778 coarseDistance=0.0 fineDistance=0.0 after=22
+fineGeometry cell=-30064771066 coarseDistance=0.0 fineDistance=0.0 after=22

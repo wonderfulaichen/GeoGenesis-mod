@@ -29,6 +29,7 @@ final class RegionPartition {
     private static final float WARP_STRENGTH = 200f;
 
     private final int seed;
+    private final float regionScale;
     private final float frequency;
     private final RefNoise.Node warpX, warpZ;
 
@@ -58,14 +59,26 @@ final class RegionPartition {
 
     RegionPartition(int seed, RefNoise.Node warpX, RefNoise.Node warpZ,
                     IdMode idMode, RefNoise.Node idNoise, float anisoX, float anisoZ) {
+        this(seed, warpX, warpZ, idMode, idNoise, anisoX, anisoZ, REGION_SCALE);
+    }
+
+    private RegionPartition(int seed, RefNoise.Node warpX, RefNoise.Node warpZ,
+                            IdMode idMode, RefNoise.Node idNoise, float anisoX, float anisoZ, float scale) {
         this.seed = seed;
-        this.frequency = 1f / REGION_SCALE;
+        this.regionScale = scale;
+        this.frequency = 1f / scale;
         this.warpX = warpX;
         this.warpZ = warpZ;
         this.idMode = idMode;
         this.idNoise = idNoise;
         this.anisoX = anisoX;
         this.anisoZ = anisoZ;
+    }
+
+    /** 尺度实验只复制分区实例；共享同一噪声对象和种子，不推进任何随机游标。 */
+    RegionPartition withScale(float scale) {
+        if (!(scale > 0) || !Float.isFinite(scale)) throw new IllegalArgumentException("region scale");
+        return new RegionPartition(seed, warpX, warpZ, idMode, idNoise, anisoX, anisoZ, scale);
     }
 
     /** 采样结果：格心 id 与边缘程度。 */
@@ -105,8 +118,8 @@ final class RegionPartition {
         float id;
         if (idMode == IdMode.COHERENT) {
             // 在【格心世界坐标】上采样低频噪声：相邻格心值相近 ⇒ 类型连带
-            float cxw = (cellX + 0.5f) * REGION_SCALE;
-            float czw = (cellY + 0.5f) * REGION_SCALE;
+            float cxw = (cellX + 0.5f) * regionScale;
+            float czw = (cellY + 0.5f) * regionScale;
             id = idNoise.compute(cxw * anisoX, czw * anisoZ);
         } else {
             id = mapValToUnit(valCoord2D(seed, cellX, cellY));

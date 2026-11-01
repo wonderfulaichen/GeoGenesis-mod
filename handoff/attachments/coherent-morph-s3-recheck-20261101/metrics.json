@@ -1,0 +1,678 @@
+{
+  "tool": "render-coherent-morph",
+  "geometry": {
+    "size": 1401,
+    "step": 5,
+    "origin": [
+      -3642.5,
+      -3365.5
+    ],
+    "center": [
+      -140,
+      137
+    ],
+    "scale": 600,
+    "seaLevel": 63,
+    "bandTotal": 240,
+    "coastProcessing": false
+  },
+  "roi": [
+    0,
+    0,
+    620,
+    660
+  ],
+  "meta": {
+    "arm-before": {
+      "seed": "9139912035078620160",
+      "size": 1401,
+      "step": 5,
+      "origin": [
+        -3642.5,
+        -3365.5
+      ],
+      "center": [
+        -140,
+        137
+      ],
+      "scale": 600,
+      "macroScale": 1200,
+      "seaLevel": 63,
+      "bandTotal": 240,
+      "coastProcessing": false,
+      "jvmProperties": [
+        "file.encoding=UTF-8"
+      ],
+      "layout": "frozen S2"
+    },
+    "arm-after": {
+      "seed": "9139912035078620160",
+      "size": 1401,
+      "step": 5,
+      "origin": [
+        -3642.5,
+        -3365.5
+      ],
+      "center": [
+        -140,
+        137
+      ],
+      "scale": 600,
+      "macroScale": 1200,
+      "seaLevel": 63,
+      "bandTotal": 240,
+      "coastProcessing": false,
+      "jvmProperties": [
+        "file.encoding=UTF-8"
+      ],
+      "layout": "frozen S2"
+    }
+  },
+  "singleVariable": {
+    "variable": "weight semantics, NOT layout or scale",
+    "A": "前 A｜旧：逐细胞权重归并",
+    "B": "后 B｜新：按配方并集外边权重",
+    "declaredFixed": {
+      "microSpacing": 600,
+      "macroSpacing": 1200,
+      "bandTotal": 240,
+      "layout": "shared fixed S2 winner",
+      "engine": "unchanged",
+      "recipes": "unchanged",
+      "defaults": "unchanged",
+      "production": "unchanged"
+    }
+  },
+  "arms": {
+    "arm-before": {
+      "waterPct": 22.39457795262994,
+      "minY": 16.571837648646607,
+      "maxY": 285.47725862150196,
+      "medianY": 89.51540649381579,
+      "typeSharesPct": {
+        "平原": 3.3232,
+        "草原": 0.0,
+        "谷地": 0.0,
+        "丘陵1": 3.602,
+        "丘陵2": 4.1916,
+        "平原+草原": 14.6992,
+        "平原+谷地": 3.7229,
+        "平原+丘陵1": 8.7647,
+        "平原+丘陵2": 4.1147,
+        "草原+谷地": 4.7672,
+        "草原+丘陵1": 0.4125,
+        "草原+丘陵2": 5.3117,
+        "谷地+丘陵1": 3.4889,
+        "谷地+丘陵2": 0.0,
+        "丘陵1+丘陵2": 2.9054,
+        "台地": 6.046,
+        "劣地": 0.0843,
+        "山地": 9.3822,
+        "深海平原": 1.0848,
+        "洋中脊": 0.0,
+        "海山群": 1.4085,
+        "海底峡谷": 0.0,
+        "陆架沙脊": 22.69
+      },
+      "typeDistinct": 18,
+      "absentTypeIds": [
+        1,
+        2,
+        13,
+        19,
+        21
+      ],
+      "pureEntryPct": 62.06472281194068,
+      "transitionPct": 37.93527718805931,
+      "active": {
+        "min": 1,
+        "max": 4,
+        "distinct": 4,
+        "histogram": [
+          [
+            1,
+            1218207
+          ],
+          [
+            2,
+            660186
+          ],
+          [
+            3,
+            77804
+          ],
+          [
+            4,
+            6604
+          ]
+        ]
+      },
+      "seaWeight": {
+        "min": 0.0,
+        "max": 1.0000000000000002,
+        "mean": 0.25088306597256205
+      },
+      "seaWeightOutside01ByUlp": 9,
+      "seaWeightTolerance": 8.881784197001252e-16
+    },
+    "arm-after": {
+      "waterPct": 22.370326895085135,
+      "minY": 16.571837648646607,
+      "maxY": 285.47725862150196,
+      "medianY": 89.55992049701698,
+      "typeSharesPct": {
+        "平原": 3.3226,
+        "草原": 0.0,
+        "谷地": 0.0,
+        "丘陵1": 3.5837,
+        "丘陵2": 4.1961,
+        "平原+草原": 14.6608,
+        "平原+谷地": 3.713,
+        "平原+丘陵1": 8.8046,
+        "平原+丘陵2": 4.1271,
+        "草原+谷地": 4.7679,
+        "草原+丘陵1": 0.425,
+        "草原+丘陵2": 5.3234,
+        "谷地+丘陵1": 3.4888,
+        "谷地+丘陵2": 0.0,
+        "丘陵1+丘陵2": 2.893,
+        "台地": 6.0315,
+        "劣地": 0.1069,
+        "山地": 9.3987,
+        "深海平原": 1.1294,
+        "洋中脊": 0.0,
+        "海山群": 1.4222,
+        "海底峡谷": 0.0,
+        "陆架沙脊": 22.6053
+      },
+      "typeDistinct": 18,
+      "absentTypeIds": [
+        1,
+        2,
+        13,
+        19,
+        21
+      ],
+      "pureEntryPct": 62.06472281194068,
+      "transitionPct": 37.93527718805931,
+      "active": {
+        "min": 1,
+        "max": 4,
+        "distinct": 4,
+        "histogram": [
+          [
+            1,
+            1218207
+          ],
+          [
+            2,
+            660186
+          ],
+          [
+            3,
+            77804
+          ],
+          [
+            4,
+            6604
+          ]
+        ]
+      },
+      "seaWeight": {
+        "min": 0.0,
+        "max": 1.0000000000000002,
+        "mean": 0.25072652370819315
+      },
+      "seaWeightOutside01ByUlp": 33,
+      "seaWeightTolerance": 8.881784197001252e-16
+    }
+  },
+  "comparison": {
+    "maxAbsDiff": 31.43990192145111,
+    "medianAbsDiff": 0.0,
+    "p95AbsDiff": 1.081789800555626,
+    "p99AbsDiff": 5.9216297493888845,
+    "meanSignedDiff": 0.008626693905367343,
+    "maxRise": 31.43990192145111,
+    "maxDrop": -25.33574642305429,
+    "changedPixels": 279100,
+    "changedOver0p5Pct": 6.831971249250433,
+    "landToSea": 1038,
+    "seaToLand": 1514,
+    "waterDeltaPts": -0.024251057544805166,
+    "typeChangedPixels": 15565,
+    "typeChangedPct": 0.7929993921951335,
+    "activeChangedPixels": 0,
+    "pureToTransitionPixels": 0,
+    "transitionToPurePixels": 0,
+    "pixels": 1962801
+  },
+  "profileSampling": {
+    "full-116": {
+      "samples": 7001,
+      "x": [
+        -3642.5,
+        3357.5
+      ],
+      "z": -2785.5,
+      "distance": [
+        0.0,
+        7000.0
+      ],
+      "blockStepChecked": 1
+    },
+    "full-350": {
+      "samples": 7001,
+      "x": [
+        -3642.5,
+        3357.5
+      ],
+      "z": -1615.5,
+      "distance": [
+        0.0,
+        7000.0
+      ],
+      "blockStepChecked": 1
+    },
+    "full-583": {
+      "samples": 7001,
+      "x": [
+        -3642.5,
+        3357.5
+      ],
+      "z": -450.5,
+      "distance": [
+        0.0,
+        7000.0
+      ],
+      "blockStepChecked": 1
+    },
+    "full-817": {
+      "samples": 7001,
+      "x": [
+        -3642.5,
+        3357.5
+      ],
+      "z": 719.5,
+      "distance": [
+        0.0,
+        7000.0
+      ],
+      "blockStepChecked": 1
+    },
+    "full-1050": {
+      "samples": 7001,
+      "x": [
+        -3642.5,
+        3357.5
+      ],
+      "z": 1884.5,
+      "distance": [
+        0.0,
+        7000.0
+      ],
+      "blockStepChecked": 1
+    },
+    "full-1284": {
+      "samples": 7001,
+      "x": [
+        -3642.5,
+        3357.5
+      ],
+      "z": 3054.5,
+      "distance": [
+        0.0,
+        7000.0
+      ],
+      "blockStepChecked": 1
+    },
+    "local--2200": {
+      "samples": 2701,
+      "x": [
+        -3500.0,
+        -800.0
+      ],
+      "z": -2200.0,
+      "distance": [
+        0.0,
+        2700.0
+      ],
+      "blockStepChecked": 1
+    },
+    "local--1800": {
+      "samples": 2701,
+      "x": [
+        -3500.0,
+        -800.0
+      ],
+      "z": -1800.0,
+      "distance": [
+        0.0,
+        2700.0
+      ],
+      "blockStepChecked": 1
+    },
+    "local--1300": {
+      "samples": 2701,
+      "x": [
+        -3500.0,
+        -800.0
+      ],
+      "z": -1300.0,
+      "distance": [
+        0.0,
+        2700.0
+      ],
+      "blockStepChecked": 1
+    }
+  },
+  "inputsSHA256": {
+    "arm-before/meta.json": "2ac1bd69d259623002fff9871885f8b64c2f61a3c18152d80447af7d28b717e0",
+    "arm-after/meta.json": "2ac1bd69d259623002fff9871885f8b64c2f61a3c18152d80447af7d28b717e0",
+    "arm-before/height.f64be": "dd74f4a0ab03a0190a5153f164047c02cc0eb47be023d103a2ae31a0580c2dd1",
+    "arm-before/sea-weight.f64be": "d1c20bfdd21cf8d71b92aec50124621e0f0568239a654177faf018b86fe14d66",
+    "arm-before/type.u8": "fa3a9e212928f01653b3cdce36c1eec83c5a8522f8d7ed07e6fd00944b5e96db",
+    "arm-before/active.u8": "95386888aca5b55d79da883ec8affa8fe283af086640a3dc1a711c0de92ac809",
+    "arm-after/height.f64be": "af207c94935c86b55ddd00e7155a4b375bfa2f1254a227c10811960cefafdc29",
+    "arm-after/sea-weight.f64be": "b536341752aceb141ac2611817e879f6692270716e72f4dd1ec8e04b3cfbefd5",
+    "arm-after/type.u8": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+    "arm-after/active.u8": "95386888aca5b55d79da883ec8affa8fe283af086640a3dc1a711c0de92ac809",
+    "winner.u8": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+    "profiles.csv": "8c9b4149dabf831629725fc4d82737a92e01fab203e30fd0ca3c1f0575bf5697"
+  },
+  "types": {
+    "names": [
+      "平原",
+      "草原",
+      "谷地",
+      "丘陵1",
+      "丘陵2",
+      "平原+草原",
+      "平原+谷地",
+      "平原+丘陵1",
+      "平原+丘陵2",
+      "草原+谷地",
+      "草原+丘陵1",
+      "草原+丘陵2",
+      "谷地+丘陵1",
+      "谷地+丘陵2",
+      "丘陵1+丘陵2",
+      "台地",
+      "劣地",
+      "山地",
+      "深海平原",
+      "洋中脊",
+      "海山群",
+      "海底峡谷",
+      "陆架沙脊"
+    ],
+    "range": [
+      0,
+      22
+    ],
+    "shelf22": "existing shallow-sea recipe",
+    "meaning": "weighted dominant recipe; NOT original winner label"
+  },
+  "winner": {
+    "sha256": "5096a6656493edfab6000029b592d8151077bab37ff84c36805d691d1113805c",
+    "sharedByArms": true,
+    "histogram": [
+      65216,
+      0,
+      0,
+      70340,
+      82362,
+      287763,
+      72878,
+      172816,
+      81007,
+      93585,
+      8342,
+      104488,
+      68479,
+      0,
+      56783,
+      118387,
+      2098,
+      184477,
+      22168,
+      0,
+      27914,
+      0,
+      443698
+    ],
+    "dominantDisagreesPixels": {
+      "arm-before": 15565,
+      "arm-after": 0
+    },
+    "independentArmLayoutVerification": false,
+    "limit": "one shared S2 winner map; fixed-layout semantics supplied by Java"
+  },
+  "internalEdge": {
+    "provided": false,
+    "meaning": "diagnostic vicinity mask only; NOT real terrain seams"
+  },
+  "scope": "read-only Java exports; no worldgen, engine / layout / default / production edits",
+  "interpretation": {
+    "activeIdentical": "MEASURED result: active.u8 is bit-identical across both arms; S3 changes only weighting / distance tests, it does NOT raise the pure-recipe share",
+    "layoutFixed": "layout is the frozen shared S2 winner map; winner.u8 matches the S2 pixel comparison done by Java. Only one map exists, so per-arm layout independence is not verifiable here.",
+    "dominantTypeMayMove": "weighted dominant type may change while winner stays fixed; shallow-sea 22 is a pre-existing type, not something S3 introduces"
+  },
+  "validation": {
+    "rawLengthsAndRangesChecked": true,
+    "allNumericInputsFinite": true,
+    "seaWeightOver01OnlyWithinUlpTolerance": true,
+    "fullProfilesNoClipping": true,
+    "oneBlockHorizontalProfiles": true
+  },
+  "limits": [
+    "Metadata verifies declared window, not Java implementation semantics.",
+    "Pixel fidelity is checked against shaded native images, not a lossless encoding of float heights.",
+    "No visual-quality, production-equivalence or performance PASS is asserted."
+  ],
+  "comparisonROI": {
+    "maxAbsDiff": 23.271559890231686,
+    "medianAbsDiff": 0.0,
+    "p95AbsDiff": 1.0079446242873724,
+    "p99AbsDiff": 4.758465471582512,
+    "meanSignedDiff": 0.02309561755889083,
+    "maxRise": 23.271559890231686,
+    "maxDrop": -13.75546557231742,
+    "changedPixels": 59407,
+    "changedOver0p5Pct": 6.713343108504399,
+    "landToSea": 416,
+    "seaToLand": 806,
+    "waterDeltaPts": -0.09530791788856519,
+    "typeChangedPixels": 2927,
+    "typeChangedPct": 0.7152981427174975,
+    "activeChangedPixels": 0,
+    "pureToTransitionPixels": 0,
+    "transitionToPurePixels": 0,
+    "pixels": 409200
+  },
+  "profiles": {
+    "full": {
+      "lines": [
+        "full-116",
+        "full-350",
+        "full-583",
+        "full-817",
+        "full-1050",
+        "full-1284"
+      ],
+      "ylim": [
+        -64.0,
+        320.0
+      ],
+      "xRange": [
+        -3642.5,
+        3357.5
+      ],
+      "maxDevByLine": {
+        "full-116": 3.6074569022655396,
+        "full-350": 3.1602290414458025,
+        "full-583": 9.153899957388631,
+        "full-817": 32.22079602599143,
+        "full-1050": 10.168933229161041,
+        "full-1284": 2.7254397347596324
+      },
+      "samplesDrawn": 42006,
+      "clippedSamples": 0,
+      "axisRepaint": {
+        "xTicksRedrawn": 30,
+        "yBoundsInGutter": 12,
+        "inPlotStrayCleared": 6,
+        "inPlotStrayKeptCurveSafe": 0,
+        "repaintedChromeHeldNoCurve": true
+      },
+      "seaLegend": {
+        "bandPixels": 64,
+        "coversPlot": false
+      },
+      "allInputSamplesWithinYLimits": true,
+      "plottedSamples": {
+        "full-116": 3501,
+        "full-350": 3501,
+        "full-583": 3501,
+        "full-817": 3501,
+        "full-1050": 3501,
+        "full-1284": 3501
+      },
+      "drawing": "existing profile_figure stride-only polyline; no height recomputation"
+    },
+    "local": {
+      "lines": [
+        "local--2200",
+        "local--1800",
+        "local--1300"
+      ],
+      "ylim": [
+        46.11,
+        166.00464919302362
+      ],
+      "xRange": [
+        -3500.0,
+        -800.0
+      ],
+      "maxDevByLine": {
+        "local--2200": 0.04704504726929315,
+        "local--1800": 12.521311066195807,
+        "local--1300": 10.782441333380419
+      },
+      "samplesDrawn": 8103,
+      "clippedSamples": 0,
+      "axisRepaint": {
+        "xTicksRedrawn": 15,
+        "yBoundsInGutter": 6,
+        "inPlotStrayCleared": 3,
+        "inPlotStrayKeptCurveSafe": 0,
+        "repaintedChromeHeldNoCurve": true
+      },
+      "seaLegend": {
+        "bandPixels": 64,
+        "coversPlot": false
+      },
+      "allInputSamplesWithinYLimits": true,
+      "plottedSamples": {
+        "local--2200": 2701,
+        "local--1800": 2701,
+        "local--1300": 2701
+      },
+      "drawing": "existing profile_figure stride-only polyline; no height recomputation"
+    }
+  },
+  "figures": {
+    "native-before.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "panels": 1,
+      "pixelsPreserved": true
+    },
+    "native-after.png": {
+      "size": [
+        1401,
+        1401
+      ],
+      "panels": 1,
+      "pixelsPreserved": true
+    },
+    "pair-full.png": {
+      "size": [
+        2922,
+        1707
+      ],
+      "panels": 2,
+      "pixelsPreserved": true
+    },
+    "pair-local-height.png": {
+      "size": [
+        1360,
+        996
+      ],
+      "panels": 2,
+      "pixelsPreserved": true
+    },
+    "pair-types.png": {
+      "size": [
+        2922,
+        1993
+      ],
+      "panels": 2,
+      "pixelsPreserved": true
+    },
+    "pair-local-types.png": {
+      "size": [
+        1360,
+        1282
+      ],
+      "panels": 2,
+      "pixelsPreserved": true
+    },
+    "pair-active.png": {
+      "size": [
+        2922,
+        1737
+      ],
+      "panels": 2,
+      "pixelsPreserved": true
+    },
+    "pair-local-active.png": {
+      "size": [
+        1360,
+        1026
+      ],
+      "panels": 2,
+      "pixelsPreserved": true
+    },
+    "profiles-full.png": {
+      "size": [
+        1480,
+        1446
+      ],
+      "panels": 0,
+      "pixelsPreserved": true
+    },
+    "profiles-local.png": {
+      "size": [
+        1480,
+        894
+      ],
+      "panels": 0,
+      "pixelsPreserved": true
+    }
+  },
+  "outputsSHA256": {
+    "native-before.png": "b164430e773bd04c9de71c3ae7cbe853c326008c6c050d98f4095e9eb4def3e2",
+    "native-after.png": "d7c10fa86ede7757e21127cfa59612b6cb7c040934ca52ac5b36a1fef82676ca",
+    "pair-full.png": "43ee7caf4099913b1760fad683091db7322e74b781cc46abc960d2d0c19dde0b",
+    "pair-local-height.png": "1e4f258257cd45974d04b904c66bbbf5a4a0325bd3c3b734e224aa4dede36752",
+    "pair-types.png": "b795d7b915adff7b332f777c0f1f7d94fdb1d8ba166d4e45bbce34667cfdb6db",
+    "pair-local-types.png": "a5a72b712d7a91b6cad700e7af03d3978b61785c9bce3b1f0c72676f74078712",
+    "pair-active.png": "5eda6158cdbdcaec22e758997acde972f1d29d04f4ea3a6497923bd88c797e75",
+    "pair-local-active.png": "4e3cc958604f136be9c3d8d8b9d3d90c17cfd10c7a2e275a2656b9990e5663b7",
+    "profiles-full.png": "6fca06cc7b4076bcc7e56fc836c79c498d39c35a94a78e14c6eb034edde53673",
+    "profiles-local.png": "56ed39f950f7decef779aa75516ff51945d89478320e52d53e3702282ab259f5"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "scope": "N0-N1 only",
+  "javaHome": "D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot",
+  "javaRuntime": "Temurin 21.0.11+10",
+  "classMajor": 61,
+  "terrainJvmProperties": {},
+  "runtimeArguments": [
+    "-Xmx3g",
+    "-Dfile.encoding=UTF-8"
+  ],
+  "scale": 600,
+  "macroScale": 1200,
+  "bandTotal": 240,
+  "bandHalf": 120,
+  "chord": 0.02,
+  "maxSegment": 2,
+  "invertTolerance": 0.02,
+  "legacyNegative": {
+    "expectedExit": 1,
+    "seed": "9139912035078620160",
+    "point": [
+      1000000,
+      1000000
+    ],
+    "residual": "7.1913e+00",
+    "evidence": "../coherent-stream-s4/coordinate/n1-legacy-far-negative"
+  },
+  "commands": {
+    "compile": ".\\gradlew.bat --offline --no-daemon --console=plain compileDiagnosticsJava",
+    "canonical": "java -Xmx3g -Dfile.encoding=UTF-8 -cp <classpath.txt> com.geogenesis.worldgen.terrain.candidate.LandRegionContextCheck canonical <NEW_OUT>",
+    "legacyGallery": "java -Xmx3g -Dfile.encoding=UTF-8 -cp <classpath.txt> com.geogenesis.worldgen.terrain.candidate.CoherentMorphGallery build/coherent-morph-s3/frozen-s2 <NEW_OUT>",
+    "contextGallery": "java -Xmx3g -Dfile.encoding=UTF-8 -cp <classpath.txt> com.geogenesis.worldgen.terrain.candidate.CoherentMorphGallery build/coherent-morph-s3/frozen-s2 <NEW_OUT> context",
+    "multiseedAfterCanonicalParity": "java -Xmx3g -Dfile.encoding=UTF-8 -cp <classpath.txt> com.geogenesis.worldgen.terrain.candidate.LandRegionContextCheck multiseed <NEW_OUT>"
+  },
+  "limits": [
+    "No continuous geometry or safeguarded inverse implementation",
+    "No far-world repair or infinite-world proof",
+    "No shared-instance concurrent use tested",
+    "Replayed bounded legacy far failure only; original full S4 coordinate matrix retained, not all rerun",
+    "Timing counters include concurrent verifier scheduling; not a controlled performance comparison"
+  ]
+}

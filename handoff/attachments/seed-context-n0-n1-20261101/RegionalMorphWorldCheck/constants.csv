@@ -1,0 +1,18 @@
+constant,value,source,expected,ok
+BAND_HALF_BLOCKS,120.000000,LocalBoundaryGeometry,120,true
+BAND_TOTAL_BLOCKS,240.000000,LocalBoundaryGeometry,240,true
+progress(0),0.500000000,LocalBoundaryGeometry,0.5,true
+progress(+120),1.00000000,LocalBoundaryGeometry,1,true
+progress(-120),0.00000000,LocalBoundaryGeometry,0,true
+measured_band_edge_plus,119.999999,bisection on progress(),120.0,true
+measured_band_edge_minus,-120.000000,bisection on progress(),-120.0,true
+progress_shape_points,961.000000,identity vs smoothstep,0 error,true
+double_ease_would_differ,462.000000,p -> p*p*(3-2p),>0,true
+seaProbability(0),0.00000000,RegionalMorphWorld,0,true
+seaProbability(-OCEAN_C),1.00000000,RegionalMorphWorld,1,true
+LAND_COUNT,18.0000000,RegionalMorphWorld,18,true
+COUNT,23.0000000,RegionalMorphWorld,23,true
+IMAGE_X0,-3642.50000,RegionalMorphGallery,-3642.5,true
+IMAGE_X1,3357.50000,RegionalMorphGallery,3357.5,true
+IMAGE_Z0,-3365.50000,RegionalMorphGallery,-3365.5,true
+IMAGE_Z1,3634.50000,RegionalMorphGallery,3634.5,true

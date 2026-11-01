@@ -1,0 +1,6 @@
+case,cases,max_abs_diff,sum_error,bitwise,note
+merge_vs_manual,300,0.000e+00,2.220e-16,true,bitwise equal to manual accumulate+normalize
+merge_sum_contract,300,2.220e-16,2.220e-16,true,|sum-1| <= 1e-12 per FullMorphLand.normalize; exact 1.0 at 290/300 cases
+merge_reversed_input,300,5.551e-17,0,false,reported only (float addition order); |sum-1| stays inside 1e-12
+merge_length_guard,1,0,0,true,IllegalArgumentException
+merge_single_site_onehot,1,0,0,true,weight[index]==1 and sum==1 exactly

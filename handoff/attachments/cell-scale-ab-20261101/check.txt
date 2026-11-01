@@ -1,0 +1,7 @@
+600 geometry-query bitwise parity points=200; independent reverse identity pairs=331
+600 forced adjacent tile points=168; maxWeightDiff=3.672186239755959E-6; maxEDiff=4.5821070671081543E-7
+23 onehot/overlay endpoints maxDiff=0.0; tiny-sea and 31bit regressions PASS; old branch/hash controls detected
+600 actual two-site normal: origin=-1872.3349920675266,-1888.827370671255; offsets=[-125.0, -110.0, 110.0, 125.0]; active=[1, 2, 2, 1]; exact distance support +/-120, normal samples bracket saturation (not exact 240 normal-length claim)
+scale=1200 same9tiles geometryBuildMillis=1748
+scale=600 same9tiles geometryBuildMillis=3273
+PASS

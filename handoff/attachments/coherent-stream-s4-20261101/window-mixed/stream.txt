@@ -1,0 +1,19 @@
+shifted window mixed boundary samples=4
+shifted window mixed boundary samples=4
+shifted-window PASS
+comparisons=22 maxWeight=3.717425132554464E-6 maxE=6.674010422508259E-7
+failures=0
+samples=44
+tilesBuilt=2
+buildNanos=28808290400
+oldWeightNanos=4862200
+newWeightNanos=2400100
+oldEvalNanos=3517300
+newEvalNanos=1688200
+keptSegmentsBuilt=9885
+removedSegmentsBuilt=10693
+newDistanceTests=3250
+labelCacheSize=167
+patchBuilds=77
+patchCacheSize=77
+

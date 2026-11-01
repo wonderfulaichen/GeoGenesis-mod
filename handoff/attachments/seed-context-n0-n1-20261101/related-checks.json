@@ -1,0 +1,32 @@
+{
+  "RecipeMorphCatalogCheck": {
+    "log": "RecipeMorphCatalogCheck.log",
+    "sha256": "da7ed14456f5ff410cc32140094e4360fd662cf14bec1c00300f1f15fc19456d",
+    "finalLine": "PASS checks=18201 out=D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\context-n0-n1\\RecipeMorphCatalogCheck"
+  },
+  "FullMorphLandCheck": {
+    "log": "FullMorphLandCheck.log",
+    "sha256": "c01b3abc744f7582254ec56943971747dec19055da196dc773dde4013f905ea9",
+    "finalLine": "PASS checks=910 out=D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\context-n0-n1\\FullMorphLandCheck"
+  },
+  "NodeMorphEngineCheck": {
+    "log": "NodeMorphEngineCheck.log",
+    "sha256": "013ae2e9707e8da2580041451a8ddb82b19023f30b29db4d4a7ea8ba4206a8e3",
+    "finalLine": "NODE MORPH PASS"
+  },
+  "CoherentMorphCheck": {
+    "log": "CoherentMorphCheck.log",
+    "sha256": "1e176ebb10201df9447da495da54c7f0fecb1f162c83ca17fcca7b3ffb20c695",
+    "finalLine": "COHERENT MORPH CHECK PASS checks=10672 failures=0 out=D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\context-n0-n1\\CoherentMorphCheck"
+  },
+  "RegionalMorphWorldCheck": {
+    "log": "RegionalMorphWorldCheck.log",
+    "sha256": "ea9599bd5faa0ef066fe5003ce5141172cbe73af2eadf8e42c6c5206271c8603",
+    "finalLine": "PASS checks=29033 out=D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\context-n0-n1\\RegionalMorphWorldCheck"
+  },
+  "CoherentStreamingCheck": {
+    "log": "stream-check.log",
+    "sha256": "9b360b6577a086b576d441e6ef73d2391fed16b6801934dd86040339484b85d4",
+    "finalLine": "S4 STREAM PASS failures=0"
+  }
+}

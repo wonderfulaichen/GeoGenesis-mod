@@ -1,0 +1,29 @@
+order points=20 reverse+independent cold shuffled exact
+query-order PASS
+seams mixed=21
+forced-xy-corners PASS
+shifted window mixed boundary samples=4
+shifted window mixed boundary samples=4
+shifted-window PASS
+tile cache target evicted and rebuilt; size=8 originalLand=Stats[tilesBuilt=36, tileEvictions=28, tilesCached=8, points=0, cachedPoints=0, oldCoverageFromReflection=true, blendLow=0.55, blendHigh=0.78]
+tile-eviction PASS
+identity eviction real base-land fills=2200 target=-8589934596 recipe=22 size=2048
+identity-eviction PASS
+patch eviction real sea queries=14 buildsSinceStart=161 rebuiltTarget=2 capacity=128 match=Match[before=18, after=22, distance=24.183947996710966, margin=0.081953125, boundarySegments=1825]
+patch-eviction PASS
+comparisons=105 maxWeight=3.717425132554464E-6 maxE=6.674010422508259E-7
+failures=0
+samples=170
+tilesBuilt=38
+buildNanos=86415611696
+oldWeightNanos=6574802
+newWeightNanos=4645897
+oldEvalNanos=6388999
+newEvalNanos=2677601
+keptSegmentsBuilt=215565
+removedSegmentsBuilt=195439
+newDistanceTests=13105
+labelCacheSize=2048
+patchBuilds=327
+patchCacheSize=128
+

@@ -1,0 +1,4 @@
+seed,scale,exception,message
+"9139912035078620160","1200.0","java.lang.IllegalArgumentException","S3 requires the frozen 600 micro scale"
+"9139912035078620160","599.99994","java.lang.IllegalArgumentException","S3 requires the frozen 600 micro scale"
+"9139912035078620160","600.00006","java.lang.IllegalArgumentException","S3 requires the frozen 600 micro scale"

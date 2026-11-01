@@ -1,0 +1,36 @@
+{
+  "reference": "SciPy exact Euclidean EDT on both classes of unchanged 8-block grid",
+  "grid_max_error_cells": [
+    0.0,
+    0.0
+  ],
+  "pixel_max_error_blocks": 1.8189894035458565e-12,
+  "outside_pixels": 1787950,
+  "outside_base_height_differences": 0,
+  "old_coast_pixels": 1097429,
+  "new_coast_pixels": 174851,
+  "water_A_pct": 29.958666212214073,
+  "water_B_pct": 29.74606187789796,
+  "height_A_range": [
+    16.417592886650255,
+    271.15310678963664
+  ],
+  "height_B_range": [
+    15.89649841904641,
+    271.15310678963664
+  ],
+  "before_sha256": "e653672839eeb79ea6edfe6e763500ed8d20c3787f251cb8f2a35394896b2711",
+  "after_sha256": "5af5df1fd9d78c45d91398deda1a3773bc49635a8573515a63d97daba433befe",
+  "unchanged_source_files": [
+    "UnifiedWorld.java",
+    "CoastRecipeCatalog.java",
+    "OceanRecipeCatalog.java",
+    "OceanMorphConcepts.java",
+    "FullMorphLand.java",
+    "RecipeMorphCatalog.java"
+  ],
+  "base_grid_unchanged": true,
+  "base_height_unchanged": true,
+  "band_unchanged": true,
+  "distance_definition": "nearest opposite-class grid node; continuous coastline has grid/interpolation error"
+}

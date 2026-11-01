@@ -151,6 +151,15 @@ public final class CombineCandidate {
     private RegionPartition partition;
     private Blender blender;
 
+    /**
+     * 是否解除 {@link #e} 的海侧封锁（默认 {@code false} = 与旧实现逐字节相同）。
+     *
+     * <p>只有统一地形实验臂（海洋配方参与票槽池）才应打开；见
+     * {@link #enableSeaSideUnlock()}。打开后本实例产出会改变，
+     * <b>不得再用于基线对拍</b>。</p>
+     */
+    private boolean seaUnlocked = false;
+
     /** 构造剖面来源（null = 不启用构造偏置）。 */
     private com.geogenesis.worldgen.terrain.TectonicField tectonic;
     /** 山地族（构造偏置用；{@link Blender} 已持有同一个）。 */
@@ -562,9 +571,63 @@ public final class CombineCandidate {
      *
      * <p>与参考 {@code Math.max(base + height, 0)} <b>同构</b>：基准与增量<b>先相加再截断</b>，
      * 而不是先截断增量。这是 2026-10-30 修正的核心 —— 见 {@link #height01} 的说明。</p>
+     *
+     * <h3>★ 2026-11-01：海侧封锁可按需解除（步 3）</h3>
+     * <p>默认行为<b>完全不变</b>（{@code seaUnlocked == false} ⇒ 仍是原来的
+     * {@code Math.max(..., 0.0)}）。只有显式调用 {@link #enableSeaSideUnlock()}
+     * 之后，负值才会被放行 —— 用于"海洋配方参与同一票槽池"的统一地形实验。</p>
+     *
+     * <h3>为什么"按槽位区分"而不是全局删 {@code max}</h3>
+     * <p>这个 {@code max} 在陆地侧不是有害的：它是参考 {@code Populators.apply} 的
+     * {@code Math.max(base + height, 0)} 的等价物，用来兜住 {@code steppe} 族的负值
+     * （实测下限 {@code -0.02}）。<b>全局删除会让陆地出现 {@code e<0} 的坑，
+     * 直接改变用户已认可的 7 臂基准。</b></p>
+     * <p>所以只在本类这一处提供开关，且<b>开关关闭时逐字节等于旧实现</b>；
+     * 其余各处（{@code blender} 内部的 {@code max}、各 Gallery 的
+     * {@code Math.max(GROUND_E + ...)}）<b>本轮一律不动</b>。</p>
+     *
+     * <h3>为什么开关放在 {@code e()} 而不是 {@link #height01}</h3>
+     * <p>{@code height01} 是"族输出"，其截断在 {@code Blender}/{@code Family} 内部，
+     * 改它会影响 {@code debugSelected} / {@code category} 等一整片诊断；
+     * {@code e()} 是"换算出口"，只影响最终高度，改动面最小、最容易守门。</p>
      */
     public double e(double x, double z) {
-        return Math.max(GROUND_E + height01(x, z) * E_SPAN, 0.0);
+        double v = GROUND_E + height01(x, z) * E_SPAN;
+        return seaUnlocked ? v : Math.max(v, 0.0);
+    }
+
+    /** 是否已解除海侧封锁（默认 false；见 {@link #enableSeaSideUnlock()}）。 */
+    public boolean seaUnlocked() {
+        return seaUnlocked;
+    }
+
+    /**
+     * 解除海侧封锁：允许 {@link #e} 返回负值。
+     *
+     * <p><b>⚠ 调用后本实例的产出会改变</b>，不得再用于"基线对拍"。
+     * 只有统一地形实验臂（海洋配方参与票槽池）才应该打开它。</p>
+     *
+     * @return this（便于链式调用）
+     */
+    public CombineCandidate enableSeaSideUnlock() {
+        this.seaUnlocked = true;
+        return this;
+    }
+
+    /**
+     * 解除封锁时的"海侧换算"：把海洋配方的 {@code height01 ∈ [-1,0]} 映射到 e。
+     *
+     * <p>与 {@link #e} 的区别：{@code e} 用的是<b>陆地</b>口径
+     * （{@code GROUND_E + h·E_SPAN}，{@code E_SPAN=1.50}），
+     * 而海洋配方需要的是 {@code e = h}（0=海平面，-1=世界底），
+     * 因为 {@code HeightCurve} 的海侧映射本来就是
+     * {@code e ∈ [-1,0] → [minY, seaLevel]}。</p>
+     *
+     * <p>若对海洋配方误用 {@code e()}，同样 1 单位 h 会变成 1.50 e
+     * ⇒ 海深放大 1.5 倍（叠加 236 vs 127 的量纲差后更严重）。</p>
+     */
+    public static double seaE(double height01) {
+        return height01 < -1.0 ? -1.0 : (height01 > 0.0 ? 0.0 : height01);
     }
 
     /** 未加共享基准的直译口径（{@code h × 1.08}），仅用于与上一版对照。 */

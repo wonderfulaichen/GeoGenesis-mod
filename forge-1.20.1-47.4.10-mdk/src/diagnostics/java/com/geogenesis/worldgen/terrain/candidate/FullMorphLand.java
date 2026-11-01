@@ -99,8 +99,10 @@ public final class FullMorphLand {
     // ============================================================ 状态
 
     private final RecipeMorphCatalog catalog;
+    private final float regionScale;
     private final RecipeJunctionMorph engine;
     private final CombineCandidate original;
+    private final LandRegionContext context;
     private final RefNoise.Node maskNode;
     /** 实际覆盖族 {@code unmixable[0]}；反射失败为 null（退回 catalog 的 oldReference）。 */
     private final CombineCandidate.Family oldCoverageFamily;
@@ -124,6 +126,12 @@ public final class FullMorphLand {
      *                （真 Gallery 臂只在该种子上存在，换种子调 Gallery 是假的，直接拒绝）
      */
     public FullMorphLand(RecipeMorphCatalog catalog) {
+        this(catalog, RegionPartition.REGION_SCALE);
+    }
+
+    FullMorphLand(RecipeMorphCatalog catalog, float regionScale) {
+        if (!(regionScale > 0) || !Float.isFinite(regionScale)) throw new IllegalArgumentException("region scale");
+        this.regionScale = regionScale;
         if (catalog == null) {
             throw new IllegalArgumentException("catalog is required");
         }
@@ -135,6 +143,7 @@ public final class FullMorphLand {
         this.catalog = catalog;
         this.engine = new RecipeJunctionMorph(catalog, catalog.seed());
         this.original = catalog.original();
+        this.context = null;
         if (this.original == null) {
             throw new IllegalStateException("original() returned null on the Gallery seed");
         }
@@ -147,7 +156,24 @@ public final class FullMorphLand {
         this.blendLow = combineConstant("MTN_BLEND_LOW");
         this.blendHigh = combineConstant("MTN_BLEND_HIGH");
         this.oldCoverageFamily = oldCoverageFamilyOf(original);
-        this.tiles = new LinkedHashMap<>(16, 0.75f, true) {
+        this.tiles = tileCache();
+    }
+
+    FullMorphLand(LandRegionContext context) {
+        this.context = java.util.Objects.requireNonNull(context);
+        this.catalog = context.catalog();
+        this.regionScale = context.scale();
+        this.engine = new RecipeJunctionMorph(catalog, catalog.seed());
+        this.original = null;
+        this.maskNode = context.mask();
+        this.blendLow = context.blendLow();
+        this.blendHigh = context.blendHigh();
+        this.oldCoverageFamily = context.oldCoverage();
+        this.tiles = tileCache();
+    }
+
+    private Map<Long, Tile> tileCache() {
+        return new LinkedHashMap<>(16, 0.75f, true) {
             @Override protected boolean removeEldestEntry(Map.Entry<Long, Tile> eldest) {
                 boolean evict = size() > CACHE_TILES;
                 if (evict) tileEvictions++;
@@ -223,7 +249,7 @@ public final class FullMorphLand {
     /** 一次性计数的运行统计（minimal；只给 check / renderer 记账用）。 */
     public Stats stats() {
         return new Stats(tilesBuilt, tileEvictions, tiles.size(), points, cachedPoints,
-                oldCoverageFamily != null, blendLow, blendHigh);
+                context == null && oldCoverageFamily != null, blendLow, blendHigh);
     }
 
     /** 取世界点所属 tile 的索引（建或用缓存）；{@code check} 用它逐点种纯权重点。 */
@@ -398,8 +424,11 @@ public final class FullMorphLand {
         Tile t = tiles.get(key);
         if (t == null) {
             long t0 = System.nanoTime();
-            LocalBoundaryGeometry g = LocalBoundaryGeometry.of(original, center(tx), center(tz),
-                    QUERY_RADIUS, REQ_HALF, CHORD_TOL);
+            LocalBoundaryGeometry g = context != null
+                    ? LocalBoundaryGeometry.of(context, center(tx), center(tz), QUERY_RADIUS, REQ_HALF, CHORD_TOL)
+                    : regionScale == RegionPartition.REGION_SCALE
+                        ? LocalBoundaryGeometry.of(original, center(tx), center(tz), QUERY_RADIUS, REQ_HALF, CHORD_TOL)
+                        : LocalBoundaryGeometry.of(original, center(tx), center(tz), QUERY_RADIUS, REQ_HALF, CHORD_TOL, regionScale);
             g.setMaxSeg(MAX_SEG_BLOCKS);
             t = new Tile(catalog, g, tx, tz, (System.nanoTime() - t0) / 1_000_000L);
             tiles.put(key, t);

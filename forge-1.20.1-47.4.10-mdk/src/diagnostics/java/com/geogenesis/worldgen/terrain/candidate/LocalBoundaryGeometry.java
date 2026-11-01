@@ -179,6 +179,34 @@ public final class LocalBoundaryGeometry {
         return g;
     }
 
+    /** 沙箱尺度重载；不修改owner原分区。几何与referenceSample读取同一实例。 */
+    static LocalBoundaryGeometry of(Object owner, double cx, double cz, double radius,
+                                    int reqHalf, double chord, float scale) {
+        RegionPartition rp = (RegionPartition) readField(owner, "partition");
+        RegionPartition copy = rp.withScale(scale);
+        int slots = ((Object[]) readField(owner, "slots")).length;
+        Object[] cats = (Object[]) readField(owner, "slotCats");
+        LocalBoundaryGeometry g = new LocalBoundaryGeometry(copy,
+                (Integer) readField(copy, "seed"), (Float) readField(copy, "frequency"),
+                (RefNoise.Node) readField(copy, "warpX"), (RefNoise.Node) readField(copy, "warpZ"),
+                slots, cats, readGallerySeedQuiet(), cx, cz, radius, reqHalf);
+        if (chord > 0) g.setChordTol(chord);
+        return g;
+    }
+
+    /** N1显式分区及完整槽表入口；数值计算仍复用原float几何。 */
+    static LocalBoundaryGeometry of(LandRegionContext context, double cx, double cz, double radius,
+                                    int reqHalf, double chord) {
+        RegionPartition rp = context.partition();
+        Object[] cats = context.slotCategories();
+        LocalBoundaryGeometry g = new LocalBoundaryGeometry(rp,
+                (Integer) readField(rp, "seed"), (Float) readField(rp, "frequency"),
+                (RefNoise.Node) readField(rp, "warpX"), (RefNoise.Node) readField(rp, "warpZ"),
+                cats.length, cats, context.seed(), cx, cz, radius, reqHalf);
+        if (chord > 0) g.setChordTol(chord);
+        return g;
+    }
+
     private static long readGallerySeedQuiet() {
         try {
             return readGallerySeed();

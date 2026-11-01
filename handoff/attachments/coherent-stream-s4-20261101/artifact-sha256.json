@@ -1,0 +1,20 @@
+{
+  "failures-selected.csv": "4b7b31b744f66fc80b88ae587546823e1b5783ad45a605eb9baae26a7a74b3c9",
+  "s3-failure-stack.txt": "0e31ff70976a78464ba745465e17f518ef9a3dbe7e4607a3d750990057730ee9",
+  "s3-raw-before.json": "7f31ef19b2a4e9a324e31efaeeb4dd2ad7e7e8be2c7d70d773b62c273eead0b7",
+  "source-before.json": "d083e8017f1b99dc521c4bb3ac484c004e0b7d73fc06879d7c8aa97959cd6a5c",
+  "verification.json": "f94066246182efaf2cd0f2a1eae78c3b639de0a857bd58462347d8b8960536ba",
+  "coordinate-matrix\\check.txt": "7347e58f5cd3d8597321f8ee271f2e5668130cbf78d9698143ec564aa3d6e3a6",
+  "coordinate-matrix\\evidence.csv": "5f1cb3fc910483efe85123c3f57c37eee4eea3c4219307705d6f43f5a87e513a",
+  "s3-main-confirm\\check.txt": "a5487d2f5a92b32536ecab7655eea546f1ef18670c42059fb593ed598c6acb31",
+  "s3-main-confirm\\evidence.csv": "7f6d38be426ba403906b30984555b50bc3e6aec11d044874f27894b5227c99b4",
+  "s3-main-confirm\\exit-code.txt": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04",
+  "stream-final\\exit-code.txt": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+  "stream-final\\failures.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stream-final\\samples.csv": "18ae8f94cee6cec2e9cf2cc210993183da200a69a386655cc9cea20f44faba2b",
+  "stream-final\\stream.txt": "9835636cebd7636fa18ad7ed31dc4f15be2f0f8170a97594746bfb7b03ead10b",
+  "window-mixed\\exit-code.txt": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+  "window-mixed\\failures.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "window-mixed\\samples.csv": "aa99a667aeb1a8e625774fb50b2a51a14493130f99ce0875bd8de63bc6ddbab8",
+  "window-mixed\\stream.txt": "38379ea4452a53fc34e931f0744f8306a09ca1a7ef95ae46e9b534877f5860a9"
+}

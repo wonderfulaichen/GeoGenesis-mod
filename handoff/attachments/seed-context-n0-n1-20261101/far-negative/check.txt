@@ -1,0 +1,13 @@
+S4=FAIL
+exit=1 failures=1 blocked=1
+seeds=[9139912035078620160, 0, -419, 12345]; scale=600; macro=1200; radius=728; reqHalf=4; chord=.02; maxSeg=2; seamTol=.002
+macroPoints=0 microPoints=0 inverseCalls=0 seamPoints=0 heightPoints=0
+explicitWindowsIncludingHeight=1 limit=20 matcherCalls=0 matcherCompletedPatches=0
+Matcher internal patch constructors are real/unmodified; builds() excludes a throwing patch. At most two actual sea cells/seed.
+No production, defaults, bandwidth, terrain fixes, S3 chain duplication or unsupported-seed guard bypass.
+Float .05 collapse is INFO only; FAIL requires actual inverse residual, geometry, identity or seam evidence.
+Seams use S1 labels, NOT full S2/S3 heights. Signed distances compared only within existing +/-120 support; raw distances retained.
+Finite points/windows do not prove injectivity or infinite-world correctness. BLOCKED is never S4 PASS.
+scope/INFO=1
+coverage/BLOCKED=1
+complete-S3-far/FAIL=1

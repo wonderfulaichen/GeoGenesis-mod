@@ -1,0 +1,13 @@
+samples=1962801
+activeMean=1.8193846446990805
+activeMax=4
+sampleNanos=29835462300
+siteSelectionNanos=3719700
+uniqueSites=481
+geometry=Stats[tilesBuilt=64, tileEvictions=56, tilesCached=8, points=0, cachedPoints=0, oldCoverageFromReflection=true, blendLow=0.55, blendHigh=0.78]
+exportNanos=56946743000
+siteGridStep=50
+siteGridSamples=19881
+sitePure=6814
+siteActiveMean=1.9382827825562094
+siteActiveMax=5

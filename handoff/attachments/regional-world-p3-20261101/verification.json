@@ -1,0 +1,64 @@
+{
+  "scope": "P3 only, no special coast, no production",
+  "seed": "9139912035078620160",
+  "jvmProperties": [
+    "file.encoding=UTF-8"
+  ],
+  "checks": 29033,
+  "nodeChecks": 617318,
+  "legacyLandChecks": 910,
+  "existingCandidateShaUnchanged": true,
+  "productionStatus": "clean",
+  "newSourceSha": {
+    "RegionalMorphWorld.java": "374edd6f6b157b846582b34ede56cf19a345c3915d551706dab573e31ca636a4",
+    "RegionalMorphGallery.java": "40025a5089bc8ba60c9ecb5a2b3079800af9cb92db2baaac4820b8d32e2b2b37",
+    "RegionalMorphWorldCheck.java": "c106f870e9c030a7e5001f2af37cad4524dd423735d2b420c67222259f86c43c"
+  },
+  "rendererSha": "788db45da99f4b67ab67c7af323544fc8d5a8102b49076c0e25048d03576a337",
+  "rawSha": {
+    "active.u8": "f063204c7057c036edafb9fe4b002c7e3c2424dbd6ccbdccca1d337cb3e72e63",
+    "baseline-a.f64be": "5af5df1fd9d78c45d91398deda1a3773bc49635a8573515a63d97daba433befe",
+    "baseline-base.f64be": "bab325a601f3cf6269a0d482163cd5c7848bb4ecba272fa14d79e2341348415f",
+    "regional-hard.f64be": "5032617da86fab014d1f99c6980e92c445c66e64ef2a92904e96c17b72633df9",
+    "regional-morph.f64be": "7941b81484200c5d99b96b212b9c15b9a5dcb361ca2aedc763f379b04aca3803",
+    "sea-weight.f64be": "ec549b0d2447de32ccb07f02a7cdad85cbf2e1fdb6d367b8e8bf450d3968fdf0",
+    "type-a.u8": "20d1111fbaa5802bd2090f25d76080208829a3d5086b695e9906b543506c3d6b",
+    "type-b.u8": "5df2650071239c2a60d9f4f59c6f15105f981dcffc5a58a7519dba5e942de887",
+    "type-hard.u8": "cfeb1d8a8508eae41c7d1ea4e42c51c9419b29d8bcd6fc59aa884f0443cac474"
+  },
+  "sampling": {
+    "samples": "1962801",
+    "activeMean": "1.4086175827299863",
+    "activeMax": "4",
+    "sampleNanos": "23951477200",
+    "siteSelectionNanos": "4015600",
+    "uniqueSites": "136",
+    "geometry": "Stats[tilesBuilt=64, tileEvictions=56, tilesCached=8, points=1383554, cachedPoints=0, oldCoverageFromReflection=true, blendLow=0.55, blendHigh=0.78]",
+    "galleryNanos": "58024664100"
+  },
+  "sampleMeanMicros": 12.202702770173849,
+  "terrainParamsChanged": false,
+  "armSemantics": {
+    "baseline-a": "旧链 + 旧海岸；= 此前\"距离修复后\"那条 B",
+    "baseline-base": "旧链去掉海岸",
+    "regional-hard": "新站点类型 + 硬切换（无常态过渡）；布局 = 新",
+    "regional-morph": "新公共节点输出（P3B）+ 无海岸；布局 = 新",
+    "pair-full": "A 含旧海岸 vs B 无海岸 → 不同源，不能归因单条改动",
+    "pair-ordinary": "无海岸 OLD(base) vs 新(B)，但布局仍不同 → 布局 + 过渡",
+    "pair-smoothing": "hard vs B，布局完全相同 → 唯一单变量对照",
+    "type-a": "旧链「海岸处理之前」的内部配方 id（海侧分支 / 陆地 dominant 口径）；既不是最终的\"实际海岸配方\"，也不是全部潜在候选",
+    "type-b": "新链「加权 DOMINANT 主导」配方 id（加权后的最终主导，同样不等于全部候选）",
+    "type-hard": "新链「胜出站点」配方 id（硬选、未加权）",
+    "typeArmsComparable": "三臂口径互不相同（海岸前内部 / 加权主导 / 胜出站点）→ 面积表不可当成\"同一件事的三个版本\"直接横向比较",
+    "sea-weight": "原值直出，不假设归一化、不裁剪数据；越界像素标品红，但文字区分\"1-ULP 归一化舍入\"（≤1e-12）与\"真越界\"（>该容差）",
+    "active": "语义由导出方定义，本工具只按实测取值上色，不解释业务含义"
+  },
+  "notes": [
+    "canonical seed only",
+    "warp injectivity not proven",
+    "no Minecraft or chunk-performance validation",
+    "shared old coverage delta fades with land contribution",
+    "baseline retained; rejected half-hash intermediate not accepted",
+    "11 sea-weight pixels differ from1 by<=2.22e-16; no >1e-12 violations"
+  ]
+}

@@ -1,0 +1,38 @@
+S4=FAIL
+exit=1 failures=214 blocked=3
+seeds=[9139912035078620160, 0, -419, 12345]; scale=600; macro=1200; radius=728; reqHalf=4; chord=.02; maxSeg=2; seamTol=.002
+macroPoints=172 microPoints=172 inverseCalls=688 seamPoints=24 heightPoints=1
+explicitWindowsIncludingHeight=16 limit=20 matcherCalls=8 matcherCompletedPatches=64
+Matcher internal patch constructors are real/unmodified; builds() excludes a throwing patch. At most two actual sea cells/seed.
+No production, defaults, bandwidth, terrain fixes, S3 chain duplication or unsupported-seed guard bypass.
+Float .05 collapse is INFO only; FAIL requires actual inverse residual, geometry, identity or seam evidence.
+Seams use S1 labels, NOT full S2/S3 heights. Signed distances compared only within existing +/-120 support; raw distances retained.
+Finite points/windows do not prove injectivity or infinite-world correctness. BLOCKED is never S4 PASS.
+scope/INFO=1
+macro-enumeration/PASS=172
+macro-reverse-order/PASS=172
+micro-candidates/PASS=172
+micro-identity-reverse/PASS=172
+geometry-near/PASS=4
+float-derivative-evidence/INFO=172
+inverse/forward-target/PASS=408
+inverse/off-lattice-target/PASS=76
+inverse/forward-target/FAIL=108
+inverse/off-lattice-target/FAIL=96
+inverse-distinct-preimages/INFO=19
+geometry-adjacent/PASS=4
+seam-cell-distance/INFO=2544
+seam-cell-weight/INFO=2544
+seam-same-point/PASS=24
+geometry-far/PASS=1
+geometry-far-query/PASS=1
+geometry-far/constructor/FAIL=5
+matcher-near/selection/INFO=85
+matcher-near/PASS=4
+matcher-far/selection/INFO=26
+matcher-far/FAIL=4
+height-constructor/PASS=1
+height-sample/PASS=1
+height-sample/FAIL=1
+height-constructor/BLOCKED=3
+injectivity-limit/INFO=1
