@@ -183,22 +183,23 @@ return shoreShape(t, cliff, landB);      // 高度直接由 edge 决定
 ## 七、复现步骤
 
 ```powershell
-cd 'D:\Office software\Development Project\GeoGenesis-mod'
+cd <仓库根>
 
 # 1) 编译主工作区 diagnostics + 跑 7 臂导出（约 90 s）
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-main-gallery.ps1 `
-  -Main FullMorphGallery -OutName verify-restore
+  -Main FullMorphGallery -OutName clean-check
 
-# 2) 核对定稿 SHA（必须等于 7BE04183…）
-(Get-FileHash 'forge-1.20.1-47.4.10-mdk/build/main-verify-restore/out/morph-coastal.f64be' `
-  -Algorithm SHA256).Hash
+# 2) 一键验收定稿：数据 SHA + 重渲染 + 与定稿图逐像素比对（必须 exit 0）
+python -B tools/verify-final-render.py
 
-# 3) 渲染定稿图（青色水面色带）
-python -B tools/cmp-render-versions.py
-
-# 4) 光照守卫（必须 exit 0）
+# 3) 光照守卫（必须 exit 0）
 python -B tools/verify-light-convention.py
 ```
+
+`verify-final-render.py` 做三层校验：数据 SHA-256 必须等于 `7BE04183…`、
+用交付着色器重渲染、与 `height-morph-coastal-d47de74.png` 逐像素比对
+（要求 `changed px = 0`）。任一步不符即非零退出。
+⚠ 它默认读 `build/main-clean-check/out`，与第 1 步的 `-OutName` 对应。
 
 依赖：JDK 21（`D:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot`）。
 
@@ -209,6 +210,31 @@ python -B tools/verify-light-convention.py
 要重跑 Java 侧，需自己重建基线：先用 `gradlew.bat build` 编译 `src/main`，
 再把 `build/classes/java/main` 指到 `-cp` 首位，并补 Forge 依赖 jar。
 `classpath-jars.txt` 里的路径形如 `D:\.gradle\caches\...`，是**本机专属**，不能照抄。
+
+### 7.1 ★ 2026-11-03 历史重写（重新 clone 必读）
+
+当天对仓库做了一次**历史重写**：把 `handoff/attachments` 下 591 个大实验图
+（448.5 MB）从**全部历史**移除，仅保留 2026-11-03 的 14 张定稿图。
+`.git` 由 407 MB 降至 **42.5 MB**。
+
+| 项 | 值 |
+|---|---|
+| 清理文件数 | 591（`.png` + `.f64be` + `.f64be.raw`） |
+| 释放体积 | 448.5 MB（工作区）/ 365 MB（.git） |
+| 保留 | 14 张定稿图、全部 csv/json/txt/log/py 文本证据 |
+| 方法 | `git filter-branch --index-filter`（分批 `git rm --cached`） |
+| 未使用 | 未手工删除任何 pack 文件 |
+
+**对已有克隆的影响**：旧的本地副本与远程已分叉，`git pull` 会失败。必须重新 clone：
+
+```bash
+git clone https://github.com/wonderfulaichen/GeoGenesis-mod.git
+cd GeoGenesis-mod && git checkout feat/hydrology-target
+```
+
+**注意**：2026-11-03 之前的所有提交哈希均已改变，旧 SHA 无法解析；
+被移除的 591 张图不在历史里了，需要时从旧克隆或备份取。
+`main` 分支仍是旧的、**不含定稿**，必须检出 `feat/hydrology-target`。
 
 ---
 
@@ -232,17 +258,21 @@ shelf-coastal           2604533841943D21
 ## 九、Git 状态
 
 ```
-分支      feat/hydrology-target
-HEAD      d47de7477a4ee0908061ede4ce69b6bba49f73ba
-领先远端  14 个提交（未推送）
+分支      feat/hydrology-target      ← 必须检出这条，main 不含定稿
+HEAD      fb833613cae90c970547e2cd86e49cad9ff8759b（2026-11-03 历史重写后）
 远端      https://github.com/wonderfulaichen/GeoGenesis-mod.git
+已推送    是（重写后强推，远端 HEAD 与本地一致）
+.git      42.5 MB（重写前 407 MB）
+工作区    干净
 ```
 
-本轮**未提交、未推送**。若要交接给朋友，推送前需重新确认范围
-（14 个提交会整体上传，不只是本轮改动）。
+⚠ **2026-11-03 做过历史重写**：所有旧提交哈希已变（例如原来的 `d47de74`
+现在是 `b4d4410` 之后的新链），旧 SHA 无法解析。详情见 §7.1。
 
-工作区已还原到 HEAD 的干净状态（`OceanAssemblyCandidate.java` /
-`FullMorphGallery.java` 均无改动）。
+工作区已还原到 HEAD 的干净状态：`OceanAssemblyCandidate.java` /
+`FullMorphGallery.java` / `CoherentMorphWorld.java` / `ShallowRegionMatcher.java`
+均无未提交改动；M1a 阈值实验的 `M1ThresholdHeight*` 两个文件已删除
+（它们依赖的重载不入库，删除后 diagnostics 可正常编译）。
 
 ---
 
@@ -265,5 +295,16 @@ HEAD      d47de7477a4ee0908061ede4ce69b6bba49f73ba
 | 四周皆海（标签） | `handoff/attachments/surrounded-continent-20261103/` |
 | 大面积海陆比 | `handoff/attachments/large-area-sea-land-20261103/` |
 | 青/深蓝光照对比 | `handoff/attachments/light-convention-proof-20261103/cone-vs-pit.png` |
-| B1 失败证据 | `handoff/attachments/b1-wide-sea-failed-20261103/` |
-| 工作区完整备份 | `handoff/attachments/backup-20261103-pre-handoff/` |
+| B1 失败证据（diff） | `handoff/attachments/b1-wide-sea-failed-20261103/b1-experimental-arm.diff` |
+| 验收工具 | `tools/verify-final-render.py`（定稿）、`tools/verify-light-convention.py`（光照） |
+
+⚠ **以下已在 2026-11-03 历史重写中移除**（见 §7.1），不再存在于仓库：
+
+| 已移除 | 说明 |
+|---|---|
+| `backup-20261103-pre-handoff/` | 工作区完整备份（备份对象本身） |
+| `b1-wide-sea-failed-20261103/wide-sea-coastal.f64be` | 15 MB B1 失败臂原始数据（保留了 diff） |
+| `large-area-sea-land-20261103/raw-smooth/` | 60 MB 中间数据（可由 M0 数据重算） |
+| 其余 591 张大实验图 | 2026-10-30 ~ 11-02 各轮淘汰实验的 PNG |
+
+定稿相关证据（上面表格里的 14 张图 + 全部 csv/json/txt 文本）**完整保留**。
