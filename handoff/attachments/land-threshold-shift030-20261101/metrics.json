@@ -1,0 +1,51 @@
+{
+  "shift": 0.3,
+  "arms": {
+    "0": {
+      "landPercent": 75.69952328330788,
+      "seaPercent": 24.300476716692117,
+      "landComponents4": 5,
+      "seaComponents4": 106,
+      "largestLandSharePercent": 99.92832293847685,
+      "largestSeaSharePercent": 7.112816319684676,
+      "landToSeaPixelsVsZero": 0
+    },
+    "0.20": {
+      "landPercent": 47.23718807968816,
+      "seaPercent": 52.76281192031183,
+      "landComponents4": 55,
+      "seaComponents4": 32,
+      "largestLandSharePercent": 20.367094778530845,
+      "largestSeaSharePercent": 84.77340823789214,
+      "landToSeaPixelsVsZero": 558659
+    },
+    "0.30": {
+      "landPercent": 33.06697928113955,
+      "seaPercent": 66.93302071886045,
+      "landComponents4": 84,
+      "seaComponents4": 18,
+      "largestLandSharePercent": 8.11122290031878,
+      "largestSeaSharePercent": 97.34069032290475,
+      "landToSeaPixelsVsZero": 836792
+    }
+  },
+  "monotonic": "raising threshold only converts land to sea; zero pixels became land vs both 0 and 0.20",
+  "zeroParity": "main+local meta/type/side/cells/c/probability byte-identical to frozen M0",
+  "rawCAndCellsUnchanged": "zero vs 0.30 identical",
+  "checks": {
+    "compileDiagnosticsJava": "PASS",
+    "M0DistributionCheck": 5892214,
+    "CoherentLayoutCheck": "PASS",
+    "LandThresholdCheck": 26244
+  },
+  "changedExisting": [
+    "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/CoherentRegionDistribution.java",
+    "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/M0DistributionGallery.java",
+    "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/M0DistributionSampler.java"
+  ],
+  "stopped": [
+    "height chain",
+    "P4",
+    "production defaults"
+  ]
+}

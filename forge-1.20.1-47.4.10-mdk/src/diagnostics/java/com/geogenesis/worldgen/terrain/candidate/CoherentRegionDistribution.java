@@ -8,8 +8,14 @@ final class CoherentRegionDistribution {
     private final int anchorSeed, sideSeed, landSeed, oceanSeed;
     private final int[] oceanSlots;
     private final RefNoise.Node continentality;
+    private final double landThreshold;
 
-    CoherentRegionDistribution(long seed) {
+    CoherentRegionDistribution(long seed) { this(seed, 0); }
+
+    /** 正偏移将海陆判断向原大陆场高值侧推进；旧入口恒0，不改变噪声/抽签/地貌。 */
+    CoherentRegionDistribution(long seed, double landThreshold) {
+        if (!Double.isFinite(landThreshold)) throw new IllegalArgumentException("land threshold");
+        this.landThreshold = landThreshold;
         this.seed = seed;
         catalog = new RecipeMorphCatalog(seed);
         int b = base(seed);
@@ -35,7 +41,7 @@ final class CoherentRegionDistribution {
 
     Choice choice(Anchor a) {
         double c = continentality.compute((float) a.x(), (float) a.z()) * 2.0 - 1.0;
-        double probability = RegionalMorphWorld.seaProbability(c);
+        double probability = RegionalMorphWorld.seaProbability(landThreshold == 0 ? c : c - landThreshold);
         double draw = unit(RefNoise.hash2D(sideSeed, a.cellX(), a.cellZ()));
         float id = legacyId(landSeed, a.cellX(), a.cellZ());
         int landSlot = RegionPartition.selectIndex(id, catalog.slotCount());
