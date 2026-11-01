@@ -1,0 +1,49 @@
+{
+  "window": {
+    "size": 1401,
+    "step": 5,
+    "origin": [
+      -3642.5,
+      -3365.5
+    ],
+    "center": [
+      -140,
+      137
+    ]
+  },
+  "seaLevel": 63.0,
+  "arms": {
+    "morph-coastal": {
+      "722198b": {
+        "wet_below_63": 702939,
+        "wet_fraction": 0.35813054914889486,
+        "minY": 5.1448796119003575,
+        "maxY": 277.8583289230347
+      },
+      "c165e92": {
+        "wet_below_63": 702939,
+        "wet_fraction": 0.35813054914889486,
+        "minY": 5.1448796119003575,
+        "maxY": 277.8583289230347
+      },
+      "d47de74": {
+        "wet_below_63": 702939,
+        "wet_fraction": 0.35813054914889486,
+        "minY": 5.1448796119003575,
+        "maxY": 277.8583289230347
+      }
+    },
+    "m0-distribution": {
+      "d47de74/m0-thr0": {
+        "water_labels": 476970,
+        "water_fraction": 0.24300476716692115,
+        "distinct_types": 23
+      },
+      "d47de74/m0-thr030": {
+        "water_labels": 1313762,
+        "water_fraction": 0.6693302071886045,
+        "distinct_types": 23
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "m0-thr0": {
+    "image": "handoff\\attachments\\large-area-sea-land-20261103\\closeup\\continent-m0-thr0.png",
+    "pixels": 166,
+    "size_blocks": [
+      680.0,
+      680.0
+    ],
+    "touches_edge": false
+  },
+  "m0-thr030": {
+    "image": "handoff\\attachments\\large-area-sea-land-20261103\\closeup\\continent-m0-thr030.png",
+    "pixels": 48058,
+    "size_blocks": [
+      18000.0,
+      17680.0
+    ],
+    "touches_edge": false
+  }
+}

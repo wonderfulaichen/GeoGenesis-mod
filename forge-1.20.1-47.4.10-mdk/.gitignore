@@ -14,7 +14,10 @@ out
 .idea
 
 # gradle
-build
+# 注意：原来这里是裸 `build`。裸规则会排除整个目录，Git 便不再进入其中
+# 匹配任何 `!` 规则，导致定稿白名单无法生效。改为 `build/*` +
+# 下方逐条 `!`（`build/*` 只排除子项，不排除目录本身）。
+build/*
 .gradle
 
 # other
@@ -23,3 +26,26 @@ run
 
 # Files from Forge MDK
 forge*changelog.txt
+
+# ============================================================
+# 2026-11-03 定稿交接：放行可复现产物
+#
+# 上面的 `build/*` 只排除 build/ 下的子项，所以下面的 `!` 规则能生效。
+# 放行内容合计约 20 MB：
+#   - 定稿地形数据 morph-coastal.f64be（15 MB）
+#   - 基线 classpath（src/main 编译产物，约 5 MB）
+#
+# 其余臂（baseline-coastal 等）与 baseline/diagnostics 仍然忽略。
+# 若朋友能从源码重建基线，可删除本段并在文档指引下自建。
+# ============================================================
+!build/terrain-upgrade/
+build/terrain-upgrade/*
+!build/terrain-upgrade/baseline/
+build/terrain-upgrade/baseline/*
+!build/terrain-upgrade/baseline/classes/
+!build/terrain-upgrade/baseline/config-input.toml
+!build/main-verify-restore/
+build/main-verify-restore/*
+!build/main-verify-restore/out/
+build/main-verify-restore/out/*
+!build/main-verify-restore/out/morph-coastal.f64be

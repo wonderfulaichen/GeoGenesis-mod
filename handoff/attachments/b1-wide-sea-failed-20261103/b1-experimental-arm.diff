@@ -1,0 +1,246 @@
+﻿diff --git a/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FullMorphGallery.java b/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FullMorphGallery.java
+index 3b54c88..c97f577 100644
+--- a/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FullMorphGallery.java
++++ b/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FullMorphGallery.java
+@@ -30,15 +30,26 @@ public final class FullMorphGallery {
+     private static final long SEED = 9139912035078620160L;
+     private static final int SIZE = 1401, STEP = 5;
+     private static final double CX = -140, CZ = 137;
+-    /** 臂顺序固定：前 6 个是既有认可臂（{@code render-full-morph.py} 的 schema 依赖它），第 7 个是新增。 */
++    /**
++     * 臂顺序固定：前 6 个是既有认可臂（{@code render-full-morph.py} 的 schema 依赖它），
++     * 第 7 个是 {@code shelf-coastal}，第 8 个是 {@code wide-sea-coastal}。
++     */
+     private static final String[] ARMS = {"baseline-coastal", "baseline-islands", "plateau-only-coastal",
+-            "plateau-only-islands", "morph-coastal", "morph-islands", "shelf-coastal"};
++            "plateau-only-islands", "morph-coastal", "morph-islands", "shelf-coastal", "wide-sea-coastal"};
++    /**
++     * 宽海臂的海陆偏置（c 减去它 ⇒ 更多海）。
++     *
++     * <p><b>与生产 {@code TerrainParams.continentBias=0.31} 是两个独立的量</b>：不叠加到生产参数上，
++     * 不改生产默认值，只在本诊断沙箱的第 8 臂生效。{@code 0.30} 取自 d47de74 定稿的
++     * {@code landThreshold}，此处改为作用在连续高度链的海陆判定上。</p>
++     */
++    private static final double WIDE_SEA_BIAS = 0.30;
+     private final RecipeMorphCatalog catalog = new RecipeMorphCatalog(SEED);
+     private final CombineCandidate original = catalog.original();
+     private final FullMorphLand morph = new FullMorphLand(catalog);
+     private final HeightCurve curve;
+     private final ContinentField continent;
+-    private final OceanAssemblyCandidate baseline, plateauOnly, experiment, shelf;
++    private final OceanAssemblyCandidate baseline, plateauOnly, experiment, shelf, wideSea;
+     private final ShallowSeaIslandCandidate islands = new ShallowSeaIslandCandidate(SEED + 900);
+ 
+     private FullMorphGallery(Path input, Path out) throws Exception {
+@@ -59,6 +70,10 @@ public final class FullMorphGallery {
+         // 单变量臂：陆地层与 baseline 完全相同（同一 original），只多开浅海形态项。
+         shelf = new OceanAssemblyCandidate(original, continent, SEED + 3)
+                 .enableCoastalDetail(SEED).enableShallowDetail(SEED);
++        // 第 8 臂：陆地层与 baseline 逐字相同，唯一变量是海陆判定偏置（c - 0.30）。
++        // ⚠ 必须传 continent::sample 而非常 continent 对象：群岛臂仍用原值采样大陆性。
++        wideSea = new OceanAssemblyCandidate(original::e, continent::sample, SEED + 3, WIDE_SEA_BIAS)
++                .enableCoastalDetail(SEED);
+     }
+ 
+     public static void main(String[] args) throws Exception {
+@@ -68,7 +83,8 @@ public final class FullMorphGallery {
+         g.interfaceCheck();
+         g.render(out);
+         g.baselineCheck(out);
+-        shelfArmCheck(out);
++        g.shelfArmCheck(out);
++        g.wideSeaArmCheck(out);
+         Files.writeString(out.resolve("geometry.json"), "{\"seed\":\"" + SEED + "\",\"size\":1401,\"step\":5,"
+                 + "\"center\":[-140,137],\"sampleOrigin\":[-3642.5,-3365.5],\"jvmProperties\":[\"file.encoding=UTF-8\"]}\n");
+         System.out.println("FULL MORPH GALLERY PASS");
+@@ -144,6 +160,10 @@ public final class FullMorphGallery {
+                     double shelfY = curve.heightFromE(shelf.e(x, z));
+                     require(Double.isFinite(shelfY), "nonfinite shelf map");
+                     streams[6].writeDouble(shelfY);
++                    // 第 8 臂：wide-sea-coastal（无群岛；单变量只差海陆判定偏置）
++                    double wideY = curve.heightFromE(wideSea.e(x, z));
++                    require(Double.isFinite(wideY), "nonfinite wide-sea map");
++                    streams[7].writeDouble(wideY);
+                     double[] w = morph.weights(x, z);
+                     int best = 0, active = 0;
+                     for (int k = 0; k < w.length; k++) {
+@@ -201,6 +221,130 @@ public final class FullMorphGallery {
+     /** 与 {@code render-islands-big.py} 的 {@code SEA} 同值（脚本里写死 63.0）。 */
+     private static final double SEA_BLOCKS = 63.0;
+ 
++    /**
++     * 宽海臂的<b>归因守门</b>（唯一变量 = 海陆判定偏置）。
++     *
++     * <h3>★ 为什么"陆地全部零变化"是错判据（本轮实测推翻）</h3>
++     * <p>{@code 0.30} 只改 {@code edge}，而 {@code OceanAssemblyCandidate.heightBlocks} 的海陆
++     * 是一条<b>连续剖面</b>（深海→陆架→岸线→内陆插值）。降低 edge 会把整条剖面向海侧平移，
++     * 因此<b>岸线以上的过渡带陆地高度必然改变</b> —— 这不是缺陷，是连续混合的定义。
++     * 首版判据要求"凡仍是陆地的像素高度逐位不变"，实测 317467 个像素违反；
++     * 该判据把"连续过渡"误当成"离散标签切换"，已废弃。</p>
++     *
++     * <h3>现行判据（可实测、且真正能抓住"改到了内陆地形"）</h3>
++     * <ol>
++     *   <li><b>内陆逐位不变</b>：到基准水域的距离 &gt; {@value #COAST_BAND_BLOCKS} 块的陆地像素，
++     *       其高度必须与基准<b>逐位相同</b>。偏置只许影响海岸带，不许动内陆 —— 这一条是硬的；</li>
++     *   <li><b>只许海进</b>：基准为水的像素，在宽海臂里仍必须是水（禁止海退成陆）；</li>
++     *   <li><b>海占面积必须增加</b>，且必须真的发生"陆→海"转换（否则偏置没接线）；</li>
++     *   <li><b>变化必须集中在海岸带</b>：跨带变化的陆地像素数必须为 0（与第 1 条同源，分开计数便于出图对账）。</li>
++     * </ol>
++     *
++     * <p>四条全部实测计数写入 {@code wide-sea-guard.txt}；任一不满足直接 {@code AssertionError}。</p>
++     */
++    private void wideSeaArmCheck(Path out) throws Exception {
++        require(wideSea.landBias() == WIDE_SEA_BIAS, "wide-sea bias not wired");
++        double[] base = readF64(out.resolve("baseline-coastal.f64be"));
++        double[] wide = readF64(out.resolve("wide-sea-coastal.f64be"));
++        require(base.length == wide.length, "wide-sea arm length mismatch");
++        int n = SIZE;
++        int[] dist = distanceToWater(base, n);
++
++        int baseWet = 0, wideWet = 0, landPixels = 0, landChanged = 0;
++        int inlandPixels = 0, inlandBitDiff = 0, bandChanged = 0;
++        int seaRegressed = 0, landToSea = 0;
++        double maxInlandDelta = 0.0, maxBandDelta = 0.0;
++        for (int i = 0; i < base.length; i++) {
++            boolean baseIsWater = base[i] < SEA_BLOCKS;
++            boolean wideIsWater = wide[i] < SEA_BLOCKS;
++            if (baseIsWater) baseWet++;
++            if (wideIsWater) wideWet++;
++            boolean identical = Double.doubleToLongBits(base[i]) == Double.doubleToLongBits(wide[i]);
++            if (!baseIsWater) {
++                landPixels++;
++                if (!identical) landChanged++;
++                if (dist[i] > COAST_BAND_BLOCKS) {
++                    inlandPixels++;
++                    if (!identical) {
++                        inlandBitDiff++;
++                        maxInlandDelta = Math.max(maxInlandDelta, Math.abs(wide[i] - base[i]));
++                    }
++                } else if (!identical) {
++                    bandChanged++;
++                    maxBandDelta = Math.max(maxBandDelta, Math.abs(wide[i] - base[i]));
++                }
++                if (wideIsWater) landToSea++;
++            } else if (!wideIsWater) {
++                seaRegressed++;
++            }
++        }
++        require(inlandBitDiff == 0, "wide-sea arm changed " + inlandBitDiff
++                + " INLAND land pixels (beyond " + COAST_BAND_BLOCKS + " blocks of water): maxDelta="
++                + maxInlandDelta);
++        require(seaRegressed == 0, "wide-sea arm turned " + seaRegressed
++                + " water pixels into land (bias may only add sea)");
++        require(wideWet > baseWet, "wide-sea arm did not add sea: base=" + baseWet + " wide=" + wideWet);
++        require(landToSea > 0, "wide-sea bias inert (no land->sea transition)");
++        require(bandChanged <= landChanged, "band accounting broken");
++        String report = "bias=" + WIDE_SEA_BIAS
++                + "\nseaBlocks=" + SEA_BLOCKS
++                + "\ncoastBandBlocks=" + COAST_BAND_BLOCKS
++                + "\nlandPixels=" + landPixels
++                + "\nlandPixelsChanged=" + landChanged
++                + "\nlandPixelsInlandUnchanged=" + (inlandPixels - inlandBitDiff)
++                + "\ninlandPixels=" + inlandPixels
++                + "\ninlandPixelsBitDiff=" + inlandBitDiff
++                + "\nmaxInlandDelta=" + maxInlandDelta
++                + "\nbandLandPixelsChanged=" + bandChanged
++                + "\nmaxBandDelta=" + maxBandDelta
++                + "\nlandToSea=" + landToSea
++                + "\nseaRegressed=" + seaRegressed
++                + "\nbaseWet=" + baseWet
++                + "\nwideWet=" + wideWet
++                + "\nbaseWetFraction=" + (double) baseWet / base.length
++                + "\nwideWetFraction=" + (double) wideWet / base.length
++                + "\n";
++        Files.writeString(out.resolve("wide-sea-guard.txt"), report);
++        System.out.printf(Locale.ROOT,
++                "WIDE SEA ARM PASS inland=%d inlandBitDiff=0 bandChanged=%d landToSea=%d seaRegressed=0 "
++                        + "wet %d -> %d (%.4f%% -> %.4f%%)%n",
++                inlandPixels, bandChanged, landToSea, baseWet, wideWet,
++                100.0 * baseWet / base.length, 100.0 * wideWet / base.length);
++    }
++
++    /**
++     * 到最近基准水域像素的<b>块</b>距离（多源 BFS，4 邻接，格距 {@link #STEP}）。
++     *
++     * <p>只用于把"海岸带 / 内陆"分开计数，是<b>栅格近似</b>（4 邻接会高估对角距离约 1.08 倍），
++     * 因此判据取 {@code > 240} 这种远离边界的档位，不对临界值下结论。</p>
++     */
++    private static int[] distanceToWater(double[] height, int n) {
++        int[] dist = new int[height.length];
++        java.util.Arrays.fill(dist, Integer.MAX_VALUE);
++        int[] queue = new int[height.length];
++        int head = 0, tail = 0;
++        for (int i = 0; i < height.length; i++) {
++            if (height[i] < SEA_BLOCKS) { dist[i] = 0; queue[tail++] = i; }
++        }
++        while (head < tail) {
++            int cur = queue[head++];
++            int cx = cur % n, cz = cur / n;
++            int next = dist[cur] + 1;
++            if (cx > 0 && dist[cur - 1] > next) { dist[cur - 1] = next; queue[tail++] = cur - 1; }
++            if (cx + 1 < n && dist[cur + 1] > next) { dist[cur + 1] = next; queue[tail++] = cur + 1; }
++            if (cz > 0 && dist[cur - n] > next) { dist[cur - n] = next; queue[tail++] = cur - n; }
++            if (cz + 1 < n && dist[cur + n] > next) { dist[cur + n] = next; queue[tail++] = cur + n; }
++        }
++        for (int i = 0; i < dist.length; i++) {
++            if (dist[i] == Integer.MAX_VALUE) dist[i] = Integer.MAX_VALUE / 4;
++            else dist[i] *= (int) STEP;
++        }
++        return dist;
++    }
++
++    /** 海岸过渡带宽度（块）：与既有 240 普通带同量级，用于把"海岸带"与"内陆"分开计数。 */
++    private static final double COAST_BAND_BLOCKS = 240.0;
++
+     private static double[] readF64(Path file) throws Exception {
+         byte[] raw = Files.readAllBytes(file);
+         double[] out = new double[raw.length / 8];
+diff --git a/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate.java b/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate.java
+index ec891b7..2f1aca3 100644
+--- a/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate.java
++++ b/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate.java
+@@ -66,6 +66,8 @@ public final class OceanAssemblyCandidate {
+     /** 海洋类型（供类型图着色）。 */
+     public enum Sea { DEEP_OCEAN, SHALLOW_OCEAN, COAST, LAND }
+ 
++    /** 实验臂的海陆偏置；旧构造器恒 {@code 0.0}（不包裹 source，产出逐位不变）。 */
++    private final double landBias;
+     private final java.util.function.DoubleBinaryOperator land;
+     /** 大陆性采样器：可切换 FBM（生产）与 Voronoi 领地（候选）。 */
+     private final EdgeSource edgeSource;
+@@ -94,12 +96,34 @@ public final class OceanAssemblyCandidate {
+     /** 独立实验臂的陆地e接口；旧构造器保持相同采样顺序与参数。 */
+     public OceanAssemblyCandidate(java.util.function.DoubleBinaryOperator land, EdgeSource source,
+                                   long worldSeed) {
++        this(land, source, worldSeed, 0.0);
++    }
++
++    /**
++     * <b>实验臂专用</b>：把大陆性 c 先减去 {@code landBias} 再换算 edge（{@code bias > 0 ⇒ 更多海}）。
++     *
++     * <p>与生产 {@code TerrainParams.continentBias} 是<b>两个独立的量</b>：那个在
++     * {@code CellGenerator} 内部生效并已标定；本参数只用于诊断沙箱做"海陆判定"单变量实验，
++     * 因此<b>不</b>写回生产、不改默认值、不改任何既有入口。</p>
++     *
++     * <p>⚠ {@code source} 本身不被修改（只在外层做减法）：调用方传 {@code continent::sample} 时，
++     * 同一个 {@code ContinentField} 仍可被群岛等其它臂以原值采样。</p>
++     *
++     * @param landBias 加到海侧的偏置；{@code 0.0} 时必须与三参构造器逐位等价
++     */
++    public OceanAssemblyCandidate(java.util.function.DoubleBinaryOperator land, EdgeSource source,
++                                  long worldSeed, double landBias) {
++        if (!Double.isFinite(landBias)) throw new IllegalArgumentException("landBias");
++        this.landBias = landBias;
+         this.land = land;
+-        this.edgeSource = source;
++        this.edgeSource = landBias == 0.0 ? source : (x, z) -> source.sample(x, z) - landBias;
+         int base = (int) (worldSeed ^ (worldSeed >>> 32));
+         this.deepOcean = buildDeepOcean(base);
+     }
+ 
++    /** 该实例的海陆偏置（诊断/守门用；旧构造器恒 {@code 0.0}）。 */
++    public double landBias() { return landBias; }
++
+     /**
+      * {@code makeDeepOcean}（{@code Populators.java:34-63}）的 e 空间等价物。
+      *

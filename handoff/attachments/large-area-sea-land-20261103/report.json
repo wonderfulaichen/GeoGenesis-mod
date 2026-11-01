@@ -1,0 +1,89 @@
+{
+  "m0-thr0": {
+    "image": "handoff\\attachments\\large-area-sea-land-20261103\\sea-land-m0-thr0.png",
+    "meta": {
+      "seed": "9139912035078620160",
+      "size": 1401,
+      "step": 40.0,
+      "origin": [
+        -28140.0,
+        -27863.0
+      ],
+      "center": [
+        -140,
+        137
+      ],
+      "spanBlocks": 56000.0,
+      "microScale": 600,
+      "macroScale": 1200,
+      "bandTotal": 240,
+      "heightEvaluated": false,
+      "s3Window": [
+        -3642.5,
+        -3365.5,
+        3357.5,
+        3634.5
+      ],
+      "shallowMatching": false,
+      "semantics": "base side labels; not final water or S2 ocean subtypes",
+      "jvmArguments": "[-Xmx8g, -Dfile.encoding=UTF-8]"
+    },
+    "stats": {
+      "land_fraction": 0.7569952328330789,
+      "components": 5,
+      "largest_share": 0.9992832293847685,
+      "top5": [
+        0.9992832293847685,
+        0.00040314140706446426,
+        0.00019652302314327808,
+        0.00011172199260884986,
+        5.384192414884331e-06
+      ],
+      "largest_touches_edge": true
+    }
+  },
+  "m0-thr030": {
+    "image": "handoff\\attachments\\large-area-sea-land-20261103\\sea-land-m0-thr030.png",
+    "meta": {
+      "seed": "9139912035078620160",
+      "size": 1401,
+      "step": 40.0,
+      "origin": [
+        -28140.0,
+        -27863.0
+      ],
+      "center": [
+        -140,
+        137
+      ],
+      "spanBlocks": 56000.0,
+      "microScale": 600,
+      "macroScale": 1200,
+      "bandTotal": 240,
+      "heightEvaluated": false,
+      "s3Window": [
+        -3642.5,
+        -3365.5,
+        3357.5,
+        3634.5
+      ],
+      "shallowMatching": false,
+      "semantics": "base side labels; not final water or S2 ocean subtypes",
+      "jvmArguments": "[-Xmx8g, -Dfile.encoding=UTF-8]",
+      "landThreshold": 0.3
+    },
+    "stats": {
+      "land_fraction": 0.3306697928113955,
+      "components": 84,
+      "largest_share": 0.08111222900318779,
+      "top5": [
+        0.08111222900318779,
+        0.07404485708871116,
+        0.07302180608561273,
+        0.05692570092089998,
+        0.05462383616392852
+      ],
+      "largest_touches_edge": true
+    }
+  }
+}
