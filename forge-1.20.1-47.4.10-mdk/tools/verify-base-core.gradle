@@ -1,0 +1,53 @@
+// Invoke with: gradlew.bat -I tools/verify-base-core.gradle verifyBaseCore --offline
+// This source set has no Minecraft/Forge jars or precompiled mod classes.
+allprojects {
+    afterEvaluate {
+        def root = project.file('src/main/java/com/geogenesis/worldgen')
+        def coreSources = project.files(
+            project.fileTree(new File(root, 'core')) { include '**/*.java' },
+            project.fileTree(new File(root, 'terrain/morph')) { include '*.java'; exclude 'MorphCellAdapter.java' },
+            project.fileTree(new File(root, 'noise')) { include '*.java' },
+            ['TerrainParams', 'HeightCurve', 'ContinentField', 'SplineConfig', 'OceanSplineConfig',
+             'MidSplineConfig', 'UnifiedSpline', 'SplineUtil', 'TerrainClass', 'TectonicField',
+             'StratumField', 'RockType', 'CacheStats'].collect { new File(root, "terrain/${it}.java") },
+            ['ClimateRegion', 'Latitude', 'LatPrecipProfile', 'PrecipField', 'WhittakerType',
+             'WindField'].collect { new File(root, "climate/${it}.java") },
+            project.file('src/diagnostics/java/com/geogenesis/worldgen/core/BaseCoreCheck.java'))
+        if (coreSources.files.size() < 60 || coreSources.files.any { !it.isFile() }) {
+            throw new GradleException("Core source closure missing: ${root}")
+        }
+        // Existing noise nodes expose DFU codecs. DFU and fastutil are ordinary Java libraries,
+        // not the Minecraft runtime; codec extraction is outside this behavior-preserving step.
+        def supportJars = configurations.compileClasspath.filter {
+            it.name.startsWith('datafixerupper-') || it.name.startsWith('fastutil-')
+        }
+        def compile = tasks.register('compileBaseCore', JavaCompile) {
+            setSource(coreSources)
+            classpath = supportJars
+            destinationDirectory.set(layout.buildDirectory.dir('base-core/classes'))
+            options.encoding = 'UTF-8'
+            options.release.set(17)
+            options.compilerArgs.add('-proc:none')
+            doFirst {
+                if (coreSources.files.size() < 60) throw new GradleException('Core source closure unexpectedly empty')
+                coreSources.each { f ->
+                    def text = f.getText('UTF-8').replaceAll('(?s)/\\*.*?\\*/', '').replaceAll('(?m)//.*$', '')
+                    if (text =~ /\b(net\.minecraft|net\.minecraftforge|com\.geogenesis\.(config|client)|com\.geogenesis\.worldgen\.terrain\.Cell\b)/) {
+                        throw new GradleException("Application dependency in base core: ${f}")
+                    }
+                }
+            }
+        }
+        tasks.register('verifyBaseCore') {
+            dependsOn compile
+            doLast {
+                def cp = project.files(compile.get().destinationDirectory.get().asFile) + supportJars
+                project.javaexec {
+                    classpath = cp
+                    mainClass.set('com.geogenesis.worldgen.core.BaseCoreCheck')
+                    maxHeapSize = '1g'
+                }
+            }
+        }
+    }
+}

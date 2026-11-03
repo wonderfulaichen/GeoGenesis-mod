@@ -21,6 +21,19 @@ public class GeoGenesisWorldData extends SavedData {
     private static final String ID = "geogenesis_world_params";
 
     private TerrainParams params;
+    private boolean morphBase;
+    private boolean algorithmKnown;
+
+    public boolean usesMorphBase() { return morphBase; }
+
+    /** Loaded saves without a marker always remain on the previous terrain algorithm. */
+    public void initializeAlgorithm(boolean newWorld) {
+        if (!algorithmKnown) {
+            morphBase = newWorld;
+            algorithmKnown = true;
+            setDirty();
+        }
+    }
 
     public GeoGenesisWorldData() {
     }
@@ -36,6 +49,7 @@ public class GeoGenesisWorldData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag) {
+        tag.putString("terrainAlgorithm", morphBase ? "morph-base-p1" : "legacy");
         if (params != null) {
             CompoundTag p = new CompoundTag();
             RecordSerializer.writeRecord(params, p);
@@ -46,6 +60,12 @@ public class GeoGenesisWorldData extends SavedData {
 
     public static GeoGenesisWorldData load(CompoundTag tag) {
         GeoGenesisWorldData d = new GeoGenesisWorldData();
+        d.algorithmKnown = true;
+        String algorithm = tag.getString("terrainAlgorithm");
+        if (!algorithm.isEmpty() && !algorithm.equals("legacy") && !algorithm.equals("morph-base-p1")) {
+            throw new IllegalArgumentException("Unknown GeoGenesis terrain algorithm: " + algorithm);
+        }
+        d.morphBase = algorithm.equals("morph-base-p1");
         if (tag.contains("params")) {
             d.params = RecordSerializer.readRecord(TerrainParams.class, tag.getCompound("params"));
         }

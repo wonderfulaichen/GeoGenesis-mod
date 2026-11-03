@@ -168,7 +168,19 @@ public final class CellGenerator {
     /** 绿洲斑块噪声（大尺度）：河流绿洲的断续门控（RTG SurfaceRiverOasis 范式） */
     private final Noise oasisNoise;
 
+    private final boolean morphBase;
+    private final double minWorldY, maxWorldY;
+    private com.geogenesis.worldgen.core.BaseWorldSampler baseWorld;
+
     public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY) {
+        this(p, minWorldY, maxWorldY, false);
+    }
+
+    /** P1 is selected by the world's persisted algorithm, not by the erosion/river TOML flags. */
+    public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY, boolean morphBase) {
+        this.morphBase = morphBase;
+        this.minWorldY = minWorldY;
+        this.maxWorldY = maxWorldY;
         this.continent = new ContinentField(p);
         this.heightCurve = new HeightCurve(p, minWorldY, maxWorldY);
         this.typeLandShape = new TypeLandShape(p);
@@ -218,6 +230,11 @@ public final class CellGenerator {
 
     /** 一次性播种所有噪声节点 + 设置海山中心水深检查器 */
     public void seed(long worldSeed) {
+        if (morphBase) {
+            baseWorld = new com.geogenesis.worldgen.core.BaseWorldSampler(
+                    worldSeed, params, (int) minWorldY, (int) maxWorldY,
+                    com.geogenesis.config.BaseWorldConfigAdapter.snapshot());
+        }
         continent.seed(worldSeed);
         typeLandShape.seed(worldSeed);
         seaBed.seed(worldSeed);
@@ -283,7 +300,14 @@ public final class CellGenerator {
      * 块→wu 换算只在 MC 门面 {@code GeoGenesisTerrain}（/horizontalScale）。噪声频率常量
      * 数值不变（语义块→wu），HS=1 时与旧实现逐位等价。</p>
      */
+    public boolean usesMorphBase() { return morphBase; }
+
+    private Cell sampleMorphCore(double x, double z) {
+        return com.geogenesis.worldgen.terrain.morph.MorphCellAdapter.from(baseWorld.sampleTerrain(x, z));
+    }
+
     private Cell sampleCore(double wx, double wz) {
+        if (morphBase) return sampleMorphCore(wx, wz);
         double sx = wx, sz = wz;
 
         Cell cell = new Cell();
@@ -451,6 +475,7 @@ public final class CellGenerator {
      * 坐标语义 = wu（2026-08-10 wu 化，见 {@link #sampleCore}）。
      */
     public Cell sample(double wx, double wz) {
+        if (morphBase) return com.geogenesis.worldgen.terrain.morph.MorphCellAdapter.from(baseWorld.sample(wx, wz));
         Cell cell = sampleCore(wx, wz);
         double sx = wx, sz = wz;
 
@@ -536,9 +561,11 @@ public final class CellGenerator {
             && (cell.eClimate > cell.snowLineE || tempE < POLAR_SNOW_TEMP);
 
         // 9. 分类（使用 sampleCore 已缓存 FeatureResult，避免重复 compute）
-        cell.terrainType = classify(cell.continent, cell.e, cell.eLand,
-            TypeLandShape.dominantFromWeights(cell.typeWeights), cell.typeWeights,
-            tempE, humE, cell.oceanFeat, cell.landFeat, cell.coastCoord);
+        if (!morphBase) {
+            cell.terrainType = classify(cell.continent, cell.e, cell.eLand,
+                TypeLandShape.dominantFromWeights(cell.typeWeights), cell.typeWeights,
+                tempE, humE, cell.oceanFeat, cell.landFeat, cell.coastCoord);
+        }
         cell.continentNoise = cell.continent;
         cell.oasisNoise = oasisNoise.compute(wx, wz);
 
@@ -629,6 +656,7 @@ public final class CellGenerator {
      * <p>缓存是<b>纯加速</b>：值为纯函数结果，命中与未命中等价（除 2^-64 的哨兵碰撞）。</p>
      */
     public double terrainEQuick(double wx, double wz) {
+        if (morphBase) return baseWorld.sampleE(wx, wz);
         long kx = Double.doubleToRawLongBits(wx);
         long kz = Double.doubleToRawLongBits(wz);
         long key = kx ^ Long.rotateLeft(kz, 32);
@@ -1010,6 +1038,7 @@ public final class CellGenerator {
      * tile 网格 = 48 wu 中心区对齐（floorDiv → 与 HS 无关的固定 wu 网格，HS=1 时与旧 3-chunk 网格一致）。
      */
     public float[][] getErosionTile(int wuX, int wuZ) {
+        if (morphBase) return new float[ERODE_TILE_SIZE][ERODE_TILE_SIZE];
         int tileCX = Math.floorDiv(wuX, ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int tileCZ = Math.floorDiv(wuZ, ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
 
@@ -1590,6 +1619,7 @@ public final class CellGenerator {
      * applyTileDelta 旧语义一致；半成品 tile 不会被缓存。</p>
      */
     public double erosionDeltaE(double wuX, double wuZ) {
+        if (morphBase) return 0.0;
         // ★ 2026-08-12 回退（半开归属方案经实测否决——48k+24 线引入新墙，且最初断崖根因是
         // SLOPE 0.0015 微坡墙而非 blend；恢复基线 floorDiv(wu,48) + 右/下缘 blend）
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
@@ -1622,6 +1652,7 @@ public final class CellGenerator {
      * <p>语义：返回 empty（而非 0.0）以便调用方区分"确实无侵蚀增量"与"尚不可知"。</p>
      */
     public OptionalDouble peekErosionDeltaE(double wuX, double wuZ) {
+        if (morphBase) return OptionalDouble.of(0.0);
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = tileCacheGet(tileKey(tileCX, tileCZ));
@@ -1637,6 +1668,7 @@ public final class CellGenerator {
      * （与 {@link #sample} 一致，即 {@code sampleCellLight} 同源）。</p>
      */
     public double sampleHeightNonBlocking(double wuX, double wuZ) {
+        if (morphBase) return baseWorld.height(wuX, wuZ);
         Cell cell = sample(wuX, wuZ);
         OptionalDouble d = peekErosionDeltaE(wuX, wuZ);
         double e = d.isPresent() ? softCapLandE(cell.e + d.getAsDouble()) : cell.e;
@@ -1736,6 +1768,12 @@ public final class CellGenerator {
      * extractFromTile 与 sampleWu 共用的公共逻辑。
      */
     private void applyTileDelta(Cell cell, double wuX, double wuZ) {
+        if (morphBase) {
+            double denom = 2.0 * Math.max(0.01, params.horizontalScale());
+            cell.gradient = (float) Math.hypot(baseWorld.heightDifferenceX(wuX, wuZ) / denom,
+                    baseWorld.heightDifferenceZ(wuX, wuZ) / denom);
+            return;
+        }
         double delta = erosionDeltaE(wuX, wuZ);
 
         // ★ 2026-08-14 晚场（用户建议"流量累积图当梯度图用起来"）：RIVER_NETWORK 图层
@@ -1772,6 +1810,7 @@ public final class CellGenerator {
      * @return true = 已施加侵蚀增量；false = tile 未生成，cell 保持原样（绝不阻塞）
      */
     public boolean applyCachedTileDelta(Cell cell, double wuX, double wuZ) {
+        if (morphBase) return false;
         int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
         ErosionTileResult res = erosionTileCache.get(tileKey(tileCX, tileCZ));
@@ -1851,6 +1890,7 @@ public final class CellGenerator {
      * 可触发侵蚀 tile 生成，不是非阻塞 peek。
      */
     public double erodedHeight(double wuX, double wuZ) {
+        if (morphBase) return baseWorld.height(wuX, wuZ);
         double e0 = terrainEQuick(wuX, wuZ);
         double ne = e0 + erosionDeltaE(wuX, wuZ);
         if (Double.isNaN(ne) || Double.isInfinite(ne)) ne = e0;
@@ -1910,6 +1950,7 @@ public final class CellGenerator {
      * 未预热的 tile 由必需查询生成，生成内容及 blend 语义不变。
      */
     public void prewarmErosionTiles(double blockX0, double blockZ0, double blockSpan, double hs) {
+        if (morphBase) return;
         double wu0x = blockX0 / hs, wu0z = blockZ0 / hs;
         double wu1x = (blockX0 + blockSpan) / hs, wu1z = (blockZ0 + blockSpan) / hs;
         // tile 键用 floorDiv(wu, CENTER)*CENTER

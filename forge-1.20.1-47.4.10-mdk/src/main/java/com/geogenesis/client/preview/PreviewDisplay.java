@@ -480,12 +480,15 @@ public class PreviewDisplay extends AbstractWidget {
     // 119 = 2026-10-29 源头按比例均匀抽稀（sourceKeepFrac 默认 0.7）。用户看图确认：
     //       源头 1119→约783（−30%）、左带河道 −5.9%、最大连通分量 −1.4%（只少支流）。
     //       ⚠ 与 spacing/maxSources 不同——那两个会成片抹掉支流并打断主干，已实测否决。
-    private static final int CACHE_SCHEMA_VERSION = 119;
-    /** 2026-08-06：混入全配置指纹（含侵蚀/河流等运行时参数）——配置改动后磁盘缓存自动失效重采 */
-    private static long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
+    // 120 = P1 新世界 morph 基础地形；算法身份单独入键，旧世界仍走 legacy。
+    private static final int CACHE_SCHEMA_VERSION = 120;
+    /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
+    private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
         long strategy = com.geogenesis.worldgen.hydrology.model.ModelHydrologyProvider.outputStrategyFingerprint();
-        return ((params.hashCode() * 31L + cfg) * 31L + strategy) * 31L + CACHE_SCHEMA_VERSION;
+        long algorithm = terrain.usesMorphBase() ? 1L : 0L;
+        return (((params.hashCode() * 31L + cfg) * 31L + strategy) * 31L + algorithm) * 31L
+                + CACHE_SCHEMA_VERSION;
     }
 
     /** 从磁盘加载历史数据到 CellCache 历史层（滑回/缩放需要时自动回填渲染层，不重新采样）。

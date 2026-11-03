@@ -188,6 +188,10 @@ public class GeoGenesisBiomeSource extends BiomeSource {
     }
 
     public void setTerrain(GeoGenesisTerrain terrain) {
+        if (this.terrain != terrain) {
+            java.util.Arrays.fill(biomeCacheValues, null);
+            java.util.Arrays.fill(caveColInfo, 0);
+        }
         this.terrain = terrain;
     }
 

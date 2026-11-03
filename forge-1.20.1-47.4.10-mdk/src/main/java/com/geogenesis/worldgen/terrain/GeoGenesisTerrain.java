@@ -140,12 +140,12 @@ public final class GeoGenesisTerrain {
         } catch (IllegalStateException e) {
             // 预览进程：配置未加载，保持默认值
         }
-        this.riversEnabled = riversEnabled;
+        this.riversEnabled = riversEnabled && !generator.usesMorphBase();
         this.erosionYieldToRiver = erosionYieldToRiver;
         this.hydrologyExperiment = new HydrologyChunkEngine(generator, 0L);
         // ★ 2026-08-14 启动诊断：确认游戏内河网 + discharge 是否启用（用户"跑新版没变化"排查）
         LOGGER.info("[RIVER] terrain init: riversEnabled={} hs={}",
-            riversEnabled, hs);
+            this.riversEnabled, hs);
     }
 
     /** 播种所有噪声节点（每个世界种子调用一次） */
@@ -171,6 +171,8 @@ public final class GeoGenesisTerrain {
 
     /** 河流开关（配置 riverEnabled） */
     public boolean riversEnabled() { return riversEnabled; }
+
+    public boolean usesMorphBase() { return generator.usesMorphBase(); }
 
     public boolean usesModelPipeline() { return hydrologyExperiment.usesModelPipeline(); }
 

@@ -508,10 +508,20 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      * 用静态持有：单 JVM 同一时刻只有一个主世界，与现有 {@code worldSeed} 静态方案一致。
      */
     private static volatile TerrainParams currentWorldParams = null;
+    // New-world preview defaults to P1; loading an existing save explicitly replaces this choice.
+    private static volatile boolean currentWorldMorphBase = true;
+
+    public static boolean usesCurrentWorldMorphBase() { return currentWorldMorphBase; }
+
+    public static void setCurrentWorldMorphBase(boolean morphBase) {
+        currentWorldMorphBase = morphBase;
+        sharedTerrain = null;
+    }
 
     /** 注入当前世界参数（来自 WorldSavedData；null = 用全局 toml 默认）。 */
     public static void setCurrentWorldParams(TerrainParams p) {
         currentWorldParams = p;
+        sharedTerrain = null;
     }
 
     /** 解析当前世界参数：存档优先，缺失回退全局 toml。 */
@@ -535,7 +545,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             synchronized (GeoGenesisGenerator.class) {
                 t = sharedTerrain;
                 if (t == null) {
-                    CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y);
+                    CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y,
+                            currentWorldMorphBase);
                     GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
                     // ★ 2026-08-26 修复：必须走 terrain.seed() —— 它内部调 generator.seed +
                     //   rivers.setWorldSeed。只 gen.seed 会漏掉河网种子（所有世界同一河网）。
@@ -561,11 +572,14 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     // ===== 初始化 =====
 
-    /**
-     * 惰性初始化地形引擎并注入 BiomeSource，保证 biome 采样与方块填充基于同一地形场。
-     */
+    /** 在出生点/群系查询前绑定存档算法，替换加载前可能建立的引擎。 */
+    public void initializeForWorld() {
+        ensureEngine(worldSeed);
+    }
+
+    /** 惰性初始化并注入 BiomeSource，群系与方块填充使用同一地形场。 */
     private void ensureEngine(long seed) {
-        if (terrain == null) {
+        if (terrain == null || terrain != sharedTerrain) {
             terrain = buildTerrain(resolveParams());
             // inject terrain into BiomeSource so it can classify biomes by Cell data
             if (biomeSource instanceof GeoGenesisBiomeSource gbs) {

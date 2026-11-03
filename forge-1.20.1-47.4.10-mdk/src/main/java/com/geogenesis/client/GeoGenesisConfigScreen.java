@@ -264,7 +264,9 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private void rebuildPreview() {
         TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        boolean morphBase = worldCtx != null || Minecraft.getInstance().level == null
+                || com.geogenesis.worldgen.generator.GeoGenesisGenerator.usesCurrentWorldMorphBase();
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), morphBase);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
         terrain.seed(seed); // 同时播种地形与水文，不能只调用 gen.seed。
         if (preview == null) {
