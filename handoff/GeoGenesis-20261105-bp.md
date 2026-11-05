@@ -36,6 +36,7 @@ B/P [开始 status](attachments/bp-20261105/bp/start-status.txt) 与[结束 stat
 
 - `src/main/java/com/geogenesis/worldgen/process/` 下 `ProcessContext.java`、`TileGeometry.java`、`ParticleTile.java`、`ProcessRuntime.java`。
 - `src/diagnostics/java/com/geogenesis/worldgen/process/` 下 `ProcessRuntimeCheck.java`、`ProcessRenderProbe.java`。
+  （⚠ 2026-11-06 这两个已移到 `_archive/diagnostic-probes-20261106/src/diagnostics/java/com/geogenesis/worldgen/process/`，见该目录 README。）
 - `tools/verify-process-core.gradle`、`tools/run-process-verification.py`、`tools/render-process-comparison.py`。
 
 以上路径均以 `forge-1.20.1-47.4.10-mdk/` 为前缀，当前均未跟踪。被移走的是临时 `.openbitfun-bp-evidence-path`，去向原 build 的 `evidence-path.txt`；这不是地形修改。
@@ -64,8 +65,8 @@ B/P [开始 status](attachments/bp-20261105/bp/start-status.txt) 与[结束 stat
 | [TileGeometry.java](../forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/process/TileGeometry.java) | wu 坐标、负坐标 floor、半开 owner、所需最多四 tile 与对称 blend footprint |
 | [ParticleTile.java](../forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/process/ParticleTile.java) | 私有任务数组、真实 B 输入、原 ErosionEngine 调用、有限值验证、delta 裁限及 float 双线性采样 |
 | [ProcessRuntime.java](../forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/process/ProcessRuntime.java) | exact/request/peek、singleflight、订阅取消、有界队列/LRU、成功后发布和关闭隔离 |
-| [ProcessRuntimeCheck.java](../forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/process/ProcessRuntimeCheck.java) | 断言型隔离验证，失败进程非零；Observer 仅是包内生命周期故障注入，不是替换地形 |
-| [ProcessRenderProbe.java](../forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/process/ProcessRenderProbe.java) | 加载冻结 TOML，创建 context，逐点 exactP，输出八列 CSV；禁止覆盖已有 CSV |
+| [ProcessRuntimeCheck.java](../_archive/diagnostic-probes-20261106/src/diagnostics/java/com/geogenesis/worldgen/process/ProcessRuntimeCheck.java) | 断言型隔离验证，失败进程非零；Observer 仅是包内生命周期故障注入，不是替换地形（2026-11-06 归档，路径已改） |
+| [ProcessRenderProbe.java](../_archive/diagnostic-probes-20261106/src/diagnostics/java/com/geogenesis/worldgen/process/ProcessRenderProbe.java) | 加载冻结 TOML，创建 context，逐点 exactP，输出八列 CSV；禁止覆盖已有 CSV（2026-11-06 归档，路径已改） |
 | [verify-process-core.gradle](../forge-1.20.1-47.4.10-mdk/tools/verify-process-core.gradle) | 配合 verify-base-core 定向编译与捕获 support classpath/源列表，不编译全部 diagnostics |
 | [run-process-verification.py](../forge-1.20.1-47.4.10-mdk/tools/run-process-verification.py) | 接收 MDK 相对证据目录，编译/运行定向 check 或 render；保存 argv/log/exit |
 | [render-process-comparison.py](../forge-1.20.1-47.4.10-mdk/tools/render-process-comparison.py) | 只读 exactP CSV，B/P 同色阶、光照 315/45；Coast 与 Cross-tile 使用同一中线，并非两个独立采样 |
