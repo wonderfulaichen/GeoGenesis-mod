@@ -246,8 +246,8 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 > |---|---|
 > | `main` 对齐主线 | 强推至主线提交（`--force-with-lease`），sim 线节点不再被 `main` 引用 |
 > | 本地分支改名 | `feat/hydrology-target` → `main`，upstream 改为 `origin/main` |
-> | GitHub 默认分支 | `gh repo edit --default-branch main`，`git ls-remote --symref origin HEAD` 已确认指向 `refs/heads/main` |
-> | 远端 `feat/hydrology-target` | 默认分支切过去后删除，避免出现两条同名内容的长期并存 |
+> | GitHub 默认分支 | `gh repo edit --default-branch main`；已核验：API `default_branch=main` + `ls-remote --symref origin HEAD → refs/heads/main` |
+> | 远端 `feat/hydrology-target` | **已删除**（删前校验与 `main` SHA 相同：`24bd8447`；删后远端只剩 `main` 与 `backup/pre-legacy-chain-removal-20261020`） |
 >
 > ⇒ **今后 `git push` 默认推 `main`**；历史上任何「`main` 是旧的、必须检出
 > `feat/hydrology-target`」的说法（多见于 `handoff/GeoGenesis-20261103-*.md`）
