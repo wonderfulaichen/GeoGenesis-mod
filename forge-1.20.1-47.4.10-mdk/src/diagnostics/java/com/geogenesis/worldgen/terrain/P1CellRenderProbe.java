@@ -82,7 +82,7 @@ public final class P1CellRenderProbe {
                 double wx = bx / p.horizontalScale(), wz = bz / p.horizontalScale();
                 Cell c = cells[x * 16 + z];
                 require(c.height == reference.height(wx, wz), "complete chunk height drift");
-                require(c.height == terrain.sampleHeightNonBlocking(bx, bz), "nonblocking height drift");
+                require(c.height == terrain.sampleHeightNonBlocking(bx, bz), "B nonblocking height drift");
                 require(gen.terrainEQuick(wx, wz) == c.e && c.eClimate == c.e, "quick/eClimate drift");
                 require(gen.erosionDeltaE(wx, wz) == 0 && gen.erodedHeight(wx, wz) == c.height, "external delta");
                 require(c.riverType == 0 && !c.isLake && !c.lakeMask, "hydrology leaked");

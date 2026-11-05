@@ -53,15 +53,27 @@ public final class GuideErosionBench {
         Engine(Path dir, String className) throws Exception {
             loader = new Loader(dir.toUri().toURL(), GuideErosionBench.class.getClassLoader(), className);
             type = Class.forName(className, true, loader);
-            ctor = type.getConstructor(double.class, int.class, boolean.class);
+            Constructor<?> selected;
+            try { selected = type.getConstructor(boolean.class, java.util.function.Supplier.class, int.class); }
+            catch (NoSuchMethodException legacy) {
+                selected = type.getConstructor(double.class, int.class, boolean.class);
+            }
+            ctor = selected;
             run = type.getMethod("runErosionOnFlat", float[].class, float[].class, int.class, int.class,
                     int.class, int.class, float.class, float.class, float[].class, float.class);
             if (type.getClassLoader().loadClass(GeoGenesisConfig.class.getName()) != GeoGenesisConfig.class)
                 throw new IllegalStateException("config must come from the parent loader");
         }
         Object instance() {
-            try { return ctor.newInstance(1.0d, 12345, false); }
-            catch (Exception e) { throw new IllegalStateException(e); }
+            try {
+                if (ctor.getParameterTypes()[0] == boolean.class) {
+                    return ctor.newInstance(false,
+                            (java.util.function.Supplier<ParticleErosionParams>)
+                                    com.geogenesis.config.ParticleErosionConfigAdapter::snapshot,
+                            8);
+                }
+                return ctor.newInstance(1.0d, 12345, false);
+            } catch (Exception e) { throw new IllegalStateException(e); }
         }
     }
 

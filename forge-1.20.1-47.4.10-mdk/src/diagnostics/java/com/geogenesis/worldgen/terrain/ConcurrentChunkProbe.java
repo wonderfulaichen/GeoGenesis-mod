@@ -13,9 +13,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>用户日志的慢 chunk 达 <b>22 秒</b>，而单线程 {@code ChunkTimeProbe} 只测出 2 秒 ——
  * 相差 10 倍。根因是<b>并发超订</b>：
  * <ul>
- *   <li>{@code TILE_PARALLELISM} 个 tile 线程并发跑侵蚀 tile</li>
- *   <li>每个 tile 内部又用 {@code parallelRows}（ForkJoinPool.commonPool）做行级并行</li>
- *   <li>⇒ N × commonPool 的<b>嵌套并行</b> ⇒ 线程数远超核数 ⇒ 上下文切换风暴</li>
+ *   <li>多个 B/P tile 构建线程并发跑粒子侵蚀</li>
+ *   <li>每个 tile 内部共享同一份冻结过程上下文，无额外嵌套并行</li>
+ *   <li>⇒ 并发度超出预算时可能表现为线程池排队或上下文切换开销</li>
  * </ul>
  * 本探针用<b>与生产相同的线程数</b>并发跑 chunk，才能反映真实代价。</p>
  *
@@ -25,7 +25,7 @@ public final class ConcurrentChunkProbe {
 
     public static void main(String[] args) throws Exception {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 5436529513624899584L;
-        int threads = args.length > 1 ? Integer.parseInt(args[1]) : CellGenerator.TILE_PARALLELISM;
+        int threads = args.length > 1 ? Integer.parseInt(args[1]) : 8;
         int perThread = args.length > 2 ? Integer.parseInt(args[2]) : 8;
         System.out.printf("=== ConcurrentChunkProbe seed=%d threads=%d chunks/thread=%d ===%n",
                 seed, threads, perThread);

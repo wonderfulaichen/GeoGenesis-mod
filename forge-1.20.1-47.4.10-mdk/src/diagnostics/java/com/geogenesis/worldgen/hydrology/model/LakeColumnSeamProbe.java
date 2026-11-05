@@ -61,8 +61,8 @@ public final class LakeColumnSeamProbe {
         write(csv, seam.name(), seam.a(), a, terrain);
         write(csv, seam.name(), seam.b(), b, terrain);
         expect(seam.name() + " both genuine wet lake columns", a.isLake && b.isLake
-                && ProductionViewProbe.waterKind(a, true, terrain.seaLevel()) == 2
-                && ProductionViewProbe.waterKind(b, true, terrain.seaLevel()) == 2);
+                && ProductionWaterKind.waterKind(a, true, terrain.seaLevel()) == 2
+                && ProductionWaterKind.waterKind(b, true, terrain.seaLevel()) == 2);
         expect(seam.name() + " same lake plane", Math.abs(a.riverSurfaceY - b.riverSurfaceY) < 1e-9);
         expect(seam.name() + " same integer water top",
                 Math.floor(a.riverSurfaceY) == Math.floor(b.riverSurfaceY));
@@ -106,7 +106,7 @@ public final class LakeColumnSeamProbe {
                     && Math.abs(c.riverSurfaceY - control[2]) <= 1e-9);
         }
         Cell dry = cell(terrain, cache, new Point(-380, -570));
-        expect("dry control remains dry", ProductionViewProbe.waterKind(dry, true, terrain.seaLevel()) == 0);
+        expect("dry control remains dry", ProductionWaterKind.waterKind(dry, true, terrain.seaLevel()) == 0);
     }
 
     private static Cell cell(GeoGenesisTerrain t, Map<Long, Cell[]> cache, Point p) {
@@ -120,7 +120,7 @@ public final class LakeColumnSeamProbe {
                               GeoGenesisTerrain terrain) throws Exception {
         w.write(seam + "," + p.x() + "," + p.z() + "," + c.height + "," + c.riverSurfaceY
                 + "," + c.riverLipY + "," + c.isLake + ","
-                + ProductionViewProbe.waterKind(c, true, terrain.seaLevel()) + ","
+                + ProductionWaterKind.waterKind(c, true, terrain.seaLevel()) + ","
                 + Math.max(0, Math.floor(c.riverSurfaceY) - Math.floor(c.height)) + "\n");
     }
 

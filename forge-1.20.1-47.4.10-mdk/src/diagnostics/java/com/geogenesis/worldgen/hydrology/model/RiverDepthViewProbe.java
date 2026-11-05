@@ -40,7 +40,7 @@ import java.util.Random;
  *       海洋取 {@code max(·,seaLevel)}，瀑布唇口 {@code riverLipY} 再抬高；<b>干列记 NaN</b>（不虚构水面）；</li>
  *   <li><b>waterBlocks</b> = 整块水柱数，逐字对齐 {@code GeoGenesisGenerator.fillTerrainColumn}
  *       的 {@code (floor(ground), floor(fillTopBlock)]} ∩ {@code [-63, 319]}；</li>
- *   <li><b>river / lake</b> = {@link ProductionViewProbe#waterKind} 的生产水类（<b>不是</b> {@code riverType}）；
+ *   <li><b>river / lake</b> = ProductionWaterKind.waterKind 的生产水类（<b>不是</b> {@code riverType}）；
  *       另单列 {@code riverType} 原值 ⇐ {@code riverType!=0} <b>不等于</b>有水；</li>
  *   <li><b>eroded</b> = 雕刻前侵蚀地形 = {@code CellGenerator.erodedHeight(wu)}（与
  *       {@code extractFromTile} 同源同式）。对 {@code riverType!=0} 及可选 A 基线
@@ -49,7 +49,7 @@ import java.util.Random;
  * </ul>
  *
  * <h2>出图诚实性</h2>
- * <p>{@code production.png} 复用 {@link ProductionViewProbe#waterKind} + {@link ViewSpec}
+ * <p>{@code production.png} 复用 ProductionWaterKind.waterKind + {@link ViewSpec}
  * 的同一套色标/等高线函数（同包直调，不复制色值含义），因此与
  * {@code runProductionViewProbe} 的 production.png <b>逐像素同源</b>；
  * 探针另记 PNG sha256 与 dry/sea/lake/river 计数，可与该探针 metrics.txt 对账。
@@ -241,7 +241,7 @@ public final class RiverDepthViewProbe {
     /** 不初始化可选类；SHA 来自实际 class resource，source 来自运行时 ProtectionDomain。 */
     static void appendClassProvenance(StringBuilder prov) {
         for (Class<?> type : new Class<?>[]{RiverDepthViewProbe.class, ModelHydrologyProvider.class,
-                GeoGenesisTerrain.class, CellGenerator.class, Cell.class, ProductionViewProbe.class, ViewSpec.class}) {
+                GeoGenesisTerrain.class, CellGenerator.class, Cell.class, ProductionWaterKind.class, ViewSpec.class}) {
             prov.append(type.getName()).append(" sha256=").append(classSha(type))
                     .append(" codeSource=").append(codeSource(type)).append('\n');
         }
@@ -359,7 +359,7 @@ public final class RiverDepthViewProbe {
         seen[k] = true;
         g.ground[k] = cell.height;
         g.riverType[k] = cell.riverType;
-        int kind = ProductionViewProbe.waterKind(cell, on, sea);
+        int kind = ProductionWaterKind.waterKind(cell, on, sea);
         g.kind[k] = (byte) kind;
         double top = surfaceTop(cell, on, sea);
         int blocks = waterBlocks(cell, top, kind != DRY);
@@ -1043,7 +1043,7 @@ public final class RiverDepthViewProbe {
 
     /**
      * 独立预期值自检：用<b>逐 y 枚举</b>的落块循环复算整块水柱数，与 {@link #waterBlocks}
-     * 的区间公式对账；同时验证本探针的水类判定与 {@link ProductionViewProbe#waterKind} 一致。
+     * 的区间公式对账；同时验证本探针的水类判定与 ProductionWaterKind.waterKind 一致。
      */
     private static void selfTest() {
         Cell c = new Cell();
@@ -1186,7 +1186,7 @@ public final class RiverDepthViewProbe {
     }
 
     private static void expect(Cell cell, boolean on, double sea, int blocks, String message) {
-        int kind = ProductionViewProbe.waterKind(cell, on, sea);
+        int kind = ProductionWaterKind.waterKind(cell, on, sea);
         double top = surfaceTop(cell, on, sea);
         int actual = waterBlocks(cell, top, kind != DRY);
         if (actual != blocks) {

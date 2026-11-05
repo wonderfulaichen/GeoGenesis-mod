@@ -1042,6 +1042,11 @@ public final class ErosionScratchProbe {
 
         private static Constructor<?> pickCtor(Class<?> t) throws NoSuchMethodException {
             try {
+                return t.getConstructor(boolean.class, java.util.function.Supplier.class, int.class);
+            } catch (NoSuchMethodException legacy) {
+                // Frozen pre-R0b engines still read Forge directly.
+            }
+            try {
                 Constructor<?> c = t.getConstructor(double.class, int.class, boolean.class);
                 c.setAccessible(true);
                 return c;
@@ -1075,6 +1080,12 @@ public final class ErosionScratchProbe {
 
         Object newEngine(boolean xs) {
             try {
+                if (ctor.getParameterTypes()[0] == boolean.class) {
+                    return ctor.newInstance(xs,
+                            (java.util.function.Supplier<com.geogenesis.worldgen.erosion.ParticleErosionParams>)
+                                    com.geogenesis.config.ParticleErosionConfigAdapter::snapshot,
+                            8);
+                }
                 if (ctor.getParameterCount() == 3) return ctor.newInstance(1.0d, 12345, xs);
                 return ctor.newInstance(1.0d, 12345);
             } catch (Exception e) {

@@ -811,14 +811,6 @@ task runProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.DiscontinuityProbe'
 }
 
-task runChunkBorderProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.ChunkBorderProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split('\\s+') as List)
-    }
-}
-
 task runProfile(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.MountainProfileProbe'
@@ -1541,18 +1533,6 @@ task runWaterPhysicsProbe(type: JavaExec) {
 }
 
 
-// 区块加载性能基准�?026-09-17）：�?span×span chunk（真实工作集 + 驱逐）�?
-//   统计 ms/chunk 与【侵蚀 tile 生成次数 / 触达不同 tile 数】（重复生成率）:
-//   gradlew runChunkLoadPerfProbe [-PprobeArgs="seed spanChunks regions"]
-//     regions = v2 的独立冷启动区域数（判据�?min，见 ChunkLoadPerfProbe 头部说明�?
-task runChunkLoadPerfProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.ChunkLoadPerfProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
 // geotransport 算法可行性（2026-09-18）：图模�?fastflow? 噪声? region 边界? 洼地积水?
 //   gradlew runGeotransportFeasibilityProbe [-PprobeArgs="nx samples"]
 task runGeotransportFeasibilityProbe(type: JavaExec) {
@@ -1588,19 +1568,6 @@ task runGeotransportRealTerrainProbe(type: JavaExec) {
 task runProfilerSelfCheckProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.diagnostics.ProfilerSelfCheckProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
-// 中断 �?重试风暴 离线复现（★ 2026-09-19）：�?中断线程�?parallelRows 会抛
-// CancellationException �?不入缓存 �?逐格重试 �?单块烧几十秒 CPU"这条机制�?
-//   gradlew runInterruptStormProbe [-PprobeArgs="seed"]
-// 判据：中断态的 tile miss 不得多于常态、耗时不得慢一个量级�?
-// �?反向验证（§D-1）：临时移除 CellGenerator 里的中断拦截 �?本探针必�?FAIL�?
-task runInterruptStormProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.diagnostics.InterruptStormProbe'
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     }
@@ -1724,15 +1691,6 @@ task runTectonicProbe(type: JavaExec) {
     }
 }
 
-// Erosion concurrency / deadlock regression probe (2026-09-11, D3): gradlew runErosionConcurrencyProbe [seed] [threads]
-task runErosionConcurrencyProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.erosion.ErosionConcurrencyProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
 // Palette consistency probe (2026-09-11): gradlew runPaletteProbe
 task runPaletteProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1757,28 +1715,10 @@ task runWindFieldProbe(type: JavaExec) {
     }
 }
 
-// BaseHeight non-blocking probe (2026-09-11, P0-1): gradlew runBaseHeightProbe [seed]
-task runBaseHeightProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.BaseHeightProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
 // HS wu-ization A/B probe (2026-08-10): gradlew runHSABProbe [seed]
 task runHSABProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.HSABProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split('\\s+') as List)
-    }
-}
-
-// Erosion delta periodicity probe (2026-08-11): gradlew runErosionPeriodProbe [seed] [tileCX] [tileCZ]
-task runErosionPeriodProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.ErosionPeriodProbe'
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split('\\s+') as List)
     }
@@ -1798,25 +1738,11 @@ task runCellBoundaryProbe(type: JavaExec) {
     // Optional: args = ['12345']  (seed)
 }
 
-// Erosion tile pipeline multi-stage diagnostic (Tile Context Chain)
-task runErosionTileProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.ErosionTileProbe'
-    // Optional: args = ['12345']  (seed)
-}
-
 // Mountain footprint H/D diagnostic (checks base footprint vs height, Guilin-style detection)
 task runFootprintProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.MountainFootprintProbe'
     // Optional: args = ['12345']  (seed)
-}
-
-// Coarse ridge-valley skeleton A/B validation (carve multi-peaks vs peel)
-task runRidgeABProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.RidgeValleyABProbe'
-    // Optional: args = ['98765,12345']  (comma/space separated seeds)
 }
 
 // Slope distribution diagnostic (steepness share; L1 terrain form check)
@@ -1840,12 +1766,6 @@ task runShapeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.TerrainShapeProbe'
     // Optional: args = ['12345']
-}
-
-// Quick gradient probe (actual engine 1-block gradient check; temporary)
-task runQuickGradient(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.QuickGradientProbe'
 }
 
 // Ocean type distribution probe (temporary)
@@ -1911,36 +1831,6 @@ task runAbChunkProbe(type: JavaExec) {
 task runChunkTimeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.ChunkTimeProbe'
-    if (project.hasProperty('probeArgs')) {
-        args(project.property('probeArgs').split('\\s+'))
-    }
-}
-
-// Hardness race probe (�?2026-09-14：硬度网格并发安全压测，复现/验证崩溃修复)
-//   args = [seed] [threads]
-task runHardnessRaceProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.erosion.HardnessRaceProbe'
-    if (project.hasProperty('probeArgs')) {
-        args(project.property('probeArgs').split('\\s+'))
-    }
-}
-
-// Perf probe (�?2026-09-14：地质系统性能基准，定�?卡在 0%"回归)
-//   args = [seed]
-task runPerfProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.PerfProbe'
-    if (project.hasProperty('probeArgs')) {
-        args(project.property('probeArgs').split('\\s+'))
-    }
-}
-
-// Rock erosion probe (�?2026-09-14 Phase T8/P3：岩性→侵蚀耦合验收)
-//   args = [seed] [originX] [originZ]
-task runRockErosionProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.RockErosionProbe'
     if (project.hasProperty('probeArgs')) {
         args(project.property('probeArgs').split('\\s+'))
     }
@@ -2160,14 +2050,6 @@ task runProductionChainCompareProbe(type: JavaExec) {
     }
 }
 
-task runProductionViewProbe(type: JavaExec) {
-    classpath = sourceSets.diagnostics.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.model.ProductionViewProbe'
-    maxHeapSize = '8g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
 
 task runCanonicalViewProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
@@ -2630,54 +2512,6 @@ task runModelProviderConcurrencyProbe(type: JavaExec) {
     }
 }
 
-
-// Hierarchical hydrology controlled experiment -- controlled diagnostic verification
-//   (synthetic by default; real mode queries 4 fixed regions).
-//   gradlew runHierarchicalHydrologyProbe
-//   gradlew runHierarchicalHydrologyProbe -PprobeArgs="real"
-//   gradlew runHierarchicalHydrologyProbe -PprobeArgs="real det,conc"
-//   Invariants: the coarse layer is tile-free (erosion-tile cache + hit/miss/evict counters are
-//   unchanged across buildCoarse); the same world point has one owner authority (negative
-//   coordinates included); morphology differences are diagnostic, not failures;
-//   non-finite/out-of-domain data fail; self-loop and multi-cycle audits stay bounded;
-//   real mode collects lastFineValidation + lastFineConnectivity, prints every FAILED entry, and
-//   never counts boundary-unverified cells as a connectivity PASS.
-task runHierarchicalHydrologyProbe(type: JavaExec) {
-    classpath = sourceSets.diagnostics.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.model.HierarchicalHydrologyProbe'
-    maxHeapSize = '8g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
-// Shared-lake seam diagnostics (canonical SharedLakeDomain / cross-seam authority).
-//   gradlew runSharedLakeSeamProbe
-//   gradlew runSharedLakeSeamProbe -PprobeArgs="9139912035078620160"
-//   gradlew runSharedLakeSeamProbe -PprobeArgs="9139912035078620160 repro,basin"
-//   Sections: synth | repro | basin | det | fine | counts | neg  (default = all)
-//   Reproduced defect (seed 9139912035078620160, hierarchicalHydrology=true): the same
-//   physical basin was decided per-window on either side of the region seam at
-//   (-513,-250)/(-512,-250) -> a ~2.9 block water-level step (evidence:
-//   build/hierarchical-evaluation/scratch/FINDINGS.md).
-//   Criteria: canonical synthetic (closed bbox -> key; oversized -> null); repro left/right
-//   lake plane bit-identical + whole-lake wet/dry-ring transition over a +/-40 block band
-//   (no seam-line cut, not just the 2 seam pixels); real multi-basin gate >= 2 controlled
-//   domains plus the second example (512,-2336); cold/hot/reverse/concurrent columns bitwise;
-//   fine-solve delta == explicitly requested owner regions only (no 8-neighbour fan-out);
-//   counts (maxHalf <= 512, two-tier coarse tries, domain cache <= cap); negatives
-//   (no-crossing => coarse-only stop, truncated => never controlled). Read-only; clears the
-//   shared caches at the end; never writes the user config (working copy only).
-//   Residual is reported honestly (NOT VERIFIED) and never loosened to "all passed".
-//   Exits non-zero on FAIL.
-task runSharedLakeSeamProbe(type: JavaExec) {
-    classpath = sourceSets.diagnostics.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.hydrology.model.SharedLakeSeamProbe'
-    maxHeapSize = '8g'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
 // World-coordinate drainage contracts; explicit tasks, not automatically added to the full gate.
 task runWorldDrainageProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath

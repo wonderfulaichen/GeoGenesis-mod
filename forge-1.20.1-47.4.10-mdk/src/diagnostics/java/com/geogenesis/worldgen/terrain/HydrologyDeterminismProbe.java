@@ -1,157 +1,168 @@
 package com.geogenesis.worldgen.terrain;
 
+import com.geogenesis.worldgen.process.ProcessContext;
+import com.geogenesis.worldgen.process.ProcessRuntime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
- * 【确定性 / 顺序无关性】判据探针（2026-09-17 新建，水文统一化重构 M1 的验收基线）。
+ * 【确定性 / 缓存淘汰重建】判据探针（2026-11-06 按门禁选择 1 重写）。
  *
- * <h2>为什么这是 M1 的第一条门禁</h2>
- * <p>本项目铁律：地形与水体是 <b>(seed, 配置, 坐标) 的纯函数</b>，
- * <b>与世界生成顺序、缓存状态、线程调度无关</b>。
- * 若这条不成立，则"同一颗种子"在不同机器上会得到不同世界，
- * 而且玩家走不同路线也会看到不同地形 —— 且此类缺陷<b>无法用单点探针复现</b>
- * （这正是此前 7 次归因全部失败的深层原因之一）。</p>
+ * <p>本项目铁律：地形 P 是 (冻结上下文, 坐标) 的纯函数，与世界生成顺序、
+ * ProcessRuntime 的 completed-tile 缓存状态和线程调度无关。旧探针度量的是已归档
+ * CellGenerator 侵蚀 tile 缓存，清理后判据会变成假绿；这里改为直接度量
+ * {@link ProcessRuntime#metrics()} 与缓存淘汰后的逐位 P 输出。</p>
  *
- * <h2>三处已知的顺序依赖嫌疑（读码得到）</h2>
+ * <h2>判据（任何一条不满足即 System.exit(1)）</h2>
  * <ol>
- *   <li>{@code CellGenerator.blendTileDelta}：tile 右/下缘 6wu 做 4 向对称 blend，
- *       但取邻居时是 <b>{@code erosionTileCache.get(...)}（只读缓存）</b>，
- *       缺失即退回 {@code d00}（不 blend）⇒ 同一坐标的结果<b>取决于邻居当时是否已缓存</b>；
- *       而邻居会被 LRU 驱逐、生成顺序也不确定。<br>
- *       ⚠ 此前在 seed=12345 实测该依赖仅 ≈0.0013 块（可忽略），
- *       但需在<b>多种子、多 tile 边</b>上复查才能定性（本探针做这件事）。</li>
- *   <li>侵蚀 tile 的懒生成 + LRU 驱逐 ⇒ 重新生成时邻居集合可能不同。</li>
- *   <li>{@code getChunkCells} 的 miss-生成路径与 cached 路径是否等价。</li>
+ *   <li>冷上下文与「故意换查询顺序 + 用有界 completedTiles 预算淘汰缓存后重建」
+ *       的所有样本：eB/yB/eP/yP/deltaE/deltaY/identity 的 double 原始位逐位一致。</li>
+ *   <li>实际发生 tile 重建：after.builds 大于 before.builds、completed 达到且不超出预算；
+ *       off-mode 负对照没有任何 tile 构建。</li>
+ *   <li>每次采样结束后 failures/cancelled/flights/queued/active 必须为 0，
+ *       builds == successful，且精确 P 的缓存 completed 大于 0。</li>
  * </ol>
- *
- * <h2>判据</h2>
- * <p><b>两次不同顺序下，所有比较字段必须【逐位相等】（diff == 0）</b>。
- * 本项目地形是确定性纯函数，不容许"近似相等"。</p>
  *
  * <pre>{@code gradlew runHydrologyDeterminismProbe [-PprobeArgs="seed"]}</pre>
  */
 public final class HydrologyDeterminismProbe {
+    private static final long DEFAULT_SEED = 12345L;
+    private static final int BUDGET_TILES = 24;
+    private static final int BUDGET_WORKERS = 1;
+    private static final int BUDGET_QUEUE = 8;
 
-    /** 与生产一致的 tile 几何（只读，用于定位 blend 带）。 */
-    private static final int TILE_CENTER = 48;
-    private static final int BLEND_START = 6;
-
-    /** 判据：所有字段必须逐位相等（本项目地形为确定性纯函数）。 */
-    private static final double TOL = 0.0;
+    private record Point(double x, double z) {}
+    private record Sample(String identity, long eB, long yB, long eP, long yP,
+                          long deltaE, long deltaY) {
+        static Sample of(ProcessRuntime.Sample s) {
+            return new Sample(s.identity(), Double.doubleToRawLongBits(s.base().eB()),
+                    Double.doubleToRawLongBits(s.base().yB()), Double.doubleToRawLongBits(s.eP()),
+                    Double.doubleToRawLongBits(s.yP()), Double.doubleToRawLongBits(s.deltaE()),
+                    Double.doubleToRawLongBits(s.deltaY()));
+        }
+    }
 
     private HydrologyDeterminismProbe() { }
 
     public static void main(String[] args) {
-        long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
-        System.out.printf("=== HydrologyDeterminismProbe seed=%d ===%n", seed);
-        System.out.println("判据：不同生成顺序下，所有比较字段必须【逐位相等】（diff == 0）");
-
-        boolean t1 = testBlendCacheDependence(seed);
-        boolean t2 = testChunkOrderIndependence(seed);
+        long seed = args.length > 0 ? Long.parseLong(args[0]) : DEFAULT_SEED;
+        System.out.printf("=== HydrologyDeterminismProbe seed=%d budgetTiles=%d ===%n",
+                seed, BUDGET_TILES);
+        boolean pass = true;
+        try {
+            pass &= testEvictionAndQueryOrder(seed);
+            pass &= testOffModeNegativeControl();
+        } catch (Throwable t) {
+            System.out.println("总判定: FAIL（探针异常）");
+            t.printStackTrace(System.out);
+            System.exit(1);
+        }
         System.out.println();
-        System.out.printf("总判定: %s%n", (t1 && t2) ? "ALL PASS（顺序无关，确定性成立）"
-                : "FAILURES（存在顺序依赖 ⇒ 违反纯函数铁律）");
-        // ★ 2026-09-18：以【退出码】承载判定。
-        //   Gradle 的 JavaExec **只在退出码非零时才算失败**；本探针此前不设退出码
-        //   ⇒ 即使打印 FAILURES，gradle 仍报 BUILD SUCCESSFUL ⇒ "门禁"名存实亡
-        //   （下个会话只看最后一行就会误判为通过）。本行是它真正成为门禁的关键。
-        System.exit((t1 && t2) ? 0 : 1);
+        System.out.printf("总判定: %s%n", pass ? "ALL PASS（缓存淘汰重建后 P 逐位一致）"
+                : "FAILURES（P 依赖缓存状态或生命周期计数异常）");
+        // Gradle JavaExec 只在退出码非零时失败；FAIL 必须由退出码承载，不能只打印。
+        System.exit(pass ? 0 : 1);
     }
 
-    // ==================================================================
-    // 测试 1：侵蚀增量对【邻居 tile 缓存状态】的依赖
-    // ==================================================================
-
-    /**
-     * 对若干 tile 的右缘 blend 带取点，先在【邻居未缓存】时采样，再预热邻居后采样同一批点，
-     * 比较差值。这是 {@code blendTileDelta} 缓存依赖的直接度量。
-     */
-    private static boolean testBlendCacheDependence(long seed) {
+    private static boolean testEvictionAndQueryOrder(long seed) {
         System.out.println();
-        System.out.println("[1] 侵蚀增量对【邻居 tile 缓存状态】的依赖（blendTileDelta）");
-        System.out.println("    tile      x(wu)    ArmA(邻居未缓存)      ArmB(邻居已缓存)         差");
-        double worst = 0;
-        boolean allZero = true;
-        int[][] tiles = {{0, 0}, {48, 0}, {0, 48}, {-96, 48}, {96, -96}};
-        for (int[] t : tiles) {
-            CellGenerator gen = newGen(seed);
-            int tileX = t[0], tileZ = t[1];
-            int edge = tileX + TILE_CENTER;      // 右边界
-            double z = tileZ + 20.0;
-            for (int k = 0; k < BLEND_START; k++) {
-                double x = edge - BLEND_START + k + 0.5;
-                double a = gen.erosionDeltaE(x, z);              // Arm A：邻居未缓存
-                // 预热右邻居：采一个属于它的内部点（不在其 blend 带内）
-                gen.erosionDeltaE(edge + 12.5, z);
-                double b = gen.erosionDeltaE(x, z);              // Arm B：邻居已缓存
-                double d = Math.abs(a - b);
-                worst = Math.max(worst, d);
-                if (d > TOL) allZero = false;
-                System.out.printf("    (%4d,%4d) %7.1f  %18.10f  %18.10f  %12.10f%n",
-                        tileX, tileZ, x, a, b, d);
+        System.out.println("[1] ProcessRuntime 缓存淘汰 / 换查询顺序后的精确 P 逐位一致性");
+        ProcessContext context = context(seed, ProcessContext.Mode.PARTICLE);
+        List<Point> points = points();
+        List<Sample> warm;
+        ProcessRuntime.Metrics beforeEviction;
+        try (ProcessRuntime runtime = new ProcessRuntime(context,
+                new ProcessRuntime.Budget(BUDGET_WORKERS, BUDGET_QUEUE, BUDGET_TILES))) {
+            warm = query(runtime, points);
+            beforeEviction = runtime.metrics();
+            // 24 个 completed tile 槽装不下这些点及追加点所需的全部 owner：
+            // 淘汰并重建。单 worker 消除同上下文并发采样；查询顺序同时反转，
+            // 覆盖「邻居旧缓存状态 / 查询顺序」两个变量。
+            List<Point> reversed = new ArrayList<>(points);
+            Collections.reverse(reversed);
+            List<Point> evicting = new ArrayList<>(reversed);
+            evicting.add(new Point(240.25, -144.75));
+            evicting.add(new Point(-240.25, 240.25));
+            List<Sample> cold = query(runtime, evicting);
+            ProcessRuntime.Metrics after = runtime.metrics();
+            int same = 0;
+            for (int i = 0; i < points.size(); i++) {
+                if (warm.get(i).equals(cold.get(reversed.indexOf(points.get(i))))) same++;
             }
+            boolean outputEqual = same == points.size();
+            boolean rebuilt = after.builds() > beforeEviction.builds()
+                    && after.completed() <= BUDGET_TILES
+                    && (beforeEviction.completed() == BUDGET_TILES
+                        || after.completed() == BUDGET_TILES);
+            boolean counters = lifecycle(beforeEviction) && lifecycle(after)
+                    && after.successful() >= beforeEviction.successful();
+            System.out.printf("    点数=%d 逐位相等=%d/%d%n", points.size(), same, points.size());
+            System.out.printf("    metrics before=%s%n", beforeEviction);
+            System.out.printf("    metrics after =%s%n", after);
+            System.out.printf("    tile 实际淘汰重建=%b；成功/失败/取消/在途/队列计数=%b%n",
+                    rebuilt, counters);
+            boolean ok = outputEqual && rebuilt && counters;
+            System.out.printf("    判定: %s%n", ok ? "PASS" : "FAIL");
+            return ok;
         }
-        System.out.printf("    → max|A−B| = %.10f e（≈ %.6f 块）%n", worst, worst * 192.0);
-        System.out.printf("    判定: %s%n", allZero ? "PASS（无缓存依赖）" : "FAIL（存在缓存依赖）");
-        return allZero;
     }
 
-    // ==================================================================
-    // 测试 2：同一片 chunk 区域，两种生成顺序是否逐位一致
-    // ==================================================================
-
-    /**
-     * 对同一组 chunk，分别按【正序】与【倒序】生成，逐格比较
-     * {@code height / terrainType / riverType / riverSurfaceY / gradient}。
-     *
-     * <p>这是"顺序无关性"的整体判据：只要有一格不同，即说明产出依赖生成顺序。</p>
-     */
-    private static boolean testChunkOrderIndependence(long seed) {
+    private static boolean testOffModeNegativeControl() {
         System.out.println();
-        System.out.println("[2] 同一片 chunk 区域：正序 vs 倒序生成是否逐位一致");
-        final int n = 3;
-        int[] xs = new int[n * n], zs = new int[n * n];
-        int i = 0;
-        for (int a = 0; a < n; a++) {
-            for (int b = 0; b < n; b++) {
-                xs[i] = -72 + a;      // 覆盖用户报的坐标所在区块 (-72,-74) 一带
-                zs[i] = -74 + b;
-                i++;
-            }
+        System.out.println("[2] OFF 负对照：零 tile 构建且生命周期计数归零");
+        try (ProcessRuntime runtime = new ProcessRuntime(context(DEFAULT_SEED, ProcessContext.Mode.OFF),
+                new ProcessRuntime.Budget(BUDGET_WORKERS, BUDGET_QUEUE, BUDGET_TILES))) {
+            query(runtime, points());
+            ProcessRuntime.Metrics m = runtime.metrics();
+            boolean ok = m.builds() == 0 && m.successful() == 0 && m.completed() == 0
+                    && lifecycle(m);
+            System.out.printf("    metrics=%s%n", m);
+            System.out.printf("    判定: %s%n", ok ? "PASS" : "FAIL");
+            return ok;
         }
-        GeoGenesisTerrain fwd = new GeoGenesisTerrain(newGen(seed));
-        GeoGenesisTerrain rev = new GeoGenesisTerrain(newGen(seed));
-
-        for (int k = 0; k < xs.length; k++) fwd.getChunkCells(xs[k], zs[k]);          // 正序
-        for (int k = xs.length - 1; k >= 0; k--) rev.getChunkCells(xs[k], zs[k]);     // 倒序
-
-        double maxH = 0, maxS = 0, maxG = 0;
-        int typeDiff = 0, riverDiff = 0, cells = 0;
-        for (int k = 0; k < xs.length; k++) {
-            Cell[] a = fwd.getChunkCells(xs[k], zs[k]);
-            Cell[] b = rev.getChunkCells(xs[k], zs[k]);
-            for (int c = 0; c < a.length; c++) {
-                maxH = Math.max(maxH, Math.abs(a[c].height - b[c].height));
-                maxS = Math.max(maxS, Math.abs(a[c].riverSurfaceY - b[c].riverSurfaceY));
-                maxG = Math.max(maxG, Math.abs(a[c].gradient - b[c].gradient));
-                if (a[c].terrainType != b[c].terrainType) typeDiff++;
-                if (a[c].riverType != b[c].riverType) riverDiff++;
-                cells++;
-            }
-        }
-        System.out.printf("    比较 chunk 数 %d（%d 格）%n", xs.length, cells);
-        System.out.printf("    max|Δheight| = %.10f 块%n", maxH);
-        System.out.printf("    max|ΔriverSurfaceY| = %.10f 块%n", maxS);
-        System.out.printf("    max|Δgradient| = %.10f%n", maxG);
-        System.out.printf("    terrainType 不同的格 = %d ；riverType 不同的格 = %d%n",
-                typeDiff, riverDiff);
-        boolean pass = maxH <= TOL && maxS <= TOL && maxG <= TOL && typeDiff == 0 && riverDiff == 0;
-        System.out.printf("    判定: %s%n", pass ? "PASS（顺序无关）" : "FAIL（产出依赖生成顺序）");
-        return pass;
     }
 
-    private static CellGenerator newGen(long seed) {
-        TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
-        gen.seed(seed);
-        return gen;
+    private static List<Sample> query(ProcessRuntime runtime, List<Point> points) {
+        List<Sample> out = new ArrayList<>(points.size());
+        try {
+            for (Point p : points) out.add(Sample.of(runtime.exactP(p.x(), p.z())));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("interrupted exact P query", e);
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw new AssertionError("exact P query failed", e.getCause());
+        }
+        ProcessRuntime.Metrics m = runtime.metrics();
+        if (m.flights() != 0 || m.queued() != 0 || m.active() != 0) {
+            throw new AssertionError("exact P query left in-flight work: " + m);
+        }
+        return out;
+    }
+
+    /** 完成的 tile 与成功构建恒等；不得有失败、取消、在途、排队或活跃构建。 */
+    private static boolean lifecycle(ProcessRuntime.Metrics m) {
+        return m.failures() == 0 && m.cancelled() == 0 && m.flights() == 0
+                && m.queued() == 0 && m.active() == 0 && m.builds() == m.successful()
+                && (m.builds() == 0 || (m.completed() > 0 && m.completed() <= BUDGET_TILES));
+    }
+
+    private static ProcessContext context(long seed, ProcessContext.Mode mode) {
+        TerrainParams params = TerrainParams.defaults();
+        return new ProcessContext(new ProcessContext.Definition(seed,
+                "cleanup-determinism-probe", params,
+                com.geogenesis.worldgen.core.BaseWorldSettings.defaults(),
+                (int) params.minY(), (int) params.maxY(), mode,
+                com.geogenesis.worldgen.erosion.ParticleErosionParams.unloadedDefaults(),
+                false, 1.0f, true, "probe-frozen"));
+    }
+
+    /** 覆盖多个 48wu owner 及其对称 blend 边。 */
+    private static List<Point> points() {
+        double[] axes = {-96.001, -48.001, -48.0, -0.001, 0.0, 0.25, 23.5,
+                47.999, 48.0, 48.1, 95.9, 123.75};
+        List<Point> out = new ArrayList<>();
+        for (double x : axes) for (double z : axes) out.add(new Point(x, z));
+        return out;
     }
 }
