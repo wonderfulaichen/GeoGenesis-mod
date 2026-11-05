@@ -78,6 +78,11 @@ public final class RelayUnresolvedAttributionProbe {
             gen.closeProcessErosion();
             System.exit(ok ? 0 : 1);
         }
+        if (hasFlag(args, "--order-matrix")) {
+            boolean ok = orderMatrix(gen, region, anchors);
+            gen.closeProcessErosion();
+            System.exit(ok ? 0 : 1);
+        }
 
         boolean found = true;
         for (int[] a : anchors) {
@@ -90,7 +95,6 @@ public final class RelayUnresolvedAttributionProbe {
         System.exit(found ? 0 : 1);
     }
 
-    /** 归因一个锚点；返回是否找到了该锚点对应的 mergeEvidence / reject。 */
     /** 把 stdout 同时写到 UTF-8 报告文件（控制台编码不可控，报告必须可读）。 */
     private static void teeTo(Path file) {
         try {
@@ -430,6 +434,102 @@ public final class RelayUnresolvedAttributionProbe {
 
     private static int worldZ(int cell, int oz, int n, int step) {
         return oz + (cell % n) * step;
+    }
+
+    /**
+     * 顺序矩阵：同一块 3×3 区域，按 forward / reverse / random 三种顺序各解一遍，
+     * 比较每区裁定是否一致。既量化"顺序是否影响裁定"，也给退化区一次非退化复现的机会。
+     *
+     * <p>每次用<b>全新 provider</b>（缓存必须空），共享同一个 {@link CellGenerator}
+     * （地形与侵蚀是纯函数，不影响顺序维度）。</p>
+     */
+    private static boolean orderMatrix(CellGenerator gen, int region, List<int[]> anchors) {
+        boolean allSame = true;
+        for (int[] a : anchors) {
+            int rx = Math.floorDiv(a[0], region);
+            int rz = Math.floorDiv(a[1], region);
+            List<int[]> block = new ArrayList<>();
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    block.add(new int[]{rx + dx, rz + dz});
+                }
+            }
+            List<List<int[]>> orders = new ArrayList<>();
+            orders.add(new ArrayList<>(block));                                  // forward
+            List<int[]> rev = new ArrayList<>(block);
+            java.util.Collections.reverse(rev);
+            orders.add(rev);                                                     // reverse
+            List<int[]> rnd = new ArrayList<>(block);
+            java.util.Collections.shuffle(rnd, new java.util.Random(20261106L)); // random（固定种子）
+            orders.add(rnd);
+            String[] names = {"forward", "reverse", "random"};
+
+            System.out.println();
+            System.out.printf("=== ORDER MATRIX anchor=(%d,%d) region=(%d,%d) 3x3=%d 区 ===%n",
+                    a[0], a[1], rx, rz, block.size());
+            Map<String, List<String>> sigByOrder = new LinkedHashMap<>();
+            Map<String, List<String>> statByOrder = new LinkedHashMap<>();
+            for (int oi = 0; oi < orders.size(); oi++) {
+                ModelHydrologyProvider p = newProvider(gen);
+                Map<String, String> sig = new LinkedHashMap<>();
+                Map<String, String> stat = new LinkedHashMap<>();
+                for (int[] rc : orders.get(oi)) {
+                    DeterministicSkeleton.Result sk = p.finalSkeletonForProbe(rc[0], rc[1]);
+                    String key = rc[0] + ":" + rc[1];
+                    sig.put(key, signature(sk));
+                    stat.put(key, sk == null ? "<null>"
+                            : "role=" + sk.passRole + " traces=" + sk.traces.size()
+                              + " ports=" + sk.ports.size()
+                              + " wiredIn=" + sk.wiredIncoming + " rejects=" + sk.wireRejects.size()
+                              + " merge=" + sk.mergeEvidence.size());
+                }
+                sigByOrder.put(names[oi], new ArrayList<>(sig.values()));
+                statByOrder.put(names[oi], new ArrayList<>(stat.values()));
+                System.out.printf("  %-8s 解完，区块顺序=%s%n", names[oi], orderText(orders.get(oi)));
+            }
+
+            int diff = 0;
+            for (int i = 0; i < block.size(); i++) {
+                String k = block.get(i)[0] + ":" + block.get(i)[1];
+                List<String> row = new ArrayList<>();
+                for (String n : names) {
+                    row.add(sigByOrder.get(n).get(i));
+                }
+                boolean same = row.get(0).equals(row.get(1)) && row.get(0).equals(row.get(2));
+                if (!same) {
+                    diff++;
+                }
+                System.out.printf("  region %-9s %-9s %s%n", k,
+                        same ? "ORDER_SAME" : "ORDER_DIFF", row.get(0));
+                if (!same) {
+                    for (int n = 0; n < names.length; n++) {
+                        System.out.printf("      %-8s %s%n", names[n], row.get(n));
+                    }
+                }
+                System.out.printf("      stats: forward[%s] reverse[%s] random[%s]%n",
+                        statByOrder.get("forward").get(i),
+                        statByOrder.get("reverse").get(i),
+                        statByOrder.get("random").get(i));
+            }
+            System.out.printf("  小结：%d/%d 个区的裁定随顺序变化%n", diff, block.size());
+            allSame &= diff == 0;
+        }
+        System.out.println();
+        System.out.printf("总判定: %s%n", allSame
+                ? "ALL_ORDER_SAME（三种顺序下每区裁定一致）"
+                : "ORDER_DEPENDENT（存在随顺序变化的区，见上）");
+        return true;
+    }
+
+    private static String orderText(List<int[]> order) {
+        StringBuilder sb = new StringBuilder();
+        for (int[] rc : order) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(rc[0]).append(':').append(rc[1]);
+        }
+        return sb.toString();
     }
 
     private static boolean attribute(ModelHydrologyProvider prov, CellGenerator gen,
