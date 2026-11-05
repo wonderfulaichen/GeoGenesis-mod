@@ -1,0 +1,16 @@
+seed=9139912035078620160
+hs=2.0
+strength=2.0
+scale=100.0
+stripeFreq=1.2
+octaves=4
+gullyWeight=0.65
+detail=1.0
+seedFilter=1337
+rounding=[0.11, 0.12, 0.1, 2.0]
+onset=[0.9, 1.25, 2.8, 1.5]
+sampling=pointwise float, central +/-2wu
+A=recipe-local filter correction in recipe bias before existing node-shell morph and clamp; coverage filtered separately
+B=filter covered continuous land; no coast in filter input
+Both retain existing MorphNoise.Erosion; no replacement; no particle or hydrology
+JVM properties=file.encoding=UTF-8; no geogenesis -D flags

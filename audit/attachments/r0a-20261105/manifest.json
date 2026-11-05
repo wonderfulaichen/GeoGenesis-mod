@@ -1,0 +1,82 @@
+[
+  {
+    "path": "boundary.log",
+    "bytes": 204,
+    "sha256": "345c1e602597817705591ccd49791d2fad790b76710b479be4b6d08564489b86"
+  },
+  {
+    "path": "calls-before.json",
+    "bytes": 72495,
+    "sha256": "877af6ad3c1e6cd9c494721cb26e8a361f3104d2aaa2bdfee8727dc8796aca2c"
+  },
+  {
+    "path": "changed-files.json",
+    "bytes": 2243,
+    "sha256": "7473eb3000119d2b0ee6b03b336c06052ff94199aaa02625ffe0883b6386eb60"
+  },
+  {
+    "path": "comparison.json",
+    "bytes": 20872,
+    "sha256": "f0cdb5c6e93b15c586f980f6f95d4400645fffde7c279dd2885e855656a58ac6"
+  },
+  {
+    "path": "config-boundary.txt",
+    "bytes": 2113,
+    "sha256": "d51f136d84e8b4313d46ad0eba816bce2b98b0aa2b73585f5b20b87fdb5429e9"
+  },
+  {
+    "path": "config-check-final.log",
+    "bytes": 2370,
+    "sha256": "44acb061a4c6d7ef2341ed9c369008caa384d95150717239a5c9e16d6a762b52"
+  },
+  {
+    "path": "core-final.log",
+    "bytes": 1498,
+    "sha256": "4f44f8196bc87f5868f4c8429ee941cab2ef4432ae913264f7d9c80dd735b187"
+  },
+  {
+    "path": "fallback-final-arrays.csv",
+    "bytes": 3790,
+    "sha256": "886f2c6b07421e3d10830d4180a4a1eb2c97f40da2a66cc0ff9ef4623b39c612"
+  },
+  {
+    "path": "fallback-final.log",
+    "bytes": 147,
+    "sha256": "9a18ddec1027f8b8a5879c4af0f50d398ca4e07aed7216e7630feb35b70e68c1"
+  },
+  {
+    "path": "loaded-final-arrays.csv",
+    "bytes": 9086,
+    "sha256": "dafd8dea9b1859162730a5ef9fc072fd0eb371b54803fc0f62b8fe0b91ffa10a"
+  },
+  {
+    "path": "loaded-final.log",
+    "bytes": 536,
+    "sha256": "14c004c61d2b762ad3a64c3d0077b236ae8d3c0ee3381cbd01f6d8e9564d8acc"
+  },
+  {
+    "path": "main-compile.log",
+    "bytes": 2346,
+    "sha256": "e67b2f54ff028ef6a26e431a8eb7838e71ae53d1669a429033341d39ea503b45"
+  },
+  {
+    "path": "p1.log",
+    "bytes": 7756,
+    "sha256": "90dfce41eaf7be1c8cf838ce4e1ff7c02cc30981b0ca1c2401b4f102a84570b9"
+  },
+  {
+    "path": "ridge-core.log",
+    "bytes": 96,
+    "sha256": "e5393e14cfdd1a3501ddb8fd6dae93760ca51f5b9e7d5d54bb9c5eede85c60d0"
+  },
+  {
+    "path": "summary.json",
+    "bytes": 662,
+    "sha256": "77ac5875033695d1e01de0c28c7086917204fe64fd74fe6572917889bed6e863"
+  },
+  {
+    "path": "verification-tools.zip",
+    "bytes": 224806,
+    "sha256": "dfe4c7473c950117d95ad379f57b1ce026138eaaba8fbe3ccb6a15f70e1b790b"
+  }
+]

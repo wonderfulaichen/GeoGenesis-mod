@@ -1,0 +1,4 @@
+tile,ownerX,ownerZ,flatMismatch,dischargeMismatch,limitedDeltaMismatch,inputMismatch,accepted,attempts,steps
+0,-1920,-2976,0,0,0,0,21046,28120,459795
+1,-2112,-3024,0,0,0,0,22131,27854,494626
+2,-2160,-2928,0,0,0,0,24406,28244,543004

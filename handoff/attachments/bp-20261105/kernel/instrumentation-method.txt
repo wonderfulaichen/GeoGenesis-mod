@@ -1,0 +1,1 @@
+Renamed exact source; inserted only observers. No constants, expressions, branching decisions or call ordering replaced. Brush/cascade measured from actual float writes (not intended weigh). Iteration and row snapshots; scale attribution respects interleaving. Output deferred arrays, no random calls. All source equality and bit tests mandatory.

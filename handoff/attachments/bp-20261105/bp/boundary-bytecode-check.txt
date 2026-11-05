@@ -1,0 +1,1 @@
+PASS no forbidden imports/call symbols in new process source; all process class major=61 (Java17)

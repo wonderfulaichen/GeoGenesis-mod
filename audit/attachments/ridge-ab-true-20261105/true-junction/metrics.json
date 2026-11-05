@@ -1,0 +1,59 @@
+{
+  "control": {
+    "changed": 0,
+    "minDeltaY": 0.0,
+    "maxDeltaY": 0.0,
+    "meanAbsDeltaY": 0.0,
+    "p99AbsDeltaY": 0.0,
+    "seaLandFlips": 0,
+    "minY": 93.56040505420307,
+    "maxY": 185.66101566175786
+  },
+  "recipe": {
+    "changed": 16641,
+    "minDeltaY": -1.5871732868463937,
+    "maxDeltaY": 34.59850887528705,
+    "meanAbsDeltaY": 4.351634207319306,
+    "p99AbsDeltaY": 17.767116180251573,
+    "seaLandFlips": 0,
+    "minY": 93.56100947495105,
+    "maxY": 189.0404184629411
+  },
+  "post": {
+    "changed": 16641,
+    "minDeltaY": -66.36790426373483,
+    "maxDeltaY": 97.80874160289767,
+    "meanAbsDeltaY": 5.528821166477876,
+    "p99AbsDeltaY": 17.26273891592024,
+    "seaLandFlips": 0,
+    "minY": 81.48810916722212,
+    "maxY": 248.47599787298108
+  },
+  "A-vs-B": {
+    "changed": 15850,
+    "minDeltaY": -77.78909032313274,
+    "maxDeltaY": 83.12181826382513,
+    "meanAbsDeltaY": 3.012336753150127,
+    "p99AbsDeltaY": 15.503342067117263,
+    "seaLandFlips": 0,
+    "minY": 93.56100947495105,
+    "maxY": 189.0404184629411
+  },
+  "sha256": {
+    "control": "25ebbe0abf6b7cb487d664bb9bb64d3a5ca9585fb70141ff87c23a7acec0b1e4",
+    "recipe": "97b9d065574e452e661c44488e49803bc37bcda4a90f0caf16b39a4e2d4a0fda",
+    "post": "58f0dd392392722c4bc6a13e770114f2a93fdd54a193c4062ffe819aed13dbfe"
+  },
+  "window": {
+    "size": 129,
+    "stepWu": 2,
+    "originWu": [
+      -2943.5,
+      2944.5
+    ],
+    "hs": 2
+  },
+  "deltaColorScaleBlocks": 97.80874160289767,
+  "controlAndBExactSubsetOfProxyRun": true,
+  "stageA": "raw signal after one domain evaluation, before plateau/surface/mountain-texture/badlands/shell/clamp"
+}

@@ -1,0 +1,50 @@
+READ-ONLY B -> P LOCAL TILE/COAST DIAGNOSTIC
+Scope: original bp-20261105-054953-3413, 201x201 step2wu, seed9139912035078620160, HS2. No model; no source/config/parameter changes, no grid-shift/halo experiments, no commit/push. Existing dirty files are pre-existing, not ours. All new files are in this one directory.
+
+SOURCE / REPRODUCTION
+Read AGENTS.md, all four src/main/.../process files, ProcessRenderProbe.java, tools/run-process-verification.py, render-process-comparison.py and original command/log/manifest. Original export: render 201 2 -2242.5 -3165.5 bp-coast-slope. Original completed90 tiles,45.529s. Existing config is READ ONLY. Frozen ProcessContext identity is checked byte-for-byte identical to original definition, no terrain JVM properties. Four process files freshly compiled unchanged into this directory, linked to original main-classes and captured support classpath. Sixteen original points replayed ALL eight columns bit-for-bit (max absolute error0). This supports reproduction, not universal equivalence beyond sampled points.
+
+A: HEIGHT JUMP versus FIRST-DERIVATIVE CREASE
+28 site/axis cases: six coast boundary crossings, six directions at three four-tile corners, two high land slopes, fourteen +16wu controls. Epsilon .1,.01,.001; -2e,-e,0,+e,+2e. Coordinates and all outputs retained. Extrapolated jump = (2*f(+e)-f(+2e))-(2*f(-e)-f(-2e)), cancels local first-order trend. Right-minus-left alone is NOT interpreted as a jump.
+No resolved C0 height gap at sampled crossings. At e=.001 max extrapolated deltaY jump: coast4.41e-7Y, corner1.10e-7Y, land5.64e-7Y; controls1.76e-6Y (float interpolation floor). These are finite-resolution measurements, not proof of exact C0 everywhere.
+C1 smoothness DOES FAIL at some sites: coast-z2 x=-2114.5,z=-2928, deltaY one-sided slopes1.05229349 and0.68870573 Y/wu, difference-0.36358776. Difference remains approximately-.36356 at e=.1 and.01 while B derivative mismatch shrinks to7.23e-6. Thus not merely smooth terrain gradient masquerading as a jump. Max corner mismatch.15078, land.20435; controls max1.63214. Boundary changes coincide with integer knots in ParticleTile.at's 1wu bilinear data. Non-boundary integer controls also show larger creases: NOT evidence of special48wu seam, but C1-perfect claim is false. No attribution of all creases solely to blending; tile interpolation and blend both exist. Exact rows and controls retained.
+
+B: 48wu STRIPE/GRID LOCK
+Coast mask = within16wu of B Y63 sign-changing shore (two-sided raster distance);6857 interior-valid samples. Boundary distance<=2wu vs matched interior>=12wu, matching B height/5 and B slope/.15 with Euclidean caliper .5, nearest neighbor with replacement. Accepted1015/1040 boundary samples,647 unique controls. B height means65.011/64.968, slopes.391431/.391494. Mean absolute deltaY .728516/.699703, difference.028813, owner-tile bootstrap95[-.049294,.121122]. Delta gradient .180132/.164431, difference.015701, CI[-.003714,.037637]. No compelling boundary-wide excess from this comparison; residual confounding, limited overlap and dependent spatial samples remain. Bootstrap descriptive, not causal significance.
+Gaussian-detrended delta(sigma12wu) coast lag48 x:r=.127908,n1421; z:r=-.038154,n1998. x46=.139358, x44=.138425, x50=.107326; z46=-.033605,z50=-.041621. No isolated48 peak. B residual controls at48 x=.294697,z=.011520. Joint x/z sin/cos after quadratic spatial trend+B height+B slope: period48 explains.003227 of residual variance; max tested period60=.018993. Tested24..72 step2. These are ~8-tile finite-window correlations, NOT causality or proof no grid imprint exists. Original half-integer raster never samples exact tile line.
+
+COAST REPETITION EXISTS even without 48wu lock
+Shared-scale B/P/delta pictures show locally repeated comb-like grooves; they cross tile lines and change spacing/strength around coast. Cannot claim visually artifact-free.
+Coast-specific follow-up: longest B63 contour, every2wu arclength, offset8wu inland using B gradient, bilinear ORIGINAL2wu raster analysis, three contiguous ~306wu arcs. Heights63.14..73.33Y (unlike inland straight shelf controls). Arc1 has broad spectral bins13.39/12.83/17.11wu; arc2 broad61.6/51.33/30.8/44wu; arc3 broad25.5/23.54/27.82wu. Detected trough spacing median12,10,10wu, with broad ranges and gaps, sensitive to stated prominence. This is a spatially varying quasi-repeat, not one fixed48wu wavelength. Arc2 broad near48 content is retained, NOT dismissed as impossible. 2wu raster cannot assess sub4wu wavelengths; interpolated contour is not new physical detail. Separate straight shelf transects are inland (B75..153Y), retained as non-coast controls, not confused with shore mask.
+
+C: BASE GRADIENT / PARTICLE GROOVE GUIDANCE
+Coast |deltaY| versus B slope r=.77914. Delta/B gradient |cos| mean.79382, median.91724 (n4236, thresholds B slope>.05 and delta slope>.01). Strong alignment supports terrain/shore-guided explanation over dominant tile lock, but no particle trajectory recording means causation NOT established. Independent unmodified ParticleTile.build/at contributions on three limited profiles use five original tiles. Raw tiles already contain common grooves away from boundaries; blending weights taper across +/-10wu and do not simply create every groove on48wu line. Weighted reconstruction versus deltaE max error1.84e-9 (float rounding). Not proof of which internal kernel mechanism creates quasi-regular spacing; no parameter experiments performed.
+
+FIGURES (relative to this directory)
+overview.png: original full window B/P/delta,48wu dashed grid, numbered crop locations.
+coast-detail-1.png,coast-detail-2.png,coast-detail-3.png: high-resolution layout of96x96wu crops, original2wu pixels NEAREST enlarged; B/P identical global height colors/light/zoom. Cyan B shore63. No fake detail.
+exact-coast-profiles-contributions.png: three limited .5wu NEW exactP transects, B/P,deltaY/slopes, independent tile deltaE and weighted contributions. Boundary at0.
+epsilon-continuity.png: multiscale extrapolated jumps versus persistent derivative mismatches.
+frequency-grid-metrics.png: coast x/z lags and phase-fit comparison.
+coast-ring-location.png,coast-ring-frequency.png: true near-shore arc locations and local repetition frequencies.
+coast-short-frequency.png: separate straight shelf/inland controls.
+
+RAW / METRICS / LOGS
+metrics.json: original raster stats, grid-distance bins, matching covariate balance and tile-cluster bootstrap, all lag controls and phase periods.
+exact-metrics.json,continuity-metrics.csv,sites.json,queries.csv,exact-samples.csv,tile-contributions.csv: finite exact checks, replay and raw contributions.
+coast-ring-metrics.json: near-shore repetition method/results.
+exact.log:47 runtime tiles,22.07s; five independent profile tiles,23.97s total; no failures/cancellations. Only WARN is advanced terminal availability.
+compile-command.json,exact-command.json,compile-exit.json,exact-exit.json: exact argv and statuses. compile/exact both exit0. No overall all-clear/PASS classification.
+hashes-before.json + hash-verification.json: existing file SHA256 conservation; final status file comparison also saved. Commands are below.
+
+RUN COMMANDS (repository root; outputs always this diagnostic directory)
+python forge-1.20.1-47.4.10-mdk/build/bp-seam-audit-20261105-060952/snapshot.py before
+python -u forge-1.20.1-47.4.10-mdk/build/bp-seam-audit-20261105-060952/analyze.py
+python -u forge-1.20.1-47.4.10-mdk/build/bp-seam-audit-20261105-060952/run-exact.py
+python -u forge-1.20.1-47.4.10-mdk/build/bp-seam-audit-20261105-060952/finish.py
+python -u forge-1.20.1-47.4.10-mdk/build/bp-seam-audit-20261105-060952/coast-trace.py
+python forge-1.20.1-47.4.10-mdk/build/bp-seam-audit-20261105-060952/snapshot.py after
+Do not rerun exact in-place: CREATE_NEW prevents overwriting outputs. Reproduce by copying these new scripts into another empty diagnostic directory and adjusting path/manifest accordingly; never overwrite baseline.
+
+LIMITS / STOP
+This one400x400wu window only. No infinite-world guarantee; no ruling out weak grid imprint, unsampled boundaries, or finer-scale artifacts. Local C1 creases and coast quasi-regular grooves remain real findings, not fixed. No production logs inserted, no MC launch needed. Diagnostic finished; wait for user's decision.

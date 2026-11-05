@@ -1,0 +1,13 @@
+2026-11-05 05:58:01,895 main WARN Advanced terminal features are not available in this environment
+row=0 seconds=10.0905707 Metrics[builds=18, successful=18, failures=0, cancelled=0, completed=18, flights=0, queued=0, active=0]
+row=20 seconds=13.8960433 Metrics[builds=27, successful=27, failures=0, cancelled=0, completed=27, flights=0, queued=0, active=0]
+row=40 seconds=13.9809555 Metrics[builds=27, successful=27, failures=0, cancelled=0, completed=27, flights=0, queued=0, active=0]
+row=60 seconds=18.5118321 Metrics[builds=36, successful=36, failures=0, cancelled=0, completed=36, flights=0, queued=0, active=0]
+row=80 seconds=22.771295 Metrics[builds=45, successful=45, failures=0, cancelled=0, completed=45, flights=0, queued=0, active=0]
+row=100 seconds=26.8855468 Metrics[builds=54, successful=54, failures=0, cancelled=0, completed=54, flights=0, queued=0, active=0]
+row=120 seconds=30.6311307 Metrics[builds=63, successful=63, failures=0, cancelled=0, completed=63, flights=0, queued=0, active=0]
+row=140 seconds=35.4278725 Metrics[builds=72, successful=72, failures=0, cancelled=0, completed=72, flights=0, queued=0, active=0]
+row=160 seconds=35.5072958 Metrics[builds=72, successful=72, failures=0, cancelled=0, completed=72, flights=0, queued=0, active=0]
+row=180 seconds=40.7147573 Metrics[builds=81, successful=81, failures=0, cancelled=0, completed=81, flights=0, queued=0, active=0]
+row=200 seconds=45.5290856 Metrics[builds=90, successful=90, failures=0, cancelled=0, completed=90, flights=0, queued=0, active=0]
+seconds=45.5292509; changed=36813; land=30546; maxAbsDeltaY=26.668603939414027; Metrics[builds=90, successful=90, failures=0, cancelled=0, completed=90, flights=0, queued=0, active=0]

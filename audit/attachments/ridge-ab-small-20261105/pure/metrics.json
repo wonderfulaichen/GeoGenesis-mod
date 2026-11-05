@@ -1,0 +1,96 @@
+{
+  "control": {
+    "changed": 0,
+    "minDeltaY": 0.0,
+    "maxDeltaY": 0.0,
+    "meanAbsDeltaY": 0.0,
+    "p99AbsDeltaY": 0.0,
+    "seaLandFlips": 0,
+    "minY": 119.42749155908484,
+    "maxY": 175.4110788572567
+  },
+  "recipe": {
+    "changed": 66049,
+    "minDeltaY": -93.7821038759217,
+    "maxDeltaY": 94.00238424301148,
+    "meanAbsDeltaY": 9.05209290486771,
+    "p99AbsDeltaY": 48.864175532436086,
+    "seaLandFlips": 0,
+    "minY": 63.0,
+    "maxY": 248.88767280833648
+  },
+  "post": {
+    "changed": 66049,
+    "minDeltaY": -97.73160833770007,
+    "maxDeltaY": 94.00238424301148,
+    "meanAbsDeltaY": 9.052752906397053,
+    "p99AbsDeltaY": 48.864175532436086,
+    "seaLandFlips": 12,
+    "minY": 56.16619225300805,
+    "maxY": 248.88767280833645
+  },
+  "A-vs-B": {
+    "changed": 8649,
+    "minDeltaY": -5.684341886080802e-14,
+    "maxDeltaY": 6.833807746991951,
+    "meanAbsDeltaY": 0.0006600015293463556,
+    "p99AbsDeltaY": 5.684341886080802e-14,
+    "seaLandFlips": 12,
+    "minY": 63.0,
+    "maxY": 248.88767280833648
+  },
+  "sha256": {
+    "control": "441f15731663fcb37eeb414d1050ae8d5eca266712460e516cf900f071e56369",
+    "recipe": "565fd4146675fac6f97e0a1688077d0a233da1da525daac59ab7a32aeeab9369",
+    "post": "0d8991fdccc5f6968364481e0ed34cd5a08f81cf4c401a772c1be1fb492ffbae"
+  },
+  "window": {
+    "size": 257,
+    "stepWu": 0.5,
+    "originWu": [
+      -2799.5,
+      3648.5
+    ],
+    "hs": 2.0
+  },
+  "deltaColorScaleBlocks": 97.73160833770007,
+  "weightGrid": {
+    "points": 289,
+    "activeCounts": {
+      "1": 289,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    },
+    "dominants": [
+      15
+    ],
+    "maxCoverageAlpha": 0.0
+  },
+  "preCoastMetrics": {
+    "Aproxy": {
+      "meanAbsE": 0.038284947153052404,
+      "maxAbsE": 0.39757394790649403
+    },
+    "B": {
+      "meanAbsE": 0.03828774376970216,
+      "maxAbsE": 0.41338977217674255
+    },
+    "AminusB": {
+      "meanAbsE": 2.7966166497725506e-06,
+      "maxAbsE": 0.028956812487254013
+    }
+  },
+  "render": {
+    "light": [
+      -0.5,
+      -0.35,
+      1
+    ],
+    "horizontalSampleBlocks": 1.0,
+    "vertical": "existing MC Y, no extra VS",
+    "colors": "fixed cmp palette -64..320",
+    "preStage": "covered land e, before ocean/coast, converted with existing land HeightCurve for display",
+    "postStage": "MorphOceanAssembler + coast -> HeightCurve, not final MC/particle/model"
+  }
+}

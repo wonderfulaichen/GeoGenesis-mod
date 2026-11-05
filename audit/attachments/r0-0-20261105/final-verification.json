@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "unchangedInputs": 888,
+  "headUnchanged": true,
+  "indexUnchanged": true,
+  "p1ByteComparison": "identical",
+  "localDocumentLinks": 79,
+  "archivesVerified": true,
+  "scope": "R0-0 only; R0a not started"
+}

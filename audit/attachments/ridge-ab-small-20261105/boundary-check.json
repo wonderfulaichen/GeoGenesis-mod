@@ -1,0 +1,13 @@
+{
+  "pass": true,
+  "headUnchanged": true,
+  "indexUnchanged": true,
+  "startingFilesChecked": 4656,
+  "protectedMainAndRunConfigCount": 241,
+  "changedStartingFiles": [
+    "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/morph/RidgePlacementProbe.java",
+    "forge-1.20.1-47.4.10-mdk/tools/render-ridge-placement.py"
+  ],
+  "baselineFilesUnchanged": true,
+  "noProductionConnection": true
+}

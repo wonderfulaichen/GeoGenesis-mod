@@ -1,0 +1,3 @@
+2026-11-05 06:13:04,906 main WARN Advanced terminal features are not available in this environment
+exact seconds=22.0735263 Metrics[builds=47, successful=47, failures=0, cancelled=0, completed=47, flights=0, queued=0, active=0]
+independent tiles=5 total seconds=23.9650031

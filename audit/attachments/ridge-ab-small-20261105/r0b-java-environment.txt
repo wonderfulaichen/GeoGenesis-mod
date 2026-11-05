@@ -1,0 +1,109 @@
+Property settings:
+    file.encoding = UTF-8
+    file.separator = \
+    java.class.path = 
+    java.class.version = 65.0
+    java.home = D:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot
+    java.io.tmpdir = C:\Users\qq274\AppData\Local\Temp\
+    java.library.path = D:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin
+        C:\WINDOWS\Sun\Java\bin
+        C:\WINDOWS\system32
+        C:\WINDOWS
+        C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin
+        C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\libnvvp
+        D:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin
+        D:\Program Files\Java\zulu21\bin\
+        C:\Program Files\Common Files\Oracle\Java\javapath
+        C:\Windows\system32
+        C:\Windows
+        C:\Windows\System32\Wbem
+        C:\Windows\System32\WindowsPowerShell\v1.0\
+        C:\Windows\System32\OpenSSH\
+        C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common
+        C:\WINDOWS\system32
+        C:\WINDOWS
+        C:\WINDOWS\System32\Wbem
+        C:\WINDOWS\System32\WindowsPowerShell\v1.0\
+        C:\WINDOWS\System32\OpenSSH\
+        D:\���ù���\Zip��ѹ\Bandizip\Bandizip
+        C:\Pr
+        gram Files\dotnet\
+        C:\Program Files\Common Files\Autodesk Shared\
+        C:\Program Files\Microsoft SQL Server\120\Tools\Binn\
+        C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR
+        C:\Program Files\dotnet\
+        C:\ProgramData\chocolatey\bin
+        C:\Program Files\nvm
+        D:\nodejs
+        C:\Users\qq274\AppData\Local\uv\bin
+        C:\Windows\dll
+        C:\Program Files\python
+        C:\Program Files\python\Scripts
+        D:\BtSoft\panel\script
+        D:\RUST\.cargo\bin
+        D:\Program Files\Git\cmd
+        C:\Program Files\GitHub CLI\
+        C:\Program Files\NVIDIA Corporation\Nsight Compute 2025.1.0\
+        D:\RUST\.cargo\bin
+        C:\Users\qq274\.cargo\bin
+        D:\Anaconda3
+        D:\Anaconda3\Library\mingw-w64\bin
+        D:\Anaconda3\Library\usr\bin
+        D:\Anaconda3\Library\bin
+        D:\Anaconda3\Scripts
+        C:\Users\qq274\AppData\Local\Microsoft\WindowsApps
+        D:\Users\qq274\AppData\Local\Programs\Microsoft VS Code\bin
+        C:\Users\qq274\AppData\Local\Programs\Ollama
+        E:\Office software\CodeBuddy CN\bin
+        D:\Program Files\Git\bin
+        D:\Program Files\Git\cmd
+        C:\Users\qq274\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0.2-full_build\bin
+        .
+    java.runtime.name = OpenJDK Runtime Environment
+    java.runtime.version = 21.0.11+10-LTS
+    java.specification.name = Java Platform API Specification
+    java.specification.vendor = Oracle Corporation
+    java.specification.version = 21
+    java.vendor = Eclipse Adoptium
+    java.vendor.url = https://adoptium.net/
+    java.vendor.url.bug = https://github.com/adoptium/adoptium-support/issues
+    java.vendor.version = Temurin-21.0.11+10
+    java.version = 21.0.11
+    java.version.date = 2026-04-21
+    java.vm.compressedOopsMode = Zero based
+    java.vm.info = mixed mode, sharing
+    java.vm.name = OpenJDK 64-Bit Server VM
+    java.vm.specification.name = Java Virtual Machine Specification
+    java.vm.specification.vendor = Oracle Corporation
+    java.vm.specification.version = 21
+    java.vm.vendor = Eclipse Adoptium
+    java.vm.version = 21.0.11+10-LTS
+    jdk.debug = release
+    line.separator = \r \n 
+    native.encoding = GBK
+    os.arch = amd64
+    os.name = Windows 11
+    os.version = 10.0
+    path.separator = ;
+    stderr.encoding = GBK
+    stdout.encoding = GBK
+    sun.arch.data.model = 64
+    sun.boot.library.path = D:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot\bin
+    sun.cpu.endian = little
+    sun.cpu.isalist = amd64
+    sun.io.unicode.encoding = UnicodeLittle
+    sun.java.launcher = SUN_STANDARD
+    sun.jnu.encoding = GBK
+    sun.management.compiler = HotSpot 64-Bit Tiered Compilers
+    sun.os.patch.level = 
+    user.country = CN
+    user.dir = D:\Office software\Development Project\GeoGenesis-mod
+    user.home = C:\Users\qq274
+    user.language = zh
+    user.name = qq274
+    user.script = 
+    user.variant = 
+
+openjdk version "21.0.11" 2026-04-21 LTS
+OpenJDK Runtime Environment Temurin-21.0.11+10 (build 21.0.11+10-LTS)
+OpenJDK 64-Bit Server VM Temurin-21.0.11+10 (build 21.0.11+10-LTS, mixed mode, sharing)

@@ -1,0 +1,46 @@
+{
+  "seed": "9139912035078620160",
+  "jvmProperties": {
+    "file.encoding": "UTF-8"
+  },
+  "JVMOther": [
+    "-Xmx2G"
+  ],
+  "noGeogenesisOrHydroProperties": true,
+  "HS": 2,
+  "noParticleNoRuneNoHydrology": true,
+  "A": "unchanged DiagnosticRidgeKernel region raw + coverage raw before its original 1.05 terrace",
+  "B": "unchanged old operator on covered e",
+  "configSHA256": "cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f",
+  "sourcesAndTools": {
+    "CoverageChecks.java": "092bf4df52e3c70497d992bac77c1e717087e6771042f532cfd0dbf95a9eaf0a",
+    "CoverageProbe.java": "0a77dbb6d23b5bd422c64a14c6977d47cb13f5356c3bf1d27f21dee0a4163ab3",
+    "DiagnosticRidgeKernel.java": "c5bd4a213308a9642e78ca6911f1239bb95bee7e714ac659f9cd49bac1a70f5c",
+    "finalize.py": "29c006bc10145e5f42190f46fd863233aa4ad399df600932090ce55f4ce498b3",
+    "render.py": "aaaf4c5f6d891e57a60282146a5217c610324f82b6ba3ef43765dab97694a265",
+    "run.py": "87bd6b256b931d0ff9e9beb4bb247ed67caa36aed3998debd6f33c67e722a45a",
+    "setup.py": "1571385a8ad467d67837d58bd344a90d1c8d5ac36afaa51b9f4c6ffc11982206"
+  },
+  "classes": {
+    "classes\\com\\geogenesis\\worldgen\\terrain\\morph\\CoverageProbe$1.class": "3a9750ad12bd58a6669b569ecd59b7d701091962647919cd7e2e731a224c7b03",
+    "classes\\com\\geogenesis\\worldgen\\terrain\\morph\\CoverageProbe$CoverageRaw.class": "8054f54ce21252026941b3d14ce13c1c27ae1094d47f99c7b5df385b5d95246f",
+    "classes\\com\\geogenesis\\worldgen\\terrain\\morph\\CoverageProbe.class": "e8c49e2e31a441f70c4e44e5ad45412078db0f93139a247ea9fe0ddfc6e49ea4",
+    "classes\\com\\geogenesis\\worldgen\\terrain\\morph\\DiagnosticRidgeKernel$Evaluation.class": "71e021225af93b7163731a88659ac59f20391e29392270330a7149377523b05c",
+    "classes\\com\\geogenesis\\worldgen\\terrain\\morph\\DiagnosticRidgeKernel.class": "d16995eda26ede9fba7ae1648608d66ae667fbf1be5cc4ca39551f0f095e3ce9",
+    "check-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\CoverageChecks.class": "911d403ebe58b44f6f125bc272d7d7bed929378247330dcc6001fd92041a4735"
+  },
+  "compileAndRunCommands": "*-command.json; strict javac release17 -Xlint:all -Werror; main reuse has all212 source hash and class manifest verification",
+  "controlAndB": "same current production MorphLandField and MorphOceanAssembler stages as previous true A run; no production change",
+  "light": [
+    -0.5,
+    -0.35,
+    1
+  ],
+  "normal": "(-gx,-gz,1)",
+  "horizontalDistanceBlocks": "stepWu*HS",
+  "colorScaleY": [
+    -64,
+    320
+  ],
+  "rawFormat": "f64 big endian, row z then x; pre-* are e, assembled are MC Y"
+}

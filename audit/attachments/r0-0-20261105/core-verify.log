@@ -1,0 +1,17 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.8/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :
+Java: 21.0.11, JVM: 21.0.11+10-LTS (Eclipse Adoptium), Arch: amd64
+
+> Task :r00CaptureEnvironment
+R0-0 environment captured: D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\r0-0-20261105
+
+> Task :compileBaseCore
+
+> Task :verifyBaseCore
+BASE CORE PASS: independent JVM, no Minecraft/Forge/Cell; 2 seeds / 8 points
+RUNE-EROSION-CHECK PASS
+
+BUILD SUCCESSFUL in 13s
+3 actionable tasks: 3 executed

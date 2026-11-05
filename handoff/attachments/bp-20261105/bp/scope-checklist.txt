@@ -1,0 +1,10 @@
+Read AGENTS + entire plan + R0b/R0-0 audits before implementation.
+Only new process package + scoped diagnostics/tools.
+Verified legacy float sampleTileField/blendTileDelta/softCap/cap and ErosionEngine hardness footprint.
+No legacy Cell/GeoGenesisTerrain/model/MC/UI/Preview cache edits.
+Input: floor before float, delta relative to floored float input; apply once to exact B then second softCap; OFF bypasses all.
+Material: pre-process B/G at 16wu centers, existing kernel 11x11/16wu interpolation/coupling.
+Full canonical record identity, isolated per-runtime namespace, fixed smoothing split8; execution budget excluded.
+Task private arrays; complete-success-only publication under lifecycle gate; unique Flight object compare cleanup.
+No eight-neighbor prewarm. B exact never asks P. Peek samples no B and enqueues nothing.
+No submit/push/stash/reset; no config writes; no broad diagnostics build/runClient.

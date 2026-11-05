@@ -1,0 +1,6 @@
+PASS geometry/OFF/B/floor/cap/units
+Exception in thread "main" java.lang.AssertionError: kernel tile assembly -8.374452590942383E-4 != -8.373260498046875E-4
+	at com.geogenesis.worldgen.process.ProcessRuntimeCheck.require(ProcessRuntimeCheck.java:17)
+	at com.geogenesis.worldgen.process.ProcessRuntimeCheck.same(ProcessRuntimeCheck.java:19)
+	at com.geogenesis.worldgen.process.ProcessRuntimeCheck.trueInputAndBlend(ProcessRuntimeCheck.java:134)
+	at com.geogenesis.worldgen.process.ProcessRuntimeCheck.main(ProcessRuntimeCheck.java:30)

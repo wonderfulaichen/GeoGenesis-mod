@@ -1,0 +1,126 @@
+{
+  "method": "Longest B63 contour, arclength resampled2wu, displaced8wu up B gradient, bilinear raster interpolation. Three contiguous thirds. Gaussian residual sigma12wu, linear trend removed, Hann power. Coast geometry bends trace and offset is approximate; only this ring, only original2wu data. Not proof of particle causality.",
+  "records": [
+    {
+      "segment": 1,
+      "n": 154,
+      "arclength_span": [
+        0.0,
+        306.0
+      ],
+      "B_Y_minmax": [
+        63.143703241481234,
+        68.263545466445
+      ],
+      "top_period_bins_wu": [
+        13.391304347826084,
+        12.833333333333334,
+        17.11111111111111,
+        13.999999999999998,
+        77.0
+      ],
+      "trough_spacing_wu": [
+        104.0,
+        6.0,
+        8.0,
+        12.0,
+        14.0,
+        12.0,
+        12.0,
+        8.0,
+        8.0,
+        12.0,
+        4.0,
+        16.0,
+        8.0,
+        12.0,
+        20.0
+      ],
+      "median_spacing": 12.0,
+      "rms_residual": 0.17954726249203426
+    },
+    {
+      "segment": 2,
+      "n": 154,
+      "arclength_span": [
+        308.0,
+        614.0
+      ],
+      "B_Y_minmax": [
+        63.456221873356995,
+        69.11653699387705
+      ],
+      "top_period_bins_wu": [
+        61.599999999999994,
+        51.333333333333336,
+        30.799999999999997,
+        44.0,
+        77.0
+      ],
+      "trough_spacing_wu": [
+        10.0,
+        8.0,
+        6.0,
+        6.0,
+        16.0,
+        6.0,
+        10.0,
+        22.0,
+        8.0,
+        6.0,
+        12.0,
+        28.0,
+        40.0,
+        10.0,
+        6.0,
+        36.0,
+        12.0,
+        14.0,
+        8.0,
+        16.0
+      ],
+      "median_spacing": 10.0,
+      "rms_residual": 0.262061774055527
+    },
+    {
+      "segment": 3,
+      "n": 153,
+      "arclength_span": [
+        616.0,
+        920.0
+      ],
+      "B_Y_minmax": [
+        63.571683042107566,
+        73.32757381788116
+      ],
+      "top_period_bins_wu": [
+        25.5,
+        23.538461538461537,
+        27.818181818181817,
+        30.599999999999998,
+        21.857142857142854
+      ],
+      "trough_spacing_wu": [
+        8.0,
+        4.0,
+        18.0,
+        18.0,
+        10.0,
+        10.0,
+        8.0,
+        18.0,
+        8.0,
+        14.0,
+        8.0,
+        30.0,
+        14.0,
+        14.0,
+        8.0,
+        10.0,
+        18.0
+      ],
+      "median_spacing": 10.0,
+      "rms_residual": 0.7149632106138119
+    }
+  ]
+}

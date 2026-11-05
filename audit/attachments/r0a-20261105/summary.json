@@ -1,0 +1,16 @@
+{
+  "status": "PASS; stop at R0a; no R0b/stage/commit/push",
+  "head": "0c742b6051fab06bc76517fc697efd585ea6a227",
+  "index_sha256": "129022d4ba4287586c58e013ed577452010e2265b67c238738096036da79bff5",
+  "index_unchanged": true,
+  "baseline_unchanged": true,
+  "algorithm_body_unchanged": true,
+  "production_sources": 210,
+  "loaded_arrays": 80,
+  "fallback_arrays": 32,
+  "byte_equal_items": 114,
+  "p1_sha256": "bea0a47c14d32fa9e2654c77cc6984999004e137e9e6bde8a05d3e2b2a393965",
+  "cell_metadata_sha256": "9ffcee45d77614eb7e016a8f3747cf0ad4cdcbf78798c5bbdb2517612d15c856",
+  "changed_inventory_count": 9,
+  "no_geogenesis_jvm_properties": true
+}

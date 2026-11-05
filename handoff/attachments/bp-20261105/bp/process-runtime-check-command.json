@@ -1,0 +1,8 @@
+[
+  "java",
+  "-Xmx2g",
+  "-Dfile.encoding=UTF-8",
+  "-cp",
+  "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\bp-20261105-054953-3413\\core-classes;D:\\.gradle\\caches\\modules-2\\files-2.1\\com.mojang\\datafixerupper\\6.0.8\\3ba4a30557a9b057760af4011f909ba619fc5125\\datafixerupper-6.0.8.jar;D:\\.gradle\\caches\\modules-2\\files-2.1\\it.unimi.dsi\\fastutil\\8.5.9\\bb7ea75ecdb216654237830b3a96d87ad91f8cc5\\fastutil-8.5.9.jar",
+  "com.geogenesis.worldgen.process.ProcessRuntimeCheck"
+]

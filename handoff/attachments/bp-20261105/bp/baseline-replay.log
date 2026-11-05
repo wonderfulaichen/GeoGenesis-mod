@@ -1,0 +1,10 @@
+main-compile 0
+command keys p1-compile ['command', 'exitCode']
+p1-compile 0
+command keys capture-compile ['command', 'exitCode']
+capture-compile 0
+placement-compile 0
+p1 0
+loaded-final 0
+fallback-final 0
+BYTE COMPARISON PASS 114

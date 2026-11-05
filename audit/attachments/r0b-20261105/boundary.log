@@ -1,0 +1,254 @@
+2026-11-05 04:58:24,995 main WARN Advanced terminal features are not available in this environment
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Configuration file SimpleCommentedConfig:{} is not correct. Correcting
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field.continentScale was corrected from null to its default, 4000.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field.continentWarp was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field.continentFbmOctaves was corrected from null to its default, 6. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field.continentFbmLacunarity was corrected from null to its default, 2.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field.continentFbmPersistence was corrected from null to its default, 0.6. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field.continentThreshold was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field.continentBias was corrected from null to its default, 0.31. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Continent Field.continentProvinceWarp was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.deepOceanLoc was corrected from null to its default, -0.8. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.shelfLoc was corrected from null to its default, -0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.shallowLoc was corrected from null to its default, -0.16. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.coastLoc was corrected from null to its default, -0.04. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.deepOceanDepth was corrected from null to its default, -0.35. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.shelfDepth was corrected from null to its default, -0.25. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.shallowDepth was corrected from null to its default, -0.14. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.deepOceanDeriv was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.shelfDeriv was corrected from null to its default, 0.8. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.shallowDeriv was corrected from null to its default, 0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Spline Control Points.coastDeriv was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Transition was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Transition.oceanFadeStart was corrected from null to its default, -0.13. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Transition.landRampEnd was corrected from null to its default, 0.05. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.oceanLo was corrected from null to its default, -0.35. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.oceanHi was corrected from null to its default, -0.06. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.deepOceanLo was corrected from null to its default, -0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.deepOceanHi was corrected from null to its default, -0.35. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.shelfLo was corrected from null to its default, -0.25. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.shelfHi was corrected from null to its default, -0.08. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.subRidgeLo was corrected from null to its default, -0.2. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.subRidgeHi was corrected from null to its default, -0.05. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.seamountLo was corrected from null to its default, -0.15. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.seamountHi was corrected from null to its default, -0.02. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.lakeLo was corrected from null to its default, -0.02. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.lakeHi was corrected from null to its default, 0.01. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.riverLo was corrected from null to its default, -0.03. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ocean Type Ranges.riverHi was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.River Network was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.River Network.riverEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Seabed was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Seabed.seabedDetail was corrected from null to its default, 0.03. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Seabed.oceanDepthFactor was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Province Weights was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Province Weights.provinceScale was corrected from null to its default, 4000.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Province Weights.cratonWeight was corrected from null to its default, 1.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Province Weights.beltWeight was corrected from null to its default, 3.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Province Weights.plateauWeight was corrected from null to its default, 2.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Province Weights.basinWeight was corrected from null to its default, 0.8. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.plainBase was corrected from null to its default, 0.01. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.plainRough was corrected from null to its default, 0.04. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.hillsLow was corrected from null to its default, 0.1. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.hillsHigh was corrected from null to its default, 0.25. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.beltRidgePower was corrected from null to its default, 1.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.beltFoothill was corrected from null to its default, 0.15. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.beltPeak was corrected from null to its default, 0.95. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.plateauBase was corrected from null to its default, 0.55. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.plateauTop was corrected from null to its default, 0.72. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.plateauSteps was corrected from null to its default, 3. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.plateauStepStrength was corrected from null to its default, 0.6. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Land Process Parameters.basinBase was corrected from null to its default, 0.02. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Relief Amplitudes was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Relief Amplitudes.cratonReliefAmp was corrected from null to its default, 0.1. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Relief Amplitudes.beltReliefAmp was corrected from null to its default, 0.35. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Relief Amplitudes.plateauReliefAmp was corrected from null to its default, 0.03. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Relief Amplitudes.basinReliefAmp was corrected from null to its default, 0.05. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Terrain Shape was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Terrain Shape.beltSharpness was corrected from null to its default, 1.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Terrain Shape.beltWarpAmp was corrected from null to its default, 120.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Terrain Shape.provMixSharpness was corrected from null to its default, 2.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Terrain Shape.mountainMaskScale was corrected from null to its default, 2200.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Terrain Shape.microDetailScale was corrected from null to its default, 450.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Terrain Shape.microDetailAmp was corrected from null to its default, 0.025. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Classification & Snow was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Classification & Snow.elevHigh was corrected from null to its default, 0.25. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Classification & Snow.reliefHigh was corrected from null to its default, 0.04. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Classification & Snow.snowLine was corrected from null to its default, 0.7. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Classification & Snow.snowLatitudeInfluence was corrected from null to its default, 0.25. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Classification & Snow.snowHumidityInfluence was corrected from null to its default, 0.15. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.tempFrozenThreshold was corrected from null to its default, -0.6. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.tempColdThreshold was corrected from null to its default, -0.2. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.tempWarmThreshold was corrected from null to its default, 0.2. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.tempHotThreshold was corrected from null to its default, 0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.humidityDryThreshold was corrected from null to its default, -0.3. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.humiditySemiThreshold was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.humidityWetThreshold was corrected from null to its default, 0.3. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.continentDeepOceanThreshold was corrected from null to its default, -0.6. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.continentNearOceanThreshold was corrected from null to its default, -0.3. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.continentCoastThreshold was corrected from null to its default, -0.1. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.continentTransitionalThreshold was corrected from null to its default, 0.1. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.continentNearInlandThreshold was corrected from null to its default, 0.35. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.continentInlandThreshold was corrected from null to its default, 0.65. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.tempInfluence was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.humidityInfluence was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.continentInfluence was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.latitudeScale was corrected from null to its default, 6000.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.tempWarpScale was corrected from null to its default, 1500.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.humidityScale was corrected from null to its default, 800.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Climate Thresholds.climateRegionSize was corrected from null to its default, 256.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.World Height was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.World Height.seaLevel was corrected from null to its default, 63. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.World Height.minY was corrected from null to its default, -64. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.World Height.maxY was corrected from null to its default, 320. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.World Height.peakHeightFraction was corrected from null to its default, 0.92. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Scale was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Scale.horizontalScale was corrected from null to its default, 2.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Scale.verticalScale was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Semantic Affinity was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Semantic Affinity.cAffinityStrength was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.coastlineWarpAmp was corrected from null to its default, 0.15. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.coastlineWarpScale was corrected from null to its default, 1200.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.coastlineWarpOctaves was corrected from null to its default, 6. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.coastlineWarpLacunarity was corrected from null to its default, 2.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.coastlineWarpPersistence was corrected from null to its default, 0.6. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.coastTerrainInfluence was corrected from null to its default, 0.08. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.archipelagoBand was corrected from null to its default, 0.1. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.archipelagoDensity was corrected from null to its default, 0.3. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.archipelagoScale was corrected from null to its default, 120.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Coastline Diversification.archipelagoHeight was corrected from null to its default, 0.035. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRoutingAdaptive was corrected from null to its default, false. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionYieldToRiver was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionXSEnabled was corrected from null to its default, false. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionStrength was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionDropsMul was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionErodeMul was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionLocalChargeWeight was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionCascadeStrength was corrected from null to its default, 0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionMomentumTransfer was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionIterations was corrected from null to its default, 2. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionLrate was corrected from null to its default, 0.1. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeStrength was corrected from null to its default, 2.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeScale was corrected from null to its default, 100.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeCellScale was corrected from null to its default, 1.2. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeOctaves was corrected from null to its default, 4. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeGullyWeight was corrected from null to its default, 0.65. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeRounding was corrected from null to its default, 0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeLandRef was corrected from null to its default, 0.15. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Erosion.erosionRidgeDetail was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.cavePreset was corrected from null to its default, REALISTIC. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveTunnelEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveChamberEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveLayerEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveDensityMul was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveSurfaceLid was corrected from null to its default, 6. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveDepthMin was corrected from null to its default, 8. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveDepthMax was corrected from null to its default, 120. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveLithoGating was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Caves.caveBiomesEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ores was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ores.oreVeinsEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Ores.oreOverrideVanilla was corrected from null to its default, false. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Hydrology was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Hydrology.hydrologySkeletonRouting was corrected from null to its default, false. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Hydrology.hydrologyDecayEnabled was corrected from null to its default, false. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Hydrology.hydrologyDecayMax was corrected from null to its default, 0.002. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Hydrology.hydrologyDecayRef was corrected from null to its default, 0.7647. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Hydrology.hydrologyDecayExponent was corrected from null to its default, 0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Hydrology.hydrologyModelPipelineEnabled was corrected from null to its default, true. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Diagnostics was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Diagnostics.worldgenProfilerEnabled was corrected from null to its default, false. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Diagnostics.worldgenProfilerEveryChunks was corrected from null to its default, 200. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterLoc0 was corrected from null to its default, -0.8. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterLoc1 was corrected from null to its default, -0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterLoc2 was corrected from null to its default, -0.16. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterDeriv2 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterLoc3 was corrected from null to its default, -0.04. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterDeriv3 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterLoc4 was corrected from null to its default, 0.2. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterDeriv4 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterLoc5 was corrected from null to its default, 0.5. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterDeriv5 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterLoc6 was corrected from null to its default, 0.8. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.splineOuterDeriv6 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainLoLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainLoVal0 was corrected from null to its default, 0.005. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainLoDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainLoLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainLoVal1 was corrected from null to its default, 0.005. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainLoDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainHiLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainHiVal0 was corrected from null to its default, 0.03. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainHiDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainHiLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainHiVal1 was corrected from null to its default, 0.03. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLAIN.plainHiDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsLoLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsLoVal0 was corrected from null to its default, 0.06. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsLoDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsLoLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsLoVal1 was corrected from null to its default, 0.06. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsLoDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsHiLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsHiVal0 was corrected from null to its default, 0.368. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsHiDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsHiLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsHiVal1 was corrected from null to its default, 0.368. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.HILLS.hillsHiDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountLoLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountLoVal0 was corrected from null to its default, 0.45. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountLoDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountLoLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountLoVal1 was corrected from null to its default, 0.45. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountLoDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountHiLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountHiVal0 was corrected from null to its default, 0.95. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountHiDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountHiLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountHiVal1 was corrected from null to its default, 0.95. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.MOUNTAINS.mountHiDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platLoLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platLoVal0 was corrected from null to its default, 0.41. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platLoDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platLoLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platLoVal1 was corrected from null to its default, 0.41. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platLoDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platHiLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platHiVal0 was corrected from null to its default, 0.706. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platHiDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platHiLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platHiVal1 was corrected from null to its default, 0.706. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.PLATEAU.platHiDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN was corrected from null to its default, SimpleCommentedConfig:{}. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinLoLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinLoVal0 was corrected from null to its default, -0.08. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinLoDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinLoLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinLoVal1 was corrected from null to its default, 0.015. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinLoDeriv1 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinHiLoc0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinHiVal0 was corrected from null to its default, 0.08. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinHiDeriv0 was corrected from null to its default, 0.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinHiLoc1 was corrected from null to its default, 1.0. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinHiVal1 was corrected from null to its default, 0.08. 
+[04:58:25] [main/WARN] [ne.mi.co.ForgeConfigSpec/CORE]: Incorrect key GeoGenesis Terrain Generation.Phase 1 Unified Spline.BASIN.basinHiDeriv1 was corrected from null to its default, 0.0. 
+PARTICLE BOUNDARY PASS unloaded/spec/loaded six; per-run switch/restore; XS constructor timing

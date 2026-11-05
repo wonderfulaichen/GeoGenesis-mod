@@ -1,0 +1,5 @@
+2026-11-05 04:33:26,095 main WARN Advanced terminal features are not available in this environment
+[04:33:27] [main/INFO] [geogenesis/]: [PERF] erosion tile (-960,3840) took 153ms [base=20 bicubic=4 skeleton=20 drops=98 delta=5]
+[04:33:29] [main/INFO] [geogenesis/]: [PERF] erosion tile (960,4320) took 29ms [base=13 bicubic=1 skeleton=15 drops=0 delta=29]
+[04:33:30] [main/INFO] [geogenesis/]: [PERF] erosion tile (-960,3840) took 16ms [base=15 bicubic=1 skeleton=0 drops=0 delta=16]
+R00 BASELINE PASS loaded=true checks=4283822

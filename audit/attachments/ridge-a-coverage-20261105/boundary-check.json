@@ -1,0 +1,16 @@
+{
+  "pass": true,
+  "startingFileCount": 2497,
+  "onlyChangedStartingFiles": [
+    "audit/GeoGenesis-R0-core-boundary-20261105.md",
+    "audit/GeoGenesis-ridge-true-ab-20261105.md",
+    "audit/README.md"
+  ],
+  "srcMainRunConfigStartingTrackedAndUntrackedUnchanged": true,
+  "existingVersionableBaselineAttachmentsUnchanged": true,
+  "currentMainSourceAndClassHashesRechecked": true,
+  "HEADAndIndexUnchanged": true,
+  "head": "0c742b6051fab06bc76517fc697efd585ea6a227",
+  "indexSHA256": "129022d4ba4287586c58e013ed577452010e2265b67c238738096036da79bff5",
+  "scope": "No writes outside fresh build and authorized audit files. Frozen baseline attachments hashed before; old build-only baselines neither read as main nor rewritten."
+}

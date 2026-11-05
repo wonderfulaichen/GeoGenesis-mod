@@ -1,0 +1,512 @@
+[
+  {
+    "tile": 0,
+    "earliest_local_trajectory_alignment": [
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          0,
+          32
+        ],
+        "cos_B_downslope": {
+          "n": 143,
+          "min": 0.4582443058043762,
+          "max": 0.9997573192813769,
+          "mean": 0.9680619827159371,
+          "p50": 0.9989849983401179
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          32,
+          128
+        ],
+        "cos_B_downslope": {
+          "n": 1123,
+          "min": 0.03599795092210821,
+          "max": 0.9999999588130459,
+          "mean": 0.9795947252720912,
+          "p50": 0.9988507342729421
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          128,
+          512
+        ],
+        "cos_B_downslope": {
+          "n": 6412,
+          "min": -0.10686516343350966,
+          "max": 1.0000000529808506,
+          "mean": 0.9769281466811487,
+          "p50": 0.9991489447399209
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          512,
+          2696
+        ],
+        "cos_B_downslope": {
+          "n": 30967,
+          "min": -0.2939929526729291,
+          "max": 1.0000000950380994,
+          "mean": 0.991881607907796,
+          "p50": 0.9997183595769661
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          0,
+          32
+        ],
+        "cos_B_downslope": {
+          "n": 133,
+          "min": 0.47945017179258675,
+          "max": 0.9995907580061364,
+          "mean": 0.9662114215024734,
+          "p50": 0.9966770286038603
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          32,
+          128
+        ],
+        "cos_B_downslope": {
+          "n": 1090,
+          "min": 0.12037197813847623,
+          "max": 1.000000038086572,
+          "mean": 0.9793392683683032,
+          "p50": 0.9966047904314119
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          128,
+          512
+        ],
+        "cos_B_downslope": {
+          "n": 6127,
+          "min": -0.7461501149953297,
+          "max": 1.0000000492931982,
+          "mean": 0.9765024031242507,
+          "p50": 0.9977755642170347
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          512,
+          2858
+        ],
+        "cos_B_downslope": {
+          "n": 33127,
+          "min": -0.755696403481991,
+          "max": 1.0000000638543116,
+          "mean": 0.9866814675264889,
+          "p50": 0.9986017717342882
+        }
+      }
+    ],
+    "onset_Bhp_cut_hp_corr": 0.18944854106953457,
+    "cross_scale_births": [
+      {
+        "scales": [
+          0,
+          1
+        ],
+        "birthcell_occupancy_corr": 0.009669396877039941,
+        "n_common": 1897,
+        "offset_x_corr": 0.0674137176682308,
+        "offset_z_corr": 0.023376041879033076
+      },
+      {
+        "scales": [
+          0,
+          2
+        ],
+        "birthcell_occupancy_corr": -0.002503386655898424,
+        "n_common": 1122,
+        "offset_x_corr": -0.051093576812503594,
+        "offset_z_corr": 0.06029480712238386
+      },
+      {
+        "scales": [
+          1,
+          2
+        ],
+        "birthcell_occupancy_corr": 0.011322119335376843,
+        "n_common": 616,
+        "offset_x_corr": 0.14843892849653473,
+        "offset_z_corr": -0.15316292072363488
+      }
+    ],
+    "limited_clipping_coast_cells": 0,
+    "limited_clipping_buffer_cells": 0,
+    "max_cut_to_cascade": 0.0,
+    "coast_step_tracking": 0,
+    "coast_step_positivedelta": 46293,
+    "coast_step_negativedelta": 32829,
+    "coast_step_ld_it0": {
+      "n": 38645,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0,
+      "p50": 0.0
+    },
+    "coast_step_ld_it1": {
+      "n": 40477,
+      "min": 0.09723750501871109,
+      "max": 10.24012279510498,
+      "mean": 2.0599635076004637,
+      "p50": 1.7854915857315063
+    }
+  },
+  {
+    "tile": 1,
+    "earliest_local_trajectory_alignment": [
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          0,
+          32
+        ],
+        "cos_B_downslope": {
+          "n": 190,
+          "min": 0.9979522148517211,
+          "max": 1.0000000518208132,
+          "mean": 0.9996680446745454,
+          "p50": 0.9998665731581954
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          32,
+          128
+        ],
+        "cos_B_downslope": {
+          "n": 904,
+          "min": 0.9944790901982232,
+          "max": 0.9999999996488573,
+          "mean": 0.9991441090666671,
+          "p50": 0.9995654841780418
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          128,
+          512
+        ],
+        "cos_B_downslope": {
+          "n": 3899,
+          "min": -0.9965452762457452,
+          "max": 1.0000000635156394,
+          "mean": 0.9832173443782691,
+          "p50": 0.9991435237720466
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          512,
+          2902
+        ],
+        "cos_B_downslope": {
+          "n": 35625,
+          "min": -0.9971054380368755,
+          "max": 1.0000000803474416,
+          "mean": 0.9692265299741635,
+          "p50": 0.999246648334277
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          0,
+          32
+        ],
+        "cos_B_downslope": {
+          "n": 196,
+          "min": 0.9886507949056231,
+          "max": 0.9999973879093774,
+          "mean": 0.997868660966304,
+          "p50": 0.9989696754429032
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          32,
+          128
+        ],
+        "cos_B_downslope": {
+          "n": 932,
+          "min": 0.9556261427817582,
+          "max": 0.9999999989567857,
+          "mean": 0.9964816425901704,
+          "p50": 0.9986493256573374
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          128,
+          512
+        ],
+        "cos_B_downslope": {
+          "n": 3795,
+          "min": -0.8643841596956423,
+          "max": 0.9999999899350797,
+          "mean": 0.9763855927982885,
+          "p50": 0.9975309056725611
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          512,
+          3015
+        ],
+        "cos_B_downslope": {
+          "n": 37127,
+          "min": -0.9955131917363418,
+          "max": 1.0000000519037935,
+          "mean": 0.963021432477412,
+          "p50": 0.9978030156401201
+        }
+      }
+    ],
+    "onset_Bhp_cut_hp_corr": 0.20823347447066184,
+    "cross_scale_births": [
+      {
+        "scales": [
+          0,
+          1
+        ],
+        "birthcell_occupancy_corr": 0.026831348454593222,
+        "n_common": 1901,
+        "offset_x_corr": -0.02923836826162439,
+        "offset_z_corr": 0.06753150673372474
+      },
+      {
+        "scales": [
+          0,
+          2
+        ],
+        "birthcell_occupancy_corr": 0.0031563284128117717,
+        "n_common": 1141,
+        "offset_x_corr": -0.07647968258537623,
+        "offset_z_corr": -0.04476169097914481
+      },
+      {
+        "scales": [
+          1,
+          2
+        ],
+        "birthcell_occupancy_corr": 0.02866860071213702,
+        "n_common": 661,
+        "offset_x_corr": -0.07023210940858908,
+        "offset_z_corr": -0.08407494244465905
+      }
+    ],
+    "limited_clipping_coast_cells": 0,
+    "limited_clipping_buffer_cells": 0,
+    "max_cut_to_cascade": 0.0,
+    "coast_step_tracking": 0,
+    "coast_step_positivedelta": 60254,
+    "coast_step_negativedelta": 22413,
+    "coast_step_ld_it0": {
+      "n": 40618,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0,
+      "p50": 0.0
+    },
+    "coast_step_ld_it1": {
+      "n": 42050,
+      "min": 0.0,
+      "max": 12.308456420898438,
+      "mean": 2.845371461345877,
+      "p50": 1.97882080078125
+    }
+  },
+  {
+    "tile": 2,
+    "earliest_local_trajectory_alignment": [
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          0,
+          32
+        ],
+        "cos_B_downslope": {
+          "n": 199,
+          "min": -0.8980139098889238,
+          "max": 1.0000000205702464,
+          "mean": 0.9321927027915072,
+          "p50": 0.9998275170832732
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          32,
+          128
+        ],
+        "cos_B_downslope": {
+          "n": 516,
+          "min": -0.997256039184663,
+          "max": 1.0000000618494125,
+          "mean": 0.9493130960821876,
+          "p50": 0.9998466167286924
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          128,
+          512
+        ],
+        "cos_B_downslope": {
+          "n": 4372,
+          "min": -0.9973830897851761,
+          "max": 1.00000006605804,
+          "mean": 0.9492180888502435,
+          "p50": 0.9993815769262864
+        }
+      },
+      {
+        "iteration": 0,
+        "local_drop_rank": [
+          512,
+          3670
+        ],
+        "cos_B_downslope": {
+          "n": 47288,
+          "min": -1.0000000200770767,
+          "max": 1.0000000624898016,
+          "mean": 0.9439684990809193,
+          "p50": 0.9949274852930239
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          0,
+          32
+        ],
+        "cos_B_downslope": {
+          "n": 207,
+          "min": -0.39402689856895823,
+          "max": 0.999999946443765,
+          "mean": 0.918548231557741,
+          "p50": 0.9997168161488895
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          32,
+          128
+        ],
+        "cos_B_downslope": {
+          "n": 550,
+          "min": -0.9942862862168075,
+          "max": 1.0000000156342281,
+          "mean": 0.9562275411268797,
+          "p50": 0.9995420425007839
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          128,
+          512
+        ],
+        "cos_B_downslope": {
+          "n": 4149,
+          "min": -0.9970538372515598,
+          "max": 1.0000000564345428,
+          "mean": 0.9448482567070057,
+          "p50": 0.9989579313384621
+        }
+      },
+      {
+        "iteration": 1,
+        "local_drop_rank": [
+          512,
+          3789
+        ],
+        "cos_B_downslope": {
+          "n": 48666,
+          "min": -0.9999999277879198,
+          "max": 1.0000000768950856,
+          "mean": 0.9449815949259784,
+          "p50": 0.992767624328362
+        }
+      }
+    ],
+    "onset_Bhp_cut_hp_corr": 0.24574390922840791,
+    "cross_scale_births": [
+      {
+        "scales": [
+          0,
+          1
+        ],
+        "birthcell_occupancy_corr": 0.026284670990291935,
+        "n_common": 1954,
+        "offset_x_corr": 0.09549434090843234,
+        "offset_z_corr": -0.022951245170924294
+      },
+      {
+        "scales": [
+          0,
+          2
+        ],
+        "birthcell_occupancy_corr": 0.002131009354569834,
+        "n_common": 1172,
+        "offset_x_corr": -0.00031677560538100096,
+        "offset_z_corr": 0.06128129339868834
+      },
+      {
+        "scales": [
+          1,
+          2
+        ],
+        "birthcell_occupancy_corr": 0.008076521322985426,
+        "n_common": 641,
+        "offset_x_corr": 0.21346114123279933,
+        "offset_z_corr": -0.05237197301943816
+      }
+    ],
+    "limited_clipping_coast_cells": 0,
+    "limited_clipping_buffer_cells": 0,
+    "max_cut_to_cascade": 0.0,
+    "coast_step_tracking": 0,
+    "coast_step_positivedelta": 68199,
+    "coast_step_negativedelta": 37748,
+    "coast_step_ld_it0": {
+      "n": 52375,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0,
+      "p50": 0.0
+    },
+    "coast_step_ld_it1": {
+      "n": 53572,
+      "min": 0.0,
+      "max": 10.256556510925293,
+      "mean": 3.1465588695355264,
+      "p50": 2.471085786819458
+    }
+  }
+]

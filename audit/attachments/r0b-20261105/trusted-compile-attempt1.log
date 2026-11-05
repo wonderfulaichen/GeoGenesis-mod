@@ -1,0 +1,9 @@
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\diagnostics\java\com\geogenesis\worldgen\erosion\ParticleErosionProbe.java:55: 警告: [try] 不能在相应的 try 语句的正文中引用可自动结束的资源l1
+            try (var l1 = (java.net.URLClassLoader) first.type.getClassLoader();
+                     ^
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\diagnostics\java\com\geogenesis\worldgen\erosion\ParticleErosionProbe.java:56: 警告: [try] 不能在相应的 try 语句的正文中引用可自动结束的资源l2
+                 var l2 = (java.net.URLClassLoader) second.type.getClassLoader()) {
+                     ^
+错误: 发现警告, 但指定了 -Werror
+1 个错误
+2 个警告

@@ -1,0 +1,21 @@
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\main\java\com\geogenesis\client\GeoGenesisClient.java:47: 警告: [removal] FMLJavaModLoadingContext 中的 get() 已过时, 且标记为待删除
+        FMLJavaModLoadingContext.get().registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
+                                ^
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\main\java\com\geogenesis\client\GeoGenesisClient.java:94: 警告: [removal] ResourceLocation 中的 ResourceLocation(String) 已过时, 且标记为待删除
+                ResourceKey.create(Registries.WORLD_PRESET, new ResourceLocation(GeoGenesisMod.MODID + ":geogenesis"));
+                                                            ^
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\main\java\com\geogenesis\client\preview\GeoGenesisColorReloadListener.java:36: 警告: [removal] ResourceLocation 中的 ResourceLocation(String) 已过时, 且标记为待删除
+        ResourceLocation rl = new ResourceLocation("geogenesis:colormap_preview/geogenesis.json");
+                              ^
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\main\java\com\geogenesis\client\preview\GeoGenesisColorReloadListener.java:56: 警告: [removal] ResourceLocation 中的 ResourceLocation(String) 已过时, 且标记为待删除
+        ResourceLocation rl = new ResourceLocation("geogenesis:biome_colors.json");
+                              ^
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\main\java\com\geogenesis\GeoGenesisMod.java:43: 警告: [removal] ModLoadingContext 中的 get() 已过时, 且标记为待删除
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, GeoGenesisConfig.SPEC);
+                         ^
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\src\main\java\com\geogenesis\GeoGenesisMod.java:49: 警告: [removal] FMLJavaModLoadingContext 中的 get() 已过时, 且标记为待删除
+        var bus = net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext.get().getModEventBus();
+                                                                            ^
+注: 某些输入文件使用了未经检查或不安全的操作。
+注: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+6 个警告

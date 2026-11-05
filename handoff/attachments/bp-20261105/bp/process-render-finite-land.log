@@ -1,0 +1,6 @@
+2026-11-05 05:57:22,765 main WARN Advanced terminal features are not available in this environment
+row=0 seconds=1.9163186 Metrics[builds=4, successful=4, failures=0, cancelled=0, completed=4, flights=0, queued=0, active=0]
+row=20 seconds=1.9432937 Metrics[builds=4, successful=4, failures=0, cancelled=0, completed=4, flights=0, queued=0, active=0]
+seconds=1.949712; changed=975; land=0; maxAbsDeltaY=0.3083774705021938; Metrics[builds=4, successful=4, failures=0, cancelled=0, completed=4, flights=0, queued=0, active=0]
+Exception in thread "main" java.lang.AssertionError: empty physical land control
+	at com.geogenesis.worldgen.process.ProcessRenderProbe.main(ProcessRenderProbe.java:59)

@@ -1,0 +1,147 @@
+[
+  {
+    "path": "before.json",
+    "bytes": 536373,
+    "sha256": "2e18ba21871452299a1f4ccc536747eab133c3f85eff4edbb06f8701e69f0cea"
+  },
+  {
+    "path": "boundary-compile.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "boundary.log",
+    "bytes": 46443,
+    "sha256": "fcc80d239ceb993c52dd2e664bd4347b0f5479fd13dd0e5a101b275228ad268f"
+  },
+  {
+    "path": "calls-before.json",
+    "bytes": 175608,
+    "sha256": "2fed914dca242c8bdd15ba620171d9d718ff167dfb378a9986817fdf3335c241"
+  },
+  {
+    "path": "capture-compile.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "changed-files.json",
+    "bytes": 2089,
+    "sha256": "198899527a6bffca5b498c9d3796173bf25bed5ae7bddd1618b7a4ff3b13e600"
+  },
+  {
+    "path": "class-manifest.json",
+    "bytes": 166881,
+    "sha256": "b0848671c9724d6489df61dc06529c3d94e2de6d4404212a9c1b525078a277e8"
+  },
+  {
+    "path": "comparison.json",
+    "bytes": 20872,
+    "sha256": "f0cdb5c6e93b15c586f980f6f95d4400645fffde7c279dd2885e855656a58ac6"
+  },
+  {
+    "path": "config-boundary.txt",
+    "bytes": 2113,
+    "sha256": "d51f136d84e8b4313d46ad0eba816bce2b98b0aa2b73585f5b20b87fdb5429e9"
+  },
+  {
+    "path": "config-check.log",
+    "bytes": 2370,
+    "sha256": "7c23e31abfe600ff83b14aa5e5363f8a4306385f5112cd276923c12c266d8e77"
+  },
+  {
+    "path": "core-verify-utf8.log",
+    "bytes": 765,
+    "sha256": "2bba66f94d0e6dcbe44aac00fb4ef29db6b8dca9e35005156436079e41fb44ce"
+  },
+  {
+    "path": "core-verify.log",
+    "bytes": 1498,
+    "sha256": "54b8d62700975bcf8bbffd08e05b4cbab70d2a53551eb93ccf6ea02ad475a7b2"
+  },
+  {
+    "path": "dependency-manifest.json",
+    "bytes": 31588,
+    "sha256": "5a27b0326ed865705d4d9da0abb296b3d2dcbf5872e578312a1c625c940a8588"
+  },
+  {
+    "path": "fallback-final-arrays.csv",
+    "bytes": 3790,
+    "sha256": "886f2c6b07421e3d10830d4180a4a1eb2c97f40da2a66cc0ff9ef4623b39c612"
+  },
+  {
+    "path": "fallback-final.log",
+    "bytes": 147,
+    "sha256": "9be77b0c0974f73fcd146f02c691811011ddfc2de6f15e0d946f67827989412e"
+  },
+  {
+    "path": "loaded-final-arrays.csv",
+    "bytes": 9086,
+    "sha256": "dafd8dea9b1859162730a5ef9fc072fd0eb371b54803fc0f62b8fe0b91ffa10a"
+  },
+  {
+    "path": "loaded-final.log",
+    "bytes": 536,
+    "sha256": "cf797f8d0ac53eb8a2bf498a3a6b29d743d3edd14ac30f8ee056f6d139e79694"
+  },
+  {
+    "path": "main-compile.log",
+    "bytes": 2346,
+    "sha256": "e67b2f54ff028ef6a26e431a8eb7838e71ae53d1669a429033341d39ea503b45"
+  },
+  {
+    "path": "p1-compile.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "p1.log",
+    "bytes": 7983,
+    "sha256": "81141d1052c0763547b66e5f65b29cc991b7bb2f65391f4ef8e3e80d396d1506"
+  },
+  {
+    "path": "particle-core-compile.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "particle-core.log",
+    "bytes": 85,
+    "sha256": "b0bd478fccad797a279d1dc0fdb66844c6a7442292a21982570fbce812f616ed"
+  },
+  {
+    "path": "placement-compile.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "reflective-compile.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "reflective.log",
+    "bytes": 174,
+    "sha256": "471df700ca928ddbe9f21ebf13b95d18696b64c18db0e6a33f052b3eba08a9ed"
+  },
+  {
+    "path": "summary.json",
+    "bytes": 3004,
+    "sha256": "ec5889dc0f15cfeeb66e203d64b55d7e1ea65c5c7cab1add6c199335d724adaa"
+  },
+  {
+    "path": "trusted-compile-attempt1.log",
+    "bytes": 723,
+    "sha256": "8175aad212171fec2163537168170fd6706b0c2cc64b53d1d44254e51a371d34"
+  },
+  {
+    "path": "trusted-compile.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "verification-tools.zip",
+    "bytes": 219876,
+    "sha256": "4de2084c486f2e421ffe50d90fdbea7f526a27ea8c35071236822e986b6fe2b5"
+  }
+]

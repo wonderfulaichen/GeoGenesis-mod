@@ -1,0 +1,82 @@
+[
+  {
+    "path": "baseline-arrays.zip",
+    "bytes": 20296390,
+    "sha256": "e49928f31fa5c2b89eeaf24e83891c3bd36fddd10be7c8aec1bf762179e09aeb"
+  },
+  {
+    "path": "before.json",
+    "bytes": 204203,
+    "sha256": "7065b15ac31e500c4ef8b02d18370cac67963af63c0344339870656d47d0793e"
+  },
+  {
+    "path": "class-manifest.json",
+    "bytes": 147317,
+    "sha256": "08241aea0fc78f8c14203583371b4ab8c6768f8b9691738ce8d57af4e4f450ca"
+  },
+  {
+    "path": "config-boundary.txt",
+    "bytes": 2113,
+    "sha256": "d51f136d84e8b4313d46ad0eba816bce2b98b0aa2b73585f5b20b87fdb5429e9"
+  },
+  {
+    "path": "config-check.log",
+    "bytes": 2370,
+    "sha256": "1df0d4278c798e59e50b4154e5955da3ef866d89dae5bed8c20d948f886a6dda"
+  },
+  {
+    "path": "core-verify.log",
+    "bytes": 749,
+    "sha256": "a9ff9c3a4e59d28d3f17b9640579c8e083c109321687e37cd307b09b158b9366"
+  },
+  {
+    "path": "dependency-manifest.json",
+    "bytes": 31588,
+    "sha256": "5a27b0326ed865705d4d9da0abb296b3d2dcbf5872e578312a1c625c940a8588"
+  },
+  {
+    "path": "fallback-final-arrays.csv",
+    "bytes": 3790,
+    "sha256": "886f2c6b07421e3d10830d4180a4a1eb2c97f40da2a66cc0ff9ef4623b39c612"
+  },
+  {
+    "path": "fallback-final.log",
+    "bytes": 147,
+    "sha256": "875106e0502312aaf15535d57d77663fedeef541c33cbf3d7e9e6e754b2d3d8d"
+  },
+  {
+    "path": "loaded-final-arrays.csv",
+    "bytes": 9086,
+    "sha256": "dafd8dea9b1859162730a5ef9fc072fd0eb371b54803fc0f62b8fe0b91ffa10a"
+  },
+  {
+    "path": "loaded-final.log",
+    "bytes": 535,
+    "sha256": "03fe6d9e1041cca9ffee92b871b0305c74bf03c9a1912e92d0a65f42fbf8437c"
+  },
+  {
+    "path": "main-compile.log",
+    "bytes": 2346,
+    "sha256": "e67b2f54ff028ef6a26e431a8eb7838e71ae53d1669a429033341d39ea503b45"
+  },
+  {
+    "path": "p1-replay.log",
+    "bytes": 7756,
+    "sha256": "98760615250b85d0969c39dc78a46db59a59624564b96fde514c49846a1b327f"
+  },
+  {
+    "path": "source-snapshot.zip",
+    "bytes": 4829873,
+    "sha256": "a5238a8b418c0d14a4908952fd1b7793a86a366468fd3904b4399e3307a95838"
+  },
+  {
+    "path": "summary.json",
+    "bytes": 981,
+    "sha256": "bfb5652960adeec7b30b779f0d30e343bedf4f4b32a94f036f502ebe3e30f649"
+  },
+  {
+    "path": "tile-selection.log",
+    "bytes": 246,
+    "sha256": "ca6bff90e9b5ec9c9705b6b5b0d41cd3a538813732e291c5b4553ce2c5ba9422"
+  }
+]

@@ -1,0 +1,3162 @@
+[
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\anchor-evidence\\mutations\\M1_revert_cr_exact\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\anchor-evidence\\mutations\\M2_delete_singleton\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\anchor-evidence\\mutations\\M3_key_without_next\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\anchor-evidence\\mutations\\M4_virtual_edge_unconditional\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\anchor-evidence\\mutations\\M5_virtual_edge_absent\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\integrated-1792704625746307300\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\integrated-1792705718794637700\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\integrated-1792706411773504100\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\integrated-1792714364942735400\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\integrated-1792720834177274500\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\integrated-1792736719405609000\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\old66-map\\endpoint-src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\old66-map\\src-instrumented\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\old66-map\\src-recover\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 397,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\old66-map\\vector-src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\ports-wire\\out\\v1\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 415,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\ports-wire\\out\\v2\\mut-clear-dir\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 454,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\ports-wire\\out\\v2\\mut-mut_clear_dir\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\ports-wire\\out\\v2\\mut-mut_role\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\ports-wire\\out\\v2\\mut-role\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 454,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\ports-wire\\out\\v2\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\spill-terminal\\hook-out\\DeterministicSkeleton.java",
+    "line": 397,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\wet-connect\\shore-1792736719405609000\\candidate\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792750840981041100\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792750840981041100\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792750840981041100\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792750985924450100\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792750985924450100\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792750985924450100\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792750985924450100\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751048479756200\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751048479756200\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751048479756200\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751048479756200\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751203512877000\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751203512877000\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751203512877000\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751203512877000\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751203512877000\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751291665967300\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751291665967300\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751291665967300\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751291665967300\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751291665967300\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751833916355400\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751833916355400\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751833916355400\\revert-base-authority\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751833916355400\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751833916355400\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751833916355400\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751967371859200\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751967371859200\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751967371859200\\mutation-ignore-pins\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751967371859200\\revert-base-authority\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751967371859200\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751967371859200\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792751967371859200\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792752195520210900\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792752195520210900\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792752195520210900\\mutation-ignore-pins\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792752195520210900\\revert-base-authority\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792752195520210900\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792752195520210900\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792752195520210900\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754005945960100\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754005945960100\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754005945960100\\mutation-ignore-pins\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754005945960100\\revert-base-authority\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754005945960100\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754005945960100\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754005945960100\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754188912713800\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754188912713800\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754188912713800\\mutation-ignore-pins\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754188912713800\\revert-base-authority\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754188912713800\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754188912713800\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792754188912713800\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756406953620200\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756406953620200\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756406953620200\\mutation-ignore-pins\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756406953620200\\revert-base-authority\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756406953620200\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756406953620200\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756406953620200\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756571657465600\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756571657465600\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756571657465600\\mutation-ignore-pins\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756571657465600\\revert-base-authority\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756571657465600\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756571657465600\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756571657465600\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756737073329600\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756737073329600\\candidate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756737073329600\\mutation-ignore-pins\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756737073329600\\revert-base-authority\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756737073329600\\revert-covered-audit\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756737073329600\\revert-successor\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\context-validation-1792756737073329600\\revert-validation\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\guard-capture-1792768014869631500\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\layer-render-1792769152536\\ProductionViewProbe.java",
+    "line": 79,
+    "text": "                + GeoGenesisConfig.configFingerprint() + \"\\ncascade=\" + GeoGenesisConfig.INSTANCE.erosionCascadeStrength.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\layer-render-1792770035536\\ProductionViewProbe.java",
+    "line": 79,
+    "text": "                + GeoGenesisConfig.configFingerprint() + \"\\ncascade=\" + GeoGenesisConfig.INSTANCE.erosionCascadeStrength.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\render-1792755950235852400\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\render-1792755950235852400\\declared-pins\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\spill-reasons-1792761442680538800\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\spill-reasons-1792768567740067400\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\spill-reasons-1792768691130170000\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\spill-reasons-1792769971123113600\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\discovery\\spill-reasons-1792770886742787500\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\candidate-1792772088230009000\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\candidate-1792772467255453000\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\candidate-1792775818932644900\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\candidate-1792779496954846600\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification\\bypass\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification\\no-core-protection\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792786554289103100\\bypass\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792786554289103100\\incoming-source-only\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792786554289103100\\no-core-protection\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792786554289103100\\upper-inclusive\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792787456105478600\\bypass\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792787456105478600\\incoming-source-only\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792787456105478600\\no-core-protection\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792787456105478600\\upper-inclusive\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792789715733865700\\bypass\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792789715733865700\\incoming-source-only\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792789715733865700\\no-core-protection\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\verification-1792789715733865700\\upper-inclusive\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\lake-shore-1792860057138\\DeterministicSkeleton.java",
+    "line": 473,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\main-migration-verify\\baseline-src\\DeterministicSkeleton.java",
+    "line": 397,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\main-migration-verify\\baseline-src\\PreviewDisplay.java",
+    "line": 318,
+    "text": "    //        → CellGenerator.rockResistanceAt → 注入 ErosionEngine"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\negative-no-certificate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\negative-self-certificate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792824950930685000\\blanket-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792824950930685000\\lake-mouth-is-enough\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792824950930685000\\no-witness\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792824950930685000\\own-basin-accepted\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792824950930685000\\sea-not-a-certificate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825022122102900\\blanket-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825022122102900\\lake-mouth-is-enough\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825022122102900\\no-witness\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825022122102900\\own-basin-accepted\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825022122102900\\sea-not-a-certificate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825064472557400\\blanket-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825064472557400\\lake-mouth-is-enough\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825064472557400\\no-witness\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825064472557400\\own-basin-accepted\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825064472557400\\sea-not-a-certificate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825107952195600\\blanket-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825107952195600\\lake-mouth-is-enough\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825107952195600\\no-witness\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825107952195600\\own-basin-accepted\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825107952195600\\sea-not-a-certificate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825204350463800\\blanket-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825204350463800\\lake-mouth-is-enough\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825204350463800\\no-witness\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825204350463800\\own-basin-accepted\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825204350463800\\sea-not-a-certificate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825259161261500\\blanket-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825259161261500\\lake-mouth-is-enough\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825259161261500\\no-witness\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825259161261500\\own-basin-accepted\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-candidate-1792821818176\\verification-1792825259161261500\\sea-not-a-certificate\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\outlet-capture-1792817716435\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\target-capture-1792783602763\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792773216060506900\\accept-incoming-dead\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792773216060506900\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792773216060506900\\disable-length-prune\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792773216060506900\\reintroduce-outlet-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792773216060506900\\remove-connector-protection\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792778606766415500\\accept-incoming-dead\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792778606766415500\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792778606766415500\\disable-length-prune\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792778606766415500\\reintroduce-outlet-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792778606766415500\\remove-connector-protection\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792779840705542200\\accept-incoming-dead\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792779840705542200\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792779840705542200\\disable-length-prune\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792779840705542200\\reintroduce-outlet-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792779840705542200\\remove-connector-protection\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792781068561597200\\accept-incoming-dead\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792781068561597200\\baseline\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792781068561597200\\disable-length-prune\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792781068561597200\\reintroduce-outlet-exemption\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\verification-1792781068561597200\\remove-connector-protection\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\skeleton-baseline-20261023-182248-0464276\\sources\\DeterministicSkeleton.java",
+    "line": 369,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v2\\ParticleErosionV2Probe.java",
+    "line": 39,
+    "text": "            String settings = \"dropsMul=\" + c.erosionDropsMul.get() + \" erodeMul=\" + c.erosionErodeMul.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v2\\ParticleErosionV2Probe.java",
+    "line": 40,
+    "text": "                    + \" cascadeStrength=\" + c.erosionCascadeStrength.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v2\\ParticleErosionV2Probe.java",
+    "line": 41,
+    "text": "                    + \" momentumTransfer=\" + c.erosionMomentumTransfer.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v2\\ParticleErosionV2Probe.java",
+    "line": 42,
+    "text": "                    + \" iterations=\" + c.erosionIterations.get() + \" lrate=\" + c.erosionLrate.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 36,
+    "text": "public class ErosionEngineReduced {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 43,
+    "text": "     *  源头(ld<2)弱、汇聚(ld≥8)全强。仅改侵蚀公式（ErosionEngine），不影响预览磁盘缓存"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 117,
+    "text": "    public ErosionEngineReduced(double dropsMul, int seed) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 121,
+    "text": "    public ErosionEngineReduced(double dropsMul, int seed, boolean xsEnabled) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 148,
+    "text": "     * 改动面；而每次 {@code runErosionOnFlat} 调用独占本实例的\"本次执行\""
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 276,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 279,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, null, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 283,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 286,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 292,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 295,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, hs);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 298,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 301,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 304,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 310,
+    "text": "        double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 311,
+    "text": "        double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 312,
+    "text": "        double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 321,
+    "text": "        float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 322,
+    "text": "        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 323,
+    "text": "        float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 330,
+    "text": "        // ★★★ 必须为局部 final（禁止实例字段）：ErosionEngine 实例被多线程共享"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 781,
+    "text": "     *  cas：本次 {@code runErosionOnFlat} 独占的邻居 scratch（★ 2026-10-28 R3 分配热点修复）——"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 857,
+    "text": "            int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red40\\ErosionEngineReduced.java",
+    "line": 913,
+    "text": "        int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 36,
+    "text": "public class ErosionEngineReduced {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 43,
+    "text": "     *  源头(ld<2)弱、汇聚(ld≥8)全强。仅改侵蚀公式（ErosionEngine），不影响预览磁盘缓存"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 117,
+    "text": "    public ErosionEngineReduced(double dropsMul, int seed) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 121,
+    "text": "    public ErosionEngineReduced(double dropsMul, int seed, boolean xsEnabled) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 148,
+    "text": "     * 改动面；而每次 {@code runErosionOnFlat} 调用独占本实例的\"本次执行\""
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 276,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 279,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, null, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 283,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 286,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 292,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 295,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, hs);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 298,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 301,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 304,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 310,
+    "text": "        double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 311,
+    "text": "        double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 312,
+    "text": "        double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 321,
+    "text": "        float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 322,
+    "text": "        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 323,
+    "text": "        float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 330,
+    "text": "        // ★★★ 必须为局部 final（禁止实例字段）：ErosionEngine 实例被多线程共享"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 781,
+    "text": "     *  cas：本次 {@code runErosionOnFlat} 独占的邻居 scratch（★ 2026-10-28 R3 分配热点修复）——"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 857,
+    "text": "            int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\particle-preeorder-20261104\\v4\\engine-red60\\ErosionEngineReduced.java",
+    "line": 913,
+    "text": "        int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 5,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 25,
+    "text": "   double old=c.erosionErodeMul.get();long fp=GeoGenesisConfig.configFingerprint();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 26,
+    "text": "   c.erosionErodeMul.set(3.0);b=run(input,n,size,ox,oz,1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 29,
+    "text": "   c.erosionErodeMul.set(old);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 30,
+    "text": "   old=c.erosionCascadeStrength.get();c.erosionCascadeStrength.set(0.0);b=run(input,n,size,ox,oz,1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 33,
+    "text": "   c.erosionCascadeStrength.set(old);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 46,
+    "text": "  float[] a=input.clone();new ErosionEngine(1,12345,false).runErosionOnFlat(a,input.clone(),n,size,ox,oz,0f,str,null,2f);return a;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\R00BaselineProbe.java",
+    "line": 6,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\R00BaselineProbe.java",
+    "line": 96,
+    "text": "                ErosionEngine e=new ErosionEngine(1.0,12345,false);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\R00BaselineProbe.java",
+    "line": 99,
+    "text": "                e.runErosionOnFlat(flat,input.clone(),n,size,ox,oz,(float)gen.heightCurve().seaE(),1f,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\R00BaselineProbe.java",
+    "line": 109,
+    "text": "        new ErosionEngine(1,12345,false).runErosionOnFlat(early,input.clone(),n,size,ox,oz,0f,0f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\ConfigBoundaryCheck.java",
+    "line": 5,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\ConfigBoundaryCheck.java",
+    "line": 25,
+    "text": "   double old=c.erosionErodeMul.get();long fp=GeoGenesisConfig.configFingerprint();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\ConfigBoundaryCheck.java",
+    "line": 26,
+    "text": "   c.erosionErodeMul.set(3.0);b=run(input,n,size,ox,oz,1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\ConfigBoundaryCheck.java",
+    "line": 29,
+    "text": "   c.erosionErodeMul.set(old);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\ConfigBoundaryCheck.java",
+    "line": 30,
+    "text": "   old=c.erosionCascadeStrength.get();c.erosionCascadeStrength.set(0.0);b=run(input,n,size,ox,oz,1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\ConfigBoundaryCheck.java",
+    "line": 33,
+    "text": "   c.erosionCascadeStrength.set(old);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\ConfigBoundaryCheck.java",
+    "line": 46,
+    "text": "  float[] a=input.clone();new ErosionEngine(1,12345,false).runErosionOnFlat(a,input.clone(),n,size,ox,oz,0f,str,null,2f);return a;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\R00BaselineProbe.java",
+    "line": 6,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\R00BaselineProbe.java",
+    "line": 96,
+    "text": "                ErosionEngine e=new ErosionEngine(1.0,12345,false);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\R00BaselineProbe.java",
+    "line": 99,
+    "text": "                e.runErosionOnFlat(flat,input.clone(),n,size,ox,oz,(float)gen.heightCurve().seaE(),1f,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\R00BaselineProbe.java",
+    "line": 109,
+    "text": "        new ErosionEngine(1,12345,false).runErosionOnFlat(early,input.clone(),n,size,ox,oz,0f,0f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 5,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 25,
+    "text": "   double old=c.erosionErodeMul.get();long fp=GeoGenesisConfig.configFingerprint();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 26,
+    "text": "   c.erosionErodeMul.set(3.0);b=run(input,n,size,ox,oz,1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 29,
+    "text": "   c.erosionErodeMul.set(old);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 30,
+    "text": "   old=c.erosionCascadeStrength.get();c.erosionCascadeStrength.set(0.0);b=run(input,n,size,ox,oz,1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 33,
+    "text": "   c.erosionCascadeStrength.set(old);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\ConfigBoundaryCheck.java",
+    "line": 46,
+    "text": "  float[] a=input.clone();new ErosionEngine(1,12345,false).runErosionOnFlat(a,input.clone(),n,size,ox,oz,0f,str,null,2f);return a;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\R00BaselineProbe.java",
+    "line": 6,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\R00BaselineProbe.java",
+    "line": 96,
+    "text": "                ErosionEngine e=new ErosionEngine(1.0,12345,false);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\R00BaselineProbe.java",
+    "line": 99,
+    "text": "                e.runErosionOnFlat(flat,input.clone(),n,size,ox,oz,(float)gen.heightCurve().seaE(),1f,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\build\\r0-0-20261105\\R00BaselineProbe.java",
+    "line": 109,
+    "text": "        new ErosionEngine(1,12345,false).runErosionOnFlat(early,input.clone(),n,size,ox,oz,0f,0f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\RidgeValleyErosion.java",
+    "line": 14,
+    "text": " * 把圆包状噪声切成多峰山脊；随后由 {@link ErosionEngine#runErosionOnFlat} 的粒子侵蚀做细节打磨。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 14,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 113,
+    "text": "    private final ErosionEngine erosion;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 130,
+    "text": "    public static final int TILE_PARALLELISM = 8;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 132,
+    "text": "        TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 205,
+    "text": "        double erosionDropsMul = cfg != null ? cfgDbl(cfg.erosionDropsMul, 1.0) : 1.0;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 207,
+    "text": "        this.erosion = new ErosionEngine(erosionDropsMul, 12345, xsEnabled);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 738,
+    "text": "    //   因为 ErosionEngine 的硬度网格与液滴查表会反复命中同一批坐标。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 758,
+    "text": "     * ★ 2026-09-14 Phase T8(P3)：<b>岩性抗蚀性</b>（供 {@code ErosionEngine} 注入）。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1350,
+    "text": "            erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1484,
+    "text": "            erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1586,
+    "text": "     * ErosionEngine 通过 spawn 门控在浅海大陆架和近岸水下自然侵蚀，"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1596,
+    "text": "     * （插值场含海洋真实深度，ErosionEngine spawn 门控自行处理浅海/近岸）。</p>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1838,
+    "text": "        // 现已废除：ErosionEngine 自身已有 NaN/Inf 守卫（spd sqrt 处 + 末尾 clampF(-1,1)），"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1903,
+    "text": "     * <p>供 {@code HardnessRaceProbe} 复现\"多线程共享 ErosionEngine 实例\"的竞态 ——"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\r0a-20261105\\start-source\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1920,
+    "text": "        erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\client\\InGameSeamScanner.java",
+    "line": 61,
+    "text": "                    GeoGenesisConfig.INSTANCE.erosionDropsMul.get());"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\client\\preview\\PreviewDisplay.java",
+    "line": 318,
+    "text": "    //        → CellGenerator.rockResistanceAt → 注入 ErosionEngine"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 228,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionDropsMul;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 230,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionErodeMul;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 234,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionCascadeStrength;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 369,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 371,
+    "text": "    public final ForgeConfigSpec.IntValue erosionIterations;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 373,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionLrate;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 742,
+    "text": "        erosionDropsMul = builder.comment(\"Erosion droplet count multiplier. Lower = faster (preview). Default 1.0, range [0.1, 4].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 743,
+    "text": "            .defineInRange(\"erosionDropsMul\", 1.0, 0.1, 4.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 744,
+    "text": "        erosionErodeMul = builder.comment(\"Erosion erode-rate multiplier. Default 1.0, range [0.1, 4].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 745,
+    "text": "                .defineInRange(\"erosionErodeMul\", 1.0, 0.1, 4.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 748,
+    "text": "        erosionCascadeStrength = builder.comment(\"Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.5 (2026-08-10: 0.3->0.5, sharper gully edges), range [0, 1].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 749,
+    "text": "                .defineInRange(\"erosionCascadeStrength\", 0.5, 0.0, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 750,
+    "text": "        erosionMomentumTransfer = builder.comment(\"SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 751,
+    "text": "                .defineInRange(\"erosionMomentumTransfer\", 1.0, 0.0, 2.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 752,
+    "text": "        erosionIterations = builder.comment(\"SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 2 (2026-08-11: 5->2, deep-gully fix; SH Erosion.cs numIterations=1, 2 keeps momentum field accumulation), range [1, 16].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 753,
+    "text": "                .defineInRange(\"erosionIterations\", 2, 1, 16);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 755,
+    "text": "        erosionLrate = builder.comment(\"SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 756,
+    "text": "                .defineInRange(\"erosionLrate\", 0.1, 0.01, 0.5);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 1080,
+    "text": "            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionDropsMul.get());"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 36,
+    "text": "public class ErosionEngine {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 43,
+    "text": "     *  源头(ld<2)弱、汇聚(ld≥8)全强。仅改侵蚀公式（ErosionEngine），不影响预览磁盘缓存"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 117,
+    "text": "    public ErosionEngine(double dropsMul, int seed) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 121,
+    "text": "    public ErosionEngine(double dropsMul, int seed, boolean xsEnabled) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 148,
+    "text": "     * 改动面；而每次 {@code runErosionOnFlat} 调用独占本实例的\"本次执行\""
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 276,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 279,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, null, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 283,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 286,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 292,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 295,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, hs);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 298,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 301,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 304,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 310,
+    "text": "        double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 311,
+    "text": "        double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 312,
+    "text": "        double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 321,
+    "text": "        float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 322,
+    "text": "        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 323,
+    "text": "        float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 330,
+    "text": "        // ★★★ 必须为局部 final（禁止实例字段）：ErosionEngine 实例被多线程共享"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 781,
+    "text": "     *  cas：本次 {@code runErosionOnFlat} 独占的邻居 scratch（★ 2026-10-28 R3 分配热点修复）——"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 857,
+    "text": "            int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 913,
+    "text": "        int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\erosion\\RidgeValleyErosion.java",
+    "line": 14,
+    "text": " * 把圆包状噪声切成多峰山脊；随后由 {@link ErosionEngine#runErosionOnFlat} 的粒子侵蚀做细节打磨。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 160,
+    "text": "     * ★ 2026-09-14：碎石坡的<b>汇流下限</b>（液滴汇聚计数，已按 {@code erosionDropsMul} 归一化）。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 190,
+    "text": "     * <p>⚠ <b>必须按 {@code erosionDropsMul} 缩放</b>：discharge 是液滴计数，"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 191,
+    "text": "     * 总量随配置的液滴倍率线性变化（{@code ErosionEngine.DROPS_*} × dropsMul）。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 197,
+    "text": "     * 读取当前世界的侵蚀液滴倍率（{@code erosionDropsMul}），用于归一化"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 200,
+    "text": "     * <p>与 {@code ErosionEngine} 读同一配置项 ⇒ 两边口径一致。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 201,
+    "text": "     * 配置不可用时回退 1.0（与 {@code ErosionEngine} 的默认一致）。</p>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 203,
+    "text": "    private static double erosionDropsMul() {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 206,
+    "text": "            if (cfg != null && cfg.erosionDropsMul != null) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 207,
+    "text": "                double v = cfg.erosionDropsMul.get();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 842,
+    "text": "                && cell.riverNetDischarge >= SCREE_DISCHARGE_MIN * erosionDropsMul()) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 640,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 14,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 113,
+    "text": "    private final ErosionEngine erosion;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 130,
+    "text": "    public static final int TILE_PARALLELISM = 8;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 132,
+    "text": "        TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 193,
+    "text": "        double erosionDropsMul = cfg != null ? cfgDbl(cfg.erosionDropsMul, 1.0) : 1.0;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 195,
+    "text": "        this.erosion = new ErosionEngine(erosionDropsMul, 12345, xsEnabled);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 710,
+    "text": "    //   因为 ErosionEngine 的硬度网格与液滴查表会反复命中同一批坐标。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 730,
+    "text": "     * ★ 2026-09-14 Phase T8(P3)：<b>岩性抗蚀性</b>（供 {@code ErosionEngine} 注入）。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1321,
+    "text": "            erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1455,
+    "text": "            erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1557,
+    "text": "     * ErosionEngine 通过 spawn 门控在浅海大陆架和近岸水下自然侵蚀，"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1567,
+    "text": "     * （插值场含海洋真实深度，ErosionEngine spawn 门控自行处理浅海/近岸）。</p>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1799,
+    "text": "        // 现已废除：ErosionEngine 自身已有 NaN/Inf 守卫（spd sqrt 处 + 末尾 clampF(-1,1)），"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1863,
+    "text": "     * <p>供 {@code HardnessRaceProbe} 复现\"多线程共享 ErosionEngine 实例\"的竞态 ——"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1880,
+    "text": "        erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\RockType.java",
+    "line": 21,
+    "text": " * 注入 {@code ErosionEngine}，按抗蚀性调制侵蚀量 ⇒ <b>软岩成谷、硬岩成脊</b>。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\StratumField.java",
+    "line": 42,
+    "text": " * （经 {@code CellGenerator.rockResistanceAt} 注入 {@code ErosionEngine}），"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\StratumField.java",
+    "line": 144,
+    "text": "     * <p><b>为何合并为单一标量</b>：调用方（{@code ErosionEngine} 预构建的硬度网格）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v2.py",
+    "line": 179,
+    "text": "              ['javac',*opts,'-d',str(OUT/'engine-classes'),str(ROOT/'src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java')]]"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v2.py",
+    "line": 313,
+    "text": "    current=base.sha(OUT/'engine-classes/com/geogenesis/worldgen/erosion/ErosionEngine.class')"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 117,
+    "text": "ALLOWED=(\"public class ErosionEngineReduced\",\"public ErosionEngineReduced(\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 121,
+    "text": "    src=(ROOT/'src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java').read_text(encoding='utf-8')"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 124,
+    "text": "        t=src.replace('public class ErosionEngine {','public class ErosionEngineReduced {')"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 125,
+    "text": "        t=t.replace('public ErosionEngine(double dropsMul, int seed)','public ErosionEngineReduced(double dropsMul, int seed)')"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 126,
+    "text": "        t=t.replace('public ErosionEngine(double dropsMul, int seed, boolean xsEnabled)',"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 127,
+    "text": "                    'public ErosionEngineReduced(double dropsMul, int seed, boolean xsEnabled)')"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 136,
+    "text": "        (d/'ErosionEngineReduced.java').write_text(t,encoding='utf-8')"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 146,
+    "text": "    jobs=[('engine-full',[ROOT/'src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java'])]"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 147,
+    "text": "    jobs+= [(f'engine-red{k}',[v['dir']/'ErosionEngineReduced.java']) for k,v in copies.items()]"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder-v4.py",
+    "line": 168,
+    "text": "        'com.geogenesis.worldgen.erosion.ErosionEngine' if cls=='full' else 'com.geogenesis.worldgen.erosion.ErosionEngineReduced',"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder.py",
+    "line": 1,
+    "text": "\"\"\"Four frozen-raster arms using the actual, independently compiled ErosionEngine."
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder.py",
+    "line": 51,
+    "text": "                 str(ROOT/'src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java')] ]"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder.py",
+    "line": 215,
+    "text": "    report=('Offline raw ErosionEngine four-arm experiment\\n'+json.dumps(stats,indent=2)+'\\n\\n'"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\particle-preeorder.py",
+    "line": 221,
+    "text": "            'Only current ErosionEngine source independently compiled; no main edit; loaders reused from ErosionScratchProbe.\\n'"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionConcurrencyProbe.java",
+    "line": 23,
+    "text": " * <p><b>背景</b>：{@code ErosionEngine} 的两处平滑（{@code smoothErosionResult} /"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 45,
+    "text": " * <p>{@code ErosionEngine.cascadeLocal} 里 {@code new float[8]} / {@code new int[8]} 是全图基线"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 48,
+    "text": " * \"每次 {@code runErosionOnFlat} 独占一份\"，沿 {@code spawnAt → simulateDrop → cascadeLocal}"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 55,
+    "text": " *       的 {@code ErosionEngine.class}；</li>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 57,
+    "text": " *       {@code src/main/.../ErosionEngine.java} → {@code build/hydrology-perf/erosion-candidate}"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 60,
+    "text": " *       {@code com.geogenesis.worldgen.erosion.ErosionEngine*} 生效，其余类"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 116,
+    "text": " * <p>⚠ {@code ErosionEngine} 构造器<b>不消费</b> dropsMul/seed（只有 xsEnabled 被保存），"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 121,
+    "text": "    static final String ENGINE_CLASS = \"com.geogenesis.worldgen.erosion.ErosionEngine\";"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 122,
+    "text": "    /** child-first 前缀：同时覆盖 {@code ErosionEngine$HardGrid} / {@code $CascadeScratch}。 */"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 123,
+    "text": "    static final String ENGINE_PREFIX = \"com.geogenesis.worldgen.erosion.ErosionEngine\";"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 124,
+    "text": "    static final String CLASS_REL = \"com/geogenesis/worldgen/erosion/ErosionEngine.class\";"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 128,
+    "text": "    static final String SOURCE_DEFAULT = \"src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java\";"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 433,
+    "text": "            return \"dropsMul=\" + c.erosionDropsMul.get() + \" erodeMul=\" + c.erosionErodeMul.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 434,
+    "text": "                    + \" cascadeStrength=\" + c.erosionCascadeStrength.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 435,
+    "text": "                    + \" momentumTransfer=\" + c.erosionMomentumTransfer.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 436,
+    "text": "                    + \" iterations=\" + c.erosionIterations.get() + \" lrate=\" + c.erosionLrate.get();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 512,
+    "text": "            v.info(\"ErosionEngine.class sha256: frozen=\" + shaF);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 513,
+    "text": "            v.info(\"ErosionEngine.class sha256: candidate=\" + shaC);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 863,
+    "text": "            final String classAnchor = \"public class ErosionEngine {\";"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 904,
+    "text": "                Path srcFile = dir.resolve(\"ErosionEngine.java\");"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1030,
+    "text": "            this.pub8 = type.getMethod(\"runErosionOnFlat\", float[].class, float[].class,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1032,
+    "text": "            this.pub9 = type.getMethod(\"runErosionOnFlat\", float[].class, float[].class,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1034,
+    "text": "            this.pub10 = type.getMethod(\"runErosionOnFlat\", float[].class, float[].class,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1037,
+    "text": "            this.priv11 = type.getDeclaredMethod(\"runErosionOnFlat\", float[].class, float[].class,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1117,
+    "text": "    /** child-first：只劫持 {@code ErosionEngine*}，其余（GeoGenesisConfig/Forge/log4j）走父加载器。 */"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\GuideErosionBench.java",
+    "line": 17,
+    "text": " * <p>Why reflect over a copy: {@code runErosionOnFlat} reads droplet density from private"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\GuideErosionBench.java",
+    "line": 57,
+    "text": "            run = type.getMethod(\"runErosionOnFlat\", float[].class, float[].class, int.class, int.class,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\GuideErosionBench.java",
+    "line": 91,
+    "text": "            System.out.println(\"config|dropsMul=\" + c.erosionDropsMul.get() + \"|erodeMul=\" + c.erosionErodeMul.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\GuideErosionBench.java",
+    "line": 92,
+    "text": "                    + \"|cascade=\" + c.erosionCascadeStrength.get() + \"|momentum=\" + c.erosionMomentumTransfer.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\GuideErosionBench.java",
+    "line": 93,
+    "text": "                    + \"|iterations=\" + c.erosionIterations.get() + \"|lrate=\" + c.erosionLrate.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\HardnessRaceProbe.java",
+    "line": 18,
+    "text": " *     at ErosionEngine.sampleHardness(ErosionEngine.java:222)"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\HardnessRaceProbe.java",
+    "line": 20,
+    "text": " * <p><b>根因</b>：硬度网格的尺寸/原点曾是 {@code ErosionEngine} 的<b>实例字段</b>，"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\HardnessRaceProbe.java",
+    "line": 28,
+    "text": " * <p>用<b>多线程并发</b>调用同一个 {@link ErosionEngine} 实例生成<b>不同原点</b>的"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\HardnessRaceProbe.java",
+    "line": 45,
+    "text": "        CellGenerator gen2 = gen;   // gen 内部持有单个 ErosionEngine 实例（已注入硬度提供者）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ParticleErosionProbe.java",
+    "line": 39,
+    "text": "            String settings = \"dropsMul=\" + c.erosionDropsMul.get() + \" erodeMul=\" + c.erosionErodeMul.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ParticleErosionProbe.java",
+    "line": 40,
+    "text": "                    + \" cascadeStrength=\" + c.erosionCascadeStrength.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ParticleErosionProbe.java",
+    "line": 41,
+    "text": "                    + \" momentumTransfer=\" + c.erosionMomentumTransfer.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ParticleErosionProbe.java",
+    "line": 42,
+    "text": "                    + \" iterations=\" + c.erosionIterations.get() + \" lrate=\" + c.erosionLrate.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ParticleErosionProbe.java",
+    "line": 50,
+    "text": "                    \"src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java\"), classes);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\TwoWaterBudgetProbe.java",
+    "line": 24,
+    "text": " * <p>{@code ErosionEngine:273} 的注释写着目标：\"河网层复用 discharge 场做 riverMask，"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\LocalFlowEvents.java",
+    "line": 7,
+    "text": " * Diagnostic frozen-terrain transport, NOT ErosionEngine feedback, runoff Q, or water authority."
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionViewProbe.java",
+    "line": 79,
+    "text": "                + GeoGenesisConfig.configFingerprint() + \"\\ncascade=\" + GeoGenesisConfig.INSTANCE.erosionCascadeStrength.get()"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\RootedParticleProbe.java",
+    "line": 21,
+    "text": " * 粒子物理与 {@code ErosionEngine.simulateDrop} 同式。</p>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\RootedParticleProbe.java",
+    "line": 437,
+    "text": "    // 物理（对齐 ErosionEngine.simulateDrop）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\RootedParticleProbe.java",
+    "line": 491,
+    "text": "        /** 3x3 Sobel（同 ErosionEngine:619-624）。 */"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\ChunkBorderProbe.java",
+    "line": 31,
+    "text": "            \"erosionCascadeStrength\", \"erosionDropsMul\", \"erosionErodeMul\"};"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\ConcurrentChunkProbe.java",
+    "line": 16,
+    "text": " *   <li>{@code TILE_PARALLELISM} 个 tile 线程并发跑侵蚀 tile</li>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\ConcurrentChunkProbe.java",
+    "line": 28,
+    "text": "        int threads = args.length > 1 ? Integer.parseInt(args[1]) : CellGenerator.TILE_PARALLELISM;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 93,
+    "text": "        int hn = 1024 / com.geogenesis.worldgen.erosion.ErosionEngine.HARDNESS_SPACING + 2;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 95,
+    "text": "        float[][] hg = com.geogenesis.worldgen.erosion.ErosionEngine.buildHardnessGrid("
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 100,
+    "text": "                float r0 = com.geogenesis.worldgen.erosion.ErosionEngine.sampleHardness("
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 102,
+    "text": "                float rx = com.geogenesis.worldgen.erosion.ErosionEngine.sampleHardness("
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 104,
+    "text": "                float rz = com.geogenesis.worldgen.erosion.ErosionEngine.sampleHardness("
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\SkeletonOnlyTierProbe.java",
+    "line": 27,
+    "text": " * 仍要有近似沟壑，目的是降算力，不是加细节。「减粒子（erosionDropsMul）」不是这条线。</p>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\client\\InGameSeamScanner.java",
+    "line": 61,
+    "text": "                    GeoGenesisConfig.INSTANCE.erosionDropsMul.get());"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\client\\preview\\PreviewDisplay.java",
+    "line": 318,
+    "text": "    //        → CellGenerator.rockResistanceAt → 注入 ErosionEngine"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 228,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionDropsMul;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 230,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionErodeMul;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 234,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionCascadeStrength;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 369,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 371,
+    "text": "    public final ForgeConfigSpec.IntValue erosionIterations;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 373,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionLrate;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 742,
+    "text": "        erosionDropsMul = builder.comment(\"Erosion droplet count multiplier. Lower = faster (preview). Default 1.0, range [0.1, 4].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 743,
+    "text": "            .defineInRange(\"erosionDropsMul\", 1.0, 0.1, 4.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 744,
+    "text": "        erosionErodeMul = builder.comment(\"Erosion erode-rate multiplier. Default 1.0, range [0.1, 4].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 745,
+    "text": "                .defineInRange(\"erosionErodeMul\", 1.0, 0.1, 4.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 748,
+    "text": "        erosionCascadeStrength = builder.comment(\"Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.5 (2026-08-10: 0.3->0.5, sharper gully edges), range [0, 1].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 749,
+    "text": "                .defineInRange(\"erosionCascadeStrength\", 0.5, 0.0, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 750,
+    "text": "        erosionMomentumTransfer = builder.comment(\"SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 751,
+    "text": "                .defineInRange(\"erosionMomentumTransfer\", 1.0, 0.0, 2.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 752,
+    "text": "        erosionIterations = builder.comment(\"SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 2 (2026-08-11: 5->2, deep-gully fix; SH Erosion.cs numIterations=1, 2 keeps momentum field accumulation), range [1, 16].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 753,
+    "text": "                .defineInRange(\"erosionIterations\", 2, 1, 16);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 755,
+    "text": "        erosionLrate = builder.comment(\"SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].\")"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 756,
+    "text": "                .defineInRange(\"erosionLrate\", 0.1, 0.01, 0.5);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 1080,
+    "text": "            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionDropsMul.get());"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 36,
+    "text": "public class ErosionEngine {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 43,
+    "text": "     *  源头(ld<2)弱、汇聚(ld≥8)全强。仅改侵蚀公式（ErosionEngine），不影响预览磁盘缓存"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 117,
+    "text": "    public ErosionEngine(double dropsMul, int seed) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 121,
+    "text": "    public ErosionEngine(double dropsMul, int seed, boolean xsEnabled) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 148,
+    "text": "     * 改动面；而每次 {@code runErosionOnFlat} 调用独占本实例的\"本次执行\""
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 276,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 279,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, null, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 283,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 286,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 292,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 295,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, hs);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 298,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 301,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null, 1f);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 304,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 310,
+    "text": "        double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 311,
+    "text": "        double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 312,
+    "text": "        double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 321,
+    "text": "        float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 322,
+    "text": "        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 323,
+    "text": "        float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 330,
+    "text": "        // ★★★ 必须为局部 final（禁止实例字段）：ErosionEngine 实例被多线程共享"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 781,
+    "text": "     *  cas：本次 {@code runErosionOnFlat} 独占的邻居 scratch（★ 2026-10-28 R3 分配热点修复）——"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 857,
+    "text": "            int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 913,
+    "text": "        int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\RidgeValleyErosion.java",
+    "line": 12,
+    "text": " * 把圆包状噪声切成多峰山脊；随后由 {@link ErosionEngine#runErosionOnFlat} 的粒子侵蚀做细节打磨。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 160,
+    "text": "     * ★ 2026-09-14：碎石坡的<b>汇流下限</b>（液滴汇聚计数，已按 {@code erosionDropsMul} 归一化）。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 190,
+    "text": "     * <p>⚠ <b>必须按 {@code erosionDropsMul} 缩放</b>：discharge 是液滴计数，"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 191,
+    "text": "     * 总量随配置的液滴倍率线性变化（{@code ErosionEngine.DROPS_*} × dropsMul）。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 197,
+    "text": "     * 读取当前世界的侵蚀液滴倍率（{@code erosionDropsMul}），用于归一化"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 200,
+    "text": "     * <p>与 {@code ErosionEngine} 读同一配置项 ⇒ 两边口径一致。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 201,
+    "text": "     * 配置不可用时回退 1.0（与 {@code ErosionEngine} 的默认一致）。</p>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 203,
+    "text": "    private static double erosionDropsMul() {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 206,
+    "text": "            if (cfg != null && cfg.erosionDropsMul != null) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 207,
+    "text": "                double v = cfg.erosionDropsMul.get();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 856,
+    "text": "                && cell.riverNetDischarge >= SCREE_DISCHARGE_MIN * erosionDropsMul()) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 640,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 14,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 113,
+    "text": "    private final ErosionEngine erosion;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 130,
+    "text": "    public static final int TILE_PARALLELISM = 8;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 132,
+    "text": "        TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 205,
+    "text": "        double erosionDropsMul = cfg != null ? cfgDbl(cfg.erosionDropsMul, 1.0) : 1.0;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 207,
+    "text": "        this.erosion = new ErosionEngine(erosionDropsMul, 12345, xsEnabled);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 738,
+    "text": "    //   因为 ErosionEngine 的硬度网格与液滴查表会反复命中同一批坐标。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 758,
+    "text": "     * ★ 2026-09-14 Phase T8(P3)：<b>岩性抗蚀性</b>（供 {@code ErosionEngine} 注入）。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1350,
+    "text": "            erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1484,
+    "text": "            erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1586,
+    "text": "     * ErosionEngine 通过 spawn 门控在浅海大陆架和近岸水下自然侵蚀，"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1596,
+    "text": "     * （插值场含海洋真实深度，ErosionEngine spawn 门控自行处理浅海/近岸）。</p>"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1838,
+    "text": "        // 现已废除：ErosionEngine 自身已有 NaN/Inf 守卫（spd sqrt 处 + 末尾 clampF(-1,1)），"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1903,
+    "text": "     * <p>供 {@code HardnessRaceProbe} 复现\"多线程共享 ErosionEngine 实例\"的竞态 ——"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1920,
+    "text": "        erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\RockType.java",
+    "line": 21,
+    "text": " * 注入 {@code ErosionEngine}，按抗蚀性调制侵蚀量 ⇒ <b>软岩成谷、硬岩成脊</b>。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\StratumField.java",
+    "line": 42,
+    "text": " * （经 {@code CellGenerator.rockResistanceAt} 注入 {@code ErosionEngine}），"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\StratumField.java",
+    "line": 144,
+    "text": "     * <p><b>为何合并为单一标量</b>：调用方（{@code ErosionEngine} 预构建的硬度网格）"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\build\\boundary-repair-v2\\integrated-1792736719405609000\\src\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\candidate-1792779496954846600\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\build\\d8-spill-contract\\pruning\\halo-candidate-1792785734981\\DeterministicSkeleton.java",
+    "line": 463,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionConcurrencyProbe.java",
+    "line": 23,
+    "text": " * <p><b>背景</b>：{@code ErosionEngine} 的两处平滑（{@code smoothErosionResult} /"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 45,
+    "text": " * <p>{@code ErosionEngine.cascadeLocal} 里 {@code new float[8]} / {@code new int[8]} 是全图基线"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 48,
+    "text": " * \"每次 {@code runErosionOnFlat} 独占一份\"，沿 {@code spawnAt → simulateDrop → cascadeLocal}"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 55,
+    "text": " *       的 {@code ErosionEngine.class}；</li>"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 57,
+    "text": " *       {@code src/main/.../ErosionEngine.java} → {@code build/hydrology-perf/erosion-candidate}"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 60,
+    "text": " *       {@code com.geogenesis.worldgen.erosion.ErosionEngine*} 生效，其余类"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 116,
+    "text": " * <p>⚠ {@code ErosionEngine} 构造器<b>不消费</b> dropsMul/seed（只有 xsEnabled 被保存），"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 121,
+    "text": "    static final String ENGINE_CLASS = \"com.geogenesis.worldgen.erosion.ErosionEngine\";"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 122,
+    "text": "    /** child-first 前缀：同时覆盖 {@code ErosionEngine$HardGrid} / {@code $CascadeScratch}。 */"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 123,
+    "text": "    static final String ENGINE_PREFIX = \"com.geogenesis.worldgen.erosion.ErosionEngine\";"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 124,
+    "text": "    static final String CLASS_REL = \"com/geogenesis/worldgen/erosion/ErosionEngine.class\";"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 128,
+    "text": "    static final String SOURCE_DEFAULT = \"src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java\";"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 433,
+    "text": "            return \"dropsMul=\" + c.erosionDropsMul.get() + \" erodeMul=\" + c.erosionErodeMul.get()"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 434,
+    "text": "                    + \" cascadeStrength=\" + c.erosionCascadeStrength.get()"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 435,
+    "text": "                    + \" momentumTransfer=\" + c.erosionMomentumTransfer.get()"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 436,
+    "text": "                    + \" iterations=\" + c.erosionIterations.get() + \" lrate=\" + c.erosionLrate.get();"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 512,
+    "text": "            v.info(\"ErosionEngine.class sha256: frozen=\" + shaF);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 513,
+    "text": "            v.info(\"ErosionEngine.class sha256: candidate=\" + shaC);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 863,
+    "text": "            final String classAnchor = \"public class ErosionEngine {\";"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 904,
+    "text": "                Path srcFile = dir.resolve(\"ErosionEngine.java\");"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1030,
+    "text": "            this.pub8 = type.getMethod(\"runErosionOnFlat\", float[].class, float[].class,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1032,
+    "text": "            this.pub9 = type.getMethod(\"runErosionOnFlat\", float[].class, float[].class,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1034,
+    "text": "            this.pub10 = type.getMethod(\"runErosionOnFlat\", float[].class, float[].class,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1037,
+    "text": "            this.priv11 = type.getDeclaredMethod(\"runErosionOnFlat\", float[].class, float[].class,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.java",
+    "line": 1117,
+    "text": "    /** child-first：只劫持 {@code ErosionEngine*}，其余（GeoGenesisConfig/Forge/log4j）走父加载器。 */"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\HardnessRaceProbe.java",
+    "line": 18,
+    "text": " *     at ErosionEngine.sampleHardness(ErosionEngine.java:222)"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\HardnessRaceProbe.java",
+    "line": 20,
+    "text": " * <p><b>根因</b>：硬度网格的尺寸/原点曾是 {@code ErosionEngine} 的<b>实例字段</b>，"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\HardnessRaceProbe.java",
+    "line": 28,
+    "text": " * <p>用<b>多线程并发</b>调用同一个 {@link ErosionEngine} 实例生成<b>不同原点</b>的"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\erosion\\HardnessRaceProbe.java",
+    "line": 45,
+    "text": "        CellGenerator gen2 = gen;   // gen 内部持有单个 ErosionEngine 实例（已注入硬度提供者）"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\TwoWaterBudgetProbe.java",
+    "line": 24,
+    "text": " * <p>{@code ErosionEngine:273} 的注释写着目标：\"河网层复用 discharge 场做 riverMask，"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\LocalFlowEvents.java",
+    "line": 7,
+    "text": " * Diagnostic frozen-terrain transport, NOT ErosionEngine feedback, runoff Q, or water authority."
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionViewProbe.java",
+    "line": 79,
+    "text": "                + GeoGenesisConfig.configFingerprint() + \"\\ncascade=\" + GeoGenesisConfig.INSTANCE.erosionCascadeStrength.get()"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\RootedParticleProbe.java",
+    "line": 21,
+    "text": " * 粒子物理与 {@code ErosionEngine.simulateDrop} 同式。</p>"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\RootedParticleProbe.java",
+    "line": 437,
+    "text": "    // 物理（对齐 ErosionEngine.simulateDrop）"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\RootedParticleProbe.java",
+    "line": 491,
+    "text": "        /** 3x3 Sobel（同 ErosionEngine:619-624）。 */"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\ChunkBorderProbe.java",
+    "line": 31,
+    "text": "            \"erosionCascadeStrength\", \"erosionDropsMul\", \"erosionErodeMul\"};"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\ConcurrentChunkProbe.java",
+    "line": 16,
+    "text": " *   <li>{@code TILE_PARALLELISM} 个 tile 线程并发跑侵蚀 tile</li>"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\ConcurrentChunkProbe.java",
+    "line": 28,
+    "text": "        int threads = args.length > 1 ? Integer.parseInt(args[1]) : CellGenerator.TILE_PARALLELISM;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 93,
+    "text": "        int hn = 1024 / com.geogenesis.worldgen.erosion.ErosionEngine.HARDNESS_SPACING + 2;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 95,
+    "text": "        float[][] hg = com.geogenesis.worldgen.erosion.ErosionEngine.buildHardnessGrid("
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 100,
+    "text": "                float r0 = com.geogenesis.worldgen.erosion.ErosionEngine.sampleHardness("
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 102,
+    "text": "                float rx = com.geogenesis.worldgen.erosion.ErosionEngine.sampleHardness("
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\RockErosionProbe.java",
+    "line": 104,
+    "text": "                float rz = com.geogenesis.worldgen.erosion.ErosionEngine.sampleHardness("
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\client\\InGameSeamScanner.java",
+    "line": 61,
+    "text": "                    GeoGenesisConfig.INSTANCE.erosionDropsMul.get());"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\client\\preview\\PreviewDisplay.java",
+    "line": 318,
+    "text": "    //        → CellGenerator.rockResistanceAt → 注入 ErosionEngine"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 228,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionDropsMul;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 230,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionErodeMul;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 234,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionCascadeStrength;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 369,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 371,
+    "text": "    public final ForgeConfigSpec.IntValue erosionIterations;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 373,
+    "text": "    public final ForgeConfigSpec.DoubleValue erosionLrate;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 742,
+    "text": "        erosionDropsMul = builder.comment(\"Erosion droplet count multiplier. Lower = faster (preview). Default 1.0, range [0.1, 4].\")"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 743,
+    "text": "            .defineInRange(\"erosionDropsMul\", 1.0, 0.1, 4.0);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 744,
+    "text": "        erosionErodeMul = builder.comment(\"Erosion erode-rate multiplier. Default 1.0, range [0.1, 4].\")"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 745,
+    "text": "                .defineInRange(\"erosionErodeMul\", 1.0, 0.1, 4.0);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 748,
+    "text": "        erosionCascadeStrength = builder.comment(\"Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.5 (2026-08-10: 0.3->0.5, sharper gully edges), range [0, 1].\")"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 749,
+    "text": "                .defineInRange(\"erosionCascadeStrength\", 0.5, 0.0, 1.0);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 750,
+    "text": "        erosionMomentumTransfer = builder.comment(\"SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].\")"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 751,
+    "text": "                .defineInRange(\"erosionMomentumTransfer\", 1.0, 0.0, 2.0);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 752,
+    "text": "        erosionIterations = builder.comment(\"SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 2 (2026-08-11: 5->2, deep-gully fix; SH Erosion.cs numIterations=1, 2 keeps momentum field accumulation), range [1, 16].\")"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 753,
+    "text": "                .defineInRange(\"erosionIterations\", 2, 1, 16);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 755,
+    "text": "        erosionLrate = builder.comment(\"SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].\")"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 756,
+    "text": "                .defineInRange(\"erosionLrate\", 0.1, 0.01, 0.5);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "line": 1080,
+    "text": "            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionDropsMul.get());"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 36,
+    "text": "public class ErosionEngine {"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 43,
+    "text": "     *  源头(ld<2)弱、汇聚(ld≥8)全强。仅改侵蚀公式（ErosionEngine），不影响预览磁盘缓存"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 117,
+    "text": "    public ErosionEngine(double dropsMul, int seed) {"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 121,
+    "text": "    public ErosionEngine(double dropsMul, int seed, boolean xsEnabled) {"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 148,
+    "text": "     * 改动面；而每次 {@code runErosionOnFlat} 调用独占本实例的\"本次执行\""
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 276,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 279,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, null, 1f);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 283,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 286,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, 1f);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 292,
+    "text": "    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 295,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, hs);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 298,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 301,
+    "text": "        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null, 1f);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 304,
+    "text": "    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 310,
+    "text": "        double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 311,
+    "text": "        double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 312,
+    "text": "        double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 321,
+    "text": "        float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 322,
+    "text": "        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 323,
+    "text": "        float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 330,
+    "text": "        // ★★★ 必须为局部 final（禁止实例字段）：ErosionEngine 实例被多线程共享"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 781,
+    "text": "     *  cas：本次 {@code runErosionOnFlat} 独占的邻居 scratch（★ 2026-10-28 R3 分配热点修复）——"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 857,
+    "text": "            int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.java",
+    "line": 913,
+    "text": "        int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\erosion\\RidgeValleyErosion.java",
+    "line": 14,
+    "text": " * 把圆包状噪声切成多峰山脊；随后由 {@link ErosionEngine#runErosionOnFlat} 的粒子侵蚀做细节打磨。"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 160,
+    "text": "     * ★ 2026-09-14：碎石坡的<b>汇流下限</b>（液滴汇聚计数，已按 {@code erosionDropsMul} 归一化）。"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 190,
+    "text": "     * <p>⚠ <b>必须按 {@code erosionDropsMul} 缩放</b>：discharge 是液滴计数，"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 191,
+    "text": "     * 总量随配置的液滴倍率线性变化（{@code ErosionEngine.DROPS_*} × dropsMul）。"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 197,
+    "text": "     * 读取当前世界的侵蚀液滴倍率（{@code erosionDropsMul}），用于归一化"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 200,
+    "text": "     * <p>与 {@code ErosionEngine} 读同一配置项 ⇒ 两边口径一致。"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 201,
+    "text": "     * 配置不可用时回退 1.0（与 {@code ErosionEngine} 的默认一致）。</p>"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 203,
+    "text": "    private static double erosionDropsMul() {"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 206,
+    "text": "            if (cfg != null && cfg.erosionDropsMul != null) {"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 207,
+    "text": "                double v = cfg.erosionDropsMul.get();"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.java",
+    "line": 842,
+    "text": "                && cell.riverNetDischarge >= SCREE_DISCHARGE_MIN * erosionDropsMul()) {"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.java",
+    "line": 640,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 14,
+    "text": "import com.geogenesis.worldgen.erosion.ErosionEngine;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 113,
+    "text": "    private final ErosionEngine erosion;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 130,
+    "text": "    public static final int TILE_PARALLELISM = 8;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 132,
+    "text": "        TILE_PARALLELISM, 16, 60L, TimeUnit.SECONDS,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 193,
+    "text": "        double erosionDropsMul = cfg != null ? cfgDbl(cfg.erosionDropsMul, 1.0) : 1.0;"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 195,
+    "text": "        this.erosion = new ErosionEngine(erosionDropsMul, 12345, xsEnabled);"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 710,
+    "text": "    //   因为 ErosionEngine 的硬度网格与液滴查表会反复命中同一批坐标。"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 730,
+    "text": "     * ★ 2026-09-14 Phase T8(P3)：<b>岩性抗蚀性</b>（供 {@code ErosionEngine} 注入）。"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1321,
+    "text": "            erosion.runErosionOnFlat(flat, flatPre, bufSize, N, originX, originZ,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1455,
+    "text": "            erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1557,
+    "text": "     * ErosionEngine 通过 spawn 门控在浅海大陆架和近岸水下自然侵蚀，"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1567,
+    "text": "     * （插值场含海洋真实深度，ErosionEngine spawn 门控自行处理浅海/近岸）。</p>"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1799,
+    "text": "        // 现已废除：ErosionEngine 自身已有 NaN/Inf 守卫（spd sqrt 处 + 末尾 clampF(-1,1)），"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1863,
+    "text": "     * <p>供 {@code HardnessRaceProbe} 复现\"多线程共享 ErosionEngine 实例\"的竞态 ——"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.java",
+    "line": 1880,
+    "text": "        erosion.runErosionOnFlat(flat, pre, bufSize, n, originX, originZ,"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\RockType.java",
+    "line": 21,
+    "text": " * 注入 {@code ErosionEngine}，按抗蚀性调制侵蚀量 ⇒ <b>软岩成谷、硬岩成脊</b>。"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\StratumField.java",
+    "line": 42,
+    "text": " * （经 {@code CellGenerator.rockResistanceAt} 注入 {@code ErosionEngine}），"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\forge-1.20.1-47.4.10-mdk\\src\\main\\java\\com\\geogenesis\\worldgen\\terrain\\StratumField.java",
+    "line": 144,
+    "text": "     * <p><b>为何合并为单一标量</b>：调用方（{@code ErosionEngine} 预构建的硬度网格）"
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\handoff\\migration-checkpoint-20261025\\DeterministicSkeleton.java",
+    "line": 473,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\handoff\\migration-checkpoint-20261025\\pre-migration-src-main\\DeterministicSkeleton.java",
+    "line": 397,
+    "text": "     * <p><b>与物理粒子的对应</b>（{@code ErosionEngine.simulateDrop}）："
+  },
+  {
+    "path": ".openbitfun\\worktrees\\terrain-upgrade\\handoff\\migration-checkpoint-20261025\\pre-migration-src-main\\PreviewDisplay.java",
+    "line": 318,
+    "text": "    //        → CellGenerator.rockResistanceAt → 注入 ErosionEngine"
+  }
+]

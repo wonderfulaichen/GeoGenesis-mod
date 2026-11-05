@@ -1,0 +1,38 @@
+[
+  {
+    "tile": 0,
+    "n": 2401,
+    "main_tile_only_deltaE_rms": 0.03239022474067804,
+    "blended_deltaE_rms": 0.032390137565851636,
+    "blend_minus_main_deltaE_rms": 4.159371309683721e-06,
+    "main_hp_rms": 0.007647594956451667,
+    "blended_hp_rms": 0.007647646529801495,
+    "hp_ratio": 1.000006743734484,
+    "hp_corr": 0.9999998813663334,
+    "note": "Main-tile-only is algebraic contribution control, NOT a modified simulation. Different tiles contribute near boundaries; no claim of universal attenuation."
+  },
+  {
+    "tile": 1,
+    "n": 2401,
+    "main_tile_only_deltaE_rms": 0.015092196191916648,
+    "blended_deltaE_rms": 0.015092214435971443,
+    "blend_minus_main_deltaE_rms": 2.081856472751737e-05,
+    "main_hp_rms": 0.004650503213948269,
+    "blended_hp_rms": 0.004650479000320995,
+    "hp_ratio": 0.9999947933317839,
+    "hp_corr": 0.9999912725059887,
+    "note": "Main-tile-only is algebraic contribution control, NOT a modified simulation. Different tiles contribute near boundaries; no claim of universal attenuation."
+  },
+  {
+    "tile": 2,
+    "n": 2401,
+    "main_tile_only_deltaE_rms": 0.011464016393329198,
+    "blended_deltaE_rms": 0.011457838194042832,
+    "blend_minus_main_deltaE_rms": 4.335668068186483e-05,
+    "main_hp_rms": 0.00343307317167916,
+    "blended_hp_rms": 0.003431633221073707,
+    "hp_ratio": 0.9995805651282554,
+    "hp_corr": 0.9999307845977208,
+    "note": "Main-tile-only is algebraic contribution control, NOT a modified simulation. Different tiles contribute near boundaries; no claim of universal attenuation."
+  }
+]

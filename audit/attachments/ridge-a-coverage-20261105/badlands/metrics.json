@@ -1,0 +1,158 @@
+{
+  "control": {
+    "changed": 0,
+    "minDeltaY": 0.0,
+    "maxDeltaY": 0.0,
+    "meanAbsDeltaY": 0.0,
+    "p99AbsDeltaY": 0.0,
+    "seaLandFlips": 0,
+    "minY": 94.94099867106914,
+    "maxY": 157.94615699710658
+  },
+  "recipe": {
+    "changed": 66049,
+    "minDeltaY": -19.898592220345847,
+    "maxDeltaY": 38.27467061366485,
+    "meanAbsDeltaY": 5.63130250449281,
+    "p99AbsDeltaY": 28.680300816886575,
+    "seaLandFlips": 0,
+    "minY": 94.61514083834085,
+    "maxY": 192.58066630338575
+  },
+  "post": {
+    "changed": 66049,
+    "minDeltaY": -57.40919568300251,
+    "maxDeltaY": 72.16003187417985,
+    "meanAbsDeltaY": 5.655337833675098,
+    "p99AbsDeltaY": 35.72262309398639,
+    "seaLandFlips": 0,
+    "minY": 86.90175687855213,
+    "maxY": 216.8404104475994
+  },
+  "A-vs-B": {
+    "changed": 66049,
+    "minDeltaY": -60.170220292938666,
+    "maxDeltaY": 53.11905865754696,
+    "meanAbsDeltaY": 5.123254749878391,
+    "p99AbsDeltaY": 29.961605759168734,
+    "seaLandFlips": 0,
+    "minY": 94.61514083834085,
+    "maxY": 192.58066630338575
+  },
+  "sha256": {
+    "control": "db34888b06cf2816aaa357d9bfb1e7cd76366956635f9cf71bf8e5251c5ada93",
+    "recipe": "2913190889c1ea45b9a5a305a97df146d36747f8bca8b8d06a7f978f6ec6e1dd",
+    "post": "1a26c2e901f667954c4f362894735ce29f82eba84668b120541e7344e611feec"
+  },
+  "window": {
+    "size": 257,
+    "stepWu": 0.5,
+    "originWu": [
+      3776.0,
+      960.0
+    ],
+    "hs": 2
+  },
+  "deltaColorScaleBlocks": 72.16003187417985,
+  "purity": {
+    "allPixels": 66049,
+    "dominantCounts": {
+      "16": 66049
+    },
+    "singleActiveFraction": 1.0,
+    "minimumWeightPerEntry": {
+      "0": 0.0,
+      "1": 0.0,
+      "2": 0.0,
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0,
+      "8": 0.0,
+      "9": 0.0,
+      "10": 0.0,
+      "11": 0.0,
+      "12": 0.0,
+      "13": 0.0,
+      "14": 0.0,
+      "15": 0.0,
+      "16": 1.0,
+      "17": 0.0
+    },
+    "alphaMin": 0.0,
+    "alphaMax": 0.0,
+    "alphaZeroFraction": 1.0,
+    "alphaOneFraction": 0.0,
+    "alphaTransitionFraction": 0.0,
+    "edgeRange": [
+      0.673580465492138,
+      0.7862404066184077
+    ]
+  },
+  "shape": {
+    "Control": {
+      "nonfinite": 0,
+      "reliefY": 63.005158326037446,
+      "slopeP50P99Max": [
+        0.17285758191672362,
+        4.195221640523307,
+        9.299147137468912
+      ],
+      "adjacentJumpP99MaxY": [
+        3.1988899726093774,
+        8.023413332893483
+      ],
+      "landFraction": 1.0
+    },
+    "A: raw both layers": {
+      "nonfinite": 0,
+      "reliefY": 97.9655254650449,
+      "slopeP50P99Max": [
+        0.34473113336364414,
+        7.785920824940512,
+        15.74537245504917
+      ],
+      "adjacentJumpP99MaxY": [
+        6.133760529546596,
+        23.81742772043387
+      ],
+      "landFraction": 1.0
+    },
+    "B: post covered e": {
+      "nonfinite": 0,
+      "reliefY": 129.93865356904726,
+      "slopeP50P99Max": [
+        0.20685769807912543,
+        12.830653305370149,
+        42.0201541550862
+      ],
+      "adjacentJumpP99MaxY": [
+        9.733760008233496,
+        45.8095800050221
+      ],
+      "landFraction": 1.0
+    }
+  },
+  "coverageNegativeControl": {
+    "description": "region-only A is prior wiring with unfiltered coverage; not the retained candidate at active alpha",
+    "maxAbsFullMinusMissingE": 0.0,
+    "alpha1MissingEqualsControl": null,
+    "alpha1FullChangedPixels": 0,
+    "coverageChangedPixels": 48016,
+    "alpha0FullEqualsMissing": true
+  },
+  "rawSHA256": {
+    "alpha.f64be": "070c1c13a045ca259775f4bcf0860c2ebed79b004502678f6efde46b9b5068f0",
+    "control.f64be": "db34888b06cf2816aaa357d9bfb1e7cd76366956635f9cf71bf8e5251c5ada93",
+    "coverage-A.f64be": "69cd6f1bc3f2a0c8d8017c033910feeef48ef21b911e6c832880b6e76c1b5823",
+    "coverage-control.f64be": "7c726d329ef3331f0f494babc5f204b9066d1e3b76dd877560c0b89ef4e3ee0d",
+    "edge.f64be": "c37b94b2cbc976cd4422df9f4e7a45df751bfdb9b6231911fb7b61604025d39b",
+    "post.f64be": "1a26c2e901f667954c4f362894735ce29f82eba84668b120541e7344e611feec",
+    "pre-control.f64be": "efd72834f198e725f6317eb72d1ab2b672fc046013e821b6f608b351baf881eb",
+    "pre-post.f64be": "7bccbe6c94148e64abe20ec355f8f7c76443e2d0348c808b9326ed4d63c855d7",
+    "pre-recipe.f64be": "9b55cf98c55f36c23c6e30d6290017432c1b0c5180bd0be7cce1a6f92aecb9b7",
+    "recipe.f64be": "2913190889c1ea45b9a5a305a97df146d36747f8bca8b8d06a7f978f6ec6e1dd",
+    "region-only-A.f64be": "9b55cf98c55f36c23c6e30d6290017432c1b0c5180bd0be7cce1a6f92aecb9b7"
+  }
+}

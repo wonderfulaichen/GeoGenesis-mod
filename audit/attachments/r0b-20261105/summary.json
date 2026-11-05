@@ -1,0 +1,73 @@
+{
+  "head": "0c742b6051fab06bc76517fc697efd585ea6a227",
+  "indexUnchanged": true,
+  "startingFilesChecked": 2895,
+  "authorizedChanged": [
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/erosion/ErosionScratchProbe.java",
+      "before": "13dcdb3846ee5d3424b4bb29d8901008615d979d4d8a6c13308a125a7ff0206e",
+      "after": "10ed5a69a1a2a016e02b5eab754dbb95977cb7b497c6a5798c5e17e6d41abc88"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/erosion/GuideErosionBench.java",
+      "before": "f3b4fe7cb376d41f708265b10576b11288c3357579102c7154babd699081fef1",
+      "after": "c72537e4a32b357b54d7c1670c048eb9c35d7600959c91351c7a019cd8067b70"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/ErosionEngine.java",
+      "before": "86dce4e4208700b3a24cd2a4f87f0bf18f1811fe6fd30152b125388ce3772540",
+      "after": "8b276bce734f0ea7cf663eed8a5f4eb8bc0d8fef02669a779bf77fc17007c0b6"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+      "before": "478818b6b447f0533202945060e7edb4cb651bb726026068f7aa0e32dee2917f",
+      "after": "e3a81740aae6a627387b2069496239fc621728473217487319c07b1d6ba35b1d"
+    },
+    {
+      "path": "forge-1.20.1-47.4.10-mdk/tools/verify-base-core.gradle",
+      "before": "528d1309fba9ac86546497130b6ed45286dc70cb7a2e86962c90853449bbdd78",
+      "after": "44302c0d6db6ef5bae195a3dc9c7a5132dd9365bc0deed5c33bc4cafb72c749b"
+    },
+    {
+      "path": "audit/GeoGenesis-R0-core-boundary-20261105.md",
+      "before": "fa0f2b2ce4d0c8e48e7b74d097467c04073e496bed48f1061a276c5ba530a319",
+      "after": "6914037502c661ee0d7fa8e97d373e763d653de6e89981744c4f5401c0f8815b"
+    },
+    {
+      "path": "audit/README.md",
+      "before": "32148c461b64ad899e27d20045cb6d94d56d486301f6f4477e2b5b5ecfb92b78",
+      "after": "2ca4b20b112d65f678e1f77aa763c932b2b83fec141a4c353a650edb04270aa4"
+    },
+    {
+      "path": ".openbitfun/plans/streaming-world-core-alignment.plan.md",
+      "before": "0b81ff4e26d32442b340dc412774e7e66366742d0bb69c76d47679e891206606",
+      "after": "73fe4b98c3cea4eac1bec43cfdb4b68d7b9b80c9b52923bc94582c864b4ab0e5"
+    }
+  ],
+  "frozenR00R0aAndRunTomlUnchanged": true,
+  "comparisonItems": 114,
+  "configBoundaryBytesUnchanged": true,
+  "finalExitCodes": {
+    "core": 0,
+    "main-compile": 0,
+    "p1-compile": 0,
+    "capture-compile": 0,
+    "placement-compile": 0,
+    "p1": 0,
+    "loaded-final": 0,
+    "fallback-final": 0,
+    "trusted-compile": 0,
+    "boundary-compile": 0,
+    "config-check": 0,
+    "boundary": 0,
+    "particle-core-compile": 0,
+    "particle-core": 0,
+    "reflective-compile": 0,
+    "reflective": 0
+  },
+  "attempts": {
+    "earlyReplayMissingClasspath": 1,
+    "extraParticleErosionProbeWerror": 1
+  },
+  "stop": "R0b; no new functionality; no git write"
+}

@@ -1,0 +1,8 @@
+{
+  "coneUL": 0.9639818786117548,
+  "coneLR": 0.4252309039119337,
+  "pitUL": 0.4252309039119336,
+  "pitLR": 0.9639818786117548,
+  "pass": true,
+  "legacyFixtureLimitation": "verify-light-convention fixture clips negative pit to zero; independent signed fixture used here"
+}

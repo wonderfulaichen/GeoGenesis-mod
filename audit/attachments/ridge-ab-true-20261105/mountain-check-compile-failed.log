@@ -1,0 +1,7 @@
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\ridge-ab-true-20261105\TrueRidgeProbe.java:105: 错误: 已在方法 checks(Path)中定义了变量 u
+        a.ridge(cfg,(u,v)->land.weights(u,v));
+                     ^
+D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\build\ridge-ab-true-20261105\TrueRidgeProbe.java:105: 错误: 已在方法 checks(Path)中定义了变量 v
+        a.ridge(cfg,(u,v)->land.weights(u,v));
+                       ^
+2 个错误

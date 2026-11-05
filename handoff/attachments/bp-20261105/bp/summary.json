@@ -1,0 +1,38 @@
+{
+  "stage": "B/P only; stopped before model/F/MC",
+  "old_baseline": "114/114 byte comparison PASS",
+  "runtime_check": "PASS; see process-runtime-check.log",
+  "kernel": "8 old real-input cases PASS",
+  "render": {
+    "window": [
+      -2242.5,
+      -3165.5,
+      201,
+      2
+    ],
+    "seed": 9139912035078620160,
+    "HS": 2,
+    "builds": 90,
+    "seconds": 53.3697456,
+    "deltaY": [
+      -26.668603939414027,
+      7.730409117192025
+    ],
+    "same_first_final": true,
+    "accepted_B_lattice_points": 1681
+  },
+  "failed_attempts": [
+    "finite-land had zero land and assertion exit1; preserved",
+    "independent assembly test initially hardcoded HS1 against HS2 context; caught mismatch, fixed test only",
+    "invariance script included task-created moved path marker; corrected exclusion"
+  ],
+  "limits": [
+    "No full 1401 square physical export: selected 400wu slope/coast crop based on accepted B asset",
+    "No F/model/MC or existing Preview schema changes",
+    "No optional discharge request API; ordinary samples explicitly NOT_REQUESTED/OFF",
+    "Peek is deliberately stricter: point snapshot and every blend tile must already exist",
+    "Kernel commonPool internal smoothing retained; outer tile executor/cache bounded",
+    "Cancellation checks surround historical kernel; cannot interrupt its innermost loops immediately",
+    "No broad diagnostics compile; SkeletonOnlyTierProbe untouched"
+  ]
+}

@@ -1,0 +1,12 @@
+2026-11-05 05:12:55,584 main WARN Advanced terminal features are not available in this environment
+POINT/GRID + ENDPOINT + QUERY ORDER PASS
+junction row=0
+junction row=200
+junction elapsedMs=12530.1201
+controlSha=a4711a6684ea92af51698c6ff42971fdb2c023eb810d315dddfdce1e45146ccc
+recipeSha=4b15f84f1853fe3ff2780f1b1661fccf2e9ee39d180c2eeaf8c3077198548d99
+postSha=07d0fe637533e48d6736538f24745c46fec59d9222bf88f9ce2e36ef398d41b1
+pre-controlSha=d6112e38e5896fa0b8e727541843a32aa151d3149e3d12dacdd1ea5875c74834
+pre-recipeSha=1997610d5f0ee1741c8d261cbdc4dc5f08303c77de3f6b375278088800b29046
+pre-postSha=1899fadb804841757135e0b205b053d4489cbf3bf689aa7226dd51b9a1e24433
+RIDGE PLACEMENT COMPARISON PASS

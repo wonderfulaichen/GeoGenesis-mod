@@ -1,0 +1,5 @@
+zero-strength all18 and mixed original bitwise PASS
+raw-node endpoints non-mountain independent wrapper PASS; all18 raw finite-difference bitwise PASS; repeat/order PASS
+mountain endpoint independent one-domain + unchanged texture + shell formula PASS
+mountain endpoint retreat 15->17 eps=1e-3..1e-9 convergence PASS (world-coordinate raw node)
+real-weight query order PASS

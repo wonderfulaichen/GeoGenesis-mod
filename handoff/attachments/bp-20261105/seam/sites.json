@@ -1,0 +1,170 @@
+[
+  {
+    "name": "coast-x0",
+    "axis": "x",
+    "x": -1920.0,
+    "z": -2943.5
+  },
+  {
+    "name": "coast-x1",
+    "axis": "x",
+    "x": -2064.0,
+    "z": -3003.5
+  },
+  {
+    "name": "coast-x2",
+    "axis": "x",
+    "x": -2016.0,
+    "z": -3133.5
+  },
+  {
+    "name": "coast-z0",
+    "axis": "z",
+    "x": -1940.5,
+    "z": -2928.0
+  },
+  {
+    "name": "coast-z1",
+    "axis": "z",
+    "x": -2052.5,
+    "z": -3024.0
+  },
+  {
+    "name": "coast-z2",
+    "axis": "z",
+    "x": -2114.5,
+    "z": -2928.0
+  },
+  {
+    "name": "corner-113-23-x",
+    "axis": "x",
+    "x": -2016.0,
+    "z": -3120.0
+  },
+  {
+    "name": "corner-113-23-z",
+    "axis": "z",
+    "x": -2016.0,
+    "z": -3120.0
+  },
+  {
+    "name": "corner-89-95-x",
+    "axis": "x",
+    "x": -2064.0,
+    "z": -2976.0
+  },
+  {
+    "name": "corner-89-95-z",
+    "axis": "z",
+    "x": -2064.0,
+    "z": -2976.0
+  },
+  {
+    "name": "corner-113-143-x",
+    "axis": "x",
+    "x": -2016.0,
+    "z": -2880.0
+  },
+  {
+    "name": "corner-113-143-z",
+    "axis": "z",
+    "x": -2016.0,
+    "z": -2880.0
+  },
+  {
+    "name": "land-x",
+    "axis": "x",
+    "x": -1920.0,
+    "z": -2931.5
+  },
+  {
+    "name": "land-z",
+    "axis": "z",
+    "x": -2240.5,
+    "z": -2928.0
+  },
+  {
+    "name": "control-coast-x0",
+    "axis": "x",
+    "x": -1904.0,
+    "z": -2943.5
+  },
+  {
+    "name": "control-coast-x1",
+    "axis": "x",
+    "x": -2048.0,
+    "z": -3003.5
+  },
+  {
+    "name": "control-coast-x2",
+    "axis": "x",
+    "x": -2000.0,
+    "z": -3133.5
+  },
+  {
+    "name": "control-coast-z0",
+    "axis": "z",
+    "x": -1940.5,
+    "z": -2912.0
+  },
+  {
+    "name": "control-coast-z1",
+    "axis": "z",
+    "x": -2052.5,
+    "z": -3008.0
+  },
+  {
+    "name": "control-coast-z2",
+    "axis": "z",
+    "x": -2114.5,
+    "z": -2912.0
+  },
+  {
+    "name": "control-corner-113-23-x",
+    "axis": "x",
+    "x": -2000.0,
+    "z": -3120.0
+  },
+  {
+    "name": "control-corner-113-23-z",
+    "axis": "z",
+    "x": -2016.0,
+    "z": -3104.0
+  },
+  {
+    "name": "control-corner-89-95-x",
+    "axis": "x",
+    "x": -2048.0,
+    "z": -2976.0
+  },
+  {
+    "name": "control-corner-89-95-z",
+    "axis": "z",
+    "x": -2064.0,
+    "z": -2960.0
+  },
+  {
+    "name": "control-corner-113-143-x",
+    "axis": "x",
+    "x": -2000.0,
+    "z": -2880.0
+  },
+  {
+    "name": "control-corner-113-143-z",
+    "axis": "z",
+    "x": -2016.0,
+    "z": -2864.0
+  },
+  {
+    "name": "control-land-x",
+    "axis": "x",
+    "x": -1904.0,
+    "z": -2931.5
+  },
+  {
+    "name": "control-land-z",
+    "axis": "z",
+    "x": -2240.5,
+    "z": -2912.0
+  }
+]

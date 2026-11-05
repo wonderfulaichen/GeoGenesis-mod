@@ -1,0 +1,158 @@
+{
+  "control": {
+    "changed": 0,
+    "minDeltaY": 0.0,
+    "maxDeltaY": 0.0,
+    "meanAbsDeltaY": 0.0,
+    "p99AbsDeltaY": 0.0,
+    "seaLandFlips": 0,
+    "minY": 49.51971572761363,
+    "maxY": 68.25868044131987
+  },
+  "recipe": {
+    "changed": 5059,
+    "minDeltaY": -0.04798996158211821,
+    "maxDeltaY": 0.2909857252735293,
+    "meanAbsDeltaY": 0.0027848350486713966,
+    "p99AbsDeltaY": 0.09367680250025948,
+    "seaLandFlips": 17,
+    "minY": 49.51971572761363,
+    "maxY": 68.28221365494684
+  },
+  "post": {
+    "changed": 5059,
+    "minDeltaY": -0.4476228174716681,
+    "maxDeltaY": 0.5682890669418015,
+    "meanAbsDeltaY": 0.004164795524204319,
+    "p99AbsDeltaY": 0.12547982318871154,
+    "seaLandFlips": 31,
+    "minY": 49.51971572761363,
+    "maxY": 68.62855767245443
+  },
+  "A-vs-B": {
+    "changed": 5059,
+    "minDeltaY": -0.550090220412514,
+    "maxDeltaY": 0.45718712505605197,
+    "meanAbsDeltaY": 0.004441894660431243,
+    "p99AbsDeltaY": 0.1287327822470649,
+    "seaLandFlips": 20,
+    "minY": 49.51971572761363,
+    "maxY": 68.28221365494684
+  },
+  "sha256": {
+    "control": "29d9da0dd0623bf71c05a381893500f8a933bad7b1677d2e76fef479e1c3d15e",
+    "recipe": "12970ec6e0c2bb3f0e0274b282ec2bcc66b5488fe439522a7c0f58187c1800d0",
+    "post": "892bc69adb293428ebaa4a734b5ba67e350c2280655e8977977c8ab8d2c9d094"
+  },
+  "window": {
+    "size": 257,
+    "stepWu": 1.0,
+    "originWu": [
+      -1408.0,
+      -2944.0
+    ],
+    "hs": 2
+  },
+  "deltaColorScaleBlocks": 0.5682890669418015,
+  "purity": {
+    "allPixels": 66049,
+    "dominantCounts": {
+      "17": 66049
+    },
+    "singleActiveFraction": 1.0,
+    "minimumWeightPerEntry": {
+      "0": 0.0,
+      "1": 0.0,
+      "2": 0.0,
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0,
+      "8": 0.0,
+      "9": 0.0,
+      "10": 0.0,
+      "11": 0.0,
+      "12": 0.0,
+      "13": 0.0,
+      "14": 0.0,
+      "15": 0.0,
+      "16": 0.0,
+      "17": 1.0
+    },
+    "alphaMin": 0.0,
+    "alphaMax": 0.0,
+    "alphaZeroFraction": 1.0,
+    "alphaOneFraction": 0.0,
+    "alphaTransitionFraction": 0.0,
+    "edgeRange": [
+      0.2342055631494102,
+      0.4727530094888935
+    ]
+  },
+  "shape": {
+    "Control": {
+      "nonfinite": 0,
+      "reliefY": 18.73896471370624,
+      "slopeP50P99Max": [
+        0.03344732402094085,
+        0.13947551195609742,
+        0.38493574603089026
+      ],
+      "adjacentJumpP99MaxY": [
+        0.2344574371695966,
+        0.6863433576780125
+      ],
+      "landFraction": 0.06658692788687187
+    },
+    "A: raw both layers": {
+      "nonfinite": 0,
+      "reliefY": 18.762497927333214,
+      "slopeP50P99Max": [
+        0.03346293298413175,
+        0.14082745931238597,
+        0.38493574603089026
+      ],
+      "adjacentJumpP99MaxY": [
+        0.23620444786688616,
+        0.6863433576780125
+      ],
+      "landFraction": 0.0668140320065406
+    },
+    "B: post covered e": {
+      "nonfinite": 0,
+      "reliefY": 19.108841944840805,
+      "slopeP50P99Max": [
+        0.03349856408051277,
+        0.143397675218255,
+        0.38493574603089026
+      ],
+      "adjacentJumpP99MaxY": [
+        0.24171327639696882,
+        0.6863433576780125
+      ],
+      "landFraction": 0.06702599585156475
+    }
+  },
+  "coverageNegativeControl": {
+    "description": "region-only A is prior wiring with unfiltered coverage; not the retained candidate at active alpha",
+    "maxAbsFullMinusMissingE": 0.0,
+    "alpha1MissingEqualsControl": null,
+    "alpha1FullChangedPixels": 0,
+    "coverageChangedPixels": 19858,
+    "alpha0FullEqualsMissing": true
+  },
+  "rawSHA256": {
+    "alpha.f64be": "070c1c13a045ca259775f4bcf0860c2ebed79b004502678f6efde46b9b5068f0",
+    "control.f64be": "29d9da0dd0623bf71c05a381893500f8a933bad7b1677d2e76fef479e1c3d15e",
+    "coverage-A.f64be": "2b78000bdb5cffcb7b1bbfac5e15eafb0867de2b65d079e14a1a2b567de117d1",
+    "coverage-control.f64be": "b4f7f552dbc921bc58a1288032d8ea02b3e99db912ba26da7797d174bec86dc6",
+    "edge.f64be": "c84c6300085e8ce9f771110ede69f78a437edfa055e6f7fe7e8d4af7fda6bf5e",
+    "post.f64be": "892bc69adb293428ebaa4a734b5ba67e350c2280655e8977977c8ab8d2c9d094",
+    "pre-control.f64be": "05ad44cd88762028862a1e9cb98ee057408d00afe4962c006511179be71fadc6",
+    "pre-post.f64be": "cef513d2d5c9f3d9f4cd6cc3b32689c908ba3a381aff8ba2986ebdbba53f27b4",
+    "pre-recipe.f64be": "04cddaac9021ede3ff497c107ecdcd0c3965a5df9d57c7eb3026b83e67c79071",
+    "recipe.f64be": "12970ec6e0c2bb3f0e0274b282ec2bcc66b5488fe439522a7c0f58187c1800d0",
+    "region-only-A.f64be": "04cddaac9021ede3ff497c107ecdcd0c3965a5df9d57c7eb3026b83e67c79071"
+  }
+}

@@ -1,0 +1,793 @@
+{
+  "badlands": {
+    "control": {
+      "changed": 0,
+      "minDeltaY": 0.0,
+      "maxDeltaY": 0.0,
+      "meanAbsDeltaY": 0.0,
+      "p99AbsDeltaY": 0.0,
+      "seaLandFlips": 0,
+      "minY": 94.94099867106914,
+      "maxY": 157.94615699710658
+    },
+    "recipe": {
+      "changed": 66049,
+      "minDeltaY": -19.898592220345847,
+      "maxDeltaY": 38.27467061366485,
+      "meanAbsDeltaY": 5.63130250449281,
+      "p99AbsDeltaY": 28.680300816886575,
+      "seaLandFlips": 0,
+      "minY": 94.61514083834085,
+      "maxY": 192.58066630338575
+    },
+    "post": {
+      "changed": 66049,
+      "minDeltaY": -57.40919568300251,
+      "maxDeltaY": 72.16003187417985,
+      "meanAbsDeltaY": 5.655337833675098,
+      "p99AbsDeltaY": 35.72262309398639,
+      "seaLandFlips": 0,
+      "minY": 86.90175687855213,
+      "maxY": 216.8404104475994
+    },
+    "A-vs-B": {
+      "changed": 66049,
+      "minDeltaY": -60.170220292938666,
+      "maxDeltaY": 53.11905865754696,
+      "meanAbsDeltaY": 5.123254749878391,
+      "p99AbsDeltaY": 29.961605759168734,
+      "seaLandFlips": 0,
+      "minY": 94.61514083834085,
+      "maxY": 192.58066630338575
+    },
+    "sha256": {
+      "control": "db34888b06cf2816aaa357d9bfb1e7cd76366956635f9cf71bf8e5251c5ada93",
+      "recipe": "2913190889c1ea45b9a5a305a97df146d36747f8bca8b8d06a7f978f6ec6e1dd",
+      "post": "1a26c2e901f667954c4f362894735ce29f82eba84668b120541e7344e611feec"
+    },
+    "window": {
+      "size": 257,
+      "stepWu": 0.5,
+      "originWu": [
+        3776.0,
+        960.0
+      ],
+      "hs": 2
+    },
+    "deltaColorScaleBlocks": 72.16003187417985,
+    "purity": {
+      "allPixels": 66049,
+      "dominantCounts": {
+        "16": 66049
+      },
+      "singleActiveFraction": 1.0,
+      "minimumWeightPerEntry": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0,
+        "7": 0.0,
+        "8": 0.0,
+        "9": 0.0,
+        "10": 0.0,
+        "11": 0.0,
+        "12": 0.0,
+        "13": 0.0,
+        "14": 0.0,
+        "15": 0.0,
+        "16": 1.0,
+        "17": 0.0
+      },
+      "alphaMin": 0.0,
+      "alphaMax": 0.0,
+      "alphaZeroFraction": 1.0,
+      "alphaOneFraction": 0.0,
+      "alphaTransitionFraction": 0.0,
+      "edgeRange": [
+        0.673580465492138,
+        0.7862404066184077
+      ]
+    },
+    "shape": {
+      "Control": {
+        "nonfinite": 0,
+        "reliefY": 63.005158326037446,
+        "slopeP50P99Max": [
+          0.17285758191672362,
+          4.195221640523307,
+          9.299147137468912
+        ],
+        "adjacentJumpP99MaxY": [
+          3.1988899726093774,
+          8.023413332893483
+        ],
+        "landFraction": 1.0
+      },
+      "A: raw both layers": {
+        "nonfinite": 0,
+        "reliefY": 97.9655254650449,
+        "slopeP50P99Max": [
+          0.34473113336364414,
+          7.785920824940512,
+          15.74537245504917
+        ],
+        "adjacentJumpP99MaxY": [
+          6.133760529546596,
+          23.81742772043387
+        ],
+        "landFraction": 1.0
+      },
+      "B: post covered e": {
+        "nonfinite": 0,
+        "reliefY": 129.93865356904726,
+        "slopeP50P99Max": [
+          0.20685769807912543,
+          12.830653305370149,
+          42.0201541550862
+        ],
+        "adjacentJumpP99MaxY": [
+          9.733760008233496,
+          45.8095800050221
+        ],
+        "landFraction": 1.0
+      }
+    },
+    "coverageNegativeControl": {
+      "description": "region-only A is prior wiring with unfiltered coverage; not the retained candidate at active alpha",
+      "maxAbsFullMinusMissingE": 0.0,
+      "alpha1MissingEqualsControl": null,
+      "alpha1FullChangedPixels": 0,
+      "coverageChangedPixels": 48016,
+      "alpha0FullEqualsMissing": true
+    },
+    "rawSHA256": {
+      "alpha.f64be": "070c1c13a045ca259775f4bcf0860c2ebed79b004502678f6efde46b9b5068f0",
+      "control.f64be": "db34888b06cf2816aaa357d9bfb1e7cd76366956635f9cf71bf8e5251c5ada93",
+      "coverage-A.f64be": "69cd6f1bc3f2a0c8d8017c033910feeef48ef21b911e6c832880b6e76c1b5823",
+      "coverage-control.f64be": "7c726d329ef3331f0f494babc5f204b9066d1e3b76dd877560c0b89ef4e3ee0d",
+      "edge.f64be": "c37b94b2cbc976cd4422df9f4e7a45df751bfdb9b6231911fb7b61604025d39b",
+      "post.f64be": "1a26c2e901f667954c4f362894735ce29f82eba84668b120541e7344e611feec",
+      "pre-control.f64be": "efd72834f198e725f6317eb72d1ab2b672fc046013e821b6f608b351baf881eb",
+      "pre-post.f64be": "7bccbe6c94148e64abe20ec355f8f7c76443e2d0348c808b9326ed4d63c855d7",
+      "pre-recipe.f64be": "9b55cf98c55f36c23c6e30d6290017432c1b0c5180bd0be7cce1a6f92aecb9b7",
+      "recipe.f64be": "2913190889c1ea45b9a5a305a97df146d36747f8bca8b8d06a7f978f6ec6e1dd",
+      "region-only-A.f64be": "9b55cf98c55f36c23c6e30d6290017432c1b0c5180bd0be7cce1a6f92aecb9b7"
+    }
+  },
+  "coast": {
+    "control": {
+      "changed": 0,
+      "minDeltaY": 0.0,
+      "maxDeltaY": 0.0,
+      "meanAbsDeltaY": 0.0,
+      "p99AbsDeltaY": 0.0,
+      "seaLandFlips": 0,
+      "minY": 49.51971572761363,
+      "maxY": 68.25868044131987
+    },
+    "recipe": {
+      "changed": 5059,
+      "minDeltaY": -0.04798996158211821,
+      "maxDeltaY": 0.2909857252735293,
+      "meanAbsDeltaY": 0.0027848350486713966,
+      "p99AbsDeltaY": 0.09367680250025948,
+      "seaLandFlips": 17,
+      "minY": 49.51971572761363,
+      "maxY": 68.28221365494684
+    },
+    "post": {
+      "changed": 5059,
+      "minDeltaY": -0.4476228174716681,
+      "maxDeltaY": 0.5682890669418015,
+      "meanAbsDeltaY": 0.004164795524204319,
+      "p99AbsDeltaY": 0.12547982318871154,
+      "seaLandFlips": 31,
+      "minY": 49.51971572761363,
+      "maxY": 68.62855767245443
+    },
+    "A-vs-B": {
+      "changed": 5059,
+      "minDeltaY": -0.550090220412514,
+      "maxDeltaY": 0.45718712505605197,
+      "meanAbsDeltaY": 0.004441894660431243,
+      "p99AbsDeltaY": 0.1287327822470649,
+      "seaLandFlips": 20,
+      "minY": 49.51971572761363,
+      "maxY": 68.28221365494684
+    },
+    "sha256": {
+      "control": "29d9da0dd0623bf71c05a381893500f8a933bad7b1677d2e76fef479e1c3d15e",
+      "recipe": "12970ec6e0c2bb3f0e0274b282ec2bcc66b5488fe439522a7c0f58187c1800d0",
+      "post": "892bc69adb293428ebaa4a734b5ba67e350c2280655e8977977c8ab8d2c9d094"
+    },
+    "window": {
+      "size": 257,
+      "stepWu": 1.0,
+      "originWu": [
+        -1408.0,
+        -2944.0
+      ],
+      "hs": 2
+    },
+    "deltaColorScaleBlocks": 0.5682890669418015,
+    "purity": {
+      "allPixels": 66049,
+      "dominantCounts": {
+        "17": 66049
+      },
+      "singleActiveFraction": 1.0,
+      "minimumWeightPerEntry": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0,
+        "7": 0.0,
+        "8": 0.0,
+        "9": 0.0,
+        "10": 0.0,
+        "11": 0.0,
+        "12": 0.0,
+        "13": 0.0,
+        "14": 0.0,
+        "15": 0.0,
+        "16": 0.0,
+        "17": 1.0
+      },
+      "alphaMin": 0.0,
+      "alphaMax": 0.0,
+      "alphaZeroFraction": 1.0,
+      "alphaOneFraction": 0.0,
+      "alphaTransitionFraction": 0.0,
+      "edgeRange": [
+        0.2342055631494102,
+        0.4727530094888935
+      ]
+    },
+    "shape": {
+      "Control": {
+        "nonfinite": 0,
+        "reliefY": 18.73896471370624,
+        "slopeP50P99Max": [
+          0.03344732402094085,
+          0.13947551195609742,
+          0.38493574603089026
+        ],
+        "adjacentJumpP99MaxY": [
+          0.2344574371695966,
+          0.6863433576780125
+        ],
+        "landFraction": 0.06658692788687187
+      },
+      "A: raw both layers": {
+        "nonfinite": 0,
+        "reliefY": 18.762497927333214,
+        "slopeP50P99Max": [
+          0.03346293298413175,
+          0.14082745931238597,
+          0.38493574603089026
+        ],
+        "adjacentJumpP99MaxY": [
+          0.23620444786688616,
+          0.6863433576780125
+        ],
+        "landFraction": 0.0668140320065406
+      },
+      "B: post covered e": {
+        "nonfinite": 0,
+        "reliefY": 19.108841944840805,
+        "slopeP50P99Max": [
+          0.03349856408051277,
+          0.143397675218255,
+          0.38493574603089026
+        ],
+        "adjacentJumpP99MaxY": [
+          0.24171327639696882,
+          0.6863433576780125
+        ],
+        "landFraction": 0.06702599585156475
+      }
+    },
+    "coverageNegativeControl": {
+      "description": "region-only A is prior wiring with unfiltered coverage; not the retained candidate at active alpha",
+      "maxAbsFullMinusMissingE": 0.0,
+      "alpha1MissingEqualsControl": null,
+      "alpha1FullChangedPixels": 0,
+      "coverageChangedPixels": 19858,
+      "alpha0FullEqualsMissing": true
+    },
+    "rawSHA256": {
+      "alpha.f64be": "070c1c13a045ca259775f4bcf0860c2ebed79b004502678f6efde46b9b5068f0",
+      "control.f64be": "29d9da0dd0623bf71c05a381893500f8a933bad7b1677d2e76fef479e1c3d15e",
+      "coverage-A.f64be": "2b78000bdb5cffcb7b1bbfac5e15eafb0867de2b65d079e14a1a2b567de117d1",
+      "coverage-control.f64be": "b4f7f552dbc921bc58a1288032d8ea02b3e99db912ba26da7797d174bec86dc6",
+      "edge.f64be": "c84c6300085e8ce9f771110ede69f78a437edfa055e6f7fe7e8d4af7fda6bf5e",
+      "post.f64be": "892bc69adb293428ebaa4a734b5ba67e350c2280655e8977977c8ab8d2c9d094",
+      "pre-control.f64be": "05ad44cd88762028862a1e9cb98ee057408d00afe4962c006511179be71fadc6",
+      "pre-post.f64be": "cef513d2d5c9f3d9f4cd6cc3b32689c908ba3a381aff8ba2986ebdbba53f27b4",
+      "pre-recipe.f64be": "04cddaac9021ede3ff497c107ecdcd0c3965a5df9d57c7eb3026b83e67c79071",
+      "recipe.f64be": "12970ec6e0c2bb3f0e0274b282ec2bcc66b5488fe439522a7c0f58187c1800d0",
+      "region-only-A.f64be": "04cddaac9021ede3ff497c107ecdcd0c3965a5df9d57c7eb3026b83e67c79071"
+    }
+  },
+  "coverage": {
+    "control": {
+      "changed": 0,
+      "minDeltaY": 0.0,
+      "maxDeltaY": 0.0,
+      "meanAbsDeltaY": 0.0,
+      "p99AbsDeltaY": 0.0,
+      "seaLandFlips": 0,
+      "minY": 72.88079054758578,
+      "maxY": 187.03791656657734
+    },
+    "recipe": {
+      "changed": 65731,
+      "minDeltaY": -6.53494509184948,
+      "maxDeltaY": 43.43830615271676,
+      "meanAbsDeltaY": 3.04294359761393,
+      "p99AbsDeltaY": 33.04756425753509,
+      "seaLandFlips": 0,
+      "minY": 72.88083825804554,
+      "maxY": 187.1412315378446
+    },
+    "post": {
+      "changed": 65969,
+      "minDeltaY": -102.69855051863087,
+      "maxDeltaY": 119.35068924188613,
+      "meanAbsDeltaY": 4.589277523699462,
+      "p99AbsDeltaY": 30.967954689693418,
+      "seaLandFlips": 4,
+      "minY": 52.61498846841826,
+      "maxY": 282.6384054666803
+    },
+    "A-vs-B": {
+      "changed": 66049,
+      "minDeltaY": -103.81752533324368,
+      "maxDeltaY": 114.53901699330129,
+      "meanAbsDeltaY": 5.847142160794269,
+      "p99AbsDeltaY": 33.9978300191265,
+      "seaLandFlips": 4,
+      "minY": 72.88083825804554,
+      "maxY": 187.1412315378446
+    },
+    "sha256": {
+      "control": "4f22d837be1a1030b09447fbb12dd8967ed33e07ff9cf84772c79c62752e7c8b",
+      "recipe": "8950db2d5ccb68915d889808a37c4b5574f0ac687007f547c442c6cc9d5cc4b1",
+      "post": "8890f5d8a6c0da2f8745c30f58ae0acfb996350c7a8a706c720ed1c894295aec"
+    },
+    "window": {
+      "size": 257,
+      "stepWu": 1.0,
+      "originWu": [
+        3200.0,
+        -3456.0
+      ],
+      "hs": 2
+    },
+    "deltaColorScaleBlocks": 119.35068924188613,
+    "purity": {
+      "allPixels": 66049,
+      "dominantCounts": {
+        "0": 58381,
+        "15": 7668
+      },
+      "singleActiveFraction": 0.4117700495086981,
+      "minimumWeightPerEntry": {
+        "0": 0.27299105209671504,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0,
+        "7": 0.0,
+        "8": 0.0,
+        "9": 0.0,
+        "10": 0.0,
+        "11": 0.0,
+        "12": 0.0,
+        "13": 0.0,
+        "14": 0.0,
+        "15": 0.0,
+        "16": 0.0,
+        "17": 0.0
+      },
+      "alphaMin": 0.23678489206728445,
+      "alphaMax": 0.9257408215666215,
+      "alphaZeroFraction": 0.0,
+      "alphaOneFraction": 0.0,
+      "alphaTransitionFraction": 1.0,
+      "edgeRange": [
+        0.6875358409192538,
+        0.870514629641892
+      ]
+    },
+    "shape": {
+      "Control": {
+        "nonfinite": 0,
+        "reliefY": 114.15712601899156,
+        "slopeP50P99Max": [
+          0.1420177429190265,
+          4.145728078060986,
+          10.75966821446505
+        ],
+        "adjacentJumpP99MaxY": [
+          6.157186552316175,
+          27.703998941285704
+        ],
+        "landFraction": 1.0
+      },
+      "A: raw both layers": {
+        "nonfinite": 0,
+        "reliefY": 114.26039327979905,
+        "slopeP50P99Max": [
+          0.1515122382435737,
+          4.71344688282872,
+          11.805727333983132
+        ],
+        "adjacentJumpP99MaxY": [
+          7.318485647201809,
+          33.10006836477356
+        ],
+        "landFraction": 1.0
+      },
+      "B: post covered e": {
+        "nonfinite": 0,
+        "reliefY": 230.02341699826204,
+        "slopeP50P99Max": [
+          0.15855668297380218,
+          9.505277893755256,
+          36.5787394751655
+        ],
+        "adjacentJumpP99MaxY": [
+          14.968591062089711,
+          98.03959495409319
+        ],
+        "landFraction": 0.9999394389014217
+      }
+    },
+    "coverageNegativeControl": {
+      "description": "region-only A is prior wiring with unfiltered coverage; not the retained candidate at active alpha",
+      "maxAbsFullMinusMissingE": 0.1837003826369723,
+      "alpha1MissingEqualsControl": null,
+      "alpha1FullChangedPixels": 0,
+      "coverageChangedPixels": 29932,
+      "alpha0FullEqualsMissing": null
+    },
+    "rawSHA256": {
+      "alpha.f64be": "66636ada0e398e7a82f69eb7fe7d2c8b03e58e9027dee9c03f8b43b35dcf6a03",
+      "control.f64be": "4f22d837be1a1030b09447fbb12dd8967ed33e07ff9cf84772c79c62752e7c8b",
+      "coverage-A.f64be": "32533358ff9626b62e8837f093cc66b71558db1dc2526ec60481a7e126447932",
+      "coverage-control.f64be": "b6caec0562d47002fca8e7e22d7d920d20572936aec2a8a23373593c3e7dd7c1",
+      "edge.f64be": "5bda47f7d3aedb97529aa74061ae4185966f202eca3dedb1f5762463007fd146",
+      "post.f64be": "8890f5d8a6c0da2f8745c30f58ae0acfb996350c7a8a706c720ed1c894295aec",
+      "pre-control.f64be": "29b1a18a5b049058b218394adabb93895677ed24a62460f21e4fb847a36942c8",
+      "pre-post.f64be": "215e8ea79598c8eb2c5afbbceb9f1113a41cea1997fa362ad0f9262d3545045a",
+      "pre-recipe.f64be": "e7ddc854c34ac8469c593db0afbbf5053799713430d9cf879293c2c92e3aa026",
+      "recipe.f64be": "8950db2d5ccb68915d889808a37c4b5574f0ac687007f547c442c6cc9d5cc4b1",
+      "region-only-A.f64be": "07dc32bab38ac78eff3f7968e8bb77135787d8345db9fe9f86ccf0c3e5e79775"
+    }
+  },
+  "coverage-full": {
+    "control": {
+      "changed": 0,
+      "minDeltaY": 0.0,
+      "maxDeltaY": 0.0,
+      "meanAbsDeltaY": 0.0,
+      "p99AbsDeltaY": 0.0,
+      "seaLandFlips": 0,
+      "minY": 56.88280344055673,
+      "maxY": 63.38668868122903
+    },
+    "recipe": {
+      "changed": 0,
+      "minDeltaY": 0.0,
+      "maxDeltaY": 0.0,
+      "meanAbsDeltaY": 0.0,
+      "p99AbsDeltaY": 0.0,
+      "seaLandFlips": 0,
+      "minY": 56.88280344055673,
+      "maxY": 63.38668868122903
+    },
+    "post": {
+      "changed": 222,
+      "minDeltaY": 0.0,
+      "maxDeltaY": 0.028320886961850533,
+      "meanAbsDeltaY": 0.00010113546989780234,
+      "p99AbsDeltaY": 0.0011499957558356705,
+      "seaLandFlips": 5,
+      "minY": 56.88280344055673,
+      "maxY": 63.41468931253394
+    },
+    "A-vs-B": {
+      "changed": 222,
+      "minDeltaY": -0.028320886961850533,
+      "maxDeltaY": 0.0,
+      "meanAbsDeltaY": 0.00010113546989780234,
+      "p99AbsDeltaY": 0.0011499957558356705,
+      "seaLandFlips": 5,
+      "minY": 56.88280344055673,
+      "maxY": 63.38668868122903
+    },
+    "sha256": {
+      "control": "24fd624010943c5fce2a8f086c8200178b55b1b17c90c128823f9d6d044e513c",
+      "recipe": "24fd624010943c5fce2a8f086c8200178b55b1b17c90c128823f9d6d044e513c",
+      "post": "c50c796e2f9f91e865d98144f19ad8bbca289645bc7c887aa08e2b821c22fb2a"
+    },
+    "window": {
+      "size": 129,
+      "stepWu": 1.0,
+      "originWu": [
+        4032.0,
+        -3648.0
+      ],
+      "hs": 2
+    },
+    "deltaColorScaleBlocks": 0.028320886961850533,
+    "purity": {
+      "allPixels": 16641,
+      "dominantCounts": {
+        "15": 16641
+      },
+      "singleActiveFraction": 1.0,
+      "minimumWeightPerEntry": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0,
+        "7": 0.0,
+        "8": 0.0,
+        "9": 0.0,
+        "10": 0.0,
+        "11": 0.0,
+        "12": 0.0,
+        "13": 0.0,
+        "14": 0.0,
+        "15": 1.0,
+        "16": 0.0,
+        "17": 0.0
+      },
+      "alphaMin": 1.0,
+      "alphaMax": 1.0,
+      "alphaZeroFraction": 0.0,
+      "alphaOneFraction": 1.0,
+      "alphaTransitionFraction": 0.0,
+      "edgeRange": [
+        0.3561349432913855,
+        0.4496860183983563
+      ]
+    },
+    "shape": {
+      "Control": {
+        "nonfinite": 0,
+        "reliefY": 6.503885240672304,
+        "slopeP50P99Max": [
+          0.02516951920764939,
+          0.08155472527802526,
+          0.08829088322231438
+        ],
+        "adjacentJumpP99MaxY": [
+          0.1209455982910334,
+          0.1407883760090769
+        ],
+        "landFraction": 0.006850549846764017
+      },
+      "A: raw both layers": {
+        "nonfinite": 0,
+        "reliefY": 6.503885240672304,
+        "slopeP50P99Max": [
+          0.02516951920764939,
+          0.08155472527802526,
+          0.08829088322231438
+        ],
+        "adjacentJumpP99MaxY": [
+          0.1209455982910334,
+          0.1407883760090769
+        ],
+        "landFraction": 0.006850549846764017
+      },
+      "B: post covered e": {
+        "nonfinite": 0,
+        "reliefY": 6.5318858719772095,
+        "slopeP50P99Max": [
+          0.025196680678317377,
+          0.08155472527802526,
+          0.08829088322231438
+        ],
+        "adjacentJumpP99MaxY": [
+          0.1210621150479652,
+          0.1407883760090769
+        ],
+        "landFraction": 0.007151012559341386
+      }
+    },
+    "coverageNegativeControl": {
+      "description": "region-only A is prior wiring with unfiltered coverage; not the retained candidate at active alpha",
+      "maxAbsFullMinusMissingE": 0.20855211537139284,
+      "alpha1MissingEqualsControl": true,
+      "alpha1FullChangedPixels": 5764,
+      "coverageChangedPixels": 5764,
+      "alpha0FullEqualsMissing": null
+    },
+    "rawSHA256": {
+      "alpha.f64be": "9610bea58b3ff4dd533a4aa999c28b230227da1700441341400fa3ab332c9179",
+      "control.f64be": "24fd624010943c5fce2a8f086c8200178b55b1b17c90c128823f9d6d044e513c",
+      "coverage-A.f64be": "53c8f4187de448f4c2a309d95131add1a2ac92c88ee4164220ae4a64a6e3a9d6",
+      "coverage-control.f64be": "001cb4b3a97f5fca47b2aeb8a7726d7822fe0ffa2cdc5f8cf845b408b2d60676",
+      "edge.f64be": "43526d68c25273593a46d55d2f527c50f509affafdafd176acd772dd25903df2",
+      "post.f64be": "c50c796e2f9f91e865d98144f19ad8bbca289645bc7c887aa08e2b821c22fb2a",
+      "pre-control.f64be": "3d07773b7ec223615acc003138d1a83b3ae414b34de4bbe3c33b79a88455b97b",
+      "pre-post.f64be": "940596dcbc082d1f47b0f23dfbc6c42fad01c9751f1360e02a2c7a29f871bbd0",
+      "pre-recipe.f64be": "fb6794f7ce488e394f46e4a863531b4a5441b7ecc4076efe541abf32084b3ccc",
+      "recipe.f64be": "24fd624010943c5fce2a8f086c8200178b55b1b17c90c128823f9d6d044e513c",
+      "region-only-A.f64be": "3d07773b7ec223615acc003138d1a83b3ae414b34de4bbe3c33b79a88455b97b"
+    }
+  },
+  "mountains": {
+    "control": {
+      "changed": 0,
+      "minDeltaY": 0.0,
+      "maxDeltaY": 0.0,
+      "meanAbsDeltaY": 0.0,
+      "p99AbsDeltaY": 0.0,
+      "seaLandFlips": 0,
+      "minY": 113.70854495714656,
+      "maxY": 242.34699146955205
+    },
+    "recipe": {
+      "changed": 66049,
+      "minDeltaY": -9.23211409020422,
+      "maxDeltaY": 10.37917719376091,
+      "meanAbsDeltaY": 1.7009728089895693,
+      "p99AbsDeltaY": 5.832621170249004,
+      "seaLandFlips": 0,
+      "minY": 116.54445653088362,
+      "maxY": 243.35313256184028
+    },
+    "post": {
+      "changed": 66049,
+      "minDeltaY": -20.634856700897245,
+      "maxDeltaY": 57.53427036762238,
+      "meanAbsDeltaY": 8.764656581025179,
+      "p99AbsDeltaY": 26.719079572391497,
+      "seaLandFlips": 0,
+      "minY": 116.14735333155146,
+      "maxY": 249.0257654406324
+    },
+    "A-vs-B": {
+      "changed": 66049,
+      "minDeltaY": -56.86478398406504,
+      "maxDeltaY": 22.711116900324782,
+      "meanAbsDeltaY": 7.818113947596068,
+      "p99AbsDeltaY": 25.056979493236515,
+      "seaLandFlips": 0,
+      "minY": 116.54445653088362,
+      "maxY": 243.35313256184028
+    },
+    "sha256": {
+      "control": "dbdf516ca9347655fc7151f0412162fd3a1ad66f4ddabe84032d054add579b23",
+      "recipe": "126d1df5ca419e3afb151c1de60e7764d57bd54a69aeb64bf839e15b3d46ae5f",
+      "post": "1d988d6a5c18a5f9f594930efc817a4ccfab5084f88d5dd5a0ae84f957b80d15"
+    },
+    "window": {
+      "size": 257,
+      "stepWu": 1.0,
+      "originWu": [
+        -3200.0,
+        -3200.0
+      ],
+      "hs": 2
+    },
+    "deltaColorScaleBlocks": 57.53427036762238,
+    "purity": {
+      "allPixels": 66049,
+      "dominantCounts": {
+        "17": 66049
+      },
+      "singleActiveFraction": 1.0,
+      "minimumWeightPerEntry": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0,
+        "7": 0.0,
+        "8": 0.0,
+        "9": 0.0,
+        "10": 0.0,
+        "11": 0.0,
+        "12": 0.0,
+        "13": 0.0,
+        "14": 0.0,
+        "15": 0.0,
+        "16": 0.0,
+        "17": 1.0
+      },
+      "alphaMin": 0.0,
+      "alphaMax": 0.0,
+      "alphaZeroFraction": 1.0,
+      "alphaOneFraction": 0.0,
+      "alphaTransitionFraction": 0.0,
+      "edgeRange": [
+        0.7316487590459276,
+        0.9102565192363563
+      ]
+    },
+    "shape": {
+      "Control": {
+        "nonfinite": 0,
+        "reliefY": 128.6384465124055,
+        "slopeP50P99Max": [
+          0.601881947670135,
+          1.4734500664156427,
+          4.319737470919148
+        ],
+        "adjacentJumpP99MaxY": [
+          2.5217247228915136,
+          12.94908617032803
+        ],
+        "landFraction": 1.0
+      },
+      "A: raw both layers": {
+        "nonfinite": 0,
+        "reliefY": 126.80867603095666,
+        "slopeP50P99Max": [
+          0.6274114851461122,
+          1.7494345031884697,
+          4.958029213271662
+        ],
+        "adjacentJumpP99MaxY": [
+          3.062390008160029,
+          13.037062646520525
+        ],
+        "landFraction": 1.0
+      },
+      "B: post covered e": {
+        "nonfinite": 0,
+        "reliefY": 132.87841210908095,
+        "slopeP50P99Max": [
+          1.0947132434129463,
+          5.80512634179148,
+          15.950578669494965
+        ],
+        "adjacentJumpP99MaxY": [
+          11.21788857216733,
+          50.38910153710947
+        ],
+        "landFraction": 1.0
+      }
+    },
+    "coverageNegativeControl": {
+      "description": "region-only A is prior wiring with unfiltered coverage; not the retained candidate at active alpha",
+      "maxAbsFullMinusMissingE": 0.0,
+      "alpha1MissingEqualsControl": null,
+      "alpha1FullChangedPixels": 0,
+      "coverageChangedPixels": 29498,
+      "alpha0FullEqualsMissing": true
+    },
+    "rawSHA256": {
+      "alpha.f64be": "070c1c13a045ca259775f4bcf0860c2ebed79b004502678f6efde46b9b5068f0",
+      "control.f64be": "dbdf516ca9347655fc7151f0412162fd3a1ad66f4ddabe84032d054add579b23",
+      "coverage-A.f64be": "456f76d4a9b471794f84c3b82da1b9e7bec8d6479a13ac419db01811a2afef86",
+      "coverage-control.f64be": "6732118ed084111a914c6a7f2ac7aa4a2ff17cdd55c27a68948140c4dec4cbb6",
+      "edge.f64be": "80dd34dc6f4a41bc07f9ce5d024341aaf069d7c304ac8e05e7090bc3f24c57ee",
+      "post.f64be": "1d988d6a5c18a5f9f594930efc817a4ccfab5084f88d5dd5a0ae84f957b80d15",
+      "pre-control.f64be": "e9cb74fca6a1d98a1459d7e19edb681f6ea727fa0ca991f9878c98605f273164",
+      "pre-post.f64be": "be3cd52e5b909c1b3c3a0cc4e670aad25b8d75fab24e66a125e31c37845ed581",
+      "pre-recipe.f64be": "196877e7bd89d87908531e1630754cc74963276c7d91d0dd50b5f364d81655b0",
+      "recipe.f64be": "126d1df5ca419e3afb151c1de60e7764d57bd54a69aeb64bf839e15b3d46ae5f",
+      "region-only-A.f64be": "196877e7bd89d87908531e1630754cc74963276c7d91d0dd50b5f364d81655b0"
+    }
+  }
+}

@@ -1,0 +1,3962 @@
+[
+  {
+    "path": "core-classes\\ParticleCoreCheck.class",
+    "sha256": "f40507fcbf9741f009ab6b919e40b24ee54991353c360990fbea9205dc0dfa82",
+    "bytes": 6174
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\ClimateRegion$Sample.class",
+    "sha256": "4567fe86e918d3746dc4f35016194be7797d2c661b02b5c20d4b02557acffadf",
+    "bytes": 2092
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\ClimateRegion.class",
+    "sha256": "53af23ed6fcc53da2505b0fee6f95ad0448b26c8f3d6bce32db3538086af0043",
+    "bytes": 2218
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\Latitude.class",
+    "sha256": "fde23e0efd66e9b93f7b54cb85abe9b8090214ff6f44e2788f1ba21405207265",
+    "bytes": 1204
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\LatPrecipProfile.class",
+    "sha256": "522b11dad80e7199cdb5320571703c4beecb6174b0c8054263f45ea04de0f08a",
+    "bytes": 911
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\PrecipField$HeightFn.class",
+    "sha256": "6c75cb6cb9fbab3fa82ec8dc8f34503940fd108074346ac6a479f5d2c6dceee5",
+    "bytes": 349
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\PrecipField$Mod.class",
+    "sha256": "db1cd2a16b766a0df4d2bc62d50db1f46848e8806264d30979c001fc6d68c642",
+    "bytes": 2059
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\PrecipField$Params.class",
+    "sha256": "f48c2dcc7c3bc062ce75c3724030e12c1d49475683dc23dbee177c98f74263fb",
+    "bytes": 2998
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\PrecipField.class",
+    "sha256": "e368aa52b2874268327d3e6b97b4ca5e747af3aa1252a82ccaaacfd3584ec26f",
+    "bytes": 6159
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\WhittakerType.class",
+    "sha256": "6352e23c616dea31024a85da64b8ed53169b176cb83fa2ab2b2e0afd13e22496",
+    "bytes": 2905
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\WindField$Params.class",
+    "sha256": "e26b46f2a1f0be132966c5f7914fa1a1fa40d14ffd0ffe85f9c7d3d0e6084391",
+    "bytes": 2418
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\WindField$Wind.class",
+    "sha256": "468a461f3fa17be27c6e1d6c51c72dfd5d258d328ee108996f64d7212de2844d",
+    "bytes": 1906
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\climate\\WindField.class",
+    "sha256": "6f26ca313bd2d5ed6c69aa531fcc7c12945c6adef3d85fabcf7dbfa5d0be99d1",
+    "bytes": 4140
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\core\\BaseColumn.class",
+    "sha256": "ed67844c55cde3a5275a1c01101ccd909b5604a3a23d2fe603958be9dc91a7ae",
+    "bytes": 896
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\core\\BaseCoreCheck.class",
+    "sha256": "cd6758cbd86446c8ee9e7d1b4a99cddae3daaf01d6696f661625abcb1ab51609",
+    "bytes": 2738
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\core\\BaseWorldSampler.class",
+    "sha256": "f3ba2128239746ed0340cd8e4fd8b2c02dc21c72d9558100ee7b844899a4d61a",
+    "bytes": 10659
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\core\\BaseWorldSettings.class",
+    "sha256": "e55537e46a903e6078344a5a818181404ad3e169e84f98755d7bde32bc4678bf",
+    "bytes": 1910
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine$CascadeScratch.class",
+    "sha256": "5a7a73620bd56470640a21ddb0e910cad4d1dea73d84ed913a362d24b1697f14",
+    "bytes": 556
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine$HardGrid.class",
+    "sha256": "8119ea7dfd64fddfa94b034df91132d81dcc85f745c4de61e83cc4b0807c8455",
+    "bytes": 666
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.class",
+    "sha256": "e4626ef774067b35121d825405aa174ead189a52674d8c5fe8c274a521cde9ee",
+    "bytes": 21323
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\ParticleErosionParams.class",
+    "sha256": "78713baf5ef77130ff686d97d6e600a922eef450cbe18e10b4f1c42b9c664bc1",
+    "bytes": 2355
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\RidgeValleyErosion$RidgeConfig.class",
+    "sha256": "87d0f935b38026c5559b117985550371f2290b971668133e51c3dcc71b2ff552",
+    "bytes": 1246
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\RidgeValleyErosion.class",
+    "sha256": "59081b0bdd18032d918375fb7adc94566e7917efb82817576599f3649c6d45e0",
+    "bytes": 7830
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\RuneErosionCheck.class",
+    "sha256": "a3a2f23fd303ec264466bdfd05a3b3f97bf8ca31c8f3111aba1b11de8c779739",
+    "bytes": 14838
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\RuneErosionFilter$Settings.class",
+    "sha256": "0a6a4231b4d8a313c17f8821b2f75e23baf7e02a068423938da46a74b5779e78",
+    "bytes": 5985
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\erosion\\RuneErosionFilter.class",
+    "sha256": "3e4aeb5db0b2b223d9a6ff35c8ec74fdb13f6cf6a9677849085cb1ca6e896437",
+    "bytes": 5233
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Abs.class",
+    "sha256": "eb93315c622ba3c1fb2c3c49a67c0e7c1926457a440db38ac2e621cd89359053",
+    "bytes": 3274
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Add.class",
+    "sha256": "1bec28d3e059547154ec9af493e2c6ad5ce0b2eccc3e3e0d87c951dd34bb44cf",
+    "bytes": 3614
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Billow.class",
+    "sha256": "c62244f177487a7356278522dcf1bda33b2d8e41476cb07b96270fba7cd0baec",
+    "bytes": 3307
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Blend.class",
+    "sha256": "d43cf7ac5ef345ce8e386e279357661d12ddb59c7cd8850feb804af691011c7c",
+    "bytes": 4073
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Boost.class",
+    "sha256": "d9a8274f12be2440e5a40a5c410f0be96a94cfa1c6290a23e571894ebdf8563c",
+    "bytes": 3761
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Cache2d.class",
+    "sha256": "4cdd26336d77ad8d3fccc8e67c10bc6cacfe1a43dbbe732cbd8d645842fbe132",
+    "bytes": 4113
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Clamp.class",
+    "sha256": "a37f8395ddf1a70d0575f283e36efffa75276b2468203129fbc3246369bb9477",
+    "bytes": 4229
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Constant.class",
+    "sha256": "1244d22dc5c8b0f180db6393ff76e7c1af23be9f8f8c765f9b9a6ed6bfddffa0",
+    "bytes": 2880
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Curve.class",
+    "sha256": "f2cea0965d6a479c8adcf25276f7f9e32b7be6c64a89a0d2ad1f026bab5a314f",
+    "bytes": 3414
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Frequency.class",
+    "sha256": "ed6c8e0f55209dadd87c687780e612b1f6aefb4e401b19d4252e8a91e5a64974",
+    "bytes": 3799
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Invert.class",
+    "sha256": "b448257b9354d4adbc346bdbc105b7700685c0845ddd556f889e37fa3412957b",
+    "bytes": 3247
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Map.class",
+    "sha256": "cab6e5e7078b8ee5124a34a03dc6d06945001821111bf40bef8eec2662ffe5a8",
+    "bytes": 4652
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Max.class",
+    "sha256": "4db9cdd89f69f02bc7c5579f7fad1e574b16fb23c14be5e56d15170ccbb724aa",
+    "bytes": 3652
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Min.class",
+    "sha256": "5b19d52db8451366f8eadfd70a55841f740b8a927efb03e4e1654ff3ab40950d",
+    "bytes": 3652
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Multiply.class",
+    "sha256": "9543d4f10fc72c80150d310568d6bb49de89d185611c3664ee4d2e01342a4c2d",
+    "bytes": 3644
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Noise$Visitor.class",
+    "sha256": "07b4530b9258f08bab518cfd85e753c6f0d8ed066e291935fbb2e6ae8ee6646a",
+    "bytes": 399
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Noise.class",
+    "sha256": "d0815101c75aa30eae9ff0957dafc3fb74944550de8c49082899514946b0c09d",
+    "bytes": 1118
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Noise3.class",
+    "sha256": "bbd7737529d1c1b8f4913ca01aabdfea70dfa8608bf37456d44190f67145ee12",
+    "bytes": 150
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Noises.class",
+    "sha256": "45ed7a7b53d621ef10921b6f53b69a560a3c265c459db466c2ef7c6a76042c07",
+    "bytes": 5421
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\NoiseUtil.class",
+    "sha256": "0e6f5ecd84cc1e847fbdb266b980f58e2a4406b38048bc02a7d2f7e94eb332e7",
+    "bytes": 2529
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Power.class",
+    "sha256": "60ceeea3dee7893a838c2c6c8ac8e269a7e209239a407773cef19ba35baa0bd4",
+    "bytes": 3917
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Ridge.class",
+    "sha256": "90cee8e38be37c2ffa2e39503a53d99bfe20702b6e82f25754b175c186d4945f",
+    "bytes": 4283
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Seed.class",
+    "sha256": "4e9fcb274f619f4d3b747626a222be959bca459b6843de0b2cf9763ad5841d2b",
+    "bytes": 1177
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Seeded.class",
+    "sha256": "de53a7d2603e2db09a88b0e1d8049ac9f7c5be34fc6c5d9f0fae578d4ed50b99",
+    "bytes": 315
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Simplex.class",
+    "sha256": "bade1b36748bcfa28c17e8d13c2dac6fbd888c3ba2b43b9b247c0a0d6a4ce80b",
+    "bytes": 4587
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Simplex3.class",
+    "sha256": "7e74f090d919e85497692e8156ab88f9ac13139beee41e7edf26f6111959594b",
+    "bytes": 3268
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Steps.class",
+    "sha256": "f55ad02a7baf9cd6f42b223f87fb958725173baec9be885a80a4cab87e9ee55e",
+    "bytes": 3925
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Terrace.class",
+    "sha256": "d9040e2e8236a8f3fc7a156c3b54940e53b038d41b6bbbc9913b935e56602aa5",
+    "bytes": 4534
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\Warp.class",
+    "sha256": "f93e88cefa75a802319a1ea5b5599bc88c564806c476c2a48c3a91e51f0dbab9",
+    "bytes": 4462
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\noise\\White.class",
+    "sha256": "0ce24365fa30ce726f68627531f3298a7d6544b3dc1b709c08ebb3f94dc0e70f",
+    "bytes": 3357
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\CacheStats.class",
+    "sha256": "063f63a53148af516d8ac9da2f47fcd9bf19c6f220eca76ebd643836b5100188",
+    "bytes": 1839
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\ContinentField.class",
+    "sha256": "f7b25f15a8df2897dd84d0a8a466ada92cba32691c8b79e85d32aa5f6da4d294",
+    "bytes": 2965
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\HeightCurve.class",
+    "sha256": "25e953fd82293230258060611144dd78f315242c09bc384734978ee57cef4638",
+    "bytes": 1977
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\MidSplineConfig.class",
+    "sha256": "43f3e100d2c37050a17c8362c7c2db6e1ea48015aa5785553ada3ca1aaeeb097",
+    "bytes": 19529
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\OceanSplineConfig.class",
+    "sha256": "806d304b47e318d61c6b09ba821427fe6c634b7711b7891204cc30d61e86b30d",
+    "bytes": 16532
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\RockType$Kind.class",
+    "sha256": "f2a20cd6cba25decbbe107618adea7c5d3a0d40ec8e6598552eb8982363346c1",
+    "bytes": 1416
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\RockType.class",
+    "sha256": "5aa6375974b39405abb53e99dc5df0f8a3722600a36c5c9f385a2935eb370406",
+    "bytes": 2385
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\SplineConfig.class",
+    "sha256": "4ef280d5fae2245bb025e32fdee12fef37d292f7ef05548e0da8da64bcc07424",
+    "bytes": 16208
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\SplineUtil.class",
+    "sha256": "884b650662c1e61f483c802f331127ea42284a30eed4e1b955b599c4808df864",
+    "bytes": 1610
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\StratumField.class",
+    "sha256": "568e082a4b7fa9b92a12d656da213ebae12c4f8a094b683ba177cf22b3808aa9",
+    "bytes": 5451
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\TectonicField$Sample.class",
+    "sha256": "2fcb9c0ef7cb7682f5ad145eebe7a7387ed202bd396a3e9cb66d215fc6d8db1b",
+    "bytes": 2732
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\TectonicField.class",
+    "sha256": "5c44e03425419cccede3e62832d8343f0078dc01fcd47848cc2650710a21faa3",
+    "bytes": 11176
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\TerrainClass.class",
+    "sha256": "01e9850960003f28c027c358e03a0773fac67a404281f5b751ef00e6154f3e2f",
+    "bytes": 2612
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\TerrainParams.class",
+    "sha256": "2960cb1a4938edecbb99bebf44006281c8ee4644b2a7814dcb7c7fc15ba03e60",
+    "bytes": 16328
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$InnerSpline.class",
+    "sha256": "883ddf15257f11569d14991dc511214e87540bd79b61761b5702992f20c23a63",
+    "bytes": 1014
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$MidNode.class",
+    "sha256": "77c1ca3b5cda47d7af9d8298273af1f4faf54556b9fc7fef492e5a21cde27231",
+    "bytes": 875
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$MidSpline.class",
+    "sha256": "eed06ee009c82cc22ab384404594fd92a7e17fdf14d93b2fe4290e2c5a8f4a86",
+    "bytes": 3366
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$OuterNode.class",
+    "sha256": "7a831b301f083fda96495f40dca9d29d5ab18f2f811fda335e9f6361d7eba8a5",
+    "bytes": 823
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$Spline.class",
+    "sha256": "3f3d298c7cc6c2b7230d9a35cb6af66a1c5de7a8f7eae8434af57d75e942c725",
+    "bytes": 806
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline.class",
+    "sha256": "3cd8423bf23a85920658b99bf5f6abda1c38ff0923db67e2d4ed966babebfe9f",
+    "bytes": 5887
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\BadlandsRecipe.class",
+    "sha256": "4f8ecbe793f204a288156a0546dd1e4484dba99868c26b1516b4dff8ceb7edf4",
+    "bytes": 5186
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\HillsRecipe$Variant.class",
+    "sha256": "1dc4a9bb09ffbc4642ef17a049a8e10213fb1e35967ab8ae7bedc24769ad8bbc",
+    "bytes": 3191
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\HillsRecipe.class",
+    "sha256": "03b43fd980d84eba0aa99b52935b9d13d592ed52d31f8bd8f2cebc1bc4fb02d3",
+    "bytes": 6710
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphAssembly$Family.class",
+    "sha256": "034060a2bf5ffc2995e34b14ac56e941294c71d593dc8b7e75469ed0b6c44579",
+    "bytes": 295
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphAssembly.class",
+    "sha256": "ecd177373fa56b1b0a4bbddced075a998eb5369c052e4aca76c402df5b92107b",
+    "bytes": 8145
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry$Cell.class",
+    "sha256": "8fd7d5839cf3394bdb27f5eff056d8aa4ee3e9e27fd1f5a53be46d1683eea7cd",
+    "bytes": 1775
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry$Edge.class",
+    "sha256": "6c0691e483b54f0c22c69ad1c00da65205dd60aff05bd23c3df5d7f3a560f79e",
+    "bytes": 1667
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry$Site.class",
+    "sha256": "f7eddc941c233086d9c3d1df728dd9bff3d5d06e25077e8b67395ffef3c930d0",
+    "bytes": 667
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry$WarpEdge.class",
+    "sha256": "3fcbacc996e35aa9cd25150bfde354b855cbc5d2de001214ffd2785046000364",
+    "bytes": 2147
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry.class",
+    "sha256": "e948138b750daff4551d9c1349d150789f5f55c401a1cb4c8405aef49dc4bcac",
+    "bytes": 29654
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog$Entry.class",
+    "sha256": "4a6c83e9f3e9e775400ef509f67f071ac2aa85bfad3012d7b536e158a9b2cf3c",
+    "bytes": 4447
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog$HasHeightNode.class",
+    "sha256": "6fbe12a5a81f0e82f412f691796e8f1734957f7aa92cfb5cd453ecb7dea83d43",
+    "bytes": 488
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog$Kind.class",
+    "sha256": "c0e6c2b24ef4677b15ca66c1d6aa3f2376645412d2da1609dc406bd04bd02b01",
+    "bytes": 1461
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog$Stripped.class",
+    "sha256": "3b3639792e062d375a1f5857910924a5859e10742ce166e84f4a5928b7048914",
+    "bytes": 2152
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog.class",
+    "sha256": "f3654fbb0479b6e2362935ab80f717329bbb317447d114bcc7397ca78dffc33e",
+    "bytes": 14937
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCellTable.class",
+    "sha256": "2eb2755ebb48f89f9f0ead2c447370e306e0d5f1eefb44fd377e76c63b13b086",
+    "bytes": 7740
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphGeometryTransform$Axis.class",
+    "sha256": "5ef3757bc2c1483655bd4257226d4555cd7879c1eb35649809d523a297e9ad42",
+    "bytes": 3781
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphGeometryTransform.class",
+    "sha256": "09196ba5c2aebe4e2d1a80071cf84d0461d5f674aaa5b704b09f1b92e2dfa802",
+    "bytes": 6009
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphKernel$Evaluation.class",
+    "sha256": "c1e335af6543c191bbe78dc80cc92140efcd913f664b4343e64f49a8b8f879a2",
+    "bytes": 5718
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphKernel.class",
+    "sha256": "deded0e5b4d3731140654d9034acd16bc866fca037180316316b2d727133b9aa",
+    "bytes": 6839
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField$1.class",
+    "sha256": "5c012a367a7325f78005bdeb538136eaa45323bd9cde3c9ffca6a351e494e15f",
+    "bytes": 1610
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField$Sample.class",
+    "sha256": "40fc1cdbc331dabb50ef390a60c60b6d458ded3ff8a6b9bca34bf40dcb649233",
+    "bytes": 2964
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField$Stats.class",
+    "sha256": "64a845d71482e13e60164d1e7e7c0f00810c38ef68059bdb515e727845674034",
+    "bytes": 2619
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField$Tile.class",
+    "sha256": "74e6a966f22b02b9b3626eb92ef366afcf6c8bbe73dc06269a6d3ca10167cc23",
+    "bytes": 11094
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField.class",
+    "sha256": "b9f4c71338f414e65e311a50bfdec936cb642c74c1e3d2b70313f12b04096bdb",
+    "bytes": 12032
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandRecipe.class",
+    "sha256": "6acaa03017be794379684e4d393b2d2abe60da6cf0181ba642ac17ff839890d2",
+    "bytes": 3404
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Add.class",
+    "sha256": "9f2837fac22bdbe4bb0e99c9ce4e5015ded33dcf100835e892aea438a8e05c4e",
+    "bytes": 2107
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$AdvancedTerrace.class",
+    "sha256": "e0a4e176ee673e152ea24df3fb8a625320d443fd41b4a52f6408e3d09f070fb0",
+    "bytes": 4080
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$AlphaMix.class",
+    "sha256": "5b4daa7c53396312aa910ced08efd27e899341483e4c382d119da5451f3ec5bc",
+    "bytes": 2105
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Billow.class",
+    "sha256": "5b111b276787b45a5edc2a2490f76ddc0214b5164b947546bf13424659596459",
+    "bytes": 2622
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Blend.class",
+    "sha256": "50f5c815b4fdd2d9f1a5116f83f17a8e1650a09468f4530a5c2d33f69d174cf5",
+    "bytes": 3158
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Clamped.class",
+    "sha256": "29715fb2c167c1476fa2bbce7cbf6494c28b57c0ee475fe9e1155705eeea8336",
+    "bytes": 2242
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Constant.class",
+    "sha256": "2fe2209807f1865b16996a6bc0e176b0b6c272132dab1688d6814a58873ca382",
+    "bytes": 1771
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Cubic.class",
+    "sha256": "8d221750628f208baf9428721ffaab0f7a64d935ba31a318bd97e1bb59f4b688",
+    "bytes": 2850
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Curve3.class",
+    "sha256": "953df48166780bf88e27826adc81778f5641cb2d1532abf214be9bcc239ecfd7",
+    "bytes": 2029
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$DirectionWarped.class",
+    "sha256": "817afc11c75fac089b19ce463f484dd7d21b13061b732d25994473833f94d892",
+    "bytes": 2499
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$DualNode$DoubleFunction.class",
+    "sha256": "15368c8a23dd5a02d8292ba181374dc72dc4920840060e436c44a60ab50451ac",
+    "bytes": 466
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$DualNode.class",
+    "sha256": "88288b385515324c95140264740fa299cd32551f0dfacdbd304099e3588511d3",
+    "bytes": 1367
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Erosion.class",
+    "sha256": "735b21ad1cabf4b45b4c7c8be2178ec3011f8dbe2520e8239fcdf71fceb55e5b",
+    "bytes": 5097
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Inverted.class",
+    "sha256": "c8162ff63226bdfb4060b949391e5aa3bc92425d15ca744fe7fa3fcb39050387",
+    "bytes": 2253
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Mapped.class",
+    "sha256": "cce7f4865ccf7d69a573a6d2ec3d4964203c7ceac18b319172989a30493736f8",
+    "bytes": 2488
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Mix.class",
+    "sha256": "8bf5997caa057c526ea1666681c06bfe79f3a3d1df10f9629b2331174703cd3c",
+    "bytes": 2354
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Mul.class",
+    "sha256": "6b233809f44ec94a23d0d2e523ee568896be6c8bff9592974161aa67f4489a50",
+    "bytes": 2107
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Node.class",
+    "sha256": "97a6ec6b541f8e31219671c12bf736ba06e078ec07f97fb39cb4a6b9cbe339fe",
+    "bytes": 281
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Perlin.class",
+    "sha256": "ef7fcd197b0bdd4812496443b6a4ddf836a6202d194a9229958486d6bf5acb8d",
+    "bytes": 3205
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$PerlinRidge.class",
+    "sha256": "f9b05dfb554364bb0ac76c47ae9f4a94fc471ac9749da6f8c4b1664319ed2a3a",
+    "bytes": 2626
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Power.class",
+    "sha256": "14231556c399c2944deccec963b85adc56347be396ba3fa16a1c82015998a6ce",
+    "bytes": 2129
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$PowerCurve.class",
+    "sha256": "a23bc644eae0857c200326f5938d9ed60647225b4f583026749cee2980c61c09",
+    "bytes": 3042
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$ScalarIdentity.class",
+    "sha256": "f17eb08a80234e01ad8ce288f0961b73ac79f03513a75e269bcbbd8b10b8f6fb",
+    "bytes": 666
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Smoothstep.class",
+    "sha256": "92a708fb9f9564f9fe5d3484fd952b0c8e9e7e8616099c471b25eb5c89d1eb5e",
+    "bytes": 2311
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Steps.class",
+    "sha256": "ec0baca3372fab18070af5b88d4b9c813cb35bfb7306c7a29924dacaf760ccbe",
+    "bytes": 2850
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Terrace.class",
+    "sha256": "cb625e763b9a3b681ca0d66d42a22476ebde596818d14e4d6c06cdaffdd5d227",
+    "bytes": 3873
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Warped.class",
+    "sha256": "84b9f40f62b955e0bfcf682cf4db0ee33b960d5403ac986587be6ad69c8c81da",
+    "bytes": 2513
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$WorleyEdge.class",
+    "sha256": "49951925beee3bbf24c87d8a53fe6a738d91d86d7cc71b082254cd30ee9669b3",
+    "bytes": 1924
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$WorleyEdgeAdd.class",
+    "sha256": "de19e119dc6f2fe47fa585f26d6e5b99321e36e84cb3a42359098a64be9f02af",
+    "bytes": 1871
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise.class",
+    "sha256": "bf65c0f0d9f980735f6f15db2f176290a9f5c88311aefc288507ea439b967ada",
+    "bytes": 5141
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoiseEval.class",
+    "sha256": "d80d8931f475d5e129bd33f87e2dbf2b7daaeefc77359a38dad54743a8d35042",
+    "bytes": 17647
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphOceanAssembler$EdgeSource.class",
+    "sha256": "10faf28da673a587a5eab02c8451c70b9cdb2ebea8bb9f2081980b6284022b07",
+    "bytes": 319
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphOceanAssembler$Sea.class",
+    "sha256": "111b7d61a657512e7e7a95e820c699678d4b19226a4fec098b978716ef7d7789",
+    "bytes": 1516
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphOceanAssembler.class",
+    "sha256": "1d7201e45f15af8e8be6aeae674e5d2bf9aa2dcd077db7c521ebd2ca690635d1",
+    "bytes": 10358
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRecipe$Role.class",
+    "sha256": "b5d1f0686fa91bde20d02868b65b62a030e2d94e9d0ca0b720f6e5d73ddb1122",
+    "bytes": 1453
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRecipe.class",
+    "sha256": "48dca39b695d4d67029020540bd79307443e3f7103455e85cf4555d37c8b9e19",
+    "bytes": 704
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionContext$1.class",
+    "sha256": "d7fedbe8422915fe9fff504bca5346d8dd317c63771564c9830015f0fe4bfabf",
+    "bytes": 1054
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionContext$SlotCategory.class",
+    "sha256": "3b1e11ee2b26635995ddbe31bd846ee1c068674083bd626c3ae51eef3ded5c23",
+    "bytes": 1616
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionContext.class",
+    "sha256": "b40e704038bf76639786e8c41c35a402e65ee69b7592c7fab40d02531e806ec4",
+    "bytes": 5780
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionPartition$IdMode.class",
+    "sha256": "e099d372615b102d81d8e40fbb62b444e9f53b73d22bf021ee3c2f3aec630c89",
+    "bytes": 1440
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionPartition$Sample.class",
+    "sha256": "11f5e6d17aa8f19aac0738abd8b861fcb38bc2861ac5b8c324f86ca0fa747d0a",
+    "bytes": 1783
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionPartition.class",
+    "sha256": "893b90269c7d811bbe9f64213f0f177dab16ba5aa6e01146cd2dc4475654b984",
+    "bytes": 5358
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain$FirstOctavePerlin.class",
+    "sha256": "272d8c61b632d1c71fc5082d002812577b5d4da82ddf157654bc381519987be8",
+    "bytes": 1627
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain$ParsedM1.class",
+    "sha256": "fe6d05dc39449608d5a905639bc4d970f5352b2043605cbd50b4709b79296eae",
+    "bytes": 2863
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain$RawOverride.class",
+    "sha256": "7d11f212b39d00a50d68b817a155bd594ac0e3bc877f855f6a8c33559f142b8e",
+    "bytes": 1890
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain$RoundedRidge.class",
+    "sha256": "d93850333d3f1d47f69bc2dfbdeadbcedaa48d18cf63bdabbd939fa75125fa12",
+    "bytes": 3350
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain.class",
+    "sha256": "fa51a161f4db93ab918e09acfad9a0c923ca291d1929a39222cf0f47f2e308ca",
+    "bytes": 8981
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphScale.class",
+    "sha256": "e935c5f3c1a611c4a3e8195e42816d2dc5525da3ec51e68b143b784db0100c27",
+    "bytes": 421
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphSingleShaper$Sample.class",
+    "sha256": "a1087282c462416c0bc08084b19ecfb20dadabaf51c0322e86bfe5815a73c753",
+    "bytes": 2219
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphSingleShaper.class",
+    "sha256": "05239312d88c72e11c73e1cbcc1fbe4efbee84648eeff893ca6bc610e3f97ddc",
+    "bytes": 4043
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphTerrainSampler$1.class",
+    "sha256": "00d6a7004addbb916cbaab89da79864b333f81978a1bd80d1331dcdab68adef6",
+    "bytes": 1057
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphTerrainSampler.class",
+    "sha256": "990358461331c80f80e75c32c4c15a87b6b2620941928925154a48833b22135f",
+    "bytes": 8478
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MountainsRecipe$Variant.class",
+    "sha256": "2b384999c11ba81cb3eac0fea4a9c96155f97dedc82936194934ee9943ea6950",
+    "bytes": 2794
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MountainsRecipe.class",
+    "sha256": "ca780964b5380d06a109d59924aa829a0886237e1bd1682babe17676741e1a83",
+    "bytes": 6660
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\PlainsRecipe$Variant.class",
+    "sha256": "0bccaf264ae5f372488a1d1818bb552bab675cb8d213632175e6b6f934b7b5cc",
+    "bytes": 2169
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\PlainsRecipe.class",
+    "sha256": "166697ed7ddf237068b5ce33235becca37bddcec90e4c66de8c25215da83885c",
+    "bytes": 4560
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\PlateauRecipe$Variant.class",
+    "sha256": "e4365dd57f626859d2e06835c9e9c0ab37c5bf4dd0719506cf8a6afcb0169108",
+    "bytes": 1948
+  },
+  {
+    "path": "core-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\PlateauRecipe.class",
+    "sha256": "18954702f961d92f64bf2b631e3a9f657d6f48daa09aab46020dd7bacfdc6163",
+    "bytes": 5700
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\GeoGenesisMod.class",
+    "sha256": "591ec5032c12a101771d9a64cdf13bb2f9cce5b48538a4dfb9e090406a6f9adb",
+    "bytes": 5481
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\GeoGenesisServerEvents.class",
+    "sha256": "183bd5626d83981633f6cca57a49784c1a6b3696eaf201c9f9e067f674d088a7",
+    "bytes": 4112
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\ConfirmDialog.class",
+    "sha256": "a3a466c208d10ffe277aad5778f2d80a6ace51258ce380b511d2b19e7a78b259",
+    "bytes": 4842
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\GeoGenesisClient.class",
+    "sha256": "be00bca95e5743699c9daf2e6b88f3c710f9c14245001df1d182b10e2242ddfb",
+    "bytes": 9513
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\GeoGenesisConfigScreen.class",
+    "sha256": "40441f194975cfedc81a89e93a41ec90f3d0bf61e9e776c4a6b1b0f653057ba5",
+    "bytes": 32250
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\GeoGenesisForgeEvents.class",
+    "sha256": "b31f3296b2a06b33c2eccab0c10c77e418516cc58ed52112929b1901d15d636b",
+    "bytes": 3119
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\InGameSeamScanner.class",
+    "sha256": "e2b78c38047218d2c9a63a00803eb3a1578edc44d439dbc8123ab81500efc236",
+    "bytes": 8628
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\NameInputDialog.class",
+    "sha256": "aa6d5bb74634dd5385051707dc961f2d658ea28520a68a266745059b9aad6d13",
+    "bytes": 5766
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\ParamSlider.class",
+    "sha256": "a746b85db78e8c272c5c78f75d5f4c0f6eaa7fb00b9941655505251e624fc325",
+    "bytes": 7407
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\SeedManager$1.class",
+    "sha256": "31b174614dcb70b400b720a93c634d6d5f92ed4a076e234fb029e49e62e65c0e",
+    "bytes": 774
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\SeedManager$SeedData.class",
+    "sha256": "0ea2558e40c28a148eac7b5641434603225baed659adeb51049152bc60998e30",
+    "bytes": 2061
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\SeedManager$SeedEntry.class",
+    "sha256": "6241747e209eafe69e725a16273446eee058806d1760a768440138069fd70a98",
+    "bytes": 1672
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\SeedManager.class",
+    "sha256": "e8dc0c0117b0713d4cd522672f3fb5a8ae16dd144a1dc49000eab100bf7d99f0",
+    "bytes": 7726
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\StructureIconOverlay$Marker.class",
+    "sha256": "b98c594a9ba968218b7c248345e309ec53c2253b6084f68356959b988a663a8d",
+    "bytes": 662
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\StructureIconOverlay$MarkerData.class",
+    "sha256": "3fe4742c4eb1283c9785140229e5c09e70adccf173268cc192e120e278dcbe88",
+    "bytes": 663
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\StructureIconOverlay.class",
+    "sha256": "e45b49bbcfdc9ed308b869cec791f0821937aeb261126aadfd097f9b4459e1da",
+    "bytes": 4777
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\UserPresetsStore$1.class",
+    "sha256": "cb0460e56011e599579ff408f5ada76fc929bbea13da2d3b0b46d05c4ac1da34",
+    "bytes": 665
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\UserPresetsStore$UserPreset.class",
+    "sha256": "833ff5b03899c785fea01580adf16d7caf171054b3ebcbbeb0c298117b705798",
+    "bytes": 1257
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\UserPresetsStore.class",
+    "sha256": "7d3911b5eaffe81340f112714c2ca687df2bfef617975517af49664ac3cdf387",
+    "bytes": 6806
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\BiomeEntryWidget.class",
+    "sha256": "304e76db2ae144bee27ce666480ddef6ab8d80bf415070356666131371267f0b",
+    "bytes": 3742
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\BiomeListPanel.class",
+    "sha256": "3e916aba718888de9ca60b9f5aae99e5fbe86eede6e363801ac48f6149a8aa4c",
+    "bytes": 4769
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\BiomesPanel.class",
+    "sha256": "355f864fe19281e2a1547c4c1a30e35ff369c92b8b9e95df8c51a1d7d0cdf481",
+    "bytes": 7880
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\CachePanel.class",
+    "sha256": "260fa60440a53887315759b17b3af7fe9e7e65e96761976693da16ea56ed7319",
+    "bytes": 4485
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\CavePanel$1.class",
+    "sha256": "5bf77c7cf9f5b225f05829fc3c2ba9f17bb0cd79fb8c1125fa4055587473ec79",
+    "bytes": 1018
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\CavePanel$Knob.class",
+    "sha256": "c964f9bd617a2bae38888ed32d8c3e59da66089068bc05d02985cc562b057520",
+    "bytes": 1485
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\CavePanel$Toggle.class",
+    "sha256": "7d75c3c0b9a5176327f964ee9597f7e965623532691108d5a41769370d798881",
+    "bytes": 669
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\CavePanel.class",
+    "sha256": "8753361460a945920c2846e0f983c00c174ec961272a57d478b0ab753a5af249",
+    "bytes": 19442
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ClimateConfigPanel$FactorSection.class",
+    "sha256": "0d286ec8e4ef01f1bf986368d8f4c493f293f10e62f794a84f11d074f581003e",
+    "bytes": 980
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ClimateConfigPanel$ScaleSpec.class",
+    "sha256": "d458b2afb84eb38c2cd8c5384f75c646afd58fe4a0d48dabf9125cc3f8cadc5b",
+    "bytes": 1000
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ClimateConfigPanel.class",
+    "sha256": "c0754ca9826acfdd8c74ff66b9cb68e69ec3ab7e5d4445a2d90e8ca89b8662dd",
+    "bytes": 15121
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ColorMap.class",
+    "sha256": "1f2049a60d1fab91c04329e605fc84a0e9890e32eaedaa0639346b71567697be",
+    "bytes": 4262
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ColormapListPanel.class",
+    "sha256": "de3fd0c5751c1d6258fefca458ee0aaf51f362096c7f8adf29fbd36435225725",
+    "bytes": 2780
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ColormapOption.class",
+    "sha256": "0b4d296c34b27d8f2c6f4e01239badddb502affa50ad140e97b01be316200b96",
+    "bytes": 2661
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ColormapPanel.class",
+    "sha256": "dc6c8f2ccb2b667e376a61b5bbd51a51a1bfc65623cf380b65d01fc7f5a8aa31",
+    "bytes": 5631
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ConfigPanel.class",
+    "sha256": "ea6adac14c3fd64b9cb157755187ee1704ab3961550eb80ce38a72910f9274c0",
+    "bytes": 5336
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\DisplayPanel.class",
+    "sha256": "8a47c1e7dd996f4fb4a4f218ea9de37ff91473dd2443a3fee0d6eab513151b10",
+    "bytes": 5998
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoGenesisColorReloadListener.class",
+    "sha256": "9c6bd596e17f52cec7a5bd959c3598e9af5ccf228b1e2aade6a72f790eeccedc",
+    "bytes": 7367
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoPalette$1.class",
+    "sha256": "dac19929d5990e551a9f82acf1b240a486eb93df119374609d5899283092a42b",
+    "bytes": 999
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoPalette$ColormapEntry.class",
+    "sha256": "1a2f7d96fb815f2ccce57196c03451b0d622b79c7b475b7297053edf486f98bd",
+    "bytes": 1862
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoPalette$Group.class",
+    "sha256": "b56d3d8c082f2ab759a87128d63ad163ad8372338a07aeff3fd195d589339efb",
+    "bytes": 1393
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoPalette$Kind.class",
+    "sha256": "4148de9a21bab4eb7b5b52567391748a26c04a552d102517bd7f8b38a54e0665",
+    "bytes": 1295
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoPalette$LegendEntry.class",
+    "sha256": "a2caa1e7097154606790091ab8ddc46855df0da6c11d4e5b807cc9dfb21b4883",
+    "bytes": 639
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoPalette$PreviewLayer.class",
+    "sha256": "893fc8a303f01c99ca1c8c1954eb80c1923b5b1293543a00616edc66c262344f",
+    "bytes": 4104
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoPalette$TerrainUnderlay.class",
+    "sha256": "4948c149fc0eb2582fc7e562dcdcb58a566738da146bce846ea6fa4c140ef9ed",
+    "bytes": 1409
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\GeoPalette.class",
+    "sha256": "55ee97bb3bda11bc0492100d4b0fc2d1c2ecc67176b02bbe6d0d38cc327c9c55",
+    "bytes": 31299
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\LargeAreaSampler$Grid.class",
+    "sha256": "8ffa0dfa7985effa8741e82d14c66676f222426a808397a7840c189bf68849ae",
+    "bytes": 2944
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\LargeAreaSampler.class",
+    "sha256": "53e9092e10a73b2588aca701e5dfc4174b0708fd2de24eefba9d2b92f9607faa",
+    "bytes": 1778
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\OrePanel$Toggle.class",
+    "sha256": "012c608720bf426d4337faf4d101f30817f1226b3ee9cd8f442455342398ca9a",
+    "bytes": 2469
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\OrePanel.class",
+    "sha256": "25fb325ac214fe1f5309aba253d715f44e1a52d494657430698f7233c8981efc",
+    "bytes": 6660
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ParameterConfigPanel$BasicIntSpec.class",
+    "sha256": "48586e4e98b9cf3c01be5efe04d76f0edf17afccd715e978023442ac4581cdaa",
+    "bytes": 1005
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ParameterConfigPanel$BasicSpec.class",
+    "sha256": "1d50ebfbb6e52de9683dcf7b7b70f90be6edb853bf3f64616c3b250b86e55470",
+    "bytes": 1008
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ParameterConfigPanel$ShowConfirmCallback.class",
+    "sha256": "c056256a6ab868b0abf181a346097cc8811c2afe52f0373757316ac620eefa6a",
+    "bytes": 624
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ParameterConfigPanel$ToggleSpec.class",
+    "sha256": "c1cf91370be6549e6a7a479a486099a05b47764114c5d36106b4e980718c8e4d",
+    "bytes": 1122
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\ParameterConfigPanel.class",
+    "sha256": "6f2157936b51833b11aca2cd0939719e2d5a02a771839bbb04ffde7b5a84b654",
+    "bytes": 31381
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\Preset.class",
+    "sha256": "94bad5e02f163ebc55a95035bad3cf0702bbe6c16992aa0cf444d36da4bb1f1a",
+    "bytes": 1066
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\PresetLibrary.class",
+    "sha256": "74187a9202f5ca60cb37ab7b8f34c11c9c9761eb123af0e2b0ec31f437e56786",
+    "bytes": 3693
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\PresetsPanel.class",
+    "sha256": "3f9b749b51ef50e888122783972506ea27296fd88be6b4cf446cacb1ce4bfd5c",
+    "bytes": 19612
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\PreviewDisplay$1.class",
+    "sha256": "1f0a8344c46eb92cd70638704aee177719fcc61f8dc0b5a490ef97dcf7d427d5",
+    "bytes": 1408
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\PreviewDisplay.class",
+    "sha256": "89c69e39d73185495b5745bb3b7607de186e2eeafc949ffd626452e74f254fd3",
+    "bytes": 48719
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\SamplingPanel.class",
+    "sha256": "7ab9c02fadd3914346330d561c866bdf75089e082284837ea231a26232187535",
+    "bytes": 3852
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\TerrainConfigPanel.class",
+    "sha256": "c5f8348c7dc565862f6f503a00107a836d4a2db97fd642bfc7432bdb2a253182",
+    "bytes": 30425
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\TerrainPreview$1.class",
+    "sha256": "3d51bdc3e91c169c53cc066b80578c195f14d39d9036843a0b2beb6e4dc4549f",
+    "bytes": 933
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\TerrainPreview$2.class",
+    "sha256": "851c6343469011f4c2401a2f24edd748a2ccacf82640c1160750717f6a0d3145",
+    "bytes": 1253
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\TerrainPreview$3.class",
+    "sha256": "98a4ba382d7c7a67a71df0f561414b15b97aa5b500c86d424f12a272f6c40a96",
+    "bytes": 1397
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\TerrainPreview$4.class",
+    "sha256": "74a74dfbebbc2e3eae1856422ba3b7621da8fc7fb3763feb61191670126f321d",
+    "bytes": 1660
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\TerrainPreview$5.class",
+    "sha256": "c83fd42b17fad8424897eb4626f7530218385d35f6f0f1d538b507c97d4059b4",
+    "bytes": 2209
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\TerrainPreview$6.class",
+    "sha256": "057a37e82559f5fcdd7fe573795945e1d0fb78244003681c9fffd2cdb4567402",
+    "bytes": 1334
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\TerrainPreview.class",
+    "sha256": "6ec00b36b32099c58f6bf5e0f6c84943b0ab91ff0514612c6dba3d2743cbbb88",
+    "bytes": 18407
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\CellCache.class",
+    "sha256": "77b1b4324de595ce529eb5f137ddbf26c688d6cc4d60c17dd69ffa4e620ab23f",
+    "bytes": 6466
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\ChunkWorkUnit.class",
+    "sha256": "f0043bd21a933aafe06103c0d5249452700f5b6b3e815d2dacadb78870326c59",
+    "bytes": 2592
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\PreviewDiskCache$DiskChunk.class",
+    "sha256": "34f068cb0e3a0411ac0732a002337b09bb8feffb9e5567d19d92a44dea3c3b97",
+    "bytes": 3245
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\PreviewDiskCache.class",
+    "sha256": "cd0079fdbd0e397d26267d0859908e1fb317245708e10b6a366dc8124da47118",
+    "bytes": 10017
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\StructureScanner$Hit.class",
+    "sha256": "bab7ad25de5acfa312dfd6a34a0907bc18f778348767515f2425ac1ebec8dd92",
+    "bytes": 1971
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\StructureScanner.class",
+    "sha256": "6a8eec92a1847208c68fcd310906de6d2af0d6a2f9c9363a2665b55b8a87e7d6",
+    "bytes": 8855
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\TerrainPool.class",
+    "sha256": "82451a2f8deb00e6b75af2b0ac4dc300ae7eefd01ed428a6b6ee4c49e260737a",
+    "bytes": 5247
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\TerrainQueue.class",
+    "sha256": "3a61f6bb6f09d09a7b5593684343e7755181e4084ee0838d840170b821204fb2",
+    "bytes": 4942
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\chunk\\WorkBatch.class",
+    "sha256": "b224b30f51049b9171bede9a4ba27bcf1aa3bc85641e30ce523819a9e6785a1d",
+    "bytes": 1725
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\CategoryBar$Boundary.class",
+    "sha256": "b1d062a806c6ff63cdf69d8b3c506fa8ac26b7a05f7d821f1cd10d8d9316792d",
+    "bytes": 2354
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\CategoryBar$Category.class",
+    "sha256": "efaf3c3c29811b993d2156d71d247916b00f38a96631d23af02502d5a2471d66",
+    "bytes": 1746
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\CategoryBar.class",
+    "sha256": "130bfcb839a45cfaae2debbefef27abbc0aee5695c142b362e6d28c3878bd929",
+    "bytes": 11437
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\ClickableRegion.class",
+    "sha256": "075ad0fbe5e686b29f4b1cb2260dbf4d3228c6cba95c8e9acaa404ab1e82bf52",
+    "bytes": 1846
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\ControlPoint$Shape.class",
+    "sha256": "699d06be6659204ff87812da33942ad2aa1b971d3ed31eac2278ea8b1ccb57ab",
+    "bytes": 1354
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\ControlPoint.class",
+    "sha256": "2a02aa7699c6f57c193d2a95a3f17174bfb6ccfa373051cf93bc09e475566b76",
+    "bytes": 6028
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\DualRangeChart$Slot.class",
+    "sha256": "336be887807ce2fae378ed3fc1de2896822fc2b66e4e79e652f38fe98607b5e2",
+    "bytes": 2812
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\DualRangeChart.class",
+    "sha256": "4b727c3bfe8d861e3d5d900b468fc8a9e04e7c35cbbbb17d9eaf2d467a5aa09f",
+    "bytes": 13820
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\MixerPanel.class",
+    "sha256": "1b525617c5c047bd96ab66e6618b26b3b28300f0c7da6dad6d8627826e53efdb",
+    "bytes": 4103
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\ScalePreview.class",
+    "sha256": "0a373f131c7e8b929cfde553a5b24cd3fff5c4312785869232a05f784762a877",
+    "bytes": 6924
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\SingleCurveChart.class",
+    "sha256": "f6ce963bd4504104a2279049f692191fd45d76035223de0c00e92763e8759ad7",
+    "bytes": 8615
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\SnowLineChart.class",
+    "sha256": "ff0ce71c06639c3e6991de0d6f75773e62979d4c42bd44429552a90c7e33a308",
+    "bytes": 13233
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\WorldHeightBar$Mark.class",
+    "sha256": "22e2c45c00ba73990cd19b87dc44a123a83476c2c931d1d072567228d79126a5",
+    "bytes": 2204
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\WorldHeightBar$MarkHandle.class",
+    "sha256": "da9792ba535b2c0586fa76d9f9d814a85ddbfc98bb1e77db124c4a5f7543cead",
+    "bytes": 1810
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\client\\preview\\mixer\\WorldHeightBar.class",
+    "sha256": "4af77703ffa3147121f52d003a5e3129aa123ed11072f582bab01421c7875f5d",
+    "bytes": 8743
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\config\\BaseWorldConfigAdapter.class",
+    "sha256": "6e3c756ff7a85da5502e7ee7dc94e850c82a976430175284c72c58a6b558a773",
+    "bytes": 1165
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\config\\ConfigSafe.class",
+    "sha256": "8412f61995081d56a7dbcba76e49d1c9b24280ef09cd1ad9d26ea5365485aea4",
+    "bytes": 2394
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\config\\GeoGenesisConfig.class",
+    "sha256": "d540c23d6bbc94d56548087a315a0a3a0ba868dd57b3164dee3b2a237e581f72",
+    "bytes": 50094
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\config\\ParticleErosionConfigAdapter.class",
+    "sha256": "a5f5fe9f109a5be2dbd4bb4ba5ead85fab85da79e1a5688ce65f4e41b18a2cdd",
+    "bytes": 3279
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\config\\RidgeConfigAdapter.class",
+    "sha256": "7c11a18b7a53220177b356218438bad30877eb46ee00cb5d3bb58a2d0ed56fbd",
+    "bytes": 3095
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\HydrologyMetrics$Cache.class",
+    "sha256": "6ed37717c04b037a2b100eb77fe608e663ef28a04e09bcf6b50320142de466aa",
+    "bytes": 1607
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\HydrologyMetrics$Jfr.class",
+    "sha256": "c95978a968b6e042eb8fb8d78752296f08065c8c232e206316aef5ee2e17bcbe",
+    "bytes": 1543
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\HydrologyMetrics$OpStat.class",
+    "sha256": "54d95e6fd6323d21592a3030df76083fb05fc1a29b078e022181e00bb067295a",
+    "bytes": 756
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\HydrologyMetrics$Outcome.class",
+    "sha256": "5451a6a54b11445cb62affa63d3c1c93c598476142ba0904c0eeba820657fa5a",
+    "bytes": 1578
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\HydrologyMetrics$Scope.class",
+    "sha256": "4fac25e146fc101044129059e6913b6c0c0c253b734fa815aa1fb6ca52d3da86",
+    "bytes": 1193
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\HydrologyMetrics$StageEvent.class",
+    "sha256": "fabb026003694097cb71ac5332c280668b76deb157dd6c6ffbacf41beb77ff37",
+    "bytes": 1229
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\HydrologyMetrics$State.class",
+    "sha256": "fa70c427a8888522956cf1e7977d26992fad2ea5e7b3214f1757b40ce3e65e70",
+    "bytes": 3150
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\HydrologyMetrics.class",
+    "sha256": "0db25a0013aeaacf40c50bf3a62355c1d91b8f05d07064c0fe5472f426e19379",
+    "bytes": 10126
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\WorldGenProfiler$Stage.class",
+    "sha256": "c792936ebd6229245b22d8666d7566c52384b97d863efdbdc814a4b539d5a24c",
+    "bytes": 2727
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\diagnostics\\WorldGenProfiler.class",
+    "sha256": "b83e0e4db4bedaf91de47aee31aed849c7fe148e7c4541f398bc35abca450661",
+    "bytes": 15668
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\GeoGenesisWorldData.class",
+    "sha256": "db78dbaec53b07c6e8046c970ab172207161ace3bac2187f0aef367f3f38eac1",
+    "bytes": 4299
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\cave\\CaveBiomeSelector$1.class",
+    "sha256": "fba8d77314eba5269ba2252b36afa0e90dc21ae6b76a81c80cd50fe5d9d3c871",
+    "bytes": 1253
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\cave\\CaveBiomeSelector$CaveBiome.class",
+    "sha256": "757b68c5e4d7260a7f3f731c634a8b2315612fe5500ca1227d3def70f5dc7053",
+    "bytes": 1433
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\cave\\CaveBiomeSelector.class",
+    "sha256": "b1b67e8bdcfe2f521b468eac1d759be360e4ab0610f29a5ebf96859fa0884d13",
+    "bytes": 3186
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\cave\\CaveCarver.class",
+    "sha256": "2b9560aa318cdf7e5a711c0b0632be2734445a469cf65ba1327774d742db54fb",
+    "bytes": 3322
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\cave\\CaveConfig$Preset.class",
+    "sha256": "a2d38c45b0806db8d8c96d62dba734cccaaba69e08b7079185064fbe8cf3e88f",
+    "bytes": 1470
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\cave\\CaveConfig.class",
+    "sha256": "801fdd8de3e75cb991790b9b0228a5b56a745c1f17e264a3189fe03eaa653051",
+    "bytes": 2934
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\cave\\CaveShape$1.class",
+    "sha256": "24dbc0095168645bf61179e3a3b0b404d5ec15e5dd11f9177e4fbc1d1657c402",
+    "bytes": 1075
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\cave\\CaveShape.class",
+    "sha256": "3f33f6845eaae08a324bd9526fd99514498cd339ee5ffee60e76617c8763690b",
+    "bytes": 6559
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\BiomeClassifier$1.class",
+    "sha256": "5d47763780606b8457245d1a16826974b1ac6633d3d4485b74b431f9ef0aabb8",
+    "bytes": 2737
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\BiomeClassifier$BiomeClass.class",
+    "sha256": "62baeb4ef1a5bff22eda1fdb892aaf202713945ad4efde06f69cfec9dbf527d4",
+    "bytes": 4345
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\BiomeClassifier$ElevationBand.class",
+    "sha256": "adc75a5027ab1d2b9f56a3ada5533186f0f0cf441efd0a9b87dffe2ad529940a",
+    "bytes": 1506
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\BiomeClassifier$KeyIndex.class",
+    "sha256": "c6139f9b2c320dca95fa9350092ab2451625b5169c934efe5598c7cbf73b2564",
+    "bytes": 1644
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\BiomeClassifier$SurfaceType.class",
+    "sha256": "5924ef925d98df51dad27a3529a5b4481455bb85999eeae1e29568dcf1077e4b",
+    "bytes": 1535
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\BiomeClassifier.class",
+    "sha256": "0ad3e015840617d7ab8caba37481b8fd42e77d5f2bf37e10cdf1459f3862dadd",
+    "bytes": 9319
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\Climate.class",
+    "sha256": "54799d7bf7067921a854d4ee1dc32978d13c24d0d3d437fcaf6d850c18acd346",
+    "bytes": 6777
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\ClimateRegion$Sample.class",
+    "sha256": "4567fe86e918d3746dc4f35016194be7797d2c661b02b5c20d4b02557acffadf",
+    "bytes": 2092
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\ClimateRegion.class",
+    "sha256": "53af23ed6fcc53da2505b0fee6f95ad0448b26c8f3d6bce32db3538086af0043",
+    "bytes": 2218
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\ClimateSpline.class",
+    "sha256": "bcf66df789272432d0d108d8d380270387c356d9bea7d9a5f77c93b9d9da8580",
+    "bytes": 3180
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\ClimateZone$Zone.class",
+    "sha256": "03a6a5c7d9628c67743a2a8711ab4455e258cb1829b96da2d647b017300b9a06",
+    "bytes": 1453
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\ClimateZone.class",
+    "sha256": "3d18b0a2503083a83f2cd841d123327febaf956791c392f198e18db0ce70f48d",
+    "bytes": 2847
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\Latitude.class",
+    "sha256": "fde23e0efd66e9b93f7b54cb85abe9b8090214ff6f44e2788f1ba21405207265",
+    "bytes": 1204
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\LatPrecipProfile.class",
+    "sha256": "522b11dad80e7199cdb5320571703c4beecb6174b0c8054263f45ea04de0f08a",
+    "bytes": 911
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\PrecipField$HeightFn.class",
+    "sha256": "6c75cb6cb9fbab3fa82ec8dc8f34503940fd108074346ac6a479f5d2c6dceee5",
+    "bytes": 349
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\PrecipField$Mod.class",
+    "sha256": "db1cd2a16b766a0df4d2bc62d50db1f46848e8806264d30979c001fc6d68c642",
+    "bytes": 2059
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\PrecipField$Params.class",
+    "sha256": "f48c2dcc7c3bc062ce75c3724030e12c1d49475683dc23dbee177c98f74263fb",
+    "bytes": 2998
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\PrecipField.class",
+    "sha256": "e368aa52b2874268327d3e6b97b4ca5e747af3aa1252a82ccaaacfd3584ec26f",
+    "bytes": 6159
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\SoilInfluence$1.class",
+    "sha256": "6853d7be3c6cd6c245722a260b764807cff452ca36106629eb9ba6bf01c4bc77",
+    "bytes": 1093
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\SoilInfluence$SoilCharacter.class",
+    "sha256": "a219e368a275a255a09f7ae5381cd3db16d2ff0e2eeedd0f78df1439006febf4",
+    "bytes": 1456
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\SoilInfluence.class",
+    "sha256": "763c504bf2c1c5b7a639ffe576676aa45c68635b457bfc08c43e364899a41159",
+    "bytes": 1619
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\WhittakerType.class",
+    "sha256": "6352e23c616dea31024a85da64b8ed53169b176cb83fa2ab2b2e0afd13e22496",
+    "bytes": 2905
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\WindField$Params.class",
+    "sha256": "e26b46f2a1f0be132966c5f7914fa1a1fa40d14ffd0ffe85f9c7d3d0e6084391",
+    "bytes": 2418
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\WindField$Wind.class",
+    "sha256": "468a461f3fa17be27c6e1d6c51c72dfd5d258d328ee108996f64d7212de2844d",
+    "bytes": 1906
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\climate\\WindField.class",
+    "sha256": "6f26ca313bd2d5ed6c69aa531fcc7c12945c6adef3d85fabcf7dbfa5d0be99d1",
+    "bytes": 4140
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\core\\BaseColumn.class",
+    "sha256": "ed67844c55cde3a5275a1c01101ccd909b5604a3a23d2fe603958be9dc91a7ae",
+    "bytes": 896
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\core\\BaseWorldSampler.class",
+    "sha256": "f3ba2128239746ed0340cd8e4fd8b2c02dc21c72d9558100ee7b844899a4d61a",
+    "bytes": 10659
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\core\\BaseWorldSettings.class",
+    "sha256": "e55537e46a903e6078344a5a818181404ad3e169e84f98755d7bde32bc4678bf",
+    "bytes": 1910
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine$CascadeScratch.class",
+    "sha256": "5a7a73620bd56470640a21ddb0e910cad4d1dea73d84ed913a362d24b1697f14",
+    "bytes": 556
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine$HardGrid.class",
+    "sha256": "8119ea7dfd64fddfa94b034df91132d81dcc85f745c4de61e83cc4b0807c8455",
+    "bytes": 666
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionEngine.class",
+    "sha256": "e4626ef774067b35121d825405aa174ead189a52674d8c5fe8c274a521cde9ee",
+    "bytes": 21323
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\erosion\\ParticleErosionParams.class",
+    "sha256": "78713baf5ef77130ff686d97d6e600a922eef450cbe18e10b4f1c42b9c664bc1",
+    "bytes": 2355
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\erosion\\RidgeValleyErosion$RidgeConfig.class",
+    "sha256": "87d0f935b38026c5559b117985550371f2290b971668133e51c3dcc71b2ff552",
+    "bytes": 1246
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\erosion\\RidgeValleyErosion.class",
+    "sha256": "59081b0bdd18032d918375fb7adc94566e7917efb82817576599f3649c6d45e0",
+    "bytes": 7830
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\erosion\\RuneErosionFilter$Settings.class",
+    "sha256": "0a6a4231b4d8a313c17f8821b2f75e23baf7e02a068423938da46a74b5779e78",
+    "bytes": 5985
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\erosion\\RuneErosionFilter.class",
+    "sha256": "3e4aeb5db0b2b223d9a6ff35c8ec74fdb13f6cf6a9677849085cb1ca6e896437",
+    "bytes": 5233
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\generator\\GeoGenesisBiomeSource$1.class",
+    "sha256": "4c33df98e426e453fb73d89d9385f3196df5bc1148bb2dab5e40f4258a551a9a",
+    "bytes": 1010
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\generator\\GeoGenesisBiomeSource.class",
+    "sha256": "a650d9df95015204ed264b2543e3bab5aa4fe6928c4c974bc310dc117dce5ec6",
+    "bytes": 13266
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator$1.class",
+    "sha256": "d95ccc8d68a5f67fdc803a110735c5124c96581d8e73b1aea86490d923f1e9e2",
+    "bytes": 1064
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator$WGP$Stage.class",
+    "sha256": "63c6b1eae0ef9079c65b0c5cd80dacc187e09bc42ebde70677fe9b2128488cdd",
+    "bytes": 944
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator$WGP.class",
+    "sha256": "49aa8dbe9c56cdabc50a6a2567625b4675cc3f3b44f92a3e81ef961865ff3e1c",
+    "bytes": 1260
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\generator\\GeoGenesisGenerator.class",
+    "sha256": "9b6b25a7e46d7424241afe9e758296ae42da9e8caa68b093643a13e8a8291fe8",
+    "bytes": 32951
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\generator\\VanillaDecorationFilter$StepBuilder.class",
+    "sha256": "1111c54fcab88c9f0071c8880d06abb9ca06c16a22c77be2f98e8c3f03cb53d5",
+    "bytes": 1232
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\generator\\VanillaDecorationFilter.class",
+    "sha256": "90d80380e642661001ff8b991baaea4c4efab2341a1c1a6bd53c206bc371f0ad",
+    "bytes": 8231
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\HydrologyBlockCarvedColumn.class",
+    "sha256": "3000fd6792642e77f637d01fa7aa70e238e525f232b6fbe81ba45e2622387698",
+    "bytes": 3698
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\HydrologyChunkEngine.class",
+    "sha256": "79eae29f23b0ce1b48ad85ba72897658b8deb9a5f5ce075c7a4a9da0662bd283",
+    "bytes": 4885
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\HydrologyChunkResult.class",
+    "sha256": "e8115a2a02a39aaf867f57a05ea31333bdd4af4843ec89d2bc85803800cadb9f",
+    "bytes": 2631
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\HydrologyChunkSampling.class",
+    "sha256": "740df6ddb51c670e5b6e8297bd0fa765e5deb55b2ba9e243bdd8f924f9ec08d2",
+    "bytes": 1043
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\BasinStorageRouting.class",
+    "sha256": "e63b8ae22c123a3f044a7aac2aad663c8a9cffe8152193aaef28a0697f5b6801",
+    "bytes": 9153
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\BoundaryPort.class",
+    "sha256": "f95a956b4af2939edbf2abf7d4dd40df7734562729f73ead9203e495eef47a80",
+    "bytes": 5277
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ContinuousRiverNetwork$Ledger.class",
+    "sha256": "c62589189b0f7f532b47673fc7e9782c4145999eb651209c8f3a87de9b6ef11a",
+    "bytes": 1967
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ContinuousRiverNetwork$Params.class",
+    "sha256": "9c5bc8c1b90b302862296b65f22a2b6f0ff3dd0fbbbd062303e347599dbce3c1",
+    "bytes": 2941
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ContinuousRiverNetwork$Result.class",
+    "sha256": "5f48b74a7ca6013a7d60326062927c33bd9554d9b2bf4b51fe745381e1cc2f1c",
+    "bytes": 2991
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ContinuousRiverNetwork$StreamStats.class",
+    "sha256": "75bc9bf3bc0a87bc7398f8b5cbac7ab6cecf08939dcd0c48c32f88806eef209d",
+    "bytes": 1103
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ContinuousRiverNetwork.class",
+    "sha256": "4e490dab08f0830de0df5e49a3a453994472bb935e3d6c2b35a674ca9454f21b",
+    "bytes": 25133
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DemandFlow$Amount.class",
+    "sha256": "35d3d1b7a20c993b2d4f7a2a97ce22c8d2b89ae05e48d2c0111147b442047487",
+    "bytes": 2655
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DemandFlow$Kind.class",
+    "sha256": "5ba3e37962d6e471d0511ce7b14f62b61546ccae27dc6a6db8b22d19562fe922",
+    "bytes": 1410
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DemandFlow$Node.class",
+    "sha256": "9c0dd54bd4d60b3f4494bfd3bb6ab68aa61ec0e3f91a8b423e6a1e7f45fbf961",
+    "bytes": 2941
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DemandFlow$Result.class",
+    "sha256": "25ad23e89aa145c79d75f1d6e736ae72490152f60f6fc5739e42221796ae8643",
+    "bytes": 2236
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DemandFlow$State.class",
+    "sha256": "2c34ad144dbddadcf3a8011bd8996d3795892f45dad2480956c1ac991cd3b4dd",
+    "bytes": 1230
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DemandFlow$Unresolved.class",
+    "sha256": "0bacac73d710a90794c8012104eb7f0283d825e9fe972349ef51e6f5814f0f57",
+    "bytes": 545
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DemandFlow.class",
+    "sha256": "e01416bfa639d5cb8f73d4f9ac5822516666fbe332a055006ddec1f45511c49f",
+    "bytes": 7021
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$1.class",
+    "sha256": "1405cb0dd162fdd0e1abf1dd42d4fe27ea3f8b63b7c1014ab831e9f169a8d58a",
+    "bytes": 2980
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$1Node.class",
+    "sha256": "81f14e49bacb5f1512fbe26dad15ad51210ba020144a3361ad9ebf608656f60f",
+    "bytes": 1860
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$Continuation.class",
+    "sha256": "4601e3e4c7c2c1e3113c5848b8b36065899f98855739210e6a63d61f94fd4ad0",
+    "bytes": 2416
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$CoreBounds.class",
+    "sha256": "3e67ec6b0f84cbd13b0882ae02cd1c90c07f9efa9e366717c0a9b9a6d4daf371",
+    "bytes": 2227
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$End.class",
+    "sha256": "a75b7f9acd7aad2b9967c86a08b0ee6ceed1ee9c0c653af98c585e1088fb7c0a",
+    "bytes": 1679
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$ExitSeed.class",
+    "sha256": "5f1bff12a52c5c5bd206b65a9a901132f85fd8aa1506d018aa4bf9892275dec5",
+    "bytes": 1919
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$IncomingDiagnostic.class",
+    "sha256": "cf94b6c15aa3b321d3ba20f9ce7d8e11c2384cd12cf1ddd0c988dbe3c17b695e",
+    "bytes": 2570
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$JoinKind.class",
+    "sha256": "e6848819ed8c2d16d9da9dde581d2e5683a1d7419e3be47958b116706e48f50e",
+    "bytes": 1594
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$MergeEvidence.class",
+    "sha256": "b10cb81c03bc14579c9fad64d79e2e19b6c9a6636ab73637db407eb4e4210ac3",
+    "bytes": 2813
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$OutsideContinuation.class",
+    "sha256": "1140d899ca4a425831817d3f2ebb5da5bb330555402682d5362514b3c995e181",
+    "bytes": 2753
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$OutsideTerrain.class",
+    "sha256": "b57c4b8e638ee264cf0c8de3da1bd2462a3a59fec8d9d8231254d87421127a7a",
+    "bytes": 337
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$Params.class",
+    "sha256": "5a39836260b156c9ccbe7f7945431786d2fa9f782dd2e93afd0e6786854030ac",
+    "bytes": 3022
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$ParentForest.class",
+    "sha256": "1dd9c2a9b7cae8cd7b642c0cce399cb01043310e8167ad9d7a66b65c001abd22",
+    "bytes": 3007
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$PassRole.class",
+    "sha256": "ef47bc6da9d7ae9f627b74b5ddba29d65cf62b1e8678e6e28b1fa0da65edeccb",
+    "bytes": 1481
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$Result.class",
+    "sha256": "4ab819a695b3ef86936db3e195d17813809765415e9ed58a96001f2b40a26bd8",
+    "bytes": 3357
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$River.class",
+    "sha256": "2ab01239821ff0b67559320bc9954db50a7162fa643337a27a048c2269ed6598",
+    "bytes": 1739
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$RiverJoin.class",
+    "sha256": "84d78dda35b5bce96c8e7fa67d607fb2830c7bd4331e25740218b479e647e083",
+    "bytes": 2254
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$RiverLink.class",
+    "sha256": "7383545b2c117c6e8ba8b30f4b3c99fc10dfb6ec1f34428eaf642e4e9e1f5965",
+    "bytes": 1709
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$Shaped.class",
+    "sha256": "5e0b4692f80c98be5f0ddb1ff68b3a9248767e7bacdb7d760b7d85e20ebe6514",
+    "bytes": 684
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$StepResult.class",
+    "sha256": "fbd92cb2849c238645073a80ce3c6f998de348ecacc43ea09615778e192e3546",
+    "bytes": 2044
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$Trace.class",
+    "sha256": "214ba191e431ae5b5e51e1490f0489e30791a0eeaead107b3287c3f7315c7ce6",
+    "bytes": 2507
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton$TraceSegments.class",
+    "sha256": "9656958bcd4a6feee8fee8c863deecd09ae818de060dbe5fb70bcae7ca22deeb",
+    "bytes": 2786
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DeterministicSkeleton.class",
+    "sha256": "31ffb55ef32bf88b70bfc1546f2ff936be7b5b1706f30312e12b73b79621e51c",
+    "bytes": 110807
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\DirectionRule.class",
+    "sha256": "6be971766d8bd0b144b41db99749352c5e772a10b8cab0ff3500bea31a6f688e",
+    "bytes": 1643
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\EquilibriumWater$Node.class",
+    "sha256": "e9dc1016e00d3de90f5b7b1b5ec0efd4aa0a69cc56c0944d5c2bc45b8d918818",
+    "bytes": 2268
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\EquilibriumWater$Surface.class",
+    "sha256": "137de5590496d9d110fb71fda4d68cc32310299a08e880365da962d06b3ca9e3",
+    "bytes": 2359
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\EquilibriumWater.class",
+    "sha256": "f43373df4c8325d04e73bb681f0c83b2ccc5f50f4c00cbad3667eeefeb5d86cf",
+    "bytes": 5274
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\FlatSurfaceJitter.class",
+    "sha256": "aa2d06f559c247445dbc88b0b8c9fb4815b53a60ffb0878e7d8091cacb471ac7",
+    "bytes": 987
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$BasinAuthority.class",
+    "sha256": "c18c8f5445057331774ca1b3ac9ca68fb4ec2148557301794fa3c72ee72a130e",
+    "bytes": 3001
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$BasinFootprint.class",
+    "sha256": "4814cd995dc4e016ea7d1913a721016b27fcb8a57d79577b8846936dc198ee33",
+    "bytes": 2485
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$Coarse.class",
+    "sha256": "68ae8c6ac11f61626181c6b32e970399f592bdd1edc1096b1866ed7c00f287ee",
+    "bytes": 5996
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$Connectivity.class",
+    "sha256": "61dd2791d27ec52b21689e45f8de41d339ad386e795bf5f898c81aafa5b50a01",
+    "bytes": 2919
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$ContractViolation.class",
+    "sha256": "a98ee86b78db86814c4fe7425e017d93e072c3bceabb15d7ffbc11d8324fb5dd",
+    "bytes": 825
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$Diag.class",
+    "sha256": "7ced817484341a2869c3bf02d57287ec85d0c5e039f18f3b7b879bda5e31946c",
+    "bytes": 12821
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$MorphologyComparison.class",
+    "sha256": "195e8a19429355bde132b927a84fd9b8a8d98d7a1b3aaa82a088010faf7e10ab",
+    "bytes": 3355
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$Params.class",
+    "sha256": "45ac114529a26697586e3a21b0dd33b8b7d6d16a25db7202652c7ccc04b5bfcb",
+    "bytes": 2818
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$Port.class",
+    "sha256": "81632f1a9628fe61764fa299cfba523747423ab857419a2613c4abb30cb83257",
+    "bytes": 2163
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology$TrunkSeed.class",
+    "sha256": "515a69e24fd40199ae74ef63be2950ea2b2242c5599ebd3524a09813f5da8ec2",
+    "bytes": 1814
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HierarchicalHydrology.class",
+    "sha256": "b25c732133a38f8aaca6073164996a4e7038e69dd057114cb9d286363484a890",
+    "bytes": 24524
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HydrologyPipeline$1.class",
+    "sha256": "439741a815668803733ac92e3bb32026fb1d5a00b4f01db92447e1cae7347cbd",
+    "bytes": 3811
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HydrologyPipeline$Layer.class",
+    "sha256": "2ae116dc43144610f95df4490c0c69d027d418f6d2a8555fb88beb00e88b87db",
+    "bytes": 2465
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HydrologyPipeline$Request.class",
+    "sha256": "58a3bb462f195880fbdd549e1c2d55d8971c78f2b249ed45069a67fc6a93dc7f",
+    "bytes": 4837
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HydrologyPipeline$Result.class",
+    "sha256": "c91b9f197a078c23be145f8e482348b7d09945fd39be11f7bdb6eb5171cfd326",
+    "bytes": 5021
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HydrologyPipeline$RiverModel.class",
+    "sha256": "8a0119c89c3c906f7f6c90ac7ebef26a4b025c28c57d2278ac79880726e86cd5",
+    "bytes": 1457
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HydrologyPipeline$RunStats.class",
+    "sha256": "3c9c59ea0b338704394219f3714f56b2e3bc1ac41e65ef2ec34e0e5d09a34210",
+    "bytes": 945
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\HydrologyPipeline.class",
+    "sha256": "5e0f0169148e264682da0f5d41b7c3bee2564e2298e423074f8d8f9fcd092fb2",
+    "bytes": 33275
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeInterfaceScale$Frame.class",
+    "sha256": "c7b79b0425dfc4f0d77c36bdc395fa9a45d32ca68cf23b73b4d0135b23cccfca",
+    "bytes": 1086
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeInterfaceScale$Measurement.class",
+    "sha256": "8bcab79a9dc06d760b360c050c32392479f8a482f0ff8b240114432caf756bba",
+    "bytes": 2396
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeInterfaceScale$Side.class",
+    "sha256": "36b5bbb24f86aed863526aef7ca8be1ee839c8d2e759487a6051bb776a7ad48b",
+    "bytes": 2037
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeInterfaceScale.class",
+    "sha256": "17b881932b7e023da524d1c32b43de232b6bc66aa1c48ccddac547086a02229f",
+    "bytes": 6814
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWaterBalance$Basin.class",
+    "sha256": "d321ed4a4de005da39716cc21e02c2e393095777467a071e3d32dd4ea28fe98a",
+    "bytes": 3009
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWaterBalance$Climate.class",
+    "sha256": "0406235b7f49f8c87328efe32ec5da135461d08a93127b081faa5d5aeab78a8a",
+    "bytes": 2131
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWaterBalance$Result.class",
+    "sha256": "b7feec83b04d8d14ebf1abcd82ef1c1a46d2156c3932bff9ed3d3367b5b68fef",
+    "bytes": 4070
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWaterBalance.class",
+    "sha256": "f7317924f4e836eae5a04289ea9e26f7e3f8af23398035196955bc74f3ee927a",
+    "bytes": 13813
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWidthEnvelope$Graph.class",
+    "sha256": "d9c5e0a0e0ad0ef41281e6d1c0332ab7b3ce0f392fe3797bfbb64267a4974788",
+    "bytes": 7962
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWidthEnvelope$Interface.class",
+    "sha256": "35f1ccc0e13c13107c7163d219952bfeeb05771cbd9966b6f0bb1f7b41feea33",
+    "bytes": 2746
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWidthEnvelope$Result.class",
+    "sha256": "d590d13f2fc19072b1e00a34b3019ac99ccc6e217c3f7264c4ea12db68acc257",
+    "bytes": 2912
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWidthEnvelope$State.class",
+    "sha256": "e83395fd035626facffee4d5217befdc673f753245614d07121790d170d938d0",
+    "bytes": 1890
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\LakeWidthEnvelope.class",
+    "sha256": "e3ede65e2430c414d086df03d567f666f4df860941f0e23a102055245dd67f61",
+    "bytes": 10910
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$1.class",
+    "sha256": "ba51218a09f14c1783920d9cde5f34e0c7550573c19a72947298eab3a204d201",
+    "bytes": 1231
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$CacheKey.class",
+    "sha256": "b4f5a4b79c29b862636424eca9954c349c853d71bbcc02fcd5ef971072d5be39",
+    "bytes": 2065
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$DomKey.class",
+    "sha256": "17c1a75865b065cfe9366c711525dcdbb353e319d76fe4b730cb99ee04b1a656",
+    "bytes": 2203
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$Pass1.class",
+    "sha256": "57cb854f54233b69f52ed78c26f080e9498c86a2a2cb8f10b910cb4225d8f1f3",
+    "bytes": 5321
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$Pass1Task.class",
+    "sha256": "db484d93aa784b5f9af5aecdf7ac62314fd02b414e6a537a0b8321df9f5259bf",
+    "bytes": 6570
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$RegionData.class",
+    "sha256": "95936da6641551bc97e94efd8f572e603889a6382d94818ea77e55b2faf7ba7a",
+    "bytes": 7520
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$SegmentIndex$Hit.class",
+    "sha256": "f1f738746fb2da3c63147da5ad0dfd4285452797da6b8aa677ef7d9d3b15d2f9",
+    "bytes": 2208
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$SegmentIndex$JunctionSection.class",
+    "sha256": "171bf63114ffa2533378817fc1ae055ac42954724bdf8bf590477431bdafbe41",
+    "bytes": 2779
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$SegmentIndex.class",
+    "sha256": "df33d6dbe4361a86239e4ef26f36fc7ba5a95dd95a8ed3a0a09c2b51674e29d1",
+    "bytes": 33838
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$SkeletonRegion.class",
+    "sha256": "be2466acb91a7a61364476ed5028b3d6c3a68a519f08beacd2c7c5d57ac65e46",
+    "bytes": 6731
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$WidthEdge.class",
+    "sha256": "ae3c5be2b910de84858c0d7e6ffbbcc7e26cec4bfd69eac1ddf1544e9c0450f3",
+    "bytes": 2040
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider$WidthInheritance.class",
+    "sha256": "9a010431010eed6b19d99043cffbf8c503a000c0e4808accbd0b99713c712027",
+    "bytes": 2607
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ModelHydrologyProvider.class",
+    "sha256": "739e34d88bdd6feb6c08c42beefa69f0d01908f61ad6952af184eafddf7d3f01",
+    "bytes": 129557
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\OrderedSpillSearch$Guards.class",
+    "sha256": "b30951897572cdba99737029d4724203156b04da41fbf3513d52ebbffc93601d",
+    "bytes": 361
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\OrderedSpillSearch$Node.class",
+    "sha256": "0887cc6ab8ee5190d1952901e5616f1724f8055b1c0f5573c4e2f00b0163af81",
+    "bytes": 1767
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\OrderedSpillSearch$Result.class",
+    "sha256": "e53a639b8bb8b33d4f416357621ffb0efc990837087427c478b1729c762bd304",
+    "bytes": 2652
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\OrderedSpillSearch$Status.class",
+    "sha256": "262f48af29dcd9f66c57e99b89694d8496369e876859e8aa3e8d4f7098c62363",
+    "bytes": 1596
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\OrderedSpillSearch.class",
+    "sha256": "33e62b415e41d85c3896b9f351846893a6e4a3ca35b97851fe52465dcd37c196",
+    "bytes": 8679
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\OutletLakePrefix.class",
+    "sha256": "703e6b61a68044618fada8b515e6bab7acfb287b322535ee94e332bc5a7a5fd5",
+    "bytes": 6060
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\PortEgress.class",
+    "sha256": "d1c5cfa2cf31e38b108d81147a3b4dc8c95714dbdbc368a41759e89ca3766bf7",
+    "bytes": 3490
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$1.class",
+    "sha256": "0662b7a85de8bec8fb36bfc31073f01e56e3811a71051603b8747e6ff225cafb",
+    "bytes": 1179
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$Chain.class",
+    "sha256": "13fd37a9f7662ff827239fa300e07350643fa84b31c40729c2fe030d62636ca2",
+    "bytes": 2722
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$Crossing.class",
+    "sha256": "b2d6c717217f6d40236d5c40e1ef7445eae14747b5651f040806e2344418e665",
+    "bytes": 3574
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$Lake.class",
+    "sha256": "a4a57a7706fdb9634644d83dc92541a61b52412405c4c21c5643ae53125d03ff",
+    "bytes": 3236
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$Point.class",
+    "sha256": "ded93a1fc8dcd0e3eceb7051bd05d56200f3547e12f5a938cfc64e7017f986af",
+    "bytes": 1790
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$Region.class",
+    "sha256": "8ded5064af62912562c70827258c809c00596c2f4f16adc6f42ebbc3d0f813c2",
+    "bytes": 1790
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$Segment.class",
+    "sha256": "e2ced06f5d6b8fea8352caef8d8b648d0e1f4a654ae0718e0cad0b11169de566",
+    "bytes": 3827
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$SegmentId.class",
+    "sha256": "463aa42b89827c8ae482dc9d80017acb000cd3abb5bc467f40db92bf0e4aba81",
+    "bytes": 2146
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$Snapshot.class",
+    "sha256": "3224cfaa29c4d899cdec0f67d743e8758f6c1cb4d545cd0dd90a3c80ed9ebd73",
+    "bytes": 4519
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit$Terminal.class",
+    "sha256": "c542ea0af42c1e924e3eeabd895a9532f640215eef797b09ea9821482160e183",
+    "bytes": 1759
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\ProductionDrainageAudit.class",
+    "sha256": "e81a4b15869eefe6000fd102a2558a604c9ab6db12bf59751f5d44a85231bf76",
+    "bytes": 19416
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverBankHeight.class",
+    "sha256": "d1f4d67c90420439dccd192bd12c5c761f330d6978b8a61728d34dad26a9040e",
+    "bytes": 4275
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverCenterlines$Params.class",
+    "sha256": "532da32c98d72ba98d824d9fc152522f073663bb8abf88d8e9059d7fe73688f4",
+    "bytes": 3421
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverCenterlines$Reach.class",
+    "sha256": "b7c31a9cfb6b0d5021a5fc12921c805e944e589c56d418959b346bf9063f683e",
+    "bytes": 989
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverCenterlines$Result.class",
+    "sha256": "092d2a95080f8afddc803a57f8bcf85eec894102f3404a9e5eda3400fe7a3392",
+    "bytes": 1519
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverCenterlines.class",
+    "sha256": "88b50ec5fa97e4c09d6f466ab3f19506056311b8c2bbc91f1840eb432321c125",
+    "bytes": 17810
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverCrossSection.class",
+    "sha256": "70f45c11705218dbc893770d1675417da19ec3fdc8a5dbc1ac71f5229056d31a",
+    "bytes": 2250
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverDepthProfile$Endpoint.class",
+    "sha256": "218025d925ed2d250177416adc44ef1f7fec7abc18ef490e87b1ce640265aeb3",
+    "bytes": 3048
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverDepthProfile$Result.class",
+    "sha256": "0c61e4416f1f7fce42d4baf6fe7fbea318427083adcc6423d8950e620985dc57",
+    "bytes": 2500
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverDepthProfile.class",
+    "sha256": "4c3addea86675c49798307f200374935e0f7a4b860442919701a30ebf1f1ed89",
+    "bytes": 19796
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverNetwork$Params.class",
+    "sha256": "554887b6ffa0c1b4abec13e465a3a84c3acf6cff38c49dc1f629b041fbc04f48",
+    "bytes": 2818
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverNetwork$Result.class",
+    "sha256": "48257e1875b17d911afd5b349090ec5c5a8741686cf81b89ba609b05b70e535c",
+    "bytes": 2483
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverNetwork.class",
+    "sha256": "2cd54af10f122a8319cf7221d4651ccc85b7a13d2fae9265f9de1f810b7bdeb5",
+    "bytes": 5479
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverWidthProfile$Result.class",
+    "sha256": "d5026715272d82336cddd8d3e90999cad624c57a58a79f48ec630e4a022e263e",
+    "bytes": 2658
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\RiverWidthProfile.class",
+    "sha256": "17a71ef773dc8ea1b2a3c2e0ae877a7d65797ce213a208159bdf0475afefb9d4",
+    "bytes": 37092
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BasinBudget.class",
+    "sha256": "e493491dd7da8daf5a32f4e89dd9a11cb1f0d72be83567fbbb2fcc3b558f5169",
+    "bytes": 3377
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BasinBudgetRange.class",
+    "sha256": "1dbae39a742a8947747afaa305adae7387f926c36c1910aff2797bb6f3faeaf7",
+    "bytes": 3861
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BasinBudgetRanges.class",
+    "sha256": "47c5c67a35ed5cd1ec6e119f676730b4a5c953c14e73a24e6599b1a185a141e0",
+    "bytes": 2348
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BasinBudgets.class",
+    "sha256": "849b61785132c531c6fe7461cdc659c35e2d868aa6b7cf1a2b483150ac8e425f",
+    "bytes": 2293
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BasinRelation.class",
+    "sha256": "64d93b44ad30e62faf9018b652a28fd474718bba93675fae748405f35553d489",
+    "bytes": 3152
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BasinRelations.class",
+    "sha256": "f10f9e08fcf5724df4e1374fdd8b33203be90f4f42d2967d31f06174d9a6554e",
+    "bytes": 3203
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BasinShore.class",
+    "sha256": "a98930cb98eb925344b5aa0af610b54116e87022b9a4411ed3f7a21a21aad067",
+    "bytes": 2875
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BasinState.class",
+    "sha256": "64fa367f8cab0c6e80342e8ad4a58501de1960486d822feedb667d70c51b35b8",
+    "bytes": 1545
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$BudgetEnd.class",
+    "sha256": "9782bcfd13a6d9923335c11b2ef09720c8c1866a1f57ec0477708d924bf4f570",
+    "bytes": 1606
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$Capacity.class",
+    "sha256": "877b9c95ff7a0bfcf8b31f2509267ca6977433a7fd9837fb9055657966670854",
+    "bytes": 1796
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$ChannelCell.class",
+    "sha256": "86939cfaefcf66938cf467155ee8bd78b0375cac92903d16be7cfe8b531a9b81",
+    "bytes": 2841
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$ChannelEdge.class",
+    "sha256": "272bdf26159d7155b3fe4e74d776d75b3c2e003ae9f256ef8c49d6a4fd4e7e02",
+    "bytes": 2329
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$Channels.class",
+    "sha256": "bae4b3cff0667df68d5c998560ffa595388bf4397f4c24e4c3c23ea7cccc9a6d",
+    "bytes": 5155
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$ChannelState.class",
+    "sha256": "ca9401ac52faf77687c974e0c41eb8686261e2ff7645e062e05a310c0a55fb99",
+    "bytes": 1566
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$ContinuationEdge.class",
+    "sha256": "6f59daeedd1734114aeb9d3b0678201d7e84969f7ac13381ced41da0b2eee506",
+    "bytes": 2939
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$ContinuationEnd.class",
+    "sha256": "c1cdda8247fc3eccfcf6b1b685713eba84512bcb24733f220a98ebf5155b4411",
+    "bytes": 2958
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$Continuations.class",
+    "sha256": "35dbffa6180155cc439750f622098191682d7996f2b2480394db63d6cd317452",
+    "bytes": 2914
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$ContinuationSource.class",
+    "sha256": "a3c43cde592f78facc19ced0280de0b10253943e38aaf5172e0843b3664cc4eb",
+    "bytes": 2316
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$Direction.class",
+    "sha256": "a41695a57ef5d5051d82da7b9cc644dbff771b418cdf1baf17127fbc297c04b6",
+    "bytes": 23710
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$DirectionEdgeId.class",
+    "sha256": "2120b2d13d1215eadcf8140c06ae1f7306c8c8580f579f8675528fa02cc47f79",
+    "bytes": 2417
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$DirectionEnd.class",
+    "sha256": "f87558c68b3fdb566bc4d0bd45aded803047f01fda7b70b3c119f3e92a6b79e3",
+    "bytes": 1663
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$DirectionStep.class",
+    "sha256": "7a5967ac7e16cb4387f9d35c1de7e948043b2c2e5e9b7f7e10eb45dd4a19eb25",
+    "bytes": 3143
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$DirectionTrace.class",
+    "sha256": "37cc75dd53aa9a856f8b4b27d898f8b45349d66f0e388c73f0fe3a6d3a8253a8",
+    "bytes": 3190
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$DirectionTransfer.class",
+    "sha256": "01911c35213b6e966389bc42626dffcb06a94eb5b6a407188e367eff0026c06d",
+    "bytes": 3777
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$Domain.class",
+    "sha256": "15d4a6534ea81f5db2d8d5d88f44ca35d5a5311c92a8e2dc28b0d364e216a6c1",
+    "bytes": 7440
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$End.class",
+    "sha256": "9dd68008893ed184c8a721718de19708eee5057c0640e5c04046ecfe2ca91c26",
+    "bytes": 1494
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$FirstTerminalCapacity.class",
+    "sha256": "668f3825854580f9c90a8b60597167ce2462b5788d513a0131a3f6724f35bb6b",
+    "bytes": 1898
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$FirstTerminals.class",
+    "sha256": "1bbcb0541e270ce94b578d199f89358c7d3f360927db00ea1d004c9d854971f8",
+    "bytes": 2732
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$FlatExit.class",
+    "sha256": "7edeebee1218dad4eee213a79d3e37bb18f9b4fa3d14f8d69983376ba1025d57",
+    "bytes": 1929
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$Forest.class",
+    "sha256": "f911fa8c014b40c1a602dec72613f47c14d1503c51c7d9b2f0252ec67f9c1952",
+    "bytes": 1938
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$LocalBasin.class",
+    "sha256": "b83ad958e99b379b517e367a20394e3bd404ab4d5b47c89cfa1834dbdb5c3d72",
+    "bytes": 4317
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$RangeBudgetEnd.class",
+    "sha256": "ba133da20f629918eb9d4fdc2fa5f56a37351808aabd689cf4370d0d4ff735ee",
+    "bytes": 1641
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$RateRange.class",
+    "sha256": "69a9db9cb0a3ff89744f9475f8014794325d8afb8638b87f40f9b4ee0639b92d",
+    "bytes": 2086
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$RelationEnd.class",
+    "sha256": "30fb6060742baf5dcb28dceaf696ee6d83c0e709e7d95b1abce06459a64440ed",
+    "bytes": 1840
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$Trace.class",
+    "sha256": "b56444df3985b0ba1a33ef7efff121c993db7e9893289973d06d9197c904bac6",
+    "bytes": 3081
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage$Visit.class",
+    "sha256": "dbf6e950612184706dbcc2b3b2dbb89ea3a08d40c28bd6437582c65a815c07a5",
+    "bytes": 1916
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBlockDrainage.class",
+    "sha256": "e235c387c0c2a95e88b0e7b6a1ffde4041e21e008bb8a3b49508cf89d8aacf0f",
+    "bytes": 30917
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$1Pixel.class",
+    "sha256": "a3178693a3a82d5a27af919aeb39cbb321103057ae2a08aff5e54f9f272a4682",
+    "bytes": 2418
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$BasinAudit.class",
+    "sha256": "3d061ccc0e17186e01bfe2762910eb2d7f977fa58dba45e8afbcf5c8e3ff7142",
+    "bytes": 2996
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$BasinChain.class",
+    "sha256": "c371b8f98017a9d690b7076929ce165131a0ae157d90665c317864c0d242f1be",
+    "bytes": 3149
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$BasinEnd.class",
+    "sha256": "09cc26b779a53a30c0175526a5dc0c15032eac499b1df18ea7eb788f4b3fed7a",
+    "bytes": 1749
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$BasinEscape.class",
+    "sha256": "34c56ba680de5ce4708e96dc4a7e7e88175dcf8c23275863dc46da5b69f2c02f",
+    "bytes": 4274
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$BasinFootprint.class",
+    "sha256": "0471cf233fb467102c4ad336d70584e5e87221d6f276f92aafe20c61083e7227",
+    "bytes": 3577
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$BasinSelection.class",
+    "sha256": "bc3d6dbb8a78f1da0efbf24032cabe64d570ff9a695a5b1f35aaccaa8e10ae5e",
+    "bytes": 2505
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$BedSample.class",
+    "sha256": "91d3cb0e8bbbd7baa4a6ec6453435a667bbed170e1b65c54874dd18ab1d68c7e",
+    "bytes": 2146
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$CandidateChain.class",
+    "sha256": "ecea2012f9f34523b279da97f515032e1986d110fd37d7e1a8662bfdc8ab9aab",
+    "bytes": 3456
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$CellConnectivity.class",
+    "sha256": "a8388656c88f08418f27d272a76e6206847c9678ff4fec4c356c8d2c700b7591",
+    "bytes": 4307
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$ClaimAgreement.class",
+    "sha256": "1624abadd26c14843347b7665760595462a357b89063f793f9df55530fc66b7d",
+    "bytes": 3693
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$ClaimState.class",
+    "sha256": "d5660e0705f9283e001524081305e9fa9e7f4023b424490d033bd613687fd9c6",
+    "bytes": 1570
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$Connection.class",
+    "sha256": "1dfd9f6f82094f6762099caee17b3e55c10d7126a4d40b859050646348257aad",
+    "bytes": 3537
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$ConnectionId.class",
+    "sha256": "dfd908643a54112bf49645d2fafbf3d49913c3ea0d9a629f6e019d0d23806c95",
+    "bytes": 2513
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$CornerRoute.class",
+    "sha256": "32fc84ed91cbf31661f2247b57f6894499cc53b9372bab2a10d4af2d597aa5cb",
+    "bytes": 3989
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$CornerSearch.class",
+    "sha256": "243e8f6970eb1fa64c203b9fdbf4e2a8b6b38954e756b8b8ce4aadf6be10c232",
+    "bytes": 2302
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$Descent.class",
+    "sha256": "b0afc29bebac4dcd6eb1263609173a086163193dd88535416f9feccea2c49ccd",
+    "bytes": 3058
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$DirectionClaim.class",
+    "sha256": "08b0453ebb6954fbf91ad517b4955102cd8a7554084dfc1f06b76b064121e21f",
+    "bytes": 2751
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$Domain.class",
+    "sha256": "1a278fe880215e113a1ed11af3960aab93802ca20c9100a36fd9290eba78c10b",
+    "bytes": 7849
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$EscapePlane.class",
+    "sha256": "fcdb8b1d9703ab6e80d93cb84212bc81dd0633c6e903cf8971640f1d51f07872",
+    "bytes": 4716
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$Key.class",
+    "sha256": "d35bfddfd94a800b58fa343038ecb0a9821bc15a3ecbdd93138349f81bfab976",
+    "bytes": 2063
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$LocalMapping.class",
+    "sha256": "78f8a81cb138dbc73e8ae30f15b482308446f099b4bf5671fefcc609ad3f4b4d",
+    "bytes": 3641
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$LocalStatus.class",
+    "sha256": "35e38511abf495214e940985ba8aac3f69f4b22b6ae8a7e1b4bda58d31e4717b",
+    "bytes": 1844
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$LocalStep.class",
+    "sha256": "b6af1d6c076a860c8c36198638e4e0a45e0bc2ae0a942d1577a89e42ea20fa81",
+    "bytes": 2947
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$Mapping.class",
+    "sha256": "4022b0d0b1d33da2934e64c0fc1a0e44df96b199952c20dab36dd692805fa0b5",
+    "bytes": 2586
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$OriginPolicy.class",
+    "sha256": "67f2583251ae3f49cb05cade8f547c4723fcbf6e1aa520a19a92955d547757eb",
+    "bytes": 2236
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$OutletState.class",
+    "sha256": "f92df2d3e0c192dee31d8d2f77eb4529365f5f3c0e78887bd47747790cfa65ba",
+    "bytes": 1786
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$PlaneExit.class",
+    "sha256": "77f5124356fd4758657b4fb6032dd3cee56ef75cc60cb98f6b7956a4f030f3a3",
+    "bytes": 2622
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$PlaneState.class",
+    "sha256": "00bc48c9f6dd80bd954f9b0ca3727b513e51e443b462354f18c1af655aa6c495",
+    "bytes": 1512
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$SearchNode.class",
+    "sha256": "ad0d75024be4c0e0e579e2433cfd9469027b032d9a35d76ee861db9753803fdb",
+    "bytes": 2158
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$ShoreEdge.class",
+    "sha256": "6e3d361d470ac2259cbdd24a85ba4dc646aa4f2cc6360041a8bf60a274591ac9",
+    "bytes": 4110
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$ShoreWitness.class",
+    "sha256": "77b037446fc27724fd6072fcb8d5c168684900347350d8f123240f2f5d8a6176",
+    "bytes": 2741
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$SlopeState.class",
+    "sha256": "9feb69fee0f4996464a321a116b71c19871e020b84906b04080520c34386e4b9",
+    "bytes": 1571
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$SlopeStep.class",
+    "sha256": "427d7bb28d936dea3c854e91737197ce95e18a6d50212d2fb996f5a7af78d564",
+    "bytes": 2930
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$SpillPair.class",
+    "sha256": "81ec1a6e89b7000b29a6ef268e836a30599d5f3b1685abb9510722bc7bbc27c8",
+    "bytes": 2486
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$Status.class",
+    "sha256": "d2fce36a5faa5a7a4a52f3ebc09cf3d6677fc96a99973690969efd64fb713817",
+    "bytes": 1591
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$TerrainRouting.class",
+    "sha256": "29dec5a8a409a1d6e9c44d4d90f6ea4aeea81ae662978b45f1bc8c497ef46465",
+    "bytes": 23656
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldCell.class",
+    "sha256": "3c350fb8a3fc0d66d32ca9782154c2b397e630ef30cdcdefb184818951236365",
+    "bytes": 1801
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldConnectionId.class",
+    "sha256": "02b08808b5233e9446a377fa996abb1f8613a2eeb38ff0516e0f81c379784c72",
+    "bytes": 2536
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldEdge.class",
+    "sha256": "73ca8b208dbb3c94d3a2f54230c99d85b516876eb5ed113d25a33df7c30760aa",
+    "bytes": 2205
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldNode.class",
+    "sha256": "0fe27e5c7ead5099a79610b970fa52f08e88ce91e52420c246296c6e58fc3af5",
+    "bytes": 2926
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldOrigin.class",
+    "sha256": "727772d4445941ead2297bb429903b062adec8eeabae8c3e2e1175193128cf63",
+    "bytes": 2320
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldPiece.class",
+    "sha256": "5a65a0075ce36fff6dfc0a9b65cd4e22a3546d0ad7a357436ba13e0f87ed40b6",
+    "bytes": 5710
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldPlane.class",
+    "sha256": "280f38c41d2837646ac6bd548eb1114084634928e5e15021edb4d90e4fa862fa",
+    "bytes": 4655
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldPolicy.class",
+    "sha256": "e280c73fb22231ce33b2ee2e7df8b31b00d0edfb6d0c3850eaa7bbaa3d1dccb7",
+    "bytes": 2411
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldProduct.class",
+    "sha256": "210eeff08d290d39f46b987dc794eb0941bbdc7beda7005ebae621805c5e3341",
+    "bytes": 6189
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldProjection.class",
+    "sha256": "eff442edbc3f00fbce9198b3f1c1ace14f7518ed68dd9474ad428581a3724042",
+    "bytes": 4952
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldRim.class",
+    "sha256": "987070154614f396cda0405286b0cb690fe36d79bdf059c7290957abe0791d11",
+    "bytes": 2479
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldRimState.class",
+    "sha256": "b7c304b01ab1c782453cc015f05cb209fd75e68b58303dca7180b1f810f00725",
+    "bytes": 1697
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldRoute.class",
+    "sha256": "ca1d2e43a800ab0035e246ae156bd271d62ade3727b1febc2fdb8fa5e902ed74",
+    "bytes": 2841
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldSource.class",
+    "sha256": "05ee44ed57dbc6eced2686b3115b9a19290db0047dc2ad9aa8606880a7a22344",
+    "bytes": 2231
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage$WorldState.class",
+    "sha256": "a0bb9b32391071263c1d186a9356d7ddeaf159c13ac7f2d197bd042a5f904bb6",
+    "bytes": 1829
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryDrainage.class",
+    "sha256": "b0a7a164f2fc505cab447cf9171bac671876920c50f8529c74df2702e20c8304",
+    "bytes": 66474
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$ConditionalRouting.class",
+    "sha256": "aeb3231ef4f3804bdee1c0714a427a45ca8f8f3d6ee579105bd5ac50fc29ab39",
+    "bytes": 3272
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$Edge.class",
+    "sha256": "4ac6f7399c570edd8e96fe0b1e5b95fded523d9639062f4ab8b8e06aa9977967",
+    "bytes": 1910
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$ExteriorBounds.class",
+    "sha256": "da140ae4123489eaa5de59318983a298a6b93b32e81901cdc33741d8a1b55ad9",
+    "bytes": 2437
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$ExteriorFrame.class",
+    "sha256": "caba98a3c7100f9e41c9697694132b33666aead95e147f5cf21b12a5c02cb307",
+    "bytes": 3840
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$ExteriorObservation.class",
+    "sha256": "47ef73ed8b2373891029390fc3054b02e0e15686109cd261581aeaa05b186cbf",
+    "bytes": 3495
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$ExteriorState.class",
+    "sha256": "1a17d5ae0197883925cc9b5d2ad1750f18544682da8fc1873c64a38b07db7fb9",
+    "bytes": 1865
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$ExteriorTrace.class",
+    "sha256": "0952a371bd308d89a276440e0739825fda798c504a18aabd0e425525364c08d5",
+    "bytes": 3519
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$GridAssembly.class",
+    "sha256": "ec592604c632985945040c844cc6e6631cd3ae723a7782c1bf4a71d4dd9888fd",
+    "bytes": 3404
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$GridCapacity.class",
+    "sha256": "701074d6564e9acaa5b4996ac5e5dfd8d387cf0a93dceffaac2e2f2f3693ecd5",
+    "bytes": 1851
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$GridTransfer.class",
+    "sha256": "f55e158afe3814fb4d951de8262f27dbc40ff20efea31cca15b071c3c8f85c13",
+    "bytes": 3519
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$Product.class",
+    "sha256": "d2cb05ea0073fdd0274c88904876aed8cdfb98cd2ab346a91ef214fb6eaf196b",
+    "bytes": 3841
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$SampledCut.class",
+    "sha256": "d540be9c4321e92a3d3ddd7078eb7085139c1c1131903d91ff7b14ce3b0810b0",
+    "bytes": 3485
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$SampledCutEdge.class",
+    "sha256": "e3ce4b1538f3c9703771b0810c34a8596b93e62bdd06d5419fe058b63a87fe6c",
+    "bytes": 1978
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$SampledCutState.class",
+    "sha256": "18486be6b613139cd14080d4d32dd0d71a8376f0699170a399853a851d118ba1",
+    "bytes": 1678
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$Vertex.class",
+    "sha256": "7424a52f57cecee15a6c56ebdd1b2640af3fa76485dfc8a98c073b296ce123f5",
+    "bytes": 2334
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer$Visit.class",
+    "sha256": "21bdd3ff68abd3b434c952df5ecb7ccc80be7bb920f5476641a175ae6cb14634",
+    "bytes": 1793
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedBoundaryTransfer.class",
+    "sha256": "80d39f535d02234e7be755d6349e2684869d9d800729e5c866ce9659bddf1c4b",
+    "bytes": 51955
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$Acc.class",
+    "sha256": "53e0f9d918ea565b101a39d65888b8551a62ae1230d9e6d1365102c48246f48b",
+    "bytes": 984
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$Ctx.class",
+    "sha256": "450dd61e1dfd3e90dcb147aceb8e5541f49fc67a138dd4dabcdaa40986f8a049",
+    "bytes": 3560
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$Decision.class",
+    "sha256": "bd16ae037ec5cbd40be17d21f75f6abfcd3d8f910f9197c7fe3d342ee3a5a230",
+    "bytes": 3013
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$Domain.class",
+    "sha256": "8ac3bc945fbe4d1953dc5b77d77719f4a90f224857746bf74cc4864c188b3f07",
+    "bytes": 8303
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$Geom.class",
+    "sha256": "f4f01878da1d7c19f9618f88afaf40a15cfb33e68befc1b035b308e653535028",
+    "bytes": 2518
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$Key.class",
+    "sha256": "21ab5e1e50c9c4897ed57c3dee84e72ae453ff07e737f2994f57b173404d57a6",
+    "bytes": 2812
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$OwnerLevel.class",
+    "sha256": "e358b451ff47c088ef4f8d0d6d6cb8f3280431d3804eb41fce3597453e2aa6ce",
+    "bytes": 313
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$Plane.class",
+    "sha256": "34481019cf76fe54ce25e635da6e5d78e1edea43107215e157bc92ae4d38625e",
+    "bytes": 2642
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$PlaneSet.class",
+    "sha256": "dffd73de7e9a38bccf474450e3528465e121b345f64f45bf4bff6b72b3fbf921",
+    "bytes": 1128
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain$Status.class",
+    "sha256": "8201d7c164a38e4521fba44df17bcf0dd61128a69e831441798bc383b8242a8a",
+    "bytes": 1909
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\SharedLakeDomain.class",
+    "sha256": "18097bdb9989565ac37a87cf01c272a61559fd2ba3ef8ddaa48db5b937cba16a",
+    "bytes": 30411
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WaterField$ElevationField.class",
+    "sha256": "3946da2015e36a685b471df8f660bb3e0ba698085cf0995a6b6f7881bc452e35",
+    "bytes": 375
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WaterField.class",
+    "sha256": "87474a70a77994a7405ec8c4c626ec459f6a64d83c7c8c6e0402e7b0d0db148a",
+    "bytes": 2337
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WindowOutlets$Result.class",
+    "sha256": "1ff1f0ed1dc467d03aba294f40278b79a50b3576e439ce3b121a158436719f65",
+    "bytes": 2030
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WindowOutlets$Terrain.class",
+    "sha256": "2d2448afb9a90f10f36bb24519d12ba36c55e36acba35caf639091666831ef9c",
+    "bytes": 299
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WindowOutlets.class",
+    "sha256": "573df56e7cff72fb6e03775ea95f32ade1eb130e25f14f666eec49c364e27cbd",
+    "bytes": 2656
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WireIn.class",
+    "sha256": "e36b08ba5cb5f62c577fe357c0805ee86e7f8c45e2dcf6b2df5320dc0211e7c2",
+    "bytes": 3033
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WireReject.class",
+    "sha256": "52ea502a319f266756785da5ac30484de225dc315c37cc2807c654a1f9ea9081",
+    "bytes": 2159
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Budget.class",
+    "sha256": "64c3ab1bf5d550b8d5e046e395f74369f7f3b48943edfd0eaf723e2bc5e3726f",
+    "bytes": 2404
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Catch.class",
+    "sha256": "511e455013412906e6193fa90f0a8942b3afcf85be2010419a5a0e2f7f3947a5",
+    "bytes": 1725
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Certificate.class",
+    "sha256": "bfe2d63d7a947313045af8661b72a3b265f755e663776497b0b9013359f79490",
+    "bytes": 5613
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Face.class",
+    "sha256": "87bed2a3b4c84e94c12bf20f4316f9c8058bf42a494eab70f1b9d906ffb13290",
+    "bytes": 2224
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Geometry.class",
+    "sha256": "b80aedb5d0fdb768cd8e41fbe4ce5abdb0558c9e07928d0613ef963165bc1a2b",
+    "bytes": 4638
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Limit.class",
+    "sha256": "af9e9304c05e8c6b996a163c493e231d1f1609b16ddece28baa7278bfba32aa5",
+    "bytes": 471
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Merge.class",
+    "sha256": "b7a681a392159f824f5fed5637e8f450ef40d40f4e2b5099a42cd1cd1e768ac6",
+    "bytes": 4090
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Reach.class",
+    "sha256": "cccf4e2c395f56a912f9b1163d1d0d9de96d0a1cb554279e30363564802fc394",
+    "bytes": 1439
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Release.class",
+    "sha256": "69526c18a84c25f1c086063a0e8467e04313024c9ec4558455c57b007faecc03",
+    "bytes": 3135
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Route.class",
+    "sha256": "586920295a1dd022202f7bd6e12e714bbcf6b8192cf84a63c60eb851dbc8cf14",
+    "bytes": 2342
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Spill.class",
+    "sha256": "0d2329f4416dc2ecba5e2c288e88e03fc1a9f8783cfe650a9f7e25e4c1764373",
+    "bytes": 2439
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$State.class",
+    "sha256": "530074b1045a659f2cd004a4a5254d32a8b0e9adc2e6ae391457b89a13a4e6c6",
+    "bytes": 1650
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin$Visit.class",
+    "sha256": "b28b3bb6912e040734207fc4e761715b050bbc19a3a4735bb5300d020248bc23",
+    "bytes": 2043
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasin.class",
+    "sha256": "7856e2d45004900909fd873e68bce6c4a1a184090c62c9e74edc3c54cd319db2",
+    "bytes": 33568
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinFlow$Geometry.class",
+    "sha256": "6eab8e994df3b2bf258722440562790729b0f8b330f1214df47327695bc828f8",
+    "bytes": 3306
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinFlow$Region.class",
+    "sha256": "8dac8b7fc40c0aec89b29d5004b0470dfa4db8abb9e112a64106340f1707eefa",
+    "bytes": 3090
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinFlow$Stats.class",
+    "sha256": "36dfac390843231dde13aaeeb8d5aa68380493d76099449b46d4e0332745ab18",
+    "bytes": 2307
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinFlow$Unit.class",
+    "sha256": "d352eadd6c5f8767162b0d1b5f583323ae43c68f051e0a06ac85e42792fa666e",
+    "bytes": 2065
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinFlow$Water.class",
+    "sha256": "fc24d387c8bb2a75375b7991dfbaea91cd595dfcd0ce0df63d7e5e456a889499",
+    "bytes": 3005
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinFlow.class",
+    "sha256": "8a59e9c48f86754a5a9229671bbd4549b2f522d03eef2e98bfb86f7146e9cf0b",
+    "bytes": 20926
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinRouting$Basin.class",
+    "sha256": "471fc35cbd3f138467f87d154f25f6b622d0dee285cba2d05743fb86ccde0020",
+    "bytes": 6305
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinRouting$Lip.class",
+    "sha256": "fc2d190946429ab680ab3da546d6de3c1dc74211c56bf2855b8d6ac5cf853f19",
+    "bytes": 2267
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinRouting$Outlet.class",
+    "sha256": "e7673740c2a3b28ca88088487cf8afd1e4557cc8bf6f5f8ccf22697d6a1e4f6f",
+    "bytes": 3269
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinRouting$RoutingBudget.class",
+    "sha256": "054af616c467477d9e2ba69141007351655f675b9489e6976c8a56380f82fbc4",
+    "bytes": 523
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinRouting$State.class",
+    "sha256": "e0fc7dd9952a1468bddb350436b647cc4d7a9257b509cd29bf1ca1c349b8e590",
+    "bytes": 1426
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldBasinRouting.class",
+    "sha256": "38f3d7ec1dbddbf8c25c3c26a52d4af815b73aa0cdd3d6b36705aeca1116e2a4",
+    "bytes": 22105
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldChannelGeometry$Passage.class",
+    "sha256": "5385cb9c33eab4f74ea2bef8ef48decd3e44e4627c747a8ab0d5dac181041bd1",
+    "bytes": 2416
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldChannelGeometry$Visit.class",
+    "sha256": "c60830bfb1f9bb359284b900c99a34e6551392f82789e34eee73bad87330b478",
+    "bytes": 1789
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldChannelGeometry.class",
+    "sha256": "faa00c23de40da210643b2505cb455001c90c20c11e24ee7e95eedf2f9febe72",
+    "bytes": 7757
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldDrainage$Admission.class",
+    "sha256": "34758f1ac7c7352fa23be9813cbb0901530a9c455417f44e368427b7c5eb21f2",
+    "bytes": 1911
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldDrainage$Edge.class",
+    "sha256": "1da65056eb79364df5cf6569afb0f052bbc8db2bb9a76de62853964a3d1b14e3",
+    "bytes": 2043
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldDrainage$Point.class",
+    "sha256": "3a8f664d9baa29a260ea0cac04ee21511fbf30683a866fbfcc183d66ab82aa3b",
+    "bytes": 1714
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldDrainage$Result.class",
+    "sha256": "68c990595d0e9e86c97e738c830feac6cbfc663bafc83b5f7b597b16df18fc47",
+    "bytes": 2983
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldDrainage$State.class",
+    "sha256": "26cafc84a19cad3aef04507c75902a31f3cad95271e44e16cd4dbea364801447",
+    "bytes": 1451
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldDrainage$Step.class",
+    "sha256": "3b72a08cdf048c5157940d098e4366e4666c1b96e0616dcacaa322cf1269c709",
+    "bytes": 2577
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldDrainage.class",
+    "sha256": "f0618ed356191ca600b2653a4bfc7e4830236683df376b67acbaf407b54c06f4",
+    "bytes": 10967
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldLakeSurface$Cell.class",
+    "sha256": "be6856139b1ce077d8cfa68dc9a4ba94ab24b92f18de4e322a962cc0264d2d19",
+    "bytes": 2129
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldLakeSurface$Plane.class",
+    "sha256": "a8cba64ce75179e1e53829d93e947bcb101f9733695ebdfe250e8308c2556f02",
+    "bytes": 2217
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\hydrology\\model\\WorldLakeSurface.class",
+    "sha256": "9e0ea6acc78880efbc09c94d46fb347872cef7348abd614fbbbe97d9a898bf47",
+    "bytes": 9293
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Abs.class",
+    "sha256": "eb93315c622ba3c1fb2c3c49a67c0e7c1926457a440db38ac2e621cd89359053",
+    "bytes": 3274
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Add.class",
+    "sha256": "1bec28d3e059547154ec9af493e2c6ad5ce0b2eccc3e3e0d87c951dd34bb44cf",
+    "bytes": 3614
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Billow.class",
+    "sha256": "c62244f177487a7356278522dcf1bda33b2d8e41476cb07b96270fba7cd0baec",
+    "bytes": 3307
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Blend.class",
+    "sha256": "d43cf7ac5ef345ce8e386e279357661d12ddb59c7cd8850feb804af691011c7c",
+    "bytes": 4073
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Boost.class",
+    "sha256": "d9a8274f12be2440e5a40a5c410f0be96a94cfa1c6290a23e571894ebdf8563c",
+    "bytes": 3761
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Cache2d.class",
+    "sha256": "4cdd26336d77ad8d3fccc8e67c10bc6cacfe1a43dbbe732cbd8d645842fbe132",
+    "bytes": 4113
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Clamp.class",
+    "sha256": "a37f8395ddf1a70d0575f283e36efffa75276b2468203129fbc3246369bb9477",
+    "bytes": 4229
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Constant.class",
+    "sha256": "1244d22dc5c8b0f180db6393ff76e7c1af23be9f8f8c765f9b9a6ed6bfddffa0",
+    "bytes": 2880
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Curve.class",
+    "sha256": "f2cea0965d6a479c8adcf25276f7f9e32b7be6c64a89a0d2ad1f026bab5a314f",
+    "bytes": 3414
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Frequency.class",
+    "sha256": "ed6c8e0f55209dadd87c687780e612b1f6aefb4e401b19d4252e8a91e5a64974",
+    "bytes": 3799
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Invert.class",
+    "sha256": "b448257b9354d4adbc346bdbc105b7700685c0845ddd556f889e37fa3412957b",
+    "bytes": 3247
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Map.class",
+    "sha256": "cab6e5e7078b8ee5124a34a03dc6d06945001821111bf40bef8eec2662ffe5a8",
+    "bytes": 4652
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Max.class",
+    "sha256": "4db9cdd89f69f02bc7c5579f7fad1e574b16fb23c14be5e56d15170ccbb724aa",
+    "bytes": 3652
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Min.class",
+    "sha256": "5b19d52db8451366f8eadfd70a55841f740b8a927efb03e4e1654ff3ab40950d",
+    "bytes": 3652
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Multiply.class",
+    "sha256": "9543d4f10fc72c80150d310568d6bb49de89d185611c3664ee4d2e01342a4c2d",
+    "bytes": 3644
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Noise$Visitor.class",
+    "sha256": "07b4530b9258f08bab518cfd85e753c6f0d8ed066e291935fbb2e6ae8ee6646a",
+    "bytes": 399
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Noise.class",
+    "sha256": "d0815101c75aa30eae9ff0957dafc3fb74944550de8c49082899514946b0c09d",
+    "bytes": 1118
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Noise3.class",
+    "sha256": "bbd7737529d1c1b8f4913ca01aabdfea70dfa8608bf37456d44190f67145ee12",
+    "bytes": 150
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Noises.class",
+    "sha256": "45ed7a7b53d621ef10921b6f53b69a560a3c265c459db466c2ef7c6a76042c07",
+    "bytes": 5421
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\NoiseUtil.class",
+    "sha256": "0e6f5ecd84cc1e847fbdb266b980f58e2a4406b38048bc02a7d2f7e94eb332e7",
+    "bytes": 2529
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Power.class",
+    "sha256": "60ceeea3dee7893a838c2c6c8ac8e269a7e209239a407773cef19ba35baa0bd4",
+    "bytes": 3917
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Ridge.class",
+    "sha256": "90cee8e38be37c2ffa2e39503a53d99bfe20702b6e82f25754b175c186d4945f",
+    "bytes": 4283
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Seed.class",
+    "sha256": "4e9fcb274f619f4d3b747626a222be959bca459b6843de0b2cf9763ad5841d2b",
+    "bytes": 1177
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Seeded.class",
+    "sha256": "de53a7d2603e2db09a88b0e1d8049ac9f7c5be34fc6c5d9f0fae578d4ed50b99",
+    "bytes": 315
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Simplex.class",
+    "sha256": "bade1b36748bcfa28c17e8d13c2dac6fbd888c3ba2b43b9b247c0a0d6a4ce80b",
+    "bytes": 4587
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Simplex3.class",
+    "sha256": "7e74f090d919e85497692e8156ab88f9ac13139beee41e7edf26f6111959594b",
+    "bytes": 3268
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Steps.class",
+    "sha256": "f55ad02a7baf9cd6f42b223f87fb958725173baec9be885a80a4cab87e9ee55e",
+    "bytes": 3925
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Terrace.class",
+    "sha256": "d9040e2e8236a8f3fc7a156c3b54940e53b038d41b6bbbc9913b935e56602aa5",
+    "bytes": 4534
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\Warp.class",
+    "sha256": "f93e88cefa75a802319a1ea5b5599bc88c564806c476c2a48c3a91e51f0dbab9",
+    "bytes": 4462
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\noise\\White.class",
+    "sha256": "0ce24365fa30ce726f68627531f3298a7d6544b3dc1b709c08ebb3f94dc0e70f",
+    "bytes": 3357
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\ore\\OreVeins$Ore.class",
+    "sha256": "fc86b6ef95590c99838ae1faca62bea591824779c1510c741578ffc531071461",
+    "bytes": 2835
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\ore\\OreVeins.class",
+    "sha256": "ea9d184d58e86b52e4fe0c063760843a04b635a8b0d9b1d60bae54a430072f7f",
+    "bytes": 7199
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\BenchTest.class",
+    "sha256": "e5e44e3375ee1d1738927c8a7d17da7faf7af602e74fe17a1acb54693a0a57aa",
+    "bytes": 4375
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\CacheStats.class",
+    "sha256": "063f63a53148af516d8ac9da2f47fcd9bf19c6f220eca76ebd643836b5100188",
+    "bytes": 1839
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\Cell.class",
+    "sha256": "529dea2b19d79b42f1fd8014e58fbd25ca71b8346b38c921a26260794f6bb60b",
+    "bytes": 2194
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\CellGenerator$ErosionTileResult.class",
+    "sha256": "92aad04e245c373e26ea8d12367c6d845445398afdd1a9b4b12e4d8900bd5de6",
+    "bytes": 686
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\CellGenerator$KeyedValue.class",
+    "sha256": "ff78606f3f63082159a074930c37440d516c9dbe0ba99c38465a699fae617416",
+    "bytes": 1712
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\CellGenerator.class",
+    "sha256": "6fd7e4db5c7ded139ee56eaf0bea35ae6e450f088d34b3114a0f5214b648198c",
+    "bytes": 62778
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\CoastlineField.class",
+    "sha256": "ea4ba2dad72246b4d29c0b1af51a313e3c560331880b6cdf16e65b9578fcad23",
+    "bytes": 2709
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\ContinentField.class",
+    "sha256": "f7b25f15a8df2897dd84d0a8a466ada92cba32691c8b79e85d32aa5f6da4d294",
+    "bytes": 2965
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\GeoGenesisTerrain$LruMap.class",
+    "sha256": "1b68c8fef04c7839739b9f614c0193c6c0b5075b5a097554a09ca8877f83c5a3",
+    "bytes": 1471
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\GeoGenesisTerrain.class",
+    "sha256": "d68e4a361a28e64e7fcd1f264b52857c85531d78f1b9ab630ad858722dc1ef18",
+    "bytes": 15503
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\HeightCurve.class",
+    "sha256": "25e953fd82293230258060611144dd78f315242c09bc384734978ee57cef4638",
+    "bytes": 1977
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\LandFeatures$FeatureResult.class",
+    "sha256": "9f8db3f7d9826579f4646ffc87760da7fac497f51c2e35db94587c89b6949d8f",
+    "bytes": 738
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\LandFeatures.class",
+    "sha256": "f79aab9f0ecd7afa4db963bf646e57bb4259cb6d14213d9ec4d7e83e11f6cf88",
+    "bytes": 7834
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\MidSplineConfig.class",
+    "sha256": "43f3e100d2c37050a17c8362c7c2db6e1ea48015aa5785553ada3ca1aaeeb097",
+    "bytes": 19529
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\OceanFeatures$FeatureResult.class",
+    "sha256": "43bba9384b88dcb3fa97b80f59e5784119067049f0e0304024219ef604d2817b",
+    "bytes": 853
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\OceanFeatures.class",
+    "sha256": "11bee819a1a78c4d1883e7c648884fc62d091c5062847174dcd1c3f8fee6439a",
+    "bytes": 5972
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\OceanSplineConfig.class",
+    "sha256": "806d304b47e318d61c6b09ba821427fe6c634b7711b7891204cc30d61e86b30d",
+    "bytes": 16532
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\RecordSerializer.class",
+    "sha256": "1006476061eacfa91a9f5cabc271f6a0478d8ccce747f5614af01857161607ab",
+    "bytes": 5465
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\RockType$Kind.class",
+    "sha256": "f2a20cd6cba25decbbe107618adea7c5d3a0d40ec8e6598552eb8982363346c1",
+    "bytes": 1416
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\RockType.class",
+    "sha256": "5aa6375974b39405abb53e99dc5df0f8a3722600a36c5c9f385a2935eb370406",
+    "bytes": 2385
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\SeaBedDetail.class",
+    "sha256": "096dd789987f6c90c2ab9e84cd4e625df48851f8b47857175e17335b68dcf622",
+    "bytes": 1720
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\Size.class",
+    "sha256": "2e18b34ad7168d11113204ec938e4a57b4c589d9f619fa863a60e0e53a89e7e2",
+    "bytes": 428
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\SplineConfig.class",
+    "sha256": "4ef280d5fae2245bb025e32fdee12fef37d292f7ef05548e0da8da64bcc07424",
+    "bytes": 16208
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\SplineUtil.class",
+    "sha256": "884b650662c1e61f483c802f331127ea42284a30eed4e1b955b599c4808df864",
+    "bytes": 1610
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\StratumField.class",
+    "sha256": "568e082a4b7fa9b92a12d656da213ebae12c4f8a094b683ba177cf22b3808aa9",
+    "bytes": 5451
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TectonicDeformation.class",
+    "sha256": "c75f10f62d979ea9eb437161e97794b4d8f5aab3959ed08f1aeeab5c458a7177",
+    "bytes": 4769
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TectonicField$Sample.class",
+    "sha256": "2fcb9c0ef7cb7682f5ad145eebe7a7387ed202bd396a3e9cb66d215fc6d8db1b",
+    "bytes": 2732
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TectonicField.class",
+    "sha256": "5c44e03425419cccede3e62832d8343f0078dc01fcd47848cc2650710a21faa3",
+    "bytes": 11176
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TerrainCharacterField$BlendResult.class",
+    "sha256": "41e0ef988bea75ca6d99ad5e215f1de1cd579991630f9e25a8845dcca0d4892a",
+    "bytes": 618
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TerrainCharacterField.class",
+    "sha256": "137c32d5fe11c186511ff3e4cd9badf00c7f7da04dfdd148c46294075f89df18",
+    "bytes": 4865
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TerrainClass.class",
+    "sha256": "01e9850960003f28c027c358e03a0773fac67a404281f5b751ef00e6154f3e2f",
+    "bytes": 2612
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TerrainDiag.class",
+    "sha256": "3dad8232bffdaeb7e5504bfaf30279560f5088a3419e2e3c75d87191405392ef",
+    "bytes": 6522
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TerrainDiagnostic.class",
+    "sha256": "9ff3c56522b2dad5449ff9c3e5a07f79518e206bf2faa826594c4dffc6ad2271",
+    "bytes": 9708
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TerrainParams.class",
+    "sha256": "2960cb1a4938edecbb99bebf44006281c8ee4644b2a7814dcb7c7fc15ba03e60",
+    "bytes": 16328
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TypeGenerators.class",
+    "sha256": "07e3f0a061f277e76f75f01033b559d7564ca0559886712be05944c1a7b333f6",
+    "bytes": 3412
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TypeLandShape.class",
+    "sha256": "38f720a80c6aa353f91e4b187aa1f21a09e0c8be5be2e29a321cd73fce15ae2a",
+    "bytes": 7987
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TypeNoiseProvider$1.class",
+    "sha256": "c237c9abe1548d635ff01e1b7ea1a5059e5be8539367d425a4eba96dc613a56f",
+    "bytes": 970
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\TypeNoiseProvider.class",
+    "sha256": "c9cac5028a37d6fde21f88887f33f19327e94ad386984916d43f1fb72edb1a5f",
+    "bytes": 5264
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$InnerSpline.class",
+    "sha256": "883ddf15257f11569d14991dc511214e87540bd79b61761b5702992f20c23a63",
+    "bytes": 1014
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$MidNode.class",
+    "sha256": "77c1ca3b5cda47d7af9d8298273af1f4faf54556b9fc7fef492e5a21cde27231",
+    "bytes": 875
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$MidSpline.class",
+    "sha256": "eed06ee009c82cc22ab384404594fd92a7e17fdf14d93b2fe4290e2c5a8f4a86",
+    "bytes": 3366
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$OuterNode.class",
+    "sha256": "7a831b301f083fda96495f40dca9d29d5ab18f2f811fda335e9f6361d7eba8a5",
+    "bytes": 823
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline$Spline.class",
+    "sha256": "3f3d298c7cc6c2b7230d9a35cb6af66a1c5de7a8f7eae8434af57d75e942c725",
+    "bytes": 806
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline.class",
+    "sha256": "3cd8423bf23a85920658b99bf5f6abda1c38ff0923db67e2d4ed966babebfe9f",
+    "bytes": 5887
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\VolcanicShape.class",
+    "sha256": "5719579392d7a8a229d1121870d946f88660926a8259cae0128a03bace5ac3df",
+    "bytes": 1816
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\BadlandsRecipe.class",
+    "sha256": "4f8ecbe793f204a288156a0546dd1e4484dba99868c26b1516b4dff8ceb7edf4",
+    "bytes": 5186
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\HillsRecipe$Variant.class",
+    "sha256": "1dc4a9bb09ffbc4642ef17a049a8e10213fb1e35967ab8ae7bedc24769ad8bbc",
+    "bytes": 3191
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\HillsRecipe.class",
+    "sha256": "03b43fd980d84eba0aa99b52935b9d13d592ed52d31f8bd8f2cebc1bc4fb02d3",
+    "bytes": 6710
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphAssembly$Family.class",
+    "sha256": "034060a2bf5ffc2995e34b14ac56e941294c71d593dc8b7e75469ed0b6c44579",
+    "bytes": 295
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphAssembly.class",
+    "sha256": "ecd177373fa56b1b0a4bbddced075a998eb5369c052e4aca76c402df5b92107b",
+    "bytes": 8145
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry$Cell.class",
+    "sha256": "8fd7d5839cf3394bdb27f5eff056d8aa4ee3e9e27fd1f5a53be46d1683eea7cd",
+    "bytes": 1775
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry$Edge.class",
+    "sha256": "6c0691e483b54f0c22c69ad1c00da65205dd60aff05bd23c3df5d7f3a560f79e",
+    "bytes": 1667
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry$Site.class",
+    "sha256": "f7eddc941c233086d9c3d1df728dd9bff3d5d06e25077e8b67395ffef3c930d0",
+    "bytes": 667
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry$WarpEdge.class",
+    "sha256": "3fcbacc996e35aa9cd25150bfde354b855cbc5d2de001214ffd2785046000364",
+    "bytes": 2147
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphBoundaryGeometry.class",
+    "sha256": "e948138b750daff4551d9c1349d150789f5f55c401a1cb4c8405aef49dc4bcac",
+    "bytes": 29654
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog$Entry.class",
+    "sha256": "4a6c83e9f3e9e775400ef509f67f071ac2aa85bfad3012d7b536e158a9b2cf3c",
+    "bytes": 4447
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog$HasHeightNode.class",
+    "sha256": "6fbe12a5a81f0e82f412f691796e8f1734957f7aa92cfb5cd453ecb7dea83d43",
+    "bytes": 488
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog$Kind.class",
+    "sha256": "c0e6c2b24ef4677b15ca66c1d6aa3f2376645412d2da1609dc406bd04bd02b01",
+    "bytes": 1461
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog$Stripped.class",
+    "sha256": "3b3639792e062d375a1f5857910924a5859e10742ce166e84f4a5928b7048914",
+    "bytes": 2152
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCatalog.class",
+    "sha256": "f3654fbb0479b6e2362935ab80f717329bbb317447d114bcc7397ca78dffc33e",
+    "bytes": 14937
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCellAdapter.class",
+    "sha256": "86ca368a56d9a09edcf3bbcb40fb125e67f7dc1338a24694dc6a6e7cd434f748",
+    "bytes": 2749
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphCellTable.class",
+    "sha256": "2eb2755ebb48f89f9f0ead2c447370e306e0d5f1eefb44fd377e76c63b13b086",
+    "bytes": 7740
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphGeometryTransform$Axis.class",
+    "sha256": "5ef3757bc2c1483655bd4257226d4555cd7879c1eb35649809d523a297e9ad42",
+    "bytes": 3781
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphGeometryTransform.class",
+    "sha256": "09196ba5c2aebe4e2d1a80071cf84d0461d5f674aaa5b704b09f1b92e2dfa802",
+    "bytes": 6009
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphKernel$Evaluation.class",
+    "sha256": "c1e335af6543c191bbe78dc80cc92140efcd913f664b4343e64f49a8b8f879a2",
+    "bytes": 5718
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphKernel.class",
+    "sha256": "deded0e5b4d3731140654d9034acd16bc866fca037180316316b2d727133b9aa",
+    "bytes": 6839
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField$1.class",
+    "sha256": "5c012a367a7325f78005bdeb538136eaa45323bd9cde3c9ffca6a351e494e15f",
+    "bytes": 1610
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField$Sample.class",
+    "sha256": "40fc1cdbc331dabb50ef390a60c60b6d458ded3ff8a6b9bca34bf40dcb649233",
+    "bytes": 2964
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField$Stats.class",
+    "sha256": "64a845d71482e13e60164d1e7e7c0f00810c38ef68059bdb515e727845674034",
+    "bytes": 2619
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField$Tile.class",
+    "sha256": "74e6a966f22b02b9b3626eb92ef366afcf6c8bbe73dc06269a6d3ca10167cc23",
+    "bytes": 11094
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandField.class",
+    "sha256": "b9f4c71338f414e65e311a50bfdec936cb642c74c1e3d2b70313f12b04096bdb",
+    "bytes": 12032
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphLandRecipe.class",
+    "sha256": "6acaa03017be794379684e4d393b2d2abe60da6cf0181ba642ac17ff839890d2",
+    "bytes": 3404
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Add.class",
+    "sha256": "9f2837fac22bdbe4bb0e99c9ce4e5015ded33dcf100835e892aea438a8e05c4e",
+    "bytes": 2107
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$AdvancedTerrace.class",
+    "sha256": "e0a4e176ee673e152ea24df3fb8a625320d443fd41b4a52f6408e3d09f070fb0",
+    "bytes": 4080
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$AlphaMix.class",
+    "sha256": "5b4daa7c53396312aa910ced08efd27e899341483e4c382d119da5451f3ec5bc",
+    "bytes": 2105
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Billow.class",
+    "sha256": "5b111b276787b45a5edc2a2490f76ddc0214b5164b947546bf13424659596459",
+    "bytes": 2622
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Blend.class",
+    "sha256": "50f5c815b4fdd2d9f1a5116f83f17a8e1650a09468f4530a5c2d33f69d174cf5",
+    "bytes": 3158
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Clamped.class",
+    "sha256": "29715fb2c167c1476fa2bbce7cbf6494c28b57c0ee475fe9e1155705eeea8336",
+    "bytes": 2242
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Constant.class",
+    "sha256": "2fe2209807f1865b16996a6bc0e176b0b6c272132dab1688d6814a58873ca382",
+    "bytes": 1771
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Cubic.class",
+    "sha256": "8d221750628f208baf9428721ffaab0f7a64d935ba31a318bd97e1bb59f4b688",
+    "bytes": 2850
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Curve3.class",
+    "sha256": "953df48166780bf88e27826adc81778f5641cb2d1532abf214be9bcc239ecfd7",
+    "bytes": 2029
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$DirectionWarped.class",
+    "sha256": "817afc11c75fac089b19ce463f484dd7d21b13061b732d25994473833f94d892",
+    "bytes": 2499
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$DualNode$DoubleFunction.class",
+    "sha256": "15368c8a23dd5a02d8292ba181374dc72dc4920840060e436c44a60ab50451ac",
+    "bytes": 466
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$DualNode.class",
+    "sha256": "88288b385515324c95140264740fa299cd32551f0dfacdbd304099e3588511d3",
+    "bytes": 1367
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Erosion.class",
+    "sha256": "735b21ad1cabf4b45b4c7c8be2178ec3011f8dbe2520e8239fcdf71fceb55e5b",
+    "bytes": 5097
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Inverted.class",
+    "sha256": "c8162ff63226bdfb4060b949391e5aa3bc92425d15ca744fe7fa3fcb39050387",
+    "bytes": 2253
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Mapped.class",
+    "sha256": "cce7f4865ccf7d69a573a6d2ec3d4964203c7ceac18b319172989a30493736f8",
+    "bytes": 2488
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Mix.class",
+    "sha256": "8bf5997caa057c526ea1666681c06bfe79f3a3d1df10f9629b2331174703cd3c",
+    "bytes": 2354
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Mul.class",
+    "sha256": "6b233809f44ec94a23d0d2e523ee568896be6c8bff9592974161aa67f4489a50",
+    "bytes": 2107
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Node.class",
+    "sha256": "97a6ec6b541f8e31219671c12bf736ba06e078ec07f97fb39cb4a6b9cbe339fe",
+    "bytes": 281
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Perlin.class",
+    "sha256": "ef7fcd197b0bdd4812496443b6a4ddf836a6202d194a9229958486d6bf5acb8d",
+    "bytes": 3205
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$PerlinRidge.class",
+    "sha256": "f9b05dfb554364bb0ac76c47ae9f4a94fc471ac9749da6f8c4b1664319ed2a3a",
+    "bytes": 2626
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Power.class",
+    "sha256": "14231556c399c2944deccec963b85adc56347be396ba3fa16a1c82015998a6ce",
+    "bytes": 2129
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$PowerCurve.class",
+    "sha256": "a23bc644eae0857c200326f5938d9ed60647225b4f583026749cee2980c61c09",
+    "bytes": 3042
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$ScalarIdentity.class",
+    "sha256": "f17eb08a80234e01ad8ce288f0961b73ac79f03513a75e269bcbbd8b10b8f6fb",
+    "bytes": 666
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Smoothstep.class",
+    "sha256": "92a708fb9f9564f9fe5d3484fd952b0c8e9e7e8616099c471b25eb5c89d1eb5e",
+    "bytes": 2311
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Steps.class",
+    "sha256": "ec0baca3372fab18070af5b88d4b9c813cb35bfb7306c7a29924dacaf760ccbe",
+    "bytes": 2850
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Terrace.class",
+    "sha256": "cb625e763b9a3b681ca0d66d42a22476ebde596818d14e4d6c06cdaffdd5d227",
+    "bytes": 3873
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$Warped.class",
+    "sha256": "84b9f40f62b955e0bfcf682cf4db0ee33b960d5403ac986587be6ad69c8c81da",
+    "bytes": 2513
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$WorleyEdge.class",
+    "sha256": "49951925beee3bbf24c87d8a53fe6a738d91d86d7cc71b082254cd30ee9669b3",
+    "bytes": 1924
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise$WorleyEdgeAdd.class",
+    "sha256": "de19e119dc6f2fe47fa585f26d6e5b99321e36e84cb3a42359098a64be9f02af",
+    "bytes": 1871
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoise.class",
+    "sha256": "bf65c0f0d9f980735f6f15db2f176290a9f5c88311aefc288507ea439b967ada",
+    "bytes": 5141
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphNoiseEval.class",
+    "sha256": "d80d8931f475d5e129bd33f87e2dbf2b7daaeefc77359a38dad54743a8d35042",
+    "bytes": 17647
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphOceanAssembler$EdgeSource.class",
+    "sha256": "10faf28da673a587a5eab02c8451c70b9cdb2ebea8bb9f2081980b6284022b07",
+    "bytes": 319
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphOceanAssembler$Sea.class",
+    "sha256": "111b7d61a657512e7e7a95e820c699678d4b19226a4fec098b978716ef7d7789",
+    "bytes": 1516
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphOceanAssembler.class",
+    "sha256": "1d7201e45f15af8e8be6aeae674e5d2bf9aa2dcd077db7c521ebd2ca690635d1",
+    "bytes": 10358
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRecipe$Role.class",
+    "sha256": "b5d1f0686fa91bde20d02868b65b62a030e2d94e9d0ca0b720f6e5d73ddb1122",
+    "bytes": 1453
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRecipe.class",
+    "sha256": "48dca39b695d4d67029020540bd79307443e3f7103455e85cf4555d37c8b9e19",
+    "bytes": 704
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionContext$1.class",
+    "sha256": "d7fedbe8422915fe9fff504bca5346d8dd317c63771564c9830015f0fe4bfabf",
+    "bytes": 1054
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionContext$SlotCategory.class",
+    "sha256": "3b1e11ee2b26635995ddbe31bd846ee1c068674083bd626c3ae51eef3ded5c23",
+    "bytes": 1616
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionContext.class",
+    "sha256": "b40e704038bf76639786e8c41c35a402e65ee69b7592c7fab40d02531e806ec4",
+    "bytes": 5780
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionPartition$IdMode.class",
+    "sha256": "e099d372615b102d81d8e40fbb62b444e9f53b73d22bf021ee3c2f3aec630c89",
+    "bytes": 1440
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionPartition$Sample.class",
+    "sha256": "11f5e6d17aa8f19aac0738abd8b861fcb38bc2861ac5b8c324f86ca0fa747d0a",
+    "bytes": 1783
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRegionPartition.class",
+    "sha256": "893b90269c7d811bbe9f64213f0f177dab16ba5aa6e01146cd2dc4475654b984",
+    "bytes": 5358
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain$FirstOctavePerlin.class",
+    "sha256": "272d8c61b632d1c71fc5082d002812577b5d4da82ddf157654bc381519987be8",
+    "bytes": 1627
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain$ParsedM1.class",
+    "sha256": "fe6d05dc39449608d5a905639bc4d970f5352b2043605cbd50b4709b79296eae",
+    "bytes": 2863
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain$RawOverride.class",
+    "sha256": "7d11f212b39d00a50d68b817a155bd594ac0e3bc877f855f6a8c33559f142b8e",
+    "bytes": 1890
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain$RoundedRidge.class",
+    "sha256": "d93850333d3f1d47f69bc2dfbdeadbcedaa48d18cf63bdabbd939fa75125fa12",
+    "bytes": 3350
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphRoundedMountain.class",
+    "sha256": "fa51a161f4db93ab918e09acfad9a0c923ca291d1929a39222cf0f47f2e308ca",
+    "bytes": 8981
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphScale.class",
+    "sha256": "e935c5f3c1a611c4a3e8195e42816d2dc5525da3ec51e68b143b784db0100c27",
+    "bytes": 421
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphSingleShaper$Sample.class",
+    "sha256": "a1087282c462416c0bc08084b19ecfb20dadabaf51c0322e86bfe5815a73c753",
+    "bytes": 2219
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphSingleShaper.class",
+    "sha256": "05239312d88c72e11c73e1cbcc1fbe4efbee84648eeff893ca6bc610e3f97ddc",
+    "bytes": 4043
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphTerrainSampler$1.class",
+    "sha256": "00d6a7004addbb916cbaab89da79864b333f81978a1bd80d1331dcdab68adef6",
+    "bytes": 1057
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MorphTerrainSampler.class",
+    "sha256": "990358461331c80f80e75c32c4c15a87b6b2620941928925154a48833b22135f",
+    "bytes": 8478
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MountainsRecipe$Variant.class",
+    "sha256": "2b384999c11ba81cb3eac0fea4a9c96155f97dedc82936194934ee9943ea6950",
+    "bytes": 2794
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\MountainsRecipe.class",
+    "sha256": "ca780964b5380d06a109d59924aa829a0886237e1bd1682babe17676741e1a83",
+    "bytes": 6660
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\PlainsRecipe$Variant.class",
+    "sha256": "0bccaf264ae5f372488a1d1818bb552bab675cb8d213632175e6b6f934b7b5cc",
+    "bytes": 2169
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\PlainsRecipe.class",
+    "sha256": "166697ed7ddf237068b5ce33235becca37bddcec90e4c66de8c25215da83885c",
+    "bytes": 4560
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\PlateauRecipe$Variant.class",
+    "sha256": "e4365dd57f626859d2e06835c9e9c0ab37c5bf4dd0719506cf8a6afcb0169108",
+    "bytes": 1948
+  },
+  {
+    "path": "main-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\PlateauRecipe.class",
+    "sha256": "18954702f961d92f64bf2b631e3a9f657d6f48daa09aab46020dd7bacfdc6163",
+    "bytes": 5700
+  },
+  {
+    "path": "probe-classes\\ParticleBoundaryCheck.class",
+    "sha256": "c74a749b30f1a52148b64d509abb39c2160f5bcaa491f18c93aec64ac189f5c1",
+    "bytes": 4248
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Args.class",
+    "sha256": "9e011877c0f0e456f8ab15f077f080af96f664859ec4380129720bcd0f758ef7",
+    "bytes": 4093
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Bench.class",
+    "sha256": "d5b19f0a9fce2363edf4596f0ba1add17684ba2c4c65a8d3a48d2915faa4e3ae",
+    "bytes": 6868
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Case.class",
+    "sha256": "09c5047891e77e2041066134856f0431a83c81edf1ff2c0926601c383113f782",
+    "bytes": 2910
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$ChildFirstLoader.class",
+    "sha256": "7d950dee95af2813c2a8f3dc1fc1068c109d5dc408452d69605eef4ff74c789e",
+    "bytes": 1347
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Compile.class",
+    "sha256": "9db9b66c751d5a5695028adc34f958c7e1346bb664914b80c58f29cf239d4055",
+    "bytes": 5917
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$EngineRef.class",
+    "sha256": "d9ee74719811a5df763fc2610daece5dda623e75420c09d43b2e4b2a264c3a26",
+    "bytes": 7304
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Entry.class",
+    "sha256": "9842c1774d294f0d4716c9076a888c2aef6ce933fe1d0a98afe990da0ab28561",
+    "bytes": 1395
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$InterruptTrial.class",
+    "sha256": "b40663abbff08598356bd78bc84355d274d5531c8a1c9293e9dbf254c585795d",
+    "bytes": 2386
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Outcome.class",
+    "sha256": "faa6ce68d64da46982d7f4fcbe0a88152bcaed83bcb87b84f65a26d8e080e526",
+    "bytes": 1893
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Run.class",
+    "sha256": "28f219e6ca656b8f9a36931191ae381132ebef20252e4f13d5b1f4a31b59acb4",
+    "bytes": 35699
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$SelfTest.class",
+    "sha256": "31b119d95272ddd34a3bed5a62ac341bb22188723d5241cc954cad8a1c4cbc9f",
+    "bytes": 5619
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Synthetic.class",
+    "sha256": "b18241e4fc563cf32b251e237603b4182b09a90691764bf93319a0cb0f1af1ca",
+    "bytes": 2130
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe$Verdict.class",
+    "sha256": "075f0cf81ea7b033ee4b10406648d88efd573775f980a9ec6a5f6f88e01b3ef6",
+    "bytes": 1828
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ErosionScratchProbe.class",
+    "sha256": "99e6378a09ece3cfebf5df2e70a0eef324b76a439f6099392f6433561196e7bf",
+    "bytes": 11216
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\GuideErosionBench$Engine.class",
+    "sha256": "de6c538b2b4e4fd094057db8ff7681df38ff8f032a2a01b0c1076fa3dc7c9ade",
+    "bytes": 3415
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\GuideErosionBench$Loader.class",
+    "sha256": "a7893cbdcf856bc091ca9c08f6c2d30f80c72e3b25362cbb6c32c1195720f51e",
+    "bytes": 1335
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\GuideErosionBench.class",
+    "sha256": "4851d037528ae7d96ea244c63f23564160ae0d09a994fec5db6cf715a3cab9b1",
+    "bytes": 11267
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\erosion\\ReflectiveCallerCheck.class",
+    "sha256": "403b525710a1737c0d145b26537f9e04851236d26806aacf219e5910dd825a91",
+    "bytes": 3606
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\terrain\\ConfigBoundaryCheck.class",
+    "sha256": "fac33220cbc88f3889c9866d41ea402c4f78f48420699e2445a6e050c9222d57",
+    "bytes": 8589
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\terrain\\P1CellRenderProbe.class",
+    "sha256": "11f160d7732446a7ab163f28adf1fede812eeca72dea1f2bfc46ddb308d922e6",
+    "bytes": 10329
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\terrain\\R00BaselineProbe.class",
+    "sha256": "9d68e106f23ccc504e5f959d32ab8f5a06e0e274516bd7e824447e91f0057e35",
+    "bytes": 13596
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\RidgePlacementProbe$1.class",
+    "sha256": "615ac9253220ef445d85b6ce7dc0544ca1fdaee147fa05260e50deede87e06a3",
+    "bytes": 1835
+  },
+  {
+    "path": "probe-classes\\com\\geogenesis\\worldgen\\terrain\\morph\\RidgePlacementProbe.class",
+    "sha256": "1d599a837ee131331fe1b9d95bacff6a0ae11953ab3d4bf995cb65095007ba86",
+    "bytes": 15921
+  }
+]

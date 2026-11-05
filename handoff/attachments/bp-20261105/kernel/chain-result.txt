@@ -1,0 +1,1 @@
+points=7203; mismatches=0; observed-tile-contributing-points=5838; required-tiles=15

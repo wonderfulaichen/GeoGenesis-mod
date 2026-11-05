@@ -1,0 +1,34 @@
+{
+  "status": "R0-0_BASELINE_CAPTURED_NOT_R0A",
+  "head": "0c742b6051fab06bc76517fc697efd585ea6a227",
+  "p1": {
+    "heightSha256": "bea0a47c14d32fa9e2654c77cc6984999004e137e9e6bde8a05d3e2b2a393965",
+    "acceptedSha256": "bea0a47c14d32fa9e2654c77cc6984999004e137e9e6bde8a05d3e2b2a393965",
+    "cellMetadataSha256": "9ffcee45d77614eb7e016a8f3747cf0ad4cdcbf78798c5bbdb2517612d15c856",
+    "cells": 1024
+  },
+  "loadedArrays": 80,
+  "fallbackArrays": 32,
+  "allRepeatEqual": true,
+  "sourceToolsConfigUnchanged": true,
+  "indexUnchanged": true,
+  "noGeogenesisJvmProperties": true,
+  "seed": "9139912035078620160",
+  "tilesWu": [
+    [
+      -960,
+      3840
+    ],
+    [
+      960,
+      4320
+    ]
+  ],
+  "hs": [
+    1,
+    2
+  ],
+  "sourceCountMain": 209,
+  "userConfigSha256": "cc5d985f7554e4cfb316708e88373530241b9520e4ce983f745a6defcf50c16f",
+  "scope": "No R0a/R0b, no production changes, no commits/pushes; capture probes only under build."
+}

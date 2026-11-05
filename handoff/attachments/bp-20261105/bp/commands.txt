@@ -1,0 +1,11 @@
+Working directory: forge-1.20.1-47.4.10-mdk
+Java21.0.11; javac --release17; Python3.8.6; PowerShell
+.\gradlew.bat -I tools/verify-base-core.gradle -I tools/verify-process-core.gradle -PbpEvidence=build/bp-20261105-054953-3413 verifyBaseCore captureProcessEnvironment --offline
+python -u tools/run-process-verification.py build/bp-20261105-054953-3413
+python -u build/bp-20261105-054953-3413/baseline-replay.py
+python -u tools/run-process-verification.py build/bp-20261105-054953-3413 render 33 1 -2058.5 -2981.5 finite-land
+python -u tools/run-process-verification.py build/bp-20261105-054953-3413 render 33 1 -2153.5 -3181.5 finite-slope
+python -u tools/run-process-verification.py build/bp-20261105-054953-3413 render 201 2 -2242.5 -3165.5 bp-coast-slope
+python -u tools/run-process-verification.py build/bp-20261105-054953-3413 render 201 2 -2242.5 -3165.5 bp-final
+python tools/render-process-comparison.py build/bp-20261105-054953-3413 bp-final
+Exact subprocess argv, outputs and exit statuses are saved separately as *command.json, *.log and *exit*.

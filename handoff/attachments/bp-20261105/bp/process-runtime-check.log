@@ -1,0 +1,14 @@
+PASS geometry/OFF/B/floor/cap/units
+PASS real146/hard121/independent kernel assembly/side and corner blend
+PASS HS1/2 material on/off effective; no F source
+real Metrics[builds=8, successful=8, failures=0, cancelled=0, completed=8, flights=0, queued=0, active=0]
+PASS real/nonzero/cold/warm/reverse/concurrent/eviction/peek
+expected java.util.concurrent.CancellationException
+PASS two subscribers/one cancelled
+expected java.util.concurrent.ExecutionException: java.util.concurrent.CancellationException: closed context
+PASS all-cancel/fresh-retry/late-flight/context isolation
+expected java.util.concurrent.ExecutionException: java.lang.IllegalStateException: input fault
+expected java.util.concurrent.ExecutionException: java.lang.IllegalStateException: validation fault
+expected java.util.concurrent.ExecutionException: java.util.concurrent.RejectedExecutionException: Task java.util.concurrent.FutureTask@64485a47[Not completed, task = com.geogenesis.worldgen.process.ProcessRuntime$$Lambda/0x0000021b5a0ff328@1990a65e] rejected from java.util.concurrent.ThreadPoolExecutor@12c8a2c0[Running, pool size = 1, active threads = 1, queued tasks = 1, completed tasks = 0]
+PASS input/validation failures/no cache/retry/budget rejection
+PROCESS RUNTIME ALL PASS

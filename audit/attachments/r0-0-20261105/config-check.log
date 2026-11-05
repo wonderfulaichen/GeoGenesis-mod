@@ -1,0 +1,57 @@
+2026-11-05 04:34:34,050 main WARN Advanced terminal features are not available in this environment
+[04:34:35] [main/INFO] [geogenesis/]: [PERF] erosion tile (-960,3840) took 32ms [base=21 bicubic=6 skeleton=0 drops=0 delta=32]
+[unloaded]
+horizontalScale=UNLOADED:IllegalStateException
+erosionEnabled=UNLOADED:IllegalStateException
+erosionRoutingAdaptive=UNLOADED:IllegalStateException
+erosionYieldToRiver=UNLOADED:IllegalStateException
+erosionXSEnabled=UNLOADED:IllegalStateException
+erosionStrength=UNLOADED:IllegalStateException
+erosionDropsMul=UNLOADED:IllegalStateException
+erosionErodeMul=UNLOADED:IllegalStateException
+erosionLocalChargeWeight=UNLOADED:IllegalStateException
+erosionCascadeStrength=UNLOADED:IllegalStateException
+erosionRidgeEnabled=UNLOADED:IllegalStateException
+erosionRidgeStrength=UNLOADED:IllegalStateException
+erosionRidgeScale=UNLOADED:IllegalStateException
+erosionRidgeCellScale=UNLOADED:IllegalStateException
+erosionRidgeOctaves=UNLOADED:IllegalStateException
+erosionRidgeGullyWeight=UNLOADED:IllegalStateException
+erosionRidgeRounding=UNLOADED:IllegalStateException
+erosionRidgeLandRef=UNLOADED:IllegalStateException
+erosionRidgeDetail=UNLOADED:IllegalStateException
+erosionMomentumTransfer=UNLOADED:IllegalStateException
+erosionIterations=UNLOADED:IllegalStateException
+erosionLrate=UNLOADED:IllegalStateException
+ridge.gullyWeight=0.7 rounding=[0.11, 0.12, 0.1, 2.0] hs=1.0
+[loaded]
+horizontalScale=2.0
+erosionEnabled=true
+erosionRoutingAdaptive=false
+erosionYieldToRiver=true
+erosionXSEnabled=false
+erosionStrength=1.0
+erosionDropsMul=1.0
+erosionErodeMul=1.0
+erosionLocalChargeWeight=1.0
+erosionCascadeStrength=0.5
+erosionRidgeEnabled=true
+erosionRidgeStrength=2.0
+erosionRidgeScale=100.0
+erosionRidgeCellScale=1.2
+erosionRidgeOctaves=4
+erosionRidgeGullyWeight=0.65
+erosionRidgeRounding=0.5
+erosionRidgeLandRef=0.15
+erosionRidgeDetail=1.0
+erosionMomentumTransfer=1.0
+erosionIterations=2
+erosionLrate=0.1
+ridge.gullyWeight=0.65 rounding=[0.11, 0.12, 0.1, 2.0] hs=2.0
+str1_vs_str3_bitwiseEqual=true
+erodeMul1_vs_3_bitwiseEqual=true fingerprintEqual=true
+cascade0_changesOutput=true fingerprintEqual=true
+particleBaselineSha=c53cc479ac596888f76c28432de2d9de2a8386d6e90350d7f1992d2f36402878
+cascadeZeroSha=46ed042f35119e3eef2ff12865dceaacb6c070add60237001f527f002ba2bce5
+bothOff_nonzeroDeltaCells=16384/16384
+CONFIG BOUNDARY CHECK PASS

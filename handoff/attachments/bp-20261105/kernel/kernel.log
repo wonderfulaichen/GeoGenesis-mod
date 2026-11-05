@@ -1,0 +1,4 @@
+2026-11-05 06:25:28,533 main WARN Advanced terminal features are not available in this environment
+tile 0 bitwise flat/discharge/limited/input mismatches=0; steps=459795
+tile 1 bitwise flat/discharge/limited/input mismatches=0; steps=494626
+tile 2 bitwise flat/discharge/limited/input mismatches=0; steps=543004

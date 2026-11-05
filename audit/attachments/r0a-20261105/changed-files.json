@@ -1,0 +1,47 @@
+[
+  {
+    "path": "README.md",
+    "before": "fc0ac452e9ccf75db7dc99216608589529fcc95d03e2a68fed89630a9b212726",
+    "after": "4c3a3b232545834b6146f0ed0ec7532604247d92c42241d59f2c6fca53cca586"
+  },
+  {
+    "path": ".openbitfun/plans/streaming-world-core-alignment.plan.md",
+    "before": "a5f22c72bcdb042f336958f47444659b0cbf7ac66ae07a0c17c6277ae9bffbbe",
+    "after": "0b81ff4e26d32442b340dc412774e7e66366742d0bb69c76d47679e891206606"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "before": "0ca5e9d8584807d00fcf57d6375e78419169c29fd023d5a7e99780c1fc38ad08",
+    "after": "060185d3635975f6fcd0b64ab07015e194619b81700d3aae1330099d84101562"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-core-boundary-20261105.md",
+    "before": "2f95b689e476f51a22b01f117aa2864754337d8ba0b34f63ad7e46262bb0ac22",
+    "after": "fa0f2b2ce4d0c8e48e7b74d097467c04073e496bed48f1061a276c5ba530a319"
+  },
+  {
+    "path": "audit/README.md",
+    "before": "50d6afbb6613a3b0d56ebd033f82d53a0b21a92f6298fe54fa9a5f23d65eb24a",
+    "after": "32148c461b64ad899e27d20045cb6d94d56d486301f6f4477e2b5b5ecfb92b78"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/morph/RidgePlacementProbe.java",
+    "before": "1bacb1d28795f27ede00b007896d1a1c3f5284ffbf6aa04a66c5279bd2ee0432",
+    "after": "d493d18a2a4c17d3e2b072bee388f500eb5e3eeecc4ad6686be49c005a1cca2c"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "before": "21d025494a10581141ee64e22afcb749cbf0753ce94ab3527eb2211f75a42237",
+    "after": "c57f47e80564263d9f39d2755e8e7ca0be5df916182d3fb9c62fa3cd6da6f28c"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "before": "650d77da62e3ed469d29244c3cf69a61a14f7e515fbe0f2bc05244665f480356",
+    "after": "478818b6b447f0533202945060e7edb4cb651bb726026068f7aa0e32dee2917f"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/tools/verify-base-core.gradle",
+    "before": "d629fbc5965600dd5fdaae6c32097cb07f289d8e0cdeb68066a255d2cd7dce57",
+    "after": "528d1309fba9ac86546497130b6ed45286dc70cb7a2e86962c90853449bbdd78"
+  }
+]

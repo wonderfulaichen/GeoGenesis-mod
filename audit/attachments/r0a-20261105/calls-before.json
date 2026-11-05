@@ -1,0 +1,972 @@
+[
+  {
+    "path": ".codebuddy/memory/2026-07-31.md",
+    "line": 13,
+    "text": "4. 配置同步铁律：字段初始 / GeoGenesisConfig BUILDER / `RidgeValleyErosion.fromConfig` 回退三处一致（漏 fromConfig 回退导致探针曾走旧默认 0.04）。"
+  },
+  {
+    "path": ".codebuddy/memory/2026-07-31.md",
+    "line": 88,
+    "text": "strength 0.08→**0.12**（RidgeValleyErosion 代码默认 + fromConfig 回退同步）+ maxDeltaPerCell 0.18→**0.22**。A/B（seed 12345）：stdR 1.69x→**2.04x**、mgR 1.69x→**2.03x**、peak delta 0、clip 0%、非剥皮（full-mask land mean −0.002）。Stage 7 边界无缝保持（6.7/5.6 块）。注意：delta(all land) mean −0.041（近岸低地 fadeTarget<0 只切谷不抬升 → 净下切），strength 提高使其更负（0.08 时 −0.027）——海岸线可能略内移，可接受。"
+  },
+  {
+    "path": ".codebuddy/memory/2026-07-31.md",
+    "line": 171,
+    "text": "**微调（c1a41b1）**：用户定谷底圆化 0.15→0.12（fromConfig 系数 0.30→0.24）。断裂诊断确认（seed 77777 2000×2000 全类型区域）：eLand maxΔ 7.3 块、eFull 9.5 块（<19 阈值）、typeW 6~7 块、argmax 跳变 0.39%——**无断裂**。"
+  },
+  {
+    "path": ".codebuddy/memory/2026-08-03.md",
+    "line": 19,
+    "text": "- 待用户实机反馈骨架单独效果（山谷深度/密度/形态），再决定是否调 RidgeConfig（strength 0.04/scale 100/cellScale 0.6/octaves 2/gullyWeight 0.7/rounding 0.5/landRef 0.15/detail 1.5）"
+  },
+  {
+    "path": ".codebuddy/memory/2026-08-03.md",
+    "line": 500,
+    "text": "  骨架 fromConfig 读（L50）→ rebuild 后立即生效 ✓"
+  },
+  {
+    "path": ".codebuddy/memory/2026-08-10.md",
+    "line": 69,
+    "text": "1. `RidgeConfig` 加 `horizontalScale` 字段（默认 1.0），`fromConfig` 从 `cfg.horizontalScale` 读。"
+  },
+  {
+    "path": ".codebuddy/memory/2026-08-12.md",
+    "line": 134,
+    "text": "- **修复**：LIFT_HEADROOM_FULL 0.05→0.02（只压平台微丘）、strength 0.5→0.8 + 范围 [0,1.2]、octaves 4→5、回退默认三处一致（RidgeConfig 0.12→0.8）"
+  },
+  {
+    "path": ".codebuddy/memory/2026-08-12.md",
+    "line": 170,
+    "text": "ParameterConfigPanel 开关、toggleBits、RidgeConfig.fadeHeight、evaluateCell fadeTarget 分支、"
+  },
+  {
+    "path": ".codebuddy/memory/2026-08-13.md",
+    "line": 32,
+    "text": "- **修复（治本）**：hs 参数化——`runErosionOnFlat(..., float hs)` 新重载，CellGenerator 传 `params.horizontalScale()`；RidgeConfig.horizontalScale 用 params 覆盖（fromConfig 仍读全局配置）"
+  },
+  {
+    "path": ".codebuddy/memory/2026-08-13.md",
+    "line": 49,
+    "text": "- **探针复现失败的终极原因**：探针用 TerrainParams.defaults()，游戏用 toml（buildParams）——用户配置屏调过 **erosionRidgeStrength=0.75**（默认 2.0）、octaves=5、gullyWeight=0.65、cascade=0.3 → 骨架完全不同 → 地形不同 → 断裂不同。修复：ChunkBorderProbe 解析 run/config/geogenesis-common.toml（parseToml）+ 构造 RidgeConfig 覆盖（CellGenerator 新增 probeRidgeConfig 静态覆盖 + setRidgeConfig）"
+  },
+  {
+    "path": ".codebuddy/memory/MEMORY.md",
+    "line": 59,
+    "text": "- **粗级骨架 = 脊-谷条纹滤镜** `RidgeValleyErosion`（纯局部算子，无 tile 缝）：独立更密网格（RIDGE_SKELETON_SPACING=2）采样真实地形跑 `computeCoarseDelta` → bilinear 升采样。配置（GeoGenesisConfig 声明+defineInRange+toml，不在 TerrainParams）：erosionRidgeEnabled=true / Strength=0.08[0,0.5] / Scale=100[50,800] / CellScale=1.2[0.2,2.0] / Octaves=4[1,5] / GullyWeight=0.5[0,1] / landRef=0.15[0.02,0.5]。**配置同步三处一致：字段初始/BUILDER/fromConfig 回退**（漏回退曾致探针走旧默认）。"
+  },
+  {
+    "path": ".openbitfun/plans/morph-rune-single-shaper.plan.md",
+    "line": 70,
+    "text": "用当前已编译类、固定坐标(100,200)、零梯度、默认RidgeConfig直接调用，得到："
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/ChunkBorderProbe.java",
+    "line": 39,
+    "text": "        com.geogenesis.worldgen.erosion.RidgeValleyErosion.RidgeConfig rcfg = new com.geogenesis.worldgen.erosion.RidgeValleyErosion.RidgeConfig();"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/ChunkBorderProbe.java",
+    "line": 47,
+    "text": "        gen.setRidgeConfig(rcfg);"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/RidgeValleyABProbe.java",
+    "line": 46,
+    "text": "        RidgeValleyErosion.RidgeConfig rcfg = new RidgeValleyErosion.RidgeConfig(); // 强制代码默认（新参数），绕过 toml/INSTANCE 干扰"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 37,
+    "text": "    public static class RidgeConfig {"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 61,
+    "text": "        public static RidgeConfig fromConfig(GeoGenesisConfig cfg) {"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 62,
+    "text": "            RidgeConfig c = new RidgeConfig();"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 96,
+    "text": "                                                float seaE, RidgeConfig cfg) {"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 122,
+    "text": "                                     int spacing, int startX, int startZ, float seaE, RidgeConfig cfg) {"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 173,
+    "text": "                                        float fadeTarget, float cellGridFreq, RidgeConfig cfg) {"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1145,
+    "text": "        RidgeValleyErosion.RidgeConfig rcfg0 = cfg != null"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1146,
+    "text": "            ? RidgeValleyErosion.RidgeConfig.fromConfig(cfg)"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1147,
+    "text": "            : new RidgeValleyErosion.RidgeConfig();"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1148,
+    "text": "        // 2026-08-13：hs 以 TerrainParams 为准覆盖（fromConfig 读全局配置，探针进程为 null→1.0）"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1151,
+    "text": "        final RidgeValleyErosion.RidgeConfig rcfg = probeRidgeConfig != null ? probeRidgeConfig : rcfg0;"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1422,
+    "text": "    public static volatile RidgeValleyErosion.RidgeConfig probeRidgeConfig = null;"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1469,
+    "text": "    public void setRidgeConfig(RidgeValleyErosion.RidgeConfig rcfg) {"
+  },
+  {
+    "path": ".openbitfun/worktrees/terrain-upgrade/forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1470,
+    "text": "        probeRidgeConfig = rcfg;"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 70,
+    "text": "| erosionRidgeEnabled | true / true | fromConfig 每 tile；另查询入口门控 | 有 | R0a |"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 71,
+    "text": "| erosionRidgeStrength | 2 / 2 | fromConfig→骨架求值 | 有 | R0a |"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 76,
+    "text": "| erosionRidgeRounding | 0.5 / 0.5 | 派生数组前两项 **0.11/0.12**；直接new配置字段为0.1/0.12 | 有 | R0a，区分直接构造与fromConfig |"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 79,
+    "text": "| horizontalScale | 2 / fromConfig回退1 | 生产随后用params HS覆盖；static覆盖可绕开此覆盖 | 经TerrainParams身份 | 明确来源，不改单位公式 |"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 94,
+    "text": "**重要**：正常类初始化会创建非null INSTANCE；“未加载”不等于 INSTANCE=null。真实回退是 `.get()` 抛 IllegalStateException 后走各自辅助方法。直接 `new RidgeConfig()`、`fromConfig(INSTANCE未加载)`、已加载配置是三种不同口径。"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 100,
+    "text": "| 骨架fromConfig | 源码调用方为CellGenerator和诊断RidgePlacementProbe；还有直接new配置的旧探针 | 不把所有探针都当游戏配置；参数快照须值化/复制数组 |"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 103,
+    "text": "| static探针覆盖 | PROBE_SKELETON_ONLY、probeRidgeConfig跨实例；setRidgeConfig实例方法实际写static | 双实例隔离是后续要求；本轮未改，采集未使用它们 |"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 110,
+    "text": "| public配置兼容 | fromConfig/setRidgeConfig及公开可变字段存在诊断消费方 | 不未经检索直接删除公开面；兼容迁移方式在R0a前决定 |"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-0-baseline-20261105.md",
+    "line": 126,
+    "text": "- R0a须明确公开fromConfig/配置字段的迁移办法和数组所有权；独立编译闭包需扩到迁出算子，不能拿本轮不含旧RidgeValleyErosion的核心PASS替代。"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-core-boundary-20261105.md",
+    "line": 43,
+    "text": "| [RidgeValleyErosion.java:37-81](../forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java#L37-L81) | `RidgeConfig.fromConfig` 与底部辅助函数依赖 Forge；配置含公开可变数组 | 解析留适配端，核心只收参数；快照必须复制数组或以值字段表达，不能只把引用标 final |"
+  },
+  {
+    "path": "audit/GeoGenesis-R0-core-boundary-20261105.md",
+    "line": 51,
+    "text": "以上是候选清单，不是已实施清单。当前 `RidgeConfig.fromConfig` 的源码调用方可见于 CellGenerator 和诊断 RidgePlacementProbe；实施前仍须重新全仓检索（含完全限定名和反射），不能把一次搜索数量当长期契约。"
+  },
+  {
+    "path": "audit/attachments/r0-0-20261105/class-manifest.json",
+    "line": 580,
+    "text": "      \"path\": \"main-classes/com/geogenesis/worldgen/erosion/RidgeValleyErosion$RidgeConfig.class\","
+  },
+  {
+    "path": "backups/perf-opt-20261028-214832/CellGenerator.java",
+    "line": 1145,
+    "text": "        RidgeValleyErosion.RidgeConfig rcfg0 = cfg != null"
+  },
+  {
+    "path": "backups/perf-opt-20261028-214832/CellGenerator.java",
+    "line": 1146,
+    "text": "            ? RidgeValleyErosion.RidgeConfig.fromConfig(cfg)"
+  },
+  {
+    "path": "backups/perf-opt-20261028-214832/CellGenerator.java",
+    "line": 1147,
+    "text": "            : new RidgeValleyErosion.RidgeConfig();"
+  },
+  {
+    "path": "backups/perf-opt-20261028-214832/CellGenerator.java",
+    "line": 1148,
+    "text": "        // 2026-08-13：hs 以 TerrainParams 为准覆盖（fromConfig 读全局配置，探针进程为 null→1.0）"
+  },
+  {
+    "path": "backups/perf-opt-20261028-214832/CellGenerator.java",
+    "line": 1151,
+    "text": "        final RidgeValleyErosion.RidgeConfig rcfg = probeRidgeConfig != null ? probeRidgeConfig : rcfg0;"
+  },
+  {
+    "path": "backups/perf-opt-20261028-214832/CellGenerator.java",
+    "line": 1422,
+    "text": "    public static volatile RidgeValleyErosion.RidgeConfig probeRidgeConfig = null;"
+  },
+  {
+    "path": "backups/perf-opt-20261028-214832/CellGenerator.java",
+    "line": 1469,
+    "text": "    public void setRidgeConfig(RidgeValleyErosion.RidgeConfig rcfg) {"
+  },
+  {
+    "path": "backups/perf-opt-20261028-214832/CellGenerator.java",
+    "line": 1470,
+    "text": "        probeRidgeConfig = rcfg;"
+  },
+  {
+    "path": "docs/03-实施计划/01-全面重构计划-plan.md",
+    "line": 282,
+    "text": "- `record GeoLevels(int minY, int maxY, int seaLevel, int genDepth)` + `Codec`；提供 `fromConfig()` 静态工厂（`genDepth = maxY - minY`）。"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792769152536/classpath-resolution.json",
+    "line": 2899,
+    "text": "    \"com/geogenesis/worldgen/erosion/RidgeValleyErosion$RidgeConfig.class\": {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792769152536/classpath-resolution.json",
+    "line": 2900,
+    "text": "      \"path\": \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792769152536/classpath-resolution.json",
+    "line": 7021,
+    "text": "    \"com/geogenesis/worldgen/erosion/RidgeValleyErosion$RidgeConfig.class\": {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792769152536/classpath-resolution.json",
+    "line": 7022,
+    "text": "      \"path\": \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792769152536/protected-after-comparison.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792769152536/protected-after.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792769152536/protected-before.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792769152536/protected-final.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/classpath-resolution.json",
+    "line": 2899,
+    "text": "    \"com/geogenesis/worldgen/erosion/RidgeValleyErosion$RidgeConfig.class\": {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/classpath-resolution.json",
+    "line": 2900,
+    "text": "      \"path\": \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/classpath-resolution.json",
+    "line": 7021,
+    "text": "    \"com/geogenesis/worldgen/erosion/RidgeValleyErosion$RidgeConfig.class\": {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/classpath-resolution.json",
+    "line": 7022,
+    "text": "      \"path\": \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/protected-after-comparison.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/protected-after.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/protected-before.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/protected-final.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/class-resolution.json",
+    "line": 2903,
+    "text": "    \"com/geogenesis/worldgen/erosion/RidgeValleyErosion$RidgeConfig.class\": {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/class-resolution.json",
+    "line": 2904,
+    "text": "      \"path\": \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/class-resolution.json",
+    "line": 7025,
+    "text": "    \"com/geogenesis/worldgen/erosion/RidgeValleyErosion$RidgeConfig.class\": {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/class-resolution.json",
+    "line": 7026,
+    "text": "      \"path\": \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/protected-after.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/protected-before.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/discovery/layer-render-1792770035536/local-ab-174--580/protected-final.json",
+    "line": 756,
+    "text": "  \"forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/current-view-1792855900486/protected-before.json",
+    "line": 1368,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-after.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-after.json",
+    "line": 14783,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-after.json",
+    "line": 15899,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-before.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-before.json",
+    "line": 14783,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-before.json",
+    "line": 15899,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-final.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-final.json",
+    "line": 14783,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-cold-reverse-1792787510922/protected-final.json",
+    "line": 15899,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-after.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-after.json",
+    "line": 14256,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-after.json",
+    "line": 15372,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-before.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-before.json",
+    "line": 14256,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-before.json",
+    "line": 15372,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-final-closure.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-final-closure.json",
+    "line": 14256,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-final-closure.json",
+    "line": 15372,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-final.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-final.json",
+    "line": 14256,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-real-1792785899989/protected-final.json",
+    "line": 15372,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/halo-wetcheck-1792785858963332100/protected-before.json",
+    "line": 1695,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/lake-shore-1792860057138/protected-before.json",
+    "line": 1368,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-after.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-after.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-after.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-before.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-before.json",
+    "line": 16579,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-before.json",
+    "line": 17695,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure2.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure2.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure2.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure3.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure3.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure3.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure4.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure4.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-closure4.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-final.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-final.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-final.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-final2.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-final2.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-final2.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-last.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-last.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-last.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-now.json",
+    "line": 6264,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-now.json",
+    "line": 16646,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/outlet-57-regression-1792821818176/protected-now.json",
+    "line": 17762,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/protected-after.json",
+    "line": 6263,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/protected-after.json",
+    "line": 15082,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/protected-after.json",
+    "line": 16198,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/protected-before.json",
+    "line": 6263,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/protected-before.json",
+    "line": 15082,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/receiver-lifecycle-1792792586066/protected-before.json",
+    "line": 16198,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/shape-cause-1792786526188/protected-after.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/shape-cause-1792786526188/protected-after.json",
+    "line": 14592,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/shape-cause-1792786526188/protected-after.json",
+    "line": 15708,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/shape-cause-1792786526188/protected-before.json",
+    "line": 6260,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/shape-cause-1792786526188/protected-before.json",
+    "line": 14592,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\7a1a45a\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/shape-cause-1792786526188/protected-before.json",
+    "line": 15708,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\hierarchical-evaluation\\\\baselines\\\\a70e87b\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v2-real-1792773244964/protected-after.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v2-real-1792773244964/protected-before.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v2-render-1792774170176/protected-after.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v2-render-1792774170176/protected-before.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v3-real-1792778651170/protected-after.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v3-real-1792778651170/protected-before.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v3-render-1792777314678/protected-after.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v3-render-1792777314678/protected-before.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-real-1792779544329/protected-after.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-real-1792779544329/protected-before.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-render-1792780702450/protected-after.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-render-1792780702450/protected-before.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-senders-1792782130255/protected-after.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/d8-spill-contract/pruning/v4-senders-1792782130255/protected-before.json",
+    "line": 216,
+    "text": "  \"D:\\\\Office software\\\\Development Project\\\\GeoGenesis-mod\\\\forge-1.20.1-47.4.10-mdk\\\\build\\\\classes\\\\java\\\\main\\\\com\\\\geogenesis\\\\worldgen\\\\erosion\\\\RidgeValleyErosion$RidgeConfig.class\": \"1f00bec98ba4f2ac580f8b6a6285d8bb28a2c7a614c7e261eed605a9e205b574\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/particle-preeorder-20261104/v6-reuse-audit/report.md",
+    "line": 24,
+    "text": "| `ridgeOn` 读取 | `RidgeValleyErosion.RidgeConfig.enabled` | `:1181` |"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/r0-0-20261105/class-manifest.json",
+    "line": 580,
+    "text": "      \"path\": \"main-classes/com/geogenesis/worldgen/erosion/RidgeValleyErosion$RidgeConfig.class\","
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/r0-0-20261105/ConfigBoundaryCheck.java",
+    "line": 59,
+    "text": "  var r=RidgeValleyErosion.RidgeConfig.fromConfig(c);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/r0-0-20261105/R00BaselineProbe.java",
+    "line": 63,
+    "text": "        var cfg = RidgeValleyErosion.RidgeConfig.fromConfig(GeoGenesisConfig.INSTANCE);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 37,
+    "text": "    public static class RidgeConfig {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 61,
+    "text": "        public static RidgeConfig fromConfig(GeoGenesisConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 62,
+    "text": "            RidgeConfig c = new RidgeConfig();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 96,
+    "text": "                                                float seaE, RidgeConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 122,
+    "text": "                                     int spacing, int startX, int startZ, float seaE, RidgeConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 173,
+    "text": "                                        float fadeTarget, float cellGridFreq, RidgeConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1145,
+    "text": "        RidgeValleyErosion.RidgeConfig rcfg0 = cfg != null"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1146,
+    "text": "            ? RidgeValleyErosion.RidgeConfig.fromConfig(cfg)"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1147,
+    "text": "            : new RidgeValleyErosion.RidgeConfig();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1148,
+    "text": "        // 2026-08-13：hs 以 TerrainParams 为准覆盖（fromConfig 读全局配置，探针进程为 null→1.0）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1151,
+    "text": "        final RidgeValleyErosion.RidgeConfig rcfg = probeRidgeConfig != null ? probeRidgeConfig : rcfg0;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1422,
+    "text": "    public static volatile RidgeValleyErosion.RidgeConfig probeRidgeConfig = null;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1469,
+    "text": "    public void setRidgeConfig(RidgeValleyErosion.RidgeConfig rcfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/build/terrain-upgrade/baseline/src-main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1470,
+    "text": "        probeRidgeConfig = rcfg;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/ChunkBorderProbe.java",
+    "line": 39,
+    "text": "        com.geogenesis.worldgen.erosion.RidgeValleyErosion.RidgeConfig rcfg = new com.geogenesis.worldgen.erosion.RidgeValleyErosion.RidgeConfig();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/ChunkBorderProbe.java",
+    "line": 47,
+    "text": "        gen.setRidgeConfig(rcfg);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/RidgeValleyABProbe.java",
+    "line": 46,
+    "text": "        RidgeValleyErosion.RidgeConfig rcfg = new RidgeValleyErosion.RidgeConfig(); // 强制代码默认（新参数），绕过 toml/INSTANCE 干扰"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/morph/RidgePlacementProbe.java",
+    "line": 22,
+    "text": "    private final RidgeValleyErosion.RidgeConfig config;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/morph/RidgePlacementProbe.java",
+    "line": 31,
+    "text": "    private RidgePlacementProbe(TerrainParams p, RidgeValleyErosion.RidgeConfig config) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/morph/RidgePlacementProbe.java",
+    "line": 157,
+    "text": "            var ridge = RidgeValleyErosion.RidgeConfig.fromConfig(GeoGenesisConfig.INSTANCE);"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/morph/SingleShaperProbe.java",
+    "line": 125,
+    "text": "        var c = new com.geogenesis.worldgen.erosion.RidgeValleyErosion.RidgeConfig();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 37,
+    "text": "    public static class RidgeConfig {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 61,
+    "text": "        public static RidgeConfig fromConfig(GeoGenesisConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 62,
+    "text": "            RidgeConfig c = new RidgeConfig();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 96,
+    "text": "                                                float seaE, RidgeConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 122,
+    "text": "                                     int spacing, int startX, int startZ, float seaE, RidgeConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 131,
+    "text": "                                      float seaE, RidgeConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/erosion/RidgeValleyErosion.java",
+    "line": 178,
+    "text": "                                        float fadeTarget, float cellGridFreq, RidgeConfig cfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1174,
+    "text": "        RidgeValleyErosion.RidgeConfig rcfg0 = cfg != null"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1175,
+    "text": "            ? RidgeValleyErosion.RidgeConfig.fromConfig(cfg)"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1176,
+    "text": "            : new RidgeValleyErosion.RidgeConfig();"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1177,
+    "text": "        // 2026-08-13：hs 以 TerrainParams 为准覆盖（fromConfig 读全局配置，探针进程为 null→1.0）"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1180,
+    "text": "        final RidgeValleyErosion.RidgeConfig rcfg = probeRidgeConfig != null ? probeRidgeConfig : rcfg0;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1451,
+    "text": "    public static volatile RidgeValleyErosion.RidgeConfig probeRidgeConfig = null;"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1498,
+    "text": "    public void setRidgeConfig(RidgeValleyErosion.RidgeConfig rcfg) {"
+  },
+  {
+    "path": "forge-1.20.1-47.4.10-mdk/src/main/java/com/geogenesis/worldgen/terrain/CellGenerator.java",
+    "line": 1499,
+    "text": "        probeRidgeConfig = rcfg;"
+  },
+  {
+    "path": "handoff/erosion-operator-conclusions-20261030.md",
+    "line": 109,
+    "text": "**做了什么**：`RidgeConfig` 加 7 个 `lowland*` 字段，按 `h` 在低地档与山地档间平滑插值。"
+  }
+]

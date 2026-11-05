@@ -1,0 +1,4 @@
+A-proxy only: full onehot field delta -> bias shell; not an operator-level recipe implementation.
+Pre f64be = covered land e, post f64be = ocean/coast assembled MC Y.
+No particle/model. No geogenesis/hydro JVM properties; explicit file.encoding=UTF-8 only.
+Sparse weights do not assert full-window purity.

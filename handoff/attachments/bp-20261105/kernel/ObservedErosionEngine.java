@@ -1,0 +1,996 @@
+package com.geogenesis.worldgen.erosion;
+
+import java.util.function.Supplier;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CancellationException;
+
+/**
+ * 本地确定性液滴侵蚀引擎 —— 三尺度层叠 + localCharge 正反馈 + 局部 cascade 级联。
+ *
+ * <p><b>升级概要（相对备份基线）</b>：
+ * <ul>
+ *   <li><b>三尺度层叠</b>（R=8/4/2，取代旧 R=6/4）：宏观山谷→中脊→微冲沟，覆盖更广特征尺度。</li>
+ *   <li><b>localCharge 正反馈</b>：每粒子携带自起点累计高差 localCharge，容量公式乘以
+ *       {@code (1 + α·localCharge)}，使长程深流粒子雕得深、短程浅流雕得浅 → 主流深支流浅，
+ *       几何涌现尺度多样性，不依赖全局统计（完全本地确定 → 天然无缝）。</li>
+ *   <li><b>局部 cascade 级联</b>：侵蚀后对 8 邻居按高度差做 settling，平滑河床底部。
+ *       SH 真实感的第二个来源。</li>
+ *   <li><b>2026-08-14 河流系统整体清除</b>：StreamTracer/河流雕刻/水面棘轮/河道填水/河流配置
+ *       全部移除。侵蚀液滴自身 = 地形刻画（含沟谷），discharge 场（res.discharge）保留为
+ *       侵蚀副产品，待河流系统重构时作为单一流量数据源。</li>
+ *   <li>其余无缝机制（本地算子 + 确定性逐区块播种 + 双平滑抹微断裂）全部保留。</li>
+ * </ul>
+ *
+ * <p><b>无缝原理（不变）</b>：
+ * 某点侵蚀结果只取决于它周围一小圈笔刷邻域（R_MAX=8）与下落液滴轨迹；
+ * 对提取中心 16×16 而言，笔刷邻域全落在 tile 的 border 内 → 结果只与世界坐标有关，
+ * 与"用哪个 tile 算"无关 → 两相邻 tile 算出来一致 → 无缝（仅 smoothing 边缘微断裂）。
+ * 关键：液滴 <b>按 chunk 哈希确定性播种</b>，spawn 世界坐标 = tileOrigin + (chunkX*16 - tileOrigin) + offX，
+ * tileOrigin 抵消 → 诞生世界坐标固定，轨迹是高度场的确定性函数 → 无缝。</p>
+ */
+public class ObservedErosionEngine {
+
+    public Observation observation;
+    private final Supplier<ParticleErosionParams> runParams;
+    private final int smoothingParallelism;
+
+    private static final float INERTIA = 0.005f, GRAVITY = 2.5f, EVAP_RATE = 0.001f;
+    private static final float ENTRAINMENT = 10f;
+    /** 汇聚门控尺度：flowGate = ld/(ld+FLOW_SCALE)。基于实测 dis 分布（非零93%、主质量2-8）定 4，
+     *  源头(ld<2)弱、汇聚(ld≥8)全强。仅改侵蚀公式（ObservedErosionEngine），不影响预览磁盘缓存
+     *  （勿 bump CACHE_SCHEMA_VERSION——15 曾导致磁盘缓存失效 → QUARTER-only 网格伪影暴露）。 */
+    private static final float FLOW_SCALE = 4f;
+    /** 放电量偏置系数（旧动量偏置 a = MOMENTUM·ld/(ld+10)，沿梯度加速，保留） */
+    private static final float MOMENTUM = 1.0f;
+    private static final float DEPOSIT_SPEED = 0.02f;
+    /** SimpleHydrology 型统一松弛率（原 depositionRate=0.1），高度差驱动的平衡浓度 → 侵蚀/沉积双向 */
+    private static final float RELAX_RATE = 0.1f;
+    /** cascade 局部每 N 步执行（2026-08-01 对齐原版每步，河床平滑更充分；8 邻居小邻域性能可控） */
+    private static final int CASCADE_INTERVAL = 1;
+    private static final float CASCADE_MAXDIFF = 0.01f;
+
+    // ===== 三尺度配置 (v3 - 强侵蚀 + 河谷协同) =====
+    // 提升：spacing=4 插值场平滑度高，需要更大参数。河网雕刻后侵蚀液滴沿河谷走廊进一步增强。
+    // C 尺度 (宏观山谷/山脉脊线)：笔刷半径 7 覆盖 225 邻域，DROPS_C=120 每区块约 0.5 滴/格
+    // ★ 2026-08-14 蚀刻与 dis 累积解耦（断流方案终版）：
+    //   - LIFE_C=20 = 蚀刻步数（无缝铁律：总行程 ≤ 缓冲余量 47 → 覆盖提取区的液滴永不出界）
+    //   - DIS_EXTRA_C=40 = dis 延长步数：液滴蚀刻 20 步后继续"只走不蚀"累积 dis 到 60 步。
+    //     dis 场覆盖 60 步 → 上游液滴足迹延伸到下游 → dis 沿流汇聚（断流改善）。
+    //   - 无缝论证：无缝约束只卡蚀刻（flat 双写）；dis 是副产品，各 tile 提取区独立读
+    //     自己的 dis（不双写），出界截断不影响正确性 → disOnly 段可安全走出缓冲。
+    //   - disOnly 段只写 disT、不写 mom（动量场影响蚀刻轨迹，保持蚀刻行为零变化）。
+    // ★ 2026-08-14 定案：DIS_EXTRA_C=0（纯 20 步）。流量图断裂（tile 边界出生范围不同 →
+    //   dis 单读但 48 网格线处跳变）实测被否，20/60 均未解决河流问题 → 回退纯 20，
+    //   河流系统待基于 Farseek 参考重新设计。disExtra 机制保留（=0 禁用）。
+    private static final int R_C = 7, DROPS_C = 120, LIFE_C = 20, SEG_LEN_C = 0, DIS_EXTRA_C = 0;
+    private static final float ERODE_C = 0.100f, DEPOSIT_C = 0.010f;
+
+    // M 尺度 (中脊/冲沟)：半径 4，(2*4+1)²=81 邻域，寿命 30 步
+    private static final int R_M = 4, DROPS_M = 60, LIFE_M = 30;
+    private static final float ERODE_M = 0.120f, DEPOSIT_M = 0.015f;
+
+    // F 尺度 (细沟/微沟壑)：半径 2，(2*2+1)²=25 邻域，寿命 20 步
+    private static final int R_F = 2, DROPS_F = 40, LIFE_F = 20;
+    private static final float ERODE_F = 0.150f, DEPOSIT_F = 0.020f;
+
+    // XS 尺度 (微侵蚀纹理，2026-08-12)：半径 1wu 十字笔刷（中心+4 邻，5 格）。
+    // 目的：填补最小特征尺度空洞——C/M/F 最小笔刷 r2wu=4 块直径，无 1-2 块级细节。
+    // HS=2 时 1wu=2 块、HS=1 时=1 块。微步长 SPDCAP_XS=0.6wu → 轨迹细密连贯；
+    // ERODE_XS 幅度小（防 r1 单格椒盐）。独立种子流 d*137+3（与 C/M/F 错开）；
+    // STALL 阈值按微尺度缩窄（微笔刷单步 delta 天然小，防误判平衡态提前终止）。
+    // ★ 2026-08-13 目检回调：小圆坑（用户反馈）——微步长让液滴在 r1 五格内反复打转，
+    //   单点重复侵蚀挖出直径 2-4 块浅坑。修复：ERODE_XS 0.045→0.02（挖得浅）、
+    //   DEPOSIT_XS 0.01→0.015（填得快，比 4.5:1 → 1.3:1）、DROPS_XS 70→40（覆盖稀疏）。
+    // ★ 2026-08-13 二次回调：用户目检"还行"，要求侵蚀略强一点 → ERODE_XS 0.02→0.03；
+    //   SPDCAP_XS 0.6→0.8（步长略增，减少原地打转概率，纹理略粗但更自然）。
+    private static final int R_XS = 1, DROPS_XS = 40, LIFE_XS = 14;
+    private static final float ERODE_XS = 0.030f, DEPOSIT_XS = 0.015f;
+    private static final float SPDCAP_XS = 0.8f;
+    private static final float STALL_SPEED_XS = 0.12f, STALL_DELTA_XS = 1e-5f;
+
+    /** 最大笔刷半径（pad = R_MAX + 2 = 9），相邻 tile 各 pad 9 + 中心区域重叠 2*9=18 块无缝 */
+    private static final int R_MAX = Math.max(R_XS, Math.max(R_C, Math.max(R_M, R_F))); // =7
+
+    // ★ 2026-08-09 优化（光追 RIS 式重要性重采样 / Russian roulette 剪枝）：
+    //   SLOPE_MIN_SKIP — 撒点前 1 格差分坡度阈值：低于则跳过该液滴（平坦区侵蚀≈0，纯无效功）。
+    //     确定性：坡度是 flat 世界坐标场的确定性函数 → 跳过集合固定 → 无缝保持。
+    //     阈值保守：0.002e/格 ≈ 0.5 块/格，只跳过绝对平坦区（海洋平原/谷底），陡坡全量。
+    //   ★ 2026-08-12 T3：0.002→0.001（×hs 后≈0.2 块/格），释放缓坡/宽谷边缘的微坡液滴。
+    //   ★ 2026-08-12 目检回调：0.001→0.0015（侵蚀略过，小幅回撤至折中值）
+    //   ★ 2026-08-12 定案（回基线）：0.002 是唯一安全值。二分实锤：0.0015 放行的微坡液滴
+    //     （坡度 [0.0015,0.002)）在近平坦处随机漫步，出生集跨 chunk 边界不连续 →
+    //     沿 chunk 边界形成 3-8 块"墙"（DeltaDumpProbe lx=39→40 孤立突变 0.022e）。
+    //     STALL 0.25/12 经 BISECT 验证无墙无害，但为与基线完全一致也一并回 0.3/8。
+    private static final float SLOPE_MIN_SKIP = 0.002f;
+    /** 平衡态判定：spd 低于该值 且 单步笔刷增量低于该值，连续 STALL_MAX 步 → 提前终止 */
+    private static final float STALL_SPEED = 0.3f;
+    private static final float STALL_DELTA = 1e-4f;
+    private static final int STALL_MAX = 8;
+
+    /**
+     * 液滴跑满整个 tile（含两侧超区）——超区是相邻 tile 的 blend 数据源（extractFromTile 四边缘
+     * 对称读邻居 delta 渐变），不能裁剪。跨 tile 连续性由 extractFromTile 的边缘 blend 保证。
+     */
+    public ObservedErosionEngine(double dropsMul, int seed) {
+        this(dropsMul, seed, false); // 兼容签名：XS 默认关
+    }
+
+    /** Compatibility entry: dropsMul/seed remain unused; config-aware callers use the adapter. */
+    public ObservedErosionEngine(double dropsMul, int seed, boolean xsEnabled) {
+        this(xsEnabled, ParticleErosionParams::unloadedDefaults, 8);
+    }
+
+    /** The caller supplies one immutable snapshot per run, after the historical early return. */
+    public ObservedErosionEngine(boolean xsEnabled, Supplier<ParticleErosionParams> runParams,
+                         int smoothingParallelism) {
+        this.xsEnabled = xsEnabled;
+        this.runParams = runParams;
+        this.smoothingParallelism = smoothingParallelism;
+    }
+
+    /** 细纹理微侵蚀层开关（2026-08-12，配置 erosionXSEnabled） */
+    private boolean xsEnabled;
+
+    // ===== ★ 2026-09-14 Phase T8(P3)：岩性 → 侵蚀耦合（软岩成谷、硬岩成脊）=====
+
+    /**
+     * 岩性抗蚀性提供者：{@code (worldX, worldZ) → resistance ∈ [0,1]}（越大越难蚀）。
+     *
+     * <p><b>为何用注入而非直接依赖地质包</b>：本引擎是<b>独立的物理模拟核</b>
+     * （三尺度液滴 + cascade），只应感知"纯数字"。岩性推理链
+     * （构造环境 → 地层序列 → 岩性 → 硬度）属地质域，由 {@code CellGenerator}
+     * 注入 {@code rockResistanceAt}（与 {@code setSeamountDepthChecker} 同一模式）。</p>
+     *
+     * <p>{@code null} → 不耦合（所有岩石同硬度），逐位退回 P3 之前的行为（可回滚）。</p>
+     */
+    private java.util.function.DoubleBinaryOperator hardnessProvider;
+
+    /**
+     * 当前 tile 的岩性硬度网格（{@code null} = 无耦合）。
+     *
+     * <p>用实例字段而非参数传递：{@code spawnAt} 有 12 处调用点，逐处加参数会显著扩大
+     * 改动面；而每次 {@code runErosionOnFlat} 调用独占本实例的"本次执行"
+     * （tile 生成在 {@code computeIfAbsent} 中串行、互不重入）⇒ 字段语义安全。</p>
+     */
+    /** 硬度网格的构建参数（尺寸/原点），随网格一起以参数传递（**禁止实例字段**，见下）。 */
+    public static final class HardGrid {
+        final float[][] grid;
+        final int n;
+        final int originX, originZ;
+        HardGrid(float[][] g, int n, int ox, int oz) {
+            this.grid = g; this.n = n; this.originX = ox; this.originZ = oz;
+        }
+    }
+
+    /**
+     * 单次侵蚀调用独占的 8 邻居工作区；引擎可被并发调用，不能放在共享字段中。
+     * cascadeLocal 每次重填有效区段 [0,num)，保持原邻居与排序顺序。
+     */
+    private static final class CascadeScratch {
+        final float[] nh = new float[8];
+        final int[] ni = new int[8];
+    }
+
+    /** 注入岩性抗蚀性提供者（{@code CellGenerator} 调用；传 {@code null} 即退回无耦合行为）。 */
+    public void setHardnessProvider(java.util.function.DoubleBinaryOperator provider) {
+        this.hardnessProvider = provider;
+    }
+
+    /**
+     * 硬度网格的粗采间距（wu）。
+     *
+     * <p><b>为何 16wu（原 8wu，2026-09-14 性能修复放宽）</b>：岩性来自
+     * {@link com.geogenesis.worldgen.terrain.RockType}的<b>地层序列</b>
+     * （由构造环境 = 2000wu 级 Voronoi 板块 + 900wu 尺度剥蚀噪声决定）
+     * ⇒ 岩性单元的特征尺度是<b>数百 wu</b>。而每次采样需调用
+     * {@code CellGenerator.rockResistanceAt}（内含 continent + tectonic 采样，
+     * 实测 ~22μs/次，缓存基本不命中）⇒ 8wu 是<b>严重过采样</b>。
+     * 放宽到 16wu：采样次数减半（272 → 136/tile），而插值误差仍远小于
+     * 岩性自身的变化尺度 ⇒ <b>质量无损、开销减半</b>。</p>
+     *
+     * <p><b>为何必须插值而非"最近邻"</b>：最近邻会在岩性单元边界产生<b>阶跃</b>
+     * ⇒ 硬度突变 ⇒ 侵蚀量突变 ⇒ 地形上一条硬边（本项目反复踩的坑）。
+     * 双线性插值使硬度场 C⁰ 连续 ⇒ 侵蚀过渡自然。</p>
+     */
+    public static final int HARDNESS_SPACING = 16;
+
+    /**
+     * 岩性耦合强度 ∈ [0,1]：0 = 不耦合（同硬度）/ 1 = 全耦合（按抗蚀性线性调制）。
+     *
+     * <p>取值 0.6：真实 "软岩成谷" 是显著但非支配性的效应（坡度、降水、构造仍主导）。
+     * 页岩(0.30) 与花岗岩(0.90) 的侵蚀量比 ≈
+     * {@code (1−0.6×0.30)/(1−0.6×0.90) = 0.82/0.46 ≈ 1.8×}
+     * —— 足以在数千米尺度上分别形成谷与脊，又不至于让地形完全被岩性支配。</p>
+     */
+    private static final float HARDNESS_COUPLING = 0.6f;
+
+    /**
+     * 采样岩性抗蚀性网格（{@code [n][n]} 行主序，{@code worldToGrid} 为 1/间距）。
+     *
+     * @param n      网格边长
+     * @param originX/originZ 网格左上角世界坐标
+     */
+    public static float[][] buildHardnessGrid(java.util.function.DoubleBinaryOperator provider,
+                                              int n, int originX, int originZ) {
+        if (provider == null) return null;
+        float[][] g = new float[n][n];
+        for (int gz = 0; gz < n; gz++) {
+            for (int gx = 0; gx < n; gx++) {
+                g[gz][gx] = (float) provider.applyAsDouble(
+                        originX + gx * HARDNESS_SPACING, originZ + gz * HARDNESS_SPACING);
+            }
+        }
+        return g;
+    }
+
+    /**
+     * 双线性采样硬度网格（世界坐标 → 抗蚀性 ∈ [0,1]）。
+     *
+     * <p>越界时 clamp 到边缘（pad 区已保证覆盖，clamp 仅兜底）⇒ 无异常、无跳变。</p>
+     */
+    public static float sampleHardness(float[][] g, int n, int originX, int originZ,
+                                       float worldX, float worldZ) {
+        if (g == null) return 0.5f;                              // 无提供者 → 中性（不耦合）
+        float fx = (worldX - originX) / HARDNESS_SPACING;
+        float fz = (worldZ - originZ) / HARDNESS_SPACING;
+        int x0 = (int) Math.floor(fx), z0 = (int) Math.floor(fz);
+        float tx = fx - x0, tz = fz - z0;
+        // ★★★ 2026-09-14 崩溃修复 ★★★
+        //   【原 bug】x1/z1 在 x0/z0 被 clamp 之前计算 ⇒ 若 x0 为负（网格与查询坐标
+        //   不匹配时），x1 也为负 ⇒ ArrayIndexOutOfBoundsException（实测 Index -2）。
+        //   【且必须 4 个索引都 clamp】—— 仅 clamp x0 而 x1 取 min(x0+1,n-1) 在
+        //   x0=n-1 时 x1 也=n-1（正确），但 x0<0 时 x1 仍负（错误）。
+        //   【正解】先 clamp 基准索引，再算邻居（并夹住上界）⇒ 任何输入都安全。
+        x0 = x0 < 0 ? 0 : (x0 > n - 1 ? n - 1 : x0);
+        z0 = z0 < 0 ? 0 : (z0 > n - 1 ? n - 1 : z0);
+        int x1 = Math.min(x0 + 1, n - 1);
+        int z1 = Math.min(z0 + 1, n - 1);
+        float a = g[z0][x0] + (g[z0][x1] - g[z0][x0]) * tx;
+        float b = g[z1][x0] + (g[z1][x1] - g[z1][x0]) * tx;
+        return a + (b - a) * tz;
+    }
+
+    /**
+     * 抗蚀性 → 侵蚀量倍率（<b>只压缩，不放大</b>）。
+     *
+     * <p>{@code 1 − COUPLING × resistance}：硬岩（resistance→1）→ 倍率小（难蚀），
+     * 软岩（→0）→ 倍率大（易蚀）。上限恒为 1 ⇒ <b>不会比引入前蚀得更多</b>
+     * （保证"只增加地貌对比、不整体加剧侵蚀"，也不破坏既有侵蚀强度标定）。</p>
+     */
+    private static float hardnessFactor(float resistance) {
+        float r = resistance < 0f ? 0f : (resistance > 1f ? 1f : resistance);
+        return 1f - HARDNESS_COUPLING * r;
+    }
+
+    // ===== 公共入口 =====
+
+    /**
+     * 在预填充的 flat/flatPre 缓冲区上运行侵蚀引擎主循环。
+     * flat 和 flatPre 由调用方提供；flatPre 是 flat 的初始快照（用于沉积平滑参考）。
+     * 侵蚀后结果留在 flat[] 中，调用方从 flat 中心读取。
+     *
+     * @param flat     高度缓冲区（侵蚀原地修改）
+     * @param flatPre  flat 初始快照
+     * @param bufSize  flat 缓冲区边长
+     * @param sz       本 tile 有效数据边长（输出到 h[sz][sz]）
+     * @param ox/oz    tile 原点（世界坐标）
+     * @param seaNorm  海平面归一化高度
+     * @param str      侵蚀强度乘数
+     */
+    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                  int sz, int ox, int oz,
+                                  float seaNorm, float str) {
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, null, 1f);
+    }
+
+    /** 带稳态放电量场输出的入口（河网层复用 discharge 场做 riverMask，取代 D8 流量累积）。 */
+    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                  int sz, int ox, int oz,
+                                  float seaNorm, float str, float[] dischargeOut) {
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, 1f);
+    }
+
+    /** ★ 2026-08-13：hs 从 TerrainParams 显式传入（治本）——引擎不再读 GeoGenesisConfig 全局配置。
+     *  此前引擎内部读 INSTANCE.horizontalScale，独立探针进程无 Forge 环境 → 恒 1.0，
+     *  与游戏 HS=2 不一致 → 探针永远复现不了游戏内断裂（坡度换算/概率闸门全错位）。 */
+    public void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                  int sz, int ox, int oz,
+                                  float seaNorm, float str, float[] dischargeOut, float hs) {
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, null, dischargeOut, hs);
+    }
+
+    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                   int sz, int ox, int oz,
+                                   float seaNorm, float str, boolean[][] locked) {
+        runErosionOnFlat(flat, flatPre, bufSize, sz, ox, oz, seaNorm, str, locked, null, 1f);
+    }
+
+    private void runErosionOnFlat(float[] flat, float[] flatPre, int bufSize,
+                                   int sz, int ox, int oz,
+                                   float seaNorm, float str, boolean[][] locked,
+                                   float[] dischargeOut, float hs) {
+        if (sz < 16 || str <= 0) return;
+
+        ParticleErosionParams snapshot = runParams.get();
+        double dropsMul  = snapshot.dropsMul();
+        double erodeMul  = snapshot.erodeMul();
+        double casStr    = snapshot.cascadeStrength();
+        // 2026-08-10 wu 化修正：坡度/距离阈值按"物理块"标定，wu 空间必须 ×hs 还原
+        // （与 RidgeValleyErosion.gradX/gradZ 同型 bug，见 SLOPE_MIN_SKIP / CASCADE_MAXDIFF）。
+        // 2026-08-13：hs 由 TerrainParams 传入（上方重载），不再读全局配置。
+        if (!(hs > 0.01f && hs != 1.0f)) hs = 1f;
+        float strE       = (float) Math.max(0.1, str) * (float) erodeMul;
+        // 2026-08-01 两套粒子系统：河流粒子（StreamTracer）与液滴侵蚀彻底分离，
+        // 液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）
+        // SH 三件套（2026-08-01）：动量场正反馈 + 多轮迭代 + lrate 场平滑
+        float momTransfer = (float) snapshot.momentumTransfer();
+        int iterations = snapshot.iterations(); // 2026-08-09: 3→2（与 config 默认一致）
+        float lrate = (float) snapshot.lrate();
+
+        // ★ 2026-09-14 P3：构建岩性硬度网格（粗采 + 双线性，避免逐点查地质链）。
+        //   网格覆盖整个 bufSize 缓冲（含 pad）——液滴可能跑到 pad 区取料，
+        //   故必须与 flat 同域；世界原点 = (ox − pad, oz − pad)。
+        //   用实例字段传给 spawnAt（避免改动其 12 处调用签名，且每 tile 生成独占本实例的本次调用）。
+        int hGridN = bufSize / HARDNESS_SPACING + 2;
+        // ★★★ 必须为局部 final（禁止实例字段）：ObservedErosionEngine 实例被多线程共享
+        //   （Worker-Main-N 与 TileSampler 并发生成多个 tile），实例字段会被
+        //   并发写覆盖 ⇒ 网格与查询坐标不匹配 ⇒ 负索引崩溃（实测 Index -2）。
+        final HardGrid hard = hardnessProvider == null ? null
+                : new HardGrid(buildHardnessGrid(hardnessProvider, hGridN, ox - R_MAX - 2, oz - R_MAX - 2),
+                               hGridN, ox - R_MAX - 2, oz - R_MAX - 2);
+
+        int pad = R_MAX + 2;
+        float[] dis = new float[bufSize * bufSize];   // 稳态放电量场（跨轮累积）
+        float[] momX = new float[bufSize * bufSize];  // 稳态动量场 X
+        float[] momY = new float[bufSize * bufSize];  // 稳态动量场 Y
+        float[] disT = new float[bufSize * bufSize];  // 本轮 track：放电量
+        float[] momXT = new float[bufSize * bufSize]; // 本轮 track：动量 X
+        float[] momYT = new float[bufSize * bufSize]; // 本轮 track：动量 Y
+
+        // ===== 构建三层笔刷 =====
+        int r2C = R_C * R_C;
+        int maxBC = (2 * R_C + 1) * (2 * R_C + 1);
+        int[] bOffC = new int[maxBC]; float[] bWgtC = new float[maxBC];
+        int bnC = buildBrush(bOffC, bWgtC, R_C, r2C, bufSize);
+
+        int r2M = R_M * R_M;
+        int maxBM = (2 * R_M + 1) * (2 * R_M + 1);
+        int[] bOffM = new int[maxBM]; float[] bWgtM = new float[maxBM];
+        int bnM = buildBrush(bOffM, bWgtM, R_M, r2M, bufSize);
+
+        int r2F = R_F * R_F;
+        int maxBF = (2 * R_F + 1) * (2 * R_F + 1);
+        int[] bOffF = new int[maxBF]; float[] bWgtF = new float[maxBF];
+        int bnF = buildBrush(bOffF, bWgtF, R_F, r2F, bufSize);
+
+        // XS 微笔刷（中心+十字 4 邻，d2≤1，独立构建——不动 C/M/F 笔刷的 d2<r2 语义）
+        int[] bOffXS = new int[5]; float[] bWgtXS = new float[5];
+        int bnXS = buildMicroBrush(bOffXS, bWgtXS, bufSize);
+
+        float[][] savedLocked = null;
+        if (locked != null) {
+            savedLocked = new float[sz][sz];
+            for (int z = 0; z < sz; z++)
+                for (int x = 0; x < sz; x++)
+                    if (locked[z][x]) savedLocked[z][x] = flat[(z + pad) * bufSize + (x + pad)];
+        }
+
+        // ===== 确定性播种（2026-08-13 重写：世界坐标连续化，治本消除边界墙）=====
+        // 旧方案按 chunk 分组播种（每 chunk 独立 hash + offX/offZ∈[0,16) 整数离散）：
+        // 液滴出生集合依赖 chunk 对齐 → delta 场在 chunk 边界突变（lx=39→40 实测 3 块墙，
+        // 用户截图 x=-288 即 tile∩chunk 边界）。
+        // 新方案：1wu 出生单元网格（全局整数坐标对齐，不依赖任何 tile/chunk 原点），
+        // 每单元按世界坐标 hash 判定出生 + 单元内连续偏移 → 任何 tile 看到同一区域 =
+        // 同一出生集合 → delta 场全局连续，无缝。密度对齐旧值：每 chunk 256wu² 撒
+        // DROPS 个 → 每 wu² 密度 = DROPS/256。
+        // 四个尺度用不同 hash 盐错开（C/M/F/XS 独立出生集合）。
+        final float densC = DROPS_C / 256f * (float) dropsMul;
+        final float densM = DROPS_M / 256f * (float) dropsMul;
+        final float densF = DROPS_F / 256f * (float) dropsMul;
+        final float densXS = DROPS_XS / 256f * (float) dropsMul;
+
+        // 避免每次级联分配两个小数组；只在本次调用内复用，不改变液滴和级联顺序。
+        final CascadeScratch cas = new CascadeScratch();
+
+        // ===== SH 多轮迭代：每轮清 track → 重撒全部液滴 → 轮末 lrate 平滑进稳态场 =====
+        observation.save("input", flat);
+        for (int it = 0; it < iterations; it++) {
+            observation.iteration = it;
+            observation.save("it"+it+"-before", flat);
+            Arrays.fill(disT, 0f);
+            Arrays.fill(momXT, 0f);
+            Arrays.fill(momYT, 0f);
+
+            for (int gz = oz; gz < oz + sz; gz++) {
+                for (int gx = ox; gx < ox + sz; gx++) {
+                    long hC = hash(gx * 131 + 7, gz * 131 + 11);
+                    if (((hC >>> 16) & 0xFFFF) / 65536f < densC) {
+                        spawnAt(flat, bufSize,
+                                pad + (gx - ox) + ((hC >>> 32) & 0xFFFF) / 65536f,
+                                pad + (gz - oz) + ((hC >>> 48) & 0xFFFF) / 65536f,
+                                pad, gx, gz, bOffC, bWgtC, bnC, locked, sz, dis, disT,
+                                momX, momY, momXT, momYT, momTransfer,
+                                ERODE_C * strE, DEPOSIT_C, LIFE_C, SEG_LEN_C, DIS_EXTRA_C, ox, oz, hard, cas,
+                                (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
+                    }
+                    long hM = hash(gx * 131 + 7, gz * 131 + 11) * 31L + 17L;
+                    if (((hM >>> 16) & 0xFFFF) / 65536f < densM) {
+                        spawnAt(flat, bufSize,
+                                pad + (gx - ox) + ((hM >>> 32) & 0xFFFF) / 65536f,
+                                pad + (gz - oz) + ((hM >>> 48) & 0xFFFF) / 65536f,
+                                pad, gx, gz, bOffM, bWgtM, bnM, locked, sz, dis, disT,
+                                momX, momY, momXT, momYT, momTransfer,
+                                ERODE_M * strE, DEPOSIT_M, LIFE_M, 0, 0, ox, oz, hard, cas,
+                                (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
+                    }
+                    long hF = hash(gx * 131 + 7, gz * 131 + 11) * 97L + 23L;
+                    if (((hF >>> 16) & 0xFFFF) / 65536f < densF) {
+                        spawnAt(flat, bufSize,
+                                pad + (gx - ox) + ((hF >>> 32) & 0xFFFF) / 65536f,
+                                pad + (gz - oz) + ((hF >>> 48) & 0xFFFF) / 65536f,
+                                pad, gx, gz, bOffF, bWgtF, bnF, locked, sz, dis, disT,
+                                momX, momY, momXT, momYT, momTransfer,
+                                ERODE_F * strE, DEPOSIT_F, LIFE_F, 0, 0, ox, oz, hard, cas,
+                                (float) casStr, seaNorm, hs, 1.0f, STALL_SPEED, STALL_DELTA);
+                    }
+                    if (xsEnabled) {
+                        long hXS = hash(gx * 131 + 7, gz * 131 + 11) * 131L + 41L;
+                        if (((hXS >>> 16) & 0xFFFF) / 65536f < densXS) {
+                            spawnAt(flat, bufSize,
+                                    pad + (gx - ox) + ((hXS >>> 32) & 0xFFFF) / 65536f,
+                                    pad + (gz - oz) + ((hXS >>> 48) & 0xFFFF) / 65536f,
+                                    pad, gx, gz, bOffXS, bWgtXS, bnXS, locked, sz, dis, disT,
+                                    momX, momY, momXT, momYT, momTransfer,
+                                    ERODE_XS * strE, DEPOSIT_XS, LIFE_XS, 0, 0, ox, oz, hard, cas,
+                                    (float) casStr, seaNorm, hs, SPDCAP_XS, STALL_SPEED_XS, STALL_DELTA_XS);
+                        }
+                    }
+                }
+                if ((gz-oz+1)%8==0) observation.save("it"+it+"-row"+(gz-oz+1),flat);
+            }
+
+            observation.save("it"+it+"-drops",flat);
+            observation.saveScales("it"+it);
+            // ===== SH 场平滑（world.h:80-86）：(1-lrate)·old + lrate·track =====
+            for (int i = 0; i < bufSize * bufSize; i++) {
+                dis[i] = (1f - lrate) * dis[i] + lrate * disT[i];
+                momX[i] = (1f - lrate) * momX[i] + lrate * momXT[i];
+                momY[i] = (1f - lrate) * momY[i] + lrate * momYT[i];
+            }
+        }
+
+        // ===== 双平滑（仅全部迭代完成后做一次） =====
+        observation.save("before-smooth",flat);
+        smoothErosionResult(flat, bufSize, pad, sz, seaNorm);
+        observation.save("after-smooth",flat);
+        smoothDepositionZones(flat, flatPre, bufSize, pad, sz);
+        observation.save("after-deposition-smooth",flat);
+
+        // ===== 恢复 locked 格点 =====
+        if (savedLocked != null) {
+            for (int z = 0; z < sz; z++)
+                for (int x = 0; x < sz; x++)
+                    if (locked[z][x])
+                        flat[(z + pad) * bufSize + (x + pad)] = savedLocked[z][x];
+        }
+
+        // ===== 导出稳态放电量场（河网层 riverMask 用） =====
+        if (dischargeOut != null)
+            System.arraycopy(dis, 0, dischargeOut, 0, dis.length);
+    }
+
+    // ===== 笔刷构建工具 =====
+
+    /** 建圈内各格点偏移 + 归一化权重。返回笔刷内的格点数 bn。 */
+    private static int buildBrush(int[] bOff, float[] bWgt, int radius, int r2, int bufSize) {
+        int bn = 0;
+        for (int dy = -radius; dy <= radius; dy++)
+            for (int dx = -radius; dx <= radius; dx++) {
+                float d2 = dx * dx + dy * dy;
+                if (d2 < r2) {
+                    bOff[bn] = dy * bufSize + dx;
+                    bWgt[bn] = 1f - (float) Math.sqrt(d2) / radius;
+                    bn++;
+                }
+            }
+        float s = 0;
+        for (int i = 0; i < bn; i++) s += bWgt[i];
+        for (int i = 0; i < bn; i++) bWgt[i] /= s;
+        return bn;
+    }
+
+    /** XS 微笔刷（2026-08-12，2026-08-13 圆化）：中心 + 十字 4 邻（d2≤1，5 格），
+     *  权重二次曲线 w = 1 - d2/2（中心 1.0、十字邻 0.5），归一化后中心≈0.4、十字各≈0.15。
+     *  ★ 2026-08-13 修复：旧权重 1-d 使十字邻权重=0（归一化后纯单格笔刷）→ 液滴打转时
+     *  单点反复侵蚀挖尖坑（用户反馈"尖笔刷"）。圆化后侵蚀向 5 格扩散，单点权重降 60%，
+     *  尖坑变平滑微凹。r=1wu 给 1-2 块级微侵蚀纹理；独立构建——不动 C/M/F 的 d2<r2 语义。 */
+    private static int buildMicroBrush(int[] bOff, float[] bWgt, int bufSize) {
+        int bn = 0;
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++) {
+                float d2 = dx * dx + dy * dy;
+                if (d2 <= 1f) {
+                    bOff[bn] = dy * bufSize + dx;
+                    bWgt[bn] = 1f - d2 * 0.5f;
+                    bn++;
+                }
+            }
+        float s = 0;
+        for (int i = 0; i < bn; i++) s += bWgt[i];
+        for (int i = 0; i < bn; i++) bWgt[i] /= s;
+        return bn;
+    }
+
+    // ===== 播种与下落 =====
+
+    /** 世界坐标连续播种的单滴入口（2026-08-13 重写）。
+     *  出生位置 (px,py) 为缓冲坐标（小数），由调用方按 1wu 出生单元 hash 决定
+     *  （单元内连续偏移）→ 出生集合不依赖 chunk/tile 对齐 → delta 场全局连续。 */
+    private void spawnAt(float[] flat, int bufSize, float px, float py,
+                         int pad, int gx, int gz,
+                         int[] bOff, float[] bWgt, int bn,
+                         boolean[][] locked, int baseSize,
+                         float[] dis, float[] disT,
+                         float[] momX, float[] momY, float[] momXT, float[] momYT,
+                         float momTransfer,
+                         float erodeSpeed, float depositSpeed, int lifetime, int segLen, int disExtra,
+                         int ox, int oz, HardGrid hard, CascadeScratch cas,
+                         float cascadeStrength, float seaNorm, float hs,
+                         float spdCap, float stallSpeed, float stallDelta) {
+        observation.begin(px,py,gx,gz,bn);
+        if (px < 1 || px >= bufSize - 1 || py < 1 || py >= bufSize - 1) { observation.reason(1); return; }
+        if (locked != null) {
+            int lz = (int) (py - pad), lx = (int) (px - pad);
+            if (lz >= 0 && lz < baseSize && lx >= 0 && lx < baseSize && locked[lz][lx]) return;
+        }
+        // ★ 2026-08-09 spawn 陆地门控（对齐原版 SH world.h:71-72 "height<0.1 continue"）：
+        //   海平面以下不生成粒子。根因：海底 flat 被钳到 -0.05 后液滴在平底随机游走
+        //   产生微侵蚀/沉积 → 坑洞。陆地出发的粒子仍可流入海底（水下路径保留，峡湾/河口不回归）。
+        //   实测验证（seed=12345, 64 tiles）：跳过 10 万+ 海底粒子，陆地粒子正常侵蚀。
+        int ix = (int) px, iy = (int) py;
+        float startH = flat[iy * bufSize + ix];
+        observation.birth[7]=startH;
+        if (startH < seaNorm) { observation.reason(2); return; }
+        // ★ 2026-08-09 优化：坡度稀疏化（RIS 式重要性重采样）——平坦区液滴侵蚀≈0（无效功）。
+        //   1 格差分坡度（比 3×3 Sobel 便宜），世界坐标确定性函数 → 无缝保持。
+        //   px/py 已由上方边界检查保证 ∈ [1, bufSize-2] → ±1 采样安全。
+        float slope = Math.max(
+            Math.abs(flat[(iy + 1) * bufSize + ix] - flat[(iy - 1) * bufSize + ix]),
+            Math.abs(flat[iy * bufSize + ix + 1] - flat[iy * bufSize + ix - 1]));
+        // 2026-08-10 wu 化修正：1 格差分坡度 = e/wu，×hs 还原物理坡度（e/块）再比阈值
+        // ★ 2026-08-13 平滑概率闸门：硬阈值（slope<h 全跳）在坡度恰卡阈值处 → 1 块内
+        //   出生 0/1 跳变 → delta 场突变（游戏内 x=-288 实测 2.6 块墙，基础场完全连续）。
+        //   改为 smoothstep(0.5h, 1.5h) 概率出生（出生单元 hash 确定性随机）→ 出生密度
+        //   随坡度平滑过渡 → delta 场连续。陡坡（>1.5h）全量出生，行为不变。
+        observation.birth[8]=slope;
+        float slopeE = slope * hs;
+        float sLo = SLOPE_MIN_SKIP * 0.5f, sHi = SLOPE_MIN_SKIP * 1.5f;
+        float prob;
+        if (slopeE <= sLo) prob = 0f;
+        else if (slopeE >= sHi) prob = 1f;
+        else {
+            float t = (slopeE - sLo) / (sHi - sLo);
+            prob = t * t * (3f - 2f * t);
+        }
+        if (prob < 1f) {
+            // ★ 2026-08-13 修复：概率闸门 hash 必须用世界坐标（gx,gz），不能用缓冲坐标
+            //   （ix=px-pad+ox）。同一世界坐标在两个 tile 的缓冲坐标不同 → hash 不同 →
+            //   出生集合跨 tile 不一致 → delta 双写断裂（x=-288 实测 3.8 块，骨架层 0.1 块无罪）。
+            //   出生判定 hash(gx,gz)（上方 spawn 循环）已是世界坐标，这里必须一致。
+            long sh = hash(gx * 131 + 7, gz * 131 + 11);
+            if (((sh >>> 32) & 0xFFFF) / 65536f >= prob) { observation.reason(3); return; }
+        }
+        observation.accept();
+        simulateDrop(flat, bufSize, px + 0.5f, py + 0.5f,
+                     bOff, bWgt, bn, locked, pad, baseSize,
+                     dis, disT, momX, momY, momXT, momYT, momTransfer,
+                     erodeSpeed, depositSpeed, lifetime, segLen, disExtra, ox, oz, hard, cas,
+                     cascadeStrength, hs, spdCap, stallSpeed, stallDelta);
+        observation.completed(flat);
+    }
+
+    /** SH 对齐液滴下落。关键改进：动量场正反馈 + erf 放电反馈 + 局部 cascade + 片流 + 水下 */
+    private void simulateDrop(float[] flat, int bufSize, float posX, float posY,
+                              int[] bOff, float[] bWgt, int bn,
+                              boolean[][] locked, int pad, int baseSize,
+                              float[] dis, float[] disT,
+                              float[] momX, float[] momY, float[] momXT, float[] momYT,
+                              float momTransfer,
+                             float erodeSpeed, float depositSpeed, int lifetime, int segLen, int disExtra,
+                             int ox, int oz, HardGrid hard, CascadeScratch cas,
+                             float cascadeStrength, float hs,
+                             float spdCap, float stallSpeed, float stallDelta) {
+        float dirX = 0, dirY = 0, sed = 0, spd = 1f, wat = 1f;
+
+        int spawnIx = (int) posX, spawnIy = (int) posY;
+        float startH = flat[spawnIy * bufSize + spawnIx];
+
+        // ★ 2026-08-09 优化：平衡态 early-exit（Russian roulette 剪枝）——平坦/平衡区液滴
+        //   速度与笔刷增量双双趋于 0（对地形无贡献），连续 STALL_MAX 步后提前终止。
+        //   确定性：判定条件是确定性函数的单调收敛 → 同一世界坐标液滴终止点固定 → 无缝保持。
+        // ★ 2026-08-14 湖泊溢出续流（断流修复）：STALL 达阈值不再 return，转 tracking 模式——
+        //   液滴流到局部最低点（洼地）后停止侵蚀笔刷/cascade（不挖坑），但照常走 + 写 disT
+        //   （流线续流），片流/惯性带它爬向盆周溢出口，梯度恢复（brushDelta 回升）→ 自动恢复侵蚀。
+        //   侵蚀液滴自身 = 河道（用户定案），dis 场 = 流量图，不另设硬编码河道。
+        int stall = 0;
+        boolean tracking = false;
+        // ★ 2026-08-14 20 步接力（用户方案）：总寿命拆成若干安全段（segLen≤20 不出界→无缝），
+        //   段末转世——位置延续、方向/速度/泥沙/水量重置（"在当前落点重新 spawn 一滴"）。
+        //   接力点 = 世界坐标确定性（地形梯度函数）→ 任何 tile 算出同一接力点 → 无缝保持。
+        //   提取区（中心 48）内出生的液滴，3 段接力后仍在缓冲内 → 提取区完全无缝，
+        //   且整体覆盖 60 步 → discharge 场连续性显著改善（对比 20 步单段）。
+        int segCount = (segLen > 0) ? Math.max(1, lifetime / segLen) : 1;
+        int stepLen = (segLen > 0) ? segLen : lifetime;
+        for (int seg = 0; seg < segCount; seg++) {
+            // 段末转世（首段跳过）：位置 + 方向 dir 延续（轨迹连续、防转世首步片流门控误死），
+            //   只重置侵蚀物理量（新"水量"：泥沙清零、速度复位、蒸发重新开始）。
+            //   段界是确定性位置 → 任何 tile 算出同一接力点 → 无缝保持。
+            if (seg > 0) {
+                spd = 1f; sed = 0f; wat = 1f;
+                stall = 0; tracking = false;
+            }
+            // ★ 2026-08-14 蚀刻/dis 解耦：st ≥ stepLen 进入 disOnly 段（只累积 dis、不蚀刻）。
+            //   disOnly 段可安全走出缓冲（dis 各 tile 提取区独立读、无双写断裂）。
+            for (int st = 0; st < stepLen + disExtra; st++) {
+            boolean disOnly = st >= stepLen;
+            int ix = (int) posX, iy = (int) posY;
+            // ★ 2026-08-14 出界 return（蚀刻段≤20 < 缓冲余量 47 → 覆盖提取区的液滴不出界 → 无缝；
+            //   disOnly 段出界对提取区 dis 无影响——出界前的足迹已累积，直接 return）。
+            if (ix < 1 || ix >= bufSize - 2 || iy < 1 || iy >= bufSize - 2) { observation.reason(4); return; }
+            int idx = iy * bufSize + ix;
+
+            float fx = posX - ix, fy = posY - iy;
+            float hNW = flat[idx], hNE = flat[idx + 1];
+            float hSW = flat[idx + bufSize], hSE = flat[idx + bufSize + 1];
+            float h0 = hNW * (1 - fx) * (1 - fy) + hNE * fx * (1 - fy)
+                     + hSW * (1 - fx) * fy + hSE * fx * fy;
+            // ---- 方向（3D 法线，3×3 Sobel 邻域，对齐 SH 抗噪法线语义） ----
+            // 原 2×2 双线性梯度对单格尖峰敏感（粒子被噪声点弹开、轨迹抖动）；
+            // 3×3 Sobel（对角+边加权）平滑噪声 → 侵蚀方向更自然稳定。
+            float hN = flat[idx - bufSize], hS = flat[idx + bufSize];
+            float hW = flat[idx - 1], hE = flat[idx + 1];
+            float hNW2 = flat[idx - bufSize - 1], hNE2 = flat[idx - bufSize + 1];
+            float hSW2 = flat[idx + bufSize - 1], hSE2 = flat[idx + bufSize + 1];
+            float gx = (hSE2 + 2 * hE + hNE2 - hSW2 - 2 * hW - hNW2) / 8f;
+            float gy = (hSW2 + 2 * hS + hSE2 - hNW2 - 2 * hN - hNE2) / 8f;
+            float glen = (float) Math.sqrt(gx * gx + gy * gy);
+
+            if (glen < 1e-12f) {
+                // 片流模式：梯度≈0 → 噪声驱动方向（确定性、无缝）
+                if (dirX == 0 && dirY == 0 && st > 2) {
+                    // 2026-08-02：片流 hash 用世界坐标（ox+ix-pad）——旧局部坐标导致
+                    // 相邻 tile 重叠区同一世界坐标的液滴方向不同 → postErosion 重叠区
+                    // 逐格不一致 → StreamTracer 两侧追踪场不同 → 提取区 seam 断流。
+                    long nh = hash((ox + ix - pad) * 31 + 7, (oz + iy - pad) * 73 + 13);
+                    dirX = ((float)(nh & 0xFFFF) / 65536f) * 0.6f - 0.3f;
+                    dirY = ((float)((nh >>> 16) & 0xFFFF) / 65536f) * 0.6f - 0.3f;
+                } else if (dirX == 0 && dirY == 0) { observation.reason(5); return; }
+                // 有前次惯性方向则使用
+            } else {
+                dirX = dirX * INERTIA - gx * (1 - INERTIA);
+                dirY = dirY * INERTIA - gy * (1 - INERTIA);
+            }
+
+            // ---- 动量偏置（放电量场） ----
+            float ld = dis[idx];
+            if (ld > 1f) {
+                float a = MOMENTUM * ld / (ld + 10f);
+                dirX += a * gx; dirY += a * gy;
+            }
+
+            // ---- 动量场正反馈（SH water.h:97-99） ----
+            // speed += lodsize·momentumTransfer·dot(normalize(fspeed),normalize(speed))/(volume+discharge)·fspeed
+            // 本地近似：当前移动方向 ≈ normalize(speed)，叠加后统一重新归一化。
+            float fmx = momX[idx], fmy = momY[idx];
+            float flen = (float) Math.sqrt(fmx * fmx + fmy * fmy);
+            if (flen > 1e-12f && momTransfer > 0f) {
+                float k = momTransfer * (fmx * dirX + fmy * dirY) / flen / (wat + ld);
+                dirX += k * fmx;
+                dirY += k * fmy;
+            }
+
+            float dlen = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+            if (dlen < 1e-12f) { observation.reason(6); return; }
+            dirX /= dlen; dirY /= dlen;
+
+            spd = (float) Math.sqrt(spd + Math.abs(flat[idx] - h0) * GRAVITY);
+            posX += dirX * Math.min(spd, spdCap);
+            posY += dirY * Math.min(spd, spdCap);
+            // 出界 return（同循环顶部，见上）
+            if (posX < 1 || posX >= bufSize - 2 || posY < 1 || posY >= bufSize - 2) { observation.reason(7); return; }
+
+            // ---- 新位置 ---- 
+            int nix = (int) posX, niy = (int) posY;
+            float nfx = posX - nix, nfy = posY - niy;
+            int nidx = niy * bufSize + nix;
+            float nH0 = flat[nidx] * (1 - nfx) * (1 - nfy) + flat[nidx + 1] * nfx * (1 - nfy)
+                      + flat[nidx + bufSize] * (1 - nfx) * nfy + flat[nidx + bufSize + 1] * nfx * nfy;
+            // ==== SimpleHydrology 型统一平衡浓度公式（水下深度增强版） ====
+            // 原版：c_eq = (1 + e·discharge) · heightDrop
+            // 增强：加 depthBoost = max(0, -h0) · 0.01，模拟浊流物理：
+            //       水深越大→悬浮物沉降越慢→平衡浓度越高→水下侵蚀延续
+            //       浅水 (<5块): 无影响（heightDrop 主导）
+            //       中等水 (~25块): 略微提升（~0.25块/液滴寿命）
+            //       深水 (>50块): 显著（~5块/液滴寿命）
+            float dh = nH0 - h0;          // 保留供 NaN 守卫（line 340）使用
+            // 2026-08-09 汇聚门控（最终形态）：纯 flowGate = ld/(ld+4)，线性无饱和。
+            //   源头弱化（ld<2 弱、汇聚 ld≥8 全强）；水下坑洞由 spawn 陆地门控解决
+            //   （spawnAndSim startH<seaNorm return），不再需要公式侧混合。
+            float flowGate = ld / (ld + FLOW_SCALE);
+            float depthBoost = Math.max(0f, -h0) * 0.03f;  // 水深贡献的"等效下坡高度差"（3%/e, ≈ 7.7 块/100e 深度）
+            float heightDrop = Math.max(0f, -dh) + depthBoost;
+            // 2026-08-01 两套粒子系统：液滴回归纯 SH 平衡浓度公式（河流职责移交 StreamTracer）
+            float c_eq = (1f + ENTRAINMENT * flowGate) * heightDrop;  // 平衡浓度
+            float effD = 0.1f;                       // 松弛率 = depositionRate(=0.1)
+            float delta = effD * (c_eq - sed);       // >0=侵蚀, <0=沉积
+            // ★ 2026-09-14 P3：岩性抗蚀性调制（软岩成谷、硬岩成脊）。
+            //   只作用于【侵蚀】（delta>0），不作用于沉积（delta<0）：
+            //   沉积是"搬运物落地"，与基底岩性无关（且硬岩区沉积后成盖层本就正常）。
+            //   倍率 ∈ [0.46, 1]（页岩 0.30 → 0.82 / 花岗岩 0.90 → 0.46），上限 1
+            //   ⇒ 不会比耦合前蚀得更多（不破坏既有侵蚀强度标定）。
+            //   采样点 = 液滴当前位置（idx）的世界坐标：与笔刷邻点共用同一因子，
+            //   避免"笔刷内每点各取硬度"导致高差被抹平（那会反过来抑制成谷）。
+            if (delta > 0f && hard != null) {
+                int hwx = ox + (idx % bufSize) - pad;
+                int hwz = oz + (idx / bufSize) - pad;
+                delta *= hardnessFactor(sampleHardness(hard.grid, hard.n,
+                        hard.originX, hard.originZ, hwx, hwz));
+            }
+            observation.step(st,idx,ix+fx,iy+fy,posX,posY,dirX,dirY,h0,dh,delta,ld,spd,tracking);
+            float brushDelta = delta;                // 笔刷前增量快照（early-exit 判定用）
+
+            // 笔刷邻域分布：权重须对正负通用
+            // delta>0: 从邻域取材料（侵蚀）→ flat[bi] 减小, sed 增大
+            // delta<0: 向邻域加材料（沉积）→ flat[bi] 增大, sed 减小
+            // ★ 2026-08-14 tracking（洼地溢出追踪）或 disOnly（dis 延长段）跳过侵蚀笔刷
+            if (!tracking && !disOnly) {
+                for (int b = 0; b < bn; b++) {
+                    int bi = idx + bOff[b];
+                    if (bi < 0 || bi >= flat.length) continue;
+                    int bz = bi / bufSize, bx = bi % bufSize;
+                    if (locked != null) {
+                        int bzL = bz - pad, bxL = bx - pad;
+                        if (bzL >= 0 && bzL < baseSize && bxL >= 0 && bxL < baseSize && locked[bzL][bxL]) continue;
+                    }
+                    float weigh = delta * bWgt[b];
+                    if (weigh == 0f) continue;
+                    float observedBefore=flat[bi];
+                    flat[bi] -= weigh;
+                    observation.brush(bi, observedBefore, flat[bi]);
+                    sed += weigh;
+                }
+            }
+
+            // ---- track 累积（SH water.h:113-117：本轮 discharge + 动量 volume·speed） ----
+            // ★ 2026-08-14 disOnly 段只写 disT（不写 mom——动量场影响蚀刻轨迹，保持蚀刻行为零变化）
+            if (disOnly) {
+                disT[idx] += wat;
+            } else {
+                disT[idx] += wat;
+                momXT[idx] += wat * dirX * Math.min(spd, spdCap);
+                momYT[idx] += wat * dirY * Math.min(spd, spdCap);
+            }
+
+            // ---- 局部 cascade（每 CASCADE_INTERVAL 步执行，对齐 SH 每步语义） ----
+            // ★ 2026-08-14 tracking / disOnly 跳过 cascade（不扰动地形）
+            if (!tracking && !disOnly && cascadeStrength > 0 && st % CASCADE_INTERVAL == 0) {
+                cascadeLocal(flat, bufSize, nix, niy, cascadeStrength, hs, cas);
+            }
+
+            // NaN/Inf 守卫：陡峭下坡（dh 很负）可能导致 spd² + dh*GRAVITY < 0 → sqrt(NaN)
+            // 若溢出则降速为 0.1（允许液滴继续存活的极小速度，非致命）
+            float speedSq = spd * spd + dh * GRAVITY;
+            spd = speedSq > 1e-12f ? (float) Math.sqrt(speedSq) : 0.1f;
+            if (spd <= 0) { observation.reason(8); return; }
+            // ★ 2026-08-14 湖泊溢出续流：STALL 达阈值 → 转 tracking（不 return，液滴不死在洼地）；
+            //   走出洼地梯度恢复（brushDelta 回升）→ else 分支 tracking=false 恢复侵蚀。
+            //   disOnly 段跳过 STALL（保证 dis 走满 60 步覆盖）。
+            if (!disOnly) {
+                if (spd < stallSpeed && Math.abs(brushDelta) < stallDelta) {
+                    if (++stall >= STALL_MAX) tracking = true;
+                } else {
+                    stall = 0;
+                    tracking = false;   // 正常流动 / 找到溢出口 → 恢复侵蚀
+                }
+            }
+            wat *= (1 - EVAP_RATE);
+            }
+        }
+    }
+
+    /** 局部 cascade：8 邻居按高度排序 + 距离加权 settling（SH 原版语义）。
+     *  hs：wu→块 换算（dist 为 wu 格距，×hs 还原块距离，2026-08-10 wu 化）。
+     *  cas：本次 {@code runErosionOnFlat} 独占的邻居 scratch（★ 2026-10-28 R3 分配热点修复）——
+     *  由调用方一次分配、逐调用复用；<b>每次调用必须重填 num</b>，且只读 {@code [0,num)}。 */
+    private void cascadeLocal(float[] flat, int bufSize, int cx, int cz, float strength, float hs,
+                              CascadeScratch cas) {
+        // 收集 8 邻居（scratch 复用：只写 [0,num)，未用槽位不读）
+        final float[] nh = cas.nh;
+        final int[] ni = cas.ni;
+        int num = 0;
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dz == 0) continue;
+                int nidx = (cz + dz) * bufSize + (cx + dx);
+                if (nidx < 0 || nidx >= flat.length) continue;
+                nh[num] = flat[nidx];
+                ni[num] = nidx;
+                num++;
+            }
+        }
+        if (num < 3) return;
+
+        // 冒泡排序（num=8 足够了）
+        for (int i = 0; i < num; i++)
+            for (int j = i + 1; j < num; j++)
+                if (nh[i] > nh[j]) {
+                    float th = nh[i]; nh[i] = nh[j]; nh[j] = th;
+                    int ti = ni[i]; ni[i] = ni[j]; ni[j] = ti;
+                }
+
+        float curH = flat[cz * bufSize + cx];
+        for (int i = 0; i < num; i++) {
+            float diff = curH - nh[i];
+            if (Math.abs(diff) < 0.001f) continue;
+
+            float ddx = (ni[i] % bufSize) - cx;
+            float ddz = (ni[i] / bufSize) - cz;
+            float dist = (float) Math.sqrt(ddx * ddx + ddz * ddz);
+
+            // SH 公式：excess = |diff| - dist * maxdiff
+            // 2026-08-10 wu 化修正：dist 为 wu 格距，×hs 还原"块"距离 → 阈值不随 HS 漂移
+            float excess = Math.abs(diff) - dist * CASCADE_MAXDIFF * hs;
+            if (excess <= 0) continue;
+
+            // SH 公式：transfer = settling * excess / 2 (capped at 40% of diff)
+            float transfer = strength * excess * 0.5f;
+            transfer = Math.min(transfer, Math.abs(diff) * 0.4f);
+
+            if (diff > 0) {
+                { float observedBefore=flat[cz * bufSize + cx]; flat[cz * bufSize + cx] -= transfer; observation.cascade(cz * bufSize + cx,observedBefore,flat[cz * bufSize + cx]); }
+                { float observedBefore=flat[ni[i]]; flat[ni[i]] += transfer; observation.cascade(ni[i],observedBefore,flat[ni[i]]); }
+            } else {
+                { float observedBefore=flat[cz * bufSize + cx]; flat[cz * bufSize + cx] += transfer; observation.cascade(cz * bufSize + cx,observedBefore,flat[cz * bufSize + cx]); }
+                { float observedBefore=flat[ni[i]]; flat[ni[i]] -= transfer; observation.cascade(ni[i],observedBefore,flat[ni[i]]); }
+            }
+        }
+    }
+
+    // ===== 双平滑（保留，抹微断裂） =====
+
+    private void smoothErosionResult(float[] flat, int bufSize, int pad, int sz, float seaNorm) {
+        int radius = 3;
+        float radiusSq = radius * radius;
+        float smoothingRate = 0.4f;
+        int passes = 1;
+        int start = pad + radius;
+        int end = pad + sz - radius;
+
+        for (int pass = 0; pass < passes; pass++) {
+            float[] smoothed = flat.clone();
+            // ★ 2026-09-11 D3 死锁修复：改用 ForkJoinPool.commonPool（work-stealing，
+            //   【调用线程会参与执行子任务】→ 不存在"等自己"）。
+            //   原实现 TILE_SAMPLER.execute + latch.await 会永久死锁：
+            //   池上限 16 / 队列 64，而每次仅提交约 8 个子任务 → 队列【永不满】
+            //   → 唯一的救命稻草 CallerRunsPolicy 永不触发；
+            //   一旦 16 个池线程同时走到此处并阻塞在 await，就无人能取走队列里的子任务。
+            //   CellGenerator:42 已记录该模式曾造成"池饥饿死锁 27 轮"。
+            //   并行安全性不变：每行只读 flat、只写本行 smoothed → 输出逐点一致。
+            int rowsPerTask = Math.max(1, (end - start) / smoothingParallelism);
+            int tasks = (end - start + rowsPerTask - 1) / rowsPerTask;
+            java.util.stream.IntStream.range(0, tasks).parallel().forEach(t -> {
+                int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
+                for (int z = z0; z < z1; z++) {
+                    for (int x = start; x < end; x++) {
+                        int idx = z * bufSize + x;
+                        float h = flat[idx];
+                        float heightModifier;
+                        if (h <= seaNorm) heightModifier = 0.0f;   // 水下不平滑——保留侵蚀痕迹（沟壑/水下峡谷）
+                        else if (h >= seaNorm + 0.25f) heightModifier = 0.0f;
+                        else heightModifier = 1.0f - (h - seaNorm) / 0.25f;
+                        if (heightModifier <= 0.01f) continue;
+
+                        float total = 0, weights = 0;
+                        for (int dz = -radius; dz <= radius; dz++) {
+                            for (int dx = -radius; dx <= radius; dx++) {
+                                float dist2 = dx * dx + dz * dz;
+                                if (dist2 <= radiusSq) {
+                                    int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
+                                    int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
+                                    int ni = ni_z * bufSize + ni_x;
+                                    float weight = 1.0f - dist2 / radiusSq;
+                                    total += flat[ni] * weight;
+                                    weights += weight;
+                                }
+                            }
+                        }
+                        if (weights > 0) {
+                            float avg = total / weights;
+                            float diff = h - avg;
+                            smoothed[idx] = h - diff * smoothingRate * heightModifier;
+                        }
+                    }
+                }
+            });
+            // 保留原中止语义：被中断 → 抛 CancellationException，
+            // 调用方（getOrGenTile）据此丢弃半成品 tile、绝不入缓存。
+            // （原先靠 latch.await 抛 InterruptedException 实现；并行流不抛，
+            //   故改为显式检查中断位。）
+            if (Thread.currentThread().isInterrupted()) {
+                throw new CancellationException("erosion aborted");
+            }
+            System.arraycopy(smoothed, 0, flat, 0, flat.length);
+        }
+    }
+
+    private void smoothDepositionZones(float[] flat, float[] flatPre, int bufSize, int pad, int sz) {
+        int start = pad + 1;
+        int end = pad + sz - 1;
+        float[] smoothed = flat.clone();
+        // ★ 2026-09-11 D3 死锁修复：同 smoothErosionResult —— 原 TILE_SAMPLER.execute
+        //   + latch.await 会永久死锁（队列永不满 → CallerRunsPolicy 不触发 →
+        //   16 个池线程全阻塞在 await 时无人取走子任务）。改用 ForkJoinPool 并行流
+        //   （work-stealing，调用线程参与执行）。并行安全性不变：每行只读 flat/flatPre、
+        //   只写本行 smoothed → 输出逐点一致。
+        int rowsPerTask = Math.max(1, (end - start) / smoothingParallelism);
+        int tasks = (end - start + rowsPerTask - 1) / rowsPerTask;
+        java.util.stream.IntStream.range(0, tasks).parallel().forEach(t -> {
+            int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
+            for (int z = z0; z < z1; z++) {
+                for (int x = start; x < end; x++) {
+                    int idx = z * bufSize + x;
+                    float h = flat[idx];
+                    float hPre = flatPre[idx];
+                    if (h <= 0.05f) continue;
+                    float deposition = h - hPre;
+                    if (deposition <= 0.005f) continue;
+                    float sum = 0;
+                    int count = 0;
+                    for (int dz = -1; dz <= 1; dz++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dz == 0) continue;
+                            int ni_z = Math.max(0, Math.min(bufSize - 1, z + dz));
+                            int ni_x = Math.max(0, Math.min(bufSize - 1, x + dx));
+                            int ni = ni_z * bufSize + ni_x;
+                            sum += flat[ni];
+                            count++;
+                        }
+                    }
+                    float avg = sum / count;
+                    float diff = h - avg;
+                    // ★ 2026-08-12 T3：只削明显孤峰（突出 >0.003e≈1 块），
+                    // 保留 1-3 块级沉积微纹理（旧版无条件平均会抹掉细节）
+                    if (diff <= 0.003f) continue;
+                    float blend = Math.min((diff - 0.003f) * 3.0f, 0.6f);
+                    smoothed[idx] = h * (1f - blend) + avg * blend;
+                }
+            }
+        });
+        // 保留原中止语义（见 smoothErosionResult 注释）
+        if (Thread.currentThread().isInterrupted()) {
+            throw new CancellationException("erosion aborted");
+        }
+        System.arraycopy(smoothed, 0, flat, 0, flat.length);
+    }
+
+    // NOTE: 解析流功率侵蚀（applyStreamPower / thermalDiffuse / HeightQuery）已于 2026-07-31 删除：
+    // 属未接入生成管线的死代码（流功率方案未完成、早已回退液滴模拟）。多侵蚀特性后续重做。
+
+    // ===== 工具 =====
+
+    private static float clampF(float v, float mn, float mx) {
+        if (Float.isNaN(v) || Float.isInfinite(v)) return mn;
+        return Math.max(mn, Math.min(mx, v));
+    }
+
+    private static long hash(int a, int b) {
+        long h = a * 0x9e3779b9L + b * 0x9e3779b9L * 31;
+        h = (h ^ (h >>> 16)) * 0x85ebca6bL;
+        h = h ^ (h >>> 13);
+        h = h * 0xc2b2ae35L;
+        h = h ^ (h >>> 16);
+        return h;
+    }
+}
