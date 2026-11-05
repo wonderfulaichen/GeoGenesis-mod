@@ -1616,6 +1616,19 @@ task runHydrologyDeterminismProbe(type: JavaExec) {
 //
 // 若某个探针长�?FAIL：请【移出本门禁并单开议题】，而不是删除探针�?
 // ==================================================================
+// Config key guard (2026-11-06): every key declared in GeoGenesisConfig must be read
+// by the production tree, otherwise the gate fails. Catches "UI switch / TOML key exists
+// but nothing reads it" defects (erosionEnabled was exactly that).
+//   gradlew runConfigKeyGuardProbe [-PprobeArgs="--verbose"]
+// Allowlist: tools/config-key-guard-allowlist.txt (one entry per line, reason required).
+task runConfigKeyGuardProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.config.ConfigKeyGuardProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runWorldgenGate {
     group = 'verification'
     description = '世界生成门禁：只跑当前实�?ALL PASS 的判据型探针（任一 FAIL 即构建失败）'
@@ -1641,6 +1654,9 @@ task runWorldgenGate {
     //     会被上游改动影响 �?历史 javadoc 数字(8.81%/1.08)�?filler 父指�?+ 出口修复�?
     //     已不可复现（实测 21.95%/1.51）。若无门禁，"输入变了 �?形态退�?将无人发现�?
     dependsOn 'runCenterlineCrossSectionProbe'
+    // Config key guard (2026-11-06): fails when a GeoGenesisConfig key is not read
+    // by production code (CLIENT_ONLY / UNREAD). See tools/config-key-guard-allowlist.txt.
+    dependsOn 'runConfigKeyGuardProbe'
 }
 
 // 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什�?+ 多模组零误删 + 开关真生效:

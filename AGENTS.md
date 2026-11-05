@@ -186,6 +186,13 @@ gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"
   `git grep -l 'System\\.exit' -- 'forge-1.20.1-47.4.10-mdk/src/diagnostics/**/*.java' | wc -l`
 - ⚠ **不要用受 `.gitignore` 过滤的搜索工具判断"文件是否存在"** ——
   权威做法是 `git status --ignored` 或显式路径列目录。
+- ★ **配置键必须真的影响产出**：`gradlew runConfigKeyGuardProbe` 已纳入 `runWorldgenGate`。
+  它静态扫描 `GeoGenesisConfig` 的全部键，凡**只被 `client/` 读**（假开关）或
+  **整个 `src/main` 无人读**（死键）都会 FAIL。新增配置键时不必登记，只要它真的被
+  生产代码读就自动通过；反之加键却没人读，门禁立刻红。
+  确属"不该驱动产出"的已知项，写进 `tools/config-key-guard-allowlist.txt`（**必须带理由**）；
+  该条目一旦变活或键被删，门禁同样红 —— 防止白名单腐烂成永久豁免。
+  ⚠ 不要用 `-x runConfigKeyGuardProbe` 跳过它（`runCenterlineCrossSectionProbe` 那条既存红除外）。
 - Windows 下含中文的提交信息用 `git commit -F file.txt`（UTF-8）。
 
 ## 已清理的废弃代码

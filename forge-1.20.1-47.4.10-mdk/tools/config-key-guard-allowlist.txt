@@ -1,0 +1,17 @@
+# config-key-guard 白名单（runConfigKeyGuardProbe 读取）
+#
+# 格式：<键名><TAB><理由>
+#   · 每条必须有理由 —— 空理由会让探针直接 FAIL。
+#   · 白名单不是永久豁免：条目对应的键若变成「被生产消费」，或该键已从配置里消失，
+#     探针同样 FAIL，用来强制清理腐烂条目。
+#   · 新增条目前先想清楚：这个键真的不该驱动产出吗？还是应该接通/删除？
+
+erosionEnabled	只在 client/ 被读（配置屏 toggleBits + 预览面板开关），生产路径不读 ⇒ 假开关。2026-11-06 记为 P0-A 待裁定（接通 = 关粒子退回纯 B，或直接删除该开关）；裁定后必须删掉本条目。
+erosionLocalChargeWeight	ErosionEngine.java:325 注释已写明「液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）」。保留配置位以备将来恢复 localCharge 正反馈。
+erosionRoutingAdaptive	只被 src/diagnostics 的 HydrologyExperimentEngine 与 riverline/RiverLineNetwork 读取；那是旧建网实验路径，生产水文已换 model 链。
+hydrologySkeletonRouting	同上：只被 src/diagnostics 的 HydrologyExperimentEngine / RiverLineNetwork 读取，生产不读。
+hydrologyDecayEnabled	只被 src/diagnostics 的 HydrologyExperimentEngine 读取（气候衰减实验），生产水文不读。
+hydrologyDecayExponent	同上：只在 HydrologyExperimentEngine 的实验路径里生效。
+hydrologyDecayMax	同上：只在 HydrologyExperimentEngine 的实验路径里生效。
+hydrologyDecayRef	同上：只在 HydrologyExperimentEngine 的实验路径里生效。
+hydrologyModelPipelineEnabled	已退化为 no-op 常量 true（PreviewDisplay.java:403 有记录：它进过 fingerprint、后来从指纹移除）。当前仅 src/acceptance 的 ForgeHydrologyAcceptance 读它，生产链不看。
