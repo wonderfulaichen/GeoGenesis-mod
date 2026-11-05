@@ -74,7 +74,7 @@ public final class RelayUnresolvedAttributionProbe {
                 DEF_SEED, region, step);
 
         if (hasFlag(args, "--chains-log")) {
-            boolean ok = replayLogChains(prov, gen, region, step);
+            boolean ok = replayLogChains(prov, gen, region, step, hasFlag(args, "--zero-climb"));
             gen.closeProcessErosion();
             System.exit(ok ? 0 : 1);
         }
@@ -139,7 +139,7 @@ public final class RelayUnresolvedAttributionProbe {
      * 与紧随其后的 {@code [HYDRO-WIRE-MERGE] anchor=.. .. steps=.. path=a>b>c}。</p>
      */
     private static boolean replayLogChains(ModelHydrologyProvider prov, CellGenerator gen,
-                                          int region, int step) throws Exception {
+                                          int region, int step, boolean zeroClimb) throws Exception {
         Path log = Path.of("run", "logs", "debug-1.log.gz");
         if (!Files.isRegularFile(log)) {
             System.out.println("找不到日志：" + log.toAbsolutePath());
@@ -199,7 +199,12 @@ public final class RelayUnresolvedAttributionProbe {
             for (String p : parts) {
                 cells.add(Integer.parseInt(p));
             }
-            ok &= dumpPath(ev[0], Integer.parseInt(ev[1]), cells, ox, oz, fstep, n, gen);
+            if (zeroClimb) {
+                DeterministicSkeleton.Result sk = prov.finalSkeletonForProbe(rx, rz);
+                zeroClimbWalk(Integer.parseInt(parts[0]), cells, ox, oz, fstep, n, gen, sk);
+            } else {
+                ok &= dumpPath(ev[0], Integer.parseInt(ev[1]), cells, ox, oz, fstep, n, gen);
+            }
         }
         if (!any) {
             System.out.println("日志里没有 BASE_JOIN_WITHOUT_DOWNSTREAM 记录");
@@ -306,6 +311,121 @@ public final class RelayUnresolvedAttributionProbe {
 
     private static int worldX(int cell, int ox, int n, int step) {
         return ox + (cell / n) * step;
+    }
+
+    /**
+     * <b>零爬坡重走</b>：从日志里那条链的首步出发，只走床面/高度严格更低的 8 邻，
+     * 看能不能走到水体。用来判定审计的 {@code UNRESOLVED} 是误拒还是真缺陷。
+     *
+     * <p>判据来源全部是生产数据：终点是否落在 {@code End.MOUTH_LAKE}/{@code MOUTH_SEA}
+     * 的 trace 格上、{@code e <= 0}（海）、或走出窗口（需邻区续解）；都没有更低邻居
+     * 才叫"真洼地"。严格下降不可能成环，所以本走法天然不会 CYCLE —— 这正好把
+     * "环"与"地形上无出口"两件事分开。</p>
+     */
+    private static void zeroClimbWalk(int start, List<Integer> auditCells, int ox, int oz,
+                                      int step, int n, CellGenerator gen,
+                                      DeterministicSkeleton.Result sk) {
+        java.util.Set<Integer> lake = new java.util.HashSet<>();
+        java.util.Set<Integer> sea = new java.util.HashSet<>();
+        if (sk != null) {
+            for (DeterministicSkeleton.Trace t : sk.traces) {
+                java.util.Set<Integer> bucket = null;
+                if (t.end == DeterministicSkeleton.End.MOUTH_LAKE) {
+                    bucket = lake;
+                } else if (t.end == DeterministicSkeleton.End.MOUTH_SEA) {
+                    bucket = sea;
+                }
+                if (bucket != null) {
+                    for (int c : t.cell) {
+                        bucket.add(c);
+                    }
+                }
+            }
+        }
+        System.out.printf("  零爬坡重走：起点 cell=%d world=(%d,%d) Y=%.6f eB=%.6f"
+                        + "（生产 lake 格=%d sea 格=%d）%n",
+                start, worldX(start, ox, n, step), worldZ(start, oz, n, step),
+                gen.erodedHeight(worldX(start, ox, n, step), worldZ(start, oz, n, step)),
+                gen.terrainEQuick(worldX(start, ox, n, step), worldZ(start, oz, n, step)),
+                lake.size(), sea.size());
+
+        java.util.Set<Integer> visited = new java.util.LinkedHashSet<>();
+        int cur = start;
+        int steps = 0;
+        String kind = null;
+        while (steps < 4096) {
+            if (!visited.add(cur)) {
+                kind = "CYCLE_IMPOSSIBLE（严格下降却成环 ⇒ 床面读取有误）";
+                break;
+            }
+            int wx = worldX(cur, ox, n, step);
+            int wz = worldZ(cur, oz, n, step);
+            double e = gen.terrainEQuick(wx, wz);
+            if (e <= 0.0) {
+                kind = "SEA（e<=0）";
+                break;
+            }
+            if (sea.contains(cur)) {
+                kind = "SEA（终点在 MOUTH_SEA trace 上）";
+                break;
+            }
+            if (lake.contains(cur)) {
+                kind = "WATER_LAKE（终点在 MOUTH_LAKE trace 上）";
+                break;
+            }
+            int next = steepestLower(cur, ox, oz, step, n, gen);
+            if (next < 0) {
+                kind = "PIT（无更低 8 邻 ⇒ 按设计即蓄水成湖）";
+                break;
+            }
+            cur = next;
+            steps++;
+        }
+        if (kind == null) {
+            kind = "STEP_LIMIT";
+        }
+        int inAudit = 0;
+        for (int c : visited) {
+            if (auditCells.contains(c)) {
+                inAudit++;
+            }
+        }
+        System.out.printf("  → 走了 %d 步，终点 cell=%d world=(%d,%d) Y=%.6f eB=%.6f%n",
+                steps, cur, worldX(cur, ox, n, step), worldZ(cur, oz, n, step),
+                gen.erodedHeight(worldX(cur, ox, n, step), worldZ(cur, oz, n, step)),
+                gen.terrainEQuick(worldX(cur, ox, n, step), worldZ(cur, oz, n, step)));
+        System.out.printf("  → 与审计链重合格数=%d / 审计链 %d 格%n", inAudit, auditCells.size());
+        System.out.println("  ZERO_CLIMB_VERDICT=" + kind
+                + (kind.startsWith("PIT") || kind.startsWith("SEA") || kind.startsWith("WATER_LAKE")
+                ? " ⇒ 地形上能到达水体/蓄水洼地 ⇒ 审计的 UNRESOLVED 属误拒（后继关系成环，不是没有出口）"
+                : " ⇒ 不能据此判误拒"));
+    }
+
+    /** 8 邻里最陡下降的一格（严格更低）；平局按固定扫描序，保证确定性。 */
+    private static int steepestLower(int cell, int ox, int oz, int step, int n,
+                                     CellGenerator gen) {
+        int ci = cell / n, cj = cell % n;
+        double h = gen.erodedHeight(worldX(cell, ox, n, step), worldZ(cell, oz, n, step));
+        int best = -1;
+        double bestH = h;
+        for (int di = -1; di <= 1; di++) {
+            for (int dj = -1; dj <= 1; dj++) {
+                if (di == 0 && dj == 0) {
+                    continue;
+                }
+                int a = ci + di, b = cj + dj;
+                if (a < 0 || b < 0 || a >= n || b >= n) {
+                    continue;
+                }
+                double hn = gen.erodedHeight(worldX(a * n + b, ox, n, step),
+                        worldZ(a * n + b, oz, n, step));
+                if (hn < bestH - EPS) {
+                    bestH = hn;
+                    best = a * n + b;
+                }
+            }
+        }
+        return best;
     }
 
     private static int worldZ(int cell, int oz, int n, int step) {
