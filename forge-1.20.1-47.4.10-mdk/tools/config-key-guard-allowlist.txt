@@ -6,7 +6,6 @@
 #     探针同样 FAIL，用来强制清理腐烂条目。
 #   · 新增条目前先想清楚：这个键真的不该驱动产出吗？还是应该接通/删除？
 
-erosionEnabled	只在 client/ 被读（配置屏 toggleBits + 预览面板开关），生产路径不读 ⇒ 假开关。2026-11-06 记为 P0-A 待裁定（接通 = 关粒子退回纯 B，或直接删除该开关）；裁定后必须删掉本条目。
 erosionLocalChargeWeight	ErosionEngine.java:325 注释已写明「液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）」。保留配置位以备将来恢复 localCharge 正反馈。
 erosionRoutingAdaptive	只被 src/diagnostics 的 HydrologyExperimentEngine 与 riverline/RiverLineNetwork 读取；那是旧建网实验路径，生产水文已换 model 链。
 hydrologySkeletonRouting	同上：只被 src/diagnostics 的 HydrologyExperimentEngine / RiverLineNetwork 读取，生产不读。

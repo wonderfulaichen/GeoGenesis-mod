@@ -110,13 +110,22 @@ public final class HydrologyDeterminismProbe {
 
     private static boolean testOffModeNegativeControl() {
         System.out.println();
-        System.out.println("[2] OFF 负对照：零 tile 构建且生命周期计数归零");
+        System.out.println("[2] OFF 负对照：零 tile 构建 / 生命周期计数归零 / eP 逐位等于 eB（纯 B）");
+        // 配置开关 -> 模式的唯一映射点。反过来写会让「关粒子」变成昂贵又无提示的错误。
+        boolean mapping = ProcessContext.modeFor(false) == ProcessContext.Mode.OFF
+                && ProcessContext.modeFor(true) == ProcessContext.Mode.PARTICLE;
+        System.out.printf("    modeFor(false)=%s modeFor(true)=%s%n",
+                ProcessContext.modeFor(false), ProcessContext.modeFor(true));
         try (ProcessRuntime runtime = new ProcessRuntime(context(DEFAULT_SEED, ProcessContext.Mode.OFF),
                 new ProcessRuntime.Budget(BUDGET_WORKERS, BUDGET_QUEUE, BUDGET_TILES))) {
-            query(runtime, points());
+            List<Sample> samples = query(runtime, points());
             ProcessRuntime.Metrics m = runtime.metrics();
-            boolean ok = m.builds() == 0 && m.successful() == 0 && m.completed() == 0
-                    && lifecycle(m);
+            boolean pureB = samples.stream().allMatch(s -> s.eP() == s.eB() && s.yP() == s.yB()
+                    && s.deltaE() == 0L && s.deltaY() == 0L);
+            boolean ok = mapping && pureB && m.builds() == 0 && m.successful() == 0
+                    && m.completed() == 0 && lifecycle(m);
+            long mismatch = samples.stream().filter(s -> s.eP() != s.eB() || s.yP() != s.yB()).count();
+            System.out.printf("    OFF 下 eP!=eB 的点数=%d/%d（必须为 0）%n", mismatch, samples.size());
             System.out.printf("    metrics=%s%n", m);
             System.out.printf("    判定: %s%n", ok ? "PASS" : "FAIL");
             return ok;

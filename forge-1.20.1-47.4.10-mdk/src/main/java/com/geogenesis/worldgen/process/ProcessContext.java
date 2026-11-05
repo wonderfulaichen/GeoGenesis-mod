@@ -11,6 +11,17 @@ import java.util.Objects;
 /** Frozen, isolated B/P definition. No application/global configuration is read here. */
 public final class ProcessContext {
     public enum Mode { OFF, PARTICLE }
+
+    /**
+     * 配置开关 → 运行模式。<b>唯一的映射点</b>，不许在调用方各写一份反过来的三元表达式
+     * （{@code erosionEnabled=false} 却跑粒子，是静默且昂贵的错误）。
+     *
+     * <p>OFF 的语义（见 {@link #assemble}）：{@code eP == eB}、零 tile 构建
+     * ⇒ 整个 P 层退化为纯 B 地形，水文看到的也是同一份 B。</p>
+     */
+    public static Mode modeFor(boolean erosionEnabled) {
+        return erosionEnabled ? Mode.PARTICLE : Mode.OFF;
+    }
     public record Definition(long seed, String baseAlgorithm, TerrainParams terrain,
                              BaseWorldSettings settings, int minY, int maxY,
                              Mode mode, ParticleErosionParams particle, boolean xs,

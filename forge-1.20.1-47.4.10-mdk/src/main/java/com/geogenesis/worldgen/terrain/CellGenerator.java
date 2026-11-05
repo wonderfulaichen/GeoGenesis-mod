@@ -193,6 +193,11 @@ public final class CellGenerator {
      * <p>上下文在此冻结：定义 = 当前 TerrainParams/B 设置 + 粒子参数快照 + 海平面。
      * 种子变化时重建，与 {@link #seed(long)} 的其它子系统同步。</p>
      *
+     * <p><b>2026-11-06：{@code erosionEnabled} 接通</b>。此前该键只被配置屏/预览面板读写，
+     * 生产路径完全不读 ⇒ 关掉「液滴粒子侵蚀」毫无效果（配置键守卫点名项的 P0-A）。
+     * 现在关闭时走 {@link com.geogenesis.worldgen.process.ProcessContext.Mode#OFF}：
+     * {@code eP == eB}、零 tile 构建，整个 P 层退化为纯 B 地形。</p>
+     *
      * <p>预算取生产可用值（非探针值）：4 个 worker + 64 队列 + 1024 完成槽。
      * tile 是纯函数 ⇒ 预算只影响时序，不进语义身份。</p>
      */
@@ -203,21 +208,24 @@ public final class CellGenerator {
         var cfg = com.geogenesis.config.GeoGenesisConfig.INSTANCE;
         boolean xs = false;
         double strength = 1.0;
+        boolean erosionOn = true;
         if (cfg != null) {
+            try { erosionOn = cfg.erosionEnabled.get(); } catch (IllegalStateException ignored) { }
             try { xs = cfg.erosionXSEnabled.get(); } catch (IllegalStateException ignored) { }
             try { strength = cfg.erosionStrength.get(); } catch (IllegalStateException ignored) { }
         }
+        var mode = com.geogenesis.worldgen.process.ProcessContext.modeFor(erosionOn);
         var def = new com.geogenesis.worldgen.process.ProcessContext.Definition(
                 worldSeed, "morphBase+processRuntime", params,
                 com.geogenesis.config.BaseWorldConfigAdapter.snapshot(),
                 (int) minWorldY, (int) maxWorldY,
-                com.geogenesis.worldgen.process.ProcessContext.Mode.PARTICLE,
-                snap, xs, (float) strength,
+                mode, snap, xs, (float) strength,
                 true, "geogenesis-common.toml");
         processContext = new com.geogenesis.worldgen.process.ProcessContext(def);
         processRuntime = new com.geogenesis.worldgen.process.ProcessRuntime(
                 processContext, new com.geogenesis.worldgen.process.ProcessRuntime.Budget(4, 64, 1024));
-        LOGGER.info("[PROCESS] 物理侵蚀运行时就绪 identity 前缀={}",
+        LOGGER.info("[PROCESS] 物理侵蚀运行时就绪 mode={}（erosionEnabled={}）identity 前缀={}",
+                mode, erosionOn,
                 processContext.identity().substring(0, Math.min(80, processContext.identity().length())));
     }
 
