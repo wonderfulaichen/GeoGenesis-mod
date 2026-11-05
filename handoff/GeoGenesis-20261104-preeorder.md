@@ -177,6 +177,15 @@ java -cp <classes>;<diagnostic-classpath> `
 
 ## 7. 推荐方案（下一步就做这个）
 
+> ⚠ **2026-11-06 补记（本节已部分失效，勿按原表执行）**：用户随后裁定
+> 「骨架侵蚀移除，待后续；现在只保留物理粒子侵蚀」，`RidgeValleyErosion` 已删除并归档、
+> `erosionRidgeEnabled` 与另外 8 个 `erosionRidge*` 配置键已从 `GeoGenesisConfig` 移除，
+> `CellGenerator` 的「仅骨架分支」（原 `:1365-1374`）不复存在。
+> ⇒ 下表**第一行已无法执行**；`erosionDropsMul` 仍可用，但用户已明确
+> 「减粒子」不是他要的低配档（骨架才是），所以两行都不构成已认可方案。
+> 现状与裁定见 `audit/GeoGenesis-旧侵蚀路径清理清单-20261106.md` §7。
+> 下方原文保留为历史留痕。
+
 **不要再写新的预侵蚀系统。** 生产已有两个现成旋钮：
 
 | 手段 | 成本 | 依据 |
