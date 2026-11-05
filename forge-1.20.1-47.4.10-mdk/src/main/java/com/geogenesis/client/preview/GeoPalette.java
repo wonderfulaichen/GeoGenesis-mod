@@ -601,9 +601,28 @@ public final class GeoPalette {
         return blendRGB(climateRGB, terrainRGB, 0.35);
     }
 
-    /** 水文叠加：在任意图层上叠加湖掩码（河流系统已清除）。 */
+    /**
+     * 水文叠加：在任意图层上叠加 model 发布的河/湖水面。
+     *
+     * <p>2026-11-06：原来只认 {@code lakeMask}，且 {@code PreviewDisplay} 两处调用都把
+     * {@code hydrology} 传成 {@code false} ⇒ 游戏内预览窗口完全看不到新水文（独立
+     * {@code TerrainPreview} 默认 true 才能看到）。现按 Cell 的发布字段区分：</p>
+     * <ul>
+     *   <li>湖：{@code lakeMask} → 湖蓝（不区分深浅，身份优先）</li>
+     *   <li>河：{@code riverType != 0} 且 {@code fillWater} → 河蓝，
+     *       并按计划水位相对地面的水柱厚度略调亮，使深河/浅溪可分辨</li>
+     * </ul>
+     * <p>{@code riverNetDischarge} 是粒子侵蚀的流量诊断场，不是权威河网，
+     * 故不在此处使用（仍由 RIVER_NETWORK 图层单独显示）。</p>
+     */
     public static int applyHydrology(int baseRGB, Cell c) {
         if (c.lakeMask) return blendRGB(baseRGB, 0x00B4DC, 0.55);
+        // riverType != 0 本身即 column.fillWater()（GeoGenesisTerrain.applyHydrologyValley 发布）。
+        if (c.riverType != 0) {
+            double depth = Math.max(0.0, Math.min(3.0, c.riverSurfaceY - c.height));
+            float mix = (float) (0.40 + 0.12 * depth);
+            return blendRGB(baseRGB, 0x1677C8, Math.min(0.70f, mix));
+        }
         return baseRGB;
     }
 

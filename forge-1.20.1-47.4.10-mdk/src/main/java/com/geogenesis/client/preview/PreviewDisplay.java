@@ -481,7 +481,10 @@ public class PreviewDisplay extends AbstractWidget {
     //       源头 1119→约783（−30%）、左带河道 −5.9%、最大连通分量 −1.4%（只少支流）。
     //       ⚠ 与 spacing/maxSources 不同——那两个会成片抹掉支流并打断主干，已实测否决。
     // 120 = P1 新世界 morph 基础地形；算法身份单独入键，旧世界仍走 legacy。
-    private static final int CACHE_SCHEMA_VERSION = 120;
+    // 121 = 修正旧骨架峰尖渐隐的反向smoothstep；P1及单一骨架候选均未切换生产默认。
+    // 122 = 预览启用新水文叠加，磁盘缓存增存 riverType/riverSurfaceY，
+    //       旧缓存缺河流水面字段，必须失效重建。
+    private static final int CACHE_SCHEMA_VERSION = 122;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
@@ -659,7 +662,7 @@ public class PreviewDisplay extends AbstractWidget {
                 int color = 0;
                 if (c != null) {
                     int wx = originWx + px * scaleBlockPos;   // 真实世界坐标（供纬度/坐标类图层）
-                    color = GeoPalette.color(activeLayer, c, wx, wz, minY, maxY, false);
+                    color = GeoPalette.color(activeLayer, c, wx, wz, minY, maxY, true);
                 }
                 image.setPixelRGBA(px, py, GeoPalette.toABGR(color));
             }
@@ -808,7 +811,7 @@ public class PreviewDisplay extends AbstractWidget {
                         //   此处必须同约定读，否则 chunk 内 X/Z 交换 → 16 块间距网格（19df17e 后引入）。
                         Cell cell = cells[lx * 16 + lz];
                         if (cell == null) continue;
-                        int color = GeoPalette.color(activeLayer, cell, wx, wz, minY, maxY, false);
+                        int color = GeoPalette.color(activeLayer, cell, wx, wz, minY, maxY, true);
                         // 离散图层：过滤模式 → 未勾选压暗；否则选中高亮其余压暗（每帧重绘，实时生效）
                         if (activeLayer.kind == GeoPalette.Kind.DISCRETE) {
                             int id = GeoPalette.discreteIdForCell(activeLayer, cell);

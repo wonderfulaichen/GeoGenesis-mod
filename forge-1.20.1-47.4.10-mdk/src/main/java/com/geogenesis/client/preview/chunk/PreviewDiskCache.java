@@ -200,6 +200,10 @@ public final class PreviewDiskCache {
         if (c.isSnow) flags |= FLAG_SNOW;
         if (c.erosionMask) flags |= FLAG_EROSION;
         out.writeByte(flags);
+        // ★ 2026-11-06：预览水文叠加需要 riverType / riverSurfaceY，
+        //   旧格式未存 ⇒ 磁盘回填的 Cell 永远没河。追加在末尾并由 CACHE_SCHEMA_VERSION 隔离。
+        out.writeByte(c.riverType);
+        out.writeFloat((float) c.riverSurfaceY);
     }
 
     private static Cell readCell(DataInputStream in) throws IOException {
@@ -227,6 +231,15 @@ public final class PreviewDiskCache {
         c.lakeMask = (flags & FLAG_LAKE_MASK) != 0;
         c.isSnow = (flags & FLAG_SNOW) != 0;
         c.erosionMask = (flags & FLAG_EROSION) != 0;
+        try {
+            c.riverType = in.readByte();
+            c.riverSurfaceY = in.readFloat();
+            c.riverLipY = c.riverSurfaceY;   // 当前 model 链唇口 = 水面
+        } catch (java.io.EOFException oldFormat) {
+            // 理论上 schema 已隔离，不会走到这里；留作显式兼容，绝不假装新格式。
+            c.riverType = 0;
+            c.riverSurfaceY = 0.0;
+        }
         // 兼容旧 API：同步别名字段
         c.isLake = c.lakeMask;
         c.continent = c.continentNoise;
