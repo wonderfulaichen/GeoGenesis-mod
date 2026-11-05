@@ -238,7 +238,8 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 
 **分支与标签：** 主线就是 **`main`**。
 > ⚠ 2026-11-06（最终理顺）：本仓库长期以 `feat/hydrology-target` 为事实主线
-> （2026-10-25 由 `backup/pre-legacy-chain-removal-20261020` 改名而来），
+> （2026-10-25 由 `backup/pre-legacy-chain-removal-20261020` 改名而来；该旧名分支
+> 同为历史遗留，`3c94a90` 已在 `main` 历史内，**同日一并删除**），
 > 而 `main` 一度停在 2026-09-30 的 sim 线、**与主线分叉**。
 > 当天已收口：
 >
@@ -247,7 +248,8 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 > | `main` 对齐主线 | 强推至主线提交（`--force-with-lease`），sim 线节点不再被 `main` 引用 |
 > | 本地分支改名 | `feat/hydrology-target` → `main`，upstream 改为 `origin/main` |
 > | GitHub 默认分支 | `gh repo edit --default-branch main`；已核验：API `default_branch=main` + `ls-remote --symref origin HEAD → refs/heads/main` |
-> | 远端 `feat/hydrology-target` | **已删除**（删前校验与 `main` SHA 相同：`24bd8447`；删后远端只剩 `main` 与 `backup/pre-legacy-chain-removal-20261020`） |
+> | 远端 `feat/hydrology-target` | **已删除**（删前校验与 `main` SHA 相同：`24bd8447`） |
+> | 远端 `backup/pre-legacy-chain-removal-20261020` | **已删除**（`3c94a90`，`main` 的祖先、0 个独有提交；删后远端分支只剩 `main`） |
 >
 > ⇒ **今后 `git push` 默认推 `main`**；历史上任何「`main` 是旧的、必须检出
 > `feat/hydrology-target`」的说法（多见于 `handoff/GeoGenesis-20261103-*.md`）
@@ -270,8 +272,8 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 > `git bundle verify` 通过），需要时 `git fetch <bundle>` 即可复活；
 > 该文件在系统临时目录，不在仓库内。
 >
-> 现存 ref：分支 `main` / `backup/pre-legacy-chain-removal-20261020`，
-> tag `v0.0.1` / `backup-before-rewrite`（后两个均为 `main` 的祖先，作发布与历史标记）。
+> 现存 ref：**分支只剩 `main`**（唯一主线）；
+> tag `v0.0.1` / `backup-before-rewrite`（两者均为 `main` 的祖先，作发布与历史标记）。
 
 **仍未做：** 完整 `runWorldgenGate`；多 seed；负坐标 / 下游先查 / 缓存淘汰 / 并发取消矩阵。
 用户已指出仍有细节待后续调整 —— 不声称"全周期完成"。
