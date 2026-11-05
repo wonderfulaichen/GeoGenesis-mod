@@ -32,8 +32,8 @@ import java.util.TreeMap;
  *   <li><b>18 种支持无 fallback</b>：每个条目都取到一个纯权重点，其区域高度与本引擎 onehot
  *       <b>逐位相等</b>，且与 catalog 的该条目 reference 在 2e-7 内 —— 不是退回 border、
  *       不是邻条目兜底。</li>
- *   <li><b>抽样额外 seed</b>：只在 <b>engine 层</b>（{@code RecipeJunctionMorph} 已既测）；
- *       另证非 Gallery 种子会被 {@link FullMorphLand} 拒绝（换 seed 调 Gallery 是假的）。</li>
+ *   <li><b>抽样额外 seed</b>：检查 engine 端点、非正典构造路径、确定性及种子敏感性；
+ *       {@code original()} 仍只允许正典种子。</li>
  *   <li><b>性能</b>：同 tile 1000 点实测单点成本，另测"只算引擎"以分离几何开销。</li>
  * </ol>
  *
@@ -43,7 +43,7 @@ import java.util.TreeMap;
 public final class FullMorphLandCheck {
 
     private static final long GALLERY = RecipeMorphCatalog.GALLERY_SEED;
-    /** 抽样额外种子（只喂 engine）。 */
+    /** 抽样额外种子。 */
     private static final long[] EXTRA_SEEDS = {1L, -42L};
     /**
      * seam 的判据是<b>2D Lipschitz</b> 而不是"|Δe| 必须很小"。
@@ -145,6 +145,7 @@ public final class FullMorphLandCheck {
 
     private static void run(Path out) throws Exception {
         Ctx c = new Ctx();
+        checkConcurrency();
         long t0 = System.nanoTime();
         write(out, "thresholds.csv", sectionThresholds(c));
         timing(out, "thresholds", t0);
@@ -186,6 +187,74 @@ public final class FullMorphLandCheck {
         }
         Files.writeString(out.resolve("metrics.txt"), metrics() + "result=PASS\n");
         Files.writeString(out.resolve("limits.txt"), LIMITS);
+    }
+
+    /** Shared instance, overlapping coordinates, cache eviction and reverse-order replay. */
+    private static void checkConcurrency() throws Exception {
+        for (long seed : new long[]{GALLERY, 1L, -42L}) {
+            FullMorphLand reference = new FullMorphLand(new RecipeMorphCatalog(seed));
+            FullMorphLand shared = new FullMorphLand(new RecipeMorphCatalog(seed));
+            FullMorphLand.Sample[] expected = new FullMorphLand.Sample[12];
+            for (int i = 0; i < expected.length; i++) {
+                expected[i] = reference.sample(i * 1024.0 + 31, 43);
+            }
+            for (int i = expected.length - 1; i >= 0; i--) {
+                checkSameSample(expected[i], reference.sample(i * 1024.0 + 31, 43));
+            }
+            require(reference.stats().tileEvictions() > 0, "serial eviction not exercised");
+            checkLruOrder(seed);
+            var executor = java.util.concurrent.Executors.newFixedThreadPool(8);
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var futures = new ArrayList<java.util.concurrent.Future<?>>();
+            try {
+                for (int thread = 0; thread < 8; thread++) {
+                    final int id = thread;
+                    futures.add(executor.submit(() -> {
+                        start.await();
+                        for (int n = 0; n < 240; n++) {
+                            int i = (n + id * 3) % expected.length;
+                            checkSameSample(expected[i], shared.sample(i * 1024.0 + 31, 43));
+                            shared.stats();
+                            shared.dominantHistogram();
+                        }
+                        return null;
+                    }));
+                }
+                start.countDown();
+                for (var future : futures) future.get(120, java.util.concurrent.TimeUnit.SECONDS);
+            } finally {
+                executor.shutdownNow();
+            }
+            FullMorphLand.Stats stats = shared.stats();
+            require(stats.tilesCached() <= FullMorphLand.CACHE_TILES && stats.tileEvictions() > 0,
+                    "shared LRU capacity or eviction failed for seed " + seed);
+            require(stats.points() + stats.cachedPoints() == 8L * 240
+                            && sum(shared.dominantHistogram()) == stats.points(),
+                    "shared counters lost updates for seed " + seed);
+        }
+    }
+
+    private static void checkLruOrder(long seed) {
+        FullMorphLand land = new FullMorphLand(new RecipeMorphCatalog(seed));
+        FullMorphLand.Tile first = land.tileAt(31, 43);
+        FullMorphLand.Tile second = land.tileAt(1055, 43);
+        for (int i = 2; i < FullMorphLand.CACHE_TILES; i++) land.tileAt(i * 1024.0 + 31, 43);
+        land.tileAt(31, 43); // refresh the oldest entry, so tile 1 becomes eldest
+        land.tileAt(FullMorphLand.CACHE_TILES * 1024.0 + 31, 43);
+        require(land.tileAt(31, 43) == first, "LRU evicted refreshed tile, seed " + seed);
+        require(land.tileAt(1055, 43) != second, "LRU retained eldest tile, seed " + seed);
+    }
+
+    private static void checkSameSample(FullMorphLand.Sample a, FullMorphLand.Sample b) {
+        if (Double.doubleToLongBits(a.regionHeight()) != Double.doubleToLongBits(b.regionHeight())
+                || Double.doubleToLongBits(a.coveredHeight()) != Double.doubleToLongBits(b.coveredHeight())
+                || Double.doubleToLongBits(a.e()) != Double.doubleToLongBits(b.e())
+                || Double.doubleToLongBits(a.mask()) != Double.doubleToLongBits(b.mask())
+                || Float.floatToIntBits(a.alpha()) != Float.floatToIntBits(b.alpha())
+                || a.dominantEntry() != b.dominantEntry() || a.activeEntries() != b.activeEntries()
+                || !Arrays.equals(a.weight(), b.weight())) {
+            throw new AssertionError("concurrent or order-dependent sample mismatch: " + a + " vs " + b);
+        }
     }
 
     // ============================================================ 1. 阈值同源
@@ -665,7 +734,7 @@ public final class FullMorphLandCheck {
         double d = Math.hypot(inv[0] - tile.centerX(), inv[1] - tile.centerZ());        return d <= g.queryRadius() ? new double[]{inv[0], inv[1]} : null;
     }
 
-    // ============================================================ 7. 额外 seed（仅 engine 层）
+    // ============================================================ 7. 额外 seed
 
     private static List<String> sectionSeeds() {
         List<String> csv = new ArrayList<>(List.of(
@@ -693,22 +762,36 @@ public final class FullMorphLandCheck {
             csv.add(String.format(Locale.ROOT, "%d,engine,18,60,%.3e,%.1e", seed, worst, TOL_ENDPOINT));
             witnessMax("seeds.max_abs_diff", worst);
         }
-        requireGallerySeedRejected();
-        csv.add("extra_seed_rejected_by_FullMorphLand,na,na,na,0,==UnsupportedOperationException");
+        checkSeededLand(csv);
         return csv;
     }
 
-    /** 非 Gallery 种子调 {@code original()} 必须抛 —— 否则"换 seed"是假的（Gallery 写死 SEED）。 */
-    private static void requireGallerySeedRejected() {
+    private static void checkSeededLand(List<String> csv) {
+        double[] first = null;
         for (long seed : EXTRA_SEEDS) {
-            boolean threw = false;
-            try {
-                new FullMorphLand(new RecipeMorphCatalog(seed));
-            } catch (UnsupportedOperationException expected) {
-                threw = true;
+            RecipeMorphCatalog cat = new RecipeMorphCatalog(seed);
+            boolean rejected = false;
+            try { cat.original(); } catch (UnsupportedOperationException expected) { rejected = true; }
+            require(rejected, "original() must reject non-Gallery seed " + seed);
+            FullMorphLand land = new FullMorphLand(cat);
+            FullMorphLand context = new FullMorphLand(new LandRegionContext(seed, RegionPartition.REGION_SCALE));
+            FullMorphLand again = new FullMorphLand(new RecipeMorphCatalog(seed));
+            double[] values = new double[8];
+            for (int i = 0; i < values.length; i++) {
+                double x = -500 + i * 135, z = -350 + i * 97;
+                FullMorphLand.Sample a = land.sample(x, z), b = context.sample(x, z);
+                FullMorphLand.Sample c = again.sample(x, z);
+                values[i] = a.e();
+                require(Double.isFinite(a.e()), "nonfinite seeded land " + seed);
+                require(Double.doubleToLongBits(a.e()) == Double.doubleToLongBits(b.e())
+                        && Double.doubleToLongBits(a.e()) == Double.doubleToLongBits(c.e())
+                        && Arrays.equals(a.weight(), b.weight()) && Arrays.equals(a.weight(), c.weight()),
+                        "seeded construction/determinism mismatch " + seed + " at " + x + "," + z);
             }
-            require(threw, "FullMorphLand accepted a non-Gallery seed " + seed
-                    + " — that would silently reuse the SEED-hardcoded Gallery arm");
+            require(!land.stats().oldCoverageFromReflection(), "noncanonical path reused Gallery coverage");
+            if (first != null) require(!Arrays.equals(first, values), "different seeds produce identical samples");
+            first = values;
+            csv.add(seed + ",land,na,8,0,bitwise_context_and_repeat");
         }
     }
 
@@ -870,7 +953,8 @@ public final class FullMorphLandCheck {
                     + " (thresholds reflected, branch order, float alpha); mask>HIGH returns exactly the"
                     + " shared PlateauCandidate (1.05), not M1 and not the 0.9 corrected plateau; all 18"
                     + " entries reach a pure point whose height is bitwise the engine onehot result and"
-                    + " matches the catalog reference; extra seeds are exercised at the engine layer only\n"
+                    + " matches the catalog reference; extra seeds additionally check eight land samples"
+                    + " against context construction and independent repeats, plus seed sensitivity\n"
             + "not_proven=world injectivity of the inverse warp, so unlimited-world correctness is NOT"
                     + " claimed. Seam sampling is pointwise, not a global continuity proof. Visual"
                     + " acceptability, ocean/coastline assembly, Minecraft, runWorldgenGate and"
@@ -885,8 +969,7 @@ public final class FullMorphLandCheck {
             + "LIMITATION=geometry is built per 1024-block tile with a 728-block query radius and the"
                     + " 120-block halo; the LRU keeps 8 tiles, so far jumps rebuild geometry (correct,"
                     + " just slower)\n"
-            + "no_new_seed=no seed is added anywhere: catalog, engine, partition and mask all come from"
-                    + " the existing Gallery arm; nothing is re-seeded\n";
+            + "seed_paths=canonical uses the Gallery arm; noncanonical uses a seeded LandRegionContext\n";
 
     private static List<String> repro() {
         return List.of(

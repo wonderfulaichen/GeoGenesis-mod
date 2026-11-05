@@ -39,7 +39,8 @@ $lines = New-Object System.Collections.Generic.List[string]
 Write-Host "=== [1/3] compile diagnostics ==="
 Push-Location $mdk
 try {
-    $files = (Get-ChildItem 'src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/*.java').FullName
+    $src = 'src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate'
+    $files = Get-ChildItem "$src/*.java" | ForEach-Object { "$src/$($_.Name)" }
     & "$java/javac.exe" --release 17 -encoding UTF-8 -nowarn -cp $cp -d $cls $files
     if ($LASTEXITCODE -ne 0) { throw "javac candidate failed: $LASTEXITCODE" }
 
@@ -83,7 +84,7 @@ try {
     Write-Host "=== [3/3] judge probes ==="
     $probes = @(
         @{ name='FullMorphLandCheck';  cls='com.geogenesis.worldgen.terrain.candidate.FullMorphLandCheck';
-           args=@((Join-Path $work 'land-check'));                 expect='PASS checks=910' },
+           args=@((Join-Path $work 'land-check'));                 expect='PASS checks=960' },
         @{ name='ShallowDetailCheck';  cls='com.geogenesis.worldgen.terrain.candidate.ShallowDetailCheck';
            args=@((Join-Path $work 'shallow-check'), (Join-Path $base 'config-input.toml'));
                                                                    expect='PASS checks=35' },
@@ -95,7 +96,7 @@ try {
         $code = $LASTEXITCODE
         $tail = ($out | Select-Object -Last 1)
         if ($code -ne 0) { throw "$($pr.name) FAILED (exit=$code): $tail" }
-        if ($tail -notmatch [regex]::Escape($pr.expect)) {
+        if ($tail -notmatch ('^' + [regex]::Escape($pr.expect) + '(?:\s|$)')) {
             throw "$($pr.name) unexpected verdict: expected '$($pr.expect)', got '$tail'"
         }
         # Record only the fingerprint, never absolute output paths (they differ per machine).

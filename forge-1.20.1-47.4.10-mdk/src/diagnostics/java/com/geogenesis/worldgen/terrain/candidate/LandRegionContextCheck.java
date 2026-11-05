@@ -77,7 +77,7 @@ public final class LandRegionContextCheck {
     }
 
     private void run() throws Exception {
-        stage("legacy-negative-controls", this::negativeControls);
+        stage("seeded-constructors", this::seededConstructors);
         if (mode.equals("canonical")) {
             stage("canonical-context", this::canonicalContext);
             stage("canonical-S3-scale-guard", this::canonicalScaleGuard);
@@ -130,14 +130,40 @@ public final class LandRegionContextCheck {
         require(legacy.oldCoverageFromReflection(), "legacy reflected coverage must retain honest provenance");
     }
 
-    private void negativeControls() throws Exception {
+    private void seededConstructors() throws Exception {
+        double[] previous = null;
         for (long seed : SEEDS) {
-            require(seed != RecipeMorphCatalog.GALLERY_SEED, "negative-control seed is canonical");
+            require(seed != RecipeMorphCatalog.GALLERY_SEED, "test seed is canonical");
             var catalog = new RecipeMorphCatalog(seed);
             rejects("original", seed, catalog::original);
-            rejects("FullMorphLand(catalog)", seed, () -> new FullMorphLand(catalog));
-            rejects("FullMorphLand(catalog,600)", seed, () -> new FullMorphLand(catalog, SCALE));
+            verifyContext(new LandRegionContext(catalog, RegionPartition.REGION_SCALE),
+                    independent(seed), "independent-default-scale");
+            double[] values = checkConstructors(catalog, RegionPartition.REGION_SCALE);
+            checkConstructors(catalog, SCALE);
+            if (previous != null) require(!Arrays.equals(previous, values), "seed did not affect land samples");
+            previous = values;
         }
+    }
+
+    private double[] checkConstructors(RecipeMorphCatalog catalog, float scale) {
+        long seed = catalog.seed();
+        var direct = scale == RegionPartition.REGION_SCALE
+                ? new FullMorphLand(catalog) : new FullMorphLand(catalog, scale);
+        var context = new FullMorphLand(new LandRegionContext(seed, scale));
+        var repeat = new FullMorphLand(new RecipeMorphCatalog(seed), scale);
+        require(!direct.stats().oldCoverageFromReflection(), "noncanonical Gallery coverage");
+        double[] values = new double[8];
+        for (int i = 0; i < values.length; i++) {
+            Point p = new Point(-500 + i * 135, -350 + i * 97);
+            var sample = direct.sample(p.x(), p.z());
+            require(Double.isFinite(sample.e()), "nonfinite constructor sample");
+            compareLand(sample, context.sample(p.x(), p.z()), p);
+            compareLand(sample, repeat.sample(p.x(), p.z()), p);
+            values[i] = sample.e();
+            table("constructors.csv", "seed,scale,x,z,e,bits").add(
+                    csv(seed, scale, p.x(), p.z(), sample.e(), hex(sample.e())));
+        }
+        return values;
     }
 
     private void rejects(String name, long seed, Action action) throws Exception {

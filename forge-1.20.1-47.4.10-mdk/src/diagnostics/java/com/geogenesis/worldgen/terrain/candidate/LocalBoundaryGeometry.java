@@ -68,7 +68,15 @@ public final class LocalBoundaryGeometry {
     public static final double CHORD_DEFAULT = 0.5;
     /** world polyline 单段最大长度默认值（块）：防中点采样漏掉 S 形。 */
     public static final double MAXSEG_DEFAULT = 8.0;
-    /** 反解残差容限默认值（块）。超限即阻断。 */
+    /**
+     * 反解残差容限默认值（块）。超限即阻断。
+     *
+     * <p><b>残差口径</b> = double 前向 {@link GeometryTransform#forward}，见
+     * {@link #residualBlocks(double, double, double, double)}。
+     * 早期实现用 {@link #warpForward}（world 先降 {@code float}）衡量，那条标尺的地板随
+     * |坐标| 线性爬升（约 26 万块处即 0.0313 &gt; 0.02），远处必然误判失败且低估真实误差。
+     * 判据值仍是 0.02 块，改的是「被测量的东西」。</p>
+     */
     public static final double INVERT_TOL_DEFAULT = 0.02;
 
     private static final double U_EPS = 1e-12;
@@ -77,6 +85,11 @@ public final class LocalBoundaryGeometry {
     private final RegionPartition partition;
     private final int partitionSeed;
     private final float frequency;
+    /**
+     * double 前向/解析 Jacobian 原语（复用 {@link GeometryTransform}，不另写一份 warp 数学）。
+     * <b>只用于反解的迭代与残差</b>；{@link #warpForward} 仍是 float 口径，生产对拍不受影响。
+     */
+    private final GeometryTransform continuous;
     private final RefNoise.Node warpX, warpZ;
     private final int slotCount;
     private final Object[] slotCats;
@@ -126,6 +139,7 @@ public final class LocalBoundaryGeometry {
         this.partition = partition;
         this.partitionSeed = seed;
         this.frequency = frequency;
+        this.continuous = GeometryTransform.of(partition);
         this.warpX = warpX;
         this.warpZ = warpZ;
         this.slotCount = slots;
@@ -447,27 +461,36 @@ public final class LocalBoundaryGeometry {
     public double[] warpInverse(double u, double v, double guessX, double guessZ) {
         double x = Double.isFinite(guessX) ? guessX : u / frequency;
         double z = Double.isFinite(guessZ) ? guessZ : v / frequency;
-        double res = Double.POSITIVE_INFINITY;
         for (int it = 0; it < 100; it++) {
-            double[] p0 = warpForward(x, z);
-            double fx = p0[0] - u, fz = p0[1] - v;
-            res = Math.max(Math.abs(fx), Math.abs(fz)) / frequency;
-            if (res < 1e-6) break;
-            double h = 0.05;
-            double[] pa = warpForward(x + h, z), pb = warpForward(x, z + h);
-            double j11 = (pa[0] - p0[0]) / h, j21 = (pa[1] - p0[1]) / h;
-            double j12 = (pb[0] - p0[0]) / h, j22 = (pb[1] - p0[1]) / h;
-            double det = j11 * j22 - j12 * j21;
+            double[] p = continuous.forwardAndJacobian(x, z);
+            double fx = p[0] - u, fz = p[1] - v;
+            if (Math.max(Math.abs(fx), Math.abs(fz)) / frequency < 1e-6) break;
+            double det = p[2] * p[5] - p[3] * p[4];
             if (!(Math.abs(det) > 1e-14)) break;
-            double dx = (-fx * j22 + j12 * fz) / det;
-            double dz = (-j11 * fz + fx * j21) / det;
+            double dx = (-fx * p[5] + p[3] * fz) / det;
+            double dz = (-p[2] * fz + fx * p[4]) / det;
             double len = Math.hypot(dx, dz);
             double cap = 150.0;
             if (len > cap) { dx *= cap / len; dz *= cap / len; }
             x += dx;
             z += dz;
         }
-        return new double[]{x, z, res};
+        return new double[]{x, z, residualBlocks(x, z, u, v)};
+    }
+
+    /**
+     * 反解残差（块）。口径 = <b>double</b> 前向 {@link GeometryTransform#forward}。
+     *
+     * <p><b>为什么不用 {@link #warpForward} 衡量</b>：它先把 world 降成 {@code float}，
+     * 于是残差存在地板 {@code |∂u/∂x|·ulp/(2·f)}，随 |坐标| 线性上升
+     * （65536→0.0059、131584→0.0156、262656→0.0313、524800→0.0625 块）。
+     * 用该标尺判 {@code 0.02} 在远处必然失败，且还会<b>低估</b>真实误差
+     * （实测同一批点标尺读 0.01831、真实 0.04419，1043 点超限被漏报）。
+     * 这里改用 double 前向，判据与被判对象同口径。</p>
+     */
+    private double residualBlocks(double x, double z, double u, double v) {
+        double[] p = continuous.forward(x, z);
+        return Math.max(Math.abs(p[0] - u), Math.abs(p[1] - v)) / frequency;
     }
 
     // ================================================================ 生产口径对拍

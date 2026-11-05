@@ -662,9 +662,15 @@ public final class LocalBoundaryGeometryProbe {
         r.add(String.format(Locale.ROOT,
                 "    t 范围 [%.1f, %.1f]，wA 端点 %.4f -> %.4f", st.t0, st.t1, st.w0, st.w1));
         r.add(String.format(Locale.ROOT,
-                "    完全饱和位置（距中心最近的样点）：wA=1 在 |t| = %.2f 块；wA=0 在 |t| = %.2f 块",
-                st.satHigh, st.satLow));
-        if (Math.abs(st.satHigh - 120) > 0.51 || Math.abs(st.satLow - 120) > 0.51) r.fail("法向完全饱和位置偏离120块");
+                "    完全饱和位置：wA=1 在 |s| = %.2f 块；wA=0 在 |s| = %.2f 块"
+                        + "（沿法向的行进距离 |t| 分别为 %.2f / %.2f，弯边上必然 ≥ |s|）",
+                st.satHigh, st.satLow, st.tHigh, st.tLow));
+        // 判据量是到边界的<b>最短</b>有符号距离 s（权重由 progress(s) 决定），不是 t。
+        if (Math.abs(st.satHigh - LocalBoundaryGeometry.BAND_HALF_BLOCKS) > 0.51
+                || Math.abs(st.satLow - LocalBoundaryGeometry.BAND_HALF_BLOCKS) > 0.51) {
+            r.fail("法向完全饱和位置（按最短距离 |s| 计）偏离带宽 "
+                    + LocalBoundaryGeometry.BAND_HALF_BLOCKS + " 块");
+        }
         else if (st.foreign != 0) r.fail("剖面里有第三格获得正权重 ⇒ 该处不是双腿边界");
         else if (!(st.worstSum < 1e-9)) r.fail("权重不互补 ⇒ 有第三格参与");
         else if (st.flips > 1) r.fail("wA 沿法向多次翻转 ⇒ 不满足单条双腿边界语义");
@@ -674,7 +680,7 @@ public final class LocalBoundaryGeometryProbe {
     /** 剖面统计结果。 */
     record ProfileStat(int rows, int foreign, double worstSum, int flips,
                        double t0, double t1, double w0, double w1,
-                       double satHigh, double satLow) { }
+                       double satHigh, double satLow, double tHigh, double tLow) { }
 
     /** 解析 normal-profile.csv 做自检（同时报饱和位置）。 */
     private static ProfileStat analyseProfile(LocalBoundaryGeometry g, String csv,
@@ -685,7 +691,13 @@ public final class LocalBoundaryGeometryProbe {
         int nSites = g.sites().size();
         int base = 3 + 2 * nSites;
 
-        List<Double> ts = new ArrayList<>(), ws = new ArrayList<>();
+        List<Double> ts = new ArrayList<>(), ws = new ArrayList<>(), sabs = new ArrayList<>();
+        // cellA 在 sites 里的列下标（s_<id> 按 sites 顺序排列；列 0..2 是 x,z,t）
+        int iaCol = -1;
+        for (int i = 0; i < g.sites().size(); i++) {
+            if (g.sites().get(i).id().equals(pc.cellA().id())) { iaCol = i; break; }
+        }
+        if (iaCol < 0) throw new IllegalStateException("cellA not in scene: " + pc.cellA());
         double worstSum = 0;
         for (int i = 1; i < lines.length; i++) {
             if (lines[i].isEmpty()) continue;
@@ -694,6 +706,9 @@ public final class LocalBoundaryGeometryProbe {
             double wB = Double.parseDouble(f[base + 1]);
             worstSum = Math.max(worstSum, Math.abs(wA + wB - 1.0));
             ts.add(Double.parseDouble(f[2]));
+            // 饱和的判据量是「到边界的<b>最短</b>有符号距离 s」，不是沿固定法向的行进距离 t。
+            // 弯边上两者不等（|t|=129.5 处 |s| 才到 120），按 t 判会把正确实现判成偏离。
+            sabs.add(Math.abs(Double.parseDouble(f[3 + iaCol])));
             ws.add(wA);
         }
         int flips = 0, lastSign = 0;
@@ -707,15 +722,20 @@ public final class LocalBoundaryGeometryProbe {
         }
         double satHigh = Double.POSITIVE_INFINITY, satLow = Double.POSITIVE_INFINITY;
         for (int i = 0; i < ws.size(); i++) {
-            if (ws.get(i) == 1.0) satHigh = Math.min(satHigh, Math.abs(ts.get(i)));
-            if (ws.get(i) == 0.0) satLow = Math.min(satLow, Math.abs(ts.get(i)));
+            if (ws.get(i) == 1.0) satHigh = Math.min(satHigh, sabs.get(i));
+            if (ws.get(i) == 0.0) satLow = Math.min(satLow, sabs.get(i));
+        }
+        double tHigh = Double.POSITIVE_INFINITY, tLow = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < ws.size(); i++) {
+            if (ws.get(i) == 1.0) tHigh = Math.min(tHigh, Math.abs(ts.get(i)));
+            if (ws.get(i) == 0.0) tLow = Math.min(tLow, Math.abs(ts.get(i)));
         }
         return new ProfileStat(ts.size(), foreign, worstSum, flips,
                 ts.isEmpty() ? Double.NaN : ts.get(0),
                 ts.isEmpty() ? Double.NaN : ts.get(ts.size() - 1),
                 ws.isEmpty() ? Double.NaN : ws.get(0),
                 ws.isEmpty() ? Double.NaN : ws.get(ws.size() - 1),
-                satHigh, satLow);
+                satHigh, satLow, tHigh, tLow);
     }
 
     private static String profileJson(LocalBoundaryGeometry.ProfileCandidate pc,

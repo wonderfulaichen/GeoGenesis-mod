@@ -11,9 +11,14 @@ final class LandRegionContext {
     private final float blendLow, blendHigh;
 
     LandRegionContext(long seed, float scale) {
+        this(new RecipeMorphCatalog(seed), scale);
+    }
+
+    LandRegionContext(RecipeMorphCatalog catalog, float scale) {
         if (!(scale > 0) || !Float.isFinite(scale)) throw new IllegalArgumentException("region scale");
         this.scale = scale;
-        catalog = new RecipeMorphCatalog(seed);
+        this.catalog = java.util.Objects.requireNonNull(catalog);
+        long seed = catalog.seed();
         partition = CoherentRegionDistribution.microPartition(seed, scale);
         slotCats = new CombineCandidate.Category[catalog.slotCount()];
         for (int i = 0; i < slotCats.length; i++) slotCats[i] = category(catalog.entry(catalog.slotEntry(i)));

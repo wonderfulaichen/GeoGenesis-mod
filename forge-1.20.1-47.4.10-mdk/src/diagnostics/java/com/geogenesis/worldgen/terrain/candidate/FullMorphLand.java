@@ -108,6 +108,8 @@ public final class FullMorphLand {
     private final CombineCandidate.Family oldCoverageFamily;
     private final float blendLow;
     private final float blendHigh;
+    // sample/tileAt/stats/dominantHistogram share this instance's monitor: LinkedHashMap.get
+    // mutates access order, and the last-point cache and counters must move atomically with it.
     private final Map<Long, Tile> tiles;
     private final int[] dominantHistogram = new int[ENTRY_COUNT];
 
@@ -122,8 +124,7 @@ public final class FullMorphLand {
     // ============================================================ 构造
 
     /**
-     * @param catalog 18 条目目录；<b>必须</b>是 {@link RecipeMorphCatalog#GALLERY_SEED} 那个
-     *                （真 Gallery 臂只在该种子上存在，换种子调 Gallery 是假的，直接拒绝）
+     * @param catalog 18 条目目录；正典种子保留 Gallery 路径，其他种子使用显式种子上下文
      */
     public FullMorphLand(RecipeMorphCatalog catalog) {
         this(catalog, RegionPartition.REGION_SCALE);
@@ -136,9 +137,16 @@ public final class FullMorphLand {
             throw new IllegalArgumentException("catalog is required");
         }
         if (catalog.seed() != RecipeMorphCatalog.GALLERY_SEED) {
-            throw new UnsupportedOperationException("FullMorphLand needs the canonical Gallery arm: seed="
-                    + catalog.seed() + " != " + RecipeMorphCatalog.GALLERY_SEED
-                    + " (original()/geometry would silently reuse the SEED-hardcoded arm)");
+            this.catalog = catalog;
+            this.engine = new RecipeJunctionMorph(catalog, catalog.seed());
+            this.original = null;
+            this.context = new LandRegionContext(catalog, regionScale);
+            this.maskNode = context.mask();
+            this.blendLow = context.blendLow();
+            this.blendHigh = context.blendHigh();
+            this.oldCoverageFamily = context.oldCoverage();
+            this.tiles = tileCache();
+            return;
         }
         this.catalog = catalog;
         this.engine = new RecipeJunctionMorph(catalog, catalog.seed());
@@ -224,7 +232,7 @@ public final class FullMorphLand {
      *
      * <p>同点连续调用命中 last-(x,z) 缓存，返回<b>同一个</b> {@link Sample} 实例。</p>
      */
-    public Sample sample(double x, double z) {
+    public synchronized Sample sample(double x, double z) {
         if (cached != null && x == lastX && z == lastZ) {
             cachedPoints++;
             return cached;
@@ -247,18 +255,18 @@ public final class FullMorphLand {
     }
 
     /** 一次性计数的运行统计（minimal；只给 check / renderer 记账用）。 */
-    public Stats stats() {
+    public synchronized Stats stats() {
         return new Stats(tilesBuilt, tileEvictions, tiles.size(), points, cachedPoints,
                 context == null && oldCoverageFamily != null, blendLow, blendHigh);
     }
 
     /** 取世界点所属 tile 的索引（建或用缓存）；{@code check} 用它逐点种纯权重点。 */
-    Tile tileAt(double x, double z) {
+    synchronized Tile tileAt(double x, double z) {
         return tileFor(x, z);
     }
 
     /** 主导条目直方图副本（诊断；不影响产出）。 */
-    public int[] dominantHistogram() {
+    public synchronized int[] dominantHistogram() {
         return dominantHistogram.clone();
     }
 
