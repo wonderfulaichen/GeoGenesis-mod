@@ -172,6 +172,20 @@ public final class CellGenerator {
     private final double minWorldY, maxWorldY;
     private com.geogenesis.worldgen.core.BaseWorldSampler baseWorld;
 
+    /**
+     * 侵蚀运行时（{@code worldgen.process.ProcessRuntime}）—— <b>生产唯一侵蚀实现</b>。
+     *
+     * <p>2026-11-06 重构裁定：粒子侵蚀内核（{@link com.geogenesis.worldgen.erosion.ErosionEngine}）
+     * 保持不变，但<b>调度与 tile 组织</b>统一由 {@code ProcessRuntime} 承载；
+     * 旧 {@code CellGenerator} tile 管线与骨架条纹滤镜（RidgeValleyErosion）
+     * 已从生产路径移除，不再有第二条分支。</p>
+     *
+     * <p>因此本字段恒为 {@code processRuntime != null}（在 {@link #seed(long)} 中创建）。
+     * 保留方法 {@link #processErosionEnabled()} 只为诊断/断言可读性，不构成开关。</p>
+     */
+    private com.geogenesis.worldgen.process.ProcessRuntime processRuntime;
+    private com.geogenesis.worldgen.process.ProcessContext processContext;
+
     public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY) {
         this(p, minWorldY, maxWorldY, false);
     }
@@ -179,6 +193,8 @@ public final class CellGenerator {
     /** P1 is selected by the world's persisted algorithm, not by the erosion/river TOML flags. */
     public CellGenerator(TerrainParams p, double minWorldY, double maxWorldY, boolean morphBase) {
         this.morphBase = morphBase;
+        // ★ 2026-11-06【无开关】物理粒子侵蚀是唯一实现。
+        //   morphBase=false（旧 B）仍走老地形；但侵蚀本身不再有第二条调度路径。
         this.minWorldY = minWorldY;
         this.maxWorldY = maxWorldY;
         this.continent = new ContinentField(p);
@@ -201,10 +217,7 @@ public final class CellGenerator {
 
         // 侵蚀：物理液滴侵蚀引擎（恢复自好基线）。配置在游戏内已 load；
         // 独立预览（config 未 load）时回退默认值。
-        GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
-        double erosionDropsMul = cfg != null ? cfgDbl(cfg.erosionDropsMul, 1.0) : 1.0;
-        boolean xsEnabled = cfg != null && cfgBool(cfg.erosionXSEnabled, false); // 细纹理层开关（默认关：实测加剧 chunk 边界脊）
-        this.erosion = new ErosionEngine(erosionDropsMul, 12345, xsEnabled);
+        this.erosion = com.geogenesis.config.ParticleErosionConfigAdapter.createForCell(TILE_PARALLELISM);
 
         this.tempFreq = 1.0 / p.latitudeScale();   // 纬度缩放可配置
 
@@ -228,6 +241,77 @@ public final class CellGenerator {
         this.oasisNoise = new Frequency(new Simplex(504), 1.0 / (p.climateRegionSize() * 0.75));
     }
 
+    /**
+     * 建立物理侵蚀运行时 —— <b>生产唯一侵蚀实现</b>，无条件创建。
+     *
+     * <p>上下文在此冻结：定义 = 当前 TerrainParams/B 设置 + 粒子参数快照 + 海平面。
+     * 种子变化时重建，与 {@link #seed(long)} 的其它子系统同步。</p>
+     *
+     * <p>预算取生产可用值（非探针值）：4 个 worker + 64 队列 + 1024 完成槽。
+     * tile 是纯函数 ⇒ 预算只影响时序，不进语义身份。</p>
+     */
+    private void initProcessErosion(long worldSeed) {
+        if (processRuntime != null) processRuntime.close();
+        var snap = com.geogenesis.config.ParticleErosionConfigAdapter.snapshot();
+        // XS / strength / hardness 来自 Forge 配置（不在 TerrainParams 上），读失败走默认值。
+        var cfg = com.geogenesis.config.GeoGenesisConfig.INSTANCE;
+        boolean xs = false;
+        double strength = 1.0;
+        if (cfg != null) {
+            try { xs = cfg.erosionXSEnabled.get(); } catch (IllegalStateException ignored) { }
+            try { strength = cfg.erosionStrength.get(); } catch (IllegalStateException ignored) { }
+        }
+        var def = new com.geogenesis.worldgen.process.ProcessContext.Definition(
+                worldSeed, "morphBase+processRuntime", params,
+                com.geogenesis.config.BaseWorldConfigAdapter.snapshot(),
+                (int) minWorldY, (int) maxWorldY,
+                com.geogenesis.worldgen.process.ProcessContext.Mode.PARTICLE,
+                snap, xs, (float) strength,
+                true, "geogenesis-common.toml");
+        processContext = new com.geogenesis.worldgen.process.ProcessContext(def);
+        processRuntime = new com.geogenesis.worldgen.process.ProcessRuntime(
+                processContext, new com.geogenesis.worldgen.process.ProcessRuntime.Budget(4, 64, 1024));
+        LOGGER.info("[PROCESS] 物理侵蚀运行时就绪 identity 前缀={}",
+                processContext.identity().substring(0, Math.min(80, processContext.identity().length())));
+    }
+
+    /**
+     * 新 P 层提供的侵蚀增量（e 单位，含 tile 边界 blend）。
+     *
+     * <p>与旧路径的关键差异：新 P 的 delta 定义在 <b>B 的 floored 输入</b>上
+     * （{@code float(max(eB,-0.05))}），且 tile 为 48wu owner + 40wu halo。
+     * 这里把 {@code exactP.yP} 反算成"相对当前 cell.e 的增量"，由 {@link #coreApplyDelta}
+     * 施加到 cell —— 与旧路径"delta 加到 cell.e"的语义保持一致。</p>
+     */
+    private double processErosionDeltaE(double wuX, double wuZ) {
+        if (processRuntime == null) return 0.0;
+        try {
+            var s = processRuntime.exactP(wuX, wuZ);
+            return s.yP() == 0.0 && s.base().yB() == 0.0 ? 0.0 : s.deltaE();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return 0.0;
+        } catch (java.util.concurrent.ExecutionException e) {
+            LOGGER.warn("[PROCESS] exactP 失败于 ({},{})，本格不施加增量：{}", wuX, wuZ,
+                    e.getCause() == null ? e.toString() : e.getCause().toString());
+            return 0.0;
+        }
+    }
+
+    /** 释放新 P 层执行器（world 关闭 / 重建时调用）。幂等。 */
+    public void closeProcessErosion() {
+        if (processRuntime != null) {
+            processRuntime.close();
+            processRuntime = null;
+            processContext = null;
+        }
+    }
+
+    public boolean processErosionEnabled() { return processRuntime != null; }
+
+    /** 新 P 层运行时；model 侧据此绑定同一份 B/P。 */
+    public com.geogenesis.worldgen.process.ProcessRuntime processRuntime() { return processRuntime; }
+
     /** 一次性播种所有噪声节点 + 设置海山中心水深检查器 */
     public void seed(long worldSeed) {
         if (morphBase) {
@@ -235,6 +319,7 @@ public final class CellGenerator {
                     worldSeed, params, (int) minWorldY, (int) maxWorldY,
                     com.geogenesis.config.BaseWorldConfigAdapter.snapshot());
         }
+        initProcessErosion(worldSeed);
         continent.seed(worldSeed);
         typeLandShape.seed(worldSeed);
         seaBed.seed(worldSeed);
@@ -1172,9 +1257,9 @@ public final class CellGenerator {
         double erosionStr = cfg != null ? cfgDbl(cfg.erosionStrength, 1.0) : 1.0;
         // 骨架开关独立于液滴（2026-08-06：仅开骨架时也要生效）
         RidgeValleyErosion.RidgeConfig rcfg0 = cfg != null
-            ? RidgeValleyErosion.RidgeConfig.fromConfig(cfg)
+            ? com.geogenesis.config.RidgeConfigAdapter.fromConfig(cfg)
             : new RidgeValleyErosion.RidgeConfig();
-        // 2026-08-13：hs 以 TerrainParams 为准覆盖（fromConfig 读全局配置，探针进程为 null→1.0）
+        // hs 以 TerrainParams 为准覆盖（适配器读取传入配置；未加载时回退 1.0）
         rcfg0.horizontalScale = (float) params.horizontalScale();
         // 2026-08-13：探针/测试可覆盖骨架参数（无 Forge 环境时对齐 toml 真实配置）
         final RidgeValleyErosion.RidgeConfig rcfg = probeRidgeConfig != null ? probeRidgeConfig : rcfg0;
@@ -1619,25 +1704,10 @@ public final class CellGenerator {
      * applyTileDelta 旧语义一致；半成品 tile 不会被缓存。</p>
      */
     public double erosionDeltaE(double wuX, double wuZ) {
-        if (morphBase) return 0.0;
-        // ★ 2026-08-12 回退（半开归属方案经实测否决——48k+24 线引入新墙，且最初断崖根因是
-        // SLOPE 0.0015 微坡墙而非 blend；恢复基线 floorDiv(wu,48) + 右/下缘 blend）
-        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
-        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
-        // ★ 2026-09-19 诊断：取 tile 子项（每格第 1 次；含 tileCacheGet + 生成 + 驱逐）
-        long tg0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
-        ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
-        com.geogenesis.diagnostics.WorldGenProfiler.end(
-                com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXGET, tg0);
-        if (res == null) return 0.0; // 中断中止（不缓存半成品）→ 本格不施加 delta，chunk 由调用方丢弃/重采
-        // ★ 2026-09-19 诊断：blend 子项（每格 1 次）
-        long tb0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
-        try {
-            return blendTileDelta(res, wuX, wuZ, tileCX, tileCZ, true);   // 主路径：missing ⇒ 现场生成（确定性）
-        } finally {
-            com.geogenesis.diagnostics.WorldGenProfiler.end(
-                    com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXBLEND, tb0);
-        }
+        // ★ 2026-11-06【唯一实现】物理粒子侵蚀（ProcessRuntime）是生产唯一侵蚀路径。
+        //   旧 tile 管线（getOrGenTile → generateErosionTile，含 RidgeValleyErosion 骨架滤镜）
+        //   已从生产路径移除；进程侵蚀必须启用，故此处不再有第二分支。
+        return processErosionDeltaE(wuX, wuZ);
     }
 
     /**
@@ -1652,12 +1722,9 @@ public final class CellGenerator {
      * <p>语义：返回 empty（而非 0.0）以便调用方区分"确实无侵蚀增量"与"尚不可知"。</p>
      */
     public OptionalDouble peekErosionDeltaE(double wuX, double wuZ) {
-        if (morphBase) return OptionalDouble.of(0.0);
-        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
-        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
-        ErosionTileResult res = tileCacheGet(tileKey(tileCX, tileCZ));
-        if (res == null) return OptionalDouble.empty();   // 未生成 → 绝不触发生成
-        return OptionalDouble.of(blendTileDelta(res, wuX, wuZ, tileCX, tileCZ, false));
+        // 唯一路径：物理侵蚀按需精确求解（内部有 tile 缓存）。此入口保留只为兼容诊断调用，
+        // 语义上不再有"命中/未命中"二分 —— 请求即得到与生产一致的增量。
+        return OptionalDouble.of(processErosionDeltaE(wuX, wuZ));
     }
 
     /**
@@ -1668,6 +1735,7 @@ public final class CellGenerator {
      * （与 {@link #sample} 一致，即 {@code sampleCellLight} 同源）。</p>
      */
     public double sampleHeightNonBlocking(double wuX, double wuZ) {
+        // 物理侵蚀按 tile 精确求解（内部有缓存），此入口不承诺零开销 —— 返回 B 高度。
         if (morphBase) return baseWorld.height(wuX, wuZ);
         Cell cell = sample(wuX, wuZ);
         OptionalDouble d = peekErosionDeltaE(wuX, wuZ);
@@ -1768,33 +1836,13 @@ public final class CellGenerator {
      * extractFromTile 与 sampleWu 共用的公共逻辑。
      */
     private void applyTileDelta(Cell cell, double wuX, double wuZ) {
-        if (morphBase) {
-            double denom = 2.0 * Math.max(0.01, params.horizontalScale());
-            cell.gradient = (float) Math.hypot(baseWorld.heightDifferenceX(wuX, wuZ) / denom,
-                    baseWorld.heightDifferenceZ(wuX, wuZ) / denom);
-            return;
-        }
-        double delta = erosionDeltaE(wuX, wuZ);
-
-        // ★ 2026-08-14 晚场（用户建议"流量累积图当梯度图用起来"）：RIVER_NETWORK 图层
-        //   显示粒子侵蚀 discharge 场 = 流量累积图（液滴沿坡流动的集水累积，
-        //   本质是地形梯度/流域方向的可视化）。erosionDeltaE 内部已把本 tile 拉进缓存，
-        //   此处 getOrGenTile 必命中（或同步中断 → 与 delta=0 一致地跳过）。
-        int tileCX = Math.floorDiv((int) Math.floor(wuX), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
-        int tileCZ = Math.floorDiv((int) Math.floor(wuZ), ERODE_TILE_CENTER) * ERODE_TILE_CENTER;
-        // ★ 2026-09-19 诊断：取 tile 子项（每格第 2 次）
-        long tg1 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
-        ErosionTileResult res = getOrGenTile(tileCX, tileCZ);
-        com.geogenesis.diagnostics.WorldGenProfiler.end(
-                com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXGET, tg1);
-        // ★ 2026-09-19 诊断：落格子项（含陆地重分类，每格 1 次）
-        long tc0 = com.geogenesis.diagnostics.WorldGenProfiler.begin();
-        try {
-            coreApplyDelta(cell, delta, res, wuX, wuZ);
-        } finally {
-            com.geogenesis.diagnostics.WorldGenProfiler.end(
-                    com.geogenesis.diagnostics.WorldGenProfiler.Stage.EXCORE, tc0);
-        }
+        // ★ 2026-11-06【唯一实现】物理粒子侵蚀是生产唯一侵蚀路径。
+        //   delta 由 ProcessRuntime 给出；旧 tile / 骨架滤镜 / discharge 一律不参与。
+        //   坡度按基础地形差分算（不依赖 tile 数据）。
+        double denom = 2.0 * Math.max(0.01, params.horizontalScale());
+        coreApplyDelta(cell, processErosionDeltaE(wuX, wuZ), null, wuX, wuZ);
+        cell.gradient = (float) Math.hypot(baseWorld.heightDifferenceX(wuX, wuZ) / denom,
+                baseWorld.heightDifferenceZ(wuX, wuZ) / denom);
     }
 
     /**
@@ -1890,11 +1938,27 @@ public final class CellGenerator {
      * 可触发侵蚀 tile 生成，不是非阻塞 peek。
      */
     public double erodedHeight(double wuX, double wuZ) {
-        if (morphBase) return baseWorld.height(wuX, wuZ);
+        // ★ 2026-11-06【唯一实现】物理侵蚀给出"B + 粒子侵蚀"后的连续高度，不再叠第二次。
+        if (processRuntime == null || !morphBase) {
+            // 旧 B（morphBase=false）没有物理侵蚀运行时 → 基础高度。
+            return morphBase ? baseWorld.height(wuX, wuZ) : baseHeightFallback(wuX, wuZ);
+        }
+        try {
+            return processRuntime.exactP(wuX, wuZ).yP();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return baseWorld.height(wuX, wuZ);
+        } catch (java.util.concurrent.ExecutionException e) {
+            LOGGER.warn("[PROCESS] erodedHeight exactP 失败于 ({},{})：{}", wuX, wuZ,
+                    e.getCause() == null ? e.toString() : e.getCause().toString());
+            return baseWorld.height(wuX, wuZ);
+        }
+    }
+
+    /** 旧 B 路径的基础高度（无物理侵蚀可用）。 */
+    private double baseHeightFallback(double wuX, double wuZ) {
         double e0 = terrainEQuick(wuX, wuZ);
-        double ne = e0 + erosionDeltaE(wuX, wuZ);
-        if (Double.isNaN(ne) || Double.isInfinite(ne)) ne = e0;
-        return heightCurve.heightFromE(softCapLandE(ne));
+        return heightCurve.heightFromE(softCapLandE(e0));
     }
 
     /**

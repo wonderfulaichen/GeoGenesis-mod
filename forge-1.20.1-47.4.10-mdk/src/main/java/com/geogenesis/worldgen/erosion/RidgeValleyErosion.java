@@ -1,7 +1,5 @@
 package com.geogenesis.worldgen.erosion;
 
-import com.geogenesis.config.GeoGenesisConfig;
-
 /**
  * 脊-谷条纹侵蚀（骨架层）—— 梯度对齐条纹滤镜，纯局部算子。
  *
@@ -33,7 +31,7 @@ public final class RidgeValleyErosion {
     //   fadeHeight 移除后（用户实测无用+超上限），抬升只来自条纹 gullX 正项（combiMask 坡度门控），
     //   平顶坡度≈0 → combiMask≈0 → 抬升本来就≈0，衰减叠床架屋还杀死山脊/坡面抬升
     //   （用户实锤"山中间不会被抬升"）。高原平顶假峰风险自然消失（无高度域均匀抬升驱动）。
-    // ===== 骨架层配置（从 GeoGenesisConfig 读取覆盖；stylistic 参数用代码常量初值）=====
+    // ===== 骨架层显式参数（保留公开可变面；应用端负责配置解析，stylistic 参数用代码常量初值）=====
     public static class RidgeConfig {
         public boolean enabled = true;
         /** fadeTarget 参考面（对称中点，e 单位）。默认 0.15 匹配陆地中值（PLAIN meanElev≈0.154）；
@@ -57,28 +55,6 @@ public final class RidgeValleyErosion {
          *  否则 HS>1 时坡度被除以 hs → combiMask 触发弱 → 骨架条纹削弱（用户对比发现漂移）。 */
         public float horizontalScale = 1f;
 
-        /** 从 Forge 配置读取骨架参数（字段缺失时回退默认值）。 */
-        public static RidgeConfig fromConfig(GeoGenesisConfig cfg) {
-            RidgeConfig c = new RidgeConfig();
-            if (cfg != null) {
-                c.enabled = cfgBool(cfg.erosionRidgeEnabled, true);
-                c.landRef = (float) cfgDbl(cfg.erosionRidgeLandRef, 0.15);
-                // ★ 2026-08-12 回退默认 0.12→0.8 对齐 GeoGenesisConfig 默认（配置铁律：三处一致）
-                c.strength = (float) cfgDbl(cfg.erosionRidgeStrength, 2.0);
-                c.cellWorldSize = (float) cfgDbl(cfg.erosionRidgeScale, 100.0);
-                c.stripeFreq = (float) cfgDbl(cfg.erosionRidgeCellScale, 1.2);
-                c.octaves = cfgInt(cfg.erosionRidgeOctaves, 4);
-                c.gullyWeight = (float) cfgDbl(cfg.erosionRidgeGullyWeight, 0.7);
-                // 脊线软硬（0=尖锐 V 形，0.5=默认，1=圆滑 U 形）
-                double softness = cfgDbl(cfg.erosionRidgeRounding, 0.5);
-                c.rounding[0] = (float) (0.02 + softness * 0.18);  // ridge rounding
-                c.rounding[1] = (float) (softness * 0.24);          // crease (valley) rounding（softness 0.5→0.12，U 形谷，用户定）
-                // 细节密度（high=主脊干净，low=满布小沟）
-                c.detail = (float) cfgDbl(cfg.erosionRidgeDetail, 1.0);
-                c.horizontalScale = (float) cfgDbl(cfg.horizontalScale, 1.0);
-            }
-            return c;
-        }
     }
 
     /**
@@ -120,10 +96,16 @@ public final class RidgeValleyErosion {
      */
     public static float evaluateCell(float[][] rawLowRes, int tx, int tz, int extLR,
                                      int spacing, int startX, int startZ, float seaE, RidgeConfig cfg) {
-        float cellGridFreq = 1.0f / Math.max(1f, cfg.cellWorldSize); // 条纹细胞世界尺寸 = cellWorldSize
         float h = rawLowRes[tz][tx];
         float gx = gradX(rawLowRes, tx, tz, extLR, spacing, cfg.horizontalScale);
         float gz = gradZ(rawLowRes, tx, tz, extLR, spacing, cfg.horizontalScale);
+        return evaluatePoint(startX + tx * spacing, startZ + tz * spacing, h, gx, gz, seaE, cfg);
+    }
+
+    /** 同一骨架算子的点入口：h为e，gx/gz为e/应用块；调用方负责同源差分和单位换算。 */
+    public static float evaluatePoint(float x, float z, float h, float gx, float gz,
+                                      float seaE, RidgeConfig cfg) {
+        float cellGridFreq = 1.0f / Math.max(1f, cfg.cellWorldSize);
         // 峰侧衰减：fadeTarget 正侧（抬升）在峰尖衰减——否则 h>0.5 全部饱和 +1，
         // 峰顶被每 octave 均匀抬升（4 oct × 0.08 ≈ +0.17e）→ 触 delta 限幅/softCap → 平顶。
         // 谷侧（负值）不受影响，山谷照常下切；山体中下部仍抬升成脊线。
@@ -144,7 +126,7 @@ public final class RidgeValleyErosion {
         float fadeTarget = 0f;
         if (h > cfg.landRef) {
             fadeTarget = Math.min(1f, (h - cfg.landRef) / 0.25f);
-            fadeTarget *= smoothstep(0.75f, 0.55f, h);   // 峰尖（h>0.75）衰减到 0，防超上限
+            fadeTarget *= 1f - smoothstep(0.55f, 0.75f, h); // ★ 反向渐隐修复：h>0.75 平滑衰减到 0（原 smoothstep(0.75,0.55,h) 负宽度退化成 0.75 处硬阶跃）
         }
         float hs = (h - cfg.landRef) * 0.5f + 0.5f;
         // 2026-08-06 修复：坡度放大 SLOPE_BOOST × 海岸带保护。
@@ -160,8 +142,7 @@ public final class RidgeValleyErosion {
         //   旧固定 8 → 低地微丘 ×8=0.016-0.064 进触发区 → 低地 ±12 块大条纹（用户实测过头）。
         float hBoost = 2f + 6f * smoothstep(0.2f, 0.35f, h);
         float gxs = gx * hBoost * landMask, gzs = gz * hBoost * landMask;
-        float d = erosionFilter(startX + tx * spacing, startZ + tz * spacing,
-                hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
+        float d = erosionFilter(x, z, hs, gxs, gzs, fadeTarget, cellGridFreq, cfg);
         // 海岸带保护：仅海平面附近抑制 delta（防弧线），内陆/深海全幅（侵蚀入海）
         // 2026-08-07 用户否决 flatMask（平顶保护）——"侵蚀必须无限制自然形成"，
         // 高原折痕靠高原 v8 丘沟纹理自然融合骨架条纹解决，不限制侵蚀本身。
@@ -341,17 +322,4 @@ public final class RidgeValleyErosion {
         return 1f - (float) Math.pow(1f - clamp01(t), p);
     }
 
-    // ===== 配置读取辅助 =====
-
-    private static boolean cfgBool(net.minecraftforge.common.ForgeConfigSpec.BooleanValue v, boolean fb) {
-        try { return v != null && v.get(); } catch (Exception e) { return fb; }
-    }
-
-    private static double cfgDbl(net.minecraftforge.common.ForgeConfigSpec.DoubleValue v, double fb) {
-        try { return v != null ? v.get() : fb; } catch (Exception e) { return fb; }
-    }
-
-    private static int cfgInt(net.minecraftforge.common.ForgeConfigSpec.IntValue v, int fb) {
-        try { return v != null ? v.get() : fb; } catch (Exception e) { return fb; }
-    }
 }

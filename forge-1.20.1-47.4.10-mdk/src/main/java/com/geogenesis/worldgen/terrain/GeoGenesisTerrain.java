@@ -140,7 +140,10 @@ public final class GeoGenesisTerrain {
         } catch (IllegalStateException e) {
             // 预览进程：配置未加载，保持默认值
         }
-        this.riversEnabled = riversEnabled && !generator.usesMorphBase();
+        // ★ 2026-11-06【水文唯一条件】只看配置开关。
+        //   物理侵蚀（ProcessRuntime）现在是生产唯一侵蚀实现，水位/河网读它的同一份 B/P
+        //   （见 HydrologyChunkEngine.model()），不再存在"morphBase 下无侵蚀可读"的缺口。
+        this.riversEnabled = riversEnabled;
         this.erosionYieldToRiver = erosionYieldToRiver;
         this.hydrologyExperiment = new HydrologyChunkEngine(generator, 0L);
         // ★ 2026-08-14 启动诊断：确认游戏内河网 + discharge 是否启用（用户"跑新版没变化"排查）

@@ -1,9 +1,6 @@
 package com.geogenesis.worldgen.erosion;
 
-import com.geogenesis.config.GeoGenesisConfig;
-import net.minecraftforge.common.ForgeConfigSpec;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import java.util.function.Supplier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -35,7 +32,8 @@ import java.util.concurrent.CancellationException;
  */
 public class ErosionEngine {
 
-    private static final Logger LOGGER = LogManager.getLogger("geogenesis/erosion");
+    private final Supplier<ParticleErosionParams> runParams;
+    private final int smoothingParallelism;
 
     private static final float INERTIA = 0.005f, GRAVITY = 2.5f, EVAP_RATE = 0.001f;
     private static final float ENTRAINMENT = 10f;
@@ -118,10 +116,17 @@ public class ErosionEngine {
         this(dropsMul, seed, false); // 兼容签名：XS 默认关
     }
 
+    /** Compatibility entry: dropsMul/seed remain unused; config-aware callers use the adapter. */
     public ErosionEngine(double dropsMul, int seed, boolean xsEnabled) {
-        // dropsMul / seed 由 CellGenerator 从配置解析后传入；实际放大倍率运行时仍读配置，
-        // 此处仅保留兼容签名。xsEnabled = 细纹理层开关（erosionXSEnabled 配置，默认 false）。
+        this(xsEnabled, ParticleErosionParams::unloadedDefaults, 8);
+    }
+
+    /** The caller supplies one immutable snapshot per run, after the historical early return. */
+    public ErosionEngine(boolean xsEnabled, Supplier<ParticleErosionParams> runParams,
+                         int smoothingParallelism) {
         this.xsEnabled = xsEnabled;
+        this.runParams = runParams;
+        this.smoothingParallelism = smoothingParallelism;
     }
 
     /** 细纹理微侵蚀层开关（2026-08-12，配置 erosionXSEnabled） */
@@ -307,9 +312,10 @@ public class ErosionEngine {
                                    float[] dischargeOut, float hs) {
         if (sz < 16 || str <= 0) return;
 
-        double dropsMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionDropsMul, 1.0);
-        double erodeMul  = cfgDbl(GeoGenesisConfig.INSTANCE.erosionErodeMul, 1.0);
-        double casStr    = cfgDbl(GeoGenesisConfig.INSTANCE.erosionCascadeStrength, 0.8);
+        ParticleErosionParams snapshot = runParams.get();
+        double dropsMul  = snapshot.dropsMul();
+        double erodeMul  = snapshot.erodeMul();
+        double casStr    = snapshot.cascadeStrength();
         // 2026-08-10 wu 化修正：坡度/距离阈值按"物理块"标定，wu 空间必须 ×hs 还原
         // （与 RidgeValleyErosion.gradX/gradZ 同型 bug，见 SLOPE_MIN_SKIP / CASCADE_MAXDIFF）。
         // 2026-08-13：hs 由 TerrainParams 传入（上方重载），不再读全局配置。
@@ -318,9 +324,9 @@ public class ErosionEngine {
         // 2026-08-01 两套粒子系统：河流粒子（StreamTracer）与液滴侵蚀彻底分离，
         // 液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）
         // SH 三件套（2026-08-01）：动量场正反馈 + 多轮迭代 + lrate 场平滑
-        float momTransfer = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionMomentumTransfer, 1.0);
-        int iterations = cfgInt(GeoGenesisConfig.INSTANCE.erosionIterations, 2); // 2026-08-09: 3→2（与 config 默认一致）
-        float lrate = (float) cfgDbl(GeoGenesisConfig.INSTANCE.erosionLrate, 0.1);
+        float momTransfer = (float) snapshot.momentumTransfer();
+        int iterations = snapshot.iterations(); // 2026-08-09: 3→2（与 config 默认一致）
+        float lrate = (float) snapshot.lrate();
 
         // ★ 2026-09-14 P3：构建岩性硬度网格（粗采 + 双线性，避免逐点查地质链）。
         //   网格覆盖整个 bufSize 缓冲（含 pad）——液滴可能跑到 pad 区取料，
@@ -854,7 +860,7 @@ public class ErosionEngine {
             //   一旦 16 个池线程同时走到此处并阻塞在 await，就无人能取走队列里的子任务。
             //   CellGenerator:42 已记录该模式曾造成"池饥饿死锁 27 轮"。
             //   并行安全性不变：每行只读 flat、只写本行 smoothed → 输出逐点一致。
-            int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);
+            int rowsPerTask = Math.max(1, (end - start) / smoothingParallelism);
             int tasks = (end - start + rowsPerTask - 1) / rowsPerTask;
             java.util.stream.IntStream.range(0, tasks).parallel().forEach(t -> {
                 int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
@@ -910,7 +916,7 @@ public class ErosionEngine {
         //   16 个池线程全阻塞在 await 时无人取走子任务）。改用 ForkJoinPool 并行流
         //   （work-stealing，调用线程参与执行）。并行安全性不变：每行只读 flat/flatPre、
         //   只写本行 smoothed → 输出逐点一致。
-        int rowsPerTask = Math.max(1, (end - start) / com.geogenesis.worldgen.terrain.CellGenerator.TILE_PARALLELISM);
+        int rowsPerTask = Math.max(1, (end - start) / smoothingParallelism);
         int tasks = (end - start + rowsPerTask - 1) / rowsPerTask;
         java.util.stream.IntStream.range(0, tasks).parallel().forEach(t -> {
             int z0 = start + t * rowsPerTask, z1 = Math.min(end, z0 + rowsPerTask);
@@ -955,14 +961,6 @@ public class ErosionEngine {
     // 属未接入生成管线的死代码（流功率方案未完成、早已回退液滴模拟）。多侵蚀特性后续重做。
 
     // ===== 工具 =====
-
-    private static double cfgDbl(ForgeConfigSpec.DoubleValue v, double fallback) {
-        try { return v.get(); } catch (IllegalStateException e) { return fallback; }
-    }
-
-    private static int cfgInt(ForgeConfigSpec.IntValue v, int fallback) {
-        try { return v.get(); } catch (IllegalStateException e) { return fallback; }
-    }
 
     private static float clampF(float v, float mn, float mx) {
         if (Float.isNaN(v) || Float.isInfinite(v)) return mn;

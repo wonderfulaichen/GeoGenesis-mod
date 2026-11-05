@@ -23,13 +23,46 @@ public final class HydrologyChunkEngine {
 
     private final CellGenerator generator;
     private final double horizontalScale;
-    private final ModelHydrologyProvider modelProvider;
+    /**
+     * 延迟创建：{@code GeoGenesisTerrain} 构造本引擎时 {@code generator.seed()} 尚未运行，
+     * 此刻 {@code processRuntime()} 还是 null。若在构造期就决定 provider 类型，
+     * 会永远绑不上新 B/P（实测会静默退化为旧 CellGenerator 路径）。
+     * ⇒ 首次访问时按当时状态决定，并记录一条日志供实机确认。
+     */
+    private volatile ModelHydrologyProvider modelProvider;
+    /**
+     * 真实世界种子。构造期传进来的是 0L（terrain 构造时还没有种子），
+     * {@link #setSeed(long)} 之后才是真实值。
+     * ⚠ 构造 provider 必须用这里的真实种子：用 0L 会撞上
+     * {@code ModelHydrologyProvider} 的 "model seed differs from frozen B/P seed" 断言
+     * （实机在配置屏开预览时崩过，见 crash-2026-11-05_23.47.40-client.txt）。
+     */
+    private volatile long worldSeed;
 
     public HydrologyChunkEngine(CellGenerator generator, long seed) {
         this.generator = generator;
+        this.worldSeed = seed;
         this.horizontalScale = Math.max(0.01, generator.params().horizontalScale());
-        this.modelProvider = new ModelHydrologyProvider(generator, seed);
         LOGGER.info("[HYDRO] model pipeline is the ONLY line (legacy removed 2026-10-20)");
+    }
+
+    /** model provider（首次访问时按 generator 当时是否启用新 P 层决定绑定）。 */
+    private ModelHydrologyProvider model() {
+        ModelHydrologyProvider p = modelProvider;
+        if (p != null) return p;
+        synchronized (this) {
+            if (modelProvider != null) return modelProvider;
+            long seed = worldSeed;
+            com.geogenesis.worldgen.process.ProcessRuntime pr = generator.processRuntime();
+            if (pr != null) {
+                modelProvider = new ModelHydrologyProvider(
+                        new com.geogenesis.worldgen.hydrology.model.ProcessModelTerrainInput(pr), seed);
+                LOGGER.info("[HYDRO] provider 绑定新 B/P（ProcessModelTerrainInput）seed={}", seed);
+            } else {
+                modelProvider = new ModelHydrologyProvider(generator, seed);
+            }
+            return modelProvider;
+        }
     }
 
     /**
@@ -45,7 +78,23 @@ public final class HydrologyChunkEngine {
         //   model provider 的缓存为 static 共享 + 按 seed 键控 ⇒ 多个地形实例共享同一份 region
         //   （实机实测：5 个地形实例各持实例级缓存 ⇒ 每个 region 被求解两次、
         //    单次 14~18 秒 ⇒ 一半算力白烧，见 ModelHydrologyProvider.SHARED_CACHE）。
-        modelProvider.setSeed(seed);
+        //
+        // ★ 2026-11-05：先记种子，再处理已有 provider。
+        //   若 provider 已按旧 runtime 建好，它绑死的 B/P 上下文（含 seed）就是旧的 ⇒
+        //   换种子后必须整体重建，否则会一直读旧种子的地形（或在断言处崩溃）。
+        worldSeed = seed;
+        ModelHydrologyProvider existing = modelProvider;
+        if (existing == null) return;
+        if (generator.processRuntime() != null) {
+            // 新 P 层：provider 与 runtime 绑定，种子变了只能重建。
+            synchronized (this) {
+                ModelHydrologyProvider old = modelProvider;
+                if (old != null) old.setSeed(seed);
+                modelProvider = null;   // 下次 model() 按新 runtime 重建
+            }
+        } else {
+            existing.setSeed(seed);
+        }
     }
 
     public HydrologyChunkResult calculate(int chunkX, int chunkZ) {
@@ -57,7 +106,7 @@ public final class HydrologyChunkEngine {
             List<HydrologyBlockCarvedColumn> columns;
             var columnsScope = HydrologyMetrics.begin("hydro.chunk.providerColumns", chunkX, chunkZ);
             try {
-                columns = modelProvider.columnsFor(chunkX, chunkZ, cells);
+                columns = model().columnsFor(chunkX, chunkZ, cells);
             } finally {
                 HydrologyMetrics.end(columnsScope);
             }
@@ -84,7 +133,7 @@ public final class HydrologyChunkEngine {
         var scope = HydrologyMetrics.begin("hydro.chunk.calculate", chunkX, chunkZ);
         var columnsScope = HydrologyMetrics.begin("hydro.chunk.providerColumns", chunkX, chunkZ);
         try {
-            return modelProvider.columnsForHeights(chunkX, chunkZ, originalHeights);
+            return model().columnsForHeights(chunkX, chunkZ, originalHeights);
         } catch (RuntimeException | Error e) {
             HydrologyMetrics.add("chunk.calculate.failed", 1L);
             throw e;
