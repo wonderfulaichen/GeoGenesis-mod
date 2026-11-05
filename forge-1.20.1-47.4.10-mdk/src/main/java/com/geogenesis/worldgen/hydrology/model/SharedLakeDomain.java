@@ -89,8 +89,18 @@ public final class SharedLakeDomain {
     public interface OwnerLevel { double level(int blockX, int blockZ); }
 
     /** 构建上下文（与生产同源参数；由 {@link ModelHydrologyProvider} 注入）。 */
-    public record Ctx(CellGenerator gen, TerrainParams tp, HierarchicalHydrology.Params p,
-                      int step, LakeWaterBalance.Climate climate, OwnerLevel owner) { }
+    public record Ctx(ModelTerrainInput input, TerrainParams tp, HierarchicalHydrology.Params p,
+                      int step, LakeWaterBalance.Climate climate, OwnerLevel owner) {
+        public Ctx(CellGenerator gen, TerrainParams tp, HierarchicalHydrology.Params p,
+                   int step, LakeWaterBalance.Climate climate, OwnerLevel owner) {
+            this(new CellModelTerrainInput(gen), tp, p, step, climate, owner);
+        }
+        /** Legacy accessor only; model computation never unwraps the input. */
+        public CellGenerator gen() {
+            if (input instanceof CellModelTerrainInput old) return old.generator();
+            throw new IllegalStateException("explicit input has no CellGenerator");
+        }
+    }
 
     /** 受控平面（细层一个连通湖体；{@code level} = 实测均值，{@code spread} = 极差）。 */
     public record Plane(int id, int fineBasinId, double level, int cells, double spread,
@@ -417,8 +427,8 @@ public final class SharedLakeDomain {
     private static HydrologyPipeline.Result coarseSolve(Ctx c, Geom g) {
         var req = new HydrologyPipeline.Request(g.centerX(), g.centerZ(), g.halfSpan(), g.step(),
                 c.climate(), 0, HydrologyPipeline.RiverModel.D8, 1, null);
-        return HydrologyPipeline.run(c.gen(), c.tp(), req, new HydrologyPipeline.Layer(
-                HierarchicalHydrology.coarseTerrain(c.gen()), null, false, "shared-coarse"));
+        return HydrologyPipeline.run(c.input(), c.tp(), req, new HydrologyPipeline.Layer(
+                HierarchicalHydrology.coarseTerrain(c.input()), null, false, "shared-coarse"));
     }
 
     /** 细层：真实侵蚀地形（{@code erodedHeight}）+ 窗外 owner 粗层接口。 */
@@ -427,7 +437,7 @@ public final class SharedLakeDomain {
                 c.climate(), 0, HydrologyPipeline.RiverModel.D8, 1, null);
         WindowOutlets.Terrain bnd = (bx, bz) ->
                 c.owner().level((int) Math.floor(bx), (int) Math.floor(bz));
-        return HydrologyPipeline.run(c.gen(), c.tp(), req, new HydrologyPipeline.Layer(
+        return HydrologyPipeline.run(c.input(), c.tp(), req, new HydrologyPipeline.Layer(
                 null, bnd, true, "shared-fine"));
     }
 

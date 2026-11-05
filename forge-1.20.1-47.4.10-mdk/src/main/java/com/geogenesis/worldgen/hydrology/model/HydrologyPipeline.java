@@ -373,12 +373,20 @@ public final class HydrologyPipeline {
 
     /** 端到端执行。抛出异常仅用于"契约被违反"，不代表结果可信。 */
     public static Result run(CellGenerator gen, TerrainParams tp, Request request) {
-        return run(gen, tp, request, null);
+        return run(new CellModelTerrainInput(gen), tp, request, null);
     }
 
-    /** 端到端执行（分层实验的最小重载；{@code layer == null} = 旧路径逐位不变）。 */
     static Result run(CellGenerator gen, TerrainParams tp, Request request, Layer layer) {
-        double sea = gen.seaLevel(), hs = tp.horizontalScale();
+        return run(new CellModelTerrainInput(gen), tp, request, layer);
+    }
+
+    public static Result run(ModelTerrainInput input, TerrainParams tp, Request request) {
+        return run(input, tp, request, null);
+    }
+
+    /** Same kernel for legacy and explicit inputs; layer semantics are unchanged. */
+    static Result run(ModelTerrainInput input, TerrainParams tp, Request request, Layer layer) {
+        double sea = input.seaLevel(), hs = tp.horizontalScale();
         int step = request.step(), radius = request.radiusBlocks();
         int n = 2 * radius / step + 1;
         // ★ 2026-10-05 收敛单一代码线：原用 worktree 独有的 `erodedHeightForRouting`
@@ -436,11 +444,7 @@ public final class HydrologyPipeline {
         final boolean windowCacheBuilt = HYDRO_SAMPLE_CACHE && (layer == null || layer.prewarm());
         final WindowOutlets.Terrain bedSource = layered && layer.terrain() != null
                 ? layer.terrain()                                               // ★ 分层地形（粗层=零 tile）
-                : (HYDRO_BED_ERODED
-                // ★ 2026-10-12【height-only】改调 erodedHeight：与 sampleWu().height 逐位等价，
-                //   但跳过气候/分类（本回调只读 height）。窗口 31684 点/窗 ⇒ 收益显著。
-                ? (bx, bz) -> gen.erodedHeight(bx / hs, bz / hs)          // 侵蚀后地形（等价、轻）
-                : (bx, bz) -> gen.sample(bx / hs, bz / hs).height);       // ★ 生产同源（轻）
+                : (bx, bz) -> input.pipelineHeightAtBlock(bx, bz, hs, HYDRO_BED_ERODED);
         // 仅开启测量时包装；WS_COMPUTES 记录 bedSource.height 调用次数，不代表更下层缓存未命中。
         final WindowOutlets.Terrain bedTerrain = windowStats != null
                 ? (bx, bz) -> {
@@ -574,7 +578,7 @@ public final class HydrologyPipeline {
             HydrologyMetrics.Scope mPrewarm = HydrologyMetrics.begin("hydro.prewarm",
                     metricsCx, metricsCz, -1, metricsTask);
             try {
-                gen.prewarmErosionTiles(request.centerBlockX() - radius,
+                input.prewarm(request.centerBlockX() - radius,
                         request.centerBlockZ() - radius, 2.0 * radius, hs);
             } finally {
                 HydrologyMetrics.end(mPrewarm);

@@ -38,8 +38,9 @@ import java.util.List;
  * <ol>
  *   <li>Catmull-Rom 细分（1 block 间距重采样）—— 折线变曲线；</li>
  *   <li><b>4 倍频 meander</b>（legacy {@code MEANDER_OCTAVES} 同款：波长/振幅逐级减半，
- *       amp={@code 6.0}、波长={@code 24} 块，与 legacy 默认一致；两端 20% 弧长平滑淡出
- *       ⇒ 源头/入湖口/汇合点零位移）；</li>
+ *       amp={@code 6.0}、波长={@code 24} 块，与 legacy 默认一致）。淡出口径按
+ *       {@link Shaping} 分两版：{@code LEGACY} = 两端 20% <b>本区 trace 总弧长</b>（窗口依赖）；
+ *       {@code CANONICAL} = 沿折线到最近<b>世界锚点</b>的距离（窗口无关，L=波长）；</li>
  *   <li>只动 X/Z（几何蜿蜒），<b>不碰 level/parent/lake</b> ⇒ 湖判/水位/拓扑零影响
  *       （与已否决的"meander 改床面"完全不同——那次切碎了主干）。</li>
  * </ol>
@@ -70,11 +71,13 @@ public final class DeterministicSkeleton {
      *                              若干步内 ⇒ 判定"河贴着自己绕" ⇒ 就地终止
      *                              （用户判据「反复和其他分支交叉/重叠」的对症判据）。
      * @param selfApproachExempt    自贴近豁免步数（正常曲率/紧密河曲不算违规）。
+     * @param shaping               <b>塑形规则版本</b>（见 {@link Shaping}）。既有 9 参构造
+     *                              一律落在 {@link Shaping#LEGACY}，旧产出逐位不变。
      */
     public record Params(int minSourceSpacingCells, double minSourceAccum,
                          int joinWindow, double meanderAmp, double meanderWavelength,
                          int maxSources, int minNodes, int selfApproachRadius,
-                         int selfApproachExempt) {
+                         int selfApproachExempt, Shaping shaping) {
         /**
          * 默认参数 = legacy 三项机制【开启】的等价换算（2026-10-10）。
          *
@@ -84,9 +87,53 @@ public final class DeterministicSkeleton {
          * {@code selfApproachExempt}=6×2=12。</p>
          */
         public static Params defaults() {
-            return new Params(6, 0.0, 2, 6.0, 24.0, 0, 6, 4, 12);
+            return new Params(6, 0.0, 2, 6.0, 24.0, 0, 6, 4, 12, Shaping.LEGACY);
+        }
+
+        /**
+         * 原 9 参构造器（<b>必须保留</b>）：全部既有调用点/探针不改一行即落在 LEGACY。
+         *
+         * <p>语义 = "未声明塑形版本 ⇒ 旧规则" ⇒ 与 R2 之前的产出逐位相同。</p>
+         */
+        public Params(int minSourceSpacingCells, double minSourceAccum,
+                      int joinWindow, double meanderAmp, double meanderWavelength,
+                      int maxSources, int minNodes, int selfApproachRadius,
+                      int selfApproachExempt) {
+            this(minSourceSpacingCells, minSourceAccum, joinWindow, meanderAmp, meanderWavelength,
+                    maxSources, minNodes, selfApproachRadius, selfApproachExempt, Shaping.LEGACY);
         }
     }
+
+    /**
+     * 塑形规则版本（2026-11-05 R2，<b>隔离开关</b>）。
+     *
+     * <p>只有<b>新 H 版本</b>（B/P → 新的 model 会话）才允许启用 {@link #CANONICAL}；
+     * 旧 {@code CellGenerator} → model 生产路径恒为 {@link #LEGACY}（见
+     * {@code ModelTerrainInput.shaping()} 的默认值）。理由：规范塑形改变几何外观，
+     * 直接替换共享生产行为会连带要求预览 schema 升版与标准图对拍（计划 §6）。
+     *
+     * <ul>
+     *   <li>{@link #LEGACY}：<b>逐位保持不变</b>的旧规则 —— meander 淡出依赖本区 trace
+     *       的<b>总弧长</b>（{@code 0.2*total}），offset 平滑无条件把首/末点压回 0，
+     *       {@code softenAnchors} 的 pin 由"本窗口哪条链先登记"决定。</li>
+     *   <li>{@link #CANONICAL}：淡出只由<b>trace 自身的真实端点</b>决定 —— 首节点
+     *       （源头 / 溢口续流起点）与末节点且 {@code End∈{MOUTH_SEA,MOUTH_LAKE}}。
+     *       {@code JOIN} / {@code BOUNDARY_EXIT} / {@code UNRESOLVED} / {@code DEAD_END}
+     *       以及 {@code outsideTail} 末端<b>都不是</b>淡出锚点。</li>
+     * </ul>
+     *
+     * <p><b>★ 2026-11-05 实测否决一条候选（别再写回来）</b>：曾按计划把
+     * "D8 父指针森林的真汇流 {@code childCount>=2}" 作为规范锚点。实测（R2 归因，
+     * {@code build/r2-20261105-145622/out/anchor-and-footprint.json} /
+     * {@code build/r2b-20261105-161736/out/anchor-and-footprint.json}）它在本管线的
+     * 洪泛森林里<b>不具选择性</b>：同一条世界边两侧的锚点占节点比为
+     * <b>12.3% vs 82.9%</b>（poly36/37；首版把 pins 也算进去时为 13.8% vs 82.9%）
+     * 与 38.9% vs 78.1%（poly53/58）—— 河谷几乎每格都被 ≥2 个格当作 parent，
+     * 且 {@code parent[]} 是<b>各窗口自己的</b> ⇒ 窗口相关。
+     * 结果 36/37 的 Δx 从 4.6e-3 恶化到 <b>0.344</b> 块；去掉该条后为
+     * <b>逐位 0</b>。⇒ 它<b>不可作为世界锚点</b>。</p>
+     */
+    public enum Shaping { LEGACY, CANONICAL }
 
     /**
      * JOIN 的具体产生边（2026-10-22，只读归因）。
@@ -3769,6 +3816,9 @@ public final class DeterministicSkeleton {
      * <p>钉死表（{@link Result#anchorPins}）= 端口锚点 ∪ 已兑现 typed 接力锚点。
      * 它们在粒子偏移/Catmull-Rom 之前就占住共享锚点表，且首尾本就被钉在格心
      * ⇒ 发送端链末格与接收端链首格产出<b>逐位相同</b>的世界坐标。</p>
+     *
+     * <p>★ R2：{@code params.shaping()} 决定 meander 淡出与软约束 pin 的口径，
+     * {@code LEGACY} 下本方法逐位等同旧实现（签名未变）。</p>
      */
     public static List<Shaped> shape(List<Trace> traces, double[] level,
                                      int originX, int originZ, int step,
@@ -3811,6 +3861,8 @@ public final class DeterministicSkeleton {
             anchorTable.putIfAbsent(t.port.cell(),
                     new double[]{t.port.anchorX(), t.port.anchorZ()});
         }
+        // ★ R2：塑形规则版本（LEGACY 下下面每个分支都走旧路径，逐位不变）。
+        final boolean canonical = params.shaping() == Shaping.CANONICAL;
         for (Trace t : traces) {
             int m = t.geometryPrefixNodes;
             // ★★★ 2026-10-10【必须保索引对齐（否则下游全部读错对象）】★★★
@@ -3993,6 +4045,8 @@ public final class DeterministicSkeleton {
             //   【为什么必须放在粒子循环之后、CR 之前】粒子依赖本链历史（动量），
             //   是"提议"；表是"最终裁决" —— 已登记的格一律以表为准。
             boolean[] pinAnchor = SOFT_ANCHOR ? new boolean[m] : null;
+            // ★ R2【CANONICAL】：规范锚点集 —— typed 端口/接力承诺 ∪ 源头 ∪ 真实河口。
+            boolean[] canonicalAnchor = canonical ? canonicalAnchors(t, m, pins) : null;
             for (int i = 0; i < m; i++) {
                 double[] shared = anchorTable.get(t.cell[i]);
                 if (shared != null) {
@@ -4000,7 +4054,17 @@ public final class DeterministicSkeleton {
                     az[i] = shared[1];
                     // 已被更早的链登记 ⇒ 该点是跨链共享锚点（JOIN/接力/端口）
                     // ⇒ 软约束平滑【不得移动它】，否则两条链各自平滑出不同坐标 ⇒ 新缝隙。
-                    if (pinAnchor != null) pinAnchor[i] = true;
+                    //
+                    // ★ R2【CANONICAL】：坐标照旧复用（JOIN 像素连续不变），但 pin 不再由
+                    //   "被更早的链登记"单独决定 —— 那只是本窗口的链顺序，换个窗口就变
+                    //   （R1 实测：同一条世界边上，一侧的 JOIN 格被打上 pin、另一侧没有，
+                    //    16 轮 Jacobi 把这点差异传播 22 个节点到 owner 面）。
+                    //   现在 pin = 规范锚点（源头/真实河口，见 canonicalAnchors）；
+                    //   端点（0 与 m-1）另由 smoothOffsets 统一压回 0，负责 JOIN/端口像素连续。
+                    // ⚠ LEGACY 保持原样（凡命中即 pin）——这是"旧行为逐位不变"的一部分。
+                    if (pinAnchor != null) {
+                        pinAnchor[i] = !canonical || canonicalAnchor[i];
+                    }
                 } else {
                     anchorTable.put(t.cell[i], new double[]{ax[i], az[i]});
                 }
@@ -4080,11 +4144,21 @@ public final class DeterministicSkeleton {
                 }
             }
             // ② Catmull-Rom 重采样（1 block 间距）—— 折线变曲线
-            double[][] res = catmullRomResample(ax, az, 1.0);
+            //   ★ R2：CANONICAL 需要"哪个重采样点就是哪个原始节点"的映射，
+            //     才能把世界锚点的弧长位置搬到重采样折线上（LEGACY 传 null，逐位不变）。
+            int[] nodeToRes = canonical ? new int[m] : null;
+            double[][] res = catmullRomResample(ax, az, 1.0, nodeToRes);
             double[] rx = res[0], rz = res[1];
-            // ③ 4 倍频 meander（两端淡出）
+            // ③ 4 倍频 meander
+            //   LEGACY：两端按【本区 trace 总弧长】20% 淡出（窗口依赖 ⇒ 缝上不一致）。
+            //   CANONICAL：只按【沿本折线累计弧长到最近世界锚点】淡出（窗口无关）。
             if (params.meanderAmp() > 0.01 && rx.length >= 3) {
-                applyMeander(rx, rz, params, oct);
+                if (canonical) {
+                    applyMeanderCanonical(rx, rz, params, oct,
+                            anchorResampledIndices(canonicalAnchor, m, nodeToRes));
+                } else {
+                    applyMeander(rx, rz, params, oct);
+                }
             }
             // ★★★ ④ 格点吸附（2026-10-10 断口根因修复，watch+像素 dump 实锤）★★★
             //
@@ -4160,12 +4234,24 @@ public final class DeterministicSkeleton {
      * <p>线程安全（局部变量；region 并行求解）。</p>
      */
     private static double[][] catmullRomResample(double[] ax, double[] az, double spacing) {
+        return catmullRomResample(ax, az, spacing, null);
+    }
+
+    /**
+     * 同上，并回填「原始节点 → 重采样下标」映射（{@code nodeToRes}，可空）。
+     *
+     * <p>每个线段 i 的最后一个采样点恒等于节点 i+1（{@code pts.add(... p2x, p2z)}）⇒
+     * 映射是精确的，不需要再猜。R2 用它把世界锚点的弧长位置搬到重采样折线上。</p>
+     */
+    private static double[][] catmullRomResample(double[] ax, double[] az, double spacing,
+                                                 int[] nodeToRes) {
         int m = ax.length;
         // ★ 容量估算必须用【绝对跨度】—— 下行路径 ax[m-1] < ax[0] 时原式为负
         //   ⇒ ArrayList Capacity -34 崩溃（SkeletonProbe 首轮抓出）。
         double span = Math.abs(ax[m - 1] - ax[0]) + Math.abs(az[m - 1] - az[0]);
         List<double[]> pts = new ArrayList<>((int) (span / spacing) + m + 8);
         pts.add(new double[]{ax[0], az[0]});
+        if (nodeToRes != null && nodeToRes.length >= m) nodeToRes[0] = 0;
         for (int i = 0; i < m - 1; i++) {
             // ★ 端点虚拟点必须用【反射】而非复制（2026-10-10 SkeletonProbe [7] 抓出）：
             //   duplicate ⇒ d=0 ⇒ sqrt(1e-9) 微分母 ⇒ de Casteljau 数值爆炸、节点飞出窗口。
@@ -4211,6 +4297,8 @@ public final class DeterministicSkeleton {
                 double z = ((t2 - t) * c1z + (t - t1) * c2z) / (t2 - t1);
                 pts.add(s == steps ? new double[]{p2x, p2z} : new double[]{x, z});
             }
+            // 线段 i 的最后一点 = 节点 i+1（见上：s==steps 直接放 p2）。
+            if (nodeToRes != null && nodeToRes.length > i + 1) nodeToRes[i + 1] = pts.size() - 1;
         }
         double[] xs = new double[pts.size()];
         double[] zs = new double[pts.size()];
@@ -4234,6 +4322,11 @@ public final class DeterministicSkeleton {
      * 而本来就是直线的一段，均值等于自身 ⇒ 完全不动。这正是硬插值做不到的。</p>
      *
      * <p><b>硬钉</b>：首尾（保 JOIN/端口逐位对齐）与跨链共享锚点（保两条链在同一点重合）。</p>
+     *
+     * <p>★ R2：<b>哪些点被钉</b>由 {@link Shaping} 决定 —— {@code LEGACY} = "凡命中共享锚点表即钉"
+     * （含<b>本窗口哪条链先登记</b>，窗口相关）；{@code CANONICAL} = 规范锚点
+     * （{@link #canonicalAnchors}：源头 / 真实河口），端点由 {@code smoothOffsets} 单独保证。
+     * Jacobi 迭代数与刚度两版相同。</p>
      *
      * @param ax,az 锚点（原地修改）
      * @param m     参与平滑的节点数
@@ -4262,56 +4355,173 @@ public final class DeterministicSkeleton {
     }
 
     /**
-     * 4 倍频 meander（legacy {@code smoothPath} 同款结构）：
-     * 每个节点沿法向偏移 {@code amp · fade · Σ(0.5^o · unitOffset_o)}，
-     * 波长逐级减半；两端 20% 弧长 smoothstep 淡出。
+     * <b>LEGACY</b> meander（逐位保持旧行为）：4 倍频 {@code smoothPath} 同款结构，
+     * 每个节点沿法向偏移 {@code amp · fade · Σ(0.5^o · unitOffset_o)}，波长逐级减半，
+     * 两端按<b>本区 trace 总弧长</b>的 20% smoothstep 淡出。
+     *
+     * <p>⚠ 这个淡出依赖窗口截取长度 ⇒ 同一条世界边在两个窗口里淡出曲线不同 ⇒ 缝上错位。
+     * 规范版见 {@link #applyMeanderCanonical}（只有新 H 版本用它）。</p>
      */
     private static void applyMeander(double[] x, double[] z, Params params, Simplex noise) {
         int m = x.length;
-        // 累计弧长
-        double[] arc = new double[m];
-        for (int i = 1; i < m; i++) {
-            arc[i] = arc[i - 1] + Math.hypot(x[i] - x[i - 1], z[i] - z[i - 1]);
-        }
+        double[] arc = cumulativeArc(x, z);
         double total = arc[m - 1];
         if (total < 1e-6) return;
+        double sumW = meanderSumWeight(params);
+        if (sumW <= 0) return;
         double headArc = 0.2 * total, tailArc = 0.2 * total;
         double[] nx2 = new double[m], nz2 = new double[m];
         double[] off = new double[m];        // 法向偏移量（先集中计算，再统一平滑+应用）
         for (int i = 0; i < m; i++) {
-            int prev = Math.max(0, i - 1), next = Math.min(m - 1, i + 1);
-            double tx = x[next] - x[prev], tz = z[next] - z[prev];
-            double tl = Math.hypot(tx, tz);
-            if (tl > 1e-6) { tx /= tl; tz /= tl; } else { tx = 1; tz = 0; }
-            nx2[i] = -tz; nz2[i] = tx;                      // 左转 90° 法向
+            fillNormal(x, z, i, nx2, nz2);
             double headFade = smoothstep(Math.min(1.0, arc[i] / Math.max(1e-6, headArc)));
             double tailFade = smoothstep(Math.min(1.0, (total - arc[i]) / Math.max(1e-6, tailArc)));
             double fade = headFade * tailFade;
             if (fade <= 0) continue;
-            // ★★★ 打转根因修复之二（2026-10-10，用户："河流怎么出现这么多打转"）★★★
-            //   倍频波长有【采样下限】：本曲线 1-block 重采样 ⇒ 波长 <6 块的倍频
-            //   （第 4 级 λ=24×0.5³=3 块）每 1.5 个节点就翻转方向 ⇒ 逐点打卷。
-            //   legacy 的 meander 作用在更稀的格路径上无此问题；我们改在亚格曲线上
-            //   ⇒ 保留 4 倍频结构但截断 λ<6（实际 24/12/6 三级）。
-            double sumW = 0;
-            double wl = params.meanderWavelength();
-            for (int o = 0; o < 4 && wl >= MIN_MEANDER_WAVELENGTH; o++) {
-                sumW += Math.pow(0.5, o);
-                wl *= 0.5;
-            }
-            if (sumW <= 0) continue;
-            double shape = 0, w = 1;
-            double wavelength = params.meanderWavelength();
-            for (int o = 0; o < 4 && wavelength >= MIN_MEANDER_WAVELENGTH; o++) {
-                shape += w * noise.compute(x[i] / wavelength, z[i] / wavelength);
-                w *= 0.5;
-                wavelength *= 0.5;
-            }
-            shape /= sumW;                                   // 归一化 ⇒ 总振幅 = amp
-            off[i] = params.meanderAmp() * fade * shape;
+            off[i] = params.meanderAmp() * fade * meanderShape(x[i], z[i], params, noise, sumW);
         }
         // ★ 轻拉普拉斯平滑 2 遍（只平滑偏移量，两端锚点固定 0 ⇒ 汇合点/源头零位移）：
         //   消除残余高频（λ=6 在急弯处的次像素抖动）。
+        off = smoothOffsets(off, null);
+        applyOffsets(x, z, nx2, nz2, off);
+    }
+
+    /**
+     * ★ R2【CANONICAL】meander：淡出只由<b>世界锚点</b>决定，与本区 trace 总长无关。
+     *
+     * <p>对每个重采样点取「沿本折线累计弧长到最近规范锚点」的距离 {@code dAnchor}，
+     * {@code fade = smoothstep(min(1, dAnchor/L))}，{@code L = params.meanderWavelength()}。</p>
+     *
+     * <ul>
+     *   <li><b>为什么 L 用波长</b>：它是算子自身的空间尺度 —— 一个波长之外，噪声相位已经
+     *       完全不同，"淡出"再长也没有物理含义；用现波长 ⇒ <b>不新增任何可调参数</b>。</li>
+     *   <li><b>为什么不再用 0.2*total</b>：{@code total} 是本窗口截取的折线长度。同一条
+     *       世界边在两个窗口里被截得不一样长 ⇒ 淡出曲线不同 ⇒ 缝上出现 1e-3~1e-2 块的
+     *       横向错位（R1 已归因：36/37 的 0.00456 块）。</li>
+     *   <li><b>锚点处 fade 恰为 0</b>（dAnchor=0 ⇒ smoothstep(0)=0）⇒ 端口/JOIN/汇流/
+     *       源头/河口的世界坐标仍逐位重合。</li>
+     *   <li>裁剪端（BOUNDARY_EXIT / outsideTail 末端等）<b>不是</b>锚点 ⇒ 不再伪装成
+     *       "真实终点"被淡出为 0。</li>
+     * </ul>
+     */
+    private static void applyMeanderCanonical(double[] x, double[] z, Params params, Simplex noise,
+                                             int[] anchorRes) {
+        int m = x.length;
+        double[] arc = cumulativeArc(x, z);
+        if (arc[m - 1] < 1e-6) return;
+        double sumW = meanderSumWeight(params);
+        if (sumW <= 0) return;
+        double[] dAnchor = anchorArcDistance(arc, anchorRes);
+        double fadeLen = Math.max(1e-6, params.meanderWavelength());
+        double[] nx2 = new double[m], nz2 = new double[m];
+        double[] off = new double[m];
+        for (int i = 0; i < m; i++) {
+            fillNormal(x, z, i, nx2, nz2);
+            double fade = smoothstep(Math.min(1.0, dAnchor[i] / fadeLen));
+            if (fade <= 0) continue;                 // 锚点：零位移（逐位）
+            off[i] = params.meanderAmp() * fade * meanderShape(x[i], z[i], params, noise, sumW);
+        }
+        // ★ R2：仍保留 2 遍拉普拉斯，但【只】把 fade==0 的规范锚点重新压回 0；
+        //   不再无条件把 off[0]/off[m-1] 置 0 —— 那等于把窗口裁剪端伪造成真实端点。
+        //   ⚠ 足迹口径（实测见 R2 的 out/anchor-and-footprint.json）：
+        //     · "不再强制压 0"这一项的差异只落在端点 ±2 个平滑足迹内（一遍读 i±1，两遍 ⇒ ±2）；
+        //     · 但 fade 曲线本身是按规则整体改变的（全折线），不属于"残差"，不要把两者混为一谈。
+        //     末端净位移实测：0（该端是规范锚点）/ 0.0045 / 0.347 块（该端不是锚点）。
+        boolean[] anchorPoint = new boolean[m];
+        for (int a : anchorRes) if (a >= 0 && a < m) anchorPoint[a] = true;
+        off = smoothOffsets(off, anchorPoint);
+        applyOffsets(x, z, nx2, nz2, off);
+    }
+
+    /** 累计弧长（第 0 点为 0）。 */
+    private static double[] cumulativeArc(double[] x, double[] z) {
+        double[] arc = new double[x.length];
+        for (int i = 1; i < arc.length; i++) {
+            arc[i] = arc[i - 1] + Math.hypot(x[i] - x[i - 1], z[i] - z[i - 1]);
+        }
+        return arc;
+    }
+
+    /** 第 i 点的左转 90° 单位法向（中心差分；退化段取 +X）。 */
+    private static void fillNormal(double[] x, double[] z, int i, double[] nx2, double[] nz2) {
+        int prev = Math.max(0, i - 1), next = Math.min(x.length - 1, i + 1);
+        double tx = x[next] - x[prev], tz = z[next] - z[prev];
+        double tl = Math.hypot(tx, tz);
+        if (tl > 1e-6) { tx /= tl; tz /= tl; } else { tx = 1; tz = 0; }
+        nx2[i] = -tz;
+        nz2[i] = tx;
+    }
+
+    /**
+     * meander 倍频的归一化权重（级数在 λ/2 递减到 {@link #MIN_MEANDER_WAVELENGTH} 处截断）。
+     *
+     * <p>⚠ 打转根因修复之二（2026-10-10，用户："河流怎么出现这么多打转"）：
+     * 1-block 重采样下，λ&lt;6 块的倍频每 1.5 个节点就翻转方向 ⇒ 逐点打卷。
+     * legacy 的 meander 作用在更稀的格路径上无此问题；我们改在亚格曲线上 ⇒ 保留 4 倍频
+     * 结构但截断 λ&lt;6（实际 24/12/6 三级）。</p>
+     */
+    private static double meanderSumWeight(Params params) {
+        double sumW = 0;
+        double wl = params.meanderWavelength();
+        for (int o = 0; o < 4 && wl >= MIN_MEANDER_WAVELENGTH; o++) {
+            sumW += Math.pow(0.5, o);
+            wl *= 0.5;
+        }
+        return sumW;
+    }
+
+    /** 4 倍频噪声形状（世界坐标驱动 ⇒ 跨窗口同坐标同值），已归一化到总振幅 1。 */
+    private static double meanderShape(double px, double pz, Params params, Simplex noise,
+                                       double sumW) {
+        double shape = 0, w = 1;
+        double wavelength = params.meanderWavelength();
+        for (int o = 0; o < 4 && wavelength >= MIN_MEANDER_WAVELENGTH; o++) {
+            shape += w * noise.compute(px / wavelength, pz / wavelength);
+            w *= 0.5;
+            wavelength *= 0.5;
+        }
+        return shape / sumW;
+    }
+
+    /**
+     * 到最近规范锚点的<b>弧长</b>距离（沿本折线，不是欧氏距离）。
+     *
+     * <p>{@code anchorRes} 升序 ⇒ 双指针 O(n) 一趟。无锚点 ⇒ 全 ∞（fade=1）。</p>
+     */
+    private static double[] anchorArcDistance(double[] arc, int[] anchorRes) {
+        double[] out = new double[arc.length];
+        if (anchorRes == null || anchorRes.length == 0) {
+            java.util.Arrays.fill(out, Double.POSITIVE_INFINITY);
+            return out;
+        }
+        int j = 0;
+        for (int i = 0; i < arc.length; i++) {
+            while (j + 1 < anchorRes.length
+                    && Math.abs(arc[anchorRes[j + 1]] - arc[i]) <= Math.abs(arc[anchorRes[j]] - arc[i])) {
+                j++;
+            }
+            out[i] = Math.abs(arc[anchorRes[j]] - arc[i]);
+        }
+        return out;
+    }
+
+    /**
+     * 2 遍轻拉普拉斯平滑（只平滑偏移量）。
+     *
+     * <p><b>两版共同</b>：每遍后把首/末点（index 0 与 m-1）压回 0 —— "折线首末不动"，
+     * 用于 JOIN / 端口的像素连续（两条链在共享格必须逐位同坐标）。这只是一个<b>局部</b>
+     * 约束：一遍平滑只读 i±1，两遍最多影响端点向内 ≤2 个点 ⇒ <b>不构成任何长淡出</b>，
+     * 也不会把窗口长度带进几何（对比 LEGACY 的 {@code 0.2*total} 淡出才是全局的）。</p>
+     *
+     * <p><b>CANONICAL 额外</b>：再把规范锚点（{@link #canonicalAnchors}，即源头与真实河口）
+     * 压回 0，保证锚点处位移严格为 0（当前锚点集里唯一的内部锚点就是 m-1 本身，
+     * 端点规则已覆盖；保留本分支是为了让"锚点必须零位移"这条规则不依赖索引巧合）。</p>
+     *
+     * @param anchorPoint 非 null ⇒ 额外把这些点压回 0（CANONICAL）；
+     *                    null ⇒ 只有端点规则（LEGACY，逐位不变）
+     */
+    private static double[] smoothOffsets(double[] off, boolean[] anchorPoint) {
+        int m = off.length;
         for (int pass = 0; pass < 2; pass++) {
             double[] offN = off.clone();
             for (int i = 1; i < m - 1; i++) {
@@ -4319,13 +4529,74 @@ public final class DeterministicSkeleton {
             }
             offN[0] = 0;
             offN[m - 1] = 0;
+            if (anchorPoint != null) {
+                for (int i = 0; i < m; i++) if (anchorPoint[i]) offN[i] = 0;
+            }
             off = offN;
         }
-        for (int i = 0; i < m; i++) {
+        return off;
+    }
+
+    /** 把法向偏移写回坐标（{@code off==0} 的点逐位不动）。 */
+    private static void applyOffsets(double[] x, double[] z, double[] nx2, double[] nz2, double[] off) {
+        for (int i = 0; i < x.length; i++) {
             if (off[i] == 0) continue;
             x[i] += nx2[i] * off[i];
             z[i] += nz2[i] * off[i];
         }
+    }
+
+    /**
+     * 规范淡出锚点集（{@link Shaping#CANONICAL}）。
+     *
+     * <ol>
+     *   <li><b>typed 端口 / typed 接力的钉死格</b>（{@code pins} 命中）—— 这是<b>跨区世界承诺</b>：
+     *       发送端承诺的锚点坐标，接收端必须逐位重合。它不是窗口顺序的产物（由端口/WireIn
+     *       协议给出），所以可以进锚点集。</li>
+     *   <li><b>首节点</b>（源头 / 溢口续流起点）—— 折线在此开始，必须零位移；</li>
+     *   <li><b>末节点且 {@code End∈{MOUTH_SEA, MOUTH_LAKE}}</b> —— 真实河口的岸线锚点。</li>
+     * </ol>
+     *
+     * <p><b>刻意排除</b>：{@code JOIN} / {@code BOUNDARY_EXIT} / {@code UNRESOLVED} /
+     * {@code DEAD_END} 的末端，以及 {@code outsideTail} 的末端。理由：</p>
+     * <ul>
+     *   <li>{@code JOIN} 是"<b>本窗口已占用集</b>"的产物（{@code covered} 语义 + 链顺序），
+     *       不是世界拓扑事件；把它当淡出锚点等于用本窗口的占用顺序去决定世界几何，
+     *       一条长淡出就会把窗口差<b>重新引进来</b>（R2 第一版实测正是这样恶化到 0.344 块）。</li>
+     *   <li>裁剪端（{@code BOUNDARY_EXIT} 等）只是"本窗口看到这里"，不是世界的终点；
+     *       它的零位移由 {@code smoothOffsets} 的<b>端点</b>规则单独负责（局部、±2 足迹），
+     *       不需要也不应该靠一条与窗口长度挂钩的淡出。</li>
+     * </ul>
+     *
+     * <p><b>★ 为什么保留 pins（实测）</b>：把 pins 也去掉后，typed 端口格 (-4184,-5728)
+     * 的对侧距离从 LEGACY 的 0.130022 恶化到 <b>0.506851</b> 块 —— 因为该格在接收侧是
+     * <b>内部节点</b>，端点规则保护不到它。端口必须为 0 是硬判据 ⇒ pins 必须留在锚点集里。</p>
+     *
+     * <p>⚠ {@code childCount>=2}（D8 真实汇流）已被实测否决，见 {@link Shaping} 的说明。</p>
+     */
+    private static boolean[] canonicalAnchors(Trace t, int m, java.util.Map<Integer, double[]> pins) {
+        boolean[] anchor = new boolean[m];
+        for (int i = 0; i < m; i++) {
+            anchor[i] = i == 0
+                    || (i == m - 1 && (t.end == End.MOUTH_SEA || t.end == End.MOUTH_LAKE))
+                    || (pins != null && pins.containsKey(t.cell[i]));
+        }
+        return anchor;
+    }
+
+    /** 把锚点节点下标映射到重采样折线的下标（升序、去重、界内）。 */
+    private static int[] anchorResampledIndices(boolean[] anchor, int nodes, int[] nodeToRes) {
+        if (anchor == null || nodeToRes == null) return new int[0];
+        int limit = Math.min(nodes, anchor.length);
+        int[] tmp = new int[limit];
+        int k = 0;
+        for (int i = 0; i < limit; i++) {
+            if (!anchor[i]) continue;
+            int idx = nodeToRes[i];
+            if (k > 0 && idx <= tmp[k - 1]) continue;
+            tmp[k++] = idx;
+        }
+        return java.util.Arrays.copyOf(tmp, k);
     }
 
     private static double smoothstep(double t) {

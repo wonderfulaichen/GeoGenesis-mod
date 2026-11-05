@@ -324,10 +324,13 @@ public final class HierarchicalHydrology {
      * <b>零 sampleWu、零侵蚀 tile、零预热</b>。
      */
     public static WindowOutlets.Terrain coarseTerrain(CellGenerator gen) {
-        double invHs = 1.0 / Math.max(0.01, gen.params().horizontalScale());
+        return coarseTerrain(new CellModelTerrainInput(gen));
+    }
+
+    public static WindowOutlets.Terrain coarseTerrain(ModelTerrainInput input) {
         return (bx, bz) -> {
             Diag.COARSE_SAMPLES.incrementAndGet();
-            return gen.heightCurve().heightFromE(gen.terrainEQuick(bx * invHs, bz * invHs));
+            return input.coarseBaseHeightAtBlock(bx, bz);
         };
     }
 
@@ -340,6 +343,11 @@ public final class HierarchicalHydrology {
     /** 构建一个 tract 的粗层产物（纯函数；域由 (tract, coarseHalo, rx, rz) 唯一确定）。 */
     public static Coarse buildCoarse(CellGenerator gen, Params p, int rx, int rz,
                                      LakeWaterBalance.Climate climate) {
+        return buildCoarse(new CellModelTerrainInput(gen), p, rx, rz, climate);
+    }
+
+    public static Coarse buildCoarse(ModelTerrainInput input, Params p, int rx, int rz,
+                                     LakeWaterBalance.Climate climate) {
         long t0 = System.nanoTime();
         int cx = rx * p.tract() + p.tract() / 2;
         int cz = rz * p.tract() + p.tract() / 2;
@@ -347,8 +355,8 @@ public final class HierarchicalHydrology {
         // 粗层恒用 D8：确定性拓扑、零随机；prewarm=false ⇒ 绝不预热侵蚀 tile。
         var req = new HydrologyPipeline.Request(cx, cz, radius, p.step(), climate, 0,
                 HydrologyPipeline.RiverModel.D8, 1, null);
-        HydrologyPipeline.Result pipe = HydrologyPipeline.run(gen, gen.params(), req,
-                new HydrologyPipeline.Layer(coarseTerrain(gen), null, false, "coarse"));
+        HydrologyPipeline.Result pipe = HydrologyPipeline.run(input, input.params(), req,
+                new HydrologyPipeline.Layer(coarseTerrain(input), null, false, "coarse"));
         int originX = cx - radius, originZ = cz - radius;
         List<DeterministicSkeleton.Trace> trunks = DeterministicSkeleton.build(
                 pipe.level(), pipe.parent(), pipe.resolved(), pipe.lake(), pipe.sea(),
