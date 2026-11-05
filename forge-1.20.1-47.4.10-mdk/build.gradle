@@ -1621,6 +1621,17 @@ task runHydrologyDeterminismProbe(type: JavaExec) {
 // but nothing reads it" defects (erosionEnabled was exactly that).
 //   gradlew runConfigKeyGuardProbe [-PprobeArgs="--verbose"]
 // Allowlist: tools/config-key-guard-allowlist.txt (one entry per line, reason required).
+// Relay UNRESOLVED attribution (2026-11-06): read-only dump of why a cross-region
+// handoff could not prove downstream water (BASE_JOIN_WITHOUT_DOWNSTREAM).
+//   gradlew runRelayUnresolvedAttributionProbe [-PprobeArgs="294,-928 -1436,-416"]
+task runRelayUnresolvedAttributionProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.RelayUnresolvedAttributionProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runConfigKeyGuardProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.config.ConfigKeyGuardProbe'
