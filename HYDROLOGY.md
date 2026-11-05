@@ -236,11 +236,24 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
    首轮迁移漏了 `LakeWaterBalance`（出口算法不同），出图河 37270→24868。
    必须**按 classpath 顺序全量比对**，不能只看 provenance 里列出的那几个。
 
-**分支与标签：** 本分支已由 `backup/pre-legacy-chain-removal-20261020` 改名为
-**`feat/hydrology-target`**（作为事实主线）。
-> ⚠ 2026-11-06：`feat/hydrology-target` 已推送且 **`origin/main` 已对齐到同一提交**，
-> 主线就是 `main`。以下本地安全标签已全部删除（名字没了，相关提交要么在 `main`
-> 历史内，要么已按用户裁定放弃）：
+**分支与标签：** 主线就是 **`main`**。
+> ⚠ 2026-11-06（最终理顺）：本仓库长期以 `feat/hydrology-target` 为事实主线
+> （2026-10-25 由 `backup/pre-legacy-chain-removal-20261020` 改名而来），
+> 而 `main` 一度停在 2026-09-30 的 sim 线、**与主线分叉**。
+> 当天已收口：
+>
+> | 动作 | 结果 |
+> |---|---|
+> | `main` 对齐主线 | 强推至主线提交（`--force-with-lease`），sim 线节点不再被 `main` 引用 |
+> | 本地分支改名 | `feat/hydrology-target` → `main`，upstream 改为 `origin/main` |
+> | GitHub 默认分支 | `gh repo edit --default-branch main`，`git ls-remote --symref origin HEAD` 已确认指向 `refs/heads/main` |
+> | 远端 `feat/hydrology-target` | 默认分支切过去后删除，避免出现两条同名内容的长期并存 |
+>
+> ⇒ **今后 `git push` 默认推 `main`**；历史上任何「`main` 是旧的、必须检出
+> `feat/hydrology-target`」的说法（多见于 `handoff/GeoGenesis-20261103-*.md`）
+> **自 2026-11-06 起失效**，见 `handoff/README.md` 顶部说明。
+>
+> 同期删除的本地安全标签（名字没了；相关提交要么在 `main` 历史内，要么已按用户裁定放弃）：
 >
 > | 已删标签 | 指向 | 处置 |
 > |---|---|---|
@@ -257,7 +270,7 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 > `git bundle verify` 通过），需要时 `git fetch <bundle>` 即可复活；
 > 该文件在系统临时目录，不在仓库内。
 >
-> 现存 ref 只剩：分支 `main` / `feat/hydrology-target` / `backup/pre-legacy-chain-removal-20261020`，
+> 现存 ref：分支 `main` / `backup/pre-legacy-chain-removal-20261020`，
 > tag `v0.0.1` / `backup-before-rewrite`（后两个均为 `main` 的祖先，作发布与历史标记）。
 
 **仍未做：** 完整 `runWorldgenGate`；多 seed；负坐标 / 下游先查 / 缓存淘汰 / 并发取消矩阵。
