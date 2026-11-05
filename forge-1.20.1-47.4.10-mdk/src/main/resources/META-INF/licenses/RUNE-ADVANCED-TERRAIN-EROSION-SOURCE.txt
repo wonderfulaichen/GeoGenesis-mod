@@ -1,0 +1,40 @@
+来源与适用范围说明（Rune Advanced Terrain Erosion Filter，MPL-2.0）
+=====================================================================
+
+1. 覆盖源码
+   src/main/java/com/geogenesis/worldgen/erosion/RuneErosionFilter.java
+
+   该文件是 Rune Skovbo Johansen "Advanced Terrain Erosion Filter"（版权 (c) 2025
+   Rune Skovbo Johansen）的 Java 改写（MPL-2.0 意义上的 Modifications），参考了
+   Luke Mitchell 的 C# 移植（仓库 lpmitchell/AdvancedTerrainErosion，
+   固定快照 57e79cc331d17e2a45c897bea9c4c022d1fc5551，文件
+   package/Runtime/LPMGames.Terrain.Erosion/AdvancedTerrainErosion.cs，
+   "Advanced Terrain Erosion Filter copyright (c) 2025 Rune Skovbo Johansen /
+   Converted to burstable C# by Luke Mitchell, 2026"）。
+
+   ⚠ 本文件不是"独立重写、因此免许可"的产物——它仍是 MPL-2.0 覆盖软件的修改版，
+   按 MPL-2.0 §3.1 以 MPL-2.0 分发，§3.4 保留原作者声明。
+
+2. 上游来源
+   - 原文博客: https://blog.runevision.com/2026/03/fast-and-gorgeous-erosion-filter.html
+   - C# 参考实现: https://github.com/lpmitchell/AdvancedTerrainErosion
+     （其 THIRD_PARTY_NOTICES 将 PhacelleNoise 与 ErosionFilter 列为 MPL-2.0）
+
+3. 改写内容（相对 C# 参考）
+   - 仅保留 2D 平面入口（不做 cubemap 面 blending，本项目不需要）。
+   - 输出仅保留归一化高度增量；坡度增量与 ridgeMap 不返回（调用方按最终高度另行求坡）。
+     ⇒ 参考里的 ridgeCombiMask / ridgeFade / magnitude 与坡度输出累积一并省略。
+   - Phacelle 格点哈希由基于无理数乘积取 frac 的 Hash2 换为
+     long 世界格整数 + 真 SplitMix64（Steele & Lea 2014）：
+     增量 0x9E3779B97F4A7C15，乘子 0xBF58476D1CE4E5B9 / 0x94D049BB133111EB，
+     右移 30 / 27 / 31 位；不是 MurmurHash3 fmix64（33/33/33 + 0xFF51AFD7ED558CCD / 0xC4CEB9FE1A85EC53）。
+     目的：避免大坐标精度损失与 float 世界坐标。
+   - 设置收敛为不可变 record Settings，边界在构造时一次校验。
+     normalization 限制为 [0,1)，显式拒绝 1.0：参考的
+     magnitude = max(1 - normalization, |interpolated|) 在 1.0 处幅度下界为 0，会零除。
+   - strength == 0 或 octaves == 0 时直接返回 0.0（无塑形来源）。
+   - 保留参考的 stacked fading、partial normalization、
+     straight gullies 内部假设坡度（gullySlope 非真实坡度）等语义。
+
+4. 许可证全文
+   见同目录 RUNE-ADVANCED-TERRAIN-EROSION-MPL2.txt（MPL-2.0 完整文本）。

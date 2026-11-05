@@ -1,0 +1,31 @@
+// Gradle INIT script (not a project build script): registers one JavaExec task on the
+// GeoGenesis project so the phase-1 isolation probe can be launched without editing
+// build.gradle (which is GBK-encoded and carries 200+ probe tasks of its own).
+//
+// Usage (from forge-1.20.1-47.4.10-mdk):
+//   gradlew.bat --offline -I tools/run-signal-side-rune.gradle runSignalSideRuneProbe \
+//       -PprobeArgs="run/config/geogenesis-common.toml build/rune-signal-stage1-20261103 \
+//                    build/p1-cell-20261103/p1-cell-heights.f64be build/single-shaper-20261103"
+//
+// probeArgs is split on whitespace, exactly like the run*Probe tasks in build.gradle.
+// The task only reads the files given on the command line; it writes only under the
+// output directory passed as the second argument and refuses to run if that exists.
+
+gradle.projectsEvaluated { g ->
+    def project = g.rootProject
+    if (!project.plugins.hasPlugin('java')) {
+        throw new GradleException('run-signal-side-rune.gradle must target a java project')
+    }
+    project.tasks.register('runSignalSideRuneProbe', JavaExec) {
+        group = 'verification'
+        description = 'Stage 1 isolated signal-side Rune comparison (diagnostics only)'
+        dependsOn project.tasks.named(project.sourceSets.diagnostics.classesTaskName)
+        classpath = project.sourceSets.diagnostics.runtimeClasspath
+        mainClass = 'com.geogenesis.worldgen.terrain.morph.SignalSideRuneProbe'
+        maxHeapSize = '3g'
+        jvmArgs '-Dfile.encoding=UTF-8'
+        if (project.hasProperty('probeArgs')) {
+            setArgs(project.property('probeArgs').toString().trim().split('\\s+') as List)
+        }
+    }
+}

@@ -7,6 +7,10 @@ allprojects {
             project.fileTree(new File(root, 'core')) { include '**/*.java' },
             project.fileTree(new File(root, 'terrain/morph')) { include '*.java'; exclude 'MorphCellAdapter.java' },
             project.fileTree(new File(root, 'noise')) { include '*.java' },
+            new File(root, 'erosion/RuneErosionFilter.java'),
+            new File(root, 'erosion/ErosionEngine.java'),
+            new File(root, 'erosion/ParticleErosionParams.java'),
+            project.file('src/diagnostics/java/com/geogenesis/worldgen/erosion/RuneErosionCheck.java'),
             ['TerrainParams', 'HeightCurve', 'ContinentField', 'SplineConfig', 'OceanSplineConfig',
              'MidSplineConfig', 'UnifiedSpline', 'SplineUtil', 'TerrainClass', 'TectonicField',
              'StratumField', 'RockType', 'CacheStats'].collect { new File(root, "terrain/${it}.java") },
@@ -42,10 +46,13 @@ allprojects {
             dependsOn compile
             doLast {
                 def cp = project.files(compile.get().destinationDirectory.get().asFile) + supportJars
-                project.javaexec {
-                    classpath = cp
-                    mainClass.set('com.geogenesis.worldgen.core.BaseCoreCheck')
-                    maxHeapSize = '1g'
+                ['com.geogenesis.worldgen.core.BaseCoreCheck',
+                 'com.geogenesis.worldgen.erosion.RuneErosionCheck'].each { check ->
+                    project.javaexec {
+                        classpath = cp
+                        mainClass.set(check)
+                        maxHeapSize = '1g'
+                    }
                 }
             }
         }
