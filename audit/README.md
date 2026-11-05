@@ -24,6 +24,16 @@
 | [A 跨地貌覆盖验证](GeoGenesis-ridge-a-coverage-20261105.md) | 纯山地、纯劣地、覆盖层 raw 正确接线与漏接负控、海岸分阶段小窗 | 继续 A 候选或准备终检前 | 仅隔离实验；未调参、未接生产、未提交推送 |
 | [旧侵蚀路径清理清单](GeoGenesis-旧侵蚀路径清理清单-20261106.md) | 生产唯一路径收敛后，旧 tile 管线的「删 / 迁 / 归档」清单、诊断依赖面与实施结果 | 追溯 `CellGenerator` 旧侵蚀代码为何被删 | 已实施（2026-11-06）；清单核实于 HEAD `a0e6ade`，结果见文末 §7；用户实机复验正常 |
 
+> ⚠ **2026-11-06 对象已消失**：上表 R0 系列（`R0-core-boundary` / `R0-0` / `R0a` / `R0b`）
+> 与两份骨架 A/B 文档所描述的代码，其主体已被删除或归档 ——
+> `RidgeValleyErosion` / `RidgeConfigAdapter` / 旧 tile 管线（`getOrGenTile`、
+> `ErosionTileResult`、`erosionTileCache` …）**都不在 `src/` 里了**，
+> `erosionRidge*` 9 个配置键已移除，两个相关探针（`RidgePlacementProbe` /
+> `SingleShaperProbe`）已移入 `_archive/`。
+>
+> ⇒ 这几份文档**保留原样作为历史记录**，不要照其中的路径/类名/行号去找代码。
+> 当前状态一律以[清理清单 §7](GeoGenesis-旧侵蚀路径清理清单-20261106.md) 为准。
+
 ## 纪律
 
 1. **基线数值不可直接采信** —— 本文档自己就记着一次事故：从旧文档抄了三个数字，两个是错的。

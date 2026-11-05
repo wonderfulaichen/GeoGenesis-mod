@@ -34,9 +34,13 @@
 > **⚠️ 已知不一致**：`GeoGenesisGenerator` 的世界高度（`WORLD_MIN_Y/MIN_Y`、`WORLD_MAX_Y/MAX_Y`、`SEA_LEVEL`）目前**硬编码**，`GeoGenesisConfig` 的 `World Height` 段（seaLevel/minY/maxY）**暂未驱动 generator**（仅注入 HeightCurve 做 e→Y 映射）。~~River / Erosion 参数当前仅代码 `defaults()`，**未暴露到 Forge Config**。~~
 > **⚠️ 更正（2026-09-16 核查）：此句已过时** —— `riverEnabled` 已在 `GeoGenesisConfig`
 > （`GeoGenesisConfig.java:473`；被 `GeoGenesisTerrain.java:64` 消费，且
-> `ParameterConfigPanel.java:168` 有 UI 绑定）；**`Erosion` 段有 7+ 个键**
+> `ParameterConfigPanel.java:168` 有 UI 绑定）；**`Erosion` 段有 12 个键**
 > （`erosionEnabled` / `erosionRoutingAdaptive` / `erosionYieldToRiver` / `erosionXSEnabled` /
-> `erosionStrength` / `erosionRidgeEnabled` / `erosionRidgeStrength`，见该类 :644-674）。
+> `erosionStrength` / `erosionDropsMul` / `erosionErodeMul` / `erosionLocalChargeWeight` /
+> `erosionCascadeStrength` / `erosionMomentumTransfer` / `erosionIterations` / `erosionLrate`；
+> 以 `builder.push("Erosion")` 段为准，不抄行号）。
+> ⚠ 2026-11-06：原列在此处的 `erosionRidgeEnabled` / `erosionRidgeStrength` 等 9 个
+> `erosionRidge*` 键已随骨架滤镜一并删除（源码归档在 `_archive/ridge-skeleton/`）。
 > 另：上面「`World Height` 段暂未驱动 generator」一句**经复核仍成立**
 > （`WORLD_MIN_Y/MAX_Y/SEA_LEVEL` 仍是 `static final` 硬编码，`getSeaLevel()` 返回常量）。
 

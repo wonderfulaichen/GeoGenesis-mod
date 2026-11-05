@@ -172,6 +172,6 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 
 - **根目录只保留 4 份文档**：`README.md`（本文件）· `HYDROLOGY.md`（水文唯一事实来源）· `ARCHITECTURE.md` · `forge-.../CHANGELOG.md`。其余历史文档已归档到 `_archive/`（只读）；需要版本保护的审计/需求台账在 `audit/`
 - ⚠️ **文档里抄数值 = 必然漂移**（2026-09-18 教训：旧 `AGENTS.md` 长期写 `CACHE_SCHEMA_VERSION` 当前 69，而代码已到 72；又写"域扭曲已启用 40"，实际回退为 0）。凡会变的数字一律写"以代码常量 X 为准"并指路，不要复述
-- ⚠️ **带判据的探针必须以 `System.exit(非零)` 承载 FAIL**，否则 Gradle 报 `BUILD SUCCESSFUL`、门禁名存实亡（实测：252 个诊断类里只有 36 个做对了）
+- ⚠️ **带判据的探针必须以 `System.exit(非零)` 承载 FAIL**，否则 Gradle 报 `BUILD SUCCESSFUL`、门禁名存实亡（2026-11-06 实测：446 个诊断 `.java` 里只有 101 个文件出现 `System.exit`；现数命令见 `AGENTS.md`「调试开关与探针铁律」）
 - 设计/计划/修复文档已分类到 `docs/` 子目录（⚠ `docs/` 被 `.gitignore` 忽略 ⇒ 本地可见、不进版本库）。**唯一副本、又必须长期有效的审计类文档请放 `audit/`**
 - ⚠️ **不要用受 `.gitignore` 过滤的搜索工具判断"文件是否存在"**（2026-09-18 踩坑：据此误判 `docs/`、`参考/`、`logs/` 等为"不存在"，并改错了本文件）。**权威做法是 `git status --ignored` 或显式路径列目录**

@@ -170,14 +170,20 @@ gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"
 
 ## 调试开关与探针铁律
 
-- **探针 = `diagnostics/**/*Probe.java` 独立 main 工具（`src/diagnostics` 共 252 个 `.java`，不启动 MC）。**
+- **探针 = `diagnostics/**/*Probe.java` 独立 main 工具（不启动 MC）。**
   改侵蚀/河流/水文后必须跑对应探针验证。
+  ⚠ **不要写死探针数量** —— 增删频繁（2026-11-06 一天内就归档了 60 个 Java 探针
+  + 42 个 `.py` 驱动）。要现数用：
+  `git ls-files 'forge-1.20.1-47.4.10-mdk/src/diagnostics/**/*.java' | wc -l`
+  （当日实测 446 个 tracked `.java`，其中 340 个是 `*Probe`/`*Check`）。
 - **探针进程无 Forge 环境，配置恒为默认值**；用户调过参数时，探针须解析
   `run/config/geogenesis-common.toml` 才能复现游戏行为。
 - **邻居 tile 连带生成极慢**：用单 tile 直取的探针专用方法，勿走会 fire-and-forget
   生成 8 邻居的常规入口。
 - ⚠ **带判据的探针必须 `System.exit(非零)` 承载 FAIL**，否则 Gradle 报 `BUILD SUCCESSFUL`、
-  门禁名存实亡（实测：252 个诊断类里**只有 36 个**调用了 `System.exit`）。
+  门禁名存实亡。2026-11-06 实测：446 个诊断 `.java` 里**只有 101 个文件**出现
+  `System.exit`（比例未变差，但仍远未普及）。现数：
+  `git grep -l 'System\\.exit' -- 'forge-1.20.1-47.4.10-mdk/src/diagnostics/**/*.java' | wc -l`
 - ⚠ **不要用受 `.gitignore` 过滤的搜索工具判断"文件是否存在"** ——
   权威做法是 `git status --ignored` 或显式路径列目录。
 - Windows 下含中文的提交信息用 `git commit -F file.txt`（UTF-8）。
@@ -190,6 +196,13 @@ gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"
 `ValleyTracingRiverSystem` · `MaterialMapper` · `TerrainCache` · `TerrainCellNoise` ·
 `HeightmapPreview` · `GeologySystem` · `BaseRiverGenerator` · `LandForms.java` · `TerrainType.java` ·
 `BiomeMapper.java` · `GeodeShape.java` · `LandShape.java` · `worldgen/river/*`（RTF 全套）。
+
+**2026-11-06 新增**（旧侵蚀路径清理，源码在 `_archive/` 可查）：
+`RidgeValleyErosion` · `RidgeConfigAdapter` · `CellModelTerrainInput` ·
+`CellGenerator` 旧 tile 管线（`getOrGenTile` / `generateErosionTile` / `ErosionTileResult` /
+`erosionTileCache` / `blendTileDelta` / `erodeTile*` 常量 / `rockResistanceAt`）；
+`GeoGenesisConfig` 的 9 个 `erosionRidge*` 键与预览面板的「骨架模拟侵蚀」开关。
+明细见 `audit/GeoGenesis-旧侵蚀路径清理清单-20261106.md` §7。
 
 **⚠ 但 `hydrology/riverline/MidpointDisplacement` 不能删**：其 `generate()` 全仓零调用（死方法），
 但 `Node` / `ElevationSampler` 是**生产类型**，被 `RiverLineNetwork` 大量使用。
@@ -220,7 +233,8 @@ gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"
 ## 测试
 
 - 无单元测试文件（`src/test/` 为空）。`gameTestServer` run config 存在但未使用。
-- 验证靠：探针（约 170 个）+ `runWorldgenGate` 门禁 + `runClient` 目检 + `runPreview` 看地形分布。
+- 验证靠：探针 + `runWorldgenGate` 门禁 + `runClient` 目检 + `runPreview` 看地形分布。
+  （探针数量不写死，现数命令见「调试开关与探针铁律」第一条。）
 
 ## 用户规则
 
