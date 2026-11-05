@@ -1632,6 +1632,16 @@ task runRelayUnresolvedAttributionProbe(type: JavaExec) {
     }
 }
 
+// Water fill gap scan (2026-11-06): adjacent water-surface steps / dry holes in water.
+//   gradlew runWaterFillGapProbe [-PprobeArgs="0,-2 -3,-1"]
+task runWaterFillGapProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.WaterFillGapProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 task runConfigKeyGuardProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.config.ConfigKeyGuardProbe'
