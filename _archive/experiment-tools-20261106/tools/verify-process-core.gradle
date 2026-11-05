@@ -1,0 +1,20 @@
+// Isolated B/P compilation; use alongside verify-base-core.gradle, never all diagnostics.
+allprojects {
+    afterEvaluate {
+        def out = project.file(project.findProperty('bpEvidence') ?: 'build/bp-verification')
+        tasks.named('compileBaseCore', JavaCompile).configure {
+            destinationDirectory.set(new File(out, 'core-classes'))
+            source(project.fileTree('src/main/java/com/geogenesis/worldgen/process') { include '*.java' })
+        }
+        tasks.register('captureProcessEnvironment') {
+            doLast {
+                out.mkdirs()
+                def core = tasks.named('compileBaseCore', JavaCompile).get()
+                new File(out, 'core-classpath.txt').text = core.classpath.asPath
+                new File(out, 'core-sources.txt').text = core.source.files.sort { it.path }.collect { it.absolutePath }.join('\n')
+                new File(out, 'compile-classpath.txt').text = sourceSets.main.compileClasspath.asPath
+                new File(out, 'main-sources.txt').text = sourceSets.main.allJava.files.sort { it.path }.collect { it.absolutePath }.join('\n')
+            }
+        }
+    }
+}

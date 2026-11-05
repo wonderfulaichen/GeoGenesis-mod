@@ -38,6 +38,7 @@ B/P [开始 status](attachments/bp-20261105/bp/start-status.txt) 与[结束 stat
 - `src/diagnostics/java/com/geogenesis/worldgen/process/` 下 `ProcessRuntimeCheck.java`、`ProcessRenderProbe.java`。
   （⚠ 2026-11-06 这两个已移到 `_archive/diagnostic-probes-20261106/src/diagnostics/java/com/geogenesis/worldgen/process/`，见该目录 README。）
 - `tools/verify-process-core.gradle`、`tools/run-process-verification.py`、`tools/render-process-comparison.py`。
+  （⚠ 2026-11-06 这三个已移到 `_archive/experiment-tools-20261106/tools/`，见该目录 README。）
 
 以上路径均以 `forge-1.20.1-47.4.10-mdk/` 为前缀，当前均未跟踪。被移走的是临时 `.openbitfun-bp-evidence-path`，去向原 build 的 `evidence-path.txt`；这不是地形修改。
 

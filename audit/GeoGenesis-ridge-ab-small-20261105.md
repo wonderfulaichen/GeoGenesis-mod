@@ -71,7 +71,7 @@ python -u forge-1.20.1-47.4.10-mdk/build/ridge-ab-small-20261105/run.py
 python -u forge-1.20.1-47.4.10-mdk/build/ridge-ab-small-20261105/run.py pure 257 0.5 -2799.5 3648.5
 python -u forge-1.20.1-47.4.10-mdk/build/ridge-ab-small-20261105/run.py transition 257 1 -2815.5 3200.5
 python -u forge-1.20.1-47.4.10-mdk/build/ridge-ab-small-20261105/run.py junction 257 1 -2943.5 2944.5
-python -B forge-1.20.1-47.4.10-mdk/tools/render-ridge-placement.py forge-1.20.1-47.4.10-mdk/build/ridge-ab-small-20261105 small
+python -B forge-1.20.1-47.4.10-mdk/_archive/experiment-tools-20261106/tools/render-ridge-placement.py forge-1.20.1-47.4.10-mdk/build/ridge-ab-small-20261105 small
 python -B forge-1.20.1-47.4.10-mdk/build/ridge-ab-small-20261105/evidence.py
 ```
 
