@@ -2,6 +2,7 @@ package com.geogenesis.worldgen.hydrology.model;
 
 import com.geogenesis.worldgen.process.ProcessContext;
 import com.geogenesis.worldgen.process.ProcessRuntime;
+import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.HeightCurve;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 import java.util.HashSet;
@@ -20,6 +21,13 @@ public final class ProcessModelTerrainInput implements ModelTerrainInput, AutoCl
     private final Object gate = new Object();
     private final Set<ProcessRuntime.Subscription> subscriptions = new HashSet<>();
     private boolean closed;
+
+    /** 生产 CellGenerator 的薄适配：借用它唯一的冻结 B/P runtime，不拥有、不关闭。 */
+    public static ProcessModelTerrainInput borrow(CellGenerator gen) {
+        ProcessRuntime runtime = java.util.Objects.requireNonNull(gen.processRuntime(),
+                "CellGenerator.processRuntime() is null; call gen.seed() first");
+        return new ProcessModelTerrainInput(runtime);
+    }
 
     /** Borrows runtime; close cancels only this adapter's subscriptions, never other consumers. */
     public ProcessModelTerrainInput(ProcessRuntime runtime) { this(runtime, false); }
@@ -88,9 +96,7 @@ public final class ProcessModelTerrainInput implements ModelTerrainInput, AutoCl
     /**
      * ★ R2：<b>新 H 版本</b>（B/P → model 新会话）才启用规范塑形。
      *
-     * <p>隔离点就在这里：旧 {@code CellModelTerrainInput} 不覆盖本方法 ⇒ 恒 LEGACY。
-     * 规范塑形改变几何外观，若直接落到共享生产路径，会连带要求预览 schema 升版与
-     * 标准图对拍（计划 §6）；本轮只给新版本。（{@code PreviewDisplay} 未改。）</p>
+     * <p>旧版 CellGenerator 适配已归档；当前 model 链只使用本适配的规范塑形。</p>
      */
     @Override public DeterministicSkeleton.Shaping shaping() {
         return DeterministicSkeleton.Shaping.CANONICAL;
@@ -98,17 +104,14 @@ public final class ProcessModelTerrainInput implements ModelTerrainInput, AutoCl
     /**
      * ★ R3：<b>新 H 版本</b>才启用整数水柱四邻接连接计划。
      *
-     * <p>隔离点与塑形同法：旧 {@code CellModelTerrainInput} 不覆盖本方法 ⇒ 恒 {@code false}
-     * ⇒ 列计划逐位不变（37 份 model 二进制 + 114 份地形对拍）。规则改变列床面，
-     * 若落到共享生产路径会连带要求预览 schema 升版与标准图对拍（计划 §6）；
-     * 本轮只给新版本。（{@code PreviewDisplay} 未改。）</p>
+     * <p>旧版 CellGenerator 适配已归档；当前 model 链只使用本适配的整数连接计划。</p>
      */
     @Override public boolean integerWaterConnector() {
         return true;
     }
     @Override public long strategyContribution(long hash) { return hash; }
     /**
-     * 批量预热：与生产 {@code CellGenerator.prewarmErosionTiles} 同语义 —— 只提前提交 tile，
+     * 批量预热：与 {@code ProcessRuntime.prewarmTiles} 同语义 —— 只提前提交 tile，
      * 不阻塞、不改产出（tile 是冻结上下文的纯函数）。生产侧靠它避免"整窗采样时逐点同步建 tile
      * 串行几十秒"，缺了它 R4 实测单 region 150~180s vs 命中态 5~20s。
      *

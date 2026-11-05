@@ -324,7 +324,7 @@ public final class HierarchicalHydrology {
      * <b>零 sampleWu、零侵蚀 tile、零预热</b>。
      */
     public static WindowOutlets.Terrain coarseTerrain(CellGenerator gen) {
-        return coarseTerrain(new CellModelTerrainInput(gen));
+        return coarseTerrain(ProcessModelTerrainInput.borrow(gen));
     }
 
     public static WindowOutlets.Terrain coarseTerrain(ModelTerrainInput input) {
@@ -343,7 +343,7 @@ public final class HierarchicalHydrology {
     /** 构建一个 tract 的粗层产物（纯函数；域由 (tract, coarseHalo, rx, rz) 唯一确定）。 */
     public static Coarse buildCoarse(CellGenerator gen, Params p, int rx, int rz,
                                      LakeWaterBalance.Climate climate) {
-        return buildCoarse(new CellModelTerrainInput(gen), p, rx, rz, climate);
+        return buildCoarse(ProcessModelTerrainInput.borrow(gen), p, rx, rz, climate);
     }
 
     public static Coarse buildCoarse(ModelTerrainInput input, Params p, int rx, int rz,

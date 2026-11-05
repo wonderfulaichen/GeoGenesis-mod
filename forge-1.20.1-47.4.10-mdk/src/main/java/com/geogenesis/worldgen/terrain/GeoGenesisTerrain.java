@@ -208,12 +208,8 @@ public final class GeoGenesisTerrain {
     public Cell sampleCellLight(double wx, double wz) {
         double wux = toWu(wx), wuz = toWu(wz);
         Cell cell = generator.sample(wux, wuz);
-        // ★ 2026-09-11 B2：把【已缓存】的侵蚀增量并入快速路径 → 已探索区域与完整管线收敛
-        //   （terrainType 重分类 + height 含侵蚀）。tile 未生成时静默跳过 →
-        //   出生点搜索等冷启动场景仍【零 tile 生成】，保持秒级（与 B1 同一"不阻塞"语义）。
-        //   残余有界近似：① 不含水文河谷雕刻（河道处 height 可略高）；
-        //   ② 结果依赖 tile 是否已缓存（冷启动 = 无侵蚀分类，tile 就绪后 = 有）；
-        //      实测侵蚀 delta 在多数 tile 为小量或 0，故影响有界。
+        // ★ 2026-11-06：快速路径与完整管线共用精确 P delta；不再查旧 tile 缓存，
+        //   冷/热结果一致。仍不含水文河谷雕刻（由 applyHydrologyValley 写入）。
         generator.applyCachedTileDelta(cell, wux, wuz);
         fillRiverDistance(cell, wux, wuz);
         return cell;
@@ -230,15 +226,14 @@ public final class GeoGenesisTerrain {
      * <p>两级降级（参考 FreeTerraForged {@code WorldLookup} 的 accurate / cached / cheap）：</p>
      * <ol>
      *   <li><b>① 已生成 chunk</b>：直接取缓存 Cell 的 height → <b>与落块完全一致</b>，零额外成本。</li>
-     *   <li><b>② 未生成 chunk</b>：走 {@link CellGenerator#sampleHeightNonBlocking} —— 基础场
-     *       + <b>仅当侵蚀 tile 已缓存时</b>叠加增量；tile 未生成则退化为无侵蚀基础高度。
-     *       <b>保证绝不触发侵蚀 tile 生成。</b></li>
+     *   <li><b>② 未生成 chunk</b>：走 {@link CellGenerator#sampleHeightNonBlocking} ——
+     *       明确返回 B 高度，绝不触发精确 P tile 构建。</li>
      * </ol>
      *
      * <p><b>权衡（已知近似）</b>：② 在完全未探索区域不含<b>侵蚀增量</b>，也不含
      * <b>水文河谷雕刻</b>（河道下切），故结构（村庄等）放置高度可能与最终地形相差一个
      * 侵蚀/下切量级，河道处可能偏高。这是"绝不阻塞"的必然代价，与 RTF 的 cheap 降级同级。
-     * 而相邻 chunk 已生成时（常见情形）tile 通常已缓存 → ② 同样能拿到侵蚀，误差极小。</p>
+     * 已生成 chunk 的相邻区域走 ① 缓存 Cell，仍与落块完全一致。</p>
      */
     public double sampleHeightNonBlocking(double wx, double wz) {
         // ① 已生成 chunk → 精确（与落块完全一致）
@@ -250,7 +245,7 @@ public final class GeoGenesisTerrain {
                 return c.height;
             }
         }
-        // ② 未生成 → 廉价重算：基础场 + 已缓存的侵蚀增量，绝不触发侵蚀 tile
+        // ② 未生成 → B 高度，绝不触发精确 P tile
         baseHeightTier2.incrementAndGet();
         return generator.sampleHeightNonBlocking(toWu(wx), toWu(wz));
     }
@@ -405,8 +400,8 @@ public final class GeoGenesisTerrain {
      *   <li><b>推迟到首个 chunk 完成后</b>：实测并发预热使首 chunk 从 893ms 涨到 1086ms
      *       —— 预热与首 chunk 抢 CPU，正好加长了"进度条不动"的窗口。先让首 chunk 跑完，
      *       再把预热放出去（此时玩家已看到进度条在动）。</li>
-     *   <li><b>改用专用守护线程</b>（原先提交到 {@code TILE_SAMPLER}）：预热现在要
-     *       "等待"，若提交到 TILE_SAMPLER，在其队列满（64）且线程全忙时
+     *   <li><b>改用专用守护线程</b>：预热现在要
+     *       等待，若提交到同一个有界执行器，在其队列满且线程全忙时
      *       {@code CallerRunsPolicy} 会在<b>调用线程（主线程）</b>上执行该任务
      *       ⇒ 那个等待就会把主线程卡住（与优化目标相反）。专用线程彻底规避该风险。</li>
      * </ol>

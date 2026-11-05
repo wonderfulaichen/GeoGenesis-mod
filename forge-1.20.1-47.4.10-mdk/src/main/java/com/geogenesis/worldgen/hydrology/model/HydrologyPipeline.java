@@ -144,21 +144,10 @@ public final class HydrologyPipeline {
     private static final int WS_COMPUTES = 3;
 
     /**
-     * 侵蚀 tile 批量预热开关（`-Dgeogenesis.prewarmTiles=false` 关；A/B 归因用）。
-     *
-     * <p>见 {@code run()} 内说明：窗口 352×352 wu 跨约 64 个侵蚀 tile，
-     * 而 {@code getOrGenTile} 是调用线程同步生成 ⇒ 串行几十秒。预热用池并行。</p>
-     */
-    /**
      * 侵蚀 tile 批量预热开关（`-Dgeogenesis.prewarmTiles=false` 关；默认<b>开</b>）。
      *
-     * <p>⚠ 2026-10-10：{@link #HYDRO_BED_ERODED} 默认 <b>true</b>（含侵蚀 bed，效果优先）
-     * ⇒ 窗口求解会触发侵蚀 tile 生成（tile 中心仅 48 wu ⇒ 352×352 wu 跨约 8×8=64 个）
-     * ⇒ <b>必须预热</b>用池并行生成，否则单线程串行数十秒（实机「进不去世界」）。</p>
-     *
-     * <p>本预热是 <b>fire-and-forget</b>（不等待）—— 求解线程按需自己取，
-     * {@code getOrGenTile} 的占位式去重保证不重复生成。详见
-     * {@code CellGenerator.prewarmErosionTiles} 的 javadoc（含"阻塞版踩坑"记录）。</p>
+     * <p>求解窗口会请求多个 48wu owner 的精确 P tile；预热只提交 tile 构建，
+     * 不等待、不改产出。详见 {@code ProcessRuntime.prewarmTiles}。</p>
      */
     private static final boolean PREWARM_TILES =
             !"false".equals(System.getProperty("geogenesis.prewarmTiles"));
@@ -373,11 +362,11 @@ public final class HydrologyPipeline {
 
     /** 端到端执行。抛出异常仅用于"契约被违反"，不代表结果可信。 */
     public static Result run(CellGenerator gen, TerrainParams tp, Request request) {
-        return run(new CellModelTerrainInput(gen), tp, request, null);
+        return run(ProcessModelTerrainInput.borrow(gen), tp, request, null);
     }
 
     static Result run(CellGenerator gen, TerrainParams tp, Request request, Layer layer) {
-        return run(new CellModelTerrainInput(gen), tp, request, layer);
+        return run(ProcessModelTerrainInput.borrow(gen), tp, request, layer);
     }
 
     public static Result run(ModelTerrainInput input, TerrainParams tp, Request request) {
@@ -569,7 +558,7 @@ public final class HydrologyPipeline {
         // ★★★ 2026-10-10【侵蚀 tile 批量预热 —— 治"进不去世界"的第二半】★★★
         //   窗口一次采 31684 点 × 每点触发 getOrGenTile（tile 中心仅 48 wu
         //   ⇒ 352×352 wu 跨约 8×8=64 个 tile），而 getOrGenTile 是【调用线程同步生成】
-        //   ⇒ 单线程串行跑 64 次完整侵蚀。此处用 TILE_SAMPLER 池并行预热 ⇒ 采样全命中。
+        //   ⇒ 单线程串行跑 64 次完整侵蚀。ProcessRuntime.prewarmTiles 并行预热 ⇒ 采样全命中。
         //   纯加速（tile 是纯函数）⇒ 产出逐位不变。
         //   ⚠ 分层粗层显式 prewarm=false ⇒ 走 terrainEQuick（零 tile）⇒ 绝不预热。
         final boolean doPrewarm = layer == null ? PREWARM_TILES : layer.prewarm();

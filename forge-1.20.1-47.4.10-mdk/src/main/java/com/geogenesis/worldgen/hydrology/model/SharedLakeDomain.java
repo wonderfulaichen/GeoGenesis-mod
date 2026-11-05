@@ -93,12 +93,11 @@ public final class SharedLakeDomain {
                       int step, LakeWaterBalance.Climate climate, OwnerLevel owner) {
         public Ctx(CellGenerator gen, TerrainParams tp, HierarchicalHydrology.Params p,
                    int step, LakeWaterBalance.Climate climate, OwnerLevel owner) {
-            this(new CellModelTerrainInput(gen), tp, p, step, climate, owner);
+            this(ProcessModelTerrainInput.borrow(gen), tp, p, step, climate, owner);
         }
         /** Legacy accessor only; model computation never unwraps the input. */
         public CellGenerator gen() {
-            if (input instanceof CellModelTerrainInput old) return old.generator();
-            throw new IllegalStateException("explicit input has no CellGenerator");
+            throw new IllegalStateException("explicit B/P input has no CellGenerator");
         }
     }
 

@@ -118,9 +118,9 @@ public final class ProcessRuntime implements AutoCloseable {
         return s;
     }
     /**
-     * Best-effort batch prewarm for a wu range — the equivalent of production's
-     * {@code prewarmErosionTiles}. Never blocks, never throws, and never starves demand:
-     * when the executor queue is full the tile is simply skipped and built later on demand.
+     * Equivalent to the retired CellGenerator tile prewarm. Never blocks, never throws,
+     * and never starves demand: when the executor queue is full the tile is simply
+     * skipped and built later on demand.
      *
      * <p>Tiles are pure functions of the frozen context, so submitting them early changes only
      * timing, never output. That is why this does not enter {@link ProcessContext#identity()}.</p>

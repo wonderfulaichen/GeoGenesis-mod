@@ -1149,7 +1149,20 @@ public final class ModelHydrologyProvider implements AutoCloseable {
      * 编译期强制显式传参，比运行期日志警告更可靠。</p>
      */
     public ModelHydrologyProvider(CellGenerator gen, long seed) {
-        this(new CellModelTerrainInput(gen), seed);
+        this(legacyInput(gen, seed), seed);
+    }
+
+    /**
+     * 旧版 {@code CellModelTerrainInput} 已归档。诊断/兼容入口改绑同一份冻结 B/P；
+     * 但显式传种子与上下文不一致时会立即抛错，避免静默生成另一颗种子的地形。
+     */
+    private static ModelTerrainInput legacyInput(CellGenerator gen, long seed) {
+        var runtime = java.util.Objects.requireNonNull(gen.processRuntime(),
+                "CellGenerator.processRuntime() is null; call gen.seed() first");
+        if (runtime.context().definition().seed() != seed) {
+            throw new IllegalArgumentException("model seed differs from frozen B/P seed");
+        }
+        return new ProcessModelTerrainInput(runtime);
     }
 
     /** Explicit B/P sessions own their stores; null namespace retains legacy shared-cache semantics. */
