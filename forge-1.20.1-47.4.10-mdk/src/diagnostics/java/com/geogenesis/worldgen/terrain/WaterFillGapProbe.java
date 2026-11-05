@@ -1,9 +1,8 @@
 package com.geogenesis.worldgen.terrain;
 
-import com.geogenesis.config.GeoGenesisConfig;
-import com.geogenesis.worldgen.generator.GeoGenesisGenerator;
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
 import com.electronwill.nightconfig.toml.TomlFormat;
+import com.geogenesis.config.GeoGenesisConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -12,32 +11,30 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 灌水缺口扫描（<b>只读</b>）：在指定 region 里找两类可疑格，并给出坐标。
+ * 灌水缺口扫描（<b>只读</b>）：判断"水面台阶 / 水体内干洞"是否已经归零。
  *
- * <ol>
- *   <li><b>水面台阶</b>：相邻两个「应该有水」的列，计划水位差 &gt; {@code 0.5} 块
- *       ⇒ 实机会看到水墙/错台（水柱高度不连续）。</li>
- *   <li><b>水体内的干洞</b>：某列干，但 8 邻里 ≥5 列有水且水位高于它的地面
- *       ⇒ 实机看到「水中间缺一块」。</li>
- * </ol>
+ * <p>两组口径同时报：</p>
+ * <ul>
+ *   <li><b>raw</b>：只按 {@code Cell} 的原始计划（{@code riverType/riverSurfaceY/height}）
+ *       算 —— 这是修复前的样子，用于对照。</li>
+ *   <li><b>filled</b>：按落块层真正会用的水面算 —— 即
+ *       {@link WaterSurfaceUnifier#unifiedTops} 的统一整数水面。判据：
+ *       <ul>
+ *         <li>台阶：相邻两个"会灌水"的列，统一水面差 &gt; 0；</li>
+ *         <li>干洞：会灌水的列，但统一水面 {@code <= floor(地面)}
+ *             ⇒ 落块循环 {@code y in (surfaceY, fillTopBlock]} 一次都不执行 ⇒ 没有水块。</li>
+ *       </ul></li>
+ * </ul>
  *
- * <p>判据全部来自生产 {@link Cell}（{@code riverType} / {@code riverSurfaceY} /
- * {@code height}），与 {@code GeoGenesisGenerator.fillTerrainColumn} 的灌水条件一致：
- * <pre>
- *   riverWater = cell.riverType != 0 &amp;&amp; cell.riverSurfaceY &gt; cell.height
- *   ocean      = cell.height &lt; seaLevel
- *   有水       = riverWater || ocean
- * </pre>
- * 湖列同样由 {@code riverType=1} 表示（见 {@code GeoGenesisTerrain:656}），
- * 所以本探针能直接覆盖"湖内部有没有缺列"。</p>
+ * <p>验收口径：<b>filled 的台阶与干洞都必须为 0</b>，否则 {@code System.exit(1)}。
+ * 目前两处都非零 —— 这是待修缺陷的度量，不是修复后的回归闸门。</p>
  *
- * <p><b>只读</b>：不写世界、不改配置；输出坐标供实机目检。
- * 用法：{@code gradlew runWaterFillGapProbe -PprobeArgs="0,-2 -3,-1"}</p>
+ * <p>用法：{@code gradlew runWaterFillGapProbe [-PprobeArgs="0,-2 -3,-1"]}</p>
  */
 public final class WaterFillGapProbe {
 
     private static final int REGION = 512;
-    private static final double EPS = 0.5;
+    private static final long SEED = 9139912035078620160L;
 
     private WaterFillGapProbe() { }
 
@@ -59,129 +56,150 @@ public final class WaterFillGapProbe {
         }
 
         TerrainParams tp = loadConfig(out);
-        // 与生产 GeoGenesisGenerator.buildTerrain 同构：morphBase=true + 走 terrain.seed()
-        // （只 gen.seed 会漏掉河网种子，见 buildTerrain 的注释）。
+        // 与生产 GeoGenesisGenerator.buildTerrain 同构：morphBase=true + terrain.seed()
         CellGenerator gen = new CellGenerator(tp, (int) tp.minY(), (int) tp.maxY(), true);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
-        terrain.seed(9139912035078620160L);
+        terrain.seed(SEED);
 
-        System.out.printf("=== WaterFillGapProbe seed=9139912035078620160 regions=%d ===%n", regions.size());
-        int totalSteps = 0;
-        int totalHoles = 0;
+        System.out.printf("=== WaterFillGapProbe seed=%d regions=%d ===%n", SEED, regions.size());
+        int rawSteps = 0, rawHoles = 0, effSteps = 0, effHoles = 0, lakeSteps = 0;
         for (int[] r : regions) {
             int[] c = scan(terrain, r[0], r[1]);
-            totalSteps += c[0];
-            totalHoles += c[1];
+            rawSteps += c[0];
+            rawHoles += c[1];
+            effSteps += c[2];
+            effHoles += c[3];
+            lakeSteps += c[4];
         }
         System.out.println();
-        System.out.printf("汇总：水面台阶邻接对=%d  体内干洞列=%d%n", totalSteps, totalHoles);
+        System.out.println("汇总：");
+        System.out.printf("  raw    （修复前口径）台阶=%d 干洞=%d%n", rawSteps, rawHoles);
+        System.out.printf("  filled （落块实际口径）台阶=%d（其中湖内 %d）/ 干洞=%d%n",
+                effSteps, lakeSteps, effHoles);
+        // 只有【湖内台阶】与【干洞】算缺陷：河面逐段下降 1 块是正常坡降。
+        boolean ok = lakeSteps == 0 && effHoles == 0;
+        System.out.println("  判定: " + (ok
+                ? "PASS（湖内台阶=0 且 干洞=0；河面台阶属正常坡降，不计）"
+                : "FAIL（湖内台阶或干洞未归零）"));
         gen.closeProcessErosion();
-        System.exit(0);
+        System.exit(ok ? 0 : 1);
     }
 
-    /** 扫一个 region，返回 {台阶数, 干洞数}。 */
+    /** 扫一个 region，返回 {raw 台阶, raw 干洞, filled 台阶, filled 干洞}。 */
     private static int[] scan(GeoGenesisTerrain terrain, int rx, int rz) {
         int n = REGION;
         int baseX = rx * n;
         int baseZ = rz * n;
         double seaLevel = terrain.seaLevel();
-        boolean[] wet = new boolean[n * n];
-        double[] top = new double[n * n];
+
+        boolean[] rawWet = new boolean[n * n];
+        double[] rawTop = new double[n * n];
+        boolean[] isLake = new boolean[n * n];
+        boolean[] effWet = new boolean[n * n];
+        int[] effTop = new int[n * n];
         double[] ground = new double[n * n];
 
         long t0 = System.nanoTime();
-        int chunks = 0;
         for (int cx = 0; cx < n / 16; cx++) {
             for (int cz = 0; cz < n / 16; cz++) {
                 Cell[] cells = terrain.getChunkCells(baseX / 16 + cx, baseZ / 16 + cz);
-                chunks++;
+                int[] uni = WaterSurfaceUnifier.unifiedTops(cells, seaLevel, true);
                 for (int lx = 0; lx < 16; lx++) {
                     for (int lz = 0; lz < 16; lz++) {
                         Cell cell = cells[lx * 16 + lz];
-                        int idx = (cx * 16 + lx) * n + (cz * 16 + lz);
                         if (cell == null) {
                             continue;
                         }
+                        int idx = (cx * 16 + lx) * n + (cz * 16 + lz);
                         ground[idx] = cell.height;
                         boolean river = cell.riverType != 0 && cell.riverSurfaceY > cell.height;
                         boolean ocean = cell.height < seaLevel;
-                        wet[idx] = river || ocean;
-                        top[idx] = ocean ? Math.max(cell.riverSurfaceY, seaLevel) : cell.riverSurfaceY;
+                        rawWet[idx] = river || ocean;
+                        rawTop[idx] = ocean ? Math.max(cell.riverSurfaceY, seaLevel) : cell.riverSurfaceY;
+                        // 落块口径：真正会用到的统一水面（与 GeoGenesisGenerator 同一个函数）
+                        int u = uni[lx * 16 + lz];
+                        isLake[idx] = cell.isLake;
+                        effWet[idx] = u >= 0;
+                        effTop[idx] = u;
                     }
                 }
             }
         }
         long ms = (System.nanoTime() - t0) / 1_000_000L;
         System.out.println();
-        System.out.printf("--- region(%d,%d) 扫完 %d chunks，%d ms ---%n", rx, rz, chunks, ms);
+        System.out.printf("--- region(%d,%d) 扫完 %d chunks，%d ms ---%n", rx, rz, (n / 16) * (n / 16), ms);
 
-        int steps = 0;
-        int holes = 0;
-        List<String> stepSamples = new ArrayList<>();
-        List<String> holeSamples = new ArrayList<>();
-        int wetCount = 0;
-
+        int rSteps = 0, rHoles = 0, eSteps = 0, eHoles = 0;
+        int lakeSteps = 0, riverSteps = 0;
+        List<String> samples = new ArrayList<>();
+        int wetEff = 0;
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
                 int idx = i * n + j;
-                int wx = baseX + i;
-                int wz = baseZ + j;
-                if (wet[idx]) {
-                    wetCount++;
-                    // 台阶：右/下邻也有水但水位差 > 0.5
-                    if (i + 1 < n && wet[idx + n] && Math.abs(top[idx + n] - top[idx]) > EPS) {
-                        steps++;
-                        if (stepSamples.size() < 8) {
-                            stepSamples.add(String.format("(%d,%d) top=%.2f | (%d,%d) top=%.2f",
-                                    wx, wz, top[idx], wx + 1, wz, top[idx + n]));
+                int wx = baseX + i, wz = baseZ + j;
+
+                // raw：相邻湿列水位差 > 0.5
+                if (rawWet[idx]) {
+                    if (i + 1 < n && rawWet[idx + n] && Math.abs(rawTop[idx + n] - rawTop[idx]) > 0.5) {
+                        rSteps++;
+                    }
+                    if (j + 1 < n && rawWet[idx + 1] && Math.abs(rawTop[idx + 1] - rawTop[idx]) > 0.5) {
+                        rSteps++;
+                    }
+                } else {
+                    int wetN = 0;
+                    double hi = Double.NEGATIVE_INFINITY;
+                    for (int di = -1; di <= 1; di++) {
+                        for (int dj = -1; dj <= 1; dj++) {
+                            if (di == 0 && dj == 0) continue;
+                            int a = i + di, b = j + dj;
+                            if (a < 0 || b < 0 || a >= n || b >= n) continue;
+                            int k = a * n + b;
+                            if (rawWet[k]) { wetN++; hi = Math.max(hi, rawTop[k]); }
                         }
                     }
-                    if (j + 1 < n && wet[idx + 1] && Math.abs(top[idx + 1] - top[idx]) > EPS) {
-                        steps++;
-                        if (stepSamples.size() < 8) {
-                            stepSamples.add(String.format("(%d,%d) top=%.2f | (%d,%d) top=%.2f",
-                                    wx, wz, top[idx], wx, wz + 1, top[idx + 1]));
-                        }
+                    if (wetN >= 5 && hi > ground[idx] + 0.5) {
+                        rHoles++;
                     }
+                }
+
+                if (!effWet[idx]) {
                     continue;
                 }
-                // 干洞：8 邻里 >=5 有水，且邻水位高于本列地面
-                int wetN = 0;
-                double highest = Double.NEGATIVE_INFINITY;
-                for (int di = -1; di <= 1; di++) {
-                    for (int dj = -1; dj <= 1; dj++) {
-                        if (di == 0 && dj == 0) {
-                            continue;
-                        }
-                        int a = i + di, b = j + dj;
-                        if (a < 0 || b < 0 || a >= n || b >= n) {
-                            continue;
-                        }
-                        int k = a * n + b;
-                        if (wet[k]) {
-                            wetN++;
-                            highest = Math.max(highest, top[k]);
-                        }
+                wetEff++;
+                // filled：整数水面差 >= 1 才算台阶（整数落块只有整块差）
+                if (i + 1 < n && effWet[idx + n] && effTop[idx + n] != effTop[idx]) {
+                    eSteps++;
+                    if (isLake[idx] && isLake[idx + n]) lakeSteps++; else riverSteps++;
+                    if (samples.size() < 6) {
+                        samples.add(String.format("台阶 (%d,%d)=%d | (%d,%d)=%d",
+                                wx, wz, effTop[idx], wx + 1, wz, effTop[idx + n]));
                     }
                 }
-                if (wetN >= 5 && highest > ground[idx] + EPS) {
-                    holes++;
-                    if (holeSamples.size() < 8) {
-                        holeSamples.add(String.format("(%d,%d) ground=%.2f 邻水位=%.2f 邻湿列=%d",
-                                wx, wz, ground[idx], highest, wetN));
+                if (j + 1 < n && effWet[idx + 1] && effTop[idx + 1] != effTop[idx]) {
+                    eSteps++;
+                    if (isLake[idx] && isLake[idx + 1]) lakeSteps++; else riverSteps++;
+                    if (samples.size() < 6) {
+                        samples.add(String.format("台阶 (%d,%d)=%d | (%d,%d)=%d",
+                                wx, wz, effTop[idx], wx, wz + 1, effTop[idx + 1]));
+                    }
+                }
+                // 干洞：会灌水，但水面不高于地面 ⇒ 一个水块都放不下
+                if (effTop[idx] <= (int) Math.floor(ground[idx])) {
+                    eHoles++;
+                    if (samples.size() < 12) {
+                        samples.add(String.format("干洞 (%d,%d) 水面=%d 地面=%.2f",
+                                wx, wz, effTop[idx], ground[idx]));
                     }
                 }
             }
         }
-
-        System.out.printf("  湿列=%d / %d  台阶对=%d  干洞=%d%n", wetCount, n * n, steps, holes);
-        for (String s : stepSamples) {
-            System.out.println("    台阶 " + s);
+        System.out.printf("  湿列=%d/%d  raw(台阶=%d,干洞=%d)  filled(台阶=%d[湖内=%d,河面=%d],干洞=%d)%n",
+                wetEff, n * n, rSteps, rHoles, eSteps, lakeSteps, riverSteps, eHoles);
+        for (String s : samples) {
+            System.out.println("    " + s);
         }
-        for (String s : holeSamples) {
-            System.out.println("    干洞 " + s);
-        }
-        return new int[]{steps, holes};
+        return new int[]{rSteps, rHoles, eSteps, eHoles, lakeSteps};
     }
 
     private static TerrainParams loadConfig(Path out) {

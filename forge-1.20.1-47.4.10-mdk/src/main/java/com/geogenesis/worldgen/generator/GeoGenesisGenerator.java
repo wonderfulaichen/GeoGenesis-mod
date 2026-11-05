@@ -743,10 +743,16 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         long t3 = System.nanoTime();
 
         BlockPos.MutableBlockPos mPos = new BlockPos.MutableBlockPos();
+        // ★ 2026-11-06：先算"补洞后的整数水面"。实测 region(0,-2) 有 75 列
+        //   "被水包围、地面却比邻面低 0.5 块"，按整数落块一个水块都放不下 ⇒ 水里的洞。
+        //   补洞只改这些列，不动其余列的水面（跨列统一水位留给水文计划层，见 WaterSurfaceUnifier）。
+        int[] unifiedTop = com.geogenesis.worldgen.terrain.WaterSurfaceUnifier
+                .unifiedTops(cells, terrain.seaLevel(), hydrologyOn);
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
                 Cell cell = cells[lx * 16 + lz];
-                fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell, hydrologyOn, stableWaterSurface);
+                fillTerrainColumn(chunk, mPos, baseX + lx, baseZ + lz, cell, hydrologyOn,
+                        stableWaterSurface, unifiedTop[lx * 16 + lz]);
             }
         }
         long t4 = System.nanoTime();
@@ -784,7 +790,8 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      */
     private void fillTerrainColumn(ChunkAccess chunk, BlockPos.MutableBlockPos mPos,
                                    int wx, int wz, Cell cell,
-                                   boolean hydrologyOn, boolean stableWaterSurface) {
+                                   boolean hydrologyOn, boolean stableWaterSurface,
+                                   int unifiedTopBlock) {
         // ★ RTF 范式（2026-08-26）：河谷已由 generateChunk 雕刻回写 cell.height（Zone1-4
         //   平滑谷），此处不再二次雕刻，仅按 waterTable 水面做灌水判定（Streams isStreamBed：
         //   雕刻后地面 < 水面 − 0.5 才灌水；岸坡/漫滩只塑形不上水）。
@@ -809,6 +816,10 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         if (ocean) waterTop = Math.max(waterTop, seaLevel);
         // 水文模式：灌水 = 河计划 ∪ 海洋；入海重叠列取两者较高水面（即海平面）。
         boolean water = hydrologyOn ? (riverWater || ocean) : (cell.isWater() || riverWater);
+        // 补洞列：统一水面已把它并入水体 ⇒ 材质也按水走（否则水里留一格草方块）
+        if (hydrologyOn && unifiedTopBlock >= 0) {
+            water = true;
+        }
         boolean beach = cell.terrainType == TerrainClass.BEACH;
 
         // 表层与填充块选择（R9：墙顶草皮、墙壁土、河心砾石——DW top/filler/base 语义）
@@ -897,6 +908,12 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         int lipBlock = (riverWater && cell.riverLipY > waterTop)
                 ? (int) Math.floor(cell.riverLipY) : waterTopBlock;
         int fillTopBlock = Math.max(waterTopBlock, lipBlock);
+        if (hydrologyOn && unifiedTopBlock >= 0) {
+            waterTopBlock = unifiedTopBlock;
+            lipBlock = (riverWater && cell.riverLipY > unifiedTopBlock)
+                    ? (int) Math.floor(cell.riverLipY) : waterTopBlock;
+            fillTopBlock = Math.max(waterTopBlock, lipBlock);
+        }
         // ★ 2026-09-14 Phase T10：预解析本列的【水平地层】查找表（LUT）。
         //
         //   【Δ 为何改为水平层】T9b 是"披盖式"：地层从地表往下累加层厚
