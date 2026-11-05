@@ -134,6 +134,15 @@ public final class MorphLandField {
      * @param regionScale 区域尺度（块）
      */
     MorphLandField(MorphCatalog catalog, MorphAssembly assembly, float regionScale) {
+        this(catalog, assembly, regionScale, true);
+    }
+
+    /** 去算子候选与原入口共享几何、覆盖及种子，只切换山地纹理执行。 */
+    MorphLandField(MorphCatalog catalog, MorphAssembly assembly, float regionScale, boolean mountainTexture) {
+        this(catalog, assembly, regionScale, new MorphKernel(MorphLandRecipe.all(catalog), catalog.seed(), mountainTexture));
+    }
+
+    MorphLandField(MorphCatalog catalog, MorphAssembly assembly, float regionScale, MorphKernel kernel) {
         if (!(regionScale > 0) || !Float.isFinite(regionScale)) {
             throw new IllegalArgumentException("region scale");
         }
@@ -144,7 +153,7 @@ public final class MorphLandField {
                     + " != catalog seed " + catalog.seed());
         }
         this.regionScale = regionScale;
-        this.engine = new MorphKernel(MorphLandRecipe.all(catalog), catalog.seed());
+        this.engine = java.util.Objects.requireNonNull(kernel);
         this.maskNode = assembly.mask();
         this.blendLow = assembly.blendLow();
         this.blendHigh = assembly.blendHigh();
@@ -161,6 +170,16 @@ public final class MorphLandField {
             }
         };
     }
+
+    /**
+     * tile 构建锁 —— <b>只保护 tiles 这张 map，不包含几何构建</b>。
+     *
+     * <p>构建 {@link MorphBoundaryGeometry}（{@code buildWorldEdges} 的网格加密）是毫秒级慢操作；
+     * 早先它被包在 {@code synchronized sample()} 里 ⇒ 全部地形采样串行化。
+     * 实机 jstack 实测：19 个 MC worker 阻塞在同一把 {@code MorphLandField} 锁上，
+     * 唯一持锁者正在 {@code MorphBoundaryGeometry.densify} ⇒ 进世界卡在结构定位阶段。</p>
+     */
+    private final Object tileLock = new Object();
 
     // ============================================================ 公开 API
 
@@ -204,12 +223,22 @@ public final class MorphLandField {
      *
      * <p>同点连续调用命中 last-(x,z) 缓存，返回<b>同一个</b> {@link Sample} 实例。</p>
      */
-    public synchronized Sample sample(double x, double z) {
-        if (cached != null && x == lastX && z == lastZ) {
-            cachedPoints++;
-            return cached;
+    public Sample sample(double x, double z) {
+        // ★ 2026-11-06【去掉整方法 synchronized】原先 {@code synchronized sample()} 把
+        //   "缓存命中判断 + tile 几何构建 + 全部采样运算" 一起锁住 ⇒ 全局串行化。
+        //   实机 jstack 实测 19 个 worker 阻塞在同一把锁上、唯一持锁者在建边界几何。
+        //
+        //   现在：① last-(x,z) 缓存与 tiles 各用窄锁；② 几何构建在锁外；
+        //        ③ 采样算术（mergeToEntries/*ForMerged/maskValue/overlay）依赖的对象都是
+        //           构造后只读的（catalog、tile.entryOfSite()、maskNode），本身无共享可写状态。
+        //   产出与原先逐位一致（同样的输入走同样的纯计算），变化只在并发时序。
+        synchronized (tileLock) {
+            if (cached != null && x == lastX && z == lastZ) {
+                cachedPoints++;
+                return cached;
+            }
         }
-        Tile tile = tileFor(x, z);
+        Tile tile = tileFor(x, z);          // 慢路径已在内部移出锁
         double[] merged = mergeToEntries(tile.entryOfSite(), tile.weights(x, z));
         double region = heightForMerged(x, z, merged);
         double select = maskValue(x, z);
@@ -217,17 +246,21 @@ public final class MorphLandField {
         double e = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN, 0.0);
         Sample s = new Sample(region, covered, e, select, alphaOf(select), dominant(merged),
                 merged, activeCount(merged));
-        lastX = x;
-        lastZ = z;
-        cached = s;
-        points++;
+        synchronized (tileLock) {
+            lastX = x;
+            lastZ = z;
+            cached = s;
+            points++;
+        }
         return s;
     }
 
     /** 一次性计数的运行统计（只记账，不参与产出）。 */
-    public synchronized Stats stats() {
-        return new Stats(tilesBuilt, tileEvictions, tiles.size(), points, cachedPoints,
-                oldCoverageFamily != null, blendLow, blendHigh);
+    public Stats stats() {
+        synchronized (tileLock) {
+            return new Stats(tilesBuilt, tileEvictions, tiles.size(), points, cachedPoints,
+                    oldCoverageFamily != null, blendLow, blendHigh);
+        }
     }
 
     // ============================================================ 高度链
@@ -392,18 +425,27 @@ public final class MorphLandField {
         int tx = tileIndex(x);
         int tz = tileIndex(z);
         long key = MorphBoundaryGeometry.pack(tx, tz);
-        Tile t = tiles.get(key);
-        if (t == null) {
-            long t0 = System.nanoTime();
-            MorphBoundaryGeometry g = MorphBoundaryGeometry.of(assembly.partition(), regionScale,
-                    center(tx), center(tz), QUERY_RADIUS, REQ_HALF, CHORD_TOL,
-                    assembly.slotCount(), assembly.slotCategories(), assembly.seed());
-            g.setMaxSeg(MAX_SEG_BLOCKS);
-            t = new Tile(catalog, g, tx, tz, (System.nanoTime() - t0) / 1_000_000L);
-            tiles.put(key, t);
-            tilesBuilt++;
+        // 快路径：只持锁读缓存（O(1)，无几何构建）。
+        synchronized (tileLock) {
+            Tile t = tiles.get(key);
+            if (t != null) return t;
         }
-        return t;
+        // 慢路径：几何构建在锁【外】完成，避免把构建耗时转嫁给所有采样线程。
+        // 同一 tile 并发首访时可能重复构建一次 —— 结果确定性（纯函数），代价可接受；
+        // 换来的是"绝大多数采样不必排队等别人建几何"。
+        long t0 = System.nanoTime();
+        MorphBoundaryGeometry g = MorphBoundaryGeometry.of(assembly.partition(), regionScale,
+                center(tx), center(tz), QUERY_RADIUS, REQ_HALF, CHORD_TOL,
+                assembly.slotCount(), assembly.slotCategories(), assembly.seed());
+        g.setMaxSeg(MAX_SEG_BLOCKS);
+        Tile built = new Tile(catalog, g, tx, tz, (System.nanoTime() - t0) / 1_000_000L);
+        synchronized (tileLock) {
+            Tile existing = tiles.get(key);
+            if (existing != null) return existing;   // 别人先建好了 ⇒ 用他的，丢弃本次
+            tiles.put(key, built);
+            tilesBuilt++;
+            return built;
+        }
     }
 
     /**

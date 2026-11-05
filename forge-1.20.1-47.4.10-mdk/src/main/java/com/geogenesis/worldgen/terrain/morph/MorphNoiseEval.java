@@ -145,7 +145,7 @@ final class MorphNoiseEval {
      * 保证"任何 lattice 索引都先验范围"。正常坐标下 {@code lattice} 与裸转换
      * 逐位相同（都是 {@code (int) Math.floor(v)}），故不改变已有产出。</p>
      */
-    private static double sample(int seed, double u, double v) {
+    static double sample(int seed, double u, double v) {
         int x2 = lattice(u, 2), y2 = lattice(v, 2);
         double t = u - x2, s = v - y2;
         double[] g00 = grad(seed, x2, y2), g10 = grad(seed, x2 + 1, y2);

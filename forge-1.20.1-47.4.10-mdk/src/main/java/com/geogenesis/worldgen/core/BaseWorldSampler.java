@@ -17,6 +17,28 @@ public final class BaseWorldSampler {
     private final PrecipField precipitation;
     private final double tempFreq, regionSize;
 
+    /**
+     * e 采样记忆化开关（{@code -Dgeogenesis.baseSampleCache=false} 关）。
+     *
+     * <p>与生产 {@code HydrologyPipeline} 的窗口采样缓存同一动机与同一实现范式：
+     * {@code sampleE} 是纯函数，但窗口一次要采 178² = 31684 点，逐点重算约 0.5 ms
+     * ⇒ 单个 region 的 outlets 阶段实测 14~34 s。命中约 20 ns。</p>
+     *
+     * <p><b>纯加速</b>：缓存只复用同坐标同值，不改变任何运算 ⇒ 产出逐位不变。
+     * 本类实例的生命周期即缓存生命周期（跟随上下文），不跨世界复用。</p>
+     */
+    private static final boolean SAMPLE_CACHE =
+            !"false".equals(System.getProperty("geogenesis.baseSampleCache"));
+
+    /** 直接映射表：键为 wu 双精度位模式，值为 e 的位模式。先写值、后写键。 */
+    private final java.util.concurrent.atomic.AtomicLongArray cacheKeyX;
+    private final java.util.concurrent.atomic.AtomicLongArray cacheKeyZ;
+    private final java.util.concurrent.atomic.AtomicLongArray cacheValue;
+    private static final int CACHE_BITS = 18;                     // 262144 槽 × 3 × 8B = 6 MiB
+    private static final int CACHE_SIZE = 1 << CACHE_BITS;
+    private static final int CACHE_MASK = CACHE_SIZE - 1;
+    private static final long CACHE_EMPTY = Long.MIN_VALUE;
+
     public BaseWorldSampler(long seed, TerrainParams params, int minY, int maxY, BaseWorldSettings settings) {
         this.params = params;
         this.settings = settings;
@@ -37,10 +59,45 @@ public final class BaseWorldSampler {
         regions.seed(seed);
         precipitation = new PrecipField(seed, terrain::height, params.latitudeScale(),
                 PrecipField.Params.defaults(), WindField.Params.defaults(), terrain.heightCurve().seaLevelY());
+        if (SAMPLE_CACHE) {
+            cacheKeyX = new java.util.concurrent.atomic.AtomicLongArray(CACHE_SIZE);
+            cacheKeyZ = new java.util.concurrent.atomic.AtomicLongArray(CACHE_SIZE);
+            cacheValue = new java.util.concurrent.atomic.AtomicLongArray(CACHE_SIZE);
+            for (int i = 0; i < CACHE_SIZE; i++) {
+                cacheKeyX.set(i, CACHE_EMPTY);
+                cacheKeyZ.set(i, CACHE_EMPTY);
+            }
+        } else {
+            cacheKeyX = null;
+            cacheKeyZ = null;
+            cacheValue = null;
+        }
     }
 
-    public double sampleE(double x, double z) { return terrain.sampleE(x, z); }
-    public double height(double x, double z) { return terrain.height(x, z); }
+    public double sampleE(double x, double z) {
+        if (cacheKeyX == null) return terrain.sampleE(x, z);
+        long a = Double.doubleToRawLongBits(x);
+        long b = Double.doubleToRawLongBits(z);
+        int slot = (int) (((a * 0x9E3779B97F4A7C15L) ^ (b * 0x632BE59BD9B4E019L)) >>> 40) & CACHE_MASK;
+        // 先读键：两键同时命中才认为值有效（写入时值先落地）。
+        if (cacheKeyX.get(slot) == a && cacheKeyZ.get(slot) == b) {
+            return Double.longBitsToDouble(cacheValue.get(slot));
+        }
+        double e = terrain.sampleE(x, z);
+        cacheValue.set(slot, Double.doubleToRawLongBits(e));
+        cacheKeyZ.set(slot, b);
+        cacheKeyX.set(slot, a);
+        return e;
+    }
+    /**
+     * 高度必须复用本类的 {@link #sampleE}（进而复用采样缓存）。
+     *
+     * <p>⚠ 不能在这里直接调 {@code terrain.height(x, z)}：那样会走
+     * {@code MorphTerrainSampler.height} ⇒ 它自己的 {@code sampleE} ⇒ 绕过本类缓存。
+     * 实测（353² 窗口 + 外环共 126029 点）：绕行时缓存命中 0 次、耗时与关闭缓存无差别
+     * （651~705 ms vs 705 ms）；改走缓存后首轮 705→约 200 ms。</p>
+     */
+    public double height(double x, double z) { return terrain.heightCurve().heightFromE(sampleE(x, z)); }
 
     /** 只生成地貌与地层元数据，不触发气候回扫。 */
     public BaseColumn sampleTerrain(double x, double z) {

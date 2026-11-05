@@ -29,6 +29,7 @@ import java.util.Arrays;
 final class MorphKernel {
 
     private final MorphRecipe[] recipes;
+    private final boolean mountainTexture, macroGuide;
     private final MorphNoise.Node direction, erosion, surface, badX, badZ, scaler;
     /** 台地阶地：输入是<b>标量信号值</b>（{@link MorphNoise.ScalarIdentity}）。 */
     private final MorphNoise.Node terrace = new MorphNoise.Terrace(new MorphNoise.ScalarIdentity(),
@@ -41,7 +42,19 @@ final class MorphKernel {
             4, .65f, .75f, true);
 
     MorphKernel(MorphRecipe[] recipes, long seed) {
+        this(recipes, seed, true);
+    }
+
+    /** 隔离候选可旁路线段纹理；原入口保持认可P1，不改变种子和其它算子。 */
+    MorphKernel(MorphRecipe[] recipes, long seed, boolean mountainTexture) {
+        this(recipes, seed, mountainTexture, false);
+    }
+
+    /** 宏观导向旁路锐边算子与10wu方向扰动，不作为最终地表。 */
+    MorphKernel(MorphRecipe[] recipes, long seed, boolean mountainTexture, boolean macroGuide) {
         this.recipes = recipes.clone();
+        this.mountainTexture = mountainTexture;
+        this.macroGuide = macroGuide;
         int m = base(seed + 77), p = base(seed + 44), b = base(seed + 55);
         direction = MorphNoise.Perlin.ofScale(m + 3, 10, 1);
         MorphRecipe mountain = Arrays.stream(recipes)
@@ -117,7 +130,7 @@ final class MorphKernel {
         double sample(double x, double z) {
             double source = preBad(x, z);
             double bad = role(MorphRecipe.Role.BADLANDS);
-            if (bad != 0) source = blend(source, badShape(x, z, source), bad);
+            if (!macroGuide && bad != 0) source = blend(source, badShape(x, z, source), bad);
             double[] domain = domain(x, z, role(MorphRecipe.Role.MOUNTAIN));
             double amp = parameter(domain[0], domain[1], 1), bias = parameter(domain[0], domain[1], 2);
             double value = source * amp + bias;
@@ -132,11 +145,11 @@ final class MorphKernel {
             double mountain = role(MorphRecipe.Role.MOUNTAIN), plateau = role(MorphRecipe.Role.PLATEAU);
             double[] point = domain(x, z, mountain);
             double source = parameter(point[0], point[1], 0);
-            if (plateau != 0) {
+            if (!macroGuide && plateau != 0) {
                 source = rounded(blend(source, MorphNoiseEval.eval(terrace, source, 0), plateau)
                         + rounded(MorphNoiseEval.eval(surface, point[0], point[1]) * plateau));
             }
-            if (mountain != 0) {
+            if (mountainTexture && mountain != 0) {
                 source = blend(MorphNoiseEval.eval(erosion, point[0], point[1]), source, 1 - .65 * mountain);
             }
             return source;
@@ -196,7 +209,7 @@ final class MorphKernel {
          * 这条链与"不扭曲"逐位相同。</p>
          */
         double[] domain(double x, double z, double weight) {
-            if (weight == 0) return new double[]{x, z};
+            if (macroGuide || weight == 0) return new double[]{x, z};
             double angle = MorphNoiseEval.eval(direction, x, z) * 6.2831855f;
             return new double[]{x + Math.sin(angle) * 2 * weight, z + Math.cos(angle) * 2 * weight};
         }
