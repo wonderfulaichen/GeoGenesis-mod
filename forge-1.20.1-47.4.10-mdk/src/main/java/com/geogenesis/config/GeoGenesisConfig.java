@@ -232,24 +232,6 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue erosionLocalChargeWeight;
     /** 局部 cascade 级联强度。侵蚀后按高度差向最低邻居 settling，平滑河床底部。0=关闭，默认 0.3，范围 [0, 1] */
     public final ForgeConfigSpec.DoubleValue erosionCascadeStrength;
-    /** 粗侵蚀（脊-谷条纹滤镜）骨架层开关。开启时先造大山脊基本型，再由粒子侵蚀做细节。默认 true。 */
-    public final ForgeConfigSpec.BooleanValue erosionRidgeEnabled;
-    /** 粗侵蚀强度（骨架层）。默认 0.08，范围 [0, 0.5] */
-    public final ForgeConfigSpec.DoubleValue erosionRidgeStrength;
-    /** 粗侵蚀特征尺度（世界块）= 条纹细胞世界尺寸，越大脊越宽。默认 100，范围 [50, 800] */
-    public final ForgeConfigSpec.DoubleValue erosionRidgeScale;
-    /** 粗侵蚀细胞内条纹频率（脊-谷密度）。默认 1.2，范围 [0.2, 2.0] */
-    public final ForgeConfigSpec.DoubleValue erosionRidgeCellScale;
-    /** 粗侵蚀 octave 数（主脊+次级脊+细沟，4 更密）。默认 4，范围 [1, 5] */
-    public final ForgeConfigSpec.IntValue erosionRidgeOctaves;
-    /** 粗侵蚀坡度累积权重（脊-谷锐度）。默认 0.5，范围 [0, 1] */
-    public final ForgeConfigSpec.DoubleValue erosionRidgeGullyWeight;
-    /** 粗侵蚀脊线圆润度（0=尖锐 V 形，0.5=原版默认，1=圆滑 U 形）。默认 0.5，范围 [0, 1] */
-    public final ForgeConfigSpec.DoubleValue erosionRidgeRounding;
-    /** 粗侵蚀骨架 fadeTarget 参考面（陆地中值，e 单位）。默认 0.15 匹配陆地中值；旧 0.25 在低地世界恒负 → 全体下削 4~11 块。范围 [0.02, 0.5] */
-    public final ForgeConfigSpec.DoubleValue erosionRidgeLandRef;
-    /** 粗侵蚀细节密度（PowInv 指数，越低=小沟越密，越高=主脊越干净）。默认 1.0，范围 [0.7, 3.0] */
-    public final ForgeConfigSpec.DoubleValue erosionRidgeDetail;
 
     // ===================== ★ 2026-09-15 洞穴（游戏性优先，可开关）=====================
     /** 洞穴档位（REALISTIC 拟真 / VANILLA_LIKE 接近原版 / MINIMAL 精简 / OFF 关闭 / CUSTOM）。 */
@@ -754,25 +736,6 @@ public final class GeoGenesisConfig {
         // NOTE(2026-08-10): toml 旧值 2 会覆盖代码默认——修改默认后必须同步 run/config/geogenesis-common.toml
         erosionLrate = builder.comment("SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].")
                 .defineInRange("erosionLrate", 0.1, 0.01, 0.5);
-        // ===== 粗侵蚀骨架层（脊-谷条纹滤镜，Rune Skovbo Johansen 2026 + Luke Mitchell Burst C#）=====
-        erosionRidgeEnabled = builder.comment("Coarse ridge-valley skeleton layer (gradient-aligned stripe filter). Builds mountain-ridge basic form before particle detail erosion. Default true.")
-                .define("erosionRidgeEnabled", true);
-        erosionRidgeStrength = builder.comment("Coarse skeleton erosion strength. Default 2.0 (2026-08-12: 3.0 用户实测过头，回调 2.0 约 ±2.5 块), range [0, 5.0].")
-                .defineInRange("erosionRidgeStrength", 2.0, 0.0, 5.0);
-        erosionRidgeScale = builder.comment("Coarse skeleton feature size (world blocks) = stripe cell world size; larger = wider ridges. Default 100, range [50, 800].")
-                .defineInRange("erosionRidgeScale", 100.0, 50.0, 800.0);
-        erosionRidgeCellScale = builder.comment("Coarse skeleton in-cell stripe frequency (ridge-valley density). Default 1.2, range [0.2, 2.0].")
-                .defineInRange("erosionRidgeCellScale", 1.2, 0.2, 2.0);
-        erosionRidgeOctaves = builder.comment("Coarse skeleton octaves (main + secondary + fine gullies; 4 at spacing=2 no aliasing). Default 4, range [1, 5].")
-                .defineInRange("erosionRidgeOctaves", 4, 1, 5);
-        erosionRidgeGullyWeight = builder.comment("Coarse skeleton slope-accumulation weight (ridge-valley sharpness). Default 0.65 (2026-08-06: 0.5→0.65 加强条纹), range [0, 1].")
-                .defineInRange("erosionRidgeGullyWeight", 0.65, 0.0, 1.0);
-        erosionRidgeRounding = builder.comment("Ridge profile rounding (0=sharp V-cut, 0.5=default balanced, 1=max rounded U-shape). Default 0.5, range [0, 1].")
-                .defineInRange("erosionRidgeRounding", 0.5, 0.0, 1.0);
-        erosionRidgeLandRef = builder.comment("Coarse skeleton fadeTarget reference (land median, e units). Default 0.15 matches land median; old fixed 0.25 caused uniform 4~11-block downcutting on low-elevation worlds. Range [0.02, 0.5].")
-                .defineInRange("erosionRidgeLandRef", 0.15, 0.02, 0.5);
-        erosionRidgeDetail = builder.comment("Gully detail density (PowInv exponent; lower=finer gullies everywhere, higher=cleaner main ridges). Default 1.0, range [0.7, 3.0].")
-                .defineInRange("erosionRidgeDetail", 1.0, 0.7, 3.0);
         builder.pop();
 
         // ===================== ★ 2026-09-15 洞穴（游戏性优先，可开关）=====================
@@ -1078,15 +1041,6 @@ public final class GeoGenesisConfig {
             h = h * 31 + (INSTANCE.erosionYieldToRiver.get() ? 1 : 0);
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionStrength.get());
             h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionDropsMul.get());
-            h = h * 31 + (INSTANCE.erosionRidgeEnabled.get() ? 1 : 0);
-            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeStrength.get());
-            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeScale.get());
-            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeCellScale.get());
-            h = h * 31 + INSTANCE.erosionRidgeOctaves.get();
-            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeGullyWeight.get());
-            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeRounding.get());
-            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeLandRef.get());
-            h = h * 31 + Double.doubleToLongBits(INSTANCE.erosionRidgeDetail.get());
             // 2026-08-06：海岸线 warp 参数（侵蚀采样依赖地形含海岸线，改动须清侵蚀 tile 缓存）
             h = h * 31 + Double.doubleToLongBits(INSTANCE.coastlineWarpAmp.get());
             h = h * 31 + Double.doubleToLongBits(INSTANCE.coastlineWarpScale.get());

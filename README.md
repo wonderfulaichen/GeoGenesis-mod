@@ -70,7 +70,7 @@ gradlew.bat runPreview --args=12345   # 独立预览窗口（纯 Java）
 │   │   └── Cell.java / TerrainClass.java / ...
 │   ├── erosion/
 │   │   ├── ErosionEngine.java          # 液滴水力侵蚀（SimpleHydrology 型，物质守恒）
-│   │   └── RidgeValleyErosion.java     # 脊-谷条纹骨架滤镜
+│   │   └── __ 骨架滤镜已归档（2026-11-06 → _archive/ridge-skeleton/）
 │   ├── hydrology/                      # ★ 现行河流实现（2026-08-28 D8 汇流场范式）
 │   │   ├── riverline/RiverLineNetwork.java   # D8 河线 + Leopold-Maddock 宽深 + PAVA 水面
 │   │   ├── flowaccum/FlowField.java          # D8 流向 + 汇流累积

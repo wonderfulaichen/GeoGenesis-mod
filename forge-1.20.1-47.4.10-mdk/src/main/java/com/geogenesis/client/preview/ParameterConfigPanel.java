@@ -158,10 +158,8 @@ public class ParameterConfigPanel extends ConfigPanel {
         }
 
         // ★ 侵蚀与河流开关（原来只能手改 TOML，现写入面板）
-        addToggle("液滴粒子侵蚀", "本地粒子侵蚀（液滴微刻细节）。关闭则只有骨架脊谷，地形更平缓。",
+        addToggle("液滴粒子侵蚀", "本地粒子侵蚀（液滴微刻沟壑）。关闭则只用 B 层地形，无沟壑细节。",
                 () -> c.erosionEnabled.get(), v -> c.erosionEnabled.set(v));
-        addToggle("骨架模拟侵蚀", "粗侵蚀（脊-谷条纹滤镜）骨架层。开启时先造大山脊基本型，再由粒子侵蚀做细节。",
-                () -> c.erosionRidgeEnabled.get(), v -> c.erosionRidgeEnabled.set(v));
         addToggle("细纹理微侵蚀", "XS 微笔刷（r1wu 十字笔刷）在陡坡加 1-2 块级微纹理。默认关闭——实测会加剧 chunk 边界脊（约 +1.6 块）。",
                 () -> c.erosionXSEnabled.get(), v -> c.erosionXSEnabled.set(v));
         addToggle("确定性河网", "确定性几何河网（Farseek 式 Basin 拓扑 + D8 主河 + 支流抬升水面）。纯函数采样 → 结构性无缝。默认开启。",

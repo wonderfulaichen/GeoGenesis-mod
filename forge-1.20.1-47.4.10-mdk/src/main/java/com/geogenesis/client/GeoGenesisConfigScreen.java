@@ -454,7 +454,6 @@ public class GeoGenesisConfigScreen extends Screen {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
         int b = 0;
         if (c.erosionEnabled != null && c.erosionEnabled.get()) b |= 1;
-        if (c.erosionRidgeEnabled != null && c.erosionRidgeEnabled.get()) b |= 2;
         return b;
     }
 

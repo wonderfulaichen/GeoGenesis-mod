@@ -385,8 +385,9 @@ public final class TerrainStripePngProbe {
      * 完整管线（{@code getChunkCells}，含侵蚀 tile 与水文雕刻）渲染最终 {@code height}。
      *
      * <p>与粗管线（{@link GeoGenesisTerrain#sampleCellCoarse}）的差别就是"是否含侵蚀"。
-     * 若伪影来自 {@code RidgeValleyErosion}（脊-谷条纹滤镜，按坡度门控 →
-     * 低地无、山地有），则<b>只有本路径能复现</b>。</p>
+     * 侵蚀层现为物理粒子（B/P），2026-11-06 起<b>已无脊-谷条纹骨架</b>
+     * （{@code RidgeValleyErosion} 归档到 {@code _archive/ridge-skeleton/}），
+     * 因此本路径只剩粒子下切可能带来的条纹，不再有骨架条纹来源。</p>
      */
     private static void renderFullHeight(GeoGenesisTerrain terrain, File outDir,
                                          int ox, int oz, int chunks, String tag) throws Exception {

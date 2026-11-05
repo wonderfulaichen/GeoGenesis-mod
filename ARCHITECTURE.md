@@ -10,7 +10,8 @@
 >
 > 1. **`ErosionSystem` 不存在。** `erosion/ErosionSystem.java`、`ErosionAgent.java`、`Thermal.java`、
 >    `Coastal.java`、`Glacial.java`、`Wind.java` **均不存在**。实际只有 `ErosionEngine.java`
->    （液滴水力侵蚀，物质守恒）+ `RidgeValleyErosion.java`（脊谷骨架）。
+>    （液滴水力侵蚀，物质守恒）。`RidgeValleyErosion.java`（脊谷骨架）已于 2026-11-06
+>    按用户裁定暂停并归档到 `_archive/ridge-skeleton/`，不在生产路径上。
 >    **"多营力侵蚀"从未实现** → 下文「多营力侵蚀」整节作废。
 > 2. **`worldgen/river/` RTF 河网整体已删除**（2026-08-28 被 D8 汇流场范式取代）：
 >    `RiverNetwork` / `RTFRiverGenerator` / `ValleyRiverCarver` / `RiverCarver` / `RiverWarp` /
@@ -93,7 +94,7 @@ com.geogenesis
     ├── river/                      # ❌ 不存在（RTF 已删除，见文首校正 #2/#3）
     ├── erosion/                    # 侵蚀（⚠️ 2026-09-11 校正：实际仅 2 个文件）
     │   ├── ErosionEngine.java        # 液滴水力侵蚀（SimpleHydrology 型，物质守恒）+ cascadeLocal 塌落 [ACTIVE]
-    │   └── RidgeValleyErosion.java   # 脊-谷条纹骨架滤镜 [ACTIVE]
+    │   └── RidgeValleyErosion.java   # ❌ 已删（2026-11-06 归档到 _archive/ridge-skeleton/，骨架暂停）
     │   # ❌ 从未存在/已删：ErosionSystem | ErosionAgent | Thermal | Coastal | Glacial | Wind | ErosionSettings
     ├── hydrology/                  # ★ 现行河流实现（2026-08-28 D8 汇流场范式）
     │   ├── riverline/RiverLineNetwork.java   # D8 派生河线 + Leopold-Maddock 宽深 + PAVA 单调水面 + 瀑布/湖泊 [ACTIVE]
@@ -187,8 +188,8 @@ GeoGenesisBiomeSource.getNoiseBiome(x, y, z, sampler)
 ## ~~多营力侵蚀（局部算子，2026-07-13）~~ ❌ 作废（2026-09-11）
 
 > 经源码核查：`ErosionSystem` / `ErosionAgent` / `Thermal` / `Coastal` / `Glacial` / `Wind`
-> **均不存在**，本节描述的系统**从未落地**。实际仅 `ErosionEngine`（液滴水力侵蚀 + 塌落）
-> 与 `RidgeValleyErosion`（脊谷骨架）。详见文首「2026-09-11 事实校正」#1。以下原文仅作历史留痕：
+> **均不存在**，本节描述的系统**从未落地**。实际仅 `ErosionEngine`（液滴水力侵蚀 + 塌落）；
+> `RidgeValleyErosion`（脊谷骨架）已于 2026-11-06 归档，不再存在。详见文首「2026-09-11 事实校正」#1。以下原文仅作历史留痕：
 
 `worldgen/erosion/` 复活为**全新局部算子框架**（非旧粒子系统）：
 

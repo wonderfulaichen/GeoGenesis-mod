@@ -83,7 +83,9 @@ worldgenProfilerEveryChunks = 200   # 每 200 块打一次滚动汇总
 - 地形本体：`ContinentField` / `CellGenerator` / `TerrainCharacterField` / `TypeNoiseProvider` /
   `HeightCurve` / `SeaBedDetail`
 - 地质系统：`StratumField` / `TectonicField` + `TectonicDeformation` / `LandFeatures` + `VolcanicShape`
-- 侵蚀 `ErosionEngine` / `RidgeValleyErosion` · 水文 `hydrology/*`
+- 侵蚀 `ErosionEngine`（物理粒子，唯一生产路径）· 水文 `hydrology/*`
+  ⚠ 脊-谷条纹骨架 `RidgeValleyErosion` 已于 2026-11-06 按用户裁定暂停并归档到
+  `_archive/ridge-skeleton/`（现状：生产只有粒子侵蚀，无骨架层）
 - 洞穴几何 `CaveShape` / `CaveCarver`（原版 carver 需 `NoiseChunk`，我们无 `NoiseSettings`）
   · 洞穴群系 `CaveBiomeSelector`
 - 气候分类 `climate/*` · 噪声原语 `noise/*`（**有意的重复**：为"零 MC 依赖"，让探针/预览脱离 MC 运行）· 预览 UI
