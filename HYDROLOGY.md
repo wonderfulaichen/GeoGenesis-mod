@@ -237,8 +237,13 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
    必须**按 classpath 顺序全量比对**，不能只看 provenance 里列出的那几个。
 
 **分支与标签：** 本分支已由 `backup/pre-legacy-chain-removal-20261020` 改名为
-**`feat/hydrology-target`**（作为事实主线）；安全标签 `archive/pre-hydrology-target-20261025`、
-`backup-main-20260930` 保留回退点。
+**`feat/hydrology-target`**（作为事实主线）。
+> ⚠ 2026-11-06：`feat/hydrology-target` 已推送且 **`origin/main` 已对齐到同一提交**，
+> 主线就是 `main`。原先挂在这两个提交上的安全标签
+> `archive/pre-hydrology-target-20261025`（`04bdc73`，已在 `main` 历史内）与
+> `backup-main-20260930`（`2853a09`，sim 线，已能从远端 tag
+> `archive/local-main-20261028` / `archive/old-sim-line-20261028` 到达）
+> **已作为冗余本地标签删除**；两者指向的提交都没有丢，只是名字不再存在。
 
 **仍未做：** 完整 `runWorldgenGate`；多 seed；负坐标 / 下游先查 / 缓存淘汰 / 并发取消矩阵。
 用户已指出仍有细节待后续调整 —— 不声称"全周期完成"。
