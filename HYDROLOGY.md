@@ -239,11 +239,26 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 **分支与标签：** 本分支已由 `backup/pre-legacy-chain-removal-20261020` 改名为
 **`feat/hydrology-target`**（作为事实主线）。
 > ⚠ 2026-11-06：`feat/hydrology-target` 已推送且 **`origin/main` 已对齐到同一提交**，
-> 主线就是 `main`。原先挂在这两个提交上的安全标签
-> `archive/pre-hydrology-target-20261025`（`04bdc73`，已在 `main` 历史内）与
-> `backup-main-20260930`（`2853a09`，sim 线，已能从远端 tag
-> `archive/local-main-20261028` / `archive/old-sim-line-20261028` 到达）
-> **已作为冗余本地标签删除**；两者指向的提交都没有丢，只是名字不再存在。
+> 主线就是 `main`。以下本地安全标签已全部删除（名字没了，相关提交要么在 `main`
+> 历史内，要么已按用户裁定放弃）：
+>
+> | 已删标签 | 指向 | 处置 |
+> |---|---|---|
+> | `archive/pre-hydrology-target-20261025` | `04bdc73` | 在 `main` 历史内，无需保留 |
+> | `backup-main-20260930` | `2853a09` | sim 线节点，随 sim 线一并放弃 |
+> | `archive/local-main-20261028` · `archive/stash-2026-08-03` | `2853a09` | sim 线存档（两者同提交），放弃 |
+> | `archive/old-sim-line-20261028` | `50d5291` | sim 线存档，放弃 |
+> | `recovery/p0-baseline` · `recovery/pre-rename-simcore` · `recovery/pre-stageD-legacy` | `186af8c` 等 | sim 线节点，放弃 |
+> | `safety/docs-cleanup-2026-10-05` | `6808a22` | sim 线支线，放弃 |
+>
+> **用户裁定**：「sim 线并没有实际落地过」，故不再留任何远端/本地存档引用。
+> 删除前已打 bundle（`%TEMP%\sim-line-archive-20261106.bundle`，612 KB，
+> 含 `archive/local-main-20261028` 与 `archive/old-sim-line-20261028` 两个 tip，
+> `git bundle verify` 通过），需要时 `git fetch <bundle>` 即可复活；
+> 该文件在系统临时目录，不在仓库内。
+>
+> 现存 ref 只剩：分支 `main` / `feat/hydrology-target` / `backup/pre-legacy-chain-removal-20261020`，
+> tag `v0.0.1` / `backup-before-rewrite`（后两个均为 `main` 的祖先，作发布与历史标记）。
 
 **仍未做：** 完整 `runWorldgenGate`；多 seed；负坐标 / 下游先查 / 缓存淘汰 / 并发取消矩阵。
 用户已指出仍有细节待后续调整 —— 不声称"全周期完成"。
