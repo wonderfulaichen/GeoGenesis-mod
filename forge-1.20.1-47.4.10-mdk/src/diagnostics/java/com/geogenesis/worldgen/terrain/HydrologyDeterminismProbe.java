@@ -53,6 +53,7 @@ public final class HydrologyDeterminismProbe {
         try {
             pass &= testEvictionAndQueryOrder(seed);
             pass &= testOffModeNegativeControl();
+            pass &= testSaturationNoLoss();
         } catch (Throwable t) {
             System.out.println("总判定: FAIL（探针异常）");
             t.printStackTrace(System.out);
@@ -154,6 +155,82 @@ public final class HydrologyDeterminismProbe {
         return m.failures() == 0 && m.cancelled() == 0 && m.flights() == 0
                 && m.queued() == 0 && m.active() == 0 && m.builds() == m.successful()
                 && (m.builds() == 0 || (m.completed() > 0 && m.completed() <= BUDGET_TILES));
+    }
+
+    /**
+     * [3] 饱和压力：极小预算（1 worker / 1 队列）下 8 线程并发查同一批点，
+     * 必须<b>一格都不丢</b>，且结果与宽松预算逐位一致。
+     *
+     * <p>背景（2026-11-06 实机）：`ProcessRuntime` 原是 `AbortPolicy`，队列一满就抛
+     * `RejectedExecutionException`，调用方兜底成"本格不施加增量" ⇒ 那些格子静默按未侵蚀算。
+     * 一次会话实测 <b>269,508 次</b>。本用例就是把那种饱和态钉住：
+     * 只要再退回"拒绝即丢"，这里的 failures 或逐位比对立刻红。</p>
+     */
+    private static boolean testSaturationNoLoss() {
+        System.out.println();
+        System.out.println("[3] 饱和压力：1 worker / 1 队列 + 8 线程并发 ⇒ 不得丢格，且与宽松预算逐位一致");
+        try {
+            return saturationNoLoss();
+        } catch (Throwable t) {
+            System.out.println("    判定: FAIL（用例异常）");
+            t.printStackTrace(System.out);
+            return false;
+        }
+    }
+
+    private static boolean saturationNoLoss() throws Exception {
+        List<Point> pts = points();
+
+        List<Sample> reference;
+        try (ProcessRuntime runtime = new ProcessRuntime(context(DEFAULT_SEED, ProcessContext.Mode.PARTICLE),
+                new ProcessRuntime.Budget(4, 64, 1024))) {
+            reference = query(runtime, pts);
+        }
+
+        List<Sample> saturated = new ArrayList<>();
+        long fallbacks;
+        long failures;
+        try (ProcessRuntime runtime = new ProcessRuntime(context(DEFAULT_SEED, ProcessContext.Mode.PARTICLE),
+                new ProcessRuntime.Budget(1, 1, 4))) {
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+            try {
+                List<java.util.concurrent.Future<Sample>> futures = new ArrayList<>();
+                for (Point p : pts) {
+                    futures.add(pool.submit(() -> Sample.of(runtime.exactP(p.x(), p.z()))));
+                }
+                for (var f : futures) {
+                    try {
+                        saturated.add(f.get());
+                    } catch (java.util.concurrent.ExecutionException e) {
+                        System.out.printf("    并发查询失败：%s%n", e.getCause());
+                        return false;
+                    }
+                }
+            } finally {
+                // 用 shutdown + await：shutdownNow 会在任务末尾打断 in-flight 查询，
+                // 让本用例偶发 flaky（门禁探针不允许偶发）。
+                pool.shutdown();
+                pool.awaitTermination(60, java.util.concurrent.TimeUnit.SECONDS);
+            }
+            ProcessRuntime.Metrics m = runtime.metrics();
+            fallbacks = m.inlineFallbacks();
+            failures = m.failures();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("interrupted saturation test", e);
+        }
+
+        int same = 0;
+        for (int i = 0; i < reference.size(); i++) {
+            if (reference.get(i).equals(saturated.get(i))) {
+                same++;
+            }
+        }
+        boolean ok = same == reference.size() && failures == 0 && fallbacks > 0;
+        System.out.printf("    逐位相等=%d/%d  失败=%d  内联兜底=%d（必须 >0，证明真的进过饱和态）%n",
+                same, reference.size(), failures, fallbacks);
+        System.out.printf("    判定: %s%n", ok ? "PASS" : "FAIL");
+        return ok;
     }
 
     private static ProcessContext context(long seed, ProcessContext.Mode mode) {

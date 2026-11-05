@@ -222,8 +222,11 @@ public final class CellGenerator {
                 mode, snap, xs, (float) strength,
                 true, "geogenesis-common.toml");
         processContext = new com.geogenesis.worldgen.process.ProcessContext(def);
+        // ★ 2026-11-06：队列 64 → 512。原 64 在实机里长期打满（一次会话 269,508 次拒绝），
+        //   使 processErosionDeltaE 静默按"未侵蚀"兜底。现在拒绝会内联执行（不再丢格），
+        //   加大队列是为了让内联成为罕见的兜底而非常态。
         processRuntime = new com.geogenesis.worldgen.process.ProcessRuntime(
-                processContext, new com.geogenesis.worldgen.process.ProcessRuntime.Budget(4, 64, 1024));
+                processContext, new com.geogenesis.worldgen.process.ProcessRuntime.Budget(4, 512, 1024));
         LOGGER.info("[PROCESS] 物理侵蚀运行时就绪 mode={}（erosionEnabled={}）identity 前缀={}",
                 mode, erosionOn,
                 processContext.identity().substring(0, Math.min(80, processContext.identity().length())));

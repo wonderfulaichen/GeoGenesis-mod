@@ -25,7 +25,8 @@ public final class ProcessRuntime implements AutoCloseable {
     public record Ready(Sample sample) implements Peek {}
     public record Unavailable(Missing reason) implements Peek {}
     public record Metrics(long builds, long successful, long failures, long cancelled,
-                          int completed, int flights, int queued, int active) {}
+                          int completed, int flights, int queued, int active,
+                          long inlineFallbacks) {}
     // Package-private lifecycle seam for deterministic fault/race verification, not terrain injection.
     interface Observer {
         default void beforeBuild(TileGeometry.Owner owner) throws Exception {}
@@ -43,7 +44,9 @@ public final class ProcessRuntime implements AutoCloseable {
     private final Map<TileGeometry.Owner, Flight> flights = new HashMap<>();
     private boolean closed;
     private final AtomicLong builds = new AtomicLong(), successes = new AtomicLong(),
-            failures = new AtomicLong(), cancellations = new AtomicLong();
+            failures = new AtomicLong(), cancellations = new AtomicLong(),
+            /** 线程池满而内联执行的次数（>0 说明发生过 backpressure；不是错误，但要看分布）。 */
+            inlineFallbacks = new AtomicLong();
     private final class Flight {
         final TileGeometry.Owner owner;
         final CompletableFuture<ParticleTile> result = new CompletableFuture<>();
@@ -77,7 +80,22 @@ public final class ProcessRuntime implements AutoCloseable {
         executor = new ThreadPoolExecutor(budget.workers(), budget.workers(), 0, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(budget.queuedTiles()), r -> {
                     Thread t = new Thread(r, "B-P-tile"); t.setDaemon(true); return t;
-                }, new ThreadPoolExecutor.AbortPolicy());
+                },
+                // ★ 2026-11-06：原来是 AbortPolicy —— 队列一满就抛 RejectedExecutionException，
+                //   调用方（CellGenerator.processErosionDeltaE / erodedHeight）兜底成
+                //   「本格不施加增量」⇒ 那些格子静默按未侵蚀算，邻居却侵蚀过 ⇒ 台阶/接缝，
+                //   且发生与否取决于当时负载 ⇒ 同种子同坐标结果不确定。
+                //   实机一次会话实测 269,508 次拒绝（pool=4/queue=64）。
+                //   正解：拒绝即【内联执行】——绝不丢工作。线程池满说明该让调用方
+                //   自己承担这段计算（标准的 backpressure），产出与串行一致。
+                //   ParticleTile.build 不再回调 exactP（已核对）⇒ 内联不会递归。
+                (r, e) -> {
+                    if (e.isShutdown()) {
+                        throw new RejectedExecutionException("process runtime closed");
+                    }
+                    inlineFallbacks.incrementAndGet();
+                    r.run();
+                });
     }
     public ProcessContext context() { return context; }
     public Sample exactP(double x, double z) throws InterruptedException, ExecutionException {
@@ -273,7 +291,8 @@ public final class ProcessRuntime implements AutoCloseable {
     public Metrics metrics() {
         synchronized (gate) {
             return new Metrics(builds.get(), successes.get(), failures.get(), cancellations.get(),
-                    completed.size(), flights.size(), executor.getQueue().size(), executor.getActiveCount());
+                    completed.size(), flights.size(), executor.getQueue().size(), executor.getActiveCount(),
+                    inlineFallbacks.get());
         }
     }
     @Override public void close() {
