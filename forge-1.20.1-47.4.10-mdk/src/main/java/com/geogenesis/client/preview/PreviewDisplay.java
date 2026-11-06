@@ -484,7 +484,8 @@ public class PreviewDisplay extends AbstractWidget {
     // 121 = 修正旧骨架峰尖渐隐的反向smoothstep；P1及单一骨架候选均未切换生产默认。
     // 122 = 预览启用新水文叠加，磁盘缓存增存 riverType/riverSurfaceY，
     //       旧缓存缺河流水面字段，必须失效重建。
-    private static final int CACHE_SCHEMA_VERSION = 122;
+    // 123 = 存档种子原子绑定，禁止未绑定时用默认12345发布生产地形；旧身份缓存失效。
+    private static final int CACHE_SCHEMA_VERSION = 123;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

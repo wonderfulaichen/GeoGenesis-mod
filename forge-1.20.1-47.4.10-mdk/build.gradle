@@ -2616,3 +2616,10 @@ tasks.register('runWorldBasinRoutingProbe', JavaExec) {
 gradle.projectsEvaluated {
     minecraft.runs.acceptance.merge(minecraft.runs.client, false)
 }
+
+// Pure Java lifecycle regression; does not start Minecraft or access saves.
+tasks.register('runWorldSeedLifecycleProbe', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.diagnostics.WorldSeedLifecycleProbe'
+    workingDir = projectDir
+}

@@ -363,9 +363,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     /** 播种坡度抖动噪声（幂等；随世界种子失效）。 */
     private static void ensureSteepJitterSeeded() {
         if (steepJitterSeeded) return;
-        synchronized (GeoGenesisGenerator.class) {
+        synchronized (WORLD_LIFECYCLE) {
             if (steepJitterSeeded) return;
-            Noises.seedAll(STEEP_JITTER_NOISE, worldSeed, 0);
+            Noises.seedAll(STEEP_JITTER_NOISE, WORLD_LIFECYCLE.seed(), 0);
             steepJitterSeeded = true;
         }
     }
@@ -514,14 +514,35 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     public static boolean usesCurrentWorldMorphBase() { return currentWorldMorphBase; }
 
     public static void setCurrentWorldMorphBase(boolean morphBase) {
-        currentWorldMorphBase = morphBase;
-        sharedTerrain = null;
+        synchronized (WORLD_LIFECYCLE) {
+            currentWorldMorphBase = morphBase;
+            WORLD_LIFECYCLE.invalidate();
+        }
     }
 
-    /** 注入当前世界参数（来自 WorldSavedData；null = 用全局 toml 默认）。 */
+    /** Compatibility setter; server Load uses bindWorld atomically instead. */
     public static void setCurrentWorldParams(TerrainParams p) {
-        currentWorldParams = p;
-        sharedTerrain = null;
+        synchronized (WORLD_LIFECYCLE) {
+            currentWorldParams = p;
+            WORLD_LIFECYCLE.invalidate();
+        }
+    }
+
+    public static void bindWorld(long seed, TerrainParams params, boolean morphBase) {
+        synchronized (WORLD_LIFECYCLE) {
+            currentWorldParams = java.util.Objects.requireNonNull(params);
+            currentWorldMorphBase = morphBase;
+            setWorldSeed(seed);
+        }
+    }
+
+    public static void unbindWorld() {
+        synchronized (WORLD_LIFECYCLE) {
+            WORLD_LIFECYCLE.unbind();
+            currentWorldParams = null;
+            currentWorldMorphBase = true;
+            invalidateSteepJitter();
+        }
     }
 
     /** 解析当前世界参数：存档优先，缺失回退全局 toml。 */
@@ -537,26 +558,24 @@ public class GeoGenesisGenerator extends ChunkGenerator {
      *   = 并发重复构建 + 重复生成 → 世界生成卡死（日志 37% 后无输出）。单例后只构建
      *   一次，跨线程共享（内部 ConcurrentHashMap 线程安全）。
      */
-    private static volatile GeoGenesisTerrain sharedTerrain;
+    // Also guards params/morph, auxiliary seeding, and all engine publication.
+    static final WorldSeedLifecycle<GeoGenesisTerrain> WORLD_LIFECYCLE =
+            new WorldSeedLifecycle<>();
 
     public static GeoGenesisTerrain buildTerrain(TerrainParams params) {
-        GeoGenesisTerrain t = sharedTerrain;
-        if (t == null) {
-            synchronized (GeoGenesisGenerator.class) {
-                t = sharedTerrain;
-                if (t == null) {
-                    CellGenerator gen = new CellGenerator(params, WORLD_MIN_Y, WORLD_MAX_Y,
-                            currentWorldMorphBase);
-                    GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
-                    // ★ 2026-08-26 修复：必须走 terrain.seed() —— 它内部调 generator.seed +
-                    //   rivers.setWorldSeed。只 gen.seed 会漏掉河网种子（所有世界同一河网）。
-                    terrain.seed(worldSeed);
-                    sharedTerrain = terrain;
-                    t = terrain;
-                }
-            }
+        synchronized (WORLD_LIFECYCLE) {
+            return WORLD_LIFECYCLE.getOrBuild(seed -> {
+                TerrainParams effective = currentWorldParams != null ? currentWorldParams : params;
+                CellGenerator gen = new CellGenerator(effective, WORLD_MIN_Y, WORLD_MAX_Y,
+                        currentWorldMorphBase);
+                GeoGenesisTerrain built = new GeoGenesisTerrain(gen);
+                built.seed(seed);
+                long actual = gen.processRuntime().context().definition().seed();
+                if (actual != seed) throw new IllegalStateException("Terrain runtime seed mismatch");
+                LOGGER.info("GeoGenesis terrain built: runtime.seed={}", actual);
+                return built;
+            });
         }
-        return t;
     }
 
     public GeoGenesisGenerator(BiomeSource biomeSource) {
@@ -574,25 +593,25 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     /** 在出生点/群系查询前绑定存档算法，替换加载前可能建立的引擎。 */
     public void initializeForWorld() {
-        ensureEngine(worldSeed);
+        ensureEngine();
     }
 
     /** 惰性初始化并注入 BiomeSource，群系与方块填充使用同一地形场。 */
-    private void ensureEngine(long seed) {
-        if (terrain == null || terrain != sharedTerrain) {
-            terrain = buildTerrain(resolveParams());
-            // inject terrain into BiomeSource so it can classify biomes by Cell data
-            if (biomeSource instanceof GeoGenesisBiomeSource gbs) {
-                gbs.setTerrain(terrain);
-                LOGGER.info("GeoGenesis terrain injected into BiomeSource (seed={})", seed);
+    private void ensureEngine() {
+        synchronized (WORLD_LIFECYCLE) {
+            GeoGenesisTerrain current = buildTerrain(resolveParams());
+            if (terrain != current) {
+                terrain = current;
+                if (biomeSource instanceof GeoGenesisBiomeSource gbs) {
+                    gbs.setTerrain(current);
+                }
             }
         }
     }
 
     // ===== 核心：fillFromNoise =====
 
-    // 当前世界种子（由 GeoGenesisServerEvents.LevelEvent.Load 注入）
-    private static volatile long worldSeed = 12345L;
+    // Seed state lives exclusively in WORLD_LIFECYCLE; zero is a valid bound seed.
 
     /**
      * ★ 2026-09-15：{@code applyCarvers} 因"地形未就绪"跳过洞穴的次数。
@@ -671,9 +690,14 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     }
 
     public static void setWorldSeed(long seed) {
-        worldSeed = seed;
-        // ★ 2026-08-14 单例失效：新世界 seed 变化 → 下次 buildTerrain 重建河网/地形
-        sharedTerrain = null;
+        synchronized (WORLD_LIFECYCLE) {
+            WORLD_LIFECYCLE.unbind();
+            configureWorldSeed(seed);
+            WORLD_LIFECYCLE.bind(seed);
+        }
+    }
+
+    private static void configureWorldSeed(long seed) {
         // ★ 2026-09-15：洞穴噪声同批播种（与地形/河网同生命周期，避免跨存档串扰）。
         CaveShape.setSeed(seed);
         // ★ 2026-09-15：矿脉噪声同批播种（同上）。
@@ -718,7 +742,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             ChunkAccess chunk
     ) {
         long t0 = System.nanoTime();
-        ensureEngine(worldSeed);
+        ensureEngine();
         // ★ 2026-08-09 优化：出生点周边异步预热（首次 fillFromNoise 触发一次，后台池）
         terrain.preloadSpawnAsync();
         long t1 = System.nanoTime();

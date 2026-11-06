@@ -1,5 +1,6 @@
 package com.geogenesis.worldgen.process;
 
+import com.geogenesis.diagnostics.WorldGenProfiler;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -32,6 +33,45 @@ public final class ProcessRuntime implements AutoCloseable {
         default void beforeBuild(TileGeometry.Owner owner) throws Exception {}
         default void beforePublish(TileGeometry.Owner owner) throws Exception {}
     }
+    // Diagnostic-only, task-local accounting. No global-total subtraction; no CPU sums.
+    private static final AtomicLong DIAG_IDS = new AtomicLong();
+    private final long diagnosticId = DIAG_IDS.incrementAndGet();
+    private final ThreadLocal<SamplingTiming> samplingTiming = new ThreadLocal<>();
+    public final class SamplingTiming implements AutoCloseable {
+        private final SamplingTiming previous = samplingTiming.get();
+        private final long id = DIAG_IDS.incrementAndGet(), start = System.nanoTime();
+        private final String task;
+        private final java.util.concurrent.atomic.LongAdder requests = new java.util.concurrent.atomic.LongAdder(),
+                requestNs = new java.util.concurrent.atomic.LongAdder(), awaitNs = new java.util.concurrent.atomic.LongAdder(),
+                assembleNs = new java.util.concurrent.atomic.LongAdder(), baseNs = new java.util.concurrent.atomic.LongAdder(),
+                assembles = new java.util.concurrent.atomic.LongAdder();
+        private SamplingTiming(String task) { this.task = task; }
+        public void request(long prepare, long await) {
+            requests.increment(); requestNs.add(prepare); awaitNs.add(await);
+        }
+        @Override public void close() {
+            samplingTiming.set(previous);
+            WorldGenProfiler.stutterLog("SAMPLING", "window-" + diagnosticId + "-" + id,
+                    diagnosticLabel() + " window=" + id + " task=" + task + " startNs=" + start
+                    + " endNs=" + System.nanoTime() + " requests=" + requests.sum()
+                    + " requestNs=" + requestNs.sum() + " awaitNs=" + awaitNs.sum()
+                    + " assembles=" + assembles.sum() + " assembleNs=" + assembleNs.sum()
+                    + " assembleBaseNs=" + baseNs.sum()
+                    + " overlap=assembleBase_subset_assemble;assemble_and_inlineTiles_subset_request_or_await;"
+                    + "tile_tasks_shared_and_parallel;durations_wall_not_CPU;scope=thread_local_pipeline");
+        }
+    }
+    /** Diagnostic scope only; callers must close on the opening thread. Null when gated off. */
+    public SamplingTiming beginSamplingTiming(String task) {
+        if (!WorldGenProfiler.stutterEnabled()) return null;
+        SamplingTiming timing = new SamplingTiming(task);
+        samplingTiming.set(timing);
+        return timing;
+    }
+    public SamplingTiming currentSamplingTiming() { return samplingTiming.get(); }
+    public String diagnosticLabel() {
+        return "runtime=" + diagnosticId + " seed=" + context.definition().seed();
+    }
     private final Object gate = new Object();
     private final ProcessContext context;
     private final Budget budget;
@@ -48,11 +88,15 @@ public final class ProcessRuntime implements AutoCloseable {
             /** 线程池满而内联执行的次数（>0 说明发生过 backpressure；不是错误，但要看分布）。 */
             inlineFallbacks = new AtomicLong();
     private final class Flight {
+        final long timingId = WorldGenProfiler.stutterEnabled() ? DIAG_IDS.incrementAndGet() : 0;
+        final long submittedNs = timingId == 0 ? 0 : System.nanoTime();
+        final SamplingTiming timing = samplingTiming.get();
         final TileGeometry.Owner owner;
         final CompletableFuture<ParticleTile> result = new CompletableFuture<>();
         final Set<Subscription> holders = new HashSet<>();
         volatile boolean cancelled;
         FutureTask<Void> task;
+        long enqueuedNs;
         Flight(TileGeometry.Owner owner) { this.owner = owner; }
     }
     public final class Subscription implements AutoCloseable {
@@ -106,10 +150,11 @@ public final class ProcessRuntime implements AutoCloseable {
     public Subscription requestExact(double x, double z) {
         TileGeometry.Footprint footprint = TileGeometry.footprint(x, z);
         Subscription s = new Subscription();
+        SamplingTiming timing = samplingTiming.get();
         synchronized (gate) {
             if (closed) { s.result.completeExceptionally(new CancellationException("closed context")); return s; }
             if (context.definition().mode() == ProcessContext.Mode.OFF) {
-                s.result.complete(remember(assemble(x, z, footprint, Map.of()))); return s;
+                s.result.complete(remember(timedAssemble(x, z, footprint, Map.of(), timing))); return s;
             }
             Map<TileGeometry.Owner, CompletableFuture<ParticleTile>> deps = new LinkedHashMap<>();
             try {
@@ -125,7 +170,7 @@ public final class ProcessRuntime implements AutoCloseable {
                         else {
                             Map<TileGeometry.Owner, ParticleTile> tiles = new HashMap<>();
                             deps.forEach((key, future) -> tiles.put(key, future.join()));
-                            try { s.result.complete(remember(assemble(x, z, footprint, tiles))); }
+                            try { s.result.complete(remember(timedAssemble(x, z, footprint, tiles, timing))); }
                             catch (RuntimeException failure) { s.result.completeExceptionally(failure); }
                         }
                     }
@@ -177,6 +222,7 @@ public final class ProcessRuntime implements AutoCloseable {
             flights.put(owner, f);
             f.task = new FutureTask<>(() -> { run(f); return null; });
             try {
+                f.enqueuedNs = f.timingId == 0 ? 0 : System.nanoTime();
                 executor.execute(f.task);
             } catch (RejectedExecutionException ex) {
                 // Queue full: drop the prewarm hint only. Demand still gets its own slot.
@@ -196,7 +242,10 @@ public final class ProcessRuntime implements AutoCloseable {
             Flight created = f;
             f.task = new FutureTask<>(() -> { run(created); return null; });
             f.holders.add(s); s.held.add(f);
-            try { executor.execute(f.task); }
+            try {
+                f.enqueuedNs = f.timingId == 0 ? 0 : System.nanoTime();
+                executor.execute(f.task);
+            }
             catch (RejectedExecutionException ex) {
                 flights.remove(owner, f); f.result.completeExceptionally(ex); throw ex;
             }
@@ -204,13 +253,21 @@ public final class ProcessRuntime implements AutoCloseable {
         return f.result;
     }
     private void run(Flight f) {
+        long start = f.timingId == 0 ? 0 : System.nanoTime();
+        long buildEnd = 0, publishStart = 0, publishAcquired = 0, publishEnd = 0;
+        long completeStart = 0, completeEnd = 0;
+        ParticleTile tile = null;
+        boolean published = false;
         try {
             builds.incrementAndGet();
             observer.beforeBuild(f.owner);
             ParticleTile.check(() -> f.cancelled);
-            ParticleTile tile = ParticleTile.build(context, f.owner, () -> f.cancelled);
+            tile = ParticleTile.build(context, f.owner, () -> f.cancelled);
+            buildEnd = f.timingId == 0 ? 0 : System.nanoTime();
             observer.beforePublish(f.owner);
+            publishStart = f.timingId == 0 ? 0 : System.nanoTime();
             synchronized (gate) {
+                publishAcquired = f.timingId == 0 ? 0 : System.nanoTime();
                 ParticleTile.check(() -> closed || f.cancelled || flights.get(f.owner) != f);
                 completed.put(f.owner, tile);
                 while (completed.size() > budget.completedTiles()) {
@@ -218,8 +275,12 @@ public final class ProcessRuntime implements AutoCloseable {
                 }
                 successes.incrementAndGet();
                 // Cache publication precedes callbacks; cleanup compares unique flight identity.
+                completeStart = f.timingId == 0 ? 0 : System.nanoTime();
                 f.result.complete(tile);
+                completeEnd = f.timingId == 0 ? 0 : System.nanoTime();
                 flights.remove(f.owner, f);
+                published = true;
+                publishEnd = f.timingId == 0 ? 0 : System.nanoTime();
             }
         } catch (Throwable ex) {
             synchronized (gate) {
@@ -228,6 +289,25 @@ public final class ProcessRuntime implements AutoCloseable {
                 f.result.completeExceptionally(ex);
                 flights.remove(f.owner, f);
             }
+        } finally {
+            if (f.timingId != 0) WorldGenProfiler.stutterLog("SAMPLING", "tile-" + diagnosticId + "-" + f.timingId,
+                    diagnosticLabel() + " flight=" + f.timingId + " owner=" + f.owner
+                    + " submitterWindow=" + (f.timing == null ? 0 : f.timing.id)
+                    + " task=" + (f.timing == null ? "external" : f.timing.task)
+                    + " submittedNs=" + f.submittedNs + " startNs=" + start + " endNs=" + System.nanoTime()
+                    + " dispatchDelayNs=" + (start - f.submittedNs)
+                    + " queueDispatchNs=" + (start - f.enqueuedNs)
+                    + " inputNs=" + (tile == null ? -1 : tile.inputNs)
+                    + " kernelNs=" + (tile == null ? -1 : tile.kernelNs)
+                    + " buildNs=" + (tile == null ? -1 : tile.buildNs)
+                    + " buildOtherNs=" + (tile == null ? -1 : tile.buildNs - tile.inputNs - tile.kernelNs)
+                    + " buildToPublishAttemptNs=" + (publishStart == 0 ? -1 : publishStart - buildEnd)
+                    + " publishGateWaitNs=" + (publishAcquired == 0 ? -1 : publishAcquired - publishStart)
+                    + " completeCallbacksNs=" + (completeEnd == 0 ? -1 : completeEnd - completeStart)
+                    + " publishHeldCallbacksNs=" + (published ? publishEnd - publishAcquired : -1)
+                    + " published=" + published
+                    + " overlap=build_contains_input_and_kernel;queueDispatch=execute_to_run_includes_scheduling_or_inline;"
+                    + "publishHeld_contains_dependent_assemble;shared_tile_not_exclusive_to_submitter;wall_not_CPU");
         }
     }
     private void release(Subscription s) {
@@ -269,9 +349,12 @@ public final class ProcessRuntime implements AutoCloseable {
         }
         return sample;
     }
-    private Sample assemble(double x, double z, TileGeometry.Footprint f,
-                            Map<TileGeometry.Owner, ParticleTile> tiles) {
+    private Sample timedAssemble(double x, double z, TileGeometry.Footprint f,
+                                 Map<TileGeometry.Owner, ParticleTile> tiles, SamplingTiming timing) {
+        long start = timing == null ? 0 : System.nanoTime();
+        try {
         var b = context.sampleBase(x, z);
+        if (timing != null) timing.baseNs.add(System.nanoTime() - start);
         if (context.definition().mode() == ProcessContext.Mode.OFF) {
             return new Sample(context.identity(), b, b.eB(), b.yB());
         }
@@ -287,6 +370,11 @@ public final class ProcessRuntime implements AutoCloseable {
         double eP = context.assemble(b.eB(), delta);
         if (!Double.isFinite(eP)) throw new IllegalStateException("invalid P point");
         return new Sample(context.identity(), b, eP, context.height(eP));
+        } finally {
+            if (timing != null) {
+                timing.assembles.increment(); timing.assembleNs.add(System.nanoTime() - start);
+            }
+        }
     }
     public Metrics metrics() {
         synchronized (gate) {

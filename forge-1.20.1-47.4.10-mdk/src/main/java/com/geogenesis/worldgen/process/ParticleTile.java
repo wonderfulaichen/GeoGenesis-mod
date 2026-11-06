@@ -8,6 +8,9 @@ import java.util.function.BooleanSupplier;
 final class ParticleTile {
     private final TileGeometry.Owner owner;
     private final float[] delta;
+    // Filled only under the existing stutter gate; task-owned, never used by terrain math.
+    long inputNs, kernelNs, buildNs;
+    private static long now(boolean timed) { return timed ? System.nanoTime() : 0; }
     private ParticleTile(TileGeometry.Owner owner, float[] delta) {
         this.owner = owner;
         this.delta = delta;
@@ -18,8 +21,11 @@ final class ParticleTile {
         }
     }
     static ParticleTile build(ProcessContext ctx, TileGeometry.Owner owner, BooleanSupplier cancelled) {
+        boolean timed = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled();
+        long start = now(timed);
         check(cancelled);
         float[] pre = buildInput(ctx, owner, cancelled);
+        long inputEnd = now(timed);
         float[] flat = pre.clone();
         var d = ctx.definition();
         var kernel = new ErosionEngine(d.xs(), d::particle, 8);
@@ -28,8 +34,10 @@ final class ParticleTile {
             return ctx.resistance(x, z);
         });
         check(cancelled);
+        long kernelStart = now(timed);
         kernel.runErosionOnFlat(flat, pre, 146, 128, owner.originX(), owner.originZ(),
                 ctx.seaE(), d.strength(), null, (float) d.terrain().horizontalScale());
+        long kernelEnd = now(timed);
         // The historical kernel can return/throw on interruption: never publish that buffer.
         check(cancelled);
         float[] delta = new float[128 * 128];
@@ -41,7 +49,11 @@ final class ParticleTile {
             delta[z * 128 + x] = limitedDelta(flat[i], pre[i]);
         }
         check(cancelled);
-        return new ParticleTile(owner, delta);
+        ParticleTile tile = new ParticleTile(owner, delta);
+        tile.inputNs = inputEnd - start;
+        tile.kernelNs = kernelEnd - kernelStart;
+        tile.buildNs = now(timed) - start;
+        return tile;
     }
     static float[] buildInput(ProcessContext ctx, TileGeometry.Owner owner, BooleanSupplier cancelled) {
         float[] input = new float[146 * 146];

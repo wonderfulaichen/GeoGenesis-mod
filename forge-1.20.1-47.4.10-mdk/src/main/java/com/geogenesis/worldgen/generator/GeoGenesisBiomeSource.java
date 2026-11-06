@@ -86,8 +86,7 @@ public class GeoGenesisBiomeSource extends BiomeSource {
         Biomes.DRIPSTONE_CAVES, Biomes.LUSH_CAVES
     );
 
-    // 回退群系（plains）惰性解析，运行时一旦解析即永久缓存；确保永远非 null。
-    private static volatile Holder<Biome> fallback;
+    // Resolve fallback from the live registry; never retain a previous world's Holder.
 
     /**
      * 按 ResourceKey&lt;Biome&gt; 解析 Holder&lt;Biome&gt;，每次从当前服务器的 RegistryAccess 实时查找。
@@ -108,15 +107,10 @@ public class GeoGenesisBiomeSource extends BiomeSource {
         return null;
     }
 
-    /** 回退群系 — 必须永远非 null。第一次成功解析后永久缓存。 */
+    /** Resolve against the current server only; never cache pre-binding fallback. */
     private static Holder<Biome> fallbackBiome() {
-        Holder<Biome> h = fallback;
+        Holder<Biome> h = resolveBiome(Biomes.PLAINS);
         if (h != null) return h;
-        h = resolveBiome(Biomes.PLAINS);
-        if (h != null) {
-            fallback = h;
-            return h;
-        }
         // 终极兜底（理论上只在 server 未启动时走到，但此时 getNoiseBiome 不会被调用）
         throw new IllegalStateException(
             "Cannot resolve PLAINS biome — server not available?");
@@ -188,11 +182,13 @@ public class GeoGenesisBiomeSource extends BiomeSource {
     }
 
     public void setTerrain(GeoGenesisTerrain terrain) {
-        if (this.terrain != terrain) {
-            java.util.Arrays.fill(biomeCacheValues, null);
-            java.util.Arrays.fill(caveColInfo, 0);
+        synchronized (GeoGenesisGenerator.WORLD_LIFECYCLE) {
+            if (this.terrain != terrain) {
+                java.util.Arrays.fill(biomeCacheValues, null);
+                java.util.Arrays.fill(caveColInfo, 0);
+            }
+            this.terrain = terrain;
         }
-        this.terrain = terrain;
     }
 
     @Override
@@ -208,41 +204,26 @@ public class GeoGenesisBiomeSource extends BiomeSource {
         return possibleBiomes();
     }
 
-    private static boolean biomeInitLogged = false;
-
     @Override
     public Holder<Biome> getNoiseBiome(int x, int y, int z,
                                         Climate.Sampler sampler) {
-        // 1) 查缓存
+        synchronized (GeoGenesisGenerator.WORLD_LIFECYCLE) {
+            if (!GeoGenesisGenerator.WORLD_LIFECYCLE.isBound()) {
+                setTerrain(null);
+                return fallbackBiome(); // Never cache pre-Load fallback, at any coordinate.
+            }
+            setTerrain(GeoGenesisGenerator.buildTerrain(GeoGenesisGenerator.resolveParams()));
+            return sampleBoundBiome(x, y, z);
+        }
+    }
+
+    private Holder<Biome> sampleBoundBiome(int x, int y, int z) {
         int slot = biomeCacheSlot(x, z);
         if (biomeCacheKeys[slot] == ((long)x << 32 | (z & 0xFFFFFFFFL)) && biomeCacheValues[slot] != null) {
             return biomeCacheValues[slot];
         }
 
-        // 2) 地形未初始化时：出生点搜索阶段，快速返回（避免 172ms 全管线初始化阻塞数千次查询）
-        if (terrain == null) {
-            // quart 坐标 256×256 = 块坐标 1024×1024 = 64 chunk × 64 chunk 出生区域
-            if (x >= -256 && x <= 256 && z >= -256 && z <= 256) {
-                Holder<Biome> plains = resolveBiome(Biomes.PLAINS);
-                if (plains != null) {
-                    biomeCacheKeys[slot] = ((long)x << 32 | (z & 0xFFFFFFFFL));
-                    biomeCacheValues[slot] = plains;
-                    return plains;
-                }
-            }
-            // 超出出生区域 → 正常初始化
-            long t0 = System.nanoTime();
-            terrain = GeoGenesisGenerator.buildTerrain(GeoGenesisGenerator.resolveParams());
-            if (!biomeInitLogged) {
-                biomeInitLogged = true;
-                long dt = (System.nanoTime() - t0) / 1000000;
-                LOGGER.info("[PERF] BiomeSource.getNoiseBiome first call: buildTerrain={}ms at quart({},{})",
-                    dt, x, z);
-            }
-        }
-        if (terrain == null) {
-            return fallbackBiome();
-        }
+        // Terrain identity was refreshed before cache lookup under the lifecycle monitor.
 
         // 3) 采样 Cell + 分类
         // ★ 2026-08-09 无伤优化：sampleCellLight（纯 e 场+气候+分类，无侵蚀）替代 sampleCell。

@@ -427,6 +427,11 @@ public final class HydrologyPipeline {
         final boolean metricsOn = HydrologyMetrics.enabled();
         final long metricsTask = HydrologyMetrics.newTaskId();
         final int metricsCx = request.centerBlockX(), metricsCz = request.centerBlockZ();
+        // Diagnostic-only thread-local scope: all requests incl. prewarm, closed even on failure.
+        try (var samplingTiming = input instanceof ProcessModelTerrainInput process
+                ? process.beginSamplingTiming("hydro=" + metricsTask + ",center=" + metricsCx + "," + metricsCz
+                        + ",radius=" + radius + ",layer=" + (layer == null ? "production" : layer.tag()))
+                : null) {
         // 窗口局部计数（关闭时 null）：[0]调用 [1]命中 [2]未命中 [3]bedSource 调用。
         final long[] windowStats = metricsOn ? new long[4] : null;
         // 缓存构建和计数包装共用此判定。
@@ -914,6 +919,7 @@ public final class HydrologyPipeline {
                 surface.level(), lakeResult.depth(), lakeResult.lake(), surface.parent(),
                 river.discharge(), river.channel(), river.width(), lakeResult, river, deathMask,
                 waterSurface, rounds, converged, residual);
+        }
     }
 
     /** 首次湖水量平衡求解；finally 在求解正常返回或抛出时结束 hydro.lake.first。 */

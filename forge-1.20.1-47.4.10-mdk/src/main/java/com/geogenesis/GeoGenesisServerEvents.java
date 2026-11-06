@@ -28,14 +28,12 @@ public final class GeoGenesisServerEvents {
             // Forge posts Load before initial spawn marks a new world's level data initialized.
             GeoGenesisWorldData data = GeoGenesisWorldData.get(s);
             data.initializeAlgorithm(!s.getServer().getWorldData().overworldData().isInitialized());
-            GeoGenesisGenerator.setCurrentWorldMorphBase(data.usesMorphBase());
             // 按存档级地形参数：读取（或首次冻结）当前世界参数，注入生成器/群系源。
             if (data.getParams() == null) {
                 // 首次加载且尚无存档参数：把当前全局 toml 模板冻结进存档，实现 per-save 隔离。
                 data.setParams(GeoGenesisConfig.INSTANCE.buildParams());
             }
-            GeoGenesisGenerator.setCurrentWorldParams(data.getParams());
-            GeoGenesisGenerator.setWorldSeed(s.getSeed());
+            GeoGenesisGenerator.bindWorld(s.getSeed(), data.getParams(), data.usesMorphBase());
             if (s.getChunkSource().getGenerator() instanceof GeoGenesisGenerator generator) {
                 generator.initializeForWorld();
             }
@@ -54,6 +52,7 @@ public final class GeoGenesisServerEvents {
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel() instanceof ServerLevel s && s.dimension() == Level.OVERWORLD) {
+            GeoGenesisGenerator.unbindWorld();
             com.geogenesis.diagnostics.WorldGenProfiler.reportNow("世界卸载总计");
         }
     }

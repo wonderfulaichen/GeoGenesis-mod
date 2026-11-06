@@ -46,6 +46,10 @@ public final class ProcessModelTerrainInput implements ModelTerrainInput, AutoCl
         sea = new HeightCurve(d.terrain(), d.minY(), d.maxY()).seaLevelY();
     }
 
+    /** Diagnostics only: bound by pipeline finally, not adapter lifetime or global counters. */
+    public ProcessRuntime.SamplingTiming beginSamplingTiming(String task) {
+        return runtime.beginSamplingTiming(task);
+    }
     public ProcessContext context() { return context; }
     public ProcessRuntime.Metrics metrics() { return runtime.metrics(); }
     @Override public String cacheNamespace() { return context.identity(); }
@@ -67,14 +71,20 @@ public final class ProcessModelTerrainInput implements ModelTerrainInput, AutoCl
         return baseHeightAtBlock(bx, bz);
     }
     @Override public double processHeightAtBlock(double bx, double bz) {
+        var timing = runtime.currentSamplingTiming();
+        long start = timing == null ? 0 : System.nanoTime();
         ProcessRuntime.Subscription subscription;
         synchronized (gate) {
             checkOpen();
             subscription = runtime.requestExact(bx / hs, bz / hs);
             subscriptions.add(subscription);
         }
+        long requested = timing == null ? 0 : System.nanoTime();
+        long awaited = requested;
         try {
-            double value = subscription.await().yP();
+            double value;
+            try { value = subscription.await().yP(); }
+            finally { if (timing != null) awaited = System.nanoTime(); }
             checkOpen();
             return value;
         } catch (InterruptedException e) {
@@ -83,6 +93,7 @@ public final class ProcessModelTerrainInput implements ModelTerrainInput, AutoCl
         } catch (ExecutionException e) {
             throw new CompletionException("exact P model query failed", e.getCause());
         } finally {
+            if (timing != null) timing.request(requested - start, awaited - requested);
             synchronized (gate) { subscriptions.remove(subscription); }
             subscription.close();
         }
