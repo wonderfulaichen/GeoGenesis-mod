@@ -12,8 +12,10 @@ public final class WorldLakeSurfaceProbe {
         var water = corners(0, 0);
         water.put(new Point(4, 0), lake(new Point(4, 0), 10));
         var shore = WorldLakeSurface.resolve(0, 0, 4, water, (x,z)->12-x);
-        check(Double.isNaN(shore.levelAt(2, 2)) && shore.levelAt(3, 2)==10,
-                "shore follows integer terrain at x=3, not the old x=4 membership gate");
+        // resolve() certifies cells touching a flooded corner; final writeback still tests actual P.
+        // Wet corner x=3 therefore certifies block x=2, but cannot reach block x=1.
+        check(Double.isNaN(shore.levelAt(1, 2)) && shore.levelAt(2, 2)==10 && shore.levelAt(3, 2)==10,
+                "wet corner x=3 certifies adjacent block x=2, without extending to x=1");
         var isolated = WorldLakeSurface.resolve(0, 0, 4, water, (x,z)->x==2?11:0);
         check(Double.isNaN(isolated.levelAt(1, 2)) && isolated.levelAt(3, 2)==10,
                 "one-block ridge blocks a disconnected low pocket");

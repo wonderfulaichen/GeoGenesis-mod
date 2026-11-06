@@ -6,10 +6,10 @@ package com.geogenesis.worldgen.hydrology;
  * @param blockX          方块 X（世界坐标）
  * @param blockZ          方块 Z（世界坐标）
  * @param originalGroundY 无侵蚀基线高度
- * @param carvedGroundY   计划雕刻后床面高度（湖列 = original：湖不雕刻）
+ * @param carvedGroundY   计划雕刻后床面高度（普通湖列 = original；入湖河槽可携带渐隐雕刻）
  * @param waterSurfaceY   计划水面高度（不出水列 = carved）
  * @param lipSurfaceY     岸沿（lip）水面高度 —— 与 waterSurfaceY 之差即瀑布水幕
- * @param erosion         河床下切量（≥0；湖列 0）
+ * @param erosion         河床下切量（≥0；普通湖列 0，lake-owned mouth 保留渐隐量）
  * @param erosionMask     侵蚀让步掩码：河心 0（床面不吃侵蚀 delta）、谷外 1
  *                        —— 雕刻量 cut 的淡出同步归零，边界连续无断面墙
  * @param fillWater       本列是否放水

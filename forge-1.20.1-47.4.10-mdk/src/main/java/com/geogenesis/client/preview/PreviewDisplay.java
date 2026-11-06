@@ -485,7 +485,20 @@ public class PreviewDisplay extends AbstractWidget {
     // 122 = 预览启用新水文叠加，磁盘缓存增存 riverType/riverSurfaceY，
     //       旧缓存缺河流水面字段，必须失效重建。
     // 123 = 存档种子原子绑定，禁止未绑定时用默认12345发布生产地形；旧身份缓存失效。
-    private static final int CACHE_SCHEMA_VERSION = 123;
+    // 124 = 2026-11-06 方案A候选：已认证浅湖降级门槛与湖缘EPS统一；恢复lake/no-carve。
+    //       已授权限定窗口候选对拍，不代表用户视觉验收；不改骨架/湖外河/宽深参数。
+    // 125 = B replaces A: authoritative lake-owned mouth water, original river cut fading
+    //       over the last 4 blocks of the real mouth tangent into the existing lake floor.
+    // 126 = Unaccepted authority-only fallback candidate: remove B's fixed-four fade,
+    //       retain pre-B shore carving; receiving-bed morphology remains unresolved.
+    // 127 = Water-ownership/connector decoupling diagnostic candidate: R3 retains pre-B
+    //       river eligibility/surface/bed; lake authority applies only at publication.
+    //       Receiving-bed morphology is NOT completed or visually accepted.
+    // 128 = Candidate bounded same-basin inlet morphology, independent of published skeleton.
+    //       Retains schema127 water authority; geometric design, not hydraulic/sediment physics.
+    // 129 = Basin-wide receiver hard pins + original source section/gradient stencils.
+    //       Prevents overlapping morphology from cutting another inlet's natural receiver.
+    private static final int CACHE_SCHEMA_VERSION = 129;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
@@ -1049,7 +1062,9 @@ public class PreviewDisplay extends AbstractWidget {
     // ================================================================
 
     public void setTerrain(GeoGenesisTerrain terrain, long seed, TerrainParams params) {
+        GeoGenesisTerrain retired = this.terrain;
         this.terrain = terrain;
+        if (retired != null && retired != terrain) retired.closeProcessErosion();
         this.seed = seed;
         this.seaLevel = params.seaLevel();
         this.maxY = params.maxY();
@@ -1684,6 +1699,7 @@ public class PreviewDisplay extends AbstractWidget {
 
     public void close() {
         pool.shutdown();
+        if (terrain != null) terrain.closeProcessErosion();
         mc.getTextureManager().release(texLoc);
         texture.close();
         // ★ 磁盘持久化：关屏保存全部历史（后台线程 + tmp 原子写，不阻塞 UI）。

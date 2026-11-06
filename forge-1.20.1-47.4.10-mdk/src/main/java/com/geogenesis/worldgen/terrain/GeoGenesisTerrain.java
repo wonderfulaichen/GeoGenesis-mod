@@ -161,6 +161,9 @@ public final class GeoGenesisTerrain {
         hydrologyExperiment.setSeed(worldSeed);
     }
 
+    /** Retire this terrain's private P runtime; invoke outside the world lifecycle monitor. */
+    public void closeProcessErosion() { generator.closeProcessErosion(); }
+
     /** 实验专用水文 chunk 结果；默认游戏路径不调用。 */
     public HydrologyChunkResult calculateHydrologyChunk(int chunkX, int chunkZ) {
         return hydrologyExperiment.calculate(chunkX, chunkZ);
@@ -577,14 +580,16 @@ public final class GeoGenesisTerrain {
             int lx = Math.floorMod(column.blockX(), 16);
             int lz = Math.floorMod(column.blockZ(), 16);
             Cell cell = cells[lx * 16 + lz];
-            // ★ 湖列（2026-09-09 B1）：本 cell.height 已是【侵蚀后】地面（extractFromTile
-            //   先跑），湖列不雕刻（carved=original）也不做河床侵蚀减法 —— 只判水：
+            // 普通湖列不雕刻；authority-only候选的lake-owned mouth保留原臂河槽下切量。
+            // 本 cell.height 已是侵蚀后地面，先施加该量，再共用权威湖面的放水保护。
+            // ★ 普通湖列（2026-09-09 B1）：只判水：
             //   cell.height < spill − 0.5 → 出水。湖岸 = 侵蚀后地形与 spill 的等高线。
             //   侵蚀切深盆底 → 淹更多；侵蚀淤积垫高 → 湖岸内缩/该格变滩（物理正确）。
             //   这是湖"吃侵蚀后地形"的真正落点（carver 的 original 是无侵蚀基线，判不得）。
             // ★ 2026-10-20：model 链湖列恒 lakeNode=null ⇒ 逃逸重算永久短路，
             //   湖水位 = model 链发布的盆单平面（WorldLakeSurface / WorldBasinRouting）。
             if (column.lakePlan()) {
+                cell.height -= Math.max(0.0, column.erosion());
                 double spill = column.waterSurfaceY();
                 // ★ 湖岸出水判据与【方块放置】对齐（2026-10-25）
                 //

@@ -2414,6 +2414,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         if (input.integerWaterConnector()) {
             applyIntegerWaterConnector(ctx, plans);
         }
+        applyLakeMorphology(ctx, plans);
         for (int lx = 0; lx < 16; lx++) {
             for (int lz = 0; lz < 16; lz++) {
                 int idx = lx * 16 + lz;
@@ -2664,8 +2665,12 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         double resolvedLakeSurface = sharedLake && Double.isFinite(sharedSurface) ? sharedSurface
                 : Double.isFinite(borrowedLakeSurface) ? borrowedLakeSurface
                 : rd.worldWater()==null && Double.isFinite(localLakeSurface) ? localLakeSurface : surface;
-        if (BOUNDARY_PORTS && isLakeBlock
-                && !isLakeAt(eroded, resolvedLakeSurface)) {
+        // Candidate 127: ownership/connector decoupling, NOT a solved receiving-bed connection.
+        // Keep the pre-B shallow-shore carving predicate and original bed exactly.
+        // Only the water identity/plane of an already submerged certified lake column changes.
+        boolean lakeOwnedMouth = false;
+        boolean submergedLake = isLakeBlock && eroded < resolvedLakeSurface - LAKE_EDGE_EPS;
+        if (BOUNDARY_PORTS && isLakeBlock && !isLakeAt(eroded, resolvedLakeSurface)) {
             SegmentIndex.Hit shoreHit = c.segIndex.nearest(blockX, blockZ);
             if (shoreHit == null && nearBorder) {
                 for (int t = 0; t < 9; t++) {
@@ -2683,6 +2688,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
                 }
             }
             if (shoreHit != null && shoreHit.half > 0) {
+                lakeOwnedMouth = submergedLake;
                 isLakeBlock = false;
                 half = shoreHit.half; depth = shoreHit.depth; bestDist = shoreHit.dist;
                 if (Double.isFinite(shoreHit.surface)) surface = shoreHit.surface;
@@ -2826,6 +2832,14 @@ public final class ModelHydrologyProvider implements AutoCloseable {
                         blockX, blockZ, fill, half, bestDist,
                         depth, surface, carved, c.rdRx, c.rdRz);
             }
+            if (lakeOwnedMouth) {
+                // Preserve the pre-B cut, without an arbitrary endpoint fade or extra lake cut.
+                // This fixes ownership only; bed mismatch remains explicitly unresolved.
+                // R3 sees the unchanged pre-B river plan, including its original fill/surface.
+                // Lake ownership is publication-only and survives any connector cut.
+                return new ColumnPlan(blockX, blockZ, eroded, surface, carved, depth,
+                        half, fill, false, seaBed, resolvedLakeSurface);
+            }
             return ColumnPlan.river(blockX, blockZ, eroded, surface, carved, depth,
                     half, fill, seaBed);
         } else {
@@ -2846,6 +2860,99 @@ public final class ModelHydrologyProvider implements AutoCloseable {
             }
             return ColumnPlan.plain(blockX, blockZ, surface);
         }
+    }
+
+    // Morphology payload lifetime follows the bounded region cache; no global seed/coordinate inputs.
+    private final Map<RegionData, Map<Integer, LakeInletMorphology.Plan>> inletPlans =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    private void applyLakeMorphology(ColumnCtx c, ColumnPlan[] plans) {
+        if (c.rd.worldWater() != null || !c.sharedDoms.isEmpty() || c.rd.skel() == null) return;
+        int[] ids = c.p.lakeResult().basinId();
+        if (ids == null) return;
+        for (int i = 0; i < plans.length; i++) {
+            ColumnPlan a = plans[i];
+            if (!a.lake() && !Double.isFinite(a.publishedLakeSurface())) continue;
+            int gx = (int)Math.round((a.blockX()-c.rd.originX())/(double)STEP);
+            int gz = (int)Math.round((a.blockZ()-c.rd.originZ())/(double)STEP);
+            if (gx < 0 || gz < 0 || gx >= c.n || gz >= c.n) continue;
+            int basin = ids[gx*c.n+gz];
+            if (basin < 0) continue;
+            LakeInletMorphology.Plan morph;
+            synchronized (inletPlans) {
+                Map<Integer, LakeInletMorphology.Plan> map = inletPlans.computeIfAbsent(c.rd,
+                        key -> new HashMap<>());
+                if (!map.containsKey(basin)) map.put(basin, buildLakeMorphology(c, basin));
+                morph = map.get(basin);
+            }
+            if (morph == null) continue; // UNKNOWN window/authority, never full-strength fallback.
+            double cut = morph.cut(a.blockX(),a.blockZ());
+            if (!morph.domain().wet()[morph.domain().index(a.blockX(),a.blockZ())]) continue;
+            plans[i] = new ColumnPlan(a.blockX(),a.blockZ(),a.eroded(),a.surface(),
+                    a.eroded()-cut,cut,a.half(),a.fill(),a.lake(),a.seaBed(),a.publishedLakeSurface());
+        }
+    }
+
+    private LakeInletMorphology.Plan buildLakeMorphology(ColumnCtx c, int basin) {
+        var lr = c.p.lakeResult();
+        if (lr.basins().get(basin).catchmentTruncated()) return null;
+        int[] ids = lr.basinId();
+        int minX=c.n, minZ=c.n, maxX=-1, maxZ=-1;
+        for (int k=0;k<ids.length;k++) if (ids[k]==basin && c.p.lake()[k]) {
+            int x=k/c.n,z=k%c.n;
+            if (x==0 || z==0 || x==c.n-1 || z==c.n-1) return null;
+            minX=Math.min(minX,x); maxX=Math.max(maxX,x);
+            minZ=Math.min(minZ,z); maxZ=Math.max(maxZ,z);
+        }
+        if (maxX<0) return null;
+        int ox=c.rd.originX()+(minX-1)*STEP, oz=c.rd.originZ()+(minZ-1)*STEP;
+        int nx=(maxX-minX+2)*STEP+1, nz=(maxZ-minZ+2)*STEP+1;
+        boolean[] wet=new boolean[nx*nz];
+        double[] p=new double[wet.length];
+        double eta=lr.basins().get(basin).level();
+        for (int x=0;x<nx;x++) for (int z=0;z<nz;z++) {
+            int k=x*nz+z, wx=ox+x, wz=oz+z;
+            int a=(int)Math.round((wx-c.rd.originX())/(double)STEP);
+            int b=(int)Math.round((wz-c.rd.originZ())/(double)STEP);
+            p[k]=input.processHeightAtBlock(wx,wz);
+            wet[k]=ids[a*c.n+b]==basin && c.p.lake()[a*c.n+b] && p[k]<eta-LAKE_EDGE_EPS;
+        }
+        var domain=new LakeInletMorphology.Domain(ox,oz,nx,nz,wet,p);
+        List<LakeInletMorphology.Inlet> inlets=new ArrayList<>();
+        for (int ti=0;ti<c.rd.skel().traces.size();ti++) {
+            var trace=c.rd.skel().traces.get(ti);
+            if (trace.end!=DeterministicSkeleton.End.MOUTH_LAKE || ids[trace.mouthCell()]!=basin) continue;
+            var sh=c.rd.shapedPolys().get(ti);
+            for (int j=1;j<sh.size();j++) {
+                int x=(int)Math.round(sh.x[j]),z=(int)Math.round(sh.z[j]);
+                int k=domain.index(x,z);
+                if (k<0 || !wet[k]) continue;
+                ColumnPlan anchor=decideColumn(c,x,z);
+                if (anchor.half()<=0) anchor=decideColumn(c,(int)Math.round(sh.x[j-1]),
+                        (int)Math.round(sh.z[j-1]));
+                if (anchor.half()>0) inlets.add(new LakeInletMorphology.Inlet(ti,x,z,
+                        anchor.half(),anchor.carved(),0));
+                break;
+            }
+        }
+        double[] baseline=new double[p.length];
+        for(int x=0;x<nx;x++) for(int z=0;z<nz;z++) {
+            int k=x*nz+z;
+            if(!wet[k]) continue;
+            ColumnPlan a=decideColumn(c,ox+x,oz+z);
+            baseline[k]=a.half()>0 ? a.depth() : 0;
+            if(input.integerWaterConnector() && a.connectorEndpoint()) {
+                double bed=a.carved();
+                for(int dir=0;dir<4;dir++) {
+                    ColumnPlan b=decideColumn(c,ox+x+CONNECTOR_DX[dir],oz+z+CONNECTOR_DZ[dir]);
+                    if(!b.connectorEndpoint()) continue;
+                    int top=Math.min(a.integerHigh(),b.integerHigh());
+                    if(Math.max(a.integerLow(),b.integerLow())>top) bed=Math.min(bed,top-1e-6);
+                }
+                baseline[k]=p[k]-bed;
+            }
+        }
+        return LakeInletMorphology.solve(domain,inlets,baseline);
     }
 
     /** 3×3 邻区偏移（与抽取前 columnsForBody 的局部数组逐值相同；R3 抽成类常量）。 */
@@ -2952,16 +3059,23 @@ public final class ModelHydrologyProvider implements AutoCloseable {
      *
      * @param eroded  P（侵蚀后地形）
      * @param surface 最终水面（湖列 = 湖水位；河列已过 containedSurface / 岸沿降低）
-     * @param carved  计划床面 = {@code eroded − depth}（湖/普通列不雕刻，发布时用 original）
-     * @param depth   下切量（河列最终值，含 steepExtra；其他列 0）
-     * @param half    最终半宽（河列 &gt;0；湖/普通列 0）
+     * @param carved  计划床面 = {@code eroded − depth}（普通湖/普通列发布时用 original）
+     * @param depth   下切量（河列含 steepExtra；lake-owned mouth 保留原臂量；普通湖为 0）
+     * @param half    最终半宽（河列及 lake-owned mouth &gt;0；普通湖/普通列 0）
      * @param fill    是否放水（仅河列有意义）
      * @param lake    是否湖列
      * @param seaBed  是否「已在海平面以下的原海床」⇒ 连接器不得当端点、不得改它
      */
     private record ColumnPlan(int blockX, int blockZ, double eroded, double surface,
                               double carved, double depth, double half,
-                              boolean fill, boolean lake, boolean seaBed) {
+                              boolean fill, boolean lake, boolean seaBed,
+                              double publishedLakeSurface) {
+
+        private ColumnPlan(int blockX, int blockZ, double eroded, double surface,
+                           double carved, double depth, double half,
+                           boolean fill, boolean lake, boolean seaBed) {
+            this(blockX, blockZ, eroded, surface, carved, depth, half, fill, lake, seaBed, Double.NaN);
+        }
 
         static ColumnPlan lake(int blockX, int blockZ, double eroded, double lakeSurface) {
             return new ColumnPlan(blockX, blockZ, eroded, lakeSurface, Double.NaN, 0.0, 0.0,
@@ -2998,10 +3112,12 @@ public final class ModelHydrologyProvider implements AutoCloseable {
 
     /** 发布一条列 —— 与抽取前三处 {@code out.add} 逐位一致。 */
     private static HydrologyBlockCarvedColumn publishColumn(ColumnPlan plan, double original) {
-        if (plan.lake()) {
-            double lakeSurface = plan.surface();
-            return new HydrologyBlockCarvedColumn(plan.blockX(), plan.blockZ(), original, original,
-                    lakeSurface, lakeSurface, 0.0, 1.0, true, true, null, lakeSurface);
+        if (plan.lake() || Double.isFinite(plan.publishedLakeSurface())) {
+            double lakeSurface = Double.isFinite(plan.publishedLakeSurface())
+                    ? plan.publishedLakeSurface() : plan.surface();
+            return new HydrologyBlockCarvedColumn(plan.blockX(), plan.blockZ(), original,
+                    plan.half() > 0 ? plan.carved() : original,
+                    lakeSurface, lakeSurface, plan.depth(), 1.0, true, true, null, lakeSurface);
         }
         if (plan.half() > 0) {
             return new HydrologyBlockCarvedColumn(plan.blockX(), plan.blockZ(), original,
@@ -3064,7 +3180,8 @@ public final class ModelHydrologyProvider implements AutoCloseable {
                         + self.blockX() + "," + self.blockZ() + ") depth=" + depthNew);
             }
             plans[i] = new ColumnPlan(self.blockX(), self.blockZ(), self.eroded(), self.surface(),
-                    carvedNew, depthNew, self.half(), self.fill(), self.lake(), self.seaBed());
+                    carvedNew, depthNew, self.half(), self.fill(), self.lake(), self.seaBed(),
+                    self.publishedLakeSurface());
             recordConnectorCut(primary, self.carved() - carvedNew);
         }
         recordDiagonalOnlyFailures(primary, pristine, foreignCtx, foreignPlan);
@@ -4354,15 +4471,9 @@ public final class ModelHydrologyProvider implements AutoCloseable {
     }
 
     /**
-     * ★ 湖泊判定的【连续口径】—— 与游戏落块层同一物理语义。
-     *
-     * <p>游戏在 {@code GeoGenesisTerrain} 用 {@code cell.height < spill − 0.5} 判湖，
-     * 其中 {@code cell.height} 是<b>侵蚀后</b>地形、{@code spill} 是水位。
-     * 本方法把同一判据用在【逐方块】上：{@code eroded} 是本块侵蚀后地形、
-     * {@code surface} 是双线性插值的水位 ⇒ 湖岸落在地形与水位面的交线上，
-     * 是连续曲线而非 4 块网格的直角台阶。</p>
-     *
-     * <p>{@code 0.5} 与游戏层一致（"至少半格水柱才算湖"）。</p>
+     * 历史半格门槛，方案 A 候选不再调用；保留原值，不作全局湖域判据。
+     * 当前湖缘精修使用 LAKE_EDGE_EPS，GeoGenesisTerrain 已认证湖写回允许等水位。
+     * 不能对非湖逃逸高程调用本方法来扩湖。
      */
     private static boolean isLakeAt(double erodedGroundY, double waterSurfaceY) {
         return erodedGroundY < waterSurfaceY - 0.5;
