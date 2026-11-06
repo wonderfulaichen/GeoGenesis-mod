@@ -2623,3 +2623,28 @@ tasks.register('runWorldSeedLifecycleProbe', JavaExec) {
     mainClass = 'com.geogenesis.diagnostics.WorldSeedLifecycleProbe'
     workingDir = projectDir
 }
+
+// Process runtime concurrency checks, with bounded timeouts and assertion-bearing exits.
+tasks.register('runProcessRuntimeLifecycleProbe', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.process.ProcessRuntimeLifecycleProbe'
+    maxHeapSize = '2g'
+}
+tasks.register('runProcessRuntimeCheck', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.process.ProcessRuntimeCheck'
+    maxHeapSize = '2g'
+}
+
+tasks.register('runProcessLifecycleCheck', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.process.ProcessLifecycleCheck'
+    maxHeapSize = '2g'
+}
+
+// Actual production sampleE cache regression; forks default and cache-off JVMs.
+tasks.register('runBaseSampleCacheProbe', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.diagnostics.BaseSampleCacheProbe'
+    maxHeapSize = '1g'
+}

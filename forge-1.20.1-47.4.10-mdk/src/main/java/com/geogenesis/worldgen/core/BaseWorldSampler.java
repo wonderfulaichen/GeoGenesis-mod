@@ -30,14 +30,12 @@ public final class BaseWorldSampler {
     private static final boolean SAMPLE_CACHE =
             !"false".equals(System.getProperty("geogenesis.baseSampleCache"));
 
-    /** 直接映射表：键为 wu 双精度位模式，值为 e 的位模式。先写值、后写键。 */
-    private final java.util.concurrent.atomic.AtomicLongArray cacheKeyX;
-    private final java.util.concurrent.atomic.AtomicLongArray cacheKeyZ;
-    private final java.util.concurrent.atomic.AtomicLongArray cacheValue;
-    private static final int CACHE_BITS = 18;                     // 262144 槽 × 3 × 8B = 6 MiB
+    /** 直接映射表：一次原子发布完整条目，避免同槽并发替换时键值撕裂；null 为空槽。 */
+    private record Entry(long x, long z, long bits) {}
+    private final java.util.concurrent.atomic.AtomicReferenceArray<Entry> sampleCache;
+    private static final int CACHE_BITS = 18;                     // 262144 槽
     private static final int CACHE_SIZE = 1 << CACHE_BITS;
     private static final int CACHE_MASK = CACHE_SIZE - 1;
-    private static final long CACHE_EMPTY = Long.MIN_VALUE;
 
     public BaseWorldSampler(long seed, TerrainParams params, int minY, int maxY, BaseWorldSettings settings) {
         this.params = params;
@@ -59,34 +57,21 @@ public final class BaseWorldSampler {
         regions.seed(seed);
         precipitation = new PrecipField(seed, terrain::height, params.latitudeScale(),
                 PrecipField.Params.defaults(), WindField.Params.defaults(), terrain.heightCurve().seaLevelY());
-        if (SAMPLE_CACHE) {
-            cacheKeyX = new java.util.concurrent.atomic.AtomicLongArray(CACHE_SIZE);
-            cacheKeyZ = new java.util.concurrent.atomic.AtomicLongArray(CACHE_SIZE);
-            cacheValue = new java.util.concurrent.atomic.AtomicLongArray(CACHE_SIZE);
-            for (int i = 0; i < CACHE_SIZE; i++) {
-                cacheKeyX.set(i, CACHE_EMPTY);
-                cacheKeyZ.set(i, CACHE_EMPTY);
-            }
-        } else {
-            cacheKeyX = null;
-            cacheKeyZ = null;
-            cacheValue = null;
-        }
+        sampleCache = SAMPLE_CACHE
+                ? new java.util.concurrent.atomic.AtomicReferenceArray<>(CACHE_SIZE) : null;
     }
 
     public double sampleE(double x, double z) {
-        if (cacheKeyX == null) return terrain.sampleE(x, z);
+        if (sampleCache == null) return terrain.sampleE(x, z);
         long a = Double.doubleToRawLongBits(x);
         long b = Double.doubleToRawLongBits(z);
         int slot = (int) (((a * 0x9E3779B97F4A7C15L) ^ (b * 0x632BE59BD9B4E019L)) >>> 40) & CACHE_MASK;
-        // 先读键：两键同时命中才认为值有效（写入时值先落地）。
-        if (cacheKeyX.get(slot) == a && cacheKeyZ.get(slot) == b) {
-            return Double.longBitsToDouble(cacheValue.get(slot));
+        Entry entry = sampleCache.get(slot);
+        if (entry != null && entry.x() == a && entry.z() == b) {
+            return Double.longBitsToDouble(entry.bits());
         }
         double e = terrain.sampleE(x, z);
-        cacheValue.set(slot, Double.doubleToRawLongBits(e));
-        cacheKeyZ.set(slot, b);
-        cacheKeyX.set(slot, a);
+        sampleCache.set(slot, new Entry(a, b, Double.doubleToRawLongBits(e)));
         return e;
     }
     /**

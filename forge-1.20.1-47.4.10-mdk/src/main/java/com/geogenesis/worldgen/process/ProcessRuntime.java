@@ -32,6 +32,7 @@ public final class ProcessRuntime implements AutoCloseable {
     interface Observer {
         default void beforeBuild(TileGeometry.Owner owner) throws Exception {}
         default void beforePublish(TileGeometry.Owner owner) throws Exception {}
+        default void beforeAssemble() throws Exception {}
     }
     // Diagnostic-only, task-local accounting. No global-total subtraction; no CPU sums.
     private static final AtomicLong DIAG_IDS = new AtomicLong();
@@ -83,6 +84,7 @@ public final class ProcessRuntime implements AutoCloseable {
     private final LinkedHashMap<Point, Sample> points = new LinkedHashMap<>(16, .75f, true);
     private final Map<TileGeometry.Owner, Flight> flights = new HashMap<>();
     private boolean closed;
+    private final Set<Subscription> subscriptions = new HashSet<>();
     private final AtomicLong builds = new AtomicLong(), successes = new AtomicLong(),
             failures = new AtomicLong(), cancellations = new AtomicLong(),
             /** 线程池满而内联执行的次数（>0 说明发生过 backpressure；不是错误，但要看分布）。 */
@@ -99,6 +101,7 @@ public final class ProcessRuntime implements AutoCloseable {
         final CompletableFuture<ParticleTile> result = new CompletableFuture<>();
         final Set<Subscription> holders = new HashSet<>();
         volatile boolean cancelled;
+        boolean settled; // Publication committed under gate, independent of callback completion.
         FutureTask<Void> task;
         long enqueuedNs;
         Flight(TileGeometry.Owner owner) {
@@ -114,10 +117,13 @@ public final class ProcessRuntime implements AutoCloseable {
         public CompletionStage<Sample> future() { return result.minimalCompletionStage(); }
         public Sample await() throws InterruptedException, ExecutionException { return result.get(); }
         public void cancel() {
+            List<Runnable> after = new ArrayList<>();
             synchronized (gate) {
-                result.cancel(false);
-                release(this);
+                if (released) return;
+                release(this, after);
+                after.add(() -> result.cancel(false));
             }
+            after.forEach(Runnable::run);
         }
         @Override public void close() { cancel(); }
     }
@@ -140,13 +146,7 @@ public final class ProcessRuntime implements AutoCloseable {
                 //   正解：拒绝即【内联执行】——绝不丢工作。线程池满说明该让调用方
                 //   自己承担这段计算（标准的 backpressure），产出与串行一致。
                 //   ParticleTile.build 不再回调 exactP（已核对）⇒ 内联不会递归。
-                (r, e) -> {
-                    if (e.isShutdown()) {
-                        throw new RejectedExecutionException("process runtime closed");
-                    }
-                    inlineFallbacks.incrementAndGet();
-                    r.run();
-                });
+                new ThreadPoolExecutor.AbortPolicy());
         if (WorldGenProfiler.stutterEnabled()) WorldGenProfiler.stutterLog("FRONTEND", "runtime-start-" + diagnosticId,
                 "event=runtimeCreated " + diagnosticLabel() + " monoNs=" + System.nanoTime());
     }
@@ -160,39 +160,46 @@ public final class ProcessRuntime implements AutoCloseable {
         TileGeometry.Footprint footprint = TileGeometry.footprint(x, z);
         Subscription s = new Subscription();
         SamplingTiming timing = samplingTiming.get();
+        Map<TileGeometry.Owner, CompletableFuture<ParticleTile>> deps = new LinkedHashMap<>();
+        List<Flight> dispatch = new ArrayList<>();
+        boolean rejected;
         synchronized (gate) {
-            if (closed) { s.result.completeExceptionally(new CancellationException("closed context")); return s; }
-            if (context.definition().mode() == ProcessContext.Mode.OFF) {
-                s.result.complete(remember(timedAssemble(x, z, footprint, Map.of(), timing))); return s;
-            }
-            Map<TileGeometry.Owner, CompletableFuture<ParticleTile>> deps = new LinkedHashMap<>();
-            try {
-                for (var owner : footprint.required()) deps.put(owner, acquire(owner, s));
-            } catch (RuntimeException ex) {
-                s.result.completeExceptionally(ex); release(s); return s;
-            }
-            CompletableFuture.allOf(deps.values().toArray(CompletableFuture[]::new)).whenComplete((v, ex) -> {
-                synchronized (gate) {
-                    if (!s.result.isDone()) {
-                        if (ex != null) s.result.completeExceptionally(ex);
-                        else if (closed) s.result.completeExceptionally(new CancellationException("closed context"));
-                        else {
-                            Map<TileGeometry.Owner, ParticleTile> tiles = new HashMap<>();
-                            deps.forEach((key, future) -> tiles.put(key, future.join()));
-                            try { s.result.complete(remember(timedAssemble(x, z, footprint, tiles, timing))); }
-                            catch (RuntimeException failure) { s.result.completeExceptionally(failure); }
-                        }
-                    }
-                    release(s);
+            rejected = closed;
+            if (!rejected) {
+                subscriptions.add(s);
+                if (context.definition().mode() != ProcessContext.Mode.OFF) {
+                    for (var owner : footprint.required()) deps.put(owner, acquire(owner, s, dispatch));
                 }
-            });
+            }
         }
+        if (rejected) {
+            s.result.completeExceptionally(new CancellationException("closed context"));
+            return s;
+        }
+        // Both already-ready dependencies and inline backpressure may run callbacks synchronously.
+        // Register and dispatch only after leaving gate.
+        CompletableFuture.allOf(deps.values().toArray(CompletableFuture[]::new)).whenComplete((v, ex) -> {
+            Sample sample = null;
+            Throwable failure = ex;
+            synchronized (gate) { if (s.released) return; }
+            if (failure == null) {
+                try {
+                    Map<TileGeometry.Owner, ParticleTile> tiles = new HashMap<>();
+                    deps.forEach((key, future) -> tiles.put(key, future.join()));
+                    observer.beforeAssemble();
+                    sample = timedAssemble(x, z, footprint, tiles, timing);
+                } catch (Throwable problem) { failure = problem; }
+            }
+            finish(s, sample, failure);
+        });
+        dispatch.forEach(this::dispatch);
         return s;
     }
     /**
-     * Equivalent to the retired CellGenerator tile prewarm. Never blocks, never throws,
-     * and never starves demand: when the executor queue is full the tile is simply
-     * skipped and built later on demand.
+     * Equivalent to the retired CellGenerator tile prewarm. Does not wait for hint-only
+     * builds: when the executor queue is full the tile is skipped and built later on demand.
+     * A concurrent demand holder can adopt a registered hint before dispatch; that tile
+     * then receives the same lossless inline backpressure as any other demand.
      *
      * <p>Tiles are pure functions of the frozen context, so submitting them early changes only
      * timing, never output. That is why this does not enter {@link ProcessContext#identity()}.</p>
@@ -221,28 +228,23 @@ public final class ProcessRuntime implements AutoCloseable {
     }
     /** Submit one tile unless already cached/in flight, or too little queue is left for demand. */
     private boolean prewarmOwner(TileGeometry.Owner owner) {
+        Flight f;
         synchronized (gate) {
             if (closed || completed.containsKey(owner) || flights.containsKey(owner)) return false;
             // Keep room for demand: a full queue would make acquire() hit AbortPolicy.
             // Prewarm is a hint, so it yields to real requests instead of crowding them out.
             int reserve = Math.max(1, budget.queuedTiles() / 2);
             if (executor.getQueue().remainingCapacity() <= reserve) return false;
-            Flight f = new Flight(owner);
+            f = new Flight(owner);
             f.requestKind = "prewarm";
             flights.put(owner, f);
             f.task = new FutureTask<>(() -> { run(f); return null; });
-            try {
-                f.enqueuedNs = f.timingId == 0 ? 0 : System.nanoTime();
-                executor.execute(f.task);
-            } catch (RejectedExecutionException ex) {
-                // Queue full: drop the prewarm hint only. Demand still gets its own slot.
-                flights.remove(owner, f);
-                return false;
-            }
-            return true;
         }
+        return dispatch(f);
     }
-    private CompletableFuture<ParticleTile> acquire(TileGeometry.Owner owner, Subscription s) {
+    /** Gate-only registration; neither task execution nor callback installation belongs here. */
+    private CompletableFuture<ParticleTile> acquire(TileGeometry.Owner owner, Subscription s,
+                                                    List<Flight> dispatch) {
         ParticleTile cached = completed.get(owner);
         if (cached != null) return CompletableFuture.completedFuture(cached);
         Flight f = flights.get(owner);
@@ -252,18 +254,35 @@ public final class ProcessRuntime implements AutoCloseable {
             Flight created = f;
             f.task = new FutureTask<>(() -> { run(created); return null; });
             f.holders.add(s); s.held.add(f);
-            try {
-                f.enqueuedNs = f.timingId == 0 ? 0 : System.nanoTime();
-                executor.execute(f.task);
-            }
-            catch (RejectedExecutionException ex) {
-                flights.remove(owner, f); f.result.completeExceptionally(ex); throw ex;
-            }
+            dispatch.add(f);
         } else {
             if (f.timingId != 0) f.requestingSources.add(com.geogenesis.diagnostics.FrontendAttribution.currentSource());
             f.holders.add(s); s.held.add(f);
         }
         return f.result;
+    }
+    /** Execute only outside gate: rejection is backpressure, never silent demand loss. */
+    private boolean dispatch(Flight f) {
+        synchronized (gate) { if (f.settled || f.cancelled) return false; }
+        try {
+            f.enqueuedNs = f.timingId == 0 ? 0 : System.nanoTime();
+            executor.execute(f.task);
+            return true;
+        } catch (RejectedExecutionException ex) {
+            List<Runnable> after = new ArrayList<>();
+            boolean inline;
+            synchronized (gate) {
+                inline = !closed && !executor.isShutdown() && !f.cancelled && !f.settled
+                        && (!f.holders.isEmpty() || !"prewarm".equals(f.requestKind));
+                if (!inline && !f.settled) abort(f, "dispatch rejected", after);
+            }
+            after.forEach(Runnable::run);
+            if (inline) {
+                inlineFallbacks.incrementAndGet();
+                f.task.run();
+            }
+            return inline;
+        }
     }
     private void run(Flight f) {
         long start = f.timingId == 0 ? 0 : System.nanoTime();
@@ -287,21 +306,23 @@ public final class ProcessRuntime implements AutoCloseable {
                     completed.remove(completed.keySet().iterator().next());
                 }
                 successes.incrementAndGet();
-                // Cache publication precedes callbacks; cleanup compares unique flight identity.
-                completeStart = f.timingId == 0 ? 0 : System.nanoTime();
-                f.result.complete(tile);
-                completeEnd = f.timingId == 0 ? 0 : System.nanoTime();
+                // Commit before callbacks; release must not cancel a published flight.
+                f.settled = true;
                 flights.remove(f.owner, f);
                 published = true;
                 publishEnd = f.timingId == 0 ? 0 : System.nanoTime();
             }
+            completeStart = f.timingId == 0 ? 0 : System.nanoTime();
+            f.result.complete(tile);
+            completeEnd = f.timingId == 0 ? 0 : System.nanoTime();
         } catch (Throwable ex) {
             synchronized (gate) {
                 if (ex instanceof CancellationException || f.cancelled || closed) cancellations.incrementAndGet();
                 else failures.incrementAndGet();
-                f.result.completeExceptionally(ex);
+                f.settled = true;
                 flights.remove(f.owner, f);
             }
+            f.result.completeExceptionally(ex);
         } finally {
             if (f.timingId != 0) WorldGenProfiler.stutterLog("SAMPLING", "tile-" + diagnosticId + "-" + f.timingId,
                     diagnosticLabel() + " flight=" + f.timingId + " owner=" + f.owner
@@ -319,25 +340,43 @@ public final class ProcessRuntime implements AutoCloseable {
                     + " buildToPublishAttemptNs=" + (publishStart == 0 ? -1 : publishStart - buildEnd)
                     + " publishGateWaitNs=" + (publishAcquired == 0 ? -1 : publishAcquired - publishStart)
                     + " completeCallbacksNs=" + (completeEnd == 0 ? -1 : completeEnd - completeStart)
-                    + " publishHeldCallbacksNs=" + (published ? publishEnd - publishAcquired : -1)
+                    + " publishGateHeldNs=" + (published ? publishEnd - publishAcquired : -1)
                     + " published=" + published
                     + " overlap=build_contains_input_and_kernel;queueDispatch=execute_to_run_includes_scheduling_or_inline;"
-                    + "publishHeld_contains_dependent_assemble;shared_tile_not_exclusive_to_submitter;wall_not_CPU");
+                    + "callbacks_outside_publishGate;shared_tile_not_exclusive_to_submitter;wall_not_CPU");
         }
     }
-    private void release(Subscription s) {
+    private void release(Subscription s, List<Runnable> after) {
         if (s.released) return;
         s.released = true;
+        subscriptions.remove(s);
         for (Flight f : s.held) {
             f.holders.remove(s);
-            if (f.holders.isEmpty() && !f.result.isDone()) {
-                f.cancelled = true;
-                flights.remove(f.owner, f);
-                if (f.task != null) { f.task.cancel(true); executor.remove(f.task); }
-                f.result.completeExceptionally(new CancellationException("no subscribers"));
-            }
+            if (f.holders.isEmpty() && !f.settled) abort(f, "no subscribers", after);
         }
         s.held.clear();
+    }
+    /** Gate-only state transition; interruption and all callbacks are deferred. */
+    private void abort(Flight f, String reason, List<Runnable> after) {
+        f.cancelled = true;
+        f.settled = true;
+        flights.remove(f.owner, f);
+        after.add(() -> {
+            if (f.task != null) { f.task.cancel(true); executor.remove(f.task); }
+            f.result.completeExceptionally(new CancellationException(reason));
+        });
+    }
+    private void finish(Subscription s, Sample sample, Throwable failure) {
+        List<Runnable> after = new ArrayList<>();
+        synchronized (gate) {
+            if (s.released) return;
+            if (closed) failure = new CancellationException("closed context");
+            if (failure == null) remember(sample);
+            release(s, after);
+        }
+        after.forEach(Runnable::run);
+        if (failure == null) s.result.complete(sample);
+        else s.result.completeExceptionally(failure);
     }
     public Peek peek(double x, double z) {
         var footprint = TileGeometry.footprint(x, z);
@@ -399,14 +438,18 @@ public final class ProcessRuntime implements AutoCloseable {
         }
     }
     @Override public void close() {
+        List<Runnable> after = new ArrayList<>();
         synchronized (gate) {
+            if (closed) return;
             closed = true;
-            for (Flight f : List.copyOf(flights.values())) {
-                f.cancelled = true;
-                if (f.task != null) f.task.cancel(true);
-                f.result.completeExceptionally(new CancellationException("closed context"));
+            for (Subscription s : List.copyOf(subscriptions)) {
+                release(s, after);
+                after.add(() -> s.result.cancel(false));
             }
-            flights.clear(); completed.clear(); points.clear(); executor.shutdownNow();
+            for (Flight f : List.copyOf(flights.values())) abort(f, "closed context", after);
+            completed.clear(); points.clear();
         }
+        executor.shutdownNow();
+        after.forEach(Runnable::run);
     }
 }
