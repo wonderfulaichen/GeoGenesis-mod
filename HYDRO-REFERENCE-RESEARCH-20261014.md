@@ -7,15 +7,15 @@
 ## 0. 核实基线
 
 - 仓库 `D:\Office software\Development Project\GeoGenesis-mod`，分支 `fix/port-lake-p2-2`，
-  **HEAD = `16dbc4342fa821ec8698d647463f1d3551a1d8d9`（`16dbc43`）**（`git rev-parse HEAD` 与 `git log --oneline` 双证）。
+  **HEAD = `e07cfbb41bc0b2dc97cb3e329e74f486de808b9a`（`e07cfbb`）**（`git rev-parse HEAD` 与 `git log --oneline` 双证）。
 - 所依据的"最后调研段"：`build/hierarchical-evaluation/lifecycle-implementation-checkpoint.txt` 的
   [第 94–98 行](forge-1.20.1-47.4.10-mdk/build/hierarchical-evaluation/lifecycle-implementation-checkpoint.txt#L94-L98)
   （标题 2026-10-14 local commit and reference research）。⚠ 该文件在 `build/` 下，被
   [`forge-1.20.1-47.4.10-mdk/.gitignore:17`](forge-1.20.1-47.4.10-mdk/.gitignore#L17)（`build`）忽略，**不入版本库**；
-  其开头段落仍写 `HEAD de78019`，**状态只以第 94–98 行为准**。
+  其开头段落仍写 `HEAD 0bf8402`，**状态只以第 94–98 行为准**。
 - `参考/` 整体被根 [`.gitignore:39`](.gitignore#L39) 忽略（`git check-ignore -v` 可复核）。
 - **未运行、未导入任何参考代码**，全程只读阅读。
-- 补注（不修改 HYDROLOGY.md）：其 §一 仍记 `HEAD 7eb8748`，**已落后于当前 HEAD**。
+- 补注（不修改 HYDROLOGY.md）：其 §一 仍记 `HEAD 332fe44`，**已落后于当前 HEAD**。
 
 ## 1. 设计结论：容量 / 方向 / 水面的职责划分（**我方提炼**）
 
@@ -92,7 +92,7 @@
 
 ## 3. 我方当前状态（不得说成已完成）
 
-HEAD `16dbc43`（`feat(hydro): 保存边界容量摘要与河湖生命周期诊断检查点`，7 文件 / +3075 / −9，
+HEAD `e07cfbb`（`feat(hydro): 保存边界容量摘要与河湖生命周期诊断检查点`，7 文件 / +3075 / −9，
 仅诊断类与 `SharedLakeDomain` / `ModelHydrologyProvider` 微调）。checkpoint 明确：
 
 - **canonical-boundary 仍 `in_progress`**；basin-outlet-authority / terrain-routing / production-acceptance **均 pending**（第 92 行）。
@@ -127,7 +127,7 @@ HEAD `16dbc43`（`feat(hydro): 保存边界容量摘要与河湖生命周期诊�
 | 19 | `likelyInSea` 自认封闭洞穴假阳性 | [`参考/river/Farseek-Mods/src/mainStreams/scala/streams/world/gen/StreamsGenerator.scala:77-82`](参考/river/Farseek-Mods/src/mainStreams/scala/streams/world/gen/StreamsGenerator.scala#L77-L82) |
 | 20 | DW 共享锚点思路（概念可借）+ 尺度 | [`HYDROLOGY.md` §五](HYDROLOGY.md)；[`参考/river/dynamicwaters-11.1.2/HydrologyManager.txt:3,9`](参考/river/dynamicwaters-11.1.2/HydrologyManager.txt#L3) |
 | 21 | DW 许可 = All Rights Reserved | [`参考/river/dynamicwaters-11.1.2/META-INF/mods.toml`](参考/river/dynamicwaters-11.1.2/META-INF/mods.toml) |
-| 22 | HEAD / 分支 | `git rev-parse HEAD` → `16dbc4342fa821ec8698d647463f1d3551a1d8d9`，分支 `fix/port-lake-p2-2` |
+| 22 | HEAD / 分支 | `git rev-parse HEAD` → `e07cfbb41bc0b2dc97cb3e329e74f486de808b9a`，分支 `fix/port-lake-p2-2` |
 | 23 | checkpoint 来源与忽略状态 | [`forge-1.20.1-47.4.10-mdk/build/hierarchical-evaluation/lifecycle-implementation-checkpoint.txt:94-98`](forge-1.20.1-47.4.10-mdk/build/hierarchical-evaluation/lifecycle-implementation-checkpoint.txt#L94-L98)；`git check-ignore -v` → [`forge-1.20.1-47.4.10-mdk/.gitignore:17`](forge-1.20.1-47.4.10-mdk/.gitignore#L17) |
 
 ## 5. 许可核实

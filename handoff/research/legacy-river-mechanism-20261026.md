@@ -7,7 +7,7 @@
 
 用户要求先研究以前移除的旧机制，本轮只读，不恢复旧链、不改生产源码、不改TOML、不提交、不启动游戏或重新跑大图。已有未提交的River实现与其它dirty文件保持原样。
 
-基准：`b9b55ee`（旧链移除前快照）→ `7e69dfc`（退役）。旧机制不是物理删除，而是从`src/main`迁至`src/diagnostics`。主线程实际用`git rev-parse b9b55ee:<旧路径>`与`git hash-object <当前诊断路径>`逐一核验，下列五文件Git blob完全一致，因此下文可以链接现存源码，而不是引用无法打开的历史路径：
+基准：`07e7983`（旧链移除前快照）→ `d9c4859`（退役）。旧机制不是物理删除，而是从`src/main`迁至`src/diagnostics`。主线程实际用`git rev-parse 07e7983:<旧路径>`与`git hash-object <当前诊断路径>`逐一核验，下列五文件Git blob完全一致，因此下文可以链接现存源码，而不是引用无法打开的历史路径：
 
 | 文件 | Git blob |
 |---|---|
@@ -55,7 +55,7 @@ GeoGenesisTerrain
 
 `smoothPath`曲线化几何时，同步插值水面/宽/深，而不是先生成新折线、再从另一张粗格Q场重新猜属性：
 [RiverLineNetwork.java:3138-3191](../../forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/hydrology/riverline/RiverLineNetwork.java#L3138-L3191)。
-查询时始终取本段端点`i,i+1`，水面/宽/深用同一个投影`t`插值。历史提交`18ab351`修过端帽把属性错读到下一段的问题，这类经验值得保留：
+查询时始终取本段端点`i,i+1`，水面/宽/深用同一个投影`t`插值。历史提交`a3b854c`修过端帽把属性错读到下一段的问题，这类经验值得保留：
 [RiverLineNetwork.java:4611-4654](../../forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/hydrology/riverline/RiverLineNetwork.java#L4611-L4654)。
 
 **启示**：连续性需要连接点的几何与属性契约；并非必须把所有源到海路径强行合成一个跨区全局对象。分段可合法存在，分段属性任意重置才需要修复。

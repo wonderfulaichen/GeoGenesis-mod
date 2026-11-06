@@ -118,7 +118,7 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 | `geogenesis.modelRegion/modelHalo/modelStep`（-D） | 512/96/4 | model 窗口参数（诊断用） |
 | `geogenesis.riverThresholdFrac`（-D） | 0 | model 成河阈值面积比（0=关） |
 | `geogenesis.sourceSpacing`（-D） | 24 | model 中心线源头间距裁剪（0=关） |
-| `geogenesis.inlandResolved` | **true**（代码默认） | model 链内陆窗口可信判据（`f6aa223` 起默认开） |
+| `geogenesis.inlandResolved` | **true**（代码默认） | model 链内陆窗口可信判据（`e952901` 起默认开） |
 | `hydro.viaProvider`（-D，探针） | false | 正典图走生产 provider（出图必开，§三） |
 
 ---
@@ -185,7 +185,7 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 3. 保留骨架连续且真实生产水列不在源—JOIN—接力—河口间残留缺口；像素局部4/8连通只作定位，不替代全链/流体验收。允许舍弃的极短/孤立支系必须几何、端口及可借前缀整体一致消失，不以删除长河局部短连接换绿。
 4. 沿现有model D8与已有湖/接力机制收尾，不另建水文/世界图，不递归邻final、不重复pass2、不加预算、不改宽深或惯性掩盖断头；南部长直按〇ap非缺陷处理。
 
-当前固定检查点为`50123978596fa56eeda9f3b19c35f2668822b3b8`，未推送；上述硬条件尚未整体通过。本轮先启动其余25处pin变化的真实生产列A/B，只读取固定候选并新增隔离探针，不改产出规则。端口后继及湖泊全周期核验接着进行，不混用早期world分支历史绿灯。
+当前固定检查点为`faf3acc503918bb94bd2530587f55afede5ee8b9`，未推送；上述硬条件尚未整体通过。本轮先启动其余25处pin变化的真实生产列A/B，只读取固定候选并新增隔离探针，不改产出规则。端口后继及湖泊全周期核验接着进行，不混用早期world分支历史绿灯。
 
 - **§〇ar** · 未改产出 —— 按全周期口径继续验收：25 处局部回归与 57 端口接收 → `_archive/hydrology/HYDROLOGY-history-20261028.md` §〇ar
 - **§〇as** · 仅诊断 —— 两个 core 湖盆出口定点捕获：回到原湖与短湖间连接被删 → `_archive/hydrology/HYDROLOGY-history-20261028.md` §〇as
@@ -239,7 +239,7 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 **分支与标签：** 主线就是 **`main`**。
 > ⚠ 2026-11-06（最终理顺）：本仓库长期以 `feat/hydrology-target` 为事实主线
 > （2026-10-25 由 `backup/pre-legacy-chain-removal-20261020` 改名而来；该旧名分支
-> 同为历史遗留，`3c94a90` 已在 `main` 历史内，**同日一并删除**），
+> 同为历史遗留，`e336ec1` 已在 `main` 历史内，**同日一并删除**），
 > 而 `main` 一度停在 2026-09-30 的 sim 线、**与主线分叉**。
 > 当天已收口：
 >
@@ -248,8 +248,8 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 > | `main` 对齐主线 | 强推至主线提交（`--force-with-lease`），sim 线节点不再被 `main` 引用 |
 > | 本地分支改名 | `feat/hydrology-target` → `main`，upstream 改为 `origin/main` |
 > | GitHub 默认分支 | `gh repo edit --default-branch main`；已核验：API `default_branch=main` + `ls-remote --symref origin HEAD → refs/heads/main` |
-> | 远端 `feat/hydrology-target` | **已删除**（删前校验与 `main` SHA 相同：`24bd8447`） |
-> | 远端 `backup/pre-legacy-chain-removal-20261020` | **已删除**（`3c94a90`，`main` 的祖先、0 个独有提交；删后远端分支只剩 `main`） |
+> | 远端 `feat/hydrology-target` | **已删除**（删前校验与 `main` SHA 相同：`fc815bea`） |
+> | 远端 `backup/pre-legacy-chain-removal-20261020` | **已删除**（`e336ec1`，`main` 的祖先、0 个独有提交；删后远端分支只剩 `main`） |
 >
 > ⇒ **今后 `git push` 默认推 `main`**；历史上任何「`main` 是旧的、必须检出
 > `feat/hydrology-target`」的说法（多见于 `handoff/GeoGenesis-20261103-*.md`）
@@ -259,7 +259,7 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 >
 > | 已删标签 | 指向 | 处置 |
 > |---|---|---|
-> | `archive/pre-hydrology-target-20261025` | `04bdc73` | 在 `main` 历史内，无需保留 |
+> | `archive/pre-hydrology-target-20261025` | `99ce354` | 在 `main` 历史内，无需保留 |
 > | `backup-main-20260930` | `2853a09` | sim 线节点，随 sim 线一并放弃 |
 > | `archive/local-main-20261028` · `archive/stash-2026-08-03` | `2853a09` | sim 线存档（两者同提交），放弃 |
 > | `archive/old-sim-line-20261028` | `50d5291` | sim 线存档，放弃 |
@@ -284,8 +284,8 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 旧机制研究全文：[legacy-river-mechanism-20261026.md](handoff/research/legacy-river-mechanism-20261026.md)。
 
 - 用户要求水文全周期：**每条保留的有向河最终到湖/海，骨架从头到尾连续**。JOIN/端口不是最终终点；无向分量任一点触水不是证明。南部长直是地形路线，不作为bug修改。不另建水文、不加预算、不动宽深默认值、不复杂化。
-- 当前生产只有model链。`9de0e15`是宽度链检查点，**不是完整河道已验收版本**。此后新增`River`与两个只读访问器将按未完成功能保存，shape/宽深仍消费traces；当前`buildRivers`在中段JOIN时误拼下游前缀，尚未修复或接入生产消费。不得从River数量压缩率宣布连续性完成。
-- 旧机制实质从main移到diagnostics。五个核心文件与`b9b55ee`旧快照blob一致；可借鉴节点属性随几何插值、真实汇入索引、跨区沿程状态，以及独立断面职责；**不整体恢复旧链**。
+- 当前生产只有model链。`dbd97a8`是宽度链检查点，**不是完整河道已验收版本**。此后新增`River`与两个只读访问器将按未完成功能保存，shape/宽深仍消费traces；当前`buildRivers`在中段JOIN时误拼下游前缀，尚未修复或接入生产消费。不得从River数量压缩率宣布连续性完成。
+- 旧机制实质从main移到diagnostics。五个核心文件与`07e7983`旧快照blob一致；可借鉴节点属性随几何插值、真实汇入索引、跨区沿程状态，以及独立断面职责；**不整体恢复旧链**。
 - **撤回“覆盖段数×半宽=河宽”的归因**：当前nearest/IDW不是半宽求和，完全相同集合整体复制不会改变平均值或布尔并集。局部重复/偏移的实际影响仍需定点证明；旧smin也并非幂等。
 - **撤回“239组逐点完全重复”的表述**：旧签名round到0.1并排序，丢失节点顺序与方向，只证明该签名相同，不能用来删除生产几何。
 - **撤回颜色切换与HALO分布推导的断流根因**：`degree==2`异色只是定位线索，未证明有向断裂或宽深重置；68%分布不是因果证据。A1/A2/A3去重方案不再作为已选修复，未获实施授权。
@@ -300,7 +300,7 @@ model 链内部有 D8/CONTINUOUS 两个模型变体；`WaterField` 是死代码�
 
 - `River`改为局部有向单元：唯一首尾串联才合并；中段/多支流共享下游用`downstreamRiver + downstreamNode`指向真实后缀，保留下游前缀，不由`used`抢走共同后继。缺失、歧义、环和空路径单列状态，不伪装入湖/海。索引仅在当前`Result.rivers`内有效，不是全局ID。
 - 生产shape、SegmentIndex、宽深仍消费traces；本次没有接入新的属性策略、修改D8路线/预算/默认宽深。缓存schema保持108，因为未改变实际地形/水文列产出。新聚合仍有分配开销，未做性能基准。
-- `RiverConnectionProbe`实际Java断言1137项通过，覆盖中段/首点JOIN、多支流共享、32次输入顺序变化、环/缺失/歧义、相邻重复尾节点及1万段串联。隔离编译本次修改前HEAD `baf5bb5`的骨架类覆盖classpath，反向测试在中段JOIN断言失败（不是编译失败）。
+- `RiverConnectionProbe`实际Java断言1137项通过，覆盖中段/首点JOIN、多支流共享、32次输入顺序变化、环/缺失/歧义、相邻重复尾节点及1万段串联。隔离编译本次修改前HEAD `82f731a`的骨架类覆盖classpath，反向测试在中段JOIN断言失败（不是编译失败）。
 - 同seed `9139912035078620160`、同TOML副本，region(0,0)，默认与显式`-Dgeogenesis.boundaryPorts=true`分组取证。每组分别与隔离旧骨架对照：pipe/traces/shaped/segIndex/boundary/采样列的64位指纹逐项相同。默认合计`-2639223944564017712`，显式组`-2789750574405632679`。这是局部非改产出检查，不是全世界逐块证明或完整出图验收。
 - 默认组同区JOIN：trace2→trace0，第16个粗格节点，格坐标(132,-94)；支流实际shaped尾(131.472803467,-93.320006528)到已确认接收折线投影距离0.028761；支流尾段半宽0.878390、接收投影半宽0.879058，而生产`propagateConfluence`仍取承接链首0.878279。只能证明引用位置不同，不能由最终值反推压缩量。接点前/接点/后所采列均有水；不由三列宣布整河连续。
 - **开关不一致新证据（★2026-10-29 已在〇bu修复）**：provider的`BOUNDARY_PORTS`默认true，骨架`PORT_EGRESS=Boolean.getBoolean(...)`默认false。未显式设属性的本次默认组无typed端口；显式组有7个邻区pass1承诺被`mergeEvidence`以同anchor、同next审计接入base。显式组不是当前游戏启动参数的证明。**后续在〇bu量化为"旧默认会吃掉整条左侧水系"（左带河道 24824→10771），已把骨架默认改为开。**
@@ -438,15 +438,15 @@ gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [半径] [tol] [k=
 
 | 臂 | river 列 | 左带河道像素 | 全图河道像素 | PNG SHA256 |
 |---|---:|---:|---:|---|
-| 标准（`3c998e0`/`2c2e36a`/`8310b71` + 开关开） | **59250** | **24824** | **165016** | `20bde1c8…` |
+| 标准（`be4ea61`/`82948bf`/`0cf5cc2` + 开关开） | **59250** | **24824** | **165016** | `20bde1c8…` |
 | 修复前游戏默认（开关关） | 41928 | 10771 | 146420 | `ab404ad7…` |
 | 修复后默认（本轮） | 58918 | 24507 | 163231 | `c15e5f32…` |
 
 - 相对标准图：修复前丢 **28074** 河道像素（左带 14960，成片消失并出现平行直线束）；
   修复后只剩 **2867**（左带 352），且为沿湖岸/河岸的零散单像素，**无成片丢失**。
-- 逐提交二分（**带正确开关**）确认：`3c998e0`/`2c2e36a`/`8310b71` 三提交**逐字节等于标准图**；
-  `44cfb19` 起偏移（river 59250→58918，lake 105766→104313），HEAD 与之一致。
-  即 `44cfb19` 还有一层约 0.2% 的既有差异，与本次开关修复是两件事，尚未处理。
+- 逐提交二分（**带正确开关**）确认：`be4ea61`/`82948bf`/`0cf5cc2` 三提交**逐字节等于标准图**；
+  `ff3239a` 起偏移（river 59250→58918，lake 105766→104313），HEAD 与之一致。
+  即 `ff3239a` 还有一层约 0.2% 的既有差异，与本次开关修复是两件事，尚未处理。
 
 **修法**：`DeterministicSkeleton.PORT_EGRESS` 改为与 Provider 同式
 `!"false".equals(System.getProperty(...))`，默认开；`-Dgeogenesis.boundaryPorts=false`
@@ -457,7 +457,7 @@ gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [半径] [tol] [k=
   ⇒ 修复生效，且**此前的性能无损优化结论仍成立**（同一开关口径下零差）。
 - 门禁 `runWorldgenGate`：11 项全绿。唯一红项 `CenterlineCrossSectionProbe`
   用**旧默认变体类覆盖**（`build/bisect/oldport/`）重跑，输出数字逐项相同
-  （连通 119→153、拆分 25、孤立 7→9，exit 1）⇒ 是 `44cfb19` 起的既存红，与本次无关。
+  （连通 119→153、拆分 25、孤立 7→9，exit 1）⇒ 是 `ff3239a` 起的既存红，与本次无关。
 - 图：[三臂全图](forge-1.20.1-47.4.10-mdk/build/bisect/flagrange/fix-three-arm-full.png)、
   [左带对比](forge-1.20.1-47.4.10-mdk/build/bisect/flagrange/fix-left-band.png)、
   [修复后残差高亮](forge-1.20.1-47.4.10-mdk/build/bisect/flagrange/fix-diff-after.png)。
@@ -502,7 +502,7 @@ gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [半径] [tol] [k=
 
 ### 〇bt、水文无损性能优化（2026-10-28；分配量下降，尚未证明实机加载提速）
 
-用户批准方案后实施；基线为 `54ef89b`（生产源码与 `44cfb19` 一致）。**不改骨架、宽深、水位、采样精度、搜索/迭代预算、正式 TOML 或存档。** 本节只报告本轮新采证据，不把旧实机认可当成本轮验收。
+用户批准方案后实施；基线为 `8adfb40`（生产源码与 `ff3239a` 一致）。**不改骨架、宽深、水位、采样精度、搜索/迭代预算、正式 TOML 或存档。** 本节只报告本轮新采证据，不把旧实机认可当成本轮验收。
 
 **实际保留的改动**：
 - R2：`SegmentIndex.segmentMeetsBlock` 去掉两份 `double[4]`，保留四面裁剪顺序、比较和除法；未改距离公式、候选顺序或覆盖规则。
@@ -566,7 +566,7 @@ gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [半径] [tol] [k=
 
 **必须保留的边界**：131对河湖邻列中，`(-555,-144)`普通河因原地形仅166.9078，不能保留旧167.3589河面；邻湖167.3533保持权威，水顶因此新增1层差（连续差0.4455格）。这是满足“不超地形”后的明确接口变化，不标成接口全不变，也不为消除它抬高普通河水。额外1格仅修已测整层空隙，不证明任意悬崖四邻水面接触、无反坡或全周期。未运行新Forge世界/流体tick/全门禁或全图；未提交、未push，旧已生成区块不会自动重雕。默认新增逐河列梯度算术及深度剖面成本，未做隔离性能基准，不称零开销。
 
-**★ 2026-10-29 补测（〇bu 二分副产品）**：在**正确开关**（`-Dgeogenesis.boundaryPorts=true`）下，本节是最后一个改变全图产出的提交——`8310b71` 仍逐字节等于用户标准图 `20bde1c8…`，本节起变为 `c15e5f32…`：river 59250→58918、lake 105766→104313、全图差 4030 像素（其中河道丢失 2867、左带仅 352 且为沿湖岸/河岸的零散单像素）。这不是本次开关修复引入的，是本节改动本身的既有代价。已用 `-Dgeogenesis.riverCrossSection=false` 单独回退断面（river→59333、`27ab9a86…`）也回不到标准图，说明差异不只来自断面开关；**具体归因（水面 cap / 陡坡补挖 / 宽深指数）尚未隔离**，未据此改任何判据。
+**★ 2026-10-29 补测（〇bu 二分副产品）**：在**正确开关**（`-Dgeogenesis.boundaryPorts=true`）下，本节是最后一个改变全图产出的提交——`0cf5cc2` 仍逐字节等于用户标准图 `20bde1c8…`，本节起变为 `c15e5f32…`：river 59250→58918、lake 105766→104313、全图差 4030 像素（其中河道丢失 2867、左带仅 352 且为沿湖岸/河岸的零散单像素）。这不是本次开关修复引入的，是本节改动本身的既有代价。已用 `-Dgeogenesis.riverCrossSection=false` 单独回退断面（river→59333、`27ab9a86…`）也回不到标准图，说明差异不只来自断面开关；**具体归因（水面 cap / 陡坡补挖 / 宽深指数）尚未隔离**，未据此改任何判据。
 
 ### 〇br、坡度岸水高差候选（2026-10-28；历史实施记录，用户后续实机认可见〇bs）
 
@@ -588,7 +588,7 @@ gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [半径] [tol] [k=
 
 ### 〇bq、跨区湖列的水位来源修正（2026-10-28；历史实施记录，用户后续实机认可见〇bs）
 
-用户实机报告湖面沿直线整齐错层；深度候选已先本地提交为 `8310b71`。本轮只修湖泊填水，不处理河岸高差，不改骨架/宽度/深度或湖盆求解，不重启运行中的客户端。
+用户实机报告湖面沿直线整齐错层；深度候选已先本地提交为 `0cf5cc2`。本轮只修湖泊填水，不处理河岸高差，不改骨架/宽度/深度或湖盆求解，不重启运行中的客户端。
 
 **取证**：对测试存档副本读取真实水块，并用同种子 `9139912035078620160`、冻结参数（与当前TOML一致）复算生产列。`(-300,-513)/(-300,-512)` 在 `z=-512` 边界水面为 `175.472792/167.569432`，存档源水顶块 Y 为175/167；`(-513,-170)/(-512,-170)` 在 `x=-512` 边界为 `164.872942/168.816483`，源水顶块Y为164/168。深度OFF/ON原数据的这些湖列相同，故不是新深度公式导致的回归。
 
@@ -617,7 +617,7 @@ gradlew runSourceDistributionProbe -PprobeArgs="<toml> [seed] [半径] [tol] [k=
 | 方案 | 结果 |
 |---|---|
 | meander 纯几何偏移 `skeletonMeanderAmp=3.0` | ≥28° 折角 6.3%→8.7%（更差）；0.6 时肉眼不可见 |
-| 矢量钢笔贝塞尔手柄（`4e6012b`，端点=节点） | P99 54.6°→45.0°、≥28%→3.7%，**仍是"直线段+折角"**；叠加软约束后 P90 5.0°→15.3°，已删代码 |
+| 矢量钢笔贝塞尔手柄（`a68907e`，端点=节点） | P99 54.6°→45.0°、≥28%→3.7%，**仍是"直线段+折角"**；叠加软约束后 P90 5.0°→15.3°，已删代码 |
 | 落格滞回 `landingHysteresis` 0.12 / 0.35 | 横向往返仅 260→251，受影响 trace 不变（仍 30.1%），且节点少 920（路线被明显改变）；已删代码 |
 
 **定稿方案（`DeterministicSkeleton`）**

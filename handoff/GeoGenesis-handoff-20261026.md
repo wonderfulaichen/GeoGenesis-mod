@@ -19,8 +19,8 @@
 ## 1. 当前状态、半成品与提交边界
 
 - 根目录：`D:\Office software\Development Project\GeoGenesis-mod`；实际Gradle工程在其子目录 `forge-1.20.1-47.4.10-mdk`。
-- 分支：`feat/hydrology-target`，原HEAD `9de0e15`。本次在原分支本地分批保存，不push、不改分支、不改main、不删worktree/stash。`bfcfb6b`保存未完成River与缺陷复现，`a07c165`保存旧discovery研究源码；交接整理提交及最新HEAD以 `git log -3 --oneline` 为准。
-- `2295717`保存用户认可过的连续位置/shape调整；`9de0e15`保存带已知缺陷的宽度链。**不要把9de0e15误当作纯骨架已验收基线**。
+- 分支：`feat/hydrology-target`，原HEAD `dbd97a8`。本次在原分支本地分批保存，不push、不改分支、不改main、不删worktree/stash。`9b8b7be`保存未完成River与缺陷复现，`6cc5398`保存旧discovery研究源码；交接整理提交及最新HEAD以 `git log -3 --oneline` 为准。
+- `7f4ee16`保存用户认可过的连续位置/shape调整；`dbd97a8`保存带已知缺陷的宽度链。**不要把9de0e15误当作纯骨架已验收基线**。
 - 当前生产只有model：`HydrologyChunkEngine.calculate → ModelHydrologyProvider.columnsFor`。旧TOML里的model开关键不构成分支证据。
 - `PreviewDisplay.CACHE_SCHEMA_VERSION`本次实读为**108**，整理未修改。以后只要改变实际地形/水文产出必须升级；当前宽度检查点本身已有未定稿产出，不可凭schema相同认为缓存与源码完全等价。
 - 本次整理不新增功能修复。保留以下两个main文件此前的未完成实现：`DeterministicSkeleton`增加`River/buildRivers/Result.rivers`，`ModelHydrologyProvider`增加两个包内只读探针访问器。
@@ -30,7 +30,7 @@
 
 ## 2. 旧机制研究的可继承经验与撤回结论
 
-完整证据、源码行号和局限见[研究全文](research/legacy-river-mechanism-20261026.md)。本次重新核对五个legacy核心文件Git blob：当前diagnostics与移除前`b9b55ee`一致；`7e69dfc`将它们退出生产，不是丢失源码。
+完整证据、源码行号和局限见[研究全文](research/legacy-river-mechanism-20261026.md)。本次重新核对五个legacy核心文件Git blob：当前diagnostics与移除前`07e7983`一致；`d9c4859`将它们退出生产，不是丢失源码。
 
 有效经验：
 
@@ -90,7 +90,7 @@ $env:JAVA_HOME='D:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot'
 
 结果：`compileJava UP-TO-DATE`、`compileDiagnosticsJava`成功。`runSkeletonProbe`先报告合成地形溢口(4,6)未覆盖，随后`runSeaClaims`反射旧`traceOne`签名抛`NoSuchMethodException`，退出1，后续断言没有执行。因此**不能再沿用“22 PASS/1 FAIL”代表当前完整探针结果**。本次没有顺手修改探针或路由。
 
-本轮另外在隔离目录从`git show 9de0e15:...DeterministicSkeleton.java`编译baseline，置于classpath首位重跑同一SkeletonProbe，**同样复现了溢口覆盖失败及反射签名异常**。确切结果与缺陷复现结果写在验证JSON；没有checkout、stash或改用户源码做对照。入库baseline日志由原始混合编码转成UTF-8并清除行尾空格，仅供阅读；原始字节仍在本地验证目录。
+本轮另外在隔离目录从`git show dbd97a8:...DeterministicSkeleton.java`编译baseline，置于classpath首位重跑同一SkeletonProbe，**同样复现了溢口覆盖失败及反射签名异常**。确切结果与缺陷复现结果写在验证JSON；没有checkout、stash或改用户源码做对照。入库baseline日志由原始混合编码转成UTF-8并清除行尾空格，仅供阅读；原始字节仍在本地验证目录。
 
 中段JOIN复现命令（本轮实际执行，结果应打印`KNOWN_DEFECT_REPRODUCED`及`RIVER_CONTINUITY_ACCEPTANCE=FAIL`）：
 

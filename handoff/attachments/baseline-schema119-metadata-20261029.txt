@@ -9,7 +9,7 @@ GeoGenesis 认可基准 — schema 119（源头按比例抽稀 0.7）
 -----------------------------------------------------
 1. 产出这对图的完整口径（缺一项都不可复现）
 -----------------------------------------------------
-代码版本：feat/hydrology-target @ 544d145（工作树干净，与其后无未提交改动）
+代码版本：feat/hydrology-target @ a528005（工作树干净，与其后无未提交改动）
 命令：    python build/bisect/verify-default.py
           （该脚本先 javac --release 17 编译工作树 src/main 全部 180 个源文件，
             再用 ProductionViewProbe 出图；不会跑成冻结基线类）
@@ -75,6 +75,6 @@ PNG           = baseline-schema118-keep1.0.png
 - 旧已生成区块不会自动重雕：本基准只描述新生成区域。
 - 源头「成排」（轴对齐比 3.33）本轮未修。
 - 源头多样性（山泉口等）用户 2026-10-29 明确搁置。
-- runWorldgenGate 的 CenterlineCrossSectionProbe 是 44cfb19 起的既存红项，
+- runWorldgenGate 的 CenterlineCrossSectionProbe 是 ff3239a 起的既存红项，
   跑门禁需 -x runCenterlineCrossSectionProbe（其余 11 项 PASS）。
-- 44cfb19 起相对旧标准图的 0.2% 残余差异未归因；用户已表示「不需要扣这点像素」。
+- ff3239a 起相对旧标准图的 0.2% 残余差异未归因；用户已表示「不需要扣这点像素」。

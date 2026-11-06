@@ -17,7 +17,7 @@
 
 | 内容 | 状态 |
 |---|---|
-| `3c94a90` 方向场向量化 + 河流完整性修复 | ✅ **已推送**到 `origin/backup/pre-legacy-chain-removal-20261020` |
+| `e336ec1` 方向场向量化 + 河流完整性修复 | ✅ **已推送**到 `origin/backup/pre-legacy-chain-removal-20261020` |
 | 本次「运动向量（重力+惯性）」改动 | ❌ **未提交**（工作区未暂存） |
 
 工程根：`D:\Office software\Development Project\GeoGenesis-mod`

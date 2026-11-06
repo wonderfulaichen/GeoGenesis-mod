@@ -30,7 +30,7 @@ B 是冻结配置下的基础地形；P 是在 B 上执行既有粒子物理内�
 
 ### 2.1 不能把已有脏树归到本轮
 
-整理开始核实：分支 `feat/hydrology-target`，HEAD `0c742b6051fab06bc76517fc697efd585ea6a227`，与 B/P 开始及结束记录相同。未查询网络，未据旧交接推断当前 ahead/behind。
+整理开始核实：分支 `feat/hydrology-target`，HEAD `e263adeeba1e8e515b8e491ef677db738bbb0bb2`，与 B/P 开始及结束记录相同。未查询网络，未据旧交接推断当前 ahead/behind。
 
 B/P [开始 status](attachments/bp-20261105/bp/start-status.txt) 与[结束 status](attachments/bp-20261105/bp/final-status.txt) 逐行比较，新增恰为：
 

@@ -3,7 +3,7 @@
 > 用户口径：legacy 旧方案**已经解决过跨区无限世界**，现在这套**仍是确定性水文**。
 > 因此本轮不做架构重写假设，只做「继承/丢失/收窄/不兼容」四类判定，优先恢复丢失能力。
 >
-> 证据来源：删除前快照 `b9b55ee`（只读 `git show`，不 checkout、不改工作树）
+> 证据来源：删除前快照 `07e7983`（只读 `git show`，不 checkout、不改工作树）
 > 的 `riverline/RiverLineNetwork.java`、`riverline/RiverLineRegion.java`，
 > 与当前 `model/ModelHydrologyProvider.java` + `model/DeterministicSkeleton.java`。
 
@@ -19,7 +19,7 @@
 
 ## 1. 逐项对照表
 
-| # | 能力 | legacy（`b9b55ee`） | 当前 model | 判定 |
+| # | 能力 | legacy（`07e7983`） | 当前 model | 判定 |
 |---|---|---|---|---|
 | L1 | 区域独立重建 | pass-1 由 `(seed, rx, rz)` 唯一确定，`ConcurrentHashMap` 缓存 | 同：`regionPass1` 纯 `(rx,rz)` | ✅ 已继承 |
 | L2 | 双 pass 结构 | `region()` 先收 8 邻 pass-1 的 `outlets`，再建本区 pass-2 | 同：`CROSS_PASS` + `collectIncoming` | ✅ 已继承 |

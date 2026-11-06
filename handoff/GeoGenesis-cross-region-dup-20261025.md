@@ -129,6 +129,6 @@ region 的 **core**（非 HALO）判定），其余丢弃。
 
 ## 六、未做的事
 
-- 未改任何生产源码（`src/main` 与提交 `04bdc73` 一致，本轮只在 `build/` 与 `HYDROLOGY.md` 留证据）
+- 未改任何生产源码（`src/main` 与提交 `99ce354` 一致，本轮只在 `build/` 与 `HYDROLOGY.md` 留证据）
 - 未跑 `runWorldgenGate`、未跑 Forge 实机、未出 1401² 生产图
 - 未验证方案 A1/A2/A3 中的任何一个

@@ -234,7 +234,7 @@ git clone https://github.com/wonderfulaichen/GeoGenesis-mod.git
 
 ```
 分支      feat/hydrology-target      ← 必须检出这条，main 不含定稿
-HEAD      98d98f320e5cc1d852afeb845cd1375c7a964747
+HEAD      c2dfc785a74941e28bfb7b6d8a49beaf43e84c25
 远端      https://github.com/wonderfulaichen/GeoGenesis-mod.git
 已推送    是（与远端一致）
 .git      42.5 MB
@@ -245,11 +245,11 @@ HEAD      98d98f320e5cc1d852afeb845cd1375c7a964747
 最近提交：
 
 ```
-98d98f3  文档：补历史重写说明与重新 clone 指引
-fb83361  工具：定稿出图一键验收 verify-final-render.py
-b6cbb6b  文档：新版地形对接入口 + 第三方许可核查入库
-b4d4410  仓库整理：从索引撤除 517 个 .class
-ad1d698  地形定稿：morph-coastal 完整地形数据 + 青色水面色带渲染器
+c2dfc78  文档：补历史重写说明与重新 clone 指引
+05b9b7e  工具：定稿出图一键验收 verify-final-render.py
+31efdf7  文档：新版地形对接入口 + 第三方许可核查入库
+6019cef  仓库整理：从索引撤除 517 个 .class
+bb926c4  地形定稿：morph-coastal 完整地形数据 + 青色水面色带渲染器
 ```
 
 ### 8.1 重新 clone 注意事项（给已有旧克隆的人）
@@ -285,7 +285,7 @@ git checkout feat/hydrology-target      # 必须
 
 - [ ] `python -B tools/verify-final-render.py` → exit 0
 - [ ] `python -B tools/verify-light-convention.py` → exit 0
-- [ ] `git rev-parse HEAD` 是否 = `98d98f3`（或更新）
+- [ ] `git rev-parse HEAD` 是否 = `c2dfc78`（或更新）
 - [ ] `git status` 是否干净
 - [ ] 能说清「定稿 = 数据 + 配色，不是提交号」
 - [ ] 能说清「水域 35.81% ≠ 标签 66.93%」

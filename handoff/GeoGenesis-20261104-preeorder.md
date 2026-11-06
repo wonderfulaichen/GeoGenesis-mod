@@ -26,12 +26,12 @@
 
 | 项 | 状态 | 证据 |
 |---|---|---|
-| 诊断工具链（可复用） | ✅ | commit `fadf368`，见 §4 |
+| 诊断工具链（可复用） | ✅ | commit `74f4cf2`，见 §4 |
 | 预侵蚀各版本形态实验 | ✅ 已跑完并全部否决 | `build/decomposed-carve-20261104/fresh-01..07/` |
 | 主干网连线 + 延长断头 | ✅ 已实现 | `build/trunk-network-20261104/{connected-01,extended-01}/` |
 | 真实粒子侵蚀对照（4 档） | ✅ 已跑完 | `build/particle-preeorder-20261104/{v1..v5}/` |
 | 生产可复用性审计 | ✅ 有明确否定结论 | `build/particle-preeorder-20261104/v6-reuse-audit/report.md` |
-| 提交 | ✅ | `fadf368` on `feat/hydrology-target` |
+| 提交 | ✅ | `74f4cf2` on `feat/hydrology-target` |
 
 ### 2.2 ★ 看起来完成但其实没做的
 
@@ -127,7 +127,7 @@
 |---|---|
 | 工作区 | `D:\Office software\Development Project\GeoGenesis-mod`（**不是** mdk 目录） |
 | 真工程 | `forge-1.20.1-47.4.10-mdk/` |
-| 分支 / HEAD | `feat/hydrology-target` / `fadf368` |
+| 分支 / HEAD | `feat/hydrology-target` / `74f4cf2` |
 | Java | `java 21.0.11`（Temurin）；诊断一律 `javac --release 17 -Xlint:all -Werror` |
 | Python | 3.8.6；numpy 1.24.4 / scipy 1.10.1 / matplotlib 3.7.5（无新依赖，未装 OSQP/cvxpy） |
 | 构建 | `gradlew.bat build` / `runClient` / `runWorldgenGate`（需 Java 21） |

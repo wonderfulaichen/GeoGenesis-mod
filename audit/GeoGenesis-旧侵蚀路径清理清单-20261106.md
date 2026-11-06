@@ -4,7 +4,7 @@
 > 不要搞两套同时存在；保持唯一性」。
 >
 > 本文只列「删 / 迁 / 归档」三类及依赖面，**不含代码改动**。
-> 所有行号以当前 HEAD `a0e6ade` 为准。
+> 所有行号以当前 HEAD `30f6b3f` 为准。
 
 ## 0. 当前生产路径（保留，不动）
 
@@ -106,7 +106,7 @@ GeoGenesisGenerator.fillFromNoise
 - 清理**不改地形产出**：B/P/model 算法与参数全部不动；只删不可达分支。
   但 `CACHE_SCHEMA_VERSION` 是否升版需实机确认（预览缓存格式已因水文叠加升至 122）。
 - 骨架功能按用户裁定「移除，待后续」：归档而非删除源码，后续可独立立项恢复。
-- 本清单编写时核实 HEAD `a0e6ade`，编写阶段未提交任何改动。
+- 本清单编写时核实 HEAD `30f6b3f`，编写阶段未提交任何改动。
 
 ## 7. 实施结果（2026-11-06）
 
@@ -146,7 +146,7 @@ extractFromTile → applyTileDelta → applyProcessDelta + processErosionDeltaE
 | `git diff --check` | exit 0 |
 
 > 既有红项 `runCenterlineCrossSectionProbe` 在 `handoff/GeoGenesis-20261029.md:242-247`
-> 有记录：旧默认配置下逐项相同，属 `44cfb19` 起的既存红，非本次清理引入。
+> 有记录：旧默认配置下逐项相同，属 `ff3239a` 起的既存红，非本次清理引入。
 
 **未完成**：实机 `runClient` 复验由用户执行（用户复验正常后才批准本次整理提交）；
 `CACHE_SCHEMA_VERSION` 本次未升版（清理未改任何地形产出）。

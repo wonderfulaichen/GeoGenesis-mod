@@ -58,7 +58,7 @@ Gradle 需要 **Java 21**（`JAVA_HOME=D:\Program Files\Eclipse Adoptium\jdk-21.
 分支 feat/hydrology-target
 HEAD 33a508d  地形升级沙箱：回退群岛/弧岛实验，恢复到组合基线   (2026-10-30)
      cbb44b6  文档：将 schema 119 定为现行标准图，并归档可复现证据   (2026-10-29)
-     544d145  文档：2026-10-29 冷启动交接（端口开关修复 / 死代码清理 / 源头抽稀）
+     a528005  文档：2026-10-29 冷启动交接（端口开关修复 / 死代码清理 / 源头抽稀）
 
 工作树：仅两个未跟踪项（与本轮无关，见 §2.4）
 origin/feat/hydrology-target..HEAD = 1 个提交（33a508d 未推送）

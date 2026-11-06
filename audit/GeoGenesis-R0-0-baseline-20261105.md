@@ -44,7 +44,7 @@
 | [loaded-final-arrays.csv](attachments/r0-0-20261105/loaded-final-arrays.csv)、[fallback-final-arrays.csv](attachments/r0-0-20261105/fallback-final-arrays.csv) | 每个数组长度、SHA、双算一致性、非零样本数 |
 | [loaded-final.log](attachments/r0-0-20261105/loaded-final.log)、[fallback-final.log](attachments/r0-0-20261105/fallback-final.log)、[config-boundary.txt](attachments/r0-0-20261105/config-boundary.txt) | 样本日志、已加载/回退参数实读、定点负控 |
 
-- HEAD：`0c742b6051fab06bc76517fc697efd585ea6a227`；分支 `feat/hydrology-target`。本来就有未提交实验，见 before；仅 HEAD 不能重建本次状态。
+- HEAD：`e263adeeba1e8e515b8e491ef677db738bbb0bb2`；分支 `feat/hydrology-target`。本来就有未提交实验，见 before；仅 HEAD 不能重建本次状态。
 - Java 21.0.11 Temurin，javac `--release 17`；生产独立编译 `-proc:none -g`，采集探针另加 `-Xlint:all -Werror`。
 - Java 采样显式 JVM 属性只有 `file.encoding=UTF-8`；**没有任何 geogenesis/hydro 的 `-D`**。各 JVM 完整系统属性及启动参数在数组 ZIP 的 environment.txt。
 - 外部 jar 从 Gradle 当前 compileClasspath 解析；运行只用新编译 probe/main 类、当前资源及外部 jar，不包含旧 baseline/classes 或候选编译目录。

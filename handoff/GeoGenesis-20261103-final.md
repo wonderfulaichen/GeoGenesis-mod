@@ -259,7 +259,7 @@ shelf-coastal           2604533841943D21
 
 ```
 分支      feat/hydrology-target      ← 必须检出这条，main 不含定稿
-HEAD      fb833613cae90c970547e2cd86e49cad9ff8759b（2026-11-03 历史重写后）
+HEAD      05b9b7e4e82b09df08969c8e254aa61347c41ab9（2026-11-03 历史重写后）
 远端      https://github.com/wonderfulaichen/GeoGenesis-mod.git
 已推送    是（重写后强推，远端 HEAD 与本地一致）
 .git      42.5 MB（重写前 407 MB）
@@ -267,7 +267,7 @@ HEAD      fb833613cae90c970547e2cd86e49cad9ff8759b（2026-11-03 历史重写后�
 ```
 
 ⚠ **2026-11-03 做过历史重写**：所有旧提交哈希已变（例如原来的 `d47de74`
-现在是 `b4d4410` 之后的新链），旧 SHA 无法解析。详情见 §7.1。
+现在是 `6019cef` 之后的新链），旧 SHA 无法解析。详情见 §7.1。
 
 工作区已还原到 HEAD 的干净状态：`OceanAssemblyCandidate.java` /
 `FullMorphGallery.java` / `CoherentMorphWorld.java` / `ShallowRegionMatcher.java`
