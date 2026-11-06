@@ -3370,6 +3370,16 @@ public final class ModelHydrologyProvider implements AutoCloseable {
     private volatile double marginMs = 0;
 
     /**
+     * "hydro.region.wait" 的累计纳秒。走 {@link HydrologyMetrics#add(String, long)} 的
+     * named 计数器（await() 已经在用 {@code HydrologyMetrics.begin("hydro.region.wait", …)}
+     * 记 scope，但那是【按次】统计；这里要的是可直接相减的【累计】口径）。
+     * 计数器关闭时恒 0 ⇒ pure == wall，退回旧口径，不会报错。
+     */
+    private static long hydrologyWaitNs() {
+        return com.geogenesis.diagnostics.HydrologyMetrics.namedTotalNs("hydro.region.wait");
+    }
+
+    /**
      * 双 pass 的 pass-1：跑本区管线 + 无接力骨架，产出出口种子。
      * <b>绝不取任何邻区</b>（扇出恒为 1）；缓存/inflight 范式同 {@link #regionFor}。
      */
@@ -4067,7 +4077,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
             regionSources = sr.sources();
             regionShaped = sr.shapedPolys();
         }
-        logRegionSolved(rx, rz, p, cl, t0, originX, originZ);
+        logRegionSolved(rx, rz, p, cl, t0, originX, originZ, 0);
         HierarchicalHydrology.Diag.fineTiming((System.nanoTime() - t0) / 1_000_000L, p.nx() * p.nx());
         lastFineMs = (System.nanoTime() - t0) / 1e6;
         // ★ v2：分层实验路径不产出 typed 端口 ⇒ 最终骨架载荷如实为 null（不冒充 pass2）。
@@ -4168,6 +4178,10 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         Pass1 base = regionPass1(rx, rz);
         long baseDone = System.nanoTime();
         long incomingNs = 0;
+        // ★ 2026-11-06：把"等别人解"的时间单独记（logRegionSolved 会扣除后报 pureMs）。
+        //   上一轮归因：solved in 194s 的窗口里混着「等 SpawnPreload 的求解」和
+        //   「玩家按 ESC 触发的 Saving and pausing」，挂钟计时把两者都算了进去。
+        long waitNs0 = hydrologyWaitNs();
         HydrologyPipeline.Result p = base.pipe();
         // 骨架是唯一生产线（legacy 分支已删，2026-10-20）。
         RiverCenterlines.Result cl;
@@ -4207,7 +4221,8 @@ public final class ModelHydrologyProvider implements AutoCloseable {
                             + " finalMs=" + (System.nanoTime() - baseDone - incomingNs) / 1e6);
         }
         // #endregion
-        logRegionSolved(rx, rz, p, cl, t0, base.originX(), base.originZ());
+        long waitNs = hydrologyWaitNs() - waitNs0;
+        logRegionSolved(rx, rz, p, cl, t0, base.originX(), base.originZ(), waitNs);
         return rd;
     }
 
@@ -4231,7 +4246,25 @@ public final class ModelHydrologyProvider implements AutoCloseable {
     /** region 求解日志（细层/既有路径共用；不改产出）。 */
     private void logRegionSolved(int rx, int rz, HydrologyPipeline.Result p,
                                  RiverCenterlines.Result cl, long t0, int originX, int originZ) {
+        logRegionSolved(rx, rz, p, cl, t0, originX, originZ, 0);
+    }
+
+    /**
+     * region 求解日志。★ 2026-11-06 起<b>两个数分开报</b>：
+     * <ul>
+     *   <li>{@code pureMs} —— 本线程真正在算的时间（不含等待别区、不含玩家暂停）；</li>
+     *   <li>{@code wallMs} —— 挂钟时间（= pure + 等待 + 暂停 + GC…）。</li>
+     * </ul>
+     * <p>为什么要拆：上一轮归因发现 "solved in 194388 ms" 的窗口里，
+     * 有 3 次 {@code Saving and pausing game}（玩家按 ESC）和与 SpawnPreload
+     * 线程的并行求解 —— 挂钟口径把这些全算进了"求解"，数字根本没法用来判慢。
+     * 旧字段 {@code solved in} 保留原值（挂钟），避免破坏既有对拍口径。</p>
+     */
+    private void logRegionSolved(int rx, int rz, HydrologyPipeline.Result p,
+                                 RiverCenterlines.Result cl, long t0, int originX, int originZ,
+                                 long waitNs) {
         double ms = (System.nanoTime() - t0) / 1e6;
+        double pureMs = ms - waitNs / 1e6;
         int lakeCells = countTrue(p.lake());
         regionLakeCells.addAndGet(lakeCells);       // ★ 诊断累计（见 lastRegionLakeCells）
         // ★ 诊断（2026-10-09）：`resolved` 是 EquilibriumWater 的"与窗口切割无关"标志。
@@ -4243,6 +4276,9 @@ public final class ModelHydrologyProvider implements AutoCloseable {
                 rx, rz, String.format("%.0f", ms), riverModel(), HIER, p.nx() + "x" + p.nz(),
                 cl.reachCount(), lakeCells, countTrue(p.channel()),
                 String.format("%.0f", marginMs), resolvedN, p.nx() * p.nz(), basinsN, dryN);
+        LOGGER.info("[HYDRO-TIME] region ({},{}) pure={}ms wait={}ms wall={}ms",
+                rx, rz, String.format("%.0f", pureMs), String.format("%.0f", waitNs / 1e6),
+                String.format("%.0f", ms));
     }
 
     /**

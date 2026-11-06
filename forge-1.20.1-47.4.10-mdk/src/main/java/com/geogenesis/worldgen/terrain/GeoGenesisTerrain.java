@@ -407,20 +407,20 @@ public final class GeoGenesisTerrain {
      * </ol>
      */
     public void preloadSpawnAsync() {
-        if (!preloadSpawnScheduled.compareAndSet(false, true)) return;
-        Thread t = new Thread(() -> {
-            try {
-                // 等首个 chunk 生成完毕（上限 30s，超时也继续 —— 预热只是优化）
-                firstChunkLatch.await(30, java.util.concurrent.TimeUnit.SECONDS);
-                preloadAround(0, 0, 3);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                LOGGER.warn("spawn preload failed", e);
-            }
-        }, "GeoGenesis-SpawnPreload");
-        t.setDaemon(true);
-        t.start();
+        // ★ 2026-11-06：砍掉。实机日志（run/logs/latest.log 06:32 窗口）抓到实证：
+        //   GeoGenesis-SpawnPreload 线程与 Worker 线程**并行**各解一批 region
+        //   （窗口内两条线分别 27 次 / 20 次 PASS1），同一批 region 被解了两遍；
+        //   其中一次 region(-3,-2) 的"solved in 194388 ms"里混着等对方 + 玩家暂停。
+        //   另外 ModelHydrologyProvider.schedulePreheat 的 javadoc 早写明
+        //   "New sessions are demand-only, no region fan-out" —— 这条线程正是
+        //   绕过该约束的多余求解来源。
+        //   代价比收益大：预热省下的"进入时首采"毫秒数，远小于与需求线程抢
+        //   region 求解造成的数十秒卡顿。删除调用点即可整体下线；
+        //   preloadAround/firstChunkLatch 保留（探针可能仍用）。
+        if (preloadSpawnScheduled.compareAndSet(false, true)) {
+            LOGGER.info("[TERRAIN] spawn preload 已停用（2026-11-06）："
+                    + "与需求线程并行求解造成 region 重复计算（见 [HYDRO-TIME]）");
+        }
     }
 
     /** 旧 API 兼容：按 block 网格返回 Cell 二维数组。支持中断。 */

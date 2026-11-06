@@ -113,6 +113,14 @@ public final class HydrologyMetrics {
     /** 插桩是否开启（关闭时调用方可以据此省掉包装 lambda）。 */
     public static boolean enabled() { return ENABLED; }
 
+    /**
+     * 需要【额外】镜像到 named 计数器的阶段名（低频阶段）。
+     * {@code hydro.region.wait} 供 ModelHydrologyProvider 的 pure/wait 拆分计时
+     * 直接 {@code sum()} 使用；OpStat 只有 snapshot() 可读，不适合在求解中途相减。
+     */
+    private static final java.util.Set<String> MIRRORED_OPS =
+            java.util.Set.of("hydro.region.wait");
+
     // ==================================================================
     // 阶段：begin / end / note
     // ==================================================================
@@ -123,20 +131,23 @@ public final class HydrologyMetrics {
      * 重复串行结束只记一次，不支持多个线程同时结束同一句柄。
      */
     public static final class Scope implements AutoCloseable {
-        static final Scope NONE = new Scope(null, null, 0L, null);
+        static final Scope NONE = new Scope(null, null, 0L, null, null);
         /** JFR 事件（{@code jdk.jfr} 不可用时为 null）。类型故意收成 {@code Object}：
          *  避免在 {@code jdk.jfr} 缺失的 JVM 上因字段类型解析而链接失败。 */
         final Object event;
         final OpStat stat;
         final long t0;
         final Thread owner;
+        /** 需要镜像累计到 named 计数器的键（null = 不镜像）。 */
+        final String mirrorKey;
         boolean closed;
 
-        private Scope(Object event, OpStat stat, long t0, Thread owner) {
+        private Scope(Object event, OpStat stat, long t0, Thread owner, String mirrorKey) {
             this.event = event;
             this.stat = stat;
             this.t0 = t0;
             this.owner = owner;
+            this.mirrorKey = mirrorKey;
         }
 
         /** 等价于 {@link HydrologyMetrics#end(Scope)}；关闭插桩时提前返回。 */
@@ -173,6 +184,10 @@ public final class HydrologyMetrics {
     private static Scope start(String operation, int x, int z, int round, long taskId) {
         if (operation == null) operation = "unknown";
         OpStat st = STATE.op(operation);          // 查找或创建聚合项；end 复用引用
+        // ★ 同名镜像到 named 计数器：让 "hydro.region.wait" 这类阶段既有 OpStat
+        //   （snapshot 用）又有可直接 sum() 的 LongAdder（ModelHydrologyProvider 的
+        //   pure/wait 拆分用）。仅低频阶段使用，勿放逐格热路径。
+        String mirror = MIRRORED_OPS.contains(operation) ? operation : null;
         long t0 = System.nanoTime();
         Object ev = null;
         if (JFR_PRESENT && !jfrBroken) {
@@ -182,7 +197,7 @@ public final class HydrologyMetrics {
                 jfrBroken = true;                 // 只退掉事件，计数继续
             }
         }
-        return new Scope(ev, st, t0, Thread.currentThread());
+        return new Scope(ev, st, t0, Thread.currentThread(), mirror);
     }
 
     /** 结束阶段并记账；null、哨兵和串行重复调用直接返回。调用方应在 finally 中结束。 */
@@ -194,6 +209,10 @@ public final class HydrologyMetrics {
         if (st != null) {
             st.count.increment();
             st.totalNs.add(ns);
+            // ★ 镜像累计（见 start 的注释）：与 OpStat 同步累加，保证 namedTotalNs 可用
+            if (scope.mirrorKey != null) {
+                STATE.named(scope.mirrorKey).add(ns);
+            }
             long prev = st.maxNs.get();
             while (ns > prev && !st.maxNs.compareAndSet(prev, ns)) {
                 prev = st.maxNs.get();
@@ -282,6 +301,17 @@ public final class HydrologyMetrics {
     /** {@link #count(String, long)} 的别名，使用相同的 sum key。 */
     public static void add(String name, long delta) {
         count(name, delta);
+    }
+
+    /**
+     * 某个 named 计数器的累计纳秒（{@code LongAdder.sum()}）。
+     * 关闭插桩或键不存在时返回 0 —— 调用方（{@code ModelHydrologyProvider} 的
+     * pure/wait 拆分计时）在关闭时自动退回 wall 口径。
+     */
+    public static long namedTotalNs(String key) {
+        if (!ENABLED || key == null) return 0L;
+        LongAdder a = STATE.named.get(key);
+        return a == null ? 0L : a.sum();
     }
 
     /** 最近值（<b>last-wins</b>，并发下不可作归因；仅供单任务/离线自检读取）。 */
