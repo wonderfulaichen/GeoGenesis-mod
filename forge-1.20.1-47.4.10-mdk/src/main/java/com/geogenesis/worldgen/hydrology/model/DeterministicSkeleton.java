@@ -1627,6 +1627,7 @@ public final class DeterministicSkeleton {
                         double[] bed, Boolean networkFilter, OutsideContinuation outside,
                         Result base, PassRole role, CoreBounds core,
                         LakeWaterBalance.Result lakes) {
+        long diagStart = System.nanoTime();
         int cells = nx * nz;
         // ★ v2：角色由调用方显式给出；与 base 是否为空不符 ⇒ 记冲突（不当 pass1 静默处理）。
         final boolean roleConflict = (base != null) != (role == PassRole.SECOND_PASS);
@@ -1704,7 +1705,7 @@ public final class DeterministicSkeleton {
         int[] stampBox = {0};
         // ★ 交叉守卫用：已画线段集合（格坐标 {ax,ay,bx,by}）——
         //   legacy `allSegments`（`nearbyDownhillNode` 的 `_wouldCrossExistingSegments`）同义。
-        java.util.List<int[]> segments = new java.util.ArrayList<>();
+        java.util.List<int[]> segments = new SegmentBuckets();
         int sourceTraces = 0;
         int incomingStarts = 0;
         // ★ ports 模块：pass2（base != null）时无条件收集裁定，审计才能回答"为什么没接上"。
@@ -1739,6 +1740,7 @@ public final class DeterministicSkeleton {
         incoming.sort(Integer::compare);          // 确定性：不依赖邻区种子到达顺序
         @SuppressWarnings("unchecked")
         List<Integer>[] passList = new List[]{incoming, outlets, sources};
+        long diagTraceStart = System.nanoTime();
         for (int pass = 0; pass < 3; pass++) {
             List<Integer> starts = passList[pass];
             for (int idx = 0; idx < starts.size(); idx++) {
@@ -1917,6 +1919,7 @@ public final class DeterministicSkeleton {
         //   【它们自己的边框格】上（parent=-1 ⇒ 单格即死），只有对角接收方落在窗内
         //   ⇒ 只发 (dRX,dRZ) 对角种子（实测：轴向种子 i 或 j 恰为 0/nn-1 ⇒ 无用）。
         // ★ ports 模块：base 在前、新链在后（pass1 几何逐位保留；不做几何并集）
+        long diagTraceDone = System.nanoTime();
         List<Trace> merged = mergeBase(base, traces);
         // ★ 溢口认证（只在上下文里产生）：短滤据此豁免"真的把水接到别处"的湖后河。
         java.util.Set<Integer> certifiedOutletStarts = certifiedOutlets(merged, lakes);
@@ -1934,6 +1937,7 @@ public final class DeterministicSkeleton {
                         new IncomingDiagnostic(c, "PRUNED_NO_LAKE_OR_SEA", 0, c, null));
             }
         }
+        long diagFilterDone = System.nanoTime();
         List<ExitSeed> exitSeeds = exitSeedsOf(merged, nx, nz);
         List<BoundaryPort> ports = portsOf(merged);
         Result result = new Result(merged, sourcesTotal, droppedBySpacing, outletStarts,
@@ -1956,6 +1960,18 @@ public final class DeterministicSkeleton {
             verifyPortAnchors(ports, merged);
             assertUniqueSuccessors(merged, nz);
         }
+        // #region agent log: T 构建内部挂钟分段，追踪与过滤不混算
+        if (outside != null) {
+            com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("T", "hydro-build-"
+                            + outside.originX() + "-" + outside.originZ() + "-" + role,
+                    "prepareMs=" + (diagTraceStart - diagStart) / 1e6
+                            + " traceMs=" + (diagTraceDone - diagTraceStart) / 1e6
+                            + " filterMs=" + (diagFilterDone - diagTraceDone) / 1e6
+                            + " publishMs=" + (System.nanoTime() - diagFilterDone) / 1e6
+                            + " candidates=" + sources.size() + " rawTraces=" + traces.size()
+                            + " retained=" + merged.size());
+        }
+        // #endregion
         return result;
     }
 
@@ -2866,6 +2882,14 @@ public final class DeterministicSkeleton {
                                   OutsideContinuation outside, WireIn wire,
                                   List<WireReject> wireRejects,
                                   LakeWaterBalance.Result lakes) {
+        // #region agent log: U traceOne 子项挂钟，只观测不参与决策
+        boolean traceTiming = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled();
+        long traceStartNs = System.nanoTime();
+        long vectorNs = 0, spillNs = 0;
+        final long[] edgeTiming = new long[6]; // total calls/ns, own calls/ns, other calls/ns
+        int vectorCalls = 0, spillCalls = 0;
+        long spillExpanded = 0;
+        // #endregion
         int cells = nx * nz;
         java.util.TreeMap<Integer, Integer> visited = parentForest == null ? null : new java.util.TreeMap<>();
         List<Integer> path = new ArrayList<>();
@@ -3065,7 +3089,9 @@ public final class DeterministicSkeleton {
                 int s;
                 double stepDirX = 0, stepDirZ = 0;
                 if (VECTOR_TRACE) {
+                    long vectorStart = traceTiming ? System.nanoTime() : 0;
                     StepResult sr = vectorTraceNext(k, bed, nx, nz, lastDirX, lastDirZ, GRADIENT_SPAN);
+                    if (traceTiming) { vectorNs += System.nanoTime() - vectorStart; vectorCalls++; }
                     s = sr.cell();
                     stepDirX = sr.dirX();
                     stepDirZ = sr.dirZ();
@@ -3173,14 +3199,41 @@ public final class DeterministicSkeleton {
                             public boolean receiver(int c) { return lakeMask[c] || sea[c]
                                     || covered[c] && selfStamp[c] != stamp; }
                             public boolean blockedEdge(int a, int b) {
-                                return ownSegments.crosses(a, b) || STEP_CROSS_GUARD
-                                        && segmentCrossesAny(a / nz, a % nz, b / nz, b % nz, segments);
+                                if (!traceTiming) {
+                                    return ownSegments.crosses(a, b) || STEP_CROSS_GUARD
+                                            && segmentCrossesAny(a / nz, a % nz, b / nz, b % nz, segments);
+                                }
+                                long startNs = System.nanoTime();
+                                try {
+                                    long ownStart = System.nanoTime();
+                                    boolean ownCross = ownSegments.crosses(a, b);
+                                    edgeTiming[2]++;
+                                    edgeTiming[3] += System.nanoTime() - ownStart;
+                                    if (ownCross) return true;
+                                    if (!STEP_CROSS_GUARD) return false;
+                                    long otherStart = System.nanoTime();
+                                    boolean otherCross = segmentCrossesAny(a / nz, a % nz, b / nz, b % nz, segments);
+                                    edgeTiming[4]++;
+                                    edgeTiming[5] += System.nanoTime() - otherStart;
+                                    return otherCross;
+                                } finally {
+                                    if (traceTiming) {
+                                        edgeTiming[0]++;
+                                        edgeTiming[1] += System.nanoTime() - startNs;
+                                    }
+                                }
                             }
                         };
+                        long spillStartNs = traceTiming ? System.nanoTime() : 0;
                         OrderedSpillSearch.Result spill = new OrderedSpillSearch(bed, nx, nz, k,
                                 MAX_SPILL_RISE, outside == null ? 0 : outside.originX(),
                                 outside == null ? 0 : outside.originZ(), outside == null ? 1 : outside.step(),
                                 cells, guards).find();
+                        if (traceTiming) {
+                            spillNs += System.nanoTime() - spillStartNs;
+                            spillCalls++;
+                            spillExpanded += spill.expanded();
+                        }
                         if (outside != null && outside.originX() + k / nz * outside.step() == -362
                                 && outside.originZ() + k % nz * outside.step() == 652) {
                             System.out.println("[BOUNDARY-SPILL-TARGET] " + spill.status()
@@ -3372,6 +3425,19 @@ public final class DeterministicSkeleton {
         //   （河头+交汇点的 2 格 Y 形）也放行」。溢口续流段（湖后河）正是"干流延续"，
         //   且 SkeletonProbe [5] 要求「溢口必有河起点」⇒ **溢口段豁免长度下限**。
         //   （实测：不豁免时 [5] 报 1~4 个溢口无覆盖 = 湖边河凭空消失。）
+        // #region agent log: U 在短链/回滚 return 之前记录，避免遗漏被丢弃的慢链
+        if (traceTiming && outside != null) {
+            com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("U", "hydro-trace-"
+                            + outside.originX() + "-" + outside.originZ() + "-" + start + "-" + fromIncoming,
+                    "wallMs=" + (System.nanoTime() - traceStartNs) / 1e6
+                            + " vectorMs=" + vectorNs / 1e6 + " vectorCalls=" + vectorCalls
+                            + " spillMs=" + spillNs / 1e6 + " spillCalls=" + spillCalls
+                            + " edgeGuardMs=" + edgeTiming[1] / 1e6 + " edgeGuardCalls=" + edgeTiming[0]
+                            + " ownCrossMs=" + edgeTiming[3] / 1e6 + " ownCrossCalls=" + edgeTiming[2]
+                            + " otherCrossMs=" + edgeTiming[5] / 1e6 + " otherCrossCalls=" + edgeTiming[4]
+                            + " expanded=" + spillExpanded + " nodes=" + path.size() + " stop=" + stopReason);
+        }
+        // #endregion
         int minNodes = Math.max(2, params.minNodes());
         // ★★★ 2026-10-10【路径级回滚（PL-RGA rolled_back 同构）—— 治"孤立段"】★★★
         //
@@ -3703,9 +3769,59 @@ public final class DeterministicSkeleton {
         }
     }
 
+    /** 保留登记顺序；桶只缩小候选集，最终仍使用原精确交叉判据。 */
+    static final class SegmentBuckets extends java.util.ArrayList<int[]> {
+        private static final long serialVersionUID = 1L;
+        private final java.util.Map<Long, List<int[]>> buckets = new java.util.HashMap<>();
+        private boolean linear;
+
+        @Override public boolean add(int[] edge) {
+            super.add(edge);
+            if (linear) return true;
+            int x0 = Math.floorDiv(Math.min(edge[0], edge[2]), 8);
+            int x1 = Math.floorDiv(Math.max(edge[0], edge[2]), 8);
+            int z0 = Math.floorDiv(Math.min(edge[1], edge[3]), 8);
+            int z1 = Math.floorDiv(Math.max(edge[1], edge[3]), 8);
+            // 原 orientation 用 int：坐标过大时保留其溢出行为，不能靠 AABB 排除。
+            if (!safe(edge[0], edge[1], edge[2], edge[3])
+                    || ((long) x1 - x0 + 1) * ((long) z1 - z0 + 1) > 4096) {
+                linear = true;
+                buckets.clear();
+                return true;
+            }
+            for (int x = x0; x <= x1; x++) for (int z = z0; z <= z1; z++) {
+                buckets.computeIfAbsent(key(x, z), ignored -> new ArrayList<>()).add(edge);
+            }
+            return true;
+        }
+
+        boolean crosses(int ax, int az, int bx, int bz) {
+            int x0 = Math.floorDiv(Math.min(ax, bx), 8), x1 = Math.floorDiv(Math.max(ax, bx), 8);
+            int z0 = Math.floorDiv(Math.min(az, bz), 8), z1 = Math.floorDiv(Math.max(az, bz), 8);
+            if (linear || !safe(ax, az, bx, bz)
+                    || ((long) x1 - x0 + 1) * ((long) z1 - z0 + 1) > 4096) {
+                for (int[] s : this) if (segmentsCross(ax, az, bx, bz, s[0], s[1], s[2], s[3])) return true;
+                return false;
+            }
+            for (int x = x0; x <= x1; x++) for (int z = z0; z <= z1; z++) {
+                List<int[]> edges = buckets.get(key(x, z));
+                if (edges != null && segmentCrossesAny(ax, az, bx, bz, edges)) return true;
+            }
+            return false;
+        }
+
+        private static long key(int x, int z) { return ((long) x << 32) ^ (z & 0xffffffffL); }
+
+        private static boolean safe(int ax, int az, int bx, int bz) {
+            return ax >= -8192 && ax < 8192 && az >= -8192 && az < 8192
+                    && bx >= -8192 && bx < 8192 && bz >= -8192 && bz < 8192;
+        }
+    }
+
     /** 段 (ax,ay)-(bx,by) 是否与任一已有段真交叉（legacy {@code segmentCrossesAny} 同义）。 */
     private static boolean segmentCrossesAny(int ax, int ay, int bx, int by,
                                              java.util.List<int[]> segs) {
+        if (segs instanceof SegmentBuckets indexed) return indexed.crosses(ax, ay, bx, by);
         for (int[] s : segs) {
             if (segmentsCross(ax, ay, bx, by, s[0], s[1], s[2], s[3])) return true;
         }

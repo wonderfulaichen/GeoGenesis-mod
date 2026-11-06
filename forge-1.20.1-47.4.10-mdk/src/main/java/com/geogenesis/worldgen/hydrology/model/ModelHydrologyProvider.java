@@ -1952,6 +1952,11 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         //   终止的链既不接湖也不接海 ⇒ 凭空断流。legacy 同名机制由"洼地续流"兜底，
         //   我方无该兜底 ⇒ 直接关闭（候选：日后给自贴近终止加专用 End + 兜底）。
         // 【测量】骨架本体（pass1 与 final 都走这里；父级 scope 分别是 hydro.pass1.skeleton / hydro.region.solve）
+        // #region agent log: S 骨架分段；窗外高度调用是 build 的子项，不重复相加
+        final boolean timing = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled();
+        final long[] outsideTiming = new long[2]; // calls, inclusive wall ns
+        long buildStart = System.nanoTime();
+        // #endregion
         DeterministicSkeleton.Result sk;
         var skelBuildScope = HydrologyMetrics.begin("hydro.skel.build", originX, originZ);
         try {
@@ -1968,7 +1973,16 @@ public final class ModelHydrologyProvider implements AutoCloseable {
                 // ★【窗口边界不截断】：parent=-1 且非湖/海时，用世界坐标地形最陡下降续追到水体
                 //   （等价旧版 margin 效果，但不扩求解域）。步数上限按窗口半宽折算。
                 new DeterministicSkeleton.OutsideContinuation(
-                        (bx, bz) -> input.processHeightAtBlock(bx, bz),
+                        (bx, bz) -> {
+                            if (!timing) return input.processHeightAtBlock(bx, bz);
+                            long start = System.nanoTime();
+                            try {
+                                return input.processHeightAtBlock(bx, bz);
+                            } finally {
+                                outsideTiming[0]++;
+                                outsideTiming[1] += System.nanoTime() - start;
+                            }
+                        },
                         originX, originZ, STEP,
                         Integer.getInteger("geogenesis.outsideSteps", 2048),
                         input.params().seaLevel()),
@@ -1982,6 +1996,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         } finally {
             HydrologyMetrics.end(skelBuildScope);
         }
+        long buildDone = System.nanoTime();
         if (HIER) {
             // 回传事实（探针可断言"实验构建确实关了过滤且未删链"）。
             HierarchicalHydrology.Diag.skeletonBuild(sk.networkFilterEnabled,
@@ -2013,6 +2028,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         // 亚格几何（Catmull-Rom + 格点吸附）→ SegmentIndex（落块用）
         // 【测量】shape 阶段 = 亚格折线化 + 出湖前缀拼接（final 的几何主体）
         List<DeterministicSkeleton.Shaped> shaped;
+        long shapeStart = System.nanoTime();
         var shapeScope = HydrologyMetrics.begin("hydro.skel.shape", originX, originZ);
         try {
             shaped = DeterministicSkeleton.shape(sk.traces, p.level(),
@@ -2021,6 +2037,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         } finally {
             HydrologyMetrics.end(shapeScope);
         }
+        long shapeDone = System.nanoTime();
         List<DeterministicSkeleton.Shaped> allPolys = shaped;
         // ★ 诊断（`-Dgeogenesis.joinChk=true`）：JOIN 点的像素是否重合
         //   —— 共享锚点表若生效，两条链在该格应产出【逐位相同】的像素。
@@ -2103,6 +2120,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         WidthInheritance inherited;
         Map<Integer, Double> boundary;
         Map<Long, Double> outletHalf;
+        long widthStart = System.nanoTime();
         var widthScope = HydrologyMetrics.begin("hydro.skel.width", originX, originZ);
         try {
             inherited = primary && BOUNDARY_PORTS && !HIER
@@ -2119,6 +2137,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
             HydrologyMetrics.end(widthScope);
         }
         // 【测量】index 阶段 = SegmentIndex 构建（内含 profile/depth/诊断 I/O 三个子 scope）
+        long widthDone = System.nanoTime();
         SegmentIndex seg;
         var indexScope = HydrologyMetrics.begin("hydro.skel.index", originX, originZ);
         try {
@@ -2128,6 +2147,18 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         } finally {
             HydrologyMetrics.end(indexScope);
         }
+        long indexDone = System.nanoTime();
+        // #region agent log: S 同源挂钟分段，不代表 CPU；outsideMs 包含 tile 等待
+        if (timing) {
+            com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("S", "hydro-skeleton-"
+                            + originX + "-" + originZ + "-" + primary,
+                    "seed=" + seed + " role=" + role + " buildMs=" + (buildDone - buildStart) / 1e6
+                            + " outsideCalls=" + outsideTiming[0] + " outsideMs=" + outsideTiming[1] / 1e6
+                            + " shapeMs=" + (shapeDone - shapeStart) / 1e6
+                            + " widthMs=" + (widthDone - widthStart) / 1e6
+                            + " indexMs=" + (indexDone - widthDone) / 1e6);
+        }
+        // #endregion
         RiverCenterlines.Params wp = RiverCenterlines.Params.defaults();
         List<RiverCenterlines.Reach> reaches = new ArrayList<>();
         for (var t : sk.traces) {

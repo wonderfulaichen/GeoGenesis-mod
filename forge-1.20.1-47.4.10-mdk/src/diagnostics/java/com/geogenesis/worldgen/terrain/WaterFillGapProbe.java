@@ -30,6 +30,14 @@ import java.util.Locale;
  * 目前两处都非零 —— 这是待修缺陷的度量，不是修复后的回归闸门。</p>
  *
  * <p>用法：{@code gradlew runWaterFillGapProbe [-PprobeArgs="0,-2 -3,-1"]}</p>
+ * <p>逐位证据：{@code -PprobeArgs="--seed=686443174003246080 --timing-only
+ * --snapshot=build/before-heavy 2,-2"}。补充低请求量样例：
+ * {@code --seed=12345 --timing-only --snapshot=build/before-small 0,0}。
+ * fresh path 为尚不存在的目录，父目录须存在；每 region 固定 5 chunks，
+ * 冷启动仍可能触发生产邻区/侵蚀工作，非耗时上限保证。每臂用独立 JVM。
+ * 对拍：{@code -PprobeArgs="--compare=build/before-heavy build/after-heavy"}；
+ * 失败非零退出。源码/config provenance 单独保存，不混入几何 payload。
+ * 不带 --snapshot 的原扫描与 --timing-only 行为不变。</p>
  */
 public final class WaterFillGapProbe {
 
@@ -40,11 +48,41 @@ public final class WaterFillGapProbe {
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
-        Path out = Path.of("build", "water-fill-gap");
+        if (args.length == 1 && args[0].equals("--snapshot-self-test")) {
+            snapshotSelfTest();
+            return;
+        }
+        if (args.length == 2 && args[0].startsWith("--compare=")) {
+            compareSnapshots(Path.of(args[0].substring(10)), Path.of(args[1]));
+            return;
+        }
+        Path snapshot = null;
+        for (String arg : args) {
+            if (arg.startsWith("--snapshot=")) snapshot = Path.of(arg.substring(11)).toAbsolutePath();
+        }
+        // Fresh directory only: never overwrite baseline evidence, even after a failed run.
+        if (snapshot != null) Files.createDirectory(snapshot);
+        Path out = snapshot == null ? Path.of("build", "water-fill-gap") : snapshot;
         Files.createDirectories(out);
 
+        if (args.length == 3 && args[0].equals("--compare")) {
+            compareSnapshots(Path.of(args[1]), Path.of(args[2]));
+            return;
+        }
+        long seed = SEED;
+        boolean timingOnly = java.util.Arrays.asList(args).contains("--timing-only");
         List<int[]> regions = new ArrayList<>();
         for (String a : args) {
+            if (a.startsWith("--seed=")) {
+                seed = Long.parseLong(a.substring("--seed=".length()));
+                continue;
+            }
+            if (a.startsWith("--")) {
+                if (!a.equals("--timing-only") && !a.startsWith("--snapshot=")) {
+                    throw new IllegalArgumentException("Unknown option: " + a);
+                }
+                continue;
+            }
             String[] p = a.split(",");
             if (p.length == 2) {
                 regions.add(new int[]{Integer.parseInt(p[0].trim()), Integer.parseInt(p[1].trim())});
@@ -59,17 +97,34 @@ public final class WaterFillGapProbe {
         // 与生产 GeoGenesisGenerator.buildTerrain 同构：morphBase=true + terrain.seed()
         CellGenerator gen = new CellGenerator(tp, (int) tp.minY(), (int) tp.maxY(), true);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
-        terrain.seed(SEED);
+        terrain.seed(seed);
 
-        System.out.printf("=== WaterFillGapProbe seed=%d regions=%d ===%n", SEED, regions.size());
+        System.out.printf("=== WaterFillGapProbe seed=%d regions=%d ===%n", seed, regions.size());
+        if (snapshot != null) {
+            try {
+                snapshot(terrain, gen, tp, seed, regions, args, snapshot);
+            } finally {
+                gen.closeProcessErosion();
+            }
+            return; // Snapshot is bounded regardless of --timing-only; never scan 1024 chunks.
+        }
         int rawSteps = 0, rawHoles = 0, effSteps = 0, effHoles = 0, lakeSteps = 0;
         for (int[] r : regions) {
+            if (timingOnly) {
+                terrain.getChunkCells(r[0] * 32 + 16, r[1] * 32 + 16);
+                continue;
+            }
             int[] c = scan(terrain, r[0], r[1]);
             rawSteps += c[0];
             rawHoles += c[1];
             effSteps += c[2];
             effHoles += c[3];
             lakeSteps += c[4];
+        }
+        if (timingOnly) {
+            System.out.println("TIMING COLLECTED (water-gap assertions not run)");
+            gen.closeProcessErosion();
+            return;
         }
         System.out.println();
         System.out.println("汇总：");
@@ -200,6 +255,279 @@ public final class WaterFillGapProbe {
             System.out.println("    " + s);
         }
         return new int[]{rSteps, rHoles, eSteps, eHoles, lakeSteps};
+    }
+
+    /** Snapshot v1: big-endian DataOutputStream; typed values, raw IEEE bits, stable field names.
+     * ForProbe methods are package-private in current production, accessed read-only by reflection.
+     * No cache internals or independent provider: use the exact instance used by getChunkCells.
+     */
+    private static void snapshot(GeoGenesisTerrain terrain, CellGenerator gen, TerrainParams tp,
+                                 long seed, List<int[]> regions, String[] args, Path out) throws Exception {
+        provenance(out, args, seed);
+        try (var data = binary(out.resolve("settings.bin"))) {
+            exact(data, tp);
+            data.writeLong(seed);
+            exact(data, regions);
+            data.writeLong(Double.doubleToRawLongBits(terrain.seaLevel()));
+        }
+        int regionSize = (int) staticField(
+                com.geogenesis.worldgen.hydrology.model.ModelHydrologyProvider.class, "REGION");
+        if (regionSize != REGION) throw new IllegalStateException("This fixture requires REGION=512");
+        for (int[] r : regions) snapshotRegion(terrain, gen, r[0], r[1], out);
+        // COMPLETE is last; incomplete evidence is never accepted by --compare.
+        List<String> hashes = new ArrayList<>();
+        try (var files = Files.list(out)) {
+            for (Path p : files.filter(p -> p.toString().endsWith(".bin")).sorted().toList()) {
+                hashes.add(p.getFileName() + " " + sha256(p));
+            }
+        }
+        Files.write(out.resolve("COMPLETE"), hashes, java.nio.charset.StandardCharsets.UTF_8);
+        System.out.println("SNAPSHOT COMPLETE: " + out + " (no gap assertions; 5 chunks/region)");
+    }
+
+    private static void snapshotRegion(GeoGenesisTerrain terrain, CellGenerator gen,
+                                       int rx, int rz, Path out) throws Exception {
+        int cx = rx * 32 + 16, cz = rz * 32 + 16;
+        // First request is identical to the pre-existing --timing-only target.
+        Cell[] target = terrain.getChunkCells(cx, cz);
+        Object engine = field(terrain, "hydrologyExperiment");
+        Object provider = field(engine, "modelProvider");
+        if (provider == null) throw new IllegalStateException("Production provider was not initialized");
+        Path file = out.resolve("region_" + rx + "_" + rz + ".bin");
+        try (var data = binary(file)) {
+            data.writeUTF("WaterFillGapSnapshot");
+            data.writeInt(1);
+            data.writeInt(rx);
+            data.writeInt(rz);
+            int bx = rx * REGION + REGION / 2, bz = rz * REGION + REGION / 2;
+            exact(data, probe(provider, "windowFrameForProbe", bx, bz));
+            Object sk = probe(provider, "finalSkeletonForProbe", rx, rz);
+            if (sk == null) throw new IllegalStateException("Missing production final skeleton");
+            // Raw trace order and raw (unstamped) ports preserved, not sorted or reduced to counts.
+            exact(data, field(sk, "traces"));
+            exact(data, field(sk, "ports"));
+            exact(data, field(sk, "pendingExits"));
+            exact(data, field(sk, "anchorPins"));
+            exact(data, probe(provider, "finalPortsForProbe", rx, rz));
+            exact(data, probe(provider, "shapedNodesWorldForProbe", bx, bz));
+            // Two adjacent chunks straddling east seam, two straddling south seam.
+            int[][] chunks = {{cx, cz}, {rx * 32 + 31, cz}, {rx * 32 + 32, cz},
+                    {cx, rz * 32 + 31}, {cx, rz * 32 + 32}};
+            exact(data, chunks);
+            for (int i = 0; i < chunks.length; i++) {
+                int x = chunks[i][0], z = chunks[i][1];
+                Cell[] cells = i == 0 ? target : terrain.getChunkCells(x, z);
+                writeCells(data, cells);
+                exact(data, WaterSurfaceUnifier.unifiedTops(cells, terrain.seaLevel(), true));
+                // Read the public resampling entry, not a reconstruction from final carved heights.
+                // This additional list is labelled separately from actual getChunkCells above.
+                data.writeUTF("public-calculate-resampled-column-plan");
+                exact(data, terrain.calculateHydrologyChunk(x, z).carvedColumns());
+            }
+        }
+        System.out.println(file.getFileName() + " sha256=" + sha256(file));
+    }
+
+    private static void writeCells(java.io.DataOutputStream data, Cell[] cells) throws Exception {
+        data.writeUTF("actual-getChunkCells-scalars-enums-typeWeights:index=lx*16+lz");
+        var fields = java.util.Arrays.stream(Cell.class.getFields())
+                .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers()))
+                .filter(f -> f.getType().isPrimitive() || f.getType().isEnum()
+                        || f.getType() == double[].class)
+                .sorted(java.util.Comparator.comparing(java.lang.reflect.Field::getName)).toList();
+        data.writeInt(cells.length);
+        for (Cell cell : cells) {
+            data.writeBoolean(cell != null);
+            if (cell == null) continue;
+            data.writeInt(fields.size());
+            for (var f : fields) {
+                data.writeUTF(f.getName());
+                exact(data, f.get(cell));
+            }
+        }
+    }
+
+    private static Object field(Object object, String name) throws Exception {
+        var f = object.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(object);
+    }
+
+    private static Object staticField(Class<?> type, String name) throws Exception {
+        var f = type.getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(null);
+    }
+
+    private static Object probe(Object provider, String name, int x, int z) throws Exception {
+        var m = provider.getClass().getDeclaredMethod(name, int.class, int.class);
+        m.setAccessible(true);
+        return m.invoke(provider, x, z);
+    }
+
+    private static java.io.DataOutputStream binary(Path path) throws Exception {
+        return new java.io.DataOutputStream(new java.io.BufferedOutputStream(
+                Files.newOutputStream(path, java.nio.file.StandardOpenOption.CREATE_NEW)));
+    }
+
+    /** No toString fallback: unsupported payloads fail rather than silently lose bits. */
+    private static void exact(java.io.DataOutputStream out, Object value) throws Exception {
+        if (value == null) { out.writeByte(0); return; }
+        if (value instanceof Double v) { out.writeByte(1); out.writeLong(Double.doubleToRawLongBits(v)); }
+        else if (value instanceof Float v) { out.writeByte(2); out.writeInt(Float.floatToRawIntBits(v)); }
+        else if (value instanceof Integer v) { out.writeByte(3); out.writeInt(v); }
+        else if (value instanceof Long v) { out.writeByte(4); out.writeLong(v); }
+        else if (value instanceof Boolean v) { out.writeByte(5); out.writeBoolean(v); }
+        else if (value instanceof Byte v) { out.writeByte(6); out.writeByte(v); }
+        else if (value instanceof String v) { out.writeByte(7); out.writeUTF(v); }
+        else if (value instanceof Enum<?> v) {
+            out.writeByte(8); out.writeUTF(v.getDeclaringClass().getName()); out.writeUTF(v.name());
+        } else if (value.getClass().isArray()) {
+            out.writeByte(9);
+            int n = java.lang.reflect.Array.getLength(value);
+            out.writeInt(n);
+            for (int i = 0; i < n; i++) exact(out, java.lang.reflect.Array.get(value, i));
+        } else if (value instanceof List<?> list) {
+            out.writeByte(10); out.writeInt(list.size());
+            for (Object item : list) exact(out, item);
+        } else if (value instanceof java.util.Map<?, ?> map) {
+            out.writeByte(11); out.writeInt(map.size());
+            // anchorPins has Integer keys: canonical iteration, retain every key/value bit.
+            var keys = new java.util.TreeSet<Integer>();
+            for (Object key : map.keySet()) keys.add((Integer) key);
+            for (Integer key : keys) { exact(out, key); exact(out, map.get(key)); }
+        } else if (value.getClass().isRecord()) {
+            out.writeByte(12); out.writeUTF(value.getClass().getName());
+            var components = value.getClass().getRecordComponents();
+            out.writeInt(components.length);
+            for (var c : components) {
+                out.writeUTF(c.getName());
+                var accessor = c.getAccessor();
+                accessor.setAccessible(true);
+                exact(out, accessor.invoke(value));
+            }
+        } else if (value instanceof com.geogenesis.worldgen.hydrology.model.DeterministicSkeleton.Trace) {
+            out.writeByte(13);
+            var fields = java.util.Arrays.stream(value.getClass().getFields())
+                    .filter(f -> !java.lang.reflect.Modifier.isStatic(f.getModifiers()))
+                    .sorted(java.util.Comparator.comparing(java.lang.reflect.Field::getName)).toList();
+            out.writeInt(fields.size());
+            for (var f : fields) { out.writeUTF(f.getName()); exact(out, f.get(value)); }
+        } else throw new IllegalArgumentException("Unsupported exact payload: " + value.getClass());
+    }
+
+    /** Cheap serializer test only: no terrain/provider solve, no benchmark. */
+    private static void snapshotSelfTest() throws Exception {
+        var bytes = new java.io.ByteArrayOutputStream();
+        var data = new java.io.DataOutputStream(bytes);
+        exact(data, -0.0d);
+        long nanBits = 0x7ff8000000000042L;
+        exact(data, Double.longBitsToDouble(nanBits));
+        var input = new java.io.DataInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray()));
+        if (input.readByte() != 1 || input.readLong() != Long.MIN_VALUE
+                || input.readByte() != 1 || input.readLong() != nanBits) {
+            throw new AssertionError("Raw signed zero/NaN bits lost");
+        }
+        exact(data, TerrainParams.defaults());
+        exact(data, com.geogenesis.worldgen.hydrology.model.BoundaryPort.of(1, 2, 3, 4, -0.0, 0.5, 5, -1, 1));
+        exact(data, new com.geogenesis.worldgen.hydrology.HydrologyBlockCarvedColumn(
+                1, 2, 3.0, 2.0, 4.0, 4.0, 1.0, 0.0, true, false));
+        exact(data, new double[][]{{-0.0, Double.longBitsToDouble(nanBits)}, {}});
+        writeCells(data, new Cell[]{new Cell(), null});
+        System.out.println("SNAPSHOT SERIALIZER PASS (no world generation)");
+    }
+
+    private static String sha256(Path path) throws Exception {
+        var digest = java.security.MessageDigest.getInstance("SHA-256");
+        try (var input = Files.newInputStream(path)) {
+            byte[] buffer = new byte[65536];
+            for (int n; (n = input.read(buffer)) >= 0;) digest.update(buffer, 0, n);
+        }
+        return java.util.HexFormat.of().formatHex(digest.digest());
+    }
+
+    private static void provenance(Path out, String[] args, long seed) throws Exception {
+        List<String> lines = new ArrayList<>();
+        lines.add("snapshot-format=1; big-endian; raw IEEE754; no timestamps in payload");
+        lines.add("seed=" + seed);
+        lines.add("args=" + String.join(" ", args));
+        lines.add("cwd=" + Path.of("").toAbsolutePath());
+        lines.add("path=GeoGenesisTerrain.getChunkCells(morphBase=true); production config");
+        lines.add("cells=all primitive/enum fields + typeWeights; excludes climate/oceanFeat/landFeat objects");
+        lines.add("plans=public calculateHydrologyChunk resampling; NOT intercepted calculateColumns invocation");
+        lines.add("jvmArgs=" + String.join(" ", java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments()));
+        for (String key : new java.util.TreeSet<>(System.getProperties().stringPropertyNames())) {
+            lines.add("property." + key + "=" + System.getProperty(key));
+        }
+        for (String key : List.of("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS")) {
+            lines.add("env." + key + "=" + System.getenv(key));
+        }
+        Files.write(out.resolve("provenance.txt"), lines, java.nio.charset.StandardCharsets.UTF_8);
+        Files.copy(Path.of("run/config/geogenesis-common.toml"), out.resolve("production-config.toml"));
+        List<String> sources = new ArrayList<>();
+        for (String root : List.of("src/main", "src/diagnostics", "build/classes/java/main",
+                "build/classes/java/diagnostics", "build/resources/main")) {
+            Path dir = Path.of(root);
+            if (!Files.isDirectory(dir)) throw new IllegalStateException("Missing provenance root: " + dir);
+            try (var paths = Files.walk(dir)) {
+                for (Path p : paths.filter(Files::isRegularFile).sorted().toList()) {
+                    sources.add(p + " " + sha256(p));
+                }
+            }
+        }
+        for (String name : List.of("build.gradle", "settings.gradle", "gradle.properties")) {
+            sources.add(name + " " + sha256(Path.of(name)));
+        }
+        Files.write(out.resolve("source-classes-sha256.txt"), sources, java.nio.charset.StandardCharsets.UTF_8);
+        gitEvidence(out, "git-head.txt", "rev-parse", "HEAD");
+        gitEvidence(out, "git-status.txt", "status", "--porcelain=v1", "--untracked-files=all");
+        gitEvidence(out, "git-diff.patch", "diff", "--binary", "HEAD", "--", ".");
+    }
+
+    private static void gitEvidence(Path out, String file, String... args) throws Exception {
+        List<String> command = new ArrayList<>(List.of("git"));
+        command.addAll(List.of(args));
+        Process p = new ProcessBuilder(command).redirectErrorStream(true)
+                .redirectOutput(out.resolve(file).toFile()).start();
+        if (p.waitFor() != 0) throw new IllegalStateException("Failed provenance command: " + command);
+    }
+
+    private static void compareSnapshots(Path left, Path right) throws Exception {
+        for (Path dir : List.of(left, right)) {
+            if (!Files.isRegularFile(dir.resolve("COMPLETE"))) {
+                throw new IllegalStateException("Incomplete snapshot: " + dir);
+            }
+            for (String line : Files.readAllLines(dir.resolve("COMPLETE"))) {
+                String[] parts = line.split(" ");
+                if (parts.length != 2 || !sha256(dir.resolve(parts[0])).equals(parts[1])) {
+                    throw new IllegalStateException("Snapshot integrity failure: " + dir + " " + line);
+                }
+            }
+        }
+        List<String> names;
+        try (var files = Files.list(left)) {
+            names = files.filter(p -> p.toString().endsWith(".bin"))
+                    .map(p -> p.getFileName().toString()).sorted().toList();
+        }
+        try (var files = Files.list(right)) {
+            if (!names.equals(files.filter(p -> p.toString().endsWith(".bin"))
+                    .map(p -> p.getFileName().toString()).sorted().toList())) {
+                throw new IllegalStateException("Snapshot payload file sets differ");
+            }
+        }
+        boolean same = true;
+        for (String name : names) {
+            long mismatch = Files.mismatch(left.resolve(name), right.resolve(name));
+            System.out.println(name + (mismatch < 0 ? " BITWISE PASS" : " FAIL byteOffset=" + mismatch));
+            same &= mismatch < 0;
+        }
+        long configMismatch = Files.mismatch(left.resolve("production-config.toml"),
+                right.resolve("production-config.toml"));
+        same &= configMismatch < 0;
+        System.out.println("production-config.toml" + (configMismatch < 0
+                ? " BITWISE PASS" : " FAIL byteOffset=" + configMismatch));
+        if (!same) throw new IllegalStateException("Snapshot bitwise mismatch (see byte offsets)");
+        System.out.println("All payload/config bits equal; review JVM/source provenance differences separately.");
     }
 
     private static TerrainParams loadConfig(Path out) {

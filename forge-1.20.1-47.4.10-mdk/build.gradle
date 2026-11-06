@@ -1650,6 +1650,12 @@ task runConfigKeyGuardProbe(type: JavaExec) {
     }
 }
 
+// SegmentBuckets：空间分桶与原全扫的等价对拍（异常、桶边界、超范围回退）
+task runSegmentBucketsCheck(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.SegmentBucketsCheck'
+}
+
 task runWorldgenGate {
     group = 'verification'
     description = '世界生成门禁：只跑当前实�?ALL PASS 的判据型探针（任一 FAIL 即构建失败）'
