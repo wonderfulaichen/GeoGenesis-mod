@@ -7,16 +7,27 @@ public final class WorldSeedLifecycle<T> {
     private boolean bound;
     private long seed;
     private T value;
+    private volatile long version;
+
+    /** Changes on every bind/unbind/invalidation, including same-seed rebinding (ABA). */
+    public long version() { return version; }
+
+    /** Call under this monitor when capturing or accepting an out-of-lock result. */
+    public synchronized boolean matches(long capturedVersion, T capturedValue) {
+        return bound && version == capturedVersion && value == capturedValue;
+    }
 
     public synchronized void bind(long seed) {
         this.seed = seed;
         bound = true;
         value = null;
+        version++;
     }
 
     public synchronized void unbind() {
         bound = false;
         value = null;
+        version++;
     }
 
     public synchronized boolean isBound() { return bound; }
@@ -26,7 +37,7 @@ public final class WorldSeedLifecycle<T> {
         return seed;
     }
 
-    public synchronized void invalidate() { value = null; }
+    public synchronized void invalidate() { value = null; version++; }
 
     public synchronized T current() { return value; }
 

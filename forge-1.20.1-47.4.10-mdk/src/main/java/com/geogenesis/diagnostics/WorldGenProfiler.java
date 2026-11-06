@@ -220,15 +220,26 @@ public final class WorldGenProfiler {
     private static long lastFrameNs;
     private static long serverTickNs;
 
+    static {
+        FrontendAttribution.configure(WorldGenProfiler::stutterEnabled,
+                text -> stutterLog("FRONTEND", "frontend-event", text, false), LOGGER::info);
+    }
+
     public static boolean stutterEnabled() { return enabled || STUTTER_DIAG; }
 
     public static void stutterLog(String hypothesis, String location, String detail) {
+        stutterLog(hypothesis, location, detail, true);
+    }
+
+    private static void stutterLog(String hypothesis, String location, String detail, boolean throttle) {
         if (!stutterEnabled()) return;
         long now = System.nanoTime();
-        String key = hypothesis + ":" + location;
-        Long previous = STUTTER_LAST.get(key);
-        if (!location.equals("frame-gc") && previous != null && now - previous < 1_000_000_000L) return;
-        STUTTER_LAST.put(key, now);
+        if (throttle) {
+            String key = hypothesis + ":" + location;
+            Long previous = STUTTER_LAST.get(key);
+            if (!location.equals("frame-gc") && previous != null && now - previous < 1_000_000_000L) return;
+            STUTTER_LAST.put(key, now);
+        }
         java.nio.file.Path root = java.nio.file.Paths.get(System.getProperty("user.dir"));
         if (root.getFileName().toString().equals("run")) root = root.getParent();
         if (root.getFileName().toString().startsWith("forge-")) root = root.getParent();

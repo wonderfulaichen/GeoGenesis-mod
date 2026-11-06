@@ -117,7 +117,21 @@ public class GeoGenesisBiomeSource extends BiomeSource {
     }
 
     /** 地形引擎注入点（由 GeoGenesisGenerator.ensureEngine 调用，供群系按 Cell 数据分类）。 */
-    private GeoGenesisTerrain terrain;
+    private volatile CacheGeneration generation;
+
+    /** Immutable identity; mutable slot contents live exclusively inside this generation. */
+    private static final class CacheGeneration {
+        final GeoGenesisTerrain terrain;
+        final long version;
+        final long seed;
+        final BiomeColumnCache<Holder<Biome>> cache = new BiomeColumnCache<>();
+
+        CacheGeneration(GeoGenesisTerrain terrain, long version, long seed) {
+            this.terrain = terrain;
+            this.version = version;
+            this.seed = seed;
+        }
+    }
 
     /**
      * ★★ 2026-09-15：洞穴群系开关。
@@ -131,41 +145,8 @@ public class GeoGenesisBiomeSource extends BiomeSource {
         return CaveShape.config().caveBiomes && CaveShape.isEnabled();
     }
 
-    // ---- 直接哈希映射缓存（MC 出生点搜索查几千次 quart 位置，避免重复全管线采样） ----
-    // ★ 2026-08-09：512 → 65536。出生点搜索/预生成范围可达 ±1000+ chunks（= 4096×4096 quart），
-    //   512 条目命中率极低 → 每次 miss 都触发完整 sampleCell（含侵蚀 tile 800ms）→ 世界创建 7.5 分钟。
-    //   65536 条目（~1MB）覆盖 256×256 quart = 1024×1024 块，命中率大幅提升。
-    private static final int BIOME_CACHE_SIZE = 65536;
-    private final long[] biomeCacheKeys = new long[BIOME_CACHE_SIZE];
-    private final Holder<Biome>[] biomeCacheValues = new Holder[BIOME_CACHE_SIZE];
-
-    /**
-     * ★ 2026-09-15：<b>洞穴群系</b>所需的<b>列级信息</b>缓存（与地表群系缓存同槽位）。
-     *
-     * <h3>为何缓存"列级信息"而不是"洞穴群系"（设计要点）</h3>
-     * <p>洞穴群系是 <b>3D</b> 的（同列不同 Y 可能是滴水石洞/繁茂洞穴/地表群系）。
-     * 若把 <b>y 相关结果</b>存进 2D 缓存，同列的不同 y 会<b>互相覆盖</b>
-     * （初版就这样写错过，务必勿重犯）。</p>
-     *
-     * <p>而洞穴判定所需的输入里，{@code surfaceY}/{@code rockTypeId}/{@code biomeType}
-     * <b>全都是列级（与 y 无关）</b> ⇒ 把它们打包成一个 {@code int} 缓存，
-     * 每次调用再用<b>当前 y</b> 做常数时间裁定。这样：</p>
-     * <ul>
-     *   <li>缓存语义仍是 2D ⇒ <b>不稀释容量</b>（该容量曾是血泪教训：
-     *       512→65536 才解决"世界创建 7.5 分钟"）；</li>
-     *   <li>结果可以是 3D 的；</li>
-     *   <li>不需要在缓存命中时重新采样 Cell（那会让缓存失去意义）。</li>
-     * </ul>
-     *
-     * <p>打包布局（与 {@code biomeCacheKeys} 同槽位，key 命中即有效）：</p>
-     * <pre>
-     *   bit  0..15 : surfaceY + 128 + 1   （范围 -64..320 ⇒ 65..449，恒 &gt; 0）
-     *   bit 16..19 : rockTypeId（0..7）
-     *   bit 20..24 : WhittakerType.ordinal()（0..9）
-     *   0 = 未初始化（出生点早退路径不填此表）
-     * </pre>
-     */
-    private final int[] caveColInfo = new int[BIOME_CACHE_SIZE];
+    // The shared direct-map key/value/info arrays are owned by CacheGeneration.cache.
+    // Preserve the existing miss-only cave override; hits return the surface biome.
 
     /** 打包列级信息（{@code surfaceY} 偏置 +1 保证非 0 ⇒ 0 可作"未初始化"哨兵）。 */
     private static int packColInfo(int surfaceY, int rockOrd, int biomeOrd) {
@@ -174,20 +155,20 @@ public class GeoGenesisBiomeSource extends BiomeSource {
                 | ((biomeOrd & 0x1F) << 20);
     }
 
-    private static int biomeCacheSlot(int qx, int qz) {
-        return (qx * 66883 + qz * 51749) & (BIOME_CACHE_SIZE - 1);
-    }
-
     public GeoGenesisBiomeSource() {
     }
 
     public void setTerrain(GeoGenesisTerrain terrain) {
         synchronized (GeoGenesisGenerator.WORLD_LIFECYCLE) {
-            if (this.terrain != terrain) {
-                java.util.Arrays.fill(biomeCacheValues, null);
-                java.util.Arrays.fill(caveColInfo, 0);
+            var lifecycle = GeoGenesisGenerator.WORLD_LIFECYCLE;
+            if (terrain == null || !lifecycle.isBound() || lifecycle.current() != terrain) {
+                generation = null;
+                return;
             }
-            this.terrain = terrain;
+            CacheGeneration old = generation;
+            if (old == null || old.terrain != terrain || old.version != lifecycle.version()) {
+                generation = new CacheGeneration(terrain, lifecycle.version(), lifecycle.seed());
+            }
         }
     }
 
@@ -207,59 +188,93 @@ public class GeoGenesisBiomeSource extends BiomeSource {
     @Override
     public Holder<Biome> getNoiseBiome(int x, int y, int z,
                                         Climate.Sampler sampler) {
-        synchronized (GeoGenesisGenerator.WORLD_LIFECYCLE) {
-            if (!GeoGenesisGenerator.WORLD_LIFECYCLE.isBound()) {
-                setTerrain(null);
-                return fallbackBiome(); // Never cache pre-Load fallback, at any coordinate.
+        try (var diag = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()
+                ? com.geogenesis.diagnostics.FrontendAttribution.begin("getNoiseBiome") : null) {
+            for (;;) {
+                CacheGeneration captured;
+                if (diag != null) diag.waitingForLifecycle();
+                synchronized (GeoGenesisGenerator.WORLD_LIFECYCLE) {
+                    if (diag != null) diag.acquired();
+                    if (!GeoGenesisGenerator.WORLD_LIFECYCLE.isBound()) {
+                        if (diag != null) diag.outcome("preBindingFallback");
+                        setTerrain(null);
+                        return fallbackBiome(); // Never cache pre-Load fallback, at any coordinate.
+                    }
+                    setTerrain(GeoGenesisGenerator.buildTerrain(GeoGenesisGenerator.resolveParams()));
+                    captured = generation;
+                }
+                if (diag != null) diag.runtime("terrain=" + System.identityHashCode(captured.terrain)
+                        + " seed=" + captured.seed);
+                Holder<Biome> result;
+                try {
+                    result = sampleBoundBiome(captured, x, y, z, diag);
+                } catch (RuntimeException failure) {
+                    // Registry teardown or global cave reseeding can interrupt an old sample.
+                    // Never mask a failure belonging to the still-current session.
+                    synchronized (GeoGenesisGenerator.WORLD_LIFECYCLE) {
+                        if (generation == captured && GeoGenesisGenerator.WORLD_LIFECYCLE.matches(
+                                captured.version, captured.terrain)) throw failure;
+                    }
+                    continue;
+                }
+                // No stripe is held here. The final check is the return linearization point.
+                synchronized (GeoGenesisGenerator.WORLD_LIFECYCLE) {
+                    if (result != null && generation == captured
+                            && GeoGenesisGenerator.WORLD_LIFECYCLE.matches(
+                                    captured.version, captured.terrain)) return result;
+                }
             }
-            setTerrain(GeoGenesisGenerator.buildTerrain(GeoGenesisGenerator.resolveParams()));
-            return sampleBoundBiome(x, y, z);
         }
     }
 
-    private Holder<Biome> sampleBoundBiome(int x, int y, int z) {
-        int slot = biomeCacheSlot(x, z);
-        if (biomeCacheKeys[slot] == ((long)x << 32 | (z & 0xFFFFFFFFL)) && biomeCacheValues[slot] != null) {
-            return biomeCacheValues[slot];
-        }
+    private Holder<Biome> sampleBoundBiome(CacheGeneration captured, int x, int y, int z,
+            com.geogenesis.diagnostics.FrontendAttribution.Scope diag) {
+        return captured.cache.query(x, z,
+                () -> generation == captured
+                        && GeoGenesisGenerator.WORLD_LIFECYCLE.version() == captured.version,
+                () -> sampleColumn(captured.terrain, x, y, z, diag),
+                () -> { if (diag != null) diag.outcome("cacheHit"); });
+    }
 
-        // Terrain identity was refreshed before cache lookup under the lifecycle monitor.
-
+    private BiomeColumnCache.Column<Holder<Biome>> sampleColumn(GeoGenesisTerrain terrain,
+            int x, int y, int z, com.geogenesis.diagnostics.FrontendAttribution.Scope diag) {
+        if (diag != null) diag.outcome("cacheMiss");
         // 3) 采样 Cell + 分类
-        // ★ 2026-08-09 无伤优化：sampleCellLight（纯 e 场+气候+分类，无侵蚀）替代 sampleCell。
-        //   群系分类只用 terrainType/climate（sample() 内已算），侵蚀只改高度细节不影响分类。
-        //   根治：出生点搜索/BIOMES stage 零 tile 生成（800ms/tile → ~10μs/次）。
-        Cell cell = terrain.sampleCellLight(QuartPos.toBlock(x), QuartPos.toBlock(z));
+        // sampleCellLight 当前包含精确 P 请求：冷查询可生成并等待侵蚀 tile。
+        // P 会改变洞穴分类的 surfaceY，也可能通过 terrainType 重分类影响地表群系。
+        // Sampling is outside WORLD_LIFECYCLE; do not bypass P or alter classification fields.
+        Cell cell;
+        if (diag != null) diag.sampleBegin();
+        try {
+            cell = terrain.sampleCellLight(QuartPos.toBlock(x), QuartPos.toBlock(z));
+        } finally {
+            if (diag != null) diag.sampleEnd();
+        }
         ResourceKey<Biome> keyB = cell != null ? BiomeClassifier.pickKey(cell) : null;
         Holder<Biome> h = keyB != null ? resolveBiome(keyB) : null;
         if (h == null) h = fallbackBiome();
 
-        // 4) 写入缓存（地表群系 + 洞穴所需的【列级信息】）
-        //   洞穴判定需要 surfaceY/rockTypeId/biomeType —— 三者<b>都与 y 无关</b>，
-        //   故可安全地按 2D key 缓存（不稀释容量），每次调用再用当前 y 裁定。
-        biomeCacheKeys[slot] = ((long)x << 32 | (z & 0xFFFFFFFFL));
-        biomeCacheValues[slot] = h;
-        caveColInfo[slot] = cell != null
+        int info = cell != null
                 ? packColInfo((int) Math.floor(cell.height), cell.rockTypeId, cell.biomeType.ordinal())
                 : 0;
-
-        // 5) 本列的洞穴群系裁定（用 y —— 命中缓存时复用列级信息，不重新采样）
-        Holder<Biome> cave = caveBiomeAt(x, y, z, slot);
-        return cave != null ? cave : h;
+        // CaveShape/selector may be reseeded concurrently. A lifecycle version change
+        // discards the entire result before publication and retries in the new session.
+        Holder<Biome> cave = caveBiomeAt(x, y, z, info);
+        return new BiomeColumnCache.Column<>(h, info, cave != null ? cave : h);
     }
 
     /**
      * ★★ 2026-09-15：洞穴群系裁定（<b>3D</b>，但<b>零采样</b>）。
      *
-     * <p>命中列级缓存 ⇒ 只用整数解包 + {@link CaveBiomeSelector} 的纯函数判定；
-     * 未初始化（出生点早退路径）或未启用 ⇒ 返回 {@code null}（沿用地表群系）。</p>
+     * <p>Only called on a cache miss, using freshly sampled column information.
+     * Cache hits intentionally retain the existing surface-only return semantics.
+     * 未初始化或未启用 ⇒ 返回 {@code null}（沿用地表群系）。</p>
      *
      * <p>早退顺序刻意<b>由便宜到昂贵</b>：① 未启用；② 深度窗口（纯整数）；
      * ③ 洞穴几何（噪声）。绝大多数调用在 ② 就返回 —— 这是热路径不退化的关键。</p>
      */
-    private Holder<Biome> caveBiomeAt(int x, int y, int z, int slot) {
+    private Holder<Biome> caveBiomeAt(int x, int y, int z, int info) {
         if (!caveBiomesEnabled()) return null;
-        int info = caveColInfo[slot];
         if (info == 0) return null;                       // 未初始化
 
         int surfaceY = ((info & 0xFFFF) - 128 - 1);

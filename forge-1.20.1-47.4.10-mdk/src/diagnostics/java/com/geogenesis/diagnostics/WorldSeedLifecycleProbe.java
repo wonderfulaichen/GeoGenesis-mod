@@ -89,7 +89,11 @@ public final class WorldSeedLifecycleProbe {
         int fallback = biome.indexOf("return fallbackBiome();", guard);
         int build = biome.indexOf("setTerrain(GeoGenesisGenerator.buildTerrain", guard);
         check(guard >= 0 && fallback > guard && build > fallback, "unbound fallback before build/cache");
-        check(biome.indexOf("return sampleBoundBiome", build) > build, "refresh identity before cache lookup");
+        int sample = biome.indexOf("result = sampleBoundBiome(captured", build);
+        check(sample > build && biome.indexOf("captured = generation", build) < sample,
+                "capture bound identity before cache lookup");
+        check(biome.indexOf("WORLD_LIFECYCLE.matches(", sample) > sample,
+                "validate session before returning unlocked sample");
         check(!biome.contains("biomeCacheValues[slot] = plains"), "early fallback not cached");
     }
 }

@@ -91,13 +91,20 @@ public final class ProcessRuntime implements AutoCloseable {
         final long timingId = WorldGenProfiler.stutterEnabled() ? DIAG_IDS.incrementAndGet() : 0;
         final long submittedNs = timingId == 0 ? 0 : System.nanoTime();
         final SamplingTiming timing = samplingTiming.get();
+        final String source = timingId == 0 ? "diagnostics=off"
+                : com.geogenesis.diagnostics.FrontendAttribution.capture();
+        final Set<String> requestingSources = new java.util.concurrent.ConcurrentSkipListSet<>();
+        String requestKind = "demand";
         final TileGeometry.Owner owner;
         final CompletableFuture<ParticleTile> result = new CompletableFuture<>();
         final Set<Subscription> holders = new HashSet<>();
         volatile boolean cancelled;
         FutureTask<Void> task;
         long enqueuedNs;
-        Flight(TileGeometry.Owner owner) { this.owner = owner; }
+        Flight(TileGeometry.Owner owner) {
+            this.owner = owner;
+            if (timingId != 0) requestingSources.add(com.geogenesis.diagnostics.FrontendAttribution.currentSource());
+        }
     }
     public final class Subscription implements AutoCloseable {
         private final CompletableFuture<Sample> result = new CompletableFuture<>();
@@ -140,6 +147,8 @@ public final class ProcessRuntime implements AutoCloseable {
                     inlineFallbacks.incrementAndGet();
                     r.run();
                 });
+        if (WorldGenProfiler.stutterEnabled()) WorldGenProfiler.stutterLog("FRONTEND", "runtime-start-" + diagnosticId,
+                "event=runtimeCreated " + diagnosticLabel() + " monoNs=" + System.nanoTime());
     }
     public ProcessContext context() { return context; }
     public Sample exactP(double x, double z) throws InterruptedException, ExecutionException {
@@ -219,6 +228,7 @@ public final class ProcessRuntime implements AutoCloseable {
             int reserve = Math.max(1, budget.queuedTiles() / 2);
             if (executor.getQueue().remainingCapacity() <= reserve) return false;
             Flight f = new Flight(owner);
+            f.requestKind = "prewarm";
             flights.put(owner, f);
             f.task = new FutureTask<>(() -> { run(f); return null; });
             try {
@@ -249,7 +259,10 @@ public final class ProcessRuntime implements AutoCloseable {
             catch (RejectedExecutionException ex) {
                 flights.remove(owner, f); f.result.completeExceptionally(ex); throw ex;
             }
-        } else { f.holders.add(s); s.held.add(f); }
+        } else {
+            if (f.timingId != 0) f.requestingSources.add(com.geogenesis.diagnostics.FrontendAttribution.currentSource());
+            f.holders.add(s); s.held.add(f);
+        }
         return f.result;
     }
     private void run(Flight f) {
@@ -292,6 +305,8 @@ public final class ProcessRuntime implements AutoCloseable {
         } finally {
             if (f.timingId != 0) WorldGenProfiler.stutterLog("SAMPLING", "tile-" + diagnosticId + "-" + f.timingId,
                     diagnosticLabel() + " flight=" + f.timingId + " owner=" + f.owner
+                    + " firstSubmitter={" + f.source + "} attribution=first_submitter_not_exclusive"
+                    + " requestKind=" + f.requestKind + " requestingSources=" + f.requestingSources
                     + " submitterWindow=" + (f.timing == null ? 0 : f.timing.id)
                     + " task=" + (f.timing == null ? "external" : f.timing.task)
                     + " submittedNs=" + f.submittedNs + " startNs=" + start + " endNs=" + System.nanoTime()

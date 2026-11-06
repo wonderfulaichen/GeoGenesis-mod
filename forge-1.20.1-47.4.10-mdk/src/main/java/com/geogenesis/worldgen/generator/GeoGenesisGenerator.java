@@ -573,6 +573,9 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                 long actual = gen.processRuntime().context().definition().seed();
                 if (actual != seed) throw new IllegalStateException("Terrain runtime seed mismatch");
                 LOGGER.info("GeoGenesis terrain built: runtime.seed={}", actual);
+                WorldGenProfiler.stutterLog("FRONTEND", "terrain-" + System.identityHashCode(built),
+                        "event=terrainRuntime terrain=" + System.identityHashCode(built) + " "
+                                + gen.processRuntime().diagnosticLabel());
                 return built;
             });
         }
@@ -694,6 +697,7 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             WORLD_LIFECYCLE.unbind();
             configureWorldSeed(seed);
             WORLD_LIFECYCLE.bind(seed);
+            if (WorldGenProfiler.stutterEnabled()) com.geogenesis.diagnostics.FrontendAttribution.bound(seed);
         }
     }
 
@@ -741,6 +745,16 @@ public class GeoGenesisGenerator extends ChunkGenerator {
             StructureManager structureManager,
             ChunkAccess chunk
     ) {
+        if (WorldGenProfiler.stutterEnabled())
+            com.geogenesis.diagnostics.FrontendAttribution.firstFill("generator@" + System.identityHashCode(this));
+        try (var diag = WorldGenProfiler.stutterEnabled()
+                ? com.geogenesis.diagnostics.FrontendAttribution.begin("fillFromNoise") : null) {
+            return fillFromNoiseObserved(executor, blender, randomState, structureManager, chunk);
+        }
+    }
+
+    private CompletableFuture<ChunkAccess> fillFromNoiseObserved(java.util.concurrent.Executor executor,
+            Blender blender, RandomState randomState, StructureManager structureManager, ChunkAccess chunk) {
         long t0 = System.nanoTime();
         ensureEngine();
         // ★ 2026-08-09 优化：出生点周边异步预热（首次 fillFromNoise 触发一次，后台池）
@@ -1226,14 +1240,32 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         //   改走【非阻塞】两级降级：
         //     ① 已生成 chunk → 取缓存 Cell，与落块完全一致（零额外成本）
         //     ② 未生成 chunk → 廉价重算（基础场 + 已缓存侵蚀增量），绝不触发侵蚀 tile
-        double h = terrain != null ? terrain.sampleHeightNonBlocking(x, z) : SEA_LEVEL;
-        return (int) Math.round(h);
+        try (var diag = WorldGenProfiler.stutterEnabled()
+                ? com.geogenesis.diagnostics.FrontendAttribution.begin("getBaseHeight") : null) {
+            if (diag != null) {
+                diag.runtime("terrain=" + (terrain == null ? "none" : System.identityHashCode(terrain)));
+                diag.outcome(terrain == null ? "noTerrainFallback" : "heightQuery");
+            }
+            double h = terrain != null ? terrain.sampleHeightNonBlocking(x, z) : SEA_LEVEL;
+            return (int) Math.round(h);
+        }
     }
 
     @Override
     public NoiseColumn getBaseColumn(int x, int z,
                                       LevelHeightAccessor levelHeightAccessor,
                                       RandomState randomState) {
+        try (var diag = WorldGenProfiler.stutterEnabled()
+                ? com.geogenesis.diagnostics.FrontendAttribution.begin("getBaseColumn") : null) {
+            if (diag != null) {
+                diag.runtime("terrain=" + (terrain == null ? "none" : System.identityHashCode(terrain)));
+                diag.outcome(terrain == null ? "noTerrainFallback" : "columnQuery");
+            }
+            return baseColumnObserved(x, z);
+        }
+    }
+
+    private NoiseColumn baseColumnObserved(int x, int z) {
         // 同 getBaseHeight：非阻塞两级降级，绝不触发侵蚀 tile（详见上方注释）
         double h = terrain != null ? terrain.sampleHeightNonBlocking(x, z) : SEA_LEVEL;
         int iy = (int) Math.round(h);
