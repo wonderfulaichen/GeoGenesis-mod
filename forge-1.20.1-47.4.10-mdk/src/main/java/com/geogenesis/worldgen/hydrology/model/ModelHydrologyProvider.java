@@ -3370,16 +3370,6 @@ public final class ModelHydrologyProvider implements AutoCloseable {
     private volatile double marginMs = 0;
 
     /**
-     * "hydro.region.wait" 的累计纳秒。走 {@link HydrologyMetrics#add(String, long)} 的
-     * named 计数器（await() 已经在用 {@code HydrologyMetrics.begin("hydro.region.wait", …)}
-     * 记 scope，但那是【按次】统计；这里要的是可直接相减的【累计】口径）。
-     * 计数器关闭时恒 0 ⇒ pure == wall，退回旧口径，不会报错。
-     */
-    private static long hydrologyWaitNs() {
-        return com.geogenesis.diagnostics.HydrologyMetrics.namedTotalNs("hydro.region.wait");
-    }
-
-    /**
      * 双 pass 的 pass-1：跑本区管线 + 无接力骨架，产出出口种子。
      * <b>绝不取任何邻区</b>（扇出恒为 1）；缓存/inflight 范式同 {@link #regionFor}。
      */
@@ -3424,11 +3414,20 @@ public final class ModelHydrologyProvider implements AutoCloseable {
      * （不重复发布、不撤表，避免"别人把我的占位撤了"的竞态）。
      */
     private Pass1 awaitPass1(Pass1Task t) {
+        long start = System.nanoTime();
         try {
             return t.future.join();
         } catch (CompletionException e) {
             LOGGER.warn("[HYDRO-MODEL] pass1 failed: {}", String.valueOf(e.getCause()));
             throw e;
+        } finally {
+            long elapsed = System.nanoTime() - start;
+            // #region agent log: B 只测 join，不把本线程先前执行的 pass1 算成等待
+            if (elapsed >= 1_000_000L) {
+                com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("B", "hydro-pass1-wait-" + t.rx + "-" + t.rz,
+                        "seed=" + seed + " joinWallMs=" + elapsed / 1e6);
+            }
+            // #endregion
         }
     }
 
@@ -3460,7 +3459,9 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         }
         int centerX = rx * REGION + REGION / 2;
         int centerZ = rz * REGION + REGION / 2;
+        long passStart = System.nanoTime();
         double[] extra = computeMarginInflow(centerX, centerZ, RADIUS, STEP, 2 * RADIUS / STEP + 1);
+        long marginDone = System.nanoTime();
         var req = new HydrologyPipeline.Request(centerX, centerZ, RADIUS, STEP, CLIMATE, 0,
                 riverModel(), SAMPLES, extra);
         // 【测量】pass-1 两层的父级拆分：① 管线求解 ② 骨架构建
@@ -3472,6 +3473,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         } finally {
             HydrologyMetrics.end(pipeScope);
         }
+        long pipelineDone = System.nanoTime();
         List<DeterministicSkeleton.ExitSeed> seeds = List.of();
         // 不接力（incoming = 空）⇒ 只产出出口种子。整条骨架白跑一遍是刻意的：
         // 出口种子必须来自"本区独立追踪"的结果，否则会与接力链互相依赖。
@@ -3483,6 +3485,12 @@ public final class ModelHydrologyProvider implements AutoCloseable {
             HydrologyMetrics.end(skelScope);
         }
         seeds = sr.exitSeeds();
+        // #region agent log: A 邻区 pass1 内部耗时，均为挂钟且包含下游等待
+        com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("A", "hydro-pass1-" + rx + "-" + rz,
+                "seed=" + seed + " marginMs=" + (marginDone - passStart) / 1e6
+                        + " pipelineMs=" + (pipelineDone - marginDone) / 1e6
+                        + " skeletonMs=" + (System.nanoTime() - pipelineDone) / 1e6);
+        // #endregion
         // ★ ports 模块：把 pass1 骨架一并缓存 —— pass2 以它为 base，才能保住已发出的端口。
         return new Pass1(p, seeds, centerX - RADIUS, centerZ - RADIUS, sr.skel());
     }
@@ -4077,7 +4085,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
             regionSources = sr.sources();
             regionShaped = sr.shapedPolys();
         }
-        logRegionSolved(rx, rz, p, cl, t0, originX, originZ, 0);
+        logRegionSolved(rx, rz, p, cl, t0, originX, originZ);
         HierarchicalHydrology.Diag.fineTiming((System.nanoTime() - t0) / 1_000_000L, p.nx() * p.nx());
         lastFineMs = (System.nanoTime() - t0) / 1e6;
         // ★ v2：分层实验路径不产出 typed 端口 ⇒ 最终骨架载荷如实为 null（不冒充 pass2）。
@@ -4178,10 +4186,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
         Pass1 base = regionPass1(rx, rz);
         long baseDone = System.nanoTime();
         long incomingNs = 0;
-        // ★ 2026-11-06：把"等别人解"的时间单独记（logRegionSolved 会扣除后报 pureMs）。
-        //   上一轮归因：solved in 194s 的窗口里混着「等 SpawnPreload 的求解」和
-        //   「玩家按 ESC 触发的 Saving and pausing」，挂钟计时把两者都算了进去。
-        long waitNs0 = hydrologyWaitNs();
+        // 分段均使用本次调用的挂钟；不减全局并发等待累计值。
         HydrologyPipeline.Result p = base.pipe();
         // 骨架是唯一生产线（legacy 分支已删，2026-10-20）。
         RiverCenterlines.Result cl;
@@ -4221,8 +4226,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
                             + " finalMs=" + (System.nanoTime() - baseDone - incomingNs) / 1e6);
         }
         // #endregion
-        long waitNs = hydrologyWaitNs() - waitNs0;
-        logRegionSolved(rx, rz, p, cl, t0, base.originX(), base.originZ(), waitNs);
+        logRegionSolved(rx, rz, p, cl, t0, base.originX(), base.originZ());
         return rd;
     }
 
@@ -4246,25 +4250,8 @@ public final class ModelHydrologyProvider implements AutoCloseable {
     /** region 求解日志（细层/既有路径共用；不改产出）。 */
     private void logRegionSolved(int rx, int rz, HydrologyPipeline.Result p,
                                  RiverCenterlines.Result cl, long t0, int originX, int originZ) {
-        logRegionSolved(rx, rz, p, cl, t0, originX, originZ, 0);
-    }
-
-    /**
-     * region 求解日志。★ 2026-11-06 起<b>两个数分开报</b>：
-     * <ul>
-     *   <li>{@code pureMs} —— 本线程真正在算的时间（不含等待别区、不含玩家暂停）；</li>
-     *   <li>{@code wallMs} —— 挂钟时间（= pure + 等待 + 暂停 + GC…）。</li>
-     * </ul>
-     * <p>为什么要拆：上一轮归因发现 "solved in 194388 ms" 的窗口里，
-     * 有 3 次 {@code Saving and pausing game}（玩家按 ESC）和与 SpawnPreload
-     * 线程的并行求解 —— 挂钟口径把这些全算进了"求解"，数字根本没法用来判慢。
-     * 旧字段 {@code solved in} 保留原值（挂钟），避免破坏既有对拍口径。</p>
-     */
-    private void logRegionSolved(int rx, int rz, HydrologyPipeline.Result p,
-                                 RiverCenterlines.Result cl, long t0, int originX, int originZ,
-                                 long waitNs) {
+        // 挂钟包含下游计算、等待、GC 与调度；不能用全局计数差推导本线程 CPU。
         double ms = (System.nanoTime() - t0) / 1e6;
-        double pureMs = ms - waitNs / 1e6;
         int lakeCells = countTrue(p.lake());
         regionLakeCells.addAndGet(lakeCells);       // ★ 诊断累计（见 lastRegionLakeCells）
         // ★ 诊断（2026-10-09）：`resolved` 是 EquilibriumWater 的"与窗口切割无关"标志。
@@ -4276,9 +4263,8 @@ public final class ModelHydrologyProvider implements AutoCloseable {
                 rx, rz, String.format("%.0f", ms), riverModel(), HIER, p.nx() + "x" + p.nz(),
                 cl.reachCount(), lakeCells, countTrue(p.channel()),
                 String.format("%.0f", marginMs), resolvedN, p.nx() * p.nz(), basinsN, dryN);
-        LOGGER.info("[HYDRO-TIME] region ({},{}) pure={}ms wait={}ms wall={}ms",
-                rx, rz, String.format("%.0f", pureMs), String.format("%.0f", waitNs / 1e6),
-                String.format("%.0f", ms));
+        LOGGER.info("[HYDRO-TIME] region ({},{}) wall={}ms (includes downstream work and waits; CPU unmeasured)",
+                rx, rz, String.format("%.0f", ms));
     }
 
     /**

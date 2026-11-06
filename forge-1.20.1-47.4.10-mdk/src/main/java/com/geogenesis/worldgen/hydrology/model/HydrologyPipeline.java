@@ -901,6 +901,15 @@ public final class HydrologyPipeline {
             }
             // #endregion
         }
+        // #region agent log: C 管线分段挂钟；outlets 包含地形采样及其下游侵蚀等待
+        com.geogenesis.diagnostics.WorldGenProfiler.stutterLog("C", "hydro-pipeline-"
+                        + request.centerBlockX() + "-" + request.centerBlockZ() + "-" + radius,
+                "task=" + metricsTask + " layer=" + (layer == null ? "production" : layer.tag())
+                        + " prewarmMs=" + (__tp - __t0) / 1e6
+                        + " outletsMs=" + (__t1 - __tp) / 1e6
+                        + " surfaceMs=" + (__t2 - __t1) / 1e6
+                        + " balanceRiverMs=" + (System.nanoTime() - __t2) / 1e6);
+        // #endregion
         return new Result(n, n, step, built.bed(), built.drains(), surface.resolved(),
                 surface.level(), lakeResult.depth(), lakeResult.lake(), surface.parent(),
                 river.discharge(), river.channel(), river.width(), lakeResult, river, deathMask,
