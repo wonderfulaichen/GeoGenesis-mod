@@ -88,8 +88,14 @@ public final class ProcessContext {
     String baseCacheSamplerId() { return Integer.toHexString(System.identityHashCode(base)); }
     public BaseSample sampleBase(double x, double z) {
         TileGeometry.checkPoint(x, z);
-        double e = baseE(x, z);
+        return baseSample(x, z, baseE(x, z));
+    }
+    BaseSample baseSample(double x, double z, double e) {
         return new BaseSample(baseIdentity, x, z, e, curve.heightFromE(e));
+    }
+    BaseSample sampleBase(double x, double z, com.geogenesis.worldgen.core.BaseCacheDiagnostics.Input input) {
+        TileGeometry.checkPoint(x, z);
+        return baseSample(x, z, base.sampleE(x, z, baseCacheDiagnostics(), input));
     }
     public double sampleBaseHeight(double x, double z) { return sampleBase(x, z).yB(); }
     double baseE(double x, double z) { return base.sampleE(x, z, baseCacheDiagnostics(), null); }

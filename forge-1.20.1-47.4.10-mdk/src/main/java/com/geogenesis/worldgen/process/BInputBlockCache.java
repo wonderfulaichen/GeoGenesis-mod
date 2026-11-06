@@ -19,6 +19,33 @@ final class BInputBlockCache implements AutoCloseable {
     record Stats(int allocated, int peakAllocated, int leased, int peakLeased,
                  long requests, long hits, long evaluations, long evictions,
                  long blockWaits, long capacityWaits, long payloadBytes) {}
+    // Nonfinite protocol values cannot collide with stored B (fill accepts finite values only).
+    static final long NO_BLOCK = 0x7ff8000000000001L, INVALID_POINT = 0x7ff8000000000002L,
+            CLOSED = 0x7ff8000000000003L;
+    static final class PeekMetrics {
+        final java.util.concurrent.atomic.LongAdder calls = new java.util.concurrent.atomic.LongAdder(),
+                waitNs = new java.util.concurrent.atomic.LongAdder(), heldNs = new java.util.concurrent.atomic.LongAdder();
+    }
+    /** Read value + validity at one metadata linearization point; never lease, fill or touch LRU. */
+    long peekBits(int x, int z, PeekMetrics metrics) {
+        long start = metrics == null ? 0 : System.nanoTime();
+        synchronized (metadata) {
+            long acquired = metrics == null ? 0 : System.nanoTime();
+            try {
+                if (closed) return CLOSED;
+                Slot s = index.get(Slot.key(Math.floorDiv(x, 32), Math.floorDiv(z, 32)));
+                if (s == null) return NO_BLOCK;
+                int i = Math.floorMod(z, 32) * 32 + Math.floorMod(x, 32);
+                if ((s.valid[i >>> 6] & (1L << (i & 63))) == 0) return INVALID_POINT;
+                return s.bits[i];
+            } finally {
+                if (metrics != null) {
+                    metrics.calls.increment(); metrics.waitNs.add(acquired - start);
+                    metrics.heldNs.add(System.nanoTime() - acquired);
+                }
+            }
+        }
+    }
     private static final class Slot {
         final ReentrantLock lock = new ReentrantLock();
         long[] bits, valid;

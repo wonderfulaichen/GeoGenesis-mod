@@ -46,6 +46,12 @@ public final class ProcessRuntime implements AutoCloseable {
                 requestNs = new java.util.concurrent.atomic.LongAdder(), awaitNs = new java.util.concurrent.atomic.LongAdder(),
                 assembleNs = new java.util.concurrent.atomic.LongAdder(), baseNs = new java.util.concurrent.atomic.LongAdder(),
                 assembles = new java.util.concurrent.atomic.LongAdder();
+        final BInputBlockCache.PeekMetrics peekMetrics = new BInputBlockCache.PeekMetrics();
+        final java.util.concurrent.atomic.LongAdder baseHits = new java.util.concurrent.atomic.LongAdder(),
+                noBlock = new java.util.concurrent.atomic.LongAdder(), invalidPoint = new java.util.concurrent.atomic.LongAdder(),
+                peekClosed = new java.util.concurrent.atomic.LongAdder(), fractional = new java.util.concurrent.atomic.LongAdder(),
+                negativeZero = new java.util.concurrent.atomic.LongAdder(), fallback = new java.util.concurrent.atomic.LongAdder(),
+                rawBase = new java.util.concurrent.atomic.LongAdder(), pointHits = new java.util.concurrent.atomic.LongAdder();
         private SamplingTiming(String task) { this.task = task; }
         public void request(long prepare, long await) {
             requests.increment(); requestNs.add(prepare); awaitNs.add(await);
@@ -58,6 +64,13 @@ public final class ProcessRuntime implements AutoCloseable {
                     + " requestNs=" + requestNs.sum() + " awaitNs=" + awaitNs.sum()
                     + " assembles=" + assembles.sum() + " assembleNs=" + assembleNs.sum()
                     + " assembleBaseNs=" + baseNs.sum()
+                    + " baseCacheHits=" + baseHits.sum() + " baseFallback=" + fallback.sum()
+                    + " baseCacheMisses=" + (noBlock.sum() + invalidPoint.sum() + peekClosed.sum())
+                    + " baseNoBlock=" + noBlock.sum() + " baseInvalidPoint=" + invalidPoint.sum()
+                    + " basePeekClosed=" + peekClosed.sum() + " baseFractional=" + fractional.sum()
+                    + " baseNegativeZero=" + negativeZero.sum() + " assembleRawB=" + rawBase.sum()
+                    + " assemblePointHits=" + pointHits.sum() + " peekCalls=" + peekMetrics.calls.sum()
+                    + " peekWaitNs=" + peekMetrics.waitNs.sum() + " peekHeldNs=" + peekMetrics.heldNs.sum()
                     + " overlap=assembleBase_subset_assemble;assemble_and_inlineTiles_subset_request_or_await;"
                     + "tile_tasks_shared_and_parallel;durations_wall_not_CPU;scope=thread_local_pipeline");
         }
@@ -79,6 +92,7 @@ public final class ProcessRuntime implements AutoCloseable {
     private final Budget budget;
     private final Observer observer;
     private final BInputBlockCache inputCache;
+    private final boolean reuseBase;
     private final ThreadPoolExecutor executor;
     private final LinkedHashMap<TileGeometry.Owner, ParticleTile> completed =
             new LinkedHashMap<>(16, .75f, true);
@@ -137,6 +151,11 @@ public final class ProcessRuntime implements AutoCloseable {
     }
     // Execution-only budget; zero injection preserves an independent direct-input test arm.
     ProcessRuntime(ProcessContext context, Budget budget, Observer observer, int inputBlocks) {
+        this(context, budget, observer, inputBlocks, true);
+    }
+    // Diagnostic arm only: disable assemble reuse without changing tile input caching or identity.
+    ProcessRuntime(ProcessContext context, Budget budget, Observer observer, int inputBlocks, boolean reuseBase) {
+        this.reuseBase = reuseBase;
         this.context = Objects.requireNonNull(context);
         this.budget = Objects.requireNonNull(budget);
         this.observer = Objects.requireNonNull(observer);
@@ -414,11 +433,42 @@ public final class ProcessRuntime implements AutoCloseable {
         }
         return sample;
     }
+    private ProcessContext.BaseSample assembleBase(double x, double z, SamplingTiming timing) {
+        if (reuseBase && inputCache != null) {
+            // footprint already validated finite/range. Preserve raw coordinate identity at -0.0.
+            boolean signedZero = Double.doubleToRawLongBits(x) == Long.MIN_VALUE
+                    || Double.doubleToRawLongBits(z) == Long.MIN_VALUE;
+            if (!signedZero && x == (int) x && z == (int) z) {
+                long bits = inputCache.peekBits((int) x, (int) z, timing == null ? null : timing.peekMetrics);
+                if (Double.isFinite(Double.longBitsToDouble(bits))) {
+                    if (timing != null) timing.baseHits.increment();
+                    return context.baseSample(x, z, Double.longBitsToDouble(bits));
+                }
+                if (timing != null) {
+                    if (bits == BInputBlockCache.NO_BLOCK) timing.noBlock.increment();
+                    else if (bits == BInputBlockCache.INVALID_POINT) timing.invalidPoint.increment();
+                    else timing.peekClosed.increment();
+                }
+            } else if (timing != null) {
+                if (signedZero) timing.negativeZero.increment(); else timing.fractional.increment();
+            }
+        }
+        if (timing == null) return context.sampleBase(x, z);
+        timing.fallback.increment();
+        // Explicit per-call scope attributes the actual sampler outcome, never global subtraction.
+        var diag = context.baseCacheDiagnostics();
+        if (diag == null) return context.sampleBase(x, z);
+        var input = diag.input();
+        var sample = context.sampleBase(x, z, input);
+        var counts = diag.inputCounts(input);
+        timing.rawBase.add(counts.rawComputations()); timing.pointHits.add(counts.pointHits());
+        return sample;
+    }
     private Sample timedAssemble(double x, double z, TileGeometry.Footprint f,
                                  Map<TileGeometry.Owner, ParticleTile> tiles, SamplingTiming timing) {
         long start = timing == null ? 0 : System.nanoTime();
         try {
-        var b = context.sampleBase(x, z);
+        var b = assembleBase(x, z, timing);
         if (timing != null) timing.baseNs.add(System.nanoTime() - start);
         if (context.definition().mode() == ProcessContext.Mode.OFF) {
             return new Sample(context.identity(), b, b.eB(), b.yB());

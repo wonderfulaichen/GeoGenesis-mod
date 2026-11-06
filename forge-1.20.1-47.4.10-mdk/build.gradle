@@ -2713,3 +2713,15 @@ tasks.register('runLakeFullAuditProbe', JavaExec) {
     timeout = java.time.Duration.ofMinutes(30)
     if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
 }
+
+// Exact assemble B reuse gates; no global optimization property.
+['AssembleBasePeekProbe', 'AssembleBasePeekPerformanceProbe'].each { probe ->
+    tasks.register('run' + probe, JavaExec) {
+        dependsOn 'diagnosticsClasses'
+        classpath = sourceSets.diagnostics.runtimeClasspath
+        mainClass = 'com.geogenesis.worldgen.process.' + probe
+        maxHeapSize = '3g'
+        timeout = java.time.Duration.ofMinutes(5)
+        if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
+    }
+}
