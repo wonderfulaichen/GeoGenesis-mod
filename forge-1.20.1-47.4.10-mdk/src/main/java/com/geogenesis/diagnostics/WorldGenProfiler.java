@@ -231,6 +231,11 @@ public final class WorldGenProfiler {
         stutterLog(hypothesis, location, detail, true);
     }
 
+    /** One bounded summary per tile input; no per-tile keys retained in STUTTER_LAST. */
+    public static void stutterBaseCache(String detail) {
+        stutterLog("BASECACHE", "tile-input", detail, false);
+    }
+
     private static void stutterLog(String hypothesis, String location, String detail, boolean throttle) {
         if (!stutterEnabled()) return;
         long now = System.nanoTime();

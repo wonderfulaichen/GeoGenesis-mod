@@ -62,17 +62,46 @@ public final class BaseWorldSampler {
     }
 
     public double sampleE(double x, double z) {
-        if (sampleCache == null) return terrain.sampleE(x, z);
+        return sampleE(x, z, null, null);
+    }
+
+    /** Optional context-owned observation; null preserves the uninstrumented hot path. */
+    public double sampleE(double x, double z, BaseCacheDiagnostics diag, BaseCacheDiagnostics.Input input) {
+        if (sampleCache == null) {
+            if (diag == null) return terrain.sampleE(x, z);
+            diag.outcome(input, BaseCacheDiagnostics.BYPASS);
+            return observedCompute(x, z, diag, input);
+        }
         long a = Double.doubleToRawLongBits(x);
         long b = Double.doubleToRawLongBits(z);
         int slot = (int) (((a * 0x9E3779B97F4A7C15L) ^ (b * 0x632BE59BD9B4E019L)) >>> 40) & CACHE_MASK;
         Entry entry = sampleCache.get(slot);
         if (entry != null && entry.x() == a && entry.z() == b) {
+            if (diag != null) diag.outcome(input, BaseCacheDiagnostics.HIT);
             return Double.longBitsToDouble(entry.bits());
         }
-        double e = terrain.sampleE(x, z);
-        sampleCache.set(slot, new Entry(a, b, Double.doubleToRawLongBits(e)));
-        return e;
+        if (diag != null) diag.outcome(input,
+                entry == null ? BaseCacheDiagnostics.EMPTY : BaseCacheDiagnostics.CONFLICT);
+        // Keep the observed computation interval open through original cache publication.
+        int token = diag == null ? 0 : diag.begin(input, a, b);
+        boolean success = false;
+        try {
+            double e = terrain.sampleE(x, z);
+            sampleCache.set(slot, new Entry(a, b, Double.doubleToRawLongBits(e)));
+            success = true;
+            return e;
+        } finally {
+            if (diag != null) diag.end(input, token, success);
+        }
+    }
+    private double observedCompute(double x, double z, BaseCacheDiagnostics diag, BaseCacheDiagnostics.Input input) {
+        int token = diag.begin(input, Double.doubleToRawLongBits(x), Double.doubleToRawLongBits(z));
+        boolean success = false;
+        try {
+            double e = terrain.sampleE(x, z);
+            success = true;
+            return e;
+        } finally { diag.end(input, token, success); }
     }
     /**
      * 高度必须复用本类的 {@link #sampleE}（进而复用采样缓存）。

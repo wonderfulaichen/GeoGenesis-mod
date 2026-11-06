@@ -479,9 +479,35 @@ public final class WaterFillGapProbe {
             sources.add(name + " " + sha256(Path.of(name)));
         }
         Files.write(out.resolve("source-classes-sha256.txt"), sources, java.nio.charset.StandardCharsets.UTF_8);
+        runtimeClasspathEvidence(out);
         gitEvidence(out, "git-head.txt", "rev-parse", "HEAD");
         gitEvidence(out, "git-status.txt", "status", "--porcelain=v1", "--untracked-files=all");
         gitEvidence(out, "git-diff.patch", "diff", "--binary", "HEAD", "--", ".");
+    }
+
+    /** Ordered effective classpath, including overlays/frozen paths, not just workspace build/. */
+    private static void runtimeClasspathEvidence(Path out) throws Exception {
+        List<String> lines = new ArrayList<>();
+        String cp = System.getProperty("java.class.path");
+        lines.add("effective-classpath=" + cp);
+        int index = 0;
+        for (String entry : cp.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
+            Path path = Path.of(entry).toAbsolutePath();
+            String prefix = "entry[" + index++ + "]=" + path;
+            if (Files.isDirectory(path)) {
+                try (var files = Files.walk(path)) {
+                    for (Path file : files.filter(Files::isRegularFile).sorted().toList())
+                        lines.add(prefix + " file=" + path.relativize(file) + " sha256=" + sha256(file));
+                }
+            } else lines.add(prefix + (Files.isRegularFile(path) ? " sha256=" + sha256(path) : " MISSING"));
+        }
+        for (Class<?> type : List.of(WaterFillGapProbe.class,
+                com.geogenesis.worldgen.process.ProcessRuntime.class,
+                com.geogenesis.worldgen.core.BaseWorldSampler.class)) {
+            lines.add("loaded-class=" + type.getName() + " codeSource="
+                    + type.getProtectionDomain().getCodeSource().getLocation());
+        }
+        Files.write(out.resolve("effective-classpath-sha256.txt"), lines, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private static void gitEvidence(Path out, String file, String... args) throws Exception {

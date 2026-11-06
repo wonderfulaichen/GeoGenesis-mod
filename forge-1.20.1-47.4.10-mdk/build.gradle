@@ -2648,3 +2648,68 @@ tasks.register('runBaseSampleCacheProbe', JavaExec) {
     mainClass = 'com.geogenesis.diagnostics.BaseSampleCacheProbe'
     maxHeapSize = '1g'
 }
+
+// Bounded observation counters; no Minecraft launch.
+tasks.register('runBaseCacheDiagnosticsProbe', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.diagnostics.BaseCacheDiagnosticsProbe'
+    maxHeapSize = '1g'
+}
+tasks.register('runBaseCacheDiagnosticsOffProbe', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.diagnostics.BaseCacheDiagnosticsProbe'
+    systemProperty 'geogenesis.baseSampleCache', 'false'
+    maxHeapSize = '1g'
+}
+tasks.register('runBaseCacheScopeProbe', JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.process.BaseCacheScopeProbe'
+    maxHeapSize = '1g'
+}
+
+// B input cache offline gates; assertion-bearing separate diagnostic JVMs.
+['BInputBlockCacheProbe', 'BInputBlockCacheBitwiseProbe', 'BInputBlockCacheRaceProbe', 'BInputBlockCachePerformanceProbe'].each { probe ->
+    tasks.register('run' + probe, JavaExec) {
+        dependsOn 'diagnosticsClasses'
+        classpath = sourceSets.diagnostics.runtimeClasspath
+        mainClass = 'com.geogenesis.worldgen.process.' + probe
+        maxHeapSize = '3g'
+        timeout = java.time.Duration.ofMinutes(5)
+        if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
+    }
+}
+tasks.register('bInputMemoryAgent', Jar) {
+    dependsOn 'diagnosticsClasses'
+    archiveFileName = 'b-input-memory-agent.jar'
+    destinationDirectory = layout.buildDirectory.dir('b-input-agent')
+    from(sourceSets.diagnostics.output) { include 'com/geogenesis/worldgen/process/BInputBlockCacheMemoryProbe.class' }
+    manifest { attributes 'Premain-Class': 'com.geogenesis.worldgen.process.BInputBlockCacheMemoryProbe' }
+}
+tasks.register('runBInputBlockCacheMemoryProbe', JavaExec) {
+    dependsOn 'bInputMemoryAgent'
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.process.BInputBlockCacheMemoryProbe'
+    jvmArgs '--add-opens=java.base/java.util=ALL-UNNAMED', '--add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED'
+    doFirst { jvmArgs '-javaagent:' + tasks.bInputMemoryAgent.archiveFile.get().asFile.absolutePath }
+    maxHeapSize = '1g'
+    timeout = java.time.Duration.ofMinutes(2)
+}
+
+// Bounded same-basin morphology analytic contracts.
+tasks.register('runLakeInletMorphologyProbe', JavaExec) {
+    dependsOn 'diagnosticsClasses'
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.hydrology.model.LakeInletMorphologyProbe'
+    if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
+}
+
+
+// Bounded whole-basin audit: same-basin depth/identity and published river ends (diagnostic only).
+tasks.register('runLakeFullAuditProbe', JavaExec) {
+    dependsOn 'diagnosticsClasses'
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.LakeFullAuditProbe'
+    maxHeapSize = '4g'
+    timeout = java.time.Duration.ofMinutes(30)
+    if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
+}

@@ -195,6 +195,16 @@ public final class WorldSeedLifecycleProbe {
                         && biome.contains("packColInfo((int) Math.floor(cell.height), cell.rockTypeId, cell.biomeType.ordinal())")
                         && biome.contains("caveBiomeAt(x, y, z, info)"), "exact P and classification inputs unchanged");
         check(!biome.contains("biomeCacheValues[slot] = plains"), "early fallback not cached");
+        for (String method : new String[]{"setCurrentWorldMorphBase(boolean", "setCurrentWorldParams(TerrainParams",
+                "bindWorld(long", "unbindWorld()", "setWorldSeed(long"}) {
+            int start = gen.indexOf("public static void " + method);
+            int lock = gen.indexOf("synchronized (WORLD_LIFECYCLE)", start);
+            int endLock = blockEnd(gen, lock);
+            int close = gen.indexOf("retireTerrain(retired);", endLock);
+            check(close > endLock && close < blockEnd(gen, start), "detach then close outside lock: " + method);
+        }
+        check(gen.contains("retired = WORLD_LIFECYCLE.current()")
+                && gen.contains("if (retired != null) retired.closeProcessErosion()"), "retirement bridge wired");
         String attribution = Files.readString(root.resolve("diagnostics/FrontendAttribution.java"));
         check(attribution.contains("sample_outside_lifecycle_lock")
                         && !attribution.contains("locked_biome_body_serial"), "diagnostic lock label matches wiring");

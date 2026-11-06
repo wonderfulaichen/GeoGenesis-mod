@@ -71,12 +71,14 @@ public final class ProcessRuntime implements AutoCloseable {
     }
     public SamplingTiming currentSamplingTiming() { return samplingTiming.get(); }
     public String diagnosticLabel() {
-        return "runtime=" + diagnosticId + " seed=" + context.definition().seed();
+        return "runtime=" + diagnosticId + " seed=" + context.definition().seed()
+                + " context=" + Integer.toHexString(System.identityHashCode(context));
     }
     private final Object gate = new Object();
     private final ProcessContext context;
     private final Budget budget;
     private final Observer observer;
+    private final BInputBlockCache inputCache;
     private final ThreadPoolExecutor executor;
     private final LinkedHashMap<TileGeometry.Owner, ParticleTile> completed =
             new LinkedHashMap<>(16, .75f, true);
@@ -131,9 +133,15 @@ public final class ProcessRuntime implements AutoCloseable {
         this(context, budget, new Observer() {});
     }
     ProcessRuntime(ProcessContext context, Budget budget, Observer observer) {
+        this(context, budget, observer, 4096);
+    }
+    // Execution-only budget; zero injection preserves an independent direct-input test arm.
+    ProcessRuntime(ProcessContext context, Budget budget, Observer observer, int inputBlocks) {
         this.context = Objects.requireNonNull(context);
         this.budget = Objects.requireNonNull(budget);
         this.observer = Objects.requireNonNull(observer);
+        inputCache = inputBlocks == 0 || context.definition().mode() == ProcessContext.Mode.OFF
+                ? null : new BInputBlockCache(inputBlocks);
         executor = new ThreadPoolExecutor(budget.workers(), budget.workers(), 0, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(budget.queuedTiles()), r -> {
                     Thread t = new Thread(r, "B-P-tile"); t.setDaemon(true); return t;
@@ -150,6 +158,7 @@ public final class ProcessRuntime implements AutoCloseable {
         if (WorldGenProfiler.stutterEnabled()) WorldGenProfiler.stutterLog("FRONTEND", "runtime-start-" + diagnosticId,
                 "event=runtimeCreated " + diagnosticLabel() + " monoNs=" + System.nanoTime());
     }
+    BInputBlockCache.Stats inputCacheStats() { return inputCache == null ? null : inputCache.stats(); }
     public ProcessContext context() { return context; }
     public Sample exactP(double x, double z) throws InterruptedException, ExecutionException {
         Subscription subscription = requestExact(x, z);
@@ -294,7 +303,9 @@ public final class ProcessRuntime implements AutoCloseable {
             builds.incrementAndGet();
             observer.beforeBuild(f.owner);
             ParticleTile.check(() -> f.cancelled);
-            tile = ParticleTile.build(context, f.owner, () -> f.cancelled);
+            tile = ParticleTile.build(context, f.owner, () -> f.cancelled,
+                    WorldGenProfiler.stutterEnabled() ? diagnosticLabel() + " flight=" + f.timingId : null,
+                    inputCache);
             buildEnd = f.timingId == 0 ? 0 : System.nanoTime();
             observer.beforePublish(f.owner);
             publishStart = f.timingId == 0 ? 0 : System.nanoTime();
@@ -449,6 +460,7 @@ public final class ProcessRuntime implements AutoCloseable {
             for (Flight f : List.copyOf(flights.values())) abort(f, "closed context", after);
             completed.clear(); points.clear();
         }
+        if (inputCache != null) inputCache.close();
         executor.shutdownNow();
         after.forEach(Runnable::run);
     }

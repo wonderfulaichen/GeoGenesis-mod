@@ -21,10 +21,18 @@ final class ParticleTile {
         }
     }
     static ParticleTile build(ProcessContext ctx, TileGeometry.Owner owner, BooleanSupplier cancelled) {
+        return build(ctx, owner, cancelled, "runtime=direct");
+    }
+    static ParticleTile build(ProcessContext ctx, TileGeometry.Owner owner, BooleanSupplier cancelled,
+                              String attribution) {
+        return build(ctx, owner, cancelled, attribution, null);
+    }
+    static ParticleTile build(ProcessContext ctx, TileGeometry.Owner owner, BooleanSupplier cancelled,
+                              String attribution, BInputBlockCache cache) {
         boolean timed = com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled();
         long start = now(timed);
         check(cancelled);
-        float[] pre = buildInput(ctx, owner, cancelled);
+        float[] pre = buildInput(ctx, owner, cancelled, attribution, cache);
         long inputEnd = now(timed);
         float[] flat = pre.clone();
         var d = ctx.definition();
@@ -56,16 +64,51 @@ final class ParticleTile {
         return tile;
     }
     static float[] buildInput(ProcessContext ctx, TileGeometry.Owner owner, BooleanSupplier cancelled) {
-        float[] input = new float[146 * 146];
-        for (int z = 0; z < 146; z++) {
-            check(cancelled);
-            for (int x = 0; x < 146; x++) {
-                double e = ctx.baseE(owner.inputX() + x, owner.inputZ() + z);
-                if (!Double.isFinite(e)) throw new IllegalStateException("nonfinite B input");
-                input[z * 146 + x] = input(e);
+        return buildInput(ctx, owner, cancelled, "runtime=direct");
+    }
+    private static float[] buildInput(ProcessContext ctx, TileGeometry.Owner owner, BooleanSupplier cancelled,
+                                      String attribution) {
+        return buildInput(ctx, owner, cancelled, attribution, null);
+    }
+    static float[] buildInput(ProcessContext ctx, TileGeometry.Owner owner, BooleanSupplier cancelled,
+                              String attribution, BInputBlockCache cache) {
+        var diag = ctx.baseCacheDiagnostics();
+        var scope = diag == null ? null : diag.input();
+        var metrics = new BInputBlockCache.InputMetrics();
+        boolean complete = false;
+        try {
+            float[] input = new float[146 * 146];
+            if (cache != null) {
+                cache.copy(owner.inputX(), owner.inputZ(), 146, 146,
+                        (x, z) -> ctx.baseInputE(x, z, diag, scope),
+                        (x, z, e) -> input[(z - owner.inputZ()) * 146 + x - owner.inputX()] = input(e),
+                        cancelled, metrics);
+            } else for (int z = 0; z < 146; z++) {
+                check(cancelled);
+                for (int x = 0; x < 146; x++) {
+                    metrics.visited++; metrics.samplerCalls++;
+                    double e = ctx.baseInputE(owner.inputX() + x, owner.inputZ() + z, diag, scope);
+                    if (!Double.isFinite(e)) throw new IllegalStateException("nonfinite B input");
+                    input[z * 146 + x] = input(e);
+                }
             }
+            complete = true;
+            return input;
+        } finally {
+            if (diag != null) com.geogenesis.diagnostics.WorldGenProfiler.stutterBaseCache(
+                    attribution + " pid=" + ProcessHandle.current().pid()
+                    + " seed=" + ctx.definition().seed()
+                    + " context=" + Integer.toHexString(System.identityHashCode(ctx))
+                    + " sampler=" + ctx.baseCacheSamplerId()
+                    + " origin=" + owner.originX() + "," + owner.originZ()
+                    + " complete=" + complete
+                    + " logicalInputPoints=" + (146 * 146)
+                    + " logicalScope=requested_rectangle_not_completed_points"
+                    + " taskInput={" + metrics + "} rawB=" + diag.inputCounts(scope)
+                    + " pointCacheScope=underlying_sampler_calls_only"
+                    + " blockCacheRuntimeCumulative=" + (cache == null ? "disabled" : cache.stats())
+                    + " blockEvaluations=sampler_invocations_not_raw_B_computations " + diag.finish(scope));
         }
-        return input;
     }
     static float input(double eB) { return (float) Math.max(eB, -.05); }
     static float limitedDelta(float post, float pre) {

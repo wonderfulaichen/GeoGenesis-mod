@@ -514,35 +514,51 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     public static boolean usesCurrentWorldMorphBase() { return currentWorldMorphBase; }
 
     public static void setCurrentWorldMorphBase(boolean morphBase) {
+        GeoGenesisTerrain retired;
         synchronized (WORLD_LIFECYCLE) {
+            retired = WORLD_LIFECYCLE.current();
             currentWorldMorphBase = morphBase;
             WORLD_LIFECYCLE.invalidate();
         }
+        retireTerrain(retired);
     }
 
     /** Compatibility setter; server Load uses bindWorld atomically instead. */
     public static void setCurrentWorldParams(TerrainParams p) {
+        GeoGenesisTerrain retired;
         synchronized (WORLD_LIFECYCLE) {
+            retired = WORLD_LIFECYCLE.current();
             currentWorldParams = p;
             WORLD_LIFECYCLE.invalidate();
         }
+        retireTerrain(retired);
     }
 
     public static void bindWorld(long seed, TerrainParams params, boolean morphBase) {
+        java.util.Objects.requireNonNull(params);
+        GeoGenesisTerrain retired;
         synchronized (WORLD_LIFECYCLE) {
-            currentWorldParams = java.util.Objects.requireNonNull(params);
+            currentWorldParams = params;
             currentWorldMorphBase = morphBase;
-            setWorldSeed(seed);
+            retired = bindSeedLocked(seed);
         }
+        retireTerrain(retired);
     }
 
     public static void unbindWorld() {
+        GeoGenesisTerrain retired;
         synchronized (WORLD_LIFECYCLE) {
+            retired = WORLD_LIFECYCLE.current();
             WORLD_LIFECYCLE.unbind();
             currentWorldParams = null;
             currentWorldMorphBase = true;
             invalidateSteepJitter();
         }
+        retireTerrain(retired);
+    }
+
+    private static void retireTerrain(GeoGenesisTerrain retired) {
+        if (retired != null) retired.closeProcessErosion();
     }
 
     /** 解析当前世界参数：存档优先，缺失回退全局 toml。 */
@@ -693,12 +709,21 @@ public class GeoGenesisGenerator extends ChunkGenerator {
     }
 
     public static void setWorldSeed(long seed) {
+        GeoGenesisTerrain retired;
         synchronized (WORLD_LIFECYCLE) {
-            WORLD_LIFECYCLE.unbind();
-            configureWorldSeed(seed);
-            WORLD_LIFECYCLE.bind(seed);
-            if (WorldGenProfiler.stutterEnabled()) com.geogenesis.diagnostics.FrontendAttribution.bound(seed);
+            retired = bindSeedLocked(seed);
         }
+        retireTerrain(retired);
+    }
+
+    /** Identity transitions only; runtime cancellation/callbacks belong outside the monitor. */
+    private static GeoGenesisTerrain bindSeedLocked(long seed) {
+        GeoGenesisTerrain retired = WORLD_LIFECYCLE.current();
+        WORLD_LIFECYCLE.unbind();
+        configureWorldSeed(seed);
+        WORLD_LIFECYCLE.bind(seed);
+        if (WorldGenProfiler.stutterEnabled()) com.geogenesis.diagnostics.FrontendAttribution.bound(seed);
+        return retired;
     }
 
     private static void configureWorldSeed(long seed) {

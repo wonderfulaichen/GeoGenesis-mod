@@ -54,6 +54,17 @@ public final class ProcessContext {
     private final BaseWorldSampler base;
     private final HeightCurve curve;
     private final String baseIdentity, identity;
+    private volatile com.geogenesis.worldgen.core.BaseCacheDiagnostics baseCacheDiag;
+
+    com.geogenesis.worldgen.core.BaseCacheDiagnostics baseCacheDiagnostics() {
+        if (!com.geogenesis.diagnostics.WorldGenProfiler.stutterEnabled()) return null;
+        var diag = baseCacheDiag;
+        if (diag != null) return diag;
+        synchronized (this) {
+            if (baseCacheDiag == null) baseCacheDiag = new com.geogenesis.worldgen.core.BaseCacheDiagnostics();
+            return baseCacheDiag;
+        }
+    }
 
     public ProcessContext(Definition definition) {
         this.definition = Objects.requireNonNull(definition);
@@ -74,13 +85,18 @@ public final class ProcessContext {
     public Definition definition() { return definition; }
     public String identity() { return identity; }
     public String baseIdentity() { return baseIdentity; }
+    String baseCacheSamplerId() { return Integer.toHexString(System.identityHashCode(base)); }
     public BaseSample sampleBase(double x, double z) {
         TileGeometry.checkPoint(x, z);
-        double e = base.sampleE(x, z);
+        double e = baseE(x, z);
         return new BaseSample(baseIdentity, x, z, e, curve.heightFromE(e));
     }
     public double sampleBaseHeight(double x, double z) { return sampleBase(x, z).yB(); }
-    double baseE(double x, double z) { return base.sampleE(x, z); }
+    double baseE(double x, double z) { return base.sampleE(x, z, baseCacheDiagnostics(), null); }
+    double baseInputE(double x, double z, com.geogenesis.worldgen.core.BaseCacheDiagnostics diag,
+                      com.geogenesis.worldgen.core.BaseCacheDiagnostics.Input input) {
+        return base.sampleE(x, z, diag, input);
+    }
     double height(double e) { return curve.heightFromE(e); }
     float seaE() { return (float) curve.seaE(); }
     double resistance(double x, double z) {
