@@ -146,8 +146,10 @@ public final class ProcessRuntime implements AutoCloseable {
     public ProcessRuntime(ProcessContext context, Budget budget) {
         this(context, budget, new Observer() {});
     }
+    /** Production B input cache capacity: 8192 blocks (~66.8 MiB) per runtime. */
+    static final int PRODUCTION_INPUT_BLOCKS = 8192;
     ProcessRuntime(ProcessContext context, Budget budget, Observer observer) {
-        this(context, budget, observer, 4096);
+        this(context, budget, observer, PRODUCTION_INPUT_BLOCKS);
     }
     // Execution-only budget; zero injection preserves an independent direct-input test arm.
     ProcessRuntime(ProcessContext context, Budget budget, Observer observer, int inputBlocks) {
