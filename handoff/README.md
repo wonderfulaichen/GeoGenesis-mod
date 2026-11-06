@@ -28,7 +28,8 @@
 > - `attachments/**` 是冻结证据（含 `final-head.txt`、出图清单里同时当文件名的 SHA），
 >   **刻意保留旧 SHA**，旧值反查见
 >   [`audit/git-sha-remap-20261106.txt`](../audit/git-sha-remap-20261106.txt)；
-> - 旧 SHA 形如 `fadf368` 在本地/远端都已无法解析，属预期，不是仓库损坏。
+> - 旧 SHA（`attachments/**` 与 `_archive/**` 里那些）在本地/远端都已无法解析，
+>   属预期，不是仓库损坏 —— 拿映射表比对即可。
 
 ## 最近一次（若你是接手的新对话，从这里开始）
 
