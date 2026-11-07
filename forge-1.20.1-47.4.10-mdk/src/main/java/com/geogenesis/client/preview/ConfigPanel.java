@@ -66,6 +66,9 @@ public abstract class ConfigPanel {
         return t;
     }
 
+    /** 只读窥视悬停 tooltip（不清空）。供 {@link CompositePanel} 合并子面板 tooltip。 */
+    public Component peekHoverTooltip() { return hoverTooltip; }
+
     /** 统一的点击音效（面板按钮 / 列表项选中时调用），提升操作反馈手感 */
     protected static void playClick() {
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
@@ -119,4 +122,3 @@ public abstract class ConfigPanel {
         return hover;
     }
 }
-

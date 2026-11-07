@@ -779,8 +779,17 @@ public final class ConfigKeyGuardProbe {
         return src;
     }
 
-    private static boolean containsWord(String text, String word) {
-        int from = 0;
+    /**
+     * 供同包其它探针复用的"整词包含"判定（{@link ConfigPanelCoverageProbe} 用它扫面板源码）。
+     *
+     * <p>为什么暴露成包内可见而不是各自复制：判定口径（Java 标识符边界）必须只有一份，
+     * 否则两个探针会对同一段源码给出不同结论。</p>
+     */
+    static boolean containsWordForTest(String text, String word) {
+        return containsWord(text, word);
+    }
+
+    private static boolean containsWord(String text, String word) {        int from = 0;
         while (true) {
             int i = text.indexOf(word, from);
             if (i < 0) {

@@ -516,9 +516,15 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.DoubleValue mountLoDeriv1;
     /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountHiLoc0;
-    /** [BOTH] hi 下界端点值。<b>实测是真决定项</b>：默认 0.95 就是 maxLandHi() 的取值来源
-     *  ⇒ 直接决定 morph 侵蚀 softCap 的启动阈值 0.97*0.95=0.9215。
-     *  压到 0.20 实测 morph 落块 5×5 chunk 全部改变（SoftCapEngageProbe 25/25）。 */
+    /** [BOTH] hi 下界端点值。它是 {@code SplineConfig.maxLandHi()} 的取值来源，因而同时决定两条链的软顶阈值：
+     *  <ul>
+     *    <li>legacy：{@code CellGenerator.softCapLandE}，阈值 0.97×maxLandHi</li>
+     *    <li>morph：{@code ProcessContext.assemble} 的侵蚀软顶（同一 0.97 系数）</li>
+     *  </ul>
+     *  ⚠ <b>默认配置下不触发</b>：morph 实测自然最高 e = 0.8756，而默认阈值 0.9215。
+     *  它只在山峰被调高、或本值被调低使阈值跌破自然峰值时才生效——
+     *  压到 0.20 时阈值降到 0.6848，实测 morph 落块 5×5 chunk 25/25 全变（SoftCapEngageProbe）。
+     *  因此它是「有条件的 BOTH」，不是常态生效旋钮。 */
     public final ForgeConfigSpec.DoubleValue mountHiVal0;
     /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountHiDeriv0;
@@ -1305,7 +1311,13 @@ public final class GeoGenesisConfig {
 
             // preview compat defaults
             horizontalScale.getDefault(), seaLevel.getDefault(), snowLine.getDefault(), minY.getDefault(),
-            maxY.getDefault(), 0.92, (int) Math.round(seaLevel.getDefault() + (maxY.getDefault() - seaLevel.getDefault()) * 0.92 * landHi), (int)(minY.getDefault() * 0.75),
+            // ⚠ 峰高比例过去在这里写死字面量 0.92，与 peakHeightFraction 的 defineInRange 默认值
+            //   重复 —— 一旦改默认值就会静默漂移（本轮审计的 5 处文案漂移是同型病）。
+            //   改为读同一处声明；当前默认恰好也是 0.92 ⇒ 产出逐位不变。
+            maxY.getDefault(), peakHeightFraction.getDefault(),
+            (int) Math.round(seaLevel.getDefault() + (maxY.getDefault() - seaLevel.getDefault())
+                    * peakHeightFraction.getDefault() * landHi),
+            (int)(minY.getDefault() * 0.75),
             verticalScale.getDefault(),
             cAffinityStrength.getDefault(),
             // coastline diversification（archipelago*/coastTerrainInfluence 已随键删除）

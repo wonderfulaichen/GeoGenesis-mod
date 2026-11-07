@@ -3,6 +3,7 @@ package com.geogenesis.client.preview;
 import com.geogenesis.client.ParamSlider;
 import com.geogenesis.client.preview.mixer.CategoryBar;
 import com.geogenesis.client.preview.mixer.MixerPanel;
+import com.geogenesis.config.ConfigSpecRanges;
 import com.geogenesis.config.GeoGenesisConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -10,6 +11,7 @@ import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.DoubleConsumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
@@ -44,8 +46,13 @@ public class ClimateConfigPanel extends ConfigPanel {
     private static final int SCALE_LABEL_W = 60;
     private static final int SCALE_VAL_W = 38;
 
-    public ClimateConfigPanel() {}
+    /** 气候缩放键名（与 GeoGenesisConfig 字段名一致）。 */
+    private static final String KEY_LATITUDE = "latitudeScale";
+    private static final String KEY_TEMP_WARP = "tempWarpScale";
+    private static final String KEY_HUMIDITY = "humidityScale";
+    private static final String KEY_REGION = "climateRegionSize";
 
+    public ClimateConfigPanel() {}
     public void buildClimateFactors() {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
         factors.clear();
@@ -90,25 +97,45 @@ public class ClimateConfigPanel extends ConfigPanel {
         scalePanel.setContentHeight(scaleSpecs.size() * SCALE_ROW_H + 2);
     }
 
-    /** 构建气候缩放滑块（纬度/温度/湿度 xz 缩放），独立于分类色条 */
+    /** 构建气候缩放滑块（纬度/温度/湿度/气候区），独立于分类色条 */
     private void buildScaleSliders(GeoGenesisConfig c) {
         scaleSpecs.clear(); scaleSliders.clear();
-        addScale("纬度缩放", "温度随 z 变化的周期（块）。越大→温度带越宽（纬度变化越慢），默认 6000。影响气候带的南北宽度。", c.latitudeScale, 500.0, 30000.0);
-        addScale("温度缩放", "温度扰动场 xz 缩放（块）。温度场频率 = 1/tempWarpScale，越大→温度空间变化越平缓、大尺度渐变越强，默认 1500。", c.tempWarpScale, 100.0, 8000.0);
-        addScale("湿度缩放", "湿度场 xz 缩放（块）。湿度场频率 = 1/humidityScale，越大→湿度空间变化越平缓、大尺度渐变越强，默认 800。", c.humidityScale, 100.0, 8000.0);
-        Function<Double, String> fmt = v -> String.format("%.0f", v);
+        // ★ 上下限一律从 defineInRange 现取（旧实现手抄 500/30000 等字面量，
+        //   改默认值/范围时会静默漂移 —— 本轮审计抓到 5 处同型漂移）。
+        addScale("纬度缩放", KEY_LATITUDE);
+        addScale("温度缩放", KEY_TEMP_WARP);
+        addScale("湿度缩放", KEY_HUMIDITY);
+        // ★ 2026-11-07 新增：气候区尺寸是 A 类真旋钮（BOTH），此前从未上过界面。
+        addScale("气候区尺寸", KEY_REGION);
+        Function<Double, String> fmt = v -> String.format(Locale.ROOT, "%.0f", v);
         for (ScaleSpec s : scaleSpecs) {
-            ParamSlider ps = new ParamSlider(0, 0, 100, s.min, s.max, s.cfg.get(), v -> {
-                s.cfg.set(v); onMarkDirty.run();
+            ParamSlider ps = new ParamSlider(0, 0, 100,
+                    s.meta.min(), s.meta.max(),
+                    ConfigSpecRanges.getDouble(s.key, s.meta.min()), v -> {
+                ConfigSpecRanges.setDouble(s.key, v);
+                onMarkDirty.run();
             }, fmt);
-            ps.setDefaultValue(s.cfg.getDefault());
-            ps.setTooltipText(s.description);
+            ps.setDefaultValue(parseDefault(s.meta));
+            ps.setTooltipText(KeyText.tooltip(s.key));
             scaleSliders.add(ps);
         }
     }
 
-    private void addScale(String label, String description, ForgeConfigSpec.DoubleValue cfg, double min, double max) {
-        scaleSpecs.add(new ScaleSpec(label, description, cfg, min, max));
+    private static double parseDefault(ConfigSpecRanges.Meta m) {
+        try {
+            return Double.parseDouble(m.defaultText());
+        } catch (NumberFormatException e) {
+            return m.min();
+        }
+    }
+
+    private void addScale(String label, String key) {
+        ConfigSpecRanges.Meta meta = ConfigSpecRanges.metaOf(key);
+        if (meta == null) {
+            // 目录/配置不一致由 ConfigPanelCoverageProbe 报错；此处不造控件也不静默兜底
+            throw new IllegalStateException("climate scale key missing from config: " + key);
+        }
+        scaleSpecs.add(new ScaleSpec(label, key, meta));
     }
 
     private FactorSection createFactor(String title,
@@ -311,14 +338,13 @@ public class ClimateConfigPanel extends ConfigPanel {
         }
     }
 
-    /** 气候缩放滑块规格（普通滑块，无分类色条） */
-    private static class ScaleSpec {
+    /** 气候缩放滑块规格（普通滑块，无分类色条）。上下限与默认值全部来自 {@link ConfigSpecRanges}。 */
+    private static final class ScaleSpec {
         final String label;
-        final String description;
-        final ForgeConfigSpec.DoubleValue cfg;
-        final double min, max;
-        ScaleSpec(String label, String description, ForgeConfigSpec.DoubleValue cfg, double min, double max) {
-            this.label = label; this.description = description; this.cfg = cfg; this.min = min; this.max = max;
+        final String key;
+        final ConfigSpecRanges.Meta meta;
+        ScaleSpec(String label, String key, ConfigSpecRanges.Meta meta) {
+            this.label = label; this.key = key; this.meta = meta;
         }
     }
 }

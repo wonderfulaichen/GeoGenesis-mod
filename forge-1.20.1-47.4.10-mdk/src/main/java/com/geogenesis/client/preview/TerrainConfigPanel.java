@@ -97,6 +97,10 @@ public class TerrainConfigPanel extends ConfigPanel {
     public void buildFromConfig() {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
         Consumer<Double> onChange = v -> { if (onMarkDirty != null) onMarkDirty.run(); };
+        // ⚠ 这三个键标注为 PREVIEW_ONLY（见 GeoGenesisConfig 的算法轴 javadoc）：
+        //   它们【不驱动 generator】，只决定本页高度图与雪线图的 Y 轴标尺。
+        //   生产 generator 用编译期常量 WORLD_MIN_Y=-64 / WORLD_MAX_Y=320 / SEA_LEVEL=63。
+        //   ⇒ 界面上必须写明"仅预览标尺"，否则用户拖了以为世界变高（旧版正是这样埋的坑）。
         int seaLevel = c.seaLevel.get();
         int maxY = c.maxY.get();
         int minY = c.minY.get();
@@ -192,14 +196,15 @@ public class TerrainConfigPanel extends ConfigPanel {
             hiSliders.add(hi);
         }
         // 设置地形类型滑块 tooltip
+        // ★ 文案只写语义，不写数字 —— 默认值/范围由 ConfigSpecRanges 现取（见 KeyText 的铁律）。
         String[] typeTooltips = {
             "深海", "大陆架", "洋中脊", "海山", "湖泊", "河流",
             "平原", "丘陵", "山脉", "高原", "盆地"
         };
         for (int i = 0; i < loSliders.size() && i < typeTooltips.length; i++) {
             String name = typeTooltips[i];
-            loSliders.get(i).setTooltipText(name + " 下限（地形 e-space 最低值，低于此值不留该类型）");
-            hiSliders.get(i).setTooltipText(name + " 上限（地形 e-space 最高值，高于此值不留该类型）");
+            loSliders.get(i).setTooltipText(name + " 下限（地形 e 空间最低值，低于此值不留该类型）");
+            hiSliders.get(i).setTooltipText(name + " 上限（地形 e 空间最高值，高于此值不留该类型）");
         }
 
         // ===== 雪线（双曲线：温度×湿度） =====

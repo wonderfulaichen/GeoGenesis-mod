@@ -1684,6 +1684,9 @@ task runWorldgenGate {
     // Config key guard (2026-11-06): fails when a GeoGenesisConfig key is not read
     // by production code (CLIENT_ONLY / UNREAD). See tools/config-key-guard-allowlist.txt.
     dependsOn 'runConfigKeyGuardProbe'
+    // Config-panel structure self-check (2026-11-07). Static: panel-visible keys <-> key catalog
+    // <-> tab layout <-> built-in presets must all agree. Zero MC dependency, seconds to run.
+    dependsOn 'runConfigPanelCoverageProbe'
 }
 
 // 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什�?+ 多模组零误删 + 开关真生效:
@@ -2724,4 +2727,45 @@ tasks.register('runLakeFullAuditProbe', JavaExec) {
         timeout = java.time.Duration.ofMinutes(5)
         if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
     }
+}
+
+// ==================================================================
+// Default production-output fingerprint (2026-11-07, config-panel refactor step 2).
+//   gradlew runDefaultOutputFingerprintProbe -PprobeArgs="--emit build/default-fingerprint.tsv"
+//   gradlew runDefaultOutputFingerprintProbe -PprobeArgs="--compare build/default-fingerprint.tsv"
+// WHY: panel/preset/copy changes must NOT reach the terrain. "I only touched client/"
+// is a self-report; this probe turns it into a diffable, exit-coded fact.
+// ==================================================================
+tasks.register('runDefaultOutputFingerprintProbe', JavaExec) {
+    dependsOn 'diagnosticsClasses'
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.diagnostics.DefaultOutputFingerprintProbe'
+    maxHeapSize = '3g'
+    timeout = java.time.Duration.ofMinutes(20)
+    if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
+}
+
+// ==================================================================
+// Config-panel structure self-check (2026-11-07, refactor step 2).
+//   gradlew runConfigPanelCoverageProbe [-PprobeArgs="--verbose"]
+// Asserts, statically, that panel-visible keys, the config key catalog, the
+// per-domain tab layout, and the built-in presets all agree. Exit-coded.
+// ==================================================================
+tasks.register('runConfigPanelCoverageProbe', JavaExec) {
+    dependsOn 'diagnosticsClasses'
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.config.ConfigPanelCoverageProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
+}
+
+// Behavioural proof that every built-in preset actually changes a new world.
+//   gradlew runPresetEffectivenessProbe [-PprobeArgs="--threshold 0.3"]
+tasks.register('runPresetEffectivenessProbe', JavaExec) {
+    dependsOn 'diagnosticsClasses'
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.diagnostics.PresetEffectivenessProbe'
+    maxHeapSize = '3g'
+    timeout = java.time.Duration.ofMinutes(20)
+    if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
 }

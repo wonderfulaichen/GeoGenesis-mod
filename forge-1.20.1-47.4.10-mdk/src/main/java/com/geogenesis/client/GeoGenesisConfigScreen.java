@@ -5,9 +5,12 @@ import com.geogenesis.client.preview.CachePanel;
 import com.geogenesis.client.preview.CavePanel;
 import com.geogenesis.client.preview.ClimateConfigPanel;
 import com.geogenesis.client.preview.ColormapPanel;
+import com.geogenesis.client.preview.CompositePanel;
 import com.geogenesis.client.preview.ConfigPanel;
-import com.geogenesis.client.preview.OrePanel;
+import com.geogenesis.client.preview.DiagnosticPanel;
 import com.geogenesis.client.preview.DisplayPanel;
+import com.geogenesis.client.preview.DomainPanel;
+import com.geogenesis.client.preview.OrePanel;
 import com.geogenesis.client.preview.ParameterConfigPanel;
 import com.geogenesis.client.preview.Preset;
 import com.geogenesis.client.preview.PresetsPanel;
@@ -15,32 +18,45 @@ import com.geogenesis.client.preview.PreviewDisplay;
 import com.geogenesis.client.preview.SamplingPanel;
 import com.geogenesis.client.preview.TerrainConfigPanel;
 import com.geogenesis.client.preview.GeoPalette;
+import com.geogenesis.client.preview.WorldScalePanel;
 import com.geogenesis.config.GeoGenesisConfig;
+import com.geogenesis.config.PanelLayout;
 import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import com.geogenesis.client.SeedManager.SeedEntry;
 
 /**
- * GeoGenesis 配置屏（三页签面板版）。
+ * GeoGenesis 配置屏 —— <b>页签由 {@link PanelLayout} 驱动</b>。
  *
- * <p>左侧三页签面板（地形/气候/参数）+ 右侧预览地图。
- * 面板内部通过 scrollOffset 自适配滚动（不依赖 GuiGraphics translate）。
+ * <h2>★ 2026-11-07 重构：为什么页签名与面板不再是两个平行数组</h2>
+ * <p>旧实现同时存在 {@code private static final String[] TAB_NAMES}（页签名）与
+ * {@code panels = new ConfigPanel[]{...}}（面板实例），靠一句注释「顺序必须严格对齐」维系。
+ * 两者错位时<b>不抛任何异常</b> —— 表现是「点『地形』弹出洞穴面板」，只能靠人眼发现。</p>
+ * <p>现在两者都从 {@link PanelLayout.Tab} 派生：页签名 = {@code tab.label()}，
+ * 面板按 {@code Tab} 枚举顺序构造（{@link #panelFor} 是<b>唯一</b>映射点），
+ * 构造完再跑一次<b>硬校验</b>（不是 {@code assert} —— Java 默认关断言，实机等于没有）。
+ * {@code ConfigPanelCoverageProbe} 另外做静态校验，错位在构建期就红。</p>
+ *
+ * <h2>★ 可见性规则（不是人工判断，由算法轴导出）</h2>
+ * <ul>
+ *   <li>{@code BOTH} / {@code MORPH_ONLY} → 正常显示（这些真的驱动新世界）；</li>
+ *   <li>{@code DIAGNOSTIC} → 归入「诊断」页，默认折叠语义；</li>
+ *   <li>{@code PREVIEW_ONLY}（seaLevel/minY/maxY）→ 明示「仅预览标尺，不驱动世界」，
+ *       不再放在任何冒充世界设置的分组里；</li>
+ *   <li>{@code LEGACY_ONLY}（70 个）→ <b>默认整页隐藏</b>，只有「诊断」页打开
+ *       「显示旧算法参数」才出现，且整页标注「仅旧存档生效」。</li>
+ * </ul>
+ * <p>映射点是 {@code ConfigKeyCatalog.visibilityOf(Axis)} —— 纯函数，不可能与轴漂移。</p>
  */
 public class GeoGenesisConfigScreen extends Screen {
 
@@ -54,29 +70,47 @@ public class GeoGenesisConfigScreen extends Screen {
     private long seed = 12345L;
 
     private int tab = 0;
-    /** 标签页名：上游→下游排列。页签0=世界参数（最上游），页签1=气候，页签2=地形（含雪线） */
-    private static final String[] TAB_NAMES = {"预设", "世界参数", "气候", "地形", "洞穴", "矿物", "显示", "采样", "色带", "缓存", "群系"};
+    /**
+     * 是否显示「旧算法参数」页签。
+     *
+     * <p>默认 {@code false}：用户已裁定没有 legacy 存档 ⇒ 那 70 个键对新世界零效果，
+     * 常驻显示只会制造「转了没反应」的困惑。开关本体在「诊断」页。</p>
+     *
+     * <p>⚠ 这是<b>界面偏好</b>，不写进 TOML —— 它是"我想不想看见"，不是"世界怎么生成"。
+     * 写进配置会变成又一个「UI 开关改了产出不变」的假键。</p>
+     */
+    private boolean showLegacyParams = false;
 
-    /** 标签页导航条配色（仿设置页 TabNavigationBar 原生形态 + 主屏深绿主题） */
-    private static final int TAB_H = 24;              // 标签条高度
-    private static final int TAB_BAR_BG = 0xFF161A22;   // 标签条凹陷背景
-    private static final int TAB_PILL_BG = 0xFF2a3340;  // 未选中标签 pill
-    private static final int TAB_PILL_HOVER = 0xFF353c48; // hover 未选中
-    private static final int TAB_SEL_BG = 0xFF1e222c;   // 选中标签=面板色（连入内容）
-    private static final int TAB_SEL_HOVER = 0xFF252a33; // hover 选中
-    private static final int TAB_SEL_TOP = 0xFF00c896;   // 选中标签顶部绿色高亮
-    private static final int TAB_INACTIVE_TEXT = 0xFF9aa0aa; // 未选中标签次级字
-    private static final int C_TEXT = 0xFFe0e0e0;     // 选中标签亮字
-    private static final int C_LINE = 0xFF333333;     // 分隔线
-    private static final int TAB_PILL_R = 4;          // 标签 pill 圆角半径
+    /** 标签条配色（仿设置页 TabNavigationBar 原生形态 + 主屏深绿主题） */
+    private static final int TAB_H = 24;
+    private static final int TAB_BAR_BG = 0xFF161A22;
+    private static final int TAB_PILL_BG = 0xFF2a3340;
+    private static final int TAB_PILL_HOVER = 0xFF353c48;
+    private static final int TAB_SEL_BG = 0xFF1e222c;
+    private static final int TAB_SEL_HOVER = 0xFF252a33;
+    private static final int TAB_SEL_TOP = 0xFF00c896;
+    private static final int TAB_INACTIVE_TEXT = 0xFF9aa0aa;
+    private static final int C_TEXT = 0xFFe0e0e0;
+    private static final int C_LINE = 0xFF333333;
+    private static final int TAB_PILL_R = 4;
 
-    /** 确认对话框 */
     private final ConfirmDialog confirmDialog = new ConfirmDialog();
-    /** 命名输入对话框（保存为预设时输入预设名） */
     private final NameInputDialog nameDialog = new NameInputDialog();
 
-    private final TerrainConfigPanel terrainPanel = new TerrainConfigPanel();
+    /** 目录驱动的域面板（每页一个，构造后不再变）。 */
+    private final WorldScalePanel worldScalePanel = new WorldScalePanel();
+    private final DomainPanel erosionPanel =
+            new DomainPanel(PanelLayout.Tab.EROSION, "侵蚀与河流",
+                    "粒子侵蚀是本项目唯一的侵蚀实现；河流由同一份汇流场雕刻。");
     private final ClimateConfigPanel climatePanel = new ClimateConfigPanel();
+    private final TerrainConfigPanel terrainPanel = new TerrainConfigPanel();
+    private final CavePanel cavePanel = new CavePanel();
+    private final OrePanel orePanel = new OrePanel();
+    private final DiagnosticPanel diagnosticPanel =
+            new DiagnosticPanel(() -> showLegacyParams, v -> setShowLegacyParams(v));
+    private final DomainPanel legacyPanel =
+            new DomainPanel(PanelLayout.Tab.LEGACY, "旧算法参数",
+                    "⚠ 这些旋钮只对旧存档（legacy 地形链）生效；新世界走 morph-base-p1，改它们没有效果。");
     private final ParameterConfigPanel paramPanel = new ParameterConfigPanel();
 
     // 设置类页签面板（运行时显示状态，懒构造以保留列表滚动位置）
@@ -85,16 +119,15 @@ public class GeoGenesisConfigScreen extends Screen {
     private ColormapPanel colormapPanel;
     private CachePanel cachePanel;
     private BiomesPanel biomesPanel;
-    /** ★ 2026-09-15：洞穴设置页（档位一键切换 + 开关 + 旋钮）。 */
-    private CavePanel cavePanel;
-    /** ★ 2026-09-18：矿物设置页（自研矿脉开关 + 接管原版矿开关）。 */
-    private OrePanel orePanel;
     private PresetsPanel presetsPanel;
+
+    /** 当前可见页签（随 {@link #showLegacyParams} 变化）。 */
+    private List<PanelLayout.Tab> visibleTabs = PanelLayout.visibleTabs(false);
+    /** 与 {@link #visibleTabs} 一一对应的面板实例。 */
     private ConfigPanel[] panels;
 
     private PreviewDisplay preview;
     private Button applyBtn, savePresetBtn, resetBtn, layerPrev, layerNext;
-    /** ★ 2026-09-11：大范围预览开关（放在预览正上方，见 init）。 */
     private Button largeAreaBtn;
     private int currentMode = DEFAULT_PREVIEW_LAYER;
 
@@ -103,22 +136,15 @@ public class GeoGenesisConfigScreen extends Screen {
     private int scroll;
     private boolean dirty, saved;
     private int debounce;
-    /** 一次性诊断标记：渲染首帧打印 preview 是否仍在 widget 列表（排查"返回后预览消失"） */
     private boolean diagFirstFrame = true;
-    /** 跟踪 preview 是否已登记进当前屏幕的 widget 列表（clearWidgets 后会置 false） */
     private boolean previewRegistered = false;
-    /** 上次已应用参数快照。比较 hash 决定是否真正需要 rebuild。
-     *  解决"点击空白区域就刷新"——面板 slider 在 click 不改变值时也会触发 markDirty。 */
     private TerrainParams lastAppliedParams = null;
     private long lastAppliedSeed = -1;
-    /** 创建世界上下文（结构自动检测用）：创建世界界面传入，游戏内/Mods 入口为 null */
-    // 可空：创建世界界面传入，游戏内/Mods 入口为 null（结构检测自动降级）
     private net.minecraft.client.gui.screens.worldselection.WorldCreationContext worldCtx;
 
     public GeoGenesisConfigScreen(Screen parent) {
         super(Component.literal("GeoGenesis 配置"));
         this.parent = parent;
-        // 游戏内打开（parent 不是创建世界界面）→ 只读模式
         this.readOnly = !(parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen);
     }
     /** 带种子的构造器：创建世界时传随机种子，游戏中传当前世界种子。 */
@@ -137,24 +163,84 @@ public class GeoGenesisConfigScreen extends Screen {
     public GeoGenesisConfigScreen(Screen parent, int tab) {
         super(Component.literal("GeoGenesis 配置"));
         this.parent = parent;
-        this.tab = tab;
         this.readOnly = !(parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen);
+        this.tab = Math.max(0, tab);
     }
     public GeoGenesisConfigScreen() { this(null); }
+
+    // ------------------------------------------------------------------ 可见性
+
+    /** 「显示旧算法参数」开关：切页签集合、夹紧当前页、重建面板数组。 */
+    private void setShowLegacyParams(boolean on) {
+        if (showLegacyParams == on) return;
+        PanelLayout.Tab cur = currentTab();
+        showLegacyParams = on;
+        rebuildTabs(cur);
+        LOGGER.info("[Config] showLegacyParams={} → {} 个页签", on, visibleTabs.size());
+    }
+
+    private PanelLayout.Tab currentTab() {
+        return visibleTabs.get(Math.min(tab, visibleTabs.size() - 1));
+    }
+
+    /** 重建可见页签 + 面板数组，并保持"仍停在同一页"。 */
+    private void rebuildTabs(PanelLayout.Tab keep) {
+        visibleTabs = PanelLayout.visibleTabs(showLegacyParams);
+        List<ConfigPanel> list = new ArrayList<>();
+        for (PanelLayout.Tab t : visibleTabs) list.add(panelFor(t));
+        panels = list.toArray(new ConfigPanel[0]);
+        // ★ 硬校验（不是 assert）：Java 默认<b>关闭</b> assert（MC 不会带 -ea），
+        //   所以 `assert` 在实机等于没有。旧实现的"两个平行数组"正是靠一句注释维系，
+        //   错位不抛异常、只表现为「点地形弹出洞穴面板」。这里必须在生产也真的炸。
+        if (panels.length != visibleTabs.size()) {
+            throw new IllegalStateException("页签名/面板实例数错位：tabs=" + visibleTabs.size()
+                    + " panels=" + panels.length);
+        }
+        int idx = visibleTabs.indexOf(keep);
+        tab = idx >= 0 ? idx : Math.min(tab, visibleTabs.size() - 1);
+        scroll = 0;
+        layoutPanels();
+    }
+
+    /** 页签 → 面板实例。<b>唯一</b>映射点（旧实现有两个平行数组）。 */
+    private ConfigPanel panelFor(PanelLayout.Tab t) {
+        return switch (t) {
+            case PRESETS -> presetsPanel;
+            case WORLD_SCALE -> worldScalePanel;
+            case CLIMATE -> climatePanel;
+            case TERRAIN_SHAPE -> terrainPanel;
+            case EROSION -> erosionPanel;
+            case CAVE -> cavePanel;
+            case ORE -> orePanel;
+            case DIAGNOSTIC -> diagnosticPanel;
+            // ★「显示与色带」= 预览标尺（目录驱动，明确标注"不驱动世界"）+ 显示 + 采样 + 色带
+            case DISPLAY -> new CompositePanel(paramPanel, displayPanel, samplingPanel, colormapPanel);
+            case CACHE -> cachePanel;
+            case BIOMES -> biomesPanel;
+            case LEGACY -> legacyPanel;
+        };
+    }
+
+    private void layoutPanels() {
+        if (panels == null) return;
+        for (int i = 0; i < panels.length; i++) {
+            panels[i].setBounds(panelX + 4, listTop, panelW - 8);
+            panels[i].setScrollOffset(i == tab ? scroll : 0);
+        }
+    }
+
+    // ------------------------------------------------------------------ init
 
     @Override
     protected void init() {
         super.init();
-        // 重新进入（如从设置屏返回）时清掉旧 widget，避免重复累积；
-        // 同时保证 preview 在 rebuildPreview 中被重新登记进列表（修复"返回后预览消失"）。
         this.clearWidgets();
         diagFirstFrame = true;
         previewRegistered = false;
-        LOGGER.info("DIAG-GCS: init enter, preview==null={}, previewRegistered={}", preview == null, previewRegistered);
         int w = width, h = height;
         panelX = 10;
         panelW = (w - 40) * 5 / 9;
-        headerY = 20;  // 标签条贴顶部（标题 y=12 之下）
+        headerY = 20;
         listTop = headerY + TAB_H;
         listBottom = h - 44;
         previewX = panelX + panelW + 20;
@@ -162,22 +248,26 @@ public class GeoGenesisConfigScreen extends Screen {
         previewW = w - previewX - 10;
         previewH = listBottom - previewY;
 
-        // 种子栏（输入框 + ★ + 刷新）已迁移进 PresetsPanel，主屏不再持有这些 widget
-
         Runnable markDirty = () -> { dirty = true; saved = false; debounce = 8; };
-        terrainPanel.setOnMarkDirty(markDirty);
-        terrainPanel.setBounds(panelX + 4, listTop, panelW - 8);
-        terrainPanel.buildFromConfig();
+        worldScalePanel.setOnMarkDirty(markDirty);
+        worldScalePanel.buildFromConfig();
+        erosionPanel.setOnMarkDirty(markDirty);
+        erosionPanel.buildFromConfig();
         climatePanel.setOnMarkDirty(markDirty);
-        climatePanel.setBounds(panelX + 4, listTop, panelW - 8);
         climatePanel.buildClimateFactors();
+        terrainPanel.setOnMarkDirty(markDirty);
+        terrainPanel.buildFromConfig();
         paramPanel.setOnMarkDirty(markDirty);
-        paramPanel.setOnShowConfirm((title, msg, affected, onCncl, onCnfrm) -> {
-            confirmDialog.show(title, msg, affected, onCnfrm, onCncl);
-        });
-        paramPanel.setBounds(panelX + 4, listTop, panelW - 8);
-        paramPanel.setReadOnly(readOnly);
         paramPanel.buildFromConfig();
+        cavePanel.setOnMarkDirty(markDirty);
+        cavePanel.buildFromConfig();
+        orePanel.setOnMarkDirty(markDirty);
+        orePanel.buildFromConfig();
+        diagnosticPanel.setOnMarkDirty(markDirty);
+        diagnosticPanel.buildFromConfig();
+        legacyPanel.setOnMarkDirty(markDirty);
+        legacyPanel.setReadOnly(readOnly);
+        legacyPanel.buildFromConfig();
 
         applyBtn = Button.builder(Component.literal(readOnly ? "只读" : "应用"), b -> doApply())
             .pos(panelX, listBottom + 6).size(60, 20).build();
@@ -190,12 +280,8 @@ public class GeoGenesisConfigScreen extends Screen {
         addRenderableWidget(savePresetBtn);
         addRenderableWidget(resetBtn);
 
-        // 按钮在 widget 上方留出 4px 间隙
         layerPrev = Button.builder(Component.literal("◀ 图层"), b -> cycleLayer(-1))
             .pos(previewX, previewY - 24).size(70, 20).build();
-        // ★ 2026-09-11：大范围预览开关移到【预览正上方】。
-        //   原先只存在「采样」页签里，且开启后不改缩放 → 无任何可见反馈，
-        //   用户会认为"游戏里的预览窗口打不开大范围预览"（游戏内没有实体按键可用）。
         int largeX = previewX + 74;
         int largeW = Math.max(60, previewW - 74 - 74);
         largeAreaBtn = Button.builder(largeAreaLabel(), b -> toggleLargeArea())
@@ -208,9 +294,6 @@ public class GeoGenesisConfigScreen extends Screen {
         addRenderableWidget(layerNext);
         addRenderableWidget(largeAreaBtn);
 
-        // 始终重新登记 preview widget（clearWidgets 后必须重建，否则返回后预览消失）。
-        // 思路对齐参考项目 World-Preview-TFC：preview 实例跨屏持久复用，init() 仅「重加同一实例」而非重建，
-        // 其内部纹理与采样缓存保留，返回设置屏后无缝衔接。
         if (preview != null) {
             preview.setPosition(previewX, previewY, previewW, previewH);
             if (!previewRegistered) {
@@ -218,11 +301,8 @@ public class GeoGenesisConfigScreen extends Screen {
                 previewRegistered = true;
             }
         }
-        // 首次(preview==null)创建实例；重入后仅当参数/种子真变化才重建采样缓存，
-        // 否则跳过 invalidateAll + 视图重置（避免棋盘/错位重载闪）。
         rebuildPreviewIfChanged();
 
-        // 设置类页签面板（运行时显示状态，懒构造一次以保留列表滚动位置）
         if (presetsPanel == null) presetsPanel = new PresetsPanel(
             () -> seed,
             s -> { seed = s; rebuildPreview(); },
@@ -235,32 +315,18 @@ public class GeoGenesisConfigScreen extends Screen {
         if (colormapPanel == null) colormapPanel = new ColormapPanel(preview);
         if (cachePanel == null) cachePanel = new CachePanel(preview);
         if (biomesPanel == null) biomesPanel = new BiomesPanel(preview);
-        // ★ 2026-09-15：洞穴页签（档位一键切换 + 开关 + 旋钮）。顺序必须与 TAB_NAMES 严格对齐。
-        if (cavePanel == null) cavePanel = new CavePanel();
-        cavePanel.setOnMarkDirty(markDirty);
-        // 每次进屏都从配置回读一次 ⇒ 若别处（如「预设」页/重置按钮）改过洞穴配置，
-        // 滑块位置不会停在旧值（否则界面显示与实际不符，属误导）。
-        cavePanel.buildFromConfig();
-        // ★ 2026-09-18：矿物页签（自研矿脉 + 接管原版矿）。顺序必须与 TAB_NAMES 严格对齐。
-        if (orePanel == null) orePanel = new OrePanel();
-        orePanel.setOnMarkDirty(markDirty);
-        orePanel.buildFromConfig();
-        panels = new ConfigPanel[]{ presetsPanel, paramPanel, climatePanel, terrainPanel,
-            cavePanel, orePanel, displayPanel, samplingPanel, colormapPanel, cachePanel, biomesPanel };
-        int px0 = panelX + 4, pTop0 = listTop, pW0 = panelW - 8;
-        for (ConfigPanel p : panels) p.setBounds(px0, pTop0, pW0);
 
-        pushScrollToPanels();
-        LOGGER.info("DIAG-GCS: init done, previewRegistered={}", previewRegistered);
+        rebuildTabs(currentTab());
+        LOGGER.info("DIAG-GCS: init done, tabs={} previewRegistered={}",
+                visibleTabs.size(), previewRegistered);
     }
 
-    /** 把当前 scroll 值同步到活动面板 */
     private void pushScrollToPanels() {
         if (panels == null) return;
         for (int i = 0; i < panels.length; i++) panels[i].setScrollOffset(i == tab ? scroll : 0);
     }
 
-    // ---- 预览 ----
+    // ------------------------------------------------------------------ 预览
 
     private void rebuildPreview() {
         TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
@@ -268,99 +334,70 @@ public class GeoGenesisConfigScreen extends Screen {
                 || com.geogenesis.worldgen.generator.GeoGenesisGenerator.usesCurrentWorldMorphBase();
         CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), morphBase);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
-        terrain.seed(seed); // 同时播种地形与水文，不能只调用 gen.seed。
+        terrain.seed(seed);
         if (preview == null) {
-            // ★ 直接传 mode，构造器内设好 activeLayer + requestResample，无需 setMode
             preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p, currentMode);
         } else {
             preview.setTerrain(terrain, seed, p);
             preview.setMode(currentMode);
         }
-        // 结构自动检测上下文：创建世界界面用 WorldCreationContext（反射取 registry/generator，
-        //   1.20.1 方法名因映射可能不同）；游戏内单机用集成服务端 overworld 的 generator；
-        // 都没有（Mods 配置入口/联机）→ null（预览无结构标记，不崩）
         Minecraft mc = Minecraft.getInstance();
         preview.setStructureContext(
             worldCtx != null ? ctxRegistry(worldCtx)
                     : (mc.level != null ? mc.level.registryAccess() : null),
             worldCtx != null ? ctxGenerator(worldCtx) : currentGenerator(mc),
             seed);
-        // 每次都同步几何位置（重入 init 后坐标可能变化），并确保已登记进 widget 列表
         preview.setPosition(previewX, previewY, previewW, previewH);
         if (!previewRegistered) {
             addRenderableWidget(preview);
             previewRegistered = true;
         }
-        // 记录已应用参数（避免下次相同 markDirty 触发重建）
         lastAppliedParams = p;
         lastAppliedSeed = seed;
         dirty = false;
     }
 
-    /** ▾ 收藏下拉浮层已移除：其功能（重命名/列表/删除）整合进 PresetsPanel 的「收藏种子」区 */
-
-    /**
-     * 绘制标签条 pill（圆角矩形，可选平底用于选中标签下连内容区）。
-     * 用 MC 的 {@link GuiGraphics#fill} 组合实现：中央矩形 + 四个角的近似弧（用小矩形填充转角视觉）。
-     * 选中标签（flatBottom=true）底部不圆，与下方面板无缝连接。
-     */
     private void drawRoundedPill(GuiGraphics g, int x, int y, int w, int h, int r, int color, boolean flatBottom) {
         int r2 = Math.min(r, Math.min(w / 2, h / 2));
-        // 中央矩形
         g.fill(x, y + r2, x + w, y + h - (flatBottom ? 0 : r2), color);
-        // 上下条带（除圆角区域）
         g.fill(x + r2, y, x + w - r2, y + h, color);
-        // 顶/底圆角：用四个小方形填补转角（r2×r2），近似圆弧
         int xL = x, xR = x + w - r2;
-        if (flatBottom) {
-            // 上圆角 + 下平
-            g.fill(xL, y, xL + r2, y + r2, color);              // TL
-            g.fill(xR, y, xR + r2, y + r2, color);              // TR
-        } else {
-            g.fill(xL, y, xL + r2, y + r2, color);              // TL
-            g.fill(xR, y, xR + r2, y + r2, color);              // TR
-            g.fill(xL, y + h - r2, xL + r2, y + h, color);      // BL
-            g.fill(xR, y + h - r2, xR + r2, y + h, color);      // BR
+        g.fill(xL, y, xL + r2, y + r2, color);
+        g.fill(xR, y, xR + r2, y + r2, color);
+        if (!flatBottom) {
+            g.fill(xL, y + h - r2, xL + r2, y + h, color);
+            g.fill(xR, y + h - r2, xR + r2, y + h, color);
         }
     }
 
     private void cycleLayer(int d) {
-        currentMode = (currentMode + d + GeoPalette.PreviewLayer.values().length) % GeoPalette.PreviewLayer.values().length;
+        currentMode = (currentMode + d + GeoPalette.PreviewLayer.values().length)
+                % GeoPalette.PreviewLayer.values().length;
         if (preview != null) preview.setMode(currentMode);
     }
 
-    /** 大范围预览开关的按钮文案（开/关）——preview 可能尚未构造，需容忍 null。 */
     private Component largeAreaLabel() {
         boolean on = preview != null && preview.isLargeArea();
         return Component.literal(I18nSafe(on ? "geogenesis.settings.sampling.large.on"
                                               : "geogenesis.settings.sampling.large.off"));
     }
 
-    /**
-     * 切换大范围预览。{@link PreviewDisplay#setLargeArea(boolean)} 会在开启时自动缩到 1:64，
-     * 保证点开即有可见效果（原实现只换管线不改缩放 → 看起来"没反应"）。
-     *
-     * <p>文案每帧在 render 里同步（「采样」页签也能改同一状态，两处必须一致）。</p>
-     */
     private void toggleLargeArea() {
         if (preview == null) return;
         preview.setLargeArea(!preview.isLargeArea());
         if (largeAreaBtn != null) largeAreaBtn.setMessage(largeAreaLabel());
     }
+
     private void doApply() {
-        // 应用 = 当前配置持久化到全局 toml，并关屏返回创建界面（世界即用此配置）
         GeoGenesisConfig.SPEC.save();
         saved = true;
         dirty = false;
-        // ★ 种子同步：从创建世界界面打开时，把配置面板的种子写回 MC 创建界面，
-        //   否则"创建的世界种子 ≠ 配置面板种子"（用户实锤）。
         if (parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen cws) {
             com.geogenesis.client.GeoGenesisClient.writeSeedToCreateWorld(cws, seed);
         }
         Minecraft.getInstance().setScreen(parent);
     }
 
-    /** 保存 = 把当前完整配置存为命名自定义预设到 user_presets.json，并刷新预设列表 */
     private void onSavePreset() {
         nameDialog.show("保存为预设", "为当前配置输入预设名称：",
             name -> {
@@ -371,7 +408,6 @@ public class GeoGenesisConfigScreen extends Screen {
             () -> {});
     }
 
-    /** 加载自定义预设：回默认 → 还原命名值 → 重建各面板 UI → 重建预览 → 持久化。游戏内只读时拒绝。 */
     private void applyUserPreset(UserPresetsStore.UserPreset p) {
         if (readOnly) {
             confirmDialog.show("只读模式",
@@ -382,35 +418,39 @@ public class GeoGenesisConfigScreen extends Screen {
         }
         GeoGenesisConfig.INSTANCE.resetToDefault();
         GeoGenesisConfig.INSTANCE.applyNamedValues(p.values());
-        terrainPanel.buildFromConfig();
-        climatePanel.buildClimateFactors();
-        paramPanel.buildFromConfig();
-        scroll = 0;
-        pushScrollToPanels();
-        lastAppliedParams = null; // 强制下次 rebuild
+        rebuildAllPanelsFromConfig();
+        lastAppliedParams = null;
         rebuildPreview();
-        try { GeoGenesisConfig.SPEC.save(); } catch (Exception ignored) { /* 文件写竞争忽略 */ }
+        try { GeoGenesisConfig.SPEC.save(); } catch (Exception ignored) { }
     }
+
     private void doReset() {
-        if (readOnly) return; // 游戏内只读：按钮已禁用，防御性检查
-        // 重置到默认值：~120 个 .set() 各自触发文件写入，Windows 文件锁可能抛 WritingException
-        // 捕获并继续——部分字段未写入的后续面板重建也会覆盖
+        if (readOnly) return;
         try {
             GeoGenesisConfig.INSTANCE.resetToDefault();
         } catch (Exception e) {
-            // 文件写竞争忽略
+            // Windows 文件写竞争忽略
         }
-        // 保持当前 seed 不变，仅重置参数并刷新面板+预览
-        terrainPanel.buildFromConfig();
-        climatePanel.buildClimateFactors();
-        paramPanel.buildFromConfig();
-        scroll = 0;
-        pushScrollToPanels();
-        lastAppliedParams = null; // 强制下次 rebuild
+        rebuildAllPanelsFromConfig();
+        lastAppliedParams = null;
         rebuildPreview();
     }
 
-    /** 点击预设卡片 → 弹确认框（覆盖全部参数前需用户确认）。游戏内只读时拒绝。 */
+    /** 全屏统一回读：任何"外部改了配置"的入口（预设/重置/用户预设）都走这里。 */
+    private void rebuildAllPanelsFromConfig() {
+        terrainPanel.buildFromConfig();
+        climatePanel.buildClimateFactors();
+        worldScalePanel.buildFromConfig();
+        erosionPanel.buildFromConfig();
+        cavePanel.buildFromConfig();
+        orePanel.buildFromConfig();
+        diagnosticPanel.buildFromConfig();
+        legacyPanel.buildFromConfig();
+        paramPanel.buildFromConfig();
+        scroll = 0;
+        pushScrollToPanels();
+    }
+
     private void showApplyPresetConfirm(Preset p) {
         if (readOnly) {
             confirmDialog.show("只读模式",
@@ -421,24 +461,17 @@ public class GeoGenesisConfigScreen extends Screen {
         }
         confirmDialog.show("应用预设：" + p.name,
             "将用预设「" + p.name + "」覆盖当前全部地形 / 气候参数。",
-            List.of("海陆偏置、海深、地形类型范围、起伏振幅、气候阈值等全部参数"),
+            List.of(p.applyHint()),
             () -> applyPreset(p),
             () -> {});
     }
 
-    /** 应用预设：回默认 → 写入覆盖表 → 重建预览 → 持久化 → 同步各面板 UI */
     private void applyPreset(Preset p) {
-        GeoGenesisConfig.INSTANCE.resetToDefault();
-        for (var e : p.overrides.entrySet()) e.getKey().set(e.getValue());
-        // 同步其余面板的滑块/控件显示（resetToDefault 只改了配置，UI 仍是旧值）
-        terrainPanel.buildFromConfig();
-        climatePanel.buildClimateFactors();
-        paramPanel.buildFromConfig();
-        scroll = 0;
-        pushScrollToPanels();
-        lastAppliedParams = null; // 强制下次 rebuild
+        p.applyTo(GeoGenesisConfig.INSTANCE);
+        rebuildAllPanelsFromConfig();
+        lastAppliedParams = null;
         rebuildPreview();
-        try { GeoGenesisConfig.SPEC.save(); } catch (Exception ignored) { /* 文件写竞争忽略 */ }
+        try { GeoGenesisConfig.SPEC.save(); } catch (Exception ignored) { }
     }
 
     @Override
@@ -447,17 +480,16 @@ public class GeoGenesisConfigScreen extends Screen {
         if (dirty && debounce > 0) { debounce--; if (debounce <= 0) rebuildPreviewIfChanged(); }
     }
 
-    /** 侵蚀/河流开关指纹：开关不在 TerrainParams 里，rebuild 判断必须单独比较，
-     *  否则点击开关只改 TOML、预览永不重算（"点击没反应"实锤根因）。 */
+    /** 侵蚀/河流开关指纹：开关不在 TerrainParams 里，rebuild 判断必须单独比较。 */
     private int lastToggleBits = -1;
     private int toggleBits() {
         GeoGenesisConfig c = GeoGenesisConfig.INSTANCE;
         int b = 0;
         if (c.erosionEnabled != null && c.erosionEnabled.get()) b |= 1;
+        if (c.riverEnabled != null && c.riverEnabled.get()) b |= 2;
         return b;
     }
 
-    /** 游戏内单机：从集成服务端 overworld 拿 ChunkGenerator（ClientChunkCache 无 getGenerator）。 */
     private static net.minecraft.world.level.chunk.ChunkGenerator currentGenerator(Minecraft mc) {
         try {
             var server = mc.getSingleplayerServer();
@@ -465,27 +497,26 @@ public class GeoGenesisConfigScreen extends Screen {
                 var lvl = server.overworld();
                 if (lvl != null) return lvl.getChunkSource().getGenerator();
             }
-        } catch (Throwable ignore) { /* 非单机/异常 → null */ }
+        } catch (Throwable ignore) { }
         return null;
     }
 
-    /** 反射读 WorldCreationContext.registryAccess()（1.20.1 方法名映射差异兜底）。 */
-    private static net.minecraft.core.RegistryAccess ctxRegistry(net.minecraft.client.gui.screens.worldselection.WorldCreationContext ctx) {
+    private static net.minecraft.core.RegistryAccess ctxRegistry(
+            net.minecraft.client.gui.screens.worldselection.WorldCreationContext ctx) {
         try {
             var m = ctx.getClass().getMethod("registryAccess");
             return (net.minecraft.core.RegistryAccess) m.invoke(ctx);
         } catch (Throwable t) { return null; }
     }
 
-    /** 反射读 WorldCreationContext.generator()。 */
-    private static net.minecraft.world.level.chunk.ChunkGenerator ctxGenerator(net.minecraft.client.gui.screens.worldselection.WorldCreationContext ctx) {
+    private static net.minecraft.world.level.chunk.ChunkGenerator ctxGenerator(
+            net.minecraft.client.gui.screens.worldselection.WorldCreationContext ctx) {
         try {
             var m = ctx.getClass().getMethod("generator");
             return (net.minecraft.world.level.chunk.ChunkGenerator) m.invoke(ctx);
         } catch (Throwable t) { return null; }
     }
 
-    /** 只在参数真的变化时才重建预览（解决"点击空白也刷新"问题） */
     private void rebuildPreviewIfChanged() {
         TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
         int tb = toggleBits();
@@ -493,7 +524,6 @@ public class GeoGenesisConfigScreen extends Screen {
                 && lastAppliedParams.equals(p)
                 && lastAppliedSeed == seed
                 && tb == lastToggleBits) {
-            // 参数、种子、开关都没变 → 跳过 rebuild
             dirty = false;
             return;
         }
@@ -503,11 +533,10 @@ public class GeoGenesisConfigScreen extends Screen {
         rebuildPreview();
     }
 
-    // ---- 渲染（不依赖 translate，面板内部 scrollOffset 自适配） ----
+    // ------------------------------------------------------------------ 渲染
 
     @Override
     public void renderBackground(GuiGraphics g) {
-        // 自定义深色背景，避免原版 dirt 背景
         g.fill(0, 0, this.width, this.height, 0xFF0e1218);
         g.fill(0, 0, this.width, 1, 0xFF2a2f3a);
         g.fill(0, this.height - 1, this.width, this.height, 0xFF2a2f3a);
@@ -518,9 +547,8 @@ public class GeoGenesisConfigScreen extends Screen {
         this.renderBackground(g);
         g.drawCenteredString(this.font, "GeoGenesis 地形配置", width / 2, 12, 0xFFFFFF);
 
-        // ---- 标签页导航条：手绘圆角 pill（MC 形态 + 深绿配色，贴顶部）----
-        int n = TAB_NAMES.length;
-        int segW = Math.max(40, (panelW - 8) / n);
+        int n = visibleTabs.size();
+        int segW = Math.max(40, (panelW - 8) / Math.max(1, n));
         for (int i = 0; i < n; i++) {
             boolean on = tab == i;
             int bx = panelX + i * (segW + 4);
@@ -529,69 +557,47 @@ public class GeoGenesisConfigScreen extends Screen {
                         : (hover ? TAB_PILL_HOVER : TAB_PILL_BG);
             drawRoundedPill(g, bx, headerY, segW, TAB_H, TAB_PILL_R, bg, on);
             if (on) g.fill(bx + TAB_PILL_R, headerY, bx + segW - TAB_PILL_R, headerY + 2, TAB_SEL_TOP);
-            g.drawCenteredString(this.font, TAB_NAMES[i], bx + segW / 2,
+            g.drawCenteredString(this.font, visibleTabs.get(i).label(), bx + segW / 2,
                 headerY + (TAB_H - this.font.lineHeight) / 2 + 1, on ? C_TEXT : TAB_INACTIVE_TEXT);
         }
 
-        // 图层名由 widget 内部图例显示，此处不重复绘制（避免与按钮重叠）
-
-        // ★ 2026-09-11：大范围开关文案每帧同步——「采样」页签与预览上方按钮共享同一状态，
-        //   两处必须一致（任一入口切换后另一处的文案立即跟上）。
         if (largeAreaBtn != null) {
             Component want = largeAreaLabel();
             if (!want.equals(largeAreaBtn.getMessage())) largeAreaBtn.setMessage(want);
         }
 
-        // 对话框显示时跳过面板/widgets 渲染：避免 ParamSlider ↩ 重置按钮穿透遮罩显示
         boolean dialogActive = nameDialog.isShowing() || confirmDialog.isShowing();
 
         if (!dialogActive) {
-            // 左栏面板：裁剪区 + 直接渲染（无 translate），按 tab 索引分发
             g.enableScissor(panelX, listTop, panelX + panelW, listBottom);
-            if (panels != null) {
-                // 群系面板需要知道面板底 y 才能填满整个区域（消除底部空白）
-                if (panels[tab] == biomesPanel) biomesPanel.setPanelBottom(listBottom);
-                panels[tab].render(g, mx, my);
-                if (tab == 3) terrainPanel.renderHeaderTooltip(g, mx, my);
+            if (panels != null && tab < panels.length) {
+                ConfigPanel active = panels[tab];
+                if (active == biomesPanel) biomesPanel.setPanelBottom(listBottom);
+                active.render(g, mx, my);
             }
             g.disableScissor();
 
-            // 预设面板的种子栏 widgets 仅在预设标签可见（其他标签隐藏，避免覆盖气候/地形等面板内容）
             if (presetsPanel != null) {
-                presetsPanel.setWidgetsVisible(tab == 0);
-                // 同步滚动区视口高度（listBottom - 滚动顶），保证 maxScroll 用真实视口
+                presetsPanel.setWidgetsVisible(tab == visibleTabs.indexOf(PanelLayout.Tab.PRESETS));
                 presetsPanel.setViewportHeight(listBottom - presetsPanel.getScrollTopY());
             }
 
             super.render(g, mx, my, pt);
 
-            // 悬停 tooltip（在 scissor 外、对话框下层绘制）
-            if (panels != null) {
+            if (panels != null && tab < panels.length) {
                 Component tip = panels[tab].consumeHoverTooltip();
                 if (tip != null) g.renderTooltip(font, tip, mx, my);
             }
         }
 
-        // 一次性诊断：确认 preview 已登记且坐标有效
         if (diagFirstFrame) {
             diagFirstFrame = false;
-            LOGGER.info("DIAG-GCS: render first-frame, previewRegistered={}, x={} y={} w={} h={}",
-                previewRegistered,
-                preview == null ? "-" : preview.getX(),
-                preview == null ? "-" : preview.getY(),
-                preview == null ? "-" : preview.getWidth(),
-                preview == null ? "-" : preview.getHeight());
+            LOGGER.info("DIAG-GCS: render first-frame, tabs={} previewRegistered={}",
+                    visibleTabs.size(), previewRegistered);
         }
 
-        // 确认对话框（最上层）
-        if (confirmDialog.isShowing()) {
-            confirmDialog.render(g, mx, my);
-        }
-
-        // 命名输入对话框（最上层，覆盖确认框之上）
-        if (nameDialog.isShowing()) {
-            nameDialog.render(g, mx, my);
-        }
+        if (confirmDialog.isShowing()) confirmDialog.render(g, mx, my);
+        if (nameDialog.isShowing()) nameDialog.render(g, mx, my);
     }
 
     private String I18nSafe(String key) {
@@ -599,19 +605,25 @@ public class GeoGenesisConfigScreen extends Screen {
         return v.equals(key) ? key : v;
     }
 
-    // ---- 鼠标（直接传递原始坐标，面板内部做 scroll 偏移） ----
+    // ------------------------------------------------------------------ 鼠标
+
+    private boolean inTabBar(double mx, double my) {
+        return mx >= panelX && mx <= panelX + panelW && my >= headerY && my <= headerY + TAB_H;
+    }
 
     @Override
     public boolean mouseClicked(double mx, double my, int b) {
         if (nameDialog.isShowing()) return nameDialog.mouseClicked(mx, my, b);
         if (confirmDialog.isShowing()) return confirmDialog.mouseClicked(mx, my, b);
-        // 标签页点击（命中标签条区域切换页签）
-        if (mx >= panelX && mx <= panelX + panelW && my >= headerY && my <= headerY + TAB_H) {
-            int segW = Math.max(40, (panelW - 8) / TAB_NAMES.length);
+        if (inTabBar(mx, my)) {
+            int n = visibleTabs.size();
+            int segW = Math.max(40, (panelW - 8) / Math.max(1, n));
             int idx = (int) ((mx - panelX) / (segW + 4));
-            if (idx >= 0 && idx < TAB_NAMES.length && idx != tab) {
-                tab = idx; scroll = 0;
-                if (idx == 3) terrainPanel.refreshHeightDependent();
+            if (idx >= 0 && idx < n && idx != tab) {
+                tab = idx;
+                scroll = 0;
+                PanelLayout.Tab t = visibleTabs.get(idx);
+                if (t == PanelLayout.Tab.TERRAIN_SHAPE) terrainPanel.refreshHeightDependent();
                 pushScrollToPanels();
                 Minecraft.getInstance().getSoundManager().play(
                     net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
@@ -621,7 +633,7 @@ public class GeoGenesisConfigScreen extends Screen {
         }
 
         if (mx >= panelX && mx <= panelX + panelW && my >= listTop && my <= listBottom) {
-            if (panels != null && panels[tab].mouseClicked(mx, my, b)) return true;
+            if (panels != null && tab < panels.length && panels[tab].mouseClicked(mx, my, b)) return true;
         }
         return super.mouseClicked(mx, my, b);
     }
@@ -630,8 +642,7 @@ public class GeoGenesisConfigScreen extends Screen {
     public boolean mouseReleased(double mx, double my, int b) {
         if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
-        // ★ 修复：面板处理了就不传给 super，防止预览被误触
-        if (panels != null && panels[tab].mouseReleased(mx, my, b)) return true;
+        if (panels != null && tab < panels.length && panels[tab].mouseReleased(mx, my, b)) return true;
         return super.mouseReleased(mx, my, b);
     }
 
@@ -639,9 +650,8 @@ public class GeoGenesisConfigScreen extends Screen {
     public boolean mouseDragged(double mx, double my, int b, double dx, double dy) {
         if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
-        // ★ 对齐 mouseClicked：只在鼠标位于面板区域内才转发 panels 拖拽。
-        //   原无条件转发 → 用户在预览窗口拖动时误触左侧参数面板（HS 2→8 实锤链路之二）。
-        if (panels != null && mx >= panelX && mx <= panelX + panelW
+        if (panels != null && tab < panels.length
+                && mx >= panelX && mx <= panelX + panelW
                 && my >= listTop && my <= listBottom) {
             if (panels[tab].mouseDragged(mx, my, b, dx, dy)) return true;
         }
@@ -653,19 +663,13 @@ public class GeoGenesisConfigScreen extends Screen {
         if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
         if (mx >= panelX && mx <= panelX + panelW) {
-            // 先给当前面板机会处理内部滚动（如色带/群系列表）
-            int panelX0 = panelX, panelX1 = panelX + panelW;
-            LOGGER.info("DIAG-GCS-SCROLL: mx={} my={} delta={} panelX=[{},{}] tab={}",
-                mx, my, delta, panelX0, panelX1, tab);
-            if (panels != null && panels[tab].mouseScrolled(mx, my, delta)) {
-                LOGGER.info("DIAG-GCS-SCROLL: panel consumed scroll");
+            if (panels != null && tab < panels.length && panels[tab].mouseScrolled(mx, my, delta)) {
                 return true;
             }
-            int contentH = panels != null ? panels[tab].getHeight() : 0;
+            int contentH = panels != null && tab < panels.length ? panels[tab].getHeight() : 0;
             int visibleH = listBottom - listTop;
             int maxScroll = Math.max(0, contentH - visibleH);
             scroll = Math.max(0, Math.min(maxScroll, scroll - (int) (delta * 20)));
-            LOGGER.info("DIAG-GCS-SCROLL: outer scroll, scroll={}", scroll);
             pushScrollToPanels();
             return true;
         }
@@ -675,34 +679,12 @@ public class GeoGenesisConfigScreen extends Screen {
     /**
      * ★★ 2026-09-18 修复【预览线程池泄漏 / 世界创建变慢的真凶】★★
      *
-     * <p>根因：{@code Minecraft.setScreen()} 只调用旧屏的 {@link #removed()}，
-     * <b>不会</b>调用 {@link #onClose()}。而"应用"按钮 ({@code doApply}) 走的正是
-     * {@code Minecraft.getInstance().setScreen(parent)} ⇒ 本类原先只在 {@code onClose()}
-     * 里关预览 ⇒ <b>"应用"路径下预览从未被关闭</b>。</p>
-     *
-     * <p>后果：{@code PreviewDisplay.pool}（{@code TerrainPool}，固定 4 线程）
-     * 连同<b>已排队的 480 块 × 3 批</b>任务继续运行，<b>跑进世界生成阶段</b>，
-     * 与 20 个 {@code Worker-Main} + 8 个 {@code TileSampler} + 出生点预热抢 CPU。</p>
-     *
-     * <p><b>实机证据</b>（{@code 2026-09-18 latest.log}，seed 9139912035078620160）：
-     * <pre>
-     *   21:20:41.964  [DIAG Queue] queued 480 chunks in 8 batches   ← 创建世界界面预览
-     *   21:20:42.781  [DIAG Queue] queued 480 chunks in 8 batches
-     *   21:20:44.133  [DIAG Queue] queued 480 chunks in 8 batches
-     *   21:20:49.849  Starting integrated minecraft server          ← 世界开始生成
-     *   21:21:45.313  Time elapsed: 37963 ms                        ← 世界创建 38 秒
-     *   21:22:15.291  [TerrainPool] chunk(7,-3)  extract=91796ms    ← 预览首块，91 秒
-     *   21:22:21.279  [TerrainPool] chunk(4,9)   extract=99006ms
-     *   21:22:24.166  [TerrainPool] chunk(-3,9)  extract=101881ms
-     *   21:22:28.951  [TerrainPool] chunk(9,2)   extract=106924ms
-     * </pre>
-     * 而<b>整个会话侵蚀 tile 只生成了 20 个 / 合计 3803ms</b>（max 297ms）
-     * ⇒ 那 91~107 秒<b>不可能</b>是计算 ⇒ 全是争抢/阻塞；
-     * 且这些块的 {@code sample} 也从正常 3ms 涨到 53~54ms（17×）⇒ 线程被饿死。
-     * {@code TerrainPool} 在 21:20:43~21:22:15 期间<b>一块都没产出</b>，正是被占用/挨饿。</p>
-     *
-     * <p>覆盖所有关屏路径（应用 / ESC / 被替换）。与 {@link #onClose()} 共用幂等的
-     * {@link #closePreview()}，不会重复关闭。</p>
+     * <p>{@code Minecraft.setScreen()} 只调用旧屏的 {@link #removed()}，<b>不会</b>调用
+     * {@link #onClose()}。而"应用"按钮走的正是 {@code setScreen(parent)} ⇒ 原实现只在
+     * {@code onClose()} 里关预览 ⇒ "应用"路径下预览从未被关闭，4 个 TerrainPool 线程
+     * 连同已排队的 480 块任务跑进世界生成阶段（实机证据见 git 历史）。</p>
+     * <p>本方法覆盖所有关屏路径（应用 / ESC / 被替换），与 {@link #onClose()} 共用幂等的
+     * {@link #closePreview()}。</p>
      */
     @Override
     public void removed() {
@@ -710,23 +692,17 @@ public class GeoGenesisConfigScreen extends Screen {
         super.removed();
     }
 
-    /** 关闭预览（幂等：{@code preview=null} 兼作"已关闭"标记，防止 removed/onClose 双触发）。 */
     private void closePreview() {
         if (preview != null) {
             preview.close();
             preview = null;
-            // ★ 可观测：本次修复的验证点 —— 下次实机日志里应在"创建世界"前后看到本行。
-            //   若世界生成期间仍出现大量 [GeoGenesis-TerrainPool] 的 [PERF-TERRAIN]，
-            //   说明本修复未覆盖到该路径（回来看这里）。
             LOGGER.info("[Preview] 预览已关闭（释放 TerrainPool 4 线程与排队任务）");
         }
     }
 
     @Override
     public void onClose() {
-        // 预览磁盘缓存：关屏前保存已采样的地图数据（"已加载的记录"）
         closePreview();
-        // 不再把未保存的困在屏里：直接返回父屏（未提交的改动丢弃，契合「应用才提交」语义）
         super.onClose();
     }
 
