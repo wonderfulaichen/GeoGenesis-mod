@@ -423,7 +423,7 @@ public final class ModelHydrologyProvider implements AutoCloseable {
             "geogenesis.hydrologyConcurrencyDiag", "geogenesis.worldgenProfilerEnabled",
             "geogenesis.worldgenProfilerEveryChunks", "geogenesis.modelCacheCap",
             "geogenesis.modelSolveThreads", "hydro.stageTimer", "hydro.couplingDiagnostics",
-            "geogenesis.prewarmTiles", "geogenesis.hydroSampleCache",
+            "geogenesis.prewarmTiles",
     };
 
     /** 类加载自检：两个清单必须不相交（同一键既"改产出"又"纯诊断"是维护错误）。 */

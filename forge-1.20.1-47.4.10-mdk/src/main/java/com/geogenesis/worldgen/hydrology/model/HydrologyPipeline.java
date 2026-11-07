@@ -128,19 +128,9 @@ public final class HydrologyPipeline {
      *  故上限只决定"链条长度内传播几轮"，取 6 留余量。诊断旋钮 {@code hydro.couplingMaxRounds}。 */
     private static final int COUPLING_ROUNDS = 6;
 
-    /**
-     * 窗口采样缓存开关（`-Dgeogenesis.hydroSampleCache=false` 关；A/B 归因用）。
-     *
-     * <p>见 {@code run()} 内说明：治"实机进不去世界"（窗口 31684 次 sampleWu
-     * 强制冷生成整片侵蚀 tile）。纯函数缓存 ⇒ 产出逐位不变。</p>
-     */
-    private static final boolean HYDRO_SAMPLE_CACHE =
-            !"false".equals(System.getProperty("geogenesis.hydroSampleCache"));
-
     // 窗口采样局部计数槽位：逐点只写 long[]，成功 run 末批量提交，避免逐点访问 map/LongAdder。
+    // [0] 点调用次数（= 真实采样次数，逐窗口点缓存已删除）· [3] bedSource 调用次数。
     private static final int WS_CALLS = 0;
-    private static final int WS_HITS = 1;
-    private static final int WS_MISSES = 2;
     private static final int WS_COMPUTES = 3;
 
     /**
@@ -395,7 +385,7 @@ public final class HydrologyPipeline {
         //     cellArea = step² 是 block²（与 MIN_VISIBLE_AREA 同口径）、
         //     速度场梯度 = dY_block/dX_block、Manning 坡度因此一致。
         //     格间距 = step 块（= step/hs wu），但全场高度/面积均以 block 计 ⇒ 自洽。
-        // ★★★ 2026-10-10【窗口采样缓存 —— 治"进不去世界"（实机卡死归因）】★★★
+        // ★★★ 2026-10-10 / 2026-11-07【窗口采样提速 —— 治"进不去世界"】★★★
         //
         // 【症状】实机新建世界卡死：单 region 求解 15.7 s（同类 0.6 s）、单块 hydro=33 s、
         //   日志 53 s 零输出。
@@ -405,15 +395,12 @@ public final class HydrologyPipeline {
         //   `gen.sampleWu()`（= sampleCore + 气候 + **侵蚀 tile 生成**）。
         //   窗口 704×704 块跨约 3×3 个侵蚀 tile，冷启动时**整片 tile 被迫同步生成**
         //   （单 tile 242~640 ms，实机并发下更慢）⇒ 主线程等不起。
-        // 【为什么 legacy 链没这问题】legacy 沿流水线**顺序**采样（缓存命中率高、
-        //   tile 逐块生成），而 model 链是**整窗一次性**批量采样 ⇒ 冷启动全撞在一起。
-        // 【修法】给采样回调加**直接映射缓存**（`terrainEQuick` 同款范式：
-        //   AtomicLongArray 存 double 位模式，先写值后写键；键用 wu 坐标的位模式）。
-        //   命中 ~20ns vs 计算几十 µs~ms。
-        // 【纯加速保证】`sampleWu` 是纯函数（seed 固定 ⇒ 同坐标同值）⇒
-        //   命中与未命中等价 ⇒ **产出逐位不变**。
-        // 【开关】`-Dgeogenesis.hydroSampleCache=false` 关（A/B 归因用）。
-        // 分层读视图计数仅在 layered 路径包装；测量开关控制的包装见下方。
+        // 【正解】`doPrewarm` 先把整窗 tile 提前提交给 worker（见下方），
+        //   采样点因此大多直接命中已完成 tile，而不是在主线程里串行生成。
+        //   ⚠ 曾在此加过"逐窗口点缓存"（AtomicLongArray 直接映射）；2026-11-07 实测
+        //   每窗 126017 个坐标互不相同 ⇒ 命中率结构性为 0，纯付分配与哈希开销，
+        //   已删除（71 生产窗口 × 17 族指纹逐位不变，见 build/window-samplecache-ab-20261107）。
+        //   分层读视图计数仅在 layered 路径包装；测量开关控制的包装见下方。
         final boolean layered = layer != null;
         final java.util.concurrent.atomic.AtomicLong terrainSamples =
                 new java.util.concurrent.atomic.AtomicLong();
@@ -432,17 +419,15 @@ public final class HydrologyPipeline {
                 ? process.beginSamplingTiming("hydro=" + metricsTask + ",center=" + metricsCx + "," + metricsCz
                         + ",radius=" + radius + ",layer=" + (layer == null ? "production" : layer.tag()))
                 : null) {
-        // 窗口局部计数（关闭时 null）：[0]调用 [1]命中 [2]未命中 [3]bedSource 调用。
+        // 窗口局部计数（关闭时 null）：[0]调用 [3]bedSource 调用。
         final long[] windowStats = metricsOn ? new long[4] : null;
-        // 缓存构建和计数包装共用此判定。
-        final boolean windowCacheBuilt = HYDRO_SAMPLE_CACHE && (layer == null || layer.prewarm());
         final WindowOutlets.Terrain bedSource = layered && layer.terrain() != null
                 ? layer.terrain()                                               // ★ 分层地形（粗层=零 tile）
                 : (bx, bz) -> input.pipelineHeightAtBlock(bx, bz, hs, HYDRO_BED_ERODED);
         // 仅开启测量时包装；WS_COMPUTES 记录 bedSource.height 调用次数，不代表更下层缓存未命中。
         final WindowOutlets.Terrain bedTerrain = windowStats != null
                 ? (bx, bz) -> {
-                    if (!windowCacheBuilt) windowStats[WS_CALLS]++;   // 无缓存：调用即真实采样
+                    windowStats[WS_CALLS]++;                          // 每次点调用即一次真实采样
                     windowStats[WS_COMPUTES]++;
                     return bedSource.height(bx, bz);
                 }
@@ -470,7 +455,6 @@ public final class HydrologyPipeline {
         final double concaveStepBlocks = Double.parseDouble(
                 System.getProperty("geogenesis.bedConcaveStep", "16"));
         WindowOutlets.Terrain terrain = terrainRaw;
-        WindowOutlets.Terrain terrainBase = terrain;
         if (concaveK > 0) {
             final WindowOutlets.Terrain t0 = terrain;
             final double ds = concaveStepBlocks;
@@ -482,57 +466,10 @@ public final class HydrologyPipeline {
                 return concave > 0 ? c - concaveK * concave : c;
             };
         }
-        // ⚠ 分层粗层（prewarm=false）跳过本缓存：其地形本身就是 `terrainEQuick`（自带直接映射缓存），
-        //   再造一份 6 MB 逐窗缓存纯属浪费 —— 本缓存是纯记忆化 ⇒ 跳过不改变任何产出。
-        if (windowCacheBuilt) {
-            terrain = new WindowOutlets.Terrain() {
-                private static final int BITS = 18;               // 262144 槽，三数组 long 元素共 6 MiB
-                private static final int SIZE = 1 << BITS;
-                private static final int MASK = SIZE - 1;
-                private static final long EMPTY = Long.MIN_VALUE;
-                private final java.util.concurrent.atomic.AtomicLongArray kx =
-                        new java.util.concurrent.atomic.AtomicLongArray(SIZE);
-                private final java.util.concurrent.atomic.AtomicLongArray kz =
-                        new java.util.concurrent.atomic.AtomicLongArray(SIZE);
-                private final java.util.concurrent.atomic.AtomicLongArray vv =
-                        new java.util.concurrent.atomic.AtomicLongArray(SIZE);
-                {
-                    // 三数组已按 kx/kz/vv 顺序分配；本 scope 仅含 INIT 记账和两组键共 524288 次哨兵写入。
-                    HydrologyMetrics.Scope mInit = HydrologyMetrics.begin("hydro.cache.init",
-                            metricsCx, metricsCz, -1, metricsTask);
-                    try {
-                        HydrologyMetrics.cache(HydrologyMetrics.Cache.WINDOW_SAMPLE,
-                                HydrologyMetrics.Outcome.INIT);      // 每次缓存构建记一次，非逐点
-                        for (int i = 0; i < SIZE; i++) { kx.set(i, EMPTY); kz.set(i, EMPTY); }
-                    } finally {
-                        HydrologyMetrics.end(mInit);
-                    }
-                }
-
-                @Override
-                public double height(double blockX, double blockZ) {
-                    final long[] ws = windowStats;                    // null = 测量关闭
-                    if (ws != null) ws[WS_CALLS]++;
-                    double wx = blockX / hs, wz = blockZ / hs;
-                    long a = Double.doubleToRawLongBits(wx);
-                    long b = Double.doubleToRawLongBits(wz);
-                    int slot = (int) (((a * 0x9E3779B97F4A7C15L) ^ (b * 0x632BE59BD9B4E019L))
-                            >>> 40) & MASK;
-                    // 先读键（键为 volatile 语义：AtomicLongArray 元素读写原子）
-                    if (kx.get(slot) == a && kz.get(slot) == b) {
-                        if (ws != null) ws[WS_HITS]++;
-                        return Double.longBitsToDouble(vv.get(slot));
-                    }
-                    if (ws != null) ws[WS_MISSES]++;
-                    double h = terrainBase.height(blockX, blockZ);
-                    // 写入次序：先写值、后写键（读者读到两键即保证值已写入）
-                    vv.set(slot, Double.doubleToRawLongBits(h));
-                    kz.set(slot, b);
-                    kx.set(slot, a);
-                    return h;
-                }
-            };
-        }
+        // 逐窗口点缓存已于 2026-11-07 删除：实测每窗 126017 个坐标互不相同 ⇒ 命中率结构性为 0，
+        // 只付 6 MiB 分配 + 524288 次哨兵写 + 每点 3 get/3 set 的纯开销（每窗约 10 ms）。
+        // 删除后 71 生产窗口 × 17 族指纹逐位不变（build/window-samplecache-ab-20261107）。
+        // 窗口内提速依靠 doPrewarm 预先提交整窗 tile（见下方 prewarm），那一条必须保留。
         // ★ 分层细层：窗外一格外环的边界条件由【粗层水位接口】给出（下游权威）。
         //   ⚠ 判据必须与 WindowOutlets 的采样坐标【精确】对齐，否则要么漏掉窗外环
         //   （边界条件失效）、要么误改窗内（产出被偷偷改动）。逐点核对：
@@ -873,12 +810,8 @@ public final class HydrologyPipeline {
             HydrologyMetrics.count("hydro.rounds", rounds);
             HydrologyMetrics.count("hydro.converged", converged ? 1 : 0);
             HydrologyMetrics.count("hydro.cells", (long) n * n);
-            // 窗口采样批量交账；仅启用窗口缓存时 calls=hits+misses，无缓存时只记 calls/computes。
+            // 窗口采样批量交账：逐窗口点缓存已删除，调用即真实采样 ⇒ 只记 calls/computes。
             HydrologyMetrics.count("hydro.window.samples", windowStats[WS_CALLS]);
-            HydrologyMetrics.cache(HydrologyMetrics.Cache.WINDOW_SAMPLE,
-                    HydrologyMetrics.Outcome.HIT, windowStats[WS_HITS]);
-            HydrologyMetrics.cache(HydrologyMetrics.Cache.WINDOW_SAMPLE,
-                    HydrologyMetrics.Outcome.MISS, windowStats[WS_MISSES]);
             HydrologyMetrics.cache(HydrologyMetrics.Cache.WINDOW_SAMPLE,
                     HydrologyMetrics.Outcome.COMPUTE, windowStats[WS_COMPUTES]);
             HydrologyMetrics.note("hydro.run.done", metricsCx, metricsCz, rounds, metricsTask,
