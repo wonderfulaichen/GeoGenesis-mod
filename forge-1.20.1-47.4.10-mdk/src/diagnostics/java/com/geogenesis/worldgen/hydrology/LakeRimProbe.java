@@ -28,7 +28,7 @@ public final class LakeRimProbe {
         int maxDist = args.length > 4 ? Integer.parseInt(args[4]) : 2000;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(gen, seed);
         RiverLineNetwork net = engine.network();

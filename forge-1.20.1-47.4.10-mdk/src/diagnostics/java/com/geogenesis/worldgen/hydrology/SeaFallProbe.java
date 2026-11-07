@@ -24,7 +24,7 @@ public final class SeaFallProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         double hs = args.length > 1 ? Double.parseDouble(args[1]) : 2.0;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         double seaLevel = terrain.heightCurve().seaLevelY();

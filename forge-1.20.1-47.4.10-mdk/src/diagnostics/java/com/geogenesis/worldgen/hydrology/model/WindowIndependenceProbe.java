@@ -19,7 +19,7 @@ public final class WindowIndependenceProbe {
     public static void main(String[] args) {
         long seed = 9139912035078620160L;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double sea = gen.seaLevel();
         double hs = tp.horizontalScale();

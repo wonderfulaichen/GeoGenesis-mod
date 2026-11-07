@@ -370,8 +370,8 @@ public final class TerrainUpgradeProbe {
         int threads = opts.i32("threads", 4, 1, 16);
         ConfigInput cfg = loadConfig(out, opts);
 
-        CellGenerator genA = new CellGenerator(cfg.params(), WORLD_MIN_Y, WORLD_MAX_Y);
-        CellGenerator genB = new CellGenerator(cfg.params(), WORLD_MIN_Y, WORLD_MAX_Y);
+        CellGenerator genA = new CellGenerator(cfg.params(), WORLD_MIN_Y, WORLD_MAX_Y, true);
+        CellGenerator genB = new CellGenerator(cfg.params(), WORLD_MIN_Y, WORLD_MAX_Y, true);
         GeoGenesisTerrain terrain = chunks > 0 ? new GeoGenesisTerrain(genA) : null;
 
         List<Map<String, Object>> reports = new ArrayList<>();
@@ -924,7 +924,7 @@ public final class TerrainUpgradeProbe {
         int chunks = opts.i32("chunks", 0, 0, 64);
         int chunkX = opts.i32("chunk-x", 0, -1_000_000, 1_000_000);
         int chunkZ = opts.i32("chunk-z", 0, -1_000_000, 1_000_000);
-        CellGenerator gen = new CellGenerator(cfg.params(), WORLD_MIN_Y, WORLD_MAX_Y);
+        CellGenerator gen = new CellGenerator(cfg.params(), WORLD_MIN_Y, WORLD_MAX_Y, true);
         gen.seed(seed);
         List<Point> pts = makePoints(seed, samples);
         List<Point> warmPts = makePoints(seed ^ 0xA5A5A5A5L, Math.max(1, Math.min(warmup, 400)));
@@ -1354,7 +1354,7 @@ public final class TerrainUpgradeProbe {
 
         // 6) 生产链自证：terrainE 与 sample().e 必须逐位相等（同走 sampleCore）
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, WORLD_MIN_Y, WORLD_MAX_Y);
+        CellGenerator gen = new CellGenerator(tp, WORLD_MIN_Y, WORLD_MAX_Y, true);
         gen.seed(CANONICAL_SEED);
         int compared = 0;
         for (Point p : makePoints(CANONICAL_SEED, 12)) {

@@ -20,7 +20,7 @@ public final class ProductionCoverageProbe {
         int bx = args.length > 1 ? Integer.parseInt(args[1]) : -140;
         int bz = args.length > 2 ? Integer.parseInt(args[2]) : 137;
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY()); gen.seed(seed);
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true); gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
         var polys = new ArrayList<DeterministicSkeleton.Shaped>();
         for (double[] points : provider.shapedNodesWorldForProbe(bx, bz)) {

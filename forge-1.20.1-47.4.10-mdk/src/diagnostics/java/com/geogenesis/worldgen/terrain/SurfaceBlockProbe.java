@@ -80,7 +80,7 @@ public final class SurfaceBlockProbe {
         Noises.seedAll(jitterNoise, seed, 0);
 
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
 

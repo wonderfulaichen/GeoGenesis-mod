@@ -31,7 +31,7 @@ public final class HydrologyChunkMatrixProbe {
         if (Math.abs(params.horizontalScale() - scale) > 1e-9) {
             throw new IllegalStateException("matrix scale requires matching project default horizontalScale");
         }
-        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY(), true);
         generator.seed(seed);
         HydrologyChunkEngine engine = new HydrologyChunkEngine(generator, seed);
         int compared = 0, carveJumps = 0, waterJumps = 0;

@@ -930,7 +930,7 @@ public final class WorldDrainageProductionProbe {
         catch (Throwable e) { log("[cfg] buildParams 失败 ⇒ defaults 兜底并计 FAIL: " + e); failures++; return TerrainParams.defaults(); }
     }
 
-    private static CellGenerator newGen(TerrainParams p, long seed) { CellGenerator g = new CellGenerator(p, p.minY(), p.maxY()); g.seed(seed); return g; }
+    private static CellGenerator newGen(TerrainParams p, long seed) { CellGenerator g = new CellGenerator(p, p.minY(), p.maxY(), true); g.seed(seed); return g; }
 
     private static Cell[] sampleChunk(CellGenerator g, int cx, int cz) {
         double hs = Math.max(0.01, g.params().horizontalScale()); Cell[] cells = new Cell[256];

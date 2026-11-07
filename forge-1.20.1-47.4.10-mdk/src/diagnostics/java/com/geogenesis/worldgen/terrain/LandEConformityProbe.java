@@ -30,7 +30,7 @@ public final class LandEConformityProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         System.out.printf("=== LandEConformityProbe seed=%d ===%n", seed);
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         TectonicField tf = new TectonicField(seed);
         TectonicDeformation td = new TectonicDeformation(seed);

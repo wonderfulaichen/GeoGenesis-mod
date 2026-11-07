@@ -64,7 +64,7 @@ public final class RelayUnresolvedAttributionProbe {
 
         List<int[]> anchors = parseAnchors(args);
         TerrainParams tp = loadConfig(out);
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(DEF_SEED);
         ModelHydrologyProvider prov = new ModelHydrologyProvider(gen, DEF_SEED);
 

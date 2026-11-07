@@ -54,7 +54,7 @@ public final class LakeEdgeProbe {
         System.out.printf("=== LakeEdgeProbe seed=%d region=(%d,%d) ===%n", seed, rX, rZ);
 
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         gen.seed(seed);
         RiverLineParams params = RiverLineParams.defaults();
         HeightCurve curve = gen.heightCurve();

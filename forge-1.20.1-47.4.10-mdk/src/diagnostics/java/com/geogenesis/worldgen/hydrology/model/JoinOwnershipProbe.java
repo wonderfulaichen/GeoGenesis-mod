@@ -17,7 +17,7 @@ public final class JoinOwnershipProbe {
         int rz = args.length > 4 ? Integer.parseInt(args[4]) : 0;
         long seed = args.length > 0 ? Long.parseLong(args[0]) : ViewSpec.SEED;
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
         var audit = provider.drainageForProbe(rx, rz);

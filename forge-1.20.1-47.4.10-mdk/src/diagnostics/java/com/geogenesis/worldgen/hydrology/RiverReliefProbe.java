@@ -40,7 +40,7 @@ public final class RiverReliefProbe {
         System.out.println("  判据：河床 > 两岸地形均值 + 0.5 ⇒ 河道凸起");
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(seed);

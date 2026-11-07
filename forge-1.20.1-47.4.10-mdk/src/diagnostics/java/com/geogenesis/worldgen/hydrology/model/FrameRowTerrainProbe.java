@@ -18,7 +18,7 @@ public final class FrameRowTerrainProbe {
 
         var tp = TerrainParams.defaults();
         double hs = Math.max(0.01, tp.horizontalScale());
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
         int[] frame = provider.windowFrameForProbe(bx, bz);

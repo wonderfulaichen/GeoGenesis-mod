@@ -16,7 +16,7 @@ public final class DeadEndPathProbe {
         int rz = args.length > 2 ? Integer.parseInt(args[2]) : 0;
 
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
         int bx = rx * 512 + 256, bz = rz * 512 + 256;

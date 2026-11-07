@@ -65,7 +65,7 @@ public final class WaterViewProbe {
             System.out.printf("  [强制] skeletonRouting=%s%n", RiverLineNetwork.flowSkeletonRouting);
         }
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(seed);

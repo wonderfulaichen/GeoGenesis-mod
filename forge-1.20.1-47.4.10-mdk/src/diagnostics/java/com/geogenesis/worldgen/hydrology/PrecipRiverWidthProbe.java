@@ -49,7 +49,7 @@ public final class PrecipRiverWidthProbe {
         for (int i = 0; i < seedCount; i++) {
             long sd = baseSeed + i;
             TerrainParams tp = TerrainParams.defaults();
-            CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+            CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
             gen.seed(sd);
             double[][] off = collect(build(gen, sd, false), gen);
             double[][] on = collect(build(gen, sd, true), gen);

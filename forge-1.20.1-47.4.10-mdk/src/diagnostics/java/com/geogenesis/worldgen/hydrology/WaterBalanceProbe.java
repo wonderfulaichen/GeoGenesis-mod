@@ -62,7 +62,7 @@ public final class WaterBalanceProbe {
         System.out.println();
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double cell = RiverLineParams.defaults().gridCell();
         double span = (gridN - 1) * cell;

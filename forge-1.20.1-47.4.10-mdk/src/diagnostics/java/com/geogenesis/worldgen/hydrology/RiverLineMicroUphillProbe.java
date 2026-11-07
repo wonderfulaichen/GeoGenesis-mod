@@ -51,7 +51,7 @@ public final class RiverLineMicroUphillProbe {
         double scale = 2.0;   // GeoGenesisConfig 默认 horizontalScale（wu / block）
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator terrain = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         RiverLineNetwork net = engine.network();

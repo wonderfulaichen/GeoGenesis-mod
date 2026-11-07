@@ -55,7 +55,7 @@ public final class GeotransportRealTerrainProbe {
                 seed, gridN, samples);
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         RiverLineParams rp = RiverLineParams.defaults();
         double cell = rp.gridCell();                      // 生产 24wu

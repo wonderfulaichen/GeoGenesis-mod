@@ -88,7 +88,7 @@ public final class ProductionChainCompareProbe {
         System.setProperty("geogenesis.modelPipeline", chain == Chain.MODEL ? "true" : "false");
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         HydrologyChunkEngine engine = new HydrologyChunkEngine(gen, seed);
 

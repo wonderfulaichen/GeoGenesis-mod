@@ -40,7 +40,7 @@ public final class RiverBasisProbe {
         System.out.println("  判据：河床更接近【无侵蚀谷底】还是【含侵蚀谷底】");
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(seed);

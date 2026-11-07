@@ -53,7 +53,7 @@ public final class SourceDistributionProbe {
         }
 
         TerrainParams params = loadParams(toml);
-        CellGenerator gen = new CellGenerator(params, MIN_Y, MAX_Y);
+        CellGenerator gen = new CellGenerator(params, MIN_Y, MAX_Y, true);
         gen.seed(seed);
         ModelHydrologyProvider provider = new ModelHydrologyProvider(gen, seed);
 

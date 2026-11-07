@@ -67,7 +67,7 @@ public final class RiverJunctionEvidenceProbe {
                 : System.getProperty("geogenesis.junction.out", DEF_OUT.toString()));
         Files.createDirectories(out);
         TerrainParams tp = loadConfig();
-        gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         prov = new ModelHydrologyProvider(gen, seed);
         region = staticInt("REGION", 512);

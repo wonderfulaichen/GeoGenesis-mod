@@ -36,7 +36,7 @@ public final class RiverWidthProfileProbe {
         int rn = args.length > 3 ? Integer.parseInt(args[3]) : 5;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         RiverLineNetwork net = new RiverLineNetwork(gen::terrainEQuick, gen.heightCurve(), seed);
 

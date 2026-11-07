@@ -16,7 +16,7 @@ public final class WallColumnDumpProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 9139912035078620160L;
         double hs = 2.0;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
 

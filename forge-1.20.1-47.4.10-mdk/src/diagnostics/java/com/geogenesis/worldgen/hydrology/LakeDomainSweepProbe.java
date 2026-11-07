@@ -52,7 +52,7 @@ public final class LakeDomainSweepProbe {
         int half = args.length > 3 ? Integer.parseInt(args[3]) : 128;
         int step = args.length > 4 ? Integer.parseInt(args[4]) : 2;
                 TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double hs = tp.horizontalScale();
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(gen, seed);

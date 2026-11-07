@@ -34,7 +34,7 @@ public final class ContinuousTransportCompare {
         int radius = args.length > 3 ? Integer.parseInt(args[3]) : 320;
         int step = args.length > 4 ? Integer.parseInt(args[4]) : 2;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY()); gen.seed(seed);
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true); gen.seed(seed);
         int n = 2 * radius / step + 1;
         double[] bed = new double[n*n];
         for (int i=0;i<n;i++) for (int j=0;j<n;j++) {

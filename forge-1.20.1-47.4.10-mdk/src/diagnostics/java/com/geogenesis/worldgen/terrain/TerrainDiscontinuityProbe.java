@@ -10,7 +10,7 @@ public final class TerrainDiscontinuityProbe {
     public static void main(String[] args) {
         long seed = -9076282657783003134L;
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, -64, 320);
+        CellGenerator gen = new CellGenerator(p, -64, 320, true);
         gen.seed(seed);
 
         int[][] coords = {{124, -290, 18, -18}, {203, 497, 12, 31}};

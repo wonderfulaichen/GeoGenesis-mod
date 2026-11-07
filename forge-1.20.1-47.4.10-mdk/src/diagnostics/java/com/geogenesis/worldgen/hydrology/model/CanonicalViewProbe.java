@@ -64,7 +64,7 @@ public final class CanonicalViewProbe {
         }
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var climate = new LakeWaterBalance.Climate(precip, 0.002, 0.3);
 
@@ -569,7 +569,7 @@ public final class CanonicalViewProbe {
         com.geogenesis.worldgen.terrain.TerrainParams tp =
                 com.geogenesis.worldgen.terrain.TerrainParams.defaults();
         com.geogenesis.worldgen.terrain.CellGenerator gen =
-                new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY());
+                new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double hs = Math.max(0.01, tp.horizontalScale());
         ModelHydrologyProvider provider = new ModelHydrologyProvider(gen, seed);

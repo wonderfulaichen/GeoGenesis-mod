@@ -36,7 +36,7 @@ public final class PipelineOverlapProbe {
         long seed = 9139912035078620160L;
         int step = 4;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var climate = new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
 

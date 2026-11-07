@@ -28,7 +28,7 @@ public final class DeadEndAuditProbe {
         int cz = args.length > 2 ? Integer.parseInt(args[2]) : ViewSpec.CENTER_Z;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
 

@@ -23,7 +23,7 @@ public class MultiSpikeProbe {
         for (String s : seeds) {
             long seed = Long.parseLong(s);
             TerrainParams p = TerrainParams.defaults();
-            CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+            CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
             gen.seed(seed);
             System.out.printf("=== seed=%d ===\n", seed);
             for (int ti = 0; ti < tileCount; ti++) {

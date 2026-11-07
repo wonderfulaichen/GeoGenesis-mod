@@ -19,7 +19,7 @@ public class RidgeSpikeProbe {
         int tcx = args.length > 1 ? Integer.parseInt(args[1]) : 0;
         int tcz = args.length > 2 ? Integer.parseInt(args[2]) : 0;
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         gen.seed(seed);
 
         System.out.printf("=== RidgeSpikeProbe seed=%d tile=(%d,%d) ===\n", seed, tcx, tcz);

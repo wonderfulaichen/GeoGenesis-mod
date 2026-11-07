@@ -29,7 +29,7 @@ public final class NegativeLiftProbe {
         Locale.setDefault(Locale.ROOT);
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, -64, 320);
+        CellGenerator gen = new CellGenerator(p, -64, 320, true);
         gen.seed(seed);
 
         int found = 0;

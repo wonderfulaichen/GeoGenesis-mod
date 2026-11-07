@@ -86,7 +86,7 @@ public final class FlatFlowDiagnosisProbe {
         int samples = args.length > 5 ? Integer.parseInt(args[5]) : 600_000;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var climate = new LakeWaterBalance.Climate(precip, 0.002, 0.3);
 

@@ -26,7 +26,7 @@ public final class SlopeDistributionProbe {
         // 改为 args[1]>1 时采样坐标 ÷hs（模拟放大世界），与 horizontalScale 语义解耦。
         double hs = (args.length > 1) ? Double.parseDouble(args[1]) : 1.0;
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, -64, 320);
+        CellGenerator gen = new CellGenerator(p, -64, 320, true);
         gen.seed(seed);
 
         int N = REGION / STEP;

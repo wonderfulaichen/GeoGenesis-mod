@@ -56,7 +56,7 @@ public final class CavePerfProbe {
         CaveShape.setSeed(seed);
 
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
         int seaLevel = (int) Math.round(terrain.heightCurve().seaLevelY());

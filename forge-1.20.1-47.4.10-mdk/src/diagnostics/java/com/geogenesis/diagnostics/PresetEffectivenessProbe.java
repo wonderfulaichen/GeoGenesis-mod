@@ -20,6 +20,7 @@ import java.util.Map;
  * <h2>为什么不能只看"覆盖表里有键"</h2>
  * <p>旧预设的覆盖表<b>非空</b>，但里面的键 {@code continentBias / oceanDepthFactor /
  * beltReliefAmp} 是 {@code LEGACY_ONLY}、{@code elevHigh / reliefHigh} 是 {@code DIAGNOSTIC}
+ * （后两者已于 2026-11-07 删除）
  * —— 表里写了 7 个键，新世界上只有 {@code snowLine} 一个真的动。
  * "覆盖表非空"这个判据会给出<b>假阳性</b>。</p>
  * <p>所以本探针走<b>行为级</b>判据：<b>真的用生产采样器跑一遍</b>，
@@ -240,16 +241,8 @@ public final class PresetEffectivenessProbe {
                 d.deepOceanDepth(), d.shelfDepth(), d.shallowDepth(),
                 d.deepOceanDeriv(), d.shelfDeriv(), d.shallowDeriv(), d.coastDeriv(),
                 d.oceanFadeStart(), d.landRampEnd(),
-                d.oceanLo(), d.oceanHi(),
-                d.deepOceanLo(), d.deepOceanHi(),
-                d.shelfLo(), d.shelfHi(),
-                d.subRidgeLo(), d.subRidgeHi(),
-                d.seamountLo(), d.seamountHi(),
-                d.lakeLo(), d.lakeHi(),
-                d.riverLo(), d.riverHi(),
                 d.seabedDetail(), d.oceanDepthFactor(),
                 d.basinBase(), d.beltReliefAmp(),
-                d.elevHigh(), d.reliefHigh(),
                 val(v, "snowLatitudeInfluence", d.snowLatitudeInfluence()),
                 val(v, "snowHumidityInfluence", d.snowHumidityInfluence()),
                 d.horizontalScale(), d.seaLevel(),
@@ -264,45 +257,12 @@ public final class PresetEffectivenessProbe {
                 val(v, "latitudeScale", d.latitudeScale()),
                 val(v, "tempWarpScale", d.tempWarpScale()),
                 val(v, "humidityScale", d.humidityScale()),
-                val(v, "climateRegionSize", d.climateRegionSize()),
-                spline(d, v));
+                val(v, "climateRegionSize", d.climateRegionSize()));
     }
 
     private static double val(Map<String, Double> v, String key, double def) {
         Double x = v.get(key);
         return x == null ? def : x;
-    }
-
-    /** 只替换 5 个陆地类型 hiVal0（其余沿用默认）。 */
-    private static com.geogenesis.worldgen.terrain.SplineConfig spline(
-            TerrainParams d, Map<String, Double> v) {
-        com.geogenesis.worldgen.terrain.SplineConfig s = d.splineConfig();
-        return new com.geogenesis.worldgen.terrain.SplineConfig(
-                s.outerLoc0(), s.outerDeriv0(), s.outerLoc1(), s.outerDeriv1(),
-                s.outerLoc2(), s.outerDeriv2(), s.outerLoc3(), s.outerDeriv3(),
-                s.outerLoc4(), s.outerDeriv4(), s.outerLoc5(), s.outerDeriv5(),
-                s.outerLoc6(), s.outerDeriv6(),
-                s.plainLoLoc0(), s.plainLoVal0(), s.plainLoDeriv0(),
-                s.plainLoLoc1(), s.plainLoVal1(), s.plainLoDeriv1(),
-                s.plainHiLoc0(), val(v, "plainHiVal0", s.plainHiVal0()), s.plainHiDeriv0(),
-                s.plainHiLoc1(), s.plainHiVal1(), s.plainHiDeriv1(),
-                s.hillsLoLoc0(), s.hillsLoVal0(), s.hillsLoDeriv0(),
-                s.hillsLoLoc1(), s.hillsLoVal1(), s.hillsLoDeriv1(),
-                s.hillsHiLoc0(), val(v, "hillsHiVal0", s.hillsHiVal0()), s.hillsHiDeriv0(),
-                s.hillsHiLoc1(), s.hillsHiVal1(), s.hillsHiDeriv1(),
-                s.mountLoLoc0(), s.mountLoVal0(), s.mountLoDeriv0(),
-                s.mountLoLoc1(), s.mountLoVal1(), s.mountLoDeriv1(),
-                s.mountHiLoc0(), val(v, "mountHiVal0", s.mountHiVal0()), s.mountHiDeriv0(),
-                s.mountHiLoc1(), s.mountHiVal1(), s.mountHiDeriv1(),
-                s.platLoLoc0(), s.platLoVal0(), s.platLoDeriv0(),
-                s.platLoLoc1(), s.platLoVal1(), s.platLoDeriv1(),
-                s.platHiLoc0(), val(v, "platHiVal0", s.platHiVal0()), s.platHiDeriv0(),
-                s.platHiLoc1(), s.platHiVal1(), s.platHiDeriv1(),
-                s.basinLoLoc0(), s.basinLoVal0(), s.basinLoDeriv0(),
-                s.basinLoLoc1(), s.basinLoVal1(), s.basinLoDeriv1(),
-                s.basinHiLoc0(), val(v, "basinHiVal0", s.basinHiVal0()), s.basinHiDeriv0(),
-                s.basinHiLoc1(), s.basinHiVal1(), s.basinHiDeriv1(),
-                s.oceanSplineConfig(), s.midSplineConfig());
     }
 
     private static boolean identical(double[] a, double[] b) {
@@ -318,8 +278,7 @@ public final class PresetEffectivenessProbe {
             "continentFbmLacunarity", "continentFbmPersistence",
             "peakHeightFraction", "verticalScale", "horizontalScale",
             "snowLine", "snowLatitudeInfluence", "snowHumidityInfluence",
-            "latitudeScale", "tempWarpScale", "humidityScale", "climateRegionSize",
-            "plainHiVal0", "hillsHiVal0", "mountHiVal0", "platHiVal0", "basinHiVal0");
+            "latitudeScale", "tempWarpScale", "humidityScale", "climateRegionSize");
 
     private PresetEffectivenessProbe() { }
 }

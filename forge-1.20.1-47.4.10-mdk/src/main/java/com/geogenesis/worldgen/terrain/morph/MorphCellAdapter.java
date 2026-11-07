@@ -29,11 +29,4 @@ public final class MorphCellAdapter {
         cell.rockSeqPacked = c.rockSeqPacked; cell.rockTilt = c.rockTilt;
         return cell;
     }
-
-    /** Central differences in wu, converted to rise per MC block with the existing HS. */
-    public static float gradient(MorphTerrainSampler sampler, double x, double z, double hs) {
-        double dx = (sampler.height(x + 1.0, z) - sampler.height(x - 1.0, z)) / (2.0 * hs);
-        double dz = (sampler.height(x, z + 1.0) - sampler.height(x, z - 1.0)) / (2.0 * hs);
-        return (float) Math.hypot(dx, dz);
-    }
 }

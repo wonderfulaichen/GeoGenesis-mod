@@ -29,7 +29,7 @@ public final class LakeBasinProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         int rr = args.length > 1 ? Integer.parseInt(args[1]) : 1;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         RiverLineNetwork net = engine.network();

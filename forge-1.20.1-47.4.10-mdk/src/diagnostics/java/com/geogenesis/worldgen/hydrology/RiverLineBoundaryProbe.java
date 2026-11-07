@@ -38,7 +38,7 @@ public final class RiverLineBoundaryProbe {
      */
     private static void dumpSite(long seed, double hs, int bx, int bz) {
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         RiverLineParams P = RiverLineParams.defaults();
@@ -157,7 +157,7 @@ public final class RiverLineBoundaryProbe {
             dumpSite(seed, horizontalScale, Integer.parseInt(args[3]), Integer.parseInt(args[4]));
             return;
         }
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
 

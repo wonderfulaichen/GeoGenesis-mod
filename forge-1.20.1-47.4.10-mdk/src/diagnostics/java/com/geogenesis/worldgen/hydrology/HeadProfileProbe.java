@@ -22,7 +22,7 @@ public final class HeadProfileProbe {
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         RiverLineParams P = RiverLineParams.defaults();

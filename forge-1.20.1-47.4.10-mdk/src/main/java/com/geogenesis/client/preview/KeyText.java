@@ -124,37 +124,9 @@ final class KeyText {
         put("shelfDeriv", "大陆架斜率", "大陆架控制点导数：越大 ⇒ 陆坡越陡。");
         put("shallowDeriv", "浅海斜率", "浅海控制点导数：控制浅水带是斜坡还是平台。");
         put("coastDeriv", "海岸斜率", "海岸控制点导数。");
-        put("oceanLo", "海洋下限", "「海洋」类型的高度区间下界（类型着色/分类用）。");
-        put("oceanHi", "海洋上限", "「海洋」类型的高度区间上界。");
-        put("deepOceanLo", "深海下限", "「深海」类型的高度区间下界。");
-        put("deepOceanHi", "深海上限", "「深海」类型的高度区间上界。");
-        put("shelfLo", "大陆架下限", "「大陆架」类型的高度区间下界。");
-        put("shelfHi", "大陆架上限", "「大陆架」类型的高度区间上界。");
-        put("subRidgeLo", "洋中脊下限", "「洋中脊」类型的高度区间下界。");
-        put("subRidgeHi", "洋中脊上限", "「洋中脊」类型的高度区间上界。");
-        put("seamountLo", "海山下限", "「海山」类型的高度区间下界。");
-        put("seamountHi", "海山上限", "「海山」类型的高度区间上界。");
-        put("lakeLo", "湖泊下限", "「湖泊」类型的高度区间下界。");
-        put("lakeHi", "湖泊上限", "「湖泊」类型的高度区间上界。");
-        put("riverLo", "河流下限", "「河流」类型的高度区间下界。");
-        put("riverHi", "河流上限", "「河流」类型的高度区间上界。");
         put("snowLine", "雪线海拔", "积雪起始的海拔（e 单位），还会被温度与湿度耦合修正。越低 ⇒ 雪线越低、雪覆盖越多。");
         put("snowLatitudeInfluence", "雪线温度耦合", "温度对雪线的抬升幅度：暖区雪线更高。");
         put("snowHumidityInfluence", "雪线湿度耦合", "湿度对雪线的修正：干燥 → 雪线上移，湿润 → 下移。");
-        put("splineOuterLoc0", "外层样条 0", "外层（大陆性）样条第 1 个控制点位置（深海侧）。");
-        put("splineOuterLoc1", "外层样条 1", "外层样条第 2 个控制点位置（大陆架侧）。");
-        put("splineOuterLoc2", "外层样条 2", "外层样条第 3 个控制点位置（浅海侧）。");
-        put("splineOuterLoc3", "外层样条 3", "外层样条第 4 个控制点位置（海岸）。");
-        put("splineOuterLoc4", "外层样条 4", "外层样条第 5 个控制点位置（近岸陆地）。");
-        put("splineOuterLoc5", "外层样条 5", "外层样条第 6 个控制点位置（内陆）。");
-        put("splineOuterLoc6", "外层样条 6", "外层样条第 7 个控制点位置（深远内陆）。");
-        put("plainHiVal0", "平原上限", "平原类型的陆地 e 上限（参与 maxLandHi）。");
-        put("hillsHiVal0", "丘陵上限", "丘陵类型的陆地 e 上限（参与 maxLandHi）。");
-        put("mountHiVal0", "山脉上限",
-                "山脉类型的陆地 e 上限。它同时是 maxLandHi 的决定项 ⇒\n"
-                + "直接决定侵蚀 softCap 的启动阈值；压得太低会提前压缩高峰。");
-        put("platHiVal0", "高原上限", "高原类型的陆地 e 上限（参与 maxLandHi）。");
-        put("basinHiVal0", "盆地上限", "盆地类型的陆地 e 上限（参与 maxLandHi）。");
 
         // ---- 侵蚀与河流 ----
         put("erosionEnabled", "粒子侵蚀",
@@ -215,11 +187,6 @@ final class KeyText {
                 + "并汇总到运行目录的 geogenesis-wgp.txt。默认关闭 ⇒ 零开销、产出逐位不变。");
         put("worldgenProfilerEveryChunks", "诊断汇总间隔",
                 "每多少块打一次滚动汇总。0 = 只在世界卸载时打总计。");
-        put("elevHigh", "高海拔阈值（只读诊断）",
-                "⚠ 生产地形链不读它：src/main 内唯一读取点是一个带 main 的量化诊断类。\n"
-                + "改这个值【不会】改变地形。保留仅为诊断对照。");
-        put("reliefHigh", "高起伏阈值（只读诊断）",
-                "⚠ 与「高海拔阈值」同：只被诊断类读取，改它不会改变地形。");
 
         // ---- 显示与色带（仅预览标尺）----
         put("seaLevel", "海平面（预览标尺）",
@@ -299,23 +266,12 @@ final class KeyText {
             return LEGACY_MISC.get(key);
         }
 
-        /** 不是样条形状的 legacy 键（手写，数量少）。 */
-        private static final java.util.Map<String, String> LEGACY_MISC = java.util.Map.ofEntries(
-                java.util.Map.entry("continentThreshold", "旧算法专用（仅旧存档生效）。海陆参考阈值：只被旧链的 isLand 判定读。"),
-                java.util.Map.entry("continentBias", "旧算法专用（仅旧存档生效）。海陆占比偏置：只在旧链从大陆性里减掉。"),
-                java.util.Map.entry("coastLoc", "旧算法专用（仅旧存档生效）。海岸控制点位置（旧链路的海岸三角窗中心）。"),
-                java.util.Map.entry("oceanFadeStart", "旧算法专用（仅旧存档生效）。海洋淡出起点：旧链两阶段混合的海侧边界。"),
-                java.util.Map.entry("landRampEnd", "旧算法专用（仅旧存档生效）。陆地高度终点：旧链海滩带宽度由它决定。"),
-                java.util.Map.entry("seabedDetail", "旧算法专用（仅旧存档生效）。海床细节振幅：只被旧链的海床噪声读。"),
-                java.util.Map.entry("oceanDepthFactor", "旧算法专用（仅旧存档生效）。海洋深度乘数：只在旧链乘到海床上。"),
-                java.util.Map.entry("beltReliefAmp", "旧算法专用（仅旧存档生效）。造山带起伏振幅：只被旧链的地形合成读。"),
-                java.util.Map.entry("basinBase", "旧算法专用（仅旧存档生效）。盆地基底高度：只被旧链的盆地噪声读。"),
-                java.util.Map.entry("cAffinityStrength", "旧算法专用（仅旧存档生效）。大陆性语义亲和度：只被旧链的类型权重调制读。"),
-                java.util.Map.entry("coastlineWarpAmp", "旧算法专用（仅旧存档生效）。海岸线位移振幅：只被旧链的海岸线场读。"),
-                java.util.Map.entry("coastlineWarpScale", "旧算法专用（仅旧存档生效）。海岸线位移基频尺度。"),
-                java.util.Map.entry("coastlineWarpOctaves", "旧算法专用（仅旧存档生效）。海岸线位移倍频数。"),
-                java.util.Map.entry("coastlineWarpLacunarity", "旧算法专用（仅旧存档生效）。海岸线位移频率倍增。"),
-                java.util.Map.entry("coastlineWarpPersistence", "旧算法专用（仅旧存档生效）。海岸线位移振幅衰减。"));
+        /**
+         * 不是样条形状的 legacy 键（手写，数量少）。
+         * ★ 2026-11-07：legacy 键已全部删除，本表为空；保留类结构是因为
+         * {@code ConfigPanelCoverageProbe} 静态校验 LegacyText 的命名规律生成器仍在。
+         */
+        private static final java.util.Map<String, String> LEGACY_MISC = java.util.Map.of();
 
         private LegacyText() { }
     }

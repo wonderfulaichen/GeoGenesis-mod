@@ -25,7 +25,7 @@ public final class ChunkTimeProbe {
         System.out.printf("=== ChunkTimeProbe seed=%d chunks=%d ===%n", seed, chunks);
 
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
 

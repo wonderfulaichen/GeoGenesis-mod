@@ -23,11 +23,9 @@ import com.geogenesis.worldgen.noise.*;
 public final class ContinentField {
 
     private final Noise root;
-    private final double threshold;
 
     /** 构建噪声图（多倍频 FBM 值叠加，可选域扭曲） */
     public ContinentField(TerrainParams p) {
-        this.threshold = p.continentThreshold();
         double scale = p.continentScale();
         int octaves = clampOct(p.continentFbmOctaves());
         double lac = p.continentFbmLacunarity();
@@ -84,10 +82,5 @@ public final class ContinentField {
      */
     public double sample(double wx, double wz) {
         return root.compute(wx, wz);
-    }
-
-    /** 海陆布尔判定（c≥threshold→陆地；[-1,1]区间 threshold 默认 0.0，即 c≥0 为陆、c<0 为海） */
-    public boolean isLand(double c) {
-        return c >= threshold;
     }
 }

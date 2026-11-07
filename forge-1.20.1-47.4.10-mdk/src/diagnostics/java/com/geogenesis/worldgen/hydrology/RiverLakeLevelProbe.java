@@ -46,7 +46,7 @@ public final class RiverLakeLevelProbe {
         double qz = args.length > 4 ? Double.parseDouble(args[4]) : 316.0;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         RiverLineParams rp = RiverLineParams.defaults();
         double hs = tp.horizontalScale();

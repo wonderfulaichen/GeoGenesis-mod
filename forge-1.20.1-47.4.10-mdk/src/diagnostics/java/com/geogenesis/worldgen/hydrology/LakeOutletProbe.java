@@ -37,7 +37,7 @@ public final class LakeOutletProbe {
         double qz = args.length > 2 ? Double.parseDouble(args[2]) : 316.0;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         RiverLineParams rp = RiverLineParams.defaults();
         double hs = tp.horizontalScale();

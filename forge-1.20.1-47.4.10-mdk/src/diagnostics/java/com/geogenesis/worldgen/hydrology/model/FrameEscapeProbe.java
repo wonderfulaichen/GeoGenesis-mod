@@ -31,7 +31,7 @@ public final class FrameEscapeProbe {
     /** 统计某 owner 窗口内：边框行上的最长横向游程 + 全河节点数。 */
     private static int[] measure(long seed, int bx, int bz) {
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
         int[] frame = provider.windowFrameForProbe(bx, bz);

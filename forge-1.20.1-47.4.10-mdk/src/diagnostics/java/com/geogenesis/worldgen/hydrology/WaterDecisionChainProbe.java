@@ -36,7 +36,7 @@ public final class WaterDecisionChainProbe {
         int bz = args.length > 2 ? Integer.parseInt(args[2]) : 661;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         RiverLineParams rp = RiverLineParams.defaults();
         double hs = tp.horizontalScale();

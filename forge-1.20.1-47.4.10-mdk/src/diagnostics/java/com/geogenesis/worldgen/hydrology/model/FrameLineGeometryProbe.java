@@ -25,7 +25,7 @@ public final class FrameLineGeometryProbe {
         int band = args.length > 4 ? Integer.parseInt(args[4]) : 3;
 
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
         int[] frame = provider.windowFrameForProbe(bx, bz);

@@ -26,8 +26,7 @@ package com.geogenesis.worldgen.terrain;
  * "没有 legacy 存档，按全新架构来"），故无迁移动作；若将来需要读旧档，必须补默认值逻辑。</p>
  */
 public record TerrainParams(
-    // ===== 大陆场 =====
-    /** 大陆噪声尺度（块），频率 = 1/scale，默认 1500 */
+    // ===== 大陆场 =====    /** 大陆噪声尺度（块），频率 = 1/scale，默认 1500 */
     double continentScale,
     /** 域扭曲强度（占大陆尺度的比例系数），默认 0.25 */
     double continentWarp,
@@ -44,8 +43,8 @@ public record TerrainParams(
 
     // ===== 海洋样条控制点（offset.json 式 cubic Hermite） =====
     // c-space 位置（c∈[-1,1]：深海→大陆架→浅海→海岸）
-    double deepOceanLoc,   // 默认 -0.80; 深海起点（最深洋盆）
-    double shelfLoc,       // 默认 -0.50; 大陆架外缘
+    double deepOceanLoc,   // 默认 -0.80; 深海
+    double shelfLoc,       // 默认 -0.50; 大陆架
     double shallowLoc,     // 默认 -0.16; 浅海
     double coastLoc,       // 默认 -0.04; 海岸线（样条锚定 e=0）
 
@@ -67,20 +66,6 @@ public record TerrainParams(
     double landRampEnd,
 
     // ===== 海洋类型独立 lo/hi（与陆地类型一致的独立控制） =====
-    double oceanLo,      // OCEAN lo
-    double oceanHi,      // OCEAN hi
-    double deepOceanLo,  // DEEP_OCEAN lo
-    double deepOceanHi,  // DEEP_OCEAN hi
-    double shelfLo,      // CONTINENTAL_SHELF lo
-    double shelfHi,      // CONTINENTAL_SHELF hi
-    double subRidgeLo,   // SUBMARINE_RIDGE lo
-    double subRidgeHi,   // SUBMARINE_RIDGE hi
-    double seamountLo,   // SEAMOUNT lo
-    double seamountHi,   // SEAMOUNT hi
-    double lakeLo,       // LAKE lo
-    double lakeHi,       // LAKE hi
-    double riverLo,      // RIVER lo
-    double riverHi,      // RIVER hi
 
     // ===== 海床细节 =====
     /** 海床细节振幅（e 单位），默认 0.03 */
@@ -98,10 +83,6 @@ public record TerrainParams(
     double beltReliefAmp,
 
     // ===== 分类阈值 + 雪线 =====
-    /** 高海拔阈值（elevation），默认 0.25。不再用于 Voronoi 类型分配（气候色板替代），保留占位。 */
-    double elevHigh,
-    /** 高起伏阈值（|relief|），默认 0.04。不再用于 Voronoi 类型分配，保留占位。 */
-    double reliefHigh,
     /** 雪线温度耦合强度（与旧 snowLatitudeInfluence 同名，但用于温度调制），默认 0.25 */
     double snowLatitudeInfluence,
     /** 雪线湿度耦合强度（干燥→雪线升高，湿润→雪线降低），默认 0.15 */
@@ -159,11 +140,18 @@ public record TerrainParams(
      * 气候区尺寸（wu）：抖动 Voronoi 网格边长，区内温湿恒定。
      * 越大 → 气候斑块越大、群系越成片；越小 → 越碎。默认 256。
      */
-    double climateRegionSize,
-
-    // ===== Phase 1：统一样条配置（独立 record，避免参数过多）=====
-    SplineConfig splineConfig
+    double climateRegionSize
 ) {
+    /**
+     * 陆地 e 上限（softCapLandE 的压缩基准）。
+     *
+     * <p>★ 2026-11-07：原为 {@code SplineConfig.maxLandHi()}（= MOUNTAINS 内层样条 hi）。
+     * 样条链随 legacy 删除后拍成常量；取值与删除前逐位相同（0.95）。
+     * 实测该值在默认世界下不影响产出：自然地貌 e 峰值 ≈0.8756，
+     * 而压缩窗口起点 = 0.97 × 0.95 ≈ 0.9215，从未被触及。</p>
+     */
+    public static final double MAX_LAND_HI_E = 0.95;
+
     /** 生产级默认值（校准于非对称映射 e=0 → Y=63） */
     public static TerrainParams defaults() {
         return new TerrainParams(
@@ -185,14 +173,6 @@ public record TerrainParams(
             // 地形斜率自然决定，与地形类型之间过渡一致）。配套 shallowDepth -0.06→-0.09 控制
             // 大陆架冒岛量。landRampEnd 保持 0.05。
             -0.13, 0.05,
-            // 海洋类型独立 lo/hi（默认值）
-            -0.35, -0.06,  // OCEAN
-            -0.50, -0.35,  // DEEP_OCEAN
-            -0.25, -0.08,  // CONTINENTAL_SHELF
-            -0.20, -0.05,  // SUBMARINE_RIDGE
-            -0.15, -0.02,  // SEAMOUNT
-            -0.02,  0.01,  // LAKE
-            -0.03,  0.00,  // RIVER
             // seabed（必须在海洋 lo/hi 之后，对齐 record 字段顺序）
             0.03,
             // oceanDepthFactor（record 第 37 字段）
@@ -202,7 +182,7 @@ public record TerrainParams(
             // relief amplitude（仅 beltReliefAmp 保留；craton/plateau/basin 振幅键 2026-11-07 删除）
             0.35,
             // classification thresholds + snow latitude coupling
-            0.25, 0.04, 0.25, 0.15,  // elevHigh↑0.25,reliefHigh↑0.04,snowLatitudeInfluence,snowHumidityInfluence（peakE 已移除 2026-08-05）
+            0.25, 0.15,  // snowLatitudeInfluence, snowHumidityInfluence（elevHigh/reliefHigh 已删 2026-11-07）
 
             // preview compat（HS=2.0 默认：2026-08-02 整体倍频变宽 ×2 修复地形过陡；
             // 坡度探针 A/B：平均坡度 30.9°→16.8°、>45° 37%→3.7%）
@@ -218,10 +198,7 @@ public record TerrainParams(
 
             // climate / latitude xz scales (injected into CellGenerator)
             6000.0, 1500.0, 800.0,   // latitudeScale, tempWarpScale, humidityScale
-            256.0,                   // climateRegionSize
-
-            // Phase 1: unified spline config
-            SplineConfig.defaults()
+            256.0                    // climateRegionSize
         );
     }
 
@@ -251,8 +228,13 @@ public record TerrainParams(
      *    再加大陆斜升（≤0.15）逼近 clamp 上限 1.0。统一从 SplineConfig 派生，消除与 TerrainParams 冗余字段的不一致。
      */
     public double[] elevationERange() {
-        // 陆地 e 上限统一从 SplineConfig 陆地内层样条 hi 最大值派生（替代已删除的 *Center/*HalfRange）。
-        double eMax = splineConfig.maxLandHi();
+        // 陆地 e 上限：**常量 0.95**。
+        // ★ 2026-11-07：原先取 SplineConfig.maxLandHi()（= MOUNTAINS 内层样条 hi）
+        //   = max(PLAIN .03, HILLS .368, MOUNTAINS .95, PLATEAU .706, BASIN .05) = 0.95。
+        //   实测（改 mountHiVal0 0.95→0.70 后跑指纹）产出**逐位不变**：
+        //   自然地形 e 峰值 ≈0.8756，而 softCapLandE 的压缩窗口起点 = 0.97×maxLandHi ≈0.9215，
+        //   从未被触及 ⇒ 该值在默认世界下不影响任何产出。随样条链一并拍成常量。
+        final double eMax = MAX_LAND_HI_E;
         // 海洋最深取样条深度控制点值（实际海床），而非分类阈值
         double eMin = deepOceanDepth;
         return new double[]{eMin, eMax};
@@ -262,12 +244,4 @@ public record TerrainParams(
     // craton|belt|plateau|basinWeight）的最后一个消费者，而那批键在生产路径零读取。
     // 该方法是全仓零调用的便捷访问器，随键一并删除，不留恒常占位实现。
 
-    // ===== Phase 1：统一样条构建方法 =====
-
-    /**
-     * 构建统一样条（Phase 1：2 层嵌套）。
-     */
-    public UnifiedSpline buildUnifiedSpline() {
-        return splineConfig.build();
-    }
 }

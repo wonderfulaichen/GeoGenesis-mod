@@ -1418,7 +1418,7 @@ public final class LocalFlowBlockHandoffProbe {
 
     private static CellGenerator generator(TerrainParams params) {
         try {
-            CellGenerator gen = new CellGenerator(params, params.minY(), params.maxY());
+            CellGenerator gen = new CellGenerator(params, params.minY(), params.maxY(), true);
             gen.seed(seed);
             return gen;
         } catch (RuntimeException failure) {

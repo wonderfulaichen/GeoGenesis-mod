@@ -32,7 +32,7 @@ public final class ModelPipelineAdapterProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 9139912035078620160L;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
 
         ModelHydrologyProvider provider = new ModelHydrologyProvider(gen, seed);

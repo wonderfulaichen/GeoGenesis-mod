@@ -141,7 +141,7 @@ public final class RealLakeRainProbe {
         static final com.geogenesis.worldgen.terrain.CellGenerator GEN = create();
         private static com.geogenesis.worldgen.terrain.CellGenerator create() {
             var tp = com.geogenesis.worldgen.terrain.TerrainParams.defaults();
-            var gen = new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY());
+            var gen = new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY(), true);
             gen.seed(9139912035078620160L);
             return gen;
         }
@@ -149,7 +149,7 @@ public final class RealLakeRainProbe {
 
     private static TerrainParamsLike terrain() {
         var tp = com.geogenesis.worldgen.terrain.TerrainParams.defaults();
-        return new TerrainParamsLike(new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY()).seaLevel());
+        return new TerrainParamsLike(new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY(), true).seaLevel());
     }
 
     private static boolean isFrame(int i, int j, int n) {

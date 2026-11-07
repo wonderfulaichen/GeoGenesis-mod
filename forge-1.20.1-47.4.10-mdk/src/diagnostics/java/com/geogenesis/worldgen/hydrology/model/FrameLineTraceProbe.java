@@ -18,7 +18,7 @@ public final class FrameLineTraceProbe {
         int polyIdx = args.length > 3 ? Integer.parseInt(args[3]) : 0;
 
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
 

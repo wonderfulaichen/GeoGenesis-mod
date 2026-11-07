@@ -11,7 +11,7 @@ public final class HydrologyChunkPlanProbe {
         int chunkZ = args.length > 2 ? Integer.parseInt(args[2]) : 0;
         double horizontalScale = args.length > 3 ? Double.parseDouble(args[3]) : 2.0;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         double[] ground = new double[256];

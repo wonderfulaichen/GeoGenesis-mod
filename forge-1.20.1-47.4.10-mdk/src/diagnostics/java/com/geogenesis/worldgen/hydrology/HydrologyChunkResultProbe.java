@@ -10,7 +10,7 @@ public final class HydrologyChunkResultProbe {
         int chunkX = args.length > 1 ? Integer.parseInt(args[1]) : 0;
         int chunkZ = args.length > 2 ? Integer.parseInt(args[2]) : 0;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY(), true);
         generator.seed(seed);
         HydrologyChunkEngine engine = new HydrologyChunkEngine(generator, seed);
         HydrologyChunkResult result = engine.calculate(chunkX, chunkZ);

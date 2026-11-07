@@ -217,7 +217,7 @@ public final class HydrologyContractProbe {
         double hs = tp.horizontalScale();
         require(hs != 1.0, "fixture requires hs != 1 (default is 2.0); otherwise contract is vacuous");
         com.geogenesis.worldgen.terrain.CellGenerator gen =
-                new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY());
+                new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(9139912035078620160L);
         var climate = new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
         int cx = -140, cz = 137, radius = 64, step = 4;

@@ -37,7 +37,7 @@ public final class LakeColumnSeamProbe {
         cfg.load();
         GeoGenesisConfig.SPEC.setConfig(cfg);
         TerrainParams tp = GeoGenesisConfig.INSTANCE.buildParams();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
         terrain.seed(9139912035078620160L);
         Map<Long, Cell[]> cache = new HashMap<>();

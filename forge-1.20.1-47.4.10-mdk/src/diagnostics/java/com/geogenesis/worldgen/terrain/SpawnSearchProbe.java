@@ -35,7 +35,7 @@ public final class SpawnSearchProbe {
         // ---------- ① buildTerrain（一次性构造） ----------
         long t0 = System.nanoTime();
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
         terrain.seed(seed);
         long buildMs = (System.nanoTime() - t0) / 1_000_000;
@@ -96,7 +96,7 @@ public final class SpawnSearchProbe {
         // ---------- ③b 单独量化：1 次 region 构建 vs 9 次（串行/并行对照） ----------
         //   用【全新 terrain】避免缓存干扰；先测"建 1 个 region"的净成本。
         {
-            CellGenerator g2 = new CellGenerator(p, p.minY(), p.maxY());
+            CellGenerator g2 = new CellGenerator(p, p.minY(), p.maxY(), true);
             GeoGenesisTerrain t2b = new GeoGenesisTerrain(g2);
             t2b.seed(seed);
             // 预热触发首次构建（此时付 9 倍代价）
@@ -121,14 +121,14 @@ public final class SpawnSearchProbe {
         //     ⇒ 后台任务抢占 CPU + 竞争 computeIfAbsent 锁 ⇒ 主线程反而变慢。
         //   对照：A = 无预热（干净）；B = 并发预热（复现真实路径）。
         {
-            CellGenerator gA = new CellGenerator(p, p.minY(), p.maxY());
+            CellGenerator gA = new CellGenerator(p, p.minY(), p.maxY(), true);
             GeoGenesisTerrain tA = new GeoGenesisTerrain(gA);
             tA.seed(seed);
             long s = System.nanoTime();
             tA.getChunkCells(0, 0);
             long soloMs = (System.nanoTime() - s) / 1_000_000;
 
-            CellGenerator gB = new CellGenerator(p, p.minY(), p.maxY());
+            CellGenerator gB = new CellGenerator(p, p.minY(), p.maxY(), true);
             GeoGenesisTerrain tB = new GeoGenesisTerrain(gB);
             tB.seed(seed);
             // ★ 复刻真实路径：先调 preloadSpawnAsync（它会等首 chunk），再生成首 chunk。

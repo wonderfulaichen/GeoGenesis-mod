@@ -66,7 +66,7 @@ public final class RootedParticleProbe {
         System.out.printf("base=%s %dx%d  origin=(%d,%d)%n", src, n, base.getHeight(), ox, oz);
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double hs = Math.max(0.01, tp.horizontalScale());
         double seaLevel = gen.seaLevel();

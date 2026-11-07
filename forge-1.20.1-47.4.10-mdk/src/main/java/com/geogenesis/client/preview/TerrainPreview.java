@@ -79,7 +79,7 @@ public final class TerrainPreview {
     public TerrainPreview(long seed, TerrainParams params) {
         this.seed = seed;
         com.geogenesis.worldgen.terrain.CellGenerator gen =
-            new com.geogenesis.worldgen.terrain.CellGenerator(params, params.minY(), params.maxY());
+            new com.geogenesis.worldgen.terrain.CellGenerator(params, params.minY(), params.maxY(), true);
         this.terrain = new GeoGenesisTerrain(gen);
         this.terrain.seed(seed);
         this.seaLevel = params.seaLevel();

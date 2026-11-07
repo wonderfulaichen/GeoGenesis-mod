@@ -34,7 +34,7 @@ public final class HydrologyWaterFillProbe {
 
     private static void probeOne(long seed, double horizontalScale) {
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         int chunks = 0, riverChunks = 0, waterColumns = 0, invalid = 0, uplift = 0;

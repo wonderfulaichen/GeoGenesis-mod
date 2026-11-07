@@ -30,12 +30,12 @@ public final class AdaptiveRoutingProbe {
 
         // 关：走 HydrologyExperimentEngine（探针无 Forge config → 微自适应自动关闭 = 基线）
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator g1 = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator g1 = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         g1.seed(seed);
         HydrologyExperimentEngine off = new HydrologyExperimentEngine(g1, seed);
 
         // 开：直接构造（绕过 config），delta = erosionDeltaE（e 单位 tile 增量）
-        CellGenerator g2 = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator g2 = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         g2.seed(seed);
         RiverLineNetwork on = new RiverLineNetwork(
                 g2::terrainEQuick,

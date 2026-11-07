@@ -40,7 +40,7 @@ public final class RiverProfileProbe {
         System.out.println("  判据：河列高度 < 邻域最高地面 => 在谷底；> 邻域最低地面 => 在脊上");
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(seed);

@@ -26,7 +26,7 @@ public final class OutletValidationProbe {
     public static void main(String[] args) {
         long seed = 9139912035078620160L;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double sea = gen.seaLevel(), hs = tp.horizontalScale();
         WindowOutlets.Terrain terrain = (bx, bz) -> gen.sampleWu(bx / hs, bz / hs).height;

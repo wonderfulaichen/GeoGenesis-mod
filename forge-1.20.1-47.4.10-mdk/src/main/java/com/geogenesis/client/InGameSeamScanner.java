@@ -59,7 +59,7 @@ public final class InGameSeamScanner {
                     p.horizontalScale(),
                     GeoGenesisConfig.INSTANCE.erosionStrength.get(),
                     GeoGenesisConfig.INSTANCE.erosionDropsMul.get());
-                CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+                CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
                 GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
                 terrain.seed(seed);
 

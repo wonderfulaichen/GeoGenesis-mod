@@ -40,7 +40,7 @@ public final class AccurateWaterAuditProbe {
         int radius = args.length > 3 ? Integer.parseInt(args[3]) : 96;  // 块
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
 

@@ -45,7 +45,7 @@ public final class SourceValleyProbe {
 
     private static void probeOne(long seed, double hs, double off, int rr) {
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         RiverLineParams P = RiverLineParams.defaults();

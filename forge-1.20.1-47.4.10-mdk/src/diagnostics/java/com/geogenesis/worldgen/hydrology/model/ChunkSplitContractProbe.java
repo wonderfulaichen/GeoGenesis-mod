@@ -43,7 +43,7 @@ public final class ChunkSplitContractProbe {
         var climate = new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
 
         var reference = HydrologyPipeline.run(gen, tp,

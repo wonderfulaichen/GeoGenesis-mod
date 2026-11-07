@@ -14,7 +14,7 @@ import java.util.Map;
  * <h2>★ 2026-11-07 重构：预设原来是"零效果"的</h2>
  * <p>旧 {@code PresetLibrary} 的 5 个内置预设，差异字段<b>全部</b>是
  * {@code continentBias / oceanDepthFactor / beltReliefAmp / elevHigh / reliefHigh / snowLine}，
- * 其中前三个是 {@code LEGACY_ONLY}、后两个是 {@code DIAGNOSTIC}（只被诊断类读）。
+ * 其中前三个是 {@code LEGACY_ONLY}、后两个是 {@code DIAGNOSTIC}（只被诊断类读，已于 2026-11-07 删除）。
  * ⇒ 用户点「高山峻岭」，新世界<b>一点都不变</b>。类注释当时也如实写了"不会产生地形差异"，
  * 但那只是一种<b>记录失败</b>，不是修复。</p>
  *

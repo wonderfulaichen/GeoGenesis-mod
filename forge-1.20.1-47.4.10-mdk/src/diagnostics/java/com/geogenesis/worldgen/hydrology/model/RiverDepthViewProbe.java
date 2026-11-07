@@ -144,7 +144,7 @@ public final class RiverDepthViewProbe {
 
         ConfigInput cfg = loadConfig(Path.of(System.getProperty("geogenesis.depth.toml",
                 "run/config/geogenesis-common.toml")), out, seed, cx, cz, radius);
-        CellGenerator gen = new CellGenerator(cfg.params(), MIN_Y, MAX_Y);
+        CellGenerator gen = new CellGenerator(cfg.params(), MIN_Y, MAX_Y, true);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
         terrain.seed(seed);
 

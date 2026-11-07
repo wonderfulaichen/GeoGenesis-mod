@@ -33,7 +33,7 @@ public final class HitConsistencyProbe {
         int step = args.length > 4 ? Integer.parseInt(args[4]) : 2;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         RiverLineParams rp = RiverLineParams.defaults();
         double hs = tp.horizontalScale();

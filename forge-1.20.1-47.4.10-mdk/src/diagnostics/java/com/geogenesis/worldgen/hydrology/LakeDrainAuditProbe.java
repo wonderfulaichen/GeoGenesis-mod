@@ -48,7 +48,7 @@ public final class LakeDrainAuditProbe {
         System.out.println("  判据：湖列水面 S，若有【非水】邻居 < S−0.5 ⇒ 水会流走 ⇒ 水面过高");
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(seed);

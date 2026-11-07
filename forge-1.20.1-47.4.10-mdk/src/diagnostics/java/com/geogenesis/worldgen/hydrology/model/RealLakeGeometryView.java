@@ -13,7 +13,7 @@ public final class RealLakeGeometryView {
         long seed = 9139912035078620160L;
         int radius = 700, step = 2, n = 2 * radius / step + 1;
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY()); gen.seed(seed);
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true); gen.seed(seed);
         double[] bed = new double[n * n];
         boolean[] coastal = new boolean[bed.length];
         for (int x = 0; x < n; x++) {

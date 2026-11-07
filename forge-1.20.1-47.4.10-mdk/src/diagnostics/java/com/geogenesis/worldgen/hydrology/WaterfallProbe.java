@@ -31,10 +31,10 @@ public final class WaterfallProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         double horizontalScale = args.length > 1 ? Double.parseDouble(args[1]) : 2.0;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         // 独立原始地形实例（不交给 engine，避免被河床雕刻污染）：水井断言需对比"雕刻前"原地形
-        CellGenerator terrainRaw = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrainRaw = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrainRaw.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         RiverLineParams P = RiverLineParams.defaults();

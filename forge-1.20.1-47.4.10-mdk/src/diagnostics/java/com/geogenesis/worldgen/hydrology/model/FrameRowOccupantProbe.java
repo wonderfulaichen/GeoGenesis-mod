@@ -18,7 +18,7 @@ public final class FrameRowOccupantProbe {
         int targetZ = args.length > 3 ? Integer.parseInt(args[3]) : 608;
 
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
         int[][] reaches = provider.reachNodesWorldForProbe(bx, bz);

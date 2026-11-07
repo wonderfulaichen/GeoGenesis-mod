@@ -47,7 +47,7 @@ public final class TwoWaterBudgetProbe {
         int step = args.length > 4 ? Integer.parseInt(args[4]) : 1;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double hs = tp.horizontalScale();
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);

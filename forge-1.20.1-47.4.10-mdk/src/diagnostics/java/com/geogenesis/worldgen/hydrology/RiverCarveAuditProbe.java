@@ -49,7 +49,7 @@ public final class RiverCarveAuditProbe {
         System.out.println("  判据：有水 ⇒ 必须 carved < original（河=挖出来的）；否则水悬在地形上");
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(seed);

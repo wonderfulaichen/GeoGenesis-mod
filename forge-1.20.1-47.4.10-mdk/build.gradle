@@ -816,30 +816,6 @@ task runProfile(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.MountainProfileProbe'
 }
 
-// Type distribution diagnostic (percentages of each terrain type)
-task runTypeDist(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.TypeDistributionProbe'
-}
-
-// Type field axis-alignment probe (2026-09-16): 类型场【轴向对齐】诊断�?
-//   补回一条【遗失的门禁】：CHANGELOG/AGENTS 长期记着"最长水平直�?560 wu"�?
-//   但当年那�?[G] 探针并未留在仓库�?—�?指标记下了，工具没了�?
-//   导致该已知缺陷从那以后再没有被客观测量过�?
-//   度量�? 个方向（+x/+z/两条对角）上"主导类型不变"的最长连续段�?
-//   �?轴向/对角 之比作为方向比（�? = 有机；明�?1 = 被轴向直线主导）�?
-//   gradlew runTypeAxisProbe [-PprobeArgs="seed windowBlocks step"]
-task runTypeAxisProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.TypeAxisProbe'
-    // �?必须支持 probeArgs：本探针的核心用途就是【跨种子对照�?
-    //   （初版漏了这�?�?-PprobeArgs 被忽�?�?三种子跑出相同结果，
-    //     差点让人误判"种子仍然没生�?）�?
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
 // Plateau crater diagnostic
 task runPlateauProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1251,14 +1227,6 @@ task runTerrainStripePngProbe(type: JavaExec) {
 
 // Terrain stripe (dense parallel thin-lines / value-range singularity) probe:
 //   gradlew runTerrainStripeProbe [seed]   (2026-09-12, 3rd artifact)
-task runTerrainStripeProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.TerrainStripeProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
 // Water view render (�?2026-09-19): hillshade + blue water, for EYE-CONTROL of lake/river shore.
 //   The original blue-water renderer was lost during the hydrology refactor (no PNG probe drew
 //   blue water), so this restores it. 1 pixel = 1 block. Output: build/waterview/*.png
@@ -1720,14 +1688,6 @@ task runErosionSeamProbe(type: JavaExec) {
 }
 
 // Terrain shape probe (2026-09-12, geology Phase T3): gradlew runTerrainShapeProbe [seed]
-task runTerrainShapeProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.TerrainShapeProbe'
-    if (project.hasProperty('probeArgs')) {
-        setArgs(probeArgs.split(' ') as List)
-    }
-}
-
 // Tectonic field probe (2026-09-12, geology Phase T1): gradlew runTectonicProbe [seed]
 task runTectonicProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1778,12 +1738,6 @@ task runDiscontinuityProbe(type: JavaExec) {
 }
 
 // Cell boundary 绮惧噯楠岃瘉锛坱ypeWeights/eLand 鏄惁鍦?400 鏁存暟鍊嶅绐佸彉锛?
-task runCellBoundaryProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.CellBoundaryProbe'
-    // Optional: args = ['12345']  (seed)
-}
-
 // Mountain footprint H/D diagnostic (checks base footprint vs height, Guilin-style detection)
 task runFootprintProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
@@ -1822,14 +1776,6 @@ task runOceanTypeProbe(type: JavaExec) {
 
 // Ocean stage probe (�?2026-09-13 T6：分阶段海洋管线 + 熔岩/�?�?PNG 目检)
 //   args = [seed] [originX] [originZ]，默�?12345 / 0 / 0
-task runOceanStageProbe(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.OceanStageProbe'
-    if (project.hasProperty('probeArgs')) {
-        args(project.property('probeArgs').split('\\s+'))
-    }
-}
-
 // Land feature probe (�?2026-09-14：陆地火山分�?PNG 目检 + 竖线指标)
 //   args = [seed] [originX] [originZ]，默认世界种�?/ 1077 / -833
 task runLandFeatProbe(type: JavaExec) {

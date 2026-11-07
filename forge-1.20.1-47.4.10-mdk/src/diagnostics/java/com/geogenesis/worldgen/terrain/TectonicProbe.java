@@ -92,7 +92,7 @@ public final class TectonicProbe {
         //   这是本阶段要解决的核心问题 G2（造山带线状化）：MOUNTAINS 类型权重
         //   在汇聚边界附近应显著高于板块内部。
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         // 只统计【陆地】汇聚边界 vs 【陆地】内部：海洋汇聚走海沟分支（提升 DEEP_OCEAN），
         // 本就不该造山；若混在一起统计，海洋边界会把陆侧造山效果稀释掉。
@@ -281,7 +281,7 @@ public final class TectonicProbe {
         //       层状火山规模远大于板内小火山）。
         //   【新判据】弧轴上门控高处的火山，其平均幅度应显著大于门控低处：
         //     幅度比 = mean(amp | gate>0.7) / mean(amp | gate<0.3) —— 必须 > 1.3×。
-        CellGenerator genP = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator genP = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         genP.seed(seed);
         // ★ 用【同一批位置】切换门控（0 / 1）比较平均幅度 —— 无地形分布混淆
         //   （初版按"门控高/低分组"比较，被"俯冲带多在山区"混淆：nHi 仅 10 个且更矮）。
@@ -322,7 +322,7 @@ public final class TectonicProbe {
             for (double x = -9000; x <= 9000; x += 157) {
                 Cell cc = genP.sample(x, z);
                 if (cc.landFeat == null || cc.e < 0.0) continue;
-                TerrainClass ct = TypeLandShape.dominantFromWeights(cc.typeWeights);
+                TerrainClass ct = TerrainClass.dominantFromWeights(cc.typeWeights);
                 // ★ 判据与生产代码同源：用【山体掩码】（不扣火口）+ 可见地形阈值 0.010
                 boolean isVol = cc.landFeat.singleEdifice > 0.010;
                 boolean isField = cc.landFeat.fieldEdifice > 0.010;
@@ -368,7 +368,7 @@ public final class TectonicProbe {
                 if (netC >= netN) continue;                          // 中心应低于周围（火口）
                 centers++;
                 TerrainClass t = CellGenerator.classifyTerrain(cc.e, cc.eLand,
-                        TypeLandShape.dominantFromWeights(cc.typeWeights), cc.temperature,
+                        TerrainClass.dominantFromWeights(cc.typeWeights), cc.temperature,
                         cc.humidity, cc.typeWeights, cc.coastCoord, cc.landFeat);
                 if (t == TerrainClass.VOLCANO) centersVol++;
                 // 旧判据（净抬升）在同一中心的结果 —— 用于复现"环形"
@@ -733,7 +733,7 @@ public final class TectonicProbe {
         //   本节打印现场各量的空间分布，直接看谁在直线处跳变。
         {
             TerrainParams tp13 = TerrainParams.defaults();
-            CellGenerator g13 = new CellGenerator(tp13, tp13.minY(), tp13.maxY());
+            CellGenerator g13 = new CellGenerator(tp13, tp13.minY(), tp13.maxY(), true);
             g13.seed(5436529513624899584L);
             TectonicField tf13 = new TectonicField(5436529513624899584L);
             // ★ 坐标基准不确定（预览可能按块或按 wu 显示）→ 两种假设都搜一遍，

@@ -64,7 +64,7 @@ public final class ForkFeasibilityProbe {
                 : RiverLineParams.ForkParams.defaults().traceStep();
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
 
         // ---------- ① 基线：显式关闭分叉（不能直接用 defaults() —— 分叉现已默认启用） ----------

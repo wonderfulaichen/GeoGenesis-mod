@@ -39,7 +39,7 @@ public final class AbChunkProbe {
         final int R = 9;   // 重复轮数（取最小轮以消除 GC/变频干扰）
 
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         gen.seed(seed);
 
         // ---------- 1) 纯地形采样（无侵蚀 tile）----------

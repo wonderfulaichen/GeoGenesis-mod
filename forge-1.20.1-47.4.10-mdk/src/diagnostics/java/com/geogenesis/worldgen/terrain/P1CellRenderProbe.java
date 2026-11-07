@@ -36,7 +36,7 @@ public final class P1CellRenderProbe {
             render(terrain, p, out);
             checkChunks(terrain, gen, p, out);
             checkWorldMarkers();
-            CellGenerator old = new CellGenerator(p, -64, 320);
+            CellGenerator old = new CellGenerator(p, -64, 320, true);
             require(!old.usesMorphBase(), "legacy constructor changed");
             old.seed(12345L);
             require(Double.isFinite(old.sample(0.5, 0.5).height), "legacy sampling");

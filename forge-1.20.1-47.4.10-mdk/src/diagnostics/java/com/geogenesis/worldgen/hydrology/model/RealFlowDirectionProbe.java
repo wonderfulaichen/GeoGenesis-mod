@@ -35,7 +35,7 @@ public final class RealFlowDirectionProbe {
         int step = 2, cx = -140, cz = 137;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double sea = gen.seaLevel(), hs = tp.horizontalScale();
         int n = 2 * radius / step + 1;

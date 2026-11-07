@@ -21,8 +21,8 @@ public final class HSABProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         TerrainParams p1 = withHs(TerrainParams.defaults(), 1.0);
         TerrainParams p2 = withHs(TerrainParams.defaults(), 2.0);
-        CellGenerator g1 = new CellGenerator(p1, p1.minY(), p1.maxY());
-        CellGenerator g2 = new CellGenerator(p2, p2.minY(), p2.maxY());
+        CellGenerator g1 = new CellGenerator(p1, p1.minY(), p1.maxY(), true);
+        CellGenerator g2 = new CellGenerator(p2, p2.minY(), p2.maxY(), true);
         GeoGenesisTerrain t1 = new GeoGenesisTerrain(g1);
         GeoGenesisTerrain t2 = new GeoGenesisTerrain(g2);
         g1.seed(seed);

@@ -72,7 +72,7 @@ public final class RiverTerminationLegalityProbe {
             cfg.load();
             GeoGenesisConfig.SPEC.setConfig(cfg);
             TerrainParams params = GeoGenesisConfig.INSTANCE.buildParams();
-            CellGenerator gen = new CellGenerator(params, params.minY(), params.maxY());
+            CellGenerator gen = new CellGenerator(params, params.minY(), params.maxY(), true);
             gen.seed(seed);
             run(gen, params);
         }

@@ -15,7 +15,7 @@ public final class ProductionLifecycleProbe {
         int rx = args.length > 1 ? Integer.parseInt(args[1]) : -1;
         int rz = args.length > 2 ? Integer.parseInt(args[2]) : 0;
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY()); gen.seed(seed);
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true); gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
         var audit = provider.drainageForProbe(rx, rz);
         if (audit == null) throw new AssertionError("production audit missing");

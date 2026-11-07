@@ -1488,7 +1488,7 @@ public final class LocalFlowBasinProbe {
         cfg.load();
         GeoGenesisConfig.SPEC.setConfig(cfg);
         TerrainParams tp = GeoGenesisConfig.INSTANCE.buildParams();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         log("  config copy=" + work.toAbsolutePath() + " (the original is only read) hs=" + tp.horizontalScale()
                 + " sea=" + tp.seaLevel() + " step=" + Integer.getInteger("geogenesis.modelStep", 4));

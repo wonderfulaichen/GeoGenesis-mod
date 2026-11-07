@@ -78,7 +78,7 @@ public final class PrecipFieldProbe {
 
         // ================= [4] 真实地形：统计与非平凡性 + 性能 =================
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         PrecipField real = new PrecipField(seed,
             (x, z) -> gen.heightCurve().heightFromE(gen.terrainEQuick(x, z)),

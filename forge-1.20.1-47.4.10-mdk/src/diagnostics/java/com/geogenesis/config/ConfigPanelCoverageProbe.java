@@ -342,8 +342,7 @@ public final class ConfigPanelCoverageProbe {
             String note = (m.group(2) + m.group(3)).replace("\"", "").replace("+", "");
             checked++;
             // 允许的白名单：这些是【数量本身】而不是"默认值/范围"，读 spec 拿不到
-            if (key.equals("worldgenProfilerEnabled") || key.equals("elevHigh")
-                    || key.equals("reliefHigh")) {
+            if (key.equals("worldgenProfilerEnabled")) {
                 continue;
             }
             Matcher dm = Pattern.compile("默认\\s*-?\\d|范围\\s*\\[").matcher(note);

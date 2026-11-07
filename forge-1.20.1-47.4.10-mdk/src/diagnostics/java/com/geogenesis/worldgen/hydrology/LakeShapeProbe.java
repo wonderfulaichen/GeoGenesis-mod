@@ -38,7 +38,7 @@ public final class LakeShapeProbe {
 
         TerrainParams params = TerrainParams.defaults();
         double hs = params.horizontalScale();
-        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY(), true);
         generator.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(generator);
         terrain.seed(seed);

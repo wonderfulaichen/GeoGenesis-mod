@@ -18,7 +18,7 @@ public final class RiverLinePreviewProbe {
         int radius = args.length > 1 ? Integer.parseInt(args[1]) : 1024;
         int step = args.length > 2 ? Integer.parseInt(args[2]) : 16;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
 

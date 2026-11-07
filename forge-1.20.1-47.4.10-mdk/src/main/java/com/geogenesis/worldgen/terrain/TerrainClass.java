@@ -47,4 +47,21 @@ public enum TerrainClass {
     public boolean isWater() {
         return isOcean() || this == LAKE || this == RIVER;
     }
+
+    /**
+     * 从连续类型权重取 argmax（从 {@link #PLAIN} 开始比较）。
+     *
+     * <p>2026-11-07 从已删除的 legacy {@code TypeLandShape} 搬来。原实现是
+     * {@code TypeLandShape.dominantFromWeights}，纯 argmax、不依赖任何 legacy 状态，
+     * 现作为 morph 与剩余调用点的公共实现。</p>
+     */
+    public static TerrainClass dominantFromWeights(double[] typeWeights) {
+        if (typeWeights == null) return PLAIN;
+        int best = PLAIN.ordinal();
+        int n = Math.min(typeWeights.length, COUNT);
+        for (int i = best + 1; i < n; i++) {
+            if (typeWeights[i] > typeWeights[best]) best = i;
+        }
+        return values()[best];
+    }
 }

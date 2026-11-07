@@ -58,7 +58,7 @@ public final class RiverEndProbe {
         boolean hasPts = args.length >= 8;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double seaLevel = gen.heightCurve().seaLevelY();
 

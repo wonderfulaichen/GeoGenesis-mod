@@ -37,12 +37,12 @@ public final class RiverLineMultiSeedProbe {
 
     private static SeedMetrics measure(long seed) {
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
 
         // 确定性：两个独立 engine 实例全量采样 hash 一致（避免 clear() 副作用）
-        CellGenerator terrain2 = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain2 = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain2.seed(seed);
         HydrologyExperimentEngine engine2 = new HydrologyExperimentEngine(terrain2, seed);
         long hashA = sampleHash(engine);

@@ -43,7 +43,7 @@ public final class HydrologyTerrainEntryProbe {
 
     public static void main(String[] args) {
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY(), true);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(generator);
         long[] first = hashGrid(terrain, 12345L);
         long[] repeat = hashGrid(terrain, 12345L);

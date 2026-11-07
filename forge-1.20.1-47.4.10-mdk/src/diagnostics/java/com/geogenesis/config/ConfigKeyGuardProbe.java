@@ -67,9 +67,10 @@ import java.util.stream.Stream;
  * <p><b>为什么现在仍不能判 FAIL</b>（2026-11-07 复核后的定案，不是遗留 TODO）：</p>
  * <ul>
  *   <li><b>① 误判源已清除，报告是真阳性。</b>本轮修掉两个真实误判源
- *       （javadoc 散文造边、{@code GeoGenesisConfig} 声明枢纽），
- *       当前只剩 2 个键（{@code elevHigh}/{@code reliefHigh}），它们<b>确实</b>只被
- *       {@code TerrainDiag}（带 {@code main} 的诊断类）读 —— 报告本身没错。</li>
+ *       （javadoc 散文造边、{@code GeoGenesisConfig} 声明枢纽）。
+ *       曾经仅剩的 2 个 UNREACHABLE 键（{@code elevHigh}/{@code reliefHigh}，
+ *       只被带 {@code main} 的 {@code TerrainDiag} 读）<b>已于 2026-11-07 删除</b>，
+ *       当前 {@code src/main} 内应为 0 个 UNREACHABLE。</li>
  *   <li><b>② 但"正确处置"未定案。</b>判 FAIL 的前提是存在一个正确的修法。
  *       这两个键的修法是「接线到生产」或「删除」，两者都改变行为/公共面，
  *       超出本轮「配置键清理」范围（用户明令不扩大范围）。此时判 FAIL
@@ -79,7 +80,7 @@ import java.util.stream.Stream;
  *       判 FAIL 会把"根清单漏项"（探针自身缺陷）变成构建红灯。</li>
  * </ul>
  * <p>⇒ <b>提升为 FAIL 的前置条件</b>（写在这里，避免再次变成"文档里的承诺"）：
- * 先处置掉 {@code elevHigh}/{@code reliefHigh}（接线或删除），
+ * ~~先处置掉 {@code elevHigh}/{@code reliefHigh}~~（已于 2026-11-07 删除，条件①已满足），
  * 再给 {@link #PRODUCTION_ROOTS} 加一条"根清单完整性"自检
  * （例如要求根类必须落在 {@code @Mod} 入口或 {@code ChunkGenerator} 子类集合内）。
  * 两条都满足后，把 {@code UNREACHABLE} 从 warnings 挪进 violations 即可，判据逻辑不用改。</p>
@@ -186,15 +187,6 @@ public final class ConfigKeyGuardProbe {
             "com/geogenesis/worldgen/process/ProcessContext.java",
             "com/geogenesis/worldgen/process/ProcessRuntime.java");
 
-    /** legacy 链专属入口。见 {@link #MORPH_CHAIN_ROOTS} 为何不含 CellGenerator。 */
-    private static final List<String> LEGACY_CHAIN_ROOTS = List.of(
-            "com/geogenesis/worldgen/terrain/TypeLandShape.java",
-            "com/geogenesis/worldgen/terrain/TypeNoiseProvider.java",
-            "com/geogenesis/worldgen/terrain/TypeGenerators.java",
-            "com/geogenesis/worldgen/terrain/CoastlineField.java",
-            "com/geogenesis/worldgen/terrain/SeaBedDetail.java",
-            "com/geogenesis/worldgen/terrain/TerrainCharacterField.java");
-
     /** 声明：支持泛型（{@code EnumValue<CaveConfig.Preset> cavePreset} 此前被漏算 1 个）。 */
     private static final Pattern DECL = Pattern.compile(
             "public final ForgeConfigSpec\\.\\w+(?:\\s*<[^;{]*?>)?\\s+(\\w+)\\s*;");
@@ -259,12 +251,11 @@ public final class ConfigKeyGuardProbe {
         Map<String, String> allow = readAllowlist(root.resolve(ALLOWLIST_REL), root, problems);
         Set<String> reachable = reachability ? reachableFiles(root) : null;
         Set<String> morphChain = reachability ? reachableFiles(root, MORPH_CHAIN_ROOTS) : null;
-        Set<String> legacyChain = reachability ? reachableFiles(root, LEGACY_CHAIN_ROOTS) : null;
 
         String cfgResidual = redactFingerprint(configSrc);
         Map<String, Boolean> readInsideConfig = readInsideConfig(cfgResidual, keys);
 
-        Tally t = classify(keys, hits, readInsideConfig, allow, reachable, problems, morphChain, legacyChain);
+        Tally t = classify(keys, hits, readInsideConfig, allow, reachable, problems, morphChain);
 
         for (String k : allow.keySet()) {
             if (!keys.contains(k)) {
@@ -505,22 +496,19 @@ public final class ConfigKeyGuardProbe {
         int configOnly;
         int unread;
         int unreachable;
-        /** 链路口径（仅报告）：LIVE 里读取点只落在一条链上的键。 */
+        /** 链路口径（仅报告）：LIVE 里读取点是否落在 morph 生产链上。 */
         int liveMorphOnly;
-        int liveLegacyOnly;
-        int liveShared;
         int liveNoChain;
         final List<String> violations = new ArrayList<>();
         final List<String> warnings = new ArrayList<>();
         final Map<String, List<String>> unreachableKeys = new TreeMap<>();
-        final Map<String, List<String>> legacyOnlyKeys = new TreeMap<>();
         final Map<String, List<String>> morphOnlyKeys = new TreeMap<>();
         final Map<String, List<String>> noChainKeys = new TreeMap<>();
     }
 
     private static Tally classify(Set<String> keys, Hits hits, Map<String, Boolean> readInsideConfig,
                                   Map<String, String> allow, Set<String> reachable, List<String> problems,
-                                  Set<String> morphChain, Set<String> legacyChain) {
+                                  Set<String> morphChain) {
         Tally t = new Tally();
         for (String k : keys) {
             List<String> prod = hits.production().get(k);
@@ -541,17 +529,12 @@ public final class ConfigKeyGuardProbe {
                     t.warnings.add("UNREACHABLE  " + k + "：被 " + String.join(", ", prod)
                             + " 读取，但这些文件从生产入口不可达（调用图 BFS）");
                 }
-                if (morphChain != null && legacyChain != null) {
+                if (morphChain != null) {
+                    // ★ 2026-11-07：legacy 链已整体删除，故只剩"morph 内 / morph 外"两档。
                     boolean inMorph = prod.stream().anyMatch(morphChain::contains);
-                    boolean inLegacy = prod.stream().anyMatch(legacyChain::contains);
-                    if (inMorph && inLegacy) {
-                        t.liveShared++;
-                    } else if (inMorph) {
+                    if (inMorph) {
                         t.liveMorphOnly++;
                         t.morphOnlyKeys.put(k, prod);
-                    } else if (inLegacy) {
-                        t.liveLegacyOnly++;
-                        t.legacyOnlyKeys.put(k, prod);
                     } else {
                         t.liveNoChain++;
                         t.noChainKeys.put(k, prod);
@@ -607,11 +590,7 @@ public final class ConfigKeyGuardProbe {
             System.out.println();
             System.out.println("  链路口径（LIVE 的细分；仅报告，不判 FAIL）:");
             System.out.println("    只被 morph 链读    : " + t.liveMorphOnly);
-            System.out.println("    只被 legacy 链读   : " + t.liveLegacyOnly);
-            System.out.println("    两条链都读         : " + t.liveShared);
             System.out.println("    两条链都不读       : " + t.liveNoChain + "（通常是嵌在生成器/门面层的开关）");
-            System.out.println("    ⚠ 用户已裁定无 legacy 存档 ⇒ 只被 legacy 链读的这类键在生产新世界上不改变产出。");
-            System.out.println("      本维度只报告不判 FAIL，理由见类 javadoc 的「为什么链路维度不判 FAIL」。");
         }
         System.out.println();
 
@@ -652,13 +631,6 @@ public final class ConfigKeyGuardProbe {
                 System.out.println("  " + k + " -> " + (prod.isEmpty() ? "(none)" : String.join(", ", prod)));
             }
             System.out.println();
-            if (!t.legacyOnlyKeys.isEmpty()) {
-                System.out.println("--- 只被 legacy 链读（新世界上不改变产出）---");
-                for (Map.Entry<String, List<String>> e : t.legacyOnlyKeys.entrySet()) {
-                    System.out.println("  " + e.getKey() + " -> " + String.join(", ", e.getValue()));
-                }
-                System.out.println();
-            }
             if (!t.noChainKeys.isEmpty()) {
                 System.out.println("--- 两条链都不读（嵌在生成器/门面/诊断层）---");
                 for (Map.Entry<String, List<String>> e : t.noChainKeys.entrySet()) {

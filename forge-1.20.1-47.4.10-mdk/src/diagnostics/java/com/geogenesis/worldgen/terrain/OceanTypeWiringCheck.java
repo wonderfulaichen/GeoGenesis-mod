@@ -69,7 +69,7 @@ public final class OceanTypeWiringCheck {
         csv.append("check,group,metric,value,verdict\n");
 
         TerrainParams base = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(base, -64, 320);
+        CellGenerator gen = new CellGenerator(base, -64, 320, true);
         gen.seed(seed);
 
         Map<TerrainClass, Stats> groups = collect(gen, seed);
@@ -167,14 +167,10 @@ public final class OceanTypeWiringCheck {
 
         // 把"当前生效的海洋 lo/hi 配置"一并落盘，供接线后对比
         Files.writeString(out.resolve("config-snapshot.txt"), String.format(Locale.ROOT,
-                "oceanLo=%.4f oceanHi=%.4f%n"
-                        + "deepOceanLo=%.4f deepOceanHi=%.4f%n"
-                        + "shelfLo=%.4f shelfHi=%.4f%n"
-                        + "subRidgeLo=%.4f subRidgeHi=%.4f%n"
-                        + "seamountLo=%.4f seamountHi=%.4f%n",
-                p.oceanLo(), p.oceanHi(), p.deepOceanLo(), p.deepOceanHi(),
-                p.shelfLo(), p.shelfHi(), p.subRidgeLo(), p.subRidgeHi(),
-                p.seamountLo(), p.seamountHi()));
+                "deepOceanDepth=%.4f shelfDepth=%.4f shallowDepth=%.4f%n"
+                        + "oceanFadeStart=%.4f landRampEnd=%.4f%n",
+                p.deepOceanDepth(), p.shelfDepth(), p.shallowDepth(),
+                p.oceanFadeStart(), p.landRampEnd()));
     }
 
     // ---------------------------------------------------------------- W2
@@ -350,7 +346,7 @@ public final class OceanTypeWiringCheck {
                     "无法构造参数副本：" + ex);
             return;
         }
-        CellGenerator alt = new CellGenerator(shifted, -64, 320);
+        CellGenerator alt = new CellGenerator(shifted, -64, 320, true);
         alt.seed(seed);
 
         int pts = 0, diffE = 0, diffClass = 0;

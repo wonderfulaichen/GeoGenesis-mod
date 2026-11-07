@@ -17,7 +17,7 @@ public final class CouplingDiagnosisProbe {
         long seed = ViewSpec.SEED;
         int radius = 200;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double sea = gen.seaLevel(), hs = tp.horizontalScale();
         int step = ViewSpec.STEP;

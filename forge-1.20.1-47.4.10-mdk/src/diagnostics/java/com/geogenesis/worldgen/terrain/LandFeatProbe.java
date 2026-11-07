@@ -36,7 +36,7 @@ public final class LandFeatProbe {
 
         System.out.printf("=== LandFeatProbe seed=%d origin=(%d,%d) size=%dx%d ===%n", seed, ox, oz, W, H);
 
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         gen.seed(seed);
 
         double[][] single = new double[W][H];

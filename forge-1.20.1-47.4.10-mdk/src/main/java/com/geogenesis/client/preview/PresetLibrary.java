@@ -16,7 +16,7 @@ import java.util.Map;
  *   <li>{@code continentBias} / {@code oceanDepthFactor} / {@code beltReliefAmp} → <b>LEGACY_ONLY</b>
  *       （只在新世界<b>不</b>走的那条链上生效）；</li>
  *   <li>{@code elevHigh} / {@code reliefHigh} → <b>DIAGNOSTIC</b>
- *       （{@code src/main} 内唯一读者是一个带 main 的诊断类，生产地形链根本不读）；</li>
+ *       （{@code src/main} 内唯一读者是一个带 main 的诊断类，生产地形链根本不读；<b>已于 2026-11-07 删除</b>）；</li>
  *   <li>{@code snowLine} → BOTH（唯一真生效的那一个）。</li>
  * </ul>
  * <p>⇒ 用户点「高山峻岭」，新世界<b>只有雪线动了一点</b>，山一点都不高。</p>

@@ -18,7 +18,7 @@ public final class OceanTypeProbe {
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, -64, 320);
+        CellGenerator gen = new CellGenerator(p, -64, 320, true);
         gen.seed(seed);
 
         final int HALF = 4096, STEP = 32; // 8192×8192 大区域稳定统计

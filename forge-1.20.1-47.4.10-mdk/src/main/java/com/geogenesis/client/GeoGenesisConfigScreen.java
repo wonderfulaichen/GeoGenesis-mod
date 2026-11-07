@@ -16,7 +16,6 @@ import com.geogenesis.client.preview.Preset;
 import com.geogenesis.client.preview.PresetsPanel;
 import com.geogenesis.client.preview.PreviewDisplay;
 import com.geogenesis.client.preview.SamplingPanel;
-import com.geogenesis.client.preview.TerrainConfigPanel;
 import com.geogenesis.client.preview.GeoPalette;
 import com.geogenesis.client.preview.WorldScalePanel;
 import com.geogenesis.config.GeoGenesisConfig;
@@ -103,7 +102,11 @@ public class GeoGenesisConfigScreen extends Screen {
             new DomainPanel(PanelLayout.Tab.EROSION, "侵蚀与河流",
                     "粒子侵蚀是本项目唯一的侵蚀实现；河流由同一份汇流场雕刻。");
     private final ClimateConfigPanel climatePanel = new ClimateConfigPanel();
-    private final TerrainConfigPanel terrainPanel = new TerrainConfigPanel();
+    /** ★ 2026-11-07：原 TerrainConfigPanel（高度图控制点 + 陆地类型 lo/hi 滑块）随样条链删除。
+     *  本页现在只承载海洋样条键（{@code HeightCurve} 真实消费），改用目录驱动的通用面板。 */
+    private final DomainPanel terrainPanel =
+            new DomainPanel(PanelLayout.Tab.TERRAIN_SHAPE, "地形形态",
+                    "海洋控制点由 HeightCurve 真实消费；陆地类型高度带已随样条链移除。");
     private final CavePanel cavePanel = new CavePanel();
     private final OrePanel orePanel = new OrePanel();
     private final DiagnosticPanel diagnosticPanel =
@@ -623,7 +626,6 @@ public class GeoGenesisConfigScreen extends Screen {
                 tab = idx;
                 scroll = 0;
                 PanelLayout.Tab t = visibleTabs.get(idx);
-                if (t == PanelLayout.Tab.TERRAIN_SHAPE) terrainPanel.refreshHeightDependent();
                 pushScrollToPanels();
                 Minecraft.getInstance().getSoundManager().play(
                     net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(

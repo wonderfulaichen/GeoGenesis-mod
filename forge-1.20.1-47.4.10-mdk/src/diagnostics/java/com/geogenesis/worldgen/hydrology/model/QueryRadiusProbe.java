@@ -24,7 +24,7 @@ public final class QueryRadiusProbe {
         long seed = 9139912035078620160L;
         int step = 4;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double sea = gen.seaLevel(), hs = tp.horizontalScale();
 

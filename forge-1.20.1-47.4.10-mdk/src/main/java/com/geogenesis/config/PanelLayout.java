@@ -34,8 +34,9 @@ public final class PanelLayout {
      * 页签（声明顺序 = 显示顺序 = 面板实例化顺序）。
      *
      * <p>{@code requiresLegacyMode=true} 的页签默认不出现在标签条上，
-     * 只有用户在「诊断」页打开「显示旧算法参数」后才出现 ——
-     * 用户已裁定没有 legacy 存档 ⇒ 这 70 个键对新世界零效果，不该占常驻位置。</p>
+     * 只有用户在「诊断」页打开「显示旧算法参数」后才出现。
+     * ★ 2026-11-08：legacy 链与整条样条链已删除，{@code Domain.LEGACY} 现为空域，
+     * 该页签打开后也是空页；保留机制是为了不扩大本轮改动范围，后续可整体移除。</p>
      */
     public enum Tab {
         PRESETS("预设", null, false),
@@ -93,15 +94,13 @@ public final class PanelLayout {
             // 气候缩放
             "latitudeScale", "tempWarpScale", "humidityScale", "climateRegionSize");
 
-    private static final Set<String> SPECIALIZED_TERRAIN = setOf(
-            // 6 个海洋类型 lo/hi 双滑块（高度图槽位）
-            "deepOceanLo", "deepOceanHi", "shelfLo", "shelfHi",
-            "subRidgeLo", "subRidgeHi", "seamountLo", "seamountHi",
-            "lakeLo", "lakeHi", "riverLo", "riverHi",
-            // 5 个陆地类型 hi（控制点上沿）；lo 侧由旧样条 Val0/Val1 承载
-            "plainHiVal0", "hillsHiVal0", "mountHiVal0", "platHiVal0", "basinHiVal0",
-            // 雪线双曲线
-            "snowLine", "snowLatitudeInfluence", "snowHumidityInfluence");
+    /**
+     * ★ 2026-11-07：TERRAIN_SHAPE 页已从专用 {@code TerrainConfigPanel}（高度图控制点 +
+     * 类型 lo/hi 滑块 + 雪线双曲线）改为目录驱动的通用 {@code DomainPanel}。
+     * 那批样条键随 legacy 链删除，此页现在只承载 {@code Domain.TERRAIN_SHAPE} 的剩余键
+     * （海洋控制点等，由 {@code HeightCurve} 真实消费），全部由目录渲染 ⇒ 专门集合为空。
+     */
+    private static final Set<String> SPECIALIZED_TERRAIN = Set.of();
 
     private static final Set<String> SPECIALIZED_CAVE = setOf(
             "cavePreset", "caveEnabled", "caveTunnelEnabled", "caveChamberEnabled",

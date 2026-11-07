@@ -56,7 +56,7 @@ public final class ErosionSeamProbe {
         Double atZ = args.length > 3 ? Double.parseDouble(args[3]) : null;
 
         TerrainParams p = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY());
+        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), true);
         gen.seed(seed);
 
         System.out.printf("=== ErosionSeamProbe seed=%d span=%d wu ===%n", seed, span);

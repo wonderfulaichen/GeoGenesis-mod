@@ -13,11 +13,16 @@ import java.util.Map;
  * 但那份标注<b>只是注释</b> —— 面板无法据此决定"这个键该不该显示"，只能靠人肉判断，
  * 于是长出了两处真实病灶：</p>
  * <ol>
- *   <li>70 个 {@code LEGACY_ONLY} 键里有 27 个仍摆在面板上冒充世界参数
+ *   <li>当时 70 个 {@code LEGACY_ONLY} 键里有 27 个仍摆在面板上冒充世界参数
  *       （用户已裁定<b>没有 legacy 存档</b> ⇒ 对新世界零效果）；</li>
  *   <li>14 个 {@code BOTH} 真旋钮（大陆尺度、侵蚀全套…）<b>根本没上界面</b>，
  *       只能手改 TOML。</li>
  * </ol>
+ * <p><b>★ 2026-11-08 更新</b>：legacy 链（{@code TypeLandShape} 等 6 个生产类）与
+ * 整条样条链（{@code UnifiedSpline} / {@code SplineConfig} / {@code OceanSplineConfig} /
+ * {@code MidSplineConfig}）已整体删除，随之删除约 100 个配置键；
+ * {@code Domain.LEGACY} 现在是空域，{@code Axis.LEGACY_ONLY} 枚举仅保留为历史兼容常量。
+ * 当前 {@code GeoGenesisConfig} 共 70 个键，全部 {@code LIVE}（守卫实测 {@code UNREAD=0}）。</p>
  * <p>⇒ 本轮把"注释里的轴"提升为"代码里的数据"，由
  * {@code ConfigPanelCoverageProbe} 做静态交叉校验（注释标记 ↔ 本表 ↔ 面板实际引用）。
  * 任一处不一致即 FAIL。</p>
@@ -194,35 +199,9 @@ public final class ConfigKeyCatalog {
         put(m, "shelfDeriv", Axis.BOTH, Domain.TERRAIN_SHAPE);
         put(m, "shallowDeriv", Axis.BOTH, Domain.TERRAIN_SHAPE);
         put(m, "coastDeriv", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "oceanLo", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "oceanHi", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "deepOceanLo", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "deepOceanHi", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "shelfLo", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "shelfHi", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "subRidgeLo", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "subRidgeHi", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "seamountLo", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "seamountHi", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "lakeLo", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "lakeHi", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "riverLo", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "riverHi", Axis.BOTH, Domain.TERRAIN_SHAPE);
         put(m, "snowLine", Axis.BOTH, Domain.TERRAIN_SHAPE);
         put(m, "snowLatitudeInfluence", Axis.BOTH, Domain.TERRAIN_SHAPE);
         put(m, "snowHumidityInfluence", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "splineOuterLoc0", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "splineOuterLoc1", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "splineOuterLoc2", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "splineOuterLoc3", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "splineOuterLoc4", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "splineOuterLoc5", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "splineOuterLoc6", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "plainHiVal0", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "hillsHiVal0", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "mountHiVal0", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "platHiVal0", Axis.BOTH, Domain.TERRAIN_SHAPE);
-        put(m, "basinHiVal0", Axis.BOTH, Domain.TERRAIN_SHAPE);
         // ---- EROSION ----
         put(m, "riverEnabled", Axis.BOTH, Domain.EROSION);
         put(m, "erosionEnabled", Axis.BOTH, Domain.EROSION);
@@ -251,8 +230,6 @@ public final class ConfigKeyCatalog {
         put(m, "oreVeinsEnabled", Axis.BOTH, Domain.ORE);
         put(m, "oreOverrideVanilla", Axis.BOTH, Domain.ORE);
         // ---- DIAGNOSTIC ----
-        put(m, "elevHigh", Axis.DIAGNOSTIC, Domain.DIAGNOSTIC);
-        put(m, "reliefHigh", Axis.DIAGNOSTIC, Domain.DIAGNOSTIC);
         put(m, "worldgenProfilerEnabled", Axis.DIAGNOSTIC, Domain.DIAGNOSTIC);
         put(m, "worldgenProfilerEveryChunks", Axis.DIAGNOSTIC, Domain.DIAGNOSTIC);
         // ---- DISPLAY ----
@@ -260,76 +237,6 @@ public final class ConfigKeyCatalog {
         put(m, "minY", Axis.PREVIEW_ONLY, Domain.DISPLAY);
         put(m, "maxY", Axis.PREVIEW_ONLY, Domain.DISPLAY);
         // ---- LEGACY ----
-        put(m, "continentThreshold", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "continentBias", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "coastLoc", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "oceanFadeStart", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "landRampEnd", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "seabedDetail", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "oceanDepthFactor", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "beltReliefAmp", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinBase", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "cAffinityStrength", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "coastlineWarpAmp", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "coastlineWarpScale", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "coastlineWarpOctaves", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "coastlineWarpLacunarity", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "coastlineWarpPersistence", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainLoLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainLoVal0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainLoDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainLoLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainLoVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainLoDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainHiLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainHiDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainHiLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainHiVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "plainHiDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsLoLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsLoVal0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsLoDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsLoLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsLoVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsLoDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsHiLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsHiDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsHiLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsHiVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "hillsHiDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountLoLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountLoVal0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountLoDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountLoLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountLoVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountLoDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountHiLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountHiDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountHiLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountHiVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "mountHiDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platLoLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platLoVal0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platLoDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platLoLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platLoVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platLoDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platHiLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platHiDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platHiLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platHiVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "platHiDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinLoLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinLoVal0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinLoDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinLoLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinLoVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinLoDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinHiLoc0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinHiDeriv0", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinHiLoc1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinHiVal1", Axis.LEGACY_ONLY, Domain.LEGACY);
-        put(m, "basinHiDeriv1", Axis.LEGACY_ONLY, Domain.LEGACY);
     }
 
     /** 全部键档案（不可变，按声明顺序）。 */

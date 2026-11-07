@@ -12,7 +12,7 @@ import java.util.List;
 public final class ProductionOwnershipProbe {
     public static void main(String[] args) throws Exception {
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY()); gen.seed(ViewSpec.SEED);
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true); gen.seed(ViewSpec.SEED);
         var provider = new ModelHydrologyProvider(gen, ViewSpec.SEED);
         var north = shapes(provider.shapedNodesWorldForProbe(-256, 256));
         var south = shapes(provider.shapedNodesWorldForProbe(-256, 768));

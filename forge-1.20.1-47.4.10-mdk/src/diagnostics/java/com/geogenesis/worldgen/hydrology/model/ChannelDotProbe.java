@@ -42,7 +42,7 @@ public final class ChannelDotProbe {
         int smallThreshold = args.length > 5 ? Integer.parseInt(args[5]) : 20;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var climate = new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
         DirectionRule.setMode("baseline");

@@ -27,7 +27,7 @@ public final class PipelineViewProbe {
         double precip = args.length > 4 ? Double.parseDouble(args[4]) : 0.004;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var climate = new LakeWaterBalance.Climate(precip, 0.002, 0.3);
 

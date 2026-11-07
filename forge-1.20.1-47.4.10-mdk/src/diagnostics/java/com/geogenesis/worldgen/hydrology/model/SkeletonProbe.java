@@ -550,7 +550,7 @@ public final class SkeletonProbe {
     private static void runRealTerrain() {
         System.out.println("--- [B] 真实地形（seed 9139912035078620160，r=352 = 生产口径）---");
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(9139912035078620160L);
         var climate = new LakeWaterBalance.Climate(0.004, 0.002, 0.3);
         // 生产口径：REGION=512/2 + HALO=96 = 352、STEP=4

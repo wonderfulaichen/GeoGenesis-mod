@@ -11,7 +11,7 @@ public final class PlateauProfileProbe {
     public static void main(String[] args) {
         TerrainParams p = TerrainParams.defaults();
         long seed = 12345L;
-        CellGenerator gen = new CellGenerator(p, -64, 320);
+        CellGenerator gen = new CellGenerator(p, -64, 320, true);
         gen.seed(seed);
 
         // 1. 扫描找一个 PLATEAU 主导细胞（dominantFromWeights == PLATEAU）
@@ -27,7 +27,7 @@ public final class PlateauProfileProbe {
             for (int z = 0; z < 4000; z += 8) {
                 Cell c = gen.sample(x, z);
                 if (c.typeWeights == null) continue;
-                TerrainClass dom = TypeLandShape.dominantFromWeights(c.typeWeights);
+                TerrainClass dom = TerrainClass.dominantFromWeights(c.typeWeights);
                 if (dom == TerrainClass.PLATEAU && c.eLand >= MIN_PLATEAU_ELAND) {
                     bestX = x; bestZ = z; found = true;
                     break outer;
@@ -92,9 +92,11 @@ public final class PlateauProfileProbe {
             + " MOUNTAINS=" + f(tw[TerrainClass.MOUNTAINS.ordinal()])
             + " PLATEAU=" + f(tw[TerrainClass.PLATEAU.ordinal()])
             + " BASIN=" + f(tw[TerrainClass.BASIN.ordinal()]));
-        // 计算 typePosition（与 TypeLandShape.sampleFromUnifiedSpline 同公式）
+        // 计算 typePosition（5 种陆地类型的加权序号；顺序同 TerrainClass 陆地族）
+        // ★ 2026-11-07：TypeNoiseProvider 已随 legacy 链删除，LAND_TYPES 就地内联。
         double pos = 0, twt = 0;
-        TerrainClass[] lands = TypeNoiseProvider.LAND_TYPES;
+        TerrainClass[] lands = { TerrainClass.PLAIN, TerrainClass.HILLS, TerrainClass.MOUNTAINS,
+                                 TerrainClass.PLATEAU, TerrainClass.BASIN };
         for (int i = 0; i < lands.length; i++) {
             double w = tw[lands[i].ordinal()];
             if (w > 0.001) { pos += w * ((double) i / (lands.length - 1)); twt += w; }

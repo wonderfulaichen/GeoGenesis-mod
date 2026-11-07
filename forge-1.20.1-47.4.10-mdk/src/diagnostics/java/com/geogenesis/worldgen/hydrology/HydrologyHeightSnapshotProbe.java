@@ -214,7 +214,7 @@ public final class HydrologyHeightSnapshotProbe {
         System.out.println("mode=" + (spec.heavy() ? "light+heavy" : "light"));
         Config cfg = loadConfig(spec.toml());
         printProvenance(cfg, spec);
-        CellGenerator gen = new CellGenerator(cfg.params(), WORLD_MIN_Y, WORLD_MAX_Y);
+        CellGenerator gen = new CellGenerator(cfg.params(), WORLD_MIN_Y, WORLD_MAX_Y, true);
         gen.seed(spec.seed());
         lightSweep(gen, spec);
         System.out.println("info: snapshotDivVsExtractMulUlpMismatch=" + ulpMismatch(spec)

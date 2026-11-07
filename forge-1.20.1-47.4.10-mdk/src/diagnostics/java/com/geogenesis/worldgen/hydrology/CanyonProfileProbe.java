@@ -62,7 +62,7 @@ public final class CanyonProfileProbe {
         System.out.printf("=== CanyonProfileProbe seed=%d hs=%.1f side=%d ===%n", seed, hs, side);
 
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
 

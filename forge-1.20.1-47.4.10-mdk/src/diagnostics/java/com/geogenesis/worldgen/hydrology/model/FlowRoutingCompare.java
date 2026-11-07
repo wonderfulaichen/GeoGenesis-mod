@@ -43,7 +43,7 @@ public final class FlowRoutingCompare {
         int radius = args.length > 4 ? Integer.parseInt(args[4]) : 400;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         double hs = tp.horizontalScale();
         int n = 2 * radius / step + 1;

@@ -83,7 +83,7 @@ public final class StratumProbe {
 
         // ================= [3] 真实地形：岩性多样性与分布 =================
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         int[] typeCount = new int[RockType.values().length];
         int[] layerCount = new int[StratumField.LAYER_COUNT];
@@ -121,7 +121,7 @@ public final class StratumProbe {
         System.out.println(sb2);
 
         // ================= [4] 确定性 =================
-        CellGenerator gen2 = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen2 = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen2.seed(seed);
         int mism = 0;
         for (int i = 0; i < 300; i++) {

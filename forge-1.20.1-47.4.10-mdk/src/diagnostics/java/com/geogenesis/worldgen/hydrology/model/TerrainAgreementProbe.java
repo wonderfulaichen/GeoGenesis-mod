@@ -29,7 +29,7 @@ public final class TerrainAgreementProbe {
         long seed = 9139912035078620160L;
         int cx = -140, cz = 137, radius = 200, step = 4;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         gt.seed(seed);

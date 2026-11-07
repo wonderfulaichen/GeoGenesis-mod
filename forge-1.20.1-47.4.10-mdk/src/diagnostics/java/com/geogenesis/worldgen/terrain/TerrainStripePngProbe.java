@@ -68,7 +68,7 @@ public final class TerrainStripePngProbe {
         outDir.mkdirs();
         seedUsed = seed;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
 
@@ -83,23 +83,27 @@ public final class TerrainStripePngProbe {
         System.out.printf("=== TerrainStripePngProbe seed=%d size=%d step=%d origin=(%d,%d) ===%n",
                 seed, size, step, ox, oz);
 
-        // ---------- [A] 各类型噪声单独渲染（供逐配方排查）----------
-        TypeNoiseProvider provider = new TypeNoiseProvider(tp.beltReliefAmp(), tp.basinBase());
-        provider.seed(seed);
+        // ---------- [A] 各类型权重场单独渲染（供逐分量排查）----------
+        // ★ 2026-11-07：legacy TypeNoiseProvider 已随 legacy 链删除，本区块改读生产同源的
+        //   类型权重场（CellGenerator.typeWeightsAt → BaseWorldSampler.sampleTerrain）。
+        //   语义变化：原先是"每种类型各自的噪声配方原值"，现在是"该类型在该点的权重"。
+        //   两者的伪影排查用途一致——都回答"花纹落在哪个类型的场上"。
         TerrainClass[] types = {
             TerrainClass.PLAIN, TerrainClass.HILLS, TerrainClass.MOUNTAINS,
             TerrainClass.PLATEAU, TerrainClass.BASIN
         };
-        // ★ 2026-09-12 关键诊断：类型配方噪声【同时】输出原图与【高通图】。
+        // ★ 2026-09-12 关键诊断：权重场【同时】输出原图与【高通图】。
         //   伪影是"细小幅度、沿等高线"的纹路，原图看不清，高通后必然极醒目。
-        //   若某个配方的【高通图】出现与用户截图一致的花纹 ⇒ 该配方即根因。
+        //   若某个分量的【高通图】出现与用户截图一致的花纹 ⇒ 该分量即根因。
         for (TerrainClass tc : types) {
             double[][] t = new double[size][size];
             double tmn = 1e9, tmx = -1e9;
             for (int py = 0; py < size; py++) {
                 for (int px = 0; px < size; px++) {
-                    double v = provider.computeNoise(tc, ox + px * (double) step,
-                                                          oz + py * (double) step);
+                    double[] w = gen.typeWeightsAt(ox + px * (double) step,
+                                                   oz + py * (double) step);
+                    int idx = tc.ordinal();
+                    double v = (w != null && idx < w.length) ? w[idx] : 0.0;
                     t[py][px] = v;
                     tmn = Math.min(tmn, v); tmx = Math.max(tmx, v);
                 }
@@ -289,22 +293,24 @@ public final class TerrainStripePngProbe {
     private static void componentGradients(File outDir, long seed, int ox, int oz, int size, int step) throws Exception {
         TerrainParams tp = TerrainParams.defaults();
         ContinentField cont = new ContinentField(tp); cont.seed(seed);
-        TypeLandShape tls = new TypeLandShape(tp); tls.seed(seed);
-        CoastlineField cf = new CoastlineField(tp); cf.seed(seed);
+        // ★ 2026-11-07：TypeLandShape / CoastlineField 随 legacy 链删除。
+        //   typeWeights 改读生产同源的类型权重场；coast_warp 分量（legacy 海岸线位移）不复存在，已删除。
+        CellGenerator genForWeights = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
+        genForWeights.seed(seed);
         LandFeatures lf = new LandFeatures(); lf.seed(seed);
         TectonicField tf = new TectonicField(seed);
         TectonicDeformation td = new TectonicDeformation(seed);
-        double bias = tp.continentBias();
 
         record Comp(String name, java.util.function.DoubleBinaryOperator fn) {}
         java.util.List<Comp> comps = new java.util.ArrayList<>();
         comps.add(new Comp("continent_c", cont::sample));
-        comps.add(new Comp("coast_warp", (x, z) -> cf.warpDisplacement(x, z, cont.sample(x, z) - bias)));
         for (TerrainClass tc : TerrainClass.values()) {
             final TerrainClass t = tc;
-            comps.add(new Comp("w_" + t, (x, z) -> tls.sampleBlend(x, z).typeWeights[t.ordinal()]));
+            comps.add(new Comp("w_" + t, (x, z) -> {
+                double[] w = genForWeights.typeWeightsAt(x, z);
+                return (w != null && t.ordinal() < w.length) ? w[t.ordinal()] : 0.0;
+            }));
         }
-        comps.add(new Comp("shared_noise", tls.typeGenerators()::computeSharedNoise));
         comps.add(new Comp("landfeat", (x, z) -> lf.compute(x, z).total));
         comps.add(new Comp("tect_dist", (x, z) -> tf.sample(x, z).dist()));
         comps.add(new Comp("tect_stress", (x, z) -> tf.sample(x, z).stress()));

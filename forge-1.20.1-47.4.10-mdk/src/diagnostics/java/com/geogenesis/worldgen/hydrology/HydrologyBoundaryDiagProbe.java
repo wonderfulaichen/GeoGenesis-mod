@@ -10,7 +10,7 @@ public final class HydrologyBoundaryDiagProbe {
     public static void main(String[] args) {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY(), true);
         generator.seed(seed);
         HydrologyChunkEngine engine = new HydrologyChunkEngine(generator, seed);
         int printed = 0;

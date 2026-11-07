@@ -39,7 +39,7 @@ public final class RiverLineWidthProbe {
         int n = args.length > 1 ? Integer.parseInt(args[1]) : 2;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator terrain = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         RiverLineNetwork net = engine.network();

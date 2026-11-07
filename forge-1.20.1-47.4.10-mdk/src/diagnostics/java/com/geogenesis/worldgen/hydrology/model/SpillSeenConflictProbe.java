@@ -16,7 +16,7 @@ public final class SpillSeenConflictProbe {
 
     public static void main(String[] args) {
         var tp = com.geogenesis.worldgen.terrain.TerrainParams.defaults();
-        var gen = new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new com.geogenesis.worldgen.terrain.CellGenerator(tp, tp.minY(), tp.maxY(), true);
         long seed = args.length > 0 ? Long.parseLong(args[0]) : ViewSpec.SEED;
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);

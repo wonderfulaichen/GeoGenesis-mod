@@ -17,7 +17,7 @@ public final class ReachWanderProbe {
         int band = args.length > 5 ? Integer.parseInt(args[5]) : 6;
 
         var tp = TerrainParams.defaults();
-        var gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        var gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         var provider = new ModelHydrologyProvider(gen, seed);
 

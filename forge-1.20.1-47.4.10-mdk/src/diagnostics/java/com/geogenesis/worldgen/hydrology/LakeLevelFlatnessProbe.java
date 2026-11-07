@@ -54,7 +54,7 @@ public final class LakeLevelFlatnessProbe {
         int radius = args.length > 3 ? Integer.parseInt(args[3]) : 128;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         int w = radius * 2 + 1;

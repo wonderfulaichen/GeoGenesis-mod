@@ -35,7 +35,7 @@ public final class FlowDirectionHistogramProbe {
         double w1 = args.length > 5 ? Double.parseDouble(args[5]) : 0.45;
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
 
         System.out.printf("=== FlowDirectionHistogramProbe seed=%d 中心wu(%.0f,%.0f)±%.0f cell=%.0f W1=%.2f ===%n",

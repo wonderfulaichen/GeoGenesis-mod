@@ -19,11 +19,10 @@ import java.util.function.Consumer;
  * （只有调试旧存档才需要），不该与日常旋钮争夺注意力。</p>
  *
  * <h2>★ 为什么还要在页面上写「只读诊断键」的警告</h2>
- * <p>{@code elevHigh} / {@code reliefHigh} 标注为 {@code DIAGNOSTIC}，但它们的实际状态更糟：
+ * <p>已删除的两个假键（{@code elevHigh} / {@code reliefHigh}，2026-11-07）曾是这样：
  * {@code src/main} 内唯一读取点是一个带 {@code main} 的量化诊断类，
- * <b>生产地形链根本不读</b>（{@code ConfigKeyGuardProbe} 把它们报成 UNREACHABLE）。
- * 也就是说拖动它们<b>不会改变任何地形</b>。这事写在 javadoc 里没人会看到，
- * 所以必须写在界面上。</p>
+ * <b>生产地形链根本不读</b>。也就是说拖动它们<b>不会改变任何地形</b>。
+ * 这事写在 javadoc 里没人会看到，所以当时必须写在界面上；现在键已删，警告随之消失。</p>
  */
 public class DiagnosticPanel extends DomainPanel {
 

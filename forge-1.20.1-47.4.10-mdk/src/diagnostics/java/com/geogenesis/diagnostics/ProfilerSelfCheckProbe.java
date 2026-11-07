@@ -90,7 +90,7 @@ public final class ProfilerSelfCheckProbe {
     /** 生成若干 chunk（走生产入口 getChunkCells，触发 SAMPLE/EXTRACT/HYDRO 插桩）。 */
     private static void runChunks(long seed, int chunks) {
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain gt = new GeoGenesisTerrain(gen);
         int side = (int) Math.ceil(Math.sqrt(chunks));

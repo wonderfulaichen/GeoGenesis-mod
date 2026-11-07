@@ -43,7 +43,7 @@ public final class SharedFlowTerrainExport {
         try(var cfg=CommentedFileConfig.of(config,TomlFormat.instance())) {
             cfg.load();GeoGenesisConfig.SPEC.setConfig(cfg);
             TerrainParams params=GeoGenesisConfig.INSTANCE.buildParams();
-            var gen=new CellGenerator(params,params.minY(),params.maxY());gen.seed(seed);return gen;
+            var gen=new CellGenerator(params,params.minY(),params.maxY(), true);gen.seed(seed);return gen;
         }
     }
     private static void export(WindowOutlets.Terrain terrain,String name,int x0,int z0,int size,int step,

@@ -21,7 +21,7 @@ public final class WaterfallFocusProbe {
         double hs = 2.0;
 
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY(), true);
         generator.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(generator);
         terrain.seed(seed);

@@ -10,7 +10,7 @@ public final class MountainProfileProbe {
         TerrainParams p = TerrainParams.defaults();
         long seed = 12345L;
 
-        CellGenerator gen = new CellGenerator(p, -64, 320);
+        CellGenerator gen = new CellGenerator(p, -64, 320, true);
         gen.seed(seed);
 
         // 1. 先扫描小区域找 MOUNTAINS 主导的 cell

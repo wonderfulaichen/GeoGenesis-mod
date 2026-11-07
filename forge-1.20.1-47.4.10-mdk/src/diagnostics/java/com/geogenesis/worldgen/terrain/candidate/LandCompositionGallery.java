@@ -1,14 +1,14 @@
 package com.geogenesis.worldgen.terrain.candidate;
 
+import com.geogenesis.worldgen.terrain.CellGenerator;
+
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
 import com.electronwill.nightconfig.toml.TomlFormat;
 import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.worldgen.terrain.ContinentField;
 import com.geogenesis.worldgen.terrain.HeightCurve;
-import com.geogenesis.worldgen.terrain.TerrainCharacterField;
 import com.geogenesis.worldgen.terrain.TerrainClass;
 import com.geogenesis.worldgen.terrain.TerrainParams;
-import com.geogenesis.worldgen.terrain.TypeLandShape;
 
 import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
@@ -60,13 +60,14 @@ public final class LandCompositionGallery {
         TerrainParams params = GeoGenesisConfig.INSTANCE.buildParams();
         HeightCurve curve = new HeightCurve(params, -64, 320);
 
-        TypeLandShape production = new TypeLandShape(params);
-        production.seed(SEED);
+        // ★ 2026-11-07：TypeLandShape / TerrainCharacterField 随 legacy 链删除。
+        //   compose-production 臂改走 morph 生产路径（CellGenerator.sampleWu），
+        //   语义仍是"现行生产的 eLand 落成 Y"，与其余候选臂的对照关系不变。
+        CellGenerator productionGen = new CellGenerator(params, -64, 320, true);
+        productionGen.seed(SEED);
 
         ContinentField continent = new ContinentField(params);
         continent.seed(SEED);
-        TerrainCharacterField character = new TerrainCharacterField(continent, params.continentBias());
-        character.seed(SEED);
 
         // 复刻臂：参考的组装方式（区域划分 + 公共边界过渡），不是加权混合。
         RegionCompositionCandidate regionRef = new RegionCompositionCandidate();
@@ -79,12 +80,8 @@ public final class LandCompositionGallery {
         double originZ = cz - (size / 2) * (double) step;
 
         arm("compose-production", out, size, step, cx, cz, curve,
-                (x, z) -> {
-                    TerrainCharacterField.BlendResult b = production.sampleBlend(x, z);
-                    double c = production.sample(b, x, z);
-                    return curve.heightFromE(normalize(c));
-                },
-                (x, z) -> production.sampleBlend(x, z).dominantType);
+                (x, z) -> productionGen.sample(x, z).height,
+                (x, z) -> productionGen.sample(x, z).terrainType);
 
         arm("compose-region-ref", out, size, step, cx, cz, curve,
                 (x, z) -> curve.heightFromE(regionRef.e(x, z)),

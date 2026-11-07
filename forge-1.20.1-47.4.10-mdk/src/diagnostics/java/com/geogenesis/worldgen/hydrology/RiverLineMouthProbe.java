@@ -14,7 +14,7 @@ public final class RiverLineMouthProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         int radius = args.length > 1 ? Integer.parseInt(args[1]) : 2;
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator terrain = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         terrain.seed(seed);
         RiverLineNetwork network = new RiverLineNetwork(terrain::terrainEQuick,
                 (x, z) -> terrain.sample(x, z).height, terrain.heightCurve(), seed,

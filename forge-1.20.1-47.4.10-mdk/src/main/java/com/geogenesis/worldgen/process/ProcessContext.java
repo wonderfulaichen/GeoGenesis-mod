@@ -116,7 +116,7 @@ public final class ProcessContext {
         if (definition.mode() == Mode.OFF) return eB;
         double e = eB + delta;
         if (e <= 0) return Math.max(-1, e);
-        double hi = definition.terrain().splineConfig().maxLandHi();
+        double hi = com.geogenesis.worldgen.terrain.TerrainParams.MAX_LAND_HI_E;
         double start = hi * .97;
         if (e <= start) return e;
         double span = hi * .98 - start;

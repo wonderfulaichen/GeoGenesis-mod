@@ -203,7 +203,7 @@ public final class DeformVisibilityProbe {
 
         DeformVisibilityProbe probe = new DeformVisibilityProbe(seed);
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
         TectonicField tf = new TectonicField(seed);

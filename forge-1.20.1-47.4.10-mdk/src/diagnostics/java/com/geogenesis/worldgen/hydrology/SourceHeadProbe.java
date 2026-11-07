@@ -24,7 +24,7 @@ public final class SourceHeadProbe {
         double hs = args.length > 1 ? Double.parseDouble(args[1]) : 2.0;
         double R = args.length > 2 ? Double.parseDouble(args[2]) : 60.0;   // 判定半径(wu)
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
 

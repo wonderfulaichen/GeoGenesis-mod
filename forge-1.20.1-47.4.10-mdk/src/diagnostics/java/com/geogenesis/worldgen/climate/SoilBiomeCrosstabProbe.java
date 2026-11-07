@@ -86,7 +86,7 @@ public final class SoilBiomeCrosstabProbe {
                 : "不可用（降级为纯逻辑验证；群系改写率跳过）");
 
         TerrainParams tp = TerrainParams.defaults();
-        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        CellGenerator gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
 

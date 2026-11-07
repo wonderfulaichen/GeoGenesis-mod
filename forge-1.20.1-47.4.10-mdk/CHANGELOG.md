@@ -936,6 +936,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.0.2] - 2026-11-08
+
+> **Legacy 链彻底删除** — 地形产出**逐位不变**，但配置面大幅收缩。旧存档不保证兼容。
+
+### 概述
+
+本版只做**删除**，不改任何地形算法。目标是消除"改了没反应"的假旋钮：
+审计发现 166 个配置键里有 70 个只对已废弃的 legacy 地形链生效，
+对当前 morph 链零影响。把这些键连同它们背后的整条代码链一并移除。
+
+### 删除 / Removed
+
+- **legacy 地形采样链（6 个生产类）**：`TypeLandShape` / `TypeNoiseProvider` /
+  `CoastlineField` / `SeaBedDetail` / `TerrainCharacterField` / `TypeGenerators`。
+  `CellGenerator.sampleCore()`（164 行 legacy 采样体）随之删除。
+- **整条样条配置链（4 个类）**：`UnifiedSpline` / `SplineConfig` /
+  `OceanSplineConfig` / `MidSplineConfig`。其唯一真实消费者是
+  `SplineConfig.maxLandHi()`，已拍成常量 `TerrainParams.MAX_LAND_HI_E = 0.95`
+  （取值与删除前相同；实测该值在默认世界下不触发任何压缩）。
+- **配置键 166 → 70**，`Domain.LEGACY` 现为空域，
+  `runConfigKeyGuardProbe` 实测 `UNREAD=0 / CLIENT_ONLY=0 / CARRIER_ONLY=0`。
+- **面板「地形高度图表」**（`TerrainConfigPanel`）：其陆地样条滑块 100% 依赖被删的键。
+  `地形形态` 页改用目录驱动的通用 `DomainPanel`，保留海洋控制点等活键。
+- **8 个 legacy 诊断探针**：`CellBoundaryProbe` / `DiscontinuityProbe` /
+  `OceanStageProbe` / `TypeAxisProbe` / `TypeDistributionProbe` /
+  `TerrainShapeProbe` / `TerrainStripeProbe` / `LandCompositionGallery`，
+  及 `build.gradle` 中对应的 6 个 task。
+- **3 个带 `main` 的类混在 `src/main` 里**：`TerrainDiag` / `TerrainDiagnostic` / `BenchTest`。
+- **两个假键**：`elevHigh` / `reliefHigh`（`src/main` 内唯一读者是上述诊断类）。
+
+### 保留 / Kept
+
+- `LandCompositionGallery` 的 morph 候选构建器、`TerrainStripePngProbe` 的构造分量诊断、
+  `PlateauProfileProbe` 的类型位置统计 —— 这三个仍服务于 morph 链，已改为走生产接口。
+- 海洋样条键（`deepOceanLoc` / `shelfLoc` / `oceanFadeStart` …）——
+  `HeightCurve` 真实消费，属活键。
+
+### 验证 / Verified
+
+- **产出逐位不变**：改动前后（含删除中间态）三次 `runDefaultOutputFingerprintProbe --compare`
+  全部 PASS。
+- **门禁全绿**：`runWorldgenGate` ALL PASS（`runCenterlineCrossSectionProbe` 为既存红，
+  已在干净 worktree 上复现确认与本版无关）。
+- **水文确定性**：`runHydrologyDeterminismProbe` ALL PASS。
+- **配置面**：`runConfigKeyGuardProbe` PASS（70 键全部 LIVE）、
+  `runConfigPanelCoverageProbe` PASS、`runPresetEffectivenessProbe` PASS（5 预设 DISTINCT）。
+- 三个源集（main / diagnostics / acceptance）全部编译通过。
+
+### 兼容性 / Breaking
+
+- 旧 `geogenesis-common.toml` 中已删除的键会被 Forge **静默忽略**；
+  `TerrainParams` 由 `RecordSerializer` 按组件名读写 NBT，旧档残留 tag 静默丢弃。
+  用户已确认无 legacy 存档（2026-11-07），故未提供迁移。
+
+---
+
 ## [0.0.1] - 2026-09-10
 
 > **Early Preview** — 首个可玩预览版。世界生成算法与配置格式仍会变更，旧存档不保证兼容。

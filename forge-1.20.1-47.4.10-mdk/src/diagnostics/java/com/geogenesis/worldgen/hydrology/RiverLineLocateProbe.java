@@ -11,7 +11,7 @@ public final class RiverLineLocateProbe {
         long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
         int radius = args.length > 1 ? Integer.parseInt(args[1]) : 32;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator terrain = new CellGenerator(params, params.minY(), params.maxY(), true);
         terrain.seed(seed);
         HydrologyExperimentEngine engine = new HydrologyExperimentEngine(terrain, seed);
         int found = 0;

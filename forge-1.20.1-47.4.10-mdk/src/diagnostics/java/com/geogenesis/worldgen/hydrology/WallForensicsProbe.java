@@ -26,7 +26,7 @@ public final class WallForensicsProbe {
         long seed = 9139912035078620160L;
         double hs = 2.0;
         TerrainParams params = TerrainParams.defaults();
-        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY());
+        CellGenerator generator = new CellGenerator(params, params.minY(), params.maxY(), true);
         generator.seed(seed);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(generator);
         terrain.seed(seed);

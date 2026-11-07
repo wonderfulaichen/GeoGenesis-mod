@@ -197,7 +197,7 @@ public final class WidthContinuityProbe {
         Files.createDirectories(out);
         seed = Long.getLong("geogenesis.widthSeed", DEF_SEED);
         TerrainParams tp = loadConfig();
-        gen = new CellGenerator(tp, tp.minY(), tp.maxY());
+        gen = new CellGenerator(tp, tp.minY(), tp.maxY(), true);
         gen.seed(seed);
         prov = new ModelHydrologyProvider(gen, seed);
         REGION = staticInt(ModelHydrologyProvider.class, "REGION");

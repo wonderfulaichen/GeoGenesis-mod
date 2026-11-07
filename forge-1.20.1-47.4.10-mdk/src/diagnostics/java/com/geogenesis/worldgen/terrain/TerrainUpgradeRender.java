@@ -56,7 +56,7 @@ final class TerrainUpgradeRender {
         TerrainUpgradeProbe.ConfigInput cfg = TerrainUpgradeProbe.loadConfig(out, opts);
         Spec spec = Spec.from(opts, cfg);
         CellGenerator gen = new CellGenerator(cfg.params(), TerrainUpgradeProbe.WORLD_MIN_Y,
-                TerrainUpgradeProbe.WORLD_MAX_Y);
+                TerrainUpgradeProbe.WORLD_MAX_Y, true);
         gen.seed(spec.seed());
 
         long t0 = System.nanoTime();
