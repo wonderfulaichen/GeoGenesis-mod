@@ -9,8 +9,21 @@ package com.geogenesis.worldgen.terrain;
  * - 海床细节：seabedDetail
  * - 海洋深度缩放：oceanDepthFactor
  * - 海陆占比：continentBias
- * - 陆地省权重：provinceScale、四省软权重
- * - 地形过程形态：平原/丘陵/山脉/高原/盆地参数
+ * - 陆地形态：beltReliefAmp（造山带起伏）、basinBase（盆地基底）
+ *
+ * <p><b>2026-11-07 删键</b>：省系统与旧省形态 / 省场形态曲线的 32 个组件已移除
+ * （provinceScale、craton|belt|plateau|basinWeight、plainBase/plainRough/hillsLow/hillsHigh、
+ * beltRidgePower/beltFoothill/beltPeak、plateauBase/plateauTop/plateauSteps/plateauStepStrength、
+ * cratonReliefAmp/plateauReliefAmp/basinReliefAmp、beltSharpness/beltWarpAmp/provMixSharpness、
+ * mountainMaskScale/microDetailScale/microDetailAmp、continentProvinceWarp、
+ * coastTerrainInfluence、archipelagoBand/Density/Scale/Height）。
+ * 它们在生产路径上零读取，删除后地形产出逐位不变（见 build/configkey-cleanup-20261107/）。</p>
+ *
+ * <p><b>存档兼容</b>：本 record 由 {@link RecordSerializer} 按 <b>组件名</b> 读写 NBT
+ * （写：每个组件一个同名 tag；读：按名取，缺失键返回类型默认零值）。因此
+ * ① 新存档只写现存组件；② 旧存档里残留的被删组件 tag 会被<b>静默忽略</b>；
+ * ③ 旧存档缺少现存组件时读出 0.0 —— 本项目当前无 legacy 存档（用户 2026-11-07 确认
+ * "没有 legacy 存档，按全新架构来"），故无迁移动作；若将来需要读旧档，必须补默认值逻辑。</p>
  */
 public record TerrainParams(
     // ===== 大陆场 =====
@@ -28,8 +41,6 @@ public record TerrainParams(
     double continentThreshold,
     /** 海陆占比偏置（正=更多海、负=更多陆），默认 0.31（RMS 归一化 FBM 使 c 集中近 0，故偏置远低于旧单 simplex 的 0.82；经 TerrainAreaProbe 用真实 CellGenerator.sample() 管线标定≈35% 陆地/65% 海洋；旧简化公式 c+eFromC(c-bias) 标定出的 0.64 因未计入两阶段 blend+eLand+seabed 而偏置过大） */
     double continentBias,
-    /** 大陆场 warp 省噪声坐标幅度（块）。用大陆性 c 偏移省噪声采样坐标，使每大陆获得独特且连贯的地质组合（确定性、无随机），默认 2000.0 */
-    double continentProvinceWarp,
 
     // ===== 海洋样条控制点（offset.json 式 cubic Hermite） =====
     // c-space 位置（c∈[-1,1]：深海→大陆架→浅海→海岸）
@@ -77,81 +88,14 @@ public record TerrainParams(
     /** 海洋深度缩放因子（e 单位乘数），>1=更深(海洋面积扩大)，<1=更浅(陆地扩大)，默认 1.0 */
     double oceanDepthFactor,
 
-    // ===== 陆地省权重 =====
-    /** 省场噪声尺度（块），默认 2000 */
-    double provinceScale,
-    /** softmax 克拉通权重，默认 1.0 */
-    double cratonWeight,
-    /** softmax 造山带权重，默认 1.0 */
-    double beltWeight,
-    /** softmax 高原权重，默认 1.0 */
-    double plateauWeight,
-    /** softmax 盆地权重，默认 0.8 */
-    double basinWeight,
-
-    // ===== 陆地过程形态 =====
-    /** 平原基底高度 eLand，默认 0.01 */
-    double plainBase,
-    /** 平原粗糙度，默认 0.04 */
-    double plainRough,
-    /** 丘陵低段 eLand，默认 0.10 */
-    double hillsLow,
-    /** 丘陵高段 eLand，默认 0.25 */
-    double hillsHigh,
-    /** 山脉脊线强度，默认 1.5。<p>
-     *  <b>已废弃</b>：Ridge 算子已被否决（山脊由 Hydraulic 河流切割产生，阶段 2）。
-     *  引擎不再读取此参数（LandShape 改用 FBM 中频滚动）。保留占位供旧 config/mixer 兼容，
-     *  阶段 2 Hydraulic 接入后可安全删除。 */
-    double beltRidgePower,
-    /** 山麓过渡宽度 eLand，默认 0.15 */
-    double beltFoothill,
-    /** 山峰高度 eLand，默认 0.95 */
-    double beltPeak,
-    /** 高原基底 eLand，默认 0.55 */
-    double plateauBase,
-    /** 高原顶部 eLand，默认 0.72 */
-    double plateauTop,
-    /** 高原阶梯数，默认 4。
-     *  <b>已废弃</b>：Terrace 算子已否决（环状台阶伪影），引擎不再读取。
-     *  保留占位供旧 config 兼容，阶段 2 Hydraulic 接入后可安全删除。
-     *
-     *  <p>★ 2026-09-12（地质 Phase T3）重新尝试接线 Terrace 以实现"真平顶"，
-     *  <b>确认该否决结论成立</b>：空间量化会把噪声的<b>等值线</b>（闭合曲线）变成台阶
-     *  → 产生<b>同心环梯田</b>伪影。最终改用<b>值域幂压缩</b> {@code v^0.55}
-     *  （见 {@code TypeNoiseProvider.computePlateau}），实测台顶梯度为台缘的 <b>0.23×</b>。
-     *  即：本参数<b>不应复活</b>，此结论有实测支撑。</p> */
-    int plateauSteps,
-    /** 高原阶梯强度，默认 0.7。
-     *  <b>已废弃</b>：同上（T3 已二次确认）。 */
-    double plateauStepStrength,
-    /** 盆地基底 eLand，默认 0.02 */
+    // ===== 盆地基底（legacy 地形合成；morph-base-p1 不读） =====
+    /** 盆地基准（默认 0.02）—— 碗形盆底的下限，只被 TypeNoiseProvider.computeBasin 读取。 */
     double basinBase,
 
-    // ===== 地形起伏振幅（每省固有属性，侵蚀前基础地形的局部起伏场） =====
-    /** 克拉通起伏振幅（e 单位），默认 0.10（保 HILLS 分类；密集感靠频率放大消除，非砍振幅） */
-    double cratonReliefAmp,
-    /** 造山带起伏振幅，默认 0.22（保 MOUNTAINS 分类；原 0.30，适度下调，指纹感靠 LandShape 频率放大解决） */
+    // ===== 地形起伏振幅 =====
+    /** 造山带起伏振幅，默认 0.22（保 MOUNTAINS 分类；原 0.30，适度下调，指纹感靠 LandShape 频率放大解决）。
+     *  只被 legacy TypeLandShape/TypeNoiseProvider 读取；morph-base-p1 走 MorphLandField。 */
     double beltReliefAmp,
-    /** 高原起伏振幅，默认 0.03（平顶台地，低起伏） */
-    double plateauReliefAmp,
-    /** 盆地起伏振幅，默认 0.05 */
-    double basinReliefAmp,
-
-    // ===== 省场形态曲线（每省独立 shapeᵢ(rᵢ)，零中心噪声 rᵢ∈[-1,1]；shapeᵢ(0)=0 谷底=噪声真零 rᵢ=0，shapeᵢ(1)=1 峰顶=|rᵢ|=1；禁用零交叉脊） =====
-    /** 造山带尖钝度（pow exponent on zero-centered noise |r|^k），默认 1.3（>1 尖峰、=1 圆顶、<1 宽缓）。用于 belt pow(|r|,beltSharpness) + warp。 */
-    double beltSharpness,
-    /** 造山带域扭曲幅度（世界坐标空间位移，块），默认 120.0。warp 产生蜿蜒山岭，禁用零交叉脊函数。 */
-    double beltWarpAmp,
-    /** 省混合锐化指数（softmax 权重幂次），默认 2.5。>1 让主导省占更大权重、完整表达其 |r|=1 峰 / r=0 谷形态，省边界仍平滑过渡。 */
-    double provMixSharpness,
-
-    // ===== 分层叠加新增（对标 TerraForged） =====
-    /** 山脉遮罩噪声尺度（块），maskNoise 频率 = 1/mountainMaskScale，默认 2200。低频团块限定山脉区域（带状/团块分布，真实感关键）。 */
-    double mountainMaskScale,
-    /** 表面纹理噪声尺度（块），microDetail 频率 = 1/microDetailScale，默认 450。大周期极小振幅，表面舒展非密纹。 */
-    double microDetailScale,
-    /** 表面纹理振幅（e 单位），默认 0.025。微小值（<0.03），纹理级而非地形级。 */
-    double microDetailAmp,
 
     // ===== 分类阈值 + 雪线 =====
     /** 高海拔阈值（elevation），默认 0.25。不再用于 Voronoi 类型分配（气候色板替代），保留占位。 */
@@ -201,16 +145,8 @@ public record TerrainParams(
     double coastlineWarpLacunarity,
     /** FBM 振幅衰减系数（persistence），每倍频振幅×该值，默认 0.5 */
     double coastlineWarpPersistence,
-    /** 地形类型调制强度（c 空间单位）。山地权重高→推岸出海成岬角，平原/盆地→拉岸内凹成海湾，默认 0.08 */
-    double coastTerrainInfluence,
-    /** 离岸群岛带宽度（c 空间单位，从 coastLoc 向海侧延伸），默认 0.10 */
-    double archipelagoBand,
-    /** 离岸群岛密度阈值（噪声值 0-1），超过此阈值生成岛屿，默认 0.30 */
-    double archipelagoDensity,
-    /** 离岸群岛噪声尺度（块），默认 120 */
-    double archipelagoScale,
-    /** 离岸群岛最大高度（e 单位），默认 0.035 */
-    double archipelagoHeight,
+    // coastTerrainInfluence / archipelago{Band,Density,Scale,Height} 已于 2026-11-07 随配置键删除
+    // （CoastlineField 不读它们，只有预览面板展示 ⇒ 假旋钮）。
 
     // ===== 气候/纬度 xz 缩放（注入 CellGenerator 气候模型）=====
     /** 纬度缩放（温度随 z 变化的周期，块）。越大→温度带越宽（纬度变化越慢），默认 6000 */
@@ -231,9 +167,9 @@ public record TerrainParams(
     /** 生产级默认值（校准于非对称映射 e=0 → Y=63） */
     public static TerrainParams defaults() {
         return new TerrainParams(
-            // continent（continentProvinceWarp 默认 0=禁用，域扭曲实验结论见 CellGenerator）
+            // continent（continentProvinceWarp 已于 2026-11-07 删除）
             // 大陆 FBM：scale=4000, warp=0（纯 FBM，去域扭曲避免平行条带）, octaves=6（严格对齐参考项目）, lac=2.0, per=0.6；bias=0.31（真实 CellGenerator.sample() 管线标定≈35% 陆地/65% 海洋；旧简化公式标定的 0.64 实际只产出 ~13% 陆地）
-            4000.0, 0.0, 6, 2.0, 0.6, 0.0, 0.31, 0.0,
+            4000.0, 0.0, 6, 2.0, 0.6, 0.0, 0.31,
             // ocean spline locations (c∈[-1,1]; 负=深海、0=海岸锚点)
             -0.80, -0.50, -0.16, -0.04,
             // ocean spline values（deepOcean depth 从 -0.85 减至 -0.35，适配 MC 游戏性不宜太深）
@@ -261,20 +197,10 @@ public record TerrainParams(
             0.03,
             // oceanDepthFactor（record 第 37 字段）
             1.0,
-            // province
-            4000.0, 1.0, 1.0, 1.0, 0.8,
-            // land（校准于新映射：e→[seaLevel,maxY] 线性）
-            0.01, 0.03, 0.10, 0.25,   // plainBase,plainRough,hillsLow,hillsHigh
-            1.5, 0.15, 0.95,           // ridgePower,foothill,peak
-            0.55, 0.72, 4, 0.7,        // platBase,platTop,steps,stepStrength
-            0.02,                       // basinBase
-            // relief amplitudes（每省固有起伏，侵蚀前基础地形）
-            // 振幅只适度下调（保 MOUNTAINS/HILLS 分类需 relief≥0.1）；"噪声太小"主要靠 LandShape 频率放大周期消除
-            0.10, 0.35, 0.03, 0.05,    // cratonReliefAmp,beltReliefAmp,plateauReliefAmp,basinReliefAmp
-            // province shape curves（每省独立 shapeᵢ(rᵢ)：零中心 r，谷在 r=0、峰在 |r|=1）
-            1.5, 120.0, 2.5,            // beltSharpness,beltWarpAmp,provMixSharpness
-            // layered overlay params（分层叠加新增，对标 TerraForged）
-            2200.0, 450.0, 0.025,       // mountainMaskScale,microDetailScale,microDetailAmp
+            // basinBase（唯一保留的旧「Land Process Parameters」项）
+            0.02,
+            // relief amplitude（仅 beltReliefAmp 保留；craton/plateau/basin 振幅键 2026-11-07 删除）
+            0.35,
             // classification thresholds + snow latitude coupling
             0.25, 0.04, 0.25, 0.15,  // elevHigh↑0.25,reliefHigh↑0.04,snowLatitudeInfluence,snowHumidityInfluence（peakE 已移除 2026-08-05）
 
@@ -289,9 +215,6 @@ public record TerrainParams(
             // 旧 warp 位移仅 ~57 块@300 波长 → 大俯视图不可见。1200 块基频 → 半岛/海湾级弯曲
             // （位移 ~120 块），octave 覆盖 600/300/150/75/37 多尺度锯齿。
             0.15, 1200.0, 6, 2.0, 0.6,  // coastlineWarpAmp, coastlineWarpScale, octaves, lacunarity, persistence
-            0.08,               // coastTerrainInfluence
-            0.10, 0.30, 120.0,  // archipelagoBand, archipelagoDensity, archipelagoScale
-            0.035,              // archipelagoHeight
 
             // climate / latitude xz scales (injected into CellGenerator)
             6000.0, 1500.0, 800.0,   // latitudeScale, tempWarpScale, humidityScale
@@ -335,10 +258,9 @@ public record TerrainParams(
         return new double[]{eMin, eMax};
     }
 
-    /** softmax 省权重 */
-    public double[] provinceSoftmaxWeights() {
-        return new double[]{cratonWeight, beltWeight, plateauWeight, basinWeight};
-    }
+    // `provinceSoftmaxWeights()` 已删除（2026-11-07）：它是省系统（provinceScale /
+    // craton|belt|plateau|basinWeight）的最后一个消费者，而那批键在生产路径零读取。
+    // 该方法是全仓零调用的便捷访问器，随键一并删除，不留恒常占位实现。
 
     // ===== Phase 1：统一样条构建方法 =====
 

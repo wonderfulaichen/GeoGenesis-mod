@@ -124,11 +124,8 @@ public class ParameterConfigPanel extends ConfigPanel {
         // 海岸线多样化
         addSpec("海岸线位移", "海岸线 warp 振幅（c 空间单位）。海岸线在 c 上的位移幅度，越大海岸线越蜿蜒。默认 0.15。", c.coastlineWarpAmp, 0.0, 0.3);
         addSpec("位移尺度", "海岸线 warp 基频世界坐标尺度（块）。越大变化越平缓。默认 1200。", c.coastlineWarpScale, 50.0, 2000.0);
-        addSpec("地形调制", "地形类型调制强度（c 空间单位）。山地→岬角/悬崖，平原/盆地→海湾。默认 0.08。", c.coastTerrainInfluence, 0.0, 0.3);
-        addSpec("群岛带宽", "离岸群岛带宽度（c 空间单位，从 coastLoc 向海侧延伸）。越大群岛范围越宽。默认 0.10。", c.archipelagoBand, 0.0, 0.3);
-        addSpec("群岛密度", "离岸群岛密度阈值（0-1）。超过此阈值才生成岛屿，越低→岛屿越多。默认 0.30。", c.archipelagoDensity, 0.0, 1.0);
-        addSpec("群岛尺度", "离岸群岛噪声尺度（块）。越大→岛屿团块越大越稀疏。默认 120。", c.archipelagoScale, 30.0, 500.0);
-        addSpec("群岛高度", "离岸群岛最大高度（e 单位）。越低→岛屿越扁平。默认 0.035。", c.archipelagoHeight, 0.0, 0.15);
+        // 2026-11-07：地形调制 / 群岛带宽 / 群岛密度 / 群岛尺度 / 群岛高度 五个滑块已删除 ——
+        //   对应配置键在 CoastlineField 中零读取，是"拖了没有任何效果"的假旋钮。
         // 海岸线 FBM 分形参数
         addIntSpec("Warp倍频", "海岸线 warp 倍频数（octaves）：分形细节尺度层级数。越大海岸线越多尺度（自相似犬牙交错），越小越平滑。默认 5。", c.coastlineWarpOctaves, 1, 8);
         addSpec("Warp频率倍增", "FBM 频率倍增系数（lacunarity）：每倍频频率×该值。默认 2.0。", c.coastlineWarpLacunarity, 1.5, 3.0);

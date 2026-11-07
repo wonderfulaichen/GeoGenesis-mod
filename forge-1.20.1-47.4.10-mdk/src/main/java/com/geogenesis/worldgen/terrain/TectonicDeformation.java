@@ -290,7 +290,8 @@ public final class TectonicDeformation {
         //   <b>嵌套闭合波浪曲线</b> ⇒ 叠加 decay/mask 后在地形上就是用户截图里的
         //   "密集波浪状平行细线"（实测 {@code comp_deform.png} 直接可见同心环）。
         //   这与本项目<b>两次否决 Terrace</b> 的「环状台阶伪影」<b>完全同源</b>
-        //   （证据链见 {@code TerrainParams.plateauSteps} 注释）。
+        //   （证据链原在 {@code TerrainParams.plateauSteps} 注释；该键与组件已于 2026-11-07
+        //     删除，结论保留在 {@code TypeNoiseProvider.computePlateau} 的 javadoc 里）。
         //   （同图里那些<b>笔直多边形边</b>则来自 {@code decay} 的硬截断与 mask 边界。
         //     ★ 2026-09-14：decay 硬截断<b>已移除</b>，该来源不复存在。）
         //

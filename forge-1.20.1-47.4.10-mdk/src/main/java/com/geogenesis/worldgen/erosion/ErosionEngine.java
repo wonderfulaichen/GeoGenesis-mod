@@ -323,6 +323,7 @@ public class ErosionEngine {
         float strE       = (float) Math.max(0.1, str) * (float) erodeMul;
         // 2026-08-01 两套粒子系统：河流粒子（StreamTracer）与液滴侵蚀彻底分离，
         // 液滴回归纯 SH 微刻（erosionRiver* / erosionLocalChargeWeight 配置保留但引擎不再读取）
+        // ★ 2026-11-07：`erosionLocalChargeWeight` 键已随之删除（它自 2026-08-01 起就没被读过）。
         // SH 三件套（2026-08-01）：动量场正反馈 + 多轮迭代 + lrate 场平滑
         float momTransfer = (float) snapshot.momentumTransfer();
         int iterations = snapshot.iterations(); // 2026-08-09: 3→2（与 config 默认一致）

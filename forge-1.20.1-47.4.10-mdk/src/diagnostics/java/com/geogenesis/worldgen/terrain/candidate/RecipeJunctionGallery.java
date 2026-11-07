@@ -68,7 +68,8 @@ import java.util.TreeSet;
  *
  * <p><b>配置门禁</b>：先在<b>一次性副本</b>上跑 {@code GeoGenesisConfig.SPEC.isCorrect}，
  * 不通过就<b>直接失败</b>，绝不把 {@code setConfig} 交给 Forge 的自动校正去"修好"再继续 ——
- * 那会让冻结 TOML 被静默改值（历史教训：{@code erosionLocalChargeWeight} 被 corrected 成默认值），
+ * 那会让冻结 TOML 被静默改值（历史教训：{@code erosionLocalChargeWeight} 被 corrected 成默认值；
+ * 该键已于 2026-11-07 删除，但"静默校正会改出图口径"这个教训仍然成立），
  * 出图口径随之无声变化。</p>
  *
  * <h3>口径声明（必须随图交付）</h3>

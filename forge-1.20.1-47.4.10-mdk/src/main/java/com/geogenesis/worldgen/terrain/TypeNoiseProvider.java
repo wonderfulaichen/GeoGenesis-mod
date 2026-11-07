@@ -30,7 +30,9 @@ public final class TypeNoiseProvider {
      *
      * <p><b>注</b>：同批的 {@code plateauSteps} / {@code plateauStepStrength} <b>未接线</b>——
      * 它们对应的 Terrace 空间量化已被本项目实测否决（环状台阶伪影），
-     * T3 改用值域幂压缩实现平顶（见 {@link #computePlateau}）。</p>
+     * T3 改用值域幂压缩实现平顶（见 {@link #computePlateau}）。
+     * ★ 2026-11-07：这两个配置键<b>已删除</b>（连同 TerrainParams 组件），
+     * 本段注释保留是因为它记录的是「为什么不要复活 Terrace」这条领域结论。</p>
      */
     private final double basinBase;
 
@@ -185,7 +187,8 @@ public final class TypeNoiseProvider {
      * ★ 2026-09-12 地质 Phase T3：<b>高原平顶</b>（值域幂压缩，非空间量化）。
      *
      * <p><b>为何不用 Terrace 阶地化</b>：本项目已实测否决过 Terrace
-     * （见 {@code TerrainParams.plateauSteps} 注释："<i>Terrace 算子已否决（环状台阶伪影）</i>"）。
+     * （原证据见 {@code TerrainParams.plateauSteps} 的注释 "<i>Terrace 算子已否决（环状台阶伪影）</i>"，
+     * 该配置键与组件已于 2026-11-07 删除，结论本身不变）。
      * 原因是空间量化会把噪声的<b>等值线</b>变成台阶，而等值线是闭合曲线
      * → 产生<b>同心环梯田</b>，视觉上极假。本次重新尝试确认该结论成立，故改用值域变换。
      *

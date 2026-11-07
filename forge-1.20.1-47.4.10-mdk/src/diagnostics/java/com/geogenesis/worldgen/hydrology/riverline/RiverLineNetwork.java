@@ -163,7 +163,9 @@ public final class RiverLineNetwork {
     /** 河网微自适应（2026-09-08）：侵蚀 delta 注入选线场（D8 建网引导）。
      * null = 关闭——【默认】：建网覆盖整个 region 网格，全域吃 tile 实测加载
      * 分钟级卡顿（用户 2026-09-08："半天没加载进游戏"），仅 toml 手开实验
-     * （erosionRoutingAdaptive）。落块期横向吸附亦已实测实现过但无效果被回滚
+     * （~~erosionRoutingAdaptive~~ ← <b>该配置键已于 2026-11-07 删除</b>；此路径现在只能由
+     * 调用方直接传非空 {@code routingDelta} 启用，见 HydrologyExperimentEngine）。
+     * 落块期横向吸附亦已实测实现过但无效果被回滚
      * （见下方"河道横向吸附"注释块）。 */
     private final ErosionDeltaSampler routingDelta;
     /** 选线引导增益：delta 已随 erosionStrength 缩放，恒 1.0。 */
@@ -175,8 +177,8 @@ public final class RiverLineNetwork {
     // 根因认知：侵蚀引擎动量反馈沿既有汇流谷强化 → 河线（D8 贴谷）与侵蚀沟
     // 【大面积天然重合】，用户看到的"局部不适应"是 <5% 的尾部段，其沟底在
     // ±3wu 采样窗外（更大窗会越 chunk 边界触发额外 tile 生成，性能红线）。
-    // 真修复仅剩两条贵路径：建网引导（已实现，erosionRoutingAdaptive 手动开）
-    // 或 tile 异步/磁盘缓存架构（长期项）。
+    // 真修复仅剩两条贵路径：建网引导（已实现；配置键 erosionRoutingAdaptive 已删除，
+    // 现在只能由调用方直接传 routingDelta）或 tile 异步/磁盘缓存架构（长期项）。
 
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             HeightCurve curve, long seed) {
@@ -210,7 +212,8 @@ public final class RiverLineNetwork {
         this(eSampler, terrainY, null, 0.0, curve, seed, horizontalScale, params);
     }
 
-    /** 微自适应构造：routingDelta 非空时选线场叠加侵蚀增量（erosionRoutingAdaptive 实验路径）。 */
+    /** 微自适应构造：routingDelta 非空时选线场叠加侵蚀增量
+     *  （原 erosionRoutingAdaptive 实验路径；该配置键已于 2026-11-07 删除）。 */
     public RiverLineNetwork(MidpointDisplacement.ElevationSampler eSampler,
                             TerrainYSampler terrainY,
                             ErosionDeltaSampler routingDelta, double routingGain,
@@ -4011,8 +4014,9 @@ public final class RiverLineNetwork {
      * ——"我都说了要直接显示新版的，不然我怎么测试？"</p>
      * <p>旧链路的那些能力（分叉/瀑布/河口…）<b>是否要搬进新路线、搬哪些，
      * 由实测决定，不预设</b>（用户："旧版的功能你直接放新版可能不合适，需要实测才知道"）。</p>
-     * <p>一键回退：{@code flowSkeletonRouting = false}（或 config
-     * {@code Hydrology.hydrologySkeletonRouting=false}）⇒ 逐位回到旧行为。</p>
+     * <p>一键回退：{@code flowSkeletonRouting = false}（或系统属性
+     * {@code -Dgeogenesis.skeletonRouting=false}）⇒ 逐位回到旧行为。
+     * ⚠ 原 TOML 键 {@code Hydrology.hydrologySkeletonRouting} 已于 2026-11-07 删除。</p>
      */
     // ★★★ 2026-09-23【默认关闭 —— 修“湖泊被改坏”】（用户判据 + git 铁证）★★★
     //   HEAD（2026-09-19 完成的那套湖）里 `buildSkeletonRivers` / `flowSkeletonRouting`
@@ -4106,7 +4110,7 @@ public final class RiverLineNetwork {
      *       输出不得依赖生成顺序/缓存状态）。</li>
      *   <li>{@code erosionDeltaE}（阻塞、确定性）→ 会<b>同步冷生成侵蚀 tile</b>
      *       （实测 400~719 ms/个）⇒ 建网期卡死世界生成（项目里 {@code erosionRoutingAdaptive}
-     *       之所以默认关，正是这个原因）。</li>
+     *       之所以默认关，正是这个原因；该配置键已于 2026-11-07 删除）。</li>
      * </ul>
      * <p>⇒ 默认关闭（路由场 = 侵蚀前地形，逐位确定）；开启需显式承担上述代价之一。
      * 真正的正解是【让侵蚀与水文共用同一张已生成的侵蚀场】（PLAN 的后续工程）。</p>

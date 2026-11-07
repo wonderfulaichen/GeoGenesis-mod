@@ -12,6 +12,14 @@ import java.util.Map;
  *
  * <p>每个预设仅声明需要覆盖的「语义字段」覆盖表，基于 {@link GeoGenesisConfig} 的真实默认值设计，
  * 确保覆盖值落在其合法范围内。应用预设 = resetToDefault() + 写入覆盖表（见 GeoGenesisConfigScreen.applyPreset）。
+ *
+ * <p><b>2026-11-07 删键影响</b>：省系统与起伏振幅键（cratonReliefAmp / plateauReliefAmp /
+ * basinReliefAmp）已删除，预设里原本靠它们区分"崎岖 / 平缓"的口径随之失效；
+ * 现在预设只能用仍在生产路径上的键（continentBias / oceanDepthFactor / beltReliefAmp /
+ * elevHigh / reliefHigh / snowLine）表达风格差异。
+ * ⚠ 这几个键里有几个标注为 LEGACY_ONLY（见 {@code GeoGenesisConfig} 的算法轴注释）——
+ * 也就是说预设对 morph-base-p1 新世界<b>不会</b>产生地形差异。这是本次删键暴露出来的
+ * 真实状态，未在本轮修复（预设有独立议题），此处只如实记录，不伪装成仍有效。
  */
 public final class PresetLibrary {
 
@@ -33,7 +41,7 @@ public final class PresetLibrary {
             new Preset("islands", "群岛世界",
                 "广阔海洋与破碎海岸，陆地低矮、丘陵为主，少有高山。",
                 map(c.continentBias, 0.8, c.oceanDepthFactor, 1.4,
-                    c.cratonReliefAmp, 0.06, c.beltReliefAmp, 0.15,
+                    c.beltReliefAmp, 0.15,
                     c.elevHigh, 0.30, c.reliefHigh, 0.03, c.snowLine, 0.75)),
 
             // 辽阔大陆：低海洋占比、广阔平原、中等山脉
@@ -47,25 +55,21 @@ public final class PresetLibrary {
             new Preset("mountains", "高山峻岭",
                 "连绵高山与深谷，山脉起伏强烈、雪线偏低，平原稀少。",
                 map(c.continentBias, 0.3, c.oceanDepthFactor, 1.1,
-                    c.beltReliefAmp, 0.45, c.cratonReliefAmp, 0.12,
-                    c.plateauReliefAmp, 0.04,
+                    c.beltReliefAmp, 0.45,
                     c.elevHigh, 0.20, c.reliefHigh, 0.06, c.snowLine, 0.60)),
 
             // 温和丘陵：整体低起伏、圆润丘陵、温和气候
             new Preset("hills", "温和丘陵",
                 "整体低起伏、圆润丘陵为主，地形平缓宜居。",
                 map(c.continentBias, 0.3, c.oceanDepthFactor, 1.0,
-                    c.cratonReliefAmp, 0.05, c.beltReliefAmp, 0.12,
-                    c.plateauReliefAmp, 0.02, c.basinReliefAmp, 0.03,
+                    c.beltReliefAmp, 0.12,
                     c.elevHigh, 0.30, c.reliefHigh, 0.03, c.snowLine, 0.75)),
 
             // 原始荒野：极端多样化地形与群系
             new Preset("wilderness", "原始荒野",
                 "极端多样化的地形：高山深谷并存、海岸破碎、气候对比强烈。",
                 map(c.continentBias, 0.5, c.oceanDepthFactor, 1.3,
-                    c.beltReliefAmp, 0.50, c.cratonReliefAmp, 0.15,
-                    c.plateauReliefAmp, 0.05,
-                    c.basinReliefAmp, 0.08,
+                    c.beltReliefAmp, 0.50,
                     c.elevHigh, 0.18, c.reliefHigh, 0.08, c.snowLine, 0.65))
         );
     }

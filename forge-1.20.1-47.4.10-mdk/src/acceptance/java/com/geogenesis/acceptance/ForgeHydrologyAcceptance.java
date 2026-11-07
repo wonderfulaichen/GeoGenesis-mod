@@ -803,6 +803,7 @@ public final class ForgeHydrologyAcceptance {
         lines.add("modelPipelineConfig=" + modelConfigValue());
         lines.add("modelPipelineProperty=" + System.getProperty("geogenesis.modelPipeline"));
         lines.add("modelPipelineEffective=" + modelEffective());
+        lines.add("forgeConfigLoaded=" + configLoaded());
         lines.add("hierarchicalHydrology=" + hierEffective());
         lines.add("hierStrictContract=" + System.getProperty("geogenesis.hierStrictContract", "true"));
         // 2026-10-20 legacy 线移除后骨架是唯一生产线、无开关（ModelHydrologyProvider.SKELETON_TRACE
@@ -811,27 +812,38 @@ public final class ForgeHydrologyAcceptance {
         return lines;
     }
 
+    /**
+     * Forge 配置是否已加载。
+     *
+     * <p>★ 2026-11-07：原先用 {@code hydrologyModelPipelineEnabled} 当探针，但那个键已删除
+     * （2026-10-20 legacy 线退役后它就是 no-op 常量）。改用 {@code riverEnabled}——
+     * 一个仍然注册、且在任何配置加载后都必然可读的键。探测目的只是区分
+     * "Forge 配置已 load" 与 "IllegalStateException：配置未加载"，与被探测键的语义无关。</p>
+     */
     private static boolean configLoaded() {
         try {
-            GeoGenesisConfig.INSTANCE.hydrologyModelPipelineEnabled.get();
+            GeoGenesisConfig.INSTANCE.riverEnabled.get();
             return true;
         } catch (RuntimeException e) {
             return false;
         }
     }
 
+    /**
+     * 生产是否走 model 水文链。
+     *
+     * <p>★ 2026-11-07：恒 {@code true}。2026-10-20 起 model 链是<b>唯一</b>水文实现
+     * （legacy HydrologyBlockCarver 已整体退役；原 {@code hydrologyModelPipelineEnabled}
+     * 开关先后退化为 no-op 常量、再于本轮删除）。保留本方法是为了让
+     * {@code envLines()} 的输出字段与 {@code expectModel} 判据不变。</p>
+     */
     private static boolean modelConfigValue() {
-        try {
-            return GeoGenesisConfig.INSTANCE.hydrologyModelPipelineEnabled.get();
-        } catch (RuntimeException e) {
-            return false;
-        }
+        return true;
     }
 
-    /** 配置优先；仅配置不可读时才看系统属性（与 HydrologyChunkEngine 相同，不是 OR）。 */
+    /** model 链生效值。生产恒 model ⇒ 恒 true（系统属性只为留档，不再能改变结论）。 */
     private static boolean modelEffective() {
-        return configLoaded() ? modelConfigValue()
-                : Boolean.parseBoolean(System.getProperty("geogenesis.modelPipeline"));
+        return true;
     }
 
     private static boolean hierEffective() {

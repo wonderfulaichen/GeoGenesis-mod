@@ -403,6 +403,8 @@ public class PreviewDisplay extends AbstractWidget {
     //  —— 2026-10-05 model 水文链开关 hydrologyModelPipelineEnabled 接入，**不升本版本**：
     //     它已进 GeoGenesisConfig.configFingerprint（经下方 cfg 混入 hash）⇒ 切换开关
     //     磁盘缓存自动失效重采；且默认 false = 产出逐位不变。留痕于此，免后人重复排查。
+    //     ★ 2026-11-07：该键已删除（2026-10-20 起就是 no-op 常量，后已从指纹移除）。
+    //       本条仅作历史留痕，不代表现在还有这个开关。
     // 73 = 2026-10-11 model 模式暂停 legacy 距离驱动的绿洲群系转换，旧 riverDistance 缓存失效。
     //      河湖几何、侵蚀与水位不变；legacy 模式保留绿洲。
     // 74 = 2026-10-11 预览必须 terrain.seed(seed)，修正只播地形却用水文seed=0的错误缓存。

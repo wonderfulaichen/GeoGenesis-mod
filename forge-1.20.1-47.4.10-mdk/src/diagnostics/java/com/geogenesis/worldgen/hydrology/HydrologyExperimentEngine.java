@@ -41,23 +41,16 @@ public final class HydrologyExperimentEngine {
         //   建网覆盖【整个 region 的 D8 网格】（每格一次 routingE）→ 首次建 region
         //   会同步冷生成全域侵蚀 tile（数百个 × 100~400ms = 分钟级）——落块只需要
         //   玩家附近几个 tile，建网却是全域，"成本前置"根本不成立。因此默认必须
-        //   关闭（routingDelta=null → 选线路径与旧代码逐位一致、零 tile 依赖），
-        //   仅当 erosionRoutingAdaptive=true 时启用（toml 里手写，注释已警告代价）。
+        //   关闭（routingDelta=null → 选线路径与旧代码逐位一致、零 tile 依赖）。
+        //   ★ 2026-11-07：`erosionRoutingAdaptive` 配置键已删除（生产链不读它），
+        //     本实验路径随之固定为「关闭」——即选线永远基于无侵蚀地形。
+        //     如需重新实验，请用系统属性或临时改这一行，不要再新开配置键。
         //
         //   ★ 落块期"河道横向吸附"替代路径已实现并实测【无效回滚】（2026-09-08，
         //   RiverLineNetwork 注释块有完整数据）：河线与侵蚀沟大面积天然重合，
         //   触发率 2~5%、偏移 0.09wu 不可见——无收益，代码已删。
         RiverLineNetwork.ErosionDeltaSampler deltaSampler = null;
         double gain = 0.0;
-        try {
-            if (GeoGenesisConfig.INSTANCE.erosionEnabled.get()
-                    && GeoGenesisConfig.INSTANCE.erosionRoutingAdaptive.get()) {
-                deltaSampler = terrain::erosionDeltaE;
-                gain = 1.0; // delta 已随 erosionStrength 缩放，线性跟随即可
-            }
-        } catch (IllegalStateException e) {
-            // 预览/探针进程：Forge 配置未加载 → 微自适应关闭（保持零 tile 依赖）
-        }
         // ⚠【2026-10 试验：河网基准对齐侵蚀后地形 —— 已撤销，理由见下】
         //
         //   试验内容：把选线场与地形基准都改为 terrainEQuick + peekErosionDeltaE
@@ -92,9 +85,11 @@ public final class HydrologyExperimentEngine {
         this.network.setPrecipSampler(terrain::precipitationAt,
                 com.geogenesis.worldgen.hydrology.flowaccum.FlowField.PrecipWeights.defaults());
         // ★ 2026-09-18 水文 M2-C：水量平衡（沿程衰减 = 蒸发/入渗）—— 同样只在【生产接线处】注入。
-        //   默认关闭（hydrologyDecayEnabled=false）⇒ decayClimate 为 null
-        //   ⇒ RiverLineNetwork 走 9 参构造器（decay=0）⇒ 与旧行为【逐位一致】。
-        //   开启后：干旱区蒸发强 ⇒ 内流河/时令河；湿润区 decay=0 ⇒ 河流穿流到海。
+        //   默认关闭 ⇒ decayClimate 为 null ⇒ RiverLineNetwork 走 9 参构造器（decay=0）
+        //   ⇒ 与旧行为【逐位一致】。
+        //   ★ 2026-11-07：`hydrologyDecayEnabled/Max/Ref/Exponent` 四个配置键已删除
+        //     （生产 model 链不读它们），本实验路径随之固定为「不注入衰减」。
+        //     DecayClimate 实现仍在 FlowField —— 若要再实验，请直接构造它，不要新开配置键。
         // ★ 2026-09-22【河-湖水位同口径】注入【侵蚀后地形】采样器：
         //   雕刻侧湖面 = min(无侵蚀 spill, 侵蚀后坎高)；河尾必须用同一水位才能对接
         //   （用户实测："河流根本没有和湖泊高度对接上"）。
@@ -118,46 +113,21 @@ public final class HydrologyExperimentEngine {
         } catch (RuntimeException ignore) {
             // 无侵蚀模块 ⇒ 保持 null（等同侵蚀前地形）
         }
+        // ★ 2026-09-21【流体骨架路线开关】。
+        //   ★ 2026-11-07：`hydrologySkeletonRouting` 配置键已删除（它是本实验路径专用的
+        //     假开关，生产 model 链有自己的骨架路线）。此处改为只认系统属性，
+        //     使探针仍能复现旧实验路径：
+        //       用法：-Dgeogenesis.skeletonRouting=true
+        //     未设属性时保持 RiverLineNetwork.flowSkeletonRouting 的静态默认值（false）。
         try {
-            GeoGenesisConfig cfg = GeoGenesisConfig.INSTANCE;
-            // ★ 2026-09-21【流体骨架路线开关】config 缺省 false ⇒ 零行为变更。
-            //   打开即让河道折线走块分辨率流体模拟（物理正确路线）。
-            try {
-                boolean v = cfg.hydrologySkeletonRouting.get();
-                RiverLineNetwork.flowSkeletonRouting = v;
-                // ★ 2026-09-21【必须打日志】用户判据："我在游戏里面看到的还是旧版？"
-                //   两条可能：① 磁盘 config 里仍是旧值 false（本次改动前生成的配置文件
-                //   会永久保留旧值，默认值改了也没用）；② 骨架在建河里静默失败回退。
-                //   这条日志直接给出【实际生效值】，把两种情况分开。
-                LOGGER.info("[RIVER] skeletonRouting config={} => effective={}", v,
-                        RiverLineNetwork.flowSkeletonRouting);
-            } catch (RuntimeException e) {
-                LOGGER.info("[RIVER] skeletonRouting config MISSING (old config file) => keep default={}",
-                        RiverLineNetwork.flowSkeletonRouting);
+            String v = System.getProperty("geogenesis.skeletonRouting");
+            if (v != null) {
+                RiverLineNetwork.flowSkeletonRouting = Boolean.parseBoolean(v);
+                LOGGER.info("[RIVER] skeletonRouting SYSTEM-PROPERTY={} => effective={}",
+                        v, RiverLineNetwork.flowSkeletonRouting);
             }
-            if (cfg.hydrologyDecayEnabled.get()) {
-                this.network.setDecayClimate(
-                        new com.geogenesis.worldgen.hydrology.flowaccum.FlowField.DecayClimate(
-                                cfg.hydrologyDecayMax.get(),
-                                cfg.hydrologyDecayRef.get(),
-                                cfg.hydrologyDecayExponent.get()));
-            }
-        } catch (IllegalStateException e) {
-            // 预览/探针进程：Forge 配置未加载 ⇒ 衰减关闭（与旧行为逐位一致）。
-            // ★ 2026-10【诊断一致性】骨架开关原本只从 Forge 配置读，探针恒为 false
-            //   ⇒ 探针分析的河与游戏实际看到的河不是同一条（游戏 config=true）。
-            //   此处补系统属性覆盖，使探针能复现游戏路径；生产仍以 Forge 配置为准。
-            //   用法：-Dgeogenesis.skeletonRouting=true
-            try {
-                String v = System.getProperty("geogenesis.skeletonRouting");
-                if (v != null) {
-                    RiverLineNetwork.flowSkeletonRouting = Boolean.parseBoolean(v);
-                    LOGGER.info("[RIVER] skeletonRouting SYSTEM-PROPERTY={} => effective={}",
-                            v, RiverLineNetwork.flowSkeletonRouting);
-                }
-            } catch (RuntimeException ignore) {
-                // 保持默认
-            }
+        } catch (RuntimeException ignore) {
+            // 保持默认
         }
     }
 

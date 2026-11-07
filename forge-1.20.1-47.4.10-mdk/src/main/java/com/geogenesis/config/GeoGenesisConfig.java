@@ -11,11 +11,41 @@ import java.util.Map;
 /**
  * GeoGenesis Forge COMMON 配置。
  *
- * 包含所有地形参数（大陆场、海洋样条、海岸、海床、省权重、过程形态）。
+ * 包含所有地形参数（大陆场、海洋样条、海岸、海床、地形形态、分类/气候、侵蚀、洞穴、矿脉）。
  * 由 {@code buildParams()} 导出为 TerrainParams 注入引擎。
  *
  * 铁律：增删字段须同步 TerrainParams(defaults) + GeoGenesisGenerator(configParams/configRiverSettings) +
  * GeoGenesisConfigScreen.buildParams + run/config/geogenesis-common.toml。
+ *
+ * <h2>★ 算法轴标注（只影响哪一条地形链）</h2>
+ *
+ * <p>本项目有<b>两条互斥</b>的地形实现，由<b>存档持久化的算法标记</b>选择
+ * （{@code GeoGenesisWorldData.terrainAlgorithm}），<b>不是</b>由配置开关选择：</p>
+ * <ul>
+ *   <li><b>morph-base-p1</b>（新世界）：{@code CellGenerator.morphBase=true} ⇒
+ *       {@code BaseWorldSampler → MorphTerrainSampler → MorphLandField/MorphOceanAssembler}。</li>
+ *   <li><b>legacy</b>（旧存档）：{@code morphBase=false} ⇒
+ *       {@code sampleCore} 走 {@code ContinentField/TypeLandShape/TypeNoiseProvider/CoastlineField}。</li>
+ * </ul>
+ *
+ * <p>每个字段上的轴标记含义（四选一，写在 javadoc 首行 {@code [TAG]} 里）：</p>
+ * <table border="1">
+ *   <caption>算法轴枚举</caption>
+ *   <tr><th>标记</th><th>含义</th></tr>
+ *   <tr><td>{@code [MORPH_ONLY]}</td><td>只影响 morph-base-p1 新世界的地形产出。</td></tr>
+ *   <tr><td>{@code [LEGACY_ONLY]}</td><td>只影响 legacy 存档的地形产出（本次保留但标注）。</td></tr>
+ *   <tr><td>{@code [BOTH]}</td><td>两条链都影响（典型：进入 {@code TerrainParams} 且被两边共用的场）。</td></tr>
+ *   <tr><td>{@code [DIAGNOSTIC]}</td><td>只影响日志/诊断/自检，<b>不改任何地形产出</b>。</td></tr>
+ *   <tr><td>{@code [PREVIEW_ONLY]}</td><td>只影响预览 UI 的显示尺 / 色阶，<b>配置不驱动
+ *       {@code GeoGenesisGenerator}</b>（生成器用编译期常量 {@code WORLD_MIN_Y/WORLD_MAX_Y/SEA_LEVEL}）。</td></tr>
+ * </table>
+ *
+ * <p>⚠ <b>标注是注释，不是运行时机制</b>：不引入字段、不引入枚举、无任何运行时开销 ——
+ * 目的只是让"这个旋钮到底改哪条链"可查，避免再次出现"UI 上有开关、某条链根本不读它"。</p>
+ *
+ * <p>⚠ 判据来自 2026-11-07 的本轮审计（逐个按键 grep 全部读取点），不是推测。
+ * 若将来接线变化，请同步更新对应字段的标记；{@code runConfigKeyGuardProbe} 只守"有没有人读"，
+ * <b>不守</b>"读它的那条链是否在跑"。</p>
  */
 public final class GeoGenesisConfig {
 
@@ -23,245 +53,296 @@ public final class GeoGenesisConfig {
     public static final GeoGenesisConfig INSTANCE;
 
     // ===== 大陆场 =====
+    /** [BOTH] 大陆噪声尺度。morph 侧经 ContinentField，legacy 侧同源 ContinentField。 */
     public final ForgeConfigSpec.DoubleValue continentScale;
+    /** [BOTH] 大陆场域扭曲。同上（默认 0 = 关闭）。 */
     public final ForgeConfigSpec.DoubleValue continentWarp;
     // ===== 大陆 FBM（值叠加，对标参考项目 procedural-island-generator 的 fbm 海岸线） =====
+    /** [BOTH] 大陆 FBM 倍频数。 */
     public final ForgeConfigSpec.IntValue continentFbmOctaves;
+    /** [BOTH] 大陆 FBM lacunarity。 */
     public final ForgeConfigSpec.DoubleValue continentFbmLacunarity;
+    /** [BOTH] 大陆 FBM persistence。 */
     public final ForgeConfigSpec.DoubleValue continentFbmPersistence;
+    /** [LEGACY_ONLY] 海陆参考阈值。只被 {@code ContinentField.isLand(c)} 读，
+     *  而 {@code isLand} 只有 legacy 路径调用；morph 侧的海岸由 {@code MorphOceanAssembler} 三段剖面包办。 */
     public final ForgeConfigSpec.DoubleValue continentThreshold;
+    /** [LEGACY_ONLY] 海陆占比偏置。只在 legacy {@code sampleCore}/{@code landFactorAt} 里从 c 里减掉；
+     *  morph 侧 {@code MorphOceanAssembler} 用自己的固定控制点，不读本键。 */
     public final ForgeConfigSpec.DoubleValue continentBias;
-    public final ForgeConfigSpec.DoubleValue continentProvinceWarp;
 
     // ===== 海洋样条控制点 =====
+    /** [BOTH] 深海控制点位置。{@code HeightCurve.eFromC} 两条链共用（{@code oceanLocations()}）。 */
     public final ForgeConfigSpec.DoubleValue deepOceanLoc;
+    /** [BOTH] 大陆架控制点位置。同上。 */
     public final ForgeConfigSpec.DoubleValue shelfLoc;
+    /** [BOTH] 浅海控制点位置。同上。 */
     public final ForgeConfigSpec.DoubleValue shallowLoc;
+    /** [LEGACY_ONLY] 海岸控制点位置作为样条锚点被两条链共用（{@code HeightCurve}），
+     *  但 {@code CoastlineField} 的三角窗中心也读它 —— 后者只在 legacy 链上调用。 */
     public final ForgeConfigSpec.DoubleValue coastLoc;
+    /** [BOTH] 深海深度。{@code HeightCurve.oceanValues()} 两条链共用。 */
     public final ForgeConfigSpec.DoubleValue deepOceanDepth;
+    /** [BOTH] 大陆架深度。同上。 */
     public final ForgeConfigSpec.DoubleValue shelfDepth;
+    /** [BOTH] 浅海深度。同上。 */
     public final ForgeConfigSpec.DoubleValue shallowDepth;
+    /** [BOTH] 深海控制点导数。{@code SplineUtil.splint} 真读（{@code oceanDerivatives()}）。 */
     public final ForgeConfigSpec.DoubleValue deepOceanDeriv;
+    /** [BOTH] 大陆架控制点导数。同上。 */
     public final ForgeConfigSpec.DoubleValue shelfDeriv;
+    /** [BOTH] 浅海控制点导数。同上。 */
     public final ForgeConfigSpec.DoubleValue shallowDeriv;
+    /** [BOTH] 海岸控制点导数。同上。 */
     public final ForgeConfigSpec.DoubleValue coastDeriv;
 
     // ===== 海岸线过渡区（两阶段 blend，参考 TerraForged） =====
-    /** 海洋淡出起点（cBiased 空间），默认 -0.15 */
+    /** [LEGACY_ONLY] 海洋淡出起点（cBiased 空间）。二阶段 blend 只在 legacy {@code sampleCore} 里；
+     *  morph 侧由 {@code MorphOceanAssembler} 的三段固定剖面取代。 */
     public final ForgeConfigSpec.DoubleValue oceanFadeStart;
-    /** 陆地高度终点（cBiased 空间），默认 0.08 */
+    /** [LEGACY_ONLY] 陆地高度终点（cBiased 空间）。同上；另作 {@code CoastlineField} 三角窗半宽。 */
     public final ForgeConfigSpec.DoubleValue landRampEnd;
 
     // ===== 海洋类型独立 lo/hi（与陆地类型一致的独立控制） =====
+    /** [BOTH] OCEAN lo。经 {@code splineConfig} 进入 {@code TypeGenerators} 类型轴，两条链都走 {@code buildUnifiedSpline()}。 */
     public final ForgeConfigSpec.DoubleValue oceanLo;
+    /** [BOTH] OCEAN hi。 */
     public final ForgeConfigSpec.DoubleValue oceanHi;
+    /** [BOTH] DEEP_OCEAN lo。 */
     public final ForgeConfigSpec.DoubleValue deepOceanLo;
+    /** [BOTH] DEEP_OCEAN hi。 */
     public final ForgeConfigSpec.DoubleValue deepOceanHi;
+    /** [BOTH] CONTINENTAL_SHELF lo。 */
     public final ForgeConfigSpec.DoubleValue shelfLo;
+    /** [BOTH] CONTINENTAL_SHELF hi。 */
     public final ForgeConfigSpec.DoubleValue shelfHi;
+    /** [BOTH] SUBMARINE_RIDGE lo。 */
     public final ForgeConfigSpec.DoubleValue subRidgeLo;
+    /** [BOTH] SUBMARINE_RIDGE hi。 */
     public final ForgeConfigSpec.DoubleValue subRidgeHi;
+    /** [BOTH] SEAMOUNT lo。 */
     public final ForgeConfigSpec.DoubleValue seamountLo;
+    /** [BOTH] SEAMOUNT hi。 */
     public final ForgeConfigSpec.DoubleValue seamountHi;
+    /** [BOTH] LAKE lo。 */
     public final ForgeConfigSpec.DoubleValue lakeLo;
+    /** [BOTH] LAKE hi。 */
     public final ForgeConfigSpec.DoubleValue lakeHi;
+    /** [BOTH] RIVER lo。 */
     public final ForgeConfigSpec.DoubleValue riverLo;
+    /** [BOTH] RIVER hi。 */
     public final ForgeConfigSpec.DoubleValue riverHi;
 
     // ===== 河流（水文模型：汇流场派生河网 + 距离场雕刻，2026-08-29） =====
-    /** 河流总开关（旧 RTF 几何河网已下线，水文模型是唯一的河流实现） */
+    /** [BOTH] 河流总开关（旧 RTF 几何河网已下线，水文模型是唯一的河流实现）。
+     *  两条链都经 {@code GeoGenesisTerrain}/{@code GeoGenesisGenerator} 读它。 */
     public final ForgeConfigSpec.BooleanValue riverEnabled;
 
     // ===== 海床 =====
+    /** [LEGACY_ONLY] 海床细节振幅。只被 {@code SeaBedDetail} 读，而 {@code SeaBedDetail}
+     *  只挂在 legacy {@code sampleCore}/{@code terrainEQuickCompute} 上；
+     *  morph 侧深海形态由 {@code MorphOceanAssembler.buildDeepOcean} 的固定 Perlin 决定。 */
     public final ForgeConfigSpec.DoubleValue seabedDetail;
-    /** 海洋深度缩放因子（e 单位乘数），>1=更深（海洋面积扩大），<1=更浅（陆地扩大），默认 1.0 */
+    /** [LEGACY_ONLY] 海洋深度乘数。只在 legacy {@code sampleCore}/{@code terrainEQuickCompute}/
+     *  {@code TypeLandShape} 里乘到 eOcean 上；morph 侧不读。 */
     public final ForgeConfigSpec.DoubleValue oceanDepthFactor;
 
-    // ===== [已废弃] 省权重 =====
-    // 省系统已被地形类型系统取代（TypeLandShape + TypeGenerators）。
-    // 这些字段保留仅供旧 config 文件兼容，新引擎不再读取。
-    public final ForgeConfigSpec.DoubleValue provinceScale;
-    public final ForgeConfigSpec.DoubleValue cratonWeight;
-    public final ForgeConfigSpec.DoubleValue beltWeight;
-    public final ForgeConfigSpec.DoubleValue plateauWeight;
-    public final ForgeConfigSpec.DoubleValue basinWeight;
-
-    // ===== [已废弃] 陆地过程形态（旧省系统） =====
-    // 这些字段被类型系统取代，不再读取。保留供旧 config 兼容。
-    public final ForgeConfigSpec.DoubleValue plainBase;
-    public final ForgeConfigSpec.DoubleValue plainRough;
-    public final ForgeConfigSpec.DoubleValue hillsLow;
-    public final ForgeConfigSpec.DoubleValue hillsHigh;
-    public final ForgeConfigSpec.DoubleValue beltRidgePower;
-    public final ForgeConfigSpec.DoubleValue beltFoothill;
-    public final ForgeConfigSpec.DoubleValue beltPeak;
-    public final ForgeConfigSpec.DoubleValue plateauBase;
-    public final ForgeConfigSpec.DoubleValue plateauTop;
-    public final ForgeConfigSpec.IntValue plateauSteps;
-    public final ForgeConfigSpec.DoubleValue plateauStepStrength;
-    public final ForgeConfigSpec.DoubleValue basinBase;
+    // ===== [2026-11-07 已删除] 省权重 / 旧省系统过程形态 / 起伏振幅 / 省场形态曲线 =====
+    // 省系统（provinceScale / craton|belt|plateau|basinWeight）与旧省形态
+    // （plainBase/plainRough/hillsLow/hillsHigh/beltRidgePower/beltFoothill/beltPeak/
+    //  plateauBase/plateauTop/plateauSteps/plateauStepStrength）、
+    // 起伏振幅（cratonReliefAmp/plateauReliefAmp/basinReliefAmp）、
+    // 省场形态曲线（beltSharpness/beltWarpAmp/provMixSharpness/mountainMaskScale/
+    //  microDetailScale/microDetailAmp）均已被类型系统 / morph-base-p1 取代，
+    // 生产路径零读取（`runConfigKeyGuardProbe` 实测），已按用户裁定删除。
+    // 说明：`FourPairMorphCandidate`/`HillsPlateauMorphCandidate` 里的 `plateauBase`
+    //      是诊断侧的同名局部字段（Noise.Node），与配置键无关。
 
     // ===== 地形起伏振幅（每省固有） =====
-    public final ForgeConfigSpec.DoubleValue cratonReliefAmp;
+    /** [LEGACY_ONLY] 造山带起伏振幅（e 单位）。只被 TypeLandShape/TypeNoiseProvider 的 legacy 地形读取；
+     *  morph-base-p1 走 MorphLandField，不读本键。 */
     public final ForgeConfigSpec.DoubleValue beltReliefAmp;
-    public final ForgeConfigSpec.DoubleValue plateauReliefAmp;
-    public final ForgeConfigSpec.DoubleValue basinReliefAmp;
 
-    // ===== 省场形态曲线 =====
-    public final ForgeConfigSpec.DoubleValue beltSharpness;
-    public final ForgeConfigSpec.DoubleValue beltWarpAmp;
-    public final ForgeConfigSpec.DoubleValue provMixSharpness;
-    public final ForgeConfigSpec.DoubleValue mountainMaskScale;
-    public final ForgeConfigSpec.DoubleValue microDetailScale;
-    public final ForgeConfigSpec.DoubleValue microDetailAmp;
+    // ===== 盆地基底（legacy 地形合成） =====
+    /** [LEGACY_ONLY] 盆地基底 eLand。只被 TypeNoiseProvider.computeBasin 读取（legacy 链）。 */
+    public final ForgeConfigSpec.DoubleValue basinBase;
 
     // ===== 分类阈值 + 雪线 =====
+    /**
+     * [DIAGNOSTIC] 高海拔阈值。
+     *
+     * <p>⚠ 本轮审计（2026-11-07）实测：{@code src/main} 内<b>唯一</b>读取点是
+     * {@code TerrainDiag}（一个带 {@code main} 的量化诊断类），生产地形链不读它
+     * （{@link #reliefHigh} 同）。也就是说改这个值<b>不会</b>改变地形。
+     * 它仍被 {@code runConfigKeyGuardProbe} 判为 LIVE，但该探针的调用图 BFS 会把它标成
+     * UNREACHABLE（见探针 javadoc 的 TODO）。<b>是否接线或删除，需单独决定</b>；
+     * 本轮只标注，不动行为。</p>
+     */
     public final ForgeConfigSpec.DoubleValue elevHigh;
+    /** [DIAGNOSTIC] 高起伏阈值。见 {@link #elevHigh}（同样只被 {@code TerrainDiag} 读）。 */
     public final ForgeConfigSpec.DoubleValue reliefHigh;
+    /** [BOTH] 雪线海拔（e 单位）。{@code CellGenerator} 与 {@code BaseWorldSampler} 都读。 */
     public final ForgeConfigSpec.DoubleValue snowLine;
+    /** [BOTH] 雪线温度耦合强度。同上。 */
     public final ForgeConfigSpec.DoubleValue snowLatitudeInfluence;
-    /** 雪线湿度耦合强度（干燥→雪线升高，湿润→雪线降低），默认 0.15 */
+    /** [BOTH] 雪线湿度耦合强度（干燥→雪线升高，湿润→雪线降低），默认 0.15。同上。 */
     public final ForgeConfigSpec.DoubleValue snowHumidityInfluence;
 
     // ===== 气候阈值（温度/湿度/大陆性边界 + 影响权重） =====
-    /** 温度阈值：极寒/寒冷分界，默认 -0.6 */
+    // ⚠ 这一组都经 ClimateSpline → Climate.isFrozen()/isCold()/isHot()/isDry()/isWet()
+    //    → BiomeClassifier.pickKey() 生效 —— 即它们改的是【群系】而不是地形高度，两条链共用。
+    /** [BOTH] 温度阈值：极寒/寒冷分界，默认 -0.6（影响群系选择，不改地形高度）。 */
     public final ForgeConfigSpec.DoubleValue tempFrozenThreshold;
-    /** 温度阈值：寒冷/温和分界，默认 -0.2 */
+    /** [BOTH] 温度阈值：寒冷/温和分界，默认 -0.2。 */
     public final ForgeConfigSpec.DoubleValue tempColdThreshold;
-    /** 温度阈值：温和/温暖分界，默认 0.2 */
+    /** [BOTH] 温度阈值：温和/温暖分界，默认 0.2。 */
     public final ForgeConfigSpec.DoubleValue tempWarmThreshold;
-    /** 温度阈值：温暖/炎热分界，默认 0.5 */
+    /** [BOTH] 温度阈值：温暖/炎热分界，默认 0.5。 */
     public final ForgeConfigSpec.DoubleValue tempHotThreshold;
 
-    /** 湿度阈值：干旱/半干旱分界，默认 -0.3 */
+    /** [BOTH] 湿度阈值：干旱/半干旱分界，默认 -0.3。 */
     public final ForgeConfigSpec.DoubleValue humidityDryThreshold;
-    /** 湿度阈值：半干旱/湿润分界，默认 0.0 */
+    /** [BOTH] 湿度阈值：半干旱/湿润分界，默认 0.0。 */
     public final ForgeConfigSpec.DoubleValue humiditySemiThreshold;
-    /** 湿度阈值：湿润/潮湿分界，默认 0.3 */
+    /** [BOTH] 湿度阈值：湿润/潮湿分界，默认 0.3。 */
     public final ForgeConfigSpec.DoubleValue humidityWetThreshold;
 
-    /** 大陆性阈值：深海/近海分界，默认 -0.60 */
+    /** [BOTH] 大陆性阈值：深海/近海分界，默认 -0.60。 */
     public final ForgeConfigSpec.DoubleValue continentDeepOceanThreshold;
-    /** 大陆性阈值：近海/沿海分界，默认 -0.30 */
+    /** [BOTH] 大陆性阈值：近海/沿海分界，默认 -0.30。 */
     public final ForgeConfigSpec.DoubleValue continentNearOceanThreshold;
-    /** 大陆性阈值：沿海/过渡分界，默认 -0.10 */
+    /** [BOTH] 大陆性阈值：沿海/过渡分界，默认 -0.10。 */
     public final ForgeConfigSpec.DoubleValue continentCoastThreshold;
-    /** 大陆性阈值：近岸/近内陆分界，默认 0.10 */
+    /** [BOTH] 大陆性阈值：近岸/近内陆分界，默认 0.10。 */
     public final ForgeConfigSpec.DoubleValue continentTransitionalThreshold;
-    /** 大陆性阈值：近内陆/内陆分界，默认 0.35 */
+    /** [BOTH] 大陆性阈值：近内陆/内陆分界，默认 0.35。 */
     public final ForgeConfigSpec.DoubleValue continentNearInlandThreshold;
-    /** 大陆性阈值：内陆/深内陆分界，默认 0.65 */
+    /** [BOTH] 大陆性阈值：内陆/深内陆分界，默认 0.65。 */
     public final ForgeConfigSpec.DoubleValue continentInlandThreshold;
 
-    /** 温度对群系分布的影响程度（0-1），默认 1.0 */
+    /** [BOTH] 温度对群系分布的影响程度（0-1），默认 1.0。
+     *  legacy 侧读 {@code CellGenerator}；morph 侧经 {@code BaseWorldConfigAdapter → BaseWorldSettings}。 */
     public final ForgeConfigSpec.DoubleValue tempInfluence;
-    /** 湿度对群系分布的影响程度（0-1），默认 1.0 */
+    /** [BOTH] 湿度对群系分布的影响程度（0-1），默认 1.0。同上。 */
     public final ForgeConfigSpec.DoubleValue humidityInfluence;
-    /** 大陆性对群系分布的影响程度（0-1），默认 1.0 */
+    /** [BOTH] 大陆性对群系分布的影响程度（0-1），默认 1.0。同上。 */
     public final ForgeConfigSpec.DoubleValue continentInfluence;
 
     // ===== 气候/纬度 xz 缩放 =====
-    /** 纬度缩放（温度随 z 变化的周期，块）。越大→温度带越宽（纬度变化越慢），默认 6000 */
+    /** [BOTH] 纬度缩放（温度随 z 变化的周期，块）。{@code CellGenerator} 与 {@code BaseWorldSampler} 都读。 */
     public final ForgeConfigSpec.DoubleValue latitudeScale;
-    /** 温度噪声 xz 缩放（块），温度扰动场频率 = 1/tempWarpScale，默认 1500 */
+    /** [BOTH] 温度噪声 xz 缩放（块），温度扰动场频率 = 1/tempWarpScale。同上。 */
     public final ForgeConfigSpec.DoubleValue tempWarpScale;
-    /** 湿度噪声 xz 缩放（块），湿度场频率 = 1/humidityScale，默认 800 */
+    /** [BOTH] 湿度噪声 xz 缩放（块），湿度场频率 = 1/humidityScale。同上。 */
     public final ForgeConfigSpec.DoubleValue humidityScale;
-    /** 气候区尺寸（wu）：区内温湿恒定的抖动 Voronoi 网格边长。默认 256 */
+    /** [BOTH] 气候区尺寸（wu）：区内温湿恒定的抖动 Voronoi 网格边长。默认 256。同上。 */
     public final ForgeConfigSpec.DoubleValue climateRegionSize;
 
     // ===== 世界高度 =====
+    // ⚠ 这三个键【不驱动 generator】：GeoGenesisGenerator 用编译期常量
+    //   WORLD_MIN_Y=-64 / WORLD_MAX_Y=320 / SEA_LEVEL=63（见 getMinY()/getGenDepth()/getSeaLevel()）。
+    //   它们只经 TerrainParams 进入预览 UI（色阶/高度条）与 HeightCurve 的世界高度参数，
+    //   而生产 buildTerrain 传的是那三个常量。改它们只改【预览显示】。
+    /** [PREVIEW_ONLY] 海平面 Y。生产 generator 用常量 {@code SEA_LEVEL=63}；本键只影响预览显示与
+     *  {@code HeightCurve} 的 e→Y 映射（生产传入的是常量）。 */
     public final ForgeConfigSpec.IntValue seaLevel;
+    /** [PREVIEW_ONLY] 世界最小 Y。生产 generator 用常量 {@code WORLD_MIN_Y=-64}。 */
     public final ForgeConfigSpec.IntValue minY;
+    /** [PREVIEW_ONLY] 世界最大 Y。生产 generator 用常量 {@code WORLD_MAX_Y=320}。 */
     public final ForgeConfigSpec.IntValue maxY;
-    /** 实际峰顶高度占 maxY 的比例（余量避免触顶世界构建上限）。默认 0.92，范围 [0.5, 1.0] */
+    /** [BOTH] 实际峰顶高度占 maxY 的比例（余量避免触顶世界构建上限）。默认 0.92。
+     *  {@code HeightCurve.heightFromE} 真读（两条链的高度映射共用）。 */
     public final ForgeConfigSpec.DoubleValue peakHeightFraction;
 
     // ===== 垂直缩放 =====
-    /** 垂直缩放比例（1-8），用于预览和地形高度夸张 */
+    /** [BOTH] 垂直缩放比例（1-8）。{@code HeightCurve.heightFromE} 与 morph 的地形配方都读。 */
     public final ForgeConfigSpec.DoubleValue verticalScale;
-    /** 水平缩放比例（0.5-8），所有噪声坐标除以此值 = 地形 XZ 等比缩放，默认 1.0（1:1） */
+    /** [BOTH] 水平缩放比例（0.5-8）：块→wu 映射，全链路统一（侵蚀/水文/河网/源头网格）。
+     *  两条链都读（morph 侧 {@code MorphTerrainSampler}/{@code ProcessContext}）。 */
     public final ForgeConfigSpec.DoubleValue horizontalScale;
 
     // ===== 大陆性语义亲和度 =====
-    /** 大陆性语义亲和度强度（β），调制 c 对各类型空间权重的偏置幅度，默认 5.0 */
+    /** [LEGACY_ONLY] 大陆性语义亲和度强度（β），默认 0（禁用）。
+     *  只被 legacy {@code TypeLandShape} 读；morph 侧类型分布由 {@code MorphLandField} 的 Voronoi 决定。 */
     public final ForgeConfigSpec.DoubleValue cAffinityStrength;
 
     // ===== 海岸线多样化（CoastlineField 输入） =====
-    /** 海岸线 warp 振幅（c 空间单位），默认 0.03 */
+    /** [LEGACY_ONLY] 海岸线 warp 振幅（c 空间单位）。{@code CoastlineField} 只在 legacy
+     *  {@code sampleCore}/{@code terrainEQuickCompute} 里被调用；morph 侧岸线由
+     *  {@code MorphOceanAssembler} 的固定三段剖面给出。 */
     public final ForgeConfigSpec.DoubleValue coastlineWarpAmp;
-    /** 海岸线 warp 基频世界坐标尺度（块），默认 300。越大变化越平缓 */
+    /** [LEGACY_ONLY] 海岸线 warp 基频世界坐标尺度（块）。同上。 */
     public final ForgeConfigSpec.DoubleValue coastlineWarpScale;
-    /** 海岸线 warp 倍频数（octaves），控制分形细节层级数，默认 5，范围 [1, 8] */
+    /** [LEGACY_ONLY] 海岸线 warp 倍频数（octaves）。同上。 */
     public final ForgeConfigSpec.IntValue coastlineWarpOctaves;
-    /** FBM 频率倍增系数（lacunarity），每倍频频率×该值，默认 2.0，范围 [1.5, 3.0] */
+    /** [LEGACY_ONLY] FBM 频率倍增系数（lacunarity）。同上。 */
     public final ForgeConfigSpec.DoubleValue coastlineWarpLacunarity;
-    /** FBM 振幅衰减系数（persistence），每倍频振幅×该值，默认 0.5，范围 [0.25, 0.8] */
+    /** [LEGACY_ONLY] FBM 振幅衰减系数（persistence）。同上。 */
     public final ForgeConfigSpec.DoubleValue coastlineWarpPersistence;
-    /** 地形类型调制强度（c 空间单位），默认 0.08 */
-    public final ForgeConfigSpec.DoubleValue coastTerrainInfluence;
-    /** 离岸群岛带宽度（c 空间单位），默认 0.10 */
-    public final ForgeConfigSpec.DoubleValue archipelagoBand;
-    /** 离岸群岛密度阈值，默认 0.30 */
-    public final ForgeConfigSpec.DoubleValue archipelagoDensity;
-    /** 离岸群岛噪声尺度（块），默认 120 */
-    public final ForgeConfigSpec.DoubleValue archipelagoScale;
-    /** 离岸群岛最大高度（e 单位），默认 0.035 */
-    public final ForgeConfigSpec.DoubleValue archipelagoHeight;
+
+    // ===== [2026-11-07 已删除] 海岸线多样化：coastTerrainInfluence + archipelagoBand/
+    //        Density/Scale/Height =====
+    // 这 5 个键在 CoastlineField 之后已无任何生产读取（只有 client 预览面板在展示），
+    // 属「UI 上有滑块、地形不读」的假开关，已按用户裁定删除。
 
     // ===== 侵蚀（SH 统一水力引擎：侵蚀与河网同源同趟） =====
-    /** 是否启用本地粒子侵蚀 */
+    /** [BOTH] 是否启用本地粒子侵蚀。经 {@code ProcessContext.modeFor} 映射到
+     *  OFF/PARTICLE，两条链的落块增量共用同一 ProcessRuntime。 */
     public final ForgeConfigSpec.BooleanValue erosionEnabled;
-    /** 河网微自适应开关（2026-09-08）：默认 false——建网全域吃 tile，实测加载期数分钟级卡顿。 */
-    public final ForgeConfigSpec.BooleanValue erosionRoutingAdaptive;
     /**
-     * 侵蚀向河道软让步（方案 A，2026-09-09）：默认 true。河床按到河心距离衰减侵蚀 delta
+     * [BOTH] 侵蚀向河道软让步（方案 A，2026-09-09）：默认 true。河床按到河心距离衰减侵蚀 delta
      * （河心→0、谷外→1），使河床与"无侵蚀计划水面"重新同源 → 根治侵蚀导致的河道非单调
      * 阶梯（图1）与填水脱离地形的干滩（图2）。设 false 回退到旧"河床全量跟随侵蚀"行为。
+     * 读取点：{@code GeoGenesisTerrain}。
      */
     public final ForgeConfigSpec.BooleanValue erosionYieldToRiver;
-    /** 细纹理微侵蚀层（XS r1wu 十字笔刷，2026-08-12；默认关——实测加剧 chunk 边界脊） */
+    /** [BOTH] 细纹理微侵蚀层（XS r1wu 十字笔刷，2026-08-12；默认关——实测加剧 chunk 边界脊）。 */
     public final ForgeConfigSpec.BooleanValue erosionXSEnabled;
-    /** 侵蚀强度倍率 */
+    /** [BOTH] 侵蚀强度倍率。 */
     public final ForgeConfigSpec.DoubleValue erosionStrength;
-    /** 侵蚀水滴数量倍率 */
+    /** [BOTH] 侵蚀水滴数量倍率。 */
     public final ForgeConfigSpec.DoubleValue erosionDropsMul;
-    /** 侵蚀速率倍率 */
+    /** [BOTH] 侵蚀速率倍率。 */
     public final ForgeConfigSpec.DoubleValue erosionErodeMul;
-    /** localCharge 正反馈权重（α）。每粒子累计高差放大侵蚀能力：0=关闭正反馈，越大主流雕越深。默认 1.0，范围 [0, 5] */
-    public final ForgeConfigSpec.DoubleValue erosionLocalChargeWeight;
-    /** 局部 cascade 级联强度。侵蚀后按高度差向最低邻居 settling，平滑河床底部。0=关闭，默认 0.3，范围 [0, 1] */
+    /** [BOTH] 局部 cascade 级联强度。侵蚀后按高度差向最低邻居 settling，平滑河床底部。0=关闭，默认 0.3，范围 [0, 1]。 */
     public final ForgeConfigSpec.DoubleValue erosionCascadeStrength;
 
+    // `erosionRoutingAdaptive` 键已删除（2026-11-07）：只被 src/diagnostics 的
+    // HydrologyExperimentEngine / RiverLineNetwork 读取，生产链不读 ⇒ 假开关。
+    // `erosionLocalChargeWeight` 键已删除（2026-11-07）：ErosionEngine 注释自 2026-08-01
+    // 起即写明"引擎不再读取"，全仓仅注释提及 ⇒ 死键。
+
     // ===================== ★ 2026-09-15 洞穴（游戏性优先，可开关）=====================
-    /** 洞穴档位（REALISTIC 拟真 / VANILLA_LIKE 接近原版 / MINIMAL 精简 / OFF 关闭 / CUSTOM）。 */
+    // 洞穴全部挂在 GeoGenesisGenerator.applyCarvers → CaveCarver 上，地形链无关 ⇒ 全部 [BOTH]。
+    /** [BOTH] 洞穴档位（REALISTIC 拟真 / VANILLA_LIKE 接近原版 / MINIMAL 精简 / OFF 关闭 / CUSTOM）。 */
     public final ForgeConfigSpec.EnumValue<CaveConfig.Preset> cavePreset;
-    /** 洞穴总开关（false ⇒ 地下无洞穴；与档位正交）。 */
+    /** [BOTH] 洞穴总开关（false ⇒ 地下无洞穴；与档位正交）。 */
     public final ForgeConfigSpec.BooleanValue caveEnabled;
-    /** 隧道分量（蜿蜒细管，负责"连通"）。 */
+    /** [BOTH] 隧道分量（蜿蜒细管，负责"连通"）。 */
     public final ForgeConfigSpec.BooleanValue caveTunnelEnabled;
-    /** 空腔分量（可站立的洞厅，负责"能走"）。 */
+    /** [BOTH] 空腔分量（可站立的洞厅，负责"能走"）。 */
     public final ForgeConfigSpec.BooleanValue caveChamberEnabled;
-    /** 层调制（把大空腔切成层状，防竖直贯穿）。 */
+    /** [BOTH] 层调制（把大空腔切成层状，防竖直贯穿）。 */
     public final ForgeConfigSpec.BooleanValue caveLayerEnabled;
-    /** 洞穴密度倍率（乘在分量阈值上，越大洞越粗越密）。 */
+    /** [BOTH] 洞穴密度倍率（乘在分量阈值上，越大洞越粗越密）。 */
     public final ForgeConfigSpec.DoubleValue caveDensityMul;
-    /** 洞顶保护厚度（0 ⇒ 允许破地表形成入口）。 */
+    /** [BOTH] 洞顶保护厚度（0 ⇒ 允许破地表形成入口）。 */
     public final ForgeConfigSpec.IntValue caveSurfaceLid;
-    /** 洞穴带最浅深度。 */
+    /** [BOTH] 洞穴带最浅深度。 */
     public final ForgeConfigSpec.IntValue caveDepthMin;
-    /** 洞穴带最深深度。 */
+    /** [BOTH] 洞穴带最深深度。 */
     public final ForgeConfigSpec.IntValue caveDepthMax;
-    /** 岩性门控（石灰岩溶洞大 / 花岗岩几乎无洞）—— 本项目独创。 */
+    /** [BOTH] 岩性门控（石灰岩溶洞大 / 花岗岩几乎无洞）—— 本项目独创。 */
     public final ForgeConfigSpec.BooleanValue caveLithoGating;
-    /** 地下洞穴群系（滴水石洞 / 繁茂洞穴）。 */
+    /** [BOTH] 地下洞穴群系（滴水石洞 / 繁茂洞穴）。 */
     public final ForgeConfigSpec.BooleanValue caveBiomesEnabled;
 
     // ===================== ★ 2026-09-16 矿脉（游戏性优先，可开关）=====================
-    /** 自研地质矿脉开关（true = 叠加在原版矿之上；false = 只留原版矿）。 */
+    // 矿脉挂在 GeoGenesisGenerator.fillFromNoise + VanillaDecorationFilter 上，地形链无关 ⇒ [BOTH]。
+    /** [BOTH] 自研地质矿脉开关（true = 叠加在原版矿之上；false = 只留原版矿）。 */
     public final ForgeConfigSpec.BooleanValue oreVeinsEnabled;
     /**
-     * ★ 2026-09-18：<b>矿物系统接管开关</b>（预研「路径 D」，见
+     * [BOTH] ★ 2026-09-18：<b>矿物系统接管开关</b>（预研「路径 D」，见
      * {@code docs/plans/矿物系统-预研-2026-09-18.md}）。
      *
      * <ul>
@@ -278,58 +359,24 @@ public final class GeoGenesisConfig {
     public final ForgeConfigSpec.BooleanValue oreOverrideVanilla;
 
     // ===================== ★ 2026-09-18 水量平衡（水文 M2）=====================
-    /**
-     * ★ 2026-09-18：<b>水量平衡 —— 沿程衰减（蒸发/入渗）</b>。
-     *
-     * <p>现状（{@code false}）下水只"越流越多"：D8 汇流累积
-     * （{@code FlowField.buildAccum}）纯累加 ⇒ <b>不可能有内流河 / 时令河</b>。</p>
-     *
-     * <ul>
-     *   <li>{@code false}（默认）= <b>OFF</b>：不衰减 ⇒ <b>零行为变更</b>（逐位一致）；</li>
-     *   <li>{@code true} = <b>CLIMATE</b>：衰减由<b>降水</b>驱动
-     *       （降水是干旱度最直接的代理）——
-     *       干旱区蒸发强 ⇒ 河流流着流着就消失（<b>内流河</b>）；
-     *       湿润区 {@code decay = 0} ⇒ 河流穿流到海。</li>
-     * </ul>
-     *
-     * <p>⚠ 影响范围：只改<b>河网规模</b>（进而河宽 / 湖域），<b>不改</b>地形高度。</p>
-     * <p>⚠ 实测（{@code runWaterBalanceProbe}）：{@code maxDecay = 2e-3} 时
-     * 受影响区平均累积 ×0.98、河宽 ×0.95（很轻）；成河格数对衰减呈<b>阶跃</b>响应
-     * （临界格先跌破）。启用前请跑 {@code runFlowAccumProbe}（约 11 分钟）+ {@code runHandoffPickupProbe}。</p>
-     */
-    public final ForgeConfigSpec.BooleanValue hydrologyDecayEnabled;
-    /** 极旱区沿程衰减系数（1/wu）。越大 ⇒ 内流河越多。默认 2e-3。范围 [0, 2e-2] */
-    public final ForgeConfigSpec.DoubleValue hydrologyDecayMax;
-    /** 参考降水：≥ 此值视为湿润（decay = 0）。默认 0.7647（= 实测全局降水均值附近）。范围 [0.05, 2.0] */
-    public final ForgeConfigSpec.DoubleValue hydrologyDecayRef;
-    /** 软化指数（&lt;1 ⇒ 半干旱区也有明显衰减）。默认 0.5。范围 [0.1, 3.0] */
-    public final ForgeConfigSpec.DoubleValue hydrologyDecayExponent;
-    /**
-     * ★ model 河湖链（区域缓存 + 骨架几何）—— 2026-10-20 起【唯一】水文实现。
-     *
-     * <p>原 "config → 系统属性 → false" 开关已删除（legacy HydrologyBlockCarver 整体退役，
-     * git 留档）。{@code usesModelPipeline()} 恒 true；本字段保留仅为缓存身份指纹兼容，
-     * 不再读配置。</p>
-     */
-    public final ForgeConfigSpec.BooleanValue hydrologyModelPipelineEnabled;
+    // `hydrologyDecayEnabled` / `hydrologyDecayMax` / `hydrologyDecayRef` /
+    // `hydrologyDecayExponent` 四个键已删除（2026-11-07）：全仓只有 src/diagnostics 的
+    // HydrologyExperimentEngine 读它们（气候衰减实验），生产 model 链不读 ⇒ 假开关。
+    // 生产侧的沿程衰减实现仍在（FlowField.DecayClimate），只是不再由配置驱动。
+    //
+    // `hydrologyModelPipelineEnabled` 键已删除（2026-11-07）：2026-10-20 legacy 线退役后
+    // 该键退化为 no-op 常量 true，生产链不读；唯一读者是 src/acceptance 的配置探测
+    // （已改为直接探测其他键）。模型链现在是唯一水文实现，没有开关可关。
+    //
+    // `hydrologySkeletonRouting` 键已删除（2026-11-07）：只被 src/diagnostics 的
+    // HydrologyExperimentEngine 读取；生产 model 链有自己的骨架路线，不读此键。
 
     // `hydrologyDeterministicSkeleton` 字段已删除（2026-10-20，用户决定移除 legacy 线）：
     // 骨架是唯一生产河网线，无开关可关。定义处注释见 builder 段。
 
-    /**
-     * ★ 2026-09-21【流体骨架路线】（实验）：{@code true} = 河道折线改由块分辨率流体物理
-     * 模拟（{@code TerrainFlowSim}）产出 ⇒ 路线按构造物理正确（最陡下降，无横切/上坡）。
-     *
-     * <p><b>默认 false（工程安全）</b>：骨架路线目前绕过整条旧追踪链路，因此
-     * <b>支流分叉 / 瀑布阶梯化 / 河口湾 / 跨区出口延续尚未接入</b>，
-     * 且审计实测沿河线无水 18.8%、沿程抬升 23.2%（旧链路为 0/0）。
-     * 打开即可在游戏里直接看到新路线（其余流程不变），关闭逐位回到旧行为。</p>
-     */
-    public final ForgeConfigSpec.BooleanValue hydrologySkeletonRouting;
-
     // ===================== ★ 2026-09-18 全流程诊断 =====================
     /**
-     * ★ 2026-09-18：<b>世界生成全流程诊断</b>（把每个阶段的耗时打进 {@code latest.log}）。
+     * [DIAGNOSTIC] ★ 2026-09-18：<b>世界生成全流程诊断</b>（把每个阶段的耗时打进 {@code latest.log}）。
      *
      * <p>为什么需要：既有 {@code [PERF-TERRAIN]} / {@code [PERF] fillFromNoise}
      * <b>只在超过阈值（50/100ms）时才打印</b> ⇒ 快的块完全没记录，<b>无法统计分布</b>；
@@ -344,101 +391,196 @@ public final class GeoGenesisConfig {
      * ⇒ <b>零开销、产出逐位不变</b>（本诊断不消费任何随机数）。</p>
      */
     public final ForgeConfigSpec.BooleanValue worldgenProfilerEnabled;
-    /** 全流程诊断：每多少块打一次滚动汇总（0 = 只在世界卸载时打总计）。默认 200。范围 [0, 100000] */
+    /** [DIAGNOSTIC] 每多少块打一次滚动汇总（0 = 只在世界卸载时打总计）。默认 200。范围 [0, 100000]。 */
     public final ForgeConfigSpec.IntValue worldgenProfilerEveryChunks;
 
-    /** SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2] */
+    /** [BOTH] SH 动量场正反馈：粒子顺下游动量场自我加速（河流自我增强）。1.0 对齐 SH 原版，0=关闭。范围 [0, 2]。 */
     public final ForgeConfigSpec.DoubleValue erosionMomentumTransfer;
-    /** SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16] */
+    /** [BOTH] SH 多轮迭代轮数：每轮重撒全部液滴 + lrate 场平滑，河道随轮次渐进加深成型。默认 2（2026-08-09 优化：3→2，drops 降 33%，观感微变可回退 3），范围 [1, 16]。 */
     public final ForgeConfigSpec.IntValue erosionIterations;
-    /** SH 场平滑率 lrate：每轮 track 平滑进稳态场的比例（0.1 对齐 SH 原版）。范围 [0.01, 0.5] */
+    /** [BOTH] SH 场平滑率 lrate：每轮 track 平滑进稳态场的比例（0.1 对齐 SH 原版）。范围 [0.01, 0.5]。 */
     public final ForgeConfigSpec.DoubleValue erosionLrate;
 
-    // ===== Phase 1: Unified Spline Config (74 fields) =====
-    // --- Outer spline: continentality c control points (7 × 2 = 14) ---
+    // ===== Phase 1: Unified Spline Config (67 fields) =====
+    // ⚠ 整段样条都是 [BOTH]：{@code TerrainParams.buildUnifiedSpline()} 两链共用，
+    //   外层 location 经 {@code SplineConfig.outerLocations()} 进入 {@code UnifiedSpline}。
+    // 内层样条导数仍生效 —— {@code SplineUtil.splint} 真的把 derivatives 参与 Hermite 插值。
+    // --- Outer spline: continentality c control points (7 × 1 = 7 fields) ---
+    // `splineOuterDeriv0..6` 已删除（2026-11-07）：UnifiedSpline.OuterNode.derivative
+    // 全仓无任何读取点（`sample`/`sampleByType`/`typeAffinity` 只用 location 与 midSpline）
+    // ⇒ 这 7 个键是死键。SplineConfig 的 outerDeriv0..6 与 SplineUtil.splint 解耦，
+    // 内层样条导数仍生效（splineUtil 只在 InnerSpline 路径上调用）。
+    /** [BOTH] 外层样条节点 0 位置（深海）。 */
     public final ForgeConfigSpec.DoubleValue splineOuterLoc0;
-    public final ForgeConfigSpec.DoubleValue splineOuterDeriv0;
+    /** [BOTH] 外层样条节点 1 位置（大陆架）。 */
     public final ForgeConfigSpec.DoubleValue splineOuterLoc1;
-    public final ForgeConfigSpec.DoubleValue splineOuterDeriv1;
+    /** [BOTH] 外层样条节点 2 位置（浅海）。 */
     public final ForgeConfigSpec.DoubleValue splineOuterLoc2;
-    public final ForgeConfigSpec.DoubleValue splineOuterDeriv2;
+    /** [BOTH] 外层样条节点 3 位置（海岸）。 */
     public final ForgeConfigSpec.DoubleValue splineOuterLoc3;
-    public final ForgeConfigSpec.DoubleValue splineOuterDeriv3;
+    /** [BOTH] 外层样条节点 4 位置（近岸陆地）。 */
     public final ForgeConfigSpec.DoubleValue splineOuterLoc4;
-    public final ForgeConfigSpec.DoubleValue splineOuterDeriv4;
+    /** [BOTH] 外层样条节点 5 位置（内陆）。 */
     public final ForgeConfigSpec.DoubleValue splineOuterLoc5;
-    public final ForgeConfigSpec.DoubleValue splineOuterDeriv5;
+    /** [BOTH] 外层样条节点 6 位置（深远内陆）。 */
     public final ForgeConfigSpec.DoubleValue splineOuterLoc6;
-    public final ForgeConfigSpec.DoubleValue splineOuterDeriv6;
+
+    // ===== 内层样条：为什么 Loc*/Deriv* 与 Val* 的轴不同（本轮实测，不是推理） =====
+    //
+    // 生产对内层样条只有两处求值：
+    //   ① legacy 链：TypeLandShape → generators.sampleByType(c, i, 0.0 / 1.0)
+    //      （全仓仅此一处调用，noiseValue 只取端点 0.0 与 1.0）
+    //   ② morph 链：SplineConfig.maxLandHi() → 只读 5 个 *HiVal0
+    //      → CellGenerator.softCapLandE + ProcessContext.assemble（侵蚀 softCap）
+    //
+    // 两个实测结论（探针见 build/configkey-cleanup-20261107/）：
+    //   · Loc*/Deriv* 在①里零贡献：2 点样条在端点处 Hermite 基函数
+    //     h10(0)=0、h11(1)=0、h01(0)=0 ⇒ 只有 Val0/Val1 留下。
+    //     LocDerivContributionProbe：410 个 (type × c × {0,1}) 采样点，
+    //     Loc/Deriv 全置极值后【零个】位模式改变（Val 对照 41 个改变）。
+    //   · *HiVal0 在②里【有】贡献，但只在 e 越过 0.97*maxLandHi 时才触发：
+    //     morph 实测最高 e = 0.8756（Wu 2311,1194），默认阈值 0.9215 ⇒ 默认配置下不触发；
+    //     但把 mountHiVal0 压到 0.20 后阈值降到 0.6848，5×5 chunk 全部改变
+    //     （SoftCapEngageProbe：25/25）。⇒ 它是真实的 morph 输入，不能标 LEGACY_ONLY。
+    //
+    // ⚠ 因此：审计结论「Val0/Val1 都只属 legacy」对 Val1/LoVal* 成立，
+    //   对 5 个 *HiVal0 【不成立】—— 它们经 maxLandHi 影响 morph 的 softCap。
+    //   本轮以实测为准，*HiVal0 标 [BOTH]，其余 Val* 与全部 Loc*/Deriv* 标 [LEGACY_ONLY]。
 
     // --- Inner spline: PLAIN type (12 fields) ---
+    /** [LEGACY_ONLY] 位置0。生产仅采端点（noiseValue∈{0,1}）⇒ 数学上零贡献，改它不会改变任何产出。 */
     public final ForgeConfigSpec.DoubleValue plainLoLoc0;
+    /** [LEGACY_ONLY] lo 下界端点值。只经 legacy sampleByType(c,·,0.0) 生效；morph 不走 UnifiedSpline。 */
     public final ForgeConfigSpec.DoubleValue plainLoVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点（h10(0)=h11(1)=0）⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue plainLoDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue plainLoLoc1;
+    /** [LEGACY_ONLY] lo 上界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue plainLoVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue plainLoDeriv1;
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue plainHiLoc0;
+    /** [BOTH] hi 下界端点值。除 legacy 采样外，还经 SplineConfig.maxLandHi() 参与 morph 的
+     *  侵蚀 softCap 阈值（实测：默认 0.25 不是 maxLandHi 的决定项，但机制上被读取）。 */
     public final ForgeConfigSpec.DoubleValue plainHiVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue plainHiDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue plainHiLoc1;
+    /** [LEGACY_ONLY] hi 上界端点值。只经 legacy sampleByType(c,·,1.0) 生效；不参与 maxLandHi。 */
     public final ForgeConfigSpec.DoubleValue plainHiVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue plainHiDeriv1;
 
     // --- Inner spline: HILLS type (12 fields) ---
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue hillsLoLoc0;
+    /** [LEGACY_ONLY] lo 下界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue hillsLoVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue hillsLoDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue hillsLoLoc1;
+    /** [LEGACY_ONLY] lo 上界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue hillsLoVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue hillsLoDeriv1;
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue hillsHiLoc0;
+    /** [BOTH] hi 下界端点值。除 legacy 采样外，还经 maxLandHi() 参与 morph 侵蚀 softCap
+     *  （默认 0.368 与 mountHiVal0 同非决定项，但机制上被读取）。 */
     public final ForgeConfigSpec.DoubleValue hillsHiVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue hillsHiDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue hillsHiLoc1;
+    /** [LEGACY_ONLY] hi 上界端点值。只经 legacy sampleByType(c,·,1.0) 生效；不参与 maxLandHi。 */
     public final ForgeConfigSpec.DoubleValue hillsHiVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue hillsHiDeriv1;
 
     // --- Inner spline: MOUNTAINS type (12 fields) ---
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountLoLoc0;
+    /** [LEGACY_ONLY] lo 下界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue mountLoVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountLoDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountLoLoc1;
+    /** [LEGACY_ONLY] lo 上界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue mountLoVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountLoDeriv1;
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountHiLoc0;
+    /** [BOTH] hi 下界端点值。<b>实测是真决定项</b>：默认 0.95 就是 maxLandHi() 的取值来源
+     *  ⇒ 直接决定 morph 侵蚀 softCap 的启动阈值 0.97*0.95=0.9215。
+     *  压到 0.20 实测 morph 落块 5×5 chunk 全部改变（SoftCapEngageProbe 25/25）。 */
     public final ForgeConfigSpec.DoubleValue mountHiVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountHiDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountHiLoc1;
+    /** [LEGACY_ONLY] hi 上界端点值。只经 legacy sampleByType(c,·,1.0) 生效；不参与 maxLandHi。 */
     public final ForgeConfigSpec.DoubleValue mountHiVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue mountHiDeriv1;
 
     // --- Inner spline: PLATEAU type (12 fields) ---
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue platLoLoc0;
+    /** [LEGACY_ONLY] lo 下界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue platLoVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue platLoDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue platLoLoc1;
+    /** [LEGACY_ONLY] lo 上界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue platLoVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue platLoDeriv1;
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue platHiLoc0;
+    /** [BOTH] hi 下界端点值。除 legacy 采样外，还经 maxLandHi() 参与 morph 侵蚀 softCap
+     *  （默认 0.706 与 mountHiVal0 同非决定项，但机制上被读取）。 */
     public final ForgeConfigSpec.DoubleValue platHiVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue platHiDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue platHiLoc1;
+    /** [LEGACY_ONLY] hi 上界端点值。只经 legacy sampleByType(c,·,1.0) 生效；不参与 maxLandHi。 */
     public final ForgeConfigSpec.DoubleValue platHiVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue platHiDeriv1;
 
     // --- Inner spline: BASIN type (12 fields) ---
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue basinLoLoc0;
+    /** [LEGACY_ONLY] lo 下界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue basinLoVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue basinLoDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue basinLoLoc1;
+    /** [LEGACY_ONLY] lo 上界端点值。只经 legacy sampleByType(c,·,0.0) 生效。 */
     public final ForgeConfigSpec.DoubleValue basinLoVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue basinLoDeriv1;
+    /** [LEGACY_ONLY] 位置0。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue basinHiLoc0;
+    /** [BOTH] hi 下界端点值。除 legacy 采样外，还经 maxLandHi() 参与 morph 侵蚀 softCap
+     *  （默认 0.05 与 mountHiVal0 同非决定项，但机制上被读取）。 */
     public final ForgeConfigSpec.DoubleValue basinHiVal0;
+    /** [LEGACY_ONLY] 位置0导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue basinHiDeriv0;
+    /** [LEGACY_ONLY] 位置1。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue basinHiLoc1;
+    /** [LEGACY_ONLY] hi 上界端点值。只经 legacy sampleByType(c,·,1.0) 生效；不参与 maxLandHi。 */
     public final ForgeConfigSpec.DoubleValue basinHiVal1;
+    /** [LEGACY_ONLY] 位置1导数。生产仅采端点 ⇒ 数学上零贡献。 */
     public final ForgeConfigSpec.DoubleValue basinHiDeriv1;
 
     // ===== Phase 2: Mid Spline Config (type distribution) =====
@@ -472,8 +614,7 @@ public final class GeoGenesisConfig {
             .defineInRange("continentThreshold", 0.0, -1.0, 1.0);
         continentBias = builder.comment("Land/ocean ratio bias (FBM continent field). Positive = more ocean, negative = more land. RMS-normalized FBM concentrates c near 0, so the bias is much lower than the old single-simplex 0.82. Default 0.31 yields ~35% land / 65% ocean (calibrated against the REAL CellGenerator.sample() pipeline via TerrainAreaProbe: the prior simplified c+eFromC formula was wrong).")
             .defineInRange("continentBias", 0.31, -0.6, 1.5);
-        continentProvinceWarp = builder.comment("Continent field warp amplitude for province sampling (blocks). EXPERIMENTAL: warping by c biases mountain ridge direction toward the c gradient (see GeoGenesisMod discussion). Safe default 0 = disable. Enable only if you understand the directional bias.")
-            .defineInRange("continentProvinceWarp", 0.0, 0.0, 8000.0);
+        // continentProvinceWarp 已删除（2026-11-07）：省系统下线后无消费者，默认值本就是 0。
         builder.pop();
 
         builder.push("Ocean Spline Control Points");
@@ -550,54 +691,24 @@ public final class GeoGenesisConfig {
             .defineInRange("oceanDepthFactor", 1.0, 0.5, 3.0);
         builder.pop();
 
-        builder.push("Province Weights");
-        provinceScale = builder.defineInRange("provinceScale", 4000.0, 500.0, 10000.0);
-        cratonWeight = builder.defineInRange("cratonWeight", 1.5, 0.0, 5.0);
-        beltWeight = builder.defineInRange("beltWeight", 3.5, 0.0, 5.0);
-        plateauWeight = builder.defineInRange("plateauWeight", 2.0, 0.0, 5.0);
-        basinWeight = builder.defineInRange("basinWeight", 0.8, 0.0, 5.0);
-        builder.pop();
-
+        // `Province Weights` 段（provinceScale / cratonWeight / beltWeight / plateauWeight /
+        // basinWeight）已删除（2026-11-07）：类型系统取代省系统后无人读取。
+        // `Land Process Parameters` 段的 plainBase/plainRough/hillsLow/hillsHigh/
+        // beltRidgePower/beltFoothill/beltPeak/plateauBase/plateauTop/plateauSteps/
+        // plateauStepStrength 同批删除；该段仅剩 basinBase（legacy TypeNoiseProvider 读）。
         builder.push("Land Process Parameters");
-        plainBase = builder.defineInRange("plainBase", 0.01, 0.0, 0.3);
-        plainRough = builder.defineInRange("plainRough", 0.04, 0.0, 0.3);
-        hillsLow = builder.defineInRange("hillsLow", 0.10, 0.0, 0.5);
-        hillsHigh = builder.defineInRange("hillsHigh", 0.25, 0.0, 0.7);
-        beltRidgePower = builder.defineInRange("beltRidgePower", 1.5, 0.0, 5.0);
-        beltFoothill = builder.defineInRange("beltFoothill", 0.15, 0.0, 0.5);
-        beltPeak = builder.defineInRange("beltPeak", 0.95, 0.0, 1.0);
-        plateauBase = builder.defineInRange("plateauBase", 0.55, 0.0, 1.0);
-        plateauTop = builder.defineInRange("plateauTop", 0.72, 0.0, 1.0);
-        plateauSteps = builder.comment("Number of plateau terraces.")
-            .defineInRange("plateauSteps", 3, 1, 10);
-        plateauStepStrength = builder.defineInRange("plateauStepStrength", 0.6, 0.0, 2.0);
         basinBase = builder.defineInRange("basinBase", 0.02, 0.0, 0.3);
         builder.pop();
 
+        // `Terrain Shape` 段（beltSharpness / beltWarpAmp / provMixSharpness /
+        // mountainMaskScale / microDetailScale / microDetailAmp）已删除（2026-11-07），
+        // 整段因此消失，不留空 builder.push。
+
         builder.push("Relief Amplitudes");
-        cratonReliefAmp = builder.comment("Craton local relief amplitude (e units). Plains/low hills. Kept moderate so HILLS class still forms; denseness is fixed via LandShape frequency, not by killing amplitude.")
-            .defineInRange("cratonReliefAmp", 0.10, 0.0, 0.6);
+        // cratonReliefAmp / plateauReliefAmp / basinReliefAmp 已删除（2026-11-07）；
+        // 仅 beltReliefAmp 仍被 legacy TypeLandShape/TypeNoiseProvider 读取。
         beltReliefAmp = builder.comment("Orogenic belt relief amplitude (e units). Rugged mountains. Moderate value preserves MOUNTAINS class; fingerprint look fixed by larger detail frequency in LandShape.")
             .defineInRange("beltReliefAmp", 0.35, 0.0, 0.6);
-        plateauReliefAmp = builder.comment("Plateau relief amplitude (e units). Flat-topped, low relief.")
-            .defineInRange("plateauReliefAmp", 0.03, 0.0, 0.6);
-        basinReliefAmp = builder.comment("Basin relief amplitude (e units).")
-            .defineInRange("basinReliefAmp", 0.05, 0.0, 0.6);
-        builder.pop();
-
-        builder.push("Terrain Shape");
-        beltSharpness = builder.comment("Belt (orogenic) peak sharpness: pow(n, sharpness). >1 = pointed peaks, =1 = round, <1 = broad. Default 1.5.")
-            .defineInRange("beltSharpness", 1.5, 0.5, 5.0);
-        beltWarpAmp = builder.comment("Belt domain warp displacement amplitude (world-space blocks). Warp elongates massifs into natural ranges; 0 = disable warp. Default 120.")
-            .defineInRange("beltWarpAmp", 120.0, 0.0, 500.0);
-        provMixSharpness = builder.comment("Province mix sharpening exponent (softmax weight power). >1 lets dominant province own its region and express full |r|=1 peak / r=0 valley; boundaries stay smooth. Default 2.5.")
-            .defineInRange("provMixSharpness", 2.5, 1.0, 5.0);
-        mountainMaskScale = builder.comment("Mountain mask noise scale (world-space blocks). Low-frequency blobs limit mountains to belts/clusters (realism key, ref TerraForged). Default 2200.")
-            .defineInRange("mountainMaskScale", 2200.0, 400.0, 8000.0);
-        microDetailScale = builder.comment("Surface micro-detail noise scale (blocks). Large period, tiny amplitude (<0.03 e) for texture only, not terrain. Default 450.")
-            .defineInRange("microDetailScale", 450.0, 200.0, 2000.0);
-        microDetailAmp = builder.comment("Surface micro-detail amplitude (e units). Must stay tiny (<0.03) to avoid competing with relief. Default 0.025.")
-            .defineInRange("microDetailAmp", 0.025, 0.0, 0.08);
         builder.pop();
 
         builder.push("Classification & Snow");
@@ -698,23 +809,13 @@ public final class GeoGenesisConfig {
             .defineInRange("coastlineWarpLacunarity", 2.0, 1.5, 3.0);
         coastlineWarpPersistence = builder.comment("FBM 振幅衰减系数（persistence）：每倍频振幅×该值。默认 0.6（2026-08-06 0.5→0.6 增强高频细齿），范围 [0.25, 0.8]。")
             .defineInRange("coastlineWarpPersistence", 0.6, 0.25, 0.8);
-        coastTerrainInfluence = builder.comment("地形类型调制强度（c 空间单位）。山地权重高→推岸出海成岬角/悬崖，平原→拉岸内凹成海湾。默认 0.08，范围 [0, 0.3]。")
-            .defineInRange("coastTerrainInfluence", 0.08, 0.0, 0.3);
-        archipelagoBand = builder.comment("离岸群岛带宽度（c 空间单位，从 coastLoc 向海侧延伸）。越大群岛可出现的海域范围越宽。默认 0.10，范围 [0, 0.3]。")
-            .defineInRange("archipelagoBand", 0.10, 0.0, 0.3);
-        archipelagoDensity = builder.comment("离岸群岛密度阈值（噪声 0-1）。超过此阈值才生成岛屿。越低→岛屿越多越密集。默认 0.30，范围 [0, 1]。")
-            .defineInRange("archipelagoDensity", 0.30, 0.0, 1.0);
-        archipelagoScale = builder.comment("离岸群岛噪声尺度（块）。越大→岛屿团块越大越稀疏。默认 120，范围 [30, 500]。")
-            .defineInRange("archipelagoScale", 120.0, 30.0, 500.0);
-        archipelagoHeight = builder.comment("离岸群岛最大高度（e 单位）。岛屿在地形 e 上的高度上限。默认 0.035，范围 [0, 0.15]。")
-            .defineInRange("archipelagoHeight", 0.035, 0.0, 0.15);
+        // coastTerrainInfluence / archipelagoBand / archipelagoDensity / archipelagoScale /
+        // archipelagoHeight 已删除（2026-11-07）：CoastlineField 不读它们，只有预览面板展示。
         builder.pop();
 
         builder.push("Erosion");
         erosionEnabled = builder.comment("Enable local particle erosion (seamless, margin-filled with true neighbour heights). Default true.")
             .define("erosionEnabled", true);
-        erosionRoutingAdaptive = builder.comment("Adaptive river routing: blend erosion delta into the D8 routing field so river lines follow eroded gullies. WARNING (measured 2026-09-08): network build covers the whole region grid, so enabling this triggers synchronous cold generation of ALL erosion tiles in the area (~200ms each, hundreds of tiles) -> world load stalls for minutes. Default false; enable only for offline experiments.")
-            .define("erosionRoutingAdaptive", false);
         erosionYieldToRiver = builder.comment("Erosion yields to river channel (FreeTerraForged-style erosionMask): attenuate the erosion delta applied to the riverbed by distance to channel center (0 at center, 1 outside valley) so the bed stays coherent with the planned monotonic water surface. Fixes erosion-induced non-monotonic terraced waterfalls and dry sand bars poking through the water. Default true; set false to restore old full-follow behavior.")
             .define("erosionYieldToRiver", true);
         erosionXSEnabled = builder.comment("Extra-fine (XS, r1wu cross-brush) micro-erosion detail layer. Adds 1-2 block textures on slopes, but amplifies cross-chunk birth-set discreteness into visible ridges near chunk borders (measured +1.6 blocks at tile borders). Default false (conservative).")
@@ -725,8 +826,7 @@ public final class GeoGenesisConfig {
             .defineInRange("erosionDropsMul", 1.0, 0.1, 4.0);
         erosionErodeMul = builder.comment("Erosion erode-rate multiplier. Default 1.0, range [0.1, 4].")
                 .defineInRange("erosionErodeMul", 1.0, 0.1, 4.0);
-        erosionLocalChargeWeight = builder.comment("localCharge positive feedback weight α. Each droplet's cumulative desc ent amplifies capacity: 0=off, higher=main valleys cut deeper vs tributaries. Default 1.0, range [0, 5].")
-                .defineInRange("erosionLocalChargeWeight", 1.0, 0.0, 5.0);
+        // erosionLocalChargeWeight 已删除（2026-11-07）：ErosionEngine 自 2026-08-01 起即不读它。
         erosionCascadeStrength = builder.comment("Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.5 (2026-08-10: 0.3->0.5, sharper gully edges), range [0, 1].")
                 .defineInRange("erosionCascadeStrength", 0.5, 0.0, 1.0);
         erosionMomentumTransfer = builder.comment("SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].")
@@ -824,59 +924,20 @@ public final class GeoGenesisConfig {
                 .define("oreOverrideVanilla", false);
         builder.pop();
 
-        // ===================== ★ 2026-09-18 水量平衡（水文 M2，独立段落）=====================
+        // ===================== ★ 2026-11-07  Hydrology 段整体删除 =====================
         //
-        //   ⚠ 同样必须独立成段（与下面 Diagnostics 段同一个教训）：初版把这三项加在
-        //     【Ores 段内】⇒ 路径变成 [.. .Ores].hydrologyDecayEnabled，与"水文"语义完全无关，
-        //     用户根本不会去那里找。配置项的【归属段落】就是它的"文档"。
-        builder.push("Hydrology");
-        hydrologySkeletonRouting = builder.comment(
-                "Fluid-physics river skeleton routing (EXPERIMENTAL). true = river polylines are"
-                + " derived from a block-resolution fluid simulation (priority-flood -> D8 -> accumulation),"
-                + " so every step is strictly downhill (no cross-slope / uphill segments)."
-                + " false (default) = legacy 48-block D8 tracing + particle/meander decoration (bit-identical)."
-                + " KNOWN GAPS when true: tributary forking, waterfall stepping, estuary and cross-region"
-                + " outlet continuation are not yet wired (measured: dry river nodes 18.8%, rising water 23.2%)."
-                + " Takes effect on world (re)load; already-generated chunks are unchanged."
-                + " DEFAULT true since 2026-09-21 (user: the new routing must be visible in-game to be"
-                + " testable). Set false to revert to the legacy 48-block tracing.")
-                // ★ 2026-09-23 默认改为 false：骨架路线会顶替 09-19 已完成的湖拓扑，
-                //   导致湖泊变形（用户实测）。湖泊验收通过前保持关闭（见
-                //   RiverLineNetwork.flowSkeletonRouting 注释与 git 铁证）。
-                .define("hydrologySkeletonRouting", false);
-        hydrologyDecayEnabled = builder.comment(
-                "Water balance: downstream decay (evaporation / infiltration) along flow paths."
-                + " false (default) = OFF: pure accumulation, zero behaviour change (bit-identical)."
-                + " true = CLIMATE: decay is driven by precipitation (the most direct proxy for aridity)"
-                + " -- arid regions evaporate strongly, so rivers fade out (endorheic / ephemeral rivers),"
-                + " while humid regions get decay = 0 and rivers run through to the sea."
-                + " SCOPE: affects river network size only (hence river width / lake extent), NOT terrain height."
-                + " Takes effect on world (re)load; already-generated chunks are unchanged.")
-                .define("hydrologyDecayEnabled", false);
-        hydrologyDecayMax = builder.comment(
-                "Maximum downstream decay coefficient (1/wu) in the driest regions."
-                + " Higher = more endorheic rivers. Default 2e-3. Measured (runWaterBalanceProbe, grid 64):"
-                + " 1e-3 => mean river width x0.97; 2e-3 => x0.95, total water x0.87. Range [0, 2e-2]")
-                .defineInRange("hydrologyDecayMax", 2.0e-3, 0.0, 2.0e-2);
-        hydrologyDecayRef = builder.comment(
-                "Reference precipitation: at or above this value the climate is considered humid"
-                + " and decay becomes exactly 0 (zero disturbance). Default 0.7647 (near the measured"
-                + " global precipitation mean). Range [0.05, 2.0]")
-                .defineInRange("hydrologyDecayRef", 0.7647, 0.05, 2.0);
-        hydrologyDecayExponent = builder.comment(
-                "Softening exponent for the decay ramp: decay = maxDecay * max(0, 1 - precip/ref)^exponent."
-                + " Values below 1 give semi-arid regions noticeable decay too. Default 0.5. Range [0.1, 3.0]")
-                .defineInRange("hydrologyDecayExponent", 0.5, 0.1, 3.0);
-        hydrologyModelPipelineEnabled = builder.comment(
-                "Deprecated no-op (2026-10-20): the model pipeline is the ONLY hydrology line;"
-                        + " the legacy riverline carver has been removed and this key is ignored."
-                        + " Kept registered so old config files load without warnings.")
-                .define("hydrologyModelPipelineEnabled", true);
-        // `hydrologyDeterministicSkeleton` 已删除（2026-10-20，用户决定移除 legacy 线）：
-        // 骨架是唯一生产河网线，不存在开关。历史教训（探针/实机走不同代码线）见
-        // ModelHydrologyProvider SKELETON_TRACE 注释；旧 TOML 里的该键会被 Forge 配置
-        // 解析忽略（未注册键），无害。
-        builder.pop();
+        //   原 `Hydrology` 段只有 5 个键：hydrologySkeletonRouting / hydrologyDecayEnabled /
+        //   hydrologyDecayMax / hydrologyDecayRef / hydrologyDecayExponent，
+        //   外加一个 no-op 的 hydrologyModelPipelineEnabled。它们要么只被
+        //   src/diagnostics 的 HydrologyExperimentEngine 读取（实验路径），
+        //   要么早在 2026-10-20 legacy 线退役后就成了常量。
+        //   ⇒ 生产 model 链一个都不读，整段按用户裁定删除（debug 进程已不再需要配置）。
+        //
+        //   `hydrologyDeterministicSkeleton` 更早（2026-10-20）已随 legacy 线一并删除。
+        //   旧 TOML 里的这些键会被 Forge 配置解析忽略（未注册键），无害。
+        //
+        //   ⚠ 保留的历史教训（配置项的归属段落就是它的"文档"）：不要为了"看起来相关"
+        //     把新键塞进语义无关的段落；没有键的段落不要留空壳 push/pop。
 
         // ===================== ★ 2026-09-18 全流程诊断（独立段落）=====================
         //
@@ -907,35 +968,22 @@ public final class GeoGenesisConfig {
         builder.pop();
 
         builder.push("Phase 1 Unified Spline");
-        // Outer spline control points (7 × 2 = 14 fields)
+        // Outer spline control points (7 × 1 = 7 fields)
+        // `splineOuterDeriv*` 已删除（2026-11-07）：UnifiedSpline.OuterNode.derivative 零读取。
         splineOuterLoc0 = builder.comment("Outer spline point 0 location (deep ocean). Default -0.80.")
             .defineInRange("splineOuterLoc0", -0.80, -1.0, 1.0);
-        splineOuterDeriv0 = builder.comment("Outer spline point 0 derivative.")
-            .defineInRange("splineOuterDeriv0", 0.0, -10.0, 10.0);
         splineOuterLoc1 = builder.comment("Outer spline point 1 location (continental shelf). Default -0.50.")
             .defineInRange("splineOuterLoc1", -0.50, -1.0, 1.0);
-        splineOuterDeriv1 = builder.comment("Outer spline point 1 derivative.")
-            .defineInRange("splineOuterDeriv1", 0.0, -10.0, 10.0);
         splineOuterLoc2 = builder.comment("Outer spline point 2 location (shallow sea). Default -0.16.")
             .defineInRange("splineOuterLoc2", -0.16, -1.0, 1.0);
-        splineOuterDeriv2 = builder.comment("Outer spline point 2 derivative.")
-            .defineInRange("splineOuterDeriv2", 0.0, -10.0, 10.0);
         splineOuterLoc3 = builder.comment("Outer spline point 3 location (coastline). Default -0.04.")
             .defineInRange("splineOuterLoc3", -0.04, -1.0, 1.0);
-        splineOuterDeriv3 = builder.comment("Outer spline point 3 derivative.")
-            .defineInRange("splineOuterDeriv3", 0.0, -10.0, 10.0);
         splineOuterLoc4 = builder.comment("Outer spline point 4 location (near-shore land). Default 0.20.")
             .defineInRange("splineOuterLoc4", 0.20, -1.0, 1.0);
-        splineOuterDeriv4 = builder.comment("Outer spline point 4 derivative.")
-            .defineInRange("splineOuterDeriv4", 0.0, -10.0, 10.0);
         splineOuterLoc5 = builder.comment("Outer spline point 5 location (inland). Default 0.50.")
             .defineInRange("splineOuterLoc5", 0.50, -1.0, 1.0);
-        splineOuterDeriv5 = builder.comment("Outer spline point 5 derivative.")
-            .defineInRange("splineOuterDeriv5", 0.0, -10.0, 10.0);
         splineOuterLoc6 = builder.comment("Outer spline point 6 location (deep inland). Default 0.80.")
             .defineInRange("splineOuterLoc6", 0.80, -1.0, 1.0);
-        splineOuterDeriv6 = builder.comment("Outer spline point 6 derivative.")
-            .defineInRange("splineOuterDeriv6", 0.0, -10.0, 10.0);
 
         // PLAIN inner spline (12 fields)
         builder.push("PLAIN");
@@ -1065,7 +1113,7 @@ public final class GeoGenesisConfig {
         double landHi = Math.max(Math.max(plainHiVal0.get(), hillsHiVal0.get()),
                 Math.max(mountHiVal0.get(), Math.max(platHiVal0.get(), basinHiVal0.get())));
         return new com.geogenesis.worldgen.terrain.TerrainParams(
-            continentScale.get(), continentWarp.get(), continentFbmOctaves.get(), continentFbmLacunarity.get(), continentFbmPersistence.get(), continentThreshold.get(), continentBias.get(), continentProvinceWarp.get(),
+            continentScale.get(), continentWarp.get(), continentFbmOctaves.get(), continentFbmLacunarity.get(), continentFbmPersistence.get(), continentThreshold.get(), continentBias.get(),
             deepOceanLoc.get(), shelfLoc.get(), shallowLoc.get(), coastLoc.get(),
             deepOceanDepth.get(), shelfDepth.get(), shallowDepth.get(),
             deepOceanDeriv.get(), shelfDeriv.get(), shallowDeriv.get(), coastDeriv.get(),
@@ -1080,15 +1128,8 @@ public final class GeoGenesisConfig {
             lakeLo.get(), lakeHi.get(),
             riverLo.get(), riverHi.get(),
             seabedDetail.get(), oceanDepthFactor.get(),
-            provinceScale.get(), cratonWeight.get(), beltWeight.get(),
-            plateauWeight.get(), basinWeight.get(),
-            plainBase.get(), plainRough.get(), hillsLow.get(), hillsHigh.get(),
-            beltRidgePower.get(), beltFoothill.get(), beltPeak.get(),
-            plateauBase.get(), plateauTop.get(), plateauSteps.get(), plateauStepStrength.get(),
             basinBase.get(),
-            cratonReliefAmp.get(), beltReliefAmp.get(), plateauReliefAmp.get(), basinReliefAmp.get(),
-            beltSharpness.get(), beltWarpAmp.get(), provMixSharpness.get(),
-            mountainMaskScale.get(), microDetailScale.get(), microDetailAmp.get(),
+            beltReliefAmp.get(),
             elevHigh.get(), reliefHigh.get(), snowLatitudeInfluence.get(), snowHumidityInfluence.get(),
 
             // preview compat defaults
@@ -1096,9 +1137,8 @@ public final class GeoGenesisConfig {
             maxY.get(), peakHeightFraction.get(), (int) Math.round(seaLevel.get() + (maxY.get() - seaLevel.get()) * peakHeightFraction.get() * landHi), (int)(minY.get() * 0.75),
             verticalScale.get(),
             cAffinityStrength.get(),
-            // coastline diversification
-            coastlineWarpAmp.get(), coastlineWarpScale.get(), coastlineWarpOctaves.get(), coastlineWarpLacunarity.get(), coastlineWarpPersistence.get(), coastTerrainInfluence.get(),
-            archipelagoBand.get(), archipelagoDensity.get(), archipelagoScale.get(), archipelagoHeight.get(),
+            // coastline diversification（archipelago*/coastTerrainInfluence 已随键删除）
+            coastlineWarpAmp.get(), coastlineWarpScale.get(), coastlineWarpOctaves.get(), coastlineWarpLacunarity.get(), coastlineWarpPersistence.get(),
             latitudeScale.get(), tempWarpScale.get(), humidityScale.get(), climateRegionSize.get(),
 
             // Phase 1: unified spline config (built from individual fields)
@@ -1192,14 +1232,16 @@ public final class GeoGenesisConfig {
 
     /** 从独立配置字段构建 SplineConfig（Phase 3：含海洋/水域类型） */
     private com.geogenesis.worldgen.terrain.SplineConfig buildSplineConfig() {
+        // 外层样条导数（outerDeriv0..6）不再是配置键：UnifiedSpline.OuterNode.derivative
+        // 全仓零读取（2026-11-07 删键），这里固定传 0.0 —— 与删键前的默认值逐位相同。
         return new com.geogenesis.worldgen.terrain.SplineConfig(
-            splineOuterLoc0.get(), splineOuterDeriv0.get(),
-            splineOuterLoc1.get(), splineOuterDeriv1.get(),
-            splineOuterLoc2.get(), splineOuterDeriv2.get(),
-            splineOuterLoc3.get(), splineOuterDeriv3.get(),
-            splineOuterLoc4.get(), splineOuterDeriv4.get(),
-            splineOuterLoc5.get(), splineOuterDeriv5.get(),
-            splineOuterLoc6.get(), splineOuterDeriv6.get(),
+            splineOuterLoc0.get(), 0.0,
+            splineOuterLoc1.get(), 0.0,
+            splineOuterLoc2.get(), 0.0,
+            splineOuterLoc3.get(), 0.0,
+            splineOuterLoc4.get(), 0.0,
+            splineOuterLoc5.get(), 0.0,
+            splineOuterLoc6.get(), 0.0,
             plainLoLoc0.get(), plainLoVal0.get(), plainLoDeriv0.get(),
             plainLoLoc1.get(), plainLoVal1.get(), plainLoDeriv1.get(),
             plainHiLoc0.get(), plainHiVal0.get(), plainHiDeriv0.get(),
@@ -1242,7 +1284,7 @@ public final class GeoGenesisConfig {
         double landHi = Math.max(Math.max(plainHiVal0.getDefault(), hillsHiVal0.getDefault()),
                 Math.max(mountHiVal0.getDefault(), Math.max(platHiVal0.getDefault(), basinHiVal0.getDefault())));
         return new com.geogenesis.worldgen.terrain.TerrainParams(
-            continentScale.getDefault(), continentWarp.getDefault(), continentFbmOctaves.getDefault(), continentFbmLacunarity.getDefault(), continentFbmPersistence.getDefault(), continentThreshold.getDefault(), continentBias.getDefault(), continentProvinceWarp.getDefault(),
+            continentScale.getDefault(), continentWarp.getDefault(), continentFbmOctaves.getDefault(), continentFbmLacunarity.getDefault(), continentFbmPersistence.getDefault(), continentThreshold.getDefault(), continentBias.getDefault(),
             deepOceanLoc.getDefault(), shelfLoc.getDefault(), shallowLoc.getDefault(), coastLoc.getDefault(),
             deepOceanDepth.getDefault(), shelfDepth.getDefault(), shallowDepth.getDefault(),
             deepOceanDeriv.getDefault(), shelfDeriv.getDefault(), shallowDeriv.getDefault(), coastDeriv.getDefault(),
@@ -1257,15 +1299,8 @@ public final class GeoGenesisConfig {
             lakeLo.getDefault(), lakeHi.getDefault(),
             riverLo.getDefault(), riverHi.getDefault(),
             seabedDetail.getDefault(), oceanDepthFactor.getDefault(),
-            provinceScale.getDefault(), cratonWeight.getDefault(), beltWeight.getDefault(),
-            plateauWeight.getDefault(), basinWeight.getDefault(),
-            plainBase.getDefault(), plainRough.getDefault(), hillsLow.getDefault(), hillsHigh.getDefault(),
-            beltRidgePower.getDefault(), beltFoothill.getDefault(), beltPeak.getDefault(),
-            plateauBase.getDefault(), plateauTop.getDefault(), plateauSteps.getDefault(), plateauStepStrength.getDefault(),
             basinBase.getDefault(),
-            cratonReliefAmp.getDefault(), beltReliefAmp.getDefault(), plateauReliefAmp.getDefault(), basinReliefAmp.getDefault(),
-            beltSharpness.getDefault(), beltWarpAmp.getDefault(), provMixSharpness.getDefault(),
-            mountainMaskScale.getDefault(), microDetailScale.getDefault(), microDetailAmp.getDefault(),
+            beltReliefAmp.getDefault(),
             elevHigh.getDefault(), reliefHigh.getDefault(), snowLatitudeInfluence.getDefault(), snowHumidityInfluence.getDefault(),
 
             // preview compat defaults
@@ -1273,9 +1308,8 @@ public final class GeoGenesisConfig {
             maxY.getDefault(), 0.92, (int) Math.round(seaLevel.getDefault() + (maxY.getDefault() - seaLevel.getDefault()) * 0.92 * landHi), (int)(minY.getDefault() * 0.75),
             verticalScale.getDefault(),
             cAffinityStrength.getDefault(),
-            // coastline diversification
-            coastlineWarpAmp.getDefault(), coastlineWarpScale.getDefault(), coastlineWarpOctaves.getDefault(), coastlineWarpLacunarity.getDefault(), coastlineWarpPersistence.getDefault(), coastTerrainInfluence.getDefault(),
-            archipelagoBand.getDefault(), archipelagoDensity.getDefault(), archipelagoScale.getDefault(), archipelagoHeight.getDefault(),
+            // coastline diversification（archipelago*/coastTerrainInfluence 已随键删除）
+            coastlineWarpAmp.getDefault(), coastlineWarpScale.getDefault(), coastlineWarpOctaves.getDefault(), coastlineWarpLacunarity.getDefault(), coastlineWarpPersistence.getDefault(),
             latitudeScale.getDefault(), tempWarpScale.getDefault(), humidityScale.getDefault(), climateRegionSize.getDefault(),
 
             // Phase 1: unified spline config (built from default values)
