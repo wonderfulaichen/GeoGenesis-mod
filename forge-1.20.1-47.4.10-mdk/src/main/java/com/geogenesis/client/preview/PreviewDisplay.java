@@ -498,6 +498,8 @@ public class PreviewDisplay extends AbstractWidget {
     //       Retains schema127 water authority; geometric design, not hydraulic/sediment physics.
     // 129 = Basin-wide receiver hard pins + original source section/gradient stencils.
     //       Prevents overlapping morphology from cutting another inlet's natural receiver.
+    //       ★ 2026-11-07 用户实机视觉验收通过（同批实测启动进入世界 <3 分钟）⇒ 本条为定稿产出。
+    //       仍有界：仅同盆认证湿域内改动，湖外普通河与骨架不变；非水力/泥沙模拟。
     private static final int CACHE_SCHEMA_VERSION = 129;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
