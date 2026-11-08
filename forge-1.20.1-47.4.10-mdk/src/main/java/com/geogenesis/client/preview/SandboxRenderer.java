@@ -160,14 +160,13 @@ public final class SandboxRenderer {
     /**
      * 缩放下限/上限。
      *
-     * <p>下限 0.6 沿用 yardsite；<b>上限从 8.0 提到 32.0</b>（★ 2026-11-08）：
-     * 现在缩放同时驱动 LOD 档位（{@code level = round(log2(zoom/2.0))}），
-     * 若仍是 8.0 则最高只到 LOD+2（每细格 1.5 格方块），
-     * 而 {@link SandboxLod#MAX_LEVEL}=+4（0.38 格/细格）根本够不到；
-     * 32.0 对应 LOD+4，正好覆盖满档 —— 支流（宽 3 格）在最细档才看得见。</p>
+     * <p>与 {@link SandboxLod#ZOOM_MIN} / {@link SandboxLod#ZOOM_MAX} <b>必须一致</b>：
+     * LOD 的步长下限（每细格 ≥ 1 格方块）由 ZOOM_MAX 决定，
+     * 若这里允许更大的 zoom，画面会继续放大而采样精度不再提升
+     * （柱子被拉到超采样，看着"糊"而不是"更清晰"）。</p>
      */
-    public static final float ZOOM_MIN = 0.6f;
-    public static final float ZOOM_MAX = 32.0f;
+    public static final float ZOOM_MIN = SandboxLod.ZOOM_MIN;
+    public static final float ZOOM_MAX = SandboxLod.ZOOM_MAX;
 
     /** 缩放（yardsite {@code setZoom()} 的 0.6~8.0 已按 LOD 需求放宽到 32）。 */
     public void addZoom(float factor) {

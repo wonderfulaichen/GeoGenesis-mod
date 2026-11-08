@@ -796,71 +796,71 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
     private void renderSandbox(GuiGraphics g, int w, int h, double mx, double my) {
-        // ★ LOD（2026-11-08）：世界窗口**由缩放档位决定**，不是 texW×scaleBlockPos。
+        // ★ 连续 LOD（2026-11-08 重做）：世界窗口随缩放<b>连续</b>变化，采样点数恒定。
         //
-        //   修复前：窗口 = texW×scaleBlockPos（约 900×64 = 57600 格）/ 256 细格
-        //          ⇒ 一个细格 225 格方块 ⇒ 河流湖泊比采样格还小，必然消失。
-        //   现在：窗口 = GRID × step(level)，采样点数恒定 ⇒ 成本不变，
-        //        推近时窗口缩小、每格变细，河流支流才看得见。
-        int lodLevel = SandboxLod.levelFor(sandbox.zoom());
-        int blocksWide = SandboxLod.windowFor(lodLevel, ProgressiveSampler.GRID);
+        //   上一版用离散档位（只有 -1/0/+1/+2 四档）⇒ 实机滚轮一直放大但档位长期停在
+        //   某一档（实测 zoom 2→30 只走三步，后 13 格滚轮全停在 998 格窗口）
+        //   ⇒ 用户看不到"比例尺变化"。
+        //   现在：窗口 = GRID × step(zoom)，step 随 zoom 连续变化 ⇒ 平滑缩放，
+        //   且量化到 16 格倍数，避免每滚一格就重采。
+        float zoom = sandbox.zoom();
+        int blocksWide = SandboxLod.windowFor(zoom, ProgressiveSampler.GRID);
         int blocksHigh = blocksWide;
-        // ★ 对齐倍数 = 采样器内部真实步长（window/GRID），**不能取整**。
-        //   细档 step<1（如 LOD+3 是 0.75 格/细格），取整成 1 会让对齐原点与
-        //   采样格错位 → 画面出现周期性横条纹（2026-11-08 实测）。
-        //   这里只用它把原点对齐到<b>整数格</b>（避免频繁重采），不对齐到 step。
         int originWx = centerX + (int) totalDragX - blocksWide / 2;
         int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
+        // 视口标识：窗口已含精度信息（窗口/GRID = 每细格方块数）⇒ 无需再掺档位
         long id = (long) originWx * 31L + originWz;
         id = id * 131L + blocksWide;
         id = id * 131L + blocksHigh;
-        id = id * 131L + lodLevel;          // 档位参与视口标识 ⇒ 跨档必重采
 
         if (largeSampler == null) {
             largeSampler = new ProgressiveSampler(ProgressiveSampler.GRID,
                     ProgressiveSampler.GRID);
         }
-        // ★ 粗层水位（河道/湖面）：只在细档开（成本 635ms/冷 tract，见 SandboxLod.usesCoarseWater）
-        boolean wantWater = SandboxLod.usesCoarseWater(lodLevel);
+        // ★ 粗层水位（河道/湖面）：窗口小到 tract 数可负担时才开（见 SandboxLod.usesCoarseWater）
+        boolean wantWater = SandboxLod.usesCoarseWater(zoom, ProgressiveSampler.GRID);
         if (wantWater && waterLookup == null) {
             waterLookup = new SandboxWaterLookup(terrain.generator());
-            LOGGER.info("[Preview] 沙盘粗层水位已启用（LOD {}）", lodLevel);
         }
-        // ★ 细档走完整管线（带河谷/湖河），粗档走廉价路径 —— 见 SandboxLod.usesHydroPath
-        boolean hydroPath = SandboxLod.usesHydroPath(lodLevel);
+        boolean hydroPath = SandboxLod.usesHydroPath(zoom);
         largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id, hydroPath,
                 wantWater ? waterLookup : null);
 
         float radius = Math.min(w, h) * 0.42f;
         TerrainFieldData d = largeSampler.data();
-        // 诊断：每个视口只打一次，确认沙盘真的进来了、数据非空、LOD 档位对
+        // 诊断：视口或精度变化就记一条，便于实机确认"滚轮真的换了比例尺"
         if (sandboxDiagId != id) {
             sandboxDiagId = id;
-            LOGGER.info("[Preview] 沙盘 {} 数据={} zoom={} scene={}x{}",
-                    SandboxLod.describe(lodLevel, ProgressiveSampler.GRID), d != null,
-                    String.format(java.util.Locale.ROOT, "%.2f", sandbox.zoom()), w, h);
+            LOGGER.info("[Preview] 沙盘 {} 数据={} zoom={} 水位={} scene={}x{}",
+                    SandboxLod.describe(zoom, ProgressiveSampler.GRID), d != null,
+                    String.format(java.util.Locale.ROOT, "%.2f", zoom), wantWater, w, h);
         }
         int side = Math.min(w, h);
-        // ★ 竖向比例：<b>固定用全地形量程</b>，不随 LOD 窗口变化。
+        // ★ 竖向比例：<b>照抄参考项目</b>（SiteTerrainRenderer.collect() 第 661/677-678 行）：
         //
-        //   ★ 2026-11-08 实测教训（两次改错）：
-        //   ① 下限硬编码 60 ⇒ 细档窗口高差不足 60 时柱子全挤在 tops≈0.40；
-        //   ② 改成"按窗口最高点自适应" ⇒ 更糟：窗口内 span 变小、ratio 变大，
-        //      所有柱子又都顶到 RELIEF，而<b>柱宽没变</b> ⇒ 每根柱子都像一级小台阶，
-        //      整幅呈"瓦片屋顶/棋盘格"纹理，地形形状完全看不出。
+        //     int highest = base;
+        //     for (每根柱子) if (columnMax > highest) highest = columnMax;
+        //     field.easeReliefSpan(max(60, highest - base));
+        //     float span = max(20, field.reliefSpan());     // 缓动后的值
         //
-        //   根因：柱高（模型单位，上限 RELIEF=0.4）与柱宽（由窗口/柱数决定）是两个
-        //   独立的量。span 随窗口缩放会让二者的<b>相对比例</b>失控。
-        //   ⇒ span 取<b>地形绝对量程</b>（海平面以上到最高峰），柱子高度就代表真实海拔，
-        //      任何 LOD 档下陡缓关系都一致。这与参考项目"span 用选点窗口高差"不同，
-        //      但那是因为它的窗口固定；我们有 LOD，必须锚在绝对量程上。
+        //   ⇒ span = <b>本图最高点 - 基准面</b>，经缓动（涨 8%/降 2%）。
+        //
+        //   ★ 我曾经两次改错这里（记录在交接 §12.3）：
+        //     ① 下限硬编码 60 → 细档柱子全挤在同一高度；
+        //     ② 改用"世界绝对量程 320"（怕 LOD 切换跳变）→ <b>柱子全被压扁</b>
+        //        ：320 格量程下，本图高差只有 60~150 格，柱子只用到 20%~45% 的高度，
+        //        立体感远不如参考项目。参考项目敢用"本图最高点"是因为它有缓动。
+        //   ⇒ 恢复参考做法，靠 easeReliefSpan 的缓动吸收 LOD 切换时的跳变。
         double seaY = this.seaLevel;
-        {
+        if (d != null) {
             double baseY = seaY - 4.0;
-            // ★ 用<b>世界绝对量程</b>（params 的 maxY），不是窗口内最高点：
-            //   窗口最高点会随 LOD 档变化 ⇒ span 变 ⇒ 柱高比例失控（见上）。
-            double relief = Math.max(60.0, Math.max(0.0, this.maxY - baseY));
-            largeSampler.easeReliefSpan((float) relief);
+            double hi = baseY;
+            for (int i = 0; i < d.height.length; i++) {
+                // 水域按海平面参与（参考项目的水格 waterSurface = seaLevel）
+                double columnMax = d.e[i] < 0.0 ? seaY : d.height[i];
+                if (columnMax > hi) hi = columnMax;
+            }
+            largeSampler.easeReliefSpan((float) Math.max(60.0, hi - baseY));
         }
         // ★ P0-4：hover 拾取（视线推进），沙盘模式每帧一次
         int ax = getX() + (w - side) / 2;
@@ -1948,6 +1948,24 @@ public class PreviewDisplay extends AbstractWidget {
      * @return 永不为 null；无数据时返回 {@code "1:1"}
      */
     public String statusLine() {
+        // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
+        if (sandboxMode) {
+            StringBuilder sb = new StringBuilder(
+                    SandboxLod.scaleLabel(sandbox.zoom(), ProgressiveSampler.GRID));
+            if (largeSampler != null && largeSampler.data() != null) {
+                TerrainFieldData d = largeSampler.data();
+                sb.append(" · ").append(d.gridW).append('×').append(d.gridH);
+                sb.append(" · ").append(largeSampler.lastCostMs()).append("ms");
+                if (!largeSampler.isComplete()) {
+                    sb.append(" · ").append((int) (largeSampler.progress() * 100)).append('%');
+                }
+            }
+            if (largeSampler != null && largeSampler.isHydroPath()) {
+                sb.append(" · 水文管线");
+            }
+            return sb.toString();
+        }
+
         StringBuilder sb = new StringBuilder("1:").append(scaleBlockPos);
         if (largeArea) {
             sb.append(" · ").append(localize("geogenesis.preview.large_area"));

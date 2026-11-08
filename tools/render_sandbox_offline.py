@@ -134,12 +134,13 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
            pitch=DEFAULT_PITCH, sea=63.0, out='out.png', layer='BIOME'):
     gx, gz = h.shape
     base = sea - 4.0
-    hi = max(base, h.max())
-    # ★ 竖向比例用<b>绝对量程</b>（与 PreviewDisplay 同式）：
-    #   span 随 LOD 窗口变化会让柱高比例失控（柱宽不变而柱高顶到 RELIEF）
-    #   -> 每根柱子都像一级台阶，整幅呈"瓦片屋顶/棋盘格"。
-    #   这里用世界量程 maxY(=320) - base，与生产一致。
-    span = max(60.0, 320.0 - base)
+    # ★ 竖向比例照抄参考项目（SiteTerrainRenderer.collect 第 661/677-678 行）：
+    #     span = max(60, 本图最高点 - base)
+    #   用绝对量程(320)会把柱子压扁——本图高差只有 60~150 格，
+    #   柱子只用到 20%~45% 高度，立体感远不如参考项目。
+    surface_for_hi = np.where(e < 0.0, sea, h)
+    hi = max(base, float(surface_for_hi.max()))
+    span = max(60.0, hi - base)
 
     # 归一化高度 r（水域用海平面）
     surface = np.where(e < 0.0, sea, h)
