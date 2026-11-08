@@ -2715,3 +2715,27 @@ tasks.register('runPresetEffectivenessProbe', JavaExec) {
     timeout = java.time.Duration.ofMinutes(20)
     if (project.hasProperty('probeArgs')) setArgs(probeArgs.split(' ') as List)
 }
+
+// 全屏预览采样成本（S0）：
+//   gradlew runPreviewSampleCostProbe
+task runPreviewSampleCostProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.PreviewSampleCostProbe'
+    maxHeapSize = '2g'
+}
+
+// 分块渐进采样验证（S2）：
+//   gradlew runProgressiveSamplerProbe
+task runProgressiveSamplerProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.ProgressiveSamplerProbe'
+    maxHeapSize = '2g'
+}
+// Sandbox slope-light distribution (S3 visual criterion):
+//   gradlew runSandboxShadeProbe
+task runSandboxShadeProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxShadeProbe'
+    maxHeapSize = '2g'
+    systemProperty 'geogenesis.sandboxTsv', project.findProperty('sandboxTsv') ?: ''
+}

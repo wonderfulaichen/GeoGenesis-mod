@@ -132,6 +132,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private PreviewDisplay preview;
     private Button applyBtn, savePresetBtn, resetBtn, layerPrev, layerNext;
     private Button largeAreaBtn;
+    /** ★ S3：平面/沙盘 模式切换按钮。 */
+    private Button sandboxBtn;
     private int currentMode = DEFAULT_PREVIEW_LAYER;
 
     private int panelX, panelW, headerY, listTop, listBottom;
@@ -144,6 +146,38 @@ public class GeoGenesisConfigScreen extends Screen {
     private TerrainParams lastAppliedParams = null;
     private long lastAppliedSeed = -1;
     private net.minecraft.client.gui.screens.worldselection.WorldCreationContext worldCtx;
+
+    // ------------------------------------------------------------------
+    // ★ 2026-11-08 全屏地图 + 左侧悬浮配置窗
+    // ------------------------------------------------------------------
+
+    /**
+     * 配置窗是否展开。
+     *
+     * <p>默认展开：首次进来要看到参数，否则用户找不到入口。状态记在客户端偏好里
+     * （{@code SiteEditorPrefs} 同款做法），<b>不写进 TOML</b> —— 它是"我想不想看见"，
+     * 不是"世界怎么生成"，写进配置会变成又一个假键。</p>
+     */
+    private boolean panelOpen = true;
+
+    /** 配置窗展开时的宽度（像素）。足够放下滑块与页签。 */
+    private static final int PANEL_W_OPEN = 480;
+    /** 配置窗收起时只剩这个宽度的把手。 */
+    private static final int PANEL_W_CLOSED = 76;
+    /** 配置窗与屏幕边缘的外边距。 */
+    private static final int PANEL_MARGIN = 8;
+    /**
+     * 配置窗底部按钮区高度。
+     *
+     * <p>★ 2026-11-08 修正：原本同一行并排「应用/保存/重置 + 图层 + 大范围」，
+     * 沙盘按钮只能挤到左上一行 —— 而那行在滚动区里，被面板内容盖住，
+     * 实测「根本看不到沙盘按钮」。现在改为两行：第一行三个按钮，
+     * 第二行图层箭头 + 大范围 + 平面/沙盘。</p>
+     */
+    private static final int BOTTOM_BAR_H = 52;
+
+    /** 配置窗的屏幕矩形（每帧由 {@link #computePanelRect} 算出，供绘制与命中测试共用）。 */
+    private int cfgX, cfgY, cfgW, cfgH;
 
     public GeoGenesisConfigScreen(Screen parent) {
         super(Component.literal("GeoGenesis 配置"));
@@ -224,10 +258,30 @@ public class GeoGenesisConfigScreen extends Screen {
         };
     }
 
+    /**
+     * 计算配置窗的屏幕矩形。
+     *
+     * <p>★ 2026-11-08 全屏地图改造：预览铺满整个屏幕 (0,0,w,h)，
+     * 配置窗是<b>浮在上面</b>的一层，不再挤占预览宽度。
+     * 收起时只剩一个把手，展开时覆盖左侧一部分 —— 两种状态下预览都保持全屏。</p>
+     *
+     * <p>所有绘制与命中测试都调本方法取矩形，避免"画在一处、点判在另一处"。</p>
+     */
+    private void computePanelRect() {
+        int h = this.height;
+        cfgW = panelOpen
+                ? Math.min(PANEL_W_OPEN, Math.max(320, this.width * 2 / 5))
+                : PANEL_W_CLOSED;
+        cfgX = PANEL_MARGIN;
+        cfgY = PANEL_MARGIN;
+        // 展开时留出上下的呼吸空间；太矮就贴到可用高度并内部滚动
+        cfgH = panelOpen ? Math.max(120, h - PANEL_MARGIN * 2 - 24) : 24;
+    }
+
     private void layoutPanels() {
         if (panels == null) return;
         for (int i = 0; i < panels.length; i++) {
-            panels[i].setBounds(panelX + 4, listTop, panelW - 8);
+            panels[i].setBounds(cfgX + 4, listTop, cfgW - 8);
             panels[i].setScrollOffset(i == tab ? scroll : 0);
         }
     }
@@ -241,15 +295,23 @@ public class GeoGenesisConfigScreen extends Screen {
         diagFirstFrame = true;
         previewRegistered = false;
         int w = width, h = height;
-        panelX = 10;
-        panelW = (w - 40) * 5 / 9;
-        headerY = 20;
-        listTop = headerY + TAB_H;
-        listBottom = h - 44;
-        previewX = panelX + panelW + 20;
-        previewY = 90;
-        previewW = w - previewX - 10;
-        previewH = listBottom - previewY;
+
+        // ★ 全屏地图：预览占满，无顶栏/底栏
+        previewX = 0;
+        previewY = 0;
+        previewW = w;
+        previewH = h;
+
+        // 配置窗矩形（悬浮在预览之上）
+        computePanelRect();
+        panelX = cfgX;
+        panelW = cfgW;
+        headerY = cfgY + 22;                 // 让出顶部把手/标题行
+        // ★ 页签流式换行：先算占几行，再决定列表起点（否则内容会压在换行后的页签下面）
+        tabBarBottom = computeTabBarBottom();
+        listTop = tabBarBottom + 4;
+        // ★ 底部要放两行按钮（应用/保存/重置 + 图层/大范围/沙盘），故留 52px
+        listBottom = cfgY + cfgH - BOTTOM_BAR_H;
 
         Runnable markDirty = () -> { dirty = true; saved = false; debounce = 8; };
         worldScalePanel.setOnMarkDirty(markDirty);
@@ -272,30 +334,46 @@ public class GeoGenesisConfigScreen extends Screen {
         legacyPanel.setReadOnly(readOnly);
         legacyPanel.buildFromConfig();
 
+        // ---- 底部按钮区（两行，都在面板内，不压列表）----
+        //   第一行：应用 / 保存 / 重置
+        //   第二行：◀ ▶ 图层 | 大范围 | 平面/沙盘
+        int row1Y = listBottom + 4;
+        int row2Y = row1Y + 22;
+        int btnW = Math.max(40, (panelW - 16) / 3 - 4);
+
         applyBtn = Button.builder(Component.literal(readOnly ? "只读" : "应用"), b -> doApply())
-            .pos(panelX, listBottom + 6).size(60, 20).build();
+            .pos(panelX + 4, row1Y).size(btnW, 20).build();
         savePresetBtn = Button.builder(Component.literal("保存"), b -> onSavePreset())
-            .pos(panelX + 64, listBottom + 6).size(60, 20).build();
+            .pos(panelX + 8 + btnW, row1Y).size(btnW, 20).build();
         resetBtn = Button.builder(Component.literal(readOnly ? "只读" : "重置"), b -> doReset())
-            .pos(panelX + 128, listBottom + 6).size(60, 20).build();
+            .pos(panelX + 12 + btnW * 2, row1Y).size(btnW, 20).build();
         if (readOnly) { applyBtn.active = false; resetBtn.active = false; }
         addRenderableWidget(applyBtn);
         addRenderableWidget(savePresetBtn);
         addRenderableWidget(resetBtn);
 
-        layerPrev = Button.builder(Component.literal("◀ 图层"), b -> cycleLayer(-1))
-            .pos(previewX, previewY - 24).size(70, 20).build();
-        int largeX = previewX + 74;
-        int largeW = Math.max(60, previewW - 74 - 74);
-        largeAreaBtn = Button.builder(largeAreaLabel(), b -> toggleLargeArea())
-            .pos(largeX, previewY - 24).size(largeW, 20).build();
-        largeAreaBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
-            Component.literal(I18nSafe("geogenesis.settings.sampling.large.tooltip"))));
-        layerNext = Button.builder(Component.literal("图层 ▶"), b -> cycleLayer(1))
-            .pos(previewX + previewW - 70, previewY - 24).size(70, 20).build();
-        addRenderableWidget(layerPrev);
-        addRenderableWidget(layerNext);
-        addRenderableWidget(largeAreaBtn);
+        if (panelOpen && panelW >= 180) {
+            int x = panelX + 4;
+            int avail = panelW - 12;
+            int wArrow = 22;
+            int wRest = Math.max(48, (avail - wArrow * 2 - 10) / 2);
+            layerPrev = Button.builder(Component.literal("◀"), b -> cycleLayer(-1))
+                .pos(x, row2Y).size(wArrow, 20).build();
+            layerNext = Button.builder(Component.literal("▶"), b -> cycleLayer(1))
+                .pos(x + wArrow + 2, row2Y).size(wArrow, 20).build();
+            largeAreaBtn = Button.builder(largeAreaLabel(), b -> toggleLargeArea())
+                .pos(x + (wArrow + 2) * 2, row2Y).size(wRest, 20).build();
+            largeAreaBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
+                Component.literal(I18nSafe("geogenesis.settings.sampling.large.tooltip"))));
+            sandboxBtn = Button.builder(sandboxLabel(), b -> toggleSandbox())
+                .pos(x + (wArrow + 2) * 2 + wRest + 4, row2Y).size(wRest, 20).build();
+            addRenderableWidget(layerPrev);
+            addRenderableWidget(layerNext);
+            addRenderableWidget(largeAreaBtn);
+            addRenderableWidget(sandboxBtn);
+        } else {
+            layerPrev = null; layerNext = null; largeAreaBtn = null; sandboxBtn = null;
+        }
 
         if (preview != null) {
             preview.setPosition(previewX, previewY, previewW, previewH);
@@ -340,6 +418,8 @@ public class GeoGenesisConfigScreen extends Screen {
         terrain.seed(seed);
         if (preview == null) {
             preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p, currentMode);
+            // ★ 全屏地图：预览自带缩放标签会压在地形正中，改由右下角 HUD 显示
+            preview.setDrawZoomLabel(false);
         } else {
             preview.setTerrain(terrain, seed, p);
             preview.setMode(currentMode);
@@ -371,6 +451,19 @@ public class GeoGenesisConfigScreen extends Screen {
             g.fill(xL, y + h - r2, xL + r2, y + h, color);
             g.fill(xR, y + h - r2, xR + r2, y + h, color);
         }
+    }
+
+    /** 沙盘按钮文案。 */
+    private Component sandboxLabel() {
+        boolean on = preview != null && preview.isSandboxMode();
+        return Component.literal(on ? "沙盘视图" : "平面视图");
+    }
+
+    /** 平面 ⇄ 沙盘 切换。 */
+    private void toggleSandbox() {
+        if (preview == null) return;
+        preview.setSandboxMode(!preview.isSandboxMode());
+        if (sandboxBtn != null) sandboxBtn.setMessage(sandboxLabel());
     }
 
     private void cycleLayer(int d) {
@@ -540,38 +633,57 @@ public class GeoGenesisConfigScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g) {
+        // ★ 全屏地图：不画整屏底色（会盖住地形），只在地形未就绪时兜底
         g.fill(0, 0, this.width, this.height, 0xFF0e1218);
-        g.fill(0, 0, this.width, 1, 0xFF2a2f3a);
-        g.fill(0, this.height - 1, this.width, this.height, 0xFF2a2f3a);
     }
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
         this.renderBackground(g);
-        g.drawCenteredString(this.font, "GeoGenesis 地形配置", width / 2, 12, 0xFFFFFF);
-
-        int n = visibleTabs.size();
-        int segW = Math.max(40, (panelW - 8) / Math.max(1, n));
-        for (int i = 0; i < n; i++) {
-            boolean on = tab == i;
-            int bx = panelX + i * (segW + 4);
-            boolean hover = mx >= bx && mx <= bx + segW && my >= headerY && my <= headerY + TAB_H;
-            int bg = on ? (hover ? TAB_SEL_HOVER : TAB_SEL_BG)
-                        : (hover ? TAB_PILL_HOVER : TAB_PILL_BG);
-            drawRoundedPill(g, bx, headerY, segW, TAB_H, TAB_PILL_R, bg, on);
-            if (on) g.fill(bx + TAB_PILL_R, headerY, bx + segW - TAB_PILL_R, headerY + 2, TAB_SEL_TOP);
-            g.drawCenteredString(this.font, visibleTabs.get(i).label(), bx + segW / 2,
-                headerY + (TAB_H - this.font.lineHeight) / 2 + 1, on ? C_TEXT : TAB_INACTIVE_TEXT);
-        }
-
-        if (largeAreaBtn != null) {
-            Component want = largeAreaLabel();
-            if (!want.equals(largeAreaBtn.getMessage())) largeAreaBtn.setMessage(want);
-        }
 
         boolean dialogActive = nameDialog.isShowing() || confirmDialog.isShowing();
 
-        if (!dialogActive) {
+        // ---------------- 第 1 层：全屏地形（widget 系统，含预览自身） ----------------
+        super.render(g, mx, my, pt);
+
+        // ---------------- 第 2 层：左侧悬浮配置窗 ----------------
+        computePanelRect();
+        if (panelOpen) {
+            renderPanelOverlay(g, mx, my);
+        }
+        renderPanelHandle(g, mx, my);
+
+        // ---------------- 第 3 层：页签与内容 ----------------
+        if (panelOpen && !dialogActive) {
+            int n = visibleTabs.size();
+            // ★ 2026-11-08 修复页签溢出：按文字宽度流式换行，不再强行等分（11 个页签等分必然超宽）
+            int cxTab = panelX + 6;
+            int cyTab = headerY;
+            int rowMaxX = panelX + panelW - 6;
+            for (int i = 0; i < n; i++) {
+                String label = visibleTabs.get(i).label();
+                int tw = this.font.width(label) + 20;
+                if (cxTab + tw > rowMaxX && cxTab > panelX + 6) {
+                    cxTab = panelX + 6;
+                    cyTab += TAB_H + 4;
+                }
+                boolean on = tab == i;
+                boolean hover = mx >= cxTab && mx <= cxTab + tw && my >= cyTab && my <= cyTab + TAB_H;
+                int bg = on ? (hover ? TAB_SEL_HOVER : TAB_SEL_BG)
+                            : (hover ? TAB_PILL_HOVER : TAB_PILL_BG);
+                drawRoundedPill(g, cxTab, cyTab, tw, TAB_H, TAB_PILL_R, bg, on);
+                if (on) g.fill(cxTab + TAB_PILL_R, cyTab, cxTab + tw - TAB_PILL_R, cyTab + 2, TAB_SEL_TOP);
+                g.drawCenteredString(this.font, label, cxTab + tw / 2,
+                    cyTab + (TAB_H - this.font.lineHeight) / 2 + 1, on ? C_TEXT : TAB_INACTIVE_TEXT);
+                cxTab += tw + 4;
+            }
+            tabBarBottom = cyTab + TAB_H;
+
+            if (layerPrev != null && largeAreaBtn != null) {
+                Component want = largeAreaLabel();
+                if (!want.equals(largeAreaBtn.getMessage())) largeAreaBtn.setMessage(want);
+            }
+
             g.enableScissor(panelX, listTop, panelX + panelW, listBottom);
             if (panels != null && tab < panels.length) {
                 ConfigPanel active = panels[tab];
@@ -585,7 +697,9 @@ public class GeoGenesisConfigScreen extends Screen {
                 presetsPanel.setViewportHeight(listBottom - presetsPanel.getScrollTopY());
             }
 
-            super.render(g, mx, my, pt);
+            // widget（按钮等）要在面板之上重画一次：super.render 已画过一遍，
+            // 但当时被预览覆盖，这里补画悬浮窗内部的可交互件
+            renderPanelWidgets(g, mx, my, pt);
 
             if (panels != null && tab < panels.length) {
                 Component tip = panels[tab].consumeHoverTooltip();
@@ -593,10 +707,13 @@ public class GeoGenesisConfigScreen extends Screen {
             }
         }
 
+        // ---------------- 第 4 层：右下角状态字 ----------------
+        renderStatusHud(g);
+
         if (diagFirstFrame) {
             diagFirstFrame = false;
-            LOGGER.info("DIAG-GCS: render first-frame, tabs={} previewRegistered={}",
-                    visibleTabs.size(), previewRegistered);
+            LOGGER.info("DIAG-GCS: render first-frame, tabs={} previewRegistered={} panelOpen={}",
+                    visibleTabs.size(), previewRegistered, panelOpen);
         }
 
         if (confirmDialog.isShowing()) confirmDialog.render(g, mx, my);
@@ -608,24 +725,149 @@ public class GeoGenesisConfigScreen extends Screen {
         return v.equals(key) ? key : v;
     }
 
+    // ------------------------------------------------------------------ 悬浮层绘制
+
+    /** 配置窗的半透明底板 + 边框。展开时地形仍能从边缘透出来。 */
+    private void renderPanelOverlay(GuiGraphics g, int mx, int my) {
+        // 底板：深色半透明（不是全不透明，能看到下方地形轮廓）
+        g.fill(cfgX, cfgY, cfgX + cfgW, cfgY + cfgH, 0xC8101216);
+        // 1px 描边：在全屏地形上区分层次
+        g.fill(cfgX, cfgY, cfgX + cfgW, cfgY + 1, 0xFF3a4250);
+        g.fill(cfgX, cfgY + cfgH - 1, cfgX + cfgW, cfgY + cfgH, 0xFF3a4250);
+        g.fill(cfgX, cfgY, cfgX + 1, cfgY + cfgH, 0xFF3a4250);
+        g.fill(cfgX + cfgW - 1, cfgY, cfgX + cfgW, cfgY + cfgH, 0xFF3a4250);
+        // 顶部标题行
+        g.drawString(this.font, "GeoGenesis 地形配置", cfgX + 8, cfgY + 6, C_TEXT, false);
+    }
+
+    /**
+     * 折叠把手。
+     *
+     * <p>收起时它就是唯一的入口（`▶ 配置`）；展开时变成标题行右侧的 `◀` 收起按钮。
+     * 位置固定在左上角，与配置窗同高对齐，不随展开状态跳动。</p>
+     */
+    private void renderPanelHandle(GuiGraphics g, int mx, int my) {
+        int hx = cfgX;
+        int hy = cfgY + (panelOpen ? 0 : 0);
+        int hw = panelOpen ? 22 : PANEL_W_CLOSED;
+        int hh = 18;
+        if (panelOpen) {
+            hx = cfgX + cfgW - 26;   // 展开时放到标题行右端
+        }
+        boolean hover = mx >= hx && mx <= hx + hw && my >= hy && my <= hy + hh;
+        int bg = hover ? TAB_PILL_HOVER : TAB_PILL_BG;
+        g.fill(hx, hy, hx + hw, hy + hh, bg);
+        String label = panelOpen ? "◀" : "▶ 配置";
+        int tw = this.font.width(label);
+        g.drawString(this.font, label, hx + (hw - tw) / 2,
+                hy + (hh - this.font.lineHeight) / 2 + 1, hover ? C_TEXT : TAB_INACTIVE_TEXT, false);
+        handleRect[0] = hx; handleRect[1] = hy; handleRect[2] = hw; handleRect[3] = hh;
+    }
+
+    /** 把配置窗内部的 widget（应用/保存/重置/图层按钮）重画一遍，盖在地形之上。 */
+    private void renderPanelWidgets(GuiGraphics g, int mx, int my, float pt) {
+        if (applyBtn != null && applyBtn.visible) applyBtn.render(g, mx, my, pt);
+        if (savePresetBtn != null && savePresetBtn.visible) savePresetBtn.render(g, mx, my, pt);
+        if (resetBtn != null && resetBtn.visible) resetBtn.render(g, mx, my, pt);
+        if (layerPrev != null && layerPrev.visible) layerPrev.render(g, mx, my, pt);
+        if (layerNext != null && layerNext.visible) layerNext.render(g, mx, my, pt);
+        if (largeAreaBtn != null && largeAreaBtn.visible) largeAreaBtn.render(g, mx, my, pt);
+        if (sandboxBtn != null && sandboxBtn.visible) sandboxBtn.render(g, mx, my, pt);
+    }
+
+    /** 右下角状态字：缩放比例 / 采样档位 / 耗时。极简，不挡地形。 */
+    private void renderStatusHud(GuiGraphics g) {
+        if (preview == null) return;
+        String txt = preview.statusLine();
+        if (txt == null || txt.isEmpty()) return;
+        int tw = this.font.width(txt);
+        int pad = 4;
+        int x = this.width - tw - pad * 2 - 6;
+        int y = this.height - this.font.lineHeight - pad * 2 - 6;
+        g.fill(x, y, x + tw + pad * 2, y + this.font.lineHeight + pad * 2, 0x99000000);
+        g.drawString(this.font, txt, x + pad, y + pad, 0xCCCCCCCC, false);
+    }
+
+    /** 折叠把手的命中矩形（{@link #renderPanelHandle} 每帧写，鼠标事件读）。 */
+    private final int[] handleRect = new int[4];
+    /** 折叠把手是否命中（供鼠标事件与渲染共用同一矩形）。 */
+    private boolean inHandle(double mx, double my) {
+        return handleRect[2] > 0
+            && mx >= handleRect[0] && mx <= handleRect[0] + handleRect[2]
+            && my >= handleRect[1] && my <= handleRect[1] + handleRect[3];
+    }
+
+    /** 切换配置窗展开/收起，并重建布局（按钮位置随宽度变）。 */
+    private void togglePanel() {
+        panelOpen = !panelOpen;
+        this.init();
+    }
+
     // ------------------------------------------------------------------ 鼠标
 
-    private boolean inTabBar(double mx, double my) {
-        return mx >= panelX && mx <= panelX + panelW && my >= headerY && my <= headerY + TAB_H;
+    /** 页签条最下面一行 y（流式换行后可能多行）。 */
+    private int tabBarBottom = 0;
+
+    /** 按当前页签集合预演流式换行，返回页签条底部的 y。 */
+    private int computeTabBarBottom() {
+        int n = visibleTabs.size();
+        int cxTab = panelX + 6;
+        int cyTab = headerY;
+        int rowMaxX = panelX + panelW - 6;
+        for (int i = 0; i < n; i++) {
+            int tw = this.font.width(visibleTabs.get(i).label()) + 20;
+            if (cxTab + tw > rowMaxX && cxTab > panelX + 6) {
+                cxTab = panelX + 6;
+                cyTab += TAB_H + 4;
+            }
+            cxTab += tw + 4;
+        }
+        return cyTab + TAB_H;
+    }
+
+    /**
+     * 页签命中测试：与渲染<b>同一套</b>流式换行算法，避免"画在一处、点判在另一处"。
+     *
+     * @return 命中的页签索引；未命中返回 -1
+     */
+    private int hitTestTab(double mx, double my) {
+        int n = visibleTabs.size();
+        int cxTab = panelX + 6;
+        int cyTab = headerY;
+        int rowMaxX = panelX + panelW - 6;
+        for (int i = 0; i < n; i++) {
+            int tw = this.font.width(visibleTabs.get(i).label()) + 20;
+            if (cxTab + tw > rowMaxX && cxTab > panelX + 6) {
+                cxTab = panelX + 6;
+                cyTab += TAB_H + 4;
+            }
+            if (mx >= cxTab && mx <= cxTab + tw && my >= cyTab && my <= cyTab + TAB_H) return i;
+            cxTab += tw + 4;
+        }
+        return -1;
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int b) {
         if (nameDialog.isShowing()) return nameDialog.mouseClicked(mx, my, b);
         if (confirmDialog.isShowing()) return confirmDialog.mouseClicked(mx, my, b);
-        if (inTabBar(mx, my)) {
-            int n = visibleTabs.size();
-            int segW = Math.max(40, (panelW - 8) / Math.max(1, n));
-            int idx = (int) ((mx - panelX) / (segW + 4));
-            if (idx >= 0 && idx < n && idx != tab) {
-                tab = idx;
+
+        // ★ 折叠把手优先：它在地形之上，命中即切换展开状态
+        if (inHandle(mx, my)) {
+            togglePanel();
+            return true;
+        }
+
+        // 配置窗收起时，点击除把手外的任何位置都交给地形（平移/缩放）
+        if (!panelOpen) {
+            return super.mouseClicked(mx, my, b);
+        }
+
+        if (my >= headerY && my <= tabBarBottom && mx >= panelX && mx <= panelX + panelW) {
+            int hit = hitTestTab(mx, my);
+            if (hit >= 0 && hit != tab) {
+                tab = hit;
                 scroll = 0;
-                PanelLayout.Tab t = visibleTabs.get(idx);
                 pushScrollToPanels();
                 Minecraft.getInstance().getSoundManager().play(
                     net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
@@ -652,11 +894,12 @@ public class GeoGenesisConfigScreen extends Screen {
     public boolean mouseDragged(double mx, double my, int b, double dx, double dy) {
         if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
-        if (panels != null && tab < panels.length
+        if (panelOpen && panels != null && tab < panels.length
                 && mx >= panelX && mx <= panelX + panelW
                 && my >= listTop && my <= listBottom) {
             if (panels[tab].mouseDragged(mx, my, b, dx, dy)) return true;
         }
+        // 配置窗之外（或收起时全局）交给地形：平移
         return super.mouseDragged(mx, my, b, dx, dy);
     }
 
@@ -664,7 +907,9 @@ public class GeoGenesisConfigScreen extends Screen {
     public boolean mouseScrolled(double mx, double my, double delta) {
         if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
-        if (mx >= panelX && mx <= panelX + panelW) {
+        // 只有落在展开的配置窗内才滚动参数列表，否则滚轮交给地形缩放
+        if (panelOpen && mx >= panelX && mx <= panelX + panelW
+                && my >= listTop && my <= listBottom) {
             if (panels != null && tab < panels.length && panels[tab].mouseScrolled(mx, my, delta)) {
                 return true;
             }

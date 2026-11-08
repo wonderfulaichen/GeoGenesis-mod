@@ -69,8 +69,18 @@ public class PreviewDisplay extends AbstractWidget {
      * 大范围必须走"固定采样数 + 步长缩放"（FreeTerraForged 同款），开销与视野无关。</p>
      */
     private boolean largeArea = false;
-    private LargeAreaSampler.Grid largeGrid;
-    private long largeGridId = Long.MIN_VALUE;
+    /** ★ S2：分块渐进采样器（粗档先铺，逐块补齐到 TARGET_GRID）。 */
+    private ProgressiveSampler largeSampler;
+    /** 已提交给 GPU 的采样视口 id（采完后需重画一次）。 */
+    private long largeSamplerIdDrawn = Long.MIN_VALUE;
+
+    /** ★ S3：沙盘（3D 方柱）模式。与平面模式共用同一份采样数据，切换不重采。 */
+    private boolean sandboxMode = false;
+    /** 沙盘右键平移中。 */
+    private boolean sandboxPanning = false;
+    private final SandboxRenderer sandbox = new SandboxRenderer();
+    /** 绘制时复用的 Cell 实例，避免每像素分配。 */
+    private final Cell paintedCell = new Cell();
     /** 纹理超采样倍率（渲染分辨率 = 预览窗口逻辑分辨率 × renderScale）。
      *  1=显示器模型（纹理=窗口逻辑像素，GPU 负责 DPI 上采样，最快）；2/3/4=更锐利但更慢。 */
     public int renderScale = 1;
@@ -539,6 +549,12 @@ public class PreviewDisplay extends AbstractWidget {
         int x = getX(), y = getY(), w = width, h = height;
         g.fill(x, y, x + w, y + h, 0xFF1a1a2a);
 
+        // ★ S3：沙盘模式分流 —— 数据与平面模式完全共用，只换绘制方式
+        if (sandboxMode) {
+            renderSandbox(g, w, h);
+            return;
+        }
+
         int scale = scaleBlockPos;
         int blocksWide = texW * scale;
         int blocksHigh = texH * scale;
@@ -573,6 +589,14 @@ public class PreviewDisplay extends AbstractWidget {
                 || (selectedLayer == null ? -1 : selectedLayer.ordinal()) != lastSelectedLayerOrdinal
                 || selectedId != lastSelectedId;
         boolean dirty = needsClear || viewportMoved || dataChanged || layerChanged;
+
+        // ★ S2：采样在后台线程池里跑（yardsite 同架构），渲染线程不做采样。
+        //   这里只做一件事：采集完了就置脏重画（之前画的是半成品）。
+        if (largeArea && largeSampler != null && largeSampler.isComplete()
+                && largeSamplerIdDrawn != largeSampler.data().viewportId) {
+            largeSamplerIdDrawn = largeSampler.data().viewportId;
+            dirty = true;
+        }
 
         if (dirty) {
             // ★ 无条件 fillRect：脏帧总是从干净状态重画。
@@ -628,11 +652,9 @@ public class PreviewDisplay extends AbstractWidget {
         g.fill(x - 1, y, x, y + h, 0xFF666666);
         g.fill(x + w, y, x + w + 1, y + h, 0xFF666666);
 
-        // 缩放比标签：1:N 右下角（★ 大范围模式附带标记——否则分不清当前走的是哪条管线）
-        String zoomTxt = "1:" + scaleBlockPos
-                + (largeArea ? " · " + localize("geogenesis.preview.large_area") : "");
-        g.fill(x + w - mc.font.width(zoomTxt) - 8, y + h - 14, x + w - 2, y + h - 2, 0x88000000);
-        g.drawString(mc.font, zoomTxt, x + w - mc.font.width(zoomTxt) - 5, y + h - 12, 0xCCCCCCCC);
+        drawZoomLabel(g, x, y, w, h);
+
+
 
         // 帧时间显示：右上角
         if (showFrameTime) drawFrameTime(g, x + w, y);
@@ -664,19 +686,23 @@ public class PreviewDisplay extends AbstractWidget {
         long id = (long) originWx * 31L + originWz;
         id = id * 131L + blocksWide;
         id = id * 131L + blocksHigh;
-        if (largeGrid == null || largeGridId != id) {
-            largeGrid = LargeAreaSampler.sample(terrain, originWx, originWz,
-                    blocksWide, blocksHigh,
-                    LargeAreaSampler.DEFAULT_GRID, LargeAreaSampler.DEFAULT_GRID, id);
-            largeGridId = id;
+        if (largeSampler == null) {
+            largeSampler = new ProgressiveSampler(ProgressiveSampler.GRID,
+                    ProgressiveSampler.GRID);
         }
-        int gw = largeGrid.gridW(), gh = largeGrid.gridH();
+        // ★ S2：视口变了先重开一轮（内部第一件事是采一张粗档底图，约 14ms）
+        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id);
+
+        TerrainFieldData d = largeSampler.data();
+        if (d == null) return;
+        int gw = d.gridW, gh = d.gridH;
+        Cell reuse = paintedCell;                 // 复用同一实例，避免每像素 new
         for (int py = 0; py < texH; py++) {
             int gz = Math.min(gh - 1, py * gh / texH);
             int wz = originWz + py * scaleBlockPos;
             for (int px = 0; px < texW; px++) {
                 int gx = Math.min(gw - 1, px * gw / texW);
-                Cell c = largeGrid.at(gx, gz);
+                Cell c = d.toDisplayCell(gx, gz, reuse);
                 int color = 0;
                 if (c != null) {
                     int wx = originWx + px * scaleBlockPos;   // 真实世界坐标（供纬度/坐标类图层）
@@ -700,8 +726,9 @@ public class PreviewDisplay extends AbstractWidget {
     public void setLargeArea(boolean v) {
         if (this.largeArea == v) return;
         this.largeArea = v;
-        largeGrid = null;
-        largeGridId = Long.MIN_VALUE;
+        // ★ 关掉大范围时先停采样线程池再丢弃引用，否则 10 个采样线程会一直空转
+        if (largeSampler != null) largeSampler.stop();
+        largeSampler = null;
         if (v) {
             if (scaleBlockPos < LARGE_AREA_ENTRY_SCALE) scaleBlockPos = LARGE_AREA_ENTRY_SCALE;
         } else if (scaleBlockPos > 16) {
@@ -713,6 +740,76 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 是否处于大范围模式。 */
     public boolean isLargeArea() { return largeArea; }
+
+    // ------------------------------------------------------------------
+    // ★ S3：沙盘（3D 方柱）模式
+    // ------------------------------------------------------------------
+
+    /** 是否处于沙盘模式。 */
+    public boolean isSandboxMode() { return sandboxMode; }
+
+    /**
+     * 切换沙盘模式。
+     *
+     * <p>沙盘需要大范围采样数据（柱子太密反而糊），所以开启时自动打开大范围模式；
+     * 关闭时不动大范围开关 —— 用户可能本来就在看大范围。</p>
+     */
+    public void setSandboxMode(boolean v) {
+        if (this.sandboxMode == v) return;
+        this.sandboxMode = v;
+        if (v) {
+            setLargeArea(true);
+            needsClear = true;
+        }
+    }
+
+    /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
+    private void renderSandbox(GuiGraphics g, int w, int h) {
+        // 采样数据：复用大范围管线（第一帧只有粗档，之后逐帧补细）
+        int blocksWide = texW * scaleBlockPos;
+        int blocksHigh = texH * scaleBlockPos;
+        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scaleBlockPos);
+        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scaleBlockPos);
+        long id = (long) originWx * 31L + originWz;
+        id = id * 131L + blocksWide;
+        id = id * 131L + blocksHigh;
+
+        if (largeSampler == null) {
+            largeSampler = new ProgressiveSampler(ProgressiveSampler.GRID,
+                    ProgressiveSampler.GRID);
+        }
+        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id);
+
+        float radius = Math.min(w, h) * 0.42f;
+        TerrainFieldData d = largeSampler.data();
+        // 诊断：每个视口只打一次，确认沙盘真的进来了、数据非空
+        if (sandboxDiagId != id) {
+            sandboxDiagId = id;
+            LOGGER.info("[Preview] 沙盘渲染 视口={} 网格={}x{} 数据={} scene={}x{}",
+                    id, d == null ? 0 : d.gridW, d == null ? 0 : d.gridH,
+                    d != null, w, h);
+        }
+        int side = Math.min(w, h);
+        // ★ 竖向比例：先按本帧数据算目标，再交给采样器缓动（yardsite collect() 第 677-678 行）。
+        //   base = 海平面 - 4；目标 = max(60, 最高地表 - base)。
+        // ★ 2026-11-08：海平面用**本屏持有的 params.seaLevel()**（预览可配），
+        //   之前写死 63 会让沙盘基准面与平面模式不一致。
+        double seaY = this.seaLevel;
+        if (d != null) {
+            double baseY = seaY - 4.0;
+            double hi = baseY;
+            for (int i = 0; i < d.height.length; i++) {
+                if (d.height[i] > hi) hi = d.height[i];
+            }
+            largeSampler.easeReliefSpan((float) Math.max(60.0, hi - baseY));
+        }
+        sandbox.render(g, d, activeLayer, minY, maxY,
+                getX() + (w - side) / 2, getY() + (h - side) / 2, side,
+                largeSampler.reliefSpan(), seaY);
+    }
+
+    /** 沙盘诊断：上次已打印的视口 id。 */
+    private long sandboxDiagId = Long.MIN_VALUE;
 
     /** 坡度阴影后处理。
      *  1. 从 cellCache 提取高度数据
@@ -932,6 +1029,11 @@ public class PreviewDisplay extends AbstractWidget {
         if (legendSearchActive) legendSearchActive = false;
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            // ★ S3：沙盘模式下右键 = 平移（yardsite 第 1118-1122 行 dragView），不复制坐标
+            if (sandboxMode) {
+                sandboxPanning = true;
+                return true;
+            }
             // 右键复制坐标 + 8秒渐隐消息
             String coords = String.format("%d, %d", hoverX, hoverZ);
             mc.keyboardHandler.setClipboard(coords);
@@ -943,12 +1045,22 @@ public class PreviewDisplay extends AbstractWidget {
         // 左键：记录起始位置用于拖拽/点击判断
         totalDragX = 0;
         totalDragZ = 0;
+        // ★ S3：沙盘模式下左键拖动转视角，不参与地图平移
+        if (sandboxMode) {
+            dragging = true;
+        }
         return true;
     }
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+        // ★ S3：沙盘模式松手 = 结束旋转/平移，不提交地图平移
+        if (sandboxMode) {
+            dragging = false;
+            sandboxPanning = false;
+            return true;
+        }
         dragging = false;
         double absX = Math.abs(totalDragX), absZ = Math.abs(totalDragZ);
         if (absX > 4.0 || absZ > 4.0) {
@@ -1011,6 +1123,15 @@ public class PreviewDisplay extends AbstractWidget {
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+        // ★ S3：沙盘模式：左键旋转 / 右键平移（yardsite 第 1113-1126 行）
+        if (sandboxMode) {
+            if (sandboxPanning) {
+                sandbox.dragPan(dx * 2.0, dy * 2.0);   // guiScale 折算
+            } else if (dragging) {
+                sandbox.dragRotate(dx, dy);
+            }
+            return true;
+        }
         double guiScale = mc.getWindow().getGuiScale();
         totalDragX -= dx * guiScale * scaleBlockPos;
         totalDragZ -= dy * guiScale * scaleBlockPos;
@@ -1022,6 +1143,17 @@ public class PreviewDisplay extends AbstractWidget {
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
         if (!isMouseOver(mx, my)) return false;
+
+        // ★ S3：沙盘模式 → 滚轮缩放；按住 Ctrl 滚轮改柱子粗细（widthScale）
+        if (sandboxMode) {
+            boolean ctrl = net.minecraft.client.gui.screens.Screen.hasControlDown();
+            if (ctrl) {
+                sandbox.setWidthScale(sandbox.widthScale() * (delta > 0 ? 1.06f : 1f / 1.06f));
+            } else {
+                sandbox.addZoom(delta > 0 ? 1.12f : 1f / 1.12f);
+            }
+            return true;
+        }
 
         if (isOverLegend(mx, my)) {
             int entries = GeoPalette.discreteEntries(activeLayer).size();
@@ -1703,6 +1835,10 @@ public class PreviewDisplay extends AbstractWidget {
 
     public void close() {
         pool.shutdown();
+        // ★ 2026-11-08：沙盘采样线程池必须一起停。
+        //   ProgressiveSampler 用的是独立线程池（核数÷2），漏停会让采样线程
+        //   在关屏后继续跑、还持有 terrain 引用 → 线程泄漏 + 打到已关闭的 terrain。
+        if (largeSampler != null) largeSampler.stop();
         if (terrain != null) terrain.closeProcessErosion();
         mc.getTextureManager().release(texLoc);
         texture.close();
@@ -1717,4 +1853,42 @@ public class PreviewDisplay extends AbstractWidget {
                             seedSnapshot, hashSnapshot, history));
         }
     }
+    /**
+     * 一行状态文本，供全屏配置屏的右下角 HUD 使用（★ 2026-11-08 全屏地图改造）。
+     *
+     * <p>格式：{@code 1:64 · 大范围 · 64×64 · 32ms}。
+     * 全屏后缩放标签从预览内部移到屏幕 HUD，避免压在地形正中央。</p>
+     *
+     * @return 永不为 null；无数据时返回 {@code "1:1"}
+     */
+    public String statusLine() {
+        StringBuilder sb = new StringBuilder("1:").append(scaleBlockPos);
+        if (largeArea) {
+            sb.append(" · ").append(localize("geogenesis.preview.large_area"));
+            if (largeSampler != null && largeSampler.data() != null) {
+                TerrainFieldData d = largeSampler.data();
+                sb.append(" · ").append(d.gridW).append('×').append(d.gridH);
+                sb.append(" · ").append(largeSampler.lastCostMs()).append("ms");
+                if (!largeSampler.isComplete()) {
+                    sb.append(" · ").append((int) (largeSampler.progress() * 100)).append('%');
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /** 是否隐藏预览自带的缩放标签（全屏模式下由屏幕 HUD 代劳）。 */
+    public void setDrawZoomLabel(boolean v) { this.drawZoomLabel = v; }
+
+    private boolean drawZoomLabel = true;
+
+    /** 缩放比标签：1:N 右下角（★ 大范围模式附带标记——否则分不清当前走的是哪条管线） */
+    private void drawZoomLabel(GuiGraphics g, int x, int y, int w, int h) {
+        if (!drawZoomLabel) return;
+        String zoomTxt = "1:" + scaleBlockPos
+                + (largeArea ? " · " + localize("geogenesis.preview.large_area") : "");
+        g.fill(x + w - mc.font.width(zoomTxt) - 8, y + h - 14, x + w - 2, y + h - 2, 0x88000000);
+        g.drawString(mc.font, zoomTxt, x + w - mc.font.width(zoomTxt) - 5, y + h - 12, 0xCCCCCCCC);
+    }
+
 }
