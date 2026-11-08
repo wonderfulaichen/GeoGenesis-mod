@@ -661,21 +661,7 @@ public class PreviewDisplay extends AbstractWidget {
         }
         g.blit(texLoc, x, y, w, h, 0, 0, texW, texH, texW, texH);
 
-        // 出生点标记
-            drawSpawnMarker(g);
-            // 玩家位置标记
-            if (showPlayerMarkers) drawPlayerMarker(g);
-            // 自动结构标记（Worker 检测结果；无 scanner 或未命中则跳过）
-            if (showStructures && structureScanner != null) drawStructureMarkers(g, mx, my);
-            // 结构图标叠加（可选 JSON，无数据则跳过；返回悬停名）
-            String markerHover = structureOverlay.render(g, x, y, w, h,
-                originWx, originWz, blocksWide, blocksHigh, mx, my);
-            if (markerHover != null) {
-                int tw = mc.font.width(markerHover);
-                g.fill(mx + 10, my + 8, mx + 14 + tw, my + 20, 0xCC000000);
-                g.drawString(mc.font, markerHover, mx + 13, my + 10, 0xFFFFFF);
-            }
-
+        drawMapMarkers(g, mx, my, x, y, w, h, originWx, originWz, blocksWide, blocksHigh);
         // 参考项目：1px 边框线
         g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
         g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
@@ -702,6 +688,29 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /**
+     * 地图标记：出生点 / 玩家位置 / 结构 / 结构图标叠加。
+     *
+     * <p>★ 2026-11-08：从平面模式抽出来，<b>沙盘也用</b>。
+     * 这些是平面视图原有的能力（用户说"基于我们原有的优势设计"），
+     * 而沙盘此前走独立渲染路径、把它们全丢了。</p>
+     */
+    private void drawMapMarkers(GuiGraphics g, double mx, double my,
+                                int x, int y, int w, int h,
+                                int originWx, int originWz, int blocksWide, int blocksHigh) {
+        drawSpawnMarker(g);
+        if (showPlayerMarkers) drawPlayerMarker(g);
+        int imx0 = (int) mx, imy0 = (int) my;
+        if (showStructures && structureScanner != null) drawStructureMarkers(g, imx0, imy0);
+        String markerHover = structureOverlay.render(g, x, y, w, h,
+                originWx, originWz, blocksWide, blocksHigh, imx0, imy0);
+        if (markerHover != null) {
+            int tw = mc.font.width(markerHover);
+            g.fill(imx0 + 10, imy0 + 8, imx0 + 14 + tw, imy0 + 20, 0xCC000000);
+            g.drawString(mc.font, markerHover, imx0 + 13, imy0 + 10, 0xFFFFFF);
+        }
+    }
+
+    /**
      * 大范围绘制（★ 2026-09-11）：用 {@link LargeAreaSampler} 的固定采样网格上采样填充纹理。
      *
      * <p>采样数恒为 {@link LargeAreaSampler#DEFAULT_GRID}²，<b>与视野无关</b>
@@ -717,8 +726,8 @@ public class PreviewDisplay extends AbstractWidget {
         id = id * 131L + blocksWide;
         id = id * 131L + blocksHigh;
         if (largeSampler == null) {
-            largeSampler = new ProgressiveSampler(ProgressiveSampler.GRID,
-                    ProgressiveSampler.GRID);
+            largeSampler = new ProgressiveSampler(ProgressiveSampler.DEFAULT_GRID,
+                    ProgressiveSampler.DEFAULT_GRID);
         }
         // ★ S2：视口变了先重开一轮。
         //   平面大范围窗口可达数万格 ⇒ 必须走廉价路径（水文会到分钟级，见 SandboxLod.usesHydroPath）。
@@ -796,29 +805,42 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
     private void renderSandbox(GuiGraphics g, int w, int h, double mx, double my) {
-        // ★ 连续 LOD（2026-11-08 重做）：世界窗口随缩放<b>连续</b>变化，采样点数恒定。
+        // ★★ 像素驱动 LOD（2026-11-08 第二次重做，用户裁定）：
         //
-        //   上一版用离散档位（只有 -1/0/+1/+2 四档）⇒ 实机滚轮一直放大但档位长期停在
-        //   某一档（实测 zoom 2→30 只走三步，后 13 格滚轮全停在 998 格窗口）
-        //   ⇒ 用户看不到"比例尺变化"。
-        //   现在：窗口 = GRID × step(zoom)，step 随 zoom 连续变化 ⇒ 平滑缩放，
-        //   且量化到 16 格倍数，避免每滚一格就重采。
+        //   上一版网格固定 256²、窗口随缩放变 ⇒ 实机"放大后精度没变化"。
+        //   对比我们的<b>平面视图</b>：它的采样点数 = 视口像素数（900²=81 万），
+        //   而沙盘固定 6.5 万 ⇒ 差 12.4 倍。
+        //
+        //   正解：柱子屏幕尺寸恒定（13px）⇒ 网格数 = 视口像素/13 ≈ 70 柱 = 140 细格。
+        //   推近只改"每柱代表多少方块" ⇒ 视野缩小、精度提高（用户要的就是这个）。
+        //   成本反而更低：140² = 19,600 点 < 256² = 65,536 点。
         float zoom = sandbox.zoom();
-        int blocksWide = SandboxLod.windowFor(zoom, ProgressiveSampler.GRID);
+        int side = Math.min(w, h);
+        // ★ 记录进入沙盘时的初始中心（R 键回到这里）
+        if (homeCenterX == null) {
+            homeCenterX = centerX;
+            homeCenterZ = centerZ;
+        }
+
+        // ★ 柱子的聚合系数按视口算：细格按像素（精度）、柱子保持约 13px（视觉）
+        sandbox.setPerColumn(SandboxLod.perColumnFor(side));
+        int grid = SandboxLod.gridFor(side);
+        int blocksWide = SandboxLod.windowFor(zoom, side);
         int blocksHigh = blocksWide;
         int originWx = centerX + (int) totalDragX - blocksWide / 2;
         int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
-        // 视口标识：窗口已含精度信息（窗口/GRID = 每细格方块数）⇒ 无需再掺档位
+        // 视口标识：窗口 + 网格都参与 ⇒ 换精度也必重采
         long id = (long) originWx * 31L + originWz;
         id = id * 131L + blocksWide;
         id = id * 131L + blocksHigh;
+        id = id * 131L + grid;
 
         if (largeSampler == null) {
-            largeSampler = new ProgressiveSampler(ProgressiveSampler.GRID,
-                    ProgressiveSampler.GRID);
+            largeSampler = new ProgressiveSampler(grid, grid);
         }
-        // ★ 粗层水位（河道/湖面）：窗口小到 tract 数可负担时才开（见 SandboxLod.usesCoarseWater）
-        boolean wantWater = SandboxLod.usesCoarseWater(zoom, ProgressiveSampler.GRID);
+        largeSampler.setGrid(grid);
+        // ★ 粗层水位（河道/湖面）：窗口小到 tract 数可负担时才开
+        boolean wantWater = SandboxLod.usesCoarseWater(zoom, side);
         if (wantWater && waterLookup == null) {
             waterLookup = new SandboxWaterLookup(terrain.generator());
         }
@@ -826,16 +848,14 @@ public class PreviewDisplay extends AbstractWidget {
         largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id, hydroPath,
                 wantWater ? waterLookup : null);
 
-        float radius = Math.min(w, h) * 0.42f;
         TerrainFieldData d = largeSampler.data();
         // 诊断：视口或精度变化就记一条，便于实机确认"滚轮真的换了比例尺"
         if (sandboxDiagId != id) {
             sandboxDiagId = id;
             LOGGER.info("[Preview] 沙盘 {} 数据={} zoom={} 水位={} scene={}x{}",
-                    SandboxLod.describe(zoom, ProgressiveSampler.GRID), d != null,
+                    SandboxLod.describe(zoom, side), d != null,
                     String.format(java.util.Locale.ROOT, "%.2f", zoom), wantWater, w, h);
         }
-        int side = Math.min(w, h);
         // ★ 竖向比例：<b>照抄参考项目</b>（SiteTerrainRenderer.collect() 第 661/677-678 行）：
         //
         //     int highest = base;
@@ -872,6 +892,11 @@ public class PreviewDisplay extends AbstractWidget {
         }
         sandbox.render(g, d, activeLayer, minY, maxY, ax, ay, side,
                 largeSampler.reliefSpan(), seaY, System.currentTimeMillis());
+
+        // ★ 地图标记（出生点 / 玩家 / 结构）：平面视图原有能力，沙盘也要有。
+        //   坐标用沙盘当前视口（originWx/originWz/blocksWide）——
+        //   标记绘制按「世界坐标 → 屏幕」换算，与沙盘窗口一致。
+        drawMapMarkers(g, mx, my, ax, ay, side, side, originWx, originWz, blocksWide, blocksHigh);
     }
 
     /** 沙盘诊断：上次已打印的视口 id。 */
@@ -1201,7 +1226,7 @@ public class PreviewDisplay extends AbstractWidget {
      */
     private void panSandboxBy(double dx, double dy) {
         int areaSize = Math.min(getWidth(), getHeight());
-        double step = SandboxLod.effectiveStep(sandbox.zoom(), ProgressiveSampler.GRID);
+        double step = SandboxLod.effectiveStep(sandbox.zoom(), areaSize);
         sandbox.dragToBlocks(dx, dy, areaSize, step, sandboxDragOut);
         // 累加到浮点累加器：拖动位移常小于 1 方块，直接取整会被吃掉
         sandboxCenterAccX += sandboxDragOut[0];
@@ -1219,6 +1244,13 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 拖动累积的世界位移余量（&lt;1 方块的部分）。 */
     private double sandboxCenterAccX, sandboxCenterAccZ;
+
+    /**
+     * 进入沙盘时的初始世界中心（R 键回到这里）。
+     *
+     * <p>null = 尚未记录（首次进入沙盘时才记，见 {@link #renderSandbox}）。</p>
+     */
+    private Integer homeCenterX, homeCenterZ;
 
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
@@ -1925,6 +1957,19 @@ public class PreviewDisplay extends AbstractWidget {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // ★ 沙盘快捷键（见左下角提示）：R = 重置视角并回到初始中心
+        //   （与地图软件"回到初始视图"一致；只复位视角不回中心会让用户找不到地图）
+        if (sandboxMode && !legendSearchActive && keyCode == GLFW.GLFW_KEY_R) {
+            sandbox.resetView();
+            if (homeCenterX != null) {
+                centerX = homeCenterX;
+                centerZ = homeCenterZ;
+            }
+            sandboxCenterAccX = 0;
+            sandboxCenterAccZ = 0;
+            needsClear = true;
+            return true;
+        }
         if (!legendSearchActive) return false;
         if (keyCode == 256 || keyCode == 257) { // ESC 或 Enter → 退出搜索
             legendSearchActive = false;
@@ -1994,7 +2039,7 @@ public class PreviewDisplay extends AbstractWidget {
         // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
         if (sandboxMode) {
             StringBuilder sb = new StringBuilder(
-                    SandboxLod.scaleLabel(sandbox.zoom(), ProgressiveSampler.GRID));
+                    SandboxLod.scaleLabel(sandbox.zoom(), Math.min(getWidth(), getHeight())));
             // 地图中心（拖动后能看出位置真的变了）
             sb.append(String.format(java.util.Locale.ROOT, " · 中心 %d,%d", centerX, centerZ));
             if (largeSampler != null && largeSampler.data() != null) {
@@ -2034,10 +2079,58 @@ public class PreviewDisplay extends AbstractWidget {
     /** 缩放比标签：1:N 右下角（★ 大范围模式附带标记——否则分不清当前走的是哪条管线） */
     private void drawZoomLabel(GuiGraphics g, int x, int y, int w, int h) {
         if (!drawZoomLabel) return;
+        // ★ 沙盘模式：显示<b>操作提示</b>（像 RTS / 模拟城市那样把控制说清楚）
+        //
+        //   用户反馈："画面没有任何地方提示如何操作控制。就不能把他当成 RTS 地图
+        //   或者模拟城市那样吗？"
+        //   ⇒ 左下角常驻键位提示；右下角比例尺（见下方）。
+        if (sandboxMode) {
+            drawSandboxHints(g, x, y, w, h);
+            return;
+        }
         String zoomTxt = "1:" + scaleBlockPos
                 + (largeArea ? " · " + localize("geogenesis.preview.large_area") : "");
         g.fill(x + w - mc.font.width(zoomTxt) - 8, y + h - 14, x + w - 2, y + h - 2, 0x88000000);
         g.drawString(mc.font, zoomTxt, x + w - mc.font.width(zoomTxt) - 5, y + h - 12, 0xCCCCCCCC);
+    }
+
+    /**
+     * 沙盘操作提示（左下角）+ 比例尺（右下角）。
+     *
+     * <p>布局参考 RTS / 模拟城市：<b>控制说明常驻</b>，玩家不用猜。
+     * 用半透明底衬保证在任何地形颜色上都可读。</p>
+     */
+    private void drawSandboxHints(GuiGraphics g, int x, int y, int w, int h) {
+        String[] lines = {
+                "右键拖动　移动地图",
+                "左键拖动　旋转视角",
+                "滚轮　　　推近 / 拉远",
+                "Ctrl+滚轮 柱子粗细",
+                "R 键　　　重置视角",
+        };
+        int lh = 10;
+        int maxW = 0;
+        for (String s : lines) maxW = Math.max(maxW, mc.font.width(s));
+        int padX = 5, padY = 4;
+        int boxW = maxW + padX * 2;
+        int boxH = lines.length * lh + padY * 2;
+        int bx = x + 6;
+        int by = y + h - boxH - 6;
+        // 底衬：半透明深色 + 细金边（与面板风格一致）
+        g.fill(bx, by, bx + boxW, by + boxH, 0xB212141B);
+        g.fill(bx, by, bx + boxW, by + 1, 0x66FFD24A);
+        for (int i = 0; i < lines.length; i++) {
+            g.drawString(mc.font, lines[i], bx + padX, by + padY + i * lh, 0xFFD4D9E4, true);
+        }
+
+        // 右下角：比例尺（地图软件式读数）
+        String scaleTxt = SandboxLod.scaleLabel(sandbox.zoom(), Math.min(w, h));
+        int sw = mc.font.width(scaleTxt);
+        int sx = x + w - sw - 8;
+        int sy = y + h - 16;
+        g.fill(sx - 4, sy - 3, sx + sw + 4, sy + 11, 0xB212141B);
+        g.fill(sx - 4, sy - 3, sx + sw + 4, sy - 2, 0x66FFD24A);
+        g.drawString(mc.font, scaleTxt, sx, sy, 0xFFFFE082, true);
     }
 
 }

@@ -177,7 +177,8 @@ public final class SandboxRenderer {
      */
     public void dragToBlocks(double dx, double dy, int areaSize, double blockStep,
                              float[] out) {
-        float s = areaSize * 0.46f * zoom;
+        // ★ scale 与 render() 保持同一口径（不乘 zoom，否则拖动灵敏度会随缩放漂移）
+        float s = areaSize * 0.46f * SandboxLod.BASE_ZOOM;
         if (s <= 0.0f) {
             out[0] = 0f;
             out[1] = 0f;
@@ -197,13 +198,13 @@ public final class SandboxRenderer {
             my = (r[0] * b - r[3] * a) / det;
         }
         // 模型单位 → 方块：
-        //   模型跨度 2（-1..+1）覆盖 <b>colCount 根柱子</b>，每根柱 = PER_COLUMN 个细格，
+        //   模型跨度 2（-1..+1）覆盖 <b>colCount 根柱子</b>，每根柱 = perColumn 个细格，
         //   每细格 = blockStep 方块
-        //   ⇒ 每模型单位 = (colCount / 2) × PER_COLUMN × blockStep 方块
+        //   ⇒ 每模型单位 = (colCount / 2) × perColumn × blockStep 方块
         //
-        //   ★ 2026-11-08 修正：曾漏掉 PER_COLUMN，导致拖动灵敏度只有正确值的 1/2
+        //   ★ 2026-11-08 修正：曾漏掉 perColumn，导致拖动灵敏度只有正确值的 1/2
         //   （实测拖整屏只移动 0.27× 视野，手感偏慢）。
-        double blocksPerModel = (Math.max(1, colCount) * 0.5) * PER_COLUMN * blockStep;
+        double blocksPerModel = (Math.max(1, colCount) * 0.5) * perColumn * blockStep;
         out[0] = (float) (-mx * blocksPerModel);
         out[1] = (float) (-my * blocksPerModel);
     }
@@ -263,8 +264,28 @@ public final class SandboxRenderer {
         if (data == null || data.gridW <= 0) return;
         buildRotation();
 
-        // ★ 缩放：照抄 yardsite scaleOf() 第 568-570 行。
-        float scale = areaSize * 0.46f * zoom;
+        // ★★ 2026-11-08【根本修正】：scale <b>不再乘 zoom</b>，改为"窗口正好铺满视口"。
+        //
+        //   <h2>上一版为什么错（用户实机："滚轮感觉只是柱子变大了"）</h2>
+        //   <pre>
+        //     scale  = areaSize * 0.46 * zoom      ← 随 zoom 线性放大
+        //     window = GRID * step / zoom          ← 随 zoom 线性缩小
+        //   </pre>
+        //   两者<b>同比例抵消</b> ⇒ 构图几乎不变，柱子屏幕尺寸反而变大：
+        //   实测 zoom 2.0→31.2 时，柱子从 12.9px 涨到 201.8px，
+        //   而画面内容还是同一片地方 ⇒ 看起来"只是柱子变大"。
+        //
+        //   <h2>正确做法（地图软件 / RTS 相机）</h2>
+        //   <p>scale 只由「窗口覆盖范围」决定，与 zoom 无关：</p>
+        //   <pre>
+        //     scale = areaSize / 窗口宽度（模型单位）= areaSize * 0.46 * BASE_ZOOM
+        //   </pre>
+        //   <p>⇒ 缩放只改<b>窗口</b>（世界范围），柱子的<b>屏幕尺寸恒定</b>，
+        //   画面内容"推近/拉远" —— 这才是用户要的"像镜头推进"。</p>
+        //
+        //   <p>柱数恒定 128、柱宽恒定 ⇒ 每柱代表的方块变少 ⇒ <b>放大后画面更精细</b>
+        //   （zoom 2.0 时每柱 31 格，zoom 31.2 时每柱 2 格）。</p>
+        float scale = areaSize * 0.46f * SandboxLod.BASE_ZOOM;
 
         // ★ 屏幕平移（yardsite render() 第 407-408 行：{@code areaX + areaSize/2 + panX}）
         float originX = areaX + areaSize / 2.0f + panX;
@@ -389,7 +410,8 @@ public final class SandboxRenderer {
      */
     public void pick(double guiX, double guiY, int areaX, int areaY, int areaSize) {
         pickedColumn = -1;
-        float scale = areaSize * 0.46f * zoom;
+        // ★ 与 render() 同一口径（scale 不随 zoom）
+        float scale = areaSize * 0.46f * SandboxLod.BASE_ZOOM;
         if (scale <= 0.0f || readyColumns == 0) return;
         float w = widthScale;
         float a = (float) ((guiX - (areaX + areaSize / 2.0f + panX)) / scale);
@@ -435,12 +457,19 @@ public final class SandboxRenderer {
      * 两者相等时，柱子数与网格密度绑死——网格加密到 128 就变成 128 根细柱
      * （实测「像草丛」）。分离后可以「柱子粗 + 颜色细」。</p>
      */
-    private static final int PER_COLUMN = 2;
+    /**
+     * 每根柱子盖住几个细格（每边）—— <b>可变</b>，由 {@link SandboxLod#perColumnFor} 按视口计算。
+     *
+     * <p>★ 2026-11-08：从常量 2 改为动态。细格按像素提到 450 后，
+     * 若仍按 2 聚合 ⇒ 225 根柱、每根 4px ⇒ 每柱一圈侧墙，叠成密集涟漪纹理。
+     * 现在按"目标柱数 = 视口/13px"反推聚合系数，柱子保持约 12px。</p>
+     */
+    private int perColumn = 2;
 
     /** 本图网格宽（细格）。 */
     private int cols = 0;
     private int rows = 0;
-    /** 本图柱数（每边）= 细格数 / {@link #PER_COLUMN}。 */
+    /** 本图柱数（每边）= 细格数 / {@link #perColumn}。 */
     private int colCount = 0;
     /** 本图柱行数（Z 方向）。 */
     private int colRows = 0;
@@ -451,7 +480,7 @@ public final class SandboxRenderer {
     /**
      * 采集每根柱子：柱高（真实 Y 归一）、四角、颜色（含坡度光照）。
      *
-     * <p>细格 {@code gridW×gridH} 按 {@link #PER_COLUMN}² 聚合成柱子 ——
+     * <p>细格 {@code gridW×gridH} 按 {@link #perColumn}² 聚合成柱子 ——
      * 每根柱子取该组<b>多数群系</b>的细格（yardsite {@code majorityCell} 第 588 行语义：
      * 2×2 里占多数的那个；并列取先遇到）、柱高取组左上角细格
      * （yardsite {@code surfaceAtCell(s0, f0)} 第 596 行）。</p>
@@ -470,8 +499,8 @@ public final class SandboxRenderer {
         cols = gw;
         rows = gh;
         int fine = gw * gh;
-        colCount = Math.max(1, (gw + PER_COLUMN - 1) / PER_COLUMN);
-        colRows = Math.max(1, (gh + PER_COLUMN - 1) / PER_COLUMN);
+        colCount = Math.max(1, (gw + perColumn - 1) / perColumn);
+        colRows = Math.max(1, (gh + perColumn - 1) / perColumn);
         int pillars = colCount * colRows;
         ensureCapacity(Math.max(fine, pillars));
         readyColumns = 0;
@@ -513,9 +542,9 @@ public final class SandboxRenderer {
             for (int cz = 0; cz < colRows; cz++) {
                 int col = cx * colRows + cz;
 
-                int fx0 = cx * PER_COLUMN, fz0 = cz * PER_COLUMN;
-                int fx1 = Math.min(gw - 1, fx0 + PER_COLUMN - 1);
-                int fz1 = Math.min(gh - 1, fz0 + PER_COLUMN - 1);
+                int fx0 = cx * perColumn, fz0 = cz * perColumn;
+                int fx1 = Math.min(gw - 1, fx0 + perColumn - 1);
+                int fz1 = Math.min(gh - 1, fz0 + perColumn - 1);
 
                 // 柱高取组内左上角（yardsite surfaceAtCell(s0, f0)）
                 double surfaceY = data.height[fx0 * gh + fz0];
@@ -646,6 +675,16 @@ public final class SandboxRenderer {
 
     /** 开关边缘渐隐（全屏地图开、需要硬边框时关）。 */
     public void setEdgeFade(boolean enabled) { this.edgeFadeEnabled = enabled; }
+
+
+    /**
+     * 设置每柱聚合的细格数（由 {@link SandboxLod#perColumnFor} 按视口算好）。
+     *
+     * <p>细格数固定、聚合系数变大 ⇒ 柱子数变少、每柱变粗 ⇒ 视觉尺寸稳定。</p>
+     */
+    public void setPerColumn(int per) {
+        this.perColumn = Math.max(2, Math.min(16, per));
+    }
 
     /** 一格的坡度光照（从 rNorm 数组取邻差，用自适应增益）。 */
     private double slopeLightAt(int gw, int gh, int gx, int gz, boolean water, double gain) {

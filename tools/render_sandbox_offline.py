@@ -31,7 +31,15 @@ LIGHT_MAX = 1.30
 WATER_FACTOR = 0.35
 PITCH_MIN, PITCH_MAX = 0.22, 1.40
 DEFAULT_PITCH, DEFAULT_YAW = 0.95, 0.65
-PER_COLUMN = 2
+PILLAR_PX = 13.0
+CELL_PX = 2.0
+
+
+def per_column_for(viewport_px):
+    """与 SandboxLod.perColumnFor 同式：柱子保持约 13px。"""
+    grid = max(64, min(512, int(round(viewport_px / CELL_PX))))
+    target = max(8.0, viewport_px / PILLAR_PX)
+    return max(2, min(16, int(round(grid / target))))
 
 # ---- SandboxPalette 群系本色（★ 2026-11-08 P0-1，与 Java 侧 SandboxPalette 对齐）----
 # WhittakerType.ordinal() 顺序：ICE TUNDRA TAIGA GRASSLAND TEMPERATE_FOREST
@@ -150,6 +158,7 @@ def model(fine, cell):
 def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=DEFAULT_YAW,
            pitch=DEFAULT_PITCH, sea=63.0, out='out.png', layer='BIOME'):
     gx, gz = h.shape
+    PER_COLUMN = per_column_for(size)
     base = sea - 4.0
     # ★ 竖向比例照抄参考项目（SiteTerrainRenderer.collect 第 661/677-678 行）：
     #     span = max(60, 本图最高点 - base)
@@ -271,7 +280,12 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
 
     r9 = build_rotation(yaw, pitch)
     # yardsite 口径（用户裁定恢复）：scale = areaSize * 0.46 * zoom
-    scale = size * 0.46 * zoom
+    # ★ 2026-11-08 修正：scale 不随 zoom（与 SandboxRenderer.render 同一口径）
+    #   旧写法 scale = size*0.46*zoom 与 window 缩小同比例抵消
+    #   => 构图不变、只看到柱子变大（用户实机反馈）。
+    #   现在 scale 固定 => 缩放只改窗口（世界范围），柱子屏幕尺寸恒定，
+    #   画面内容"推近/拉远"，且每柱代表的方块变少 => 更精细。
+    scale = size * 0.46 * 2.0
     ox = oy = size / 2.0
 
     def proj(mx, my, mz):

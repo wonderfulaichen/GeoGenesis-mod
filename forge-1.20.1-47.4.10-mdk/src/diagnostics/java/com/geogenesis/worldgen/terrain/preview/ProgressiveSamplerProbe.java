@@ -26,6 +26,9 @@ import java.util.Locale;
  */
 public final class ProgressiveSamplerProbe {
 
+    /** 本探针用的网格（与生产默认一致）。 */
+    private static final int GRID = ProgressiveSampler.DEFAULT_GRID;
+
     private static final int ORIGIN_X = -1400;
     private static final int ORIGIN_Z = -1400;
     private static final int SPAN = 3072;
@@ -45,10 +48,10 @@ public final class ProgressiveSamplerProbe {
 
         System.out.println("=== 后台采样器验证（S2）===");
         System.out.printf("视口: origin=(%d,%d) span=%d 网格=%d%n%n",
-                ORIGIN_X, ORIGIN_Z, SPAN, ProgressiveSampler.GRID);
+                ORIGIN_X, ORIGIN_Z, SPAN, GRID);
 
         ProgressiveSampler sampler = new ProgressiveSampler(
-                ProgressiveSampler.GRID, ProgressiveSampler.GRID);
+                GRID, GRID);
         long viewportId = 0x1A2B3C4DL;
 
         // 预热（首次会初始化噪声与缓存，属冷启动一次性开销）
@@ -85,7 +88,7 @@ public final class ProgressiveSamplerProbe {
         // ---- 3) 与同步一次性采样对拍 ----
         System.out.println("[3] 与一次性采样对拍 …");
         TerrainFieldData direct = TerrainFieldData.sample(terrain, ORIGIN_X, ORIGIN_Z,
-                SPAN, SPAN, ProgressiveSampler.GRID, ProgressiveSampler.GRID, viewportId);
+                SPAN, SPAN, GRID, GRID, viewportId);
         int diffs = 0;
         String firstDiff = null;
         int n = progressive.gridW * progressive.gridH;

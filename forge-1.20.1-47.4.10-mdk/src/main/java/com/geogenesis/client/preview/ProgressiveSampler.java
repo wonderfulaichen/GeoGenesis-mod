@@ -48,21 +48,43 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class ProgressiveSampler {
 
     /**
-     * 采样网格（每边格数）。
+     * <b>默认</b>采样网格（每边格数）—— 仅在调用方没有按视口指定时使用。
      *
-     * <p>★ 2026-11-08 从 128 提到 <b>256</b>，对齐参考项目档位：
-     * yardsite {@code site.selectRadius=2000} + 128 柱 ⇒ 一根柱约 31 格方块。
-     * 提到 256 后细格 65536 个，与参考同档。</p>
+     * <h2>★ 2026-11-08 重大修正：网格不再固定</h2>
+     * <p>上一版把网格<b>固定为 256</b>，理由是"采样点数恒定 ⇒ 成本恒定"。
+     * 但实机暴露出根本问题：<b>放大后精度没变化</b>。</p>
      *
-     * <p><b>网格恒定是 LOD 的前提</b>：世界窗口由 {@link SandboxLod} 按缩放档位决定，
-     * 网格固定 ⇒ <b>采样点数恒定</b>（任何时候都是 65536 点），
-     * 推近只是窗口变小、每格代表的方块数变少（细节变清晰），成本不变。
-     * 若网格随档位增长，推近两档就要 4 倍采样时间，LOD 立刻不可用。</p>
+     * <p>对比平面视图（我们的原有能力）：</p>
+     * <table border="1">
+     *   <caption>采样密度对照（视口 900×900）</caption>
+     *   <tr><th></th><th>采样点数</th><th>每点代表</th></tr>
+     *   <tr><td>平面视图 1:1</td><td><b>810,000</b></td><td><b>1 格</b></td></tr>
+     *   <tr><td>沙盘旧（固定 256）</td><td>65,536</td><td>1~15.6 格</td></tr>
+     * </table>
+     * <p>⇒ 差 12.4 倍。平面视图能做到"每个屏幕像素一个方块"，
+     * 因为它<b>采样点数 = 视口像素数</b>，不是固定值。</p>
      *
-     * <p>成本：S0 实测 256² 全字段约 154ms（单线程），
-     * 后台多线程实测约 143ms（12 线程），不阻塞渲染线程。</p>
+     * <h2>正解：网格 = 视口像素数 / 每柱像素</h2>
+     * <p>与平面视图同一逻辑（像素采样），只是每格画成一根柱子：</p>
+     * <pre>
+     *   柱子屏幕尺寸恒定（约 13px） ⇒ 网格数 ≈ 视口像素 / 13
+     *   视野 = 网格数 × 每格方块数
+     *   推近 ⇒ 视野变小 ⇒ 每柱代表方块变少 ⇒ <b>精度自然提高</b>
+     * </pre>
+     * <p>这正是用户要的"视野缩小后每柱代表的方块变少"，
+     * 也是参考项目三层视图（大沙盘 15.6 格/格 → 精读 16 格/格 → 落点 4 格/格）的同一原理：
+     * <b>不堆采样点数，靠缩小窗口提精度</b>。</p>
+     *
+     * <p>成本：网格按视口算出（900px/13 ≈ 70 柱 ⇒ 140 细格 ⇒ 19,600 点），
+     * 反而<b>比旧的 256² 少</b>（19.6k vs 65.5k），采样更快。</p>
      */
-    public static final int GRID = 256;
+    public static final int DEFAULT_GRID = 256;
+
+    /** 本实例实际使用的网格（每边细格数）。由调用方按视口算好后传入。 */
+    private int grid = DEFAULT_GRID;
+
+    /** 本实例的网格（每边细格数）。 */
+    public int grid() { return grid; }
 
     /** 竖向比例的当前显示值（缓动目标）。初值同 yardsite {@code shownSpan = 60}。 */
     private float shownSpan = 60.0f;
@@ -80,12 +102,27 @@ public final class ProgressiveSampler {
     private boolean hydro;
     /** 粗层水位查询器（null = 不查水位）。 */
     private SandboxWaterLookup water;
+    /**
+     * 本会话第一次采样的时刻（毫秒）。
+     *
+     * <p>生长动画的"出生时刻"基准：同一会话内所有 reset 都用它，
+     * 这样滚动缩放不会重播"从中心长出来"（见 reset 里的说明）。
+     * 0 = 尚未开始（新建实例时）。</p>
+     */
+    private long sessionStartMs;
 
     /** 本轮是否走水文管线（诊断/状态行用）。 */
     public boolean isHydroPath() { return hydro; }
 
     public ProgressiveSampler(int gridW, int gridH) {
-        // gridW/gridH 忽略：网格由 GRID 决定（保持构造签名兼容）
+        // ★ 2026-11-08：现在真的用传入的网格尺寸（以前忽略、写死 256）。
+        //   调用方按视口像素算：grid ≈ 视口像素 / 每柱像素 × PER_COLUMN。
+        this.grid = Math.max(16, Math.max(gridW, gridH));
+    }
+
+    /** 换网格尺寸（视口变化时调用；下一次 reset 生效）。 */
+    public void setGrid(int gridSize) {
+        this.grid = Math.max(16, gridSize);
     }
 
     /** 活数据（可能还在采）。无数据返回 null。 */
@@ -157,16 +194,29 @@ public final class ProgressiveSampler {
         complete = false;
         hydro = hydroPath;
         this.water = water;
-        int n = GRID * GRID;
+        int n = grid * grid;
         progress.set(0);
         progressTotal.set(n);
 
-        TerrainFieldData data = TerrainFieldData.blank(GRID, GRID, originX, originZ,
+        TerrainFieldData data = TerrainFieldData.blank(grid, grid, originX, originZ,
                 blocksWide, blocksHigh, viewportId);
         current = data;
 
+        // ★★ 2026-11-08【修"滚轮重播动画"】：
+        //
+        //   生长动画的出生时刻存在 data.bornAt[]，而每次 reset 都 new 一份
+        //   TerrainFieldData ⇒ bornAt 全 0 ⇒ 每滚一格滚轮都重放一次"从中心长出来"。
+        //   参考项目不会（它的 drawnAt 由字段自己记账，切视口不重播）。
+        //
+        //   修法：把"本会话第一次采样时刻"作为采样器状态，
+        //   同一会话内的后续 reset <b>全都用它</b> ⇒ 柱子出生时刻远早于现在
+        //   ⇒ 生长动画早已结束，不会重播。
+        //   仅当真正换世界/换种子（新实例）时才重新录制 —— 那才该播一次。
+        if (sessionStartMs == 0L) sessionStartMs = System.currentTimeMillis();
+        java.util.Arrays.fill(data.bornAt, sessionStartMs);
+
         // ★ 中心向外的取活顺序（yardsite centerOutOrder 第 187-206 行）
-        int[] order = centerOutOrder(GRID);
+        int[] order = centerOutOrder(grid);
 
         // ★ 线程数 = 核数 ÷ 2（yardsite SiteThreadBudget），留一半给渲染线程
         int threads = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
@@ -185,15 +235,15 @@ public final class ProgressiveSampler {
         List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
         for (int k = 0; k < threads; k++) {
             futures.add(pool.submit(() -> {
-                double stepX = blocksWide / (double) GRID;
-                double stepZ = blocksHigh / (double) GRID;
+                double stepX = blocksWide / (double) grid;
+                double stepZ = blocksHigh / (double) grid;
                 Cell reuse = new Cell();
                 while (!cancel.get()) {
                     int c = cursor.getAndIncrement();
                     if (c >= order.length) return;
                     int idx = order[c];
-                    int gx = idx / GRID;
-                    int gz = idx % GRID;
+                    int gx = idx / grid;
+                    int gz = idx % grid;
                     int wx = originX + (int) Math.round(gx * stepX);
                     int wz = originZ + (int) Math.round(gz * stepZ);
                     // ★ 按 LOD 档选路径：细档走完整管线才能拿到河谷/湖河
@@ -218,7 +268,7 @@ public final class ProgressiveSampler {
             if (!cancel.get()) {
                 complete = true;
                 System.out.printf("[Preview] 沙盘采样完成 %dx%d，%d 线程，%d ms%n",
-                        GRID, GRID, threads, data.costMs);
+                        grid, grid, threads, data.costMs);
                 System.out.flush();
             }
             running.set(false);
@@ -261,6 +311,6 @@ public final class ProgressiveSampler {
         return order;
     }
 
-    public int targetGridW() { return GRID; }
-    public int targetGridH() { return GRID; }
+    public int targetGridW() { return grid; }
+    public int targetGridH() { return grid; }
 }
