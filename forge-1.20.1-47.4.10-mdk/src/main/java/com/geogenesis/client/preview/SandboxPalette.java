@@ -49,6 +49,65 @@ public final class SandboxPalette {
     private SandboxPalette() { }
 
     /**
+     * <b>按图层给一配上色</b>（★ 2026-11-08 修正：恢复图层能力）。
+     *
+     * <h2>为什么必须分流，而不是统一用本色</h2>
+     * <p>上一版把沙盘固定成本色（群系色），等价于<b>砍掉原有图层功能</b> ——
+     * 交接文档 §4.1 明确把「图层切换（高程/群系/温度/湿度/降水/类型）」列为
+     * <b>必须保留</b>的能力（参考项目只有一个群系图层，我们有多维诊断需求）。</p>
+     *
+     * <p>两类图层的正确语义不同，所以分流：</p>
+     * <ul>
+     *   <li><b>连续图层</b>（高程/温度/湿度/降水/大陆性/起伏/纬度/河网）：
+     *       色带<b>本身就是信息</b>（冷暖、干湿是连续量）⇒ 走 {@code GeoPalette}
+     *       的色带，与平面窗口<b>完全一致</b>，图例也对得上。</li>
+     *   <li><b>离散图层</b>（群系/地形类型/气候带）：类别之间没有大小关系 ⇒
+     *       走群系<b>本色</b>（{@link #colorFor}），这才是参考项目那种观感。</li>
+     * </ul>
+     *
+     * <p>无论哪一类，最后都乘坡度光照（沙盘的立体感来源），
+     * 水面都按深度渐变（可读出深浅）。</p>
+     *
+     * @param layer     当前图层
+     * @param cell      该格还原出的 Cell（供 GeoPalette 用；只读，禁止写回）
+     * @param light     坡度光照（0.55~1.30）
+     * @param surface   地表 Y
+     * @param seaLevel  海平面
+     * @param snow      雪线以上
+     * @param minY/maxY 世界高度范围（GeoPalette 需要）
+     */
+    public static int colorForLayer(GeoPalette.PreviewLayer layer,
+                                    com.geogenesis.worldgen.terrain.Cell cell,
+                                    double light, double surface, double seaLevel, boolean snow,
+                                    int minY, int maxY) {
+        if (cell == null) return scale(UNKNOWN_RGB, light);
+
+        // 水面：任何图层下都按深度渐变（可读出"能不能过"）
+        if (surface <= seaLevel) {
+            float depth = (float) ((seaLevel - surface) / WATER_DEPTH_SCALE);
+            if (depth < 0f) depth = 0f;
+            else if (depth > 1f) depth = 1f;
+            return scale(lerp(WATER_SHALLOW, WATER_DEEP, depth), light);
+        }
+
+        if (layer.kind == GeoPalette.Kind.DISCRETE) {
+            // 只有「群系」「气候带」用本色/自身色表；
+            // 其余离散图层（地形类型/河流类型/岩性/地层）走 GeoPalette 自己的离散色表
+            // —— 它们的类别是 ID，不是群系，用群系本色会把图层变成"伪装成 BIOME"。
+            if (layer == GeoPalette.PreviewLayer.BIOME) {
+                int rgb = landColor(cell.biomeType, cell.terrainType, snow, surface, seaLevel);
+                return scale(rgb, light);
+            }
+            int rgb = GeoPalette.color(layer, cell, 0, 0, minY, maxY) & 0xFFFFFF;
+            return scale(rgb, light);
+        }
+
+        // 连续：走 GeoPalette 色带（与平面窗口完全一致，图例对得上）
+        int rgb = GeoPalette.color(layer, cell, 0, 0, minY, maxY, false) & 0xFFFFFF;
+        return scale(rgb, light);
+    }
+
+    /**
      * 一格的最终颜色（<b>画的时候现算</b>，改色不用重采样 —— yardsite 同策）。
      *
      * @param biomeType 气候群系（Whittaker），陆地上色主输入
@@ -60,8 +119,7 @@ public final class SandboxPalette {
      */
     public static int colorFor(com.geogenesis.worldgen.climate.WhittakerType biomeType,
                                com.geogenesis.worldgen.terrain.TerrainClass terrain,
-                               double surface, double seaLevel, boolean snow, double light) {
-        int rgb;
+                               double surface, double seaLevel, boolean snow, double light) {        int rgb;
         boolean wet = surface <= seaLevel;
         if (wet) {
             // yardsite colorFor() 第 92-95 行：浅 → 深按 (seaLevel - surface)/30 插值

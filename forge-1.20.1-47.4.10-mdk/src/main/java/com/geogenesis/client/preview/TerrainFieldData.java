@@ -68,6 +68,12 @@ public final class TerrainFieldData {
     /** {@code TerrainClass.ordinal()}，供 TERRAIN_TYPE 图层。 */
     public final short[] terrainId;
     /**
+     * 额外离散 id（★ 2026-11-08 补）：RIVER_TYPE / ROCK_TYPE / ROCK_LAYER / VEIN_MAP
+     * 这几个图层要读 {@code Cell} 的对应字段，不存就会出现"图层没接上数据、整幅同色"。
+     * 每个格点 4 个 short。
+     */
+    public final short[] extraId;
+    /**
      * 真实世界高度 Y（方块）。
      *
      * <p>★ 2026-11-08 补：沙盘柱高必须用它而不是 {@code e}。
@@ -113,6 +119,7 @@ public final class TerrainFieldData {
         this.discharge = new double[n];
         this.biomeId = new short[n];
         this.terrainId = new short[n];
+        this.extraId = new short[n * 4];
         this.height = new double[n];
         this.snow = new boolean[n];
         this.bornAt = new long[n];
@@ -147,6 +154,11 @@ public final class TerrainFieldData {
         c.riverNetDischarge = discharge[i];
         c.biomeType = biomeOf(biomeId[i]);
         c.terrainType = terrainOf(terrainId[i]);
+        // ★ 2026-11-08：补齐离散图层要读的字段
+        //   （否则 RIVER_TYPE / ROCK_TYPE / ROCK_LAYER 会整幅同色 —— "没接上数据"）
+        c.riverType = (byte) extraId[i * 4];
+        c.rockTypeId = extraId[i * 4 + 1];
+        c.rockLayer = extraId[i * 4 + 2];
         return c;
     }
 
@@ -201,6 +213,9 @@ public final class TerrainFieldData {
         discharge[i] = c.riverNetDischarge;
         biomeId[i] = (short) (c.biomeType == null ? 0 : c.biomeType.ordinal());
         terrainId[i] = (short) (c.terrainType == null ? 0 : c.terrainType.ordinal());
+        extraId[i * 4] = (short) c.riverType;
+        extraId[i * 4 + 1] = (short) c.rockTypeId;
+        extraId[i * 4 + 2] = (short) c.rockLayer;
         height[i] = c.height;
         snow[i] = c.isSnow;
         if (bornAt[i] == 0L) bornAt[i] = System.currentTimeMillis();
@@ -220,6 +235,7 @@ public final class TerrainFieldData {
         discharge[i] = src.discharge[j];
         biomeId[i] = src.biomeId[j];
         terrainId[i] = src.terrainId[j];
+        System.arraycopy(src.extraId, j * 4, extraId, i * 4, 4);
         height[i] = src.height[j];
         snow[i] = src.snow[j];
         bornAt[i] = src.bornAt[j];
@@ -250,6 +266,7 @@ public final class TerrainFieldData {
         System.arraycopy(discharge, 0, d.discharge, 0, discharge.length);
         System.arraycopy(biomeId, 0, d.biomeId, 0, biomeId.length);
         System.arraycopy(terrainId, 0, d.terrainId, 0, terrainId.length);
+        System.arraycopy(extraId, 0, d.extraId, 0, extraId.length);
         System.arraycopy(height, 0, d.height, 0, height.length);
         System.arraycopy(snow, 0, d.snow, 0, snow.length);
         System.arraycopy(bornAt, 0, d.bornAt, 0, bornAt.length);

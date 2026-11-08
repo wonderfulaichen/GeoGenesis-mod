@@ -810,7 +810,7 @@ public class PreviewDisplay extends AbstractWidget {
         } else {
             sandbox.clearPick();
         }
-        sandbox.render(g, d, ax, ay, side,
+        sandbox.render(g, d, activeLayer, minY, maxY, ax, ay, side,
                 largeSampler.reliefSpan(), seaY, System.currentTimeMillis());
     }
 

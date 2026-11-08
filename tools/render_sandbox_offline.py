@@ -18,6 +18,7 @@ gain      : 可选，覆盖 SandboxShade.LIGHT_GAIN
 不替代实机验收。
 """
 import sys
+import math
 import numpy as np
 from PIL import Image
 
@@ -69,23 +70,31 @@ def load(path):
             rows.append((int(p[0]), int(p[1]), float(p[2]), float(p[3]),
                          int(float(p[4])) if len(p) > 4 else 0,
                          int(float(p[5])) if len(p) > 5 else 0,
-                         1 if len(p) > 6 and float(p[6]) > 0 else 0))
+                         1 if len(p) > 6 and float(p[6]) > 0 else 0,
+                         *[float(p[k]) if len(p) > k else 0.0 for k in range(7, 13)]))
     if not rows:
         raise SystemExit('no data in ' + path)
     gx = max(r[0] for r in rows) + 1
     gz = max(r[1] for r in rows) + 1
+    n = gx * gz
     h = np.zeros((gx, gz))
     e = np.zeros((gx, gz))
     biome = np.zeros((gx, gz), dtype=int)
     terr = np.zeros((gx, gz), dtype=int)
     snow = np.zeros((gx, gz), dtype=bool)
-    for a, b, hh, ee, bb, tt, ss in rows:
+    fields = {k: np.zeros((gx, gz)) for k in
+              ('temp', 'humid', 'precip', 'cont', 'shape', 'disch')}
+    for row in rows:
+        a, b, hh, ee, bb, tt, ss = row[:7]
         h[a, b] = hh
         e[a, b] = ee
         biome[a, b] = bb
         terr[a, b] = tt
         snow[a, b] = bool(ss)
-    return h, e, biome, terr, snow
+        vals = row[7:13]
+        for k, v in zip(fields, vals):
+            fields[k][a, b] = v
+    return h, e, biome, terr, snow, fields
 
 
 def build_rotation(yaw, pitch):
@@ -116,8 +125,8 @@ def model(fine, cell):
     return 0.0 if fine <= 1 else cell / (fine - 1) * 2.0 - 1.0
 
 
-def render(h, e, biome, terr, snow, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW,
-           pitch=DEFAULT_PITCH, sea=63.0, out='out.png'):
+def render(h, e, biome, terr, snow, fields, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW,
+           pitch=DEFAULT_PITCH, sea=63.0, out='out.png', layer='BIOME'):
     gx, gz = h.shape
     base = sea - 4.0
     hi = max(base, h.max())
@@ -137,26 +146,58 @@ def render(h, e, biome, terr, snow, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW,
     water = e < 0.0
     light = np.where(water, 1.0 + (light - 1.0) * WATER_FACTOR, light)
 
-    # SandboxPalette 群系本色 + 水深渐变（复刻 Java 侧）
-    def rgb_of(i, j):
+    # 连续图层色带（复刻 GeoPalette.continuous 的语义：蓝→绿→黄→红 等）
+    def ramp(v, stops):
+        v = min(1.0, max(0.0, v))
+        n = len(stops) - 1
+        x = v * n
+        i0 = min(n - 1, int(x))
+        t = x - i0
+        return lerp3(stops[i0], stops[i0 + 1], t)
+
+    CLIMATE_RAMP = [0x2E5FA8, 0x3FA88E, 0x8FC24A, 0xE8C24A, 0xD85A3A]
+    ELEV_RAMP = [0x1B3F8F, 0x2E6FD6, 0x4FB3D9, 0x9AC7E8, 0xE2D3A0, 0x6FAE4A,
+                 0x3D6B32, 0x8A8A85, 0xB0B0B0, 0xFFFFFF]
+
+    def layer_rgb(i, j):
+        """复刻 SandboxPalette.colorForLayer 的分流。"""
+        # 水面一律深度渐变
         if e[i, j] < 0.0:
             depth = min(1.0, (sea - h[i, j]) / 30.0) if h[i, j] < sea else 0.0
             rgb = lerp3(WATER_SHALLOW, WATER_DEEP, depth)
-            rgb = scale3(rgb, light[i, j])
-            return tuple(c / 255.0 for c in rgb)
-        elif snow[i, j] or biome[i, j] == 0:
-            rgb = int2rgb(SNOW_RGB)
-        elif terr[i, j] == TERRAIN_BEACH:
-            rgb = int2rgb(BEACH_RGB)
-        else:
-            rgb = int2rgb(WHITTAKER_RGB[biome[i, j] % len(WHITTAKER_RGB)])
-            # jitter ±6%
-            hash_ = (biome[i, j] * 0x9E3779B1) & 0xFFFFFFFF
-            hash_ ^= hash_ >> 16
-            rgb = scale3(rgb, 0.94 + ((hash_ & 0xFF) / 255.0) * 0.12)
-        rgb = scale3(rgb, light[i, j])
-        return tuple(c / 255.0 for c in rgb)  # img 是 0..1
+            return tuple(c / 255.0 for c in scale3(rgb, light[i, j]))
 
+        if layer == 'BIOME':
+            if snow[i, j] or biome[i, j] == 0:
+                rgb = int2rgb(SNOW_RGB)
+            elif terr[i, j] == TERRAIN_BEACH:
+                rgb = int2rgb(BEACH_RGB)
+            else:
+                rgb = int2rgb(WHITTAKER_RGB[biome[i, j] % len(WHITTAKER_RGB)])
+                hash_ = (biome[i, j] * 0x9E3779B1) & 0xFFFFFFFF
+                hash_ ^= hash_ >> 16
+                rgb = scale3(rgb, 0.94 + ((hash_ & 0xFF) / 255.0) * 0.12)
+        elif layer == 'ELEVATION':
+            v = (e[i, j] + 1.0) * 0.5
+            rgb = ramp(v, ELEV_RAMP)
+        elif layer == 'TEMPERATURE':
+            rgb = ramp((fields['temp'][i, j] + 1.0) * 0.5, CLIMATE_RAMP)
+        elif layer == 'HUMIDITY':
+            rgb = ramp((fields['humid'][i, j] + 1.0) * 0.5, CLIMATE_RAMP)
+        elif layer == 'PRECIPITATION':
+            rgb = ramp(math.sqrt(max(0.0, min(1.0, fields['precip'][i, j] / 1.2))), CLIMATE_RAMP)
+        elif layer == 'CONTINENTALITY':
+            rgb = ramp((fields['cont'][i, j] + 1.0) * 0.5, CLIMATE_RAMP)
+        elif layer == 'RELIEF':
+            rgb = ramp((fields['shape'][i, j] + 1.0) * 0.5, CLIMATE_RAMP)
+        elif layer == 'RIVER_NETWORK':
+            dis = fields['disch'][i, j]
+            v = min(1.0, math.log1p(dis) / 6.0) if dis > 0 else 0.0
+            rgb = ramp(v, [0x1B3A78, 0x2E6FD6, 0x43D5EE])
+        else:
+            # 其余离散图层离线不精确复刻，用灰阶占位
+            rgb = int2rgb(WHITTAKER_RGB[biome[i, j] % len(WHITTAKER_RGB)])
+        return tuple(c / 255.0 for c in scale3(rgb, light[i, j]))
     # 柱
     col_count = (gx + PER_COLUMN - 1) // PER_COLUMN
     col_rows = (gz + PER_COLUMN - 1) // PER_COLUMN
@@ -188,7 +229,7 @@ def render(h, e, biome, terr, snow, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW,
                         break
                 if mfx is not None:
                     break
-            colc[col] = rgb_of(mfx, mfz)
+            colc[col] = layer_rgb(mfx, mfz)
 
     r9 = build_rotation(yaw, pitch)
     # yardsite 口径（用户裁定恢复）：scale = areaSize * 0.46 * zoom
@@ -302,6 +343,7 @@ def scale3(rgb, factor):
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
-    h, e, biome, terr, snow = load(sys.argv[1])
+    h, e, biome, terr, snow, fields = load(sys.argv[1])
     gain = float(sys.argv[3]) if len(sys.argv) > 3 else 8.0
-    render(h, e, biome, terr, snow, gain, out=sys.argv[2])
+    layer = sys.argv[4] if len(sys.argv) > 4 else 'BIOME'
+    render(h, e, biome, terr, snow, fields, gain, out=sys.argv[2], layer=layer)

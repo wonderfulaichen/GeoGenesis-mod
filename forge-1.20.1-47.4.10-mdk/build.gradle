@@ -2739,3 +2739,10 @@ task runSandboxShadeProbe(type: JavaExec) {
     maxHeapSize = '2g'
     systemProperty 'geogenesis.sandboxTsv', project.findProperty('sandboxTsv') ?: ''
 }
+// Sandbox layer wiring check: every GeoPalette layer must produce distinct colors.
+//   gradlew runSandboxLayerProbe
+task runSandboxLayerProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxLayerProbe'
+    maxHeapSize = '2g'
+}

@@ -47,8 +47,20 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class ProgressiveSampler {
 
-    /** 采样网格（每边格数）。yardsite 参考档 128 柱 × 2 = 256 细格；我们取 128（成本约 40ms）。 */
-    public static final int GRID = 128;
+    /**
+     * 采样网格（每边格数）。
+     *
+     * <p>★ 2026-11-08 从 128 提到 <b>256</b>，对齐参考项目档位：
+     * yardsite {@code site.selectRadius=2000} + 128 柱 ⇒ 一根柱约 31 格方块；
+     * 我们视口 3072 格，128 细格时一格 24 格方块、柱子（2×2 细格）**48 格方块**
+     * —— 比参考粗 1.5 倍，细格数只有它的 1/4（16384 vs 65536），
+     * 这就是"效果一般般、细节看不出来"的量化来源。
+     * 提到 256 后：一格 12 格方块、柱子 24 格方块，细格 65536 个，与参考同档。</p>
+     *
+     * <p>成本：S0 实测全字段采样 128² 约 154 ms（单线程），后台多线程实测约 70 ms；
+     * 256² 是 4 倍点数 ⇒ 约 280 ms（后台跑，不阻塞渲染线程）。</p>
+     */
+    public static final int GRID = 256;
 
     /** 竖向比例的当前显示值（缓动目标）。初值同 yardsite {@code shownSpan = 60}。 */
     private float shownSpan = 60.0f;

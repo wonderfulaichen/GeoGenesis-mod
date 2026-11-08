@@ -178,27 +178,28 @@ public final class SandboxRenderer {
      *
      * @param g        GUI 上下文
      * @param data     采样数据（细格）
+     * @param layer    当前图层（连续→GeoPalette 色带；离散→群系本色）
+     * @param minY/maxY 世界高度范围
      * @param areaX/areaY 区域左上角
      * @param areaSize    区域边长（像素）
      * @param span        竖向比例分母
      * @param seaLevel   海平面 Y（预览可配）
      * @param now        当前时刻（毫秒）—— 生长动画用
      */
-    public void render(GuiGraphics g, TerrainFieldData data,
-                       int areaX, int areaY, int areaSize, float span,
+    public void render(GuiGraphics g, TerrainFieldData data, GeoPalette.PreviewLayer layer,
+                       int minY, int maxY, int areaX, int areaY, int areaSize, float span,
                        double seaLevel, long now) {
         if (data == null || data.gridW <= 0) return;
         buildRotation();
 
         // ★ 缩放：照抄 yardsite scaleOf() 第 568-570 行。
-        //   （2026-11-08 用户裁定恢复此口径；上一轮的「整图铺满」实现已删除。）
         float scale = areaSize * 0.46f * zoom;
 
         // ★ 屏幕平移（yardsite render() 第 407-408 行：{@code areaX + areaSize/2 + panX}）
         float originX = areaX + areaSize / 2.0f + panX;
         float originY = areaY + areaSize / 2.0f + panY;
 
-        collect(data, span, seaLevel);
+        collect(data, layer, minY, maxY, span, seaLevel);
         applyGrowAnimation(now);
         sortByDepth();
         if (readyColumns == 0) return;
@@ -365,16 +366,20 @@ public final class SandboxRenderer {
      * 采集每根柱子：柱高（真实 Y 归一）、四角、颜色（含坡度光照）。
      *
      * <p>细格 {@code gridW×gridH} 按 {@link #PER_COLUMN}² 聚合成柱子 ——
-     * 每根柱子取该组<b>多数群系</b>的细格颜色（yardsite {@code majorityCell} 第 588 行语义：
-     * 2×2 里占多数的那个；并列取左上）、柱高取组左上角细格
+     * 每根柱子取该组<b>多数群系</b>的细格（yardsite {@code majorityCell} 第 588 行语义：
+     * 2×2 里占多数的那个；并列取先遇到）、柱高取组左上角细格
      * （yardsite {@code surfaceAtCell(s0, f0)} 第 596 行）。</p>
      *
-     * <p>★ 2026-11-08 P0-1：颜色改走 {@link SandboxPalette}（群系本色 + 水深渐变），
-     * 不再用平面地图的 {@code GeoPalette} 色带 —— 后者是「不像参考项目」的最大成因。</p>
+     * <p>★ 2026-11-08 修正：颜色重新走 <b>图层</b>（{@link SandboxPalette#colorForLayer}）。
+     * 上一版固定用群系本色，等价于砍掉原有图层能力（交接 §4.1 列为必须保留）。
+     * 现在连续图层走 GeoPalette 色带（与平面窗口一致），离散图层走本色。</p>
      *
+     * @param layer    当前图层
+     * @param minY/maxY 世界高度范围（GeoPalette 需要）
      * @param seaLevel 海平面 Y（预览可配，不能写死 63）
      */
-    private void collect(TerrainFieldData data, float spanIn, double seaLevel) {
+    private void collect(TerrainFieldData data, GeoPalette.PreviewLayer layer,
+                         int minY, int maxY, float spanIn, double seaLevel) {
         int gw = data.gridW, gh = data.gridH;
         cols = gw;
         rows = gh;
@@ -475,11 +480,11 @@ public final class SandboxRenderer {
                 }
                 bornAtCol[col] = born;
                 double s2 = water ? seaLevel : data.height[i];
-                int rgb = SandboxPalette.colorFor(
-                        com.geogenesis.worldgen.climate.WhittakerType.values()[data.biomeId[i]],
-                        com.geogenesis.worldgen.terrain.TerrainClass.values()[data.terrainId[i]],
-                        s2, seaLevel, data.snow[i], light);
-                colRgb[col] = SandboxPalette.jitter(rgb, data.biomeId[i]);
+                // ★ 按图层分流上色（连续→GeoPalette 色带；离散→群系本色）
+                Cell cell = data.toDisplayCell(mfx, mfz, scratch);
+                int rgb = SandboxPalette.colorForLayer(layer, cell, light, s2, seaLevel,
+                        data.snow[i], minY, maxY);
+                colRgb[col] = rgb;
                 colAlpha[col] = 0xFF;
                 readyOrder[readyColumns++] = col;
             }
