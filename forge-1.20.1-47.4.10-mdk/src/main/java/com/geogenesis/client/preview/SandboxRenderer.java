@@ -72,6 +72,13 @@ public final class SandboxRenderer {
     private static final int FADE_MS = 520;
     /** 淡入期间至少还有这么不透明（yardsite FADE_FLOOR=0.25）。 */
     private static final float FADE_FLOOR = 0.25f;
+    /**
+     * 侧墙的最小屏幕高度（像素）：低于它就不画。
+     *
+     * <p>亚像素高的墙不产生任何视觉信息，只会在每根柱子边缘留下混叠亮线
+     * ⇒ 整幅呈密集条纹（LOD 细档实测就是这样丢掉地形形状的）。</p>
+     */
+    private static final float MIN_WALL_PX = 1.0f;
     /** 深度桶数（yardsite {@code BUCKETS=4096}）。 */
     private static final int BUCKETS = 4096;
     /** 屏深基线与深度系数（yardsite {@code Z_BASE=200 / DEPTH_SCALE=110}）。 */
@@ -148,13 +155,25 @@ public final class SandboxRenderer {
         panY += (float) dy;
     }
 
-    /** 缩放（yardsite {@code setZoom()} 第 243-245 行，限 0.6~8.0）。 */
+    /**
+     * 缩放下限/上限。
+     *
+     * <p>下限 0.6 沿用 yardsite；<b>上限从 8.0 提到 32.0</b>（★ 2026-11-08）：
+     * 现在缩放同时驱动 LOD 档位（{@code level = round(log2(zoom/2.0))}），
+     * 若仍是 8.0 则最高只到 LOD+2（每细格 1.5 格方块），
+     * 而 {@link SandboxLod#MAX_LEVEL}=+4（0.38 格/细格）根本够不到；
+     * 32.0 对应 LOD+4，正好覆盖满档 —— 支流（宽 3 格）在最细档才看得见。</p>
+     */
+    public static final float ZOOM_MIN = 0.6f;
+    public static final float ZOOM_MAX = 32.0f;
+
+    /** 缩放（yardsite {@code setZoom()} 的 0.6~8.0 已按 LOD 需求放宽到 32）。 */
     public void addZoom(float factor) {
-        zoom = clamp(zoom * factor, 0.6f, 8.0f);
+        zoom = clamp(zoom * factor, ZOOM_MIN, ZOOM_MAX);
     }
 
     public void setZoom(float v) {
-        zoom = clamp(v, 0.6f, 8.0f);
+        zoom = clamp(v, ZOOM_MIN, ZOOM_MAX);
     }
 
     /** 柱子横向撑开倍数（yardsite {@code setWidthScale()} 第 319-321 行，限 0.5~2.0）。 */
@@ -238,22 +257,29 @@ public final class SandboxRenderer {
             }
             // 侧墙：只在邻居更低时画（yardsite 第 448-475 行）。
             // 柱索引 col = cx * colRows + cz ⇒ 东/西 = ±colRows，南/北 = ±1
+            // 侧墙：只在邻居更低时画（yardsite 第 448-475 行）。
+            //
+            // ★ 可见性门槛（2026-11-08）：高度差换算到屏幕后不足 MIN_WALL_PX 时**不画**。
+            //   否则 LOD 细档（相邻柱高差 <1 像素）会给每根柱子都画一条亚像素侧墙，
+            //   整幅呈密集条纹/鳞片 —— 实测就是这样"看不出地形"的。
+            //   门槛按当前 scale 算：1 像素高的墙不产生任何视觉信息，只会混叠。
+            float minWall = MIN_WALL_PX / Math.max(1e-3f, scale);
             int ci = col / colRows, cj = col % colRows;
             if (seeEast) {
                 float low = (ci + 1 < colCount) ? Math.max(tops[col + colRows], 0f) : 0f;
-                if (top > low) wall(c, originX, originY, scale, x1, y0, x1, y1, low, top, rgb, alpha, 0.82f, 0.60f);
+                if (top - low > minWall) wall(c, originX, originY, scale, x1, y0, x1, y1, low, top, rgb, alpha, 0.82f, 0.60f);
             }
             if (seeWest) {
                 float low = ci > 0 ? Math.max(tops[col - colRows], 0f) : 0f;
-                if (top > low) wall(c, originX, originY, scale, x0, y1, x0, y0, low, top, rgb, alpha, 0.56f, 0.40f);
+                if (top - low > minWall) wall(c, originX, originY, scale, x0, y1, x0, y0, low, top, rgb, alpha, 0.56f, 0.40f);
             }
             if (seeSouth) {
                 float low = (cj + 1 < colRows) ? Math.max(tops[col + 1], 0f) : 0f;
-                if (top > low) wall(c, originX, originY, scale, x0, y1, x1, y1, low, top, rgb, alpha, 0.70f, 0.52f);
+                if (top - low > minWall) wall(c, originX, originY, scale, x0, y1, x1, y1, low, top, rgb, alpha, 0.70f, 0.52f);
             }
             if (seeNorth) {
                 float low = cj > 0 ? Math.max(tops[col - 1], 0f) : 0f;
-                if (top > low) wall(c, originX, originY, scale, x1, y0, x0, y0, low, top, rgb, alpha, 0.46f, 0.34f);
+                if (top - low > minWall) wall(c, originX, originY, scale, x1, y0, x0, y0, low, top, rgb, alpha, 0.46f, 0.34f);
             }
         }
 
@@ -407,6 +433,21 @@ public final class SandboxRenderer {
             }
         }
 
+        // ---- 2b) ★ 自适应光照增益（LOD 各档窗口不同，固定增益会出棋盘格纹）----
+        //   采样坡度绝对值，取 P90 → 映射到亮度差 0.45（见 SandboxShade.adaptiveGain）
+        double[] slopes = new double[fine];
+        for (int gx = 0; gx < gw; gx++) {
+            for (int gz = 0; gz < gh; gz++) {
+                double h0 = rNorm[gx * gh + gz];
+                double l = gx > 0 ? rNorm[(gx - 1) * gh + gz] : h0;
+                double rt = gx < gw - 1 ? rNorm[(gx + 1) * gh + gz] : h0;
+                double up = gz > 0 ? rNorm[gx * gh + (gz - 1)] : h0;
+                double dn = gz < gh - 1 ? rNorm[gx * gh + (gz + 1)] : h0;
+                slopes[gx * gh + gz] = SandboxShade.absSlope(l, rt, up, dn);
+            }
+        }
+        double lightGain = SandboxShade.adaptiveGain(slopes);
+
         // ---- 3) 逐柱（每柱聚合 PER_COLUMN² 个细格）----
         for (int cx = 0; cx < colCount; cx++) {
             for (int cz = 0; cz < colRows; cz++) {
@@ -466,7 +507,7 @@ public final class SandboxRenderer {
                 // 坡度光照（量纲已修正，SandboxShade 是渲染器与探针共用的唯一实现）
                 int i = mfx * gh + mfz;
                 boolean water = data.e[i] < 0.0;
-                double light = slopeLightAt(gw, gh, mfx, mfz, water);
+                double light = slopeLightAt(gw, gh, mfx, mfz, water, lightGain);
 
                 // 该柱还没采到（左上角细格无数据）→ 不画（生长动画的"未出生"态）
                 long born = data.bornAt[fx0 * gh + fz0];
@@ -491,14 +532,14 @@ public final class SandboxRenderer {
         }
     }
 
-    /** 一格的坡度光照（从 rNorm 数组取邻差）。 */
-    private double slopeLightAt(int gw, int gh, int gx, int gz, boolean water) {
+    /** 一格的坡度光照（从 rNorm 数组取邻差，用自适应增益）。 */
+    private double slopeLightAt(int gw, int gh, int gx, int gz, boolean water, double gain) {
         double h = rNorm[gx * gh + gz];
         double left = gx > 0 ? rNorm[(gx - 1) * gh + gz] : h;
         double right = gx < gw - 1 ? rNorm[(gx + 1) * gh + gz] : h;
         double up = gz > 0 ? rNorm[gx * gh + (gz - 1)] : h;
         double down = gz < gh - 1 ? rNorm[gx * gh + (gz + 1)] : h;
-        return SandboxShade.lightFor(left, right, up, down, water);
+        return SandboxShade.lightFor(left, right, up, down, water, gain);
     }
 
     /**

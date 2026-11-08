@@ -690,8 +690,9 @@ public class PreviewDisplay extends AbstractWidget {
             largeSampler = new ProgressiveSampler(ProgressiveSampler.GRID,
                     ProgressiveSampler.GRID);
         }
-        // ★ S2：视口变了先重开一轮（内部第一件事是采一张粗档底图，约 14ms）
-        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id);
+        // ★ S2：视口变了先重开一轮。
+        //   平面大范围窗口可达数万格 ⇒ 必须走廉价路径（水文会到分钟级，见 SandboxLod.usesHydroPath）。
+        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id, false);
 
         TerrainFieldData d = largeSampler.data();
         if (d == null) return;
@@ -765,42 +766,64 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
     private void renderSandbox(GuiGraphics g, int w, int h, double mx, double my) {
-        // 采样数据：复用大范围管线（第一帧只有粗档，之后逐帧补细）
-        int blocksWide = texW * scaleBlockPos;
-        int blocksHigh = texH * scaleBlockPos;
-        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scaleBlockPos);
-        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scaleBlockPos);
+        // ★ LOD（2026-11-08）：世界窗口**由缩放档位决定**，不是 texW×scaleBlockPos。
+        //
+        //   修复前：窗口 = texW×scaleBlockPos（约 900×64 = 57600 格）/ 256 细格
+        //          ⇒ 一个细格 225 格方块 ⇒ 河流湖泊比采样格还小，必然消失。
+        //   现在：窗口 = GRID × step(level)，采样点数恒定 ⇒ 成本不变，
+        //        推近时窗口缩小、每格变细，河流支流才看得见。
+        int lodLevel = SandboxLod.levelFor(sandbox.zoom());
+        int blocksWide = SandboxLod.windowFor(lodLevel, ProgressiveSampler.GRID);
+        int blocksHigh = blocksWide;
+        // ★ 对齐倍数 = 采样器内部真实步长（window/GRID），**不能取整**。
+        //   细档 step<1（如 LOD+3 是 0.75 格/细格），取整成 1 会让对齐原点与
+        //   采样格错位 → 画面出现周期性横条纹（2026-11-08 实测）。
+        //   这里只用它把原点对齐到<b>整数格</b>（避免频繁重采），不对齐到 step。
+        int originWx = centerX + (int) totalDragX - blocksWide / 2;
+        int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
         long id = (long) originWx * 31L + originWz;
         id = id * 131L + blocksWide;
         id = id * 131L + blocksHigh;
+        id = id * 131L + lodLevel;          // 档位参与视口标识 ⇒ 跨档必重采
 
         if (largeSampler == null) {
             largeSampler = new ProgressiveSampler(ProgressiveSampler.GRID,
                     ProgressiveSampler.GRID);
         }
-        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id);
+        // ★ 细档走完整管线（带河谷/湖河），粗档走廉价路径 —— 见 SandboxLod.usesHydroPath
+        boolean hydroPath = SandboxLod.usesHydroPath(lodLevel);
+        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id, hydroPath);
 
         float radius = Math.min(w, h) * 0.42f;
         TerrainFieldData d = largeSampler.data();
-        // 诊断：每个视口只打一次，确认沙盘真的进来了、数据非空
+        // 诊断：每个视口只打一次，确认沙盘真的进来了、数据非空、LOD 档位对
         if (sandboxDiagId != id) {
             sandboxDiagId = id;
-            LOGGER.info("[Preview] 沙盘渲染 视口={} 网格={}x{} 数据={} scene={}x{}",
-                    id, d == null ? 0 : d.gridW, d == null ? 0 : d.gridH,
-                    d != null, w, h);
+            LOGGER.info("[Preview] 沙盘 {} 数据={} zoom={} scene={}x{}",
+                    SandboxLod.describe(lodLevel, ProgressiveSampler.GRID), d != null,
+                    String.format(java.util.Locale.ROOT, "%.2f", sandbox.zoom()), w, h);
         }
         int side = Math.min(w, h);
-        // ★ 竖向比例：先按本帧数据算目标，再交给采样器缓动（yardsite collect() 第 677-678 行）。
-        //   base = 海平面 - 4；目标 = max(60, 最高地表 - base)。
-        //   海平面用本屏持有的 params.seaLevel()（预览可配），与平面模式一致。
+        // ★ 竖向比例：<b>固定用全地形量程</b>，不随 LOD 窗口变化。
+        //
+        //   ★ 2026-11-08 实测教训（两次改错）：
+        //   ① 下限硬编码 60 ⇒ 细档窗口高差不足 60 时柱子全挤在 tops≈0.40；
+        //   ② 改成"按窗口最高点自适应" ⇒ 更糟：窗口内 span 变小、ratio 变大，
+        //      所有柱子又都顶到 RELIEF，而<b>柱宽没变</b> ⇒ 每根柱子都像一级小台阶，
+        //      整幅呈"瓦片屋顶/棋盘格"纹理，地形形状完全看不出。
+        //
+        //   根因：柱高（模型单位，上限 RELIEF=0.4）与柱宽（由窗口/柱数决定）是两个
+        //   独立的量。span 随窗口缩放会让二者的<b>相对比例</b>失控。
+        //   ⇒ span 取<b>地形绝对量程</b>（海平面以上到最高峰），柱子高度就代表真实海拔，
+        //      任何 LOD 档下陡缓关系都一致。这与参考项目"span 用选点窗口高差"不同，
+        //      但那是因为它的窗口固定；我们有 LOD，必须锚在绝对量程上。
         double seaY = this.seaLevel;
-        if (d != null) {
+        {
             double baseY = seaY - 4.0;
-            double hi = baseY;
-            for (int i = 0; i < d.height.length; i++) {
-                if (d.height[i] > hi) hi = d.height[i];
-            }
-            largeSampler.easeReliefSpan((float) Math.max(60.0, hi - baseY));
+            // ★ 用<b>世界绝对量程</b>（params 的 maxY），不是窗口内最高点：
+            //   窗口最高点会随 LOD 档变化 ⇒ span 变 ⇒ 柱高比例失控（见上）。
+            double relief = Math.max(60.0, Math.max(0.0, this.maxY - baseY));
+            largeSampler.easeReliefSpan((float) relief);
         }
         // ★ P0-4：hover 拾取（视线推进），沙盘模式每帧一次
         int ax = getX() + (w - side) / 2;

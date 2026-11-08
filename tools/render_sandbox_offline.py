@@ -125,12 +125,16 @@ def model(fine, cell):
     return 0.0 if fine <= 1 else cell / (fine - 1) * 2.0 - 1.0
 
 
-def render(h, e, biome, terr, snow, fields, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW,
+def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=DEFAULT_YAW,
            pitch=DEFAULT_PITCH, sea=63.0, out='out.png', layer='BIOME'):
     gx, gz = h.shape
     base = sea - 4.0
     hi = max(base, h.max())
-    span = max(60.0, hi - base)
+    # ★ 竖向比例用<b>绝对量程</b>（与 PreviewDisplay 同式）：
+    #   span 随 LOD 窗口变化会让柱高比例失控（柱宽不变而柱高顶到 RELIEF）
+    #   -> 每根柱子都像一级台阶，整幅呈"瓦片屋顶/棋盘格"。
+    #   这里用世界量程 maxY(=320) - base，与生产一致。
+    span = max(60.0, 320.0 - base)
 
     # 归一化高度 r（水域用海平面）
     surface = np.where(e < 0.0, sea, h)
@@ -142,6 +146,12 @@ def render(h, e, biome, terr, snow, fields, gain, size=900, zoom=2.0, yaw=DEFAUL
     up = np.roll(r, 1, axis=1); up[:, 0] = r[:, 0]
     down = np.roll(r, -1, axis=1); down[:, -1] = r[:, -1]
     slope = (right - left) * 0.5 + (down - up) * 0.5
+    # ★ 自适应增益（与 SandboxShade.adaptiveGain 同式）：
+    #   LOD 各档窗口不同，固定增益会让细档相邻柱差被放大成棋盘格纹。
+    if gain is None:
+        p = float(np.quantile(np.abs(slope), 0.995))
+        gain = 0.9 / p if p > 1e-9 else 0.5
+        gain = min(60.0, max(0.5, gain))
     light = np.clip(1.0 - slope * gain, LIGHT_MIN, LIGHT_MAX)
     water = e < 0.0
     light = np.where(water, 1.0 + (light - 1.0) * WATER_FACTOR, light)
@@ -284,6 +294,8 @@ def render(h, e, biome, terr, snow, fields, gain, size=900, zoom=2.0, yaw=DEFAUL
         """rgb 是 0..1 的分量；mul 是光照倍率。"""
         return tuple(min(1.0, max(0.0, c * mul)) for c in rgb)
 
+    # 侧墙最小屏幕高度（像素）：低于它不画。亚像素墙 = 每柱一条亮线 = 密集条纹
+    min_wall = 1.0 / max(1e-3, scale)
     for _, col in order:
         cx, cz = col // col_rows, col % col_rows
         top = tops[col]
@@ -302,22 +314,22 @@ def render(h, e, biome, terr, snow, fields, gain, size=900, zoom=2.0, yaw=DEFAUL
                   proj(x1, y1, top), proj(x0, y1, top)], rgb)
         if see_e:
             low = max(tops[col + col_rows], 0.0) if cx + 1 < col_count else 0.0
-            if top > low:
+            if top - low > min_wall:
                 quad([proj(x1, y0, low), proj(x1, y1, low),
                       proj(x1, y1, top), proj(x1, y0, top)], mul(rgb, 0.82))
         if see_w:
             low = max(tops[col - col_rows], 0.0) if cx > 0 else 0.0
-            if top > low:
+            if top - low > min_wall:
                 quad([proj(x0, y1, low), proj(x0, y0, low),
                       proj(x0, y0, top), proj(x0, y1, top)], mul(rgb, 0.56))
         if see_s:
             low = max(tops[col + 1], 0.0) if cz + 1 < col_rows else 0.0
-            if top > low:
+            if top - low > min_wall:
                 quad([proj(x0, y1, low), proj(x1, y1, low),
                       proj(x1, y1, top), proj(x0, y1, top)], mul(rgb, 0.70))
         if see_n:
             low = max(tops[col - 1], 0.0) if cz > 0 else 0.0
-            if top > low:
+            if top - low > min_wall:
                 quad([proj(x1, y0, low), proj(x0, y0, low),
                       proj(x0, y0, top), proj(x1, y0, top)], mul(rgb, 0.46))
 
@@ -344,6 +356,6 @@ if __name__ == '__main__':
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
     h, e, biome, terr, snow, fields = load(sys.argv[1])
-    gain = float(sys.argv[3]) if len(sys.argv) > 3 else 8.0
+    gain = float(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] != 'auto' else None
     layer = sys.argv[4] if len(sys.argv) > 4 else 'BIOME'
     render(h, e, biome, terr, snow, fields, gain, out=sys.argv[2], layer=layer)

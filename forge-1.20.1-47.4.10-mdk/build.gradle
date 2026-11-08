@@ -2746,3 +2746,18 @@ task runSandboxLayerProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxLayerProbe'
     maxHeapSize = '2g'
 }
+// Sandbox LOD: sampling point count must stay constant while window folLows zoom.
+//   gradlew runSandboxLodProbe
+task runSandboxLodProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxLodProbe'
+    maxHeapSize = '2g'
+    systemProperty 'geogenesis.lodTsvDir', project.findProperty('lodTsvDir') ?: ''
+}
+// Cost of the hydro-aware sampling path (sampleCell) for the sandbox.
+//   gradlew runSandboxHydroCostProbe
+task runSandboxHydroCostProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxHydroCostProbe'
+    maxHeapSize = '3g'
+}

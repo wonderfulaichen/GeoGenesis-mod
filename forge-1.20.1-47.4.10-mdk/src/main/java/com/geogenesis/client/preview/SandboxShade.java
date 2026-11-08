@@ -42,20 +42,61 @@ public final class SandboxShade {
     public static final double WATER_FACTOR = 0.35;
 
     /**
-     * 光照增益：{@code r} 差一格时亮度下降多少。
+     * 光照增益：{@code r} 差一格时亮度下降多少（<b>基准值</b>）。
      *
      * <p>yardsite 用 {@code 0.55}，但它的 {@code slope} 是「每块上升多少」，
      * 典型值 0.2~1.5 ⇒ 亮度很快触底。本项目 {@code r} 是「柱高比例」，
-     * 一格的变化量小一个量级 ⇒ 需要更大的增益才有同样的明暗层次。
-     * 实际取值由 {@code SandboxShadeProbe} 在真实地形上量出分布后确定，
-     * <b>不在这里拍脑袋</b>。</p>
+     * 一格的变化量小一个量级 ⇒ 需要更大的增益才有同样的明暗层次。</p>
+     *
+     * <h2>★ 为什么必须是自变量（2026-11-08 实测）</h2>
+     * <p>曾把增益固定为 {@code 8.0}（按窗口 3072 格标定）。LOD 引入后
+     * <b>窗口随缩放变化</b>：细档窗口 384 格时，同样两格方块高差换算到
+     * {@code r} 上的差值是粗档的数倍 ⇒ 固定增益会把相邻柱照成棋盘格纹
+     * （离线出图实测：整幅绿地上叠一层规整网格，地形起伏反而看不见）。</p>
+     *
+     * <p>⇒ 增益改为<b>按当前坡度分布自适应</b>：
+     * 取坡度绝对值的 P90，令它正好映射到「亮度差 0.45」，
+     * 即 {@code gain = 0.45 / P90}；夹在 [{@link #LIGHT_GAIN_MIN}, {@link #LIGHT_GAIN_MAX}]。
+     * 于是无论哪一档，画面都用到亮度量程的 45%，且只有最陡的 10% 会饱和。</p>
      */
     public static final double LIGHT_GAIN = 8.0;
+    /** 自适应增益下限（极平坦地形别把噪声放大成山）。 */
+    public static final double LIGHT_GAIN_MIN = 0.5;
+    /** 自适应增益上限。 */
+    public static final double LIGHT_GAIN_MAX = 60.0;
+    /**
+     * 目标：<b>P99.5</b> 坡度映射到的亮度差。
+     *
+     * <p>★ 为什么不用 P90（2026-11-08 实测）：地形起伏经
+     * {@code r=(h-base)/span} 归一后非常平缓，实测坡度均值约 0.004、P90 约 0.02。
+     * 按 P90 算出的增益会被上限压住（gain 顶格），整幅仍然没有层次。</p>
+     * <p>用 P99.5（只有最陡的 0.5% 饱和）才能让绝大多数格子落在中间灰阶上 ——
+     * 这正是"看得出地形、又不糊成一片"的区间。</p>
+     */
+    public static final double TARGET_P995_DROP = 0.9;
+
+    /**
+     * 由坡度绝对值样本算自适应增益（P99.5 → {@link #TARGET_P995_DROP}）。
+     *
+     * @param absSlopes 坡度绝对值样本（至少 1 个）
+     */
+    public static double adaptiveGain(double[] absSlopes) {
+        if (absSlopes == null || absSlopes.length == 0) return LIGHT_GAIN;
+        double[] s = absSlopes.clone();
+        java.util.Arrays.sort(s);
+        int idx = (int) Math.round(0.995 * (s.length - 1));
+        double p = s[idx];
+        if (p <= 1e-9) return LIGHT_GAIN_MIN;
+        double gain = TARGET_P995_DROP / p;
+        if (gain < LIGHT_GAIN_MIN) gain = LIGHT_GAIN_MIN;
+        if (gain > LIGHT_GAIN_MAX) gain = LIGHT_GAIN_MAX;
+        return gain;
+    }
 
     private SandboxShade() { }
 
     /**
-     * 一格的坡度光照。
+     * 一格的坡度光照（使用基准增益）。
      *
      * @param rLeft  左边邻格的归一化高度
      * @param rRight 右边邻格的归一化高度
@@ -65,12 +106,27 @@ public final class SandboxShade {
      * @return 光照倍率（{@code [LIGHT_MIN, LIGHT_MAX]}）
      */
     public static double lightFor(double rLeft, double rRight, double rUp, double rDown, boolean water) {
+        return lightFor(rLeft, rRight, rUp, rDown, water, LIGHT_GAIN);
+    }
+
+    /**
+     * 一格的坡度光照（<b>显式指定增益</b> —— LOD 各档用 {@link #adaptiveGain} 算出的值）。
+     *
+     * @param gain 坡度增益（见 {@link #adaptiveGain}）
+     */
+    public static double lightFor(double rLeft, double rRight, double rUp, double rDown,
+                                  boolean water, double gain) {
         double slopeX = (rRight - rLeft) * 0.5;
         double slopeZ = (rDown - rUp) * 0.5;
-        double light = 1.0 - (slopeX + slopeZ) * LIGHT_GAIN;
+        double light = 1.0 - (slopeX + slopeZ) * gain;
         if (light < LIGHT_MIN) light = LIGHT_MIN;
         if (light > LIGHT_MAX) light = LIGHT_MAX;
         if (water) light = 1.0 + (light - 1.0) * WATER_FACTOR;
         return light;
+    }
+
+    /** 单格坡度绝对值（自适应增益与探针共用）。 */
+    public static double absSlope(double rLeft, double rRight, double rUp, double rDown) {
+        return Math.abs((rRight - rLeft) * 0.5 + (rDown - rUp) * 0.5);
     }
 }

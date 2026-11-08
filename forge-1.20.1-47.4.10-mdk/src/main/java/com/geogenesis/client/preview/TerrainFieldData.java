@@ -178,26 +178,43 @@ public final class TerrainFieldData {
      * <p>⚠ 这是「一次跑完」的版本，64×64 约 40~55 ms（S0 实测）。
      * 需要分帧的场合请用 {@link ProgressiveSampler}。</p>
      */
+    /**
+     * 采样整个视口（<b>同步</b>，一次性），可选用<b>水文管线</b>。
+     *
+     * <p>⚠ 这是「一次跑完」的版本，64×64 约 40~55 ms（S0 实测）。
+     * 需要分帧的场合请用 {@link ProgressiveSampler}。</p>
+     *
+     * @param hydro true = 用 {@code sampleCell}（带河谷雕刻与湖河数据，但每个新水文
+     *              region 需秒级）；false = {@code sampleCellCoarse}（廉价、无水文）
+     */
     public static TerrainFieldData sample(GeoGenesisTerrain terrain,
                                           int originX, int originZ,
                                           int blocksWide, int blocksHigh,
-                                          int gridW, int gridH, long viewportId) {
+                                          int gridW, int gridH, long viewportId, boolean hydro) {
         TerrainFieldData d = new TerrainFieldData(gridW, gridH, originX, originZ,
                 blocksWide, blocksHigh, viewportId, 0);
         long t0 = System.nanoTime();
         double stepX = blocksWide / (double) gridW;
         double stepZ = blocksHigh / (double) gridH;
-        Cell reuse = new Cell();
         for (int gx = 0; gx < gridW; gx++) {
             int wx = originX + (int) Math.round(gx * stepX);
             for (int gz = 0; gz < gridH; gz++) {
                 int wz = originZ + (int) Math.round(gz * stepZ);
-                Cell c = terrain.sampleCellCoarse(wx, wz);
+                Cell c = hydro ? terrain.sampleCell(wx, wz) : terrain.sampleCellCoarse(wx, wz);
                 d.put(gx, gz, c);
             }
         }
         d.costMs = (System.nanoTime() - t0) / 1_000_000L;
         return d;
+    }
+
+    /** 兼容重载：<b>不走</b>水文管线。 */
+    public static TerrainFieldData sample(GeoGenesisTerrain terrain,
+                                          int originX, int originZ,
+                                          int blocksWide, int blocksHigh,
+                                          int gridW, int gridH, long viewportId) {
+        return sample(terrain, originX, originZ, blocksWide, blocksHigh,
+                gridW, gridH, viewportId, false);
     }
 
     /** 写入一个格点（采样与渐进填充共用）。 */

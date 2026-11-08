@@ -51,14 +51,16 @@ public final class ProgressiveSampler {
      * 采样网格（每边格数）。
      *
      * <p>★ 2026-11-08 从 128 提到 <b>256</b>，对齐参考项目档位：
-     * yardsite {@code site.selectRadius=2000} + 128 柱 ⇒ 一根柱约 31 格方块；
-     * 我们视口 3072 格，128 细格时一格 24 格方块、柱子（2×2 细格）**48 格方块**
-     * —— 比参考粗 1.5 倍，细格数只有它的 1/4（16384 vs 65536），
-     * 这就是"效果一般般、细节看不出来"的量化来源。
-     * 提到 256 后：一格 12 格方块、柱子 24 格方块，细格 65536 个，与参考同档。</p>
+     * yardsite {@code site.selectRadius=2000} + 128 柱 ⇒ 一根柱约 31 格方块。
+     * 提到 256 后细格 65536 个，与参考同档。</p>
      *
-     * <p>成本：S0 实测全字段采样 128² 约 154 ms（单线程），后台多线程实测约 70 ms；
-     * 256² 是 4 倍点数 ⇒ 约 280 ms（后台跑，不阻塞渲染线程）。</p>
+     * <p><b>网格恒定是 LOD 的前提</b>：世界窗口由 {@link SandboxLod} 按缩放档位决定，
+     * 网格固定 ⇒ <b>采样点数恒定</b>（任何时候都是 65536 点），
+     * 推近只是窗口变小、每格代表的方块数变少（细节变清晰），成本不变。
+     * 若网格随档位增长，推近两档就要 4 倍采样时间，LOD 立刻不可用。</p>
+     *
+     * <p>成本：S0 实测 256² 全字段约 154ms（单线程），
+     * 后台多线程实测约 143ms（12 线程），不阻塞渲染线程。</p>
      */
     public static final int GRID = 256;
 
@@ -74,6 +76,11 @@ public final class ProgressiveSampler {
 
     private ExecutorService pool;
     private boolean complete;
+    /** 本轮是否走完整水文管线（{@code sampleCell}）。 */
+    private boolean hydro;
+
+    /** 本轮是否走水文管线（诊断/状态行用）。 */
+    public boolean isHydroPath() { return hydro; }
 
     public ProgressiveSampler(int gridW, int gridH) {
         // gridW/gridH 忽略：网格由 GRID 决定（保持构造签名兼容）
@@ -106,13 +113,27 @@ public final class ProgressiveSampler {
     }
 
     /**
+     * 兼容重载：<b>不走</b>水文管线（等价 {@code hydroPath=false}）。
+     *
+     * <p>平面大范围与探针沿用此签名。要看河谷/湖河必须显式传 {@code hydroPath=true}。</p>
+     */
+    public void reset(GeoGenesisTerrain terrain, int originX, int originZ,
+                      int blocksWide, int blocksHigh, long viewportId) {
+        reset(terrain, originX, originZ, blocksWide, blocksHigh, viewportId, false);
+    }
+
+    /**
      * 启动后台采样。同一视口重复调用不做任何事。
      *
      * <p>返回时 {@link #data()} 可能仍是 null（后台还没填第一格）——
      * 调用方应按 {@code null} 处理（画个底或跳过），不要阻塞等待。</p>
+     *
+     * @param hydroPath true = 走 {@code sampleCell}（带河谷雕刻与湖河数据，
+     *                  但每个新水文 region 需秒级）；false = {@code sampleCellCoarse}（廉价、无水文）。
+     *                  由 {@link SandboxLod#usesHydroPath} 按 LOD 档位决定。
      */
     public void reset(GeoGenesisTerrain terrain, int originX, int originZ,
-                      int blocksWide, int blocksHigh, long viewportId) {
+                      int blocksWide, int blocksHigh, long viewportId, boolean hydroPath) {
         if (viewportId == currentId) return;
 
         // 停掉上一轮
@@ -120,6 +141,7 @@ public final class ProgressiveSampler {
 
         currentId = viewportId;
         complete = false;
+        hydro = hydroPath;
         int n = GRID * GRID;
         progress.set(0);
         progressTotal.set(n);
@@ -159,7 +181,10 @@ public final class ProgressiveSampler {
                     int gz = idx % GRID;
                     int wx = originX + (int) Math.round(gx * stepX);
                     int wz = originZ + (int) Math.round(gz * stepZ);
-                    Cell cell = terrain.sampleCellCoarse(wx, wz);
+                    // ★ 按 LOD 档选路径：细档走完整管线才能拿到河谷/湖河
+                    Cell cell = hydro
+                            ? terrain.sampleCell(wx, wz)
+                            : terrain.sampleCellCoarse(wx, wz);
                     data.put(gx, gz, cell);
                     progress.incrementAndGet();
                 }
