@@ -32,6 +32,29 @@ PITCH_MIN, PITCH_MAX = 0.22, 1.40
 DEFAULT_PITCH, DEFAULT_YAW = 0.95, 0.65
 PER_COLUMN = 2
 
+# ---- SandboxPalette 群系本色（★ 2026-11-08 P0-1，与 Java 侧 SandboxPalette 对齐）----
+# WhittakerType.ordinal() 顺序：ICE TUNDRA TAIGA GRASSLAND TEMPERATE_FOREST
+#                               TEMPERATE_RAINFOREST DESERT SAVANNA
+#                               SEASONAL_FOREST TROPICAL_RAINFOREST
+WHITTAKER_RGB = [
+    0xB8C8C0,  # ICE 备用（snow 优先）
+    0xB8C8C0,  # TUNDRA
+    0x3D6B32,  # TAIGA
+    0x6FAE4A,  # GRASSLAND
+    0x3D6B32,  # TEMPERATE_FOREST
+    0x2E7A35,  # TEMPERATE_RAINFOREST
+    0xD9C08A,  # DESERT
+    0xB39B4C,  # SAVANNA
+    0x3D6B32,  # SEASONAL_FOREST
+    0x2E7A35,  # TROPICAL_RAINFOREST
+]
+SNOW_RGB = 0xE7F0F5
+BEACH_RGB = 0xE2D3A0
+WATER_SHALLOW = 0x6FA8D6
+WATER_DEEP = 0x1C3F6B
+# TerrainClass.ordinal()：BEACH=7
+TERRAIN_BEACH = 7
+
 
 def load(path):
     rows = []
@@ -43,17 +66,26 @@ def load(path):
             p = line.split()
             if len(p) < 4:
                 continue
-            rows.append((int(p[0]), int(p[1]), float(p[2]), float(p[3])))
+            rows.append((int(p[0]), int(p[1]), float(p[2]), float(p[3]),
+                         int(float(p[4])) if len(p) > 4 else 0,
+                         int(float(p[5])) if len(p) > 5 else 0,
+                         1 if len(p) > 6 and float(p[6]) > 0 else 0))
     if not rows:
         raise SystemExit('no data in ' + path)
     gx = max(r[0] for r in rows) + 1
     gz = max(r[1] for r in rows) + 1
     h = np.zeros((gx, gz))
     e = np.zeros((gx, gz))
-    for a, b, hh, ee in rows:
+    biome = np.zeros((gx, gz), dtype=int)
+    terr = np.zeros((gx, gz), dtype=int)
+    snow = np.zeros((gx, gz), dtype=bool)
+    for a, b, hh, ee, bb, tt, ss in rows:
         h[a, b] = hh
         e[a, b] = ee
-    return h, e
+        biome[a, b] = bb
+        terr[a, b] = tt
+        snow[a, b] = bool(ss)
+    return h, e, biome, terr, snow
 
 
 def build_rotation(yaw, pitch):
@@ -84,8 +116,8 @@ def model(fine, cell):
     return 0.0 if fine <= 1 else cell / (fine - 1) * 2.0 - 1.0
 
 
-def render(h, e, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW, pitch=DEFAULT_PITCH,
-           sea=63.0, out='out.png'):
+def render(h, e, biome, terr, snow, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW,
+           pitch=DEFAULT_PITCH, sea=63.0, out='out.png'):
     gx, gz = h.shape
     base = sea - 4.0
     hi = max(base, h.max())
@@ -105,11 +137,31 @@ def render(h, e, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW, pitch=DEFAULT_PITCH,
     water = e < 0.0
     light = np.where(water, 1.0 + (light - 1.0) * WATER_FACTOR, light)
 
+    # SandboxPalette 群系本色 + 水深渐变（复刻 Java 侧）
+    def rgb_of(i, j):
+        if e[i, j] < 0.0:
+            depth = min(1.0, (sea - h[i, j]) / 30.0) if h[i, j] < sea else 0.0
+            rgb = lerp3(WATER_SHALLOW, WATER_DEEP, depth)
+            rgb = scale3(rgb, light[i, j])
+            return tuple(c / 255.0 for c in rgb)
+        elif snow[i, j] or biome[i, j] == 0:
+            rgb = int2rgb(SNOW_RGB)
+        elif terr[i, j] == TERRAIN_BEACH:
+            rgb = int2rgb(BEACH_RGB)
+        else:
+            rgb = int2rgb(WHITTAKER_RGB[biome[i, j] % len(WHITTAKER_RGB)])
+            # jitter ±6%
+            hash_ = (biome[i, j] * 0x9E3779B1) & 0xFFFFFFFF
+            hash_ ^= hash_ >> 16
+            rgb = scale3(rgb, 0.94 + ((hash_ & 0xFF) / 255.0) * 0.12)
+        rgb = scale3(rgb, light[i, j])
+        return tuple(c / 255.0 for c in rgb)  # img 是 0..1
+
     # 柱
     col_count = (gx + PER_COLUMN - 1) // PER_COLUMN
     col_rows = (gz + PER_COLUMN - 1) // PER_COLUMN
     tops = np.zeros(col_count * col_rows)
-    lightc = np.zeros(col_count * col_rows)
+    colc = np.zeros(col_count * col_rows, dtype=object)
     for cx in range(col_count):
         for cz in range(col_rows):
             col = cx * col_rows + cz
@@ -118,33 +170,34 @@ def render(h, e, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW, pitch=DEFAULT_PITCH,
             fz1 = min(gz - 1, fz0 + PER_COLUMN - 1)
             sy = h[fx0, fz0]
             tops[col] = max((sy - base) / span, WATER_SINK) * RELIEF
-            mfx, mfz = (fx0 + fx1) // 2, (fz0 + fz1) // 2
-            lightc[col] = light[mfx, mfz]
+            # 多数群系（复刻 majorityCell 语义）
+            ids, cnts = [], []
+            for dx in range(fx1 - fx0 + 1):
+                for dz in range(fz1 - fz0 + 1):
+                    b = biome[fx0 + dx, fz0 + dz]
+                    if b in ids:
+                        cnts[ids.index(b)] += 1
+                    else:
+                        ids.append(b); cnts.append(1)
+            majority = ids[cnts.index(max(cnts))]
+            mfx = mfz = None
+            for dx in range(fx1 - fx0 + 1):
+                for dz in range(fz1 - fz0 + 1):
+                    if biome[fx0 + dx, fz0 + dz] == majority:
+                        mfx, mfz = fx0 + dx, fz0 + dz
+                        break
+                if mfx is not None:
+                    break
+            colc[col] = rgb_of(mfx, mfz)
 
     r9 = build_rotation(yaw, pitch)
-    # 2026-11-08 新口径：zoom=1.0 时整图恰好铺满视口
-    # 复刻 SandboxRenderer.fitScale()：4 个平面角 × 2 个高度 -> 包围盒
-    max_top = float(tops.max()) if len(tops) else 0.0
-    corners = []
-    for c in range(4):
-        mx = -1.0 if (c & 1) == 0 else 1.0
-        my = -1.0 if (c & 2) == 0 else 1.0
-        for hz in (0.0, max_top):
-            corners.append((r9[0] * mx + r9[1] * my + r9[2] * hz,
-                            r9[3] * mx + r9[4] * my + r9[5] * hz))
-    xs = [p[0] for p in corners]; ys = [p[1] for p in corners]
-    fit = max(max(xs) - min(xs), max(ys) - min(ys))
-    fit = fit if fit > 1e-3 else 1.0
-    fit_cx = (min(xs) + max(xs)) * 0.5
-    fit_cy = (min(ys) + max(ys)) * 0.5
-    scale = size * 0.98 * zoom / fit
+    # yardsite 口径（用户裁定恢复）：scale = areaSize * 0.46 * zoom
+    scale = size * 0.46 * zoom
     ox = oy = size / 2.0
 
     def proj(mx, my, mz):
-        gx_ = mx
-        gy_ = my
-        sx = ox + scale * (r9[0] * gx_ + r9[1] * gy_ + r9[2] * mz - fit_cx)
-        sy = oy + scale * (r9[3] * gx_ + r9[4] * gy_ + r9[5] * mz - fit_cy)
+        sx = ox + scale * (r9[0] * mx + r9[1] * my + r9[2] * mz)
+        sy = oy + scale * (r9[3] * mx + r9[4] * my + r9[5] * mz)
         depth = r9[6] * mx + r9[7] * my + r9[8] * mz
         return sx, sy, depth
 
@@ -193,7 +246,7 @@ def render(h, e, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW, pitch=DEFAULT_PITCH,
     for _, col in order:
         cx, cz = col // col_rows, col % col_rows
         top = tops[col]
-        lt = lightc[col]
+        rgb = colc[col]  # 已经乘过光照的 0..1 三元组
         fx0, fz0 = cx * PER_COLUMN, cz * PER_COLUMN
         fx1 = min(gx - 1, fx0 + PER_COLUMN - 1)
         fz1 = min(gz - 1, fz0 + PER_COLUMN - 1)
@@ -201,39 +254,54 @@ def render(h, e, gain, size=900, zoom=2.0, yaw=DEFAULT_YAW, pitch=DEFAULT_PITCH,
         hx, hy = (fx1 - fx0 + 1) * 0.5, (fz1 - fz0 + 1) * 0.5
         x0, x1 = model(gx, ccx - hx), model(gx, ccx + hx)
         y0, y1 = model(gz, ccy - hy), model(gz, ccy + hy)
-        base_rgb = (0.55, 0.60, 0.45)
+        def mul(rgb01, m):
+            return tuple(min(1.0, max(0.0, c * m)) for c in rgb01)
         if see_top:
             quad([proj(x0, y0, top), proj(x1, y0, top),
-                  proj(x1, y1, top), proj(x0, y1, top)], shade(base_rgb, lt))
+                  proj(x1, y1, top), proj(x0, y1, top)], rgb)
         if see_e:
             low = max(tops[col + col_rows], 0.0) if cx + 1 < col_count else 0.0
             if top > low:
                 quad([proj(x1, y0, low), proj(x1, y1, low),
-                      proj(x1, y1, top), proj(x1, y0, top)], shade(base_rgb, lt * 0.82))
+                      proj(x1, y1, top), proj(x1, y0, top)], mul(rgb, 0.82))
         if see_w:
             low = max(tops[col - col_rows], 0.0) if cx > 0 else 0.0
             if top > low:
                 quad([proj(x0, y1, low), proj(x0, y0, low),
-                      proj(x0, y0, top), proj(x0, y1, top)], shade(base_rgb, lt * 0.56))
+                      proj(x0, y0, top), proj(x0, y1, top)], mul(rgb, 0.56))
         if see_s:
             low = max(tops[col + 1], 0.0) if cz + 1 < col_rows else 0.0
             if top > low:
                 quad([proj(x0, y1, low), proj(x1, y1, low),
-                      proj(x1, y1, top), proj(x0, y1, top)], shade(base_rgb, lt * 0.70))
+                      proj(x1, y1, top), proj(x0, y1, top)], mul(rgb, 0.70))
         if see_n:
             low = max(tops[col - 1], 0.0) if cz > 0 else 0.0
             if top > low:
                 quad([proj(x1, y0, low), proj(x0, y0, low),
-                      proj(x0, y0, top), proj(x1, y0, top)], shade(base_rgb, lt * 0.46))
+                      proj(x0, y0, top), proj(x1, y0, top)], mul(rgb, 0.46))
 
     Image.fromarray((img * 255).astype(np.uint8)).save(out)
-    print('wrote', out, 'size', size, 'gain', gain)
+    print('wrote', out, 'size', size, 'gain', gain, 'zoom', zoom)
     print('light stats: min %.3f max %.3f mean %.3f' % (light.min(), light.max(), light.mean()))
+
+
+def int2rgb(v):
+    return ((v >> 16) & 255, (v >> 8) & 255, v & 255)
+
+
+def lerp3(from_rgb, to_rgb, t):
+    fr = ((from_rgb >> 16) & 255, (from_rgb >> 8) & 255, from_rgb & 255)
+    to = ((to_rgb >> 16) & 255, (to_rgb >> 8) & 255, to_rgb & 255)
+    return tuple((1 - t) * f + t * o for f, o in zip(fr, to))
+
+
+def scale3(rgb, factor):
+    return tuple(min(255.0, max(0.0, c * factor)) for c in rgb)
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
-    h, e = load(sys.argv[1])
+    h, e, biome, terr, snow = load(sys.argv[1])
     gain = float(sys.argv[3]) if len(sys.argv) > 3 else 8.0
-    render(h, e, gain, out=sys.argv[2])
+    render(h, e, biome, terr, snow, gain, out=sys.argv[2])

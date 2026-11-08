@@ -197,11 +197,12 @@ public final class SandboxShadeProbe {
         if (path == null || path.isEmpty()) return;
         try {
             java.io.PrintWriter w = new java.io.PrintWriter(path, "UTF-8");
-            w.println("# gx gz height e");
+            w.println("# gx gz height e biomeId terrainId snow");
             for (int gx = 0; gx < d.gridW; gx++) {
                 for (int gz = 0; gz < d.gridH; gz++) {
                     int i = gx * d.gridH + gz;
-                    w.printf("%d %d %.6f %.6f%n", gx, gz, d.height[i], d.e[i]);
+                    w.printf("%d %d %.6f %.6f %d %d %d%n", gx, gz, d.height[i], d.e[i],
+                            d.biomeId[i], d.terrainId[i], d.snow[i] ? 1 : 0);
                 }
             }
             w.close();

@@ -342,16 +342,15 @@ python ..\tools\render_sandbox_offline.py build\sandbox-terrain.tsv ..\build\san
 **修法**：坡度定义在**归一化高度** `r = (surfaceY - base)/span` 上
 （与柱高同量纲）⇒ 光照强度**与采样间距无关**，缩放视口时明暗关系稳定。
 
-### 8.2 错误 ②：缩放口径抄的是 yardsite 的「近景」口味
+### 8.2 缩放口径（★ 2026-11-08 二次修正：已回退 yardsite 口径）
 
-yardsite `scale = areaSize * 0.46 * zoom`，`zoom` 默认 **2.0** ⇒ `0.92·areaSize`。
-但按默认视角实算，投影后屏幕横向跨度 = `scale·(|r0|+|r1|) = scale·1.401`
-⇒ **默认只显示地图中央约 39%**，其余地形全在画面外。
+> **本节上一版记录的"改成整图铺满"方案已被用户裁定推翻。**
+> 用户实机对比后反馈"完全不是参考项目的效果" —— 重新逐段读 yardsite 源码后确认：
+> 近景构图（柱子粗大立体）本身就是参考观感的组成部分，**上一轮的"修复"方向改反了**。
 
-**修法**：改成**「整图恰好铺满视口」= zoom 1.0**。
-实现要注意：投影后的平面是**斜着的平行四边形**，其屏幕包围盒比两个方向的
-投影跨度都大 ⇒ 必须投影**四个角**算包围盒（不能只算跨度），并用包围盒
-**中心**做偏移（`fitScale()` + `fitCenterX/Y`），否则地图会偏下。
+**现行口径（与 yardsite 一致）**：`scale = areaSize * 0.46 * zoom`，`zoom` 默认 **2.0**，
+滚轮 0.6~8.0。上一轮的 `fitScale()`/包围盒居中实现已删除。
+看全图用滚轮缩小。
 
 ### 8.3 顺带修的：海平面硬编码
 
@@ -387,6 +386,63 @@ python ..\tools\render_sandbox_offline.py build\sandbox-terrain.tsv ..\build\san
 
 ⚠ **负对照是关键**：没有它，探针可能"测不出问题"却照样 PASS
 （交接文档的教训：「测试要有牙齿」）。
+
+---
+
+## 十一、★ P0 轮（2026-11-08 晚）：「完全不像参考项目」的真正根因与修复
+
+> 用户实机反馈：**"为什么游戏里面看到的效果完全不是我给的参考项目的效果？"**
+> 重新逐段读完 yardsite 全部核心源码（BiomePalette 全 176 行、SiteTerrainRenderer
+> 关键段、SiteMapSampler View 段、YardSiteScreen 布局段）后，得出结论：
+
+### 11.1 根因：A 级差异三处全错（投影/排序/光照已对齐，错的是"视觉主体"）
+
+| # | 项 | yardsite 实际 | 修复前现状 |
+|---|---|---|---|
+| 1 | **颜色体系** | **群系本色**：雪白 0xE7F0F5、沙漠黄 0xD9C08A、草原亮绿 0x6FAE4A、雨林深绿 0x2E7A35、萨瓦纳枯黄 0xB39B4C + id 哈希 jitter ±6%（BiomePalette.baseColor 109-161 行） | 用平面地图的 GeoPalette 色带 ⇒ 整幅一片均匀绿棕 |
+| 2 | **水面深度渐变** | 浅 0x6FA8D6 → 深 0x1C3F6B 按 (seaLevel−surface)/30 插值（colorFor 91-95 行） | 无渐变 |
+| 3 | **逐柱生长动画** | drawnAt 记出生时刻，FADE_MS=520 淡入 + 从底面长高，FADE_FLOOR=0.25（collect 683-690 行） | 无动画，一次性出现 |
+
+（缩放口径是第四处，见 §8.2 的回退记录。）
+
+### 11.2 本轮修复（P0，用户确认范围）
+
+1. **新建 `SandboxPalette`**（127 行）：WhittakerType → 群系本色映射
+   （雪/苔原/针叶/草原/落叶林/雨林/沙漠/萨瓦纳），TerrainClass==BEACH 覆盖海滩色，
+   snow/ICE → 雪白优先；水面按深度渐变；jitter 按 biomeId 哈希。
+   **平面模式不动**（GeoPalette 保留，两套并存）。
+2. **`TerrainFieldData` 补 `snow[]` 与 `bornAt[]`**：put 时记 `Cell.isSnow` 与
+   首次采样时刻（生长动画时间戳来源）。
+3. **SandboxRenderer.collect 重写**：SandboxPalette 上色 + 2×2 多数群系
+   （yardsite majorityCell 语义）+ bornAt==0 的柱不画（未采到=未出生）。
+4. **`applyGrowAnimation`**（yardsite collect 683-690 行照抄）：
+   t=(now−born)/520，柱高 ×smooth(t)，alpha 从 25% 淡入 ⇒ 中心向外长出来。
+5. **hover 拾取**（yardsite pick 1002-1042 行照抄）：视线推进 MARCH_STEP=0.007，
+   命中柱顶面提亮 +51。
+6. **wall()/顶面带 alpha**（淡入动画需要；yardsite wall 第 765-775 行同款）。
+7. **缩放回退**（§8.2）：`0.46·zoom`，默认 2.0。
+
+### 11.3 离线自检对拍结果
+
+`tools/render_sandbox_offline.py` 已同步复刻新颜色体系（含多数群系/jitter/水深渐变），
+对生产地形真实数据出图：**草原绿柱、沙漠黄柱、针叶深绿、浅蓝水域、四向侧墙明暗**
+—— 与 yardsite 视觉同源（图见 `build/sandbox-p0.png`）。
+
+### 11.4 验证（全部实测）
+
+```
+compileJava / compileDiagnosticsJava / compileAcceptanceJava   BUILD SUCCESSFUL
+runDefaultOutputFingerprintProbe --compare                     PASS（地形产出逐位不变）
+runSandboxShadeProbe                                           PASS（负对照成立）
+runProgressiveSamplerProbe                                     PASS（16384 点零差异）
+runWorldgenGate -x runCenterlineCrossSectionProbe              ALL PASS
+```
+
+### 11.5 未做（P1/P2，待用户看过 P0 实机效果后定）
+
+- P1：柱宽滑条 / 生长动画开关 / 进度竖条进配置窗
+- P2：群系调色编辑器（吸管 + HSV 取色 + `config/geogenesis/biome_colors.json` 持久化）
+- 参考项目里明确不采纳的（两层视图切换动画、区块精读、落成动画）维持原判
 
 ---
 

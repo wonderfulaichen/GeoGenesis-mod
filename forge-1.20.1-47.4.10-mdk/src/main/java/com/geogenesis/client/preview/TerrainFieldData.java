@@ -77,6 +77,22 @@ public final class TerrainFieldData {
      */
     public final double[] height;
 
+    /**
+     * 雪盖（★ 2026-11-08 P0-1 补）：沙盘着色要区分「雪白山项」，
+     * {@code Cell.isSnow} 是雪线逻辑的产物，平面色带里没有这个维度。
+     */
+    public final boolean[] snow;
+
+    /**
+     * 每格<b>第一次被采到</b>的时刻（毫秒）；0 = 还没采到。
+     *
+     * <p>★ 2026-11-08 P0-3 补：沙盘「从中心向外长出来」动画的时间戳
+     * （yardsite {@code SiteMapSampler.View.drawnAt} 第 265-273 行同策）。
+     * 采样线程在 {@link #put} 时写；柱子的出生时刻取其左上角细格。
+     * 未采到的柱子（bornAt==0）不画 —— 这正是中心向外生长的来源。</p>
+     */
+    public final long[] bornAt;
+
     private TerrainFieldData(int gridW, int gridH, int originX, int originZ,
                              int blocksWide, int blocksHigh, long viewportId, long costMs) {
         this.gridW = gridW;
@@ -98,6 +114,8 @@ public final class TerrainFieldData {
         this.biomeId = new short[n];
         this.terrainId = new short[n];
         this.height = new double[n];
+        this.snow = new boolean[n];
+        this.bornAt = new long[n];
     }
 
     /** 扁平索引（越界返回 -1）。 */
@@ -184,6 +202,8 @@ public final class TerrainFieldData {
         biomeId[i] = (short) (c.biomeType == null ? 0 : c.biomeType.ordinal());
         terrainId[i] = (short) (c.terrainType == null ? 0 : c.terrainType.ordinal());
         height[i] = c.height;
+        snow[i] = c.isSnow;
+        if (bornAt[i] == 0L) bornAt[i] = System.currentTimeMillis();
     }
 
     /** 拷贝自另一个同时刻的 {@link TerrainFieldData} 的单元格（渐进补丁用）。 */
@@ -200,6 +220,9 @@ public final class TerrainFieldData {
         discharge[i] = src.discharge[j];
         biomeId[i] = src.biomeId[j];
         terrainId[i] = src.terrainId[j];
+        height[i] = src.height[j];
+        snow[i] = src.snow[j];
+        bornAt[i] = src.bornAt[j];
     }
 
     /**
@@ -228,6 +251,8 @@ public final class TerrainFieldData {
         System.arraycopy(biomeId, 0, d.biomeId, 0, biomeId.length);
         System.arraycopy(terrainId, 0, d.terrainId, 0, terrainId.length);
         System.arraycopy(height, 0, d.height, 0, height.length);
+        System.arraycopy(snow, 0, d.snow, 0, snow.length);
+        System.arraycopy(bornAt, 0, d.bornAt, 0, bornAt.length);
         return d;
     }
 }

@@ -551,7 +551,7 @@ public class PreviewDisplay extends AbstractWidget {
 
         // ★ S3：沙盘模式分流 —— 数据与平面模式完全共用，只换绘制方式
         if (sandboxMode) {
-            renderSandbox(g, w, h);
+            renderSandbox(g, w, h, mx, my);
             return;
         }
 
@@ -764,7 +764,7 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
-    private void renderSandbox(GuiGraphics g, int w, int h) {
+    private void renderSandbox(GuiGraphics g, int w, int h, double mx, double my) {
         // 采样数据：复用大范围管线（第一帧只有粗档，之后逐帧补细）
         int blocksWide = texW * scaleBlockPos;
         int blocksHigh = texH * scaleBlockPos;
@@ -792,8 +792,7 @@ public class PreviewDisplay extends AbstractWidget {
         int side = Math.min(w, h);
         // ★ 竖向比例：先按本帧数据算目标，再交给采样器缓动（yardsite collect() 第 677-678 行）。
         //   base = 海平面 - 4；目标 = max(60, 最高地表 - base)。
-        // ★ 2026-11-08：海平面用**本屏持有的 params.seaLevel()**（预览可配），
-        //   之前写死 63 会让沙盘基准面与平面模式不一致。
+        //   海平面用本屏持有的 params.seaLevel()（预览可配），与平面模式一致。
         double seaY = this.seaLevel;
         if (d != null) {
             double baseY = seaY - 4.0;
@@ -803,9 +802,16 @@ public class PreviewDisplay extends AbstractWidget {
             }
             largeSampler.easeReliefSpan((float) Math.max(60.0, hi - baseY));
         }
-        sandbox.render(g, d, activeLayer, minY, maxY,
-                getX() + (w - side) / 2, getY() + (h - side) / 2, side,
-                largeSampler.reliefSpan(), seaY);
+        // ★ P0-4：hover 拾取（视线推进），沙盘模式每帧一次
+        int ax = getX() + (w - side) / 2;
+        int ay = getY() + (h - side) / 2;
+        if (d != null && isMouseOver(mx, my)) {
+            sandbox.pick(mx, my, ax, ay, side);
+        } else {
+            sandbox.clearPick();
+        }
+        sandbox.render(g, d, ax, ay, side,
+                largeSampler.reliefSpan(), seaY, System.currentTimeMillis());
     }
 
     /** 沙盘诊断：上次已打印的视口 id。 */
