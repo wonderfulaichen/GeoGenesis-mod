@@ -173,7 +173,23 @@ public final class GeoGenesisTerrain {
     }
 
     /** Retire this terrain's private P runtime; invoke outside the world lifecycle monitor. */
-    public void closeProcessErosion() { generator.closeProcessErosion(); }
+    /**
+     * 关闭本引擎的侵蚀运行时（换世界/退役时调用）。
+     *
+     * <p>★ 2026-11-08：置 {@code closed} 标记 —— 退役后的引擎<b>不能再被复用</b>
+     * （配置屏共享实例前会检查 {@link #isUsable()}，
+     * 否则会复用到一个已关停进程池的引擎上）。</p>
+     */
+    public void closeProcessErosion() {
+        closed = true;
+        generator.closeProcessErosion();
+    }
+
+    /** 本引擎是否仍可用（未被退役）。预览共享实例前的安全检查。 */
+    public boolean isUsable() { return !closed; }
+
+    /** 是否已退役（诊断）。 */
+    private volatile boolean closed;
 
     /** 实验专用水文 chunk 结果；默认游戏路径不调用。 */
     public HydrologyChunkResult calculateHydrologyChunk(int chunkX, int chunkZ) {

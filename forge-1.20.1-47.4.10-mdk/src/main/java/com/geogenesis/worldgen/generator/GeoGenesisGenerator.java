@@ -566,6 +566,46 @@ public class GeoGenesisGenerator extends ChunkGenerator {
         return currentWorldParams != null ? currentWorldParams : GeoGenesisConfig.INSTANCE.buildParams();
     }
 
+    /** 当前是否已有<b>存档级</b>参数（= 已绑定世界）。 */
+    public static boolean hasWorldParams() { return currentWorldParams != null; }
+
+    /**
+     * <b>预览专用</b>的统一参数入口（★ 2026-11-08）。
+     *
+     * <h2>为什么需要它（修一处真实的"两套参数"缺陷）</h2>
+     * <p>配置屏此前直接调 {@code GeoGenesisConfig.INSTANCE.buildParams()}（只读 toml），
+     * 而进游戏走 {@link #resolveParams()}（<b>存档优先</b>，缺失才回退 toml）。</p>
+     * <p>后果：世界一旦保存了自己的地形参数，再用配置屏看这个世界的预览时，
+     * 预览用的是 <b>toml 默认值</b>，不是这个世界<b>实际在用的值</b>
+     * —— 面板显示与实际地形不符，且"预览=游戏"的承诺在这条路径上不成立。</p>
+     *
+     * <p>⇒ 预览改为调用本方法，与进游戏<b>同源</b>。
+     * 唯一的例外是「创建新世界」：那时还没有存档参数，
+     * 用户正在<b>编辑 toml</b>，预览必须反映<b>编辑中的值</b>
+     * ⇒ 由 {@code forNewWorld=true} 显式走 toml。</p>
+     *
+     * @param forNewWorld true = 创建新世界场景（用编辑中的 toml 值）；
+     *                    false = 已有世界（用存档值，缺失回退 toml）
+     */
+    public static TerrainParams resolvePreviewParams(boolean forNewWorld) {
+        return forNewWorld ? GeoGenesisConfig.INSTANCE.buildParams() : resolveParams();
+    }
+
+    /**
+     * <b>预览专用</b>的统一 morphBase 入口（★ 2026-11-08）。
+     *
+     * <p>配置屏此前写的是
+     * {@code worldCtx != null || level == null || usesCurrentWorldMorphBase()}，
+     * 与进游戏真正使用的 {@code currentWorldMorphBase} <b>不是同一个判据</b>
+     * （前者在"创建新世界"时恒为 true）。</p>
+     * <p>⇒ 这里给出与 {@link #buildTerrain} 完全一致的读法。
+     * 创建新世界时 {@code currentWorldMorphBase} 本来就是新世界默认值（true），
+     * 因此不需要额外分支。</p>
+     */
+    public static boolean resolvePreviewMorphBase() {
+        return currentWorldMorphBase;
+    }
+
     /**
      * 用给定参数 + 当前世界种子构建（已播种）地形引擎。
      *
@@ -594,6 +634,49 @@ public class GeoGenesisGenerator extends ChunkGenerator {
                                 + gen.processRuntime().diagnosticLabel());
                 return built;
             });
+        }
+    }
+
+    /**
+     * <b>预览专用</b>：尝试复用存档级 terrain 单例（★ 2026-11-08）。
+     *
+     * <h2>为什么值得复用</h2>
+     * <p>用户指出：「跑预览需要加载一遍地形数据，到确定进入游戏后又要重新重复计算不很浪费吗」。
+     * 确实浪费：预览与进游戏此前各建一个 {@code GeoGenesisTerrain}，各有 4096-chunk 的 LRU，
+     * <b>互不共享</b>；细层水文 region（{@code REGION=512}，覆盖 32×32 chunk）
+     * 预览解完即丢，进游戏再花 10 秒/region 重解。</p>
+     *
+     * <h2>为什么必须"有条件"复用，不能无条件</h2>
+     * <p>配置屏允许用户<b>改种子</b>预览别的世界（{@code preview.seed}）。而
+     * {@code WORLD_LIFECYCLE} 里的种子由服务端 Load 绑定，<b>不是预览能改的</b>。
+     * 若无条件共享，改种子会让预览画出"另一个种子的地形却写着当前种子"的错误结果。</p>
+     *
+     * <p>参数同理：用户可以在面板里调参数预览效果，那与存档参数不同。</p>
+     *
+     * <p>⇒ 只有 <b>种子一致 且 参数一致</b> 时才复用；否则返回 {@code null}，
+     * 调用方自建（现有的 {@code new GeoGenesisTerrain} 路径）。
+     * 这样"打开配置屏看当前世界"能吃到已有缓存，
+     * 而"改种子/改参数试效果"仍走独立实例、语义正确。</p>
+     *
+     * <h2>是否影响地形产出</h2>
+     * <p>本方法只<b>读</b>（{@code WORLD_LIFECYCLE.current()}），不 bind、不 invalidate、
+     * 不建新引擎 ⇒ 不改变存档生命周期，也不改变任何地形产出。</p>
+     *
+     * @param desiredSeed   预览想看的种子
+     * @param desiredParams 预览想用的参数
+     * @return 可复用的存档 terrain；不匹配或无存档时 null
+     */
+    public static GeoGenesisTerrain previewReusableTerrain(long desiredSeed, TerrainParams desiredParams) {
+        if (desiredParams == null) return null;
+        synchronized (WORLD_LIFECYCLE) {
+            if (!WORLD_LIFECYCLE.isBound()) return null;
+            if (WORLD_LIFECYCLE.seed() != desiredSeed) return null;
+            // 存档参数必须与预览参数完全一致（record 结构相等）
+            if (!java.util.Objects.equals(currentWorldParams, desiredParams)) return null;
+            GeoGenesisTerrain current = WORLD_LIFECYCLE.current();
+            if (current == null) return null;
+            // 进程已关闭（换世界后 retire）的引擎不能再复用
+            return current.isUsable() ? current : null;
         }
     }
 

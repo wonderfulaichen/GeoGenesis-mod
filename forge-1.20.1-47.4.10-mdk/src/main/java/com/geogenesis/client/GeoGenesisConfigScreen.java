@@ -410,18 +410,49 @@ public class GeoGenesisConfigScreen extends Screen {
     // ------------------------------------------------------------------ 预览
 
     private void rebuildPreview() {
-        TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
-        boolean morphBase = worldCtx != null || Minecraft.getInstance().level == null
-                || com.geogenesis.worldgen.generator.GeoGenesisGenerator.usesCurrentWorldMorphBase();
-        CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), morphBase);
-        GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
-        terrain.seed(seed);
+        // ★ 2026-11-08【同源修复】：预览的 params / morphBase 必须与进游戏**同一判据**。
+        //
+        //   修复前：params 恒取 `GeoGenesisConfig.INSTANCE.buildParams()`（只读 toml），
+        //           morphBase 取 `worldCtx != null || level == null || usesCurrentWorldMorphBase()`。
+        //   进游戏：params 走 `resolveParams()`（**存档优先**）、morphBase 直接取
+        //           `currentWorldMorphBase`。
+        //   ⇒ 差异一：世界保存过参数后，预览显示的是 toml 默认值、不是该世界实际值。
+        //   ⇒ 差异二：创建新世界时 morphBase 判据不同。
+        //   两条都会让"共享 terrain 实例"读出错误地形，所以先统一源头。
+        //
+        //   `forNewWorld` = 还没有存档参数（创建新世界）⇒ 用户正在编辑 toml，
+        //   预览必须反映**编辑中的值**；否则用存档值。
+        boolean forNewWorld = !com.geogenesis.worldgen.generator.GeoGenesisGenerator.hasWorldParams();
+        TerrainParams p = com.geogenesis.worldgen.generator.GeoGenesisGenerator
+                .resolvePreviewParams(forNewWorld);
+        boolean morphBase = com.geogenesis.worldgen.generator.GeoGenesisGenerator
+                .resolvePreviewMorphBase();
+
+        // ★ 2026-11-08【共享实例】：种子与参数都等于存档时，复用游戏那份 terrain。
+        //
+        //   收益：预览里已算好的 chunk（4096-chunk LRU）与**细层水文 region**
+        //         （REGION=512 覆盖 32×32 chunk，单次 10 秒级）都能被进游戏直接吃到，
+        //         不必重算 —— 这正是用户指出的"重复计算浪费"。
+        //   边界：用户改了种子/参数试效果时**必须**用独立实例，
+        //         否则会画着"别的种子/参数的地形"却写着当前种子（见 previewReusableTerrain 的 javadoc）。
+        GeoGenesisTerrain terrain = com.geogenesis.worldgen.generator.GeoGenesisGenerator
+                .previewReusableTerrain(seed, p);
+        boolean shared = terrain != null;
+        if (!shared) {
+            CellGenerator gen = new CellGenerator(p, p.minY(), p.maxY(), morphBase);
+            terrain = new GeoGenesisTerrain(gen);
+            terrain.seed(seed);
+        }
+        LOGGER.info("[Preview] 地形实例: {} (seed={}, morphBase={})",
+                shared ? "复用存档单例" : "新建", seed, morphBase);
         if (preview == null) {
-            preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p, currentMode);
+            // ownsTerrain = !shared：共享的存档单例由游戏侧管理生命周期，预览不得关闭它
+            preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p,
+                    currentMode, !shared);
             // ★ 全屏地图：预览自带缩放标签会压在地形正中，改由右下角 HUD 显示
             preview.setDrawZoomLabel(false);
         } else {
-            preview.setTerrain(terrain, seed, p);
+            preview.setTerrain(terrain, seed, p, !shared);
             preview.setMode(currentMode);
         }
         Minecraft mc = Minecraft.getInstance();
@@ -614,6 +645,8 @@ public class GeoGenesisConfigScreen extends Screen {
     }
 
     private void rebuildPreviewIfChanged() {
+        // 变更检测比较的是<b>用户正在编辑的 toml 值</b>（拖滑条改的是它），
+        // 与 rebuildPreview() 里"实际生效的 params"（可能是存档值）是两件事 —— 不要混淆。
         TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
         int tb = toggleBits();
         if (lastAppliedParams != null

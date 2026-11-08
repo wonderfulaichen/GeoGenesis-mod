@@ -46,6 +46,14 @@ public class PreviewDisplay extends AbstractWidget {
     private final TerrainPool pool = new TerrainPool(4);
     private TerrainQueue queue;
     private GeoGenesisTerrain terrain;
+    /**
+     * 本预览是否<b>拥有</b> {@link #terrain} 的生命周期。
+     *
+     * <p>配置屏可能复用<b>游戏侧的存档单例</b>（共享已算的 chunk 与水文 region）。</p>
+     * <p>这种共享实例<b>绝不能</b>被预览关闭：否则玩家关掉配置屏会关停游戏正在用的引擎
+     * （其进程池已 shutdown）。⇒ 关屏/换地形时只在 {@code ownsTerrain} 为真时退役。</p>
+     */
+    private boolean ownsTerrain = true;
     /** 结构扫描器（创建世界界面传入 registry 后可用；null = 预览无结构标记） */
     private com.geogenesis.client.preview.chunk.StructureScanner structureScanner;
     /** 显示结构标记 */
@@ -169,7 +177,16 @@ public class PreviewDisplay extends AbstractWidget {
     public PreviewDisplay(int x, int y, int w, int h,
                           GeoGenesisTerrain terrain, long seed,
                           TerrainParams params, int mode) {
-        this(x, y, w, h, terrain, seed, params, mode, 1);
+        this(x, y, w, h, terrain, seed, params, mode, 1, true);
+    }
+
+    /**
+     * @param ownsTerrain false = 该 terrain 是<b>共享游戏侧存档单例</b>，预览不得关闭它
+     */
+    public PreviewDisplay(int x, int y, int w, int h,
+                          GeoGenesisTerrain terrain, long seed,
+                          TerrainParams params, int mode, boolean ownsTerrain) {
+        this(x, y, w, h, terrain, seed, params, mode, 1, ownsTerrain);
     }
 
     /**
@@ -184,8 +201,19 @@ public class PreviewDisplay extends AbstractWidget {
     public PreviewDisplay(int x, int y, int w, int h,
                           GeoGenesisTerrain terrain, long seed,
                           TerrainParams params, int mode, int renderScale) {
+        this(x, y, w, h, terrain, seed, params, mode, renderScale, true);
+    }
+
+    /**
+     * @param ownsTerrain 是否拥有该 terrain 实例（false = 共享游戏侧的存档单例，
+     *                    预览不得关闭它，见 {@link #setTerrain(GeoGenesisTerrain, long, TerrainParams, boolean)}）
+     */
+    public PreviewDisplay(int x, int y, int w, int h,
+                          GeoGenesisTerrain terrain, long seed,
+                          TerrainParams params, int mode, int renderScale, boolean ownsTerrain) {
         super(x, y, w, h, Component.literal("GeoGenesis Preview"));
         this.terrain = terrain;
+        this.ownsTerrain = ownsTerrain;
         this.seed = seed;
         this.seaLevel = params.seaLevel();
         this.maxY = params.maxY();
@@ -1236,9 +1264,27 @@ public class PreviewDisplay extends AbstractWidget {
     // ================================================================
 
     public void setTerrain(GeoGenesisTerrain terrain, long seed, TerrainParams params) {
+        setTerrain(terrain, seed, params, true);
+    }
+
+    /**
+     * 换地形引擎。
+     *
+     * @param ownsTerrain <b>本预览是否拥有这个实例</b>（★ 2026-11-08）。
+     *        <p>配置屏可能<b>复用游戏那份存档单例</b>（{@code GeoGenesisGenerator.previewReusableTerrain}）
+     *        来共享已算的 chunk 与水文 region。这种共享实例<b>绝不能</b>被预览关闭 ——
+     *        否则玩家关掉配置屏就会把游戏正在用的地形引擎关停
+     *        （它会复用一套已 shutdown 的进程池）。</p>
+     *        <p>⇒ 只有自建实例才 {@code ownsTerrain=true}，才会在换/关时被退役。</p>
+     */
+    public void setTerrain(GeoGenesisTerrain terrain, long seed, TerrainParams params,
+                           boolean ownsTerrain) {
         GeoGenesisTerrain retired = this.terrain;
+        boolean retiredOwned = this.ownsTerrain;
         this.terrain = terrain;
-        if (retired != null && retired != terrain) retired.closeProcessErosion();
+        this.ownsTerrain = ownsTerrain;
+        // 只退役"自己拥有的"旧实例；共享实例留给游戏侧管理生命周期
+        if (retiredOwned && retired != null && retired != terrain) retired.closeProcessErosion();
         this.seed = seed;
         this.seaLevel = params.seaLevel();
         this.maxY = params.maxY();
@@ -1877,7 +1923,9 @@ public class PreviewDisplay extends AbstractWidget {
         //   ProgressiveSampler 用的是独立线程池（核数÷2），漏停会让采样线程
         //   在关屏后继续跑、还持有 terrain 引用 → 线程泄漏 + 打到已关闭的 terrain。
         if (largeSampler != null) largeSampler.stop();
-        if (terrain != null) terrain.closeProcessErosion();
+        // ★ 只关闭自己拥有的实例：共享的存档单例由游戏侧管理生命周期，
+        //   关掉配置屏不能把游戏正在用的引擎关停（见 setTerrain 的 ownsTerrain 说明）。
+        if (ownsTerrain && terrain != null) terrain.closeProcessErosion();
         mc.getTextureManager().release(texLoc);
         texture.close();
         // ★ 磁盘持久化：关屏保存全部历史（后台线程 + tmp 原子写，不阻塞 UI）。
