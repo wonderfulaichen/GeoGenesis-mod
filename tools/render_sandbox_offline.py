@@ -31,15 +31,9 @@ LIGHT_MAX = 1.30
 WATER_FACTOR = 0.35
 PITCH_MIN, PITCH_MAX = 0.22, 1.40
 DEFAULT_PITCH, DEFAULT_YAW = 0.95, 0.65
-PILLAR_PX = 13.0
-CELL_PX = 2.0
-
-
 def per_column_for(viewport_px):
-    """与 SandboxLod.perColumnFor 同式：柱子保持约 13px。"""
-    grid = max(64, min(512, int(round(viewport_px / CELL_PX))))
-    target = max(8.0, viewport_px / PILLAR_PX)
-    return max(2, min(16, int(round(grid / target))))
+    """与 SandboxLod.perColumnFor 一致：真 LOD 恒为 1（一细格一根柱）。"""
+    return 1
 
 # ---- SandboxPalette 群系本色（★ 2026-11-08 P0-1，与 Java 侧 SandboxPalette 对齐）----
 # WhittakerType.ordinal() 顺序：ICE TUNDRA TAIGA GRASSLAND TEMPERATE_FOREST
@@ -149,6 +143,11 @@ def build_rotation(yaw, pitch):
     r[3], r[4], r[5] = raw[1], raw[4], raw[7]
     r[6], r[7], r[8] = raw[2], raw[5], raw[8]
     return r
+
+
+def model_edge(fine, k):
+    """细格边界 -> 模型坐标（柱子铺满，相邻柱共享边界）。"""
+    return 0.0 if fine <= 0 else -1.0 + 2.0 * k / fine
 
 
 def modelOf(n, i):
@@ -371,10 +370,9 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
         fx0, fz0 = cx * PER_COLUMN, cz * PER_COLUMN
         fx1 = min(gx - 1, fx0 + PER_COLUMN - 1)
         fz1 = min(gz - 1, fz0 + PER_COLUMN - 1)
-        ccx, ccy = (fx0 + fx1) * 0.5, (fz0 + fz1) * 0.5
-        hx, hy = (fx1 - fx0 + 1) * 0.5, (fz1 - fz0 + 1) * 0.5
-        x0, x1 = model(gx, ccx - hx), model(gx, ccx + hx)
-        y0, y1 = model(gz, ccy - hy), model(gz, ccy + hy)
+        # 用格子边界映射（除以 fine），相邻柱严格相接、无缝隙
+        x0, x1 = model_edge(gx, fx0), model_edge(gx, fx1 + 1)
+        y0, y1 = model_edge(gz, fz0), model_edge(gz, fz1 + 1)
         def mul(rgb01, m):
             return tuple(min(1.0, max(0.0, c * m)) for c in rgb01)
         if see_top:

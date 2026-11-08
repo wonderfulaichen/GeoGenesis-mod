@@ -832,8 +832,8 @@ public class PreviewDisplay extends AbstractWidget {
         //   <b>聚合系数随缩放变化</b>（拉远 8 / 中景 4·2 / 推近 1）⇒
         //   推近时网格更密、柱子更细更多 = 精模；拉远时合并更多细格 = 粗模。
         sandbox.setPerColumn(SandboxLod.perColumnFor(zoom));
-        int grid = SandboxLod.gridFor(zoom, side);
-        int blocksWide = SandboxLod.windowFor(zoom, side);
+        int grid = SandboxLod.gridFor(zoom);
+        int blocksWide = SandboxLod.windowFor(zoom);
         int blocksHigh = blocksWide;
         int originWx = centerX + (int) totalDragX - blocksWide / 2;
         int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
@@ -848,7 +848,7 @@ public class PreviewDisplay extends AbstractWidget {
         }
         largeSampler.setGrid(grid);
         // ★ 粗层水位（河道/湖面）：窗口小到 tract 数可负担时才开
-        boolean wantWater = SandboxLod.usesCoarseWater(zoom, side);
+        boolean wantWater = SandboxLod.usesCoarseWater(zoom);
         if (wantWater && waterLookup == null) {
             waterLookup = new SandboxWaterLookup(terrain.generator());
         }
@@ -861,7 +861,7 @@ public class PreviewDisplay extends AbstractWidget {
         if (sandboxDiagId != id) {
             sandboxDiagId = id;
             LOGGER.info("[Preview] 沙盘 {} 数据={} zoom={} 水位={} scene={}x{}",
-                    SandboxLod.describe(zoom, side), d != null,
+                    SandboxLod.describe(zoom), d != null,
                     String.format(java.util.Locale.ROOT, "%.2f", zoom), wantWater, w, h);
         }
         // ★ 竖向比例：<b>照抄参考项目</b>（SiteTerrainRenderer.collect() 第 661/677-678 行）：
@@ -1234,7 +1234,7 @@ public class PreviewDisplay extends AbstractWidget {
      */
     private void panSandboxBy(double dx, double dy) {
         int areaSize = Math.min(getWidth(), getHeight());
-        double step = SandboxLod.effectiveStep(sandbox.zoom(), areaSize);
+        double step = SandboxLod.effectiveStep(sandbox.zoom());
         sandbox.dragToBlocks(dx, dy, areaSize, step, sandboxDragOut);
         // 累加到浮点累加器：拖动位移常小于 1 方块，直接取整会被吃掉
         sandboxCenterAccX += sandboxDragOut[0];
@@ -2047,7 +2047,7 @@ public class PreviewDisplay extends AbstractWidget {
         // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
         if (sandboxMode) {
             StringBuilder sb = new StringBuilder(
-                    SandboxLod.scaleLabel(sandbox.zoom(), Math.min(getWidth(), getHeight())));
+                    SandboxLod.scaleLabel(sandbox.zoom()));
             // 地图中心（拖动后能看出位置真的变了）
             sb.append(String.format(java.util.Locale.ROOT, " · 中心 %d,%d", centerX, centerZ));
             if (largeSampler != null && largeSampler.data() != null) {
@@ -2103,42 +2103,86 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /**
-     * 沙盘操作提示（左下角）+ 比例尺（右下角）。
+     * 沙盘 HUD —— <b>照参考项目布局</b>（{@code YardSiteScreen.drawTopLeft / drawProgress}）：
      *
-     * <p>布局参考 RTS / 模拟城市：<b>控制说明常驻</b>，玩家不用猜。
-     * 用半透明底衬保证在任何地形颜色上都可读。</p>
+     * <pre>
+     *   左上：标题（金色）· 种子/范围/中心 · 操作说明（折行，暗灰）
+     *   右缘：进度细竖条（4px，金色填充）
+     *   左下：悬停处的群系 / 区块 / 方块坐标 / 高度
+     *   右下：比例尺
+     * </pre>
+     *
+     * <p>★ 之前只有一个右下角状态栏，与参考项目差距明显（用户指出"UI 布局完全不同"）。</p>
      */
     private void drawSandboxHints(GuiGraphics g, int x, int y, int w, int h) {
-        String[] lines = {
-                "右键拖动　移动地图",
-                "左键拖动　旋转视角",
-                "滚轮　　　推近 / 拉远",
-                "Ctrl+滚轮 柱子粗细",
-                "R 键　　　重置视角",
+        final int GOLD = 0xFFFFD24A;
+        final int TEXT_SUB = 0xFFD4D9E4;
+        final int TEXT_HINT = 0xFFA6AEBE;
+
+        // ---- 左上：标题 + 种子/范围 + 操作说明 ----
+        int px = x + 8;
+        int py = y + 6;
+        g.drawString(mc.font, "GeoGenesis 地形沙盘", px, py, GOLD, true);
+        py += 12;
+        String sub = String.format(java.util.Locale.ROOT,
+                "种子 %d · 中心 %d,%d · %s",
+                seed, centerX, centerZ, SandboxLod.scaleLabel(sandbox.zoom()));
+        g.drawString(mc.font, sub, px, py, TEXT_SUB, true);
+        py += 12;
+        String[] hints = {
+                "右键拖动 = 移动地图 · 左键拖动 = 旋转",
+                "滚轮 = 推近/拉远（推近柱子会细分）· Ctrl+滚轮 = 柱宽",
+                "R = 重置视角",
         };
-        int lh = 10;
-        int maxW = 0;
-        for (String s : lines) maxW = Math.max(maxW, mc.font.width(s));
-        int padX = 5, padY = 4;
-        int boxW = maxW + padX * 2;
-        int boxH = lines.length * lh + padY * 2;
-        int bx = x + 6;
-        int by = y + h - boxH - 6;
-        // 底衬：半透明深色 + 细金边（与面板风格一致）
-        g.fill(bx, by, bx + boxW, by + boxH, 0xB212141B);
-        g.fill(bx, by, bx + boxW, by + 1, 0x66FFD24A);
-        for (int i = 0; i < lines.length; i++) {
-            g.drawString(mc.font, lines[i], bx + padX, by + padY + i * lh, 0xFFD4D9E4, true);
+        for (String s : hints) {
+            g.drawString(mc.font, s, px, py, TEXT_HINT, true);
+            py += 10;
         }
 
-        // 右下角：比例尺（地图软件式读数）
-        String scaleTxt = SandboxLod.scaleLabel(sandbox.zoom(), Math.min(w, h));
+        // ---- 右缘：进度细竖条（参考项目 drawProgress）----
+        TerrainFieldData dd = largeSampler == null ? null : largeSampler.data();
+        if (dd != null && !largeSampler.isComplete()) {
+            int barW = 4;
+            int barX = x + w - barW - 4;
+            int barTop = y + 44;
+            int barBottom = y + h - 40;
+            float prog = largeSampler.progress();
+            g.fill(barX, barTop, barX + barW, barBottom, 0x50FFFFFF);
+            g.fill(barX, barTop, barX + barW,
+                    barTop + (int) ((barBottom - barTop) * prog), GOLD);
+        }
+
+        // ---- 左下：悬停信息（参考项目 drawHover 的等价物）----
+        if (sandbox.pickedColumn() >= 0) {
+            // 由沙盘反查该柱对应的世界坐标与高度
+            int worldX = centerX + (int) totalDragX - SandboxLod.windowFor(sandbox.zoom()) / 2
+                    + (int) Math.round(sandbox.pickedColX() * SandboxLod.effectiveStep(sandbox.zoom()));
+            int worldZ = centerZ + (int) totalDragZ - SandboxLod.windowFor(sandbox.zoom()) / 2
+                    + (int) Math.round(sandbox.pickedColZ() * SandboxLod.effectiveStep(sandbox.zoom()));
+            String[] lines = {
+                    String.format(java.util.Locale.ROOT, "方块 %d, %d", worldX, worldZ),
+                    String.format(java.util.Locale.ROOT, "高度 y=%d", (int) Math.round(sandbox.pickedTopY())),
+            };
+            int lh = 10;
+            int maxW = 0;
+            for (String s : lines) maxW = Math.max(maxW, mc.font.width(s));
+            int bx = x + 6;
+            int by = y + h - lines.length * lh - 28;
+            g.fill(bx - 4, by - 3, bx + maxW + 4, by + lines.length * lh + 2, 0xB212141B);
+            g.fill(bx - 4, by - 3, bx + maxW + 4, by - 2, 0x66FFD24A);
+            for (int i = 0; i < lines.length; i++) {
+                g.drawString(mc.font, lines[i], bx, by + i * lh, TEXT_SUB, true);
+            }
+        }
+
+        // ---- 右下：比例尺 ----
+        String scaleTxt = SandboxLod.scaleLabel(sandbox.zoom());
         int sw = mc.font.width(scaleTxt);
         int sx = x + w - sw - 8;
         int sy = y + h - 16;
         g.fill(sx - 4, sy - 3, sx + sw + 4, sy + 11, 0xB212141B);
         g.fill(sx - 4, sy - 3, sx + sw + 4, sy - 2, 0x66FFD24A);
-        g.drawString(mc.font, scaleTxt, sx, sy, 0xFFFFE082, true);
+        g.drawString(mc.font, scaleTxt, sx, sy, GOLD, true);
     }
 
 }

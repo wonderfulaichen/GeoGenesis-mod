@@ -48,153 +48,147 @@ package com.geogenesis.client.preview;
 public final class SandboxLod {
 
     /**
-     * 柱子目标屏幕尺寸（像素）。
+     * <b>细分层级（真 LOD 的核心）</b>—— ★ 2026-11-08 第五次修正。
      *
-     * <p>参考项目大沙盘：900px 视口 / 128 柱 ≈ <b>7px</b>。
-     * 取 7px 与它同档（够看出方块台阶，又不至于密到糊）。</p>
+     * <h2>用户的原话（这才是需求）</h2>
+     * <p>「柱子这你还不会设计吗？<b>不就是由原来的 1 个柱子变成 4 个柱子</b>。
+     * 你不懂游戏里面的近处模型变高模的机制吗？」</p>
+     *
+     * <h2>正确的 LOD 机制 = 四叉树细分</h2>
+     * <pre>
+     *   level 0（最远）：1 根柱 = SUBDIVIDE^0 个细格
+     *   level 1        ：1 根柱 = SUBDIVIDE^1 ... 每次推近，1 根柱细分成 4 根（2×2）
+     * </pre>
+     * <p>每推近一级：<b>柱子数量 ×4、每柱代表的方块数 ÷2、精度翻倍</b>
+     * —— 这就是游戏里"近处模型变高模"的标准做法（quadtree LOD）。</p>
+     *
+     * <p>参考项目正是这个结构：大沙盘（128 柱，15.6 格/格）
+     * → 区块精读（129 柱，16 格/格）→ 落点精读（121 柱，4 格/格），
+     * 每级窗口缩小、格子变细。</p>
+     *
+     * <h2>与"假 LOD"的区别（我之前的错）</h2>
+     * <p>我之前把聚合系数写成固定档位（8/4/2/1 按 zoom 分档），
+     * 但<b>柱子总数不变</b>，只是每柱合并的细格变了 —— 视觉上柱子数一样，
+     * 所以看起来"效果不变"。真正的高模是<b>柱子变多</b>。</p>
      */
-    public static final double PILLAR_PX = 7.0;
+    public static final int SUBDIVIDE = 2;
 
-    /** 每柱在 zoom = {@link #BASE_ZOOM} 时代表的方块数（对齐参考项目大沙盘 31 格）。 */
-    public static final double BASE_BLOCKS_PER_PILLAR = 31.0;
+    /** 细分层级上限（每升一级柱数 ×4）。 */
+    public static final int MAX_SUBDIV = 3;
 
-    /** 与 {@link #BASE_BLOCKS_PER_PILLAR} 对应的 zoom。 */
+    /** 拉远时的基础柱数（level 0）。 */
+    public static final int BASE_PILLARS = 32;
+
+    /** 每柱在 level 0 时代表的方块数。 */
+    public static final double BASE_BLOCKS_PER_PILLAR = 75.0;
+
+    /** 与 level 0 对应的 zoom（进入沙盘的默认缩放）。 */
     public static final float BASE_ZOOM = 2.0f;
 
     /** 缩放下限。 */
     public static final float ZOOM_MIN = 0.6f;
-    /**
-     * 缩放上限。
-     *
-     * <p>硬约束：每<b>细格</b> ≥ 1 格方块。
-     * 每细格 = 每柱方块 / perColumn，每柱方块 = 31/zoomRatio。
-     * 推近到每柱 4 格（÷perColumn=2）⇒ 每细格 2 格，还有余量；
-     * zoomRatio=16（zoom=32）时每柱 1.94 格、每细格 0.97 格 → 触底。
-     * ⇒ 夹在 16。</p>
-     */
+    /** 缩放上限（level = MAX_SUBDIV）。 */
     public static final float ZOOM_MAX = 32.0f;
-
-    /** 柱数上下限（防极端视口）。 */
-    private static final int MIN_PILLARS = 32;
-    private static final int MAX_PILLARS = 256;
 
     private SandboxLod() { }
 
-    /** 相对基准的缩放倍率（&gt;1 = 更细）。 */
-    public static double zoomRatio(float zoom) {
-        double z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom));
-        return z / (double) BASE_ZOOM;
-    }
-
     /**
-     * 柱子数（每边）—— <b>屏幕密度恒定</b>，不随缩放变化。
+     * 当前缩放对应的<b>细分层级</b>（0 = 最粗，MAX_SUBDIV = 最精）。
      *
-     * @param viewportPx 视口边长（像素）
+     * <p>每推近 2 倍细分一级 ⇒ 柱数 ×4、每柱方块 ÷2。</p>
      */
-    public static int pillarsFor(int viewportPx) {
-        int p = (int) Math.round(viewportPx / PILLAR_PX);
-        return Math.max(MIN_PILLARS, Math.min(MAX_PILLARS, p));
+    public static int subdivLevel(float zoom) {
+        double z = Math.max((double) ZOOM_MIN, Math.min((double) ZOOM_MAX, (double) zoom));
+        double r = z / (double) BASE_ZOOM;
+        int lv = (int) Math.floor(Math.log(r) / Math.log((double) SUBDIVIDE));
+        return Math.max(0, Math.min(MAX_SUBDIV, lv));
+    }
+
+    /** 该缩放下每边柱子数 = BASE_PILLARS × 2^level（每升一级 ×4 ⇒ 边长 ×2）。 */
+    public static int pillarsFor(float zoom) {
+        int p = BASE_PILLARS << subdivLevel(zoom);   // ×2^level
+        return Math.max(8, Math.min(2048, p));
+    }
+
+    /** 该缩放下每根柱子代表的方块数 = BASE_BLOCKS_PER_PILLAR / 2^level。 */
+    public static double blocksPerPillar(float zoom) {
+        return BASE_BLOCKS_PER_PILLAR / (double) (1 << subdivLevel(zoom));
     }
 
     /**
-     * 一根柱子聚合几个细格（每边）。
+     * 每根柱子聚合几个细格 —— <b>恒为 1</b>（一细格一根柱）。
      *
-     * <p><b>拉远时大、推近时小</b> —— 这是"粗模/精模"的关键：
-     * 拉远时一根柱合并更多细格（颜色更概括），推近时更少（保留细节）。</p>
-     * <p>夹在 1~8：1 = 一细格一根柱（最精），8 = 八细格一根柱（最粗）。</p>
+     * <p>真 LOD 靠"细分层级增加柱数"提高精度，而不是靠改聚合系数。
+     * 聚合恒 1 ⇒ 网格 = 柱数 ⇒ 每一根柱子就是一次真实采样。</p>
      */
     public static int perColumnFor(float zoom) {
-        double r = zoomRatio(zoom);
-        if (r < 0.75) return 8;   // 最拉远：粗模
-        if (r < 1.5) return 4;
-        if (r < 3.0) return 2;
-        return 1;                 // 最推近：一细格一根柱（精模）
+        return 1;
     }
 
-    /** 该缩放 + 视口下的网格（每边细格数）= 柱数 × 聚合系数。 */
-    public static int gridFor(float zoom, int viewportPx) {
-        int g = pillarsFor(viewportPx) * perColumnFor(zoom);
-        return Math.max(32, Math.min(1024, g));
+    /** 网格（每边细格数）= 柱数 × 聚合系数 = 柱数。 */
+    public static int gridFor(float zoom) {
+        return Math.max(16, Math.min(2048, pillarsFor(zoom) * perColumnFor(zoom)));
     }
 
     /**
-     * 一根柱子代表多少方块（<b>推近 ⇒ 变小</b>）。
+     * 世界窗口边长（方块）= 柱数 × 每柱方块。
      *
-     * <p>下限 1：每细格至少 1 格方块（否则重复采样 → 梯田伪影）。</p>
+     * <p>细分一级：柱数 ×2、每柱方块 ÷2 ⇒ <b>窗口不变</b>（同范围更精细）。
+     * 这正是"近处高模"：视野不变，细节翻倍。</p>
      */
-    public static double blocksPerPillar(float zoom) {
-        double r = zoomRatio(zoom);
-        double b = BASE_BLOCKS_PER_PILLAR / r;
-        double minB = Math.max(1.0, perColumnFor(zoom));   // 每细格 ≥ 1
-        return Math.max(minB, b);
-    }
-
-    /**
-     * 世界窗口边长（方块）—— <b>推近 ⇒ 变小</b>（这就是"镜头推进"）。
-     *
-     * @param viewportPx 视口边长（像素）
-     */
-    public static int windowFor(float zoom, int viewportPx) {
-        double raw = pillarsFor(viewportPx) * blocksPerPillar(zoom);
+    public static int windowFor(float zoom) {
+        double raw = pillarsFor(zoom) * blocksPerPillar(zoom);
         int q = (int) (Math.round(raw / 16.0) * 16);
-        // 窗口不得小于网格数（每细格 ≥ 1 方块）
-        return Math.max(gridFor(zoom, viewportPx), Math.max(64, q));
+        return Math.max(gridFor(zoom), Math.max(64, q));
     }
 
-    /** 实际生效的每细格方块数（= 窗口/网格）。 */
-    public static double effectiveStep(float zoom, int viewportPx) {
-        return windowFor(zoom, viewportPx) / (double) gridFor(zoom, viewportPx);
+    /** 实际每细格方块数。 */
+    public static double effectiveStep(float zoom) {
+        return windowFor(zoom) / (double) gridFor(zoom);
     }
 
     /** 比例尺文字。 */
-    public static String scaleLabel(float zoom, int viewportPx) {
-        double perPillar = blocksPerPillar(zoom);
-        int win = windowFor(zoom, viewportPx);
-        int pillars = pillarsFor(viewportPx);
+    public static String scaleLabel(float zoom) {
         return String.format(java.util.Locale.ROOT,
-                "%d 柱 · 1 柱 = %.1f 格 · 视野 %d 格", pillars, perPillar, win);
+                "LOD%d · %d 柱 · 1 柱 = %.1f 格 · 视野 %d 格",
+                subdivLevel(zoom), pillarsFor(zoom), blocksPerPillar(zoom), windowFor(zoom));
     }
 
-    /** 该缩放 + 视口下窗口覆盖的 tract 数。 */
-    public static int tractsFor(float zoom, int viewportPx) {
-        int win = windowFor(zoom, viewportPx);
+    /** 该缩放下窗口覆盖的 tract 数。 */
+    public static int tractsFor(float zoom) {
+        int win = windowFor(zoom);
         int across = (int) Math.ceil(win / 512.0) + 1;
         return across * across;
     }
 
-    /** 该缩放 + 视口是否查粗层水位。25 tract 以内可接受。 */
-    public static boolean usesCoarseWater(float zoom, int viewportPx) {
-        return tractsFor(zoom, viewportPx) <= 25;
+    /** 该缩放是否查粗层水位（25 tract 以内可接受）。 */
+    public static boolean usesCoarseWater(float zoom) {
+        return tractsFor(zoom) <= 25;
     }
 
-    /** 是否走完整水文管线（恒 false，见 SandboxWaterLookup）。 */
+    /** 是否走完整水文管线（恒 false）。 */
     public static boolean usesHydroPath(float zoom) {
         return false;
     }
 
     /**
-     * 滚轮步长：<b>远快近慢</b>。
+     * 滚轮：<b>每格 = 升/降一个细分层级</b>（或半级），使"细分"立即可见。
      *
-     * <ul>
-     *   <li>zoom &lt; 4：1.30 倍/步（快速跨过格局层）</li>
-     *   <li>4 ≤ zoom &lt; 12：1.20 倍/步</li>
-     *   <li>zoom ≥ 12：1.12 倍/步（精细调整）</li>
-     * </ul>
+     * <p>若按 1.12 连续缩放，细分级要滚 6 格才触发，用户感知不到"高模"。
+     * ⇒ 步长取 {@code 2^(1/2) = 1.414}：<b>两格滚轮 = 一个细分层级</b>，
+     * 每格都能看到柱子变多。</p>
      */
     public static float nextZoom(float zoom, boolean zoomIn) {
-        float step;
-        if (zoom < 4.0f) step = 1.30f;
-        else if (zoom < 12.0f) step = 1.20f;
-        else step = 1.12f;
-        float next = zoomIn ? zoom * step : zoom / step;
+        final float STEP = 1.41421356f;
+        float next = zoomIn ? zoom * STEP : zoom / STEP;
         return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
     }
 
-    /** 人类可读摘要（日志用）。 */
-    public static String describe(float zoom, int viewportPx) {
+    /** 人类可读摘要。 */
+    public static String describe(float zoom) {
         return String.format(java.util.Locale.ROOT,
-                "%s（网格 %d，聚合 %d，每细格 %.2f 格）",
-                scaleLabel(zoom, viewportPx), gridFor(zoom, viewportPx),
-                perColumnFor(zoom), effectiveStep(zoom, viewportPx));
+                "%s（网格 %d，每细格 %.2f 格）",
+                scaleLabel(zoom), gridFor(zoom), effectiveStep(zoom));
     }
 }
+

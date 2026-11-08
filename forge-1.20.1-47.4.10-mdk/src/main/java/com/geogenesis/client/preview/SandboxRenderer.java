@@ -335,26 +335,41 @@ public final class SandboxRenderer {
             // 侧墙：只在邻居更低时画（yardsite 第 448-475 行）。
             // 柱索引 col = cx * colRows + cz ⇒ 东/西 = ±colRows，南/北 = ±1
             //
-            // ★ 可见性门槛（2026-11-08）：高度差换算到屏幕后不足 MIN_WALL_PX 时**不画**。
-            //   否则 LOD 细档（相邻柱高差 <1 像素）会给每根柱子都画一条亚像素侧墙，
-            //   整幅呈密集条纹/鳞片 —— 实测就是这样"看不出地形"的。
+            // ★★ 2026-11-08【修"斜向纹理假影"】：高差<b>量化到 1 像素</b>后再判。
+            //
+            //   实机截图里地面上有大量斜向细线 —— 根因是<b>亚像素侧墙</b>：
+            //   相邻柱高差只有零点几像素，但 `top > low` 仍然成立 ⇒
+            //   每根柱都画一条 0.3px 的侧墙，整幅叠成密集斜纹。
+            //
+            //   之前用 minWall 门槛不够：门槛只比较高度差，而不同角度下
+            //   同一高差在屏幕上的投影长度不同，总有部分柱子刚好越过门槛。
+            //   ⇒ 改为<b>先把柱顶高度吸附到 minWall 的整数倍</b>，
+            //   亚像素差被抹成 0，侧墙自然不画；跨过 1px 的台阶照常显示。
             float minWall = MIN_WALL_PX / Math.max(1e-3f, scale);
             int ci = col / colRows, cj = col % colRows;
             if (seeEast) {
                 float low = (ci + 1 < colCount) ? Math.max(tops[col + colRows], 0f) : 0f;
-                if (top - low > minWall) wall(c, originX, originY, scale, x1, y0, x1, y1, low, top, rgb, alpha, 0.82f, 0.60f);
+                if (snapTop(top, minWall) > snapTop(low, minWall)) {
+                    wall(c, originX, originY, scale, x1, y0, x1, y1, low, top, rgb, alpha, 0.82f, 0.60f);
+                }
             }
             if (seeWest) {
                 float low = ci > 0 ? Math.max(tops[col - colRows], 0f) : 0f;
-                if (top - low > minWall) wall(c, originX, originY, scale, x0, y1, x0, y0, low, top, rgb, alpha, 0.56f, 0.40f);
+                if (snapTop(top, minWall) > snapTop(low, minWall)) {
+                    wall(c, originX, originY, scale, x0, y1, x0, y0, low, top, rgb, alpha, 0.56f, 0.40f);
+                }
             }
             if (seeSouth) {
                 float low = (cj + 1 < colRows) ? Math.max(tops[col + 1], 0f) : 0f;
-                if (top - low > minWall) wall(c, originX, originY, scale, x0, y1, x1, y1, low, top, rgb, alpha, 0.70f, 0.52f);
+                if (snapTop(top, minWall) > snapTop(low, minWall)) {
+                    wall(c, originX, originY, scale, x0, y1, x1, y1, low, top, rgb, alpha, 0.70f, 0.52f);
+                }
             }
             if (seeNorth) {
                 float low = cj > 0 ? Math.max(tops[col - 1], 0f) : 0f;
-                if (top - low > minWall) wall(c, originX, originY, scale, x1, y0, x0, y0, low, top, rgb, alpha, 0.46f, 0.34f);
+                if (snapTop(top, minWall) > snapTop(low, minWall)) {
+                    wall(c, originX, originY, scale, x1, y0, x0, y0, low, top, rgb, alpha, 0.46f, 0.34f);
+                }
             }
         }
 
@@ -445,6 +460,17 @@ public final class SandboxRenderer {
 
     /** 最近一次 {@link #pick} 的命中柱索引（-1 = 未命中）。 */
     public int pickedColumn() { return pickedColumn; }
+
+    /** 命中柱的 X 柱坐标（-1 = 未命中）。 */
+    public int pickedColX() { return pickedColumn < 0 ? -1 : pickedColumn / colRows; }
+
+    /** 命中柱的 Z 柱坐标（-1 = 未命中）。 */
+    public int pickedColZ() { return pickedColumn < 0 ? -1 : pickedColumn % colRows; }
+
+    /** 命中柱的顶面高度（模型单位；0 = 未命中）。 */
+    public float pickedTopY() {
+        return pickedColumn >= 0 && pickedColumn < tops.length ? tops[pickedColumn] : 0f;
+    }
 
     /** 清除 hover（鼠标离开沙盘区时调用）。 */
     public void clearPick() { pickedColumn = -1; }
@@ -569,15 +595,18 @@ public final class SandboxRenderer {
                 tops[col] = ratio * RELIEF;
                 colIsWater[col] = hasWater;
 
-                // 四角模型坐标：照 yardsite prepareColumn() 第 579-587 行
-                float centerX = (fx0 + fx1) * 0.5f;
-                float centerY = (fz0 + fz1) * 0.5f;
-                float halfX = (fx1 - fx0 + 1) * 0.5f;
-                float halfY = (fz1 - fz0 + 1) * 0.5f;
-                edgeX0[col] = model(gw, centerX - halfX);
-                edgeX1[col] = model(gw, centerX + halfX);
-                edgeY0[col] = model(gh, centerY - halfY);
-                edgeY1[col] = model(gh, centerY + halfY);
+                // 四角模型坐标：用<b>格子边界</b>映射（除以 fine，不是 fine-1）
+                //
+                // ★★ 2026-11-08【修"横向细线"】：参考项目的 model() 分母是 fine-1，
+                //   因为它把细格当"点"（柱心落在端点）。但我们是<b>铺满</b>的方块盘面，
+                //   细格是"格子"（有面积）⇒ 必须用 fine 作分母，
+                //   否则柱 i 的右边与柱 i+1 的左边不相邻，中间露出 1 整格缝隙
+                //   （实机截图里的横向细线就是这个缝）。
+                //   用 fine 后：柱 i 覆盖 [i/fine, (i+1)/fine]，相邻柱<b>严格相接</b>。
+                edgeX0[col] = modelEdge(gw, fx0);
+                edgeX1[col] = modelEdge(gw, fx1 + 1);
+                edgeY0[col] = modelEdge(gh, fz0);
+                edgeY1[col] = modelEdge(gh, fz1 + 1);
 
                 // ---- 颜色：复用既有 35 项群系本色 + 水面渐变 + jitter ----
                 //   多数群系细格：组内 biomeClassId 出现最多者（yardsite majorityCell 语义）
@@ -653,6 +682,19 @@ public final class SandboxRenderer {
     }
 
     /**
+     * 柱高吸附到 {@code step} 的整数倍（用于消除亚像素侧墙）。
+     *
+     * <p>为什么不是直接判 {@code top - low > minWall}：那样"刚好越过门槛"的柱子
+     * 仍然会画一条 <b>1px 高的侧墙</b>，而它的邻居不画 ⇒ 一疏一密，
+     * 在斜视角下叠成<b>斜向纹理</b>（实机截图可见）。
+     * 吸附后：同一段台阶要么整体画、要么整体不画，不会出现交错细线。</p>
+     */
+    private static float snapTop(float v, float step) {
+        if (step <= 0f) return v;
+        return Math.round(v / step) * step;
+    }
+
+    /**
      * 该柱的<b>径向</b>边缘渐隐 + 圆形裁剪（0 = 不画，1 = 完全不透明）。
      *
      * <h2>★ 这是参考项目最显眼的视觉特征（2026-11-08）</h2>
@@ -676,17 +718,19 @@ public final class SandboxRenderer {
         // 归一化到 [-1,1] 的柱中心（与 modelOf 一致），圆心 = (0,0)
         float mx = modelOf(colCount, ci);
         float my = modelOf(colRows, cj);
-        double dist = Math.sqrt(mx * mx + my * my);   // 0 = 中心，1 = 方框边中点，√2 = 角
-        // 圆半径：1.0 会切到方框边中点，取略小让圆盘留在视口内
-        final double radius = 0.98;
-        if (dist > radius) return 0f;                 // 圆外：不画（圆形盘面）
-        double t = (radius - dist) / EDGE_FADE_RING;  // 外圈渐隐宽度
+        double dist = Math.sqrt(mx * mx + my * my);
+        // ★ 渐隐宽度按<b>柱数</b>算（参考项目 FADE_RING=7 格）：
+        //   之前写死 0.06（模型单位）在小柱数时会变成十几柱宽 ⇒ 边缘一层层碎块。
+        //   现在 7 根柱宽，与参考项目一致。
+        double ring = Math.max(1e-6, 7.0 / Math.max(1, colCount - 1) * 2.0);
+        if (dist > EDGE_FADE_RADIUS) return 0f;      // 圆外：不画
+        double t = (EDGE_FADE_RADIUS - dist) / ring;
         if (t >= 1.0) return 1.0f;
-        return (float) (t * t * (3.0 - 2.0 * t));     // smoothstep
+        return (float) (t * t * (3.0 - 2.0 * t));
     }
 
-    /** 圆盘外圈渐隐宽度（模型坐标单位；约 4 柱宽）。 */
-    private static final double EDGE_FADE_RING = 0.06;
+    /** 圆盘半径（模型坐标，1.0 = 方框边中点）。 */
+    private static final double EDGE_FADE_RADIUS = 0.97;
     /** 是否启用圆形盘面 + 边缘渐隐。 */
     private boolean edgeFadeEnabled = true;
 
@@ -821,6 +865,19 @@ public final class SandboxRenderer {
      */
     private static float model(int fine, float cell) {
         return fine <= 1 ? 0f : cell / (fine - 1) * 2.0f - 1.0f;
+    }
+
+    /**
+     * 细格<b>边界</b>序号 → 模型坐标（柱子铺满用）。
+     *
+     * <p>{@code fine} 个细格把 [-1,1] 均分为 {@code fine} 段，
+     * 第 {@code k} 条边界在 {@code -1 + 2k/fine}。相邻柱共享边界 ⇒ <b>无缝隙</b>。</p>
+     *
+     * <p>与参考项目的 {@code model(fine-1)} 不同：那是"细格当点"（柱心在端点），
+     * 我们是"细格当格子"（有面积）—— 混用会露出整格宽的缝（实机横向细线）。</p>
+     */
+    private static float modelEdge(int fine, int k) {
+        return fine <= 0 ? 0f : -1.0f + 2.0f * k / fine;
     }
 
     /** 柱中心 → 模型坐标（排序用，yardsite {@code modelOf()} 第 739-742 行）。 */

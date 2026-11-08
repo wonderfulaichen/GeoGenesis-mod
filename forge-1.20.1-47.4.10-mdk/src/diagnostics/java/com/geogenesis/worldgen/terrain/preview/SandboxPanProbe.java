@@ -45,7 +45,7 @@ public final class SandboxPanProbe {
 
         // ---- 1) 向右拖：中心应向西（x 减小）----
         float zoom = SandboxLod.BASE_ZOOM;
-        double step = SandboxLod.effectiveStep(zoom, GRID);
+        double step = SandboxLod.effectiveStep(zoom);
         float[] out = new float[2];
         dragToBlocks(r, 100f, 0f, AREA, zoom, 1.0f, GRID, step, out);
         System.out.printf("[1] 向右拖 100px -> 中心位移 (%.1f, %.1f) 格方块%n", out[0], out[1]);
@@ -67,7 +67,7 @@ public final class SandboxPanProbe {
         }
 
         // ---- 3) 量级：拖整屏宽 ≈ 视野宽度 ----
-        int window = SandboxLod.windowFor(zoom, GRID);
+        int window = SandboxLod.windowFor(zoom);
         dragToBlocks(r, AREA, 0f, AREA, zoom, 1.0f, GRID, step, out);
         double moved = Math.hypot(out[0], out[1]);
         System.out.printf("%n[3] 拖整屏 %dpx -> 移动 %.0f 格方块（视野 %d 格）%n",
@@ -86,8 +86,8 @@ public final class SandboxPanProbe {
         // ---- 4) 缩放感知：推近后同位移 = 更少方块 ----
         float farZoom = SandboxLod.ZOOM_MIN;
         float nearZoom = SandboxLod.ZOOM_MAX;
-        double farStep = SandboxLod.effectiveStep(farZoom, GRID);
-        double nearStep = SandboxLod.effectiveStep(nearZoom, GRID);
+        double farStep = SandboxLod.effectiveStep(farZoom);
+        double nearStep = SandboxLod.effectiveStep(nearZoom);
         dragToBlocks(r, AREA, 0f, AREA, farZoom, 1.0f, GRID, farStep, out);
         double movedFar = Math.hypot(out[0], out[1]);
         dragToBlocks(r, AREA, 0f, AREA, nearZoom, 1.0f, GRID, nearStep, out);
