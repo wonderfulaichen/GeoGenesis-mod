@@ -124,6 +124,8 @@ public final class SandboxRenderer {
     private long[] bornAtCol = new long[0];
     /** 每柱是否是水面（粗层水位高于地形）—— 诊断/hover 用。 */
     private boolean[] colIsWater = new boolean[0];
+    /** 每柱的边缘渐隐系数（yardsite edgeFade；全屏地图用）。 */
+    private float[] edgeFadePerCol = new float[0];
     private int[] readyOrder = new int[0];
     private int[] sorted = new int[0];
     private int[] bucket = new int[0];
@@ -155,6 +157,55 @@ public final class SandboxRenderer {
     public void dragPan(double dx, double dy) {
         panX += (float) dx;
         panY += (float) dy;
+    }
+
+    /**
+     * 屏幕拖动 → <b>世界该移动多少方块</b>（照抄 yardsite {@code dragToCells()} 第 276-299 行）。
+     *
+     * <p>做法：先按屏幕缩放折回模型单位，再用当前旋转的<b>地面两行</b>反解地面两个轴，
+     * 最后取反号（中心往反方向走，画面才跟着手走）—— 所以斜着拉也是顺的，
+     * 不会"横一下竖一下"。</p>
+     *
+     * <p>为什么需要它：我们是<b>全屏单层地图</b>，拖动必须移动世界中心并重新采样；
+     * 只平移屏幕像素会让地形边缘露出空白。参考项目之所以只用 dragPan，
+     * 是因为它靠"切到区块精读层"来看别处。</p>
+     *
+     * @param dx,dy     屏幕位移（像素）
+     * @param areaSize  视口边长（像素）
+     * @param blockStep 每个细格代表多少方块（{@code SandboxLod.effectiveStep}）
+     * @param out       输出 [dWorldX, dWorldZ]（方块，已取反号 = 中心该移动的量）
+     */
+    public void dragToBlocks(double dx, double dy, int areaSize, double blockStep,
+                             float[] out) {
+        float s = areaSize * 0.46f * zoom;
+        if (s <= 0.0f) {
+            out[0] = 0f;
+            out[1] = 0f;
+            return;
+        }
+        // 屏幕 → 模型单位（先按 widthScale 还原横向撑开）
+        float a = (float) (dx / s) / widthScale;
+        float b = (float) (dy / s) / widthScale;
+        // 地面两行：屏幕 = [r0 r1; r3 r4]·(模型 x,y)（高度项对水平拖动无贡献）
+        float det = r[0] * r[4] - r[1] * r[3];
+        float mx, my;
+        if (Math.abs(det) < 1.0E-4f) {
+            mx = a;
+            my = b;
+        } else {
+            mx = (r[4] * a - r[1] * b) / det;
+            my = (r[0] * b - r[3] * a) / det;
+        }
+        // 模型单位 → 方块：
+        //   模型跨度 2（-1..+1）覆盖 <b>colCount 根柱子</b>，每根柱 = PER_COLUMN 个细格，
+        //   每细格 = blockStep 方块
+        //   ⇒ 每模型单位 = (colCount / 2) × PER_COLUMN × blockStep 方块
+        //
+        //   ★ 2026-11-08 修正：曾漏掉 PER_COLUMN，导致拖动灵敏度只有正确值的 1/2
+        //   （实测拖整屏只移动 0.27× 视野，手感偏慢）。
+        double blocksPerModel = (Math.max(1, colCount) * 0.5) * PER_COLUMN * blockStep;
+        out[0] = (float) (-mx * blocksPerModel);
+        out[1] = (float) (-my * blocksPerModel);
     }
 
     /**
@@ -546,10 +597,48 @@ public final class SandboxRenderer {
                 }
                 colRgb[col] = rgb;
                 colAlpha[col] = 0xFF;
+                // 边界淡入的起始系数（全屏地图没有边框，边缘要"融进"背景）
+                edgeFadePerCol[col] = edgeFade(cx, cz);
                 readyOrder[readyColumns++] = col;
             }
         }
     }
+
+    /**
+     * 该柱的边缘渐隐系数（0 = 全透明，1 = 完全不透明）。
+     *
+     * <h2>参考项目 vs 我们</h2>
+     * <p>参考项目大沙盘的 {@code edgeFade()} <b>恒返回 1.0</b>
+     * （{@code SiteMapSampler} 第 344-346 行）—— 因为它在<b>大沙盘</b>里有硬边框，
+     * 只有<b>区块精读</b>（圆形窗口）才用真正的渐隐。</p>
+     *
+     * <p>★ 2026-11-08：<b>我们不能照抄这个 1.0</b>。配置面板已是<b>全屏地图</b>
+     * （地形铺满 (0,0,w,h)，没有边框、没有第二层视图可切），
+     * 若边缘硬切，用户会看到一圈突兀的"断崖"，且拖动时新采样区突然弹出。
+     * ⇒ 全屏地图需要渐隐，这是本项目形态决定的（用户明确指出：
+     * "你忘记我们现在改成了全屏地图了啊，为什么拿旧设定当现在的设计"）。</p>
+     *
+     * <p>实现：按离最近的边有多少格线性淡出，最外 {@link #EDGE_FADE_CELLS} 个细格
+     * 从 0 升到 1。这样地图像"融化"进背景，拖动时新区域也不会硬弹。</p>
+     *
+     * @param ci,cj 柱坐标（0..colCount-1）
+     */
+    private float edgeFade(int ci, int cj) {
+        if (!edgeFadeEnabled) return 1.0f;
+        int d = Math.min(Math.min(ci, colCount - 1 - ci), Math.min(cj, colRows - 1 - cj));
+        if (d >= EDGE_FADE_CELLS) return 1.0f;
+        float t = d / (float) EDGE_FADE_CELLS;
+        // smoothstep：避免线性淡出在边界处仍有可见折线
+        return t * t * (3.0f - 2.0f * t);
+    }
+
+    /** 边缘渐隐宽度（柱数）。 */
+    private static final int EDGE_FADE_CELLS = 3;
+    /** 是否启用边缘渐隐（全屏地图开启；窗口化时可由调用方关闭）。 */
+    private boolean edgeFadeEnabled = true;
+
+    /** 开关边缘渐隐（全屏地图开、需要硬边框时关）。 */
+    public void setEdgeFade(boolean enabled) { this.edgeFadeEnabled = enabled; }
 
     /** 一格的坡度光照（从 rNorm 数组取邻差，用自适应增益）。 */
     private double slopeLightAt(int gw, int gh, int gx, int gz, boolean water, double gain) {
@@ -575,7 +664,9 @@ public final class SandboxRenderer {
             float t = clamp((now - born) / (float) FADE_MS, 0.0f, 1.0f);
             float s = t * t * (3.0f - 2.0f * t);          // yardsite smooth(t)
             tops[col] = top * s;
-            colAlpha[col] = (int) (255.0f * (FADE_FLOOR + (1.0f - FADE_FLOOR) * s));
+            // 参考项目 collect() 第 689-690 行：alpha = 255 * (FADE_FLOOR + (1-FADE_FLOOR)*t) * edgeFade
+            float a = (FADE_FLOOR + (1.0f - FADE_FLOOR) * s) * edgeFadePerCol[col];
+            colAlpha[col] = (int) (255.0f * a);
         }
     }
 
@@ -700,6 +791,7 @@ public final class SandboxRenderer {
         colAlpha = new int[n];
         bornAtCol = new long[n];
         colIsWater = new boolean[n];
+        edgeFadePerCol = new float[n];
         readyOrder = new int[n];
         sorted = new int[n];
         bucket = new int[n];

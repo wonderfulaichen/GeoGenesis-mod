@@ -2754,6 +2754,13 @@ task runSandboxLodProbe(type: JavaExec) {
     maxHeapSize = '2g'
     systemProperty 'geogenesis.lodTsvDir', project.findProperty('lodTsvDir') ?: ''
 }
+// Sandbox pan math: screen drag must map to correct world translation.
+//   gradlew runSandboxPanProbe
+task runSandboxPanProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxPanProbe'
+    maxHeapSize = '2g'
+}
 // Cost of the hydro-aware sampling path (sampleCell) for the sandbox.
 //   gradlew runSandboxHydroCostProbe
 task runSandboxHydroCostProbe(type: JavaExec) {

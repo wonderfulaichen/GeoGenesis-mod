@@ -1120,13 +1120,17 @@ public class PreviewDisplay extends AbstractWidget {
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
-        // ★ S3：沙盘模式松手 = 结束旋转/平移，不提交地图平移
+        // ★ 2026-11-08 修复：右键松开原先在第 2 行就被 `button != LEFT` 挡掉，
+        //   导致 `sandboxPanning` 永远是 true —— 之后不按键拖动也会继续平移，
+        //   表现为"移动不跟手 / 停不下来"。先无条件清所有拖动状态。
         if (sandboxMode) {
             dragging = false;
             sandboxPanning = false;
+            sandboxCenterAccX = 0;
+            sandboxCenterAccZ = 0;
             return true;
         }
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
         dragging = false;
         double absX = Math.abs(totalDragX), absZ = Math.abs(totalDragZ);
         if (absX > 4.0 || absZ > 4.0) {
@@ -1186,14 +1190,52 @@ public class PreviewDisplay extends AbstractWidget {
         return 0xFF000000 | (gray << 16) | (gray << 8) | gray;
     }
 
+    /** 沙盘拖动用的临时数组（避免每次分配）。 */
+    private final float[] sandboxDragOut = new float[2];
+
+    /**
+     * 沙盘右键拖动：<b>移动地图</b>（移动世界中心 + 触发重新采样）。
+     *
+     * <p>不是屏幕像素平移 —— 全屏单层地图没有"切层看别处"的退路，
+     * 只挪像素会露出采样范围外的空白。</p>
+     */
+    private void panSandboxBy(double dx, double dy) {
+        int areaSize = Math.min(getWidth(), getHeight());
+        double step = SandboxLod.effectiveStep(sandbox.zoom(), ProgressiveSampler.GRID);
+        sandbox.dragToBlocks(dx, dy, areaSize, step, sandboxDragOut);
+        // 累加到浮点累加器：拖动位移常小于 1 方块，直接取整会被吃掉
+        sandboxCenterAccX += sandboxDragOut[0];
+        sandboxCenterAccZ += sandboxDragOut[1];
+        int ix = (int) sandboxCenterAccX;
+        int iz = (int) sandboxCenterAccZ;
+        if (ix != 0 || iz != 0) {
+            sandboxCenterAccX -= ix;
+            sandboxCenterAccZ -= iz;
+            centerX += ix;
+            centerZ += iz;
+            needsClear = true;   // 视口变了 → 下一帧按新中心重新采样
+        }
+    }
+
+    /** 拖动累积的世界位移余量（&lt;1 方块的部分）。 */
+    private double sandboxCenterAccX, sandboxCenterAccZ;
+
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        // ★ 2026-11-08：右键拖动 = <b>移动地图</b>（任何模式下都认，不只左键）
+        //
+        //   用户反馈"我还不能移动位置。明明参考项目可以的"。
+        //   参考项目大沙盘用的是 dragPan（只平移屏幕像素、不换世界中心），
+        //   因为它的"看别处"是靠切到区块精读层。我们是<b>全屏单层地图</b>，
+        //   只平移像素会让地形边缘露出空白 ⇒ 必须<b>移动世界中心并重新采样</b>。
+        if (sandboxMode && sandboxPanning) {
+            panSandboxBy(dx, dy);
+            return true;
+        }
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
-        // ★ S3：沙盘模式：左键旋转 / 右键平移（yardsite 第 1113-1126 行）
+        // 沙盘模式：左键拖动转视角（yardsite 第 1113-1126 行）
         if (sandboxMode) {
-            if (sandboxPanning) {
-                sandbox.dragPan(dx * 2.0, dy * 2.0);   // guiScale 折算
-            } else if (dragging) {
+            if (dragging) {
                 sandbox.dragRotate(dx, dy);
             }
             return true;
@@ -1952,6 +1994,8 @@ public class PreviewDisplay extends AbstractWidget {
         if (sandboxMode) {
             StringBuilder sb = new StringBuilder(
                     SandboxLod.scaleLabel(sandbox.zoom(), ProgressiveSampler.GRID));
+            // 地图中心（拖动后能看出位置真的变了）
+            sb.append(String.format(java.util.Locale.ROOT, " · 中心 %d,%d", centerX, centerZ));
             if (largeSampler != null && largeSampler.data() != null) {
                 TerrainFieldData d = largeSampler.data();
                 sb.append(" · ").append(d.gridW).append('×').append(d.gridH);
