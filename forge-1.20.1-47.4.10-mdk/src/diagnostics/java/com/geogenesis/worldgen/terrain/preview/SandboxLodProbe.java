@@ -48,8 +48,8 @@ public final class SandboxLodProbe {
         double prevBlocks = Double.MAX_VALUE;
         int levels = 0;
         for (int lv = 0; lv <= SandboxLod.MAX_SUBDIV; lv++) {
-            // 该层级对应的 zoom：BASE_ZOOM × 2^lv
-            float zoom = SandboxLod.BASE_ZOOM * (float) Math.pow(2, lv);
+            // 该层级对应的 zoom：ZOOM_MIN × 2^lv（ZOOM_MIN = level 0 的 zoom）
+            float zoom = SandboxLod.ZOOM_MIN * (float) Math.pow(2, lv);
             zoom = Math.min(zoom, SandboxLod.ZOOM_MAX);
             int gotLv = SandboxLod.subdivLevel(zoom);
             int pillars = SandboxLod.pillarsFor(zoom);
@@ -80,7 +80,7 @@ public final class SandboxLodProbe {
         System.out.println();
         System.out.printf("[3] 采样点 = 柱数²（perColumn=1 ⇒ 每根柱一次真实采样）：%n");
         for (int lv = 0; lv <= SandboxLod.MAX_SUBDIV; lv++) {
-            float zoom = Math.min(SandboxLod.BASE_ZOOM * (float) Math.pow(2, lv), SandboxLod.ZOOM_MAX);
+            float zoom = Math.min(SandboxLod.ZOOM_MIN * (float) Math.pow(2, lv), SandboxLod.ZOOM_MAX);
             int p = SandboxLod.pillarsFor(zoom);
             System.out.printf("    level %d: %d² = %d%n", lv, p, p * p);
         }
@@ -121,7 +121,7 @@ public final class SandboxLodProbe {
 
         int cx = 200, cz = 1400;
         for (int lv = 0; lv <= SandboxLod.MAX_SUBDIV; lv++) {
-            float zoom = Math.min(SandboxLod.BASE_ZOOM * (float) Math.pow(2, lv), SandboxLod.ZOOM_MAX);
+            float zoom = Math.min(SandboxLod.ZOOM_MIN * (float) Math.pow(2, lv), SandboxLod.ZOOM_MAX);
             int grid = SandboxLod.gridFor(zoom);
             int window = SandboxLod.windowFor(zoom);
             double step = SandboxLod.effectiveStep(zoom);

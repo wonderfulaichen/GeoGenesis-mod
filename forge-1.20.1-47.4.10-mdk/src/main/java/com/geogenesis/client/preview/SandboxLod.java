@@ -79,16 +79,34 @@ public final class SandboxLod {
     /** 拉远时的基础柱数（level 0）。 */
     public static final int BASE_PILLARS = 32;
 
-    /** 每柱在 level 0 时代表的方块数。 */
+    /**
+     * 每柱在 level 0 时代表的方块数。
+     *
+     * <p>level 0（最粗）= 32 柱/边 × 75 格 = 视野 2400 格。</p>
+     */
     public static final double BASE_BLOCKS_PER_PILLAR = 75.0;
 
-    /** 与 level 0 对应的 zoom（进入沙盘的默认缩放）。 */
-    public static final float BASE_ZOOM = 2.0f;
+    /**
+     * 进入沙盘时的<b>默认细分层级</b>。
+     *
+     * <p>★ 2026-11-08 修正：默认必须是<b>中间档</b>（1），不能是 0。
+     * 原默认 zoom=2.0 = level 0 = 最粗档 ⇒ 用户<b>只能向内推，拉远一步都动不了</b>
+     * （实测向外滚 6 格仍停在 level 0）—— 这就是"滚动缩放无效"的一半原因。</p>
+     */
+    public static final int DEFAULT_LEVEL = 1;
 
-    /** 缩放下限。 */
-    public static final float ZOOM_MIN = 0.6f;
-    /** 缩放上限（level = MAX_SUBDIV）。 */
-    public static final float ZOOM_MAX = 32.0f;
+    /** 与 {@link #DEFAULT_LEVEL} 对应的 zoom。 */
+    public static final float BASE_ZOOM = 2.0f * (1 << DEFAULT_LEVEL);
+
+    /** 缩放下限（level 0）。 */
+    public static final float ZOOM_MIN = 2.0f;
+    /**
+     * 缩放上限（level {@link #MAX_SUBDIV}）。
+     *
+     * <p>= ZOOM_MIN × 2^MAX_SUBDIV = 2 × 8 = 16（含 level 3 的边界）。
+     * 加 1e-3 余量，避免浮点把 16 算成 15.999 → level 2（实机表现为"最高档够不到"）。</p>
+     */
+    public static final float ZOOM_MAX = ZOOM_MIN * (1 << MAX_SUBDIV) * 1.001f;
 
     private SandboxLod() { }
 
@@ -99,8 +117,10 @@ public final class SandboxLod {
      */
     public static int subdivLevel(float zoom) {
         double z = Math.max((double) ZOOM_MIN, Math.min((double) ZOOM_MAX, (double) zoom));
-        double r = z / (double) BASE_ZOOM;
-        int lv = (int) Math.floor(Math.log(r) / Math.log((double) SUBDIVIDE));
+        // level 0 的 zoom 基准 = ZOOM_MIN（= 2.0）
+        double r = z / (double) ZOOM_MIN;
+        // +1e-6 抵消浮点误差（16/2=8 → log2=3.0 可能算成 2.9999999）
+        int lv = (int) Math.floor(Math.log(r) / Math.log((double) SUBDIVIDE) + 1e-6);
         return Math.max(0, Math.min(MAX_SUBDIV, lv));
     }
 
@@ -172,16 +192,18 @@ public final class SandboxLod {
     }
 
     /**
-     * 滚轮：<b>每格 = 升/降一个细分层级</b>（或半级），使"细分"立即可见。
+     * 滚轮：<b>一格滚轮 = 一个细分层级</b>。
      *
-     * <p>若按 1.12 连续缩放，细分级要滚 6 格才触发，用户感知不到"高模"。
-     * ⇒ 步长取 {@code 2^(1/2) = 1.414}：<b>两格滚轮 = 一个细分层级</b>，
-     * 每格都能看到柱子变多。</p>
+     * <p>★ 2026-11-08 修正：之前步长 1.414（两格才跨一级），
+     * 用户滚第一次、第二次看不到任何变化 ⇒ 体感"缩放无效"。</p>
+     * <p>现在步长 = 2（SUBDIVIDE），<b>每滚一格柱子就细分/合并一次</b>
+     * —— 立刻能看到柱子数量变化，这才是 LOD 该有的手感。</p>
      */
     public static float nextZoom(float zoom, boolean zoomIn) {
-        final float STEP = 1.41421356f;
-        float next = zoomIn ? zoom * STEP : zoom / STEP;
-        return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
+        float next = zoomIn ? zoom * SUBDIVIDE : zoom / SUBDIVIDE;
+        // 夹在 [ZOOM_MIN, ZOOM_MAX]，且吸附到层级边界（避免累积误差）
+        next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
+        return next;
     }
 
     /** 人类可读摘要。 */

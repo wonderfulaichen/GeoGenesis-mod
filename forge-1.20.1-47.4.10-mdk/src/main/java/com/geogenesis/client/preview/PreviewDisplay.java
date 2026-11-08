@@ -580,8 +580,28 @@ public class PreviewDisplay extends AbstractWidget {
         g.fill(x, y, x + w, y + h, 0xFF1a1a2a);
 
         // ★ S3：沙盘模式分流 —— 数据与平面模式完全共用，只换绘制方式
+        //
+        // ★★ 2026-11-08【修"该有的功能都没有"】：
+        //   这里原来是 `renderSandbox(...); return;` —— 直接跳过了后面的
+        //   全部 HUD（缩放标签/操作提示/图例/悬停信息/帧时间/边框）。
+        //   实机截图只有右下那条状态栏（那是 ConfigScreen 另画的），
+        //   左上标题、操作说明、进度条、悬停浮窗全都不见了。
+        //   ⇒ 沙盘画完地形后<b>继续走完 HUD 流程</b>，只是跳过 2D 纹理绘制。
         if (sandboxMode) {
             renderSandbox(g, w, h, mx, my);
+            drawZoomLabel(g, x, y, w, h);
+            if (showFrameTime) drawFrameTime(g, x + w, y);
+            drawCopiedToast(g, x, y, w, h);
+            if (showLegend) drawLegend(g, mx, my);
+            drawHoverInfo(g, mx, my);
+            // 1px 边框（参考项目 draw 的收尾）
+            g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
+            g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
+            g.fill(x - 1, y, x, y + h, 0xFF666666);
+            g.fill(x + w, y, x + w + 1, y + h, 0xFF666666);
+            long elapsedSandbox = (System.nanoTime() - frameStart) / 1_000_000L;
+            frameTimes.add(elapsedSandbox);
+            if (frameTimes.size() > 30) frameTimes.poll();
             return;
         }
 
@@ -2086,16 +2106,20 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 缩放比标签：1:N 右下角（★ 大范围模式附带标记——否则分不清当前走的是哪条管线） */
     private void drawZoomLabel(GuiGraphics g, int x, int y, int w, int h) {
-        if (!drawZoomLabel) return;
-        // ★ 沙盘模式：显示<b>操作提示</b>（像 RTS / 模拟城市那样把控制说清楚）
+        // ★★ 2026-11-08【修"该有的功能都没有"· 第二处根因】：
         //
-        //   用户反馈："画面没有任何地方提示如何操作控制。就不能把他当成 RTS 地图
-        //   或者模拟城市那样吗？"
-        //   ⇒ 左下角常驻键位提示；右下角比例尺（见下方）。
+        //   GeoGenesisConfigScreen 为了"全屏时由屏幕 HUD 代劳"，
+        //   调用了 preview.setDrawZoomLabel(false) —— 于是这个方法直接 return，
+        //   我新写的整套沙盘 HUD（左上标题/种子/操作说明、右缘进度条、
+        //   左下悬停信息、右下比例尺）**一条都没画出来**。
+        //   而 ConfigScreen 那边只有一条右下状态栏 ⇒ 实机看起来"功能全没了"。
+        //
+        //   ⇒ 沙盘 HUD 是这个模式的核心信息层，<b>不受 drawZoomLabel 开关影响</b>。
         if (sandboxMode) {
             drawSandboxHints(g, x, y, w, h);
             return;
         }
+        if (!drawZoomLabel) return;
         String zoomTxt = "1:" + scaleBlockPos
                 + (largeArea ? " · " + localize("geogenesis.preview.large_area") : "");
         g.fill(x + w - mc.font.width(zoomTxt) - 8, y + h - 14, x + w - 2, y + h - 2, 0x88000000);

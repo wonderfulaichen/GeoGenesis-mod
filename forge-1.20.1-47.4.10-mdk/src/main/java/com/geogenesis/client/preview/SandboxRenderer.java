@@ -100,7 +100,14 @@ public final class SandboxRenderer {
      * yardsite 的 0.46·zoom(2.0)=0.92 近景构图是参考项目观感的组成部分
      * （柱子粗大立体），不是该绕开的坑。看全图用滚轮缩小。</p>
      */
-    private float zoom = 2.0f;
+    /**
+     * 缩放（用户可调）。
+     *
+     * <p>★ 2026-11-08：默认取 {@link SandboxLod#BASE_ZOOM}（= level 1，中间档），
+     * 让用户<b>既能推近也能拉远</b>。此前取最粗档 ⇒ 只能向内推，
+     * 向外滚完全没反应（实机"滚动缩放无效"）。</p>
+     */
+    private float zoom = SandboxLod.BASE_ZOOM;
     /** 屏幕平移（yardsite {@code panX/panY}）。 */
     private float panX, panY;
     /**
@@ -240,11 +247,11 @@ public final class SandboxRenderer {
 
     public float widthScale() { return widthScale; }
 
-    /** 复位（yardsite {@code resetView()} 第 248-255 行）。 */
+    /** 复位视角（保留缩放层级之外的相机参数）。 */
     public void resetView() {
         yaw = DEFAULT_YAW;
         pitch = DEFAULT_PITCH;
-        zoom = 2.0f;
+        zoom = SandboxLod.BASE_ZOOM;   // ★ 与字段初值同源，避免"复位后掉回最粗档"
         panX = 0f;
         panY = 0f;
     }
