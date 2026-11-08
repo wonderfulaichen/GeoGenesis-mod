@@ -165,6 +165,22 @@ public final class HierarchicalHydrology {
             int k = cellAt(blockX, blockZ);
             return k < 0 || pipe.bed() == null ? Double.NaN : pipe.bed()[k];
         }
+
+        /**
+         * 该绝对坐标粗层是否判为<b>河道格</b>（★ 2026-11-08 新增）。
+         *
+         * <p><b>为什么需要它</b>：{@link #waterSurfaceAt} 对<b>每一格</b>都有值
+         * （非湖格取 {@code level} = 几何溢出面，见 {@code HydrologyPipeline.Result}
+         * 第 106-121 行的说明）⇒ <b>不能用"水面高于地形"当"这里有水"的判据</b>，
+         * 那会把大片汇水坡面也涂成水面（实测：沙盘 16% 的格子被淹）。
+         * 真正的"有水道"判定是 {@code channel[]}。</p>
+         *
+         * <p>湖/海格另由 {@link #lakeAt} 与地形（{@code e<0}）判定。</p>
+         */
+        public boolean channelAt(int blockX, int blockZ) {
+            int k = cellAt(blockX, blockZ);
+            return k >= 0 && pipe.channel() != null && pipe.channel()[k];
+        }
     }
 
     /**

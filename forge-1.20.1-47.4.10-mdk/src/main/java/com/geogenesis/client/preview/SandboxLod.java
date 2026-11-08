@@ -113,6 +113,31 @@ public final class SandboxLod {
     }
 
     /**
+     * 该档是否查<b>粗层水位</b>（画河道/湖面）。
+     *
+     * <h2>为什么按档决定</h2>
+     * <p>粗层成本 635ms/冷 tract、292ms/热 tract（实测 {@code runSandboxCoarseHydroProbe}），
+     * 而一个窗口覆盖的 tract 数约为 {@code (ceil(窗口/512)+1)²}：</p>
+     * <table border="1">
+     *   <caption>档位与水位代价</caption>
+     *   <tr><th>档</th><th>窗口</th><th>tract 数</th><th>水位开销</th></tr>
+     *   <tr><td>+2</td><td>998</td><td>9</td><td>约 2.6~5.7s</td></tr>
+     *   <tr><td>+1</td><td>1997</td><td>25</td><td>约 7~16s</td></tr>
+     *   <tr><td>0</td><td>3994</td><td>81</td><td>约 24~51s（不可接受）</td></tr>
+     * </table>
+     *
+     * <p>⇒ 只在<b>最细两档</b>（+1/+2）开水位。这两档正是"推近看河道"的场景，
+     * 语义上也对：拉远看格局时不需要逐格水面。</p>
+     * <p>粗档没有水位时，湖/海仍按 {@code e<0} 判定（廉价路径本来就有）。</p>
+     */
+    public static final int COARSE_WATER_MIN_LEVEL = 1;
+
+    /** 该档是否查粗层水位。 */
+    public static boolean usesCoarseWater(int level) {
+        return level >= COARSE_WATER_MIN_LEVEL;
+    }
+
+    /**
      * 该档是否要走 <b>水文管线</b>（{@code sampleCell}，带河谷雕刻与湖河数据）。
      *
      * <h2>★ 实测结论：沙盘不走水文管线（2026-11-08）</h2>

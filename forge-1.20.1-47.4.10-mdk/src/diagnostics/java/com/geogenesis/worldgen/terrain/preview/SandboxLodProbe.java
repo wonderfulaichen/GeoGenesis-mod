@@ -193,29 +193,47 @@ public final class SandboxLodProbe {
             boolean hydro = SandboxLod.usesHydroPath(lv);
             TerrainFieldData data = TerrainFieldData.sample(terrain, ox, oz,
                     window, window, grid, grid, lv, hydro);
+            // ★ 粗层水位（与生产一致：细档才查）
+            int waterCellsWithSurface = 0;
+            if (SandboxLod.usesCoarseWater(lv)) {
+                var lookup = new com.geogenesis.client.preview.SandboxWaterLookup(terrain.generator());
+                double stepW = window / (double) grid;
+                for (int gx = 0; gx < grid; gx++) {
+                    int wx = ox + (int) Math.round(gx * stepW);
+                    for (int gz = 0; gz < grid; gz++) {
+                        int wz = oz + (int) Math.round(gz * stepW);
+                        double wy = lookup.waterSurfaceAt(wx, wz);
+                        data.putWaterPublic(gx, gz, wy);
+                        int i = gx * grid + gz;
+                        if (!Double.isNaN(wy) && wy > data.height[i] + 0.01) waterCellsWithSurface++;
+                    }
+                }
+            }
             String path = new java.io.File(d, "lod_" + lv + ".tsv").getPath();
             int waterCells = 0, riverCells = 0;
             try (java.io.PrintWriter w = new java.io.PrintWriter(path, "UTF-8")) {
-                w.println("# gx gz height e biomeId terrainId snow temp humidity precip continent shape discharge");
+                w.println("# gx gz height e biomeId terrainId snow temp humidity precip continent shape discharge waterY");
                 for (int gx = 0; gx < data.gridW; gx++) {
                     for (int gz = 0; gz < data.gridH; gz++) {
                         int i = gx * data.gridH + gz;
                         if (data.e[i] < 0.0) waterCells++;
                         if (data.extraId[i * 4] > 0) riverCells++;
-                        w.printf("%d %d %.6f %.6f %d %d %d %.6f %.6f %.6f %.6f %.6f %.6f%n",
+                        double wy = data.waterY[i];
+                        w.printf("%d %d %.6f %.6f %d %d %d %.6f %.6f %.6f %.6f %.6f %.6f %s%n",
                                 gx, gz, data.height[i], data.e[i],
                                 data.biomeId[i], data.terrainId[i], data.snow[i] ? 1 : 0,
                                 data.temperature[i], data.humidity[i], data.precipitation[i],
-                                data.continent[i], data.shape[i], data.discharge[i]);
+                                data.continent[i], data.shape[i], data.discharge[i],
+                                Double.isNaN(wy) ? "nan" : String.format(Locale.ROOT, "%.6f", wy));
                     }
                 }
             } catch (Exception ex) {
                 System.out.println("导出 LOD " + lv + " 失败: " + ex);
                 continue;
             }
-            System.out.printf("导出 LOD %+d：窗口 %d 格，每细格 %.2f 格，%s，水格 %d (%.2f%%)，河格 %d -> %s%n",
+            System.out.printf("导出 LOD %+d：窗口 %d 格，每细格 %.2f 格，%s，水格 %d，河格 %d，水面格 %d -> %s%n",
                     lv, window, SandboxLod.stepFor(lv), hydro ? "水文管线" : "廉价路径",
-                    waterCells, 100.0 * waterCells / (grid * (double) grid), riverCells, path);
+                    waterCells, riverCells, waterCellsWithSurface, path);
         }
     }
 

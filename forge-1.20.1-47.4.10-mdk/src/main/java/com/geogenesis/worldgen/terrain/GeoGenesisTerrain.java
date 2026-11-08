@@ -124,6 +124,17 @@ public final class GeoGenesisTerrain {
     private final AtomicLong baseHeightTier1 = new AtomicLong();
     private final AtomicLong baseHeightTier2 = new AtomicLong();
 
+    /**
+     * 底层 {@link CellGenerator}（★ 2026-11-08）。
+     *
+     * <p>沙盘的<b>粗层水位</b>查询（{@link com.geogenesis.client.preview.SandboxWaterLookup}）
+     * 需要直接调 {@code HierarchicalHydrology.buildCoarse(gen, ...)}，
+     * 而该入口只接受 {@code CellGenerator}。这是<b>只读</b>用途 ——
+     * 粗层是纯函数、不写任何缓存、<b>不触发侵蚀 tile</b>（{@code prewarm=false}），
+     * 因此不会影响地形产出。</p>
+     */
+    public CellGenerator generator() { return generator; }
+
     public GeoGenesisTerrain(CellGenerator generator) {
         this.generator = generator;
         this.curve = generator.heightCurve();

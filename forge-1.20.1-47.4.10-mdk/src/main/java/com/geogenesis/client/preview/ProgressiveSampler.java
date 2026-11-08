@@ -78,6 +78,8 @@ public final class ProgressiveSampler {
     private boolean complete;
     /** 本轮是否走完整水文管线（{@code sampleCell}）。 */
     private boolean hydro;
+    /** 粗层水位查询器（null = 不查水位）。 */
+    private SandboxWaterLookup water;
 
     /** 本轮是否走水文管线（诊断/状态行用）。 */
     public boolean isHydroPath() { return hydro; }
@@ -134,7 +136,19 @@ public final class ProgressiveSampler {
      */
     public void reset(GeoGenesisTerrain terrain, int originX, int originZ,
                       int blocksWide, int blocksHigh, long viewportId, boolean hydroPath) {
-        if (viewportId == currentId) return;
+        reset(terrain, originX, originZ, blocksWide, blocksHigh, viewportId, hydroPath, null);
+    }
+
+    /**
+     * 启动后台采样（带可选的<b>粗层水位</b>查询）。
+     *
+     * @param water 非 null 时，每个采样点额外查一次粗层水面（画河道/湖面）；
+     *              由 {@link SandboxLod#usesCoarseWater} 按档位决定是否为 null
+     */
+    public void reset(GeoGenesisTerrain terrain, int originX, int originZ,
+                      int blocksWide, int blocksHigh, long viewportId, boolean hydroPath,
+                      SandboxWaterLookup water) {
+        if (viewportId == currentId && (water == null) == (this.water == null)) return;
 
         // 停掉上一轮
         stop();
@@ -142,6 +156,7 @@ public final class ProgressiveSampler {
         currentId = viewportId;
         complete = false;
         hydro = hydroPath;
+        this.water = water;
         int n = GRID * GRID;
         progress.set(0);
         progressTotal.set(n);
@@ -186,6 +201,10 @@ public final class ProgressiveSampler {
                             ? terrain.sampleCell(wx, wz)
                             : terrain.sampleCellCoarse(wx, wz);
                     data.put(gx, gz, cell);
+                    // ★ 粗层水位（河道/湖面）：细档才查，见 SandboxLod.usesCoarseWater
+                    if (water != null) {
+                        data.putWater(gx, gz, water.waterSurfaceAt(wx, wz));
+                    }
                     progress.incrementAndGet();
                 }
             }));

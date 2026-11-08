@@ -108,6 +108,20 @@ public final class SandboxPalette {
     }
 
     /**
+     * 水面颜色（浅滩 → 深海按深度插值）。
+     *
+     * @param surfaceY 水面 Y
+     * @param seaLevel 海平面
+     * @param light    坡度光照（水面通常按平光处理）
+     */
+    public static int waterColor(double surfaceY, double seaLevel, double light) {
+        float depth = (float) ((seaLevel - surfaceY) / WATER_DEPTH_SCALE);
+        if (depth < 0f) depth = 0f;
+        else if (depth > 1f) depth = 1f;
+        return scale(lerp(WATER_SHALLOW, WATER_DEEP, depth), light);
+    }
+
+    /**
      * 一格的最终颜色（<b>画的时候现算</b>，改色不用重采样 —— yardsite 同策）。
      *
      * @param biomeType 气候群系（Whittaker），陆地上色主输入

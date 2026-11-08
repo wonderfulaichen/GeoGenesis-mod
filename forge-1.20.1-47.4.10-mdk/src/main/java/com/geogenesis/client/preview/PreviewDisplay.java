@@ -71,6 +71,8 @@ public class PreviewDisplay extends AbstractWidget {
     private boolean largeArea = false;
     /** ★ S2：分块渐进采样器（粗档先铺，逐块补齐到 TARGET_GRID）。 */
     private ProgressiveSampler largeSampler;
+    /** 粗层水位查询（沙盘河道/湖面用；按 tract 缓存）。 */
+    private SandboxWaterLookup waterLookup;
     /** 已提交给 GPU 的采样视口 id（采完后需重画一次）。 */
     private long largeSamplerIdDrawn = Long.MIN_VALUE;
 
@@ -790,9 +792,16 @@ public class PreviewDisplay extends AbstractWidget {
             largeSampler = new ProgressiveSampler(ProgressiveSampler.GRID,
                     ProgressiveSampler.GRID);
         }
+        // ★ 粗层水位（河道/湖面）：只在细档开（成本 635ms/冷 tract，见 SandboxLod.usesCoarseWater）
+        boolean wantWater = SandboxLod.usesCoarseWater(lodLevel);
+        if (wantWater && waterLookup == null) {
+            waterLookup = new SandboxWaterLookup(terrain.generator());
+            LOGGER.info("[Preview] 沙盘粗层水位已启用（LOD {}）", lodLevel);
+        }
         // ★ 细档走完整管线（带河谷/湖河），粗档走廉价路径 —— 见 SandboxLod.usesHydroPath
         boolean hydroPath = SandboxLod.usesHydroPath(lodLevel);
-        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id, hydroPath);
+        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id, hydroPath,
+                wantWater ? waterLookup : null);
 
         float radius = Math.min(w, h) * 0.42f;
         TerrainFieldData d = largeSampler.data();

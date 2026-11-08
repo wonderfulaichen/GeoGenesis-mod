@@ -122,6 +122,8 @@ public final class SandboxRenderer {
     private int[] colAlpha = new int[0];
     /** 每柱出生时刻（毫秒）—— 生长动画用；0 = 未采到。 */
     private long[] bornAtCol = new long[0];
+    /** 每柱是否是水面（粗层水位高于地形）—— 诊断/hover 用。 */
+    private boolean[] colIsWater = new boolean[0];
     private int[] readyOrder = new int[0];
     private int[] sorted = new int[0];
     private int[] bucket = new int[0];
@@ -460,9 +462,21 @@ public final class SandboxRenderer {
                 // 柱高取组内左上角（yardsite surfaceAtCell(s0, f0)）
                 double surfaceY = data.height[fx0 * gh + fz0];
 
+                // ★ 粗层水位（河道/湖面）：水面高于地形时，柱顶抬到<b>水面</b>。
+                //
+                //   这是"河道水面"的实现方式 —— 不是把地形抬高，而是<b>柱顶 = 水面</b>：
+                //   河道处的柱子涨到水面高度、涂水色，看起来就是一条水面；
+                //   旁边的陆地柱子不变 ⇒ 水面自然贴着地形，不需要单独的薄板几何。
+                //   （粗层 step=4，所以水面是骨架级判断，见 SandboxWaterLookup 的精度声明。）
+                int i0 = fx0 * gh + fz0;
+                double wY = data.waterY[i0];
+                boolean hasWater = !Double.isNaN(wY) && wY > surfaceY + 0.01;
+                double topY = hasWater ? wY : surfaceY;
+
                 // ★ ratio 保底 WATER_SINK，柱子永远向上长，绝不往下沉
-                float ratio = (float) Math.max((surfaceY - base) / span, WATER_SINK);
+                float ratio = (float) Math.max((topY - base) / span, WATER_SINK);
                 tops[col] = ratio * RELIEF;
+                colIsWater[col] = hasWater;
 
                 // 四角模型坐标：照 yardsite prepareColumn() 第 579-587 行
                 float centerX = (fx0 + fx1) * 0.5f;
@@ -525,6 +539,12 @@ public final class SandboxRenderer {
                 Cell cell = data.toDisplayCell(mfx, mfz, scratch);
                 int rgb = SandboxPalette.colorForLayer(layer, cell, light, s2, seaLevel,
                         data.snow[i], minY, maxY);
+                // ★ 河道/湖面：无论当前图层是什么，水面都用<b>水深渐变蓝</b>覆盖
+                //   —— 否则在高程/温度图层下，河面会被涂成"陆地色"而看不见。
+                //   与 BIOME 图层的处理一致：水面永远是水色（可读出"能不能过"）。
+                if (hasWater) {
+                    rgb = SandboxPalette.waterColor(topY, seaLevel, light);
+                }
                 colRgb[col] = rgb;
                 colAlpha[col] = 0xFF;
                 readyOrder[readyColumns++] = col;
@@ -680,6 +700,7 @@ public final class SandboxRenderer {
         colRgb = new int[n];
         colAlpha = new int[n];
         bornAtCol = new long[n];
+        colIsWater = new boolean[n];
         readyOrder = new int[n];
         sorted = new int[n];
         bucket = new int[n];

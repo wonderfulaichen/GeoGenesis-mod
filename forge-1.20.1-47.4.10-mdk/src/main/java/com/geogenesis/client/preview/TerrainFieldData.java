@@ -99,6 +99,18 @@ public final class TerrainFieldData {
      */
     public final long[] bornAt;
 
+    /**
+     * 粗层水文<b>水面 Y</b>（★ 2026-11-08 补）；{@code NaN} = 该格无水面。
+     *
+     * <p>来自 {@code SandboxWaterLookup}（粗层 {@code buildCoarse}，D8、无侵蚀 tile）。
+     * 实测 635ms/冷 tract、100% 有效水位、16.2% 格水面高于地形
+     * ⇒ 沙盘用它画「河道/湖面」的水面。</p>
+     *
+     * <p><b>精度</b>：粗层 step=4 且不做侵蚀雕刻 ⇒ 这是"这一片是不是水面"的骨架级判断，
+     * <b>不等于</b>游戏落块的逐格水位。沙盘只用于看形态。</p>
+     */
+    public final double[] waterY;
+
     private TerrainFieldData(int gridW, int gridH, int originX, int originZ,
                              int blocksWide, int blocksHigh, long viewportId, long costMs) {
         this.gridW = gridW;
@@ -123,6 +135,8 @@ public final class TerrainFieldData {
         this.height = new double[n];
         this.snow = new boolean[n];
         this.bornAt = new long[n];
+        this.waterY = new double[n];
+        java.util.Arrays.fill(this.waterY, Double.NaN);
     }
 
     /** 扁平索引（越界返回 -1）。 */
@@ -238,6 +252,18 @@ public final class TerrainFieldData {
         if (bornAt[i] == 0L) bornAt[i] = System.currentTimeMillis();
     }
 
+    /** 写入粗层水位（NaN = 无水面）。 */
+    void putWater(int gx, int gz, double waterYv) {
+        int i = index(gx, gz);
+        if (i < 0) return;
+        waterY[i] = waterYv;
+    }
+
+    /** 写入粗层水位的<b>公开</b>入口（探针/离线导出用）。 */
+    public void putWaterPublic(int gx, int gz, double waterYv) {
+        putWater(gx, gz, waterYv);
+    }
+
     /** 拷贝自另一个同时刻的 {@link TerrainFieldData} 的单元格（渐进补丁用）。 */
     void copyCellFrom(TerrainFieldData src, int gx, int gz) {
         int i = index(gx, gz);
@@ -256,6 +282,7 @@ public final class TerrainFieldData {
         height[i] = src.height[j];
         snow[i] = src.snow[j];
         bornAt[i] = src.bornAt[j];
+        waterY[i] = src.waterY[j];
     }
 
     /**
@@ -287,6 +314,7 @@ public final class TerrainFieldData {
         System.arraycopy(height, 0, d.height, 0, height.length);
         System.arraycopy(snow, 0, d.snow, 0, snow.length);
         System.arraycopy(bornAt, 0, d.bornAt, 0, bornAt.length);
+        System.arraycopy(waterY, 0, d.waterY, 0, waterY.length);
         return d;
     }
 }

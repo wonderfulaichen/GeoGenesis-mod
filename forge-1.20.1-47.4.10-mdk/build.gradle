@@ -2761,3 +2761,10 @@ task runSandboxHydroCostProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxHydroCostProbe'
     maxHeapSize = '3g'
 }
+// Coarse-layer hydrology feasibility for the sandbox (river/lake surfaces).
+//   gradlew runSandboxCoarseHydroProbe
+task runSandboxCoarseHydroProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxCoarseHydroProbe'
+    maxHeapSize = '3g'
+}

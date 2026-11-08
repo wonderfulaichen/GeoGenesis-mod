@@ -71,7 +71,9 @@ def load(path):
                          int(float(p[4])) if len(p) > 4 else 0,
                          int(float(p[5])) if len(p) > 5 else 0,
                          1 if len(p) > 6 and float(p[6]) > 0 else 0,
-                         *[float(p[k]) if len(p) > k else 0.0 for k in range(7, 13)]))
+                         *[float(p[k]) if len(p) > k else 0.0 for k in range(7, 13)],
+                         (float('nan') if len(p) <= 13 or p[13] == 'nan'
+                          else float(p[13]))))
     if not rows:
         raise SystemExit('no data in ' + path)
     gx = max(r[0] for r in rows) + 1
@@ -84,6 +86,7 @@ def load(path):
     snow = np.zeros((gx, gz), dtype=bool)
     fields = {k: np.zeros((gx, gz)) for k in
               ('temp', 'humid', 'precip', 'cont', 'shape', 'disch')}
+    water_y = np.full((gx, gz), np.nan)
     for row in rows:
         a, b, hh, ee, bb, tt, ss = row[:7]
         h[a, b] = hh
@@ -94,6 +97,8 @@ def load(path):
         vals = row[7:13]
         for k, v in zip(fields, vals):
             fields[k][a, b] = v
+        water_y[a, b] = row[13]
+    fields['waterY'] = water_y
     return h, e, biome, terr, snow, fields
 
 
@@ -212,6 +217,7 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
     col_count = (gx + PER_COLUMN - 1) // PER_COLUMN
     col_rows = (gz + PER_COLUMN - 1) // PER_COLUMN
     tops = np.zeros(col_count * col_rows)
+    water_top = np.full(col_count * col_rows, np.nan)
     colc = np.zeros(col_count * col_rows, dtype=object)
     for cx in range(col_count):
         for cz in range(col_rows):
@@ -220,7 +226,11 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
             fx1 = min(gx - 1, fx0 + PER_COLUMN - 1)
             fz1 = min(gz - 1, fz0 + PER_COLUMN - 1)
             sy = h[fx0, fz0]
-            tops[col] = max((sy - base) / span, WATER_SINK) * RELIEF
+            wy = fields['waterY'][fx0, fz0]
+            has_w = (not np.isnan(wy)) and wy > sy + 0.01
+            top_y = wy if has_w else sy
+            tops[col] = max((top_y - base) / span, WATER_SINK) * RELIEF
+            water_top[col] = top_y if has_w else float('nan')
             # 多数群系（复刻 majorityCell 语义）
             ids, cnts = [], []
             for dx in range(fx1 - fx0 + 1):
@@ -239,7 +249,12 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
                         break
                 if mfx is not None:
                     break
-            colc[col] = layer_rgb(mfx, mfz)
+            if not np.isnan(water_top[col]):
+                d = min(1.0, max(0.0, (sea - water_top[col]) / 30.0))
+                wc = lerp3(WATER_SHALLOW, WATER_DEEP, d)
+                colc[col] = tuple(c / 255.0 for c in wc)
+            else:
+                colc[col] = layer_rgb(mfx, mfz)
 
     r9 = build_rotation(yaw, pitch)
     # yardsite 口径（用户裁定恢复）：scale = areaSize * 0.46 * zoom
