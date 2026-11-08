@@ -80,8 +80,8 @@ public final class SandboxLayerProbe {
                     Cell c = d.toDisplayCell(gx, gz, reuse);
                     if (c == null) continue;
                     double surface = d.e[i] < 0.0 ? sea : d.height[i];
-                    int rgb = SandboxPalette.colorForLayer(layer, c, 1.0, surface, sea,
-                            d.snow[i], minY, maxY) & 0xFFFFFF;
+                    int rgb = SandboxPalette.colorForLayer(layer, c, d.biomeClassId[i],
+                            1.0, surface, sea, d.snow[i], minY, maxY) & 0xFFFFFF;
                     colors.add(rgb);
                     if (!got) { first = rgb; got = true; }
                 }
@@ -132,12 +132,13 @@ public final class SandboxLayerProbe {
             if (!differ) pass = false;
         }
 
-        // ---- 坡度光照必须仍然生效（沙盘立体感来源） ----
+        // ---- 坡度光照必须仍然生效（沙盘立体感来源）----
+        //   ★ 2026-11-08：colorForLayer 不再自己乘光照（改为调用方最后乘），
+        //   所以这里直接验 SandboxPalette.scale()。
         System.out.println();
-        int base = SandboxPalette.colorForLayer(GeoPalette.PreviewLayer.ELEVATION,
-                d.toDisplayCell(d.gridW / 2, d.gridH / 2, reuse), 1.0, 80, sea, false, minY, maxY);
-        int dark = SandboxPalette.colorForLayer(GeoPalette.PreviewLayer.ELEVATION,
-                d.toDisplayCell(d.gridW / 2, d.gridH / 2, reuse), 0.6, 80, sea, false, minY, maxY);
+        int c0 = 0x6FAE4A;
+        int base = SandboxPalette.scale(c0, 1.0);
+        int dark = SandboxPalette.scale(c0, 0.6);
         boolean litOk = base != dark;
         System.out.printf("坡度光照生效: light=1.0 #%06X vs light=0.6 #%06X -> %s%n",
                 base & 0xFFFFFF, dark & 0xFFFFFF, litOk ? "OK" : "FAIL");

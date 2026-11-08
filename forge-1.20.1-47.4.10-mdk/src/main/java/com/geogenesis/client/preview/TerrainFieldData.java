@@ -63,8 +63,16 @@ public final class TerrainFieldData {
     public final double[] shape;
     /** 河网流量（液滴汇聚），供 RIVER_NETWORK 图层。 */
     public final double[] discharge;
-    /** {@code WhittakerType.ordinal()}，供 BIOME 图层。 */
+    /** {@code WhittakerType.ordinal()}（10 项），供气候用途。 */
     public final short[] biomeId;
+    /**
+     * {@code BiomeClass.ordinal()}（<b>35 项</b>），供沙盘 BIOME 图层本色。
+     *
+     * <p>★ 2026-11-08：沙盘改用自己的<b>既有 35 项群系色</b>
+     * （{@link GeoPalette#colorForBiome}），不再另造 10 项色表。
+     * 与 {@code BiomeClassifier.classify(cell)} 同源 ⇒ 与平面窗口、图例一致。</p>
+     */
+    public final short[] biomeClassId;
     /** {@code TerrainClass.ordinal()}，供 TERRAIN_TYPE 图层。 */
     public final short[] terrainId;
     /**
@@ -130,6 +138,7 @@ public final class TerrainFieldData {
         this.shape = new double[n];
         this.discharge = new double[n];
         this.biomeId = new short[n];
+        this.biomeClassId = new short[n];
         this.terrainId = new short[n];
         this.extraId = new short[n * 4];
         this.height = new double[n];
@@ -179,6 +188,69 @@ public final class TerrainFieldData {
     private static com.geogenesis.worldgen.climate.WhittakerType biomeOf(short id) {
         var v = com.geogenesis.worldgen.climate.WhittakerType.values();
         return (id >= 0 && id < v.length) ? v[id] : v[0];
+    }
+
+    /**
+     * {@code BiomeClass.ordinal()}，<b>带降级</b>。
+     *
+     * <p>权威路径是 {@code BiomeClassifier.classify(cell)}（与游戏落块群系一致），
+     * 但它会触发 {@code Biomes} 静态初始化 ⇒ 无 Forge Bootstrap 的进程会崩。
+     * 因此捕获 {@link Throwable} 后走近似映射（{@link #approxBiomeClass}）。</p>
+     *
+     * <p>降级只影响"极端地形变体"（如高原恶地 ↔ 普通沙漠），
+     * 主色调（雪/森林/草原/沙漠/雨林/海）完全一致 —— 沙盘是看形态的，够用。</p>
+     */
+    private static int biomeClassOfSafe(Cell c) {
+        try {
+            return com.geogenesis.worldgen.climate.BiomeClassifier.classify(c).ordinal();
+        } catch (Throwable ignored) {
+            // NoClassDefFoundError / ExceptionInInitializerError / 其他 —— 一律降级，绝不让预览崩
+        }
+        return approxBiomeClass(c);
+    }
+
+    /**
+     * 无 MC 注册表时的<b>近似</b>映射：{@code WhittakerType} × 地形/雪 → {@code BiomeClass} 序号。
+     *
+     * <p>序号必须与 {@code BiomeClassifier.BiomeClass} 声明顺序一致（35 项）：
+     * 0-8 海洋、9 RIVER、10 FROZEN_RIVER、11 SWAMP、12 BEACH、13 SNOWY_BEACH、
+     * 14 PLAINS、15 MEADOW、16 FOREST、17 BIRCH_FOREST、18 WINDSWEPT_HILLS、
+     * 19 WINDSWEPT_FOREST、20 WINDSWEPT_SAVANNA、21 JUNGLE、22 SPARSE_JUNGLE、
+     * 23 SAVANNA、24 SAVANNA_PLATEAU、25 DESERT、26 BADLANDS、27 TAIGA、
+     * 28 SNOWY_TAIGA、29 SNOWY_PLAINS、30 GROVE、31 SNOWY_SLOPES、
+     * 32 STONY_PEAKS、33 JAGGED_PEAKS、34 FROZEN_PEAKS。</p>
+     */
+    private static int approxBiomeClass(Cell c) {
+        var terrain = c.terrainType;
+        // 水体 / 海岸优先（强于气候，与 BiomeClassifier.pickKey 的分支顺序一致）
+        if (terrain != null) {
+            switch (terrain) {
+                case RIVER: return 9;
+                case LAKE: return 9;
+                case BEACH: return 12;
+                case SNOW: return 29;
+                case VOLCANO: return 32;
+                default: break;
+            }
+        }
+        if (c.isSnow) return 29;                     // SNOWY_PLAINS
+        if (c.terrainType == com.geogenesis.worldgen.terrain.TerrainClass.PEAK
+                || c.terrainType == com.geogenesis.worldgen.terrain.TerrainClass.MOUNTAINS) {
+            return 32;                                // STONY_PEAKS
+        }
+        var wt = c.biomeType == null
+                ? com.geogenesis.worldgen.climate.WhittakerType.GRASSLAND : c.biomeType;
+        return switch (wt) {
+            case ICE, TUNDRA -> 29;                   // SNOWY_PLAINS
+            case TAIGA -> 27;                         // TAIGA
+            case GRASSLAND -> 14;                     // PLAINS
+            case TEMPERATE_FOREST -> 16;              // FOREST
+            case TEMPERATE_RAINFOREST -> 17;          // BIRCH_FOREST
+            case DESERT -> 25;                        // DESERT
+            case SAVANNA -> 23;                       // SAVANNA
+            case SEASONAL_FOREST -> 22;               // SPARSE_JUNGLE（季雨林过渡带）
+            case TROPICAL_RAINFOREST -> 21;           // JUNGLE
+        };
     }
 
     private static com.geogenesis.worldgen.terrain.TerrainClass terrainOf(short id) {
@@ -243,6 +315,14 @@ public final class TerrainFieldData {
         shape[i] = c.shape;
         discharge[i] = c.riverNetDischarge;
         biomeId[i] = (short) (c.biomeType == null ? 0 : c.biomeType.ordinal());
+        // ★ 35 项 BiomeClass（与 GeoPalette.T_BIOME 同序），供沙盘本色。
+        //
+        //   ⚠ {@code BiomeClassifier.classify} 会触发 {@code Biomes} 静态初始化，
+        //   那需要 Forge Bootstrap ⇒ 在<b>探针进程</b>与<b>任何无 MC 环境的调用链</b>里会抛
+        //   ExceptionInInitializerError（已实测）。
+        //   ⇒ 用 {@link #biomeClassOfSafe} 降级：可用则走权威分类，
+        //   不可用则按 Whittaker×地形 近似到同一套 35 项（色值不变，只影响极端变体）。
+        biomeClassId[i] = (short) biomeClassOfSafe(c);
         terrainId[i] = (short) (c.terrainType == null ? 0 : c.terrainType.ordinal());
         extraId[i * 4] = (short) c.riverType;
         extraId[i * 4 + 1] = (short) c.rockTypeId;
@@ -277,6 +357,7 @@ public final class TerrainFieldData {
         shape[i] = src.shape[j];
         discharge[i] = src.discharge[j];
         biomeId[i] = src.biomeId[j];
+        biomeClassId[i] = src.biomeClassId[j];
         terrainId[i] = src.terrainId[j];
         System.arraycopy(src.extraId, j * 4, extraId, i * 4, 4);
         height[i] = src.height[j];
@@ -309,6 +390,7 @@ public final class TerrainFieldData {
         System.arraycopy(shape, 0, d.shape, 0, shape.length);
         System.arraycopy(discharge, 0, d.discharge, 0, discharge.length);
         System.arraycopy(biomeId, 0, d.biomeId, 0, biomeId.length);
+        System.arraycopy(biomeClassId, 0, d.biomeClassId, 0, biomeClassId.length);
         System.arraycopy(terrainId, 0, d.terrainId, 0, terrainId.length);
         System.arraycopy(extraId, 0, d.extraId, 0, extraId.length);
         System.arraycopy(height, 0, d.height, 0, height.length);

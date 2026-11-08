@@ -1258,7 +1258,8 @@ public class PreviewDisplay extends AbstractWidget {
             if (ctrl) {
                 sandbox.setWidthScale(sandbox.widthScale() * (delta > 0 ? 1.06f : 1f / 1.06f));
             } else {
-                sandbox.addZoom(delta > 0 ? 1.12f : 1f / 1.12f);
+                // ★ Q1-C 加减速：远快近慢（见 SandboxLod.nextZoom 的 javadoc）
+                sandbox.setZoom(SandboxLod.nextZoom(sandbox.zoom(), delta > 0));
             }
             return true;
         }

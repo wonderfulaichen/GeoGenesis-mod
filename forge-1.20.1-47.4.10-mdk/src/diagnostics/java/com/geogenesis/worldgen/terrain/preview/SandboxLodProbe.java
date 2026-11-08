@@ -133,7 +133,78 @@ public final class SandboxLodProbe {
 
         System.out.println();
         System.out.println(pass ? "PASS" : "FAIL");
+        exportTsv();
         System.exit(pass ? 0 : 1);
+    }
+
+    /**
+     * 导出真实地形采样，供离线出图对拍（{@code tools/render_sandbox_lod.py}）。
+     *
+     * <p>由 {@code -Dgeogenesis.lodTsvDir=<dir>} 指定输出目录。
+     * 列：{@code gx gz height e biomeClass terrainId snow temp humid precip cont shape disch waterY}</p>
+     *
+     * <p>{@code biomeClass} 是 <b>35 项 BiomeClass.ordinal()</b>
+     * —— 与生产 {@code GeoPalette.T_BIOME} 同序，离线图才能复刻真实配色。</p>
+     */
+    private static void exportTsv() {
+        String dir = System.getProperty("geogenesis.lodTsvDir");
+        if (dir == null || dir.isEmpty()) return;
+        java.io.File d = new java.io.File(dir);
+        if (!d.exists() && !d.mkdirs()) {
+            System.out.println("无法创建目录: " + dir);
+            return;
+        }
+        var params = com.geogenesis.worldgen.terrain.TerrainParams.defaults();
+        var gen = new com.geogenesis.worldgen.terrain.CellGenerator(
+                params, params.minY(), params.maxY(), true);
+        gen.seed(12345L);
+        var terrain = new com.geogenesis.worldgen.terrain.GeoGenesisTerrain(gen);
+
+        // 找一个"有水"的中心，让推近后仍能看到河湖
+        int cx = 200, cz = 1400;
+        for (int scale = 0; scale < 4; scale++) {
+            int zoomLv = Math.min(2, scale);
+            float zoom = SandboxLod.BASE_ZOOM * (float) Math.pow(1.35, zoomLv);
+            int window = SandboxLod.windowFor(zoom, GRID);
+            double step = SandboxLod.effectiveStep(zoom, GRID);
+            int ox = cx - window / 2, oz = cz - window / 2;
+            var data = com.geogenesis.client.preview.TerrainFieldData.sample(
+                    terrain, ox, oz, window, window, GRID, GRID, scale);
+            // 粗层水位（窗口够小才查，与生产一致）
+            if (SandboxLod.usesCoarseWater(zoom, GRID)) {
+                var lookup = new com.geogenesis.client.preview.SandboxWaterLookup(terrain.generator());
+                for (int gx = 0; gx < GRID; gx++) {
+                    int wx = ox + (int) Math.round(gx * step);
+                    for (int gz = 0; gz < GRID; gz++) {
+                        int wz = oz + (int) Math.round(gz * step);
+                        data.putWaterPublic(gx, gz, lookup.waterSurfaceAt(wx, wz));
+                    }
+                }
+            }
+            String path = new java.io.File(d, "lod_" + scale + ".tsv").getPath();
+            int waterCells = 0;
+            try (var w = new java.io.PrintWriter(path, "UTF-8")) {
+                w.println("# gx gz height e biomeClass terrainId snow temp humid precip cont shape disch waterY");
+                for (int gx = 0; gx < data.gridW; gx++) {
+                    for (int gz = 0; gz < data.gridH; gz++) {
+                        int i = gx * data.gridH + gz;
+                        if (data.e[i] < 0.0) waterCells++;
+                        double wy = data.waterY[i];
+                        w.printf("%d %d %.6f %.6f %d %d %d %.6f %.6f %.6f %.6f %.6f %.6f %s%n",
+                                gx, gz, data.height[i], data.e[i],
+                                data.biomeClassId[i], data.terrainId[i], data.snow[i] ? 1 : 0,
+                                data.temperature[i], data.humidity[i], data.precipitation[i],
+                                data.continent[i], data.shape[i], data.discharge[i],
+                                Double.isNaN(wy) ? "nan" : String.format(Locale.ROOT, "%.6f", wy));
+                    }
+                }
+            } catch (Exception ex) {
+                System.out.println("导出 " + scale + " 失败: " + ex);
+                continue;
+            }
+            System.out.printf("导出 LOD%d：窗口 %d 格，每细格 %.2f 格，水格 %d -> %s%n",
+                    scale, window, step, waterCells, path);
+        }
     }
 
     private SandboxLodProbe() { }

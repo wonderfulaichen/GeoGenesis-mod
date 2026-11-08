@@ -1,198 +1,139 @@
 package com.geogenesis.client.preview;
 
 /**
- * <b>沙盘调色板</b>（★ 2026-11-08，P0-1）—— yardsite {@code BiomePalette} 的本项目移植。
+ * <b>沙盘上色</b>—— 复用既有 {@link GeoPalette}，只补沙盘独有的两件事。
  *
- * <h2>为什么不用 {@code GeoPalette}</h2>
- * <p>{@code GeoPalette} 是<b>平面地图</b>的图层色带（高程连续带 / 类型离散带），
- * 为「在 2D 图上区分海拔与类型」设计。直接把它画到 3D 沙盘上，
- * 整幅图会是一片均匀的绿棕 —— 这正是「效果完全不像参考项目」的最大成因：
- * 参考项目画的是<b>群系本色</b>（雪白、沙漠黄、雨林深绿、草原亮绿），
- * 一眼读出气候格局。</p>
- *
- * <p>⇒ 沙盘用自己的色表（本类），平面模式不动（{@code GeoPalette} 保留）。
- * 颜色语义对齐 yardsite {@code BiomePalette.baseColor()} 第 109-154 行。</p>
- *
- * <h2>颜色语义（对照 yardsite）</h2>
+ * <h2>★ 为什么不再是"自己一套调色板"（2026-11-08 修正）</h2>
+ * <p>上一版新建了 10 项的 {@code SandboxPalette} 色表 —— 这是<b>重复造轮子</b>：
+ * 我们本来就有 <b>35 项群系本色</b>（{@link GeoPalette#colorForBiome}
+ * 背后的 {@code T_BIOME}，与 {@code BiomeClassifier.BiomeClass} 逐项对齐、
+ * 直接绑定真实 MC 群系）。实测两者同语义色差极小：</p>
  * <table border="1">
- *   <caption>色表</caption>
- *   <tr><th>类型</th><th>yardsite（原版群系）</th><th>本项目（Whittaker/TerrainClass）</th></tr>
- *   <tr><td>雪</td><td>0xE7F0F5（snowy_plains 等）</td><td>ICE / SNOW / PEAK(雪线以上)</td></tr>
- *   <tr><td>苔原/针叶</td><td>0x3D6B32（taiga）/ HSV 冷绿</td><td>TUNDRA / TAIGA</td></tr>
- *   <tr><td>沙漠</td><td>0xD9C08A（desert/badlands）</td><td>DESERT</td></tr>
- *   <tr><td>草原</td><td>0x6FAE4A（plains）</td><td>GRASSLAND</td></tr>
- *   <tr><td>稀树草原</td><td>0xB39B4C（savanna）</td><td>SAVANNA</td></tr>
- *   <tr><td>落叶林</td><td>0x3D6B32（forest）</td><td>TEMPERATE_FOREST / SEASONAL_FOREST</td></tr>
- *   <tr><td>雨林</td><td>0x2E7A35（jungle）</td><td>TROPICAL_RAINFOREST / TEMPERATE_RAINFOREST</td></tr>
- *   <tr><td>石山</td><td>0x8A8A85（windswept/stony）</td><td>MOUNTAINS / HILLS(裸岩)</td></tr>
- *   <tr><td>海滩</td><td>0xE2D3A0（beach）</td><td>BEACH</td></tr>
- *   <tr><td>水</td><td>浅 0x6FA8D6 → 深 0x1C3F6B，按 (seaLevel−surface)/30</td><td>同式</td></tr>
+ *   <caption>T_BIOME vs 参考项目 BiomePalette</caption>
+ *   <tr><th>群系</th><th>我们 T_BIOME</th><th>参考项目</th><th>最大分量差</th></tr>
+ *   <tr><td>PLAINS</td><td>#7CB342</td><td>#6FAE4A</td><td>13</td></tr>
+ *   <tr><td>FOREST</td><td>#3F7A2E</td><td>#3D6B32</td><td>15</td></tr>
+ *   <tr><td>DESERT</td><td>#D9C072</td><td>#D9C08A</td><td>24</td></tr>
+ *   <tr><td>JUNGLE</td><td>#1E7A1E</td><td>#2E7A35</td><td>23</td></tr>
  * </table>
- *
- * <p><b>jitter</b>（yardsite 第 157-161 行）：同色类型靠 ordinal 哈希做 ±6% 亮度差，
- * 边界才读得出来。</p>
- *
- * <p><b>水面例外</b>（yardsite {@code colorFor()} 第 91-95 行）：水面按深度渐变，
- * 不走群系色 —— 浅滩亮蓝、深海墨蓝，可读出「这块水能不能过」。</p>
+ * <p>⇒ 保留这 35 项（它是"我们的优势"），本类只负责沙盘需要的补充：</p>
+ * <ol>
+ *   <li><b>水面</b>：按深度渐变（浅滩亮蓝 → 深海墨蓝）——
+ *       参考项目 {@code BiomePalette.colorFor()} 第 91-95 行同策；</li>
+ *   <li><b>jitter</b>：同色群系边界可读化（参考项目第 157-161 行同策）。
+ *       我们 35 项里也有同色对（如 SNOWY_PLAINS / FROZEN_PEAKS 都接近白），
+ *       相邻时必须靠微小明暗差分开。</li>
+ * </ol>
+ * <p>其余（坡度光照）由 {@link SandboxShade} 负责，不在这里。</p>
  */
 public final class SandboxPalette {
 
-    /** 水面浅滩色（yardsite {@code WATER_SHALLOW}）。 */
+    /** 水面浅滩色（参考项目 {@code WATER_SHALLOW}）。 */
     public static final int WATER_SHALLOW = 0x6FA8D6;
-    /** 水面深水色（yardsite {@code WATER_DEEP}）。 */
+    /** 水面深水色（参考项目 {@code WATER_DEEP}）。 */
     public static final int WATER_DEEP = 0x1C3F6B;
-    /** 无数据兜底色。 */
-    public static final int UNKNOWN_RGB = 0x505050;
-    /** 深度渐变分母（yardsite {@code colorFor} 第 92 行：30 格到全深）。 */
+    /** 深度渐变分母（参考项目 {@code colorFor} 第 92 行：30 格到全深）。 */
     public static final float WATER_DEPTH_SCALE = 30.0f;
 
     private SandboxPalette() { }
 
     /**
-     * <b>按图层给一配上色</b>（★ 2026-11-08 修正：恢复图层能力）。
+     * <b>按图层给一配上色</b>（不含坡度光照，由调用方最后乘）。
      *
-     * <h2>为什么必须分流，而不是统一用本色</h2>
-     * <p>上一版把沙盘固定成本色（群系色），等价于<b>砍掉原有图层功能</b> ——
-     * 交接文档 §4.1 明确把「图层切换（高程/群系/温度/湿度/降水/类型）」列为
-     * <b>必须保留</b>的能力（参考项目只有一个群系图层，我们有多维诊断需求）。</p>
-     *
-     * <p>两类图层的正确语义不同，所以分流：</p>
+     * <h2>分流规则</h2>
      * <ul>
-     *   <li><b>连续图层</b>（高程/温度/湿度/降水/大陆性/起伏/纬度/河网）：
-     *       色带<b>本身就是信息</b>（冷暖、干湿是连续量）⇒ 走 {@code GeoPalette}
-     *       的色带，与平面窗口<b>完全一致</b>，图例也对得上。</li>
-     *   <li><b>离散图层</b>（群系/地形类型/气候带）：类别之间没有大小关系 ⇒
-     *       走群系<b>本色</b>（{@link #colorFor}），这才是参考项目那种观感。</li>
+     *   <li><b>水面</b>（任何图层）：按深度渐变（参考项目 {@code colorFor} 91-95 行）——</li>
+     *   <li><b>BIOME / CLIMATE_ZONE</b>：用<b>既有的 35 项群系本色</b>
+     *       （{@link GeoPalette#colorForBiome}）+ jitter（边界可读）；</li>
+     *   <li><b>其余离散图层</b>（地形类型/河流类型/岩性/地层）：走 {@link GeoPalette}
+     *       自己的离散色表 —— 它们的类别是 ID 不是群系；</li>
+     *   <li><b>连续图层</b>（高程/温度/湿度/降水/…）：走 {@link GeoPalette} 色带，
+     *       与平面窗口和图例完全一致。</li>
      * </ul>
      *
-     * <p>无论哪一类，最后都乘坡度光照（沙盘的立体感来源），
-     * 水面都按深度渐变（可读出深浅）。</p>
-     *
-     * @param layer     当前图层
-     * @param cell      该格还原出的 Cell（供 GeoPalette 用；只读，禁止写回）
-     * @param light     坡度光照（0.55~1.30）
-     * @param surface   地表 Y
-     * @param seaLevel  海平面
-     * @param snow      雪线以上
-     * @param minY/maxY 世界高度范围（GeoPalette 需要）
+     * @param majority 该柱的多数 {@code BiomeClass.ordinal()}
      */
     public static int colorForLayer(GeoPalette.PreviewLayer layer,
                                     com.geogenesis.worldgen.terrain.Cell cell,
-                                    double light, double surface, double seaLevel, boolean snow,
-                                    int minY, int maxY) {
-        if (cell == null) return scale(UNKNOWN_RGB, light);
+                                    int majority, double light, double surface, double seaLevel,
+                                    boolean snow, int minY, int maxY) {
+        if (cell == null) return 0x505050;
 
         // 水面：任何图层下都按深度渐变（可读出"能不能过"）
         if (surface <= seaLevel) {
-            float depth = (float) ((seaLevel - surface) / WATER_DEPTH_SCALE);
-            if (depth < 0f) depth = 0f;
-            else if (depth > 1f) depth = 1f;
-            return scale(lerp(WATER_SHALLOW, WATER_DEEP, depth), light);
+            return waterColor(surface, seaLevel);
         }
 
         if (layer.kind == GeoPalette.Kind.DISCRETE) {
-            // 只有「群系」「气候带」用本色/自身色表；
-            // 其余离散图层（地形类型/河流类型/岩性/地层）走 GeoPalette 自己的离散色表
-            // —— 它们的类别是 ID，不是群系，用群系本色会把图层变成"伪装成 BIOME"。
-            if (layer == GeoPalette.PreviewLayer.BIOME) {
-                int rgb = landColor(cell.biomeType, cell.terrainType, snow, surface, seaLevel);
-                return scale(rgb, light);
+            if (layer == GeoPalette.PreviewLayer.BIOME
+                    || layer == GeoPalette.PreviewLayer.CLIMATE_ZONE) {
+                // ★ 复用既有 35 项群系本色（不是另造色表）
+                //   雪线以上仍用雪白覆盖（山项观感）
+                if (snow) return 0xE7F0F5;
+                return jitter(landColor(majority), majority);
             }
-            int rgb = GeoPalette.color(layer, cell, 0, 0, minY, maxY) & 0xFFFFFF;
-            return scale(rgb, light);
+            return GeoPalette.color(layer, cell, 0, 0, minY, maxY) & 0xFFFFFF;
         }
 
-        // 连续：走 GeoPalette 色带（与平面窗口完全一致，图例对得上）
-        int rgb = GeoPalette.color(layer, cell, 0, 0, minY, maxY, false) & 0xFFFFFF;
-        return scale(rgb, light);
+        // 连续图层：GeoPalette 色带（与平面窗口完全一致，图例对得上）
+        return GeoPalette.color(layer, cell, 0, 0, minY, maxY, false) & 0xFFFFFF;
     }
 
     /**
-     * 水面颜色（浅滩 → 深海按深度插值）。
+     * 陆地本色：<b>直接用既有的 35 项群系色</b>。
+     *
+     * @param biomeId {@code BiomeClass.ordinal()}
+     */
+    public static int landColor(int biomeId) {
+        return GeoPalette.colorForBiome(biomeId);
+    }
+
+    /**
+     * 水面颜色（浅滩 → 深海按深度插值，参考项目 {@code colorFor()} 第 92-95 行）。
      *
      * @param surfaceY 水面 Y
      * @param seaLevel 海平面
-     * @param light    坡度光照（水面通常按平光处理）
      */
-    public static int waterColor(double surfaceY, double seaLevel, double light) {
+    public static int waterColor(double surfaceY, double seaLevel) {
         float depth = (float) ((seaLevel - surfaceY) / WATER_DEPTH_SCALE);
         if (depth < 0f) depth = 0f;
         else if (depth > 1f) depth = 1f;
-        return scale(lerp(WATER_SHALLOW, WATER_DEEP, depth), light);
+        return lerp(WATER_SHALLOW, WATER_DEEP, depth);
     }
 
     /**
-     * 一格的最终颜色（<b>画的时候现算</b>，改色不用重采样 —— yardsite 同策）。
+     * 同色群系边界可读化：按 id 哈希 ±6% 亮度差
+     * （<b>照抄</b>参考项目 {@code BiomePalette.jitter()} 第 157-161 行）。
      *
-     * @param biomeType 气候群系（Whittaker），陆地上色主输入
-     * @param terrain   地形类型（TerrainClass），用于 BEACH 等覆盖
-     * @param surface   地表 Y（真实高度）
-     * @param seaLevel  海平面
-     * @param snow      是否雪线以上（山项雪盖）
-     * @param light     坡度光照（{@code SandboxShade.lightFor} 输出，0.55~1.30）
+     * <p>为什么需要：我们 35 项里 SNOWY_PLAINS(#DDE6EC) / FROZEN_PEAKS(#FFFFFF) /
+     * SNOWY_SLOPES(#C9D6DE) 三者相邻时几乎分不出边界；
+     * 参考项目的 7 个 forest 系同为 #3D6B32 更是必须靠它区分。</p>
+     *
+     * <p>★ 上一版有这个函数但<b>从未被调用</b>（D5 缺陷），现已接入
+     * {@code SandboxRenderer.collect()}。</p>
      */
-    public static int colorFor(com.geogenesis.worldgen.climate.WhittakerType biomeType,
-                               com.geogenesis.worldgen.terrain.TerrainClass terrain,
-                               double surface, double seaLevel, boolean snow, double light) {        int rgb;
-        boolean wet = surface <= seaLevel;
-        if (wet) {
-            // yardsite colorFor() 第 92-95 行：浅 → 深按 (seaLevel - surface)/30 插值
-            float depth = (float) ((seaLevel - surface) / WATER_DEPTH_SCALE);
-            if (depth < 0f) depth = 0f;
-            else if (depth > 1f) depth = 1f;
-            rgb = lerp(WATER_SHALLOW, WATER_DEEP, depth);
-        } else {
-            rgb = landColor(biomeType, terrain, snow, surface, seaLevel);
-        }
-        return scale(rgb, light);
-    }
-
-    /** 陆地本色（对照 yardsite {@code baseColor()} 第 109-154 行的语义）。 */
-    private static int landColor(com.geogenesis.worldgen.climate.WhittakerType biome,
-                                 com.geogenesis.worldgen.terrain.TerrainClass terrain,
-                                 boolean snow, double surface, double seaLevel) {
-        // 雪盖优先（山项雪线 / 冰原 / 雪原 —— yardsite snowy 系 0xE7F0F5）
-        if (snow || biome == com.geogenesis.worldgen.climate.WhittakerType.ICE) return 0xE7F0F5;
-        // 地形覆盖：海滩（yardsite beach 0xE2D3A0）
-        if (terrain == com.geogenesis.worldgen.terrain.TerrainClass.BEACH) return 0xE2D3A0;
-        return switch (biome) {
-            case ICE, TUNDRA -> 0xB8C8C0;                       // 苔原：灰绿（介于雪与针叶间）
-            case TAIGA -> 0x3D6B32;                             // 针叶林（yardsite taiga）
-            case GRASSLAND -> 0x6FAE4A;                         // 草原（yardsite plains）
-            case TEMPERATE_FOREST, SEASONAL_FOREST -> 0x3D6B32; // 落叶/季风林（yardsite forest）
-            case TEMPERATE_RAINFOREST -> 0x2E7A35;              // 温带雨林偏深（yardsite jungle 系）
-            case DESERT -> 0xD9C08A;                            // 沙漠（yardsite desert/badlands）
-            case SAVANNA -> 0xB39B4C;                           // 稀树草原（yardsite savanna）
-            case TROPICAL_RAINFOREST -> 0x2E7A35;               // 雨林（yardsite jungle）
-        };
-    }
-
-    /**
-     * 同色类型边界可读化：按 ordinal 哈希 ±6% 亮度差（yardsite {@code jitter()} 第 157-161 行）。
-     * 直接在 {@link #colorFor} 里做会导致水面也抖（水面必须平），
-     * 所以只对陆地调用它。
-     */
-    public static int jitter(int rgb, int ordinal) {
-        int hash = ordinal * 0x9E3779B1;
+    public static int jitter(int rgb, int biomeId) {
+        // 参考项目用 ResourceLocation.hashCode；这里用群系 id（同一群系恒定、不同群系分散）
+        int hash = biomeId * 0x9E3779B1;
         hash ^= hash >>> 16;
         float factor = 0.94f + ((hash & 0xFF) / 255.0f) * 0.12f;
         return scale(rgb, factor);
     }
 
-    /** 线性插值两色（yardsite {@code lerp()}）。 */
-    public static int lerp(int from, int to, float t) {
-        int r = (int) java.lang.Math.fma(t, (to >> 16) & 0xFF, (1 - t) * ((from >> 16) & 0xFF));
-        int g = (int) java.lang.Math.fma(t, (to >> 8) & 0xFF, (1 - t) * ((from >> 8) & 0xFF));
-        int b = (int) java.lang.Math.fma(t, to & 0xFF, (1 - t) * (from & 0xFF));
-        return (r << 16) | (g << 8) | b;
-    }
-
-    /** 亮度缩放（yardsite {@code scale()}）。 */
+    /** 亮度缩放。 */
     public static int scale(int rgb, double factor) {
         int r = clamp255((int) (((rgb >> 16) & 0xFF) * factor));
         int g = clamp255((int) (((rgb >> 8) & 0xFF) * factor));
         int b = clamp255((int) ((rgb & 0xFF) * factor));
         return (r << 16) | (g << 8) | b;
+    }
+
+    /** 线性插值两色。 */
+    public static int lerp(int from, int to, float t) {
+        int r = (int) ((1 - t) * ((from >> 16) & 0xFF) + t * ((to >> 16) & 0xFF));
+        int g = (int) ((1 - t) * ((from >> 8) & 0xFF) + t * ((to >> 8) & 0xFF));
+        int b = (int) ((1 - t) * (from & 0xFF) + t * (to & 0xFF));
+        return (clamp255(r) << 16) | (clamp255(g) << 8) | clamp255(b);
     }
 
     private static int clamp255(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }

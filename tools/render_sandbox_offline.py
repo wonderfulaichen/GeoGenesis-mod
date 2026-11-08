@@ -37,18 +37,35 @@ PER_COLUMN = 2
 # WhittakerType.ordinal() 顺序：ICE TUNDRA TAIGA GRASSLAND TEMPERATE_FOREST
 #                               TEMPERATE_RAINFOREST DESERT SAVANNA
 #                               SEASONAL_FOREST TROPICAL_RAINFOREST
-WHITTAKER_RGB = [
-    0xB8C8C0,  # ICE 备用（snow 优先）
-    0xB8C8C0,  # TUNDRA
-    0x3D6B32,  # TAIGA
-    0x6FAE4A,  # GRASSLAND
-    0x3D6B32,  # TEMPERATE_FOREST
-    0x2E7A35,  # TEMPERATE_RAINFOREST
-    0xD9C08A,  # DESERT
-    0xB39B4C,  # SAVANNA
-    0x3D6B32,  # SEASONAL_FOREST
-    0x2E7A35,  # TROPICAL_RAINFOREST
+# ★ 我们的 35 项群系本色（GeoPalette.T_BIOME，第 452-488 行）
+#   与 BiomeClassifier.BiomeClass 逐项对齐；沙盘直接复用它，不再另造色表。
+T_BIOME = [
+    0x2E6FD6, 0x1B3F8F, 0x43D5EE, 0x2E9BD6, 0x1B6E9E,   # 0-4   OCEAN 系
+    0x2B5BA8, 0x1B3A78, 0x7BA7D9, 0x4A6FA5,             # 5-8
+    0x34B4D6, 0x9AC7E8,                                 # 9-10  RIVER
+    0x4E6B2E, 0xE6D29A, 0xEAEAEA,                       # 11-13 SWAMP/BEACH/SNOWY_BEACH
+    0x7CB342, 0x83BB6C,                                 # 14-15 PLAINS/MEADOW
+    0x3F7A2E, 0x6E9B4E,                                 # 16-17 FOREST/BIRCH
+    0x8A7A66, 0x5E7A52, 0xB59A5B,                       # 18-20 WINDSWEPT
+    0x1E7A1E, 0x4E9A3E,                                 # 21-22 JUNGLE/SPARSE
+    0xBFA83A, 0xC2A04A,                                 # 23-24 SAVANNA
+    0xD9C072, 0xA9552F,                                 # 25-26 DESERT/BADLANDS
+    0x2F6B4F, 0x4E8C7A, 0xDDE6EC,                       # 27-29 TAIGA/SNOWY_TAIGA/SNOWY_PLAINS
+    0x5C8A6E, 0xC9D6DE,                                 # 30-31 GROVE/SNOWY_SLOPES
+    0x8A8A8A, 0xB0B0B0, 0xFFFFFF,                       # 32-34 PEAKS
 ]
+
+
+def biome_color(bid):
+    """GeoPalette.colorForBiome 的等价实现。"""
+    return T_BIOME[bid] if 0 <= bid < len(T_BIOME) else 0x888888
+
+
+def jitter(rgb, bid):
+    """参考项目 BiomePalette.jitter 同式：同色群系边界可读化。"""
+    h = (bid * 0x9E3779B1) & 0xFFFFFFFF
+    h ^= h >> 16
+    return scale3(rgb, 0.94 + ((h & 0xFF) / 255.0) * 0.12)
 SNOW_RGB = 0xE7F0F5
 BEACH_RGB = 0xE2D3A0
 WATER_SHALLOW = 0x6FA8D6
@@ -184,15 +201,10 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
             return tuple(c / 255.0 for c in scale3(rgb, light[i, j]))
 
         if layer == 'BIOME':
-            if snow[i, j] or biome[i, j] == 0:
+            if snow[i, j]:
                 rgb = int2rgb(SNOW_RGB)
-            elif terr[i, j] == TERRAIN_BEACH:
-                rgb = int2rgb(BEACH_RGB)
             else:
-                rgb = int2rgb(WHITTAKER_RGB[biome[i, j] % len(WHITTAKER_RGB)])
-                hash_ = (biome[i, j] * 0x9E3779B1) & 0xFFFFFFFF
-                hash_ ^= hash_ >> 16
-                rgb = scale3(rgb, 0.94 + ((hash_ & 0xFF) / 255.0) * 0.12)
+                rgb = jitter(int2rgb(biome_color(int(biome[i, j]))), int(biome[i, j]))
         elif layer == 'ELEVATION':
             v = (e[i, j] + 1.0) * 0.5
             rgb = ramp(v, ELEV_RAMP)
@@ -212,7 +224,7 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
             rgb = ramp(v, [0x1B3A78, 0x2E6FD6, 0x43D5EE])
         else:
             # 其余离散图层离线不精确复刻，用灰阶占位
-            rgb = int2rgb(WHITTAKER_RGB[biome[i, j] % len(WHITTAKER_RGB)])
+            rgb = int2rgb(biome_color(int(biome[i, j])))
         return tuple(c / 255.0 for c in scale3(rgb, light[i, j]))
     # 柱
     col_count = (gx + PER_COLUMN - 1) // PER_COLUMN

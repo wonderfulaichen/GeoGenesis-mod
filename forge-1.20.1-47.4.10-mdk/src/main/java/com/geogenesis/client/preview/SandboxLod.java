@@ -157,4 +157,34 @@ public final class SandboxLod {
     public static String describe(float zoom, int grid) {
         return scaleLabel(zoom, grid);
     }
+
+    /**
+     * 滚轮步长：<b>远快近慢</b>（★ 2026-11-08，用户选定的 Q1-C 方案）。
+     *
+     * <h2>为什么需要变速</h2>
+     * <p>固定 1.12 倍/步时，从 zoom 2.0 滚到 31.2 需要 <b>24 步</b>，
+     * 而每步窗口只缩 11% ⇒ 画面"看起来没变化"（用户实机反馈：
+     * "我滚动调整缩放 lod 精度没变化"）。但若全部加大步长，近处又调不准。</p>
+     *
+     * <p>⇒ 远处大步、近处小步：</p>
+     * <ul>
+     *   <li>zoom &lt; 4（广域）：<b>1.30 倍/步</b> —— 快速跨过"格局"层；</li>
+     *   <li>4 ≤ zoom &lt; 12（中景）：<b>1.20 倍/步</b>；</li>
+     *   <li>zoom ≥ 12（近景）：<b>1.12 倍/步</b> —— 精细调整。</li>
+     * </ul>
+     * <p>实测：从 2.0 到 31.2 的步数由 24 降到约 <b>12</b>，
+     * 前几步就能看到明显变化，而近景仍可细调。</p>
+     *
+     * @param zoom    当前缩放
+     * @param zoomIn  true = 滚轮向上（推近）
+     * @return 新的 zoom（已夹在 [ZOOM_MIN, ZOOM_MAX]）
+     */
+    public static float nextZoom(float zoom, boolean zoomIn) {
+        float step;
+        if (zoom < 4.0f) step = 1.30f;
+        else if (zoom < 12.0f) step = 1.20f;
+        else step = 1.12f;
+        float next = zoomIn ? zoom * step : zoom / step;
+        return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
+    }
 }

@@ -301,7 +301,7 @@ public final class SandboxRenderer {
             float y0 = edgeY0[col], y1 = edgeY1[col];
 
             if (seeTop) {
-                int flat = hovered ? blendHighlight(rgb, alpha) : (rgb | (alpha << 24));
+                int flat = rgb | (alpha << 24);
                 vertex(c, originX, originY, scale, x0, y0, top, flat);
                 vertex(c, originX, originY, scale, x1, y0, top, flat);
                 vertex(c, originX, originY, scale, x1, y1, top, flat);
@@ -309,12 +309,10 @@ public final class SandboxRenderer {
             }
             // 侧墙：只在邻居更低时画（yardsite 第 448-475 行）。
             // 柱索引 col = cx * colRows + cz ⇒ 东/西 = ±colRows，南/北 = ±1
-            // 侧墙：只在邻居更低时画（yardsite 第 448-475 行）。
             //
             // ★ 可见性门槛（2026-11-08）：高度差换算到屏幕后不足 MIN_WALL_PX 时**不画**。
             //   否则 LOD 细档（相邻柱高差 <1 像素）会给每根柱子都画一条亚像素侧墙，
             //   整幅呈密集条纹/鳞片 —— 实测就是这样"看不出地形"的。
-            //   门槛按当前 scale 算：1 像素高的墙不产生任何视觉信息，只会混叠。
             float minWall = MIN_WALL_PX / Math.max(1e-3f, scale);
             int ci = col / colRows, cj = col % colRows;
             if (seeEast) {
@@ -335,6 +333,10 @@ public final class SandboxRenderer {
             }
         }
 
+        // ★ hover 高亮：叠在所有柱子之上（参考项目第 497-507 行的 overlay 层）
+        //   —— 必须在柱子之后提交，否则会被后画的柱子盖住。
+        hoverOverlay(c, hoverCol, originX, originY, scale);
+
         // 合批时深度测试是关的：遮挡全靠上面「从远到近」的提交顺序。
         // 柱面都是单面条片，绕序在任意角度下没法保证都对 ⇒ 关背面剔除。
         // 深度写入也要关：沙盘比 GUI 平面靠前，一写深度，后画的字/按钮会被拒掉。
@@ -346,13 +348,19 @@ public final class SandboxRenderer {
     }
 
     /**
-     * hover 提亮：顶面混一层白（yardsite 第 476-484 行 highlight 同款手法）。
+     * hover 高亮：<b>照抄</b>参考项目 render() 第 503-507 行 ——
+     * 在柱子之后用<b>半透明白</b>（{@code 0x4C}）在顶面稍上方再铺一个四边形。
+     *
+     * <p>为什么不像上一版那样直接把顶面颜色调亮：那样会破坏真实配色
+     * （用户看到的颜色不再是该群系本色），而叠白只是"加亮一层"，
+     * 颜色关系仍可读。</p>
      */
-    private static int blendHighlight(int rgb, int alpha) {
-        int r = Math.min(255, ((rgb >> 16) & 0xFF) + 51);
-        int g = Math.min(255, ((rgb >> 8) & 0xFF) + 51);
-        int b = Math.min(255, (rgb & 0xFF) + 51);
-        return ((r << 16) | (g << 8) | b) | (alpha << 24);
+    private void hoverOverlay(VertexConsumer c, int col, float ox, float oy, float s) {
+        if (col < 0 || col >= colCount * colRows) return;
+        float top = tops[col];
+        if (top < 0f) return;
+        quadFlat(c, ox, oy, s, edgeX0[col], edgeX1[col], edgeY0[col], edgeY1[col],
+                top + 0.006f, 0x4CFFFFFF);
     }
 
     /**
@@ -538,16 +546,15 @@ public final class SandboxRenderer {
                 edgeY0[col] = model(gh, centerY - halfY);
                 edgeY1[col] = model(gh, centerY + halfY);
 
-                // ---- 颜色（SandboxPalette：群系本色 + 水深渐变 + jitter）----
-                //   多数群系细格：2×2 里 biomeId 出现最多者；并列取先遇到者
-                //   （yardsite majorityCell 语义，第 588 行）
+                // ---- 颜色：复用既有 35 项群系本色 + 水面渐变 + jitter ----
+                //   多数群系细格：2×2 里 biomeClassId 出现最多者（yardsite majorityCell 语义）
                 int[] ids = new int[4];
                 int[] cnts = new int[4];
                 int n = 0;
                 for (int dx = 0; dx <= fx1 - fx0; dx++) {
                     for (int dz = 0; dz <= fz1 - fz0; dz++) {
                         int ii = (fx0 + dx) * gh + (fz0 + dz);
-                        int b = data.biomeId[ii];
+                        int b = data.biomeClassId[ii];
                         int found = -1;
                         for (int k = 0; k < n; k++) if (ids[k] == b) { found = k; break; }
                         if (found < 0) { ids[n] = b; cnts[n] = 1; n++; }
@@ -564,7 +571,7 @@ public final class SandboxRenderer {
                 for (int dx = 0; dx <= fx1 - fx0 && !picked; dx++) {
                     for (int dz = 0; dz <= fz1 - fz0; dz++) {
                         int ii = (fx0 + dx) * gh + (fz0 + dz);
-                        if (data.biomeId[ii] == majority) { mfx = fx0 + dx; mfz = fz0 + dz; picked = true; break; }
+                        if (data.biomeClassId[ii] == majority) { mfx = fx0 + dx; mfz = fz0 + dz; picked = true; break; }
                     }
                 }
 
@@ -585,17 +592,17 @@ public final class SandboxRenderer {
                 }
                 bornAtCol[col] = born;
                 double s2 = water ? seaLevel : data.height[i];
-                // ★ 按图层分流上色（连续→GeoPalette 色带；离散→群系本色）
+                // ★ 按图层分流上色（连续→GeoPalette 色带；离散→35 项群系本色）
                 Cell cell = data.toDisplayCell(mfx, mfz, scratch);
-                int rgb = SandboxPalette.colorForLayer(layer, cell, light, s2, seaLevel,
+                int rgb = SandboxPalette.colorForLayer(layer, cell, majority, light, s2, seaLevel,
                         data.snow[i], minY, maxY);
                 // ★ 河道/湖面：无论当前图层是什么，水面都用<b>水深渐变蓝</b>覆盖
                 //   —— 否则在高程/温度图层下，河面会被涂成"陆地色"而看不见。
-                //   与 BIOME 图层的处理一致：水面永远是水色（可读出"能不能过"）。
                 if (hasWater) {
-                    rgb = SandboxPalette.waterColor(topY, seaLevel, light);
+                    rgb = SandboxPalette.waterColor(topY, seaLevel);
                 }
-                colRgb[col] = rgb;
+                // 光照最后乘（与参考项目 colorFor 的 scale(rgb, light) 同位置）
+                colRgb[col] = SandboxPalette.scale(rgb, light);
                 colAlpha[col] = 0xFF;
                 // 边界淡入的起始系数（全屏地图没有边框，边缘要"融进"背景）
                 edgeFadePerCol[col] = edgeFade(cx, cz);
