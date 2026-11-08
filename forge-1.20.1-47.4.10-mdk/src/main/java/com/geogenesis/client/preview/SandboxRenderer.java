@@ -275,28 +275,23 @@ public final class SandboxRenderer {
         if (data == null || data.gridW <= 0) return;
         buildRotation();
 
-        // ★★ 2026-11-08【根本修正】：scale <b>不再乘 zoom</b>，改为"窗口正好铺满视口"。
+        // ★★ 2026-11-08【最终定案：相机推近 + 柱数增多 同时发生】
         //
-        //   <h2>上一版为什么错（用户实机："滚轮感觉只是柱子变大了"）</h2>
-        //   <pre>
-        //     scale  = areaSize * 0.46 * zoom      ← 随 zoom 线性放大
-        //     window = GRID * step / zoom          ← 随 zoom 线性缩小
-        //   </pre>
-        //   两者<b>同比例抵消</b> ⇒ 构图几乎不变，柱子屏幕尺寸反而变大：
-        //   实测 zoom 2.0→31.2 时，柱子从 12.9px 涨到 201.8px，
-        //   而画面内容还是同一片地方 ⇒ 看起来"只是柱子变大"。
+        //   用户的原始描述：「随着我们<b>缩小画面</b>我们看到的柱子数就变多了」。
+        //   「缩小画面」= 相机推近（scale 变大）；「柱子数变多」= LOD 精度提升。
+        //   两者必须<b>同时</b>发生，缺一个就"看着没变化"。
         //
-        //   <h2>正确做法（地图软件 / RTS 相机）</h2>
-        //   <p>scale 只由「窗口覆盖范围」决定，与 zoom 无关：</p>
-        //   <pre>
-        //     scale = areaSize / 窗口宽度（模型单位）= areaSize * 0.46 * BASE_ZOOM
-        //   </pre>
-        //   <p>⇒ 缩放只改<b>窗口</b>（世界范围），柱子的<b>屏幕尺寸恒定</b>，
-        //   画面内容"推近/拉远" —— 这才是用户要的"像镜头推进"。</p>
+        //   我前几版各错一半：
+        //     - scale 随 zoom 变、柱数不变 ⇒ 只看到柱子变大
+        //     - scale 恒定、柱数变     ⇒ 只看到格子变密，没有推进感
         //
-        //   <p>柱数恒定 128、柱宽恒定 ⇒ 每柱代表的方块变少 ⇒ <b>放大后画面更精细</b>
-        //   （zoom 2.0 时每柱 31 格，zoom 31.2 时每柱 2 格）。</p>
-        float scale = areaSize * 0.46f * SandboxLod.BASE_ZOOM;
+        //   现在：scale = areaSize × 0.46 × zoomRatio
+        //   配合 SandboxLod 的窗口减半 + 柱数翻倍 ⇒ 三者同向叠加。
+        //
+        //   ⚠ 0.46 的系数（不是 0.92）：zoom=1 时模型跨度 2 × 0.46 = 0.92 areaSize，
+        //   盘面约占视口 92%（类似参考项目）；再乘 zoomRatio 后推近档会溢出，
+        //   这是<b>预期</b>的——推近就该看到局部，不是整盘。
+        float scale = areaSize * 0.46f * (float) SandboxLod.zoomRatio(zoom);
 
         // ★ 屏幕平移（yardsite render() 第 407-408 行：{@code areaX + areaSize/2 + panX}）
         float originX = areaX + areaSize / 2.0f + panX;

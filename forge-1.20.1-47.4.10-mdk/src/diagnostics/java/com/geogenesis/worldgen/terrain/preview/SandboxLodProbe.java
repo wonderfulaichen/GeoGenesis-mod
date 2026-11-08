@@ -133,7 +133,11 @@ public final class SandboxLodProbe {
         gen.seed(12345L);
         var terrain = new com.geogenesis.worldgen.terrain.GeoGenesisTerrain(gen);
 
-        int cx = 200, cz = 1400;
+        // ★ 取样中心必须"有山有水"，否则推近后窗口只有 144 格、落在平原上，
+        //   出图看不出 LOD 效果（会被误判成"地形被压平"）。
+        //   本坐标由 _find_center.py 在 lod_0 上滑动搜索得出：
+        //   24×24 格窗口内高差 141.8 格、水格 97 —— 山海俱全。
+        int cx = 350, cz = 1100;
         float zoom = SandboxLod.BASE_ZOOM;
         for (int i = 0; i <= SandboxLod.MAX_ZOOM_IN_STEPS; i++) {
             int grid = SandboxLod.gridFor(zoom, VIEWPORT);

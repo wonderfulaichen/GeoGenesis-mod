@@ -593,7 +593,10 @@ public class PreviewDisplay extends AbstractWidget {
             if (showFrameTime) drawFrameTime(g, x + w, y);
             drawCopiedToast(g, x, y, w, h);
             if (showLegend) drawLegend(g, mx, my);
-            drawHoverInfo(g, mx, my);
+            // ★★ 2026-11-08【修 UI 重叠】：沙盘模式<b>不调 drawHoverInfo</b>。
+            //   drawHoverInfo 是平面模式的跟随光标 tooltip，画在鼠标附近；
+            //   沙盘已有左下角常驻悬停信息（drawSandboxHints 里），
+            //   两者同时存在会在左下/右下叠成两行字（实机截图可见）。
             // 1px 边框（参考项目 draw 的收尾）
             g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
             g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
@@ -2199,10 +2202,15 @@ public class PreviewDisplay extends AbstractWidget {
         }
 
         // ---- 右下：比例尺 ----
+        //
+        // ★★ 2026-11-08【修 UI 重叠·第三处】：比例尺移到<b>右下角上方 28px</b>。
+        //   GeoGenesisConfigScreen.renderStatusHud 在 y = height-lineHeight-14 处
+        //   画 statusLine()，与本方法原来的 y = h-16 几乎同一行 ⇒ 两行字叠在一起。
+        //   现在错开：ConfigScreen 那行在最底，比例尺在它上方。
         String scaleTxt = SandboxLod.scaleLabel(sandbox.zoom());
         int sw = mc.font.width(scaleTxt);
         int sx = x + w - sw - 8;
-        int sy = y + h - 16;
+        int sy = y + h - 30;
         g.fill(sx - 4, sy - 3, sx + sw + 4, sy + 11, 0xB212141B);
         g.fill(sx - 4, sy - 3, sx + sw + 4, sy - 2, 0x66FFD24A);
         g.drawString(mc.font, scaleTxt, sx, sy, GOLD, true);

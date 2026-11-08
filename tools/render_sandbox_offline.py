@@ -290,7 +290,9 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
     #   => 构图不变、只看到柱子变大（用户实机反馈）。
     #   现在 scale 固定 => 缩放只改窗口（世界范围），柱子屏幕尺寸恒定，
     #   画面内容"推近/拉远"，且每柱代表的方块变少 => 更精细。
-    scale = size * 0.46 * 2.0
+    # ★ 与 SandboxRenderer 一致：相机随缩放推近（scale ∝ zoomRatio）
+    #   配合 LOD 的窗口减半 + 柱数翻倍 => 三者同向叠加，视觉上真推进
+    scale = size * 0.46 * (zoom / 2.0) if zoom > 0 else size * 0.46
     ox = oy = size / 2.0
 
     def proj(mx, my, mz):

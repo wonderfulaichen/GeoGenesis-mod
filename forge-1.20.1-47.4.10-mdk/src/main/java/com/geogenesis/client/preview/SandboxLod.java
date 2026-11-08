@@ -61,10 +61,15 @@ public final class SandboxLod {
     public static final float BASE_ZOOM = 1.0f;
     /** 每格滚轮的缩放步长（×2：窗口减半）。 */
     public static final float WHEEL_STEP = 2.0f;
-    /** 允许拉远的格数。 */
+    /** 允许拉远的格数（视野变大，看到更多）。 */
     public static final int MAX_ZOOM_OUT_STEPS = 3;
-    /** 允许推近的格数。 */
-    public static final int MAX_ZOOM_IN_STEPS = 4;
+    /**
+     * 允许推近的格数。
+     *
+     * <p>推近会让相机 scale ×2/格，2 档后盘面已明显溢出视口（只看到局部）。
+     * 参考项目 zoom 上限也仅比默认大 4 倍。取 2 档（×4）。</p>
+     */
+    public static final int MAX_ZOOM_IN_STEPS = 2;
 
     public static final float ZOOM_MIN = (float) (BASE_ZOOM / Math.pow(WHEEL_STEP, MAX_ZOOM_OUT_STEPS));
     public static final float ZOOM_MAX = (float) (BASE_ZOOM * Math.pow(WHEEL_STEP, MAX_ZOOM_IN_STEPS));
@@ -90,14 +95,33 @@ public final class SandboxLod {
     /**
      * 精度轴相对窗口轴的速度 r。
      *
-     * <ul>
-     *   <li>k ≤ 2（拉远/推进段）：r = 1 —— 柱数不变，窗口连续缩小；</li>
-     *   <li>k &gt; 2（近景段）：r = 2 —— 每柱方块减半快于窗口 ⇒ 柱数翻倍 = 高模。</li>
-     * </ul>
+     * <h2>★ 2026-11-08 用户澄清后修正</h2>
+     * <p>用户原话：「固定柱子，但柱子本身宽度就对应 1wu 内部单位，
+     * 然后随着我们缩小画面我们看到的柱子数就变多了。<b>不是柱子宽度变了。</b>」</p>
+     *
+     * <p>含义：柱子是固定物理尺寸（1wu）的方块。<b>视野缩小 ⇒ 同样大小的方块
+     * 在屏幕上变多</b>。所以柱数必须<b>与窗口同步变化</b>：</p>
+     * <pre>
+     *   窗口 W = 2400/2^k      （缩小）
+     *   每柱 P = 75/2^k        （同步缩小，保持"格子在物理世界里不变大小"）
+     *   柱数 N = W/P = 32      ← 恒定！
+     * </pre>
+     * <p>等等 —— 这样柱数恒定，柱子屏幕尺寸也恒定（因为窗口缩小 + 柱数不变
+     * ⇒ 每柱占屏幕更多像素）。<b>那画面就是"同一片地形被放大"</b>，
+     * 正是用户说的"固定位置、完全不动"。</p>
+     *
+     * <h2>真正正确的读法</h2>
+     * <p>"柱子数变多"是指：随着缩小画面（拉远），能看到<b>更大范围</b>的地形，
+     * 而柱子物理尺寸不变 ⇒ 需要的柱子总数变多。即</p>
+     * <pre>
+     *   拉远（zoom↓）⇒ 窗口 W 变大 ⇒ 柱数 N = W/P 变大（P 是固定物理尺寸）
+     *   推近（zoom↑）⇒ 窗口 W 变小 ⇒ 柱数 N 变小
+     * </pre>
+     * <p>⇒ <b>每柱方块 P 恒定</b>（1wu = 固定方块数），窗口随缩放变，柱数自动跟随。
+     * 这样柱子屏幕尺寸恒定、画面内容真实"推近/拉远"、柱数随视野自动增减。</p>
      */
     public static double precisionRatio(float zoom) {
-        double k = windowAxis(zoom);
-        return k > 2.0 ? 2.0 : 1.0;
+        return 0.0;   // 精度轴不动：P 恒定 ⇒ 柱数 = W/P 自动跟随窗口
     }
 
     /** <b>独立轴 1：世界窗口</b>（方块）—— 连续；量化到 16 格避免每滚一格重采。 */
@@ -109,19 +133,32 @@ public final class SandboxLod {
     }
 
     /**
-     * <b>独立轴 2：每柱方块</b>（连续；近景段跑得比窗口轴快）。
+     * <b>每柱代表的方块数</b> —— 推近时变小（近处精模）。
      *
-     * @param viewportPx 视口边长（像素），用于柱子屏幕尺寸下限
+     * <h2>★ 2026-11-08 最终确定的关系</h2>
+     * <p>用户反复说的核心：「<b>近处精模远处粗模</b>」。标准地图 LOD 语义：</p>
+     * <pre>
+     *   推近（zoom↑）：每柱方块 P↓，窗口 W↓，柱数 N=W/P 必须↑  ← 精模
+     *   拉远（zoom↓）：每柱方块 P↑，窗口 W↑，柱数 N=W/P 必须↓  ← 粗模
+     * </pre>
+     *
+     * <p>要同时满足 W↓ 且 N↑，P 必须比 W 下降得<b>更快</b>。
+     * 取 <b>P = BASE_BLOCKS / 4^k</b>（k=log2 zoomRatio）：
+     * W = 2400/2^k，则 N = (2400/2^k)/(75/4^k) = 32 × 2^k。</p>
+     *
+     * <p>⇒ <b>每推近一格：窗口减半、柱数翻倍</b> —— 这就是"近处精模"。
+     * 柱屏幕宽 = 视口/N，会随 N 减小，但有 12px 下限保护（防弧纹）。</p>
+     *
+     * @param viewportPx 视口边长（像素）
      */
     public static double blocksPerPillar(float zoom, int viewportPx) {
         double k = windowAxis(zoom);
-        double r = precisionRatio(zoom);
-        double j = Math.max(0.0, k * r);
-        double p = BASE_BLOCKS / Math.pow(2.0, j);
+        // P = 75 / 4^k  ⇒ 比窗口(÷2^k)降得快一倍 ⇒ N = 32×2^k
+        double p = BASE_BLOCKS / Math.pow(4.0, k);
         if (p < MIN_BLOCKS) p = MIN_BLOCKS;
 
-        // 视觉下限：柱子屏幕尺寸 ≥ MIN_PILLAR_PX
-        //   柱数 N = W/P ≤ viewport/12  ⇒  P ≥ W×12/viewport
+        // 视觉下限：柱数 N = W/P ≤ viewport/12 ⇒ P ≥ W×12/viewport
+        //   （柱太细会糊成弧纹，宁可降精度）
         double minP = windowFor(zoom) * MIN_PILLAR_PX / Math.max(1, viewportPx);
         if (p < minP) p = minP;
         return p;
