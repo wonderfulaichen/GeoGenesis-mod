@@ -559,20 +559,16 @@ public final class SandboxRenderer {
             }
         }
 
-        // ---- 2b) ★ 自适应光照增益（LOD 各档窗口不同，固定增益会出棋盘格纹）----
-        //   采样坡度绝对值，取 P90 → 映射到亮度差 0.45（见 SandboxShade.adaptiveGain）
-        double[] slopes = new double[fine];
-        for (int gx = 0; gx < gw; gx++) {
-            for (int gz = 0; gz < gh; gz++) {
-                double h0 = rNorm[gx * gh + gz];
-                double l = gx > 0 ? rNorm[(gx - 1) * gh + gz] : h0;
-                double rt = gx < gw - 1 ? rNorm[(gx + 1) * gh + gz] : h0;
-                double up = gz > 0 ? rNorm[gx * gh + (gz - 1)] : h0;
-                double dn = gz < gh - 1 ? rNorm[gx * gh + (gz + 1)] : h0;
-                slopes[gx * gh + gz] = SandboxShade.absSlope(l, rt, up, dn);
-            }
-        }
-        double lightGain = SandboxShade.adaptiveGain(slopes);
+        // ---- 2b) ★ 光照增益：按<b>量程</b>标定（2026-11-08 修"推近条纹"）----
+        //
+        //   上一版按"本帧可见窗口"的坡度分布统计（SandboxShade.adaptiveGain）。
+        //   LOD 推近后窗口只有 144 格、地形近乎平坦 ⇒ P99.5 趋近 0
+        //   ⇒ gain 被推到上限 60 ⇒ 2.5% 的高度差就产生 1.0 亮度差
+        //   ⇒ 噪声放大成斜向条纹（实机与离线出图均可见，gain 日志 40.67）。
+        //
+        //   现改为 SandboxShade.calibratedGain(gridCells)：按数据的绝对量程解析推出，
+        //   只依赖网格密度、不依赖窗口内实际地形 ⇒ 任何缩放下 gain 稳定。
+        double lightGain = SandboxShade.calibratedGain(gw);
 
         // ---- 3) 逐柱（每柱聚合 PER_COLUMN² 个细格）----
         for (int cx = 0; cx < colCount; cx++) {

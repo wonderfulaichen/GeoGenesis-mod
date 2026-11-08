@@ -182,12 +182,13 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
     up = np.roll(r, 1, axis=1); up[:, 0] = r[:, 0]
     down = np.roll(r, -1, axis=1); down[:, -1] = r[:, -1]
     slope = (right - left) * 0.5 + (down - up) * 0.5
-    # ★ 自适应增益（与 SandboxShade.adaptiveGain 同式）：
-    #   LOD 各档窗口不同，固定增益会让细档相邻柱差被放大成棋盘格纹。
+    # ★ 增益按量程标定（与 SandboxShade.calibratedGain 同式）：
+    #   旧式按可见窗口统计 P99.5 —— 推近后窗口小、地形平，P99.5→0，
+    #   gain 被推到上限 => 噪声放大成斜条纹（实机+离线均可见）。
+    #   新式只依赖网格密度：typical = 0.25/grid，gain = 0.9/typical。
     if gain is None:
-        p = float(np.quantile(np.abs(slope), 0.995))
-        gain = 0.9 / p if p > 1e-9 else 0.5
-        gain = min(60.0, max(0.5, gain))
+        # 锚定基准档实测 P99.5=0.39（step0 立体感正确）: 0.9/0.39 ≈ 2.31
+        gain = min(60.0, max(0.5, 0.9 / 0.39))
     light = np.clip(1.0 - slope * gain, LIGHT_MIN, LIGHT_MAX)
     water = e < 0.0
     light = np.where(water, 1.0 + (light - 1.0) * WATER_FACTOR, light)

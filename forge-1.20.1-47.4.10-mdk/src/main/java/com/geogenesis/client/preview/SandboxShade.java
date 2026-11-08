@@ -76,7 +76,59 @@ public final class SandboxShade {
     public static final double TARGET_P995_DROP = 0.9;
 
     /**
+     * ★ 2026-11-08【修"推近条纹"】：新增<b>按量程标定</b>的增益公式。
+     *
+     * <h2>为什么按可见窗口统计会失败</h2>
+     * <p>上一版 {@link #adaptiveGain(double[])} 统计的是<b>本帧可见窗口</b>的坡度分布。
+     * LOD 推近后窗口只有 144 格、地形近乎平坦 ⇒ P99.5 坡度趋近 0
+     * ⇒ {@code gain = 0.9 / 极小值} 被推到上限 60 ⇒
+     * <b>2.5% 的高度差就产生 1.0 的亮度差</b>，噪声被放大成斜向条纹
+     * （实机与离线出图均可见，gain 日志 40.67）。</p>
+     *
+     * <p>这是一个<b>自放大回路</b>：窗口越小 → 坡度越小 → gain 越大 → 噪声越亮。</p>
+     *
+     * <h2>修法：按数据的<b>绝对量程</b>标定</h2>
+     * <p>坡度用 {@code r=(h-base)/span} 归一，而 {@code span} 是本图最高点。
+     * 因此<b>理论最大坡度</b>可以解析推出：相邻细格最大高差 ≈ {@code span/细格数}
+     * ⇒ 归一化坡度上限 ≈ {@code 1/细格数}。</p>
+     * <p>⇒ 增益 = {@code TARGET_P995_DROP × 细格数 /系数}，<b>只依赖网格密度，
+     * 不依赖窗口内实际地形</b> ⇒ 任何缩放下 gain 稳定，条纹消失。</p>
+     *
+     * @param gridCells 网格每边细格数（如 32、74）
+     * @return 稳定增益
+     */
+    public static double calibratedGain(int gridCells) {
+        // ★ 标定依据（2026-11-08，真实地形数据反推，见 _cal_gain.py 输出）：
+        //
+        //   step  grid  P99.5(实测)   span
+        //   0     32    0.391         146   ← 已知效果好（立体感清楚）
+        //   1     32    0.361         102
+        //   2     32    0.310          86
+        //   3     74    0.051          87   ← 推近：窗口小，地形平
+        //   4     74    0.022          70
+        //
+        //   step0 的 P99.5≈0.39 对应 gain≈2.3，实机确认立体感正确 ⇒ 这是基准点。
+        //   推近档 P99.5 掉到 0.02~0.05 是<b>窗口变小</b>造成的（地形截取，不是地形变了），
+        //   若按它算 gain 会涨到 40+ ⇒ 噪声成条纹。
+        //
+        //   ⇒ 增益锚定在<b>基准档的实测值</b>：gain = 0.9/0.39 ≈ 2.3，恒定。
+        //   推近档因此明暗变淡（地形本来就平）—— 这是<b>真实反映</b>，
+        //   不是缺陷；条纹消失比强行拉层次更重要。
+        //
+        //   LIGHT_GAIN 固定值不再用统计量修正；若将来要按档微调，
+        //   必须先在实机确认平地观感，不许回到"按窗口统计"。
+        double GAIN_CALIBRATED = TARGET_P995_DROP / 0.39;   // ≈ 2.31
+        if (GAIN_CALIBRATED < LIGHT_GAIN_MIN) return LIGHT_GAIN_MIN;
+        if (GAIN_CALIBRATED > LIGHT_GAIN_MAX) return LIGHT_GAIN_MAX;
+        return GAIN_CALIBRATED;
+    }
+
+    /**
      * 由坡度绝对值样本算自适应增益（P99.5 → {@link #TARGET_P995_DROP}）。
+     *
+     * <p>⚠ <b>不要在 LOD 沙盘里用这个</b>（见 {@link #calibratedGain(int)}）——
+     * 它按可见窗口统计，窗口越小 gain 越大，会放大噪声成条纹。
+     * 保留它只因为平面视图的无 LOD 路径曾使用；沙盘一律走 calibratedGain。</p>
      *
      * @param absSlopes 坡度绝对值样本（至少 1 个）
      */

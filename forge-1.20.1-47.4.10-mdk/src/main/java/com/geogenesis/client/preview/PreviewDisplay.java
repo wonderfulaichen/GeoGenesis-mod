@@ -848,10 +848,9 @@ public class PreviewDisplay extends AbstractWidget {
         //   你这样我无论精度如何看到的效果不是已经不变吗？」
         //
         //   之前我把网格固定，只改窗口 ⇒ 柱子数恒定 ⇒ 构图不变 ⇒ "效果不变"。
-        //   现在：柱子屏幕密度恒定（约 7px）、每柱方块随缩放变小、
-        //   <b>聚合系数随缩放变化</b>（拉远 8 / 中景 4·2 / 推近 1）⇒
-        //   推近时网格更密、柱子更细更多 = 精模；拉远时合并更多细格 = 粗模。
-        sandbox.setPerColumn(SandboxLod.perColumnFor(zoom));
+        // ★★ 方案 B（用户选定）：窗口与每柱方块两条独立轴，柱数 = 窗口/每柱。
+        //   详见 SandboxLod javadoc。沙盘 perColumn 恒为 1（一细格一根柱）。
+        sandbox.setPerColumn(1);
         int grid = SandboxLod.gridFor(zoom);
         int blocksWide = SandboxLod.windowFor(zoom);
         int blocksHigh = blocksWide;

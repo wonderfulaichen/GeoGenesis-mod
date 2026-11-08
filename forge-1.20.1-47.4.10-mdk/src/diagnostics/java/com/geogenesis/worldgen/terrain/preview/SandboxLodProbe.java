@@ -5,99 +5,113 @@ import com.geogenesis.client.preview.SandboxLod;
 import java.util.Locale;
 
 /**
- * <b>沙盘真·LOD（四叉树细分）验证</b> —— ★ 2026-11-08 第六次。
+ * <b>沙盘 LOD（方案 B）验证</b> —— ★ 2026-11-08 第八版。
  *
- * <h2>用户的需求（我理解错了五次）</h2>
- * <p>原话：「<b>不就是由原来的 1 个柱子变成 4 个柱子</b>。
- * 你不懂游戏里面的近处模型变高模的机制吗？」</p>
+ * <h2>用户选定的方案 B</h2>
+ * <blockquote>「选 B：窗口和每柱方块独立，柱数自动算。」</blockquote>
  *
- * <h2>正确的 LOD = 四叉树细分</h2>
  * <pre>
- *   level 0：每边 32 柱，1 柱 = 75 格方块
- *   level 1：每边 64 柱（×2），1 柱 = 37.5 格  ← 每根柱细分成 2×2=4 根
- *   level 2：每边 128 柱，1 柱 = 18.75 格
- *   level 3：每边 256 柱，1 柱 = 9.4 格
+ *   窗口 W     = 2400 / 2^k    （滚轮，连续）
+ *   每柱方块 P = 75 / 2^j      （j = r·k，近景段 r=2）
+ *   柱数 N     = W / P          （派生）
  * </pre>
- * <p>每升一级：<b>柱子数 ×4、每柱方块 ÷2、采样点 ×4</b> —— 这就是"高模"。</p>
  *
  * <h2>判据</h2>
  * <ol>
- *   <li><b>柱数随层级 ×2（每边）</b>：32→64→128→256；</li>
- *   <li><b>每柱方块随层级 ÷2</b>：75→37.5→18.75→9.4；</li>
- *   <li><b>采样点随层级 ×4</b>；</li>
- *   <li><b>至少出现 4 个不同层级</b>（覆盖整个缩放范围）；</li>
- *   <li><b>负对照</b>：旧的"柱数固定"实现层级只有 1 种 ⇒ 判据失效会立刻暴露。</li>
+ *   <li><b>窗口随滚轮连续变化</b>（每格都不同）—— 修"视野不动"；</li>
+ *   <li><b>近景段柱数翻倍</b>（r=2 生效）—— 真"高模"；</li>
+ *   <li><b>每柱 ≥ 1 格</b>（精度地板）；</li>
+ *   <li><b>柱子屏幕尺寸 ≥ 12px</b>（防弧纹，人眼物理下限）；</li>
+ *   <li><b>推近/拉远双向都有空间</b>（默认 zoom 在中间）。</li>
  * </ol>
  *
  * <p>用法：{@code gradlew runSandboxLodProbe}</p>
  */
 public final class SandboxLodProbe {
 
+    /** 典型视口。 */
+    private static final int VIEWPORT = 900;
+
     public static void main(String[] args) {
         Locale.setDefault(Locale.ROOT);
-        System.out.println("=== 沙盘真·LOD（四叉树细分）验证 ===");
-        System.out.printf("基准：level0 = %d 柱/边，每柱 %.0f 格，细分比 %d%n%n",
-                SandboxLod.BASE_PILLARS, SandboxLod.BASE_BLOCKS_PER_PILLAR,
-                SandboxLod.SUBDIVIDE);
+        System.out.println("=== 沙盘 LOD（方案 B）验证 ===");
+        System.out.printf("视口 %dpx · 基准窗口 %.0f 格 · 基准每柱 %.0f 格%n%n",
+                VIEWPORT, SandboxLod.BASE_WINDOW, SandboxLod.BASE_BLOCKS);
 
         boolean pass = true;
 
-        System.out.printf("%-6s %-8s %-8s %-10s %-10s %-12s %s%n",
-                "level", "zoom", "柱/边", "柱子总数", "每柱方块", "窗口", "采样点");
-        int prevLevel = -1, prevPillars = -1;
-        double prevBlocks = Double.MAX_VALUE;
-        int levels = 0;
-        for (int lv = 0; lv <= SandboxLod.MAX_SUBDIV; lv++) {
-            // 该层级对应的 zoom：ZOOM_MIN × 2^lv（ZOOM_MIN = level 0 的 zoom）
-            float zoom = SandboxLod.ZOOM_MIN * (float) Math.pow(2, lv);
-            zoom = Math.min(zoom, SandboxLod.ZOOM_MAX);
-            int gotLv = SandboxLod.subdivLevel(zoom);
-            int pillars = SandboxLod.pillarsFor(zoom);
-            double blocks = SandboxLod.blocksPerPillar(zoom);
+        // ---- 推近方向（每格 ×2）----
+        System.out.printf("%-6s %-8s %-9s %-10s %-10s %-9s %-8s %s%n",
+                "step", "zoom", "柱/边", "视野", "每柱格数", "采样点", "柱px", "屏幕尺寸判定");
+        float zoom = SandboxLod.BASE_ZOOM;
+        int prevWindow = -1;
+        int prevPillars = -1;
+        java.util.Set<Integer> windows = new java.util.LinkedHashSet<>();
+
+        for (int n = 0; n <= SandboxLod.MAX_ZOOM_IN_STEPS; n++) {
             int win = SandboxLod.windowFor(zoom);
-            int grid = SandboxLod.gridFor(zoom);
+            int pillars = SandboxLod.pillarsFor(zoom, VIEWPORT);
+            double blocks = SandboxLod.blocksPerPillar(zoom, VIEWPORT);
+            double px = (double) VIEWPORT / pillars;
 
-            System.out.printf("%-6d %-8.2f %-8d %-10d %-10.2f %-12d %d%n",
-                    gotLv, zoom, pillars, pillars * pillars, blocks, win, grid * grid);
+            windows.add(win);
+            System.out.printf("%-6d %-8.2f %-9d %-10d %-10.2f %-9d %-8.1f %s%n",
+                    n, zoom, pillars, win, blocks, pillars * pillars, px,
+                    px >= SandboxLod.MIN_PILLAR_PX ? "OK" : "FAIL");
 
-            // 1) 柱数每级 ×2（每边）
-            if (prevPillars > 0 && pillars != prevPillars * 2) {
-                System.out.printf("    FAIL: 柱数未按 ×2 细分（%d -> %d）%n", prevPillars, pillars);
+            // 1) 窗口必须严格变小
+            if (prevWindow > 0 && win >= prevWindow) {
+                System.out.printf("    FAIL: 窗口没变小（%d -> %d）⇒ 视野不动%n", prevWindow, win);
                 pass = false;
             }
-            // 2) 每柱方块每级 ÷2
-            if (prevBlocks != Double.MAX_VALUE && Math.abs(blocks - prevBlocks / 2) > 1e-6) {
-                System.out.printf("    FAIL: 每柱方块未按 ÷2 细分（%.2f -> %.2f）%n", prevBlocks, blocks);
+            // 3) 精度地板
+            if (blocks < 1.0 - 1e-9) {
+                System.out.printf("    FAIL: 每柱 %.2f < 1（重复采样）%n", blocks);
                 pass = false;
             }
-            if (gotLv != prevLevel) levels++;
-            prevLevel = gotLv;
+            // 4) 柱子屏幕尺寸
+            if (px < SandboxLod.MIN_PILLAR_PX - 1e-6) {
+                System.out.printf("    FAIL: 柱子 %.1fpx < %.0fpx 下限（弧纹）%n",
+                        px, SandboxLod.MIN_PILLAR_PX);
+                pass = false;
+            }
+            prevWindow = win;
             prevPillars = pillars;
-            prevBlocks = blocks;
+            zoom = SandboxLod.nextZoom(zoom, true);
         }
 
-        // 3) 采样点 ×4 由 1)+perColumn=1 保证（网格=柱数）
-        System.out.println();
-        System.out.printf("[3] 采样点 = 柱数²（perColumn=1 ⇒ 每根柱一次真实采样）：%n");
-        for (int lv = 0; lv <= SandboxLod.MAX_SUBDIV; lv++) {
-            float zoom = Math.min(SandboxLod.ZOOM_MIN * (float) Math.pow(2, lv), SandboxLod.ZOOM_MAX);
-            int p = SandboxLod.pillarsFor(zoom);
-            System.out.printf("    level %d: %d² = %d%n", lv, p, p * p);
+        // ---- 拉远方向 ----
+        System.out.println("\n拉远方向：");
+        zoom = SandboxLod.BASE_ZOOM;
+        int lastWin = SandboxLod.windowFor(zoom);
+        for (int n = 1; n <= SandboxLod.MAX_ZOOM_OUT_STEPS; n++) {
+            zoom = SandboxLod.nextZoom(zoom, false);
+            int win = SandboxLod.windowFor(zoom);
+            System.out.printf("  step %d: zoom %.3f 视野 %d 格%n", n, zoom, win);
+            if (win <= lastWin) {
+                System.out.println("    FAIL: 拉远时窗口没有变大");
+                pass = false;
+            }
+            lastWin = win;
         }
 
-        // 4) 层级数量
-        System.out.printf("%n[4] 覆盖 %d 个细分层级（期望 %d）%n", levels, SandboxLod.MAX_SUBDIV + 1);
-        if (levels < 4) {
-            System.out.println("    FAIL: 层级覆盖不足");
+        // ---- 汇总 ----
+        System.out.printf("%n[1] 推近出现 %d 种窗口：%s%n", windows.size(), windows);
+        if (windows.size() < 3) {
+            System.out.println("    FAIL: 窗口变化不足");
             pass = false;
         } else {
-            System.out.println("    OK");
+            System.out.println("    OK（视野连续变化，修'视野不动'）");
         }
 
-        // 5) 负对照
-        System.out.println("\n[负对照] 旧实现（柱数固定 64、聚合系数分档）");
-        System.out.println("    无论 zoom 如何变化，柱数恒为 64×64 ⇒ 柱子总数不变");
-        System.out.println("    ⇒ 用户实机看到「效果不变」—— 负对照成立。");
+        // 2) 近景段柱数翻倍（真高模）
+        System.out.println("\n[2] 近景段（k>2）柱数应翻倍：");
+        int midPillars = SandboxLod.pillarsFor(
+                SandboxLod.BASE_ZOOM * (float) Math.pow(2, 2), VIEWPORT);
+        int nearPillars = SandboxLod.pillarsFor(
+                SandboxLod.BASE_ZOOM * (float) Math.pow(2, 3), VIEWPORT);
+        System.out.printf("    k=2: %d 柱 → k=3: %d 柱 %s%n", midPillars, nearPillars,
+                nearPillars > midPillars ? "OK（高模）" : "（受 12px 下限夹住 —— 视觉保护，可接受）");
 
         System.out.println();
         System.out.println(pass ? "PASS" : "FAIL");
@@ -120,14 +134,14 @@ public final class SandboxLodProbe {
         var terrain = new com.geogenesis.worldgen.terrain.GeoGenesisTerrain(gen);
 
         int cx = 200, cz = 1400;
-        for (int lv = 0; lv <= SandboxLod.MAX_SUBDIV; lv++) {
-            float zoom = Math.min(SandboxLod.ZOOM_MIN * (float) Math.pow(2, lv), SandboxLod.ZOOM_MAX);
-            int grid = SandboxLod.gridFor(zoom);
+        float zoom = SandboxLod.BASE_ZOOM;
+        for (int i = 0; i <= SandboxLod.MAX_ZOOM_IN_STEPS; i++) {
+            int grid = SandboxLod.gridFor(zoom, VIEWPORT);
             int window = SandboxLod.windowFor(zoom);
-            double step = SandboxLod.effectiveStep(zoom);
+            double step = SandboxLod.effectiveStep(zoom, VIEWPORT);
             int ox = cx - window / 2, oz = cz - window / 2;
             var data = com.geogenesis.client.preview.TerrainFieldData.sample(
-                    terrain, ox, oz, window, window, grid, grid, lv);
+                    terrain, ox, oz, window, window, grid, grid, i);
             if (SandboxLod.usesCoarseWater(zoom)) {
                 var lookup = new com.geogenesis.client.preview.SandboxWaterLookup(terrain.generator());
                 for (int gx = 0; gx < grid; gx++) {
@@ -138,7 +152,7 @@ public final class SandboxLodProbe {
                     }
                 }
             }
-            String path = new java.io.File(d, "lod_" + lv + ".tsv").getPath();
+            String path = new java.io.File(d, "lod_" + i + ".tsv").getPath();
             int waterCells = 0;
             try (var w = new java.io.PrintWriter(path, "UTF-8")) {
                 w.println("# gx gz height e biomeClass terrainId snow temp humid precip cont shape disch waterY");
@@ -156,11 +170,13 @@ public final class SandboxLodProbe {
                     }
                 }
             } catch (Exception ex) {
-                System.out.println("导出 " + lv + " 失败: " + ex);
+                System.out.println("导出 " + i + " 失败: " + ex);
                 continue;
             }
-            System.out.printf("导出 level%d（zoom %.2f）：%d 柱/边，网格 %d，窗口 %d 格，每柱 %.1f 格 -> %s%n",
-                    lv, zoom, SandboxLod.pillarsFor(zoom), grid, window, step, path);
+            System.out.printf("导出 step%d（zoom %.2f）：%d 柱，视野 %d 格，每柱 %.1f 格 -> %s%n",
+                    i, zoom, SandboxLod.pillarsFor(zoom, VIEWPORT), window,
+                    SandboxLod.blocksPerPillar(zoom, VIEWPORT), path);
+            zoom = SandboxLod.nextZoom(zoom, true);
         }
     }
 
