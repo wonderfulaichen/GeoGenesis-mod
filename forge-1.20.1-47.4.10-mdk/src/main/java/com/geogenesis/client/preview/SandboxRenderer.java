@@ -143,6 +143,10 @@ public final class SandboxRenderer {
 
     private final Cell scratch = new Cell();
 
+    /** 多数群系投票用的复用数组（容量按 perColumn² 增长）。 */
+    private int[] voteIds = new int[16];
+    private int[] voteCnts = new int[16];
+
     public float yaw() { return yaw; }
     public float pitch() { return pitch; }
     public float zoom() { return zoom; }
@@ -576,23 +580,31 @@ public final class SandboxRenderer {
                 edgeY1[col] = model(gh, centerY + halfY);
 
                 // ---- 颜色：复用既有 35 项群系本色 + 水面渐变 + jitter ----
-                //   多数群系细格：2×2 里 biomeClassId 出现最多者（yardsite majorityCell 语义）
-                int[] ids = new int[4];
-                int[] cnts = new int[4];
+                //   多数群系细格：组内 biomeClassId 出现最多者（yardsite majorityCell 语义）
+                //
+                //   ⚠ 数组容量必须按 perColumn² 分配：perColumn 现在是自适应的（2~16），
+                //   一组最多 256 个细格。曾固定 new int[4] ⇒ perColumn=6 时
+                //   ArrayIndexOutOfBoundsException: Index 4 out of bounds for length 4
+                //   （实机崩溃，latest.log 已取证）。
+                int cellCount = (fx1 - fx0 + 1) * (fz1 - fz0 + 1);
+                if (voteIds.length < cellCount) {
+                    voteIds = new int[cellCount];
+                    voteCnts = new int[cellCount];
+                }
                 int n = 0;
                 for (int dx = 0; dx <= fx1 - fx0; dx++) {
                     for (int dz = 0; dz <= fz1 - fz0; dz++) {
                         int ii = (fx0 + dx) * gh + (fz0 + dz);
                         int b = data.biomeClassId[ii];
                         int found = -1;
-                        for (int k = 0; k < n; k++) if (ids[k] == b) { found = k; break; }
-                        if (found < 0) { ids[n] = b; cnts[n] = 1; n++; }
-                        else cnts[found]++;
+                        for (int k = 0; k < n; k++) if (voteIds[k] == b) { found = k; break; }
+                        if (found < 0) { voteIds[n] = b; voteCnts[n] = 1; n++; }
+                        else voteCnts[found]++;
                     }
                 }
                 int majority = -1, bestCnt = 0;
                 for (int k = 0; k < n; k++) {
-                    if (cnts[k] > bestCnt) { bestCnt = cnts[k]; majority = ids[k]; }
+                    if (voteCnts[k] > bestCnt) { bestCnt = voteCnts[k]; majority = voteIds[k]; }
                 }
                 // 取该组第一个匹配多数 id 的细格（保留光照的空间细节）
                 int mfx = fx0, mfz = fz0;
@@ -641,39 +653,44 @@ public final class SandboxRenderer {
     }
 
     /**
-     * 该柱的边缘渐隐系数（0 = 全透明，1 = 完全不透明）。
+     * 该柱的<b>径向</b>边缘渐隐 + 圆形裁剪（0 = 不画，1 = 完全不透明）。
      *
-     * <h2>参考项目 vs 我们</h2>
-     * <p>参考项目大沙盘的 {@code edgeFade()} <b>恒返回 1.0</b>
-     * （{@code SiteMapSampler} 第 344-346 行）—— 因为它在<b>大沙盘</b>里有硬边框，
-     * 只有<b>区块精读</b>（圆形窗口）才用真正的渐隐。</p>
+     * <h2>★ 这是参考项目最显眼的视觉特征（2026-11-08）</h2>
+     * <p>参考图是<b>圆形盘面</b>（浮岛感），不是方形。源码依据
+     * {@code ChunkSitePlanner} 第 296-301 行：</p>
+     * <pre>
+     *   double dist = sqrt(dx² + dz²);              // 到中心距离（格）
+     *   inside[index] = dist <= RADIUS + 0.5;       // 圆外不画
+     *   edgeFadeTable[index] = clamp((RADIUS + 0.5 - dist) / FADE_RING, 0, 1);
+     * </pre>
+     * <p>⇒ 圆盘内 + 外圈 {@code FADE_RING} 格渐隐。我此前做成了方形 + 4 边渐隐，
+     * 形态就完全不同。</p>
      *
-     * <p>★ 2026-11-08：<b>我们不能照抄这个 1.0</b>。配置面板已是<b>全屏地图</b>
-     * （地形铺满 (0,0,w,h)，没有边框、没有第二层视图可切），
-     * 若边缘硬切，用户会看到一圈突兀的"断崖"，且拖动时新采样区突然弹出。
-     * ⇒ 全屏地图需要渐隐，这是本项目形态决定的（用户明确指出：
-     * "你忘记我们现在改成了全屏地图了啊，为什么拿旧设定当现在的设计"）。</p>
+     * <p>我们的实现：按<b>柱坐标到中心的归一化距离</b>算（与渲染的模型坐标一致），
+     * 圆外返回 0（跳过绘制），圆内边缘 ±{@value #EDGE_FADE_RING} 柱渐隐。</p>
      *
-     * <p>实现：按离最近的边有多少格线性淡出，最外 {@link #EDGE_FADE_CELLS} 个细格
-     * 从 0 升到 1。这样地图像"融化"进背景，拖动时新区域也不会硬弹。</p>
-     *
-     * @param ci,cj 柱坐标（0..colCount-1）
+     * @param ci,cj 柱坐标
      */
     private float edgeFade(int ci, int cj) {
         if (!edgeFadeEnabled) return 1.0f;
-        int d = Math.min(Math.min(ci, colCount - 1 - ci), Math.min(cj, colRows - 1 - cj));
-        if (d >= EDGE_FADE_CELLS) return 1.0f;
-        float t = d / (float) EDGE_FADE_CELLS;
-        // smoothstep：避免线性淡出在边界处仍有可见折线
-        return t * t * (3.0f - 2.0f * t);
+        // 归一化到 [-1,1] 的柱中心（与 modelOf 一致），圆心 = (0,0)
+        float mx = modelOf(colCount, ci);
+        float my = modelOf(colRows, cj);
+        double dist = Math.sqrt(mx * mx + my * my);   // 0 = 中心，1 = 方框边中点，√2 = 角
+        // 圆半径：1.0 会切到方框边中点，取略小让圆盘留在视口内
+        final double radius = 0.98;
+        if (dist > radius) return 0f;                 // 圆外：不画（圆形盘面）
+        double t = (radius - dist) / EDGE_FADE_RING;  // 外圈渐隐宽度
+        if (t >= 1.0) return 1.0f;
+        return (float) (t * t * (3.0 - 2.0 * t));     // smoothstep
     }
 
-    /** 边缘渐隐宽度（柱数）。 */
-    private static final int EDGE_FADE_CELLS = 3;
-    /** 是否启用边缘渐隐（全屏地图开启；窗口化时可由调用方关闭）。 */
+    /** 圆盘外圈渐隐宽度（模型坐标单位；约 4 柱宽）。 */
+    private static final double EDGE_FADE_RING = 0.06;
+    /** 是否启用圆形盘面 + 边缘渐隐。 */
     private boolean edgeFadeEnabled = true;
 
-    /** 开关边缘渐隐（全屏地图开、需要硬边框时关）。 */
+    /** 开关圆盘/渐隐（需要方形硬边时关）。 */
     public void setEdgeFade(boolean enabled) { this.edgeFadeEnabled = enabled; }
 
 

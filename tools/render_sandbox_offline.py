@@ -151,6 +151,11 @@ def build_rotation(yaw, pitch):
     return r
 
 
+def modelOf(n, i):
+    """柱中心 → 模型坐标（与 Java 的 SandboxRenderer.modelOf 一致）。"""
+    return 0.0 if n <= 1 else (i + 0.5) / n * 2.0 - 1.0
+
+
 def model(fine, cell):
     return 0.0 if fine <= 1 else cell / (fine - 1) * 2.0 - 1.0
 
@@ -310,8 +315,11 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
     img = np.zeros((size, size, 3), dtype=np.float64)
     img[:, :] = (0.09, 0.10, 0.13)
 
-    def quad(pts, color):
-        """四边形填充：拆成两个三角形（重心坐标判定），painter's algorithm 逐块绘制。"""
+    def quad(pts, color, alpha=1.0):
+        """四边形填充：拆成两个三角形（重心坐标判定），painter's algorithm 逐块绘制。
+
+        alpha < 1 时与已有像素混合（用于圆形盘面的径向渐隐）。
+        """
         xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
         x0, x1 = max(0, int(min(xs))), min(size, int(max(xs)) + 1)
         y0, y1 = max(0, int(min(ys))), min(size, int(max(ys)) + 1)
@@ -330,7 +338,11 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
             if not inside.any():
                 continue
             for k in range(3):
-                img[y0:y1, x0:x1, k][inside] = color[k]
+                if alpha >= 0.999:
+                    img[y0:y1, x0:x1, k][inside] = color[k]
+                else:
+                    sub = img[y0:y1, x0:x1, k]
+                    sub[inside] = sub[inside] * (1.0 - alpha) + color[k] * alpha
 
     def shade(rgb, mul):
         """rgb 是 0..1 的分量；mul 是光照倍率。"""
@@ -338,8 +350,22 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
 
     # 侧墙最小屏幕高度（像素）：低于它不画。亚像素墙 = 每柱一条亮线 = 密集条纹
     min_wall = 1.0 / max(1e-3, scale)
+    # ★ 圆形盘面 + 径向渐隐（参考项目 ChunkSitePlanner 第 296-301 行同式）
+    #   参考图是"浮岛"圆形，不是方形 —— 这是它最显眼的视觉特征。
+    RADIUS = 0.98
+    FADE_RING = 0.06
     for _, col in order:
         cx, cz = col // col_rows, col % col_rows
+        # 圆外直接跳过（圆形裁剪）
+        mx_c = modelOf(col_count, cx)
+        my_c = modelOf(col_rows, cz)
+        dist_c = math.sqrt(mx_c * mx_c + my_c * my_c)
+        if dist_c > RADIUS:
+            continue
+        alpha = 1.0
+        t_edge = (RADIUS - dist_c) / FADE_RING
+        if t_edge < 1.0:
+            alpha = t_edge * t_edge * (3 - 2 * t_edge)
         top = tops[col]
         rgb = colc[col]  # 已经乘过光照的 0..1 三元组
         fx0, fz0 = cx * PER_COLUMN, cz * PER_COLUMN
@@ -353,27 +379,27 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
             return tuple(min(1.0, max(0.0, c * m)) for c in rgb01)
         if see_top:
             quad([proj(x0, y0, top), proj(x1, y0, top),
-                  proj(x1, y1, top), proj(x0, y1, top)], rgb)
+                  proj(x1, y1, top), proj(x0, y1, top)], rgb, alpha)
         if see_e:
             low = max(tops[col + col_rows], 0.0) if cx + 1 < col_count else 0.0
             if top - low > min_wall:
                 quad([proj(x1, y0, low), proj(x1, y1, low),
-                      proj(x1, y1, top), proj(x1, y0, top)], mul(rgb, 0.82))
+                      proj(x1, y1, top), proj(x1, y0, top)], mul(rgb, 0.82), alpha)
         if see_w:
             low = max(tops[col - col_rows], 0.0) if cx > 0 else 0.0
             if top - low > min_wall:
                 quad([proj(x0, y1, low), proj(x0, y0, low),
-                      proj(x0, y0, top), proj(x0, y1, top)], mul(rgb, 0.56))
+                      proj(x0, y0, top), proj(x0, y1, top)], mul(rgb, 0.56), alpha)
         if see_s:
             low = max(tops[col + 1], 0.0) if cz + 1 < col_rows else 0.0
             if top - low > min_wall:
                 quad([proj(x0, y1, low), proj(x1, y1, low),
-                      proj(x1, y1, top), proj(x0, y1, top)], mul(rgb, 0.70))
+                      proj(x1, y1, top), proj(x0, y1, top)], mul(rgb, 0.70), alpha)
         if see_n:
             low = max(tops[col - 1], 0.0) if cz > 0 else 0.0
             if top - low > min_wall:
                 quad([proj(x1, y0, low), proj(x0, y0, low),
-                      proj(x0, y0, top), proj(x1, y0, top)], mul(rgb, 0.46))
+                      proj(x0, y0, top), proj(x1, y0, top)], mul(rgb, 0.46), alpha)
 
     Image.fromarray((img * 255).astype(np.uint8)).save(out)
     print('wrote', out, 'size', size, 'gain', gain, 'zoom', zoom)

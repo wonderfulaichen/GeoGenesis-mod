@@ -822,9 +822,17 @@ public class PreviewDisplay extends AbstractWidget {
             homeCenterZ = centerZ;
         }
 
-        // ★ 柱子的聚合系数按视口算：细格按像素（精度）、柱子保持约 13px（视觉）
-        sandbox.setPerColumn(SandboxLod.perColumnFor(side));
-        int grid = SandboxLod.gridFor(side);
+        // ★★ 真 LOD（2026-11-08 第四次）：网格与聚合系数<b>都随缩放变</b>。
+        //
+        //   用户原话：「就是缩放近处精模远处粗模」「为什么固定柱数？
+        //   你这样我无论精度如何看到的效果不是已经不变吗？」
+        //
+        //   之前我把网格固定，只改窗口 ⇒ 柱子数恒定 ⇒ 构图不变 ⇒ "效果不变"。
+        //   现在：柱子屏幕密度恒定（约 7px）、每柱方块随缩放变小、
+        //   <b>聚合系数随缩放变化</b>（拉远 8 / 中景 4·2 / 推近 1）⇒
+        //   推近时网格更密、柱子更细更多 = 精模；拉远时合并更多细格 = 粗模。
+        sandbox.setPerColumn(SandboxLod.perColumnFor(zoom));
+        int grid = SandboxLod.gridFor(zoom, side);
         int blocksWide = SandboxLod.windowFor(zoom, side);
         int blocksHigh = blocksWide;
         int originWx = centerX + (int) totalDragX - blocksWide / 2;

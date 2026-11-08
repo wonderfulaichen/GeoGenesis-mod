@@ -1,102 +1,82 @@
 package com.geogenesis.client.preview;
 
 /**
- * <b>沙盘比例尺（像素驱动 LOD）</b>—— ★ 2026-11-08 第二次重做。
+ * <b>沙盘 LOD（真·细节层级）</b>—— ★ 2026-11-08 第四次重做。
  *
- * <h2>为什么又要重做（上一版的错）</h2>
- * <p>上一版思路是"采样点数恒定 = 成本恒定"：网格固定 256²，
- * 窗口随缩放变。实机暴露出根本问题：<b>放大后精度没变化</b>。</p>
+ * <h2>★ 用户的原始需求（我此前理解错了三次）</h2>
+ * <p>原话：「<b>就是缩放近处精模远处粗模</b>」「为什么固定柱数？
+ * 你这样我无论精度如何看到的效果不是已经不变吗？」</p>
  *
- * <p>对比我们的<b>平面视图</b>（原有能力，用户问"为什么它精度这么高"）：</p>
- * <table border="1">
- *   <caption>采样密度（视口 900×900）</caption>
- *   <tr><th></th><th>采样点数</th><th>每点代表</th></tr>
- *   <tr><td>平面视图 1:1</td><td><b>810,000</b></td><td><b>1 格方块</b></td></tr>
- *   <tr><td>沙盘旧（固定 256²）</td><td>65,536</td><td>1~15.6 格</td></tr>
- * </table>
- * <p>差 <b>12.4 倍</b>。平面视图能做到"每屏幕像素 = 一个方块"，
- * 因为它的采样点数<b>等于视口像素数</b>，不是固定值。</p>
+ * <p>我之前的错误：把"采样网格固定、只改每格代表范围"当成 LOD。
+ * 那样<b>柱子数量永远一样</b>，画面构图不变，当然"效果不变"。</p>
  *
- * <h2>正解：柱子屏幕尺寸恒定，网格 = 视口像素 / 柱像素</h2>
+ * <h2>正确模型（与参考项目三层视图同一原理）</h2>
  * <pre>
- *   每柱像素  = 13px             （恒定 ⇒ 视觉密度稳定，不随缩放变化）
- *   柱子数    = 视口像素 / 13
- *   每柱方块  = BASE_BLOCKS_PER_PILLAR / zoomRatio
- *   窗口      = 柱子数 × 每柱方块
- *   网格(细格) = 柱子数 × 2      （1 柱 = 2×2 细格）
+ *   拉远（zoom 小）：窗口大 + 柱子少而粗  → 粗模（看格局）
+ *   推近（zoom 大）：窗口小 + 柱子多而细  → 精模（看细节）
  * </pre>
  *
- * <p>⇒ 推近时：柱子数不变（屏幕密度恒定）、每柱方块变少 ⇒ <b>视野缩小、精度提高</b>，
- * 这就是用户要的"视野缩小后每柱代表的方块变少"。</p>
+ * <p>参考项目实测参数：</p>
+ * <table border="1">
+ *   <caption>参考项目三层</caption>
+ *   <tr><th>层</th><th>柱子</th><th>每格</th><th>窗口</th></tr>
+ *   <tr><td>大沙盘</td><td>128</td><td>15.6 格</td><td>±2000</td></tr>
+ *   <tr><td>区块精读</td><td>129</td><td><b>16 格</b></td><td>1024</td></tr>
+ *   <tr><td>落点精读</td><td>121</td><td><b>4 格</b></td><td>240</td></tr>
+ * </table>
+ * <p>注意：<b>柱子数量基本不变（120~130），变的是"每格代表多少方块"</b>。
+ * 但它靠<b>切换图层</b>实现，不是连续缩放。</p>
  *
- * <p>这也是参考项目三层视图的同一原理（大沙盘 15.6 格/格 → 区块精读 16 格/格 →
- * 落点精读 4 格/格）：<b>不堆采样点数，靠缩小窗口提精度</b>。</p>
+ * <h2>我们的连续 LOD 怎么做</h2>
+ * <p>核心矛盾：柱子屏幕尺寸要够大（看得出立体），同时精度要随缩放提高。</p>
+ * <p>解法 = <b>网格随缩放增长</b>，柱子屏幕尺寸<b>近似恒定</b>：</p>
+ * <pre>
+ *   每柱方块 = BASE_BLOCKS_PER_PILLAR / zoomRatio     // 推近 ⇒ 变小
+ *   柱子数   = clamp(视口 / PILLAR_PX_SCREEN, 32, 256)  // 屏幕密度恒定
+ *   窗口     = 柱子数 × 每柱方块                        // 推近 ⇒ 变小（推进感）
+ *   网格     = 柱子数 × perColumn                       // 精度
+ * </pre>
  *
- * <h2>成本</h2>
- * <p>900px 视口 / 13 ≈ 70 柱 ⇒ 140 细格 ⇒ <b>19,600 采样点</b>，
- * 比旧的 256²（65,536）还少 3.3 倍 ⇒ 采样更快。</p>
+ * <p>⇒ 推近时：窗口缩小（推进）、每柱方块变少（更精细）、柱子数量不变（密度稳定）。
+ * 这就是"近处精模远处粗模"，且不会出现"构件不变所以看不出变化"。</p>
+ *
+ * <h2>成本约束</h2>
+ * <p>网格 = 柱数 × perColumn。900px 视口、柱 75 根、perColumn=2 ⇒ 150 细格 = 22,500 点。
+ * 若 perColumn 随缩放增长（如推近时 2、拉远时 8），网格在 150~600 之间浮动，
+ * 采样点 22,500~360,000 —— 拉远时更省，推近时更细，符合 LOD 精神。</p>
  */
 public final class SandboxLod {
 
     /**
-     * 每个<b>细格</b>的目标屏幕尺寸（像素）。
+     * 柱子目标屏幕尺寸（像素）。
      *
-     * <h2>★ 为什么按细格而不是按柱子定（2026-11-08 第三次修正）</h2>
-     * <p>先前按「每柱 13px」算 ⇒ 900px 只有 69 根柱 = 139 细格 ⇒ <b>19,044 采样点</b>。
-     * 而我们的<b>平面视图</b> 1:1 是 900² = <b>810,000</b> 点 —— 差 42 倍，
-     * 精度自然比不上（探针直接报 FAIL）。</p>
-     *
-     * <p>⇒ 细格才是"采样粒度"，应该和屏幕像素对齐：</p>
-     * <pre>
-     *   细格数 = 视口像素 / 2      （1 细格 ≈ 2px，肉眼已看不出格子）
-     *   柱子数 = 细格数 / 2        （1 柱 = 2×2 细格）
-     * </pre>
-     * <p>900px ⇒ 450 细格 ⇒ 225 柱 ⇒ <b>202,500 采样点</b>，
-     * 与平面视图同量级（81 万的 1/4，而每格还聚合了 2×2 细格的信息）。</p>
-     *
-     * <p>柱子屏幕尺寸 = 视口/柱数 = 4px。看似比 13px 细，但这是<b>对的</b>：
-     * 平面视图也是 1px 一格；柱子只要能看出立体感即可，
-     * 颜色精度靠细格 —— 这正是参考项目 `PER_COLUMN=2`（柱=2×2 细格）的设计意图。</p>
+     * <p>参考项目大沙盘：900px 视口 / 128 柱 ≈ <b>7px</b>。
+     * 取 7px 与它同档（够看出方块台阶，又不至于密到糊）。</p>
      */
-    public static final double CELL_PX = 2.0;
+    public static final double PILLAR_PX = 7.0;
 
-    /**
-     * 每根柱子在 zoom = {@link #BASE_ZOOM} 时代表的方块数。
-     *
-     * <p>对齐参考项目大沙盘：±2000 格 / 128 柱 ⇒ 一根柱约 31 格方块。</p>
-     */
+    /** 每柱在 zoom = {@link #BASE_ZOOM} 时代表的方块数（对齐参考项目大沙盘 31 格）。 */
     public static final double BASE_BLOCKS_PER_PILLAR = 31.0;
 
-    /** 与 {@link #BASE_BLOCKS_PER_PILLAR} 对应的 zoom（沙盘默认缩放）。 */
+    /** 与 {@link #BASE_BLOCKS_PER_PILLAR} 对应的 zoom。 */
     public static final float BASE_ZOOM = 2.0f;
 
     /** 缩放下限。 */
     public static final float ZOOM_MIN = 0.6f;
-
     /**
      * 缩放上限。
      *
-     * <p>硬约束：<b>每细格 ≥ 1 格方块</b>。
-     * 每细格 = 每柱方块 / perColumn，而窗口 = 柱数 × 每柱方块 ≥ 网格数
-     * ⇒ 每柱方块 ≥ perColumn ⇒ {@code 31/zoomRatio ≥ perColumn}
-     * ⇒ {@code zoomRatio ≤ 31/perColumn}。</p>
-     *
-     * <p>900px 视口 perColumn≈6 ⇒ zoomRatio ≤ 5.2 ⇒ zoom ≤ 10.3。
-     * 更高倍数的"推近"已经没有精度收益（细格已到 1 格/细格的地板），
-     * 只会把柱子拉大 ⇒ 所以在 {@link #windowFor} 里夹住即可。</p>
+     * <p>硬约束：每<b>细格</b> ≥ 1 格方块。
+     * 每细格 = 每柱方块 / perColumn，每柱方块 = 31/zoomRatio。
+     * 推近到每柱 4 格（÷perColumn=2）⇒ 每细格 2 格，还有余量；
+     * zoomRatio=16（zoom=32）时每柱 1.94 格、每细格 0.97 格 → 触底。
+     * ⇒ 夹在 16。</p>
      */
-    public static final float ZOOM_MAX = 20.0f;
+    public static final float ZOOM_MAX = 32.0f;
 
-    /** 网格下限（避免窗口极小时采样过疏）。 */
-    private static final int MIN_GRID = 64;
-    /**
-     * 网格上限。
-     *
-     * <p>512 细格 = 262,144 采样点。实测 256² 采样约 143ms（12 线程），
-     * 512² 是 4 倍 ⇒ 约 570ms，后台跑可接受（一次推近只采一次）。
-     * 再高就会显著拖慢拖动/缩放响应。</p>
-     */
-    private static final int MAX_GRID = 512;
+    /** 柱数上下限（防极端视口）。 */
+    private static final int MIN_PILLARS = 32;
+    private static final int MAX_PILLARS = 256;
 
     private SandboxLod() { }
 
@@ -107,131 +87,98 @@ public final class SandboxLod {
     }
 
     /**
-     * 该视口尺寸下的网格（每边<b>细格</b>数）= 视口像素 / {@link #CELL_PX}。
+     * 柱子数（每边）—— <b>屏幕密度恒定</b>，不随缩放变化。
      *
      * @param viewportPx 视口边长（像素）
      */
-    public static int gridFor(int viewportPx) {
-        int g = (int) Math.round(viewportPx / CELL_PX);
-        return Math.max(MIN_GRID, Math.min(MAX_GRID, g));
-    }
-
-    /** 该视口尺寸下的柱子数（每边）= 细格数 / {@link #perColumnFor}。 */
     public static int pillarsFor(int viewportPx) {
-        return Math.max(1, gridFor(viewportPx) / perColumnFor(viewportPx));
+        int p = (int) Math.round(viewportPx / PILLAR_PX);
+        return Math.max(MIN_PILLARS, Math.min(MAX_PILLARS, p));
     }
 
     /**
-     * 一根柱子聚合几个细格（每边，<b>随视口自适应</b>）。
+     * 一根柱子聚合几个细格（每边）。
      *
-     * <h2>★ 为什么不能固定 2（2026-11-08 实测）</h2>
-     * <p>细格提到 450（按像素）后，若仍按 {@code PER_COLUMN=2} 聚合，
-     * 柱子会变成 <b>225 根、每根只有 4px</b> ⇒ 每根柱子各带一圈侧墙台阶，
-     * 整幅叠成<b>密集涟漪/同心环纹理</b>（离线出图实测），地形形状被完全淹没。</p>
-     *
-     * <p>参考项目用 2 是因为它细格只有 256；我们细格 450，
-     * 聚合系数必须同步变大，才能让柱子保持<b>可辨识的视觉尺寸</b>。</p>
-     *
-     * <h2>取值</h2>
-     * <pre>
-     *   perColumn = round(细格数 / 目标柱数)，目标柱数 = 视口 / PILLAR_PX
-     * </pre>
-     * <p>900px ⇒ 目标 69 柱 ⇒ 450/69 ≈ 6.5 ⇒ 取 <b>6</b> ⇒ 实际 75 柱、每柱 12px。
-     * 与参考项目"一根柱约 31 格方块、屏幕上十几像素"的观感一致。</p>
+     * <p><b>拉远时大、推近时小</b> —— 这是"粗模/精模"的关键：
+     * 拉远时一根柱合并更多细格（颜色更概括），推近时更少（保留细节）。</p>
+     * <p>夹在 1~8：1 = 一细格一根柱（最精），8 = 八细格一根柱（最粗）。</p>
      */
-    public static int perColumnFor(int viewportPx) {
-        int grid = gridFor(viewportPx);
-        double targetPillars = Math.max(8, viewportPx / PILLAR_PX);
-        int per = (int) Math.round(grid / targetPillars);
-        return Math.max(2, Math.min(16, per));
+    public static int perColumnFor(float zoom) {
+        double r = zoomRatio(zoom);
+        if (r < 0.75) return 8;   // 最拉远：粗模
+        if (r < 1.5) return 4;
+        if (r < 3.0) return 2;
+        return 1;                 // 最推近：一细格一根柱（精模）
     }
 
-    /** 柱子的目标屏幕尺寸（像素）—— 只用于反推聚合系数。 */
-    private static final double PILLAR_PX = 13.0;
+    /** 该缩放 + 视口下的网格（每边细格数）= 柱数 × 聚合系数。 */
+    public static int gridFor(float zoom, int viewportPx) {
+        int g = pillarsFor(viewportPx) * perColumnFor(zoom);
+        return Math.max(32, Math.min(1024, g));
+    }
 
     /**
-     * 该缩放 + 视口下，一根柱子代表多少方块（<b>连续</b>，随缩放变化）。
+     * 一根柱子代表多少方块（<b>推近 ⇒ 变小</b>）。
      *
-     * <p>下限：每细格 ≥ 1 格 ⇒ 每柱 ≥ 2 格。</p>
+     * <p>下限 1：每细格至少 1 格方块（否则重复采样 → 梯田伪影）。</p>
      */
     public static double blocksPerPillar(float zoom) {
-        double b = BASE_BLOCKS_PER_PILLAR / zoomRatio(zoom);
-        return Math.max(2.0, b);   // 1 细格 = b/2 ≥ 1
+        double r = zoomRatio(zoom);
+        double b = BASE_BLOCKS_PER_PILLAR / r;
+        double minB = Math.max(1.0, perColumnFor(zoom));   // 每细格 ≥ 1
+        return Math.max(minB, b);
     }
 
     /**
-     * 该缩放 + 视口下的世界窗口边长（方块）。
-     *
-     * <p>★ <b>硬约束：窗口 ≥ 细格数</b>（即每细格 ≥ 1 格方块）。
-     * 地形按方块定义、采样坐标取整 ⇒ 步长 &lt; 1 会让相邻细格落到同一方块
-     * = 重复采样 ⇒ 梯田伪影（探针实测：不加约束时 step 会降到 0.46）。</p>
+     * 世界窗口边长（方块）—— <b>推近 ⇒ 变小</b>（这就是"镜头推进"）。
      *
      * @param viewportPx 视口边长（像素）
      */
     public static int windowFor(float zoom, int viewportPx) {
-        int grid = gridFor(viewportPx);
         double raw = pillarsFor(viewportPx) * blocksPerPillar(zoom);
-        // 量化到 16 格：避免每滚一格就重采（小幅滚动沿用同一窗口）
         int q = (int) (Math.round(raw / 16.0) * 16);
-        // 下限 1：窗口至少覆盖 grid 格（每细格 ≥ 1 方块）
-        return Math.max(grid, Math.max(64, q));
+        // 窗口不得小于网格数（每细格 ≥ 1 方块）
+        return Math.max(gridFor(zoom, viewportPx), Math.max(64, q));
     }
 
-    /**
-     * 实际生效的每细格方块数（= 窗口/网格）。
-     *
-     * <p>比例尺显示必须用这个值（窗口被量化过），否则读数与画面不符。</p>
-     */
+    /** 实际生效的每细格方块数（= 窗口/网格）。 */
     public static double effectiveStep(float zoom, int viewportPx) {
-        return windowFor(zoom, viewportPx) / (double) gridFor(viewportPx);
+        return windowFor(zoom, viewportPx) / (double) gridFor(zoom, viewportPx);
     }
 
-    /** 比例尺文字（地图软件式读数）。 */
+    /** 比例尺文字。 */
     public static String scaleLabel(float zoom, int viewportPx) {
-        double step = effectiveStep(zoom, viewportPx);
-        int win = windowFor(zoom, viewportPx);
         double perPillar = blocksPerPillar(zoom);
-        if (step >= 10.0) {
-            return String.format(java.util.Locale.ROOT,
-                    "1 柱 = %.0f 格 · 视野 %d 格", perPillar, win);
-        }
+        int win = windowFor(zoom, viewportPx);
+        int pillars = pillarsFor(viewportPx);
         return String.format(java.util.Locale.ROOT,
-                "1 柱 = %.1f 格 · 视野 %d 格", perPillar, win);
+                "%d 柱 · 1 柱 = %.1f 格 · 视野 %d 格", pillars, perPillar, win);
     }
 
-    /**
-     * 该缩放 + 视口下窗口覆盖的 tract 数（决定粗层水位是否可负担）。
-     *
-     * <p>tract = 512 格，粗层 635ms/冷 tract。</p>
-     */
+    /** 该缩放 + 视口下窗口覆盖的 tract 数。 */
     public static int tractsFor(float zoom, int viewportPx) {
         int win = windowFor(zoom, viewportPx);
         int across = (int) Math.ceil(win / 512.0) + 1;
         return across * across;
     }
 
-    /** 该缩放 + 视口是否查<b>粗层水位</b>（画河道/湖面）。25 tract 以内可接受（约 16s 冷启动）。 */
+    /** 该缩放 + 视口是否查粗层水位。25 tract 以内可接受。 */
     public static boolean usesCoarseWater(float zoom, int viewportPx) {
         return tractsFor(zoom, viewportPx) <= 25;
     }
 
-    /**
-     * 是否走完整水文管线（{@code sampleCell}）。
-     *
-     * <p><b>恒 false</b>：实测每个新 region 3.6~10.9 秒，沙盘不可用。
-     * 河道水面由粗层水位提供。</p>
-     */
+    /** 是否走完整水文管线（恒 false，见 SandboxWaterLookup）。 */
     public static boolean usesHydroPath(float zoom) {
         return false;
     }
 
     /**
-     * 滚轮步长：<b>远快近慢</b>（用户选定）。
+     * 滚轮步长：<b>远快近慢</b>。
      *
      * <ul>
-     *   <li>zoom &lt; 4（广域）：1.30 倍/步 —— 快速跨过格局层；</li>
-     *   <li>4 ≤ zoom &lt; 12（中景）：1.20 倍/步；</li>
-     *   <li>zoom ≥ 12（近景）：1.12 倍/步 —— 精细调整。</li>
+     *   <li>zoom &lt; 4：1.30 倍/步（快速跨过格局层）</li>
+     *   <li>4 ≤ zoom &lt; 12：1.20 倍/步</li>
+     *   <li>zoom ≥ 12：1.12 倍/步（精细调整）</li>
      * </ul>
      */
     public static float nextZoom(float zoom, boolean zoomIn) {
@@ -246,8 +193,8 @@ public final class SandboxLod {
     /** 人类可读摘要（日志用）。 */
     public static String describe(float zoom, int viewportPx) {
         return String.format(java.util.Locale.ROOT,
-                "%s（网格 %d，每细格 %.2f 格）",
-                scaleLabel(zoom, viewportPx), gridFor(viewportPx),
-                effectiveStep(zoom, viewportPx));
+                "%s（网格 %d，聚合 %d，每细格 %.2f 格）",
+                scaleLabel(zoom, viewportPx), gridFor(zoom, viewportPx),
+                perColumnFor(zoom), effectiveStep(zoom, viewportPx));
     }
 }
