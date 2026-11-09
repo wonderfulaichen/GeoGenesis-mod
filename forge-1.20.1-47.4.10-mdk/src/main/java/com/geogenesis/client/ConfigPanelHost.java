@@ -27,14 +27,18 @@ import java.util.List;
  * <p>底板、页签、页签命中、内容区裁切、按钮 —— <b>全部用同一套矩形</b>，
  * 画与命中不可能分叉。外部只调 {@link #render} 与 {@link #hitTab}。</p>
  *
- * <h2>坐标契约</h2>
+ * <h2>坐标契约（★ 唯一真相源）</h2>
  * <pre>
- *   panelX, panelW   悬浮窗左右边界
- *   headerY          页签栏顶部
- *   tabBarBottom     页签栏底部（流式换行后确定）
- *   listTop          内容区顶部 = tabBarBottom + 间隔
- *   listBottom       内容区底部
+ *   overlayY, overlayH          底板矩形（深色半透明 + 1px 描边 + 标题行）
+ *   panelX, panelW              左右边界（= 底板左右）
+ *   headerY                     页签栏顶部（= overlayY + 22，让出标题行）
+ *   tabLayout()                 每个页签的 {x, y, w} —— 换行算法只此一份
+ *   tabBarBottom                页签栏底部（drawTabs 写，内容起点读）
+ *   listTop                     内容区顶部 = tabBarBottom + 4
+ *   listBottom                  内容区底部 = overlayY + overlayH - bottomBarH
+ *   bottomBarH                  底部按钮区高度（0 = 无按钮）
  * </pre>
+ * <p><b>任何</b>与配置窗有关的坐标都必须从这里取，不许在外部另算一套。</p>
  */
 public final class ConfigPanelHost {
 
@@ -55,6 +59,16 @@ public final class ConfigPanelHost {
     public int listTop;
     /** 内容区底部。 */
     public int listBottom;
+
+    /**
+     * 底部按钮区高度（0 = 无按钮）。
+     *
+     * <p>★ 必须由本类持有：内容区裁切底边（{@code listBottom}）与按钮区
+     * 由<b>同一个</b>值决定。此前按钮在 {@code ConfigScreen.init()} 里按
+     * {@code panelW >= 180} 决定存不存在，而裁切底边恒为
+     * {@code cfgH - BOTTOM_BAR_H} ⇒ 窄面板时留下 52px 空白却无按钮。</p>
+     */
+    public int bottomBarH;
 
     /** 当前页签索引。 */
     public int tab;

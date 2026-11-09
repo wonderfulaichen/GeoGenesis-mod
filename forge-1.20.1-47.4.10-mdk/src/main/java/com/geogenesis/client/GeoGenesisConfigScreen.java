@@ -164,6 +164,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private boolean offeredForReuse;
 
     private int panelX, panelW, headerY, listTop, listBottom;
+    /** 底部按钮区高度（0 = 无按钮）—— 与按钮创建条件同源。 */
+    private int bottomBarH;
     private int previewX, previewY, previewW, previewH;
     private int scroll;
     private boolean dirty, saved;
@@ -314,6 +316,7 @@ public class GeoGenesisConfigScreen extends Screen {
         panelHost.headerY = headerY;
         panelHost.listTop = listTop;
         panelHost.listBottom = listBottom;
+        panelHost.bottomBarH = bottomBarH;
         panelHost.tab = tab;
         panelHost.panels = panels;
         panelHost.tabLabels = visibleTabs.stream().map(PanelLayout.Tab::label).toList();
@@ -351,8 +354,10 @@ public class GeoGenesisConfigScreen extends Screen {
         // ★ 页签流式换行：先算占几行，再决定列表起点（否则内容会压在换行后的页签下面）
         tabBarBottom = computeTabBarBottom();
         listTop = tabBarBottom + 4;
-        // ★ 底部要放两行按钮（应用/保存/重置 + 图层/大范围/沙盘），故留 52px
-        listBottom = cfgY + cfgH - BOTTOM_BAR_H;
+        // ★ 底部按钮区高度：**与按钮是否真的创建用同一条件**
+        //   （此前按钮按 panelW >= 180 决定，而裁切底边恒减 52 ⇒ 窄面板留空白无按钮）
+        bottomBarH = (panelOpen && panelW >= 180) ? BOTTOM_BAR_H : 0;
+        listBottom = cfgY + cfgH - bottomBarH;
 
         Runnable markDirty = () -> { dirty = true; saved = false; debounce = 8; };
         worldScalePanel.setOnMarkDirty(markDirty);
