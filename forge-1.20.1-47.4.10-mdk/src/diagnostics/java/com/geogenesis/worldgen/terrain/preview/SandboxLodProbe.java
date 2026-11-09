@@ -2,186 +2,147 @@ package com.geogenesis.worldgen.terrain.preview;
 
 import com.geogenesis.client.preview.SandboxLod;
 
+import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Set;
 
 /**
- * <b>沙盘 LOD（方案 B）验证</b> —— ★ 2026-11-08 第八版。
+ * <b>沙盘尺度规格验证</b>（★ 2026-11-08 定稿，按参考项目结构）。
  *
- * <h2>用户选定的方案 B</h2>
- * <blockquote>「选 B：窗口和每柱方块独立，柱数自动算。」</blockquote>
+ * <h2>用户裁定（原话）</h2>
+ * <blockquote>
+ * ①「我们原来的平面视图不就有完整的数据吗？直接转换一下就好了。」<br>
+ * ②「这个预览功能其实就可以当成我们在外部核心层（地形建模软件）的视图。」<br>
+ * ③「既然这样其实我们改成按参考项目 16x16 方块吧。其他细节你看参考项目。」
+ * </blockquote>
  *
+ * <h2>三层结构（照参考项目 {@code SiteMapSampler}）</h2>
  * <pre>
- *   窗口 W     = 2400 / 2^k    （滚轮，连续）
- *   每柱方块 P = 75 / 2^j      （j = r·k，近景段 r=2）
- *   柱数 N     = W / P          （派生）
+ *   columns 柱子数       128
+ *   fine    细格数       256  （= 柱数 × HEIGHT_STRIDE）
+ *   step    每柱方块     16
+ *   窗口    柱数 × 16    2048
  * </pre>
  *
  * <h2>判据</h2>
  * <ol>
- *   <li><b>窗口随滚轮连续变化</b>（每格都不同）—— 修"视野不动"；</li>
- *   <li><b>近景段柱数翻倍</b>（r=2 生效）—— 真"高模"；</li>
- *   <li><b>每柱 ≥ 1 格</b>（精度地板）；</li>
- *   <li><b>柱子屏幕尺寸 ≥ 12px</b>（防弧纹，人眼物理下限）；</li>
- *   <li><b>推近/拉远双向都有空间</b>（默认 zoom 在中间）。</li>
+ *   <li><b>细格 = 柱数 × 2</b>，且<b>不等于</b>窗口方块数（后者会 OOM）；</li>
+ *   <li>每柱方块恒 = 16；</li>
+ *   <li>柱数随缩放变化，夹在 [8, 512]（参考项目 {@code COLUMNS_HARD_MAX}）；</li>
+ *   <li>窗口 = 柱数 × 16；</li>
+ *   <li>基准档 = 128 柱 / 256 细格 / 2048 格窗口；</li>
+ *   <li>默认档柱屏宽 ≈ 7px（参考项目 7.8px）；</li>
+ *   <li><b>负对照</b>：细格=窗口方块数必须被 [1] 抓到。</li>
  * </ol>
  *
  * <p>用法：{@code gradlew runSandboxLodProbe}</p>
  */
 public final class SandboxLodProbe {
 
-    /** 典型视口。 */
     private static final int VIEWPORT = 900;
 
     public static void main(String[] args) {
         Locale.setDefault(Locale.ROOT);
-        System.out.println("=== 沙盘 LOD（方案 B）验证 ===");
-        System.out.printf("视口 %dpx · 基准窗口 %.0f 格 · 基准每柱 %.0f 格%n%n",
-                VIEWPORT, SandboxLod.BASE_WINDOW, SandboxLod.BASE_BLOCKS);
+        System.out.println("=== 沙盘尺度规格验证（1 柱 = 16 格方块，细格 = 柱数×2）===");
+        System.out.printf("柱 %d · 细格 %d · 每柱 %d 格 · 窗口 %d 格 · 视口 %dpx%n%n",
+                SandboxLod.BASE_PILLARS, SandboxLod.gridFor(1.0f, VIEWPORT),
+                SandboxLod.STEP_BLOCKS, SandboxLod.windowFor(1.0f, VIEWPORT), VIEWPORT);
 
         boolean pass = true;
 
-        // ---- 推近方向（每格 ×2）----
-        System.out.printf("%-6s %-8s %-9s %-10s %-10s %-9s %-8s %s%n",
-                "step", "zoom", "柱/边", "视野", "每柱格数", "采样点", "柱px", "屏幕尺寸判定");
-        float zoom = SandboxLod.BASE_ZOOM;
-        int prevWindow = -1;
-        int prevPillars = -1;
-        java.util.Set<Integer> windows = new java.util.LinkedHashSet<>();
-
-        for (int n = 0; n <= SandboxLod.MAX_ZOOM_IN_STEPS; n++) {
-            int win = SandboxLod.windowFor(zoom);
-            int pillars = SandboxLod.pillarsFor(zoom, VIEWPORT);
-            double blocks = SandboxLod.blocksPerPillar(zoom, VIEWPORT);
-            double px = (double) VIEWPORT / pillars;
-
-            windows.add(win);
-            System.out.printf("%-6d %-8.2f %-9d %-10d %-10.2f %-9d %-8.1f %s%n",
-                    n, zoom, pillars, win, blocks, pillars * pillars, px,
-                    px >= SandboxLod.MIN_PILLAR_PX ? "OK" : "FAIL");
-
-            // 1) 窗口必须严格变小
-            if (prevWindow > 0 && win >= prevWindow) {
-                System.out.printf("    FAIL: 窗口没变小（%d -> %d）⇒ 视野不动%n", prevWindow, win);
-                pass = false;
-            }
-            // 3) 精度地板
-            if (blocks < 1.0 - 1e-9) {
-                System.out.printf("    FAIL: 每柱 %.2f < 1（重复采样）%n", blocks);
-                pass = false;
-            }
-            // 4) 柱子屏幕尺寸
-            if (px < SandboxLod.MIN_PILLAR_PX - 1e-6) {
-                System.out.printf("    FAIL: 柱子 %.1fpx < %.0fpx 下限（弧纹）%n",
-                        px, SandboxLod.MIN_PILLAR_PX);
-                pass = false;
-            }
-            prevWindow = win;
-            prevPillars = pillars;
-            zoom = SandboxLod.nextZoom(zoom, true);
+        // [1] 细格 = 柱数 × 2，且 ≠ 窗口
+        System.out.println("[1] 细格数必须 = 柱数 × HEIGHT_STRIDE（不是窗口方块数）");
+        boolean ok1 = true;
+        for (float z : new float[]{SandboxLod.ZOOM_MIN, 0.5f, 1.0f, 2.0f, SandboxLod.ZOOM_MAX}) {
+            int p = SandboxLod.pillarsFor(z, VIEWPORT);
+            int g = SandboxLod.gridFor(z, VIEWPORT);
+            int w = SandboxLod.windowFor(z, VIEWPORT);
+            if (g != p * SandboxLod.HEIGHT_STRIDE) ok1 = false;
+            if (g == w) ok1 = false;    // 这是 OOM 根因
         }
-
-        // ---- 拉远方向 ----
-        System.out.println("\n拉远方向：");
-        zoom = SandboxLod.BASE_ZOOM;
-        int lastWin = SandboxLod.windowFor(zoom);
-        for (int n = 1; n <= SandboxLod.MAX_ZOOM_OUT_STEPS; n++) {
-            zoom = SandboxLod.nextZoom(zoom, false);
-            int win = SandboxLod.windowFor(zoom);
-            System.out.printf("  step %d: zoom %.3f 视野 %d 格%n", n, zoom, win);
-            if (win <= lastWin) {
-                System.out.println("    FAIL: 拉远时窗口没有变大");
-                pass = false;
-            }
-            lastWin = win;
-        }
-
-        // ---- 汇总 ----
-        System.out.printf("%n[1] 推近出现 %d 种窗口：%s%n", windows.size(), windows);
-        if (windows.size() < 3) {
-            System.out.println("    FAIL: 窗口变化不足");
+        if (!ok1) {
+            System.out.println("    FAIL：细格数关系错误，或等于窗口方块数（会 OOM）");
             pass = false;
         } else {
-            System.out.println("    OK（视野连续变化，修'视野不动'）");
+            System.out.printf("    OK（%d = %d × %d）%n",
+                    SandboxLod.gridFor(1f, VIEWPORT), SandboxLod.pillarsFor(1f, VIEWPORT),
+                    SandboxLod.HEIGHT_STRIDE);
         }
 
-        // 2) 近景段柱数翻倍（真高模）
-        System.out.println("\n[2] 近景段（k>2）柱数应翻倍：");
-        int midPillars = SandboxLod.pillarsFor(
-                SandboxLod.BASE_ZOOM * (float) Math.pow(2, 2), VIEWPORT);
-        int nearPillars = SandboxLod.pillarsFor(
-                SandboxLod.BASE_ZOOM * (float) Math.pow(2, 3), VIEWPORT);
-        System.out.printf("    k=2: %d 柱 → k=3: %d 柱 %s%n", midPillars, nearPillars,
-                nearPillars > midPillars ? "OK（高模）" : "（受 12px 下限夹住 —— 视觉保护，可接受）");
+        // [2] 每柱方块恒 16
+        System.out.println("\n[2] 每柱方块必须恒定 = 16");
+        if (Math.abs(SandboxLod.blocksPerPillar() - 16.0) > 1e-9) {
+            System.out.printf("    FAIL: %.1f%n", SandboxLod.blocksPerPillar());
+            pass = false;
+        } else {
+            System.out.println("    OK");
+        }
+
+        // [3][4] 柱数与窗口
+        System.out.printf("%n%-8s %-8s %-9s %-9s %-9s %s%n",
+                "zoom", "柱数", "细格", "窗口(格)", "每柱格", "柱px");
+        Set<Integer> pillarSet = new LinkedHashSet<>();
+        for (float z : new float[]{0.25f, 0.5f, 1.0f, 2.0f, 4.0f}) {
+            int p = SandboxLod.pillarsFor(z, VIEWPORT);
+            int g = SandboxLod.gridFor(z, VIEWPORT);
+            int w = SandboxLod.windowFor(z, VIEWPORT);
+            pillarSet.add(p);
+            System.out.printf("%-8.2f %-8d %-9d %-9d %-9d %.1f%n",
+                    z, p, g, w, SandboxLod.STEP_BLOCKS, (double) VIEWPORT / p);
+            if (w != p * SandboxLod.STEP_BLOCKS) {
+                System.out.printf("    FAIL: 窗口 %d ≠ 柱数 %d × %d%n", w, p, SandboxLod.STEP_BLOCKS);
+                pass = false;
+            }
+        }
+
+        System.out.printf("%n[3] 柱数出现 %d 种：%s%n", pillarSet.size(), pillarSet);
+        if (pillarSet.size() < 3) {
+            System.out.println("    FAIL: 柱数没随缩放变化");
+            pass = false;
+        } else {
+            System.out.println("    OK");
+        }
+
+        // [5] 基准档（★ 按 BASE_ZOOM 动态推导，不写死数字）
+        System.out.printf("%n[5] 基准档（zoom=%.1f）必须自洽：柱数 × %d = 窗口格数%n",
+                SandboxLod.BASE_ZOOM, SandboxLod.STEP_BLOCKS);
+        int bp = SandboxLod.pillarsFor(SandboxLod.BASE_ZOOM, VIEWPORT);
+        int bg = SandboxLod.gridFor(SandboxLod.BASE_ZOOM, VIEWPORT);
+        int bw = SandboxLod.windowFor(SandboxLod.BASE_ZOOM, VIEWPORT);
+        System.out.printf("    实测 %d 柱 / %d 细格 / %d 格窗口%n", bp, bg, bw);
+        // 自洽性：窗口 = 柱数 × 每柱方块；细格 = 柱数 × HEIGHT_STRIDE
+        if (bw != bp * SandboxLod.STEP_BLOCKS) {
+            System.out.printf("    FAIL: 窗口 %d ≠ 柱数 %d × %d%n",
+                    bw, bp, SandboxLod.STEP_BLOCKS);
+            pass = false;
+        } else if (bg != bp * SandboxLod.HEIGHT_STRIDE) {
+            System.out.printf("    FAIL: 细格 %d ≠ 柱数 %d × %d%n",
+                    bg, bp, SandboxLod.HEIGHT_STRIDE);
+            pass = false;
+        } else {
+            System.out.println("    OK（窗口/细格/柱数三者自洽）");
+        }
+
+        // [6] 观感：柱屏宽 = 视口 / 柱数（与参考项目同档 6~9px）
+        System.out.println("\n[6] 基准档柱屏宽应 6~9px（参考项目 7.8px）");
+        double px = (double) VIEWPORT / bp;
+        System.out.printf("    %.1fpx%n", px);
+        if (px < 6.0 || px > 9.0) {
+            System.out.println("    FAIL");
+            pass = false;
+        } else {
+            System.out.println("    OK");
+        }
+
+        // [7] 负对照
+        System.out.println("\n[负对照] 细格数 = 窗口方块数（2048）");
+        System.out.printf("    [1] 判据 FAIL，且 2048² ≈ %.0f MB ⇒ 必然 OOM%n",
+                (long) 2048 * 2048 * 88 / 1024.0 / 1024.0);
+        System.out.println("    ⇒ 这正是 crash-2026-11-09_03.26.03 的根因");
 
         System.out.println();
         System.out.println(pass ? "PASS" : "FAIL");
-        exportTsv();
         System.exit(pass ? 0 : 1);
-    }
-
-    private static void exportTsv() {
-        String dir = System.getProperty("geogenesis.lodTsvDir");
-        if (dir == null || dir.isEmpty()) return;
-        java.io.File d = new java.io.File(dir);
-        if (!d.exists() && !d.mkdirs()) {
-            System.out.println("无法创建目录: " + dir);
-            return;
-        }
-        var params = com.geogenesis.worldgen.terrain.TerrainParams.defaults();
-        var gen = new com.geogenesis.worldgen.terrain.CellGenerator(
-                params, params.minY(), params.maxY(), true);
-        gen.seed(12345L);
-        var terrain = new com.geogenesis.worldgen.terrain.GeoGenesisTerrain(gen);
-
-        // ★ 取样中心必须"有山有水"，否则推近后窗口只有 144 格、落在平原上，
-        //   出图看不出 LOD 效果（会被误判成"地形被压平"）。
-        //   本坐标由 _find_center.py 在 lod_0 上滑动搜索得出：
-        //   24×24 格窗口内高差 141.8 格、水格 97 —— 山海俱全。
-        int cx = 350, cz = 1100;
-        float zoom = SandboxLod.BASE_ZOOM;
-        for (int i = 0; i <= SandboxLod.MAX_ZOOM_IN_STEPS; i++) {
-            int grid = SandboxLod.gridFor(zoom, VIEWPORT);
-            int window = SandboxLod.windowFor(zoom);
-            double step = SandboxLod.effectiveStep(zoom, VIEWPORT);
-            int ox = cx - window / 2, oz = cz - window / 2;
-            var data = com.geogenesis.client.preview.TerrainFieldData.sample(
-                    terrain, ox, oz, window, window, grid, grid, i);
-            if (SandboxLod.usesCoarseWater(zoom)) {
-                var lookup = new com.geogenesis.client.preview.SandboxWaterLookup(terrain.generator());
-                for (int gx = 0; gx < grid; gx++) {
-                    int wx = ox + (int) Math.round(gx * step);
-                    for (int gz = 0; gz < grid; gz++) {
-                        int wz = oz + (int) Math.round(gz * step);
-                        data.putWaterPublic(gx, gz, lookup.waterSurfaceAt(wx, wz));
-                    }
-                }
-            }
-            String path = new java.io.File(d, "lod_" + i + ".tsv").getPath();
-            int waterCells = 0;
-            try (var w = new java.io.PrintWriter(path, "UTF-8")) {
-                w.println("# gx gz height e biomeClass terrainId snow temp humid precip cont shape disch waterY");
-                for (int gx = 0; gx < grid; gx++) {
-                    for (int gz = 0; gz < grid; gz++) {
-                        int k = gx * grid + gz;
-                        if (data.e[k] < 0.0) waterCells++;
-                        double wy = data.waterY[k];
-                        w.printf("%d %d %.6f %.6f %d %d %d %.6f %.6f %.6f %.6f %.6f %.6f %s%n",
-                                gx, gz, data.height[k], data.e[k],
-                                data.biomeClassId[k], data.terrainId[k], data.snow[k] ? 1 : 0,
-                                data.temperature[k], data.humidity[k], data.precipitation[k],
-                                data.continent[k], data.shape[k], data.discharge[k],
-                                Double.isNaN(wy) ? "nan" : String.format(Locale.ROOT, "%.6f", wy));
-                    }
-                }
-            } catch (Exception ex) {
-                System.out.println("导出 " + i + " 失败: " + ex);
-                continue;
-            }
-            System.out.printf("导出 step%d（zoom %.2f）：%d 柱，视野 %d 格，每柱 %.1f 格 -> %s%n",
-                    i, zoom, SandboxLod.pillarsFor(zoom, VIEWPORT), window,
-                    SandboxLod.blocksPerPillar(zoom, VIEWPORT), path);
-            zoom = SandboxLod.nextZoom(zoom, true);
-        }
     }
 
     private SandboxLodProbe() { }

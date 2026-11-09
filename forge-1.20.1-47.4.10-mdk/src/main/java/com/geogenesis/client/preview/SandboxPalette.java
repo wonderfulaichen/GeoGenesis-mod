@@ -80,6 +80,40 @@ public final class SandboxPalette {
     }
 
     /**
+     * <b>按图层上色（不依赖 MC 的 {@code Cell}）</b> —— ★ 2026-11-09 B1。
+     *
+     * <p>为什么需要这个重载：{@code SandboxGeometry} 是<b>纯函数层</b>
+     * （用户要求「抽离 MC 做完全纯 Java 核心，可以在外部计算后直接复用」），
+     * 不能依赖 {@code Cell}。</p>
+     *
+     * <p><b>分工</b>：本方法只处理<b>与 Cell 无关</b>的两类——</p>
+     * <ol>
+     *   <li>水面（任何图层都按深度渐变）；</li>
+     *   <li>BIOME / CLIMATE_ZONE（35 项群系本色 + jitter + 雪线）。</li>
+     * </ol>
+     * <p>其余图层（离散 ID / 连续色带）由调用方用 {@code GeoPalette.color}
+     * 算好后通过 {@code fallbackRgb} 传入 —— 避免在几何层复制一整套色带逻辑
+     * （那会造成"第二套调色板"，正是之前被批评的重复实现）。</p>
+     *
+     * @param fallbackRgb 调用方已算好的底色（非水面/非 BIOME 图层时使用）
+     * @return 最终 0xRRGGBB（不含坡度光照）
+     */
+    public static int colorForCellView(GeoPalette.PreviewLayer layer,
+                                       int majority, double surface, double seaLevel,
+                                       boolean snow, int fallbackRgb) {
+        // 水面：任何图层下都按深度渐变（可读出"能不能过"）
+        if (surface <= seaLevel) {
+            return waterColor(surface, seaLevel);
+        }
+        if (layer == GeoPalette.PreviewLayer.BIOME
+                || layer == GeoPalette.PreviewLayer.CLIMATE_ZONE) {
+            if (snow) return 0xE7F0F5;
+            return jitter(landColor(majority), majority);
+        }
+        return fallbackRgb & 0xFFFFFF;
+    }
+
+    /**
      * 陆地本色：<b>直接用既有的 35 项群系色</b>。
      *
      * @param biomeId {@code BiomeClass.ordinal()}

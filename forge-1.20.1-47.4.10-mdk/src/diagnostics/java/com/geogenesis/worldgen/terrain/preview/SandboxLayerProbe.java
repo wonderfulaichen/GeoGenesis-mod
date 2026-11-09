@@ -53,7 +53,7 @@ public final class SandboxLayerProbe {
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
 
         // 用 128 网格取样本就够（本探针不验密度，只验接线）
-        TerrainFieldData d = TerrainFieldData.sample(terrain, ORIGIN_X, ORIGIN_Z,
+        TerrainFieldData d = TerrainFieldData.sampleDirect(terrain, ORIGIN_X, ORIGIN_Z,
                 SPAN, SPAN, 128, 128, 1L);
         int minY = params.minY(), maxY = params.maxY();
         double sea = params.seaLevel();

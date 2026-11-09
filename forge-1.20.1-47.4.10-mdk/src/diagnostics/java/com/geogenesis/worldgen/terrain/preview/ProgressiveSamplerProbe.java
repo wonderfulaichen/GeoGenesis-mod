@@ -87,7 +87,7 @@ public final class ProgressiveSamplerProbe {
 
         // ---- 3) 与同步一次性采样对拍 ----
         System.out.println("[3] 与一次性采样对拍 …");
-        TerrainFieldData direct = TerrainFieldData.sample(terrain, ORIGIN_X, ORIGIN_Z,
+        TerrainFieldData direct = TerrainFieldData.sampleDirect(terrain, ORIGIN_X, ORIGIN_Z,
                 SPAN, SPAN, GRID, GRID, viewportId);
         int diffs = 0;
         String firstDiff = null;

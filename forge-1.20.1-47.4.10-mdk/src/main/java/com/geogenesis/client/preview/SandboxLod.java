@@ -1,189 +1,156 @@
 package com.geogenesis.client.preview;
 
 /**
- * <b>沙盘 LOD（方案 B：窗口与每柱方块独立）</b>—— ★ 2026-11-08 第八版。
+ * <b>沙盘尺度规格</b> —— ★ 2026-11-08 定稿（按参考项目结构，1 柱 ≈ 16 格方块）。
  *
- * <h2>用户选定方案 B</h2>
+ * <h2>用户裁定（原话）</h2>
  * <blockquote>
- * 「选 B：窗口和每柱方块独立，柱数自动算。」
+ * ①「我们原来的平面视图不就有完整的数据吗？直接转换一下就好了。」<br>
+ * ②「这个预览功能其实就可以当成我们在外部核心层（地形建模软件）的视图。
+ *    这样在这里跑的计算后续可以直接应用到进入世界加载中。」<br>
+ * ③「既然这样其实我们改成按参考项目 16x16 方块吧。其他细节你看参考项目。」
  * </blockquote>
  *
- * <h2>两条独立轴 + 一个派生量</h2>
+ * <h2>★ 三层数据结构（照参考项目 {@code SiteMapSampler}，别再混为一谈）</h2>
  * <pre>
- *   窗口 W     = BASE_WINDOW / 2^k     （滚轮控制 k，连续 —— 有推进感）
- *   每柱方块 P = BASE_BLOCKS / 2^j     （滚轮控制 j，连续 —— 控制精度）
- *   柱数 N     = W / P                 （结果：自动算出，无抵消可能）
+ *   columns  柱子数（高度点数）       默认 128
+ *   fine     细格数 = columns × 2    默认 256      ← {@code HEIGHT_STRIDE = 2}
+ *   step     相邻高度点的方块距       默认 16
+ *   窗口      columns × step         默认 2048 格
+ *   每柱      step 格方块 ≈ 16        ← 用户裁定的"16×16 方块"
  * </pre>
  *
- * <p><b>为什么 B 不会抵消</b>：v5 的恒等式是"柱数 ×2 且每柱 ÷2"同时发生。
- * 方案 B 里 k 和 j 是<b>两条独立的滚轮轴</b>：只有当用户恰好让 k = j 时才会抵消 ——
- * 而那时画面确实该不变（窗口减半、柱子加倍、每柱大小不变 = 同一视野更精细），
- * 这是正确行为而不是 bug。</p>
- *
- * <h2>两条轴怎么由一个滚轮驱动</h2>
- * <p>单滚轮设计：滚轮直接驱动窗口 k；精度轴 j 跟随 k 但带速度系数 r：</p>
+ * <p><b>关键</b>：{@code fine} 只由 {@code columns × HEIGHT_STRIDE} 决定，
+ * <b>与窗口方块数无关</b>。参考项目源码 {@code SiteMapSampler} 第 74-77 行：</p>
  * <pre>
- *   k = log2(zoomRatio)          （窗口轴：每滚一格 k+1）
- *   j = r × k                    （精度轴）
+ *   高度网格间隔（细格）：每 2 格采一个高度，一根柱子正好盖 2×2 细格
+ *   ⇒ 柱子数和高度点数是同一个数，细格数是它们的 2 倍
  * </pre>
- * <p>r 由缩放段给出（见 {@link #precisionRatio}）：拉远/推进段 r=1（柱数不变），
- * 近景段 r=2（每柱方块减半快于窗口 ⇒ 柱数翻倍 = <b>高模</b>）。</p>
  *
- * <h2>约束（防弧纹/防重复采样）</h2>
- * <ul>
- *   <li><b>每柱 ≥ 1 格方块</b>：P ≥ 1，到地板后精度轴停住。</li>
- *   <li><b>柱子屏幕尺寸 ≥ 12px</b>：P 与 W 组合若使柱子过细则夹住 P。
- *       这是<b>人眼分辨率的物理事实</b>，不是 MC 限制 —— 参考项目同样遵守。</li>
- * </ul>
+ * <h2>★ 我此前的致命错误（直接导致 OOM 崩溃）</h2>
+ * <p>我把 {@code gridFor()} 写成 {@code windowFor()}（2048）⇒
+ * 每帧分配 2048×2048 = <b>419 万</b>个格子的十几个数组
+ * ⇒ {@code OutOfMemoryError: Java heap space}（crash-2026-11-09_03.26.03 已取证）。</p>
+ * <p>正确：{@code gridFor() = pillarsFor() × HEIGHT_STRIDE = 128 × 2 = 256}，
+ * 3 个数量级之差。</p>
  *
- * <h2>与 MC 的边界（用户要求"能脱离的脱离"）</h2>
- * <p>本类零 MC 依赖；采样/数据/光照/配色/水位层均无 MC 依赖；
- * 只有绘制层（{@code SandboxRenderer}）耦合 {@code GuiGraphics} —— 与参考项目同一边界。</p>
+ * <h2>参考项目常数对照</h2>
+ * <table border="1">
+ *   <tr><th>项</th><th>参考项目</th><th>本项目</th></tr>
+ *   <tr><td>柱子数基准</td><td>{@code COLUMNS_MIN = 128}</td><td>128</td></tr>
+ *   <tr><td>柱子数上限</td><td>{@code COLUMNS_HARD_MAX = 512}</td><td>512</td></tr>
+ *   <tr><td>{@code HEIGHT_STRIDE}</td><td>2</td><td>2</td></tr>
+ *   <tr><td>每柱方块（{@code step}）</td><td>≈31（±2000 窗口）</td><td><b>16</b>（用户裁定）</td></tr>
+ *   <tr><td>窗口</td><td>4000</td><td>128×16 = <b>2048</b></td></tr>
+ *   <tr><td>细格</td><td>256</td><td><b>256</b></td></tr>
+ *   <tr><td>坡度分母</td><td>{@code 2×step×2 ≈ 124}</td><td>{@code 2×16 = 32}</td></tr>
+ *   <tr><td>坡度增益 / 光照范围</td><td>0.55 / clamp(0.55, 1.30)</td><td>同</td></tr>
+ *   <tr><td>水面衰减 / RELIEF / WATER_SINK</td><td>0.35 / 0.40 / 0.05</td><td>同</td></tr>
+ * </table>
+ *
+ * <h2>错误史（十版，别再重犯）</h2>
+ * <table border="1">
+ *   <tr><th>#</th><th>错法</th><th>后果</th></tr>
+ *   <tr><td>1</td><td>柱数 ×2 且每柱 ÷2</td><td>窗口恒定，滚轮无反应</td></tr>
+ *   <tr><td>2</td><td>每柱 75 格</td><td>柱子过粗</td></tr>
+ *   <tr><td>3</td><td>每柱随缩放变</td><td>违背柱宽恒定</td></tr>
+ *   <tr><td>4</td><td>独立 {@code ProgressiveSampler} 二次采样</td><td>数据源错</td></tr>
+ *   <tr><td>5</td><td>perColumn=1（一柱=一方块）</td><td>450 柱 × 1.8px，地形糊成纹理</td></tr>
+ *   <tr><td>6</td><td>perColumn=horizontalScale（2）</td><td>窗口仅 256 格</td></tr>
+ *   <tr><td>7</td><td>用归一化 r 算坡度光照</td><td>亮度差 0.003 ⇒ 整幅均匀绿</td></tr>
+ *   <tr><td>8</td><td><b>gridFor = windowFor（2048）</b></td><td><b>OOM 崩溃</b></td></tr>
+ *   <tr><td>9</td><td>scale = areaSize×0.92</td><td>超出视口 2.6 倍 ⇒ 只看到局部缓坡</td></tr>
+ *   <tr><td>10</td><td>圆形盘面裁剪</td><td>大沙盘应为方形铺满</td></tr>
+ * </table>
  */
 public final class SandboxLod {
 
-    // ===== 独立轴 1：窗口 =====
+    // ===== 三层结构（照参考项目）=====
 
-    /** 最拉远时的世界窗口（方块）。 */
-    public static final double BASE_WINDOW = 2400.0;
+    /** 细格 / 柱（每边）—— 参考项目 {@code SiteMapSampler.HEIGHT_STRIDE = 2}。 */
+    public static final int HEIGHT_STRIDE = 2;
 
-    // ===== 独立轴 2：每柱方块 =====
+    /** 每柱覆盖的方块数（每边）—— 用户裁定 16。 */
+    public static final int STEP_BLOCKS = 16;
 
-    /** 最拉远时的每柱方块数。 */
-    public static final double BASE_BLOCKS = 75.0;
+    /** 基准柱数（每边）—— 参考项目 {@code COLUMNS_MIN = 128}。 */
+    public static final int BASE_PILLARS = 128;
 
-    /** 每柱方块下限（每细格 ≥ 1 方块，防重复采样）。 */
-    public static final double MIN_BLOCKS = 1.0;
+    /** 柱数硬上限 —— 参考项目 {@code COLUMNS_HARD_MAX = 512}。 */
+    public static final int MAX_PILLARS = 512;
 
-    // ===== 缩放（滚轮） =====
-
-    /** 基准 zoom（进入沙盘默认值）。 */
-    public static final float BASE_ZOOM = 1.0f;
-    /** 每格滚轮的缩放步长（×2：窗口减半）。 */
-    public static final float WHEEL_STEP = 2.0f;
-    /** 允许拉远的格数（视野变大，看到更多）。 */
-    public static final int MAX_ZOOM_OUT_STEPS = 3;
     /**
-     * 允许推近的格数。
+     * 基准 zoom（进入沙盘默认值）。
      *
-     * <p>推近会让相机 scale ×2/格，2 档后盘面已明显溢出视口（只看到局部）。
-     * 参考项目 zoom 上限也仅比默认大 4 倍。取 2 档（×4）。</p>
+     * <p>★ 2026-11-09 B4 改为 <b>2.0</b>（对齐参考项目 yardsite 默认）。</p>
+     * <p>理由：参考项目的竖向立体感来自 {@code scale = areaSize × 0.46 × zoom}，
+     * zoom 默认 2.0 ⇒ 盘面超视口 2.6 倍、竖向跨度 245px（视口 30%）。</p>
+     * <p>我们此前默认 1.0 ⇒ 竖向仅 93px（11%）⇒ 整片看着是平的。
+     * 改的是<b>缩放档位</b>，{@code RELIEF} 保持 yardsite 的 0.40 不动。</p>
      */
+    public static final float BASE_ZOOM = 2.0f;
+
+    /** 滚轮步长：每格 ×2 / ÷2（窗口与柱数同步翻倍/减半）。 */
+    public static final float WHEEL_STEP = 2.0f;
+
+    /** 允许拉远格数：柱数 128 → 256 → 512。 */
+    public static final int MAX_ZOOM_OUT_STEPS = 2;
+
+    /** 允许推近格数：柱数 128 → 64 → 32（柱宽 7→14→28px）。 */
     public static final int MAX_ZOOM_IN_STEPS = 2;
 
     public static final float ZOOM_MIN = (float) (BASE_ZOOM / Math.pow(WHEEL_STEP, MAX_ZOOM_OUT_STEPS));
     public static final float ZOOM_MAX = (float) (BASE_ZOOM * Math.pow(WHEEL_STEP, MAX_ZOOM_IN_STEPS));
 
-    // ===== 派生约束 =====
-
-    /** 柱子最小屏幕尺寸（像素）—— 人眼分辨结构下限，防弧纹。 */
-    public static final double MIN_PILLAR_PX = 12.0;
+    /** 柱子最小屏幕尺寸（像素）。 */
+    public static final double MIN_PILLAR_PX = 2.0;
 
     private SandboxLod() { }
 
-    /** zoom / BASE_ZOOM（&gt;1 = 推近）。 */
+    /** zoom / BASE_ZOOM。 */
     public static double zoomRatio(float zoom) {
         double z = Math.max((double) ZOOM_MIN, Math.min((double) ZOOM_MAX, (double) zoom));
         return z / (double) BASE_ZOOM;
     }
 
-    /** 窗口轴指数 k = log2(zoomRatio)，可为负（拉远）。 */
-    public static double windowAxis(float zoom) {
-        return Math.log(zoomRatio(zoom)) / Math.log(2.0);
+    /** 每柱细格数（每个方向）= {@link #HEIGHT_STRIDE}。 */
+    public static int perColumn() {
+        return HEIGHT_STRIDE;
+    }
+
+    /** 每柱方块数（恒定 16）。 */
+    public static double blocksPerPillar() {
+        return STEP_BLOCKS;
     }
 
     /**
-     * 精度轴相对窗口轴的速度 r。
+     * <b>柱子数（每边）</b> —— 随缩放变化。
      *
-     * <h2>★ 2026-11-08 用户澄清后修正</h2>
-     * <p>用户原话：「固定柱子，但柱子本身宽度就对应 1wu 内部单位，
-     * 然后随着我们缩小画面我们看到的柱子数就变多了。<b>不是柱子宽度变了。</b>」</p>
-     *
-     * <p>含义：柱子是固定物理尺寸（1wu）的方块。<b>视野缩小 ⇒ 同样大小的方块
-     * 在屏幕上变多</b>。所以柱数必须<b>与窗口同步变化</b>：</p>
      * <pre>
-     *   窗口 W = 2400/2^k      （缩小）
-     *   每柱 P = 75/2^k        （同步缩小，保持"格子在物理世界里不变大小"）
-     *   柱数 N = W/P = 32      ← 恒定！
+     *   期望柱数 = 128 / zoomRatio      （推近 ⇒ 少；拉远 ⇒ 多）
+     *   夹在 [8, min(512, 视口/2px)]
      * </pre>
-     * <p>等等 —— 这样柱数恒定，柱子屏幕尺寸也恒定（因为窗口缩小 + 柱数不变
-     * ⇒ 每柱占屏幕更多像素）。<b>那画面就是"同一片地形被放大"</b>，
-     * 正是用户说的"固定位置、完全不动"。</p>
-     *
-     * <h2>真正正确的读法</h2>
-     * <p>"柱子数变多"是指：随着缩小画面（拉远），能看到<b>更大范围</b>的地形，
-     * 而柱子物理尺寸不变 ⇒ 需要的柱子总数变多。即</p>
-     * <pre>
-     *   拉远（zoom↓）⇒ 窗口 W 变大 ⇒ 柱数 N = W/P 变大（P 是固定物理尺寸）
-     *   推近（zoom↑）⇒ 窗口 W 变小 ⇒ 柱数 N 变小
-     * </pre>
-     * <p>⇒ <b>每柱方块 P 恒定</b>（1wu = 固定方块数），窗口随缩放变，柱数自动跟随。
-     * 这样柱子屏幕尺寸恒定、画面内容真实"推近/拉远"、柱数随视野自动增减。</p>
      */
-    public static double precisionRatio(float zoom) {
-        return 0.0;   // 精度轴不动：P 恒定 ⇒ 柱数 = W/P 自动跟随窗口
-    }
-
-    /** <b>独立轴 1：世界窗口</b>（方块）—— 连续；量化到 16 格避免每滚一格重采。 */
-    public static int windowFor(float zoom) {
-        double k = windowAxis(zoom);
-        double raw = BASE_WINDOW / Math.pow(2.0, k);
-        int q = (int) (Math.round(raw / 16.0) * 16);
-        return Math.max(64, q);
-    }
-
-    /**
-     * <b>每柱代表的方块数</b> —— 推近时变小（近处精模）。
-     *
-     * <h2>★ 2026-11-08 最终确定的关系</h2>
-     * <p>用户反复说的核心：「<b>近处精模远处粗模</b>」。标准地图 LOD 语义：</p>
-     * <pre>
-     *   推近（zoom↑）：每柱方块 P↓，窗口 W↓，柱数 N=W/P 必须↑  ← 精模
-     *   拉远（zoom↓）：每柱方块 P↑，窗口 W↑，柱数 N=W/P 必须↓  ← 粗模
-     * </pre>
-     *
-     * <p>要同时满足 W↓ 且 N↑，P 必须比 W 下降得<b>更快</b>。
-     * 取 <b>P = BASE_BLOCKS / 4^k</b>（k=log2 zoomRatio）：
-     * W = 2400/2^k，则 N = (2400/2^k)/(75/4^k) = 32 × 2^k。</p>
-     *
-     * <p>⇒ <b>每推近一格：窗口减半、柱数翻倍</b> —— 这就是"近处精模"。
-     * 柱屏幕宽 = 视口/N，会随 N 减小，但有 12px 下限保护（防弧纹）。</p>
-     *
-     * @param viewportPx 视口边长（像素）
-     */
-    public static double blocksPerPillar(float zoom, int viewportPx) {
-        double k = windowAxis(zoom);
-        // P = 75 / 4^k  ⇒ 比窗口(÷2^k)降得快一倍 ⇒ N = 32×2^k
-        double p = BASE_BLOCKS / Math.pow(4.0, k);
-        if (p < MIN_BLOCKS) p = MIN_BLOCKS;
-
-        // 视觉下限：柱数 N = W/P ≤ viewport/12 ⇒ P ≥ W×12/viewport
-        //   （柱太细会糊成弧纹，宁可降精度）
-        double minP = windowFor(zoom) * MIN_PILLAR_PX / Math.max(1, viewportPx);
-        if (p < minP) p = minP;
-        return p;
+    public static int pillarsFor(float zoom, int viewportPx) {
+        int want = (int) Math.round(BASE_PILLARS / zoomRatio(zoom));
+        int cap = Math.min(MAX_PILLARS, Math.max(8, (int) (viewportPx / MIN_PILLAR_PX)));
+        int p = Math.min(want, cap);
+        return Math.max(8, p - (p & 1));
     }
 
     /** 兼容重载（900px 视口）。 */
-    public static double blocksPerPillar(float zoom) {
-        return blocksPerPillar(zoom, 900);
-    }
-
-    /** <b>派生量</b>：柱子数 = 窗口 / 每柱方块（取偶，便于对齐）。 */
-    public static int pillarsFor(float zoom, int viewportPx) {
-        double n = windowFor(zoom) / blocksPerPillar(zoom, viewportPx);
-        int p = (int) Math.round(n);
-        return Math.max(4, p - (p & 1));
-    }
-
-    /** 兼容重载。 */
     public static int pillarsFor(float zoom) {
         return pillarsFor(zoom, 900);
     }
 
-    /** 采样网格（每边细格数）= 柱数（一细格一根柱）。 */
+    /**
+     * <b>细格数（每边）</b> = 柱数 × {@link #HEIGHT_STRIDE}。
+     *
+     * <p>★ 这里曾经写成 {@code windowFor()}（2048）⇒ 419 万格 ⇒ OOM 崩溃。
+     * 参考项目里细格数<b>只由柱数决定</b>，与窗口方块数无关。</p>
+     */
     public static int gridFor(float zoom, int viewportPx) {
-        return pillarsFor(zoom, viewportPx);
+        return Math.max(2, pillarsFor(zoom, viewportPx) * HEIGHT_STRIDE);
     }
 
     /** 兼容重载。 */
@@ -191,9 +158,19 @@ public final class SandboxLod {
         return gridFor(zoom, 900);
     }
 
-    /** 每细格方块数 = 每柱方块。 */
+    /** <b>世界窗口（方块）</b> = 柱数 × 每柱方块。 */
+    public static int windowFor(float zoom, int viewportPx) {
+        return Math.max(16, pillarsFor(zoom, viewportPx) * STEP_BLOCKS);
+    }
+
+    /** 兼容重载。 */
+    public static int windowFor(float zoom) {
+        return windowFor(zoom, 900);
+    }
+
+    /** 每细格方块数 = 窗口 / 细格数 = 16/2 = 8。 */
     public static double effectiveStep(float zoom, int viewportPx) {
-        return blocksPerPillar(zoom, viewportPx);
+        return STEP_BLOCKS / (double) HEIGHT_STRIDE;
     }
 
     /** 兼容重载。 */
@@ -204,9 +181,8 @@ public final class SandboxLod {
     /** 比例尺读数。 */
     public static String scaleLabel(float zoom, int viewportPx) {
         return String.format(java.util.Locale.ROOT,
-                "视野 %d 格 · %d 柱 · 1 柱 = %.1f 格",
-                windowFor(zoom), pillarsFor(zoom, viewportPx),
-                blocksPerPillar(zoom, viewportPx));
+                "视野 %d 格 · %d 柱 · 1 柱 = %d 格方块",
+                windowFor(zoom, viewportPx), pillarsFor(zoom, viewportPx), STEP_BLOCKS);
     }
 
     /** 兼容重载。 */
@@ -214,21 +190,26 @@ public final class SandboxLod {
         return scaleLabel(zoom, 900);
     }
 
-    /** 窗口覆盖的 tract 数。 */
-    public static int tractsFor(float zoom) {
-        int win = windowFor(zoom);
+    /** 窗口覆盖的 tract 数（决定粗层水位可负担性）。 */
+    public static int tractsFor(float zoom, int viewportPx) {
+        int win = windowFor(zoom, viewportPx);
         int across = (int) Math.ceil(win / 512.0) + 1;
         return across * across;
     }
 
-    /** 是否查粗层水位（25 tract 以内）。 */
-    public static boolean usesCoarseWater(float zoom) {
-        return tractsFor(zoom) <= 25;
+    /** 兼容重载。 */
+    public static int tractsFor(float zoom) {
+        return tractsFor(zoom, 900);
     }
 
-    /** 是否走完整水文管线（恒 false）。 */
-    public static boolean usesHydroPath(float zoom) {
-        return false;
+    /** 是否查粗层水位（25 tract 以内）。 */
+    public static boolean usesCoarseWater(float zoom, int viewportPx) {
+        return tractsFor(zoom, viewportPx) <= 25;
+    }
+
+    /** 兼容重载。 */
+    public static boolean usesCoarseWater(float zoom) {
+        return usesCoarseWater(zoom, 900);
     }
 
     /** 滚轮：每格 ×2 / ÷2。 */

@@ -51,6 +51,8 @@ public final class TerrainFieldData {
 
     /** 本次采样耗时（诊断）。采样完成时回填，故非 final。 */
     public long costMs;
+    /** 从 CellCache 构建时缺失的格数（缓存未覆盖该区域）。 */
+    public int missingCells;
 
     // ---- 每格一个标量（X 主序）----
     /** 归一化高程 e ∈ [-1,1]：高程图层、坡度着色、水面判定都用它。 */
@@ -259,24 +261,19 @@ public final class TerrainFieldData {
     }
 
     /**
-     * 采样整个视口（<b>同步</b>，一次性）。
+     * <b>直接从地形引擎采样</b>（不经 CellCache）—— 供探针对拍用。
      *
-     * <p>⚠ 这是「一次跑完」的版本，64×64 约 40~55 ms（S0 实测）。
-     * 需要分帧的场合请用 {@link ProgressiveSampler}。</p>
+     * <p>★ 2026-11-09 B4：原先这里有两个重载（带/不带 {@code hydro} 参数），
+     * <b>已删除</b> —— 它们只被三个探针调用，而那三个探针的判据
+     * （与沙盘路径一致性）改用 {@link #fromCellCache} 对拍更直接。</p>
+     *
+     * <p>⚠ 本方法<b>绕过缓存</b>，每次都重算 —— 只在探针里用，
+     * 生产路径一律走 {@code fromCellCache}（读平面视图的缓存，零二次采样）。</p>
      */
-    /**
-     * 采样整个视口（<b>同步</b>，一次性），可选用<b>水文管线</b>。
-     *
-     * <p>⚠ 这是「一次跑完」的版本，64×64 约 40~55 ms（S0 实测）。
-     * 需要分帧的场合请用 {@link ProgressiveSampler}。</p>
-     *
-     * @param hydro true = 用 {@code sampleCell}（带河谷雕刻与湖河数据，但每个新水文
-     *              region 需秒级）；false = {@code sampleCellCoarse}（廉价、无水文）
-     */
-    public static TerrainFieldData sample(GeoGenesisTerrain terrain,
-                                          int originX, int originZ,
-                                          int blocksWide, int blocksHigh,
-                                          int gridW, int gridH, long viewportId, boolean hydro) {
+    public static TerrainFieldData sampleDirect(GeoGenesisTerrain terrain,
+                                                 int originX, int originZ,
+                                                 int blocksWide, int blocksHigh,
+                                                 int gridW, int gridH, long viewportId) {
         TerrainFieldData d = new TerrainFieldData(gridW, gridH, originX, originZ,
                 blocksWide, blocksHigh, viewportId, 0);
         long t0 = System.nanoTime();
@@ -286,7 +283,7 @@ public final class TerrainFieldData {
             int wx = originX + (int) Math.round(gx * stepX);
             for (int gz = 0; gz < gridH; gz++) {
                 int wz = originZ + (int) Math.round(gz * stepZ);
-                Cell c = hydro ? terrain.sampleCell(wx, wz) : terrain.sampleCellCoarse(wx, wz);
+                Cell c = terrain.sampleCellCoarse(wx, wz);
                 d.put(gx, gz, c);
             }
         }
@@ -294,18 +291,63 @@ public final class TerrainFieldData {
         return d;
     }
 
-    /** 兼容重载：<b>不走</b>水文管线。 */
-    public static TerrainFieldData sample(GeoGenesisTerrain terrain,
-                                          int originX, int originZ,
-                                          int blocksWide, int blocksHigh,
-                                          int gridW, int gridH, long viewportId) {
-        return sample(terrain, originX, originZ, blocksWide, blocksHigh,
-                gridW, gridH, viewportId, false);
+    /**
+     * <b>从平面视图的 {@code CellCache} 构建沙盘数据</b>（★ 2026-11-08 用户裁定）。
+     *
+     * <h2>为什么直读缓存</h2>
+     * <p>用户原话：「我们原来的平面视图不就有完整的数据吗？直接转换一下就好了。
+     * 明明又有高度数据并且精度都到 MC 方块级了。」</p>
+     * <p>{@code CellCache} 每个 chunk 存满 16×16 个 {@link Cell}（1 Cell = 1 方块），
+     * 精度就是 MC 方块级 —— 沙盘不该再走 {@code ProgressiveSampler} 二次采样。</p>
+     *
+     * <h2>★ 尺寸必须由 <b>柱数</b> 决定，不是窗口方块数（OOM 事故）</h2>
+     * <p>曾把细格数写成窗口方块数（2048）⇒ 2048² = <b>419 万</b>格 × 十几个数组
+     * ⇒ {@code OutOfMemoryError}（crash-2026-11-09_03.26.03 已取证）。</p>
+     * <p>参考项目结构：{@code fine = columns × HEIGHT_STRIDE = 128 × 2 = 256}。
+     * 细格只表示「取样密度」，与窗口实际覆盖多少方块无关。</p>
+     *
+     * @param cache    平面视图的 CellCache
+     * @param originX  窗口左上角世界 X
+     * @param originZ  窗口左上角世界 Z
+     * @param blocksWide/blocksHigh 窗口方块尺寸
+     * @param gridW/gridH 目标细格数（= 柱数 × 2）
+     * @param viewportId 视口标识
+     */
+    public static TerrainFieldData fromCellCache(
+            com.geogenesis.client.preview.chunk.CellCache cache,
+            int originX, int originZ, int blocksWide, int blocksHigh,
+            int gridW, int gridH, long viewportId) {
+        TerrainFieldData d = new TerrainFieldData(gridW, gridH,
+                originX, originZ, blocksWide, blocksHigh, viewportId, 0);
+        long t0 = System.nanoTime();
+        // 每细格对应的方块步长（窗口 / 细格数）
+        double stepX = blocksWide / (double) gridW;
+        double stepZ = blocksHigh / (double) gridH;
+        int sampled = 0, missing = 0;
+        for (int gx = 0; gx < gridW; gx++) {
+            int wx = originX + (int) Math.round(gx * stepX);
+            int cx = Math.floorDiv(wx, 16), lx = wx - cx * 16;
+            for (int gz = 0; gz < gridH; gz++) {
+                int wz = originZ + (int) Math.round(gz * stepZ);
+                int cz = Math.floorDiv(wz, 16), lz = wz - cz * 16;
+                Cell c = cache.getCell(cx, cz, lx, lz);
+                if (c == null) { missing++; continue; }
+                d.put(gx, gz, c);
+                sampled++;
+            }
+        }
+        // 缓存数据是"早就采好的"⇒ 不重播生长动画（put 会写 currentTimeMillis）
+        long longAgo = (t0 / 1_000_000L) - 60_000L;
+        for (int i = 0; i < d.bornAt.length; i++) {
+            if (d.bornAt[i] != 0L) d.bornAt[i] = longAgo;
+        }
+        d.costMs = (System.nanoTime() - t0) / 1_000_000L;
+        d.missingCells = missing;
+        return d;
     }
 
     /** 写入一个格点（采样与渐进填充共用）。 */
-    void put(int gx, int gz, Cell c) {
-        int i = index(gx, gz);
+    void put(int gx, int gz, Cell c) {        int i = index(gx, gz);
         if (i < 0 || c == null) return;
         e[i] = c.e;
         temperature[i] = c.temperature;

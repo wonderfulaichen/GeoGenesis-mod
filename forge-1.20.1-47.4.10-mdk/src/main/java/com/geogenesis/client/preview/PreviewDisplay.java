@@ -44,8 +44,31 @@ public class PreviewDisplay extends AbstractWidget {
 
     // ====== 存储 & 采样 ======
     private final TerrainPool pool = new TerrainPool(4);
-    private TerrainQueue queue;
-    private GeoGenesisTerrain terrain;
+    /**
+     * 平面精确管线（★ 2026-11-09 B4b：从本类剪切出去）。
+     *
+     * <p>「预览 = 游戏」的保证在这里：逐 chunk 采样 → 写纹理 → 坡度阴影。</p>
+     */
+    final PlanePainter plane = new PlanePainter(this);
+    /**
+     * ★ 2026-11-09 B4a：统一控制器（状态 + 模式分派）。
+     *
+     * <p>模式分派只发生在它的 {@code rasterizer} 字段上 —— 本类不再有
+     * {@code if (sandboxMode)} 这样的分支（用户原话：「明明我都说了要重构重构，
+     * 结果各自完全独立分裂。」）。</p>
+     */
+    PreviewController controller;
+
+    /**
+     * 统一控制器（★ 2026-11-09 B4a）。
+     *
+     * <p>模式分派、状态、沙盘绘制都在它里面 —— 本类不再有模式分支。</p>
+     */
+    public PreviewController controller() {
+        return controller;
+    }
+    TerrainQueue queue;
+    GeoGenesisTerrain terrain;
     /**
      * 本预览是否<b>拥有</b> {@link #terrain} 的生命周期。
      *
@@ -53,20 +76,20 @@ public class PreviewDisplay extends AbstractWidget {
      * <p>这种共享实例<b>绝不能</b>被预览关闭：否则玩家关掉配置屏会关停游戏正在用的引擎
      * （其进程池已 shutdown）。⇒ 关屏/换地形时只在 {@code ownsTerrain} 为真时退役。</p>
      */
-    private boolean ownsTerrain = true;
+    boolean ownsTerrain = true;
     /** 结构扫描器（创建世界界面传入 registry 后可用；null = 预览无结构标记） */
-    private com.geogenesis.client.preview.chunk.StructureScanner structureScanner;
+    com.geogenesis.client.preview.chunk.StructureScanner structureScanner;
     /** 显示结构标记 */
     public boolean showStructures = true;
     /** 磁盘持久化：seed 变更时重建；close() 时保存（"已加载的地图被记录"） */
-    private long diskSeed = Long.MIN_VALUE;
-    private long diskConfigHash = Long.MIN_VALUE;
+    long diskSeed = Long.MIN_VALUE;
+    long diskConfigHash = Long.MIN_VALUE;
 
     // ====== 纹理 ======
-    private NativeImage image;
-    private DynamicTexture texture;
-    private ResourceLocation texLoc;
-    private int texW, texH;
+    NativeImage image;
+    DynamicTexture texture;
+    ResourceLocation texLoc;
+    int texW, texH;
     /** 每纹理像素对应的世界块数。越大越缩。 */
     public int scaleBlockPos = 1;
     /**
@@ -76,69 +99,76 @@ public class PreviewDisplay extends AbstractWidget {
      * {@code ChunkWorkUnit.blockStride} 上限为 16 —— 视口 30 万格时绘制循环要约 3.7 亿次迭代。
      * 大范围必须走"固定采样数 + 步长缩放"（FreeTerraForged 同款），开销与视野无关。</p>
      */
-    private boolean largeArea = false;
+    boolean largeArea = false;
     /** ★ S2：分块渐进采样器（粗档先铺，逐块补齐到 TARGET_GRID）。 */
-    private ProgressiveSampler largeSampler;
+    ProgressiveSampler largeSampler;
     /** 粗层水位查询（沙盘河道/湖面用；按 tract 缓存）。 */
-    private SandboxWaterLookup waterLookup;
+    SandboxWaterLookup waterLookup;
     /** 已提交给 GPU 的采样视口 id（采完后需重画一次）。 */
-    private long largeSamplerIdDrawn = Long.MIN_VALUE;
+    long largeSamplerIdDrawn = Long.MIN_VALUE;
 
     /** ★ S3：沙盘（3D 方柱）模式。与平面模式共用同一份采样数据，切换不重采。 */
-    private boolean sandboxMode = false;
+    boolean sandboxMode = false;
     /** 沙盘右键平移中。 */
-    private boolean sandboxPanning = false;
-    private final SandboxRenderer sandbox = new SandboxRenderer();
+    boolean sandboxPanning = false;
+    /**
+     * ★ 2026-11-09 B3：沙盘的 rasterizer（只负责画，几何在 {@code SandboxGeometry}）。
+     * 旧的 {@code SandboxRenderer}（1132 行，自带一套 collect/sort/pick/投影）已停用 ——
+     * 它与 {@code SandboxGeometry} 构成两套沙盘实现，正是本轮要消灭的"独立分裂"。
+     * B4 删文件。
+     */
+    private com.geogenesis.client.preview.raster.SandboxRasterizer sandboxRasterizer =
+            new com.geogenesis.client.preview.raster.SandboxRasterizer();
     /** 绘制时复用的 Cell 实例，避免每像素分配。 */
-    private final Cell paintedCell = new Cell();
+    final Cell paintedCell = new Cell();
     /** 纹理超采样倍率（渲染分辨率 = 预览窗口逻辑分辨率 × renderScale）。
      *  1=显示器模型（纹理=窗口逻辑像素，GPU 负责 DPI 上采样，最快）；2/3/4=更锐利但更慢。 */
     public int renderScale = 1;
 
     // ====== 视口 ======
     /** 视口中心世界坐标 */
-    private int centerX = 0, centerZ = 0;
+    int centerX = 0, centerZ = 0;
     /** 拖拽累积偏移（松手后并入 center） */
-    private double totalDragX = 0, totalDragZ = 0;
+    double totalDragX = 0, totalDragZ = 0;
     /** 拖拽中标志：拖拽时跳过最贵的坡度阴影（松手后一次性补画），保证拖动流畅 */
-    private boolean dragging = false;
+    boolean dragging = false;
 
     // ====== 渲染脏检查（避免静止帧无谓重画/重传，消除"渲染打架"） ======
     /** 上帧已画进纹理的视口原点（对齐 scale 后），未变 → 视口未动 */
-    private long lastOriginWx = Long.MIN_VALUE, lastOriginWz = Long.MIN_VALUE;
+    long lastOriginWx = Long.MIN_VALUE, lastOriginWz = Long.MIN_VALUE;
     /** 上帧已画进纹理的 CellCache 版本号，未变 → 无新数据 */
-    private long lastCacheVersion = -1;
+    long lastCacheVersion = -1;
     /** 上帧已画进纹理的图层，未变 → 颜色无需重算 */
-    private int lastLayerOrdinal = -1;
-    private int lastSelectedLayerOrdinal = -1, lastSelectedId = -1;
+    int lastLayerOrdinal = -1;
+    int lastSelectedLayerOrdinal = -1, lastSelectedId = -1;
 
     // ====== 图层 ======
-    private GeoPalette.PreviewLayer activeLayer = GeoPalette.PreviewLayer.ELEVATION;
+    GeoPalette.PreviewLayer activeLayer = GeoPalette.PreviewLayer.ELEVATION;
 
     // ====== UI ======
-    private boolean showLegend = true;
-    private int legendScrollOffset = 0;
-    private int legendSortMode = 0;
-    private static final String[] LEGEND_SORT_NAMES = {"默认", "名称", "分类"};
+    boolean showLegend = true;
+    int legendScrollOffset = 0;
+    int legendSortMode = 0;
+    static final String[] LEGEND_SORT_NAMES = {"默认", "名称", "分类"};
     /** 图例搜索：非空时过滤条目 */
-    private String legendSearchQuery = "";
+    String legendSearchQuery = "";
     /** 搜索框是否激活（接收键盘输入） */
-    private boolean legendSearchActive = false;
+    boolean legendSearchActive = false;
     /** 图例是否展开（false 时只显示标题条） */
-    private boolean legendExpanded = true;
-    private int hoverX = -1, hoverZ = -1;
+    boolean legendExpanded = true;
+    int hoverX = -1, hoverZ = -1;
 
     // ====== 交互增强 ======
     /** 帧时间统计（最近 30 帧的毫秒数） */
-    private final Queue<Long> frameTimes = new ArrayDeque<>();
+    final Queue<Long> frameTimes = new ArrayDeque<>();
     /** 右键复制坐标的消息（非 null 时显示） */
-    private Component copiedToastMsg = null;
+    Component copiedToastMsg = null;
     /** 右键复制消息的创建时间 */
-    private Instant copiedToastTime = null;
+    Instant copiedToastTime = null;
     /** 离散图层选中（通用）：选中图层 + 离散 id（-1=未选中）。
      *  用于点击地图/图例/列表高亮该色块、其余置灰，与参考项目选中行为一致。 */
-    private GeoPalette.PreviewLayer selectedLayer = null;
-    private int selectedId = -1;
+    GeoPalette.PreviewLayer selectedLayer = null;
+    int selectedId = -1;
     /** 过滤模式（对齐参考模组 BiomeCheckboxList 思路）：开启后图例/地图点击切换勾选集合，
      *  未勾选的类型在地图上压暗显示；关闭 = 单选高亮。 */
     public boolean filterMode = false;
@@ -155,7 +185,7 @@ public class PreviewDisplay extends AbstractWidget {
      *  块坐标线距 = 48 × horizontalScale；线处像素压暗。 */
     public boolean showTileBorders = false;
     /** 水平缩放（块/wu；构造时从 params 取，tile 边界线定位用） */
-    private double horizontalScale = 1.0;
+    double horizontalScale = 1.0;
     /** 拖动时简化视图（跳过最贵的坡度阴影保证 60fps；松手后第一帧补画）。false = 拖动也画完整阴影 */
     public boolean dragSimplify = true;
     /** 公开 CellCache 引用，供外部清除缓存 */
@@ -164,11 +194,11 @@ public class PreviewDisplay extends AbstractWidget {
     private final StructureIconOverlay structureOverlay = new StructureIconOverlay();
 
     // ====== 数据 ======
-    private long seed;
-    private int seaLevel, maxY, minY, mountainCap;
-    private double peakFraction, verticalScale;
+    long seed;
+    int seaLevel, maxY, minY, mountainCap;
+    double peakFraction, verticalScale;
     /** 高程色阶映射的 e 区间（地形实际可达范围），供图例 Y 标签换算。 */
-    private double elevEMin = -1.0, elevEMax = 1.0;
+    double elevEMin = -1.0, elevEMax = 1.0;
     /** 视口变化标记：需要清除纹理重新填充。pan/zoom/seed 变时设 true */
     public boolean needsClear = true;
 
@@ -224,10 +254,14 @@ public class PreviewDisplay extends AbstractWidget {
         this.verticalScale = params.verticalScale();
         this.horizontalScale = params.horizontalScale();
         this.renderScale = Math.max(1, Math.min(4, renderScale));
+        // ★ 2026-11-09 B4a：统一控制器（状态 + 模式分派 + 沙盘绘制）。
+        //   本类退化为「Widget 门面 + 平面精确管线 + 图例」，不再有模式分支。
+        this.controller = new PreviewController(this, terrain, seed, params);
         // 高程色阶范围跟随地形实际可达 e 区间（由地形类型 e 界限换算），
         // 使地形最高处触顶雪白、最深触底深蓝，而非世界的绝对高度上下限。
         double[] er = params.elevationERange();
         this.elevEMin = er[0]; this.elevEMax = er[1];
+        this.controller.setElevationRange(elevEMin, elevEMax);
         GeoPalette.setElevationERange(er[0], er[1]);
         GeoPalette.setSeaLevel(seaLevel);
         // 渲染分辨率 = 预览窗口显示分辨率（逻辑像素 × renderScale），类比电脑显示器：
@@ -542,7 +576,7 @@ public class PreviewDisplay extends AbstractWidget {
     //       Prevents overlapping morphology from cutting another inlet's natural receiver.
     //       ★ 2026-11-07 用户实机视觉验收通过（同批实测启动进入世界 <3 分钟）⇒ 本条为定稿产出。
     //       仍有界：仅同盆认证湿域内改动，湖外普通河与骨架不变；非水力/泥沙模拟。
-    private static final int CACHE_SCHEMA_VERSION = 129;
+    static final int CACHE_SCHEMA_VERSION = 129;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
@@ -744,40 +778,9 @@ public class PreviewDisplay extends AbstractWidget {
      * 高度与实际落块相差一个侵蚀量级。用于看<b>气候格局 / 纬度分带 / 地形骨架</b>；
      * 需要"预览 = 游戏"请缩小到 ≤1:16 回到精确管线。</p>
      */
-    private void paintLargeArea(int originWx, int originWz, int blocksWide, int blocksHigh) {
-        long id = (long) originWx * 31L + originWz;
-        id = id * 131L + blocksWide;
-        id = id * 131L + blocksHigh;
-        if (largeSampler == null) {
-            largeSampler = new ProgressiveSampler(ProgressiveSampler.DEFAULT_GRID,
-                    ProgressiveSampler.DEFAULT_GRID);
-        }
-        // ★ S2：视口变了先重开一轮。
-        //   平面大范围窗口可达数万格 ⇒ 必须走廉价路径（水文会到分钟级，见 SandboxLod.usesHydroPath）。
-        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id, false);
-
-        TerrainFieldData d = largeSampler.data();
-        if (d == null) return;
-        int gw = d.gridW, gh = d.gridH;
-        Cell reuse = paintedCell;                 // 复用同一实例，避免每像素 new
-        for (int py = 0; py < texH; py++) {
-            int gz = Math.min(gh - 1, py * gh / texH);
-            int wz = originWz + py * scaleBlockPos;
-            for (int px = 0; px < texW; px++) {
-                int gx = Math.min(gw - 1, px * gw / texW);
-                Cell c = d.toDisplayCell(gx, gz, reuse);
-                int color = 0;
-                if (c != null) {
-                    int wx = originWx + px * scaleBlockPos;   // 真实世界坐标（供纬度/坐标类图层）
-                    color = GeoPalette.color(activeLayer, c, wx, wz, minY, maxY, true);
-                }
-                image.setPixelRGBA(px, py, GeoPalette.toABGR(color));
-            }
-        }
-    }
 
     /** 开启大范围时自动跳到该缩放档（1:64）——保证"点开即见效果"。 */
-    private static final int LARGE_AREA_ENTRY_SCALE = 64;
+    static final int LARGE_AREA_ENTRY_SCALE = 64;
 
     /**
      * 切换大范围模式（>1:16 走 {@link LargeAreaSampler}；关闭时回落精确管线并复位缩放）。
@@ -837,54 +840,64 @@ public class PreviewDisplay extends AbstractWidget {
         //   正解：柱子屏幕尺寸恒定（13px）⇒ 网格数 = 视口像素/13 ≈ 70 柱 = 140 细格。
         //   推近只改"每柱代表多少方块" ⇒ 视野缩小、精度提高（用户要的就是这个）。
         //   成本反而更低：140² = 19,600 点 < 256² = 65,536 点。
-        float zoom = sandbox.zoom();
-        int side = Math.min(w, h);
+        float zoom = sandboxRasterizer.zoom();
+        // ★ 全屏地图：用<b>完整视口</b>（不是 min(w,h) 的正方形）。
+        //   用正方形会让盘面在宽屏上只占中间一块、上下大片留白 ——
+        //   用户要求「实际没有上下栏，类似像一个游戏地图那样全屏显示画面内容」。
+        int side = Math.max(w, h);
         // ★ 记录进入沙盘时的初始中心（R 键回到这里）
         if (homeCenterX == null) {
             homeCenterX = centerX;
             homeCenterZ = centerZ;
         }
 
-        // ★★ 真 LOD（2026-11-08 第四次）：网格与聚合系数<b>都随缩放变</b>。
+        // ★★ 2026-11-08【用户指出的正解：直接用平面视图的数据】
         //
-        //   用户原话：「就是缩放近处精模远处粗模」「为什么固定柱数？
-        //   你这样我无论精度如何看到的效果不是已经不变吗？」
+        //   用户原话：「我们原来的平面视图不就有完整的数据吗？直接转换一下就好了。
+        //   明明又有高度数据并且精度都到 MC 方块级了。」
+        //   「这个预览功能其实就可以当成我们在外部核心层（地形建模软件）的视图。
+        //    这样在这里跑的计算后续可以直接应用到进入世界加载中。」
         //
-        //   之前我把网格固定，只改窗口 ⇒ 柱子数恒定 ⇒ 构图不变 ⇒ "效果不变"。
-        // ★★ 方案 B（用户选定）：窗口与每柱方块两条独立轴，柱数 = 窗口/每柱。
-        //   详见 SandboxLod javadoc。沙盘 perColumn 恒为 1（一细格一根柱）。
-        sandbox.setPerColumn(1);
-        int grid = SandboxLod.gridFor(zoom);
-        int blocksWide = SandboxLod.windowFor(zoom);
+        //   平面视图的 {@link CellCache} 已按 chunk×16×16 存了完整 Cell
+        //   （e / 高度 / 气候 / 群系 / 地形 / 水文），精度就是 MC 方块级。
+        //   沙盘此前用 ProgressiveSampler <b>重新采样</b> —— 慢，且与平面视图不一致。
+        //
+        //   ⇒ 直接读缓存：1 细格 = 1 方块（真 MC 精度），零二次采样。
+        //   ⚠ 前提：平面视图已把视口附近的 chunk 采进缓存（它一直在采）。
+        //
+        // ★ 柱子尺度（照参考项目三层结构）：
+        //   柱数 columns=128、细格 fine=columns×HEIGHT_STRIDE=256、每柱 16 格方块。
+        //   ⇒ perColumn = 2（每柱聚合 2×2 个细格）
+        
+        int blocksWide = Math.max(64, SandboxLod.windowFor(zoom));
         int blocksHigh = blocksWide;
+        int grid = SandboxLod.gridFor(zoom);          // = 柱数 × 2（不是窗口方块数！）
         int originWx = centerX + (int) totalDragX - blocksWide / 2;
         int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
-        // 视口标识：窗口 + 网格都参与 ⇒ 换精度也必重采
+
         long id = (long) originWx * 31L + originWz;
         id = id * 131L + blocksWide;
-        id = id * 131L + blocksHigh;
         id = id * 131L + grid;
+        id = id * 131L + cellCache.version();   // 缓存更新 ⇒ 重读
 
-        if (largeSampler == null) {
-            largeSampler = new ProgressiveSampler(grid, grid);
+        // ★★ 必须缓存：每帧重建 = 每帧分配 grid² × 十几个数组
+        //   （曾按窗口方块数 2048 建 ⇒ 419 万格 ⇒ OOM 崩溃）。
+        //   只有 id 变了（视口/窗口/精度/缓存版本）才重建。
+        if (sandboxData == null || sandboxDataId != id) {
+            sandboxData = TerrainFieldData.fromCellCache(
+                    cellCache, originWx, originWz, blocksWide, blocksHigh, grid, grid, id);
+            sandboxDataId = id;
         }
-        largeSampler.setGrid(grid);
-        // ★ 粗层水位（河道/湖面）：窗口小到 tract 数可负担时才开
-        boolean wantWater = SandboxLod.usesCoarseWater(zoom);
-        if (wantWater && waterLookup == null) {
-            waterLookup = new SandboxWaterLookup(terrain.generator());
-        }
-        boolean hydroPath = SandboxLod.usesHydroPath(zoom);
-        largeSampler.reset(terrain, originWx, originWz, blocksWide, blocksHigh, id, hydroPath,
-                wantWater ? waterLookup : null);
+        TerrainFieldData d = sandboxData;
 
-        TerrainFieldData d = largeSampler.data();
-        // 诊断：视口或精度变化就记一条，便于实机确认"滚轮真的换了比例尺"
+        // 诊断：视口变化就记一条
         if (sandboxDiagId != id) {
             sandboxDiagId = id;
-            LOGGER.info("[Preview] 沙盘 {} 数据={} zoom={} 水位={} scene={}x{}",
-                    SandboxLod.describe(zoom), d != null,
-                    String.format(java.util.Locale.ROOT, "%.2f", zoom), wantWater, w, h);
+            LOGGER.info("[Preview] 沙盘 {} zoom={} 细格={} 窗口={} 数据={}ms 缺失={}",
+                    SandboxLod.describe(zoom),
+                    String.format(java.util.Locale.ROOT, "%.2f", zoom),
+                    grid, blocksWide, d == null ? -1 : d.costMs, d == null ? -1 : d.missingCells);
+
         }
         // ★ 竖向比例：<b>照抄参考项目</b>（SiteTerrainRenderer.collect() 第 661/677-678 行）：
         //
@@ -910,18 +923,36 @@ public class PreviewDisplay extends AbstractWidget {
                 double columnMax = d.e[i] < 0.0 ? seaY : d.height[i];
                 if (columnMax > hi) hi = columnMax;
             }
-            largeSampler.easeReliefSpan((float) Math.max(60.0, hi - baseY));
+            reliefSpan = easeReliefSpan((float) Math.max(60.0, hi - baseY), reliefSpan);
         }
         // ★ P0-4：hover 拾取（视线推进），沙盘模式每帧一次
+        //   拾取与标记仍用正方形边长 side（它们是屏幕坐标计算，与盘面尺度无关）
         int ax = getX() + (w - side) / 2;
         int ay = getY() + (h - side) / 2;
+        // ★★ 2026-11-09 B3/B4：沙盘绘制走<b>统一 rasterizer</b>。
+        //
+        //   旧路径 SandboxRenderer（1132 行，自带一套 collect/sort/pick/投影）已删除 ——
+        //   它与新的 SandboxGeometry 构成两套沙盘实现，正是本轮要消灭的"独立分裂"。
+        //   新路径：SandboxRasterizer 只负责"画"，几何全在 SandboxGeometry（纯函数、探针可验证）。
+        //   本类继续负责：读 CellCache、算竖向比例 span、hover、地图标记。
+        TerrainSnapshot snap = TerrainSnapshot.of(d);
+        com.geogenesis.client.preview.raster.RasterParams rp =
+                new com.geogenesis.client.preview.raster.RasterParams(
+                        w, h, 0f, activeLayer, (int) seaY);
+        sandboxRasterizer.setColorSource(sandboxColorSource());
         if (d != null && isMouseOver(mx, my)) {
-            sandbox.pick(mx, my, ax, ay, side);
+            sandboxRasterizer.pick(mx, my, getX(), getY(), w, h);
         } else {
-            sandbox.clearPick();
+            sandboxRasterizer.clearPick();
         }
-        sandbox.render(g, d, activeLayer, minY, maxY, ax, ay, side,
-                largeSampler.reliefSpan(), seaY, System.currentTimeMillis());
+        // ★ 2026-11-09 B4a：绘制委托给控制器（模式分派的唯一位置在此）。
+        //   控制器内部按 rasterizer 字段分派，本类不再直接调 SandboxRasterizer。
+        if (controller != null) {
+            controller.setElevationRange(elevEMin, elevEMax);
+            controller.setLayer(activeLayer);
+            controller.renderSandbox(g, snap, rp, getX(), getY(), w, h,
+                    reliefSpan, System.currentTimeMillis());
+        }
 
         // ★ 地图标记（出生点 / 玩家 / 结构）：平面视图原有能力，沙盘也要有。
         //   坐标用沙盘当前视口（originWx/originWz/blocksWide）——
@@ -930,92 +961,36 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /** 沙盘诊断：上次已打印的视口 id。 */
-    private long sandboxDiagId = Long.MIN_VALUE;
+    long sandboxDiagId = Long.MIN_VALUE;
+
+    /**
+     * 沙盘数据缓存（★ 2026-11-08：<b>绝不能每帧重建</b>）。
+     *
+     * <p>曾每帧调 {@code fromCellCache}，且细格数误用窗口方块数（2048）
+     * ⇒ 2048² = 419 万格 × 十几个数组/帧 ⇒ {@code OutOfMemoryError}
+     * （crash-2026-11-09_03.26.03 已取证）。</p>
+     */
+    TerrainFieldData sandboxData;
+    long sandboxDataId = Long.MIN_VALUE;
+
+    /**
+     * 沙盘竖向比例（本图最高点 − 基准面），<b>缓动</b>（照抄 yardsite
+     * {@code SiteField.easeReliefSpan}：涨 8%/帧、降 2%/帧，差 &lt; 0.6 时对齐）。
+     * 缓动吸收 LOD 切换 / 拖动时的跳变，避免柱子高度抖动。
+     */
+    float reliefSpan = 60.0f;
+
+    private static float easeReliefSpan(float target, float current) {
+        float diff = target - current;
+        if (Math.abs(diff) < 0.6f) return target;
+        return current + diff * (diff > 0 ? 0.08f : 0.02f);
+    }
 
     /** 坡度阴影后处理。
      *  1. 从 cellCache 提取高度数据
      *  2. 3×3 盒型模糊消除块边界跳变（参考项目无坡度阴影，用 colormap 平滑。
      *     我们用模糊再算 slope 来避免黑线。）
      */
-    private void applySlopeShading(NativeImage img, int originWx, int originWz) {
-        // 标准地图学光源：屏幕左上方（lx<0 左、lz<0 屏幕上方），符合人眼"光从左上来"的直觉，
-        // 避免旧 (0.5,1,0.3)=右下方光源造成的"陆地凹陷/海洋突出"错觉。
-        float lx = -0.5f, ly = 1.0f, lz = -0.3f;
-        float len = (float) Math.sqrt(lx * lx + ly * ly + lz * lz);
-        lx /= len; ly /= len; lz /= len;
-
-        int w = img.getWidth(), h = img.getHeight();
-        int total = w * h;
-        int[] effH = new int[total];       // 有效高度：水域填海平面，陆地填 worldY
-        boolean[] valid = new boolean[total];
-        // 水下掩码：e<0 为海平面以下（海洋）。水面是平的，海底起伏不应被 hillshade 雕出浮雕，
-        // 否则在左上方光源下仍会显"海洋突出"的错觉。水域像素保留纯色带（按深度渐变），不做明暗调制。
-        boolean[] water = new boolean[total];
-
-        // 1. 提取高度（必须与着色层同一世界坐标映射：纹理像素 px → 世界块 originWx + px*scaleBlockPos，
-        //    否则缩放后阴影层相对着色层产生线性位移 → 视差/剪切错位）
-        for (int py = 0; py < h; py++) {
-            for (int px = 0; px < w; px++) {
-                int wx = originWx + px * scaleBlockPos;
-                int wz = originWz + py * scaleBlockPos;
-                int cx = wx >> 4, cz = wz >> 4;
-                int lx2 = wx & 15, lz2 = wz & 15;
-                Cell c = cellCache.getCell(cx, cz, lx2, lz2);
-                if (c != null) {
-                    boolean isWater = c.e < 0.0;
-                    water[py * w + px] = isWater;
-                    // 水域用海平面高度代替海床：海岸处 陆地(≈seaLevel)−水域(seaLevel)≈0，
-                    // 消除海底深度在海岸线陆地投下的伪阴影"悬崖"（海岸阴影截断）。
-                    effH[py * w + px] = isWater ? seaLevel : (int) c.height;
-                    valid[py * w + px] = true;
-                }
-            }
-        }
-
-        // 2. 3×3 盒型平滑（消除块边界跳变）；水域以 effH=seaLevel 参与模糊，
-        //    使海岸处 陆地(≈seaLevel)−水域(seaLevel)≈0，海岸阴影从岸边平滑过渡到内陆起伏（不再截断）。
-        int[] smooth = effH.clone();
-        for (int py = 1; py < h - 1; py++) {
-            for (int px = 1; px < w - 1; px++) {
-                if (!valid[py * w + px]) continue;
-                long sum = 0; int cnt = 0;
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        int idx = (py + dy) * w + (px + dx);
-                        if (valid[idx]) { sum += effH[idx]; cnt++; }
-                    }
-                }
-                if (cnt >= 3) smooth[py * w + px] = (int) (sum / cnt);
-            }
-        }
-
-        // 3. 坡度计算 + 亮度修正（跳过水域像素，海面保持平涂）
-        for (int py = 1; py < h - 1; py++) {
-            for (int px = 1; px < w - 1; px++) {
-                int idx = py * w + px;
-                if (water[idx] || !valid[idx] || !valid[idx - 1] || !valid[idx + 1]
-                        || !valid[idx - w] || !valid[idx + w]) continue;
-                // 斜率按 scaleBlockPos 归一化到「每世界块」，使缩放各级阴影强度一致
-                // （相邻纹理像素实际间隔 scaleBlockPos 个世界块）
-                float inv = 0.5f / scaleBlockPos;
-                float dhdx = (smooth[idx + 1] - smooth[idx - 1]) * inv;
-                float dhdz = (smooth[idx + w] - smooth[idx - w]) * inv;
-                float nx = -dhdx, ny = 1.0f, nz = -dhdz;
-                float nLen = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
-                if (nLen < 0.001f) continue;
-                nx /= nLen; ny /= nLen; nz /= nLen;
-                float diff = Math.max(0, nx * lx + ny * ly + nz * lz) * 0.6f + 0.4f;
-
-                int abgr = img.getPixelRGBA(px, py);
-                int a = (abgr >> 24) & 0xFF;
-                int b = (abgr >> 16) & 0xFF;
-                int g2 = (abgr >> 8) & 0xFF;
-                int r = abgr & 0xFF;
-                img.setPixelRGBA(px, py, (a << 24) | (Math.min(255, (int)(b * diff)) << 16)
-                        | (Math.min(255, (int)(g2 * diff)) << 8) | Math.min(255, (int)(r * diff)));
-            }
-        }
-    }
 
     /** 从 CellCache 读取可见区内已缓存的 chunk 并逐块写入纹理。
      *  逐块采样（cells[lx*16+lz]，X 主序与 generateChunk 一致），每个块映射到其纹理像素。
@@ -1023,77 +998,6 @@ public class PreviewDisplay extends AbstractWidget {
      *    2) step=scaleBlockPos 稀疏采样（每纹理像素 1 采样点：16/step × 16/step 点恰好覆盖
      *       chunk 在纹理中的 scaleBlockPos² 像素区，无漏画无网格）。此前临时 step=1 全采样
      *       使拖拽每帧绘制量暴涨 16 倍 → 移动卡顿（用户反馈），已恢复稀疏。 */
-    private int paintAvailableChunks(int originWx, int originWz, int blocksWide, int blocksHigh) {
-        int minCX = originWx >> 4;
-        int maxCX = (originWx + blocksWide) >> 4;
-        int minCZ = originWz >> 4;
-        int maxCZ = (originWz + blocksHigh) >> 4;
-
-        int step = Math.min(16, Math.max(1, scaleBlockPos));
-        int paintedCount = 0;
-        for (int cx = minCX; cx <= maxCX; cx++) {
-            for (int cz = minCZ; cz <= maxCZ; cz++) {
-                Cell[] cells = cellCache.get(cx, cz);
-                if (cells == null) continue;
-
-                for (int lx = 0; lx < 16; lx += step) {
-                    for (int lz = 0; lz < 16; lz += step) {
-                        int wx = (cx << 4) + lx;
-                        int wz = (cz << 4) + lz;
-                        int tx = (wx - originWx) / scaleBlockPos;
-                        int tz = (wz - originWz) / scaleBlockPos;
-                        if (tx < 0 || tx >= texW || tz < 0 || tz >= texH) continue;
-                        // ★ 2026-08-08：修复索引转置——generateChunk 写 cells[lx*16+lz]（X 行 Z 列），
-                        //   此处必须同约定读，否则 chunk 内 X/Z 交换 → 16 块间距网格（19df17e 后引入）。
-                        Cell cell = cells[lx * 16 + lz];
-                        if (cell == null) continue;
-                        int color = GeoPalette.color(activeLayer, cell, wx, wz, minY, maxY, true);
-                        // 离散图层：过滤模式 → 未勾选压暗；否则选中高亮其余压暗（每帧重绘，实时生效）
-                        if (activeLayer.kind == GeoPalette.Kind.DISCRETE) {
-                            int id = GeoPalette.discreteIdForCell(activeLayer, cell);
-                            if (filterMode) {
-                                if (!filterIds.contains(id)) color = grayTint(color);
-                            } else if (selectedLayer == activeLayer && selectedId >= 0 && id != selectedId) {
-                                color = grayTint(color);
-                            }
-                        }
-                        // ★ 细胞边界叠加（诊断子图层）：与左/上邻居主导地形类型不同处画深色线。
-                        //   对齐阴影等叠加层的表现方式——不改变数据色，仅压暗边界像素。
-                        if (showCellBorders) {
-                            int cxc = wx >> 4, czc = wz >> 4;
-                            int lxc = wx & 15, lzc = wz & 15;
-                            // X 主序：cells[lx*16+lz]（与 generateChunk 一致）
-                            Cell left = (lxc > 0) ? cells[(lxc - 1) * 16 + lzc]
-                                    : cellCache.getCell(cxc - 1, czc, 15, lzc);
-                            Cell up = (lzc > 0) ? cells[lxc * 16 + (lzc - 1)]
-                                    : cellCache.getCell(cxc, czc - 1, lxc, 15);
-                            boolean leftDiff = left != null && left.terrainType != cell.terrainType;
-                            boolean upDiff = up != null && up.terrainType != cell.terrainType;
-                            if (leftDiff || upDiff) {
-                                int r = (color >> 16) & 0xFF, gg = (color >> 8) & 0xFF, b = color & 0xFF;
-                                r = r * 3 / 10; gg = gg * 3 / 10; b = b * 3 / 10;
-                                color = (r << 16) | (gg << 8) | b;
-                            }
-                        }
-                        // ★ 2026-08-14 tile 边界叠加（诊断侵蚀 tile 网格/边缘错位用）：
-                        //   线在块坐标 % (48×horizontalScale) == 0 处（ERODE_TILE_CENTER=48wu）。
-                        //   用比细胞边界更暗的压暗（×2/10），一眼可辨 48wu 网格线。
-                        if (showTileBorders) {
-                            int tb = (int) Math.round(48 * horizontalScale);
-                            if (tb > 0 && (wx % tb == 0 || wz % tb == 0)) {
-                                int r = (color >> 16) & 0xFF, gg = (color >> 8) & 0xFF, b = color & 0xFF;
-                                r = r * 2 / 10; gg = gg * 2 / 10; b = b * 2 / 10;
-                                color = (r << 16) | (gg << 8) | b;
-                            }
-                        }
-                        image.setPixelRGBA(tx, tz, GeoPalette.toABGR(color));
-                        paintedCount++;
-                    }
-                }
-            }
-        }
-        return paintedCount;
-    }
 
     // ================================================================
     //  交互
@@ -1238,15 +1142,9 @@ public class PreviewDisplay extends AbstractWidget {
     public int getSelectedId() { return selectedId; }
 
     /** 选中色块高亮时，将非选中颜色去饱和为灰（保留亮度对比，不纯黑）。 */
-    private static int grayTint(int rgb) {
-        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
-        int gray = (r * 30 + g * 59 + b * 11) / 100;
-        gray = Math.max(48, Math.min(200, gray));
-        return 0xFF000000 | (gray << 16) | (gray << 8) | gray;
-    }
 
     /** 沙盘拖动用的临时数组（避免每次分配）。 */
-    private final float[] sandboxDragOut = new float[2];
+    final float[] sandboxDragOut = new float[2];
 
     /**
      * 沙盘右键拖动：<b>移动地图</b>（移动世界中心 + 触发重新采样）。
@@ -1256,8 +1154,8 @@ public class PreviewDisplay extends AbstractWidget {
      */
     private void panSandboxBy(double dx, double dy) {
         int areaSize = Math.min(getWidth(), getHeight());
-        double step = SandboxLod.effectiveStep(sandbox.zoom());
-        sandbox.dragToBlocks(dx, dy, areaSize, step, sandboxDragOut);
+        double step = SandboxLod.effectiveStep(sandboxRasterizer.zoom());
+        sandboxRasterizer.dragToBlocks(dx, dy, areaSize, areaSize, step, sandboxDragOut);
         // 累加到浮点累加器：拖动位移常小于 1 方块，直接取整会被吃掉
         sandboxCenterAccX += sandboxDragOut[0];
         sandboxCenterAccZ += sandboxDragOut[1];
@@ -1273,14 +1171,14 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /** 拖动累积的世界位移余量（&lt;1 方块的部分）。 */
-    private double sandboxCenterAccX, sandboxCenterAccZ;
+    double sandboxCenterAccX, sandboxCenterAccZ;
 
     /**
      * 进入沙盘时的初始世界中心（R 键回到这里）。
      *
      * <p>null = 尚未记录（首次进入沙盘时才记，见 {@link #renderSandbox}）。</p>
      */
-    private Integer homeCenterX, homeCenterZ;
+    Integer homeCenterX, homeCenterZ;
 
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
@@ -1298,7 +1196,7 @@ public class PreviewDisplay extends AbstractWidget {
         // 沙盘模式：左键拖动转视角（yardsite 第 1113-1126 行）
         if (sandboxMode) {
             if (dragging) {
-                sandbox.dragRotate(dx, dy);
+                sandboxRasterizer.dragRotate(dx, dy);
             }
             return true;
         }
@@ -1318,10 +1216,10 @@ public class PreviewDisplay extends AbstractWidget {
         if (sandboxMode) {
             boolean ctrl = net.minecraft.client.gui.screens.Screen.hasControlDown();
             if (ctrl) {
-                sandbox.setWidthScale(sandbox.widthScale() * (delta > 0 ? 1.06f : 1f / 1.06f));
+                sandboxRasterizer.setWidthScale(sandboxRasterizer.widthScale() * (delta > 0 ? 1.06f : 1f / 1.06f));
             } else {
                 // ★ Q1-C 加减速：远快近慢（见 SandboxLod.nextZoom 的 javadoc）
-                sandbox.setZoom(SandboxLod.nextZoom(sandbox.zoom(), delta > 0));
+                sandboxRasterizer.setZoom(SandboxLod.nextZoom(sandboxRasterizer.zoom(), delta > 0));
             }
             return true;
         }
@@ -1437,16 +1335,8 @@ public class PreviewDisplay extends AbstractWidget {
     /** 向下对齐到 scale 的倍数（负数也用 floorDiv 正确处理）。
      *  <p>视口原点对齐后，paint 的像素坐标 (wx-originWx)/scale 恒整除，
      *  chunk 采样点精确映射到纹理像素，无缝隙/重叠/重影（"渲染打架"根因之一）。 */
-    private static int alignDown(int v, int scale) {
-        return Math.floorDiv(v, scale) * scale;
-    }
 
     /** e→世界高度 Y（与 HeightCurve.heightFromE 一致的非对称映射：e=0→海平面）。 */
-    private double heightFromE(double e) {
-        if (e <= 0.0) return seaLevel - (-e) * (seaLevel - minY);
-        double t = Math.max(0.0, Math.min(1.0, e * verticalScale));
-        return seaLevel + t * (maxY - seaLevel) * peakFraction;
-    }
     public void setElevationColormap(String name) {
         GeoPalette.setElevationColormap(name);
         needsClear = true;  // 色带变化 → 脏检查下必须显式触发重绘
@@ -1565,175 +1455,23 @@ public class PreviewDisplay extends AbstractWidget {
     // ================================================================
 
     /** 绘制世界出生点标记（金色罗盘 + 白色双圆范围框） */
-    private void drawSpawnMarker(GuiGraphics g) {
-        if (mc.level == null) return;
-        BlockPos spawn = mc.level.getSharedSpawnPos();
-        if (spawn == null) return;
-        // 计算出生点在纹理中的坐标（与渲染同源：对齐后的统一原点）
-        int blocksWide = texW * scaleBlockPos;
-        int blocksHigh = texH * scaleBlockPos;
-        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scaleBlockPos);
-        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scaleBlockPos);
-        int sx = spawn.getX(), sz = spawn.getZ();
-        int texSx = (sx - originWx) / scaleBlockPos;
-        int texSz = (sz - originWz) / scaleBlockPos;
-        if (texSx < 0 || texSx >= texW || texSz < 0 || texSz >= texH) return;
-
-        // 映射到屏幕坐标
-        int x = getX(), y = getY(), w = width, h = height;
-        int screenSx = x + (int)((double)texSx / texW * w);
-        int screenSz = y + (int)((double)texSz / texH * h);
-        int markerSize = 6;
-
-        // 金色 X 形罗盘标记（移除白边框方框，避免与正常方块误判）
-        int gold = 0xFFFFAA00;
-        g.fill(screenSx - markerSize, screenSz - 1, screenSx - 1, screenSz + 1, gold);
-        g.fill(screenSx + 1, screenSz - 1, screenSx + markerSize, screenSz + 1, gold);
-        g.fill(screenSx - 1, screenSz - markerSize, screenSx + 1, screenSz - 1, gold);
-        g.fill(screenSx - 1, screenSz + 1, screenSx + 1, screenSz + markerSize, gold);
-    }
 
     /** 绘制帧时间（右上角） */
-    private void drawFrameTime(GuiGraphics g, int rightX, int topY) {
-        if (frameTimes.isEmpty()) return;
-        long sum = 0;
-        for (long t : frameTimes) sum += t;
-        long avg = sum / frameTimes.size();
-        int color;
-        if (avg < 16) color = 0xFF44CC44;      // 绿：流畅
-        else if (avg < 33) color = 0xFFFFAA00;  // 黄：可接受
-        else color = 0xFFFF5555;                 // 红：卡顿
-        String txt = avg + " ms";
-        g.fill(rightX - mc.font.width(txt) - 8, topY + 2, rightX - 2, topY + 12, 0x88000000);
-        g.drawString(mc.font, txt, rightX - mc.font.width(txt) - 5, topY + 3, color);
-    }
 
     /** 绘制玩家位置标记：白圆点 + 深色描边 + 姓名标签（与出生点金色 X 区分）。 */
-    private void drawPlayerMarker(GuiGraphics g) {
-        if (mc.player == null) return;  // 非游戏世界（无玩家）不画
-        double px = mc.player.getX();
-        double pz = mc.player.getZ();
-        int blocksWide = texW * scaleBlockPos;
-        int blocksHigh = texH * scaleBlockPos;
-        // 与渲染同源：统一对齐原点
-        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scaleBlockPos);
-        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scaleBlockPos);
-        int texX = (int) ((px - originWx) / scaleBlockPos);
-        int texZ = (int) ((pz - originWz) / scaleBlockPos);
-        if (texX < 0 || texX >= texW || texZ < 0 || texZ >= texH) return;  // 玩家在视口外
-
-        int x = getX(), y = getY(), w = width, h = height;
-        int sx = x + (int) ((double) texX / texW * w);
-        int sy = y + (int) ((double) texZ / texH * h);
-
-        // 深色描边（5×5 圆环） + 白色中心（3×3 圆点）
-        for (int dy = -2; dy <= 2; dy++) {
-            for (int dx = -2; dx <= 2; dx++) {
-                int d2 = dx * dx + dy * dy;
-                if (d2 <= 4) {
-                    int col = (d2 <= 1) ? 0xFFFFFFFF : 0xFF1a1a2a;
-                    g.fill(sx + dx, sy + dy, sx + dx + 1, sy + dy + 1, col);
-                }
-            }
-        }
-        // 姓名标签（顶部）
-        String name = mc.player.getGameProfile().getName();
-        int tw = mc.font.width(name);
-        g.fill(sx - tw / 2 - 2, sy - 14, sx + tw / 2 + 2, sy - 3, 0xAA000000);
-        g.drawString(mc.font, name, sx - tw / 2, sy - 12, 0xFFFFFF);
-    }
 
     /** 绘制自动检测的结构标记：彩色方块 + 白色中心点，悬停显示全名。 */
-    private void drawStructureMarkers(GuiGraphics g, int mx, int my) {
-        int blocksWide = texW * scaleBlockPos;
-        int blocksHigh = texH * scaleBlockPos;
-        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scaleBlockPos);
-        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scaleBlockPos);
-        int x = getX(), y = getY(), w = width, h = height;
-        // 悬停命中检测
-        String hoverName = null;
-        for (var entry : structureScanner.allHits()) {
-            for (var hit : entry.getValue()) {
-                int wx = (hit.chunkX() << 4) + 8;
-                int wz = (hit.chunkZ() << 4) + 8;
-                int texX = (wx - originWx) / scaleBlockPos;
-                int texZ = (wz - originWz) / scaleBlockPos;
-                if (texX < 0 || texX >= texW || texZ < 0 || texZ >= texH) continue;
-                int sx = x + (int) ((double) texX / texW * w);
-                int sy = y + (int) ((double) texZ / texH * h);
-                int color = structureColor(hit.id());
-                g.fill(sx - 2, sy - 2, sx + 2, sy + 2, color);
-                g.fill(sx - 1, sy - 1, sx + 1, sy + 1, 0xFFFFFFFF);
-                if (mx >= sx - 3 && mx <= sx + 3 && my >= sy - 3 && my <= sy + 3) {
-                    hoverName = structureName(hit.id());
-                }
-            }
-        }
-        if (hoverName != null) {
-            int tw = mc.font.width(hoverName);
-            g.fill(mx + 10, my + 8, mx + 14 + tw, my + 20, 0xCC000000);
-            g.drawString(mc.font, hoverName, mx + 13, my + 10, 0xFFFFFF);
-        }
-    }
 
     /** 结构类型 → 标记色（按结构名粗分类，简单可辨） */
-    private static int structureColor(net.minecraft.resources.ResourceLocation id) {
-        if (id == null) return 0xFFFFAA00;
-        String s = id.getPath();
-        if (s.contains("village")) return 0xFF00FF88;      // 村庄绿
-        if (s.contains("stronghold")) return 0xFF8844FF;   // 要塞紫
-        if (s.contains("ancient_city")) return 0xFF00CCFF; // 古城青
-        if (s.contains("mineshaft")) return 0xFF888888;    // 矿井灰
-        if (s.contains("ruined")) return 0xFFCC8844;      // 遗迹棕
-        if (s.contains("ocean_ruin")) return 0xFF2266AA;   // 海底遗迹蓝
-        if (s.contains("shipwreck")) return 0xFFCC6644;    // 沉船橙
-        if (s.contains("desert_pyramid")) return 0xFFFFCC44; // 沙漠神殿黄
-        if (s.contains("jungle_pyramid")) return 0xFF33CC66; // 丛林神殿绿
-        if (s.contains("igloo")) return 0xFFAAEEFF;        // 冰屋浅蓝
-        if (s.contains("pillager")) return 0xFFCC5555;     // 掠夺者红
-        if (s.contains("monument")) return 0xFF22AAAA;     // 海底神殿青
-        if (s.contains("fortress")) return 0xFFAA4444;     // 下界要塞红
-        if (s.contains("bastion")) return 0xFF883333;      // 猪灵堡垒棕
-        if (s.contains("trail")) return 0xFFBBBB88;        // 古迹灰黄
-        return 0xFF00AAFF;                                  // 其他蓝
-    }
 
-    private static String structureName(net.minecraft.resources.ResourceLocation id) {
-        if (id == null) return "结构";
-        // 转换 minecraft:village_plains → Village Plains
-        String p = id.getPath().replace('_', ' ');
-        if (p.isEmpty()) return id.toString();
-        return Character.toUpperCase(p.charAt(0)) + p.substring(1);
-    }
 
     /** 绘制右键复制坐标消息（8 秒渐隐） */
-    private void drawCopiedToast(GuiGraphics g, int px, int py, int pw, int ph) {
-        if (copiedToastMsg == null || copiedToastTime == null) return;
-        long elapsed = Duration.between(copiedToastTime, Instant.now()).toMillis();
-        if (elapsed >= 8000) {
-            copiedToastMsg = null;
-            copiedToastTime = null;
-            return;
-        }
-        int alpha = Math.max(0, Math.min(255, 220 - (int)(elapsed * 220 / 8000)));
-        if (alpha <= 0) return;
-        // 绘制居中底栏消息
-        int textW = mc.font.width(copiedToastMsg);
-        int bx = px + (pw - textW) / 2 - 4;
-        int by = py + ph - 32;
-        g.fill(bx, by, bx + textW + 8, by + 12, (alpha << 24) | 0x101418);
-        g.drawString(mc.font, copiedToastMsg, bx + 4, by + 2, (alpha << 24) | 0xFFFFFF);
-    }
 
     // ================================================================
     //  图例
     // ================================================================
 
     /** 本地化：优先 I18n（MC 语言文件），缺失则回退到英文表（与 Swing 端一致）。 */
-    private String localize(String key) {
-        String s = I18n.get(key);
-        return s.equals(key) ? GeoPalette.englishLabel(key) : s;
-    }
 
     private void drawLegend(GuiGraphics g, int mx, int my) {
         GeoPalette.PreviewLayer layer = getLayer();
@@ -1842,62 +1580,7 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /** 读取 hover 位置 Cell（只读缓存，绝不触发地形采样——主线程采样会卡死渲染）。 */
-    private Cell sampleHoverCell(int wx, int wz) {
-        int cx = wx >> 4, cz = wz >> 4;
-        int lx = wx & 15, lz = wz & 15;
-        // 缓存 miss → 返回 null（tooltip 不显示）。地形采样一律交给后台 Worker。
-        return cellCache.getCell(cx, cz, lx, lz);
-    }
 
-    private void drawHoverInfo(GuiGraphics g, int mx, int my) {
-        if (!isMouseOver(mx, my) || hoverX == -1 || terrain == null) return;
-        Cell c = sampleHoverCell(hoverX, hoverZ);
-        if (c == null) return;
-
-        // 跟随光标 tooltip（偏移 14px，夹取在屏幕内避免越界）
-        int screenW = mc.getWindow().getGuiScaledWidth();
-        int screenH = mc.getWindow().getGuiScaledHeight();
-        int lx = (int) mx + 14;
-        int ly = (int) my + 14;
-        // 第一行：坐标 + 高度
-        String line0 = String.format("X=%d  Z=%d  Y=%d", hoverX, hoverZ, (int) Math.round(c.height));
-        // 第二行：群系名 + 地形类型
-        BiomeClassifier.BiomeClass biome = BiomeClassifier.classify(c);
-        String biomeName = "—";
-        if (biome != null) {
-            String key = "geogenesis.biome." + biome.name();
-            String localized = I18n.get(key);
-            biomeName = localized.equals(key) ? biome.name() : localized;
-        }
-        String line1 = biomeName + "  " + typeLine(c);
-        // 第三行：温度/湿度/大陆性
-        String line2 = String.format("temp=%.2f  hum=%.2f  cont=%.2f", c.temperature, c.humidity, c.continentNoise);
-        // 第四行：纬度 + 地形起伏
-        String line3 = String.format("lat=%.2f  relief=%.2f",
-            com.geogenesis.worldgen.climate.Latitude.latitude01(hoverZ),
-            (c.shape + 1) * 0.5);
-        // 第五行：水文信息（河流系统已清除，仅保留湖泊）
-        String line4 = c.lakeMask ? I18n.get("geogenesis.preview.lake") : "—";
-
-        String line5 = activeLayer.kind == GeoPalette.Kind.DISCRETE
-            ? "左键选中色块 · 右键复制坐标"
-            : "右键复制坐标";
-        String[] lines = {line0, line1, line2, line3, line4, line5};
-        // 自动计算面板宽度
-        int maxW = 0;
-        for (String l : lines) maxW = Math.max(maxW, mc.font.width(l));
-        maxW = Math.max(maxW, 160);
-        int panelH = lines.length * 13 + 4;
-        if (lx + maxW + 10 > screenW) lx = (int) mx - maxW - 18;
-        if (ly + panelH > screenH) ly = (int) my - panelH - 14;
-        lx = Math.max(2, lx);
-        ly = Math.max(2, ly);
-        g.fill(lx, ly, lx + maxW + 10, ly + panelH, 0xCC000000);
-        for (int i = 0; i < lines.length; i++) {
-            int col = (i == lines.length - 1) ? 0xFF88CCAA : 0xFFFFFF;
-            g.drawString(mc.font, lines[i], lx + 4, ly + 4 + i * 13, col);
-        }
-    }
 
     private List<GeoPalette.LegendEntry> getSortedEntries(GeoPalette.PreviewLayer layer) {
         List<GeoPalette.LegendEntry> entries = new ArrayList<>(GeoPalette.discreteEntries(layer));
@@ -1965,32 +1648,13 @@ public class PreviewDisplay extends AbstractWidget {
         return mx >= lx && mx <= lx + 132 && my >= ly && my <= ly + getHeight() - 40;
     }
 
-    private static String typeLine(Cell c) {
-        return switch (c.terrainType) {
-            case OCEAN -> I18n.get("geogenesis.preview.type.ocean");
-            case DEEP_OCEAN -> I18n.get("geogenesis.preview.type.deep_ocean");
-            case CONTINENTAL_SHELF -> I18n.get("geogenesis.preview.type.continental_shelf");
-            case SUBMARINE_RIDGE -> I18n.get("geogenesis.preview.type.submarine_ridge");
-            case SEAMOUNT -> I18n.get("geogenesis.preview.type.seamount");
-            case BEACH -> I18n.get("geogenesis.preview.type.beach");
-            case PLAIN -> I18n.get("geogenesis.preview.type.plain");
-            case HILLS -> I18n.get("geogenesis.preview.type.hills");
-            case PLATEAU -> I18n.get("geogenesis.preview.type.plateau");
-            case MOUNTAINS -> I18n.get("geogenesis.preview.type.mountains");
-            case PEAK -> I18n.get("geogenesis.preview.type.peak");
-            case BASIN -> I18n.get("geogenesis.preview.type.basin");
-            case RIVER -> I18n.get("geogenesis.preview.type.river");
-            case LAKE -> I18n.get("geogenesis.preview.type.lake");
-            default -> I18n.get("geogenesis.preview.type.land");
-        };
-    }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // ★ 沙盘快捷键（见左下角提示）：R = 重置视角并回到初始中心
         //   （与地图软件"回到初始视图"一致；只复位视角不回中心会让用户找不到地图）
         if (sandboxMode && !legendSearchActive && keyCode == GLFW.GLFW_KEY_R) {
-            sandbox.resetView();
+            sandboxRasterizer.resetView();
             if (homeCenterX != null) {
                 centerX = homeCenterX;
                 centerZ = homeCenterZ;
@@ -2028,11 +1692,62 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /** 1px 边框绘制（Gf 无直接 border，用 4 条线模拟） */
-    private static void border(GuiGraphics g, int x1, int y1, int x2, int y2, int color, int width) {
-        g.fill(x1, y1, x2, y1 + width, color);
-        g.fill(x1, y2 - width, x2, y2, color);
-        g.fill(x1, y1 + width, x1 + width, y2 - width, color);
-        g.fill(x2 - width, y1 + width, x2, y2 - width, color);
+
+    /**
+     * <b>交出 terrain 所有权</b>（★ 2026-11-09 预览 → 世界复用）。
+     *
+     * <h2>为什么需要</h2>
+     * <p>用户点「应用 / 创建世界」后，本预览算好的 {@code GeoGenesisTerrain}
+     * （含 4096-chunk 缓存 + 细层水文 region）要交给<b>进世界生成</b>接管，不重算。</p>
+     *
+     * <p>但 {@link #close()} 会 {@code terrain.closeProcessErosion()} —— 那会把即将
+     * 被游戏使用的引擎关停。⇒ 交出前先调本方法，把 {@code ownsTerrain} 置 false，
+     * 之后 {@code close()} 只释放自己的资源（线程池/纹理），不碰 terrain。</p>
+     *
+     * <p>语义与 {@code ownsTerrain=false}（共享存档单例）一致：<b>释放使用权，不销毁对方</b>。</p>
+     */
+    public void transferOwnership() {
+        this.ownsTerrain = false;
+    }
+
+    /**
+     * 沙盘底色来源（★ 2026-11-09 B3）。
+     *
+     * <p>与平面模式<b>同图例同颜色</b>：连续图层走 {@link GeoPalette} 色带、
+     * 离散图层走其离散表。归一化公式必须与 {@code GeoPalette.color} 一致
+     * （否则切模式会变色）。</p>
+     */
+    private com.geogenesis.client.preview.sandbox.SandboxGeometry.ColorSource sandboxColorSource() {
+        final GeoPalette.PreviewLayer layer = activeLayer;
+        final int mnY = minY, mxY = maxY;
+        return (gx, gz, snap) -> {
+            int i = snap.index(gx, gz);
+            if (i < 0) return 0x505050;
+            if (layer.kind == GeoPalette.Kind.DISCRETE) {
+                int id = switch (layer) {
+                    case TERRAIN_TYPE -> snap.terrainId[i] & 0xFFFF;
+                    case RIVER_TYPE -> snap.extraId[i * 4] & 0xFFFF;
+                    case ROCK_TYPE -> snap.extraId[i * 4 + 1] & 0xFFFF;
+                    case ROCK_LAYER -> snap.extraId[i * 4 + 2] & 0xFFFF;
+                    default -> snap.biomeClassId[i] & 0xFFFF;
+                };
+                return GeoPalette.discrete(layer, id) & 0xFFFFFF;
+            }
+            double pos = switch (layer) {
+                case ELEVATION -> Math.max(0.0, Math.min(1.0,
+                        (snap.e[i] - elevEMin) / Math.max(1e-6, elevEMax - elevEMin)));
+                case TEMPERATURE -> (snap.temperature[i] + 1.0) * 0.5;
+                case HUMIDITY -> (snap.humidity[i] + 1.0) * 0.5;
+                case PRECIPITATION ->
+                        Math.sqrt(Math.max(0.0, Math.min(1.0, snap.precipitation[i] / 1.2)));
+                case CONTINENTALITY -> (snap.continent[i] + 1.0) * 0.5;
+                case RELIEF -> (snap.shape[i] + 1.0) * 0.5;
+                case RIVER_NETWORK -> snap.discharge[i] > 0
+                        ? Math.min(1.0, Math.log1p(snap.discharge[i]) / 6.0) : 0.0;
+                default -> 0.0;
+            };
+            return GeoPalette.continuous(layer, pos) & 0xFFFFFF;
+        };
     }
 
     public void close() {
@@ -2069,7 +1784,7 @@ public class PreviewDisplay extends AbstractWidget {
         // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
         if (sandboxMode) {
             StringBuilder sb = new StringBuilder(
-                    SandboxLod.scaleLabel(sandbox.zoom()));
+                    SandboxLod.scaleLabel(sandboxRasterizer.zoom()));
             // 地图中心（拖动后能看出位置真的变了）
             sb.append(String.format(java.util.Locale.ROOT, " · 中心 %d,%d", centerX, centerZ));
             if (largeSampler != null && largeSampler.data() != null) {
@@ -2104,29 +1819,9 @@ public class PreviewDisplay extends AbstractWidget {
     /** 是否隐藏预览自带的缩放标签（全屏模式下由屏幕 HUD 代劳）。 */
     public void setDrawZoomLabel(boolean v) { this.drawZoomLabel = v; }
 
-    private boolean drawZoomLabel = true;
+    boolean drawZoomLabel = true;
 
     /** 缩放比标签：1:N 右下角（★ 大范围模式附带标记——否则分不清当前走的是哪条管线） */
-    private void drawZoomLabel(GuiGraphics g, int x, int y, int w, int h) {
-        // ★★ 2026-11-08【修"该有的功能都没有"· 第二处根因】：
-        //
-        //   GeoGenesisConfigScreen 为了"全屏时由屏幕 HUD 代劳"，
-        //   调用了 preview.setDrawZoomLabel(false) —— 于是这个方法直接 return，
-        //   我新写的整套沙盘 HUD（左上标题/种子/操作说明、右缘进度条、
-        //   左下悬停信息、右下比例尺）**一条都没画出来**。
-        //   而 ConfigScreen 那边只有一条右下状态栏 ⇒ 实机看起来"功能全没了"。
-        //
-        //   ⇒ 沙盘 HUD 是这个模式的核心信息层，<b>不受 drawZoomLabel 开关影响</b>。
-        if (sandboxMode) {
-            drawSandboxHints(g, x, y, w, h);
-            return;
-        }
-        if (!drawZoomLabel) return;
-        String zoomTxt = "1:" + scaleBlockPos
-                + (largeArea ? " · " + localize("geogenesis.preview.large_area") : "");
-        g.fill(x + w - mc.font.width(zoomTxt) - 8, y + h - 14, x + w - 2, y + h - 2, 0x88000000);
-        g.drawString(mc.font, zoomTxt, x + w - mc.font.width(zoomTxt) - 5, y + h - 12, 0xCCCCCCCC);
-    }
 
     /**
      * 沙盘 HUD —— <b>照参考项目布局</b>（{@code YardSiteScreen.drawTopLeft / drawProgress}）：
@@ -2140,80 +1835,98 @@ public class PreviewDisplay extends AbstractWidget {
      *
      * <p>★ 之前只有一个右下角状态栏，与参考项目差距明显（用户指出"UI 布局完全不同"）。</p>
      */
-    private void drawSandboxHints(GuiGraphics g, int x, int y, int w, int h) {
-        final int GOLD = 0xFFFFD24A;
-        final int TEXT_SUB = 0xFFD4D9E4;
-        final int TEXT_HINT = 0xFFA6AEBE;
-
-        // ---- 左上：标题 + 种子/范围 + 操作说明 ----
-        int px = x + 8;
-        int py = y + 6;
-        g.drawString(mc.font, "GeoGenesis 地形沙盘", px, py, GOLD, true);
-        py += 12;
-        String sub = String.format(java.util.Locale.ROOT,
-                "种子 %d · 中心 %d,%d · %s",
-                seed, centerX, centerZ, SandboxLod.scaleLabel(sandbox.zoom()));
-        g.drawString(mc.font, sub, px, py, TEXT_SUB, true);
-        py += 12;
-        String[] hints = {
-                "右键拖动 = 移动地图 · 左键拖动 = 旋转",
-                "滚轮 = 推近/拉远（推近柱子会细分）· Ctrl+滚轮 = 柱宽",
-                "R = 重置视角",
-        };
-        for (String s : hints) {
-            g.drawString(mc.font, s, px, py, TEXT_HINT, true);
-            py += 10;
+    /**
+     * 沙盘 HUD（★ 2026-11-09 B4a：已搬到 {@code SandboxHud}）。
+     *
+     * <p>本方法只负责<b>填数据快照</b>再委托 —— HUD 本身不碰采样器与地形实例。</p>
+     */
+    void drawSandboxHints(GuiGraphics g, int x, int y, int w, int h) {
+        com.geogenesis.client.preview.raster.SandboxHud.HudData d =
+                new com.geogenesis.client.preview.raster.SandboxHud.HudData();
+        d.seed = seed;
+        d.centerX = centerX + (int) totalDragX;
+        d.centerZ = centerZ + (int) totalDragZ;
+        d.zoom = sandboxRasterizer.zoom();
+        if (largeSampler != null && largeSampler.data() != null && !largeSampler.isComplete()) {
+            d.progress = largeSampler.progress();
         }
-
-        // ---- 右缘：进度细竖条（参考项目 drawProgress）----
-        TerrainFieldData dd = largeSampler == null ? null : largeSampler.data();
-        if (dd != null && !largeSampler.isComplete()) {
-            int barW = 4;
-            int barX = x + w - barW - 4;
-            int barTop = y + 44;
-            int barBottom = y + h - 40;
-            float prog = largeSampler.progress();
-            g.fill(barX, barTop, barX + barW, barBottom, 0x50FFFFFF);
-            g.fill(barX, barTop, barX + barW,
-                    barTop + (int) ((barBottom - barTop) * prog), GOLD);
+        int picked = sandboxRasterizer.pickedColumn();
+        if (picked >= 0) {
+            d.pickedColX = sandboxRasterizer.pickedColX();
+            d.pickedColZ = sandboxRasterizer.pickedColZ();
+            d.pickedTopY = sandboxRasterizer.pickedTopY();
+            int windowBlocks = SandboxLod.windowFor(sandboxRasterizer.zoom());
+            double step = SandboxLod.effectiveStep(sandboxRasterizer.zoom());
+            d.hoverWorldX = d.centerX - windowBlocks / 2
+                    + (int) Math.round(d.pickedColX * step);
+            d.hoverWorldZ = d.centerZ - windowBlocks / 2
+                    + (int) Math.round(d.pickedColZ * step);
         }
+        com.geogenesis.client.preview.raster.SandboxHud.render(g, x, y, w, h, d);
+    }
 
-        // ---- 左下：悬停信息（参考项目 drawHover 的等价物）----
-        if (sandbox.pickedColumn() >= 0) {
-            // 由沙盘反查该柱对应的世界坐标与高度
-            int worldX = centerX + (int) totalDragX - SandboxLod.windowFor(sandbox.zoom()) / 2
-                    + (int) Math.round(sandbox.pickedColX() * SandboxLod.effectiveStep(sandbox.zoom()));
-            int worldZ = centerZ + (int) totalDragZ - SandboxLod.windowFor(sandbox.zoom()) / 2
-                    + (int) Math.round(sandbox.pickedColZ() * SandboxLod.effectiveStep(sandbox.zoom()));
-            String[] lines = {
-                    String.format(java.util.Locale.ROOT, "方块 %d, %d", worldX, worldZ),
-                    String.format(java.util.Locale.ROOT, "高度 y=%d", (int) Math.round(sandbox.pickedTopY())),
-            };
-            int lh = 10;
-            int maxW = 0;
-            for (String s : lines) maxW = Math.max(maxW, mc.font.width(s));
-            int bx = x + 6;
-            int by = y + h - lines.length * lh - 28;
-            g.fill(bx - 4, by - 3, bx + maxW + 4, by + lines.length * lh + 2, 0xB212141B);
-            g.fill(bx - 4, by - 3, bx + maxW + 4, by - 2, 0x66FFD24A);
-            for (int i = 0; i < lines.length; i++) {
-                g.drawString(mc.font, lines[i], bx, by + i * lh, TEXT_SUB, true);
-            }
-        }
+    // =================================================================
+    // ★ 2026-11-09 B4b：平面管线委托给 {@link PlanePainter}
+    //
+    //   这些方法原本在本类里，B4b 原样剪切到 PlanePainter（零逻辑改动）。
+    //   这里保留薄委托，让既有调用点无需改动 —— 平面视觉因此<b>逐像素不变</b>。
+    // =================================================================
 
-        // ---- 右下：比例尺 ----
-        //
-        // ★★ 2026-11-08【修 UI 重叠·第三处】：比例尺移到<b>右下角上方 28px</b>。
-        //   GeoGenesisConfigScreen.renderStatusHud 在 y = height-lineHeight-14 处
-        //   画 statusLine()，与本方法原来的 y = h-16 几乎同一行 ⇒ 两行字叠在一起。
-        //   现在错开：ConfigScreen 那行在最底，比例尺在它上方。
-        String scaleTxt = SandboxLod.scaleLabel(sandbox.zoom());
-        int sw = mc.font.width(scaleTxt);
-        int sx = x + w - sw - 8;
-        int sy = y + h - 30;
-        g.fill(sx - 4, sy - 3, sx + sw + 4, sy + 11, 0xB212141B);
-        g.fill(sx - 4, sy - 3, sx + sw + 4, sy - 2, 0x66FFD24A);
-        g.drawString(mc.font, scaleTxt, sx, sy, GOLD, true);
+    private void drawZoomLabel(GuiGraphics g, int x, int y, int w, int h) {
+        plane.drawZoomLabel(g, x, y, w, h);
+    }
+
+    private void drawFrameTime(GuiGraphics g, int rightX, int topY) {
+        plane.drawFrameTime(g, rightX, topY);
+    }
+
+    private void drawCopiedToast(GuiGraphics g, int px, int py, int pw, int ph) {
+        plane.drawCopiedToast(g, px, py, pw, ph);
+    }
+
+    private static int alignDown(int v, int scale) {
+        return PlanePainter.alignDown(v, scale);
+    }
+
+    private void paintLargeArea(int originWx, int originWz, int blocksWide, int blocksHigh) {
+        plane.paintLargeArea(originWx, originWz, blocksWide, blocksHigh);
+    }
+
+    private void paintAvailableChunks(int originWx, int originWz, int blocksWide, int blocksHigh) {
+        plane.paintAvailableChunks(originWx, originWz, blocksWide, blocksHigh);
+    }
+
+    private void applySlopeShading(com.mojang.blaze3d.platform.NativeImage img,
+                                   int originWx, int originWz) {
+        plane.applySlopeShading(img, originWx, originWz);
+    }
+
+    private void drawSpawnMarker(GuiGraphics g) {
+        plane.drawSpawnMarker(g);
+    }
+
+    private void drawPlayerMarker(GuiGraphics g) {
+        plane.drawPlayerMarker(g);
+    }
+
+    private void drawStructureMarkers(GuiGraphics g, int mx, int my) {
+        plane.drawStructureMarkers(g, mx, my);
+    }
+
+    private Cell sampleHoverCell(int wx, int wz) {
+        return plane.sampleHoverCell(wx, wz);
+    }
+
+    private void drawHoverInfo(GuiGraphics g, int mx, int my) {
+        plane.drawHoverInfo(g, mx, my);
+    }
+
+    private double heightFromE(double e) {
+        return plane.heightFromE(e);
+    }
+
+    private String localize(String key) {
+        return plane.localize(key);
     }
 
 }

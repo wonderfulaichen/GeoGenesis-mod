@@ -32,8 +32,8 @@ WATER_FACTOR = 0.35
 PITCH_MIN, PITCH_MAX = 0.22, 1.40
 DEFAULT_PITCH, DEFAULT_YAW = 0.95, 0.65
 def per_column_for(viewport_px):
-    """与 SandboxLod.perColumnFor 一致：真 LOD 恒为 1（一细格一根柱）。"""
-    return 1
+    """与 SandboxLod.perColumn 一致：1 柱 = 16×16 方块（用户裁定，参考项目档）。"""
+    return 16
 
 # ---- SandboxPalette 群系本色（★ 2026-11-08 P0-1，与 Java 侧 SandboxPalette 对齐）----
 # WhittakerType.ordinal() 顺序：ICE TUNDRA TAIGA GRASSLAND TEMPERATE_FOREST
@@ -176,6 +176,13 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
     surface = np.where(e < 0.0, sea, h)
     r = (surface - base) / span
 
+    # ★ 柱高轻度平滑（与 SandboxRenderer.collect 2a 同式）：修全屏扫描线
+    rl = np.roll(r, 1, axis=0); rl[0] = r[0]
+    rr = np.roll(r, -1, axis=0); rr[-1] = r[-1]
+    ru = np.roll(r, 1, axis=1); ru[:, 0] = r[:, 0]
+    rd = np.roll(r, -1, axis=1); rd[:, -1] = r[:, -1]
+    r = (rl + rr + ru + rd + r * 4) / 8.0
+
     # 坡度光照（复刻 SandboxShade.lightFor）
     left = np.roll(r, 1, axis=0); left[0] = r[0]
     right = np.roll(r, -1, axis=0); right[-1] = r[-1]
@@ -252,11 +259,17 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
             fx0, fz0 = cx * PER_COLUMN, cz * PER_COLUMN
             fx1 = min(gx - 1, fx0 + PER_COLUMN - 1)
             fz1 = min(gz - 1, fz0 + PER_COLUMN - 1)
-            sy = h[fx0, fz0]
+            # 柱高 = 组内 16×16 的<b>中位</b>高度（与 SandboxRenderer 同式）
+            block = h[fx0:fx1 + 1, fz0:fz1 + 1]
+            vals = block[~np.isnan(block)]
+            sy = float(np.median(vals)) if vals.size else h[fx0, fz0]
             wy = fields['waterY'][fx0, fz0]
             has_w = (not np.isnan(wy)) and wy > sy + 0.01
             top_y = wy if has_w else sy
-            tops[col] = max((top_y - base) / span, WATER_SINK) * RELIEF
+            if np.isnan(top_y):
+                tops[col] = float('nan')     # 未采到：不画
+            else:
+                tops[col] = max((top_y - base) / span, WATER_SINK) * RELIEF
             water_top[col] = top_y if has_w else float('nan')
             # 多数群系（复刻 majorityCell 语义）
             ids, cnts = [], []
@@ -283,6 +296,7 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
             else:
                 colc[col] = layer_rgb(mfx, mfz)
 
+
     r9 = build_rotation(yaw, pitch)
     # yardsite 口径（用户裁定恢复）：scale = areaSize * 0.46 * zoom
     # ★ 2026-11-08 修正：scale 不随 zoom（与 SandboxRenderer.render 同一口径）
@@ -290,10 +304,25 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
     #   => 构图不变、只看到柱子变大（用户实机反馈）。
     #   现在 scale 固定 => 缩放只改窗口（世界范围），柱子屏幕尺寸恒定，
     #   画面内容"推近/拉远"，且每柱代表的方块变少 => 更精细。
-    # ★ 与 SandboxRenderer 一致：相机随缩放推近（scale ∝ zoomRatio）
-    #   配合 LOD 的窗口减半 + 柱数翻倍 => 三者同向叠加，视觉上真推进
-    scale = size * 0.46 * (zoom / 2.0) if zoom > 0 else size * 0.46
-    ox = oy = size / 2.0
+    # ★ 方案 B：盘面始终铺满视口（scale 不含 zoom）
+    #   柱屏幕宽 = size/柱数 => 推近(柱少)柱子自然变大
+    # ★ 按投影包围盒自适应（只用<b>平面</b>四角，与 SandboxRenderer.fitScale 同式）
+    #   模型平面 [-1,1]² 斜投影后包围盒 ≠ 2×2；含柱高的 12 角会把盘面压小。
+    _xs, _ys = [], []
+    for _sx in (-1, 1):
+        for _sy in (-1, 1):
+            _xs.append(r9[0] * _sx + r9[1] * _sy)
+            _ys.append(r9[3] * _sx + r9[4] * _sy)
+    _sx_span = max(_xs) - min(_xs)
+    _sy_span = max(_ys) - min(_ys)
+    _vw = globals().get('_VIEW_W', size)
+    _vh = globals().get('_VIEW_H', size)
+    scale = min(_vw * 0.98 / max(1e-4, _sx_span), _vh * 0.98 / max(1e-4, _sy_span))
+    fit_cx = (min(_xs) + max(_xs)) * 0.5
+    fit_cy = (min(_ys) + max(_ys)) * 0.5
+
+    ox = size / 2.0 - scale * fit_cx
+    oy = size / 2.0 - scale * fit_cy
 
     def proj(mx, my, mz):
         sx = ox + scale * (r9[0] * mx + r9[1] * my + r9[2] * mz)
@@ -310,7 +339,9 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
     for col in range(col_count * col_rows):
         mx = model(col_count, col // col_rows)
         my = model(col_rows, col % col_rows)
-        depth = r9[6] * mx + r9[7] * my + r9[8] * max(tops[col], 0.0)
+        tp = tops[col]
+        tp = 0.0 if tp != tp else max(tp, 0.0)
+        depth = r9[6] * mx + r9[7] * my + r9[8] * tp
         order.append((depth, col))
     order.sort()
 
@@ -351,7 +382,14 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
         return tuple(min(1.0, max(0.0, c * mul)) for c in rgb)
 
     # 侧墙最小屏幕高度（像素）：低于它不画。亚像素墙 = 每柱一条亮线 = 密集条纹
-    min_wall = 1.0 / max(1e-3, scale)
+    # ★ 吸附值三处共用（与 SandboxRenderer 同式）：判据/顶面/侧墙必须同一数值，
+    #   否则判据说"没台阶"、绘制仍按原值画 0.3px 墙 ⇒ 每柱留 1px 暗线 = 扫描线
+    min_wall = 1e-4
+
+    def snap(v):
+        if v != v or min_wall <= 0:   # NaN 直接透传（未采格不画）
+            return v
+        return round(v / min_wall) * min_wall
     # ★ 圆形盘面 + 径向渐隐（参考项目 ChunkSitePlanner 第 296-301 行同式）
     #   参考图是"浮岛"圆形，不是方形 —— 这是它最显眼的视觉特征。
     RADIUS = 0.98
@@ -369,38 +407,43 @@ def render(h, e, biome, terr, snow, fields, gain=None, size=900, zoom=2.0, yaw=D
         if t_edge < 1.0:
             alpha = t_edge * t_edge * (3 - 2 * t_edge)
         top = tops[col]
+        if top != top:
+            continue
         rgb = colc[col]  # 已经乘过光照的 0..1 三元组
         fx0, fz0 = cx * PER_COLUMN, cz * PER_COLUMN
         fx1 = min(gx - 1, fx0 + PER_COLUMN - 1)
         fz1 = min(gz - 1, fz0 + PER_COLUMN - 1)
         # 用格子边界映射（除以 fine），相邻柱严格相接、无缝隙
-        x0, x1 = model_edge(gx, fx0), model_edge(gx, fx1 + 1)
-        y0, y1 = model_edge(gz, fz0), model_edge(gz, fz1 + 1)
+        # 扩半格：消除光栅化漏缝（与 SandboxRenderer 同式）
+        ov = 0.5 / max(1, col_count)
+        x0, x1 = model_edge(gx, fx0) - ov, model_edge(gx, fx1 + 1) + ov
+        y0, y1 = model_edge(gz, fz0) - ov, model_edge(gz, fz1 + 1) + ov
         def mul(rgb01, m):
             return tuple(min(1.0, max(0.0, c * m)) for c in rgb01)
+        ts = snap(top)
         if see_top:
-            quad([proj(x0, y0, top), proj(x1, y0, top),
-                  proj(x1, y1, top), proj(x0, y1, top)], rgb, alpha)
+            quad([proj(x0, y0, ts), proj(x1, y0, ts),
+                  proj(x1, y1, ts), proj(x0, y1, ts)], rgb, alpha)
         if see_e:
             low = max(tops[col + col_rows], 0.0) if cx + 1 < col_count else 0.0
-            if top - low > min_wall:
-                quad([proj(x1, y0, low), proj(x1, y1, low),
-                      proj(x1, y1, top), proj(x1, y0, top)], mul(rgb, 0.82), alpha)
+            if snap(top) > snap(low):
+                quad([proj(x1, y0, snap(low)), proj(x1, y1, snap(low)),
+                      proj(x1, y1, ts), proj(x1, y0, ts)], mul(rgb, 0.82), alpha)
         if see_w:
             low = max(tops[col - col_rows], 0.0) if cx > 0 else 0.0
-            if top - low > min_wall:
-                quad([proj(x0, y1, low), proj(x0, y0, low),
-                      proj(x0, y0, top), proj(x0, y1, top)], mul(rgb, 0.56), alpha)
+            if snap(top) > snap(low):
+                quad([proj(x0, y1, snap(low)), proj(x0, y0, snap(low)),
+                      proj(x0, y0, ts), proj(x0, y1, ts)], mul(rgb, 0.56), alpha)
         if see_s:
             low = max(tops[col + 1], 0.0) if cz + 1 < col_rows else 0.0
-            if top - low > min_wall:
-                quad([proj(x0, y1, low), proj(x1, y1, low),
-                      proj(x1, y1, top), proj(x0, y1, top)], mul(rgb, 0.70), alpha)
+            if snap(top) > snap(low):
+                quad([proj(x0, y1, snap(low)), proj(x1, y1, snap(low)),
+                      proj(x1, y1, ts), proj(x0, y1, ts)], mul(rgb, 0.70), alpha)
         if see_n:
             low = max(tops[col - 1], 0.0) if cz > 0 else 0.0
-            if top - low > min_wall:
-                quad([proj(x1, y0, low), proj(x0, y0, low),
-                      proj(x0, y0, top), proj(x1, y0, top)], mul(rgb, 0.46), alpha)
+            if snap(top) > snap(low):
+                quad([proj(x1, y0, snap(low)), proj(x0, y0, snap(low)),
+                      proj(x0, y0, ts), proj(x1, y0, ts)], mul(rgb, 0.46), alpha)
 
     Image.fromarray((img * 255).astype(np.uint8)).save(out)
     print('wrote', out, 'size', size, 'gain', gain, 'zoom', zoom)

@@ -2754,6 +2754,41 @@ task runSandboxLodProbe(type: JavaExec) {
     maxHeapSize = '2g'
     systemProperty 'geogenesis.lodTsvDir', project.findProperty('lodTsvDir') ?: ''
 }
+
+// Sandbox direct CellCache: verify 1 fine cell == 1 MC block, zero resampling.
+//   gradlew runSandboxCellCacheProbe
+task runSandboxCellCacheProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxCellCacheProbe'
+    maxHeapSize = '2g'
+    systemProperty 'geogenesis.lodTsvDir', project.findProperty('lodTsvDir') ?: ''
+}
+
+// Preview -> world reuse: verify adoption predicate + chunk cache hit.
+//   gradlew runPreviewWorldReuseProbe
+task runPreviewWorldReuseProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.PreviewWorldReuseProbe'
+    maxHeapSize = '2g'
+}
+
+// Sandbox geometry (pure functions): verify projection/sort/light/bbox/pick offline.
+//   gradlew runSandboxGeometryProbe
+//   gradlew runSandboxGeometryProbe -PsandboxPng=build\\geo
+task runSandboxGeometryProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxGeometryProbe'
+    maxHeapSize = '2g'
+    systemProperty 'geogenesis.sandboxPngDir', project.findProperty('sandboxPng') ?: ''
+}
+
+// Unified preview: one snapshot -> two rasterizers (plane + sandbox).
+//   gradlew runPreviewUnifiedProbe
+task runPreviewUnifiedProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.PreviewUnifiedProbe'
+    maxHeapSize = '2g'
+}
 // Sandbox pan math: screen drag must map to correct world translation.
 //   gradlew runSandboxPanProbe
 task runSandboxPanProbe(type: JavaExec) {

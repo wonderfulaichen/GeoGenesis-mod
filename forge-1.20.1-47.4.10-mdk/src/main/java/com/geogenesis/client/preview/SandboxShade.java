@@ -162,7 +162,7 @@ public final class SandboxShade {
     }
 
     /**
-     * 一格的坡度光照（<b>显式指定增益</b> —— LOD 各档用 {@link #adaptiveGain} 算出的值）。
+     * 一格的坡度光照（<b>显式指定增益</b>）。
      *
      * @param gain 坡度增益（见 {@link #adaptiveGain}）
      */
@@ -171,6 +171,57 @@ public final class SandboxShade {
         double slopeX = (rRight - rLeft) * 0.5;
         double slopeZ = (rDown - rUp) * 0.5;
         double light = 1.0 - (slopeX + slopeZ) * gain;
+        if (light < LIGHT_MIN) light = LIGHT_MIN;
+        if (light > LIGHT_MAX) light = LIGHT_MAX;
+        if (water) light = 1.0 + (light - 1.0) * WATER_FACTOR;
+        return light;
+    }
+
+    // ==================== ★★ 2026-11-08 定稿：真实方块坡度 ====================
+
+    /**
+     * 每格上升多少方块时亮度变化 {@link #BLOCK_GAIN}（<b>唯一的光照口径</b>）。
+     *
+     * <h2>为什么必须用真实方块高度，不能用归一化 r</h2>
+     * <p>我用 {@code r = (h - base) / span} 算坡度，导致：
+     * ① {@code span} 随窗口变 ⇒ 同一地形的明暗随缩放漂移；
+     * ② 网格越密（细格越小），相邻 {@code r} 差越小 ⇒ 越推近越平淡。
+     * 实测 256 格网格时相邻差只有 0.0012，乘 gain 2.31 后亮度差仅 0.003，
+     * <b>整幅一片均匀绿</b>。</p>
+     *
+     * <p>参考项目 {@code SiteMapSampler.paintBlock()} 第 547-553 行的坡度是</p>
+     * <pre>
+     *   slopeX = (right - left) / (2 * step * HEIGHT_STRIDE)   // step = 相邻采样点方块距
+     *   light  = clamp(1 - (slopeX + slopeZ) * 0.55, 0.55, 1.30)
+     * </pre>
+     * <p>⇒ 它的斜率单位是「<b>每方块上升多少方块</b>」，<b>有量纲</b>：
+     * 30° 坡 ⇒ 0.58，陡崖 ⇒ 2.0。这样光照与网格密度、窗口大小都无关。</p>
+     *
+     * <p>本项目数据是方块级（{@code CellCache}），相邻柱的方块距恒为
+     * {@code BLOCKS_PER_PILLAR}（1 wu = 2 格）⇒ 直接</p>
+     * <pre>
+     *   slopeX = (yRight - yLeft) / (2 * blocksPerPillar)
+     *   slopeZ = (yDown  - yUp)  / (2 * blocksPerPillar)
+     *   light  = clamp(1 - (slopeX + slopeZ) * 0.55, 0.55, 1.30)
+     * </pre>
+     * <p>这与参考项目<b>完全同式同量纲</b>，只是把它的「方块」换成了我们的「wu」。</p>
+     */
+    public static final double BLOCK_GAIN = 0.55;
+
+    /**
+     * 按<b>真实方块高度</b>算一格光照（定稿口径）。
+     *
+     * @param yLeft/yRight/yUp/yDown 邻格的真实世界高度 Y（方块）
+     * @param blocksPerPillar 相邻柱之间的方块距离（= 1 wu = horizontalScale）
+     * @param water 是否水面
+     * @return 光照倍率
+     */
+    public static double lightForBlocks(double yLeft, double yRight, double yUp, double yDown,
+                                        double blocksPerPillar, boolean water) {
+        double d = 2.0 * Math.max(1e-9, blocksPerPillar);
+        double slopeX = (yRight - yLeft) / d;
+        double slopeZ = (yDown - yUp) / d;
+        double light = 1.0 - (slopeX + slopeZ) * BLOCK_GAIN;
         if (light < LIGHT_MIN) light = LIGHT_MIN;
         if (light > LIGHT_MAX) light = LIGHT_MAX;
         if (water) light = 1.0 + (light - 1.0) * WATER_FACTOR;

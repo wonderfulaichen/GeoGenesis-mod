@@ -61,7 +61,7 @@ public final class SandboxShadeProbe {
         System.out.printf("视口: origin=(%d,%d) span=%d 网格=%d%n%n",
                 ORIGIN_X, ORIGIN_Z, SPAN, TerrainFieldData.class.getSimpleName().isEmpty() ? 0 : 128);
 
-        TerrainFieldData d = TerrainFieldData.sample(terrain, ORIGIN_X, ORIGIN_Z,
+        TerrainFieldData d = TerrainFieldData.sampleDirect(terrain, ORIGIN_X, ORIGIN_Z,
                 SPAN, SPAN, 128, 128, 1L);
         int gw = d.gridW, gh = d.gridH;
 

@@ -513,6 +513,58 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     public static boolean usesCurrentWorldMorphBase() { return currentWorldMorphBase; }
 
+    /**
+     * 预览算好、<b>等待进世界接管</b>的地形实例（★ 2026-11-09）。
+     *
+     * <p>用户原话：「这就是我让你抽离 MC 做完全纯 Java 核心的原因，
+     * 可以在外部计算后直接复用。」</p>
+     *
+     * <p>唯一使用场景：<b>创建新世界</b>时打开配置屏 → 预览在 MC 之外算好地形 →
+     * 点创建世界 → 这里接管，不重算。</p>
+     *
+     * <p>⚠ 「已在游戏中打开预览」不需要它（那种场景由
+     * {@link #previewReusableTerrain} 直接复用存档单例）。</p>
+     */
+    private static volatile OfferedTerrain offeredTerrain = null;
+
+    /**
+     * 待接管实例：(地形, 归属种子, 归属参数, 归属 morphBase)。
+     * 三项全等才接管；任一不等则丢弃。
+     */
+    public record OfferedTerrain(GeoGenesisTerrain terrain, long seed,
+                                 TerrainParams params, boolean morphBase) { }
+
+    /**
+     * 交出预览算好的地形实例，等待进世界接管。
+     *
+     * <p>调用点：配置屏关屏 / 点「创建世界」时。
+     * 只登记，<b>不绑定、不改种子、不关闭任何东西</b>。</p>
+     *
+     * <p>若进世界时种子/参数/morphBase 不匹配（用户改了参数才创建），
+     * 该实例会被丢弃并走原有重建路径 —— 语义与旧行为完全一致。</p>
+     *
+     * @param terrain   预览自建的实例（须 {@code isUsable()}）
+     * @param seed      该实例对应的种子
+     * @param params    该实例对应的参数
+     * @param morphBase 该实例对应的 morphBase
+     */
+    public static void offerPreviewTerrain(GeoGenesisTerrain terrain, long seed,
+                                           TerrainParams params, boolean morphBase) {
+        offeredTerrain = (terrain != null && terrain.isUsable() && params != null)
+                ? new OfferedTerrain(terrain, seed, params, morphBase)
+                : null;
+    }
+
+    /** 清除待接管实例（取消创建世界 / 已接管后）。 */
+    public static void clearOfferedPreviewTerrain() {
+        offeredTerrain = null;
+    }
+
+    /** 当前是否有待接管实例（诊断/探针用）。 */
+    public static boolean hasOfferedPreviewTerrain() {
+        return offeredTerrain != null;
+    }
+
     public static void setCurrentWorldMorphBase(boolean morphBase) {
         GeoGenesisTerrain retired;
         synchronized (WORLD_LIFECYCLE) {
@@ -801,6 +853,45 @@ public class GeoGenesisGenerator extends ChunkGenerator {
 
     /** Identity transitions only; runtime cancellation/callbacks belong outside the monitor. */
     private static GeoGenesisTerrain bindSeedLocked(long seed) {
+        // ★★ 2026-11-09【预览 → 世界复用接管】
+        //
+        //   用户原话：「这就是我让你抽离 MC 做完全纯 Java 核心的原因，
+        //   可以在外部计算后直接复用。」
+        //
+        //   配置屏（新建世界）在 MC 之外用纯 Java 核心算好了一片地形
+        //   （4096-chunk Cell 缓存 + 细层水文 region，后者单 region 可达 10 秒）。
+        //   若这里走原有逻辑（unbind → invalidate → 建新实例），那些计算全丢。
+        //
+        //   ⇒ 三项全等（种子 / 参数 / morphBase）时<b>直接接管</b>：
+        //   configureWorldSeed 照常跑（重播种噪声/刷新洞穴矿脉配置，不碰地形），
+        //   然后把已有实例发布为当前值 ⇒ 紧随的 getOrBuild 不再建新实例。
+        //
+        //   ⚠ 不匹配就丢弃并走原路径，绝不接管"属于别人的世界"的地形。
+        OfferedTerrain off = offeredTerrain;
+        offeredTerrain = null;
+        // ★ 判据抽在 PreviewTerrainAdoption（纯函数）—— 本类继承 ChunkGenerator，
+        //   探针进程无法加载它（BuiltInRegistries 未 bootstrap），判据必须独立可测。
+        if (off != null && PreviewTerrainAdoption.shouldAdopt(
+                off.terrain(), off.seed(), off.params(), off.morphBase(),
+                seed, currentWorldParams, currentWorldMorphBase)) {
+            GeoGenesisTerrain retired = WORLD_LIFECYCLE.current();
+            WORLD_LIFECYCLE.unbind();
+            configureWorldSeed(seed);
+            WORLD_LIFECYCLE.adopt(seed, off.terrain());
+            if (WorldGenProfiler.stutterEnabled()) {
+                com.geogenesis.diagnostics.FrontendAttribution.bound(seed);
+            }
+            LOGGER.info("[Preview] 接管预览地形实例（种子 {}）：chunk 缓存已命中 {} 次，"
+                            + "不重建、不重采 —— 省掉预览期已算的 Cell + 水文 region",
+                    seed, off.terrain().chunkCacheStats().hits());
+            return retired;
+        }
+        if (off != null) {
+            LOGGER.info("[Preview] 不接管预览地形：{}", PreviewTerrainAdoption.rejectReason(
+                    off.terrain(), off.seed(), off.params(), off.morphBase(),
+                    seed, currentWorldParams, currentWorldMorphBase));
+        }
+
         GeoGenesisTerrain retired = WORLD_LIFECYCLE.current();
         WORLD_LIFECYCLE.unbind();
         configureWorldSeed(seed);

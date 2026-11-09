@@ -130,11 +130,31 @@ public class GeoGenesisConfigScreen extends Screen {
     private ConfigPanel[] panels;
 
     private PreviewDisplay preview;
+    /**
+     * ★ 2026-11-09 B3：两个视图的<b>统一入口</b>。
+     *
+     * <p>用户原话：「明明我都说了要重构重构，结果各自完全独立分裂。」</p>
+     * <p>现在：模式分派只在 {@code PreviewController.rasterizer} 这<b>一个字段</b>上，
+     * 中心/缩放/图层/快照由 {@code PreviewState} 共享 ⇒ 切模式不重采、构图不变。</p>
+     */
+    private com.geogenesis.client.preview.PreviewController controller;
     private Button applyBtn, savePresetBtn, resetBtn, layerPrev, layerNext;
     private Button largeAreaBtn;
     /** ★ S3：平面/沙盘 模式切换按钮。 */
     private Button sandboxBtn;
     private int currentMode = DEFAULT_PREVIEW_LAYER;
+
+    // ---- ★ 2026-11-09 预览 → 世界复用（见 GeoGenesisGenerator.offerPreviewTerrain）----
+    /** 当前预览用的 terrain 实例（自建或共享存档单例）。 */
+    private GeoGenesisTerrain previewTerrain;
+    /** 该实例对应的参数（接管前必须全等校验）。 */
+    private TerrainParams previewParams;
+    /** 该实例对应的 morphBase（同上）。 */
+    private boolean previewMorphBase;
+    /** 该实例是否预览自建（false = 共享存档单例，不可交出）。 */
+    private boolean previewOwnsTerrain;
+    /** 是否已把实例登记为可接管（诊断/避免重复登记）。 */
+    private boolean offeredForReuse;
 
     private int panelX, panelW, headerY, listTop, listBottom;
     private int previewX, previewY, previewW, previewH;
@@ -445,15 +465,27 @@ public class GeoGenesisConfigScreen extends Screen {
         }
         LOGGER.info("[Preview] 地形实例: {} (seed={}, morphBase={})",
                 shared ? "复用存档单例" : "新建", seed, morphBase);
+
+        // ★ 2026-11-09【预览 → 世界复用】：记下"这个 terrain 是谁算的"，供 doApply 登记接管。
+        //   自建实例 ⇒ 进世界时可以被接管（省掉重采 + 水文 region）；
+        //   存档单例 ⇒ 游戏侧本来就在用，不登记（否则会破坏其生命周期）。
+        this.previewTerrain = terrain;
+        this.previewParams = p;
+        this.previewMorphBase = morphBase;
+        this.previewOwnsTerrain = !shared;
         if (preview == null) {
             // ownsTerrain = !shared：共享的存档单例由游戏侧管理生命周期，预览不得关闭它
             preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p,
                     currentMode, !shared);
             // ★ 全屏地图：预览自带缩放标签会压在地形正中，改由右下角 HUD 显示
             preview.setDrawZoomLabel(false);
+            // ★ B3：统一入口（平面精确管线 + 沙盘，共用状态与快照）
+            //   控制器由 PreviewDisplay 内部持有（唯一实例），此处只取引用。
+            controller = preview.controller();
         } else {
             preview.setTerrain(terrain, seed, p, !shared);
             preview.setMode(currentMode);
+            if (controller != null) controller.setTerrain(terrain, seed, p);
         }
         Minecraft mc = Minecraft.getInstance();
         preview.setStructureContext(
@@ -486,12 +518,20 @@ public class GeoGenesisConfigScreen extends Screen {
 
     /** 沙盘按钮文案。 */
     private Component sandboxLabel() {
-        boolean on = preview != null && preview.isSandboxMode();
+        // ★ B3：模式状态在控制器上（唯一分派点），不再问 preview
+        boolean on = controller != null
+                ? controller.viewMode() == com.geogenesis.client.preview.TerrainViewMode.SANDBOX
+                : (preview != null && preview.isSandboxMode());
         return Component.literal(on ? "沙盘视图" : "平面视图");
     }
 
-    /** 平面 ⇄ 沙盘 切换。 */
+    /** 平面 ⇄ 沙盘 切换（★ B3：走统一控制器，不重采、构图不变）。 */
     private void toggleSandbox() {
+        if (controller != null) {
+            controller.cycleViewMode();
+            if (sandboxBtn != null) sandboxBtn.setMessage(sandboxLabel());
+            return;
+        }
         if (preview == null) return;
         preview.setSandboxMode(!preview.isSandboxMode());
         if (sandboxBtn != null) sandboxBtn.setMessage(sandboxLabel());
@@ -501,6 +541,8 @@ public class GeoGenesisConfigScreen extends Screen {
         currentMode = (currentMode + d + GeoPalette.PreviewLayer.values().length)
                 % GeoPalette.PreviewLayer.values().length;
         if (preview != null) preview.setMode(currentMode);
+        // ★ B3：图层由控制器共享（沙盘与平面同图层）
+        if (controller != null) controller.setLayer(GeoPalette.PreviewLayer.values()[currentMode]);
     }
 
     private Component largeAreaLabel() {
@@ -519,10 +561,40 @@ public class GeoGenesisConfigScreen extends Screen {
         GeoGenesisConfig.SPEC.save();
         saved = true;
         dirty = false;
+        // ★★ 2026-11-09【预览 → 世界复用】用户点「应用 / 创建世界」⇒ 交出预览算好的地形。
+        //
+        //   用户原话：「这就是我让你抽离 MC 做完全纯 Java 核心的原因，
+        //   可以在外部计算后直接复用。」
+        //
+        //   配置屏在 MC 之外用纯 Java 核心算好的 GeoGenesisTerrain
+        //   （4096-chunk Cell 缓存 + 细层水文 region，后者单 region 可达 10 秒）
+        //   在这里登记；进世界时 bindWorld 三项全等就<b>直接接管</b>，不重算。
+        //   否则（ESC 取消 / 改参数后创建）实例会被丢弃并走原有重建路径。
+        offerTerrainForReuse();
         if (parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen cws) {
             com.geogenesis.client.GeoGenesisClient.writeSeedToCreateWorld(cws, seed);
         }
         Minecraft.getInstance().setScreen(parent);
+    }
+
+    /**
+     * 把当前预览用的 terrain 登记为「可被进世界接管」（见 {@code bindWorld}）。
+     *
+     * <p>只在<b>自建实例</b>时登记：共享的存档单例由游戏侧管理，交出去会破坏其生命周期。</p>
+     */
+    private void offerTerrainForReuse() {
+        if (preview == null || previewTerrain == null) return;
+        if (!previewOwnsTerrain) {
+            // 复用的是存档单例 ⇒ 游戏侧本来就在用，不需要（也不能）交出去
+            return;
+        }
+        com.geogenesis.worldgen.generator.GeoGenesisGenerator.offerPreviewTerrain(
+                previewTerrain, seed, previewParams, previewMorphBase);
+        // ★ 交出所有权：closePreview() 会调 preview.close()，
+        //   若不交权，close() 里的 closeProcessErosion() 会把即将交给游戏的引擎关掉。
+        preview.transferOwnership();
+        offeredForReuse = true;
+        LOGGER.info("[Preview] 已登记预览地形以供进世界接管（seed={}），并交出所有权", seed);
     }
 
     private void onSavePreset() {
@@ -977,6 +1049,12 @@ public class GeoGenesisConfigScreen extends Screen {
             preview.close();
             preview = null;
             LOGGER.info("[Preview] 预览已关闭（释放 TerrainPool 4 线程与排队任务）");
+        }
+        // ★ 2026-11-09：已登记接管时<b>不能</b>清掉登记（进世界还要用）；
+        //   未登记（ESC 取消 / 只读关闭）则确保没有残留待接管实例。
+        if (!offeredForReuse) {
+            com.geogenesis.worldgen.generator.GeoGenesisGenerator.clearOfferedPreviewTerrain();
+            previewTerrain = null;
         }
     }
 
