@@ -226,3 +226,6 @@ __pycache__/
 # 诊断输出：ModelHydrologyProvider.dumpWidthCounters 每次水文学解向此文件追加写
 # （2026-10-30 曾被 git add 误纳入库；2026-11-06 移出版本库并忽略）
 /geogenesis-width-count.txt
+
+# 临时提交信息文件（勿入库）
+*.commit_msg.tmp
