@@ -2757,12 +2757,7 @@ task runSandboxLodProbe(type: JavaExec) {
 
 // Sandbox direct CellCache: verify 1 fine cell == 1 MC block, zero resampling.
 //   gradlew runSandboxCellCacheProbe
-task runSandboxCellCacheProbe(type: JavaExec) {
-    classpath = sourceSets.diagnostics.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxCellCacheProbe'
-    maxHeapSize = '2g'
-    systemProperty 'geogenesis.lodTsvDir', project.findProperty('lodTsvDir') ?: ''
-}
+
 
 // Preview -> world reuse: verify adoption predicate + chunk cache hit.
 //   gradlew runPreviewWorldReuseProbe

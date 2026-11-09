@@ -323,16 +323,47 @@ public final class TerrainFieldData {
         // 每细格对应的方块步长（窗口 / 细格数）
         double stepX = blocksWide / (double) gridW;
         double stepZ = blocksHigh / (double) gridH;
+        // ★★ 2026-11-09【修"沙盘深蓝棋盘格"】：每细格在 stepX×stepZ 范围内
+        //   采<b>多点取中位</b>，而不是只采左上角 1 个点。
+        //
+        //   实机取证：BASE_ZOOM=2.0 ⇒ 64 柱 / 1024 格窗口 ⇒ step=16，
+        //   一根 16 格宽的柱子高度由<b>1 个采样点</b>决定。
+        //   深海区整片等高 ⇒ 棋盘格；山地台阶状跳变。
+        //   图例明明显示「高程 Y=19~285」（有 285 格地形），画面却是平的。
+        //
+        //   每细格采 (sx×sz) 个点（sx = ceil(stepX)，上限 16 防 OOM），
+        //   height 取中位 ⇒ 与 SandboxGeometry.buildColumns 的「组内中位」语义衔接，
+        //   颜色取第一个有效点（保留群系细节）。
+        int sx = Math.max(1, Math.min(16, (int) Math.ceil(stepX)));
+        int sz = Math.max(1, Math.min(16, (int) Math.ceil(stepZ)));
+        double[] hBuf = new double[sx * sz];
         int sampled = 0, missing = 0;
         for (int gx = 0; gx < gridW; gx++) {
-            int wx = originX + (int) Math.round(gx * stepX);
-            int cx = Math.floorDiv(wx, 16), lx = wx - cx * 16;
             for (int gz = 0; gz < gridH; gz++) {
-                int wz = originZ + (int) Math.round(gz * stepZ);
-                int cz = Math.floorDiv(wz, 16), lz = wz - cz * 16;
-                Cell c = cache.getCell(cx, cz, lx, lz);
-                if (c == null) { missing++; continue; }
-                d.put(gx, gz, c);
+                // 该细格覆盖的方块范围（左上角）
+                int bx0 = originX + (int) Math.round(gx * stepX);
+                int bz0 = originZ + (int) Math.round(gz * stepZ);
+                int hvN = 0;
+                Cell first = null;
+                for (int dx = 0; dx < sx; dx++) {
+                    int wx = bx0 + dx;
+                    int cx = Math.floorDiv(wx, 16), lx = wx - cx * 16;
+                    for (int dz = 0; dz < sz; dz++) {
+                        int wz = bz0 + dz;
+                        int cz = Math.floorDiv(wz, 16), lz = wz - cz * 16;
+                        Cell c = cache.getCell(cx, cz, lx, lz);
+                        if (c == null) continue;
+                        if (first == null) first = c;
+                        hBuf[hvN++] = c.height;
+                    }
+                }
+                if (first == null) { missing++; continue; }
+                // ★ height 覆盖为组内中位（抗单点尖峰，反映整格典型高度）
+                if (hvN > 0) {
+                    java.util.Arrays.sort(hBuf, 0, hvN);
+                    d.height[sampleIndex(gx, gz, gridH)] = hBuf[hvN / 2];
+                }
+                d.put(gx, gz, first);
                 sampled++;
             }
         }
@@ -344,6 +375,11 @@ public final class TerrainFieldData {
         d.costMs = (System.nanoTime() - t0) / 1_000_000L;
         d.missingCells = missing;
         return d;
+    }
+
+    /** X 主序索引。 */
+    private static int sampleIndex(int gx, int gz, int gridH) {
+        return gx * gridH + gz;
     }
 
     /** 写入一个格点（采样与渐进填充共用）。 */

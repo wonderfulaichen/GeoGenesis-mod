@@ -1,0 +1,33 @@
+fix(preview): 修"两层 GUI / 深蓝棋盘格" —— 角落所有权契约 + 柱高中位采样
+
+实机截图暴露三类问题，本提交逐一定位修复：
+
+一、两层 GUI（同一信息画两次/三次）
+- 右下角叠三层：「视野 512 格·32 柱…」由 SandboxHud.drawScale 与
+  ConfigScreen.renderStatusHud(statusLine) 各画一次（内容几乎相同）
+- 右上角重叠：「3 ms」与「高程」图例标题叠 4px
+⇒ 确立「角落所有权契约」（写进 SandboxHud javadoc）：
+  左上 = SandboxHud（标题/说明/进度）
+  右上 = drawLegend（图例）
+  左下 = 悬停信息
+  右下 = ConfigScreen.renderStatusHud 唯一
+⇒ 删 SandboxHud.drawScale；帧时间移到图例下方（y+64），不再抢右上角
+
+二、沙盘深蓝棋盘格（图例「高程 Y=19~285」但画面是平的水色）
+根因：fromCellCache 每细格只采 1 个点（左上角）。
+  BASE_ZOOM=2.0 ⇒ 64 柱 / 1024 格窗口 ⇒ step=16
+  ⇒ 一根 16 格宽的柱子高度由 1 个采样点决定
+  ⇒ 深海区整片等高 ⇒ 棋盘格；图例明明有 285 格地形
+修法：每细格在 stepX×stepZ 范围内采多点取中位（sx×sz ≤ 16²），
+  height 覆盖为组内中位，颜色取第一个有效点。
+  与 SandboxGeometry.buildColumns 的「组内中位」语义衔接。
+
+三、清理
+- 删 SandboxCellCacheProbe（判据过时 + 跑 17 分钟，内容已被
+  SandboxGeometryProbe [2] 覆盖）及其 gradle task
+
+回归
+- runSandboxGeometryProbe / runSandboxLodProbe / runPreviewUnifiedProbe
+  / runSandboxPanProbe / runSandboxShadeProbe / runSandboxLayerProbe
+  / runProgressiveSamplerProbe 全 PASS
+- runDefaultOutputFingerprintProbe PASS（地形产出逐位不变）

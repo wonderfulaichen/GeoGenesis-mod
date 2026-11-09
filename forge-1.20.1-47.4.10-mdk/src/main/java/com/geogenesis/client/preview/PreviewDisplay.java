@@ -623,14 +623,16 @@ public class PreviewDisplay extends AbstractWidget {
         //   ⇒ 沙盘画完地形后<b>继续走完 HUD 流程</b>，只是跳过 2D 纹理绘制。
         if (sandboxMode) {
             renderSandbox(g, w, h, mx, my);
+            // ★ 角落所有权契约（2026-11-09）：
+            //   右上 = 图例（drawLegend）⇒ 帧时间画到图例<b>下方</b>，不再与它抢右上角
+            //   （实机截图：「3 ms」与「高程」标题重叠 4px）。
             drawZoomLabel(g, x, y, w, h);
-            if (showFrameTime) drawFrameTime(g, x + w, y);
-            drawCopiedToast(g, x, y, w, h);
             if (showLegend) drawLegend(g, mx, my);
-            // ★★ 2026-11-08【修 UI 重叠】：沙盘模式<b>不调 drawHoverInfo</b>。
-            //   drawHoverInfo 是平面模式的跟随光标 tooltip，画在鼠标附近；
-            //   沙盘已有左下角常驻悬停信息（drawSandboxHints 里），
-            //   两者同时存在会在左下/右下叠成两行字（实机截图可见）。
+            if (showFrameTime) drawFrameTime(g, x + w, y + 64);
+            drawCopiedToast(g, x, y, w, h);
+            // ★ 沙盘模式<b>不调 drawHoverInfo</b>：
+            //   它是平面模式的跟随光标 tooltip；沙盘已有左下角常驻悬停信息
+            //   （drawSandboxHints），两者同时存在会叠成两行（实机取证）。
             // 1px 边框（参考项目 draw 的收尾）
             g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
             g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
@@ -727,15 +729,13 @@ public class PreviewDisplay extends AbstractWidget {
 
         drawZoomLabel(g, x, y, w, h);
 
-
-
-        // 帧时间显示：右上角
-        if (showFrameTime) drawFrameTime(g, x + w, y);
+        // ★ 角落所有权契约：右上 = 图例 ⇒ 帧时间画到图例下方（不再与它重叠）
+        if (showLegend) drawLegend(g, mx, my);
+        if (showFrameTime) drawFrameTime(g, x + w, y + 64);
 
         // 右键复制坐标消息
         drawCopiedToast(g, x, y, w, h);
 
-        if (showLegend) drawLegend(g, mx, my);
         drawHoverInfo(g, mx, my);
 
         // 帧时间统计

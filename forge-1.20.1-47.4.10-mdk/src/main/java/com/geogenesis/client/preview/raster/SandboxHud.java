@@ -43,12 +43,26 @@ public final class SandboxHud {
 
     private SandboxHud() { }
 
-    /** 绘制全部沙盘 HUD（左上提示 + 右缘进度 + 左下悬停 + 右下比例尺）。 */
+    /**
+     * 绘制沙盘 HUD。
+     *
+     * <h2>★ 角落所有权契约（2026-11-09，修复"两层 GUI"）</h2>
+     * <table border="1">
+     *   <tr><th>角落</th><th>唯一所有者</th></tr>
+     *   <tr><td>左上</td><td>本类（标题/说明/进度条）</td></tr>
+     *   <tr><td>右上</td><td>{@code PreviewDisplay.drawLegend}（图例）</td></tr>
+     *   <tr><td>左下</td><td>本类（悬停信息）</td></tr>
+     *   <tr><td><b>右下</b></td><td><b>{@code GeoGenesisConfigScreen.renderStatusHud}</b>
+     *       （statusLine 已含视野/柱数/中心 —— 本类<b>不再画比例尺</b>，
+     *        否则与 statusLine 叠成两层文字，实机截图已取证）</td></tr>
+     * </table>
+     */
     public static void render(GuiGraphics g, int x, int y, int w, int h, HudData d) {
         drawTopLeft(g, x, y, d);
         drawProgress(g, x, y, w, h, d);
         drawHover(g, x, y, w, h, d);
-        drawScale(g, x, y, w, h, d);
+        // ★ 右下角归 ConfigScreen.renderStatusHud 所有（statusLine 已含同样信息），
+        //   本类不再画比例尺 —— 曾在这里画过，与 statusLine 叠成两层（实机取证）。
     }
 
     private static void drawTopLeft(GuiGraphics g, int x, int y, HudData d) {
@@ -101,12 +115,5 @@ public final class SandboxHud {
         for (int i = 0; i < lines.length; i++) {
             g.drawString(mc.font, lines[i], bx, by + i * lh, TEXT_SUB, true);
         }
-    }
-
-    private static void drawScale(GuiGraphics g, int x, int y, int w, int h, HudData d) {
-        Minecraft mc = Minecraft.getInstance();
-        String scaleTxt = SandboxLod.scaleLabel(d.zoom);
-        int tw = mc.font.width(scaleTxt);
-        g.drawString(mc.font, scaleTxt, x + w - tw - 6, y + h - 16, TEXT_SUB, true);
     }
 }
