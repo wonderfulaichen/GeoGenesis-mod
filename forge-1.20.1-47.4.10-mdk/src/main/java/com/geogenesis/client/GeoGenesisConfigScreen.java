@@ -131,6 +131,13 @@ public class GeoGenesisConfigScreen extends Screen {
 
     private PreviewDisplay preview;
     /**
+     * ★ 2026-11-09 重构：配置窗的<b>唯一</b>所有者。
+     *
+     * <p>底板 / 页签 / 内容 / 命中全部在它里面，<b>共用同一套坐标</b> ——
+     * 重构前这三处各自算坐标，导致"画在一处、点判在另一处"，实测互相重叠打架。</p>
+     */
+    private final ConfigPanelHost panelHost = new ConfigPanelHost();
+    /**
      * ★ 2026-11-09 B3：两个视图的<b>统一入口</b>。
      *
      * <p>用户原话：「明明我都说了要重构重构，结果各自完全独立分裂。」</p>
@@ -296,6 +303,20 @@ public class GeoGenesisConfigScreen extends Screen {
         cfgY = PANEL_MARGIN;
         // 展开时留出上下的呼吸空间；太矮就贴到可用高度并内部滚动
         cfgH = panelOpen ? Math.max(120, h - PANEL_MARGIN * 2 - 24) : 24;
+    }
+
+    /** 把当前状态同步给配置窗宿主（几何 + 页签 + 面板）。 */
+    private void syncPanelHost() {
+        panelHost.panelX = panelX;
+        panelHost.panelW = panelW;
+        panelHost.overlayY = cfgY;
+        panelHost.overlayH = cfgH;
+        panelHost.headerY = headerY;
+        panelHost.listTop = listTop;
+        panelHost.listBottom = listBottom;
+        panelHost.tab = tab;
+        panelHost.panels = panels;
+        panelHost.tabLabels = visibleTabs.stream().map(PanelLayout.Tab::label).toList();
     }
 
     private void layoutPanels() {
@@ -751,61 +772,24 @@ public class GeoGenesisConfigScreen extends Screen {
         // ---------------- 第 1 层：全屏地形（widget 系统，含预览自身） ----------------
         super.render(g, mx, my, pt);
 
-        // ---------------- 第 2 层：左侧悬浮配置窗 ----------------
+        // ---------------- 第 2/3 层：左侧悬浮配置窗 ----------------
+        //   ★ 2026-11-09 重构：整块（底板 + 页签 + 内容 + 按钮）交给
+        //   ConfigPanelHost —— 它是配置窗的<b>唯一</b>所有者，
+        //   绘制与命中共用同一套坐标（重构前三处各算各的 ⇒ 重叠打架）。
         computePanelRect();
-        if (panelOpen) {
-            renderPanelOverlay(g, mx, my);
-        }
+        syncPanelHost();
         renderPanelHandle(g, mx, my);
 
-        // ---------------- 第 3 层：页签与内容 ----------------
         if (panelOpen && !dialogActive) {
-            int n = visibleTabs.size();
-            // ★ 2026-11-08 修复页签溢出：按文字宽度流式换行，不再强行等分（11 个页签等分必然超宽）
-            int cxTab = panelX + 6;
-            int cyTab = headerY;
-            int rowMaxX = panelX + panelW - 6;
-            for (int i = 0; i < n; i++) {
-                String label = visibleTabs.get(i).label();
-                int tw = this.font.width(label) + 20;
-                if (cxTab + tw > rowMaxX && cxTab > panelX + 6) {
-                    cxTab = panelX + 6;
-                    cyTab += TAB_H + 4;
-                }
-                boolean on = tab == i;
-                boolean hover = mx >= cxTab && mx <= cxTab + tw && my >= cyTab && my <= cyTab + TAB_H;
-                int bg = on ? (hover ? TAB_SEL_HOVER : TAB_SEL_BG)
-                            : (hover ? TAB_PILL_HOVER : TAB_PILL_BG);
-                drawRoundedPill(g, cxTab, cyTab, tw, TAB_H, TAB_PILL_R, bg, on);
-                if (on) g.fill(cxTab + TAB_PILL_R, cyTab, cxTab + tw - TAB_PILL_R, cyTab + 2, TAB_SEL_TOP);
-                g.drawCenteredString(this.font, label, cxTab + tw / 2,
-                    cyTab + (TAB_H - this.font.lineHeight) / 2 + 1, on ? C_TEXT : TAB_INACTIVE_TEXT);
-                cxTab += tw + 4;
-            }
-            tabBarBottom = cyTab + TAB_H;
-
             if (layerPrev != null && largeAreaBtn != null) {
                 Component want = largeAreaLabel();
                 if (!want.equals(largeAreaBtn.getMessage())) largeAreaBtn.setMessage(want);
             }
-
-            g.enableScissor(panelX, listTop, panelX + panelW, listBottom);
-            if (panels != null && tab < panels.length) {
-                ConfigPanel active = panels[tab];
-                if (active == biomesPanel) biomesPanel.setPanelBottom(listBottom);
-                active.render(g, mx, my);
-            }
-            g.disableScissor();
-
             if (presetsPanel != null) {
                 presetsPanel.setWidgetsVisible(tab == visibleTabs.indexOf(PanelLayout.Tab.PRESETS));
                 presetsPanel.setViewportHeight(listBottom - presetsPanel.getScrollTopY());
             }
-
-            // widget（按钮等）要在面板之上重画一次：super.render 已画过一遍，
-            // 但当时被预览覆盖，这里补画悬浮窗内部的可交互件
-            renderPanelWidgets(g, mx, my, pt);
-
+            panelHost.render(g, mx, my, pt, () -> renderPanelWidgets(g, mx, my, pt));
             if (panels != null && tab < panels.length) {
                 Component tip = panels[tab].consumeHoverTooltip();
                 if (tip != null) g.renderTooltip(font, tip, mx, my);
@@ -832,18 +816,7 @@ public class GeoGenesisConfigScreen extends Screen {
 
     // ------------------------------------------------------------------ 悬浮层绘制
 
-    /** 配置窗的半透明底板 + 边框。展开时地形仍能从边缘透出来。 */
-    private void renderPanelOverlay(GuiGraphics g, int mx, int my) {
-        // 底板：深色半透明（不是全不透明，能看到下方地形轮廓）
-        g.fill(cfgX, cfgY, cfgX + cfgW, cfgY + cfgH, 0xC8101216);
-        // 1px 描边：在全屏地形上区分层次
-        g.fill(cfgX, cfgY, cfgX + cfgW, cfgY + 1, 0xFF3a4250);
-        g.fill(cfgX, cfgY + cfgH - 1, cfgX + cfgW, cfgY + cfgH, 0xFF3a4250);
-        g.fill(cfgX, cfgY, cfgX + 1, cfgY + cfgH, 0xFF3a4250);
-        g.fill(cfgX + cfgW - 1, cfgY, cfgX + cfgW, cfgY + cfgH, 0xFF3a4250);
-        // 顶部标题行
-        g.drawString(this.font, "GeoGenesis 地形配置", cfgX + 8, cfgY + 6, C_TEXT, false);
-    }
+    /** 配置窗的半透明底板 + 边框。展开时地形仍能从边缘透出来。 */
 
     /**
      * 折叠把手。
@@ -913,21 +886,19 @@ public class GeoGenesisConfigScreen extends Screen {
     /** 页签条最下面一行 y（流式换行后可能多行）。 */
     private int tabBarBottom = 0;
 
-    /** 按当前页签集合预演流式换行，返回页签条底部的 y。 */
+    /**
+     * 页签条底部 y。
+     *
+     * <p>★ 2026-11-09 重构：委托 {@link ConfigPanelHost} —— 页签换行算法
+     * <b>只存在于宿主一处</b>。此前本类与宿主各有一份换行实现，
+     * 改一处忘另一处就会"内容起点与页签画的位置对不上"。</p>
+     */
     private int computeTabBarBottom() {
-        int n = visibleTabs.size();
-        int cxTab = panelX + 6;
-        int cyTab = headerY;
-        int rowMaxX = panelX + panelW - 6;
-        for (int i = 0; i < n; i++) {
-            int tw = this.font.width(visibleTabs.get(i).label()) + 20;
-            if (cxTab + tw > rowMaxX && cxTab > panelX + 6) {
-                cxTab = panelX + 6;
-                cyTab += TAB_H + 4;
-            }
-            cxTab += tw + 4;
-        }
-        return cyTab + TAB_H;
+        panelHost.panelX = panelX;
+        panelHost.panelW = panelW;
+        panelHost.headerY = headerY;
+        panelHost.tabLabels = visibleTabs.stream().map(PanelLayout.Tab::label).toList();
+        return headerY + panelHost.tabBarHeight();
     }
 
     /**
@@ -936,20 +907,8 @@ public class GeoGenesisConfigScreen extends Screen {
      * @return 命中的页签索引；未命中返回 -1
      */
     private int hitTestTab(double mx, double my) {
-        int n = visibleTabs.size();
-        int cxTab = panelX + 6;
-        int cyTab = headerY;
-        int rowMaxX = panelX + panelW - 6;
-        for (int i = 0; i < n; i++) {
-            int tw = this.font.width(visibleTabs.get(i).label()) + 20;
-            if (cxTab + tw > rowMaxX && cxTab > panelX + 6) {
-                cxTab = panelX + 6;
-                cyTab += TAB_H + 4;
-            }
-            if (mx >= cxTab && mx <= cxTab + tw && my >= cyTab && my <= cyTab + TAB_H) return i;
-            cxTab += tw + 4;
-        }
-        return -1;
+        // ★ 委托宿主：与绘制<b>同一套</b>流式换行算法
+        return panelHost.hitTab(mx, my);
     }
 
     @Override
