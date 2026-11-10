@@ -143,10 +143,11 @@ public class GeoGenesisConfigScreen extends Screen {
      * ★ 2026-11-09 B3：两个视图的<b>统一入口</b>。
      *
      * <p>用户原话：「明明我都说了要重构重构，结果各自完全独立分裂。」</p>
-     * <p>现在：模式分派只在 {@code PreviewController.rasterizer} 这<b>一个字段</b>上，
-     * 中心/缩放/图层/快照由 {@code PreviewState} 共享 ⇒ 切模式不重采、构图不变。</p>
+     * <p>★ v24：中间层（PreviewController / PreviewState / TerrainSnapshot /
+     * TerrainRasterizer / PlaneRasterizer）已全部删除。
+     * 现在模式状态直接在 {@code preview}（{@code PreviewDisplay}）上，
+     * 两种视图共用<b>同一份 CellCache 数据</b>，只是画法不同。</p>
      */
-    private com.geogenesis.client.preview.PreviewController controller;
     /**
      * ★ 2026-11-09 v7：这几个按钮已改为<b>自绘</b>（不再注册为 MC widget）。
      *
@@ -662,12 +663,11 @@ public class GeoGenesisConfigScreen extends Screen {
             preview.setStandaloneHud(false);
             preview.setDrawZoomLabel(false);
             // ★ B3：统一入口（平面精确管线 + 沙盘，共用状态与快照）
-            //   控制器由 PreviewDisplay 内部持有（唯一实例），此处只取引用。
-            controller = preview.controller();
+            //   ★ v24：控制器已删除 —— 模式状态直接在 preview 上
+            //   （平面/沙盘只是同一份数据的两种画法，见 PreviewDisplay.setSandboxMode）
         } else {
             preview.setTerrain(terrain, seed, p, !shared);
             preview.setMode(currentMode);
-            if (controller != null) controller.setTerrain(terrain, seed, p);
         }
         Minecraft mc = Minecraft.getInstance();
         preview.setStructureContext(
@@ -702,11 +702,9 @@ public class GeoGenesisConfigScreen extends Screen {
         }
     }
 
-    /** 当前是否处于沙盘视图（★ B3：状态在控制器上，preview 仅作回退）。 */
+    /** 当前是否处于沙盘视图（★ v24：状态直接读 preview，无中间层）。 */
     private boolean isSandboxActive() {
-        return controller != null
-                ? controller.viewMode() == com.geogenesis.client.preview.TerrainViewMode.SANDBOX
-                : (preview != null && preview.isSandboxMode());
+        return preview != null && preview.isSandboxMode();
     }
 
     /** 沙盘按钮文案。 */
@@ -714,12 +712,15 @@ public class GeoGenesisConfigScreen extends Screen {
         return Component.literal(isSandboxActive() ? "沙盘视图" : "平面视图");
     }
 
-    /** 平面 ⇄ 沙盘 切换（★ B3：走统一控制器，不重采、构图不变）。 */
+    /**
+     * 平面 ⇄ 沙盘 切换（★ v24：只换画法，不重采、不改缩放/中心/图层）。
+     *
+     * <p>★ 修"为什么切换沙盘就全局"：此前 {@code setSandboxMode(true)} 内部
+     * 会调 {@code setLargeArea(true)} ⇒ 连锁把 {@code scaleBlockPos} 强改成
+     * {@code LARGE_AREA_ENTRY_SCALE} ⇒ <b>切一次视图，缩放就被改掉</b>。
+     * 那个强制已删除（沙盘数据来自 CellCache，与 largeArea 无关）。</p>
+     */
     private void toggleSandbox() {
-        if (controller != null) {
-            controller.cycleViewMode();
-            return;
-        }
         if (preview == null) return;
         preview.setSandboxMode(!preview.isSandboxMode());
     }
@@ -727,9 +728,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private void cycleLayer(int d) {
         currentMode = (currentMode + d + GeoPalette.PreviewLayer.values().length)
                 % GeoPalette.PreviewLayer.values().length;
+        // ★ v24：图层由 preview 持有，平面与沙盘天然同图层
         if (preview != null) preview.setMode(currentMode);
-        // ★ B3：图层由控制器共享（沙盘与平面同图层）
-        if (controller != null) controller.setLayer(GeoPalette.PreviewLayer.values()[currentMode]);
     }
 
     private Component largeAreaLabel() {

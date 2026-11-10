@@ -3,7 +3,7 @@ package com.geogenesis.client.preview.sandbox;
 import com.geogenesis.client.preview.GeoPalette;
 import com.geogenesis.client.preview.SandboxPalette;
 import com.geogenesis.client.preview.SandboxShade;
-import com.geogenesis.client.preview.TerrainSnapshot;
+import com.geogenesis.client.preview.TerrainFieldData;
 
 /**
  * <b>沙盘几何（纯函数，零 MC 依赖）</b> —— ★ 2026-11-09 B1。
@@ -74,15 +74,21 @@ public final class SandboxGeometry {
     public static final float MIN_WALL_PX = 1.0f;
 
     /**
-     * 顶面四边形向外扩张量（<b>格</b>）—— 消除光栅化漏缝。
+     * 顶面四边形<b>每边</b>向外扩张的比例（相对一根柱子的宽度）。
      *
-     * <p>柱宽只有 3~7px 时，相邻四边形几何上严格相接，但像素中心采样仍可能
-     * 落在两者之间（都不包含）⇒ 露出底板深色 ⇒ 细缝叠成<b>斜向网纹</b>。
-     * 离线脚本已独立复现：只画顶面、不画侧墙、不改光照，网纹照样出现。</p>
+     * <p>用途：消除光栅化漏缝。柱宽只有 3~7px 时，相邻四边形几何上严格相接，
+     * 但像素中心采样仍可能落在两者之间（都不包含）⇒ 露出底板深色
+     * ⇒ 细缝叠成斜向网纹。</p>
      *
-     * <p>⇒ 每个四边形向外扩<b>半格</b>（= 半根柱宽），重叠区被后画近处柱覆盖。</p>
+     * <h2>★ v23：从 0.5 改成 0.08（修"柱子互相压住、像叠瓦"）</h2>
+     * <p>旧值 {@code PRIM_OVERLAP_CELLS = 0.5} 被当作 {@code 0.5 / colCount}
+     * 使用，而一根柱子的模型宽度是 {@code 2 / colCount}
+     * ⇒ 每边扩 <b>0.25 根柱</b>、两边合计 <b>0.5 根柱</b>
+     * ⇒ 每根柱子实际宽 <b>1.5 倍</b>，把左右邻居各盖掉一半。
+     * 配合"从远到近"的提交顺序，画面变成一片<b>叠瓦状色块</b>。</p>
+     * <p>现在每边只扩 8%（≈6px 柱宽下 0.5px），足够闭合缝、又肉眼不可见。</p>
      */
-    public static final float PRIM_OVERLAP_CELLS = 0.5f;
+    public static final float PRIM_OVERLAP_RATIO = 0.08f;
 
     private SandboxGeometry() { }
 
@@ -269,7 +275,7 @@ public final class SandboxGeometry {
      */
     public interface ColorSource {
         /** 该细格的底色 0xRRGGBB。 */
-        int colorAt(int gx, int gz, TerrainSnapshot snap);
+        int colorAt(int gx, int gz, TerrainFieldData snap);
     }
 
     /**
@@ -295,7 +301,7 @@ public final class SandboxGeometry {
      * @param now       当前时刻（毫秒）
      * @param colorSrc  底色来源（非水面/非 BIOME 图层用）；可 null
      */
-    public static Columns buildColumns(TerrainSnapshot snap, GeoPalette.PreviewLayer layer,
+    public static Columns buildColumns(TerrainFieldData snap, GeoPalette.PreviewLayer layer,
                                        int perColumn, float span,
                                        int minY, int maxY, double seaLevel, long now,
                                        ColorSource colorSrc) {
@@ -314,7 +320,7 @@ public final class SandboxGeometry {
         //   分母小了 {@code blocksPerCell} 倍（实测 8 倍）⇒ 坡度被放大 8 倍
         //   ⇒ 光照饱和率 23%/34%（探针实测）。参考项目 paintBlock 的分母是
         //   {@code 2 × step × HEIGHT_STRIDE}，即真实方块距离。
-        double blocksPerPillar = Math.max(1e-6, per * snap.blocksPerCell);
+        double blocksPerPillar = Math.max(1e-6, per * snap.blocksPerCell());
         Columns out = new Columns(colCount, colRows, capacity, blocksPerPillar);
         double base = seaLevel - 4.0;
         double sp = Math.max(20.0, span);
@@ -322,7 +328,8 @@ public final class SandboxGeometry {
         // 真实高度网格（水面取海平面 ⇒ 水面平，无假明暗）
         double[] yGrid = snap.buildSurfaceYGrid(seaLevel);
 
-        double overlap = PRIM_OVERLAP_CELLS / Math.max(1, colCount);
+        // 每边扩张 = PRIM_OVERLAP_RATIO × 一根柱子的模型宽度（2/colCount）
+        double overlap = PRIM_OVERLAP_RATIO * 2.0 / Math.max(1, colCount);
         double[] hBuf = new double[(per) * (per)];
         int[] voteIds = new int[per * per];
         int[] voteCnts = new int[per * per];
@@ -409,7 +416,17 @@ public final class SandboxGeometry {
                     out.ready[out.readyCount++] = col;
                     continue;
                 }
-                c.bornAt = now;
+                // ★★★ v23【修"沙盘整片平板、完全不对"】★★★
+                //   这里原先是 {@code c.bornAt = now;} —— 把"当前帧时间"当成出生时刻。
+                //   而调用方紧接着就 {@code applyGrow(cols, now)} 算
+                //   {@code t = (now - bornAt) / FADE_MS} ⇒ <b>t 恒为 0</b>
+                //   ⇒ {@code smooth(0)=0} ⇒ {@code c.top = 0}（所有柱子高度归零）
+                //   ⇒ {@code alpha = 255×FADE_FLOOR = 63}（全图 25% 透明）。
+                //   实机表现：一块<b>没有起伏、没有侧墙、半透明</b>的彩色平板。
+                //
+                //   正确来源是快照自带的 {@code bornAt[]}：TerrainFieldData 在首次写入时
+                //   打一次时间戳，缓存回填时置 longAgo（不重放动画）。
+                c.bornAt = snap.bornAt[i0];
                 // 生长动画未到 ⇒ 不画（由 applyGrow 处理）
                 c.alpha = 0xFF;
 
@@ -560,7 +577,26 @@ public final class SandboxGeometry {
                                     int viewW, int viewH, float widthScale,
                                     int colCount, int perColumn, double blockStep,
                                     float[] out) {
-        float scale = fitScaleWide(r, viewW, viewH);
+        // 兼容重载：无绘制 scale 时退回"包围盒装进视口"
+        dragToBlocksWithScale(r, dx, dy, fitScaleWide(r, viewW, viewH),
+                widthScale, colCount, perColumn, blockStep, out);
+    }
+
+    /**
+     * <b>拖动换算（★ v23：用绘制时的同一个 scale）</b>。
+     *
+     * <h2>为什么必须传 scale</h2>
+     * <p>此前这里自己算 {@code fitScaleWide(r, viewW, viewH)}，而 {@code draw()} 用的是
+     * {@code scaleOf(min(w,h), zoom) = size × 0.46 × zoom}。两者在默认参数下
+     * 相差 <b>2.6 倍</b>（AREA×0.35 vs AREA×0.92）⇒ 拖动一格屏幕位移换算出的
+     * 世界位移只有应有的 38% ⇒ <b>拖动明显跟不上手</b>。</p>
+     *
+     * @param scale 绘制时实际使用的屏幕缩放（像素/模型单位）
+     */
+    public static void dragToBlocksWithScale(float[] r, double dx, double dy, float scale,
+                                             float widthScale,
+                                             int colCount, int perColumn, double blockStep,
+                                             float[] out) {
         if (scale <= 0f) { out[0] = 0f; out[1] = 0f; return; }
         float a = (float) (dx / scale) / widthScale;
         float b = (float) (dy / scale) / widthScale;

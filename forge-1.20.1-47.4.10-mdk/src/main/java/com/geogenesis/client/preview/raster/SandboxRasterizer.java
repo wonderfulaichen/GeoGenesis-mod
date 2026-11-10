@@ -3,7 +3,7 @@ package com.geogenesis.client.preview.raster;
 import com.geogenesis.client.preview.GeoPalette;
 import com.geogenesis.client.preview.SandboxLod;
 import com.geogenesis.client.preview.SandboxPalette;
-import com.geogenesis.client.preview.TerrainSnapshot;
+import com.geogenesis.client.preview.TerrainFieldData;
 import com.geogenesis.client.preview.TerrainViewMode;
 import com.geogenesis.client.preview.sandbox.SandboxGeometry;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -38,7 +38,7 @@ import net.minecraft.client.renderer.RenderType;
  *       深度写入会拒掉后画的字/按钮。</li>
  * </ul>
  */
-public final class SandboxRasterizer implements TerrainRasterizer {
+public final class SandboxRasterizer {
 
     // ===== 视角状态（控制器持有，这里只读）=====
     private float yaw = SandboxGeometry.DEFAULT_YAW;
@@ -57,7 +57,7 @@ public final class SandboxRasterizer implements TerrainRasterizer {
     /** 点选视线推进步长（yardsite {@code MARCH_STEP=0.007}）。 */
     private static final float MARCH_STEP = 0.007f;
 
-    @Override
+    /** 本渲染器对应的视图模式（★ v24：接口已删，但该方法仍是本类身份标识）。 */
     public TerrainViewMode mode() {
         return TerrainViewMode.SANDBOX;
     }
@@ -127,10 +127,10 @@ public final class SandboxRasterizer implements TerrainRasterizer {
     public float yaw() { return yaw; }
     public float pitch() { return pitch; }
 
-    // ----- 接口实现 -----
+    // ----- 参数构造 -----
 
-    @Override
-    public RasterParams paramsFor(TerrainSnapshot snapshot, int viewportW, int viewportH,
+    /** 构造本渲染器的参数对象。 */
+    public RasterParams paramsFor(TerrainFieldData snapshot, int viewportW, int viewportH,
                                   float zoomFactor, GeoPalette.PreviewLayer layer, int seaLevel) {
         return new RasterParams(viewportW, viewportH, zoomFactor, layer, seaLevel);
     }
@@ -141,8 +141,7 @@ public final class SandboxRasterizer implements TerrainRasterizer {
      * <p>实机不走这条路径：拉远档 512² = 262,144 柱，纯 Java 填充不可行
      * （RTF 是 256² = 65,536，我们是它的 4 倍）。实机用 {@link #draw}。</p>
      */
-    @Override
-    public int[] rasterize(TerrainSnapshot snapshot, RasterParams params) {
+    public int[] rasterize(TerrainFieldData snapshot, RasterParams params) {
         if (snapshot == null || params.width() <= 0 || params.height() <= 0) return new int[0];
         int w = params.width(), h = params.height();
         int[] px = new int[w * h];
@@ -174,7 +173,7 @@ public final class SandboxRasterizer implements TerrainRasterizer {
     /**
      * <b>实机绘制</b>（OpenGL 逐柱提交）。
      */
-    public void draw(GuiGraphics g, TerrainSnapshot snapshot, RasterParams params,
+    public void draw(GuiGraphics g, TerrainFieldData snapshot, RasterParams params,
                      int areaX, int areaY, int areaW, int areaH,
                      float span, long now) {
         if (snapshot == null || snapshot.gridW <= 0) return;
@@ -394,7 +393,7 @@ public final class SandboxRasterizer implements TerrainRasterizer {
 
     // ----- 内部 -----
 
-    private SandboxGeometry.Columns buildCols(TerrainSnapshot snap, RasterParams p, float[] r, float span) {
+    private SandboxGeometry.Columns buildCols(TerrainFieldData snap, RasterParams p, float[] r, float span) {
         return SandboxGeometry.buildColumns(snap, p.layer(), SandboxLod.perColumn(),
                 span, 0, 0, p.seaLevel(), System.currentTimeMillis(), lastColorSrc);
     }
@@ -419,7 +418,7 @@ public final class SandboxRasterizer implements TerrainRasterizer {
      * <p>与 {@link #draw} 的前半段完全一致（同一份几何），
      * 只是不提交顶点 —— 这样探针验证的就是实机用的同一份数据。</p>
      */
-    public void prepare(TerrainSnapshot snapshot, RasterParams params,
+    public void prepare(TerrainFieldData snapshot, RasterParams params,
                         int areaX, int areaY, int areaW, int areaH, float span) {
         if (snapshot == null || snapshot.gridW <= 0) return;
         lastSpan = span;
@@ -434,8 +433,8 @@ public final class SandboxRasterizer implements TerrainRasterizer {
         lastOriginY = areaY + areaH / 2f + panY - scale * fc[1];
     }
 
-    @Override
-    public HoverInfo hover(TerrainSnapshot snapshot, RasterParams params, int mx, int my) {
+    /** 悬停信息（读上一帧的拾取结果）。 */
+    public HoverInfo hover(TerrainFieldData snapshot, RasterParams params, int mx, int my) {
         int col = pickedColumn;
         if (col < 0 || lastCols == null || col >= lastCols.items.length) return null;
         SandboxGeometry.Column c = lastCols.items[col];
@@ -449,8 +448,8 @@ public final class SandboxRasterizer implements TerrainRasterizer {
         return new HoverInfo(wx, wz, terrain, detail, c.surfaceY);
     }
 
-    @Override
-    public String legendLine0(TerrainSnapshot snapshot, RasterParams params) {
+    /** 图例第一行（沙盘尺度）。 */
+    public String legendLine0(TerrainFieldData snapshot, RasterParams params) {
         if (snapshot == null) return "";
         int pillars = Math.max(1, snapshot.gridW / Math.max(1, SandboxLod.perColumn()));
         return String.format(java.util.Locale.ROOT,

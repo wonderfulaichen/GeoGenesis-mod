@@ -57,16 +57,6 @@ public class PreviewDisplay extends AbstractWidget {
      * {@code if (sandboxMode)} 这样的分支（用户原话：「明明我都说了要重构重构，
      * 结果各自完全独立分裂。」）。</p>
      */
-    PreviewController controller;
-
-    /**
-     * 统一控制器（★ 2026-11-09 B4a）。
-     *
-     * <p>模式分派、状态、沙盘绘制都在它里面 —— 本类不再有模式分支。</p>
-     */
-    public PreviewController controller() {
-        return controller;
-    }
     TerrainQueue queue;
     GeoGenesisTerrain terrain;
     /**
@@ -254,14 +244,10 @@ public class PreviewDisplay extends AbstractWidget {
         this.verticalScale = params.verticalScale();
         this.horizontalScale = params.horizontalScale();
         this.renderScale = Math.max(1, Math.min(4, renderScale));
-        // ★ 2026-11-09 B4a：统一控制器（状态 + 模式分派 + 沙盘绘制）。
-        //   本类退化为「Widget 门面 + 平面精确管线 + 图例」，不再有模式分支。
-        this.controller = new PreviewController(this, terrain, seed, params);
         // 高程色阶范围跟随地形实际可达 e 区间（由地形类型 e 界限换算），
         // 使地形最高处触顶雪白、最深触底深蓝，而非世界的绝对高度上下限。
         double[] er = params.elevationERange();
         this.elevEMin = er[0]; this.elevEMax = er[1];
-        this.controller.setElevationRange(elevEMin, elevEMax);
         GeoPalette.setElevationERange(er[0], er[1]);
         GeoPalette.setSeaLevel(seaLevel);
         // 渲染分辨率 = 预览窗口显示分辨率（逻辑像素 × renderScale），类比电脑显示器：
@@ -859,13 +845,25 @@ public class PreviewDisplay extends AbstractWidget {
      * <p>沙盘需要大范围采样数据（柱子太密反而糊），所以开启时自动打开大范围模式；
      * 关闭时不动大范围开关 —— 用户可能本来就在看大范围。</p>
      */
+    /**
+     * 切换视图模式（★ v24：<b>只换画法，不动任何视图参数</b>）。
+     *
+     * <h2>★ 为什么删掉 {@code setLargeArea(true)}</h2>
+     * <p>此前进沙盘会强制 {@code setLargeArea(true)}，而那条链是：</p>
+     * <pre>
+     *   setLargeArea(true) → scaleBlockPos = max(scaleBlockPos, LARGE_AREA_ENTRY_SCALE)
+     * </pre>
+     * <p>⇒ <b>切一次视图，缩放就被改掉</b>（用户：「谁切换视图还改缩放等信息呢？」）。</p>
+     *
+     * <p>而且沙盘的数据来自 {@code cellCache}（{@link TerrainFieldData#fromCellCache}），
+     * 与 {@code largeArea} / {@code largeSampler} <b>毫无关系</b> ——
+     * 那个强制既无必要，又破坏了"切模式构图不变"的承诺。</p>
+     */
     public void setSandboxMode(boolean v) {
         if (this.sandboxMode == v) return;
         this.sandboxMode = v;
-        if (v) {
-            setLargeArea(true);
-            needsClear = true;
-        }
+        // 只标记需要重画，不碰 scaleBlockPos / largeArea / center
+        needsClear = true;
     }
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
@@ -974,7 +972,11 @@ public class PreviewDisplay extends AbstractWidget {
         //   它与新的 SandboxGeometry 构成两套沙盘实现，正是本轮要消灭的"独立分裂"。
         //   新路径：SandboxRasterizer 只负责"画"，几何全在 SandboxGeometry（纯函数、探针可验证）。
         //   本类继续负责：读 CellCache、算竖向比例 span、hover、地图标记。
-        TerrainSnapshot snap = TerrainSnapshot.of(d);
+        //
+        // ★ v24：<b>不再经过 TerrainSnapshot / PreviewController</b>。
+        //   用户批评："明明后端数据都不需要修改，平面、沙盘都这样，
+        //             就前端显示不一样而已。你这样完全是扔了原来的设计又重复造轮子。"
+        //   ⇒ 沙盘直接吃 CellCache 产出的 TerrainFieldData（唯一数据源，零复制）。
         com.geogenesis.client.preview.raster.RasterParams rp =
                 new com.geogenesis.client.preview.raster.RasterParams(
                         w, h, 0f, activeLayer, (int) seaY);
@@ -984,12 +986,8 @@ public class PreviewDisplay extends AbstractWidget {
         } else {
             sandboxRasterizer.clearPick();
         }
-        // ★ 2026-11-09 B4a：绘制委托给控制器（模式分派的唯一位置在此）。
-        //   控制器内部按 rasterizer 字段分派，本类不再直接调 SandboxRasterizer。
-        if (controller != null) {
-            controller.setElevationRange(elevEMin, elevEMax);
-            controller.setLayer(activeLayer);
-            controller.renderSandbox(g, snap, rp, getX(), getY(), w, h,
+        if (d != null) {
+            sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h,
                     reliefSpan, System.currentTimeMillis());
         }
 

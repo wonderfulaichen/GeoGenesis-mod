@@ -3,7 +3,7 @@ package com.geogenesis.worldgen.terrain.preview;
 import com.geogenesis.client.preview.GeoPalette;
 import com.geogenesis.client.preview.SandboxLod;
 import com.geogenesis.client.preview.TerrainFieldData;
-import com.geogenesis.client.preview.TerrainSnapshot;
+import com.geogenesis.client.preview.TerrainFieldData;
 import com.geogenesis.client.preview.chunk.CellCache;
 import com.geogenesis.client.preview.sandbox.SandboxGeometry;
 import com.geogenesis.worldgen.terrain.CellGenerator;
@@ -68,14 +68,13 @@ public final class SandboxGeometryProbe {
             }
         }
         int ox = cx0 * 16 + 16, oz = cz0 * 16 + 16;
-        TerrainFieldData d = TerrainFieldData.fromCellCache(
+        TerrainFieldData snap = TerrainFieldData.fromCellCache(
                 cache, ox, oz, windowBlocks, windowBlocks, grid, grid, 1L);
-        TerrainSnapshot snap = TerrainSnapshot.of(d);
         int per = SandboxLod.perColumn();
 
-        System.out.printf("快照：%d×%d 细格，%d×%d 格方块，%.1f 块/细格，perColumn=%d%n",
+        System.out.printf("数据：%d×%d 细格，%d×%d 格方块，%.1f 块/细格，perColumn=%d%n",
                 snap.gridW, snap.gridH, snap.blocksWide, snap.blocksHigh,
-                snap.blocksPerCell, per);
+                snap.blocksPerCell(), per);
 
         // ---- 竖向比例 span（照生产：本图最高点 − 基准面，下限 60）----
         double seaY = 63.0;
@@ -216,6 +215,37 @@ public final class SandboxGeometryProbe {
             System.out.printf("    OK（%d 项桶序单调）%n", cols.readyCount);
         }
 
+        // ★ v24 新增[4b] 柱高分布判据 —— <b>效果图暴露的缺口</b>
+        //
+        // 背景：修完侧墙后离线图有了立体感，但所有柱子高度<b>几乎一样</b>，
+        //   整片像一层薄片。原先所有判据（柱数/柱高公式/包围盒/排序/光照）
+        //   <b>全都通过</b>，却没人检查"高低差到底拉不拉得开"。
+        //
+        // 判据：柱顶高度（模型单位）的 P90−P10 必须 ≥ 竖向跨度的 25%
+        //   ⇒ 也就是"九成的柱子里，最高与最低那批至少差 1/4 个屏高"
+        //   —— 否则就是平板。
+        System.out.println("\n[4b] 柱高分布：P90−P10 必须 ≥ 竖向跨度的 25%（否则是平板）");
+        float[] tops = new float[cols.readyCount];
+        int nTops = 0;
+        for (int k = 0; k < cols.readyCount; k++) {
+            SandboxGeometry.Column c = cols.items[cols.ready[k]];
+            if (c.top < 0) continue;
+            tops[nTops++] = c.top;
+        }
+        java.util.Arrays.sort(tops, 0, nTops);
+        float t10 = tops[(int) (0.10 * (nTops - 1))];
+        float t90 = tops[(int) (0.90 * (nTops - 1))];
+        float spanModel = SandboxGeometry.RELIEF;      // 模型空间的最大厚度
+        float spread = t90 - t10;
+        System.out.printf("    柱顶 P10=%.4f P90=%.4f 跨度=%.4f（RELIEF=%.2f，占 %.0f%%）%n",
+                t10, t90, spread, spanModel, 100 * spread / spanModel);
+        if (spread < spanModel * 0.25f) {
+            System.out.println("    FAIL: 高低差不足 1/4 竖向跨度 ⇒ 整片是薄板（无立体感）");
+            pass = false;
+        } else {
+            System.out.println("    OK（高低差拉得开）");
+        }
+
         // [5] 光照统计
         System.out.println("\n[5] 坡度光照：饱和率 <5%，动态范围 ≥0.30");
         double[] yGrid = snap.buildSurfaceYGrid(seaY);
@@ -297,7 +327,15 @@ public final class SandboxGeometryProbe {
         System.exit(pass ? 0 : 1);
     }
 
-    /** 用几何层的 Column[] 直接画 PNG（CPU 填充，不启动 MC）。 */
+    /**
+     * 用几何层的 Column[] 直接画 PNG（CPU 填充，不启动 MC）。
+     *
+     * <h2>★ v24：补上侧墙与底板</h2>
+     * <p>旧版只画<b>顶面</b> ⇒ 出来的图是一块平板，看不出任何立体感 ——
+     * 让人误判"沙盘地形是平的"，而实机是画侧墙的（{@code SandboxRasterizer.draw}）。</p>
+     * <p>现在与实机同口径：底板 + 顶面 + 按可见朝向的 2 个侧面，
+     * 侧墙条件与实机一致（{@code top > 邻居}）。</p>
+     */
     private static void writePng(SandboxGeometry.Columns cols, float[] r, float scale,
                                  float ox, float oy, int size, String dir) {
         java.io.File dd = new java.io.File(dir);
@@ -306,16 +344,48 @@ public final class SandboxGeometryProbe {
         java.util.Arrays.fill(px, 0xFF101018);
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
 
+        boolean seeEast = r[6] > 0f, seeWest = r[6] < 0f;
+        boolean seeSouth = r[7] > 0f, seeNorth = r[7] < 0f;
+        boolean seeTop = r[8] > 0f;
+        final float eps = 1e-4f;
+
         for (int k = 0; k < cols.readyCount; k++) {
             SandboxGeometry.Column c = cols.items[sorted[k]];
             if (c.top < 0 || c.alpha <= 0) continue;
             int alpha = c.alpha;
             int rgb = c.rgb;
-            // 顶面
-            float[] p0 = SandboxGeometry.projectPoint(r, scale, ox, oy, c.x0, c.y0, c.top);
-            float[] p1 = SandboxGeometry.projectPoint(r, scale, ox, oy, c.x1, c.y0, c.top);
-            float[] p2 = SandboxGeometry.projectPoint(r, scale, ox, oy, c.x1, c.y1, c.top);
-            float[] p3 = SandboxGeometry.projectPoint(r, scale, ox, oy, c.x0, c.y1, c.top);
+            float top = SandboxGeometry.snapTop(c.top, eps);
+
+            // ---- 侧墙（与实机同条件：只在比邻居高时画）----
+            int col = sorted[k];
+            int ci = col / cols.colRows, cj = col % cols.colRows;
+            if (seeEast) {
+                float low = (ci + 1 < cols.colCount)
+                        ? SandboxGeometry.snapTop(Math.max(cols.items[col + cols.colRows].top, 0f), eps) : 0f;
+                if (top > low) wall(px, size, r, scale, ox, oy, c.x1, c.y0, c.x1, c.y1, low, top, rgb, alpha, 0.82f, 0.60f);
+            }
+            if (seeWest) {
+                float low = ci > 0
+                        ? SandboxGeometry.snapTop(Math.max(cols.items[col - cols.colRows].top, 0f), eps) : 0f;
+                if (top > low) wall(px, size, r, scale, ox, oy, c.x0, c.y1, c.x0, c.y0, low, top, rgb, alpha, 0.56f, 0.40f);
+            }
+            if (seeSouth) {
+                float low = (cj + 1 < cols.colRows)
+                        ? SandboxGeometry.snapTop(Math.max(cols.items[col + 1].top, 0f), eps) : 0f;
+                if (top > low) wall(px, size, r, scale, ox, oy, c.x0, c.y1, c.x1, c.y1, low, top, rgb, alpha, 0.70f, 0.52f);
+            }
+            if (seeNorth) {
+                float low = cj > 0
+                        ? SandboxGeometry.snapTop(Math.max(cols.items[col - 1].top, 0f), eps) : 0f;
+                if (top > low) wall(px, size, r, scale, ox, oy, c.x1, c.y0, c.x0, c.y0, low, top, rgb, alpha, 0.46f, 0.34f);
+            }
+
+            if (!seeTop) continue;
+            // ---- 顶面 ----
+            float[] p0 = SandboxGeometry.projectPoint(r, scale, ox, oy, c.x0, c.y0, top);
+            float[] p1 = SandboxGeometry.projectPoint(r, scale, ox, oy, c.x1, c.y0, top);
+            float[] p2 = SandboxGeometry.projectPoint(r, scale, ox, oy, c.x1, c.y1, top);
+            float[] p3 = SandboxGeometry.projectPoint(r, scale, ox, oy, c.x0, c.y1, top);
             fillTri(px, size, p0, p1, p2, rgb, alpha);
             fillTri(px, size, p0, p2, p3, rgb, alpha);
         }
@@ -328,6 +398,41 @@ public final class SandboxGeometryProbe {
         } catch (Exception e) {
             System.out.println("出图失败: " + e);
         }
+    }
+
+    /**
+     * 画一面侧墙（照实机 {@code SandboxRasterizer.wall} 的亮度系数）。
+     *
+     * <p>实机把墙拆成<b>两个四边形</b>：上半段用 {@code litTop}（亮）、
+     * 下半段用 {@code litLow}（暗）。这里照做 —— 整面一个亮度会丢掉立体感。</p>
+     */
+    private static void wall(int[] px, int size, float[] r, float scale,
+                             float ox, float oy,
+                             float ax, float ay, float bx, float by,
+                             float low, float high, int rgb, int alpha,
+                             float litTop, float litLow) {
+        float mid = (low + high) * 0.5f;
+        // 上半段（亮）
+        float[] u0 = SandboxGeometry.projectPoint(r, scale, ox, oy, ax, ay, high);
+        float[] u1 = SandboxGeometry.projectPoint(r, scale, ox, oy, bx, by, high);
+        float[] u2 = SandboxGeometry.projectPoint(r, scale, ox, oy, bx, by, mid);
+        float[] u3 = SandboxGeometry.projectPoint(r, scale, ox, oy, ax, ay, mid);
+        fillTri(px, size, u0, u1, u2, shade(rgb, litTop), alpha);
+        fillTri(px, size, u0, u2, u3, shade(rgb, litTop), alpha);
+        // 下半段（暗）
+        float[] l0 = SandboxGeometry.projectPoint(r, scale, ox, oy, ax, ay, mid);
+        float[] l1 = SandboxGeometry.projectPoint(r, scale, ox, oy, bx, by, mid);
+        float[] l2 = SandboxGeometry.projectPoint(r, scale, ox, oy, bx, by, low);
+        float[] l3 = SandboxGeometry.projectPoint(r, scale, ox, oy, ax, ay, low);
+        fillTri(px, size, l0, l1, l2, shade(rgb, litLow), alpha);
+        fillTri(px, size, l0, l2, l3, shade(rgb, litLow), alpha);
+    }
+
+    private static int shade(int rgb, float mul) {
+        int r = Math.max(0, Math.min(255, (int) (((rgb >> 16) & 0xFF) * mul)));
+        int g = Math.max(0, Math.min(255, (int) (((rgb >> 8) & 0xFF) * mul)));
+        int b = Math.max(0, Math.min(255, (int) ((rgb & 0xFF) * mul)));
+        return (r << 16) | (g << 8) | b;
     }
 
     private static void fillTri(int[] px, int size, float[] a, float[] b, float[] c,

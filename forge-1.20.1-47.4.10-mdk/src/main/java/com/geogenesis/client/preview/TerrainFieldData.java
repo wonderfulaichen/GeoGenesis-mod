@@ -156,6 +156,77 @@ public final class TerrainFieldData {
         return gx * gridH + gz;
     }
 
+    // =================================================================
+    // ★ v24：原 TerrainSnapshot 提供的能力，已并回本类
+    // =================================================================
+    //
+    // 背景：v23 之前存在一个独立的 `TerrainSnapshot`（零拷贝壳），
+    // 它只是把本类的数组再引用一遍，**不复制、不加工**。
+    // 用户批评："明明后端数据都不需要修改，平面、沙盘都这样，
+    //           就前端显示不一样而已。你这样完全是扔了原来的设计又重复造轮子。"
+    // ⇒ 该壳已删除，这些方法直接落在数据本体上。
+
+    /** 格数。 */
+    public int cells() { return gridW * gridH; }
+
+    /**
+     * 每细格代表的方块数 = {@code blocksWide / gridW}。
+     *
+     * <p>★ 坡度光照的分母基准必须用它（参考项目 {@code paintBlock} 的
+     * {@code 2 × step × HEIGHT_STRIDE}）。用错会把坡度放大/缩小一个数量级
+     * —— 实测量纲差 30~300 倍，导致整幅死平。</p>
+     */
+    public double blocksPerCell() {
+        return gridW > 0 ? (blocksWide / (double) gridW) : 1.0;
+    }
+
+    /** 细格 → 世界 X。 */
+    public int worldX(int gx) {
+        return originX + (int) Math.round(gx * blocksPerCell());
+    }
+
+    /** 细格 → 世界 Z。 */
+    public int worldZ(int gz) {
+        return originZ + (int) Math.round(gz * blocksPerCell());
+    }
+
+    /** 该格是否水面。 */
+    public boolean isWater(int i) {
+        return i >= 0 && e[i] < 0.0;
+    }
+
+    /**
+     * 该细格是否有数据（已被采样）。
+     *
+     * <p>无 MC 依赖的判据：{@code height} 非 NaN 即视为有数据。
+     * 未采区域在 {@code fromCellCache} 里保持默认 0 —— 但那些格子的
+     * {@code bornAt} 为 0，渲染层据此跳过。</p>
+     */
+    public boolean hasCell(int gx, int gz) {
+        int i = index(gx, gz);
+        return i >= 0 && !Double.isNaN(height[i]);
+    }
+
+    /** 该格的地表 Y（水面取海平面，陆地取真实高度）。 */
+    public double surfaceY(int i, double seaLevel) {
+        return isWater(i) ? seaLevel : height[i];
+    }
+
+    /**
+     * 坡度光照用的真实高度网格（水面取海平面 ⇒ 水面平，无假明暗）。
+     *
+     * <p>★ 必须用<b>真实 Y</b>，不能用归一化 {@code e} 或 {@code (h-base)/span}：
+     * 后者的相邻差随网格密度变小，256 格时仅 0.0012，
+     * 乘任何固定增益后亮度差 0.003 ⇒ 整幅均匀一片（实机与离线图均复现）。</p>
+     */
+    public double[] buildSurfaceYGrid(double seaLevel) {
+        double[] y = new double[gridW * gridH];
+        for (int i = 0; i < y.length; i++) {
+            y[i] = isWater(i) ? seaLevel : height[i];
+        }
+        return y;
+    }
+
     /**
      * 把一个格点还原成 {@link Cell}，供 {@code GeoPalette.color} 复用现有上色逻辑。
      *
