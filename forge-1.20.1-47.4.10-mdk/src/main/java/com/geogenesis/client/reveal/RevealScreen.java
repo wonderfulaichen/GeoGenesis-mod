@@ -124,6 +124,10 @@ public class RevealScreen extends Screen {
 
     /** 首次渲染是否已打过日志。 */
     private boolean renderedOnce;
+    /** tick 计数（诊断）。 */
+    private int tickCount;
+    /** 上次打 tick 日志的时刻。 */
+    private long lastTickLog;
 
     private void bailOut(String why) {
         if (failed) return;
@@ -140,62 +144,88 @@ public class RevealScreen extends Screen {
     public void tick() {
         if (failed) return;
         try {
-            long now = System.currentTimeMillis();
-            if (now - openedAt >= HARD_CAP_MS) {
-                com.mojang.logging.LogUtils.getLogger().info(
-                        "[RevealDiag] 撞到 HARD_CAP，收场");
-                finish();
-                return;
-            }
-            Minecraft mc = Minecraft.getInstance();
-            // 世界还没起来：等
-            if (mc.level == null) {
-                if (now - openedAt > NO_WORLD_MS) {
-                    bailOut("一直没有世界可渲染");
-                }
-                return;
-            }
-            if (loginAt == 0L) {
-                loginAt = now;
-                com.mojang.logging.LogUtils.getLogger().info(
-                        "[RevealDiag] 世界已就绪，loginAt 记录");
-            }
-
-            if (!begun) {
-                beginReveal();
-                if (!begun) {
-                    // ★ 只打一次，避免刷屏
-                    if (!noDataLogged) {
-                        noDataLogged = true;
-                        com.mojang.logging.LogUtils.getLogger().info(
-                                "[RevealDiag] beginReveal 失败（player={} level={} data={}）",
-                                mc.player != null, mc.level != null,
-                                data() != null);
-                    }
-                    return;
-                }
-                com.mojang.logging.LogUtils.getLogger().info(
-                        "[RevealDiag] beginReveal 成功，动画开始");
-            }
-
-            world.tick(now);
-            advanceSchedule(now);
-
-            if (!descending && canStartDescent(now)) {
-                com.mojang.logging.LogUtils.getLogger().info(
-                        "[RevealDiag] 开始落机（clock={}ms）", (int) world.clockMs());
-                startDescent(now);
-            }
-            if (descending) {
-                descent.tick(now);
-                if (descent.done()) {
-                    com.mojang.logging.LogUtils.getLogger().info(
-                            "[RevealDiag] 落机完成，收场");
-                    finish();
-                }
-            }
+            advance();
         } catch (Throwable t) {
             bailOut(t.toString());
+        }
+    }
+
+    /**
+     * <b>推进一帧</b>（★ v42：从 {@code tick()} 抽出来，由 {@code render()} 也调一次）。
+     *
+     * <h2>★ 为什么不能只靠 {@code tick()}</h2>
+     * <p>日志铁证：{@code RevealScreen 首次渲染} 在 06:09:57 就出现了，
+     * 但下一个日志是 84 秒后的 {@code 撞到 HARD_CAP} —— 中间<b>零条 tick 日志</b>。
+     * ⇒ 原版 {@code Minecraft} 只在<b>已有 world</b> 时调 {@code screen.tick()}；
+     * 而我们在"世界还没加载完"的整个阶段里 tick 一次都没跑
+     * ⇒ {@code mc.level} 的判断、{@code beginReveal} 全都没机会执行 ⇒ 一直黑屏。</p>
+     *
+     * <p>⇒ 把推进逻辑抽成 {@link #advance()}，{@code render()} 里也调一次
+     * （render 每帧都跑，与 world 无关）。这样世界就绪那一刻马上就能感知到。</p>
+     */
+    private void advance() {
+        long now = System.currentTimeMillis();
+        // 诊断：前 10 帧 + 每 5 秒打一次
+        tickCount++;
+        if (tickCount <= 10 || now - lastTickLog > 5000L) {
+            lastTickLog = now;
+            Minecraft m = Minecraft.getInstance();
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] advance#{} elapsed={}ms level={} player={} begun={} data={}",
+                    tickCount, now - openedAt,
+                    m.level != null, m.player != null, begun, data() != null);
+        }
+        if (now - openedAt >= HARD_CAP_MS) {
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] 撞到 HARD_CAP，收场");
+            finish();
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        // 世界还没起来：等
+        if (mc.level == null) {
+            if (now - openedAt > NO_WORLD_MS) {
+                bailOut("一直没有世界可渲染");
+            }
+            return;
+        }
+        if (loginAt == 0L) {
+            loginAt = now;
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] 世界已就绪，loginAt 记录");
+        }
+
+        if (!begun) {
+            beginReveal();
+            if (!begun) {
+                if (!noDataLogged) {
+                    noDataLogged = true;
+                    com.mojang.logging.LogUtils.getLogger().info(
+                            "[RevealDiag] beginReveal 失败（player={} level={} data={}）",
+                            mc.player != null, mc.level != null,
+                            data() != null);
+                }
+                return;
+            }
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] beginReveal 成功，动画开始");
+        }
+
+        world.tick(now);
+        advanceSchedule(now);
+
+        if (!descending && canStartDescent(now)) {
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] 开始落机（clock={}ms）", (int) world.clockMs());
+            startDescent(now);
+        }
+        if (descending) {
+            descent.tick(now);
+            if (descent.done()) {
+                com.mojang.logging.LogUtils.getLogger().info(
+                        "[RevealDiag] 落机完成，收场");
+                finish();
+            }
         }
     }
 
@@ -333,7 +363,17 @@ public class RevealScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        // ★ v41 诊断：首次渲染打一次（确认这个屏真的被激活了）
+        // ★ v42：render 每帧都跑（与 world 是否就绪无关），
+        //   而 tick 只在"已有 world"时被原版调用 ⇒ 必须在这里也推进一次，
+        //   否则世界加载完之前动画完全不动（实测黑屏 84 秒的直接原因）。
+        if (!failed) {
+            try {
+                advance();
+            } catch (Throwable t) {
+                bailOut(t.toString());
+            }
+        }
+        // 首次渲染打一次（确认这个屏真的被激活了）
         if (!renderedOnce) {
             renderedOnce = true;
             com.mojang.logging.LogUtils.getLogger().info(

@@ -231,13 +231,17 @@ public final class RevealWorldRenderer {
     public void render(GuiGraphics g, TerrainFieldData data, GeoPalette.PreviewLayer layer,
                        long nowMs, RevealSchedule schedule, float span,
                        int x, int y, int w, int h) {
-        if (data == null || data.gridW <= 0) return;
         this.viewW = Math.max(1, w);
         this.viewH = Math.max(1, h);
 
         // 不透明背景（柱子是唯一遮罩，背景必须实心）
         int bg = ((int) (0xFF * backdropAlpha) << 24) | 0x0A0C12;
         g.fill(x, y, x + w, y + h, bg);
+
+        // ★ v42：没数据也要画点东西（否则整屏纯黑，用户不知道在等什么）
+        if (data == null || data.gridW <= 0) {
+            return;
+        }
 
         // 重建柱子（换图才重建）
         long key = data.viewportId * 31L + layer.ordinal();
