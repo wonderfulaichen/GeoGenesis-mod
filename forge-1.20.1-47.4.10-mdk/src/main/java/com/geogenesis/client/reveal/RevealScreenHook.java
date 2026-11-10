@@ -60,15 +60,24 @@ public final class RevealScreenHook {
     public static void onScreenOpening(ScreenEvent.Opening event) {
         try {
             Screen next = event.getNewScreen();
-            if (!isPreparingScreen(next)) return;
+            boolean preparing = isPreparingScreen(next);
+            // ★ v40 诊断：把每次开屏与三个条件都打出来
+            //   （用户实测"没看到动画，直接黑屏" ⇒ 必须知道是哪一条拦住了）
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] 开屏 {}：preparing={} played={} hasSpawn={} hasData={}",
+                    next == null ? "null" : next.getClass().getSimpleName(),
+                    preparing, played,
+                    SpawnSelection.has(),
+                    RevealDataHolder.current() != null);
+            if (!preparing) return;
             if (played) return;
             if (!SpawnSelection.has()) return;
             if (RevealDataHolder.current() == null) return;
 
             played = true;
             RevealScreen rs = new RevealScreen(null);
-            // active 会由 rs.init() 通过 setActive(this) 注册 —— 这里不重复设，
-            // 否则 init 还没跑就被当成"已激活"。
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] ★接管：换成 RevealScreen");
             event.setNewScreen(rs);
         } catch (Throwable t) {
             // 静默退回原版（用户裁定 (a)）

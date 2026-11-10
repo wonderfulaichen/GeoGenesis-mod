@@ -2854,3 +2854,10 @@ task runSpawnPickProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.SpawnPickProbe'
     maxHeapSize = '1g'
 }
+// 沙盘拾取往返验收：投影 → 屏幕上该柱顶面 → pick 反解，必须回到原柱。
+//   gradlew runSandboxPickRoundTripProbe
+task runSandboxPickRoundTripProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxPickRoundTripProbe'
+    maxHeapSize = '1g'
+}

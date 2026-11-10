@@ -585,7 +585,15 @@ public final class SandboxRasterizer {
      */
     public void pick(double guiX, double guiY, int areaX, int areaY, int areaW, int areaH) {
         pickedColumn = -1;
-        if (lastCols == null || lastR == null || lastScale <= 0f) return;
+        if (lastCols == null || lastR == null || lastScale <= 0f) {
+            // ★ v40 诊断：拾取失败时把状态打出来
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[PickDiag] 无法拾取：cols={} R={} scale={}",
+                    lastCols == null ? "null" : lastCols.readyCount,
+                    lastR == null ? "null" : "ok",
+                    lastScale);
+            return;
+        }
         float w = widthScale;
         float a = (float) ((guiX - lastOriginX) / lastScale);
         float b = (float) ((guiY - lastOriginY) / lastScale);
@@ -606,6 +614,19 @@ public final class SandboxRasterizer {
             float top = lastCols.items[col].top;
             if (top >= 0f && mz <= top) {
                 pickedColumn = col;
+                // ★ v40 诊断：把拾取全过程打出来（用户反馈"还是不准"，需要实测数据）
+                com.mojang.logging.LogUtils.getLogger().info(
+                        "[PickDiag] 屏幕({},{}) → a={} b={} t={} ⇒ 模型({},{},{}) ⇒ 柱({},{}) #{} 顶={}",
+                        String.format(java.util.Locale.ROOT, "%.1f", guiX),
+                        String.format(java.util.Locale.ROOT, "%.1f", guiY),
+                        String.format(java.util.Locale.ROOT, "%.4f", a),
+                        String.format(java.util.Locale.ROOT, "%.4f", b),
+                        String.format(java.util.Locale.ROOT, "%.3f", t),
+                        String.format(java.util.Locale.ROOT, "%.4f", mx),
+                        String.format(java.util.Locale.ROOT, "%.4f", my),
+                        String.format(java.util.Locale.ROOT, "%.4f", mz),
+                        cx, cz, col,
+                        String.format(java.util.Locale.ROOT, "%.4f", top));
                 return;
             }
         }

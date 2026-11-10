@@ -1516,6 +1516,14 @@ public class PreviewDisplay extends AbstractWidget {
                 + (int) Math.round((px + 0.5) * pillarBlocks);
         int wz = centerZ - windowBlocks / 2
                 + (int) Math.round((pz + 0.5) * pillarBlocks);
+
+        // ★ v40 诊断：把换算过程打出来（用户反馈"还是不准"，需要实测数据定位）
+        com.mojang.logging.LogUtils.getLogger().info(
+                "[SpawnPick] 柱=({},{}) 窗口={} 细格步长={} 柱宽={} 中心=({},{}) ⇒ 世界=({},{}) 数据格数={}",
+                px, pz, windowBlocks,
+                String.format(java.util.Locale.ROOT, "%.3f", stepPerFine),
+                String.format(java.util.Locale.ROOT, "%.3f", pillarBlocks),
+                centerX, centerZ, wx, wz, d.gridW);
         // 再点同一格 = 取消（容差 = 一个柱宽）
         int tol = Math.max(1, (int) pillarBlocks);
         if (sandboxRasterizer.hasSpawnMark()
