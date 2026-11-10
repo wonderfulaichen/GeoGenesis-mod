@@ -10,6 +10,7 @@ import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
 import com.geogenesis.worldgen.terrain.TerrainClass;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -99,8 +100,55 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** ★ S3：沙盘（3D 方柱）模式。与平面模式共用同一份采样数据，切换不重采。 */
     boolean sandboxMode = false;
-    /** 沙盘右键平移中。 */
-    boolean sandboxPanning = false;
+
+    // =================================================================
+    // ★ v25：视图切换过渡动画（照参考项目 YardSiteScreen 第 61/383-404 行）
+    // =================================================================
+    //
+    // 参考项目在「沙盘 ↔ 区块精读」之间切换时有一段 620ms 的过渡：
+    //   ① 旧图 alpha 渐隐 + 高度比例下沉（1 → 0.45）
+    //   ② 新图 alpha 渐显 + 高度比例长起（0.45 → 1）
+    //   ③ 镜头轻推近（zoomBoost 0.84 → 1.0）
+    //   ④ zoom 与 widthScale 也用同一条 smoothstep 插值
+    //
+    // 我们原先是<b>硬切</b>（切模式下一帧直接换画面）⇒ 视觉上"啪"一下。
+    // ⇒ 补上同口径的过渡。
+
+    /** 过渡总时长（毫秒，参考项目 {@code TRANSITION_MS=620}）。 */
+    private static final long TRANSITION_MS = 620L;
+
+    /** 过渡结束时刻；0 = 没在过渡。 */
+    private long transitionEndAt = 0L;
+    /** 过渡起点（用于算进度）。 */
+    private long transitionStartAt = 0L;
+
+    /** 触发一次视图切换过渡（从当前模式切到另一模式）。 */
+    private void beginViewTransition() {
+        long now = System.currentTimeMillis();
+        transitionStartAt = now;
+        transitionEndAt = now + TRANSITION_MS;
+    }
+
+    /**
+     * 当前过渡进度（0=起点，1=终点）；不在过渡时返回 1。
+     *
+     * <p>用参考项目同款 smoothstep：{@code p*p*(3-2p)}。</p>
+     */
+    private float transitionEase() {
+        if (transitionEndAt == 0L) return 1f;
+        long now = System.currentTimeMillis();
+        if (now >= transitionEndAt) {
+            transitionEndAt = 0L;
+            return 1f;
+        }
+        float p = 1f - (transitionEndAt - now) / (float) TRANSITION_MS;
+        return p * p * (3f - 2f * p);
+    }
+
+    /** 过渡是否正在进行。 */
+    private boolean inTransition() {
+        return transitionEndAt != 0L && System.currentTimeMillis() < transitionEndAt;
+    }
     /**
      * ★ 2026-11-09 B3：沙盘的 rasterizer（只负责画，几何在 {@code SandboxGeometry}）。
      * 旧的 {@code SandboxRenderer}（1132 行，自带一套 collect/sort/pick/投影）已停用 ——
@@ -736,7 +784,18 @@ public class PreviewDisplay extends AbstractWidget {
             lastSelectedLayerOrdinal = (selectedLayer == null ? -1 : selectedLayer.ordinal());
             lastSelectedId = selectedId;
         }
+        // ★ v25：视图切换过渡 —— 平面画面淡入（照参考项目 yardsite 第 430 行
+        //   {@code alpha = colAlpha * globalAlpha} 的做法）。
+        //   平面是纹理直贴（blit），用 {@code RenderSystem.setShaderColor} 的
+        //   alpha 做淡入（1.20.1 的 GuiGraphics 没有 setColor/getColor）。
+        float planeAlpha = inTransition() ? (0.45f + 0.55f * transitionEase()) : 1f;
+        if (planeAlpha < 1f) {
+            RenderSystem.setShaderColor(1f, 1f, 1f, planeAlpha);
+        }
         g.blit(texLoc, x, y, w, h, 0, 0, texW, texH, texW, texH);
+        if (planeAlpha < 1f) {
+            RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        }
 
         drawMapMarkers(g, mx, my, x, y, w, h, originWx, originWz, blocksWide, blocksHigh);
 
@@ -862,6 +921,9 @@ public class PreviewDisplay extends AbstractWidget {
     public void setSandboxMode(boolean v) {
         if (this.sandboxMode == v) return;
         this.sandboxMode = v;
+        // ★ v25：切模式走一段过渡动画（照参考项目 yardsite 第 61/383-404 行）
+        //   旧画面淡出下沉、新画面淡入长起、镜头轻推近 ⇒ 不再是"啪"一下硬切。
+        beginViewTransition();
         // 只标记需要重画，不碰 scaleBlockPos / largeArea / center
         needsClear = true;
     }
@@ -909,8 +971,12 @@ public class PreviewDisplay extends AbstractWidget {
         int blocksWide = Math.max(64, SandboxLod.windowFor(zoom));
         int blocksHigh = blocksWide;
         int grid = SandboxLod.gridFor(zoom);          // = 柱数 × 2（不是窗口方块数！）
-        int originWx = centerX + (int) totalDragX - blocksWide / 2;
-        int originWz = centerZ + (int) totalDragZ - blocksHigh / 2;
+        // ★ v25：沙盘的视口原点只认 centerX/centerZ。
+        //   此前这里还叠加了 totalDragX/totalDragZ（那是<b>平面</b>的累积拖拽偏移），
+        //   而沙盘平移是直接改 centerX/centerZ 的 ⇒ 两者会互相干扰
+        //   （平面拖过之后切沙盘，视口会莫名其妙偏一段）。
+        int originWx = centerX - blocksWide / 2;
+        int originWz = centerZ - blocksHigh / 2;
 
         long id = (long) originWx * 31L + originWz;
         id = id * 131L + blocksWide;
@@ -987,8 +1053,15 @@ public class PreviewDisplay extends AbstractWidget {
             sandboxRasterizer.clearPick();
         }
         if (d != null) {
+            // ★ v25：视图切换过渡（照参考项目 yardsite 第 383-404 行）
+            //   新画面：alpha 从 0.45 渐显到 1，高度比例从 0.45 长到 1
+            //   （参考项目是"旧图淡出下沉 + 新图淡入长起"，我们只有一张图，
+            //     所以让新图自己完成"淡入 + 长起"，观感等价）
+            float ease = transitionEase();
+            float globalAlpha = inTransition() ? (0.45f + 0.55f * ease) : 1f;
+            float heightScale = inTransition() ? (0.45f + 0.55f * ease) : 1f;
             sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h,
-                    reliefSpan, System.currentTimeMillis());
+                    reliefSpan, System.currentTimeMillis(), globalAlpha, heightScale);
         }
 
         // ★ 地图标记（出生点 / 玩家 / 结构）：平面视图原有能力，沙盘也要有。
@@ -1091,9 +1164,9 @@ public class PreviewDisplay extends AbstractWidget {
         if (legendSearchActive) legendSearchActive = false;
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-            // ★ S3：沙盘模式下右键 = 平移（yardsite 第 1118-1122 行 dragView），不复制坐标
+            // ★ v25【统一交互】：右键在两种模式都是「平移」，由 mouseDragged 处理。
+            //   沙盘原先在此置 sandboxPanning=true，那个状态已废弃。
             if (sandboxMode) {
-                sandboxPanning = true;
                 return true;
             }
             // 右键复制坐标 + 8秒渐隐消息
@@ -1118,14 +1191,20 @@ public class PreviewDisplay extends AbstractWidget {
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
-        // ★ 2026-11-08 修复：右键松开原先在第 2 行就被 `button != LEFT` 挡掉，
-        //   导致 `sandboxPanning` 永远是 true —— 之后不按键拖动也会继续平移，
-        //   表现为"移动不跟手 / 停不下来"。先无条件清所有拖动状态。
+        // ★ v25【统一交互】后这里两种模式的行为一致了：
+        //   左键松开 = 平移结束（提交偏移）或点击选中；中键 = 旋转结束。
+        //
+        //   沙盘的平移是<b>逐帧移动世界中心</b>的（panSandboxBy 里直接改 centerX/centerZ），
+        //   松开时不需要再提交偏移，只需清状态 + 停采样批。
+        //   平面是<b>累积偏移、松开才提交</b>（拖动时不重采样，避免每帧重建视口）。
         if (sandboxMode) {
             dragging = false;
-            sandboxPanning = false;
             sandboxCenterAccX = 0;
             sandboxCenterAccZ = 0;
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && hoverX != -1 && hoverZ != -1) {
+                // 左键点击（没怎么动）→ 与平面一样：离散图层选中色块
+                handleMapClick(mx, my);
+            }
             return true;
         }
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
@@ -1221,30 +1300,44 @@ public class PreviewDisplay extends AbstractWidget {
 
     @Override
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
-        // ★ 2026-11-08：右键拖动 = <b>移动地图</b>（任何模式下都认，不只左键）
+        // ★★ v25【统一平面与沙盘的交互】★★
         //
-        //   用户反馈"我还不能移动位置。明明参考项目可以的"。
-        //   参考项目大沙盘用的是 dragPan（只平移屏幕像素、不换世界中心），
-        //   因为它的"看别处"是靠切到区块精读层。我们是<b>全屏单层地图</b>，
-        //   只平移像素会让地形边缘露出空白 ⇒ 必须<b>移动世界中心并重新采样</b>。
-        if (sandboxMode && sandboxPanning) {
-            panSandboxBy(dx, dy);
+        //   用户原话：「建议把平面交互与沙盘交互给统一了，
+        //   现在在平面视图里左键平移，在沙盘里左键又变成旋转了。」
+        //
+        //   统一后的约定（两种模式<b>完全一致</b>）：
+        //     左键拖动 = <b>平移地图</b>（移动世界中心）
+        //     中键拖动 = <b>旋转视角</b>（仅沙盘有视角；平面无意义则忽略）
+        //     右键     = 复制坐标（平面）/ 同样平移（沙盘，保留旧手感）
+        //
+        //   之前沙盘左键=旋转、平面左键=平移 ⇒ 换视图后手感突变。
+        //   参考项目 yardsite 是「左键旋转 + 右键平移」，但我们既然要统一，
+        //   就以<b>平面（左键平移）</b>为准 —— 它是主视图，也是用户的既有习惯。
+        //   旋转改到中键（参考项目用中键做 roll，位置刚好空出来）。
+        //
+        //   ★ 平移必须「移动世界中心并重新采样」而不是平移屏幕像素 ——
+        //   我们是全屏单层地图，只平移像素会让地形边缘露出空白。
+
+        // ---- 中键 = 旋转视角（仅沙盘）----
+        if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && sandboxMode) {
+            sandboxRasterizer.dragRotate(dx, dy);
             return true;
         }
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
-        // 沙盘模式：左键拖动转视角（yardsite 第 1113-1126 行）
-        if (sandboxMode) {
-            if (dragging) {
-                sandboxRasterizer.dragRotate(dx, dy);
+
+        // ---- 左键 / 右键 = 平移（两种模式一致）----
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            if (sandboxMode) {
+                panSandboxBy(dx, dy);
+                return true;
             }
+            double guiScale = mc.getWindow().getGuiScale();
+            totalDragX -= dx * guiScale * scaleBlockPos;
+            totalDragZ -= dy * guiScale * scaleBlockPos;
+            dragging = true;
+            needsClear = true;  // 拖拽时每帧清纹理，避免旧位置数据残留（拖影）
             return true;
         }
-        double guiScale = mc.getWindow().getGuiScale();
-        totalDragX -= dx * guiScale * scaleBlockPos;
-        totalDragZ -= dy * guiScale * scaleBlockPos;
-        dragging = true;
-        needsClear = true;  // 拖拽时每帧清纹理，避免旧位置数据残留（拖影）
-        return true;
+        return false;
     }
 
     @Override

@@ -152,7 +152,8 @@ public final class SandboxRasterizer {
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, 60f);
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
         float[] fc = SandboxGeometry.fitCenter(r);
-        float scale = SandboxGeometry.scaleOf(w, zoom);
+        // ★ v23：与 draw() 同口径 —— 正方形边长（参考项目 areaSize）
+        float scale = SandboxGeometry.scaleOf(Math.min(w, h), zoom);
         float ox = w / 2f - scale * fc[0];
         float oy = h / 2f - scale * fc[1];
 
@@ -172,21 +173,41 @@ public final class SandboxRasterizer {
 
     /**
      * <b>实机绘制</b>（OpenGL 逐柱提交）。
+     *
+     * @param globalAlpha 整张图的不透明度（视图切换过渡用，1.0 = 正常）
+     * @param heightScale 整张图的高度比例（过渡用：0.45 = 压扁，1.0 = 正常）
      */
     public void draw(GuiGraphics g, TerrainFieldData snapshot, RasterParams params,
                      int areaX, int areaY, int areaW, int areaH,
-                     float span, long now) {
+                     float span, long now, float globalAlpha, float heightScale) {
         if (snapshot == null || snapshot.gridW <= 0) return;
         lastSpan = span;
 
         float[] r = SandboxGeometry.rotationRows(yaw, pitch);
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
         SandboxGeometry.applyGrow(cols, now);
+        // ★ v25：过渡的高度比例（参考项目 collect() 第 687 行 {@code tops *= heightScale}）
+        if (heightScale < 1.0f) {
+            for (int k = 0; k < cols.readyCount; k++) {
+                SandboxGeometry.Column c = cols.items[cols.ready[k]];
+                if (c.top >= 0f) c.top *= heightScale;
+            }
+        }
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
         if (cols.readyCount == 0) return;
 
         float[] fc = SandboxGeometry.fitCenter(r);
-        float scale = SandboxGeometry.scaleOf(areaW, zoom);
+        // ★ v23【修"沙盘尺度不对、只能看到一条"】★★★
+        //   参考项目 {@code SiteTerrainRenderer} 的 areaSize 是<b>正方形边长</b>
+        //   （{@code YardSiteScreen.init()}：{@code min(width-20, height-56)}），
+        //   我们再套 {@code scale = areaSize × 0.46 × zoom}。
+        //
+        //   此前这里用 {@code areaW}（视口<b>宽</b>）。宽屏下宽度远大于高度，
+        //   scale 被放大近一倍 ⇒ 竖向跨度 = scale × 1.956 ≈ 3.2 倍视口高
+        //   ⇒ 屏幕里只剩地形中间一条，看着像"平坦一片"。
+        //   ⇒ 改为两方向取小（与参考项目同口径）。
+        int side = Math.min(areaW, areaH);
+        float scale = SandboxGeometry.scaleOf(side, zoom);
         float ox = areaX + areaW / 2f + panX - scale * fc[0];
         float oy = areaY + areaH / 2f + panY - scale * fc[1];
 
@@ -200,7 +221,9 @@ public final class SandboxRasterizer {
         VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
 
         // 底板：没有它柱子看着悬空（yardsite floor()，画在柱子之前）
-        quadFlat(vc, ox, oy, scale, -1f, 1f, -1f, 1f, -0.02f, 0xF2171A22);
+        // ★ v25：过渡时底板也一起淡出（参考项目 floor() 第 779 行 {@code 0xF2 * alpha}）
+        int plateAlpha = (int) (0xF2 * globalAlpha);
+        quadFlat(vc, ox, oy, scale, -1f, 1f, -1f, 1f, -0.02f, (plateAlpha << 24) | 0x171A22);
 
         boolean seeEast = r[6] > 0f, seeWest = r[6] < 0f;
         boolean seeSouth = r[7] > 0f, seeNorth = r[7] < 0f;
@@ -215,7 +238,9 @@ public final class SandboxRasterizer {
             SandboxGeometry.Column c = cols.items[col];
             if (c.top < 0f || c.alpha <= 0) continue;
             float topSnap = SandboxGeometry.snapTop(c.top, eps);
-            int alpha = c.alpha;
+            // ★ v25：整图不透明度（过渡用）
+            int alpha = (int) (c.alpha * globalAlpha);
+            if (alpha <= 0) continue;
             int rgb = c.rgb;
 
             float x0 = c.x0 * widthScale, x1 = c.x1 * widthScale;
@@ -426,7 +451,8 @@ public final class SandboxRasterizer {
         lastR = r;
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
         float[] fc = SandboxGeometry.fitCenter(r);
-        float scale = SandboxGeometry.scaleOf(areaW, zoom);
+        // ★ v23：与 draw() 同口径 —— 正方形边长（参考项目 areaSize）
+        float scale = SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
         lastCols = cols;
         lastScale = scale;
         lastOriginX = areaX + areaW / 2f + panX - scale * fc[0];

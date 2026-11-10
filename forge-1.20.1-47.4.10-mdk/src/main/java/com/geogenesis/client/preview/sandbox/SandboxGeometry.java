@@ -60,8 +60,22 @@ public final class SandboxGeometry {
     public static final float Z_BASE = 200.0f;
     public static final float DEPTH_SCALE = 110.0f;
 
-    /** 一根柱子长高 + 淡入的时长（毫秒，yardsite {@code FADE_MS=520}）。 */
+    /**
+     * 一根柱子长高 + 淡入的时长（毫秒，yardsite {@code FADE_MS=520}）。
+     */
     public static final int FADE_MS = 520;
+    /**
+     * <b>铺开动画的总时长</b>（毫秒）—— 从中心长到最外圈用多久。
+     *
+     * <p>★ v25 新增。参考项目靠 {@code centerOutOrder} 让采样<b>从中心往外</b>，
+     * 每根柱的 {@code drawnAt} 自然递延 ⇒ 视觉上"一圈圈长出来"。</p>
+     *
+     * <p>我们的数据是<b>一次性从 CellCache 裁出来的</b>（全部同时就绪），
+     * 照抄 {@code drawnAt} 的"首次绘制时打戳"只会让<b>所有柱同时开始长</b>
+     * ⇒ 没有铺开层次。所以改成<b>按到中心的距离错开出生时刻</b>：
+     * 中心柱 bornAt = 现在，越靠外 bornAt 越晚 ⇒ 与参考项目同样的观感。</p>
+     */
+    public static final int SPREAD_MS = 1400;
     /** 淡入期间至少还有这么不透明（yardsite {@code FADE_FLOOR=0.25}）。 */
     public static final float FADE_FLOOR = 0.25f;
 
@@ -334,6 +348,30 @@ public final class SandboxGeometry {
         int[] voteIds = new int[per * per];
         int[] voteCnts = new int[per * per];
 
+        // ★★ v25【铺开动画：按到中心的距离错开出生时刻】★★
+        //
+        //   参考项目（SiteMapSampler.centerOutOrder + SiteTerrainRenderer.collect）：
+        //   采样<b>从中心往外</b>，每根柱的 {@code drawnAt} 自然递延
+        //   ⇒ 视觉上"从中心一圈圈长出来"。
+        //
+        //   我们的数据是<b>一次性从 CellCache 裁出来的</b>（全部同时就绪），
+        //   若照抄"首次绘制时打戳"，所有柱会<b>同时</b>开始长 ⇒ 没有层次。
+        //   ⇒ 改为：出生时刻按到中心的距离递延 —— 中心柱最早（先长），越靠外越晚。
+        //
+        //   基准时刻取「快照里最早的真实 bornAt」；若数据层没给（缓存回填成 longAgo），
+        //   就用 now 减 SPREAD_MS，让中心柱恰好现在就开始长。
+        long animBase = now - SPREAD_MS;
+        long minBorn = Long.MAX_VALUE;
+        for (int i = 0; i < snap.bornAt.length; i++) {
+            long b = snap.bornAt[i];
+            if (b != 0L && b < minBorn) minBorn = b;
+        }
+        if (minBorn != Long.MAX_VALUE && minBorn > animBase) animBase = minBorn;
+        double halfDiag = Math.max(1e-6,
+                Math.hypot((colCount - 1) * 0.5, (colRows - 1) * 0.5));
+        double centerX0 = (colCount - 1) * 0.5;
+        double centerZ0 = (colRows - 1) * 0.5;
+
         for (int cx = 0; cx < colCount; cx++) {
             for (int cz = 0; cz < colRows; cz++) {
                 int col = cx * colRows + cz;
@@ -424,9 +462,10 @@ public final class SandboxGeometry {
                 //   ⇒ {@code alpha = 255×FADE_FLOOR = 63}（全图 25% 透明）。
                 //   实机表现：一块<b>没有起伏、没有侧墙、半透明</b>的彩色平板。
                 //
-                //   正确来源是快照自带的 {@code bornAt[]}：TerrainFieldData 在首次写入时
-                //   打一次时间戳，缓存回填时置 longAgo（不重放动画）。
-                c.bornAt = snap.bornAt[i0];
+                // ★ v25：在此基础上再叠加"按到中心距离递延"（见上方 animBase 注释），
+                //   让整幅图像参考项目那样<b>从中心一圈圈长出来</b>。
+                double distNorm = Math.min(1.0, Math.hypot(cx - centerX0, cz - centerZ0) / halfDiag);
+                c.bornAt = animBase + (long) (distNorm * SPREAD_MS);
                 // 生长动画未到 ⇒ 不画（由 applyGrow 处理）
                 c.alpha = 0xFF;
 

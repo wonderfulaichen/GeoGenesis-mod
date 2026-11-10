@@ -246,6 +246,37 @@ public final class SandboxGeometryProbe {
             System.out.println("    OK（高低差拉得开）");
         }
 
+        // ★ v25 新增[4c] 铺开动画：出生时刻必须按到中心距离递延
+        //
+        // 背景：参考项目靠「中心向外采样 + 首次绘制打戳」实现"一圈圈长出来"。
+        //   我们的数据是一次性裁出来的 ⇒ 若不打散出生时刻，
+        //   所有柱同时开始长 ⇒ 没有铺开层次（用户："动画等方面细节"有差距）。
+        System.out.println("\n[4c] 铺开动画：出生时刻必须按到中心距离递延（≥300ms 跨度）");
+        long centerBorn = Long.MAX_VALUE, edgeBorn = Long.MIN_VALUE;
+        for (int cx = 0; cx < cols.colCount; cx++) {
+            for (int cz = 0; cz < cols.colRows; cz++) {
+                int col = cx * cols.colRows + cz;
+                SandboxGeometry.Column c = cols.items[col];
+                if (c.bornAt == 0L) continue;
+                double dx = cx - (cols.colCount - 1) * 0.5;
+                double dz = cz - (cols.colRows - 1) * 0.5;
+                double dist = Math.hypot(dx, dz);
+                double maxDist = Math.hypot((cols.colCount - 1) * 0.5, (cols.colRows - 1) * 0.5);
+                if (dist <= maxDist * 0.15) centerBorn = Math.min(centerBorn, c.bornAt);
+                if (dist >= maxDist * 0.85) edgeBorn = Math.max(edgeBorn, c.bornAt);
+            }
+        }
+        long spreadMs = (centerBorn != Long.MAX_VALUE && edgeBorn != Long.MIN_VALUE)
+                ? edgeBorn - centerBorn : 0L;
+        System.out.printf("    中心柱 bornAt=%d，边柱 bornAt=%d，跨度=%d ms%n",
+                centerBorn, edgeBorn, spreadMs);
+        if (spreadMs < 300L) {
+            System.out.println("    FAIL: 出生时刻没有按距离错开 ⇒ 整片同时长出来，没有铺开层次");
+            pass = false;
+        } else {
+            System.out.println("    OK（从中心往外依次长出）");
+        }
+
         // [5] 光照统计
         System.out.println("\n[5] 坡度光照：饱和率 <5%，动态范围 ≥0.30");
         double[] yGrid = snap.buildSurfaceYGrid(seaY);
