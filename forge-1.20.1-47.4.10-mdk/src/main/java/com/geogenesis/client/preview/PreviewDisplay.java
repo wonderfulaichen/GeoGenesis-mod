@@ -122,11 +122,28 @@ public class PreviewDisplay extends AbstractWidget {
     /** 过渡起点（用于算进度）。 */
     private long transitionStartAt = 0L;
 
+    // ---- ★ v35：切换过渡的四个插值量（照参考项目 YardSiteScreen 296-303/388-421）----
+    /** 过渡起点/终点的缩放（看的是"切过去那一档"的默认值）。 */
+    private float transZoomFrom = 1f, transZoomTo = 1f;
+    /** 过渡起点/终点的柱宽。 */
+    private float transWidthFrom = 1f, transWidthTo = 1f;
+    /** 过渡方向：true = 正在切到沙盘（旧图=平面）。 */
+    private boolean transToSandbox;
+
     /** 触发一次视图切换过渡（从当前模式切到另一模式）。 */
     private void beginViewTransition() {
         long now = System.currentTimeMillis();
         transitionStartAt = now;
         transitionEndAt = now + TRANSITION_MS;
+        // ★ v35：记录插值两端。
+        //   参考项目切到第二种视图时会顺到那张图自己的 defaultZoom / 宽度，
+        //   我们两种视图共用同一个 zoom 语义 ⇒ 起点/终点相同，
+        //   真正起作用的是 zoomBoost（0.84→1.0）与 alpha/height 的淡入。
+        transToSandbox = sandboxMode;
+        transZoomFrom = sandboxRasterizer.zoom();
+        transZoomTo = transZoomFrom;
+        transWidthFrom = sandboxRasterizer.widthScale();
+        transWidthTo = transWidthFrom;
     }
 
     /**
@@ -1114,14 +1131,24 @@ public class PreviewDisplay extends AbstractWidget {
         if (d != null) {
             // ★ v25：视图切换过渡（照参考项目 yardsite 第 383-404 行）
             //   新画面：alpha 从 0.45 渐显到 1，高度比例从 0.45 长到 1
-            //   （参考项目是"旧图淡出下沉 + 新图淡入长起"，我们只有一张图，
-            //     所以让新图自己完成"淡入 + 长起"，观感等价）
             float ease = transitionEase();
             float globalAlpha = inTransition() ? (0.45f + 0.55f * ease) : 1f;
             float heightScale = inTransition() ? (0.45f + 0.55f * ease) : 1f;
             // ★ v33 对照表第 50 项：镜头推近（参考项目 YardSiteScreen 第 404 行
             //   {@code zoomBoost = fading == null ? 1.0F : 0.84F + 0.16F * ease}）
             sandboxRasterizer.setZoomBoost(inTransition() ? (0.84f + 0.16f * ease) : 1f);
+
+            // ★★★ v35【相机动画：切进沙盘时镜头从偏一点的角度慢慢转正】★★★
+            //   参考项目 {@code orbit(radians)} 的用途就是"让镜头自己慢慢转"。
+            //   我们用它做开场：起点比默认 yaw 偏 -0.35 rad，随 ease 转回默认
+            //   ⇒ 切视图时有"镜头落定"的过程，而不是硬停在某个角度。
+            //   ★ 只在"切到沙盘"的那段过渡里生效，平时不受影响。
+            if (inTransition() && transToSandbox) {
+                float startOffset = -0.35f;
+                sandboxRasterizer.setYaw(
+                        sandboxRasterizer.defaultYaw() + startOffset * (1f - ease));
+            }
+
             sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h,
                     reliefSpan, System.currentTimeMillis(), globalAlpha, heightScale);
         }
@@ -1472,8 +1499,15 @@ public class PreviewDisplay extends AbstractWidget {
                 && Math.abs(sandboxRasterizer.spawnMarkX() - wx) < Math.max(1, (int) step)
                 && Math.abs(sandboxRasterizer.spawnMarkZ() - wz) < Math.max(1, (int) step)) {
             sandboxRasterizer.setSpawnMark(Integer.MIN_VALUE, Integer.MIN_VALUE);
+            // ★ v35：同时清掉交接（否则取消标记后世界仍会从这里出生）
+            com.geogenesis.worldgen.spawn.SpawnSelection.clear();
         } else {
             sandboxRasterizer.setSpawnMark(wx, wz);
+            // ★★★ v35【让标记真正生效】★★★
+            //   用户：「让它真的生效 —— 这个标记应该直接决定世界生成的出生点，
+            //          而不只是画个十字。」
+            //   ⇒ 写入交接，等服务端 CreateSpawnPosition 时取用（种子不符/过期会丢弃）。
+            com.geogenesis.worldgen.spawn.SpawnSelection.offer(wx, wz, this.seed);
         }
     }
 

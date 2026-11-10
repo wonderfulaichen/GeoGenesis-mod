@@ -41,6 +41,24 @@ public final class GeoGenesisServerEvents {
     }
 
     /**
+     * <b>用玩家在沙盘上选的落点作为世界出生点</b>（★ v35）。
+     *
+     * <p>用户：「让它真的生效 —— 这个标记应该直接决定世界生成的出生点，
+     * 而不只是画个十字。」</p>
+     *
+     * <p>Forge 在 {@code MinecraftServer.setInitialSpawn} 里放过这个<b>可取消</b>事件，
+     * 只在 {@code !isInitialized()} 时触发（即"建新世界"这一刻）。
+     * 取消它 + {@code setDefaultSpawnPos} ⇒ 原版不再随机找出生点，
+     * 随后 {@code prepareLevels} 直接围着所选落点生成出生点区块。</p>
+     *
+     * <p>委托给 {@code SpawnPositionHandler}，保持本类只做事件登记。</p>
+     */
+    @SubscribeEvent
+    public static void onCreateSpawnPosition(LevelEvent.CreateSpawnPosition event) {
+        com.geogenesis.worldgen.spawn.SpawnPositionHandler.onCreateSpawnPosition(event);
+    }
+
+    /**
      * ★ 2026-09-18：世界卸载时打一份<b>全流程诊断总计</b>。
      *
      * <p>为什么需要：全流程 profiler 的滚动汇总每 N 块打一次，<b>最后不足 N 块的那段</b>

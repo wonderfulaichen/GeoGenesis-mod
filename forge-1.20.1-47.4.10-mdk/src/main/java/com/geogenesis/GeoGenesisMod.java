@@ -52,6 +52,8 @@ public class GeoGenesisMod {
 
         LOGGER.info("GeoGenesis codecs registered (generator={}, biomesource={})",
                 GeoGenesisGenerator.CODEC_ID, GeoGenesisBiomeSource.CODEC_ID);
+        // ★ v35：出生点接管在 GeoGenesisServerEvents（已订阅 FORGE 总线）里，
+        //   这里不需要额外注册 —— 见该类的 onCreateSpawnPosition。
     }
 
     @SubscribeEvent

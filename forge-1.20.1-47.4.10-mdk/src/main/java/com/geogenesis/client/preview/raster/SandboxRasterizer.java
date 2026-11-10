@@ -128,6 +128,27 @@ public final class SandboxRasterizer {
                 SandboxGeometry.PITCH_MIN, SandboxGeometry.PITCH_MAX);
     }
 
+    /**
+     * <b>让镜头自己慢慢转</b>（★ v35，照参考项目 {@code orbit()} 197-199 行）。
+     *
+     * <p>参考项目注释：「等出生点区块那段时间用」—— 只改 yaw，不碰 pitch。
+     * 我们用它做<b>"进入沙盘时的开场镜头"</b>：从偏一点的角度慢慢转到默认视角，
+     * 让切换有个"落定"的过程，而不是硬停在某个角度。</p>
+     */
+    public void orbit(float radians) {
+        yaw = wrap(yaw + radians);
+    }
+
+    /** 直接设定 yaw（开场动画用；内部会 wrap）。 */
+    public void setYaw(float v) {
+        yaw = wrap(v);
+    }
+
+    /** 默认 yaw（开场动画的落定点）。 */
+    public static float defaultYaw() {
+        return SandboxGeometry.DEFAULT_YAW;
+    }
+
     /** 屏幕平移。 */
     public void dragPan(double dx, double dy) {
         panX += (float) dx;
@@ -279,8 +300,6 @@ public final class SandboxRasterizer {
         lastOriginX = ox;
         lastOriginY = oy;
 
-        VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
-
         // ★★★ v34【修"未加载时那个大圆盘不好看"】★★★
         //
         //   用户原话：「沙盘在开始未加载时显示一个圈不好看吧？建议其他四周与底板同色。」
@@ -294,11 +313,20 @@ public final class SandboxRasterizer {
         //     它的 floor 画的是 `[-1,1]²` 方形板，但盘面大得溢出视口，
         //     所以视觉上"底板就是整个画面"）。
         //   ⇒ 现在：整屏填充同色底板，加载中/已加载都一样，不会有"圈"。
+        //
+        // ⚠⚠ v35【必须放在 getBuffer 之前】⚠⚠
+        //   {@code g.fill(...)} 内部会<b>flush 并重置 BufferBuilder</b>。
+        //   若在 {@code getBuffer()} 之后调它，之前拿到的 {@code VertexConsumer}
+        //   就指向一个已提交/已重置的批次 ⇒ 再写顶点抛
+        //   {@code IllegalStateException: BufferBuilder not started}（实机崩溃已取证：
+        //   latest.log 22:07:32 SandboxRasterizer.vertex:397 → draw:326）。
         if (globalAlpha > 0.01f) {
             int plate = (((int) (0xF2 * globalAlpha)) << 24) | 0x171A22;
             g.fill((int) areaX, (int) areaY,
                     (int) (areaX + areaW), (int) (areaY + areaH), plate);
         }
+
+        VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
 
         boolean seeEast = r[6] > 0f, seeWest = r[6] < 0f;
         boolean seeSouth = r[7] > 0f, seeNorth = r[7] < 0f;
