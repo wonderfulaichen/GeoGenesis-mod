@@ -2820,3 +2820,10 @@ task runSandboxVisualDiagProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxVisualDiagProbe'
     maxHeapSize = '2g'
 }
+// 旋转中心 / 内容垂直居中诊断：量化"旋转中心偏高"到底偏多少。
+//   gradlew runSandboxCenterProbe
+task runSandboxCenterProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxCenterProbe'
+    maxHeapSize = '1g'
+}

@@ -1116,6 +1116,9 @@ public class PreviewDisplay extends AbstractWidget {
             float ease = transitionEase();
             float globalAlpha = inTransition() ? (0.45f + 0.55f * ease) : 1f;
             float heightScale = inTransition() ? (0.45f + 0.55f * ease) : 1f;
+            // ★ v33 对照表第 50 项：镜头推近（参考项目 YardSiteScreen 第 404 行
+            //   {@code zoomBoost = fading == null ? 1.0F : 0.84F + 0.16F * ease}）
+            sandboxRasterizer.setZoomBoost(inTransition() ? (0.84f + 0.16f * ease) : 1f);
             sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h,
                     reliefSpan, System.currentTimeMillis(), globalAlpha, heightScale);
         }

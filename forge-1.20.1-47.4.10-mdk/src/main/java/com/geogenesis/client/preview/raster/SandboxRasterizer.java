@@ -172,10 +172,11 @@ public final class SandboxRasterizer {
         lastR = r;   // vertex() 读它
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, 60f);
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
-        // ★ v31：与 draw() 同源 —— 原点 = 视口中心，不做 fitCenter 偏移
+        // ★ v32：与 draw() 同源（含内容质心居中补偿）
         float scale = viewScale(r, w, h);
+        float oyBias = SandboxGeometry.RELIEF * Math.abs(r[5]) * scale * 0.5f;
         float ox = w / 2f;
-        float oy = h / 2f;
+        float oy = h / 2f + oyBias;
 
         for (int k = 0; k < cols.readyCount; k++) {
             SandboxGeometry.Column c = cols.items[sorted[k]];
@@ -230,23 +231,25 @@ public final class SandboxRasterizer {
         //     推近档（zoom > BASE_ZOOM）用 {@link SandboxGeometry#scaleOf}
         //     —— 放大到局部铺满屏幕是"推近"的应有之义。
         float scale = viewScale(r, areaW, areaH);
-        // ★★★ v31【修"旋转中心偏高" + "地形顶到上边、下方大片空白"】★★★
+        // ★★★ v32【真正修掉"旋转中心偏高 / 下方大片空白"】★★★
         //
-        //   参考项目 SiteTerrainRenderer 第 407-408 行：
-        //     originX = areaX + areaSize / 2.0F + panX;
-        //     originY = areaY + areaSize / 2.0F + panY;
-        //   —— 原点就是<b>视口中心</b>，没有任何包围盒偏移。
-        //   它的"视觉垂直居中"是模型空间自然给出的：
-        //   mz=0 的地面平面投影到屏幕中心，柱子向上长 ⇒ 视觉重心略偏上，正合适。
+        //   v31 我先照抄了参考项目的 `originX/Y = 视口中心`，但那<b>不够</b>：
+        //   参考项目能那样写，是因为它的 scale 让盘面<b>大幅溢出视口</b>
+        //   （1080p 下 disc 高 1843px vs 视口 1024px）⇒ 上偏被裁掉、看不出来。
         //
-        //   我们此前减了 {@code scale * fitCenter}（投影包围盒中心）：
-        //   包围盒含了柱高（mz>0 让包围盒顶部更高），它的中心<b>不在 mz=0 平面上</b>
-        //   ⇒ 减去它就等于把旋转轴挪到了"半空中的点"
-        //   ⇒ 用户看到「旋转中心是不是高了？」+ 地形整体下滑、下方留白。
+        //   我们的 fillScale/fitScale 让<b>整块盘面完整可见</b>（Y≈93%），
+        //   上偏就暴露了。探针 runSandboxCenterProbe 实测：
+        //     地面平面（mz=0）在视口中心
+        //     柱高抬升 RELIEF(0.40) × |r5|(0.813) × scale ≈ 202px 全部朝上
+        //     ⇒ <b>内容质心比视口中心高 40.5%</b> ⇒ 地形挤在上半屏、下面全空。
         //
-        //   ⇒ 恢复参考项目口径：原点 = 视口中心，用 mz=0 地面平面做旋转轴。
+        //   ⇒ 既然我们选择"整盘可见"，就必须把<b>内容质心</b>对到视口中心：
+        //     向下补偿"柱高抬升"的一半（柱子从地面往上长，质心在中间）。
+        //   旋转轴仍是内容质心 —— 转视角时地形绕自身中心转，这才是对的。
+        float reliefPx = SandboxGeometry.RELIEF * Math.abs(r[5]) * scale;
+        float oyBias = reliefPx * 0.5f;
         float ox = areaX + areaW / 2f + panX;
-        float oy = areaY + areaH / 2f + panY;
+        float oy = areaY + areaH / 2f + panY + oyBias;
 
         // 缓存供 hover 用
         lastCols = cols;
@@ -257,28 +260,20 @@ public final class SandboxRasterizer {
 
         VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
 
-        // ★★★ v30【补上参考项目的"椭圆四周暗"】★★★
+        // ★★★ v33【补底板：椭圆衬底，而非参考项目的方板】★★★
         //
-        //   参考项目有两种场：
-        //     · 大沙盘 SiteMapSampler → showsFloor() = true（方形底板）
-        //     · 精读   SiteReliefField → showsFloor() = false（<b>不画底板</b>）
-        //       理由（SiteField 第 95-98 行原文）：
-        //       「精读是<b>圆形窗口</b>，外圈几格逐渐透明收边」
-        //       （SiteField 第 79 行）：「精读是圆形窗口，方板子的四个角会戳在圆外面，
-        //        所以不画」
+        //   对照表 audit/沙盘渲染对照表-20261110.md 第 35 项：
+        //   参考项目大沙盘 showsFloor()=true 画 `[-1,1]²` 方形底板，
+        //   精读 showsFloor()=false（「方板四角会戳在圆外面，所以不画」）。
         //
-        //   我们此前一直画方形底板 + edgeFade 恒 1.0
-        //   ⇒ 用户看到的是"方形平板"，而参考项目是"椭圆+四周渐暗"。
-        //   用户原话：「明明参考项目是椭圆四周暗的视觉效果…
-        //              不是参数是功能缺失。」
-        //
-        //   ⇒ 现在：柱子的 edgeFade 走圆形渐隐（见 SandboxGeometry.edgeFadeAt），
-        //     底板<b>不画</b>（方板四角会戳到圆外面，正是参考项目不画它的原因）。
-        //     若日后要"方形大沙盘"档，再加回 showsFloor 开关。
-        boolean showsFloor = false;
-        if (showsFloor) {
-            int plateAlpha = (int) (0xF2 * globalAlpha);
-            quadFlat(vc, ox, oy, scale, -1f, 1f, -1f, 1f, -0.02f, (plateAlpha << 24) | 0x171A22);
+        //   我们是"椭圆盘面"（v30 的 edgeFadeAt），所以：
+        //     · 画方形底板 ⇒ 四角戳出椭圆外（正是参考项目不画它的原因）
+        //     · 完全不画   ⇒ 盘面在深色背景上"边缘发飘"，缺一层衬底
+        //   ⇒ 正解：画一个<b>与渐隐形状一致的椭圆底板</b>（三角扇近似）。
+        //     这既补上了对照表 #35 缺失的"衬底"功能，
+        //     又与椭圆渐隐完美契合（不会有多余的方角）。
+        if (globalAlpha > 0.01f) {
+            floorEllipse(vc, ox, oy, scale, globalAlpha);
         }
 
         boolean seeEast = r[6] > 0f, seeWest = r[6] < 0f;
@@ -404,6 +399,44 @@ public final class SandboxRasterizer {
         return (alpha << 24) | (r << 16) | (g << 8) | b;
     }
 
+    /**
+     * <b>椭圆底板</b>（★ v33）—— 与 {@code edgeFadeAt} 的渐隐形状一致。
+     *
+     * <h2>为什么是椭圆而不是方块</h2>
+     * <p>参考项目大沙盘画方形底板（{@code showsFloor()=true}），
+     * 但它的精读档<b>不画</b>，理由（{@code SiteField} 第 79 行）：
+     * 「方板子的四个角会戳在圆外面，所以不画」。</p>
+     *
+     * <p>我们只有一档（椭圆盘面），所以两种做法都不对：</p>
+     * <ul>
+     *   <li>画方板 ⇒ 四角戳出椭圆外（参考项目明确说要避免）</li>
+     *   <li>不画   ⇒ 盘面在深色背景上边缘发飘，缺衬底</li>
+     * </ul>
+     * <p>⇒ 画一个<b>椭圆</b>：形状与渐隐一致，既补了衬底又不越界。</p>
+     *
+     * <h2>实现</h2>
+     * <p>在模型空间取 {@code mz = 0} 平面上半径 1 的圆，按 {@code SEG} 段三角扇填充。
+     * 圆在斜投影下自然变成椭圆 ⇒ 与柱子盘面同形。</p>
+     */
+    private void floorEllipse(VertexConsumer c, float ox, float oy, float s, float globalAlpha) {
+        final int SEG = 64;
+        // 底板颜色取参考项目的 PLATE 0xF2171A22（深蓝灰），alpha 按过渡淡出
+        int rgba = (((int) (0xF2 * globalAlpha)) << 24) | 0x171A22;
+        float z = -0.02f;   // 略低于地面，柱子会盖住它
+        // 三角扇：中心 + 圆周相邻两点
+        for (int i = 0; i < SEG; i++) {
+            double a0 = 2 * Math.PI * i / SEG;
+            double a1 = 2 * Math.PI * (i + 1) / SEG;
+            float x0 = (float) Math.cos(a0), y0 = (float) Math.sin(a0);
+            float x1 = (float) Math.cos(a1), y1 = (float) Math.sin(a1);
+            vertex(c, ox, oy, s, 0f, 0f, z, rgba);
+            vertex(c, ox, oy, s, x0, y0, z, rgba);
+            vertex(c, ox, oy, s, x1, y1, z, rgba);
+            // GUI 用四边形批次，第三个顶点重复一次补成退化四边形
+            vertex(c, ox, oy, s, x1, y1, z, rgba);
+        }
+    }
+
     // ----- hover -----
 
     /**
@@ -485,6 +518,20 @@ public final class SandboxRasterizer {
      *   zoom &gt;  BASE_ZOOM（推近）  → scaleOf ：放大到局部铺满屏幕
      * </pre>
      */
+    /**
+     * 视图切换过渡用：镜头整体推近/拉远（1 = 正常）。
+     *
+     * <p>★ v33 补：对照表第 50 项 —— 参考项目 {@code YardSiteScreen} 第 404 行
+     * {@code terrain.setZoomBoost(fading == null ? 1.0F : 0.84F + 0.16F * ease)}。
+     * 切视图时镜头从 0.84 推到 1.0，给一个"推近落定"的纵深感。</p>
+     */
+    private float zoomBoost = 1.0f;
+
+    /** 设置镜头推近倍率（过渡动画用；1 = 正常）。 */
+    public void setZoomBoost(float boost) {
+        zoomBoost = boost;
+    }
+
     private float viewScale(float[] r, int areaW, int areaH) {
         // ★★ v29【修"还是没有铺满沙盘模式画面"】★★
         //
@@ -501,8 +548,11 @@ public final class SandboxRasterizer {
         //     · zoom>1（推近）  → fillScale × (zoom/BASE_ZOOM)（放大看局部）
         float fill = SandboxGeometry.fillScale(r, areaW, areaH);
         float ratio = zoom / SandboxLod.BASE_ZOOM;
-        if (ratio <= 1f) return fill;
-        return SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
+        // ★ v33：乘 zoomBoost（切视图过渡时镜头从 0.84 推到 1.0）
+        float base = (ratio <= 1f)
+                ? fill
+                : SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
+        return base * zoomBoost;
     }
 
     /**
@@ -551,13 +601,13 @@ public final class SandboxRasterizer {
         float[] r = SandboxGeometry.rotationRows(yaw, pitch);
         lastR = r;
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
-        // ★ v31：与 draw() 同源 —— 原点 = 视口中心，不做 fitCenter 偏移
-        //   （否则 hover 拾取与绘制错位，点不到看到的格子）
+        // ★ v32：与 draw() 同源（含内容质心居中补偿，否则 hover 拾取错位）
         float scale = viewScale(r, areaW, areaH);
+        float oyBias = SandboxGeometry.RELIEF * Math.abs(r[5]) * scale * 0.5f;
         lastCols = cols;
         lastScale = scale;
         lastOriginX = areaX + areaW / 2f + panX;
-        lastOriginY = areaY + areaH / 2f + panY;
+        lastOriginY = areaY + areaH / 2f + panY + oyBias;
     }
 
     /** 悬停信息（读上一帧的拾取结果）。 */

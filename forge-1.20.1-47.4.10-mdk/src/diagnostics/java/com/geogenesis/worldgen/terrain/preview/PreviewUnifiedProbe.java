@@ -118,10 +118,13 @@ public final class PreviewUnifiedProbe {
         float[] r = com.geogenesis.client.preview.sandbox.SandboxGeometry.rotationRows(
                 com.geogenesis.client.preview.sandbox.SandboxGeometry.DEFAULT_YAW,
                 com.geogenesis.client.preview.sandbox.SandboxGeometry.DEFAULT_PITCH);
-        float scale = com.geogenesis.client.preview.sandbox.SandboxGeometry.fitScaleWide(
+        // ★ v32：与实机 draw()/prepare() 同源
+        //   scale = fillScale（基准档）+ 内容质心居中补偿 oyBias
+        float scale = com.geogenesis.client.preview.sandbox.SandboxGeometry.fillScale(
                 r, VIEWPORT, VIEWPORT);
-        float[] fc = com.geogenesis.client.preview.sandbox.SandboxGeometry.fitCenter(r);
-        float ox = VIEWPORT / 2f - scale * fc[0], oy = VIEWPORT / 2f - scale * fc[1];
+        float oyBias = com.geogenesis.client.preview.sandbox.SandboxGeometry.RELIEF
+                * Math.abs(r[5]) * scale * 0.5f;
+        float ox = VIEWPORT / 2f, oy = VIEWPORT / 2f + oyBias;
         float mmx = com.geogenesis.client.preview.sandbox.SandboxGeometry.modelOf(colCount, ccol);
         float mmy = com.geogenesis.client.preview.sandbox.SandboxGeometry.modelOf(colCount, ccol);
         sandbox.prepare(d, sp, 0, 0, VIEWPORT, VIEWPORT, 88f);
