@@ -163,10 +163,56 @@ public final class SandboxLod {
      *
      * @param windowBlocks 世界窗口（方块，每边）
      */
-    public static int pillarsForWindow(int windowBlocks) {
-        int want = (int) Math.round(windowBlocks / (double) STEP_BLOCKS);
-        int p = Math.max(8, Math.min(MAX_PILLARS, want));
+    /**
+     * <b>柱子数（每边）</b> —— 由<b>窗口</b>反推，目标柱屏宽 ~8px（对齐参考项目）。
+     *
+     * <h2>★ v29：不再固定「1 柱 = 16 格」</h2>
+     * <p>v27~v28 用 {@code windowBlocks / STEP_BLOCKS(16)} 推柱数：
+     * 窗口 900 格 ⇒ 只有 <b>56 柱</b> ⇒ 每柱 16px ⇒ 柱子又粗又方，
+     * 与参考项目（128 柱 / 7.8px）观感差很远
+     * —— 用户：「视觉效果对比参考项目还是差老远了」。</p>
+     *
+     * <p>参考项目的柱数由 <b>COLUMNS_MIN=128 起、按半径翻倍升档</b> 决定，
+     * <b>不是</b>由"每柱多少格"固定。它 4000 格窗口 / 128 柱
+     * ⇒ 每柱 ≈ 31 格。所以"每柱 16 格"从来不是参考项目的约束。</p>
+     *
+     * <p>⇒ 改成：柱数 = 窗口 / (窗口 / 目标柱数)，
+     * 目标柱数按<b>柱屏宽 ~8px</b> 与<b>窗口大小</b>共同决定，
+     * 每柱方块数随窗口浮动（窗口小 ⇒ 每柱少格，保证柱数够密）。</p>
+     *
+     * @param windowBlocks 世界窗口（方块，每边）
+     * @param viewportPx   视口边长（像素），决定"一屏该有多少柱"
+     */
+    public static int pillarsForWindow(int windowBlocks, int viewportPx) {
+        // 目标柱数：一屏约 viewportPx/8 根（参考项目 900/7.8 ≈ 115，取 128 档）
+        int wantPx = Math.max(32, viewportPx / 8);
+        // 但柱数不能超过窗口能提供的信息量：每柱至少 2 格方块才有意义
+        int maxByWindow = Math.max(8, windowBlocks / 2);
+        int p = Math.min(wantPx, maxByWindow);
+        // 与参考项目一样取偶数档（HEIGHT_STRIDE 要求），并夹在硬上限内
+        p = Math.min(MAX_PILLARS, Math.max(8, p));
         return p - (p & 1);
+    }
+
+    /** 兼容重载（900px 视口）。 */
+    public static int pillarsForWindow(int windowBlocks) {
+        return pillarsForWindow(windowBlocks, 900);
+    }
+
+    /**
+     * <b>每柱覆盖多少方块</b>（★ v29：随窗口浮动，不再固定 16）。
+     *
+     * <p>窗口 900 格 / 128 柱 ≈ 7 格/柱；窗口 4096 / 128 柱 ≈ 32 格/柱。
+     * 参考项目就是后者（1 柱 ≈ 31 格）。</p>
+     */
+    public static double blocksPerPillarFor(int windowBlocks, int viewportPx) {
+        int p = pillarsForWindow(windowBlocks, viewportPx);
+        return windowBlocks / (double) Math.max(1, p);
+    }
+
+    /** 兼容重载。 */
+    public static double blocksPerPillarFor(int windowBlocks) {
+        return blocksPerPillarFor(windowBlocks, 900);
     }
 
     /**
@@ -204,73 +250,63 @@ public final class SandboxLod {
         return gridFor(zoom, 900);
     }
 
-    /** <b>世界窗口（方块）</b> = 柱数 × 每柱方块。 */
-    public static int windowFor(float zoom, int viewportPx) {
-        return Math.max(16, pillarsFor(zoom, viewportPx) * STEP_BLOCKS);
-    }
+    /**
+     * ★ v29 <b>已删除：worldFor / scaleLabel / describe</b>
+     *
+     * <h2>为什么删（用户："为什么视野数值上还有7200格的显示？是不是有什么遗漏的代码"）</h2>
+     * <p>这三个方法都以 {@code pillarsFor(zoom) × STEP_BLOCKS} 算"视野"，
+     * 那是 v27 之前的旧口径（沙盘窗口由 zoom 独立决定）。
+     * v27 起沙盘窗口已改成 {@code texW × scaleBlockPos}（= 平面窗口 ≈ 900 格），
+     * 但这里的方法仍返回 4096/7200 —— 于是 HUD 与日志显示一个<b>不存在的视野</b>。</p>
+     *
+     * <p>漏改曾造成三处不一致（用户已两次指出）：</p>
+     * <ol>
+     *   <li>{@code statusLine()} 状态栏"视野 7200 格"</li>
+     *   <li>{@code drawSandboxHints()} hover 世界坐标按 7200 算 ⇒ 偏出实际范围</li>
+     *   <li>{@code LOGGER.info} 诊断行"窗口=854 / 7200 格"自相矛盾</li>
+     * </ol>
+     *
+     * <p>⇒ <b>彻底删除这些方法</b>，让"用旧口径"变成编译错误而不是静默的错显示。
+     * 需要视野数值的地方一律直接用真实窗口 {@code texW * scaleBlockPos}，
+     * 需要柱数用 {@link #pillarsForWindow(int)}。</p>
+     */
 
-    /** 兼容重载。 */
-    public static int windowFor(float zoom) {
-        return windowFor(zoom, 900);
-    }
-
-    /** 每细格方块数 = 窗口 / 细格数 = 16/2 = 8。 */
+    /**
+     * 每细格方块数 = 每柱方块 / 每柱细格数（★ v29：随窗口浮动）。
+     *
+     * @deprecated 用 {@link #effectiveStepFor(int, int)} —— 本方法假设"每柱 16 格"，
+     *             那是 v28 之前的固定语义，已不成立。
+     */
+    @Deprecated
     public static double effectiveStep(float zoom, int viewportPx) {
         return STEP_BLOCKS / (double) HEIGHT_STRIDE;
     }
 
     /** 兼容重载。 */
+    @Deprecated
     public static double effectiveStep(float zoom) {
         return effectiveStep(zoom, 900);
     }
 
-    /** 比例尺读数。 */
-    public static String scaleLabel(float zoom, int viewportPx) {
-        return String.format(java.util.Locale.ROOT,
-                "视野 %d 格 · %d 柱 · 1 柱 = %d 格方块",
-                windowFor(zoom, viewportPx), pillarsFor(zoom, viewportPx), STEP_BLOCKS);
+    /**
+     * <b>每细格方块数</b>（★ v29：由窗口与柱数共同决定）。
+     *
+     * <p>{@code = windowBlocks / (柱数 × HEIGHT_STRIDE)}。
+     * 例：窗口 900 / 128 柱 / 2 = 3.5 格/细格。</p>
+     */
+    public static double effectiveStepFor(int windowBlocks, int viewportPx) {
+        int p = pillarsForWindow(windowBlocks, viewportPx);
+        return windowBlocks / (double) Math.max(1, p * HEIGHT_STRIDE);
     }
 
     /** 兼容重载。 */
-    public static String scaleLabel(float zoom) {
-        return scaleLabel(zoom, 900);
-    }
-
-    /** 窗口覆盖的 tract 数（决定粗层水位可负担性）。 */
-    public static int tractsFor(float zoom, int viewportPx) {
-        int win = windowFor(zoom, viewportPx);
-        int across = (int) Math.ceil(win / 512.0) + 1;
-        return across * across;
-    }
-
-    /** 兼容重载。 */
-    public static int tractsFor(float zoom) {
-        return tractsFor(zoom, 900);
-    }
-
-    /** 是否查粗层水位（25 tract 以内）。 */
-    public static boolean usesCoarseWater(float zoom, int viewportPx) {
-        return tractsFor(zoom, viewportPx) <= 25;
-    }
-
-    /** 兼容重载。 */
-    public static boolean usesCoarseWater(float zoom) {
-        return usesCoarseWater(zoom, 900);
+    public static double effectiveStepFor(int windowBlocks) {
+        return effectiveStepFor(windowBlocks, 900);
     }
 
     /** 滚轮：每格 ×2 / ÷2。 */
     public static float nextZoom(float zoom, boolean zoomIn) {
         float next = zoomIn ? zoom * WHEEL_STEP : zoom / WHEEL_STEP;
         return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
-    }
-
-    /** 人类可读摘要。 */
-    public static String describe(float zoom, int viewportPx) {
-        return scaleLabel(zoom, viewportPx);
-    }
-
-    /** 兼容重载。 */
-    public static String describe(float zoom) {
-        return describe(zoom, 900);
     }
 }

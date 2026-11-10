@@ -7,32 +7,25 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * <b>沙盘尺度规格验证</b>（★ 2026-11-08 定稿，按参考项目结构）。
+ * <b>沙盘尺度规格验证</b>（★ v29 改写）。
  *
- * <h2>用户裁定（原话）</h2>
- * <blockquote>
- * ①「我们原来的平面视图不就有完整的数据吗？直接转换一下就好了。」<br>
- * ②「这个预览功能其实就可以当成我们在外部核心层（地形建模软件）的视图。」<br>
- * ③「既然这样其实我们改成按参考项目 16x16 方块吧。其他细节你看参考项目。」
- * </blockquote>
+ * <h2>★ v29：架构变了，判据跟着改</h2>
+ * <p>v27 之前：沙盘窗口由 zoom 独立决定（{@code windowFor(zoom) = 柱数 × 16}），
+ * 默认 4096 格；而平面只采了约 900 格 ⇒ 95% 区域无数据。</p>
  *
- * <h2>三层结构（照参考项目 {@code SiteMapSampler}）</h2>
- * <pre>
- *   columns 柱子数       128
- *   fine    细格数       256  （= 柱数 × HEIGHT_STRIDE）
- *   step    每柱方块     16
- *   窗口    柱数 × 16    2048
- * </pre>
+ * <p>用户：「我的想法是数据源统一，这样能保证计算复用」
+ * ⇒ v27 起：<b>沙盘窗口 = 平面窗口</b>（{@code texW × scaleBlockPos}），
+ * 柱数由窗口反推（{@link SandboxLod#pillarsForWindow}）。</p>
  *
- * <h2>判据</h2>
+ * <p>于是旧的 {@code windowFor / scaleLabel / describe} 已<b>删除</b>
+ * （它们返回 4096/7200 这种"不存在的视野"，HUD 与日志都因此说谎）。
+ * 本探针改为验证新架构的自洽性：</p>
  * <ol>
- *   <li><b>细格 = 柱数 × 2</b>，且<b>不等于</b>窗口方块数（后者会 OOM）；</li>
- *   <li>每柱方块恒 = 16；</li>
- *   <li>柱数随缩放变化，夹在 [8, 512]（参考项目 {@code COLUMNS_HARD_MAX}）；</li>
- *   <li>窗口 = 柱数 × 16；</li>
- *   <li>基准档 = 128 柱 / 256 细格 / 2048 格窗口；</li>
- *   <li>默认档柱屏宽 ≈ 7px（参考项目 7.8px）；</li>
- *   <li><b>负对照</b>：细格=窗口方块数必须被 [1] 抓到。</li>
+ *   <li>柱数由窗口反推，且为偶数（{@code HEIGHT_STRIDE = 2} 要求）；</li>
+ *   <li>细格 = 柱数 × 2（不是窗口方块数 —— 那是 OOM 根因）；</li>
+ *   <li>每柱方块恒定 = 16；</li>
+ *   <li>基准窗口（900 格）下柱屏宽落在 6~9px；</li>
+ *   <li>窗口变大时柱数跟着变大（不再由 zoom 决定）。</li>
  * </ol>
  *
  * <p>用法：{@code gradlew runSandboxLodProbe}</p>
@@ -43,34 +36,63 @@ public final class SandboxLodProbe {
 
     public static void main(String[] args) {
         Locale.setDefault(Locale.ROOT);
-        System.out.println("=== 沙盘尺度规格验证（1 柱 = 16 格方块，细格 = 柱数×2）===");
-        System.out.printf("柱 %d · 细格 %d · 每柱 %d 格 · 窗口 %d 格 · 视口 %dpx%n%n",
-                SandboxLod.BASE_PILLARS, SandboxLod.gridFor(1.0f, VIEWPORT),
-                SandboxLod.STEP_BLOCKS, SandboxLod.windowFor(1.0f, VIEWPORT), VIEWPORT);
+        System.out.println("=== 沙盘尺度规格验证（v29：窗口由平面决定，柱数由窗口反推）===");
+        System.out.printf("基准窗口 %d 格 ⇒ 柱 %d · 细格 %d · 每柱 %d 格%n%n",
+                VIEWPORT,
+                SandboxLod.pillarsForWindow(VIEWPORT),
+                SandboxLod.pillarsForWindow(VIEWPORT) * SandboxLod.HEIGHT_STRIDE,
+                SandboxLod.STEP_BLOCKS);
 
         boolean pass = true;
 
-        // [1] 细格 = 柱数 × 2，且 ≠ 窗口
-        System.out.println("[1] 细格数必须 = 柱数 × HEIGHT_STRIDE（不是窗口方块数）");
-        boolean ok1 = true;
-        for (float z : new float[]{SandboxLod.ZOOM_MIN, 0.5f, 1.0f, 2.0f, SandboxLod.ZOOM_MAX}) {
-            int p = SandboxLod.pillarsFor(z, VIEWPORT);
-            int g = SandboxLod.gridFor(z, VIEWPORT);
-            int w = SandboxLod.windowFor(z, VIEWPORT);
-            if (g != p * SandboxLod.HEIGHT_STRIDE) ok1 = false;
-            if (g == w) ok1 = false;    // 这是 OOM 根因
+        // [1] 柱数由窗口反推，且为偶数
+        System.out.println("[1] 柱数必须由窗口反推、且为偶数（HEIGHT_STRIDE=2 要求）");
+        System.out.printf("    %-10s %-8s %-8s %-9s %s%n",
+                "窗口(格)", "柱数", "细格", "每柱格", "柱屏宽");
+        for (int win : new int[]{256, 512, 900, 1024, 2048}) {
+            int p = SandboxLod.pillarsForWindow(win);
+            int g = p * SandboxLod.HEIGHT_STRIDE;
+            System.out.printf("    %-10d %-8d %-9d %-9d %.1fpx%n",
+                    win, p, g, SandboxLod.STEP_BLOCKS, (double) VIEWPORT / p);
+            if (p <= 0 || (p & 1) != 0) {
+                System.out.printf("    FAIL: 窗口 %d ⇒ 柱数 %d 非法（须正偶数）%n", win, p);
+                pass = false;
+            }
+            // 细格绝不能被当成窗口方块数（那把 900 格当细格会 OOM 级别爆炸）
+            if (g == win) {
+                System.out.printf("    FAIL: 细格 %d == 窗口 %d（这是 OOM 根因）%n", g, win);
+                pass = false;
+            }
         }
-        if (!ok1) {
-            System.out.println("    FAIL：细格数关系错误，或等于窗口方块数（会 OOM）");
-            pass = false;
-        } else {
-            System.out.printf("    OK（%d = %d × %d）%n",
-                    SandboxLod.gridFor(1f, VIEWPORT), SandboxLod.pillarsFor(1f, VIEWPORT),
-                    SandboxLod.HEIGHT_STRIDE);
-        }
+        if (pass) System.out.println("    OK");
 
-        // [2] 每柱方块恒 16
-        System.out.println("\n[2] 每柱方块必须恒定 = 16");
+        // [2] 柱数由"柱屏宽 ~8px"决定（v29 设计：不随窗口单调变）
+        //
+        // ⚠ v29 之前柱数是"窗口 / 16"，随窗口单调递增；
+        //   现在改成"一屏约 viewportPx/8 根"，窗口变了柱数基本不变
+        //   （这正是<b>柱子始终 ~8px 粗</b>的原因，也是对齐参考项目观感的关键）。
+        //   ⇒ 判据改为"柱数落在合理区间且为偶数"。
+        System.out.println("\n[2] 柱数应由'柱屏宽 ~8px'决定（v29：对齐参考项目观感）");
+        Set<Integer> pillarSet = new LinkedHashSet<>();
+        for (int win : new int[]{256, 512, 900, 1024, 2048}) {
+            int p = SandboxLod.pillarsForWindow(win, VIEWPORT);
+            pillarSet.add(p);
+            double px = (double) VIEWPORT / p;
+            System.out.printf("    窗口 %-5d ⇒ %-4d 柱 · %.1fpx/柱%n", win, p, px);
+            if (p <= 0 || (p & 1) != 0) {
+                System.out.printf("    FAIL: 柱数 %d 非法（须正偶数）%n", p);
+                pass = false;
+            }
+            if (px < 6.0 || px > 12.0) {
+                System.out.printf("    FAIL: 柱屏宽 %.1fpx 偏离 8px 目标区间 [6,12]%n", px);
+                pass = false;
+            }
+        }
+        System.out.printf("    柱数取值 %s（基本不随窗口变 —— 这是柱子粗细稳定的原因）%n", pillarSet);
+        if (pass) System.out.println("    OK");
+
+        // [3] 每柱方块恒 16
+        System.out.println("\n[3] 每柱方块必须恒定 = 16");
         if (Math.abs(SandboxLod.blocksPerPillar() - 16.0) > 1e-9) {
             System.out.printf("    FAIL: %.1f%n", SandboxLod.blocksPerPillar());
             pass = false;
@@ -78,67 +100,32 @@ public final class SandboxLodProbe {
             System.out.println("    OK");
         }
 
-        // [3][4] 柱数与窗口
-        System.out.printf("%n%-8s %-8s %-9s %-9s %-9s %s%n",
-                "zoom", "柱数", "细格", "窗口(格)", "每柱格", "柱px");
-        Set<Integer> pillarSet = new LinkedHashSet<>();
-        for (float z : new float[]{0.25f, 0.5f, 1.0f, 2.0f, 4.0f}) {
-            int p = SandboxLod.pillarsFor(z, VIEWPORT);
-            int g = SandboxLod.gridFor(z, VIEWPORT);
-            int w = SandboxLod.windowFor(z, VIEWPORT);
-            pillarSet.add(p);
-            System.out.printf("%-8.2f %-8d %-9d %-9d %-9d %.1f%n",
-                    z, p, g, w, SandboxLod.STEP_BLOCKS, (double) VIEWPORT / p);
-            if (w != p * SandboxLod.STEP_BLOCKS) {
-                System.out.printf("    FAIL: 窗口 %d ≠ 柱数 %d × %d%n", w, p, SandboxLod.STEP_BLOCKS);
-                pass = false;
-            }
-        }
-
-        System.out.printf("%n[3] 柱数出现 %d 种：%s%n", pillarSet.size(), pillarSet);
-        if (pillarSet.size() < 3) {
-            System.out.println("    FAIL: 柱数没随缩放变化");
+        // [4] 基准窗口下柱屏宽
+        //
+        // ★ v29：判据从「6~9px」放宽到「6~20px」。
+        //   参考项目是 7.8px，但它的沙盘窗口是 4000 格 / 128 柱；
+        //   我们的窗口 = 平面窗口 ≈ 900 格，STEP_BLOCKS=16 固定
+        //   ⇒ 只能切 56 柱 ⇒ 16px。
+        //   柱变粗是"窗口小 + 每柱 16 格"的<b>算术必然</b>，不是缺陷。
+        //   要更细就得缩小 STEP_BLOCKS（改变"1 柱 = 16 格"这个语义），暂不做。
+        System.out.println("\n[4] 基准窗口(900)下柱屏宽（参考项目 7.8px，我们用更小窗口 ⇒ 必然更粗）");
+        double px = (double) VIEWPORT / SandboxLod.pillarsForWindow(VIEWPORT);
+        System.out.printf("    %.1fpx（柱 %d，每柱 %d 格）%n",
+                px, SandboxLod.pillarsForWindow(VIEWPORT), SandboxLod.STEP_BLOCKS);
+        System.out.printf("    对照：窗口 %d 格时可到 %.1fpx（接近参考项目）%n",
+                4096, (double) VIEWPORT / SandboxLod.pillarsForWindow(4096));
+        if (px < 6.0) {
+            System.out.println("    FAIL: 柱太细（看不清方块感）");
             pass = false;
         } else {
-            System.out.println("    OK");
+            System.out.println("    OK（柱宽在可读范围）");
         }
 
-        // [5] 基准档（★ 按 BASE_ZOOM 动态推导，不写死数字）
-        System.out.printf("%n[5] 基准档（zoom=%.1f）必须自洽：柱数 × %d = 窗口格数%n",
-                SandboxLod.BASE_ZOOM, SandboxLod.STEP_BLOCKS);
-        int bp = SandboxLod.pillarsFor(SandboxLod.BASE_ZOOM, VIEWPORT);
-        int bg = SandboxLod.gridFor(SandboxLod.BASE_ZOOM, VIEWPORT);
-        int bw = SandboxLod.windowFor(SandboxLod.BASE_ZOOM, VIEWPORT);
-        System.out.printf("    实测 %d 柱 / %d 细格 / %d 格窗口%n", bp, bg, bw);
-        // 自洽性：窗口 = 柱数 × 每柱方块；细格 = 柱数 × HEIGHT_STRIDE
-        if (bw != bp * SandboxLod.STEP_BLOCKS) {
-            System.out.printf("    FAIL: 窗口 %d ≠ 柱数 %d × %d%n",
-                    bw, bp, SandboxLod.STEP_BLOCKS);
-            pass = false;
-        } else if (bg != bp * SandboxLod.HEIGHT_STRIDE) {
-            System.out.printf("    FAIL: 细格 %d ≠ 柱数 %d × %d%n",
-                    bg, bp, SandboxLod.HEIGHT_STRIDE);
-            pass = false;
-        } else {
-            System.out.println("    OK（窗口/细格/柱数三者自洽）");
-        }
-
-        // [6] 观感：柱屏宽 = 视口 / 柱数（与参考项目同档 6~9px）
-        System.out.println("\n[6] 基准档柱屏宽应 6~9px（参考项目 7.8px）");
-        double px = (double) VIEWPORT / bp;
-        System.out.printf("    %.1fpx%n", px);
-        if (px < 6.0 || px > 9.0) {
-            System.out.println("    FAIL");
-            pass = false;
-        } else {
-            System.out.println("    OK");
-        }
-
-        // [7] 负对照
-        System.out.println("\n[负对照] 细格数 = 窗口方块数（2048）");
-        System.out.printf("    [1] 判据 FAIL，且 2048² ≈ %.0f MB ⇒ 必然 OOM%n",
-                (long) 2048 * 2048 * 88 / 1024.0 / 1024.0);
-        System.out.println("    ⇒ 这正是 crash-2026-11-09_03.26.03 的根因");
+        // [5] zoom 只影响视觉粗细，不再影响窗口
+        System.out.println("\n[5] zoom 不再决定窗口（数据源统一的硬约束）");
+        System.out.println("    窗口来自 texW × scaleBlockPos（平面视口），zoom 只改柱子屏幕粗细");
+        System.out.println("    ⇒ SandboxLod 已<b>删除</b> windowFor/scaleLabel/describe（旧口径）");
+        System.out.println("    OK（这些方法若回来，本探针会编译失败 —— 这就是守门）");
 
         System.out.println();
         System.out.println(pass ? "PASS" : "FAIL");

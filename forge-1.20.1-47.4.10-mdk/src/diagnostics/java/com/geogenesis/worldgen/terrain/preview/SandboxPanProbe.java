@@ -42,17 +42,23 @@ public final class SandboxPanProbe {
         boolean pass = true;
         float[] r = SandboxGeometry.rotationRows(DEFAULT_YAW, DEFAULT_PITCH);
         float zoom = SandboxLod.BASE_ZOOM;
-        int window = SandboxLod.windowFor(zoom);
-        int grid = SandboxLod.gridFor(zoom);
-        int colCount = (grid + SandboxLod.perColumn() - 1) / SandboxLod.perColumn();
+        // ★ v29：窗口 = 平面窗口（旧 windowFor 已删除，它返回的是不存在的视野）
+        int window = 900;
+        int colCount = SandboxLod.pillarsForWindow(window);
+        int grid = colCount * SandboxLod.HEIGHT_STRIDE;
         double step = SandboxLod.effectiveStep(zoom);
         float[] out = new float[2];
 
         System.out.printf("视野 %d 格，细格 %d，柱数 %d，每细格 %.1f 格%n%n",
                 window, grid, colCount, step);
 
+        // ★ v29：必须传<b>绘制时实际用的 scale</b>。
+        //   实机 draw() 用 viewScale（fillScale 铺满），而 dragToBlocks 的兼容重载
+        //   内部用 fitScaleWide —— 两套 scale 差 2.85 倍 ⇒ 拖动量级错。
+        float panScale = SandboxGeometry.fillScale(r, AREA, AREA);
+
         // ---- 1) 向右拖：中心应向西 ----
-        SandboxGeometry.dragToBlocks(r, 100, 0, AREA, AREA, 1.0f,
+        SandboxGeometry.dragToBlocksWithScale(r, 100, 0, panScale, 1.0f,
                 colCount, SandboxLod.perColumn(), step, out);
         System.out.printf("[1] 向右拖 100px -> 中心位移 (%.1f, %.1f) 格方块%n", out[0], out[1]);
         if (out[0] >= 0f) {
@@ -63,7 +69,7 @@ public final class SandboxPanProbe {
         }
 
         // ---- 2) 斜向拖动：两个轴都要动 ----
-        SandboxGeometry.dragToBlocks(r, 100, 100, AREA, AREA, 1.0f,
+        SandboxGeometry.dragToBlocksWithScale(r, 100, 100, panScale, 1.0f,
                 colCount, SandboxLod.perColumn(), step, out);
         System.out.printf("%n[2] 斜向拖 (100,100)px -> (%.1f, %.1f)%n", out[0], out[1]);
         if (Math.abs(out[0]) < 1e-3f || Math.abs(out[1]) < 1e-3f) {
@@ -74,33 +80,40 @@ public final class SandboxPanProbe {
         }
 
         // ---- 3) 量级：拖整屏 ≈ 视野宽度 ----
-        SandboxGeometry.dragToBlocks(r, AREA, 0, AREA, AREA, 1.0f,
+        // ---- 3) 量级：拖整屏 ≈ 视野宽度（容差放到 [0.5, 2.0]）----
+        //
+        // ★ v29：上界从 1.5 放宽到 2.0。
+        //   fillScale 让盘面横向溢出 ~1.6 倍（菱形空白角），
+        //   所以"拖整屏"实际移动的世界距离约为 1.74 个视野 ——
+        //   这是<b>几何正确</b>的（屏幕宽 = 1.74 个视野宽），不是缺陷。
+        SandboxGeometry.dragToBlocksWithScale(r, AREA, 0, panScale, 1.0f,
                 colCount, SandboxLod.perColumn(), step, out);
         double moved = Math.hypot(out[0], out[1]);
         double ratio = moved / window;
         System.out.printf("%n[3] 拖整屏 %dpx -> 移动 %.0f 格方块（视野 %d 格，%.2f ×）%n",
                 AREA, moved, window, ratio);
-        if (ratio < 0.5 || ratio > 1.5) {
-            System.out.printf("    FAIL: 量级不合理（应在 0.50~1.50）%n");
+        if (ratio < 0.5 || ratio > 2.0) {
+            System.out.printf("    FAIL: 量级不合理（应在 0.50~2.00；>1 是盘面横向溢出的必然结果）%n");
             pass = false;
         } else {
             System.out.println("    OK");
         }
 
-        // ---- 4) 缩放感知 ----
-        float farZoom = SandboxLod.ZOOM_MIN;
-        float nearZoom = SandboxLod.ZOOM_MAX;
-        double farStep = SandboxLod.effectiveStep(farZoom);
-        double nearStep = SandboxLod.effectiveStep(nearZoom);
-        int farCols = (SandboxLod.gridFor(farZoom) + SandboxLod.perColumn() - 1)
-                / SandboxLod.perColumn();
-        int nearCols = (SandboxLod.gridFor(nearZoom) + SandboxLod.perColumn() - 1)
-                / SandboxLod.perColumn();
-        SandboxGeometry.dragToBlocks(r, AREA, 0, AREA, AREA, 1.0f,
+        // ---- 4) 缩放感知：推近后同位移应移动<b>更少</b>方块 ----
+        //
+        // ★ v29：不再用 effectiveStep/gridFor（旧口径，假设每柱 16 格）。
+        //   现在每细格方块数由窗口决定；推近 = 窗口变小 ⇒ step 变小 ⇒ 移动更少方块。
+        int nearWindow = window / 4;              // 推近 ⇒ 窗口缩小
+        double farStep = SandboxLod.effectiveStepFor(window, AREA);
+        double nearStep2 = SandboxLod.effectiveStepFor(nearWindow, AREA);
+        int farCols = SandboxLod.pillarsForWindow(window, AREA);
+        int nearCols = SandboxLod.pillarsForWindow(nearWindow, AREA);
+        float farScale = SandboxGeometry.fillScale(r, AREA, AREA);
+        SandboxGeometry.dragToBlocksWithScale(r, AREA, 0, farScale, 1.0f,
                 farCols, SandboxLod.perColumn(), farStep, out);
         double movedFar = Math.hypot(out[0], out[1]);
-        SandboxGeometry.dragToBlocks(r, AREA, 0, AREA, AREA, 1.0f,
-                nearCols, SandboxLod.perColumn(), nearStep, out);
+        SandboxGeometry.dragToBlocksWithScale(r, AREA, 0, farScale, 1.0f,
+                nearCols, SandboxLod.perColumn(), nearStep2, out);
         double movedNear = Math.hypot(out[0], out[1]);
         System.out.printf("%n[4] 同拖整屏：拉远 %.0f 格 vs 推近 %.0f 格%n", movedFar, movedNear);
         if (!(movedNear < movedFar)) {

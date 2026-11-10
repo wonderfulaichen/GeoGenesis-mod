@@ -2813,3 +2813,10 @@ task runSandboxFloorProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxFloorProbe'
     maxHeapSize = '1g'
 }
+// 沙盘视觉诊断：把实机真正用的每个渲染参数打出来（盘面包围盒/柱高/光照/水面）。
+//   gradlew runSandboxVisualDiagProbe
+task runSandboxVisualDiagProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxVisualDiagProbe'
+    maxHeapSize = '2g'
+}

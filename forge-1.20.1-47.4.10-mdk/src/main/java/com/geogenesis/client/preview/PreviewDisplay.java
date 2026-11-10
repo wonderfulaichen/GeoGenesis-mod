@@ -967,11 +967,9 @@ public class PreviewDisplay extends AbstractWidget {
         //     但<b>每柱代表多少方块</b>随窗口自动换算 ⇒ 分辨率不丢。
         int blocksWide = Math.max(64, texW * scaleBlockPos);
         int blocksHigh = Math.max(64, texH * scaleBlockPos);
-        // ★ 柱数：窗口决定"画多少根"，zoom 决定"多细"。
-        //   窗口 / 每柱方块 → 基准柱数；zoom 推近时柱数不变、柱子变粗
-        //   （因为窗口变小）；这里再按 zoom 让分组粒度也跟着走，
-        //   保证推近能看到更细的细节而不是放大同一批柱子。
-        int basePillars = SandboxLod.pillarsForWindow(blocksWide);
+        // ★ v29：柱数按"柱屏宽 ~8px"与窗口共同决定（不再固定 1 柱 = 16 格）
+        //   窗口 900 格 ⇒ 128 柱 ≈ 7 格/柱（参考项目同为 128 柱）
+        int basePillars = SandboxLod.pillarsForWindow(blocksWide, Math.min(w, h));
         int grid = Math.max(2, basePillars * SandboxLod.HEIGHT_STRIDE);
         // ★ 记录进入沙盘时的初始中心（R 键回到这里）
         if (homeCenterX == null) {
@@ -1029,11 +1027,17 @@ public class PreviewDisplay extends AbstractWidget {
         // 诊断：视口变化就记一条
         if (sandboxDiagId != id) {
             sandboxDiagId = id;
-            LOGGER.info("[Preview] 沙盘 {} zoom={} 细格={} 窗口={} 数据={}ms 缺失={}",
-                    SandboxLod.describe(zoom),
+            // ★ v29【修"日志还显示 7200 格"】：
+            //   这里原先用 {@code SandboxLod.describe(zoom)} —— 它内部走
+            //   {@code windowFor(zoom)}（柱数 × 16）的<b>旧口径</b>，
+            //   与真实窗口（blocksWide）脱钩 ⇒ 日志出现「窗口=854 / 7200 格」自相矛盾。
+            //   现在直接打真实窗口与真实柱数。
+            LOGGER.info("[Preview] 沙盘 视野={}格 柱={} 细格={} zoom={} 数据={}ms 缺失={}",
+                    blocksWide,
+                    Math.max(1, grid / Math.max(1, SandboxLod.HEIGHT_STRIDE)),
+                    grid,
                     String.format(java.util.Locale.ROOT, "%.2f", zoom),
-                    grid, blocksWide, d == null ? -1 : d.costMs, d == null ? -1 : d.missingCells);
-
+                    d == null ? -1 : d.costMs, d == null ? -1 : d.missingCells);
         }
         // ★ 竖向比例：<b>照抄参考项目</b>（SiteTerrainRenderer.collect() 第 661/677-678 行）：
         //
@@ -1380,7 +1384,9 @@ public class PreviewDisplay extends AbstractWidget {
      */
     private void panSandboxBy(double dx, double dy) {
         int areaSize = Math.min(getWidth(), getHeight());
-        double step = SandboxLod.effectiveStep(sandboxRasterizer.zoom());
+        // ★ v29：每细格方块数由真实窗口决定（不再是固定的 8）
+        int windowBlocks = Math.max(64, texW * scaleBlockPos);
+        double step = SandboxLod.effectiveStepFor(windowBlocks, areaSize);
         sandboxRasterizer.dragToBlocks(dx, dy, areaSize, areaSize, step, sandboxDragOut);
         // 浮点累加：拖动位移常小于 1 方块，直接取整会被吃掉
         sandboxCenterAccX += sandboxDragOut[0];
@@ -2295,9 +2301,9 @@ public class PreviewDisplay extends AbstractWidget {
             d.pickedColX = sandboxRasterizer.pickedColX();
             d.pickedColZ = sandboxRasterizer.pickedColZ();
             d.pickedTopY = sandboxRasterizer.pickedTopY();
-            // ★ v28：与 renderSandbox 同源（旧 windowFor 是脱钩的旧口径）
+            // ★ v29：与 renderSandbox 同源（每细格方块数由真实窗口决定）
             int windowBlocks = Math.max(64, texW * scaleBlockPos);
-            double step = SandboxLod.effectiveStep(sandboxRasterizer.zoom());
+            double step = SandboxLod.effectiveStepFor(windowBlocks, Math.min(getWidth(), getHeight()));
             d.hoverWorldX = d.centerX - windowBlocks / 2
                     + (int) Math.round(d.pickedColX * step);
             d.hoverWorldZ = d.centerZ - windowBlocks / 2

@@ -86,7 +86,16 @@ public final class SandboxRasterizer {
                              double blockStep, float[] out) {
         float[] r = SandboxGeometry.rotationRows(yaw, pitch);
         int colCount = lastCols != null ? lastCols.colCount : 1;
-        SandboxGeometry.dragToBlocks(r, dx, dy, areaW, areaH, widthScale,
+        // ★★ v29【修"拖动跟不上手 / 拖动量级错 2.85 倍"】★★
+        //   这里原先调 {@code SandboxGeometry.dragToBlocks(...)} 的兼容重载，
+        //   它内部自己算 {@code fitScaleWide(r, viewW, viewH)}；
+        //   而 {@code draw()} 用的是 {@link #viewScale}（fillScale）。
+        //   两套 scale 相差 <b>2.85 倍</b>（探针 runSandboxPanProbe 实测）
+        //   ⇒ 拖动一格屏幕位移换算出的世界位移是应有值的 2.85 倍 ⇒ 跟不上手。
+        //
+        //   ⇒ 必须传<b>绘制时实际用的 scale</b>（lastScale）。
+        float scale = lastScale > 0f ? lastScale : viewScale(r, areaW, areaH);
+        SandboxGeometry.dragToBlocksWithScale(r, dx, dy, scale, widthScale,
                 colCount, com.geogenesis.client.preview.SandboxLod.perColumn(),
                 blockStep, out);
     }
@@ -445,13 +454,23 @@ public final class SandboxRasterizer {
      * </pre>
      */
     private float viewScale(float[] r, int areaW, int areaH) {
-        // ★ v28：基准档用 fillScale（铺满，菱形四角是空白不算裁地形）
-        //   —— 用户："底盘明显还是没达到满屏"。
-        //   fitScale 取较小者 ⇒ 竖向只有 58%，四周大片留白。
-        //   推近档仍走 scaleOf（zoom 放大倍率语义）。
-        return zoom <= SandboxLod.BASE_ZOOM + 1e-6f
-                ? SandboxGeometry.fillScale(r, areaW, areaH)
-                : SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
+        // ★★ v29【修"还是没有铺满沙盘模式画面"】★★
+        //
+        //   此前是 `zoom <= BASE_ZOOM ? fillScale : scaleOf`。
+        //   但 zoom 是<b>可被滚轮改</b>的（日志实测实机 zoom=0.50），
+        //   一旦用户拉远，就落到 scaleOf 分支 ⇒ 盘面只占 74%/75% ⇒ 看着没铺满。
+        //
+        //   用户的意思很明确：<b>沙盘画面就该铺满</b>。
+        //   ⇒ 只要盘面比视口小，就放大到铺满；比视口大（推近）则保持 zoom 放大。
+        //   即：scale = max(铺满所需, zoom 放大所需) 的合理组合 ——
+        //   统一为「以 fillScale 为<b>下限</b>」：
+        //     · zoom=1.0（基准）→ 正好 fillScale（铺满）
+        //     · zoom<1（拉远）  → 仍是 fillScale（不允许缩到比视口小）
+        //     · zoom>1（推近）  → fillScale × (zoom/BASE_ZOOM)（放大看局部）
+        float fill = SandboxGeometry.fillScale(r, areaW, areaH);
+        float ratio = zoom / SandboxLod.BASE_ZOOM;
+        if (ratio <= 1f) return fill;
+        return SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
     }
 
     /**
