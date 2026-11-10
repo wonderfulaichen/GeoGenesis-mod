@@ -1494,32 +1494,38 @@ public class PreviewDisplay extends AbstractWidget {
      * <p>再点同一位置 = 取消标记。</p>
      */
     private void setSpawnMarkAtMouse() {
-        // ★★★ v41【照参考项目：直接用细格坐标，不再从柱索引二次换算】★★★
+        // ★★★ v43【按用户要求：选点 = hover 高亮的那一柱】★★★
         //
-        //   参考项目 YardSiteScreen 第 1160 行：`selectAt(terrain.pickCellX, terrain.pickCellY);`
-        //   —— pick() 内部已经把屏幕点解成<b>细格</b>（先用 `(mx+1)*0.5*(fine-1)` 得连续细格，
-        //   再 round 到整数格），调用方直接用，<b>不再绕柱索引</b>。
+        //   用户原话：「选点明明跟着鼠标移动的高亮的点就好了啊，
+        //              谁选点不是在选这个地表位置呢。」
         //
-        //   我们此前用柱索引 + (col+0.5)*pillarBlocks 二次换算，
-        //   等于"反算一次再正算一次"，每层都可能错 ⇒ 用户两轮反馈"不准"。
-        int fx = sandboxRasterizer.pickedCellX();
-        int fz = sandboxRasterizer.pickedCellZ();
-        if (fx < 0 || fz < 0) return;
+        //   ⇒ 不再做"细格 → 世界坐标"的二次换算。
+        //     hover 高亮用的是 pickedColumn（那根柱子），
+        //     选点也直接用<b>同一根柱子</b>的世界坐标 —— 屏幕上看到哪根，
+        //     选中的就是哪根，从根上消除"看起来在这、实际在别处"。
+        int col = sandboxRasterizer.pickedColumn();
+        if (col < 0) return;
         TerrainFieldData d = sandboxData;
         if (d == null) return;
 
-        // 细格 → 世界坐标：一次乘法（与 snap.worldX/worldZ 同式）
+        // 柱索引 → 柱中心的世界坐标（与 drawSpawnPin 反算同式）
+        int colRows = sandboxRasterizer.pickedColRows();
+        if (colRows <= 0) return;
+        int ci = col / colRows, cj = col % colRows;
         int windowBlocks = Math.max(64, texW * scaleBlockPos);
         int grid = Math.max(1, d.gridW);
         double cellBlocks = windowBlocks / (double) grid;
-        int wx = d.originX + (int) Math.round(fx * cellBlocks);
-        int wz = d.originZ + (int) Math.round(fz * cellBlocks);
+
+        // 柱覆盖 2×2 细格 ⇒ 柱中心 = 细格 (ci*2 + 1) 处
+        int fineX = ci * SandboxLod.HEIGHT_STRIDE + SandboxLod.HEIGHT_STRIDE / 2;
+        int fineZ = cj * SandboxLod.HEIGHT_STRIDE + SandboxLod.HEIGHT_STRIDE / 2;
+        int wx = d.originX + (int) Math.round(fineX * cellBlocks);
+        int wz = d.originZ + (int) Math.round(fineZ * cellBlocks);
 
         com.mojang.logging.LogUtils.getLogger().info(
-                "[SpawnPick] 细格({},{}) 网格={} 每格={}格 原点=({},{}) ⇒ 世界({},{})",
-                fx, fz, grid,
-                String.format(java.util.Locale.ROOT, "%.3f", cellBlocks),
-                d.originX, d.originZ, wx, wz);
+                "[SpawnPick] 柱#{}({}, {}) 细格({},{}) 每格={} ⇒ 世界({},{})",
+                col, ci, cj, fineX, fineZ,
+                String.format(java.util.Locale.ROOT, "%.3f", cellBlocks), wx, wz);
         // 再点同一格 = 取消（容差 = 一个细格）
         int tol = Math.max(1, (int) Math.ceil(cellBlocks));
         if (sandboxRasterizer.hasSpawnMark()

@@ -81,16 +81,23 @@ public final class RevealScreenHook {
             RevealScreen rs = new RevealScreen(null);
             event.setNewScreen(rs);
             com.mojang.logging.LogUtils.getLogger().info(
-                    "[RevealDiag] ★接管：换成 RevealScreen（并主动 forceSetScreen）");
-            // ★ 参考项目 CreateWorldScreenMixin 第 60 行的做法：主动换屏。
-            //   只 setNewScreen 实测<不能>让屏真正激活（RevealScreen 的
-            //   init/tick/render 一次都没跑）。
-            forcing = true;
-            try {
-                net.minecraft.client.Minecraft.getInstance().forceSetScreen(rs);
-            } finally {
-                forcing = false;
-            }
+                    "[RevealDiag] ★接管：换成 RevealScreen（仅 setNewScreen，不 forceSetScreen）");
+            // ★★★ v43【修"接管后世界永远加载不出来（level 恒 false）"】★★★
+            //
+            //   v41 用 {@code forceSetScreen} 主动换屏，日志证实：
+            //     advance#1..589 全部 level=false，一直黑屏。
+            //   ⇒ 那个强制换屏打断了原版的加载状态机：LevelLoadingScreen 是
+            //     doWorldLoad 流程的一环，把它顶掉后 level 永远不出现。
+            //
+            //   参考项目 MinecraftSiteLoadMixin 的注释写明：
+            //     「只换这一句，不动生成流程：服务端该等多少个区块、
+            //       怎么落盘、怎么发区块，全都还是原版那套。」
+            //   它用 {@code @Redirect} 替换 setScreen 的<b>参数</b>，
+            //   <b>不跳过流程本身</b>。
+            //
+            //   ⇒ 这里只用 {@code event.setNewScreen()}（等价于替换参数），
+            //     让原版照常走完加载流程。
+            //     ⚠ 不再调 forceSetScreen。
         } catch (Throwable t) {
             // 静默退回原版（用户裁定 (a)）
             com.mojang.logging.LogUtils.getLogger()
@@ -133,6 +140,12 @@ public final class RevealScreenHook {
             if (next == null) return;
             if (!next.getClass().getName()
                     .equals("net.minecraft.client.gui.screens.ReceivingLevelScreen")) return;
+            // ★ v43 诊断：把拦截决策打出来
+            boolean willCancel = active != null && active.holdsHandoff();
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] ReceivingLevelScreen 开屏：active={} handoff={} ⇒ {}",
+                    active != null, active != null && active.holdsHandoff(),
+                    willCancel ? "拦掉" : "放行");
             if (active != null && !active.holdsHandoff()) {
                 // 动画已经落完 ⇒ 不再拦，交回原版
                 return;

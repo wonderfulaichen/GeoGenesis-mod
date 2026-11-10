@@ -517,9 +517,14 @@ public final class SandboxRasterizer {
         if (lastWindowOriginX == Integer.MIN_VALUE) return;
         double cellBlocks = lastWindowBlocks / (double) Math.max(1, lastWindowGrid);
         int per = Math.max(1, SandboxLod.perColumn());
-        int fineX = (int) Math.round((markWorldX - lastWindowOriginX) / cellBlocks);
-        int fineZ = (int) Math.round((markWorldZ - lastWindowOriginZ) / cellBlocks);
-        if (fineX < 0 || fineZ < 0) return;
+        // ★ v43：用 floor 而不是 round —— markWorld 是<b>柱中心</b>（细格 ci*2+1），
+        //   除以 cellBlocks 得 5.5 之类的值；round 会随机落到相邻柱，
+        //   floor 才能稳定回到它所在的那根柱。
+        double relFx = (markWorldX - lastWindowOriginX) / cellBlocks;
+        double relFz = (markWorldZ - lastWindowOriginZ) / cellBlocks;
+        if (relFx < 0 || relFz < 0) return;
+        int fineX = (int) Math.floor(relFx);
+        int fineZ = (int) Math.floor(relFz);
         int ci = fineX / per, cj = fineZ / per;
         if (ci >= cols.colCount || cj >= cols.colRows) return;
         int col = ci * cols.colRows + cj;
@@ -652,6 +657,11 @@ public final class SandboxRasterizer {
 
     public int pickedCellX() { return pickedCellX; }
     public int pickedCellZ() { return pickedCellZ; }
+
+    /** 当前图的柱行数（把柱索引拆成 (ci,cj) 要用）。 */
+    public int pickedColRows() {
+        return lastCols == null ? 0 : lastCols.colRows;
+    }
 
     public int pickedColX() {
         return pickedColumn < 0 || lastCols == null ? -1 : pickedColumn / lastCols.colRows;
