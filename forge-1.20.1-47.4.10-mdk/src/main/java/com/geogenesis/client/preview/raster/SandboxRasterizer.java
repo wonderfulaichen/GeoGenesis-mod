@@ -202,6 +202,27 @@ public final class SandboxRasterizer {
     public float yaw() { return yaw; }
     public float pitch() { return pitch; }
 
+    /**
+     * <b>导出当前正交相机</b>（★ v45，供落成动画继承开场画面）。
+     *
+     * <p>参考项目 {@code SiteRevealWorldRenderer.Intro} 交接的是
+     * {@code SiteTerrainRenderer.View}（含 scale/pan/widthScale）+
+     * {@code mapX/mapY/mapSize}，注释写明开场第一帧必须与精读画面<b>逐像素一致</b>。</p>
+     *
+     * <p>我们把 draw() 里实际用的那套量原样带出去：
+     * {@code lastScale / lastOriginX / lastOriginY} 就是上一帧真正提交顶点时用的值，
+     * 拿它们做正交投影 ⇒ 动画第一帧与沙盘最后一帧重合。</p>
+     *
+     * @param reliefSpan 竖向比例分母（世界方块；由调用方从 PreviewDisplay 取）
+     * @return 正交相机快照；还没画过（lastScale<=0）返回 null
+     */
+    public com.geogenesis.client.reveal.RevealDataHolder.OrthoView exportOrthoView(
+            float reliefSpan, int viewW, int viewH) {
+        if (lastScale <= 0f) return null;
+        return new com.geogenesis.client.reveal.RevealDataHolder.OrthoView(
+                lastScale, lastOriginX, lastOriginY, yaw, pitch, reliefSpan, viewW, viewH);
+    }
+
     // ----- 参数构造 -----
 
     /** 构造本渲染器的参数对象。 */

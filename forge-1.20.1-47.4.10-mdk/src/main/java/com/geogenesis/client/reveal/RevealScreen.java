@@ -151,17 +151,26 @@ public class RevealScreen extends Screen {
     }
 
     /**
-     * <b>推进一帧</b>（★ v42：从 {@code tick()} 抽出来，由 {@code render()} 也调一次）。
+     * <b>推进一帧</b>（★ v42 抽出；★ v45 改为"加载期间也推进"）。
      *
      * <h2>★ 为什么不能只靠 {@code tick()}</h2>
      * <p>日志铁证：{@code RevealScreen 首次渲染} 在 06:09:57 就出现了，
      * 但下一个日志是 84 秒后的 {@code 撞到 HARD_CAP} —— 中间<b>零条 tick 日志</b>。
-     * ⇒ 原版 {@code Minecraft} 只在<b>已有 world</b> 时调 {@code screen.tick()}；
-     * 而我们在"世界还没加载完"的整个阶段里 tick 一次都没跑
-     * ⇒ {@code mc.level} 的判断、{@code beginReveal} 全都没机会执行 ⇒ 一直黑屏。</p>
+     * ⇒ 原版 {@code Minecraft} 只在<b>已有 world</b> 时调 {@code screen.tick()}。
+     * 所以由 {@code render()} 也调一次。</p>
      *
-     * <p>⇒ 把推进逻辑抽成 {@link #advance()}，{@code render()} 里也调一次
-     * （render 每帧都跑，与 world 无关）。这样世界就绪那一刻马上就能感知到。</p>
+     * <h2>★ v45：{@code level == null} 时也要推进并画沙盘</h2>
+     * <p>用户实测「从点击完成到进入加载世界画面这段时间全程黑屏无动画」，
+     * 并指出：「压缩时间本身就不是解决问题的办法，设计加载动画也不是这么处理加载问题的。」
+     * —— 加载动画就该<b>在加载期间给出有意义的内容</b>。</p>
+     *
+     * <p>参考项目 {@code SiteRevealScreen.renderBackground} 第 746 行：
+     * {@code advance(frameNow);} <b>无条件调用</b>，里面
+     * {@code world.tick(mc, now)} 同样无条件 —— 它整段动画都用缓存沙盘数据画，
+     * <b>完全不依赖真世界</b>。真世界只负责"登录后把相机交过去 + 让柱子露出真地形"。</p>
+     *
+     * <p>⇒ 这里改成：<b>镜头推进永远无条件执行</b>；
+     * 只有"区块让位 / 判断能否落机"才需要 {@code level}。</p>
      */
     private void advance() {
         long now = System.currentTimeMillis();
@@ -182,8 +191,29 @@ public class RevealScreen extends Screen {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
-        // 世界还没起来：等
+
+        // ★ v45【关键】动画不依赖 level：数据来自交接的沙盘缓存。
+        //   没有 world 也要开播 —— 这一段正是"加载中那 25 秒"。
+        if (!begun) {
+            beginReveal();
+            if (!begun) {
+                if (!noDataLogged) {
+                    noDataLogged = true;
+                    com.mojang.logging.LogUtils.getLogger().info(
+                            "[RevealDiag] beginReveal 失败（data={}）", data() != null);
+                }
+                return;
+            }
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] beginReveal 成功，动画开始（level={}）", mc.level != null);
+        }
+
+        // 镜头推进：无条件（与参考项目 world.tick 一致）
+        world.tick(now);
+
+        // 以下是"要真世界才能做"的部分
         if (mc.level == null) {
+            // 世界还没好：只播开场 morph，别让位、别落机
             if (now - openedAt > NO_WORLD_MS) {
                 bailOut("一直没有世界可渲染");
             }
@@ -192,26 +222,11 @@ public class RevealScreen extends Screen {
         if (loginAt == 0L) {
             loginAt = now;
             com.mojang.logging.LogUtils.getLogger().info(
-                    "[RevealDiag] 世界已就绪，loginAt 记录");
+                    "[RevealDiag] 世界已就绪（等了 {}ms），交给真世界", now - openedAt);
+            // ★ 世界就绪才设无敌（此时才有 player）
+            applyInvulnerability(mc);
         }
 
-        if (!begun) {
-            beginReveal();
-            if (!begun) {
-                if (!noDataLogged) {
-                    noDataLogged = true;
-                    com.mojang.logging.LogUtils.getLogger().info(
-                            "[RevealDiag] beginReveal 失败（player={} level={} data={}）",
-                            mc.player != null, mc.level != null,
-                            data() != null);
-                }
-                return;
-            }
-            com.mojang.logging.LogUtils.getLogger().info(
-                    "[RevealDiag] beginReveal 成功，动画开始");
-        }
-
-        world.tick(now);
         advanceSchedule(now);
 
         if (!descending && canStartDescent(now)) {
@@ -232,26 +247,93 @@ public class RevealScreen extends Screen {
     /** beginReveal 失败的日志只打一次（避免每帧刷屏）。 */
     private boolean noDataLogged;
 
+    /**
+     * <b>开始播动画</b>（★ v45：不再要求 {@code player} 存在）。
+     *
+     * <h2>★ 为什么可以在"没有 world / 没有 player"时启动</h2>
+     * <p>参考项目 {@code SiteRevealWorldRenderer} 整段开场都用<b>交接来的沙盘数据</b>
+     * 画（{@code intro.field()}），不碰真世界 —— 所以它在加载期间就能播。</p>
+     *
+     * <p>落点坐标同样来自交接（{@code SpawnSelection.peek()}），
+     * 不需要 {@code mc.player}。玩家位置的读取放到"确实有 world"之后。</p>
+     */
     private void beginReveal() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mc.player == null) return;
+        TerrainFieldData d = data();
+        if (d == null) return;    // 没有沙盘数据 ⇒ 播不了（这才是真正的必要前提）
+
+        // 落点：优先用玩家选的；没有就用数据窗口中心
         SpawnSelection.Pending p = SpawnSelection.peek();
-        int sx = p != null ? p.x() : mc.player.blockPosition().getX();
-        int sz = p != null ? p.z() : mc.player.blockPosition().getZ();
-        int sy = (int) mc.player.getY();
+        int sx, sz;
+        if (p != null) {
+            sx = p.x();
+            sz = p.z();
+        } else if (mc.player != null) {
+            sx = mc.player.blockPosition().getX();
+            sz = mc.player.blockPosition().getZ();
+        } else {
+            sx = d.originX + d.blocksWide / 2;
+            sz = d.originZ + d.blocksHigh / 2;
+        }
+        // 落点 y：数据里对应细格的真实高度（没有就取海平面）
+        int sy = surfaceAt(d, sx, sz);
 
-        // ★ v38：动画期间玩家无敌（参考项目第 659-678 行）。
-        //   不这么做的话：一进世界就可能被怪打/摔伤 ⇒ 红屏 + 镜头抖 ⇒ 动画被破坏。
-        applyInvulnerability(mc);
+        // --- 正交相机：继承沙盘最后一帧（v45）---
+        com.geogenesis.client.reveal.RevealDataHolder.OrthoView ov =
+                com.geogenesis.client.reveal.RevealDataHolder.orthoView();
+        float oScale, oOriginX, oOriginY, oYaw, oPitch, oSpan;
+        if (ov != null) {
+            oScale = ov.scale();
+            oOriginX = ov.originX();
+            oOriginY = ov.originY();
+            oYaw = ov.yaw();
+            oPitch = ov.pitch();
+            oSpan = ov.reliefSpan();
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] 继承沙盘正交相机：scale={} origin=({},{}) yaw={} pitch={} span={}",
+                    String.format(java.util.Locale.ROOT, "%.1f", oScale),
+                    String.format(java.util.Locale.ROOT, "%.1f", oOriginX),
+                    String.format(java.util.Locale.ROOT, "%.1f", oOriginY),
+                    String.format(java.util.Locale.ROOT, "%.3f", oYaw),
+                    String.format(java.util.Locale.ROOT, "%.3f", oPitch),
+                    String.format(java.util.Locale.ROOT, "%.1f", oSpan));
+        } else {
+            // 没有交接（例如直接进世界）⇒ 退回一个"像沙盘"的默认值
+            oScale = this.height * 0.46f;
+            oOriginX = this.width / 2f;
+            oOriginY = this.height / 2f;
+            oYaw = (float) Math.toRadians(37);
+            oPitch = (float) Math.toRadians(54);
+            oSpan = 88f;
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] 没有沙盘相机交接，用默认正交参数");
+        }
 
-        // 从沙盘继承正交参数（保证开场第一帧与沙盘一致）。
-        //   步骤 A 简化：用固定值，效果是"从俯视正交开始"，不追求逐像素一致。
-        world.begin(sx, sy, sz,
-                this.width / 2.0, this.height / 2.0, this.height * 0.46,
-                (float) Math.toRadians(37), (float) Math.toRadians(54),
-                mc.options.fov().get());
+        float playerFov = mc.options.fov().get();
+        world.begin(sx, sy, sz, oOriginX, oOriginY, oScale, oYaw, oPitch, playerFov);
+        world.setReliefSpan(oSpan);
+        // ★ v45：告诉渲染器"世界坐标怎么映到模型空间"（正交侧归一化用）
+        //   半宽 = 数据窗口的一半；中心 = 数据窗口中心；基准面 = seaLevel - 4
+        world.setWorldWindow(d.blocksWide / 2.0,
+                d.originX + d.blocksWide / 2.0,
+                d.originZ + d.blocksHigh / 2.0,
+                59.0);
         begun = true;
         buildSchedule(sx, sz);
+    }
+
+    /** 世界坐标处的地表 y（从交接数据里取；越界/无数据 → 海平面）。 */
+    private static int surfaceAt(TerrainFieldData d, int wx, int wz) {
+        double bpc = d.blocksPerCell();
+        int gx = (int) Math.round((wx - d.originX) / bpc);
+        int gz = (int) Math.round((wz - d.originZ) / bpc);
+        if (gx < 0) gx = 0;
+        if (gz < 0) gz = 0;
+        if (gx >= d.gridW) gx = d.gridW - 1;
+        if (gz >= d.gridH) gz = d.gridH - 1;
+        int i = d.index(gx, gz);
+        if (i < 0 || Double.isNaN(d.height[i])) return 63;
+        return (int) Math.round(d.height[i]);
     }
 
     /** 动画期间替玩家扛伤害（参考项目 applyInvulnerability 同思路）。 */
@@ -389,8 +471,10 @@ public class RevealScreen extends Screen {
             }
             TerrainFieldData d = data();
             RevealSchedule sch = schedule;
+            // ★ v45：span 用继承来的沙盘值（不再写死 88f）——
+            //   参考项目注释：「两侧用同一个数才对得上」。
             world.render(g, d, GeoPalette.PreviewLayer.ELEVATION,
-                    System.currentTimeMillis(), sch, 88f,
+                    System.currentTimeMillis(), sch, world.reliefSpan(),
                     0, 0, this.width, this.height);
             drawStatus(g);
         } catch (Throwable t) {

@@ -77,6 +77,25 @@ public final class RevealWorldRenderer {
     /** 当前帧的窗口尺寸。 */
     private int viewW = 1, viewH = 1;
 
+    /**
+     * 竖向比例分母（世界方块）—— <b>继承沙盘最后一帧的值</b>（★ v45）。
+     *
+     * <p>参考项目 {@code collect()} 用的是 {@code field.reliefSpan()}，
+     * 而且注释强调「两侧用同一个数才对得上」：正交那一帧渲染器用的 span
+     * 必须和透视侧一致，否则开场柱子高度会突然跳一下。</p>
+     */
+    private float reliefSpan = 88f;
+
+    /** 设定竖向比例分母（由 {@link RevealScreen} 从交接里取来）。 */
+    public void setReliefSpan(float span) {
+        if (span > 0f) this.reliefSpan = span;
+    }
+
+    /** 当前竖向比例分母。 */
+    public float reliefSpan() {
+        return reliefSpan;
+    }
+
     /** 投影输出缓冲（避免每帧分配）。 */
     private final double[] p0 = new double[3];
     private final double[] p1 = new double[3];
@@ -121,6 +140,15 @@ public final class RevealWorldRenderer {
 
         // 开场第一帧：相机参数必须让透视侧"接近"正交画面
         camera.set(siteX, siteY + 5, siteZ, siteYaw, startPitch, aerialFov);
+
+        // ★★★ v45【修"orthoRows 从未赋值 ⇒ 正交侧恒投影到原点"】★★★
+        //   {@code projectMixed} 用 orthoRows 做正交投影，而此前它<b>声明后没赋值</b>
+        //   （全 0）⇒ 开场（orthoWeight=1）时所有柱子都投影到屏幕左上角一点
+        //   ⇒ 画面等于全黑。这里是"开场不显示"的直接原因之一。
+        //   照参考项目 SiteTerrainRenderer.orthoRows()（358-375 行）同式算出。
+        float[] rows = com.geogenesis.client.preview.sandbox.SandboxGeometry
+                .rotationRows(sandboxYaw, sandboxPitch);
+        System.arraycopy(rows, 0, orthoRows, 0, 9);
 
         startedAt = 0L;
         lastTickAt = 0L;
@@ -243,10 +271,16 @@ public final class RevealWorldRenderer {
             return;
         }
 
+        // ★ v45：字段与参数保持同源（columns 缓存 key 只看 viewportId，
+        //   span 变了要重建，否则柱高用的是旧比例）
+        if (span > 0f && Math.abs(span - this.reliefSpan) > 1e-3f) {
+            this.reliefSpan = span;
+        }
+
         // 重建柱子（换图才重建）
         long key = data.viewportId * 31L + layer.ordinal();
         if (columns == null || columnsKey != key) {
-            columns = SandboxGeometry.buildColumns(data, layer, 2, span,
+            columns = SandboxGeometry.buildColumns(data, layer, 2, this.reliefSpan,
                     Integer.MIN_VALUE, Integer.MAX_VALUE, 63.0, nowMs, 0L,
                     (gx, gz, snap) -> solidColor(layer, snap, gx, gz));
             columnsKey = key;
@@ -362,12 +396,34 @@ public final class RevealWorldRenderer {
         }
     }
 
-    /** 投影一个世界点（正交 ↔ 透视混合）。 */
+    /**
+     * 投影一个世界点（正交 ↔ 透视混合）。
+     *
+     * <p>★ v45：传<b>世界窗口</b>参数给 {@code projectMixed}，让它先把世界坐标
+     * 归一化到模型空间再做正交投影 —— 否则正交侧会把几百格的坐标
+     * 直接乘 {@code orthoScale}（那是按 [-1,1] 标定的）⇒ 跑出屏幕外几万像素。</p>
+     */
     private boolean project(double wx, double wy, double wz,
                             double centerX, double centerY, double halfH, double[] out) {
         return camera.projectMixed(wx, wy, wz, orthoWeight, orthoRows,
                 orthoOriginX, orthoOriginY, orthoScale,
+                worldHalf, worldCenterX, worldCenterZ, worldBaseY,
                 centerX, centerY, halfH, out);
+    }
+
+    /** 世界窗口半宽（模型 ±1 对应的方块数）。 */
+    private double worldHalf = 100.0;
+    /** 模型原点对应的世界 X/Z（沙盘窗口中心）。 */
+    private double worldCenterX, worldCenterZ;
+    /** 模型 z=0 对应的世界 Y（沙盘基准面 = seaLevel - 4）。 */
+    private double worldBaseY = 59.0;
+
+    /** 设定世界窗口（由 {@code RevealScreen} 从沙盘交接里取来）。 */
+    public void setWorldWindow(double halfBlocks, double centerX, double centerZ, double baseY) {
+        if (halfBlocks > 1e-6) this.worldHalf = halfBlocks;
+        this.worldCenterX = centerX;
+        this.worldCenterZ = centerZ;
+        this.worldBaseY = baseY;
     }
 
     private void vtx(VertexConsumer c, double[] p, int argb) {

@@ -1182,6 +1182,20 @@ public class PreviewDisplay extends AbstractWidget {
         return sandboxData;
     }
 
+    /**
+     * <b>导出沙盘最后一帧的正交相机</b>（★ v45，供落成动画继承开场画面）。
+     *
+     * <p>把 {@code draw()} 里真正用过的量原样带走：
+     * {@code lastScale / lastOriginX / lastOriginY}（含内容质心补偿）、
+     * {@code yaw / pitch}、以及 {@code reliefSpan}（竖向比例）。
+     * 落成动画拿它们做正交投影 ⇒ 第一帧与沙盘最后一帧重合，不跳。</p>
+     *
+     * @return 还没画过沙盘（lastScale<=0）→ null
+     */
+    public com.geogenesis.client.reveal.RevealDataHolder.OrthoView exportSandboxOrthoView() {
+        return sandboxRasterizer.exportOrthoView(reliefSpan, width, height);
+    }
+
     // =================================================================
     // ★ v28：沙盘数据的<b>后台重建</b>（让计算离开渲染线程）
     // =================================================================

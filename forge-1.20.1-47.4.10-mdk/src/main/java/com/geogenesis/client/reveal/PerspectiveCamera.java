@@ -144,21 +144,54 @@ public final class PerspectiveCamera {
                                 double orthoW, float[] orthoRows,
                                 double orthoOriginX, double orthoOriginY, double orthoScale,
                                 double centerX, double centerY, double halfH, double[] out) {
-        // ---- 透视侧 ----
-        double prjX, prjY;
-        double depth;
+        // 默认不做世界→模型归一化（调用方自己给模型坐标）
+        return projectMixed(px, py, pz, orthoW, orthoRows,
+                orthoOriginX, orthoOriginY, orthoScale,
+                0.0, 0.0, 0.0, 0.0,
+                centerX, centerY, halfH, out);
+    }
+
+    /**
+     * <b>带「世界坐标 → 模型空间」归一化的混合投影</b>（★ v45）。
+     *
+     * <h2>为什么必须归一化</h2>
+     * <p>正交侧的 {@code orthoScale} 是按沙盘的<b>模型坐标 [-1,1]</b> 标定的
+     * （{@code SandboxGeometry.scaleOf(areaSize, zoom)} 的语义）。
+     * 而落成动画手里是<b>世界坐标</b>（几百格）⇒ 直接代进去会跑到屏幕外几万像素，
+     * 表现为"开场什么都没有"。</p>
+     *
+     * <p>⇒ 先 {@code model = (world - worldCenter) / worldHalf} 落到 [-1,1]，
+     * 再用 {@code orthoRows} 旋转、{@code orthoScale} 缩放。
+     * 这与沙盘 {@code draw()} 的 {@code modelEdge} 语义一致。</p>
+     *
+     * @param worldHalf      模型 ±1 对应的方块数（= 沙盘窗口半宽）
+     * @param worldCenterX   模型原点对应的世界 X（沙盘窗口中心）
+     * @param worldCenterZ   模型原点对应的世界 Z
+     * @param worldBaseY     模型 z=0 对应的世界 Y（沙盘基准面 = seaLevel-4）
+     */
+    public boolean projectMixed(double px, double py, double pz,
+                                double orthoW, float[] orthoRows,
+                                double orthoOriginX, double orthoOriginY, double orthoScale,
+                                double worldHalf, double worldCenterX, double worldCenterZ,
+                                double worldBaseY,
+                                double centerX, double centerY, double halfH, double[] out) {
+        // ---- 透视侧（世界坐标）----
         boolean okP = project(px, py, pz, centerX, centerY, halfH, out);
-        prjX = out[0];
-        prjY = out[1];
-        depth = out[2];
+        double prjX = out[0];
+        double prjY = out[1];
+        double depth = out[2];
         if (!okP) {
-            // 透视侧不可见（相机后方）：只能用正交，若连正交也要混合就退化为纯正交
+            // 透视侧不可见（相机后方）
             prjX = 0; prjY = 0;
         }
-        // ---- 正交侧（与 SandboxGeometry.vertex 同式）----
-        double ox = orthoOriginX + orthoScale * (orthoRows[0] * px + orthoRows[1] * py + orthoRows[2] * pz);
-        double oy = orthoOriginY + orthoScale * (orthoRows[3] * px + orthoRows[4] * py + orthoRows[5] * pz);
-        double od = orthoRows[6] * px + orthoRows[7] * py + orthoRows[8] * pz;
+        // ---- 正交侧：世界 → 模型 [-1,1] → 旋转/缩放 ----
+        double invH = worldHalf > 1e-6 ? 1.0 / worldHalf : 1.0;
+        double mx = (px - worldCenterX) * invH;
+        double my = (pz - worldCenterZ) * invH;      // 模型 y = 世界 Z
+        double mz = (py - worldBaseY) * invH;        // 模型 z = 世界 Y 相对基准面
+        double ox = orthoOriginX + orthoScale * (orthoRows[0] * mx + orthoRows[1] * my + orthoRows[2] * mz);
+        double oy = orthoOriginY + orthoScale * (orthoRows[3] * mx + orthoRows[4] * my + orthoRows[5] * mz);
+        double od = orthoRows[6] * mx + orthoRows[7] * my + orthoRows[8] * mz;
 
         if (!okP && orthoW >= 0.999) {
             out[0] = ox; out[1] = oy; out[2] = od;

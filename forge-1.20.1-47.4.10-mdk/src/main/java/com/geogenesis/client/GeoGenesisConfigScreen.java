@@ -791,8 +791,15 @@ public class GeoGenesisConfigScreen extends Screen {
         //   在这里登记；进世界时 bindWorld 三项全等就<b>直接接管</b>，不重算。
         offerTerrainForReuse();
         // ★ v37：把当前地形数据交给落成动画（进世界时接着这张图往下推）。
+        // ★ v45：连<b>沙盘最后一帧的正交相机</b>一起交 —— 参考项目
+        //   SiteRevealWorldRenderer.Intro 交接整套 View（yaw/pitch/scale/pan），
+        //   注释写明开场第一帧必须与精读画面逐像素一致（「不是两张图在对 dissolve」）。
+        //   此前我们传的是硬编码 width/2、height*0.46 ⇒ 一开场就跳。
         if (preview != null) {
-            com.geogenesis.client.reveal.RevealDataHolder.offer(preview.sandboxDataForReveal());
+            com.geogenesis.client.reveal.RevealDataHolder.OrthoView ov =
+                    preview.exportSandboxOrthoView();
+            com.geogenesis.client.reveal.RevealDataHolder.offer(
+                    preview.sandboxDataForReveal(), ov);
         }
 
         if (parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen cws) {
