@@ -54,6 +54,27 @@ public final class SandboxRasterizer {
     private float lastScale, lastOriginX, lastOriginY;
     private int pickedColumn = -1;
 
+    /**
+     * <b>出生点标记</b>所在的柱子（-1 = 未标记）。
+     *
+     * <p>★ v34：对照表 #44 的 {@code pin} 落点图钉 —— 参考项目用它标出玩家选定的落点
+     * （金色十字，立在所选格子顶面上）。用户问：「这个不能作为确定玩家想的自定义出生点吗？」
+     * ⇒ 可以，而且这正是它的原始用途。这里存"世界坐标"而不是"柱子下标"，
+     * 因为重新采样后柱子下标会变。</p>
+     */
+    private int markWorldX = Integer.MIN_VALUE;
+    private int markWorldZ = Integer.MIN_VALUE;
+
+    /** 设置/清除出生点标记（世界坐标；传 {@code Integer.MIN_VALUE} 清除）。 */
+    public void setSpawnMark(int worldX, int worldZ) {
+        markWorldX = worldX;
+        markWorldZ = worldZ;
+    }
+
+    public int spawnMarkX() { return markWorldX; }
+    public int spawnMarkZ() { return markWorldZ; }
+    public boolean hasSpawnMark() { return markWorldX != Integer.MIN_VALUE; }
+
     /** 点选视线推进步长（yardsite {@code MARCH_STEP=0.007}）。 */
     private static final float MARCH_STEP = 0.007f;
 
@@ -260,20 +281,23 @@ public final class SandboxRasterizer {
 
         VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
 
-        // ★★★ v33【补底板：椭圆衬底，而非参考项目的方板】★★★
+        // ★★★ v34【修"未加载时那个大圆盘不好看"】★★★
         //
-        //   对照表 audit/沙盘渲染对照表-20261110.md 第 35 项：
-        //   参考项目大沙盘 showsFloor()=true 画 `[-1,1]²` 方形底板，
-        //   精读 showsFloor()=false（「方板四角会戳在圆外面，所以不画」）。
+        //   用户原话：「沙盘在开始未加载时显示一个圈不好看吧？建议其他四周与底板同色。」
         //
-        //   我们是"椭圆盘面"（v30 的 edgeFadeAt），所以：
-        //     · 画方形底板 ⇒ 四角戳出椭圆外（正是参考项目不画它的原因）
-        //     · 完全不画   ⇒ 盘面在深色背景上"边缘发飘"，缺一层衬底
-        //   ⇒ 正解：画一个<b>与渐隐形状一致的椭圆底板</b>（三角扇近似）。
-        //     这既补上了对照表 #35 缺失的"衬底"功能，
-        //     又与椭圆渐隐完美契合（不会有多余的方角）。
+        //   v33 我画的是<b>椭圆底板</b>（为了贴合 edgeFade 形状），
+        //   但数据还没到时柱子一根都没有 ⇒ 屏幕上只剩一个<b>光秃秃的深色椭圆</b>，
+        //   四周是更暗的背景 ⇒ "一个圈"很扎眼。
+        //
+        //   ⇒ 底板应该是<b>整屏铺底</b>（无形状、无边界），
+        //     椭圆感完全由<b>柱子的 edgeFade</b> 呈现（那才是参考项目的做法：
+        //     它的 floor 画的是 `[-1,1]²` 方形板，但盘面大得溢出视口，
+        //     所以视觉上"底板就是整个画面"）。
+        //   ⇒ 现在：整屏填充同色底板，加载中/已加载都一样，不会有"圈"。
         if (globalAlpha > 0.01f) {
-            floorEllipse(vc, ox, oy, scale, globalAlpha);
+            int plate = (((int) (0xF2 * globalAlpha)) << 24) | 0x171A22;
+            g.fill((int) areaX, (int) areaY,
+                    (int) (areaX + areaW), (int) (areaY + areaH), plate);
         }
 
         boolean seeEast = r[6] > 0f, seeWest = r[6] < 0f;
@@ -351,6 +375,12 @@ public final class SandboxRasterizer {
             }
         }
 
+        // ★ v34：出生点标记（对照表 #44 的 pin，参考项目 925-943 行）
+        //   金色十字立在所选格子的顶面上。用户：「这个不能作为确定玩家想的自定义出生点吗？」
+        //   ⇒ 可以，这就是它的用途。
+        if (hasSpawnMark()) {
+            drawSpawnPin(vc, ox, oy, scale, cols, globalAlpha);
+        }
         // 遮挡靠提交顺序 ⇒ 关剔除；关深度写入（否则后画的字/按钮被拒）
         RenderSystem.disableCull();
         RenderSystem.depthMask(false);
@@ -399,43 +429,64 @@ public final class SandboxRasterizer {
         return (alpha << 24) | (r << 16) | (g << 8) | b;
     }
 
+    /* ★ v34：floorEllipse 已删除 —— 底板改为整屏铺底（见 render 里的注释）。
+       椭圆观感完全由柱子的 edgeFade 呈现，不需要再画一个椭圆盘。 */
+
     /**
-     * <b>椭圆底板</b>（★ v33）—— 与 {@code edgeFadeAt} 的渐隐形状一致。
+     * <b>出生点图钉</b>（★ v34，照参考项目 {@code pin()} 925-943 行）。
      *
-     * <h2>为什么是椭圆而不是方块</h2>
-     * <p>参考项目大沙盘画方形底板（{@code showsFloor()=true}），
-     * 但它的精读档<b>不画</b>，理由（{@code SiteField} 第 79 行）：
-     * 「方板子的四个角会戳在圆外面，所以不画」。</p>
-     *
-     * <p>我们只有一档（椭圆盘面），所以两种做法都不对：</p>
-     * <ul>
-     *   <li>画方板 ⇒ 四角戳出椭圆外（参考项目明确说要避免）</li>
-     *   <li>不画   ⇒ 盘面在深色背景上边缘发飘，缺衬底</li>
-     * </ul>
-     * <p>⇒ 画一个<b>椭圆</b>：形状与渐隐一致，既补了衬底又不越界。</p>
-     *
-     * <h2>实现</h2>
-     * <p>在模型空间取 {@code mz = 0} 平面上半径 1 的圆，按 {@code SEG} 段三角扇填充。
-     * 圆在斜投影下自然变成椭圆 ⇒ 与柱子盘面同形。</p>
+     * <p>金色十字（两根互相垂直的竖片）立在所选格子的顶面上，
+     * 高度 {@code 0.16}（模型单位）。参考项目用它标"落点"，
+     * 我们用同一个东西标<b>自定义出生点</b>。</p>
      */
-    private void floorEllipse(VertexConsumer c, float ox, float oy, float s, float globalAlpha) {
-        final int SEG = 64;
-        // 底板颜色取参考项目的 PLATE 0xF2171A22（深蓝灰），alpha 按过渡淡出
-        int rgba = (((int) (0xF2 * globalAlpha)) << 24) | 0x171A22;
-        float z = -0.02f;   // 略低于地面，柱子会盖住它
-        // 三角扇：中心 + 圆周相邻两点
-        for (int i = 0; i < SEG; i++) {
-            double a0 = 2 * Math.PI * i / SEG;
-            double a1 = 2 * Math.PI * (i + 1) / SEG;
-            float x0 = (float) Math.cos(a0), y0 = (float) Math.sin(a0);
-            float x1 = (float) Math.cos(a1), y1 = (float) Math.sin(a1);
-            vertex(c, ox, oy, s, 0f, 0f, z, rgba);
-            vertex(c, ox, oy, s, x0, y0, z, rgba);
-            vertex(c, ox, oy, s, x1, y1, z, rgba);
-            // GUI 用四边形批次，第三个顶点重复一次补成退化四边形
-            vertex(c, ox, oy, s, x1, y1, z, rgba);
-        }
+    private void drawSpawnPin(VertexConsumer c, float ox, float oy, float s,
+                              SandboxGeometry.Columns cols, float globalAlpha) {
+        // 世界坐标 → 柱下标。用上一帧缓存的世界窗口换算（lastCols 与本帧同源）。
+        if (lastWindowOriginX == Integer.MIN_VALUE) return;
+        double cellBlocks = lastWindowBlocks / (double) Math.max(1, lastWindowGrid);
+        int per = Math.max(1, SandboxLod.perColumn());
+        int fineX = (int) Math.round((markWorldX - lastWindowOriginX) / cellBlocks);
+        int fineZ = (int) Math.round((markWorldZ - lastWindowOriginZ) / cellBlocks);
+        if (fineX < 0 || fineZ < 0) return;
+        int ci = fineX / per, cj = fineZ / per;
+        if (ci >= cols.colCount || cj >= cols.colRows) return;
+        int col = ci * cols.colRows + cj;
+        if (col < 0 || col >= cols.items.length) return;
+        SandboxGeometry.Column c0 = cols.items[col];
+        if (c0.top < 0f) return;
+
+        float mx = SandboxGeometry.modelOf(cols.colCount, ci);
+        float my = SandboxGeometry.modelOf(cols.colRows, cj);
+        float top = c0.top + 0.16f;
+        float w = 0.012f;
+        // GOLD 0xFFFFD24A（参考项目第 74 行）
+        int gold = (((int) (0xFF * globalAlpha)) << 24) | 0xFFD24A;
+        // 横片
+        vertex(c, ox, oy, s, mx - w, my, 0.0f, gold);
+        vertex(c, ox, oy, s, mx + w, my, 0.0f, gold);
+        vertex(c, ox, oy, s, mx + w, my, top, gold);
+        vertex(c, ox, oy, s, mx - w, my, top, gold);
+        // 竖片
+        vertex(c, ox, oy, s, mx, my - w, 0.0f, gold);
+        vertex(c, ox, oy, s, mx, my + w, 0.0f, gold);
+        vertex(c, ox, oy, s, mx, my + w, top, gold);
+        vertex(c, ox, oy, s, mx, my - w, top, gold);
     }
+
+    /** 世界窗口（由 {@code PreviewDisplay} 每帧通过 {@link #setWorldWindow} 告知）。 */
+    private int lastWindowOriginX = Integer.MIN_VALUE;
+    private int lastWindowOriginZ = Integer.MIN_VALUE;
+    private int lastWindowBlocks = 1;
+    private int lastWindowGrid = 1;
+
+    /** 告知本渲染器当前数据的世界窗口（出生点标记需要它把世界坐标换成柱下标）。 */
+    public void setWorldWindow(int originX, int originZ, int blocksWide, int grid) {
+        lastWindowOriginX = originX;
+        lastWindowOriginZ = originZ;
+        lastWindowBlocks = Math.max(1, blocksWide);
+        lastWindowGrid = Math.max(1, grid);
+    }
+
 
     // ----- hover -----
 

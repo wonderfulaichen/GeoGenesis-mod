@@ -1207,29 +1207,9 @@ public class GeoGenesisConfigScreen extends Screen {
                     navX + 22, ty + 8, on ? NAV_TXT : NAV_TXT_SUB, false);
         }
 
-        // 底部迷你条：进度 + 状态（★ v7：位置由 navMiniTopY() 统一给出，
-        //   页签与命中测试读同一份，杜绝"页签画到这里、状态行也从这里开始"的重叠）
-        int mbY = navMiniTopY();
-        g.fill(navX + 12, mbY - 10, navX + navW - 12, mbY - 9, 0x1AFFFFFF);
-        if (preview != null) {
-            // 状态行：先裁剪再加百分比，避免文字压到右边缘的百分比上
-            String pct = (int) (preview.progressFraction() * 100) + "%";
-            int pctW = this.font.width(pct);
-            String st = preview.statusLine();
-            if (st != null && !st.isEmpty()) {
-                g.drawString(this.font, trim(st, this.font, navW - 28 - pctW - 6),
-                        navX + 14, mbY, NAV_TXT_SUB, false);
-            }
-            // 百分比与状态行<b>同行右对齐</b>（此前画在 mbY+20，正好落到进度条下方外面）
-            g.drawString(this.font, pct, navX + navW - 14 - pctW, mbY, NAV_TXT_DIM, false);
-            // 细进度条
-            g.fill(navX + 14, mbY + 13, navX + navW - 14, mbY + 15, 0x30FFFFFF);
-            float frac = preview.progressFraction();
-            if (frac > 0f) {
-                g.fill(navX + 14, mbY + 13,
-                        navX + 14 + (int) ((navW - 28) * frac), mbY + 15, NAV_ACCENT);
-            }
-        }
+        // ★ v34：底部迷你条（状态 + 进度条）已移到<b>右下角无框文字区</b>
+        //   —— 用户：「建议把这个加载进度条移到右侧下方的无框文字位置，并且也是无框。」
+        //   导航栏这边只留页签，不再画状态行/进度条。
     }
 
     /**
@@ -1267,7 +1247,8 @@ public class GeoGenesisConfigScreen extends Screen {
         // {键位, 说明}
         String[][] rows = isSandboxActive()
                 ? new String[][]{{"左键拖动", "旋转视角"}, {"右键拖动", "平移"},
-                                 {"滚轮", "推近 / 拉远"}, {"R", "重置视角"}}
+                                 {"右键单击", "设出生点"}, {"滚轮", "推近 / 拉远"},
+                                 {"R", "重置视角"}}
                 : new String[][]{{"左键拖动", "移动地图"}, {"滚轮", "缩放比例"},
                                  {"右键", "复制坐标"}, {"L", "图例折叠"}};
 
@@ -1315,6 +1296,29 @@ public class GeoGenesisConfigScreen extends Screen {
             drawHintText(g, r[0], cardX + pad, ty + 1, 0xFFFFD9A8);
             drawHintText(g, r[1], cardX + pad + keyW + 10, ty + 1, 0xFFC8C8C8);
             ty += rowH;
+        }
+
+        // ★★★ v34【把加载进度移到右下角无框文字区】★★★
+        //   用户：「建议把这个加载进度条移到右侧下方的无框文字位置，并且也是无框。」
+        //   （原来画在左侧导航栏底部迷你条里，带一条分隔线 + 底色，是"框"）
+        //   ⇒ 现在排在操作提示<b>正下方</b>，同样只有文字 + 一条极细的进度线，
+        //     与上面的键位提示同一套无框语言。
+        if (preview != null) {
+            ty += this.font.lineHeight + 2;
+            String st = preview.statusLine();
+            int frac100 = (int) (preview.progressFraction() * 100);
+            String pct = frac100 + "%";
+            if (st != null && !st.isEmpty()) {
+                drawHintText(g, trim(st, this.font, cardW - this.font.width(pct) - 8),
+                        cardX + pad, ty, 0xFFA8B0BC);
+            }
+            drawHintText(g, pct, cardX + cardW - this.font.width(pct), ty, 0xFF8C94A0);
+            // 极细进度线（1px，无框，颜色同提示文字层级）
+            int lineY = ty + this.font.lineHeight + 2;
+            g.fill(cardX, lineY, cardX + cardW, lineY + 1, 0x30FFFFFF);
+            if (frac100 > 0) {
+                g.fill(cardX, lineY, cardX + (int) (cardW * frac100 / 100f), lineY + 1, 0xFF48DE56);
+            }
         }
     }
 

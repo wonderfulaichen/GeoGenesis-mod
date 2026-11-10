@@ -1025,6 +1025,9 @@ public class PreviewDisplay extends AbstractWidget {
         id = id * 131L + grid;
         id = id * 131L + cellCache.version();   // 缓存更新 ⇒ 重读
 
+        // ★ v34：告知光栅器当前世界窗口（出生点标记要用它把世界坐标换成柱下标）
+        sandboxRasterizer.setWorldWindow(originWx, originWz, blocksWide, grid);
+
         // ★★ v28【修"拖动跟不上手"：让计算离开渲染线程】★★
         //
         //   用户原话：「拖动跟不上手的问题明明不应该把实时渲染停了，
@@ -1325,6 +1328,13 @@ public class PreviewDisplay extends AbstractWidget {
                         // 左键点击（没怎么动）→ 与平面一样：离散图层选中色块
                         handleMapClick(mx, my);
                     }
+                    // ★ v34：右键点击（没拖动）= 在此设置出生点标记
+                    //   （对照表 #44 的 pin；用户：「这个不能作为确定玩家想的自定义出生点吗？」）
+                    //   左键已用于"选中色块"，右键在沙盘里本来是平移 —— 
+                    //   只有"没怎么动"才当点击，所以不冲突。
+                    if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                        setSpawnMarkAtMouse();
+                    }
                 }
             }
             return true;
@@ -1438,6 +1448,34 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 拖动累积的世界位移余量（&lt;1 方块的部分）。 */
     double sandboxCenterAccX, sandboxCenterAccZ;
+
+    /**
+     * 把当前 hover 位置设为<b>出生点标记</b>（★ v34）。
+     *
+     * <p>用沙盘的视线推进拾取结果（{@code sandboxRasterizer.pickedColX/Z}）
+     * 换算成世界坐标，交给光栅器绘制金色十字（参考项目 {@code pin()}）。</p>
+     *
+     * <p>再点同一位置 = 取消标记。</p>
+     */
+    private void setSpawnMarkAtMouse() {
+        int px = sandboxRasterizer.pickedColX();
+        int pz = sandboxRasterizer.pickedColZ();
+        if (px < 0 || pz < 0) return;
+        TerrainFieldData d = sandboxData;
+        if (d == null) return;
+        int windowBlocks = Math.max(64, texW * scaleBlockPos);
+        double step = SandboxLod.effectiveStepFor(windowBlocks, Math.min(getWidth(), getHeight()));
+        int wx = centerX - windowBlocks / 2 + (int) Math.round(px * step);
+        int wz = centerZ - windowBlocks / 2 + (int) Math.round(pz * step);
+        // 再点同一格 = 取消
+        if (sandboxRasterizer.hasSpawnMark()
+                && Math.abs(sandboxRasterizer.spawnMarkX() - wx) < Math.max(1, (int) step)
+                && Math.abs(sandboxRasterizer.spawnMarkZ() - wz) < Math.max(1, (int) step)) {
+            sandboxRasterizer.setSpawnMark(Integer.MIN_VALUE, Integer.MIN_VALUE);
+        } else {
+            sandboxRasterizer.setSpawnMark(wx, wz);
+        }
+    }
 
     /**
      * 进入沙盘时的初始世界中心（R 键回到这里）。
