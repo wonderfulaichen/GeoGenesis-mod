@@ -79,24 +79,34 @@ public final class SandboxPickRoundTripProbe {
             System.out.println("    OK（往返一致）");
         }
 
-        // ---- 2) 反解公式本身：用纯代数验证，不走视线推进 ----
-        System.out.println("\n[2] 反解公式代数验证（点在地面上 mz=0，解出 mx,my 必须等于原值）");
+        // ---- 2) 反解公式代数验证 ----
+        //
+        // ⚠ v41 修正：v40 这里写错过 —— 在 mz=0 假设下用
+        //   backX = r0*a + r3*b（漏了 r6*t 项）
+        //   而完整逆变换是 mx = r0·a + r3·b + r6·t。t 不为 0 时必然不等。
+        //   正确做法：从<b>投影点</b>反解时，先算出该点的 t（深度），再代入完整式。
+        System.out.println("\n[2] 反解公式代数验证（用完整的转置式，含 t 项）");
         int bad2 = 0;
         for (int ci = 4; ci < COLS - 4; ci += 11) {
             for (int cj = 4; cj < COLS - 4; cj += 11) {
                 float mx = SandboxGeometry.modelOf(COLS, ci);
                 float my = SandboxGeometry.modelOf(COLS, cj);
-                float[] p = SandboxGeometry.projectPoint(r, scale, ox, oy, mx, my, 0f);
-                // 屏幕 → 模型（假设 mz = 0）
+                float mz = 0.10f;                      // 取一个非零高度
+                float[] p = SandboxGeometry.projectPoint(r, scale, ox, oy, mx, my, mz);
                 float a = (p[0] - ox) / scale;
                 float b = (p[1] - oy) / scale;
-                float backX = r[0] * a + r[3] * b;
-                float backY = r[1] * a + r[4] * b;
-                if (Math.abs(backX - mx) > 1e-3 || Math.abs(backY - my) > 1e-3) {
+                // 完整逆变换：已知屏幕 (a,b) 与该点的深度（p[2]）
+                float t = p[2];
+                float backX = r[0] * a + r[3] * b + r[6] * t;
+                float backY = r[1] * a + r[4] * b + r[7] * t;
+                float backZ = r[2] * a + r[5] * b + r[8] * t;
+                if (Math.abs(backX - mx) > 1e-3
+                        || Math.abs(backY - my) > 1e-3
+                        || Math.abs(backZ - mz) > 1e-3) {
                     bad2++;
                     if (bad2 <= 4) {
-                        System.out.printf("    柱(%d,%d) 原(%.4f,%.4f) 反解(%.4f,%.4f) ✗%n",
-                                ci, cj, mx, my, backX, backY);
+                        System.out.printf("    柱(%d,%d) 原(%.4f,%.4f,%.4f) 反解(%.4f,%.4f,%.4f) ✗%n",
+                                ci, cj, mx, my, mz, backX, backY, backZ);
                     }
                 }
             }
@@ -106,7 +116,7 @@ public final class SandboxPickRoundTripProbe {
             System.out.println("    FAIL: 反解公式与投影不互逆");
             pass = false;
         } else {
-            System.out.println("    OK（mz=0 平面上反解精确）");
+            System.out.println("    OK（完整转置式精确互逆）");
         }
 
         System.out.println();

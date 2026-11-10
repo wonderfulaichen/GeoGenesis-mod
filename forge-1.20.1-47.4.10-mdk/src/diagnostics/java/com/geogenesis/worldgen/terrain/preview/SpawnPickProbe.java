@@ -119,6 +119,33 @@ public final class SpawnPickProbe {
             System.out.println("    OK（旧公式确实偏了将近半个视野 —— 这就是用户看到的「完全偏离」）");
         }
 
+        // ---- 5) v41：细格坐标 → 世界坐标（参考项目口径）----
+        //
+        //   参考项目 YardSiteScreen 第 1160 行直接用 terrain.pickCellX/Y，
+        //   再由 field 换算世界坐标 —— 不经过柱索引。
+        //   这里验证这条路：细格 i 的中心世界坐标应是
+        //     originX + (i + 0.5) * cellBlocks
+        System.out.println("\n[5] 细格 → 世界坐标（v41 参考项目口径）");
+        int grid = pillars * SandboxLod.HEIGHT_STRIDE;      // 细格数
+        double cellBlocks = WINDOW / (double) grid;
+        int originX = centerX - WINDOW / 2;
+        int bad5 = 0;
+        for (int i : new int[]{0, grid / 4, grid / 2, grid - 1}) {
+            double wx = originX + (i + 0.5) * cellBlocks;
+            // 反解
+            int back = (int) Math.round((wx - originX) / cellBlocks - 0.5);
+            boolean ok = Math.abs(back - i) <= 1;
+            System.out.printf("    细格 %-4d → 世界 %.1f → 细格 %-4d %s%n",
+                    i, wx, back, ok ? "OK" : "FAIL");
+            if (!ok) bad5++;
+        }
+        if (bad5 > 0) {
+            System.out.println("    FAIL: 细格 ↔ 世界 不互逆");
+            pass = false;
+        } else {
+            System.out.println("    OK（一次乘法，可逆）");
+        }
+
         System.out.println();
         System.out.println(pass ? "PASS" : "FAIL");
         System.exit(pass ? 0 : 1);

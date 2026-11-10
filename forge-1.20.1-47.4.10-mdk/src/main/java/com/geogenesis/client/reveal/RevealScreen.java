@@ -122,6 +122,9 @@ public class RevealScreen extends Screen {
         return System.currentTimeMillis() - openedAt < HARD_CAP_MS;
     }
 
+    /** 首次渲染是否已打过日志。 */
+    private boolean renderedOnce;
+
     private void bailOut(String why) {
         if (failed) return;
         failed = true;
@@ -139,6 +142,8 @@ public class RevealScreen extends Screen {
         try {
             long now = System.currentTimeMillis();
             if (now - openedAt >= HARD_CAP_MS) {
+                com.mojang.logging.LogUtils.getLogger().info(
+                        "[RevealDiag] 撞到 HARD_CAP，收场");
                 finish();
                 return;
             }
@@ -150,27 +155,52 @@ public class RevealScreen extends Screen {
                 }
                 return;
             }
-            if (loginAt == 0L) loginAt = now;
+            if (loginAt == 0L) {
+                loginAt = now;
+                com.mojang.logging.LogUtils.getLogger().info(
+                        "[RevealDiag] 世界已就绪，loginAt 记录");
+            }
 
             if (!begun) {
                 beginReveal();
-                if (!begun) return;    // 数据还没备好
+                if (!begun) {
+                    // ★ 只打一次，避免刷屏
+                    if (!noDataLogged) {
+                        noDataLogged = true;
+                        com.mojang.logging.LogUtils.getLogger().info(
+                                "[RevealDiag] beginReveal 失败（player={} level={} data={}）",
+                                mc.player != null, mc.level != null,
+                                data() != null);
+                    }
+                    return;
+                }
+                com.mojang.logging.LogUtils.getLogger().info(
+                        "[RevealDiag] beginReveal 成功，动画开始");
             }
 
             world.tick(now);
             advanceSchedule(now);
 
             if (!descending && canStartDescent(now)) {
+                com.mojang.logging.LogUtils.getLogger().info(
+                        "[RevealDiag] 开始落机（clock={}ms）", (int) world.clockMs());
                 startDescent(now);
             }
             if (descending) {
                 descent.tick(now);
-                if (descent.done()) finish();
+                if (descent.done()) {
+                    com.mojang.logging.LogUtils.getLogger().info(
+                            "[RevealDiag] 落机完成，收场");
+                    finish();
+                }
             }
         } catch (Throwable t) {
             bailOut(t.toString());
         }
     }
+
+    /** beginReveal 失败的日志只打一次（避免每帧刷屏）。 */
+    private boolean noDataLogged;
 
     private void beginReveal() {
         Minecraft mc = Minecraft.getInstance();
@@ -303,6 +333,12 @@ public class RevealScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        // ★ v41 诊断：首次渲染打一次（确认这个屏真的被激活了）
+        if (!renderedOnce) {
+            renderedOnce = true;
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] RevealScreen 首次渲染（{}×{}）", this.width, this.height);
+        }
         if (failed) { super.render(g, mouseX, mouseY, partialTick); return; }
         try {
             // ★ 落机阶段：由 DescentPath 接管相机（参考项目 setDrawCamera 同思路）

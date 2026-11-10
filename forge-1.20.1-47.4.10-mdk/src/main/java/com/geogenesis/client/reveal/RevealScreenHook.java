@@ -39,6 +39,8 @@ public final class RevealScreenHook {
 
     /** 本会话是否已经播过（一次建世界只播一次）。 */
     private static boolean played;
+    /** 正在 forceSetScreen（防事件递归）。 */
+    private static boolean forcing;
     /** 当前正在播的动画屏（拦截 ReceivingLevelScreen 时要用它判断）。 */
     private static RevealScreen active;
 
@@ -71,14 +73,24 @@ public final class RevealScreenHook {
                     RevealDataHolder.current() != null);
             if (!preparing) return;
             if (played) return;
+            if (forcing) return;          // ★ 防"forceSetScreen 再触发本事件"的递归
             if (!SpawnSelection.has()) return;
             if (RevealDataHolder.current() == null) return;
 
             played = true;
             RevealScreen rs = new RevealScreen(null);
-            com.mojang.logging.LogUtils.getLogger().info(
-                    "[RevealDiag] ★接管：换成 RevealScreen");
             event.setNewScreen(rs);
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "[RevealDiag] ★接管：换成 RevealScreen（并主动 forceSetScreen）");
+            // ★ 参考项目 CreateWorldScreenMixin 第 60 行的做法：主动换屏。
+            //   只 setNewScreen 实测<不能>让屏真正激活（RevealScreen 的
+            //   init/tick/render 一次都没跑）。
+            forcing = true;
+            try {
+                net.minecraft.client.Minecraft.getInstance().forceSetScreen(rs);
+            } finally {
+                forcing = false;
+            }
         } catch (Throwable t) {
             // 静默退回原版（用户裁定 (a)）
             com.mojang.logging.LogUtils.getLogger()

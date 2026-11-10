@@ -1494,38 +1494,34 @@ public class PreviewDisplay extends AbstractWidget {
      * <p>再点同一位置 = 取消标记。</p>
      */
     private void setSpawnMarkAtMouse() {
-        int px = sandboxRasterizer.pickedColX();
-        int pz = sandboxRasterizer.pickedColZ();
-        if (px < 0 || pz < 0) return;
+        // ★★★ v41【照参考项目：直接用细格坐标，不再从柱索引二次换算】★★★
+        //
+        //   参考项目 YardSiteScreen 第 1160 行：`selectAt(terrain.pickCellX, terrain.pickCellY);`
+        //   —— pick() 内部已经把屏幕点解成<b>细格</b>（先用 `(mx+1)*0.5*(fine-1)` 得连续细格，
+        //   再 round 到整数格），调用方直接用，<b>不再绕柱索引</b>。
+        //
+        //   我们此前用柱索引 + (col+0.5)*pillarBlocks 二次换算，
+        //   等于"反算一次再正算一次"，每层都可能错 ⇒ 用户两轮反馈"不准"。
+        int fx = sandboxRasterizer.pickedCellX();
+        int fz = sandboxRasterizer.pickedCellZ();
+        if (fx < 0 || fz < 0) return;
         TerrainFieldData d = sandboxData;
         if (d == null) return;
-        // ★★★ v39【修"右键选出生点，位置与鼠标完全偏离"】★★★
-        //
-        //   pickedColX/Z 是<b>柱子索引</b>（一格柱子 = HEIGHT_STRIDE 个细格），
-        //   而 effectiveStepFor 返回的是<b>每细格</b>方块数。
-        //   此前直接 `px * step` ⇒ 少乘了 HEIGHT_STRIDE（=2）
-        //   ⇒ 选点只落在实际位置的一半处（越靠近边缘偏得越多）。
-        //
-        //   正解：柱宽 = 每细格方块 × 每柱细格数，且柱中心要加半柱偏移
-        //   （柱 i 的中心在 (i + 0.5) 个柱宽处，不是 i 个）。
-        int windowBlocks = Math.max(64, texW * scaleBlockPos);
-        double stepPerFine = SandboxLod.effectiveStepFor(windowBlocks,
-                Math.min(getWidth(), getHeight()));
-        double pillarBlocks = stepPerFine * SandboxLod.HEIGHT_STRIDE;
-        int wx = centerX - windowBlocks / 2
-                + (int) Math.round((px + 0.5) * pillarBlocks);
-        int wz = centerZ - windowBlocks / 2
-                + (int) Math.round((pz + 0.5) * pillarBlocks);
 
-        // ★ v40 诊断：把换算过程打出来（用户反馈"还是不准"，需要实测数据定位）
+        // 细格 → 世界坐标：一次乘法（与 snap.worldX/worldZ 同式）
+        int windowBlocks = Math.max(64, texW * scaleBlockPos);
+        int grid = Math.max(1, d.gridW);
+        double cellBlocks = windowBlocks / (double) grid;
+        int wx = d.originX + (int) Math.round(fx * cellBlocks);
+        int wz = d.originZ + (int) Math.round(fz * cellBlocks);
+
         com.mojang.logging.LogUtils.getLogger().info(
-                "[SpawnPick] 柱=({},{}) 窗口={} 细格步长={} 柱宽={} 中心=({},{}) ⇒ 世界=({},{}) 数据格数={}",
-                px, pz, windowBlocks,
-                String.format(java.util.Locale.ROOT, "%.3f", stepPerFine),
-                String.format(java.util.Locale.ROOT, "%.3f", pillarBlocks),
-                centerX, centerZ, wx, wz, d.gridW);
-        // 再点同一格 = 取消（容差 = 一个柱宽）
-        int tol = Math.max(1, (int) pillarBlocks);
+                "[SpawnPick] 细格({},{}) 网格={} 每格={}格 原点=({},{}) ⇒ 世界({},{})",
+                fx, fz, grid,
+                String.format(java.util.Locale.ROOT, "%.3f", cellBlocks),
+                d.originX, d.originZ, wx, wz);
+        // 再点同一格 = 取消（容差 = 一个细格）
+        int tol = Math.max(1, (int) Math.ceil(cellBlocks));
         if (sandboxRasterizer.hasSpawnMark()
                 && Math.abs(sandboxRasterizer.spawnMarkX() - wx) < tol
                 && Math.abs(sandboxRasterizer.spawnMarkZ() - wz) < tol) {

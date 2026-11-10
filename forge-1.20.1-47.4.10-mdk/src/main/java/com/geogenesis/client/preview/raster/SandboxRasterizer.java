@@ -614,19 +614,24 @@ public final class SandboxRasterizer {
             float top = lastCols.items[col].top;
             if (top >= 0f && mz <= top) {
                 pickedColumn = col;
-                // ★ v40 诊断：把拾取全过程打出来（用户反馈"还是不准"，需要实测数据）
-                com.mojang.logging.LogUtils.getLogger().info(
-                        "[PickDiag] 屏幕({},{}) → a={} b={} t={} ⇒ 模型({},{},{}) ⇒ 柱({},{}) #{} 顶={}",
-                        String.format(java.util.Locale.ROOT, "%.1f", guiX),
-                        String.format(java.util.Locale.ROOT, "%.1f", guiY),
-                        String.format(java.util.Locale.ROOT, "%.4f", a),
-                        String.format(java.util.Locale.ROOT, "%.4f", b),
-                        String.format(java.util.Locale.ROOT, "%.3f", t),
-                        String.format(java.util.Locale.ROOT, "%.4f", mx),
-                        String.format(java.util.Locale.ROOT, "%.4f", my),
-                        String.format(java.util.Locale.ROOT, "%.4f", mz),
-                        cx, cz, col,
-                        String.format(java.util.Locale.ROOT, "%.4f", top));
+                // ★★★ v41【照参考项目：直接存细格坐标，不在外面二次换算】★★★
+                //
+                //   参考项目 SiteTerrainRenderer.pick() 第 1036-1037 行：
+                //     pickCellX = clamp(round(fx), 0, fine-1);
+                //     pickCellY = clamp(round(fy), 0, fine-1);
+                //   然后 YardSiteScreen 直接用它（terrain.pickCellX/Y），
+                //   <b>不再从柱索引反算</b>。
+                //
+                //   我们此前存柱索引，再在外面
+                //   `world = center - win/2 + (col + 0.5) * pillarBlocks`
+                //   二次换算 ⇒ 多一层换算就多一层出错的机会（用户两轮反馈"不准"）。
+                //   ⇒ 现在把细格坐标一起存下来，调用方直接用。
+                float fx = (mx + 1f) * 0.5f * (lastCols.colCount * 2);
+                float fz = (my + 1f) * 0.5f * (lastCols.colRows * 2);
+                pickedCellX = SandboxGeometry.clampI(
+                        Math.round(fx), 0, lastCols.colCount * 2 - 1);
+                pickedCellZ = SandboxGeometry.clampI(
+                        Math.round(fz), 0, lastCols.colRows * 2 - 1);
                 return;
             }
         }
@@ -635,6 +640,18 @@ public final class SandboxRasterizer {
     public void clearPick() { pickedColumn = -1; }
 
     public int pickedColumn() { return pickedColumn; }
+
+    /**
+     * <b>拾取到的细格 X</b>（★ v41，照参考项目 {@code SiteTerrainRenderer.pickCellX}）。
+     *
+     * <p>细格是"一格 = blocksPerCell 方块"的最小单位，调用方拿它换算世界坐标
+     * 只需一次乘法，不需要再经柱索引绕一圈。</p>
+     */
+    private int pickedCellX = -1;
+    private int pickedCellZ = -1;
+
+    public int pickedCellX() { return pickedCellX; }
+    public int pickedCellZ() { return pickedCellZ; }
 
     public int pickedColX() {
         return pickedColumn < 0 || lastCols == null ? -1 : pickedColumn / lastCols.colRows;
