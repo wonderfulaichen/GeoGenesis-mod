@@ -1001,6 +1001,25 @@ public class PreviewDisplay extends AbstractWidget {
         int originWx = centerX - blocksWide / 2;
         int originWz = centerZ - blocksHigh / 2;
 
+        // ★★★ v31【修"沙盘里该渲染的位置等半天不加载，要切平面才补上"】★★★
+        //
+        //   用户原话：「在平面模式下能渲染完窗口内容，但沙盘模式里明明也是应该
+        //   渲染的位置却等半天不渲染，需要切换平面模式才能把某些不加载的点加载了。」
+        //
+        //   根因：填充 cellCache 的是平面分支里的
+        //     {@code queue.queueGeneration(centerX, centerZ, blocksWide, blocksHigh)}
+        //   —— 而沙盘在 renderWidget 里是<b>提前 return</b> 的分支，
+        //   永远走不到那一行 ⇒ <b>沙盘模式下后台采样完全停摆</b>。
+        //   于是沙盘只能看到"切进沙盘那一刻缓存里已有的数据"，
+        //   视口内没采过的格子永远空白，必须切回平面才补采。
+        //
+        //   修法：沙盘也按自己的视口驱动采样。
+        //   ⚠ 必须用<b>沙盘自己的窗口</b>（blocksWide/blocksHigh），
+        //     不能用平面的 texW×scale——两者窗口大小不同。
+        if (!largeArea) {
+            queue.queueGeneration(centerX, centerZ, blocksWide, blocksHigh);
+        }
+
         long id = (long) originWx * 31L + originWz;
         id = id * 131L + blocksWide;
         id = id * 131L + grid;

@@ -172,11 +172,10 @@ public final class SandboxRasterizer {
         lastR = r;   // vertex() 读它
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, 60f);
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
-        float[] fc = SandboxGeometry.fitCenter(r);
-        // ★ v27：与 draw() 同源
+        // ★ v31：与 draw() 同源 —— 原点 = 视口中心，不做 fitCenter 偏移
         float scale = viewScale(r, w, h);
-        float ox = w / 2f - scale * fc[0];
-        float oy = h / 2f - scale * fc[1];
+        float ox = w / 2f;
+        float oy = h / 2f;
 
         for (int k = 0; k < cols.readyCount; k++) {
             SandboxGeometry.Column c = cols.items[sorted[k]];
@@ -219,7 +218,6 @@ public final class SandboxRasterizer {
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
         if (cols.readyCount == 0) return;
 
-        float[] fc = SandboxGeometry.fitCenter(r);
         // ★★ v27【修"视野一缩放就超出底板"】★★
         //
         //   {@code scaleOf = areaSize × 0.46 × zoom} 的 0.46 是按"模型跨度 2"推的
@@ -232,8 +230,23 @@ public final class SandboxRasterizer {
         //     推近档（zoom > BASE_ZOOM）用 {@link SandboxGeometry#scaleOf}
         //     —— 放大到局部铺满屏幕是"推近"的应有之义。
         float scale = viewScale(r, areaW, areaH);
-        float ox = areaX + areaW / 2f + panX - scale * fc[0];
-        float oy = areaY + areaH / 2f + panY - scale * fc[1];
+        // ★★★ v31【修"旋转中心偏高" + "地形顶到上边、下方大片空白"】★★★
+        //
+        //   参考项目 SiteTerrainRenderer 第 407-408 行：
+        //     originX = areaX + areaSize / 2.0F + panX;
+        //     originY = areaY + areaSize / 2.0F + panY;
+        //   —— 原点就是<b>视口中心</b>，没有任何包围盒偏移。
+        //   它的"视觉垂直居中"是模型空间自然给出的：
+        //   mz=0 的地面平面投影到屏幕中心，柱子向上长 ⇒ 视觉重心略偏上，正合适。
+        //
+        //   我们此前减了 {@code scale * fitCenter}（投影包围盒中心）：
+        //   包围盒含了柱高（mz>0 让包围盒顶部更高），它的中心<b>不在 mz=0 平面上</b>
+        //   ⇒ 减去它就等于把旋转轴挪到了"半空中的点"
+        //   ⇒ 用户看到「旋转中心是不是高了？」+ 地形整体下滑、下方留白。
+        //
+        //   ⇒ 恢复参考项目口径：原点 = 视口中心，用 mz=0 地面平面做旋转轴。
+        float ox = areaX + areaW / 2f + panX;
+        float oy = areaY + areaH / 2f + panY;
 
         // 缓存供 hover 用
         lastCols = cols;
@@ -538,13 +551,13 @@ public final class SandboxRasterizer {
         float[] r = SandboxGeometry.rotationRows(yaw, pitch);
         lastR = r;
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
-        float[] fc = SandboxGeometry.fitCenter(r);
-        // ★ v27：与 draw() 同源
+        // ★ v31：与 draw() 同源 —— 原点 = 视口中心，不做 fitCenter 偏移
+        //   （否则 hover 拾取与绘制错位，点不到看到的格子）
         float scale = viewScale(r, areaW, areaH);
         lastCols = cols;
         lastScale = scale;
-        lastOriginX = areaX + areaW / 2f + panX - scale * fc[0];
-        lastOriginY = areaY + areaH / 2f + panY - scale * fc[1];
+        lastOriginX = areaX + areaW / 2f + panX;
+        lastOriginY = areaY + areaH / 2f + panY;
     }
 
     /** 悬停信息（读上一帧的拾取结果）。 */
