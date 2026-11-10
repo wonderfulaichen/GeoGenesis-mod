@@ -296,6 +296,32 @@ public final class SandboxGeometryProbe {
             System.out.println("    OK（从中心往外依次长出）");
         }
 
+        // ★ v30 新增[4d] 椭圆渐隐：中心不透明、四角必须完全透明
+        //
+        // 用户原话：「明明参考项目是椭圆四周暗的视觉效果。
+        //           我明明很明确的说了是视觉画面不对，你怎么跑去看数据了？
+        //           不是参数是功能缺失。」
+        //
+        // 参考项目 SiteReliefField 74-83 行用<b>欧氏距离</b>算 edgeFade，
+        // 圆形窗口外圈渐隐；我们此前 edgeFade 恒 1.0f —— 功能整个缺失。
+        System.out.println("\n[4d] 椭圆渐隐：中心不透明、四角完全透明（参考项目效果）");
+        float centerFade = SandboxGeometry.edgeFadeAt(
+                cols.colCount / 2, cols.colRows / 2, cols.colCount, cols.colRows);
+        float cornerFade = SandboxGeometry.edgeFadeAt(0, 0, cols.colCount, cols.colRows);
+        float edgeMidFade = SandboxGeometry.edgeFadeAt(0, cols.colRows / 2,
+                cols.colCount, cols.colRows);
+        System.out.printf("    中心 %.3f / 边中点 %.3f / 四角 %.3f%n",
+                centerFade, edgeMidFade, cornerFade);
+        if (centerFade < 0.99f) {
+            System.out.println("    FAIL: 中心不透明度过低 ⇒ 中间也发暗");
+            pass = false;
+        } else if (cornerFade > 0.02f) {
+            System.out.printf("    FAIL: 四角还可见（%.3f）⇒ 看起来是方的，不是椭圆%n", cornerFade);
+            pass = false;
+        } else {
+            System.out.println("    OK（圆形渐隐生效，四角消失）");
+        }
+
         // [5] 光照统计
         System.out.println("\n[5] 坡度光照：饱和率 <5%，动态范围 ≥0.30");
         double[] yGrid = snap.buildSurfaceYGrid(seaY);
@@ -393,6 +419,9 @@ public final class SandboxGeometryProbe {
         int[] px = new int[size * size];
         java.util.Arrays.fill(px, 0xFF101018);
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
+        // ★ v30：必须走 applyGrow —— 它把 edgeFade（圆形渐隐）乘进 alpha。
+        //   不调的话 alpha 恒 0xFF，出图是方形盘面，看不到"椭圆四周暗"。
+        SandboxGeometry.applyGrow(cols, System.currentTimeMillis() + 10_000L);
 
         boolean seeEast = r[6] > 0f, seeWest = r[6] < 0f;
         boolean seeSouth = r[7] > 0f, seeNorth = r[7] < 0f;
@@ -491,10 +520,19 @@ public final class SandboxGeometryProbe {
         int maxX = (int) Math.min(size - 1, Math.ceil(Math.max(a[0], Math.max(b[0], c[0]))));
         int minY = (int) Math.max(0, Math.floor(Math.min(a[1], Math.min(b[1], c[1]))));
         int maxY = (int) Math.min(size - 1, Math.ceil(Math.max(a[1], Math.max(b[1], c[1]))));
-        int color = (alpha << 24) | rgb;
+        // ★ v30：alpha 混合（原来直接覆盖 ⇒ 出图看不出 edgeFade 的椭圆渐隐，
+        //   而实机是混合的 —— 探针图与实机不符会误判"渐隐没生效"）
+        float fa = Math.max(0f, Math.min(1f, alpha / 255f));
+        if (fa <= 0f) return;
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
-                if (inTri(x + .5f, y + .5f, a, b, c)) px[y * size + x] = color;
+                if (!inTri(x + .5f, y + .5f, a, b, c)) continue;
+                int i = y * size + x;
+                int dst = px[i];
+                int r = Math.round(((rgb >> 16) & 0xFF) * fa + ((dst >> 16) & 0xFF) * (1 - fa));
+                int g = Math.round(((rgb >> 8) & 0xFF) * fa + ((dst >> 8) & 0xFF) * (1 - fa));
+                int bl = Math.round((rgb & 0xFF) * fa + (dst & 0xFF) * (1 - fa));
+                px[i] = 0xFF000000 | (r << 16) | (g << 8) | bl;
             }
         }
     }

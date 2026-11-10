@@ -244,10 +244,29 @@ public final class SandboxRasterizer {
 
         VertexConsumer vc = g.bufferSource().getBuffer(RenderType.gui());
 
-        // 底板：没有它柱子看着悬空（yardsite floor()，画在柱子之前）
-        // ★ v25：过渡时底板也一起淡出（参考项目 floor() 第 779 行 {@code 0xF2 * alpha}）
-        int plateAlpha = (int) (0xF2 * globalAlpha);
-        quadFlat(vc, ox, oy, scale, -1f, 1f, -1f, 1f, -0.02f, (plateAlpha << 24) | 0x171A22);
+        // ★★★ v30【补上参考项目的"椭圆四周暗"】★★★
+        //
+        //   参考项目有两种场：
+        //     · 大沙盘 SiteMapSampler → showsFloor() = true（方形底板）
+        //     · 精读   SiteReliefField → showsFloor() = false（<b>不画底板</b>）
+        //       理由（SiteField 第 95-98 行原文）：
+        //       「精读是<b>圆形窗口</b>，外圈几格逐渐透明收边」
+        //       （SiteField 第 79 行）：「精读是圆形窗口，方板子的四个角会戳在圆外面，
+        //        所以不画」
+        //
+        //   我们此前一直画方形底板 + edgeFade 恒 1.0
+        //   ⇒ 用户看到的是"方形平板"，而参考项目是"椭圆+四周渐暗"。
+        //   用户原话：「明明参考项目是椭圆四周暗的视觉效果…
+        //              不是参数是功能缺失。」
+        //
+        //   ⇒ 现在：柱子的 edgeFade 走圆形渐隐（见 SandboxGeometry.edgeFadeAt），
+        //     底板<b>不画</b>（方板四角会戳到圆外面，正是参考项目不画它的原因）。
+        //     若日后要"方形大沙盘"档，再加回 showsFloor 开关。
+        boolean showsFloor = false;
+        if (showsFloor) {
+            int plateAlpha = (int) (0xF2 * globalAlpha);
+            quadFlat(vc, ox, oy, scale, -1f, 1f, -1f, 1f, -0.02f, (plateAlpha << 24) | 0x171A22);
+        }
 
         boolean seeEast = r[6] > 0f, seeWest = r[6] < 0f;
         boolean seeSouth = r[7] > 0f, seeNorth = r[7] < 0f;

@@ -534,8 +534,18 @@ public final class SandboxGeometry {
                 }
                 c.rgb = SandboxPalette.scale(rgb, light);
 
-                // ---- 9) 边缘渐隐（方形铺满时恒 1）----
-                c.edgeFade = 1.0f;
+                // ---- 9) 边缘渐隐（★ v30：圆形/椭圆渐隐 —— 这是参考项目"四周暗"的来源）----
+                //
+                // 参考项目 SiteReliefField 第 74-83 行：
+                //   double dist = sqrt(dx*dx + dz*dz);                    // 到中心的<b>欧氏</b>距离
+                //   edgeFade = clamp((half + 0.5 - dist) / FADE_RING, 0, 1);
+                // 即：半径内 100% 不透明，靠近最外圈 FADE_RING 格内线性淡出到 0
+                //   ⇒ 盘面呈<b>圆形</b>（斜投影后就是<b>椭圆</b>），四周一圈渐隐发暗。
+                //
+                // ⚠ 此前这里恒为 1.0f（注释写"方形铺满时恒 1"）——
+                //   那是<b>功能整个缺失</b>，不是参数问题。用户：
+                //   「明明参考项目是椭圆四周暗的视觉效果……不是参数是功能缺失。」
+                c.edgeFade = edgeFadeAt(cx, cz, colCount, colRows);
                 out.ready[out.readyCount++] = col;
             }
         }
@@ -556,6 +566,58 @@ public final class SandboxGeometry {
     // =================================================================
     // 五、深度排序
     // =================================================================
+
+    /**
+     * 渐隐圈宽度（占盘面半径的比例）。
+     *
+     * <p>参考项目 {@code FADE_RING = 6.0f} / 半径 60 ⇒ <b>10%</b>。
+     * 但那是"精读 121 格圆形小窗"，圆本身已经靠 {@code inside[]} 裁过了；
+     * 我们是方形盘面 + 渐隐收边，若渐隐带也只有 10%，
+     * 方形四角仍然清晰可见 ⇒ <b>看起来还是方的</b>。
+     *
+     * <h2>★ v30：0.10 → 0.55（让方形收成椭圆）</h2>
+     * <p>用户要的是「参考项目那种椭圆四周暗」。方形盘面要收成椭圆，
+     * 渐隐带必须够宽。计算：</p>
+     * <pre>
+     *   内切圆半径（边中点）= 1.0 × half
+     *   外接圆半径（四角）  = √2 ≈ 1.414 × half
+     *   ⇒ 渐隐带必须覆盖 [1.0, 1.414] 这段，四角才会完全透明。
+     *
+     *   fade = (half + 0.5 - dist) / (half × RATIO)
+     *   dist = 1.414half 时 fade = 0  ⇒ RATIO ≈ 0.414
+     *   dist = 1.0half   时 fade = 1  ⇒ RATIO ≤ 0.5
+     * </pre>
+     * <p>取 <b>0.55</b>（略大于 0.5）：连边中点都开始轻微衰减，
+     * 整体呈柔和椭圆，四角彻底消失 —— 与用户给的参考项目观感一致。</p>
+     */
+    public static final float EDGE_FADE_RATIO = 0.55f;
+
+    /**
+     * <b>圆形/椭圆边缘渐隐系数</b>（★ v30：照抄参考项目 {@code SiteReliefField} 74-83 行）。
+     *
+     * <pre>
+     *   dist     = sqrt((cx-中心)² + (cz-中心)²)     ← 欧氏距离，不是 max/min
+     *   half     = 盘面半径（柱数/2）
+     *   fade     = clamp((half + 0.5 - dist) / (half * EDGE_FADE_RATIO), 0, 1)
+     * </pre>
+     *
+     * <p>半径内 1.0（完全不透明），最外 10% 内线性淡出到 0
+     * ⇒ 盘面呈圆形；斜投影到屏幕后就是<b>椭圆</b>，四周一圈渐隐发暗。</p>
+     *
+     * <p>⚠ 必须用<b>欧氏距离</b>：用 {@code max(|dx|,|dz|)} 会得到方形的渐隐带，
+     * 用 {@code |dx|+|dz|} 会得到菱形 —— 都不是参考项目的圆/椭圆。</p>
+     */
+    public static float edgeFadeAt(int cx, int cz, int colCount, int colRows) {
+        double halfX = (colCount - 1) * 0.5;
+        double halfZ = (colRows - 1) * 0.5;
+        double dx = cx - halfX;
+        double dz = cz - halfZ;
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        // 半径：参考项目是正方形盘面 (COLUMNS-1)/2，这里取两方向的均值（应对非正方形）
+        double half = (halfX + halfZ) * 0.5;
+        double ring = Math.max(1.0, half * EDGE_FADE_RATIO);
+        return clamp((float) ((half + 0.5 - dist) / ring), 0f, 1f);
+    }
 
     /**
      * 计数排序：从<b>远到近</b>（yardsite {@code sortByDepth()} 694-714）。
