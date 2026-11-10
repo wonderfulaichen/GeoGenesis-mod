@@ -313,12 +313,13 @@ public final class SandboxGeometry {
      * @param span      竖向比例分母（本图最高点 − 基准面，已缓动）
      * @param seaLevel  海平面 Y（预览可配，不能写死 63）
      * @param now       当前时刻（毫秒）
+     * @param animBaseIn 铺开动画基准时刻（调用方跨帧持有；0 = 用 now）
      * @param colorSrc  底色来源（非水面/非 BIOME 图层用）；可 null
      */
     public static Columns buildColumns(TerrainFieldData snap, GeoPalette.PreviewLayer layer,
                                        int perColumn, float span,
                                        int minY, int maxY, double seaLevel, long now,
-                                       ColorSource colorSrc) {
+                                       long animBaseIn, ColorSource colorSrc) {
         int gw = snap.gridW, gh = snap.gridH;
         int per = Math.max(1, perColumn);
         int colCount = Math.max(1, (gw + per - 1) / per);
@@ -348,25 +349,22 @@ public final class SandboxGeometry {
         int[] voteIds = new int[per * per];
         int[] voteCnts = new int[per * per];
 
-        // ★★ v25【铺开动画：按到中心的距离错开出生时刻】★★
+        // ★★ v25/v26【铺开动画：按到中心的距离错开出生时刻】★★
         //
-        //   参考项目（SiteMapSampler.centerOutOrder + SiteTerrainRenderer.collect）：
+        //   参考项目（SiteMapSampler.centerOutOrder + SiteTerrainRenderer.collect 684-690）：
         //   采样<b>从中心往外</b>，每根柱的 {@code drawnAt} 自然递延
         //   ⇒ 视觉上"从中心一圈圈长出来"。
         //
-        //   我们的数据是<b>一次性从 CellCache 裁出来的</b>（全部同时就绪），
-        //   若照抄"首次绘制时打戳"，所有柱会<b>同时</b>开始长 ⇒ 没有层次。
-        //   ⇒ 改为：出生时刻按到中心的距离递延 —— 中心柱最早（先长），越靠外越晚。
+        // ★ v26 修：v25 把基准写成 {@code now - SPREAD_MS}，
+        //   导致<b>中心柱的出生时刻已经是 1400ms 前</b>、早就长满了，
+        //   只有最外圈还在长 ⇒ 用户看到的是"整体一起淡入"而不是"一圈圈"。
+        //   正确做法：<b>中心柱的出生时刻就是"本图第一次出现"的那一刻</b>，
+        //   外圈依次往后推 SPREAD_MS。
         //
-        //   基准时刻取「快照里最早的真实 bornAt」；若数据层没给（缓存回填成 longAgo），
-        //   就用 now 减 SPREAD_MS，让中心柱恰好现在就开始长。
-        long animBase = now - SPREAD_MS;
-        long minBorn = Long.MAX_VALUE;
-        for (int i = 0; i < snap.bornAt.length; i++) {
-            long b = snap.bornAt[i];
-            if (b != 0L && b < minBorn) minBorn = b;
-        }
-        if (minBorn != Long.MAX_VALUE && minBorn > animBase) animBase = minBorn;
+        //   基准取「这张图的第一帧时刻」，由<b>调用方</b>持有并跨帧传入 ——
+        //   若在这里取 now，每帧 animBase 都往后跑 ⇒ bornAt 永远追不上 now
+        //   ⇒ 柱子永远停在"刚开始长"的状态。
+        long animBase = animBaseIn != 0L ? animBaseIn : now;
         double halfDiag = Math.max(1e-6,
                 Math.hypot((colCount - 1) * 0.5, (colRows - 1) * 0.5));
         double centerX0 = (colCount - 1) * 0.5;

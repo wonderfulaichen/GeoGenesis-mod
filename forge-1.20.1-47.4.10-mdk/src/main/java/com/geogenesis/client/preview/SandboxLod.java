@@ -73,8 +73,14 @@ public final class SandboxLod {
     /** 每柱覆盖的方块数（每边）—— 用户裁定 16。 */
     public static final int STEP_BLOCKS = 16;
 
-    /** 基准柱数（每边）—— 参考项目 {@code COLUMNS_MIN = 128}。 */
-    public static final int BASE_PILLARS = 128;
+    /**
+     * 基准柱数（每边）—— ★ v26 由 128 改为 <b>256</b>。
+     *
+     * <p>用户 2026-11-10：「这个缩放太大了。4096 格视野都已经够了。」</p>
+     * <p>256 柱 × 16 方块 = <b>4096 格</b>视野，正好是用户要的默认档；
+     * 原先 128 柱 = 2048 格，柱子显得过大、看到的区域太小。</p>
+     */
+    public static final int BASE_PILLARS = 256;
 
     /** 柱数硬上限 —— 参考项目 {@code COLUMNS_HARD_MAX = 512}。 */
     public static final int MAX_PILLARS = 512;
@@ -93,11 +99,16 @@ public final class SandboxLod {
     /** 滚轮步长：每格 ×2 / ÷2（窗口与柱数同步翻倍/减半）。 */
     public static final float WHEEL_STEP = 2.0f;
 
-    /** 允许拉远格数：柱数 128 → 256 → 512。 */
-    public static final int MAX_ZOOM_OUT_STEPS = 2;
+    /**
+     * 允许拉远格数 ★ v26：由 2 改为 <b>1</b>（柱数 256 → 512）。
+     *
+     * <p>用户：「4096 格视野都已经够了。」默认已是 4096（256 柱），
+     * 再往外只留一档 8192（512 柱，硬上限），不再到 7200/16384。</p>
+     */
+    public static final int MAX_ZOOM_OUT_STEPS = 1;
 
-    /** 允许推近格数：柱数 128 → 64 → 32（柱宽 7→14→28px）。 */
-    public static final int MAX_ZOOM_IN_STEPS = 2;
+    /** 允许推近格数：柱数 256 → 128 → 64 → 32（柱宽随之变粗）。 */
+    public static final int MAX_ZOOM_IN_STEPS = 3;
 
     public static final float ZOOM_MIN = (float) (BASE_ZOOM / Math.pow(WHEEL_STEP, MAX_ZOOM_OUT_STEPS));
     public static final float ZOOM_MAX = (float) (BASE_ZOOM * Math.pow(WHEEL_STEP, MAX_ZOOM_IN_STEPS));

@@ -103,7 +103,7 @@ public final class SandboxGeometryProbe {
         long t0 = System.nanoTime();
         SandboxGeometry.Columns cols = SandboxGeometry.buildColumns(
                 snap, GeoPalette.PreviewLayer.ELEVATION, per, span,
-                (int) base, (int) hi, seaY, System.currentTimeMillis(), elevSrc);
+                (int) base, (int) hi, seaY, System.currentTimeMillis(), 0L, elevSrc);
         long buildMs = (System.nanoTime() - t0) / 1_000_000L;
         System.out.printf("构建 %d 柱（%d ms）%n%n", cols.readyCount, buildMs);
 

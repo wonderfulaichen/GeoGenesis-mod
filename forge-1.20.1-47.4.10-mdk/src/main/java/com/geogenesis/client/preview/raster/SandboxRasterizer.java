@@ -104,6 +104,18 @@ public final class SandboxRasterizer {
         panY += (float) dy;
     }
 
+    /**
+     * 清掉屏幕平移（★ v26）。
+     *
+     * <p>拖动期间用 {@code panX/panY} 做"零成本预览"，
+     * 松手时把累积位移换算成世界中心位移并重采样 ——
+     * 此时必须清掉屏幕平移，否则位移会被算两遍（画面跳一大截）。</p>
+     */
+    public void clearPan() {
+        panX = 0f;
+        panY = 0f;
+    }
+
     public void resetView() {
         yaw = SandboxGeometry.DEFAULT_YAW;
         pitch = SandboxGeometry.DEFAULT_PITCH;
@@ -182,6 +194,8 @@ public final class SandboxRasterizer {
                      float span, long now, float globalAlpha, float heightScale) {
         if (snapshot == null || snapshot.gridW <= 0) return;
         lastSpan = span;
+        // ★ v26：本图第一次绘制 → 记下动画基准（此后跨帧稳定，见 animBaseMs 注释）
+        if (animBaseMs == 0L) animBaseMs = now;
 
         float[] r = SandboxGeometry.rotationRows(yaw, pitch);
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
@@ -418,9 +432,23 @@ public final class SandboxRasterizer {
 
     // ----- 内部 -----
 
+    /**
+     * 铺开动画的基准时刻（本图第一次绘制的毫秒时间戳；0 = 还没开始）。
+     *
+     * <p>★ 必须由光栅器<b>跨帧持有</b>：若每帧取 now，
+     * {@code bornAt} 会一直往后跑 ⇒ 柱子永远停在"刚开始长"的状态
+     * （用户反馈："动画有了但好像只是整体一起淡入，不是从中心一圈圈长出来"）。</p>
+     */
+    private long animBaseMs = 0L;
+
+    /** 换图（视口/窗口/精度变了）时重置铺开动画，让新画面重新从中心长出。 */
+    public void resetSpreadAnimation() {
+        animBaseMs = 0L;
+    }
+
     private SandboxGeometry.Columns buildCols(TerrainFieldData snap, RasterParams p, float[] r, float span) {
         return SandboxGeometry.buildColumns(snap, p.layer(), SandboxLod.perColumn(),
-                span, 0, 0, p.seaLevel(), System.currentTimeMillis(), lastColorSrc);
+                span, 0, 0, p.seaLevel(), System.currentTimeMillis(), animBaseMs, lastColorSrc);
     }
 
     /** 竖向比例分母（`draw` 每次传入；`hover` 复用上一帧的值）。 */

@@ -148,6 +148,12 @@ public final class TerrainFieldData {
         this.bornAt = new long[n];
         this.waterY = new double[n];
         java.util.Arrays.fill(this.waterY, Double.NaN);
+        // ★★★ v26【修"沙盘一大片蓝色平板"】★★★
+        //   height 默认必须填 NaN（"无数据"），不能留 0.0。
+        //   否则 {@link #hasCell} 恒为 true ⇒ 未采样区被当成"高度 0 的地面"
+        //   ⇒ ratio = max((0 - base)/span, WATER_SINK) 恒等于 WATER_SINK
+        //   ⇒ 整片未采样区被画成一层齐平的薄板（实机截图里那块大蓝色就是这样）。
+        java.util.Arrays.fill(this.height, Double.NaN);
     }
 
     /** 扁平索引（越界返回 -1）。 */

@@ -1197,13 +1197,24 @@ public class PreviewDisplay extends AbstractWidget {
         //   沙盘的平移是<b>逐帧移动世界中心</b>的（panSandboxBy 里直接改 centerX/centerZ），
         //   松开时不需要再提交偏移，只需清状态 + 停采样批。
         //   平面是<b>累积偏移、松开才提交</b>（拖动时不重采样，避免每帧重建视口）。
+        // ★ v26【修"沙盘拖动卡顿"】：拖动期间只做屏幕平移（零成本），
+        //   <b>松手才</b>提交成世界中心位移并重采样一次。
+        //   此前是逐帧改 centerX ⇒ 每帧全量重建 TerrainFieldData（340~650ms）。
         if (sandboxMode) {
             dragging = false;
-            sandboxCenterAccX = 0;
-            sandboxCenterAccZ = 0;
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && hoverX != -1 && hoverZ != -1) {
-                // 左键点击（没怎么动）→ 与平面一样：离散图层选中色块
-                handleMapClick(mx, my);
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                // 有实际位移 → 提交平移；没有 → 当作点击选中
+                if (Math.abs(sandboxCenterAccX) >= 1.0 || Math.abs(sandboxCenterAccZ) >= 1.0) {
+                    commitSandboxPan();
+                } else {
+                    sandboxCenterAccX = 0;
+                    sandboxCenterAccZ = 0;
+                    sandboxRasterizer.clearPan();
+                    if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && hoverX != -1 && hoverZ != -1) {
+                        // 左键点击（没怎么动）→ 与平面一样：离散图层选中色块
+                        handleMapClick(mx, my);
+                    }
+                }
             }
             return true;
         }
@@ -1270,22 +1281,47 @@ public class PreviewDisplay extends AbstractWidget {
      * <p>不是屏幕像素平移 —— 全屏单层地图没有"切层看别处"的退路，
      * 只挪像素会露出采样范围外的空白。</p>
      */
+    /**
+     * 沙盘拖动 → 屏幕平移（<b>拖动期间零重采样</b>）。
+     *
+     * <h2>★ v26【修"左键平移在沙盘里拖起来还是有点卡顿，不跟手"】</h2>
+     * <p>此前每次位移 ≥1 方块就改 {@code centerX/centerZ} ⇒ 下一帧
+     * {@code fromCellCache} <b>全量重建</b>（实测 340~650ms/次）
+     * ⇒ 拖动过程每秒只能响应 1~2 次 ⇒ 严重卡顿。</p>
+     * <p>用户原话：「不应该让后台计算影响前端视觉体验啊。」</p>
+     *
+     * <p>⇒ 拖动期间<b>只累加屏幕平移</b>（{@code panX/panY}，纯渲染层零成本），
+     * <b>松手时才</b>把累积位移换算成世界中心位移并触发一次重采样。
+     * 这样拖动完全跟手，计算只在松手后发生一次。</p>
+     */
     private void panSandboxBy(double dx, double dy) {
+        // 只累加屏幕平移（不含任何采样/重建）
+        sandboxRasterizer.dragPan(dx, dy);
+        // 同时记下"松手时该移动多少世界方块"（用于 committed 时重采样）
         int areaSize = Math.min(getWidth(), getHeight());
         double step = SandboxLod.effectiveStep(sandboxRasterizer.zoom());
         sandboxRasterizer.dragToBlocks(dx, dy, areaSize, areaSize, step, sandboxDragOut);
-        // 累加到浮点累加器：拖动位移常小于 1 方块，直接取整会被吃掉
         sandboxCenterAccX += sandboxDragOut[0];
         sandboxCenterAccZ += sandboxDragOut[1];
+    }
+
+    /**
+     * 沙盘拖动结束后提交：把累积的屏幕平移换成世界中心位移，重采样一次。
+     *
+     * <p>见 {@link #panSandboxBy} 的注释 —— 拖动期间不重采样，
+     * 只在这里付一次计算的代价。</p>
+     */
+    private void commitSandboxPan() {
         int ix = (int) sandboxCenterAccX;
         int iz = (int) sandboxCenterAccZ;
-        if (ix != 0 || iz != 0) {
-            sandboxCenterAccX -= ix;
-            sandboxCenterAccZ -= iz;
-            centerX += ix;
-            centerZ += iz;
-            needsClear = true;   // 视口变了 → 下一帧按新中心重新采样
-        }
+        if (ix == 0 && iz == 0) return;
+        sandboxCenterAccX -= ix;
+        sandboxCenterAccZ -= iz;
+        centerX += ix;
+        centerZ += iz;
+        // 屏幕平移已经"花掉"了这次位移 ⇒ 清掉，避免和新的世界中心叠加成双倍移动
+        sandboxRasterizer.clearPan();
+        needsClear = true;
     }
 
     /** 拖动累积的世界位移余量（&lt;1 方块的部分）。 */
