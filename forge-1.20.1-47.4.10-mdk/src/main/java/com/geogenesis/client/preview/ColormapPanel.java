@@ -19,9 +19,11 @@ public class ColormapPanel extends ConfigPanel {
     private final List<ColormapOption> options = new ArrayList<>();
     private final ColormapListPanel listPanel;
     private int listH;
-    private static final int LIST_OFF = 24;
+    /** 列表相对内容区顶部的偏移（★ v7：标题改由 ConfigPanelHost 画，不再预留 24px）。 */
+    private static final int LIST_OFF = 2;
     private static final int BTN_OFF = 10;
-    private static final int BTN_H = 22;
+    /** ★ v15：按钮高统一引用 UiKit。 */
+    private static final int BTN_H = UiKit.H_CONTROL;
 
     public ColormapPanel(PreviewDisplay preview) {
         this.preview = preview;
@@ -39,19 +41,34 @@ public class ColormapPanel extends ConfigPanel {
         listPanel = new ColormapListPanel(options);
     }
 
+    /**
+     * 内容高度（★ v22：按<b>列表区实际高度</b>算）。
+     *
+     * <p>列表高 120~260 随窗口浮动，原写死 340 ⇒ 两者不同源，
+     * 大窗口下列表更高却按 340 算滚动上限。</p>
+     */
     @Override
-    public int getHeight() { return 340; }
+    public int getHeight() {
+        return LIST_OFF + listHeightFor() + BTN_OFF + UiKit.H_CONTROL + 16;
+    }
+
+    /** 列表区高度（★ v22：render 与 getHeight 共用）。 */
+    private int listHeightFor() {
+        return Math.max(120, Math.min(260,
+                Minecraft.getInstance().getWindow().getGuiScaledHeight() - 220));
+    }
 
     @Override
     public void render(GuiGraphics g, int mx, int my) {
-        drawHeader(g, x, top(), I18n.get("geogenesis.settings.heightmap.colormap"));
+        // ★ v15：标题由 ConfigPanelHost 统一画（drawHeader 已空实现）
         int ly = top() + LIST_OFF;
-        listH = Math.max(120, Math.min(260, Minecraft.getInstance().getWindow().getGuiScaledHeight() - 220));
+        listH = listHeightFor();
         listPanel.setRect(x, ly, w, listH);
         listPanel.render(g, mx, my);
 
         int by = ly + listH + BTN_OFF;
-        boolean h = drawButton(g, x, by, 150, BTN_H, I18n.get("geogenesis.settings.heightmap.reset"), false, mx, my);
+        boolean h = drawButton(g, x, by, 150, UiKit.H_CONTROL,
+                I18n.get("geogenesis.settings.heightmap.reset"), false, mx, my);
         if (h) hoverTooltip = Component.literal(I18n.get("geogenesis.settings.heightmap.restart_hint"));
     }
 
@@ -59,7 +76,7 @@ public class ColormapPanel extends ConfigPanel {
     public boolean mouseClicked(double mx, double my, int btn) {
         if (listPanel.mouseClicked(mx, my, btn)) return true;
         int by = top() + LIST_OFF + listH + BTN_OFF;
-        if (hit(x, by, 150, BTN_H, mx, my)) {
+        if (hit(x, by, 150, UiKit.H_CONTROL, mx, my)) {
             preview.resetHeightBounds();
             playClick();
             return true;

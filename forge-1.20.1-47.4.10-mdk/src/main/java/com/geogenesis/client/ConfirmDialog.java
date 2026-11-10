@@ -2,6 +2,7 @@ package com.geogenesis.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import com.geogenesis.client.preview.UiKit;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -52,50 +53,40 @@ public class ConfirmDialog {
         // 半透明背景遮罩：接近不透明(0xE0≈88%)，彻底压住背后配置屏文字，避免其浮在弹窗前面
         g.fill(0, 0, sw, sh, 0xE0000000);
 
-        // 对话框背景
-        g.fill(dx, dy, dx + DIALOG_W, dy + DIALOG_H, 0xFF1a1f28);
-        g.fill(dx, dy, dx + DIALOG_W, dy + 1, 0xFF00c896);      // 顶部绿边框
-        g.fill(dx, dy + DIALOG_H - 1, dx + DIALOG_W, dy + DIALOG_H, 0xFF333333);
-        g.fill(dx, dy, dx + 1, dy + DIALOG_H, 0xFF333333);
-        g.fill(dx + DIALOG_W - 1, dy, dx + DIALOG_W, dy + DIALOG_H, 0xFF333333);
+        // ★ v7：对话框改走 UiKit（圆角卡片 + 胶囊按钮，与新版控件语言一致）
+        UiKit.roundRect(g, dx, dy, dx + DIALOG_W, dy + DIALOG_H, UiKit.RADIUS_CARD, 0xF0181C20);
+        UiKit.roundRectOutline(g, dx, dy, dx + DIALOG_W, dy + DIALOG_H, UiKit.RADIUS_CARD, 0x22FFFFFF);
 
         var f = Minecraft.getInstance().font;
 
-        // 标题
-        g.drawString(f, "⚠ 修改" + title, dx + 10, dy + 8, 0xFFFFAA00);
+        // 标题（去 emoji —— 字体没这个字形，实机是个空框）
+        g.drawString(f, "修改" + title, dx + 12, dy + 10, UiKit.C_TXT, false);
 
         // 消息（旧值→新值）
-        g.drawString(f, message, dx + 10, dy + 26, 0xFFCCCCCC);
+        g.drawString(f, message, dx + 12, dy + 28, UiKit.C_TXT_SUB, false);
 
         // 影响列表
         if (affectedItems != null && !affectedItems.isEmpty()) {
-            g.drawString(f, "影响以下项目（已自动适配）：", dx + 10, dy + 48, 0xFF888888);
+            g.drawString(f, "影响以下项目（已自动适配）：", dx + 12, dy + 48,
+                    UiKit.C_TXT_DIM, false);
             int ay = dy + 62;
             for (String item : affectedItems) {
-                g.drawString(f, "• " + item, dx + 18, ay, 0xFF88BBDD);
+                g.drawString(f, "· " + item, dx + 20, ay, UiKit.C_TEAL, false);
                 ay += 12;
             }
         }
 
-        // 按钮
+        // 按钮：胶囊、无描边
         int btnY = dy + DIALOG_H - 30;
         int btnW = 80;
 
-        // 取消按钮
         int cancelX = dx + 20;
         boolean hoverCancel = mx >= cancelX && mx <= cancelX + btnW && my >= btnY && my <= btnY + 20;
-        g.fill(cancelX, btnY, cancelX + btnW, btnY + 20, hoverCancel ? 0xFF3a4050 : 0xFF2a2f3a);
-        g.fill(cancelX, btnY, cancelX + 1, btnY + 20, 0xFF4a5060);
-        g.fill(cancelX + btnW - 1, btnY, cancelX + btnW, btnY + 20, 0xFF4a5060);
-        g.drawString(f, "取消", cancelX + (btnW - f.width("取消")) / 2, btnY + 6, 0xFFCC6666);
+        UiKit.button(g, cancelX, btnY, btnW, 20, "取消", false, hoverCancel);
 
-        // 确定按钮
         int confirmX = dx + DIALOG_W - 20 - btnW;
         boolean hoverConfirm = mx >= confirmX && mx <= confirmX + btnW && my >= btnY && my <= btnY + 20;
-        g.fill(confirmX, btnY, confirmX + btnW, btnY + 20, hoverConfirm ? 0xFF00a876 : 0xFF008060);
-        g.fill(confirmX, btnY, confirmX + 1, btnY + 20, 0xFF00c896);
-        g.fill(confirmX + btnW - 1, btnY, confirmX + btnW, btnY + 20, 0xFF00c896);
-        g.drawString(f, "确定", confirmX + (btnW - f.width("确定")) / 2, btnY + 6, 0xFFFFFFFF);
+        UiKit.button(g, confirmX, btnY, btnW, 20, "确定", true, hoverConfirm);
     }
 
     // ===== 鼠标 =====

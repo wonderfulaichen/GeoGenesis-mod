@@ -285,8 +285,10 @@ public final class PlanePainter {
         else if (avg < 33) color = 0xFFFFAA00;  // 黄：可接受
         else color = 0xFFFF5555;                 // 红：卡顿
         String txt = avg + " ms";
-        g.fill(rightX - Minecraft.getInstance().font.width(txt) - 8, topY + 2, rightX - 2, topY + 12, 0x88000000);
-        g.drawString(Minecraft.getInstance().font, txt, rightX - Minecraft.getInstance().font.width(txt) - 5, topY + 3, color);
+        // ★ v8：浮层底改圆角（旧版是直角半透明方块）
+        int txtW = Minecraft.getInstance().font.width(txt);
+        UiKit.roundRect(g, rightX - txtW - 8, topY + 2, rightX - 2, topY + 13, UiKit.RADIUS_FIELD, 0x88000000);
+        g.drawString(Minecraft.getInstance().font, txt, rightX - txtW - 5, topY + 3, color, false);
     }
 
     // ---- drawPlayerMarker ----
@@ -317,11 +319,11 @@ public final class PlanePainter {
                 }
             }
         }
-        // 姓名标签（顶部）
+        // 姓名标签（顶部）—— ★ v8：圆角浮层
         String name = Minecraft.getInstance().player.getGameProfile().getName();
         int tw = Minecraft.getInstance().font.width(name);
-        g.fill(sx - tw / 2 - 2, sy - 14, sx + tw / 2 + 2, sy - 3, 0xAA000000);
-        g.drawString(Minecraft.getInstance().font, name, sx - tw / 2, sy - 12, 0xFFFFFF);
+        UiKit.roundRect(g, sx - tw / 2 - 3, sy - 15, sx + tw / 2 + 3, sy - 3, UiKit.RADIUS_FIELD, 0xAA000000);
+        g.drawString(Minecraft.getInstance().font, name, sx - tw / 2, sy - 12, 0xFFFFFFFF, false);
     }
 
     // ---- drawStructureMarkers ----
@@ -352,8 +354,10 @@ public final class PlanePainter {
         }
         if (hoverName != null) {
             int tw = Minecraft.getInstance().font.width(hoverName);
-            g.fill(mx + 10, my + 8, mx + 14 + tw, my + 20, 0xCC000000);
-            g.drawString(Minecraft.getInstance().font, hoverName, mx + 13, my + 10, 0xFFFFFF);
+            // ★ v8：圆角浮层
+            UiKit.roundRect(g, mx + 10, my + 8, mx + 14 + tw, my + 21, UiKit.RADIUS_FIELD, 0xCC000000);
+            g.drawString(Minecraft.getInstance().font, hoverName, mx + 13, my + 10,
+                    0xFFFFFFFF, false);
         }
     }
 
@@ -399,12 +403,13 @@ public final class PlanePainter {
         }
         int alpha = Math.max(0, Math.min(255, 220 - (int)(elapsed * 220 / 8000)));
         if (alpha <= 0) return;
-        // 绘制居中底栏消息
+        // 绘制居中底栏消息（★ v8：圆角胶囊）
         int textW = Minecraft.getInstance().font.width(host.copiedToastMsg);
-        int bx = px + (pw - textW) / 2 - 4;
+        int bx = px + (pw - textW) / 2 - 6;
         int by = py + ph - 32;
-        g.fill(bx, by, bx + textW + 8, by + 12, (alpha << 24) | 0x101418);
-        g.drawString(Minecraft.getInstance().font, host.copiedToastMsg, bx + 4, by + 2, (alpha << 24) | 0xFFFFFF);
+        UiKit.roundRect(g, bx, by, bx + textW + 12, by + 14, 7, (alpha << 24) | 0x181C20);
+        g.drawString(Minecraft.getInstance().font, host.copiedToastMsg, bx + 6, by + 3,
+                (alpha << 24) | 0xFFFFFF, false);
     }
 
     // ---- localize ----
@@ -465,10 +470,12 @@ public final class PlanePainter {
         if (ly + panelH > screenH) ly = (int) my - panelH - 14;
         lx = Math.max(2, lx);
         ly = Math.max(2, ly);
-        g.fill(lx, ly, lx + maxW + 10, ly + panelH, 0xCC000000);
+        // ★ v8：悬停信息浮层改圆角（旧版直角黑块）
+        UiKit.roundRect(g, lx, ly, lx + maxW + 12, ly + panelH + 2, UiKit.RADIUS_CARD, 0xCC000000);
         for (int i = 0; i < lines.length; i++) {
-            int col = (i == lines.length - 1) ? 0xFF88CCAA : 0xFFFFFF;
-            g.drawString(Minecraft.getInstance().font, lines[i], lx + 4, ly + 4 + i * 13, col);
+            int col = (i == lines.length - 1) ? 0xFF88CCAA : 0xFFF2F2F2;
+            g.drawString(Minecraft.getInstance().font, lines[i], lx + 6, ly + 5 + i * 13,
+                    col, false);
         }
     }
 
@@ -525,7 +532,10 @@ public final class PlanePainter {
         if (!host.drawZoomLabel) return;
         String zoomTxt = "1:" + host.scaleBlockPos
                 + (host.largeArea ? " · " + localize("geogenesis.preview.large_area") : "");
-        g.fill(x + w - Minecraft.getInstance().font.width(zoomTxt) - 8, y + h - 14, x + w - 2, y + h - 2, 0x88000000);
-        g.drawString(Minecraft.getInstance().font, zoomTxt, x + w - Minecraft.getInstance().font.width(zoomTxt) - 5, y + h - 12, 0xCCCCCCCC);
+        int ztw = Minecraft.getInstance().font.width(zoomTxt);
+        // ★ v8：圆角胶囊
+        UiKit.roundRect(g, x + w - ztw - 9, y + h - 15, x + w - 2, y + h - 2, UiKit.RADIUS_FIELD, 0x88000000);
+        g.drawString(Minecraft.getInstance().font, zoomTxt,
+                x + w - ztw - 5, y + h - 13, 0xFFDCDCDC, false);
     }
 }

@@ -28,19 +28,19 @@ public class ColormapOption {
 
     public void render(GuiGraphics g, int mx, int my) {
         boolean hover = mx >= x && mx <= x + w && my >= y && my <= y + H;
-        int bg = hover ? 0xFF252A33 : (active ? 0xFF1A3A2A : 0xFF1A1E24);
-        g.fill(x, y, x + w, y + H, bg);
-        if (active) {
-            g.fill(x, y, x + w, y + 1, 0xFF00C896);
-            g.fill(x, y + H - 1, x + w, y + H, 0xFF00C896);
-        }
+        // ★ v7：圆角行 + 左主色条（旧版是上下两条亮绿描边 + 深绿底）
+        int bg = active ? 0x2E48DE56 : (hover ? 0x14FFFFFF : 0x00000000);
+        if (bg != 0) UiKit.roundRect(g, x, y, x + w, y + H, 3, bg);
+        if (active) g.fill(x + 1, y + 4, x + 3, y + H - 4, UiKit.C_ACCENT);
+        // 色带预览
         for (int i = 0; i < 48; i++) {
             float t = i / 47f;
             int col = entry.colormap().getRGB(t);
-            g.fill(x + 4 + i, y + 4, x + 5 + i, y + 16, 0xFF000000 | col);
+            g.fill(x + 8 + i, y + 5, x + 9 + i, y + 15, 0xFF000000 | col);
         }
-        g.drawString(Minecraft.getInstance().font, entry.name(), x + 60, y + 6,
-            active ? 0xFF00C896 : 0xFFCCCCCC);
+        g.drawString(Minecraft.getInstance().font, entry.name(), x + 64,
+                y + (H - Minecraft.getInstance().font.lineHeight) / 2,
+                active ? UiKit.C_ACCENT : UiKit.C_TXT_SUB, false);
     }
 
     public boolean mouseClicked(double mx, double my, int btn) {

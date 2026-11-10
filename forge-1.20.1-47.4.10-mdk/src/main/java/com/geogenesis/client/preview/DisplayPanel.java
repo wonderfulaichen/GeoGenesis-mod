@@ -12,19 +12,27 @@ import net.minecraft.network.chat.Component;
 public class DisplayPanel extends ConfigPanel {
 
     private final PreviewDisplay preview;
-    private static final int ROW_H = 24;
+    private static final int ROW_H = UiKit.ROW_H;
     private static final int GAP = 8;
 
     public DisplayPanel(PreviewDisplay preview) { this.preview = preview; }
 
-    private int toggleY(int idx) { return top() + 30 + idx * (ROW_H + GAP); }
+    private int toggleY(int idx) { return top() + 6 + idx * (ROW_H + GAP); }
+
+    /** 行数（★ v22：改为常量，供 getHeight 与渲染共用，避免加行忘改高度）。 */
+    private static final int ROW_COUNT = 8;
 
     @Override
-    public int getHeight() { return 340; }
+    public int getHeight() {
+        // ★ v22：按实际行数算 + 底部留白（原写死 340，加行就会滚不到底）
+        return 6 + ROW_COUNT * (ROW_H + GAP) + 18;
+    }
 
     @Override
     public void render(GuiGraphics g, int mx, int my) {
-        drawHeader(g, x, top(), I18n.get("geogenesis.settings.general.title"));
+        // ★ v15：标题由 ConfigPanelHost 统一画（drawHeader 已空实现）
+        // 按钮类行用统一控件高（drawButton 走 UiKit，高度须一致）
+        int bh = UiKit.H_CONTROL;
 
         boolean h0 = drawToggleRow(g, x, toggleY(0), w, ROW_H,
             I18n.get("geogenesis.settings.general.show_frametime"), preview.showFrameTime, mx, my);
@@ -34,7 +42,7 @@ public class DisplayPanel extends ConfigPanel {
             I18n.get("geogenesis.settings.general.show_player"), preview.showPlayerMarkers, mx, my);
         if (h1) hoverTooltip = Component.literal(I18n.get("geogenesis.settings.general.show_player.tooltip"));
 
-        boolean hb = drawButton(g, x, toggleY(2), w, ROW_H,
+        boolean hb = drawButton(g, x, toggleY(2), w, bh,
             I18n.get("geogenesis.settings.display.underlay") + ": " + GeoPalette.terrainUnderlayLabel(this::localize), false, mx, my);
         if (hb) hoverTooltip = Component.literal(I18n.get("geogenesis.settings.display.underlay.tooltip"));
 
@@ -54,7 +62,7 @@ public class DisplayPanel extends ConfigPanel {
             I18n.get("geogenesis.settings.display.filter_mode"), preview.filterMode, mx, my);
         if (h5) hoverTooltip = Component.literal(I18n.get("geogenesis.settings.display.filter_mode.tooltip"));
 
-        boolean h6 = drawButton(g, x, toggleY(7), w, ROW_H,
+        boolean h6 = drawButton(g, x, toggleY(7), w, bh,
             I18n.get("geogenesis.settings.display.locate_spawn"), false, mx, my);
         if (h6) hoverTooltip = Component.literal(I18n.get("geogenesis.settings.display.locate_spawn.tooltip"));
     }

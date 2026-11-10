@@ -53,15 +53,33 @@ public class BiomesPanel extends ConfigPanel {
     /** Screen render 前调用，告知面板底 y（listBottom）以填满整个面板区（消除底部空白） */
     public void setPanelBottom(int y) { this.panelBottomY = y; }
 
+    /**
+     * 内容高度（★ v22：按<b>列表区实际高度</b>算）。
+     *
+     * <p>原写死 420 —— 但列表高度随 {@code panelBottomY}（窗口高）变化，
+     * 大窗口下列表更高、滚动上限却按 420 算 ⇒ 滚到底仍看不全；
+     * 小窗口则反过来留出一大片空白。</p>
+     */
     @Override
-    public int getHeight() { return 420; }
+    public int getHeight() {
+        int ly = listY() - top();          // 相对内容顶的列表起点
+        return ly + listHeightFor() + 8 + 18;
+    }
 
     private int filterY() { return top() + FILTER_OFF; }
     private int listY() { return filterY() + FILTER_H + LIST_GAP; }
 
+    /** 列表区高度（★ v22：render 与 getHeight 共用的唯一算法）。 */
+    private int listHeightFor() {
+        int ly = listY();
+        return panelBottomY > 0
+            ? Math.max(160, panelBottomY - ly - 4)
+            : Math.max(160, Math.min(360, Minecraft.getInstance().getWindow().getGuiScaledHeight() - 360));
+    }
+
     @Override
     public void render(GuiGraphics g, int mx, int my) {
-        drawHeader(g, x, top(), I18n.get("geogenesis.settings.biomes.title"));
+        // ★ v15：标题由 ConfigPanelHost 统一画（drawHeader 已空实现）
 
         int fy = filterY();
         int n = FILTER_KEYS.length;
@@ -72,9 +90,7 @@ public class BiomesPanel extends ConfigPanel {
         }
 
         int ly = listY();
-        int lh = panelBottomY > 0
-            ? Math.max(160, panelBottomY - ly - 4)
-            : Math.max(160, Math.min(360, Minecraft.getInstance().getWindow().getGuiScaledHeight() - 360));
+        int lh = listHeightFor();
         listPanel.setRect(x, ly, w, lh);
         listPanel.setFilter(filterMode);
         boolean selLayer = preview.getSelectedLayer() == GeoPalette.PreviewLayer.BIOME;
@@ -90,7 +106,8 @@ public class BiomesPanel extends ConfigPanel {
             int shown = 0;
             for (BiomeEntryWidget e : entries) if (e.matchesFilter(filterMode)) shown++;
             String text = "共 " + shown + " / " + entries.size() + " 个群系 · 点击地图/图例高亮选中";
-            g.drawCenteredString(font(), text, x + w / 2, footerY, C_TEXT_DIM);
+            // ★ v15：走 UiKit 的统一字色（原用旧常量 C_TEXT_DIM）
+            g.drawCenteredString(font(), text, x + w / 2, footerY, UiKit.C_TXT_DIM);
         }
     }
 

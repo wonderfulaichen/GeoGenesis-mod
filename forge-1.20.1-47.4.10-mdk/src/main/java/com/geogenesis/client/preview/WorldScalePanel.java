@@ -69,26 +69,63 @@ public class WorldScalePanel extends DomainPanel {
         onMarkDirty.run();
     }
 
+    /**
+     * <b>示意图已搬到"常驻固定区"</b>（★ v20）。
+     *
+     * <p>用户要求示意图「常驻显示，不然滚动就消失了」。
+     * 现在由 {@code GeoGenesisConfigScreen.renderPinnedChart} 钉在内容区底部，
+     * 因此本面板的<b>滚动区不再包含</b>示意图（返回 0），
+     * 参数列表可以独立滚动。</p>
+     */
     @Override
-    protected int extraHeight() { return 18 + CHART_H; }
+    protected int extraHeight() { return 0; }
 
     @Override
     protected void renderExtra(GuiGraphics g, int mx, int my, int y) {
-        g.fill(x, y + CHART_H - 1, x + w, y + CHART_H, C_LINE);
-        g.drawString(font(), "尺度示意（拖动即写回上面两个键）", x + 2, y + 2, 0xFF66CCFF);
-        scalePreview.setBounds(x + 4, y + 18, w - 8, CHART_H);
-        scalePreview.render(g, mx, my);
+        // 有意留空：示意图改由屏幕在固定区调用 {@link #renderChart}。
     }
 
+    /** 屏幕注入的固定区几何。 */
+    private int pinnedX, pinnedY, pinnedW;
+
+    /** 屏幕在固定区渲染前设置几何。 */
+    public void setPinnedBounds(int px, int py, int pw) {
+        this.pinnedX = px;
+        this.pinnedY = py;
+        this.pinnedW = pw;
+    }
+
+    /**
+     * <b>绘制尺度示意图</b>（★ v20：由屏幕在固定区调用）。
+     *
+     * <p>每帧从配置回读 —— 两个 double 读取，成本可忽略，
+     * 换来"拖动上方滑块时，图实时变形"。</p>
+     */
+    public void renderChart(GuiGraphics g, int mx, int my) {
+        refreshChart();
+        scalePreview.setBounds(pinnedX, pinnedY, pinnedW, CHART_H);
+        scalePreview.render(g, mx, my);
+        // 底部一行说明（统一字色）——也让本类保持对 UiKit 的唯一视觉来源
+        g.drawString(font(), UiKit.clip("拖动上方滑块可实时看到地形起伏与采样密度的变化", pinnedW),
+                pinnedX, pinnedY + CHART_H + 16, UiKit.C_TXT_DIM, false);
+    }
+
+    /** 固定区示意图的命中检测（只有重置键可点）。 */
+    public boolean chartClicked(double mx, double my, int btn) {
+        scalePreview.setBounds(pinnedX, pinnedY, pinnedW, CHART_H);
+        return scalePreview.mouseClicked(mx, my, btn);
+    }
+
+    /**
+     * 点击：只转发给示意图的<b>重置键</b>（示意图本身只读）。
+     *
+     * <p>★ v17：去掉 {@code mouseDraggedExtra} —— 示意图不再可拖，
+     * 留着它只会让人以为这里能拖。</p>
+     */
     @Override
     protected boolean mouseClickedExtra(double mx, double my, int btn, int y) {
         scalePreview.setBounds(x + 4, y + 18, w - 8, CHART_H);
         return scalePreview.mouseClicked(mx, my, btn);
-    }
-
-    @Override
-    protected boolean mouseDraggedExtra(double mx, double my, int btn, double dx, double dy) {
-        return scalePreview.mouseDragged(mx, my, btn, dx, dy);
     }
 
     @Override

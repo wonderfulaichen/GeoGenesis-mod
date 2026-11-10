@@ -39,8 +39,8 @@ import java.util.function.LongSupplier;
 public class PresetsPanel extends ConfigPanel {
 
     private static final int HEADER_H = 22;
-    private static final int SEED_ROW_H = 18;
-    private static final int ROW_H = 22;            // 收藏行高（+padding 防文字贴边）
+    private static final int SEED_ROW_H = UiKit.CHIP_H;
+    private static final int ROW_H = UiKit.ROW_H;    // 收藏行高（统一）
     private static final int ROW_GAP = 3;
     private static final int CARD_H = 60;           // 卡片高（+padding）
     private static final int CARD_GAP = 10;
@@ -107,7 +107,9 @@ public class PresetsPanel extends ConfigPanel {
             .pos(0, 0).size(SEED_ROW_H, SEED_ROW_H).build();
         addWidget.accept(favBtn);
 
-        favSection.setContentHeight(FAV_SCROLL_H);
+        // ★ v7：内容高度改为按收藏条数算（每帧刷新）——
+        //   写死 160 会让 2 条收藏也占满 160px，挤压下方卡片区。
+        favSection.setContentHeight(Math.max(ROW_H, favScrollH()));
         favSection.setTitleColor(0xFFe0e0e0);
     }
 
@@ -133,30 +135,86 @@ public class PresetsPanel extends ConfigPanel {
     private static net.minecraft.network.chat.Component C(String s) { return net.minecraft.network.chat.Component.literal(s); }
     private static net.minecraft.network.chat.Component Star(boolean on) { return C(on ? "★" : "☆"); }
 
+    /** 内容区可用高度（由主屏每帧注入；0 = 未注入，退回写死值）。 */
+    private int viewportH = 0;
+    /** 两个滚动区的实际高度（按 viewportH 分摊，见 {@link #recomputeScrollHeights()}）。 */
+    private int cardScrollH = CARD_SCROLL_H;
+    private int userScrollH = USER_SCROLL_H;
+
+    /**
+     * ★ 2026-11-09 v7【修"内容面板下方大片空白"】：
+     * 原来这个方法体是空的（注释「保留兼容」），于是两个预设列表区
+     * 恒按 230 + 200 的写死高度画 —— 内容区实际有 600+ 像素时，
+     * 底部就空出一大片。
+     *
+     * <p>现在把可用高度按比例摊给它俩：卡片区 55% / 用户区 45%，
+     * 各不低于原最小值（避免小窗口时挤没）。</p>
+     */
+    public void setViewportHeight(int h) {
+        if (h <= 0 || h == viewportH) return;
+        viewportH = h;
+        recomputeScrollHeights();
+    }
+
+    private void recomputeScrollHeights() {
+        // 扣掉所有固定项，剩下的才是两个滚动区能用的高度
+        // ★ v7：不再扣 HEADER_H（标题移到面板顶部，由 ConfigPanelHost 画）
+        int fixed = 2 + SEED_ROW_H + GAP_M
+                  + favSection.getFullHeight() + GAP_M * 3 + 12;
+        int avail = viewportH - fixed;
+        if (avail <= CARD_SCROLL_H + USER_SCROLL_H) {
+            // 空间不足：保持原值（外滚会兜住）
+            cardScrollH = CARD_SCROLL_H;
+            userScrollH = USER_SCROLL_H;
+            return;
+        }
+        // 两区标题各占 16px
+        int body = avail - 32;
+        cardScrollH = Math.max(CARD_SCROLL_H, (int) (body * 0.55));
+        userScrollH = Math.max(USER_SCROLL_H, body - cardScrollH);
+    }
+
     @Override
     public int getHeight() {
-        return HEADER_H + GAP_S + SEED_ROW_H + GAP_M
+        return 2 + SEED_ROW_H + GAP_M
              + favSection.getFullHeight() + GAP_M
-             + CARD_SCROLL_H + GAP_M
-             + USER_SCROLL_H + GAP_M + 12;
+             + cardScrollH + GAP_M
+             + userScrollH + GAP_M + 12;
     }
 
     // 所有 y 用 top()（随主屏外滚移动）
-    private int pinnedHeaderY()             { return top(); }
-    private int pinnedSeedY()               { return top() + HEADER_H + GAP_S; }
+    /**
+     * 种子行 y（★ v7：标题由 ConfigPanelHost 统一画，这里不再预留 {@code HEADER_H}）。
+     *
+     * <p>旧版 {@code top() + HEADER_H + GAP_S} 会留出 28px 空白 ——
+     * 因为原来是本面板自己画标题，现在标题在面板顶部，那段就空了。</p>
+     */
+    private int pinnedSeedY()               { return top() + 2; }
     /** 收藏折叠面板起始 y（含标题栏 + 可能的内容区） */
     private int pinnedFavTopY()             { return pinnedSeedY() + SEED_ROW_H + GAP_M; }
     private int pinnedFavScrollTopY()       { return pinnedFavTopY() + 16; }  // MixerPanel.TITLE_H=16
-    private int pinnedFavScrollBotY()       { return pinnedFavScrollTopY() + FAV_SCROLL_H; }
+    private int pinnedFavScrollBotY()       { return pinnedFavScrollTopY() + favScrollH(); }
+
+    /**
+     * ★ v7：收藏区高度<b>按内容自适应</b>（上限 {@link #FAV_SCROLL_H}）。
+     *
+     * <p>截图问题：固定 160 或展开后按容器撑开时，只有 2 条收藏 seed 却占
+     * 一大片空白，把下面的「默认地形预设」往下挤。现在内容少就矮、多了才滚。</p>
+     */
+    private int favScrollH() {
+        if (favSection.isCollapsed()) return 0;
+        int content = favContentH();
+        if (content <= 0) return ROW_H;            // 空列表也给一行提示位
+        return Math.min(FAV_SCROLL_H, content);
+    }
     private int pinnedCardTitleY()          { return pinnedFavTopY() + favSection.getFullHeight() + GAP_M; }
     private int pinnedCardScrollTopY()      { return pinnedCardTitleY() + 16; }  // MixerPanel.TITLE_H=16
-    private int pinnedCardScrollBotY()      { return pinnedCardScrollTopY() + CARD_SCROLL_H; }
+    private int pinnedCardScrollBotY()      { return pinnedCardScrollTopY() + cardScrollH; }
     private int pinnedUserTitleY()          { return pinnedCardScrollBotY() + GAP_M; }
     private int pinnedUserScrollTopY()      { return pinnedUserTitleY() + 16; }
-    private int pinnedUserScrollBotY()      { return pinnedUserScrollTopY() + USER_SCROLL_H; }
+    private int pinnedUserScrollBotY()      { return pinnedUserScrollTopY() + userScrollH; }
 
     public int getScrollTopY() { return pinnedFavScrollTopY(); }
-    public void setViewportHeight(int h) { /* 保留兼容 */ }
 
     /** 从 UserPresetsStore 重新加载用户预设列表（保存/删除后调用刷新） */
     public void refreshUserPresets() {
@@ -183,7 +241,7 @@ public class PresetsPanel extends ConfigPanel {
     @Override
     public void render(GuiGraphics g, int mx, int my) {
         // ============ 固定区（随主屏外滚，但 widgets 出 panel 顶时隐藏防压标签条）============
-        drawHeader(g, x, pinnedHeaderY(), "配置预设");
+        // ★ v15：标题由 ConfigPanelHost 统一画（drawHeader 已空实现）
 
         int sy = pinnedSeedY();
         // widgets 绝对坐标低于 panel 顶 (baseY) 时隐藏，避免超裁剪区压到标签条；非活跃标签强制隐藏
@@ -208,6 +266,8 @@ public class PresetsPanel extends ConfigPanel {
         favBtn.setMessage(Star(sm.isFavorite(curSeed)));
 
         // —— 收藏折叠面板（MixerPanel 可折叠容器）——
+        //   ★ v7：每帧按当前收藏条数刷新内容高度（否则 2 条也会占 160px）
+        favSection.setContentHeight(Math.max(ROW_H, favScrollH()));
         favSection.setBounds(x, pinnedFavTopY(), w);
         favSection.renderHeader(g, mx, my);
         // ★ 每帧清除命中区缓存（在 drawScrollRegion 之前），防止累积+避免互相清空
@@ -215,7 +275,7 @@ public class PresetsPanel extends ConfigPanel {
         if (!favSection.isCollapsed()) {
             int favTop = pinnedFavScrollTopY();
             int favBot = pinnedFavScrollBotY();
-            g.fill(x + 2, favTop, x + w - 2, favBot, 0xFF15191F);
+            UiKit.roundRect(g, x + 2, favTop, x + w - 2, favBot, UiKit.RADIUS_CARD, 0xFF1A1A1A);
             g.enableScissor(x, favTop, x + w, favBot);
             drawScrollRegion(g, mx, my, favTop, favBot, curSeed, sm, true);
             g.disableScissor();
@@ -229,7 +289,7 @@ public class PresetsPanel extends ConfigPanel {
         // ============ 滚动区 B：卡片（带 scissor 严格裁剪到区域）============
         int cardTop = pinnedCardScrollTopY();
         int cardBot = pinnedCardScrollBotY();
-        g.fill(x + 2, cardTop, x + w - 2, cardBot, 0xFF15191F);
+        UiKit.roundRect(g, x + 2, cardTop, x + w - 2, cardBot, UiKit.RADIUS_CARD, 0xFF1A1A1A);
         g.enableScissor(x, cardTop, x + w, cardBot);
         drawScrollRegion(g, mx, my, cardTop, cardBot, curSeed, sm, false);
         g.disableScissor();
@@ -241,7 +301,7 @@ public class PresetsPanel extends ConfigPanel {
         // ============ 滚动区 C：用户自定义预设（带 scissor 严格裁剪到区域）============
         int userTop = pinnedUserScrollTopY();
         int userBot = pinnedUserScrollBotY();
-        g.fill(x + 2, userTop, x + w - 2, userBot, 0xFF15191F);
+        UiKit.roundRect(g, x + 2, userTop, x + w - 2, userBot, UiKit.RADIUS_CARD, 0xFF1A1A1A);
         g.enableScissor(x, userTop, x + w, userBot);
         drawUserRegion(g, mx, my, userTop, userBot);
         g.disableScissor();
@@ -277,36 +337,28 @@ public class PresetsPanel extends ConfigPanel {
                 }
             }
             int contentH = favContentH();
-            int maxScroll = Math.max(0, contentH - (sBot - sTop));
-            if (maxScroll > 0) {
-                int barH = Math.max(14, (sBot - sTop) * (sBot - sTop) / Math.max(1, contentH));
-                int barY = sTop + innerScrollY_fav * ((sBot - sTop) - barH) / maxScroll;
-                g.fill(x + w - 3, barY, x + w - 1, barY + barH, 0xFF00c896);
-            }
+                UiKit.scrollbar(g, x + w - 3, sTop, sBot - sTop, contentH, innerScrollY_fav, false);
         } else {
             int y = sTop;
             for (Preset p : presets) {
                 int py = y - innerScrollY_card;
                 if (py < sBot && py + CARD_H > sTop) {
                     boolean hover = mx >= x && mx <= x + w && my >= py && my <= py + CARD_H;
-                    g.fill(x + 2, py, x + w - 2, py + CARD_H, hover ? C_HOVER : C_BG_ROW);
-                    g.fill(x + 2, py, x + 4, py + CARD_H, C_ACCENT);
-                    g.drawString(font(), p.name, x + 10, py + 8, C_TEXT);
+                    // ★ v7 自绘卡片：圆角 + 主色左条 + 主/副两行文字（对齐示意图）
+                    UiKit.roundRect(g, x + 4, py, x + w - 4, py + CARD_H, 4,
+                            hover ? UiKit.C_CARD_HOVER : UiKit.C_CARD);
+                    g.fill(x + 4, py + 6, x + 6, py + CARD_H - 6, UiKit.C_ACCENT);
+                    g.drawString(font(), p.name, x + 14, py + 10, UiKit.C_TXT, false);
                     String desc = p.desc;
-                    int maxW = w - 24;
+                    int maxW = w - 34;
                     if (font().width(desc) > maxW) desc = font().plainSubstrByWidth(desc, maxW, true);
-                    g.drawString(font(), desc, x + 10, py + 28, C_TEXT_DIM);
+                    g.drawString(font(), desc, x + 14, py + 28, UiKit.C_TXT_DIM, false);
                     cardY.add(py);
                 }
                 y += CARD_H + CARD_GAP;
             }
             int contentH = cardContentH();
-            int maxScroll = Math.max(0, contentH - (sBot - sTop));
-            if (maxScroll > 0) {
-                int barH = Math.max(14, (sBot - sTop) * (sBot - sTop) / Math.max(1, contentH));
-                int barY = sTop + innerScrollY_card * ((sBot - sTop) - barH) / maxScroll;
-                g.fill(x + w - 3, barY, x + w - 1, barY + barH, 0xFF00c896);
-            }
+                UiKit.scrollbar(g, x + w - 3, sTop, sBot - sTop, contentH, innerScrollY_card, false);
         }
     }
 
@@ -324,26 +376,22 @@ public class PresetsPanel extends ConfigPanel {
                 int py = y - innerScrollY_user;
                 if (py < sBot && py + CARD_H > sTop) {
                     boolean hover = mx >= x && mx <= x + w && my >= py && my <= py + CARD_H;
-                    g.fill(x + 2, py, x + w - 2, py + CARD_H, hover ? C_HOVER : C_BG_ROW);
-                    g.fill(x + 2, py, x + 4, py + CARD_H, C_ACCENT);
-                    g.drawString(font(), p.name(), x + 10, py + 8, C_TEXT);
+                    UiKit.roundRect(g, x + 4, py, x + w - 4, py + CARD_H, 4,
+                            hover ? UiKit.C_CARD_HOVER : UiKit.C_CARD);
+                    g.fill(x + 4, py + 6, x + 6, py + CARD_H - 6, UiKit.C_TEAL);
+                    g.drawString(font(), p.name(), x + 14, py + 10, UiKit.C_TXT, false);
                     String meta = "（" + p.values().size() + " 项参数）";
-                    g.drawString(font(), meta, x + 10, py + 28, C_TEXT_DIM);
+                    g.drawString(font(), meta, x + 14, py + 28, UiKit.C_TXT_DIM, false);
                     int delX = x + w - 18;
                     boolean delHover = mx >= delX - 4 && mx <= delX + 14 && my >= py && my <= py + CARD_H;
                     g.drawString(font(), "✕", delX, py + (CARD_H - font().lineHeight) / 2,
-                        delHover ? 0xFFFF7777 : C_TEXT_DIM);
+                        delHover ? 0xFFFF7777 : UiKit.C_TXT_DIM, false);
                     userCardY.add(py); userCardId.add(p.id());
                 }
                 y += CARD_H + CARD_GAP;
             }
             int contentH = userContentH();
-            int maxScroll = Math.max(0, contentH - (sBot - sTop));
-            if (maxScroll > 0) {
-                int barH = Math.max(14, (sBot - sTop) * (sBot - sTop) / Math.max(1, contentH));
-                int barY = sTop + innerScrollY_user * ((sBot - sTop) - barH) / maxScroll;
-                g.fill(x + w - 3, barY, x + w - 1, barY + barH, 0xFF00c896);
-            }
+                UiKit.scrollbar(g, x + w - 3, sTop, sBot - sTop, contentH, innerScrollY_user, false);
         }
     }
 
@@ -407,14 +455,14 @@ public class PresetsPanel extends ConfigPanel {
     public boolean mouseScrolled(double mx, double my, double delta) {
         // 用户预设区：内部滚动
         if (my >= pinnedUserScrollTopY() && my < pinnedUserScrollBotY()) {
-            int maxScroll = Math.max(0, userContentH() - USER_SCROLL_H);
+            int maxScroll = Math.max(0, userContentH() - userScrollH);
             if (maxScroll <= 0) return false;
             innerScrollY_user = Clamp(innerScrollY_user - (int)(delta * 20), 0, maxScroll);
             return true;
         }
         // 卡片区：内部滚动
         if (my >= pinnedCardScrollTopY() && my < pinnedCardScrollBotY()) {
-            int maxScroll = Math.max(0, cardContentH() - CARD_SCROLL_H);
+            int maxScroll = Math.max(0, cardContentH() - cardScrollH);
             if (maxScroll <= 0) return false;
             innerScrollY_card = Clamp(innerScrollY_card - (int)(delta * 20), 0, maxScroll);
             return true;

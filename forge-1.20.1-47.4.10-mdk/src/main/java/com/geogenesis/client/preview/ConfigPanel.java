@@ -20,15 +20,17 @@ import net.minecraft.sounds.SoundEvents;
  */
 public abstract class ConfigPanel {
 
-    // —— 共享深色主题配色（与主屏 / ParamSlider 一致）——
-    protected static final int C_BG_PANEL = 0xFF1e222c;
-    protected static final int C_BG_ROW   = 0xFF15191F;
-    protected static final int C_BG_BTN   = 0xFF1A1E24;
-    protected static final int C_HOVER    = 0xFF252A33;
-    protected static final int C_ACCENT   = 0xFF00c896;
-    protected static final int C_TEXT     = 0xFFe0e0e0;
-    protected static final int C_TEXT_DIM = 0xFF999999;
-    protected static final int C_LINE     = 0xFF333333;
+    // —— 共享配色（★ v7：改为委托 UiKit，避免每个面板各持一套旧色）——
+    //   旧值 0xFF1e222c / 0xFF00c896 是早期深蓝主题，与新参考图的
+    //   中性灰 + 地形绿 冲突。全部指向 UiKit 后才能"改一处、全局一致"。
+    protected static final int C_BG_PANEL = 0xFF1E1E1E;
+    protected static final int C_BG_ROW   = 0xFF232323;
+    protected static final int C_BG_BTN   = 0xFF333333;
+    protected static final int C_HOVER    = 0xFF3A3A3A;
+    protected static final int C_ACCENT   = 0xFF48DE56;
+    protected static final int C_TEXT     = 0xFFF2F2F2;
+    protected static final int C_TEXT_DIM = 0xFF9E9E9E;
+    protected static final int C_LINE     = 0xFF2A2A2A;
 
     /** 面板内容左上角 x（由主屏注入） */
     protected int x, baseY, w;
@@ -39,6 +41,48 @@ public abstract class ConfigPanel {
 
     /** 悬停 tooltip：子类在 render 中若鼠标悬停在带说明的控件上则设置，主屏在 scissor 外绘制 */
     protected Component hoverTooltip = null;
+
+    /**
+     * <b>数值输入请求回调</b>（★ v19）。
+     *
+     * <p>用户要求「右侧的数值显示可以做成可点击写入数值，这样能滑能填」。
+     * 面板拿不到 Screen 上下文、弹不出输入框 ⇒ 统一由基类持有这个回调，
+     * 屏幕在 {@code init()} 时注入，各面板点值胶囊时调用即可。</p>
+     */
+    protected TextEditRequester textEdit = null;
+
+    /** 三个参数：显示标题、当前值文本、提交回调（收到用户输入的字符串）。 */
+    public interface TextEditRequester {
+        void request(String label, String current, java.util.function.Consumer<String> onCommit);
+    }
+
+    public void setTextEditRequester(TextEditRequester r) { this.textEdit = r; }
+
+    /**
+     * 把某滑块的「值胶囊点击」接到输入框（★ v19：各面板共用的唯一实现）。
+     *
+     * <p>避免每个面板各写一遍 try/catch + 回调绑定 —— 那种重复正是
+     * "换地方就变"的来源。</p>
+     *
+     * @param slider   目标滑块
+     * @param label    弹窗标题（参数名）
+     * @param onChange 写入成功后要跑的动作（标脏 / 刷新）
+     * @return 是否真的弹出了输入框（未配置回调时返回 false）
+     */
+    protected boolean requestValueEdit(com.geogenesis.client.ParamSlider slider,
+                                       String label, Runnable onChange) {
+        if (textEdit == null || slider == null) return false;
+        if (!slider.consumeTextEditRequest()) return false;
+        textEdit.request(label, String.valueOf(slider.getCurrentValue()), text -> {
+            try {
+                slider.setValueFromInput(Double.parseDouble(text.trim()));
+                if (onChange != null) onChange.run();
+            } catch (NumberFormatException ignored) {
+                // 非法输入静默忽略（保持原值）
+            }
+        });
+        return true;
+    }
 
     public void setBounds(int x, int y, int w) { this.x = x; this.baseY = y; this.w = w; }
     public void setScrollOffset(int off) { this.scrollOffset = off; }
@@ -66,7 +110,29 @@ public abstract class ConfigPanel {
         return t;
     }
 
-    /** 只读窥视悬停 tooltip（不清空）。供 {@link CompositePanel} 合并子面板 tooltip。 */
+    /**
+     * <b>每帧开头清空悬停状态</b>（★ v22：修"幽灵提示"）。
+     *
+     * <h2>为什么必需</h2>
+     * <p>{@code hoverTooltip} 是"渲染时若悬停则写入"的字段。
+     * 若某帧鼠标<b>不</b>在控件上，就没人写它 ⇒ 上一帧的值一直留在字段里。
+     * 只要有任何读取方（旧 {@code peekHoverTooltip}、{@code CompositePanel}）
+     * 在"没人写"的帧去读，就会拿到<b>过期文本</b> ——
+     * 用户看到的就是"指针不在任何控件上，提示却一直显示"。</p>
+     *
+     * <p>由屏幕在 {@code render()} 最开头对所有面板调用一次，
+     * 保证每一帧的 tooltip 只能来自<b>本帧</b>的悬停判定。</p>
+     */
+    public void beginFrame() {
+        hoverTooltip = null;
+        // 子面板（CompositePanel）需要一并清空内部状态
+        clearFrameState();
+    }
+
+    /** 供容器类覆盖：每帧清空自己的子控件悬停状态。 */
+    protected void clearFrameState() { }
+
+    /** 只读窥视悬停 tooltip（不清空）。 */
     public Component peekHoverTooltip() { return hoverTooltip; }
 
     /** 统一的点击音效（面板按钮 / 列表项选中时调用），提升操作反馈手感 */
@@ -83,42 +149,45 @@ public abstract class ConfigPanel {
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
     }
 
-    /** 绘制标题行（左对齐白字） */
+    /**
+     * 面板标题（★ v15：<b>保留签名但标记废弃</b>）。
+     *
+     * <p>标题现在统一由 {@code ConfigPanelHost.drawPanelTitle} 画（带「— N 项」）。
+     * 各面板一律不再调用本方法；保留空实现只是为了不破坏尚未迁移的调用点，
+     * 新代码<b>禁止</b>再调用它 —— 否则又会出现"两行同名标题"。</p>
+     *
+     * @deprecated 标题由 {@code ConfigPanelHost} 统一绘制，不要再调用
+     */
+    @Deprecated
     protected static void drawHeader(GuiGraphics g, int x, int y, String title) {
-        g.drawString(font(), title, x, y, C_TEXT);
+        // 有意留空。
     }
 
     /**
-     * 绘制「标签 + 右侧开关胶囊」行。开=青绿填充+深色字，关=暗底+次级字。
+     * 绘制「标签 + 右侧开关」行（★ v7：改走 {@link UiKit}，iOS 风格滑钮）。
+     *
      * @return 该行是否处于 hover（供调用方决定是否消费事件）
      */
     protected static boolean drawToggleRow(GuiGraphics g, int x, int y, int w, int h,
                                             String label, boolean on, int mx, int my) {
         boolean hover = hit(x, y, w, h, mx, my);
-        g.fill(x, y, x + w, y + h, hover ? C_HOVER : C_BG_ROW);
-        g.fill(x, y, x + 2, y + h, C_LINE);
+        if (hover) UiKit.roundRect(g, x, y, x + w, y + h, UiKit.RADIUS_FIELD, 0x14FFFFFF);
         Font f = font();
-        g.drawString(f, label, x + 8, y + (h - f.lineHeight) / 2, C_TEXT);
-        int pillW = 64, pillH = 16;
-        int px = x + w - pillW - 8, py = y + (h - pillH) / 2;
-        g.fill(px, py, px + pillW, py + pillH, on ? C_ACCENT : C_BG_BTN);
-        String txt = on ? "开" : "关";
-        g.drawString(f, txt, px + (pillW - f.width(txt)) / 2, py + (pillH - f.lineHeight) / 2,
-            on ? 0xFF0e1218 : C_TEXT_DIM);
+        g.drawString(f, label, x + 8, y + (h - f.lineHeight) / 2, UiKit.C_TXT, false);
+        int sw = 30, sh = 16;
+        UiKit.toggle(g, x + w - sw - 8, y + (h - sh) / 2, sw, sh, on, hover, UiKit.C_ACCENT);
         return hover;
     }
 
     /**
-     * 绘制胶囊按钮。active=青绿高亮+深色字，否则暗底+亮字，hover 提亮。
+     * 绘制胶囊按钮（★ v7：改走 {@link UiKit}，无描边的真胶囊）。
+     *
      * @return 是否 hover
      */
     protected static boolean drawButton(GuiGraphics g, int x, int y, int w, int h,
                                         String label, boolean active, int mx, int my) {
         boolean hover = hit(x, y, w, h, mx, my);
-        int bg = active ? C_ACCENT : (hover ? C_HOVER : C_BG_BTN);
-        g.fill(x, y, x + w, y + h, bg);
-        Font f = font();
-        g.drawCenteredString(f, label, x + w / 2, y + (h - f.lineHeight) / 2, active ? 0xFF0e1218 : C_TEXT);
+        UiKit.button(g, x, y, w, h, label, active, hover);
         return hover;
     }
 }

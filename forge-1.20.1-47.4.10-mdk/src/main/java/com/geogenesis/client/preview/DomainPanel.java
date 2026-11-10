@@ -4,6 +4,7 @@ import com.geogenesis.client.ParamSlider;
 import com.geogenesis.config.ConfigKeyCatalog;
 import com.geogenesis.config.ConfigSpecRanges;
 import com.geogenesis.config.PanelLayout;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
@@ -37,11 +38,12 @@ import java.util.Map;
  */
 public class DomainPanel extends ConfigPanel {
 
-    private static final int ROW_H = 20;
-    private static final int SECTION_H = 16;
-    private static final int LABEL_W = 116;
-    private static final int VAL_W = 44;
-    private static final int SLIDER_H = 16;
+    // ★ v14：行高与滑块高统一引用 UiKit（原来 30/22 与别处的 20/22/24 不一致）
+    private static final int ROW_H = UiKit.ROW_H;
+    private static final int SECTION_H = 26;
+    private static final int LABEL_W = 118;
+    private static final int VAL_W = 52;
+    private static final int SLIDER_H = UiKit.SLIDER_H;
 
     private final PanelLayout.Tab tab;
     private final String title;
@@ -139,19 +141,28 @@ public class DomainPanel extends ConfigPanel {
     // ---------------------------------------------------------------- 布局
 
     private int headerHeight() {
-        return 14 + ((subtitle != null && !subtitle.isEmpty()) ? 12 : 0);
+        // ★ 必须与 render() 的排版<b>同源</b>：v7 起副标题按像素宽折行，
+        //   行数不定 ⇒ 用 UiKit.wrappedHeight 预计算同一个值。
+        //   这里若与 render 不一致，hit test 就会整体偏（老 bug）。
+        if (subtitle == null || subtitle.isEmpty()) return 0;
+        return UiKit.wrappedHeight(subtitle, w);
     }
 
     private int rowsHeight() {
         int h = headerHeight();
         for (Map.Entry<String, List<Item>> e : sections.entrySet()) {
-            h += SECTION_H + e.getValue().size() * ROW_H;
+            // ★ 必须与 render() 一致：组头 SECTION_H + 行数×ROW_H + 组间留白 4
+            h += SECTION_H + e.getValue().size() * ROW_H + 4;
         }
         return h;
     }
 
     @Override
-    public int getHeight() { return rowsHeight() + 8 + extraHeight(); }
+    public int getHeight() {
+        // ★ v22：底部留白 8 → 18 —— 原来最后一行贴死裁切边界，
+        //   滚到 max 时数值胶囊底边仍被切掉一线。
+        return rowsHeight() + 18 + extraHeight();
+    }
 
     /** 行区结束后的 y（子类绘制追加区时用）。 */
     protected final int rowsBottomY() { return top() + rowsHeight(); }
@@ -178,22 +189,27 @@ public class DomainPanel extends ConfigPanel {
     @Override
     public void render(GuiGraphics g, int mx, int my) {
         int curY = top();
-        drawHeader(g, x, curY, title);
-        curY += 14;
+        // ★ v7：标题已由 ConfigPanelHost 在面板顶部画（「世界与尺度 — 8 项」），
+        //   这里不再重复画标题 —— 之前实机是两行同名文字叠着。
+        //   ★ 副标题<b>折行</b>而不是 clip：诊断页那句长说明被裁成半句（用户截图）。
         if (subtitle != null && !subtitle.isEmpty()) {
-            g.drawString(font(), clip(subtitle, w), x, curY, C_TEXT_DIM);
-            curY += 12;
+            curY += UiKit.drawWrapped(g, subtitle, x, curY, w, UiKit.C_TXT_DIM);
         }
 
         for (Map.Entry<String, List<Item>> sec : sections.entrySet()) {
-            if (sections.size() > 1) {
-                g.fill(x, curY + SECTION_H - 1, x + w, curY + SECTION_H, C_LINE);
-                g.drawString(font(), sec.getKey(), x + 2, curY + 3, 0xFF66CCFF);
-            }
+            int groupTop = curY;
+            // ★ v12【彻底去掉分组底框】：
+            //   用户连续两轮反馈"边框还是偏粗"。v11 已把透明度降到 0x04FFFFFF，
+            //   但 roundRect 画的是<b>实心块</b> —— 即使 alpha=4/255，
+            //   在深色面板上仍会显出一圈可辨的矩形边界（尤其圆角处）。
+            //   ⇒ 不再画任何底，分组只靠<b>标题小字 + 上下留白</b>区分。
+            //   这是参考图（无框设计）的做法，也符合用户多次强调的方向。
+            g.drawString(font(), sec.getKey(), x + 8, groupTop + 6, UiKit.C_TXT_DIM, false);
             curY += SECTION_H;
             for (Item it : sec.getValue()) {
                 curY = renderRow(g, mx, my, it, curY);
             }
+            curY += 4;   // 组间留白
         }
         renderExtra(g, mx, my, curY + 4);
     }
@@ -201,36 +217,84 @@ public class DomainPanel extends ConfigPanel {
     private int renderRow(GuiGraphics g, int mx, int my, Item it, int rowY) {
         boolean legacy = KeyText.isLegacy(it.key);
         String label = KeyText.label(it.key);
-        int labelColor = legacy ? 0xFF8A8F98 : C_TEXT;
+        int labelColor = legacy ? UiKit.C_TXT_DIM : UiKit.C_TXT;
+        Font f = font();
 
         if (it.kind == ConfigSpecRanges.Kind.BOOL) {
             boolean on = ConfigSpecRanges.getBool(it.key, false);
-            boolean hover = drawToggleRow(g, x, rowY, w, ROW_H - 2, label, on, mx, my);
+            boolean hover = hit(x, rowY, w, ROW_H - 2, mx, my);
+            // ★ v13：不再画任何行底（用户："彻底去掉试试"）。悬停靠<b>文字提亮</b>。
+            int sw = 30, sh = 16;
+            int switchX = x + w - sw - 8;
+            g.drawString(f, UiKit.clip(label, switchX - (x + 8) - 8),
+                    x + 8, rowY + (ROW_H - f.lineHeight) / 2,
+                    hover ? UiKit.C_TXT : labelColor, false);
+            UiKit.toggle(g, switchX, rowY + (ROW_H - 2 - sh) / 2,
+                    sw, sh, on, hover, UiKit.C_ACCENT);
             if (hover) hoverTooltip = Component.literal(KeyText.tooltip(it.key));
             return rowY + ROW_H;
         }
 
         if (it.slider == null) {
-            g.drawString(font(), label, x + 6, rowY + 6, labelColor);
-            g.drawString(font(), "（该类型不支持滑块）", x + LABEL_W, rowY + 6, 0xFFFFAA00);
+            g.drawString(f, label, x + 8, rowY + (ROW_H - f.lineHeight) / 2, labelColor, false);
             return rowY + ROW_H;
         }
 
-        if (((rowY - top()) / ROW_H) % 2 == 0) {
-            g.fill(x + 2, rowY, x + w - 2, rowY + ROW_H, 0x12FFFFFF);
-        }
-        g.drawString(font(), label, x + 6, rowY + (ROW_H - 8) / 2, labelColor);
-        positionSlider(it, rowY);
+        // ★★ v8【修"控件右侧还有空间却不利用" + "长标签撞滑块"】★★
+        //   旧做法：标签写死从 x+8 起、滑块写死从 x+LABEL_W(118) 起
+        //   ⇒ ① 短标签（如"种子"）后面留一大段空白，滑块却挤在右边；
+        //      ② 长标签（如"侵蚀迭代次数"）越过 118 直接画到滑块上。
+        //   现在：标签列宽 = clamp(实际最长标签, 60, 面板 60%)，滑块吃满剩余宽度。
+        int labelColW = labelColumnWidth();
+        // ★ v13：不再画行底；悬停靠文字提亮
+        boolean hoverRow = hit(x, rowY, w, ROW_H - 2, mx, my);
+        g.drawString(f, UiKit.clip(label, labelColW - 10),
+                x + 8, rowY + (ROW_H - f.lineHeight) / 2,
+                hoverRow ? UiKit.C_TXT : labelColor, false);
+        layoutSlider(it, rowY);
         it.slider.render(g, mx, my, 0);
         it.slider.renderTooltip(g, mx, my);
         return rowY + ROW_H;
     }
 
-    private void positionSlider(Item it, int rowY) {
-        it.slider.setX(x + LABEL_W);
-        it.slider.setY(rowY + (ROW_H - SLIDER_H) / 2);
-        it.slider.setWidth(Math.max(40, w - LABEL_W - VAL_W - 6));
+    /**
+     * 标签列宽（★ v8 单一来源：绘制与命中都用它）。
+     *
+     * <p>上限是面板宽度的 60%，下限 60px —— 否则长标签会把滑块挤没，
+     * 短标签又会白白浪费右侧空间。</p>
+     */
+    private int labelColumnWidth() {
+        return Math.max(60, Math.min((int) (w * 0.6), labelColMaxW()));
     }
+
+    /** 滑块几何（★ v8 单一来源，render 与 mouseClicked 共用）。 */
+    private void layoutSlider(Item it, int rowY) {
+        int labelColW = labelColumnWidth();
+        it.slider.setX(x + labelColW);
+        it.slider.setY(rowY + (ROW_H - SLIDER_H) / 2);
+        it.slider.setWidth(Math.max(48, w - labelColW - 4));
+    }
+
+    /**
+     * 本面板所有标签里最宽的那个所需的像素宽（★ v8）。
+     *
+     * <p>做缓存：每帧对所有键调 {@code font.width} 没必要，且键集合在
+     * 构造后不变 —— 一次算好，宽度变化时重算（见 {@link #setBounds}）。</p>
+     */
+    private int labelColMaxW() {
+        if (cachedLabelW < 0) {
+            int m = 0;
+            Font f = font();
+            for (List<Item> l : sections.values()) {
+                for (Item it : l) m = Math.max(m, f.width(KeyText.label(it.key)));
+            }
+            cachedLabelW = m + 10;
+        }
+        return cachedLabelW;
+    }
+
+    /** 标签列最宽需求（-1 = 未算）。 */
+    private int cachedLabelW = -1;
 
     private static String clip(String s, int maxW) {
         var f = font();
@@ -263,7 +327,7 @@ public class DomainPanel extends ConfigPanel {
                         return true;
                     }
                 } else if (it.slider != null) {
-                    positionSlider(it, rowY);
+                    layoutSlider(it, rowY);
                     if (it.slider.isHoveringReset((int) mx, (int) my)) {
                         if (readOnly) return true;
                         it.slider.resetToDefault();
@@ -271,11 +335,17 @@ public class DomainPanel extends ConfigPanel {
                     }
                     if (it.slider.isMouseOver(mx, my)) {
                         if (readOnly) return true;
-                        return it.slider.mouseClicked(mx, my, btn);
+                        boolean handled = it.slider.mouseClicked(mx, my, btn);
+                        // ★ v19：若这次点击落在值胶囊上，弹数值输入框（能滑能填）
+                        if (handled) {
+                            requestValueEdit(it.slider, KeyText.label(it.key), onMarkDirty);
+                        }
+                        return true;
                     }
                 }
                 curY += ROW_H;
             }
+            curY += 4;   // ★ 与 render() 的组间留白一致，否则命中会逐组累偏
         }
         return mouseClickedExtra(mx, my, btn, rowsBottomY() + 4);
     }

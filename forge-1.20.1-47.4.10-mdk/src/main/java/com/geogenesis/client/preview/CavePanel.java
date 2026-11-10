@@ -42,16 +42,34 @@ import java.util.function.Function;
  */
 public class CavePanel extends ConfigPanel {
 
-    // ---- 布局常量 ----
-    private static final int ROW_H = 20;
+    // ---- 布局常量（★ v14：行高统一引用 UiKit，不再本地写死）----
+    private static final int ROW_H = UiKit.ROW_H;
     private static final int ROW_GAP = 3;
     private static final int SECTION_GAP = 12;
     private static final int LABEL_GAP = 13;      // 小节标题到底部控件
     private static final int PRESET_BTN_H = 22;
     private static final int PRESET_BTN_GAP = 4;
-    private static final int SLIDER_ROW_H = 22;
+    private static final int SLIDER_ROW_H = UiKit.SLIDER_H;
+    /** 滑块标签列的目标宽度（★ v7：不再当写死像素用，见 {@link #sliderLabelW()}）。 */
     private static final int SLIDER_LABEL_W = 150;
+    /** 滑块宽度上限（实际按可用宽收缩，见 {@link #sliderW()}）。 */
     private static final int SLIDER_W = 130;
+
+    /**
+     * 滑块标签列宽（★ v7：按面板实际宽度收缩）。
+     *
+     * <p>原来写死 150，而面板可能只有 280~300 宽 ⇒ 标签+滑块 280 几乎贴边，
+     * 实机上「洞穴密度倍率」这类长标签会顶到滑块起点。</p>
+     */
+    private int sliderLabelW() {
+        return Math.max(70, Math.min(SLIDER_LABEL_W, (int) (w * 0.46)));
+    }
+
+    /** 滑块宽度：占满标签列右侧的剩余空间（不再写死 130）。 */
+    private int sliderW() {
+        int avail = w - sliderLabelW() - 8;
+        return Math.max(40, Math.min(SLIDER_W, avail));
+    }
 
     /**
      * 档位按钮（顺序即显示顺序）。
@@ -266,8 +284,23 @@ public class CavePanel extends ConfigPanel {
         return presetLabelY() + LABEL_GAP;
     }
 
+    /**
+     * 当前档位摘要的 Y（紧贴档位按钮下方）。
+     *
+     * <p>★ v7【修"摘要与开关标题重叠"】：摘要原来画在 {@code presetBtnY+BTN_H+4}，
+     * 而 {@link #togglesLabelY()} 只给了 {@code SECTION_GAP=12} 的间距、
+     * 且没算摘要本身的行高 ⇒ 实机「岩石类型 + 岩层控制（地质拟真）」直接压在「开关」上。
+     * 现在把摘要行高显式计入，并由 {@link #togglesLabelY()} 引用同一个常量。</p>
+     */
+    private int summaryY() {
+        return presetBtnY() + PRESET_BTN_H + 4;
+    }
+
+    /** 摘要行高（一行文字 + 下方留白）。 */
+    private static final int SUMMARY_H = 16;
+
     private int togglesLabelY() {
-        return presetBtnY() + PRESET_BTN_H + SECTION_GAP;
+        return presetBtnY() + PRESET_BTN_H + SUMMARY_H + SECTION_GAP;
     }
 
     private int toggleY(int i) {
@@ -282,8 +315,13 @@ public class CavePanel extends ConfigPanel {
         return knobsLabelY() + LABEL_GAP + i * (SLIDER_ROW_H + ROW_GAP);
     }
 
-    /** 说明文字起始 Y（相对面板顶）。 */
-    private static final int DESC_Y = 14;
+    /**
+     * 说明文字起始 Y（相对面板顶）。
+     *
+     * <p>★ v7：标题已移到 {@code ConfigPanelHost}，这里从 14 改回 2
+     * （旧值 14 是给"本面板自绘标题"留的位置，不移会白空一行）。</p>
+     */
+    private static final int DESC_Y = 2;
     /**
      * 说明文字块高度（<b>单行</b>）。
      *
@@ -294,10 +332,15 @@ public class CavePanel extends ConfigPanel {
     /** 档位标题 Y = 顶部 + 说明块。 */
     private static final int LAST_DESC_Y = DESC_Y + DESC_H + 8;
 
+    /** 底部提示文案（★ v22：render 与 getHeight 共用同一份）。 */
+    private static final String FOOT_NOTE = "提示：更改设置后，只对之后新生成的区块生效。";
+
     @Override
     public int getHeight() {
-        // 内容底部 = 最后一个旋钮行 + 底部提示（一行）
-        return knobY(knobs.size() - 1) - top() + SLIDER_ROW_H + 26;
+        // ★ v22：底部提示已改成<b>折行</b>，高度按实际行数算
+        //   （原写死 26 —— 窄面板折两行时最后一行被裁，滚到底也看不全）
+        int footH = UiKit.wrappedHeight(FOOT_NOTE, Math.max(60, w));
+        return knobY(knobs.size() - 1) - top() + SLIDER_ROW_H + 8 + footH + 12;
     }
 
     // ===================== 渲染 =====================
@@ -306,11 +349,11 @@ public class CavePanel extends ConfigPanel {
     public void render(GuiGraphics g, int mx, int my) {
         Font f = font();
         int y = top();
-        drawHeader(g, x, y, "洞穴");
+        // ★ v15：标题由 ConfigPanelHost 统一画
 
-        // 说明（单行概述；生效范围见底部提示）
-        g.drawString(f, "选择档位即可一键切换，也可逐项微调下方的开关与参数。",
-                x, y + DESC_Y, C_TEXT_DIM);
+        // 说明（★ v15：折行；单行时会超出面板右缘被裁）
+        UiKit.drawWrapped(g, "选择档位即可一键切换，也可逐项微调下方的开关与参数。",
+                x, y + DESC_Y, Math.max(60, w), C_TEXT_DIM);
 
         // ---- 档位 ----
         g.drawString(f, "档位（一键切换）", x, presetLabelY(), C_TEXT_DIM);
@@ -327,7 +370,7 @@ public class CavePanel extends ConfigPanel {
         }
         // 当前档位摘要（一句短语；详细说明走 tooltip，避免同一段文字重复出现）
         String summary = presetSummary(cur);
-        g.drawString(f, clip(summary, w), x, presetBtnY() + PRESET_BTN_H + 4,
+        g.drawString(f, clip(summary, w), x, summaryY(),
                 cur == CaveConfig.Preset.CUSTOM ? C_ACCENT : C_TEXT_DIM);
 
         // ---- 开关 ----
@@ -345,19 +388,22 @@ public class CavePanel extends ConfigPanel {
         for (int i = 0; i < knobs.size(); i++) {
             Knob k = knobs.get(i);
             int ky = knobY(i);
-            if (i % 2 == 0) g.fill(x, ky, x + w, ky + SLIDER_ROW_H, 0x12FFFFFF);
-            g.drawString(f, k.label, x + 2, ky + (SLIDER_ROW_H - 8) / 2, C_TEXT_DIM);
-            k.slider.setX(x + SLIDER_LABEL_W);
+            // ★ v13：悬停底色彻底去掉（见 UiKit.rowSurface javadoc），改用文字提亮
+            boolean hoverRow = mx >= x && mx < x + w && my >= ky && my < ky + SLIDER_ROW_H;
+            g.drawString(f, trimLabel(k.label, sliderLabelW() - 6), x + 2,
+                    ky + (SLIDER_ROW_H - f.lineHeight) / 2,
+                    hoverRow ? UiKit.C_TXT : UiKit.C_TXT_SUB, false);
+            k.slider.setX(x + sliderLabelW());
             k.slider.setY(ky + 2);
-            k.slider.setWidth(SLIDER_W);
+            k.slider.setWidth(sliderW());
             k.slider.render(g, mx, my, 0);
         }
         for (Knob k : knobs) k.slider.renderTooltip(g, mx, my);
 
-        // ---- 底部提示（面向玩家；不写实现细节/参考项目/实测数据）----
+        // ---- 底部提示（★ v7：折行，避免超出面板右边被裁）----
+        //   ★ v22：文案改用常量，与 getHeight 同源
         int footY = knobY(knobs.size() - 1) + SLIDER_ROW_H + 8;
-        g.drawString(f, "提示：更改设置后，只对之后新生成的区块生效。",
-                x, footY, 0xFF808080);
+        UiKit.drawWrapped(g, FOOT_NOTE, x, footY, Math.max(60, w), 0xFF808080);
     }
 
     /**
@@ -367,6 +413,11 @@ public class CavePanel extends ConfigPanel {
      * 有 40+ 个汉字 ≈ 360px，超过面板宽度（约 300px）。主屏虽有 scissor 裁剪不会崩，
      * 但会<b>硬切在半个字上</b>，很难看 ⇒ 主动截断加"…"。</p>
      */
+    /** 标签按可用宽度裁剪（★ v7：滑块标签列会随面板收缩，长标签须截断）。 */
+    private static String trimLabel(String s, int maxW) {
+        return clip(s, Math.max(20, maxW));
+    }
+
     private static String clip(String s, int maxW) {
         Font f = font();
         if (f.width(s) <= maxW) return s;
@@ -437,13 +488,13 @@ public class CavePanel extends ConfigPanel {
             }
         }
 
-        // 旋钮（先定位再命中判定，与 render 布局一致）
+        // 旋钮（先定位再命中判定，与 render 布局一致 —— 两处都调 sliderLabelW/sliderW）
         for (int i = 0; i < knobs.size(); i++) {
             Knob k = knobs.get(i);
             int ky = knobY(i);
-            k.slider.setX(x + SLIDER_LABEL_W);
+            k.slider.setX(x + sliderLabelW());
             k.slider.setY(ky + 2);
-            k.slider.setWidth(SLIDER_W);
+            k.slider.setWidth(sliderW());
         }
         for (Knob k : knobs) {
             if (k.slider.isHoveringReset((int) mx, (int) my)) {
@@ -452,7 +503,9 @@ public class CavePanel extends ConfigPanel {
                 return true;
             }
             if (k.slider.isMouseOver(mx, my)) {
-                return k.slider.mouseClicked(mx, my, btn);
+                boolean h = k.slider.mouseClicked(mx, my, btn);
+                if (h) requestValueEdit(k.slider, k.label, this::onManualChange);
+                return h;
             }
         }
         return false;

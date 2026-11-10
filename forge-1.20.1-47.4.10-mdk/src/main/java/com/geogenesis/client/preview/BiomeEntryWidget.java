@@ -43,15 +43,18 @@ public class BiomeEntryWidget {
 
     public void render(GuiGraphics g, int mx, int my) {
         boolean hover = mx >= x && mx <= x + w && my >= y && my <= y + H;
+        // ★ v7：圆角行 + 中性配色（旧版是深青绿底 + 亮绿 2px 条，与新主题冲突）
         if (selected) {
-            g.fill(x, y, x + w, y + H, 0xFF10302A);          // 选中底色（深青绿）
-            g.fill(x, y, x + 2, y + H, 0xFF00c896);           // 左侧高亮条
-        } else {
-            g.fill(x, y, x + w, y + H, hover ? 0xFF252A33 : 0xFF1A1E24);
+            UiKit.roundRect(g, x, y, x + w, y + H, UiKit.RADIUS_FIELD, 0x2E48DE56);
+            g.fill(x + 1, y + 4, x + 3, y + H - 4, UiKit.C_ACCENT);
+        } else if (hover) {
+            UiKit.roundRect(g, x, y, x + w, y + H, UiKit.RADIUS_FIELD, 0x14FFFFFF);
         }
-        g.fill(x + 2, y + 2, x + 12, y + 12, 0xFF000000 | color);
-        g.fill(x + 2, y + 2, x + 12, y + 3, 0xFF888888);
-        g.drawString(Minecraft.getInstance().font, label, x + 18, y + 3, selected ? 0xFF00c896 : 0xFFCCCCCC);
+        // 色块（2px 圆角，去掉旧的顶部亮线）
+        UiKit.roundRect(g, x + 6, y + 2, x + 16, y + 12, 2, 0xFF000000 | color);
+        g.drawString(Minecraft.getInstance().font, label, x + 22,
+                y + (H - Minecraft.getInstance().font.lineHeight) / 2,
+                selected ? UiKit.C_ACCENT : UiKit.C_TXT_SUB, false);
     }
 
     public boolean mouseClicked(double mx, double my, int btn) {

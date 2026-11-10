@@ -42,7 +42,7 @@ public class ClimateConfigPanel extends ConfigPanel {
     private static final int HEADER_H = 16; // 对齐 MixerPanel.TITLE_H
     private static final int BAR_H = 22;
     private static final int DATA_LABEL_GAP = 12; // dataMin/dataMax 标签占用的下方空间
-    private static final int SCALE_ROW_H = 20;
+    private static final int SCALE_ROW_H = UiKit.SLIDER_H;
     private static final int SCALE_LABEL_W = 60;
     private static final int SCALE_VAL_W = 38;
 
@@ -94,7 +94,7 @@ public class ClimateConfigPanel extends ConfigPanel {
 
         // 气候缩放（纬度/温度/湿度 xz 坐标缩放）
         buildScaleSliders(c);
-        scalePanel.setContentHeight(scaleSpecs.size() * SCALE_ROW_H + 2);
+        scalePanel.setContentHeight(scaleSpecs.size() * SCALE_ROW_H + 10);
     }
 
     /** 构建气候缩放滑块（纬度/温度/湿度/气候区），独立于分类色条 */
@@ -172,18 +172,57 @@ public class ClimateConfigPanel extends ConfigPanel {
         influence.setDefaultValue(influenceCfg.getDefault());
 
         MixerPanel panel = new MixerPanel(title); // 折叠图标由 MixerPanel 自己渲染
-        // 内容高度 = 控制点数值空间(16) + 色条(BAR_H=22) + dataMin标签(DATA_LABEL_GAP=12) + 底部间距(4)
-        int contentH = 16 + BAR_H + DATA_LABEL_GAP + 4;
+        // ★ v9：内容高度 = 控制点数值(16) + 色条(BAR_H) + 端点刻度(10)
+        //          + 间距(12) + 影响滑块行(22) + 底部间距(4)
+        //   旧值没算影响滑块那一行 —— 改成上下两行后必须补上，否则下一组会压上来。
+        int contentH = 16 + BAR_H + 10 + 12 + SLIDER_ROW_H + 4;
         panel.setContentHeight(contentH);
         return new FactorSection(title, bar, influence, panel);
     }
+
+    /** 影响滑块行高（★ v14：引用统一常量）。 */
+    private static final int SLIDER_ROW_H = UiKit.SLIDER_H;
 
     public int getHeight() {
         int h = 4;
         for (FactorSection f : factors) h += f.panel.getFullHeight() + SECTION_GAP;
         h += scalePanel.getFullHeight() + SECTION_GAP;
+        // ★ v22【修"滚动到底还差一截"】：给底部留一行呼吸空间。
+        //   旧实现刚好算到最后一行底边，滚到 max 时最后一项仍被下边界裁掉半个胶囊。
+        h += 18;
         return h;
     }
+
+    /**
+     * 因子行的水平/垂直布局（★ v9 单一来源，render 与 mouseClicked 共用）。
+     *
+     * <h2>★ v9 为什么改成上下两行</h2>
+     * <p>用户截图指出「2 个小控件并排太挤了」：色条 + 影响滑块 +
+     * 两个重置键 + 数值胶囊全塞在同一行，宽度只有约 300px ⇒
+     * 色条只剩 3~4 个色块、影响滑块只剩一小截，数值还被迫截断成「1....」。</p>
+     * <p>改为：<b>色条独占一行</b>（横向拉伸，阈值点看得清），
+     * <b>影响滑块另起一行</b>（配标签 + 吃满剩余宽度）。代价是行高增加约 22px，
+     * 换来两个控件都能真正操作。</p>
+     *
+     * @return {@code {色条宽, 滑块 x, 滑块宽, 色条顶相对偏移, 滑块顶相对偏移}}
+     */
+    private int[] layoutSection(int contentLeft, int contentW) {
+        // ★★ v13【修"色条与重置键超出窗口"】★★
+        //   CategoryBar 自己会在 {@code barX + barW + 6} 处画重置键（宽 18）。
+        //   上一版 barW = contentW - 2 ⇒ 重置键落在 contentLeft+contentW+4，
+        //   正好越过面板右缘 4px（实机截图：窗口边缘被切掉一个角）。
+        //   现在从总宽里<b>先扣掉重置键占位</b>，色条与按钮都落在内容区内。
+        int resetReserve = 18 + 8;                       // 按钮宽 + 间隙
+        int barW = Math.max(60, contentW - resetReserve);
+        int sliderX = contentLeft + 56;                  // 让出"影响"标签
+        int influenceW = Math.max(60, contentW - 60);
+        int barDY = 0;
+        int sliderDY = BAR_H + 22;                       // 色条 + 端点刻度 + 间隙
+        return new int[]{barW, sliderX, influenceW, barDY, sliderDY};
+    }
+
+    /** 影响滑块的标签文案（渲染与布局共用）。 */
+    private static final String INFLUENCE_LABEL = "影响";
 
     public void render(GuiGraphics g, int mx, int my) {
         var f = Minecraft.getInstance().font;
@@ -201,24 +240,24 @@ public class ClimateConfigPanel extends ConfigPanel {
                 // 标题栏占用 TITLE_H=16，所以 barY >= curY + 16 + 16 = curY + 32
                 int barTop = curY + HEADER_H + 16; // 标题下方留16像素间距（控制点数值空间）
 
-                // 布局：色条 | 色条重置键 | 影响滑块 | 影响滑块重置键 | 数值标签
-                // CategoryBar 自身会在 barX+barW+6 处绘制重置按钮（RESET_BTN_W=18）
-                // 所以影响滑块必须放在色条重置按钮之后，避免重叠
-                int categoryResetArea = ParamSlider.RESET_BTN_W + ParamSlider.RESET_GAP; // 色条重置按钮占宽 24
-                int sliderAreaW = 64 + ParamSlider.RESET_BTN_W + ParamSlider.RESET_GAP + 6; // 滑块+自身重置键
-                int influenceAreaW = categoryResetArea + sliderAreaW + 24; // 24 是数值标签余量
-                int barW = contentW - influenceAreaW - 6; // 留6像素间距
+                // ★★ v9【修"2 个小控件并排太挤"】★★
+                //   色条独占一行（横向拉伸，阈值点看得清），影响滑块另起一行。
+                int[] geo = layoutSection(contentLeft, contentW);
+                int barW = geo[0];
+                int barY = barTop + geo[3];
+                int sliderY = barTop + geo[4];
 
                 // 色条（标题由父 MixerPanel 渲染）
-                sec.bar.setBounds(contentLeft, barTop, barW, BAR_H);
+                sec.bar.setBounds(contentLeft, barY, barW, BAR_H);
                 sec.bar.render(g, mx, my);
                 sec.bar.renderTooltips(g, mx, my);
 
-                // 影响滑块放在色条重置按钮右侧
-                int sliderX = contentLeft + barW + 6 + categoryResetArea;
-                sec.influence.setX(sliderX);
-                sec.influence.setY(barTop);
-                sec.influence.setWidth(64);
+                // 影响滑块：下一行，左侧带标签
+                g.drawString(f, INFLUENCE_LABEL, contentLeft, sliderY + 3,
+                        UiKit.C_TXT_SUB, false);
+                sec.influence.setX(geo[1]);
+                sec.influence.setY(sliderY);
+                sec.influence.setWidth(geo[2]);
                 sec.influence.render(g, mx, my, 0);
                 sec.influence.renderTooltip(g, mx, my);
             }
@@ -237,8 +276,12 @@ public class ClimateConfigPanel extends ConfigPanel {
                 String label = scaleSpecs.get(i).label;
                 ParamSlider ps = scaleSliders.get(i);
                 int rowY = panelContentY + i * SCALE_ROW_H;
-                if (i % 2 == 0) g.fill(contentLeft, rowY, x + w - 8, rowY + SCALE_ROW_H, 0x12FFFFFF);
-                g.drawString(f, label, contentLeft + 2, rowY + (SCALE_ROW_H - 8) / 2, 0xFFCCCCCC);
+                // ★ v13：悬停底色彻底去掉，改用文字提亮
+                boolean hoverRow = mx >= contentLeft && mx < x + w - 8
+                        && my >= rowY && my < rowY + SCALE_ROW_H;
+                g.drawString(f, UiKit.clip(label, SCALE_LABEL_W - 6), contentLeft + 2,
+                        rowY + (SCALE_ROW_H - f.lineHeight) / 2,
+                        hoverRow ? UiKit.C_TXT : UiKit.C_TXT_SUB, false);
                 int slX = contentLeft + SCALE_LABEL_W;
                 ps.setX(slX); ps.setY(rowY + 2); ps.setWidth(slW);
                 ps.render(g, mx, my, 0);
@@ -264,24 +307,27 @@ public class ClimateConfigPanel extends ConfigPanel {
                 int contentLeft = x + 8;
                 int contentW = w - 16;
                 int barTop = curY + HEADER_H + 16; // 标题下方留16像素间距（控制点数值空间）
-                // 与 render 一致的布局计算
-                int categoryResetArea = ParamSlider.RESET_BTN_W + ParamSlider.RESET_GAP;
-                int sliderAreaW = 64 + ParamSlider.RESET_BTN_W + ParamSlider.RESET_GAP + 6;
-                int influenceAreaW = categoryResetArea + sliderAreaW + 24;
-                int barW = contentW - influenceAreaW - 6;
-                int sliderX = contentLeft + barW + 6 + categoryResetArea;
+                // ★ v9：与 render 共用同一份布局（上下两行），不再各算一遍
+                int[] geo = layoutSection(contentLeft, contentW);
+                int barW = geo[0];
+                int barY = barTop + geo[3];
+                int sliderY = barTop + geo[4];
 
                 // 影响滑块
-                sec.influence.setX(sliderX);
-                sec.influence.setY(barTop);
-                sec.influence.setWidth(64);
+                sec.influence.setX(geo[1]);
+                sec.influence.setY(sliderY);
+                sec.influence.setWidth(geo[2]);
                 if (sec.influence.isHoveringReset((int) mx, (int) my)) {
                     sec.influence.resetToDefault();
                     return true;
                 }
-                if (sec.influence.isMouseOver(mx, my)) return sec.influence.mouseClicked(mx, my, btn);
+                if (sec.influence.isMouseOver(mx, my)) {
+                    boolean h = sec.influence.mouseClicked(mx, my, btn);
+                    if (h) requestValueEdit(sec.influence, "影响系数", onMarkDirty);
+                    return h;
+                }
                 // 色条边界拖拽（CategoryBar 自己的重置按钮在其 mouseClicked 内处理）
-                sec.bar.setBounds(contentLeft, barTop, barW, BAR_H);
+                sec.bar.setBounds(contentLeft, barY, barW, BAR_H);
                 if (sec.bar.mouseClicked(mx, my, btn)) return true;
             }
             curY += sec.panel.getFullHeight() + SECTION_GAP;
@@ -302,7 +348,11 @@ public class ClimateConfigPanel extends ConfigPanel {
             }
             for (ParamSlider s : scaleSliders) {
                 if (s.isHoveringReset((int) mx, (int) my)) { s.resetToDefault(); return true; }
-                if (s.isMouseOver(mx, my)) return s.mouseClicked(mx, my, btn);
+                if (s.isMouseOver(mx, my)) {
+                    boolean h = s.mouseClicked(mx, my, btn);
+                    if (h) requestValueEdit(s, "气候缩放", onMarkDirty);
+                    return h;
+                }
             }
         }
         return false;

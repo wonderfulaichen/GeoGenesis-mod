@@ -2,6 +2,7 @@ package com.geogenesis.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import com.geogenesis.client.preview.UiKit;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 
@@ -30,6 +31,16 @@ public class NameInputDialog {
     public NameInputDialog() {}
 
     public void show(String title, String prompt, Consumer<String> onConfirm, Runnable onCancel) {
+        show(title, prompt, "", onConfirm, onCancel);
+    }
+
+    /**
+     * 带<b>初始值</b>的版本（★ v19：用于"点击数值胶囊 → 修改数值"）。
+     *
+     * <p>空输入框让用户重打一遍当前值很别扭；预填后可以直接改一位数字再回车。</p>
+     */
+    public void show(String title, String prompt, String initialValue,
+                     Consumer<String> onConfirm, Runnable onCancel) {
         this.title = title;
         this.prompt = prompt;
         this.onConfirm = onConfirm;
@@ -39,10 +50,12 @@ public class NameInputDialog {
         int dx = dx();
         int dy = dy();
         nameBox = new EditBox(Minecraft.getInstance().font, dx + 12, dy + 52, DIALOG_W - 24, 18,
-                Component.literal("预设名称"));
+                Component.literal("输入"));
         nameBox.setMaxLength(64);
-        nameBox.setValue("");
+        nameBox.setValue(initialValue == null ? "" : initialValue);
         nameBox.setFocused(true);
+        // 光标移到末尾，方便直接删改
+        nameBox.moveCursorToEnd();
     }
 
     public void hide() {
@@ -76,40 +89,29 @@ public class NameInputDialog {
         // 全屏遮罩：接近不透明(0xE0≈88%)，彻底压住背后配置屏密集文字，避免其透过遮罩浮在弹窗前面
         g.fill(0, 0, sw, sh, 0xE0000000);
 
-        g.fill(dx, dy, dx + DIALOG_W, dy + DIALOG_H, 0xFF1a1f28);
-        g.fill(dx, dy, dx + DIALOG_W, dy + 1, 0xFF00c896);
-        g.fill(dx, dy + DIALOG_H - 1, dx + DIALOG_W, dy + DIALOG_H, 0xFF333333);
-        g.fill(dx, dy, dx + 1, dy + DIALOG_H, 0xFF333333);
-        g.fill(dx + DIALOG_W - 1, dy, dx + DIALOG_W, dy + DIALOG_H, 0xFF333333);
+        // ★ v7：改走 UiKit（圆角卡片 + 胶囊按钮 + 无描边输入框）
+        UiKit.roundRect(g, dx, dy, dx + DIALOG_W, dy + DIALOG_H, UiKit.RADIUS_CARD, 0xF0181C20);
+        UiKit.roundRectOutline(g, dx, dy, dx + DIALOG_W, dy + DIALOG_H, UiKit.RADIUS_CARD, 0x22FFFFFF);
 
         var f = Minecraft.getInstance().font;
-        g.drawString(f, title, dx + 10, dy + 8, 0xFFFFAA00);
-        g.drawString(f, prompt, dx + 10, dy + 28, 0xFFCCCCCC);
+        g.drawString(f, title, dx + 12, dy + 10, UiKit.C_TXT, false);
+        g.drawString(f, prompt, dx + 12, dy + 28, UiKit.C_TXT_SUB, false);
 
-        // EditBox 区域显式边框 + 提亮底，确保它清晰可辨（避免背景透出造成"空框"错觉）
+        // EditBox 区域：圆角底 + 极淡描边（新版控件靠底色差，不用亮色框）
         int boxX = dx + 12, boxY = dy + 52, boxW = DIALOG_W - 24, boxH = 18;
-        g.fill(boxX, boxY, boxX + boxW, boxY + boxH, 0xFF252a33);
-        g.fill(boxX, boxY, boxX + boxW, boxY + 1, 0xFF00c896);
-        g.fill(boxX, boxY + boxH - 1, boxX + boxW, boxY + boxH, 0xFF00c896);
-        g.fill(boxX, boxY, boxX + 1, boxY + boxH, 0xFF00c896);
-        g.fill(boxX + boxW - 1, boxY, boxX + boxW, boxY + boxH, 0xFF00c896);
+        UiKit.roundRect(g, boxX, boxY, boxX + boxW, boxY + boxH, UiKit.RADIUS_FIELD, 0xFF2A2A2A);
+        UiKit.roundRectOutline(g, boxX, boxY, boxX + boxW, boxY + boxH, UiKit.RADIUS_FIELD, 0xFF3A3A3A);
 
         nameBox.render(g, mx, my, 0);
 
         int btnY = dy + DIALOG_H - 30;
         int cancelX = dx + 20;
         boolean hoverCancel = mx >= cancelX && mx <= cancelX + BTN_W && my >= btnY && my <= btnY + BTN_H;
-        g.fill(cancelX, btnY, cancelX + BTN_W, btnY + BTN_H, hoverCancel ? 0xFF3a4050 : 0xFF2a2f3a);
-        g.fill(cancelX, btnY, cancelX + 1, btnY + BTN_H, 0xFF4a5060);
-        g.fill(cancelX + BTN_W - 1, btnY, cancelX + BTN_W, btnY + BTN_H, 0xFF4a5060);
-        g.drawString(f, "取消", cancelX + (BTN_W - f.width("取消")) / 2, btnY + 6, 0xFFCC6666);
+        UiKit.button(g, cancelX, btnY, BTN_W, BTN_H, "取消", false, hoverCancel);
 
         int confirmX = dx + DIALOG_W - 20 - BTN_W;
         boolean hoverConfirm = mx >= confirmX && mx <= confirmX + BTN_W && my >= btnY && my <= btnY + BTN_H;
-        g.fill(confirmX, btnY, confirmX + BTN_W, btnY + BTN_H, hoverConfirm ? 0xFF00a876 : 0xFF008060);
-        g.fill(confirmX, btnY, confirmX + 1, btnY + BTN_H, 0xFF00c896);
-        g.fill(confirmX + BTN_W - 1, btnY, confirmX + BTN_W, btnY + BTN_H, 0xFF00c896);
-        g.drawString(f, "确定", confirmX + (BTN_W - f.width("确定")) / 2, btnY + 6, 0xFFFFFFFF);
+        UiKit.button(g, confirmX, btnY, BTN_W, BTN_H, "确定", true, hoverConfirm);
     }
 
     // ===== 鼠标 =====

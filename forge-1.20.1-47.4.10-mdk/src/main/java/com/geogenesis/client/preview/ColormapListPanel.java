@@ -26,7 +26,8 @@ public class ColormapListPanel {
     }
 
     public void render(GuiGraphics g, int mx, int my) {
-        g.fill(x, y, x + w, y + h, 0xFF15191F);
+        // ★ v7：列表底改为中性深灰（旧值 0xFF15191F 是早期深蓝主题）
+        UiKit.roundRect(g, x, y, x + w, y + h, UiKit.RADIUS_CARD, 0xFF1A1A1A);
         int maxScroll = Math.max(0, contentHeight() - h);
         scrollY = Mth.clamp(scrollY, 0, maxScroll);
 
@@ -40,9 +41,7 @@ public class ColormapListPanel {
         g.disableScissor();
 
         if (maxScroll > 0) {
-            int barH = Math.max(12, h * h / contentHeight());
-            int barY = y + scrollY * (h - barH) / maxScroll;
-            g.fill(x + w - 3, barY, x + w - 1, barY + barH, 0xFF00c896);
+            UiKit.scrollbar(g, x + w - 3, y, h, contentHeight(), scrollY, false);
         }
     }
 

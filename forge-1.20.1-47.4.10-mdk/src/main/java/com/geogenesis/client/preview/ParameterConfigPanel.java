@@ -33,7 +33,8 @@ import java.util.function.Function;
  */
 public class ParameterConfigPanel extends ConfigPanel {
 
-    private static final int ROW_H = 20;
+    // ★ v14：行高统一引用 UiKit
+    private static final int ROW_H = UiKit.SLIDER_H;
     private static final int BAR_H = 132;
 
     /** 预览标尺三键（顺序即 WorldHeightBar 的标记顺序：最高 / 海面 / 底）。 */
@@ -45,7 +46,7 @@ public class ParameterConfigPanel extends ConfigPanel {
     private final WorldHeightBar heightBar = new WorldHeightBar();
 
     public ParameterConfigPanel() {
-        heightBar.setOnMarkDirty(() -> onMarkDirty.run());
+        // ★ v16：示意图只读 ⇒ 不再需要 onMarkDirty 回调（改值只走上方的滑块）
         for (int i = 0; i < MARK_KEYS.length; i++) {
             sliders.add(makeSlider(i));
         }
@@ -104,37 +105,52 @@ public class ParameterConfigPanel extends ConfigPanel {
     }
 
     @Override
-    public int getHeight() { return 14 + 26 + 12 + ROW_H * sliders.size() + 8 + 18 + BAR_H + 20; }
+    public int getHeight() {
+        // ★ v8：按折行后的真实高度算（原来写死 14/26/12 等，警示折行后会多出两行被裁）
+        int[] geo = layoutRows();
+        int barBottom = geo[1] + BAR_H;
+        return barBottom - top() + 20;
+    }
 
     @Override
     public void render(GuiGraphics g, int mx, int my) {
-        int ty = top();
-        drawHeader(g, x, ty, "预览标尺");
-        int curY = ty + 14;
+        // ★ v8：标题由 ConfigPanelHost 统一画；行区几何来自 layoutRows()
+        int[] geo = layoutRows();
+        int curY = top() + 2;
 
         // ★ 必须显式写在界面上：这三个键不驱动世界。旧版把它们称作"世界高度"，
         //   用户拖完以为世界变高，实际只有预览色阶动（真实误导）。
-        g.drawString(font(), "⚠ 仅预览标尺：不驱动游戏世界（生成器用编译期常量 -64 / 320 / 63）。",
-                x, curY, 0xFFFFAA00);
-        curY += 14;
+        //   ★ v8：改为<b>折行</b>（这句 40+ 字，单行必被面板右缘裁掉）
+        UiKit.drawWrapped(g, WARN, x, curY, Math.max(60, w), 0xFFFFAA00);
 
-        int slW = Math.max(60, w - 150);
+        curY = geo[0];
+        // ★★ v9【修"控件右侧大片空白"】★★
+        //   旧式 `slW = w - 150` 是<b>凭感觉估的</b>：标签占 62px 之后，
+        //   滑块右端距面板右缘还剩一大截（用户截图里半行都是空的）。
+        //   现在按「标签列 → 滑块吃满剩余」算，数值胶囊由 ParamSlider 内部再扣。
+        int[] sl = sliderLayout();
+        int labelW = sl[0] - x;
         for (int i = 0; i < sliders.size(); i++) {
             ParamSlider ps = sliders.get(i);
             int rowY = curY + i * ROW_H;
-            if (i % 2 == 0) g.fill(x + 2, rowY, x + w - 2, rowY + ROW_H, 0x12FFFFFF);
-            g.drawString(font(), MARK_LABELS[i], x + 6, rowY + 6, 0xFFCCCCCC);
-            ps.setX(x + 62);
+            // ★ v13：悬停底色彻底去掉，改用文字提亮
+            boolean hoverRow = mx >= x && mx < x + w && my >= rowY && my < rowY + ROW_H;
+            g.drawString(font(), UiKit.clip(MARK_LABELS[i], labelW - 8),
+                    x + 8, rowY + (ROW_H - font().lineHeight) / 2,
+                    hoverRow ? UiKit.C_TXT : UiKit.C_TXT_SUB, false);
+            ps.setX(sl[0]);
             ps.setY(rowY + 2);
-            ps.setWidth(slW);
+            ps.setWidth(sl[1]);
             ps.render(g, mx, my, 0);
         }
         for (ParamSlider ps : sliders) ps.renderTooltip(g, mx, my);
         curY += sliders.size() * ROW_H + 8;
 
-        g.fill(x, curY, x + w, curY + 1, C_LINE);
-        curY += 4;
-        g.drawString(font(), "标尺示意（拖动标记同样只改预览）", x + 2, curY, 0xFF66CCFF);
+        g.fill(x, curY, x + w, curY + 1, UiKit.C_DIVIDER);
+        curY += 5;
+        // ★ v16：示意图已改为只读 —— 文案不能再写"拖动标记"
+        g.drawString(font(), UiKit.clip("标尺示意（用上方滑块调整）", w),
+                x + 2, curY, UiKit.C_TXT_DIM, false);
         curY += 14;
         heightBar.setBounds(x + 4, curY, w - 8, BAR_H);
         heightBar.render(g, mx, my);
@@ -144,21 +160,53 @@ public class ParameterConfigPanel extends ConfigPanel {
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
         if (btn != 0) return false;
-        int curY = top() + 14 + 14;
-        int slW = Math.max(60, w - 150);
+        // ★ v8/v9：与 render 共用 layoutRows() + 同一套滑块几何（labelW/slW）
+        int[] geo = layoutRows();
+        int curY = geo[0];
+        int barY = geo[1];
         for (int i = 0; i < sliders.size(); i++) {
             ParamSlider ps = sliders.get(i);
-            ps.setX(x + 62);
+            int[] sl = sliderLayout();
+            ps.setX(sl[0]);
             ps.setY(curY + i * ROW_H + 2);
-            ps.setWidth(slW);
+            ps.setWidth(sl[1]);
         }
         for (ParamSlider ps : sliders) {
             if (ps.isHoveringReset((int) mx, (int) my)) { ps.resetToDefault(); return true; }
-            if (ps.isMouseOver(mx, my)) return ps.mouseClicked(mx, my, btn);
+            if (ps.isMouseOver(mx, my)) {
+                boolean h = ps.mouseClicked(mx, my, btn);
+                if (h) requestValueEdit(ps, "预览标尺", onMarkDirty);
+                return h;
+            }
         }
-        int barY = curY + sliders.size() * ROW_H + 8 + 4 + 14;
         heightBar.setBounds(x + 4, barY, w - 8, BAR_H);
         return heightBar.mouseClicked(mx, my, btn);
+    }
+
+    /**
+     * 滑块的水平几何（★ v9 单一来源：render 与 mouseClicked 共用）。
+     *
+     * @return {@code {滑块 x, 滑块宽}}
+     */
+    private int[] sliderLayout() {
+        int labelW = 62;
+        return new int[]{x + labelW, Math.max(60, w - labelW - 6)};
+    }
+
+    /** 顶部警示文字（render 与 layoutRows 共用同一份）。 */
+    private static final String WARN =
+            "仅预览标尺：不驱动游戏世界（生成器用编译期常量 -64 / 320 / 63）。";
+
+    /**
+     * 行区与标尺栏的 y（★ v8 单一来源，render 与 mouseClicked 共用）。
+     *
+     * @return {@code {滑块区起点 y, 标尺栏 y}}
+     */
+    private int[] layoutRows() {
+        int warnH = UiKit.wrappedHeight(WARN, Math.max(60, w)) + 4;
+        int curY = top() + 2 + warnH;
+        int barY = curY + sliders.size() * ROW_H + 8 + 5 + 14;
+        return new int[]{curY, barY};
     }
 
     @Override

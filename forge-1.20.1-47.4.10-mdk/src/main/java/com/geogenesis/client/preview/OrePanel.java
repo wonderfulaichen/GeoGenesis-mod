@@ -39,9 +39,9 @@ import java.util.function.Consumer;
  */
 public class OrePanel extends ConfigPanel {
 
-    // ---- 布局常量（与 CavePanel 观感一致）----
-    private static final int ROW_H = 22;
-    private static final int ROW_GAP = 5;
+    // ---- 布局常量 ----
+    /** 开关行高（★ v14：统一引用 UiKit；说明行单独按折行计算，见 {@link #rowYs()}）。 */
+    private static final int ROW_H = UiKit.ROW_H;
 
     /** 一个开关项：读 / 写 / 文案。 */
     private record Toggle(BooleanSupplier read, Consumer<Boolean> write, String label, String tip) { }
@@ -71,8 +71,10 @@ public class OrePanel extends ConfigPanel {
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (button != 0) return false;
-        for (int i = 0; i < toggles.size(); i++) {
-            if (hit(x, rowY(i), w, ROW_H, mx, my)) {
+        // ★ v8：用与 render 同一份布局（说明会折行，行高不再固定）
+        int[] ys = rowYs();
+        for (int i = 0; i < ys.length; i++) {
+            if (hit(x, ys[i], w, ROW_H, mx, my)) {
                 applyToggle(i, !toggles.get(i).read().getAsBoolean());
                 return true;
             }
@@ -103,60 +105,98 @@ public class OrePanel extends ConfigPanel {
         playClick();
     }
 
-    // ===================== 布局 =====================
+    // ===================== 布局（★ v8：绘制与命中的唯一来源）=====================
 
-    private int rowY(int i) {
-        return top() + 26 + i * (ROW_H + ROW_GAP);
+    /** 顶部说明文字。 */
+    private static final String INTRO = "矿物由地质决定：不同岩石在不同深度产出不同矿。";
+
+    /** 单行说明的行高（开关 label 行）。 */
+    private static final int LABEL_ROW = ROW_H;
+
+    /**
+     * 各开关行的 y（★ v8）。
+     *
+     * <p>每行高度 = 开关行 + 该行说明折行后的高度 + 间距。
+     * <b>绘制与命中共用本方法</b> —— 否则说明折成两行后点击会整体错位
+     * （本项目反复出现的"画在一处、点判在另一处"）。</p>
+     */
+    private int[] rowYs() {
+        int[] out = new int[toggles.size()];
+        int cur = top() + 2 + UiKit.wrappedHeight(INTRO, Math.max(60, w - 4));
+        for (int i = 0; i < toggles.size(); i++) {
+            out[i] = cur + 4;
+            int tipH = UiKit.wrappedHeight(toggles.get(i).tip(), Math.max(60, w - 16));
+            cur = out[i] + LABEL_ROW + 1 + tipH + 6;
+        }
+        return out;
+    }
+
+    /** 结论提示卡之后的 y（供 getHeight 与 render 共用）。 */
+    private int summaryCardTop() {
+        int[] ys = rowYs();
+        int last = ys.length == 0 ? top() + 2 : ys[ys.length - 1] + LABEL_ROW + 1
+                + UiKit.wrappedHeight(toggles.isEmpty() ? "" : toggles.get(toggles.size() - 1).tip(),
+                        Math.max(60, w - 16)) + 6;
+        return last;
     }
 
     @Override
     public int getHeight() {
-        return 26 + toggles.size() * (ROW_H + ROW_GAP) + 62;
+        // ★ v8：按折行后的真实高度累加（原来写死 62，长说明被裁）
+        int cur = summaryCardTop();
+        cur += UiKit.wrappedHeight(summaryText(), Math.max(60, w - 12)) + 8 + 6;
+        cur += UiKit.wrappedHeight("只影响原版矿，其它模组的矿不受影响。", Math.max(60, w - 4));
+        cur += UiKit.wrappedHeight("更改设置后，只对之后新生成的区块生效。", Math.max(60, w - 4));
+        return cur - top() + 8;
+    }
+
+    /** 当前组合状态的结论文案（render 与 getHeight 共用同一份）。 */
+    private String summaryText() {
+        boolean veins = toggles.get(0).read().getAsBoolean();
+        boolean override = toggles.get(1).read().getAsBoolean();
+        if (!veins && override) return "两项都关 = 地下几乎没有矿，请至少开启一项。";
+        if (veins && override) return "当前：地下矿完全由自研地质矿脉生成（原版金属矿已移除）。";
+        if (veins) return "当前：原版矿 + 自研地质矿脉（二者叠加）。";
+        return "当前：只有原版矿（纯原版体验）。";
     }
 
     // ===================== 渲染 =====================
 
     @Override
     public void render(GuiGraphics g, int mx, int my) {
-        drawHeader(g, x, top(), "矿物");
+        // ★ v8：标题由 ConfigPanelHost 统一画；说明改为<b>折行</b>
+        //   （旧版 4 处单行文字全部超出面板右缘被裁）
+        int curY = top() + 2;
+        curY += UiKit.drawWrapped(g, INTRO, x + 2, curY, Math.max(60, w - 4), UiKit.C_TXT_DIM);
 
-        g.drawString(font(), "矿物由地质决定：不同岩石在不同深度产出不同矿。",
-                x + 2, top() + 13, C_TEXT_DIM);
-
+        int[] ys = rowYs();
         for (int i = 0; i < toggles.size(); i++) {
             Toggle t = toggles.get(i);
-            int ry = rowY(i);
+            int ry = ys[i];
             boolean on = t.read().getAsBoolean();
             boolean hover = drawToggleRow(g, x, ry, w, ROW_H, t.label(), on, mx, my);
-            // 说明行（置于开关行下方，避免与胶囊重叠）
-            g.drawString(font(), t.tip(), x + 8, ry + ROW_H - 4, C_TEXT_DIM);
-            // 悬停时把完整说明交给主屏绘制（保持与其它面板一致的 tooltip 行为）
+            // 说明行：折行（宽度受限，长说明不会被裁）
+            UiKit.drawWrapped(g, t.tip(), x + 8, ry + ROW_H + 1,
+                    Math.max(60, w - 16), UiKit.C_TXT_DIM);
             if (hover) hoverTooltip = net.minecraft.network.chat.Component.literal(t.tip());
         }
 
         // ---- 组合状态提示（★ 让玩家知道当前到底会生成什么）----
-        boolean veins = toggles.get(0).read().getAsBoolean();
-        boolean override = toggles.get(1).read().getAsBoolean();
-        int sy = rowY(toggles.size() - 1) + ROW_H + 14;
-
-        String summary;
-        int color = C_TEXT_DIM;
-        if (!veins && override) {
-            summary = "⚠ 两项都关 = 地下几乎没有矿，请至少开启一项。";
-            color = 0xFFFFAA00;
-        } else if (veins && override) {
-            summary = "当前：地下矿完全由自研地质矿脉生成（原版金属矿已移除）。";
-        } else if (veins) {
-            summary = "当前：原版矿 + 自研地质矿脉（二者叠加）。";
-        } else {
-            summary = "当前：只有原版矿（纯原版体验）。";
-        }
-        g.drawString(font(), summary, x + 2, sy, color);
+        String summary = summaryText();
+        boolean warn = !toggles.get(0).read().getAsBoolean() && toggles.get(1).read().getAsBoolean();
+        int cardTop = summaryCardTop();
+        // ★ v13：宽度与下面 drawWrapped 一致（w-4），否则高度估算偏小、下一段会压上来
+        int cardH = UiKit.wrappedHeight(summary, Math.max(60, w - 4)) + 4;
+        // 状态卡：略亮底，把结论托起来
+        // ★ v13：状态卡底彻底去掉（实心块会显出矩形边界），结论靠<span>颜色</span>区分
+        UiKit.drawWrapped(g, summary, x + 2, cardTop + 2, Math.max(60, w - 4),
+                warn ? 0xFFFFAA00 : UiKit.C_TXT_SUB);
 
         // ---- 多模组兼容 + 生效范围（必须写明）----
-        g.drawString(font(), "只影响原版矿，其它模组的矿不受影响。",
-                x + 2, sy + 13, C_TEXT_DIM);
-        g.drawString(font(), "更改设置后，只对之后新生成的区块生效。",
-                x + 2, sy + 25, C_TEXT_DIM);
+        int afterCard = cardTop + cardH + 6;
+        afterCard += UiKit.drawWrapped(g, "只影响原版矿，其它模组的矿不受影响。",
+                x + 2, afterCard, Math.max(60, w - 4), UiKit.C_TXT_DIM);
+        afterCard += UiKit.drawWrapped(g, "更改设置后，只对之后新生成的区块生效。",
+                x + 2, afterCard, Math.max(60, w - 4), UiKit.C_TXT_DIM);
     }
 }

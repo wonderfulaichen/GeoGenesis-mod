@@ -63,11 +63,19 @@ public class CompositePanel extends ConfigPanel {
     public void render(GuiGraphics g, int mx, int my) {
         layout();
         for (ConfigPanel p : children) p.render(g, mx, my);
-        // 合并 tooltip：子面板各自算，最后一个非空的胜出（同一帧只可能悬停一个控件）
-        for (ConfigPanel p : children) {
-            var t = p.peekHoverTooltip();
-            if (t != null) hoverTooltip = t;
-        }
+        // ★★ v22【修"幽灵提示"：没指任何控件却一直显示 tooltip"】★★
+        //   旧实现用 {@code peekHoverTooltip()} —— 它<b>只读不清</b>，
+        //   而子面板的 {@code hoverTooltip} 字段只在 consume 时才置空。
+        //   ⇒ 鼠标移开后字段里仍是上一次的文本，被反复 peek 到并上报，
+        //     于是"指针不在任何控件上，提示却一直在"。
+        //   现在：子面板在 render 里已经<b>直接</b>调 {@code UiKit.Hover.report}，
+        //   这里不再二次上报（那只会加重重复/残留）。
+    }
+
+    @Override
+    protected void clearFrameState() {
+        // ★ v22：递归清空子面板，杜绝任一子面板的过期 tooltip 存活到下一帧
+        for (ConfigPanel p : children) p.beginFrame();
     }
 
     @Override

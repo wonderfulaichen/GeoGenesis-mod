@@ -607,6 +607,36 @@ public class PreviewDisplay extends AbstractWidget {
     //  渲染（每帧）
     // ================================================================
 
+    /**
+     * 公开绘制入口（★ 2026-11-09）。
+     *
+     * <p>配置屏需要<b>精确控制绘制顺序</b>：地形 → 导航栏 → 内容面板 → widget。
+     * 若 preview 注册为 widget，{@code super.render()} 会在面板底板之前画它，
+     * 而底板不透明 ⇒ 把 widget 全盖住（实机：种子输入框消失）。</p>
+     *
+     * <p>⇒ 不注册为 widget，由 {@code GeoGenesisConfigScreen.render} 按顺序调用本方法。</p>
+     */
+    public void drawSelf(GuiGraphics g, int mx, int my, float pt) {
+        renderWidget(g, mx, my, pt);
+    }
+
+    /**
+     * <b>是否由本控件自己画 HUD</b>（★ v7，修"切视图模式 GUI 就重叠"）。
+     *
+     * <p>两种宿主需要不同的所有权：</p>
+     * <ul>
+     *   <li>{@code TerrainPreview}（Swing 独立窗口）：{@code true} —— 没有别人帮它画，
+     *       标题/图例/缩放/悬停全得自己来。</li>
+     *   <li>{@code GeoGenesisConfigScreen}（全屏配置屏）：{@code false} ——
+     *       导航栏、内容面板、右下状态栏由屏幕统一负责。若这里再画一遍，
+     *       就会和导航栏叠在一起（实机：左上角两套文字压成一团）。</li>
+     * </ul>
+     */
+    private boolean standaloneHud = true;
+
+    /** 配置屏构造 preview 时调 {@code false}，独立窗口保持 {@code true}。 */
+    public void setStandaloneHud(boolean v) { this.standaloneHud = v; }
+
     @Override
     public void renderWidget(GuiGraphics g, int mx, int my, float pt) {
         long frameStart = System.nanoTime();
@@ -623,21 +653,23 @@ public class PreviewDisplay extends AbstractWidget {
         //   ⇒ 沙盘画完地形后<b>继续走完 HUD 流程</b>，只是跳过 2D 纹理绘制。
         if (sandboxMode) {
             renderSandbox(g, w, h, mx, my);
-            // ★ 角落所有权契约（2026-11-09）：
-            //   右上 = 图例（drawLegend）⇒ 帧时间画到图例<b>下方</b>，不再与它抢右上角
-            //   （实机截图：「3 ms」与「高程」标题重叠 4px）。
-            drawZoomLabel(g, x, y, w, h);
-            if (showLegend) drawLegend(g, mx, my);
-            if (showFrameTime) drawFrameTime(g, x + w, y + 64);
-            drawCopiedToast(g, x, y, w, h);
-            // ★ 沙盘模式<b>不调 drawHoverInfo</b>：
-            //   它是平面模式的跟随光标 tooltip；沙盘已有左下角常驻悬停信息
-            //   （drawSandboxHints），两者同时存在会叠成两行（实机取证）。
-            // 1px 边框（参考项目 draw 的收尾）
-            g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
-            g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
-            g.fill(x - 1, y, x, y + h, 0xFF666666);
-            g.fill(x + w, y, x + w + 1, y + h, 0xFF666666);
+            // ★ v7【修"切视图 GUI 重叠"】：HUD 只在独立窗口里画。
+            //   配置屏内由 GeoGenesisConfigScreen 统一画（导航栏/面板/右下状态栏），
+            //   这里再画一遍就会叠出两套标题与操作提示（实机取证：左上角压成一团）。
+            if (standaloneHud) {
+                drawZoomLabel(g, x, y, w, h);
+                if (showLegend) drawLegend(g, mx, my);
+                if (showFrameTime) drawFrameTime(g, x + w, y + 64);
+                drawCopiedToast(g, x, y, w, h);
+                // ★ 沙盘模式<b>不调 drawHoverInfo</b>：
+                //   它是平面模式的跟随光标 tooltip；沙盘已有左下角常驻悬停信息
+                //   （drawSandboxHints），两者同时存在会叠成两行（实机取证）。
+                // 1px 边框（参考项目 draw 的收尾）
+                g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
+                g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
+                g.fill(x - 1, y, x, y + h, 0xFF666666);
+                g.fill(x + w, y, x + w + 1, y + h, 0xFF666666);
+            }
             long elapsedSandbox = (System.nanoTime() - frameStart) / 1_000_000L;
             frameTimes.add(elapsedSandbox);
             if (frameTimes.size() > 30) frameTimes.poll();
@@ -721,22 +753,29 @@ public class PreviewDisplay extends AbstractWidget {
         g.blit(texLoc, x, y, w, h, 0, 0, texW, texH, texW, texH);
 
         drawMapMarkers(g, mx, my, x, y, w, h, originWx, originWz, blocksWide, blocksHigh);
-        // 参考项目：1px 边框线
-        g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
-        g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
-        g.fill(x - 1, y, x, y + h, 0xFF666666);
-        g.fill(x + w, y, x + w + 1, y + h, 0xFF666666);
 
-        drawZoomLabel(g, x, y, w, h);
+        // ★ v7【修"切视图 GUI 重叠"】：以下全部是 HUD —— 只在独立窗口里画。
+        //   配置屏内由 GeoGenesisConfigScreen 统一负责（导航栏/图例/右下状态栏），
+        //   这里再画就会叠成两套（实机：左上两套文字、右上两个图例）。
+        //   ★ 地图标记（上面那行）不算 HUD ⇒ 两种模式都保留。
+        if (standaloneHud) {
+            // 参考项目：1px 边框线
+            g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
+            g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
+            g.fill(x - 1, y, x, y + h, 0xFF666666);
+            g.fill(x + w, y, x + w + 1, y + h, 0xFF666666);
 
-        // ★ 角落所有权契约：右上 = 图例 ⇒ 帧时间画到图例下方（不再与它重叠）
-        if (showLegend) drawLegend(g, mx, my);
-        if (showFrameTime) drawFrameTime(g, x + w, y + 64);
+            drawZoomLabel(g, x, y, w, h);
 
-        // 右键复制坐标消息
-        drawCopiedToast(g, x, y, w, h);
+            // ★ 角落所有权契约：右上 = 图例 ⇒ 帧时间画到图例下方（不再与它重叠）
+            if (showLegend) drawLegend(g, mx, my);
+            if (showFrameTime) drawFrameTime(g, x + w, y + 64);
 
-        drawHoverInfo(g, mx, my);
+            // 右键复制坐标消息
+            drawCopiedToast(g, x, y, w, h);
+
+            drawHoverInfo(g, mx, my);
+        }
 
         // 帧时间统计
         long elapsed = (System.nanoTime() - frameStart) / 1_000_000L; // ms
@@ -1070,10 +1109,12 @@ public class PreviewDisplay extends AbstractWidget {
         // 左键：记录起始位置用于拖拽/点击判断
         totalDragX = 0;
         totalDragZ = 0;
-        // ★ S3：沙盘模式下左键拖动转视角，不参与地图平移
-        if (sandboxMode) {
-            dragging = true;
-        }
+        // ★★ v8【修"平面地图拖不动"】★★
+        //   旧代码只在<b>沙盘</b>分支里置 dragging=true，平面模式下左键
+        //   <b>从不进入拖拽态</b> ⇒ mouseDragged 里的位移累加全是空转，
+        //   用户表现为"悬浮提示看得见地图，但拖不动"。
+        //   两种模式都需要进入拖拽态，区别只在 dragged 里怎么解释位移。
+        dragging = true;
         return true;
     }
 
@@ -1473,6 +1514,15 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 本地化：优先 I18n（MC 语言文件），缺失则回退到英文表（与 Swing 端一致）。 */
 
+    /**
+     * 图例（★ v7 改为公开）：配置屏在 {@code standaloneHud=false} 时
+     * 关掉了预览自带的 HUD，但图例仍需显示 —— 由屏幕在合适位置调用本方法。
+     * 它自己按 {@code getX()/getY()/width/height} 定位，不依赖调用方传坐标。
+     */
+    public void drawLegendAt(GuiGraphics g, int mx, int my) {
+        drawLegend(g, mx, my);
+    }
+
     private void drawLegend(GuiGraphics g, int mx, int my) {
         GeoPalette.PreviewLayer layer = getLayer();
         int lx = getX() + width - 132, ly = getY() + 8;
@@ -1509,7 +1559,7 @@ public class PreviewDisplay extends AbstractWidget {
             String modeLabel = "排序: " + LEGEND_SORT_NAMES[legendSortMode];
             boolean hoverMode = mx >= lx && mx <= lx + panelW && my >= modeY && my <= modeY + modeH;
             if (hoverMode) g.fill(lx - 2, modeY, lx + mc.font.width(modeLabel) + 8, modeY + modeH, 0x4400c896);
-            g.drawString(mc.font, modeLabel, lx, modeY + 2, hoverMode ? 0xFF00c896 : 0xFF888888);
+            g.drawString(mc.font, modeLabel, lx, modeY + 2, hoverMode ? 0xFF48DE56 : 0xFF9E9E9E);
 
             // 搜索框
             int searchY = modeY + modeH;
@@ -1552,30 +1602,168 @@ public class PreviewDisplay extends AbstractWidget {
             if (scrollableH > 0) {
                 int barH = Math.max(12, entryMaxH * entryMaxH / contentH);
                 int barY = entryY + legendScrollOffset * (entryMaxH - barH) / scrollableH;
-                g.fill(lx + panelW - 3, barY, lx + panelW - 1, barY + barH, 0xFF00c896);
+                UiKit.scrollbar(g, lx + panelW - 3, entryY, entryMaxH, contentH, legendScrollOffset, false);
             }
         } else {
-            int bx = getX() + width - 22, by = getY() + 24;
-            // 自适应高度：占 widget 可用高度的 80%，最小 100，最大 500
-            int bh = Math.max(100, Math.min(500, (int)(height * 0.8)));
-            int bw = 12;
-            // 使用已烘焙 LUT 每像素采样，避免运行期 getRGB 开销
-            // LUT 256 级，200px → 每像素约 1.28 LUT 级，足够平滑
-            for (int i = 0; i < bh; i++) {
-                double p = 1.0 - (double) i / (bh - 1);
-                int rgb = GeoPalette.continuous(layer, GeoPalette.legendGradientPos(layer, p));
-                g.fill(bx, by + i, bx + bw, by + i + 1, GeoPalette.toARGB(rgb));
-            }
-            String[] lbl;
-            if (layer == GeoPalette.PreviewLayer.ELEVATION) {
-                lbl = new String[]{"Y=" + (int) Math.round(heightFromE(elevEMax)),
-                                   "Y=" + (int) Math.round(heightFromE(elevEMin))};
+            // ★ v7 重做连续图层图例（用户：「右侧的高程图例怎么还是旧版的」）。
+            //   旧版：12px 裸竖条 + 左侧浮在色块上的文字 + 青色标题 —— 与新版控件语言完全脱节。
+            //   新版：右对齐的圆角卡片（深色底 + 圆角），内含标题行 + 色带 + 端点标签 + 中值刻度。
+            drawContinuousLegendCard(g, layer, lx, ly);
+        }
+    }
+
+    /**
+     * <b>连续图层图例卡片</b>（★ v7）。
+     *
+     * <pre>
+     *   ┌──────────────┐
+     *   │ 高程          │  标题行（亮字）
+     *   │ ┌──┐  Y=288  │  色带 + 上端值
+     *   │ │▓▓│         │
+     *   │ │▓▓│         │
+     *   │ └──┘  Y=19   │  下端值
+     *   └──────────────┘
+     * </pre>
+     */
+    /**
+     * 图例卡片的几何（★ v10：供屏幕把操作提示卡排在它<b>下方</b>）。
+     *
+     * @return {@code {x, y, w, h}}；当前图层不可图例化时返回 {@code null}
+     */
+    public int[] legendCardRect() {
+        GeoPalette.PreviewLayer layer = getLayer();
+        if (!layer.legendable) return null;
+        if (layer.kind == GeoPalette.Kind.DISCRETE) {
+            // 离散图例尺寸由条目数决定，这里给折叠态的最小占位
+            return new int[]{getX() + width - 132, getY() + 8, 128, legendExpanded ? 220 : 14};
+        }
+        int barW = 20;
+        // ★ 与 drawContinuousLegendCard 完全同一公式（v12：预留 120px 给提示卡）
+        int available = height - 10 - 14 - 120;
+        int bh = Math.max(110, Math.min(440, available));
+        String title = I18n.get(layer.labelKey);
+        String[] lbl = layer == GeoPalette.PreviewLayer.ELEVATION
+                ? new String[]{"Y=999", "Y=99"}
+                : GeoPalette.continuousLegendLabels(layer, this::localize);
+        int labelW = Math.max(mc.font.width(lbl[0]), mc.font.width(lbl[1]));
+        int cardW = 8 + barW + 15 + Math.max(labelW, mc.font.width(title)) + 8;
+        int cardH = bh + 30;
+        int cardX = getX() + width - cardW - 12;
+        // ★ 与 drawContinuousLegendCard 同一坐标（图例贴顶）
+        int cardY = getY() + 10;
+        return new int[]{cardX, cardY, cardW, cardH};
+    }
+
+    private void drawContinuousLegendCard(GuiGraphics g, GeoPalette.PreviewLayer layer,
+                                          int lx, int ly) {
+        // ★★ v8【重做：用户「示意图右侧的高程图例实际还是没在游戏里完美复刻」】★★
+        //
+        //   旧版的问题（逐条对照示意图）：
+        //     ① 色带只有 12px 宽 —— 示意图里是<b>成块的色阶条</b>（约 24px，看得出分层）
+        //     ② 只有上下两个端点文字 —— 示意图是<b>分段刻度 + 每段数值</b>
+        //     ③ 卡片高度按 height*0.62 浮动 —— 示意图里高度是<b>固定且饱满</b>的
+        //     ④ 没有刻线、没有中间值 —— 用户没法从图例读出"这块地大概多高"
+        //
+        //   现在：色阶条 + 左侧刻度线 + 右侧数值（自适应步长，避免文字重叠）。
+        int barW = 20;   // ★ v12：22 → 20，略收窄，给右侧数值列腾空间
+
+        // ★★ v12【修"提示卡压着色带下沿"】★★
+        //   上一版按 `height - 22 - 96` 估预算，但提示卡实际高度取决于文字行数
+        //   （标题 + 4 行 + 行距 ≈ 78~86px，随字体缩放浮动）⇒ 96 不够，色带下沿
+        //   与提示卡标题叠在一起（用户截图：`平面视图操作` 压在 `19` 刻度上）。
+        //   现在把预算提高到 <b>120px</b> 并额外留 10px 安全边，
+        //   同时把图例的最小高度降到 110 —— 小窗口下也能两者共存。
+        int hintReserve = 120;
+        int topPad = 10, bottomPad = 14;
+        int available = height - topPad - bottomPad - hintReserve;
+        int bh = Math.max(110, Math.min(440, available));
+
+        String[] lbl;
+        if (layer == GeoPalette.PreviewLayer.ELEVATION) {
+            lbl = new String[]{"Y=" + (int) Math.round(heightFromE(elevEMax)),
+                               "Y=" + (int) Math.round(heightFromE(elevEMin))};
+        } else {
+            lbl = GeoPalette.continuousLegendLabels(layer, this::localize);
+        }
+
+        String title = I18n.get(layer.labelKey);
+        int titleW = mc.font.width(title);
+        int labelW = Math.max(mc.font.width(lbl[0]), mc.font.width(lbl[1]));
+        // ★ v12：内边距 10 → 8，标题与色带间距 28 → 24，整体更紧凑
+        // ★ v13：色带与数值列之间留 15px（刻线 9 + 间隔 4 + 余量），卡片同步加宽
+        int cardW = 8 + barW + 15 + Math.max(labelW, titleW) + 8;
+        int cardH = bh + 30;
+
+        int cardX = getX() + width - cardW - 12;
+        int cardY = getY() + 10;
+
+        // ★ v12：卡片底更透（0xD0 → 0xB8），减少对地形的遮挡；圆角略大更柔和
+        com.geogenesis.client.preview.UiKit.roundRect(g, cardX, cardY,
+                cardX + cardW, cardY + cardH, 7, 0xB8181C20);
+        // 标题：字号不变但用次要色，避免与地形亮色抢注意力
+        g.drawString(mc.font, title, cardX + 8, cardY + 7, 0xFFE8E8E8, false);
+
+        int barX = cardX + 8;
+        int barY = cardY + 24;
+
+        // ---- 色阶条 ----
+        for (int i = 0; i < bh; i++) {
+            double p = 1.0 - (double) i / Math.max(1, bh - 1);
+            int rgb = GeoPalette.continuous(layer, GeoPalette.legendGradientPos(layer, p));
+            g.fill(barX, barY + i, barX + barW, barY + i + 1, GeoPalette.toARGB(rgb));
+        }
+        // ★ v12：色带外框从"整圈 1px 硬边"改为<b>只在上下两端加细圆角</b>，
+        //   避免在色带两侧出现两条长直线（用户反馈"边框偏粗"的同类问题）。
+        com.geogenesis.client.preview.UiKit.roundRectOutline(g, barX, barY,
+                barX + barW, barY + bh, 2, 0x22FFFFFF);
+
+        // ---- 刻度：自适应步长，保证文字不重叠 ----
+        drawLegendTicks(g, layer, barX, barY, barW, bh, lbl);
+
+        // ---- 中值刻度线（视觉锚点）----
+        int midY = barY + bh / 2;
+        g.fill(barX + barW + 2, midY, barX + barW + 6, midY + 1, 0x66FFFFFF);
+    }
+
+    /**
+     * 连续图例的刻度（★ v8）。
+     *
+     * <p>步长按<b>可用高度</b>反推：每格至少 26px 才不会文字相撞。
+     * 数值用图例自身的语义（高程给 Y 值，其它给 0..1 位置）。</p>
+     */
+    private void drawLegendTicks(GuiGraphics g, GeoPalette.PreviewLayer layer,
+                                 int barX, int barY, int barW, int bh, String[] endLabels) {
+        int minPx = 26;
+        int slots = Math.max(2, bh / minPx);        // 可容纳的刻度数
+        int steps = Math.max(2, Math.min(9, slots)); // 2..9 段
+
+        boolean elevation = layer == GeoPalette.PreviewLayer.ELEVATION;
+        double hi = 1.0, lo = 0.0;
+        if (elevation) {
+            hi = heightFromE(elevEMax);
+            lo = heightFromE(elevEMin);
+        }
+
+        for (int s = 0; s <= steps; s++) {
+            double t = 1.0 - (double) s / steps;   // 1 = 顶
+            int y = barY + (int) Math.round((1 - t) * (bh - 1));
+            // ★ v13 重做刻线：短横线改为「首尾加粗提亮、中间细淡」，与数值列分离
+            boolean isEdge = (s == 0 || s == steps);
+            int tickW = isEdge ? 9 : 6;
+            int tickH = isEdge ? 2 : 1;
+            g.fill(barX + barW + 2, y, barX + barW + 2 + tickW, y + tickH,
+                    isEdge ? 0xE6FFFFFF : 0x66FFFFFF);
+            // 数值
+            String txt;
+            if (elevation) {
+                txt = String.valueOf((int) Math.round(lo + (hi - lo) * t));
             } else {
-                lbl = GeoPalette.continuousLegendLabels(layer, this::localize);
+                txt = String.format(java.util.Locale.ROOT, "%.2f", t);
             }
-            g.drawString(mc.font, lbl[0], bx - 28, by, 0xCCCCCC);
-            g.drawString(mc.font, lbl[1], bx - 28, by + bh - 8, 0xCCCCCC);
-            g.drawString(mc.font, I18n.get(layer.labelKey), lx, ly, 0x66CCFF);
+            // ★ v13：数值统一到刻线右侧 4px 的同一列，不再紧贴刻线
+            int ty = Math.max(barY - 1, Math.min(y - 4, barY + bh - 8));
+            g.drawString(mc.font, txt, barX + barW + 15, ty,
+                    isEdge ? 0xFFF2F2F2 : 0xFFB0B0B0, false);
         }
     }
 
@@ -1780,6 +1968,32 @@ public class PreviewDisplay extends AbstractWidget {
      *
      * @return 永不为 null；无数据时返回 {@code "1:1"}
      */
+    /**
+     * 采样完成度 0..1（★ 2026-11-09 v6 布局：导航栏底部进度条）。
+     *
+     * <p>平面管线按 chunk 后台增量采样，没有全局百分比；
+     * 用「已缓存 chunk / 视口所需 chunk」估算。大范围模式恒 1（一次采完固定网格）。</p>
+     *
+     * <p>★ 沙盘模式直接用采样器真实进度（它有准确的 progress()）。</p>
+     */
+    public float progressFraction() {
+        if (sandboxMode && largeSampler != null && largeSampler.data() != null) {
+            return largeSampler.progress();
+        }
+        if (largeArea) return 1.0f;
+        // ★ 2026-11-09【修"进度条永远 17%"】：
+        //   视口 chunk 数必须按<b>渲染纹理尺寸 × scale</b> 算，不是按屏幕像素。
+        //   日志实测 viewport 54×30 = 1620 chunks；
+        //   之前用 width/scale（1967 格）⇒ need 算成 125×76 = 9500，
+        //   进度条永远停在 17%（实际早就采完了）。
+        int blocksWide = texW * scaleBlockPos;
+        int blocksHigh = texH * scaleBlockPos;
+        int needCX = Math.max(1, blocksWide / 16 + 2);
+        int needCZ = Math.max(1, blocksHigh / 16 + 2);
+        int need = needCX * needCZ;
+        return Math.min(1f, cellCache.chunkCount() / (float) need);
+    }
+
     public String statusLine() {
         // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
         if (sandboxMode) {

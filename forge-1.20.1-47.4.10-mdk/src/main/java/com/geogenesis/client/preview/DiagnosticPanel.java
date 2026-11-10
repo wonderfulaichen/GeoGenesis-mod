@@ -40,12 +40,17 @@ public class DiagnosticPanel extends DomainPanel {
 
     public int toggleY() { return rowsBottomY() + 4; }
 
+    /** 底部警示文字（★ v7：独立成常量，供 extraHeight 与绘制共用同一份）。 */
+    private static final String NOTE = "「高海拔/高起伏阈值」只被诊断类读取，改它不会改变地形。";
+
     @Override
-    protected int extraHeight() { return 14 + TOGGLE_H + 30; }
+    protected int extraHeight() {
+        // ★ v7：警示改为折行，高度按像素宽预计算（原来写死 30，长文字被裁）
+        return 14 + TOGGLE_H + UiKit.wrappedHeight(NOTE, Math.max(60, w)) + 6;
+    }
 
     @Override
     protected void renderExtra(GuiGraphics g, int mx, int my, int y) {
-        g.fill(x, y + 4, x + w, y + 5, C_LINE);
         int ty = y + 10;
         boolean on = showLegacy.getAsBoolean();
         boolean hover = drawToggleRow(g, x, ty, w, TOGGLE_H - 2,
@@ -58,8 +63,8 @@ public class DiagnosticPanel extends DomainPanel {
                     + "所以默认隐藏，避免把「转了没反应」当成 bug 排查。");
         }
         int noteY = ty + TOGGLE_H + 2;
-        g.drawString(font(), "⚠「高海拔/高起伏阈值」只被诊断类读取，改它不会改变地形。",
-                x + 2, noteY, 0xFFFFAA00);
+        // ★ 去 emoji（字体缺少该字形，实机是空框）+ 折行
+        UiKit.drawWrapped(g, NOTE, x + 2, noteY, Math.max(60, w - 4), 0xFFFFAA00);
     }
 
     @Override

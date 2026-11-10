@@ -2,6 +2,7 @@ package com.geogenesis.client;
 
 import com.geogenesis.client.preview.ConfigPanel;
 import com.geogenesis.client.preview.DomainPanel;
+import com.geogenesis.client.preview.UiKit;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -129,35 +130,158 @@ public final class ConfigPanelHost {
     public void render(GuiGraphics g, int mx, int my, float pt,
                        Runnable onDrawPanelButtons) {
         drawOverlay(g);
-        drawTabs(g, mx, my);
+        drawPanelTitle(g);
+        drawTabsInternal(g, mx, my);
         drawContent(g, mx, my);
+        drawPinneArea(g, mx, my);
+        drawScrollbar(g);
+        drawFooterHint(g);
         if (onDrawPanelButtons != null) onDrawPanelButtons.run();
     }
 
     /**
-     * 悬浮窗的半透明底板 + 边框 + 顶部标题行。
+     * <b>固定区（不随滚动移动）</b>（★ v20）。
      *
-     * <p>坐标与原 {@code ConfigScreen.renderPanelOverlay} 完全一致
-     * （{@code cfgX, cfgY, cfgW, cfgH}），避免视觉跳变。</p>
+     * <p>用户：「建议给示意图做一下常驻显示，不然按现在这样滚动就消失了」。
+     * 有些页签（如「世界与尺度」）的可滚参数很多，而示意图是<b>理解参数意义</b>的关键
+     * ⇒ 让它钉在内容区底部，参数滚动时它不动。</p>
+     *
+     * <h2>★ 坐标契约（★ v21：修"示意图画在错误位置"）</h2>
+     * <pre>
+     *   listBottom     = 内容区（滚动区）底边，<b>已扣除</b>固定区
+     *   pinnedTop      = listBottom + 间隙        ← 固定区顶
+     *   pinnedBottom   = overlayY + overlayH - 页脚
+     * </pre>
+     * <p>⚠ 此前 {@code listBottom} 由外部扣过一次、这里又扣一次
+     * （{@code listBottom - bottomReserved()}）⇒ <b>双重扣除</b>，
+     * 固定区被画到内容区上方，压在参数行上（实机截图正是这个）。</p>
+     */
+    public int pinnedHeight = 0;
+    /** 固定区绘制回调：参数 (graphics, mouseX, mouseY, 区域顶 y)。 */
+    public PinnedRenderer pinnedRenderer = null;
+
+    public interface PinnedRenderer {
+        void render(GuiGraphics g, int mx, int my, int topY);
+    }
+
+    /** 固定区顶部 y（★ 唯一来源：绘制、命中、裁切都用它）。 */
+    public int pinnedTop() {
+        return listBottom + 6;
+    }
+
+    private void drawPinneArea(GuiGraphics g, int mx, int my) {
+        if (pinnedHeight <= 0 || pinnedRenderer == null) return;
+        int top = pinnedTop();
+        // 上方一条分隔线，明确"这块是固定的"
+        g.fill(panelX + 8, top - 5, panelX + panelW - 8, top - 4, 0x18FFFFFF);
+        pinnedRenderer.render(g, mx, my, top);
+    }
+
+    /** 固定区 + 间距共占的高度（外部在算 listBottom 时扣除）。 */
+    public int bottomReserved() {
+        return pinnedHeight > 0 ? pinnedHeight + 10 : 0;
+    }
+
+    /**
+     * <b>滚动条</b>（★ v20）。
+     *
+     * <p>用户：「没有滚动条等设计，建议检查相关细节问题并修复」。
+     * 参数超过一屏时，右侧画一条细滚动条 + 滑块，让用户知道
+     * ① 还有内容没看到；② 当前在什么位置。</p>
+     */
+    private void drawScrollbar(GuiGraphics g) {
+        if (contentHeight <= 0) return;
+        int viewTop = listTop;
+        // ★ v21：listBottom 已扣过固定区，这里不能再扣（否则滚动条高度算错）
+        int viewBot = listBottom;
+        int viewH = viewBot - viewTop;
+        if (viewH <= 0 || contentHeight <= viewH) return;   // 不需要滚动条
+
+        int barX = panelX + panelW - 5;
+        UiKit.roundRect(g, barX, viewTop, barX + 3, viewBot, 2, 0x18FFFFFF);
+        int barH = Math.max(18, (int) ((long) viewH * viewH / contentHeight));
+        int maxScroll = contentHeight - viewH;
+        int barY = viewTop + (int) ((long) scrollOffset * (viewH - barH) / Math.max(1, maxScroll));
+        UiKit.roundRect(g, barX, barY, barX + 3, barY + barH, 2, 0x66FFFFFF);
+    }
+
+    /** 当前页内容总高（由外部每帧注入，用于滚动条）。 */
+    public int contentHeight = 0;
+    /** 当前滚动偏移（由外部每帧注入，用于滚动条）。 */
+    public int scrollOffset = 0;
+
+    /**
+     * <b>面板底部说明行</b>（★ v7，对齐示意图底部那行小字）。
+     *
+     * <p>示意图内容面板底部有一行次要色提示（说明本页作用）。
+     * 之前这里是空的，面板看着没"收口"。</p>
+     */
+    private void drawFooterHint(GuiGraphics g) {
+        if (footerHint == null || footerHint.isEmpty()) return;
+        int y = overlayY + overlayH - 14;
+        g.drawString(mc.font, footerHint, panelX + 12, y, 0xFF6E6E6E, false);
+    }
+
+    /** 面板底部说明（由外部按当前页签注入，null = 不画）。 */
+    public String footerHint;
+
+    /**
+     * <b>内容面板标题行</b>（★ v7，对齐示意图的「世界与尺度 — 8 项」）。
+     *
+     * <p>示意图里内容面板顶部有一行标题 + 条目数，下面是分组标签。
+     * 之前这里什么都没有 —— 只有导航栏的品牌行，内容面板像一块空白底板。</p>
+     */
+    private void drawPanelTitle(GuiGraphics g) {
+        if (titleText == null || titleText.isEmpty()) return;
+        // ★ v11：折叠把手已移回导航栏品牌行，标题不再需要为它让位
+        int tx = panelX + 12;
+        int ty = overlayY + 10;
+        g.drawString(mc.font, titleText, tx, ty, 0xFFF2F2F2, false);
+        if (titleCount >= 0) {
+            String cnt = "— " + titleCount + " 项";
+            int cx = tx + mc.font.width(titleText) + 6;
+            g.drawString(mc.font, cnt, cx, ty, 0xFF7E8A96, false);
+        }
+    }
+
+    /** 内容面板标题（由外部按当前页签注入，null = 不画）。 */
+    public String titleText;
+    /** 标题右侧的条目数（<0 = 不画）。 */
+    public int titleCount = -1;
+
+    /**
+     * 悬浮窗底板（★ v7：改走 UiKit 圆角卡片 + 极淡描边）。
+     *
+     * <p>旧版是 1px 硬边框 {@code 0xFF3A4250}，与新版"无描边、靠底色明度分节"
+     * 的语言冲突（用户实测：面板像"框起来的表格"）。</p>
+     *
+     * <p>★ 2026-11-09 v6 起<p>不画</p>「GeoGenesis 地形配置」标题 ——
+     * 左侧导航栏已有品牌行，这里再写一遍是重复（用户截图：左右各一个 GeoGenesis）。</p>
      */
     private void drawOverlay(GuiGraphics g) {
         int x = panelX, y = overlayY;
         int w = panelW, h = overlayH;
-        // 底板：深色半透明（不是全不透明，能看到下方地形轮廓）
-        g.fill(x, y, x + w, y + h, 0xC8101216);
-        // 1px 描边：在全屏地形上区分层次
-        g.fill(x, y, x + w, y + 1, 0xFF3a4250);
-        g.fill(x, y + h - 1, x + w, y + h, 0xFF3a4250);
-        g.fill(x, y, x + 1, y + h, 0xFF3a4250);
-        g.fill(x + w - 1, y, x + w, y + h, 0xFF3a4250);
-        // 顶部标题行
-        g.drawString(mc.font, "GeoGenesis 地形配置", x + 8, y + 6, C_TEXT, false);
+        UiKit.roundRect(g, x, y, x + w, y + h, UiKit.RADIUS_CARD, 0xE8141414);
+        UiKit.roundRectOutline(g, x, y, x + w, y + h, UiKit.RADIUS_CARD, 0x1AFFFFFF);
     }
+
+    /**
+     * 是否由本类画页签栏（★ 2026-11-09 v6 布局）。
+     *
+     * <p>{@code false} = 页签由外部（左侧导航栏）画，本类只画<b>内容面板</b>
+     * （顶栏 + 内容 + 按钮）。v6 布局默认 {@code false}。</p>
+     *
+     * <p>★ 为什么要这个开关：v6 把页签从"内容面板顶部横排"改成
+     * "左侧导航栏竖排"。若不关掉本类的页签绘制，会画出两套页签
+     * （与之前"两个图例"同类错误）。</p>
+     */
+    public boolean drawTabs = false;
 
     /**
      * 画页签栏：<b>按文字宽度流式换行</b>（强行等分必然超宽）。
      */
-    private void drawTabs(GuiGraphics g, int mx, int my) {
+    private void drawTabsInternal(GuiGraphics g, int mx, int my) {
+        if (!drawTabs) { tabBarBottom = headerY; return; }
         int[] lay = tabLayout();
         int n = tabLabels.size();
         int bottom = headerY;

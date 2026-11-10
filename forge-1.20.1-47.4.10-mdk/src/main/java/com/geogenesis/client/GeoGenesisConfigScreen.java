@@ -17,6 +17,7 @@ import com.geogenesis.client.preview.PresetsPanel;
 import com.geogenesis.client.preview.PreviewDisplay;
 import com.geogenesis.client.preview.SamplingPanel;
 import com.geogenesis.client.preview.GeoPalette;
+import com.geogenesis.client.preview.UiKit;
 import com.geogenesis.client.preview.WorldScalePanel;
 import com.geogenesis.config.GeoGenesisConfig;
 import com.geogenesis.config.PanelLayout;
@@ -24,8 +25,9 @@ import com.geogenesis.worldgen.terrain.CellGenerator;
 import com.geogenesis.worldgen.terrain.GeoGenesisTerrain;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
@@ -85,9 +87,9 @@ public class GeoGenesisConfigScreen extends Screen {
     private static final int TAB_BAR_BG = 0xFF161A22;
     private static final int TAB_PILL_BG = 0xFF2a3340;
     private static final int TAB_PILL_HOVER = 0xFF353c48;
-    private static final int TAB_SEL_BG = 0xFF1e222c;
-    private static final int TAB_SEL_HOVER = 0xFF252a33;
-    private static final int TAB_SEL_TOP = 0xFF00c896;
+    private static final int TAB_SEL_BG = 0xFF1E1E1E;
+    private static final int TAB_SEL_HOVER = 0xFF3A3A3A;
+    private static final int TAB_SEL_TOP = 0xFF48DE56;
     private static final int TAB_INACTIVE_TEXT = 0xFF9aa0aa;
     private static final int C_TEXT = 0xFFe0e0e0;
     private static final int C_LINE = 0xFF333333;
@@ -145,10 +147,18 @@ public class GeoGenesisConfigScreen extends Screen {
      * 中心/缩放/图层/快照由 {@code PreviewState} 共享 ⇒ 切模式不重采、构图不变。</p>
      */
     private com.geogenesis.client.preview.PreviewController controller;
-    private Button applyBtn, savePresetBtn, resetBtn, layerPrev, layerNext;
-    private Button largeAreaBtn;
-    /** ★ S3：平面/沙盘 模式切换按钮。 */
-    private Button sandboxBtn;
+    /**
+     * ★ 2026-11-09 v7：这几个按钮已改为<b>自绘</b>（不再注册为 MC widget）。
+     *
+     * <p>原因：{@code Button} 是固定灰框 + 立体阴影，是"与示意图差距大"最显眼的一处。
+     * 现在只保留<b>状态</b>（当前位置/标签/是否可用），绘制与命中见
+     * {@link #drawActionButtons} 与 {@link #hitActionButton}。</p>
+     */
+    private int actionBtnY, navBtnY, navBtnW;
+    /** 内容面板顶栏「应用」按钮的 x/宽（每次 init 后随面板宽度重算）。 */
+    private int applyBtnX, applyBtnW;
+    /** 「完成」按钮几何（★ v21：绘制与命中共用）。 */
+    private int doneBtnX, doneBtnW_, doneBtnH_, applyBtnH_;
     private int currentMode = DEFAULT_PREVIEW_LAYER;
 
     // ---- ★ 2026-11-09 预览 → 世界复用（见 GeoGenesisGenerator.offerPreviewTerrain）----
@@ -195,6 +205,38 @@ public class GeoGenesisConfigScreen extends Screen {
     private static final int PANEL_W_CLOSED = 76;
     /** 配置窗与屏幕边缘的外边距。 */
     private static final int PANEL_MARGIN = 8;
+
+    /**
+     * 配置窗的<b>宽度上下限</b>（★ 2026-11-09）。
+     *
+     * <p>用户反馈「GUI 太大，占满屏幕」⇒ 限宽。480 是实测能放下
+     * 「标签 + 滑块 + 数值」的最小舒适宽度；520 是再宽就显得空。</p>
+     */
+    private static final int PANEL_MIN_W = 420;
+    private static final int PANEL_MAX_W = 520;
+
+    /**
+     * 配置窗的<b>高度上下限</b>（★ 2026-11-09）。
+     *
+     * <p>旧实现在 1080p 下算到 1032px（几乎顶满）；这里限到 620，
+     * 让四周留出地形 —— 视觉上像「浮在世界上的一个窗口」，而不是全屏面板。</p>
+     */
+    private static final int PANEL_MIN_H = 320;
+    private static final int PANEL_MAX_H = 620;
+
+    // ---- ★ 2026-11-09 v6 布局：左侧导航栏 + 右侧内容面板 ----
+    /** 导航栏宽度。 */
+    private static final int NAV_W = 196;
+    /** 内容面板宽度。 */
+    private static final int CONTENT_W = 384;
+    /** 导航栏左边界（恒 0）。 */
+    private int navX;
+    /** 导航栏宽度（= NAV_W，运行时缓存）。 */
+    private int navW;
+    /** 导航栏页签列表顶部 y。 */
+    private int navTabTop;
+    /** 导航栏每行页签高度。 */
+    private int navTabH = 32;
     /**
      * 配置窗底部按钮区高度。
      *
@@ -288,27 +330,70 @@ public class GeoGenesisConfigScreen extends Screen {
     }
 
     /**
-     * 计算配置窗的屏幕矩形。
+     * 计算配置窗的屏幕矩形（★ 2026-11-09 v6 布局：左侧导航栏 + 右侧内容面板）。
      *
-     * <p>★ 2026-11-08 全屏地图改造：预览铺满整个屏幕 (0,0,w,h)，
-     * 配置窗是<b>浮在上面</b>的一层，不再挤占预览宽度。
-     * 收起时只剩一个把手，展开时覆盖左侧一部分 —— 两种状态下预览都保持全屏。</p>
+     * <h2>布局（照用户认可的示意图）</h2>
+     * <pre>
+     *   ┌──────────────┬─────────────────┐      其余区域 = 全屏地形
+     *   │ 导航栏 196px  │ 内容面板 384px   │
+     *   │ · 品牌       │ · 顶栏(标题+应用) │
+     *   │ · 页签竖排    │ · 内容（滚动）    │
+     *   │ · 底部迷你条  │                 │
+     *   └──────────────┴─────────────────┘
+     * </pre>
      *
-     * <p>所有绘制与命中测试都调本方法取矩形，避免"画在一处、点判在另一处"。</p>
+     * <p>两块分开算：{@code navX/navW} 与 {@code cfgX/cfgW}。
+     * 不再"面板居中"（用户否掉），也不再"贴满全屏"。</p>
      */
     private void computePanelRect() {
         int h = this.height;
-        cfgW = panelOpen
-                ? Math.min(PANEL_W_OPEN, Math.max(320, this.width * 2 / 5))
-                : PANEL_W_CLOSED;
-        cfgX = PANEL_MARGIN;
-        cfgY = PANEL_MARGIN;
-        // 展开时留出上下的呼吸空间；太矮就贴到可用高度并内部滚动
-        cfgH = panelOpen ? Math.max(120, h - PANEL_MARGIN * 2 - 24) : 24;
+        int w = this.width;
+        if (!panelOpen) {
+            cfgW = PANEL_W_CLOSED;
+            cfgX = PANEL_MARGIN;
+            cfgY = PANEL_MARGIN;
+            cfgH = 24;
+            return;
+        }
+        // ★★ 2026-11-09【修"比例严重失调"】：
+        //   之前写死 NAV_W=196 / CONTENT_W=384 是<b>像素</b>。
+        //   但 MC 有 GUI Scale —— 1080p + scale=2 时逻辑宽度只有 960，
+        //   196+384=580 就占了 60%（用户截图里导航栏占 28%、内容面板占 42%）。
+        //   示意图是 1600 宽下画的，比例 NAV 12% / CONTENT 24%。
+        //
+        //   ⇒ 改成<b>按比例</b>算，并给像素上下限兜底：
+        //     navW     = clamp(宽 × 13%, 130, 196)
+        //     contentW = clamp(宽 × 26%, 260, 420)
+        int navW0 = clampInt((int) (w * 0.13), 130, NAV_W);
+        int contentW0 = clampInt((int) (w * 0.26), 260, CONTENT_W);
+
+        navX = 0;
+        navW = navW0;
+        cfgX = navW + 8;
+        cfgW = Math.min(contentW0, Math.max(220, w - cfgX - 10));
+        cfgY = 8;
+        cfgH = Math.max(200, h - 16);
+    }
+
+    private static int clampInt(int v, int lo, int hi) {
+        return v < lo ? lo : (v > hi ? hi : v);
     }
 
     /** 把当前状态同步给配置窗宿主（几何 + 页签 + 面板）。 */
     private void syncPanelHost() {
+        // ★ v6：几何以 computePanelRect() 为唯一来源；页签由导航栏画 ⇒ 宿主不画页签
+        panelX = cfgX;
+        panelW = cfgW;
+        // ★ v7：内容面板顶部留出<b>标题行</b>（示意图：「世界与尺度 — 8 项」）
+        //   标题画在 overlayY + 10（约 10px 高 + 间距）⇒ 内容从 cfgY + 32 起。
+        headerY = cfgY + 32;
+        listTop = headerY;
+        // ★ v7：底部留 20px 给说明行（drawFooterHint）
+        listBottom = cfgY + cfgH - 22;
+        bottomBarH = 0;
+        navTabH = clampInt((int) (this.height * 0.038), 22, 32);
+        navTabTop = clampInt((int) (this.height * 0.17), 110, 152);
+
         panelHost.panelX = panelX;
         panelHost.panelW = panelW;
         panelHost.overlayY = cfgY;
@@ -320,12 +405,94 @@ public class GeoGenesisConfigScreen extends Screen {
         panelHost.tab = tab;
         panelHost.panels = panels;
         panelHost.tabLabels = visibleTabs.stream().map(PanelLayout.Tab::label).toList();
+
+        // ★ v20：滚动条数据（内容总高 / 当前偏移），供 host 画右侧细滚动条
+        panelHost.contentHeight = (panels != null && tab >= 0 && tab < panels.length)
+                ? panels[tab].getHeight() : 0;
+        panelHost.scrollOffset = scroll;
+
+        // ★★ v21【修"示意图画在参数行上"】★★
+        //   坐标契约：<b>listBottom 只扣一次</b>固定区，host 侧不再扣。
+        //   之前屏幕扣一次、{@code drawScrollbar} 又扣一次 ⇒ 双重扣除，
+        //   内容区被压短、固定区被算到内容区上方（实机：示意图压在参数上，
+        //   下方留一大片空白）。
+        boolean pinned = isPinnedTab();
+        panelHost.pinnedHeight = pinned ? PINNED_H : 0;
+        panelHost.pinnedRenderer = pinned ? this::renderPinnedChart : null;
+        panelHost.listBottom = cfgY + cfgH - 22 - panelHost.bottomReserved();
+
+        // 标题 + 项数（示意图顶部那行）
+        if (tab >= 0 && tab < visibleTabs.size()) {
+            panelHost.titleText = visibleTabs.get(tab).label();
+            panelHost.titleCount = countRowsForTab(visibleTabs.get(tab));
+            panelHost.footerHint = footerHintFor(visibleTabs.get(tab));
+        } else {
+            panelHost.titleText = null;
+            panelHost.titleCount = -1;
+            panelHost.footerHint = null;
+        }
+    }
+
+    /** 固定示意图区高度（含标题行）。 */
+    /**
+     * 固定示意图区高度（★ v21：= 标题 14 + 画面 CHART_H 132 + 底部说明 18）。
+     *
+     * <p>之前 168 刚好卡在"画面 + 底部读数行"，再算上新增的说明行就不够了
+     * ⇒ 底部文字会被页脚挤掉。</p>
+     */
+    private static final int PINNED_H = 176;
+
+    /** 当前页签是否有常驻示意图。 */
+    private boolean isPinnedTab() {
+        return tab >= 0 && tab < visibleTabs.size()
+                && visibleTabs.get(tab) == PanelLayout.Tab.WORLD_SCALE;
+    }
+
+    /**
+     * 绘制常驻示意图（★ v20：钉在内容区底部，不随参数滚动）。
+     *
+     * <p>参数滚到哪儿它都在 —— 因为"尺度的意义"需要一边调一边看。</p>
+     */
+    private void renderPinnedChart(GuiGraphics g, int mx, int my, int topY) {
+        UiKit.divider(g, panelX + 8, panelX + panelW - 8, topY - 5);
+        g.drawString(font, "尺度示意（随上方参数实时变化）", panelX + 10, topY,
+                UiKit.C_TXT_SUB, false);
+        worldScalePanel.setPinnedBounds(panelX + 10, topY + 14, panelW - 20);
+        worldScalePanel.renderChart(g, mx, my);
+    }
+
+    /** 各页签底部的说明行（★ v7：示意图底部那行小字）。 */
+    private String footerHintFor(PanelLayout.Tab t) {
+        return switch (t) {
+            case PRESETS -> "点击预设立即应用；改动需点「应用」才会写入世界生成";
+            case WORLD_SCALE -> "数量级越大地形越壮阔，但采样与生成也越慢";
+            case CLIMATE -> "气候决定群系分布；温度与湿度同时影响地表形态";
+            case TERRAIN_SHAPE -> "类型场控制地貌骨架；改动后需重新采样才看得到";
+            case EROSION -> "侵蚀与河流影响细节；耗时随视口增大";
+            case CAVE -> "洞穴沿垂直方向分层；不影响地表预览";
+            case ORE -> "矿脉按岩性与深度带分布；仅影响地下";
+            case DISPLAY -> "显示与色带只影响预览外观，不改世界生成";
+            case CACHE -> "缓存按 schema 版本失效；参数改动会自动重采样";
+            case BIOMES -> "群系由气候与地形共同判定；此处可查看分布";
+            case DIAGNOSTIC -> "诊断项用于排查性能与产出一致性";
+            default -> null;
+        };
+    }
+
+    /** 某页签下的配置项数量（标题行右侧显示「N 项」）。 */
+    private int countRowsForTab(PanelLayout.Tab t) {
+        if (panels != null && tab < panels.length && panels[tab] instanceof DomainPanel dp) {
+            return dp.keys().size();
+        }
+        return -1;
     }
 
     private void layoutPanels() {
         if (panels == null) return;
+        // ★ v7：内容区左右各留 12px 内边距 —— 紧贴面板边缘是"和示意图差距大"的一处
+        //   （示意图里内容距卡片边界有明显留白）。
         for (int i = 0; i < panels.length; i++) {
-            panels[i].setBounds(cfgX + 4, listTop, cfgW - 8);
+            panels[i].setBounds(cfgX + 12, listTop + 6, cfgW - 24);
             panels[i].setScrollOffset(i == tab ? scroll : 0);
         }
     }
@@ -350,18 +517,36 @@ public class GeoGenesisConfigScreen extends Screen {
         computePanelRect();
         panelX = cfgX;
         panelW = cfgW;
-        headerY = cfgY + 22;                 // 让出顶部把手/标题行
-        // ★ 页签流式换行：先算占几行，再决定列表起点（否则内容会压在换行后的页签下面）
-        tabBarBottom = computeTabBarBottom();
-        listTop = tabBarBottom + 4;
-        // ★ 底部按钮区高度：**与按钮是否真的创建用同一条件**
-        //   （此前按钮按 panelW >= 180 决定，而裁切底边恒减 52 ⇒ 窄面板留空白无按钮）
-        bottomBarH = (panelOpen && panelW >= 180) ? BOTTOM_BAR_H : 0;
-        listBottom = cfgY + cfgH - bottomBarH;
+        // ★ v6：页签已移到左侧导航栏 ⇒ 内容面板<b>不再有页签区</b>。
+        //   内容区从面板顶栏（标题+应用）之下开始。
+        headerY = cfgY + 40;                 // 顶栏高 40
+        panelHost.drawTabs = false;          // 关掉宿主自己的页签绘制（否则两套页签）
+        listTop = headerY;
+        // ★ 页签行高按导航栏宽度自适应（窄屏时压缩，避免只显示 6 个页签）
+        navTabH = clampInt((int) (this.height * 0.038), 22, 32);
+        navTabTop = clampInt((int) (this.height * 0.17), 110, 152);
+        tabBarBottom = headerY;
+        // ★ 底部按钮区：v6 把按钮移到导航栏 ⇒ 内容面板不再留底部按钮区
+        bottomBarH = 0;
+        listBottom = cfgY + cfgH - 10;
+
+        // ★★ v20【示意图常驻】★★
+        //   用户：「建议给示意图做一下常驻显示，不然按现在这样滚动就消失了」。
+        // ★ v20：示意图常驻 —— 由 syncPanelHost() 每帧按当前页签挂载（见 isPinnedTab）
 
         Runnable markDirty = () -> { dirty = true; saved = false; debounce = 8; };
         worldScalePanel.setOnMarkDirty(markDirty);
         worldScalePanel.buildFromConfig();
+        // ★ v19：数值输入请求 → 复用 nameDialog 弹窗（能滑能填）
+        //   所有面板统一注入（回调定义在 ConfigPanel 基类，避免每类各写一遍）
+        worldScalePanel.setTextEditRequester(this::showValueEditDialog);
+        erosionPanel.setTextEditRequester(this::showValueEditDialog);
+        terrainPanel.setTextEditRequester(this::showValueEditDialog);
+        diagnosticPanel.setTextEditRequester(this::showValueEditDialog);
+        legacyPanel.setTextEditRequester(this::showValueEditDialog);
+        climatePanel.setTextEditRequester(this::showValueEditDialog);
+        cavePanel.setTextEditRequester(this::showValueEditDialog);
+        paramPanel.setTextEditRequester(this::showValueEditDialog);
         erosionPanel.setOnMarkDirty(markDirty);
         erosionPanel.buildFromConfig();
         climatePanel.setOnMarkDirty(markDirty);
@@ -380,53 +565,19 @@ public class GeoGenesisConfigScreen extends Screen {
         legacyPanel.setReadOnly(readOnly);
         legacyPanel.buildFromConfig();
 
-        // ---- 底部按钮区（两行，都在面板内，不压列表）----
-        //   第一行：应用 / 保存 / 重置
-        //   第二行：◀ ▶ 图层 | 大范围 | 平面/沙盘
-        int row1Y = listBottom + 4;
-        int row2Y = row1Y + 22;
-        int btnW = Math.max(40, (panelW - 16) / 3 - 4);
-
-        applyBtn = Button.builder(Component.literal(readOnly ? "只读" : "应用"), b -> doApply())
-            .pos(panelX + 4, row1Y).size(btnW, 20).build();
-        savePresetBtn = Button.builder(Component.literal("保存"), b -> onSavePreset())
-            .pos(panelX + 8 + btnW, row1Y).size(btnW, 20).build();
-        resetBtn = Button.builder(Component.literal(readOnly ? "只读" : "重置"), b -> doReset())
-            .pos(panelX + 12 + btnW * 2, row1Y).size(btnW, 20).build();
-        if (readOnly) { applyBtn.active = false; resetBtn.active = false; }
-        addRenderableWidget(applyBtn);
-        addRenderableWidget(savePresetBtn);
-        addRenderableWidget(resetBtn);
-
-        if (panelOpen && panelW >= 180) {
-            int x = panelX + 4;
-            int avail = panelW - 12;
-            int wArrow = 22;
-            int wRest = Math.max(48, (avail - wArrow * 2 - 10) / 2);
-            layerPrev = Button.builder(Component.literal("◀"), b -> cycleLayer(-1))
-                .pos(x, row2Y).size(wArrow, 20).build();
-            layerNext = Button.builder(Component.literal("▶"), b -> cycleLayer(1))
-                .pos(x + wArrow + 2, row2Y).size(wArrow, 20).build();
-            largeAreaBtn = Button.builder(largeAreaLabel(), b -> toggleLargeArea())
-                .pos(x + (wArrow + 2) * 2, row2Y).size(wRest, 20).build();
-            largeAreaBtn.setTooltip(net.minecraft.client.gui.components.Tooltip.create(
-                Component.literal(I18nSafe("geogenesis.settings.sampling.large.tooltip"))));
-            sandboxBtn = Button.builder(sandboxLabel(), b -> toggleSandbox())
-                .pos(x + (wArrow + 2) * 2 + wRest + 4, row2Y).size(wRest, 20).build();
-            addRenderableWidget(layerPrev);
-            addRenderableWidget(layerNext);
-            addRenderableWidget(largeAreaBtn);
-            addRenderableWidget(sandboxBtn);
-        } else {
-            layerPrev = null; layerNext = null; largeAreaBtn = null; sandboxBtn = null;
-        }
+        // ---- 内容面板顶栏：应用（主操作）----
+        //   ★ v7（2026-11-09）：全部改为<b>自绘</b>按钮 —— MC 原生 Button 是
+        //   固定灰框 + 立体阴影，是"和示意图差距大"最显眼的一处。
+        //   定义见 {@link #drawActionButtons} / {@link #hitActionButton}。
+        actionBtnY = cfgY + 10;
+        navBtnY = height - 74;
+        navBtnW = Math.max(50, (navW - 22) / 2);
 
         if (preview != null) {
             preview.setPosition(previewX, previewY, previewW, previewH);
-            if (!previewRegistered) {
-                addRenderableWidget(preview);
-                previewRegistered = true;
-            }
+            // ★ 2026-11-09：<b>不再注册为 widget</b> —— 由 render() 手动在
+            //   第 1 层绘制。注册的话 super.render() 会再画一次（重复绘制）。
+            previewRegistered = true;
         }
         rebuildPreviewIfChanged();
 
@@ -503,7 +654,12 @@ public class GeoGenesisConfigScreen extends Screen {
             // ownsTerrain = !shared：共享的存档单例由游戏侧管理生命周期，预览不得关闭它
             preview = new PreviewDisplay(previewX, previewY, previewW, previewH, terrain, seed, p,
                     currentMode, !shared);
-            // ★ 全屏地图：预览自带缩放标签会压在地形正中，改由右下角 HUD 显示
+            // ★ v7【修"切视图模式 GUI 就重叠"】：
+            //   预览在配置屏里<b>只负责地形，不画任何 HUD</b>。
+            //   导航栏 / 图例 / 右下状态栏 / 悬停信息全部由本屏统一负责。
+            //   之前只关了 dropZoomLabel，平面模式仍画图例+边框+悬停，
+            //   沙盘模式仍画标题+种子+操作提示 ⇒ 与导航栏叠成两套。
+            preview.setStandaloneHud(false);
             preview.setDrawZoomLabel(false);
             // ★ B3：统一入口（平面精确管线 + 沙盘，共用状态与快照）
             //   控制器由 PreviewDisplay 内部持有（唯一实例），此处只取引用。
@@ -520,10 +676,14 @@ public class GeoGenesisConfigScreen extends Screen {
             worldCtx != null ? ctxGenerator(worldCtx) : currentGenerator(mc),
             seed);
         preview.setPosition(previewX, previewY, previewW, previewH);
-        if (!previewRegistered) {
-            addRenderableWidget(preview);
-            previewRegistered = true;
-        }
+        // ★★ v9【修"内容面板右侧冒出原生小方块按钮"】★★
+        //   这里原本是 `if (!previewRegistered) addRenderableWidget(preview);`
+        //   而 init() 已把 previewRegistered 置 true（语义是"当作已处理"），
+        //   于是 rebuildPreview 每次都走 addRenderableWidget ——
+        //   Screen 给非全屏 widget 叠的**原生音效按钮**就出现在了面板顶栏右侧
+        //   （用户截图里"应用"右上角那个喇叭小方块）。
+        //   ⇒ 预览一律手动绘制（render 第 1 层），绝不注册为 widget。
+        previewRegistered = true;
         lastAppliedParams = p;
         lastAppliedSeed = seed;
         dirty = false;
@@ -542,25 +702,26 @@ public class GeoGenesisConfigScreen extends Screen {
         }
     }
 
-    /** 沙盘按钮文案。 */
-    private Component sandboxLabel() {
-        // ★ B3：模式状态在控制器上（唯一分派点），不再问 preview
-        boolean on = controller != null
+    /** 当前是否处于沙盘视图（★ B3：状态在控制器上，preview 仅作回退）。 */
+    private boolean isSandboxActive() {
+        return controller != null
                 ? controller.viewMode() == com.geogenesis.client.preview.TerrainViewMode.SANDBOX
                 : (preview != null && preview.isSandboxMode());
-        return Component.literal(on ? "沙盘视图" : "平面视图");
+    }
+
+    /** 沙盘按钮文案。 */
+    private Component sandboxLabel() {
+        return Component.literal(isSandboxActive() ? "沙盘视图" : "平面视图");
     }
 
     /** 平面 ⇄ 沙盘 切换（★ B3：走统一控制器，不重采、构图不变）。 */
     private void toggleSandbox() {
         if (controller != null) {
             controller.cycleViewMode();
-            if (sandboxBtn != null) sandboxBtn.setMessage(sandboxLabel());
             return;
         }
         if (preview == null) return;
         preview.setSandboxMode(!preview.isSandboxMode());
-        if (sandboxBtn != null) sandboxBtn.setMessage(sandboxLabel());
     }
 
     private void cycleLayer(int d) {
@@ -580,27 +741,66 @@ public class GeoGenesisConfigScreen extends Screen {
     private void toggleLargeArea() {
         if (preview == null) return;
         preview.setLargeArea(!preview.isLargeArea());
-        if (largeAreaBtn != null) largeAreaBtn.setMessage(largeAreaLabel());
     }
 
+    /**
+     * <b>应用</b>（★ v21：只保存 + 重建预览，<b>不再关闭面板</b>）。
+     *
+     * <h2>为什么要拆开（用户：「点击后就直接关闭配置面板了」）</h2>
+     * <p>旧 {@code doApply()} 末尾调 {@code setScreen(parent)} ——
+     * 点「应用」= <b>保存并退出配置屏</b>。但"应用"的自然语义是
+     * 「把我刚才的改动生效，我继续调别的」，而不是"我改完了，走人"。
+     * 用户改完一个参数就得重新打开面板，非常繁琐。</p>
+     *
+     * <p>现在拆成两个动作：</p>
+     * <ul>
+     *   <li><b>应用</b>（本方法）：保存配置 + 重建预览，<b>留在面板里</b>继续调；</li>
+     *   <li><b>完成</b>（{@link #doDone()}）：应用 + 登记地形复用 + 关闭面板回上一屏。</li>
+     * </ul>
+     */
     private void doApply() {
         GeoGenesisConfig.SPEC.save();
         saved = true;
         dirty = false;
-        // ★★ 2026-11-09【预览 → 世界复用】用户点「应用 / 创建世界」⇒ 交出预览算好的地形。
-        //
-        //   用户原话：「这就是我让你抽离 MC 做完全纯 Java 核心的原因，
-        //   可以在外部计算后直接复用。」
-        //
+        // 预览重建：这里是<b>唯一</b>入口（拖动期间不重建，见 tick() 的说明）
+        rebuildPreviewIfChanged();
+        toast("已应用");
+    }
+
+    /**
+     * <b>完成</b>（★ v21）：应用 + 交出地形复用 + 关闭面板。
+     *
+     * <p>这是原来 {@code doApply()} 的完整行为，语义明确为"改完了，回上一屏"。</p>
+     */
+    private void doDone() {
+        doApply();
+        // ★★ 2026-11-09【预览 → 世界复用】
         //   配置屏在 MC 之外用纯 Java 核心算好的 GeoGenesisTerrain
-        //   （4096-chunk Cell 缓存 + 细层水文 region，后者单 region 可达 10 秒）
         //   在这里登记；进世界时 bindWorld 三项全等就<b>直接接管</b>，不重算。
-        //   否则（ESC 取消 / 改参数后创建）实例会被丢弃并走原有重建路径。
         offerTerrainForReuse();
         if (parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen cws) {
             com.geogenesis.client.GeoGenesisClient.writeSeedToCreateWorld(cws, seed);
         }
         Minecraft.getInstance().setScreen(parent);
+    }
+
+    // ---- 轻量提示（★ v21：应用后给个反馈，否则用户不知道点没点上）----
+    private String toastMsg = null;
+    private long toastUntil = 0;
+
+    private void toast(String msg) {
+        toastMsg = msg;
+        toastUntil = System.currentTimeMillis() + 1400;
+    }
+
+    private void drawToast(GuiGraphics g) {
+        if (toastMsg == null) return;
+        if (System.currentTimeMillis() > toastUntil) { toastMsg = null; return; }
+        int tw = font.width(toastMsg);
+        int cx = cfgX + cfgW / 2;
+        int cy = cfgY + 58;
+        UiKit.roundRect(g, cx - tw / 2 - 10, cy, cx + tw / 2 + 10, cy + 18, 9, 0xE648DE56);
+        g.drawString(font, toastMsg, cx - tw / 2, cy + 5, 0xFF0C2210, false);
     }
 
     /**
@@ -631,6 +831,25 @@ public class GeoGenesisConfigScreen extends Screen {
                 LOGGER.info("Saved current config as user preset '{}'", name);
             },
             () -> {});
+    }
+
+    /**
+     * <b>数值输入对话框</b>（★ v19）。
+     *
+     * <p>用户要求「右侧的数值显示可以做成可点击写入数值，这样能滑能填」。
+     * 点击值胶囊 → 弹出本对话框 → 输入新值 → 交回面板写入配置。</p>
+     *
+     * <p>复用 {@link NameInputDialog}：它本来是"输入预设名"，但本质就是
+     * 「标题 + 提示 + 单行输入 + 确定/取消」，用来输数字正好，
+     * 不必再造一个几乎相同的对话框类。</p>
+     */
+    private void showValueEditDialog(String label, String current,
+                                     java.util.function.Consumer<String> onCommit) {
+        nameDialog.show("修改 " + label,
+                "输入新数值后回车确认（当前 " + current + "）：",
+                current == null ? "" : current,
+                text -> onCommit.accept(text),
+                () -> {});
     }
 
     private void applyUserPreset(UserPresetsStore.UserPreset p) {
@@ -699,10 +918,26 @@ public class GeoGenesisConfigScreen extends Screen {
         try { GeoGenesisConfig.SPEC.save(); } catch (Exception ignored) { }
     }
 
+    /**
+     * <b>每 tick</b>（★ v20：不再自动重建预览）。
+     *
+     * <h2>为什么去掉 debounce 自动重建</h2>
+     * <p>旧实现：任何参数变脏 → {@code debounce=8} → 8 tick 后自动
+     * {@link #rebuildPreviewIfChanged()}。用户拖动滑块时会连续触发，
+     * 于是<b>每 8 tick 就用新参数重建一次地形</b>（含侵蚀/水文）——
+     * 表现为"滑来滑去数据一直在反复计算"，界面卡、风扇响。</p>
+     *
+     * <p>用户要求：「修改配置时背后的预览不应该实时更新，建议在点击应用时才更新」。
+     * ⇒ 现在<b>只有</b> {@code doApply()} 会重建预览；
+     * 拖动期间只改变配置值与示意图（示意图是纯本地计算，零采样成本）。</p>
+     *
+     * <p>这也顺带消除了一整类隐患：拖动中途重建会让 {@code PreviewDisplay}
+     * 在采样进行中更换 terrain 实例，容易引出线程/缓存竞态。</p>
+     */
     @Override
     public void tick() {
         super.tick();
-        if (dirty && debounce > 0) { debounce--; if (debounce <= 0) rebuildPreviewIfChanged(); }
+        // 有意留空：预览重建只在 doApply() 里发生。
     }
 
     /** 侵蚀/河流开关指纹：开关不在 TerrainParams 里，rebuild 判断必须单独比较。 */
@@ -774,35 +1009,96 @@ public class GeoGenesisConfigScreen extends Screen {
 
         boolean dialogActive = nameDialog.isShowing() || confirmDialog.isShowing();
 
-        // ---------------- 第 1 层：全屏地形（widget 系统，含预览自身） ----------------
-        super.render(g, mx, my, pt);
-
-        // ---------------- 第 2/3 层：左侧悬浮配置窗 ----------------
-        //   ★ 2026-11-09 重构：整块（底板 + 页签 + 内容 + 按钮）交给
-        //   ConfigPanelHost —— 它是配置窗的<b>唯一</b>所有者，
-        //   绘制与命中共用同一套坐标（重构前三处各算各的 ⇒ 重叠打架）。
+        // ★★ 2026-11-09【修"种子输入框消失"】—— 绘制顺序是根因
+        //
+        //   旧顺序：super.render()（画所有 widget，含种子 EditBox）
+        //         → panelHost.render()（画面板底板，**不透明**）
+        //   ⇒ 底板把已画好的 widget 全盖住了（实机截图：只有「种子:」标签，输入框不见了）。
+        //
+        //   新顺序：底板 → 面板内容 → widget → HUD
+        //   为此要先算几何、先画底板，**最后**才 super.render()。
         computePanelRect();
         syncPanelHost();
-        renderPanelHandle(g, mx, my);
 
-        if (panelOpen && !dialogActive) {
-            if (layerPrev != null && largeAreaBtn != null) {
-                Component want = largeAreaLabel();
-                if (!want.equals(largeAreaBtn.getMessage())) largeAreaBtn.setMessage(want);
-            }
-            if (presetsPanel != null) {
-                presetsPanel.setWidgetsVisible(tab == visibleTabs.indexOf(PanelLayout.Tab.PRESETS));
-                presetsPanel.setViewportHeight(listBottom - presetsPanel.getScrollTopY());
-            }
-            panelHost.render(g, mx, my, pt, () -> renderPanelWidgets(g, mx, my, pt));
-            if (panels != null && tab < panels.length) {
-                Component tip = panels[tab].consumeHoverTooltip();
-                if (tip != null) g.renderTooltip(font, tip, mx, my);
-            }
+        // ★★ v22【修"幽灵提示"】★★
+        //   每帧开头清空所有面板的悬停状态 —— 否则鼠标移开后，
+        //   上一帧写进 hoverTooltip 的文本会一直活着并被读到
+        //   （用户："明明没指任何UI控件却一直显示一个提示内容"）。
+        if (panels != null) {
+            for (ConfigPanel p : panels) if (p != null) p.beginFrame();
+        }
+        UiKit.Hover.clear();
+
+        // ---------------- 第 1 层：全屏地形 ----------------
+        //   ★ 预览不注册为 widget，由这里按顺序手动画（保证地形在最底层）。
+        if (preview != null) {
+            preview.drawSelf(g, mx, my, pt);
         }
 
-        // ---------------- 第 4 层：右下角状态字 ----------------
+        // ---------------- 第 2 层：左侧导航栏 ----------------
+        if (panelOpen && !dialogActive) {
+            renderNavRail(g, mx, my);
+        }
+
+        // ---------------- 第 3 层：右侧内容面板（底板 + 内容）----------------
+        if (panelOpen && !dialogActive) {
+            if (presetsPanel != null) {
+                presetsPanel.setWidgetsVisible(tab == visibleTabs.indexOf(PanelLayout.Tab.PRESETS));
+                presetsPanel.setViewportHeight(listBottom - presetsPanel.getScrollTopY() - 6);
+            }
+            panelHost.render(g, mx, my, pt, null);
+        }
+
+        // ---------------- 第 4 层：widget（按钮 / 输入框 / 下拉）----------------
+        //   ★ 必须在底板之后画，否则会被盖住
+        if (!dialogActive) {
+            super.render(g, mx, my, pt);
+        }
+
+        // ---------------- 第 5 层：自绘按钮 + 折叠把手 + 状态栏 ----------------
+        //   ★ v7：应用/保存/重置/大范围/沙盘/图层 已改为自绘，必须在这里显式画
+        //   （它们不在 widget 列表里，super.render() 不会画）。
+        drawActionButtons(g, mx, my);
+        renderPanelHandle(g, mx, my);
         renderStatusHud(g);
+
+        // ---------------- 第 6 层：视图辅助（图例 + 操作提示）----------------
+        //   ★ v7：这两块原来由 PreviewDisplay 自己画，被 standaloneHud=false 关掉了。
+        //   现在由屏幕统一在正确位置画（示意图：右上色带、左上提示卡）。
+        //   ★ 折叠后<b>仍要显示</b> —— 配置窗收起时用户就是在看地图，
+        //     没有图例和操作提示等于摸黑（实机反馈：「收回后很多悬浮信息消失了」）。
+        if (!dialogActive) {
+            drawViewHints(g);
+            if (preview != null) preview.drawLegendAt(g, mx, my);
+        }
+
+        // ---------------- 第 7 层：悬停提示（★ 唯一出口）----------------
+        //   ★★ v15【修"tooltip 各页新旧不一致"】★★
+        //   此前有<b>三套</b> tooltip 并存：
+        //     ① 本屏 drawHoverTooltip（圆角/折行/翻边 —— 最新）
+        //     ② 面板的 consumeHoverTooltip（走 ① ）
+        //     ③ ParamSlider / CategoryBar / ControlPoint / MixerPanel / WorldHeightBar
+        //        各自画（直角黑方块、单行不折行、又一套配色）
+        //   ⇒ 换个页签就换一张脸。
+        //   现在 ③ 全部改为向 UiKit.Hover <b>登记文本</b>，与 ② 一起在这里统一绘制。
+        if (!dialogActive) {
+            String tipText = null;
+            if (panelOpen && panels != null && tab < panels.length) {
+                Component tip = panels[tab].consumeHoverTooltip();
+                if (tip != null) tipText = tip.getString();
+            }
+            // 控件登记的提示优先级更高（它们比面板更靠近光标）
+            if (UiKit.Hover.has()) {
+                tipText = UiKit.Hover.text();
+            }
+            if (tipText != null && !tipText.isEmpty()) {
+                drawHoverTooltip(g, tipText, mx, my);
+            }
+            UiKit.Hover.clear();
+        }
+
+        // ---------------- 第 8 层：操作反馈（★ v21：应用后的轻量提示）----------------
+        if (!dialogActive) drawToast(g);
 
         if (diagFirstFrame) {
             diagFirstFrame = false;
@@ -819,56 +1115,491 @@ public class GeoGenesisConfigScreen extends Screen {
         return v.equals(key) ? key : v;
     }
 
+    // ------------------------------------------------------- 导航栏（v6 布局）
+
+    /**
+     * 导航栏顶部的<b>种子信息行</b>（★ v22：替换掉原来的「预览地图 / 新建预设」）。
+     *
+     * <h2>为什么删掉那两项（用户：「这2个功能有点意义不明」）</h2>
+     * <ul>
+     *   <li><b>「预览地图」</b> = 收起配置面板看地图 —— 与标题行右侧的 {@code <}
+     *       折叠键<b>完全重复</b>，同一个动作两个入口；</li>
+     *   <li><b>「新建预设」</b> = 跳到「预设」页签 —— 而预设页签本来就在下方的
+     *       页签列表里，点它就行，等于给了一个"去点另一个按钮的按钮"。</li>
+     * </ul>
+     * <p>两者都是纯导航冗余。删掉后这块位置改为显示<b>当前种子</b>
+     * —— 那是用户真正常看、又没地方常驻显示的信息。</p>
+     */
+    private void drawNavSeedLine(GuiGraphics g, int y, int h) {
+        String seedTxt = "种子 " + seed;
+        g.drawString(this.font, UiKit.clip(seedTxt, navW - 20),
+                navX + 14, y + (h - this.font.lineHeight) / 2, NAV_TXT_DIM, false);
+    }
+
+    // 配色取自用户认可的示意图（保持不动）
+    private static final int NAV_BG = 0xE60B0B0B;
+    private static final int NAV_ROW_SEL = 0x24FFFFFF;
+    private static final int NAV_ROW_HOVER = 0x14FFFFFF;
+    private static final int NAV_ACCENT = 0xFF48DE56;
+    private static final int NAV_TXT = 0xFFF2F2F2;
+    private static final int NAV_TXT_SUB = 0xFF9E9E9E;
+    private static final int NAV_TXT_DIM = 0xFF6E6E6E;
+
+    /**
+     * 绘制左侧导航栏（★ v6 布局）。
+     *
+     * <pre>
+     *   ┌────────────────┐
+     *   │ GeoGenesis     │  品牌行
+     *   │ 预览 / 新建预设 │  顶部两项
+     *   │ ──── 配置 ──── │
+     *   │ ▸ 预设          │  ← 页签竖排（选中=绿条+亮底）
+     *   │ ▸ 世界与尺度     │
+     *   │ ▸ 地形          │
+     *   │   …            │
+     *   │ ─────────────  │
+     *   │ 进度条          │  底部迷你条
+     *   │ [保存][重置]    │
+     *   └────────────────┘
+     * </pre>
+     */
+    private void renderNavRail(GuiGraphics g, int mx, int my) {
+        int h = this.height;
+        g.fill(navX, 0, navX + navW, h, NAV_BG);
+
+        // ★ 所有纵向位置按高度比例算（GUI Scale 放大后逻辑高度可能只有 540）
+        int brandY = clampInt((int) (h * 0.028), 12, 20);
+        int sepY = clampInt((int) (h * 0.115), 62, 90);
+        int groupY = clampInt((int) (h * 0.128), 72, 100);
+
+        // 品牌行
+        g.drawString(this.font, "GeoGenesis", navX + 14, brandY, NAV_TXT, false);
+
+        // ★ v22：原来这里是「预览地图 / 新建预设」两项 —— 功能与折叠键、预设页签
+        //   完全重复，已删除。改显示当前种子（用户常看、此前没有常驻位置）。
+        drawNavSeedLine(g, brandY + 16, 16);
+
+        // 分组标题
+        g.fill(navX + 12, sepY, navX + navW - 12, sepY + 1, 0x1AFFFFFF);
+        g.drawString(this.font, "配置", navX + 14, groupY, NAV_TXT_DIM, false);
+
+        // 页签竖排（选中 = 略亮底 + 左侧绿条）
+        // ★ v7【修"群系页签与状态行重叠"】：
+        //   旧代码 bottomLimit = h-96 让页签画到 h-96，而底部迷你条从 h-120 起
+        //   ⇒ 两条区间相交 24px，最后 1~2 个页签（实测「群系」）压在状态文字上。
+        //   现在改成：页签必须止于迷你条<b>上方</b>，由同一个 navMiniTop 派生。
+        int navMiniTop = navMiniTopY();
+        int bottomLimit = navMiniTop - 6;
+        int n = visibleTabs.size();
+        for (int i = 0; i < n; i++) {
+            int ty = navTabTop + i * navTabH;
+            if (ty + navTabH > bottomLimit) break;
+            boolean on = tab == i;
+            boolean hover = mx >= navX && mx < navX + navW
+                    && my >= ty && my < ty + navTabH;
+            if (on) {
+                g.fill(navX + 8, ty, navX + navW - 8, ty + navTabH - 2, NAV_ROW_SEL);
+                g.fill(navX + 8, ty + 8, navX + 11, ty + navTabH - 10, NAV_ACCENT);
+            } else if (hover) {
+                g.fill(navX + 8, ty, navX + navW - 8, ty + navTabH - 2, NAV_ROW_HOVER);
+            }
+            g.drawString(this.font, visibleTabs.get(i).label(),
+                    navX + 22, ty + 8, on ? NAV_TXT : NAV_TXT_SUB, false);
+        }
+
+        // 底部迷你条：进度 + 状态（★ v7：位置由 navMiniTopY() 统一给出，
+        //   页签与命中测试读同一份，杜绝"页签画到这里、状态行也从这里开始"的重叠）
+        int mbY = navMiniTopY();
+        g.fill(navX + 12, mbY - 10, navX + navW - 12, mbY - 9, 0x1AFFFFFF);
+        if (preview != null) {
+            // 状态行：先裁剪再加百分比，避免文字压到右边缘的百分比上
+            String pct = (int) (preview.progressFraction() * 100) + "%";
+            int pctW = this.font.width(pct);
+            String st = preview.statusLine();
+            if (st != null && !st.isEmpty()) {
+                g.drawString(this.font, trim(st, this.font, navW - 28 - pctW - 6),
+                        navX + 14, mbY, NAV_TXT_SUB, false);
+            }
+            // 百分比与状态行<b>同行右对齐</b>（此前画在 mbY+20，正好落到进度条下方外面）
+            g.drawString(this.font, pct, navX + navW - 14 - pctW, mbY, NAV_TXT_DIM, false);
+            // 细进度条
+            g.fill(navX + 14, mbY + 13, navX + navW - 14, mbY + 15, 0x30FFFFFF);
+            float frac = preview.progressFraction();
+            if (frac > 0f) {
+                g.fill(navX + 14, mbY + 13,
+                        navX + 14 + (int) ((navW - 28) * frac), mbY + 15, NAV_ACCENT);
+            }
+        }
+    }
+
+    /**
+     * 底部迷你条（状态 + 进度）的顶部 y（★ v7 单一来源）。
+     *
+     * <p>它必须同时满足两个约束：在导航栏三行按钮（共 66px + 10px 底距）之上、
+     * 且页签区止于它上方。之前这两件事各算一遍 ⇒ 页签压到状态行上。</p>
+     */
+    private int navMiniTopY() {
+        int layerY = this.height - 10 - 20;      // 第三行按钮顶
+        int row1Y = layerY - 3 - 20 - 3 - 20;    // 第一行按钮顶
+        return row1Y - 30;                       // 迷你条：状态行 + 进度条 + 间距
+    }
+
+    /** 按像素宽裁剪文字加省略号。 */
+    private static String trim(String s, net.minecraft.client.gui.Font f, int maxW) {
+        if (f.width(s) <= maxW) return s;
+        while (!s.isEmpty() && f.width(s + "…") > maxW) s = s.substring(0, s.length() - 1);
+        return s + "…";
+    }
+
+    /**
+     * <b>视图操作提示卡</b>（★ v10 重做，参考用户给的信息层级样式）。
+     *
+     * <h2>两处改动</h2>
+     * <ol>
+     *   <li><b>位置</b>：用户要求「移到右侧下方，与高程图例一起」——
+     *       原来在左上角，和地图内容抢视线；现在排在图例卡<b>正下方</b>，
+     *       右侧一列（图例在上、提示在下），左侧完全让给地形。</li>
+     *   <li><b>信息层级</b>：参考图那种「小标题 + 分条 + 键位高亮」的写法，
+     *       不再是一行行等权的灰字。每条拆成「键位（亮）+ 说明（暗）」两段。</li>
+     * </ol>
+     */
+    private void drawViewHints(GuiGraphics g) {
+        // {键位, 说明}
+        String[][] rows = isSandboxActive()
+                ? new String[][]{{"左键拖动", "旋转视角"}, {"右键拖动", "平移"},
+                                 {"滚轮", "推近 / 拉远"}, {"R", "重置视角"}}
+                : new String[][]{{"左键拖动", "移动地图"}, {"滚轮", "缩放比例"},
+                                 {"右键", "复制坐标"}, {"L", "图例折叠"}};
+
+        String title = isSandboxActive() ? "沙盘视图操作" : "平面视图操作";
+        int pad = 0;   // ★ v11：无框 ⇒ 不需要内边距
+        int keyW = 0, descW = 0;
+        for (String[] r : rows) {
+            keyW = Math.max(keyW, this.font.width(r[0]));
+            descW = Math.max(descW, this.font.width(r[1]));
+        }
+        // ★ v12：行距压到 lineHeight+1（原 +3），标题与首行间距 4（原 6）
+        int rowH = this.font.lineHeight + 1;
+        int cardW = Math.max(keyW + 10 + descW, this.font.width(title));
+        int cardH = this.font.lineHeight + 4 + rows.length * rowH;
+
+        // ---- 位置：图例卡正下方；图例不可用时退回右侧底部 ----
+        int cardX, cardY;
+        int[] legend = preview != null ? preview.legendCardRect() : null;
+        if (legend != null) {
+            // ★ v12【修"提示卡压着色带下沿"】：间距 8 → 14。
+            //   上一版加 8px 时，色带底部的刻度数字（如 19）比色带低 4~6px，
+            //   提示卡标题正好贴上去。现在留足一行的呼吸空间。
+            cardX = Math.max(cfgX + cfgW + 8, legend[0]);
+            cardY = legend[1] + legend[3] + 14;
+            // 硬约束：无论如何不得进入图例矩形（宁可整体上移）
+            if (cardY < legend[1] + legend[3] + 6) {
+                cardY = legend[1] + legend[3] + 6;
+            }
+        } else {
+            cardX = this.width - cardW - 12;
+            cardY = this.height - cardH - 12;
+        }
+        // 夹在屏幕内（底部贴边 8px，不贴死）
+        cardX = Math.max(4, Math.min(cardX, this.width - cardW - 4));
+        cardY = Math.max(4, Math.min(cardY, this.height - cardH - 8));
+
+        // ---- ★ v11【无框】：用户明确要求"无框的设计" ----
+        //   去掉卡片底与描边，改为<b>文字 + 投影</b>（drawString 的 shadow=true）。
+        //   投影在浅色草地/深色水体上都够读，且不遮挡地形 —— 这正是参考图的做法。
+        int ty = cardY + pad;
+        drawHintText(g, title, cardX + pad, ty, 0xFFFFFFFF);
+        ty += this.font.lineHeight + 4;   // ★ v12：与 cardH 的定义保持一致（+4）
+        for (String[] r : rows) {
+            // 键位：暖白色，比说明亮一档，靠亮度而非底块区分
+            drawHintText(g, r[0], cardX + pad, ty + 1, 0xFFFFD9A8);
+            drawHintText(g, r[1], cardX + pad + keyW + 10, ty + 1, 0xFFC8C8C8);
+            ty += rowH;
+        }
+    }
+
+    /** 带投影的提示文字（★ v11：无框提示的唯一绘制入口）。 */
+    private void drawHintText(GuiGraphics g, String s, int x, int y, int color) {
+        g.drawString(this.font, s, x, y, color, true);
+    }
+
+    /**
+     * <b>悬停提示（tooltip）</b>（★ v13 重做）。
+     *
+     * <h2>为什么自己画而不用 {@code g.renderTooltip}</h2>
+     * <ul>
+     *   <li>原版 tooltip 是<b>直角灰底 + 1px 边框</b>，与本项目的圆角语言不统一；</li>
+     *   <li>它不会自动避让屏幕边缘 —— 参数说明很长时右半会被裁掉
+     *       （用户截图：「大陆性轴上的大陆架外缘位置…范围 [-1, 1]」被切）；</li>
+     *   <li>不能控制层级 —— 用户要求"应该在最上层"。</li>
+     * </ul>
+     *
+     * <h2>本实现</h2>
+     * <ul>
+     *   <li>圆角 6 + 近不透明底 {@code 0xF21A1D22} + 极淡描边；</li>
+     *   <li><b>按像素宽折行</b>（长说明自动分行，不再横向溢出）；</li>
+     *   <li>优先显示在光标右下方，超出右/下边界时自动翻到左侧/上方；</li>
+     *   <li>与鼠标之间留 12px 偏移，不遮住正在悬停的控件。</li>
+     * </ul>
+     */
+    private void drawHoverTooltip(GuiGraphics g, String text, int mx, int my) {
+        Font f = this.font;
+
+        int maxW = Math.min(300, this.width - 40);
+        // 先算折行后的行数与最宽行
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        int widest = 0;
+        for (String para : text.split("\n", -1)) {
+            StringBuilder cur = new StringBuilder();
+            for (int i = 0; i < para.length(); i++) {
+                char ch = para.charAt(i);
+                if (cur.length() > 0 && f.width(cur.toString() + ch) > maxW) {
+                    lines.add(cur.toString());
+                    widest = Math.max(widest, f.width(cur.toString()));
+                    cur.setLength(0);
+                }
+                cur.append(ch);
+            }
+            if (cur.length() > 0) {
+                lines.add(cur.toString());
+                widest = Math.max(widest, f.width(cur.toString()));
+            }
+        }
+        if (lines.isEmpty()) return;
+
+        int padX = 8, padY = 6;
+        int lineH = f.lineHeight + 1;
+        int boxW = widest + padX * 2;
+        int boxH = lines.size() * lineH + padY * 2 - 1;
+
+        // 优先右下；越界则翻边（先左右、再上下）
+        int x = mx + 12;
+        int y = my + 12;
+        if (x + boxW > this.width - 4) x = mx - boxW - 12;
+        if (y + boxH > this.height - 4) y = my - boxH - 12;
+        x = Math.max(4, Math.min(x, this.width - boxW - 4));
+        y = Math.max(4, Math.min(y, this.height - boxH - 4));
+
+        // 阴影（比框大 1px 的暗角，让框从地形上"浮起来"）
+        // ★ v13：圆角与主体一致（都用 UiKit.RADIUS_CARD），不再出现 7/6 两档
+        int rc = UiKit.RADIUS_CARD;
+        UiKit.roundRect(g, x - 1, y, x + boxW + 1, y + boxH + 2, rc, 0x55000000);
+        // 主体：近不透明，保证任何地形上都读得清
+        UiKit.roundRect(g, x, y, x + boxW, y + boxH, rc, 0xF21A1D22);
+        UiKit.roundRectOutline(g, x, y, x + boxW, y + boxH, rc, 0x22FFFFFF);
+
+        int ty = y + padY;
+        for (int i = 0; i < lines.size(); i++) {
+            g.drawString(f, lines.get(i), x + padX, ty,
+                    i == 0 ? 0xFFF2F2F2 : 0xFFC8C8C8, false);
+            ty += lineH;
+        }
+    }
+
     // ------------------------------------------------------------------ 悬浮层绘制
 
-    /** 配置窗的半透明底板 + 边框。展开时地形仍能从边缘透出来。 */
+    /** 配置窗的半透明底板 + 边框。展开时地形仍能从边缘透出来。 */
+
 
     /**
      * 折叠把手。
      *
-     * <p>收起时它就是唯一的入口（`▶ 配置`）；展开时变成标题行右侧的 `◀` 收起按钮。
-     * 位置固定在左上角，与配置窗同高对齐，不随展开状态跳动。</p>
+     * <p>★ v11【按用户指定位置调整】：展开态放在<b>导航栏品牌行右侧</b>
+     * （用户截图圈定的位置），收起态在左上角作为唯一入口。</p>
+     *
+     * <p>历史：v10 曾放在内容面板标题行最左（{@code cfgX+8}），
+     * 但那里紧贴面板标题文字，视觉上像"标题的装饰"而不是可点的折叠键。
+     * 现在归位到品牌行右端 —— 与 "GeoGenesis" 同一行，语义清晰（收起整个配置区）。</p>
      */
     private void renderPanelHandle(GuiGraphics g, int mx, int my) {
-        int hx = cfgX;
-        int hy = cfgY + (panelOpen ? 0 : 0);
-        int hw = panelOpen ? 22 : PANEL_W_CLOSED;
-        int hh = 18;
+        int hh = 16;
+        int hw = panelOpen ? 20 : PANEL_W_CLOSED;
+        int hx, hy;
         if (panelOpen) {
-            hx = cfgX + cfgW - 26;   // 展开时放到标题行右端
+            // 品牌行右端：导航栏内、与 "GeoGenesis" 同行
+            int brandY = clampInt((int) (this.height * 0.028), 12, 20);
+            hx = navX + navW - hw - 10;
+            hy = brandY - 3;
+        } else {
+            hx = cfgX;
+            hy = cfgY;
         }
         boolean hover = mx >= hx && mx <= hx + hw && my >= hy && my <= hy + hh;
-        int bg = hover ? TAB_PILL_HOVER : TAB_PILL_BG;
-        g.fill(hx, hy, hx + hw, hy + hh, bg);
-        String label = panelOpen ? "◀" : "▶ 配置";
-        int tw = this.font.width(label);
-        g.drawString(this.font, label, hx + (hw - tw) / 2,
-                hy + (hh - this.font.lineHeight) / 2 + 1, hover ? C_TEXT : TAB_INACTIVE_TEXT, false);
+        UiKit.button(g, hx, hy, hw, hh, panelOpen ? "<" : "> 配置", false, hover);
         handleRect[0] = hx; handleRect[1] = hy; handleRect[2] = hw; handleRect[3] = hh;
     }
 
-    /** 把配置窗内部的 widget（应用/保存/重置/图层按钮）重画一遍，盖在地形之上。 */
+    /**
+     * <b>自绘按钮</b>（★ v7）：应用 / 保存 / 重置 / 大范围 / 沙盘 / 图层左右。
+     *
+     * <p>替代 7 个 MC 原生 {@code Button}。样式走 {@link UiKit#button}：
+     * 圆角 + 半透明底 + 悬停提亮；主操作（应用）用主色填充。</p>
+     *
+     * <p>⚠️ 绘制与 {@link #hitActionButton} <b>必须用同一套坐标</b> ——
+     * 两处各算一遍是"按钮点不到"的老根因（见 AGENTS.md）。</p>
+     */
     private void renderPanelWidgets(GuiGraphics g, int mx, int my, float pt) {
-        if (applyBtn != null && applyBtn.visible) applyBtn.render(g, mx, my, pt);
-        if (savePresetBtn != null && savePresetBtn.visible) savePresetBtn.render(g, mx, my, pt);
-        if (resetBtn != null && resetBtn.visible) resetBtn.render(g, mx, my, pt);
-        if (layerPrev != null && layerPrev.visible) layerPrev.render(g, mx, my, pt);
-        if (layerNext != null && layerNext.visible) layerNext.render(g, mx, my, pt);
-        if (largeAreaBtn != null && largeAreaBtn.visible) largeAreaBtn.render(g, mx, my, pt);
-        if (sandboxBtn != null && sandboxBtn.visible) sandboxBtn.render(g, mx, my, pt);
+        drawActionButtons(g, mx, my);
     }
 
-    /** 右下角状态字：缩放比例 / 采样档位 / 耗时。极简，不挡地形。 */
+    /** 内容面板顶栏 + 导航栏底部的全部按钮（绘制）。 */
+    private void drawActionButtons(GuiGraphics g, int mx, int my) {
+        if (!panelOpen || nameDialog.isShowing() || confirmDialog.isShowing()) return;
+
+        // ---- 内容面板顶栏：应用 + 完成（★ v21：拆成两个动作）----
+        //   用户：「应用按键应该改下逻辑，现在我点击后就直接关闭配置面板了」。
+        //   ⇒ 「应用」= 保存并重建预览，留在面板继续调；
+        //     「完成」= 应用 + 交出地形 + 关闭面板。
+        int btnH = 20;
+        applyBtnW = 56;
+        int doneBtnW = 56;
+        int gap = 6;
+        // 完成在右、应用在左（完成是"离开"这类终点动作，靠边）
+        int doneX = cfgX + cfgW - doneBtnW - 10;
+        applyBtnX = doneX - gap - applyBtnW;
+
+        boolean applyHover = inRect(mx, my, applyBtnX, actionBtnY, applyBtnW, btnH);
+        UiKit.button(g, applyBtnX, actionBtnY, applyBtnW, btnH,
+                "应用", !readOnly && dirty, applyHover);
+
+        boolean doneHover = inRect(mx, my, doneX, actionBtnY, doneBtnW, btnH);
+        // 完成是终点动作（绿色实心）；应用是次操作（深灰，有改动时才点亮）
+        UiKit.toggleButton(g, doneX, actionBtnY, doneBtnW, btnH,
+                "完成", !readOnly, doneHover, UiKit.C_ACCENT);
+        doneBtnX = doneX;
+        doneBtnW_ = doneBtnW;
+        doneBtnH_ = btnH;
+        applyBtnH_ = btnH;
+
+        // ---- 导航栏底部：三行按钮（★ v7：几何来自 navButtonLayout()，与命中同一份）----
+        int[] lay = navButtonLayout();
+        int c1 = lay[0], c2 = lay[1], bw = lay[2], bh = lay[3];
+        int row1Y = lay[4], row2Y = lay[5], layerY = lay[6];
+        navBtnY = row1Y;
+
+        drawNavBtn(g, c1, row1Y, bw, bh, "保存", false, mx, my);
+        drawNavBtn(g, c2, row1Y, bw, bh, readOnly ? "只读" : "重置", false, mx, my);
+        drawNavBtn(g, c1, row2Y, bw, bh, fitNavLabel(largeAreaLabel().getString(), bw),
+                preview != null && preview.isLargeArea(), mx, my);
+        drawNavBtn(g, c2, row2Y, bw, bh, fitNavLabel(sandboxLabel().getString(), bw),
+                isSandboxActive(), mx, my);
+
+        // ---- 图层切换（第三行）：< [名称] > ----
+        drawNavBtn(g, c1, layerY, 24, bh, "<", false, mx, my);
+        drawNavBtn(g, c2 + bw - 24, layerY, 24, bh, ">", false, mx, my);
+        String layerName = currentLayerLabel();
+        int lx = c1 + 28;
+        int lw = bw * 2 + 4 - 32;
+        g.drawString(this.font, trim(layerName, this.font, lw), lx,
+                layerY + (bh - this.font.lineHeight) / 2, NAV_TXT_SUB, false);
+    }
+
+    /**
+     * 导航栏按钮文字装不下时的缩短版（★ v7）。
+     *
+     * <p>「大范围预览：关」在窄导航栏里放不下 —— 与其让它画出按钮边界压住
+     * 邻居，不如退化成「大范围·关」。</p>
+     */
+    private String fitNavLabel(String label, int btnW) {
+        int maxW = btnW - 10;
+        if (this.font.width(label) <= maxW) return label;
+        String compact = label.replace("预览：", "·").replace("视图", "");
+        if (this.font.width(compact) <= maxW) return compact;
+        return trim(compact, this.font, maxW);
+    }
+
+    private void drawNavBtn(GuiGraphics g, int x, int y, int w, int h,
+                            String label, boolean active, int mx, int my) {
+        boolean hover = inRect(mx, my, x, y, w, h);
+        // ★ v10【修"切换按键 UI 突变"】：开关两态改走同一形状（胶囊），
+        //   只有填充色变 —— 旧版激活态是"圆角4 + 绿描边"，普通态是"真胶囊无描边"，
+        //   并排看着像两个不同世代控件（用户截图指出）。
+        UiKit.toggleButton(g, x, y, w, h, label, active, hover, NAV_ACCENT);
+    }
+
+    private boolean inRect(double mx, double my, int x, int y, int w, int h) {
+        return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    /** 当前图层的中文名（导航栏第三行显示）。 */
+    private String currentLayerLabel() {
+        var layers = com.geogenesis.client.preview.GeoPalette.PreviewLayer.values();
+        return I18nSafe(layers[Math.floorMod(currentMode, layers.length)].labelKey);
+    }
+
+    /**
+     * <b>自绘按钮命中</b>（★ 与 {@link #drawActionButtons} 共用坐标）。
+     *
+     * @return true = 已消费本次点击
+     */
+    private boolean hitActionButton(double mx, double my, int btn) {
+        if (!panelOpen || btn != 0) return false;
+        if (nameDialog.isShowing() || confirmDialog.isShowing()) return false;
+
+        // 应用（★ v21：只保存 + 重建预览，留在面板）
+        if (inRect(mx, my, applyBtnX, actionBtnY, applyBtnW, applyBtnH_)) {
+            if (!readOnly) doApply();
+            return true;
+        }
+        // 完成（★ v21：应用 + 交出地形 + 关闭面板）
+        if (inRect(mx, my, doneBtnX, actionBtnY, doneBtnW_, doneBtnH_)) {
+            if (!readOnly) doDone();
+            return true;
+        }
+
+        // ★ 与 drawActionButtons <b>同一份布局</b>（调用同一个 navButtonLayout()），
+        //   不允许这里再推一遍 —— 那是本项目"按钮点不到"的老根因。
+        int[] lay = navButtonLayout();
+        int c1 = lay[0], c2 = lay[1], bw = lay[2], bh = lay[3];
+        int row1Y = lay[4], row2Y = lay[5], layerY = lay[6];
+
+        if (inRect(mx, my, c1, row1Y, bw, bh)) { onSavePreset(); return true; }
+        if (inRect(mx, my, c2, row1Y, bw, bh)) { if (!readOnly) doReset(); return true; }
+        if (inRect(mx, my, c1, row2Y, bw, bh)) { toggleLargeArea(); return true; }
+        if (inRect(mx, my, c2, row2Y, bw, bh)) { toggleSandbox(); return true; }
+        if (inRect(mx, my, c1, layerY, 24, bh)) { cycleLayer(-1); return true; }
+        if (inRect(mx, my, c2 + bw - 24, layerY, 24, bh)) { cycleLayer(1); return true; }
+        return false;
+    }
+
+    /**
+     * 导航栏底部按钮的<b>唯一布局来源</b>（★ v7）。
+     *
+     * <p>绘制与命中都调它，从结构上消除"各算一遍 → 点不到"的可能。</p>
+     *
+     * @return {c1, c2, 按钮宽, 按钮高, 第一行 y, 第二行 y, 第三行 y}
+     */
+    private int[] navButtonLayout() {
+        int bh = 20, gap = 4, rowGap = 3, bottomPad = 10;
+        int layerY = this.height - bottomPad - bh;
+        int row2Y = layerY - rowGap - bh;
+        int row1Y = row2Y - rowGap - bh;
+
+        String l1 = largeAreaLabel().getString();
+        String l2 = sandboxLabel().getString();
+        int row2Needed = Math.max(this.font.width(l1), this.font.width(l2)) + 14;
+        int row1Needed = Math.max(this.font.width("保存"),
+                this.font.width(readOnly ? "只读" : "重置")) + 14;
+        int needW = Math.max(row1Needed, row2Needed);
+        int availW = (navW - 20 - gap) / 2;
+        int bw = Math.min(availW, Math.max(44, needW));
+        int c1 = navX + (navW - (bw * 2 + gap)) / 2;
+        int c2 = c1 + bw + gap;
+        return new int[]{c1, c2, bw, bh, row1Y, row2Y, layerY};
+    }
+
+
+    /**
+     * 右下角状态字（★ v7：<b>已停用</b>）。
+     *
+     * <p>它和导航栏底部迷你条用的是同一个 {@code preview.statusLine()} ——
+     * 实机截图里左下角出现「1:1 … 98%」两行叠在一起，就是这两处各画了一遍
+     * （不是文字重叠，是<b>两个组件画同一个信息</b>）。
+     *
+     * <p>现在状态只在导航栏迷你条里显示（那里还有进度条，信息更全）。</p>
+     */
     private void renderStatusHud(GuiGraphics g) {
-        if (preview == null) return;
-        String txt = preview.statusLine();
-        if (txt == null || txt.isEmpty()) return;
-        int tw = this.font.width(txt);
-        int pad = 4;
-        int x = this.width - tw - pad * 2 - 6;
-        int y = this.height - this.font.lineHeight - pad * 2 - 6;
-        g.fill(x, y, x + tw + pad * 2, y + this.font.lineHeight + pad * 2, 0x99000000);
-        g.drawString(this.font, txt, x + pad, y + pad, 0xCCCCCCCC, false);
+        // 有意留空：状态统一由 renderNavRail 的迷你条负责。
     }
 
     /** 折叠把手的命中矩形（{@link #renderPanelHandle} 每帧写，鼠标事件读）。 */
@@ -912,8 +1643,17 @@ public class GeoGenesisConfigScreen extends Screen {
      * @return 命中的页签索引；未命中返回 -1
      */
     private int hitTestTab(double mx, double my) {
-        // ★ 委托宿主：与绘制<b>同一套</b>流式换行算法
-        return panelHost.hitTab(mx, my);
+        // ★ v6：页签在左侧导航栏<b>竖排</b>；与 renderNavRail 同一套坐标
+        if (mx < navX || mx >= navX + navW) return -1;
+        int n = visibleTabs.size();
+        // ★ v7：与 renderNavRail 同一份 bottomLimit（否则可见页签数与可点击数不一致）
+        int bottomLimit = navMiniTopY() - 6;
+        for (int i = 0; i < n; i++) {
+            int ty = navTabTop + i * navTabH;
+            if (ty + navTabH > bottomLimit) break;
+            if (my >= ty && my < ty + navTabH) return i;
+        }
+        return -1;
     }
 
     @Override
@@ -929,13 +1669,29 @@ public class GeoGenesisConfigScreen extends Screen {
 
         // 配置窗收起时，点击除把手外的任何位置都交给地形（平移/缩放）
         if (!panelOpen) {
-            return super.mouseClicked(mx, my, b);
+            // ★★ v8【修"地图实机不能交互"】：
+            //   预览不再注册为 widget（否则会被面板底板盖住），
+            //   于是 super.mouseClicked 的 widget 分发<b>根本到不了它</b>
+            //   ⇒ 必须在这里显式转发，否则地图完全点不动。
+            return forwardToPreviewClick(mx, my, b);
         }
 
-        if (my >= headerY && my <= tabBarBottom && mx >= panelX && mx <= panelX + panelW) {
-            int hit = hitTestTab(mx, my);
-            if (hit >= 0 && hit != tab) {
-                tab = hit;
+        // ★ v7 自绘按钮：它们不在 widget 列表里，必须在这里命中。
+        //   ⚠️ 必须在页签/面板之前判 —— 导航栏底部与内容面板顶栏都压在面板之上。
+        if (hitActionButton(mx, my, b)) return true;
+
+        // ★ v22：原「预览地图 / 新建预设」两项已删除（与折叠键、预设页签重复），
+        //   对应命中逻辑一并移除。
+
+        // ★ v7【修"左侧标签页点不动"】：
+        //   旧代码用 `mx 在内容面板内` 作为前置条件，然后调 hitTestTab ——
+        //   而 v6 之后页签已经挪到<b>左侧导航栏</b>，两个矩形不重叠
+        //   ⇒ 条件恒假，页签永远点不到（实机：只有悬停高亮，点了没反应）。
+        //   hitTestTab 自己会判 navX/navW 范围，这里不再多套一层错误前置。
+        int tabHit = hitTestTab(mx, my);
+        if (tabHit >= 0) {
+            if (tabHit != tab) {
+                tab = tabHit;
                 scroll = 0;
                 pushScrollToPanels();
                 Minecraft.getInstance().getSoundManager().play(
@@ -948,7 +1704,73 @@ public class GeoGenesisConfigScreen extends Screen {
         if (mx >= panelX && mx <= panelX + panelW && my >= listTop && my <= listBottom) {
             if (panels != null && tab < panels.length && panels[tab].mouseClicked(mx, my, b)) return true;
         }
-        return super.mouseClicked(mx, my, b);
+
+        // ★ v21：固定区（常驻示意图）的点击 —— 几何来自 host 的 pinnedTop()
+        if (isPinnedTab() && panelOpen) {
+            int pTop = panelHost.pinnedTop();
+            if (my >= pTop - 8 && my <= pTop + panelHost.pinnedHeight) {
+                if (worldScalePanel.chartClicked(mx, my, b)) return true;
+            }
+        }
+
+        // ★★ v17【修"鼠标穿透到面板背后的地图"】★★
+        //   配置窗<b>展开</b>时，导航栏 + 内容面板占满左侧一大片。用户在这片区域里
+        //   点到空白处（不是任何控件）时，旧代码会一路走到 forwardToPreviewClick
+        //   ⇒ 地图在面板背后被拖动/缩放，而用户根本看不到它 —— 表现为"点面板空白，
+        //     背后的地图乱动"。
+        //   ⇒ 展开态下，只要指针落在「导航栏 ∪ 内容面板」任一矩形内，就<b>视为被遮挡</b>，
+        //     直接吞掉事件，不再穿透。
+        if (panelOpen && isCoveredByPanel(mx, my)) {
+            return true;
+        }
+        // 面板之外 = 真正可见的地形区：转发给预览
+        return forwardToPreviewClick(mx, my, b);
+    }
+
+    /**
+     * 指针是否落在「被 UI 遮挡」的区域（★ v17）。
+     *
+     * <p>包含两块：左侧导航栏（整条竖栏）+ 内容面板（底板矩形）。
+     * 这两块在展开态是<b>不透明</b>的，背后的地图不可见 ⇒ 不应接受地图操作。</p>
+     *
+     * <p>注：折叠态（{@code panelOpen == false}）不调用本方法 —— 那时面板已收起，
+     * 唯一的可见 UI 是把手，其余区域都应能拖地图。</p>
+     */
+    private boolean isCoveredByPanel(double mx, double my) {
+        // 左侧导航栏：整条竖栏（navX..navX+navW，全高）
+        if (mx >= navX && mx < navX + navW) return true;
+        // 内容面板：底板矩形（cfgX..cfgX+cfgW，cfgY..cfgY+cfgH）
+        return mx >= cfgX && mx < cfgX + cfgW && my >= cfgY && my < cfgY + cfgH;
+    }
+
+    /**
+     * 把鼠标点击转发给预览控件（★ v8）。
+     *
+     * <p>为什么需要：预览<b>不注册为 widget</b>（注册的话 {@code super.render}
+     * 会在面板底板之前画它，种子输入框会被盖住）。代价是 MC 的 widget 分发
+     * 不再触达它 ⇒ 所有交互必须由此处显式转发。</p>
+     *
+     * <p>只在指针确实落在预览矩形内时才转发，避免点面板空白也去拖地图。</p>
+     */
+    private boolean forwardToPreviewClick(double mx, double my, int b) {
+        if (preview == null) return false;
+        if (mx < preview.getX() || mx >= preview.getX() + preview.getWidth()
+                || my < preview.getY() || my >= preview.getY() + preview.getHeight()) {
+            return false;
+        }
+        return preview.mouseClicked(mx, my, b);
+    }
+
+    /**
+     * 指针是否落在预览矩形内（★ v8：拖动/滚轮转发前的守卫）。
+     *
+     * <p>拖动时指针可能移出预览区（拖得快），但<b>已经开始拖</b>的操作必须继续，
+     * 所以拖动用 {@code dragging} 状态判、点击用矩形判。</p>
+     */
+    private boolean overPreview(double mx, double my) {
+        return preview != null
+                && mx >= preview.getX() && mx < preview.getX() + preview.getWidth()
+                && my >= preview.getY() && my < preview.getY() + preview.getHeight();
     }
 
     @Override
@@ -956,6 +1778,8 @@ public class GeoGenesisConfigScreen extends Screen {
         if (nameDialog.isShowing()) return true;
         if (confirmDialog.isShowing()) return true;
         if (panels != null && tab < panels.length && panels[tab].mouseReleased(mx, my, b)) return true;
+        // ★ v8：预览的拖动状态需要释放（不转发会一直卡在"拖拽中"）
+        if (preview != null && preview.mouseReleased(mx, my, b)) return true;
         return super.mouseReleased(mx, my, b);
     }
 
@@ -968,7 +1792,12 @@ public class GeoGenesisConfigScreen extends Screen {
                 && my >= listTop && my <= listBottom) {
             if (panels[tab].mouseDragged(mx, my, b, dx, dy)) return true;
         }
-        // 配置窗之外（或收起时全局）交给地形：平移
+        // ★ v17：被 UI 遮挡的区域不接受地图拖动（否则面板背后的地图会跟着动）
+        if (panelOpen && isCoveredByPanel(mx, my)) {
+            return true;
+        }
+        // 真正可见的地形区才交给预览拖动
+        if (preview != null && preview.mouseDragged(mx, my, b, dx, dy)) return true;
         return super.mouseDragged(mx, my, b, dx, dy);
     }
 
@@ -983,12 +1812,19 @@ public class GeoGenesisConfigScreen extends Screen {
                 return true;
             }
             int contentH = panels != null && tab < panels.length ? panels[tab].getHeight() : 0;
-            int visibleH = listBottom - listTop;
+            // ★ v21：panelHost.listBottom 已扣过固定区 ⇒ 直接用，不再重复扣
+            int visibleH = panelHost.listBottom - listTop;
             int maxScroll = Math.max(0, contentH - visibleH);
-            scroll = Math.max(0, Math.min(maxScroll, scroll - (int) (delta * 20)));
+            scroll = Math.max(0, Math.min(maxScroll, scroll - (int) (delta * 24)));
             pushScrollToPanels();
             return true;
         }
+        // ★ v17：被 UI 遮挡的区域不接受地图缩放
+        if (panelOpen && isCoveredByPanel(mx, my)) {
+            return true;
+        }
+        // 真正可见的地形区才交给预览缩放
+        if (preview != null && preview.mouseScrolled(mx, my, delta)) return true;
         return super.mouseScrolled(mx, my, delta);
     }
 
