@@ -1172,6 +1172,16 @@ public class PreviewDisplay extends AbstractWidget {
     TerrainFieldData sandboxData;
     long sandboxDataId = Long.MIN_VALUE;
 
+    /**
+     * 把当前沙盘数据交给落成动画（★ v37）。
+     *
+     * <p>落成动画要"接着沙盘那张图往下推"，所以它需要这份数据。
+     * 返回 {@code null} = 还没算好（此时动画会停等，不会崩）。</p>
+     */
+    public TerrainFieldData sandboxDataForReveal() {
+        return sandboxData;
+    }
+
     // =================================================================
     // ★ v28：沙盘数据的<b>后台重建</b>（让计算离开渲染线程）
     // =================================================================
@@ -1216,8 +1226,7 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /** 渲染线程每帧开头调：有算好的新数据就换上（O(1)）。 */
-    private void swapInPendingSandbox() {
-        TerrainFieldData p = sandboxPending;
+    private void swapInPendingSandbox() {        TerrainFieldData p = sandboxPending;
         if (p == null) return;
         sandboxPending = null;
         sandboxData = p;

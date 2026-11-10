@@ -58,6 +58,17 @@ public final class SpawnSelection {
     }
 
     /**
+     * <b>只看不消费</b>（落成动画用）。
+     *
+     * <p>{@link #take(long)} 是"取用即消费"，服务端建出生点时会调它。
+     * 但落成动画在客户端播，需要反复读坐标而<b>不能把它消费掉</b>
+     * （消费了服务端就拿不到了）。</p>
+     */
+    public static Pending peek() {
+        return pending;
+    }
+
+    /**
      * 服务端取用：<b>取用即消费</b>。
      *
      * @return 采纳的选点；种子不符 / 过期 / 从没选过 → {@code null}

@@ -778,6 +778,11 @@ public class GeoGenesisConfigScreen extends Screen {
         //   配置屏在 MC 之外用纯 Java 核心算好的 GeoGenesisTerrain
         //   在这里登记；进世界时 bindWorld 三项全等就<b>直接接管</b>，不重算。
         offerTerrainForReuse();
+        // ★ v37：把当前地形数据交给落成动画（进世界时接着这张图往下推，
+        //   不在动画里重新采样 —— 那是重复造轮子）。
+        if (preview != null) {
+            com.geogenesis.client.reveal.RevealDataHolder.offer(preview.sandboxDataForReveal());
+        }
         if (parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen cws) {
             com.geogenesis.client.GeoGenesisClient.writeSeedToCreateWorld(cws, seed);
         }

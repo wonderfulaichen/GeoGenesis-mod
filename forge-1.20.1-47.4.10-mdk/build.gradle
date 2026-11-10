@@ -2827,3 +2827,10 @@ task runSandboxCenterProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxCenterProbe'
     maxHeapSize = '1g'
 }
+// 落成动画纯逻辑验收：让位调度（波次/三重上限/等待圈/收尾消散）+ 透视相机。
+//   gradlew runRevealScheduleProbe
+task runRevealScheduleProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.RevealScheduleProbe'
+    maxHeapSize = '1g'
+}
