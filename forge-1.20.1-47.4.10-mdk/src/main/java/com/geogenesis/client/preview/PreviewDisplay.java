@@ -930,6 +930,8 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
     private void renderSandbox(GuiGraphics g, int w, int h, double mx, double my) {
+        // ★ v28：先看后台有没有算好的新数据（有就 O(1) 换上）
+        swapInPendingSandbox();
         // ★★ 像素驱动 LOD（2026-11-08 第二次重做，用户裁定）：
         //
         //   上一版网格固定 256²、窗口随缩放变 ⇒ 实机"放大后精度没变化"。
@@ -1006,13 +1008,21 @@ public class PreviewDisplay extends AbstractWidget {
         id = id * 131L + grid;
         id = id * 131L + cellCache.version();   // 缓存更新 ⇒ 重读
 
-        // ★★ 必须缓存：每帧重建 = 每帧分配 grid² × 十几个数组
-        //   （曾按窗口方块数 2048 建 ⇒ 419 万格 ⇒ OOM 崩溃）。
-        //   只有 id 变了（视口/窗口/精度/缓存版本）才重建。
+        // ★★ v28【修"拖动跟不上手"：让计算离开渲染线程】★★
+        //
+        //   用户原话：「拖动跟不上手的问题明明不应该把实时渲染停了，
+        //   而是渲染还是渲染，但不应该让后端计算影响到前端卡顿。」
+        //
+        //   此前 {@code fromCellCache} 在<b>渲染线程同步执行</b>（实测 100~150ms），
+        //   视口一变就卡一帧 —— 拖动时每次中心变化都卡。
+        //
+        //   ⇒ 改成<b>后台重建 + 换帧生效</b>：
+        //     ① 视口变了 → 提交后台任务（同一时刻最多一个在跑）
+        //     ② 后台算完 → 结果暂存
+        //     ③ 渲染线程每帧检查暂存区，有就换上新数据（O(1) 引用替换）
+        //   期间渲染<b>不停</b>，继续画上一份数据（配合拖动期的 pan 平移，视觉连续）。
         if (sandboxData == null || sandboxDataId != id) {
-            sandboxData = TerrainFieldData.fromCellCache(
-                    cellCache, originWx, originWz, blocksWide, blocksHigh, grid, grid, id);
-            sandboxDataId = id;
+            requestSandboxRebuild(id, originWx, originWz, blocksWide, blocksHigh, grid);
         }
         TerrainFieldData d = sandboxData;
 
@@ -1105,6 +1115,58 @@ public class PreviewDisplay extends AbstractWidget {
      */
     TerrainFieldData sandboxData;
     long sandboxDataId = Long.MIN_VALUE;
+
+    // =================================================================
+    // ★ v28：沙盘数据的<b>后台重建</b>（让计算离开渲染线程）
+    // =================================================================
+    //
+    // 用户原话：「拖动跟不上手的问题明明不应该把实时渲染停了，
+    //            而是渲染还是渲染，但不应该让后端计算影响到前端卡顿。」
+    //
+    // 机制：
+    //   ① 视口 id 变了 → 提交一个后台任务（同时只允许一个在跑）
+    //   ② 后台算完 → 结果放进 pending（volatile）
+    //   ③ 渲染线程每帧开头检查 pending，有就换上（O(1) 引用替换）
+    // 期间渲染不停，继续画上一份数据。
+
+    /** 后台重建任务（只负责 fromCellCache，不碰渲染状态）。 */
+    private java.util.concurrent.ExecutorService sandboxPool;
+    /** 当前正在重建的目标 id（防止重复提交同一视口）。 */
+    private volatile long sandboxRebuildId = Long.MIN_VALUE;
+    /** 后台算好的新数据（null = 没有待换）。 */
+    private volatile TerrainFieldData sandboxPending;
+    /** 待换数据对应的 id。 */
+    private volatile long sandboxPendingId = Long.MIN_VALUE;
+
+    /** 提交一次后台重建（同一视口只提交一次）。 */
+    private void requestSandboxRebuild(long id, int ox, int oz, int bw, int bh, int grid) {
+        if (id == sandboxRebuildId) return;      // 同一个视口已在算/已算好
+        sandboxRebuildId = id;
+        if (sandboxPool == null) {
+            int n = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+            sandboxPool = java.util.concurrent.Executors.newFixedThreadPool(n, r -> {
+                Thread t = new Thread(r, "geo-sandbox-data");
+                t.setDaemon(true);
+                t.setPriority(Thread.NORM_PRIORITY - 2);
+                return t;
+            });
+        }
+        sandboxPool.execute(() -> {
+            TerrainFieldData built = TerrainFieldData.fromCellCache(
+                    cellCache, ox, oz, bw, bh, grid, grid, id);
+            sandboxPending = built;
+            sandboxPendingId = id;
+        });
+    }
+
+    /** 渲染线程每帧开头调：有算好的新数据就换上（O(1)）。 */
+    private void swapInPendingSandbox() {
+        TerrainFieldData p = sandboxPending;
+        if (p == null) return;
+        sandboxPending = null;
+        sandboxData = p;
+        sandboxDataId = sandboxPendingId;
+    }
 
     /**
      * 沙盘竖向比例（本图最高点 − 基准面），<b>缓动</b>（照抄 yardsite
@@ -1305,36 +1367,24 @@ public class PreviewDisplay extends AbstractWidget {
      * 只挪像素会露出采样范围外的空白。</p>
      */
     /**
-     * 沙盘拖动 → 屏幕平移（<b>拖动期间零重采样</b>）。
+     * 沙盘拖动 → 世界中心位移（★ v28：计算已在后台，可以实时跟手了）。
      *
-     * <h2>★ v26【修"左键平移在沙盘里拖起来还是有点卡顿，不跟手"】</h2>
-     * <p>此前每次位移 ≥1 方块就改 {@code centerX/centerZ} ⇒ 下一帧
-     * {@code fromCellCache} <b>全量重建</b>（实测 340~650ms/次）
-     * ⇒ 拖动过程每秒只能响应 1~2 次 ⇒ 严重卡顿。</p>
-     * <p>用户原话：「不应该让后台计算影响前端视觉体验啊。」</p>
+     * <h2>★ v28【"不该让后端计算影响前端"—— 正解】</h2>
+     * <p>v26 曾把拖动改成"只累加屏幕平移、松手才重采样"，那是<b>绕开问题</b>：
+     * 用户明确说：「不应该把实时渲染停了，而是渲染还是渲染，
+     * 但不应该让后端计算影响到前端卡顿。」</p>
      *
-     * <p>⇒ 拖动期间<b>只累加屏幕平移</b>（{@code panX/panY}，纯渲染层零成本），
-     * <b>松手时才</b>把累积位移换算成世界中心位移并触发一次重采样。
-     * 这样拖动完全跟手，计算只在松手后发生一次。</p>
+     * <p>现在 {@code fromCellCache} 已挪到后台线程（见 {@link #requestSandboxRebuild}），
+     * 渲染线程只做 O(1) 的引用替换 ⇒ <b>可以每帧改中心</b>，完全跟手，
+     * 后台算好一份就换一份。</p>
      */
     private void panSandboxBy(double dx, double dy) {
-        // 只累加屏幕平移（不含任何采样/重建）
-        sandboxRasterizer.dragPan(dx, dy);
-        // 同时记下"松手时该移动多少世界方块"（用于 committed 时重采样）
         int areaSize = Math.min(getWidth(), getHeight());
         double step = SandboxLod.effectiveStep(sandboxRasterizer.zoom());
         sandboxRasterizer.dragToBlocks(dx, dy, areaSize, areaSize, step, sandboxDragOut);
+        // 浮点累加：拖动位移常小于 1 方块，直接取整会被吃掉
         sandboxCenterAccX += sandboxDragOut[0];
         sandboxCenterAccZ += sandboxDragOut[1];
-    }
-
-    /**
-     * 沙盘拖动结束后提交：把累积的屏幕平移换成世界中心位移，重采样一次。
-     *
-     * <p>见 {@link #panSandboxBy} 的注释 —— 拖动期间不重采样，
-     * 只在这里付一次计算的代价。</p>
-     */
-    private void commitSandboxPan() {
         int ix = (int) sandboxCenterAccX;
         int iz = (int) sandboxCenterAccZ;
         if (ix != 0 || iz != 0) {
@@ -1344,13 +1394,17 @@ public class PreviewDisplay extends AbstractWidget {
             centerZ += iz;
             needsClear = true;
         }
-        // ★★ v27【修"一缩放就超出底板"】★★
-        //   这里原来是 `if (ix == 0 && iz == 0) return;` —— 位移不足 1 方块时
-        //   <b>直接 return，clearPan() 没执行</b>
-        //   ⇒ panX/panY 残留，下次拖动继续往上加
-        //   ⇒ 底板与地形一起被推离视口中心（用户："视野一缩放就超出底板了"）。
-        //   pan 必须<b>无条件</b>清掉：它只是"拖动期间的临时预览偏移"，
-        //   一旦松手（无论提交多少世界位移）就不该留着。
+    }
+
+    /**
+     * 沙盘拖动结束：清掉累积余量。
+     *
+     * <p>★ v28：世界中心已在拖动过程中实时更新，这里不再"提交"，
+     * 只清屏幕平移残留（v27 的 bug 就是残留不清导致底板飞出）。</p>
+     */
+    private void commitSandboxPan() {
+        sandboxCenterAccX = 0;
+        sandboxCenterAccZ = 0;
         sandboxRasterizer.clearPan();
     }
 
@@ -2101,6 +2155,8 @@ public class PreviewDisplay extends AbstractWidget {
 
     public void close() {
         pool.shutdown();
+        // ★ v28：沙盘后台重建线程池也要停（否则关屏后继续算、持有 cellCache 引用）
+        if (sandboxPool != null) sandboxPool.shutdownNow();
         // ★ 2026-11-08：沙盘采样线程池必须一起停。
         //   ProgressiveSampler 用的是独立线程池（核数÷2），漏停会让采样线程
         //   在关屏后继续跑、还持有 terrain 引用 → 线程泄漏 + 打到已关闭的 terrain。
@@ -2158,8 +2214,17 @@ public class PreviewDisplay extends AbstractWidget {
     public String statusLine() {
         // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
         if (sandboxMode) {
-            StringBuilder sb = new StringBuilder(
-                    SandboxLod.scaleLabel(sandboxRasterizer.zoom()));
+            // ★★ v28【修"视野数值还显示 7200 格"】★★
+            //   这里原先调 {@code SandboxLod.scaleLabel(zoom)} ——
+            //   它内部用 {@code windowFor(zoom)}（柱数 × 16）算视野，是<b>旧口径</b>。
+            //   v27 起沙盘窗口已改成 {@code texW × scaleBlockPos}（= 平面窗口），
+            //   两者脱钩 ⇒ 状态栏显示 7200 而实际只有约 900 格。
+            //   现在直接用<b>真实窗口</b>，与 renderSandbox 同源。
+            int windowBlocks = Math.max(64, texW * scaleBlockPos);
+            int pillars = Math.max(1, SandboxLod.pillarsForWindow(windowBlocks));
+            StringBuilder sb = new StringBuilder(String.format(java.util.Locale.ROOT,
+                    "视野 %d 格 · %d 柱 · 1 柱 = %d 格方块",
+                    windowBlocks, pillars, SandboxLod.STEP_BLOCKS));
             // 地图中心（拖动后能看出位置真的变了）
             sb.append(String.format(java.util.Locale.ROOT, " · 中心 %d,%d", centerX, centerZ));
             if (largeSampler != null && largeSampler.data() != null) {
@@ -2230,7 +2295,8 @@ public class PreviewDisplay extends AbstractWidget {
             d.pickedColX = sandboxRasterizer.pickedColX();
             d.pickedColZ = sandboxRasterizer.pickedColZ();
             d.pickedTopY = sandboxRasterizer.pickedTopY();
-            int windowBlocks = SandboxLod.windowFor(sandboxRasterizer.zoom());
+            // ★ v28：与 renderSandbox 同源（旧 windowFor 是脱钩的旧口径）
+            int windowBlocks = Math.max(64, texW * scaleBlockPos);
             double step = SandboxLod.effectiveStep(sandboxRasterizer.zoom());
             d.hoverWorldX = d.centerX - windowBlocks / 2
                     + (int) Math.round(d.pickedColX * step);

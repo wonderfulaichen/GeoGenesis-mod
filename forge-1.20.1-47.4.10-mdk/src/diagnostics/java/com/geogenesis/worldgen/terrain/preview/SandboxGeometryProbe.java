@@ -162,10 +162,10 @@ public final class SandboxGeometryProbe {
         }
 
         // [3] 投影包围盒
-        System.out.println("\n[3] 盘面必须完整装进视口，且竖向跨度足够（立体感）");
+        System.out.println("\n[3] 盘面必须铺满视口（不能只有中间一小块），且不裁实际地形");
         float[] r = SandboxGeometry.rotationRows(SandboxGeometry.DEFAULT_YAW, SandboxGeometry.DEFAULT_PITCH);
-        // ★ v27：与实机同源 —— 基准档用 fitScale（不是 scaleOf）
-        float scale = SandboxGeometry.fitScale(r, VIEWPORT, VIEWPORT);
+        // ★ v28：与实机同源 —— 基准档用 fillScale（铺满、四角空白可溢出）
+        float scale = SandboxGeometry.fillScale(r, VIEWPORT, VIEWPORT);
         float[] box = SandboxGeometry.planeBox(r);
         float w = (box[1] - box[0]) * scale;
         float h = (box[3] - box[2]) * scale;
@@ -177,12 +177,13 @@ public final class SandboxGeometryProbe {
                 SandboxGeometry.RELIEF, scale, Math.abs(r[5]), verticalPx,
                 100 * verticalPx / VIEWPORT);
         int bboxBad = 0;
-        // 判据 A：盘面必须装得下（v27：用户「视野一缩放就超出底板」）
-        if (w > VIEWPORT * 1.001f || h > VIEWPORT * 1.001f) {
-            System.out.printf("    FAIL: 盘面 %.0f×%.0f 超出视口 %d ⇒ 底板边缘被裁%n", w, h, VIEWPORT);
+        // 判据 A：至少一个方向铺满（v28：用户「底盘明显还是没达到满屏」）
+        if (w < VIEWPORT * 0.95f && h < VIEWPORT * 0.95f) {
+            System.out.printf("    FAIL: 盘面 %.0f×%.0f 两个方向都没铺满视口 %d ⇒ 底盘不到满屏%n",
+                    w, h, VIEWPORT);
             bboxBad++;
         } else {
-            System.out.printf("    OK-A（完整装下：%.0f%% × %.0f%%）%n",
+            System.out.printf("    OK-A（铺满：%.0f%% × %.0f%%）%n",
                     100 * w / VIEWPORT, 100 * h / VIEWPORT);
         }
         // 判据 B：竖向跨度要有立体感

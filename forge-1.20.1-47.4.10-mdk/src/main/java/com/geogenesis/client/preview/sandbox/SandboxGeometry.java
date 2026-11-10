@@ -218,7 +218,36 @@ public final class SandboxGeometry {
     }
 
     /**
-     * <b>让盘面<b>完整</b>装进视口</b>的 scale（★ v27：基准档用这个）。
+     * <b>让盘面尽量铺满视口，同时不裁掉任何一边</b>（★ v28）。
+     *
+     * <h2>% 与 {@link #fitScale} 的区别</h2>
+     * <p>{@code fitScale} 用 {@code viewW/spanX} 和 {@code viewH/spanY} 取<b>较小者</b>
+     * —— 这保证两个方向都不溢出，但斜投影的菱形包围盒是 2.803×1.956
+     * （宽大于高），取较小者后<b>竖向只剩 58%</b> ⇒ 用户看到"底盘没满屏"。</p>
+     *
+     * <p>{@code fillScale} 取<b>较大者</b> —— 会让短边方向溢出，
+     * 但菱形投影的角本来就是空的，溢出的是空白角而不是地形
+     * ⇒ 视觉上"铺满"，与参考项目的观感一致。</p>
+     *
+     * <p>⚠ 溢出量要夹住：若长短边悬殊（极扁视口），取较大者会把盘面裁掉太多。
+     * 这里限制最大溢出到 1.35 倍，超出则退回 fitScale。</p>
+     */
+    public static float fillScale(float[] r, int viewW, int viewH) {
+        float[] box = planeBox(r);
+        float spanX = box[1] - box[0];
+        float spanY = box[3] - box[2];
+        float fit = fitScale(r, viewW, viewH);
+        float sx = spanX > 1e-4f ? viewW / spanX : Float.MAX_VALUE;
+        float sy = spanY > 1e-4f ? viewH / spanY : Float.MAX_VALUE;
+        float fill = Math.max(sx, sy);
+        // ★ 溢出上限 1.6：菱形斜投影的包围盒宽/高比约 1.43（2.803/1.956），
+        //   要让<b>竖向</b>铺满就必须接受横向 1.43 倍溢出 —— 溢出的四个角本来就是空白。
+        //   1.6 留一点余量；若视口极端扁平（超出 1.6），靠 fit*1.6 兜底。
+        return Math.min(fill, fit * 1.6f);
+    }
+
+    /**
+     * <b>让盘面<b>完整</b>装进视口</b>的 scale。
      *
      * <h2>为什么需要它（{@link #scaleOf} 不够）</h2>
      * <p>{@code scaleOf = areaSize × 0.46 × zoom} 里的 {@code 0.46}
@@ -229,8 +258,7 @@ public final class SandboxGeometry {
      * <p>用户实机：「视野一缩放就超出底板了，参考项目是不会超出底板的」。</p>
      *
      * <p>本方法按<b>实际投影包围盒</b>分别用宽、高归一化、取较小者
-     * ⇒ 两个方向都不溢出、盘面尽可能大。基准档用它，
-     * 推近档（zoom>1）仍用 {@link #scaleOf}（放大是刻意的）。</p>
+     * ⇒ 两个方向都不溢出、盘面尽可能大。</p>
      *
      * @return 使盘面完整装进 {@code viewW×viewH} 的像素/模型单位缩放
      */

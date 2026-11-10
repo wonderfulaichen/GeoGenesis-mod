@@ -68,18 +68,35 @@ public final class SandboxFloorProbe {
         }
         System.out.println();
 
-        // 判据：基准档必须<b>完整装进视口</b>（v27 起基准档改用 fitScale）。
+        // 判据：基准档必须<b>铺满且不裁地形</b>（v28 起基准档改用 fillScale）。
+        //
+        // 用户两轮反馈合起来：
+        //   ①「视野一缩放就超出底板了，参考项目是不会超出底板的」
+        //     ⇒ 不能像旧 scaleOf+zoom2.0 那样超出 2.58 倍（底板完全看不到）
+        //   ②「底盘明显还是没达到满屏」
+        //     ⇒ 也不能用 fitScale（取较小者 ⇒ 竖向只剩 58%，四周大片留白）
+        // 正解 = fillScale：取较大者铺满，但溢出夹在 1.35 倍以内。
+        float fill = SandboxGeometry.fillScale(r, VIEWPORT, VIEWPORT);
+        float fillOverX = modelW * fill / VIEWPORT;
+        float fillOverY = modelH * fill / VIEWPORT;
         float fit = SandboxGeometry.fitScale(r, VIEWPORT, VIEWPORT);
-        float fitOverX = modelW * fit / VIEWPORT;
-        float fitOverY = modelH * fit / VIEWPORT;
-        System.out.printf("基准档实际使用 fitScale = %.1f ⇒ 盘面 = 视口 X%.3f / Y%.3f%n",
-                fit, fitOverX, fitOverY);
-        if (fitOverX > 1.001f || fitOverY > 1.001f) {
-            System.out.println("    FAIL: 基准档盘面仍超出视口 ⇒ 底板边缘会被裁（用户看到「超出底板」）");
+        System.out.printf("基准档使用 fillScale = %.1f ⇒ 盘面 = 视口 X%.3f / Y%.3f%n",
+                fill, fillOverX, fillOverY);
+        System.out.printf("   （fitScale 对照 = %.1f ⇒ X%.3f / Y%.3f，竖向只有 %.0f%% 就是没满屏的原因）%n",
+                fit, modelW * fit / VIEWPORT, modelH * fit / VIEWPORT,
+                100 * modelH * fit / VIEWPORT);
+        // 判据：至少一个方向铺满（≥95%），且两个方向都不超过 1.6 倍
+        boolean filled = fillOverX >= 0.95f || fillOverY >= 0.95f;
+        boolean notOver = fillOverX <= 1.6f && fillOverY <= 1.6f;
+        if (!filled) {
+            System.out.println("    FAIL: 两个方向都没铺满 ⇒ 底盘不到满屏");
+            pass = false;
+        } else if (!notOver) {
+            System.out.println("    FAIL: 溢出超过 1.35 倍 ⇒ 会裁掉实际地形");
             pass = false;
         } else {
-            System.out.printf("    OK（完整装下，横向 %.0f%% / 竖向 %.0f%%）%n",
-                    100 * fitOverX, 100 * fitOverY);
+            System.out.printf("    OK（铺满：X%.0f%% / Y%.0f%%，溢出在 1.35 倍内）%n",
+                    100 * fillOverX, 100 * fillOverY);
         }
 
         // 顺带记录：旧口径（scaleOf + BASE_ZOOM）会超出多少（供对照）

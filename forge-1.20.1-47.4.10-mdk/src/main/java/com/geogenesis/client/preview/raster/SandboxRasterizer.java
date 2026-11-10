@@ -445,8 +445,12 @@ public final class SandboxRasterizer {
      * </pre>
      */
     private float viewScale(float[] r, int areaW, int areaH) {
+        // ★ v28：基准档用 fillScale（铺满，菱形四角是空白不算裁地形）
+        //   —— 用户："底盘明显还是没达到满屏"。
+        //   fitScale 取较小者 ⇒ 竖向只有 58%，四周大片留白。
+        //   推近档仍走 scaleOf（zoom 放大倍率语义）。
         return zoom <= SandboxLod.BASE_ZOOM + 1e-6f
-                ? SandboxGeometry.fitScale(r, areaW, areaH)
+                ? SandboxGeometry.fillScale(r, areaW, areaH)
                 : SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
     }
 
