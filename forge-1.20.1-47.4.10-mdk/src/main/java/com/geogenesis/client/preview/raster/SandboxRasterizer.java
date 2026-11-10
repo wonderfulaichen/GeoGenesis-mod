@@ -75,6 +75,18 @@ public final class SandboxRasterizer {
     public int spawnMarkZ() { return markWorldZ; }
     public boolean hasSpawnMark() { return markWorldX != Integer.MIN_VALUE; }
 
+    /**
+     * <b>上一帧的平均柱高</b>（模型单位）—— 视觉重心居中补偿要用它。
+     *
+     * <p>★ v36：v32 用 {@code RELIEF/2}（最大可能柱高的一半）做补偿，
+     * 但实测平均柱高只有 {@code RELIEF} 的约 1/5
+     * （探针：平均 41px vs 最高 201px）⇒ 补偿过量 80px，视觉上仍偏高。
+     * 用平均柱高才反映"内容真正的重心"。</p>
+     *
+     * <p>跨帧保持（不每帧归零），避免补偿量抖动导致画面上下轻微漂移。</p>
+     */
+    private float lastAvgTop = 0f;
+
     /** 点选视线推进步长（yardsite {@code MARCH_STEP=0.007}）。 */
     private static final float MARCH_STEP = 0.007f;
 
@@ -285,10 +297,25 @@ public final class SandboxRasterizer {
         //     柱高抬升 RELIEF(0.40) × |r5|(0.813) × scale ≈ 202px 全部朝上
         //     ⇒ <b>内容质心比视口中心高 40.5%</b> ⇒ 地形挤在上半屏、下面全空。
         //
-        //   ⇒ 既然我们选择"整盘可见"，就必须把<b>内容质心</b>对到视口中心：
-        //     向下补偿"柱高抬升"的一半（柱子从地面往上长，质心在中间）。
-        //   旋转轴仍是内容质心 —— 转视角时地形绕自身中心转，这才是对的。
-        float reliefPx = SandboxGeometry.RELIEF * Math.abs(r[5]) * scale;
+        //   ⇒ 既然我们选择"整盘可见"，就必须把<b>视觉重心</b>对到视口中心。
+        //
+        // ★★★ v36【再下调：v32 的补偿量算错了】★★★
+        //   用户两轮反馈"还是偏高"。探针 runSandboxCenterProbe 用
+        //   <b>实际柱高分布</b>（不是几何包围盒）重新度量后找到了原因：
+        //     15376 柱，平均柱高仅 <b>41 px</b>，最高 201 px
+        //     v32 的补偿 = RELIEF/2 = 101 px —— 按<b>最高柱</b>算的，
+        //     比"视觉重心该下移的量"多了 80 px
+        //   ⇒ 补偿后视觉重心仍在视口中心之上 80 px（8% 视高）。
+        //
+        //   正确做法：按<b>平均柱高</b>补偿，而不是按 RELIEF（最大可能柱高）。
+        //   平均柱高来自上一帧的 Columns（跨帧稳定，不会抖）。
+        float avgTop = lastAvgTop;
+        if (avgTop <= 0f) {
+            // 第一帧还没有统计 → 退回"盘面半径的固定比例"做初值
+            avgTop = SandboxGeometry.RELIEF * 0.22f;
+        }
+        // 补偿 = 一半平均柱高 × |r5| × scale（把"柱子平均凸起的质心"压到视口中心）
+        float reliefPx = avgTop * Math.abs(r[5]) * scale;
         float oyBias = reliefPx * 0.5f;
         float ox = areaX + areaW / 2f + panX;
         float oy = areaY + areaH / 2f + panY + oyBias;
@@ -415,6 +442,23 @@ public final class SandboxRasterizer {
         g.flush();
         RenderSystem.depthMask(true);
         RenderSystem.enableCull();
+
+        // ★ v36：统计本帧平均柱高，供<b>下一帧</b>的视觉重心补偿使用。
+        //   （必须用上一帧的值：oyBias 在绘制开始时就要定下来，
+        //     那时本帧的 cols 还没跑完。一帧的滞后肉眼看不出，且能避免抖动。）
+        float sumTop = 0f;
+        int cnt = 0;
+        for (int k = 0; k < cols.readyCount; k++) {
+            SandboxGeometry.Column cc = cols.items[cols.ready[k]];
+            if (cc.top < 0f) continue;
+            sumTop += cc.top;
+            cnt++;
+        }
+        if (cnt > 0) {
+            // 指数平滑：避免地形突变（切窗口/改图层）时补偿量跳变
+            float avg = sumTop / cnt;
+            lastAvgTop = lastAvgTop <= 0f ? avg : (lastAvgTop * 0.8f + avg * 0.2f);
+        }
     }
 
     // ----- 几何提交（照抄 yardsite vertex/wall/quadFlat）-----
@@ -680,9 +724,10 @@ public final class SandboxRasterizer {
         float[] r = SandboxGeometry.rotationRows(yaw, pitch);
         lastR = r;
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
-        // ★ v32：与 draw() 同源（含内容质心居中补偿，否则 hover 拾取错位）
+        // ★ v36：与 draw() 同源（含 v36 的"按平均柱高"补偿）
         float scale = viewScale(r, areaW, areaH);
-        float oyBias = SandboxGeometry.RELIEF * Math.abs(r[5]) * scale * 0.5f;
+        float avgTop = lastAvgTop > 0f ? lastAvgTop : SandboxGeometry.RELIEF * 0.22f;
+        float oyBias = avgTop * Math.abs(r[5]) * scale * 0.5f;
         lastCols = cols;
         lastScale = scale;
         lastOriginX = areaX + areaW / 2f + panX;

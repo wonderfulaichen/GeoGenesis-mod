@@ -118,12 +118,25 @@ public final class PreviewUnifiedProbe {
         float[] r = com.geogenesis.client.preview.sandbox.SandboxGeometry.rotationRows(
                 com.geogenesis.client.preview.sandbox.SandboxGeometry.DEFAULT_YAW,
                 com.geogenesis.client.preview.sandbox.SandboxGeometry.DEFAULT_PITCH);
-        // ★ v32：与实机 draw()/prepare() 同源
-        //   scale = fillScale（基准档）+ 内容质心居中补偿 oyBias
+        // ★ v36：与实机 draw()/prepare() 同源
+        //   scale = fillScale（基准档）+ 视觉重心补偿（按<b>平均柱高</b>，v36 口径）
         float scale = com.geogenesis.client.preview.sandbox.SandboxGeometry.fillScale(
                 r, VIEWPORT, VIEWPORT);
-        float oyBias = com.geogenesis.client.preview.sandbox.SandboxGeometry.RELIEF
-                * Math.abs(r[5]) * scale * 0.5f;
+        // 探针直接按"细格高度 → 归一化柱高"估算平均柱高（实机用上一帧统计值，
+        // 差一帧对 1 柱的容差没有影响）
+        float sumTop = 0f;
+        int cntTop = 0;
+        for (int i = 0; i < d.height.length; i++) {
+            if (Double.isNaN(d.height[i])) continue;
+            double v = d.e[i] < 0 ? 63.0 : d.height[i];
+            float ratio = (float) Math.max((v - (63.0 - 4.0)) / 88.0,
+                    com.geogenesis.client.preview.sandbox.SandboxGeometry.WATER_SINK);
+            sumTop += ratio * com.geogenesis.client.preview.sandbox.SandboxGeometry.RELIEF;
+            cntTop++;
+        }
+        float avgTop = cntTop > 0 ? sumTop / cntTop
+                : com.geogenesis.client.preview.sandbox.SandboxGeometry.RELIEF * 0.22f;
+        float oyBias = avgTop * Math.abs(r[5]) * scale * 0.5f;
         float ox = VIEWPORT / 2f, oy = VIEWPORT / 2f + oyBias;
         float mmx = com.geogenesis.client.preview.sandbox.SandboxGeometry.modelOf(colCount, ccol);
         float mmy = com.geogenesis.client.preview.sandbox.SandboxGeometry.modelOf(colCount, ccol);
