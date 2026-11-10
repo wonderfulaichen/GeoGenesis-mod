@@ -86,6 +86,15 @@ public class RevealScreen extends Screen {
         if (this.minecraft != null) {
             this.minecraft.gameRenderer.setRenderHand(false);
         }
+        // ★ v38：交给相机 hook 接管真实世界的相机/视野
+        //   （不接管的话动画只是"盖在上面的一张图"，镜头根本不动）
+        RevealCameraHook.setActive(this);
+        RevealScreenHook.setActive(this);
+    }
+
+    /** 落机航线（相机 hook 用；null = 还没开始落机 ⇒ 不接管相机）。 */
+    public DescentPath descentPath() {
+        return descent;
     }
 
     @Override
@@ -93,6 +102,24 @@ public class RevealScreen extends Screen {
         if (this.minecraft != null) {
             this.minecraft.gameRenderer.setRenderHand(true);
         }
+        // ★ v38：撤销相机接管（否则玩家进世界后镜头还锁在动画位置，动不了）
+        RevealCameraHook.setActive(null);
+        // ★ v38：恢复玩家的无敌状态（动画期间替他扛了伤害）
+        restoreInvulnerability(this.minecraft);
+        // 通知 hook：动画结束，后续 ReceivingLevelScreen 不再拦
+        RevealScreenHook.onRevealClosed();
+        RevealDataHolder.clear();
+    }
+
+    /**
+     * 是否还要"占住"这个界面（★ v38，照参考项目 {@code SiteRevealScreen.holdsHandoff}）。
+     *
+     * <p>为 true 时 {@link RevealScreenHook} 会拦掉原版登录后的「收区块」过渡屏
+     * （{@code ReceivingLevelScreen}），否则动画会被它盖掉。
+     * 超过 {@link #HARD_CAP_MS} 就返回 false，保证不会无限拒绝交回。</p>
+     */
+    public boolean holdsHandoff() {
+        return System.currentTimeMillis() - openedAt < HARD_CAP_MS;
     }
 
     private void bailOut(String why) {
@@ -153,6 +180,10 @@ public class RevealScreen extends Screen {
         int sz = p != null ? p.z() : mc.player.blockPosition().getZ();
         int sy = (int) mc.player.getY();
 
+        // ★ v38：动画期间玩家无敌（参考项目第 659-678 行）。
+        //   不这么做的话：一进世界就可能被怪打/摔伤 ⇒ 红屏 + 镜头抖 ⇒ 动画被破坏。
+        applyInvulnerability(mc);
+
         // 从沙盘继承正交参数（保证开场第一帧与沙盘一致）。
         //   步骤 A 简化：用固定值，效果是"从俯视正交开始"，不追求逐像素一致。
         world.begin(sx, sy, sz,
@@ -161,6 +192,25 @@ public class RevealScreen extends Screen {
                 mc.options.fov().get());
         begun = true;
         buildSchedule(sx, sz);
+    }
+
+    /** 动画期间替玩家扛伤害（参考项目 applyInvulnerability 同思路）。 */
+    private boolean invulTouched;
+    private boolean invulBefore;
+
+    private void applyInvulnerability(Minecraft mc) {
+        if (mc == null || mc.player == null || invulTouched) return;
+        invulTouched = true;
+        invulBefore = mc.player.isInvulnerable();
+        mc.player.setInvulnerable(true);
+    }
+
+    private void restoreInvulnerability(Minecraft mc) {
+        if (!invulTouched) return;
+        invulTouched = false;
+        if (mc != null && mc.player != null) {
+            mc.player.setInvulnerable(invulBefore);
+        }
     }
 
     /** 建立让位调度（步骤 A：一块柱子一档，按到落点距离排波次）。 */
@@ -236,7 +286,19 @@ public class RevealScreen extends Screen {
 
     private void finish() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc != null) mc.setScreen(null);
+        if (mc == null) return;
+        // ★ v38：还没登录（世界没起来）就交回原版加载界面；
+        //   参考项目 SiteRevealScreen.finish() 第 650-656 行的同一条判据 ——
+        //   `setScreen(null)` 在 level==null 时会被顶成标题界面。
+        if (mc.level == null) {
+            if (fallback != null) {
+                mc.setScreen(fallback);
+            } else {
+                mc.setScreen(null);
+            }
+            return;
+        }
+        mc.setScreen(null);
     }
 
     @Override

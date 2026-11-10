@@ -39,21 +39,37 @@ public final class RevealScreenHook {
 
     /** 本会话是否已经播过（一次建世界只播一次）。 */
     private static boolean played;
+    /** 当前正在播的动画屏（拦截 ReceivingLevelScreen 时要用它判断）。 */
+    private static RevealScreen active;
 
     private RevealScreenHook() { }
 
+    /**
+     * 接管时机（★ v38 补了两个遗漏）。
+     *
+     * <h2>★ 遗漏 1：不能只等 {@code LevelLoadingScreen}</h2>
+     * <p>用户实测「点完成后就直接关闭回到类型选择了」暴露了链路问题；
+     * 修掉触发点后还有一个更细的时机问题 —— 原版 {@code onCreate()} 之后
+     * <b>先</b>换一张 {@code GenericMessageScreen}（文案"准备创建世界"），
+     * 建目录、装数据包，<b>之后</b>才进 {@code LevelLoadingScreen}。</p>
+     * <p>参考项目为此专门注入 {@code queueLoadScreen}（{@code CreateWorldScreenMixin}
+     * 第 50-63 行），注释写明：「这一段会把选址精读和落成动画切开」。
+     * 我们不改 mixin，改为<b>同时认这两种屏</b> ⇒ 从点击那一刻就接管，不会闪一下灰屏。</p>
+     */
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
         try {
             Screen next = event.getNewScreen();
-            if (!(next instanceof LevelLoadingScreen)) return;
+            if (!isPreparingScreen(next)) return;
             if (played) return;
             if (!SpawnSelection.has()) return;
             if (RevealDataHolder.current() == null) return;
 
             played = true;
-            // fallback 传 null：动画结束直接关屏（原版此时也已经不打算显示加载屏了）
-            event.setNewScreen(new RevealScreen(null));
+            RevealScreen rs = new RevealScreen(null);
+            // active 会由 rs.init() 通过 setActive(this) 注册 —— 这里不重复设，
+            // 否则 init 还没跑就被当成"已激活"。
+            event.setNewScreen(rs);
         } catch (Throwable t) {
             // 静默退回原版（用户裁定 (a)）
             com.mojang.logging.LogUtils.getLogger()
@@ -61,8 +77,70 @@ public final class RevealScreenHook {
         }
     }
 
+    /**
+     * 是不是"进世界的准备屏"。
+     *
+     * <p>两种都算：{@code GenericMessageScreen}（原版"准备创建世界"）与
+     * {@code LevelLoadingScreen}（原版"加载地形中"）。只认前者在"从已建好的存档进入"时
+     * 会漏（那条路直接走 LevelLoadingScreen）。</p>
+     */
+    private static boolean isPreparingScreen(Screen s) {
+        if (s == null) return false;
+        if (s instanceof LevelLoadingScreen) return true;
+        // GenericMessageScreen 也被"保存世界""断开连接"等流程用 ⇒ 用父类名 + 当前有选点双重限定
+        return s.getClass().getName().equals("net.minecraft.client.gui.screens.GenericMessageScreen");
+    }
+
+    /**
+     * <b>★ 遗漏 2：拦住登录后的「收区块」过渡屏</b>（★ v38）。
+     *
+     * <p>参考项目 {@code SiteRevealGuard} 原文：「登录完原版要换上『收区块』的过渡屏
+     * （{@code ReceivingLevelScreen}）。落成动画还没落完就先把我们这个界面留着：
+     * 拦掉这一次开屏。」</p>
+     *
+     * <p>它走事件而非 mixin 的理由（原文）：「原版有两条路径会设这个界面
+     * （{@code Minecraft#setLevel} 和 {@code ClientPacketListener#startWaitingForNewLevel}），
+     * 而 {@code Minecraft#setScreen} 在赋值<b>之前</b>发这个可取消事件，一处就盖得全；
+     * 取消也不会碰到 {@code removed()}，界面不被拆掉。」</p>
+     *
+     * <p>不拦的后果：动画刚开始播就被原版"正在接收区块"屏盖掉，玩家看不到。</p>
+     */
+    @SubscribeEvent
+    public static void onReceivingLevel(ScreenEvent.Opening event) {
+        try {
+            Screen next = event.getNewScreen();
+            if (next == null) return;
+            if (!next.getClass().getName()
+                    .equals("net.minecraft.client.gui.screens.ReceivingLevelScreen")) return;
+            if (active != null && !active.holdsHandoff()) {
+                // 动画已经落完 ⇒ 不再拦，交回原版
+                return;
+            }
+            if (active != null) {
+                event.setCanceled(true);
+            }
+        } catch (Throwable ignored) {
+            // 拦不住只是多闪一下，不影响正确性
+        }
+    }
+
+    /** 动画结束时清掉 active。 */
+    public static void onRevealClosed() {
+        active = null;
+    }
+
+    /**
+     * 注册当前正在播的动画（由 {@code RevealScreen.init()} 调）。
+     *
+     * <p>拦 {@code ReceivingLevelScreen} 时要用它判断"动画还没落完 ⇒ 别让原版盖掉"。</p>
+     */
+    public static void setActive(RevealScreen screen) {
+        active = screen;
+    }
+
     /** 新世界开始时重置（由服务器事件调用）。 */
     public static void resetSession() {
         played = false;
+        active = null;
     }
 }

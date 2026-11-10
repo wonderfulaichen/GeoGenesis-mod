@@ -768,9 +768,21 @@ public class GeoGenesisConfigScreen extends Screen {
     }
 
     /**
-     * <b>完成</b>（★ v21）：应用 + 交出地形复用 + 关闭面板。
+     * <b>完成</b>：应用 + 交出地形复用 + <b>立刻开始创建世界</b>（★ v38 修正）。
      *
-     * <p>这是原来 {@code doApply()} 的完整行为，语义明确为"改完了，回上一屏"。</p>
+     * <h2>★ v38【修"点击完成后就直接关闭回到类型选择"】</h2>
+     * <p>用户实测：「动画的前提不对啊，我们点击完成后就直接是关闭回到类型选择了。」</p>
+     *
+     * <p>根因：此前这里只是 {@code setScreen(parent)} —— 退回 {@code CreateWorldScreen}，
+     * <b>根本没开始建世界</b>。玩家得自己再点一次原版「创建世界」，
+     * 于是落成动画永远等不到触发点（它只在 {@code LevelLoadingScreen} 打开时才接管）。</p>
+     *
+     * <p>参考项目 {@code YardSiteScreen.proceed()} 最后一行是 {@code onProceed.run()}，
+     * 而那个 {@code onProceed} 是 {@code CreateWorldScreenAccessor::yardsite$createWorld}
+     * —— 即<b>调原版私有的 onCreate()</b>。我们照做。</p>
+     *
+     * <p>⚠ 若当前不是从 {@code CreateWorldScreen} 进来的（比如游戏内按 G 打开），
+     * 就没有"创建世界"这回事 ⇒ 维持原行为（退回上一屏）。</p>
      */
     private void doDone() {
         doApply();
@@ -778,13 +790,26 @@ public class GeoGenesisConfigScreen extends Screen {
         //   配置屏在 MC 之外用纯 Java 核心算好的 GeoGenesisTerrain
         //   在这里登记；进世界时 bindWorld 三项全等就<b>直接接管</b>，不重算。
         offerTerrainForReuse();
-        // ★ v37：把当前地形数据交给落成动画（进世界时接着这张图往下推，
-        //   不在动画里重新采样 —— 那是重复造轮子）。
+        // ★ v37：把当前地形数据交给落成动画（进世界时接着这张图往下推）。
         if (preview != null) {
             com.geogenesis.client.reveal.RevealDataHolder.offer(preview.sandboxDataForReveal());
         }
+
         if (parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen cws) {
             com.geogenesis.client.GeoGenesisClient.writeSeedToCreateWorld(cws, seed);
+            // ★★★ v38【关键】直接把创建世界流程跑起来 ★★★
+            //   此前只 setScreen(parent) ⇒ 停在创建界面，永远等不到 LevelLoadingScreen。
+            //   用户要求"点完成就开始动画" ⇒ 必须在这里触发 onCreate。
+            try {
+                // 先关掉本屏（否则 onCreate 里换屏时状态会串）
+                Minecraft.getInstance().setScreen(cws);
+                ((com.geogenesis.mixin.CreateWorldScreenAccessor) cws).geogenesis$createWorld();
+                return;
+            } catch (Throwable t) {
+                // 静默兜底：mixin 没挂上 / 版本不符 → 退回原行为（玩家自己点创建）
+                com.mojang.logging.LogUtils.getLogger().warn(
+                        "[GeoGenesis] 触发创建世界失败，退回手动创建：{}", t.toString());
+            }
         }
         Minecraft.getInstance().setScreen(parent);
     }

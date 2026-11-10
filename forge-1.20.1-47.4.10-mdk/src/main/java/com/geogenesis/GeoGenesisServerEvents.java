@@ -72,6 +72,10 @@ public final class GeoGenesisServerEvents {
         if (event.getLevel() instanceof ServerLevel s && s.dimension() == Level.OVERWORLD) {
             GeoGenesisGenerator.unbindWorld();
             com.geogenesis.diagnostics.WorldGenProfiler.reportNow("世界卸载总计");
+            // ★ v38：世界卸载 ⇒ 重置落成动画的会话状态。
+            //   ⚠ 不能放在 LevelEvent.Load 里：动画播放期间也可能触发 Load，
+            //     那样会把 played 清成 false 导致动画重播。
+            com.geogenesis.client.reveal.RevealScreenHook.resetSession();
         }
     }
 

@@ -43,6 +43,11 @@ authors="${mod_authors}" #optional
 
 # The description text for the mod (multi line!) (#mandatory)
 description='''${mod_description}'''
+
+# ★ v38：mixin 配置（落成动画需要调 CreateWorldScreen 的私有 onCreate）
+#   本项目此前零 mixin；只声明一个最小 accessor（不注入任何逻辑），
+#   用途见 com.geogenesis.mixin.CreateWorldScreenAccessor。
+mixins=["geogenesis.mixins.json"]
 # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.
 [[dependencies.${mod_id}]] #optional
     # the modid of the dependency
