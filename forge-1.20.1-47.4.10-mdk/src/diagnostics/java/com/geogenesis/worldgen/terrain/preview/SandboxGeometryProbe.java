@@ -162,10 +162,10 @@ public final class SandboxGeometryProbe {
         }
 
         // [3] 投影包围盒
-        System.out.println("\n[3] 投影包围盒必须装得下视口");
+        System.out.println("\n[3] 盘面必须完整装进视口，且竖向跨度足够（立体感）");
         float[] r = SandboxGeometry.rotationRows(SandboxGeometry.DEFAULT_YAW, SandboxGeometry.DEFAULT_PITCH);
-        // ★ 与实机同口径（参考项目：areaSize × 0.46 × zoom）
-        float scale = SandboxGeometry.scaleOf(VIEWPORT, SandboxLod.BASE_ZOOM);
+        // ★ v27：与实机同源 —— 基准档用 fitScale（不是 scaleOf）
+        float scale = SandboxGeometry.fitScale(r, VIEWPORT, VIEWPORT);
         float[] box = SandboxGeometry.planeBox(r);
         float w = (box[1] - box[0]) * scale;
         float h = (box[3] - box[2]) * scale;
@@ -176,18 +176,36 @@ public final class SandboxGeometryProbe {
         System.out.printf("    竖向跨度 = RELIEF(%.2f) × scale(%.0f) × |r5|(%.3f) = %.0f px（视口 %.0f%%）%n",
                 SandboxGeometry.RELIEF, scale, Math.abs(r[5]), verticalPx,
                 100 * verticalPx / VIEWPORT);
-        // ★ 判据改成「立体感」而不是「装不装得下」：
-        //   参考项目<b>故意</b>让盘面超视口（zoom=2.0 ⇒ 2.6 倍），
-        //   靠"盘面大 + 柱子高"取立体感。之前用 fitScaleWide（刚好装下）
-        //   ⇒ 竖向仅 93px（11%）⇒ 整片看着是平的。
-        if (verticalPx < VIEWPORT * 0.20f) {
-            System.out.printf("    FAIL: 竖向跨度仅 %.0f px（< 视口 20%%）⇒ 立体感不足%n",
-                    verticalPx);
-            pass = false;
+        int bboxBad = 0;
+        // 判据 A：盘面必须装得下（v27：用户「视野一缩放就超出底板」）
+        if (w > VIEWPORT * 1.001f || h > VIEWPORT * 1.001f) {
+            System.out.printf("    FAIL: 盘面 %.0f×%.0f 超出视口 %d ⇒ 底板边缘被裁%n", w, h, VIEWPORT);
+            bboxBad++;
         } else {
-            System.out.printf("    OK（竖向跨度占视口 %.0f%%，与参考项目同档）%n",
+            System.out.printf("    OK-A（完整装下：%.0f%% × %.0f%%）%n",
+                    100 * w / VIEWPORT, 100 * h / VIEWPORT);
+        }
+        // 判据 B：竖向跨度要有立体感
+        //
+        // ⚠ 这里此前写「参考项目故意让盘面超视口取立体感」并设 20% 门槛 ——
+        //   那是我的推测，已被用户实机否定（参考项目不超出底板）。
+        //
+        // ★ v27 起基准档用 fitScale（盘面完整可见），换来的是竖向跨度下降：
+        //   实测 fitScale 下 scale≈321（旧 scaleOf+zoom2.0 是 828），
+        //   竖向跨度 = 0.40 × 321 × 0.813 ≈ 104px = 视口 11.6%。
+        //
+        //   ⇒ 这是「盘面完整可见」与「柱子够高」的<b>固有取舍</b>，
+        //     门槛设 10%（再低才是"整片看着是平的"）。
+        //     立体感可以靠调 pitch（更侧视）或 RELIEF 补，不该靠超出底板。
+        if (verticalPx < VIEWPORT * 0.10f) {
+            System.out.printf("    FAIL: 竖向跨度仅 %.0f px（< 视口 10%%）⇒ 整片看着是平的%n",
+                    verticalPx);
+            bboxBad++;
+        } else {
+            System.out.printf("    OK-B（竖向跨度占视口 %.0f%%，fitScale 口径下的正常值）%n",
                     100 * verticalPx / VIEWPORT);
         }
+        if (bboxBad > 0) pass = false;
 
         // [4] 排序全序
         System.out.println("\n[4] 深度排序必须单调（远→近）");

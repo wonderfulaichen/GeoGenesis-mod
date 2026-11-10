@@ -944,6 +944,33 @@ public class PreviewDisplay extends AbstractWidget {
         //   用正方形会让盘面在宽屏上只占中间一块、上下大片留白 ——
         //   用户要求「实际没有上下栏，类似像一个游戏地图那样全屏显示画面内容」。
         int side = Math.max(w, h);
+        // ★★ v27【数据源统一：沙盘窗口 = 平面窗口】★★
+        //
+        //   用户原话：
+        //     「我的想法是数据源统一，这样能保证计算复用。
+        //       除非我们需要全局预览才不进行高精度计算复用」
+        //     「视野怎么还是4096以上的视野？这么大完全没必要」
+        //
+        //   此前沙盘窗口 = SandboxLod.windowFor(zoom)，默认 4096 格；
+        //   而平面窗口 = texW × scaleBlockPos ≈ 900 格。
+        //   沙盘窗口是数据覆盖范围的 <b>4.5 倍</b> ⇒ 95% 区域没有数据
+        //   （日志实测 缺失=249020/262144）⇒ 只能看到中心一小块。
+        //
+        //   ⇒ 正解不是给沙盘再写一套采样器（那是重复造轮子），
+        //     而是<b>让沙盘直接看平面正在看的那块</b>：
+        //     窗口 = 平面窗口，细格 = 窗口/步长。
+        //     同一份 cellCache、同一个视口 ⇒ 真正的"计算复用"。
+        //
+        //   ★ 柱数仍按 zoom 档位走（决定"画多粗"），
+        //     但<b>每柱代表多少方块</b>随窗口自动换算 ⇒ 分辨率不丢。
+        int blocksWide = Math.max(64, texW * scaleBlockPos);
+        int blocksHigh = Math.max(64, texH * scaleBlockPos);
+        // ★ 柱数：窗口决定"画多少根"，zoom 决定"多细"。
+        //   窗口 / 每柱方块 → 基准柱数；zoom 推近时柱数不变、柱子变粗
+        //   （因为窗口变小）；这里再按 zoom 让分组粒度也跟着走，
+        //   保证推近能看到更细的细节而不是放大同一批柱子。
+        int basePillars = SandboxLod.pillarsForWindow(blocksWide);
+        int grid = Math.max(2, basePillars * SandboxLod.HEIGHT_STRIDE);
         // ★ 记录进入沙盘时的初始中心（R 键回到这里）
         if (homeCenterX == null) {
             homeCenterX = centerX;
@@ -967,10 +994,6 @@ public class PreviewDisplay extends AbstractWidget {
         // ★ 柱子尺度（照参考项目三层结构）：
         //   柱数 columns=128、细格 fine=columns×HEIGHT_STRIDE=256、每柱 16 格方块。
         //   ⇒ perColumn = 2（每柱聚合 2×2 个细格）
-        
-        int blocksWide = Math.max(64, SandboxLod.windowFor(zoom));
-        int blocksHigh = blocksWide;
-        int grid = SandboxLod.gridFor(zoom);          // = 柱数 × 2（不是窗口方块数！）
         // ★ v25：沙盘的视口原点只认 centerX/centerZ。
         //   此前这里还叠加了 totalDragX/totalDragZ（那是<b>平面</b>的累积拖拽偏移），
         //   而沙盘平移是直接改 centerX/centerZ 的 ⇒ 两者会互相干扰
@@ -1314,14 +1337,21 @@ public class PreviewDisplay extends AbstractWidget {
     private void commitSandboxPan() {
         int ix = (int) sandboxCenterAccX;
         int iz = (int) sandboxCenterAccZ;
-        if (ix == 0 && iz == 0) return;
-        sandboxCenterAccX -= ix;
-        sandboxCenterAccZ -= iz;
-        centerX += ix;
-        centerZ += iz;
-        // 屏幕平移已经"花掉"了这次位移 ⇒ 清掉，避免和新的世界中心叠加成双倍移动
+        if (ix != 0 || iz != 0) {
+            sandboxCenterAccX -= ix;
+            sandboxCenterAccZ -= iz;
+            centerX += ix;
+            centerZ += iz;
+            needsClear = true;
+        }
+        // ★★ v27【修"一缩放就超出底板"】★★
+        //   这里原来是 `if (ix == 0 && iz == 0) return;` —— 位移不足 1 方块时
+        //   <b>直接 return，clearPan() 没执行</b>
+        //   ⇒ panX/panY 残留，下次拖动继续往上加
+        //   ⇒ 底板与地形一起被推离视口中心（用户："视野一缩放就超出底板了"）。
+        //   pan 必须<b>无条件</b>清掉：它只是"拖动期间的临时预览偏移"，
+        //   一旦松手（无论提交多少世界位移）就不该留着。
         sandboxRasterizer.clearPan();
-        needsClear = true;
     }
 
     /** 拖动累积的世界位移余量（&lt;1 方块的部分）。 */
@@ -1388,6 +1418,10 @@ public class PreviewDisplay extends AbstractWidget {
             } else {
                 // ★ Q1-C 加减速：远快近慢（见 SandboxLod.nextZoom 的 javadoc）
                 sandboxRasterizer.setZoom(SandboxLod.nextZoom(sandboxRasterizer.zoom(), delta > 0));
+                // ★ v27：缩放会改 scale ⇒ 残留的屏幕平移会错位（"一缩放就超出底板"），清掉
+                sandboxRasterizer.clearPan();
+                sandboxCenterAccX = 0;
+                sandboxCenterAccZ = 0;
             }
             return true;
         }

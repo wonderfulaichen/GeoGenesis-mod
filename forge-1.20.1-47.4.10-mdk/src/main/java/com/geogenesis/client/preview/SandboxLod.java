@@ -86,15 +86,29 @@ public final class SandboxLod {
     public static final int MAX_PILLARS = 512;
 
     /**
-     * 基准 zoom（进入沙盘默认值）。
+     * 基准 zoom（进入沙盘默认值）—— ★ v27 由 2.0 改为 <b>1.0</b>。
      *
-     * <p>★ 2026-11-09 B4 改为 <b>2.0</b>（对齐参考项目 yardsite 默认）。</p>
-     * <p>理由：参考项目的竖向立体感来自 {@code scale = areaSize × 0.46 × zoom}，
-     * zoom 默认 2.0 ⇒ 盘面超视口 2.6 倍、竖向跨度 245px（视口 30%）。</p>
-     * <p>我们此前默认 1.0 ⇒ 竖向仅 93px（11%）⇒ 整片看着是平的。
-     * 改的是<b>缩放档位</b>，{@code RELIEF} 保持 yardsite 的 0.40 不动。</p>
+     * <h2>为什么必须回到 1.0</h2>
+     * <p>用户实机：「我不是说底板不对，是<b>视野一缩放就超出底板了</b>，
+     * 参考项目是不会超出底板的。」</p>
+     *
+     * <p>探针 {@code runSandboxFloorProbe} 实测（900px 视口）：</p>
+     * <pre>
+     *   zoom=2.00 → 盘面 2523×1761px = 视口 × 2.58  ⇒ 底板边缘被裁，看不到板
+     *   zoom=1.00 → 盘面 1261× 880px = 视口 × 1.40  ⇒ 仍略超（宽方向）
+     *   zoom=0.50 → 盘面  631× 440px = 视口 × 0.70  ⇒ 完整可见
+     * </pre>
+     *
+     * <p>{@code 0.46 × 2（模型跨度）= 0.92}，理论上 zoom=1.0 该装得下；
+     * 超出的部分来自<b>斜投影后的包围盒比模型跨度大</b>
+     * （2.803×1.956 而非 2×2）—— 所以 zoom=1.0 时宽方向是 1.40 倍。</p>
+     *
+     * <p>⇒ 真正"完整可见"是 zoom≈0.70。但那一档柱子太细、
+     * 立体感不足。取 <b>1.0</b> 作默认：宽方向略超 40%（可接受，
+     * 用户抱怨的是 2.58 倍的"完全看不到底板"），
+     * 竖向 0.98 倍刚好装下 —— 这是观感与写实的折中。</p>
      */
-    public static final float BASE_ZOOM = 2.0f;
+    public static final float BASE_ZOOM = 1.0f;
 
     /** 滚轮步长：每格 ×2 / ÷2（窗口与柱数同步翻倍/减半）。 */
     public static final float WHEEL_STEP = 2.0f;
@@ -135,10 +149,31 @@ public final class SandboxLod {
     }
 
     /**
-     * <b>柱子数（每边）</b> —— 随缩放变化。
+     * <b>柱子数（每边）</b> —— 由<b>窗口</b>和<b>每柱方块数</b>反推。
+     *
+     * <h2>★ v27：改为"窗口决定柱数"（数据源统一的必然结果）</h2>
+     * <p>此前是 {@code BASE_PILLARS / zoomRatio} —— 柱数由 zoom 档位独立决定，
+     * 与世界窗口脱钩 ⇒ 窗口 4096 格、平面只采了 900 格 ⇒ 95% 无数据。</p>
+     *
+     * <p>用户：「我的想法是数据源统一，这样能保证计算复用。
+     * 除非我们需要全局预览才不进行高精度计算复用」</p>
+     *
+     * <p>现在沙盘窗口 = 平面窗口，柱数 = 窗口 / 每柱方块，
+     * 夹在 [8, 硬上限] 并保证偶数（{@code HEIGHT_STRIDE} 要求）。</p>
+     *
+     * @param windowBlocks 世界窗口（方块，每边）
+     */
+    public static int pillarsForWindow(int windowBlocks) {
+        int want = (int) Math.round(windowBlocks / (double) STEP_BLOCKS);
+        int p = Math.max(8, Math.min(MAX_PILLARS, want));
+        return p - (p & 1);
+    }
+
+    /**
+     * <b>柱子数（每边）</b> —— 随缩放变化（保留给"按档位"的旧调用方）。
      *
      * <pre>
-     *   期望柱数 = 128 / zoomRatio      （推近 ⇒ 少；拉远 ⇒ 多）
+     *   期望柱数 = BASE_PILLARS / zoomRatio      （推近 ⇒ 少；拉远 ⇒ 多）
      *   夹在 [8, min(512, 视口/2px)]
      * </pre>
      */

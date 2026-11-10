@@ -164,8 +164,8 @@ public final class SandboxRasterizer {
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, 60f);
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
         float[] fc = SandboxGeometry.fitCenter(r);
-        // ★ v23：与 draw() 同口径 —— 正方形边长（参考项目 areaSize）
-        float scale = SandboxGeometry.scaleOf(Math.min(w, h), zoom);
+        // ★ v27：与 draw() 同源
+        float scale = viewScale(r, w, h);
         float ox = w / 2f - scale * fc[0];
         float oy = h / 2f - scale * fc[1];
 
@@ -211,17 +211,18 @@ public final class SandboxRasterizer {
         if (cols.readyCount == 0) return;
 
         float[] fc = SandboxGeometry.fitCenter(r);
-        // ★ v23【修"沙盘尺度不对、只能看到一条"】★★★
-        //   参考项目 {@code SiteTerrainRenderer} 的 areaSize 是<b>正方形边长</b>
-        //   （{@code YardSiteScreen.init()}：{@code min(width-20, height-56)}），
-        //   我们再套 {@code scale = areaSize × 0.46 × zoom}。
+        // ★★ v27【修"视野一缩放就超出底板"】★★
         //
-        //   此前这里用 {@code areaW}（视口<b>宽</b>）。宽屏下宽度远大于高度，
-        //   scale 被放大近一倍 ⇒ 竖向跨度 = scale × 1.956 ≈ 3.2 倍视口高
-        //   ⇒ 屏幕里只剩地形中间一条，看着像"平坦一片"。
-        //   ⇒ 改为两方向取小（与参考项目同口径）。
-        int side = Math.min(areaW, areaH);
-        float scale = SandboxGeometry.scaleOf(side, zoom);
+        //   {@code scaleOf = areaSize × 0.46 × zoom} 的 0.46 是按"模型跨度 2"推的
+        //   内切系数，但<b>斜投影后包围盒是 2.803×1.956 不是 2×2</b>
+        //   ⇒ 即使 zoom=1.0，横向也到视口的 1.29 倍 ⇒ 底板左右边缘被裁。
+        //   用户：「视野一缩放就超出底板了，参考项目是不会超出底板的」。
+        //
+        //   ⇒ 基准档（zoom ≤ BASE_ZOOM）用 {@link SandboxGeometry#fitScale}
+        //     —— 按实际包围盒归一化，盘面完整可见；
+        //     推近档（zoom > BASE_ZOOM）用 {@link SandboxGeometry#scaleOf}
+        //     —— 放大到局部铺满屏幕是"推近"的应有之义。
+        float scale = viewScale(r, areaW, areaH);
         float ox = areaX + areaW / 2f + panX - scale * fc[0];
         float oy = areaY + areaH / 2f + panY - scale * fc[1];
 
@@ -433,6 +434,23 @@ public final class SandboxRasterizer {
     // ----- 内部 -----
 
     /**
+     * <b>屏幕缩放（像素/模型单位）—— 全类唯一来源</b>（★ v27）。
+     *
+     * <p>{@code draw} / {@code prepare} / {@code pick} / {@code dragToBlocks}
+     * 必须用<b>同一个</b>值，否则绘制与命中的位置会错开。</p>
+     *
+     * <pre>
+     *   zoom ≤ BASE_ZOOM（基准/拉远）→ fitScale：按投影包围盒归一，盘面完整可见
+     *   zoom &gt;  BASE_ZOOM（推近）  → scaleOf ：放大到局部铺满屏幕
+     * </pre>
+     */
+    private float viewScale(float[] r, int areaW, int areaH) {
+        return zoom <= SandboxLod.BASE_ZOOM + 1e-6f
+                ? SandboxGeometry.fitScale(r, areaW, areaH)
+                : SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
+    }
+
+    /**
      * 铺开动画的基准时刻（本图第一次绘制的毫秒时间戳；0 = 还没开始）。
      *
      * <p>★ 必须由光栅器<b>跨帧持有</b>：若每帧取 now，
@@ -479,8 +497,8 @@ public final class SandboxRasterizer {
         lastR = r;
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
         float[] fc = SandboxGeometry.fitCenter(r);
-        // ★ v23：与 draw() 同口径 —— 正方形边长（参考项目 areaSize）
-        float scale = SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
+        // ★ v27：与 draw() 同源
+        float scale = viewScale(r, areaW, areaH);
         lastCols = cols;
         lastScale = scale;
         lastOriginX = areaX + areaW / 2f + panX - scale * fc[0];

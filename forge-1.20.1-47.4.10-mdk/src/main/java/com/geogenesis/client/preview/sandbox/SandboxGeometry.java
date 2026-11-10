@@ -186,34 +186,61 @@ public final class SandboxGeometry {
     // =================================================================
 
     /**
-     * <b>scale：照抄参考项目口径</b>（★ 2026-11-09 B4 定稿）。
+     * <b>scale：让盘面完整装进视口</b>（★ v27 定稿）。
      *
      * <pre>
      *   scale = areaSize × 0.46 × zoom        （yardsite SiteTerrainRenderer 第 405 行）
      * </pre>
      *
-     * <h2>★ 为什么<b>不</b>用"盘面刚好装进视口"（fitScaleWide）</h2>
-     * <p>实测对比（820px 视口，pitch=0.95/yaw=0.65）：</p>
-     * <table border="1">
-     *   <tr><th></th><th>scale</th><th>盘面宽</th><th>竖向跨度</th></tr>
-     *   <tr><td>我们（fitScaleWide）</td><td>287</td><td>804px（=视口）</td>
-     *       <td><b>93px（11%）</b> —— 整片看着是平的</td></tr>
-     *   <tr><td>参考项目</td><td>754</td><td>2115px（超 2.6 倍）</td>
-     *       <td><b>245px（30%）</b> —— 立体感强</td></tr>
-     * </table>
-     * <p>⇒ 参考项目是<b>故意让盘面超出视口</b>的（zoom 默认 2.0），
-     * 柱子因此又粗又高，只看中央。用户原话：
-     * 「要的就是这样的啊，难道参考项目不是这样的？」</p>
+     * <h2>★★ 为什么基准 zoom 必须是 1.0（不能照抄参考项目的 2.0）</h2>
+     * <p>用户实机反馈：「我不是说底板不对，是<b>视野一缩放就超出底板了</b>，
+     * 参考项目是不会超出底板的。」</p>
      *
-     * <p>所以 {@code RELIEF} <b>保持 yardsite 的 0.40 不动</b>
-     * （我曾擅自改成 0.85 以为"山不够高"，那是误判 ——
-     * 参考图柱子看着高是因为 zoom 默认 2.0，不是 RELIEF 大）。
-     * 立体感来自 <b>scale 口径</b>，不是 RELIEF。</p>
+     * <p>探针 {@code runSandboxFloorProbe} 实测：
+     * {@code 0.46 × 2.0 = 0.92}，乘投影包围盒（2.803×1.956）
+     * ⇒ 盘面宽 = 视口 × <b>2.58</b> ⇒ 底板边缘被裁到看不见
+     * ⇒ 视觉上就是"地形跑到板外"。</p>
+     *
+     * <p>⚠ 我此前在这里写过"参考项目是故意让盘面超视口"——
+     * 那是<b>我的推测，不是事实</b>（参考项目没有任何注释这样说）。
+     * 参考项目 {@code SiteMapSampler.defaultZoom()} 确实返回 2.0，
+     * 但它的 {@code areaSize = min(width-20, height-56)} 在 1080p 上也只有 1024
+     * ⇒ 同样 2.58 倍超出。<b>用户亲眼对照的参考项目效果是不超出的</b>
+     * ⇒ 以用户实机观感为准。</p>
+     *
+     * <p>{@code 0.46} 本身是对的：它把模型 ±1 映射到视口的 ±0.92
+     * （内切、留 8% 边距），所以 <b>zoom=1.0 时盘面正好完整可见</b>。</p>
      *
      * @param zoom 缩放档位（{@link com.geogenesis.client.preview.SandboxLod#BASE_ZOOM} 起）
      */
     public static float scaleOf(int areaSize, float zoom) {
         return areaSize * 0.46f * zoom;
+    }
+
+    /**
+     * <b>让盘面<b>完整</b>装进视口</b>的 scale（★ v27：基准档用这个）。
+     *
+     * <h2>为什么需要它（{@link #scaleOf} 不够）</h2>
+     * <p>{@code scaleOf = areaSize × 0.46 × zoom} 里的 {@code 0.46}
+     * 是按「模型跨度 2」推的内切系数，但<b>斜投影后包围盒不是 2×2</b>
+     * （pitch=0.95/yaw=0.65 实测 2.803 × 1.956）⇒ 即使 zoom=1.0，
+     * 横向仍会到视口的 1.29 倍 ⇒ 底板左右边缘被裁。</p>
+     *
+     * <p>用户实机：「视野一缩放就超出底板了，参考项目是不会超出底板的」。</p>
+     *
+     * <p>本方法按<b>实际投影包围盒</b>分别用宽、高归一化、取较小者
+     * ⇒ 两个方向都不溢出、盘面尽可能大。基准档用它，
+     * 推近档（zoom>1）仍用 {@link #scaleOf}（放大是刻意的）。</p>
+     *
+     * @return 使盘面完整装进 {@code viewW×viewH} 的像素/模型单位缩放
+     */
+    public static float fitScale(float[] r, int viewW, int viewH) {
+        float[] box = planeBox(r);
+        float spanX = box[1] - box[0];
+        float spanY = box[3] - box[2];
+        float sx = spanX > 1e-4f ? viewW / spanX : Float.MAX_VALUE;
+        float sy = spanY > 1e-4f ? viewH / spanY : Float.MAX_VALUE;
+        return Math.min(sx, sy);
     }
 
     /** 细格<b>边界</b> → 模型坐标 [-1,1]（分母用 {@code fine}，不是 {@code fine-1}）。

@@ -2805,3 +2805,11 @@ task runSandboxCoarseHydroProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxCoarseHydroProbe'
     maxHeapSize = '3g'
 }
+
+// 盘面 vs 底板：不同 zoom 下盘面屏幕尺寸是否超出视口（超出 => 底板边缘被裁）。
+//   gradlew runSandboxFloorProbe
+task runSandboxFloorProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxFloorProbe'
+    maxHeapSize = '1g'
+}
