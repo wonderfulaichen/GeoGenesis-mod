@@ -1499,14 +1499,28 @@ public class PreviewDisplay extends AbstractWidget {
         if (px < 0 || pz < 0) return;
         TerrainFieldData d = sandboxData;
         if (d == null) return;
+        // ★★★ v39【修"右键选出生点，位置与鼠标完全偏离"】★★★
+        //
+        //   pickedColX/Z 是<b>柱子索引</b>（一格柱子 = HEIGHT_STRIDE 个细格），
+        //   而 effectiveStepFor 返回的是<b>每细格</b>方块数。
+        //   此前直接 `px * step` ⇒ 少乘了 HEIGHT_STRIDE（=2）
+        //   ⇒ 选点只落在实际位置的一半处（越靠近边缘偏得越多）。
+        //
+        //   正解：柱宽 = 每细格方块 × 每柱细格数，且柱中心要加半柱偏移
+        //   （柱 i 的中心在 (i + 0.5) 个柱宽处，不是 i 个）。
         int windowBlocks = Math.max(64, texW * scaleBlockPos);
-        double step = SandboxLod.effectiveStepFor(windowBlocks, Math.min(getWidth(), getHeight()));
-        int wx = centerX - windowBlocks / 2 + (int) Math.round(px * step);
-        int wz = centerZ - windowBlocks / 2 + (int) Math.round(pz * step);
-        // 再点同一格 = 取消
+        double stepPerFine = SandboxLod.effectiveStepFor(windowBlocks,
+                Math.min(getWidth(), getHeight()));
+        double pillarBlocks = stepPerFine * SandboxLod.HEIGHT_STRIDE;
+        int wx = centerX - windowBlocks / 2
+                + (int) Math.round((px + 0.5) * pillarBlocks);
+        int wz = centerZ - windowBlocks / 2
+                + (int) Math.round((pz + 0.5) * pillarBlocks);
+        // 再点同一格 = 取消（容差 = 一个柱宽）
+        int tol = Math.max(1, (int) pillarBlocks);
         if (sandboxRasterizer.hasSpawnMark()
-                && Math.abs(sandboxRasterizer.spawnMarkX() - wx) < Math.max(1, (int) step)
-                && Math.abs(sandboxRasterizer.spawnMarkZ() - wz) < Math.max(1, (int) step)) {
+                && Math.abs(sandboxRasterizer.spawnMarkX() - wx) < tol
+                && Math.abs(sandboxRasterizer.spawnMarkZ() - wz) < tol) {
             sandboxRasterizer.setSpawnMark(Integer.MIN_VALUE, Integer.MIN_VALUE);
             // ★ v35：同时清掉交接（否则取消标记后世界仍会从这里出生）
             com.geogenesis.worldgen.spawn.SpawnSelection.clear();
