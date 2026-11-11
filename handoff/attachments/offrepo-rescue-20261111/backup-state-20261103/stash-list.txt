@@ -1,0 +1,2 @@
+﻿stash@{0}: On main: fill-first + PL-RGA surface (no measurable gain, reverted)
+stash@{1}: On main: wip-2026-08-03-all
