@@ -268,7 +268,7 @@ gradlew runTerrainStripePngProbe -PprobeArgs="seed size step ox oz"
 
 | 位置 | 内容 |
 |---|---|
-| `README.md` | 项目速览、目录地图、许可 |
+| `README.md` | 仓库门面：特性 · 安装 · 使用（快捷键/预览操作）· 构建 · 门禁 · 许可。★ 2026-11-11 重写：开发向目录地图与历史纠错注记已移入 `_archive/readme-2026-notes-20261111.md`，**不再复述代码结构与数值** |
 | `HYDROLOGY.md` | ★ **水文唯一事实来源**：§〇 用户口径 · §二 生产唯一链 · §三 铁律 · §四 正典规格 · §〇b* 最近实施记录 · §七 接手须知 |
 | `ARCHITECTURE.md` | 核心架构、配置表、注册流程 |
 | `AGENTS.md`（本文件）| 项目规则、架构速览、硬约束、用户规则 |
