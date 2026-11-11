@@ -29,8 +29,50 @@ import com.geogenesis.client.preview.sandbox.SandboxGeometry;
  */
 public final class ViewTransition {
 
-    /** 过渡总时长（毫秒）。参考项目 {@code TRANSITION_MS=620}；运镜需要略长才不显得急。 */
-    public static final long DURATION_MS = 720L;
+    /**
+     * 过渡总时长（毫秒）。参考项目 {@code TRANSITION_MS=620}；运镜需要略长才不显得急。
+     *
+     * <h2>★ 慢放（诊断用，默认关闭）</h2>
+     * <p>用户要求：「建议临时弄一个慢速播放功能，这样方便我观察问题好反馈，
+     * 毕竟你离线的效果和我实机看到的不一样。」</p>
+     *
+     * <p>两种给法都支持（<b>同一个含义、同一个默认值 720</b>）：</p>
+     * <pre>
+     *   -Dgeogenesis.transition.ms=2880        # JVM 属性
+     *   set GEOGENESIS_TRANSITION_MS=2880      # 环境变量（gradlew runClient 会继承）
+     * </pre>
+     * <p>合法范围 100~60000ms，越界或解析失败<b>静默回退 720</b>（不能因为调试开关写错就崩）。
+     * 配合 {@code geogenesis.transition.trace} 可逐帧打印相位量。</p>
+     */
+    public static final long DURATION_MS = resolveDurationMs();
+
+    /** 出厂默认时长；改它要同步 {@code ViewTransitionProbe} 的 600~1200ms 判据。 */
+    public static final long DEFAULT_DURATION_MS = 720L;
+
+    private static final String PROP_MS = "geogenesis.transition.ms";
+    private static final String ENV_MS = "GEOGENESIS_TRANSITION_MS";
+    private static final String PROP_TRACE = "geogenesis.transition.trace";
+    private static final String ENV_TRACE = "GEOGENESIS_TRANSITION_TRACE";
+
+    private static long resolveDurationMs() {
+        String v = System.getProperty(PROP_MS);
+        if (v == null || v.trim().isEmpty()) v = System.getenv(ENV_MS);
+        if (v == null) return DEFAULT_DURATION_MS;
+        try {
+            long ms = Long.parseLong(v.trim());
+            if (ms >= 100L && ms <= 60_000L) return ms;
+        } catch (NumberFormatException ignored) {
+            // 调试开关写错不该影响功能
+        }
+        return DEFAULT_DURATION_MS;
+    }
+
+    /** 逐帧诊断日志开关（默认关）。 */
+    public static boolean traceEnabled() {
+        String v = System.getProperty(PROP_TRACE);
+        if (v == null || v.trim().isEmpty()) v = System.getenv(ENV_TRACE);
+        return v != null && ("true".equalsIgnoreCase(v.trim()) || "1".equals(v.trim()));
+    }
 
     /** 平面端的相机姿态：正俯视、无偏航。 */
     public static final float PITCH_PLANE = 0f;
@@ -133,14 +175,13 @@ public final class ViewTransition {
     }
 
     /**
-     * <b>高精度纹理的不透明度</b>：第一段 1 → 0，第二段恒 0。
+     * <b>高精度平面图的不透明度</b>：第一段 1 → 0，第二段恒 0。
      *
-     * <p>它只在<b>第一段</b>里参与，而且是与体素正俯视<b>完全重合</b>的两张图之间的
-     * 一次材质交接 —— 相机不动、位置不变，所以读起来是"贴图精度在换"，
-     * 而不是"一张图淡出、另一张图淡入"。第二段（运镜）里它已经是 0，
-     * 观众看到的自始至终是同一个体素场景。</p>
+     * <p>第一段里它是与<b>体素正俯视完全重合</b>的两张图之间的一次材质交接
+     * —— 相机不动、位置不变、尺度也不变（见 {@link #scale}），
+     * 所以读起来是"贴图精度在换"，而不是"一张图淡出、另一张图淡入"。</p>
      */
-    public static float groundAlpha(float ease, boolean toSandbox) {
+    public static float planeTextureAlpha(float ease, boolean toSandbox) {
         return 1.0f - relief(ease, toSandbox);
     }
 
@@ -171,8 +212,14 @@ public final class ViewTransition {
     public static void scale(float ease, boolean toSandbox, int w, int h, float fill, float[] out) {
         float planeSx = w / 2f;
         float planeSy = h / 2f;
-        // ★ 尺度也只走第一段：材质换完就该是沙盘尺度，运镜期间不再缩
-        float t = relief(ease, toSandbox);
+        // ★★ v57【尺度只属于第二段】★★
+        //
+        //   第一段若也插尺度，正俯视下的体素就不是"同一张图"了：
+        //   它一边淡入一边缩/胀，看起来像镜头已经在动 ⇒ 用户实测
+        //   「感觉第二阶段好像并没有在第一段结束才开始，像提前了」。
+        //   ⇒ 第一段恒定 (w/2, h/2)：纹理与体素<b>逐像素重合</b>，只换材质；
+        //     第二段运镜时再一并收到 fill（倾斜 + 微缩放，本来就是一体的动作）。
+        float t = smooth01(cameraPhase(ease, toSandbox));
         out[0] = planeSx + (fill - planeSx) * t;
         out[1] = planeSy + (fill - planeSy) * t;
     }

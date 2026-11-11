@@ -1004,29 +1004,40 @@ public class PreviewDisplay extends AbstractWidget {
             float[] sxy = new float[2];
             ViewTransition.scale(ease, toSandbox, w, h, fill, sxy);
             // ★ 诊断：过渡首帧打一条，便于实机定位"地面没画/画了不可见"
-            if (ease < 0.02f) {
-                LOGGER.info("[Preview] 运镜开始 dir={} yaw={} pitch={} fill={} sx={} sy={} "
-                                + "tex={}x{} data={} reliefSpan={}",
+            if (ease < 0.02f || ViewTransition.traceEnabled()) {
+                LOGGER.info("[Preview] 过渡{} dir={} ease={} pitch={} yaw={} relief={} texA={} "
+                                + "fill={} sx={} sy={} dur={}ms tex={}x{} data={}",
+                        ViewTransition.traceEnabled() ? "帧" : "开始",
                         toSandbox ? "→沙盘" : "→平面",
-                        String.format(java.util.Locale.ROOT, "%.3f", yaw),
+                        String.format(java.util.Locale.ROOT, "%.3f", ease),
                         String.format(java.util.Locale.ROOT, "%.3f", pitch),
+                        String.format(java.util.Locale.ROOT, "%.3f", yaw),
+                        String.format(java.util.Locale.ROOT, "%.3f",
+                                ViewTransition.relief(ease, toSandbox)),
+                        String.format(java.util.Locale.ROOT, "%.3f",
+                                ViewTransition.planeTextureAlpha(ease, toSandbox)),
                         String.format(java.util.Locale.ROOT, "%.1f", fill),
                         String.format(java.util.Locale.ROOT, "%.1f", sxy[0]),
                         String.format(java.util.Locale.ROOT, "%.1f", sxy[1]),
-                        texW, texH, sandboxData != null, reliefSpan);
+                        ViewTransition.DURATION_MS, texW, texH, sandboxData != null);
             }
-            // ★ v56【两段式：先换材质，再运镜】—— 用户 2026-11-11 裁定
+            // ★★ v57【第一段不再经过地面曲面光栅化】★★
             //
-            //   「先从高精度的平面模式平滑变化到沙盘的正俯视视角，然后再进行运镜，
-            //     这样纹理就不会突变了。」
+            //   用户实机：「感觉第二阶段好像并没有在第一段结束才开始，像提前了」。
             //
-            //   第一段：相机不动（pitch=0/yaw=0），纹理 1→0、体素 0→1、尺度 → 沙盘尺度。
-            //          两张图完全重合 ⇒ 只是材质/精度在换。
-            //   第二段：groundAlpha 已经是 0、relief 已经是 1，只剩 pitch/yaw 抬起来。
-            //   ⇒ 不再出现"一边转一边换贴图"的突兀感。
-            drawGroundSurface(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1],
-                    ViewTransition.groundAlpha(ease, toSandbox),
-                    ViewTransition.relief(ease, toSandbox));
+            //   病根就在这：旧第一段画的是 {@code drawGroundSurface} ——
+            //   一张 96×96 的高度场曲面网格，用<b>最近邻</b>采样平面纹理。
+            //   只要 sy 一离开 h/2，它就<b>立刻</b>从"精确 blit"切到这张粗糙曲面
+            //   ⇒ 切换的<b>第一帧</b>整幅图就变糊/变块，看起来像"第二段已经开始"。
+            //
+            //   正解：第一段两边都是<b>正俯视的同一张图</b> ——
+            //   高精度纹理（blit，逐像素精确）与体素正俯视（柱顶铺满同一矩形）
+            //   在 (w/2, h/2) 尺度下<b>完全重合</b>，只需交叉淡变；
+            //   曲面网格在 pitch=0 时本来就是多余的（高度不参与投影）。
+            //   ⇒ 删除 drawGroundSurface / rasterizeGround / fillGroundTri 全套（199 行），
+            //     第二段由柱体自己承担（那时地面早已淡到 0）。
+            blitPlaneOnly(g, x, y, w, h,
+                    ViewTransition.planeTextureAlpha(ease, toSandbox), 1f);
 
             // ---- 2) 柱体：<b>由同一个 relief 驱动高度与不透明度</b> ----
             //
@@ -1054,205 +1065,6 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 运镜期间为 true：{@code renderSandbox} 跳过拾取与标记（它们在快速运动中没有意义）。 */
     private boolean cameraMoveActive;
-
-    /**
-     * <b>地面：按高度位移的纹理曲面</b>（★ v50，照 diorama {@code ImmediateCanvas} 的 1.20.1 写法）。
-     *
-     * <h2>为什么不能是平板</h2>
-     * <p>v49 用 PoseStack 仿射把纹理贴在一块平面上。仿射只能「旋转 + 压缩」，
-     * <b>做不了逐点高度位移</b> ⇒ 地面永远是一块飘在下面的平板，而柱体是立体的
-     * ⇒ 相机一倾斜两者分离，观感就是「两张图叠着」（用户实机反馈）。
-     * 离线分镜 {@code runTransitionFilmstripProbe} 已经复现并验证：改成高度位移后，
-     * 五帧读起来是<b>一整块地形在转</b>。</p>
-     *
-     * <h2>顶点高度</h2>
-     * <p>取 {@link #sandboxData} 的高度网格（水抬到海平面），顶点共享 ⇒ 曲面连续无缝隙。
-     * {@code pitch=0} 时所有顶点共面（{@code r5=0}）⇒ 投影结果逐像素等于平面图。</p>
-     *
-     * <h2>GL 提交（照参考项目，不自行发明）</h2>
-     * <pre>
-     *   g.flush()                                   // 先画掉 GUI 已批处理的，保证在下面
-     *   Tesselator.getBuilder().begin(QUADS, POSITION_TEX_COLOR)
-     *   vertex(pose, x, y, 0).uv(u,v).color(argb).endVertex()     // 1.20.1 命名
-     *   RenderSystem.setShaderTexture(0, texLoc)
-     *   BufferUploader.drawWithShader(mesh.end())
-     * </pre>
-     */
-    private void drawGroundSurface(GuiGraphics g, int x, int y, int w, int h,
-                                   float yaw, float pitch, float sx, float sy, float alpha,
-                                   float relief) {
-        if (texLoc == null || texW <= 0 || texH <= 0 || alpha <= 0.004f) return;
-        float[] r = com.geogenesis.client.preview.sandbox.SandboxGeometry.rotationRows(yaw, pitch);
-        boolean flatView = Math.abs(yaw) < 1e-6f && Math.abs(pitch) < 1e-6f
-                && Math.abs(sx - w / 2f) < 0.01f && Math.abs(sy - h / 2f) < 0.01f;
-        if (flatView) {
-            // 与静态平面完全同一条路径 ⇒ 逐像素一致
-            blitPlaneOnly(g, x, y, w, h, alpha, 1f);
-            return;
-        }
-        TerrainFieldData d = sandboxData;
-        if (d == null || d.gridW <= 0) {
-            // 数据还没建好（第一帧）：退回平面贴图，下一帧就有曲面了
-            blitPlaneOnly(g, x, y, w, h, alpha, 1f);
-            return;
-        }
-
-        // ★★★ v53【改用「CPU 光栅化 + g.blit」，彻底绕开手写 GL】★★★
-        //
-        //   实机三次失败（POSITION_TEX_COLOR / POSITION_TEX / RenderType.guiTextured 不存在）
-        //   全部是「一点切换就黑屏」⇒ 地面一个像素都没画出来。
-        //   ⇒ 停止在 GL 提交上试错。改用本项目<b>已经被证明能工作</b>的链路：
-        //     软件光栅化 → NativeImage → DynamicTexture.upload() → g.blit
-        //   这正是平面模式现在的做法（blitPlaneOnly 走的就是 g.blit），
-        //   离线分镜 runTransitionFilmstripProbe 用的也是同一套光栅化算法。
-        ensureGroundCanvas(w, h);
-        rasterizeGround(r, sx, sy, d, w, h, relief);
-        groundTexture.upload();
-        boolean shade = alpha < 0.999f;
-        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
-        g.blit(groundLoc, x, y, w, h, 0, 0, w, h, w, h);
-        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        groundQuadsDrawn = GROUND_MESH * GROUND_MESH;
-    }
-
-    // ---- 过渡用地面画布（第二张纹理；与平面纹理分开，避免互相踩）----
-
-    private NativeImage groundImage;
-    private DynamicTexture groundTexture;
-    private ResourceLocation groundLoc;
-
-    private void ensureGroundCanvas(int w, int h) {
-        if (groundImage != null && groundImage.getWidth() == w && groundImage.getHeight() == h) return;
-        releaseGroundCanvas();
-        groundImage = new NativeImage(NativeImage.Format.RGBA, w, h, false);
-        groundTexture = new DynamicTexture(groundImage);
-        groundLoc = ResourceLocation.tryParse("geogenesis:ground_" + System.nanoTime());
-        mc.getTextureManager().register(groundLoc, groundTexture);
-    }
-
-    private void releaseGroundCanvas() {
-        if (groundLoc != null) {
-            try { mc.getTextureManager().release(groundLoc); } catch (Throwable ignored) { }
-            groundLoc = null;
-        }
-        if (groundImage != null) {
-            try { groundImage.close(); } catch (Throwable ignored) { }
-            groundImage = null;
-        }
-        groundTexture = null;
-    }
-
-    /**
-     * 把带纹理的高度场光栅化进 {@link #groundImage}（与离线分镜同一算法）。
-     *
-     * <p>按四边形远→近提交（画家算法），两个三角形分别做 UV 重心插值 + 最近邻采样。</p>
-     */
-    private void rasterizeGround(float[] r, float sx, float sy, TerrainFieldData d,
-                                 int w, int h, float relief) {
-        groundImage.fillRect(0, 0, w, h, 0);
-        final int m = GROUND_MESH;
-        int gn = m + 1;
-        double cx = w / 2.0, cy = h / 2.0;
-        double base = seaLevel - 4.0;
-        double spanV = Math.max(20.0, reliefSpan);
-        int gh = d.gridH;
-        double step = Math.max(1, d.gridW) / (double) m;
-
-        float[] vz = new float[gn * gn];
-        for (int iz = 0; iz < gn; iz++) {
-            for (int ix = 0; ix < gn; ix++) {
-                int gx = Math.min(d.gridW - 1, (int) (ix * step));
-                int gz = Math.min(gh - 1, (int) (iz * step));
-                int i = gx * gh + gz;
-                double hv = d.height[i];
-                if (d.e[i] < 0.0) hv = seaLevel;
-                if (Double.isNaN(hv)) hv = seaLevel;
-                double ratio = Math.max((hv - base) / spanV, 0.05);
-                // ★ v55：曲面高度也必须由 relief 驱动 ——
-                //   若地面一直是满高、柱体却从 0 长起，中途会看到"柱子陷在一块
-                //   已经立起来的地面里"（又是"两张图"）。两者同源 ⇒ 同一个曲面在长。
-                vz[iz * gn + ix] = (float) (ratio * com.geogenesis.client.preview.sandbox
-                        .SandboxGeometry.RELIEF * relief);
-            }
-        }
-
-        Integer[] order = new Integer[m * m];
-        float[] depth = new float[m * m];
-        for (int i = 0; i < m * m; i++) {
-            depth[i] = r[6] * modelX(i % m, m) + r[7] * modelY(i / m, m);
-            order[i] = i;
-        }
-        java.util.Arrays.sort(order, (a, b) -> Float.compare(depth[a], depth[b]));
-
-        for (Integer idx : order) {
-            int qx = idx % m, qz = idx / m;
-            float z00 = vz[qz * gn + qx], z10 = vz[qz * gn + qx + 1];
-            float z01 = vz[(qz + 1) * gn + qx], z11 = vz[(qz + 1) * gn + qx + 1];
-            float x0 = modelX(qx, m), x1 = modelX(qx + 1, m);
-            float y0 = modelY(qz, m), y1 = modelY(qz + 1, m);
-            float u0 = qx / (float) m, u1 = (qx + 1) / (float) m;
-            float v0 = qz / (float) m, v1 = (qz + 1) / (float) m;
-
-            double[] p00 = groundProject(r, sx, sy, cx, cy, x0, y0, z00);
-            double[] p10 = groundProject(r, sx, sy, cx, cy, x1, y0, z10);
-            double[] p11 = groundProject(r, sx, sy, cx, cy, x1, y1, z11);
-            double[] p01 = groundProject(r, sx, sy, cx, cy, x0, y1, z01);
-            fillGroundTri(p00, u0, v0, p10, u1, v0, p11, u1, v1, w, h);
-            fillGroundTri(p00, u0, v0, p11, u1, v1, p01, u0, v1, w, h);
-        }
-    }
-
-    private static double[] groundProject(float[] r, float sx, float sy,
-                                          double cx, double cy,
-                                          float mx, float my, float mz) {
-        return new double[]{
-                cx + sx * (r[0] * mx + r[1] * my + r[2] * mz),
-                cy + sy * (r[3] * mx + r[4] * my + r[5] * mz)};
-    }
-
-    /** 三角形填充 + UV 重心插值 + 最近邻采样（采样源 = 平面纹理 {@link #image}）。 */
-    private void fillGroundTri(double[] a, double au, double av,
-                               double[] b, double bu, double bv,
-                               double[] c, double cu, double cv,
-                               int w, int h) {
-        int minX = (int) Math.max(0, Math.floor(Math.min(a[0], Math.min(b[0], c[0]))));
-        int maxX = (int) Math.min(w - 1, Math.ceil(Math.max(a[0], Math.max(b[0], c[0]))));
-        int minY = (int) Math.max(0, Math.floor(Math.min(a[1], Math.min(b[1], c[1]))));
-        int maxY = (int) Math.min(h - 1, Math.ceil(Math.max(a[1], Math.max(b[1], c[1]))));
-        if (minX > maxX || minY > maxY) return;
-        double dd = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
-        if (Math.abs(dd) < 1e-9) return;
-        double eps = 1e-6 * (1 + Math.abs(dd));
-        for (int py = minY; py <= maxY; py++) {
-            for (int px = minX; px <= maxX; px++) {
-                double l1 = ((b[1] - c[1]) * (px - c[0]) + (c[0] - b[0]) * (py - c[1])) / dd;
-                double l2 = ((c[1] - a[1]) * (px - c[0]) + (a[0] - c[0]) * (py - c[1])) / dd;
-                double l3 = 1 - l1 - l2;
-                if (l1 < -eps || l2 < -eps || l3 < -eps) continue;
-                double u = l1 * au + l2 * bu + l3 * cu;
-                double v = l1 * av + l2 * bv + l3 * cv;
-                int tx = (int) (u * (texW - 1));
-                int tz = (int) (v * (texH - 1));
-                tx = tx < 0 ? 0 : Math.min(texW - 1, tx);
-                tz = tz < 0 ? 0 : Math.min(texH - 1, tz);
-                groundImage.setPixelRGBA(px, py, image.getPixelRGBA(tx, tz));
-            }
-        }
-    }
-
-    /** 上一次提交的地面四边形数（0 = 没画；诊断用）。 */
-    private int groundQuadsDrawn;
-
-    /** 地面网格分辨率（每边四边形数）。过渡期间每帧重建，取折中精度与成本。 */
-    private static final int GROUND_MESH = 96;
-
-    private static float modelX(int q, int m) {
-        return q / (float) m * 2f - 1f;
-    }
-
-    private static float modelY(int q, int m) {
-        return q / (float) m * 2f - 1f;
-    }
 
     /**
      * 只把<b>平面图</b>贴到屏幕上（可带 alpha 与竖向收缩）。
@@ -2707,7 +2519,6 @@ public class PreviewDisplay extends AbstractWidget {
         if (ownsTerrain && terrain != null) terrain.closeProcessErosion();
         mc.getTextureManager().release(texLoc);
         texture.close();
-        releaseGroundCanvas();
         // ★ 磁盘持久化：关屏保存全部历史（后台线程 + tmp 原子写，不阻塞 UI）。
         //   保存历史层（紧凑数据，含本次会话所有采样 + 磁盘加载的），跨会话完整保留。
         long seedSnapshot = diskSeed;

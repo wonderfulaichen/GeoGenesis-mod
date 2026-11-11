@@ -176,6 +176,18 @@ public final class ViewTransitionProbe {
             System.out.println("    OK");
         }
 
+        // ★ v57：第一段<b>不许动尺度</b>（动了就像镜头已经起跑）
+        float[] sMid = new float[2];
+        ViewTransition.scale(ViewTransition.PHASE_TEXTURE, true, w, h, fill, sMid);
+        System.out.printf("    第一段结束 ease=%.2f ⇒ sx/sy=%.1f/%.1f（必须仍是 w/2,h/2）%n",
+                ViewTransition.PHASE_TEXTURE, sMid[0], sMid[1]);
+        if (Math.abs(sMid[0] - w / 2f) > 0.01f || Math.abs(sMid[1] - h / 2f) > 0.01f) {
+            System.out.println("    FAIL: 第一段就在缩放 ⇒ 体素与纹理不再重合，会像'提前运镜'");
+            pass = false;
+        } else {
+            System.out.println("    OK（第一段完全静止，只换材质）");
+        }
+
         // ---- [8] 外观：第一段只换材质、第二段才运镜 ----
         //
         //   ★ v56 用户裁定：「先从高精度的平面模式平滑变化到沙盘的正俯视视角，
@@ -193,7 +205,7 @@ public final class ViewTransitionProbe {
             } else {
                 // 第二段
                 minReliefInB = Math.min(minReliefInB, ViewTransition.relief(e, true));
-                maxGroundInB = Math.max(maxGroundInB, ViewTransition.groundAlpha(e, true));
+                maxGroundInB = Math.max(maxGroundInB, ViewTransition.planeTextureAlpha(e, true));
             }
         }
         System.out.printf("    第一段 |pitch| 最大 = %.4f（应 0）%n", maxPitchInA);

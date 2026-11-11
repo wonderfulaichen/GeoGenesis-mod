@@ -130,7 +130,7 @@ public final class TransitionFilmstripProbe {
             System.out.printf("%.2f   %.3f   %.3f   %.1f    %.1f    %.1f    %.2f%n",
                     ease, pitch, yaw, fill, sxy[0], sxy[1], relief);
 
-            BufferedImage frame = renderFrame(tex, data, span, cols, r, sxy[0], sxy[1], relief);
+            BufferedImage frame = renderFrame(tex, data, span, cols, r, sxy[0], sxy[1], relief, ease);
             int ox = k * FW;
             for (int y = 0; y < FH; y++) {
                 for (int xx = 0; xx < FW; xx++) strip.setRGB(ox + xx, y, frame.getRGB(xx, y));
@@ -170,18 +170,29 @@ public final class TransitionFilmstripProbe {
 
     private static BufferedImage renderFrame(int[] tex, TerrainFieldData data, double span,
                                              SandboxGeometry.Columns cols,
-                                             float[] r, float sx, float sy, float relief) {
+                                             float[] r, float sx, float sy, float relief,
+                                             float ease) {
         BufferedImage img = new BufferedImage(FW, FH, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < FH; y++) {
             for (int x = 0; x < FW; x++) img.setRGB(x, y, 0x0A0C12);
         }
         double cx = FW / 2.0, cy = FH / 2.0;
 
-        // ---- 1) 地面贴图 ----
-        // ★★ v50 关键修正：地面必须<b>按高度位移</b>，不能是平板 ★★
-        //   平板地面（模型 z=0）+ 立体柱体 ⇒ 相机一倾斜，两者必然分离，
-        //   看起来就是"两张图叠着"。必须把纹理贴到高度场曲面上。
-        fillGroundHeightfield(img, r, sx, sy, cx, cy, tex, data, span, relief);
+        // ---- 1) 高精度平面图（v57：与生产的 blitPlaneOnly 同义 —— 正俯视铺满整帧）----
+        //   ★ 生产已删掉 96×96 地面曲面：pitch=0 时高度不参与投影，
+        //     第一段只需把"逐像素精确的平面纹理"与"体素正俯视"交叉淡变，
+        //     两者在 (w/2,h/2) 尺度下完全重合。
+        float texA = ViewTransition.planeTextureAlpha(ease, true);
+        if (texA > 0.004f) {
+            for (int y = 0; y < FH; y++) {
+                int v = (int) (y * (TEX - 1) / (double) (FH - 1));
+                for (int x = 0; x < FW; x++) {
+                    int u = (int) (x * (TEX - 1) / (double) (FW - 1));
+                    int src = tex[v * TEX + u];
+                    img.setRGB(x, y, blend(img.getRGB(x, y), src, (int) (255 * texA)));
+                }
+            }
+        }
 
         // ---- 2) 柱体（高度与 alpha 同为 relief，与生产同一个相机）----
         if (relief > 0.004f) {
@@ -225,59 +236,6 @@ public final class TransitionFilmstripProbe {
      * <p>顶点高度共享 ⇒ 曲面连续、无缝隙；{@code pitch=0} 时所有顶点共面，
      * 投影结果<b>逐像素等于平面图</b>（{@code r5=0}）。</p>
      */
-    private static void fillGroundHeightfield(BufferedImage img, float[] r, float sx, float sy,
-                                              double cx, double cy, int[] tex,
-                                              TerrainFieldData data, double span, float relief) {
-        int n = GROUND_M + 1;
-        double[] vh = new double[n * n];
-        for (int vz = 0; vz < n; vz++) {
-            for (int vx = 0; vx < n; vx++) {
-                vh[vz * n + vx] = groundHeight(data, vx, vz);
-            }
-        }
-        Integer[] order = new Integer[GROUND_M * GROUND_M];
-        double[] depth = new double[GROUND_M * GROUND_M];
-        for (int i = 0; i < GROUND_M * GROUND_M; i++) {
-            int qx = i % GROUND_M, qz = i / GROUND_M;
-            depth[i] = r[6] * gmx(qx) + r[7] * gmy(qz);
-            order[i] = i;
-        }
-        java.util.Arrays.sort(order, (a, b) -> Double.compare(depth[a], depth[b]));
-
-        for (Integer idx : order) {
-            int qx = idx % GROUND_M, qz = idx / GROUND_M;
-            double h00 = vh[qz * n + qx], h10 = vh[qz * n + qx + 1];
-            double h01 = vh[(qz + 1) * n + qx], h11 = vh[(qz + 1) * n + qx + 1];
-            double m00 = mnorm(h00, span) * relief, m10 = mnorm(h10, span) * relief;
-            double m01 = mnorm(h01, span) * relief, m11 = mnorm(h11, span) * relief;
-            double x0 = gmx(qx), x1 = gmx(qx + 1), z0 = gmy(qz), z1 = gmy(qz + 1);
-            double u0 = qx / (double) GROUND_M, u1 = (qx + 1) / (double) GROUND_M;
-            double v0 = qz / (double) GROUND_M, v1 = (qz + 1) / (double) GROUND_M;
-
-            double[] p00 = proj(r, sx, sy, cx, cy, x0, z0, m00);
-            double[] p10 = proj(r, sx, sy, cx, cy, x1, z0, m10);
-            double[] p11 = proj(r, sx, sy, cx, cy, x1, z1, m11);
-            double[] p01 = proj(r, sx, sy, cx, cy, x0, z1, m01);
-            fillTexTri(img, tex, TEX, p00, u0, v0, p10, u1, v0, p11, u1, v1, 1f);
-            fillTexTri(img, tex, TEX, p00, u0, v0, p11, u1, v1, p01, u0, v1, 1f);
-        }
-    }
-
-    private static double groundHeight(TerrainFieldData data, int vx, int vz) {
-        int step = Math.max(1, WINDOW / GROUND_M);
-        int gx = Math.min(data.gridW - 1, vx * step);
-        int gz = Math.min(data.gridH - 1, vz * step);
-        int i = gx * data.gridH + gz;
-        if (data.e[i] < 0.0) return SEA;
-        double h = data.height[i];
-        return Double.isNaN(h) ? SEA : Math.max(SEA - 40, Math.min(SEA + 120, h));
-    }
-
-    private static double gmx(int q) { return q / (double) GROUND_M * 2.0 - 1.0; }
-
-    private static double gmy(int q) { return q / (double) GROUND_M * 2.0 - 1.0; }
-
-    /** 高度 → 模型 z（与 buildColumns 同式：ratio*RELIEF）。 */
     private static double mnorm(double h, double span) {
         return Math.max((h - (SEA - 4.0)) / Math.max(20.0, span), 0.05) * SandboxGeometry.RELIEF;
     }
