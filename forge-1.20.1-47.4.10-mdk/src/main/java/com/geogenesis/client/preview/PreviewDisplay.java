@@ -1586,6 +1586,15 @@ public class PreviewDisplay extends AbstractWidget {
         sandboxPool.execute(() -> {
             TerrainFieldData built = TerrainFieldData.fromCellCache(
                     cellCache, ox, oz, bw, bh, grid, grid, id);
+            // ★★ v64【修"缩放后缺失数据等很久也补不回来"】★★
+            //
+            //   这里原来无条件 sandboxPending = built。
+            //   但缩放会让 id 连变（窗口变了，cellCache.version() 也在涨），
+            //   多个重建任务并发 ⇒ <b>先发起的旧窗口任务可能最后完成</b>，
+            //   把新窗口的数据覆盖掉 ⇒ 画面停在一份"小窗口、少 chunk"的旧结果，
+            //   再等也不会自愈（id 已记成新的，不会重发）。
+            //   ⇒ 只发布"仍是当前所需视口"的结果；过期的直接丢弃。
+            if (id != sandboxRebuildId) return;
             sandboxPending = built;
             sandboxPendingId = id;
         });

@@ -369,19 +369,33 @@ public final class SandboxRasterizer {
         //
         //   正确做法：直接取"四角 + 中心"这 5 根柱子的<b>投影包围盒</b>，
         //   把它的竖直中点对到视口中心。代价是 5 次投影，且与俯仰/偏航/缩放自动一致。
+        // ★★ v64【居中改用"全部可见柱"的投影包围盒】★★
+        //
+        //   v62 只取"四角 + 中心"5 个采样点 ⇒ 板面被顶到屏幕上沿、下方空一片
+        //   （用户截图：「上方占满内容，下方一片空」）。
+        //   现在遍历 {@code cols.ready}（~1.5 万根，O(n) per frame 可接受），
+        //   取每根柱顶<b>与柱底</b>的投影 y（柱底也画侧墙，是画面的一部分），
+        //   再加上底板的四条边角，得到真实竖直包围盒后取中点。
         float dyMin = Float.MAX_VALUE, dyMax = -Float.MAX_VALUE;
-        int[][] probe = {
-                {0, 0}, {cols.colCount - 1, 0}, {0, cols.colRows - 1},
-                {cols.colCount - 1, cols.colRows - 1},
-                {cols.colCount / 2, cols.colRows / 2}};
-        for (int[] pc : probe) {
-            int idx = pc[0] * cols.colRows + pc[1];
-            if (idx < 0 || idx >= cols.items.length) continue;
-            SandboxGeometry.Column pc0 = cols.items[idx];
-            float top = pc0 == null || pc0.top < 0f ? 0f : pc0.top;
-            float mx = SandboxGeometry.modelOf(cols.colCount, pc[0]);
-            float my = SandboxGeometry.modelOf(cols.colRows, pc[1]);
-            float dy = lastSY * (r[3] * mx + r[4] * my + r[5] * top);
+        for (int k = 0; k < cols.readyCount; k++) {
+            int idx = cols.ready[k];
+            SandboxGeometry.Column c = cols.items[idx];
+            if (c == null || c.top < 0f) continue;
+            int ci = idx / cols.colRows, cj = idx % cols.colRows;
+            float mx = SandboxGeometry.modelOf(cols.colCount, ci);
+            float my = SandboxGeometry.modelOf(cols.colRows, cj);
+            float dyTop = lastSY * (r[3] * mx + r[4] * my + r[5] * c.top);
+            float dyBase = lastSY * (r[3] * mx + r[4] * my);
+            if (dyTop < dyMin) dyMin = dyTop;
+            if (dyTop > dyMax) dyMax = dyTop;
+            if (dyBase < dyMin) dyMin = dyBase;
+            if (dyBase > dyMax) dyMax = dyBase;
+        }
+        // 底板四角（top=0）：即使某角落还没采样到，板面范围也应参与居中
+        for (int q = 0; q < 4; q++) {
+            float mx = ((q & 1) == 0) ? -1f : 1f;
+            float my = ((q & 2) == 0) ? -1f : 1f;
+            float dy = lastSY * (r[3] * mx + r[4] * my);
             if (dy < dyMin) dyMin = dy;
             if (dy > dyMax) dyMax = dy;
         }
