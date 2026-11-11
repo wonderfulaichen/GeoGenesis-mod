@@ -1236,7 +1236,13 @@ public class PreviewDisplay extends AbstractWidget {
      *   <li>{@code pitch/yaw}：平面恒 0（正俯视），沙盘用用户视角。</li>
      * </ul>
      */
-    /** 沙盘当前采样窗口（方块）—— ★ v65 起与平面完全同一档键。 */
+    /**
+     * <b>世界窗口（方块）—— 唯一来源</b>（★ v68）。
+     *
+     * <p>平面与沙盘共用同一档键 {@code scaleBlockPos}，窗口 = {@code texW × scaleBlockPos}。
+     * 此前这个式子在本类里抄了 4 遍（相机构造 / statusLine / 拖拽换算 / 日志），
+     * 每一处都是"上界/下限夹取"各写一次 —— 正是"改一处忘三处"的温床。</p>
+     */
     int sandboxWindowBlocks() {
         return Math.max(64, texW * scaleBlockPos);
     }
@@ -1308,8 +1314,8 @@ public class PreviewDisplay extends AbstractWidget {
         //   用户裁定：「缩放统一以平面为准，滚轮改的就是 scaleBlockPos，
         //   两个视图共享同一档键。」⇒ 沙盘<b>不再有独立档位</b>，
         //   窗口恒等于平面窗口（texW × scaleBlockPos），滚轮在任一视图里改的都是同一个键。
-        //   这样切视图时缩放天然不变，两个视图只差"怎么画"。
-        cam.windowX = Math.max(64, texW * scaleBlockPos);
+        // 这样切视图时缩放天然不变，两个视图只差"怎么画"。
+        cam.windowX = sandboxWindowBlocks();
         cam.windowZ = cam.windowX;
         int blocksWide = cam.windowX;
         int blocksHigh = cam.windowZ;
@@ -1835,7 +1841,7 @@ public class PreviewDisplay extends AbstractWidget {
     private void panSandboxBy(double dx, double dy) {
         int areaSize = Math.min(getWidth(), getHeight());
         // ★ v29：每细格方块数由真实窗口决定（不再是固定的 8）
-        int windowBlocks = Math.max(64, texW * scaleBlockPos);
+        int windowBlocks = sandboxWindowBlocks();
         double step = SandboxLod.effectiveStepFor(windowBlocks, areaSize);
         sandboxRasterizer.dragToBlocks(dx, dy, areaSize, areaSize, step, sandboxDragOut);
         // 浮点累加：拖动位移常小于 1 方块，直接取整会被吃掉
@@ -2815,6 +2821,9 @@ public class PreviewDisplay extends AbstractWidget {
             //   与平面那条公式不同源 —— 正是"两套拾取"的残留）。
             d.hoverWorldX = sandboxRasterizer.pickedWorldX();
             d.hoverWorldZ = sandboxRasterizer.pickedWorldZ();
+            // ★ v68：把该格 Cell 一并交给 HUD —— 悬停文案与平面共用 HoverLines，
+            //   所以沙盘里也能看到群系/地形/气候（此前只有两行坐标）。
+            d.cell = sampleHoverCell(d.hoverWorldX, d.hoverWorldZ);
         }
         com.geogenesis.client.preview.raster.SandboxHud.render(g, x, y, w, h, d);
     }

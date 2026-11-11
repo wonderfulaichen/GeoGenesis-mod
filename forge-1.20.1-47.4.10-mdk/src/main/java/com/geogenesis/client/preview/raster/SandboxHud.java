@@ -1,5 +1,6 @@
 package com.geogenesis.client.preview.raster;
 
+import com.geogenesis.client.preview.HoverLines;
 import com.geogenesis.client.preview.SandboxLod;
 import com.geogenesis.client.preview.UiKit;
 import net.minecraft.client.Minecraft;
@@ -32,6 +33,8 @@ public final class SandboxHud {
         public float pickedTopY;
         /** 悬停处对应的世界坐标。 */
         public int hoverWorldX, hoverWorldZ;
+        /** 悬停处的 Cell（与平面 tooltip 共用同一套文案；null = 未取到）。 */
+        public com.geogenesis.worldgen.terrain.Cell cell;
         /** 窗口起点（世界坐标）与窗口方块数 —— 用于把柱坐标换算成世界坐标。 */
         public int originWorldX, originWorldZ, windowBlocks;
     }
@@ -79,10 +82,13 @@ public final class SandboxHud {
     private static void drawHover(GuiGraphics g, int x, int y, int w, int h, HudData d) {
         if (d.pickedColX < 0) return;
         Minecraft mc = Minecraft.getInstance();
-        String[] lines = {
-                String.format(java.util.Locale.ROOT, "方块 %d, %d", d.hoverWorldX, d.hoverWorldZ),
-                String.format(java.util.Locale.ROOT, "高度 y=%d", (int) Math.round(d.pickedTopY)),
-        };
+        // ★ v68【悬停文案与平面共用同一套行】——
+        //   此前这里只有"方块坐标 + 高度"两行，群系/地形/气候全都没有，
+        //   而平面 tooltip 有六行 ⇒ 同一个位置在两种视图里读到的信息量不同。
+        //   现在两边都由 HoverLines 生成（同一实现），只是排布方式不同
+        //   （平面跟随光标、沙盘常驻左下）。
+        String[] lines = HoverLines.forWorld(
+                d.hoverWorldX, d.hoverWorldZ, d.pickedTopY, d.cell);
         int lh = mc.font.lineHeight + 1;
         int maxW = 0;
         for (String s : lines) maxW = Math.max(maxW, mc.font.width(s));

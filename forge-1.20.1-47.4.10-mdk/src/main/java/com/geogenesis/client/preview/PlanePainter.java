@@ -435,30 +435,13 @@ public final class PlanePainter {
         int screenH = Minecraft.getInstance().getWindow().getGuiScaledHeight();
         int lx = (int) mx + 14;
         int ly = (int) my + 14;
-        // 第一行：坐标 + 高度
-        String line0 = String.format("X=%d  Z=%d  Y=%d", host.hoverX, host.hoverZ, (int) Math.round(c.height));
-        // 第二行：群系名 + 地形类型
-        BiomeClassifier.BiomeClass biome = BiomeClassifier.classify(c);
-        String biomeName = "—";
-        if (biome != null) {
-            String key = "geogenesis.biome." + biome.name();
-            String localized = I18n.get(key);
-            biomeName = localized.equals(key) ? biome.name() : localized;
-        }
-        String line1 = biomeName + "  " + typeLine(c);
-        // 第三行：温度/湿度/大陆性
-        String line2 = String.format("temp=%.2f  hum=%.2f  cont=%.2f", c.temperature, c.humidity, c.continentNoise);
-        // 第四行：纬度 + 地形起伏
-        String line3 = String.format("lat=%.2f  relief=%.2f",
-            com.geogenesis.worldgen.climate.Latitude.latitude01(host.hoverZ),
-            (c.shape + 1) * 0.5);
-        // 第五行：水文信息（河流系统已清除，仅保留湖泊）
-        String line4 = c.lakeMask ? I18n.get("geogenesis.preview.lake") : "—";
-
-        String line5 = host.activeLayer.kind == GeoPalette.Kind.DISCRETE
-            ? "左键选中色块 · 右键复制坐标"
-            : "右键复制坐标";
-        String[] lines = {line0, line1, line2, line3, line4, line5};
+        // ★ v68：文案由 HoverLines 生成（与沙盘常驻浮层同一实现），
+        //   本方法只负责"跟随光标"的排布与配色。
+        String[] body = HoverLines.forWorld(host.hoverX, host.hoverZ, c.height, c);
+        String line5 = HoverLines.hint(host.activeLayer.kind == GeoPalette.Kind.DISCRETE);
+        String[] lines = new String[body.length + 1];
+        System.arraycopy(body, 0, lines, 0, body.length);
+        lines[body.length] = line5;
         // 自动计算面板宽度
         int maxW = 0;
         for (String l : lines) maxW = Math.max(maxW, Minecraft.getInstance().font.width(l));
@@ -478,24 +461,9 @@ public final class PlanePainter {
     }
 
     // ---- typeLine ----
+    //   ★ v68：实现搬到 {@link HoverLines#typeLine}（沙盘悬停复用同一份）。
     private static String typeLine(Cell c) {
-        return switch (c.terrainType) {
-            case OCEAN -> I18n.get("geogenesis.preview.type.ocean");
-            case DEEP_OCEAN -> I18n.get("geogenesis.preview.type.deep_ocean");
-            case CONTINENTAL_SHELF -> I18n.get("geogenesis.preview.type.continental_shelf");
-            case SUBMARINE_RIDGE -> I18n.get("geogenesis.preview.type.submarine_ridge");
-            case SEAMOUNT -> I18n.get("geogenesis.preview.type.seamount");
-            case BEACH -> I18n.get("geogenesis.preview.type.beach");
-            case PLAIN -> I18n.get("geogenesis.preview.type.plain");
-            case HILLS -> I18n.get("geogenesis.preview.type.hills");
-            case PLATEAU -> I18n.get("geogenesis.preview.type.plateau");
-            case MOUNTAINS -> I18n.get("geogenesis.preview.type.mountains");
-            case PEAK -> I18n.get("geogenesis.preview.type.peak");
-            case BASIN -> I18n.get("geogenesis.preview.type.basin");
-            case RIVER -> I18n.get("geogenesis.preview.type.river");
-            case LAKE -> I18n.get("geogenesis.preview.type.lake");
-            default -> I18n.get("geogenesis.preview.type.land");
-        };
+        return HoverLines.typeLine(c);
     }
 
     /** 鼠标是否在宿主 widget 内（{@code isMouseOver} 是 protected，无法跨类访问）。 */
