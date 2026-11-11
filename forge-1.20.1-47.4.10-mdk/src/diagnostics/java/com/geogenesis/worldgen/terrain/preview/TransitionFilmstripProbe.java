@@ -33,7 +33,7 @@ import java.util.Locale;
  *   pitch = ViewTransition.pitch(ease, toSandbox)
  *   fill  = SandboxGeometry.fillScale(rotationRows(yaw,pitch), w, h)
  *   sxy   = ViewTransition.scale(ease, toSandbox, w, h, fill)
- *   alpha = ViewTransition.pillarAlpha(ease, toSandbox)
+ *   relief = ViewTransition.relief(ease, toSandbox)   // v55：高度与 alpha 同源
  * </pre>
  *
  * <p>用法：{@code gradlew runTransitionFilmstripProbe} → {@code build/rv2/filmstrip.png}</p>
@@ -110,7 +110,7 @@ public final class TransitionFilmstripProbe {
 
         BufferedImage strip = new BufferedImage(FW * STEPS, FH, BufferedImage.TYPE_INT_RGB);
         boolean pass = true;
-        System.out.println("\nease   pitch   yaw     fill    sx      sy      柱alpha");
+        System.out.println("\nease   pitch   yaw     fill    sx      sy      relief");
         System.out.println("--------------------------------------------------------");
         for (int k = 0; k < STEPS; k++) {
             float ease = k / (float) (STEPS - 1);
@@ -120,11 +120,11 @@ public final class TransitionFilmstripProbe {
             float fill = SandboxGeometry.fillScale(r, FW, FH);
             float[] sxy = new float[2];
             ViewTransition.scale(ease, true, FW, FH, fill, sxy);
-            float alpha = ViewTransition.pillarAlpha(ease, true);
+            float relief = ViewTransition.relief(ease, true);
             System.out.printf("%.2f   %.3f   %.3f   %.1f    %.1f    %.1f    %.2f%n",
-                    ease, pitch, yaw, fill, sxy[0], sxy[1], alpha);
+                    ease, pitch, yaw, fill, sxy[0], sxy[1], relief);
 
-            BufferedImage frame = renderFrame(tex, data, span, cols, r, sxy[0], sxy[1], alpha);
+            BufferedImage frame = renderFrame(tex, data, span, cols, r, sxy[0], sxy[1], relief);
             int ox = k * FW;
             for (int y = 0; y < FH; y++) {
                 for (int xx = 0; xx < FW; xx++) strip.setRGB(ox + xx, y, frame.getRGB(xx, y));
@@ -164,7 +164,7 @@ public final class TransitionFilmstripProbe {
 
     private static BufferedImage renderFrame(int[] tex, TerrainFieldData data, double span,
                                              SandboxGeometry.Columns cols,
-                                             float[] r, float sx, float sy, float alpha) {
+                                             float[] r, float sx, float sy, float relief) {
         BufferedImage img = new BufferedImage(FW, FH, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < FH; y++) {
             for (int x = 0; x < FW; x++) img.setRGB(x, y, 0x0A0C12);
@@ -175,10 +175,10 @@ public final class TransitionFilmstripProbe {
         // ★★ v50 关键修正：地面必须<b>按高度位移</b>，不能是平板 ★★
         //   平板地面（模型 z=0）+ 立体柱体 ⇒ 相机一倾斜，两者必然分离，
         //   看起来就是"两张图叠着"。必须把纹理贴到高度场曲面上。
-        fillGroundHeightfield(img, r, sx, sy, cx, cy, tex, data, span);
+        fillGroundHeightfield(img, r, sx, sy, cx, cy, tex, data, span, relief);
 
-        // ---- 2) 柱体（alpha 浮现，与生产同一个相机）----
-        if (alpha > 0.004f) {
+        // ---- 2) 柱体（高度与 alpha 同为 relief，与生产同一个相机）----
+        if (relief > 0.004f) {
             Integer[] order = new Integer[cols.readyCount];
             for (int k = 0; k < cols.readyCount; k++) order[k] = cols.ready[k];
             final SandboxGeometry.Columns cc = cols;
@@ -189,12 +189,12 @@ public final class TransitionFilmstripProbe {
                         + r[7] * SandboxGeometry.modelOf(cc.colRows, b % cc.colRows);
                 return Double.compare(da, db);
             });
-            int a255 = (int) (255 * alpha);
+            int a255 = (int) (255 * relief);
             for (Integer col : order) {
                 SandboxGeometry.Column c = cols.items[col];
                 if (c == null || c.top < 0f) continue;
                 int rgb = c.rgb & 0xFFFFFF;
-                double t = c.top;
+                double t = c.top * relief;   // 与生产 draw(heightScale) 同式
                 fillQuadFlat(img, r, sx, sy, cx, cy, a255,
                         c.x0, c.y0, t, c.x1, c.y0, t, c.x1, c.y1, t, c.x0, c.y1, t, rgb);
                 fillQuadFlat(img, r, sx, sy, cx, cy, a255,
@@ -221,7 +221,7 @@ public final class TransitionFilmstripProbe {
      */
     private static void fillGroundHeightfield(BufferedImage img, float[] r, float sx, float sy,
                                               double cx, double cy, int[] tex,
-                                              TerrainFieldData data, double span) {
+                                              TerrainFieldData data, double span, float relief) {
         int n = GROUND_M + 1;
         double[] vh = new double[n * n];
         for (int vz = 0; vz < n; vz++) {
@@ -242,8 +242,8 @@ public final class TransitionFilmstripProbe {
             int qx = idx % GROUND_M, qz = idx / GROUND_M;
             double h00 = vh[qz * n + qx], h10 = vh[qz * n + qx + 1];
             double h01 = vh[(qz + 1) * n + qx], h11 = vh[(qz + 1) * n + qx + 1];
-            double m00 = mnorm(h00, span), m10 = mnorm(h10, span);
-            double m01 = mnorm(h01, span), m11 = mnorm(h11, span);
+            double m00 = mnorm(h00, span) * relief, m10 = mnorm(h10, span) * relief;
+            double m01 = mnorm(h01, span) * relief, m11 = mnorm(h11, span) * relief;
             double x0 = gmx(qx), x1 = gmx(qx + 1), z0 = gmy(qz), z1 = gmy(qz + 1);
             double u0 = qx / (double) GROUND_M, u1 = (qx + 1) / (double) GROUND_M;
             double v0 = qz / (double) GROUND_M, v1 = (qz + 1) / (double) GROUND_M;

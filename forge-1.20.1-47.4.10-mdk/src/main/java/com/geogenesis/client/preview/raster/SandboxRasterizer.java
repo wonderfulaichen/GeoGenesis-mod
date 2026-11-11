@@ -330,6 +330,9 @@ public final class SandboxRasterizer {
         //     推近档（zoom > BASE_ZOOM）用 {@link SandboxGeometry#scaleOf}
         //     —— 放大到局部铺满屏幕是"推近"的应有之义。
         float scale = viewScale(r, areaW, areaH);
+        // ★ v55：过渡期间允许非等比（平面姿态铺满视口，见 lastSX 注释）
+        lastSX = aspectSX > 0f ? aspectSX : scale;
+        lastSY = aspectSY > 0f ? aspectSY : scale;
         // ★★★ v32【真正修掉"旋转中心偏高 / 下方大片空白"】★★★
         //
         //   v31 我先照抄了参考项目的 `originX/Y = 视口中心`，但那<b>不够</b>：
@@ -511,12 +514,35 @@ public final class SandboxRasterizer {
     /** 顶点（横向按 widthScale 撑开由调用方已做）。 */
     private void vertex(VertexConsumer c, float ox, float oy, float s,
                         float mx, float my, float mz, int argb) {
-        c.vertex(ox + s * (lastR[0] * mx + lastR[1] * my + lastR[2] * mz),
-                 oy + s * (lastR[3] * mx + lastR[4] * my + lastR[5] * mz),
+        c.vertex(ox + lastSX * (lastR[0] * mx + lastR[1] * my + lastR[2] * mz),
+                 oy + lastSY * (lastR[3] * mx + lastR[4] * my + lastR[5] * mz),
                  SandboxGeometry.Z_BASE + SandboxGeometry.DEPTH_SCALE
                          * (lastR[6] * mx + lastR[7] * my + lastR[8] * mz))
          .color(argb)
          .endVertex();
+    }
+
+    // ★ v55：屏幕缩放分 X/Y 两个分量。
+    //
+    //   稳态沙盘两者相等（等比）；运镜期间靠它们把"平面姿态"变成
+    //   <b>非等比</b> —— 平面铺满整个视口（sx=w/2, sy=h/2），沙盘等比。
+    //   若只有单一 scale，平面姿态下盘面是正方形 ⇒ 宽屏两侧露底边
+    //   （正是用户说的"底盘明显还是没达到满屏"）。
+    private float lastSX = 1f, lastSY = 1f;
+
+    /** 过渡期间的非等比缩放（&le;0 = 不覆盖，用等比 viewScale）。 */
+    private float aspectSX, aspectSY;
+
+    /** 设置过渡用的非等比屏幕缩放（像素/模型单位）。 */
+    public void setAspectScale(float sx, float sy) {
+        aspectSX = sx;
+        aspectSY = sy;
+    }
+
+    /** 撤销非等比缩放（回到等比）。 */
+    public void clearAspectScale() {
+        aspectSX = 0f;
+        aspectSY = 0f;
     }
 
     private void wall(VertexConsumer c, float ox, float oy, float s,

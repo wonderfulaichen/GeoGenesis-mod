@@ -1006,12 +1006,27 @@ public class PreviewDisplay extends AbstractWidget {
                         String.format(java.util.Locale.ROOT, "%.1f", sxy[1]),
                         texW, texH, sandboxData != null, reliefSpan);
             }
-            drawGroundSurface(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1],
-                    ViewTransition.groundAlpha(ease, toSandbox));
+            drawGroundSurface(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1], 1f,
+                    ViewTransition.relief(ease, toSandbox));
 
-            // ---- 2) 柱体（alpha 浮现；数据/窗口逻辑复用 renderSandbox）----
+            // ---- 2) 柱体：<b>由同一个 relief 驱动高度与不透明度</b> ----
+            //
+            //   ★ v55【用户判定"像图片切换"之后的根本改法】
+            //   旧版：柱体 alpha 由 pillarAlpha 淡入、地面 groundAlpha 淡出
+            //        ⇒ 两个不透明度交叉淡变 = 叠化，无论参数怎么调都是"两张图"。
+            //   现在：高度与 alpha 都 = relief(ease) ⇒ 柱子是<b>从地面里长出来</b>的同一曲面，
+            //        平面端 relief=0 ⇒ 柱高 0、透明 0（看不见），场景此时就是那张地图。
+            //
+            //   ★ 非等比缩放必须与地面一致（sxy），否则平面端柱面比地面窄一圈、
+            //     宽屏上会露出一道边界（用户："底盘明显还是没达到满屏"）。
+            //   ★ 地面起伏与柱体起伏同源（同一个 relief）⇒ 一个曲面在长，不是两张图。
             cameraMoveActive = true;
-            renderSandbox(g, w, h, mx, my);
+            sandboxRasterizer.setAspectScale(sxy[0], sxy[1]);
+            try {
+                renderSandbox(g, w, h, mx, my);
+            } finally {
+                sandboxRasterizer.clearAspectScale();
+            }
             cameraMoveActive = false;
         } finally {
             sandboxRasterizer.clearCameraOverride();
@@ -1045,7 +1060,8 @@ public class PreviewDisplay extends AbstractWidget {
      * </pre>
      */
     private void drawGroundSurface(GuiGraphics g, int x, int y, int w, int h,
-                                   float yaw, float pitch, float sx, float sy, float alpha) {
+                                   float yaw, float pitch, float sx, float sy, float alpha,
+                                   float relief) {
         if (texLoc == null || texW <= 0 || texH <= 0 || alpha <= 0.004f) return;
         float[] r = com.geogenesis.client.preview.sandbox.SandboxGeometry.rotationRows(yaw, pitch);
         boolean flatView = Math.abs(yaw) < 1e-6f && Math.abs(pitch) < 1e-6f
@@ -1071,7 +1087,7 @@ public class PreviewDisplay extends AbstractWidget {
         //   这正是平面模式现在的做法（blitPlaneOnly 走的就是 g.blit），
         //   离线分镜 runTransitionFilmstripProbe 用的也是同一套光栅化算法。
         ensureGroundCanvas(w, h);
-        rasterizeGround(r, sx, sy, d, w, h);
+        rasterizeGround(r, sx, sy, d, w, h, relief);
         groundTexture.upload();
         boolean shade = alpha < 0.999f;
         if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
@@ -1113,7 +1129,7 @@ public class PreviewDisplay extends AbstractWidget {
      * <p>按四边形远→近提交（画家算法），两个三角形分别做 UV 重心插值 + 最近邻采样。</p>
      */
     private void rasterizeGround(float[] r, float sx, float sy, TerrainFieldData d,
-                                 int w, int h) {
+                                 int w, int h, float relief) {
         groundImage.fillRect(0, 0, w, h, 0);
         final int m = GROUND_MESH;
         int gn = m + 1;
@@ -1133,8 +1149,11 @@ public class PreviewDisplay extends AbstractWidget {
                 if (d.e[i] < 0.0) hv = seaLevel;
                 if (Double.isNaN(hv)) hv = seaLevel;
                 double ratio = Math.max((hv - base) / spanV, 0.05);
+                // ★ v55：曲面高度也必须由 relief 驱动 ——
+                //   若地面一直是满高、柱体却从 0 长起，中途会看到"柱子陷在一块
+                //   已经立起来的地面里"（又是"两张图"）。两者同源 ⇒ 同一个曲面在长。
                 vz[iz * gn + ix] = (float) (ratio * com.geogenesis.client.preview.sandbox
-                        .SandboxGeometry.RELIEF);
+                        .SandboxGeometry.RELIEF * relief);
             }
         }
 
@@ -1468,13 +1487,25 @@ public class PreviewDisplay extends AbstractWidget {
             }
         }
         if (d != null) {
-            // ★ v49：运镜期间柱体 alpha 从 0 浮现（见 ViewTransition.pillarAlpha）。
-            //   高度不插值 —— 柱高是地形量，不该在切视图时变化；
-            //   "立起来"的观感由相机 pitch 抬起本身产生。
-            float ease = transitionEase();
-            float globalAlpha = inTransition()
-                    ? ViewTransition.pillarAlpha(ease, transToSandbox) : 1f;
-            float heightScale = 1f;
+            // ★★★ v55【运镜：一个量驱动"长出来"】★★★
+            //
+            //   旧版 globalAlpha = pillarAlpha(ease)（淡入）、heightScale = 1（高度从第一帧就是满的）
+            //   ⇒ 用户看到的仍是"淡入一张新图"，因为柱体<b>高度没参与过渡</b>，
+            //     参与过渡的只有不透明度。
+            //   现在 heightScale 与 alpha <b>同为 relief</b>：
+            //     relief=0 ⇒ 柱高 0 + 透明 0（场景 = 地面贴图那张地图）
+            //     relief=1 ⇒ 满高 + 不透明（场景 = 沙盘）
+            //   ⇒ 同一曲面从平到立，不是两张图叠化。
+            float reliefScale = 1f;
+            float globalAlpha = 1f;
+            if (inTransition()) {
+                float e2 = transitionEase();
+                reliefScale = ViewTransition.relief(e2, transToSandbox);
+                globalAlpha = reliefScale;
+            }
+
+            sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h,
+                    reliefSpan, System.currentTimeMillis(), globalAlpha, reliefScale);
 
             // ★★★ v48【删除"切进沙盘时转动 yaw"】★★★
             //   这里原来是（v35 我自己加的，<b>参考项目并没有</b>）：
@@ -1491,9 +1522,6 @@ public class PreviewDisplay extends AbstractWidget {
             //   ⇒ 这违反用户裁定「谁切换视图还改缩放等信息呢？」（视角同属视图参数）。
             //   ⇒ 参考项目 {@code SiteTerrainRenderer.orbit()} 全仓<b>无任何调用方</b>
             //      （对照表 #57 已记录），本来就不是切换动画的一部分。
-
-            sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h,
-                    reliefSpan, System.currentTimeMillis(), globalAlpha, heightScale);
         }
 
         // ★ 地图标记（出生点 / 玩家 / 结构）：平面视图原有能力，沙盘也要有。

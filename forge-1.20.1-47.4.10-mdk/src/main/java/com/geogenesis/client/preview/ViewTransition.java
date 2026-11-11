@@ -81,24 +81,21 @@ public final class ViewTransition {
     }
 
     /**
-     * 柱子不透明度：平面端 0（不可见），沙盘端 1。
+     * <b>地形起伏强度</b>（0 = 平的，1 = 满高）—— 这是 v55 之后过渡的<b>唯一驱动量</b>。
      *
-     * <p>为什么必须淡入：柱顶是「每柱一个颜色」，平面端若可见就会把精细的地面纹理盖成马赛克。</p>
-     */
-    public static float pillarAlpha(float ease, boolean toSandbox) {
-        return toSandbox ? smooth01(ease) : smooth01(1.0f - ease);
-    }
-
-    /**
-     * 地面贴图不透明度：全程保持 1，<b>只在末段轻微淡出</b>。
+     * <h2>为什么用"起伏"而不是"柱体淡入"</h2>
+     * <p>旧版用 {@code pillarAlpha} 让柱体像贴图一样淡入、{@code groundAlpha} 让地面淡出。
+     * 用户实机判定：「切换动画依旧是像图片切换那样，完全没有完成我的设计要求」。
+     * 病根就在这：<b>两个不透明度的交叉淡变，无论怎么调都是"两张图叠化"</b>。</p>
      *
-     * <p>地面就是"地基"，柱体长满后会自然盖住它；末段淡出只为消除柱缝间的残留。</p>
+     * <p>正确的关系是<b>同一个曲面的形变</b>：地形从平（{@code relief=0}，
+     * 此时每根柱高为 0，整个场景退化成那张地图）长到满高
+     * （{@code relief=1}，柱顶按真实高度抬起）。
+     * 高度与不透明度由<b>同一个数</b>驱动 ⇒ 柱子"长出地面"的同时才可见，
+     * 不会出现"图上又贴了一层马赛克"。</p>
      */
-    public static float groundAlpha(float ease, boolean toSandbox) {
-        float t = toSandbox ? ease : 1.0f - ease;
-        // 0.75 之后开始淡出，1.0 时归零
-        if (t <= 0.75f) return 1.0f;
-        return smooth01(1.0f - (t - 0.75f) / 0.25f);
+    public static float relief(float ease, boolean toSandbox) {
+        return smooth01(toSandbox ? ease : 1.0f - ease);
     }
 
     /** 光照强度：平面端 0（平面图的光照是烘在纹理里的），沙盘端 1。 */

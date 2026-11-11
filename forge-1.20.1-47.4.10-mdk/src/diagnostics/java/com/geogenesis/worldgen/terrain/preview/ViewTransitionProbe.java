@@ -140,29 +140,36 @@ public final class ViewTransitionProbe {
             System.out.println("    OK（两端精确对齐 ⇒ 切换前后无跳变）");
         }
 
-        // ---- [6] 柱体 alpha ----
-        System.out.println("\n[6] 柱体 alpha");
-        float pa0 = ViewTransition.pillarAlpha(0f, true), pa1 = ViewTransition.pillarAlpha(1f, true);
-        float pb0 = ViewTransition.pillarAlpha(0f, false), pb1 = ViewTransition.pillarAlpha(1f, false);
-        System.out.printf("    切沙盘：%.3f → %.3f（应 0 → 1）%n", pa0, pa1);
-        System.out.printf("    切平面：%.3f → %.3f（应 1 → 0）%n", pb0, pb1);
-        if (Math.abs(pa0) > eps || Math.abs(pa1 - 1f) > eps
-                || Math.abs(pb0 - 1f) > eps || Math.abs(pb1) > eps) {
-            System.out.println("    FAIL: 平面端必须完全不可见（否则柱顶粗色块会盖住精细地图）");
+        // ---- [6] 地形起伏（v55：唯一驱动量）----
+        System.out.println("\n[6] 起伏 relief（高度与不透明度同源）");
+        float ra0 = ViewTransition.relief(0f, true), ra1 = ViewTransition.relief(1f, true);
+        float rb0 = ViewTransition.relief(0f, false), rb1 = ViewTransition.relief(1f, false);
+        System.out.printf("    切沙盘：%.3f → %.3f（应 0 → 1）%n", ra0, ra1);
+        System.out.printf("    切平面：%.3f → %.3f（应 1 → 0）%n", rb0, rb1);
+        // 中点必须严格在两端之间且单调（否则"长出来"会先缩再长）
+        float raMid = ViewTransition.relief(0.5f, true);
+        System.out.printf("    中点 %.3f（应在 (0,1) 内）%n", raMid);
+        if (Math.abs(ra0) > eps || Math.abs(ra1 - 1f) > eps
+                || Math.abs(rb0 - 1f) > eps || Math.abs(rb1) > eps
+                || raMid <= eps || raMid >= 1f - eps) {
+            System.out.println("    FAIL: 平面端必须 relief=0（柱高 0、不可见），沙盘端 =1");
             pass = false;
         } else {
             System.out.println("    OK");
         }
 
-        // ---- [7] 地面贴图 ----
-        System.out.println("\n[7] 地面贴图 alpha（前 75% 不透明，末段淡出）");
-        float gMid = ViewTransition.groundAlpha(0.5f, true);
-        float gNear = ViewTransition.groundAlpha(0.9f, true);
-        float gEnd = ViewTransition.groundAlpha(1f, true);
-        System.out.printf("    ease=0.50 → %.3f；0.90 → %.3f；1.00 → %.3f%n", gMid, gNear, gEnd);
-        boolean okGround = Math.abs(gMid - 1f) < eps && gNear < gMid && Math.abs(gEnd) < eps;
-        if (!okGround) {
-            System.out.println("    FAIL: 应前段保持 1、末段单调降到 0");
+        // ---- [7] 平面端与沙盘端的地面尺度必须精确对齐 ----
+        System.out.println("\n[7] 地面尺度两端对齐（非等比 vs 等比）");
+        float[] s0 = new float[2], s1 = new float[2];
+        ViewTransition.scale(0f, true, w, h, fill, s0);
+        ViewTransition.scale(1f, true, w, h, fill, s1);
+        System.out.printf("    平面端 sx/sy=%.1f/%.1f（应 w/2,h/2=%.1f/%.1f）%n",
+                s0[0], s0[1], w / 2f, h / 2f);
+        System.out.printf("    沙盘端 sx/sy=%.1f/%.1f（应 fill=%.1f）%n", s1[0], s1[1], fill);
+        boolean okAlign = Math.abs(s0[0] - w / 2f) < 0.01f && Math.abs(s0[1] - h / 2f) < 0.01f
+                && Math.abs(s1[0] - fill) < 0.01f && Math.abs(s1[1] - fill) < 0.01f;
+        if (!okAlign) {
+            System.out.println("    FAIL: 两端尺度不齐 ⇒ 切换首帧会看到底板尺寸跳变");
             pass = false;
         } else {
             System.out.println("    OK");
@@ -174,8 +181,7 @@ public final class ViewTransitionProbe {
         for (float[] row : new float[][]{
                 {ViewTransition.pitch(-1f, true), ViewTransition.pitch(2f, true)},
                 {ViewTransition.yaw(-1f, true, 1f), ViewTransition.yaw(2f, true, 1f)},
-                {ViewTransition.pillarAlpha(-1f, true), ViewTransition.pillarAlpha(2f, true)},
-                {ViewTransition.groundAlpha(-1f, true), ViewTransition.groundAlpha(2f, true)}}) {
+                {ViewTransition.relief(-1f, true), ViewTransition.relief(2f, true)}}) {
             for (float v : row) if (Float.isNaN(v) || Float.isInfinite(v)) sane = false;
         }
         float[] ns = new float[2];
