@@ -1,0 +1,101 @@
+﻿[1] backup files hashed: 2099
+[2] blobs in main repo object DB: 5502
+[3] working-tree files size-matched & read: 27287  matched backup blobs: 14802  distinct: 1665
+
+[4] classification:
+   both             197
+   git_objects      1
+   workspace_only   1623
+   orphan           278
+   error            0
+   backup bytes: 141162199  orphan bytes: 4501677
+
+   ORPHAN LIST (content nowhere else):
+            105  .git
+           9740  .gitignore
+          22286  HYDRO-REFERENCE-RESEARCH-20261014.md
+          91788  HYDROLOGY.md
+          15909  audit/GeoGenesis-R0-0-baseline-20261105.md
+          18702  audit/GeoGenesis-R0-core-boundary-20261105.md
+           7347  audit/GeoGenesis-R0a-ridge-boundary-20261105.md
+           7715  audit/GeoGenesis-R0b-particle-boundary-20261105.md
+          11880  audit/GeoGenesis-ridge-a-coverage-20261105.md
+           9033  audit/GeoGenesis-ridge-ab-small-20261105.md
+           7997  audit/GeoGenesis-ridge-true-ab-20261105.md
+          11009  audit/GeoGenesis-旧侵蚀路径清理清单-20261106.md
+          50136  audit/git-sha-remap-20261106.txt
+           5900  audit/README.md
+          14790  audit/原版复用对照审计-2026-09-16.md
+          10397  audit/新版地形对接入口.md
+          52082  audit/新版地形第三方许可核查.md
+           2167  audit/attachments/r0-0-20261105/config-boundary.txt
+           2424  audit/attachments/r0-0-20261105/config-check.log
+           3823  audit/attachments/r0-0-20261105/fallback-final-arrays.csv
+           9167  audit/attachments/r0-0-20261105/loaded-final-arrays.csv
+           2167  audit/attachments/r0a-20261105/config-boundary.txt
+           2424  audit/attachments/r0a-20261105/config-check-final.log
+           3823  audit/attachments/r0a-20261105/fallback-final-arrays.csv
+           9167  audit/attachments/r0a-20261105/loaded-final-arrays.csv
+           2167  audit/attachments/r0b-20261105/config-boundary.txt
+           2424  audit/attachments/r0b-20261105/config-check.log
+           3823  audit/attachments/r0b-20261105/fallback-final-arrays.csv
+           9167  audit/attachments/r0b-20261105/loaded-final-arrays.csv
+            379  audit/attachments/ridge-a-coverage-20261105/checks.txt
+           1815  audit/attachments/ridge-a-coverage-20261105/coverage-checks.txt
+           3616  audit/attachments/ridge-a-coverage-20261105/selection.csv
+           5125  audit/attachments/ridge-ab-small-20261105/evidence.py
+            564  audit/attachments/ridge-ab-small-20261105/provenance.txt
+          14788  audit/attachments/ridge-ab-small-20261105/RidgePlacementProbe.java
+           2351  audit/attachments/ridge-ab-small-20261105/run.py
+          35674  audit/attachments/ridge-ab-small-20261105/interior/weights-grid.csv
+             70  audit/attachments/ridge-ab-small-20261105/interior/window.json
+          45404  audit/attachments/ridge-ab-small-20261105/junction/weights-grid.csv
+             70  audit/attachments/ridge-ab-small-20261105/junction/window.json
+     ... and 238 more
+
+   WORKSPACE_ONLY LIST (not in object DB, still on disk):
+          22605  AGENTS.md
+          26725  ARCHITECTURE.md
+          14208  README.md
+          52907  .openbitfun/plans/coherent-600-world-distribution.plan.md
+          36048  .openbitfun/plans/far-coordinate-geometry-repair.plan.md
+           8818  .openbitfun/plans/hydro-boundary-spill-handoff.plan.md
+          12790  .openbitfun/plans/hydro-deterministic-spill-contract.plan.md
+           9327  .openbitfun/plans/regional-cell-half-scale.plan.md
+           2191  .openbitfun/plans/regional-world-next-stage.plan.md
+          71288  .openbitfun/plans/world-distribution-geometry-coast.plan.md
+          20663  .openbitfun/plans/world-shape-engine-unification.plan.md
+          11123  audit/守门门禁清单-2026-09-16.md
+           8255  audit/用户需求记录-2026-07-15.md
+         204203  audit/attachments/r0-0-20261105/before.json
+         147317  audit/attachments/r0-0-20261105/class-manifest.json
+            749  audit/attachments/r0-0-20261105/core-verify.log
+          31588  audit/attachments/r0-0-20261105/dependency-manifest.json
+            147  audit/attachments/r0-0-20261105/fallback-final.log
+            240  audit/attachments/r0-0-20261105/final-verification.json
+            535  audit/attachments/r0-0-20261105/loaded-final.log
+           2346  audit/attachments/r0-0-20261105/main-compile.log
+           2373  audit/attachments/r0-0-20261105/manifest.json
+           7756  audit/attachments/r0-0-20261105/p1-replay.log
+            981  audit/attachments/r0-0-20261105/summary.json
+            246  audit/attachments/r0-0-20261105/tile-selection.log
+            204  audit/attachments/r0a-20261105/boundary.log
+          72495  audit/attachments/r0a-20261105/calls-before.json
+           2243  audit/attachments/r0a-20261105/changed-files.json
+          20872  audit/attachments/r0a-20261105/comparison.json
+            147  audit/attachments/r0a-20261105/fallback-final.log
+            536  audit/attachments/r0a-20261105/loaded-final.log
+           2346  audit/attachments/r0a-20261105/main-compile.log
+           2350  audit/attachments/r0a-20261105/manifest.json
+           7756  audit/attachments/r0a-20261105/p1.log
+             96  audit/attachments/r0a-20261105/ridge-core.log
+            662  audit/attachments/r0a-20261105/summary.json
+         536373  audit/attachments/r0b-20261105/before.json
+          46443  audit/attachments/r0b-20261105/boundary.log
+         175608  audit/attachments/r0b-20261105/calls-before.json
+           2089  audit/attachments/r0b-20261105/changed-files.json
+     ... and 1583 more
+
+JSON written: handoff\attachments\offrepo-rescue-20261111\audit_theseus_v2.json
+
+AUDIT RESULT: PROBLEM (orphan or unreadable files present)

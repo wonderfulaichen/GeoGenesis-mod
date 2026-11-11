@@ -1,0 +1,58 @@
+﻿[1] backup files hashed: 125188
+[2] blobs in main repo object DB: 5502
+[3] working-tree files size-matched & read: 125188  matched backup blobs: 125187  distinct: 30779
+
+[4] classification:
+   both             4630
+   git_objects      0
+   workspace_only   120558
+   orphan           0
+   error            0
+   backup bytes: 30630543280  orphan bytes: 0
+
+   WORKSPACE_ONLY LIST (not in object DB, still on disk):
+           9803  .gitignore
+          22826  AGENTS.md
+          26725  ARCHITECTURE.md
+       80259139  debug-agent.log
+          17392  geogenesis-width-count.txt
+           7016  README.md
+           2827  THIRD-PARTY-NOTICES.md
+            203  .codebuddy/settings.json
+           9167  .codebuddy/handover/hydrology-2026-09-10.md
+          17405  .codebuddy/handover/terrain-2026-09-16.md
+          28525  .codebuddy/memory/2026-07-07.md
+           4869  .codebuddy/memory/2026-07-08.md
+          64312  .codebuddy/memory/2026-07-09.md
+          32867  .codebuddy/memory/2026-07-10.md
+          27274  .codebuddy/memory/2026-07-11.md
+          34262  .codebuddy/memory/2026-07-12.md
+          50912  .codebuddy/memory/2026-07-13.md
+          32638  .codebuddy/memory/2026-07-14.md
+           7690  .codebuddy/memory/2026-07-15.md
+          27849  .codebuddy/memory/2026-07-16.md
+          14369  .codebuddy/memory/2026-07-17.md
+          21453  .codebuddy/memory/2026-07-19.md
+          17083  .codebuddy/memory/2026-07-20.md
+          19859  .codebuddy/memory/2026-07-21.md
+          20181  .codebuddy/memory/2026-07-22.md
+          55169  .codebuddy/memory/2026-07-23.md
+          47480  .codebuddy/memory/2026-07-24.md
+          38137  .codebuddy/memory/2026-07-25.md
+          37287  .codebuddy/memory/2026-07-26.md
+          23162  .codebuddy/memory/2026-07-27.md
+           7862  .codebuddy/memory/2026-07-28.md
+           1545  .codebuddy/memory/2026-07-29.md
+           3638  .codebuddy/memory/2026-07-30.md
+          24084  .codebuddy/memory/2026-07-31.md
+          24498  .codebuddy/memory/2026-08-01.md
+          37803  .codebuddy/memory/2026-08-02.md
+          52627  .codebuddy/memory/2026-08-03.md
+           1501  .codebuddy/memory/2026-08-04.md
+           8437  .codebuddy/memory/2026-08-05.md
+           7524  .codebuddy/memory/2026-08-06.md
+     ... and 120518 more
+
+JSON written: handoff\attachments\offrepo-rescue-20261111\audit_main_self.json
+
+AUDIT RESULT: PASS (no orphan content)
