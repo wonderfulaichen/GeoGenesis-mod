@@ -1236,14 +1236,9 @@ public class PreviewDisplay extends AbstractWidget {
      *   <li>{@code pitch/yaw}：平面恒 0（正俯视），沙盘用用户视角。</li>
      * </ul>
      */
-    /** 沙盘采样缩放档位：窗口 = 平面窗口 × 2^step（滚轮改它，改的是<b>采样范围</b>）。 */
-    private int sandboxZoomStep = 0;
-
-    /** 沙盘当前采样窗口（方块）。 */
+    /** 沙盘当前采样窗口（方块）—— ★ v65 起与平面完全同一档键。 */
     int sandboxWindowBlocks() {
-        int base = Math.max(64, texW * scaleBlockPos);
-        int step = Math.max(-2, Math.min(3, sandboxZoomStep));
-        return Math.max(64, base << Math.max(0, step) >> Math.max(0, -step));
+        return Math.max(64, texW * scaleBlockPos);
     }
 
     /** 构造唯一相机（window 默认取平面窗口；沙盘分支会覆盖成采样窗口）。 */
@@ -1308,10 +1303,13 @@ public class PreviewDisplay extends AbstractWidget {
         // ★★ v54：视口同样来自唯一相机（align=1、pan=0 —— 沙盘把拖拽直接提交进 center）
         PreviewCamera cam = viewCamera(1, 0, 0,
                 sandboxRasterizer.pitch(), sandboxRasterizer.yaw());
-        // ★ v63【滚轮 = 采样缩放】（用户裁定）：
-        //   窗格数按档位 ×2^n 变化，和平面模式的 scaleBlockPos 同一语义 ——
-        //   滚出去 = 真的多采多块地（数据范围变大），不是把同一块画大。
-        cam.windowX = sandboxWindowBlocks();
+        // ★★ v65【缩放统一：沙盘直接吃平面窗口】★★
+        //
+        //   用户裁定：「缩放统一以平面为准，滚轮改的就是 scaleBlockPos，
+        //   两个视图共享同一档键。」⇒ 沙盘<b>不再有独立档位</b>，
+        //   窗口恒等于平面窗口（texW × scaleBlockPos），滚轮在任一视图里改的都是同一个键。
+        //   这样切视图时缩放天然不变，两个视图只差"怎么画"。
+        cam.windowX = Math.max(64, texW * scaleBlockPos);
         cam.windowZ = cam.windowX;
         int blocksWide = cam.windowX;
         int blocksHigh = cam.windowZ;
@@ -1978,11 +1976,11 @@ public class PreviewDisplay extends AbstractWidget {
             if (ctrl) {
                 sandboxRasterizer.setWidthScale(sandboxRasterizer.widthScale() * (delta > 0 ? 1.06f : 1f / 1.06f));
             } else {
-                // ★ v63【滚轮 = 采样缩放】用户裁定：像平面模式那样，滚出去看到更大范围。
-                //   改的是<b>采样窗口</b>（2^n 档），不是绘图比例 ⇒ 数据真的多采，
-                //   柱数/每柱格数由 pillarsForWindow / effectiveStepFor 自动跟着窗口走。
-                sandboxZoomStep += (delta > 0) ? -1 : 1;   // 上滚 = 拉近（范围变小）
-                sandboxZoomStep = Math.max(-2, Math.min(3, sandboxZoomStep));
+                // ★★ v65【缩放统一】用户裁定：滚轮改的就是 scaleBlockPos，
+                //   两个视图共享同一档键 ⇒ 沙盘里滚轮跟平面<b>走同一条代码</b>
+                //   （循环 {1,2,4,8,16}），窗口 = texW × scaleBlockPos 随之变化，
+                //   所以采样范围真的变了，切视图时缩放也天然一致。
+                cycleScaleStep(delta > 0);
                 sandboxRasterizer.clearPan();
                 sandboxCenterAccX = 0;
                 sandboxCenterAccZ = 0;
@@ -2001,13 +1999,23 @@ public class PreviewDisplay extends AbstractWidget {
             return true;
         }
 
-        // 缩放：在 {1, 2, 4, 8, 16} 中循环
+        // 缩放：在 {1, 2, 4, 8, 16}（+ 全局查看时继续翻倍）中循环
+        cycleScaleStep(delta > 0);
+        return true;
+    }
+
+    /**
+     * 缩放档位进/退一档 —— <b>平面与沙盘共用的唯一入口</b>（★ v65）。
+     *
+     * @param zoomIn true = 上滚（更细 / 看到更小范围）
+     */
+    private void cycleScaleStep(boolean zoomIn) {
         int current = scaleBlockPos;
         int next = current;
-        if (delta > 0) {
+        if (zoomIn) {
             // 向上滚→更细（scale 减小）
             if (current > 16) next = Math.max(16, current / 2);   // ★ 大范围档退回
-            else if (current > 8) next = current / 2;
+            else if (current > 8) next = 8;
             else if (current > 4) next = 4;
             else if (current > 2) next = 2;
             else if (current > 1) next = 1;
@@ -2026,7 +2034,6 @@ public class PreviewDisplay extends AbstractWidget {
             // 重建队列以应用新的有效采样步长（scaleBlockPos / renderScale），避免缩放后网格。
             rebuildQueue();
         }
-        return true;
     }
 
     // ================================================================
@@ -2725,7 +2732,7 @@ public class PreviewDisplay extends AbstractWidget {
     public String statusLine() {
         // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
         if (sandboxMode) {
-            // ★ v63：窗口即真实采样范围（滚轮改的就是它，见 mouseScrolled）
+            // ★ v65：窗口即平面窗口（缩放统一，滚轮改的是同一个 scaleBlockPos）
             int windowBlocks = sandboxWindowBlocks();
             int pillars = Math.max(1, SandboxLod.pillarsForWindow(windowBlocks));
             double stepBlocks = SandboxLod.effectiveStepFor(windowBlocks, Math.min(texW, texH));

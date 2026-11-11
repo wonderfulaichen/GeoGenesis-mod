@@ -376,7 +376,15 @@ public final class SandboxRasterizer {
         //   现在遍历 {@code cols.ready}（~1.5 万根，O(n) per frame 可接受），
         //   取每根柱顶<b>与柱底</b>的投影 y（柱底也画侧墙，是画面的一部分），
         //   再加上底板的四条边角，得到真实竖直包围盒后取中点。
-        float dyMin = Float.MAX_VALUE, dyMax = -Float.MAX_VALUE;
+        // ★★ v65【居中再下移：我们要看的是地表，不是板底】★★
+        //
+        //   用户实机：「居中不行，建议偏下多一些，毕竟我们又不看地形底部看的是地表。」
+        //
+        //   v64 把"柱顶+柱底+板角"整段包围盒的中点点到视口中心 ——
+        //   等于把<b>侧墙那一大片</b>也当成要展示的内容，板面被顶高、下方留白。
+        //   实际观感里值得占据画面的是<b>地表起伏</b>（柱顶），侧墙只是附属。
+        //   ⇒ 居中基准改为<b>柱顶包围盒</b>中点，再按视高往下压一点（SURFACE_DROP）。
+        float topMin = Float.MAX_VALUE, topMax = -Float.MAX_VALUE;
         for (int k = 0; k < cols.readyCount; k++) {
             int idx = cols.ready[k];
             SandboxGeometry.Column c = cols.items[idx];
@@ -385,21 +393,17 @@ public final class SandboxRasterizer {
             float mx = SandboxGeometry.modelOf(cols.colCount, ci);
             float my = SandboxGeometry.modelOf(cols.colRows, cj);
             float dyTop = lastSY * (r[3] * mx + r[4] * my + r[5] * c.top);
-            float dyBase = lastSY * (r[3] * mx + r[4] * my);
-            if (dyTop < dyMin) dyMin = dyTop;
-            if (dyTop > dyMax) dyMax = dyTop;
-            if (dyBase < dyMin) dyMin = dyBase;
-            if (dyBase > dyMax) dyMax = dyBase;
+            if (dyTop < topMin) topMin = dyTop;
+            if (dyTop > topMax) topMax = dyTop;
         }
-        // 底板四角（top=0）：即使某角落还没采样到，板面范围也应参与居中
-        for (int q = 0; q < 4; q++) {
-            float mx = ((q & 1) == 0) ? -1f : 1f;
-            float my = ((q & 2) == 0) ? -1f : 1f;
-            float dy = lastSY * (r[3] * mx + r[4] * my);
-            if (dy < dyMin) dyMin = dy;
-            if (dy > dyMax) dyMax = dy;
+        float centreBias;
+        if (topMin > topMax) {
+            centreBias = 0f;
+        } else {
+            centreBias = -(topMin + topMax) * 0.5f;
         }
-        float oyBias = (dyMin > dyMax) ? 0f : -(dyMin + dyMax) * 0.5f;
+        // 往下压：让"地表"落在视口中偏下的位置，底边自然贴近下沿
+        float oyBias = centreBias + areaH * SURFACE_DROP;
         float ox = areaX + areaW / 2f + panX;
         float oy = areaY + areaH / 2f + panY + oyBias;
 
@@ -545,6 +549,9 @@ public final class SandboxRasterizer {
     }
 
     // ----- 几何提交（照抄 yardsite vertex/wall/quadFlat）-----
+
+    /** 地表居中后额外下压的比例（×视高）：看的是地表，不是板底。 */
+    private static final float SURFACE_DROP = 0.10f;
 
     /** 顶点（横向按 widthScale 撑开由调用方已做）。 */
     private void vertex(VertexConsumer c, float ox, float oy, float s,
