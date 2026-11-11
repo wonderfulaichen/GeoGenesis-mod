@@ -2903,3 +2903,10 @@ task runPreviewCameraProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.PreviewCameraProbe'
     maxHeapSize = '1g'
 }
+// 左侧导航栏页签布局守门（480x270 必须 11/11 可见）。
+//   gradlew runNavRailLayoutProbe
+task runNavRailLayoutProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.NavRailLayoutProbe'
+    maxHeapSize = '1g'
+}

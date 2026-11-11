@@ -2,27 +2,21 @@ package com.geogenesis.client.preview;
 
 import com.geogenesis.worldgen.climate.BiomeClassifier;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.util.Mth;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 
 /**
- * 可滚动群系列表面板（手动渲染，不进 widget 列表）。
- * 按筛选模式过滤后重排、溢出滚动、裁剪渲染，右侧青绿滚动条指示器。
+ * 群系列表面板（手动渲染，不进 widget 列表）。
+ *
+ * <p>★ v72：<b>按内容全高展开</b>，不再自己滚动 —— 滚轮只归外层页面
+ * （用户：「不要上下滚轮页里面再加上下滚轮的控件，这样非常容易误操作」）。
+ * 旧实现的固定视口 + 内层滚轮 + 滚动条已删除。</p>
  */
 public class BiomeListPanel {
-
-    private static final Logger LOG = LogManager.getLogger("geogenesis");
-
-    // 调试用：mouseScrolled 调用计数（仅前 10 次 + 每 30 次统计一次），用于排查"滚不动"
-    private static int scrollCallCount = 0;
 
     private final List<BiomeEntryWidget> entries;
     private int filterMode = 0;
     private int x, y, w, h;
-    private int scrollY = 0;
     private java.util.function.Consumer<BiomeClassifier.BiomeClass> onSelect;
     private static final int ENTRY_H = 14;
     private static final int SPACING = 2;
@@ -34,12 +28,7 @@ public class BiomeListPanel {
     public void setRect(int x, int y, int w, int h) { this.x = x; this.y = y; this.w = w; this.h = h; }
 
     public void setFilter(int mode) {
-        // 仅在筛选模式真正变化时才重置滚动偏移；否则每帧调用会把 scrollY 清零，
-        // 导致 mouseScrolled 设置的滚动量立即被下一帧 render 撤销，列表视觉上不动。
-        if (this.filterMode != mode) {
-            this.filterMode = mode;
-            this.scrollY = 0;
-        }
+        this.filterMode = mode;
     }
 
     private int contentHeight() {
@@ -51,11 +40,13 @@ public class BiomeListPanel {
     public void render(GuiGraphics g, int mx, int my) {
         // ★ v7：列表底改为中性深灰（旧值 0xFF15191F 是早期深蓝主题）
         UiKit.roundRect(g, x, y, x + w, y + h, UiKit.RADIUS_CARD, 0xFF1A1A1A);
-        int maxScroll = Math.max(0, contentHeight() - h);
-        scrollY = Mth.clamp(scrollY, 0, maxScroll);
 
+        // ★ v72：列表按内容全高展开，滚轮<b>只</b>归外层页。
+        //   旧实现是固定视口 + 内层滚轮：页面自己也滚滚轮、
+        //   列表又滚滚轮 ⇒ 指针在列表上下滚时不知道该动哪个
+        //   （用户：「不要上下滚轮页里面再加上下滚轮的控件，非常容易误操作」）。
         g.enableScissor(x, y, x + w, y + h);
-        int cy = y - scrollY;
+        int cy = y;
         for (BiomeEntryWidget e : entries) {
             if (!e.matchesFilter(filterMode)) { e.visible = false; continue; }
             e.visible = true;
@@ -64,29 +55,22 @@ public class BiomeListPanel {
             cy += ENTRY_H + SPACING;
         }
         g.disableScissor();
-
-        if (maxScroll > 0) {
-            UiKit.scrollbar(g, x + w - 3, y, h, contentHeight(), scrollY, false);
-        }
     }
 
+    /**
+     * ★ v72：内层列表<b>不再</b>消费滚轮 —— 交给页面。
+     *
+     * <p>一个页面只能有一个滚轮目标。列表已按内容全高展开
+     * （见 {@link #render}），因此这里返回 {@code false}
+     * 让外层页面接管。</p>
+     */
     public boolean mouseScrolled(double mx, double my, double delta) {
-        // 群系页主体即列表：滚轮由内层列表独占。
-        // 有溢出就滚列表；无溢出（筛选后条目少）也消费事件、不落外层 UI 滚动，
-        // 避免用户看到「外层面板动、列表不动」的错觉。
-        int maxScroll = Math.max(0, contentHeight() - h);
-        if (maxScroll > 0) {
-            int before = scrollY;
-            // 用户偏好方向（自然滚动）：下滚轮(delta>0) → 内容向下移动 → 看到上方（scrollY 减小）
-            scrollY = Mth.clamp(scrollY - (int) (delta * 20), 0, maxScroll); // 步长 20px
-            if (scrollCallCount < 8 || scrollCallCount % 20 == 0)
-                LOG.info("DIAG-BLP: scrolled before={} after={} maxScroll={} h={} contentH={}",
-                    before, scrollY, maxScroll, h, contentHeight());
-        } else if (scrollCallCount < 8) {
-            LOG.info("DIAG-BLP: no overflow h={} contentH={} -> consume (no outer scroll)", h, contentHeight());
-        }
-        scrollCallCount++;
-        return true; // 始终消费：内层列表独占滚轮
+        return false;
+    }
+
+    /** 列表完整显示所需高度（已按当前筛选计算）。 */
+    public int naturalHeight() {
+        return contentHeight();
     }
 
     public boolean mouseClicked(double mx, double my, int btn) {

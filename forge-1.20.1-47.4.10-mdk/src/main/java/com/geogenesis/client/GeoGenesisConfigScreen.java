@@ -3,6 +3,7 @@ package com.geogenesis.client;
 import com.geogenesis.client.preview.BiomesPanel;
 import com.geogenesis.client.preview.CachePanel;
 import com.geogenesis.client.preview.CavePanel;
+import com.geogenesis.client.preview.NavRailMetrics;
 import com.geogenesis.client.preview.ClimateConfigPanel;
 import com.geogenesis.client.preview.ColormapPanel;
 import com.geogenesis.client.preview.CompositePanel;
@@ -235,9 +236,7 @@ public class GeoGenesisConfigScreen extends Screen {
     /** 导航栏宽度（= NAV_W，运行时缓存）。 */
     private int navW;
     /** 导航栏页签列表顶部 y。 */
-    private int navTabTop;
     /** 导航栏每行页签高度。 */
-    private int navTabH = 32;
     /**
      * 配置窗底部按钮区高度。
      *
@@ -392,8 +391,6 @@ public class GeoGenesisConfigScreen extends Screen {
         // ★ v7：底部留 20px 给说明行（drawFooterHint）
         listBottom = cfgY + cfgH - 22;
         bottomBarH = 0;
-        navTabH = clampInt((int) (this.height * 0.038), 22, 32);
-        navTabTop = clampInt((int) (this.height * 0.17), 110, 152);
 
         panelHost.panelX = panelX;
         panelHost.panelW = panelW;
@@ -524,8 +521,6 @@ public class GeoGenesisConfigScreen extends Screen {
         panelHost.drawTabs = false;          // 关掉宿主自己的页签绘制（否则两套页签）
         listTop = headerY;
         // ★ 页签行高按导航栏宽度自适应（窄屏时压缩，避免只显示 6 个页签）
-        navTabH = clampInt((int) (this.height * 0.038), 22, 32);
-        navTabTop = clampInt((int) (this.height * 0.17), 110, 152);
         tabBarBottom = headerY;
         // ★ 底部按钮区：v6 把按钮移到导航栏 ⇒ 内容面板不再留底部按钮区
         bottomBarH = 0;
@@ -1187,61 +1182,69 @@ public class GeoGenesisConfigScreen extends Screen {
         int h = this.height;
         g.fill(navX, 0, navX + navW, h, NAV_BG);
 
-        // ★ 所有纵向位置按高度比例算（GUI Scale 放大后逻辑高度可能只有 540）
-        int brandY = clampInt((int) (h * 0.028), 12, 20);
-        int sepY = clampInt((int) (h * 0.115), 62, 90);
-        int groupY = clampInt((int) (h * 0.128), 72, 100);
+        // ★ v71：整条竖栏的几何只有一个来源（renderNavRail / hitTestTab /
+    //   种子行共用 navRailLayout()）。旧代码 render 与 hitTest 各算一遍
+    //   navTabTop + i*navTabH，且都在 bottomLimit 处 break ⇒
+    //   1080p + Scale 4（逻辑 480×270）时只能画出 2/11 个页签。
+    NavRailMetrics rail = navRailLayout();
+    int brandY = rail.brandY;
+    int sepY = rail.sepY;
+    int groupY = rail.groupY;
 
-        // 品牌行
-        g.drawString(this.font, "GeoGenesis", navX + 14, brandY, NAV_TXT, false);
+    // 品牌行
+    g.drawString(this.font, "GeoGenesis", navX + 14, brandY, NAV_TXT, false);
 
-        // ★ v22：原来这里是「预览地图 / 新建预设」两项 —— 功能与折叠键、预设页签
-        //   完全重复，已删除。改显示当前种子（用户常看、此前没有常驻位置）。
-        drawNavSeedLine(g, brandY + 16, 16);
+    // ★ v22：原来这里是「预览地图 / 新建预设」两项 —— 功能与折叠键、预设页签
+    //   完全重复，已删除。改显示当前种子（用户常看、此前没有常驻位置）。
+    drawNavSeedLine(g, rail.seedY, 16);
 
-        // 分组标题
-        g.fill(navX + 12, sepY, navX + navW - 12, sepY + 1, 0x1AFFFFFF);
-        g.drawString(this.font, "配置", navX + 14, groupY, NAV_TXT_DIM, false);
+    // 分组标题
+    g.fill(navX + 12, sepY, navX + navW - 12, sepY + 1, 0x1AFFFFFF);
+    g.drawString(this.font, "配置", navX + 14, groupY, NAV_TXT_DIM, false);
 
-        // 页签竖排（选中 = 略亮底 + 左侧绿条）
-        // ★ v7【修"群系页签与状态行重叠"】：
-        //   旧代码 bottomLimit = h-96 让页签画到 h-96，而底部迷你条从 h-120 起
-        //   ⇒ 两条区间相交 24px，最后 1~2 个页签（实测「群系」）压在状态文字上。
-        //   现在改成：页签必须止于迷你条<b>上方</b>，由同一个 navMiniTop 派生。
-        int navMiniTop = navMiniTopY();
-        int bottomLimit = navMiniTop - 6;
-        int n = visibleTabs.size();
-        for (int i = 0; i < n; i++) {
-            int ty = navTabTop + i * navTabH;
-            if (ty + navTabH > bottomLimit) break;
-            boolean on = tab == i;
-            boolean hover = mx >= navX && mx < navX + navW
-                    && my >= ty && my < ty + navTabH;
-            if (on) {
-                g.fill(navX + 8, ty, navX + navW - 8, ty + navTabH - 2, NAV_ROW_SEL);
-                g.fill(navX + 8, ty + 8, navX + 11, ty + navTabH - 10, NAV_ACCENT);
-            } else if (hover) {
-                g.fill(navX + 8, ty, navX + navW - 8, ty + navTabH - 2, NAV_ROW_HOVER);
-            }
-            g.drawString(this.font, visibleTabs.get(i).label(),
-                    navX + 22, ty + 8, on ? NAV_TXT : NAV_TXT_SUB, false);
+    // 页签（选中 = 略亮底 + 左侧绿条）
+    for (int i = 0; i < visibleTabs.size(); i++) {
+        int[] r = rail.rect(i, navX);
+        if (r == null) continue;
+        int tx = r[0], ty = r[1], tw = r[2], th = r[3];
+        boolean on = tab == i;
+        boolean hover = mx >= tx && mx < tx + tw && my >= ty && my < ty + th;
+        if (on) {
+            g.fill(tx, ty, tx + tw, ty + th - 2, NAV_ROW_SEL);
+            g.fill(tx, ty + 6, tx + 3, ty + th - 8, NAV_ACCENT);
+        } else if (hover) {
+            g.fill(tx, ty, tx + tw, ty + th - 2, NAV_ROW_HOVER);
         }
-
-        // ★ v34：底部迷你条（状态 + 进度条）已移到<b>右下角无框文字区</b>
-        //   —— 用户：「建议把这个加载进度条移到右侧下方的无框文字位置，并且也是无框。」
-        //   导航栏这边只留页签，不再画状态行/进度条。
+        String label = rail.compact ? visibleTabs.get(i).shortLabel() : visibleTabs.get(i).label();
+        g.drawString(this.font, UiKit.clip(label, rail.textW(tw)),
+                tx + rail.textInset(), ty + (th - this.font.lineHeight) / 2,
+                on ? NAV_TXT : NAV_TXT_SUB, false);
+        }
     }
 
     /**
-     * 底部迷你条（状态 + 进度）的顶部 y（★ v7 单一来源）。
+     * 左侧导航栏的唯一几何来源（★ v71）。
      *
-     * <p>它必须同时满足两个约束：在导航栏三行按钮（共 66px + 10px 底距）之上、
-     * 且页签区止于它上方。之前这两件事各算一遍 ⇒ 页签压到状态行上。</p>
+     * <p>纯几何在 {@link NavRailMetrics}（零 MC 依赖，由
+     * {@code runNavRailLayoutProbe} 验证）。这里只做<b>缓存</b> ——
+     * 同一帧内 render 与 hitTest 各取一次，两者必须拿到同一份。</p>
+     *
+     * <p>★ 旧字段 {@code navTabTop}/{@code navTabH} 已删除：它们由两处
+     * 旧公式赋值（{@code syncPanelHost} 与 resize），却又无人读取 ——
+     * 正是"同一布局两套推导"的来源，留着只会在下次改动时骗人。</p>
      */
-    private int navMiniTopY() {
-        int layerY = this.height - 10 - 20;      // 第三行按钮顶
-        int row1Y = layerY - 3 - 20 - 3 - 20;    // 第一行按钮顶
-        return row1Y - 30;                       // 迷你条：状态行 + 进度条 + 间距
+    private NavRailMetrics navRailCached;
+    private int navRailCachedH = -1;
+    private int navRailCachedN = -1;
+
+    private NavRailMetrics navRailLayout() {
+        if (navRailCached == null || navRailCachedH != this.height
+                || navRailCachedN != visibleTabs.size()) {
+            navRailCached = NavRailMetrics.compute(this.height, navW, visibleTabs.size());
+            navRailCachedH = this.height;
+            navRailCachedN = visibleTabs.size();
+        }
+        return navRailCached;
     }
 
     /** 按像素宽裁剪文字加省略号。 */
@@ -1770,15 +1773,14 @@ public class GeoGenesisConfigScreen extends Screen {
      * @return 命中的页签索引；未命中返回 -1
      */
     private int hitTestTab(double mx, double my) {
-        // ★ v6：页签在左侧导航栏<b>竖排</b>；与 renderNavRail 同一套坐标
+        // ★ v71：与 renderNavRail 共用 navRailLayout()（旧代码各推一遍坐标，
+        //   多列排布下必然错位）。命中判据只看矩形，不再自己算 bottomLimit。
         if (mx < navX || mx >= navX + navW) return -1;
-        int n = visibleTabs.size();
-        // ★ v7：与 renderNavRail 同一份 bottomLimit（否则可见页签数与可点击数不一致）
-        int bottomLimit = navMiniTopY() - 6;
-        for (int i = 0; i < n; i++) {
-            int ty = navTabTop + i * navTabH;
-            if (ty + navTabH > bottomLimit) break;
-            if (my >= ty && my < ty + navTabH) return i;
+        NavRailMetrics rail = navRailLayout();
+        for (int i = 0; i < visibleTabs.size(); i++) {
+            int[] r = rail.rect(i, navX);
+            if (r == null) continue;
+            if (my >= r[1] && my < r[1] + r[3]) return i;
         }
         return -1;
     }

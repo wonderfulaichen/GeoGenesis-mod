@@ -42,20 +42,20 @@ public class ColormapPanel extends ConfigPanel {
     }
 
     /**
-     * 内容高度（★ v22：按<b>列表区实际高度</b>算）。
+     * 内容高度（★ v72：列表按内容全高展开）。
      *
-     * <p>列表高 120~260 随窗口浮动，原写死 340 ⇒ 两者不同源，
-     * 大窗口下列表更高却按 340 算滚动上限。</p>
+     * <p>旧实现给列表一个 120~260 的固定视口，溢出部分靠内层滚轮
+     * ⇒ 一个页面里出现两个滚轮目标（外层页面 + 内层列表）。
+     * 现在列表展开到完整高度，滚轮只归页面。</p>
      */
     @Override
     public int getHeight() {
         return LIST_OFF + listHeightFor() + BTN_OFF + UiKit.H_CONTROL + 16;
     }
 
-    /** 列表区高度（★ v22：render 与 getHeight 共用）。 */
+    /** 列表区高度（★ v72：render 与 getHeight 共用＝内容全高）。 */
     private int listHeightFor() {
-        return Math.max(120, Math.min(260,
-                Minecraft.getInstance().getWindow().getGuiScaledHeight() - 220));
+        return Math.max(120, listPanel.naturalHeight());
     }
 
     @Override

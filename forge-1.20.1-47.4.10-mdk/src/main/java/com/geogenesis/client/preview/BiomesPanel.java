@@ -1,7 +1,6 @@
 package com.geogenesis.client.preview;
 
 import com.geogenesis.worldgen.climate.BiomeClassifier;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.language.I18n;
 
@@ -69,12 +68,17 @@ public class BiomesPanel extends ConfigPanel {
     private int filterY() { return top() + FILTER_OFF; }
     private int listY() { return filterY() + FILTER_H + LIST_GAP; }
 
-    /** 列表区高度（★ v22：render 与 getHeight 共用的唯一算法）。 */
+    /**
+     * 列表区高度（★ v72：render 与 getHeight 共用＝内容全高）。
+     *
+     * <p>旧实现把列表撑满到 {@code panelBottomY}（固定视口），
+     * 溢出部分靠 {@code BiomeListPanel} 的内层滚轮
+     * ⇒ 与外层页面滚轮冲突（用户：「非常容易误操作」）。
+     * 现在列表按内容全高展开，滚轮只归页面。</p>
+     */
     private int listHeightFor() {
-        int ly = listY();
-        return panelBottomY > 0
-            ? Math.max(160, panelBottomY - ly - 4)
-            : Math.max(160, Math.min(360, Minecraft.getInstance().getWindow().getGuiScaledHeight() - 360));
+        listPanel.setFilter(filterMode);
+        return Math.max(160, listPanel.naturalHeight());
     }
 
     @Override
@@ -127,9 +131,10 @@ public class BiomesPanel extends ConfigPanel {
         return listPanel.mouseClicked(mx, my, btn);
     }
 
+    /** ★ v72：不再消费滚轮 —— 交给外层页面（列表已全高展开）。 */
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
-        return listPanel.mouseScrolled(mx, my, delta);
+        return false;
     }
 
     @Override

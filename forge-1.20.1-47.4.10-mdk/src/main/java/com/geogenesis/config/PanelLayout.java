@@ -39,31 +39,41 @@ public final class PanelLayout {
      * 该页签打开后也是空页；保留机制是为了不扩大本轮改动范围，后续可整体移除。</p>
      */
     public enum Tab {
-        PRESETS("预设", null, false),
-        WORLD_SCALE("世界与尺度", ConfigKeyCatalog.Domain.WORLD_SCALE, false),
-        CLIMATE("气候", ConfigKeyCatalog.Domain.CLIMATE, false),
-        TERRAIN_SHAPE("地形形态", ConfigKeyCatalog.Domain.TERRAIN_SHAPE, false),
-        EROSION("侵蚀与河流", ConfigKeyCatalog.Domain.EROSION, false),
-        CAVE("洞穴", ConfigKeyCatalog.Domain.CAVE, false),
-        ORE("矿物", ConfigKeyCatalog.Domain.ORE, false),
-        DIAGNOSTIC("诊断", ConfigKeyCatalog.Domain.DIAGNOSTIC, false),
-        DISPLAY("显示与色带", ConfigKeyCatalog.Domain.DISPLAY, false),
-        CACHE("缓存", null, false),
-        BIOMES("群系", null, false),
-        LEGACY("旧算法参数", ConfigKeyCatalog.Domain.LEGACY, true);
+        PRESETS("预设", "预设", null, false),
+        WORLD_SCALE("世界与尺度", "尺度", ConfigKeyCatalog.Domain.WORLD_SCALE, false),
+        CLIMATE("气候", "气候", ConfigKeyCatalog.Domain.CLIMATE, false),
+        TERRAIN_SHAPE("地形形态", "地形", ConfigKeyCatalog.Domain.TERRAIN_SHAPE, false),
+        EROSION("侵蚀与河流", "侵蚀", ConfigKeyCatalog.Domain.EROSION, false),
+        CAVE("洞穴", "洞穴", ConfigKeyCatalog.Domain.CAVE, false),
+        ORE("矿物", "矿物", ConfigKeyCatalog.Domain.ORE, false),
+        DIAGNOSTIC("诊断", "诊断", ConfigKeyCatalog.Domain.DIAGNOSTIC, false),
+        DISPLAY("显示与色带", "显示", ConfigKeyCatalog.Domain.DISPLAY, false),
+        CACHE("缓存", "缓存", null, false),
+        BIOMES("群系", "群系", null, false),
+        LEGACY("旧算法参数", "旧参数", ConfigKeyCatalog.Domain.LEGACY, true);
 
         private final String label;
+        private final String shortLabel;
         private final ConfigKeyCatalog.Domain domain;
         private final boolean requiresLegacyMode;
 
-        Tab(String label, ConfigKeyCatalog.Domain domain, boolean requiresLegacyMode) {
+        Tab(String label, String shortLabel, ConfigKeyCatalog.Domain domain, boolean requiresLegacyMode) {
             this.label = label;
+            this.shortLabel = shortLabel;
             this.domain = domain;
             this.requiresLegacyMode = requiresLegacyMode;
         }
 
         /** 标签条上的显示名。 */
         public String label() { return label; }
+
+        /**
+         * 窄导航栏（高 GUI Scale / 小窗口）里使用的两字简称。
+         *
+         * <p>1080p + Scale 4 时逻辑宽度只有 480，导航栏宽 130 —— 两列排布每列仅 ~54px，
+         * 「侵蚀与河流」这类五字标签（45px）加缩进就溢出。全称在宽屏下照旧。</p>
+         */
+        public String shortLabel() { return shortLabel; }
 
         /** 该页以目录驱动渲染的域；{@code null} = 专门手工 UI（预设/缓存/群系）。 */
         public ConfigKeyCatalog.Domain domain() { return domain; }
