@@ -66,6 +66,20 @@ public class PresetsPanel extends ConfigPanel {
     private final List<Integer> favRowY = new ArrayList<>();
     private final List<Long> favRowSeed = new ArrayList<>();
     private final List<Integer> cardY = new ArrayList<>();
+    /**
+     * 与 {@link #cardY} <b>一一对应</b>的预设引用（★ v70）。
+     *
+     * <h2>修的是什么</h2>
+     * <p>用户实机：「预设点 A 应用 B」。</p>
+     * <p>旧代码 {@code cardY} 只记录<b>可见行</b>的 y，点击时却用列表下标去取
+     * {@code presets.get(i)} —— 滚动后两者错位。</p>
+     * <p>算例：内置预设 5 个、卡高 60+10、可视 230 ⇒ 一屏放 3 张；
+     * 往下滚一格后 {@code cardY.get(0)} 是第 2 张卡的 y，
+     * 但按下标取到的是 {@code presets.get(0)} ⇒ 点第 1 张应用第 2 个预设。</p>
+     * <p>同文件的收藏行（{@code favRowSeed}）与用户预设（{@code userCardId}）
+     * 本来都记了 id，只有卡片区漏了 —— 典型"绘制一套、命中另一套"。</p>
+     */
+    private final List<Preset> cardRef = new ArrayList<>();
     private int innerScrollY_fav = 0;
     private int innerScrollY_card = 0;
     /** 收藏种子折叠面板 */
@@ -97,15 +111,13 @@ public class PresetsPanel extends ConfigPanel {
             if (t.isEmpty()) return;
             try { setSeed.accept(Long.parseLong(t)); } catch (NumberFormatException ignored) {}
         });
-        addWidget.accept(seedBox);
-
+        // ★ v70：登记放到 ensureWidgetsRegistered（屏幕每次 init 都会调），
+        //   构造器里不再直接 add —— 否则"构造一次 = 登记一次"，resize 后就丢。
         refreshBtn = Button.builder(C("↻"), b -> onRefresh.run())
             .pos(0, 0).size(SEED_ROW_H, SEED_ROW_H).build();
-        addWidget.accept(refreshBtn);
 
         favBtn = Button.builder(Star(sm.isFavorite(getSeed.getAsLong())), b -> toggleFavorite())
             .pos(0, 0).size(SEED_ROW_H, SEED_ROW_H).build();
-        addWidget.accept(favBtn);
 
         // ★ v7：内容高度改为按收藏条数算（每帧刷新）——
         //   写死 160 会让 2 条收藏也占满 160px，挤压下方卡片区。
@@ -118,6 +130,25 @@ public class PresetsPanel extends ConfigPanel {
         long s = getSeed.getAsLong();
         if (sm.isFavorite(s)) sm.removeFavorite(s); else sm.addFavorite(s, "Seed " + s);
         favBtn.setMessage(Star(sm.isFavorite(s)));
+    }
+
+    /**
+     * <b>把三个 widget 重新登记到屏幕</b>（★ v70，修"resize/折叠一次后种子框消失"）。
+     *
+     * <h2>为什么需要显式方法</h2>
+     * <p>MC 的 {@code Screen.resize} 会重跑 {@code init()}，而 {@code init()} 开头
+     * {@code clearWidgets()} 会清掉全部 widget；但 {@code PresetsPanel} 只在
+     * {@code presetsPanel == null} 时构造 ⇒ 第二次进 init 时面板非 null，
+     * 构造器里的三次 {@code addWidget} 再也不会执行
+     * ⇒ 种子输入框 / ↻ / ★ 从画面上消失（实机正是这个现象）。</p>
+     *
+     * <p>本方法把"登记"与"构造"解耦：屏幕每次 init 都无条件调一次即可。
+     * 重复调用安全 —— {@code Screen.addRenderableWidget} 只是往列表里加。</p>
+     */
+    public void ensureWidgetsRegistered() {
+        addWidget.accept(seedBox);
+        addWidget.accept(refreshBtn);
+        addWidget.accept(favBtn);
     }
 
     private boolean isTabActive = false;  // 当前标签是否预设标签
@@ -271,7 +302,8 @@ public class PresetsPanel extends ConfigPanel {
         favSection.setBounds(x, pinnedFavTopY(), w);
         favSection.renderHeader(g, mx, my);
         // ★ 每帧清除命中区缓存（在 drawScrollRegion 之前），防止累积+避免互相清空
-        favRowY.clear(); favRowSeed.clear(); cardY.clear(); userCardY.clear(); userCardId.clear();
+        favRowY.clear(); favRowSeed.clear(); cardY.clear(); cardRef.clear();
+        userCardY.clear(); userCardId.clear();
         if (!favSection.isCollapsed()) {
             int favTop = pinnedFavScrollTopY();
             int favBot = pinnedFavScrollBotY();
@@ -354,6 +386,7 @@ public class PresetsPanel extends ConfigPanel {
                     if (font().width(desc) > maxW) desc = font().plainSubstrByWidth(desc, maxW, true);
                     g.drawString(font(), desc, x + 14, py + 28, UiKit.C_TXT_DIM, false);
                     cardY.add(py);
+                    cardRef.add(p);   // ★ v70：记录 y 属于哪个预设（滚动的唯一修法）
                 }
                 y += CARD_H + CARD_GAP;
             }
@@ -402,9 +435,16 @@ public class PresetsPanel extends ConfigPanel {
             return favSection.mouseClicked(mx, my, btn);
         }
         // 卡片点击
+        //
+        // ★★ v70【修"预设点 A 应用 B"】★★
+        //   这里原来用 {@code presets.get(i)} —— i 是<b>可见行</b>的下标，
+        //   滚动后与 presets 的下标不再对应（见 {@link #cardRef} 的算例）。
+        //   现在按 cardRef 取"这个 y 属于哪个预设"。
         for (int i = 0; i < cardY.size(); i++) {
             if (hit(x, cardY.get(i), w, CARD_H, mx, my)) {
-                onApply.accept(presets.get(i));
+                Preset target = (i < cardRef.size()) ? cardRef.get(i) : null;
+                if (target == null) return true;   // 防御：绝不用错误的下标去应用
+                onApply.accept(target);
                 playClick();
                 return true;
             }

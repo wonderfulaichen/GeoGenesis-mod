@@ -589,6 +589,15 @@ public class GeoGenesisConfigScreen extends Screen {
             this::showApplyPresetConfirm,
             this::addRenderableWidget,
             this::applyUserPreset);
+        // ★★ v70【修"种子输入框在 resize / 折叠一次后消失"】★★
+        //
+        //   MC 的 {@code Screen.resize} 会重跑 {@code init()}，而本方法开头
+        //   {@code clearWidgets()} 已经把 widget 全清掉。
+        //   但上面是 {@code if (presetsPanel == null)} 才构造 —— 第二次进 init 时
+        //   面板非 null ⇒ <b>三个 widget 再也不会被 addRenderableWidget</b>
+        //   ⇒ 种子行只剩「种子:」标签与空位（实机表现就是"输入框消失了"）。
+        //   ⇒ 与面板是否刚构造无关，每次 init 都必须重新登记。
+        if (presetsPanel != null) presetsPanel.ensureWidgetsRegistered();
         if (displayPanel == null) displayPanel = new DisplayPanel(preview);
         if (samplingPanel == null) samplingPanel = new SamplingPanel(preview);
         if (colormapPanel == null) colormapPanel = new ColormapPanel(preview);
@@ -1823,6 +1832,17 @@ public class GeoGenesisConfigScreen extends Screen {
             }
             return true;
         }
+
+        // ★★ v70【修"种子输入框画得出来却永远点不到"】★★
+        //
+        //   本方法此前<b>从不调用 super.mouseClicked</b>（mouseDragged/
+        //   mouseScrolled/keyPressed 都调了，唯独这里漏了）
+        //   ⇒ MC 的 widget 分发根本不发生 ⇒ 种子输入框 / ↻ / ★ 三个
+        //   addRenderableWidget 控件虽然每帧被 super.render 画出来，却永远收不到点击。
+        //
+        //   顺序很关键：必须在"面板已消费"与"被面板遮挡就吞掉"之后，
+        //   否则面板空白处会先被 widget 抢走（那些 widget 的矩形在预设页里）。
+        if (panelOpen && super.mouseClicked(mx, my, b)) return true;
 
         if (mx >= panelX && mx <= panelX + panelW && my >= listTop && my <= listBottom) {
             if (panels != null && tab < panels.length && panels[tab].mouseClicked(mx, my, b)) return true;

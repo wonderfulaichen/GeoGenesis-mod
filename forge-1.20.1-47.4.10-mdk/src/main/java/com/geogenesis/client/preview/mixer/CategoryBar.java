@@ -28,7 +28,7 @@ public class CategoryBar {
     private int barX, barY, barW = 200, barH = 20;
     private double dataMin = -1.0, dataMax = 1.0;
 
-    // ★ v16：删除 `dragging` 字段 —— 色条只读后不再有拖拽状态。
+    // ★ v70：恢复拖拽后重新需要 draggingIdx（见下方 mouseClicked/mouseDragged）
 
     // 重置按钮
     private static final int RESET_BTN_W = 18;
@@ -214,30 +214,86 @@ public class CategoryBar {
         }
     }
 
-    // ---- 鼠标（★ v16：色条改为<b>只读</b>，只有重置按钮仍可点）----
+    // ---- 鼠标 ----
     //
-    //   用户裁定：「示意图改成不可直接交互，仅由 UI 控件配置」。
-    //   阈值现在只能通过下方的滑块调整；色条本身是<b>输出</b>。
-    //   「重置」按钮保留 —— 它是明确的独立操作，不是"拖图改值"。
+    // ★★ v70【恢复拖动色条改阈值】★★
+    //
+    //   v16 曾把色条改成只读，理由是用户说「示意图改成不可直接交互」。
+    //   但那是针对<b>世界与尺度页的示意图</b>说的；色条不是示意图，
+    //   它是这 13 个气候阈值的<b>唯一输入控件</b>
+    //   （PanelLayout.SPECIALIZED_CLIMATE 把这些键从目录驱动里扣掉了，
+    //     DomainPanel 因此不画滑块）。
+    //   ⇒ 只读之后这些键<b>只能重置回默认，无法调整</b>。
+    //   用户 2026-11-11 明确裁定：「我选恢复色条拖拽。这个不是示意图所以不用做只读。」
+    //
+    //   命中余量 HIT_PX 比视觉线宽大：单像素竖线极难点中。
+
+    /** 阈值线的点击/拖拽命中半径（像素）。 */
+    private static final int HIT_PX = 6;
+
+    /** 正在拖动哪条阈值；-1 = 没拖。 */
+    private int draggingIdx = -1;
 
     public boolean mouseClicked(double mx, double my, int btn) {
         if (btn != 0) return false;
-        // 只保留重置按钮
+        // 重置按钮
         int rbX = barX + barW + 6;
         int rbY = barY;
         if (mx >= rbX && mx <= rbX + RESET_BTN_W && my >= rbY && my <= rbY + RESET_BTN_H) {
             resetToDefaults();
             return true;
         }
+        // 阈值线：点中即开始拖
+        if (my >= barY - 2 && my <= barY + barH + 2) {
+            int idx = nearestBoundary((int) mx, HIT_PX);
+            if (idx >= 0) {
+                draggingIdx = idx;
+                applyDrag((int) mx);
+                return true;
+            }
+        }
         return false;
     }
 
     public boolean mouseDragged(double mx, double my, int btn, double dx, double dy) {
-        return false;
+        if (draggingIdx < 0) return false;
+        applyDrag((int) mx);
+        return true;
     }
 
     public boolean mouseReleased(double mx, double my, int btn) {
-        return false;
+        boolean was = draggingIdx >= 0;
+        draggingIdx = -1;
+        return was;
+    }
+
+    /** 屏幕 x → 数据值 → 写回该阈值（含相邻阈值的最小间距夹取）。 */
+    private void applyDrag(int screenX) {
+        if (draggingIdx < 0 || draggingIdx >= boundaries.size()) return;
+        double span = Math.max(1e-6, dataMax - dataMin);
+        double v = dataMin + (screenX - barX) / (double) Math.max(1, barW) * span;
+        // 不能压过相邻阈值（否则色段会反序，视觉上像"色块翻转"）
+        double lo = dataMin + span * 0.002;
+        double hi = dataMax - span * 0.002;
+        if (draggingIdx > 0) lo = Math.max(lo, boundaries.get(draggingIdx - 1).getValue() + span * 0.002);
+        if (draggingIdx + 1 < boundaries.size()) {
+            hi = Math.min(hi, boundaries.get(draggingIdx + 1).getValue() - span * 0.002);
+        }
+        v = Math.max(lo, Math.min(hi, v));
+        Boundary b = boundaries.get(draggingIdx);
+        b.setValue(v);                       // 触发 setter ⇒ 写进配置
+        b.setScreenX(dataToScreenX(v));
+        onMarkDirty.run();
+    }
+
+    /** 找离 {@code mx} 最近的阈值（在 {@code hitPx} 内才返回）。 */
+    private int nearestBoundary(int mx, int hitPx) {
+        int best = -1, bestD = Integer.MAX_VALUE;
+        for (int i = 0; i < boundaries.size(); i++) {
+            int d = Math.abs(boundaries.get(i).getScreenX() - mx);
+            if (d <= hitPx && d < bestD) { bestD = d; best = i; }
+        }
+        return best;
     }
 
     /**
