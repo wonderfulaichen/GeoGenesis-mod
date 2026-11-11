@@ -131,6 +131,22 @@ public final class ViewTransition {
         return clamp01((sandboxness(ease, toSandbox) - PHASE_TEXTURE) / (1.0f - PHASE_TEXTURE));
     }
 
+    /** 收拢在第一段走到的比例：此处暗区已合拢成沙盘那个圆。 */
+    public static final float MASK_DONE = 0.72f;
+
+    /**
+     * <b>收拢进度</b>（0..1）：椭圆暗区从四角向盘心推进，用于"第一阶段从四周往中间收"。
+     *
+     * <p>用户 2026-11-11：「第一阶段应该先自然从四周往屏幕中间收，
+     * 原因你其实看沙盘就清楚了，沙盘是圆的，四周都暗角。」</p>
+     *
+     * <p>★ 它只驱动"平面纹理上的像素遮罩"，不新建任何纹理
+     * （见 {@code PreviewVignette} 的类注释：v58 在渲染中途造纹理导致黑屏）。</p>
+     */
+    public static float maskPhase(float ease, boolean toSandbox) {
+        return clamp01(texturePhase(ease, toSandbox) / MASK_DONE);
+    }
+
     /**
      * 线性进度：0 = 刚开始切，1 = 切完（或没在过渡）。
      *

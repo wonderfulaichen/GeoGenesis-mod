@@ -791,7 +791,10 @@ public class PreviewDisplay extends AbstractWidget {
         boolean layerChanged = activeLayer.ordinal() != lastLayerOrdinal
                 || (selectedLayer == null ? -1 : selectedLayer.ordinal()) != lastSelectedLayerOrdinal
                 || selectedId != lastSelectedId;
-        boolean dirty = needsClear || viewportMoved || dataChanged || layerChanged;
+        // ★ v59：过渡期间平面纹理被乘过遮罩 ⇒ 回到稳态必须先重画一次，
+        //   否则暗角会留在图上（planeMasked 由 applyVignetteToPlane 置位）。
+        boolean dirty = needsClear || viewportMoved || dataChanged || layerChanged
+                || planeMasked;
 
         // ★ S2：采样在后台线程池里跑（yardsite 同架构），渲染线程不做采样。
         //   这里只做一件事：采集完了就置脏重画（之前画的是半成品）。
@@ -809,6 +812,9 @@ public class PreviewDisplay extends AbstractWidget {
             //   dirty 本身已被视口移动/新数据/图层变化严格门控，多一次 fillRect（O(texW×texH)≈1ms）安全。
             image.fillRect(0, 0, texW, texH, 0);
             needsClear = false;
+            // ★ v59：这张图即将被整幅重画 ⇒ 旧快照作废（否则以后会拿过期像素去遮罩）
+            planeMasked = false;
+            planeSnapshot = null;
             if (largeArea) {
                 paintLargeArea(originWx, originWz, blocksWide, blocksHigh);
             } else {
@@ -1036,8 +1042,22 @@ public class PreviewDisplay extends AbstractWidget {
             //   曲面网格在 pitch=0 时本来就是多余的（高度不参与投影）。
             //   ⇒ 删除 drawGroundSurface / rasterizeGround / fillGroundTri 全套（199 行），
             //     第二段由柱体自己承担（那时地面早已淡到 0）。
-            blitPlaneOnly(g, x, y, w, h,
-                    ViewTransition.planeTextureAlpha(ease, toSandbox), 1f);
+            // ★★ v59【第一段的"从四周往中间收" —— 乘进已有纹理】★★
+            //
+            //   用户实机：「第一阶段应该先自然从四周往屏幕中间收，
+            //   原因你其实看沙盘就清楚了，沙盘是圆的，四周都暗角。」
+            //
+            //   ⚠ v58 曾在渲染中途 new NativeImage + new DynamicTexture + 每帧 upload，
+            //     实机「闪烁黑屏才出画面」，已整块回退（6478aae / 893eec4）。
+            //   ⇒ 这次<b>不新建任何纹理对象</b>：遮罩直接乘进已有的 {@code image}，
+            //     再走原本那条 {@code texture.upload()} + {@code g.blit}。
+            float maskP = ViewTransition.maskPhase(ease, toSandbox);
+            // 只在"平面图还看得见"时才算遮罩：第二段 texA=0，图根本不会 blit，
+            // 那时每帧重算整幅遮罩纯属浪费（texW×texH 不小）。
+            float texA = ViewTransition.planeTextureAlpha(ease, toSandbox);
+            if (maskP > 0.004f && texA > 0.004f) applyVignetteToPlane(maskP);
+
+            blitPlaneOnly(g, x, y, w, h, texA, 1f);
 
             // ---- 2) 柱体：<b>由同一个 relief 驱动高度与不透明度</b> ----
             //
@@ -1065,6 +1085,89 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 运镜期间为 true：{@code renderSandbox} 跳过拾取与标记（它们在快速运动中没有意义）。 */
     private boolean cameraMoveActive;
+
+    // =================================================================
+    // 第一段的椭圆收拢遮罩（★ v59）—— 绝不新建任何纹理对象
+    //
+    //   v58 的教训：在 renderWidget 里 new NativeImage + new DynamicTexture +
+    //   每帧 upload ⇒ 实机「闪烁黑屏才出画面」（6478aae 已回退）。
+    //   ⇒ 现在只做两件事：
+    //     ① 把<b>未遮罩</b>的平面像素存一份 int[]（纯 CPU，不是纹理）
+    //     ② 每帧从它算出遮罩版本写回 {@code image}，再调<b>原本那条</b> {@code texture.upload()}
+    //   全程一个纹理、一条已验证的提交路径。
+    // =================================================================
+
+    /** 平面纹理的未遮罩快照（行优先 {@code y*texW+x}）；null = 还没存。 */
+    private int[] planeSnapshot;
+
+    /** 平面纹理当前是否已被遮罩（回到稳态必须重画一次，否则会一直带着暗角）。 */
+    private boolean planeMasked;
+
+    private void ensurePlaneSnapshot() {
+        int need = texW * texH;
+        if (planeSnapshot != null && planeSnapshot.length == need) return;
+        planeSnapshot = new int[need];
+        for (int y = 0; y < texH; y++) {
+            for (int x = 0; x < texW; x++) {
+                planeSnapshot[y * texW + x] = image.getPixelRGBA(x, y);
+            }
+        }
+    }
+
+    /**
+     * 把椭圆收拢遮罩乘进<b>已有</b>平面纹理：{@code rgb = lerp(rgb, 底板色, a)}。
+     *
+     * <p>alpha 保持原样（未采样处的空洞不会被填成底板，避免凭空多出颜色）。</p>
+     */
+    private void applyVignetteToPlane(float p) {
+        ensurePlaneSnapshot();
+        ensureVigRadius();
+        for (int y = 0; y < texH; y++) {
+            int row = y * texW;
+            for (int x = 0; x < texW; x++) {
+                float a = com.geogenesis.client.preview.sandbox.PreviewVignette.plateAlpha(
+                        vigRadius[row + x], p);
+                int src = planeSnapshot[row + x];
+                if (a <= 0.0005f) {
+                    image.setPixelRGBA(x, y, src);
+                    continue;
+                }
+                // image 里的像素是 ABGR（NativeImage.setPixelRGBA 的顺序）
+                int sa = (src >>> 24) & 0xFF;
+                int sb = (src >>> 16) & 0xFF;
+                int sg = (src >>> 8) & 0xFF;
+                int sr = src & 0xFF;
+                int rr = (int) (sr + (com.geogenesis.client.preview.sandbox.PreviewVignette.PLATE_R - sr) * a);
+                int gg = (int) (sg + (com.geogenesis.client.preview.sandbox.PreviewVignette.PLATE_G - sg) * a);
+                int bb = (int) (sb + (com.geogenesis.client.preview.sandbox.PreviewVignette.PLATE_B - sb) * a);
+                image.setPixelRGBA(x, y, (sa << 24) | (bb << 16) | (gg << 8) | rr);
+            }
+        }
+        texture.upload();
+        planeMasked = true;
+    }
+
+    /**
+     * 每像素的归一化半径（只与纹理尺寸有关）——缓存，避免每帧几十万次 {@code sqrt}。
+     */
+    private float[] vigRadius;
+
+    private void ensureVigRadius() {
+        int need = texW * texH;
+        if (vigRadius != null && vigRadius.length == need) return;
+        vigRadius = new float[need];
+        float halfW = Math.max(1f, texW / 2f);
+        float halfH = Math.max(1f, texH / 2f);
+        for (int y = 0; y < texH; y++) {
+            float ny = (y + 0.5f) / halfH - 1f;
+            int row = y * texW;
+            for (int x = 0; x < texW; x++) {
+                float nx = (x + 0.5f) / halfW - 1f;
+                vigRadius[row + x] =
+                        com.geogenesis.client.preview.sandbox.PreviewVignette.radius(nx, ny);
+            }
+        }
+    }
 
     /**
      * 只把<b>平面图</b>贴到屏幕上（可带 alpha 与竖向收缩）。
