@@ -37,12 +37,21 @@ public final class ViewTransitionProbe {
 
         // ---- [1] 时长 ----
         System.out.println("[1] 过渡时长");
-        System.out.printf("    DURATION_MS = %d%n", ViewTransition.DURATION_MS);
-        if (ViewTransition.DURATION_MS < 600L || ViewTransition.DURATION_MS > 1200L) {
-            System.out.println("    FAIL: 运镜时长应在 600~1200ms 之间（太短像跳切，太长像拖沓）");
+        System.out.printf("    DURATION_MS = %d（默认 %d，正式 %d）%n",
+                ViewTransition.DURATION_MS, ViewTransition.DEFAULT_DURATION_MS,
+                ViewTransition.RELEASE_DURATION_MS);
+        // ★ 慢放默认开启（用户 2026-11-11 要求，便于观察），所以上界放宽；
+        //   真正要守的是"别慢到像卡住/别快到看不清"，以及默认值必须可辨识。
+        if (ViewTransition.DEFAULT_DURATION_MS > 60_000L
+                || ViewTransition.DEFAULT_DURATION_MS < 100L) {
+            System.out.println("    FAIL: 默认时长越界（100~60000ms）");
             pass = false;
+        } else if (ViewTransition.DEFAULT_DURATION_MS == ViewTransition.RELEASE_DURATION_MS) {
+            System.out.println("    OK（正式速度）");
         } else {
-            System.out.println("    OK");
+            System.out.printf("    OK（★ 慢放档 %.1f×；发布前 DEFAULT_DURATION_MS 应改回 %d）%n",
+                    ViewTransition.DEFAULT_DURATION_MS / (double) ViewTransition.RELEASE_DURATION_MS,
+                    ViewTransition.RELEASE_DURATION_MS);
         }
 
         // ---- [2] 进度 ----

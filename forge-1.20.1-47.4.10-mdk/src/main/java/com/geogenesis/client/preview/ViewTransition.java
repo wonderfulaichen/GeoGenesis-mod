@@ -32,22 +32,34 @@ public final class ViewTransition {
     /**
      * 过渡总时长（毫秒）。参考项目 {@code TRANSITION_MS=620}；运镜需要略长才不显得急。
      *
-     * <h2>★ 慢放（诊断用，默认关闭）</h2>
+     * <h2>★ 慢放（默认开启，仅便于观察）</h2>
      * <p>用户要求：「建议临时弄一个慢速播放功能，这样方便我观察问题好反馈，
-     * 毕竟你离线的效果和我实机看到的不一样。」</p>
+     * 毕竟你离线的效果和我实机看到的不一样。」随后追加：
+     * 「肯定是打开啊，慢放又不影响效果，只是方便观察变化。」</p>
      *
-     * <p>两种给法都支持（<b>同一个含义、同一个默认值 720</b>）：</p>
+     * <p>两种给法都支持（<b>同一个含义、同一个默认值</b>，见 {@link #DEFAULT_DURATION_MS}）：</p>
      * <pre>
-     *   -Dgeogenesis.transition.ms=2880        # JVM 属性
-     *   set GEOGENESIS_TRANSITION_MS=2880      # 环境变量（gradlew runClient 会继承）
+     *   -Dgeogenesis.transition.ms=720         # JVM 属性（720 = 恢复正式速度）
+     *   set GEOGENESIS_TRANSITION_MS=720       # 环境变量（gradlew runClient 会继承）
      * </pre>
-     * <p>合法范围 100~60000ms，越界或解析失败<b>静默回退 720</b>（不能因为调试开关写错就崩）。
+     * <p>合法范围 100~60000ms，越界或解析失败<b>静默回退默认值</b>（不能因为调试开关写错就崩）。
      * 配合 {@code geogenesis.transition.trace} 可逐帧打印相位量。</p>
      */
     public static final long DURATION_MS = resolveDurationMs();
 
-    /** 出厂默认时长；改它要同步 {@code ViewTransitionProbe} 的 600~1200ms 判据。 */
-    public static final long DEFAULT_DURATION_MS = 720L;
+    /**
+     * <b>出厂默认时长 —— 当前是慢放档（临时）</b>。
+     *
+     * <p>用户 2026-11-11：「肯定是打开啊，慢放又不影响效果，只是方便观察变化。」
+     * ⇒ 迭代期间默认用 4× 慢放（720 → 2880），方便逐帧核对相位。</p>
+     *
+     * <p>⚠ <b>发布前必须改回 720</b>。要临时恢复正式速度，不用改代码：
+     * {@code GEOGENESIS_TRANSITION_MS=720}（或 {@code -Dgeogenesis.transition.ms=720}）。</p>
+     */
+    public static final long DEFAULT_DURATION_MS = 2880L;
+
+    /** 正式（非慢放）时长；发布前把 {@link #DEFAULT_DURATION_MS} 改回它。 */
+    public static final long RELEASE_DURATION_MS = 720L;
 
     private static final String PROP_MS = "geogenesis.transition.ms";
     private static final String ENV_MS = "GEOGENESIS_TRANSITION_MS";
