@@ -985,6 +985,19 @@ public class PreviewDisplay extends AbstractWidget {
         //   ★ v48：改为<b>真正的交叉溶解</b>——同一帧里旧图淡出下沉、新图淡入上升
         //     （此前只画新图，没有旧图 ⇒ 观感是"淡入"而不是"两张图在过渡"）。
         beginViewTransition();
+        // ★★ v69【修"切换沙盘时少了抬升动画"】★★
+        //
+        //   用户：「在切换时沙盘动画好像少了一些动效？
+        //   我记得首次打开是会抬升柱子的动画的。」
+        //
+        //   原因：{@code SandboxRasterizer.animBaseMs} 只在第一次绘制时记一次，
+        //   之后永不重置 —— {@code resetSpreadAnimation()} 全仓<b>零调用方</b>
+        //   ⇒ 铺开动画只在这一局第一次进沙盘时播过；之后每次切换，柱子出生时刻
+        //   都在很久以前 ⇒ {@code applyGrow} 立刻满高 ⇒ "没有动效"。
+        //
+        //   ⇒ 切换视图时请求重播（消费一次）。不放在"换数据"处，
+        //     否则拖动/缩放会不断重播，柱子永远长不满。
+        if (v) sandboxRasterizer.requestSpreadReplay();
         // 只标记需要重画，不碰 scaleBlockPos / largeArea / center
         needsClear = true;
     }
@@ -1588,33 +1601,79 @@ public class PreviewDisplay extends AbstractWidget {
         if (id == sandboxRebuildId) return;      // 同一个视口已在算/已算好
         sandboxRebuildId = id;
         if (sandboxPool == null) {
-            int n = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
-            sandboxPool = java.util.concurrent.Executors.newFixedThreadPool(n, r -> {
+            // ★★ v69【改单线程 + 合并请求】★★
+            //
+            //   原来这里是 {@code cores/2} 个线程 + 无界队列。
+            //   拖动时 centerX/Z 每帧变化 ⇒ id 每帧变化 ⇒ <b>每帧投递一个全量重建</b>
+            //   （每次 100~150ms）⇒ 线程池被塞满、CPU 打满 ⇒
+            //   用户实机：「之前解决的拖动沙盘卡顿的问题又出现了。
+            //   不应该让后端计算导致无法正常流畅交互。」
+            //
+            //   ⇒ 只留<b>一个</b>工作线程：重建永远串行，不会互相抢核；
+            //     新请求到达时覆盖 pending 的，算完立刻接着算最新的（合并）。
+            //     过期的中间视口直接跳过，不再排队。
+            sandboxPool = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "geo-sandbox-data");
                 t.setDaemon(true);
                 t.setPriority(Thread.NORM_PRIORITY - 2);
                 return t;
             });
         }
-        sandboxPool.execute(() -> {
-            TerrainFieldData built = TerrainFieldData.fromCellCache(
-                    cellCache, ox, oz, bw, bh, grid, grid, id);
-            // ★★ v64【修"缩放后缺失数据等很久也补不回来"】★★
-            //
-            //   这里原来无条件 sandboxPending = built。
-            //   但缩放会让 id 连变（窗口变了，cellCache.version() 也在涨），
-            //   多个重建任务并发 ⇒ <b>先发起的旧窗口任务可能最后完成</b>，
-            //   把新窗口的数据覆盖掉 ⇒ 画面停在一份"小窗口、少 chunk"的旧结果，
-            //   再等也不会自愈（id 已记成新的，不会重发）。
-            //   ⇒ 只发布"仍是当前所需视口"的结果；过期的直接丢弃。
-            if (id != sandboxRebuildId) return;
-            sandboxPending = built;
-            sandboxPendingId = id;
-        });
+        // 合并：同一时刻最多一个在跑，其余只保留"最新的一份需求"
+        pendingRebuildId = id;
+        pendingRebuildOx = ox;
+        pendingRebuildOz = oz;
+        pendingRebuildBw = bw;
+        pendingRebuildBh = bh;
+        pendingRebuildGrid = grid;
+        if (rebuildInFlight) return;   // 正在算 ⇒ 让它算完后取最新需求
+        rebuildInFlight = true;
+        sandboxPool.execute(this::drainRebuildQueue);
+    }
+
+    /** 最新一次重建需求（合并用）。 */
+    private volatile long pendingRebuildId = Long.MIN_VALUE;
+    private volatile int pendingRebuildOx, pendingRebuildOz;
+    private volatile int pendingRebuildBw = 1, pendingRebuildBh = 1, pendingRebuildGrid = 1;
+    private volatile boolean rebuildInFlight;
+
+    /**
+     * 串行排空重建需求：每次只取<b>最新</b>的那一份，跳过期视口。
+     *
+     * <p>这样拖动/缩放时无论产生多少次请求，实际计算次数 ≈ 计算耗时能被满足的次数，
+     * 而不是"每帧一次"。CPU 不会被占满，前端交互保持流畅。</p>
+     */
+    private void drainRebuildQueue() {
+        try {
+            while (true) {
+                long id = pendingRebuildId;
+                int ox = pendingRebuildOx, oz = pendingRebuildOz;
+                int bw = pendingRebuildBw, bh = pendingRebuildBh, grid = pendingRebuildGrid;
+                if (id == Long.MIN_VALUE) return;
+                // 消费掉当前需求；若计算期间又来了新的，循环会再取一次
+                pendingRebuildId = Long.MIN_VALUE;
+                TerrainFieldData built = TerrainFieldData.fromCellCache(
+                        cellCache, ox, oz, bw, bh, grid, grid, id);
+                // 只发布"仍是当前所需视口"的结果（★ v64：旧窗口结果会覆盖新窗口）
+                if (id == sandboxRebuildId) {
+                    sandboxPending = built;
+                    sandboxPendingId = id;
+                }
+                if (pendingRebuildId == Long.MIN_VALUE) return;
+            }
+        } finally {
+            rebuildInFlight = false;
+            // 收尾竞态：请求可能刚好在 finally 之前到达，补一次
+            if (pendingRebuildId != Long.MIN_VALUE && !rebuildInFlight) {
+                rebuildInFlight = true;
+                sandboxPool.execute(this::drainRebuildQueue);
+            }
+        }
     }
 
     /** 渲染线程每帧开头调：有算好的新数据就换上（O(1)）。 */
-    private void swapInPendingSandbox() {        TerrainFieldData p = sandboxPending;
+    private void swapInPendingSandbox() {
+        TerrainFieldData p = sandboxPending;
         if (p == null) return;
         sandboxPending = null;
         sandboxData = p;

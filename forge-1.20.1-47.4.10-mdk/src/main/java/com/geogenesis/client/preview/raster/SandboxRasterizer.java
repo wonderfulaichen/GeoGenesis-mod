@@ -301,6 +301,11 @@ public final class SandboxRasterizer {
         lastSpan = span;
         // ★ v26：本图第一次绘制 → 记下动画基准（此后跨帧稳定，见 animBaseMs 注释）
         if (animBaseMs == 0L) animBaseMs = now;
+        // ★★ v69：由调用方请求的"重播铺开动画"（切换视图时用）
+        if (replaySpreadPending) {
+            replaySpreadPending = false;
+            animBaseMs = now;
+        }
 
         float[] r = SandboxGeometry.rotationRows(effYaw(), effPitch());
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
@@ -873,6 +878,27 @@ public final class SandboxRasterizer {
     public void resetSpreadAnimation() {
         animBaseMs = 0L;
     }
+
+    /**
+     * <b>请求下一次绘制时重播"从中心长出来"的动画</b>（★ v69）。
+     *
+     * <h2>为什么不是直接调 {@link #resetSpreadAnimation()} 清零</h2>
+     * <p>当前实现 {@code draw()} 里有一句 {@code if (animBaseMs == 0L) animBaseMs = now}，
+     * 所以"清零"与"下一帧重新起算"其实等价。但用标记位更明确：
+     * 调用方（切换视图）表达的是<b>一次意图</b>，不是"把状态改坏"，
+     * 而且标记在 {@code draw} 里只消费一次，重复调用不会累积。</p>
+     *
+     * <h2>为什么不能每次换数据都重播</h2>
+     * <p>拖动/缩放会不断换数据（每 100~150ms 一份）。若那时也重播，
+     * 柱子会永远停在"刚开始长"的半高状态 —— 正是 v25 踩过的坑。
+     * 因此只在<b>用户主动切换视图</b>时请求重播。</p>
+     */
+    public void requestSpreadReplay() {
+        replaySpreadPending = true;
+    }
+
+    /** 待消费的"重播铺开动画"请求（在 draw 里一次性消费）。 */
+    private boolean replaySpreadPending;
 
     private SandboxGeometry.Columns buildCols(TerrainFieldData snap, RasterParams p, float[] r, float span) {
         return SandboxGeometry.buildColumns(snap, p.layer(), SandboxLod.perColumn(),
