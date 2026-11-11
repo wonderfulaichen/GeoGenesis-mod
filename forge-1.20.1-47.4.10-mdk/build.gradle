@@ -2896,3 +2896,10 @@ task runTransitionFilmstripProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.TransitionFilmstripProbe'
     maxHeapSize = '2g'
 }
+// 一个相机 + 两种样式的结构守门（window/origin 只能有一个来源）。
+//   gradlew runPreviewCameraProbe
+task runPreviewCameraProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.PreviewCameraProbe'
+    maxHeapSize = '1g'
+}

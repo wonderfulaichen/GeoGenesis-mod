@@ -754,14 +754,18 @@ public class PreviewDisplay extends AbstractWidget {
             return;
         }
 
-        int scale = scaleBlockPos;
-        int blocksWide = texW * scale;
-        int blocksHigh = texH * scale;
-        // ★ 统一视口原点，并对齐到 scale 倍数（floorDiv）：
-        //   paint 里 tx=(wx-originWx)/scale 才能整除 → chunk 像素无缝、无重叠/缝隙/重影。
-        //   hover / 出生点标记 / 阴影全部复用同一个对齐原点，杜绝"两层图错位打架"。
-        int originWx = alignDown(centerX + (int) totalDragX - blocksWide / 2, scale);
-        int originWz = alignDown(centerZ + (int) totalDragZ - blocksHigh / 2, scale);
+        // ★★ v54【视口来自唯一相机 PreviewCamera】★★
+        //   此前平面在这里自己推 origin，沙盘在 renderSandbox 里又推一遍（两套公式）。
+        //   现在两者都从同一个对象取：window / origin 只有一处实现。
+        //   align = scaleBlockPos（平面纹理需要按缩放档对齐，否则半像素错位）；
+        //   pan = 尚未提交的拖拽累积（沙盘恒 0，因为它把拖拽直接提交进 center）。
+        PreviewCamera cam = viewCamera(scaleBlockPos,
+                (int) totalDragX, (int) totalDragZ, pitchPlane(), yawPlane());
+        int scale = cam.align;
+        int blocksWide = cam.windowX;
+        int blocksHigh = cam.windowZ;
+        int originWx = cam.originX();
+        int originWz = cam.originZ();
 
         // 每帧直接用鼠标屏幕坐标反算世界坐标（参考项目 updateTooltip 做法），
         // 不依赖 mouseMoved 回调（Forge Screen 默认不向子 widget 转发 mouseMoved，
@@ -1058,20 +1062,72 @@ public class PreviewDisplay extends AbstractWidget {
             return;
         }
 
+        // ★★★ v53【改用「CPU 光栅化 + g.blit」，彻底绕开手写 GL】★★★
+        //
+        //   实机三次失败（POSITION_TEX_COLOR / POSITION_TEX / RenderType.guiTextured 不存在）
+        //   全部是「一点切换就黑屏」⇒ 地面一个像素都没画出来。
+        //   ⇒ 停止在 GL 提交上试错。改用本项目<b>已经被证明能工作</b>的链路：
+        //     软件光栅化 → NativeImage → DynamicTexture.upload() → g.blit
+        //   这正是平面模式现在的做法（blitPlaneOnly 走的就是 g.blit），
+        //   离线分镜 runTransitionFilmstripProbe 用的也是同一套光栅化算法。
+        ensureGroundCanvas(w, h);
+        rasterizeGround(r, sx, sy, d, w, h);
+        groundTexture.upload();
+        boolean shade = alpha < 0.999f;
+        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
+        g.blit(groundLoc, x, y, w, h, 0, 0, w, h, w, h);
+        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        groundQuadsDrawn = GROUND_MESH * GROUND_MESH;
+    }
+
+    // ---- 过渡用地面画布（第二张纹理；与平面纹理分开，避免互相踩）----
+
+    private NativeImage groundImage;
+    private DynamicTexture groundTexture;
+    private ResourceLocation groundLoc;
+
+    private void ensureGroundCanvas(int w, int h) {
+        if (groundImage != null && groundImage.getWidth() == w && groundImage.getHeight() == h) return;
+        releaseGroundCanvas();
+        groundImage = new NativeImage(NativeImage.Format.RGBA, w, h, false);
+        groundTexture = new DynamicTexture(groundImage);
+        groundLoc = ResourceLocation.tryParse("geogenesis:ground_" + System.nanoTime());
+        mc.getTextureManager().register(groundLoc, groundTexture);
+    }
+
+    private void releaseGroundCanvas() {
+        if (groundLoc != null) {
+            try { mc.getTextureManager().release(groundLoc); } catch (Throwable ignored) { }
+            groundLoc = null;
+        }
+        if (groundImage != null) {
+            try { groundImage.close(); } catch (Throwable ignored) { }
+            groundImage = null;
+        }
+        groundTexture = null;
+    }
+
+    /**
+     * 把带纹理的高度场光栅化进 {@link #groundImage}（与离线分镜同一算法）。
+     *
+     * <p>按四边形远→近提交（画家算法），两个三角形分别做 UV 重心插值 + 最近邻采样。</p>
+     */
+    private void rasterizeGround(float[] r, float sx, float sy, TerrainFieldData d,
+                                 int w, int h) {
+        groundImage.fillRect(0, 0, w, h, 0);
         final int m = GROUND_MESH;
-        final int gn = m + 1;
-        double cx = x + w / 2.0, cy = y + h / 2.0;
+        int gn = m + 1;
+        double cx = w / 2.0, cy = h / 2.0;
         double base = seaLevel - 4.0;
         double spanV = Math.max(20.0, reliefSpan);
         int gh = d.gridH;
-        double stepBlocks = Math.max(1, d.gridW) / (double) m;
+        double step = Math.max(1, d.gridW) / (double) m;
 
-        // 顶点高度（模型单位 z）
         float[] vz = new float[gn * gn];
         for (int iz = 0; iz < gn; iz++) {
             for (int ix = 0; ix < gn; ix++) {
-                int gx = Math.min(d.gridW - 1, (int) (ix * stepBlocks));
-                int gz = Math.min(gh - 1, (int) (iz * stepBlocks));
+                int gx = Math.min(d.gridW - 1, (int) (ix * step));
+                int gz = Math.min(gh - 1, (int) (iz * step));
                 int i = gx * gh + gz;
                 double hv = d.height[i];
                 if (d.e[i] < 0.0) hv = seaLevel;
@@ -1082,52 +1138,68 @@ public class PreviewDisplay extends AbstractWidget {
             }
         }
 
-        // 远→近排序（画家算法）
         Integer[] order = new Integer[m * m];
         float[] depth = new float[m * m];
         for (int i = 0; i < m * m; i++) {
-            int qx = i % m, qz = i / m;
-            depth[i] = r[6] * modelX(qx, m) + r[7] * modelY(qz, m);
+            depth[i] = r[6] * modelX(i % m, m) + r[7] * modelY(i / m, m);
             order[i] = i;
         }
         java.util.Arrays.sort(order, (a, b) -> Float.compare(depth[a], depth[b]));
 
-        g.flush();
-        org.joml.Matrix4f pose = g.pose().last().pose();
-        // ★★ v51【与原版 GuiGraphics.innerBlit 逐字一致】★★
-        //
-        //   实机 v50 用 POSITION_TEX_COLOR + getPositionTexColorShader + 顶点色 alpha，
-        //   结果是「一点切换就黑屏，然后才出现沙盘」⇒ 地面一个像素都没画出来。
-        //   本项目从未跑过那条路径，不该拿它赌。
-        //
-        //   原版 innerBlit（1.20.1）：
-        //     RenderSystem.setShaderTexture(0, tex)
-        //     RenderSystem.setShader(GameRenderer::getPositionTexShader)
-        //     begin(QUADS, POSITION_TEX)
-        //     vertex(pose, x, y, blitOffset).uv(u,v).endVertex()
-        //     BufferUploader.drawWithShader(bb.end())
-        //   这里只把顶点坐标换成任意四边形，其余一字不改；alpha 走 setShaderColor
-        //   （position_tex 的 ColorModulator，与既有的 blitPlaneOnly 同一条路）。
-        com.mojang.blaze3d.vertex.BufferBuilder bb =
-                com.mojang.blaze3d.vertex.Tesselator.getInstance().getBuilder();
-        RenderSystem.setShaderTexture(0, texLoc);
-        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexShader);
-        bb.begin(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS,
-                com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX);
         for (Integer idx : order) {
             int qx = idx % m, qz = idx / m;
-            emitGroundQuad(bb, pose, r, sx, sy, cx, cy, vz, gn, qx, qz,
-                    modelX(qx, m), modelX(qx + 1, m), modelY(qz, m), modelY(qz + 1, m),
-                    qx / (float) m, (qx + 1) / (float) m, qz / (float) m, (qz + 1) / (float) m);
+            float z00 = vz[qz * gn + qx], z10 = vz[qz * gn + qx + 1];
+            float z01 = vz[(qz + 1) * gn + qx], z11 = vz[(qz + 1) * gn + qx + 1];
+            float x0 = modelX(qx, m), x1 = modelX(qx + 1, m);
+            float y0 = modelY(qz, m), y1 = modelY(qz + 1, m);
+            float u0 = qx / (float) m, u1 = (qx + 1) / (float) m;
+            float v0 = qz / (float) m, v1 = (qz + 1) / (float) m;
+
+            double[] p00 = groundProject(r, sx, sy, cx, cy, x0, y0, z00);
+            double[] p10 = groundProject(r, sx, sy, cx, cy, x1, y0, z10);
+            double[] p11 = groundProject(r, sx, sy, cx, cy, x1, y1, z11);
+            double[] p01 = groundProject(r, sx, sy, cx, cy, x0, y1, z01);
+            fillGroundTri(p00, u0, v0, p10, u1, v0, p11, u1, v1, w, h);
+            fillGroundTri(p00, u0, v0, p11, u1, v1, p01, u0, v1, w, h);
         }
-        boolean shade = alpha < 0.999f;
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
-        com.mojang.blaze3d.vertex.BufferUploader.drawWithShader(bb.end());
-        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        // 不 disableBlend：GUI 全局默认开着混合，关掉会影响后续所有 GUI 绘制
-        groundQuadsDrawn = m * m;
+    }
+
+    private static double[] groundProject(float[] r, float sx, float sy,
+                                          double cx, double cy,
+                                          float mx, float my, float mz) {
+        return new double[]{
+                cx + sx * (r[0] * mx + r[1] * my + r[2] * mz),
+                cy + sy * (r[3] * mx + r[4] * my + r[5] * mz)};
+    }
+
+    /** 三角形填充 + UV 重心插值 + 最近邻采样（采样源 = 平面纹理 {@link #image}）。 */
+    private void fillGroundTri(double[] a, double au, double av,
+                               double[] b, double bu, double bv,
+                               double[] c, double cu, double cv,
+                               int w, int h) {
+        int minX = (int) Math.max(0, Math.floor(Math.min(a[0], Math.min(b[0], c[0]))));
+        int maxX = (int) Math.min(w - 1, Math.ceil(Math.max(a[0], Math.max(b[0], c[0]))));
+        int minY = (int) Math.max(0, Math.floor(Math.min(a[1], Math.min(b[1], c[1]))));
+        int maxY = (int) Math.min(h - 1, Math.ceil(Math.max(a[1], Math.max(b[1], c[1]))));
+        if (minX > maxX || minY > maxY) return;
+        double dd = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+        if (Math.abs(dd) < 1e-9) return;
+        double eps = 1e-6 * (1 + Math.abs(dd));
+        for (int py = minY; py <= maxY; py++) {
+            for (int px = minX; px <= maxX; px++) {
+                double l1 = ((b[1] - c[1]) * (px - c[0]) + (c[0] - b[0]) * (py - c[1])) / dd;
+                double l2 = ((c[1] - a[1]) * (px - c[0]) + (a[0] - c[0]) * (py - c[1])) / dd;
+                double l3 = 1 - l1 - l2;
+                if (l1 < -eps || l2 < -eps || l3 < -eps) continue;
+                double u = l1 * au + l2 * bu + l3 * cu;
+                double v = l1 * av + l2 * bv + l3 * cv;
+                int tx = (int) (u * (texW - 1));
+                int tz = (int) (v * (texH - 1));
+                tx = tx < 0 ? 0 : Math.min(texW - 1, tx);
+                tz = tz < 0 ? 0 : Math.min(texH - 1, tz);
+                groundImage.setPixelRGBA(px, py, image.getPixelRGBA(tx, tz));
+            }
+        }
     }
 
     /** 上一次提交的地面四边形数（0 = 没画；诊断用）。 */
@@ -1142,33 +1214,6 @@ public class PreviewDisplay extends AbstractWidget {
 
     private static float modelY(int q, int m) {
         return q / (float) m * 2f - 1f;
-    }
-
-    /** 提交一个地面四边形（两个三角形由 QUADS 模式合并）。 */
-    private void emitGroundQuad(com.mojang.blaze3d.vertex.BufferBuilder bb,
-                                org.joml.Matrix4f pose, float[] r,
-                                float sx, float sy, double cx, double cy,
-                                float[] vz, int gn, int qx, int qz,
-                                float x0, float x1, float y0, float y1,
-                                float u0, float u1, float v0, float v1) {
-        float z00 = vz[qz * gn + qx];
-        float z10 = vz[qz * gn + qx + 1];
-        float z01 = vz[(qz + 1) * gn + qx];
-        float z11 = vz[(qz + 1) * gn + qx + 1];
-        emitVertex(bb, pose, r, sx, sy, cx, cy, x0, y0, z00, u0, v0);
-        emitVertex(bb, pose, r, sx, sy, cx, cy, x1, y0, z10, u1, v0);
-        emitVertex(bb, pose, r, sx, sy, cx, cy, x1, y1, z11, u1, v1);
-        emitVertex(bb, pose, r, sx, sy, cx, cy, x0, y1, z01, u0, v1);
-    }
-
-    private void emitVertex(com.mojang.blaze3d.vertex.BufferBuilder bb,
-                            org.joml.Matrix4f pose, float[] r,
-                            float sx, float sy, double cx, double cy,
-                            float mx, float my, float mz,
-                            float u, float v) {
-        float px = (float) (cx + sx * (r[0] * mx + r[1] * my + r[2] * mz));
-        float py = (float) (cy + sy * (r[3] * mx + r[4] * my + r[5] * mz));
-        bb.vertex(pose, px, py, 0f).uv(u, v).endVertex();
     }
 
     /**
@@ -1199,6 +1244,38 @@ public class PreviewDisplay extends AbstractWidget {
         g.blit(texLoc, x, yy, w, hh, 0, 0, texW, texH, texW, texH);
         if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
     }
+
+    /**
+     * <b>构造当前帧的相机（唯一来源）</b>（★ v54）。
+     *
+     * <p>平面与沙盘的 window / origin 都从它取，不再各自推导。
+     * 参数只表达<b>样式差异</b>，不表达"两套实现"：</p>
+     * <ul>
+     *   <li>{@code align}：平面需要按缩放档对齐（半像素错位会让纹理接缝可见），沙盘传 1；</li>
+     *   <li>{@code panX/panZ}：平面把拖拽先累积在 {@code totalDrag}，沙盘直接提交进 center；</li>
+     *   <li>{@code pitch/yaw}：平面恒 0（正俯视），沙盘用用户视角。</li>
+     * </ul>
+     */
+    private PreviewCamera viewCamera(int align, int panX, int panZ, float pitch, float yaw) {
+        PreviewCamera c = new PreviewCamera();
+        int scale = Math.max(1, scaleBlockPos);
+        c.centerX = centerX;
+        c.centerZ = centerZ;
+        c.panX = panX;
+        c.panZ = panZ;
+        c.align = Math.max(1, align);
+        c.windowX = Math.max(64, texW * scale);
+        c.windowZ = Math.max(64, texH * scale);
+        c.pitch = pitch;
+        c.yaw = yaw;
+        return c;
+    }
+
+    /** 平面姿态的 pitch：正俯视。 */
+    private static float pitchPlane() { return 0f; }
+
+    /** 平面姿态的 yaw：必须为 0，否则与平面纹理无法逐像素对齐。 */
+    private static float yawPlane() { return 0f; }
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
     private void renderSandbox(GuiGraphics g, int w, int h, double mx, double my) {
@@ -1237,8 +1314,11 @@ public class PreviewDisplay extends AbstractWidget {
         //
         //   ★ 柱数仍按 zoom 档位走（决定"画多粗"），
         //     但<b>每柱代表多少方块</b>随窗口自动换算 ⇒ 分辨率不丢。
-        int blocksWide = Math.max(64, texW * scaleBlockPos);
-        int blocksHigh = Math.max(64, texH * scaleBlockPos);
+        // ★★ v54：视口同样来自唯一相机（align=1、pan=0 —— 沙盘把拖拽直接提交进 center）
+        PreviewCamera cam = viewCamera(1, 0, 0,
+                sandboxRasterizer.pitch(), sandboxRasterizer.yaw());
+        int blocksWide = cam.windowX;
+        int blocksHigh = cam.windowZ;
         // ★ v29：柱数按"柱屏宽 ~8px"与窗口共同决定（不再固定 1 柱 = 16 格）
         //   窗口 900 格 ⇒ 128 柱 ≈ 7 格/柱（参考项目同为 128 柱）
         int basePillars = SandboxLod.pillarsForWindow(blocksWide, Math.min(w, h));
@@ -1270,8 +1350,9 @@ public class PreviewDisplay extends AbstractWidget {
         //   此前这里还叠加了 totalDragX/totalDragZ（那是<b>平面</b>的累积拖拽偏移），
         //   而沙盘平移是直接改 centerX/centerZ 的 ⇒ 两者会互相干扰
         //   （平面拖过之后切沙盘，视口会莫名其妙偏一段）。
-        int originWx = centerX - blocksWide / 2;
-        int originWz = centerZ - blocksHigh / 2;
+        // ★ v54：原点也来自同一个相机对象（此前这里自己又推了一遍）
+        int originWx = cam.originX();
+        int originWz = cam.originZ();
 
         // ★★★ v31【修"沙盘里该渲染的位置等半天不加载，要切平面才补上"】★★★
         //
@@ -2579,6 +2660,7 @@ public class PreviewDisplay extends AbstractWidget {
         if (ownsTerrain && terrain != null) terrain.closeProcessErosion();
         mc.getTextureManager().release(texLoc);
         texture.close();
+        releaseGroundCanvas();
         // ★ 磁盘持久化：关屏保存全部历史（后台线程 + tmp 原子写，不阻塞 UI）。
         //   保存历史层（紧凑数据，含本次会话所有采样 + 磁盘加载的），跨会话完整保留。
         long seedSnapshot = diskSeed;
@@ -2736,10 +2818,6 @@ public class PreviewDisplay extends AbstractWidget {
 
     private void drawCopiedToast(GuiGraphics g, int px, int py, int pw, int ph) {
         plane.drawCopiedToast(g, px, py, pw, ph);
-    }
-
-    private static int alignDown(int v, int scale) {
-        return PlanePainter.alignDown(v, scale);
     }
 
     private void paintLargeArea(int originWx, int originWz, int blocksWide, int blocksHigh) {
