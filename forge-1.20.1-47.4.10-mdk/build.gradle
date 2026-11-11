@@ -2868,3 +2868,10 @@ task runRevealGeometryProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.RevealGeometryProbe'
     maxHeapSize = '2g'
 }
+// 平面⇄沙盘切换过渡：时长/进度/交叉溶解/高度/推近/数值健全性六条判据。
+//   gradlew runViewTransitionProbe
+task runViewTransitionProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.ViewTransitionProbe'
+    maxHeapSize = '1g'
+}

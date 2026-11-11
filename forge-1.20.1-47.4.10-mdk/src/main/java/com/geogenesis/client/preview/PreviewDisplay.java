@@ -114,42 +114,47 @@ public class PreviewDisplay extends AbstractWidget {
     // 我们原先是<b>硬切</b>（切模式下一帧直接换画面）⇒ 视觉上"啪"一下。
     // ⇒ 补上同口径的过渡。
 
-    /** 过渡总时长（毫秒，参考项目 {@code TRANSITION_MS=620}）。 */
-    private static final long TRANSITION_MS = 620L;
+    /** 过渡总时长（毫秒）。★ v48：统一由 {@link ViewTransition#DURATION_MS} 提供。 */
+    private static final long TRANSITION_MS = ViewTransition.DURATION_MS;
 
     /** 过渡结束时刻；0 = 没在过渡。 */
     private long transitionEndAt = 0L;
     /** 过渡起点（用于算进度）。 */
     private long transitionStartAt = 0L;
 
-    // ---- ★ v35：切换过渡的四个插值量（照参考项目 YardSiteScreen 296-303/388-421）----
-    /** 过渡起点/终点的缩放（看的是"切过去那一档"的默认值）。 */
-    private float transZoomFrom = 1f, transZoomTo = 1f;
-    /** 过渡起点/终点的柱宽。 */
-    private float transWidthFrom = 1f, transWidthTo = 1f;
-    /** 过渡方向：true = 正在切到沙盘（旧图=平面）。 */
+    /** 过渡方向：true = 正在切到沙盘（旧图=平面）；false = 正在切回平面（旧图=沙盘）。 */
     private boolean transToSandbox;
 
-    /** 触发一次视图切换过渡（从当前模式切到另一模式）。 */
+    /**
+     * 触发一次视图切换过渡（从当前模式切到另一模式）。
+     *
+     * <h2>★ v48：删掉 {@code transZoomFrom/To} 与 {@code transWidthFrom/To}</h2>
+     * <p>参考项目 {@code YardSiteScreen} 第 388-393 行会在过渡中插值
+     * {@code zoom} 与 {@code widthScale}，因为它的两张图是<b>同一个渲染器的两张场</b>
+     * （大沙盘 {@code defaultZoom=2.0} ⇄ 区块精读 {@code defaultZoom=1.8}），
+     * 单位相同、插值才有意义。</p>
+     *
+     * <p>我们这边两种视图的缩放<b>不同源也不同义</b>：
+     * 平面是整数档 {@code scaleBlockPos}（1/2/4/8…），
+     * 沙盘是 {@code SandboxRasterizer.zoom()} 的浮点档。
+     * 在两者之间插值没有任何物理意义。</p>
+     *
+     * <p>而且用户早已明确裁定：「谁切换视图还改缩放等信息呢？」
+     * ⇒ 切视图<b>不动任何视图参数</b>，所以这里本来就没有可插值的两端。
+     * 那四个字段此前只被赋值、从未被读 —— 留着会让读者以为"插值已经做了"。</p>
+     */
     private void beginViewTransition() {
         long now = System.currentTimeMillis();
         transitionStartAt = now;
         transitionEndAt = now + TRANSITION_MS;
-        // ★ v35：记录插值两端。
-        //   参考项目切到第二种视图时会顺到那张图自己的 defaultZoom / 宽度，
-        //   我们两种视图共用同一个 zoom 语义 ⇒ 起点/终点相同，
-        //   真正起作用的是 zoomBoost（0.84→1.0）与 alpha/height 的淡入。
         transToSandbox = sandboxMode;
-        transZoomFrom = sandboxRasterizer.zoom();
-        transZoomTo = transZoomFrom;
-        transWidthFrom = sandboxRasterizer.widthScale();
-        transWidthTo = transWidthFrom;
     }
 
     /**
      * 当前过渡进度（0=起点，1=终点）；不在过渡时返回 1。
      *
-     * <p>用参考项目同款 smoothstep：{@code p*p*(3-2p)}。</p>
+     * <p>★ v48：数学全部移到 {@link ViewTransition}（纯函数、探针可验证）。
+     * 这里只负责"什么时候算过渡结束"这个状态机职责。</p>
      */
     private float transitionEase() {
         if (transitionEndAt == 0L) return 1f;
@@ -158,8 +163,7 @@ public class PreviewDisplay extends AbstractWidget {
             transitionEndAt = 0L;
             return 1f;
         }
-        float p = 1f - (transitionEndAt - now) / (float) TRANSITION_MS;
-        return p * p * (3f - 2f * p);
+        return ViewTransition.ease(ViewTransition.progress(now, transitionEndAt));
     }
 
     /** 过渡是否正在进行。 */
@@ -694,6 +698,13 @@ public class PreviewDisplay extends AbstractWidget {
         int x = getX(), y = getY(), w = width, h = height;
         g.fill(x, y, x + w, y + h, 0xFF1a1a2a);
 
+        // ★ v48：过渡进度<b>本帧只算一次</b>。
+        //   此前在分支里反复调 {@code inTransition()/transitionEase()}，每次读系统时钟
+        //   ⇒ 若某一帧正好跨过 transitionEndAt，前后几次取值会不一致
+        //   （旧图 alpha 与 新图 alpha 加起来不等于 1，出现一帧闪烁）。
+        final boolean trans = inTransition();
+        final float ease = trans ? transitionEase() : 1f;
+
         // ★ S3：沙盘模式分流 —— 数据与平面模式完全共用，只换绘制方式
         //
         // ★★ 2026-11-08【修"该有的功能都没有"】：
@@ -703,6 +714,16 @@ public class PreviewDisplay extends AbstractWidget {
         //   左上标题、操作说明、进度条、悬停浮窗全都不见了。
         //   ⇒ 沙盘画完地形后<b>继续走完 HUD 流程</b>，只是跳过 2D 纹理绘制。
         if (sandboxMode) {
+            // ★★★ v48【交叉溶解：旧图 = 平面】★★★
+            //   参考项目 YardSiteScreen 第 415-418 行：过渡期间<b>同一帧画两张图</b>
+            //   ——旧图 {@code 1-ease} 淡出 + 下沉，新图 {@code ease} 淡入 + 上升。
+            //   此前我们只画新图（alpha 从 0.45 起）⇒ 观感只是"淡入"，
+            //   而不是"从平面变形成沙盘"。
+            //   旧图直接用上一帧留下的平面纹理（已上传，零重算成本）。
+            if (trans && transToSandbox) {
+                blitPlaneOnly(g, x, y, w, h,
+                        ViewTransition.oldAlpha(ease), ViewTransition.oldHeight(ease));
+            }
             renderSandbox(g, w, h, mx, my);
             // ★ v7【修"切视图 GUI 重叠"】：HUD 只在独立窗口里画。
             //   配置屏内由 GeoGenesisConfigScreen 统一画（导航栏/面板/右下状态栏），
@@ -801,18 +822,21 @@ public class PreviewDisplay extends AbstractWidget {
             lastSelectedLayerOrdinal = (selectedLayer == null ? -1 : selectedLayer.ordinal());
             lastSelectedId = selectedId;
         }
-        // ★ v25：视图切换过渡 —— 平面画面淡入（照参考项目 yardsite 第 430 行
-        //   {@code alpha = colAlpha * globalAlpha} 的做法）。
-        //   平面是纹理直贴（blit），用 {@code RenderSystem.setShaderColor} 的
-        //   alpha 做淡入（1.20.1 的 GuiGraphics 没有 setColor/getColor）。
-        float planeAlpha = inTransition() ? (0.45f + 0.55f * transitionEase()) : 1f;
-        if (planeAlpha < 1f) {
-            RenderSystem.setShaderColor(1f, 1f, 1f, planeAlpha);
+        // ★★★ v48【交叉溶解：旧图 = 沙盘】★★★
+        //   照参考项目 YardSiteScreen 415-421：旧图 alpha=1-ease、height=1-0.55*ease。
+        //   旧沙盘用上一帧已建好的数据只画一次，不重算、不拾取、不画标记。
+        //   ⚠ 必须在平面图 blit 之前画（旧图在下、新图在上）。
+        if (trans && !transToSandbox) {
+            drawFadingSandbox(g, w, h,
+                    ViewTransition.oldAlpha(ease), ViewTransition.oldHeight(ease), ease);
         }
-        g.blit(texLoc, x, y, w, h, 0, 0, texW, texH, texW, texH);
-        if (planeAlpha < 1f) {
-            RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        }
+
+        // ★ v48：新图 = 平面，alpha 从 0 渐显（照参考项目 {@code fading == null ? 1 : ease}）。
+        //   此前是从 0.45 起 —— 那是"没有旧图"时的补丁，有旧图后必须从 0 起，
+        //   否则两张图同时高不透明，过渡中会看到明显叠加。
+        blitPlaneOnly(g, x, y, w, h,
+                trans ? ViewTransition.newAlpha(ease) : ViewTransition.STEADY_ALPHA,
+                trans ? ViewTransition.newHeight(ease) : ViewTransition.STEADY_HEIGHT);
 
         drawMapMarkers(g, mx, my, x, y, w, h, originWx, originWz, blocksWide, blocksHigh);
 
@@ -939,10 +963,62 @@ public class PreviewDisplay extends AbstractWidget {
         if (this.sandboxMode == v) return;
         this.sandboxMode = v;
         // ★ v25：切模式走一段过渡动画（照参考项目 yardsite 第 61/383-404 行）
-        //   旧画面淡出下沉、新画面淡入长起、镜头轻推近 ⇒ 不再是"啪"一下硬切。
+        //   ★ v48：改为<b>真正的交叉溶解</b>——同一帧里旧图淡出下沉、新图淡入上升
+        //     （此前只画新图，没有旧图 ⇒ 观感是"淡入"而不是"两张图在过渡"）。
         beginViewTransition();
         // 只标记需要重画，不碰 scaleBlockPos / largeArea / center
         needsClear = true;
+    }
+
+    /**
+     * 只把<b>平面图</b>贴到屏幕上（可带 alpha 与竖向收缩）。
+     *
+     * <h2>★ v48：为什么需要「竖向收缩」</h2>
+     * <p>参考项目 {@code YardSiteScreen} 第 415-421 行的过渡是
+     * 「旧图 {@code globalAlpha = 1-ease}、{@code heightScale = 1-0.55*ease}；
+     * 新图 {@code globalAlpha = ease}、{@code heightScale = 0.45+0.55*ease}」，
+     * 其中 {@code heightScale} 缩的是<b>柱子的高度轴</b>（3D 深度）。</p>
+     *
+     * <p>我们的平面图是俯视 2D 纹理，没有"柱子高度"这个轴。取最接近的等价：
+     * 让整张图<b>按底边锚定向上收缩</b> —— 沙盘 ⇄ 平面恰好是
+     * 「柱体 ⇄ 平面」的互相转化，收缩读起来就是"摊平/立起"，
+     * 比单纯淡出更接近参考项目的意图。</p>
+     *
+     * @param alpha       不透明度（1 = 不透明）
+     * @param heightScale 竖向比例（1 = 原高；底边固定，向上收缩）
+     */
+    private void blitPlaneOnly(GuiGraphics g, int x, int y, int w, int h,
+                               float alpha, float heightScale) {
+        if (texLoc == null || texW <= 0 || texH <= 0) return;
+        if (alpha <= 0.004f) return;
+        int hh = Math.max(1, Math.round(h * Math.max(0.01f, heightScale)));
+        int yy = y + (h - hh);          // 底边不动，向上收缩（"沉下去"）
+        boolean shade = alpha < 0.999f;
+        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
+        g.blit(texLoc, x, yy, w, hh, 0, 0, texW, texH, texW, texH);
+        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+    }
+
+    /**
+     * 过渡期间画「上一张图」（沙盘），<b>只画不重算</b>（★ v48）。
+     *
+     * <p>用上一帧已经建好的 {@link #sandboxData} 与
+     * {@code sandboxRasterizer} 里现成的视口状态，不触发后台重建、
+     * 不做 hover 拾取、不画标记 —— 它正在淡出，没人会去点它。</p>
+     */
+    private void drawFadingSandbox(GuiGraphics g, int w, int h,
+                                   float alpha, float heightScale, float ease) {
+        TerrainFieldData d = sandboxData;
+        if (d == null || d.gridW <= 0) return;
+        if (alpha <= 0.004f) return;
+        com.geogenesis.client.preview.raster.RasterParams rp =
+                new com.geogenesis.client.preview.raster.RasterParams(
+                        w, h, 0f, activeLayer, (int) seaLevel);
+        sandboxRasterizer.setColorSource(sandboxColorSource());
+        // 与新图同一套镜头推进，否则两张图在过渡中会一大一小
+        sandboxRasterizer.setZoomBoost(ViewTransition.zoomBoost(ease));
+        sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h, reliefSpan,
+                System.currentTimeMillis(), alpha, heightScale);
     }
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
@@ -1129,25 +1205,35 @@ public class PreviewDisplay extends AbstractWidget {
             sandboxRasterizer.clearPick();
         }
         if (d != null) {
-            // ★ v25：视图切换过渡（照参考项目 yardsite 第 383-404 行）
-            //   新画面：alpha 从 0.45 渐显到 1，高度比例从 0.45 长到 1
+            // ★ v48：新图 = 沙盘，alpha 从 0 渐显（照参考项目第 421 行
+            //   {@code fading == null ? 1.0F : ease}）。此前是 0.45+0.55*ease，
+            //   那是"只有新图"时的补丁；现在有旧平面垫在下面，必须从 0 起。
+            //   高度仍从 0.45 长到 1（{@code 0.45F + 0.55F * ease}），这才是"立起来"的观感。
             float ease = transitionEase();
-            float globalAlpha = inTransition() ? (0.45f + 0.55f * ease) : 1f;
-            float heightScale = inTransition() ? (0.45f + 0.55f * ease) : 1f;
+            float globalAlpha = inTransition() ? ViewTransition.newAlpha(ease)
+                    : ViewTransition.STEADY_ALPHA;
+            float heightScale = inTransition() ? ViewTransition.newHeight(ease)
+                    : ViewTransition.STEADY_HEIGHT;
             // ★ v33 对照表第 50 项：镜头推近（参考项目 YardSiteScreen 第 404 行
             //   {@code zoomBoost = fading == null ? 1.0F : 0.84F + 0.16F * ease}）
-            sandboxRasterizer.setZoomBoost(inTransition() ? (0.84f + 0.16f * ease) : 1f);
+            sandboxRasterizer.setZoomBoost(inTransition() ? ViewTransition.zoomBoost(ease)
+                    : ViewTransition.STEADY_ZOOM_BOOST);
 
-            // ★★★ v35【相机动画：切进沙盘时镜头从偏一点的角度慢慢转正】★★★
-            //   参考项目 {@code orbit(radians)} 的用途就是"让镜头自己慢慢转"。
-            //   我们用它做开场：起点比默认 yaw 偏 -0.35 rad，随 ease 转回默认
-            //   ⇒ 切视图时有"镜头落定"的过程，而不是硬停在某个角度。
-            //   ★ 只在"切到沙盘"的那段过渡里生效，平时不受影响。
-            if (inTransition() && transToSandbox) {
-                float startOffset = -0.35f;
-                sandboxRasterizer.setYaw(
-                        sandboxRasterizer.defaultYaw() + startOffset * (1f - ease));
-            }
+            // ★★★ v48【删除"切进沙盘时转动 yaw"】★★★
+            //   这里原来是（v35 我自己加的，<b>参考项目并没有</b>）：
+            //   <pre>
+            //     if (inTransition() && transToSandbox) {
+            //         sandboxRasterizer.setYaw(defaultYaw() - 0.35f * (1 - ease));
+            //     }
+            //   </pre>
+            //   两处硬伤：
+            //     ① 过渡开始的一瞬间 yaw 会被<b>直接跳到</b> {@code defaultYaw-0.35}，
+            //        不管用户之前转到什么角度 —— 是"跳切"，不是"镜头落定"；
+            //     ② 过渡结束把 yaw <b>永久留在</b> {@code defaultYaw}，
+            //        用户转好的视角被丢掉。
+            //   ⇒ 这违反用户裁定「谁切换视图还改缩放等信息呢？」（视角同属视图参数）。
+            //   ⇒ 参考项目 {@code SiteTerrainRenderer.orbit()} 全仓<b>无任何调用方</b>
+            //      （对照表 #57 已记录），本来就不是切换动画的一部分。
 
             sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h,
                     reliefSpan, System.currentTimeMillis(), globalAlpha, heightScale);

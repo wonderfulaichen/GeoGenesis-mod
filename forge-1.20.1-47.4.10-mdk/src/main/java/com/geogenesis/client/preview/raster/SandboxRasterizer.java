@@ -140,27 +140,6 @@ public final class SandboxRasterizer {
                 SandboxGeometry.PITCH_MIN, SandboxGeometry.PITCH_MAX);
     }
 
-    /**
-     * <b>让镜头自己慢慢转</b>（★ v35，照参考项目 {@code orbit()} 197-199 行）。
-     *
-     * <p>参考项目注释：「等出生点区块那段时间用」—— 只改 yaw，不碰 pitch。
-     * 我们用它做<b>"进入沙盘时的开场镜头"</b>：从偏一点的角度慢慢转到默认视角，
-     * 让切换有个"落定"的过程，而不是硬停在某个角度。</p>
-     */
-    public void orbit(float radians) {
-        yaw = wrap(yaw + radians);
-    }
-
-    /** 直接设定 yaw（开场动画用；内部会 wrap）。 */
-    public void setYaw(float v) {
-        yaw = wrap(v);
-    }
-
-    /** 默认 yaw（开场动画的落定点）。 */
-    public static float defaultYaw() {
-        return SandboxGeometry.DEFAULT_YAW;
-    }
-
     /** 屏幕平移。 */
     public void dragPan(double dx, double dy) {
         panX += (float) dx;
