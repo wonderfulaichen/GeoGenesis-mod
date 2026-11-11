@@ -2889,3 +2889,10 @@ task runHeightfieldLookProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.HeightfieldLookProbe'
     maxHeapSize = '2g'
 }
+// 运镜过渡分镜出图（ease 0/.25/.5/.75/1），判断是数学错还是渲染路径错。
+//   gradlew runTransitionFilmstripProbe
+task runTransitionFilmstripProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.TransitionFilmstripProbe'
+    maxHeapSize = '2g'
+}

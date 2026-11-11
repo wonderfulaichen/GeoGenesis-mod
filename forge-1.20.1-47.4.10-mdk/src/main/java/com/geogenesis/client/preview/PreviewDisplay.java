@@ -986,11 +986,11 @@ public class PreviewDisplay extends AbstractWidget {
         // 相机覆盖：过渡期间用插值角度渲染，不动用户的持久视角状态
         sandboxRasterizer.setCameraOverride(yaw, pitch);
         try {
-            // ---- 1) 地面贴图（与柱体共用同一个相机与尺度）----
+            // ---- 1) 地面（按高度位移的纹理曲面）----
             float fill = sandboxRasterizer.drawScaleFor(w, h);
             float[] sxy = new float[2];
             ViewTransition.scale(ease, toSandbox, w, h, fill, sxy);
-            blitGroundAffine(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1],
+            drawGroundSurface(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1],
                     ViewTransition.groundAlpha(ease, toSandbox));
 
             // ---- 2) 柱体（alpha 浮现；数据/窗口逻辑复用 renderSandbox）----
@@ -1006,47 +1006,138 @@ public class PreviewDisplay extends AbstractWidget {
     private boolean cameraMoveActive;
 
     /**
-     * 把平面纹理按当前相机<b>仿射</b>贴到地面平面上（★ v49）。
+     * <b>地面：按高度位移的纹理曲面</b>（★ v50，照 diorama {@code ImmediateCanvas} 的 1.20.1 写法）。
      *
-     * <h2>为什么是仿射而不是手写四边形</h2>
-     * <p>我们的相机是斜投影（{@code u=x, v=z·sin−y·cos}），地面 y=0 时只是
-     * <b>旋转 + 纵向压缩</b>，属仿射变换 ⇒ 一个 2×2 矩阵就能精确表达。
-     * 用 {@code PoseStack} 施加该矩阵再走普通 {@code blit}：
-     * 不需要手写带 UV 的顶点，零 GL 风险。</p>
+     * <h2>为什么不能是平板</h2>
+     * <p>v49 用 PoseStack 仿射把纹理贴在一块平面上。仿射只能「旋转 + 压缩」，
+     * <b>做不了逐点高度位移</b> ⇒ 地面永远是一块飘在下面的平板，而柱体是立体的
+     * ⇒ 相机一倾斜两者分离，观感就是「两张图叠着」（用户实机反馈）。
+     * 离线分镜 {@code runTransitionFilmstripProbe} 已经复现并验证：改成高度位移后，
+     * 五帧读起来是<b>一整块地形在转</b>。</p>
      *
-     * <h2>两端精确对齐</h2>
-     * <p>{@code pitch=0, yaw=0, sx=w/2, sy=h/2} 时矩阵退化为单位阵
-     * ⇒ 与静态平面图<b>逐像素相同</b>（{@code runCameraDepthProbe} 已验证几何前提）。</p>
+     * <h2>顶点高度</h2>
+     * <p>取 {@link #sandboxData} 的高度网格（水抬到海平面），顶点共享 ⇒ 曲面连续无缝隙。
+     * {@code pitch=0} 时所有顶点共面（{@code r5=0}）⇒ 投影结果逐像素等于平面图。</p>
+     *
+     * <h2>GL 提交（照参考项目，不自行发明）</h2>
+     * <pre>
+     *   g.flush()                                   // 先画掉 GUI 已批处理的，保证在下面
+     *   Tesselator.getBuilder().begin(QUADS, POSITION_TEX_COLOR)
+     *   vertex(pose, x, y, 0).uv(u,v).color(argb).endVertex()     // 1.20.1 命名
+     *   RenderSystem.setShaderTexture(0, texLoc)
+     *   BufferUploader.drawWithShader(mesh.end())
+     * </pre>
      */
-    private void blitGroundAffine(GuiGraphics g, int x, int y, int w, int h,
-                                  float yaw, float pitch, float sx, float sy, float alpha) {
+    private void drawGroundSurface(GuiGraphics g, int x, int y, int w, int h,
+                                   float yaw, float pitch, float sx, float sy, float alpha) {
         if (texLoc == null || texW <= 0 || texH <= 0 || alpha <= 0.004f) return;
         float[] r = com.geogenesis.client.preview.sandbox.SandboxGeometry.rotationRows(yaw, pitch);
-        boolean identity = Math.abs(r[0] - 1f) < 1e-6f && Math.abs(r[1]) < 1e-6f
-                && Math.abs(r[3]) < 1e-6f && Math.abs(r[4] - 1f) < 1e-6f
+        boolean flatView = Math.abs(yaw) < 1e-6f && Math.abs(pitch) < 1e-6f
                 && Math.abs(sx - w / 2f) < 0.01f && Math.abs(sy - h / 2f) < 0.01f;
-        if (identity) {
-            // pitch=0/yaw=0 且尺度正好铺满 ⇒ 与平面模式完全同一条路径
+        if (flatView) {
+            // 与静态平面完全同一条路径 ⇒ 逐像素一致
             blitPlaneOnly(g, x, y, w, h, alpha, 1f);
             return;
         }
-        // 像素 (px,py) ∈ [0,w]×[0,h] → 模型 (±1) → 屏幕
-        float cx = x + w / 2f, cy = y + h / 2f;
-        org.joml.Matrix4f m = new org.joml.Matrix4f();
-        m.identity();
-        m.m00(2f * sx * r[0] / w);
-        m.m01(2f * sx * r[1] / h);
-        m.m03(cx - sx * r[0] - sx * r[1]);
-        m.m10(2f * sy * r[3] / w);
-        m.m11(2f * sy * r[4] / h);
-        m.m13(cy - sy * r[3] - sy * r[4]);
-        boolean shade = alpha < 0.999f;
-        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
-        g.pose().pushPose();
-        g.pose().mulPoseMatrix(m);
-        g.blit(texLoc, 0, 0, w, h, 0, 0, texW, texH, texW, texH);
-        g.pose().popPose();
-        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        TerrainFieldData d = sandboxData;
+        if (d == null || d.gridW <= 0) {
+            // 数据还没建好（第一帧）：退回平面贴图，下一帧就有曲面了
+            blitPlaneOnly(g, x, y, w, h, alpha, 1f);
+            return;
+        }
+
+        final int m = GROUND_MESH;
+        final int gn = m + 1;
+        double cx = x + w / 2.0, cy = y + h / 2.0;
+        double base = seaLevel - 4.0;
+        double spanV = Math.max(20.0, reliefSpan);
+        int gh = d.gridH;
+        double stepBlocks = Math.max(1, d.gridW) / (double) m;
+
+        // 顶点高度（模型单位 z）
+        float[] vz = new float[gn * gn];
+        for (int iz = 0; iz < gn; iz++) {
+            for (int ix = 0; ix < gn; ix++) {
+                int gx = Math.min(d.gridW - 1, (int) (ix * stepBlocks));
+                int gz = Math.min(gh - 1, (int) (iz * stepBlocks));
+                int i = gx * gh + gz;
+                double hv = d.height[i];
+                if (d.e[i] < 0.0) hv = seaLevel;
+                if (Double.isNaN(hv)) hv = seaLevel;
+                double ratio = Math.max((hv - base) / spanV, 0.05);
+                vz[iz * gn + ix] = (float) (ratio * com.geogenesis.client.preview.sandbox
+                        .SandboxGeometry.RELIEF);
+            }
+        }
+
+        // 远→近排序（画家算法）
+        Integer[] order = new Integer[m * m];
+        float[] depth = new float[m * m];
+        for (int i = 0; i < m * m; i++) {
+            int qx = i % m, qz = i / m;
+            depth[i] = r[6] * modelX(qx, m) + r[7] * modelY(qz, m);
+            order[i] = i;
+        }
+        java.util.Arrays.sort(order, (a, b) -> Float.compare(depth[a], depth[b]));
+
+        int argb = ((int) (255 * alpha) << 24) | 0xFFFFFF;
+        g.flush();
+        org.joml.Matrix4f pose = g.pose().last().pose();
+        com.mojang.blaze3d.vertex.BufferBuilder bb =
+                com.mojang.blaze3d.vertex.Tesselator.getInstance().getBuilder();
+        bb.begin(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS,
+                com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR);
+        for (Integer idx : order) {
+            int qx = idx % m, qz = idx / m;
+            emitGroundQuad(bb, pose, r, sx, sy, cx, cy, vz, gn, qx, qz,
+                    modelX(qx, m), modelX(qx + 1, m), modelY(qz, m), modelY(qz + 1, m),
+                    qx / (float) m, (qx + 1) / (float) m, qz / (float) m, (qz + 1) / (float) m,
+                    argb);
+        }
+        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexColorShader);
+        RenderSystem.setShaderTexture(0, texLoc);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        com.mojang.blaze3d.vertex.BufferUploader.drawWithShader(bb.end());
+        RenderSystem.disableBlend();
+    }
+
+    /** 地面网格分辨率（每边四边形数）。过渡期间每帧重建，取折中精度与成本。 */
+    private static final int GROUND_MESH = 96;
+
+    private static float modelX(int q, int m) {
+        return q / (float) m * 2f - 1f;
+    }
+
+    private static float modelY(int q, int m) {
+        return q / (float) m * 2f - 1f;
+    }
+
+    /** 提交一个地面四边形（两个三角形由 QUADS 模式合并）。 */
+    private void emitGroundQuad(com.mojang.blaze3d.vertex.BufferBuilder bb,
+                                org.joml.Matrix4f pose, float[] r,
+                                float sx, float sy, double cx, double cy,
+                                float[] vz, int gn, int qx, int qz,
+                                float x0, float x1, float y0, float y1,
+                                float u0, float u1, float v0, float v1, int argb) {
+        float z00 = vz[qz * gn + qx];
+        float z10 = vz[qz * gn + qx + 1];
+        float z01 = vz[(qz + 1) * gn + qx];
+        float z11 = vz[(qz + 1) * gn + qx + 1];
+        emitVertex(bb, pose, r, sx, sy, cx, cy, x0, y0, z00, u0, v0, argb);
+        emitVertex(bb, pose, r, sx, sy, cx, cy, x1, y0, z10, u1, v0, argb);
+        emitVertex(bb, pose, r, sx, sy, cx, cy, x1, y1, z11, u1, v1, argb);
+        emitVertex(bb, pose, r, sx, sy, cx, cy, x0, y1, z01, u0, v1, argb);
+    }
+
+    private void emitVertex(com.mojang.blaze3d.vertex.BufferBuilder bb,
+                            org.joml.Matrix4f pose, float[] r,
+                            float sx, float sy, double cx, double cy,
+                            float mx, float my, float mz,
+                            float u, float v, int argb) {
+        float px = (float) (cx + sx * (r[0] * mx + r[1] * my + r[2] * mz));
+        float py = (float) (cy + sy * (r[3] * mx + r[4] * my + r[5] * mz));
+        bb.vertex(pose, px, py, 0f).uv(u, v).color(argb).endVertex();
     }
 
     /**
