@@ -2861,3 +2861,10 @@ task runSandboxPickRoundTripProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.SandboxPickRoundTripProbe'
     maxHeapSize = '1g'
 }
+// 落成动画几何：柱宽/侧墙/柱高分布判据 + 出 PNG（人眼判读）。
+//   gradlew runRevealGeometryProbe
+task runRevealGeometryProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.RevealGeometryProbe'
+    maxHeapSize = '2g'
+}

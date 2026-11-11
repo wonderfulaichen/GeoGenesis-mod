@@ -61,6 +61,8 @@ public class RevealScreen extends Screen {
     private boolean descending;
     private long loginAt;
     private long collapseAt = -1L;
+    /** 「等世界超 30 秒」只提醒一次，避免每帧刷屏。 */
+    private boolean noWorldWarned;
     /** 一旦出错就置位：后续帧直接退回原版。 */
     private boolean failed;
 
@@ -213,9 +215,29 @@ public class RevealScreen extends Screen {
 
         // 以下是"要真世界才能做"的部分
         if (mc.level == null) {
-            // 世界还没好：只播开场 morph，别让位、别落机
-            if (now - openedAt > NO_WORLD_MS) {
-                bailOut("一直没有世界可渲染");
+            // ★★★ v46【世界未就绪也照常推进让位/消散，与参考项目同口径】★★★
+            //
+            //   用户实机日志：`Starting integrated minecraft server` 之后
+            //   25 秒内没有任何进展，`advance#1..#1043` 全部 `level=false`，
+            //   然后撞 `NO_WORLD_MS` 静默退回标题屏。
+            //
+            //   根因：原版 `prepareLevels` 要等 **529 个出生点区块**（26 秒+），
+            //   而我们把「世界没就绪」当成「动画没法播」——这是错的。
+            //
+            //   参考项目 {@code SiteRevealScreen} 的动画**全程只用预览数据**
+            //   （{@code self.world} 是它自己的渲染器，不是 {@code mc.level}），
+            //   真世界只用于最后衔接：{@code finish()} 里
+            //   `if (mc.level == null) → 交回原版加载屏`（第 651-655 行），
+            //   <b>没有任何"等不到世界就提前认输"的分支</b>。
+            //
+            //   ⇒ 改为：世界没就绪时继续推进让位波次（视觉上该消散的照常消散），
+            //     只是不落机（落机需要玩家实体）。真正交回由 {@code HARD_CAP_MS} 统一兜底。
+            advanceSchedule(now);
+            if (now - openedAt > NO_WORLD_MS && !noWorldWarned) {
+                noWorldWarned = true;
+                com.mojang.logging.LogUtils.getLogger().warn(
+                        "[GeoGenesis] 世界 30 秒未就绪（原版在准备出生点区块），动画继续播放，"
+                                + "到 {} 秒上限仍无世界就交回原版加载屏", HARD_CAP_MS / 1000);
             }
             return;
         }

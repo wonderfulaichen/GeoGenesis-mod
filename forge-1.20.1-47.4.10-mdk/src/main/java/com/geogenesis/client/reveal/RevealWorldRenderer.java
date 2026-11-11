@@ -295,8 +295,6 @@ public final class RevealWorldRenderer {
         double centerX = x + w / 2.0;
         double centerY = y + h / 2.0;
         double halfH = h / 2.0;
-        // 柱子在世界坐标里：一格 = blocksPerCell 方块
-        double bpc = data.blocksPerCell();
 
         RenderSystem.disableCull();
         RenderSystem.depthMask(false);
@@ -323,14 +321,35 @@ public final class RevealWorldRenderer {
             int ci = col / cols.colRows, cj = col % cols.colRows;
             double wx = data.worldX(ci * 2);
             double wz = data.worldZ(cj * 2);
+
+            // ★★★ v46【单位统一：c.top / c.x0..y1 都是「模型单位」，不是方块】★★★
+            //
+            //   SandboxGeometry.buildColumns 产出的是<b>模型空间</b>量：
+            //     c.top = ratio * RELIEF          （RELIEF=0.40，故 c.top ∈ [0.02, 0.40]）
+            //     c.x0..y1 = modelEdge(...)       （∈ [-1, 1]）
+            //
+            //   此前这里当成方块用，造成两处灾难性错误：
+            //     ① hx = (x1-x0)*0.5*bpc ⇒ 模型差 ≈ 2/112 × bpc/2 ≈ 0.03 方块
+            //        ⇒ 柱子宽度只有真实的 1/112 ⇒ 满屏细长垂直线条（用户截图）；
+            //     ② wTop = c.top * span / RELIEF ⇒ 又乘了一遍比例，与 lowTop（模型单位）
+            //        不同量纲比较 ⇒ `wTop > lowTop` 恒为真 ⇒ 每根柱都画侧墙（密集黑线）。
+            //
+            //   ⇒ 模型 → 世界：X/Z 乘 worldHalf，高度乘 span（≡ 模型 1.0 对应的方块数）。
+            double halfWorld = worldHalf;               // 模型 ±1 对应的方块数
+            double hx = (c.x1 - c.x0) * 0.5 * halfWorld;
+            double hz = (c.y1 - c.y0) * 0.5 * halfWorld;
+            double x0 = wx - hx, x1 = wx + hx;
+            double z0 = wz - hz, z1 = wz + hz;
+
+            // 柱高：模型单位 → 方块。
+            //   buildColumns 里 c.top = ((topY - base) / sp) * RELIEF
+            //   ⇒ 反解实际高度 = c.top * sp / RELIEF
             double wTop = c.top * span / SandboxGeometry.RELIEF * heightScale;
             double baseY = 63.0 - 4.0;
 
-            // 四个水平角（世界坐标）
-            double hx = (c.x1 - c.x0) * 0.5 * bpc;
-            double hz = (c.y1 - c.y0) * 0.5 * bpc;
-            double x0 = wx - hx, x1 = wx + hx;
-            double z0 = wz - hz, z1 = wz + hz;
+            // ★ 侧墙判据必须用<b>同一单位</b>：把邻居柱顶也换算成方块
+            float lowTop = (float) (neighborTop(cols, col, ci, cj)
+                    * span / SandboxGeometry.RELIEF * heightScale);
 
             // 顶面
             if (project(x0, baseY + wTop, z0, centerX, centerY, halfH, p0)
@@ -344,8 +363,7 @@ public final class RevealWorldRenderer {
                 vtx(vc, p3, flat);
             }
 
-            // 侧墙：只在比邻居高时画（与沙盘同判据）
-            float lowTop = neighborTop(cols, col, ci, cj);
+            // 侧墙：只在比邻居高时画（与沙盘同判据；lowTop 已在上方换算成方块）
             if (wTop > lowTop) {
                 drawWall(vc, cols, c, ci, cj, wx, wz, hx, hz, baseY,
                         lowTop, (float) wTop, rgb, alpha, centerX, centerY, halfH);
