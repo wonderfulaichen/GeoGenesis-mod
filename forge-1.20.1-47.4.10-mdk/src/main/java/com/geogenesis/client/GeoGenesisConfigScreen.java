@@ -160,6 +160,8 @@ public class GeoGenesisConfigScreen extends Screen {
     private int applyBtnX, applyBtnW;
     /** 「完成」按钮几何（★ v21：绘制与命中共用）。 */
     private int doneBtnX, doneBtnW_, doneBtnH_, applyBtnH_;
+    /** 收起态浮条：视图切换 / 完成（★ v25 绘制与命中共用同一份坐标）。 */
+    private int colViewBtnX, colDoneBtnX, colBtnY, colViewBtnW, colBtnH = 20;
     private int currentMode = DEFAULT_PREVIEW_LAYER;
 
     // ---- ★ 2026-11-09 预览 → 世界复用（见 GeoGenesisGenerator.offerPreviewTerrain）----
@@ -1458,8 +1460,43 @@ public class GeoGenesisConfigScreen extends Screen {
     }
 
     /** 内容面板顶栏 + 导航栏底部的全部按钮（绘制）。 */
+    /**
+     * 收起态浮条：<b>视图切换 + 完成</b>（★ v25）。
+     *
+     * <p>用户 2026-11-11：「建议把那些像完成、视图模式切换等非配置内容
+     * 可以在收回配置窗口也显示出来，这样方便交互。」</p>
+     *
+     * <p>坐标写进 {@link #colViewBtnX} 等字段，由 {@link #hitActionButton} 读同一份
+     * —— 不允许各算一遍（那是本项目"按钮点不到"的老根因）。</p>
+     */
+    private void drawCollapsedActions(GuiGraphics g, int mx, int my) {
+        int btnH = 20, gap = 6, viewW = 78, doneW = 56;
+        int y = 8;
+        int doneX = this.width - 10 - doneW;
+        int viewX = doneX - gap - viewW;
+        colViewBtnX = viewX;
+        colDoneBtnX = doneX;
+        colBtnY = y;
+        colViewBtnW = viewW;
+        colBtnH = btnH;
+        UiKit.toggleButton(g, viewX, y, viewW, btnH, sandboxLabel().getString(),
+                isSandboxActive(), inRect(mx, my, viewX, y, viewW, btnH), NAV_ACCENT);
+        UiKit.toggleButton(g, doneX, y, doneW, btnH, "完成",
+                !readOnly, inRect(mx, my, doneX, y, doneW, btnH), UiKit.C_ACCENT);
+    }
+
     private void drawActionButtons(GuiGraphics g, int mx, int my) {
-        if (!panelOpen || nameDialog.isShowing() || confirmDialog.isShowing()) return;
+        if (nameDialog.isShowing() || confirmDialog.isShowing()) return;
+
+        // ★ v25【配置窗收起后仍保留"非配置"操作】—— 用户 2026-11-11：
+        //   「建议把那些像完成、视图模式切换等非配置内容可以在收回配置窗口也显示出来，
+        //     这样方便交互。」
+        //   收起态只剩地图，若连"切视图/完成"都要先展开面板才能点，
+        //   那就等于"看地图"这条路被断了半截。
+        if (!panelOpen) {
+            drawCollapsedActions(g, mx, my);
+            return;
+        }
 
         // ---- 内容面板顶栏：应用 + 完成（★ v21：拆成两个动作）----
         //   用户：「应用按键应该改下逻辑，现在我点击后就直接关闭配置面板了」。
@@ -1548,8 +1585,21 @@ public class GeoGenesisConfigScreen extends Screen {
      * @return true = 已消费本次点击
      */
     private boolean hitActionButton(double mx, double my, int btn) {
-        if (!panelOpen || btn != 0) return false;
+        if (btn != 0) return false;
         if (nameDialog.isShowing() || confirmDialog.isShowing()) return false;
+
+        // ★ v25：收起态浮条（视图切换 / 完成）—— 与 drawCollapsedActions 共用坐标
+        if (!panelOpen) {
+            if (inRect(mx, my, colViewBtnX, colBtnY, colViewBtnW, colBtnH)) {
+                toggleSandbox();
+                return true;
+            }
+            if (inRect(mx, my, colDoneBtnX, colBtnY, 56, colBtnH)) {
+                if (!readOnly) doDone();
+                return true;
+            }
+            return false;
+        }
 
         // 应用（★ v21：只保存 + 重建预览，留在面板）
         if (inRect(mx, my, applyBtnX, actionBtnY, applyBtnW, applyBtnH_)) {

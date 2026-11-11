@@ -158,14 +158,21 @@ public class PreviewDisplay extends AbstractWidget {
      */
     private float transitionEase() {
         if (transitionEndAt == 0L) return 1f;
-        long now = System.currentTimeMillis();
-        if (now >= transitionEndAt) {
-            transitionEndAt = 0L;
-            return 1f;
-        }
-        return ViewTransition.ease(ViewTransition.progress(now, transitionEndAt));
+        // ★ v60：这里<b>不再</b>清 deadline。
+        //   清它会让"ease 刚好到 1 的那一帧"落到稳态分支去画，
+        //   而稳态分支是"另一套画法" ⇒ 用户实机看到的
+        //   「切回平面最后会跳变显示一下沙盘样式，然后又跳回平面」。
+        //   现在改成：deadline 由 {@link #endTransition()} 在画完 ease=1 那一帧后清。
+        return ViewTransition.ease(
+                ViewTransition.progress(System.currentTimeMillis(), transitionEndAt));
     }
 
+    /** 过渡彻底结束（下一帧起走稳态分支）。 */
+    private void endTransition() {
+        transitionEndAt = 0L;
+    }
+
+    /** 过渡是否正在进行。 */
     /** 过渡是否正在进行。 */
     private boolean inTransition() {
         return transitionEndAt != 0L && System.currentTimeMillis() < transitionEndAt;
@@ -729,6 +736,14 @@ public class PreviewDisplay extends AbstractWidget {
             return;
         }
 
+        // ★ v60：过渡已画完 ease=1 这一帧 ⇒ 下一帧起走稳态。
+        //   若终点是平面，顺手把被遮罩过的平面纹理还原成原始像素
+        //   （稳态第一帧就该是干净的地图，不能带着上一帧的暗角）。
+        if (transitionEndAt != 0L) {
+            endTransition();
+            if (!transToSandbox) restorePlaneTexture();
+        }
+
         if (sandboxMode) {
             renderSandbox(g, w, h, mx, my);
             // ★ v7【修"切视图 GUI 重叠"】：HUD 只在独立窗口里画。
@@ -1151,6 +1166,18 @@ public class PreviewDisplay extends AbstractWidget {
      * 每像素的归一化半径（只与纹理尺寸有关）——缓存，避免每帧几十万次 {@code sqrt}。
      */
     private float[] vigRadius;
+
+    /** 把平面纹理恢复成未遮罩的原始像素（过渡在平面端结束时调用）。 */
+    private void restorePlaneTexture() {
+        if (!planeMasked || planeSnapshot == null) return;
+        if (planeSnapshot.length != texW * texH) { planeMasked = false; return; }
+        for (int y = 0; y < texH; y++) {
+            int row = y * texW;
+            for (int x = 0; x < texW; x++) image.setPixelRGBA(x, y, planeSnapshot[row + x]);
+        }
+        texture.upload();
+        planeMasked = false;
+    }
 
     private void ensureVigRadius() {
         int need = texW * texH;
