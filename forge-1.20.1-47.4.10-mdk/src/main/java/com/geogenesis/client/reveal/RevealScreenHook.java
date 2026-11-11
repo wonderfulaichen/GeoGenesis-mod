@@ -39,10 +39,28 @@ public final class RevealScreenHook {
 
     /** 本会话是否已经播过（一次建世界只播一次）。 */
     private static boolean played;
-    /** 正在 forceSetScreen（防事件递归）。 */
-    private static boolean forcing;
     /** 当前正在播的动画屏（拦截 ReceivingLevelScreen 时要用它判断）。 */
     private static RevealScreen active;
+
+    /**
+     * <b>落成动画总开关</b>（★ v47 默认关闭）。
+     *
+     * <h2>为什么关掉</h2>
+     * <p>用户裁定（2026-11-10）：「要不先暂停这个功能？其实这个难度比较大，
+     * 后续在专项修复？先恢复之前点击完成后关闭自定义配置回到类型？
+     * 毕竟我认为完成平面模式与沙盘模式的切换动画更合适。」</p>
+     *
+     * <p>实机症状：动画能播，但真实世界要等原版准备 529 个出生点区块（26 秒+），
+     * 期间只能看着沙盘画面；等不到世界就交回加载屏，体验不如"正常创建"。</p>
+     *
+     * <p>⇒ 暂停接线，<b>代码全部保留</b>（{@code client/reveal/**} 一行未删），
+     * 专项修复时只需把它打开、并恢复 {@code GeoGenesisConfigScreen.doDone()}
+     * 里的数据交接与 {@code geogenesis$createWorld()} 调用。</p>
+     *
+     * <p>调试时可用 {@code -Dgeogenesis.reveal.enabled=true} 强制打开。</p>
+     */
+    private static final boolean ENABLED =
+            "true".equals(System.getProperty("geogenesis.reveal.enabled"));
 
     private RevealScreenHook() { }
 
@@ -60,6 +78,8 @@ public final class RevealScreenHook {
      */
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
+        // ★ v47：总开关关闭时完全不介入原版加载流程
+        if (!ENABLED) return;
         try {
             Screen next = event.getNewScreen();
             boolean preparing = isPreparingScreen(next);
@@ -73,7 +93,6 @@ public final class RevealScreenHook {
                     RevealDataHolder.current() != null);
             if (!preparing) return;
             if (played) return;
-            if (forcing) return;          // ★ 防"forceSetScreen 再触发本事件"的递归
             if (!SpawnSelection.has()) return;
             if (RevealDataHolder.current() == null) return;
 

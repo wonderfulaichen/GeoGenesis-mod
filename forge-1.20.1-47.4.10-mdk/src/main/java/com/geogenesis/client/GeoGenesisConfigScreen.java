@@ -768,21 +768,21 @@ public class GeoGenesisConfigScreen extends Screen {
     }
 
     /**
-     * <b>完成</b>：应用 + 交出地形复用 + <b>立刻开始创建世界</b>（★ v38 修正）。
+     * <b>完成</b>：应用参数 + 交出地形复用 + 退回上一屏。
      *
-     * <h2>★ v38【修"点击完成后就直接关闭回到类型选择"】</h2>
-     * <p>用户实测：「动画的前提不对啊，我们点击完成后就直接是关闭回到类型选择了。」</p>
+     * <h2>★ v47【落成动画暂停，恢复原版创建流程】</h2>
+     * <p>用户裁定（2026-11-10）：「要不先暂停这个功能？其实这个难度比较大，
+     * 后续在专项修复？先恢复之前点击完成后关闭自定义配置回到类型？
+     * 毕竟我认为完成平面模式与沙盘模式的切换动画更合适。」</p>
      *
-     * <p>根因：此前这里只是 {@code setScreen(parent)} —— 退回 {@code CreateWorldScreen}，
-     * <b>根本没开始建世界</b>。玩家得自己再点一次原版「创建世界」，
-     * 于是落成动画永远等不到触发点（它只在 {@code LevelLoadingScreen} 打开时才接管）。</p>
+     * <p>此前（v38）这里会把创建世界流程直接跑起来（调 {@code onCreate}），
+     * 目的是给落成动画提供「{@code LevelLoadingScreen} 打开的触发点」。
+     * 现在动画暂停 ⇒ 也<b>不再替玩家点创建</b>，恢复原行为：
+     * 退回 {@code CreateWorldScreen}，玩家自己点「创建世界」。</p>
      *
-     * <p>参考项目 {@code YardSiteScreen.proceed()} 最后一行是 {@code onProceed.run()}，
-     * 而那个 {@code onProceed} 是 {@code CreateWorldScreenAccessor::yardsite$createWorld}
-     * —— 即<b>调原版私有的 onCreate()</b>。我们照做。</p>
-     *
-     * <p>⚠ 若当前不是从 {@code CreateWorldScreen} 进来的（比如游戏内按 G 打开），
-     * 就没有"创建世界"这回事 ⇒ 维持原行为（退回上一屏）。</p>
+     * <p>⚠ v38 修的那个问题（「点完成就直接关闭回到类型选择」）源于
+     * <b>只 setScreen(parent) 却没建世界</b>——当时的症状是玩家以为"完成"了
+     * 结果什么都没发生。现在的行为是明确退回上一屏，符合用户本轮要求。</p>
      */
     private void doDone() {
         doApply();
@@ -790,34 +790,8 @@ public class GeoGenesisConfigScreen extends Screen {
         //   配置屏在 MC 之外用纯 Java 核心算好的 GeoGenesisTerrain
         //   在这里登记；进世界时 bindWorld 三项全等就<b>直接接管</b>，不重算。
         offerTerrainForReuse();
-        // ★ v37：把当前地形数据交给落成动画（进世界时接着这张图往下推）。
-        // ★ v45：连<b>沙盘最后一帧的正交相机</b>一起交 —— 参考项目
-        //   SiteRevealWorldRenderer.Intro 交接整套 View（yaw/pitch/scale/pan），
-        //   注释写明开场第一帧必须与精读画面逐像素一致（「不是两张图在对 dissolve」）。
-        //   此前我们传的是硬编码 width/2、height*0.46 ⇒ 一开场就跳。
-        if (preview != null) {
-            com.geogenesis.client.reveal.RevealDataHolder.OrthoView ov =
-                    preview.exportSandboxOrthoView();
-            com.geogenesis.client.reveal.RevealDataHolder.offer(
-                    preview.sandboxDataForReveal(), ov);
-        }
-
-        if (parent instanceof net.minecraft.client.gui.screens.worldselection.CreateWorldScreen cws) {
-            com.geogenesis.client.GeoGenesisClient.writeSeedToCreateWorld(cws, seed);
-            // ★★★ v38【关键】直接把创建世界流程跑起来 ★★★
-            //   此前只 setScreen(parent) ⇒ 停在创建界面，永远等不到 LevelLoadingScreen。
-            //   用户要求"点完成就开始动画" ⇒ 必须在这里触发 onCreate。
-            try {
-                // 先关掉本屏（否则 onCreate 里换屏时状态会串）
-                Minecraft.getInstance().setScreen(cws);
-                ((com.geogenesis.mixin.CreateWorldScreenAccessor) cws).geogenesis$createWorld();
-                return;
-            } catch (Throwable t) {
-                // 静默兜底：mixin 没挂上 / 版本不符 → 退回原行为（玩家自己点创建）
-                com.mojang.logging.LogUtils.getLogger().warn(
-                        "[GeoGenesis] 触发创建世界失败，退回手动创建：{}", t.toString());
-            }
-        }
+        // ★ v47：不再向落成动画交接数据（动画已暂停，见类注释）。
+        //   动画代码本身保留在 client/reveal/ 下，接回来只需恢复这三行。
         Minecraft.getInstance().setScreen(parent);
     }
 
