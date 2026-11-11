@@ -132,32 +132,6 @@ public final class ViewTransition {
     }
 
     /**
-     * <b>收拢进度</b>：椭圆暗区从四角向盘心推进，在第一段走到 {@link #MASK_DONE} 时收完。
-     *
-     * <p>用户 2026-11-11：「第一阶段应该先自然从四周往屏幕中间收，
-     * 原因你其实看沙盘就清楚了，沙盘是圆的，四周都暗角。」</p>
-     */
-    public static float maskPhase(float ease, boolean toSandbox) {
-        return clamp01(texturePhase(ease, toSandbox) / MASK_DONE);
-    }
-
-    /** 收拢在第一段的这个比例处完成；之后才做材质交接（见 {@link #relief}）。 */
-    public static final float MASK_DONE = 0.72f;
-
-    /**
-     * 材质交接（贴图 ⇄ 体素）从第一段的这个比例处开始。
-     *
-     * <p>★ 刻意等于 {@link #MASK_DONE}：<b>先收完圆，再换材质</b>。
-     * 两者重叠时，圆还没合拢、中心就已经显出体素网格，画面读起来是"糊"，不是"收"。</p>
-     */
-    private static final float SWAP_FROM = MASK_DONE;
-
-    /** 材质交接进度（0 = 还是贴图，1 = 全是体素）。 */
-    static float swapPhase(float ease, boolean toSandbox) {
-        return smooth01(clamp01((texturePhase(ease, toSandbox) - SWAP_FROM) / (1.0f - SWAP_FROM)));
-    }
-
-    /**
      * 线性进度：0 = 刚开始切，1 = 切完（或没在过渡）。
      *
      * @param nowMs   当前时刻
@@ -209,7 +183,7 @@ public final class ViewTransition {
      * 不会出现"图上又贴了一层马赛克"。</p>
      */
     public static float relief(float ease, boolean toSandbox) {
-        return swapPhase(ease, toSandbox);
+        return smooth01(texturePhase(ease, toSandbox));
     }
 
     /**

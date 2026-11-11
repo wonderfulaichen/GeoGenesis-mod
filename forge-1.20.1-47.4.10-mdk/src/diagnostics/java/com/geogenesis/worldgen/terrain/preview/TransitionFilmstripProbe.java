@@ -3,7 +3,6 @@ package com.geogenesis.worldgen.terrain.preview;
 import com.geogenesis.client.preview.GeoPalette;
 import com.geogenesis.client.preview.TerrainFieldData;
 import com.geogenesis.client.preview.ViewTransition;
-import com.geogenesis.client.preview.sandbox.PreviewVignette;
 import com.geogenesis.client.preview.chunk.CellCache;
 import com.geogenesis.client.preview.sandbox.SandboxGeometry;
 import com.geogenesis.worldgen.terrain.Cell;
@@ -47,7 +46,7 @@ public final class TransitionFilmstripProbe {
     private static final int FW = 380;      // 每帧宽
     private static final int FH = 300;      // 每帧高
     private static final double SEA = 63.0;
-    private static final int STEPS = 10;
+    private static final int STEPS = 8;
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
@@ -187,15 +186,10 @@ public final class TransitionFilmstripProbe {
         if (texA > 0.004f) {
             for (int y = 0; y < FH; y++) {
                 int v = (int) (y * (TEX - 1) / (double) (FH - 1));
-                // ★ v58：与生产同一套椭圆收拢遮罩（四角先压成底板色，暗区向心推进）
-                float ny = (float) ((y + 0.5) / FH * 2.0 - 1.0);
                 for (int x = 0; x < FW; x++) {
                     int u = (int) (x * (TEX - 1) / (double) (FW - 1));
-                    float nx = (float) ((x + 0.5) / FW * 2.0 - 1.0);
-                    float t = PreviewVignette.radius(nx, ny);
-                    float maskA = PreviewVignette.plateAlpha(t, ViewTransition.maskPhase(ease, true)) * PreviewVignette.MAX_ALPHA;
-                    int base = blend(img.getRGB(x, y), tex[v * TEX + u], (int) (255 * texA));
-                    img.setRGB(x, y, blend(base, PreviewVignette.PLATE_RGB, (int) maskA));
+                    int src = tex[v * TEX + u];
+                    img.setRGB(x, y, blend(img.getRGB(x, y), src, (int) (255 * texA)));
                 }
             }
         }
