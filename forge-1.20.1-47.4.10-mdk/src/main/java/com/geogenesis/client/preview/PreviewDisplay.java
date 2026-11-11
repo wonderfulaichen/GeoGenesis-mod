@@ -1236,6 +1236,17 @@ public class PreviewDisplay extends AbstractWidget {
      *   <li>{@code pitch/yaw}：平面恒 0（正俯视），沙盘用用户视角。</li>
      * </ul>
      */
+    /** 沙盘采样缩放档位：窗口 = 平面窗口 × 2^step（滚轮改它，改的是<b>采样范围</b>）。 */
+    private int sandboxZoomStep = 0;
+
+    /** 沙盘当前采样窗口（方块）。 */
+    int sandboxWindowBlocks() {
+        int base = Math.max(64, texW * scaleBlockPos);
+        int step = Math.max(-2, Math.min(3, sandboxZoomStep));
+        return Math.max(64, base << Math.max(0, step) >> Math.max(0, -step));
+    }
+
+    /** 构造唯一相机（window 默认取平面窗口；沙盘分支会覆盖成采样窗口）。 */
     private PreviewCamera viewCamera(int align, int panX, int panZ, float pitch, float yaw) {
         PreviewCamera c = new PreviewCamera();
         int scale = Math.max(1, scaleBlockPos);
@@ -1297,6 +1308,11 @@ public class PreviewDisplay extends AbstractWidget {
         // ★★ v54：视口同样来自唯一相机（align=1、pan=0 —— 沙盘把拖拽直接提交进 center）
         PreviewCamera cam = viewCamera(1, 0, 0,
                 sandboxRasterizer.pitch(), sandboxRasterizer.yaw());
+        // ★ v63【滚轮 = 采样缩放】（用户裁定）：
+        //   窗格数按档位 ×2^n 变化，和平面模式的 scaleBlockPos 同一语义 ——
+        //   滚出去 = 真的多采多块地（数据范围变大），不是把同一块画大。
+        cam.windowX = sandboxWindowBlocks();
+        cam.windowZ = cam.windowX;
         int blocksWide = cam.windowX;
         int blocksHigh = cam.windowZ;
         // ★ v29：柱数按"柱屏宽 ~8px"与窗口共同决定（不再固定 1 柱 = 16 格）
@@ -1953,12 +1969,15 @@ public class PreviewDisplay extends AbstractWidget {
             if (ctrl) {
                 sandboxRasterizer.setWidthScale(sandboxRasterizer.widthScale() * (delta > 0 ? 1.06f : 1f / 1.06f));
             } else {
-                // ★ Q1-C 加减速：远快近慢（见 SandboxLod.nextZoom 的 javadoc）
-                sandboxRasterizer.setZoom(SandboxLod.nextZoom(sandboxRasterizer.zoom(), delta > 0));
-                // ★ v27：缩放会改 scale ⇒ 残留的屏幕平移会错位（"一缩放就超出底板"），清掉
+                // ★ v63【滚轮 = 采样缩放】用户裁定：像平面模式那样，滚出去看到更大范围。
+                //   改的是<b>采样窗口</b>（2^n 档），不是绘图比例 ⇒ 数据真的多采，
+                //   柱数/每柱格数由 pillarsForWindow / effectiveStepFor 自动跟着窗口走。
+                sandboxZoomStep += (delta > 0) ? -1 : 1;   // 上滚 = 拉近（范围变小）
+                sandboxZoomStep = Math.max(-2, Math.min(3, sandboxZoomStep));
                 sandboxRasterizer.clearPan();
                 sandboxCenterAccX = 0;
                 sandboxCenterAccZ = 0;
+                needsClear = true;
             }
             return true;
         }
@@ -2697,17 +2716,12 @@ public class PreviewDisplay extends AbstractWidget {
     public String statusLine() {
         // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
         if (sandboxMode) {
-            // ★ v62【修"视野数值一直不动"】：滚轮的语义是<b>镜头推近</b>（用户裁定），
-            //   采样窗口不变、内容不变，变的是"这一窗数据被放到多大"。
-            //   所以状态栏必须显示<b>等效可见格数 = 窗口 / 缩放</b>，否则永远是一串定值，
-            //   读起来像"后端卡死"（用户原话：「是不是后端出问题了，一直不动数值」）。
-            int windowBlocks = Math.max(64, texW * scaleBlockPos);
-            float zoomNow = Math.max(0.01f, sandboxRasterizer.zoom());
-            int visibleBlocks = Math.max(32, Math.round(windowBlocks / zoomNow));
+            // ★ v63：窗口即真实采样范围（滚轮改的就是它，见 mouseScrolled）
+            int windowBlocks = sandboxWindowBlocks();
             int pillars = Math.max(1, SandboxLod.pillarsForWindow(windowBlocks));
+            double stepBlocks = SandboxLod.effectiveStepFor(windowBlocks, Math.min(texW, texH));
             StringBuilder sb = new StringBuilder(String.format(java.util.Locale.ROOT,
-                    "视野 %d 格 · 缩放 %.2f× · %d 柱 · 1 柱 = %d 格方块",
-                    visibleBlocks, zoomNow, pillars, SandboxLod.STEP_BLOCKS));
+                    "视野 %d 格 · %d 柱 · 1 柱 = %.1f 格方块", windowBlocks, pillars, stepBlocks));
             // 地图中心（拖动后能看出位置真的变了）
             sb.append(String.format(java.util.Locale.ROOT, " · 中心 %d,%d", centerX, centerZ));
             if (largeSampler != null && largeSampler.data() != null) {
