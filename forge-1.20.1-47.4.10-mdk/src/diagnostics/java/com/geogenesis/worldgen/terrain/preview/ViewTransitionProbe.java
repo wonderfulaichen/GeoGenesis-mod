@@ -1,6 +1,7 @@
 package com.geogenesis.worldgen.terrain.preview;
 
 import com.geogenesis.client.preview.ViewTransition;
+import com.geogenesis.client.preview.sandbox.PreviewVignette;
 
 import java.util.Locale;
 
@@ -157,7 +158,7 @@ public final class ViewTransitionProbe {
         System.out.printf("    切平面：%.3f → %.3f（应 1 → 0）%n", rb0, rb1);
         // 第一段中段必须在 (0,1)：v56 起 relief 在第一段就走完，
         // 所以取样点要落在<b>第一段内部</b>（0.5 已经在第二段，必然 =1）
-        float raMid = ViewTransition.relief(ViewTransition.PHASE_TEXTURE * 0.5f, true);
+        float raMid = ViewTransition.relief(ViewTransition.PHASE_TEXTURE * 0.85f, true);
         System.out.printf("    第一段中点 %.3f（应在 (0,1) 内）%n", raMid);
         if (Math.abs(ra0) > eps || Math.abs(ra1 - 1f) > eps
                 || Math.abs(rb0 - 1f) > eps || Math.abs(rb1) > eps
@@ -247,8 +248,48 @@ public final class ViewTransitionProbe {
             pass = false;
         }
 
-        // ---- [9] 健全性 ----
-        System.out.println("\n[9] 数值健全性");
+        // ---- [9] 第一段的椭圆收拢遮罩 ----
+        //
+        //   ★ v58 用户裁定：「第一阶段应该先自然从四周往屏幕中间收，
+        //     原因你其实看沙盘就清楚了，沙盘是圆的，四周都暗角。」
+        System.out.println("\n[9] 收拢遮罩（PreviewVignette）");
+        boolean vigOk = true;
+        // ① 起点（p=0）必须完全不遮，连四角都不遮
+        float corner = PreviewVignette.radius(1f, 1f);
+        float a0Corner = PreviewVignette.plateAlpha(corner, 0f);
+        System.out.printf("    p=0 四角 alpha=%.3f（应 0）%n", a0Corner);
+        if (a0Corner > 1e-4f) vigOk = false;
+        // ② 终点（p=1）中心不遮、内切边已全遮
+        float a1Center = PreviewVignette.plateAlpha(0.2f, 1f);
+        float a1Edge = PreviewVignette.plateAlpha(1.05f, 1f);
+        System.out.printf("    p=1 中心 alpha=%.3f（应 0）；内切边 alpha=%.3f（应 %.3f）%n",
+                a1Center, a1Edge, PreviewVignette.MAX_ALPHA / 255f);
+        if (a1Center > 1e-4f || a1Edge < PreviewVignette.MAX_ALPHA / 255f - 1e-3f) vigOk = false;
+        // ③ 固定半径上，随 p 单调不减（暗区只会往中心推进，不会来回）
+        float prevA = -1f;
+        boolean monoVig = true;
+        for (int i = 0; i <= 100; i++) {
+            float p = i / 100f;
+            float a = PreviewVignette.plateAlpha(0.72f, p);
+            if (a < prevA - 1e-5f) monoVig = false;
+            prevA = a;
+        }
+        System.out.printf("    t=0.72 处随 p 单调不减：%s%n", monoVig ? "是" : "否");
+        if (!monoVig) vigOk = false;
+        // ④ 上限必须等于沙盘底板 alpha（0xF2），否则接缝有色差
+        if (PreviewVignette.MAX_ALPHA != 0xF2) {
+            System.out.println("    FAIL: MAX_ALPHA 与沙盘铺底 0xF2 不一致 ⇒ 收完比稳态更黑");
+            vigOk = false;
+        }
+        if (!vigOk) {
+            System.out.println("    FAIL: 收拢遮罩不满足「起点不遮、终点成盘、单调推进、与底板同色」");
+            pass = false;
+        } else {
+            System.out.println("    OK（四角先暗、向心推进、终点与沙盘盘面同色）");
+        }
+
+        // ---- [10] 数值健全性 ----
+        System.out.println("\n[10] 数值健全性");
         boolean sane = true;
         for (float[] row : new float[][]{
                 {ViewTransition.pitch(-1f, true), ViewTransition.pitch(2f, true)},

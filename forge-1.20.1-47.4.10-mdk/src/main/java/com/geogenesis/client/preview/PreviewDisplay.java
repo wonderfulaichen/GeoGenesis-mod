@@ -1039,6 +1039,25 @@ public class PreviewDisplay extends AbstractWidget {
             blitPlaneOnly(g, x, y, w, h,
                     ViewTransition.planeTextureAlpha(ease, toSandbox), 1f);
 
+            // ★★ v58【第一段的"从四周往中间收"】★★
+            //
+            //   用户实机：「第一阶段应该先自然从四周往屏幕中间收，原因你其实看沙盘就清楚了，
+            //   沙盘是圆的，四周都暗角。」
+            //
+            //   平面图铺满矩形，沙盘是圆形盘面 + 四周暗角；只做整幅矩形淡变的话，
+            //   四角一直保留地图颜色到最后 ⇒ 没有"收"的动势。
+            //   这里用椭圆遮罩（{@link PreviewVignette}）把四角先压成底板色，
+            //   暗区随第一阶段进度向中心推进，收完正好等于沙盘那个盘面
+            //   （同一条 edgeFade 曲线，接缝处不会"两个圆不一样大"）。
+            //
+            //   ★ 两拍：0~72% 只收拢（地图还是完整的，边缘先暗）；
+            //     55%~100% 才换材质（体素淡入、地图淡出）。
+            //     若两者同步，边缘还没合拢画面就已经变成体素 ⇒ 收拢动作被淹没。
+            float maskP = ViewTransition.maskPhase(ease, toSandbox);
+            if (maskP > 0.004f && maskP < 0.999f) {
+                drawVignette(g, x, y, w, h, maskP);
+            }
+
             // ---- 2) 柱体：<b>由同一个 relief 驱动高度与不透明度</b> ----
             //
             //   ★ v55【用户判定"像图片切换"之后的根本改法】
@@ -1065,6 +1084,49 @@ public class PreviewDisplay extends AbstractWidget {
 
     /** 运镜期间为 true：{@code renderSandbox} 跳过拾取与标记（它们在快速运动中没有意义）。 */
     private boolean cameraMoveActive;
+
+    // ---- 第一段的椭圆收拢遮罩（★ v58）----
+    //
+    //   一张 128×128 的小纹理，逐帧按 PreviewVignette 重画（16k 像素，可忽略成本），
+    //   再拉伸铺满预览矩形。铺满即可 —— 遮罩算在归一化 [-1,1]² 里，
+    //   与柱体 model 坐标同一映射，宽屏自动成横椭圆。
+
+    private static final int VIG_RES = 128;
+    private NativeImage vigImage;
+    private DynamicTexture vigTexture;
+    private ResourceLocation vigLoc;
+
+    private void drawVignette(GuiGraphics g, int x, int y, int w, int h, float p) {
+        if (vigImage == null) {
+            vigImage = new NativeImage(NativeImage.Format.RGBA, VIG_RES, VIG_RES, false);
+            vigTexture = new DynamicTexture(vigImage);
+            vigLoc = ResourceLocation.tryParse("geogenesis:vignette_" + System.nanoTime());
+            mc.getTextureManager().register(vigLoc, vigTexture);
+        }
+        for (int py = 0; py < VIG_RES; py++) {
+            float ny = (py + 0.5f) / VIG_RES * 2f - 1f;
+            for (int px = 0; px < VIG_RES; px++) {
+                float nx = (px + 0.5f) / VIG_RES * 2f - 1f;
+                float t = com.geogenesis.client.preview.sandbox.PreviewVignette.radius(nx, ny);
+                vigImage.setPixelRGBA(px, py, GeoPalette.toABGR(
+                        com.geogenesis.client.preview.sandbox.PreviewVignette.argb(t, p)));
+            }
+        }
+        vigTexture.upload();
+        g.blit(vigLoc, x, y, w, h, 0, 0, VIG_RES, VIG_RES, VIG_RES, VIG_RES);
+    }
+
+    private void releaseVignette() {
+        if (vigLoc != null) {
+            try { mc.getTextureManager().release(vigLoc); } catch (Throwable ignored) { }
+            vigLoc = null;
+        }
+        if (vigImage != null) {
+            try { vigImage.close(); } catch (Throwable ignored) { }
+            vigImage = null;
+        }
+        vigTexture = null;
+    }
 
     /**
      * 只把<b>平面图</b>贴到屏幕上（可带 alpha 与竖向收缩）。
@@ -2519,6 +2581,7 @@ public class PreviewDisplay extends AbstractWidget {
         if (ownsTerrain && terrain != null) terrain.closeProcessErosion();
         mc.getTextureManager().release(texLoc);
         texture.close();
+        releaseVignette();
         // ★ 磁盘持久化：关屏保存全部历史（后台线程 + tmp 原子写，不阻塞 UI）。
         //   保存历史层（紧凑数据，含本次会话所有采样 + 磁盘加载的），跨会话完整保留。
         long seedSnapshot = diskSeed;

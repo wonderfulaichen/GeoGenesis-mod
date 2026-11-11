@@ -396,7 +396,9 @@ public final class SandboxRasterizer {
         //   {@code IllegalStateException: BufferBuilder not started}（实机崩溃已取证：
         //   latest.log 22:07:32 SandboxRasterizer.vertex:397 → draw:326）。
         if (globalAlpha > 0.01f) {
-            int plate = (((int) (0xF2 * globalAlpha)) << 24) | 0x171A22;
+            // ★ v58：底板色与第一阶段遮罩共用同一个常量（改一处两边同时变，不会出现接缝色差）
+            int plate = (((int) (0xF2 * globalAlpha)) << 24)
+                    | com.geogenesis.client.preview.sandbox.PreviewVignette.PLATE_RGB;
             g.fill((int) areaX, (int) areaY,
                     (int) (areaX + areaW), (int) (areaY + areaH), plate);
         }
