@@ -45,8 +45,6 @@
 2. 把构建出的 jar 放进 `.minecraft/mods/`
 3. 创建世界时把**世界类型**选为 **GeoGenesis**（本模组自带 `world_preset`，下界与末地仍用原版）
 
-> 已知粗糙处：世界类型条目目前**没有翻译键**，中文界面下会显示成原始 id（`geogenesis:geogenesis`）；功能正常。
-
 ---
 
 ## 使用

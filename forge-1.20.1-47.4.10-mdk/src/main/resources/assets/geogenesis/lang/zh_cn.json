@@ -1,4 +1,5 @@
 {
+  "generator.geogenesis.geogenesis": "GeoGenesis 地形",
   "geogenesis.title": "GeoGenesis 地形预览/配置",
   "geogenesis.seed": "种子",
   "geogenesis.mode": "渲染模式",

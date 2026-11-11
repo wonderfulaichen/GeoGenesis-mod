@@ -1,4 +1,5 @@
 {
+  "generator.geogenesis.geogenesis": "GeoGenesis",
   "geogenesis.title": "GeoGenesis Terrain Preview / Config",
   "geogenesis.seed": "Seed",
   "geogenesis.mode": "Render Mode",
