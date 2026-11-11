@@ -49,16 +49,14 @@ public final class SandboxVisualDiagProbe {
         System.out.printf("    投影包围盒（模型单位）%.3f × %.3f%n", spanX, spanY);
         float fit = SandboxGeometry.fitScale(r, VIEW_W, VIEW_H);
         float fill = SandboxGeometry.fillScale(r, VIEW_W, VIEW_H);
-        float scaleOf = SandboxGeometry.scaleOf(Math.min(VIEW_W, VIEW_H), SandboxLod.BASE_ZOOM);
+        // ★ v66：zoom 档位已删除，scaleOf 那条对照已无意义（沙盘画法恒为 fillScale）
         System.out.printf("    fitScale=%.1f  盘面 %.0f×%.0f px（X%.0f%% Y%.0f%%）%n",
                 fit, spanX * fit, spanY * fit,
                 100 * spanX * fit / VIEW_W, 100 * spanY * fit / VIEW_H);
         System.out.printf("    fillScale=%.1f 盘面 %.0f×%.0f px（X%.0f%% Y%.0f%%）← 实机用这个%n",
                 fill, spanX * fill, spanY * fill,
                 100 * spanX * fill / VIEW_W, 100 * spanY * fill / VIEW_H);
-        System.out.printf("    scaleOf=%.1f   盘面 %.0f×%.0f px（X%.0f%% Y%.0f%%）%n",
-                scaleOf, spanX * scaleOf, spanY * scaleOf,
-                100 * spanX * scaleOf / VIEW_W, 100 * spanY * scaleOf / VIEW_H);
+        // ★ v66：scaleOf 对照已删除（zoom 档位不再存在）
 
         // 竖向还要加上柱高所占的像素（盘面不是平的，最高柱会向上顶）
         float reliefPx = SandboxGeometry.RELIEF * fill * Math.abs(r[5]);

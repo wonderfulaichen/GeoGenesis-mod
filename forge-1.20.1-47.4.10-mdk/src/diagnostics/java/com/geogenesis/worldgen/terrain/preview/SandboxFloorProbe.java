@@ -50,22 +50,9 @@ public final class SandboxFloorProbe {
         System.out.printf("平面包围盒（模型单位）：%.3f × %.3f%n%n", modelW, modelH);
 
         boolean pass = true;
-        System.out.println("zoom   scale   盘面屏幕尺寸      超出视口倍数    判定");
-        System.out.println("---------------------------------------------------------------");
-        for (float zoom = SandboxLod.ZOOM_MIN; zoom <= SandboxLod.ZOOM_MAX + 1e-6f;
-             zoom *= 2.0f) {
-            float scale = SandboxGeometry.scaleOf(VIEWPORT, zoom);
-            float pxW = modelW * scale;
-            float pxH = modelH * scale;
-            float overX = pxW / VIEWPORT;
-            float overY = pxH / VIEWPORT;
-            // 只观察、不判定：推近（zoom>1）本来就会让局部铺满屏幕，
-            // 板边被裁是"放大"的应有之义。判定只看<b>基准档</b>（下面单独判）。
-            boolean ok = overY <= 1.02f;
-            System.out.printf("%.2f   %6.1f   %6.0f×%-6.0f    X%.2f Y%.2f     %s%n",
-                    zoom, scale, pxW, pxH, overX, overY,
-                    ok ? "OK" : (zoom > SandboxLod.BASE_ZOOM ? "推近·正常" : "竖向超出"));
-        }
+        // ★ v66：zoom 档位整套已删除（缩放统一到 scaleBlockPos），
+        //   沙盘画法恒为 fillScale 铺满。这里只保留"铺满且不过度溢出"这一条判据。
+        System.out.println("（v66：zoom 档位已删除，沙盘画法恒为 fillScale）");
         System.out.println();
 
         // 判据：基准档必须<b>铺满且不裁地形</b>（v28 起基准档改用 fillScale）。
@@ -99,10 +86,10 @@ public final class SandboxFloorProbe {
                     100 * fillOverX, 100 * fillOverY);
         }
 
-        // 顺带记录：旧口径（scaleOf + BASE_ZOOM）会超出多少（供对照）
-        float oldScale = SandboxGeometry.scaleOf(VIEWPORT, SandboxLod.BASE_ZOOM);
-        System.out.printf("%n对照：旧口径 scaleOf(%.0f, %.1f) ⇒ X%.2f / Y%.2f %s%n",
-                (float) VIEWPORT, SandboxLod.BASE_ZOOM,
+        // 顺带记录：旧口径（scaleOf + zoom）会超出多少（供对照；该口径已删除，仅留数值）
+        float oldScale = SandboxGeometry.scaleOf(VIEWPORT, 1.0f);
+        System.out.printf("%n对照：旧口径 scaleOf(%.0f, 1.0) ⇒ X%.2f / Y%.2f %s%n",
+                (float) VIEWPORT,
                 modelW * oldScale / VIEWPORT, modelH * oldScale / VIEWPORT,
                 "（这就是用户看到的「超出底板」）");
 

@@ -1276,7 +1276,7 @@ public class PreviewDisplay extends AbstractWidget {
         //   正解：柱子屏幕尺寸恒定（13px）⇒ 网格数 = 视口像素/13 ≈ 70 柱 = 140 细格。
         //   推近只改"每柱代表多少方块" ⇒ 视野缩小、精度提高（用户要的就是这个）。
         //   成本反而更低：140² = 19,600 点 < 256² = 65,536 点。
-        float zoom = sandboxRasterizer.zoom();
+        float zoom = 1f;   // ★ v66：沙盘绘图缩放已随缩放统一删除（画法恒为铺满）
         // ★ 全屏地图：用<b>完整视口</b>（不是 min(w,h) 的正方形）。
         //   用正方形会让盘面在宽屏上只占中间一块、上下大片留白 ——
         //   用户要求「实际没有上下栏，类似像一个游戏地图那样全屏显示画面内容」。
@@ -1401,11 +1401,11 @@ public class PreviewDisplay extends AbstractWidget {
             //   {@code windowFor(zoom)}（柱数 × 16）的<b>旧口径</b>，
             //   与真实窗口（blocksWide）脱钩 ⇒ 日志出现「窗口=854 / 7200 格」自相矛盾。
             //   现在直接打真实窗口与真实柱数。
-            LOGGER.info("[Preview] 沙盘 视野={}格 柱={} 细格={} zoom={} 数据={}ms 缺失={}",
+            LOGGER.info("[Preview] 沙盘 视野={}格 柱={} 细格={} scale=1:{} 数据={}ms 缺失={}",
                     blocksWide,
                     Math.max(1, grid / Math.max(1, SandboxLod.HEIGHT_STRIDE)),
                     grid,
-                    String.format(java.util.Locale.ROOT, "%.2f", zoom),
+                    scaleBlockPos,
                     d == null ? -1 : d.costMs, d == null ? -1 : d.missingCells);
         }
         // ★ 竖向比例：<b>照抄参考项目</b>（SiteTerrainRenderer.collect() 第 661/677-678 行）：
@@ -2799,7 +2799,7 @@ public class PreviewDisplay extends AbstractWidget {
         d.seed = seed;
         d.centerX = centerX + (int) totalDragX;
         d.centerZ = centerZ + (int) totalDragZ;
-        d.zoom = sandboxRasterizer.zoom();
+        d.zoom = 1f;   // ★ v66：绘图缩放已随缩放统一删除（HudData.zoom 无消费方）
         if (largeSampler != null && largeSampler.data() != null && !largeSampler.isComplete()) {
             d.progress = largeSampler.progress();
         }

@@ -85,58 +85,15 @@ public final class SandboxLod {
     /** 柱数硬上限 —— 参考项目 {@code COLUMNS_HARD_MAX = 512}。 */
     public static final int MAX_PILLARS = 512;
 
-    /**
-     * 基准 zoom（进入沙盘默认值）—— ★ v27 由 2.0 改为 <b>1.0</b>。
-     *
-     * <h2>为什么必须回到 1.0</h2>
-     * <p>用户实机：「我不是说底板不对，是<b>视野一缩放就超出底板了</b>，
-     * 参考项目是不会超出底板的。」</p>
-     *
-     * <p>探针 {@code runSandboxFloorProbe} 实测（900px 视口）：</p>
-     * <pre>
-     *   zoom=2.00 → 盘面 2523×1761px = 视口 × 2.58  ⇒ 底板边缘被裁，看不到板
-     *   zoom=1.00 → 盘面 1261× 880px = 视口 × 1.40  ⇒ 仍略超（宽方向）
-     *   zoom=0.50 → 盘面  631× 440px = 视口 × 0.70  ⇒ 完整可见
-     * </pre>
-     *
-     * <p>{@code 0.46 × 2（模型跨度）= 0.92}，理论上 zoom=1.0 该装得下；
-     * 超出的部分来自<b>斜投影后的包围盒比模型跨度大</b>
-     * （2.803×1.956 而非 2×2）—— 所以 zoom=1.0 时宽方向是 1.40 倍。</p>
-     *
-     * <p>⇒ 真正"完整可见"是 zoom≈0.70。但那一档柱子太细、
-     * 立体感不足。取 <b>1.0</b> 作默认：宽方向略超 40%（可接受，
-     * 用户抱怨的是 2.58 倍的"完全看不到底板"），
-     * 竖向 0.98 倍刚好装下 —— 这是观感与写实的折中。</p>
-     */
-    public static final float BASE_ZOOM = 1.0f;
+    // ★ v66：BASE_ZOOM 已删除（缩放统一到 scaleBlockPos，沙盘无独立档位）。
 
-    /** 滚轮步长：每格 ×2 / ÷2（窗口与柱数同步翻倍/减半）。 */
-    public static final float WHEEL_STEP = 2.0f;
-
-    /**
-     * 允许拉远格数 ★ v26：由 2 改为 <b>1</b>（柱数 256 → 512）。
-     *
-     * <p>用户：「4096 格视野都已经够了。」默认已是 4096（256 柱），
-     * 再往外只留一档 8192（512 柱，硬上限），不再到 7200/16384。</p>
-     */
-    public static final int MAX_ZOOM_OUT_STEPS = 1;
-
-    /** 允许推近格数：柱数 256 → 128 → 64 → 32（柱宽随之变粗）。 */
-    public static final int MAX_ZOOM_IN_STEPS = 3;
-
-    public static final float ZOOM_MIN = (float) (BASE_ZOOM / Math.pow(WHEEL_STEP, MAX_ZOOM_OUT_STEPS));
-    public static final float ZOOM_MAX = (float) (BASE_ZOOM * Math.pow(WHEEL_STEP, MAX_ZOOM_IN_STEPS));
+    // ★ v66：WHEEL_STEP / MAX_ZOOM_*_STEPS / ZOOM_MIN / ZOOM_MAX 已删除
+    //   —— 缩放统一到 scaleBlockPos 后，沙盘不再有自己的 zoom 档位。
 
     /** 柱子最小屏幕尺寸（像素）。 */
     public static final double MIN_PILLAR_PX = 2.0;
 
     private SandboxLod() { }
-
-    /** zoom / BASE_ZOOM。 */
-    public static double zoomRatio(float zoom) {
-        double z = Math.max((double) ZOOM_MIN, Math.min((double) ZOOM_MAX, (double) zoom));
-        return z / (double) BASE_ZOOM;
-    }
 
     /** 每柱细格数（每个方向）= {@link #HEIGHT_STRIDE}。 */
     public static int perColumn() {
@@ -216,79 +173,6 @@ public final class SandboxLod {
     }
 
     /**
-     * <b>柱子数（每边）</b> —— 随缩放变化（保留给"按档位"的旧调用方）。
-     *
-     * <pre>
-     *   期望柱数 = BASE_PILLARS / zoomRatio      （推近 ⇒ 少；拉远 ⇒ 多）
-     *   夹在 [8, min(512, 视口/2px)]
-     * </pre>
-     */
-    public static int pillarsFor(float zoom, int viewportPx) {
-        int want = (int) Math.round(BASE_PILLARS / zoomRatio(zoom));
-        int cap = Math.min(MAX_PILLARS, Math.max(8, (int) (viewportPx / MIN_PILLAR_PX)));
-        int p = Math.min(want, cap);
-        return Math.max(8, p - (p & 1));
-    }
-
-    /** 兼容重载（900px 视口）。 */
-    public static int pillarsFor(float zoom) {
-        return pillarsFor(zoom, 900);
-    }
-
-    /**
-     * <b>细格数（每边）</b> = 柱数 × {@link #HEIGHT_STRIDE}。
-     *
-     * <p>★ 这里曾经写成 {@code windowFor()}（2048）⇒ 419 万格 ⇒ OOM 崩溃。
-     * 参考项目里细格数<b>只由柱数决定</b>，与窗口方块数无关。</p>
-     */
-    public static int gridFor(float zoom, int viewportPx) {
-        return Math.max(2, pillarsFor(zoom, viewportPx) * HEIGHT_STRIDE);
-    }
-
-    /** 兼容重载。 */
-    public static int gridFor(float zoom) {
-        return gridFor(zoom, 900);
-    }
-
-    /**
-     * ★ v29 <b>已删除：worldFor / scaleLabel / describe</b>
-     *
-     * <h2>为什么删（用户："为什么视野数值上还有7200格的显示？是不是有什么遗漏的代码"）</h2>
-     * <p>这三个方法都以 {@code pillarsFor(zoom) × STEP_BLOCKS} 算"视野"，
-     * 那是 v27 之前的旧口径（沙盘窗口由 zoom 独立决定）。
-     * v27 起沙盘窗口已改成 {@code texW × scaleBlockPos}（= 平面窗口 ≈ 900 格），
-     * 但这里的方法仍返回 4096/7200 —— 于是 HUD 与日志显示一个<b>不存在的视野</b>。</p>
-     *
-     * <p>漏改曾造成三处不一致（用户已两次指出）：</p>
-     * <ol>
-     *   <li>{@code statusLine()} 状态栏"视野 7200 格"</li>
-     *   <li>{@code drawSandboxHints()} hover 世界坐标按 7200 算 ⇒ 偏出实际范围</li>
-     *   <li>{@code LOGGER.info} 诊断行"窗口=854 / 7200 格"自相矛盾</li>
-     * </ol>
-     *
-     * <p>⇒ <b>彻底删除这些方法</b>，让"用旧口径"变成编译错误而不是静默的错显示。
-     * 需要视野数值的地方一律直接用真实窗口 {@code texW * scaleBlockPos}，
-     * 需要柱数用 {@link #pillarsForWindow(int)}。</p>
-     */
-
-    /**
-     * 每细格方块数 = 每柱方块 / 每柱细格数（★ v29：随窗口浮动）。
-     *
-     * @deprecated 用 {@link #effectiveStepFor(int, int)} —— 本方法假设"每柱 16 格"，
-     *             那是 v28 之前的固定语义，已不成立。
-     */
-    @Deprecated
-    public static double effectiveStep(float zoom, int viewportPx) {
-        return STEP_BLOCKS / (double) HEIGHT_STRIDE;
-    }
-
-    /** 兼容重载。 */
-    @Deprecated
-    public static double effectiveStep(float zoom) {
-        return effectiveStep(zoom, 900);
-    }
-
-    /**
      * <b>每细格方块数</b>（★ v29：由窗口与柱数共同决定）。
      *
      * <p>{@code = windowBlocks / (柱数 × HEIGHT_STRIDE)}。
@@ -304,9 +188,4 @@ public final class SandboxLod {
         return effectiveStepFor(windowBlocks, 900);
     }
 
-    /** 滚轮：每格 ×2 / ÷2。 */
-    public static float nextZoom(float zoom, boolean zoomIn) {
-        float next = zoomIn ? zoom * WHEEL_STEP : zoom / WHEEL_STEP;
-        return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, next));
-    }
 }

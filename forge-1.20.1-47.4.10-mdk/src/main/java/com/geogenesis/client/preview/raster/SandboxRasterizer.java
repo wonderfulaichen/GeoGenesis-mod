@@ -88,10 +88,15 @@ public final class SandboxRasterizer {
         float[] r = SandboxGeometry.rotationRows(effYaw(), effPitch());
         return viewScale(r, areaW, areaH);
     }
+    // ★ v66【删除 zoom 整套】—— 缩放统一到 scaleBlockPos 后它已彻底失效
+    //
+    //   v65 起滚轮改的是 {@code scaleBlockPos}（采样窗口），不再调 setZoom
+    //   ⇒ 字段恒为 BASE_ZOOM ⇒ viewScale 里 {@code ratio = zoom/BASE_ZOOM} 恒 1
+    //   ⇒ "推近用 scaleOf" 那条分支永不进入，是纯死代码。
+    //   保留它只会让下一个读代码的人以为"沙盘还有一个可调的绘图缩放"，
+    //   进而去改一个不影响任何像素的字段（本项目已被这类注释误导过多次）。
     private float panX, panY;
     private float widthScale = 1.0f;
-    /** 缩放档位（语义由 {@link com.geogenesis.client.preview.SandboxLod} 解释）。 */
-    private float zoom = com.geogenesis.client.preview.SandboxLod.BASE_ZOOM;
 
     /** 上一帧的几何（hover 拾取要复用，避免重算）。 */
     private SandboxGeometry.Columns lastCols;
@@ -141,14 +146,6 @@ public final class SandboxRasterizer {
     }
 
     // ----- 视角操作 -----
-
-    /** 缩放档位（由 {@link com.geogenesis.client.preview.SandboxLod} 解释语义）。 */
-    public float zoom() { return zoom; }
-
-    public void setZoom(float v) {
-        zoom = Math.max(com.geogenesis.client.preview.SandboxLod.ZOOM_MIN,
-                Math.min(com.geogenesis.client.preview.SandboxLod.ZOOM_MAX, v));
-    }
 
     /**
      * 拖动 → 世界位移（方块）。
@@ -307,6 +304,37 @@ public final class SandboxRasterizer {
 
         float[] r = SandboxGeometry.rotationRows(effYaw(), effPitch());
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
+
+        // ★★ v66【居中量必须在 applyGrow <b>之前</b>算】★★
+        //
+        //   用户实机：「首次切换沙盘时好像是先居中后下降的，后续切换才没有这现象。」
+        //
+        //   {@link SandboxGeometry#applyGrow} 会按出生时刻把 {@code c.top}
+        //   从 0 逐帧长大。若居中量在它<b>之后</b>算：
+        //     首帧柱高≈0 ⇒ 包围盒几乎就是板面 ⇒ 居中对齐视口中心
+        //     随后柱子长高 ⇒ 包围盒向上扩 ⇒ 板面被推下去 ⇒ 观感"先居中后下降"
+        //   第二次切沙盘时 animBaseMs 早已记录、生长已完成 ⇒ 不再抖
+        //   （正是用户观察到的"只有首次会"）。
+        //
+        //   ⇒ 用<b>稳态柱高</b>在 applyGrow 之前算出模型单位的居中量，
+        //     乘 lastSY 留到后面用。这样它是一个与动画无关的常量。
+        float centreBiasModel = 0f;
+        {
+            float topMin = Float.MAX_VALUE, topMax = -Float.MAX_VALUE;
+            for (int k = 0; k < cols.readyCount; k++) {
+                int idx = cols.ready[k];
+                SandboxGeometry.Column c = cols.items[idx];
+                if (c == null || c.top < 0f) continue;
+                int ci = idx / cols.colRows, cj = idx % cols.colRows;
+                float mx = SandboxGeometry.modelOf(cols.colCount, ci);
+                float my = SandboxGeometry.modelOf(cols.colRows, cj);
+                float dyTop = r[3] * mx + r[4] * my + r[5] * c.top;   // 模型单位
+                if (dyTop < topMin) topMin = dyTop;
+                if (dyTop > topMax) topMax = dyTop;
+            }
+            if (topMin <= topMax) centreBiasModel = -(topMin + topMax) * 0.5f;
+        }
+
         SandboxGeometry.applyGrow(cols, now);
         // ★ v25：过渡的高度比例（参考项目 collect() 第 687 行 {@code tops *= heightScale}）
         if (heightScale < 1.0f) {
@@ -384,26 +412,9 @@ public final class SandboxRasterizer {
         //   等于把<b>侧墙那一大片</b>也当成要展示的内容，板面被顶高、下方留白。
         //   实际观感里值得占据画面的是<b>地表起伏</b>（柱顶），侧墙只是附属。
         //   ⇒ 居中基准改为<b>柱顶包围盒</b>中点，再按视高往下压一点（SURFACE_DROP）。
-        float topMin = Float.MAX_VALUE, topMax = -Float.MAX_VALUE;
-        for (int k = 0; k < cols.readyCount; k++) {
-            int idx = cols.ready[k];
-            SandboxGeometry.Column c = cols.items[idx];
-            if (c == null || c.top < 0f) continue;
-            int ci = idx / cols.colRows, cj = idx % cols.colRows;
-            float mx = SandboxGeometry.modelOf(cols.colCount, ci);
-            float my = SandboxGeometry.modelOf(cols.colRows, cj);
-            float dyTop = lastSY * (r[3] * mx + r[4] * my + r[5] * c.top);
-            if (dyTop < topMin) topMin = dyTop;
-            if (dyTop > topMax) topMax = dyTop;
-        }
-        float centreBias;
-        if (topMin > topMax) {
-            centreBias = 0f;
-        } else {
-            centreBias = -(topMin + topMax) * 0.5f;
-        }
-        // 往下压：让"地表"落在视口中偏下的位置，底边自然贴近下沿
-        float oyBias = centreBias + areaH * SURFACE_DROP;
+        // ★ v66：centreBias 已在上方 applyGrow <b>之前</b>用稳态柱高算好（模型单位），
+        //   这里才乘 lastSY —— 所以它不随生长动画变化（修"先居中后下降"）。
+        float oyBias = centreBiasModel * lastSY + areaH * SURFACE_DROP;
         float ox = areaX + areaW / 2f + panX;
         float oy = areaY + areaH / 2f + panY + oyBias;
 
@@ -797,33 +808,14 @@ public final class SandboxRasterizer {
      * <p>{@code draw} / {@code prepare} / {@code pick} / {@code dragToBlocks}
      * 必须用<b>同一个</b>值，否则绘制与命中的位置会错开。</p>
      *
-     * <pre>
-     *   zoom ≤ BASE_ZOOM（基准/拉远）→ fitScale：按投影包围盒归一，盘面完整可见
-     *   zoom &gt;  BASE_ZOOM（推近）  → scaleOf ：放大到局部铺满屏幕
-     * </pre>
+     * <p>★ v66：缩放统一到 {@code scaleBlockPos} 之后，这里只剩一个分支 ——
+     * 按投影包围盒铺满视口（{@link SandboxGeometry#fillScale}）。
+     * 原来的 "推近用 scaleOf" 依赖一个已无人修改的 zoom 字段，是死分支，已删。</p>
      */
     private float viewScale(float[] r, int areaW, int areaH) {
-        // ★★ v29【修"还是没有铺满沙盘模式画面"】★★
-        //
-        //   此前是 `zoom <= BASE_ZOOM ? fillScale : scaleOf`。
-        //   但 zoom 是<b>可被滚轮改</b>的（日志实测实机 zoom=0.50），
-        //   一旦用户拉远，就落到 scaleOf 分支 ⇒ 盘面只占 74%/75% ⇒ 看着没铺满。
-        //
-        //   用户的意思很明确：<b>沙盘画面就该铺满</b>。
-        //   ⇒ 只要盘面比视口小，就放大到铺满；比视口大（推近）则保持 zoom 放大。
-        //   即：scale = max(铺满所需, zoom 放大所需) 的合理组合 ——
-        //   统一为「以 fillScale 为<b>下限</b>」：
-        //     · zoom=1.0（基准）→ 正好 fillScale（铺满）
-        //     · zoom<1（拉远）  → 仍是 fillScale（不允许缩到比视口小）
-        //     · zoom>1（推近）  → fillScale × (zoom/BASE_ZOOM)（放大看局部）
-        float fill = SandboxGeometry.fillScale(r, areaW, areaH);
-        float ratio = zoom / SandboxLod.BASE_ZOOM;
-        // ★ v49：删掉 zoomBoost —— 运镜改由相机 pitch/yaw/scale 真实插值，
-        //   不再需要"整体推近"这种替代品（那属于图片过渡时代）。
-        float base = (ratio <= 1f)
-                ? fill
-                : SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
-        return base;
+        // ★ v29：盘面必须铺满视口（不允许缩到比视口小）。
+        //   用户：「还是没有铺满沙盘模式画面」。
+        return SandboxGeometry.fillScale(r, areaW, areaH);
     }
 
     /**

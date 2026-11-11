@@ -41,12 +41,12 @@ public final class SandboxPanProbe {
 
         boolean pass = true;
         float[] r = SandboxGeometry.rotationRows(DEFAULT_YAW, DEFAULT_PITCH);
-        float zoom = SandboxLod.BASE_ZOOM;
-        // ★ v29：窗口 = 平面窗口（旧 windowFor 已删除，它返回的是不存在的视野）
+        // ★ v66：窗口 = 平面窗口（缩放统一后不再有 zoom 档位，
+        //   每细格方块数直接由窗口与柱数决定）
         int window = 900;
         int colCount = SandboxLod.pillarsForWindow(window);
         int grid = colCount * SandboxLod.HEIGHT_STRIDE;
-        double step = SandboxLod.effectiveStep(zoom);
+        double step = SandboxLod.effectiveStepFor(window, AREA);
         float[] out = new float[2];
 
         System.out.printf("视野 %d 格，细格 %d，柱数 %d，每细格 %.1f 格%n%n",
