@@ -160,8 +160,6 @@ public class GeoGenesisConfigScreen extends Screen {
     private int applyBtnX, applyBtnW;
     /** 「完成」按钮几何（★ v21：绘制与命中共用）。 */
     private int doneBtnX, doneBtnW_, doneBtnH_, applyBtnH_;
-    /** 收起态浮条：视图切换 / 完成（★ v25 绘制与命中共用同一份坐标）。 */
-    private int colViewBtnX, colDoneBtnX, colBtnY, colViewBtnW, colBtnH = 20;
     private int currentMode = DEFAULT_PREVIEW_LAYER;
 
     // ---- ★ 2026-11-09 预览 → 世界复用（见 GeoGenesisGenerator.offerPreviewTerrain）----
@@ -1470,19 +1468,58 @@ public class GeoGenesisConfigScreen extends Screen {
      * —— 不允许各算一遍（那是本项目"按钮点不到"的老根因）。</p>
      */
     private void drawCollapsedActions(GuiGraphics g, int mx, int my) {
-        int btnH = 20, gap = 6, viewW = 78, doneW = 56;
-        int y = 8;
-        int doneX = this.width - 10 - doneW;
-        int viewX = doneX - gap - viewW;
-        colViewBtnX = viewX;
-        colDoneBtnX = doneX;
-        colBtnY = y;
-        colViewBtnW = viewW;
-        colBtnH = btnH;
-        UiKit.toggleButton(g, viewX, y, viewW, btnH, sandboxLabel().getString(),
-                isSandboxActive(), inRect(mx, my, viewX, y, viewW, btnH), NAV_ACCENT);
-        UiKit.toggleButton(g, doneX, y, doneW, btnH, "完成",
-                !readOnly, inRect(mx, my, doneX, y, doneW, btnH), UiKit.C_ACCENT);
+        int[] L = collapsedLayout();
+        int x = L[0], w = L[1], h = L[2];
+        int yView = L[3], yLarge = L[4], yLayer = L[5], ySave = L[6], yDone = L[7];
+
+        UiKit.toggleButton(g, x, yView, w, h, sandboxLabel().getString(),
+                isSandboxActive(), inRect(mx, my, x, yView, w, h), NAV_ACCENT);
+        UiKit.toggleButton(g, x, yLarge, w, h, fitNavLabel(largeAreaLabel().getString(), w),
+                preview != null && preview.isLargeArea(),
+                inRect(mx, my, x, yLarge, w, h), NAV_ACCENT);
+
+        // 图层行：< 名称 >
+        drawNavBtn(g, x, yLayer, 24, h, "<", false, mx, my);
+        drawNavBtn(g, x + w - 24, yLayer, 24, h, ">", false, mx, my);
+        String layerName = currentLayerLabel();
+        int lx = x + 28;
+        int lw = w - 32;
+        g.drawString(this.font, trim(layerName, this.font, lw), lx,
+                yLayer + (h - this.font.lineHeight) / 2, NAV_TXT_SUB, false);
+
+        int half = (w - 4) / 2;
+        drawNavBtn(g, x, ySave, half, h, "保存", false, mx, my);
+        drawNavBtn(g, x + w - half, ySave, half, h, readOnly ? "只读" : "重置", false, mx, my);
+
+        UiKit.toggleButton(g, x, yDone, w, h, "完成",
+                !readOnly, inRect(mx, my, x, yDone, w, h), UiKit.C_ACCENT);
+    }
+
+    /**
+     * 收起态浮条布局 —— <b>绘制与命中共用同一份</b>（★ v26）。
+     *
+     * <p>用户实机：「收起态两个按钮不能点击交互。不过它们压在右上角图例上了，
+     * 明明左侧全是空位。还有图 2 这些按键明显也可以显示在全屏画面里啊。」</p>
+     *
+     * <p>⇒ 从右上角（压着图例，且点击被预览吃掉）挪到<b>左侧把手下方</b>的空白列，
+     * 并把导航栏那组非配置操作一并搬上来：视图 / 全局查看 / 图层 / 保存 / 重置 / 完成。</p>
+     *
+     * @return {x, w, h, yView, yLarge, yLayer, ySave, yDone}
+     */
+    private int[] collapsedLayout() {
+        int x = 10, w = 112, h = 20, gap = 4;
+        int y = handleBottomY() + 8;
+        int yView = y; y += h + gap;
+        int yLarge = y; y += h + gap;
+        int yLayer = y; y += h + gap;
+        int ySave = y; y += h + gap;
+        int yDone = y;
+        return new int[]{x, w, h, yView, yLarge, yLayer, ySave, yDone};
+    }
+
+    /** 折叠把手的下沿（收起态浮条从它下面开始排）。 */
+    private int handleBottomY() {
+        return 30;
     }
 
     private void drawActionButtons(GuiGraphics g, int mx, int my) {
@@ -1588,16 +1625,18 @@ public class GeoGenesisConfigScreen extends Screen {
         if (btn != 0) return false;
         if (nameDialog.isShowing() || confirmDialog.isShowing()) return false;
 
-        // ★ v25：收起态浮条（视图切换 / 完成）—— 与 drawCollapsedActions 共用坐标
+        // ★ v26：收起态浮条（视图 / 全局 / 图层 / 保存·重置 / 完成）
         if (!panelOpen) {
-            if (inRect(mx, my, colViewBtnX, colBtnY, colViewBtnW, colBtnH)) {
-                toggleSandbox();
-                return true;
-            }
-            if (inRect(mx, my, colDoneBtnX, colBtnY, 56, colBtnH)) {
-                if (!readOnly) doDone();
-                return true;
-            }
+            int[] L = collapsedLayout();
+            int x = L[0], w = L[1], h = L[2];
+            int half = (w - 4) / 2;
+            if (inRect(mx, my, x, L[3], w, h)) { toggleSandbox(); return true; }
+            if (inRect(mx, my, x, L[4], w, h)) { toggleLargeArea(); return true; }
+            if (inRect(mx, my, x, L[5], 24, h)) { cycleLayer(-1); return true; }
+            if (inRect(mx, my, x + w - 24, L[5], 24, h)) { cycleLayer(1); return true; }
+            if (inRect(mx, my, x, L[6], half, h)) { onSavePreset(); return true; }
+            if (inRect(mx, my, x + w - half, L[6], half, h)) { if (!readOnly) doReset(); return true; }
+            if (inRect(mx, my, x, L[7], w, h)) { if (!readOnly) doDone(); return true; }
             return false;
         }
 
@@ -1732,7 +1771,12 @@ public class GeoGenesisConfigScreen extends Screen {
             return true;
         }
 
-        // 配置窗收起时，点击除把手外的任何位置都交给地形（平移/缩放）
+        // ★ v26【修"收起态按钮点不到"】：自绘按钮必须在"收起就转发给地形"之前判。
+        //   旧顺序是 `if (!panelOpen) return forwardToPreviewClick(...)` 在前，
+        //   {@code hitActionButton} 永远到不了 ⇒ 按钮画出来也点不动。
+        if (hitActionButton(mx, my, b)) return true;
+
+        // 配置窗收起时，点击除把手/浮条外的任何位置都交给地形（平移/缩放）
         if (!panelOpen) {
             // ★★ v8【修"地图实机不能交互"】：
             //   预览不再注册为 widget（否则会被面板底板盖住），
