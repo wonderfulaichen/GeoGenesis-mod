@@ -222,15 +222,123 @@ public final class TectonicField {
     private static final long SALT_SEED = 0x9E3779B97F4A7C15L;
     private static final long SALT_VEL = 0xBF58476D1CE4E5B9L;
 
+    // ===== 格点常量缓存（★ 2026-11-12，纯加速，产出逐位不变）=====
+    /**
+     * 格点常量缓存开关：默认<b>开</b>；{@code -Dgeogenesis.tectonicCellCache=false} 关闭。
+     *
+     * <p>关闭后回退到"逐点重算格点常量"的原实现，供 A/B 对拍证明产出逐位一致。
+     * 全仓仅此一处读取本属性 ⇒ 默认值口径唯一（AGENTS.md §开关四条铁律）。</p>
+     */
+    private static final boolean CELL_CACHE =
+            !"false".equals(System.getProperty("geogenesis.tectonicCellCache"));
+
+    /**
+     * 缓存槽位数的位数：{@code 1 << 8 = 256} 槽。
+     *
+     * <p><b>实测选型</b>（40000 块跨度、step 8 扫描）：64→87.3%、128→94.4%、
+     * <b>256→99.17%</b>、512→99.39%、4096→99.40%。越过 256 只再涨 0.23% 命中，
+     * 收益已埋在噪声里 ⇒ 取 256（约 14 KB）。详见
+     * {@code audit/GeoGenesis-构造场格点缓存方案-20261112.md} §2.3。</p>
+     */
+    private static final int CELL_BITS = 8;
+    private static final int CELL_SLOTS = 1 << CELL_BITS;
+    private static final int CELL_MASK = CELL_SLOTS - 1;
+
     private long seed;
+
+    /**
+     * 有界<b>直接映射</b>缓存：槽位 {@code (cx,cz)} 哈希定位，存该格点的派生常量。
+     *
+     * <p>为何不用无界 {@code Map}：世界无限 ⇒ 长期运行无界增长；且 {@code Long} 装箱 +
+     * 树化开销更贵。实测 256 槽已达 99.17% 命中，不需要精确淘汰。</p>
+     *
+     * <p><b>并发</b>：本类是共享单例（多 worker 线程共用）。故槽内对象必须是
+     * <b>不可变快照</b>（{@link CellConst} 为 record），一次性原子发布
+     * ⇒ 读者绝不会看到"cx/cz 已更新而 sx/sz 还是旧值"的撕裂状态。
+     * 冲突语义：后写者覆盖，最坏情况只是下次 miss 重算，<b>绝不返回错误格点值</b>。</p>
+     */
+    private final java.util.concurrent.atomic.AtomicReferenceArray<CellConst> cellSlots;
+
+    /**
+     * 一个格点的派生常量（全 final ⇒ 可安全原子发布）。
+     *
+     * <p>这些量<b>只依赖 {@code (cx,cz)}</b>，与查询点 {@code (wx,wz)} 无关。
+     * 原实现每个采样点把它们重算 25 次（5×5 窗口）⇒ 实测 {@code stressField}
+     * 1 306 → 245 ns/点。计算式与本类原内联式<b>逐字等价</b>。</p>
+     */
+    private record CellConst(
+            int cx, int cz,
+            /** 板块种子世界坐标 X（抖动后）。 */
+            double sx,
+            /** 板块种子世界坐标 Z（抖动后）。 */
+            double sz,
+            /** 板块速度方向余弦。 */
+            double cosA,
+            /** 板块速度方向正弦。 */
+            double sinA,
+            /** 板块速度大小（0.3~1.0）。 */
+            double mag) {
+    }
 
     public TectonicField(long seed) {
         this.seed = seed;
+        this.cellSlots = CELL_CACHE
+                ? new java.util.concurrent.atomic.AtomicReferenceArray<>(CELL_SLOTS) : null;
     }
 
-    /** 换世界种子（构造格局随种子改变；调用方在 {@code seed()} 时调用）。 */
+    /**
+     * 换世界种子（构造格局随种子改变；调用方在 {@code seed()} 时调用）。
+     *
+     * <p>⚠ <b>必须清空格点缓存</b>：格点常量由种子派生，不清空会让换种子后
+     * "恰好命中"的格返回<b>旧种子的常量</b> ⇒ 构造格局与种子不符，
+     * 且只影响部分格 ⇒ 表现为顽固的局部错误（难复现）。</p>
+     */
     public void setSeed(long worldSeed) {
         this.seed = worldSeed;
+        if (cellSlots != null) {
+            for (int i = 0; i < CELL_SLOTS; i++) {
+                cellSlots.set(i, null);
+            }
+        }
+    }
+
+    /**
+     * 取/建某格点的派生常量（{@link #CELL_CACHE} 关闭时走现场重算，不进缓存）。
+     *
+     * <p>命中判定比对 {@code (cx,cz)} 双字段 ⇒ 哈希冲突只会 miss（重算），
+     * <b>不会</b>返回别的格点的值。这是"产出逐位不变"的根本保证。</p>
+     */
+    private CellConst cellConst(int cx, int cz) {
+        if (cellSlots == null) {
+            return buildCellConst(cx, cz);
+        }
+        int slot = ((cx * 0x9E3779B1) ^ (cz * 0x85EBCA77)) & CELL_MASK;
+        CellConst c = cellSlots.get(slot);
+        if (c != null && c.cx() == cx && c.cz() == cz) {
+            return c;
+        }
+        CellConst fresh = buildCellConst(cx, cz);
+        cellSlots.set(slot, fresh);          // 原子发布完整条目，无撕裂
+        return fresh;
+    }
+
+    /**
+     * 现场计算格点常量。
+     *
+     * <p>公式与 {@link #plateSeed} / {@link #plateVelocity} <b>逐位等价</b>
+     * （同一 {@link #hash}、同一 {@code unit}、同一 {@code SEED_JITTER}）；
+     * 差别只是把 {@code cos}/{@code sin} 提前算好存起来。
+     * 注意：{@code plateSeed}/{@code plateVelocity} <b>保留不动</b> ——
+     * 诊断探针（{@code M1TectonicDriverCheck}）用反射直调它们做独立公式校验。</p>
+     */
+    private CellConst buildCellConst(int cx, int cz) {
+        long hs = hash(cx, cz, SALT_SEED);
+        double sx = (cx + 0.5 + (unit(hs) - 0.5) * SEED_JITTER) * PLATE_SPACING;
+        double sz = (cz + 0.5 + (unit(hs >>> 24) - 0.5) * SEED_JITTER) * PLATE_SPACING;
+        long hv = hash(cx, cz, SALT_VEL);
+        double ang = unit(hv) * Math.PI * 2.0;
+        double mag = 0.3 + unit(hv >>> 24) * 0.7;
+        return new CellConst(cx, cz, sx, sz, Math.cos(ang), Math.sin(ang), mag);
     }
 
     // ===================== 公开工具 =====================
@@ -386,18 +494,18 @@ public final class TectonicField {
         int c1x = 0, c1z = 0, c2x = 0, c2z = 0;
         double s1x = 0, s1z = 0, s2x = 0, s2z = 0;
 
-        double[] sp = new double[2];
         for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
             for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
                 int cx = baseX + dx, cz = baseZ + dz;
-                plateSeed(cx, cz, sp);
-                double ddx = wxw - sp[0], ddz = wzw - sp[1];
+                // ★ 2026-11-12：种子位置走格点缓存（与 plateSeed 逐位等价）。
+                CellConst c = cellConst(cx, cz);
+                double ddx = wxw - c.sx(), ddz = wzw - c.sz();
                 double d = Math.sqrt(ddx * ddx + ddz * ddz);
                 if (d < d1) {
                     d2 = d1; c2x = c1x; c2z = c1z; s2x = s1x; s2z = s1z;
-                    d1 = d; c1x = cx; c1z = cz; s1x = sp[0]; s1z = sp[1];
+                    d1 = d; c1x = cx; c1z = cz; s1x = c.sx(); s1z = c.sz();
                 } else if (d < d2) {
-                    d2 = d; c2x = cx; c2z = cz; s2x = sp[0]; s2z = sp[1];
+                    d2 = d; c2x = cx; c2z = cz; s2x = c.sx(); s2z = c.sz();
                 }
             }
         }
@@ -920,21 +1028,15 @@ public final class TectonicField {
         double num = 0.0, den = 0.0;
         for (int dx = -STRESS_VOTE_RADIUS; dx <= STRESS_VOTE_RADIUS; dx++) {
             for (int dz = -STRESS_VOTE_RADIUS; dz <= STRESS_VOTE_RADIUS; dz++) {
-                int cx = baseX + dx, cz = baseZ + dz;
-                // 种子位置（等价 plateSeed，内联以免热路径分配数组）
-                long hs = hash(cx, cz, SALT_SEED);
-                double sx = (cx + 0.5 + (unit(hs) - 0.5) * SEED_JITTER) * PLATE_SPACING;
-                double sz = (cz + 0.5 + (unit(hs >>> 24) - 0.5) * SEED_JITTER) * PLATE_SPACING;
-                double ux = wx - sx, uz = wz - sz;
+                // ★ 2026-11-12：格点常量改走缓存（种子位置 + cos/sin/mag 只依赖 (cx,cz)）。
+                //   累加顺序未变（dx 外 / dz 内），参与运算的数值逐位相同 ⇒ 产出不变。
+                CellConst c = cellConst(baseX + dx, baseZ + dz);
+                double ux = wx - c.sx(), uz = wz - c.sz();
                 double d = Math.sqrt(ux * ux + uz * uz);
                 if (d < 1e-9) return 0.0;
                 double w = Math.exp(-d * d * inv2s2);
-                // 速度（等价 plateVelocity，内联）
-                long hv = hash(cx, cz, SALT_VEL);
-                double ang = unit(hv) * Math.PI * 2.0;
-                double mag = 0.3 + unit(hv >>> 24) * 0.7;
                 // 投影 = v·û（û = (p−s)/d）
-                num += w * mag * (Math.cos(ang) * ux + Math.sin(ang) * uz) / d;
+                num += w * c.mag() * (c.cosA() * ux + c.sinA() * uz) / d;
                 den += w;
             }
         }
@@ -1011,11 +1113,11 @@ public final class TectonicField {
         int baseX = (int) Math.floor(wxw / PLATE_SPACING);
         int baseZ = (int) Math.floor(wzw / PLATE_SPACING);
         double d1 = Double.MAX_VALUE, d2 = Double.MAX_VALUE;
-        double[] sp = new double[2];
         for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
             for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
-                plateSeed(baseX + dx, baseZ + dz, sp);
-                double ddx = wxw - sp[0], ddz = wzw - sp[1];
+                // ★ 2026-11-12：只用种子位置，走格点缓存（与 plateSeed 逐位等价）。
+                CellConst c = cellConst(baseX + dx, baseZ + dz);
+                double ddx = wxw - c.sx(), ddz = wzw - c.sz();
                 double d = Math.sqrt(ddx * ddx + ddz * ddz);
                 if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
             }
@@ -1033,11 +1135,11 @@ public final class TectonicField {
         int baseX = (int) Math.floor(wx / PLATE_SPACING);
         int baseZ = (int) Math.floor(wz / PLATE_SPACING);
         double d1 = Double.MAX_VALUE, d2 = Double.MAX_VALUE;
-        double[] sp = new double[2];
         for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
             for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
-                plateSeed(baseX + dx, baseZ + dz, sp);
-                double ddx = wx - sp[0], ddz = wz - sp[1];
+                // ★ 2026-11-12：只用种子位置，走格点缓存（与 plateSeed 逐位等价）。
+                CellConst c = cellConst(baseX + dx, baseZ + dz);
+                double ddx = wx - c.sx(), ddz = wz - c.sz();
                 double d = Math.sqrt(ddx * ddx + ddz * ddz);
                 if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
             }
