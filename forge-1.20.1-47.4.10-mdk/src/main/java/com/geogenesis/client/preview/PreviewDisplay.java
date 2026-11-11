@@ -1006,7 +1006,7 @@ public class PreviewDisplay extends AbstractWidget {
                                   double mx, double my, float ease) {
         boolean toSandbox = transToSandbox;
         float yaw = ViewTransition.yaw(ease, toSandbox, sandboxRasterizer.yaw());
-        float pitch = ViewTransition.pitch(ease, toSandbox);
+        float pitch = ViewTransition.pitch(ease, toSandbox, sandboxRasterizer.pitch());
 
         // ★★ v56【尺度必须用「目标姿态」算一次，而不是逐帧按当前姿态算】★★
         //

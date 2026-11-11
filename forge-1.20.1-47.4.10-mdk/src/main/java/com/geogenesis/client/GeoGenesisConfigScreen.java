@@ -1469,53 +1469,64 @@ public class GeoGenesisConfigScreen extends Screen {
      */
     private void drawCollapsedActions(GuiGraphics g, int mx, int my) {
         int[] L = collapsedLayout();
-        int x = L[0], w = L[1], h = L[2];
-        int yView = L[3], yLarge = L[4], yLayer = L[5], ySave = L[6], yDone = L[7];
+        int y = L[0], h = L[1];
+        int xView = L[2], wView = L[3];
+        int xLarge = L[4], wLarge = L[5];
+        int xPrev = L[6], wPrev = L[7];
+        int xLabel = L[8], wLabel = L[9];
+        int xNext = L[10], wNext = L[11];
+        int xSave = L[12], wSave = L[13];
+        int xReset = L[14], wReset = L[15];
+        int xDone = L[16], wDone = L[17];
 
-        UiKit.toggleButton(g, x, yView, w, h, sandboxLabel().getString(),
-                isSandboxActive(), inRect(mx, my, x, yView, w, h), NAV_ACCENT);
-        UiKit.toggleButton(g, x, yLarge, w, h, fitNavLabel(largeAreaLabel().getString(), w),
+        UiKit.toggleButton(g, xView, y, wView, h, sandboxLabel().getString(),
+                isSandboxActive(), inRect(mx, my, xView, y, wView, h), NAV_ACCENT);
+        UiKit.toggleButton(g, xLarge, y, wLarge, h, fitNavLabel(largeAreaLabel().getString(), wLarge),
                 preview != null && preview.isLargeArea(),
-                inRect(mx, my, x, yLarge, w, h), NAV_ACCENT);
+                inRect(mx, my, xLarge, y, wLarge, h), NAV_ACCENT);
 
-        // 图层行：< 名称 >
-        drawNavBtn(g, x, yLayer, 24, h, "<", false, mx, my);
-        drawNavBtn(g, x + w - 24, yLayer, 24, h, ">", false, mx, my);
+        drawNavBtn(g, xPrev, y, wPrev, h, "<", false, mx, my);
         String layerName = currentLayerLabel();
-        int lx = x + 28;
-        int lw = w - 32;
-        g.drawString(this.font, trim(layerName, this.font, lw), lx,
-                yLayer + (h - this.font.lineHeight) / 2, NAV_TXT_SUB, false);
+        g.drawString(this.font, trim(layerName, this.font, wLabel), xLabel,
+                y + (h - this.font.lineHeight) / 2, NAV_TXT_SUB, false);
+        drawNavBtn(g, xNext, y, wNext, h, ">", false, mx, my);
 
-        int half = (w - 4) / 2;
-        drawNavBtn(g, x, ySave, half, h, "保存", false, mx, my);
-        drawNavBtn(g, x + w - half, ySave, half, h, readOnly ? "只读" : "重置", false, mx, my);
+        drawNavBtn(g, xSave, y, wSave, h, "保存", false, mx, my);
+        drawNavBtn(g, xReset, y, wReset, h, readOnly ? "只读" : "重置", false, mx, my);
 
-        UiKit.toggleButton(g, x, yDone, w, h, "完成",
-                !readOnly, inRect(mx, my, x, yDone, w, h), UiKit.C_ACCENT);
+        UiKit.toggleButton(g, xDone, y, wDone, h, "完成",
+                !readOnly, inRect(mx, my, xDone, y, wDone, h), UiKit.C_ACCENT);
     }
 
     /**
-     * 收起态浮条布局 —— <b>绘制与命中共用同一份</b>（★ v26）。
+     * 收起态工具条布局 —— <b>绘制与命中共用同一份</b>（★ v27）。
      *
-     * <p>用户实机：「收起态两个按钮不能点击交互。不过它们压在右上角图例上了，
-     * 明明左侧全是空位。还有图 2 这些按键明显也可以显示在全屏画面里啊。」</p>
+     * <p>用户实机：「位置挤在左上角把手下面有点挡视线，而且六个按钮竖排太长了。
+     * 建议统一一下。」</p>
      *
-     * <p>⇒ 从右上角（压着图例，且点击被预览吃掉）挪到<b>左侧把手下方</b>的空白列，
-     * 并把导航栏那组非配置操作一并搬上来：视图 / 全局查看 / 图层 / 保存 / 重置 / 完成。</p>
+     * <p>⇒ 竖排改为<b>底部居中一条横向工具条</b>：单行、等高胶囊、间距一致，
+     * 与导航栏那组按钮同一套样式；不压地图中心，也不压左上把手。</p>
      *
-     * @return {x, w, h, yView, yLarge, yLayer, ySave, yDone}
+     * @return {y, h, x,w × 8}（视图 / 全局 / ‹ / 图层名 / › / 保存 / 重置 / 完成）
      */
     private int[] collapsedLayout() {
-        int x = 10, w = 112, h = 20, gap = 4;
-        int y = handleBottomY() + 8;
-        int yView = y; y += h + gap;
-        int yLarge = y; y += h + gap;
-        int yLayer = y; y += h + gap;
-        int ySave = y; y += h + gap;
-        int yDone = y;
-        return new int[]{x, w, h, yView, yLarge, yLayer, ySave, yDone};
+        int h = 20, gap = 4;
+        int wView = 76, wLarge = 92, wPrev = 22, wLabel = 70, wNext = 22;
+        int wSave = 46, wReset = 46, wDone = 56;
+        int total = wView + wLarge + wPrev + wLabel + wNext + wSave + wReset + wDone + gap * 7;
+        int x = Math.max(8, (this.width - total) / 2);
+        int y = this.height - h - 8;
+        return new int[]{y, h,
+                x, wView,
+                x += wView + gap, wLarge,
+                x += wLarge + gap, wPrev,
+                x += wPrev, wLabel,
+                x += wLabel, wNext,
+                x += wNext + gap, wSave,
+                x += wSave + gap, wReset,
+                x += wReset + gap, wDone};
     }
+
 
     /** 折叠把手的下沿（收起态浮条从它下面开始排）。 */
     private int handleBottomY() {
@@ -1625,18 +1636,25 @@ public class GeoGenesisConfigScreen extends Screen {
         if (btn != 0) return false;
         if (nameDialog.isShowing() || confirmDialog.isShowing()) return false;
 
-        // ★ v26：收起态浮条（视图 / 全局 / 图层 / 保存·重置 / 完成）
+        // ★ v27：收起态工具条（视图 / 全局 / 图层 / 保存·重置 / 完成），底部居中
         if (!panelOpen) {
             int[] L = collapsedLayout();
-            int x = L[0], w = L[1], h = L[2];
-            int half = (w - 4) / 2;
-            if (inRect(mx, my, x, L[3], w, h)) { toggleSandbox(); return true; }
-            if (inRect(mx, my, x, L[4], w, h)) { toggleLargeArea(); return true; }
-            if (inRect(mx, my, x, L[5], 24, h)) { cycleLayer(-1); return true; }
-            if (inRect(mx, my, x + w - 24, L[5], 24, h)) { cycleLayer(1); return true; }
-            if (inRect(mx, my, x, L[6], half, h)) { onSavePreset(); return true; }
-            if (inRect(mx, my, x + w - half, L[6], half, h)) { if (!readOnly) doReset(); return true; }
-            if (inRect(mx, my, x, L[7], w, h)) { if (!readOnly) doDone(); return true; }
+            int y = L[0], h = L[1];
+            for (int i = 0; i < 8; i++) {
+                int bx = L[2 + i * 2], bw = L[3 + i * 2];
+                if (!inRect(mx, my, bx, y, bw, h)) continue;
+                switch (i) {
+                    case 0 -> toggleSandbox();
+                    case 1 -> toggleLargeArea();
+                    case 2 -> cycleLayer(-1);
+                    case 4 -> cycleLayer(1);
+                    case 5 -> onSavePreset();
+                    case 6 -> { if (!readOnly) doReset(); }
+                    case 7 -> { if (!readOnly) doDone(); }
+                    default -> { }          // 3 = 图层名，纯显示
+                }
+                return i != 3;
+            }
             return false;
         }
 

@@ -56,7 +56,7 @@ public final class ViewTransition {
      * <p>⚠ <b>发布前必须改回 720</b>。要临时恢复正式速度，不用改代码：
      * {@code GEOGENESIS_TRANSITION_MS=720}（或 {@code -Dgeogenesis.transition.ms=720}）。</p>
      */
-    public static final long DEFAULT_DURATION_MS = 2880L;
+    public static final long DEFAULT_DURATION_MS = 720L;
 
     /** 正式（非慢放）时长；发布前把 {@link #DEFAULT_DURATION_MS} 改回它。 */
     public static final long RELEASE_DURATION_MS = 720L;
@@ -171,7 +171,18 @@ public final class ViewTransition {
 
     /** 相机俯仰（弧度）：<b>第二段才动</b>（第一段保持正俯视，只换材质）。 */
     public static float pitch(float ease, boolean toSandbox) {
-        return PITCH_PLANE + (PITCH_SANDBOX - PITCH_PLANE) * smooth01(cameraPhase(ease, toSandbox));
+        return pitch(ease, toSandbox, PITCH_SANDBOX);
+    }
+
+    /**
+     * 同上，但终点用<b>用户真实视角</b>。
+     *
+     * <p>★ v61【修"切到沙盘最后会跳一下"】：终点若写死 {@link #PITCH_SANDBOX}，
+     * 而用户实际把视角转到了别的俯仰，过渡的最后一帧与稳态第一帧就<b>不是同一个相机</b>
+     * ⇒ 收尾必然跳。运镜的终点必须是稳态那一刻真正会用的姿态。</p>
+     */
+    public static float pitch(float ease, boolean toSandbox, float sandboxPitch) {
+        return PITCH_PLANE + (sandboxPitch - PITCH_PLANE) * smooth01(cameraPhase(ease, toSandbox));
     }
 
     /**
