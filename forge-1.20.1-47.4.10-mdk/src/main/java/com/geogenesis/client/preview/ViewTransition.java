@@ -1,70 +1,55 @@
 package com.geogenesis.client.preview;
 
+import com.geogenesis.client.preview.sandbox.SandboxGeometry;
+
 /**
- * <b>平面 ⇄ 沙盘 视图切换过渡的全部数学</b>（★ v48，零 MC 依赖纯函数）。
+ * <b>平面 ⇄ 沙盘 视图切换的相机运镜数学</b>（★ v49，零 MC 依赖纯函数）。
  *
- * <h2>为什么单独抽出来</h2>
- * <p>此前这些公式散在 {@link PreviewDisplay#renderWidget} 与
- * {@code renderSandbox} 里，<b>只能靠实机肉眼看对不对</b> ——
- * 而本项目已经吃过"探针全 PASS、图上仍是错的"的教训。
- * 抽成纯函数后 {@code runViewTransitionProbe} 可以逐条守住参考项目的不变量。</p>
+ * <h2>为什么是「运镜」而不是「过渡」</h2>
+ * <p>用户裁定（2026-11-11）：「这样完全算不是切换动画，只能是一个过渡动画……
+ * 二者应该是一个运镜动画变化关系，你当前其实和做图片过渡没区别，完全不是动画。」
+ * 以及：「统一相机与交互，保留两套绘制。」</p>
  *
- * <h2>参考项目出处</h2>
- * <p>{@code dev.yard.site.view.YardSiteScreen}（MIT）：</p>
+ * <p>⇒ 平面与沙盘是<b>同一个相机的两个姿态</b>，切换 = 相机连续运动。
+ * 两套绘制各自保留质量（平面=纹理、沙盘=柱子），但相机只有一套。</p>
+ *
+ * <h2>姿态的硬事实（{@code runCameraDatumProbe} 实测）</h2>
  * <pre>
- *   第 61 行    TRANSITION_MS = 620
- *   第 386-387 行 p = 1 - (endAt - now)/TRANSITION_MS，ease = p*p*(3-2p)
- *   第 404 行    zoomBoost = fading == null ? 1.0 : 0.84 + 0.16*ease
- *   第 415-418 行 旧图：globalAlpha = 1-ease，heightScale = 1 - 0.55*ease
- *   第 420-421 行 新图：globalAlpha = ease，  heightScale = 0.45 + 0.55*ease
+ *   pitch=0, yaw=0  → 地面模型 ±1 正好投到视口 (0,0)-(w,h)，r5=0（柱高不进屏幕 y）
+ *   pitch=0.95      → |r5| = 0.813（柱高显著可见）
  * </pre>
+ * <p>⇒ 平面 = 相机正俯视，切换时 pitch 从 0 抬到 0.95。</p>
  *
- * <h2>★ 关键不变量：两张图的 alpha 之和恒为 1</h2>
- * <p>{@code (1-ease) + ease = 1} ⇒ 过渡是<b>交叉溶解</b>，不是"先淡出再淡入"。
- * 这一条决定了观感是"从平面变形成沙盘"，而不是"黑一下再出现"。
- * 探针 {@code [3]} 专门守它。</p>
- *
- * <h2>高度轴的含义</h2>
- * <p>参考项目的 {@code heightScale} 缩的是<b>柱子高度轴</b>（3D）。我们的平面图是
- * 俯视 2D 纹理，没有这个轴，取最接近的等价：整张图按<b>底边锚定</b>向上收缩
- * （见 {@code PreviewDisplay.blitPlaneOnly}）。沙盘侧沿用同一公式 ——
- * 于是过渡读起来就是「柱体摊平成地图 / 地图立起成柱体」。</p>
+ * <h2>★ 与参考项目的差异（有意）</h2>
+ * <p>yardsite {@code YardSiteScreen} 第 388-393 行会插值 {@code zoom}/{@code widthScale}，
+ * 因为它两张图是<b>同一渲染器的两张场</b>（defaultZoom 2.0 ⇄ 1.8，单位相同）。
+ * 我们平面是整数档 {@code scaleBlockPos}、沙盘是浮点 {@code zoom}，
+ * 单位不同、插值无意义；且用户早已裁定「谁切换视图还改缩放等信息呢？」。
+ * ⇒ 这里<b>不插值</b> zoom/widthScale，只插值相机姿态与画面尺度。</p>
  */
 public final class ViewTransition {
 
-    /** 过渡总时长（毫秒，参考项目 {@code TRANSITION_MS = 620}）。 */
-    public static final long DURATION_MS = 620L;
+    /** 过渡总时长（毫秒）。参考项目 {@code TRANSITION_MS=620}；运镜需要略长才不显得急。 */
+    public static final long DURATION_MS = 720L;
 
-    /** 旧图起始高度比例（= 1，满高）。 */
-    public static final float OLD_HEIGHT_FROM = 1.0f;
-    /** 旧图结束高度比例（参考项目 {@code 1 - 0.55}）。 */
-    public static final float OLD_HEIGHT_TO = 0.45f;
-    /** 新图起始高度比例（参考项目 {@code 0.45}）。 */
-    public static final float NEW_HEIGHT_FROM = 0.45f;
-    /** 新图结束高度比例（= 1，满高）。 */
-    public static final float NEW_HEIGHT_TO = 1.0f;
-    /** 镜头推近起点（参考项目 {@code 0.84}）。 */
-    public static final float ZOOM_BOOST_FROM = 0.84f;
-    /** 镜头推近终点（参考项目 {@code 1.0}）。 */
-    public static final float ZOOM_BOOST_TO = 1.0f;
-
-    /** 无过渡时的稳态值：不透明、满高、不推近。 */
-    public static final float STEADY_ALPHA = 1.0f;
-    public static final float STEADY_HEIGHT = 1.0f;
-    public static final float STEADY_ZOOM_BOOST = 1.0f;
+    /** 平面端的相机姿态：正俯视、无偏航。 */
+    public static final float PITCH_PLANE = 0f;
+    public static final float YAW_PLANE = 0f;
+    /** 沙盘端的俯仰（{@code SandboxGeometry.DEFAULT_PITCH}，约 54°）。 */
+    public static final float PITCH_SANDBOX = SandboxGeometry.DEFAULT_PITCH;
 
     private ViewTransition() { }
 
     /**
-     * 线性进度：0 = 刚切换，1 = 切完（或没在过渡）。
+     * 线性进度：0 = 刚开始切，1 = 切完（或没在过渡）。
      *
      * @param nowMs   当前时刻
-     * @param endAtMs 过渡结束时刻（0 = 没有过渡 ⇒ 直接返回 1）
+     * @param endAtMs 过渡结束时刻（0 = 没有过渡）
      */
     public static float progress(long nowMs, long endAtMs) {
         if (endAtMs == 0L) return 1.0f;
         float p = 1.0f - (endAtMs - nowMs) / (float) DURATION_MS;
-        return p < 0f ? 0f : (p > 1f ? 1f : p);
+        return clamp01(p);
     }
 
     /**
@@ -73,28 +58,98 @@ public final class ViewTransition {
      * <p>参考项目注释：「先慢后快再慢，推近感才不像跳切」。</p>
      */
     public static float ease(float p) {
-        float q = p < 0f ? 0f : (p > 1f ? 1f : p);
+        float q = clamp01(p);
         return q * q * (3.0f - 2.0f * q);
     }
 
-    /** 旧图不透明度：1 → 0。 */
-    public static float oldAlpha(float ease) { return 1.0f - ease; }
-
-    /** 旧图高度比例：1 → 0.45（"压下去"）。 */
-    public static float oldHeight(float ease) {
-        return OLD_HEIGHT_FROM + (OLD_HEIGHT_TO - OLD_HEIGHT_FROM) * ease;
+    /** 相机俯仰（弧度）：平面端 {@link #PITCH_PLANE} ⇄ 沙盘端 {@link #PITCH_SANDBOX}。 */
+    public static float pitch(float ease, boolean toSandbox) {
+        return toSandbox
+                ? PITCH_PLANE + (PITCH_SANDBOX - PITCH_PLANE) * ease
+                : PITCH_SANDBOX + (PITCH_PLANE - PITCH_SANDBOX) * ease;
     }
 
-    /** 新图不透明度：0 → 1。 */
-    public static float newAlpha(float ease) { return ease; }
-
-    /** 新图高度比例：0.45 → 1（"长起来"）。 */
-    public static float newHeight(float ease) {
-        return NEW_HEIGHT_FROM + (NEW_HEIGHT_TO - NEW_HEIGHT_FROM) * ease;
+    /**
+     * 相机偏航（弧度）：平面端恒为 0（正俯视时旋转无意义，且必须为 0 才能与平面图逐像素对齐），
+     * 沙盘端为<b>用户当前角度</b>（保留用户转过的视角）。
+     *
+     * <p>用<b>最短角路径</b>插值：从 0 到 5.5 rad 不会绕一大圈，而是反向走 0.78 rad。</p>
+     */
+    public static float yaw(float ease, boolean toSandbox, float sandboxYaw) {
+        float t = toSandbox ? ease : 1.0f - ease;
+        return YAW_PLANE + shortestDelta(YAW_PLANE, sandboxYaw) * t;
     }
 
-    /** 镜头推近：0.84 → 1.0。 */
-    public static float zoomBoost(float ease) {
-        return ZOOM_BOOST_FROM + (ZOOM_BOOST_TO - ZOOM_BOOST_FROM) * ease;
+    /**
+     * 柱子不透明度：平面端 0（不可见），沙盘端 1。
+     *
+     * <p>为什么必须淡入：柱顶是「每柱一个颜色」，平面端若可见就会把精细的地面纹理盖成马赛克。</p>
+     */
+    public static float pillarAlpha(float ease, boolean toSandbox) {
+        return toSandbox ? smooth01(ease) : smooth01(1.0f - ease);
+    }
+
+    /**
+     * 地面贴图不透明度：全程保持 1，<b>只在末段轻微淡出</b>。
+     *
+     * <p>地面就是"地基"，柱体长满后会自然盖住它；末段淡出只为消除柱缝间的残留。</p>
+     */
+    public static float groundAlpha(float ease, boolean toSandbox) {
+        float t = toSandbox ? ease : 1.0f - ease;
+        // 0.75 之后开始淡出，1.0 时归零
+        if (t <= 0.75f) return 1.0f;
+        return smooth01(1.0f - (t - 0.75f) / 0.25f);
+    }
+
+    /** 光照强度：平面端 0（平面图的光照是烘在纹理里的），沙盘端 1。 */
+    public static float lightStrength(float ease, boolean toSandbox) {
+        float t = toSandbox ? ease : 1.0f - ease;
+        return smooth01(t);
+    }
+
+    /** 水面层强度：平面端 0（水面在纹理里），沙盘端 1（半透明薄层）。 */
+    public static float waterStrength(float ease, boolean toSandbox) {
+        float t = toSandbox ? ease : 1.0f - ease;
+        return smooth01(t);
+    }
+
+    /**
+     * 画面尺度（像素/模型单位）—— <b>分量插值</b>。
+     *
+     * <p>平面贴图是各向异性铺满视口的：{@code sx=w/2, sy=h/2}；
+     * 沙盘是各向同性 {@code fillScale}。两端都必须精确对齐，所以 sx/sy 分开插值。</p>
+     *
+     * @param ease     缓动后进度
+     * @param toSandbox 方向
+     * @param w/h      视口尺寸
+     * @param fill     沙盘端尺度（{@link SandboxGeometry#fillScale}）
+     * @param out      输出 {@code [sx, sy]}
+     */
+    public static void scale(float ease, boolean toSandbox, int w, int h, float fill, float[] out) {
+        float planeSx = w / 2f;
+        float planeSy = h / 2f;
+        float t = toSandbox ? ease : 1.0f - ease;
+        out[0] = planeSx + (fill - planeSx) * t;
+        out[1] = planeSy + (fill - planeSy) * t;
+    }
+
+    // ------------------------------------------------------------------
+
+    /** 最短角差（结果 ∈ [-π, π]）。公开供探针守「不绕远路」。 */
+    public static float shortestDelta(float from, float to) {
+        float d = (to - from) % (float) (Math.PI * 2);
+        if (d > Math.PI) d -= (float) (Math.PI * 2);
+        if (d < -Math.PI) d += (float) (Math.PI * 2);
+        return d;
+    }
+
+    /** 在 [0,1] 内做一次 smoothstep；区间外夹紧。 */
+    static float smooth01(float t) {
+        float q = clamp01(t);
+        return q * q * (3.0f - 2.0f * q);
+    }
+
+    private static float clamp01(float v) {
+        return v < 0f ? 0f : (v > 1f ? 1f : v);
     }
 }

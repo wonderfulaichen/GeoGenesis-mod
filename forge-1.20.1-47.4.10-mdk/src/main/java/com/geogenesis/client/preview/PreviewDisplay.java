@@ -713,17 +713,23 @@ public class PreviewDisplay extends AbstractWidget {
         //   实机截图只有右下那条状态栏（那是 ConfigScreen 另画的），
         //   左上标题、操作说明、进度条、悬停浮窗全都不见了。
         //   ⇒ 沙盘画完地形后<b>继续走完 HUD 流程</b>，只是跳过 2D 纹理绘制。
-        if (sandboxMode) {
-            // ★★★ v48【交叉溶解：旧图 = 平面】★★★
-            //   参考项目 YardSiteScreen 第 415-418 行：过渡期间<b>同一帧画两张图</b>
-            //   ——旧图 {@code 1-ease} 淡出 + 下沉，新图 {@code ease} 淡入 + 上升。
-            //   此前我们只画新图（alpha 从 0.45 起）⇒ 观感只是"淡入"，
-            //   而不是"从平面变形成沙盘"。
-            //   旧图直接用上一帧留下的平面纹理（已上传，零重算成本）。
-            if (trans && transToSandbox) {
-                blitPlaneOnly(g, x, y, w, h,
-                        ViewTransition.oldAlpha(ease), ViewTransition.oldHeight(ease));
+        if (trans) {
+            // ★★★ v49【运镜过渡：独立路径，不再是交叉溶解】★★★
+            renderCameraMove(g, x, y, w, h, mx, my, ease);
+            if (standaloneHud) {
+                drawZoomLabel(g, x, y, w, h);
+                g.fill(x - 1, y - 1, x + w + 1, y, 0xFF666666);
+                g.fill(x - 1, y + h, x + w + 1, y + h + 1, 0xFF666666);
+                g.fill(x - 1, y, x, y + h, 0xFF666666);
+                g.fill(x + w, y, x + w + 1, y + h, 0xFF666666);
             }
+            long el = (System.nanoTime() - frameStart) / 1_000_000L;
+            frameTimes.add(el);
+            if (frameTimes.size() > 30) frameTimes.poll();
+            return;
+        }
+
+        if (sandboxMode) {
             renderSandbox(g, w, h, mx, my);
             // ★ v7【修"切视图 GUI 重叠"】：HUD 只在独立窗口里画。
             //   配置屏内由 GeoGenesisConfigScreen 统一画（导航栏/面板/右下状态栏），
@@ -822,21 +828,9 @@ public class PreviewDisplay extends AbstractWidget {
             lastSelectedLayerOrdinal = (selectedLayer == null ? -1 : selectedLayer.ordinal());
             lastSelectedId = selectedId;
         }
-        // ★★★ v48【交叉溶解：旧图 = 沙盘】★★★
-        //   照参考项目 YardSiteScreen 415-421：旧图 alpha=1-ease、height=1-0.55*ease。
-        //   旧沙盘用上一帧已建好的数据只画一次，不重算、不拾取、不画标记。
-        //   ⚠ 必须在平面图 blit 之前画（旧图在下、新图在上）。
-        if (trans && !transToSandbox) {
-            drawFadingSandbox(g, w, h,
-                    ViewTransition.oldAlpha(ease), ViewTransition.oldHeight(ease), ease);
-        }
-
-        // ★ v48：新图 = 平面，alpha 从 0 渐显（照参考项目 {@code fading == null ? 1 : ease}）。
-        //   此前是从 0.45 起 —— 那是"没有旧图"时的补丁，有旧图后必须从 0 起，
-        //   否则两张图同时高不透明，过渡中会看到明显叠加。
-        blitPlaneOnly(g, x, y, w, h,
-                trans ? ViewTransition.newAlpha(ease) : ViewTransition.STEADY_ALPHA,
-                trans ? ViewTransition.newHeight(ease) : ViewTransition.STEADY_HEIGHT);
+        // ★ v49：过渡已在上面的独立路径处理，这里只剩稳态平面渲染。
+        //   旧图/新图的 alpha 融合已删除 —— 改为相机运镜（见 renderCameraMove）。
+        blitPlaneOnly(g, x, y, w, h, 1f, 1f);
 
         drawMapMarkers(g, mx, my, x, y, w, h, originWx, originWz, blocksWide, blocksHigh);
 
@@ -971,6 +965,91 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /**
+     * <b>运镜过渡</b>（★ v49）：同一个相机从「正俯视」连续转到「沙盘角度」。
+     *
+     * <h2>为什么不是两张图叠加</h2>
+     * <p>用户裁定：「你当前其实和做图片过渡没区别，完全不是动画。」
+     * ⇒ 这里<b>同一帧画同一个场景</b>：地面纹理按相机做仿射投影，柱体按同一个相机做 3D 投影。
+     * 两者<b>共用 pitch / yaw / scale</b>，所以观感是"地形跟着镜头一起转起来"，
+     * 而不是"一张图淡出一张图淡入"。</p>
+     *
+     * <h2>两套绘制各自保留质量</h2>
+     * <p>地面 = 平面模式的纹理（地图感 + 块级精度，一行未改）；
+     * 柱体 = 沙盘的柱子（块面感，一行未改）。运镜只统一<b>相机</b>。</p>
+     */
+    private void renderCameraMove(GuiGraphics g, int x, int y, int w, int h,
+                                  double mx, double my, float ease) {
+        boolean toSandbox = transToSandbox;
+        float yaw = ViewTransition.yaw(ease, toSandbox, sandboxRasterizer.yaw());
+        float pitch = ViewTransition.pitch(ease, toSandbox);
+
+        // 相机覆盖：过渡期间用插值角度渲染，不动用户的持久视角状态
+        sandboxRasterizer.setCameraOverride(yaw, pitch);
+        try {
+            // ---- 1) 地面贴图（与柱体共用同一个相机与尺度）----
+            float fill = sandboxRasterizer.drawScaleFor(w, h);
+            float[] sxy = new float[2];
+            ViewTransition.scale(ease, toSandbox, w, h, fill, sxy);
+            blitGroundAffine(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1],
+                    ViewTransition.groundAlpha(ease, toSandbox));
+
+            // ---- 2) 柱体（alpha 浮现；数据/窗口逻辑复用 renderSandbox）----
+            cameraMoveActive = true;
+            renderSandbox(g, w, h, mx, my);
+            cameraMoveActive = false;
+        } finally {
+            sandboxRasterizer.clearCameraOverride();
+        }
+    }
+
+    /** 运镜期间为 true：{@code renderSandbox} 跳过拾取与标记（它们在快速运动中没有意义）。 */
+    private boolean cameraMoveActive;
+
+    /**
+     * 把平面纹理按当前相机<b>仿射</b>贴到地面平面上（★ v49）。
+     *
+     * <h2>为什么是仿射而不是手写四边形</h2>
+     * <p>我们的相机是斜投影（{@code u=x, v=z·sin−y·cos}），地面 y=0 时只是
+     * <b>旋转 + 纵向压缩</b>，属仿射变换 ⇒ 一个 2×2 矩阵就能精确表达。
+     * 用 {@code PoseStack} 施加该矩阵再走普通 {@code blit}：
+     * 不需要手写带 UV 的顶点，零 GL 风险。</p>
+     *
+     * <h2>两端精确对齐</h2>
+     * <p>{@code pitch=0, yaw=0, sx=w/2, sy=h/2} 时矩阵退化为单位阵
+     * ⇒ 与静态平面图<b>逐像素相同</b>（{@code runCameraDepthProbe} 已验证几何前提）。</p>
+     */
+    private void blitGroundAffine(GuiGraphics g, int x, int y, int w, int h,
+                                  float yaw, float pitch, float sx, float sy, float alpha) {
+        if (texLoc == null || texW <= 0 || texH <= 0 || alpha <= 0.004f) return;
+        float[] r = com.geogenesis.client.preview.sandbox.SandboxGeometry.rotationRows(yaw, pitch);
+        boolean identity = Math.abs(r[0] - 1f) < 1e-6f && Math.abs(r[1]) < 1e-6f
+                && Math.abs(r[3]) < 1e-6f && Math.abs(r[4] - 1f) < 1e-6f
+                && Math.abs(sx - w / 2f) < 0.01f && Math.abs(sy - h / 2f) < 0.01f;
+        if (identity) {
+            // pitch=0/yaw=0 且尺度正好铺满 ⇒ 与平面模式完全同一条路径
+            blitPlaneOnly(g, x, y, w, h, alpha, 1f);
+            return;
+        }
+        // 像素 (px,py) ∈ [0,w]×[0,h] → 模型 (±1) → 屏幕
+        float cx = x + w / 2f, cy = y + h / 2f;
+        org.joml.Matrix4f m = new org.joml.Matrix4f();
+        m.identity();
+        m.m00(2f * sx * r[0] / w);
+        m.m01(2f * sx * r[1] / h);
+        m.m03(cx - sx * r[0] - sx * r[1]);
+        m.m10(2f * sy * r[3] / w);
+        m.m11(2f * sy * r[4] / h);
+        m.m13(cy - sy * r[3] - sy * r[4]);
+        boolean shade = alpha < 0.999f;
+        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
+        g.pose().pushPose();
+        g.pose().mulPoseMatrix(m);
+        g.blit(texLoc, 0, 0, w, h, 0, 0, texW, texH, texW, texH);
+        g.pose().popPose();
+        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+    }
+
+    /**
      * 只把<b>平面图</b>贴到屏幕上（可带 alpha 与竖向收缩）。
      *
      * <h2>★ v48：为什么需要「竖向收缩」</h2>
@@ -997,28 +1076,6 @@ public class PreviewDisplay extends AbstractWidget {
         if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
         g.blit(texLoc, x, yy, w, hh, 0, 0, texW, texH, texW, texH);
         if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-    }
-
-    /**
-     * 过渡期间画「上一张图」（沙盘），<b>只画不重算</b>（★ v48）。
-     *
-     * <p>用上一帧已经建好的 {@link #sandboxData} 与
-     * {@code sandboxRasterizer} 里现成的视口状态，不触发后台重建、
-     * 不做 hover 拾取、不画标记 —— 它正在淡出，没人会去点它。</p>
-     */
-    private void drawFadingSandbox(GuiGraphics g, int w, int h,
-                                   float alpha, float heightScale, float ease) {
-        TerrainFieldData d = sandboxData;
-        if (d == null || d.gridW <= 0) return;
-        if (alpha <= 0.004f) return;
-        com.geogenesis.client.preview.raster.RasterParams rp =
-                new com.geogenesis.client.preview.raster.RasterParams(
-                        w, h, 0f, activeLayer, (int) seaLevel);
-        sandboxRasterizer.setColorSource(sandboxColorSource());
-        // 与新图同一套镜头推进，否则两张图在过渡中会一大一小
-        sandboxRasterizer.setZoomBoost(ViewTransition.zoomBoost(ease));
-        sandboxRasterizer.draw(g, d, rp, getX(), getY(), w, h, reliefSpan,
-                System.currentTimeMillis(), alpha, heightScale);
     }
 
     /** 沙盘渲染：直接提交 3D 方柱，不走 2D 纹理。 */
@@ -1199,25 +1256,22 @@ public class PreviewDisplay extends AbstractWidget {
                 new com.geogenesis.client.preview.raster.RasterParams(
                         w, h, 0f, activeLayer, (int) seaY);
         sandboxRasterizer.setColorSource(sandboxColorSource());
-        if (d != null && isMouseOver(mx, my)) {
-            sandboxRasterizer.pick(mx, my, getX(), getY(), w, h);
-        } else {
-            sandboxRasterizer.clearPick();
+        // 运镜期间不拾取（画面在快速运动，拾取结果无意义且会触发重算）
+        if (!cameraMoveActive) {
+            if (d != null && isMouseOver(mx, my)) {
+                sandboxRasterizer.pick(mx, my, getX(), getY(), w, h);
+            } else {
+                sandboxRasterizer.clearPick();
+            }
         }
         if (d != null) {
-            // ★ v48：新图 = 沙盘，alpha 从 0 渐显（照参考项目第 421 行
-            //   {@code fading == null ? 1.0F : ease}）。此前是 0.45+0.55*ease，
-            //   那是"只有新图"时的补丁；现在有旧平面垫在下面，必须从 0 起。
-            //   高度仍从 0.45 长到 1（{@code 0.45F + 0.55F * ease}），这才是"立起来"的观感。
+            // ★ v49：运镜期间柱体 alpha 从 0 浮现（见 ViewTransition.pillarAlpha）。
+            //   高度不插值 —— 柱高是地形量，不该在切视图时变化；
+            //   "立起来"的观感由相机 pitch 抬起本身产生。
             float ease = transitionEase();
-            float globalAlpha = inTransition() ? ViewTransition.newAlpha(ease)
-                    : ViewTransition.STEADY_ALPHA;
-            float heightScale = inTransition() ? ViewTransition.newHeight(ease)
-                    : ViewTransition.STEADY_HEIGHT;
-            // ★ v33 对照表第 50 项：镜头推近（参考项目 YardSiteScreen 第 404 行
-            //   {@code zoomBoost = fading == null ? 1.0F : 0.84F + 0.16F * ease}）
-            sandboxRasterizer.setZoomBoost(inTransition() ? ViewTransition.zoomBoost(ease)
-                    : ViewTransition.STEADY_ZOOM_BOOST);
+            float globalAlpha = inTransition()
+                    ? ViewTransition.pillarAlpha(ease, transToSandbox) : 1f;
+            float heightScale = 1f;
 
             // ★★★ v48【删除"切进沙盘时转动 yaw"】★★★
             //   这里原来是（v35 我自己加的，<b>参考项目并没有</b>）：
@@ -1242,7 +1296,11 @@ public class PreviewDisplay extends AbstractWidget {
         // ★ 地图标记（出生点 / 玩家 / 结构）：平面视图原有能力，沙盘也要有。
         //   坐标用沙盘当前视口（originWx/originWz/blocksWide）——
         //   标记绘制按「世界坐标 → 屏幕」换算，与沙盘窗口一致。
-        drawMapMarkers(g, mx, my, ax, ay, side, side, originWx, originWz, blocksWide, blocksHigh);
+        //   ★ v49：运镜期间不画 —— 相机在连续运动，标记会跟着抖且无意义。
+        if (!cameraMoveActive) {
+            drawMapMarkers(g, mx, my, ax, ay, side, side, originWx, originWz,
+                    blocksWide, blocksHigh);
+        }
     }
 
     /** 沙盘诊断：上次已打印的视口 id。 */

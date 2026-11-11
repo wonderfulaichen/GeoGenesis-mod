@@ -2875,3 +2875,17 @@ task runViewTransitionProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.preview.ViewTransitionProbe'
     maxHeapSize = '1g'
 }
+// 相机基准：验证「pitch=0 就是平面图」这个运镜方案的前提。
+//   gradlew runCameraDatumProbe
+task runCameraDatumProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.CameraDatumProbe'
+    maxHeapSize = '1g'
+}
+// 「纹理高度场」vs「现有柱子」观感出图（用户裁定"先出图看效果再定"）。
+//   gradlew runHeightfieldLookProbe
+task runHeightfieldLookProbe(type: JavaExec) {
+    classpath = sourceSets.diagnostics.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.preview.HeightfieldLookProbe'
+    maxHeapSize = '2g'
+}

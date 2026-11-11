@@ -43,6 +43,51 @@ public final class SandboxRasterizer {
     // ===== 视角状态（控制器持有，这里只读）=====
     private float yaw = SandboxGeometry.DEFAULT_YAW;
     private float pitch = SandboxGeometry.DEFAULT_PITCH;
+
+    /**
+     * <b>相机覆盖</b>（★ v49，视图切换运镜专用）。
+     *
+     * <p>过渡期间要把相机从「正俯视」连续转到用户的沙盘角度，
+     * 但<b>不能改动</b> {@link #yaw}/{@link #pitch} 字段 —— 那是用户的持久视角状态，
+     * 过渡结束后必须原样保留（用户裁定：「谁切换视图还改缩放等信息呢？」）。</p>
+     *
+     * <p>NaN = 不覆盖，用上面的字段。</p>
+     */
+    private float camYawOverride = Float.NaN;
+    private float camPitchOverride = Float.NaN;
+
+    /** 过渡期间临时覆盖相机角度（不改用户状态）。 */
+    public void setCameraOverride(float yawRad, float pitchRad) {
+        camYawOverride = yawRad;
+        camPitchOverride = pitchRad;
+    }
+
+    /** 结束覆盖，回到用户自己的视角。 */
+    public void clearCameraOverride() {
+        camYawOverride = Float.NaN;
+        camPitchOverride = Float.NaN;
+    }
+
+    /** 当前生效的 yaw（覆盖优先）。 */
+    private float effYaw() {
+        return Float.isNaN(camYawOverride) ? yaw : camYawOverride;
+    }
+
+    /** 当前生效的 pitch（覆盖优先）。 */
+    private float effPitch() {
+        return Float.isNaN(camPitchOverride) ? pitch : camPitchOverride;
+    }
+
+    /**
+     * 给定视口时的<b>绘制尺度</b>（像素/模型单位）——供地面贴图与之对齐。
+     *
+     * <p>与 {@code draw()} 用的是同一个 {@link #viewScale}，
+     * 保证过渡中地面纹理与柱体不会一大一小。</p>
+     */
+    public float drawScaleFor(int areaW, int areaH) {
+        float[] r = SandboxGeometry.rotationRows(effYaw(), effPitch());
+        return viewScale(r, areaW, areaH);
+    }
     private float panX, panY;
     private float widthScale = 1.0f;
     /** 缩放档位（语义由 {@link com.geogenesis.client.preview.SandboxLod} 解释）。 */
@@ -117,7 +162,7 @@ public final class SandboxRasterizer {
      */
     public void dragToBlocks(double dx, double dy, int areaW, int areaH,
                              double blockStep, float[] out) {
-        float[] r = SandboxGeometry.rotationRows(yaw, pitch);
+        float[] r = SandboxGeometry.rotationRows(effYaw(), effPitch());
         int colCount = lastCols != null ? lastCols.colCount : 1;
         // ★★ v29【修"拖动跟不上手 / 拖动量级错 2.85 倍"】★★
         //   这里原先调 {@code SandboxGeometry.dragToBlocks(...)} 的兼容重载，
@@ -222,7 +267,7 @@ public final class SandboxRasterizer {
         int[] px = new int[w * h];
         java.util.Arrays.fill(px, 0xFF101018);
 
-        float[] r = SandboxGeometry.rotationRows(yaw, pitch);
+        float[] r = SandboxGeometry.rotationRows(effYaw(), effPitch());
         lastR = r;   // vertex() 读它
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, 60f);
         int[] sorted = SandboxGeometry.sortByDepth(cols, r, null);
@@ -260,7 +305,7 @@ public final class SandboxRasterizer {
         // ★ v26：本图第一次绘制 → 记下动画基准（此后跨帧稳定，见 animBaseMs 注释）
         if (animBaseMs == 0L) animBaseMs = now;
 
-        float[] r = SandboxGeometry.rotationRows(yaw, pitch);
+        float[] r = SandboxGeometry.rotationRows(effYaw(), effPitch());
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
         SandboxGeometry.applyGrow(cols, now);
         // ★ v25：过渡的高度比例（参考项目 collect() 第 687 行 {@code tops *= heightScale}）
@@ -689,20 +734,6 @@ public final class SandboxRasterizer {
      *   zoom &gt;  BASE_ZOOM（推近）  → scaleOf ：放大到局部铺满屏幕
      * </pre>
      */
-    /**
-     * 视图切换过渡用：镜头整体推近/拉远（1 = 正常）。
-     *
-     * <p>★ v33 补：对照表第 50 项 —— 参考项目 {@code YardSiteScreen} 第 404 行
-     * {@code terrain.setZoomBoost(fading == null ? 1.0F : 0.84F + 0.16F * ease)}。
-     * 切视图时镜头从 0.84 推到 1.0，给一个"推近落定"的纵深感。</p>
-     */
-    private float zoomBoost = 1.0f;
-
-    /** 设置镜头推近倍率（过渡动画用；1 = 正常）。 */
-    public void setZoomBoost(float boost) {
-        zoomBoost = boost;
-    }
-
     private float viewScale(float[] r, int areaW, int areaH) {
         // ★★ v29【修"还是没有铺满沙盘模式画面"】★★
         //
@@ -719,11 +750,12 @@ public final class SandboxRasterizer {
         //     · zoom>1（推近）  → fillScale × (zoom/BASE_ZOOM)（放大看局部）
         float fill = SandboxGeometry.fillScale(r, areaW, areaH);
         float ratio = zoom / SandboxLod.BASE_ZOOM;
-        // ★ v33：乘 zoomBoost（切视图过渡时镜头从 0.84 推到 1.0）
+        // ★ v49：删掉 zoomBoost —— 运镜改由相机 pitch/yaw/scale 真实插值，
+        //   不再需要"整体推近"这种替代品（那属于图片过渡时代）。
         float base = (ratio <= 1f)
                 ? fill
                 : SandboxGeometry.scaleOf(Math.min(areaW, areaH), zoom);
-        return base * zoomBoost;
+        return base;
     }
 
     /**
@@ -769,7 +801,7 @@ public final class SandboxRasterizer {
                         int areaX, int areaY, int areaW, int areaH, float span) {
         if (snapshot == null || snapshot.gridW <= 0) return;
         lastSpan = span;
-        float[] r = SandboxGeometry.rotationRows(yaw, pitch);
+        float[] r = SandboxGeometry.rotationRows(effYaw(), effPitch());
         lastR = r;
         SandboxGeometry.Columns cols = buildCols(snapshot, params, r, span);
         // ★ v36：与 draw() 同源（含 v36 的"按平均柱高"补偿）
