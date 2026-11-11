@@ -524,6 +524,20 @@ public final class GeoPalette {
         return 0xFF00FF; // 缺失映射：品红
     }
 
+    /**
+     * <b>压暗（过滤 / 未选中态）</b> —— ★ v68 提取为公共入口。
+     *
+     * <p>平面（{@code PlanePainter.grayTint}）与沙盘（{@code sandboxColorSource}）
+     * 本来各有一份完全相同的实现。提上来是为了让"选中/过滤"这两个开关
+     * <b>在两个视图里必然一致</b>：以前它只在平面生效，沙盘里点色块看不出变化。</p>
+     */
+    public static int dimForFilter(int rgb) {
+        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+        int gray = (r * 30 + g * 59 + b * 11) / 100;
+        gray = Math.max(48, Math.min(200, gray));
+        return (gray << 16) | (gray << 8) | gray;
+    }
+
     /** 简单工具：夹持 double 至 [lo, hi]。 */
     private static double clamp(double v, double lo, double hi) {
         return (v < lo) ? lo : (Math.min(v, hi));

@@ -2635,44 +2635,44 @@ public class PreviewDisplay extends AbstractWidget {
     }
 
     /**
-     * 沙盘底色来源（★ 2026-11-09 B3）。
+     * 沙盘底色来源 —— ★ v68 起<b>直接复用平面的取色入口</b>。
      *
-     * <p>与平面模式<b>同图例同颜色</b>：连续图层走 {@link GeoPalette} 色带、
-     * 离散图层走其离散表。归一化公式必须与 {@code GeoPalette.color} 一致
-     * （否则切模式会变色）。</p>
+     * <h2>为什么改成"复用"而不是"照抄归一化公式"</h2>
+     * <p>旧版这里自己重写了一遍 switch（ELEVATION 用 e 归一、TEMPERATURE 用
+     * {@code (t+1)*0.5}、PRECIPITATION 用 sqrt…）。它当年确实与
+     * {@code GeoPalette.color} 数值相同，但那是<b>巧合一致</b>，不是同源：
+     * 只要有人在 {@code GeoPalette} 里调一处色带归一化（历史上改过两次：
+     * 降水改 sqrt、RELIEFF 改 {@code reliefPos}），沙盘就会悄悄变色，
+     * 而且差异只在"切到沙盘"时才看得见。</p>
+     *
+     * <p>现在改为：把细格还原成 {@link Cell}（{@link TerrainFieldData#toDisplayCell}），
+     * 直接调平面的 {@link GeoPalette#color}，并且<b>连过滤/选中态压暗也一起复用</b>
+     * —— 那两个开关以前只在平面生效，沙盘里选色块后看不出变化，也是"两套"的表现。</p>
      */
     private com.geogenesis.client.preview.sandbox.SandboxGeometry.ColorSource sandboxColorSource() {
         final GeoPalette.PreviewLayer layer = activeLayer;
         final int mnY = minY, mxY = maxY;
+        final boolean discrete = layer.kind == GeoPalette.Kind.DISCRETE;
         return (gx, gz, snap) -> {
-            int i = snap.index(gx, gz);
-            if (i < 0) return 0x505050;
-            if (layer.kind == GeoPalette.Kind.DISCRETE) {
-                int id = switch (layer) {
-                    case TERRAIN_TYPE -> snap.terrainId[i] & 0xFFFF;
-                    case RIVER_TYPE -> snap.extraId[i * 4] & 0xFFFF;
-                    case ROCK_TYPE -> snap.extraId[i * 4 + 1] & 0xFFFF;
-                    case ROCK_LAYER -> snap.extraId[i * 4 + 2] & 0xFFFF;
-                    default -> snap.biomeClassId[i] & 0xFFFF;
-                };
-                return GeoPalette.discrete(layer, id) & 0xFFFFFF;
+            Cell c = snap.toDisplayCell(gx, gz, sandboxCell);
+            if (c == null) return 0x505050;
+            // 与平面同一入口（hydrology=true 让沙盘也能看到河/湖）
+            int rgb = GeoPalette.color(layer, c, snap.worldX(gx), snap.worldZ(gz),
+                    mnY, mxY, true) & 0xFFFFFF;
+            if (discrete) {
+                int id = GeoPalette.discreteIdForCell(layer, c);
+                if (filterMode) {
+                    if (!filterIds.contains(id)) rgb = GeoPalette.dimForFilter(rgb);
+                } else if (selectedLayer == layer && selectedId >= 0 && id != selectedId) {
+                    rgb = GeoPalette.dimForFilter(rgb);
+                }
             }
-            double pos = switch (layer) {
-                case ELEVATION -> Math.max(0.0, Math.min(1.0,
-                        (snap.e[i] - elevEMin) / Math.max(1e-6, elevEMax - elevEMin)));
-                case TEMPERATURE -> (snap.temperature[i] + 1.0) * 0.5;
-                case HUMIDITY -> (snap.humidity[i] + 1.0) * 0.5;
-                case PRECIPITATION ->
-                        Math.sqrt(Math.max(0.0, Math.min(1.0, snap.precipitation[i] / 1.2)));
-                case CONTINENTALITY -> (snap.continent[i] + 1.0) * 0.5;
-                case RELIEF -> (snap.shape[i] + 1.0) * 0.5;
-                case RIVER_NETWORK -> snap.discharge[i] > 0
-                        ? Math.min(1.0, Math.log1p(snap.discharge[i]) / 6.0) : 0.0;
-                default -> 0.0;
-            };
-            return GeoPalette.continuous(layer, pos) & 0xFFFFFF;
+            return rgb;
         };
     }
+
+    /** 沙盘取色复用的 Cell 实例（避免每细格 new）。 */
+    private final Cell sandboxCell = new Cell();
 
     public void close() {
         pool.shutdown();

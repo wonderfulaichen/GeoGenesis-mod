@@ -226,11 +226,9 @@ public final class PlanePainter {
     }
 
     // ---- grayTint ----
+    //   ★ v68：实现搬到 {@link GeoPalette#dimForFilter}（沙盘复用同一份）。
     private static int grayTint(int rgb) {
-        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
-        int gray = (r * 30 + g * 59 + b * 11) / 100;
-        gray = Math.max(48, Math.min(200, gray));
-        return 0xFF000000 | (gray << 16) | (gray << 8) | gray;
+        return GeoPalette.dimForFilter(rgb);
     }
 
     // ---- alignDown ----
