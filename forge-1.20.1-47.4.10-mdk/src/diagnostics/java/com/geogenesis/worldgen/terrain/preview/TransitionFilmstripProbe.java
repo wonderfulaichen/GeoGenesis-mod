@@ -46,7 +46,7 @@ public final class TransitionFilmstripProbe {
     private static final int FW = 380;      // 每帧宽
     private static final int FH = 300;      // 每帧高
     private static final double SEA = 63.0;
-    private static final int STEPS = 5;
+    private static final int STEPS = 8;
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
@@ -108,6 +108,12 @@ public final class TransitionFilmstripProbe {
         System.out.printf("地形 %d×%d，柱 %d×%d，span=%.1f%n",
                 data.gridW, data.gridH, cols.colCount, cols.colRows, span);
 
+        // ★ v56：尺度用「目标姿态」算一次，整段沿用（逐帧算会让镜头"呼吸"）
+        float[] rEnd = SandboxGeometry.rotationRows(
+                ViewTransition.yaw(1f, true, SandboxGeometry.DEFAULT_YAW),
+                ViewTransition.pitch(1f, true));
+        float fillTarget = SandboxGeometry.fillScale(rEnd, FW, FH);
+
         BufferedImage strip = new BufferedImage(FW * STEPS, FH, BufferedImage.TYPE_INT_RGB);
         boolean pass = true;
         System.out.println("\nease   pitch   yaw     fill    sx      sy      relief");
@@ -117,7 +123,7 @@ public final class TransitionFilmstripProbe {
             float yaw = ViewTransition.yaw(ease, true, SandboxGeometry.DEFAULT_YAW);
             float pitch = ViewTransition.pitch(ease, true);
             float[] r = SandboxGeometry.rotationRows(yaw, pitch);
-            float fill = SandboxGeometry.fillScale(r, FW, FH);
+            float fill = fillTarget;
             float[] sxy = new float[2];
             ViewTransition.scale(ease, true, FW, FH, fill, sxy);
             float relief = ViewTransition.relief(ease, true);

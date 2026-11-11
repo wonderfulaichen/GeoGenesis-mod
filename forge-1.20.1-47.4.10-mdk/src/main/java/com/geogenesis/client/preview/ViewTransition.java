@@ -38,7 +38,44 @@ public final class ViewTransition {
     /** 沙盘端的俯仰（{@code SandboxGeometry.DEFAULT_PITCH}，约 54°）。 */
     public static final float PITCH_SANDBOX = SandboxGeometry.DEFAULT_PITCH;
 
+    /**
+     * <b>第一段（换材质）占整条时间线的比例</b> —— 用户 2026-11-11 裁定。
+     *
+     * <p>用户原话：「先从高精度的平面模式平滑变化到沙盘的正俯视视角，
+     * 然后进行运镜，这样纹理就不会突变了。」</p>
+     *
+     * <p>两段的语义完全不同，混在一起就会"不自然"：</p>
+     * <ul>
+     *   <li><b>第一段</b>（sandboxness 0 → {@code PHASE_TEXTURE}）：相机不动（正俯视、yaw=0），
+     *       只把"高精度纹理"换成"体素正俯视"，同时把尺度从 {@code (w/2,h/2)} 收到 {@code fill}。
+     *       两张图在这里<b>完全重合</b>（都是同一份数据的正俯视）⇒ 只是材质/分辨率在变，
+     *       没有空间位移，所以看不出"跳"；</li>
+     *   <li><b>第二段</b>（{@code PHASE_TEXTURE} → 1）：材质已定，只做运镜
+     *       —— pitch 0 → 54°、yaw 0 → 用户角度。这时观众看到的<b>已经是</b>体素模型在转，
+     *       不会同时看到"贴图忽然被换掉"。</li>
+     * </ul>
+     */
+    public static final float PHASE_TEXTURE = 0.42f;
+
     private ViewTransition() { }
+
+    /**
+     * <b>沙盘度</b>：0 = 平面端，1 = 沙盘端。<b>两个方向共用这一个单调量</b>，
+     * 反向切换只是 s 递减 ⇒ 两段顺序自动倒过来（先转回来、再换回纹理）。
+     */
+    private static float sandboxness(float ease, boolean toSandbox) {
+        return clamp01(toSandbox ? ease : 1.0f - ease);
+    }
+
+    /** 第一段进度（0 = 还是纹理，1 = 已换成体素）。 */
+    static float texturePhase(float ease, boolean toSandbox) {
+        return clamp01(sandboxness(ease, toSandbox) / PHASE_TEXTURE);
+    }
+
+    /** 第二段进度（0 = 还没开始运镜，1 = 运镜到位）。 */
+    static float cameraPhase(float ease, boolean toSandbox) {
+        return clamp01((sandboxness(ease, toSandbox) - PHASE_TEXTURE) / (1.0f - PHASE_TEXTURE));
+    }
 
     /**
      * 线性进度：0 = 刚开始切，1 = 切完（或没在过渡）。
@@ -62,11 +99,9 @@ public final class ViewTransition {
         return q * q * (3.0f - 2.0f * q);
     }
 
-    /** 相机俯仰（弧度）：平面端 {@link #PITCH_PLANE} ⇄ 沙盘端 {@link #PITCH_SANDBOX}。 */
+    /** 相机俯仰（弧度）：<b>第二段才动</b>（第一段保持正俯视，只换材质）。 */
     public static float pitch(float ease, boolean toSandbox) {
-        return toSandbox
-                ? PITCH_PLANE + (PITCH_SANDBOX - PITCH_PLANE) * ease
-                : PITCH_SANDBOX + (PITCH_PLANE - PITCH_SANDBOX) * ease;
+        return PITCH_PLANE + (PITCH_SANDBOX - PITCH_PLANE) * smooth01(cameraPhase(ease, toSandbox));
     }
 
     /**
@@ -76,8 +111,7 @@ public final class ViewTransition {
      * <p>用<b>最短角路径</b>插值：从 0 到 5.5 rad 不会绕一大圈，而是反向走 0.78 rad。</p>
      */
     public static float yaw(float ease, boolean toSandbox, float sandboxYaw) {
-        float t = toSandbox ? ease : 1.0f - ease;
-        return YAW_PLANE + shortestDelta(YAW_PLANE, sandboxYaw) * t;
+        return YAW_PLANE + shortestDelta(YAW_PLANE, sandboxYaw) * smooth01(cameraPhase(ease, toSandbox));
     }
 
     /**
@@ -95,7 +129,19 @@ public final class ViewTransition {
      * 不会出现"图上又贴了一层马赛克"。</p>
      */
     public static float relief(float ease, boolean toSandbox) {
-        return smooth01(toSandbox ? ease : 1.0f - ease);
+        return smooth01(texturePhase(ease, toSandbox));
+    }
+
+    /**
+     * <b>高精度纹理的不透明度</b>：第一段 1 → 0，第二段恒 0。
+     *
+     * <p>它只在<b>第一段</b>里参与，而且是与体素正俯视<b>完全重合</b>的两张图之间的
+     * 一次材质交接 —— 相机不动、位置不变，所以读起来是"贴图精度在换"，
+     * 而不是"一张图淡出、另一张图淡入"。第二段（运镜）里它已经是 0，
+     * 观众看到的自始至终是同一个体素场景。</p>
+     */
+    public static float groundAlpha(float ease, boolean toSandbox) {
+        return 1.0f - relief(ease, toSandbox);
     }
 
     /** 光照强度：平面端 0（平面图的光照是烘在纹理里的），沙盘端 1。 */
@@ -125,7 +171,8 @@ public final class ViewTransition {
     public static void scale(float ease, boolean toSandbox, int w, int h, float fill, float[] out) {
         float planeSx = w / 2f;
         float planeSy = h / 2f;
-        float t = toSandbox ? ease : 1.0f - ease;
+        // ★ 尺度也只走第一段：材质换完就该是沙盘尺度，运镜期间不再缩
+        float t = relief(ease, toSandbox);
         out[0] = planeSx + (fill - planeSx) * t;
         out[1] = planeSy + (fill - planeSy) * t;
     }

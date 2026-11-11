@@ -987,11 +987,20 @@ public class PreviewDisplay extends AbstractWidget {
         float yaw = ViewTransition.yaw(ease, toSandbox, sandboxRasterizer.yaw());
         float pitch = ViewTransition.pitch(ease, toSandbox);
 
+        // ★★ v56【尺度必须用「目标姿态」算一次，而不是逐帧按当前姿态算】★★
+        //
+        //   {@code fillScale} 是按<b>投影后包围盒</b>归一化的 ⇒ 它随 pitch/yaw 变。
+        //   逐帧取"当前姿态的 fill"会让镜头一边转一边被缩回去，实测序列
+        //   190 → 172 → 149 → 157 → 184，观感是"镜头在呼吸"。
+        //   ⇒ 这里用<b>目标姿态</b>（= 过渡结束后的稳态姿态）算一次，
+        //     整段过渡沿用同一个值：运镜期间尺度恒定，且终点与稳态<b>精确相等</b>
+        //     （顺带消掉切完最后一帧的跳变）。
+        float fill = sandboxRasterizer.drawScaleFor(w, h);
+
         // 相机覆盖：过渡期间用插值角度渲染，不动用户的持久视角状态
         sandboxRasterizer.setCameraOverride(yaw, pitch);
         try {
             // ---- 1) 地面（按高度位移的纹理曲面）----
-            float fill = sandboxRasterizer.drawScaleFor(w, h);
             float[] sxy = new float[2];
             ViewTransition.scale(ease, toSandbox, w, h, fill, sxy);
             // ★ 诊断：过渡首帧打一条，便于实机定位"地面没画/画了不可见"
@@ -1006,7 +1015,17 @@ public class PreviewDisplay extends AbstractWidget {
                         String.format(java.util.Locale.ROOT, "%.1f", sxy[1]),
                         texW, texH, sandboxData != null, reliefSpan);
             }
-            drawGroundSurface(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1], 1f,
+            // ★ v56【两段式：先换材质，再运镜】—— 用户 2026-11-11 裁定
+            //
+            //   「先从高精度的平面模式平滑变化到沙盘的正俯视视角，然后再进行运镜，
+            //     这样纹理就不会突变了。」
+            //
+            //   第一段：相机不动（pitch=0/yaw=0），纹理 1→0、体素 0→1、尺度 → 沙盘尺度。
+            //          两张图完全重合 ⇒ 只是材质/精度在换。
+            //   第二段：groundAlpha 已经是 0、relief 已经是 1，只剩 pitch/yaw 抬起来。
+            //   ⇒ 不再出现"一边转一边换贴图"的突兀感。
+            drawGroundSurface(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1],
+                    ViewTransition.groundAlpha(ease, toSandbox),
                     ViewTransition.relief(ease, toSandbox));
 
             // ---- 2) 柱体：<b>由同一个 relief 驱动高度与不透明度</b> ----

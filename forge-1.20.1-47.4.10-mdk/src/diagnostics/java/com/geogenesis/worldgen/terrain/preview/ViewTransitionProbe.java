@@ -146,9 +146,10 @@ public final class ViewTransitionProbe {
         float rb0 = ViewTransition.relief(0f, false), rb1 = ViewTransition.relief(1f, false);
         System.out.printf("    切沙盘：%.3f → %.3f（应 0 → 1）%n", ra0, ra1);
         System.out.printf("    切平面：%.3f → %.3f（应 1 → 0）%n", rb0, rb1);
-        // 中点必须严格在两端之间且单调（否则"长出来"会先缩再长）
-        float raMid = ViewTransition.relief(0.5f, true);
-        System.out.printf("    中点 %.3f（应在 (0,1) 内）%n", raMid);
+        // 第一段中段必须在 (0,1)：v56 起 relief 在第一段就走完，
+        // 所以取样点要落在<b>第一段内部</b>（0.5 已经在第二段，必然 =1）
+        float raMid = ViewTransition.relief(ViewTransition.PHASE_TEXTURE * 0.5f, true);
+        System.out.printf("    第一段中点 %.3f（应在 (0,1) 内）%n", raMid);
         if (Math.abs(ra0) > eps || Math.abs(ra1 - 1f) > eps
                 || Math.abs(rb0 - 1f) > eps || Math.abs(rb1) > eps
                 || raMid <= eps || raMid >= 1f - eps) {
@@ -175,8 +176,58 @@ public final class ViewTransitionProbe {
             System.out.println("    OK");
         }
 
-        // ---- [8] 健全性 ----
-        System.out.println("\n[8] 数值健全性");
+        // ---- [8] 外观：第一段只换材质、第二段才运镜 ----
+        //
+        //   ★ v56 用户裁定：「先从高精度的平面模式平滑变化到沙盘的正俯视视角，
+        //     然后再进行运镜，这样纹理就不会突变了。」
+        //   守两条：① 第一段内 pitch/yaw 恒为 0（相机不动，只换材质）；
+        //          ② 第二段内 relief 恒为 1、纹理恒为 0（材质已定，只剩运镜）。
+        System.out.println("\n[8] 两段式编排（先换材质，后运镜）");
+        boolean phaseOk = true;
+        float maxPitchInA = 0f, minReliefInB = 1f, maxGroundInB = 0f;
+        for (int i = 0; i <= 200; i++) {
+            float e = i / 200f;
+            // 第一段：sandboxness ≤ PHASE_TEXTURE
+            if (e <= ViewTransition.PHASE_TEXTURE) {
+                maxPitchInA = Math.max(maxPitchInA, Math.abs(ViewTransition.pitch(e, true)));
+            } else {
+                // 第二段
+                minReliefInB = Math.min(minReliefInB, ViewTransition.relief(e, true));
+                maxGroundInB = Math.max(maxGroundInB, ViewTransition.groundAlpha(e, true));
+            }
+        }
+        System.out.printf("    第一段 |pitch| 最大 = %.4f（应 0）%n", maxPitchInA);
+        System.out.printf("    第二段 relief 最小 = %.3f（应 1）；纹理 alpha 最大 = %.3f（应 0）%n",
+                minReliefInB, maxGroundInB);
+        if (maxPitchInA > 1e-4f) {
+            System.out.println("    FAIL: 第一段相机就在动 ⇒ 边倾斜边换贴图，纹理必然突变");
+            phaseOk = false;
+        }
+        if (minReliefInB < 1f - 1e-4f || maxGroundInB > 1e-4f) {
+            System.out.println("    FAIL: 第二段材质还在变 ⇒ 运镜期间贴图会跳");
+            phaseOk = false;
+        }
+        // 反向：sandboxness 递减 ⇒ 顺序自动倒过来（先把镜头转回正俯视，再换回纹理）
+        boolean revOk = true;
+        for (int i = 0; i <= 100; i++) {
+            float e = (1f - ViewTransition.PHASE_TEXTURE) + (ViewTransition.PHASE_TEXTURE) * i / 100f;
+            if (Math.abs(ViewTransition.pitch(e, false)) > 1e-4f) revOk = false;
+        }
+        float revRelief = ViewTransition.relief(0.9f, false);
+        System.out.printf("    切平面 ease∈[%.2f,1] 期间 pitch 应恒 0 ⇒ %s；ease=0.9 时 relief=%.3f（应 &lt;1）%n",
+                1f - ViewTransition.PHASE_TEXTURE, revOk ? "是" : "否", revRelief);
+        if (!revOk || revRelief >= 1f - 1e-4f) {
+            System.out.println("    FAIL: 反向切换应先运镜再换材质");
+            phaseOk = false;
+        }
+        if (phaseOk) {
+            System.out.println("    OK（材质交接在正俯视下完成，运镜在材质定稿后发生）");
+        } else {
+            pass = false;
+        }
+
+        // ---- [9] 健全性 ----
+        System.out.println("\n[9] 数值健全性");
         boolean sane = true;
         for (float[] row : new float[][]{
                 {ViewTransition.pitch(-1f, true), ViewTransition.pitch(2f, true)},
