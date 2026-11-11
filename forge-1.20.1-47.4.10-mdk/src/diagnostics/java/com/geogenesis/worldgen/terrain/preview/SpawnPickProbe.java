@@ -146,6 +146,29 @@ public final class SpawnPickProbe {
             System.out.println("    OK（一次乘法，可逆）");
         }
 
+        System.out.println("\n[6] 唯一拾取产物：世界坐标（★ v67）");
+        // 拾取统一后，沙盘不再暴露"柱/细格下标"给调用方做二次换算，
+        // 而是直接把 model 坐标换算成世界坐标（PushPick 的唯一产物）。
+        // 这里守它必须满窗覆盖且单调 —— 若换算漏了 origin 或比例错，
+        // 屏幕上点哪个位置都会落在错误的世界坐标上（用户已多次遇到"偏离"）。
+        boolean ok6 = true;
+        int prevW = Integer.MIN_VALUE;
+        for (int i = 0; i <= 8; i++) {
+            float mx = -1f + i * 0.25f;                    // model [-1,1]
+            int wx = originX + (int) Math.floor((mx + 1f) * 0.5 * WINDOW);
+            System.out.printf("    model %.2f → 世界 %d%n", mx, wx);
+            if (i == 0 && Math.abs(wx - originX) > 1) ok6 = false;
+            if (i == 8 && Math.abs(wx - (originX + WINDOW)) > 1) ok6 = false;
+            if (i > 0 && wx <= prevW) ok6 = false;
+            prevW = wx;
+        }
+        if (!ok6) {
+            System.out.println("    FAIL: 世界坐标不单调或未覆盖整个窗口");
+            pass = false;
+        } else {
+            System.out.println("    OK（model 端点精确对齐窗口两端、单调递增）");
+        }
+
         System.out.println();
         System.out.println(pass ? "PASS" : "FAIL");
         System.exit(pass ? 0 : 1);

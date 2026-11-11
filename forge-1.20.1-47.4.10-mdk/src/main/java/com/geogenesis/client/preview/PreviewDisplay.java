@@ -1454,11 +1454,20 @@ public class PreviewDisplay extends AbstractWidget {
                         w, h, 0f, activeLayer, (int) seaY);
         sandboxRasterizer.setColorSource(sandboxColorSource());
         // 运镜期间不拾取（画面在快速运动，拾取结果无意义且会触发重算）
+        //
+        // ★ v67【拾取统一】：拾取的<b>唯一产物就是世界坐标 hoverX/hoverZ</b> ——
+        //   平面靠"屏幕像素 → 视口整除"算它，沙盘靠视线推进算它，
+        //   之后一切（tooltip / 选中色块 / 出生点 / 坐标复制）都只看这两个字段，
+        //   不再有"平面一条公式、沙盘另一条换算"。
         if (!cameraMoveActive) {
             if (d != null && isMouseOver(mx, my)) {
                 sandboxRasterizer.pick(mx, my, getX(), getY(), w, h);
+                hoverX = sandboxRasterizer.hasPick() ? sandboxRasterizer.pickedWorldX() : -1;
+                hoverZ = sandboxRasterizer.hasPick() ? sandboxRasterizer.pickedWorldZ() : -1;
             } else {
                 sandboxRasterizer.clearPick();
+                hoverX = -1;
+                hoverZ = -1;
             }
         }
         if (d != null) {
@@ -1881,26 +1890,20 @@ public class PreviewDisplay extends AbstractWidget {
         TerrainFieldData d = sandboxData;
         if (d == null) return;
 
-        // 柱索引 → 柱中心的世界坐标（与 drawSpawnPin 反算同式）
-        int colRows = sandboxRasterizer.pickedColRows();
-        if (colRows <= 0) return;
-        int ci = col / colRows, cj = col % colRows;
-        int windowBlocks = Math.max(64, texW * scaleBlockPos);
-        int grid = Math.max(1, d.gridW);
-        double cellBlocks = windowBlocks / (double) grid;
-
-        // 柱覆盖 2×2 细格 ⇒ 柱中心 = 细格 (ci*2 + 1) 处
-        int fineX = ci * SandboxLod.HEIGHT_STRIDE + SandboxLod.HEIGHT_STRIDE / 2;
-        int fineZ = cj * SandboxLod.HEIGHT_STRIDE + SandboxLod.HEIGHT_STRIDE / 2;
-        int wx = d.originX + (int) Math.round(fineX * cellBlocks);
-        int wz = d.originZ + (int) Math.round(fineZ * cellBlocks);
+        // ★★ v67【改用拾取产物，不再自己算一遍】★★
+        //
+        //   上面那段"柱索引 → 细格 → 世界坐标"是<b>第三条</b>换算公式
+        //   （平面一条、沙盘 HUD 一条、这里又一条）—— 同一件事三种算法，
+        //   正是用户说的"两套"最难缠的形态：改一处另两处不会跟着变。
+        //   ⇒ 拾取时已经把世界坐标算出来了，这里直接用。
+        int wx = sandboxRasterizer.pickedWorldX();
+        int wz = sandboxRasterizer.pickedWorldZ();
 
         com.mojang.logging.LogUtils.getLogger().info(
-                "[SpawnPick] 柱#{}({}, {}) 细格({},{}) 每格={} ⇒ 世界({},{})",
-                col, ci, cj, fineX, fineZ,
-                String.format(java.util.Locale.ROOT, "%.3f", cellBlocks), wx, wz);
+                "[SpawnPick] 柱#{} 世界({},{})", col, wx, wz);
         // 再点同一格 = 取消（容差 = 一个细格）
-        int tol = Math.max(1, (int) Math.ceil(cellBlocks));
+        int tol = Math.max(1, (int) Math.ceil(
+                Math.max(1, texW * scaleBlockPos) / (double) Math.max(1, d.gridW)));
         if (sandboxRasterizer.hasSpawnMark()
                 && Math.abs(sandboxRasterizer.spawnMarkX() - wx) < tol
                 && Math.abs(sandboxRasterizer.spawnMarkZ() - wz) < tol) {
@@ -2808,13 +2811,10 @@ public class PreviewDisplay extends AbstractWidget {
             d.pickedColX = sandboxRasterizer.pickedColX();
             d.pickedColZ = sandboxRasterizer.pickedColZ();
             d.pickedTopY = sandboxRasterizer.pickedTopY();
-            // ★ v29：与 renderSandbox 同源（每细格方块数由真实窗口决定）
-            int windowBlocks = Math.max(64, texW * scaleBlockPos);
-            double step = SandboxLod.effectiveStepFor(windowBlocks, Math.min(getWidth(), getHeight()));
-            d.hoverWorldX = d.centerX - windowBlocks / 2
-                    + (int) Math.round(d.pickedColX * step);
-            d.hoverWorldZ = d.centerZ - windowBlocks / 2
-                    + (int) Math.round(d.pickedColZ * step);
+            // ★ v67：世界坐标直接用拾取产物（此处原先又按 center/step 二次换算，
+            //   与平面那条公式不同源 —— 正是"两套拾取"的残留）。
+            d.hoverWorldX = sandboxRasterizer.pickedWorldX();
+            d.hoverWorldZ = sandboxRasterizer.pickedWorldZ();
         }
         com.geogenesis.client.preview.raster.SandboxHud.render(g, x, y, w, h, d);
     }

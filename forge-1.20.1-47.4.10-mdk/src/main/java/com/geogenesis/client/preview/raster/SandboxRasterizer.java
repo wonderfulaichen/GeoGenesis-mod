@@ -714,6 +714,8 @@ public final class SandboxRasterizer {
      */
     public void pick(double guiX, double guiY, int areaX, int areaY, int areaW, int areaH) {
         pickedColumn = -1;
+        pickedWorldX = Integer.MIN_VALUE;
+        pickedWorldZ = Integer.MIN_VALUE;
         if (lastCols == null || lastR == null || lastScale <= 0f) {
             // ★ v40 诊断：拾取失败时把状态打出来
             com.mojang.logging.LogUtils.getLogger().info(
@@ -761,12 +763,25 @@ public final class SandboxRasterizer {
                         Math.round(fx), 0, lastCols.colCount * 2 - 1);
                 pickedCellZ = SandboxGeometry.clampI(
                         Math.round(fz), 0, lastCols.colRows * 2 - 1);
+
+                // ★ v67：与世界窗口同一映射算出世界坐标（唯一产物，调用方不再换算）
+                //
+                //   model [-1,1] ⟷ 窗口 [0, blocksWide)：
+                //     wx = originX + (mx + 1) * 0.5 * blocksWide
+                pickedWorldX = lastWindowOriginX
+                        + (int) Math.floor((mx + 1f) * 0.5 * lastWindowBlocks);
+                pickedWorldZ = lastWindowOriginZ
+                        + (int) Math.floor((my + 1f) * 0.5 * lastWindowBlocks);
                 return;
             }
         }
     }
 
-    public void clearPick() { pickedColumn = -1; }
+    public void clearPick() {
+        pickedColumn = -1;
+        pickedWorldX = Integer.MIN_VALUE;
+        pickedWorldZ = Integer.MIN_VALUE;
+    }
 
     public int pickedColumn() { return pickedColumn; }
 
@@ -778,6 +793,33 @@ public final class SandboxRasterizer {
      */
     private int pickedCellX = -1;
     private int pickedCellZ = -1;
+
+    // ★★ v67【拾取统一：直接给出世界坐标】★★
+    //
+    //   用户：「剩下那个拾取和悬停还是两套，平面走 CellCache、沙盘走视线推进，
+    //   把这两个统一了。」
+    //
+    //   统一的落点不是"用同一种算法"（2D 贴图没有深度，3D 柱体必须推进 ——
+    //   机制上无法也不该合并），而是<b>统一成同一个产物</b>：
+    //   不管哪个视图，鼠标最终都换算出一个<b>世界坐标 (wx, wz)</b>，
+    //   再由它去 CellCache 取同一个 Cell、画同一个 tooltip。
+    //
+    //   此前沙盘只暴露"柱下标 / 细格下标"，调用方要再按
+    //   {@code center - win/2 + col*step} 二次换算 —— 那正是"两套"的来源：
+    //   平面用一条公式、沙盘用另一条，两者算出的坐标还可能差半格。
+    //
+    //   ⇒ 这里把模型坐标一次性换算成世界坐标存下来（model [-1,1] 铺满整个窗口，
+    //     与 buildColumns 的 modelEdge 同一映射），调用方直接读，不再做任何换算。
+    private int pickedWorldX = Integer.MIN_VALUE;
+    private int pickedWorldZ = Integer.MIN_VALUE;
+
+    /** 拾取到的世界坐标；未拾取返回 {@link Integer#MIN_VALUE}。 */
+    public int pickedWorldX() { return pickedWorldX; }
+
+    public int pickedWorldZ() { return pickedWorldZ; }
+
+    /** 是否有有效拾取（世界坐标版，供统一 hover 管线判断）。 */
+    public boolean hasPick() { return pickedWorldX != Integer.MIN_VALUE; }
 
     public int pickedCellX() { return pickedCellX; }
     public int pickedCellZ() { return pickedCellZ; }
