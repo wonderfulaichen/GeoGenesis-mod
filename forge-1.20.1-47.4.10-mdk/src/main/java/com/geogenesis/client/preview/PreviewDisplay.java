@@ -1094,21 +1094,24 @@ public class PreviewDisplay extends AbstractWidget {
 
         g.flush();
         org.joml.Matrix4f pose = g.pose().last().pose();
-        com.mojang.blaze3d.vertex.BufferBuilder bb =
-                com.mojang.blaze3d.vertex.Tesselator.getInstance().getBuilder();
-        // ★★ v51【改用原版 blit 的<b>同一条</b>着色器与顶点格式】★★
+        // ★★ v51【与原版 GuiGraphics.innerBlit 逐字一致】★★
         //
-        //   v50 用的是 POSITION_TEX_COLOR + getPositionTexColorShader + 顶点色 alpha，
-        //   实机结果是<b>地面完全不显示</b>（用户：「先黑屏一下然后突然显示沙盘」）。
-        //   那条路径本项目从未跑过，等于在赌。
+        //   实机 v50 用 POSITION_TEX_COLOR + getPositionTexColorShader + 顶点色 alpha，
+        //   结果是「一点切换就黑屏，然后才出现沙盘」⇒ 地面一个像素都没画出来。
+        //   本项目从未跑过那条路径，不该拿它赌。
         //
-        //   原版 GuiGraphics.innerBlit（1.20.1）用的是：
+        //   原版 innerBlit（1.20.1）：
         //     RenderSystem.setShaderTexture(0, tex)
         //     RenderSystem.setShader(GameRenderer::getPositionTexShader)
-        //     begin(QUADS, DefaultVertexFormat.POSITION_TEX)
-        //     vertex(pose, x, y, z).uv(u,v).endVertex()
+        //     begin(QUADS, POSITION_TEX)
+        //     vertex(pose, x, y, blitOffset).uv(u,v).endVertex()
         //     BufferUploader.drawWithShader(bb.end())
-        //   与之逐字一致，只把顶点坐标换成任意四边形；alpha 走 setShaderColor。
+        //   这里只把顶点坐标换成任意四边形，其余一字不改；alpha 走 setShaderColor
+        //   （position_tex 的 ColorModulator，与既有的 blitPlaneOnly 同一条路）。
+        com.mojang.blaze3d.vertex.BufferBuilder bb =
+                com.mojang.blaze3d.vertex.Tesselator.getInstance().getBuilder();
+        RenderSystem.setShaderTexture(0, texLoc);
+        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexShader);
         bb.begin(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS,
                 com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX);
         for (Integer idx : order) {
@@ -1117,8 +1120,6 @@ public class PreviewDisplay extends AbstractWidget {
                     modelX(qx, m), modelX(qx + 1, m), modelY(qz, m), modelY(qz + 1, m),
                     qx / (float) m, (qx + 1) / (float) m, qz / (float) m, (qz + 1) / (float) m);
         }
-        RenderSystem.setShaderTexture(0, texLoc);
-        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexShader);
         boolean shade = alpha < 0.999f;
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
