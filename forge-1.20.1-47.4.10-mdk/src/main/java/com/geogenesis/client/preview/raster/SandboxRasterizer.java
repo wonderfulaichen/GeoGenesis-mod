@@ -357,14 +357,35 @@ public final class SandboxRasterizer {
         //
         //   正确做法：按<b>平均柱高</b>补偿，而不是按 RELIEF（最大可能柱高）。
         //   平均柱高来自上一帧的 Columns（跨帧稳定，不会抖）。
-        float avgTop = lastAvgTop;
-        if (avgTop <= 0f) {
-            // 第一帧还没有统计 → 退回"盘面半径的固定比例"做初值
-            avgTop = SandboxGeometry.RELIEF * 0.22f;
+        // ★★★ v62【板面居中改为"真实投影包围盒"】★★★
+        //
+        //   用户实机：「沙盘还是高了，在接近正视图应该下面多显示一些的，
+        //   但现在感觉像沙盘位置高了。」
+        //
+        //   旧做法：oyBias = avgTop × |r5| × scale × <b>0.5</b> ——
+        //   那个 0.5 是照默认俯仰凑的经验系数（见上方 v32/v36 的整段推导）。
+        //   它是"按平均柱高估质心"，与该姿态下板面<b>实际</b>落在屏幕哪里无关
+        //   ⇒ 俯仰一低，板面本来就已经贴在下半屏，补偿还在往下推，底部就空出一大块。
+        //
+        //   正确做法：直接取"四角 + 中心"这 5 根柱子的<b>投影包围盒</b>，
+        //   把它的竖直中点对到视口中心。代价是 5 次投影，且与俯仰/偏航/缩放自动一致。
+        float dyMin = Float.MAX_VALUE, dyMax = -Float.MAX_VALUE;
+        int[][] probe = {
+                {0, 0}, {cols.colCount - 1, 0}, {0, cols.colRows - 1},
+                {cols.colCount - 1, cols.colRows - 1},
+                {cols.colCount / 2, cols.colRows / 2}};
+        for (int[] pc : probe) {
+            int idx = pc[0] * cols.colRows + pc[1];
+            if (idx < 0 || idx >= cols.items.length) continue;
+            SandboxGeometry.Column pc0 = cols.items[idx];
+            float top = pc0 == null || pc0.top < 0f ? 0f : pc0.top;
+            float mx = SandboxGeometry.modelOf(cols.colCount, pc[0]);
+            float my = SandboxGeometry.modelOf(cols.colRows, pc[1]);
+            float dy = lastSY * (r[3] * mx + r[4] * my + r[5] * top);
+            if (dy < dyMin) dyMin = dy;
+            if (dy > dyMax) dyMax = dy;
         }
-        // 补偿 = 一半平均柱高 × |r5| × scale（把"柱子平均凸起的质心"压到视口中心）
-        float reliefPx = avgTop * Math.abs(r[5]) * scale;
-        float oyBias = reliefPx * 0.5f;
+        float oyBias = (dyMin > dyMax) ? 0f : -(dyMin + dyMax) * 0.5f;
         float ox = areaX + areaW / 2f + panX;
         float oy = areaY + areaH / 2f + panY + oyBias;
 

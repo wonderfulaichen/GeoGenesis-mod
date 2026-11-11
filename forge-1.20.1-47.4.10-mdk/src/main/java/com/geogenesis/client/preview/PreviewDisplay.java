@@ -2697,17 +2697,17 @@ public class PreviewDisplay extends AbstractWidget {
     public String statusLine() {
         // ★ 沙盘模式：显示<b>比例尺</b>（像地图软件那样），而不是平面模式的 1:N
         if (sandboxMode) {
-            // ★★ v28【修"视野数值还显示 7200 格"】★★
-            //   这里原先调 {@code SandboxLod.scaleLabel(zoom)} ——
-            //   它内部用 {@code windowFor(zoom)}（柱数 × 16）算视野，是<b>旧口径</b>。
-            //   v27 起沙盘窗口已改成 {@code texW × scaleBlockPos}（= 平面窗口），
-            //   两者脱钩 ⇒ 状态栏显示 7200 而实际只有约 900 格。
-            //   现在直接用<b>真实窗口</b>，与 renderSandbox 同源。
+            // ★ v62【修"视野数值一直不动"】：滚轮的语义是<b>镜头推近</b>（用户裁定），
+            //   采样窗口不变、内容不变，变的是"这一窗数据被放到多大"。
+            //   所以状态栏必须显示<b>等效可见格数 = 窗口 / 缩放</b>，否则永远是一串定值，
+            //   读起来像"后端卡死"（用户原话：「是不是后端出问题了，一直不动数值」）。
             int windowBlocks = Math.max(64, texW * scaleBlockPos);
+            float zoomNow = Math.max(0.01f, sandboxRasterizer.zoom());
+            int visibleBlocks = Math.max(32, Math.round(windowBlocks / zoomNow));
             int pillars = Math.max(1, SandboxLod.pillarsForWindow(windowBlocks));
             StringBuilder sb = new StringBuilder(String.format(java.util.Locale.ROOT,
-                    "视野 %d 格 · %d 柱 · 1 柱 = %d 格方块",
-                    windowBlocks, pillars, SandboxLod.STEP_BLOCKS));
+                    "视野 %d 格 · 缩放 %.2f× · %d 柱 · 1 柱 = %d 格方块",
+                    visibleBlocks, zoomNow, pillars, SandboxLod.STEP_BLOCKS));
             // 地图中心（拖动后能看出位置真的变了）
             sb.append(String.format(java.util.Locale.ROOT, " · 中心 %d,%d", centerX, centerZ));
             if (largeSampler != null && largeSampler.data() != null) {
