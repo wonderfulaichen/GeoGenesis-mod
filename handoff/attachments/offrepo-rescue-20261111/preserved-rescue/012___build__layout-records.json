@@ -1,0 +1,1834 @@
+[
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleBoundaryGeometry.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleBoundaryGeometry.java",
+    "bytes": 69410,
+    "sha256": "8C26D068DB30CAD8DB9E2E8528EA19514F096D14A68B61E6B1EE22F8624EDA4E"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleFullMorphLand.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleFullMorphLand.java",
+    "bytes": 43299,
+    "sha256": "026F8A812ADFF0C0D7CD984FF07AAB907AA77B2C89B3260ECF1264583A8B6F42"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleFarBlock.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleFarBlock.java",
+    "bytes": 4949,
+    "sha256": "00564BA6C577A8298D8C7BBECE93821FE7A64873AFC3302D5A9D370F15FD1912"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleFarDiagnose.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleFarDiagnose.java",
+    "bytes": 2002,
+    "sha256": "3DD5EFF0F51B0134E861F4541D55185543EB32B43842E9FCE72D8B99223197E4"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleFullGallery.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleFullGallery.java",
+    "bytes": 11294,
+    "sha256": "E582C40AB1F4BAD8916816B228122EF274BDFF7C2A53AEC32D20862B9E524542"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleGalleryCandidate.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleGalleryCandidate.java",
+    "bytes": 643,
+    "sha256": "29515EFDC676724980F5093368986E1DA9998F7D77D301C1D76BDDFDF39E42C2"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleGalleryProbe.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleGalleryProbe.java",
+    "bytes": 1462,
+    "sha256": "77D7D9E4E8AB4E62BF7E7BCE3F64E65DC1B8F588B77B75E87458089A19FA88CC"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleLandRecipe.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleLandRecipe.java",
+    "bytes": 2173,
+    "sha256": "362E6ED83250D70FE280043C1F2EB4A3D4781D9AC4243EC6DE051C777BF41CDC"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleMorphEngine.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleMorphEngine.java",
+    "bytes": 8765,
+    "sha256": "9ADBD67DC0FC2349394216D6F2811581701DD1A6FD8CE4A91535C724CA595DB4"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleNodeCensus.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleNodeCensus.java",
+    "bytes": 5610,
+    "sha256": "2B55E4EA7F63BF9EF9AC67860F7FDD97F4F7E4ED5086CA1CBF9E4B9826975C3A"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleOceanAssemblyCandidate.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleOceanAssemblyCandidate.java",
+    "bytes": 38602,
+    "sha256": "5E8A0A2C06040819D14DFB64580E231AC2ECF958BA3EC525959134DBBC8AA3C5"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoublePerlinCandidate.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoublePerlinCandidate.java",
+    "bytes": 2336,
+    "sha256": "392EBDE7EE9D59D04A19DB453C96A7C2C128384C54A1C1E5AE3BF0EE869540A2"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleSeamProfile.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleSeamProfile.java",
+    "bytes": 1443,
+    "sha256": "9B26B9050B7B609E6CBF802C0271DD94EF6C0EEC1AE83AAFCF7D6042282A7C8C"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleTerraceCheck.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleTerraceCheck.java",
+    "bytes": 2678,
+    "sha256": "6E6691E0FE250AB8536F2B7C99889FD24127F870930FA6B6063D89C484EF75D7"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleTreeFixed.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DoubleTreeFixed.java",
+    "bytes": 9942,
+    "sha256": "0A1D8CA348494A49DAD95864D5C7BEA27116FD346A706C3CFA9EEB6E725E305B"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DualCoordinateCall.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DualCoordinateCall.java",
+    "bytes": 1477,
+    "sha256": "50805C194E28E7DA8F7B37952DF2571DAB2BFE1BA85C65A3AF520C60EF9421A3"
+  },
+  {
+    "category": "source/candidate",
+    "note": "candidate (BEA0) source, package com.geogenesis.worldgen.terrain.candidate",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\diagnostics\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ActualNodeClosure.java",
+    "dest": "src\\candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ActualNodeClosure.java",
+    "bytes": 5889,
+    "sha256": "D720E5E76B0B77BC416D9E5633AFA1B78424DC69EBCE99025CC0A0E9F4C72FA8"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\BandEdgeProbe.java",
+    "dest": "src\\runner-root\\BandEdgeProbe.java",
+    "bytes": 22486,
+    "sha256": "72F85AFCF7E9CBAD63B199145E5A11CFC6F51FA37AABE6B991A226E95CEBF548"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\BandIndexControl.java",
+    "dest": "src\\runner-root\\BandIndexControl.java",
+    "bytes": 6173,
+    "sha256": "304FFDB9F60D72C30225DFD26D1CC764752E58B3E5101C4850E1D094E11C1F8C"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\BandIndexFuzz.java",
+    "dest": "src\\runner-root\\BandIndexFuzz.java",
+    "bytes": 4439,
+    "sha256": "994A7FD04B68FE70D7A036CD769D2C98FA2F60637BCC3D0B253B9DECC18A0A68"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\BandIndexNegative.java",
+    "dest": "src\\runner-root\\BandIndexNegative.java",
+    "bytes": 5746,
+    "sha256": "1EB7FF300A7493C1522F8B23B4C2911228A7AF7221F303D36E78A9A6B9A2E392"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\EndpointProbe.java",
+    "dest": "src\\runner-root\\EndpointProbe.java",
+    "bytes": 1992,
+    "sha256": "BCD0748DC397BE62D3F73871CB9625D37DA317F0C50182F3CACE175C784AB5D8"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\IsolatedProbe.java",
+    "dest": "src\\runner-root\\IsolatedProbe.java",
+    "bytes": 4381,
+    "sha256": "C7983DA782E17CC0469700ED4BBEA11FBA75E38A43574BC8413E08E492742905"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\LocalSeamOnly.java",
+    "dest": "src\\runner-root\\LocalSeamOnly.java",
+    "bytes": 2925,
+    "sha256": "27125D27FB963E009990587A28D5CC00C80D56D83F9B26718BA8560E0C1355CC"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\MultiSeedBruteProbe.java",
+    "dest": "src\\runner-root\\MultiSeedBruteProbe.java",
+    "bytes": 11154,
+    "sha256": "A0FCA53629F6E37C090505307D0BC097551504927CCCF848FEA048FB2D630160"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\PerfE.java",
+    "dest": "src\\runner-root\\PerfE.java",
+    "bytes": 1634,
+    "sha256": "E779C35283D621CAA1C1B731E4E3D92B0C0DD75605322EAAF3042E1C4EF40F72"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\PerfE2.java",
+    "dest": "src\\runner-root\\PerfE2.java",
+    "bytes": 1300,
+    "sha256": "957F198DCB5DE5CC91797F9DF3241F6BF51CCC0DE1EBE23B5917D582B1CA76C5"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\PerfGeometry.java",
+    "dest": "src\\runner-root\\PerfGeometry.java",
+    "bytes": 950,
+    "sha256": "4768E02F2F4E5FA88256284D0F57D85B885BA42678C745B3567D11ED47CCC1F3"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\SeamForensics.java",
+    "dest": "src\\runner-root\\SeamForensics.java",
+    "bytes": 4557,
+    "sha256": "BEF832EF3B45FE8962634581261FFAD021402B4A5A67741562AB7D7EE5E5B504"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\XFarSeams.java",
+    "dest": "src\\runner-root\\XFarSeams.java",
+    "bytes": 2968,
+    "sha256": "C552AE454C95554F67779F83BB1C7E3372D3E1ACD6CAA514E3A430578FF9B102"
+  },
+  {
+    "category": "source/runner-root",
+    "note": "sandbox runner main (default package), compiled into classes-cand",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\ZSeamExtension.java",
+    "dest": "src\\runner-root\\ZSeamExtension.java",
+    "bytes": 3371,
+    "sha256": "8B1FA8C1AC541D8B1BEBCDF539F608BE1278FDFD9E7ABEA160C1580AA1EAB265"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\AdaptiveWidthCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\AdaptiveWidthCandidate.java",
+    "bytes": 2704,
+    "sha256": "AF9907E1E7E167B911B53D299BC23F3CFFEAF7DEF02E52F89103787CC9C66BA8"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\AdaptiveWidthProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\AdaptiveWidthProbe.java",
+    "bytes": 9669,
+    "sha256": "CAE0DD41C39746BAD8BE6EFA73B104B82D8803375C05CD6FA661420DDF724D06"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\AmplitudeProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\AmplitudeProbe.java",
+    "bytes": 3099,
+    "sha256": "74FD22992D2C2223FB56C8FE57CAA6515F45BB529D32F156B54F4168C8299BE1"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\BadlandsCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\BadlandsCandidate.java",
+    "bytes": 4305,
+    "sha256": "869533763A6BFABFAFF6D15AF93B3BBE2E02CD819B8AA1261F4EE6EAD940357E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\BorderScaleImpactProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\BorderScaleImpactProbe.java",
+    "bytes": 7119,
+    "sha256": "F6CECBA9CB19DD92287CA2B38FD8B237F13313E39156E8F5FD3F5245601197E1"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CliffShareProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CliffShareProbe.java",
+    "bytes": 5697,
+    "sha256": "0F0CAFF57905BBDE5261E9A15674B6BD43302571D321C1881E1EC1210469E154"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastBandProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastBandProbe.java",
+    "bytes": 5737,
+    "sha256": "0FA4C5E353186BB788794B83B581F83A23FA3EE68C137353808B2DE854DC0E2D"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastDistributionAudit.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastDistributionAudit.java",
+    "bytes": 12400,
+    "sha256": "97CB020750403D1EC71C2608AD23BD631A1DA494C10B7A18C12D5B23366B1E33"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastRecipeCatalog.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastRecipeCatalog.java",
+    "bytes": 26700,
+    "sha256": "97B77D7BC453C5B9C25345C037827357F91F52BE5A724B67ECB7D9BF87D70AF4"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastalAssembler.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastalAssembler.java",
+    "bytes": 40927,
+    "sha256": "366163E9F7EF8F2565A298B59B3A1B60B3E68BAD5FDCF2244B0B5B9267FC891E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastalProfileProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoastalProfileProbe.java",
+    "bytes": 4939,
+    "sha256": "94EF2BC34E9ED0FB27370C24E934F80E7DE9F1B72DC9095F27CABD1E80974F0A"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentCoordinateCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentCoordinateCheck.java",
+    "bytes": 28679,
+    "sha256": "EA773FA83924648422167620D7C0DC5127E280EF871294E65C1121B907777F01"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentLayoutCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentLayoutCheck.java",
+    "bytes": 5217,
+    "sha256": "7858BABCC94F7B39EB974D01E1FE58D4547EA26A5556A18646FA246798120D4B"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentLayoutGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentLayoutGallery.java",
+    "bytes": 7177,
+    "sha256": "85BFAF41456ED155B507F74090CB7C0A4AB260B474309CD2D34DE502B48F132D"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentMorphCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentMorphCheck.java",
+    "bytes": 28342,
+    "sha256": "CA62420A002667A1402ECDA5721116490E0978B6F97042CB1A81FC06DE776708"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentMorphGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentMorphGallery.java",
+    "bytes": 6226,
+    "sha256": "3EED4D7D7C8A627DD7923B0075E6633A9DB8F73531BF08F24B18C12DB6466727"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentMorphWorld.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentMorphWorld.java",
+    "bytes": 4567,
+    "sha256": "F707751D2CD6E154CC16DB2B3B2AA1BC265D0868159DD3CC82A01FBCC5D91B31"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentRegionDistribution.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentRegionDistribution.java",
+    "bytes": 4716,
+    "sha256": "067DC94820E5707B68E6717BD80E94B4EE97C9D45F669A30C03A473B92308EC2"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentShallowCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentShallowCheck.java",
+    "bytes": 3378,
+    "sha256": "C412F47C11428DDF5862AA654CB8BAEFEBAFDCD46EF4983499780016ABE8B016"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentShallowGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentShallowGallery.java",
+    "bytes": 5289,
+    "sha256": "EF37A92A566C485DF8F59800B898416DBE16C439C05BF1C2AFC70218A67AD236"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentStreamingCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CoherentStreamingCheck.java",
+    "bytes": 10970,
+    "sha256": "BA0E43EE64A1683F251AB0E61E63C1EEF6E6CA37823E2456CD8BEF83EA289D04"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\CombineCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\CombineCandidate.java",
+    "bytes": 38696,
+    "sha256": "19B72A05C15C7407E53C05441CDE4853178C2C1E58DA42044C62250D28121638"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ContinentEdgeProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ContinentEdgeProbe.java",
+    "bytes": 4236,
+    "sha256": "A883698D36ED823E2A4CBBAE7F00AC0F4A005C91259127613AA0BB018A5C3214"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ContinentFlagProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ContinentFlagProbe.java",
+    "bytes": 1804,
+    "sha256": "59BE4837B0620558C0D19E3A8A330E9AA1D51ADF779CEA1D120F836272EB5870"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ContinentNoiseDistributionProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ContinentNoiseDistributionProbe.java",
+    "bytes": 2231,
+    "sha256": "8F0448CE130E9AD40599DBB664FA3FB25F0B18415BCB71A360655BB70F3F38E7"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ContinentShapeProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ContinentShapeProbe.java",
+    "bytes": 7624,
+    "sha256": "6CE7C1B84DC193C2DBDA1F4E747AA415E88566235584A54DEF464A7818BDACB6"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicDriver.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicDriver.java",
+    "bytes": 8190,
+    "sha256": "C040FCCFC2A90DB89C60EAE10E25F37A9A7DF8DF3576D0E09C92BFC05F3F9530"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicDriverCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicDriverCheck.java",
+    "bytes": 30021,
+    "sha256": "5DF32342B822A361800C8A434E804C9C83343731BDEF92BBD487E57DBE8CA861"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicPropagation.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicPropagation.java",
+    "bytes": 2280,
+    "sha256": "A05FECF0188CFDB979BC30456A7009CB0D7C2C540011F2E63F88C73964C8574F"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicPropagationCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicPropagationCheck.java",
+    "bytes": 41805,
+    "sha256": "27D8D86F728C17BCDC239327C2C4FCD359F6CC3DE10E6C9D11169695539BB780"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicPropagationGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DiagnosticTectonicPropagationGallery.java",
+    "bytes": 9510,
+    "sha256": "6480468452E576208399FA90FD08F395B3063FB8BB32F8E9732F4B6EDBBDE56C"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DistProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DistProbe.java",
+    "bytes": 2483,
+    "sha256": "68CD6961E5B137F9CC556CA643569F9EA2FC2012409C5E209852AD3DD23FA199"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DistProbe2.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DistProbe2.java",
+    "bytes": 2434,
+    "sha256": "E5AB5AA4D1FCEC43CF54D379E0F2F7C69F64F348AEE1B23C790600389BE396EE"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DistanceFieldCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DistanceFieldCheck.java",
+    "bytes": 2633,
+    "sha256": "363D86A76821CA8361B93FE924D8640AE0B0039A6BE38E474AD90F4B07BC5BA9"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\DistanceFixWorldCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\DistanceFixWorldCheck.java",
+    "bytes": 5131,
+    "sha256": "EFFAE8AA88ACC59253E83C82491E8B637B9308D1EA4E4DA62E8381C680DF8174"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\EngineLandFingerprint.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\EngineLandFingerprint.java",
+    "bytes": 1960,
+    "sha256": "407F51068ED730D30BFE46A1AE6898219DE8D65886F01DD8383E287A199F9B9D"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\EngineOceanFingerprint.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\EngineOceanFingerprint.java",
+    "bytes": 1455,
+    "sha256": "879E9B99DCAFBF3A805B4617932A32B861E48CCD0E0A9CB4273934138564C259"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FamilyRangeProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FamilyRangeProbe.java",
+    "bytes": 5470,
+    "sha256": "658D80AC7768562191A5549C233279A3F393561D523267861FA86BA5266A33B1"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FieldDiagnostic.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FieldDiagnostic.java",
+    "bytes": 2681,
+    "sha256": "800D6FE9AA94B95D6D6F07584EF1FB5F4411F3F42D5E4DD58917A54E72C6311E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FlatSpotCauseProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FlatSpotCauseProbe.java",
+    "bytes": 5552,
+    "sha256": "1F52655B5B072C0CEC4A1A227598EC02E79D49548D875811DCB87AD0D7B600AF"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FlatZoneDiagnoseProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FlatZoneDiagnoseProbe.java",
+    "bytes": 5457,
+    "sha256": "42A75C610E94F61838AE679ADE6F3F8A706DF37119690ED6F3C6E711D350D1F1"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FourPairMorphCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FourPairMorphCandidate.java",
+    "bytes": 8608,
+    "sha256": "3208A74385941C5911091EC608772DD5E7138154E96E22DDCC227CE079B391CD"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FourPairMorphProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FourPairMorphProbe.java",
+    "bytes": 9804,
+    "sha256": "D0F12D5E7BF810744C3A7D71F4F4DE43FE11CA317178023E14E4DBF3F203D709"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FullMorphGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FullMorphGallery.java",
+    "bytes": 12299,
+    "sha256": "D3A13C23423A7227784845EFC9467F55B3B5A7316EEB253A7F680F3B19B0AE70"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FullMorphLand.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FullMorphLand.java",
+    "bytes": 34641,
+    "sha256": "83E061AF71E9C0D8C8848E2502E978C2125C7C0BFEAE6DB8197868484CA72734"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\FullMorphLandCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\FullMorphLandCheck.java",
+    "bytes": 51446,
+    "sha256": "94EC1F9969B1A72375370959DBEE0DBDD83987E2A83E80F7B32B405FF3BB048A"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\GeometryCellBound.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\GeometryCellBound.java",
+    "bytes": 16724,
+    "sha256": "D63476B9401E7325703195FE29EE5125CCBF4A57B4F58162384E4329E0310D6D"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\GeometryTransform.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\GeometryTransform.java",
+    "bytes": 12360,
+    "sha256": "27487165B348417060027BE2016D0EF8CD5B75F9161046777739339F23B9E09F"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\GeometryTransformCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\GeometryTransformCheck.java",
+    "bytes": 19109,
+    "sha256": "6CE514AC20EE692B3C0B054CC7DDDAE8E60C1419E709CF5D0E9ADE88BC25FF1B"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\HeightmapExport.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\HeightmapExport.java",
+    "bytes": 5531,
+    "sha256": "8B7A856C29FF620E5D22D3A752DEF9E4301E3736F30D1C4C63D84B004239DA7A"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\HillsCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\HillsCandidate.java",
+    "bytes": 9343,
+    "sha256": "DEC67274B5CB9AFF9509096ADE92CDD03EB314995984A54267B3FDDEE8B8BE3D"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\HillsPlateauMorphCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\HillsPlateauMorphCandidate.java",
+    "bytes": 3135,
+    "sha256": "06116040ADCA6937C851323A4FAD6E36B1DB0916F0F31CB7233AAA4833F21F08"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\HillsPlateauMorphProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\HillsPlateauMorphProbe.java",
+    "bytes": 11448,
+    "sha256": "C1448ACD494C4477149CE39CF9FF05DD74B3257FFEFFCB84D94142813BDEDC8B"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\HillsRegionCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\HillsRegionCandidate.java",
+    "bytes": 3946,
+    "sha256": "A679146DA94E2D7C43F19709463E4DD456EC3154A2C2F43CB889189D2C1241F3"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\JumpProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\JumpProbe.java",
+    "bytes": 2135,
+    "sha256": "9350B490E7E25FFC50C0AEC12C2A8686A3679DDA4FB38080CD1CE7EE6F5BB86E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LandCompositionGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LandCompositionGallery.java",
+    "bytes": 31062,
+    "sha256": "CB4DADBD762D9B2C9B7EF0ED98F11A28E6564BE55859C1BEA04BF16529B5A668"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LandRegionContext.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LandRegionContext.java",
+    "bytes": 2827,
+    "sha256": "64D882A302E99245EC4AC38F73901C4621DBB7C0A5746BD0B4CD59C3C58C3826"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LandRegionContextCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LandRegionContextCheck.java",
+    "bytes": 44162,
+    "sha256": "816A3D798A8B121BC57F510AF4722F617BE05D7ACDEE2B52C810F27DB6F5DDC2"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LandThresholdCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LandThresholdCheck.java",
+    "bytes": 2639,
+    "sha256": "7E023B1E83E20A19586F14ED538058B8312AF403323B91918F357AF1EDCE2CB8"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalBoundaryGeometry.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalBoundaryGeometry.java",
+    "bytes": 64499,
+    "sha256": "594763569387785683C2C4261DEBCC6FB9A904E4E3002A155BEDD317F9A03DE9"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalBoundaryGeometryProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalBoundaryGeometryProbe.java",
+    "bytes": 52362,
+    "sha256": "1F4450334DC7CAB24DB814E7E601706AAD6378ECC88689318EEAF04C3DC75EC4"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphCandidate.java",
+    "bytes": 11088,
+    "sha256": "08C1CB6C32E24FF955334E8850F81EAD31788B95816555AD436CCC8CE9390492"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphCheck.java",
+    "bytes": 26055,
+    "sha256": "CC03B5B3ABD1C8946A556513E91D8F462B7620FE4ED5C39053C00AB711951049"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\LocalThreeMorphProbe.java",
+    "bytes": 9187,
+    "sha256": "06D227FD2CF778E2F3E2C9ADD9A30011F3A97AD9BEEE6D1645B5CDD0122DB335"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\M0DistributionCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\M0DistributionCheck.java",
+    "bytes": 6620,
+    "sha256": "1A74E2179B96D4DE49A50EC8667A40FE70256D8C298AA2E8BDDB6B6C449F9686"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\M0DistributionGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\M0DistributionGallery.java",
+    "bytes": 4107,
+    "sha256": "BE3695A2555F97BEB16C0F0038C92860BE1445B8614BEB8A7B3BB198D872A481"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\M0DistributionSampler.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\M0DistributionSampler.java",
+    "bytes": 3847,
+    "sha256": "94F7933C6C472E107D1FEBD3C5E5ED313449F865DD9E622BC8DE03F17C336045"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\M1TectonicDriverCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\M1TectonicDriverCheck.java",
+    "bytes": 35273,
+    "sha256": "5C6846519EE9290307AA8647F58E8CC6F9219627CC04EAE813E12E3C0BD622F1"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\MaskDistributionProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\MaskDistributionProbe.java",
+    "bytes": 2364,
+    "sha256": "E5F277D6D70D496F64E4E3DFDDDB0120D342EC771B1277B597D4C14A90D7DBFD"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\MorphCatalog.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\MorphCatalog.java",
+    "bytes": 1414,
+    "sha256": "2A9D00887A22FFE3DE516AE47295D896BEC48A621E89171694F0828D4FBE6E9B"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\MorphChoicePerfProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\MorphChoicePerfProbe.java",
+    "bytes": 4046,
+    "sha256": "A5F309CB907FA91BC9146A86C60BDE7FEB52886259AD63A21410CAE95A227CD1"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\MorphInUseProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\MorphInUseProbe.java",
+    "bytes": 2402,
+    "sha256": "C2D2F864CF122CBD2DB584E214C70DBAF0D0CEB7CBECEAF6C79E3D03C8B76907"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\MorphRecipe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\MorphRecipe.java",
+    "bytes": 534,
+    "sha256": "357199661870E57E6FE5B81AE2B85EB30E59A4F7A780C781FDE9661C71B05469"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\MountainsCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\MountainsCandidate.java",
+    "bytes": 7842,
+    "sha256": "C5D595200609171EEF8EAB46EEE33DF2D58A3E14A94A292C0855A46FDD53673E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\MountainsRegionCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\MountainsRegionCandidate.java",
+    "bytes": 3123,
+    "sha256": "8C460E5D368E925D9541CB5D56A5D697670154D9170732107BB95B8CF2CB1BA8"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\NodeMorphEngine.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\NodeMorphEngine.java",
+    "bytes": 9349,
+    "sha256": "4C7859EEFAD90F0EE00CEA2D8659A4B65AA5085D7D004416F23B0436E6FCF561"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\NodeMorphEngineCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\NodeMorphEngineCheck.java",
+    "bytes": 8880,
+    "sha256": "CBDF6144256B526F5068A618D84BB46EA911DD9B9F2341944B2FF792A03C7647"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanAssemblyCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanAssemblyCandidate.java",
+    "bytes": 38493,
+    "sha256": "159E4C3482F4410938A49D964D3163ED97A343B988BAE44CE7530BF8C4BE7F2D"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanMorphConcepts.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanMorphConcepts.java",
+    "bytes": 11996,
+    "sha256": "84EB220BABBA1F9E16E028E4C43D815C68AF1B263425CC6DA4937035AE2E1B36"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanMorphConceptsCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanMorphConceptsCheck.java",
+    "bytes": 14011,
+    "sha256": "BA989AA4C76EC98AF4B248739C5D6D5DD89CCFCAFCA48714038DD473F78D90A6"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanRecipeCatalog.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanRecipeCatalog.java",
+    "bytes": 28842,
+    "sha256": "5ACAF31273FEACB60A256314A74FAC877DB8608D0AB286BE53C1821581EF59E9"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanRecipeCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanRecipeCheck.java",
+    "bytes": 14785,
+    "sha256": "778EA391FAF372C47CA951DECEE98F12C2C7C8F25DFBB8863933E7D6BB71DB4A"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanTransitionCatalog.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanTransitionCatalog.java",
+    "bytes": 20694,
+    "sha256": "283C72CFBCA047FC9271DDF7B60E4DE56451EE4E22A9FB2ECCCB23CCC11477AE"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanTransitionCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanTransitionCheck.java",
+    "bytes": 13621,
+    "sha256": "038B8A8B899EF37FC08F01ABAC304A0B25580EF8321088A2623D487896BC16BB"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanTransitionExport.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OceanTransitionExport.java",
+    "bytes": 6522,
+    "sha256": "8D308D11ADB40253F018648ADFED997597F5322016BC75AF08FAB7E39083B474"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OffsetTransitionCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OffsetTransitionCandidate.java",
+    "bytes": 3124,
+    "sha256": "454F7FF50622CB16000331ADB712A488FF269C893F917624AFF72CB2921E1B3C"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OffsetTransitionProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OffsetTransitionProbe.java",
+    "bytes": 8459,
+    "sha256": "36D8A2F79B9CABDACF6F1476535828027843C691518B358A86565A5869CD0177"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\OrogenFieldProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\OrogenFieldProbe.java",
+    "bytes": 13562,
+    "sha256": "71ACE5776FAC6B5DBBAFA7A8EFC68D3B54CA1B7F526B8F6B323A1ED783EB9F71"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\PartitionProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\PartitionProbe.java",
+    "bytes": 6383,
+    "sha256": "B316DF89056F8A9C1E83F92AEDFD68DCECE07FE21EDA29EA032ED9150CA96756"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\PlainsCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\PlainsCandidate.java",
+    "bytes": 6135,
+    "sha256": "1D476F8A35265337DCB6FD8148DEF304B00F9F2CBAB13E7E83918146DA66E5EF"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\PlateauCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\PlateauCandidate.java",
+    "bytes": 6140,
+    "sha256": "DCB5A75881621630D02DDBFEF34283C7926920EFA1A0D148A4E8543718F5B871"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\PlateauStageDiagnostic.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\PlateauStageDiagnostic.java",
+    "bytes": 2681,
+    "sha256": "A2FA3CF6002F5ECD82AF305F5D95A6A1D6D4FEFB0D6B38323A6C54260046E93B"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ProbeSupport.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ProbeSupport.java",
+    "bytes": 1156,
+    "sha256": "F36E5A7960CEB70FBBDA89A4632ECEF563530AB55F81BA386C650AC9F9EA3C7E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ProvinceContinentField.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ProvinceContinentField.java",
+    "bytes": 10842,
+    "sha256": "50E852D710D44C3722ED4A954569482166EA9BD19392E4FC31D33B5C8C6C130A"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeBoundaryWeights.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeBoundaryWeights.java",
+    "bytes": 3272,
+    "sha256": "FAFF56454C97E97EBE745620DB80E8905868131C7E5B8BCA2DD8D45C1EE150D3"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeJunctionGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeJunctionGallery.java",
+    "bytes": 49123,
+    "sha256": "CA0B4D58700B17C532B49434737911AF1FAB89A40C2660B390A336BC4AFCEEBD"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeJunctionMorph.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeJunctionMorph.java",
+    "bytes": 641,
+    "sha256": "3B72B19006F24A059EBF9FAB33BE16967E44B56A290451B923CE89E00554585B"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeJunctionMorphCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeJunctionMorphCheck.java",
+    "bytes": 61352,
+    "sha256": "B503F5D5CCC73C1C71339F6D63FE4A0250F9C40F1F44571519373FFF5D43BBC6"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeJunctionSceneSearch.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeJunctionSceneSearch.java",
+    "bytes": 51471,
+    "sha256": "80896868CEEB20DE4FDDD285A8C3B0636E084162B3750FC4CC2900A01820AC76"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeMorphCatalog.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeMorphCatalog.java",
+    "bytes": 45081,
+    "sha256": "69D44587074C6047673F381EDA67E2FBCF32EC79F95B808BCB512CDE260DEB98"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeMorphCatalogCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RecipeMorphCatalogCheck.java",
+    "bytes": 73736,
+    "sha256": "EEC45497762CE20E5E710EDC1D4CDE8D044969B1E320D4DD3D5D8B97534C875C"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RefNoise.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RefNoise.java",
+    "bytes": 35913,
+    "sha256": "D3119580254AC96103A9BB580D622C62784334403C44FEFF36C18CA4DE2B0CD2"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionCellTable.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionCellTable.java",
+    "bytes": 10855,
+    "sha256": "F34F16E159B87164902976380D9118D94CDA08542105A1960A3915393D8B6EED"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionCompositionCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionCompositionCandidate.java",
+    "bytes": 9534,
+    "sha256": "1AB01DF3486F2B0ED2B053BA22FEBA40C2131A5DC9FEEE9BAF097165C5C879F8"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionHeightProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionHeightProbe.java",
+    "bytes": 5660,
+    "sha256": "D3DE32EAF0163B1FEF76AF9B47B96CED9DECEA325B3FFE32F879282061D2D2CD"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionPartition.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionPartition.java",
+    "bytes": 7957,
+    "sha256": "5B56AD7887AC8B30D22F8D6C0CAAD960E95BCCDE1522EA6342F724A0C3842092"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionScaleCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionScaleCheck.java",
+    "bytes": 10324,
+    "sha256": "C893453E56A5A2CEAB0985A596C9DDEE9A14E9A37B17D7B2976D879B4EA6D428"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionScaleGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionScaleGallery.java",
+    "bytes": 7109,
+    "sha256": "D3BBF242E38CD31B0797B8AAB524CA77F9786F1A9F0C795C06411596E66AEFE1"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionalMorphGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionalMorphGallery.java",
+    "bytes": 8568,
+    "sha256": "C7D80DAA0F0D6B015A8686B57688126C16D60D43C29D7473526C42B3EA37E08E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionalMorphWorld.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionalMorphWorld.java",
+    "bytes": 7927,
+    "sha256": "1D2682789B5F82B1875065FFCE46802A518597A33F0121C79C1D95A202496FE0"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionalMorphWorldCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\RegionalMorphWorldCheck.java",
+    "bytes": 148726,
+    "sha256": "D038139CC6260FEFAD42A1D4C3EF73C9500B88834E8721E1113B0113D9EB348E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\SandboxInventoryProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\SandboxInventoryProbe.java",
+    "bytes": 95983,
+    "sha256": "0ACECDAC64568E8F06C1342D1B5D9EC8621E84FAC2BDB3950B9EF6D15E21CCA2"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\SeaMorphAudit.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\SeaMorphAudit.java",
+    "bytes": 9448,
+    "sha256": "7A7EECAB5F978B08E9BBD0FC1678AA9DCA896E68CB35EFB33596133B8CC07F84"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\SeaUnlockCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\SeaUnlockCheck.java",
+    "bytes": 7127,
+    "sha256": "02973E0ACB19DD819BE1E57E981103E8E2AF870E94366E671C62161E641FEED8"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\SeabedLayerProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\SeabedLayerProbe.java",
+    "bytes": 5408,
+    "sha256": "05F29A7CA3E330DD4DC542467E426BD5F6BA50343F961AF7B66CC14EC6FA50AC"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\SelectedFamilyProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\SelectedFamilyProbe.java",
+    "bytes": 6630,
+    "sha256": "581B40160DFA93B865AD1AB265C7D982CB92C710265D2E16D5CFEF174B9F351E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowCloseupProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowCloseupProbe.java",
+    "bytes": 6129,
+    "sha256": "00AEEB8DD770F80DE02D47A4B629AB7A17A17C1722B6A511EFBDB23AAF4D0189"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowDetailCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowDetailCheck.java",
+    "bytes": 24709,
+    "sha256": "38EDA3FB4702067BDC6ADA7194535DD804F9535084F5633ACF8F6BF16B757A19"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowRegionMatcher.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowRegionMatcher.java",
+    "bytes": 7952,
+    "sha256": "87025D18F0A02DA60ED35CB9EACF5C53B423B9426469B2C2E7340D20E09B12F4"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowSeaIslandCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowSeaIslandCandidate.java",
+    "bytes": 22615,
+    "sha256": "15149B33D768D850C382B116AAA7540FA9D14F3ABDBFFC8AD3ADBB2370BAB865"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowShelfProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShallowShelfProbe.java",
+    "bytes": 5141,
+    "sha256": "3DB1E4C1E1CE0C5D1F7014DF035F666D7359943DD428ABE57A80B14B466050FA"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShoreAnchorProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\ShoreAnchorProbe.java",
+    "bytes": 5819,
+    "sha256": "6C57BE047B516C443E4AA12E37A259CE39D0364C6346050F409180F843BA0B8E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\SoftSteps.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\SoftSteps.java",
+    "bytes": 4062,
+    "sha256": "3E4AF98DF46F275840CA0C0030ADD8EB9B7F5AEE0D120BEFF03F21679D0A45BA"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\TerrainBlenderCandidate.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\TerrainBlenderCandidate.java",
+    "bytes": 11881,
+    "sha256": "C477A60DD6BEC5D664155F1BFEB560D756FE4A739462E86E3EC36A7541FAA17E"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\TypeCandidateGallery.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\TypeCandidateGallery.java",
+    "bytes": 8400,
+    "sha256": "A15EA0B503FD6A9DB6A7F61C7427BDEB9F032D5AA463A2F05D1FBC9D06C9F98C"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\UnifiedTerrainCatalog.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\UnifiedTerrainCatalog.java",
+    "bytes": 15804,
+    "sha256": "0686A802CA2CBB5D93BCB8CB43CF0B6B1E3AC9E50A92F8D60E5D6D017CEA5B32"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\UnifiedTerrainCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\UnifiedTerrainCheck.java",
+    "bytes": 16749,
+    "sha256": "6E0B0E77C4B740EBB58D2D34751EB425F80B20A0E2B008816E689D7C4A48167D"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\UnifiedTerrainFullCheck.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\UnifiedTerrainFullCheck.java",
+    "bytes": 20278,
+    "sha256": "6436E524DE492B355DB8602BC138414504D32BD4AFB4A3ECDE9BC1BA23E3592F"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\UnifiedWorld.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\UnifiedWorld.java",
+    "bytes": 30051,
+    "sha256": "6B438279F914DA1DE36311F9D32B282A4ADD511201AFEBA74DFB99564234495F"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\WarpMagnitudeProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\WarpMagnitudeProbe.java",
+    "bytes": 1821,
+    "sha256": "241EFACBCFC8CC6B48BA8E55A6B549FDEB2ED639109713A46B6B6A909AA4097C"
+  },
+  {
+    "category": "source/head",
+    "note": "frozen workspace-HEAD float reference (compiled into classes-head)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\src-head\\java\\com\\geogenesis\\worldgen\\terrain\\candidate\\WorldProbe.java",
+    "dest": "src\\head-terrain-candidate\\com\\geogenesis\\worldgen\\terrain\\candidate\\WorldProbe.java",
+    "bytes": 2651,
+    "sha256": "DF0B4A0312AD30C8BDB7CBE340707FCDA36B71913493347F15C4DBEEE2A4B9FF"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\config\\GeoGenesisConfig.java",
+    "bytes": 98602,
+    "sha256": "4488A85119328A6E5874576422C3C87687A44413F80F51945FEB7AAFFF77B690"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\cave\\CaveConfig.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\cave\\CaveConfig.java",
+    "bytes": 10473,
+    "sha256": "5E9ED191BBBF287923201104ACD68ADD510A563D9500DDB85633255544B7AEB2"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\cave\\CaveShape.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\cave\\CaveShape.java",
+    "bytes": 28937,
+    "sha256": "25D3DD3D4414E2F302055FC3B89A00BA38F6C4BB456D5DF7E3C2C285FE8178BF"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Abs.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Abs.java",
+    "bytes": 821,
+    "sha256": "CA943A3B9316AF99C9671A384C6C93391030F02C88360303CBF4152508CBC3AB"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Add.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Add.java",
+    "bytes": 978,
+    "sha256": "0D9EEC7D1901F8347AEB0A65D1975A7EFCCB8D7455476F8F67B29004AB0670B2"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Billow.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Billow.java",
+    "bytes": 934,
+    "sha256": "536C85900E9B224926CDCEF7A3818502A11FDF0DCAE23CA622AC3C590E2BB6DA"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Blend.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Blend.java",
+    "bytes": 1426,
+    "sha256": "922803049965741D64F2FFBB029B3C30CA85202057CD3857232BB69908C54555"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Boost.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Boost.java",
+    "bytes": 1075,
+    "sha256": "251854F74B5665CD4A254E82CEE8323006D00A7D18EE3B8DEB09F816CF642279"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Cache2d.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Cache2d.java",
+    "bytes": 1485,
+    "sha256": "F334F6497C3AC55831E6F127183CB6BC79403B5EFDEEAB4A6982014D78F552AB"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Clamp.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Clamp.java",
+    "bytes": 1410,
+    "sha256": "9575E1A1BF9FADDFD16C711E6C966B20955C89FACC7BDAB15DC40D8BB2348CE2"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Constant.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Constant.java",
+    "bytes": 875,
+    "sha256": "ADA49D8992E3DACF5A6F05A8D1B5133F072819CB3AEA8F5F4790D27E48F68F9D"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Curve.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Curve.java",
+    "bytes": 1064,
+    "sha256": "2624AE70749390940E7B7100C71D01E3DE4E0A2AF0EFFFEBF3FEF981FEE3BA11"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Frequency.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Frequency.java",
+    "bytes": 1256,
+    "sha256": "A26C8618356ABB20D900F7C9AC9465604F55C8B57A770CD0D6E23A3B7AC52468"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Invert.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Invert.java",
+    "bytes": 826,
+    "sha256": "4C8ADD6E8AD61F24D344D27966E733444AF96EAC63E36DD0BE13D7D6013FFCCD"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Map.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Map.java",
+    "bytes": 1869,
+    "sha256": "3E1E07475570E2BF49A5632A19BA9F64D83CB0833BAE1020F7F437F50F5EC2B1"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Max.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Max.java",
+    "bytes": 991,
+    "sha256": "1A084E408A4D3E9E47DBE1207571949CBCC39AF3019FE3D347CB031F228E17D7"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Min.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Min.java",
+    "bytes": 991,
+    "sha256": "99200282B55900889112CA0AA2E1B7DA85D4A0D0A8E0A49B120D226721956400"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Multiply.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Multiply.java",
+    "bytes": 1013,
+    "sha256": "9F5720CEB7C29191C22B849AFCC23F0CE39AC7B90479355057DCEE9AA65FDFB2"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Noise.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Noise.java",
+    "bytes": 1356,
+    "sha256": "D10B5C20AFC5E6709CE719E24679134502968374B1C1FE2738DEC55BA372B4B7"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Noise3.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Noise3.java",
+    "bytes": 1640,
+    "sha256": "7000341E6C43D568B453D48C17B67F6850DFBCA1A8A3399B55B054B5B94B8C40"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\NoiseUtil.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\NoiseUtil.java",
+    "bytes": 3843,
+    "sha256": "938580ECAC5535F1AEBA41534A15072D21545FD4133DD4D6E8F0C5198DA8AAEB"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Noises.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Noises.java",
+    "bytes": 3048,
+    "sha256": "F6C23708FCDC8A6D5D41F214B889BF8AD80DAB43BF29FE7B77207D440AF6C199"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Power.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Power.java",
+    "bytes": 1211,
+    "sha256": "AA19F2A763CB3C5A6903FED88D7ED5B1A114080BB6DBF8BF7F5C93839D106E5D"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Ridge.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Ridge.java",
+    "bytes": 1490,
+    "sha256": "90DFC4996B7BCDEE5FB869441F3B2FBAF867CB0EE9E6B1F327FC747ABF5040F5"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Seed.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Seed.java",
+    "bytes": 1864,
+    "sha256": "A864442ADF301816918F77179BA7B56909DFA36AED7D5F846A4F87565648E2CB"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Seeded.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Seeded.java",
+    "bytes": 584,
+    "sha256": "0FB830AC9D9BF238DA3B59CF404478DCFDAE99B5E560DE581DAA1474D31E42FC"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Simplex.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Simplex.java",
+    "bytes": 2885,
+    "sha256": "1596D120CBBEA9825FA8EDF323E1F338AE6C7781ACF0F73CCEF5E4B94F3ABB46"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Simplex3.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Simplex3.java",
+    "bytes": 5310,
+    "sha256": "8F00994B536D18BB6A8CD1E12263F4EC3818D04CD76CC59A6DB9760C552A4D96"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Steps.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Steps.java",
+    "bytes": 1195,
+    "sha256": "C00C043E07A5D40B32C6F937D6F4A099E200290E6F3F767B74CD4F7048FADDF2"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Terrace.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Terrace.java",
+    "bytes": 1797,
+    "sha256": "F95C48E69308F7DAAA76A35F20DC2AE8866E9E412B7312D9B009A669459E1F68"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\Warp.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\Warp.java",
+    "bytes": 1777,
+    "sha256": "999F137EF8B63D8263CA7C1F9F78D9AD81C585FC4917DD1A8CF6A1529D86724A"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\noise\\White.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\noise\\White.java",
+    "bytes": 1280,
+    "sha256": "662F33F2CC6C3F0E3DB7A0EC866FC8F9CB7CF2597BD2554BED12DDB3D1C23DEB"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\ore\\OreVeins.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\ore\\OreVeins.java",
+    "bytes": 39676,
+    "sha256": "C957B2B80E166729BA82864512D3A95E59439D69323E2262DE497A079C8BE1DE"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\ContinentField.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\ContinentField.java",
+    "bytes": 4217,
+    "sha256": "FDC3A4876F0DCFA87116D82EC2C9D4E7DE432F1F8667A5D7AA74D20DF576F7D4"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\HeightCurve.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\HeightCurve.java",
+    "bytes": 3577,
+    "sha256": "BD805A721860B0C3C070910DE7DDBAF751F96AB5AA9E6724181851490381D7F9"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\MidSplineConfig.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\MidSplineConfig.java",
+    "bytes": 10634,
+    "sha256": "6C8B44BDA9F1DD9F7C8AEF28993BDD0529C48C064A66D1DFB3EC906EA017BBAF"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\OceanSplineConfig.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\OceanSplineConfig.java",
+    "bytes": 9097,
+    "sha256": "5C61CC4C648D22F22566FE2A61E3D2C8FB90C1E0E3F7ACE8E97F232480DA9139"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\RockType.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\RockType.java",
+    "bytes": 3404,
+    "sha256": "9DF254003F35DB94619C63DC3D54C5FDFE48F8F8164D6227FDDB157C5DB402C6"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\SeaBedDetail.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\SeaBedDetail.java",
+    "bytes": 1568,
+    "sha256": "6A9F45CFF9B5874E73BABD7834633A20A427FC97367969E092734634DEA08F38"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\SplineConfig.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\SplineConfig.java",
+    "bytes": 10855,
+    "sha256": "0184984FCAF48CAF1DEDBB85AADA5EAF4AF994C713DB0E0827FA1BA914828860"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\SplineUtil.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\SplineUtil.java",
+    "bytes": 3048,
+    "sha256": "4A0C7B1420E5D16C92F37DB78B82B4C4184DA7F6DBFDA190BAAAE6C89C9844EC"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\TectonicDeformation.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\TectonicDeformation.java",
+    "bytes": 28762,
+    "sha256": "DED23C5B2B5DA248BA806702B240F83A31219CB16B784FF986FB11A800936CB5"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\TectonicField.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\TectonicField.java",
+    "bytes": 65785,
+    "sha256": "CBD6284BC7AB42AA8CE0446A817B7FF9C30B414DB3C4306B604FD006507A769C"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\TerrainCharacterField.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\TerrainCharacterField.java",
+    "bytes": 11623,
+    "sha256": "FB672F361AACF29FFB7B6D8EA0CA97367171A4FCABD8444860648CAA596DE067"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\TerrainClass.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\TerrainClass.java",
+    "bytes": 1819,
+    "sha256": "2F206862483A782D15CF3F24CBFCF0D1255DD125291B8E1B3C9B752C74CF95DF"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\TerrainParams.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\TerrainParams.java",
+    "bytes": 20685,
+    "sha256": "811E77AF2193DE0503C5E39D3684569B9AF5822835369512A2C4984A0ABCB861"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\TypeGenerators.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\TypeGenerators.java",
+    "bytes": 5839,
+    "sha256": "A33ED9C1F898A740C163128D40FCA8E824189517E7C5AF6F5523260EF5CB2F74"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\TypeLandShape.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\TypeLandShape.java",
+    "bytes": 17485,
+    "sha256": "A766C5220F94722D7097076841609651C5601560BE2B0F72D2231E93F3E683EC"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\TypeNoiseProvider.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\TypeNoiseProvider.java",
+    "bytes": 19106,
+    "sha256": "1C4707007D5D91F2DD2995DCEFD6D1F631ED7414A2CE112169BF478B331FE5AB"
+  },
+  {
+    "category": "source/main-closure",
+    "note": "repo src/main/java, reached by the compiled candidate closure (no Minecraft imports)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\java\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline.java",
+    "dest": "src\\main-closure\\com\\geogenesis\\worldgen\\terrain\\UnifiedSpline.java",
+    "bytes": 16355,
+    "sha256": "380AC4CDC5C82816159060626321224A4F3CFE131B80B26ADCC189F9C0C775C2"
+  },
+  {
+    "category": "resource",
+    "note": "repo src/main/resources as frozen on the original classpath",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\resources\\pack.mcmeta",
+    "dest": "resources\\pack.mcmeta",
+    "bytes": 105,
+    "sha256": "69E4B682449054686CB0E5918F13501CD53EA33477D306D9D27F82F0FD9DA3F1"
+  },
+  {
+    "category": "resource",
+    "note": "repo src/main/resources as frozen on the original classpath",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\resources\\assets\\geogenesis\\biome_colors.json",
+    "dest": "resources\\assets\\geogenesis\\biome_colors.json",
+    "bytes": 1245,
+    "sha256": "9E40787F1125524473CD713463C56DF6A4DC97695BD1A3AEB2627F7C89E14162"
+  },
+  {
+    "category": "resource",
+    "note": "repo src/main/resources as frozen on the original classpath",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\resources\\assets\\geogenesis\\colormap_preview\\geogenesis.json",
+    "dest": "resources\\assets\\geogenesis\\colormap_preview\\geogenesis.json",
+    "bytes": 1774,
+    "sha256": "73CB1E2790604DEF0377A8A4242A15125B1F0DE0F85BEAF199863A50214B102D"
+  },
+  {
+    "category": "resource",
+    "note": "repo src/main/resources as frozen on the original classpath",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\resources\\assets\\geogenesis\\lang\\en_us.json",
+    "dest": "resources\\assets\\geogenesis\\lang\\en_us.json",
+    "bytes": 11678,
+    "sha256": "59D7576B3A046F8F1E558F85411EB69C9C3C767266DE3B9AECF6B775D6795107"
+  },
+  {
+    "category": "resource",
+    "note": "repo src/main/resources as frozen on the original classpath",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\resources\\assets\\geogenesis\\lang\\zh_cn.json",
+    "dest": "resources\\assets\\geogenesis\\lang\\zh_cn.json",
+    "bytes": 11752,
+    "sha256": "173558FA7941B11C92FB88E0E335B45DA275B0FAE50046B13E70201EBB8D43A5"
+  },
+  {
+    "category": "resource",
+    "note": "repo src/main/resources as frozen on the original classpath",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\resources\\data\\geogenesis\\worldgen\\world_preset\\geogenesis.json",
+    "dest": "resources\\data\\geogenesis\\worldgen\\world_preset\\geogenesis.json",
+    "bytes": 821,
+    "sha256": "0CBE511460A5D633FC05BC3096FEC867E29B25F67B5BAF47F3B7CD0F8C07C350"
+  },
+  {
+    "category": "resource",
+    "note": "repo src/main/resources as frozen on the original classpath",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\resources\\data\\minecraft\\tags\\worldgen\\world_preset\\normal.json",
+    "dest": "resources\\data\\minecraft\\tags\\worldgen\\world_preset\\normal.json",
+    "bytes": 201,
+    "sha256": "170EF72696FC54FE8BF7C05E0BE0A3BA431B87EC89C288C6EE8ACBC7F62194DD"
+  },
+  {
+    "category": "resource",
+    "note": "repo src/main/resources as frozen on the original classpath",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\src-main\\resources\\META-INF\\mods.toml",
+    "dest": "resources\\META-INF\\mods.toml",
+    "bytes": 5152,
+    "sha256": "6889F8B1FAE7CA9866E08228C7D0A520565F6E0586D804B984672B27CCD599FA"
+  },
+  {
+    "category": "frozen",
+    "note": "exact TOML handed to every probe (config-input.toml of the baseline dir)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\config-input.toml",
+    "dest": "frozen\\config-input.toml",
+    "bytes": 31726,
+    "sha256": "CC5D985F7554E4CFB316708E88373530241B9520E4CE983F745A6DEFCF50C16F"
+  },
+  {
+    "category": "frozen",
+    "note": "exact 115-jar classpath used by the original build/run scripts",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\classpath-jars.txt",
+    "dest": "frozen\\classpath-jars.txt",
+    "bytes": 16074,
+    "sha256": "3ECE824863785E249E537DBECAE7C7AA5DB66898BA13BBE0A61739477D2FB1FF"
+  },
+  {
+    "category": "frozen",
+    "note": "recognised standard-figure metadata (schema 119)",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\baseline-schema119-metadata-20261029.txt",
+    "dest": "frozen\\baseline-schema119-metadata-20261029.txt",
+    "bytes": 4802,
+    "sha256": "55E378B162321629551D6A3DD6CED614CEA210770A0053B0395708316CE5712F"
+  },
+  {
+    "category": "frozen",
+    "note": "baseline PNG reproduction verdict carried by the frozen baseline dir",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline\\verification.json",
+    "dest": "frozen\\verification.json",
+    "bytes": 173,
+    "sha256": "90D73F91269E63C99369DA1786D6053BAC95BB54ACC305DDA31F918AB43BB8FE"
+  },
+  {
+    "category": "license",
+    "note": "FreeTerraForged 1.21.1 root LICENSE (MIT, Copyright (c) 2023 ReTerraForged); covers the FTF-derived candidate sources",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\参考\\sources\\FreeTerraForged-1.21.1\\LICENSE",
+    "dest": "licenses\\FTF-LICENSE-MIT-2023.txt",
+    "bytes": 1070,
+    "sha256": "488AD4A0C0C1351434DED97A038E3D643545ED9ACA9276D364FDEA986C949527"
+  },
+  {
+    "category": "license",
+    "note": "TerraForged 0.3.x root LICENSE (MIT, Copyright (c) 2020 TerraForged), kept verbatim including its 'without restricted' wording",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\参考\\sources\\TerraForged-0.3.x\\LICENSE",
+    "dest": "licenses\\TF-LICENSE-MIT-2020.txt",
+    "bytes": 1067,
+    "sha256": "C1507510B0D8A9C73A90F1C801FEF6E09C20393F13572437B349D8B781097B64"
+  },
+  {
+    "category": "license",
+    "note": "Forge/FML licence shipped with the MDK; does NOT cover GeoGenesis code or third-party candidate sources",
+    "source": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\LICENSE.txt",
+    "dest": "licenses\\Forge-LICENSE.txt",
+    "bytes": 28255,
+    "sha256": "48E4A62003CC02D029DD830AFAFEFD9685CA238C8CC1A8EB7D9F53F226B74FC3"
+  },
+  {
+    "category": "anchor",
+    "note": "canonical float-arm 1401x1401 height array (anchor 7BE04183)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\refs\\canonical-7BE04183-float-heights.f64be",
+    "dest": "anchors\\refs\\canonical-7BE04183-float-heights.f64be",
+    "bytes": 15702408,
+    "sha256": "7BE0418369D097CE107EEEF58B8D02C6776782F1D7FBC6AD6C5E0E5728D7A238"
+  },
+  {
+    "category": "anchor",
+    "note": "merged-commit double-arm height array (anchor 3A7686C5)",
+    "source": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9\\refs\\merged-3A7686C5-double-heights.f64be",
+    "dest": "anchors\\refs\\merged-3A7686C5-double-heights.f64be",
+    "bytes": 15702408,
+    "sha256": "3A7686C5B1804D2BD12641FA25E0A2BAF4E044563C12DBCED3E660CAF294BA18"
+  }
+]

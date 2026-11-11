@@ -1,0 +1,1921 @@
+{
+  "schema": "geogenesis-preserved-candidate/verified-manifest/1.0",
+  "candidate": "BEA0 + seed fix + concurrency cache fix",
+  "frozenAt": "2026-11-03T03:58:18+0800",
+  "note": "This file is written once, last, by _build/make-verified-manifest.py. Do not append to it afterwards: every hash below describes bytes as they were at freeze time, and a later append would make the hashes disagree with the tree.",
+  "relationshipToParent": {
+    "parent": "..",
+    "original": "unchanged snapshot of the temp sandbox; NOT touched by this stage",
+    "src": "unchanged BEA0 source set; NOT touched by this stage",
+    "repro": "unchanged BEA0 build/verify/perf scripts; NOT touched by this stage",
+    "verified": "this directory: BEA0 with the four fixes consolidated in, plus the seed and concurrency probes. It does not import from .. at build time except for ../resources and the frozen jar/classpath records."
+  },
+  "anchors": {
+    "canonical_double_1401": "BEA0A47C14D32FA9E2654C77CC6984999004E137E9E6BDE8A05D3E2B2A393965",
+    "canonical_float_1401": "7BE0418369D097CE107EEEF58B8D02C6776782F1D7FBC6AD6C5E0E5728D7A238",
+    "seed12345_full_1401_forward_and_reverse": "340224069AB0D01CF668988436A8FDE8E9A8270EA3C938C536A5A6CFBC28F0AC",
+    "seed12345_negative_control_seed1": "3D95AB92637954BE9B3ED7DBFF072D9DB1360449362F782DFC0122A21A56C9D5",
+    "cache_values_plain_and_gc": "9D50122B4B09BA281C6D5F53EB11A7B58FCB4D24022333B151E8BF2EEF392CE2",
+    "candidate_source_DoubleBoundaryGeometry": "8C26D068DB30CAD8DB9E2E8528EA19514F096D14A68B61E6B1EE22F8624EDA4E"
+  },
+  "fixes": [
+    {
+      "file": "DoubleFullMorphLand.java",
+      "override_sha256": "5379EC7CAF679141CC0ADD70075B95F208B870D0C916647F46701426ED583E33",
+      "override_bytes": 44701,
+      "consolidated_sha256": "5379EC7CAF679141CC0ADD70075B95F208B870D0C916647F46701426ED583E33",
+      "applied": true,
+      "kind": "overrides src/candidate",
+      "why": "constructor branch only: non-canonical seeds now build through LandRegionContext instead of throwing UnsupportedOperationException. The canonical Gallery branch is unchanged."
+    },
+    {
+      "file": "LandRegionContext.java",
+      "override_sha256": "4CE22BEAB3F5183DB6F8F3896E5862985DF49B13184FC41671F983D2C68C1D43",
+      "override_bytes": 3009,
+      "consolidated_sha256": "4CE22BEAB3F5183DB6F8F3896E5862985DF49B13184FC41671F983D2C68C1D43",
+      "applied": true,
+      "kind": "overrides head-terrain-candidate",
+      "why": "adds LandRegionContext(RecipeMorphCatalog, float) so the seed fix can pass an existing catalog; the (long,float) form is retained and behaves identically."
+    },
+    {
+      "file": "PerlinScalarCache.java",
+      "override_sha256": "5147D3CF7EB720D08C66B3D2F089D63675259EE6D8317DA2C559D8D319F62FF4",
+      "override_bytes": 4449,
+      "consolidated_sha256": "5147D3CF7EB720D08C66B3D2F089D63675259EE6D8317DA2C559D8D319F62FF4",
+      "applied": true,
+      "kind": "new file (no ../src counterpart)",
+      "why": "88 lines; WeakHashMap keyed by RefNoise.Perlin. Replaces a static synchronizedMap(IdentityHashMap) that retained 31 wrappers per constructed DoubleFullMorphLand forever."
+    },
+    {
+      "file": "DoubleTreeFixed.java",
+      "override_sha256": "48A526C038E681DA57E827111575179D70748FC51111038D8AC875EE521F4445",
+      "override_bytes": 9849,
+      "consolidated_sha256": "48A526C038E681DA57E827111575179D70748FC51111038D8AC875EE521F4445",
+      "applied": true,
+      "kind": "overrides src/candidate",
+      "why": "routes the Perlin wrapper lookup through PerlinScalarCache.get(); the compute path is unchanged."
+    }
+  ],
+  "sources": {
+    "counts": {
+      "candidate": 19,
+      "overrides": 4,
+      "head-terrain-candidate": 131,
+      "main-closure": 50,
+      "baseline-arms": 1,
+      "old-geometry": 1,
+      "probes-seed": 3,
+      "probes-conc": 6,
+      "probes-realchain": 1,
+      "probes-memory": 1
+    },
+    "totalBytes": 2951784,
+    "files": {
+      "candidate": [
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/ActualNodeClosure.java",
+          "bytes": 5889,
+          "sha256": "D720E5E76B0B77BC416D9E5633AFA1B78424DC69EBCE99025CC0A0E9F4C72FA8"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry.java",
+          "bytes": 69410,
+          "sha256": "8C26D068DB30CAD8DB9E2E8528EA19514F096D14A68B61E6B1EE22F8624EDA4E"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleFarBlock.java",
+          "bytes": 4949,
+          "sha256": "00564BA6C577A8298D8C7BBECE93821FE7A64873AFC3302D5A9D370F15FD1912"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleFarDiagnose.java",
+          "bytes": 2002,
+          "sha256": "3DD5EFF0F51B0134E861F4541D55185543EB32B43842E9FCE72D8B99223197E4"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleFullGallery.java",
+          "bytes": 11294,
+          "sha256": "E582C40AB1F4BAD8916816B228122EF274BDFF7C2A53AEC32D20862B9E524542"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand.java",
+          "bytes": 44701,
+          "sha256": "5379EC7CAF679141CC0ADD70075B95F208B870D0C916647F46701426ED583E33"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleGalleryCandidate.java",
+          "bytes": 643,
+          "sha256": "29515EFDC676724980F5093368986E1DA9998F7D77D301C1D76BDDFDF39E42C2"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleGalleryProbe.java",
+          "bytes": 1462,
+          "sha256": "77D7D9E4E8AB4E62BF7E7BCE3F64E65DC1B8F588B77B75E87458089A19FA88CC"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleLandRecipe.java",
+          "bytes": 2173,
+          "sha256": "362E6ED83250D70FE280043C1F2EB4A3D4781D9AC4243EC6DE051C777BF41CDC"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleMorphEngine.java",
+          "bytes": 8765,
+          "sha256": "9ADBD67DC0FC2349394216D6F2811581701DD1A6FD8CE4A91535C724CA595DB4"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleNodeCensus.java",
+          "bytes": 5610,
+          "sha256": "2B55E4EA7F63BF9EF9AC67860F7FDD97F4F7E4ED5086CA1CBF9E4B9826975C3A"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate.java",
+          "bytes": 38602,
+          "sha256": "5E8A0A2C06040819D14DFB64580E231AC2ECF958BA3EC525959134DBBC8AA3C5"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoublePerlinCandidate.java",
+          "bytes": 2336,
+          "sha256": "392EBDE7EE9D59D04A19DB453C96A7C2C128384C54A1C1E5AE3BF0EE869540A2"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleSeamProfile.java",
+          "bytes": 1443,
+          "sha256": "9B26B9050B7B609E6CBF802C0271DD94EF6C0EEC1AE83AAFCF7D6042282A7C8C"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleTerraceCheck.java",
+          "bytes": 2678,
+          "sha256": "6E6691E0FE250AB8536F2B7C99889FD24127F870930FA6B6063D89C484EF75D7"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DoubleTreeFixed.java",
+          "bytes": 9849,
+          "sha256": "48A526C038E681DA57E827111575179D70748FC51111038D8AC875EE521F4445"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall.java",
+          "bytes": 1477,
+          "sha256": "50805C194E28E7DA8F7B37952DF2571DAB2BFE1BA85C65A3AF520C60EF9421A3"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/LandRegionContext.java",
+          "bytes": 3009,
+          "sha256": "4CE22BEAB3F5183DB6F8F3896E5862985DF49B13184FC41671F983D2C68C1D43"
+        },
+        {
+          "path": "src/candidate/com/geogenesis/worldgen/terrain/candidate/PerlinScalarCache.java",
+          "bytes": 4449,
+          "sha256": "5147D3CF7EB720D08C66B3D2F089D63675259EE6D8317DA2C559D8D319F62FF4"
+        }
+      ],
+      "overrides": [
+        {
+          "path": "src/overrides/com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand.java",
+          "bytes": 44701,
+          "sha256": "5379EC7CAF679141CC0ADD70075B95F208B870D0C916647F46701426ED583E33"
+        },
+        {
+          "path": "src/overrides/com/geogenesis/worldgen/terrain/candidate/DoubleTreeFixed.java",
+          "bytes": 9849,
+          "sha256": "48A526C038E681DA57E827111575179D70748FC51111038D8AC875EE521F4445"
+        },
+        {
+          "path": "src/overrides/com/geogenesis/worldgen/terrain/candidate/LandRegionContext.java",
+          "bytes": 3009,
+          "sha256": "4CE22BEAB3F5183DB6F8F3896E5862985DF49B13184FC41671F983D2C68C1D43"
+        },
+        {
+          "path": "src/overrides/com/geogenesis/worldgen/terrain/candidate/PerlinScalarCache.java",
+          "bytes": 4449,
+          "sha256": "5147D3CF7EB720D08C66B3D2F089D63675259EE6D8317DA2C559D8D319F62FF4"
+        }
+      ],
+      "head-terrain-candidate": [
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/AdaptiveWidthCandidate.java",
+          "bytes": 2704,
+          "sha256": "AF9907E1E7E167B911B53D299BC23F3CFFEAF7DEF02E52F89103787CC9C66BA8"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/AdaptiveWidthProbe.java",
+          "bytes": 9669,
+          "sha256": "CAE0DD41C39746BAD8BE6EFA73B104B82D8803375C05CD6FA661420DDF724D06"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/AmplitudeProbe.java",
+          "bytes": 3099,
+          "sha256": "74FD22992D2C2223FB56C8FE57CAA6515F45BB529D32F156B54F4168C8299BE1"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/BadlandsCandidate.java",
+          "bytes": 4305,
+          "sha256": "869533763A6BFABFAFF6D15AF93B3BBE2E02CD819B8AA1261F4EE6EAD940357E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/BorderScaleImpactProbe.java",
+          "bytes": 7119,
+          "sha256": "F6CECBA9CB19DD92287CA2B38FD8B237F13313E39156E8F5FD3F5245601197E1"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CliffShareProbe.java",
+          "bytes": 5697,
+          "sha256": "0F0CAFF57905BBDE5261E9A15674B6BD43302571D321C1881E1EC1210469E154"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoastBandProbe.java",
+          "bytes": 5737,
+          "sha256": "0FA4C5E353186BB788794B83B581F83A23FA3EE68C137353808B2DE854DC0E2D"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoastDistributionAudit.java",
+          "bytes": 12400,
+          "sha256": "97CB020750403D1EC71C2608AD23BD631A1DA494C10B7A18C12D5B23366B1E33"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoastRecipeCatalog.java",
+          "bytes": 26700,
+          "sha256": "97B77D7BC453C5B9C25345C037827357F91F52BE5A724B67ECB7D9BF87D70AF4"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoastalAssembler.java",
+          "bytes": 40927,
+          "sha256": "366163E9F7EF8F2565A298B59B3A1B60B3E68BAD5FDCF2244B0B5B9267FC891E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoastalProfileProbe.java",
+          "bytes": 4939,
+          "sha256": "94EF2BC34E9ED0FB27370C24E934F80E7DE9F1B72DC9095F27CABD1E80974F0A"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentCoordinateCheck.java",
+          "bytes": 28679,
+          "sha256": "EA773FA83924648422167620D7C0DC5127E280EF871294E65C1121B907777F01"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentLayoutCheck.java",
+          "bytes": 5217,
+          "sha256": "7858BABCC94F7B39EB974D01E1FE58D4547EA26A5556A18646FA246798120D4B"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentLayoutGallery.java",
+          "bytes": 7177,
+          "sha256": "85BFAF41456ED155B507F74090CB7C0A4AB260B474309CD2D34DE502B48F132D"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentMorphCheck.java",
+          "bytes": 28342,
+          "sha256": "CA62420A002667A1402ECDA5721116490E0978B6F97042CB1A81FC06DE776708"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentMorphGallery.java",
+          "bytes": 6226,
+          "sha256": "3EED4D7D7C8A627DD7923B0075E6633A9DB8F73531BF08F24B18C12DB6466727"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentMorphWorld.java",
+          "bytes": 4567,
+          "sha256": "F707751D2CD6E154CC16DB2B3B2AA1BC265D0868159DD3CC82A01FBCC5D91B31"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentRegionDistribution.java",
+          "bytes": 4716,
+          "sha256": "067DC94820E5707B68E6717BD80E94B4EE97C9D45F669A30C03A473B92308EC2"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentShallowCheck.java",
+          "bytes": 3378,
+          "sha256": "C412F47C11428DDF5862AA654CB8BAEFEBAFDCD46EF4983499780016ABE8B016"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentShallowGallery.java",
+          "bytes": 5289,
+          "sha256": "EF37A92A566C485DF8F59800B898416DBE16C439C05BF1C2AFC70218A67AD236"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CoherentStreamingCheck.java",
+          "bytes": 10970,
+          "sha256": "BA0E43EE64A1683F251AB0E61E63C1EEF6E6CA37823E2456CD8BEF83EA289D04"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/CombineCandidate.java",
+          "bytes": 38696,
+          "sha256": "19B72A05C15C7407E53C05441CDE4853178C2C1E58DA42044C62250D28121638"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ContinentEdgeProbe.java",
+          "bytes": 4236,
+          "sha256": "A883698D36ED823E2A4CBBAE7F00AC0F4A005C91259127613AA0BB018A5C3214"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ContinentFlagProbe.java",
+          "bytes": 1804,
+          "sha256": "59BE4837B0620558C0D19E3A8A330E9AA1D51ADF779CEA1D120F836272EB5870"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ContinentNoiseDistributionProbe.java",
+          "bytes": 2231,
+          "sha256": "8F0448CE130E9AD40599DBB664FA3FB25F0B18415BCB71A360655BB70F3F38E7"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ContinentShapeProbe.java",
+          "bytes": 7624,
+          "sha256": "6CE7C1B84DC193C2DBDA1F4E747AA415E88566235584A54DEF464A7818BDACB6"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriver.java",
+          "bytes": 8190,
+          "sha256": "C040FCCFC2A90DB89C60EAE10E25F37A9A7DF8DF3576D0E09C92BFC05F3F9530"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriverCheck.java",
+          "bytes": 30021,
+          "sha256": "5DF32342B822A361800C8A434E804C9C83343731BDEF92BBD487E57DBE8CA861"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagation.java",
+          "bytes": 2280,
+          "sha256": "A05FECF0188CFDB979BC30456A7009CB0D7C2C540011F2E63F88C73964C8574F"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationCheck.java",
+          "bytes": 41805,
+          "sha256": "27D8D86F728C17BCDC239327C2C4FCD359F6CC3DE10E6C9D11169695539BB780"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationGallery.java",
+          "bytes": 9510,
+          "sha256": "6480468452E576208399FA90FD08F395B3063FB8BB32F8E9732F4B6EDBBDE56C"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DistProbe.java",
+          "bytes": 2483,
+          "sha256": "68CD6961E5B137F9CC556CA643569F9EA2FC2012409C5E209852AD3DD23FA199"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DistProbe2.java",
+          "bytes": 2434,
+          "sha256": "E5AB5AA4D1FCEC43CF54D379E0F2F7C69F64F348AEE1B23C790600389BE396EE"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DistanceFieldCheck.java",
+          "bytes": 2633,
+          "sha256": "363D86A76821CA8361B93FE924D8640AE0B0039A6BE38E474AD90F4B07BC5BA9"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/DistanceFixWorldCheck.java",
+          "bytes": 5131,
+          "sha256": "EFFAE8AA88ACC59253E83C82491E8B637B9308D1EA4E4DA62E8381C680DF8174"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/EngineLandFingerprint.java",
+          "bytes": 1960,
+          "sha256": "407F51068ED730D30BFE46A1AE6898219DE8D65886F01DD8383E287A199F9B9D"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/EngineOceanFingerprint.java",
+          "bytes": 1455,
+          "sha256": "879E9B99DCAFBF3A805B4617932A32B861E48CCD0E0A9CB4273934138564C259"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FamilyRangeProbe.java",
+          "bytes": 5470,
+          "sha256": "658D80AC7768562191A5549C233279A3F393561D523267861FA86BA5266A33B1"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FieldDiagnostic.java",
+          "bytes": 2681,
+          "sha256": "800D6FE9AA94B95D6D6F07584EF1FB5F4411F3F42D5E4DD58917A54E72C6311E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FlatSpotCauseProbe.java",
+          "bytes": 5552,
+          "sha256": "1F52655B5B072C0CEC4A1A227598EC02E79D49548D875811DCB87AD0D7B600AF"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FlatZoneDiagnoseProbe.java",
+          "bytes": 5457,
+          "sha256": "42A75C610E94F61838AE679ADE6F3F8A706DF37119690ED6F3C6E711D350D1F1"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FourPairMorphCandidate.java",
+          "bytes": 8608,
+          "sha256": "3208A74385941C5911091EC608772DD5E7138154E96E22DDCC227CE079B391CD"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FourPairMorphProbe.java",
+          "bytes": 9804,
+          "sha256": "D0F12D5E7BF810744C3A7D71F4F4DE43FE11CA317178023E14E4DBF3F203D709"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FullMorphGallery.java",
+          "bytes": 12299,
+          "sha256": "D3A13C23423A7227784845EFC9467F55B3B5A7316EEB253A7F680F3B19B0AE70"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FullMorphLand.java",
+          "bytes": 34641,
+          "sha256": "83E061AF71E9C0D8C8848E2502E978C2125C7C0BFEAE6DB8197868484CA72734"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/FullMorphLandCheck.java",
+          "bytes": 51446,
+          "sha256": "94EC1F9969B1A72375370959DBEE0DBDD83987E2A83E80F7B32B405FF3BB048A"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/GeometryCellBound.java",
+          "bytes": 16724,
+          "sha256": "D63476B9401E7325703195FE29EE5125CCBF4A57B4F58162384E4329E0310D6D"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/GeometryTransform.java",
+          "bytes": 12360,
+          "sha256": "27487165B348417060027BE2016D0EF8CD5B75F9161046777739339F23B9E09F"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/GeometryTransformCheck.java",
+          "bytes": 19109,
+          "sha256": "6CE514AC20EE692B3C0B054CC7DDDAE8E60C1419E709CF5D0E9ADE88BC25FF1B"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/HeightmapExport.java",
+          "bytes": 5531,
+          "sha256": "8B7A856C29FF620E5D22D3A752DEF9E4301E3736F30D1C4C63D84B004239DA7A"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/HillsCandidate.java",
+          "bytes": 9343,
+          "sha256": "DEC67274B5CB9AFF9509096ADE92CDD03EB314995984A54267B3FDDEE8B8BE3D"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/HillsPlateauMorphCandidate.java",
+          "bytes": 3135,
+          "sha256": "06116040ADCA6937C851323A4FAD6E36B1DB0916F0F31CB7233AAA4833F21F08"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/HillsPlateauMorphProbe.java",
+          "bytes": 11448,
+          "sha256": "C1448ACD494C4477149CE39CF9FF05DD74B3257FFEFFCB84D94142813BDEDC8B"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/HillsRegionCandidate.java",
+          "bytes": 3946,
+          "sha256": "A679146DA94E2D7C43F19709463E4DD456EC3154A2C2F43CB889189D2C1241F3"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/JumpProbe.java",
+          "bytes": 2135,
+          "sha256": "9350B490E7E25FFC50C0AEC12C2A8686A3679DDA4FB38080CD1CE7EE6F5BB86E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LandCompositionGallery.java",
+          "bytes": 31062,
+          "sha256": "CB4DADBD762D9B2C9B7EF0ED98F11A28E6564BE55859C1BEA04BF16529B5A668"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LandRegionContext.java",
+          "bytes": 2827,
+          "sha256": "64D882A302E99245EC4AC38F73901C4621DBB7C0A5746BD0B4CD59C3C58C3826"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck.java",
+          "bytes": 44162,
+          "sha256": "816A3D798A8B121BC57F510AF4722F617BE05D7ACDEE2B52C810F27DB6F5DDC2"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LandThresholdCheck.java",
+          "bytes": 2639,
+          "sha256": "7E023B1E83E20A19586F14ED538058B8312AF403323B91918F357AF1EDCE2CB8"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry.java",
+          "bytes": 64499,
+          "sha256": "594763569387785683C2C4261DEBCC6FB9A904E4E3002A155BEDD317F9A03DE9"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometryProbe.java",
+          "bytes": 52362,
+          "sha256": "1F4450334DC7CAB24DB814E7E601706AAD6378ECC88689318EEAF04C3DC75EC4"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphCandidate.java",
+          "bytes": 11088,
+          "sha256": "08C1CB6C32E24FF955334E8850F81EAD31788B95816555AD436CCC8CE9390492"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphCheck.java",
+          "bytes": 26055,
+          "sha256": "CC03B5B3ABD1C8946A556513E91D8F462B7620FE4ED5C39053C00AB711951049"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphProbe.java",
+          "bytes": 9187,
+          "sha256": "06D227FD2CF778E2F3E2C9ADD9A30011F3A97AD9BEEE6D1645B5CDD0122DB335"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/M0DistributionCheck.java",
+          "bytes": 6620,
+          "sha256": "1A74E2179B96D4DE49A50EC8667A40FE70256D8C298AA2E8BDDB6B6C449F9686"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/M0DistributionGallery.java",
+          "bytes": 4107,
+          "sha256": "BE3695A2555F97BEB16C0F0038C92860BE1445B8614BEB8A7B3BB198D872A481"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/M0DistributionSampler.java",
+          "bytes": 3847,
+          "sha256": "94F7933C6C472E107D1FEBD3C5E5ED313449F865DD9E622BC8DE03F17C336045"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck.java",
+          "bytes": 35273,
+          "sha256": "5C6846519EE9290307AA8647F58E8CC6F9219627CC04EAE813E12E3C0BD622F1"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/MaskDistributionProbe.java",
+          "bytes": 2364,
+          "sha256": "E5F277D6D70D496F64E4E3DFDDDB0120D342EC771B1277B597D4C14A90D7DBFD"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/MorphCatalog.java",
+          "bytes": 1414,
+          "sha256": "2A9D00887A22FFE3DE516AE47295D896BEC48A621E89171694F0828D4FBE6E9B"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/MorphChoicePerfProbe.java",
+          "bytes": 4046,
+          "sha256": "A5F309CB907FA91BC9146A86C60BDE7FEB52886259AD63A21410CAE95A227CD1"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/MorphInUseProbe.java",
+          "bytes": 2402,
+          "sha256": "C2D2F864CF122CBD2DB584E214C70DBAF0D0CEB7CBECEAF6C79E3D03C8B76907"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/MorphRecipe.java",
+          "bytes": 534,
+          "sha256": "357199661870E57E6FE5B81AE2B85EB30E59A4F7A780C781FDE9661C71B05469"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/MountainsCandidate.java",
+          "bytes": 7842,
+          "sha256": "C5D595200609171EEF8EAB46EEE33DF2D58A3E14A94A292C0855A46FDD53673E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/MountainsRegionCandidate.java",
+          "bytes": 3123,
+          "sha256": "8C460E5D368E925D9541CB5D56A5D697670154D9170732107BB95B8CF2CB1BA8"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/NodeMorphEngine.java",
+          "bytes": 9349,
+          "sha256": "4C7859EEFAD90F0EE00CEA2D8659A4B65AA5085D7D004416F23B0436E6FCF561"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/NodeMorphEngineCheck.java",
+          "bytes": 8880,
+          "sha256": "CBDF6144256B526F5068A618D84BB46EA911DD9B9F2341944B2FF792A03C7647"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate.java",
+          "bytes": 38493,
+          "sha256": "159E4C3482F4410938A49D964D3163ED97A343B988BAE44CE7530BF8C4BE7F2D"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OceanMorphConcepts.java",
+          "bytes": 11996,
+          "sha256": "84EB220BABBA1F9E16E028E4C43D815C68AF1B263425CC6DA4937035AE2E1B36"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OceanMorphConceptsCheck.java",
+          "bytes": 14011,
+          "sha256": "BA989AA4C76EC98AF4B248739C5D6D5DD89CCFCAFCA48714038DD473F78D90A6"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OceanRecipeCatalog.java",
+          "bytes": 28842,
+          "sha256": "5ACAF31273FEACB60A256314A74FAC877DB8608D0AB286BE53C1821581EF59E9"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OceanRecipeCheck.java",
+          "bytes": 14785,
+          "sha256": "778EA391FAF372C47CA951DECEE98F12C2C7C8F25DFBB8863933E7D6BB71DB4A"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OceanTransitionCatalog.java",
+          "bytes": 20694,
+          "sha256": "283C72CFBCA047FC9271DDF7B60E4DE56451EE4E22A9FB2ECCCB23CCC11477AE"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OceanTransitionCheck.java",
+          "bytes": 13621,
+          "sha256": "038B8A8B899EF37FC08F01ABAC304A0B25580EF8321088A2623D487896BC16BB"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OceanTransitionExport.java",
+          "bytes": 6522,
+          "sha256": "8D308D11ADB40253F018648ADFED997597F5322016BC75AF08FAB7E39083B474"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OffsetTransitionCandidate.java",
+          "bytes": 3124,
+          "sha256": "454F7FF50622CB16000331ADB712A488FF269C893F917624AFF72CB2921E1B3C"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OffsetTransitionProbe.java",
+          "bytes": 8459,
+          "sha256": "36D8A2F79B9CABDACF6F1476535828027843C691518B358A86565A5869CD0177"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/OrogenFieldProbe.java",
+          "bytes": 13562,
+          "sha256": "71ACE5776FAC6B5DBBAFA7A8EFC68D3B54CA1B7F526B8F6B323A1ED783EB9F71"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/PartitionProbe.java",
+          "bytes": 6383,
+          "sha256": "B316DF89056F8A9C1E83F92AEDFD68DCECE07FE21EDA29EA032ED9150CA96756"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/PlainsCandidate.java",
+          "bytes": 6135,
+          "sha256": "1D476F8A35265337DCB6FD8148DEF304B00F9F2CBAB13E7E83918146DA66E5EF"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/PlateauCandidate.java",
+          "bytes": 6140,
+          "sha256": "DCB5A75881621630D02DDBFEF34283C7926920EFA1A0D148A4E8543718F5B871"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/PlateauStageDiagnostic.java",
+          "bytes": 2681,
+          "sha256": "A2FA3CF6002F5ECD82AF305F5D95A6A1D6D4FEFB0D6B38323A6C54260046E93B"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ProbeSupport.java",
+          "bytes": 1156,
+          "sha256": "F36E5A7960CEB70FBBDA89A4632ECEF563530AB55F81BA386C650AC9F9EA3C7E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ProvinceContinentField.java",
+          "bytes": 10842,
+          "sha256": "50E852D710D44C3722ED4A954569482166EA9BD19392E4FC31D33B5C8C6C130A"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RecipeBoundaryWeights.java",
+          "bytes": 3272,
+          "sha256": "FAFF56454C97E97EBE745620DB80E8905868131C7E5B8BCA2DD8D45C1EE150D3"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RecipeJunctionGallery.java",
+          "bytes": 49123,
+          "sha256": "CA0B4D58700B17C532B49434737911AF1FAB89A40C2660B390A336BC4AFCEEBD"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RecipeJunctionMorph.java",
+          "bytes": 641,
+          "sha256": "3B72B19006F24A059EBF9FAB33BE16967E44B56A290451B923CE89E00554585B"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RecipeJunctionMorphCheck.java",
+          "bytes": 61352,
+          "sha256": "B503F5D5CCC73C1C71339F6D63FE4A0250F9C40F1F44571519373FFF5D43BBC6"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RecipeJunctionSceneSearch.java",
+          "bytes": 51471,
+          "sha256": "80896868CEEB20DE4FDDD285A8C3B0636E084162B3750FC4CC2900A01820AC76"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalog.java",
+          "bytes": 45081,
+          "sha256": "69D44587074C6047673F381EDA67E2FBCF32EC79F95B808BCB512CDE260DEB98"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalogCheck.java",
+          "bytes": 73736,
+          "sha256": "EEC45497762CE20E5E710EDC1D4CDE8D044969B1E320D4DD3D5D8B97534C875C"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RefNoise.java",
+          "bytes": 35913,
+          "sha256": "D3119580254AC96103A9BB580D622C62784334403C44FEFF36C18CA4DE2B0CD2"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionCellTable.java",
+          "bytes": 10855,
+          "sha256": "F34F16E159B87164902976380D9118D94CDA08542105A1960A3915393D8B6EED"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionCompositionCandidate.java",
+          "bytes": 9534,
+          "sha256": "1AB01DF3486F2B0ED2B053BA22FEBA40C2131A5DC9FEEE9BAF097165C5C879F8"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionHeightProbe.java",
+          "bytes": 5660,
+          "sha256": "D3DE32EAF0163B1FEF76AF9B47B96CED9DECEA325B3FFE32F879282061D2D2CD"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionPartition.java",
+          "bytes": 7957,
+          "sha256": "5B56AD7887AC8B30D22F8D6C0CAAD960E95BCCDE1522EA6342F724A0C3842092"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionScaleCheck.java",
+          "bytes": 10324,
+          "sha256": "C893453E56A5A2CEAB0985A596C9DDEE9A14E9A37B17D7B2976D879B4EA6D428"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionScaleGallery.java",
+          "bytes": 7109,
+          "sha256": "D3BBF242E38CD31B0797B8AAB524CA77F9786F1A9F0C795C06411596E66AEFE1"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionalMorphGallery.java",
+          "bytes": 8568,
+          "sha256": "C7D80DAA0F0D6B015A8686B57688126C16D60D43C29D7473526C42B3EA37E08E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorld.java",
+          "bytes": 7927,
+          "sha256": "1D2682789B5F82B1875065FFCE46802A518597A33F0121C79C1D95A202496FE0"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck.java",
+          "bytes": 148726,
+          "sha256": "D038139CC6260FEFAD42A1D4C3EF73C9500B88834E8721E1113B0113D9EB348E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe.java",
+          "bytes": 95983,
+          "sha256": "0ACECDAC64568E8F06C1342D1B5D9EC8621E84FAC2BDB3950B9EF6D15E21CCA2"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/SeaMorphAudit.java",
+          "bytes": 9448,
+          "sha256": "7A7EECAB5F978B08E9BBD0FC1678AA9DCA896E68CB35EFB33596133B8CC07F84"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/SeaUnlockCheck.java",
+          "bytes": 7127,
+          "sha256": "02973E0ACB19DD819BE1E57E981103E8E2AF870E94366E671C62161E641FEED8"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/SeabedLayerProbe.java",
+          "bytes": 5408,
+          "sha256": "05F29A7CA3E330DD4DC542467E426BD5F6BA50343F961AF7B66CC14EC6FA50AC"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/SelectedFamilyProbe.java",
+          "bytes": 6630,
+          "sha256": "581B40160DFA93B865AD1AB265C7D982CB92C710265D2E16D5CFEF174B9F351E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ShallowCloseupProbe.java",
+          "bytes": 6129,
+          "sha256": "00AEEB8DD770F80DE02D47A4B629AB7A17A17C1722B6A511EFBDB23AAF4D0189"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ShallowDetailCheck.java",
+          "bytes": 24709,
+          "sha256": "38EDA3FB4702067BDC6ADA7194535DD804F9535084F5633ACF8F6BF16B757A19"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ShallowRegionMatcher.java",
+          "bytes": 7952,
+          "sha256": "87025D18F0A02DA60ED35CB9EACF5C53B423B9426469B2C2E7340D20E09B12F4"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ShallowSeaIslandCandidate.java",
+          "bytes": 22615,
+          "sha256": "15149B33D768D850C382B116AAA7540FA9D14F3ABDBFFC8AD3ADBB2370BAB865"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ShallowShelfProbe.java",
+          "bytes": 5141,
+          "sha256": "3DB1E4C1E1CE0C5D1F7014DF035F666D7359943DD428ABE57A80B14B466050FA"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/ShoreAnchorProbe.java",
+          "bytes": 5819,
+          "sha256": "6C57BE047B516C443E4AA12E37A259CE39D0364C6346050F409180F843BA0B8E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/SoftSteps.java",
+          "bytes": 4062,
+          "sha256": "3E4AF98DF46F275840CA0C0030ADD8EB9B7F5AEE0D120BEFF03F21679D0A45BA"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/TerrainBlenderCandidate.java",
+          "bytes": 11881,
+          "sha256": "C477A60DD6BEC5D664155F1BFEB560D756FE4A739462E86E3EC36A7541FAA17E"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/TypeCandidateGallery.java",
+          "bytes": 8400,
+          "sha256": "A15EA0B503FD6A9DB6A7F61C7427BDEB9F032D5AA463A2F05D1FBC9D06C9F98C"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/UnifiedTerrainCatalog.java",
+          "bytes": 15804,
+          "sha256": "0686A802CA2CBB5D93BCB8CB43CF0B6B1E3AC9E50A92F8D60E5D6D017CEA5B32"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/UnifiedTerrainCheck.java",
+          "bytes": 16749,
+          "sha256": "6E0B0E77C4B740EBB58D2D34751EB425F80B20A0E2B008816E689D7C4A48167D"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/UnifiedTerrainFullCheck.java",
+          "bytes": 20278,
+          "sha256": "6436E524DE492B355DB8602BC138414504D32BD4AFB4A3ECDE9BC1BA23E3592F"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/UnifiedWorld.java",
+          "bytes": 30051,
+          "sha256": "6B438279F914DA1DE36311F9D32B282A4ADD511201AFEBA74DFB99564234495F"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/WarpMagnitudeProbe.java",
+          "bytes": 1821,
+          "sha256": "241EFACBCFC8CC6B48BA8E55A6B549FDEB2ED639109713A46B6B6A909AA4097C"
+        },
+        {
+          "path": "src/head-terrain-candidate/com/geogenesis/worldgen/terrain/candidate/WorldProbe.java",
+          "bytes": 2651,
+          "sha256": "DF0B4A0312AD30C8BDB7CBE340707FCDA36B71913493347F15C4DBEEE2A4B9FF"
+        }
+      ],
+      "main-closure": [
+        {
+          "path": "src/main-closure/com/geogenesis/config/GeoGenesisConfig.java",
+          "bytes": 98602,
+          "sha256": "4488A85119328A6E5874576422C3C87687A44413F80F51945FEB7AAFFF77B690"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/cave/CaveConfig.java",
+          "bytes": 10473,
+          "sha256": "5E9ED191BBBF287923201104ACD68ADD510A563D9500DDB85633255544B7AEB2"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/cave/CaveShape.java",
+          "bytes": 28937,
+          "sha256": "25D3DD3D4414E2F302055FC3B89A00BA38F6C4BB456D5DF7E3C2C285FE8178BF"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Abs.java",
+          "bytes": 821,
+          "sha256": "CA943A3B9316AF99C9671A384C6C93391030F02C88360303CBF4152508CBC3AB"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Add.java",
+          "bytes": 978,
+          "sha256": "0D9EEC7D1901F8347AEB0A65D1975A7EFCCB8D7455476F8F67B29004AB0670B2"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Billow.java",
+          "bytes": 934,
+          "sha256": "536C85900E9B224926CDCEF7A3818502A11FDF0DCAE23CA622AC3C590E2BB6DA"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Blend.java",
+          "bytes": 1426,
+          "sha256": "922803049965741D64F2FFBB029B3C30CA85202057CD3857232BB69908C54555"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Boost.java",
+          "bytes": 1075,
+          "sha256": "251854F74B5665CD4A254E82CEE8323006D00A7D18EE3B8DEB09F816CF642279"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Cache2d.java",
+          "bytes": 1485,
+          "sha256": "F334F6497C3AC55831E6F127183CB6BC79403B5EFDEEAB4A6982014D78F552AB"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Clamp.java",
+          "bytes": 1410,
+          "sha256": "9575E1A1BF9FADDFD16C711E6C966B20955C89FACC7BDAB15DC40D8BB2348CE2"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Constant.java",
+          "bytes": 875,
+          "sha256": "ADA49D8992E3DACF5A6F05A8D1B5133F072819CB3AEA8F5F4790D27E48F68F9D"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Curve.java",
+          "bytes": 1064,
+          "sha256": "2624AE70749390940E7B7100C71D01E3DE4E0A2AF0EFFFEBF3FEF981FEE3BA11"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Frequency.java",
+          "bytes": 1256,
+          "sha256": "A26C8618356ABB20D900F7C9AC9465604F55C8B57A770CD0D6E23A3B7AC52468"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Invert.java",
+          "bytes": 826,
+          "sha256": "4C8ADD6E8AD61F24D344D27966E733444AF96EAC63E36DD0BE13D7D6013FFCCD"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Map.java",
+          "bytes": 1869,
+          "sha256": "3E1E07475570E2BF49A5632A19BA9F64D83CB0833BAE1020F7F437F50F5EC2B1"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Max.java",
+          "bytes": 991,
+          "sha256": "1A084E408A4D3E9E47DBE1207571949CBCC39AF3019FE3D347CB031F228E17D7"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Min.java",
+          "bytes": 991,
+          "sha256": "99200282B55900889112CA0AA2E1B7DA85D4A0D0A8E0A49B120D226721956400"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Multiply.java",
+          "bytes": 1013,
+          "sha256": "9F5720CEB7C29191C22B849AFCC23F0CE39AC7B90479355057DCEE9AA65FDFB2"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Noise.java",
+          "bytes": 1356,
+          "sha256": "D10B5C20AFC5E6709CE719E24679134502968374B1C1FE2738DEC55BA372B4B7"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Noise3.java",
+          "bytes": 1640,
+          "sha256": "7000341E6C43D568B453D48C17B67F6850DFBCA1A8A3399B55B054B5B94B8C40"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/NoiseUtil.java",
+          "bytes": 3843,
+          "sha256": "938580ECAC5535F1AEBA41534A15072D21545FD4133DD4D6E8F0C5198DA8AAEB"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Noises.java",
+          "bytes": 3048,
+          "sha256": "F6C23708FCDC8A6D5D41F214B889BF8AD80DAB43BF29FE7B77207D440AF6C199"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Power.java",
+          "bytes": 1211,
+          "sha256": "AA19F2A763CB3C5A6903FED88D7ED5B1A114080BB6DBF8BF7F5C93839D106E5D"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Ridge.java",
+          "bytes": 1490,
+          "sha256": "90DFC4996B7BCDEE5FB869441F3B2FBAF867CB0EE9E6B1F327FC747ABF5040F5"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Seed.java",
+          "bytes": 1864,
+          "sha256": "A864442ADF301816918F77179BA7B56909DFA36AED7D5F846A4F87565648E2CB"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Seeded.java",
+          "bytes": 584,
+          "sha256": "0FB830AC9D9BF238DA3B59CF404478DCFDAE99B5E560DE581DAA1474D31E42FC"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Simplex.java",
+          "bytes": 2885,
+          "sha256": "1596D120CBBEA9825FA8EDF323E1F338AE6C7781ACF0F73CCEF5E4B94F3ABB46"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Simplex3.java",
+          "bytes": 5310,
+          "sha256": "8F00994B536D18BB6A8CD1E12263F4EC3818D04CD76CC59A6DB9760C552A4D96"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Steps.java",
+          "bytes": 1195,
+          "sha256": "C00C043E07A5D40B32C6F937D6F4A099E200290E6F3F767B74CD4F7048FADDF2"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Terrace.java",
+          "bytes": 1797,
+          "sha256": "F95C48E69308F7DAAA76A35F20DC2AE8866E9E412B7312D9B009A669459E1F68"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/Warp.java",
+          "bytes": 1777,
+          "sha256": "999F137EF8B63D8263CA7C1F9F78D9AD81C585FC4917DD1A8CF6A1529D86724A"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/noise/White.java",
+          "bytes": 1280,
+          "sha256": "662F33F2CC6C3F0E3DB7A0EC866FC8F9CB7CF2597BD2554BED12DDB3D1C23DEB"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/ore/OreVeins.java",
+          "bytes": 39676,
+          "sha256": "C957B2B80E166729BA82864512D3A95E59439D69323E2262DE497A079C8BE1DE"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/ContinentField.java",
+          "bytes": 4217,
+          "sha256": "FDC3A4876F0DCFA87116D82EC2C9D4E7DE432F1F8667A5D7AA74D20DF576F7D4"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/HeightCurve.java",
+          "bytes": 3577,
+          "sha256": "BD805A721860B0C3C070910DE7DDBAF751F96AB5AA9E6724181851490381D7F9"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/MidSplineConfig.java",
+          "bytes": 10634,
+          "sha256": "6C8B44BDA9F1DD9F7C8AEF28993BDD0529C48C064A66D1DFB3EC906EA017BBAF"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/OceanSplineConfig.java",
+          "bytes": 9097,
+          "sha256": "5C61CC4C648D22F22566FE2A61E3D2C8FB90C1E0E3F7ACE8E97F232480DA9139"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/RockType.java",
+          "bytes": 3404,
+          "sha256": "9DF254003F35DB94619C63DC3D54C5FDFE48F8F8164D6227FDDB157C5DB402C6"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/SeaBedDetail.java",
+          "bytes": 1568,
+          "sha256": "6A9F45CFF9B5874E73BABD7834633A20A427FC97367969E092734634DEA08F38"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/SplineConfig.java",
+          "bytes": 10855,
+          "sha256": "0184984FCAF48CAF1DEDBB85AADA5EAF4AF994C713DB0E0827FA1BA914828860"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/SplineUtil.java",
+          "bytes": 3048,
+          "sha256": "4A0C7B1420E5D16C92F37DB78B82B4C4184DA7F6DBFDA190BAAAE6C89C9844EC"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/TectonicDeformation.java",
+          "bytes": 28762,
+          "sha256": "DED23C5B2B5DA248BA806702B240F83A31219CB16B784FF986FB11A800936CB5"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/TectonicField.java",
+          "bytes": 65785,
+          "sha256": "CBD6284BC7AB42AA8CE0446A817B7FF9C30B414DB3C4306B604FD006507A769C"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/TerrainCharacterField.java",
+          "bytes": 11623,
+          "sha256": "FB672F361AACF29FFB7B6D8EA0CA97367171A4FCABD8444860648CAA596DE067"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/TerrainClass.java",
+          "bytes": 1819,
+          "sha256": "2F206862483A782D15CF3F24CBFCF0D1255DD125291B8E1B3C9B752C74CF95DF"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/TerrainParams.java",
+          "bytes": 20685,
+          "sha256": "811E77AF2193DE0503C5E39D3684569B9AF5822835369512A2C4984A0ABCB861"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/TypeGenerators.java",
+          "bytes": 5839,
+          "sha256": "A33ED9C1F898A740C163128D40FCA8E824189517E7C5AF6F5523260EF5CB2F74"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/TypeLandShape.java",
+          "bytes": 17485,
+          "sha256": "A766C5220F94722D7097076841609651C5601560BE2B0F72D2231E93F3E683EC"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/TypeNoiseProvider.java",
+          "bytes": 19106,
+          "sha256": "1C4707007D5D91F2DD2995DCEFD6D1F631ED7414A2CE112169BF478B331FE5AB"
+        },
+        {
+          "path": "src/main-closure/com/geogenesis/worldgen/terrain/UnifiedSpline.java",
+          "bytes": 16355,
+          "sha256": "380AC4CDC5C82816159060626321224A4F3CFE131B80B26ADCC189F9C0C775C2"
+        }
+      ],
+      "baseline-arms": [
+        {
+          "path": "src/baseline-arms/com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand.java",
+          "bytes": 35507,
+          "sha256": "AD971E97E7C4C9ECC9A602E431FBF0384561E4326BE240AC28E309A35F7238C0"
+        }
+      ],
+      "old-geometry": [
+        {
+          "path": "src/old-geometry/com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry.java",
+          "bytes": 66318,
+          "sha256": "CF4FCA7ED241E6D828E0C2D4BC93133427BBC32D9E4A69A780C50F664B74677E"
+        }
+      ],
+      "probes-seed": [
+        {
+          "path": "src/probes-seed/com/geogenesis/worldgen/terrain/candidate/MultiSeedChain.java",
+          "bytes": 16259,
+          "sha256": "E7A39FD3594AD6C1A8B43CCA5B1DDC3CE2AA19B621CA6B7469C090C8A08BF2A8"
+        },
+        {
+          "path": "src/probes-seed/com/geogenesis/worldgen/terrain/candidate/SeedConcurrency.java",
+          "bytes": 7207,
+          "sha256": "75E4C77CBCCDD8A100D588809B3BA0BACF6A377570AB85484C533EF7FB9E9334"
+        },
+        {
+          "path": "src/probes-seed/com/geogenesis/worldgen/terrain/candidate/SeedWiringGate.java",
+          "bytes": 11813,
+          "sha256": "CBEF9D2AEAE5175916B576FCCC34C9F7FD87D88C29A4EAE43186B10D972E4E6B"
+        }
+      ],
+      "probes-conc": [
+        {
+          "path": "src/probes-conc/com/geogenesis/worldgen/terrain/candidate/ConcCycleAudit.java",
+          "bytes": 6394,
+          "sha256": "637674BE26CFF69D70BCB860BAEE781C0BB73CFE01404E11CAD2CB398F6103D8"
+        },
+        {
+          "path": "src/probes-conc/com/geogenesis/worldgen/terrain/candidate/ConcHarness.java",
+          "bytes": 23168,
+          "sha256": "91F001A3194ADFA0EC1768F5423FED579E11A01B63ED94DA8C2383A5DDB62473"
+        },
+        {
+          "path": "src/probes-conc/com/geogenesis/worldgen/terrain/candidate/ConcLifecycleProbe.java",
+          "bytes": 3517,
+          "sha256": "EC330B43CBCEA10A1D2241E5CE8E39FAFE2F24DBF4288A47F0AABDFD403ADEE4"
+        },
+        {
+          "path": "src/probes-conc/com/geogenesis/worldgen/terrain/candidate/ConcMemFixedDiag.java",
+          "bytes": 1599,
+          "sha256": "581E4D1FAF2E7B08CA20999D77B242E38B38D8DD61A5ED8421510B87C2E93AD8"
+        },
+        {
+          "path": "src/probes-conc/com/geogenesis/worldgen/terrain/candidate/ConcPerlinIdentityContract.java",
+          "bytes": 5837,
+          "sha256": "EE7D6FD97FBB0DE982BD0A39EC76838D7F73F247E3AD9D8AB652849C4101890D"
+        },
+        {
+          "path": "src/probes-conc/com/geogenesis/worldgen/terrain/candidate/ConcValueDump.java",
+          "bytes": 3682,
+          "sha256": "D633D447DD0B64A220ADFFFC815B8510DE440E3A1BD52EA0733D45B2AC7012CD"
+        }
+      ],
+      "probes-realchain": [
+        {
+          "path": "src/probes-realchain/com/geogenesis/worldgen/terrain/candidate/RealChainConcurrency.java",
+          "bytes": 21440,
+          "sha256": "98D27665BF7F467A7565F992EF20301C572E63261EAB615443BCA245C6BAE96C"
+        }
+      ],
+      "probes-memory": [
+        {
+          "path": "src/probes-memory/com/geogenesis/worldgen/terrain/candidate/WeakCacheMemoryProbe.java",
+          "bytes": 11379,
+          "sha256": "9A1A9F672BD59B20E4FF5999B92C9888FEBAA4D8226D4A45A15AC042D2EFD892"
+        }
+      ]
+    }
+  },
+  "build": {
+    "script": "build.ps1",
+    "scriptSha256": "682AB1B15880F2E63CB4F19748DA487314AC1C919907F788A7F25B6A35456A72",
+    "exitCode": 0,
+    "recursiveTempReference": false,
+    "repoSourceReference": false,
+    "stages": 5,
+    "outputs": {
+      "classes-main": 63,
+      "classes-head": 332,
+      "classes-cand": 56,
+      "classes-baseline": 38,
+      "classes-3a7686": 38
+    },
+    "assertions": [
+      "seed fix present: DoubleFullMorphLand -> LandRegionContext (asserted in bytecode)",
+      "cache fix present: DoubleTreeFixed -> PerlinScalarCache, no IdentityHashMap (asserted in bytecode)",
+      "PerlinScalarCache.class present and holds a java.util.Map",
+      "LandRegionContext exposes the catalog-typed constructor",
+      "arm C Tile has chunkStart=True; arms A and B have chunkStart=False"
+    ],
+    "compiledClasses": {
+      "classes-main": {
+        "count": 63,
+        "sha256": {
+          "com/geogenesis/config/GeoGenesisConfig.class": "88C996B491FAAD9EEC2D5AA0F2248CAECAFDF37D0D27D1EF319AA1980160AA19",
+          "com/geogenesis/worldgen/cave/CaveConfig$Preset.class": "6963EBED1B8599539A607BD6377FD61D44764459F5258E9325ABB26366D154B5",
+          "com/geogenesis/worldgen/cave/CaveConfig.class": "78EB9BBEE2E836F3D533C53DDA308F96259D53F826204687793D7CA36301EE8E",
+          "com/geogenesis/worldgen/cave/CaveShape$1.class": "68AB4651E7734741F484C232EDDA6D91ED443D4592903F372CD67FFADB9C473B",
+          "com/geogenesis/worldgen/cave/CaveShape.class": "CF85EF7FD7118FAE6641D6B56984128909F26FFBCDA2A716EBEF856A8E0E0D31",
+          "com/geogenesis/worldgen/noise/Abs.class": "7DD48458965B2D413643CDF687154DE98E9E57CF3CFD4FA88A6049154A615637",
+          "com/geogenesis/worldgen/noise/Add.class": "077C8EC57A09DCB8C580D49ABC0B516F0B66DE4F871458A6E7236E196D71D2CD",
+          "com/geogenesis/worldgen/noise/Billow.class": "5AB3CE6779FE75081897CD7753CDB72E81B3E99EC97FCB5C41EB22FB247474C4",
+          "com/geogenesis/worldgen/noise/Blend.class": "9BE30EF940523C2D57F8AE930E46A3C3B3CF6E7AB86930C73661F44D320DBF67",
+          "com/geogenesis/worldgen/noise/Boost.class": "F2AF2419C2CD51E67E165FB33770EDF8F259A1CCF666FD9B29C9ADE34E302B00",
+          "com/geogenesis/worldgen/noise/Cache2d.class": "EB8B20196EEA928601F5B02984CD64154621FBB0948E033CEC1FFDE5D523E878",
+          "com/geogenesis/worldgen/noise/Clamp.class": "F08F55DDCB5EC66291A803868488D48B830B7AB98E93CE1D112D14263C6E6842",
+          "com/geogenesis/worldgen/noise/Constant.class": "7065D839BEC57079662496EE15C378B945B544F834B10D5C499BD0C2C7A081AC",
+          "com/geogenesis/worldgen/noise/Curve.class": "1B538F5309464E24E7E2ED8ECDA0546C6CBE604C93F937D0A33DB3CCAE4029E9",
+          "com/geogenesis/worldgen/noise/Frequency.class": "2EA5302D1C8C7EA6DCA217987162B241D7E71D1D426EC41CEA40E813DD10713B",
+          "com/geogenesis/worldgen/noise/Invert.class": "C2A91491DF1BBC90CC709C0D04CC24A3C6EB8E56C910D41CEB3068DED1D55136",
+          "com/geogenesis/worldgen/noise/Map.class": "362786E448062EC4279B17D3F54EA286F64B26246382FCE2520D032FF76F2319",
+          "com/geogenesis/worldgen/noise/Max.class": "BDA2EAF014F201F408671C693D60E351AE735DC3C9E8157341D9DC2A5CD70807",
+          "com/geogenesis/worldgen/noise/Min.class": "266C446953EB98C0F4507D78C41E84D2449F5EC8EC737C4D85E7D3DA1C9EB757",
+          "com/geogenesis/worldgen/noise/Multiply.class": "91733E18709B572007E3975D52309BD2DB2E04A96D5B6A6477E8C5235486791E",
+          "com/geogenesis/worldgen/noise/Noise$Visitor.class": "07B4530B9258F08BAB518CFD85E753C6F0D8ED066E291935FBB2E6AE8EE6646A",
+          "com/geogenesis/worldgen/noise/Noise.class": "43BD57495F25DF0DF80D2207596E3C0E64DDDBA26A9A2CE074A43515914B4DF7",
+          "com/geogenesis/worldgen/noise/Noise3.class": "BBD7737529D1C1B8F4913CA01AABDFEA70DFA8608BF37456D44190F67145EE12",
+          "com/geogenesis/worldgen/noise/NoiseUtil.class": "C8BA9EE147D2FA6429A69CCB777036369E2FC2F4885670E23A2E158CB9C8DFA9",
+          "com/geogenesis/worldgen/noise/Noises.class": "4BC635A95E6FBEADC0E36F7DF57C174AA8E81AFEF8C6110F18CB67FC6FCE660B",
+          "com/geogenesis/worldgen/noise/Power.class": "2EC7BD93C0E8467581378BBB1952173C214DDA4197D1D129055B39D23E015217",
+          "com/geogenesis/worldgen/noise/Ridge.class": "64BB7D861CCD4826BBF1AA74545EC81132EBA827A621F2D801D07D14FFDD37C5",
+          "com/geogenesis/worldgen/noise/Seed.class": "21C9C37E4AE763E8C7ED12D6A11CB1D88EA92F10C747EAED2AD1B6C98BACDA07",
+          "com/geogenesis/worldgen/noise/Seeded.class": "1296C1783CA7DEB979290DF73E141401CC09AF0D5D108D397A0390AE5531C2EB",
+          "com/geogenesis/worldgen/noise/Simplex.class": "53AB0156FB508576B87267C8D90C475EE7A945728E10BFC59F77509C161522EB",
+          "com/geogenesis/worldgen/noise/Simplex3.class": "3749C6A6F246BDB4120FBE75CB883389AED95DD4D8D65DFB60F6255BF3CB9AC9",
+          "com/geogenesis/worldgen/noise/Steps.class": "C4FFEE6BD9DB03404191A25F13DC94C08544DC08AAB81F2852C59A27015ABCD1",
+          "com/geogenesis/worldgen/noise/Terrace.class": "D093FF8080D3170B879FDA747D01D40C58F3F1886EA20CF19B325B89A812AA0A",
+          "com/geogenesis/worldgen/noise/Warp.class": "33D3618E5EC4E68BAE041B2D9F8993BEB3DF98BFF841F200C86E2C91B4B6D5AC",
+          "com/geogenesis/worldgen/noise/White.class": "D853D28CE14F86F3806A3EA3B57EE38E459501240C6438727B894904B601A7B3",
+          "com/geogenesis/worldgen/ore/OreVeins$Ore.class": "34A01253B0593349C8BCA42184FDBAEC66BBA5C1B4592F83068F4FC46B16070B",
+          "com/geogenesis/worldgen/ore/OreVeins.class": "CB3CE03C60F97E93E230EAA5CDF39E354AFDA6AB977D4C04AE9B5C279BA97F21",
+          "com/geogenesis/worldgen/terrain/ContinentField.class": "79EDAC076E1FC7894F62BA53C70F881D4A8F299CAEEA756D038468B1EA4DBA55",
+          "com/geogenesis/worldgen/terrain/HeightCurve.class": "EC6300FCD2B5D154A6C53E3F93D1BCAE32B5E4281A7EAD18DA02F1A554B03AD7",
+          "com/geogenesis/worldgen/terrain/MidSplineConfig.class": "BF7BF82BFA30BCFE549840D61763826820F740F23F961EFD2E2F7190AEBC68D6",
+          "com/geogenesis/worldgen/terrain/OceanSplineConfig.class": "5F2EC0E8D33A3F97E7146A4850ACFDBB0396D130BD2552D3C1D2D5B93BFCF3D7",
+          "com/geogenesis/worldgen/terrain/RockType$Kind.class": "D2F2C529453C1B550FD8CCCEBDEA36E269597369B6D4700D08446C2DFA9D6F89",
+          "com/geogenesis/worldgen/terrain/RockType.class": "01C778703DCE9F508950BB6B81513EC17B0BA0B98D0A5ECA1DC42D02028D7B4E",
+          "com/geogenesis/worldgen/terrain/SeaBedDetail.class": "C4FC3C79414A5C926582F2B0326023CCB83582517C9B4DFC47FA4D0504C6AE4B",
+          "com/geogenesis/worldgen/terrain/SplineConfig.class": "5B7297390F14499CD1F5BDE48C54D9B97555E7D902D0899E555B73AE5B30AAEF",
+          "com/geogenesis/worldgen/terrain/SplineUtil.class": "30D90D8980EA7E70045DFD7CC26DD5158F087C6CC210D0093A74DE9F731BBD23",
+          "com/geogenesis/worldgen/terrain/TectonicDeformation.class": "DE637DF1D3F18670386FCBF600CF2E777382CF7F9C995BB161BF86A33F13F4AD",
+          "com/geogenesis/worldgen/terrain/TectonicField$Sample.class": "3239A8336C657CB48AB7CB421F92D16CD2AD068A0A8008BBD99BFA3BD2B85C17",
+          "com/geogenesis/worldgen/terrain/TectonicField.class": "2887CD9BF3203AE316CA2C674F5A922E3A490691910A051AF7E3088FEC6D1EC2",
+          "com/geogenesis/worldgen/terrain/TerrainCharacterField$BlendResult.class": "631DB8F4A4CE06F1E6C20B984B418CA11F3F90B0FEFE986FD304BB0783232F5B",
+          "com/geogenesis/worldgen/terrain/TerrainCharacterField.class": "9460C2791BC46763E28E56EF021459B0D2625EB0F3747349AB82BCE7496FA700",
+          "com/geogenesis/worldgen/terrain/TerrainClass.class": "F666BBB1F33A9ECD394DC3089A9B0A5B5713D5416776BB2720EA9763B5A3E413",
+          "com/geogenesis/worldgen/terrain/TerrainParams.class": "B5819180F903CFBB277E5FAECE890B0F07DE838F6196D589E0BB908E0FD552E4",
+          "com/geogenesis/worldgen/terrain/TypeGenerators.class": "641B7ED0A4CA128B3D4367370111FBF8FBE61FDF3A28ACF493A94837E8749D94",
+          "com/geogenesis/worldgen/terrain/TypeLandShape.class": "E2DB9C710F0432D567EE8853E71535CCFE4F320B952C3D534120B32852A0B7AF",
+          "com/geogenesis/worldgen/terrain/TypeNoiseProvider$1.class": "86914310D83D5CC8C87F6B31557CB5BBDCCD84408002DF828419A90F407E773F",
+          "com/geogenesis/worldgen/terrain/TypeNoiseProvider.class": "B9E7813A1305D88B3023F58FA1B0066A0C87D5CFBF6BF298C1E762976AB02303",
+          "com/geogenesis/worldgen/terrain/UnifiedSpline$InnerSpline.class": "2AD79EEB32169C06C7EF2E1D4EA5D93CFFC44BF32C725901D10B32F703308B60",
+          "com/geogenesis/worldgen/terrain/UnifiedSpline$MidNode.class": "F69C346EEE7F83D5E1BB421B40E8C98377EBAD94A3F4020120A70280C00DB72B",
+          "com/geogenesis/worldgen/terrain/UnifiedSpline$MidSpline.class": "DD18F5B108757DA41FF8192303DB9A87A3B7024320B3B9D9566EA704036B12FB",
+          "com/geogenesis/worldgen/terrain/UnifiedSpline$OuterNode.class": "3873A61B244A981AB0A7716F6B863C5647417E17523771C2EC3DC9ED1614CDDF",
+          "com/geogenesis/worldgen/terrain/UnifiedSpline$Spline.class": "579541349BDC3931A5B9305D5B74DF18D2A2AB58916088953881260A0682C0EE",
+          "com/geogenesis/worldgen/terrain/UnifiedSpline.class": "CE5BD5C03A4D2AE6A436921BF47CCA4AEA9CDFA7A88FC214E071D18C098918EE"
+        }
+      },
+      "classes-head": {
+        "count": 332,
+        "sha256": {
+          "com/geogenesis/worldgen/terrain/candidate/AdaptiveWidthCandidate$Guide.class": "C1633546621E850185C9DB25294493303D24D8C36CDBFBD448FBCFFB19524005",
+          "com/geogenesis/worldgen/terrain/candidate/AdaptiveWidthCandidate.class": "E4D2BCA720E583143226CA41390F3150E047404C026AD644A30874990A78F995",
+          "com/geogenesis/worldgen/terrain/candidate/AdaptiveWidthProbe.class": "B070CB6011B81F560079C61A874BBC5B17D08DB9B0B0D09C52A6E1FAB13457BE",
+          "com/geogenesis/worldgen/terrain/candidate/AmplitudeProbe$Fn.class": "B81B301B0EFFD834BFD2EDE9917CD52F99109E77E654733BC6C8CF56F2045C20",
+          "com/geogenesis/worldgen/terrain/candidate/AmplitudeProbe.class": "9E7D5D4169E8B9178B13F8F02E4AEBC971ED06080331C595C07BF0FE2F48005E",
+          "com/geogenesis/worldgen/terrain/candidate/BadlandsCandidate.class": "9D018CD91475576149CAB6CC7DA7A608BE9A7CF9A6AE53339E7C4343D17F8361",
+          "com/geogenesis/worldgen/terrain/candidate/BorderScaleImpactProbe.class": "DD9896F302B96032D8C613254A113EDD9799C67A797D73C318137DDB9FC22FA6",
+          "com/geogenesis/worldgen/terrain/candidate/CliffShareProbe.class": "D66B49BC580723968651ABEF7E9388352427BD72030F14361BAA257C11DAC958",
+          "com/geogenesis/worldgen/terrain/candidate/CoastBandProbe.class": "959F3F0499521AF14ACF63CA3FF51A40B7627CD56100F87696FBD71CCC858126",
+          "com/geogenesis/worldgen/terrain/candidate/CoastDistributionAudit.class": "F0885DB646E9D6ABA2B4B97E8EFA293DEF7FEE38AC73BAA6197A15C01CF3CD79",
+          "com/geogenesis/worldgen/terrain/candidate/CoastRecipeCatalog$Recipe.class": "BF0DFC3A67DCD1D0040B03A9DA6CEB4D5F5B8D705E48D7938606EDBA0E6C1B1B",
+          "com/geogenesis/worldgen/terrain/candidate/CoastRecipeCatalog.class": "21608E7D74B6B388FF1FF4FED6B09603BBB30CF9A6BFCA8234EF100D089F166F",
+          "com/geogenesis/worldgen/terrain/candidate/CoastalAssembler$CLandSource.class": "9AE92A0A9B182F5746197ED3BC86930631A2A27578322AEFB782FF06E59E895F",
+          "com/geogenesis/worldgen/terrain/candidate/CoastalAssembler$DistField.class": "F55CECD15AC199DE882DFAA45179975C85422906D0B128FF5DC74C9403F5D51F",
+          "com/geogenesis/worldgen/terrain/candidate/CoastalAssembler$LandGrid.class": "04DFBC33CF6E7BA46EAD8E549A071597F4DF19B24D412D1FFC32AA294B2E12B0",
+          "com/geogenesis/worldgen/terrain/candidate/CoastalAssembler$LandSource.class": "61232FE68C93F86BF7070CC43E4EEBD45871B4462925038D70AA1D2FFEB77A40",
+          "com/geogenesis/worldgen/terrain/candidate/CoastalAssembler.class": "EA8F493D0164BA9664263F39D088A86E6DB663CFE9F0BE1DC7509D267C37719F",
+          "com/geogenesis/worldgen/terrain/candidate/CoastalProfileProbe.class": "6F15426D63A6C14F783ABED71671E32EA62B886C1BFE4DAEF8E7038715F3BBB3",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentCoordinateCheck.class": "12F5C872F8A156EAF0DA9E302365737B4897EF4DE6815A9A3D76C57AC0801C5C",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentLayoutCheck.class": "941DBADA4994140EE4FF75B56A06A9DF37BDE2EB0E6FC1E8D0A99BEB99BF7A92",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentLayoutGallery.class": "6AAFE49C2FCF1FB00524415D766EF3F3F5A8E96E0D66DC81846B28F5530D395D",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphCheck$Stage.class": "FA606D5BCD70F07F19796072F28910E1F58BB2F39BFFDD243605547078F9A2DD",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphCheck.class": "A4442E0DFD83CE7133E9E8DE33D1EB9A981988E2EEFA48EF77DD8C5B055B65D6",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphGallery$Arm.class": "80ADA5B7AAA51AA265F097D17040EAEB89D55BC3D7513667C11EFB947F67534E",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphGallery.class": "0BF208E4BBECD8D1DF345CC92DC16681644D64258E31278B32D4E5340E010A93",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphWorld$1.class": "3C9E3DDF92C8F31B11798BDD906DC474F8294A49D6F5A7C6E06DD4219864CC84",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphWorld$2.class": "8E1B6F8F5FA377A4CD4E5CE5D67808C313AD0600AA06C4ABD0AA259236A09AFF",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphWorld$Pair.class": "B23C49665414AB07C8866978EED31D729EC6642C36F5CA6B89F3B684E1FEEB4A",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphWorld$Tile.class": "A0F257DD615FBD4B56E1D2784AAF840BEFD2F27C766BC414748FB38FF465CD88",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentMorphWorld.class": "A791A0AE9388A18DF7D8885F4006C11F304535C5C5A199ED5070A98E7A7319B0",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentRegionDistribution$Anchor.class": "E03C37731EA8A5F9F0439AFCB8EE12B617733E1E1752AF4FFA7D8C9A6DB0BEC0",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentRegionDistribution$Choice.class": "B1E0C81AE91A9682B807A88E2A2B192A10427DDF88297CA481B08597CECC4778",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentRegionDistribution.class": "AAFC8B84B0A11171D703F3709C78774CDAB12295096EF1CC467D991099BCDA86",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentShallowCheck.class": "2774F61A65CE7FC0B38CD1CFD54A510AD405DED5C530F4017442B1F824F1002F",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentShallowGallery.class": "D7F584E4E446A25EF4430A1131A3D067E1154B31963A87FC58E3044D80F67A4A",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentStreamingCheck$Point.class": "242E594887DEEDC476BA1384EC216C10688F5CA4B80BF3920B711F83EC2EEFB6",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentStreamingCheck$Stage.class": "81B1DFC4599F50A01EB7DEC0219026DB63319B1342F0930F05C99463D6F56827",
+          "com/geogenesis/worldgen/terrain/candidate/CoherentStreamingCheck.class": "EBD728342F657A950EAA0C3E0488484B5DDB0BA2F97F3DE27B6F6791DF68751C",
+          "com/geogenesis/worldgen/terrain/candidate/CombineCandidate$Blender.class": "BB9CC958B938E4F39EC7766FC5F541CECD335A1C427512F48CAA7526C9228917",
+          "com/geogenesis/worldgen/terrain/candidate/CombineCandidate$Category.class": "CB930AB525CE045BB73226BC650E168442EBF43E4EBBF86AFE6C938061BA186D",
+          "com/geogenesis/worldgen/terrain/candidate/CombineCandidate$Family.class": "C2935DD0A401897B41F3B6697D5981A4A1B877A73A1B00355F95F45328B414DF",
+          "com/geogenesis/worldgen/terrain/candidate/CombineCandidate.class": "132A50A65A971A54E7CAE21594280EC0E6047542FA5FE1441313D41F35A56C63",
+          "com/geogenesis/worldgen/terrain/candidate/ContinentEdgeProbe.class": "EB3834794C8A5A2469439B5AF0B930D3F8AECBF58B3170FAB7665D72F342E79B",
+          "com/geogenesis/worldgen/terrain/candidate/ContinentFlagProbe.class": "D2D97F5BC23771E5CC572F656FA5A95FEC867C2798004A7AD9C471882006EE08",
+          "com/geogenesis/worldgen/terrain/candidate/ContinentNoiseDistributionProbe.class": "7EF9B7093FD35CE6C1BC0FC5EA68A2D10B72F29C2064F3B58320BF93A478753F",
+          "com/geogenesis/worldgen/terrain/candidate/ContinentShapeProbe.class": "6C32C886406728004D58785B9B02CDAE7B641F84FB42A0639C784D77F4D71D06",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriver$Field.class": "D64751FAB3C72EF25E2C3CDC652E64214B97BD1037828C2A84712FFBDF7271DC",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriver$Site.class": "0CF55A7C680F6B4B5EF99FDCE1B5BCA26ED85F65D37BA16D3D0EF28CA2CAA9B8",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriver$Snapshot.class": "CA611368C5A8A0E687F4DD363293C7B6A68EBB7567941310EAF97AA2E34F96DE",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriver$Vote.class": "613D34958C689810933FC7B9FDD6A0A840BDDBACF071AFDE9C063AAFB2B39D31",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriver$Warp.class": "17C1D5EAB623955D1453952674360FF18AF22BB804014BD07DE5970E14EF2ED2",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriver.class": "086A40880C0281015F4B1FF6A2F42874AEC870259F813D117F3020C2E4E871B1",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriverCheck$Case.class": "B74CBE751DC00956206B92F4E1809E8CC34F578DE3AC0C5641C765A6CEA90F77",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriverCheck$F.class": "343F7B30318EAD9186320EDB041452557D836F8093676F1E16A8B2759DC61B69",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriverCheck$ND.class": "0AE06AD51EDBAA2CC4400DD24874FB94B0BDD2E3F2F44FE45527A14C4B6F4939",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriverCheck$Near.class": "C05529658FBD477A010243B9E50B5C168CDBF9D4074CE7D5D86139E660AD7DEC",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriverCheck$Site.class": "2E01FC0F134BFC8DC4DE5CC4680496D7066FC128B2BE8D26676335D4EE057576",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicDriverCheck.class": "FD420E5D29D5F9AC334BB222BB6B015F61D5C4C321B5A10D52057353FB9D3698",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagation$Pair.class": "251AD1539010D802F6571800D46C999636CE5C2C9484B718B46E32A4EB9399BF",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagation$Values.class": "8D0B5BB4A04052B5E6ACF493C64445B3CA65443EDC73ADFDA16352A3C52E7FE9",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagation.class": "99321298AB5E4AAA0DED1BBC38F27EFD8EBC37B357D517013556C86D61554B6D",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationCheck$Bounds.class": "627205009F647FC8C0809680904329AE1BF7D97C53E4BE347E5A4E10E37EABD9",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationCheck$Center.class": "36FECD3FC06F0332508DDBB5D0573DCC070B14FCEA3C94F5F61040AD4AD6B3BA",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationCheck$Components.class": "FDCD37A04256B1ED5E75F40C23361968016F0B2F864628431216326B5B1567E0",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationCheck$Parts.class": "6AD047DDE2720E7C9238F525C08A301466F9896BE8A247340D1C273824E4F10B",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationCheck$Point.class": "482D5E920D002CF7895F36F439E35D2D95E3E7CE88DAE058AC6978A8CB2C6641",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationCheck.class": "F6885B12022F59E41CAC42F0AC6B533228349FA9BEE67F7099F78937AE3BA39D",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationGallery$Arm.class": "C86B3B5BC210159DCAB654FCA31EBB52DB8A6580F9EBC6C83FDE6D5039B7AE62",
+          "com/geogenesis/worldgen/terrain/candidate/DiagnosticTectonicPropagationGallery.class": "4F2BFB37DB10D62B820C21F7BF124BF35F3F6ACD4E4733078CBF1BAC1D278138",
+          "com/geogenesis/worldgen/terrain/candidate/DistProbe.class": "F24BF6FC076E3F105A9AE49E9A0EDBA71772BBE028924191E0E37299880A6B3D",
+          "com/geogenesis/worldgen/terrain/candidate/DistProbe2.class": "85557FD6030767C873094CDE130F79F8E5E477D44CA462DF5DF4B21A2D206BFE",
+          "com/geogenesis/worldgen/terrain/candidate/DistanceFieldCheck.class": "CD69CEFAD0BFFD3EFA7BB0717E9E5E754E04D03426674DD01B6E3FA40F8AB19C",
+          "com/geogenesis/worldgen/terrain/candidate/DistanceFixWorldCheck.class": "CCC22C5979B0E0F7D291BF54D6177C1646B52D645AE48E2E512C42AD95B7271F",
+          "com/geogenesis/worldgen/terrain/candidate/EngineLandFingerprint.class": "42E4855DBE39F85A1A3D9671F12AA47D4A3DB49A3B3CBBA7C2D82DA13EE1F4B8",
+          "com/geogenesis/worldgen/terrain/candidate/EngineOceanFingerprint.class": "71B0EE38220A8824872DFDF9434A7E145D390FB7CA2678538C846C97B1B0F058",
+          "com/geogenesis/worldgen/terrain/candidate/FamilyRangeProbe$Target.class": "B6264AD098143A90AA5B04EBC91FAE1B0271EAD334CE1413CE04B090C21FF76D",
+          "com/geogenesis/worldgen/terrain/candidate/FamilyRangeProbe.class": "BF30D0CC45BAA0EEA203BC3A6622661C3D5C5469EB06EF2CE0330CA5D2D5913D",
+          "com/geogenesis/worldgen/terrain/candidate/FieldDiagnostic.class": "DEC66E2A63F6BB7A5D862CF98A9A875ED8A1738CDFCB81B55891DFD0AC5DB108",
+          "com/geogenesis/worldgen/terrain/candidate/FlatSpotCauseProbe.class": "D8F5DA618D2A1AB8905927F139283F3EEC24E8ED38C0B7FA77A86C09A44BF027",
+          "com/geogenesis/worldgen/terrain/candidate/FlatZoneDiagnoseProbe.class": "8150A10D8BDC7B19FAB8BFC73CAC36501DF004298D08BCBF9623DC0754B432B7",
+          "com/geogenesis/worldgen/terrain/candidate/FourPairMorphCandidate$Pair.class": "4C6952A697C6E164B06B8E8DF9CE44FABE25145FF11B874F261D3D37DFE981EF",
+          "com/geogenesis/worldgen/terrain/candidate/FourPairMorphCandidate.class": "A179770FC8F636F46C1BF322424AB382889CA73597A90815D84C2609EBAF381E",
+          "com/geogenesis/worldgen/terrain/candidate/FourPairMorphProbe$1.class": "33B07FD4E53B532C19390B2852A817F02FFDAF10122FC38F2AE25983CFCA96FC",
+          "com/geogenesis/worldgen/terrain/candidate/FourPairMorphProbe$Field.class": "2BD899EF094101D0DE53B77E1598DA7DACF6EAB3C2CF2F210C42E355EC808FF1",
+          "com/geogenesis/worldgen/terrain/candidate/FourPairMorphProbe.class": "691517866654789D3F9B9FC93106742DF63E9526D44364A8899D7D9843B22176",
+          "com/geogenesis/worldgen/terrain/candidate/FullMorphGallery.class": "7374ECD8C389AB16DBF4E16ED99F083A51EC4283F0022AFAF06BC6D80A826C07",
+          "com/geogenesis/worldgen/terrain/candidate/FullMorphLand$1.class": "C227E0803D22C802DC5C2C563A48B4331C408ABFB47CF1F4D04F1DD8A387367D",
+          "com/geogenesis/worldgen/terrain/candidate/FullMorphLand$Sample.class": "62AA1AF4610DA3083407CBF1E766F81499EF48101028A826E35F840CD55663FC",
+          "com/geogenesis/worldgen/terrain/candidate/FullMorphLand$Stats.class": "31E575C824A50D5BE6DEAED6EE0F67652BE495D52B5B56FE5333B67676FF2F9D",
+          "com/geogenesis/worldgen/terrain/candidate/FullMorphLand$Tile.class": "993C33F78003A6CF5F8CC4476055101DF6656FA8C78EFE724FA58C13867CBAC0",
+          "com/geogenesis/worldgen/terrain/candidate/FullMorphLand.class": "4F63872C04E802CF928B333B083B66E74E91A7F81F6FB0C036EEEA6640872E6C",
+          "com/geogenesis/worldgen/terrain/candidate/FullMorphLandCheck$Ctx.class": "168A4BB222743910AA683F9ADC5872287BD3149D90BF5BA57160EE84A3214E95",
+          "com/geogenesis/worldgen/terrain/candidate/FullMorphLandCheck.class": "E0BD291DA3581E668E6C07A51F085825DAAFF3E0277E9B26BFBAC2CE407861A3",
+          "com/geogenesis/worldgen/terrain/candidate/GeometryCellBound$Poly.class": "079CF2B613BEC776DB7B7C65665C53A4FB97074BF56AF3094485F53F72BF402B",
+          "com/geogenesis/worldgen/terrain/candidate/GeometryCellBound.class": "BABBD926DEF8D6F67C5BD35FB347B4E114C52BAD4451F4A50FAFA84EDAB7C0B9",
+          "com/geogenesis/worldgen/terrain/candidate/GeometryTransform$Axis.class": "0D3B3217ADE76C849DC5DF37E76726724EB3C24DBC681E1AFAA2B5920B794C60",
+          "com/geogenesis/worldgen/terrain/candidate/GeometryTransform.class": "C147A62DF241538646F0C8FE6453D86DBB8DC162CE922AF7572D07C402218EE4",
+          "com/geogenesis/worldgen/terrain/candidate/GeometryTransformCheck$Action.class": "6DBE616D4C6419C60C6D34E52CBEE3A3A6228AE4FEA5C859829E875EE189FA0C",
+          "com/geogenesis/worldgen/terrain/candidate/GeometryTransformCheck.class": "E7B561C2DD745F9508CF76DA29EF961EDD49AB4DCADC776BE4A0761D2A9889B5",
+          "com/geogenesis/worldgen/terrain/candidate/HeightmapExport$Sampler.class": "9902F6D690AE958D4CDDE0C8CDFD8F550FF41C638464ECE915021B7E38133607",
+          "com/geogenesis/worldgen/terrain/candidate/HeightmapExport.class": "1AAA66C7BC50578F90AEF893F188EE5D09663BDE8838031C429BA467068ECF24",
+          "com/geogenesis/worldgen/terrain/candidate/HillsCandidate$Variant.class": "C8AA7101DF68BB11F8A1992DECF1F79BD10EF69E95D5C7E2CB8862CD884180ED",
+          "com/geogenesis/worldgen/terrain/candidate/HillsCandidate.class": "1DBA895EC880E99D8B2333546D837613CC2E076B3D72568A9F389ED8FC760F1E",
+          "com/geogenesis/worldgen/terrain/candidate/HillsPlateauMorphCandidate.class": "BA1045A274A85D933DDE64EA7CBACB8FCDAACEBDC79C53136A18DB00A925F4D5",
+          "com/geogenesis/worldgen/terrain/candidate/HillsPlateauMorphProbe$Field.class": "043FE49949927B5939F609E9893345D882E6D74F5E43E2B28A501F4E70507B98",
+          "com/geogenesis/worldgen/terrain/candidate/HillsPlateauMorphProbe.class": "4236C98AFFB5D83F57E7E7E68E8C60A5403653D6F5E0055D6060A923D0982C0D",
+          "com/geogenesis/worldgen/terrain/candidate/HillsRegionCandidate.class": "7C65485139D7287E00BA7F3762624CD66D7AEC37533AD273B12A1C3BF3201824",
+          "com/geogenesis/worldgen/terrain/candidate/JumpProbe.class": "0D5F7E903F1EADA1C3B15BFA7A820E890CE698466E1D1075C50E2F01CA4B43B2",
+          "com/geogenesis/worldgen/terrain/candidate/LandCompositionGallery$1.class": "D8B961A7D6164574497014F16D68DB6285D842C7C1AFB9E834C40F47C121C326",
+          "com/geogenesis/worldgen/terrain/candidate/LandCompositionGallery$HeightFn.class": "C4D5D85597229EF4113339C05A130F9502936AAAE1CAAFEAB26322D8A8BCC32C",
+          "com/geogenesis/worldgen/terrain/candidate/LandCompositionGallery$IslandClassFn.class": "4C00B5CA2E8137141CC02AFAB49D6E1B6DAD2D6E1360E7AE32D88947C104C83F",
+          "com/geogenesis/worldgen/terrain/candidate/LandCompositionGallery$TypeFn.class": "0F53C67E7AA80EED236E91E48043F79D1381A7282D80EA88B8CEE8C53C562122",
+          "com/geogenesis/worldgen/terrain/candidate/LandCompositionGallery.class": "753A1607A34C60BE41E9C9B4AA8A2B374EB07496FFB59EA7674C3D7F9EC7AAB8",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContext$1.class": "AC0BD737AEA251B02C1E3947A107A73B6241C2DACFC91991EF501B9F0488A4BF",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContext.class": "0230C9FA861540DA2C7D78159CD97E03C095A0BE2802959253BC917E69310664",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck$Action.class": "A316F14B7CF96FA86A28933B35E01301B739D0678D17250B8A4F62D59D9B45F1",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck$Oracle.class": "CBEC6DE23586F5CC7DBA41C499DB198F03DB25CA76F025D58AAC21E4C33AEB9B",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck$Point.class": "83C572255A52680873D80E7C3F32B10D6D8CAAC159032CEEEA0AF2716407B573",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck$Run.class": "966F215B869A936DA8635978DFC3D0089D6F831CF3409C40930A32C99FC63359",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck$Snapshot.class": "EA15C7A70E5355F1AF781592FAB3CC4F94FF32DD2150986685A9D66C065CD490",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck.class": "282D5A880D3BBA7D3AC1AA4F7A19F71CFE53025A1017119BEF5CC9EC891A88AD",
+          "com/geogenesis/worldgen/terrain/candidate/LandThresholdCheck.class": "0DE5FD2C4B40AB2C1A925F2BCA271C5DDF950605A120D07A4E433FC1CF133421",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry$Cell.class": "79E748AF22AFD9514D9B9B93426535B2F66886B1FFB858AD3E5F965224733093",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry$Edge.class": "5109D979503CCD5A036CB5E1A5615D16721DFFA677940C2CDB720D083930D55E",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry$Pick.class": "BC6261F689D856BBB0C5AC2E26B122D6FF81F4F9C4B5D7730D9F691D4BBF5FA0",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry$ProfileCandidate.class": "8EDC333320ECEE786E9D30A730B501251D487B0E94D81FB773927BF1F68989EE",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry$Sample.class": "A147DF40811174B182C8419802D636819694E7D1571E5E365E859DBCF1ED5637",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry$Site.class": "DFC7449DBF94DD37F08225535F2D43D4C3109508483E9EB77BF9727472E31CC5",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry$WarpEdge.class": "123B8B11D569EA8DBCD881F2C9DB5299320C372E5B4C1E2D6209AB76CAEE00A7",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry.class": "B92C4D44118537A97748D11820C0BB61ECCB516F179059FED3C8C390D264BB52",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometryProbe$Ctx.class": "2CC9596A4AC963DE711688C53B57C6C8C7A9CD533F209BAD0283F45D400FD297",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometryProbe$ProfileStat.class": "56EA3475D33936C411E236CF990CE121E234C50DDD18C0962AD6EF183AD55E65",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometryProbe$Report.class": "7F169536F411B806AE7C351BC6983F2818231581D37210013368048638DD5499",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometryProbe$SweepResult.class": "DD1757170033070D558FA5AC6AE0DFE1EBC89F1E7298444AE2871BE639A1F0EC",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometryProbe$Triple.class": "D9A91B5C9A1FFA3566A4C4468E77A383F4471320D0A42ECB75807714923E9398",
+          "com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometryProbe.class": "D554A68E6C723D35CFEF311E676771A067984176C64CEE87C9BA2F6C61A5DA05",
+          "com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphCandidate$Family.class": "5CFC2D8808BE9C5F7FF21C96159BFA5D5D7D3452B10438B051BF2E8F3050902A",
+          "com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphCandidate.class": "D59F495CE4A6567A82FB6DD02F245D4D61CB32F6D008A23C4F0CF3F7F2ED91D3",
+          "com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphCheck$1.class": "AFFB62B3EC0424689FAE217FC5EBE66A71326B2CB439EC5C05695C99ABF5D017",
+          "com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphCheck$Field.class": "C0C2CB8188BB12EAB945BE408764A4128BE768342359B39235C02BFCA43B74C9",
+          "com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphCheck.class": "B10B9E38C766DDE3667770BBA705984F2F3985FFAF6B647E16D7DED64B1C6FDC",
+          "com/geogenesis/worldgen/terrain/candidate/LocalThreeMorphProbe.class": "83B10A6E230C8C94CFEFC24C179B27FEBEEFFD1E9D8DB591B84B278B9DE6EB29",
+          "com/geogenesis/worldgen/terrain/candidate/M0DistributionCheck.class": "3583D23F74CF2199752A8B9BFEB64738A9DFD6F0A26F59957889FA25B6C5AD9A",
+          "com/geogenesis/worldgen/terrain/candidate/M0DistributionGallery.class": "0B48A8489A2B73C0D4890531360D071DCE89FEB94B20CA210122AEC420745AF7",
+          "com/geogenesis/worldgen/terrain/candidate/M0DistributionSampler$Pick.class": "7F2869D09DAC2598CBBCE02CDB3ECBF6E2FB7CF87964E82EB9801D26CC8877E2",
+          "com/geogenesis/worldgen/terrain/candidate/M0DistributionSampler.class": "04F40CE7EB0C6B855281EA0826113AFE36D00D211821F40B43CCCCAFA44B222A",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Case.class": "94BC71FEA2AB3C8B6548DADE160E3B61EF0186B6F26696E7827E1D3A04CA50D4",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Distance.class": "E0DA0890C70C7336EB8526EC1BCE6A674D17EF731F6B0010DB529074C6BA467C",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Driver.class": "ED574447F1AF97A40BEDA2F81A4BD216C710497A00E45ED175CF0CC6A7FB67C6",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Inverse.class": "13E871D0832E179ADCCBB61C6F4D6C126477B1C9763F72A39CD2290D88BFD0DB",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Nearest.class": "1D0DFB9FCD058D67445784504E14E57109B607A1EC7706055B0302650AED66DD",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Point.class": "16DD12A5EFB44CB2FCD3D90305C0C6186EC182D290D137D1FD6D47212EE9E1AF",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Site.class": "66C53C0A738EA9EA2D765D88E7E096BAE3ADEC0E746D95B6DBE03C772103ED6B",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Table.class": "2D87CC77B4781AF4DB6542151CFE512C9CB8D941B22F0EFF5BA05DB543C01E11",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck$Vote.class": "32AF75D1FE1BED2E0EE6D8489684E1E44EE0CB74F8903A6297C5ECE076434E3D",
+          "com/geogenesis/worldgen/terrain/candidate/M1TectonicDriverCheck.class": "6FA95FBAADC19E42F6C3FF6CAC6592582A5CA7DD9180E1CF6D1770B6BA0147C4",
+          "com/geogenesis/worldgen/terrain/candidate/MaskDistributionProbe.class": "33AB3F7918BEC7D8937138DFE23702C8298C9B9971DDF6BB31473B26107D1DA7",
+          "com/geogenesis/worldgen/terrain/candidate/MorphCatalog$1.class": "1FDCF90E8C4398EB8B98F59FB71E73197135244195F997C32594904E7D5AD3E0",
+          "com/geogenesis/worldgen/terrain/candidate/MorphCatalog.class": "7AF78663F715BDE4B9660EA713FB6B4A47840A6ED6FCC3FCC40BE4E762F1EA31",
+          "com/geogenesis/worldgen/terrain/candidate/MorphChoicePerfProbe.class": "43FC6298F944B1E108BBBE532351A018C56B9EED240FF8C36B87B6C184E818AE",
+          "com/geogenesis/worldgen/terrain/candidate/MorphInUseProbe.class": "BFDC0BBEB9B82A7ADD2D23979C13012541DE84C410F4F6E98728EF038BC839BE",
+          "com/geogenesis/worldgen/terrain/candidate/MorphRecipe$Role.class": "8AADA69EC82D3936BEC45CEFC3C994C9A0DB3F3462915A778C5BE90EAFD24CBB",
+          "com/geogenesis/worldgen/terrain/candidate/MorphRecipe.class": "E2246506A4E0DAE8D51B30974A45ACCC25F61A5B5139F41DB765D9659E792DD2",
+          "com/geogenesis/worldgen/terrain/candidate/MountainsCandidate$Variant.class": "925EF417A5786C8D4F0A0F983FD57B7460931F7E49A979F54380842E6BF52288",
+          "com/geogenesis/worldgen/terrain/candidate/MountainsCandidate.class": "381B99C51EA86886EABBE0C8FAAEBDE6E0D02B8F3D84273C8DE5D3B5C3D77AB2",
+          "com/geogenesis/worldgen/terrain/candidate/MountainsRegionCandidate$NodeAdapter.class": "BDB07C32ED27DF3D2AB16136F96022B1DCAA2E337B38E19C4F335FECD7483A78",
+          "com/geogenesis/worldgen/terrain/candidate/MountainsRegionCandidate.class": "E0A657790F89E0227AD2DF131DC03762D17EB3DE494C0262052EE66B1BE8EB89",
+          "com/geogenesis/worldgen/terrain/candidate/NodeMorphEngine$Evaluation.class": "AA9BB4AC23FFC75484783CB0F92EAD8D1EA7C9B8934D3CC3A690E5546C4D57EC",
+          "com/geogenesis/worldgen/terrain/candidate/NodeMorphEngine.class": "A1C41D539058E2F041F0C05F9CAC963A9C5F5DDBCC220571020078CB2F7642BB",
+          "com/geogenesis/worldgen/terrain/candidate/NodeMorphEngineCheck$1.class": "283B291488732AC2234BE061FD6948C1512ECFB6C07D2B6FDB3951F3896D1616",
+          "com/geogenesis/worldgen/terrain/candidate/NodeMorphEngineCheck.class": "1D1948B668A38DFD792017177D53888E4D8206CCA8F0292D53B16CEF0D9F22E6",
+          "com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate$EdgeSource.class": "0E29DB156C2E40F2FAC6791D4C621054BE20D385464AF82B82E09596C0A19F9B",
+          "com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate$Sea.class": "08E11F31A2BBFF8BE01AFA11F6E542B7C2F6C1D7B1370EFD7D91679A89681EFC",
+          "com/geogenesis/worldgen/terrain/candidate/OceanAssemblyCandidate.class": "BC60172F1D4EFA23311AEF7C398E9A2FBC9CDB5481339A28C3D0D28246B624A9",
+          "com/geogenesis/worldgen/terrain/candidate/OceanMorphConcepts.class": "E120B9D23BD58B97E5889A2CFC57C9F93FDD0816019C5953026B2BAE99FFB95C",
+          "com/geogenesis/worldgen/terrain/candidate/OceanMorphConceptsCheck.class": "87B95DC5DEB5446AF0B41F159C7BAC6D6674523A3C22D7CB59ABF97AC047C314",
+          "com/geogenesis/worldgen/terrain/candidate/OceanRecipeCatalog$Recipe.class": "13590576C7D84AFBC6B946BB9782ED84E0C356F581B98B998BFAA3CF164C7134",
+          "com/geogenesis/worldgen/terrain/candidate/OceanRecipeCatalog$Shape.class": "A31E60129478886BB82A5D33DAFF16D66F6F8E340B8069E178C111B4033104CD",
+          "com/geogenesis/worldgen/terrain/candidate/OceanRecipeCatalog.class": "83C145EBF3CB347D96D22BA50E7019E5EE0DAAF5188608973A0FAD73AE26C2A7",
+          "com/geogenesis/worldgen/terrain/candidate/OceanRecipeCheck$Stats.class": "2FC032EA2489908D326325F49B30EB43D6C46777421A7215C2FE851C4BF48B5B",
+          "com/geogenesis/worldgen/terrain/candidate/OceanRecipeCheck.class": "5859FF7F883A9EC490006774F1253990C6D537B2EC898355E63D5F6ED58F63AF",
+          "com/geogenesis/worldgen/terrain/candidate/OceanTransitionCatalog$LandBand.class": "DD5BD9B8F8DAB5C9A569A25287F88FFE4F1C01EA5BDA6045B0CC71DCD3D986CB",
+          "com/geogenesis/worldgen/terrain/candidate/OceanTransitionCatalog$PairKind.class": "6E92606F584D648AB62D60A277384DA7AECC18E6F89774AD667C57AEFF94A6F6",
+          "com/geogenesis/worldgen/terrain/candidate/OceanTransitionCatalog$Transition.class": "EDDF102DA763927604F3B57F40E617B4385D9842284A22E83FB1CA6B75620D43",
+          "com/geogenesis/worldgen/terrain/candidate/OceanTransitionCatalog.class": "AA163E843A0D4FC4B6CA725FC64AF77B04E18B001108F674CF61978ED91F8259",
+          "com/geogenesis/worldgen/terrain/candidate/OceanTransitionCheck.class": "122FFEB2B6F4EF46C17C16622737FE9858E71AF26B0F5D29FE290D9F65B3DCD5",
+          "com/geogenesis/worldgen/terrain/candidate/OceanTransitionExport.class": "0D1A7ABF596662AB15E34751E3760097E421BA3FD0CCB519621461221B954B69",
+          "com/geogenesis/worldgen/terrain/candidate/OffsetTransitionCandidate$Guide.class": "5361AE4D2D0CE39430260F3E2F895E77003FEB82D522A70490928AB5407A3FB0",
+          "com/geogenesis/worldgen/terrain/candidate/OffsetTransitionCandidate.class": "9B344717BEEA351A0909E1ED04BC1109A55FECC0AB5DB3AC6C754D741F8221AD",
+          "com/geogenesis/worldgen/terrain/candidate/OffsetTransitionProbe.class": "5C88F9C73ED4FAC0F835E5FA5360AA7B53BB7F4B14B575667868B7E2CB4385D8",
+          "com/geogenesis/worldgen/terrain/candidate/OrogenFieldProbe.class": "C8B05947840D9F15416F277DC58C0C9390D221C4F3A5D3534C8337F087F168EA",
+          "com/geogenesis/worldgen/terrain/candidate/PartitionProbe.class": "CA931735D58AB288F6D913F1A299FC5406EF53C31B22C81399EF4EE4226EA351",
+          "com/geogenesis/worldgen/terrain/candidate/PlainsCandidate$Variant.class": "7F27E6786009EF7319CD55C38AF670E7AB0188930ED63506DAAC1B5A08433B20",
+          "com/geogenesis/worldgen/terrain/candidate/PlainsCandidate.class": "DC4FADACE3D1C689F5B9D1B18EB4A97E4B0269891AF602F64F131C088DC06B7E",
+          "com/geogenesis/worldgen/terrain/candidate/PlateauCandidate$Variant.class": "FB17ABD48DE9CF9843C9D391806B352A722F816D0668D4502FDC9DE0D6E00CCB",
+          "com/geogenesis/worldgen/terrain/candidate/PlateauCandidate.class": "251AD225F916C74F8BBC49274DC0C19CFFF1F1C86D1DC55A441A3114FC67B4DF",
+          "com/geogenesis/worldgen/terrain/candidate/PlateauStageDiagnostic.class": "3BE415C14A5D478C3DB3B3426CC071B42D7BE8734C3481742DA99B44131E2418",
+          "com/geogenesis/worldgen/terrain/candidate/ProbeSupport.class": "2BCEED8B025201BB877591DC7AE95C6C4FE744454302D0BBE5883BCD3C5E6F5F",
+          "com/geogenesis/worldgen/terrain/candidate/ProvinceContinentField.class": "1ED6C46DF97F0A02700AF7F329341436DF6662A2C1E44040BE6341FCFECFF1C1",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeBoundaryWeights$Boundary.class": "2F889D128F9BA8BA74B8BE9014A13A60FB6C2B3A60F94AE9AB7234C092EC207D",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeBoundaryWeights.class": "16262F2B04DE3F7E41831957641038C7539F6582FBC4AE7AE4B424B8D3257792",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionGallery$Metrics.class": "62DD5B15A8B4671D9A65B44F20BB7662979FC7A686E6EA569873C462BDBA6AF3",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionGallery$Scene.class": "508E32CDD28EE0284A81E3976455B941B5A1A92E9140ED21E9D4117656656CDA",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionGallery$Scratch.class": "689EFD26C8B93CB34F5BDDE99C65350374A24356BE4566230CF68A209A229F29",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionGallery$Sink.class": "DA3D17FBC97AF5415725276B226B22241F8859EFCE89E349DF20BAE376F2F048",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionGallery$Writers.class": "6C13B24B8A18825883E299969E11142B06158319841605555F8E04D9238BF16F",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionGallery.class": "D83C14FC70EDF6152FED401FA4D783B6BD8FDA8814A2739DAC4C88A32533533E",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionMorph.class": "E5DA0AF8F21069B7D9AD7F145E8913BB999AA859946EC904EC1AC25A8CAA36E9",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionMorphCheck$Edge.class": "B10983B6709CCF72F8A969E57ADFEB87083A0F4EFA4F4DEEDE9073BA1B8BB5FE",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionMorphCheck$OldMorph.class": "890E493632FA6CA0092D60DA46F97C279666720EF78CF75A3070373802ABEA6A",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionMorphCheck$Worst.class": "4E85CD37397B61B9E8F67675E2074DD9D215EF79E11DB40BCA000B803B9F5603",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionMorphCheck.class": "91334D520527FE0B2C27CEB2DA2148D6E599710CE2825C102C297E5D5149F745",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionSceneSearch$Args.class": "A1FEBD8C7932DCAA18C6946B155E853FD6D666C6C84120063C6DF29332B26497",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionSceneSearch$Cluster.class": "C9DF9D3E1A58612A4CD5CEB32310A14A1E8E7A8A1118B7E92FCD1811779EC162",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionSceneSearch$Junction.class": "FE8B86E2F9C651EF000F3B33847ADDC3517B3AB3F866427EE21DFBA1BB540745",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionSceneSearch$JunctionOut.class": "4B6EB50F8B1987B28F341CB020F09C4DA9C161B766BBEE2C3D89B2C3968C9BA4",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionSceneSearch$Member.class": "AD9EF9EB6E6E22738BB49FACABE26052C862FEB2C87A9B8798E85B4A94E61531",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionSceneSearch$SceneRow.class": "C7A6E8DAA9DEFFFFA7A624243C62D6092602943E9012CB0E7937FDB7B7303662",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeJunctionSceneSearch.class": "D820BB75DE60E5D3AD7B36EF483A8EE5B58EE8724407A4BBBDAA7BA9CF01BB5C",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalog$Entry.class": "B91C5749763EC8251A591BF79DDFC08CF2895E0A30D58AD9255E592C7304903F",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalog$Kind.class": "D68960F3B7E8E9C378B0160B6A375664903A18DD3530147D166AC967B9A22CDA",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalog$ScalarIdentity.class": "C3DE31BEFDDDDC332D360B4A849F87C677CD8143D16B649FE0B7A9DFD06267DC",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalog$Stripped.class": "F05D6702AC7059E540235039344FB76977E3A20612B0BD8FEE82DC1695B63972",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalog.class": "05EF94BA3903927CADE9DEDDCC78FD2993EA836B68B290A5D48B35BE4F000E3D",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalogCheck$1.class": "407AC4ACCF4892960086533DBD7F3F77B01166113F447C9D0A223C73CC070711",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalogCheck$Endpoint$At.class": "35F402CEF1531988AB230703C17A5D4B1097B79B235C257CECEB81BADC6BB772",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalogCheck$Endpoint.class": "81FE1B38FA8CDBDB99178CED3C803DE897C23C1F69B33523E6578575C5551BBA",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalogCheck$Family$Body.class": "B7EB7ED3B11161FE7C1D128B869506311982731810BACC2A97D4497B45444E6B",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalogCheck$Family.class": "35A1351836ED13CD3106E8C8A401019507E7F50F0E65FBDC4016A34FC92C0292",
+          "com/geogenesis/worldgen/terrain/candidate/RecipeMorphCatalogCheck.class": "8759997B26FA64BEB9DE67848E27460719310D8B1C70A7FAF94B5721D1F83E79",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Add.class": "F450FC0FAADB16D3C3D9F9A774DC081EF9C39DED262D28F3EBB3F1533E71ABA2",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$AdvancedTerrace.class": "04BCAEE89888C7E94F739EA48262B8714F419A8C7E41B7ADE69DD2618D2C2008",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$AlphaMix.class": "D547F07218A914B5AB0F83D856D85196D08CB89FD1D64D0101DA03BB7E89CB41",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Billow.class": "7ACB4CA60AAA8660CB76E89711BFB2881F5CA55A06CC8CDF9E1416217B25E39D",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Blend.class": "E966C700432B6728218439105571CB8C158858E6C52D8031696DB2062378A60E",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Clamped.class": "B2EE79C952A01485C78035A3920046067405D73FD85D5DA21A083CC73AA40B44",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Constant.class": "AF7099A4E01DE86766BE0376DB62BBEB03939747AEF18D754176577D00119C38",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Cubic.class": "7C6259D5BB066DEA524F5147C8AFE2006C44FDECC4F50FEE9EFFA05FC321556B",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Curve3.class": "3D23A598FF21D828F7ACC339EB7790AE5250DDF09FDF3665263054B70D2A1258",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$DirectionWarped.class": "B54BD4FA5E616D6CEA578904156AA544CB52E2D0D73F9287F40D5281F0E5FBBC",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Erosion.class": "262A02302DBEBA94D8D342968468FE848A840655BE1C7AD056D8EFCA1830E6E6",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Inverted.class": "ED0B7F67B8C74EDCF5D07454EBFF35F4A62ABD224251E62AAC4EC260FCBD9C0B",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Mapped.class": "812C19BF24B7234B5B5524A33666EF493CBB102E4B603C4967E8A9D7A4AF06FE",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Mix.class": "F3D339472AB9FD1C784ACE5C1DFBBB0E86A4B36995A22993627717E63716D095",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Mul.class": "31094BD5E6FC0604886CAA494BDBB1F77D0D82766F96303C758C68C0ABB0BEA6",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Node.class": "0D69CE15C3381A0DB77E10758C0D7DDDFF1727CDAED2D6736EFA5141CFE0AE0C",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Perlin.class": "ADEC1A86069D4753D2DB597BF5E01C84A8D978F90E7529FD76134BB737B7508B",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$PerlinRidge.class": "2DF1E1D035BB6F208BC30BAC22DE71D03FCEDAF7E053B94BAA909C14363C9C80",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Power.class": "97C5DEA460005E9F9978EC98240E297DBF9CD11AD51A9816FDFEB34590D55351",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$PowerCurve.class": "B075914139F7D02CC8DB4D7BFDAC1543D994494B6C93B231A65975E98F4E59CE",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Smoothstep.class": "0AF6147FEE0A0D9D9FA65202126373354B3E0AC30D5252B5F57EC51C27DF8B03",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Steps.class": "BB7D92D604586BDB7E349B1EDDC02554BDC1138ABF69F864A1066715467C8E4A",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Terrace.class": "262271E75F63BBFBC145915FFB9216E8A57BEC98FA7059125BEBC88CBABAD5B2",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$Warped.class": "D2A6ECC7ECF638B7866A7F35B392F362D57BE0B957563C238DC333097897C33D",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$WorleyEdge.class": "8FC1133336A69BCEC493911234E105D458A4A63D59BF778722AACABD5768F54A",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise$WorleyEdgeAdd.class": "CEC6E56B09598B30E1E7CB69742EDD166133D29C7F839A88C0BB0C46F95F1BE6",
+          "com/geogenesis/worldgen/terrain/candidate/RefNoise.class": "65CBDB08F274B653B0BCDCDA92C7F04390BA93100FB057F3F96D914D9E6FCDDC",
+          "com/geogenesis/worldgen/terrain/candidate/RegionCellTable.class": "E81CFD22DA4E2F57549C4EFD510F7F3FB06CF20191C571E90F888A865255A792",
+          "com/geogenesis/worldgen/terrain/candidate/RegionCompositionCandidate$Family.class": "75CA546E60AEFEF87F06F758E7FEB2952E2625A00A2B104AA583F153B0AB2562",
+          "com/geogenesis/worldgen/terrain/candidate/RegionCompositionCandidate$Kind.class": "34BEFBD289E1CE9908457DB29765FCAE1FB2DE00BC4E9B042581420EF9BAE003",
+          "com/geogenesis/worldgen/terrain/candidate/RegionCompositionCandidate.class": "8FB715255D82D4E671437934C5F74883CECBE62613D427CA6DF59F4751D7FBCC",
+          "com/geogenesis/worldgen/terrain/candidate/RegionHeightProbe.class": "B187279078A954A0889860DCADDEC20EEFD5901E62958A3D9501EA90F66BA963",
+          "com/geogenesis/worldgen/terrain/candidate/RegionPartition$IdMode.class": "D21080E81CC54546CD4CCE052B0F29635558BEABEFE22B880261BC3666DF6264",
+          "com/geogenesis/worldgen/terrain/candidate/RegionPartition$Sample.class": "02957BBC81C28C9F64206B80851754EF47F4F3B33DB9B26B5DE084A596E21E0B",
+          "com/geogenesis/worldgen/terrain/candidate/RegionPartition.class": "676C9B1B74713F816C65B08A4B598ADF81785C375C29908C06E3B6C76547B1A1",
+          "com/geogenesis/worldgen/terrain/candidate/RegionScaleCheck.class": "CF7952A0269FC354D1265F8D2B0BCDE39A436B9860DA514B7C21EEB3B893463B",
+          "com/geogenesis/worldgen/terrain/candidate/RegionScaleGallery.class": "039EEBFFC0ECC738B73E1A04C9E7E1106A5D581C02E53AC063D55E4A03CAA85B",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphGallery.class": "86D2D32D7B15E9F9697F01D1AFF0374B653FB7B44B1E5DD458F5280CF421A787",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorld$1.class": "F32612E6A8E4D6A5E7BC46858D4A79DE8857D8C113CF223A6D406BE0CDFF5796",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorld$RegionTile.class": "0B9BB25E62B15C45FB61943BE7997A4BFE2E18B9375B0EB3E895036E1FBBF74E",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorld$Sample.class": "58FB0296D9D09D4E766A62755CA5F1CC3BC04D5A371073E0146778AEAFE9E1F8",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorld$SiteChoice.class": "DF46F0F083D09CB24587727B585C76481DCCE9AF9D6E8B944A29E4B6964372AB",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorld.class": "CD4D7882450F0AD486CECFB7FFBB1F2461F1EF30D167ED4DD91BCBCB245B90D8",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$Band240Result.class": "384B73A7AC6AF2F4962976FC80D3DDC2A1687307B637B93BA607B488AD41AF69",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$BandFacts.class": "F4A14D0969757107D9C7E3B784690C48DE36C710D74064CFCB908DBA7149380B",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$Candidate.class": "BA0CEAD324B7BB5B9A54378B9209D766897FD2B22E2E2588EB08D6BEF749D4DF",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$Context.class": "9808ACC1653604745E7684DD9368B50FA7A51BEF8298116A0BD00B1F098A5DF4",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$MergerTotals.class": "F67EB6436D14A233B94EF5ECAA5DF9E65A33AA184403B1CABE3D6EE1A0A123A4",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$OceanChoose.class": "E3AFD05A8D25E6108459F91F0D6BCD62B13C6A5F32CD975864E1FC6478A907AB",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$OceanWide.class": "3CA481957D27DA6209EBDEF5862D8632910A3092A5E68406BF4A090A152F3934",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$PureLandTotals.class": "D69FE7B8DA22E106F7743DBBCEA20330656D4E033111EF1B96E55ED588FA8ACB",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$SlotScan.class": "B2274030D3A680B95480AA642D3C9FE34F493DF73696C2748A03D70AEE796905",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$SpanProbe.class": "CAD7450FCAA751B02CBFAB2C275D26E6C78B0A75531D03349E96043CA1F5F35A",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$Stage.class": "103DE503AF3970A464AA855EFCD5E633982269AB03CCE5007B4E1388918D8511",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$Sweep.class": "787E5A4644F77A11E6B286892CC31D0A203926E182B2E73D76C6075D16623971",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$TileProbe.class": "027A975D7B6BB38AF2871FBB2CE2EED1F14BC6E2EA76F280D0641121069262C3",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$TileRebuild.class": "F6DF214448353C3D8D0FFF500773C8C7EDEE85DD237FA58B34C6FD4E0D05BA1A",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$TrapRow.class": "F0E6CD8AE2147E056CC00D64F49F203C41873AE10A57333A9BF2A76A3717E2D4",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck$TrapTotals.class": "CE879160C4B0E186D85AA1B8FFA5F0FA02980D65530D2FF6686A348EB7F53687",
+          "com/geogenesis/worldgen/terrain/candidate/RegionalMorphWorldCheck.class": "37D855514E6A111FF93E9C72F5EA33F702EB3061C48FBEEEB009C1EE34F4D147",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe$Args.class": "92C5CE8E7733D779F695BB987DCE98F50E9F50C1D61DAE4DBDA3CB47E412233A",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe$CensusAccumulator.class": "F3FE0BD2F28ECC5A8770E52EA7B31BBE04B0C05697F2B03BF6D64C92324ED219",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe$Checks.class": "7FAF29A340DB20B5E17516B54CAE35B553BA9901220321BAEA8F9CEB5597C1FB",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe$CoverageTally.class": "66E8E299974C4E6A9637FCF7CF892517B8233B8FEBD15C8DC9F9EA901E1D9FEE",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe$EntryInfo.class": "6A12E6261118D8A15B78782B0093325B6FA5CD81D8CBDF4ACCA3499893759237",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe$Mirror$Scratch.class": "40DCB44E8587C24BF00C013C325D2B38BAE903F29CDAB28E56B81490A2C6858D",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe$Mirror.class": "ADFCDDBB63B07093C85C2002B1256FFA9D14B50BDDFAD81454F926561A7DECB0",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe$SeedUse.class": "55DDBA9BECDEA4315B7544B4B050B0B9E17BFE0CB73A12A733824B3C84C7BBCF",
+          "com/geogenesis/worldgen/terrain/candidate/SandboxInventoryProbe.class": "6ED784A333C93B8A9AECFCB49FC98A7B8DAAFB787203B45C5FCD959B06BB2D4B",
+          "com/geogenesis/worldgen/terrain/candidate/SeaMorphAudit.class": "F92D81EA64A990D77F5FC6ED505467AD8F02905A24DD41C48F6BD90AA5729A68",
+          "com/geogenesis/worldgen/terrain/candidate/SeaUnlockCheck.class": "90CD129EA4C273408CDA456AA2898125432CBCCA5B07DEF2434CCA0B1C550660",
+          "com/geogenesis/worldgen/terrain/candidate/SeabedLayerProbe.class": "C38F435EA8A93C84C2A888848B19219E28E8DA3B05D80FE7E6F265BC00642D0F",
+          "com/geogenesis/worldgen/terrain/candidate/SelectedFamilyProbe.class": "C56969847F046F09E6EC7F96C499C7851AE9894E0F1F6DA224379155DCC0B7E5",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowCloseupProbe.class": "8E5FEC238CC89C869A6EFCBCCDD64DBDA683C5DD983DB1717EF09B9098804893",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowDetailCheck.class": "B3066F2E106289D7DACFDBEA44BF86B8A41E56CFFABF6CAC1D2B8EE488867B27",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowRegionMatcher$1.class": "DA43F089F6C241EBBAB6F156DD46C98CFD08CB15DF213330D21D40C079A213F8",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowRegionMatcher$Match.class": "69A51C2DAFB8F6A60391DFA01D8E5BDFCDEB0098AA93173E34C3E33D80488BB4",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowRegionMatcher$Patch.class": "8A0E119436BA5164F1CE146208D26955BBC3A44B4B212AFA7BBED0500BA8351A",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowRegionMatcher$Segment.class": "06C7BA03C8CEB13C99D3E7B63227792BE7D26E9B5EF2D4BB3D59472CF9207A87",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowRegionMatcher.class": "87D5BA6358A599D060A550208FDA9471D0622095D2D99A4E03388D1D7B14BB87",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowSeaIslandCandidate$IslandType.class": "A93AE1F43AAFC9CFEB95CB6F412F431B2AC7B2757EEBB965B2C5482613F8AB36",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowSeaIslandCandidate$OffshoreSampler.class": "BFDB6ABDEE9BA0B80A7EE1F8C6F01ACA9B051484506EA9F6975643F81136D186",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowSeaIslandCandidate$Seabed.class": "E594B8EE36F7E4D3F49DD43C1B7A02B74A41D1671D715944ADB937F0089B3461",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowSeaIslandCandidate.class": "76E0212E384914E01DA62DE2791954F978F8418FA4797FA818317199CE2DDF7E",
+          "com/geogenesis/worldgen/terrain/candidate/ShallowShelfProbe.class": "289C19E0CF721F4043ECD6F529733AF3D78D5B12721AA33F1075975CFC45970D",
+          "com/geogenesis/worldgen/terrain/candidate/ShoreAnchorProbe.class": "8BFE2CF1174AC5590AAB0A730C62ABDEF0A0DADBA27E564ED3D9E71C8DC33BBC",
+          "com/geogenesis/worldgen/terrain/candidate/SoftSteps.class": "6527353AB7B161FD334029E5F957D5A72E5AE053D50D3E4835FDFD11F292BB38",
+          "com/geogenesis/worldgen/terrain/candidate/TerrainBlenderCandidate$Family.class": "69F83505C9962380AB98041E8B132862D93ABC8E2341A359765959A07B2F9E08",
+          "com/geogenesis/worldgen/terrain/candidate/TerrainBlenderCandidate.class": "C99525CAB88FBB59BC047C84CE834ED0286BAF5E183CCD8B957EF104B6B02B05",
+          "com/geogenesis/worldgen/terrain/candidate/TypeCandidateGallery$1.class": "1586D7B20246ED0485C36A2FDFD6E25CE2FDFF43532A037A0624A10EF33E64BC",
+          "com/geogenesis/worldgen/terrain/candidate/TypeCandidateGallery$Entry.class": "839E7D38055FB82716D359475AD127BCBB250EBAE815E406CC673DD12EE2A3C9",
+          "com/geogenesis/worldgen/terrain/candidate/TypeCandidateGallery$Sampler.class": "86E71CD1B69AA831ABFFE570C0704AC7FB88F52B9861085454C4C5583C941847",
+          "com/geogenesis/worldgen/terrain/candidate/TypeCandidateGallery.class": "01FA5012D086713F6B22AB28F0CA11A7BC665F0B7A1A6B78AC92F355C8F18D73",
+          "com/geogenesis/worldgen/terrain/candidate/UnifiedTerrainCatalog$Side.class": "717FB861AA788B6057D99EA2CE5D17D387E788BD09B36E6DBDC80B409883779D",
+          "com/geogenesis/worldgen/terrain/candidate/UnifiedTerrainCatalog$Slot.class": "D8BD42FA580ABB2C2693E1BFE55E3FC8BB8426702A7388A7D9669F81BE8A6B30",
+          "com/geogenesis/worldgen/terrain/candidate/UnifiedTerrainCatalog.class": "0420A01DCEFA62770EE5D3D7E9B1F09CA0DC22A5959FC1BE505C8CE24B650BE0",
+          "com/geogenesis/worldgen/terrain/candidate/UnifiedTerrainCheck.class": "33A7EC4AE2B393D3A841FDDB71CEAB3BDFD705683F6AD26AFB583CA8F96E2D2B",
+          "com/geogenesis/worldgen/terrain/candidate/UnifiedTerrainFullCheck.class": "40AB507898684286FF1533BC7DB34F565A887161EAF58ABBBE06274B74AE0E1D",
+          "com/geogenesis/worldgen/terrain/candidate/UnifiedWorld$Arm.class": "10ED7A0448080C02B0BD6EEB8A0E336DDEC2D3B3FBFB23D3F68F98B2F0042CDE",
+          "com/geogenesis/worldgen/terrain/candidate/UnifiedWorld.class": "CAE8976D79C5371428DB70FA5D019CC30E3F28F28CD3CC922B3A40C5863E38C4",
+          "com/geogenesis/worldgen/terrain/candidate/WarpMagnitudeProbe.class": "C41A0A4E12BB7CD17757608B7B9DBFCEED53F19AA60BB683E5FFA996F07E5946",
+          "com/geogenesis/worldgen/terrain/candidate/WorldProbe.class": "7BBB6A4BFC6C6411EFFCF4542C50BEB85EC748F4128263934226CF4CB5A74334"
+        }
+      },
+      "classes-cand": {
+        "count": 61,
+        "sha256": {
+          "com/geogenesis/worldgen/terrain/candidate/ActualNodeClosure.class": "1E0AD0E3E03A476E33580527C07BFDA2DF54685182F401E1396AEE6055E1B0A9",
+          "com/geogenesis/worldgen/terrain/candidate/ConcCycleAudit$CycleHolder.class": "AC58A41C17932DAF126318744C6E323FA544FDCDFE7A5EE7156BFB9DA06D1372",
+          "com/geogenesis/worldgen/terrain/candidate/ConcCycleAudit.class": "0A09B0A727BC790F4889105CEF6796124FC1170E647BCCD2F6EA7EE250589E10",
+          "com/geogenesis/worldgen/terrain/candidate/ConcHarness$1.class": "BBD9B263D5AB04700167609B341F723EFC29A6A9C0DDFE85C9F520EBE9A7EBD4",
+          "com/geogenesis/worldgen/terrain/candidate/ConcHarness$Bundle.class": "C230523992C13E58CD0C6999B6AFB99289DCA58B8E5F37EE750D5634AD7FCFD3",
+          "com/geogenesis/worldgen/terrain/candidate/ConcHarness$Obs.class": "F1838B57A72AFFA2FBC97DC7B538D4F6C302E681F33AD3A2CEA2EB8250654E93",
+          "com/geogenesis/worldgen/terrain/candidate/ConcHarness.class": "E3606409AD48C4FDB5BE316184B3D4047BF06BC5431DC300F93074C37DA4834B",
+          "com/geogenesis/worldgen/terrain/candidate/ConcLifecycleProbe.class": "48781A45CDAF9A4E5FAAB19839501BF8ECB8541FB0F58B684332FC0752326006",
+          "com/geogenesis/worldgen/terrain/candidate/ConcMemFixedDiag.class": "62B8E234F4027FA4E6AC59A2D00418B78DF65CBB69CB5FEA81A39F73FD667DFE",
+          "com/geogenesis/worldgen/terrain/candidate/ConcPerlinIdentityContract$OverridingKey.class": "D54E8BD647521BE5CD819E79D1466B0D651FC4C6326CC206448624421D7B7DA5",
+          "com/geogenesis/worldgen/terrain/candidate/ConcPerlinIdentityContract.class": "8F6F1F5D3C9F5C69E4DE1B70EA6F593A85101AD26E34443306A496A678075BFC",
+          "com/geogenesis/worldgen/terrain/candidate/ConcValueDump.class": "BBC57CAED295410729311CE18767A8831D717637246AA3F4D5D546EDF026E0E9",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Cell.class": "E8D6E7EE6766D990410701EC7213887BF3A81EB753A35535439B15F82518A01F",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Edge.class": "E186201223CDBACC133211A6D47B7E4037F2CF3A54B7B104E5A8446DE22E23DC",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Pick.class": "5D00D721EDC4345B00DF10CF436C84FF69573D3C73EFF9666031DF4301ED33E2",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$ProfileCandidate.class": "4E3F1F3D34D9181C089E2EA9D4A4D449C7E810B27F94D3379010BCA219428EE7",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Sample.class": "6B9D9D1047AF70B93FDFD94E7887CEAA39BE41DD1ABD53D34C21925B5AEFE78E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Site.class": "3F685186DC785D93515E5CAB6986F1D9EA2A84215D94E1992D8778A8015F3B7F",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$WarpEdge.class": "EC923F7C33AD90D15A85B2003FE768B728B89D55652FC53F003C4701590AB74E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry.class": "BD026AABBBF927B1C764639F6144E9BB1D57F09DC9705640C0A4977DC1200EF8",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarBlock$Probe.class": "6BCFADCF6FEC7E142907222701552D98A048E8B184204827BF80BA1255339522",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarBlock.class": "D4635DEA88DCEAF2040B74A40EBB4F4A3B51D1EF003E6305D1DE405E96A4E7A3",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarDiagnose.class": "6F0CA888FCB2E7B1A9C84E4AA63E0171BE52360F5097CDCEAF23D496B62D698E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullGallery.class": "4D8EB4B7A3DF8E3557002C99576B4A0B694C00359C5997E9C667CEF2E1E93FBD",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$1.class": "110C174138D830C0AFDBF7E5876B5ADD3C7D2D7E6FAF7488E3D398F1144852E8",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Sample.class": "9B0138EF5DD9B30FD0CB40F724577C787FCB1A6AD49237D727BAC4C3FFA228E4",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Stats.class": "90AF9856E9D99AC79410FE24875E785176565148F05386E58883935E4EC83288",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Tile.class": "4037D3A043837CDD8411C20F8E0A142F1D6FB160F03B29BF691AA60530F8A13F",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand.class": "97642DDEBACA9DCF4E18C6C08F73E1957DB7C902FC98D383CD71B0495CFA0EE6",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryCandidate.class": "DF881993A3EBF82A17A4403E6317E5D9648BC1A6D5F782510EFCE69A85AF484C",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryProbe$Test.class": "3419B7BFAD0146371691C226574620585B1BD763276E075952AD48DEEC806DA4",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryProbe.class": "B0B0F92BC102C0533A2A0D53334D9B12B3895A7EAECEE6433FED36C4A661BD1A",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleLandRecipe.class": "569EE2A7F7A03B2B717CE075DD2219E7C34F1CF09E3064470AA961C759FCDFBA",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleMorphEngine$Evaluation.class": "F959C57DD2891C5C6A0257E155F226FB860C32F22F47A97869FD2704E9E9304D",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleMorphEngine.class": "0958E85A290116F84B66116AECA382C3CBFF4810CF17B9CBFF9EA673D9FB4BF9",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleNodeCensus.class": "96A10051965CDB50BE6A03E10ACABC3FB6FF6A90567945D4365A8696E1257E87",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate$EdgeSource.class": "18FB93AF54DD3CA8C722EFAEF61655ECFD2281DF3561C61512B1C018688E0AA0",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate$Sea.class": "D7D2CEFB9BB21334E6247361F4F3A6841FC786D01F0CA9C3CB635026C5642D9C",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate.class": "BF96832466D1A437195E369ACD9492F526EB39DA6BB2302ACD85254C7D75F95E",
+          "com/geogenesis/worldgen/terrain/candidate/DoublePerlinCandidate.class": "D12F4215D5733E3FF5CD1CCB534BCCCD5A1A7D080A157CBA1CDA5461C7CFF8C2",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleSeamProfile.class": "D318F34344AC873108D89B6781420BA05986D6D6AB89F20A0163E569A6D0E116",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleTerraceCheck.class": "3A3759D18D7E752AD20AF979EDB7CD53D7E8B00A50B7815833084980CBF3349B",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleTreeFixed.class": "6DB24F0E5816BE3C3DDA18F3144CB7E9231BA5CD851212BE89B9C784DA862E36",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall$DoubleFunction.class": "023EBE8DB0EE959380F8A3C95FFBD5679908EDB912FFA99447353D9CB4E72ECA",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall$DualNode.class": "EA6E14BE6B1EEF9351577CF0D61F1A179C83C488DAA8D5D83DE1BDAE149EA1DC",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall.class": "307A1D2C10EA26EA7DABDE4CA9A56EDF6CCFF685144E04CE418DCF4AA1D0FC3E",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContext$1.class": "7A7115EE1BE2254E7764D84856EFA059A344049B9CE479B85764A4C972F027B7",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContext.class": "4F6C5FBC6027448F227DB27C977637630872EE62018F63D12DA8702D06E5BCC5",
+          "com/geogenesis/worldgen/terrain/candidate/MultiSeedChain$Chain.class": "E0A81ABA64427925579C7D5A332FB43587CDED2558C0A0A8E968F85E4A6E31A4",
+          "com/geogenesis/worldgen/terrain/candidate/MultiSeedChain$Digest.class": "5216429F51BC29BC64BF4C8A0E19840E3E364D2CAC354F3F3C3A60B24EE349EE",
+          "com/geogenesis/worldgen/terrain/candidate/MultiSeedChain.class": "70177A9BB2B66FA6ECE723326255B03BC0F795A35FB45A1901860C683E92E8F4",
+          "com/geogenesis/worldgen/terrain/candidate/PerlinScalarCache.class": "288084470F28CCC3F7958BDF4B5C3083CEA2A9D198757D8A0E77AEE065291B07",
+          "com/geogenesis/worldgen/terrain/candidate/RealChainConcurrency$Chain.class": "6B7D0FA6CE0F1E594D549D467971D93960E7FB4DE9DE1D586E8F8C7657157B2F",
+          "com/geogenesis/worldgen/terrain/candidate/RealChainConcurrency$ChainFor.class": "05A733F826E5A5BA3AD868CEE8E71BC75CFA27C6982D55CBE169450A4F593144",
+          "com/geogenesis/worldgen/terrain/candidate/RealChainConcurrency$Ref.class": "D0E39DE7502FEB79F4D60219BE49E942D71AA9DFCB5C400E98BB75486D950BA7",
+          "com/geogenesis/worldgen/terrain/candidate/RealChainConcurrency.class": "A613FA2AE6AADDD90E284FBCB08284AEF173D2E51D24936C97B96E31DE6F6345",
+          "com/geogenesis/worldgen/terrain/candidate/SeedConcurrency.class": "C3399EA44FB8F4D4E5A19C1389AEE4072CE24666FD5EB58C008562A0D4CBCDD4",
+          "com/geogenesis/worldgen/terrain/candidate/SeedWiringGate$Digest.class": "B2D8C108C3BEAF5A3E657FCCEFECBFE929FD0F9F40A0ECE8EC7E6B09BF42ED0F",
+          "com/geogenesis/worldgen/terrain/candidate/SeedWiringGate$Stage.class": "08A5B6415890563D7C775484CF15A583C2A5EEC8459934DED3CF8C0F027E117F",
+          "com/geogenesis/worldgen/terrain/candidate/SeedWiringGate.class": "DE87729BAA6308D4376C6EFBB15826BAEAD62A65BC29597841035E2DC049110A",
+          "com/geogenesis/worldgen/terrain/candidate/WeakCacheMemoryProbe.class": "85A07B04EAAB97E587B16794EA9B20F2915CA5726689FE2E132E0A2578B31E85"
+        }
+      },
+      "classes-baseline": {
+        "count": 38,
+        "sha256": {
+          "com/geogenesis/worldgen/terrain/candidate/ActualNodeClosure.class": "1E0AD0E3E03A476E33580527C07BFDA2DF54685182F401E1396AEE6055E1B0A9",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Cell.class": "E8D6E7EE6766D990410701EC7213887BF3A81EB753A35535439B15F82518A01F",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Edge.class": "E186201223CDBACC133211A6D47B7E4037F2CF3A54B7B104E5A8446DE22E23DC",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Pick.class": "5D00D721EDC4345B00DF10CF436C84FF69573D3C73EFF9666031DF4301ED33E2",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$ProfileCandidate.class": "4E3F1F3D34D9181C089E2EA9D4A4D449C7E810B27F94D3379010BCA219428EE7",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Sample.class": "6B9D9D1047AF70B93FDFD94E7887CEAA39BE41DD1ABD53D34C21925B5AEFE78E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Site.class": "3F685186DC785D93515E5CAB6986F1D9EA2A84215D94E1992D8778A8015F3B7F",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$WarpEdge.class": "EC923F7C33AD90D15A85B2003FE768B728B89D55652FC53F003C4701590AB74E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry.class": "BD026AABBBF927B1C764639F6144E9BB1D57F09DC9705640C0A4977DC1200EF8",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarBlock$Probe.class": "6BCFADCF6FEC7E142907222701552D98A048E8B184204827BF80BA1255339522",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarBlock.class": "D4635DEA88DCEAF2040B74A40EBB4F4A3B51D1EF003E6305D1DE405E96A4E7A3",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarDiagnose.class": "6F0CA888FCB2E7B1A9C84E4AA63E0171BE52360F5097CDCEAF23D496B62D698E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullGallery.class": "4D8EB4B7A3DF8E3557002C99576B4A0B694C00359C5997E9C667CEF2E1E93FBD",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$1.class": "FE9777C2CED48A83E29EECA30D10F3A6A237EE4A2E363BF262083E154D7F8106",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Sample.class": "3CC8F17B3A854E2F85A1687B7EB3A18F5252AD1AAA7437170ADF378AFA15DD28",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Stats.class": "77C952610BC58313757EB07C97EF415833F23D067E12DEECE633F21D6BB7B4C0",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Tile.class": "97D1B5C3F0B49BABC3029828650F41750F2A604CE2DB8A7915F3231F437AB4BC",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand.class": "733468BBB660EDEB366C93BD9EADD707D6307249DE6769C573B7328AF95D917E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryCandidate.class": "DF881993A3EBF82A17A4403E6317E5D9648BC1A6D5F782510EFCE69A85AF484C",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryProbe$Test.class": "3419B7BFAD0146371691C226574620585B1BD763276E075952AD48DEEC806DA4",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryProbe.class": "B0B0F92BC102C0533A2A0D53334D9B12B3895A7EAECEE6433FED36C4A661BD1A",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleLandRecipe.class": "569EE2A7F7A03B2B717CE075DD2219E7C34F1CF09E3064470AA961C759FCDFBA",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleMorphEngine$Evaluation.class": "F959C57DD2891C5C6A0257E155F226FB860C32F22F47A97869FD2704E9E9304D",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleMorphEngine.class": "0958E85A290116F84B66116AECA382C3CBFF4810CF17B9CBFF9EA673D9FB4BF9",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleNodeCensus.class": "96A10051965CDB50BE6A03E10ACABC3FB6FF6A90567945D4365A8696E1257E87",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate$EdgeSource.class": "18FB93AF54DD3CA8C722EFAEF61655ECFD2281DF3561C61512B1C018688E0AA0",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate$Sea.class": "D7D2CEFB9BB21334E6247361F4F3A6841FC786D01F0CA9C3CB635026C5642D9C",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate.class": "BF96832466D1A437195E369ACD9492F526EB39DA6BB2302ACD85254C7D75F95E",
+          "com/geogenesis/worldgen/terrain/candidate/DoublePerlinCandidate.class": "D12F4215D5733E3FF5CD1CCB534BCCCD5A1A7D080A157CBA1CDA5461C7CFF8C2",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleSeamProfile.class": "D318F34344AC873108D89B6781420BA05986D6D6AB89F20A0163E569A6D0E116",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleTerraceCheck.class": "3A3759D18D7E752AD20AF979EDB7CD53D7E8B00A50B7815833084980CBF3349B",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleTreeFixed.class": "6DB24F0E5816BE3C3DDA18F3144CB7E9231BA5CD851212BE89B9C784DA862E36",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall$DoubleFunction.class": "023EBE8DB0EE959380F8A3C95FFBD5679908EDB912FFA99447353D9CB4E72ECA",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall$DualNode.class": "EA6E14BE6B1EEF9351577CF0D61F1A179C83C488DAA8D5D83DE1BDAE149EA1DC",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall.class": "307A1D2C10EA26EA7DABDE4CA9A56EDF6CCFF685144E04CE418DCF4AA1D0FC3E",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContext$1.class": "7A7115EE1BE2254E7764D84856EFA059A344049B9CE479B85764A4C972F027B7",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContext.class": "4F6C5FBC6027448F227DB27C977637630872EE62018F63D12DA8702D06E5BCC5",
+          "com/geogenesis/worldgen/terrain/candidate/PerlinScalarCache.class": "288084470F28CCC3F7958BDF4B5C3083CEA2A9D198757D8A0E77AEE065291B07"
+        }
+      },
+      "classes-3a7686": {
+        "count": 38,
+        "sha256": {
+          "com/geogenesis/worldgen/terrain/candidate/ActualNodeClosure.class": "1E0AD0E3E03A476E33580527C07BFDA2DF54685182F401E1396AEE6055E1B0A9",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Cell.class": "D661C5BFA48B858AB72185810530AF4AFAD2C580809F64CA75270AFE70596360",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Edge.class": "211CB166DBA6608982C6C4E982062FA201FE21A12BA5CA168C8B21DF305F237D",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Pick.class": "EBAB34E46851708ECF657CB190F1CB53BB0AA77E4CE0594BC4A2E8A38670A3FD",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$ProfileCandidate.class": "02C50226477E0891DDCB766DDC5F39F242423842B42421FD931E9C57CD984CCB",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Sample.class": "4CFF1DA445EAEAB43A830646B2FD7B8443B965E853E9BE2B3AC30D84054BC2A8",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$Site.class": "E5FFCB7BF805A0F038014491D9D87E3312125DF954E127077751D725F525B7E5",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry$WarpEdge.class": "965A9B539CE3EEEFFC6B72CAAADA7C9A9E5D9EE29E8CED363837FFC3C72E974F",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleBoundaryGeometry.class": "22D5A64A9BBA2BA22E0A38B7651F30E5CA8F10B359F9AD9EA77E7B5CEF33B44E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarBlock$Probe.class": "6BCFADCF6FEC7E142907222701552D98A048E8B184204827BF80BA1255339522",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarBlock.class": "D4635DEA88DCEAF2040B74A40EBB4F4A3B51D1EF003E6305D1DE405E96A4E7A3",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFarDiagnose.class": "6F0CA888FCB2E7B1A9C84E4AA63E0171BE52360F5097CDCEAF23D496B62D698E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullGallery.class": "4D8EB4B7A3DF8E3557002C99576B4A0B694C00359C5997E9C667CEF2E1E93FBD",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$1.class": "FE9777C2CED48A83E29EECA30D10F3A6A237EE4A2E363BF262083E154D7F8106",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Sample.class": "3CC8F17B3A854E2F85A1687B7EB3A18F5252AD1AAA7437170ADF378AFA15DD28",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Stats.class": "77C952610BC58313757EB07C97EF415833F23D067E12DEECE633F21D6BB7B4C0",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand$Tile.class": "97D1B5C3F0B49BABC3029828650F41750F2A604CE2DB8A7915F3231F437AB4BC",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleFullMorphLand.class": "733468BBB660EDEB366C93BD9EADD707D6307249DE6769C573B7328AF95D917E",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryCandidate.class": "DF881993A3EBF82A17A4403E6317E5D9648BC1A6D5F782510EFCE69A85AF484C",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryProbe$Test.class": "3419B7BFAD0146371691C226574620585B1BD763276E075952AD48DEEC806DA4",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleGalleryProbe.class": "B0B0F92BC102C0533A2A0D53334D9B12B3895A7EAECEE6433FED36C4A661BD1A",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleLandRecipe.class": "569EE2A7F7A03B2B717CE075DD2219E7C34F1CF09E3064470AA961C759FCDFBA",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleMorphEngine$Evaluation.class": "F959C57DD2891C5C6A0257E155F226FB860C32F22F47A97869FD2704E9E9304D",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleMorphEngine.class": "0958E85A290116F84B66116AECA382C3CBFF4810CF17B9CBFF9EA673D9FB4BF9",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleNodeCensus.class": "96A10051965CDB50BE6A03E10ACABC3FB6FF6A90567945D4365A8696E1257E87",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate$EdgeSource.class": "18FB93AF54DD3CA8C722EFAEF61655ECFD2281DF3561C61512B1C018688E0AA0",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate$Sea.class": "D7D2CEFB9BB21334E6247361F4F3A6841FC786D01F0CA9C3CB635026C5642D9C",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleOceanAssemblyCandidate.class": "BF96832466D1A437195E369ACD9492F526EB39DA6BB2302ACD85254C7D75F95E",
+          "com/geogenesis/worldgen/terrain/candidate/DoublePerlinCandidate.class": "D12F4215D5733E3FF5CD1CCB534BCCCD5A1A7D080A157CBA1CDA5461C7CFF8C2",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleSeamProfile.class": "D318F34344AC873108D89B6781420BA05986D6D6AB89F20A0163E569A6D0E116",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleTerraceCheck.class": "3A3759D18D7E752AD20AF979EDB7CD53D7E8B00A50B7815833084980CBF3349B",
+          "com/geogenesis/worldgen/terrain/candidate/DoubleTreeFixed.class": "6DB24F0E5816BE3C3DDA18F3144CB7E9231BA5CD851212BE89B9C784DA862E36",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall$DoubleFunction.class": "023EBE8DB0EE959380F8A3C95FFBD5679908EDB912FFA99447353D9CB4E72ECA",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall$DualNode.class": "EA6E14BE6B1EEF9351577CF0D61F1A179C83C488DAA8D5D83DE1BDAE149EA1DC",
+          "com/geogenesis/worldgen/terrain/candidate/DualCoordinateCall.class": "307A1D2C10EA26EA7DABDE4CA9A56EDF6CCFF685144E04CE418DCF4AA1D0FC3E",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContext$1.class": "7A7115EE1BE2254E7764D84856EFA059A344049B9CE479B85764A4C972F027B7",
+          "com/geogenesis/worldgen/terrain/candidate/LandRegionContext.class": "4F6C5FBC6027448F227DB27C977637630872EE62018F63D12DA8702D06E5BCC5",
+          "com/geogenesis/worldgen/terrain/candidate/PerlinScalarCache.class": "288084470F28CCC3F7958BDF4B5C3083CEA2A9D198757D8A0E77AEE065291B07"
+        }
+      }
+    }
+  },
+  "verify": {
+    "script": "verify.ps1",
+    "scriptSha256": "4BE74188C75265C96675B67A5A566C3C7644E2F0F8BB406D8535C46FED9AFE9F",
+    "exitCode": 0,
+    "ledger": {
+      "G1-canonical": "0",
+      "canonical-double": "BEA0A47C14D32FA9E2654C77CC6984999004E137E9E6BDE8A05D3E2B2A393965",
+      "canonical-float": "7BE0418369D097CE107EEEF58B8D02C6776782F1D7FBC6AD6C5E0E5728D7A238",
+      "G2-full-12345": "0",
+      "seed12345-forward": "340224069AB0D01CF668988436A8FDE8E9A8270EA3C938C536A5A6CFBC28F0AC",
+      "seed12345-reverse": "340224069AB0D01CF668988436A8FDE8E9A8270EA3C938C536A5A6CFBC28F0AC",
+      "G3-wiring": "0",
+      "G4-sweep": "0",
+      "G5-seed-concurrency": "0",
+      "G6-component-harness": "0",
+      "G5b-real-chain": "0",
+      "G7-lifecycle": "0",
+      "G7c-memory": "0",
+      "G7b-values-plain": "0",
+      "G7b-values-gc": "0",
+      "values-plain": "9D50122B4B09BA281C6D5F53EB11A7B58FCB4D24022333B151E8BF2EEF392CE2",
+      "values-gc": "9D50122B4B09BA281C6D5F53EB11A7B58FCB4D24022333B151E8BF2EEF392CE2",
+      "G8-identity": "0",
+      "G8-cycle-audit": "0",
+      "G9-canonical-seed-rejected": "1 (expected non-zero)"
+    },
+    "gates": {
+      "G1-canonical": "canonical 1401 arm still BEA0A47C (double) and 7BE04183 (float)",
+      "G2-full-12345": "seed 12345 full 1401x1401, forward == reverse == 340224069AB0D01C...",
+      "G3-wiring": "base(seed) reaches every stage; distinct seeds must not share a chain digest",
+      "G4-sweep": "8 seeds: finite everywhere, far field finite, 21 pairwise digests distinct",
+      "G5-seed-concurrency": "cross-seed concurrency on the land chain COMPONENT (not real chain)",
+      "G5b-real-chain": "REAL COMPLETE CHAIN concurrency: ContinentField + DoubleGalleryCandidate + HeightCurve, 2 seeds, coast/shelf/seabed/land/highland/far coverage measured from the chain's own output, shared and per-thread instances bit-identical to single-threaded reference, LRU churn stable, 4/4 negative controls",
+      "G6-component-harness": "COMPONENT test only: ConcHarness feeds the ocean assembler a sine/cosine STAND-IN continent, so it is NOT real-chain evidence; it isolates the land morph engine, tile LRU and wrapper cache",
+      "G7-lifecycle": "WeakReference+ReferenceQueue, 10 rounds, growthSteps=0/10",
+      "G7c-memory": "memory/lifecycle witness under -Xmx128m: 40 owners per round, 1 discarded warm-up + 3 measured create/release rounds; weak refs, PS entry peak and return to 0, retained heap, tile LRU <= CACHE_TILES on every owner, and a strongly-held negative control that must NOT be collected",
+      "G7b-values": "value dumps identical with and without GC pressure",
+      "G8-identity": "RefNoise.Perlin keeps Object identity semantics; cycle audit cycles=0",
+      "G9-canonical-seed-rejected": "negative control: canonical seed refused by full mode, exit 1"
+    },
+    "claimScope": {
+      "realChainConcurrencyVerifiedBy": "G5b RealChainConcurrency (src/probes-realchain)",
+      "componentOnlyNotRealChain": [
+        "G5 SeedConcurrency",
+        "G6 ConcHarness"
+      ],
+      "whyTheDistinctionMatters": "ConcHarness builds DoubleOceanAssemblyCandidate with a sine/cosine stand-in as its ContinentField (ConcHarness.continent), so it never exercises ContinentField, the composed DoubleGalleryCandidate, or the E->C->height curve end to end. Citing it as complete-chain evidence would be a false claim. The build/verify scripts now keep the two apart and reject a real-chain probe that reintroduces a stand-in sampler.",
+      "cancellationNotClaimed": "DoubleFullMorphLand serializes mutating state on its own monitor. Concurrent callers COOPERATE by blocking: that is mutual exclusion, not a cancellation API. There is no interruptible checkpoint, no progress handle, and no way to abort an in-flight tile build. The cancel/retry row in ConcHarness measures a harness-owned attempt loop that stops issuing NEW work between attempts; it never cancels work already inside the chain. A passing result must not be read as cancellation support."
+    },
+    "realChainEvidence": {
+      "log": "_build/reports/g5b-realchain.log",
+      "probeSource": "src/probes-realchain/com/geogenesis/worldgen/terrain/candidate/RealChainConcurrency.java",
+      "seeds": [
+        "12345",
+        "9139912035078620160"
+      ],
+      "threads": 6,
+      "rounds": 3,
+      "configDiscipline": "config loaded exactly once on the main thread before any worker starts; workers only call e()/height() on pre-constructed objects and never read or write GeoGenesisConfig",
+      "stageRows": [
+        "HARNESS,start,chain=real(ContinentField+DoubleGalleryCandidate+HeightCurve),seeds=2,threads=6,rounds=3,configLoadedOn=main-thread",
+        "STAGE,coverage,seed=12345,points=94,zones={land=24,shelf=24,coast=24,seabed=14,highland=3,far=5}",
+        "STAGE,finiteness,seed=12345,nonFinite=0,points=94",
+        "STAGE,shared-instance,seed=12345,threads=6,rounds=3,evals=1692,mismatches=0,exceptions=0,wallMs=10088,tilesCached=8,tileEvictions=864,result=PASS",
+        "STAGE,independent-instances,seed=12345,threads=6,rounds=3,evals=1692,mismatches=0,exceptions=0,wallMs=2642,tilesCached=8,tileEvictions=146,result=PASS",
+        "STAGE,lru-churn,seed=12345,cap=8,churnTiles=32,tilesBuilt=33,tileEvictions=25,tilesCached=8,coldEqualsWarm=true,result=PASS",
+        "STAGE,counters,seed=12345,points=2279,cachedPoints=2509,histSum=2279,tilesBuilt=872,tileEvictions=864,tilesCached=8,consistent=true",
+        "STAGE,range,seed=12345,minE=-0.433981,maxE=0.647025,seaPoints=57,landPoints=37",
+        "STAGE,coverage,seed=9139912035078620160,points=99,zones={coast=24,land=24,shelf=24,seabed=13,highland=9,far=5}",
+        "STAGE,finiteness,seed=9139912035078620160,nonFinite=0,points=99",
+        "STAGE,shared-instance,seed=9139912035078620160,threads=6,rounds=3,evals=1782,mismatches=0,exceptions=0,wallMs=12245,tilesCached=8,tileEvictions=1088,result=PASS",
+        "STAGE,independent-instances,seed=9139912035078620160,threads=6,rounds=3,evals=1782,mismatches=0,exceptions=0,wallMs=2710,tilesCached=8,tileEvictions=149,result=PASS",
+        "STAGE,lru-churn,seed=9139912035078620160,cap=8,churnTiles=32,tilesBuilt=33,tileEvictions=25,tilesCached=8,coldEqualsWarm=true,result=PASS",
+        "STAGE,counters,seed=9139912035078620160,points=2391,cachedPoints=2829,histSum=2391,tilesBuilt=1096,tileEvictions=1088,tilesCached=8,consistent=true",
+        "STAGE,range,seed=9139912035078620160,minE=-0.410263,maxE=0.809862,seaPoints=55,landPoints=44",
+        "STAGE,neg-control,detected=4/4",
+        "VERDICT,PASS,failures=0"
+      ]
+    },
+    "concurrencyProbeConfigPolicy": "probes-conc (6 files) must contain zero references to GeoGenesisConfig / CommentedFileConfig / TomlFormat; verify.ps1 enforces that as a preflight. probes-realchain is deliberately EXEMPT because it must load the config once on the main thread to build a real ContinentField and HeightCurve. Giving it its own directory is what makes a directory-scoped check correct instead of a blanket ban that would reject the very probe we need.",
+    "memoryWitness": {
+      "log": "_build/reports/g7c-memory.log",
+      "probeSource": "src/probes-memory/com/geogenesis/worldgen/terrain/candidate/WeakCacheMemoryProbe.java",
+      "heapCap": "-Xmx128m",
+      "ownersPerRound": 40,
+      "warmupRounds": 1,
+      "measuredRounds": 3,
+      "claim": "GC observation only; NOT a hard memory bound",
+      "noDefaultEntryCap": "PerlinScalarCache is a plain WeakHashMap with no ceiling configured. Eviction happens only when a key is collected and the map expunges the stale entry. An earlier revision measured a fixed cap to be actively harmful (one owner graph holds ~181 distinct Perlin instances, so a 512-entry cap produced more evictions than misses); that is why no cap exists by design. A passing result must not be read as an entry bound or as a memory ceiling.",
+      "whyRewrittenNotCopied": "The sandbox probe carried a 'legacy' mode that rebuilt the pre-fix IdentityHashMap container and pulled fixtures from ConcHarness, whose continent source is a sine/cosine stand-in. Neither belongs in a preserved artefact, so this is a self-contained fixed-cache-only rewrite that builds the real DoubleFullMorphLand directly.",
+      "stageRows": [
+        "CACHE,shape,backing=WeakHashMap,entryCap=none,eviction=on-key-collection-only",
+        "NEGCTRL,stronglyHeldOwner,stillReachable=true,entriesBeforeGc=28,entriesAfterGc=28,result=PASS",
+        "WARMUP,0,owners=40,ownersCollected=40/40,gcRounds=1,entriesPeak=732,entriesAfterRelease=0,tilesCached=2,tileCap=8,tileBoundOk=true,heapBaseKb=5580,heapPeakKb=60278,heapAfterKb=5622,heapRetainedKb=42",
+        "ROUND,1,owners=40,ownersCollected=40/40,gcRounds=1,entriesPeak=732,entriesAfterRelease=0,tilesCached=2,tileCap=8,tileBoundOk=true,heapBaseKb=5642,heapPeakKb=60500,heapAfterKb=5647,heapRetainedKb=5",
+        "ROUND,2,owners=40,ownersCollected=40/40,gcRounds=1,entriesPeak=732,entriesAfterRelease=0,tilesCached=2,tileCap=8,tileBoundOk=true,heapBaseKb=5646,heapPeakKb=60732,heapAfterKb=5652,heapRetainedKb=6",
+        "ROUND,3,owners=40,ownersCollected=40/40,gcRounds=1,entriesPeak=732,entriesAfterRelease=0,tilesCached=2,tileCap=8,tileBoundOk=true,heapBaseKb=5650,heapPeakKb=60533,heapAfterKb=5656,heapRetainedKb=6",
+        "SUMMARY,entriesPeakMax=732,entryCap=none,tilesCachedMax=2,tileCap=8,tileBoundOk=true,roundsWithResidue=0/3",
+        "NOTE,heapRetainedIsObservationOnly,no entry cap by design (WeakHashMap default),eviction happens only when a weak key is collected,this run does not establish a hard memory ceiling",
+        "VERDICT,PASS,failures=0"
+      ]
+    },
+    "harnessRows": [
+      "STAGE,shared-instance,threads=6,rounds=3,evals=432,mismatches=0,exceptions=0,wallMs=3248,threadMs=17494,evalsPerSecPerThread=24",
+      "STAGE,independent-instances,threads=6,rounds=3,evals=432,mismatches=0,exceptions=0,wallMs=1342,threadMs=7545,evalsPerSecPerThread=57",
+      "STAGE,lru-bound,cap=8,distinctTiles=16,maxTilesCached=8,tilesBuilt=48,tileEvictions=40,cachedAfter=8,evictEqualsBuiltMinusCached=true,recomputeMismatch=0",
+      "STAGE,multi-seed,seeds=3,pts=12,crossSeedMismatch=0,exceptions=0,distinctFromSeed0=2",
+      "STAGE,cancel-retry,workers=4,tried=876,cancelsIssued=12,mismatchAfter=0,exceptions=0",
+      "STAGE,ps-cache-curve,before=582,after=31,growth=-551,monotoneSteps=1/8,liveNow=0,detail=hits=287255 misses=1137,curve=613|31|31|31|31|31|31|31",
+      "STAGE,neg-control,detected=4/4",
+      "STAGE,ps-cache-curve,before=139,after=170,growth=31,monotoneSteps=1/1,liveNow=133,detail=hits=293517 misses=1307,curve=170",
+      "VERDICT,harness,PASS,failures=0,psSizeFinal=0"
+    ]
+  },
+  "producedArtifacts": {
+    "canonical/double-heights.f64be": {
+      "bytes": 15702408,
+      "sha256": "BEA0A47C14D32FA9E2654C77CC6984999004E137E9E6BDE8A05D3E2B2A393965"
+    },
+    "canonical/float-heights.f64be": {
+      "bytes": 15702408,
+      "sha256": "7BE0418369D097CE107EEEF58B8D02C6776782F1D7FBC6AD6C5E0E5728D7A238"
+    },
+    "full/heights-12345.f64be": {
+      "bytes": 15702408,
+      "sha256": "340224069AB0D01CF668988436A8FDE8E9A8270EA3C938C536A5A6CFBC28F0AC"
+    },
+    "full/heights-12345-reverse.f64be": {
+      "bytes": 15702408,
+      "sha256": "340224069AB0D01CF668988436A8FDE8E9A8270EA3C938C536A5A6CFBC28F0AC"
+    },
+    "values-plain.f64be": {
+      "bytes": 47040,
+      "sha256": "9D50122B4B09BA281C6D5F53EB11A7B58FCB4D24022333B151E8BF2EEF392CE2"
+    },
+    "values-gc.f64be": {
+      "bytes": 47040,
+      "sha256": "9D50122B4B09BA281C6D5F53EB11A7B58FCB4D24022333B151E8BF2EEF392CE2"
+    }
+  },
+  "gap": {
+    "dependencyJarsNotSelfContained": true,
+    "detail": "The 115 jars in ../frozen/classpath-jars.txt are NOT bundled. They are recorded by path, byte size, SHA-256 and Gradle/Maven origin in ../deps/jars.json. This directory cannot build on a machine without them; re-obtain via Gradle and check the hashes.",
+    "samplesNotBundled": "1401x1401 .f64be arrays from the verify run are kept under runs/ for this candidate only; they are regenerable and not part of any manifest core set.",
+    "notCarriedOver": [
+      "Failed/abandoned experiments from the two source sandboxes (pre/ post/ ms/ 154 MB of stage arrays).",
+      "The pre-fix cache repaired-in-place variants (ConcMemFixedOnly, ConcCacheDiag, ConcPsRace, ConcBugRepro): they reproduce old defects, and the defect record is already captured in reports/.",
+      "JFR recordings and large figures."
+    ]
+  },
+  "totals": {
+    "files": 799,
+    "bytes": 163229017
+  },
+  "coreSet": {
+    "note": "necessary sources + scripts; _build/ and out/ are excluded as reproducible",
+    "files": 219,
+    "bytes": 2983304
+  }
+}

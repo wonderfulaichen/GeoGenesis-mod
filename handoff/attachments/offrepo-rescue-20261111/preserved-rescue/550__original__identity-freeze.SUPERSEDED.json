@@ -1,0 +1,46 @@
+{
+  "sandbox": "geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9",
+  "verified_by": "final isolation-verification agent, 2026-11-02",
+  "sources": {
+    "DoubleFullMorphLand.java (candidate/optimized, chunk-index)": "B7C57D807E9450F7B993257F1D27436EC326512B4B737E6C5E4C90637C193460",
+    "DoubleFullMorphLand.java (baseline arm = xopt/3A7686 land AD971E97, no chunk index)": "AD971E97E7C4C9ECC9A602E431FBF0384561E4326BE240AC28E309A35F7238C0",
+    "DoubleBoundaryGeometry.java (Xfix, shared by baseline and optimized)": "8C26D068DB30CAD8DB9E2E8528EA19514F096D14A68B61E6B1EE22F8624EDA4E",
+    "DoubleBoundaryGeometry.java (old, 3A7686 merged arm, Arm A only)": "CF4FCA7ED241E6D828E0C2D4BC93133427BBC32D9E4A69A780C50F664B74677E"
+  },
+  "classes": {
+    "classes-cand/DoubleFullMorphLand.class (optimized)": "4D0989E8145D792F8625A01DAF2382A58D3298F1FB60033871DDDA4BE3A79C99",
+    "classes-cand/DoubleFullMorphLand$Tile.class": "byte-verified: contains chunkStart/chunkEnd/chunkMinX/chunkMaxX/chunkMinZ/chunkMaxZ fields and buildChunks/chunkAxisDistance methods (raw class bytes, no duplicate-class shadowing possible)",
+    "classes-baseline/DoubleFullMorphLand.class (baseline arm)": "pristine AD971E97 land, no chunk* fields",
+    "classes-3a7686/DoubleFullMorphLand.class (Arm A)": "compiled from merged 3A7686 sources (old geometry CF4FCA7E + old land AD971E97)"
+  },
+  "full_chain_e_perf_arms": {
+    "A": "3A7686C5 candidate: old DoubleBoundaryGeometry CF4FCA7E + land AD971E97, classpath classes-3a7686;classes-head",
+    "B": "Xfix geometry 8C26D068 + pristine land AD971E97, classpath classes-baseline;classes-cand;classes-head",
+    "C": "Xfix geometry 8C26D068 + chunk-index land B7C57D80, classpath classes-cand;classes-head",
+    "land_chain_bit_identity": "B and C land10k checksum sums are bit-identical in all four zones (e-perf.csv); A differs because its geometry is the old CF4FCA7E",
+    "protocol": "4 interleaved rounds, rotated arm order (A,B,C / C,A,B / B,C,A / A,C,B), 1 fresh JVM per measurement, per-arm JIT warmup before round 0, config-input.toml loaded in every JVM"
+  },
+  "stage_outputs_bit_identity": {
+    "identical_between_baseline_and_optimized": [
+      "coverage.f64be", "double-coastal.f64be", "double-heights.f64be", "double-land-e.f64be",
+      "float-coastal.f64be", "float-heights.f64be", "float-land-e.f64be",
+      "seams.csv", "z-seams.csv", "far-grid.csv", "far-block.csv",
+      "node-closure.log", "node-census.log", "double-gallery.log", "endpoint-probe.log", "far-block.txt"
+    ],
+    "differ_only_by_log4j_timestamps": [
+      "gallery-main.log", "isolated-probe.log", "x-far-seams.log", "z-seams.log", "perf-geometry*.log", "perf.csv"
+    ]
+  },
+  "canonical_anchors": {
+    "baseline_float_arm_sha256": "7BE0418369D097CE107EEEF58B8D02C6776782F1D7FBC6AD6C5E0E5728D7A238",
+    "canonical_double_3A7686C5_heights_sha256": "3A7686C5B1804D2BD12641FA25E0A2BAF4E044563C12DBCED3E660CAF294BA18",
+    "xbandidx_double_heights_sha256": "BEA0A47C14D32FA9E2654C77CC6984999004E137E9E6BDE8A05D3E2B2A393965",
+    "refs/canonical-7BE04183-float-heights.f64be": "7BE0418369D097CE107EEEF58B8D02C6776782F1D7FBC6AD6C5E0E5728D7A238",
+    "refs/merged-3A7686C5-double-heights.f64be": "3A7686C5B1804D2BD12641FA25E0A2BAF4E044563C12DBCED3E660CAF294BA18"
+  },
+  "figures": {
+    "compare/metrics.json": "baseline 7BE04183 vs candidate BEA0A47C, window 0,0,1401,1401, delivered-PNG identity check passed",
+    "far-height-shade-annotated.png": "far-grid.csv sha256 dcd8af2afc54c9f466a79434a12705ab1acf1c40c59c28b85b7fea03018f419e (byte-identical to baseline-stage far-grid.csv)",
+    "figure_identity": "source-file SHAs printed on figure; class-file SHA not used (bytecode nondeterminism)"
+  }
+}

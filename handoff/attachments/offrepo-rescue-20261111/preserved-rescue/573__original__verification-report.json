@@ -1,0 +1,536 @@
+{
+  "sandbox": "geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9",
+  "pass": "sqrt-form chunk cull fix, arm binding, corrected independently warmed full-e measurement, and frozen ledger",
+  "supersedes": "the previous verification-report.json (its items 1-2 and the 'baseline vs optimized' framing were partly void: see defects_found)",
+  "headline": {
+    "chunk_cull_criterion": "NOW the same boxDistance (with Math.sqrt) as segmentOutsideBand; the previous dx*dx+dz*dz > BAND*BAND form is gone from source and bytecode",
+    "index_product_neutral": true,
+    "index_speed": "Full e(), 10 warmup batches then 15 measured per JVM: indexed vs pristine P50 changes 0: -57.87%, 1831: -53.36%, -1832: -33.02%, 29295: -44.87%; see perf2-summary.json. Old PerfE full-e numbers were not warmed.",
+    "no_unearned_claim": "the squared form was NOT shown safe by algebra; it is replaced by a monotonicity argument, and a directed probe shows squared culls DO over-reject for other band values"
+  },
+  "defects_found_and_fixed": [
+    {
+      "id": "sq-vs-sqrt-cull",
+      "severity": "latent bit-exactness bug",
+      "detail": "chunkAxisDistance + dx*dx+dz*dz > BAND*BAND is not order-equivalent to fl(sqrt(fl(dx^2+dz^2))) > BAND. At BAND=120 the two happen to coincide (verified: largest S with sqrt(S)<=120.0 is exactly 14400.0 = BAND^2, so no S>BAND^2 rounds back down), but the identity is mantissa-dependent: squared-counterexample.py finds 20 disagreeing bands among simple magnitudes (1,2,4,8,16,32,64,128,256,...) and 109431 of 200000 probed bands; e.g. b=128 culls on fl(nextUp(b*b)) while sqrt returns exactly 128.0. Any future BAND change would have silently dropped real in-band distances.",
+      "fix": "chunkOutsideBand() calls the same boxDistance(x,z,minX,maxX,minZ,maxZ) > BAND used per segment; safety now rests on bbox union monotonicity + correctly-rounded fl and sqrt, with no coincidence required",
+      "evidence": [
+        "probe-BandEdgeProbe.log",
+        "squared-counterexample.log",
+        "source-diff-report.txt (forbidden token scan: none)"
+      ]
+    },
+    {
+      "id": "stage-arms-not-bound",
+      "severity": "verification was circular",
+      "detail": "run-stage.ps1 used classes-cand for BOTH the 'baseline' and 'optimized' stages, so every 'identical output between arms' claim compared the indexed build with itself. The pair reproduced as baseline/ vs optimized/ was therefore worthless as a bit-exactness proof.",
+      "fix": "run-stage.ps1 -Arm pristine|indexed builds the classpath per arm, puts classes-baseline FIRST for pristine (classes-cand stays only for the shared runner mains) and asserts the loaded Tile with javap -p before running; fresh pristine/ and indexed/ stages were produced",
+      "evidence": [
+        "stage-pristine-run.log",
+        "stage-indexed-run.log",
+        "exit-codes-pristine.txt",
+        "exit-codes-indexed.txt"
+      ]
+    },
+    {
+      "id": "javap-missing-p",
+      "severity": "audit bypass",
+      "detail": "the earlier arm identity check ran javap WITHOUT -p, so private members were hidden, chunkStart never appeared, and the check reported hasChunk=False for every arm - including the indexed one. It therefore validated nothing and printed a confident line for each arm.",
+      "fix": "all arm assertions now use javap -p and check both chunkStart and chunkOutsideBand against the expected value per arm",
+      "evidence": [
+        "e-perf-arms.txt",
+        "run-stage.ps1",
+        "ab-perf.ps1"
+      ]
+    },
+    {
+      "id": "negative-zone-silently-dropped",
+      "severity": "measurement gap",
+      "detail": "ab-perf.ps1 filtered PerfGeometry output with '^\\d+,' so the -1832 zone's lines (they start with '-') never entered ab-perf.csv; the prior summary also hard-coded only three zones, hiding the loss.",
+      "fix": "filter is '^-?\\d+,' and the summary covers all four zones; the correctness gate (per-zone checksum equality) now has a row for -1832",
+      "evidence": [
+        "ab-perf.csv",
+        "perf-summary.txt"
+      ]
+    },
+    {
+      "id": "negative-control-toothless",
+      "severity": "probe had no power",
+      "detail": "the first version of the new BAND-edge negative control shrank the chunk bbox by 1 ulp and by 1e-6 blocks and detected nothing (violations 0/0) - i.e. it would have passed a broken cull too. A 1-ulp shrink of the union bbox does not move the rounded distance off the plateau around BAND.",
+      "fix": "the negative control now shrinks by 1 and 8 blocks and separately lowers the cull threshold to nextDown^3(BAND); all three are detected (1, 2 and 4 violations), so the checker demonstrably has discriminating power",
+      "evidence": [
+        "probe-BandEdgeProbe.log"
+      ]
+    },
+    {
+      "id": "stale-figure-identity",
+      "severity": "provenance risk",
+      "detail": "render-far-x.py took its identity hashes from identity-freeze.json and a hard-coded 'optimized' directory, so the figure could show an older product while printing a hash that looked authoritative.",
+      "fix": "the figure now hashes the actual input CSV and the actual sources at render time and takes the stage as an argument; class-file hashes are deliberately not used (javac output is not bit-reproducible)",
+      "evidence": [
+        "render-far-x.log",
+        "far-height-shade-annotated.png"
+      ]
+    },
+    {
+      "id": "full-e-not-warmed",
+      "severity": "previous warm claim invalid",
+      "detail": "PerfE measured full 10k immediately after first call, before explicit JIT warmup; land was always measured afterwards, so comparisons are order biased. The earlier full-e figures are cold/partly warmed and cannot be called warm.",
+      "fix": "PerfE2 independently runs 10 whole warmup batches then 15 timed batches per JVM, full e only; all six arm orders, 6 independent JVMs per arm/zone, 10000 permuted distinct points per batch. No old product classes recompiled.",
+      "evidence": [
+        "PerfE2.java",
+        "perf2.ps1",
+        "perf2.csv",
+        "perf2-summary.json"
+      ]
+    },
+    {
+      "id": "local-seams-overwritten",
+      "severity": "wrong artifact attribution",
+      "detail": "IsolatedProbe writes seams.csv, then XFarSeams overwrites the same filename in each stage with the 1224-row far-X data; that file cannot prove the 918 local cases.",
+      "fix": "Compiled a seam-only extraction of IsolatedProbe separately and ran indexed classpath into x-local-only/seams.csv. 918 data rows, six pairs of 153; zero numeric differences in weight, land and final height.",
+      "evidence": [
+        "LocalSeamOnly.java",
+        "x-local-only/seams.csv"
+      ]
+    }
+  ],
+  "items": {
+    "1_band_distance_not_missed_multi_seed_multi_recipe": {
+      "status": "PASS",
+      "probe": "MultiSeedBruteProbe (new): 8 seeds x 3 region scales, brute force with the chunk cull removed vs the culled fast path, every site of every covering tile",
+      "result": "tilesBuilt=32 tilesSkipped=64 noWinnerPoints=0 siteChecks=58824 inBandChecks=1766 mismatches=0",
+      "recipe_coverage": "18 distinct dominant recipe entries exercised across the seeds, 716 multi-entry points, weight vectors length 18",
+      "caveat": "scale 1.0 and 2.5 tile builds are refused by the geometry's own 'site enumeration implausible' guard (an existing limit unrelated to the index); those 64 tile attempts are counted, not hidden, so the multi-scale claim covers only where the geometry itself can produce a tile"
+    },
+    "2_band_edges_nextUp_nextDown": {
+      "status": "PASS",
+      "probe": "BandEdgeProbe (new): directed points at nextDown^k(BAND), BAND, nextUp^k(BAND) from each sampled chunk bbox, axis-aligned and diagonal, over 7 tiles",
+      "result": "chunkDecisions=22176 chunkCulled=5182 segViolations=0 exactChecks=450 exactMismatch=0",
+      "coverage": "|d-BAND|<=1ulp 12084, <=2ulp 370, <=4ulp 679, <=8ulp 120, <=1e-9 4891, <=1e-3 0, <=1.0 0, further inside 1793, further outside 1551",
+      "predicate_equivalence": "squaredDisagreements=0 at BAND=120 (as expected), and squared-over-rejects=false; the general non-equivalence is proven separately",
+      "negative_control": "shrink1=1 shrink8=2 threshold-nextDown=4 violations -> checker has power"
+    },
+    "3_brute_bit_exact_multi_tile_multi_recipe": {
+      "status": "PASS",
+      "probe": "BandIndexControl (canonical seed, 12 tiles, 480 points)",
+      "result": "points=480 siteChecks=13108 withinBand=341 maxAbsDiff=0.0 multiEntryPoints=145/480",
+      "distance_band_coverage": "BandIndexFuzz: 2824 points / 72802 site checks / 1781 finite checks; every 10-block bin 0..120 exercised (125..161 samples each), bins above 120 also exact"
+    },
+    "4_negative_control_really_fails": {
+      "status": "PASS",
+      "result": "BandIndexNegative: real over-aggressive cull (0.5*BAND) -> 3683/13108 comparisons corrupted, DETECTED lines show Infinity-vs-minus-Infinity flips, exit 2"
+    },
+    "5_index_only_source_and_class_difference": {
+      "status": "VERIFIED index-only",
+      "source": "DoubleFullMorphLand.java AD971E97 -> 026F8A81; code lines removed=4 (for-each head, break, bandDistance signature gained a site parameter, the signedDistance ternary re-wrapped) and added=74, all belonging to the chunk index (6 fields, buildChunks, chunkOutsideBand, the two-level loop)",
+      "class": "DoubleFullMorphLand$Tile.class 5AD8C9D2... contains chunkStart/chunkEnd/chunkMinX..chunkMaxZ fields, buildChunks and chunkOutsideBand; the pristine Tile (97D1B5C3...) has none of them; javap -c shows chunkOutsideBand calling boxDistance and no bandSq/chunkAxisDistance residue",
+      "geometry": "DoubleBoundaryGeometry.java 8C26D068 identical before and after; class BD026AAB identical in classes-cand and classes-baseline (the 3A7686 arm carries a different geometry 22D5A64A, as expected)",
+      "load_bearing_expressions": "all 14 checked expressions still present verbatim (segmentOutsideBand's sqrt form, segmentDistance args, the best<=0 early exit, progress())"
+    },
+    "6_full_1401_bit_identity_value_by_value": {
+      "status": "PASS",
+      "index_switch_consistency": "there is NO -D switch for this index: it is selected purely by which DoubleFullMorphLand$Tile class is on the classpath, so the project's '-D half-wiring' failure mode (one property read with two defaults) cannot occur here. Consistency is therefore enforced the only way it can be - by per-arm classpath binding plus a javap -p assertion that each run loaded the intended Tile - and both the 1401 gallery stage and the perf arms assert it before measuring (run-stage.ps1 prints the assertion; e-perf-arms.txt records all three). Grep confirms no Double*.java in this sandbox reads any system property.",
+      "file_sha256": "indexed and pristine double-heights.f64be are both BEA0A47C14D32FA9E2654C77CC6984999004E137E9E6BDE8A05D3E2B2A393965",
+      "elementwise": "height-bitcompare.py walked all 1962801 cells: 0 cells with differing bits (big-endian read, NaN payload aware, order-preserving ULP key)",
+      "also_identical_across_arms": "coverage, double-coastal, double-land-e, float-coastal, float-heights, float-land-e (all f64be), seams.csv (XFarSeams 1224 rows, not local 918), z-seams.csv (XFarSeams 1224 rows, not local 918), far-grid.csv, far-block.csv, node-closure.log, node-census.log, endpoint-probe.log, double-gallery.log, far-block.txt",
+      "timestamp_only": "gallery-main.log, isolated-probe.log, x-far-seams.log, z-seams.log",
+      "timing_only": "perf.csv and the four perf-geometry logs (whole content is wall clock)",
+      "context_pair": "new candidate vs merged 3A7686 differ in 437960 cells, max |delta| 0.00424322 blocks at grid (x=225,z=1386) - expected, since the geometry differs; not a bit-exactness claim"
+    },
+    "7_final_AB_same_candidate": {
+      "status": "DONE",
+      "command": "compare.py --baseline refs/canonical-7BE04183-float-heights.f64be --candidate indexed/double-heights.f64be --delivered handoff/attachments/commit-selection-20261103/height-morph-coastal-d47de74.png --out compare",
+      "new_candidate_BEA0A47C": {
+        "height_diff_min_max": [
+          -0.008451505013638894,
+          0.013318326062154995
+        ],
+        "mae": 2.622713966896927e-05,
+        "mean": -1.1490215371473069e-06,
+        "abs_p50_p95_p99": [
+          5.817826618681465e-06,
+          0.00011869530958108498,
+          0.00025495962765376134
+        ],
+        "changed_pixels": 1959146,
+        "rgb_changed_pixels": 779,
+        "rgb_max_channel_diff": 1
+      },
+      "old_candidate_3A7686C5": {
+        "height_diff_min_max": [
+          -0.008451505013638894,
+          0.013318326062154995
+        ],
+        "mae": 2.2865723747758273e-05,
+        "rmse": 6.845825299087645e-05,
+        "mean": -8.990659241015948e-07,
+        "abs_p50_p95_p99": [
+          5.332988266104621e-06,
+          0.00010241383603215581,
+          0.00022407877861496672
+        ],
+        "changed_pixels": 1959146,
+        "rgb_changed_pixels": 697,
+        "rgb_max_channel_diff": 1
+      },
+      "honest_note": "697 was the 3A7686 candidate's count, reproduced here under the same command and the same delivered PNG baseline check; the current candidate's count is 779. Both have the same min/max height delta, so the extra 82 pixels come from more cells crossing a 1/255 shading step, not from a different height envelope. Neither number is acceptance.",
+      "outputs": [
+        "compare/ab.png",
+        "compare/baseline.png",
+        "compare/candidate.png",
+        "compare/rgb-absolute-diff.png",
+        "compare/height-signed-diff.png",
+        "compare/height-signed-diff.f64be",
+        "compare/metrics.json",
+        "compare-3a7686/*"
+      ]
+    },
+    "8_far_figure": {
+      "status": "DONE",
+      "method": "render-far-x.py (copied from the merged arm's render-far-v2.py) now hashes its actual input and actual sources at render time, and takes the stage directory as an argument",
+      "input": "indexed/far-grid.csv sha256 DCD8AF2AFC54C9F466A79434A12705AB1ACF1C40C59C28B85B7FEA03018F419E (byte-identical to the pristine stage's)",
+      "identity_printed_on_figure": "land 026F8A812ADFF0C0... + geometry 8C26D068DB30CAD8...; class hashes intentionally not used",
+      "outputs": [
+        "far-height-shade-native-64x64.png 77791F02...",
+        "far-height-shade-annotated.png A9388C53...",
+        "far-three-profiles.png 1E5232DC..."
+      ]
+    },
+    "9_perf_truth": {
+      "status": "SUPERSEDED for full e warm claims; historical raw results only",
+      "protocol": "5 rounds, rotated arm order (A,B,C / C,B,A / B,C,A / A,C,B / C,A,B), one fresh JVM per measurement, -Xmx8g, config-input.toml loaded in every JVM, runner PerfE compiled once into classes-perf and placed FIRST on all three arms so the measuring bytecode is identical; the whole final pass ran serially in one script so no other measurement of mine overlapped",
+      "arms": {
+        "A": "3A7686C5 (old geometry CF4FCA7E + old land), no chunk index",
+        "B": "Xfix geometry 8C26D068 + pristine land (no index)",
+        "C": "Xfix geometry 8C26D068 + chunk-index land (sqrt cull)"
+      },
+      "identity_gate": "B and C land10k and full10k checksums are bit-identical in all 4 zones (one distinct value each), A differs - so B-vs-C is apples-to-apples and the delta is attributable to the index",
+      "full_e_10k_P50_ms": {
+        "zone_0": {
+          "A": 427.11,
+          "B": 403.94,
+          "C": 380.68,
+          "C_vs_B_pct": -5.8
+        },
+        "zone_1831": {
+          "A": 502.24,
+          "B": 413.3,
+          "C": 271.15,
+          "C_vs_B_pct": -34.4
+        },
+        "zone_-1832": {
+          "A": 673.74,
+          "B": 545.16,
+          "C": 520.55,
+          "C_vs_B_pct": -4.5
+        },
+        "zone_29295": {
+          "A": 362.8,
+          "B": 314.63,
+          "C": 319.49,
+          "C_vs_B_pct": 1.5
+        }
+      },
+      "land_10k_P50_ms": {
+        "zone_0": {
+          "A": 227.49,
+          "B": 238.86,
+          "C": 138.87,
+          "C_vs_B_pct": -41.9
+        },
+        "zone_1831": {
+          "A": 296.62,
+          "B": 245.93,
+          "C": 136.86,
+          "C_vs_B_pct": -44.4
+        },
+        "zone_-1832": {
+          "A": 443.15,
+          "B": 364.62,
+          "C": 324.48,
+          "C_vs_B_pct": -11.0
+        },
+        "zone_29295": {
+          "A": 204.66,
+          "B": 192.49,
+          "C": 168.96,
+          "C_vs_B_pct": -12.2
+        }
+      },
+      "paired_round_direction_check": "land-only C/B ratio is < 1 in 20/20 round*zone cells; full e() C/B is < 1 in 19/20 (the single exception is zone -1832 round 2 at 1.004, i.e. noise)",
+      "tile_path_AB_weights_only_measure": {
+        "data": "ab-perf.csv, both arms same geometry, only the index differs, 5 rounds alternating order, 35 warm samples per arm/zone",
+        "warm_buildMs_P50": {
+          "zone_0": [
+            17.24,
+            18.29
+          ],
+          "zone_1831": [
+            16.01,
+            16.31
+          ],
+          "zone_-1832": [
+            13.38,
+            15.13
+          ],
+          "zone_29295": [
+            18.36,
+            17.47
+          ]
+        },
+        "warm_sampleMs_P50": {
+          "zone_0": [
+            194.59,
+            88.1
+          ],
+          "zone_1831": [
+            203.23,
+            98.56
+          ],
+          "zone_-1832": [
+            354.95,
+            266.17
+          ],
+          "zone_29295": [
+            178.88,
+            91.32
+          ]
+        },
+        "warm_sample_P50_ratio": {
+          "zone_0": 0.453,
+          "zone_1831": 0.485,
+          "zone_-1832": 0.75,
+          "zone_29295": 0.511
+        },
+        "cold_iter0_build_ratio": {
+          "zone_0": 1.0,
+          "zone_1831": 1.04,
+          "zone_-1832": 1.18,
+          "zone_29295": 1.01
+        },
+        "note": "P95 outlier exists; cause not established."
+      },
+      "cost_of_the_index": "Historical tile-path observations only; not proof of full-e warm tradeoff. See independent measurement in 9b.",
+      "warning": "PerfE full e had only one first call before timing, not a warmed measurement; land was always run afterwards. Do not interpret these full e results as warm or compare full vs land. No evidence for the claimed JIT/deopt cause in tile-path outliers."
+    },
+    "10_frozen_ledger": {
+      "status": "DONE",
+      "sources": {
+        "DoubleFullMorphLand.java (chunk index, sqrt cull)": "026F8A812ADFF0C0D7CD984FF07AAB907AA77B2C89B3260ECF1264583A8B6F42",
+        "DoubleFullMorphLand.java (pristine arm, AD971E97)": "AD971E97E7C4C9ECC9A602E431FBF0384561E4326BE240AC28E309A35F7238C0",
+        "DoubleBoundaryGeometry.java (shared, unchanged)": "8C26D068DB30CAD8DB9E2E8528EA19514F096D14A68B61E6B1EE22F8624EDA4E",
+        "BandEdgeProbe.java": "72F85AFCF7E9CBAD63B199145E5A11CFC6F51FA37AABE6B991A226E95CEBF548",
+        "MultiSeedBruteProbe.java": "A0FCA53629F6E37C090505307D0BC097551504927CCCF848FEA048FB2D630160",
+        "BandIndexControl.java": "304FFDB9F60D72C30225DFD26D1CC764752E58B3E5101C4850E1D094E11C1F8C",
+        "BandIndexFuzz.java": "994A7FD04B68FE70D7A036CD769D2C98FA2F60637BCC3D0B253B9DECC18A0A68",
+        "BandIndexNegative.java": "1EB7FF300A7493C1522F8B23B4C2911228A7AF7221F303D36E78A9A6B9A2E392"
+      },
+      "artifacts": {
+        "indexed/double-heights.f64be": "BEA0A47C14D32FA9E2654C77CC6984999004E137E9E6BDE8A05D3E2B2A393965",
+        "indexed/far-grid.csv": "DCD8AF2AFC54C9F466A79434A12705AB1ACF1C40C59C28B85B7FEA03018F419E",
+        "compare/metrics.json": "FC098979C32F5470A4C6E09860B1B414F279DDB8217C1EC9E27F3EE52F036588",
+        "compare-3a7686/metrics.json": "182AFF8E0748854F433AD4F1DECC027C8AC55F78F207238DF012FAD695D8BF12",
+        "far-height-shade-annotated.png": "A9388C535E13D42856C2B889F05B16E4AAD9CC78EB953FD7FCFBF606280CB1F2",
+        "far-three-profiles.png": "1E5232DC8F85FDB60EE91CF8F9F2189842E8B961DCD93E19811AD21ECFDA9027"
+      },
+      "anchors": {
+        "canonical_float_arm": "7BE0418369D097CE107EEEF58B8D02C6776782F1D7FBC6AD6C5E0E5728D7A238",
+        "merged_3A7686C5_double": "3A7686C5B1804D2BD12641FA25E0A2BAF4E044563C12DBCED3E660CAF294BA18"
+      },
+      "class_hashes": {
+        "classes-cand DoubleFullMorphLand.class": "4D0989E8145D792F8625A01DAF2382A58D3298F1FB60033871DDDA4BE3A79C99",
+        "classes-cand DoubleFullMorphLand$Tile.class": "5AD8C9D25E01AE587209EC7336C4C57084CA5CDC4C5AA1B32F8017DE795D4459",
+        "classes-baseline DoubleFullMorphLand$Tile.class": "97D1B5C3F0B49BABC3029828650F41750F2A604CE2DB8A7915F3231F437AB4BC",
+        "classes-3a7686 DoubleFullMorphLand$Tile.class": "97D1B5C3F0B49BABC3029828650F41750F2A604CE2DB8A7915F3231F437AB4BC",
+        "DoubleBoundaryGeometry.class (cand and baseline)": "BD026AABBBF927B1C764639F6144E9BB1D57F09DC9705640C0A4977DC1200EF8",
+        "DoubleBoundaryGeometry.class (arm A, old geometry)": "22D5A64A9BBA2BA22E0A38B7651F30E5CA8F10B359F9AD9EA77E7B5CEF33B44E"
+      },
+      "note_on_class_hashes": "recorded for traceability only; javac output is not bit-reproducible, so source SHAs are the identity of record",
+      "command_ledger": "exit-codes-pristine.txt, exit-codes-indexed.txt, e-perf-arms.txt, final-serial.log",
+      "supplement_sha256": {
+        "PerfE2.java": "957F198DCB5DE5CC91797F9DF3241F6BF51CCC0DE1EBE23B5917D582B1CA76C5",
+        "LocalSeamOnly.java": "27125D27FB963E009990587A28D5CC00C80D56D83F9B26718BA8560E0C1355CC",
+        "classes-perf2/com/geogenesis/worldgen/terrain/candidate/PerfE2.class": "754BE2D3D34C77870AFEC1468875FEC32E06A4E10E0F4E426FBAC72F2F8D782B",
+        "classes-perf2/com/geogenesis/worldgen/terrain/candidate/LocalSeamOnly.class": "33F7D8880793F0F8AF4BACEBCE5E960C6E1C94EF540C046FE45C67F1BC402C41",
+        "perf2.ps1": "E0D0BF0A11267D2D1841C3DA6084F6F39F93FC2E6B04EE84B57DEBF9DB135A7F",
+        "perf2.csv": "CC6143E150B4129E6B187578067110971FD55AC15FC21927641CFBE5A88D8AB9",
+        "perf2-run.log": "18D4B77DC8AE32FB409C7334EA92D840C67B214F9F011298EA8D4A965517DE77",
+        "perf2-summary.py": "E764BFE4FCA8AAC0EA180DC66AAC564A60CBD81CF3E8F6B3384007679ECB9A2A",
+        "perf2-summary.json": "E438392DE4327B5D98C2D84BB21D5A93556CC46E7A8A11F0E6EEEA317DFDC7A2",
+        "x-local-only/seams.csv": "3A4AFA6FF77916C397A1D7A14CA1F50C9172C640C45528B335601F6B44AC346F"
+      }
+    },
+    "11_reflection_optimization": "NOT pursued - no measured gain was on the table, and a reflective shortcut on the weight path would have traded a proven-identical path for an unproven one",
+    "9b_perf2_full_e_warmed": {
+      "status": "DONE",
+      "protocol": "6 permutations, fresh JVM per arm/zone/round; 10 warmup batches then 15 measured batches, 10000 permuted unique points per batch; p95 nearest rank over 90 batches per arm/zone; checksum FNV over raw double bits and sum; each arm appears twice in each position; -Xmx8g; only full e measured, no land timing. Timed samples from same JVM are correlated; P95 is descriptive across pooled batches. Warmup is fixed, not proof of steady-state convergence.",
+      "arms": {
+        "A": "3A7686C5 (old geometry CF4FCA7E + old land), no chunk index",
+        "B": "Xfix geometry 8C26D068 + pristine land (no index)",
+        "C": "Xfix geometry 8C26D068 + chunk-index land (sqrt cull)"
+      },
+      "results": {
+        "0": {
+          "A": {
+            "p50_ms": 169.154,
+            "p95_ms": 185.365,
+            "n": 90
+          },
+          "B": {
+            "p50_ms": 196.326,
+            "p95_ms": 219.791,
+            "n": 90
+          },
+          "C": {
+            "p50_ms": 82.715,
+            "p95_ms": 105.272,
+            "n": 90
+          },
+          "C_vs_B_P50_pct": -57.87
+        },
+        "1831": {
+          "A": {
+            "p50_ms": 175.178,
+            "p95_ms": 214.995,
+            "n": 90
+          },
+          "B": {
+            "p50_ms": 197.807,
+            "p95_ms": 212.104,
+            "n": 90
+          },
+          "C": {
+            "p50_ms": 92.252,
+            "p95_ms": 110.362,
+            "n": 90
+          },
+          "C_vs_B_P50_pct": -53.36
+        },
+        "-1832": {
+          "A": {
+            "p50_ms": 386.066,
+            "p95_ms": 505.828,
+            "n": 90
+          },
+          "B": {
+            "p50_ms": 405.66,
+            "p95_ms": 554.725,
+            "n": 90
+          },
+          "C": {
+            "p50_ms": 271.695,
+            "p95_ms": 368.56,
+            "n": 90
+          },
+          "C_vs_B_P50_pct": -33.02
+        },
+        "29295": {
+          "A": {
+            "p50_ms": 146.149,
+            "p95_ms": 169.769,
+            "n": 90
+          },
+          "B": {
+            "p50_ms": 173.716,
+            "p95_ms": 198.268,
+            "n": 90
+          },
+          "C": {
+            "p50_ms": 95.773,
+            "p95_ms": 118.983,
+            "n": 90
+          },
+          "C_vs_B_P50_pct": -44.87
+        }
+      },
+      "checksums": {
+        "0": {
+          "A": {
+            "hash": "3830b01271a33036",
+            "sum": "-48.156826300009880"
+          },
+          "B": {
+            "hash": "1eac93e836c40010",
+            "sum": "-48.156826288107820"
+          },
+          "C": {
+            "hash": "1eac93e836c40010",
+            "sum": "-48.156826288107820"
+          }
+        },
+        "1831": {
+          "A": {
+            "hash": "1202ba96dae40253",
+            "sum": "-542.32001339677840"
+          },
+          "B": {
+            "hash": "86503d1b02ce5aee",
+            "sum": "-542.32001818354180"
+          },
+          "C": {
+            "hash": "86503d1b02ce5aee",
+            "sum": "-542.32001818354180"
+          }
+        },
+        "-1832": {
+          "A": {
+            "hash": "5dcf10804951a955",
+            "sum": "1038.7702869603480"
+          },
+          "B": {
+            "hash": "2c97827c3a7f510a",
+            "sum": "1038.7701381769189"
+          },
+          "C": {
+            "hash": "2c97827c3a7f510a",
+            "sum": "1038.7701381769189"
+          }
+        },
+        "29295": {
+          "A": {
+            "hash": "e41d4c6fb38a7506",
+            "sum": "2206.3122767872290"
+          },
+          "B": {
+            "hash": "764b9480f1d9358a",
+            "sum": "2206.3122116587380"
+          },
+          "C": {
+            "hash": "764b9480f1d9358a",
+            "sum": "2206.3122116587380"
+          }
+        }
+      },
+      "limitations": "Wall clock, same point set repeated across batches; each batch visits distinct points in deterministic nonsequential order, avoiding adjacent last-point cache hits but not other cache effects. Hash computation is included in timing. No production workload claim."
+    },
+    "9c_local_x_seams": {
+      "rows": 918,
+      "pair_counts": {
+        "0:0": 153,
+        "-4:3": 153,
+        "1831:1831": 153,
+        "-1832:-1832": 153,
+        "5:-8": 153,
+        "-12:14": 153
+      },
+      "max_weight_diff": 0.0,
+      "max_land_e_diff": 0.0,
+      "max_final_y_diff": 0.0,
+      "scope": "indexed only; regenerated from IsolatedProbe seam branch. Does not establish pristine/indexed local seam file equality."
+    }
+  },
+  "constraints_respected": {
+    "repo_untouched": true,
+    "repo_note": "git status in the workspace is unchanged from before this pass (the 7 pre-existing modified files are the previous agent's and were not touched)",
+    "user_archives_untouched": true,
+    "user_archives_note": "the delivered PNG was only READ (delivered-baseline identity check)",
+    "own_processes_only": true,
+    "no_md_created": true
+  },
+  "remaining_gaps": [
+    "Multi-scale bit-exactness could only be tested at the default region scale 1200; LandRegionContext at scale 1.0 and 2.5 is refused by DoubleBoundaryGeometry's own site-enumeration guard before the index is ever reached. The index is scale-agnostic (it only unions per-cell segment bboxes), but that is an argument, not a measurement.",
+    "Full-e perf2 uses fixed warmup, correlated batches, a repeated point set, and a single machine; it does not prove JIT convergence or real-game performance. Old PerfE full-e timing was not genuinely warmed.",
+    "The BAND-edge probe reached every ULP-adjacent bin but the 1e-6..1.0 band-adjacent bins are empty (0 samples): points placed by nextUp/nextDown chains land either within 8 ulp or further than 1e-9 away in practice. The <=120-distance coverage is carried by BandIndexFuzz's 10-block bins, not by this probe."
+  ]
+}

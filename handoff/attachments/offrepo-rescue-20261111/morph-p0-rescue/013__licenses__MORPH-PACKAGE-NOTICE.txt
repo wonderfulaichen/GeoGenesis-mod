@@ -1,0 +1,114 @@
+com.geogenesis.worldgen.terrain.morph - third-party licence notice
+===================================================================
+
+This package contains code derived from FreeTerraForged 1.21.1
+(https://github.com/ETcodehome/FreeTerraForged), which is distributed
+under the MIT License reproduced in full in:
+
+    FTF-LICENSE-MIT-2023.txt        Copyright (c) 2023 ReTerraForged
+
+FreeTerraForged in turn states that it continues TerraForged /
+ReTerraForged / NeoTerraForged and that historical contributions follow
+MIT. The TerraForged root licence text is reproduced in full in:
+
+    TF-LICENSE-MIT-2020.txt         Copyright (c) 2020 TerraForged
+
+WHY BOTH FILES ARE SHIPPED
+--------------------------
+The two texts differ (the 2020 one reads "without restricted" in its
+grant clause, line 7) and they carry different copyright years. Neither
+one can be substituted for the other, and the MIT condition requires the
+applicable copyright notice AND the permission notice to accompany
+copies or substantial portions. Shipping only one of them would leave a
+gap for the other lineage.
+
+FILES IN THIS PACKAGE THAT CARRY FTF-DERIVED CODE
+-------------------------------------------------
+Each of the following re-implements specific FreeTerraForged routines
+(the file header cites the upstream path and line range):
+
+    MorphNoise.java             noise module (Perlin / PerlinRidge /
+                                Billow / Cubic / WorleyEdge / WorleyEdgeAdd
+                                / Terrace / Steps / Erosion / AdvancedTerrace
+                                / DirectionWarped / Warp / Clamp / Map / Blend
+                                / Power / PowerCurve / Curve / Invert /
+                                Smoothstep) - from FTF noise/NoiseUtil.java
+                                and noise/module/*.java
+    MorphNoiseEval.java         double-precision evaluator for the SAME
+                                operator set. Every per-operator method
+                                (perlin / sample / ridge / cubic / worley /
+                                blend / steps / terrace / erosion) is a
+                                transcription of the corresponding upstream
+                                algorithm with the coordinates widened from
+                                float to double; the dispatch, the shared
+                                helpers and the lattice guard are local work,
+                                the algorithms are not. Treated as DERIVED /
+                                ADAPTED, covered by the MIT texts above -
+                                NOT excluded from them.
+    MorphCellTable.java         256-entry CELL_2D jitter table, copied
+                                verbatim from FTF noise/NoiseUtil.java
+    MorphRegionPartition.java   jittered Voronoi partition - from FTF
+                                cell/terrain/region/RegionModule.java
+    MorphAssembly.java          combine / weighted-slot assembly - from FTF
+                                cell/terrain/provider/TerrainProvider.java
+    MorphCatalog.java           composite selection and slot ordering -
+                                from TerrainProvider.generateTerrain
+    PlainsRecipe.java           makePlains / makeSteppe - Populators.java
+    HillsRecipe.java            makeHills1 / makeHills2 / makeDales -
+                                Populators.java
+    PlateauRecipe.java          makePlateau - Populators.java
+    BadlandsRecipe.java         makeBadlands - Populators.java
+    MountainsRecipe.java        makeMountains1/2/3 + makeFancy -
+                                Populators.java
+    MorphOceanAssembler.java    makeDeepOcean / makeShallowOcean / makeCoast
+                                and the ContinentLerper3/2 layering -
+                                Populators.java + Heightmap.java
+    MorphKernel.java            composite shell algebra (raw/amp/bias) -
+                                derived from the same TerrainProvider combine
+    MorphScale.java             GROUND_E / E_SPAN - FTF Populators.apply
+    MorphLandRecipe.java        per-entry shell re-expression - derived
+    MorphGeometryTransform.java one-octave Perlin value + analytic
+                                gradient, same GRAD table / hash / Hermite
+                                as FTF noise/module/Perlin.java. DERIVED
+                                (float -> double, plus an added derivative
+                                and range guard), covered by the MIT texts.
+
+GeoGenesis-authored files with no upstream algorithm content:
+MorphLandField (tile partitioning, segment index, bbox culling),
+MorphTerrainSampler (chain wiring), MorphRegionContext (slot-category
+bookkeeping), MorphRecipe (interface), MorphBoundaryGeometry (exact
+half-plane Voronoi construction derived from the partition definition,
+not copied from upstream).
+
+Note on the boundary: "GeoGenesis-authored" above means the file's
+algorithmic content was written here. It does not mean every numeric
+constant in the package is independently sourced - several were carried
+over from the upstream-derived recipes and are covered by the same MIT
+texts. This inventory is a factual description of what is in this
+directory; it is not a legal opinion and it does not assert that the
+upstream provenance of every individual routine has been established
+beyond what the file headers record.
+
+WHAT IS *NOT* COVERED BY THESE TWO LICENCES
+-------------------------------------------
+* Minecraft / Forge / Mojang mapping data: not bundled here and not
+  licensed by the MIT texts above.
+* The GeoGenesis project itself: see the project's own licence.
+* Any third-party library on the build classpath (e.g. DataFixerUpper,
+  which the Minecraft-owned `worldgen.noise` package needs to compile,
+  and fastutil which it pulls in at run time): those are separate
+  artefacts with their own terms and are not redistributed by this
+  package.
+
+WHAT THIS NOTICE IS AND IS NOT
+------------------------------
+This is a factual inventory of the files in this directory and of which
+upstream files their algorithms correspond to, as recorded in the file
+headers. It is not a legal opinion and it does not guarantee that the
+provenance of every individual routine has been independently
+established, nor that including these two texts satisfies every
+obligation that may apply to a given distribution. Where a file's
+derivation was unclear, it is listed as derived rather than excluded.
+Anyone redistributing this package should verify the applicable terms
+for their own delivery rather than relying on this notice alone.
+

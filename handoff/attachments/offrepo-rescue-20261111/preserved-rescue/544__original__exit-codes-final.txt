@@ -1,0 +1,14 @@
+# Exit-code ledger appended by the final isolation-verification agent (2026-11-02).
+# Stages baseline/optimized already recorded in exit-codes-baseline.txt / exit-codes-optimized.txt (all 0).
+BandIndexControl (compile+run, exactness vs brute force)=0
+BandIndexNegative (corrupted 0.5*BAND chunk cull, MUST fail)=2
+javac BandIndexControl+BandIndexNegative=0
+e-perf.ps1 (3-arm interleaved full e-chain perf)=0 (E PERF DONE, e-perf.csv written; PS reported 1 only due to downstream pipe truncation of the console listing)
+javac arm A (3A7686 set + src-head deps + PerfE)=0
+bitcompare.py (source diff xopt->xbandidx)=0
+perf-summary.py (ab-perf.csv stats)=0
+e-perf-sum.py (e-perf.csv stats)=0
+compare.py (1401 A/B finalization)=0
+render-far-x.py (far-grid figure for new candidate)=0
+identity-freeze.json written (source+class+arms+bit-identity ledger)
+BandIndexFuzz (distance-banded brute-vs-fast, all 0..120 bins exercised, bit-exact)=0

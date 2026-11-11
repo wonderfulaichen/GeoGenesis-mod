@@ -1,0 +1,102 @@
+{
+ "schema": "offrepo-rescue/final/1.0",
+ "note": "preserved-rescue is content-deduplicated; all_original_paths lists every source location that had the same bytes.",
+ "files": [
+  {
+   "flat": "001__SOURCES.md",
+   "original": "GeoGenesis-morph-p0/SOURCES.md",
+   "size": 9118,
+   "sha256": "6de8e76998a583e4f1db8dfad2b74fcfd810ef5145c35ac8bca81aabb6558a29"
+  },
+  {
+   "flat": "002__build.ps1",
+   "original": "GeoGenesis-morph-p0/build.ps1",
+   "size": 9020,
+   "sha256": "d00cd4defb26146a2c7841dc2596bf874b244b573a3b0cc5a6b30a8f7ad8b946"
+  },
+  {
+   "flat": "003__out__javac-closureprobe.args",
+   "original": "GeoGenesis-morph-p0/out/javac-closureprobe.args",
+   "size": 2964,
+   "sha256": "49028df90ba54ec2742d38d67fd8f7c9ef959189f03193939822a57f6422d007"
+  },
+  {
+   "flat": "004__out__javac-morph.args",
+   "original": "GeoGenesis-morph-p0/out/javac-morph.args",
+   "size": 8402,
+   "sha256": "ebfe6396e61eb41a4308355b9b77ae3f3538ce878a1145eef53d35e4ef76c549"
+  },
+  {
+   "flat": "005__out__javac-parity.args",
+   "original": "GeoGenesis-morph-p0/out/javac-parity.args",
+   "size": 927,
+   "sha256": "07b849057a263727ea9aad84f348d790c028841a1bc012d5f5344e97d94863ec"
+  },
+  {
+   "flat": "006__reports__g0-guards.log",
+   "original": "GeoGenesis-morph-p0/reports/g0-guards.log",
+   "size": 1736,
+   "sha256": "ebd4f840a0e73c330a2a0007a5ec9dfc50632dda992d0a529a1437dee6146254"
+  },
+  {
+   "flat": "007__reports__g1-land-12345.log",
+   "original": "GeoGenesis-morph-p0/reports/g1-land-12345.log",
+   "size": 1194,
+   "sha256": "843bdde0bd6f31a6a03511749db7ceb1d1aae833adff7d670956713ffb3a86d1"
+  },
+  {
+   "flat": "008__reports__g2-world-12345.log",
+   "original": "GeoGenesis-morph-p0/reports/g2-world-12345.log",
+   "size": 1216,
+   "sha256": "5d494f695892a20b2fee7013ea26d449828ea1b87ef7a431f6ab5ac71dca49cf"
+  },
+  {
+   "flat": "009__reports__g3-world-0.log",
+   "original": "GeoGenesis-morph-p0/reports/g3-world-0.log",
+   "size": 1184,
+   "sha256": "2043ed1d2ebcc33504f2bfca82e994050cb9535a2b517301758d5cef68dbfad2"
+  },
+  {
+   "flat": "010__reports__g4-world-seed2.log",
+   "original": "GeoGenesis-morph-p0/reports/g4-world-seed2.log",
+   "size": 1184,
+   "sha256": "acb74cd02687ffbcfea9f81126d5789f285c708f10ea60df6463962c156679f3"
+  },
+  {
+   "flat": "011__reports__g5-world-neg1.log",
+   "original": "GeoGenesis-morph-p0/reports/g5-world-neg1.log",
+   "size": 1186,
+   "sha256": "2b4ae5837df06885f2cce696383ee4e3a45ce51073fa146cbdad2052a5e01217"
+  },
+  {
+   "flat": "012__morph__MorphTerrainSampler.java",
+   "original": "GeoGenesis-morph-p0/src/main/java/com/geogenesis/worldgen/terrain/morph/MorphTerrainSampler.java",
+   "size": 9730,
+   "sha256": "1de4fb4067ffb707effad7f6c6e39881871f206041a4878f789311c3a7a76fca"
+  },
+  {
+   "flat": "013__licenses__MORPH-PACKAGE-NOTICE.txt",
+   "original": "GeoGenesis-morph-p0/src/main/resources/META-INF/licenses/MORPH-PACKAGE-NOTICE.txt",
+   "size": 6606,
+   "sha256": "ba0f263e3c9b3c3e0d5a8cee6cc21c0a7ed4522f99108dcb8878e45920857d06"
+  },
+  {
+   "flat": "014__parity__GuardCheck.java",
+   "original": "GeoGenesis-morph-p0/tools/parity/java/com/geogenesis/morph/parity/GuardCheck.java",
+   "size": 6173,
+   "sha256": "160b4e97e549099ee9f1f1fa68936efbb7fb74ae557266d6207def9ecebb6c2c"
+  },
+  {
+   "flat": "015__parity__ParityMain.java",
+   "original": "GeoGenesis-morph-p0/tools/parity/java/com/geogenesis/morph/parity/ParityMain.java",
+   "size": 11589,
+   "sha256": "8e814e0a4ef9d867ba47a2102014aaad4b483202174056c4ac6564a9909ba189"
+  },
+  {
+   "flat": "016__candidate__ParityBridge.java",
+   "original": "GeoGenesis-morph-p0/tools/parity/java/com/geogenesis/worldgen/terrain/candidate/ParityBridge.java",
+   "size": 2321,
+   "sha256": "bb946bf91065e566f2f3b7b43dccbe5dcb75f93baf0c433a6e4f7cbfb185341f"
+  }
+ ]
+}

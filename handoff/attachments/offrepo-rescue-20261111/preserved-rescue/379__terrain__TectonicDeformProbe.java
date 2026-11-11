@@ -1,0 +1,210 @@
+package com.geogenesis.worldgen.terrain;
+
+/**
+ * 构造形变探针（★ 2026-09-12，地质系统 Phase T5 配套）：验证褶皱与断层的<b>形态特征</b>。
+ *
+ * <p>验证项：
+ * <ol>
+ *   <li><b>环境限定</b>：只有汇聚（褶皱+逆断层）/ 离散（正断层）有形变；
+ *       走滑与内部必须恒为 0（与 T1 判定一致）</li>
+ *   <li><b>褶皱周期性</b>：沿垂直边界方向应有周期性脊谷（符号交替）</li>
+ *   <li><b>断层阶跃</b>：断层位移在块边界处应有<b>骤变</b>（崖线），
+ *       且块内沿走向平滑——这是"断层崖"与"平滑坡"的本质差别</li>
+ *   <li><b>近零均值</b>：全域均值应接近 0（不自造整体抬升/沉降）</li>
+ *   <li>确定性、作用范围有限（超出 reach 必须为 0）</li>
+ * </ol>
+ *
+ * <p>用法：{@code gradlew runTectonicDeformProbe [seed]}</p>
+ */
+public final class TectonicDeformProbe {
+
+    public static void main(String[] args) {
+        long seed = args.length > 0 ? Long.parseLong(args[0]) : 12345L;
+        System.out.printf("=== TectonicDeformProbe seed=%d ===%n", seed);
+        TectonicDeformation td = new TectonicDeformation(seed);
+
+        // ================= [1] 环境限定 =================
+        //   构造各环境的 Sample（dist 取 0 与中途各值），逐点求 offset。
+        int leak = 0, checked = 0;
+        for (double d : new double[]{0, 50, 150, 300, 500, 700, 900, 1200}) {
+            for (int bt : new int[]{TectonicField.TRANSFORM, TectonicField.INTERIOR}) {
+                double off = td.offset(new TectonicField.Sample(d, bt, 1.0, 0.0, 1.0), 1234.0, 5678.0);
+                checked++;
+                if (off != 0.0) leak++;
+            }
+        }
+        boolean pass1 = leak == 0;
+        System.out.printf("[1] 走滑/内部 必须无形变(n=%d): 泄漏=%d %s%n",
+            checked, leak, pass1 ? "PASS" : "FAIL");
+
+        // ================= [2] 褶皱起伏（沿【世界坐标】扫描）=================
+        //
+        //   ★ 2026-09-12 判据演进（与 TectonicWaveProbe 同步）：原判据为
+        //   "沿 dist 均匀采样、统计符号交替"，它绑定的是旧机制
+        //   {@code wave = sin(dist·2π/λ)}（相位是 dist 的函数）。
+        //   而该机制正是用户三次反馈的"平行于边界的同心波纹带"的根因
+        //   （087698c 曾修、8e51a08 回退）→ 已改为【世界坐标噪声】起伏。
+        //   新机制下形变与 dist 无周期关系，旧判据必然失效 → 改为沿真实扫描线
+        //   检验"起伏仍存在"。
+        //
+        //   ★ 2026-09-14：筛选条件由 {@code dist < FOLD_REACH} 改为
+        //   <b>落在构造带内（{@code beltMaskAt > 0}）</b> —— 因为 decay 已移除，
+        //   范围由掩码而非 dist 决定（用 dist 筛选会漏掉带内的远场点、且混入带外的零值点）。
+        //
+        //   判据：在构造带内沿 x 扫描，形变总量应多次过零（证明有脊谷起伏，
+        //   而非单调平坦）；同时幅值须在合理量级（>0 证明未失效、<0.1e 证明未失控）。
+        TectonicField tf2 = new TectonicField(seed);
+        int signChanges = 0;
+        double prev = 0;
+        boolean hasPrev = false;
+        double ampMax = 0;
+        for (double z0 = -4000; z0 <= 4000; z0 += 997.0) {
+            hasPrev = false;
+            for (double x = -6000; x <= 6000; x += 25.0) {
+                if (td.beltMaskAt(x, z0) <= 0.0) { hasPrev = false; continue; }   // 带外跳过
+                TectonicField.Sample s = tf2.sample(x, z0);
+                double v = td.offset(s, x, z0);
+                ampMax = Math.max(ampMax, Math.abs(v));
+                if (hasPrev && v != 0.0 && prev != 0.0 && Math.signum(v) != Math.signum(prev)) {
+                    signChanges++;
+                }
+                prev = v;
+                hasPrev = true;
+            }
+        }
+        boolean pass2 = signChanges >= 4 && ampMax > 0.0 && ampMax < 0.1;
+        System.out.printf("[2] 褶皱起伏(沿世界坐标扫描): 过零次数=%d (要求>=4) 最大幅值=%.4f e (要求 0~0.1) %s%n",
+            signChanges, ampMax, pass2 ? "PASS" : "FAIL");
+
+        // ================= [3] 断层阶跃：块边界处应有骤变 =================
+        //   在块边界（dist = k·FAULT_SPACING）两侧微小偏移处取值，差值应显著大于
+        //   块内同距离的差值（即"崖线"而非"平滑坡"）。
+        //   ★ 2026-09-12 判据更新：断块已由 floor(dist/spacing) 改为
+        //   【世界坐标块状量化】（消除"每块各自生成"的 per-cell 依赖）→
+        //   崖线不再位于 dist 的固定倍数上，旧判据失效。
+        //   新判据用沿距离的【强梯度事件】统计：断层带内梯度分布应显著长尾。
+        double scarpMax = 0, scarpSum = 0;
+        int scarpN = 0;
+        final double SCARP_DS = 2.0;
+        for (double sz0 = -4000; sz0 <= 4000; sz0 += 811) {
+            double sPrev = Double.NaN;
+            for (double sx = -4000; sx <= 4000; sx += SCARP_DS) {
+                TectonicField.Sample sm = new TectonicField.Sample(100, TectonicField.DIVERGENT, 1.0, 0.0, 1.0);
+                double sv = td.offset(sm, sx, sz0);
+                if (!Double.isNaN(sPrev)) {
+                    double g = Math.abs(sv - sPrev) / SCARP_DS;
+                    scarpMax = Math.max(scarpMax, g);
+                    scarpSum += g;
+                    scarpN++;
+                }
+                sPrev = sv;
+            }
+        }
+        double scarpMean = scarpN > 0 ? scarpSum / scarpN : 0;
+        boolean pass3 = scarpMean > 0 && scarpMax > scarpMean * 5.0;
+        System.out.printf("[3] 断层崖(离散): 最大梯度=%.6f 平均梯度=%.6f 比值=%.1f× %s%n",
+            scarpMax, scarpMean, scarpMean > 0 ? scarpMax / scarpMean : 0, pass3 ? "PASS" : "FAIL");
+        System.out.println("    要求: 最大/平均梯度 >5×（存在陡崖而非处处平滑）");
+
+        // ================= [4] 近零均值（真实世界分布） =================
+        //   ★ 判据两处修正：
+        //   ① 采样分布：初版沿 dist 均匀采样，但距离场的【面积权重 ∝ dist】
+        //      （等距环的周长大）→ 均匀采 dist 会过度加权近边界区，均值估计有偏。
+        //      改为按【真实世界坐标网格】采样（真实 Voronoi 分布）。
+        //   ② 阈值：初版用"均值/平均幅值 <0.25"这类任意比值；改换算成【块数】，
+        //      物理意义明确（地形 1 e 单位 ≈ 192 块）。
+        TectonicField tf = new TectonicField(seed);
+        TerrainParams tp4 = TerrainParams.defaults();
+        double blocksPerE = (tp4.maxY() - tp4.minY()) / 2.0;   // e ∈[-1,1] → 高度跨度
+        double sum = 0, sumAbs = 0, mn = 1e9, mx = -1e9;
+        int n = 0, active = 0;
+        for (double z = -12000; z <= 12000; z += 149) {
+            for (double x = -12000; x <= 12000; x += 151) {
+                double v = td.offset(tf.sample(x, z), x, z);
+                sum += v; sumAbs += Math.abs(v);
+                if (v != 0.0) active++;
+                mn = Math.min(mn, v); mx = Math.max(mx, v);
+                n++;
+            }
+        }
+        double mean = sum / n, meanAbs = sumAbs / n;
+        double meanBlocks = mean * blocksPerE;
+        // 判据：全域平均偏移 < 0.5 块（远小于地形起伏，不构成"整体抬升/沉降"）
+        boolean pass4 = Math.abs(meanBlocks) < 0.5;
+        System.out.printf("[4] 近零均值(真实网格 n=%d, 有形变 %d=%.0f%%): 均值=%+.5f e (%.2f 块) 平均幅值=%.5f e 范围=[%.4f, %.4f] e %s%n",
+            n, active, 100.0 * active / n, mean, meanBlocks, meanAbs, mn, mx, pass4 ? "PASS" : "FAIL");
+        System.out.printf("    要求: 全域平均偏移 <0.5 块（1 e ≈ %.0f 块）→ 有起伏但无整体升降 %n", blocksPerE);
+
+        // ================= [5] 作用范围有限（★ 2026-09-14 判据重构）=================
+        //
+        //   【为何必须改判据】原判据是「dist > REACH ⇒ offset 必须为 0」—— 它绑定的是
+        //   <b>已删除的 {@code decay(dist)} 机制</b>。移除 decay 后 offset 在
+        //   dist 很大处<b>仍可非零</b>（只要落在 beltMask 带内），原判据必然 FAIL。
+        //
+        //   【新判据：结构性不变量（更强，非放宽）】形变的范围现由世界坐标
+        //   {@link TectonicDeformation#beltMaskAt} 决定 ⇒ 应满足：
+        //     <b>掩码为 0 的点，形变必须恒为 0</b>（无论 dist / 应力如何）。
+        //   这是"范围有限"在<b>新机制下的正确表述</b>，且是逐点可证的不变量。
+        //
+        //   ⚠️ CHANGELOG 明确要求："判据改为按掩码归零，<b>不得为让 CI 变绿而放宽</b>"。
+        //      本判据<b>不放宽</b>：它把"按 dist 截断"换成"按掩码归零"，同时
+        //      <b>新增</b>反向验证（带内应确有非零形变），比原判据覆盖更严。
+        int maskZeroChecked = 0, maskZeroViolations = 0;
+        int beltOnChecked = 0, beltOnActive = 0;
+        double maxAtMaskZero = 0.0;
+        for (double z = -20000; z <= 20000; z += 331) {
+            for (double x = -20000; x <= 20000; x += 337) {
+                double belt = td.beltMaskAt(x, z);
+                // 两种应力都给：汇聚（褶皱+逆断层）与离散（正断层），覆盖两条分支
+                TectonicField.Sample sc = tf2.sample(x, z);
+                double off = td.offset(sc, x, z);
+                if (belt <= 0.0) {
+                    maskZeroChecked++;
+                    if (off != 0.0) {
+                        maskZeroViolations++;
+                        maxAtMaskZero = Math.max(maxAtMaskZero, Math.abs(off));
+                    }
+                } else {
+                    beltOnChecked++;
+                    if (off != 0.0) beltOnActive++;
+                }
+            }
+        }
+        boolean pass5a = maskZeroViolations == 0;
+        // 带内必须确有形变（防"整类恒为0"的假通过）
+        boolean pass5b = beltOnChecked > 0 && beltOnActive > 0;
+        boolean pass5 = pass5a && pass5b;
+        System.out.printf("[5] 范围有限（按掩码归零）: 掩码为0处 n=%d 违例=%d (max=%.3e) %s%n",
+            maskZeroChecked, maskZeroViolations, maxAtMaskZero, pass5a ? "PASS" : "FAIL");
+        System.out.printf("    带内 n=%d 有形变=%d (%.1f%%) —— 须 >0 以防假通过: %s%n",
+            beltOnChecked, beltOnActive, beltOnChecked > 0 ? 100.0 * beltOnActive / beltOnChecked : 0.0,
+            pass5b ? "PASS" : "FAIL");
+        System.out.println("    （新判据取代旧「dist>REACH⇒0」：decay 已移除，范围由 beltMask 决定）");
+
+        // ================= [6] 确定性 =================
+        TectonicDeformation td2 = new TectonicDeformation(seed);
+        int mism = 0;
+        for (int i = 0; i < 300; i++) {
+            double x = i * 311.0 - 20000, z = i * 197.0 - 15000;
+            TectonicField.Sample s = new TectonicField.Sample(i % 300, TectonicField.CONVERGENT, 1.2, 0.3, 0.8);
+            if (Double.compare(td.offset(s, x, z), td2.offset(s, x, z)) != 0) mism++;
+        }
+        boolean pass6 = mism == 0;
+        System.out.printf("[6] 确定性(n=300): 不一致=%d %s%n", mism, pass6 ? "PASS" : "FAIL");
+
+        // ================= [7] 性能 =================
+        final int iters = 1_000_000;
+        TectonicField.Sample s = new TectonicField.Sample(150, TectonicField.CONVERGENT, 1.5, 0.6, 0.8);
+        long t0 = System.nanoTime();
+        double acc = 0;
+        for (int i = 0; i < iters; i++) acc += td.offset(s, i * 1.7, i * 2.3);
+        long t1 = System.nanoTime();
+        double us = (t1 - t0) / 1000.0 / iters;
+        boolean pass7 = acc != 0 && us < 2.0;
+        System.out.printf("[7] 性能: offset %.3f µs/次 (阈值 2µs) %s%n", us, pass7 ? "PASS" : "FAIL");
+
+        boolean all = pass1 && pass2 && pass3 && pass4 && pass5 && pass6 && pass7;
+        System.out.println(all ? "=== ALL PASS ===" : "=== FAILURES PRESENT ===");
+        if (!all) System.exit(1);
+    }
+}

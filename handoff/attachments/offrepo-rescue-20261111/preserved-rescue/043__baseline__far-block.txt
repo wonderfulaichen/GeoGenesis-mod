@@ -1,0 +1,6 @@
+far-block points=64
+  float land  ok=0 fail=64
+  double land ok=64 fail=0
+  float world ok=0 fail=64
+  double world ok=64 fail=0
+  double warp-inverse residual at first point = 0.00000 blocks

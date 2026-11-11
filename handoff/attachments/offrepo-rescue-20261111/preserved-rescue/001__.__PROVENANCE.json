@@ -1,0 +1,77 @@
+{
+  "schema": "geogenesis-preserved-candidate/provenance/1.0",
+  "createdBy": "preservation agent, 2026-11-03",
+  "candidate": "BEA0",
+
+  "whyThisDirectoryExists": [
+    "The BEA0 candidate lives only in %TEMP%/geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9.",
+    "Temp is volatile and is not under version control, so the candidate and its reproduction",
+    "toolchain would be lost. The repository was NOT modified and nothing was git-added.",
+    "This directory is therefore a self-contained external snapshot: sources, frozen config,",
+    "dependency record, licences, anchors, and runnable build/verify scripts."
+  ],
+
+  "readOnlyInputs": {
+    "tempSandbox": "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-xbandidx-0b1a2c3d4e5f60718293a4b5c6d7e8f9",
+    "tempSandboxBytes": 545110579,
+    "tempSandboxFiles": 1935,
+    "repo": "D:\\Office software\\Development Project\\GeoGenesis-mod",
+    "repoBranch": "feat/hydrology-target",
+    "repoHeadAtPreservation": "06343b552d73318af7cdbaaa75b7345deae86587",
+    "repoDirtyFilesAtPreservation": [
+      "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FullMorphLand.java",
+      "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/FullMorphLandCheck.java",
+      "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/LandRegionContext.java",
+      "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/LandRegionContextCheck.java",
+      "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometry.java",
+      "forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/LocalBoundaryGeometryProbe.java",
+      "forge-1.20.1-47.4.10-mdk/tools/unified-baseline.ps1"
+    ],
+    "frozenBaselineDir": "D:\\Office software\\Development Project\\GeoGenesis-mod\\forge-1.20.1-47.4.10-mdk\\build\\terrain-upgrade\\baseline",
+    "frozenBaselineCommit": "cbb44b6361e1b91d592f6e179cef86ca8be18fd4",
+    "secondaryTempDirsRead": {
+      "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-merged-exclusive-9129fd9c6b6c4cd2814b169d6ead5320": "arm A (merged 3A7686C5) DoubleFullMorphLand AD971E97 + DoubleBoundaryGeometry CF4FCA7E",
+      "C:\\Users\\qq274\\AppData\\Local\\Temp\\geogenesis-double-tree-479b36a00abe4bd7a88f8c6d6a4e7cf3": "DoublePerlinCandidate 392EBDE7, byte-identical to the copy already in the xbandidx sandbox"
+    }
+  },
+
+  "whatWasCopied": {
+    "original/": "Byte-for-byte copy of the temp sandbox, minus *.f64be (32 files, 479.2 MB) and PNGs > 1 MB (6 files, 39.2 MB). Every omitted file's SHA-256 is recorded in _build/original-snapshot-index.json.",
+    "src/candidate/": "The 17 candidate sources: the 15 Double*.java plus DualCoordinateCall and ActualNodeClosure.",
+    "src/runner-root/": "The 14 default-package runner probes compiled into classes-cand.",
+    "src/head-terrain-candidate/": "The 131-file frozen HEAD float reference tree.",
+    "src/main-closure/": "The 50 repo src/main/java files the compiled candidate closure actually reaches, determined by compiling the head+candidate trees against the repo main sourcepath and following every javac resolution error rather than by reading imports.",
+    "src/baseline-arms/": "The two arm-A/B files: DoubleFullMorphLand AD971E97 (pristine, no chunk index) and DoubleBoundaryGeometry CF4FCA7E (old geometry).",
+    "resources/": "The 8 src/main/resources files that sat on the original compile and run classpath.",
+    "frozen/": "config-input.toml (fed to every probe), classpath-jars.txt (the exact 115-jar classpath), baseline schema-119 metadata, the baseline verification verdict, and toolchain.txt.",
+    "anchors/refs/": "The two 15.7 MB canonical reference arrays: 7BE04183 float and 3A7686C5 merged double.",
+    "deps/": "jars.json + jars.txt: path, byte size, SHA-256 and Gradle/Maven origin for all 115 jars. NO jar bytes were copied.",
+    "licenses/": "FTF MIT (2023), TF MIT (2020), Forge LICENSE.txt, verbatim.",
+    "manifest.json": "Machine-readable inventory with per-file hashes plus the reproduced-vs-original comparison.",
+    "repro/": "build.ps1, verify.ps1 and their output."
+  },
+
+  "whatWasDeliberatelyNotCopied": [
+    "*.f64be stage arrays: 32 files, 479.2 MB, 1401x1401 doubles. They are regenerable products, not sources; their hashes are recorded and the verify pass regenerates them and compares.",
+    "PNGs over 1 MB (far-height-shade-annotated.png, far-three-profiles.png, compare/*.png): 6 files, 39.2 MB. Regenerable from the CSV/f64be products with render-far-x.py / compare.py, whose hashes are also recorded.",
+    "Failed/abandoned logs and superseded artefacts: identity-freeze.SUPERSEDED.json is kept because it documents the squared-form cull that BEA0 replaces, but earlier stage directories (classes-perf2, logs/) are kept only as they were.",
+    "Dependency jar bytes: 115 jars, 95.6 MB. Not repackaged because they are third-party artefacts already identified by SHA-256 and Maven coordinates; re-obtain from Gradle.",
+    "The other ~130 unrelated geogenesis-* temp directories (other candidates, other experiments).",
+    "The repository itself: no repo file was modified, added, or committed."
+  ],
+
+  "howTheSourceClosureWasDetermined": {
+    "method": "Compile-the-head-and-candidate-trees, then follow the compiler. Start from the 17 candidate sources plus the 131 head sources, put the repo src/main/java on -sourcepath, compile, parse every javac 'cannot find symbol' diagnostic, add the uniquely-named matching source, repeat.",
+    "iterations": 2,
+    "result": "50 main sources, 0 errors, 0 warnings beyond one pre-existing unchecked-cast note in GeoGenesisConfig.java.",
+    "whyNotImportScanning": "A plain import scan over the 17 candidate files misses reflective and same-package uses; compiling is the only closure that is proven sufficient. The 50-file set is the smallest set that actually builds.",
+    "verification": "repro/build.ps1 hard-asserts the count is exactly 50 and aborts otherwise."
+  },
+
+  "readOnlyGuarantee": {
+    "repoModified": false,
+    "gitAddPerformed": false,
+    "markdownCreatedInRepo": false,
+    "note": "All writes went to the preserve root only. The one .md-shaped output the project rules ask about was avoided; narrative lives in this JSON, not in a README."
+  }
+}

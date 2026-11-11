@@ -1,0 +1,12 @@
+﻿# arm=pristine chunkStart=False chunkOutsideBand=False
+node-closure=0
+node-census=0
+gallery-main=0
+isolated-probe=0
+z-seams=0
+x-far-seams=0
+endpoint-probe=0
+perf-geometry=0
+perf-geometry-1831=0
+perf-geometry-neg=0
+perf-geometry-far=0

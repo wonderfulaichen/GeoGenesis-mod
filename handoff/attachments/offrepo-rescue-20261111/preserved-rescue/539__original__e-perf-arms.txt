@@ -1,0 +1,3 @@
+﻿ARM A: chunkStart=False chunkOutsideBand=False (asserted)
+ARM B: chunkStart=False chunkOutsideBand=False (asserted)
+ARM C: chunkStart=True chunkOutsideBand=True (asserted)
