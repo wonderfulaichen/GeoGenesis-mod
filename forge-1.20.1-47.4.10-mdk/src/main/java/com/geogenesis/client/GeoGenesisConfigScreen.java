@@ -1427,7 +1427,7 @@ public class GeoGenesisConfigScreen extends Screen {
      * 现在归位到品牌行右端 —— 与 "GeoGenesis" 同一行，语义清晰（收起整个配置区）。</p>
      */
     private void renderPanelHandle(GuiGraphics g, int mx, int my) {
-        int hh = 16;
+        int hh = panelOpen ? 16 : 20;   // ★ v28：收起态与下方按钮同高同宽，整列对齐
         int hw = panelOpen ? 20 : PANEL_W_CLOSED;
         int hx, hy;
         if (panelOpen) {
@@ -1469,62 +1469,58 @@ public class GeoGenesisConfigScreen extends Screen {
      */
     private void drawCollapsedActions(GuiGraphics g, int mx, int my) {
         int[] L = collapsedLayout();
-        int y = L[0], h = L[1];
-        int xView = L[2], wView = L[3];
-        int xLarge = L[4], wLarge = L[5];
-        int xPrev = L[6], wPrev = L[7];
-        int xLabel = L[8], wLabel = L[9];
-        int xNext = L[10], wNext = L[11];
-        int xSave = L[12], wSave = L[13];
-        int xReset = L[14], wReset = L[15];
-        int xDone = L[16], wDone = L[17];
-
-        UiKit.toggleButton(g, xView, y, wView, h, sandboxLabel().getString(),
-                isSandboxActive(), inRect(mx, my, xView, y, wView, h), NAV_ACCENT);
-        UiKit.toggleButton(g, xLarge, y, wLarge, h, fitNavLabel(largeAreaLabel().getString(), wLarge),
+        int x0 = L[0], y0 = L[1], w0 = L[2], h = L[3];
+        // 0 视图 / 1 全局 / 2 ‹ / 3 图层名 / 4 › / 5 保存 / 6 重置 / 7 完成
+        UiKit.toggleButton(g, x0, y0, w0, h, sandboxLabel().getString(),
+                isSandboxActive(), inRect(mx, my, x0, y0, w0, h), NAV_ACCENT);
+        UiKit.toggleButton(g, x0, L[5], w0, h, fitNavLabel(largeAreaLabel().getString(), w0),
                 preview != null && preview.isLargeArea(),
-                inRect(mx, my, xLarge, y, wLarge, h), NAV_ACCENT);
+                inRect(mx, my, x0, L[5], w0, h), NAV_ACCENT);
 
-        drawNavBtn(g, xPrev, y, wPrev, h, "<", false, mx, my);
+        drawNavBtn(g, L[8], L[9], L[10], h, "<", false, mx, my);
         String layerName = currentLayerLabel();
-        g.drawString(this.font, trim(layerName, this.font, wLabel), xLabel,
-                y + (h - this.font.lineHeight) / 2, NAV_TXT_SUB, false);
-        drawNavBtn(g, xNext, y, wNext, h, ">", false, mx, my);
+        g.drawString(this.font, trim(layerName, this.font, L[14]), L[12],
+                L[9] + (h - this.font.lineHeight) / 2, NAV_TXT_SUB, false);
+        drawNavBtn(g, L[16], L[17], L[18], h, ">", false, mx, my);
 
-        drawNavBtn(g, xSave, y, wSave, h, "保存", false, mx, my);
-        drawNavBtn(g, xReset, y, wReset, h, readOnly ? "只读" : "重置", false, mx, my);
+        drawNavBtn(g, L[20], L[21], L[22], h, "保存", false, mx, my);
+        drawNavBtn(g, L[24], L[25], L[26], h, readOnly ? "只读" : "重置", false, mx, my);
 
-        UiKit.toggleButton(g, xDone, y, wDone, h, "完成",
-                !readOnly, inRect(mx, my, xDone, y, wDone, h), UiKit.C_ACCENT);
+        UiKit.toggleButton(g, L[28], L[29], L[30], h, "完成",
+                !readOnly, inRect(mx, my, L[28], L[29], L[30], h), UiKit.C_ACCENT);
     }
 
     /**
-     * 收起态工具条布局 —— <b>绘制与命中共用同一份</b>（★ v27）。
+     * 收起态左侧按钮列 —— <b>绘制与命中共用同一份</b>（★ v28）。
      *
-     * <p>用户实机：「位置挤在左上角把手下面有点挡视线，而且六个按钮竖排太长了。
-     * 建议统一一下。」</p>
+     * <p>用户澄清（2026-11-11）：「我明明之前让你放的左侧，你怎么又改到底部了？
+     * 我之前说你改是说把配置按键与其他按键大小宽度一致。」</p>
      *
-     * <p>⇒ 竖排改为<b>底部居中一条横向工具条</b>：单行、等高胶囊、间距一致，
-     * 与导航栏那组按钮同一套样式；不压地图中心，也不压左上把手。</p>
+     * <p>⇒ 回到左侧竖列，<b>与「&gt; 配置」把手同宽同高同 x</b>，整列对齐如一条工具栏：
+     * 视图 / 全局查看 / ‹ 图层名 › / 保存·重置 / 完成。</p>
      *
-     * @return {y, h, x,w × 8}（视图 / 全局 / ‹ / 图层名 / › / 保存 / 重置 / 完成）
+     * @return 8 个格子，每格 {x, y, w, h}，顺序：
+     *         0 视图 · 1 全局 · 2 ‹ · 3 图层名 · 4 › · 5 保存 · 6 重置 · 7 完成
      */
     private int[] collapsedLayout() {
-        int h = 20, gap = 4;
-        int wView = 76, wLarge = 92, wPrev = 22, wLabel = 70, wNext = 22;
-        int wSave = 46, wReset = 46, wDone = 56;
-        int total = wView + wLarge + wPrev + wLabel + wNext + wSave + wReset + wDone + gap * 7;
-        int x = Math.max(8, (this.width - total) / 2);
-        int y = this.height - h - 8;
-        return new int[]{y, h,
-                x, wView,
-                x += wView + gap, wLarge,
-                x += wLarge + gap, wPrev,
-                x += wPrev, wLabel,
-                x += wLabel, wNext,
-                x += wNext + gap, wSave,
-                x += wSave + gap, wReset,
-                x += wReset + gap, wDone};
+        int x = cfgX, w = PANEL_W_CLOSED, h = 20, gap = 4;
+        int y = cfgY + h + gap;          // 紧接「> 配置」把手下面
+        int half = (w - gap) / 2;
+        int out = 8 * 4;
+        int[] L = new int[out];
+        L[0] = x; L[1] = y; L[2] = w; L[3] = h;                                  // 视图
+        y += h + gap;
+        L[4] = x; L[5] = y; L[6] = w; L[7] = h;                                  // 全局
+        y += h + gap;
+        L[8] = x; L[9] = y; L[10] = 24; L[11] = h;                               // ‹
+        L[12] = x + 28; L[13] = y; L[14] = w - 56; L[15] = h;                    // 图层名
+        L[16] = x + w - 24; L[17] = y; L[18] = 24; L[19] = h;                    // ›
+        y += h + gap;
+        L[20] = x; L[21] = y; L[22] = half; L[23] = h;                           // 保存
+        L[24] = x + w - half; L[25] = y; L[26] = half; L[27] = h;                // 重置
+        y += h + gap;
+        L[28] = x; L[29] = y; L[30] = w; L[31] = h;                              // 完成
+        return L;
     }
 
 
@@ -1636,13 +1632,13 @@ public class GeoGenesisConfigScreen extends Screen {
         if (btn != 0) return false;
         if (nameDialog.isShowing() || confirmDialog.isShowing()) return false;
 
-        // ★ v27：收起态工具条（视图 / 全局 / 图层 / 保存·重置 / 完成），底部居中
+        // ★ v28：收起态左侧按钮列（视图 / 全局 / 图层 / 保存·重置 / 完成）
         if (!panelOpen) {
             int[] L = collapsedLayout();
-            int y = L[0], h = L[1];
+            int h = L[3];
             for (int i = 0; i < 8; i++) {
-                int bx = L[2 + i * 2], bw = L[3 + i * 2];
-                if (!inRect(mx, my, bx, y, bw, h)) continue;
+                int bx = L[i * 4], by = L[i * 4 + 1], bw = L[i * 4 + 2];
+                if (!inRect(mx, my, bx, by, bw, h)) continue;
                 switch (i) {
                     case 0 -> toggleSandbox();
                     case 1 -> toggleLargeArea();
