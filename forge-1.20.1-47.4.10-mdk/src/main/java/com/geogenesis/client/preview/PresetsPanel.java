@@ -18,23 +18,26 @@ import java.util.function.LongSupplier;
 /**
  * 配置预设面板（第 1 个标签，「预设」）。
  *
- * <p>布局（自上而下，固定 + 两个独立滚动区）：
+ * <p>★ v72：<b>单滚轮模型</b> —— 整页顺序排布、按内容全高展开，
+ * 滚轮只归主屏的页面滚动。</p>
+ *
  * <pre>
- *  配置预设                          [固定]
- *  种子: [EditBox] [↻] [★]           [固定]
- *  收藏种子                          [固定]
- *  ┌────────────────────────┐
- *  │ ▶ fav1  ✕              │  [滚动区 A — 收藏，独立 innerScrollY_fav]
- *  │ ▶ fav2  ✕              │
- *  └────────────────────────┘
- *  默认地形预设                      [固定]
- *  ┌────────────────────────┐
- *  │ 群岛世界               │  [滚动区 B — 卡片，独立 innerScrollY_card]
- *  │ 辽阔大陆               │
- *  └────────────────────────┘
+ *  种子: [EditBox] [↻] [★]
+ *  ▾ 收藏种子            ← MixerPanel（可折叠）
+ *    ▶ fav1  ✕
+ *  默认地形预设
+ *    群岛世界
+ *  我的预设
+ *    …
  * </pre>
  *
- * <p>滚轮按光标 y 路由到对应滚动区，各自独立；可见性检查（非 scissor）杜绝重叠。
+ * <h2>为何删掉三个内层滚动</h2>
+ * <p>旧实现是「页面自己滚 + 里面三块各自滚」（收藏 / 卡片 / 用户预设，各自 pinned
+ * 坐标 + {@code innerScrollY_*} + 独立滚动条）。指针落在哪块上、滚轮该动谁，
+ * 全靠 y 区间路由 ⇒ 用户：「不要上下滚轮页里面再加上下滚轮的控件，非常容易误操作。」</p>
+ *
+ * <p>副作用：内滚偏移与固定坐标并存，正是上一轮「点 A 应用 B」的同源病。
+ * 现在只有一份坐标（顺序累加），画哪儿就点哪儿。</p>
  */
 public class PresetsPanel extends ConfigPanel {
 
@@ -46,10 +49,6 @@ public class PresetsPanel extends ConfigPanel {
     private static final int CARD_GAP = 10;
     private static final int GAP_S = 6;
     private static final int GAP_M = 12;
-
-    private static final int FAV_SCROLL_H = 160;
-    private static final int CARD_SCROLL_H = 230;
-    private static final int USER_SCROLL_H = 200;
 
     private final List<Preset> presets = PresetLibrary.all();
     private final LongSupplier getSeed;
@@ -80,8 +79,6 @@ public class PresetsPanel extends ConfigPanel {
      * 本来都记了 id，只有卡片区漏了 —— 典型"绘制一套、命中另一套"。</p>
      */
     private final List<Preset> cardRef = new ArrayList<>();
-    private int innerScrollY_fav = 0;
-    private int innerScrollY_card = 0;
     /** 收藏种子折叠面板 */
     private final MixerPanel favSection = new MixerPanel("收藏种子");
 
@@ -89,7 +86,6 @@ public class PresetsPanel extends ConfigPanel {
     private final List<UserPresetsStore.UserPreset> userPresets = new ArrayList<>();
     private final List<Integer> userCardY = new ArrayList<>();
     private final List<String> userCardId = new ArrayList<>();
-    private int innerScrollY_user = 0;
 
     public PresetsPanel(LongSupplier getSeed, Consumer<Long> setSeed, Runnable onRefresh,
                         Consumer<Preset> onApply, Consumer<AbstractWidget> addWidget,
@@ -166,51 +162,20 @@ public class PresetsPanel extends ConfigPanel {
     private static net.minecraft.network.chat.Component C(String s) { return net.minecraft.network.chat.Component.literal(s); }
     private static net.minecraft.network.chat.Component Star(boolean on) { return C(on ? "★" : "☆"); }
 
-    /** 内容区可用高度（由主屏每帧注入；0 = 未注入，退回写死值）。 */
-    private int viewportH = 0;
-    /** 两个滚动区的实际高度（按 viewportH 分摊，见 {@link #recomputeScrollHeights()}）。 */
-    private int cardScrollH = CARD_SCROLL_H;
-    private int userScrollH = USER_SCROLL_H;
-
     /**
-     * ★ 2026-11-09 v7【修"内容面板下方大片空白"】：
-     * 原来这个方法体是空的（注释「保留兼容」），于是两个预设列表区
-     * 恒按 230 + 200 的写死高度画 —— 内容区实际有 600+ 像素时，
-     * 底部就空出一大片。
+     * ★ v72：内容高度<b>顺序累加</b>，不再按视口均摊。
      *
-     * <p>现在把可用高度按比例摊给它俩：卡片区 55% / 用户区 45%，
-     * 各不低于原最小值（避免小窗口时挤没）。</p>
+     * <p>旧实现把可用高度按 55% / 45% 摊给两个滚动区（{@code setViewportHeight} +
+     * {@code recomputeScrollHeights}），滚动区高度随窗口浮动 ⇒ 又一层"同一布局两套推导"。
+     * 现在没有视口概念：列表有多少内容就占多高，超高由主屏页面滚动兜住
+     * （那也正是唯一的滚轮目标）。</p>
      */
-    public void setViewportHeight(int h) {
-        if (h <= 0 || h == viewportH) return;
-        viewportH = h;
-        recomputeScrollHeights();
-    }
-
-    private void recomputeScrollHeights() {
-        // 扣掉所有固定项，剩下的才是两个滚动区能用的高度
-        // ★ v7：不再扣 HEADER_H（标题移到面板顶部，由 ConfigPanelHost 画）
-        int fixed = 2 + SEED_ROW_H + GAP_M
-                  + favSection.getFullHeight() + GAP_M * 3 + 12;
-        int avail = viewportH - fixed;
-        if (avail <= CARD_SCROLL_H + USER_SCROLL_H) {
-            // 空间不足：保持原值（外滚会兜住）
-            cardScrollH = CARD_SCROLL_H;
-            userScrollH = USER_SCROLL_H;
-            return;
-        }
-        // 两区标题各占 16px
-        int body = avail - 32;
-        cardScrollH = Math.max(CARD_SCROLL_H, (int) (body * 0.55));
-        userScrollH = Math.max(USER_SCROLL_H, body - cardScrollH);
-    }
-
     @Override
     public int getHeight() {
         return 2 + SEED_ROW_H + GAP_M
              + favSection.getFullHeight() + GAP_M
-             + cardScrollH + GAP_M
-             + userScrollH + GAP_M + 12;
+             + 16 + cardContentH() + GAP_M
+             + 16 + Math.max(ROW_H, userContentH()) + GAP_M + 12;
     }
 
     // 所有 y 用 top()（随主屏外滚移动）
@@ -227,25 +192,22 @@ public class PresetsPanel extends ConfigPanel {
     private int pinnedFavScrollBotY()       { return pinnedFavScrollTopY() + favScrollH(); }
 
     /**
-     * ★ v7：收藏区高度<b>按内容自适应</b>（上限 {@link #FAV_SCROLL_H}）。
+     * 收藏区高度 = 内容高度（★ v72：删掉 160px 视口上限）。
      *
-     * <p>截图问题：固定 160 或展开后按容器撑开时，只有 2 条收藏 seed 却占
-     * 一大片空白，把下面的「默认地形预设」往下挤。现在内容少就矮、多了才滚。</p>
+     * <p>收藏是用户自己加的种子，条数天然有限；上限若保留，就会重新引入
+     * "视口高度 ≠ 内容高度"，而那正是内层滚轮存在的前提。</p>
      */
     private int favScrollH() {
         if (favSection.isCollapsed()) return 0;
         int content = favContentH();
-        if (content <= 0) return ROW_H;            // 空列表也给一行提示位
-        return Math.min(FAV_SCROLL_H, content);
+        return content <= 0 ? ROW_H : content;     // ★ v72：不再截断到 160
     }
     private int pinnedCardTitleY()          { return pinnedFavTopY() + favSection.getFullHeight() + GAP_M; }
     private int pinnedCardScrollTopY()      { return pinnedCardTitleY() + 16; }  // MixerPanel.TITLE_H=16
-    private int pinnedCardScrollBotY()      { return pinnedCardScrollTopY() + cardScrollH; }
+    private int pinnedCardScrollBotY()      { return pinnedCardScrollTopY() + cardContentH(); }
     private int pinnedUserTitleY()          { return pinnedCardScrollBotY() + GAP_M; }
     private int pinnedUserScrollTopY()      { return pinnedUserTitleY() + 16; }
-    private int pinnedUserScrollBotY()      { return pinnedUserScrollTopY() + userScrollH; }
-
-    public int getScrollTopY() { return pinnedFavScrollTopY(); }
+    private int pinnedUserScrollBotY()      { return pinnedUserScrollTopY() + Math.max(ROW_H, userContentH()); }
 
     /** 从 UserPresetsStore 重新加载用户预设列表（保存/删除后调用刷新） */
     public void refreshUserPresets() {
@@ -307,10 +269,9 @@ public class PresetsPanel extends ConfigPanel {
         if (!favSection.isCollapsed()) {
             int favTop = pinnedFavScrollTopY();
             int favBot = pinnedFavScrollBotY();
+            // ★ v72：区域高度＝内容高度，不需要 scissor（页面滚动会整体移动它）
             UiKit.roundRect(g, x + 2, favTop, x + w - 2, favBot, UiKit.RADIUS_CARD, 0xFF1A1A1A);
-            g.enableScissor(x, favTop, x + w, favBot);
             drawScrollRegion(g, mx, my, favTop, favBot, curSeed, sm, true);
-            g.disableScissor();
             favSection.renderTooltip(g, mx, my);
         }
 
@@ -318,113 +279,96 @@ public class PresetsPanel extends ConfigPanel {
         int cty = pinnedCardTitleY();
         g.drawString(font(), "默认地形预设（点击应用，将覆盖全部参数）", x, cty, C_TEXT_DIM);
 
-        // ============ 滚动区 B：卡片（带 scissor 严格裁剪到区域）============
+        // ============ 卡片区（顺序排布，全高）============
         int cardTop = pinnedCardScrollTopY();
         int cardBot = pinnedCardScrollBotY();
         UiKit.roundRect(g, x + 2, cardTop, x + w - 2, cardBot, UiKit.RADIUS_CARD, 0xFF1A1A1A);
-        g.enableScissor(x, cardTop, x + w, cardBot);
         drawScrollRegion(g, mx, my, cardTop, cardBot, curSeed, sm, false);
-        g.disableScissor();
 
         // —— 用户预设标题 ——
         int uty = pinnedUserTitleY();
         g.drawString(font(), "我的预设（点击加载 · ✕ 删除）", x, uty, C_TEXT_DIM);
 
-        // ============ 滚动区 C：用户自定义预设（带 scissor 严格裁剪到区域）============
+        // ============ 用户自定义预设（顺序排布，全高）============
         int userTop = pinnedUserScrollTopY();
         int userBot = pinnedUserScrollBotY();
         UiKit.roundRect(g, x + 2, userTop, x + w - 2, userBot, UiKit.RADIUS_CARD, 0xFF1A1A1A);
-        g.enableScissor(x, userTop, x + w, userBot);
         drawUserRegion(g, mx, my, userTop, userBot);
-        g.disableScissor();
     }
 
     private void drawScrollRegion(GuiGraphics g, int mx, int my,
                                    int top, int bottom, long curSeed, SeedManager sm, boolean isFav) {
         int sTop = top, sBot = bottom;
+        // ★ v72：不再有内滚偏移 —— 区域内所有行都按顺序画满（高度本身就等于内容高）。
         if (isFav) {
             int y = sTop;
             List<SeedManager.SeedEntry> favs = sm.getFavorites();
             if (favs.isEmpty()) {
-                int ry = y - innerScrollY_fav;
-                if (ry < sBot && ry + ROW_H > sTop)
-                    g.drawString(font(), "（暂无收藏 · 点 ★ 收藏当前种子）", x + 12, ry + (ROW_H - font().lineHeight) / 2, C_TEXT_DIM);
+                int ry = y;
+                g.drawString(font(), "（暂无收藏 · 点 ★ 收藏当前种子）", x + 12, ry + (ROW_H - font().lineHeight) / 2, C_TEXT_DIM);
             } else {
                 for (SeedManager.SeedEntry e : favs) {
-                    int ry = y - innerScrollY_fav;
-                    if (ry < sBot && ry + ROW_H > sTop) {
-                        boolean hover = mx >= x && mx <= x + w && my >= ry && my <= ry + ROW_H;
-                        g.fill(x + 2, ry, x + w - 2, ry + ROW_H, hover ? C_HOVER : C_BG_ROW);
-                        boolean active = e.seed() == curSeed;
-                        g.drawString(font(), (active ? "▶ " : "") + e.name() + "  (" + e.seed() + ")",
-                            x + 12, ry + (ROW_H - font().lineHeight) / 2, active ? C_ACCENT : C_TEXT);
-                        int delX = x + w - 18;
-                        boolean delHover = mx >= delX - 4 && mx <= delX + 14 && my >= ry && my <= ry + ROW_H;
-                        g.drawString(font(), "✕", delX, ry + (ROW_H - font().lineHeight) / 2,
-                            delHover ? 0xFFFF7777 : C_TEXT_DIM);
-                        // 无条件记录命中区（不能只在 hover 时记录，否则鼠标不悬停的行永远点不到）
-                        favRowY.add(ry); favRowSeed.add(e.seed());
-                    }
+                    int ry = y;
+                    boolean hover = mx >= x && mx <= x + w && my >= ry && my <= ry + ROW_H;
+                    g.fill(x + 2, ry, x + w - 2, ry + ROW_H, hover ? C_HOVER : C_BG_ROW);
+                    boolean active = e.seed() == curSeed;
+                    g.drawString(font(), (active ? "▶ " : "") + e.name() + "  (" + e.seed() + ")",
+                        x + 12, ry + (ROW_H - font().lineHeight) / 2, active ? C_ACCENT : C_TEXT);
+                    int delX = x + w - 18;
+                    boolean delHover = mx >= delX - 4 && mx <= delX + 14 && my >= ry && my <= ry + ROW_H;
+                    g.drawString(font(), "✕", delX, ry + (ROW_H - font().lineHeight) / 2,
+                        delHover ? 0xFFFF7777 : C_TEXT_DIM);
+                    // 无条件记录命中区（不能只在 hover 时记录，否则鼠标不悬停的行永远点不到）
+                    favRowY.add(ry); favRowSeed.add(e.seed());
                     y += ROW_H + ROW_GAP;
                 }
             }
-            int contentH = favContentH();
-                UiKit.scrollbar(g, x + w - 3, sTop, sBot - sTop, contentH, innerScrollY_fav, false);
         } else {
             int y = sTop;
             for (Preset p : presets) {
-                int py = y - innerScrollY_card;
-                if (py < sBot && py + CARD_H > sTop) {
-                    boolean hover = mx >= x && mx <= x + w && my >= py && my <= py + CARD_H;
-                    // ★ v7 自绘卡片：圆角 + 主色左条 + 主/副两行文字（对齐示意图）
-                    UiKit.roundRect(g, x + 4, py, x + w - 4, py + CARD_H, 4,
-                            hover ? UiKit.C_CARD_HOVER : UiKit.C_CARD);
-                    g.fill(x + 4, py + 6, x + 6, py + CARD_H - 6, UiKit.C_ACCENT);
-                    g.drawString(font(), p.name, x + 14, py + 10, UiKit.C_TXT, false);
-                    String desc = p.desc;
-                    int maxW = w - 34;
-                    if (font().width(desc) > maxW) desc = font().plainSubstrByWidth(desc, maxW, true);
-                    g.drawString(font(), desc, x + 14, py + 28, UiKit.C_TXT_DIM, false);
-                    cardY.add(py);
-                    cardRef.add(p);   // ★ v70：记录 y 属于哪个预设（滚动的唯一修法）
-                }
+                int py = y;
+                boolean hover = mx >= x && mx <= x + w && my >= py && my <= py + CARD_H;
+                // ★ v7 自绘卡片：圆角 + 主色左条 + 主/副两行文字（对齐示意图）
+                UiKit.roundRect(g, x + 4, py, x + w - 4, py + CARD_H, 4,
+                        hover ? UiKit.C_CARD_HOVER : UiKit.C_CARD);
+                g.fill(x + 4, py + 6, x + 6, py + CARD_H - 6, UiKit.C_ACCENT);
+                g.drawString(font(), p.name, x + 14, py + 10, UiKit.C_TXT, false);
+                String desc = p.desc;
+                int maxW = w - 34;
+                if (font().width(desc) > maxW) desc = font().plainSubstrByWidth(desc, maxW, true);
+                g.drawString(font(), desc, x + 14, py + 28, UiKit.C_TXT_DIM, false);
+                cardY.add(py);
+                cardRef.add(p);   // ★ v70：记录 y 属于哪个预设（滚动的唯一修法）
                 y += CARD_H + CARD_GAP;
             }
-            int contentH = cardContentH();
-                UiKit.scrollbar(g, x + w - 3, sTop, sBot - sTop, contentH, innerScrollY_card, false);
         }
     }
 
-    /** 用户预设滚动区渲染（与卡片区同构，每行带 ✕ 删除） */
+    /** 用户预设区渲染（与卡片区同构，每行带 ✕ 删除）。 */
     private void drawUserRegion(GuiGraphics g, int mx, int my, int top, int bottom) {
-        int sTop = top, sBot = bottom;
+        int sTop = top;
         int y = sTop;
         if (userPresets.isEmpty()) {
-            int ry = y - innerScrollY_user;
-            if (ry < sBot && ry + ROW_H > sTop)
-                g.drawString(font(), "（暂无 · 用左下「保存」按钮存为预设）",
-                    x + 12, ry + (ROW_H - font().lineHeight) / 2, C_TEXT_DIM);
+            int ry = y;
+            g.drawString(font(), "（暂无 · 用左下「保存」按钮存为预设）",
+                x + 12, ry + (ROW_H - font().lineHeight) / 2, C_TEXT_DIM);
         } else {
             for (UserPresetsStore.UserPreset p : userPresets) {
-                int py = y - innerScrollY_user;
-                if (py < sBot && py + CARD_H > sTop) {
-                    boolean hover = mx >= x && mx <= x + w && my >= py && my <= py + CARD_H;
-                    UiKit.roundRect(g, x + 4, py, x + w - 4, py + CARD_H, 4,
-                            hover ? UiKit.C_CARD_HOVER : UiKit.C_CARD);
-                    g.fill(x + 4, py + 6, x + 6, py + CARD_H - 6, UiKit.C_TEAL);
-                    g.drawString(font(), p.name(), x + 14, py + 10, UiKit.C_TXT, false);
-                    String meta = "（" + p.values().size() + " 项参数）";
-                    g.drawString(font(), meta, x + 14, py + 28, UiKit.C_TXT_DIM, false);
-                    int delX = x + w - 18;
-                    boolean delHover = mx >= delX - 4 && mx <= delX + 14 && my >= py && my <= py + CARD_H;
-                    g.drawString(font(), "✕", delX, py + (CARD_H - font().lineHeight) / 2,
-                        delHover ? 0xFFFF7777 : UiKit.C_TXT_DIM, false);
-                    userCardY.add(py); userCardId.add(p.id());
-                }
+                int py = y;
+                boolean hover = mx >= x && mx <= x + w && my >= py && my <= py + CARD_H;
+                UiKit.roundRect(g, x + 4, py, x + w - 4, py + CARD_H, 4,
+                        hover ? UiKit.C_CARD_HOVER : UiKit.C_CARD);
+                g.fill(x + 4, py + 6, x + 6, py + CARD_H - 6, UiKit.C_TEAL);
+                g.drawString(font(), p.name(), x + 14, py + 10, UiKit.C_TXT, false);
+                String meta = "（" + p.values().size() + " 项参数）";
+                g.drawString(font(), meta, x + 14, py + 28, UiKit.C_TXT_DIM, false);
+                int delX = x + w - 18;
+                boolean delHover = mx >= delX - 4 && mx <= delX + 14 && my >= py && my <= py + CARD_H;
+                g.drawString(font(), "✕", delX, py + (CARD_H - font().lineHeight) / 2,
+                    delHover ? 0xFFFF7777 : UiKit.C_TXT_DIM, false);
+                userCardY.add(py); userCardId.add(p.id());
                 y += CARD_H + CARD_GAP;
             }
-            int contentH = userContentH();
-                UiKit.scrollbar(g, x + w - 3, sTop, sBot - sTop, contentH, innerScrollY_user, false);
         }
     }
 
@@ -493,32 +437,10 @@ public class PresetsPanel extends ConfigPanel {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double delta) {
-        // 用户预设区：内部滚动
-        if (my >= pinnedUserScrollTopY() && my < pinnedUserScrollBotY()) {
-            int maxScroll = Math.max(0, userContentH() - userScrollH);
-            if (maxScroll <= 0) return false;
-            innerScrollY_user = Clamp(innerScrollY_user - (int)(delta * 20), 0, maxScroll);
-            return true;
-        }
-        // 卡片区：内部滚动
-        if (my >= pinnedCardScrollTopY() && my < pinnedCardScrollBotY()) {
-            int maxScroll = Math.max(0, cardContentH() - cardScrollH);
-            if (maxScroll <= 0) return false;
-            innerScrollY_card = Clamp(innerScrollY_card - (int)(delta * 20), 0, maxScroll);
-            return true;
-        }
-        // 收藏区：内部滚动
-        if (my >= pinnedFavScrollTopY() && my < pinnedFavScrollBotY()) {
-            int maxScroll = Math.max(0, favContentH() - FAV_SCROLL_H);
-            if (maxScroll <= 0) return false;
-            innerScrollY_fav = Clamp(innerScrollY_fav - (int)(delta * 20), 0, maxScroll);
-            return true;
-        }
-        // 固定区（标题/种子栏/收藏标题/卡片标题）：交主屏外滚（整个面板上下移动）
+        // ★ v72：三块内层滚动已删除 —— 一个页面只能有一个滚轮目标，交给主屏页面滚动。
+        //   旧实现按光标 y 在收藏/卡片/用户预设三块之间路由，是最容易被误操作的一处。
         return false;
     }
-
-    private static int Clamp(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
 
     @Override public boolean mouseReleased(double mx, double my, int btn) { return false; }
     @Override public boolean mouseDragged(double mx, double my, int btn, double dx, double dy) { return false; }

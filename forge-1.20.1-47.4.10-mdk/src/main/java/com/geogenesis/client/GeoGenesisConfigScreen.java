@@ -1059,7 +1059,7 @@ public class GeoGenesisConfigScreen extends Screen {
         if (panelOpen && !dialogActive) {
             if (presetsPanel != null) {
                 presetsPanel.setWidgetsVisible(tab == visibleTabs.indexOf(PanelLayout.Tab.PRESETS));
-                presetsPanel.setViewportHeight(listBottom - presetsPanel.getScrollTopY() - 6);
+                // ★ v72：不再注入视口高度 —— 预设页已改为单滚轮（内容全高、由本屏滚动兜住）
             }
             panelHost.render(g, mx, my, pt, null);
         }
