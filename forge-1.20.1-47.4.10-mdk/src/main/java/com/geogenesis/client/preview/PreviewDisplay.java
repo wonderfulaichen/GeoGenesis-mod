@@ -990,6 +990,18 @@ public class PreviewDisplay extends AbstractWidget {
             float fill = sandboxRasterizer.drawScaleFor(w, h);
             float[] sxy = new float[2];
             ViewTransition.scale(ease, toSandbox, w, h, fill, sxy);
+            // ★ 诊断：过渡首帧打一条，便于实机定位"地面没画/画了不可见"
+            if (ease < 0.02f) {
+                LOGGER.info("[Preview] 运镜开始 dir={} yaw={} pitch={} fill={} sx={} sy={} "
+                                + "tex={}x{} data={} reliefSpan={}",
+                        toSandbox ? "→沙盘" : "→平面",
+                        String.format(java.util.Locale.ROOT, "%.3f", yaw),
+                        String.format(java.util.Locale.ROOT, "%.3f", pitch),
+                        String.format(java.util.Locale.ROOT, "%.1f", fill),
+                        String.format(java.util.Locale.ROOT, "%.1f", sxy[0]),
+                        String.format(java.util.Locale.ROOT, "%.1f", sxy[1]),
+                        texW, texH, sandboxData != null, reliefSpan);
+            }
             drawGroundSurface(g, x, y, w, h, yaw, pitch, sxy[0], sxy[1],
                     ViewTransition.groundAlpha(ease, toSandbox));
 
@@ -1080,27 +1092,45 @@ public class PreviewDisplay extends AbstractWidget {
         }
         java.util.Arrays.sort(order, (a, b) -> Float.compare(depth[a], depth[b]));
 
-        int argb = ((int) (255 * alpha) << 24) | 0xFFFFFF;
         g.flush();
         org.joml.Matrix4f pose = g.pose().last().pose();
         com.mojang.blaze3d.vertex.BufferBuilder bb =
                 com.mojang.blaze3d.vertex.Tesselator.getInstance().getBuilder();
+        // ★★ v51【改用原版 blit 的<b>同一条</b>着色器与顶点格式】★★
+        //
+        //   v50 用的是 POSITION_TEX_COLOR + getPositionTexColorShader + 顶点色 alpha，
+        //   实机结果是<b>地面完全不显示</b>（用户：「先黑屏一下然后突然显示沙盘」）。
+        //   那条路径本项目从未跑过，等于在赌。
+        //
+        //   原版 GuiGraphics.innerBlit（1.20.1）用的是：
+        //     RenderSystem.setShaderTexture(0, tex)
+        //     RenderSystem.setShader(GameRenderer::getPositionTexShader)
+        //     begin(QUADS, DefaultVertexFormat.POSITION_TEX)
+        //     vertex(pose, x, y, z).uv(u,v).endVertex()
+        //     BufferUploader.drawWithShader(bb.end())
+        //   与之逐字一致，只把顶点坐标换成任意四边形；alpha 走 setShaderColor。
         bb.begin(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS,
-                com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR);
+                com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX);
         for (Integer idx : order) {
             int qx = idx % m, qz = idx / m;
             emitGroundQuad(bb, pose, r, sx, sy, cx, cy, vz, gn, qx, qz,
                     modelX(qx, m), modelX(qx + 1, m), modelY(qz, m), modelY(qz + 1, m),
-                    qx / (float) m, (qx + 1) / (float) m, qz / (float) m, (qz + 1) / (float) m,
-                    argb);
+                    qx / (float) m, (qx + 1) / (float) m, qz / (float) m, (qz + 1) / (float) m);
         }
-        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexColorShader);
         RenderSystem.setShaderTexture(0, texLoc);
+        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexShader);
+        boolean shade = alpha < 0.999f;
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
+        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, alpha);
         com.mojang.blaze3d.vertex.BufferUploader.drawWithShader(bb.end());
-        RenderSystem.disableBlend();
+        if (shade) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        // 不 disableBlend：GUI 全局默认开着混合，关掉会影响后续所有 GUI 绘制
+        groundQuadsDrawn = m * m;
     }
+
+    /** 上一次提交的地面四边形数（0 = 没画；诊断用）。 */
+    private int groundQuadsDrawn;
 
     /** 地面网格分辨率（每边四边形数）。过渡期间每帧重建，取折中精度与成本。 */
     private static final int GROUND_MESH = 96;
@@ -1119,25 +1149,25 @@ public class PreviewDisplay extends AbstractWidget {
                                 float sx, float sy, double cx, double cy,
                                 float[] vz, int gn, int qx, int qz,
                                 float x0, float x1, float y0, float y1,
-                                float u0, float u1, float v0, float v1, int argb) {
+                                float u0, float u1, float v0, float v1) {
         float z00 = vz[qz * gn + qx];
         float z10 = vz[qz * gn + qx + 1];
         float z01 = vz[(qz + 1) * gn + qx];
         float z11 = vz[(qz + 1) * gn + qx + 1];
-        emitVertex(bb, pose, r, sx, sy, cx, cy, x0, y0, z00, u0, v0, argb);
-        emitVertex(bb, pose, r, sx, sy, cx, cy, x1, y0, z10, u1, v0, argb);
-        emitVertex(bb, pose, r, sx, sy, cx, cy, x1, y1, z11, u1, v1, argb);
-        emitVertex(bb, pose, r, sx, sy, cx, cy, x0, y1, z01, u0, v1, argb);
+        emitVertex(bb, pose, r, sx, sy, cx, cy, x0, y0, z00, u0, v0);
+        emitVertex(bb, pose, r, sx, sy, cx, cy, x1, y0, z10, u1, v0);
+        emitVertex(bb, pose, r, sx, sy, cx, cy, x1, y1, z11, u1, v1);
+        emitVertex(bb, pose, r, sx, sy, cx, cy, x0, y1, z01, u0, v1);
     }
 
     private void emitVertex(com.mojang.blaze3d.vertex.BufferBuilder bb,
                             org.joml.Matrix4f pose, float[] r,
                             float sx, float sy, double cx, double cy,
                             float mx, float my, float mz,
-                            float u, float v, int argb) {
+                            float u, float v) {
         float px = (float) (cx + sx * (r[0] * mx + r[1] * my + r[2] * mz));
         float py = (float) (cy + sy * (r[3] * mx + r[4] * my + r[5] * mz));
-        bb.vertex(pose, px, py, 0f).uv(u, v).color(argb).endVertex();
+        bb.vertex(pose, px, py, 0f).uv(u, v).endVertex();
     }
 
     /**
