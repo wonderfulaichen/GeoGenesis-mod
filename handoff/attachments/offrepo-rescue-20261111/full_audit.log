@@ -1,0 +1,101 @@
+﻿[1] backup files hashed: 8661
+[2] blobs in main repo object DB: 5485
+[3] working-tree files size-matched & read: 44033  matched backup blobs: 12103  distinct: 3226
+
+[4] classification:
+   both             527
+   git_objects      252
+   workspace_only   3819
+   orphan           4063
+   error            0
+   backup bytes: 3344090163  orphan bytes: 438200058
+
+   ORPHAN LIST (content nowhere else):
+           4296  backup-20261103-pre-handoff/tree-src/.gitignore
+          27162  backup-20261103-pre-handoff/tree-src/debug-agent.log
+           7420  backup-20261103-pre-handoff/tree-src/geogenesis-width-count.txt
+          88952  backup-20261103-pre-handoff/tree-src/HYDROLOGY.md
+          13756  backup-20261103-pre-handoff/tree-src/README.md
+          52082  backup-20261103-pre-handoff/tree-src/audit/新版地形第三方许可核查.md
+          74297  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/changelog.txt
+        4609714  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/geogenesis-width-count.txt
+            980  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-19-2.log.gz
+           1049  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-19-3.log.gz
+           1084  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-19-4.log.gz
+            990  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-19-5.log.gz
+            986  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-19-6.log.gz
+            987  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-19-7.log.gz
+            999  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-19-8.log.gz
+            980  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-10.log.gz
+            979  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-11.log.gz
+            984  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-12.log.gz
+            988  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-13.log.gz
+            971  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-14.log.gz
+            959  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-15.log.gz
+            985  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-16.log.gz
+            993  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-17.log.gz
+            983  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-18.log.gz
+            983  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-19.log.gz
+           1007  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-2.log.gz
+            979  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-20.log.gz
+           1019  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-21.log.gz
+            994  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-22.log.gz
+            207  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-3.log.gz
+           1026  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-4.log.gz
+            260  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-5.log.gz
+            263  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-6.log.gz
+            988  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-7.log.gz
+            996  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-8.log.gz
+            981  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-20-9.log.gz
+            984  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-21-10.log.gz
+           1000  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-21-11.log.gz
+            992  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-21-12.log.gz
+            970  backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/logs/2026-08-21-13.log.gz
+     ... and 4023 more
+
+   WORKSPACE_ONLY LIST (not in object DB, still on disk):
+           3474  backup-20261103-pre-handoff/git-status.txt
+             45  backup-20261103-pre-handoff/HEAD.txt
+           2196  backup-20261103-pre-handoff/log.txt
+            123  backup-20261103-pre-handoff/stash-list.txt
+          60438  backup-20261103-pre-handoff/tracked-changes.diff
+             25  backup-20261103-pre-handoff/untracked-count.txt
+          26179  backup-20261103-pre-handoff/tree-src/ARCHITECTURE.md
+            203  backup-20261103-pre-handoff/tree-src/.codebuddy/settings.json
+           9167  backup-20261103-pre-handoff/tree-src/.codebuddy/handover/hydrology-2026-09-10.md
+          17405  backup-20261103-pre-handoff/tree-src/.codebuddy/handover/terrain-2026-09-16.md
+          28525  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-07.md
+           4869  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-08.md
+          64312  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-09.md
+          32867  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-10.md
+          27274  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-11.md
+          34262  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-12.md
+          50912  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-13.md
+          32638  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-14.md
+           7690  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-15.md
+          27849  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-16.md
+          14369  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-17.md
+          21453  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-19.md
+          17083  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-20.md
+          19859  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-21.md
+          20181  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-22.md
+          55169  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-23.md
+          47480  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-24.md
+          38137  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-25.md
+          37287  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-26.md
+          23162  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-27.md
+           7862  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-28.md
+           1545  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-29.md
+           3638  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-30.md
+          24084  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-07-31.md
+          24498  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-08-01.md
+          37803  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-08-02.md
+          52627  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-08-03.md
+           1501  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-08-04.md
+           8437  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-08-05.md
+           7524  backup-20261103-pre-handoff/tree-src/.codebuddy/memory/2026-08-06.md
+     ... and 3779 more
+
+JSON written: handoff\attachments\offrepo-rescue-20261111\full_audit.json
+
+AUDIT RESULT: PROBLEM (orphan or unreadable files present)

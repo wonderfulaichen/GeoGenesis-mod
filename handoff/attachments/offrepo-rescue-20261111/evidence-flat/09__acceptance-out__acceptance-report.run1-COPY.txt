@@ -1,0 +1,307 @@
+# geogenesis acceptance — BlockState readback (NOT a game screenshot)
+# scope: 1 seed, 6 target points, 3 explicit continuity links — NOT a full acceptance
+schema=geogenesis-acceptance/3
+verdict=FAIL
+exitCode=1
+seedRequested=9139912035078620160
+seedActual=9139912035078620160
+levelId=geogenesis-accept-1792275566661
+gameDir=D:\Office software\Development Project\GeoGenesis-mod\forge-1.20.1-47.4.10-mdk\run-accept\.
+generatorClass=com.geogenesis.worldgen.generator.GeoGenesisGenerator
+generatorIsGeoGenesis=true
+riverEnabled=true
+seaLevel=63.0
+modelPipelineConfig=true
+modelPipelineProperty=null
+modelPipelineEffective=true
+hierarchicalHydrology=true
+hierStrictContract=true
+skeletonDeterministic=true
+chunksLoaded=36
+chunksFailed=0
+chunkLoadPolicy=all3x3Required
+points=6
+defects=0
+links=4
+linkFails=3
+connectivity=8neighbour
+waterIdentity=FluidTags.WATER|ICE
+columnCheck=fullColumnEveryCell
+reportKind=BlockStateReadback
+coverage=targetedRegressionOnly
+topviewFile=acceptance-topview.png
+topviewNote=top-down MapColor of topmost block per column; NOT a game screenshot
+topviewCoverage=only loaded chunks drawn (dark gray 0x202020 = not loaded)
+
+[links]
+link=westLipAxis pass=false planWet=true planConnected=true actualWet=false actualConnected=false
+  col=-636,696 planWet=true actualWet=false
+  col=-636,697 planWet=true actualWet=false
+  col=-636,698 planWet=true actualWet=false
+  col=-636,699 planWet=true actualWet=false
+  col=-636,700 planWet=true actualWet=false
+link=eastLipDiagonal pass=false planWet=true planConnected=true actualWet=false actualConnected=false
+  col=-604,596 planWet=true actualWet=false
+  col=-605,597 planWet=true actualWet=false
+  col=-606,598 planWet=true actualWet=false
+  col=-607,599 planWet=true actualWet=false
+  col=-608,600 planWet=true actualWet=false
+link=seamContinuation pass=true planWet=true planConnected=true actualWet=true actualConnected=true
+  col=-1020,508 planWet=true actualWet=true
+  col=-1020,509 planWet=true actualWet=true
+  col=-1020,510 planWet=true actualWet=true
+  col=-1020,511 planWet=true actualWet=true
+  col=-1020,512 planWet=true actualWet=true
+  col=-1020,513 planWet=true actualWet=true
+link=extChunkWet pass=false extChunkNoPlannedWet — nothing to verify there
+
+[chunks]
+chunk=-65,30 ok=true ms=41342
+chunk=-65,31 ok=true ms=901
+chunk=-65,32 ok=true ms=232
+chunk=-64,30 ok=true ms=0
+chunk=-64,31 ok=true ms=0
+chunk=-64,32 ok=true ms=69
+chunk=-63,30 ok=true ms=552
+chunk=-63,31 ok=true ms=0
+chunk=-63,32 ok=true ms=9
+chunk=-41,42 ok=true ms=3534
+chunk=-41,43 ok=true ms=1071
+chunk=-41,44 ok=true ms=771
+chunk=-40,42 ok=true ms=0
+chunk=-40,43 ok=true ms=0
+chunk=-40,44 ok=true ms=0
+chunk=-39,42 ok=true ms=691
+chunk=-39,43 ok=true ms=0
+chunk=-39,44 ok=true ms=9
+chunk=-39,36 ok=true ms=4169
+chunk=-39,37 ok=true ms=91
+chunk=-39,38 ok=true ms=0
+chunk=-38,36 ok=true ms=1377
+chunk=-38,37 ok=true ms=0
+chunk=-38,38 ok=true ms=0
+chunk=-37,36 ok=true ms=209
+chunk=-37,37 ok=true ms=0
+chunk=-37,38 ok=true ms=0
+chunk=33,-150 ok=true ms=49801
+chunk=33,-149 ok=true ms=1414
+chunk=33,-148 ok=true ms=469
+chunk=34,-150 ok=true ms=0
+chunk=34,-149 ok=true ms=0
+chunk=34,-148 ok=true ms=0
+chunk=35,-150 ok=true ms=569
+chunk=35,-149 ok=true ms=0
+chunk=35,-148 ok=true ms=0
+
+[points]
+
+[point]
+label=seam(-1020,508)
+kind=SEAM
+x=-1020
+z=508
+chunkX=-64
+chunkZ=31
+localX=4
+localZ=12
+status=PASS
+pass=true
+checks=surface=ok water=ok continuity=ok groundDelta=0
+water=top=70 plan=70 height=1/1 runs=1 badCells=0
+continuity=ok(size=29)
+plan.groundY=69.999
+plan.surfaceY=69
+plan.water=true
+plan.waterTopY=70
+plan.waterHeight=1
+plan.lipAboveTop=0
+plan.riverWater=true
+plan.ocean=false
+plan.riverType=1
+plan.riverSurfaceY=70.999
+plan.riverLipY=70.999
+plan.isLake=false
+actual.topSolidY=69
+actual.waterTopY=70
+actual.waterBottomY=70
+actual.waterCount=1
+actual.waterRuns=1
+actual.waterRunList=70..70
+actual.topNonAirY=69
+actual.surfaceBlock=minecraft:sand
+
+[point]
+label=westLip(-636,696)
+kind=LIP_WEST
+x=-636
+z=696
+chunkX=-40
+chunkZ=43
+localX=4
+localZ=8
+status=PASS
+pass=true
+checks=surface=ok water=ok continuity=ok groundDelta=2
+water=top=64 plan=64 height=1/1 runs=1 badCells=0
+continuity=dry
+plan.groundY=63.060
+plan.surfaceY=63
+plan.water=true
+plan.waterTopY=64
+plan.waterHeight=1
+plan.lipAboveTop=0
+plan.riverWater=true
+plan.ocean=false
+plan.riverType=1
+plan.riverSurfaceY=64.060
+plan.riverLipY=64.060
+plan.isLake=false
+actual.topSolidY=65
+actual.waterTopY=64
+actual.waterBottomY=64
+actual.waterCount=1
+actual.waterRuns=1
+actual.waterRunList=64..64
+actual.topNonAirY=65
+actual.surfaceBlock=minecraft:sand
+
+[point]
+label=westLip(-636,700)
+kind=LIP_WEST
+x=-636
+z=700
+chunkX=-40
+chunkZ=43
+localX=4
+localZ=12
+status=PASS
+pass=true
+checks=surface=ok water=ok continuity=ok groundDelta=11
+water=top=64 plan=64 height=1/1 runs=1 badCells=0
+continuity=dry
+plan.groundY=63.063
+plan.surfaceY=63
+plan.water=true
+plan.waterTopY=64
+plan.waterHeight=1
+plan.lipAboveTop=0
+plan.riverWater=true
+plan.ocean=false
+plan.riverType=1
+plan.riverSurfaceY=64.063
+plan.riverLipY=64.063
+plan.isLake=false
+actual.topSolidY=74
+actual.waterTopY=64
+actual.waterBottomY=64
+actual.waterCount=1
+actual.waterRuns=1
+actual.waterRunList=64..64
+actual.topNonAirY=74
+actual.surfaceBlock=minecraft:sand
+
+[point]
+label=eastLip(-604,596)
+kind=LIP_EAST
+x=-604
+z=596
+chunkX=-38
+chunkZ=37
+localX=4
+localZ=4
+status=PASS
+pass=true
+checks=surface=ok water=ok continuity=ok groundDelta=6
+water=top=64 plan=64 height=1/1 runs=1 badCells=0
+continuity=dry
+plan.groundY=63.610
+plan.surfaceY=63
+plan.water=true
+plan.waterTopY=64
+plan.waterHeight=1
+plan.lipAboveTop=0
+plan.riverWater=true
+plan.ocean=false
+plan.riverType=1
+plan.riverSurfaceY=64.610
+plan.riverLipY=64.610
+plan.isLake=false
+actual.topSolidY=69
+actual.waterTopY=64
+actual.waterBottomY=64
+actual.waterCount=1
+actual.waterRuns=1
+actual.waterRunList=64..64
+actual.topNonAirY=69
+actual.surfaceBlock=minecraft:sand
+
+[point]
+label=eastLip(-608,600)
+kind=LIP_EAST
+x=-608
+z=600
+chunkX=-38
+chunkZ=37
+localX=0
+localZ=8
+status=PASS
+pass=true
+checks=surface=ok water=ok continuity=ok groundDelta=2
+water=top=64 plan=64 height=1/1 runs=1 badCells=0
+continuity=dry
+plan.groundY=63.607
+plan.surfaceY=63
+plan.water=true
+plan.waterTopY=64
+plan.waterHeight=1
+plan.lipAboveTop=0
+plan.riverWater=true
+plan.ocean=false
+plan.riverType=1
+plan.riverSurfaceY=64.607
+plan.riverLipY=64.607
+plan.isLake=false
+actual.topSolidY=65
+actual.waterTopY=64
+actual.waterBottomY=64
+actual.waterCount=1
+actual.waterRuns=1
+actual.waterRunList=64..64
+actual.topNonAirY=65
+actual.surfaceBlock=minecraft:sand
+
+[point]
+label=extChunk(34,-149)
+kind=EXT_CHUNK
+x=552
+z=-2376
+chunkX=34
+chunkZ=-149
+localX=8
+localZ=8
+status=PASS
+pass=true
+checks=surface=ok water=ok continuity=ok groundDelta=9
+water=top=none count=0
+continuity=dry
+plan.groundY=86.277
+plan.surfaceY=86
+plan.water=false
+plan.waterTopY=none
+plan.waterHeight=0
+plan.lipAboveTop=0
+plan.riverWater=false
+plan.ocean=false
+plan.riverType=0
+plan.riverSurfaceY=86.277
+plan.riverLipY=86.277
+plan.isLake=false
+actual.topSolidY=95
+actual.waterTopY=none
+actual.waterBottomY=none
+actual.waterCount=0
+actual.waterRuns=0
+actual.waterRunList=none
+actual.topNonAirY=95
+actual.surfaceBlock=minecraft:grass_block
+saveCompleted=true

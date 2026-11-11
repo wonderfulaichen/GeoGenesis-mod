@@ -1,0 +1,152 @@
+# Gradle
+forge-1.20.1-47.4.10-mdk/.gradle/
+forge-1.20.1-47.4.10-mdk/build/
+forge-1.20.1-47.4.10-mdk/out/
+forge-1.20.1-47.4.10-mdk/logs/
+forge-1.20.1-47.4.10-mdk/run/
+forge-1.20.1-47.4.10-mdk/run-accept/
+forge-1.20.1-47.4.10-mdk/.idea/
+forge-1.20.1-47.4.10-mdk/*.iml
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Sensitive
+*.env
+credentials.json
+
+# AI conversation dumps
+1.md
+2.md
+
+# Project documents (not mod source code)
+DEV_REPORT.md
+GeoGenesis_技术设计文档_*.md
+MC地形mod河流侵蚀问题.md
+
+# Standalone test tool (not mod source code)
+erosion-test-tool/
+
+# External references
+参考/
+
+# Empty / temp
+对话/
+
+# Forge runtime data
+forge-1.20.1-47.4.10-mdk/run-data/
+forge-1.20.1-47.4.10-mdk/err.txt
+
+# IDE workspace config
+forge-1.20.1-47.4.10-mdk/.trae/
+
+# Research notes / work notes
+docs/
+.workbuddy/
+
+# Build artifacts / diagnostics
+forge-1.20.1-47.4.10-mdk/*.txt
+forge-1.20.1-47.4.10-mdk/*.log
+forge-1.20.1-47.4.10-mdk/*.ppm
+forge-1.20.1-47.4.10-mdk/*.err
+forge-1.20.1-47.4.10-mdk/terrain-dumps/
+forge-1.20.1-47.4.10-mdk/build-log.txt
+forge-1.20.1-47.4.10-mdk/META-INF/
+
+# Gradle cache
+.gradle/
+
+# Game logs
+logs/
+
+# Test tools
+erosion-test-tool-backup-v5-river-fixed/
+river_check/
+sca_smoke/
+backups/
+
+# Temp recovery files
+temp_*.txt
+build_output.txt
+ocean_probe_output.txt
+preview_run.log
+
+# CodeBuddy internal data (entire local agent dir, not project source)
+.codebuddy/
+
+# Prism MCP internal data (ADRs / decision records, local agent data)
+.prism/
+
+# Agent-generated AGENTS.md inside forge subdir (redundant with root AGENTS.md, keep local only)
+forge-1.20.1-47.4.10-mdk/AGENTS.md
+0.45*
+
+# Build artifacts / diagnostics (compiled test classes, run logs, temp scripts)
+forge-1.20.1-47.4.10-mdk/*.class
+forge-1.20.1-47.4.10-mdk/*.err
+symcheck.ps1
+
+# Root-level temp / diagnostics (probe logs, old source backups, copy records)
+# NOTE: the rules above only cover the forge/ subdir; these cover the repo root
+/err.txt
+/old*.txt
+/probe_*.log
+/probe_*.txt
+/$dst
+
+# ---- 2026-10-05 整理新增 ----
+# 理由：以下目录/文件是本地证据或另一条代码线，不该出现在 git status 里干扰判断。
+# 详见 DOCS-STATUS.md §5（不被 git 追踪的目录清单）。
+
+# 历史对照图（62 张 PNG / 39.7 MB）—— 有证据价值故保留，但不入库。
+# ⚠ 误删会失去"当时看到什么"的回溯能力（项目铁律：渲染图是形态的最终依据）。
+/_shots/
+
+# 另一条并行代码线（git worktree，由 git 自身管理，不要按普通目录处理）
+/_model_wt/
+
+# 本地 plan / 决策记录（不入库；权威性待用户裁决）
+/.openbitfun/
+
+# Gradle 输出重定向残渣（_tmp_*.txt）—— 已清理，加规则防复发
+/_tmp_*.txt
+/tmp_*.txt
+
+# ---- 2026-10-09 文档整理 ----
+# 根目录历史水文文档已归档到 _archive/hydrology/（**这些需要入库** ——
+# 它们是"当时看到什么"的证据，且是接手者理解"为什么这么改"的唯一来源）。
+# 所以 **不要** 忽略 _archive/。
+# 归档说明见 _archive/hydrology/README.md；现行事实来源是根目录 HYDROLOGY.md。
+
+# ---- 2026-10-22 仓库玄关清理 ----
+# 理由：交接文档已两次指出「git status 里 30+ 项未跟踪产物，看不清哪些才要提交」。
+# 以下都是**本地证据/中间产物**，保留在磁盘上供回溯，但不应污染 `git status`。
+# ⚠ 注意：_archive/、handoff/*.md、src/** 一律**不**忽略（它们是入库内容）。
+
+# 根目录对照图（A-before / B-now / AB-* / HYDRO-HIER-3way-* 等）
+# 证据价值保留在磁盘，但形态验收以每次新出的生产图为准，旧图不入库。
+/*.png
+
+# 取证中间产物（从会话/预览里抽出的代码片段、探针清单）
+/_extracted_edits/
+/_ca_extracted.txt
+
+# AI agent 调试日志
+/debug-agent.log
+
+# 探针输出的孤立河清单等一次性 txt（根目录）
+/孤立河清单.txt
+
+# 根目录 build/（refdump 参考项目源码、local-flow 临时脚本）——
+# 真工程 build/ 已在上面单独忽略；这条覆盖仓库根的这个。
+/build/
+/.prism/search/flashgrep-index/

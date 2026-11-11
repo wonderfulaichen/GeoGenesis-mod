@@ -1,0 +1,139 @@
+{
+ "schema": "offrepo-rescue/flat-evidence/1.0",
+ "note": "Flat names exist because the original nested path exceeded Windows MAX_PATH and could not be git-added.",
+ "files": [
+  {
+   "flat": "01__tree-src__.gitignore",
+   "original": "backup-20261103-pre-handoff/tree-src/.gitignore",
+   "size": 4296,
+   "sha256": "90a336f2a12c8cd0f63ada01ff1482e614ce8cd44418404956fa50b885cd913e",
+   "git_blob": "cdee7dafdce4c024bef3c8cc14e958e470a1d316"
+  },
+  {
+   "flat": "02__tree-src__geogenesis-width-count.txt",
+   "original": "backup-20261103-pre-handoff/tree-src/geogenesis-width-count.txt",
+   "size": 7420,
+   "sha256": "a49031fea092c91cd8d1a1e56fedf283a3c4d57637af706b2be7d000ee5cecdf",
+   "git_blob": "6f7a204f408054a8c08458c16481eee45f778add"
+  },
+  {
+   "flat": "03__tree-src__HYDROLOGY.md",
+   "original": "backup-20261103-pre-handoff/tree-src/HYDROLOGY.md",
+   "size": 88952,
+   "sha256": "bdd70312c7ea77f81b7e19335ea2ca1987dadf4bbcba15676c002ce0505a0a63",
+   "git_blob": "5c442b6ab7b50cb9bac6e69ecfb293aafaca5ce7"
+  },
+  {
+   "flat": "04__tree-src__README.md",
+   "original": "backup-20261103-pre-handoff/tree-src/README.md",
+   "size": 13756,
+   "sha256": "fc0ac452e9ccf75db7dc99216608589529fcc95d03e2a68fed89630a9b212726",
+   "git_blob": "c7bcd1c0b717d36f18ea308e34c544d05698f55d"
+  },
+  {
+   "flat": "05__audit_____________.md",
+   "original": "backup-20261103-pre-handoff/tree-src/audit/新版地形第三方许可核查.md",
+   "size": 52082,
+   "sha256": "8b163fc103d53d00ba9c777a7e41b21c01a50ec4aa8c8d63b09264dd252808f6",
+   "git_blob": "b2900ac6a10ba50a5951106f1a1ba6db43c1bd7b"
+  },
+  {
+   "flat": "06__forge-1.20.1-47.4.10-mdk__changelog.txt",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/changelog.txt",
+   "size": 74297,
+   "sha256": "049123e0c52b662b710a21674d29f303d44cca4986803dc4efc026516e2f1d9b",
+   "git_blob": "2ab0577b95d83d11ef01222aeba918bacb600ef7"
+  },
+  {
+   "flat": "07__forge-1.20.1-47.4.10-mdk__geogenesis-width-count.txt",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/geogenesis-width-count.txt",
+   "size": 4609714,
+   "sha256": "b170e1972d34b22fb0ac5d63e0efeee7a0c090713fe7ef8585f81b01aeca7fbd",
+   "git_blob": "913f802dd45168260d50e7af7b2f1a5e54fcfdce"
+  },
+  {
+   "flat": "08__run-accept__geogenesis-wgp.txt",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/run-accept/geogenesis-wgp.txt",
+   "size": 2483,
+   "sha256": "51ef362fc5fe5fa4a9e2f6b07441d59a4da12462d276ca54424550107f965e59",
+   "git_blob": "b9052973d7c3437e21dcdfd4477f62ec013f90da"
+  },
+  {
+   "flat": "09__acceptance-out__acceptance-report.run1-COPY.txt",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/run-accept/acceptance-out/acceptance-report.run1-COPY.txt",
+   "size": 7502,
+   "sha256": "dafed2a3450d3239f658fa226d35b2575920176f03630d1e6a44aac65e3caad7",
+   "git_blob": "3239f206dc428fe8b307148ed63ebb75db428c36"
+  },
+  {
+   "flat": "10__acceptance-out__acceptance-report.txt",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/run-accept/acceptance-out/acceptance-report.txt",
+   "size": 11012,
+   "sha256": "bc650f3c3daca5978f851fa8e6ce11a9f5f59aab98112a6fa539d7a844cce64a",
+   "git_blob": "4768c0369fc81f1f8c20e20c0ee860fa811291e0"
+  },
+  {
+   "flat": "11__acceptance-out__acceptance-topview.png",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/run-accept/acceptance-out/acceptance-topview.png",
+   "size": 17166,
+   "sha256": "ce9f555bf823f294aea11db08259c89d47d1ff64784dcb48aa7ff79ac994c850",
+   "git_blob": "6afae1c7d6b5e7a60ecea8f6448cff7c06e3fddc"
+  },
+  {
+   "flat": "12__acceptance-out__water-placement.csv",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/run-accept/acceptance-out/water-placement.csv",
+   "size": 1640,
+   "sha256": "13ee39b1977d53805dc88a6fe08c27aa09d95b0355b2ab44fafb4da5cf9af83b",
+   "git_blob": "7eb3445e7ba5a26b2eab664bf12ab976657b0e7c"
+  },
+  {
+   "flat": "13__candidate__CoherentMorphWorld.java",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/CoherentMorphWorld.java",
+   "size": 4767,
+   "sha256": "592f01e97f2a35ad66be3755a7374ccbbf4f646eb2e2ffba67842fa53150f2f7",
+   "git_blob": "9790940400613d904b199621638c87ddaa3a06fc"
+  },
+  {
+   "flat": "14__candidate__M1ThresholdHeightCheck.java",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/M1ThresholdHeightCheck.java",
+   "size": 11612,
+   "sha256": "e7ddab63f69eca406e82e4cfa3adb47521af8be68a8bdac93b9cb9a0e2ac8e5b",
+   "git_blob": "766e28354eafd6228398027256295ec91a18dca8"
+  },
+  {
+   "flat": "15__candidate__M1ThresholdHeightGallery.java",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/M1ThresholdHeightGallery.java",
+   "size": 6101,
+   "sha256": "48f2c3b36c0103e0b531f19eea74c184ccb8fa1d830e56d099bae0b6f098c675",
+   "git_blob": "daa37a1e013ef1ddcef9e3bc6eb62a987933727a"
+  },
+  {
+   "flat": "16__candidate__ShallowRegionMatcher.java",
+   "original": "backup-20261103-pre-handoff/tree-src/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/ShallowRegionMatcher.java",
+   "size": 8075,
+   "sha256": "3aa9736b9d7ef57d1b774f8b8c05d7e6616382c0603f8865f8be58c69fa2d58a",
+   "git_blob": "2268861bbd1cd187be9a56bd6f3050c618a3623e"
+  },
+  {
+   "flat": "17__audit_____________.md",
+   "original": "backup-20261103-pre-handoff/untracked/audit/新版地形第三方许可核查.md",
+   "size": 52082,
+   "sha256": "8b163fc103d53d00ba9c777a7e41b21c01a50ec4aa8c8d63b09264dd252808f6",
+   "git_blob": "b2900ac6a10ba50a5951106f1a1ba6db43c1bd7b"
+  },
+  {
+   "flat": "18__candidate__M1ThresholdHeightCheck.java",
+   "original": "backup-20261103-pre-handoff/untracked/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/M1ThresholdHeightCheck.java",
+   "size": 11612,
+   "sha256": "e7ddab63f69eca406e82e4cfa3adb47521af8be68a8bdac93b9cb9a0e2ac8e5b",
+   "git_blob": "766e28354eafd6228398027256295ec91a18dca8"
+  },
+  {
+   "flat": "19__candidate__M1ThresholdHeightGallery.java",
+   "original": "backup-20261103-pre-handoff/untracked/forge-1.20.1-47.4.10-mdk/src/diagnostics/java/com/geogenesis/worldgen/terrain/candidate/M1ThresholdHeightGallery.java",
+   "size": 6101,
+   "sha256": "48f2c3b36c0103e0b531f19eea74c184ccb8fa1d830e56d099bae0b6f098c675",
+   "git_blob": "daa37a1e013ef1ddcef9e3bc6eb62a987933727a"
+  }
+ ]
+}
