@@ -12,7 +12,8 @@ package com.geogenesis.worldgen.terrain;
  *   density    岩石圈密度   （密 ⇒ 低）
  * </pre>
  *
- * <p>并直接给出均衡导出量 {@code buoyancy = thickness·(1−density)}。</p>
+ * <p>并直接给出均衡项 {@code buoyancy = thickness·(ρ_mantle − ρ_litho)}
+ * （<b>正=上浮、负=沉降</b>）。</p>
  *
  * <p><b>本类不产出高度</b>，也不改任何现有高度。高度导出在下一层
  * （{@code e = f(thickness, density)}），见
@@ -58,13 +59,24 @@ public final class LithoPhysical {
     static final double THICKNESS_OCEANIC = 0.20;
 
     /**
-     * 年纪增长带来的厚度增量（归一化）。
+     * 年纪增长带来的**岩石圈**厚度增量（归一化）。
      *
-     * <p>岩石圈随冷却增厚，远离扩张中心（洋中脊）处最厚。
-     * 真实岩石圈厚度可从脊轴 ~10 km 增长到数千万年后的 ~100 km，
-     * 但**随年龄开方饱和**，不是线性。这里用 smoothstep 近似饱和。</p>
+     * <p>岩石圈随冷却增厚：脊轴处薄（~10 km），数千万年后可达 ~100 km，
+     * 但<b>随年龄开方饱和</b>而非线性（半空间冷却模型）。</p>
      */
     static final double THICKNESS_AGE_GAIN = 0.35;
+
+    /**
+     * 年纪增长带来的**密度**增量（归一化）。
+     *
+     * <h3>为什么密度必须随年龄增长</h3>
+     * <p>岩石圈冷却时密度增大。若不建模这一项，洋底会"越老越浮"——与真实相反
+     * （真实：脊轴 ~2500 m，深海平原 ~5500 m，越老越深）。</p>
+     *
+     * <p>本类把密度合成到 {@link #DENSITY_OCEANIC_AGED}（0.92）为止，
+     * 始终留在 [0,1] 内，<b>不需要越界</b>——因为下沉来自与地幔的密度差（见 {@code subsidence}）。</p>
+     */
+    static final double DENSITY_AGE_GAIN = 0.30;
 
     /**
      * 厚度随离边界距离饱和的距离尺度（wu）。
@@ -80,10 +92,26 @@ public final class LithoPhysical {
      */
     static final double RIDGE_HALF_WU = 120.0;
 
-    /** 洋壳密度（归一化）。真实洋壳（玄武岩）比陆壳（花岗岩）密。 */
-    static final double DENSITY_OCEANIC = 0.90;
+    /** 洋壳基准密度（脊轴处，最热最轻）。真实洋壳（玄武岩）比陆壳（花岗岩）密。 */
+    static final double DENSITY_OCEANIC = 0.62;
     /** 陆壳密度（归一化）。 */
-    static final double DENSITY_CONTINENTAL = 0.55;
+    static final double DENSITY_CONTINENTAL = 0.40;
+
+    /**
+     * 地幔参考密度（归一化 0~1 标度内的上界）。
+     *
+     * <p>均衡（isostasy）的正统一阶形式是<b>相对密度差</b>：</p>
+     * <pre>
+     *   subsidence ∝ (ρ_litho − ρ_mantle) · thickness
+     * </pre>
+     * <p>只有"岩石圈比地幔重多少"才产生沉降。脊轴薄且热 ⇒ 差值小 ⇒ 沉降小（高）；
+     * 远脊厚且冷 ⇒ 差值大 ⇒ 沉降大（低）。这个方向是式子自带的，
+     * 不需要任何符号翻转或密度越界。</p>
+     *
+     * <p>取 0.95 使 {@code ρ_mantle − ρ_continental = 0.40}、
+     * {@code ρ_mantle − ρ_oceanic = 0.05} ⇒ 陆壳"负沉降"（上浮）远大于洋壳。</p>
+     */
+    static final double DENSITY_MANTLE = 0.95;
 
     private LithoPhysical() { }
 
@@ -92,10 +120,11 @@ public final class LithoPhysical {
     /**
      * 构造物理量采样结果（不可变）。
      *
-     * @param shellS    壳属性 0=洋壳 / 1=陆壳（连续）
-     * @param thickness 岩石圈厚度（归一化 0.20~1.0，越大越"浮"）
-     * @param density   岩石圈密度（归一化 0.55~0.90，越大越"沉"）
-     * @param buoyancy  均衡导出量 {@code thickness·(1−density)}，供高度层直接用
+     * @param shellS     壳属性 0=洋壳 / 1=陆壳（连续）
+     * @param thickness  岩石圈厚度（归一化 0.20~0.75，越大越"浮"）
+     * @param density    岩石圈密度（归一化 0.55~0.92，越大越"沉"）
+     * @param buoyancy   浮力项 {@code thickness·(ρ_mantle − ρ_litho)}，
+     *                   <b>正=上浮、负=沉降</b>；陆壳为正、洋壳接近 0 或为负
      */
     public record Sample(double shellS, double thickness, double density, double buoyancy) { }
 
@@ -120,11 +149,18 @@ public final class LithoPhysical {
         //   ⇒ 岸线处不会出现"两套来源对不上"
         double thickness = lerp(oceanThickness, 1.0, s);
 
-        // ---- 2) 密度：洋壳密度高、陆壳低，同样连续插值 ----
-        double density = lerp(DENSITY_OCEANIC, DENSITY_CONTINENTAL, s);
+        // ---- 2) 密度：洋壳密、陆壳轻；洋壳再随年龄冷却增密 ----
+        //   ★ 密度必须随年龄增长，否则洋底会"越老越浮"（与真实相反）。
+        //   全部收在 [0.55, 0.92] 内，不越界 —— 见 DENSITY_AGE_GAIN。
+        double oceanDensity = DENSITY_OCEANIC + DENSITY_AGE_GAIN * ageFactor(dist);
+        double density = lerp(oceanDensity, DENSITY_CONTINENTAL, s);
 
-        // ---- 3) 均衡导出量：厚而轻 ⇒ 大（高）；薄而重 ⇒ 小（低）----
-        double buoyancy = thickness * (1.0 - density);
+        // ---- 3) 均衡：相对地幔的密度差 × 厚度 ----
+        //   buoyancy > 0 = 上浮（陆壳）; < 0 = 沉降（老洋底）
+        //   这是 isostasy 的一阶式，方向天然正确：
+        //     脊轴薄热 ⇒ (ρ_mantle−ρ) 小 × thickness 小 ⇒ 沉降小 ⇒ 高
+        //     远脊厚冷 ⇒ 差值变小但 thickness 大增 ⇒ 沉降大 ⇒ 低
+        double buoyancy = thickness * (DENSITY_MANTLE - density);
 
         return new Sample(s, thickness, density, buoyancy);
     }

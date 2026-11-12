@@ -118,35 +118,42 @@ public final class LithoPhysicalProbe {
                     (landThickSum / Math.max(1, landN)) > (oceanThickSum / Math.max(1, oceanN))
                             ? "是 ✓" : "否 ✗ 有问题");
 
-            // 洋壳厚度应随离脊距离增长
+            // 洋壳 buoyancy 应随离脊距离**下降**（冷却下沉，脊轴高、深海平原低）
             System.out.println();
-            System.out.println("=== 洋壳厚度 vs 离脊距离（应单调递增）===");
+            System.out.println("=== 洋壳 buoyancy vs 离脊距离（应单调**递减**：冷却下沉）===");
             double[] edges = {0, 150, 300, 450, 650, 900, 1200, 1e9};
             double[] sum = new double[edges.length];
             int[] cnt = new int[edges.length];
+            double[] sumT = new double[edges.length];
+            double[] sumD = new double[edges.length];
             for (int j = 0; j < size; j++) {
                 for (int i = 0; i < size; i++) {
                     if (isLand[j][i]) continue;
                     double d = distA[j][i];
                     for (int b = 0; b < edges.length - 1; b++) {
                         if (d >= edges[b] && d < edges[b + 1]) {
-                            sum[b] += thick[j][i]; cnt[b]++; break;
+                            sum[b] += buoy[j][i]; cnt[b]++;
+                            sumT[b] += thick[j][i]; sumD[b] += dens[j][i];
+                            break;
                         }
                     }
                 }
             }
-            double prev = -1; boolean mono = true;
+            double prev = Double.MAX_VALUE; boolean mono = true;
+            System.out.printf(Locale.ROOT, "  %-14s %8s %12s %10s %10s%n",
+                    "dist[wu]", "n", "buoyancy", "厚度", "密度");
             for (int b = 0; b < edges.length - 1; b++) {
                 if (cnt[b] == 0) continue;
                 double m = sum[b] / cnt[b];
                 String label = edges[b + 1] > 1e8
                         ? String.format(Locale.ROOT, ">=%.0f", edges[b])
                         : String.format(Locale.ROOT, "%.0f-%.0f", edges[b], edges[b + 1]);
-                System.out.printf(Locale.ROOT, "  %-14s n=%7d  平均厚度=%.4f%n", label, cnt[b], m);
-                if (prev >= 0 && m < prev - 1e-6) mono = false;
+                System.out.printf(Locale.ROOT, "  %-14s %8d %12.5f %10.4f %10.4f%n",
+                        label, cnt[b], m, sumT[b] / cnt[b], sumD[b] / cnt[b]);
+                if (m > prev + 1e-9) mono = false;
                 prev = m;
             }
-            System.out.printf(Locale.ROOT, "  ⇒ 单调递增：%s%n", mono ? "是 ✓" : "否（需检查）");
+            System.out.printf(Locale.ROOT, "  ⇒ 单调递减（越老越沉）：%s%n", mono ? "是 ✓" : "否 ✗");
 
             // 连续性：|∇| 梯度统计
             System.out.println();
