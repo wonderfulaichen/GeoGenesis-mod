@@ -1,0 +1,214 @@
+
+["GeoGenesis Terrain Generation"]
+
+	["GeoGenesis Terrain Generation"."World Height"]
+		#Sea level (world Y).
+		#Range: -200 ~ 400
+		seaLevel = 63
+		#Minimum world Y.
+		#Range: -512 ~ 512
+		minY = -64
+		#Maximum world Y.
+		#Range: -512 ~ 1024
+		maxY = 320
+		#Actual peak height as fraction of maxY (headroom so peaks don't hit the world build ceiling). Default 0.92, range [0.5, 1.0].
+		#Range: 0.5 ~ 1.0
+		peakHeightFraction = 0.92
+
+	["GeoGenesis Terrain Generation".Scale]
+		#Horizontal scale (0.5-8.0). Block->wu mapping (DEM resample concept): MC blocks divided by this = engine world-units. All terrain features (macro noise + erosion brushes + river carving + source grid) scale uniformly. Default 2.0 (2026-08-02: terrain was too steep H/W, overall frequency widening x2 restores normal slopes; 2026-08-10: wu-ized - engine never knows blocks, mapping happens at GeoGenesisTerrain facade only).
+		#Range: 0.5 ~ 8.0
+		horizontalScale = 2.0
+		#Vertical scale multiplier (1-8). Applied to e->Y height mapping. 1=default, 2=twice as tall.
+		#Range: 1.0 ~ 8.0
+		verticalScale = 1.0
+
+	["GeoGenesis Terrain Generation"."Continent Field"]
+		#Continent noise scale (blocks). Frequency = 1/scale. HS parameter: HS = continentScale/1000. Range: 1-8 (HS) = 1000-8000.
+		#Range: 1000.0 ~ 8000.0
+		continentScale = 4000.0
+		#Domain warp intensity as fraction of continentScale (applied to the FBM continent field). 0=disabled (pure FBM, recommended — FBM octaves already provide natural continent shape; warping fine FBM detail creates parallel banding). Raise only if you want extra large-scale continent bending. Default 0.0, range [0,1].
+		#Range: 0.0 ~ 1.0
+		continentWarp = 0.0
+		#Continent FBM octaves: continentality c field is a multi-octave FBM value stack (each octave freq×lacunarity, amp×persistence). Coastline = c=0 iso-line, so FBM multi-scale detail carves the coast directly → natural fractal shoreline (ref procedural-island-generator). Default 6, range [1,10].
+		#Range: 1 ~ 10
+		continentFbmOctaves = 6
+		#Continent FBM frequency multiplier (lacunarity): each octave freq×this. Default 2.0, range [1.5,3.0].
+		#Range: 1.5 ~ 3.0
+		continentFbmLacunarity = 2.0
+		#Continent FBM amplitude decay (persistence): each octave amp×this; higher = stronger high-freq detail = more jagged coast. Default 0.6, range [0.3,0.85].
+		#Range: 0.3 ~ 0.85
+		continentFbmPersistence = 0.6
+
+	["GeoGenesis Terrain Generation"."Ocean Spline Control Points"]
+		#Range: -1.0 ~ 1.0
+		deepOceanLoc = -0.8
+		#Range: -1.0 ~ 1.0
+		shelfLoc = -0.5
+		#Range: -1.0 ~ 1.0
+		shallowLoc = -0.16
+		#Deep ocean depth (e units). -0.35 ≈ y=19 floor, adjust for gameplay depth taste.
+		#Range: -1.0 ~ 0.0
+		deepOceanDepth = -0.35
+		#Range: -1.0 ~ 0.0
+		shelfDepth = -0.25
+		#Range: -1.0 ~ 0.0
+		shallowDepth = -0.14
+		#Range: -10.0 ~ 10.0
+		deepOceanDeriv = 0.0
+		#Shelf derivative steepness: higher = steeper continental slope. Default 0.8.
+		#Range: -10.0 ~ 10.0
+		shelfDeriv = 0.8
+		#Range: -10.0 ~ 10.0
+		shallowDeriv = 0.5
+		#Range: -10.0 ~ 10.0
+		coastDeriv = 0.0
+
+	["GeoGenesis Terrain Generation"."River Network"]
+		#Master switch for river generation (hydrology model: flow-accumulation derived network + distance-field carving).
+		riverEnabled = false
+
+	["GeoGenesis Terrain Generation"."Classification & Snow"]
+		#Snow line elevation (e units). High-elevation terrain above this (modulated by latitude) gets snow cover.
+		#Range: 0.0 ~ 1.0
+		snowLine = 0.7
+		#Snow line temperature coupling: snow line rises toward the warm end (e units per half-range).
+		#Range: 0.0 ~ 0.6
+		snowLatitudeInfluence = 0.25
+		#Snow line humidity coupling: dry areas shift snow line UP, humid areas shift it DOWN (e units per full humidity range).
+		#Range: 0.0 ~ 0.5
+		snowHumidityInfluence = 0.15
+
+	["GeoGenesis Terrain Generation"."Climate Thresholds"]
+		#Temperature threshold: frozen/cold boundary.
+		#Range: -1.0 ~ 1.0
+		tempFrozenThreshold = -0.6
+		#Temperature threshold: cold/warm boundary.
+		#Range: -1.0 ~ 1.0
+		tempColdThreshold = -0.2
+		#Temperature threshold: warm/hot boundary.
+		#Range: -1.0 ~ 1.0
+		tempWarmThreshold = 0.2
+		#Temperature threshold: hot/very hot boundary.
+		#Range: -1.0 ~ 1.0
+		tempHotThreshold = 0.5
+		#Humidity threshold: dry/semi-dry boundary.
+		#Range: -1.0 ~ 1.0
+		humidityDryThreshold = -0.3
+		#Humidity threshold: semi-dry/wet boundary.
+		#Range: -1.0 ~ 1.0
+		humiditySemiThreshold = 0.0
+		#Humidity threshold: wet/humid boundary.
+		#Range: -1.0 ~ 1.0
+		humidityWetThreshold = 0.3
+		#Continentality threshold: deep ocean/near ocean boundary.
+		#Range: -1.0 ~ 1.0
+		continentDeepOceanThreshold = -0.6
+		#Continentality threshold: near ocean/coastal boundary.
+		#Range: -1.0 ~ 1.0
+		continentNearOceanThreshold = -0.3
+		#Continentality threshold: coastal/transitional boundary.
+		#Range: -1.0 ~ 1.0
+		continentCoastThreshold = -0.1
+		#Continentality threshold: transitional/near inland boundary.
+		#Range: -1.0 ~ 1.0
+		continentTransitionalThreshold = 0.1
+		#Continentality threshold: near inland/inland boundary.
+		#Range: -1.0 ~ 1.0
+		continentNearInlandThreshold = 0.35
+		#Continentality threshold: inland/deep inland boundary.
+		#Range: -1.0 ~ 1.0
+		continentInlandThreshold = 0.65
+		#Temperature influence on biome distribution (0-1). 1.0=full effect, 0.0=neutral.
+		#Range: 0.0 ~ 1.0
+		tempInfluence = 1.0
+		#Humidity influence on biome distribution (0-1). 1.0=full effect, 0.0=neutral.
+		#Range: 0.0 ~ 1.0
+		humidityInfluence = 1.0
+		#Continentality influence on biome distribution (0-1). 1.0=full effect, 0.0=neutral.
+		#Range: 0.0 ~ 1.0
+		continentInfluence = 1.0
+		#Latitude scale (blocks per temperature cycle). Larger = wider climate bands (slower latitude change with z). Default 6000.
+		#Range: 500.0 ~ 30000.0
+		latitudeScale = 6000.0
+		#Temperature noise xz scale (blocks). Temperature perturbation field frequency = 1/tempWarpScale. Default 1500.
+		#Range: 100.0 ~ 8000.0
+		tempWarpScale = 1500.0
+		#Humidity noise xz scale (blocks). Humidity field frequency = 1/humidityScale. Default 800.
+		#Range: 100.0 ~ 8000.0
+		humidityScale = 800.0
+		#Climate region size (wu). Jittered Voronoi cell size within which temperature/moisture are constant. Larger = bigger climate patches. Default 256.
+		#Range: 64.0 ~ 2048.0
+		climateRegionSize = 256.0
+
+	["GeoGenesis Terrain Generation".Erosion]
+		#Enable local particle erosion (seamless, margin-filled with true neighbour heights). Default true.
+		erosionEnabled = false
+		#Erosion yields to river channel (FreeTerraForged-style erosionMask): attenuate the erosion delta applied to the riverbed by distance to channel center (0 at center, 1 outside valley) so the bed stays coherent with the planned monotonic water surface. Fixes erosion-induced non-monotonic terraced waterfalls and dry sand bars poking through the water. Default true; set false to restore old full-follow behavior.
+		erosionYieldToRiver = true
+		#Extra-fine (XS, r1wu cross-brush) micro-erosion detail layer. Adds 1-2 block textures on slopes, but amplifies cross-chunk birth-set discreteness into visible ridges near chunk borders (measured +1.6 blocks at tile borders). Default false (conservative).
+		erosionXSEnabled = false
+		#Erosion strength multiplier. Default 1.0, range [0, 4].
+		#Range: 0.0 ~ 4.0
+		erosionStrength = 1.0
+		#Erosion droplet count multiplier. Lower = faster (preview). Default 1.0, range [0.1, 4].
+		#Range: 0.1 ~ 4.0
+		erosionDropsMul = 1.0
+		#Erosion erode-rate multiplier. Default 1.0, range [0.1, 4].
+		#Range: 0.1 ~ 4.0
+		erosionErodeMul = 1.0
+		#Local cascade settling strength. After erosion, transfer material from higher cells toward lowest 8-neighbor, smoothing riverbeds. 0=off. Default 0.5 (2026-08-10: 0.3->0.5, sharper gully edges), range [0, 1].
+		#Range: 0.0 ~ 1.0
+		erosionCascadeStrength = 0.5
+		#SH momentum-field positive feedback: droplets self-accelerate along downstream momentum field (rivers self-reinforce). 1.0 = SH original, 0 = off. Default 1.0, range [0, 2].
+		#Range: 0.0 ~ 2.0
+		erosionMomentumTransfer = 1.0
+		#SH multi-pass iteration count: each pass respawns all droplets + lrate field smoothing; channels deepen progressively. Default 2 (2026-08-11: 5->2, deep-gully fix; SH Erosion.cs numIterations=1, 2 keeps momentum field accumulation), range [1, 16].
+		#Range: 1 ~ 16
+		erosionIterations = 2
+		#SH field smoothing rate lrate: proportion of each pass's track blended into the steady-state field (0.1 = SH original). Default 0.1, range [0.01, 0.5].
+		#Range: 0.01 ~ 0.5
+		erosionLrate = 0.1
+
+	["GeoGenesis Terrain Generation".Caves]
+		#Cave preset (gameplay-first, one-click): REALISTIC = current default, geological (limestone karst caves are big, granite almost none, horizontal stratified caves); VANILLA_LIKE = closer to vanilla feel (bigger rounder chambers, no layering, rock type ignored); MINIMAL = sparse thin tunnels only; OFF = NO caves at all (vanilla carvers are UNAVAILABLE in this custom ChunkGenerator, so 'off' means an empty underground, same as RTG's useCaves=false); CUSTOM = use the individual knobs below as-is.
+		#Allowed Values: OFF, VANILLA_LIKE, MINIMAL, REALISTIC, CUSTOM
+		cavePreset = "REALISTIC"
+		#Master switch for cave carving. false = no caves at all (independent of cavePreset).
+		caveEnabled = true
+		#Enable TUNNEL component (winding 1D tubes formed by two noise isosurface intersections; provides 'connectivity').
+		caveTunnelEnabled = true
+		#Enable CHAMBER component (walkable hall-like voids; provides 'room to walk'). Disabling leaves only thin tunnels -> players cannot stand up (a failure mode measured before).
+		caveChamberEnabled = true
+		#Enable LAYER modulation (squashes tall chambers into horizontal strata). Prevents vertically-through-going shafts. Disable for vanilla-cheese-like blob caves (accepts the risk of vertical shafts).
+		caveLayerEnabled = true
+		#Cave density multiplier applied to component thresholds (bigger = thicker & more caves). Default 1.0, range [0.2, 3.0].
+		#Range: 0.2 ~ 3.0
+		caveDensityMul = 1.0
+		#Roof protection thickness in blocks: cave ceilings stay at least this far below the surface. 0 = caves MAY breach the surface (creates cave entrances, good for exploration). Default 6, range [0, 40].
+		#Range: 0 ~ 40
+		caveSurfaceLid = 6
+		#Shallowest cave depth below surface (blocks). Default 8, range [0, 80].
+		#Range: 0 ~ 80
+		caveDepthMin = 8
+		#Deepest cave depth below surface (blocks). Default 120, range [40, 320].
+		#Range: 40 ~ 320
+		caveDepthMax = 120
+		#Rock-type gating (PROJECT-UNIQUE, absent in all 3 reference projects): limestone karst caves are 1.7x bigger, granite/gneiss almost none (0.55x). Disable for vanilla-like uniform caves.
+		caveLithoGating = true
+		#Underground cave biomes: DRIPSTONE_CAVES everywhere, LUSH_CAVES in forest climates. Decoration (stalactites/moss/vines) is placed by vanilla automatically. Disable to keep the surface biome underground.
+		caveBiomesEnabled = true
+
+	["GeoGenesis Terrain Generation".Ores]
+		#Self-developed geological ore veins (PROJECT-UNIQUE: ore is placed by HOST ROCK + depth band -- e.g. coal only in sandstone/shale, lapis only in limestone, diamond only in gneiss/schist). true (default) = ON: these veins are placed ON TOP of the vanilla ore. false = OFF: keep ONLY vanilla ore (pure-vanilla ore experience). NOTE: vanilla ore (ore_coal/ore_iron/... , placed from biome features) is ALWAYS generated and is NOT controlled by this switch; it intentionally DOES pollute the geological strata (that is vanilla behaviour and is left alone here). Takes effect on world (re)load; already-generated chunks are unchanged.
+		oreVeinsEnabled = true
+		#★ Ore system takeover (see docs/plans/矿物系统-预研-2026-09-18.md, 'path D'). false (default) = VANILLA: do NOT touch vanilla ore at all (zero behaviour change). true = OVERRIDE: REMOVE minecraft metal ore features (19 placed_feature ids: coal/iron/ gold/redstone/diamond/lapis/copper/emerald/infested variants) from the biome decoration pipeline, so the underground ore is placed ONLY by the self-developed OreVeins (host-rock + depth-band geology). Vanilla water details (disk_*/underwater_magma) and the strata-protection filter are unaffected. MOD COMPATIBILITY: only the 'minecraft' namespace is removed, so ore from ANY other mod is always left untouched. NOTE: enabling this REDUCES total ore (vanilla ore is currently already gated by our rock layers via the stone_ore_replaceables tag) -- use it to A/B compare ore volume. Takes effect on world (re)load; already-generated chunks are unchanged.
+		oreOverrideVanilla = false
+
+	["GeoGenesis Terrain Generation".Diagnostics]
+		#World-generation full-pipeline profiler. Logs per-stage timing to latest.log (prefix [WGP]). WHY: the pre-existing [PERF-TERRAIN] / [PERF] fillFromNoise logs only fire ABOVE a threshold (50ms / 100ms), so fast chunks are never recorded and no distribution can be computed; and applyBiomeDecoration (trees/grass/ore) plus applyCarvers (caves) had NO instrumentation at all -- yet they are the heaviest stages in a real game. When on, a rolling summary is printed every worldgenProfilerEveryChunks chunks (count / total / mean / P50 / P95 / max / share, plus the 8 slowest chunks), and a grand total on world unload. Output is also written to geogenesis-wgp.txt (UTF-8) in the game directory. false (default) = OFF, zero overhead, bit-identical output (the profiler consumes no random numbers).
+		worldgenProfilerEnabled = false
+		#Profiler rolling-summary interval, in chunks. 0 = only print the grand total on world unload. Default 200. Range [0, 100000]
+		#Range: 0 ~ 100000
+		worldgenProfilerEveryChunks = 200
+

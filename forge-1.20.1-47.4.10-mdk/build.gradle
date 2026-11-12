@@ -1636,6 +1636,24 @@ task runSegmentBucketsCheck(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.hydrology.model.SegmentBucketsCheck'
 }
 
+// P1 资产门禁（2026-11-12）：1401² 高度 SHA 必须等于 bea0a47c…（R0-0 固定资产）。
+//   gradlew runP1CellRenderProbe [-PprobeArgs="<toml> <outDir>"]
+//
+// 探针会先断言「驱动产出」的输入（continentScale/peakHeightFraction/… + 关侵蚀/水文），
+// 不满足时报【前置条件错误】而不是误报 "height drift"。
+// 默认参数用 R0-0 冻结口径的 TOML 副本；缺失时探针会明确报出哪个键不符。
+task runP1CellRenderProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.P1CellRenderProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        def defaultToml = file('tools/p1-frozen-input.toml')
+        def outDir = layout.buildDirectory.dir('p1-gate').get().asFile
+        args = [defaultToml.absolutePath, outDir.absolutePath]
+    }
+}
+
 task runWorldgenGate {
     group = 'verification'
     description = '世界生成门禁：只跑当前实�?ALL PASS 的判据型探针（任一 FAIL 即构建失败）'
@@ -1667,6 +1685,11 @@ task runWorldgenGate {
     // Config-panel structure self-check (2026-11-07). Static: panel-visible keys <-> key catalog
     // <-> tab layout <-> built-in presets must all agree. Zero MC dependency, seconds to run.
     dependsOn 'runConfigPanelCoverageProbe'
+    // P1 资产对拍（2026-11-12 接通）：1401² 高度 SHA 必须等于 R0-0 固定资产 bea0a47c…
+    // 探针先断言冻结输入（参数 + 关侵蚀/水文），不符时报【前置错误】而不是误报 height drift。
+    // 为什么必须纳入：CellGenerator 删死代码/任何地形改动都可能静默改变产出，
+    // 而此前 P1CellRenderProbe 没有 gradle task、从未被门禁跑过。
+    dependsOn 'runP1CellRenderProbe'
 }
 
 // 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什�?+ 多模组零误删 + 开关真生效:

@@ -37,43 +37,6 @@ public final class CellGenerator {
 
     private final ContinentField continent;
     private final HeightCurve heightCurve;
-    /**
-     * ★ 2026-09-12 地质系统 Phase T1 总开关：构造骨架是否参与高程合成。
-     * {@code false} → 完全不调用 TectonicField，输出<b>逐位退回</b>接入前（可回滚）。
-     * 接 Forge 配置推迟到验证有效后（避免产生死配置，见体检报告 C8）。
-     */
-    private static final boolean TECTONIC_ENABLED = true;
-
-    /**
-     * ★ 2026-09-13 Phase T7(P0.5)：<b>海床护栏</b> —— 海床特征累计抬升与海平面的最小余量
-     * （e 单位，≈3.8 块）。
-     */
-    private static final double SEABED_MARGIN = 0.02;
-    /** 海床护栏软饱和的过渡宽度（e 单位）；见 {@link TectonicField#smoothMin}。 */
-    private static final double SEABED_SOFT_SAT = 0.03;
-
-    /** 构造骨架场（见 {@link #TECTONIC_ENABLED}）。 */
-    private final TectonicField tectonic;
-
-    /**
-     * ★ 2026-09-12 地质 Phase T4 开关：地层/岩性是否计算。
-     * {@code false} → 不调用 {@link StratumField}，{@code Cell} 的岩性字段保持默认。
-     */
-    private static final boolean STRATA_ENABLED = true;
-
-    /** 地层场（构造环境 → 地层序列 → 出露岩性）。 */
-    private final StratumField strata;
-
-    /**
-     * ★ 2026-09-12 地质 Phase T5 开关：褶皱/断层形变是否参与高程合成。
-     * {@code false} → 不调用 {@link TectonicDeformation}，输出<b>逐位退回</b>（可回滚）。
-     */
-    private static final boolean DEFORM_ENABLED = true;
-
-    /** 构造形变场（褶皱 / 断层）。 */
-    private final TectonicDeformation deform;
-    /** 极寒阈值：温度低于此值即常年积雪（与 WhittakerType.T_TUNDRA=0.24 对齐：tempE < -0.52） */
-    private static final double POLAR_SNOW_TEMP = -0.52;
     private final TerrainParams params;
 
     // 温度参数（v6 纬度梯度，2026-09-10 取代旧正弦锚点模型）
@@ -82,26 +45,8 @@ public final class CellGenerator {
     private final Noise humidityNoise; // 独立湿度噪声
     /** 气候区（抖动 Voronoi）：区内温湿恒定，消除群系椒盐碎斑 */
     private final ClimateRegion climateRegion;
-    /** 降水的地形调制场（★ 2026-09-11 Phase B）：地形雨 / 雨影 / 焚风 */
-    private final PrecipField precipField;
-    /**
-     * 温度 e 单位的"每单位多少 °C"换算（焚风用）。
-     * {@code Climate.temperature ∈ [-1,1]} 对应约 −40…+40 °C → 1 e 单位 ≈ 40 °C。
-     */
-    private static final double DEG_C_PER_E_UNIT = 40.0;
-
-    /**
-     * 纬度降水廓线参考值（★ Phase D）：把 {@link LatPrecipProfile} 折算到均值 ≈1，
-     * 使"区域层降水"与旧"区域层湿度"量级可比，避免切换后全图群系整体漂移。
-     * 0.70 ≈ 廓线在 lat01∈[0,1] 上的平均（控制点 1.40 / 0.30 / 1.00 / 0.35 / 0.25）。
-     */
-    private static final double LAT_PRECIP_REF = 0.70;
-    /** 气候区尺寸（wu），区界扰动幅度按它取 */
-    private final double regionSize;
     /** 区界扰动噪声：让 Voronoi 边界蜿蜒（否则边界是直线/大块多边形） */
     private final Noise regionWarp;
-    /** 绿洲斑块噪声（大尺度）：河流绿洲的断续门控（RTG SurfaceRiverOasis 范式） */
-    private final Noise oasisNoise;
 
     private final boolean morphBase;
     private final double minWorldY, maxWorldY;
@@ -131,9 +76,6 @@ public final class CellGenerator {
         this.maxWorldY = maxWorldY;
         this.continent = new ContinentField(p);
         this.heightCurve = new HeightCurve(p, minWorldY, maxWorldY);
-        this.tectonic = new TectonicField(0L);   // 种子在 seed() 注入
-        this.strata = new StratumField(0L);      // ★ T4：地层场（种子在 seed() 注入）
-        this.deform = new TectonicDeformation(0L); // ★ T5：褶皱/断层形变场
         this.params = p;
 
         this.tempFreq = 1.0 / p.latitudeScale();   // 纬度缩放可配置
@@ -142,20 +84,10 @@ public final class CellGenerator {
         this.tempWarp = new Frequency(new Simplex(501), 1.0 / p.tempWarpScale());
         this.humidityNoise = new Frequency(new Simplex(502), 1.0 / p.humidityScale());
         this.climateRegion = new ClimateRegion(p.climateRegionSize());
-        this.regionSize = p.climateRegionSize();
 
-        // 降水地形调制场（★ Phase B）：高度取用走"廉价 + 绝不触发侵蚀 tile"铁律 ——
-        // heightFromE(terrainEQuick(·)) 是纯噪声场，与 FlowAccumProbe 的 baseGround 同源。
-        // 种子在 seed() 里注入（此处先给 0）。
-        this.precipField = new PrecipField(0L,
-            (x, z) -> heightCurve.heightFromE(terrainEQuick(x, z)),
-            p.latitudeScale(), PrecipField.Params.defaults(), WindField.Params.defaults(),
-            heightCurve.seaLevelY());   // ★ Phase E：注入海平面 → 上风向海域回灌湿度
         clearEqCache();   // terrainEQuick 缓存哨兵初始化
         // 波长 ≈1.5 个气候区：边界以该尺度蜿蜒，观感自然
         this.regionWarp = new Frequency(new Simplex(503), 1.0 / (p.climateRegionSize() * 1.5));
-        // 波长 ≈0.75 个气候区：绿洲斑块与气候区同尺度，是"断续的绿洲群"而非细碎噪点
-        this.oasisNoise = new Frequency(new Simplex(504), 1.0 / (p.climateRegionSize() * 0.75));
     }
 
     /**
@@ -239,22 +171,17 @@ public final class CellGenerator {
     /** 新 P 层运行时；model 侧据此绑定同一份 B/P。 */
     public com.geogenesis.worldgen.process.ProcessRuntime processRuntime() { return processRuntime; }
 
-    /** 一次性播种所有噪声节点 + 设置海山中心水深检查器 */
+    /** 一次性播种所有噪声节点 */
     public void seed(long worldSeed) {
         baseWorld = new com.geogenesis.worldgen.core.BaseWorldSampler(
                 worldSeed, params, (int) minWorldY, (int) maxWorldY,
                 com.geogenesis.config.BaseWorldConfigAdapter.snapshot());
         initProcessErosion(worldSeed);
         continent.seed(worldSeed);
-        precipField.setSeed(worldSeed);   // ★ Phase B：降水场随世界种子重置
-        tectonic.setSeed(worldSeed);      // ★ 地质 Phase T1：构造格局随世界种子重置
-        strata.setSeed(worldSeed);        // ★ 地质 Phase T4：地层分布随世界种子重置
-        deform.setSeed(worldSeed);        // ★ 地质 Phase T5：褶皱/断层相位随世界种子重置
         clearEqCache();                   // ★ D13：地形 e 缓存随世界种子失效
         Noises.seedAll(tempWarp, worldSeed, 0);
         Noises.seedAll(humidityNoise, worldSeed, 0);
         Noises.seedAll(regionWarp, worldSeed, 0);
-        Noises.seedAll(oasisNoise, worldSeed, 0);
         climateRegion.seed(worldSeed);
     }
 
@@ -312,16 +239,8 @@ public final class CellGenerator {
         return sample(wx, wz).precipitation;
     }
 
-    /** 大陆性 c 采样（wu 语义，纯位置函数）。waterTable 水面推导用（RTF 范式河网）。 */
-    public double continentAt(double wx, double wz) {
-        return continent.sample(wx, wz);
-    }
-
-    // ===== terrainEQuick 直接映射缓存（★ 2026-09-11，D13 性能）=====
-    // 纯函数 (wx,wz) → e（同 seed 恒定）。实测两个热点会【在同一批坐标】各采样一次：
-    //   routingE（FlowField 选线场）与 computeFill（填洼层，走 groundYAt）
-    //   → 天然 2× 冗余；跨 region 的 margin 重叠再放大。
-    // 缓存命中 ~20ns vs 计算 ~6µs（runBench 实测 16384 次 = 97.61ms）。
+    // ===== 火山中心「海陆判定」缓存（LF）=====
+    // 纯函数 (wx,wz) → e（同 seed 恒定）。
     //
     //   两个不变量都必须成立：
     //   ① 【单条读取 key+value 原子】—— 键与值必须由【同一不可变 entry】承载，
@@ -330,25 +249,16 @@ public final class CellGenerator {
     //      用【不同坐标】覆盖同一槽，则会读到【别人坐标的值】——这不是撕裂读，而是
     //      静默错值（无任何异常/NaN 提示），且液滴并行与水文多线程下真实可发生。
     //   ② 【槽只定位不当身份】—— 哈希槽只是哈希表定位，身份由 entry 内的完整
-    //      key（EQ 为 wu 位模式混合键；HR 为 qx/qz 量化坐标）比较决定；碰撞只是
-    //      增未命中，绝不返回异槽/异坐标的值。
-    //   容量不变（EQ_CACHE_SIZE / LF_CACHE_SIZE），产出与旧实现同分布。
-    private static final int EQ_CACHE_BITS = 17;                 // 131072 槽 ≈ 2 MB
-    private static final int EQ_CACHE_SIZE = 1 << EQ_CACHE_BITS;
-    private static final int EQ_CACHE_MASK = EQ_CACHE_SIZE - 1;
-    /** 空槽哨兵（构造/播种时填充；真实键恰为此值者会被重映射，概率 2^-64）。 */
+    //      key 比较决定；碰撞只是增未命中，绝不返回异槽/异坐标的值。
     private static final long EQ_EMPTY = Long.MIN_VALUE;
 
     /** 键值对的不可变快照（entry 为 null = 空槽）。替换引用 = 单条 API 的原子发布。 */
     private record KeyedValue(long key, long bits) {}
-    private final AtomicReferenceArray<KeyedValue> eqEntries =
-            new AtomicReferenceArray<>(EQ_CACHE_SIZE);
     private final AtomicLong eqHits = new AtomicLong();
     private final AtomicLong eqMisses = new AtomicLong();
 
-    /** 清空 terrainEQuick 缓存（换种子/构造时调用）。按引用置 null 清空（与 seed/配置变更同义）。 */
+    /** 清空陆地门控缓存（换种子/构造时调用）。按引用置 null 清空（与 seed/配置变更同义）。 */
     private void clearEqCache() {
-        for (int i = 0; i < EQ_CACHE_SIZE; i++) eqEntries.set(i, null);
         eqHits.set(0);
         eqMisses.set(0);
         for (int i = 0; i < LF_CACHE_SIZE; i++) lfEntries.set(i, null);
@@ -444,77 +354,35 @@ public final class CellGenerator {
     }
 
     /**
-     * ★ 2026-09-12 地质 Phase T1：<b>构造决定地形类型</b>（而非"构造推高地形"）。
+     * ★ 2026-09-12 地质 Phase T1 设计备注：<b>「构造决定地形类型」（而非"构造推高地形"）</b>
      *
-     * <p>按板块边界类型调制 {@code typeWeights}，让山脉/海沟/裂谷/洋脊沿<b>地质边界</b>分布：
+     * <p>⚠ 该设计的实现 {@code applyTectonicWeights} 已于 2026-11-12 删除 ——
+     * 它自 Phase T6 起<b>零调用</b>，从未接进 morph 生产链。此处保留设计知识，
+     * 供将来重建"构造决定整体地形"时参考：</p>
+     *
+     * <p>做法是按板块边界应力调制 {@code typeWeights}，让山脉/海沟/裂谷/洋脊沿
+     * <b>地质边界</b>分布：</p>
      * <ul>
-     *   <li><b>汇聚</b>：陆地→提升 MOUNTAINS（造山带）；海洋→提升 DEEP_OCEAN（俯冲海沟）</li>
-     *   <li><b>离散</b>：陆地→提升 BASIN（裂谷）；海洋→提升 OCEAN（洋中脊，浅于深海）</li>
-     *   <li><b>走滑 / 内部</b>：不调制（worldgen 亦无垂向贡献）</li>
+     *   <li><b>汇聚</b>：陆壳→提升 MOUNTAINS（造山带）；洋壳→提升 DEEP_OCEAN（俯冲海沟）</li>
+     *   <li><b>离散</b>：陆壳→提升 BASIN（裂谷）；洋壳→提升 OCEAN（洋中脊，浅于深海）</li>
+     *   <li><b>走滑 / 内部</b>：不调制</li>
      * </ul>
      *
-     * <p><b>为何用权重调制而非直接加高程偏置</b>：直接抬升 {@code e} 会连锁增强地形雨
-     * （PrecipField 的 orographicGain 基于高度差），推高全局降水并稀释 Phase C
-     * 「干旱区河细」的区分度（实测 head 最干桶 0.922→0.959）。改为调制类型权重后，
-     * 山脉由<b>既有 MOUNTAINS 配方</b>生成，不引入额外高度偏置 → 不干扰气候/水文标定。
+     * <p><b>为何必须用权重调制、不可直接加高程偏置</b>：直接抬升 {@code e} 会连锁增强
+     * 地形雨（{@code PrecipField.orographicGain} 基于高度差），推高全局降水并稀释
+     * 「干旱区河细」的区分度（实测 head 最干桶 0.922→0.959）。改用权重调制后，
+     * 山脉由<b>既有 MOUNTAINS 配方</b>生成，不引入额外高度偏置 → 不干扰气候/水文标定。</p>
      *
-     * <p>调制后重新归一化，保证权重和为 1（{@code dominantFromWeights} 依赖此性质）。
+     * <p><b>用连续量、不用离散枚举</b>：{@code btype} 在边界类型切换处跳变 ⇒ 权重骤变
+     * ⇒ 线状疤痕；必须用连续 {@code stress} 加平滑正部
+     * （{@link TectonicField#smoothPos}），且两分支恒执行以消除折痕。</p>
      *
-     * <p>★ 2026-09-13 Phase T6：改为<b>接收已采样的 {@code ts}</b>（调用方在海洋特征之前
-     * 已采样一次并复用），避免同一位置重复采样构造场。</p>
+     * <p><b>壳属性判据</b>：分支依据是 {@link TectonicField#shellFromC}（连续 c 场派生的
+     * 壳属性），<b>不是</b>形态学 {@code landW/oceanW} —— 后者会与 c 场互相矛盾，
+     * 导致"火山弧在 eLand≈0 处造陆"。也<b>不可</b>用"所属板块常量"：
+     * 本项目 {@code PLATE_SPACING=2000wu} 而 c 波长≈4000wu ⇒ 一个大陆仅约 2 个板块，
+     * 相邻板块壳属性差 P50=0.41 ⇒ 等效阶跃 96 块 = 必然的 Voronoi 直线网（实测否决）。</p>
      */
-    private void applyTectonicWeights(double[] w, TectonicField.Sample ts, double sx, double sz,
-                                      double cBiased) {
-        // ★ Phase T2：汇聚造山带按走向串珠化（独立山峰），离散保持连续（真实裂谷是线状）
-        double g = tectonic.boundaryStrengthChained(ts, sx, sz);
-        // ★ 阈值必须低到不可见：任何提前 return 都是地形跳变源（环状细线/串珠虚线）。
-        if (g <= 1e-6) return;
-
-        // ★★ 2026-09-13 Phase T7（P0）：分支判据由【形态学 landW/oceanW】改为
-        //    【地质学板块壳属性 shellS】★★
-        //
-        //   见 TectonicField.plateShell 的长注释。核心差异：
-        //     · 旧：landW/oceanW 来自【类型权重场】（形态学）—— 与板块无关，
-        //           且与 c 场可互相矛盾（实测"火山弧在 eLand≈0 处造陆"即源于此）。
-        //     · 新：shellS 来自【该点所属板块的壳属性】（由 c 场在板块种子处取值推导）
-        //           —— 这才是参考项目 worldgen 的 (陆,陆)/(陆,洋)/(洋,洋) 分支依据。
-        //
-        //   地质语义随之正确（对齐参考项目 boundary_profile）：
-        //     陆-陆汇聚 → 两侧 shell≈1 → 都造山；陆-洋汇聚 → 陆侧造山 + 洋侧海沟；
-        //     洋-洋汇聚 → 都海沟。离散同理（陆壳裂谷 / 洋壳洋中脊）。
-        //   ★ 关键收益：陆-洋汇聚不再"两边都造山"，而是陆侧造山、洋侧海沟。
-        //
-        //   ★ 为何不会产生"直线网伪影"（实测已验证）：
-        //     shellS 直接由【连续的 c 场】得出（多倍频 FBM，处处 C¹）——
-        //     **与海陆同源**且**绝无阶跃**。
-        //     ※ 曾尝试"壳属性 = 所属板块的常数"（更贴近参考项目的 is_continental[pid]），
-        //       被 TectonicProbe[8] **实测否决**：本项目 PLATE_SPACING=2000wu 而 c 波长
-        //       ≈4000wu ⇒ 一个大陆仅约 2 个板块（参考项目 ~10 个）⇒ 相邻板块壳属性差
-        //       P50=0.41 / 48.4% 是"一陆一洋" ⇒ 等效阶跃 96 块 = 必然的 Voronoi 直线网。
-        //       详见 TectonicField.shellFromC 的注释。
-        //
-        //   （旧注释保留以免后人误改回：用 landW/oceanW 分叉 = 让形态学冒充地质学。）
-        double shellS = TectonicField.shellFromC(cBiased);   // 0=洋壳 1=陆壳（连续、与海陆同源）
-        // ★ 2026-09-12 修复（伪影）：改用【连续应力】stress 加权，取代 switch(btype)。
-        //   btype 在类型边界跳变 → 权重调制骤变 → eLand 骤变 → 线状疤痕。
-        //   stress ∈[-1,1] 连续 → 过渡平滑。
-        // ★ 2026-09-12 第五次伪影修复：Math.max(0,·) → 平滑正部，并**去掉 if 分支**。
-        //   原写法沿 stress=0 等值线切换公式 → 一阶不连续 → 地形折痕（笔直断裂线）。
-        //   改后两个分支恒执行（cw/dw 恒>0），公式处处一致 → 无折痕。
-        double cw = TectonicField.smoothPos(ts.stress(), TectonicField.STRESS_POS_EPS);
-        double dw = TectonicField.smoothPos(-ts.stress(), TectonicField.STRESS_POS_EPS);
-        double addC = TectonicField.CONVERGENT_BOOST * g * cw;   // 汇聚 → 造山（陆壳）/ 海沟（洋壳）
-        w[TerrainClass.MOUNTAINS.ordinal()] *= 1.0 + addC * shellS;
-        w[TerrainClass.DEEP_OCEAN.ordinal()] *= 1.0 + addC * (1.0 - shellS);
-        double addD = TectonicField.DIVERGENT_BOOST * g * dw;    // 离散 → 裂谷（陆壳）/ 洋中脊（洋壳）
-        w[TerrainClass.BASIN.ordinal()] *= 1.0 + addD * shellS;
-        w[TerrainClass.OCEAN.ordinal()] *= 1.0 + addD * (1.0 - shellS);
-        double sum = 0.0;
-        for (double v : w) sum += v;
-        if (sum > 1e-15) {
-            for (int i = 0; i < w.length; i++) w[i] /= sum;
-        }
-    }
 
     /** 纯陆地形态 eLand（侵蚀边际采样用，不含气候/分类）。 */
     public double landE(double wx, double wz) { return baseWorld.sampleTerrain(wx, wz).landE; }
@@ -620,71 +488,11 @@ public final class CellGenerator {
     }
 
     /**
-     * 连续形态分类（使用 typeWeights 连续权重替代离散 argmax）。
-     * 海洋区域按特征分量细分：大陆架 / 洋中脊 / 海山 / 海洋 / 深海。
-     */
-    public TerrainClass classify(double c, double e, double eLand,
-                                  TerrainClass cellType, double[] typeWeights,
-                                  double temperature, double humidity,
-                                  OceanFeatures.FeatureResult oceanFeat,
-                                  LandFeatures.FeatureResult landFeat,
-                                  double cEdge) {
-        if (e < 0.0) {
-            // 海洋地形细分
-            double ridgeAmp = oceanFeat != null ? oceanFeat.ridge : 0;
-            double seamountAmp = oceanFeat != null ? oceanFeat.seamount : 0;
-            // ★ 2026-09-13 Phase T6：火山弧（离轴隆起）也是"海中的显著凸起"，
-            //   语义上同属 SEAMOUNT（海底火山）。不新增枚举 —— 见 TerrainClass 说明。
-            //   注意 oceanFeat.arc 是【带符号】剖面（>0 弧 / <0 海沟窄槽），故取正部判断。
-            double arcAmp = oceanFeat != null ? Math.max(0.0, oceanFeat.arc) : 0;
-            // ★★★ 2026-09-13 修复（用户反馈"大陆架好像并没有包住整个大陆"）★★★
-            //   深度分带判据由 `oceanFeat.baseE`（c 场推算的海底基面）改为 **eLand**。
-            //
-            //   【为何是 bug】**海岸线是由 eLand 定义的**（e = eLand + 海洋特征，e=0 即海岸）。
-            //   用 c 场推算的 baseE 分带 ⇒ 陆架带与真实海岸线**错位**：
-            //   实测沿海海洋点仅 **52.2%** 被判 SHELF，且与构造体制无关
-            //   （活动边缘 60.8% / 被动边缘 46.9% —— 若真是"活动边缘无陆架"的地质正确性，
-            //    该比例应与构造强相关，实测反之 ⇒ 纯属两个场错位）。
-            //   改用 eLand 后同一实测升至 **81.4%**（其余为海山/洋中脊优先 + 真属陆坡）。
-            //
-            //   【为何不破坏原注释的初衷】原用 baseE 是为了"不含特征增量，防止海山顶峰
-            //   被抬升后自相矛盾地判成 SHELF"（见下方 2026-08-06 记录）。
-            //   而 `eLand` **同样不含海洋特征增量**（features 在 oceanFeat.total 里单独叠加）
-            //   ⇒ 该防线完整保留，同时海岸线对齐。两全。
-            //
-            //   【分带随之成为沿岸等深带】地质正确的陆架→陆坡→深海平原序列：
-            //     eLand > −0.08           → 大陆架
-            //     −0.18 < eLand ≤ −0.08   → 海洋（陆坡 / 浅海）
-            //     eLand ≤ −0.18           → 深海（深海平原）
-            //   （2026-08-06 旧记录：原用逐点 e 会自相矛盾 —— 海山顶峰 e>−0.08 被判 SHELF，
-            //     探针实测 SEAMOUNT 仅 11 个。改用 eLand 后该问题不复现，因它不含特征增量。）
-            // SEAMOUNT 判定优先于 RIDGE（海山独立特征，避免被洋中脊抢走）。
-            if ((seamountAmp > 0.02 || arcAmp > 0.02) && eLand < -0.08) return TerrainClass.SEAMOUNT;
-            // 2026-08-06 调稀洋中脊：阈值 0.03→0.05（用户反馈"洋中脊有点多"）——边缘弱贡献区
-            // 归入 OCEAN/DEEP_OCEAN，仅脊线主体保留 RIDGE 类型（地形抬升不受影响）。
-            if (ridgeAmp > 0.05 && eLand < -0.08) return TerrainClass.SUBMARINE_RIDGE;
-            if (eLand > -0.08) return TerrainClass.CONTINENTAL_SHELF;
-            return eLand < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
-        }
-        // 【2026-08-03 用户决策】BEACH 不再作为独立地形类型（沙滩是海岸过渡带而非地形形态）：
-        // 海岸窄条自然落入后续陆地类型（PLAIN/HILLS 等），群系层面仍由 BiomeClassifier 按气候映射。
-
-        // 火山优先（可见特征，用户核心诉求：陆地需有火山地形）。
-        TerrainClass vol = volcanoClass(landFeat);
-        if (vol != null) return vol;
-
-        // 【2026-08-05 用户决策】PEAK 不再作为独立地形类型（山峰=山脉的高海拔部分，
-        // 与 BEACH/SNOW 同为状态/过渡而非独立形态）：高海拔山地直接落入 MOUNTAINS
-        // （typeWeights dominant），雪峰/尖峰群系由 BiomeClassifier 按 cell.e>0.60 映射，不丢失。
-        return cellType;
-    }
-
-    /**
      * ★ 2026-09-13 修复（用户反馈"火山只在大范围预览显示，关掉就没有了"）：
-     * <b>火山优先判定</b>（主 {@link #classify} 与侵蚀后静态重分类<b>共用</b>）。
+     * <b>火山优先判定</b>（侵蚀后静态重分类使用）。
      *
-     * <p><b>为何要抽成共用函数</b>：原先 {@code classify} 有这段判定，而
-     * {@code classifyTerrain}（侵蚀回写后调用）<b>没有</b>，且其签名里根本没有
+     * <p>历史：原 {@code CellGenerator.classify(...)}（已于 2026-11-12 删除，零调用者）
+     * 也有这段判定，而 {@code classifyTerrain}（侵蚀回写后调用）<b>没有</b>，且其签名里根本没有
      * {@code landFeat} 参数 ⇒ 侵蚀 tile 生成后（近距离，预览放大时）该区块的
      * {@code VOLCANO/VOLCANIC_FIELD} 被<b>静默重分类</b>成底层类型（PLAIN/MOUNTAINS…）
      * ⇒ 用户看到的"远处有火山、走近就没了"。
@@ -766,84 +574,6 @@ public final class CellGenerator {
     }
 
     // ===== 内联工具 =====
-
-    /**
-     * 降水合成（★ 2026-09-11 Phase B）。
-     *
-     * <pre>
-     * precip = humidity01        // 水汽供给（湿度 [−1,1] → [0,1]）
-     *        × LatPrecipProfile   // 纬度结构（ITCZ 峰 / 副热带谷 / 西风带次峰 / 极地低）
-     *        × (1 + 地形雨)        // 迎风坡抬升凝结
-     *        × (1 − 雨影)          // 背风坡减雨
-     *        × tempGate           // 冷空气持水能力低（下限 0.55，不归零）
-     * </pre>
-     *
-     * <p><b>Phase B 只"产出"降水</b>（写入 {@link Cell#precipitation} 与
-     * {@link com.geogenesis.worldgen.climate.Climate#precipitation}）：
-     * <b>尚未驱动水文</b>（Phase C 才把汇流累积改为受降水加权），
-     * 也<b>尚未参与 Whittaker 群区</b>（Phase D 才切换，避免群系立刻漂移）。</p>
-     *
-     * @return 归一化降水 [0, 1.5]
-     */
-    private static double precipitationFrom(double humE, double tempE, double lat01,
-                                            PrecipField.Mod pm) {
-        double humidity01 = clamp(humE * 0.5 + 0.5, 0.0, 1.0);
-        double base = humidity01 * LatPrecipProfile.at(lat01);
-        double tempGate = 0.55 + 0.45 * ((tempE + 1.0) * 0.5);   // 冷 → 0.55，热 → 1.0
-        double v = base * (1.0 + pm.orographicGain()) * (1.0 - pm.shadowLoss()) * tempGate;
-        return clamp(v, 0.0, 1.5);
-    }
-
-    /**
-     * 抖动后的主导地形类型（<b>仅用于群系变体选择</b>，见 {@code Cell.variantTerrain}）。
-     *
-     * <p>地形类型场是两个 Voronoi 站点高斯权重相等处 → 边界为<b>直线段</b>（站点上下排列时
-     * 即长水平线，实测达 424 wu）。若群系变体直接按 {@link Cell#terrainType} 切换，
-     * 群系边界就沿这条直线走。此处对每类权重叠加独立高频噪声后取最大：
-     * 边界附近两类权重接近，噪声使主导类型随机翻转 → 变体边界被打散。
-     *
-     * @param weights 5 类地形权重（按 {@link TerrainClass#ordinal()} 索引，和=1）
-     */
-    private TerrainClass ditheredTerrain(double[] weights, double x, double z) {
-        if (weights == null || weights.length == 0) return null;
-        TerrainClass[] all = TerrainClass.values();
-        int best = -1;
-        double bestW = Double.NEGATIVE_INFINITY;
-        for (int i = 0; i < weights.length && i < all.length; i++) {
-            // 每类独立噪声（坐标加不同偏移），波长 ≈ 区尺寸/3 ≈ 128 wu（2026-09-10：调大，变体斑块更完整）
-            double dith = regionWarp.compute(x * 3.0 + i * 733.0, z * 3.0 - i * 1499.0) * 0.12;
-            double w = weights[i] + dith;
-            if (w > bestW) {
-                bestW = w;
-                best = i;
-            }
-        }
-        return best >= 0 ? all[best] : null;
-    }
-
-    /**
-     * 区域层温度：纬度基值 + 区域级扰动。区界处与次近区混合 → C0 连续。
-     */
-    private double regionTemperature(ClimateRegion.Sample reg) {
-        double t1 = temperatureAt(reg.centerX(), reg.centerZ());
-        if (reg.blend() <= 0.0) return t1;
-        double t2 = temperatureAt(reg.centerX2(), reg.centerZ2());
-        return t1 + (t2 - t1) * reg.blend();
-    }
-
-    /** 单点温度基值：纬度梯度（赤道 +1 → 两极 −1）+ 温度扰动噪声 */
-    private double temperatureAt(double x, double z) {
-        double lat = Latitude.latitude01(z, 1.0 / tempFreq);
-        return (1.0 - 2.0 * lat) + tempWarp.compute(x, z) * 0.15;
-    }
-
-    /** 区域层湿度：区域噪声，区界处与次近区混合 → C0 连续 */
-    private double regionMoisture(ClimateRegion.Sample reg) {
-        double m1 = humidityNoise.compute(reg.centerX(), reg.centerZ());
-        if (reg.blend() <= 0.0) return m1;
-        double m2 = humidityNoise.compute(reg.centerX2(), reg.centerZ2());
-        return m1 + (m2 - m1) * reg.blend();
-    }
 
     /**
      * 海拔递减率（参考 FreeTerraForged 的 ClimateModule.modifyTemp）。
@@ -933,11 +663,6 @@ public final class CellGenerator {
 
     private static boolean cfgBool(net.minecraftforge.common.ForgeConfigSpec.BooleanValue v, boolean fallback) {
         return com.geogenesis.config.ConfigSafe.bool(v, fallback);
-    }
-
-    /** 采样大陆性快捷接口 */
-    public double sampleContinent(double wx, double wz) {
-        return continent.sample(wx, wz);
     }
 
     /** HeightCurve 引用 */

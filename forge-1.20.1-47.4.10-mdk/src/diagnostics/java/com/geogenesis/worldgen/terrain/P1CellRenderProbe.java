@@ -27,24 +27,101 @@ public final class P1CellRenderProbe {
             require(GeoGenesisConfig.SPEC.isCorrect(cfg), "frozen config invalid");
             GeoGenesisConfig.SPEC.setConfig(cfg);
             TerrainParams p = GeoGenesisConfig.INSTANCE.buildParams();
-            require(p.horizontalScale() == 2.0, "HS must remain 2");
+            requireFrozenProducingParams(p, cfg);
             System.out.println("frozenParams=" + p);
             CellGenerator gen = new CellGenerator(p, -64, 320, true);
             GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
             terrain.seed(SEED);
-            require(terrain.usesMorphBase() && !terrain.riversEnabled(), "P1 water gate");
+            require(terrain.usesMorphBase(), "morphBase must be on (P1 asset is the morph path)");
+            require(!terrain.riversEnabled(), "riverEnabled must be false (P1 asset excludes hydrology)");
             render(terrain, p, out);
             checkChunks(terrain, gen, p, out);
             checkWorldMarkers();
-            CellGenerator old = new CellGenerator(p, -64, 320, true);
-            require(!old.usesMorphBase(), "legacy constructor changed");
-            old.seed(12345L);
-            require(Double.isFinite(old.sample(0.5, 0.5).height), "legacy sampling");
+            // 非正典种子/坐标的有限性自检（与 EXPECTED 无关，只证明纯函数不崩）。
             CellGenerator other = new CellGenerator(p, -64, 320, true);
             other.seed(12345L);
-            require(Double.isFinite(other.sample(10.5, -11.5).height), "noncanonical Cell");
+            require(Double.isFinite(other.sample(0.5, 0.5).height), "noncanonical sampling");
+            CellGenerator third = new CellGenerator(p, -64, 320, true);
+            third.seed(12345L);
+            require(Double.isFinite(third.sample(10.5, -11.5).height), "noncanonical Cell");
             System.out.println("P1 CELL PASS: HS=2, no external erosion/hydrology, markers roundtrip");
         }
+    }
+
+    /**
+     * 冻结「驱动产出」的输入，不满足就报**前置条件错误**，而不是误报 "height drift"。
+     *
+     * <h3>为什么必须显式断言</h3>
+     * <p>{@link #EXPECTED} 是在**一组具体参数**下产生的固定资产
+     * （见 {@code audit/GeoGenesis-R0-0-baseline-20261105.md} §P1 固定资产）。
+     * 若只断言 {@code HS==2}，而用户在 {@code run/config} 里调过
+     * {@code continentScale} / {@code peakHeightFraction} 等，探针会跑出另一个 SHA
+     * 并报 "P1 height drift from verified P0" —— 让人误判成**地形算法漂移**。
+     * 实测踩过：{@code continentScale} 4000→2400、{@code peakHeightFraction} 0.92→0.6
+     * 时 SHA 变成 {@code 78ab19a6…}，而算法本身没变。</p>
+     *
+     * <p>参数集合来自 R0-0 冻结配置（{@code input-p1-frozen.toml}，SHA
+     * {@code cc5d985f…}）中**实际影响高度产出**的项；纯诊断/装饰类键不在内。</p>
+     */
+    private static void requireFrozenProducingParams(TerrainParams p, CommentedFileConfig cfg) {
+        // ---- 地形形态与量纲 ----
+        require(p.horizontalScale() == 2.0,
+                "frozen input: horizontalScale must be 2.0 (got " + p.horizontalScale() + ")");
+        require(p.continentScale() == 4000.0,
+                "frozen input: continentScale must be 4000.0 (got " + p.continentScale() + ")");
+        require(p.continentFbmPersistence() == 0.6,
+                "frozen input: continentFbmPersistence must be 0.6 (got "
+                        + p.continentFbmPersistence() + ")");
+        require(p.continentBias() == 0.31,
+                "frozen input: continentBias must be 0.31 (got " + p.continentBias() + ")");
+        require(p.peakHeightFraction() == 0.92,
+                "frozen input: peakHeightFraction must be 0.92 (got "
+                        + p.peakHeightFraction() + ")");
+        require(p.snowLine() == 0.7,
+                "frozen input: snowLine must be 0.7 (got " + p.snowLine() + ")");
+        require(p.verticalScale() == 1.0,
+                "frozen input: verticalScale must be 1.0 (got " + p.verticalScale() + ")");
+        require(p.seaLevel() == 63 && p.minY() == -64 && p.maxY() == 320,
+                "frozen input: world height must be sea=63 minY=-64 maxY=320 (got "
+                        + p.seaLevel() + "/" + p.minY() + "/" + p.maxY() + ")");
+
+        // ---- 过程开关：P1 资产明确排除侵蚀与水文 ----
+        // 侵蚀在 generateChunkBody 里是**无条件**执行的（不受 riverEnabled 控制），
+        // 只有 erosionEnabled=false 时 delta 才恒 0；否则 checkChunks 的
+        // `c.height == reference.height` 必然失败。
+        require(tomlBool(cfg, "erosionEnabled") == Boolean.FALSE,
+                "frozen input: erosionEnabled must be false (P1 asset excludes particle erosion)");
+        require(tomlBool(cfg, "riverEnabled") == Boolean.FALSE,
+                "frozen input: riverEnabled must be false (P1 asset excludes hydrology)");
+    }
+
+    /**
+     * 读 TOML 里的布尔开关；缺失返回 {@code null}（由调用方判负）。
+     *
+     * <p>用 Forge 规范的 {@link com.electronwill.nightconfig.core.Config#getOrElse} 按
+     * <b>扁平路径</b>取，而不是自己遍历嵌套 map —— NightConfig 的
+     * {@code valueMap()} 上层是节名字符串、下层是节内 Config，且子节（如
+     * {@code [..Erosion]}）的键并不落在父节 map 里，手写遍历容易漏。</p>
+     */
+    private static Boolean tomlBool(CommentedFileConfig cfg, String key) {
+        Object raw = findLeaf(cfg, key);
+        return raw instanceof Boolean b ? b : null;
+    }
+
+    private static Object findLeaf(com.electronwill.nightconfig.core.Config cfg, String key) {
+        // 深度优先：先看本层直接键，再递归子节；同时容忍扁平路径键 "a.b.c"。
+        for (var e : cfg.valueMap().entrySet()) {
+            if (key.equals(e.getKey())) return e.getValue();
+            if (e.getValue() instanceof com.electronwill.nightconfig.core.Config sub) {
+                Object v = findLeaf(sub, key);
+                if (v != null) return v;
+            }
+        }
+        for (var e : cfg.entrySet()) {
+            String path = e.getKey();
+            if (path != null && (path.equals(key) || path.endsWith("." + key))) return e.getValue();
+        }
+        return null;
     }
 
     private static void render(GeoGenesisTerrain terrain, TerrainParams p, Path out) throws Exception {
