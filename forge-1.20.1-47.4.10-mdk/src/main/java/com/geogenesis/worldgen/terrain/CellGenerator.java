@@ -12,7 +12,6 @@ import com.geogenesis.worldgen.noise.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
@@ -254,13 +253,9 @@ public final class CellGenerator {
 
     /** 键值对的不可变快照（entry 为 null = 空槽）。替换引用 = 单条 API 的原子发布。 */
     private record KeyedValue(long key, long bits) {}
-    private final AtomicLong eqHits = new AtomicLong();
-    private final AtomicLong eqMisses = new AtomicLong();
 
     /** 清空陆地门控缓存（换种子/构造时调用）。按引用置 null 清空（与 seed/配置变更同义）。 */
     private void clearEqCache() {
-        eqHits.set(0);
-        eqMisses.set(0);
         for (int i = 0; i < LF_CACHE_SIZE; i++) lfEntries.set(i, null);
     }
 
@@ -278,12 +273,6 @@ public final class CellGenerator {
     private final AtomicReferenceArray<KeyedValue> lfEntries =
             new AtomicReferenceArray<>(LF_CACHE_SIZE);
     private static final long LF_SALT = 0x5DEECE66DL;
-
-    /** 缓存命中/未命中统计（诊断用）。 */
-    public long eqCacheHits() { return eqHits.get(); }
-
-    /** 缓存未命中数（诊断用）。 */
-    public long eqCacheMisses() { return eqMisses.get(); }
 
     /**
      * 轻量地形 e（跳过气候/分类/height 映射/shape 赋值）—— <b>带直接映射缓存</b>。
@@ -384,10 +373,23 @@ public final class CellGenerator {
      * 相邻板块壳属性差 P50=0.41 ⇒ 等效阶跃 96 块 = 必然的 Voronoi 直线网（实测否决）。</p>
      */
 
-    /** 纯陆地形态 eLand（侵蚀边际采样用，不含气候/分类）。 */
+    /**
+     * 纯陆地形态 eLand（不含气候/分类）。
+     *
+     * <p>⚠ <b>仅诊断</b>（2026-11-12 核查）：生产不用（`LandEConformityProbe` 是唯一调用方）。
+     * 实现是转调 {@code baseWorld.sampleTerrain(...).landE}，与直接调 {@code BaseWorldSampler} 等价；
+     * 保留只为不打断探针。</p>
+     */
     public double landE(double wx, double wz) { return baseWorld.sampleTerrain(wx, wz).landE; }
 
-    /** 地形类型连续权重（诊断探针按类型分桶统计用）。 */
+    /**
+     * 地形类型连续权重（按类型分桶统计用）。
+     *
+     * <p>⚠ <b>仅诊断</b>（2026-11-12 核查）：生产不用 —— 生产分类在
+     * {@link com.geogenesis.worldgen.terrain.morph.MorphTerrainSampler#sampleColumn} 内部完成。
+     * 调用方：`LandEConformityProbe` / `TectonicProbe` / `TerrainStripePngProbe` /
+     * `TerrainUpgradeProbe` / `TerrainUpgradeRender`。</p>
+     */
     public double[] typeWeightsAt(double wx, double wz) { return baseWorld.sampleTerrain(wx, wz).typeWeights; }
 
     /**
@@ -410,11 +412,6 @@ public final class CellGenerator {
     /** 生产唯一侵蚀增量：精确 P 请求，不做缓存窥探、不含旧 tile 的第二分支。 */
     public double erosionDeltaE(double wuX, double wuZ) {
         return processErosionDeltaE(wuX, wuZ);
-    }
-
-    /** 保留诊断签名；请求即返回与生产一致的精确 delta（不再有 empty 分支）。 */
-    public java.util.OptionalDouble peekErosionDeltaE(double wuX, double wuZ) {
-        return java.util.OptionalDouble.of(erosionDeltaE(wuX, wuZ));
     }
 
     /** 结构定位用的薄入口：明确只返回 B 高度，绝不触发 P tile 生成。 */
@@ -458,7 +455,14 @@ public final class CellGenerator {
                 baseWorld.heightDifferenceZ(wuX, wuZ) / denom);
     }
 
-    /** wu 语义完整采样（基础 sample + 唯一 P 增量），与 extractFromTile 同源。 */
+    /**
+     * wu 语义完整采样（基础 sample + 唯一 P 增量），与 extractFromTile 同源。
+     *
+     * <p>⚠ <b>仅诊断</b>（2026-11-12 核查）：生产 chunk 采样走
+     * {@link #sample} + {@link #extractFromTile} 两步，不调本方法。
+     * 保留它是因为约 48 个水文/侵蚀探针以它取"含侵蚀的完整 Cell"；
+     * 删掉要改 48 处且收益为零。</p>
+     */
     public Cell sampleWu(double wuX, double wuZ) {
         Cell cell = sample(wuX, wuZ);
         applyTileDelta(cell, wuX, wuZ);
@@ -469,6 +473,12 @@ public final class CellGenerator {
      * 仅采样侵蚀后高度，与 sampleWu().height 同源，跳过气候、分类和坡度计算。
      * 增量后的第二次 softCap 必须保留；height-only 探针覆盖真实压缩窗口及负对照。
      * 可触发侵蚀 tile 生成，不是非阻塞 peek。
+     *
+     * <p>⚠ <b>仅诊断</b>（2026-11-12 核查）：生产链路不用本方法 ——
+     * {@code ModelHydrologyProvider} 走的是 {@code input.processHeightAtBlock}
+     * → {@code ProcessModelTerrainInput.processHeightAtBlock} → {@code runtime.requestExact}。
+     * 保留它是因为 15 个水文/地形探针以此取"含侵蚀高度"；
+     * 生产侧真正的等价入口是 {@link #erosionDeltaE}。</p>
      */
     public double erodedHeight(double wuX, double wuZ) {
         // ★ 2026-11-06【唯一实现】精确 P 提供 "B + 粒子侵蚀" 后的连续高度。

@@ -507,7 +507,9 @@ public final class TerrainUpgradeProbe {
                 "sampleE", hashDoubles(base.sampleE),
                 "sampleHeight", hashDoubles(base.height),
                 "typeWeights", hashWeights(base.weights)));
-        report.put("eqCache", map("hitsDelta", base.hits, "missesDelta", base.misses));
+        report.put("eqCache", map("hitsDelta", 0L, "missesDelta", 0L,
+                "note", "counter removed 2026-11-12: terrainEQuick delegates to BaseWorldSampler.sampleE, "
+                        + "the CellGenerator eqCache had no reader/writer and always reported 0"));
         report.put("terrainVsQuick", map(
                 "mismatches", countBits(base.e, base.quick),
                 "maxUlp", maxUlp(base.e, base.quick),
@@ -634,8 +636,6 @@ public final class TerrainUpgradeProbe {
         final double[] sampleE;
         final double[] height;
         final double[][] weights;
-        long hits;
-        long misses;
 
         Capture(int n, int types) {
             e = new double[n];
@@ -648,8 +648,6 @@ public final class TerrainUpgradeProbe {
 
     static Capture capture(CellGenerator gen, List<Point> pts, int[] order) {
         Capture c = new Capture(pts.size(), TerrainClass.COUNT);
-        long h0 = gen.eqCacheHits();
-        long m0 = gen.eqCacheMisses();
         for (int idx : order) {
             Point p = pts.get(idx);
             double e = gen.terrainE(p.x(), p.z());
@@ -664,8 +662,6 @@ public final class TerrainUpgradeProbe {
                         Math.min(cell.typeWeights.length, c.weights[idx].length));
             }
         }
-        c.hits = gen.eqCacheHits() - h0;
-        c.misses = gen.eqCacheMisses() - m0;
         return c;
     }
 
@@ -1015,8 +1011,6 @@ public final class TerrainUpgradeProbe {
         ThreadMXBean tm = cpuBean();
         boolean cpuOk = tm != null;
         com.sun.management.ThreadMXBean sun = allocBean();
-        long h0 = gen.eqCacheHits();
-        long m0 = gen.eqCacheMisses();
         long cpu0 = cpuOk ? tm.getCurrentThreadCpuTime() : -1;
         long alloc0 = sun == null ? -1 : sun.getCurrentThreadAllocatedBytes();
         long[] lat = new long[pts.size()];
@@ -1058,8 +1052,8 @@ public final class TerrainUpgradeProbe {
         m.put("allocSupported", alloc >= 0);
         m.put("allocBytesTotal", alloc >= 0 ? alloc : null);
         m.put("allocBytesPerOp", alloc >= 0 && !pts.isEmpty() ? (double) alloc / pts.size() : null);
-        m.put("eqHitsDelta", gen.eqCacheHits() - h0);
-        m.put("eqMissesDelta", gen.eqCacheMisses() - m0);
+        m.put("eqHitsDelta", 0L);
+        m.put("eqMissesDelta", 0L);
         return m;
     }
 

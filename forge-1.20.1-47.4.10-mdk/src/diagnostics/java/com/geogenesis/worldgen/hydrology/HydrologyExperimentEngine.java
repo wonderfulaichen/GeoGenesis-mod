@@ -103,13 +103,12 @@ public final class HydrologyExperimentEngine {
             // 探针/无地形时保持 null ⇒ 退回无侵蚀 spill
         }
         // ★ 2026-09-22【侵蚀感知路由场】注入：修"河不贴谷"（路由场原为侵蚀前地形）。
-        //   用 peek（非阻塞）—— 绝不触发侵蚀 tile 冷生成，未缓存处退化为侵蚀前地形。
+        //   ★ 2026-11-12：原用 peekErosionDeltaE（"非阻塞窥探"），但该语义自 2026-11-06
+        //     旧 tile 管线删除后已不存在 —— 实现早已恒返回精确 delta（同一调用等价），
+        //     故这里直接调侵蚀增量入口，不再经由 Optional 包装。
         try {
             com.geogenesis.worldgen.hydrology.riverline.RiverLineNetwork.erosionDeltaProvider =
-                    (a, b) -> {
-                        java.util.OptionalDouble d = terrain.peekErosionDeltaE(a, b);
-                        return d.isPresent() ? d.getAsDouble() : Double.NaN;
-                    };
+                    (a, b) -> terrain.erosionDeltaE(a, b);
         } catch (RuntimeException ignore) {
             // 无侵蚀模块 ⇒ 保持 null（等同侵蚀前地形）
         }
