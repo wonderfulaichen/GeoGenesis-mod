@@ -1654,6 +1654,24 @@ task runP1CellRenderProbe(type: JavaExec) {
     }
 }
 
+// SimpleTectonics 纯 Java 复刻（2026-11-13）：形态基准，非生产、不进门禁。
+//   gradlew runTectReplicaProbe [-PprobeArgs="<outDir> <steps> <seed>"]
+//
+// 复刻参考/参考项目 SimpleTectonics（MIT）的主循环四阶段（碰撞俯冲/造山/生长/对流）
+// + CPU Voronoi（替代 GPU 深度缓冲）+ 单一 SplitMix64（替代 srand/rand + mt19937）。
+// 判据：同 seed 双跑 stateSha256 逐位一致；形态对拍 参考/SimpleTectonics/screenshots/。
+task runTectReplicaProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.tectreplica.TectReplicaProbe'
+    maxHeapSize = '2g'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        def outDir = layout.buildDirectory.dir('tectreplica').get().asFile
+        args = [outDir.absolutePath, '500']
+    }
+}
+
 task runWorldgenGate {
     group = 'verification'
     description = '世界生成门禁：只跑当前实�?ALL PASS 的判据型探针（任一 FAIL 即构建失败）'
