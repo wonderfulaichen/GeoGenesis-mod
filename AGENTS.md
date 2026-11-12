@@ -48,11 +48,12 @@ worldgenProfilerEveryChunks = 200   # 每 200 块打一次滚动汇总
 | `GeoGenesisMod.java` | `@Mod("geogenesis")` 入口，注册 CODEC；`onClientSetup` 注册预览配置屏 + 颜色重载监听 |
 | `GeoGenesisGenerator.java` | 主生成器。`fillFromNoise` 是地形产线入口；`ensureEngine` 注入共享地形到 BiomeSource；`applyCarvers` 调 `CaveCarver`；构造器注入 `VanillaDecorationFilter::filter`（剔除破坏岩层的原版装饰）；`spawnOriginalMobs` 委托原版 |
 | `worldgen/generator/VanillaDecorationFilter.java` | 注入给 `ChunkGenerator` 的**过滤版 `generationSettingsGetter`**：① 剔除 9 个会打散 `StratumField` 岩层的原版"岩块团块"特征；② `oreOverrideVanilla=true` 时额外剔除 18 个 `minecraft` 金属矿特征（零 Mixin）。⚠ **多模组兼容**：只剔 `minecraft` 命名空间 |
-| `worldgen/terrain/CellGenerator.java` | 统一连续场采样 + 实现 `HeightProvider` + 连续分类。★ 侵蚀 tile：`ERODE_TILE_CENTER=48 / BORDER=40 / SIZE=128`（大窗口跑模拟，只输出中心）|
-| `worldgen/terrain/TerrainCharacterField.java` | 类型场：规则网格 Voronoi 高斯权重（400wu 格、σ=200、7×7 窗口）。⚠ `WARP_AMP = 0.0`（曾启用 40，实机反馈河流/湖泊出问题已回退）|
-| `worldgen/terrain/StratumField.java` | 地层/岩性（纯数据层）|
-| `worldgen/terrain/TectonicField.java` + `TectonicDeformation.java` | 构造骨架（Voronoi 板块 + 连续加权投票应力）+ 形变（褶皱/断层）|
-| `worldgen/terrain/HeightCurve.java` | cubic Hermite Spline：`eFromC` / `heightFromE` |
+| `worldgen/terrain/CellGenerator.java` | 地形门面：`sample` 委派 `MorphCellAdapter`，`extractFromTile` 施加侵蚀增量。★ 侵蚀 tile：owner 48wu / halo 40（见 `process/TileGeometry.java`）。⚠ 本类**还挂着一整套未采样的死场**（构造/地层/气候/降水各一份 + 4 个气候噪声 + 空 eqCache），改那些**不会影响产出** —— 清单见 [`audit/GeoGenesis-模组结构核查-20261112.md`](audit/GeoGenesis-模组结构核查-20261112.md) §1.2 |
+| `worldgen/core/BaseWorldSampler.java` | ★ **真正的地形采样核心**：持有**唯一生产在用**的 `MorphTerrainSampler` / `TectonicField` / `StratumField` / `PrecipField` / `ClimateRegion`。⚠ 每世界有**两份实例**（`CellGenerator:244` 供 chunk 采样、`ProcessContext:72` 供侵蚀 B 输入）⇒ 改地形必须两份都覆盖 |
+| `worldgen/terrain/morph/**` | 陆地形态生产链：`MorphCatalog`(18 条目) + `MorphAssembly`(45 票槽/山形遮罩/台地覆盖) + `MorphLandField`(1024wu tile LRU) + `MorphOceanAssembler`(深海/陆架/岸段三段) + `MorphKernel`。**陆海高度都在这里产出** |
+| `worldgen/terrain/StratumField.java` | 地层/岩性（纯数据层）。生产实例在 `BaseWorldSampler:45`，不在 `CellGenerator` |
+| `worldgen/terrain/TectonicField.java` + `TectonicDeformation.java` | 构造骨架（Voronoi 板块 + 连续加权投票应力）。⚠ **构造当前对地形高度零贡献**：`elevationOffset` 只有探针调用，`CellGenerator.applyTectonicWeights` 零调用者。形变 `TectonicDeformation.offset` 同样未接生产 |
+| `worldgen/terrain/HeightCurve.java` | `e ↔ Y` 的唯一生产换算（`heightFromE`）。⚠ 陆侧吃 `verticalScale`（≈236 格/e），海侧不吃（127 格/e），两者不对称；预览另有两份复制实现 |
 | `worldgen/erosion/ErosionEngine.java` | 液滴水力侵蚀（SimpleHydrology 型，物质守恒）+ `cascadeLocal` 塌落 |
 | `worldgen/hydrology/**` | **水文：见 [`HYDROLOGY.md`](HYDROLOGY.md)**（生产两条链 / 正典规格 / 铁律）|
 | `worldgen/cave/CaveShape.java` + `CaveCarver.java` | 洞穴几何（零 MC 依赖纯函数）+ MC 适配器。三层配合：空腔 + 层调制 + 隧道 |
@@ -80,10 +81,14 @@ worldgenProfilerEveryChunks = 200   # 每 200 块打一次滚动汇总
 - `freeze_top_layer`（按群系温度铺雪 / 水面结冰）—— 与本项目海拔雪线互补，二者并存
 
 ### 已确认「必须自研」
-- 地形本体：`ContinentField` / `CellGenerator` / `TerrainCharacterField` / `TypeNoiseProvider` /
-  `HeightCurve` / `SeaBedDetail`
-- 地质系统：`StratumField` / `TectonicField` + `TectonicDeformation` / `LandFeatures` + `VolcanicShape`
-- 侵蚀 `ErosionEngine`（物理粒子，唯一生产路径）· 水文 `hydrology/*`
+- 地形本体：`ContinentField` / `MorphTerrainSampler`（`morph/**`：`MorphCatalog` + `MorphAssembly` +
+  `MorphLandField` + `MorphOceanAssembler`）/ `CellGenerator` / `HeightCurve`
+  > ⚠ **已删除**：`TerrainCharacterField`、`TypeNoiseProvider`、`TypeLandShape`、`SeaBedDetail`
+  > （连同整条样条链）随 legacy 地形链一并移除，现仅残留在注释与 `_archive/` 中。
+- 地质系统：`StratumField` / `TectonicField` + `TectonicDeformation`
+  > ⚠ `LandFeatures` / `OceanFeatures` / `VolcanicShape` 几何完整，但**全仓无 `new`（只在探针里构造）**
+  > ⇒ 火山、海山、洋中脊、火山弧、海沟**在生产中全部不存在**。属"未接线的半成品"，不是故障。
+- 侵蚀 `ErosionEngine`（物理粒子，唯一生产路径；入口 `process/ParticleTile.java`）· 水文 `hydrology/*`
   ⚠ 脊-谷条纹骨架 `RidgeValleyErosion` 已于 2026-11-06 按用户裁定暂停并归档到
   `_archive/ridge-skeleton/`（现状：生产只有粒子侵蚀，无骨架层）
 - 洞穴几何 `CaveShape` / `CaveCarver`（原版 carver 需 `NoiseChunk`，我们无 `NoiseSettings`）
@@ -97,6 +102,43 @@ worldgenProfilerEveryChunks = 200   # 每 200 块打一次滚动汇总
 - **接**：原版留空/默认处委托原版 API（例：`spawnOriginalMobs`；但 `applyCarvers` **接不了**）
 
 > **用户约束（2026-09-16）**：**不新建任何方块/物品** ⇒ 一切方案只用原版内容或删自研代码。
+
+## ★ 地形与类型系统的结构事实（2026-11-12 核查，动地形前必读）
+
+> 完整证据（含 `文件:行号`）见 [`audit/GeoGenesis-模组结构核查-20261112.md`](audit/GeoGenesis-模组结构核查-20261112.md)。
+> 此处只列**会让人改错地方的**五条。
+
+1. **构造对地形高度零贡献。** 陆地 `e = max(0.02 + covered×1.5, 0)` 全靠噪声配方
+   （`MorphLandField:246`）；海洋 `buildDeepOcean` 全靠 Perlin（`MorphOceanAssembler:109-128`）。
+   两条"构造→高度"通道都不在生产：`elevationOffset` 只有探针调，
+   `CellGenerator.applyTectonicWeights` **零调用者**。
+   ⇒ 「让构造决定地形」是**新建一层**，不是改现有层。
+   ⚠ 也**不要**用"加高程偏置"重做——`TectonicField:620-634` 记录它已因
+   **连锁增强地形雨**（最干桶 0.922→0.959）被否决。
+
+2. **`CellGenerator` 上挂着一整套死场**：`continent` / `tectonic` / `strata` / `deform` /
+   `precipField` / `climateRegion` / 4 个气候噪声 / 一张 131072 槽 `eqEntries`。
+   **全部构造、全部播种、全部不采样**。在那里改构造/地层/气候**完全不会生效**。
+   三个"开关" `TECTONIC_ENABLED` / `STRATA_ENABLED` / `DEFORM_ENABLED` 全仓**从未被读**。
+   生产实例一律在 `BaseWorldSampler`。
+
+3. **每世界有两份 `BaseWorldSampler`**（`CellGenerator:244` 供 chunk 采样、
+   `ProcessContext:72` 供侵蚀 B 输入），各带一整套 morph 链与独立 tile LRU。
+   ⇒ 任何地形改动**必须两份都覆盖**，否则侵蚀看到的地形 ≠ 最终地形。
+
+4. **类型与高度是"兄弟"不是"父子"**：`typeWeights` 与高度是同一份 Voronoi 权重的两个投影，
+   `MorphTerrainSampler:179` 明写"分类只提供语义，绝不反馈高度"。
+   ⇒ **不存在「类型→高度」的活路径**；要建新通道，不能复用 `typeWeights`。
+
+5. **海陆类型判据不同源**：海侧按 `e` 阈值（−0.08 / −0.18），陆侧按 Voronoi 权重 argmax
+   （**完全不读 `e`**）。⇒ 只统一高度不够，类型仍会在海岸带断裂。
+   另有第三、第四套"浅海"阈值（`sea()` 用块 −2/−9；落块层用绝对 Y）。
+
+**类型产出真相**：`TerrainClass` 17 个值，生产只产出 **7 个**
+（`OCEAN`/`DEEP_OCEAN`/`CONTINENTAL_SHELF`/`PLAIN`/`HILLS`/`PLATEAU`/`MOUNTAINS`）。
+其余 10 个（含 `RIVER`/`LAKE`/`BEACH`/`PEAK`/`BASIN`/`SNOW`/`VOLCANO`/`VOLCANIC_FIELD`/
+`SEAMOUNT`/`SUBMARINE_RIDGE`）**永不产出**，但下游仍有大量对应分支 ⇒ 修改时勿把它们当现状依据。
+根因：`Cell.landFeat` / `oceanFeat` 在 `MorphCellAdapter` **从未赋值**（生产恒 null）。
 
 ## ⛔ 地质系统硬约束（违反会导致「平行带」伪影，已回归三次）
 
