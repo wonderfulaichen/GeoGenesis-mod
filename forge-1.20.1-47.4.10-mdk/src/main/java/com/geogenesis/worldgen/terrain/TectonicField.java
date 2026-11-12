@@ -101,6 +101,7 @@ public final class TectonicField {
      * </ul>
      */
     private static final double BOUNDARY_REACH = 320.0;
+
     /**
      * 构造对地形类型权重的调制强度（汇聚造山 / 海沟，离散裂谷 / 洋脊）。
      *

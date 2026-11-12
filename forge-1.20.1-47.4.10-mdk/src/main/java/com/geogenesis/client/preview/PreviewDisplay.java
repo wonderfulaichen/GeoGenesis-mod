@@ -638,7 +638,10 @@ public class PreviewDisplay extends AbstractWidget {
     //       Prevents overlapping morphology from cutting another inlet's natural receiver.
     //       ★ 2026-11-07 用户实机视觉验收通过（同批实测启动进入世界 <3 分钟）⇒ 本条为定稿产出。
     //       仍有界：仅同盆认证湿域内改动，湖外普通河与骨架不变；非水力/泥沙模拟。
-    static final int CACHE_SCHEMA_VERSION = 129;
+    // 130 = 2026-11-13 桥接 S2：海床 deep 来源 Perlin→CrustField.eBase（构造均衡，
+    //       开关 geogenesis.crustOceanEBase 默认开）。海侧高度改变、陆侧逐位不变；
+    //       旧海床缓存必须失效。旧基准留档：P1 EXPECTED bea0a47c…（schema129）。
+    static final int CACHE_SCHEMA_VERSION = 130;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

@@ -1,7 +1,9 @@
 package com.geogenesis.worldgen.terrain.morph;
 
 import com.geogenesis.worldgen.terrain.ContinentField;
+import com.geogenesis.worldgen.terrain.CrustField;
 import com.geogenesis.worldgen.terrain.HeightCurve;
+import com.geogenesis.worldgen.terrain.TectonicField;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 
 /**
@@ -78,8 +80,22 @@ public final class MorphTerrainSampler {
     private final MorphAssembly assembly;
     private final MorphLandField land;
     private final ContinentField continent;
+    private final TectonicField tectonic;
     private final MorphOceanAssembler ocean;
     private final HeightCurve curve;
+
+    /**
+     * ★ 桥接 S2（2026-11-13）：深海基准开关——{@code true}（默认）时海床
+     * {@code deep} 来源从 Perlin 噪声切到 {@link CrustField}.eBase（构造物理量）；
+     * 仅 A/B 对照与回退时置 false。
+     *
+     * <p>开关四铁律自查：① {@code geogenesis.crustOceanEBase} 全仓只有本一处读取，
+     * 默认开（{@code !"false".equals} 惯用法，与 {@code geogenesis.baseSampleCache} 同款）；
+     * ② 一个属性只表达这一件事；③ 本注释与代码同源；④ 产出变更已升
+     * {@code PreviewDisplay.CACHE_SCHEMA_VERSION}（129→130）。</p>
+     */
+    private static final boolean CRUST_OCEAN_EBASE =
+            !"false".equals(System.getProperty("geogenesis.crustOceanEBase"));
 
     /**
      * @param seed  世界种子
@@ -112,9 +128,18 @@ public final class MorphTerrainSampler {
         this.continent = new ContinentField(params);
         this.continent.seed(seed);
 
+        // ★ 桥接 S2（2026-11-13）：构造场自持实例——与 BaseWorldSampler.tectonic 同种子，
+        //   确定性纯函数 ⇒ 两份实例逐位等价（R3 双 sampler 经同一构造路径自动覆盖）。
+        this.tectonic = new TectonicField(seed);
+
         // 深海噪声用 seed+3（正典口径）；近岸细节噪声用原 seed。
+        // ★ 桥接 S2：开关默认开时注入 CrustField.eBase（e 量纲）接管海床 deep 来源（A3：
+        //   三段剖面逐位保留，只换 deep）；null = 旧 Perlin 路径（A/B 与回退）。
         this.ocean = new MorphOceanAssembler(land::e, continent::sample, seed + OCEAN_SEED_OFFSET)
-                .enableCoastalDetail(seed);
+                .enableCoastalDetail(seed)
+                .withCrustEBase(CRUST_OCEAN_EBASE
+                        ? (x, z) -> CrustField.of(tectonic.sample(x, z)).eBase()
+                        : null);
 
         this.curve = new HeightCurve(params, minY, maxY);
     }

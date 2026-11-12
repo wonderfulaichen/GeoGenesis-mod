@@ -70,6 +70,12 @@ public final class MorphOceanAssembler {
     /** 大陆性采样器：可切换 FBM（生产）与 Voronoi 领地（候选）。 */
     private final EdgeSource edgeSource;
     private final MorphNoise.Node deepOcean;
+    /**
+     * ★ 桥接 S2（2026-11-13）：构造 eBase 源（<b>e 量纲</b>，&lt;0 = 海床）；
+     * {@code null} = 旧 Perlin 深海路径（开关 {@code geogenesis.crustOceanEBase} 关闭时，
+     * 供 A/B 对照与回退）。经 {@link #withCrustEBase} 注入。
+     */
+    private java.util.function.DoubleBinaryOperator crustEBase;
 
     /** 大陆性来源抽象：{@code c ∈ [−1,1]}。 */
     public interface EdgeSource {
@@ -89,6 +95,20 @@ public final class MorphOceanAssembler {
         this.edgeSource = source;
         int base = (int) (worldSeed ^ (worldSeed >>> 32));
         this.deepOcean = buildDeepOcean(base);
+    }
+
+    /**
+     * ★ 桥接 S2（2026-11-13）：注入构造 eBase 源（链式，与 {@link #enableCoastalDetail} 同款）。
+     *
+     * <p>传入非 null 后 {@link #deepBlocksRaw} 的深海段来源从 Perlin 噪声切到
+     * {@code CrustField.eBase}（构造物理量的均衡导出，A3：只换 deep、三段剖面逐位保留）；
+     * 传 {@code null} 回到旧路径。</p>
+     *
+     * @param eBase e 量纲构造基准（&lt;0 = 海床）；null = 旧路径
+     */
+    public MorphOceanAssembler withCrustEBase(java.util.function.DoubleBinaryOperator eBase) {
+        this.crustEBase = eBase;
+        return this;
     }
 
     /**
@@ -579,6 +599,15 @@ public final class MorphOceanAssembler {
     }
 
     private double deepBlocksRaw(double x, double z) {
+        if (crustEBase != null) {
+            // ★ 桥接 S2（2026-11-13）：深海基准 ← CrustField.eBase（e 量纲）→ 格
+            //   （海侧 BLOCKS_PER_E_SEA，与 {@link #e} 的换算同源）。
+            //   方案 §6 的 S2 近似：脊轴高地浅于陆架常数时钳到该常数——
+            //   保证三段剖面单调衔接（A3）；完整"脊轴浅于陆架"形态
+            //   在 S3/S4 用剖面图评估后再放开。
+            double e = crustEBase.applyAsDouble(x, z);
+            return Math.min(e * BLOCKS_PER_E_SEA, shallowBlocks());
+        }
         return MorphNoiseEval.precise(deepOcean, x, z);
     }
 

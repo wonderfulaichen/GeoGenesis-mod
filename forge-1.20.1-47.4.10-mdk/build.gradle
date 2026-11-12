@@ -1672,6 +1672,20 @@ task runTectReplicaProbe(type: JavaExec) {
     }
 }
 
+// 桥接 S2 标定探针（2026-11-13）：CrustField 物理量图/剖面/范式对比，仪表不进门禁。
+//   gradlew runCrustFieldProbe [-PprobeArgs="<toml> <outDir> [size] [cxB] [czB] [rB]"]
+task runCrustFieldProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.CrustFieldProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        def defaultToml = file('tools/p1-frozen-input.toml')
+        def outDir = layout.buildDirectory.dir('crustfield').get().asFile
+        args = [defaultToml.absolutePath, outDir.absolutePath]
+    }
+}
+
 task runWorldgenGate {
     group = 'verification'
     description = '世界生成门禁：只跑当前实�?ALL PASS 的判据型探针（任一 FAIL 即构建失败）'

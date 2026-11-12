@@ -16,8 +16,23 @@ import java.util.HexFormat;
 public final class P1CellRenderProbe {
     private static final long SEED = 9139912035078620160L;
     private static final int SIZE = 1401;
+    /**
+     * ★ 桥接 S2 重立基准（2026-11-13，终版 age 语义 = dist×divProx 组合式）：
+     * 海侧 deep 来源 Perlin→CrustField.eBase 后的全图 SHA（schema130）。
+     * 历史值：51c2626d…（初版 distDiv-age 语义，已被否决替换）；
+     * 旧基准（schema129，R0-0 冻结口径）= bea0a47c…，留档对照——
+     * 关开关（-Dgeogenesis.crustOceanEBase=false）可复现旧值（已实测）。
+     */
     private static final String EXPECTED =
-            "bea0a47c14d32fa9e2654c77cc6984999004e137e9e6bde8a05d3e2b2a393965";
+            "d87b8629bdc069aa975c0efbecb3abc756c5976e9ecd7cbd5815119789bca2ff";
+
+    /**
+     * ★ 桥接 S2（2026-11-13）：陆侧（e&gt;0 单元）高度 SHA——开关
+     * {@code geogenesis.crustOceanEBase} 切换前后必须逐位一致（S2 只动海侧）。
+     * 实测：开关关跑 = 开关开跑 = 本值（landCells=1259862 双跑一致）。
+     * 标定协议见 {@link #render}。
+     */
+    private static final String EXPECTED_LAND = "9e98ea93c4b322d619f6986997692520ec55b97137f4190535de466773b33a51";
 
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args[1]);
@@ -126,6 +141,10 @@ public final class P1CellRenderProbe {
 
     private static void render(GeoGenesisTerrain terrain, TerrainParams p, Path out) throws Exception {
         Path file = out.resolve("p1-cell-heights.f64be");
+        // ★ 桥接 S2（2026-11-13）：陆侧逐位不变的双断言——全图 SHA（海侧变更后=新基准）
+        //   与 陆侧 SHA（e>0 的单元，开关切换前后必须逐位一致）。
+        MessageDigest landDigest = MessageDigest.getInstance("SHA-256");
+        long landCells = 0;
         try (DataOutputStream s = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(file)))) {
             for (int j = 0; j < SIZE; j++) {
                 for (int i = 0; i < SIZE; i++) {
@@ -138,13 +157,23 @@ public final class P1CellRenderProbe {
                     for (double w : c.typeWeights) { require(w >= 0 && Double.isFinite(w), "weight"); sum += w; }
                     require(Math.abs(sum - 1) < 1e-6, "weight sum");
                     s.writeDouble(c.height);
+                    if (c.e > 0) {
+                        landCells++;
+                        landDigest.update(java.nio.ByteBuffer.allocate(8).putDouble(c.height).array());
+                    }
                 }
                 if (j % 200 == 0) System.out.println("P1 row=" + j);
             }
         }
         String sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
         System.out.println("productionCellSha=" + sha);
+        String landSha = HexFormat.of().formatHex(landDigest.digest());
+        System.out.println("landCells=" + landCells + " landCellSha=" + landSha);
         require(sha.equals(EXPECTED), "P1 height drift from verified P0");
+        // EXPECTED_LAND 为空 = 首次标定跑（先记值）；非空 = 断言陆侧逐位不变。
+        if (!EXPECTED_LAND.isEmpty()) {
+            require(landSha.equals(EXPECTED_LAND), "P1 LAND-side drift (S2 must keep land bit-identical)");
+        }
     }
 
     private static void checkChunks(GeoGenesisTerrain terrain, CellGenerator gen, TerrainParams p, Path out) throws Exception {
