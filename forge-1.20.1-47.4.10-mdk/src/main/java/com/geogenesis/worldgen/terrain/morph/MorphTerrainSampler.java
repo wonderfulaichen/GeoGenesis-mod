@@ -98,6 +98,34 @@ public final class MorphTerrainSampler {
             !"false".equals(System.getProperty("geogenesis.crustOceanEBase"));
 
     /**
+     * ★ 阶段二（2026-11-14）：陆缘剖面——<b>主动陆缘削减</b>的幅度（格）。
+     *
+     * <p>2200 地质米 × (127 格/e ÷ 11000 m/e) = 25.4 格：主动陆缘（俯冲带邻近）的
+     * 陆架控制点从 −7 格压到 ≈−32 格 ⇒ 海岸直接临 2~4km 深水（无陆架）。
+     * 被动陆缘（margin=0）保持 −7 格（地球陆架 <200m）。</p>
+     */
+    static final double ACTIVE_SHELF_DROP_BLOCKS = 2200.0 / 11000.0 * 127.0;
+
+    /**
+     * 主动陆缘因子 0~1：会聚（stress 正叶瓣）× 离边界近（distRaw 衰减）。
+     *
+     * <p>对照沙箱标定（audit 第十轮）：MARGIN_SCALE=90wu（≈640km，
+     * "离会聚边界一个陆壳宽度"）——曾取 260wu 覆盖大半个大陆 ⇒ 陆架全被削。</p>
+     */
+    static double marginFactor(TectonicField.Sample ts) {
+        double gate = smoothstep(0.25, 0.85, ts.stress());
+        double decay = Math.exp(-(ts.distRaw() * ts.distRaw()) / (90.0 * 90.0));
+        return gate * decay;
+    }
+
+    /** Hermite smoothstep（本地副本，与 CrustField/LithoPhysical 同式）。 */
+    private static double smoothstep(double e0, double e1, double x) {
+        double t = (x - e0) / Math.max(1e-9, e1 - e0);
+        t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    /**
      * @param seed  世界种子
      * @param params 地形参数（由 {@code GeoGenesisConfig.buildParams()} 或
      *               {@link TerrainParams#defaults()} 提供；本类不读配置、不持有静态状态）
@@ -137,8 +165,20 @@ public final class MorphTerrainSampler {
         //   三段剖面逐位保留，只换 deep）；null = 旧 Perlin 路径（A/B 与回退）。
         this.ocean = new MorphOceanAssembler(land::e, continent::sample, seed + OCEAN_SEED_OFFSET)
                 .enableCoastalDetail(seed)
-                .withCrustEBase(CRUST_OCEAN_EBASE
-                        ? (x, z) -> CrustField.of(tectonic.sample(x, z), x, z, seed).eBase()
+                .withCrustProfile(CRUST_OCEAN_EBASE
+                        ? (x, z) -> {
+                            var ts = tectonic.sample(x, z);
+                            var cs = CrustField.of(ts, x, z, seed);
+                            // 深海锚：平台模型 eBase（e 量纲）→ 格，钳到浅水锚之上（S2 近似保留）
+                            // 浅水锚：−7 格 − 主动陆缘削减（margin × 25.4 格 = 2200 地质米）
+                            //   margin = smoothstep(0.25,0.85,stress)·exp(−(distRaw/90)²)
+                            //   （阶段二陆缘剖面：主动陆缘没有陆架——海岸直接临 2~4km 深水）
+                            double shallowEff = MorphOceanAssembler.shallowBlocks()
+                                    - marginFactor(ts) * ACTIVE_SHELF_DROP_BLOCKS;
+                            double deep = Math.min(cs.eBase() * MorphOceanAssembler.BLOCKS_PER_E_SEA,
+                                    shallowEff);
+                            return new MorphOceanAssembler.CrustAnchors(deep, shallowEff);
+                        }
                         : null);
 
         this.curve = new HeightCurve(params, minY, maxY);

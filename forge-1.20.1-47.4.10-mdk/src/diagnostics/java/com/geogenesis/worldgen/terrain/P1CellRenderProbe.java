@@ -17,14 +17,15 @@ public final class P1CellRenderProbe {
     private static final long SEED = 9139912035078620160L;
     private static final int SIZE = 1401;
     /**
-     * ★ 阶段一重立基准（2026-11-14，洋底地质学）：海床基准 均衡式→平台模型年龄律
-     * {@code d=2500+3200·(1−e^(−t/70))} + 深海丘陵 + 轴部裂谷 + 海沟
-     * （开关 geogenesis.oceanPlateauModel 默认开；schema131）。
+     * ★ 阶段二重立基准（2026-11-14，陆缘剖面）：主动陆缘削减——会聚边界邻近
+     * 陆架控制点压深 2200 地质米（margin = smoothstep(0.25,0.85,stress)
+     * ·exp(−(distRaw/90)²)，schema132）。被动陆缘零变化、陆侧零变化。
      * 历史值：51c2626d…（初版 distDiv-age，已否决）；d87b8629…（schema130，
-     * 均衡式 eBase），关开关（-Dgeogenesis.oceanPlateauModel=false）可复现。
+     * 均衡式 eBase，关 geogenesis.oceanPlateauModel 可复现）；
+     * 10f50a68…（schema131，平台律+构造带）。
      */
     private static final String EXPECTED =
-            "10f50a688408a2faf0ae547ba912155d7bb31fb1adc5cd2284d3b88818d35704";
+            "c273a3bc88c01d5527872fcb82b665b081471f6826b3f6609c325534c59a7d99";
 
     /**
      * ★ 桥接 S2（2026-11-13）：陆侧（e&gt;0 单元）高度 SHA——开关

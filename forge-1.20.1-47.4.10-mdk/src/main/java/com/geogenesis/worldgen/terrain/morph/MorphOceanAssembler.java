@@ -61,7 +61,8 @@ public final class MorphOceanAssembler {
     /** 陆侧 e 到格：{@code HeightCurve} 陆侧斜率 ≈ 236 格/e。 */
     private static final double BLOCKS_PER_E_LAND = 236.0;
     /** 海侧 e 到格：海侧斜率 ≈ 127 格/e。 */
-    private static final double BLOCKS_PER_E_SEA = 127.0;
+    /** 海侧换算（格/e）——诊断探针与陆缘绑定共用同一口径（铁律 R7）。 */
+    public static final double BLOCKS_PER_E_SEA = 127.0;
 
     /** 海洋类型（供类型图着色）。 */
     public enum Sea { DEEP_OCEAN, SHALLOW_OCEAN, COAST, LAND }
@@ -71,11 +72,41 @@ public final class MorphOceanAssembler {
     private final EdgeSource edgeSource;
     private final MorphNoise.Node deepOcean;
     /**
-     * ★ 桥接 S2（2026-11-13）：构造 eBase 源（<b>e 量纲</b>，&lt;0 = 海床）；
-     * {@code null} = 旧 Perlin 深海路径（开关 {@code geogenesis.crustOceanEBase} 关闭时，
-     * 供 A/B 对照与回退）。经 {@link #withCrustEBase} 注入。
+     * ★ 阶段二（2026-11-14）：陆缘剖面绑定 —— 每点给出<b>深海锚 + 浅水锚</b>两个控制点。
+     * {@code null} = 旧 Perlin 深海路径（开关 {@code geogenesis.crustOceanEBase} 关闭时）。
+     * 经 {@link #withCrustProfile} 注入；{@link #withCrustEBase} 为兼容包装（浅水锚 = 常数）。
      */
-    private java.util.function.DoubleBinaryOperator crustEBase;
+    private CrustProfileFn crustProfile;
+
+    /**
+     * 陆缘剖面的两个控制点（格）：{@code deepBlocks}（深海锚，eBase×127 钳位）
+     * 与 {@code shallowBlocks}（陆架控制点，主动陆缘时被压深）。
+     */
+    public record CrustAnchors(double deepBlocks, double shallowBlocks) { }
+
+    /** 陆缘剖面绑定：一次调用给出该点的两个控制点（内部只做一次构造采样）。 */
+    @FunctionalInterface
+    public interface CrustProfileFn {
+        CrustAnchors at(double x, double z);
+    }
+
+    /**
+     * ★ 阶段二（2026-11-14）：注入陆缘剖面绑定（链式）。取代
+     * {@link #withCrustEBase}——eBase 与<b>陆架控制点</b>（主动陆缘削减）出自
+     * 同一次构造采样，分开注入会造成每点两次 {@code tectonic.sample}。
+     */
+    public MorphOceanAssembler withCrustProfile(CrustProfileFn fn) {
+        this.crustProfile = fn;
+        return this;
+    }
+
+    /** 兼容旧注入口：只给 eBase、陆架控制点用常数（margin = 0）。 */
+    public MorphOceanAssembler withCrustEBase(java.util.function.DoubleBinaryOperator eBase) {
+        this.crustProfile = (x, z) -> new CrustAnchors(
+                Math.min(eBase.applyAsDouble(x, z) * BLOCKS_PER_E_SEA, shallowBlocks()),
+                shallowBlocks());
+        return this;
+    }
 
     /** 大陆性来源抽象：{@code c ∈ [−1,1]}。 */
     public interface EdgeSource {
@@ -95,20 +126,6 @@ public final class MorphOceanAssembler {
         this.edgeSource = source;
         int base = (int) (worldSeed ^ (worldSeed >>> 32));
         this.deepOcean = buildDeepOcean(base);
-    }
-
-    /**
-     * ★ 桥接 S2（2026-11-13）：注入构造 eBase 源（链式，与 {@link #enableCoastalDetail} 同款）。
-     *
-     * <p>传入非 null 后 {@link #deepBlocksRaw} 的深海段来源从 Perlin 噪声切到
-     * {@code CrustField.eBase}（构造物理量的均衡导出，A3：只换 deep、三段剖面逐位保留）；
-     * 传 {@code null} 回到旧路径。</p>
-     *
-     * @param eBase e 量纲构造基准（&lt;0 = 海床）；null = 旧路径
-     */
-    public MorphOceanAssembler withCrustEBase(java.util.function.DoubleBinaryOperator eBase) {
-        this.crustEBase = eBase;
-        return this;
     }
 
     /**
@@ -305,8 +322,9 @@ public final class MorphOceanAssembler {
      * 因此改变 {@code cliffFactor} <b>不会移动岸线</b>，只改变崖/滩的形态。</p>
      */
     private double coastalProfile(double edge, double x, double z) {
-        double deep = deepBlocksRaw(x, z);
-        double shallow = shallowBlocks();
+        CrustAnchors anchors = crustAnchors(x, z);
+        double deep = anchors.deepBlocks();
+        double shallow = anchors.shallowBlocks();
 
         // 1) 深海 → 浅陆架：pow(a, 1.2) 非线性（参考 shelfFalloff）
         if (edge < cpShelf()) {
@@ -586,29 +604,31 @@ public final class MorphOceanAssembler {
 
     /** 深海段高度（保留参考原样，供 edge < shelfEnd 使用）。 */
     private double oceanBlocks(double edge, double x, double z) {
-        double shallow = shallowBlocks();
+        CrustAnchors anchors = crustAnchors(x, z);
+        double shallow = anchors.shallowBlocks();
         double coast = 0.0;
-        if (edge < CP_DEEP_OCEAN) return deepBlocksRaw(x, z);
+        if (edge < CP_DEEP_OCEAN) return anchors.deepBlocks();
         if (edge > cpAnchor()) return coast;
         if (edge < CP_SHALLOW_OCEAN) {
             double a = hermite((edge - CP_DEEP_OCEAN) / (CP_SHALLOW_OCEAN - CP_DEEP_OCEAN));
-            return lerp(deepBlocksRaw(x, z), shallow, a);
+            return lerp(anchors.deepBlocks(), shallow, a);
         }
         double a = hermite((edge - CP_SHALLOW_OCEAN) / Math.max(1e-6, cpAnchor() - CP_SHALLOW_OCEAN));
         return lerp(shallow, coast, a);
     }
 
-    private double deepBlocksRaw(double x, double z) {
-        if (crustEBase != null) {
-            // ★ 桥接 S2（2026-11-13）：深海基准 ← CrustField.eBase（e 量纲）→ 格
-            //   （海侧 BLOCKS_PER_E_SEA，与 {@link #e} 的换算同源）。
-            //   方案 §6 的 S2 近似：脊轴高地浅于陆架常数时钳到该常数——
-            //   保证三段剖面单调衔接（A3）；完整"脊轴浅于陆架"形态
-            //   在 S3/S4 用剖面图评估后再放开。
-            double e = crustEBase.applyAsDouble(x, z);
-            return Math.min(e * BLOCKS_PER_E_SEA, shallowBlocks());
+    /**
+     * 陆缘剖面绑定求值（每点一次）：null = 旧 Perlin 深海路径。
+     *
+     * <p>绑定里包含<b>主动陆缘削减</b>（浅水锚被压深）——见
+     * {@code MorphTerrainSampler} 的绑定构造与沙箱标定。</p>
+     */
+    private CrustAnchors crustAnchors(double x, double z) {
+        if (crustProfile == null) {
+            double deep = MorphNoiseEval.precise(deepOcean, x, z);
+            return new CrustAnchors(Math.min(deep, shallowBlocks()), shallowBlocks());
         }
-        return MorphNoiseEval.precise(deepOcean, x, z);
+        return crustProfile.at(x, z);
     }
 
     /** 陆地段高度（e）。 */

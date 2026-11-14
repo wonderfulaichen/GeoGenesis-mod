@@ -1667,6 +1667,20 @@ task runOceanFloorProbe(type: JavaExec) {
     }
 }
 
+// 陆缘剖面 A/B 对比图（2026-11-14 阶段二）：三状态（旧均衡式/平台律/加陆缘削减）
+//   同窗渲染 + 两张差值热图，供目检验收。只渲染、无 PASS/FAIL，不入门禁。
+//   产出 build/ocean-ab/ab-{A,B,C}.png 与 ab-diff-{BA,CB}.png。
+//   gradlew runOceanABProbe [-PprobeArgs="<size> <radius>"]
+task runOceanABProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.OceanABProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['700', '1750']
+    }
+}
+
 // SimpleTectonics 纯 Java 复刻（2026-11-13）：形态基准，非生产、不进门禁。
 //   gradlew runTectReplicaProbe [-PprobeArgs="<outDir> <steps> <seed>"]
 //

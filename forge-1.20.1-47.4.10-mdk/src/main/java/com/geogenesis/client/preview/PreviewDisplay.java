@@ -647,7 +647,13 @@ public class PreviewDisplay extends AbstractWidget {
     //       开关 geogenesis.oceanPlateauModel 默认开（false=旧均衡式 A/B）。
     //       海侧高度改变、陆侧逐位不变（P1 陆侧 SHA 断言）。旧基准留档：
     //       P1 EXPECTED d87b8629…（schema130）。
-    static final int CACHE_SCHEMA_VERSION = 131;
+    // 132 = 2026-11-14 阶段二（陆缘剖面）：主动陆缘削减——陆架控制点在会聚边界
+    //       邻近压深 2200 地质米（=25.4 格）：margin = smoothstep(0.25,0.85,stress)
+    //       ·exp(−(distRaw/90wu)²)（MorphTerrainSampler.marginFactor，与沙箱标定
+    //       MARGIN_SCALE=90wu 同口径）。被动陆缘（margin=0）零变化；陆地零变化。
+    //       MorphOceanAssembler 深浅锚由 CrustProfileFn 提供（CrustAnchors 双锚）。
+    //       旧基准留档：P1 EXPECTED 10f50a68…（schema131）。
+    static final int CACHE_SCHEMA_VERSION = 132;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

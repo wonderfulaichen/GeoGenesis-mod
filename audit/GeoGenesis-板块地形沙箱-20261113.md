@@ -1637,3 +1637,44 @@ D 量的是**2~32 格（25~400 km）尺度**上的弯曲密度。半岛机制给
   编译通过、门禁全绿、A/B 回退可用。
 - 沙箱→生产已落地：平台年龄律、深海丘陵、轴部裂谷、海沟。
 - 待落地：陆缘剖面（阶段二）、大陆形状（阶段三）、LEM 河谷（阶段四）。
+
+## 第十三轮（2026-11-14）：阶段二落地——陆缘剖面·主动陆缘削减
+
+### 落地内容
+
+主动陆缘（会聚边界邻近）的陆架控制点压深 2200 地质米（=25.4 格），
+海岸/岛弧直接临 2~4km 深水（马里亚纳/安第斯型）；被动陆缘零变化。
+
+margin = smoothstep(0.25, 0.85, stress) · exp(−(distRaw/90wu)²)
+（与沙箱标定 MARGIN_SCALE=90wu 同口径——曾试 260wu 覆盖大半个大陆 ⇒ 陆架全被削，见第十轮）
+
+| 文件 | 改动 |
+|---|---|
+| `MorphOceanAssembler.java` | `deepBlocksRaw` 换成 `CrustAnchors(deep, shallow)` 双锚 + `CrustProfileFn` 注入接口 + `crustAnchors(x,z)`；`withCrustEBase` 保留为兼容包装；`BLOCKS_PER_E_SEA` 转公开 |
+| `MorphTerrainSampler.java` | 绑定改为双锚：`shallowEff = shallowBlocks() − marginFactor(ts)·25.4`；新增 `marginFactor(ts)`（包内可见，探针同式复用）与 `ACTIVE_SHELF_DROP_BLOCKS` |
+| `PreviewDisplay.java` | 账本条目 + `CACHE_SCHEMA_VERSION` 131→**132** |
+| 新增 `OceanABProbe` | 三状态同窗 A/B/C 渲染 + 两张差值热图；**自动窗口搜索**（会聚边界穿窗 + 陆地占比 0.10~0.55）；build.gradle 任务 `runOceanABProbe` |
+| `P1CellRenderProbe` | 海侧 EXPECTED 10f50a68→`c273a3bc…`（历史值留档注释）；陆侧 9e98ea93 不变 |
+
+### 验证结果
+
+| 验证 | 结果 |
+|---|---|
+| P1 陆侧 SHA | **`9e98ea93…` 逐位一致** ✓ |
+| P1 海侧 SHA | 新基准 `c273a3bc…` ✓ |
+| TectonicContinuityProbe | **ALL PASS**（distRaw 最大逐点差 1.59wu）✓ |
+| OceanABProbe | 选窗 (16000,4000) 陆 0.52 maxMargin 1.00；C−B 1.2% 像素、最大 25 格（=削减量 25.4 格，对上）✓ |
+| 差值热图 | 左中弧形蓝带 = 岛弧/主动陆缘浅水压深带；其余海岸浅蓝渐变保留 = 被动陆缘 ✓ |
+| runWorldgenGate -x runCenterlineCrossSectionProbe | **BUILD SUCCESSFUL（rc=0 全绿）** ✓ |
+
+### 出图
+
+`C:/Users/qq274/gg-sand/`：ab-A（旧均衡式）/ ab-B（平台律+构造带）/ ab-C（+陆缘削减）/
+ab-diff-BA（阶段一变化：深海基准斑 + 轴谷/脊系细线 + Y 形三联点）/ ab-diff-CB（阶段二弧形削减带）。
+
+### 设计取舍
+
+- **阶段二不加回退开关**：削减直接接线在绑定闭包里；回退走 git 历史。
+  三态对比由 OceanABProbe 提供（同 JVM 内三份 CrustProfileFn 并跑）。
+- **窗口必须自动搜索**：主动陆缘削减只在会聚边界 ±90wu 生效，(0,0) 窗口
+  marginFactor 处处≈0 ⇒ C−B 仅 142 格（0.0%）——第一版图验证了搜索的必要性。
