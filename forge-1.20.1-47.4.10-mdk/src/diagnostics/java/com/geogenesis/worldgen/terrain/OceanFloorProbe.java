@@ -25,14 +25,20 @@ public final class OceanFloorProbe {
     /**
      * 抽查窗口（多窗口跑一次）：覆盖洋盆与陆块不同的区域，
      * 验证"陆地占比/深度分带"的窗口稳定性（用户 2026-11-14 要求）。
+     * ⚠ 2026-11-15（阶段三）：核链占据场波长 13500wu ⇒ 窗口必须 ≥1 个波长
+     * （radius 6750），否则整窗落在单一 occ 气候里（全陆或全海），统计无意义。
      */
     private static final long SEED = 9139912035078620160L;
     private static final double[][] WINDOWS = {
-            {0, 0}, {0, 6000}, {-8000, -8000}, {12000, 0}, {6000, 12000}, {-14000, 14000}};
+            {0, 0}, {0, 16000}, {-16000, -16000}, {22000, 0}, {16000, 22000}, {-26000, 26000}};
 
     public static void main(String[] args) {
-        int n = args.length > 0 ? Integer.parseInt(args[0]) : 600;
-        double radius = args.length > 1 ? Double.parseDouble(args[1]) : 1750.0;
+        // 参数口径 = [size, cx, cz, radius]（与 build.gradle/javadoc 一致）：
+        // cx/cz 非 0 时跑单窗口，否则跑 WINDOWS 多窗口体检
+        int n = args.length > 0 ? Integer.parseInt(args[0]) : 800;
+        double cx = args.length > 1 ? Double.parseDouble(args[1]) : 0;
+        double cz = args.length > 2 ? Double.parseDouble(args[2]) : 0;
+        double radius = args.length > 3 ? Double.parseDouble(args[3]) : 6750.0;
         long seed = 9139912035078620160L;
 
         MorphTerrainSampler sampler = new MorphTerrainSampler(seed,
@@ -46,8 +52,12 @@ public final class OceanFloorProbe {
         }
         System.out.println("  " + cb);
 
-        for (double[] w : WINDOWS) {
-            window(sampler, n, w[0], w[1], radius);
+        if (cx != 0 || cz != 0) {
+            window(sampler, n, cx, cz, radius);
+        } else {
+            for (double[] w : WINDOWS) {
+                window(sampler, n, w[0], w[1], radius);
+            }
         }
     }
 

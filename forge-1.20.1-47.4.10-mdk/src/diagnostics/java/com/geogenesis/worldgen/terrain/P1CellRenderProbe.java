@@ -17,23 +17,23 @@ public final class P1CellRenderProbe {
     private static final long SEED = 9139912035078620160L;
     private static final int SIZE = 1401;
     /**
-     * ★ 阶段二重立基准（2026-11-14，陆缘剖面）：主动陆缘削减——会聚边界邻近
-     * 陆架控制点压深 2200 地质米（margin = smoothstep(0.25,0.85,stress)
-     * ·exp(−(distRaw/90)²)，schema132）。被动陆缘零变化、陆侧零变化。
+     * ★ 阶段三重立基准（2026-11-15，大陆形状）：ContinentField 范式 FBM→结构核
+     * （椭圆核+地体+群/海道+四层域扭曲；开关 geogenesis.continentCores 默认开；
+     * schema133）。海岸线/陆格集合移动 ⇒ 双 SHA 重立。
      * 历史值：51c2626d…（初版 distDiv-age，已否决）；d87b8629…（schema130，
-     * 均衡式 eBase，关 geogenesis.oceanPlateauModel 可复现）；
-     * 10f50a68…（schema131，平台律+构造带）。
+     * 均衡式 eBase）；10f50a68…（schema131，平台律+构造带）；c273a3bc…（schema132，
+     * 主动陆缘削减），关 geogenesis.continentCores 可复现。
      */
     private static final String EXPECTED =
-            "c273a3bc88c01d5527872fcb82b665b081471f6826b3f6609c325534c59a7d99";
+            "671ecd94ebf611c78391aedb290c8d5ca6d931eb8a9951dcc2e8d678d0aa8321";
 
     /**
-     * ★ 桥接 S2（2026-11-13）：陆侧（e&gt;0 单元）高度 SHA——开关
-     * {@code geogenesis.crustOceanEBase} 切换前后必须逐位一致（S2 只动海侧）。
-     * 实测：开关关跑 = 开关开跑 = 本值（landCells=1259862 双跑一致）。
+     * ★ 阶段三重立（2026-11-15）：大陆形状替换移动海岸线 ⇒ 陆格集合变化
+     * （landCells 1259862→572862——P1 窗口在新大陆布局下的局部气候；
+     * 全域陆占比 0.339 由 ContinentAnchorProbe/OceanFloorProbe 守护）。
      * 标定协议见 {@link #render}。
      */
-    private static final String EXPECTED_LAND = "9e98ea93c4b322d619f6986997692520ec55b97137f4190535de466773b33a51";
+    private static final String EXPECTED_LAND = "9fffc819539cedeee277081b198869d9e23f4a2492dea0417d023f3f1327dbc3";
 
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args[1]);

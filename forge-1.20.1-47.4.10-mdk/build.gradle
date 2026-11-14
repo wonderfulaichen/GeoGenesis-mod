@@ -165,7 +165,13 @@ static String probeRelPath(String mainClass) {
 }
 
 tasks.withType(JavaExec).configureEach {
-    // �?类路径在【执行期】判定：此时 mainClass 一定已设置
+    // ★ 透传 geogenesis.* 系统属性（2026-11-15）：命令行 `-Dgeogenesis.xxx=false`
+    //   只进 daemon，不会自动到 JavaExec 的 JVM ⇒ 探针的回退开关（如
+    //   continentCores/oceanPlateauModel）静默失效。这里统一透传。
+    System.properties.findAll { it.key.startsWith('geogenesis.') }.each {
+        systemProperty it.key, it.value
+    }
+    // 类路径在【执行期】判定：此时 mainClass 一定已设置
     //   （配置期判定不可�?—�?configureEach 在任务定义之前注册，那时 mainClass 还是 null�?
     //     这正是第一版修复仍�?ClassNotFound 的原因）�?
     doFirst {
@@ -1663,7 +1669,20 @@ task runOceanFloorProbe(type: JavaExec) {
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
-        args = ['800', '0', '0', '1750']
+        args = ['800', '0', '0', '6750']
+    }
+}
+
+// 大陆形状标定对拍（2026-11-15 阶段三）：核链壳值分位 vs 沙箱锚 + 陆地占比。
+//   带判据（System.exit），但不入门禁（首次标定对拍工具；分位漂移时用于诊断重标）。
+//   gradlew runContinentAnchorProbe [-PprobeArgs="<range> <stepShell> <stepLand>"]
+task runContinentAnchorProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.ContinentAnchorProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['16000', '100', '50']
     }
 }
 
@@ -1677,7 +1696,7 @@ task runOceanABProbe(type: JavaExec) {
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
-        args = ['700', '1750']
+        args = ['700', '3000', '22000', '0']
     }
 }
 
@@ -1728,10 +1747,11 @@ task runWorldgenGate {
     // 支流分叉�?026-09-20 启用）：判据 = 循环真的执行 + 启用状态下必须有产出�?
     // 不加�?�?分叉日后被改坏（闸门/参数）会【静默】退化成"没有支流"，而门禁全绿�?
     dependsOn 'runForkFeasibilityProbe'
-    // 全周期链�?026-10）：四条判据均带 System.exit �?真门禁�?
-    //   �?判据 ④「水量收支」是【放大环守门】：湖↔河耦合曾每�?×5 几何发散
-    //     （ΣIn�?09 万、residual �?0.800），而当�?①②�?�?PASS、无任何判据能抓�?
-    //   反向验证：旧口径 14 �?�?Σ来水 8058× �?如实 FAIL / exit=1�?
+    // 全周期链（2026-10）：四条判据均带 System.exit = 真门禁。
+    //   ★ 判据 ④「水量收支」是【放大环守门】：湖↔河耦合曾每周 ×5 几何发散。
+    //   ★ 2026-11-15（阶段三）：默认窗口换到核链岛心 (41300,520) 块——旧正典中心
+    //     (-140,137) 在核链布局下落在大洋（streams 全入海）。窗口是 FBM 时代挑过的
+    //     「有河有湖」处，核链下等价重挑；判据阈值未动（实测 100%/100%）。
     dependsOn 'runLifecycleChainProbe'
     // 中心线距离场掩码�?026-10）：8 判据�?System.exit �?真门禁�?
     //   �?为什么要纳入：本�?RiverCenterlines 自身一字未改，但其【输入�?flux/channel)
@@ -2329,6 +2349,12 @@ task runLifecycleChainProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LifecycleChainProbe'
     maxHeapSize = '8g'
+    // ★ 2026-11-15（阶段三）：默认窗口换到核链大陆（wu(22043,-43) ≈ 块(44086,-86)）——
+    //   旧正典中心 (-140,137) 在核链布局下落在大洋（岛网 occ 结构变了）⇒ streams 全入海。
+    //   坐标口径与 ViewSpec 相同（块），radius 保持正典 700。
+    if (!project.hasProperty('probeArgs')) {
+        args = ['9139912035078620160', '41300', '520', '700', '300000']
+    }
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     }

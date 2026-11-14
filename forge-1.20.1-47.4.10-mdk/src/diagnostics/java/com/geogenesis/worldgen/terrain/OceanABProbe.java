@@ -10,20 +10,26 @@ import java.nio.file.Path;
 import java.util.Locale;
 
 /**
- * <b>陆缘剖面 A/B 对比图</b>——三个生产状态同窗渲染，供目检验收（2026-11-14）。
+ * <b>陆缘剖面 + 大陆形状 A/B 对比图</b>——四个生产状态同窗渲染，供目检验收。
  *
  * <ol>
  *   <li><b>A = 阶段0</b>：旧均衡式 eBase（buoyancy 公式）、无陆缘削减——生产在阶段一之前</li>
  *   <li><b>B = 阶段一</b>：平台模型年龄律 + 深海丘陵 + 轴谷 + 海沟、无陆缘削减</li>
  *   <li><b>C = 阶段二</b>：B + 主动陆缘削减（陆架控制点压深 2200 米）</li>
+ *   <li><b>D = 阶段三</b>：C 底座但大陆场换旧 FBM（显式 legacy 路径）——
+ *       D 与 B/C 的差 = 大陆形状（FBM→核+地体+四层扭曲）。</li>
  * </ol>
  *
- * <p>三条链共享同一个 {@link MorphLandField} / {@link ContinentField} / {@link TectonicField}
- * （确定性纯函数，与生产 MorphTerrainSampler 内部实例逐位等价），只替换
- * {@link MorphOceanAssembler} 的陆缘剖面绑定 ⇒ A/B 差异<b>全部来自洋底模型</b>。</p>
+ * <p>⚠ 2026-11-15（阶段三）起共享底座的 continent 是<b>核链</b>（生产开关默认开）；
+ * A/B/C 三态的历史 diff 语义不变，但底座形状已换。D 态经
+ * {@code ContinentField(params, true)} 显式走旧 FBM（探针专用构造器，非开关）。</p>
+ *
+ * <p>三条链共享同一个 {@link MorphTerrainSampler}（其 land/continent 层与生产逐位等价），
+ * 只替换 {@link MorphOceanAssembler} 的陆缘剖面绑定 ⇒ A/B 差异<b>全部来自洋底模型</b>。
+ * TectonicField 用同种子独立实例（确定性纯函数 ⇒ 与采样器内部逐位等价）。</p>
  *
  * <p>产出（固定写 {@code build/ocean-ab/}，经 {@link #safeFile} 规范化校验）：
- * {@code ab-A.png / ab-B.png / ab-C.png / ab-diff-BA.png / ab-diff-CB.png}。</p>
+ * {@code ab-A/B/C/D.png / ab-diff-BA/CB/DB.png}。</p>
  */
 public final class OceanABProbe {
 
@@ -34,6 +40,10 @@ public final class OceanABProbe {
         int n = args.length > 0 ? Integer.parseInt(args[0]) : 700;
         double radius = args.length > 1 ? Double.parseDouble(args[1]) : 1750.0;
         long seed = 9139912035078620160L;
+        // 可选第 3/4 参：固定窗口中心（诊断用，跳过自动搜索）
+        boolean fixedWindow = args.length > 3;
+        double fixedCx = fixedWindow ? Double.parseDouble(args[2]) : 0;
+        double fixedCz = fixedWindow ? Double.parseDouble(args[3]) : 0;
 
         // 共享层：与生产 MorphTerrainSampler 同构造路径 ⇒ land/continent 逐位等价；
         // TectonicField 是确定性纯函数（同种子）⇒ 与 sampler 内部实例逐位等价
@@ -43,7 +53,9 @@ public final class OceanABProbe {
         TectonicField tectonic = new TectonicField(seed);
 
         // ---- 窗口搜索：主动陆缘削减只在「会聚边界穿窗」处生效 ⇒ 必须先找到这样的窗口 ----
-        double[] win = findWindow(smp, tectonic, radius);
+        double[] win = fixedWindow
+                ? new double[]{fixedCx, fixedCz, 0, 0}
+                : findWindow(smp, tectonic, radius);
         double cx = win[0], cz = win[1];
         System.out.printf(Locale.ROOT,
                 "[window] center (%.0f, %.0f)  landFrac %.2f  maxMargin %.2f%n",
@@ -87,9 +99,17 @@ public final class OceanABProbe {
         MorphOceanAssembler asmC = new MorphOceanAssembler(land::e, continent::sample, seed + 3)
                 .enableCoastalDetail(seed).withCrustProfile(fnC);
 
+        // D = 阶段三（大陆核链）：与 B/C 同底座但大陆场换旧 FBM（显式 legacy 路径）
+        // ⇒ diff-D vs B = 大陆形状变化（FBM→核+地体+四层扭曲）
+        ContinentField continentFbm = new ContinentField(TerrainParams.defaults(), true);
+        continentFbm.seed(seed);
+        MorphOceanAssembler asmD = new MorphOceanAssembler(land::e, continentFbm::sample, seed + 3)
+                .enableCoastalDetail(seed).withCrustProfile(fnC);
+
         double[][] hA = new double[n][n];
         double[][] hB = new double[n][n];
         double[][] hC = new double[n][n];
+        double[][] hD = new double[n][n];
         for (int j = 0; j < n; j++) {
             double wz = cz - radius + 2 * radius * j / (n - 1);
             for (int i = 0; i < n; i++) {
@@ -97,20 +117,24 @@ public final class OceanABProbe {
                 hA[j][i] = asmA.e(wx, wz);
                 hB[j][i] = asmB.e(wx, wz);
                 hC[j][i] = asmC.e(wx, wz);
+                hD[j][i] = asmD.e(wx, wz);
             }
         }
 
         render(hA, n, radius, "ab-A.png", "A = stage0 (old isostasy)");
         render(hB, n, radius, "ab-B.png", "B = stage1 (plateau age law)");
         render(hC, n, radius, "ab-C.png", "C = stage2 (active margin shelf cut)");
+        render(hD, n, radius, "ab-D.png", "D = stage3 (continent cores, legacy FBM shape)");
 
-        // 差值热力图（B−A = 阶段一变化；C−B = 阶段二变化）
+        // 差值热图（B−A = 阶段一变化；C−B = 阶段二变化；D−B = 阶段三形状变化）
         renderDiff(hB, hA, "ab-diff-BA.png", "diff B-A (stage 1)");
         renderDiff(hC, hB, "ab-diff-CB.png", "diff C-B (stage 2)");
+        renderDiff(hD, hB, "ab-diff-DB.png", "diff D-B (stage 3 continent shape)");
 
         // 统计：变化幅度
         statDiff(hB, hA, "B-A (stage 1)");
         statDiff(hC, hB, "C-B (stage 2)");
+        statDiff(hD, hB, "D-B (stage 3)");
     }
 
     /**

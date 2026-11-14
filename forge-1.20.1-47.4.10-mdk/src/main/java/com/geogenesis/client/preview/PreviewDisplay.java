@@ -653,7 +653,16 @@ public class PreviewDisplay extends AbstractWidget {
     //       MARGIN_SCALE=90wu 同口径）。被动陆缘（margin=0）零变化；陆地零变化。
     //       MorphOceanAssembler 深浅锚由 CrustProfileFn 提供（CrustAnchors 双锚）。
     //       旧基准留档：P1 EXPECTED 10f50a68…（schema131）。
-    static final int CACHE_SCHEMA_VERSION = 132;
+    // 133 = 2026-11-15 阶段三（大陆形状）：ContinentField 范式 FBM→结构核——
+    //       椭圆核晶格（间距 2100wu@scale4000、半径 630~1875、拉伸≤1.8）+ 地体增置
+    //       （3~5 个/核，径向/切向 50/50，凸出至 1.45 半轴）+ 大陆群/群间海道
+    //       + 四层域扭曲（1050/360/120/36wu，位移/波长≈0.26-0.29，位移式非叠加）。
+    //       壳值→c 用沙箱标定锚 {-2.153,-0.182,0.073,0.180,0.975} 四段映射
+    //       （全域同比例 ×1.5 ⇒ 分布与沙箱一致，锚沿用；ContinentAnchorProbe 对拍）。
+    //       开关 geogenesis.continentCores 默认开（false=旧 FBM，可复现 schema132
+    //       基准 c273a3bc…）。海岸线/陆格集合/岸带高度改变 ⇒ P1 双 SHA 重立；
+    //       陆地山体配方（MorphLandField）不读 c，零改动。
+    static final int CACHE_SCHEMA_VERSION = 133;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
