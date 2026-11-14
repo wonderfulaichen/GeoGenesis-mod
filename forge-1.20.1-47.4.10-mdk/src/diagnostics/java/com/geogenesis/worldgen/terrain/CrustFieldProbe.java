@@ -72,7 +72,7 @@ public final class CrustFieldProbe {
                 double bz = czB - rB + (double) j / (size - 1) * 2 * rB;
                 double wx = bx / hs, wz = bz / hs;
                 TectonicField.Sample ts = tect.sample(wx, wz);
-                CrustField.Sample cs = CrustField.of(ts);
+                CrustField.Sample cs = CrustField.of(ts, wx, wz, 9139912035078620160L);
 
                 thickness[j][i] = cs.thickness();
                 density[j][i] = cs.density();
@@ -120,7 +120,7 @@ public final class CrustFieldProbe {
         for (int j = 0; j < gcN; j++) {
             for (int i = 0; i < gcN; i++) {
                 double wx = -globalR + i * gStep, wz = -globalR + j * gStep;
-                CrustField.Sample cs = CrustField.of(tect.sample(wx, wz));
+                CrustField.Sample cs = CrustField.of(tect.sample(wx, wz), wx, wz, 9139912035078620160L);
                 if (cs.eBase() > 0) landC++;
                 double tA = 0.20 + 0.35 * cs.age();
                 double eA = (tA * (0.95 - 0.62) - 0.12) * 3.9;   // A'：密度恒 0.62
@@ -139,7 +139,7 @@ public final class CrustFieldProbe {
         for (int j = 0; j < gSize; j++) {
             for (int i = 0; i < gSize; i++) {
                 double wx = -globalR + i * gMapStep, wz = -globalR + j * gMapStep;
-                CrustField.Sample cs = CrustField.of(tect.sample(wx, wz));
+                CrustField.Sample cs = CrustField.of(tect.sample(wx, wz), wx, wz, 9139912035078620160L);
                 gC[j][i] = cs.eBase();
                 double tA = 0.20 + 0.35 * cs.age();
                 gA[j][i] = (tA * (0.95 - 0.62) - 0.12) * 3.9;

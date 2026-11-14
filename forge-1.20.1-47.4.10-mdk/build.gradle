@@ -1654,6 +1654,19 @@ task runP1CellRenderProbe(type: JavaExec) {
     }
 }
 
+// 洋底体检（2026-11-14 阶段一）：从生产 MorphTerrainSampler 取整幅洋深，
+//   报深度分带/双尺度粗糙度/剖面线，对照地球数值。只报告、无 PASS/FAIL，不入门禁。
+//   gradlew runOceanFloorProbe [-PprobeArgs="<size> <cx> <cz> <radius>"]
+task runOceanFloorProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.OceanFloorProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['800', '0', '0', '1750']
+    }
+}
+
 // SimpleTectonics 纯 Java 复刻（2026-11-13）：形态基准，非生产、不进门禁。
 //   gradlew runTectReplicaProbe [-PprobeArgs="<outDir> <steps> <seed>"]
 //

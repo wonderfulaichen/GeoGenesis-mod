@@ -1581,3 +1581,59 @@ D 量的是**2~32 格（25~400 km）尺度**上的弯曲密度。半岛机制给
    层，但"位移/波长"比 0.29 的自相似谱天然给出 D≈1.0 附近；地球的 D=1.2+ 来自
    **结构化**过程（河谷下切、三角洲、海蚀崖的定向侵蚀），不是各向同性噪声能给的。
    ⇒ 推 D 的正道是提高 `applyCoastalLandforms` 里河谷/峡湾的**密度与长度**。
+
+---
+
+## 2026-11-14 第十二轮：阶段一落地——洋底基准接入生产（commit 待填）
+
+沙箱收口后开始落地生产。**阶段一 = 洋底基准**（风险最低：海洋侧改动不碰陆地）。
+
+### 生产链路的接入点（探索确认）
+
+洋深链：`MorphTerrainSampler.java:140-142` 注入 `CrustField.of(ts).eBase()`（开关
+`geogenesis.crustOceanEBase` 默认开）→ `MorphOceanAssembler.deepBlocksRaw:601-612`
+（×127 blocks/e，`min(…,-7)` 浅水钳位）。
+
+**关键机会**：生产 `CrustField.of:139-184` 已算出连续 `age ∈ [0,1]`
+（`smoothstep(dist 120→900wu)` × stress 离散掩码 `divProx`）
+——**不需要重试被否决的 distDiv**（CrustField.java:85-92 否决记录），
+平台模型直接吃现有 age 场。
+
+### 改动
+
+| 文件 | 改动 |
+|---|---|
+| `TectonicField.java` | `Sample` 增列 `distRaw`（blur 前的未平滑距离）。窄特征（轴谷 8.5wu/海沟 17wu）会被 blur(R=150wu) 抹掉，必须用未平滑值 |
+| `CrustField.java` | `of(ts,wx,wz,seed)`：新 eBase = 平台年龄律 + 深海丘陵(±100m/45wu) + 轴谷(−1400m/8.5wu) + 海沟(−3600m/17wu, stress 门控)。门控 `geogenesis.oceanPlateauModel`（默认开，单读取点）。碰撞 κ → 陆架锚 lerp。旧均衡式保留为 A/B 回退 |
+| `PreviewDisplay.java` | 账本条目 + `CACHE_SCHEMA_VERSION` 130→**131** |
+| `MorphTerrainSampler.java:140-142` | 调用点传 `x,z,seed` |
+| 诊断 | P1 新海侧 SHA；TectonicContinuityProbe 增 distRaw 断言；新增 `OceanFloorProbe`（多窗口洋底体检）+ build.gradle 任务 |
+
+### 验证结果
+
+| 验证 | 结果 |
+|---|---|
+| P1 陆侧 SHA | **`9e98ea93…` 与基准逐位一致** ⇒ 陆地逐位不变 ✓ |
+| P1 海侧 SHA | 新基准 `10f50a68…`（旧 `d87b8629…` 留档）✓ |
+| A/B 回退 | `-Dgeogenesis.oceanPlateauModel=false` → 精确复现旧基准 `d87b8629…` ✓ |
+| TectonicContinuityProbe | **ALL PASS**（含 distRaw：最大逐点差 1.59wu < 2.2 合法界）✓ |
+| `runWorldgenGate -x runCenterlineCrossSectionProbe` | **rc=0 全绿** ✓（config-key-guard 确认新开关被生产读取） |
+| OceanFloorProbe (0,0) | 陆 0.339；洋深 4~5km 带 45.4%、p50 −3923 m ✓ |
+
+### 重要发现：生产大陆尺度比沙箱大 3 倍
+
+多窗口抽查时发现远窗口"全陆/全 shore"：生产 `continentScale=4000` 格（大陆波长
+2000wu=14300km）vs 沙箱核 700wu ⇒ 3500wu 的窗口经常整窗落在一块大陆/一种岸段内。
+这是**生产与沙箱的尺度差**（沙箱核间距 700wu 是生产 2000wu 的 1/3），
+不是缺陷——但意味着：
+1. 沙箱标定的"每窗口深度分带"在生产上只在**跨海岸窗口**可比（(0,0) 窗口实测
+   4~5km 带 45.4% ✓）。
+2. 阶段三（大陆核落地）时核间距/半径要用生产尺度换算，不能照抄沙箱 700wu。
+3. "陆架宽度 188km"等沙箱指标在生产上待阶段二复测。
+
+### 状态
+
+- 生产 src/main：TectonicField/CrustField/MorphTerrainSampler/PreviewDisplay 四处改动，
+  编译通过、门禁全绿、A/B 回退可用。
+- 沙箱→生产已落地：平台年龄律、深海丘陵、轴部裂谷、海沟。
+- 待落地：陆缘剖面（阶段二）、大陆形状（阶段三）、LEM 河谷（阶段四）。

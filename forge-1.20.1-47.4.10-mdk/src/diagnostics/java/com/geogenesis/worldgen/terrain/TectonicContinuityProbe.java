@@ -52,10 +52,16 @@ public final class TectonicContinuityProbe {
         // ================= [1] dist / 切向 连续性 =================
         //   沿 z 固定的多条扫描线，以 1wu 细步遍历，统计逐点跳变。
         double maxDistJump = 0, maxDistJumpAll = 0, maxTanJump = 0;
+        // ★ 2026-11-14 阶段一：distRaw（blur 前的未平滑距离）连续性。
+        //   平台模型年龄律的轴谷(8.5wu)/海沟(17wu)窄带构造消费 distRaw，
+        //   必须与 dist 同样处处连续。合法跳变界与 dist 相同（同几何量）。
+        double maxRawJump = 0, maxRawJumpAll = 0;
+        int rawJumps = 0;
         int distJumps = 0, tanJumps = 0, n = 0;
         double jumpX = 0, jumpZ = 0;
         for (double z0 = -8000; z0 <= 8000; z0 += 1237) {
             double prevDist = Double.NaN, prevTx = Double.NaN, prevTz = Double.NaN;
+            double prevRaw = Double.NaN;
             for (double x = -8000; x <= 8000; x += 1.0) {
                 TectonicField.Sample s = tf.sample(x, z0);
                 if (!Double.isNaN(prevDist)) {
@@ -72,6 +78,14 @@ public final class TectonicContinuityProbe {
                             if (dJump > maxDistJump) { maxDistJump = dJump; jumpX = x; jumpZ = z0; }
                         }
                     }
+                    if (prevRaw < 1e6 && s.distRaw() < 1e6) {
+                        double rJump = Math.abs(s.distRaw() - prevRaw);
+                        if (rJump > maxRawJumpAll) maxRawJumpAll = rJump;
+                        if (rJump > DIST_JUMP_EPS) {
+                            rawJumps++;
+                            if (rJump > maxRawJump) maxRawJump = rJump;
+                        }
+                    }
                     if (prevDist < 1e6 && s.dist() < 1e6) {
                         double tJump = 1.0 - Math.abs(prevTx * s.tangentX() + prevTz * s.tangentZ());
                         if (tJump > TANGENT_JUMP_EPS) tanJumps++;
@@ -79,20 +93,23 @@ public final class TectonicContinuityProbe {
                     }
                 }
                 prevDist = s.dist(); prevTx = s.tangentX(); prevTz = s.tangentZ();
+                prevRaw = s.distRaw();
             }
         }
         System.out.printf("[1] 连续性(n=%d): dist 跳变(>%.1fwu)=%d 最大=%.2fwu @(%.0f,%.0f)%n",
             n, DIST_JUMP_EPS, distJumps, maxDistJump, jumpX, jumpZ);
         System.out.printf("                生产路径 dist 真实最大逐点差=%.2fwu（域扭曲合法上界≈2.07，见阈值注释）%n",
             maxDistJumpAll);
+        System.out.printf("                distRaw 跳变(>%.1fwu)=%d 最大=%.2fwu 最大逐点差=%.2fwu%n",
+            DIST_JUMP_EPS, rawJumps, maxRawJump, maxRawJumpAll);
         System.out.printf("                切向跳变(>%.2f)=%d 最大=%.4f （仅观察，见下）%n",
             TANGENT_JUMP_EPS, tanJumps, maxTanJump);
         // 判据只看 dist：它被 T1(权重调制,经 gaussian)、T5(形变,经 floor/decay) 直接消费，
         //   必须连续。
         // 切向【不作判据】：修复后 T2(chain) 与 T5(形变) 均改用连续的 alongCoord，
         //   切向已不被任何消费者使用（配对切换时的残余跳变因此无实际影响）。
-        boolean pass1 = distJumps == 0;
-        System.out.printf("    dist 应处处连续: %s%n", pass1 ? "PASS" : "FAIL（存在不连续 → 伪影根因）");
+        boolean pass1 = distJumps == 0 && rawJumps == 0;
+        System.out.printf("    dist/distRaw 应处处连续: %s%n", pass1 ? "PASS" : "FAIL（存在不连续 → 伪影根因）");
 
         // ================= [2] 形变偏移连续性 =================
         //   合法的"跳变"只应出现在断层块边界（floor(dist) 阶跃处）。

@@ -112,6 +112,66 @@ public final class CrustField {
      */
     static final double BUOYANCY_SEA_LEVEL = 0.12;
 
+    // ============================================================ 阶段一：洋底基准——平台模型年龄律 + 洋底构造带
+    //
+    // ★ 2026-11-14（阶段一落地）：均衡式 eBase 换成<b>平台模型年龄律 + 三项洋底构造带</b>。
+    //   沙箱标定全记录：audit/GeoGenesis-板块地形沙箱-20261113.md 第五/八/九轮
+    //   （commit a686478 的 tectonicsand 包是设计与验收基准）。
+    //
+    //   标定目标（沙箱 1000² 实测 vs 地球）：
+    //   · 洋深 p50 −3929 m（地球 −3880）✓
+    //   · 4~5 km 主带 45.3%（地球 45%）✓
+    //   · 深海丘陵：25 km 尺度坡度从 2.1 提到 3+ m/km（地球同尺度 2~4）✓
+    //
+    //   ⚠ 旧均衡式（thickness/density → buoyancy → eBase）在
+    //     {@code geogenesis.oceanPlateauModel=false} 时完整保留（A/B 回退）。
+    //     thickness/density/buoyancy 物理层<b>照常计算</b>——岩性层仍消费它们。
+
+    /** 海平面（e=0）到陆架坡折的锚深：−160 m（参考阶梯的陆架顶）。 */
+    static final double SHELF_ANCHOR_M = -160.0;
+    /** 洋底"米 → e"换算：与沙箱同一口径（1 e = 11000 地质米）。 */
+    static final double METERS_PER_E = 11000.0;
+
+    /** 平台模型：脊顶深度 D0（m）。地幔潜能温度决定，全球普遍 −2500 m。 */
+    static final double AGE_D0_M = 2500.0;
+    /** 平台模型：平台深度 Dinf（m）。老年洋底渐近值。 */
+    static final double AGE_DINF_M = 5700.0;
+    /** 平台模型：时间常数 τ（Ma）。 */
+    static final double AGE_TAU_MA = 70.0;
+    /**
+     * 年龄上限（Ma）。沙箱三档实测（90/140/200）：90 时 4~5 km 主带 45.3%（地球 45%）、
+     * p50 −3929（地球 −3880）——唯一同时对上主带与中位数的档。
+     */
+    static final double AGE_TMAX_MA = 90.0;
+    /** 离散边界处 age 的清零语义 ⇒ t = age·TMAX：age=0（脊轴）↔ t=0。 */
+    static final double PLATEAU_T_SCALE = AGE_TMAX_MA;
+
+    /** 深海丘陵幅度（m）：50~300 m 实有地形；波长 45wu（≈320 km）基波 + 3 倍频（最细 80 km）。 */
+    static final double ABYSS_HILLS_M = 100.0;
+    static final double ABYSS_HILL_SCALE = 45.0;
+    /** 轴部裂谷：深度（m）与宽度（wu）。慢速扩张脊标配（1~2 km 深、20~50 km 宽）。 */
+    static final double RIFT_AXIAL_M = 1400.0;
+    static final double RIFT_AXIAL_WU = 8.5;
+    /** 海沟：深度（m）与宽度（wu）。洋-洋俯冲全球最深（−8000~−11000 m）。 */
+    static final double TRENCH_M = 3600.0;
+    static final double TRENCH_WU = 17.0;
+    /** 海沟的汇聚门：stress 高于 0.35 开始成形、0.80 全量（连续投票场，无离散分支）。 */
+    static final double TRENCH_STRESS_LO = 0.35;
+    static final double TRENCH_STRESS_HI = 0.80;
+
+    /**
+     * 洋底模型开关（阶段一）：默认开，A/B 回退 = 旧均衡式。
+     *
+     * <p>单读取点（铁律 ①）；改动产出的缓存版本已随本提交升级
+     * （PreviewDisplay.CACHE_SCHEMA_VERSION 130→131）。</p>
+     */
+    static final boolean OCEAN_PLATEAU_MODEL =
+            !"false".equals(System.getProperty("geogenesis.oceanPlateauModel"));
+
+    private static final long SALT_HILLS = 0x51B7C3A9E24D6081L;
+    private static final long HILL_SEED_MIX = 0x9E3779B97F4A7C15L;
+
+
     // ============================================================ 采样结果
 
     /**
@@ -133,10 +193,13 @@ public final class CrustField {
     /**
      * 由构造采样计算地壳物理量与 eBase。
      *
-     * @param ts 构造场采样（用连续量 {@code dist} / {@code stress}；
-     *           禁用离散 {@code btype}/{@code rate}——铁律）
+     * @param ts   构造场采样（用连续量 {@code dist}/{@code distRaw}/{@code stress}；
+     *             禁用离散 {@code btype}/{@code rate}——铁律）
+     * @param wx   世界坐标 x（深海丘陵噪声用）
+     * @param wz   世界坐标 z
+     * @param seed 世界种子（丘陵噪声键控，随世界变化）
      */
-    public static Sample of(TectonicField.Sample ts) {
+    public static Sample of(TectonicField.Sample ts, double wx, double wz, long seed) {
         double stress = ts.stress();
 
         // ---- 1) 年龄 = "到任意边界距离的老化" × "离散邻近度掩码" ----
@@ -176,9 +239,44 @@ public final class CrustField {
             density = DENSITY_CONTINENTAL;
         }
 
-        // ---- 5) 均衡（S1 正统式）+ eBase 导出 ----
+        // ---- 5) 均衡（S1 正统式）——物理层照常算，岩性层仍消费 ----
         double buoyancy = thickness * (DENSITY_MANTLE - density);
-        double eBase = (buoyancy - BUOYANCY_SEA_LEVEL) * E_PER_BUOYANCY_SEA;
+        double buoyE = (buoyancy - BUOYANCY_SEA_LEVEL) * E_PER_BUOYANCY_SEA;
+
+        // ---- 6) eBase 导出：平台模型（默认）/ 旧均衡式（A/B 回退）----
+        double eBase;
+        if (OCEAN_PLATEAU_MODEL) {
+            // 平台模型年龄律：t = age·TMAX，深度随年龄加深并封顶（见常量注释）
+            double tMa = Math.max(0.0, age) * PLATEAU_T_SCALE;
+            double deepM = AGE_D0_M + (AGE_DINF_M - AGE_D0_M)
+                    * (1.0 - Math.exp(-tMa / AGE_TAU_MA));
+            double e = -(deepM / METERS_PER_E);
+            // 碰撞陆化：κ→1 时把洋底基准抬到陆架锚（海岸线由 morph 层决定）
+            e = e + (SHELF_ANCHOR_M / METERS_PER_E - e) * kappa;
+
+            // 深海丘陵：10~100 km 尺度的实有洋底地形（世界种子键控）
+            double hs = valueNoise(wx / ABYSS_HILL_SCALE, wz / ABYSS_HILL_SCALE,
+                    seed ^ SALT_HILLS)
+                    + 0.5 * valueNoise(wx / (ABYSS_HILL_SCALE * 2.1),
+                            wz / (ABYSS_HILL_SCALE * 2.1), seed ^ (SALT_HILLS + 7919L))
+                    + 0.25 * valueNoise(wx / (ABYSS_HILL_SCALE * 4.4),
+                            wz / (ABYSS_HILL_SCALE * 4.4), seed ^ (SALT_HILLS + 15811L));
+            e += (ABYSS_HILLS_M / METERS_PER_E) * (hs / 1.75);
+
+            // 轴部裂谷：离散边界轴上的窄槽（distRaw 未平滑，blur 会抹掉它）
+            e -= (RIFT_AXIAL_M / METERS_PER_E)
+                    * divProx * Math.exp(-(ts.distRaw() * ts.distRaw())
+                            / (RIFT_AXIAL_WU * RIFT_AXIAL_WU));
+
+            // 海沟：汇聚边界上的深槽（双侧共用，无需俯冲极性；stress 门控成形度）
+            e -= (TRENCH_M / METERS_PER_E)
+                    * smoothstep(TRENCH_STRESS_LO, TRENCH_STRESS_HI, stress)
+                    * Math.exp(-(ts.distRaw() * ts.distRaw()) / (TRENCH_WU * TRENCH_WU));
+
+            eBase = e;
+        } else {
+            eBase = buoyE;
+        }
 
         return new Sample(age, kappa, thickness, density, buoyancy, eBase);
     }
@@ -200,6 +298,41 @@ public final class CrustField {
         double t = (x - e0) / Math.max(1e-9, e1 - e0);
         t = t < 0 ? 0 : (t > 1 ? 1 : t);
         return t * t * (3.0 - 2.0 * t);
+    }
+
+    /**
+     * 双线性值噪声（C¹，双极性 ±1）——深海丘陵用。
+     *
+     * <p>实现模式与 {@link TectonicField}{@code valueNoise} 同款（生产链自有的
+     * 确定性原语）；世界种子经 {@code seed ^ salt} 混入哈希键。</p>
+     */
+    private static double valueNoise(double x, double z, long key) {
+        int ix = (int) Math.floor(x), iz = (int) Math.floor(z);
+        double fx = x - ix, fz = z - iz;
+        double tx = fx * fx * (3 - 2 * fx);
+        double tz = fz * fz * (3 - 2 * fz);
+        double v00 = unit(hash(key, ix, iz));
+        double v10 = unit(hash(key, ix + 1, iz));
+        double v01 = unit(hash(key, ix, iz + 1));
+        double v11 = unit(hash(key, ix + 1, iz + 1));
+        double a = v00 + (v10 - v00) * tx;
+        double b = v01 + (v11 - v01) * tx;
+        return (a + (b - a) * tz) * 2.0 - 1.0;
+    }
+
+    private static long hash(long key, int x, int z) {
+        long h = key ^ (Math.abs((long) x) * HILL_SEED_MIX + 0x9E37L)
+                ^ (Math.abs((long) z) * 0xC2B2AE3D27D4EB4FL + 0x165667B1L);
+        h ^= h >>> 30;
+        h *= 0xBF58476D1CE4E5B9L;
+        h ^= h >>> 27;
+        h *= 0x94D049BB133111EBL;
+        h ^= h >>> 31;
+        return h;
+    }
+
+    private static double unit(long h) {
+        return (h >>> 11) * 0x1.0p-53;
     }
 
     private CrustField() { }

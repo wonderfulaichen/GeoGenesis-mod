@@ -138,7 +138,7 @@ public final class MorphTerrainSampler {
         this.ocean = new MorphOceanAssembler(land::e, continent::sample, seed + OCEAN_SEED_OFFSET)
                 .enableCoastalDetail(seed)
                 .withCrustEBase(CRUST_OCEAN_EBASE
-                        ? (x, z) -> CrustField.of(tectonic.sample(x, z)).eBase()
+                        ? (x, z) -> CrustField.of(tectonic.sample(x, z), x, z, seed).eBase()
                         : null);
 
         this.curve = new HeightCurve(params, minY, maxY);

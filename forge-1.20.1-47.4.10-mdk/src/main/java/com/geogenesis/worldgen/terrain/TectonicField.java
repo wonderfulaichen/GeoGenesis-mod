@@ -444,7 +444,22 @@ public final class TectonicField {
              * {@code d1=d2=√(dist²+t²)}，故 {@code (d1+d2)/2 = √(dist²+t²)} —— 随 t <b>单调</b>，
              * 且由<b>连续的</b> d1/d2 直接得出 → <b>处处连续</b>，且<b>零额外采样成本</b>。</p>
              */
-            double alongCoord
+            double alongCoord,
+            /**
+             * ★ 2026-11-14 新增（阶段一洋底接入）：<b>未平滑的边界距离</b>（wu）
+             * = {@code max(0, (d2−d1)/2)}，即 {@link #dist} 在 {@link #blurDist} 之前的原始值。
+             *
+             * <p><b>为何需要</b>：{@link #dist} 经 R=150wu 的环形平均平滑
+             * （Voronoi 顶点折痕的修复，见 {@code sample()} 内注释），窄特征
+             * ——轴部裂谷（宽 8.5wu ≈ 33km）、海沟（宽 17wu ≈ 66km）——
+             * 会被抹成 150wu 的宽缓起伏。平台模型年龄律的窄带构造
+             * （轴谷/海沟）必须用<b>未平滑</b>距离才能成形。</p>
+             *
+             * <p>连续性与 {@link #dist} 相同：d1/d2 均为连续函数 ⇒ distRaw 处处连续；
+             * 配对切换处的合法跳变界与 {@code dist} 一致（≈2.2wu，见
+             * TectonicContinuityProbe）。</p>
+             */
+            double distRaw
     ) {
         /**
          * 紧凑构造器（便捷/测试用）：由 {@code btype} 推导名义应力
@@ -455,7 +470,8 @@ public final class TectonicField {
         public Sample(double dist, int btype, double rate, double tangentX, double tangentZ) {
             this(dist, btype, rate, tangentX, tangentZ,
                  btype == CONVERGENT ? 1.0 : (btype == DIVERGENT ? -1.0 : 0.0),
-                 dist);   // 名义样本：alongCoord 取 dist（无真实配对信息）
+                 dist,   // 名义样本：alongCoord 取 dist（无真实配对信息）
+                 dist);  // 名义样本：distRaw 取 dist（无真实 blur 信息）
         }
 
         /** 是否处于板块边界影响范围内。 */
@@ -511,7 +527,8 @@ public final class TectonicField {
             }
         }
         if (d2 == Double.MAX_VALUE) {
-            return new Sample(Double.MAX_VALUE, INTERIOR, 0.0, 1.0, 0.0, 0.0, Double.MAX_VALUE);
+            return new Sample(Double.MAX_VALUE, INTERIOR, 0.0, 1.0, 0.0, 0.0,
+                    Double.MAX_VALUE, Double.MAX_VALUE);
         }
 
         // 到 Voronoi 边界的距离 = (d2 - d1) / 2
@@ -529,9 +546,11 @@ public final class TectonicField {
         double nx = s2x - s1x, nz = s2z - s1z;
         double len = Math.sqrt(nx * nx + nz * nz);
         double dist;
+        double distRaw;
         double ux, uz, tx, tz;
         if (d2 == Double.MAX_VALUE) {
             dist = Double.MAX_VALUE;
+            distRaw = Double.MAX_VALUE;
             ux = 1.0; uz = 0.0; tx = 0.0; tz = 1.0;
         } else {
             // ★★★ 2026-09-12 第六次伪影修复（Voronoi 顶点折痕/扇形射线）★★★
@@ -550,7 +569,8 @@ public final class TectonicField {
             //   沿三条角平分线有折痕（C¹ 断裂）⇒ 被 T1/T5 原样印成"扇形射线/竖带"。
             //   注意：传入【未扭曲】坐标 —— distAt 内部会自行做同一域扭曲
             //   （若传扭曲后坐标会二次扭曲，导致邻居采样点偏移、模糊失效）。
-            dist = blurDist(wx, wz, Math.max(0.0, (d2 - d1) * 0.5));
+            distRaw = Math.max(0.0, (d2 - d1) * 0.5);
+            dist = blurDist(wx, wz, distRaw);
 
             // ★ 2026-09-12 结论（经四次尝试后定位到真正的根因）：
             //   法向换用哪种公式**都无法**消除跳变——因为跳变的根源不是法向，
@@ -582,7 +602,7 @@ public final class TectonicField {
         //   旧的「最近板块对归一化速度差」是分片常数场，配对切换处沿 Voronoi 直线网阶跃。
         double stressCont = stressField(wxw, wzw);
         if (dist >= BOUNDARY_REACH) {
-            return new Sample(dist, INTERIOR, 0.0, tx, tz, stressCont, d1);
+            return new Sample(dist, INTERIOR, 0.0, tx, tz, stressCont, d1, distRaw);
         }
 
         // 分类：dot/cross 分解
@@ -609,7 +629,8 @@ public final class TectonicField {
         //   现直接取连续加权投票场 stressCont（上方已算）。
         //   注：dot/cross 仍用于 btype/rate —— 那是**离散标签**（供岩性等用途），
         //   已证实不参与地形合成。
-        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz, stressCont, (d1 + d2) * 0.5);
+        return new Sample(dist, btype, Math.min(rate, 2.0), tx, tz, stressCont, (d1 + d2) * 0.5,
+                distRaw);
     }
 
     /**

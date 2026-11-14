@@ -17,14 +17,14 @@ public final class P1CellRenderProbe {
     private static final long SEED = 9139912035078620160L;
     private static final int SIZE = 1401;
     /**
-     * ★ 桥接 S2 重立基准（2026-11-13，终版 age 语义 = dist×divProx 组合式）：
-     * 海侧 deep 来源 Perlin→CrustField.eBase 后的全图 SHA（schema130）。
-     * 历史值：51c2626d…（初版 distDiv-age 语义，已被否决替换）；
-     * 旧基准（schema129，R0-0 冻结口径）= bea0a47c…，留档对照——
-     * 关开关（-Dgeogenesis.crustOceanEBase=false）可复现旧值（已实测）。
+     * ★ 阶段一重立基准（2026-11-14，洋底地质学）：海床基准 均衡式→平台模型年龄律
+     * {@code d=2500+3200·(1−e^(−t/70))} + 深海丘陵 + 轴部裂谷 + 海沟
+     * （开关 geogenesis.oceanPlateauModel 默认开；schema131）。
+     * 历史值：51c2626d…（初版 distDiv-age，已否决）；d87b8629…（schema130，
+     * 均衡式 eBase），关开关（-Dgeogenesis.oceanPlateauModel=false）可复现。
      */
     private static final String EXPECTED =
-            "d87b8629bdc069aa975c0efbecb3abc756c5976e9ecd7cbd5815119789bca2ff";
+            "10f50a688408a2faf0ae547ba912155d7bb31fb1adc5cd2284d3b88818d35704";
 
     /**
      * ★ 桥接 S2（2026-11-13）：陆侧（e&gt;0 单元）高度 SHA——开关

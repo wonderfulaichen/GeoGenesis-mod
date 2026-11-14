@@ -641,7 +641,13 @@ public class PreviewDisplay extends AbstractWidget {
     // 130 = 2026-11-13 桥接 S2：海床 deep 来源 Perlin→CrustField.eBase（构造均衡，
     //       开关 geogenesis.crustOceanEBase 默认开）。海侧高度改变、陆侧逐位不变；
     //       旧海床缓存必须失效。旧基准留档：P1 EXPECTED bea0a47c…（schema129）。
-    static final int CACHE_SCHEMA_VERSION = 130;
+    // 131 = 2026-11-14 阶段一（洋底地质学）：海床基准 均衡式→平台模型年龄律
+    //       d=2500+3200·(1−e^(−t/70)) m（t=age·90Ma）+ 深海丘陵(±100m/45wu)
+    //       + 轴部裂谷(−1400m/8.5wu) + 海沟(−3600m/17wu, stress 门控)。
+    //       开关 geogenesis.oceanPlateauModel 默认开（false=旧均衡式 A/B）。
+    //       海侧高度改变、陆侧逐位不变（P1 陆侧 SHA 断言）。旧基准留档：
+    //       P1 EXPECTED d87b8629…（schema130）。
+    static final int CACHE_SCHEMA_VERSION = 131;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
