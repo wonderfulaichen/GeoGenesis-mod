@@ -3,6 +3,7 @@ package com.geogenesis.worldgen.terrain.tectreplica;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 
 import javax.imageio.ImageIO;
 
@@ -29,7 +30,7 @@ final class TectRender {
     }
 
     /** 板块视图（viewplates）：厚度混色；shaded=true 时按段高度场加 NW 山影。 */
-    static void plateView(TectWorld w, String path, boolean shaded) throws IOException {
+    static void plateView(TectWorld w, Path path, boolean shaded) throws IOException {
         double[] height = new double[TectWorld.SIZE * TectWorld.SIZE];
         int[] pixels = new int[TectWorld.SIZE * TectWorld.SIZE];
         for (int x = 0; x < TectWorld.SIZE; x++) {
@@ -52,7 +53,7 @@ final class TectRender {
     }
 
     /** 地形视图（viewsurface）：heightmap + 海平面 + 坡度配色。 */
-    static void terrainView(TectWorld w, String path, boolean shaded) throws IOException {
+    static void terrainView(TectWorld w, Path path, boolean shaded) throws IOException {
         double[] height = new double[TectWorld.SIZE * TectWorld.SIZE];
         int[] pixels = new int[TectWorld.SIZE * TectWorld.SIZE];
         for (int x = 0; x < TectWorld.SIZE; x++) {
@@ -77,7 +78,7 @@ final class TectRender {
     }
 
     /** 热场：mix(black, red, heat)（tectonics.h:384-386 的 heatA 贴图）。 */
-    static void heatView(TectWorld w, String path) throws IOException {
+    static void heatView(TectWorld w, Path path) throws IOException {
         BufferedImage img = new BufferedImage(TectWorld.SIZE, TectWorld.SIZE, BufferedImage.TYPE_INT_RGB);
         for (int x = 0; x < TectWorld.SIZE; x++) {
             for (int y = 0; y < TectWorld.SIZE; y++) {
@@ -89,7 +90,7 @@ final class TectRender {
     }
 
     /** Voronoi 分段图：每段一个确定性伪随机色，背景白（= cluster.target 贴图）。 */
-    static void voronoiView(TectWorld w, String path) throws IOException {
+    static void voronoiView(TectWorld w, Path path) throws IOException {
         BufferedImage img = new BufferedImage(TectWorld.SIZE, TectWorld.SIZE, BufferedImage.TYPE_INT_RGB);
         for (int x = 0; x < TectWorld.SIZE; x++) {
             for (int y = 0; y < TectWorld.SIZE; y++) {
@@ -138,7 +139,7 @@ final class TectRender {
     }
 
     /** NW 光山影（亮度乘子 ~0.35~1.4，法线 (-dx,1,-dy)·NW 光），直接产出最终像素。 */
-    private static void writeImage(int[] pixels, double[] height, String path, boolean shaded) throws IOException {
+    private static void writeImage(int[] pixels, double[] height, Path path, boolean shaded) throws IOException {
         BufferedImage img = new BufferedImage(TectWorld.SIZE, TectWorld.SIZE, BufferedImage.TYPE_INT_RGB);
         for (int x = 0; x < TectWorld.SIZE; x++) {
             for (int y = 0; y < TectWorld.SIZE; y++) {
@@ -165,8 +166,8 @@ final class TectRender {
         return Math.min(255, Math.max(0, v));
     }
 
-    static void write(BufferedImage img, String path) throws IOException {
-        File f = new File(path);
+    static void write(BufferedImage img, Path path) throws IOException {
+        File f = path.toFile();
         File parent = f.getParentFile();
         if (parent != null) {
             parent.mkdirs();

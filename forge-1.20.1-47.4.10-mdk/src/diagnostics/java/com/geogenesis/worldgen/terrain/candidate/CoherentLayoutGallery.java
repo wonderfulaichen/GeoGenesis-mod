@@ -20,7 +20,8 @@ public final class CoherentLayoutGallery {
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
         var g = new CoherentLayoutGallery();
-        Path root = Path.of(args[0]);
+        // ★ Mimosa 修复（2026-11-15）：root 钉在 build/ 下（防路径穿越）。
+        Path root = Path.of("build", "coherent-layout-gallery").toAbsolutePath().normalize();
         g.window(root, 5, -3642.5, -3365.5);
         g.window(root.resolve("extended"), 10, -7142.5, -6865.5);
         System.out.println("COHERENT LAYOUT GALLERY PASS");

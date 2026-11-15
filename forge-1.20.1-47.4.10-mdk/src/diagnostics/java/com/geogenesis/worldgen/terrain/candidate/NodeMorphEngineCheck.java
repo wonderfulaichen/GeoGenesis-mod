@@ -13,11 +13,12 @@ public final class NodeMorphEngineCheck {
     private static final List<String> failures = new ArrayList<>();
 
     public static void main(String[] args) throws Exception {
-        Path out = Path.of(args[0]);
+        // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越，不再收命令行）。
+        Path out = Path.of("build", "node-morph-engine-check").toAbsolutePath().normalize();
         Files.createDirectories(out);
         for (long seed : new long[]{9139912035078620160L, -419, 0, 12345}) {
             RecipeMorphCatalog land = new RecipeMorphCatalog(seed);
-            for (boolean concept : new boolean[]{false, true}) run(seed, land, concept, args.length > 1);
+            for (boolean concept : new boolean[]{false, true}) run(seed, land, concept, args.length > 0);
         }
         signedAmplitude();
         exportProfiles(out);

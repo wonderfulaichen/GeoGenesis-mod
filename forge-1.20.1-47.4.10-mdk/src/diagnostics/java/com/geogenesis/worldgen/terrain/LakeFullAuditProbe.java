@@ -22,7 +22,8 @@ public final class LakeFullAuditProbe {
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
-        Path out = Path.of(args[1]);
+        // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越，不再收命令行）。
+        Path out = Path.of("build", "lake-full-audit").toAbsolutePath().normalize();
         Files.createDirectories(out);
         CommentedFileConfig cfg = CommentedFileConfig.of(Path.of(args[0]), TomlFormat.instance());
         cfg.load();

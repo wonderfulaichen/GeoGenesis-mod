@@ -28,9 +28,10 @@ public final class TectReplicaProbe {
     private static final int[] MILESTONES = {100, 1000, 5000};
 
     public static void main(String[] args) throws Exception {
-        Path out = Path.of(args.length > 0 ? args[0] : "build/tectreplica");
-        int steps = args.length > 1 ? Integer.parseInt(args[1]) : 500;
-        long seed = args.length > 2 ? Long.parseLong(args[2]) : DEFAULT_SEED;
+        // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越，不再收命令行）。
+        Path out = Path.of("build", "tectreplica").toAbsolutePath().normalize();
+        int steps = args.length > 0 ? Integer.parseInt(args[0]) : 500;
+        long seed = args.length > 1 ? Long.parseLong(args[1]) : DEFAULT_SEED;
         Files.createDirectories(out);
         long t0 = System.nanoTime();
 
@@ -41,7 +42,7 @@ public final class TectReplicaProbe {
                 TectWorld.K, TectWorld.SIZE, TectWorld.NPLATES);
 
         TectWorld world = new TectWorld(seed);
-        TectRender.plateView(world, out.resolve("plates_000.png").toString(), false);
+        TectRender.plateView(world, out.resolve("plates_000.png"), false);
 
         for (int step = 1; step <= steps; step++) {
             for (TectPlate p : world.plates) {
@@ -70,7 +71,7 @@ public final class TectReplicaProbe {
             }
             for (int m : MILESTONES) {
                 if (step == m) {
-                    TectRender.plateView(world, out.resolve("plates_" + m + ".png").toString(), false);
+                    TectRender.plateView(world, out.resolve("plates_" + m + ".png"), false);
                 }
             }
         }
@@ -86,12 +87,12 @@ public final class TectReplicaProbe {
     }
 
     private static void renderFinal(TectWorld w, Path out, int steps) throws Exception {
-        TectRender.plateView(w, out.resolve("plates_" + steps + ".png").toString(), false);
-        TectRender.plateView(w, out.resolve("plates_" + steps + "_shaded.png").toString(), true);
-        TectRender.terrainView(w, out.resolve("terrain_" + steps + ".png").toString(), false);
-        TectRender.terrainView(w, out.resolve("terrain_" + steps + "_shaded.png").toString(), true);
-        TectRender.heatView(w, out.resolve("heat_" + steps + ".png").toString());
-        TectRender.voronoiView(w, out.resolve("voronoi_" + steps + ".png").toString());
+        TectRender.plateView(w, out.resolve("plates_" + steps + ".png"), false);
+        TectRender.plateView(w, out.resolve("plates_" + steps + "_shaded.png"), true);
+        TectRender.terrainView(w, out.resolve("terrain_" + steps + ".png"), false);
+        TectRender.terrainView(w, out.resolve("terrain_" + steps + "_shaded.png"), true);
+        TectRender.heatView(w, out.resolve("heat_" + steps + ".png"));
+        TectRender.voronoiView(w, out.resolve("voronoi_" + steps + ".png"));
     }
 
     private static String stateSha(TectWorld w) throws Exception {

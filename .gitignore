@@ -86,6 +86,11 @@ preview_run.log
 # CodeBuddy internal data (entire local agent dir, not project source)
 .codebuddy/
 
+# Mimosa 安全扫描工具状态（2026-11-16）：任意层级的 .mimosa/ 都是本地工具缓存，
+# 且其 hook-state 文件名会超过 NTFS 260 字符路径上限 ⇒ 未忽略时 git add 整体 fatal。
+.mimosa/
+**/.mimosa/
+
 # Prism MCP internal data (ADRs / decision records, local agent data)
 .prism/
 

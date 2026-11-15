@@ -30,9 +30,9 @@ public final class CoherentCoordinateCheck {
         var check = new CoherentCoordinateCheck();
         int exit;
         try {
-            if (args.length < 1 || args.length > 2 || args.length == 2 && !args[1].equals("s3-only"))
-                throw new IllegalArgumentException("usage: CoherentCoordinateCheck NEW_OUTPUT_DIRECTORY [s3-only]");
-            exit = check.run(Path.of(args[0]), args.length == 2);
+            // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越，不再收命令行）。
+            Path out = Path.of("build", "coherent-coordinate-check").toAbsolutePath().normalize();
+            exit = check.run(out, args.length > 0 && args[0].equals("s3-only"));
         } catch (Throwable t) {
             t.printStackTrace();
             exit = 1;

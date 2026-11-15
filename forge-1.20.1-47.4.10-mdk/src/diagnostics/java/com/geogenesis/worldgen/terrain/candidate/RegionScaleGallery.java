@@ -23,7 +23,8 @@ public final class RegionScaleGallery {
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
-        Path out = Path.of(args[0]);
+        // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越）。
+        Path out = Path.of("build", "region-scale-gallery").toAbsolutePath().normalize();
         Files.createDirectories(out);
         RegionScaleGallery g = new RegionScaleGallery();
         g.export(g.a, 1200, out.resolve("arm-1200"));

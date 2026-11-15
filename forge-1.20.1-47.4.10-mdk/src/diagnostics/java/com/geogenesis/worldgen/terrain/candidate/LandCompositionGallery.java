@@ -39,14 +39,16 @@ public final class LandCompositionGallery {
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
         if (args.length < 6) {
-            throw new IllegalArgumentException("usage: <toml> <outDir> <size> <stepBlocks> <cx> <cz>");
+            throw new IllegalArgumentException("usage: <toml> <size> <stepBlocks> <cx> <cz>");
         }
         Path toml = Path.of(args[0]);
-        Path out = Path.of(args[1]);
-        int size = Integer.parseInt(args[2]);
-        int step = Integer.parseInt(args[3]);
-        double cx = Double.parseDouble(args[4]);
-        double cz = Double.parseDouble(args[5]);
+        // ★ Mimosa 修复（2026-11-15）：out 不再收命令行（path-traversal 入口）——
+        //   诊断工具输出固定写 build/gallery/。
+        Path out = Path.of("build", "gallery").toAbsolutePath().normalize();
+        int size = Integer.parseInt(args[1]);
+        int step = Integer.parseInt(args[2]);
+        double cx = Double.parseDouble(args[3]);
+        double cz = Double.parseDouble(args[4]);
         Files.createDirectories(out);
 
         Path copy = out.resolve("config-input.toml");

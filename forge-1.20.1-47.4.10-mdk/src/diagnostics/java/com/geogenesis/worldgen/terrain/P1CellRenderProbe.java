@@ -17,23 +17,22 @@ public final class P1CellRenderProbe {
     private static final long SEED = 9139912035078620160L;
     private static final int SIZE = 1401;
     /**
-     * ★ 阶段三重立基准（2026-11-15，大陆形状）：ContinentField 范式 FBM→结构核
-     * （椭圆核+地体+群/海道+四层域扭曲；开关 geogenesis.continentCores 默认开；
-     * schema133）。海岸线/陆格集合移动 ⇒ 双 SHA 重立。
+     * ★ 阶段三修正重立基准（2026-11-15，大陆尺度对齐旧 FBM：OCC 波长 5000/门限
+     * 0.54/核半径 ×1.5 高重叠；schema134）。锚第四次全域重标。
      * 历史值：51c2626d…（初版 distDiv-age，已否决）；d87b8629…（schema130，
      * 均衡式 eBase）；10f50a68…（schema131，平台律+构造带）；c273a3bc…（schema132，
-     * 主动陆缘削减），关 geogenesis.continentCores 可复现。
+     * 主动陆缘削减，关 geogenesis.continentCores 可复现）；671ecd94…（schema133，
+     * 核链初版小岛网，用户否决）。
      */
     private static final String EXPECTED =
-            "671ecd94ebf611c78391aedb290c8d5ca6d931eb8a9951dcc2e8d678d0aa8321";
+            "e0f5e4dbcca05f4808a3e9b61dbb03c61508e5845a3d70fe3cbe775c8452d6f4";
 
     /**
-     * ★ 阶段三重立（2026-11-15）：大陆形状替换移动海岸线 ⇒ 陆格集合变化
-     * （landCells 1259862→572862——P1 窗口在新大陆布局下的局部气候；
-     * 全域陆占比 0.339 由 ContinentAnchorProbe/OceanFloorProbe 守护）。
+     * ★ 阶段三修正重立（2026-11-15）：landCells 572862→503823（occ 门限提高后
+     * P1 窗口的窗口气候）。全域陆占比 0.3387 由 ContinentAnchorProbe 守护。
      * 标定协议见 {@link #render}。
      */
-    private static final String EXPECTED_LAND = "9fffc819539cedeee277081b198869d9e23f4a2492dea0417d023f3f1327dbc3";
+    private static final String EXPECTED_LAND = "c15c7a0f24964f624bb95f60c1b576a3584b64828a2557cf0eea73154fe2799a";
 
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args[1]);

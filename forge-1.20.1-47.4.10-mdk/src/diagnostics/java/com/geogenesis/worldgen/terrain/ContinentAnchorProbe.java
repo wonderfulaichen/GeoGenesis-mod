@@ -28,8 +28,8 @@ import java.util.Locale;
 public final class ContinentAnchorProbe {
 
     /** 生产锚（与 ContinentField.A0..A4 一致；此处独立复制以对拍实现漂移）。
-     *  A3 是水面校准锚（-0.023），其分位含剖面噪声偏移，见 QUANTILES 注释。 */
-    private static final double[] ANCHORS = {-2.001, -0.171, -0.107, -0.023, 0.965};
+     *  A3 是水面校准锚，其分位含剖面噪声偏移，见 QUANTILES 注释。 */
+    private static final double[] ANCHORS = {-2.018, -0.240, -0.149, -0.041, 0.966};
     /** 各锚目标分位。A3 是水面校准锚：理想岸线分位 0.661，但剖面叠加
      *  ocean/shallowDetail 噪声后实际水面偏深 ~2% ⇒ A3 左移后实测分位
      *  0.6430（陆占比断言 0.339 守护校准，分位这里如实记录）。 */
@@ -47,7 +47,7 @@ public final class ContinentAnchorProbe {
         ContinentField field = new ContinentField(TerrainParams.defaults());
         field.seed(seed);
 
-        // ---- 0) 占据场分布诊断：门限 0.10 的真实触发率（未占据格 → 大洋）----
+        // ---- 0) 占据场分布诊断：门限的真实触发率（未占据格 → 大洋）----
         int[] occBins = new int[10];
         long emptyCells = 0;
         long occTotal = 0;
@@ -55,13 +55,14 @@ public final class ContinentAnchorProbe {
             for (int cx = -40; cx <= 40; cx++) {
                 double occ = field.occAt(cx, cz);
                 occBins[Math.min(9, (int) (occ * 10))]++;
-                if (occ < 0.10) {
+                if (occ < field.occThreshold()) {
                     emptyCells++;
                 }
                 occTotal++;
         }
         }
         System.out.println("[occ] 直方图（0~1 十桶）: " + java.util.Arrays.toString(occBins)
+                + "  门限 " + field.occThreshold()
                 + "  未占据率 " + String.format(Locale.ROOT, "%.4f", emptyCells / (double) occTotal));
 
         // ---- 1) 壳值分位对拍 ----

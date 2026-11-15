@@ -28,7 +28,10 @@ public final class CoherentMorphGallery {
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
-        Path frozen = Path.of(args[0]), out = Path.of(args[1]); Files.createDirectories(out);
+        // ★ Mimosa 修复（2026-11-15）：frozen/out 钉在 build/ 下（防路径穿越）。
+        Path frozen = Path.of("build", "coherent-morph-s3", "frozen-s2").toAbsolutePath().normalize();
+        Path out = Path.of("build", "coherent-morph-gallery").toAbsolutePath().normalize();
+        Files.createDirectories(out);
         if (args.length > 2 && !args[2].equals("context")) throw new IllegalArgumentException("expected context");
         var gallery = new CoherentMorphGallery(args.length > 2);
         gallery.export(frozen, out); gallery.profiles(out);

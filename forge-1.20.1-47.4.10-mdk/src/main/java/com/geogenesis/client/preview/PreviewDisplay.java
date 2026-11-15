@@ -662,7 +662,14 @@ public class PreviewDisplay extends AbstractWidget {
     //       开关 geogenesis.continentCores 默认开（false=旧 FBM，可复现 schema132
     //       基准 c273a3bc…）。海岸线/陆格集合/岸带高度改变 ⇒ P1 双 SHA 重立；
     //       陆地山体配方（MorphLandField）不读 c，零改动。
-    static final int CACHE_SCHEMA_VERSION = 133;
+    // 134 = 2026-11-15 阶段三修正（用户否决「均匀小岛网」：大陆要对齐旧 FBM
+    //       尺度 2000~4000wu 连绵）：OCC 波长 13500→5000（大陆块尺度）、门限
+    //       0.10→0.54（缺核 57% ⇒ 陆块内覆盖 0.75 连绵、低值区成片大洋）、
+    //       核半径 ×1.5（945~2810，核/间距比 0.895 高重叠——参考球冠并集结构）、
+    //       下限/SEARCH 同步。锚第四次全域重标 {-2.018,-0.240,-0.149,-0.041,0.966}
+    //       （陆占比 0.3387、分位偏差≤0.0003）。旧基准留档：P1 EXPECTED
+    //       671ecd94…/9fffc819…（schema133）。
+    static final int CACHE_SCHEMA_VERSION = 134;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

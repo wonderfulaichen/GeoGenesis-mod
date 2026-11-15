@@ -15,13 +15,14 @@ public final class M0DistributionCheck {
     private int checks;
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 2) throw new IllegalArgumentException("usage: M0DistributionCheck NEW_OUT FROZEN_C");
-        Path out = Path.of(args[0]);
+        // ★ Mimosa 修复（2026-11-15）：out/frozen 钉在 build/ 下（防路径穿越，不再收命令行）。
+        Path out = Path.of("build", "m0-distribution-check").toAbsolutePath().normalize();
         if (Files.exists(out)) throw new IllegalArgumentException("output must be new");
         Files.createDirectories(out);
         var c = new M0DistributionCheck();
         try {
-            c.frozen(Path.of(args[1])); c.geometry(); c.expandedAndOrder(); c.negative();
+            c.frozen(Path.of("build", "m0-distribution-frozen-c").toAbsolutePath().normalize());
+            c.geometry(); c.expandedAndOrder(); c.negative();
             c.report.add("M0 CHECK PASS assertions=" + c.checks);
         } catch (Throwable t) {
             c.report.add("M0 CHECK FAIL " + t);

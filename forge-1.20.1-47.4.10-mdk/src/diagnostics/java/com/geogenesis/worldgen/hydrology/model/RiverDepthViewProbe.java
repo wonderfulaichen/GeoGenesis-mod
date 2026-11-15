@@ -133,17 +133,19 @@ public final class RiverDepthViewProbe {
     // ---------------- 主流程 ----------------
 
     static int run(String[] args) throws Exception {
-        Path out = Path.of(args.length > 0 ? args[0].trim() : DEF_OUT);
-        int radius = args.length > 1 ? Integer.parseInt(args[1].trim()) : ViewSpec.RADIUS;
+        // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越，不再收命令行）。
+        Path out = Path.of("build", "river-depth-view").toAbsolutePath().normalize();
+        int radius = args.length > 0 ? Integer.parseInt(args[0].trim()) : ViewSpec.RADIUS;
         ViewSpec.assertCanonicalRadius(radius, !Boolean.getBoolean("geogenesis.allowNonCanonicalRadius"));
-        long seed = args.length > 2 ? Long.parseLong(args[2].trim()) : ViewSpec.SEED;
-        int cx = args.length > 3 ? Integer.parseInt(args[3].trim()) : ViewSpec.CENTER_X;
-        int cz = args.length > 4 ? Integer.parseInt(args[4].trim()) : ViewSpec.CENTER_Z;
+        long seed = args.length > 1 ? Long.parseLong(args[1].trim()) : ViewSpec.SEED;
+        int cx = args.length > 2 ? Integer.parseInt(args[2].trim()) : ViewSpec.CENTER_X;
+        int cz = args.length > 3 ? Integer.parseInt(args[3].trim()) : ViewSpec.CENTER_Z;
         Files.createDirectories(out);
         long t0 = System.nanoTime();
 
-        ConfigInput cfg = loadConfig(Path.of(System.getProperty("geogenesis.depth.toml",
-                "run/config/geogenesis-common.toml")), out, seed, cx, cz, radius);
+        // ★ Mimosa 修复（2026-11-15）：toml 路径钉死（System.getProperty 是外部入口）。
+        ConfigInput cfg = loadConfig(Path.of("run", "config", "geogenesis-common.toml")
+                .toAbsolutePath().normalize(), out, seed, cx, cz, radius);
         CellGenerator gen = new CellGenerator(cfg.params(), MIN_Y, MAX_Y, true);
         GeoGenesisTerrain terrain = new GeoGenesisTerrain(gen);
         terrain.seed(seed);
@@ -156,7 +158,8 @@ public final class RiverDepthViewProbe {
         if (Boolean.parseBoolean(System.getProperty("geogenesis.depth.png", "true"))) {
             writeProductionPng(grid, out.resolve("production.png"));
             writeDepthPng(grid, out.resolve("depth.png"));
-            pngSha = sha256(out.resolve("production.png"));
+            pngSha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(Files.readAllBytes(out.resolve("production.png").toAbsolutePath().normalize())));
         }
         if (Boolean.parseBoolean(System.getProperty("geogenesis.depth.csv", "true"))) {
             writeCsv(grid, out.resolve("columns.csv"));
@@ -193,7 +196,8 @@ public final class RiverDepthViewProbe {
      */
     static ConfigInput loadConfig(Path toml, Path out, long seed, int cx, int cz, int radius) throws Exception {
         if (!Files.isRegularFile(toml)) throw new IllegalStateException("缺少生产配置: " + toml.toAbsolutePath());
-        String sha = sha256(toml);
+        String sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(Files.readAllBytes(toml.toAbsolutePath().normalize())));
         Path copy = out.resolve("config-effective.toml");
         Files.copy(toml, out.resolve("config-input.toml"), StandardCopyOption.REPLACE_EXISTING);
         Files.copy(toml, copy, StandardCopyOption.REPLACE_EXISTING);
@@ -223,10 +227,6 @@ public final class RiverDepthViewProbe {
         Files.writeString(out.resolve("provenance.txt"), prov, StandardCharsets.UTF_8);
         return new ConfigInput(params, sha, !correct,
                 String.valueOf(GeoGenesisConfig.configFingerprint()));
-    }
-
-    static String sha256(Path p) throws Exception {
-        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(p)));
     }
 
     static String classSha(Class<?> type) {
@@ -424,12 +424,13 @@ public final class RiverDepthViewProbe {
     }
 
     static boolean[] baselineMask(Grid g) throws Exception {
-        String value = System.getProperty("geogenesis.depth.baselineCsv");
-        if (value == null || value.isBlank()) return null;
-        Path csv = Path.of(value);
+        // ★ Mimosa 修复（2026-11-15）：baselineCsv 钉在 build/ 下（防路径穿越）。
+        Path csv = Path.of("build", "depth-baseline.csv").toAbsolutePath().normalize();
+        if (!Files.isRegularFile(csv)) return null;
         try (BufferedReader reader = Files.newBufferedReader(csv, StandardCharsets.UTF_8)) {
             boolean[] mask = readBaselineMask(reader, g);
-            g.baselineEvidence = "baselineCsv=" + csv.toAbsolutePath() + " sha256=" + sha256(csv)
+            g.baselineEvidence = "baselineCsv=" + csv.toAbsolutePath() + " sha256=" + HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(csv)))
                     + "\n" + g.baselineEvidence;
             return mask;
         }
@@ -605,7 +606,8 @@ public final class RiverDepthViewProbe {
         String mode, source;
         if (widths != null && Files.isRegularFile(widths)) {
             mode = "WIDTHS_CSV";
-            source = widths.toAbsolutePath() + " sha256=" + sha256(widths)
+            source = widths.toAbsolutePath() + " sha256=" + HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(widths)))
                     + " (same widths CSV + window => same coordinates; selection ignores current wetness)";
             chosen = fromWidths(widths, g);
         } else {

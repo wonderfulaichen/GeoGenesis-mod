@@ -56,8 +56,10 @@ public final class RootedParticleProbe {
         int cx = args.length > 1 ? Integer.parseInt(args[1]) : ViewSpec.CENTER_X;
         int cz = args.length > 2 ? Integer.parseInt(args[2]) : ViewSpec.CENTER_Z;
 
-        String src = System.getProperty("rp.source", "build/hydro-production/latest/production.png");
-        String outDir = System.getProperty("rp.output", "build/rooted");
+        // ★ Mimosa 修复（2026-11-15）：src/outDir 钉在 build/ 下（防路径穿越）。
+        String src = Path.of("build", "hydro-production", "latest", "production.png")
+                .toAbsolutePath().normalize().toString();
+        String outDir = Path.of("build", "rooted").toAbsolutePath().normalize().toString();
 
         BufferedImage base = ImageIO.read(new File(src));
         if (base == null) throw new IllegalStateException("生产图不存在：" + src);

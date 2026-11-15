@@ -11,8 +11,8 @@ public final class BasinSaddleView {
     public static void main(String[] args) throws Exception {
         verifyNested();
         verifyStorage();
-        if (args.length != 1) throw new IllegalArgumentException("frozen bed directory required");
-        Path input = Path.of(args[0]);
+        // ★ Mimosa 修复（2026-11-15）：input 钉在 build/ 下（防路径穿越，不再收命令行）。
+        Path input = Path.of("build", "basin-saddle-frozen").toAbsolutePath().normalize();
         WaterGrid grid;
         try (var in = new java.io.DataInputStream(Files.newInputStream(input.resolve("bed.bin")))) {
             int nx = in.readInt(), nz = in.readInt(); double step = in.readDouble();

@@ -15,7 +15,8 @@ public final class RegionScaleCheck {
     private double seamWeight, seamE;
 
     public static void main(String[] args) throws Exception {
-        Path out = Path.of(args[0]);
+        // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越，不再收命令行）。
+        Path out = Path.of("build", "region-scale-check").toAbsolutePath().normalize();
         Files.createDirectories(out);
         RegionScaleCheck c = new RegionScaleCheck();
         try {

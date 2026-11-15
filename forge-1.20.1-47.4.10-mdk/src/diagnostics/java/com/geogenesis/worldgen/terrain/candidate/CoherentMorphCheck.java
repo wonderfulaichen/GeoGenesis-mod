@@ -29,8 +29,9 @@ public final class CoherentMorphCheck {
             System.exit(1);
         }
         var check = new CoherentMorphCheck();
-        Path out = Path.of(args[0]);
-        Path frozen = args.length == 2 ? Path.of(args[1]) : Path.of("build/coherent-morph-s3/frozen-s2");
+        // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越）。
+        Path out = Path.of("build", "coherent-morph-check").toAbsolutePath().normalize();
+        Path frozen = Path.of("build", "coherent-morph-s3", "frozen-s2").toAbsolutePath().normalize();
         try {
             Files.createDirectories(out);
             check.run(out, frozen);

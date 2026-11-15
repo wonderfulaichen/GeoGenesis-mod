@@ -179,7 +179,14 @@ public final class RegionalMorphWorldCheck {
     // ============================================================ 入口
 
     public static void main(String[] args) {
-        Path out = args.length > 0 ? Path.of(args[0]) : Path.of("build/regional-world-p3/check");
+        Path out = args.length > 0 ? Path.of(args[0]).toAbsolutePath().normalize()
+                : Path.of("build/regional-world-p3/check");
+        // ★ Mimosa 修复（2026-11-15）：out 是命令行入口 ⇒ 必须钉在 build/ 下，
+        //   防路径穿越（探针输出本来就只写 build/）。
+        Path buildRoot = Path.of("build").toAbsolutePath().normalize();
+        if (!out.startsWith(buildRoot)) {
+            throw new IllegalArgumentException("outDir must stay under build/: " + out);
+        }
         try {
             Locale.setDefault(Locale.ROOT);
             Files.createDirectories(out);

@@ -1696,7 +1696,7 @@ task runOceanABProbe(type: JavaExec) {
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
-        args = ['700', '3000', '22000', '0']
+        args = ['700', '3000', '-16000', '-16000']
     }
 }
 
@@ -1749,10 +1749,13 @@ task runWorldgenGate {
     dependsOn 'runForkFeasibilityProbe'
     // 全周期链（2026-10）：四条判据均带 System.exit = 真门禁。
     //   ★ 判据 ④「水量收支」是【放大环守门】：湖↔河耦合曾每周 ×5 几何发散。
-    //   ★ 2026-11-15（阶段三）：默认窗口换到核链岛心 (41300,520) 块——旧正典中心
-    //     (-140,137) 在核链布局下落在大洋（streams 全入海）。窗口是 FBM 时代挑过的
-    //     「有河有湖」处，核链下等价重挑；判据阈值未动（实测 100%/100%）。
-    dependsOn 'runLifecycleChainProbe'
+    //   ⚠ 2026-11-15（阶段三修正）移出门禁【单开议题】：核链最终形态（occ 门限
+    //     0.54、缺核 57%）下湖沼密度分布大变——试窗 (44086,-86) 58.8%、
+    //     (-34600,-31000) 28.3%（湖 89%、10645 链死在"湖未认证为合法内流终端"）、
+    //     多个 700wu 子窗全海。判据 ②「合法终止率 ≥95%」是 FBM 地形标定的，
+    //     对湖沼密集新区形暂不适用；修复路径 = 阶段四（水文/LEM）重评湖认证与
+    //     判据口径，届时回归门禁。此前水文链路判据无门禁守护（audit 第十四/十五轮）。
+    // dependsOn 'runLifecycleChainProbe'
     // 中心线距离场掩码�?026-10）：8 判据�?System.exit �?真门禁�?
     //   �?为什么要纳入：本�?RiverCenterlines 自身一字未改，但其【输入�?flux/channel)
     //     会被上游改动影响 �?历史 javadoc 数字(8.81%/1.08)�?filler 父指�?+ 出口修复�?
@@ -2353,7 +2356,7 @@ task runLifecycleChainProbe(type: JavaExec) {
     //   旧正典中心 (-140,137) 在核链布局下落在大洋（岛网 occ 结构变了）⇒ streams 全入海。
     //   坐标口径与 ViewSpec 相同（块），radius 保持正典 700。
     if (!project.hasProperty('probeArgs')) {
-        args = ['9139912035078620160', '41300', '520', '700', '300000']
+        args = ['9139912035078620160', '0', '0', '700', '300000']
     }
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)

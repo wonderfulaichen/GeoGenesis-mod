@@ -59,21 +59,36 @@ public final class ContinentField {
             !"false".equals(System.getProperty("geogenesis.continentCores"));
 
     // ---- 形状常量（基准值 @ continentScale=4000；运行时 × k = scale/4000）----
-    /** 核晶格间距（wu）。沙箱 1400 × 1.5：3500wu 窗口 2~4 核叠合成大陆。 */
+    /** 核晶格间距（wu）。@scale4000： occ 波长 5000 内放 2~3 核成大陆块。 */
     private static final double CORE_SPACING = 2100.0;
-    /** 主核半径范围（wu）：面积份额对标参考 0.4~1.6（r² 比例）。 */
-    private static final double CORE_R_MIN = 630.0;
-    private static final double CORE_R_MAX = 1875.0;
+    /**
+     * 主核半径范围（wu）。★ 2026-11-15 用户裁定 ×1.5（原 630~1875）：核/间距比
+     * 0.596 时相邻核陆区不连绵（jitter ±0.48 格拉开）⇒「均匀小岛网」（已否决）。
+     * 0.895 ≈ 参考项目球冠并集的高重叠结构 ⇒ 多核叠合成连绵大陆块。
+     */
+    private static final double CORE_R_MIN = 945.0;
+    private static final double CORE_R_MAX = 2810.0;
     /** 主核拉伸上限：st = 1 + u·0.8（面积守恒）。 */
     private static final double CORE_STRETCH_SPAN = 0.8;
-    /** 主核半轴下限（wu）：陆架带 Δv≈0.09 ⇒ 带宽 ≈ 0.09×半轴，750 ⇒ ≥67wu（≈134 块）。 */
-    private static final double CORE_MIN_SEMI = 750.0;
+    /** 主核半轴下限（wu）：陆架带 Δv≈0.09 ⇒ 带宽 ≈ 0.09×半轴（同 ×1.5 缩放）。 */
+    private static final double CORE_MIN_SEMI = 1125.0;
     /** 核心格内抖动比例（0.5 会越格破坏晶格骨架）。 */
     private static final double CORE_JITTER = 0.48;
-    /** 占据场波长（wu）：低频「大陆性」控制核的存在 ⇒ 成群大陆与洋区。 */
-    private static final double OCC_SCALE = 13500.0;
-    /** 占据门限：低于此的格无核（洋区/海道）。 */
-    private static final double OCC_THRESHOLD = 0.10;
+    /**
+     * 占据场波长（wu）：低频「大陆性」控制核的存在 ⇒ 成群大陆与洋区。
+     * <p>★ 2026-11-15 用户裁定修正：大陆块尺度要对齐旧 FBM（2000~4000wu 连绵），
+     * 沙箱比例（OCC/间距=6.43 ⇒ 波长 13500、聚集区同尺度）出的「均匀小岛网」
+     * 太小太散。生产改为 OCC 波长 5000 ⇒ 大陆块 = occ 高值区内的核连绵块
+     * （2500~5000wu），洋区 = occ 低值缺核区（连绵成片）。</p>
+     */
+    private static final double OCC_SCALE = 5000.0;
+    /**
+     * 占据门限：低于此的格无核（洋区）。★ 0.54（P(缺核)≈55%）：陆块内覆盖率
+     * ≈0.339/(1−0.55)=0.75 ⇒ occ 高值区内核连绵成块（FBM 式大陆）、低值区成片大洋。
+     * 演进：沙箱 0.10（只切 0.24% 深尾 ⇒ 均匀小岛网，用户否决）→ 0.42（31.7%，
+     * 陆块内覆盖 0.50 仍偏碎）→ 0.54。
+     */
+    private static final double OCC_THRESHOLD = 0.54;
     /** 大陆群边长（核格）：3×3 格 = 一群。 */
     private static final int GROUP_CELLS = 3;
     /** 群边界扭曲：波长 2.6 格 / 幅度 0.9 格（无扭曲则海道沿直线网格出现）。 */
@@ -90,12 +105,12 @@ public final class ContinentField {
     private static final double TERR_POS_SPAN = 0.90;
     /** 地体拉伸：stt = 1 + u·1.4（≤2.4；地球半岛 2~5，保守取值）。 */
     private static final double TERR_STRETCH_SPAN = 1.4;
-    /** 地体半轴下限（wu）：同主核梯度论证。 */
-    private static final double TERR_MIN_SEMI = 450.0;
+    /** 地体半轴下限（wu）：同主核梯度论证（随核半径 ×1.5 缩放）。 */
+    private static final double TERR_MIN_SEMI = 675.0;
     /** 地体长轴方向抖动 ±0.3rad。 */
     private static final double TERR_ANG_JITTER = 0.30;
-    /** 核扫描半径（格）：抖动 0.48 + 最大长半轴 1875×2.4=4500wu ≈ 2.14 格 ⇒ 3。 */
-    private static final int CORE_SEARCH = 3;
+    /** 核扫描半径（格）：抖动 0.48 + 最大长半轴 2810×2.4=6744wu ≈ 3.2 格 ⇒ 4。 */
+    private static final int CORE_SEARCH = 4;
     // 群间海道（壳值单位）：参考 chanDepth=0.85 覆盖整个坡带 ⇒ 0.60；
     // chanW 参考 0.16 只铺 ~80wu ⇒ 0.30 铺 ~200wu。
     private static final double CHAN_DEPTH = 0.60;
@@ -112,12 +127,10 @@ public final class ContinentField {
     /** 岸线微细线：幅度 0.03 / 波长 9wu（壳值上极小的亚格起伏）。 */
     private static final double FINE_AMP = 0.03;
     private static final double FINE_SCALE = 9.0;
-    // 壳值锚（2026-11-15 全域重标）：分位语义与沙箱 CRUST_ANCHOR_FIXED 相同
-    // （0/0.566/0.601/0.661/0.999 = 深/坡/架/岸线/极值），但锚值按全域平稳分布
-    // 拟合——沙箱锚是 3500wu 小窗口（0.26 个占据场波长）标定的，带有该窗口
-    // 的占据场气候偏置（核偏密集 ⇒ 原沿用值使陆占比虚高 6%）。标定工具
-    // ContinentAnchorProbe。
-    private static final double A0 = -2.001, A1 = -0.171, A2 = -0.107, A3 = -0.023, A4 = 0.965;
+    // 壳值锚（2026-11-15 第四次全域重标：门限 0.54 ⇒ 缺核 55%，核稀疏化分布左移）：
+    // 分位语义 0/0.566/0.601/0.661/0.999 = 深/坡/架/岸线/极值，标定工具
+    // ContinentAnchorProbe（A3 仍需按陆占比校准微调）。
+    private static final double A0 = -2.018, A1 = -0.240, A2 = -0.149, A3 = -0.041, A4 = 0.966;
     // 权重 = crust01 在锚端点的目标值之差（对齐 MorphOceanAssembler 三段剖面）：
     //   A1（深/坡界）→ 0.331 = PROVINCE_SHELF（深海过渡起点）
     //   A3（岸线）  → 0.444 = PROVINCE_SHORE（水面 = 岸段起点）
@@ -232,6 +245,11 @@ public final class ContinentField {
     double occAt(int cx, int cz) {
         return 0.5 + 0.5 * fbm2(cx * CORE_SPACING / OCC_SCALE,
                 cz * CORE_SPACING / OCC_SCALE, SALT_OCC);
+    }
+
+    /** 诊断入口：占据门限（{@code ContinentAnchorProbe} 统计未占据率用）。 */
+    double occThreshold() {
+        return OCC_THRESHOLD;
     }
 
     /**

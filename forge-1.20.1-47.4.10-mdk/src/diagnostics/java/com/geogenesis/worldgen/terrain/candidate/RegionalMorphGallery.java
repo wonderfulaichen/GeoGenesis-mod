@@ -24,7 +24,8 @@ public final class RegionalMorphGallery {
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
-        Path out = Path.of(args[0]);
+        // ★ Mimosa 修复（2026-11-15）：out 钉在 build/ 下（防路径穿越）。
+        Path out = Path.of("build", "regional-morph-gallery").toAbsolutePath().normalize();
         Files.createDirectories(out);
         new RegionalMorphGallery().run(out);
     }

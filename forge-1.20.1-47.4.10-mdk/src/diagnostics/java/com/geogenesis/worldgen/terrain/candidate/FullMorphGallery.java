@@ -63,8 +63,11 @@ public final class FullMorphGallery {
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
-        Path out = Path.of(args[1]);
-        FullMorphGallery g = new FullMorphGallery(Path.of(args[0]), out);
+        // ★ Mimosa 修复（2026-11-15）：out/toml 钉在 build/ 下（防路径穿越）。
+        Path toml = Path.of("build", "full-morph-gallery", "config-input.toml").toAbsolutePath().normalize();
+        Path out = Path.of("build", "full-morph-gallery").toAbsolutePath().normalize();
+        Files.createDirectories(out);
+        FullMorphGallery g = new FullMorphGallery(toml, out);
         g.interfaceCheck();
         g.render(out);
         g.baselineCheck(out);

@@ -33,12 +33,13 @@ public final class ContinentShapeProbe {
 
     public static void main(String[] args) throws Exception {
         Locale.setDefault(Locale.ROOT);
-        Path toml = Path.of(args[0]);
-        Path out = Path.of(args[1]);
-        int size = Integer.parseInt(args[2]);
-        int step = Integer.parseInt(args[3]);
-        double cx = Double.parseDouble(args[4]);
-        double cz = Double.parseDouble(args[5]);
+        // ★ Mimosa 修复（2026-11-15）：toml/out 钉在 build/ 下（防路径穿越，不再收命令行）。
+        Path toml = Path.of("run", "config", "geogenesis-common.toml").toAbsolutePath().normalize();
+        Path out = Path.of("build", "continent-shape").toAbsolutePath().normalize();
+        int size = args.length > 0 ? Integer.parseInt(args[0]) : 700;
+        int step = args.length > 1 ? Integer.parseInt(args[1]) : 5;
+        double cx = args.length > 2 ? Double.parseDouble(args[2]) : -140;
+        double cz = args.length > 3 ? Double.parseDouble(args[3]) : 137;
         Files.createDirectories(out);
 
         TerrainParams params = ProbeSupport.loadParams(toml, out);
