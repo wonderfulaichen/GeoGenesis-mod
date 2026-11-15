@@ -1673,6 +1673,19 @@ task runOceanFloorProbe(type: JavaExec) {
     }
 }
 
+// LEM 离线实验（2026-11-16 阶段四预研）：生产地形上跑沙箱 LEM，量化谷形/海岸分形D/耗时。
+//   只报告无判据（决策输入，不入门禁）。
+//   gradlew runLemExperimentProbe [-PprobeArgs="<size> <step> <cx> <cz> <iters>"]
+task runLemExperimentProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.tectonicsand.LemExperimentProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['192', '1', '-10000', '-18000', '30']
+    }
+}
+
 // 大陆形状标定对拍（2026-11-15 阶段三）：核链壳值分位 vs 沙箱锚 + 陆地占比。
 //   带判据（System.exit），但不入门禁（首次标定对拍工具；分位漂移时用于诊断重标）。
 //   gradlew runContinentAnchorProbe [-PprobeArgs="<range> <stepShell> <stepLand>"]
