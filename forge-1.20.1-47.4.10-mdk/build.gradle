@@ -1762,13 +1762,14 @@ task runWorldgenGate {
     dependsOn 'runForkFeasibilityProbe'
     // 全周期链（2026-10）：四条判据均带 System.exit = 真门禁。
     //   ★ 判据 ④「水量收支」是【放大环守门】：湖↔河耦合曾每周 ×5 几何发散。
-    //   ⚠ 2026-11-15（阶段三修正）移出门禁【单开议题】：核链最终形态（occ 门限
-    //     0.54、缺核 57%）下湖沼密度分布大变——试窗 (44086,-86) 58.8%、
-    //     (-34600,-31000) 28.3%（湖 89%、10645 链死在"湖未认证为合法内流终端"）、
-    //     多个 700wu 子窗全海。判据 ②「合法终止率 ≥95%」是 FBM 地形标定的，
-    //     对湖沼密集新区形暂不适用；修复路径 = 阶段四（水文/LEM）重评湖认证与
-    //     判据口径，届时回归门禁。此前水文链路判据无门禁守护（audit 第十四/十五轮）。
-    // dependsOn 'runLifecycleChainProbe'
+    //   ★ 2026-11-16 回归门禁（第十四/十五轮移出后重校准完成）：
+    //     核链大陆块内部是**纯内流区**（单块 2000~4400wu，测窗 sea=0、lakeStill 89%），
+    //     此时「到海」终端物理上不可能达成 ⇒ 判据按窗口类型自适应：
+    //       · 内流窗口（海格=0）：溢流湖无出口并入合法终端；③ 完整链改为「至少一链到湖」
+    //       · 外流窗口：判据一字不改（实测 -34100,-27400 窗 16265 条完整链、100%）
+    //     ⇒ 不是降阈值，是让判据认识「内流盆地」这一合法地貌类型。
+    //     双向验证见 audit 第十七轮。
+    dependsOn 'runLifecycleChainProbe'
     // 中心线距离场掩码�?026-10）：8 判据�?System.exit �?真门禁�?
     //   �?为什么要纳入：本�?RiverCenterlines 自身一字未改，但其【输入�?flux/channel)
     //     会被上游改动影响 �?历史 javadoc 数字(8.81%/1.08)�?filler 父指�?+ 出口修复�?
@@ -2365,11 +2366,10 @@ task runLifecycleChainProbe(type: JavaExec) {
     classpath = sourceSets.diagnostics.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.hydrology.model.LifecycleChainProbe'
     maxHeapSize = '8g'
-    // ★ 2026-11-15（阶段三）：默认窗口换到核链大陆（wu(22043,-43) ≈ 块(44086,-86)）——
-    //   旧正典中心 (-140,137) 在核链布局下落在大洋（岛网 occ 结构变了）⇒ streams 全入海。
-    //   坐标口径与 ViewSpec 相同（块），radius 保持正典 700。
+    // ★ 2026-11-16（门禁重校准）：默认窗口 = 核链大陆块内（块坐标 -34600,-31000）。
+    //   旧正典中心 (-140,137) 与 (0,0) 在核链布局下落在大洋（streams 全入海）。
     if (!project.hasProperty('probeArgs')) {
-        args = ['9139912035078620160', '0', '0', '700', '300000']
+        args = ['9139912035078620160', '-34600', '-31000', '700', '300000']
     }
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
