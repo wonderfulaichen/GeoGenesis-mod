@@ -103,6 +103,11 @@ public final class MorphLandField {
     private final MorphAssembly.Family oldCoverageFamily;
     private final double blendLow;
     private final double blendHigh;
+    /**
+     * 构造趋势回调（{@code null} = 关闭）。★ 阶段五（2026-11-16）：
+     * 趋势与地形类型<b>共用同一份高度预算</b>，见 {@link #sample}。
+     */
+    private final TrendFn trendFn;
     // sample/tileAt/stats share this instance's monitor: LinkedHashMap.get
     // mutates access order, and the last-point cache and counters must move atomically with it.
     private final Map<Long, Tile> tiles;
@@ -143,6 +148,20 @@ public final class MorphLandField {
     }
 
     MorphLandField(MorphCatalog catalog, MorphAssembly assembly, float regionScale, MorphKernel kernel) {
+        this(catalog, assembly, regionScale, kernel, null);
+    }
+
+    /**
+     * ★ 2026-11-16（阶段五）带<b>构造趋势</b>的构造器。
+     *
+     * @param trendFn 构造趋势回调 {@code (x, z, crust01) → trend(e 单位)}；
+     *                {@code null} = 关闭趋势 ⇒ 与 schema134 逐位相同。
+     *                <p>为什么回调而非直接持有 {@code TectonicField}：本类在
+     *                {@code morph} 包内，不应硬依赖 terrain 包的构造实现；
+     *                回调由 {@code MorphTerrainSampler} 注入，保持包边界干净。</p>
+     */
+    MorphLandField(MorphCatalog catalog, MorphAssembly assembly, float regionScale,
+                   MorphKernel kernel, TrendFn trendFn) {
         if (!(regionScale > 0) || !Float.isFinite(regionScale)) {
             throw new IllegalArgumentException("region scale");
         }
@@ -158,7 +177,18 @@ public final class MorphLandField {
         this.blendLow = assembly.blendLow();
         this.blendHigh = assembly.blendHigh();
         this.oldCoverageFamily = assembly.coverage();
+        this.trendFn = trendFn;
         this.tiles = tileCache();
+    }
+
+    /**
+     * 构造趋势回调：返回该点的地势趋势（<b>e 单位</b>，会聚正 / 张裂负 / 无边界 0）。
+     *
+     * <p>见 {@code TectonicTrend} 类注释的分层说明。纯函数、无状态。</p>
+     */
+    @FunctionalInterface
+    public interface TrendFn {
+        double trend(double x, double z, double crust01);
     }
 
     private Map<Long, Tile> tileCache() {
@@ -243,9 +273,43 @@ public final class MorphLandField {
         double region = heightForMerged(x, z, merged);
         double select = maskValue(x, z);
         double covered = overlay(region, select, select < blendLow ? Double.NaN : oldCoverageHeight(x, z));
-        double e = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN, 0.0);
+        // ★ 阶段五（2026-11-16）：构造趋势与地形类型<b>共用同一份高度预算</b>。
+        //
+        //   为什么不是朴素加法：现有类型系统已把 e 用到 MAX_LAND_HI_E=0.95，
+        //   而 heightFromE 硬钳在 e·verticalScale ≤ 1.0 ⇒ 纯加法会把山峰截平。
+        //   所以趋势「重新分配」预算，总量锁死：
+        //     e = GROUND_E + covered·E_SPAN·(1 − trend/MAX_LAND_HI_E) + trend
+        //   · trend = 0 ⇒ 与无趋势逐位相同（乘数 1、加数 0）
+        //   · trend > 0 ⇒ 类型起伏被压缩 (1−trend/0.95)，让出空间给趋势 → 峰顶仍 0.95
+        //   · trend 是 e 单位 ⇒ 随 maxY 自动等比（用户「自定义高度上限」设定）
+        double trend = 0.0;
+        if (trendFn != null) {
+            // crust01 是 TrendFn 的输入之一。morph 包不持有大陆场 ⇒ 由回调
+            // 自行按需获取（MorphTerrainSampler 注入的实现会读 ContinentField）。
+            // 这里传 Double.NaN 表示「请回调自行求 crust01」，避免本类用
+            // covered 反推出一个与真实大陆场不一致的假值。
+            trend = trendFn.trend(x, z, Double.NaN);
+            if (!Double.isFinite(trend)) {
+                trend = 0.0;
+            }
+            // 票槽同源偏置：趋势高处更倾向山地/高原（Σw 仍=1，由 normalize 保证）
+            if (trend != 0.0) {
+                biasByTrend(merged, trend);
+            }
+        }
+        // ★★ 关趋势必须<b>逐位</b>复现旧产出（P1 双 SHA 契约）。
+        //   注意：即便 trend=0，若仍走 `covered*E_SPAN*1.0 + 0.0` 这条表达式，
+        //   浮点乘/加的顺序已与原式 `covered*E_SPAN` 不同（乘 1.0 虽无损，但
+        //   加法 0.0 对 -0.0 会把符号翻正）⇒ 必须走独立分支，完全绕开新式。
+        double e;
+        if (trend == 0.0) {
+            e = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN, 0.0);
+        } else {
+            double spanKeep = 1.0 - Math.max(0.0, trend) / MorphScale.LAND_E_CAP;
+            e = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN * spanKeep + trend, 0.0);
+        }
         Sample s = new Sample(region, covered, e, select, alphaOf(select), dominant(merged),
-                merged, activeCount(merged));
+                merged, activeCount(merged), trend);
         synchronized (tileLock) {
             lastX = x;
             lastZ = z;
@@ -394,6 +458,56 @@ public final class MorphLandField {
         return best;
     }
 
+    /**
+     * ★ 阶段五（2026-11-16）：趋势对<b>票槽权重</b>的同源偏置。
+     *
+     * <p>用户分层要求「板块地形 = 整体趋势，地形类型 = 局部具体化」——
+     * 趋势高（会聚带）时该带整体抬高，同时<b>类型上更倾向山地/高原</b>，
+     * 这样「板块边界附近长得像山」是趋势与类型协同的结果，而不是两层各自加。</p>
+     *
+     * <p>做法：把趋势强度转成「向山地/高原迁移」的质量，从低地条目按比例扣除，
+     * 再调用 {@link #normalize} 保证 Σw=1（{@code MorphKernel.Evaluation} 的硬契约）。
+     * 纯函数、就地修改 {@code merged}。</p>
+     *
+     * @param merged 18 条目权重（Σ=1 的副本）
+     * @param trend  趋势（e 单位，正=会聚隆起）
+     */
+    static void biasByTrend(double[] merged, double trend) {
+        if (trend <= 0.0) {
+            return;   // 张裂（负）不改类型偏好：谷底地貌由类型系统自行决定
+        }
+        // 迁移比例：trend=CONV_PEAK(0.17) ⇒ 约 22% 的质量迁向山地/高原
+        double shift = Math.min(0.35, trend / MorphScale.TREND_PEAK * 0.22);
+        if (shift <= 0.0) {
+            return;
+        }
+        // 从「低地类」条目按当前权重的比例扣除 shift（重新分配，不是凭空增加）
+        double lowMass = 0.0;
+        for (int i = 0; i < merged.length; i++) {
+            if (isLowland(i)) {
+                lowMass += merged[i];
+            }
+        }
+        if (lowMass <= 1e-12) {
+            return;   // 已是纯山地/台地：无需偏置
+        }
+        double take = Math.min(shift, lowMass * 0.9);   // 最多扣 90%，避免整类消失
+        for (int i = 0; i < merged.length; i++) {
+            if (isLowland(i) && merged[i] > 0.0) {
+                merged[i] -= merged[i] / lowMass * take;
+            }
+        }
+        // 迁入：山地 70% / 台地 30%（山地带更符合会聚带的观感）
+        merged[MorphCatalog.IDX_MOUNTAIN] += take * 0.7;
+        merged[MorphCatalog.IDX_PLATEAU] += take * 0.3;
+        normalize(merged);
+    }
+
+    /** 是否为「低地类」条目（平原/丘陵/阶地及其复合）。 */
+    private static boolean isLowland(int entryIndex) {
+        return entryIndex < MorphCatalog.IDX_PLATEAU;
+    }
+
     static int activeCount(double[] w) {
         int n = 0;
         for (double v : w) {
@@ -477,12 +591,12 @@ public final class MorphLandField {
      * @param weight 长度 18 的条目权重（<b>内部数组</b>；{@link MorphLandField#weights} 才返回副本）
      */
     public record Sample(double regionHeight, double coveredHeight, double e, double mask, double alpha,
-                         int dominantEntry, double[] weight, int activeEntries) {
+                         int dominantEntry, double[] weight, int activeEntries, double trend) {
 
         @Override public String toString() {
             return String.format(Locale.ROOT,
-                    "Sample(region=%.6f covered=%.6f e=%.6f mask=%.4f alpha=%.4f dom=%d active=%d)",
-                    regionHeight, coveredHeight, e, mask, alpha, dominantEntry, activeEntries);
+                    "Sample(region=%.6f covered=%.6f e=%.6f mask=%.4f alpha=%.4f dom=%d active=%d trend=%+.4f)",
+                    regionHeight, coveredHeight, e, mask, alpha, dominantEntry, activeEntries, trend);
         }
     }
 

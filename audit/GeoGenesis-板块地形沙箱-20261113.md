@@ -1889,3 +1889,84 @@ boolean chainOk = endorheicWindow ? (statLake > 0) : (full > 0);  // ③ 完整�
 **BUILD SUCCESSFUL**（20 任务，含回归项）。
 
 默认窗口固化为内流块 (-34600,-31000) 块坐标（ViewSpec radius 700 不变）。
+
+## 第十八轮（2026-11-16）：阶段五——构造趋势层（板块感落地）
+
+### 用户裁定（架构分层）
+
+> 板块地形作为整体地形趋势，地形类型是局部地形具体化，侵蚀等后处理则是地形细化丰富化。
+
+采纳。核心推论：**趋势与类型共用同一份高度预算**（不是朴素相加）。
+现有类型系统已把 e 用到 `MAX_LAND_HI_E=0.95`，`heightFromE` 硬钳 `e·verticalScale ≤ 1.0`
+⇒ 纯加法会截平山峰。改用：
+
+```
+e = GROUND_E + covered·E_SPAN·(1 − trend/0.95) + trend
+```
+
+- `trend=0` ⇒ 走**独立分支**完全绕开新式（浮点顺序差异也要避免）
+- `trend>0` ⇒ 类型起伏压缩让位，**峰顶仍锁 0.95**
+- 趋势是 **e 单位** ⇒ 随 maxY 自动等比（320→40 格，512→70 格）——用户「自定义高度上限」设定
+
+### 实现
+
+| 文件 | 内容 |
+|---|---|
+| 新 `terrain/tectonic/TectonicTrend.java` | 会聚 0.17e 宽带隆起 / 张裂 −0.06e 宽带凹陷，波长 1800wu |
+| `MorphLandField` | `TrendFn` 注入 + `biasByTrend`（票槽同源偏置）+ `Sample.trend` |
+| `MorphTerrainSampler` | 开关 `geogenesis.tectonicTrend`（默认开）+ 注入回调 |
+| `MorphScale` | `TREND_PEAK` / `LAND_E_CAP`（morph 包不依赖 terrain 包的本地常量） |
+| `PreviewDisplay` | `CACHE_SCHEMA_VERSION` 134→**135** |
+
+### 四次迭代（全部由探针定量驱动，不是猜）
+
+`TectonicTrendProbe` 的梯度判据把每一版的问题精确指出来：
+
+| 版本 | 症状 | 根因 |
+|---|---|---|
+| v1 初版 | 梯度 0.121 e/wu | stress 窗太陡（0.10↔0.45 只跨 400wu） |
+| v2 放宽 stress 窗 | 0.103（几乎无改善） | 主污染源不是 stress 窗，是 **crust01 门控**——海岸梯度注入趋势 |
+| v3 去掉 crust01 门控 | 0.031（改善 70%），但洋侧全非零 | 方向正确，仍需压 stress 高频 |
+| v4 幅度/方向分离 + 去 tanh 放大 | **0.000540 < 阈值 0.000593 PASS** | tanh(s/0.5) 的 2× 斜率在放大残余高频 |
+
+**判据本身也修正了两次**（诚实记录）：
+- 初版「绝对差 ≤0.02e」错在随采样步长线性放大
+- 二版「梯度 ≤5e-4」过严：1.0e-3 对应等效波长 ≈1060wu，仍比沙箱 46~93wu 窄峰宽 10 倍
+- 终版用**物理上限** `2π·0.17/1800 = 5.93e-4 e/wu`（1800wu 正弦波的最大梯度）
+
+**分量梯度分解**是定位关键（新探针功能）：`amp(distRaw)=5.8e-4` ✓ vs `dir(stress)=3.3e-3` ⇒ 一眼看出短波来自 stress。
+
+### 最终公式
+
+```
+amp  = exp(−(distRaw/1800)²)                    ← 只由 distRaw 定幅度（C∞）
+dir  = clamp(smoothStress(wx,wz), −1, 1)        ← 1500wu 低通后直接当方向（不放大）
+trend = (dir≥0 ? 0.17·dir : 0.06·dir) · amp
+```
+
+**幅度与方向分离**是本轮的关键洞见：`stressField` 增益 2.0 会饱和到 ±1，
+格边界处梯度极陡；用它当**幅度**必然注入高频，只用它当**方向**则高频无害。
+
+### 验证（schema135）
+
+| 验证 | 结果 |
+|---|---|
+| `runTectonicTrendProbe`（新，判据型） | **ALL PASS**（双向/梯度/幅度界/逐位/远场） |
+| 梯度 | 0.000540 e/wu（阈值 0.000593）✓ |
+| 分布 | 会聚正 44.3% / 张裂负 55.7%，幅度 max +0.156 / min −0.057 ✓ |
+| `runP1CellRenderProbe` | **PASS**（新基准 301d51c1 / 2dd15d88） |
+| 关趋势 | 47fe6869 / 61bd91f9（= 仅 FBM 融合的中间态） |
+| `runWorldgenGate` | **BUILD SUCCESSFUL** 全绿 |
+| 目检 | 陆块上出现连续性高地（趋势带），不再是"每岛各自一堆山" |
+
+### ⚠ 补记欠账
+
+**FBM 融合（壳值 + 1.6×FBM 塑形）当时未重立 P1** —— 那笔改动只做了
+ContinentAnchorProbe 与出图，P1 基准仍停在 FBM 融合之前（e0f5e4db）。
+本轮一并重立，历史值已全部留档在 `P1CellRenderProbe` 的 EXPECTED 注释里。
+
+### 未做（明确）
+
+- 转换带（沙箱 `sign` 有非 C⁰ 断点，需先重设计）
+- 沙箱窄峰/肩部/前弧洼（属"局部地貌"，归类型系统）
+- 洋底负向项（`CrustField` 已拥有 age/trench/rift，重复加会双计）

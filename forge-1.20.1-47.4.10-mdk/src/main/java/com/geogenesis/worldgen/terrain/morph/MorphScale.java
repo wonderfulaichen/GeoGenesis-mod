@@ -27,5 +27,21 @@ final class MorphScale {
     /** 从基准面到 e 上界的跨度。 */
     static final double E_SPAN = 1.50;
 
+    /**
+     * ★ 阶段五（2026-11-16）：构造趋势的会聚峰值（e 单位），与
+     * {@code TectonicTrend.CONV_PEAK} 同值——此处独立声明是 {@code morph} 包
+     * 不依赖 terrain 包的体现（票槽偏置换算用它做归一化基准）。
+     */
+    static final double TREND_PEAK = 0.17;
+
+    /**
+     * 陆地 e 的<b>理论上界</b>，与 {@code TerrainParams.MAX_LAND_HI_E} 同值（0.95）。
+     *
+     * <p>独立声明的原因同 {@link #TREND_PEAK}：{@code morph} 包不自依赖 terrain 包。
+     * 用途：趋势与类型共用高度预算时，趋势占 e 的比例必须按这个上界归一化，
+     * 否则 maxY 变化时峰顶会被 {@code heightFromE} 的钳制截平。</p>
+     */
+    static final double LAND_E_CAP = 0.95;
+
     private MorphScale() { }
 }

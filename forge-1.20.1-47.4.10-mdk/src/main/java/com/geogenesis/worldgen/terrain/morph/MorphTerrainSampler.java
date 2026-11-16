@@ -5,6 +5,7 @@ import com.geogenesis.worldgen.terrain.CrustField;
 import com.geogenesis.worldgen.terrain.HeightCurve;
 import com.geogenesis.worldgen.terrain.TectonicField;
 import com.geogenesis.worldgen.terrain.TerrainParams;
+import com.geogenesis.worldgen.terrain.tectonic.TectonicTrend;
 
 /**
  * <b>morph 地形的唯一入口</b>：{@code sampleE(wuX, wuZ)} 给出 e，{@code height} 给出世界 Y。
@@ -81,8 +82,21 @@ public final class MorphTerrainSampler {
     private final MorphLandField land;
     private final ContinentField continent;
     private final TectonicField tectonic;
+    private final TectonicTrend trend;
     private final MorphOceanAssembler ocean;
     private final HeightCurve curve;
+
+    /**
+     * ★ 阶段五（2026-11-16）：构造趋势开关——{@code true}（默认）时板块边界
+     * 通过 {@link TectonicTrend} 影响陆地地势趋势（会聚隆起/张裂凹陷）；
+     * 仅 A/B 对照与回退时置 false（false 精确复现 schema134）。</p>
+     *
+     * <p>开关四铁律自查：① {@code geogenesis.tectonicTrend} 全仓仅本一处读取，
+     * 默认开（{@code !"false".equals} 惯用法）；② 单属性单语义；
+     * ③ 本注释与代码同源；④ 产出变更已升 CACHE_SCHEMA_VERSION（134→135）。</p>
+     */
+    private static final boolean TECTONIC_TREND =
+            !"false".equals(System.getProperty("geogenesis.tectonicTrend"));
 
     /**
      * ★ 桥接 S2（2026-11-13）：深海基准开关——{@code true}（默认）时海床
@@ -150,7 +164,6 @@ public final class MorphTerrainSampler {
 
         this.catalog = new MorphCatalog(seed);
         this.assembly = MorphAssembly.of(seed);
-        this.land = new MorphLandField(catalog, assembly, regionScale);
 
         // 大陆性与正典同源：同一个 ContinentField 实现、同一个 seed、同一个 params。
         this.continent = new ContinentField(params);
@@ -159,6 +172,18 @@ public final class MorphTerrainSampler {
         // ★ 桥接 S2（2026-11-13）：构造场自持实例——与 BaseWorldSampler.tectonic 同种子，
         //   确定性纯函数 ⇒ 两份实例逐位等价（R3 双 sampler 经同一构造路径自动覆盖）。
         this.tectonic = new TectonicField(seed);
+
+        // ★ 阶段五（2026-11-16）：构造趋势注入——板块边界 → 整体地势趋势。
+        //   必须在 land 之前建：趋势回调要同时读 tectonic 与 continent。
+        //   开关 false ⇒ trendFn=null ⇒ land 与 schema134 逐位相同。
+        //
+        // crust01 由本 sampler 现算（持有 ContinentField，是唯一权威来源）；
+        // MorphLandField 传 NaN 表示"请回调自负其责"。
+        this.trend = TECTONIC_TREND ? new TectonicTrend(tectonic) : null;
+        MorphLandField.TrendFn trendFn = trend == null ? null
+                : (x, z, ignored) -> trend.trend(x, z, crust01Of(x, z));
+        this.land = new MorphLandField(catalog, assembly, regionScale,
+                new MorphKernel(MorphLandRecipe.all(catalog), catalog.seed(), true), trendFn);
 
         // 深海噪声用 seed+3（正典口径）；近岸细节噪声用原 seed。
         // ★ 桥接 S2：开关默认开时注入 CrustField.eBase（e 量纲）接管海床 deep 来源（A3：
@@ -184,8 +209,12 @@ public final class MorphTerrainSampler {
         this.curve = new HeightCurve(params, minY, maxY);
     }
 
-    // ============================================================ 主查询
+    /** 陆壳度 ∈[0,1]：由大陆场 c ∈[−1,1] 换算（0.5 = 海岸）。 */
+    private double crust01Of(double x, double z) {
+        return (continent.sample(x, z) + 1.0) * 0.5;
+    }
 
+    // ============================================================ 主查询
     /**
      * 世界点的高度场值 {@code e ∈ [−1, +1]}（0 = 海平面，负 = 水下）。
      *

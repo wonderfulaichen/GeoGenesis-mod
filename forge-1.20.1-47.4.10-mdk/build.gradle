@@ -1673,6 +1673,36 @@ task runOceanFloorProbe(type: JavaExec) {
     }
 }
 
+task runQuickContinentDiag(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.QuickContinentDiag'
+}
+
+// 构造趋势层验收（2026-11-16 阶段五）：判据型探针（双向/无跳变/幅度界/逐位/洋侧零）。
+//   gradlew runTectonicTrendProbe [-PprobeArgs="<size> <step>"]
+task runTectonicTrendProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.tectonic.TectonicTrendProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['400', '30']
+    }
+}
+
+// 海岸形状定量对比（2026-11-16）：新方案（核+FBM塑形）vs 旧纯 FBM 的分形D/岸线密度/陆块数。
+//   只报告无判据。用于量化「新大陆形状比旧 FBM 差多少」。
+//   gradlew runCoastShapeCompareProbe [-PprobeArgs="<size> <step>"]
+task runCoastShapeCompareProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.CoastShapeCompareProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['256', '20', '2000', '-16000']
+    }
+}
+
 // LEM 离线实验（2026-11-16 阶段四预研）：生产地形上跑沙箱 LEM，量化谷形/海岸分形D/耗时。
 //   只报告无判据（决策输入，不入门禁）。
 //   gradlew runLemExperimentProbe [-PprobeArgs="<size> <step> <cx> <cz> <iters>"]
@@ -1709,7 +1739,7 @@ task runOceanABProbe(type: JavaExec) {
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
-        args = ['700', '3000', '-16000', '-16000']
+        args = ['700', '3000']
     }
 }
 

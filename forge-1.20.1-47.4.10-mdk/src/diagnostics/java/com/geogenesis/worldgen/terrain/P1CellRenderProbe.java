@@ -17,22 +17,28 @@ public final class P1CellRenderProbe {
     private static final long SEED = 9139912035078620160L;
     private static final int SIZE = 1401;
     /**
-     * ★ 阶段三修正重立基准（2026-11-15，大陆尺度对齐旧 FBM：OCC 波长 5000/门限
-     * 0.54/核半径 ×1.5 高重叠；schema134）。锚第四次全域重标。
-     * 历史值：51c2626d…（初版 distDiv-age，已否决）；d87b8629…（schema130，
+     * ★ 阶段五重立基准（2026-11-16，构造趋势层；schema135）。
+     *
+     * <p>历史值：51c2626d…（初版 distDiv-age，已否决）；d87b8629…（schema130，
      * 均衡式 eBase）；10f50a68…（schema131，平台律+构造带）；c273a3bc…（schema132，
-     * 主动陆缘削减，关 geogenesis.continentCores 可复现）；671ecd94…（schema133，
-     * 核链初版小岛网，用户否决）。
+     * 主动陆缘削减）；671ecd94…（schema133，核链初版小岛网，用户否决）；
+     * e0f5e4db…（schema134）。</p>
+     *
+     * <p>⚠ 本次同时补记<b>两笔欠账</b>：
+     * ① FBM 融合（壳值 + 1.6×FBM 塑形，用户裁定「参考 FBM 机制」）当时未重立 P1；
+     * ② 阶段五构造趋势（会聚 0.17e 宽带隆起 + 票槽偏置）。
+     * 两者都已并入本基准。关趋势（-Dgeogenesis.tectonicTrend=false）产出为
+     * 47fe6869…/61bd91f9…，即「仅有 FBM 融合、无趋势」的中间态。</p>
      */
     private static final String EXPECTED =
-            "e0f5e4dbcca05f4808a3e9b61dbb03c61508e5845a3d70fe3cbe775c8452d6f4";
+            "301d51c13805181e2ea03ad3c0e273a022264bfbdfc5f8e902c0b924a4978664";
 
     /**
-     * ★ 阶段三修正重立（2026-11-15）：landCells 572862→503823（occ 门限提高后
-     * P1 窗口的窗口气候）。全域陆占比 0.3387 由 ContinentAnchorProbe 守护。
+     * ★ 阶段五重立（2026-11-16）：landCells 503823→579705。
+     * 全域陆占比由 ContinentAnchorProbe（0.3385）与 OceanFloorProbe 守护。
      * 标定协议见 {@link #render}。
      */
-    private static final String EXPECTED_LAND = "c15c7a0f24964f624bb95f60c1b576a3584b64828a2557cf0eea73154fe2799a";
+    private static final String EXPECTED_LAND = "2dd15d8890b73950ab2c3c8736a35fca6ee6462b358053856641651e3ffee010";
 
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args[1]);

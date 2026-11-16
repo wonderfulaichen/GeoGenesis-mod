@@ -669,7 +669,16 @@ public class PreviewDisplay extends AbstractWidget {
     //       下限/SEARCH 同步。锚第四次全域重标 {-2.018,-0.240,-0.149,-0.041,0.966}
     //       （陆占比 0.3387、分位偏差≤0.0003）。旧基准留档：P1 EXPECTED
     //       671ecd94…/9fffc819…（schema133）。
-    static final int CACHE_SCHEMA_VERSION = 134;
+    // 135 = 2026-11-16 阶段五（构造趋势层）：TectonicTrend 把板块边界变成**整体地势趋势**
+    //       （会聚宽带隆起 0.17e / 张裂宽带凹陷 −0.06e，波长 1800wu ≈ 0.9 板块间距），
+    //       与地形类型系统**共用同一份高度预算**：
+    //         e = GROUND_E + covered·E_SPAN·(1 − trend/MAX_LAND_HI_E) + trend
+    //       ⇒ trend=0 处与 schema134 逐位相同，峰顶仍锁 0.95e 不被截平。
+    //       e 单位 ⇒ 随 maxY 自动等比（320 → 40 格，512 → 70 格）。
+    //       票槽同源偏置：趋势高处山地/高原权重上升（Σw 仍=1）。
+    //       开关 geogenesis.tectonicTrend 默认开（false = 精确复现 schema134）。
+    //       旧基准留档：P1 EXPECTED 待重立（schema134 双 SHA 见 P1CellRenderProbe）。
+    static final int CACHE_SCHEMA_VERSION = 135;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
