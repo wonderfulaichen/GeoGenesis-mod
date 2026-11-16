@@ -1678,6 +1678,19 @@ task runQuickContinentDiag(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.QuickContinentDiag'
 }
 
+// 世界全览图（2026-11-16）：覆盖多个大陆块与大洋的格局视图（默认 36000wu ≈ 72000 块）。
+//   走生产路径 sampleE，8 级色带 + 5000wu 网格 + 陆架/洋盆/深海构成统计。
+//   gradlew runWorldOverviewProbe [-PprobeArgs="<size> <radiusWu> <cx> <cz>"]
+task runWorldOverviewProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.WorldOverviewProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['900', '8000', '0', '0']
+    }
+}
+
 // 构造趋势 A/B 对照图（2026-11-16 阶段五验收）：同窗同底只切趋势，出 off/on/diff 三张。
 //   gradlew runTrendABProbe [-PprobeArgs="<size> <radius> <cx> <cz>"]
 task runTrendABProbe(type: JavaExec) {
