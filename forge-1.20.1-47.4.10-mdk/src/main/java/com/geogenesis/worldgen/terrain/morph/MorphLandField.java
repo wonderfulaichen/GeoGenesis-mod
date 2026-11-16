@@ -284,10 +284,8 @@ public final class MorphLandField {
         //   · trend 是 e 单位 ⇒ 随 maxY 自动等比（用户「自定义高度上限」设定）
         double trend = 0.0;
         if (trendFn != null) {
-            // crust01 是 TrendFn 的输入之一。morph 包不持有大陆场 ⇒ 由回调
-            // 自行按需获取（MorphTerrainSampler 注入的实现会读 ContinentField）。
-            // 这里传 Double.NaN 表示「请回调自行求 crust01」，避免本类用
-            // covered 反推出一个与真实大陆场不一致的假值。
+            // crust01 由回调自行求（MorphTerrainSampler 注入的实现会读 ContinentField）。
+            // 传 NaN 表示「请回调自负其责」——本类不持有大陆场，无法给出权威值。
             trend = trendFn.trend(x, z, Double.NaN);
             if (!Double.isFinite(trend)) {
                 trend = 0.0;
@@ -298,15 +296,27 @@ public final class MorphLandField {
             }
         }
         // ★★ 关趋势必须<b>逐位</b>复现旧产出（P1 双 SHA 契约）。
-        //   注意：即便 trend=0，若仍走 `covered*E_SPAN*1.0 + 0.0` 这条表达式，
-        //   浮点乘/加的顺序已与原式 `covered*E_SPAN` 不同（乘 1.0 虽无损，但
-        //   加法 0.0 对 -0.0 会把符号翻正）⇒ 必须走独立分支，完全绕开新式。
+        //   注意：即便 trend=0，若仍走新表达式，浮点乘/加顺序已与原式不同 ⇒
+        //   必须走独立分支，完全绕开新式。
         double e;
         if (trend == 0.0) {
             e = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN, 0.0);
         } else {
-            double spanKeep = 1.0 - Math.max(0.0, trend) / MorphScale.LAND_E_CAP;
-            e = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN * spanKeep + trend, 0.0);
+            // ★ 2026-11-16 修正（用户验收：初版把山脊压平了 + 灌水成湖）。
+            //
+            //   初版用 `covered·E_SPAN·(1 − trend/0.95) + trend`（压缩类型起伏腾预算）
+            //   ⇒ 山脊纹理被压糊、谷底相对抬升形成封闭洼地灌水。**错**：
+            //   类型起伏是「局部具体化」，不该被趋势压扁。
+            //
+            //   正解：<b>从余量里挤，不压扁整体</b>——
+            //     e = base + trend · (1 − base/LAND_E_CAP)
+            //   · 低地（base≈0.1）→ 趋势几乎全量（×0.9）
+            //   · 高山（base≈0.9）→ 趋势几乎为零（×0.1）
+            //   · 峰顶不超 LAND_E_CAP ⇒ 不触发 heightFromE 的钳制
+            //   · 类型起伏完全保留（山脊纹理不受影响）
+            double base = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN, 0.0);
+            double headroom = Math.max(0.0, 1.0 - base / MorphScale.LAND_E_CAP);
+            e = Math.max(base + trend * headroom, 0.0);
         }
         Sample s = new Sample(region, covered, e, select, alphaOf(select), dominant(merged),
                 merged, activeCount(merged), trend);

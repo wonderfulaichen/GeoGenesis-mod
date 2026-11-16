@@ -1678,6 +1678,18 @@ task runQuickContinentDiag(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.QuickContinentDiag'
 }
 
+// 构造趋势 A/B 对照图（2026-11-16 阶段五验收）：同窗同底只切趋势，出 off/on/diff 三张。
+//   gradlew runTrendABProbe [-PprobeArgs="<size> <radius> <cx> <cz>"]
+task runTrendABProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.morph.TrendABProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['700', '3000', '18000', '-27000']
+    }
+}
+
 // 构造趋势层验收（2026-11-16 阶段五）：判据型探针（双向/无跳变/幅度界/逐位/洋侧零）。
 //   gradlew runTectonicTrendProbe [-PprobeArgs="<size> <step>"]
 task runTectonicTrendProbe(type: JavaExec) {
@@ -1739,7 +1751,7 @@ task runOceanABProbe(type: JavaExec) {
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
-        args = ['700', '3000']
+        args = ['700', '3000', '18000', '-27000']
     }
 }
 

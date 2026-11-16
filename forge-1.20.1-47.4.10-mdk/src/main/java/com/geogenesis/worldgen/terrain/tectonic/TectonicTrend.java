@@ -42,8 +42,26 @@ public final class TectonicTrend {
 
     /** 会聚趋势峰值（e 单位）。maxY=320 ⇒ 40 格；maxY=512 ⇒ 70 格。 */
     public static final double CONV_PEAK = 0.17;
-    /** 张裂趋势谷值（e 单位，负）。maxY=320 ⇒ −14 格。 */
-    public static final double DIV_TROUGH = -0.06;
+    /**
+     * 张裂趋势谷值（e 单位，负）。
+     *
+     * <p>★ 2026-11-16 标定（用户验收驱动）：初版 −0.06e 把沿海低地（e≈0.045，约 11 格）
+     * 压到海平面以下 ⇒ 内陆凭空出现成串湖泊。真实大陆裂谷（东非）确实会成湖，
+     * 但只发生在<b>大陆内部</b>、且不该把整片低地灌水。
+     * 改为 −0.025e（约 −6 格）并加内陆门控（见 {@link #DIV_INLAND_LO}）。</p>
+     */
+    public static final double DIV_TROUGH = -0.025;
+    /**
+     * 张裂的<b>内陆门控</b>（crust01）：张裂趋势只在大陆内部明显，
+     * 靠近海岸（crust01 &lt; {@value}）时渐隐。
+     *
+     * <p>理由：海岸带的低地承接会聚与张裂的过渡，若让张裂在此处全幅生效，
+     * 会把 e≈0.05 的沿海低地压成水下 ⇒ 观感上"凭空灌水成湖"。
+     * 真实地质上，裂谷成湖集中在大陆内部（东非大裂谷、贝加尔），
+     * 海岸带更多是被动陆缘。</p>
+     */
+    private static final double DIV_INLAND_LO = 0.55;
+    private static final double DIV_INLAND_HI = 0.80;
     /**
      * 趋势横向波长（wu）：决定「一条边界影响多宽的地带」。
      * 板块间距 2000wu ⇒ 0.9 个间距，一条边界两侧各影响约 900wu（1800 块）。
@@ -148,9 +166,15 @@ public final class TectonicTrend {
         //   高频放大了 —— 分量梯度分解显示 dir 梯度 6.2e-3 /wu（amp 只有 5.8e-4）。
         //   改为 clamp(s, −1, 1)：斜率 ≤1，不放大任何结构。
         double dir = Math.max(-1.0, Math.min(1.0, smoothStress(wx, wz)));
-        double out = dir >= 0.0
-                ? CONV_PEAK * dir
-                : Math.abs(DIV_TROUGH) * dir;   // 张裂幅度较小（−0.06 vs +0.17）
+        double out;
+        if (dir >= 0.0) {
+            out = CONV_PEAK * dir;
+        } else {
+            // 张裂：只在大陆内部明显（DIV_INLAND 门控），海岸带渐隐
+            // ⇒ 避免"沿海低地被压成水下、凭空灌水成湖"（用户验收反馈）
+            double inland = smoothstep(DIV_INLAND_LO, DIV_INLAND_HI, crust01);
+            out = Math.abs(DIV_TROUGH) * dir * inland;
+        }
         return out * amp;
     }
 
