@@ -436,11 +436,13 @@ public final class CellGenerator {
         double e = softCapLandE(newE);
         cell.e = e;
         cell.height = heightCurve.heightFromE(e);
-        if (e >= 0) {
-            TerrainClass ct = TerrainClass.dominantFromWeights(cell.typeWeights);
-            cell.terrainType = classifyTerrain(e, cell.eLand, ct, cell.temperature,
-                cell.humidity, cell.typeWeights, cell.coastCoord, cell.landFeat);
-        }
+        // ★ 阶段六（2026-11-17）：海洋分支也需重新分类——否则海山/洋中脊
+        //   只在 `sampleColumn` 那一次生效，侵蚀后若仍 <0 就再也不会被重判。
+        //   火山分支同理（基线教训："侵蚀后火山消失"）。
+        TerrainClass ct = TerrainClass.dominantFromWeights(cell.typeWeights);
+        cell.terrainType = classifyTerrain(e, cell.eLand, ct, cell.temperature,
+                cell.humidity, cell.typeWeights, cell.coastCoord,
+                cell.landFeat, cell.oceanFeat);
     }
 
     /** 装配增量并按基础地形差分计算坡度（B 差分，不依赖旧 tile postErosion 场）。 */
@@ -556,7 +558,33 @@ public final class CellGenerator {
                                                 double[] typeWeights,
                                                 double coastCoord,
                                                 LandFeatures.FeatureResult landFeat) {
+        return classifyTerrain(ne, eLand, cellType, temperature, humidity, typeWeights,
+                coastCoord, landFeat, null);
+    }
+
+    /**
+     * ★ 阶段六（2026-11-17）：带海洋特征的完整分类。
+     *
+     * <p>海洋亚型（海山/洋中脊）必须<b>显式判</b>——{@link TerrainClass#dominantFromWeights}
+     * 从 {@code PLAIN}（ordinal 8）起搜，永远选不到 ordinal 3/4 的
+     * SUBMARINE_RIDGE/SEAMOUNT。</p>
+     *
+     * <p>判据：仅深水（{@code ne < −0.08}）才可能是海山/洋中脊——真实海山都在深水，
+     * 浅水/陆架不该被标成海山。阈值沿用基线口径（seamount&gt;0.02 / ridge&gt;0.05）。</p>
+     */
+    public static TerrainClass classifyTerrain(double ne, double eLand,
+                                                TerrainClass cellType,
+                                                double temperature,
+                                                double humidity,
+                                                double[] typeWeights,
+                                                double coastCoord,
+                                                LandFeatures.FeatureResult landFeat,
+                                                OceanFeatures.FeatureResult oceanFeat) {
         if (ne < 0.0) {
+            if (oceanFeat != null && ne < -0.08) {
+                if (oceanFeat.seamount > 0.02) return TerrainClass.SEAMOUNT;
+                if (oceanFeat.ridge > 0.05) return TerrainClass.SUBMARINE_RIDGE;
+            }
             if (ne > -0.08) return TerrainClass.CONTINENTAL_SHELF;
             return ne < -0.18 ? TerrainClass.DEEP_OCEAN : TerrainClass.OCEAN;
         }

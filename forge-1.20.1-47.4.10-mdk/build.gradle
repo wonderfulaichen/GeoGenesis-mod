@@ -1678,6 +1678,19 @@ task runQuickContinentDiag(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.QuickContinentDiag'
 }
 
+// 构造特征验收（2026-11-17 阶段六）：火山/海山/洋中脊存在 + 分类正确 + 不新增海岸线 + 火口。
+//   判据型探针（FAIL 时 exit 1）。
+//   gradlew runTectonicFeaturesProbe [-PprobeArgs="<size> <step> <cx> <cz>"]
+task runTectonicFeaturesProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.TectonicFeaturesProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['200', '40']
+    }
+}
+
 // 世界全览图（2026-11-16）：覆盖多个大陆块与大洋的格局视图（默认 36000wu ≈ 72000 块）。
 //   走生产路径 sampleE，8 级色带 + 5000wu 网格 + 陆架/洋盆/深海构成统计。
 //   gradlew runWorldOverviewProbe [-PprobeArgs="<size> <radiusWu> <cx> <cz>"]
@@ -1687,7 +1700,7 @@ task runWorldOverviewProbe(type: JavaExec) {
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
-        args = ['900', '8000', '0', '0']
+        args = ['700', '4000', '0', '0']
     }
 }
 

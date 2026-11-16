@@ -31,14 +31,14 @@ public final class P1CellRenderProbe {
      * 47fe6869…/61bd91f9…，即「仅有 FBM 融合、无趋势」的中间态。</p>
      */
     private static final String EXPECTED =
-            "4a1c19ed69e9411fb1c3b591bb55d7cc0a8fdc4b470f65d2c2aeeb93a03aee89";
+            "5490eb62d6096012eb97439857615959747c181755ea103798980719af115dbe";
 
     /**
-     * ★ 阶段五重立（2026-11-16）：landCells 503823→585430。
+     * ★ 阶段五重立（2026-11-16）：landCells 503823→586223。
      * 全域陆占比由 ContinentAnchorProbe（0.3385）与 OceanFloorProbe 守护。
      * 标定协议见 {@link #render}。
      */
-    private static final String EXPECTED_LAND = "0f04e118cdeec760352c075507b722e552d5b376dad5dfc0a5db7273016a5cbe";
+    private static final String EXPECTED_LAND = "1f9d9065d4cbbc447a454751b43d641cf88a717613b270740be78ca9a61f3a11";
 
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args[1]);

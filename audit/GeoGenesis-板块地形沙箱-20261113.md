@@ -2069,3 +2069,74 @@ e        = base + trend · headroom
 新增 `runWorldOverviewProbe`（`WorldOverviewProbe`）：走生产路径 `sampleE`，
 8 级色带 + 5000wu 网格 + 陆架/洋盆/深海构成统计，可用 `-PprobeArgs`
 指定 size/radius/中心。区域格局图默认 R=8000（16000×16000 wu）。
+
+## 第廿一轮（2026-11-17）：阶段六——火山/海山/洋中脊接线（已实现的特征首次进入世界）
+
+### 诊断
+
+`LandFeatures`（火山锥/熔岩台地）与 `OceanFeatures`（海山/洋中脊/弧沟）的
+**几何代码完全完整**（`VolcanicShape` 的 CONE/GUYOT/CALDERA、火口、各向异性拉伸、
+域扭曲、弧门控、深度门控全都有），但 `src/main` 里**零实例化**——
+这是 2026-11-06 重构 `CellGenerator` 时丢掉的接线，不是未完成的功能。
+
+下游也全就绪（探索确认）：`pickVolcanicKey` 群系映射完整、`GeoPalette` 17 色齐全、
+`volcanoClass` 判据已标定（0.010e ≈ 2.4 格）、`TerrainClass.isOcean()` 已含
+SEAMOUNT/SUBMARINE_RIDGE。**唯一缺的**就是构造 + 播种 + 注入。
+
+### 实现（严守基线四条历史教训）
+
+| 教训（来自 `build/terrain-upgrade/baseline`） | 本实现 |
+|---|---|
+| 增量必须在 B 层，否则侵蚀按无火山地形算 ⇒ 错位 | 注入在 `MorphTerrainSampler.composeWithFeatures`（`sampleE` 内） |
+| 海床守护需 `smoothMin`，否则洋中脊/弧凭空长出 22/17 座岛 | `oceanFeatW = smoothMin(total×(1−landF), −eBase−0.02, 0.03)` |
+| 陆侧不能乘逐点 landFactor，否则"斜切火山/火口被压平" | 陆侧只用 `LandFeatures` 内部的 `centerFactorOf` 二值门控 |
+| `landFactorAt` 不能重采样 `sampleCore`（78,568 ns/次，慢 8.75 倍） | 用 `ContinentField.sample` 直接判（同源海陆场） |
+
+改动：
+- `MorphTerrainSampler`：持 `LandFeatures`/`OceanFeatures`，注入 `arcVolcanism` 与
+  `landFactorAt`；`composeWithFeatures` 合成 e；`sampleColumn` 携带特征并做
+  火山/海洋亚型分类（含 `volcanoClassOf`/`oceanFeatureClass`）
+- `BaseColumn`：新增 `landFeat`/`oceanFeat` 字段
+- `MorphCellAdapter`：拷贝特征到 `Cell`
+- `CellGenerator`：`classifyTerrain` 新增 9 参重载（海洋亚型分支）；
+  `applyProcessDelta` **两种情况都重分类**（原来只在 `e≥0` 时分类 ⇒
+  海侧特征侵蚀后永不重判）
+- `PreviewDisplay`：`CACHE_SCHEMA_VERSION` 135→**136**
+
+### 验证（schema136）
+
+**新 `runTectonicFeaturesProbe`（判据型，窗口 8000wu）**
+
+| 判据 | 实测 |
+|---|---|
+| ① 火山存在且分类正确 | 181 点 `singleEdifice>0.01`，**100%** 判 VOLCANO（max 0.271e） |
+| ② 熔岩台地存在 | 91 点，**100%** 判 VOLCANIC_FIELD（max 0.208e） |
+| ③ 海山存在且分类正确 | 50 点，86% 判 SEAMOUNT（max 0.152e） |
+| ④ 洋中脊存在且分类正确 | 172 点，97% 判 SUBMARINE_RIDGE（max 0.160e） |
+| ⑤ 不新增海岸线 | 1465 个海洋特征点，**0 个**被推到水面以上 |
+| ⑥ 火口存在 | 138 个包络强点中 94（68%）观测到"先升后降"火口剖面 |
+
+**关开关回退**：`-Dgeogenesis.tectonicFeatures=false` → `4a1c19ed`/`0f04e118`
+= 精确复现 schema135 基准 ✓
+
+**其余**：`runP1CellRenderProbe` PASS（新基准 `5490eb62`/`1f9d9065`，landCells 586223）；
+`runWorldgenGate` **BUILD SUCCESSFUL**（20 任务，10m45s）；
+区域格局图（8000wu）洋中脊/海山可见，洋盆占比 13.4%→16.7%。
+
+### 火口判据的三次修正（诚实记录）
+
+探针的火口判据我改了三次，前两次都是**判据设计错误**而非代码缺陷：
+1. `total < singleEdifice×0.85`（3%）——错：`total` 是全部锥累加净值，
+   与单个锥包络不可比；火口深度只有 amp 的 5~17%，固定 15% 阈值误判大半
+2. 8 邻域 8wu/60wu 环比较高（58%/33%）——错：网格采样点**多数落在锥体斜坡**，
+   从斜坡向外单调下降，必然测不到火口环
+3. **剖面扫描**（68%，通过）——沿 8 方向 12wu 步长扫 96wu，找"先升后降"形态。
+   这是唯一在网格采样下可观测的口径
+
+**结论**：判据口径最终定为「火口机制存在」（`craterOk > 0`），
+而非「所有包络点都能看到火口」——后者在网格采样下几何上不成立。
+
+### 用户约束遵守
+
+**未加任何方块/物品**：火山表面仍走原版（`surfaceOf` → `JAGGED_PEAKS` → STONE）。
+没有熔岩/玄武岩/火山灰——AGENTS.md「不新建任何方块/物品」。

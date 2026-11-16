@@ -3,6 +3,8 @@ package com.geogenesis.worldgen.terrain.morph;
 import com.geogenesis.worldgen.terrain.ContinentField;
 import com.geogenesis.worldgen.terrain.CrustField;
 import com.geogenesis.worldgen.terrain.HeightCurve;
+import com.geogenesis.worldgen.terrain.LandFeatures;
+import com.geogenesis.worldgen.terrain.OceanFeatures;
 import com.geogenesis.worldgen.terrain.TectonicField;
 import com.geogenesis.worldgen.terrain.TerrainParams;
 import com.geogenesis.worldgen.terrain.tectonic.TectonicTrend;
@@ -77,6 +79,8 @@ public final class MorphTerrainSampler {
     static final long OCEAN_SEED_OFFSET = 3L;
 
     private final long seed;
+    /** 地形参数（{@code landFactorAt} 需用 {@code continentBias}）。 */
+    private final TerrainParams params;
     private final MorphCatalog catalog;
     private final MorphAssembly assembly;
     private final MorphLandField land;
@@ -85,6 +89,35 @@ public final class MorphTerrainSampler {
     private final TectonicTrend trend;
     private final MorphOceanAssembler ocean;
     private final HeightCurve curve;
+    /**
+     * ★ 阶段六（2026-11-17）：火山/熔岩台地特征（陆侧）。几何代码本就完整，
+     * 此前只是缺接线（2026-11-06 重构 CellGenerator 时丢失）。
+     */
+    private final LandFeatures landFeatures;
+    /** ★ 阶段六：海山 / 洋中脊 / 弧沟特征（洋侧）。 */
+    private final OceanFeatures oceanFeatures;
+
+    /**
+     * ★ 阶段六（2026-11-17）：构造特征开关——{@code true}（默认）时
+     * {@link LandFeatures}/{@link OceanFeatures} 参与地形合成；false 精确复现 schema135。
+     *
+     * <p>开关四铁律自查：① {@code geogenesis.tectonicFeatures} 全仓仅本一处读取，
+     * 默认开（{@code !"false".equals} 惯用法）；② 单属性单语义；
+     * ③ 本注释与代码同源；④ 产出变更已升 CACHE_SCHEMA_VERSION（135→136）。</p>
+     */
+    private static final boolean TECTONIC_FEATURES =
+            !"false".equals(System.getProperty("geogenesis.tectonicFeatures"));
+
+    /**
+     * 海床守护余量（e）：洋侧特征抬升的软上限 = {@code −eLand − SEABED_MARGIN}。
+     *
+     * <p>基线教训（{@code build/terrain-upgrade/baseline} 的 CellGenerator 注释）：
+     * 不加守护时洋中脊/弧会<b>凭空长出 22/17 座不该有的岛</b>。深海处上限远大于
+     * 特征幅度 ⇒ 完全不生效（形态不变），只在 {@code eLand≈0} 的矛盾点压缩。</p>
+     */
+    private static final double SEABED_MARGIN = 0.02;
+    /** {@code smoothMin} 的软饱和宽度（e），C¹ 避免折痕。 */
+    private static final double SEABED_SOFT_SAT = 0.03;
 
     /**
      * ★ 阶段五（2026-11-16）：构造趋势开关——{@code true}（默认）时板块边界
@@ -161,6 +194,7 @@ public final class MorphTerrainSampler {
             throw new IllegalArgumentException("region scale must be finite and > 0: " + regionScale);
         }
         this.seed = seed;
+        this.params = params;
 
         this.catalog = new MorphCatalog(seed);
         this.assembly = MorphAssembly.of(seed);
@@ -207,6 +241,47 @@ public final class MorphTerrainSampler {
                         : null);
 
         this.curve = new HeightCurve(params, minY, maxY);
+
+        // ★ 阶段六（2026-11-17）：火山 / 海山 / 洋中脊接线。
+        //
+        //   这两类的几何代码本来就完整（VolcanicShape 的 CONE/GUYOT/CALDERA、
+        //   火口、各向异性拉伸、域扭曲、弧门控、深度门控全都有），只是 2026-11-06
+        //   重构 CellGenerator 时把构造与注入一并丢掉了 ⇒ 全仓零实例化。
+        //
+        //   注入点选择：<b>必须在 B 层（本类）而非 CellGenerator</b>。
+        //   因为侵蚀（ProcessContext.sampleBase）读的是同一个 sampleE——
+        //   若只在 CellGenerator 里加，侵蚀会按"没有火山的地形"算，
+        //   最终产出出现"侵蚀按平地算、火山后期叠上去"的错位。
+        if (TECTONIC_FEATURES) {
+            this.landFeatures = new LandFeatures();
+            this.landFeatures.seed(seed);
+            // 弧门控：会聚带附近火山幅度 ×(1 + 0.9·gate)；只调幅度不调存在性
+            this.landFeatures.setArcVolcanismProvider(tectonic::arcVolcanism);
+            // 陆上判定：用大陆场直接判（基线教训：重采样 sampleCore 慢 8.75 倍，
+            // 曾把河网构建拖慢近 9 倍；而"火山中心是否在陆上"只需二值判定）
+            this.landFeatures.setLandFactorProvider(this::landFactorAt);
+
+            this.oceanFeatures = new OceanFeatures();
+            this.oceanFeatures.seed(seed);
+            // 海山中心深度门控：中心必须够深（e ≤ −0.20）才生成，否则浅海会长疙瘩
+            this.oceanFeatures.setSeamountDepthChecker((x, z) -> ocean.e(x, z));
+        } else {
+            this.landFeatures = null;
+            this.oceanFeatures = null;
+        }
+    }
+
+    /**
+     * 「该点是否在陆上」的二值门控 ∈[0,1]（smoothstep 过渡带 ±0.01）。
+     *
+     * <p>仅供 {@link LandFeatures#setLandFactorProvider} 判断火山中心位置。
+     * 用 {@link ContinentField} 直接判——它与 {@code shellFromC} 同源，
+     * 是"海陆场"本身；不必经过类型场 Voronoi + 海岸线扭曲那套形态学管线
+     * （基线实测：那样做每次 78,568 ns，是 {@code terrainEQuick} 的 8.75 倍）。</p>
+     */
+    private double landFactorAt(double wx, double wz) {
+        double cBiased = continent.sample(wx, wz) - params.continentBias();
+        return smoothstep(-0.01, 0.01, cBiased);
     }
 
     /** 陆壳度 ∈[0,1]：由大陆场 c ∈[−1,1] 换算（0.5 = 海岸）。 */
@@ -227,7 +302,64 @@ public final class MorphTerrainSampler {
      * 水面位置与 {@code c = 0} 之间存在随陆高变化的偏移（见类注释）。</p>
      */
     public double sampleE(double wuX, double wuZ) {
-        return ocean.e(wuX, wuZ);
+        double eBase = ocean.e(wuX, wuZ);
+        if (landFeatures == null) {
+            return eBase;   // 关特征：逐位复现 schema135
+        }
+        return composeWithFeatures(wuX, wuZ, eBase, null, null);
+    }
+
+    /**
+     * ★ 阶段六：把构造特征合成进 {@code eBase}（海床守护 + 陆侧不加权）。
+     *
+     * <p>与基线 {@code CellGenerator} 的同名逻辑等价，但放在 B 层
+     * （侵蚀读同一个 {@code sampleE} ⇒ 不会出现"侵蚀按无火山地形算"的错位）。</p>
+     *
+     * @param eBase   海陆装配器的输出（未含特征）
+     * @param lfOut    若非 null，回填陆侧 FeatureResult（供 {@code sampleColumn} 复用）
+     * @param ofOut    若非 null，回填洋侧 FeatureResult
+     */
+    private double composeWithFeatures(double wx, double wz, double eBase,
+                                      LandFeatures.FeatureResult[] lfOut,
+                                      OceanFeatures.FeatureResult[] ofOut) {
+        TectonicField.Sample ts = tectonic.sample(wx, wz);   // 每点一次，两个特征复用
+
+        // ---- 陆侧：特征内部已用 centerFactorOf 做"中心是否在陆"的二值门控，
+        //      绝不能在这里再乘逐点 landFactor（基线教训：会造成"斜切火山/火口被压平"）
+        LandFeatures.FeatureResult lf = landFeatures.compute(wx, wz, ts);
+
+        // ---- 洋侧：海山/洋中脊/弧沟
+        //      arcProf 由 oceanProfile 提供（>0 弧、<0 沟），已含软饱和
+        OceanFeatures.FeatureResult of = oceanFeatures.compute(
+                wx, wz, Math.min(eBase, 0.0), eBase, ts, tectonic.oceanProfile(ts));
+
+        // 海床守护：洋侧累计抬升不得把地形推过海平面（软限，C¹）
+        double oceanFeatW = of.total * (1.0 - landFactorAt(wx, wz));
+        if (oceanFeatW > 0.0) {
+            double cap = -eBase - SEABED_MARGIN;
+            oceanFeatW = cap <= 0.0 ? 0.0 : smoothMin(oceanFeatW, cap, SEABED_SOFT_SAT);
+        }
+
+        if (lfOut != null) {
+            lfOut[0] = lf;
+        }
+        if (ofOut != null) {
+            ofOut[0] = of;
+        }
+        // 最终 e 钳到 [−1, +1]（负向特征——如海沟窄槽——不得穿透世界底部）
+        return Math.max(-1.0, Math.min(1.0, eBase + lf.total + oceanFeatW));
+    }
+
+    /**
+     * 软最小值（C¹）：{@code a} 在接近 {@code b} 时平滑过渡，避免折痕。
+     * 与 {@code TectonicField.smoothMin} 同式。
+     */
+    private static double smoothMin(double a, double b, double k) {
+        if (k <= 1e-9) {
+            return Math.min(a, b);
+        }
+        double h = Math.max(0.0, Math.min(1.0, 0.5 + 0.5 * (b - a) / k));
+        return b + (a - b) * h - k * h * (1.0 - h);
     }
 
     /**
@@ -273,7 +405,17 @@ public final class MorphTerrainSampler {
     /** 基础地貌列，分类只提供语义，绝不反馈高度。坐标仍是wu。 */
     public com.geogenesis.worldgen.core.BaseColumn sampleColumn(double x, double z) {
         var c = new com.geogenesis.worldgen.core.BaseColumn();
-        c.e = sampleE(x, z);
+        // ★ 阶段六：特征只算一次，同时供 e 合成与 BaseColumn 携带
+        if (landFeatures == null) {
+            c.e = sampleE(x, z);
+        } else {
+            double eBase = ocean.e(x, z);
+            LandFeatures.FeatureResult[] lf = new LandFeatures.FeatureResult[1];
+            OceanFeatures.FeatureResult[] of = new OceanFeatures.FeatureResult[1];
+            c.e = composeWithFeatures(x, z, eBase, lf, of);
+            c.landFeat = lf[0];
+            c.oceanFeat = of[0];
+        }
         c.height = curve.heightFromE(c.e);
         c.continent = continentality(x, z);
         c.landE = landE(x, z);
@@ -281,7 +423,10 @@ public final class MorphTerrainSampler {
         c.shape = c.landE * 2.0 - 1.0;
         c.typeWeights = new double[com.geogenesis.worldgen.terrain.TerrainClass.COUNT];
         if (c.e < 0.0) {
-            c.terrainType = c.e > -0.08 ? com.geogenesis.worldgen.terrain.TerrainClass.CONTINENTAL_SHELF
+            // ★ 阶段六：海洋亚型（海山/洋中脊）——特征存在时优先判亚型
+            var oceanSub = oceanFeatureClass(c.oceanFeat, c.e);
+            c.terrainType = oceanSub != null ? oceanSub
+                    : c.e > -0.08 ? com.geogenesis.worldgen.terrain.TerrainClass.CONTINENTAL_SHELF
                     : c.e < -0.18 ? com.geogenesis.worldgen.terrain.TerrainClass.DEEP_OCEAN
                     : com.geogenesis.worldgen.terrain.TerrainClass.OCEAN;
             c.typeWeights[c.terrainType.ordinal()] = 1.0;
@@ -293,14 +438,57 @@ public final class MorphTerrainSampler {
                 addType(c.typeWeights, catalog.entry(i), x, z, s.weight()[i] * (1.0 - s.alpha()));
             }
             c.typeWeights[com.geogenesis.worldgen.terrain.TerrainClass.PLATEAU.ordinal()] += s.alpha();
-            int best = com.geogenesis.worldgen.terrain.TerrainClass.PLAIN.ordinal();
-            for (int i = 0; i < c.typeWeights.length; i++) {
-                if (c.typeWeights[i] > c.typeWeights[best]) best = i;
+            // ★ 阶段六：陆侧火山/熔岩台地优先于票槽 argmax（与 CellGenerator.volcanoClass 同阈值）
+            var vol = volcanoClassOf(c.landFeat);
+            if (vol != null) {
+                c.terrainType = vol;
+            } else {
+                int best = com.geogenesis.worldgen.terrain.TerrainClass.PLAIN.ordinal();
+                for (int i = 0; i < c.typeWeights.length; i++) {
+                    if (c.typeWeights[i] > c.typeWeights[best]) best = i;
+                }
+                c.terrainType = com.geogenesis.worldgen.terrain.TerrainClass.byId(best);
             }
-            c.terrainType = com.geogenesis.worldgen.terrain.TerrainClass.byId(best);
         }
         c.variantTerrain = c.terrainType;
         return c;
+    }
+
+    /**
+     * 火山类判定（阈值 0.010e ≈ 2.4 格，与 {@code CellGenerator.volcanoClass} 同口径）。
+     * 用 {@code singleEdifice}/{@code fieldEdifice}（<b>未扣火口</b>）——
+     * 火口中心本身是下凹的，用净抬升会把中心漏判成"非火山"。
+     */
+    private static com.geogenesis.worldgen.terrain.TerrainClass volcanoClassOf(
+            LandFeatures.FeatureResult lf) {
+        if (lf == null) {
+            return null;
+        }
+        if (lf.singleEdifice > 0.010) {
+            return com.geogenesis.worldgen.terrain.TerrainClass.VOLCANO;
+        }
+        if (lf.fieldEdifice > 0.010) {
+            return com.geogenesis.worldgen.terrain.TerrainClass.VOLCANIC_FIELD;
+        }
+        return null;
+    }
+
+    /**
+     * 海洋亚型判定：海山 / 洋中脊。仅在够深（e &lt; −0.08）时生效——
+     * 浅水/陆架不该被标成海山（真实海山都在深水）。
+     */
+    private static com.geogenesis.worldgen.terrain.TerrainClass oceanFeatureClass(
+            OceanFeatures.FeatureResult of, double e) {
+        if (of == null || e > -0.08) {
+            return null;
+        }
+        if (of.seamount > 0.02) {
+            return com.geogenesis.worldgen.terrain.TerrainClass.SEAMOUNT;
+        }
+        if (of.ridge > 0.05) {
+            return com.geogenesis.worldgen.terrain.TerrainClass.SUBMARINE_RIDGE;
+        }
+        return null;
     }
 
     private static void addType(double[] out, MorphCatalog.Entry entry, double x, double z, double w) {

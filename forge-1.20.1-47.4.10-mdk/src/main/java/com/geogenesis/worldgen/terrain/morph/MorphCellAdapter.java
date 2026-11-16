@@ -27,6 +27,9 @@ public final class MorphCellAdapter {
         cell.snowLineE = c.snowLineE; cell.isSnow = c.snow; cell.oasisNoise = c.oasisNoise;
         cell.rockLayer = c.rockLayer; cell.rockTypeId = c.rockTypeId;
         cell.rockSeqPacked = c.rockSeqPacked; cell.rockTilt = c.rockTilt;
+        // ★ 阶段六（2026-11-17）：构造特征随列携带 → classifyTerrain 的火山/海洋亚型分支
+        cell.landFeat = c.landFeat;
+        cell.oceanFeat = c.oceanFeat;
         return cell;
     }
 }

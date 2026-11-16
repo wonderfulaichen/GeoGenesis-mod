@@ -678,7 +678,17 @@ public class PreviewDisplay extends AbstractWidget {
     //       票槽同源偏置：趋势高处山地/高原权重上升（Σw 仍=1）。
     //       开关 geogenesis.tectonicTrend 默认开（false = 精确复现 schema134）。
     //       旧基准留档：P1 EXPECTED 待重立（schema134 双 SHA 见 P1CellRenderProbe）。
-    static final int CACHE_SCHEMA_VERSION = 135;
+    // 136 = 2026-11-17 阶段六（火山/海山/洋中脊接线）：LandFeatures（火山锥/熔岩台地）
+    //       与 OceanFeatures（海山/洋中脊/弧沟）从「全仓零实例化」恢复接线——
+    //       几何代码本来完整（2026-11-06 重构 CellGenerator 时丢失接线）。
+    //       · 增量注入在 B 层 MorphTerrainSampler.sampleE（侵蚀看到同一份带火山的地形）
+    //       · 洋侧用 smoothMin 海床守护（基线教训：不加会凭空长出 22 座岛）
+    //       · 陆侧不乘 landFactor（火山区用内部 centerFactorOf 二值门控）
+    //       · FeatureResult 经 BaseColumn 带进 Cell ⇒ volcanoClass/海洋亚型分类生效
+    //       ⇒ VOLCANO / VOLCANIC_FIELD / SEAMOUNT / SUBMARINE_RIDGE 首次可达
+    //       开关 geogenesis.tectonicFeatures 默认开（false = 精确复现 schema135）。
+    //       旧基准留档：P1 EXPECTED 4a1c19ed / 0f04e118（schema135）。
+    static final int CACHE_SCHEMA_VERSION = 136;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
