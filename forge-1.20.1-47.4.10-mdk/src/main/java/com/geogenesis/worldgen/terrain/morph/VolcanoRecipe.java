@@ -49,13 +49,23 @@ public final class VolcanoRecipe {
     static final double CRATER_FRAC = 0.30;
     /** 主锥凹形剖面的衰减尺度（wu）：exp(−d/0.30)，坡顶陡、坡脚缓。 */
     static final double CONE_DECAY = 0.30;
-    /** 裙摆：半径倍数与高度（12% 主锥高，与沙箱定稿 {@code VolcanoFormProbe} 同值）。 */
-    static final double SKIRT_SCALE = 2.2;
-    static final double SKIRT_AMP = 0.12 * AMP;
+    /**
+     * ★ 堆积基底（apron）——2026-11-17 用户反馈「像从地面挤出来，真实火山是堆积起来的」。
+     *
+     * <p>真实层状火山：底部直径 ≈ 锥高 × 10~20，山麓是 1~3° 的火山碎屑堆积扇，
+     * 30° 的主锥坐落在它上面。旧高斯裙摆只有 0.12·amp（7 格）⇒ 锥体像「薄饼上的痘痘」。
+     * 新基底：半径 {@value #APRON_R}R（816 块）、高 0.24·amp（13.6 格），
+     * 肩线 {@code (1−d/R)^1.5}——近锥脚稍陡、远脚趋平（碎屑扇自然收尾）。
+     * 沙箱定稿见 {@code VolcanoFormProbe}（剖面：大缓丘托小锥 + 火口双峰 + 长尾）。</p>
+     */
+    static final double APRON_R = 3.4;
+    static final double APRON_AMP = 0.24 * AMP;
+    /** 基底轮廓不规则度（半径按方位角噪声 ±18%——不是圆规画的圆）。 */
+    static final double APRON_ROUGH = 0.18;
     /** 域扭曲幅度（wu）：打破完美圆。 */
     static final double WARP_AMP = 30.0;
-    /** 放射状冲沟幅度（e，相对 AMP）。 */
-    static final double GULLY_AMP = 0.10;
+    /** 放射状冲沟幅度（e，相对 AMP）。延伸到堆积扇远端（d<2.6）才渐隐。 */
+    static final double GULLY_AMP = 0.13;
     /** 山体拉伸范围（面积守恒的各向异性）。 */
     static final double STRETCH_MIN = 1.0;
     static final double STRETCH_SPAN = 0.5;
@@ -67,6 +77,7 @@ public final class VolcanoRecipe {
     private static final long SALT_WARP_X = 0x1A2B3C4D5E6F7081L ^ 0x3333;
     private static final long SALT_WARP_Z = 0x2C3D4E5F60718293L ^ 0x4444;
     private static final long SALT_GULLY = 0x61726D9C4E2F8053L ^ 0x5555;
+    private static final long SALT_APRON = 0x5A4B3C2D1E0F7869L ^ 0x6666;
 
     /** 搜索半径（格）：格内抖动 + 拉伸后最大半轴 ≈ 210wu < 1200wu ⇒ 1 格足够。 */
     private static final int SEARCH = 1;
@@ -161,20 +172,23 @@ public final class VolcanoRecipe {
 
         // 主锥：凹形剖面（坡顶陡、坡脚缓）
         double cone = d < 2.2 ? AMP * Math.exp(-d / CONE_DECAY) : 0.0;
-        // 裙摆：宽低缓底座（让火山从地形里"长出来"）
-        double ds = d / SKIRT_SCALE;
-        double skirt = ds < 1.6 ? SKIRT_AMP * Math.exp(-(ds * ds) / (2 * 0.42 * 0.42)) : 0.0;
-        // 放射状冲沟（barrancos）：按方位角取噪声，翼部生效
+        // ★ 堆积基底（apron）：宽缓碎屑扇托住主锥（形态定稿 2026-11-17）。
+        //   半径按<b>地心方位角</b>噪声起伏 ±18%：基底轮廓不规则（与沙箱同式）。
+        double angC = Math.atan2(dz, dx);
+        double apronR = APRON_R * (1.0 + APRON_ROUGH
+                * fbm2(Math.cos(angC) * 1.7 + 3.1, Math.sin(angC) * 1.7 - 2.4, SALT_APRON));
+        double apron = d < apronR ? APRON_AMP * Math.pow(1.0 - d / apronR, 1.5) : 0.0;
+        // 放射状冲沟（barrancos）：按方位角取噪声，翼部一直延续到堆积扇远端
         double ang2 = Math.atan2(v, u);
         double gullyN = fbm2(Math.cos(ang2) * 2.6 + 7.3, Math.sin(ang2) * 2.6 - 4.1, SALT_GULLY);
         double gully = GULLY_AMP * AMP
                 * Math.max(0.0, Math.min(1.0, (d - 0.15) / 0.25))
-                * (1.0 - Math.max(0.0, Math.min(1.0, (d - 1.0) / 0.3)))
+                * (1.0 - Math.max(0.0, Math.min(1.0, (d - 1.2) / 1.4)))
                 * gullyN;
         // 火口：中心下凹（VolcanicShape.crater 同式）
         double crater = VolcanicShape.crater(d, CRATER_FRAC, CRATER_DEPTH);
 
-        return Math.max(0.0, cone + skirt + gully - crater);
+        return Math.max(0.0, cone + apron + gully - crater);
     }
 
     /** 两倍频值噪声（与 {@code VolcanoFormProbe} 同式——形态验收用的同一实现）。 */

@@ -42,9 +42,9 @@ public final class VolcanoShapeProbe {
     // ---- 判据（定稿形态的容差带）----
     private static final double PEAK_MIN = 0.15, PEAK_MAX = 0.28;
     private static final double CRATER_DIP_MIN = 0.03;
-    //   gate>0.10（edifice>0.01e）由裙摆主导：0.01e 在裙摆 1.37R=164wu 处，
-    //   ×椭圆拉伸 1.5 + 域扭曲 30wu ⇒ 理论最大 276wu。
-    private static final double RADIUS_MIN = 90.0, RADIUS_MAX = 280.0;
+    //   gate>0.10（edifice>0.01e）由堆积基底主导：0.01e 在 apron d≈2.34 ⇒ 2.34R=281wu，
+    //   ×椭圆拉伸 1.5 + 域扭曲 30wu + 轮廓噪声 18% ⇒ 理论最大 ~530wu；实测取 90~480。
+    private static final double RADIUS_MIN = 90.0, RADIUS_MAX = 480.0;
     private static final double SPACING_MIN = 500.0;
     private static final double COVERAGE_MAX = 0.03;
 
@@ -81,9 +81,19 @@ public final class VolcanoShapeProbe {
         // ---- 2) 逐座测形态 ----
         boolean allOk = coverage <= COVERAGE_MAX;
         int checked = 0;
+        int skipped = 0;
         for (double[] c : centers) {
             Measured m = measure(smp, recipe, c[0], c[1]);
             if (m == null) {
+                continue;
+            }
+            // 窗边截断：火山中心在扫描窗外，只有堆积扇伸进来 ⇒ 找不到完整锥体。
+            // 判据对「完整入画的火山」生效（扫描显示 ≥1，窗口内至少 10 座）。
+            boolean nearEdge = Math.abs(c[0]) > span - 600 || Math.abs(c[1]) > span - 600;
+            if (m.peak < PEAK_MIN && nearEdge) {
+                skipped++;
+                System.out.printf(Locale.ROOT,
+                        "  (%6.0f,%6.0f) 窗边截断（peak=%.3fe）——跳过%n", c[0], c[1], m.peak);
                 continue;
             }
             checked++;
@@ -115,7 +125,8 @@ public final class VolcanoShapeProbe {
             System.out.printf(Locale.ROOT, "[独立] 最近中心间距 %.0fwu（判据 ≥%.0f）  %s%n",
                     minSpacing, SPACING_MIN, ok ? "ok" : "✗");
         }
-        System.out.println("[检查] 测形态 " + checked + "/" + centers.size() + " 座");
+        System.out.println("[检查] 测形态 " + checked + "/" + centers.size() + " 座"
+                + (skipped > 0 ? "（窗边截断跳过 " + skipped + "）" : ""));
         System.out.println(allOk ? "=== ALL PASS ===" : "=== FAIL ===");
         if (!allOk) {
             System.exit(1);
@@ -171,10 +182,12 @@ public final class VolcanoShapeProbe {
     /** 单座火山的精细测量。 */
     private static Measured measure(MorphTerrainSampler smp, VolcanoRecipe recipe,
                                     double cx, double cz) {
-        // 锥顶精化：recipe 几何在簇心 ±120wu 找最高点（= 撒点真中心）
+        // 锥顶精化：recipe 几何在簇心 ±360wu 找最高点（= 撒点真中心）。
+        //   堆积基底（3.4R≈408wu）让簇可以只有 apron 一块入画 ⇒ 搜索必须覆盖一个
+        //   网格位错的最大可能，否则会误测成"矮丘"（实测窗边簇 peak=0.063e）。
         double bx = cx, bz = cz, bEd = recipe.height(cx, cz);
-        for (double dz = -120; dz <= 120; dz += 6) {
-            for (double dx = -120; dx <= 120; dx += 6) {
+        for (double dz = -360; dz <= 360; dz += 12) {
+            for (double dx = -360; dx <= 360; dx += 12) {
                 double ed = recipe.height(cx + dx, cz + dz);
                 if (ed > bEd) {
                     bEd = ed;

@@ -692,10 +692,17 @@ public class PreviewDisplay extends AbstractWidget {
     //       （VolcanoRecipe：网格 1200wu / R=120wu / amp 0.24e = 57 格 /
     //         火口 0.06e·0.30 / 冲沟 / 裙摆 2.2×——用户目检定稿的形态），
     //       走 MorphLandField 的 overlay 链（与台地同级）；LandFeatures 陆侧接线撤销。
-    //       陆上门控：火山中心 covered > −0.02（代理判定）。
+    //       陆上门控：火山中心 continent.sample > 0.004（edge=CP_INLAND 全可见线）。
     //       OceanFeatures（海山/洋中脊）保留特征接线（洋底职责域，已验收）。
     //       旧基准留档：P1 EXPECTED 4a1c19ed / 0f04e118（schema136）。
-    static final int CACHE_SCHEMA_VERSION = 137;
+    // 138 = 2026-11-17 阶段六修正二（用户："像从地面挤出来，真实火山是堆积起来的"）：
+    //       ① 堆积基底（apron）：半径 3.4R（816 块）/ 高 0.24·amp（13.6 格）/
+    //          肩线 (1−d/R)^1.5 / 轮廓 ±18% 方位角噪声——大缓丘托小锥，堆积扇收尾；
+    //          冲沟延伸到堆积扇远端（d<2.6，0.13·amp）。
+    //       ② 火山类型平滑过渡：VOLCANO 从 gate>0.10 硬覆盖改为进 typeWeights
+    //          加权竞争（smoothstep(0.10→0.45)·1.5）——边缘与地形类型渐变。
+    //       137 基准留档：P1 EXPECTED d7ead4d1 / 63b4e7a7（landCells 585441）。
+    static final int CACHE_SCHEMA_VERSION = 138;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

@@ -38,9 +38,15 @@ public final class P1CellRenderProbe {
      *    被海岸混合带淹没）。关火山（-Dgeogenesis.tectonicFeatures=false）逐位复现
      *    schema136 中间态 4a1c19ed…/0f04e118…（landCells 585430；实测已验证——
      *    与阶段五差两笔：第 5 次锚重标 + FBM amp 1.6，不属火山开关的回退范围）。</p>
+     *
+     * <p>★ 阶段六修正二重立（2026-11-17，schema138；用户"像从地面挤出来，
+     * 真实火山是堆积起来的"）：① 堆积基底 apron（3.4R/0.24·amp/轮廓±18%）；
+     * ② 火山类型平滑过渡（VOLCANO 进 typeWeights 加权竞争 + 归一化）。
+     * 137 基准留档 d7ead4d1…/63b4e7a7…（landCells 585441）；本次 landCells 585461
+     * （+20：堆积扇把近岸格抬过水面）。关火山仍应复现 4a1c19ed…/0f04e118…。</p>
      */
     private static final String EXPECTED =
-            "d7ead4d1359ff09ebadc813022345fbe029e51ff9847b654a9838226c33c322d";
+            "1f28553a4935da3093a288224097bdeea04a1a16e66bbdc812f19305f5a2c4f4";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441
@@ -48,7 +54,7 @@ public final class P1CellRenderProbe {
      * 全域陆占比由 ContinentAnchorProbe（0.3227±0.02）与 OceanFloorProbe 守护。
      * 标定协议见 {@link #render}。
      */
-    private static final String EXPECTED_LAND = "63b4e7a71b451d74bb67f94ad8115abf4565108ef7ec7da82b6ef7f8df6700ab";
+    private static final String EXPECTED_LAND = "5dd95cec86eac1112feacaa63737ea67f267c1ee77cb873bc1ef1a515b7705a8";
 
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args[1]);

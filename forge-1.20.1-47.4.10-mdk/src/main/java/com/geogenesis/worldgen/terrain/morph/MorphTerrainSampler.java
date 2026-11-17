@@ -385,21 +385,35 @@ public final class MorphTerrainSampler {
                 addType(c.typeWeights, catalog.entry(i), x, z, s.weight()[i] * (1.0 - s.alpha()));
             }
             c.typeWeights[com.geogenesis.worldgen.terrain.TerrainClass.PLATEAU.ordinal()] += s.alpha();
-            // ★ 阶段六修正（2026-11-17）：陆侧火山由<b>类型层的火山覆盖强度</b>判定
-            //   （{@code MorphLandField.Sample.volcanoGate} ← VolcanoRecipe——
-            //   不再是外挂 LandFeatures 的 edifice）。
-            //   阈值 0.10：锥体靠外（半径 ~92% 处，剖面 (1−q)^1.6 的对应点）。
-            var vol = s.volcanoGate() > 0.10
-                    ? com.geogenesis.worldgen.terrain.TerrainClass.VOLCANO : null;
-            if (vol != null) {
-                c.terrainType = vol;
-            } else {
-                int best = com.geogenesis.worldgen.terrain.TerrainClass.PLAIN.ordinal();
-                for (int i = 0; i < c.typeWeights.length; i++) {
-                    if (c.typeWeights[i] > c.typeWeights[best]) best = i;
+            // ★ 阶段六修正二（2026-11-17）：火山类型<b>平滑过渡</b>——不再 gate>0.10
+            //   硬覆盖（用户："我们好像没做火山类型的平滑过渡"）。与台地同模式：
+            //   把火山作为权重项放进 typeWeights 参与 argmax 竞争。
+            //   · gate ≤0.10（锥体外）：无权重
+            //   · gate ∈(0.10, 0.45)：smoothstep 0→1 缓升——边缘带与
+            //     PLAIN/HILLS/MOUNTAINS 竞争 ⇒ 类型图/纹理由内向外渐变，无硬边
+            //   · gate ≥0.45（锥体主体）：权重 1.5（票槽权重归一化后单类型 ≤1）
+            //     ⇒ 核心必为 VOLCANO（几何与类型同源，VolcanoShapeProbe 守护）
+            double volW = smoothstep(0.10, 0.45, s.volcanoGate());
+            if (volW > 0.0) {
+                c.typeWeights[com.geogenesis.worldgen.terrain.TerrainClass.VOLCANO.ordinal()]
+                        += 1.5 * volW;
+                // ★ 归一化回 Σ=1（权重分布契约，P1 断言 |Σ−1|<1e-6）：
+                //   argmax 不受等比例缩放影响；无火山格 sum=1.0 ⇒ 除以 1 逐位不变。
+                double sum = 0;
+                for (double w : c.typeWeights) {
+                    sum += w;
                 }
-                c.terrainType = com.geogenesis.worldgen.terrain.TerrainClass.byId(best);
+                if (sum > 0) {
+                    for (int i = 0; i < c.typeWeights.length; i++) {
+                        c.typeWeights[i] /= sum;
+                    }
+                }
             }
+            int best = com.geogenesis.worldgen.terrain.TerrainClass.PLAIN.ordinal();
+            for (int i = 0; i < c.typeWeights.length; i++) {
+                if (c.typeWeights[i] > c.typeWeights[best]) best = i;
+            }
+            c.terrainType = com.geogenesis.worldgen.terrain.TerrainClass.byId(best);
         }
         c.variantTerrain = c.terrainType;
         return c;
