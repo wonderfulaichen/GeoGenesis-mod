@@ -808,7 +808,13 @@ public class PreviewDisplay extends AbstractWidget {
     //       151 基准留档：29ecd9fc（全域）/ 5dd95cec（陆侧）。
     //       ⚠ 上一提交（4e5812f）标题写"schema152"但常量漏升（仍 151）——
     //       其串珠/谷深分段改动未隔离旧缓存，本提交真升 152 关闭陈旧窗口。
-    static final int CACHE_SCHEMA_VERSION = 152;
+    // 153 = 2026-11-18 阶段七 J（用户："中间的凹槽有这么宽吗"）：轴谷二次收窄。
+    //       RIFT_HALF 60→25——旧谷全宽 120wu 按水平标定（1wu≈250~500m）=
+    //       30~60km，真实 MAR 轴谷壁到壁仅 10~30km、平底 3~5km；谷占脊带
+    //       半宽 0.60 远超真实 0.10~0.30。现平底 20wu/壁到壁 50wu，比例
+    //       0.10/0.25 落入真实区间。深度未动（用户未质疑）。
+    //       152 基准留档：cc42ebb1（全域）/ 5dd95cec（陆侧）。
+    static final int CACHE_SCHEMA_VERSION = 153;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

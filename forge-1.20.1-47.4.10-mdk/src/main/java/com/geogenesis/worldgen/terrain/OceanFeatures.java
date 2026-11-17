@@ -218,7 +218,7 @@ public final class OceanFeatures {
                 if (constitution > 0.0) {
                     double along = tect.alongCoord();
                     // ★★ 必须用 distRaw（未平滑）：
-                    //   生产 dist 经 blurDist(R=150wu) 环形平均；地堑半宽仅 80wu
+                    //   生产 dist 经 blurDist(R=150wu) 环形平均；地堑半宽仅 25wu
                     //   ⇒ 用 dist 会把谷底完全抹平（实测剖面谷深只剩 0.029e）。
                     //
                     // ★★ 2026-11-17 关键修正：<b>不再给 distRaw 加位置偏移</b>。

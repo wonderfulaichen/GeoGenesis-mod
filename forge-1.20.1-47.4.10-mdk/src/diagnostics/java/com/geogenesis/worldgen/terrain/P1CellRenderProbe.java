@@ -108,7 +108,7 @@ public final class P1CellRenderProbe {
      * 一致。150 基准留档 041a0d5d…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "cc42ebb1ba9a9663390fb4b2418adbb9760860eec277e416f06cb9676440fe04";
+            "2dd0cecd5dea62f26d8deea94f0c41866b8c442d31cf995bbd8865453d777428";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441
