@@ -1699,8 +1699,8 @@ task runRidgeDotProbe(type: JavaExec) {
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
-        // 临时：点链位置 1wu 采样 + hillshade 暗点归因（分析用，验证完删除）
-        args = ['340', '1520', '150', '1']
+        // 临时：淡点链迹线采样（分析用，验证完删除）
+        args = ['100', '1750', '500', 'trace', '-150', '1770', '230', '1886']
     }
 }
 

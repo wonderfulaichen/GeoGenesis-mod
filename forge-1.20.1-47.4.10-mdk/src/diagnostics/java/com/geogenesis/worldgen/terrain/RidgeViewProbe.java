@@ -138,8 +138,9 @@ public final class RidgeViewProbe {
             }
         }
         if (bestR < 0) {
-            System.out.println("[FAIL] 窗口内无深海脊");
-            System.exit(1);
+            // 特征关闭（-Dgeogenesis.tectonicFeatures=false）时 oceanFeat 全 null
+            // ⇒ 正常情况，不退出（对照实验需要渲染无脊的基线图）
+            System.out.println("[note] ridge feature OFF or no shoulder in window");
         }
         var ts0 = tectonic.sample(bx, bz);
         double px = -ts0.tangentZ(), pz = ts0.tangentX();

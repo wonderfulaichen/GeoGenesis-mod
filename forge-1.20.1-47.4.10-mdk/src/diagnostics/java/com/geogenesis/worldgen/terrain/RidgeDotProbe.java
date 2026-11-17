@@ -161,7 +161,7 @@ public final class RidgeDotProbe {
             }
         }
         System.out.println("[shade-dots] " + shadeDots.size() + " 处 hillshade 暗点");
-        System.out.println("  x       z     shade   e      age     ridge   distRaw  stress");
+        System.out.println("  x       z     shade   e      age     ridge   seamt   arc    distRaw  stress  edge");
         shown = 0;
         for (int[] s : shadeDots) {
             if (shown++ >= 20) {
@@ -173,10 +173,12 @@ public final class RidgeDotProbe {
             var ts = tectonic.sample(wx, wz);
             var cs = CrustField.of(ts, wx, wz, SEED);
             var of = c.oceanFeat;
+            double edge = (c.continent + 1.0) * 0.5;
             System.out.printf(Locale.ROOT,
-                    "%7.0f %7.0f  %5.2f  %6.3f  %6.3f  %6.3f  %7.1f  %6.3f%n",
+                    "%7.0f %7.0f  %5.2f  %6.3f  %6.3f  %6.3f  %5.3f  %5.3f  %7.1f  %6.3f  %6.3f%n",
                     wx, wz, lum[s[1] * n + s[0]], c.e, cs.eBase(),
-                    of == null ? 0 : of.ridge, ts.distRaw(), ts.stress());
+                    of == null ? 0 : of.ridge, of == null ? 0 : of.seamount,
+                    of == null ? 0 : of.arc, ts.distRaw(), ts.stress(), edge);
         }
         // 渲染 hillshade 图（复算）
         BufferedImage img = new BufferedImage(n, n, BufferedImage.TYPE_INT_RGB);

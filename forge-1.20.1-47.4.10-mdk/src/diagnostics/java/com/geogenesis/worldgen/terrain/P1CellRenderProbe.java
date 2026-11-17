@@ -96,9 +96,19 @@ public final class P1CellRenderProbe {
      * <p>★ 阶段七 F 重立（2026-11-18，schema149）：脊剖面翼部断层阶地 +
      * 轴向串珠调制（450wu ±30%）+ fabric 0.28 + 水下细节 Perlin 化（合并 148）。
      * 全图 SHA 变，陆侧仍与 148 逐位一致。148 基准留档 5bc1ea9a…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 G 重立（2026-11-18，schema150）：脊体 100wu 断块纹理
+     * （Simplex ±3 格 × profile 包络）——消除「光滑带夹在粗糙海床中间」的
+     * 人工观感。全图 SHA 变，陆侧仍与 149 逐位一致。
+     * 149 基准留档 9a27f1f8…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 H2 重立（2026-11-18，schema152）：轴向串珠波长 458→230wu
+     * 幅度 ±45% + 地堑深度沿轴分段 valleyScale∈[0.55,1]（谷深缓变不断消失）
+     * + 脊体断块纹理（100wu Simplex ±3 格）。全图 SHA 变，陆侧仍与 150 逐位
+     * 一致。150 基准留档 041a0d5d…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "9a27f1f80ef46ccb4830e5b4cb2d9b3582d135a820ad7a49e4198c4221e10169";
+            "29ecd9fc3cc02657c240361380a562dc4fd4c56db00a564cc0e93300f3ce2279";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

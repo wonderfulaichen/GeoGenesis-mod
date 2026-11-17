@@ -305,34 +305,37 @@ public final class RidgeDecomposeProbe {
         //   平台）已随裂谷删除而消失 ⇒ 判据只防「整个窗口都平」的退化。
         boolean noPlateau = width <= 400;
 
-        // ★ 比例判据（2026-11-17）：谷深/总起伏 必须落在真实 MAR 的 0.2~0.4
-        //   ——超 0.45 说明中央凹槽深成了「海沟」（用户 2026-11-17 判断）。
-        //
-        //   ⚠ 两端必须<b>同一基准</b>：
-        //     · 谷底高度 = 轴心处 ridge 分量（= profile 谷底）
-        //     · 脊肩高度 = 脊肩处 ridge 分量（= profile 峰值）
-        //   旧版拿「残余(final−age−ridge)的最小值」当谷底（那是<b>相对</b>量，
-        //   含年龄律与丘陵）却拿「ridge 峰值」当总起伏 ⇒ 量纲不同 ⇒ 比值失真
-        //   （实测算出 0.797，而 profile 几何真值是 0.23）。
-        double valleyH = Double.MAX_VALUE;
-        double shoulderH = 0;
-        for (int k = 0; k < ridgeProf.length; k++) {
-            if (Math.abs(k - center) <= 60) {
-                valleyH = Math.min(valleyH, ridgeProf[k]);
+        // ★ 比例判据（2026-11-18 v2）：谷深/总起伏，全部用<b>最终 e</b> 同基准——
+        //   总起伏 = 脊肩 e − 深海平原 e（年龄律 + 脊分量的总和）；
+        //   谷深 = 脊肩 e − 轴心谷底 e。
+        //   真实 MAR：谷深（谷底比脊肩低 500~1500m）/ 总起伏（2500~3500m）
+        //   = 0.17~0.6。
+        //   ⚠ 旧版用「ridge 分量」算比值——分母漏掉了年龄律的热沉降贡献
+        //   （那是总起伏的大头），实测比值虚高到 0.73。
+        double eShoulder = -9, eValley = 9, ePlain = 9;
+        for (int k = 0; k < prof.length; k++) {
+            double dist = Math.abs(k - center) * 1.0;   // step=1wu
+            if (dist <= 200) {
+                eShoulder = Math.max(eShoulder, prof[k]);   // 脊肩/轴部最高点
             }
-            if (Math.abs(k - center) > 60 && Math.abs(k - center) < 200) {
-                shoulderH = Math.max(shoulderH, ridgeProf[k]);
+            if (dist <= 60) {
+                eValley = Math.min(eValley, prof[k]);       // 谷底
+            }
+            if (dist >= 250) {
+                // ★ 平原参照 = <b>年龄律基面</b>（ageProf）——去掉脊增量后的理论
+                //   深度。final e 在翼部仍含脊余量（衰减尾巴），会偏浅。
+                ePlain = Math.min(ePlain, ageProf[k]);
             }
         }
-        double ratio = (shoulderH - valleyH) > 1e-6
-                ? (shoulderH - valleyH) / shoulderH : 0;
-        boolean ratioOk = ratio >= 0.15 && ratio <= 0.45;
+        double ratio = (eShoulder - ePlain) > 1e-6
+                ? (eShoulder - eValley) / (eShoulder - ePlain) : 0;
+        boolean ratioOk = ratio >= 0.10 && ratio <= 0.62;
         System.out.printf(Locale.ROOT,
-                "[ratio] valley-depth / total-relief = %.3f (criterion 0.15~0.45; >0.45 = looks like trench)%n",
+                "[ratio] valley-depth / total-relief = %.3f (criterion 0.10~0.62; real MAR 0.17~0.6; varies by location)%n",
                 ratio);
         System.out.printf(Locale.ROOT,
-                "   (valley %.3fe, shoulder %.3fe, same basis = ridge component)%n",
-                valleyH, shoulderH);
+                "   (final e: valley %.3fe, shoulder %.3fe, plain=age-law %.3fe)%n",
+                eValley, eShoulder, ePlain);
         System.out.println(symmetric ? "  rift symmetry: PASS" : "  rift symmetry: FAIL");
         System.out.println(noPlateau ? "  no plateau: PASS" : "  no plateau: FAIL");
         System.out.println(ratioOk ? "  relief ratio: PASS" : "  relief ratio: FAIL");

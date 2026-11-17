@@ -60,7 +60,7 @@ public final class RidgeProfile {
      * 于是脊肩不可见。现在靠<b>加宽脊带</b>（脊肩距轴 80wu 而非 300wu）
      * 让脊肩落在年龄律明显更浅的位置，净落差恢复。</p>
      */
-    public static final double RIFT_DEPTH = 0.045;
+    public static final double RIFT_DEPTH = 0.090;
     /** 脊肩峰离轴距离（wu）= 0.40 × FOOT。 */
     public static final double SHOULDER_AT = 80.0;
     /**
@@ -70,7 +70,7 @@ public final class RidgeProfile {
      * 一部分（CrustField 的 D0=2500m → D∞=5700m），本剖面只补「局部山形」。
      * 0.19e 是沙箱目检定稿值。</p>
      */
-    public static final double SHOULDER_H = 0.190;
+    public static final double SHOULDER_H = 0.085;
     /**
      * 脊脚（脊增量归零处，wu）。
      *
@@ -85,14 +85,17 @@ public final class RidgeProfile {
     /**
      * 脊隆起高度（e，相对深海平原）。
      *
-     * @param d 离轴距离（wu，已含沿轴蜿蜒偏移；负数视为 0）
+     * @param d           离轴距离（wu，已含沿轴蜿蜒偏移；负数视为 0）
+     * @param valleyScale 地堑深度沿轴调制 ∈[0,1]（0=无谷段/轴部高地，1=全深谷）
+     *                    ——真实 MOR 的轴谷深度沿轴强烈变化（分段性）
      * @return 0~{@link #SHOULDER_H}；{@code d ≥ FOOT} 时为 0
      */
-    public static double height(double d) {
+    public static double height(double d, double valleyScale) {
         if (d <= 0) {
             d = 0;
         }
-        double valleyFloor = SHOULDER_H - RIFT_DEPTH;
+        double riftD = RIFT_DEPTH * Math.max(0.0, Math.min(1.0, valleyScale));
+        double valleyFloor = SHOULDER_H - riftD;
         // 谷缘（断层崖顶）高度：介于谷底与脊肩之间。
         //   ⚠ 2026-11-17 修不连续：旧代码谷壁升满到 SHOULDER_H、下一段又从
         //   valleyFloor 起算 ⇒ d=RIFT_HALF 处有 (SHOULDER_H−valleyFloor) 的

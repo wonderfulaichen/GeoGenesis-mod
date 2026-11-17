@@ -787,7 +787,18 @@ public class PreviewDisplay extends AbstractWidget {
     //       ④ PerlinRidge → Perlin（水下细节噪声，折叠算子折痕 = 点状虚线，见 148 注）。
     //       （②③④ 原列 148；①② 本提交追加 ⇒ 合并升 149。）
     //       148 基准留档：5bc1ea9a / 5dd95cec。
-    static final int CACHE_SCHEMA_VERSION = 149;
+    // 150 = 2026-11-18 阶段七 G（用户："这线完全是平滑的曲线"——脊带是光滑
+    //       解析凸起夹在粗糙海床中间，边缘读成人工分界线）：
+    //       脊体加 100wu 断块纹理（Simplex ±3 格，包络 = profile/SHOULDER_H，
+    //       脊带内满幅、带外平滑归零）——真实裂谷山是崎岖断块地形。
+    //       149 基准留档：9a27f1f8 / 5dd95cec。
+    // 151 = 2026-11-18 阶段七 H（排除法确认：钳制平顶 = 错层直线）：
+    //       脊肩幅度 0.19→0.085e——峰值 add(0.085×1.81=0.154) 低于 maxAdd(0.166)
+    //       ⇒ smoothMin 钳制<b>永不触发</b> ⇒ 平顶台地和它的两条直边消失。
+    //       （0.19 时峰值 add=0.34 是 maxAdd 的 2 倍 ⇒ 整个肩顶被钳平。）
+    //       比例判据基准修正：平原参照改用年龄律基面（final e 在翼部含脊余量）。
+    //       150 基准留档：041a0d5d / 5dd95cec。
+    static final int CACHE_SCHEMA_VERSION = 151;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
