@@ -763,7 +763,14 @@ public class PreviewDisplay extends AbstractWidget {
     //          分布，只有 28% 明确离散；旧门槛 0.12 把 ~55% 边界当离散 ⇒
     //          汇聚边界上也在长「洋中脊」）；
     //       145 基准留档：41bd1cd5 / 5dd95cec。
-    static final int CACHE_SCHEMA_VERSION = 146;
+    // 147 = 2026-11-17 阶段七 D（用户放大图圈出「点状虚线折痕」）：
+    //       脊抬升的浅水钳制从硬 min 改为 C¹ 软限 smoothMin——
+    //       Math.min 的切换等值线（add==maxAdd，绕脊肩一圈）两侧坡度突变，
+    //       hillshade 下成一圈圈点状虚线、且被噪声调制碎成点链。
+    //       违反了本类弧光项注释早已写明的铁律（「用 smoothMin 而非
+    //       Math.min：后者一阶不连续会留折痕」——同段代码海沟项早已用之）。
+    //       146 基准留档：61e04488 / 5dd95cec。
+    static final int CACHE_SCHEMA_VERSION = 147;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

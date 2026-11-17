@@ -83,9 +83,14 @@ public final class P1CellRenderProbe {
      * 地堑 0.13→0.045e（谷深/总起伏 0.68→0.33，真实 MAR 0.2~0.4）、
      * 脊带全宽 840→400wu、深海丘陵波长 45→900wu、离散门槛 0.12→0.30。
      * 全图 SHA 变，陆侧仍与 145 逐位一致。145 基准留档 41bd1cd5…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 D（2026-11-17，schema147）：脊抬升的浅水钳制 Math.min →
+     * smoothMin（C¹ 软限）——修「点状虚线折痕」（钳制等值线两侧坡度突变，
+     * hillshade 下成点链；违反弧光项注释已写明的铁律）。
+     * 全图 SHA 变，陆侧仍与 146 逐位一致。146 基准留档 61e04488…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "61e04488db13c0af83992b6f25084efc6dd39870c71f71e5d5902116b4b9db31";
+            "bdaae378ccfd88162328dbc5e87356b84a5e2e4f9091554cb6d385948900cf63";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

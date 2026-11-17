@@ -252,12 +252,20 @@ public final class OceanFeatures {
                         double roughAmp = RidgeProfile.inRift(d) ? 0.0
                                 : 0.20 * smoothstep(0.0, 120.0, d);
                         double rough = 1.0 + roughAmp * breakUp * fabric;
-                        // 海床守护：抬升量精确钳到「离海面余量」以内（C¹ 软限不需要——
-                        //   profile 是平滑的，直接按比例缩放保持形状）。
+                        // ★★ 2026-11-17 修「点状虚线折痕」（用户截图圈出）：
+                        //   旧实现 scale = min(1, maxAdd/add) 是<b>硬钳制</b>——
+                        //   add == maxAdd 的等值线是一条绕脊肩的曲线，线上下
+                        //   坡度突变（一侧削平台地、一侧正常斜坡）⇒ hillshade
+                        //   放大后成一圈圈<b>点状虚线</b>，且被噪声调制碎成点链。
+                        //   这违反项目铁律（本类弧光项注释原话：「用 smoothMin
+                        //   而非 Math.min：后者一阶不连续会留折痕」——同一段代码
+                        //   里海沟项早就用了 smoothMin，我却给脊项用了 Math.min）。
+                        //   现改为 C¹ 软钳制 smoothMin（宽 0.04e ≈ 5 格）。
                         double add = profile * segment * rough;
                         double maxAdd = Math.max(0.0, -eOcean - RIDGE_SEA_MARGIN);
-                        double scale = add > 0 ? Math.min(1.0, maxAdd / add) : 1.0;
-                        ridgeOut = add * scale * constitution;
+                        double capped = add > 0
+                                ? TectonicField.smoothMin(add, maxAdd, 0.04) : add;
+                        ridgeOut = capped * constitution;
                         // 类型包络：脊带成员资格（谷底也算——地堑是洋中脊的一部分）。
                         //   用 distRaw 判定：d < FOOT 全带。
                         ridgeEnvelope = constitution * (1.0 - smoothstep(

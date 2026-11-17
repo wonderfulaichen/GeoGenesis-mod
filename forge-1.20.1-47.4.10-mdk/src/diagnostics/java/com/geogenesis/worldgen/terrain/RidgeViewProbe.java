@@ -171,7 +171,10 @@ public final class RidgeViewProbe {
                 }
                 var tsC = tectonic.sample(wx, wz);
                 double dr = tsC.distRaw();
-                if (dr > 40) {
+                // ★ 必须同时在<b>脊带内</b>：min distRaw 会落到「没有脊的边界」
+                //   （转换段/交汇段，constitution≈0 ⇒ 无脊）⇒ 剖面切到空地。
+                //   脊带内 = ridge ≥ 0.10（谷底设计值 0.145=0.19−0.045，余量 0.045）。
+                if (dr > 40 || c.oceanFeat == null || c.oceanFeat.ridge < 0.10) {
                     continue;
                 }
                 // ③ 孤立性：沿垂直方向 distRaw 应单调上升
