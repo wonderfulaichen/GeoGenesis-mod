@@ -30,10 +30,11 @@ public final class OceanFeatures {
      * 轴向高度分段（波长 1100wu）：段间脊轴高度差 ±40%——真实 MOR 的分段性。
      *
      * <p>蜿蜒偏移<b>不在这里</b>：脊带与轴部裂谷必须用<b>同一个</b>偏移函数
-     * （{@link RidgeWander}），否则裂谷会偏离脊带中心（B 初版实测错开 ~100wu）。</p>
+     * 但<b>不能</b>用「给无符号距离加偏移」的方式平移脊轴（会消失/裂双谷）——
+     * 详见 {@code compute} 的脊段注释。</p>
      */
     private final Noise axSegment;
-    /** 世界种子（RidgeWander 共享偏移用）。 */
+    /** 世界种子（轴向分段/海山撒点用）。 */
     private long worldSeed;
     /** 粗格点间距（块）。每个格子约 20% 概率生成一座海山。
      *  2026-08-06 调稀：用户反馈海山太多。网格保持 500（相位/深度过滤不变），概率 40%→20%
@@ -74,7 +75,7 @@ public final class OceanFeatures {
         // 海山域扭曲（去圆化）：低频 Simplex @1/200，幅度由每座 radius 缩放
         this.seamountWarpX = new Frequency(new Simplex(705), 1.0 / 200.0);
         this.seamountWarpZ = new Frequency(new Simplex(706), 1.0 / 200.0);
-        // ★ 阶段七 B：轴向分段（1100wu）；蜿蜒由共享 RidgeWander 提供
+        // ★ 阶段七 B：轴向分段（1100wu）——沿轴高度变化（蜿蜒位置偏移已证否）
         this.axSegment = new Frequency(new Simplex(708), 1.0 / 1100.0);
         // 默认：无检查（向后兼容）
         this.seamountCenterDepthCheck = null;
@@ -100,10 +101,23 @@ public final class OceanFeatures {
          */
         public final double arc;
         public final double baseE;     // 预特征基面 e（分类深度判定用，避免特征抬升自相矛盾）
+        /**
+         * ★ 阶段七 B：洋中脊<b>带成员资格</b> ∈[0,1]（与高度增量解耦）。
+         *
+         * <p>为什么需要：脊剖面里地堑谷底的高度增量低于脊肩（谷是下沉的），
+         * 若用 {@code ridge}（高度）做类型判定，地堑会被排除在 SUBMARINE_RIDGE
+         * 之外——但地堑是洋中脊的一部分。本字段只表达「在不在脊带内」。</p>
+         */
+        public final double ridgeEnvelope;
         public FeatureResult(double total, double ridge, double seamount, double baseE) {
-            this(total, ridge, seamount, 0.0, baseE);
+            this(total, ridge, seamount, 0.0, baseE, ridge > 0 ? 1 : 0);
         }
         public FeatureResult(double total, double ridge, double seamount, double arc, double baseE) {
+            this(total, ridge, seamount, arc, baseE, ridge > 0 ? 1 : 0);
+        }
+        public FeatureResult(double total, double ridge, double seamount, double arc,
+                             double baseE, double ridgeEnvelope) {
+            this.ridgeEnvelope = ridgeEnvelope;
             this.total = total;
             this.ridge = ridge;
             this.seamount = seamount;
@@ -154,6 +168,7 @@ public final class OceanFeatures {
         double ridgeDelta = 0.0;
         double seamountDelta = 0.0;
         double arcDelta = 0.0;
+        double ridgeEnvelope = 0.0;
 
         // 1. 洋中脊：smoothstep 平滑淡入（eOcean ≥ -0.08 无脊，≤ -0.25 全幅）
         // 2026-08-06 修复：ridgeFade 语义 = "深海 1 / 浅海 0" → 1-smoothstep(-0.25,-0.08,eOcean)。
@@ -182,35 +197,64 @@ public final class OceanFeatures {
             //   constitution：这片海域是否离散体制（区域应力场，σ=1000wu，连续）。
             //   shape：离轴距离的高斯剖面（对称、轴部最高、两翼热沉降）。
             //   ⇒ 等深线天然平行脊轴（磁条带几何），不会是噪声闭合圈。
-            double constitution = 1.0;
-            double shape = 1.0;
-            double segment = 1.0;
+            // ★★ 阶段七 B 落地（2026-11-17）：脊体形改用确定性横剖面
+            //    {@link RidgeProfile}（沙箱 {@code RidgeFormProbe} 目检定稿）。
+            //
+            //   旧实现：shape = gaussian(dist+wander, σ=200) ⇒ 单峰鼓包，
+            //   且与 CrustField 的独立窄槽叠加 ⇒ 分解图实测 ridge 通道是
+            //   「噪声斑块」、最终地形像「被破坏的海沟」（用户判断）。
+            //
+            //   新实现：RidgeProfile.height(dist+wander) 给出完整横剖面
+            //   （中央 U 形地堑 + 脊肩峰 + 翼部余弦衰减），
+            //   CrustField 的独立裂谷项<b>已删除</b>（剖面内含，避免双重开挖）。
+            // ★★ 阶段七 B 落地（2026-11-17）：脊体形改用确定性横剖面 RidgeProfile
+            //   （沙箱 RidgeFormProbe 定稿：中央 U 形地堑 + 脊肩峰 + 翼部余弦衰减）。
+            //   取代旧的 gaussian 鼓包；CrustField 的独立裂谷项已删除（剖面内含）。
+            double ridgeOut = 0.0;
             if (tect != null) {
-                constitution = TectonicField.smoothPos(-tect.stress(), TectonicField.STRESS_POS_EPS);
-                // ★ 阶段七 B：脊带中心沿轴蜿蜒（±40wu）——与 CrustField 的轴部
-                //   裂谷共用 RidgeWander（同一函数/种子），保证「裂谷在脊带中间」。
-                double along = tect.alongCoord();
-                double wander = RidgeWander.at(worldSeed, along);
-                double dn = (tect.dist() + wander) / RIDGE_WING_SIGMA;
-                shape = Math.exp(-0.5 * dn * dn);
-                // 轴向分段：段间脊轴高度差 ±40%（真实 MOR 的 segment 尺度 800~1500wu）
-                segment = 0.78 + 0.45 * axSegment.compute(along, 0.0);
+                double constitution = TectonicField.smoothPos(
+                        -tect.stress(), TectonicField.STRESS_POS_EPS);
+                if (constitution > 0.0) {
+                    double along = tect.alongCoord();
+                    // ★★ 必须用 distRaw（未平滑）：
+                    //   生产 dist 经 blurDist(R=150wu) 环形平均；地堑半宽仅 80wu
+                    //   ⇒ 用 dist 会把谷底完全抹平（实测剖面谷深只剩 0.029e）。
+                    //
+                    // ★★ 2026-11-17 关键修正：<b>不再给 distRaw 加位置偏移</b>。
+                    //   distRaw = max(0, (d2−d1)/2) 是<b>无符号</b>距离（两侧都是
+                    //   d2≥d1），在它上面加 wander 在数学上不是「平移零线」：
+                    //     · wander>0 ⇒ d ≥ 90 > RIFT_HALF ⇒ 地堑整段<b>消失</b>
+                    //     · wander<0 ⇒ d=0 出现在离边界 90wu 处、且在两侧对称
+                    //       ⇒ 地堑<b>裂成两条</b>
+                    //   实测特写图上表现为轴部成片的暗斑/断口（「被破坏」感）。
+                    //   要真正平移脊轴需要<b>有符号</b>距离，TectonicField 不提供。
+                    //   故此处只用真实距离；沿轴变化交给 segment（±35%）与 fabric。
+                    double d = tect.distRaw();
+                    double profile = RidgeProfile.height(d);          // e，相对深海平原
+                    if (profile > 0.0) {
+                        // 轴向高度分段：段间 ±35%（真实 MOR segment 尺度 800~1500wu）
+                        double segment = 0.78 + 0.45 * axSegment.compute(along, 0.0);
+                        // 表面纹理：平行脊轴的断续条带（abyssal hill fabric）。
+                        // ⚠ 一维沿轴 + 横向包络；二维斜纹噪声会把地堑/脊肩糊成斜纹布。
+                        double fabric = ridgeNoise.compute(wx, wz);
+                        double breakUp = 0.55 + 0.45 * axSegment.compute(wx / 260.0, wz / 900.0);
+                        double roughAmp = RidgeProfile.inRift(d) ? 0.0
+                                : 0.20 * smoothstep(0.0, 120.0, d);
+                        double rough = 1.0 + roughAmp * breakUp * fabric;
+                        // 海床守护：抬升量精确钳到「离海面余量」以内（C¹ 软限不需要——
+                        //   profile 是平滑的，直接按比例缩放保持形状）。
+                        double add = profile * segment * rough;
+                        double maxAdd = Math.max(0.0, -eOcean - RIDGE_SEA_MARGIN);
+                        double scale = add > 0 ? Math.min(1.0, maxAdd / add) : 1.0;
+                        ridgeOut = add * scale * constitution;
+                        // 类型包络：脊带成员资格（谷底也算——地堑是洋中脊的一部分）。
+                        //   用 distRaw 判定：d < FOOT 全带。
+                        ridgeEnvelope = constitution * (1.0 - smoothstep(
+                                RidgeProfile.FOOT * 0.75, RidgeProfile.FOOT, d));
+                    }
+                }
             }
-            if (constitution > 0.0 && shape > 0.0) {
-                // 噪声只做表面粗糙度（±20%）：沿轴/横向的碎裂感由 Ridge(1/600)
-                // 提供；它不再决定体形（旧实现 detail 直接乘幅度 ⇒ 噪声脊）。
-                double rough = 0.8 + 0.4 * ridgeNoise.compute(wx, wz);
-                // ★ 自适应幅度（2026-11-17）：受「到海平面的余量」压缩——
-                //   深海（eOcean≈−0.4）用满 0.15e；靠近浅水自动变矮。
-                //   ⚠ 余量必须除以 rough×segment 的理论峰值（1.2×1.23=1.476）：
-                //   直接 min(0.15, 余量) 仍会让峰值段顶穿（实测峰顶到了 −0.05e，
-                //   离水面只剩 6.4 格，再加海床细节噪声就贴水面）。
-                double peakFactor = 1.2 * 1.23;
-                double amp = Math.min(RIDGE_AMPLITUDE,
-                        Math.max(0.0, -eOcean - RIDGE_SEA_MARGIN) / peakFactor);
-                ridgeDelta = amp * constitution * shape * segment
-                        * rough * ridgeFade;
-            }
+            ridgeDelta = ridgeOut * ridgeFade;
         }
 
         // 2. 海山/海底火山（域扭曲去圆化 + 共享 VolcanicShape 形状）
@@ -264,7 +308,7 @@ public final class OceanFeatures {
 
         double total = (ridgeDelta + seamountDelta) * fade + arcDelta;
         return new FeatureResult(total, ridgeDelta * fade, seamountDelta * fade,
-                                 arcDelta, eOcean);
+                                 arcDelta, eOcean, ridgeEnvelope * fade);
     }
 
     /**
@@ -317,7 +361,6 @@ public final class OceanFeatures {
      * 热沉降翼窄得多）。</p>
      */
     private static final double RIDGE_WING_SIGMA = 200.0;
-    /** 脊带中心沿轴蜿蜒幅度（wu）——定义已上移到共享 {@link RidgeWander#AMP_WU}。 */
     /** 脊轴到海平面的最小余量（e）：自适应幅度的下限保护（≈7.6 格）。 */
     private static final double RIDGE_SEA_MARGIN = 0.06;
 

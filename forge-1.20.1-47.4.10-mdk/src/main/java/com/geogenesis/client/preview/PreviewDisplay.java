@@ -734,7 +734,17 @@ public class PreviewDisplay extends AbstractWidget {
     //          amp=min(0.15, (−eBase−0.06)/1.476)（rough×segment 峰值不顶穿浅水锚）；
     //          实测峰顶 −0.075e（9.5 格水下）、脊梁从两侧 −0.30 隆起 28 格。
     //       142 基准留档：fca9d346 / 5dd95cec。
-    static final int CACHE_SCHEMA_VERSION = 143;
+    // 144 = 2026-11-17 阶段七 B 最终落地（用户："像被破坏的海沟"→沙箱定稿后入生产）：
+    //       ① 脊体形改为 RidgeProfile 两段式确定性剖面（中央 U 形地堑 half 80wu、
+    //          深 0.13e + 脊肩峰 @300wu 高 0.19e + 翼部余弦衰减至 800wu）；
+    //       ② 删除 CrustField 的独立轴部裂谷（RIFT_AXIAL_M/WU 已成死常量——已删），
+    //          避免与剖面内地堑双重开挖；
+    //       ③ 删除 RidgeWander 位置偏移：distRaw 是<b>无符号</b>距离，加偏移只会让
+    //          地堑消失/裂成双谷（实测特写图轴部成片暗斑）——真平移需要签名距离；
+    //       ④ 类型判定改用 ridgeEnvelope（带成员资格）而非高度（地堑谷底也算脊）；
+    //       ⑤ 脊脚 1500→800wu（旧值让 SUBMARINE_RIDGE 类型格暴增到 19823）。
+    //       143 基准留档：dddf3171 / 5dd95cec。
+    static final int CACHE_SCHEMA_VERSION = 144;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

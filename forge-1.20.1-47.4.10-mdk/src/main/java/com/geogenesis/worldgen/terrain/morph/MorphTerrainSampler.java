@@ -392,10 +392,11 @@ public final class MorphTerrainSampler {
             c.typeWeights[depthType.ordinal()] = 1.0;
             double seamountW = of == null ? 0.0
                     : 1.5 * smoothstep(0.01, 0.06, of.seamount);
-            // ridge 量程：阶段七 A 把 RIDGE_AMPLITUDE 定为 0.05（轴部额外凸起；
-            // 脊带总落差由年龄律提供）⇒ 类型门控同步到平滑新的 0.01~0.04 区间。
+            // ★ 阶段七 B 落地：用<b>带成员资格</b>（ridgeEnvelope）判 SUBMARINE_RIDGE，
+            //   不用高度（ridge）——地堑谷底的高度低于脊肩，用高度判会把谷排除在脊外，
+            //   而地堑是洋中脊的核心特征。包络在 d<0.75·FOOT 内为 1、之后平滑归零。
             double ridgeW = of == null ? 0.0
-                    : 1.5 * smoothstep(0.01, 0.04, of.ridge);
+                    : 1.5 * smoothstep(0.30, 0.70, of.ridgeEnvelope);
             if (seamountW > 0.0) {
                 c.typeWeights[com.geogenesis.worldgen.terrain.TerrainClass.SEAMOUNT.ordinal()] += seamountW;
             }

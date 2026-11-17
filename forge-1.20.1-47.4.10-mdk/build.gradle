@@ -1680,6 +1680,25 @@ task runQuickContinentDiag(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.QuickContinentDiag'
 }
 
+// 洋中脊三段式剖面沙箱（2026-11-17）：脊肩+轴部高地+中央地堑的形态试验。
+//   出 ridge-top / ridge-section / ridge-along 三张图。不碰生产代码。
+//   gradlew runRidgeFormProbe
+task runRidgeFormProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.tectonicsand.RidgeFormProbe'
+}
+
+// 洋中脊分量分解（2026-11-17）：age-law / ridge / residual(裂谷) / final 四张图 +
+//   裂谷对称性与平台化自动判据。回答「感觉像海沟 / 被破坏的海沟」。
+//   gradlew runRidgeDecomposeProbe [-PprobeArgs="<cx> <cz> <half>"]
+task runRidgeDecomposeProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.RidgeDecomposeProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // 洋中脊剖面诊断（2026-11-17）：判定「深→浅边界」是 edge（大陆距离）还是年龄律产物。
 //   gradlew runRidgeProfileProbe
 task runRidgeProfileProbe(type: JavaExec) {

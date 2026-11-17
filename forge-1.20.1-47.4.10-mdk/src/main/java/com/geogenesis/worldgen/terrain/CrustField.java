@@ -150,8 +150,6 @@ public final class CrustField {
     static final double ABYSS_HILLS_M = 100.0;
     static final double ABYSS_HILL_SCALE = 45.0;
     /** 轴部裂谷：深度（m）与宽度（wu）。慢速扩张脊标配（1~2 km 深、20~50 km 宽）。 */
-    static final double RIFT_AXIAL_M = 1400.0;
-    static final double RIFT_AXIAL_WU = 8.5;
     /** 海沟：深度（m）与宽度（wu）。洋-洋俯冲全球最深（−8000~−11000 m）。 */
     static final double TRENCH_M = 3600.0;
     static final double TRENCH_WU = 17.0;
@@ -269,13 +267,15 @@ public final class CrustField {
             double sediment = 1.0 - 0.7 * smoothstep(0.15, 0.75, age);
             e += (ABYSS_HILLS_M / METERS_PER_E) * (hs / 1.75) * sediment;
 
-            // 轴部裂谷：离散边界轴上的窄槽（distRaw 未平滑，blur 会抹掉它）。
-            // ★ 阶段七 B：裂谷与脊带（OceanFeatures）共用 RidgeWander 的沿轴偏移
-            //   ——边界是 Voronoi 直线段，加同一偏移后「裂谷在脊带中间」且不僵直。
-            double dRift = ts.distRaw() + RidgeWander.at(seed, ts.alongCoord());
-            e -= (RIFT_AXIAL_M / METERS_PER_E)
-                    * divProx * Math.exp(-(dRift * dRift)
-                            / (RIFT_AXIAL_WU * RIFT_AXIAL_WU));
+            // ★ 阶段七 B（2026-11-17）：<b>轴部裂谷已从本类删除</b>。
+            //
+            //   为什么删：地堑现在是 {@link RidgeProfile} 横剖面的<b>一部分</b>
+            //   （中央 U 形谷，深 0.07e、半宽 80wu）。两处各挖一次是「双重开挖」，
+            //   且旧实现用 {@code distRaw}（未平滑）配 {@code max(0,·)} 折点，
+            //   被无符号距离偏移推成负值后截平 ⇒ 谷底出现平台、左右不对称
+            //   （分解探针实测 ±60wu 镜像差 0.038e，超限近 2 倍）。
+            //   现在单一来源：脊剖面（OceanFeatures）负责全部地形起伏，
+            //   本类只负责年龄律热沉降 + 丘陵 + 海沟。
 
             // 海沟：汇聚边界上的深槽（双侧共用，无需俯冲极性；stress 门控成形度）
             e -= (TRENCH_M / METERS_PER_E)

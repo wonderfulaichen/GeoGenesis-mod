@@ -67,9 +67,15 @@ public final class P1CellRenderProbe {
      * <p>★ 阶段七 B 二次修正（2026-11-17，schema143）：剖面图工具 + 自动选点证实
      * 洋中脊全在大陆坡斜坡上；脊轴幅度 0.09→0.15e + 峰值感知自适应压缩。
      * 全图 SHA 变，陆侧仍与 142 逐位一致。142 基准留档 fca9d346…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 B 最终落地（2026-11-17，schema144）：RidgeProfile 两段式剖面
+     * （U 形地堑 half 80wu/深 0.13e + 脊肩 @300wu/0.19e + 翼部至 800wu）+
+     * 删 CrustField 独立裂谷 + 删无符号距离位置偏移（会消失/裂双谷）+
+     * 类型判定改用 ridgeEnvelope（地堑也算脊带成员）。
+     * 全图 SHA 变，陆侧仍与 143 逐位一致。143 基准留档 dddf3171…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "dddf3171b6c2c1483f28d22789208d55e01a27bc739b5d52b95dedb294ab7acf";
+            "dd2f20faeba77ec66f8a962f18845f583341ff9092253d7c9e57bcfc281d7976";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441
