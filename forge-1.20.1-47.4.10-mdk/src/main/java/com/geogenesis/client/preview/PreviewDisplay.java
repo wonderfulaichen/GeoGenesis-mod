@@ -744,7 +744,16 @@ public class PreviewDisplay extends AbstractWidget {
     //       ④ 类型判定改用 ridgeEnvelope（带成员资格）而非高度（地堑谷底也算脊）；
     //       ⑤ 脊脚 1500→800wu（旧值让 SUBMARINE_RIDGE 类型格暴增到 19823）。
     //       143 基准留档：dddf3171 / 5dd95cec。
-    static final int CACHE_SCHEMA_VERSION = 144;
+    // 145 = 2026-11-17 阶段七 B 三次修正（用户："尺寸也完全没注意"）：
+    //       ① 尺度重标定：脊带 420wu 半宽（旧 800 全宽 1600，而板块格子仅 2000wu
+    //          ⇒ 相邻边界脊带互相叠成「平行亮纹」）；地堑半宽 80→45、脊肩 300→160。
+    //       ② constitution bug：smoothPos() 返回的是应力值（0.1~0.5）而非 0~1 资格，
+    //          整条脊被乘成 40% 高（实测脊肩 0.078 vs 设计 0.19）——
+    //          改为 smoothstep(0, 0.12, -stress)。
+    //       ③ 地堑壁 C0 不连续：谷壁升满到脊肩高、下一段又从谷底起算 ⇒
+    //          剖面轴两侧两根尖刺；改为升至 78% 谷缘再续升。
+    //       144 基准留档：dd2f20fa / 5dd95cec。
+    static final int CACHE_SCHEMA_VERSION = 145;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

@@ -1688,6 +1688,16 @@ task runRidgeFormProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.tectonicsand.RidgeFormProbe'
 }
 
+// 洋中脊「俯视 + 剖面」双视图（2026-11-17）：左俯视 hillshade、右横剖面曲线。
+//   gradlew runRidgeViewProbe [-PprobeArgs="<cx> <cz> <half>"]
+task runRidgeViewProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.RidgeViewProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // 洋中脊分量分解（2026-11-17）：age-law / ridge / residual(裂谷) / final 四张图 +
 //   裂谷对称性与平台化自动判据。回答「感觉像海沟 / 被破坏的海沟」。
 //   gradlew runRidgeDecomposeProbe [-PprobeArgs="<cx> <cz> <half>"]

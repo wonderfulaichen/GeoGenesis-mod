@@ -37,11 +37,13 @@ public final class RidgeDecomposeProbe {
 
     private static final long SEED = 9139912035078620160L;
     private static final int N = 500;
+    private static double HALF_WU = 400;
 
     public static void main(String[] args) throws Exception {
         double cx = args.length > 0 ? Double.parseDouble(args[0]) : 1600;
         double cz = args.length > 1 ? Double.parseDouble(args[1]) : 1600;
         double half = args.length > 2 ? Double.parseDouble(args[2]) : 400;
+        HALF_WU = half;
 
         MorphTerrainSampler smp = new MorphTerrainSampler(SEED,
                 TerrainParams.defaults(), -64, 320);
@@ -89,16 +91,26 @@ public final class RidgeDecomposeProbe {
 
         // ---- 自动判据：裂谷对称 + 平台检测 ----
         // 找 ridge 峰值点作为轴心，沿东西方向取剖面
+        // ★ 2026-11-17 修：只在<b>深海</b>找脊肩——浅水/陆架处 ridgeFade 已把脊压掉，
+        //   选到那里看到的不是洋中脊（实测窗口落在陆架上，e 最高才 −0.03，
+        //   图上是「浅水台地上的刻线」，完全误导）。
         int bi = 0, bj = 0;
         double best = -1;
         for (int j = 0; j < N; j++) {
             for (int i = 0; i < N; i++) {
+                if (eFinal[j][i] > -0.18) {
+                    continue;   // 非深海
+                }
                 if (ridge[j][i] > best) {
                     best = ridge[j][i];
                     bi = i;
                     bj = j;
                 }
             }
+        }
+        if (best < 0) {
+            System.out.println("[FAIL] 窗口内没有深海脊肩——请换中心点或扩大窗口");
+            System.exit(1);
         }
         double axX = cx - half + 2 * half * bi / (N - 1);
         double axZ = cz - half + 2 * half * bj / (N - 1);
@@ -230,13 +242,20 @@ public final class RidgeDecomposeProbe {
                 img.setRGB(i, j, (r << 16) | (g << 8) | b);
             }
         }
-        // hillshade（固定梯度放大，便于看形态）
+        // hillshade：按「真实坡度 × 固定垂直夸张」计算，跨缩放级别一致。
+        //   ⚠ 旧实现用固定 800× 梯度——宽视野下把每个小纹理都放成尖刺阴影，
+        //   图上看起来「一堆怪刺」而实际地形没有那些尖峰（渲染在骗人）。
+        double cellWu = 2 * HALF_WU / (N - 1);
+        double blocksPerCell = cellWu * 2.0;          // 1wu = 2 块
+        double exaggeration = 15.0;                    // 地图常见垂直夸张
         for (int j = 0; j < N; j++) {
             for (int i = 0; i < N; i++) {
                 int i0 = Math.max(0, i - 1), i1 = Math.min(N - 1, i + 1);
                 int j0 = Math.max(0, j - 1), j1 = Math.min(N - 1, j + 1);
-                double gx = (v[j][i1] - v[j][i0]) / Math.max(1, i1 - i0) * 800;
-                double gy = (v[j1][i] - v[j0][i]) / Math.max(1, j1 - j0) * 800;
+                double gx = (v[j][i1] - v[j][i0]) * 127.0 / blocksPerCell
+                        * exaggeration / Math.max(1, i1 - i0);
+                double gy = (v[j1][i] - v[j0][i]) * 127.0 / blocksPerCell
+                        * exaggeration / Math.max(1, j1 - j0);
                 double nx = -gx, ny = -gy, nz = 1;
                 double len = Math.sqrt(nx * nx + ny * ny + nz * nz);
                 double dd = (-nx * 0.6 - ny * 0.6 + nz * 0.53) / len;

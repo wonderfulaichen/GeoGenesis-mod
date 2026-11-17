@@ -73,9 +73,14 @@ public final class P1CellRenderProbe {
      * 删 CrustField 独立裂谷 + 删无符号距离位置偏移（会消失/裂双谷）+
      * 类型判定改用 ridgeEnvelope（地堑也算脊带成员）。
      * 全图 SHA 变，陆侧仍与 143 逐位一致。143 基准留档 dddf3171…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 B 三次修正（2026-11-17，schema145）：脊带尺度重标定
+     * （420wu 半宽，匹配板块格子 2000wu）+ constitution 真值修复
+     * （smoothPos 返回应力值而非 0~1）+ 地堑壁 C0 连续。
+     * 全图 SHA 变，陆侧仍与 144 逐位一致。144 基准留档 dd2f20fa…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "dd2f20faeba77ec66f8a962f18845f583341ff9092253d7c9e57bcfc281d7976";
+            "41bd1cd5aa9c5715220ee8a2e1a8023be1d642bda5a9b49324391e0ce4c67fdd";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

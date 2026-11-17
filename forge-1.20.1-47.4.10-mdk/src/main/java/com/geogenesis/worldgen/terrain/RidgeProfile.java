@@ -36,8 +36,15 @@ package com.geogenesis.worldgen.terrain;
  */
 public final class RidgeProfile {
 
-    /** 轴部裂谷半宽（wu）：谷全宽 160wu。 */
-    public static final double RIFT_HALF = 80.0;
+    /**
+     * 轴部裂谷半宽（wu）。
+     *
+     * <p>⚠ 2026-11-17 尺度重标定（用户："尺寸也完全没注意"）：
+     * 板块格子 {@code PLATE_SPACING = 2000wu}，而旧值把脊带做到全宽 1600wu
+     * ——两条相邻边界的脊带几乎叠在一起，俯视图成「平行亮纹」。
+     * 现在脊带全宽 840wu（约格子 42%），谷全宽 90wu。</p>
+     */
+    public static final double RIFT_HALF = 45.0;
     /**
      * 轴部裂谷深度（e）：相对脊肩峰 —— 0.130e ≈ 16.5 格。
      *
@@ -48,8 +55,8 @@ public final class RidgeProfile {
      * 的上沿，游戏可读性优先）。</p>
      */
     public static final double RIFT_DEPTH = 0.130;
-    /** 脊肩峰离轴距离（wu）= 0.375 × FOOT。 */
-    public static final double SHOULDER_AT = 300.0;
+    /** 脊肩峰离轴距离（wu）= 0.38 × FOOT。 */
+    public static final double SHOULDER_AT = 160.0;
     /**
      * 脊肩峰高度（e，相对深海平原）= 0.19e ≈ 24 格。
      *
@@ -63,10 +70,11 @@ public final class RidgeProfile {
      *
      * <p>⚠ 2026-11-17 落地修正：沙箱用的 1500wu 太宽——生产 SUBMARINE_RIDGE
      * 类型格从 5371 暴增到 19823（脊带横向覆盖过大，把大片海床算成脊）。
-     * 真实 MOR 的显著脊带（轴部到翼部坡脚）约 50~100km；本项目 800wu
-     * ≈ 7km 视觉尺度（1wu≈9m），配合年龄律的更大尺度热沉降正好。</p>
+     * 真实 MOR 的显著脊带（轴部到翼部坡脚）约 50~100km。本项目板块格子
+     * 2000wu ⇒ 脊带 420wu 半宽让板块内部保留 1160wu 的平坦深海平原，
+     * 脊带之间不会互相叠成「平行亮纹」。</p>
      */
-    public static final double FOOT = 800.0;
+    public static final double FOOT = 420.0;
 
     /**
      * 脊隆起高度（e，相对深海平原）。
@@ -79,16 +87,21 @@ public final class RidgeProfile {
             d = 0;
         }
         double valleyFloor = SHOULDER_H - RIFT_DEPTH;
+        // 谷缘（断层崖顶）高度：介于谷底与脊肩之间。
+        //   ⚠ 2026-11-17 修不连续：旧代码谷壁升满到 SHOULDER_H、下一段又从
+        //   valleyFloor 起算 ⇒ d=RIFT_HALF 处有 (SHOULDER_H−valleyFloor) 的
+        //   垂直跳变，剖面图上轴两侧出现两根尖刺。
+        double rim = valleyFloor + (SHOULDER_H - valleyFloor) * 0.78;
         if (d < RIFT_HALF) {
             // U 形谷：平底占 40%，其余 smoothstep 升壁（陡壁 = 正断层崖）
             double t = d / RIFT_HALF;
             double wall = t < 0.40 ? 0.0 : smoothstep01((t - 0.40) / 0.60);
-            return valleyFloor + (SHOULDER_H - valleyFloor) * wall;
+            return valleyFloor + (rim - valleyFloor) * wall;
         }
         if (d < SHOULDER_AT) {
-            // 谷缘 → 脊肩峰：单调上升（前段陡、后段圆顶）
+            // 谷缘 → 脊肩峰：从 rim 继续升到脊肩（C0 连续、C1 平滑）
             double t = (d - RIFT_HALF) / (SHOULDER_AT - RIFT_HALF);
-            return valleyFloor + (SHOULDER_H - valleyFloor) * smoothstep01(t);
+            return rim + (SHOULDER_H - rim) * smoothstep01(t);
         }
         if (d < FOOT) {
             // 脊肩 → 脊脚：余弦衰减
