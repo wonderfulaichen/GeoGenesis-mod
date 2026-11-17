@@ -1680,6 +1680,19 @@ task runQuickContinentDiag(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.QuickContinentDiag'
 }
 
+// 海洋特征判据门禁（2026-11-17 阶段六修正三）：海山/洋中脊归位到洋底几何层后。
+//   判据：存在 / 幅度量程 / 不露头 / 类型可达（修正前恒 0）/ 平滑过渡。
+//   gradlew runOceanFeaturesProbe [-PprobeArgs="<span> <step>"]
+task runOceanFeaturesProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.OceanFeaturesProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['8000', '50']
+    }
+}
+
 // 火山形态判据门禁（2026-11-17 阶段六修正）：类型层覆盖族（VolcanoRecipe）的实际形态。
 //   锁死用户目检定稿：R=120wu / amp=0.24e / 火口凹 ≥0.03e / 独立不连带 / 覆盖 <3%。
 //   判据型探针（FAIL 时 exit 1）。取代已删除的 runTectonicFeaturesProbe 陆侧部分。
@@ -1700,6 +1713,11 @@ task runVolcanoShapeProbe(type: JavaExec) {
 task runFeatureCloseupProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.FeatureCloseupProbe'
+    // ★ -PprobeArgs 在 Windows 批处理下会把含空格/负号的参数拆坏；
+    //   统一用 -Dgg.probeArgs="<a b c d>" 透传（探针侧解析）。
+    systemProperties System.getProperties().findAll {
+        it.key.startsWith('geogenesis.') || it.key.startsWith('gg.')
+    }
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
@@ -1882,6 +1900,10 @@ task runWorldgenGate {
     //   不加会退化：双重缩放（57 格→12 格）/ 门控缺位（~90% 锥顶被淹）/ 类型断源
     //   都只表现为"图上看不到火山"，没有判据就会静默回归。
     dependsOn 'runVolcanoShapeProbe'
+    // 海洋特征（2026-11-17 阶段六修正三）：海山/洋中脊归位洋底几何层后的判据。
+    //   不加会退化：oceanFeat 未赋值（类型恒 0）/ 特征被顶层叠加 / 深度门控递归——
+    //   都只表现为"海上什么也看不到"，没有判据就会静默回归。
+    dependsOn 'runOceanFeaturesProbe'
 }
 
 // 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什�?+ 多模组零误删 + 开关真生效:

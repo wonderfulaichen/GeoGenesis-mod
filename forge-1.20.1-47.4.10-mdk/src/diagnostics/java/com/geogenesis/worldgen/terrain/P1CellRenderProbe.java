@@ -44,9 +44,14 @@ public final class P1CellRenderProbe {
      * ② 火山类型平滑过渡（VOLCANO 进 typeWeights 加权竞争 + 归一化）。
      * 137 基准留档 d7ead4d1…/63b4e7a7…（landCells 585441）；本次 landCells 585461
      * （+20：堆积扇把近岸格抬过水面）。关火山仍应复现 4a1c19ed…/0f04e118…。</p>
+     *
+     * <p>★ 阶段六修正三重立（2026-11-17，schema139）：海山/洋中脊归位到洋底几何层
+     * （特征增量并入 crustProfile 的 deep 锚）。全图 SHA 变，<b>陆侧 SHA 与 138
+     * 逐位一致</b>（585461 / 5dd95cec…）——证明归位只动海洋、陆侧零扰动。
+     * 138 基准留档 1f28553a…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "1f28553a4935da3093a288224097bdeea04a1a16e66bbdc812f19305f5a2c4f4";
+            "5032f9a51d5e5d1e474bf5e4e1e3fb1f30a9df3d971bb5a0a9f8293dd750b3e0";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

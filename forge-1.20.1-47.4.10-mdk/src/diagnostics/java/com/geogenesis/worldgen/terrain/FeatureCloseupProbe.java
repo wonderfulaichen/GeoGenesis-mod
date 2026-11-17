@@ -26,6 +26,11 @@ public final class FeatureCloseupProbe {
     private static final long SEED = 9139912035078620160L;
 
     public static void main(String[] args) throws Exception {
+        // Windows 批处理会把 -PprobeArgs 的含空格参数拆坏 ⇒ 支持 -Dgg.probeArgs 透传
+        String sys = System.getProperty("gg.probeArgs");
+        if (sys != null && !sys.isBlank()) {
+            args = sys.trim().split("\s+");
+        }
         int n = args.length > 0 ? Integer.parseInt(args[0]) : 700;
         double radius = args.length > 1 ? Double.parseDouble(args[1]) : 600.0;
 
@@ -183,13 +188,14 @@ public final class FeatureCloseupProbe {
     private static void shade(BufferedImage img, double[][] e, int n) {
         for (int j = 0; j < n; j++) {
             for (int i = 0; i < n; i++) {
-                if (e[j][i] <= 0) {
-                    continue;
-                }
+                // ★ 水下山体（海山/洋中脊/海沟）也要上光照——否则只看色带，
+                //   立体形态完全不可见（2026-11-17 海山验收图实测）。
+                //   海侧 e→格 用 127（与 HeightCurve 海侧同率），陆侧 236。
+                double bpe = e[j][i] >= 0 ? 236.0 : 127.0;
                 int i0 = Math.max(0, i - 2), i1 = Math.min(n - 1, i + 2);
                 int j0 = Math.max(0, j - 2), j1 = Math.min(n - 1, j + 2);
-                double gx = (e[j][i1] - e[j][i0]) * 236.0 / Math.max(1, i1 - i0);
-                double gy = (e[j1][i] - e[j0][i]) * 236.0 / Math.max(1, j1 - j0);
+                double gx = (e[j][i1] - e[j][i0]) * bpe / Math.max(1, i1 - i0);
+                double gy = (e[j1][i] - e[j0][i]) * bpe / Math.max(1, j1 - j0);
                 double nx = -gx, ny = -gy, nz = 1.0;
                 double len = Math.sqrt(nx * nx + ny * ny + nz * nz);
                 double dd = (-nx * 0.5 - ny * 0.5 + nz * 0.7071) / len;

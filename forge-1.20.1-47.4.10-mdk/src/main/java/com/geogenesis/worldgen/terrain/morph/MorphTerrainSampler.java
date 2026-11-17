@@ -229,26 +229,6 @@ public final class MorphTerrainSampler {
         // 深海噪声用 seed+3（正典口径）；近岸细节噪声用原 seed。
         // ★ 桥接 S2：开关默认开时注入 CrustField.eBase（e 量纲）接管海床 deep 来源（A3：
         //   三段剖面逐位保留，只换 deep）；null = 旧 Perlin 路径（A/B 与回退）。
-        this.ocean = new MorphOceanAssembler(land::e, continent::sample, seed + OCEAN_SEED_OFFSET)
-                .enableCoastalDetail(seed)
-                .withCrustProfile(CRUST_OCEAN_EBASE
-                        ? (x, z) -> {
-                            var ts = tectonic.sample(x, z);
-                            var cs = CrustField.of(ts, x, z, seed);
-                            // 深海锚：平台模型 eBase（e 量纲）→ 格，钳到浅水锚之上（S2 近似保留）
-                            // 浅水锚：−7 格 − 主动陆缘削减（margin × 25.4 格 = 2200 地质米）
-                            //   margin = smoothstep(0.25,0.85,stress)·exp(−(distRaw/90)²)
-                            //   （阶段二陆缘剖面：主动陆缘没有陆架——海岸直接临 2~4km 深水）
-                            double shallowEff = MorphOceanAssembler.shallowBlocks()
-                                    - marginFactor(ts) * ACTIVE_SHELF_DROP_BLOCKS;
-                            double deep = Math.min(cs.eBase() * MorphOceanAssembler.BLOCKS_PER_E_SEA,
-                                    shallowEff);
-                            return new MorphOceanAssembler.CrustAnchors(deep, shallowEff);
-                        }
-                        : null);
-
-        this.curve = new HeightCurve(params, minY, maxY);
-
         // ★ 阶段六修正（2026-11-17）：只保留<b>洋侧</b>特征接线（海山/洋中脊/弧沟）。
         //   陆侧火山已归位到<b>类型层</b>（{@code VolcanoRecipe} 覆盖族 +
         //   {@code MorphLandField} 的火山 overlay）——LandFeatures 是"外挂特征层"，
@@ -261,10 +241,45 @@ public final class MorphTerrainSampler {
             this.oceanFeatures = new OceanFeatures();
             this.oceanFeatures.seed(seed);
             // 海山中心深度门控：中心必须够深（e ≤ −0.20）才生成，否则浅海会长疙瘩
-            this.oceanFeatures.setSeamountDepthChecker((x, z) -> ocean.e(x, z));
+            // ★ 修正三：改用 CrustField 裸 eBase（构造基面，不含任何特征）——
+            //   原实现 (x,z)->ocean.e 在特征并入 deep 锚后会递归
+            //   （ocean.e → crustProfile → compute → checker → ocean.e → …）。
+            this.oceanFeatures.setSeamountDepthChecker(
+                    (x, z) -> CrustField.of(tectonic.sample(x, z), x, z, seed).eBase());
         } else {
             this.oceanFeatures = null;
         }
+
+        this.ocean = new MorphOceanAssembler(land::e, continent::sample, seed + OCEAN_SEED_OFFSET)
+                .enableCoastalDetail(seed)
+                .withCrustProfile(CRUST_OCEAN_EBASE
+                        ? (x, z) -> {
+                            var ts = tectonic.sample(x, z);
+                            var cs = CrustField.of(ts, x, z, seed);
+                            // 深海锚：平台模型 eBase（e 量纲）→ 格，钳到浅水锚之上（S2 近似保留）
+                            // 浅水锚：−7 格 − 主动陆缘削减（margin × 25.4 格 = 2200 地质米）
+                            //   margin = smoothstep(0.25,0.85,stress)·exp(−(distRaw/90)²)
+                            //   （阶段二陆缘剖面：主动陆缘没有陆架——海岸直接临 2~4km 深水）
+                            double shallowEff = MorphOceanAssembler.shallowBlocks()
+                                    - marginFactor(ts) * ACTIVE_SHELF_DROP_BLOCKS;
+                            // ★ 阶段六修正三（2026-11-17）：海山/洋中脊/弧沟归位到
+                            //   洋底几何层——特征增量并入 deep 锚（海床剖面的一部分），
+                            //   不再在 sampleE 顶层叠加。不露头由 clamp(shallowEff) 承担
+                            //   （旧顶层软限 cap=−eBase−0.02 允许升到 e≈−0.02，更冒险）。
+                            double eBase = cs.eBase();
+                            if (oceanFeatures != null) {
+                                eBase += oceanFeatures.compute(x, z,
+                                        Math.min(eBase, 0.0), eBase, ts,
+                                        tectonic.oceanProfile(ts)).total;
+                            }
+                            double deep = Math.min(eBase * MorphOceanAssembler.BLOCKS_PER_E_SEA,
+                                    shallowEff);
+                            return new MorphOceanAssembler.CrustAnchors(deep, shallowEff);
+                        }
+                        : null);
+
+        this.curve = new HeightCurve(params, minY, maxY);
+
     }
 
     /** 陆壳度 ∈[0,1]：由大陆场 c ∈[−1,1] 换算（0.5 = 海岸）。 */
@@ -285,36 +300,28 @@ public final class MorphTerrainSampler {
      * 水面位置与 {@code c = 0} 之间存在随陆高变化的偏移（见类注释）。</p>
      */
     public double sampleE(double wuX, double wuZ) {
-        double eBase = ocean.e(wuX, wuZ);
+        // ★ 阶段六修正三（2026-11-17）：海山/洋中脊/弧沟已归位到洋底几何层——
+        //   特征增量进入 crustProfile 的 deep 锚（MorphOceanAssembler 海床剖面），
+        //   不再是顶层叠加。海床守护由锚 clamp(shallowEff=−7 格) 承担
+        //   （旧顶层实现用软限 cap=−eBase−0.02 + oceanWeightAt 淡出，已删除）。
+        return ocean.e(wuX, wuZ);
+    }
+
+    /**
+     * 海洋特征分量（分类用）：与 crustProfile 同一调用式，独立求值（无状态采样）。
+     *
+     * <p>{@code OceanFeatures.compute} 是纯函数（无缓存、无随机状态），
+     * 重复求值只花 CPU、不影响产出。分类与几何同源的关键就在这：类型判定
+     * 读的分量 == 并入 deep 锚的分量。</p>
+     */
+    private OceanFeatures.FeatureResult oceanFeatureAt(double x, double z) {
         if (oceanFeatures == null) {
-            return eBase;   // 关特征：逐位复现 schema135
+            return null;
         }
-        // 洋侧：海山/洋中脊/弧沟（陆侧火山在 MorphLandField 的火山覆盖层内）
-        TectonicField.Sample ts = tectonic.sample(wuX, wuZ);
-        OceanFeatures.FeatureResult of = oceanFeatures.compute(
-                wuX, wuZ, Math.min(eBase, 0.0), eBase, ts, tectonic.oceanProfile(ts));
-        // 海床守护：洋侧累计抬升不得把地形推过海平面（软限，C¹）
-        double oceanFeatW = of.total * (1.0 - oceanWeightAt(wuX, wuZ));
-        if (oceanFeatW > 0.0) {
-            double cap = -eBase - 0.02;
-            oceanFeatW = cap <= 0.0 ? 0.0 : smoothMin(oceanFeatW, cap, 0.03);
-        }
-        return Math.max(-1.0, Math.min(1.0, eBase + oceanFeatW));
-    }
-
-    /** 洋侧权重 ∈[0,1]：海陆过渡处特征自然淡出（基线同款 smoothstep）。 */
-    private double oceanWeightAt(double wx, double wz) {
-        double cBiased = continent.sample(wx, wz) - params.continentBias();
-        return 1.0 - smoothstep(-0.01, 0.01, cBiased);
-    }
-
-    /** 软最小值（C¹）：与 {@code TectonicField.smoothMin} 同式。 */
-    private static double smoothMin(double a, double b, double k) {
-        if (k <= 1e-9) {
-            return Math.min(a, b);
-        }
-        double h = Math.max(0.0, Math.min(1.0, 0.5 + 0.5 * (b - a) / k));
-        return b + (a - b) * h - k * h * (1.0 - h);
+        TectonicField.Sample ts = tectonic.sample(x, z);
+        double eBase = CrustField.of(ts, x, z, seed).eBase();
+        return oceanFeatures.compute(x, z, Math.min(eBase, 0.0), eBase, ts,
+                tectonic.oceanProfile(ts));
     }
 
     /**
@@ -370,13 +377,44 @@ public final class MorphTerrainSampler {
         c.shape = c.landE * 2.0 - 1.0;
         c.typeWeights = new double[com.geogenesis.worldgen.terrain.TerrainClass.COUNT];
         if (c.e < 0.0) {
-            // ★ 阶段六：海洋亚型（海山/洋中脊）——特征存在时优先判亚型
-            var oceanSub = oceanFeatureClass(c.oceanFeat, c.e);
-            c.terrainType = oceanSub != null ? oceanSub
-                    : c.e > -0.08 ? com.geogenesis.worldgen.terrain.TerrainClass.CONTINENTAL_SHELF
+            // ★ 阶段六修正三（2026-11-17）：海洋亚型归位 + 平滑过渡——
+            //   ① c.oceanFeat 原先<b>从未赋值</b>（恒 null ⇒ SEAMOUNT/SUBMARINE_RIDGE
+            //      在生产中从未产出——AGENTS.md「只产出 7 个类型」的根因之一）；
+            //   ② 类型判定不再 oceanFeatureClass 硬覆盖，而是把特征强度作为权重项
+            //      进 typeWeights 竞争（与火山同模式）：深度带权重 1.0 保持既有
+            //      硬带语义（带位置不动）；海山/洋中脊强度 smoothstep 到 1.5——
+            //      核心赢、边缘渐变（值域同陆侧火山：票槽归一化后单类 ≤1）。
+            var of = oceanFeatureAt(x, z);
+            c.oceanFeat = of;
+            var depthType = c.e > -0.08 ? com.geogenesis.worldgen.terrain.TerrainClass.CONTINENTAL_SHELF
                     : c.e < -0.18 ? com.geogenesis.worldgen.terrain.TerrainClass.DEEP_OCEAN
                     : com.geogenesis.worldgen.terrain.TerrainClass.OCEAN;
-            c.typeWeights[c.terrainType.ordinal()] = 1.0;
+            c.typeWeights[depthType.ordinal()] = 1.0;
+            double seamountW = of == null ? 0.0
+                    : 1.5 * smoothstep(0.01, 0.06, of.seamount);
+            double ridgeW = of == null ? 0.0
+                    : 1.5 * smoothstep(0.02, 0.08, of.ridge);
+            if (seamountW > 0.0) {
+                c.typeWeights[com.geogenesis.worldgen.terrain.TerrainClass.SEAMOUNT.ordinal()] += seamountW;
+            }
+            if (ridgeW > 0.0) {
+                c.typeWeights[com.geogenesis.worldgen.terrain.TerrainClass.SUBMARINE_RIDGE.ordinal()] += ridgeW;
+            }
+            if (seamountW > 0.0 || ridgeW > 0.0) {
+                // 归一化回 Σ=1（权重分布契约，P1 断言 |Σ−1|<1e-6）
+                double sum = 0;
+                for (double w : c.typeWeights) {
+                    sum += w;
+                }
+                for (int i = 0; i < c.typeWeights.length; i++) {
+                    c.typeWeights[i] /= sum;
+                }
+            }
+            int bestOcean = depthType.ordinal();
+            for (int i = 0; i < c.typeWeights.length; i++) {
+                if (c.typeWeights[i] > c.typeWeights[bestOcean]) bestOcean = i;
+            }
+            c.terrainType = com.geogenesis.worldgen.terrain.TerrainClass.byId(bestOcean);
             c.oceanWeight = 1.0;
             c.oceanE = c.e;
         } else {
@@ -419,23 +457,6 @@ public final class MorphTerrainSampler {
         return c;
     }
 
-    /**
-     * 海洋亚型判定：海山 / 洋中脊。仅在够深（e &lt; −0.08）时生效——
-     * 浅水/陆架不该被标成海山（真实海山都在深水）。
-     */
-    private static com.geogenesis.worldgen.terrain.TerrainClass oceanFeatureClass(
-            OceanFeatures.FeatureResult of, double e) {
-        if (of == null || e > -0.08) {
-            return null;
-        }
-        if (of.seamount > 0.02) {
-            return com.geogenesis.worldgen.terrain.TerrainClass.SEAMOUNT;
-        }
-        if (of.ridge > 0.05) {
-            return com.geogenesis.worldgen.terrain.TerrainClass.SUBMARINE_RIDGE;
-        }
-        return null;
-    }
 
     private static void addType(double[] out, MorphCatalog.Entry entry, double x, double z, double w) {
         if (w == 0.0) return;

@@ -702,7 +702,15 @@ public class PreviewDisplay extends AbstractWidget {
     //       ② 火山类型平滑过渡：VOLCANO 从 gate>0.10 硬覆盖改为进 typeWeights
     //          加权竞争（smoothstep(0.10→0.45)·1.5）——边缘与地形类型渐变。
     //       137 基准留档：P1 EXPECTED d7ead4d1 / 63b4e7a7（landCells 585441）。
-    static final int CACHE_SCHEMA_VERSION = 138;
+    // 139 = 2026-11-17 阶段六修正三：海山/洋中脊归位到洋底几何层——
+    //       特征增量并入 crustProfile 的 deep 锚（MorphOceanAssembler 海床剖面），
+    //       不再于 sampleE 顶层叠加；不露头由 clamp(shallowEff=−7 格) 承担。
+    //       ① BaseColumn.oceanFeat 此前从未赋值（恒 null）⇒ SEAMOUNT/SUBMARINE_RIDGE
+    //          类型在生产中从未产出——本次修复，类型与几何同源；
+    //       ② 海洋亚型进 typeWeights 加权竞争（smoothstep·1.5，与火山同模式）；
+    //       ③ 海山深度门控改用 CrustField 裸 eBase（原 ocean.e 在归位后会递归）。
+    //       138 基准留档：P1 EXPECTED 1f28553a / 5dd95cec（landCells 585461）。
+    static final int CACHE_SCHEMA_VERSION = 139;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
