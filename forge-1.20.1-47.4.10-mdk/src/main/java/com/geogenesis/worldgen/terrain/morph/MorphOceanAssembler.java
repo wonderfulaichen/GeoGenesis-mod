@@ -447,7 +447,9 @@ public final class MorphOceanAssembler {
                 / Math.max(1e-6, shelfEnd - shoreFadeStart)));
         double fade = onsetFade * shoreFade;
         if (fade <= 1e-4) return 0.0;
-        return MorphNoiseEval.precise(detailNoise, x, z) * OCEAN_DETAIL_AMP * fade;
+        // Perlin ∈[−1,1] → 归一化到 [0,1]（与旧 Ridge 形态同值域，保持「正凸起」语义）
+        double n = (MorphNoiseEval.precise(detailNoise, x, z) + 1.0) * 0.5;
+        return n * OCEAN_DETAIL_AMP * fade;
     }
 
     /** 深海/浅海噪声（edge 用）。 */
@@ -467,8 +469,15 @@ public final class MorphOceanAssembler {
         MorphNoise.Node cRaw = MorphNoise.Perlin.ofScale(base + 5150, 900f, 3);
         this.cliffNoise = new MorphNoise.Mapped(
                 new MorphNoise.Clamped(cRaw, 0.30f, 0.70f), 0.30f, 0.70f, 0f, 1f);
-        // 水下细节噪声：ridge 形态，波长 420wu
-        this.detailNoise = MorphNoise.PerlinRidge.ofScale(base + 6260, 420f, 2);
+        // 水下细节噪声：波长 420wu。
+        // ★★ 2026-11-18 修「点状虚线折痕」（用户放大图圈出，两轮未消）：
+        //   旧形态 PerlinRidge = 1−|Perlin| —— **折叠类算子**（铁律 6 禁用），
+        //   其折痕等值线<b>成对出现</b>、沿等值线分布；× OCEAN_DETAIL_AMP(4 格)
+        //   × fade(覆盖 edge 0.1~0.27 = 洋中脊翼部) × hillshade ×12
+        //   ⇒ 俯视图上洋中脊翼部周围的「成对点状虚线」。
+        //   改为普通 Perlin（C^∞，无折叠），归一化到 [0,1] 保持「正凸起」语义；
+        //   幅度与波长不变——海底细节纹理保留，折痕消除。
+        this.detailNoise = MorphNoise.Perlin.ofScale(base + 6260, 420f, 2);
         return this;
     }
 

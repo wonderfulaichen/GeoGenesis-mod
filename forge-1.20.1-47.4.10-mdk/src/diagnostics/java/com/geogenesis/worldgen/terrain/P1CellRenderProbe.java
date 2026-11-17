@@ -88,9 +88,17 @@ public final class P1CellRenderProbe {
      * smoothMin（C¹ 软限）——修「点状虚线折痕」（钳制等值线两侧坡度突变，
      * hillshade 下成点链；违反弧光项注释已写明的铁律）。
      * 全图 SHA 变，陆侧仍与 146 逐位一致。146 基准留档 61e04488…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 E（2026-11-18，schema148）：水下细节噪声 PerlinRidge→Perlin
+     * （折叠算子折痕 = 用户圈的「成对点状虚线」，覆盖洋中脊翼部）。
+     * 全图 SHA 变，陆侧仍与 147 逐位一致。147 基准留档 bdaae378…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 F 重立（2026-11-18，schema149）：脊剖面翼部断层阶地 +
+     * 轴向串珠调制（450wu ±30%）+ fabric 0.28 + 水下细节 Perlin 化（合并 148）。
+     * 全图 SHA 变，陆侧仍与 148 逐位一致。148 基准留档 5bc1ea9a…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "bdaae378ccfd88162328dbc5e87356b84a5e2e4f9091554cb6d385948900cf63";
+            "9a27f1f80ef46ccb4830e5b4cb2d9b3582d135a820ad7a49e4198c4221e10169";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

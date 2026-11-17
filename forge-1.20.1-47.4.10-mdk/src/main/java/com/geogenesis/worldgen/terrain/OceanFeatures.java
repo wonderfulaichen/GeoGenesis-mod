@@ -245,12 +245,18 @@ public final class OceanFeatures {
                     if (profile > 0.0) {
                         // 轴向高度分段：段间 ±35%（真实 MOR segment 尺度 800~1500wu）
                         double segment = 0.78 + 0.45 * axSegment.compute(along, 0.0);
+                        // ★ 轴向串珠（2026-11-18）：450wu 波长的肩高调制 ±30%。
+                        //   真实 MOR 的裂谷山是<b>串珠状</b>的轴火山段（沿轴周期性
+                        //   高低起伏），不是两条均匀的平行山墙——没有它，俯视图
+                        //   上脊带是「两条平行亮带 + 中央直线缝」（用户圈出的
+                        //   「错层折线」观感）。与 1100wu 大段调制复合。
+                        double beads = 0.85 + 0.30 * axSegment.compute(along * 2.4 + 9.7, 0.0);
                         // 表面纹理：平行脊轴的断续条带（abyssal hill fabric）。
                         // ⚠ 一维沿轴 + 横向包络；二维斜纹噪声会把地堑/脊肩糊成斜纹布。
                         double fabric = ridgeNoise.compute(wx, wz);
                         double breakUp = 0.55 + 0.45 * axSegment.compute(wx / 260.0, wz / 900.0);
                         double roughAmp = RidgeProfile.inRift(d) ? 0.0
-                                : 0.20 * smoothstep(0.0, 120.0, d);
+                                : 0.28 * smoothstep(0.0, 120.0, d);
                         double rough = 1.0 + roughAmp * breakUp * fabric;
                         // ★★ 2026-11-17 修「点状虚线折痕」（用户截图圈出）：
                         //   旧实现 scale = min(1, maxAdd/add) 是<b>硬钳制</b>——
@@ -261,7 +267,7 @@ public final class OceanFeatures {
                         //   而非 Math.min：后者一阶不连续会留折痕」——同一段代码
                         //   里海沟项早就用了 smoothMin，我却给脊项用了 Math.min）。
                         //   现改为 C¹ 软钳制 smoothMin（宽 0.04e ≈ 5 格）。
-                        double add = profile * segment * rough;
+                        double add = profile * segment * beads * rough;
                         double maxAdd = Math.max(0.0, -eOcean - RIDGE_SEA_MARGIN);
                         double capped = add > 0
                                 ? TectonicField.smoothMin(add, maxAdd, 0.04) : add;

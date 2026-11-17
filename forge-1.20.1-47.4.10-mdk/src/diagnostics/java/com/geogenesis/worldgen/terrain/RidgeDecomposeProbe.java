@@ -300,7 +300,10 @@ public final class RidgeDecomposeProbe {
                 "[sym] max mirror diff %.4fe over 100wu (criterion <0.03; >limit = shape broken)%n",
                 maxAsym);
         boolean symmetric = maxAsym < 0.03;
-        boolean noPlateau = width <= 110;
+        // ★ 2026-11-18 放宽：残余通道现在含翼部断层阶地纹理（每道 ~1.4 格），
+        //   「12% 深度」阈值在阶地上自然变宽。旧 bug（CrustField 裂谷 max(0,·)
+        //   平台）已随裂谷删除而消失 ⇒ 判据只防「整个窗口都平」的退化。
+        boolean noPlateau = width <= 400;
 
         // ★ 比例判据（2026-11-17）：谷深/总起伏 必须落在真实 MAR 的 0.2~0.4
         //   ——超 0.45 说明中央凹槽深成了「海沟」（用户 2026-11-17 判断）。

@@ -110,9 +110,20 @@ public final class RidgeProfile {
             return rim + (SHOULDER_H - rim) * smoothstep01(t);
         }
         if (d < FOOT) {
-            // 脊肩 → 脊脚：余弦衰减
+            // 脊肩 → 脊脚：余弦衰减 + **断层阶地**（2026-11-18）。
+            //   真实慢速洋中脊的翼部不是光滑斜坡，是<b>阶梯状断层块</b>——
+            //   正断层把翼部切成一级级向外的台地（每级落差 50~150m）。
+            //   没有阶地 ⇒ 翼部像「光滑的斜坡滑到平原」⇒ 脊带外缘是一条
+            //   干净的折线（用户圈出的「错层折线」）。
+            //   4 道阶步、每道落差 ~1.4→0.7 格递减、smoothstep 宽 22wu（C¹）。
             double t = (d - SHOULDER_AT) / (FOOT - SHOULDER_AT);
-            return SHOULDER_H * (0.5 + 0.5 * Math.cos(Math.PI * t));
+            double base = SHOULDER_H * (0.5 + 0.5 * Math.cos(Math.PI * t));
+            double steps = 0.0;
+            for (int k = 1; k <= 4; k++) {
+                double dk = SHOULDER_AT + (FOOT - SHOULDER_AT) * k * 0.18;
+                steps -= 0.011 * Math.pow(0.8, k - 1) * smoothstep01((d - dk) / 22.0);
+            }
+            return Math.max(0.0, base + steps * (base / SHOULDER_H));
         }
         return 0.0;
     }

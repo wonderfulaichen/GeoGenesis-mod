@@ -770,7 +770,24 @@ public class PreviewDisplay extends AbstractWidget {
     //       违反了本类弧光项注释早已写明的铁律（「用 smoothMin 而非
     //       Math.min：后者一阶不连续会留折痕」——同段代码海沟项早已用之）。
     //       146 基准留档：61e04488 / 5dd95cec。
-    static final int CACHE_SCHEMA_VERSION = 147;
+    // 148 = 2026-11-18 阶段七 E：水下细节噪声 PerlinRidge → Perlin——
+    //       PerlinRidge = 1−|Perlin| 是折叠类算子（铁律 6 禁用），其折痕等值线
+    //       成对出现、覆盖 edge 0.1~0.27（洋中脊翼部），4 格幅度被 hillshade
+    //       放大成「成对点状虚线」。改 Perlin（C^∞ 无折叠）+ 归一化 [0,1]，
+    //       幅度/波长不变，海底细节纹理保留。
+    //       （另：RidgeViewProbe 光照 12×→3×——点链主要是渲染过冲伪影，
+    //       1wu 采样证实地形无梯度尖峰。）
+    //       147 基准留档：bdaae378 / 5dd95cec。
+    // 149 = 2026-11-18 阶段七 F（用户圈出「错层平行带」——脊肩是均匀平行山墙）：
+    //       ① 脊剖面翼部加断层阶地（4 道阶步，每道 ~1.4→0.7 格递减，smoothstep 22wu）
+    //          ——真实慢速 MOR 翼部是阶梯状断层块，不是光滑斜坡；
+    //       ② 轴向串珠调制（450wu 波长肩高 ±30%，与 1100wu 大段复合 ±35%）
+    //          ——真实 MOR 裂谷山是串珠状轴火山段；
+    //       ③ fabric 幅度 0.20→0.28；
+    //       ④ PerlinRidge → Perlin（水下细节噪声，折叠算子折痕 = 点状虚线，见 148 注）。
+    //       （②③④ 原列 148；①② 本提交追加 ⇒ 合并升 149。）
+    //       148 基准留档：5bc1ea9a / 5dd95cec。
+    static final int CACHE_SCHEMA_VERSION = 149;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

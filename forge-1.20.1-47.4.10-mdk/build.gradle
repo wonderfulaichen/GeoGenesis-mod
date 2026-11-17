@@ -1688,6 +1688,22 @@ task runRidgeFormProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.tectonicsand.RidgeFormProbe'
 }
 
+// 洋中脊点状折痕猎手（2026-11-18）：坡度尖峰定位 + 分量归因。
+//   gradlew runRidgeDotProbe [-PprobeArgs="<cx> <cz> <half> <step>"]
+task runRidgeDotProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.RidgeDotProbe'
+    systemProperties System.getProperties().findAll {
+        it.key.startsWith('geogenesis.') || it.key.startsWith('gg.')
+    }
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        // 临时：点链位置 1wu 采样 + hillshade 暗点归因（分析用，验证完删除）
+        args = ['340', '1520', '150', '1']
+    }
+}
+
 // 边界应力分布诊断（2026-11-17）：离散/汇聚边界的 stress 实际分布。
 //   gradlew runRidgeStressProbe
 task runRidgeStressProbe(type: JavaExec) {

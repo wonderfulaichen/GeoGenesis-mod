@@ -260,14 +260,19 @@ public final class RidgeViewProbe {
         }
         double cellWu = 2 * half / (TOP_N - 1);
         double blocksPerCell = cellWu * 2.0;
+        // ★ 光照放大 12→3（2026-11-18）：洋中脊翼部真实坡度只有 4°~16°
+        //   （median 0.071 / p99 0.29 块/块）。12× 放大把 14° 的缓坡渲染成 45°+
+        //   的陡坡阴影，坡度的微小起伏（fabric ±20%）被过冲成「点状虚线」
+        //   ——用户两轮圈出的点链就是它（1wu 采样证实地形光滑、无梯度尖峰）。
+        //   3× 与真实观感对齐；地形数据不变。
         for (int j = 0; j < TOP_N; j++) {
             for (int i = 0; i < TOP_N; i++) {
                 int i0 = Math.max(0, i - 1), i1 = Math.min(TOP_N - 1, i + 1);
                 int j0 = Math.max(0, j - 1), j1 = Math.min(TOP_N - 1, j + 1);
                 double gx = (eT[j * TOP_N + i1] - eT[j * TOP_N + i0]) * 127 / blocksPerCell
-                        * 12 / Math.max(1, i1 - i0);
+                        * 3 / Math.max(1, i1 - i0);
                 double gy = (eT[j1 * TOP_N + i] - eT[j0 * TOP_N + i]) * 127 / blocksPerCell
-                        * 12 / Math.max(1, j1 - j0);
+                        * 3 / Math.max(1, j1 - j0);
                 double nx = -gx, ny = -gy, nz = 1;
                 double l = Math.sqrt(nx * nx + ny * ny + nz * nz);
                 double dd = (-nx * 0.6 - ny * 0.6 + nz * 0.53) / l;
