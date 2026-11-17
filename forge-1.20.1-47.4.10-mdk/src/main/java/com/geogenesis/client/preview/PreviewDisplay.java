@@ -717,7 +717,12 @@ public class PreviewDisplay extends AbstractWidget {
     //         重复叠加，实测轴部顶到浅水锚、离水面仅 3.4 格）。
     //       C1 沉积平滑：深海丘陵振幅随洋壳年龄衰减（脊轴全幅 → 深海平原 30%）。
     //       139 基准留档：P1 EXPECTED 5032f9a5 / 5dd95cec（landCells 585461）。
-    static final int CACHE_SCHEMA_VERSION = 140;
+    // 141 = 2026-11-17 阶段七 B（脊轴分段感）：
+    //       ① 脊带中心沿轴蜿蜒 ±90wu（共享 RidgeWander，与 CrustField 轴部裂谷
+    //          同一函数/种子——裂谷跟着轴心走，不会「裂谷不在脊带中间」）；
+    //       ② 轴向高度分段（波长 1100wu，段间 ±40%）——真实 MOR 的分段性。
+    //       140 基准留档：P1 EXPECTED f91c4f39 / 5dd95cec（landCells 585461）。
+    static final int CACHE_SCHEMA_VERSION = 141;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

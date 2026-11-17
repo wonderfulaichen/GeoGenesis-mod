@@ -269,9 +269,12 @@ public final class CrustField {
             double sediment = 1.0 - 0.7 * smoothstep(0.15, 0.75, age);
             e += (ABYSS_HILLS_M / METERS_PER_E) * (hs / 1.75) * sediment;
 
-            // 轴部裂谷：离散边界轴上的窄槽（distRaw 未平滑，blur 会抹掉它）
+            // 轴部裂谷：离散边界轴上的窄槽（distRaw 未平滑，blur 会抹掉它）。
+            // ★ 阶段七 B：裂谷与脊带（OceanFeatures）共用 RidgeWander 的沿轴偏移
+            //   ——边界是 Voronoi 直线段，加同一偏移后「裂谷在脊带中间」且不僵直。
+            double dRift = ts.distRaw() + RidgeWander.at(seed, ts.alongCoord());
             e -= (RIFT_AXIAL_M / METERS_PER_E)
-                    * divProx * Math.exp(-(ts.distRaw() * ts.distRaw())
+                    * divProx * Math.exp(-(dRift * dRift)
                             / (RIFT_AXIAL_WU * RIFT_AXIAL_WU));
 
             // 海沟：汇聚边界上的深槽（双侧共用，无需俯冲极性；stress 门控成形度）

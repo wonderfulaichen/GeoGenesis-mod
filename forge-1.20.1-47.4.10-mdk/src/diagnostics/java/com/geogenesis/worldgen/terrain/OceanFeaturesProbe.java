@@ -135,28 +135,25 @@ public final class OceanFeaturesProbe {
         //   （噪声鼓包没有沿轴恒定性）。
         boolean shapeOk = true;
         if (peakRidge > 0.02) {
+            // ★ 阶段七 B 修正：脊带沿轴蜿蜒（±40wu）后「垂直方向」不再等角对准
+            //   脊带 ⇒ 改用 8 方向统计：最小差方向 = 沿轴（e 恒定），最大差方向
+            //   = 横穿脊带（脊翼坡度）。不依赖「垂直/平行」的绝对角度关系。
             double bestPars = 1e9;
-            double axisAng = 0;
+            double maxDiff = 0;
             for (int k = 0; k < 8; k++) {
                 double ang = Math.PI * k / 8;
                 double dx = Math.cos(ang) * 400, dz = Math.sin(ang) * 400;
                 double ep = smp.sampleColumn(bestRx + dx, bestRz + dz).e;
                 double em = smp.sampleColumn(bestRx - dx, bestRz - dz).e;
                 double diff = Math.abs(ep - em);
-                if (diff < bestPars) {
-                    bestPars = diff;
-                    axisAng = ang;
-                }
+                bestPars = Math.min(bestPars, diff);
+                maxDiff = Math.max(maxDiff, diff);
             }
-            double pa = axisAng + Math.PI / 2;
-            double px = Math.cos(pa) * 400, pz = Math.sin(pa) * 400;
-            double perpDiff = Math.abs(smp.sampleColumn(bestRx + px, bestRz + pz).e
-                    - smp.sampleColumn(bestRx - px, bestRz - pz).e);
-            shapeOk = bestPars < 0.06 && perpDiff > 0.04;
+            shapeOk = bestPars < 0.06 && maxDiff > 0.05;
             System.out.printf(Locale.ROOT,
-                    "[体形] 沿轴 400wu 两侧 e 差 %.3f（判据 <0.06 = 沿轴恒定）"
-                    + "  横向 e 差 %.3f（判据 >0.04 = 脊翼坡度）  %s%n",
-                    bestPars, perpDiff, shapeOk ? "ok" : "✗");
+                    "[体形] 沿轴方向 400wu 两侧 e 差 %.3f（判据 <0.06 = 沿轴恒定）"
+                    + "  横穿脊带方向 e 差 %.3f（判据 >0.05 = 脊翼坡度）  %s%n",
+                    bestPars, maxDiff, shapeOk ? "ok" : "✗");
         }
 
         boolean ok = seamountCells >= MIN_SEAMOUNT_CELLS

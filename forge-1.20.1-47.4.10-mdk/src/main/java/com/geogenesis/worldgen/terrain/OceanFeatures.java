@@ -24,6 +24,17 @@ public final class OceanFeatures {
 
     // ===== 海山/海底火山：粗格点高斯鼓包 + 域扭曲去圆化 =====
     private final Noise seamountWarpX, seamountWarpZ; // 海山域扭曲 @1/200
+
+    // ===== ★ 阶段七 B（2026-11-17）：脊轴分段感——沿走向的蜿蜒 + 分段高度 =====
+    /**
+     * 轴向高度分段（波长 1100wu）：段间脊轴高度差 ±40%——真实 MOR 的分段性。
+     *
+     * <p>蜿蜒偏移<b>不在这里</b>：脊带与轴部裂谷必须用<b>同一个</b>偏移函数
+     * （{@link RidgeWander}），否则裂谷会偏离脊带中心（B 初版实测错开 ~100wu）。</p>
+     */
+    private final Noise axSegment;
+    /** 世界种子（RidgeWander 共享偏移用）。 */
+    private long worldSeed;
     /** 粗格点间距（块）。每个格子约 20% 概率生成一座海山。
      *  2026-08-06 调稀：用户反馈海山太多。网格保持 500（相位/深度过滤不变），概率 40%→20%
      *  → 数量线性降为原来的 52%。曾试 800/650 网格（相位漂移+深度区重合不确定）与 15%
@@ -63,6 +74,8 @@ public final class OceanFeatures {
         // 海山域扭曲（去圆化）：低频 Simplex @1/200，幅度由每座 radius 缩放
         this.seamountWarpX = new Frequency(new Simplex(705), 1.0 / 200.0);
         this.seamountWarpZ = new Frequency(new Simplex(706), 1.0 / 200.0);
+        // ★ 阶段七 B：轴向分段（1100wu）；蜿蜒由共享 RidgeWander 提供
+        this.axSegment = new Frequency(new Simplex(708), 1.0 / 1100.0);
         // 默认：无检查（向后兼容）
         this.seamountCenterDepthCheck = null;
     }
@@ -104,6 +117,8 @@ public final class OceanFeatures {
         Noises.seedAll(ridgeNoise, worldSeed, 0);
         Noises.seedAll(seamountWarpX, worldSeed, 0);
         Noises.seedAll(seamountWarpZ, worldSeed, 0);
+        Noises.seedAll(axSegment, worldSeed, 0);
+        this.worldSeed = worldSeed;
         this.seamountSeed = worldSeed + 987654321L;
     }
 
@@ -169,16 +184,24 @@ public final class OceanFeatures {
             //   ⇒ 等深线天然平行脊轴（磁条带几何），不会是噪声闭合圈。
             double constitution = 1.0;
             double shape = 1.0;
+            double segment = 1.0;
             if (tect != null) {
                 constitution = TectonicField.smoothPos(-tect.stress(), TectonicField.STRESS_POS_EPS);
-                double dn = tect.dist() / RIDGE_WING_SIGMA;
+                // ★ 阶段七 B：脊带中心沿轴蜿蜒（±40wu）——与 CrustField 的轴部
+                //   裂谷共用 RidgeWander（同一函数/种子），保证「裂谷在脊带中间」。
+                double along = tect.alongCoord();
+                double wander = RidgeWander.at(worldSeed, along);
+                double dn = (tect.dist() + wander) / RIDGE_WING_SIGMA;
                 shape = Math.exp(-0.5 * dn * dn);
+                // 轴向分段：段间脊轴高度差 ±40%（真实 MOR 的 segment 尺度 800~1500wu）
+                segment = 0.78 + 0.45 * axSegment.compute(along, 0.0);
             }
             if (constitution > 0.0 && shape > 0.0) {
                 // 噪声只做表面粗糙度（±20%）：沿轴/横向的碎裂感由 Ridge(1/600)
                 // 提供；它不再决定体形（旧实现 detail 直接乘幅度 ⇒ 噪声脊）。
                 double rough = 0.8 + 0.4 * ridgeNoise.compute(wx, wz);
-                ridgeDelta = RIDGE_AMPLITUDE * constitution * shape * rough * ridgeFade;
+                ridgeDelta = RIDGE_AMPLITUDE * constitution * shape * segment
+                        * rough * ridgeFade;
             }
         }
 
@@ -271,6 +294,7 @@ public final class OceanFeatures {
      * 轴部 0.18e≈23 格、320wu 处 61%、640wu 处 14%、远处并入热沉降。</p>
      */
     private static final double RIDGE_WING_SIGMA = 320.0;
+    /** 脊带中心沿轴蜿蜒幅度（wu）——定义已上移到共享 {@link RidgeWander#AMP_WU}。 */
 
     // ===== ★ 2026-09-13 Phase T6：火山弧"永不露头"的软天花板 =====
     /** 弧顶与海平面之间的最小余量（e 单位，≈3.8 块）。 */

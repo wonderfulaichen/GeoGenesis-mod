@@ -54,9 +54,14 @@ public final class P1CellRenderProbe {
      * 0.18→0.05，脊带落差交给年龄律）+ 沉积平滑（丘陵振幅随 age 衰减）。
      * 全图 SHA 变，陆侧 SHA 仍与 139 逐位一致（585461 / 5dd95cec…）。
      * 139 基准留档 5032f9a5…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 B 重立（2026-11-17，schema141）：脊轴蜿蜒（共享 RidgeWander ±90wu，
+     * 脊带+裂谷同偏移）+ 轴向高度分段（1100wu/−40%~+40%）。
+     * 全图 SHA 变，陆侧 SHA 仍与 140 逐位一致（585461 / 5dd95cec…）。
+     * 140 基准留档 f91c4f39…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "f91c4f39c4ae21e5fb747916c736bee0ae12d219c26a7472fc3e06cdf1ec4f6b";
+            "8b1a42ba941180d06214c5d5add699f5e06fdc11bd3c0f755a9235c81cef59ac";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441
