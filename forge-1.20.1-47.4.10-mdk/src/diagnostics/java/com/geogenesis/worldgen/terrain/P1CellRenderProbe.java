@@ -108,11 +108,13 @@ public final class P1CellRenderProbe {
      * 一致。150 基准留档 041a0d5d…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "29ecd9fc3cc02657c240361380a562dc4fd4c56db00a564cc0e93300f3ce2279";
+            "cc42ebb1ba9a9663390fb4b2418adbb9760860eec277e416f06cb9676440fe04";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441
      * （第 5 次锚把陆占比 0.3385→0.3227；火山覆盖只影响局部 ±，净变化不大）。
+     * ★ 2026-11-18 schema152（统一纹理）复核：landCells 实测 585461
+     * （上方 585441 为陈旧记录；landCellSha 逐位一致为准）。
      * 全域陆占比由 ContinentAnchorProbe（0.3227±0.02）与 OceanFloorProbe 守护。
      * 标定协议见 {@link #render}。
      */

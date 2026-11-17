@@ -19,9 +19,6 @@ import java.util.function.DoubleBinaryOperator;
  */
 public final class OceanFeatures {
 
-    // ===== 洋中脊：构造离散带门控 + Ridge(1/600)/Warp(200) 轴向细节 =====
-    private final Noise ridgeNoise;
-
     // ===== 海山/海底火山：粗格点高斯鼓包 + 域扭曲去圆化 =====
     private final Noise seamountWarpX, seamountWarpZ; // 海山域扭曲 @1/200
 
@@ -34,12 +31,6 @@ public final class OceanFeatures {
      * 详见 {@code compute} 的脊段注释。</p>
      */
     private final Noise axSegment;
-    /**
-     * ★ 脊体断块纹理（2026-11-18）：100wu 波长、2 倍频的 Perlin——
-     * 真实裂谷山是崎岖断块（1~5km 尺度、数百米起伏），没有它脊带就是
-     * 一条光滑的解析凸起夹在粗糙海床中间（用户："明显的错层折线"）。
-     */
-    private final Noise blockNoise;
     /** 世界种子（轴向分段/海山撒点用）。 */
     private long worldSeed;
     /** 粗格点间距（块）。每个格子约 20% 概率生成一座海山。
@@ -65,26 +56,18 @@ public final class OceanFeatures {
     private DoubleBinaryOperator seamountCenterDepthCheck;
 
     public OceanFeatures() {
-        // 洋中脊脊线：Ridge(Simplex, 1/600, p=1.0) + Warp(200) 蜿蜒。
-        // ★ 2026-09-13 Phase T6：**位置**（在哪）改由构造离散带门控（见 compute 的
-        //   ridgeGate），本噪声只负责**轴向细节**（脊线蜿蜒 / 轴谷起伏）。
-        //   ⇒ 原本的"低频掩码"（Simplex 1/2000）已被构造门控取代并删除：
-        //     随机掩码会让洋中脊出现在任意海底，与"洋中脊 = 离散板块边界"的地质定义
-        //     矛盾（参考项目 worldgen 的洋中脊正是由 DIVERGENT 边界驱动）。
-        Noise simplex = new Simplex(701);
-        Noise freq = new Frequency(simplex, 1.0 / 600.0);
-        Noise ridge = new Ridge(freq, 1.0);
-        // Warp 200 块使中脊蜿蜒
-        Noise warpX = new Frequency(new Simplex(702), 1.0 / 300.0);
-        Noise warpZ = new Frequency(new Simplex(703), 1.0 / 300.0);
-        this.ridgeNoise = new Warp(ridge, warpX, warpZ, 200.0);
+        // ★ 2026-11-18：ridgeNoise（Ridge 1/600 + Warp 200）与 blockNoise（100wu）已删除。
+        //   它们是「脊带专属纹理」——只带内有值 ⇒ 与带外的 CrustField 丘陵场
+        //   在 FOOT=200 处质感突变，读成人工分界线（用户截图圈出）。
+        //   （更早它们承担的「脊线蜿蜒/轴向细节」职责，蜿蜒已证否——
+        //     给无符号距离加偏移会让谷消失或裂成双谷，见 compute 脊段注释。）
+        //   统一纹理方案：全洋底共用 CrustField 丘陵场（已加 150/75wu 细倍频），
+        //   脊增量只提供光滑海拔剖面，不再自带纹理。
         // 海山域扭曲（去圆化）：低频 Simplex @1/200，幅度由每座 radius 缩放
         this.seamountWarpX = new Frequency(new Simplex(705), 1.0 / 200.0);
         this.seamountWarpZ = new Frequency(new Simplex(706), 1.0 / 200.0);
         // ★ 阶段七 B：轴向分段（1100wu）——沿轴高度变化（蜿蜒位置偏移已证否）
         this.axSegment = new Frequency(new Simplex(708), 1.0 / 1100.0);
-        // ★ 阶段七 G（2026-11-18）：脊体断块纹理（100wu Simplex，光滑圆丘）
-        this.blockNoise = new Frequency(new Simplex(709), 1.0 / 100.0);
         // 默认：无检查（向后兼容）
         this.seamountCenterDepthCheck = null;
     }
@@ -136,11 +119,9 @@ public final class OceanFeatures {
 
     /** 播种所有噪声节点 + 海山种子偏移 */
     public void seed(long worldSeed) {
-        Noises.seedAll(ridgeNoise, worldSeed, 0);
         Noises.seedAll(seamountWarpX, worldSeed, 0);
         Noises.seedAll(seamountWarpZ, worldSeed, 0);
         Noises.seedAll(axSegment, worldSeed, 0);
-        Noises.seedAll(blockNoise, worldSeed, 0);
         this.worldSeed = worldSeed;
         this.seamountSeed = worldSeed + 987654321L;
     }
@@ -248,7 +229,7 @@ public final class OceanFeatures {
                     //       ⇒ 地堑<b>裂成两条</b>
                     //   实测特写图上表现为轴部成片的暗斑/断口（「被破坏」感）。
                     //   要真正平移脊轴需要<b>有符号</b>距离，TectonicField 不提供。
-                    //   故此处只用真实距离；沿轴变化交给 segment（±35%）与 fabric。
+                    //   故此处只用真实距离；沿轴变化交给 segment（±35%）/串珠/谷深分段。
                     double d = tect.distRaw();
                     // ★ 地堑深度沿轴分段（2026-11-18）：部分段谷深趋零（无谷段）
                     //   ——真实 MOR 的轴谷深度沿轴强烈变化，有的段几乎无谷。
@@ -262,23 +243,13 @@ public final class OceanFeatures {
                         // ★ 轴向串珠（2026-11-18 v2）：500wu 波长肩高调制 ±15%——
                         //   沿轴<b>连续</b>缓起伏（不断成碎段）。
                         double beads = 0.925 + 0.15 * axSegment.compute(along * 2.2 + 9.7, 0.0);
-                        // 表面纹理：平行脊轴的断续条带（abyssal hill fabric）。
-                        // ⚠ 一维沿轴 + 横向包络；二维斜纹噪声会把地堑/脊肩糊成斜纹布。
-                        // ★ 2026-11-18：加 200wu 细倍频——600wu 条带太宽，坡顶纹理不足。
-                        double fabric = 0.6 * ridgeNoise.compute(wx, wz)
-                                + 0.4 * ridgeNoise.compute(wx * 3.0 + 7.7, wz * 3.0 + 3.3);
-                        double breakUp = 0.55 + 0.45 * axSegment.compute(wx / 260.0, wz / 900.0);
-                        double roughAmp = RidgeProfile.inRift(d) ? 0.0
-                                : 0.28 * smoothstep(0.0, 120.0, d);
-                        double rough = 1.0 + roughAmp * breakUp * fabric;
-                        // ★ 断块纹理（2026-11-18）：100wu Simplex ±3 格——真实裂谷山
-                        //   是崎岖断块（数百米起伏、1~5km 尺度）。没有它，脊带就是
-                        //   光滑解析凸起夹在粗糙海床中间 ⇒ 边缘读成「人工分界线」。
-                        //   包络 = profile/SHOULDER_H：脊带内满幅、带外平滑归零。
-                        //   （constitution/ridgeFade 由后续乘法统一施加，不在此重复。）
-                        double blockEnv = Math.max(0.0, Math.min(1.0,
-                                profile / RidgeProfile.SHOULDER_H));
-                        double blockTex = blockNoise.compute(wx, wz) * 0.030 * blockEnv;
+                        // ★★ 2026-11-18 统一纹理（用户："山脊与其他地形的衔接"仍见分界线）：
+                        //   fabric/breakUp/rough 与 blockTex <b>全部删除</b>。它们是
+                        //   「脊带专属纹理」——只带内有值、带外恒 0，与 CrustField
+                        //   丘陵场在 FOOT=200 处质感突变 ⇒ 俯视图上脊带边缘是
+                        //   一条人工分界线（海拔 C¹ 也救不了质感跳变）。
+                        //   现在脊增量 = 纯光滑海拔剖面（profile×segment×beads），
+                        //   纹理全部由 CrustField 丘陵场统一提供（全洋底同一套）。
                         // ★★ 2026-11-17 修「点状虚线折痕」（用户截图圈出）：
                         //   旧实现 scale = min(1, maxAdd/add) 是<b>硬钳制</b>——
                         //   add == maxAdd 的等值线是一条绕脊肩的曲线，线上下
@@ -288,7 +259,7 @@ public final class OceanFeatures {
                         //   而非 Math.min：后者一阶不连续会留折痕」——同一段代码
                         //   里海沟项早就用了 smoothMin，我却给脊项用了 Math.min）。
                         //   现改为 C¹ 软钳制 smoothMin（宽 0.04e ≈ 5 格）。
-                        double add = (profile + blockTex) * segment * beads * rough;
+                        double add = profile * segment * beads;
                         double maxAdd = Math.max(0.0, -eOcean - RIDGE_SEA_MARGIN);
                         double capped = add > 0
                                 ? TectonicField.smoothMin(add, maxAdd, 0.04) : add;

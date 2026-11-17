@@ -798,7 +798,17 @@ public class PreviewDisplay extends AbstractWidget {
     //       （0.19 时峰值 add=0.34 是 maxAdd 的 2 倍 ⇒ 整个肩顶被钳平。）
     //       比例判据基准修正：平原参照改用年龄律基面（final e 在翼部含脊余量）。
     //       150 基准留档：041a0d5d / 5dd95cec。
-    static final int CACHE_SCHEMA_VERSION = 151;
+    // 152 = 2026-11-18 阶段七 I（用户："山脊与其他地形的衔接"——脊带边缘是
+    //       人工分界线）：统一纹理。根因 = 脊带内外两套纹理系统在 FOOT=200
+    //       处质感突变（带内 blockTex ±3.8 格 / fabric vs 带外丘陵 ±1.15 格）。
+    //       ① 删 blockNoise/ridgeNoise/fabric/breakUp/rough（脊带专属纹理，
+    //         RidgeProfile.inRift 随之删——零调用）；脊增量 = 纯光滑海拔剖面。
+    //       ② CrustField 丘陵场加 150/75wu 零均值细倍频（±26m，全洋底同一套
+    //         纹理，含脊带内部）⇒ 衔接处只剩海拔渐变，无质感跳变。
+    //       151 基准留档：29ecd9fc（全域）/ 5dd95cec（陆侧）。
+    //       ⚠ 上一提交（4e5812f）标题写"schema152"但常量漏升（仍 151）——
+    //       其串珠/谷深分段改动未隔离旧缓存，本提交真升 152 关闭陈旧窗口。
+    static final int CACHE_SCHEMA_VERSION = 152;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

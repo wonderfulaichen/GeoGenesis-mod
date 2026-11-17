@@ -131,15 +131,6 @@ public final class RidgeProfile {
         return 0.0;
     }
 
-    /**
-     * 该点是否落在<b>轴部地堑</b>内（供「地堑内不加噪声」等判断）。
-     *
-     * @param d 离轴距离（wu）
-     */
-    public static boolean inRift(double d) {
-        return d < RIFT_HALF;
-    }
-
     private static double smoothstep01(double x) {
         double t = x < 0 ? 0 : (x > 1 ? 1 : x);
         return t * t * (3 - 2 * t);

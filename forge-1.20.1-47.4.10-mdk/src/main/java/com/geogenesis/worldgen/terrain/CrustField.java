@@ -271,13 +271,21 @@ public final class CrustField {
                             wz / (ABYSS_HILL_SCALE * 2.1), seed ^ (SALT_HILLS + 7919L))
                     + 0.25 * valueNoise(wx / (ABYSS_HILL_SCALE * 4.4),
                             wz / (ABYSS_HILL_SCALE * 4.4), seed ^ (SALT_HILLS + 15811L));
+            // ★ 统一纹理（2026-11-18，用户："山脊与其他地形的衔接"仍见分界线）：
+            //   150/75wu 细倍频（零均值）并入同一丘陵场——<b>全洋底同一套纹理</b>
+            //   （含洋中脊带内部）。此前脊带纹理由 OceanFeatures 的 blockTex/fabric
+            //   提供（只带内有值）⇒ 与带外质感在 FOOT=200 处突变 = 人工分界线。
+            //   振幅 ±26m（0.35×100m×±0.75）：与脊带旧 blockTex ±38m 同量级略柔。
+            //   真实洋底中尺度（1.5~7.5km）崎岖本就遍布全洋底，不只是脊带。
+            double fine = (valueNoise(wx / 150.0, wz / 150.0, seed ^ (SALT_HILLS + 21401L)) - 0.5)
+                    + 0.5 * (valueNoise(wx / 75.0, wz / 75.0, seed ^ (SALT_HILLS + 25219L)) - 0.5);
             // ★ 阶段七 C1（2026-11-17，用户："没有被冲刷过的样子"）：
             //   沉积平滑——粗糙度随洋壳年龄衰减。真实洋底：脊轴附近（新洋壳）
             //   崎岖（火山/断裂），深海平原（老洋壳）被沉积物抹平；旧实现
             //   全洋底同振幅 ⇒ 哪里都一样糙的「塑料感」。
             //   age→0（脊轴）：全幅；age→1（深海平原）：30%。
             double sediment = 1.0 - 0.7 * smoothstep(0.15, 0.75, age);
-            e += (ABYSS_HILLS_M / METERS_PER_E) * (hs / 1.75) * sediment;
+            e += (ABYSS_HILLS_M / METERS_PER_E) * ((hs / 1.75) + 0.35 * fine) * sediment;
 
             // ★ 阶段七 B（2026-11-17）：<b>轴部裂谷已从本类删除</b>。
             //
