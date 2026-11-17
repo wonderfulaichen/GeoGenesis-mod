@@ -63,9 +63,13 @@ public final class P1CellRenderProbe {
      * <p>★ 阶段七 B 修正（2026-11-17，schema142）：脊轴隆起 0.05→0.09e、σ 320→200
      * （「山脊都没一点痕迹」）。全图 SHA 变，陆侧仍与 141 逐位一致。
      * 141 基准留档 8b1a42ba…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 B 二次修正（2026-11-17，schema143）：剖面图工具 + 自动选点证实
+     * 洋中脊全在大陆坡斜坡上；脊轴幅度 0.09→0.15e + 峰值感知自适应压缩。
+     * 全图 SHA 变，陆侧仍与 142 逐位一致。142 基准留档 fca9d346…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "fca9d3466cd70df83ac2850a6ca565df2682f42b3247979b894e766c64e3eeee";
+            "dddf3171b6c2c1483f28d22789208d55e01a27bc739b5d52b95dedb294ab7acf";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

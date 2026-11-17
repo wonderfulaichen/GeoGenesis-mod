@@ -200,7 +200,15 @@ public final class OceanFeatures {
                 // 噪声只做表面粗糙度（±20%）：沿轴/横向的碎裂感由 Ridge(1/600)
                 // 提供；它不再决定体形（旧实现 detail 直接乘幅度 ⇒ 噪声脊）。
                 double rough = 0.8 + 0.4 * ridgeNoise.compute(wx, wz);
-                ridgeDelta = RIDGE_AMPLITUDE * constitution * shape * segment
+                // ★ 自适应幅度（2026-11-17）：受「到海平面的余量」压缩——
+                //   深海（eOcean≈−0.4）用满 0.15e；靠近浅水自动变矮。
+                //   ⚠ 余量必须除以 rough×segment 的理论峰值（1.2×1.23=1.476）：
+                //   直接 min(0.15, 余量) 仍会让峰值段顶穿（实测峰顶到了 −0.05e，
+                //   离水面只剩 6.4 格，再加海床细节噪声就贴水面）。
+                double peakFactor = 1.2 * 1.23;
+                double amp = Math.min(RIDGE_AMPLITUDE,
+                        Math.max(0.0, -eOcean - RIDGE_SEA_MARGIN) / peakFactor);
+                ridgeDelta = amp * constitution * shape * segment
                         * rough * ridgeFade;
             }
         }
@@ -260,7 +268,15 @@ public final class OceanFeatures {
     }
 
     /**
-     * 洋中脊幅度（e 单位）——<b>轴部额外凸起</b>，约 900m ≈ 0.09e（≈11 格）。
+     * 洋中脊幅度上限（e 单位）——<b>轴部额外凸起</b>，≈19 格（0.15e）。
+     *
+     * <p>⚠ 2026-11-17 三次定标：0.05（6 格）→「山脊没一点痕迹」；0.09（11 格）
+     * 在特写图上仍看不出（自动选点探针实测：全图<b>没有一段</b>「两侧深海夹一脊」
+     * ——洋中脊全部落在大陆坡斜坡上，脊梁被斜坡掩盖 ⇒ 剖面是单调上升的斜坡）。
+     * 0.15e 使脊梁在斜坡上也明显；真实 MOR 轴部 vs 深海平原 ≈ 2500m ≈ 0.25e
+     * （其中 0.08e 由年龄律提供，ridge 项负责剩余部分）。
+     * 实际幅度还受<b>浅水余量</b>自适应压缩（见 compute 的 amp 计算），
+     * 不会把轴部顶穿水面。</p>
      *
      * <p>⚠ 2026-11-17 二次定标：先取 0.05（"轴部凸起 500m"）——实测特写图上
      * 脊轴与两侧只有 ~6 格落差、8 级色带不换色、光照算不出坡 ⇒ 用户反馈
@@ -275,7 +291,7 @@ public final class OceanFeatures {
      * 现在只保留「轴部高地/脊肩」的额外起伏（~500m），总脊带落差由年龄律
      * 提供（深海 −0.40 → 轴部 −0.175 ≈ 24 格水下，视觉上仍是明显的宽脊）。</p>
      */
-    private static final double RIDGE_AMPLITUDE = 0.09;
+    private static final double RIDGE_AMPLITUDE = 0.15;
     /**
      * 洋中脊带的半宽（wu）：{@code gaussian(dist, σ)} 的 σ。
      *
@@ -302,6 +318,8 @@ public final class OceanFeatures {
      */
     private static final double RIDGE_WING_SIGMA = 200.0;
     /** 脊带中心沿轴蜿蜒幅度（wu）——定义已上移到共享 {@link RidgeWander#AMP_WU}。 */
+    /** 脊轴到海平面的最小余量（e）：自适应幅度的下限保护（≈7.6 格）。 */
+    private static final double RIDGE_SEA_MARGIN = 0.06;
 
     // ===== ★ 2026-09-13 Phase T6：火山弧"永不露头"的软天花板 =====
     /** 弧顶与海平面之间的最小余量（e 单位，≈3.8 块）。 */

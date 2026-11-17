@@ -726,7 +726,15 @@ public class PreviewDisplay extends AbstractWidget {
     //       山脊都没一点痕迹"）：脊轴隆起 0.05→0.09e（≈11 格），脊翼 σ 320→200
     //       （更陡的轴部高地）。0.05 时脊轴与两侧只有 ~6 格落差、8 级色带不换色、
     //       光照算不出坡 ⇒ 图上无脊形。141 基准留档：8b1a42ba / 5dd95cec。
-    static final int CACHE_SCHEMA_VERSION = 142;
+    // 143 = 2026-11-17 阶段七 B 二次修正（用户："你到底有没有做剖面图分析？
+    //       图中我没看到明显的山脊"）：
+    //       ① 剖面曲线图工具（RidgeProfileProbe 输出 PNG）+ 自动选点（两侧深海的真脊段）
+    //          ——实测全图没有「两侧深海夹一脊」的段（洋中脊全在大陆坡斜坡，被掩盖）；
+    //       ② 脊轴幅度 0.09→0.15e（≈19 格）+ 自适应压缩
+    //          amp=min(0.15, (−eBase−0.06)/1.476)（rough×segment 峰值不顶穿浅水锚）；
+    //          实测峰顶 −0.075e（9.5 格水下）、脊梁从两侧 −0.30 隆起 28 格。
+    //       142 基准留档：fca9d346 / 5dd95cec。
+    static final int CACHE_SCHEMA_VERSION = 143;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
