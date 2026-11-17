@@ -78,9 +78,14 @@ public final class P1CellRenderProbe {
      * （420wu 半宽，匹配板块格子 2000wu）+ constitution 真值修复
      * （smoothPos 返回应力值而非 0~1）+ 地堑壁 C0 连续。
      * 全图 SHA 变，陆侧仍与 144 逐位一致。144 基准留档 dd2f20fa…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 C 重立（2026-11-17，schema146）：洋中脊<b>地质方向纠正</b>——
+     * 地堑 0.13→0.045e（谷深/总起伏 0.68→0.33，真实 MAR 0.2~0.4）、
+     * 脊带全宽 840→400wu、深海丘陵波长 45→900wu、离散门槛 0.12→0.30。
+     * 全图 SHA 变，陆侧仍与 145 逐位一致。145 基准留档 41bd1cd5…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "41bd1cd5aa9c5715220ee8a2e1a8023be1d642bda5a9b49324391e0ce4c67fdd";
+            "61e04488db13c0af83992b6f25084efc6dd39870c71f71e5d5902116b4b9db31";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

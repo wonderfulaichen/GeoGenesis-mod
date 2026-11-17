@@ -212,13 +212,19 @@ public final class OceanFeatures {
             //   取代旧的 gaussian 鼓包；CrustField 的独立裂谷项已删除（剖面内含）。
             double ridgeOut = 0.0;
             if (tect != null) {
-                // ★★ 2026-11-17 关键 bug 修复：
-                //   smoothPos(v, eps) 的定义是 `v × smoothstep(...)` —— 它返回的是
-                //   <b>应力值本身</b>（典型 0.1~0.5），不是 0~1 的资格系数！
-                //   之前把它直接当门控乘进脊高 ⇒ 整条脊被乘了 0.1~0.5，
-                //   实测脊肩只有 0.078e（设计 0.19e）——「尺寸完全不对」的根因。
-                //   现在改成真正的 0→1 隶属度：-stress ≥ 0.12 时满值。
-                double constitution = smoothstep(0.0, 0.12, -tect.stress());
+                // ★★ 2026-11-17 关键 bug 修复（两次）：
+                //   ① smoothPos(v, eps) 的定义是 `v × smoothstep(...)` —— 它返回的是
+                //      <b>应力值本身</b>（典型 0.1~0.5），不是 0~1 的资格系数！
+                //      之前把它当门控乘进脊高 ⇒ 整条脊被乘了 0.1~0.5，
+                //      实测脊肩只有 0.078e（设计 0.19e）。
+                //   ② 门槛从 0.12 收到 <b>0.30</b>（RidgeStressProbe 实测：边界上
+                //      stress 是连续分布——p25=−0.36、p50=−0.04，只有 28% 的边界
+                //      是明确离散型 stress<−0.30）。旧门槛 0.12 会把 ~55% 的边界
+                //      当成离散 ⇒ <b>汇聚边界上也在长「洋中脊」</b>（用户："像海沟"）。
+                //
+                //   地质分工：离散边界 = 造山（洋中脊）；汇聚边界 = 挖沟（海沟/火山弧）；
+                //   中间 = 走滑（转换断层）。这里只管离散侧。
+                double constitution = smoothstep(0.18, 0.42, -tect.stress());
                 if (constitution > 0.0) {
                     double along = tect.alongCoord();
                     // ★★ 必须用 distRaw（未平滑）：

@@ -146,9 +146,21 @@ public final class CrustField {
     /** 离散边界处 age 的清零语义 ⇒ t = age·TMAX：age=0（脊轴）↔ t=0。 */
     static final double PLATEAU_T_SCALE = AGE_TMAX_MA;
 
-    /** 深海丘陵幅度（m）：50~300 m 实有地形；波长 45wu（≈320 km）基波 + 3 倍频（最细 80 km）。 */
+    /**
+     * 深海丘陵幅度（m）与基波波长（wu）。
+     *
+     * <p>⚠ 2026-11-17 尺度修正（用户："红圈处还有奇怪的折线"）：旧波长 45wu
+     * （≈320km 标注、实际 45wu≈400m 尺度）在 900wu 俯视窗口下必然渲染成
+     * <b>斜向平行条纹</b>——那是 value noise 的格子方向性伪影被放大，
+     * 不是地质结构（分解图的 age-law 通道里同样有它）。
+     * 现波长 900wu（基波）+ 429 + 205（3 倍频）⇒ 俯视图上是可辨的丘陵形态
+     * 而非密纹。幅度不变（100m ≈ 1 格）。
+     *
+     * <p>★ 该改动影响<b>整个洋底</b>（不只洋中脊）⇒ P1 全图 SHA 必变，
+     * 但陆侧必须逐位不变（P1 陆侧 SHA 守护）。
+     */
     static final double ABYSS_HILLS_M = 100.0;
-    static final double ABYSS_HILL_SCALE = 45.0;
+    static final double ABYSS_HILL_SCALE = 900.0;
     /** 轴部裂谷：深度（m）与宽度（wu）。慢速扩张脊标配（1~2 km 深、20~50 km 宽）。 */
     /** 海沟：深度（m）与宽度（wu）。洋-洋俯冲全球最深（−8000~−11000 m）。 */
     static final double TRENCH_M = 3600.0;

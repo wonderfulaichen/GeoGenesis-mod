@@ -31,6 +31,12 @@ public final class RidgeViewProbe {
     private static final int H = 520;
 
     public static void main(String[] args) throws Exception {
+        // -PprobeArgs 在 Windows 批处理下会被拆坏 ⇒ 支持 -Dgg.probeArgs 透传
+        String sys = System.getProperty("gg.probeArgs");
+        if (sys != null && !sys.isBlank()) {
+            // 逗号分隔（空格在 Windows 批处理/GRADLE_OPTS 里会被拆成多个参数）
+            args = sys.trim().split("[,\s]+");
+        }
         double cx = args.length > 0 ? Double.parseDouble(args[0]) : 1600;
         double cz = args.length > 1 ? Double.parseDouble(args[1]) : 1600;
         double half = args.length > 2 ? Double.parseDouble(args[2]) : 400;
@@ -50,7 +56,9 @@ public final class RidgeViewProbe {
             for (double zz = -8000; zz <= 8000; zz += 150) {
                 for (double xx = -8000; xx <= 8000; xx += 150) {
                     var t0 = tectonic.sample(xx, zz);
-                    if (t0.distRaw() > 15 || -t0.stress() < 0.10) {
+                    // 离散门槛 0.30（与生产的 constitution 一致；RidgeStressProbe 实测
+                    // 只有 28% 的边界是明确离散型）
+                    if (t0.distRaw() > 15 || -t0.stress() < 0.30) {
                         continue;
                     }
                     // ★ 法向用 distRaw 梯度（唯一可靠定义），并要求两侧距离

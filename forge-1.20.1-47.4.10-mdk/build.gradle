@@ -1688,11 +1688,21 @@ task runRidgeFormProbe(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.tectonicsand.RidgeFormProbe'
 }
 
+// 边界应力分布诊断（2026-11-17）：离散/汇聚边界的 stress 实际分布。
+//   gradlew runRidgeStressProbe
+task runRidgeStressProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.RidgeStressProbe'
+}
+
 // 洋中脊「俯视 + 剖面」双视图（2026-11-17）：左俯视 hillshade、右横剖面曲线。
 //   gradlew runRidgeViewProbe [-PprobeArgs="<cx> <cz> <half>"]
 task runRidgeViewProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.RidgeViewProbe'
+    systemProperties System.getProperties().findAll {
+        it.key.startsWith('geogenesis.') || it.key.startsWith('gg.')
+    }
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     }

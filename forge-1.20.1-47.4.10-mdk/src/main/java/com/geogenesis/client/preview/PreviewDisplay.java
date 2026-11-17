@@ -753,7 +753,17 @@ public class PreviewDisplay extends AbstractWidget {
     //       ③ 地堑壁 C0 不连续：谷壁升满到脊肩高、下一段又从谷底起算 ⇒
     //          剖面轴两侧两根尖刺；改为升至 78% 谷缘再续升。
     //       144 基准留档：dd2f20fa / 5dd95cec。
-    static final int CACHE_SCHEMA_VERSION = 145;
+    // 146 = 2026-11-17 阶段七 C（用户："这是洋山脊吗？我怎么感觉像海沟？"）：
+    //       ★ 地质方向纠正：洋中脊是<b>造山</b>、海沟是<b>挖沟</b>，机制相反。
+    //         旧实现的谷深/总起伏 = 0.68（真实 MAR 只有 0.2~0.4）⇒ 俯视像海沟。
+    //       ① 地堑深度 0.13→0.045e、谷深/总起伏 = 0.33 ✔；
+    //       ② 脊带全宽 840→400wu（FOOT 200，脊肩 @80，板块格子 2000 ⇒ 占 20% ✔）；
+    //       ③ 深海丘陵波长 45→900wu（旧值在大范围俯视图上是斜向平行条纹伪影）；
+    //       ④ 离散门槛收紧：-stress>0.30（RidgeStressProbe 实测边界 stress 连续
+    //          分布，只有 28% 明确离散；旧门槛 0.12 把 ~55% 边界当离散 ⇒
+    //          汇聚边界上也在长「洋中脊」）；
+    //       145 基准留档：41bd1cd5 / 5dd95cec。
+    static final int CACHE_SCHEMA_VERSION = 146;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
