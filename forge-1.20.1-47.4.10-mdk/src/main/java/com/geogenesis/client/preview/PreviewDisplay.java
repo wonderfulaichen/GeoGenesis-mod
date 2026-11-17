@@ -688,7 +688,14 @@ public class PreviewDisplay extends AbstractWidget {
     //       ⇒ VOLCANO / VOLCANIC_FIELD / SEAMOUNT / SUBMARINE_RIDGE 首次可达
     //       开关 geogenesis.tectonicFeatures 默认开（false = 精确复现 schema135）。
     //       旧基准留档：P1 EXPECTED 4a1c19ed / 0f04e118（schema135）。
-    static final int CACHE_SCHEMA_VERSION = 136;
+    // 137 = 2026-11-17 阶段六修正：火山从「外挂特征层」归位到「类型层覆盖族」
+    //       （VolcanoRecipe：网格 1200wu / R=120wu / amp 0.24e = 57 格 /
+    //         火口 0.06e·0.30 / 冲沟 / 裙摆 2.2×——用户目检定稿的形态），
+    //       走 MorphLandField 的 overlay 链（与台地同级）；LandFeatures 陆侧接线撤销。
+    //       陆上门控：火山中心 covered > −0.02（代理判定）。
+    //       OceanFeatures（海山/洋中脊）保留特征接线（洋底职责域，已验收）。
+    //       旧基准留档：P1 EXPECTED 4a1c19ed / 0f04e118（schema136）。
+    static final int CACHE_SCHEMA_VERSION = 137;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

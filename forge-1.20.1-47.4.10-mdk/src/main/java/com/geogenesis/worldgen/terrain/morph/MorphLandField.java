@@ -101,6 +101,24 @@ public final class MorphLandField {
     private final MorphNoise.Node maskNode;
     /** 覆盖族（共享台地 height01）。 */
     private final MorphAssembly.Family oldCoverageFamily;
+    /**
+     * ★ 阶段六（2026-11-17）：火山覆盖族——类型层的独立几何覆盖（与台地同级）。
+     * {@code null} = 关闭（逐位复现旧产出）。
+     */
+    private final VolcanoRecipe volcanoRecipe;
+    /** 火山中心的陆上门控回调（sampler 注入，用 ContinentField 判）。 */
+    private java.util.function.DoubleBinaryOperator volcanoLandProbe;
+    /**
+     * 火山中心的最低陆上度（ContinentField 原始 c，∈[−1,1]）。
+     *
+     * <p><b>0.004 = 全可见线</b>：生产陆海汇合在 {@code MorphOceanAssembler}，
+     * {@code edge = (c+1)/2 > CP_INLAND(0.502)} 才完全取陆地层 ⇒ 中心过线，
+     * 整座锥体（0.21e ≈ 49 格）才能完整出现在生产高度里。
+     * 中心若落在混合带（edge 0.25~0.502），锥体被海岸剖面 lerp 压向海床
+     * （门控缺位实测 ~90% 火山不可见——其中不少在深海里完全被吞）。
+     * 探针：{@code VolcanoShapeProbe} 断言锥顶 {@code sampleE > 0}。</p>
+     */
+    private static final double VOLCANO_MIN_LAND = 0.004;
     private final double blendLow;
     private final double blendHigh;
     /**
@@ -177,6 +195,7 @@ public final class MorphLandField {
         this.blendLow = assembly.blendLow();
         this.blendHigh = assembly.blendHigh();
         this.oldCoverageFamily = assembly.coverage();
+        this.volcanoRecipe = assembly.volcano();
         this.trendFn = trendFn;
         this.tiles = tileCache();
     }
@@ -273,6 +292,23 @@ public final class MorphLandField {
         double region = heightForMerged(x, z, merged);
         double select = maskValue(x, z);
         double covered = overlay(region, select, select < blendLow ? Double.NaN : oldCoverageHeight(x, z));
+        // ★ 阶段六修正（2026-11-17）：火山覆盖——类型层的独立几何覆盖，
+        //   与台地 overlay 同机制（用户裁定：火山属于「地形类型 = 局部具体化」）。
+        //
+        //   · 增盈式：`covered + edifice`（火山是建在既有地形上的山体，加法物理正确；
+        //     幅度 0.24e 只影响局部 240 块半径，不触发 trend 那样的预算问题）
+        //   · 陆上门控：edifice 内部按<b>火山中心</b>用 `volcanoLandProbe` 判定
+        //     （基线 `centerFactorOf` 的教训——逐点门控会让火山跨海岸线被斜切）
+        //   · trend=0 且无火山 ⇒ 逐位不变（原式分支）
+        double volcanoGate = 0.0;
+        double volcanoEdifice = 0.0;
+        if (volcanoRecipe != null) {
+            volcanoEdifice = volcanoRecipe.edifice(x, z, VOLCANO_MIN_LAND, volcanoLandProbe);
+            if (volcanoEdifice > 0.0) {
+                // 覆盖强度 = 山体高度占比（供类型判定与 Sample 记录）
+                volcanoGate = Math.min(1.0, volcanoEdifice / VolcanoRecipe.VOLCANO_TYPE_GATE);
+            }
+        }
         // ★ 阶段五（2026-11-16）：构造趋势与地形类型<b>共用同一份高度预算</b>。
         //
         //   为什么不是朴素加法：现有类型系统已把 e 用到 MAX_LAND_HI_E=0.95，
@@ -299,7 +335,7 @@ public final class MorphLandField {
         //   注意：即便 trend=0，若仍走新表达式，浮点乘/加顺序已与原式不同 ⇒
         //   必须走独立分支，完全绕开新式。
         double e;
-        if (trend == 0.0) {
+        if (trend == 0.0 && volcanoEdifice == 0.0) {
             e = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN, 0.0);
         } else {
             // ★ 2026-11-16 修正（用户验收：初版把山脊压平了 + 灌水成湖）。
@@ -314,12 +350,16 @@ public final class MorphLandField {
             //   · 高山（base≈0.9）→ 趋势几乎为零（×0.1）
             //   · 峰顶不超 LAND_E_CAP ⇒ 不触发 heightFromE 的钳制
             //   · 类型起伏完全保留（山脊纹理不受影响）
+            //
+            //   ★ 火山（阶段六）同理用<b>余量注入</b>：`volcanoEdifice` 加在
+            //     trend 之前，与 trend 共用同一个 headroom 缩放（高山处火山
+            //     增量也被压缩，避免峰顶超 LAND_E_CAP）。
             double base = Math.max(MorphScale.GROUND_E + covered * MorphScale.E_SPAN, 0.0);
             double headroom = Math.max(0.0, 1.0 - base / MorphScale.LAND_E_CAP);
-            e = Math.max(base + trend * headroom, 0.0);
+            e = Math.max(base + (trend + volcanoEdifice) * headroom, 0.0);
         }
         Sample s = new Sample(region, covered, e, select, alphaOf(select), dominant(merged),
-                merged, activeCount(merged), trend);
+                merged, activeCount(merged), trend, volcanoGate);
         synchronized (tileLock) {
             lastX = x;
             lastZ = z;
@@ -327,6 +367,14 @@ public final class MorphLandField {
             points++;
         }
         return s;
+    }
+
+    /**
+     * ★ 阶段六：注入火山中心的陆上门控（sampler 持有 ContinentField）。
+     * 必须在 {@code sample()} 首次调用前设置。
+     */
+    public void setVolcanoLandProbe(java.util.function.DoubleBinaryOperator probe) {
+        this.volcanoLandProbe = probe;
     }
 
     /** 一次性计数的运行统计（只记账，不参与产出）。 */
@@ -601,12 +649,15 @@ public final class MorphLandField {
      * @param weight 长度 18 的条目权重（<b>内部数组</b>；{@link MorphLandField#weights} 才返回副本）
      */
     public record Sample(double regionHeight, double coveredHeight, double e, double mask, double alpha,
-                         int dominantEntry, double[] weight, int activeEntries, double trend) {
+                         int dominantEntry, double[] weight, int activeEntries, double trend,
+                         double volcanoGate) {
 
         @Override public String toString() {
             return String.format(Locale.ROOT,
-                    "Sample(region=%.6f covered=%.6f e=%.6f mask=%.4f alpha=%.4f dom=%d active=%d trend=%+.4f)",
-                    regionHeight, coveredHeight, e, mask, alpha, dominantEntry, activeEntries, trend);
+                    "Sample(region=%.6f covered=%.6f e=%.6f mask=%.4f alpha=%.4f dom=%d active=%d"
+                            + " trend=%+.4f volc=%.3f)",
+                    regionHeight, coveredHeight, e, mask, alpha, dominantEntry, activeEntries,
+                    trend, volcanoGate);
         }
     }
 

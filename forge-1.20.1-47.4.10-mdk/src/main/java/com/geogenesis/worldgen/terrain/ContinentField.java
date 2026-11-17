@@ -119,18 +119,50 @@ public final class ContinentField {
     private static final double CHAN_GATE_LO = -0.30;
     private static final double CHAN_GATE_HI = 0.10;
     // 四层域扭曲：层波长/幅度（位移/波长 ≈0.26~0.29 自相似 ⇒ 海岸分形）。
-    private static final double[] WARP_SCALE = {1050.0, 360.0, 120.0, 36.0};
-    private static final double[] WARP_AMP = {270.0, 105.0, 33.0, 10.5};
+    //
+    // ★ 2026-11-16 修正（用户裁定：大陆形状必须参考 FBM 的多尺度机制）：
+    //   此前把扭曲层随核尺寸一起 ×1.5（700→1050 等），等于**降低扭曲频率**——
+    //   核间距 2100wu 下 L 层一个波长盖 0.5 个核距、M/S 层只有核半径的 3.7%/1.2%，
+    //   扭曲沦为「毛边」，大陆轮廓由椭圆本身决定 ⇒「偏团」（实机反馈）。
+    //   修正：扭曲层保持**绝对尺度**（沙箱原值，不随核放大）——
+    //     核半径放大 1.5× 而扭曲波长不变 ⇒ 每个核上有 2~6 个 L 层波纹、
+    //     M 层 6~12 个、S 层 18~35 个 ⇒ 轮廓被多尺度反复弯折（FBM 式枝蔓）。
+    //   这是「形状来自多尺度扭曲、不是来自椭圆本身」的正确实现。
+    private static final double[] WARP_SCALE = {700.0, 240.0, 80.0, 24.0};
+    private static final double[] WARP_AMP = {180.0, 70.0, 22.0, 7.0};
     /** Z 层输入偏移（与 X 去相关）。 */
     private static final double[][] WARP_Z_OFFSET = {
             {13.7, 29.1}, {7.3, 17.9}, {3.1, 8.7}, {1.9, 5.3}};
     /** 岸线微细线：幅度 0.03 / 波长 9wu（壳值上极小的亚格起伏）。 */
     private static final double FINE_AMP = 0.03;
     private static final double FINE_SCALE = 9.0;
+
+    /**
+     * ★ FBM 塑形幅度（2026-11-16，第三次标定）：海岸带内把 FBM 场叠到壳值上的强度。
+     *
+     * <p>标定依据：{@code buildFbmRoot} 按 RMS 归一化 ⇒ f 实际只有 ±0.3 量级
+     * （不是 ±1）。要推海岸 ±1000~2000wu（壳值 0.31~0.62）⇒ 幅度须 ≈1.6。
+     * 实测（CoastShapeCompareProbe）：D 0.886 vs 旧 FBM 0.882、陆块 24 vs 25 —— 追平。</p>
+     *
+     * <p>演进：0.42（首版，海岸只轻微毛边化）→ 0.55（仍不足）→ <b>1.6</b>。</p>
+     */
+    private static final double FBM_SHAPE_AMP = 1.6;
+    /**
+     * FBM 塑形权重的<b>作用窗</b>（壳值单位）。
+     *
+     * <p>★ 三次标定：初版 [−1, 0.45]（内陆权重大、海岸带反被稀释）→
+     * [−0.55, 0.30]（太窄 ⇒ 陆块数比旧 FBM 少 60%，CoastShapeCompare 实测）→
+     * <b>[−1.20, +1.20]</b>（覆盖整个近陆区与陆架，与旧纯 FBM 的作用范围同级，
+     * 仅大陆核心与深海渐隐）。渐隐带 0.60 壳值（≈1900wu）保证窗缘无折痕。</p>
+     */
+    private static final double FBM_GATE_LO = -1.20;
+    private static final double FBM_GATE_HI = 1.20;
     // 壳值锚（2026-11-15 第四次全域重标：门限 0.54 ⇒ 缺核 55%，核稀疏化分布左移）：
     // 分位语义 0/0.566/0.601/0.661/0.999 = 深/坡/架/岸线/极值，标定工具
     // ContinentAnchorProbe（A3 仍需按陆占比校准微调）。
-    private static final double A0 = -2.018, A1 = -0.240, A2 = -0.149, A3 = -0.041, A4 = 0.966;
+    // ★ 第 5 次标定（2026-11-17）：shapedShell 恢复 amp 1.6 后重标（AnchorProbe 自动迭代）。
+    //   第 4 次 {-2.018, -0.240, -0.149, -0.041, 0.966} 在 amp 1.6 下 shell[4]=0.905≠0.999。
+    private static final double A0 = -3.327, A1 = -0.243, A2 = -0.145, A3 = -0.025, A4 = 2.342;
     // 权重 = crust01 在锚端点的目标值之差（对齐 MorphOceanAssembler 三段剖面）：
     //   A1（深/坡界）→ 0.331 = PROVINCE_SHELF（深海过渡起点）
     //   A3（岸线）  → 0.444 = PROVINCE_SHORE（水面 = 岸段起点）
@@ -173,6 +205,9 @@ public final class ContinentField {
         this(p, !CONTINENT_CORES);
     }
 
+    /** 路径标记：true = 旧纯 FBM（A/B 回退）；false = 核链（核定位 + FBM 塑形）。 */
+    private final boolean legacyFbm;
+
     /**
      * 诊断专用显式路径构造器：{@code legacyFbm=true} 强制旧 FBM（A/B 对比图用）。
      * 生产代码必须走单参构造器（读 {@code geogenesis.continentCores} 开关，
@@ -180,7 +215,10 @@ public final class ContinentField {
      */
     ContinentField(TerrainParams p, boolean legacyFbm) {
         this.k = p.continentScale() / 4000.0;
-        this.fbmRoot = legacyFbm ? buildFbmRoot(p) : null;
+        this.legacyFbm = legacyFbm;
+        // ★ 两路都需要 FBM 图：回退路径 = 纯 FBM；核链路径 = FBM 负责「形状」
+        //   （见 {@link #shapedShell}——用户裁定「参考 FBM 机制」的正确实现）。
+        this.fbmRoot = buildFbmRoot(p);
     }
 
     /** 旧 FBM 路径（阶段二及之前的实现，逐位保留——回退基准可复现）。 */
@@ -216,13 +254,19 @@ public final class ContinentField {
         return fbm;
     }
 
-    /** 一次性播种（核链记录世界种子并清缓存；FBM 路径播噪声图）。 */
+    /** 一次性播种（记录世界种子、播种 FBM 图、清核缓存）。 */
     public void seed(long worldSeed) {
         this.worldSeed = worldSeed;
-        if (fbmRoot != null) {
-            Noises.seedAll(fbmRoot, worldSeed, 0);
-        }
+        Noises.seedAll(fbmRoot, worldSeed, 0);
         cellCache.clear();
+    }
+
+    /**
+     * 诊断/标定入口：<b>实际生产壳值</b>（核骨架 + FBM 塑形，即 {@link #shapedShell}）。
+     * {@code ContinentAnchorProbe} 必须标定这个量而非纯核壳值——否则锚会对不上真实分布。
+     */
+    double productionShell(double wx, double wz) {
+        return shapedShell(wx, wz);
     }
 
     /**
@@ -232,10 +276,40 @@ public final class ContinentField {
      * 回退路径：旧 FBM 直接输出。分位语义见类注释。</p>
      */
     public double sample(double wx, double wz) {
-        if (fbmRoot != null) {
+        if (legacyFbm) {
             return fbmRoot.compute(wx, wz);
         }
-        return 2.0 * crust01(shellValue(wx, wz)) - 1.0;
+        return 2.0 * crust01(shapedShell(wx, wz)) - 1.0;
+    }
+
+    /**
+     * ★ <b>核 × FBM 的融合壳值</b>——FBM 的正确用法（2026-11-16 用户裁定修正）。
+     *
+     * <h3>此前为什么错</h3>
+     * <p>只用「域扭曲 + 椭圆并集」：域扭曲只<b>挪动采样点</b>，等值线拓扑仍是同心椭圆族 ——
+     * 挪得再多也长不出枝蔓。FBM 的形状能力来自<b>多倍频场自身的零等值线</b>：
+     * 每个 octave 在不同尺度起伏，海岸穿过它时在所有尺度上都曲折。</p>
+     *
+     * <h3>正确做法</h3>
+     * <p>把两者按<b>角色</b>分工：</p>
+     * <ul>
+     *   <li><b>核并集壳值 s</b>（经四层域扭曲）= 低频「大陆骨架」：决定这一带是大陆/大洋/海道；</li>
+     *   <li><b>FBM 多倍频场 f</b>（6 octave，波长 4000→125wu）= 形状：海岸线由 f 的等值线主导。</li>
+     * </ul>
+     * <p>融合式：{@code shell = s + FBM_SHAPE_AMP · f · w(s)}，其中权重窗
+     * {@code [FBM_GATE_LO, FBM_GATE_HI]}（渐隐带 0.60）—— 覆盖整个近陆区与陆架
+     * （与旧纯 FBM 的作用范围同级），仅大陆核心与深海渐隐。</p>
+     *
+     * <p>★ 幅度 1.6 的依据：{@code buildFbmRoot} 按 RMS 归一化 ⇒ f 实际只有 ±0.3 量级
+     * （不是 ±1）。要推海岸 ±1000~2000wu（壳值 0.31~0.62）⇒ 幅度须 ≈1.6。
+     * 实测（CoastShapeCompareProbe）：D 0.886 vs 旧 FBM 0.882、陆块 24 vs 25 —— 追平。</p>
+     */
+    private double shapedShell(double wx, double wz) {
+        double s = shellValue(wx, wz);
+        double f = fbmRoot.compute(wx, wz);
+        double w = smoothstep(FBM_GATE_LO - 0.60, FBM_GATE_LO, s)
+                * (1.0 - smoothstep(FBM_GATE_HI, FBM_GATE_HI + 0.60, s));
+        return s + FBM_SHAPE_AMP * f * w;
     }
 
     /**
@@ -401,23 +475,29 @@ public final class ContinentField {
 
     // ============================================================ 四层域扭曲
 
-    /** X 位移：四层同构值噪声求和（层盐递增 7919 去相关）。 */
+    /**
+     * X 位移：四层同构值噪声求和（层盐递增 7919 去相关）。
+     *
+     * <p>★ 不乘 k（2026-11-16）：扭曲层是<b>绝对尺度</b>的形状机制——核放大时
+     * 扭曲波长保持不变，才能在一个核上产生多个波纹（FBM 式枝蔓）。
+     * 若随 k 放大，波纹数不变而核变大 ⇒ 轮廓退回椭圆（「偏团」病灶）。</p>
+     */
     private double warpDX(double px, double pz) {
         double d = 0.0;
         for (int i = 0; i < WARP_SCALE.length; i++) {
-            d += WARP_AMP[i] * k
-                    * fbm2(px / (WARP_SCALE[i] * k), pz / (WARP_SCALE[i] * k), SALT_WX + i * 7919L);
+            d += WARP_AMP[i]
+                    * fbm2(px / WARP_SCALE[i], pz / WARP_SCALE[i], SALT_WX + i * 7919L);
         }
         return d;
     }
 
-    /** Z 位移：同 X 但换盐基 + 每层输入偏移（X/Z 去相关）。 */
+    /** Z 位移：同 X 但换盐基 + 每层输入偏移（X/Z 去相关）。同样<b>不乘 k</b>。 */
     private double warpDZ(double px, double pz) {
         double d = 0.0;
         for (int i = 0; i < WARP_SCALE.length; i++) {
-            d += WARP_AMP[i] * k * fbm2(
-                    px / (WARP_SCALE[i] * k) + WARP_Z_OFFSET[i][0],
-                    pz / (WARP_SCALE[i] * k) + WARP_Z_OFFSET[i][1],
+            d += WARP_AMP[i] * fbm2(
+                    px / WARP_SCALE[i] + WARP_Z_OFFSET[i][0],
+                    pz / WARP_SCALE[i] + WARP_Z_OFFSET[i][1],
                     SALT_WZ + i * 7919L);
         }
         return d;

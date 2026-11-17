@@ -3,7 +3,6 @@ package com.geogenesis.worldgen.terrain.morph;
 import com.geogenesis.worldgen.terrain.ContinentField;
 import com.geogenesis.worldgen.terrain.CrustField;
 import com.geogenesis.worldgen.terrain.HeightCurve;
-import com.geogenesis.worldgen.terrain.LandFeatures;
 import com.geogenesis.worldgen.terrain.OceanFeatures;
 import com.geogenesis.worldgen.terrain.TectonicField;
 import com.geogenesis.worldgen.terrain.TerrainParams;
@@ -93,19 +92,21 @@ public final class MorphTerrainSampler {
      * ★ 阶段六（2026-11-17）：火山/熔岩台地特征（陆侧）。几何代码本就完整，
      * 此前只是缺接线（2026-11-06 重构 CellGenerator 时丢失）。
      */
-    private final LandFeatures landFeatures;
     /** ★ 阶段六：海山 / 洋中脊 / 弧沟特征（洋侧）。 */
     private final OceanFeatures oceanFeatures;
 
     /**
-     * ★ 阶段六（2026-11-17）：构造特征开关——{@code true}（默认）时
-     * {@link LandFeatures}/{@link OceanFeatures} 参与地形合成；false 精确复现 schema135。
+     * ★ 构造特征开关（唯一读取点）——{@code true}（默认）时海山/洋中脊
+     * （{@link OceanFeatures}）与火山（{@code MorphAssembly} 引用本常量）参与合成；
+     * false = 两者全关，逐位复现开火前的基准。
      *
-     * <p>开关四铁律自查：① {@code geogenesis.tectonicFeatures} 全仓仅本一处读取，
-     * 默认开（{@code !"false".equals} 惯用法）；② 单属性单语义；
-     * ③ 本注释与代码同源；④ 产出变更已升 CACHE_SCHEMA_VERSION（135→136）。</p>
+     * <p>开关四铁律自查：① {@code geogenesis.tectonicFeatures} 全仓仅此处读取
+     * （MorphAssembly 为保持「同一属性同一值」，直接引用本常量，不重复读取）；
+     * 默认开（{@code !"false".equals} 惯用法）；② 单属性单语义（构造特征层整体
+     * 开关，海侧/陆侧两类特征一起进出）；③ 本注释与代码同源；
+     * ④ 产出变更已升 CACHE_SCHEMA_VERSION（当前 137）。</p>
      */
-    private static final boolean TECTONIC_FEATURES =
+    static final boolean TECTONIC_FEATURES =
             !"false".equals(System.getProperty("geogenesis.tectonicFeatures"));
 
     /**
@@ -218,6 +219,12 @@ public final class MorphTerrainSampler {
                 : (x, z, ignored) -> trend.trend(x, z, crust01Of(x, z));
         this.land = new MorphLandField(catalog, assembly, regionScale,
                 new MorphKernel(MorphLandRecipe.all(catalog), catalog.seed(), true), trendFn);
+        // ★ 阶段六修正（2026-11-17）：火山中心的陆上门控——接 ContinentField 原始 c。
+        //   为什么不用 covered/landE：生产的陆海汇合在 MorphOceanAssembler（edge 坐标，
+        //   edge=(c+1)/2），edge > CP_INLAND(0.502) 才完全取陆地层；混合带内锥体被海岸
+        //   剖面压向海床（门控缺位实测 ~90% 火山不可见）。门控收到全可见线：c > 0.004。
+        //   （VolcanoShapeProbe 会断言每座火山锥顶 sampleE > 0——门控失守立刻红。）
+        this.land.setVolcanoLandProbe(continent::sample);
 
         // 深海噪声用 seed+3（正典口径）；近岸细节噪声用原 seed。
         // ★ 桥接 S2：开关默认开时注入 CrustField.eBase（e 量纲）接管海床 deep 来源（A3：
@@ -242,46 +249,22 @@ public final class MorphTerrainSampler {
 
         this.curve = new HeightCurve(params, minY, maxY);
 
-        // ★ 阶段六（2026-11-17）：火山 / 海山 / 洋中脊接线。
+        // ★ 阶段六修正（2026-11-17）：只保留<b>洋侧</b>特征接线（海山/洋中脊/弧沟）。
+        //   陆侧火山已归位到<b>类型层</b>（{@code VolcanoRecipe} 覆盖族 +
+        //   {@code MorphLandField} 的火山 overlay）——LandFeatures 是"外挂特征层"，
+        //   尺度与类型系统不匹配（网格 800wu / 半径 140~300wu / 高 47~99 格），
+        //   用户裁定为架构错误。
         //
-        //   这两类的几何代码本来就完整（VolcanicShape 的 CONE/GUYOT/CALDERA、
-        //   火口、各向异性拉伸、域扭曲、弧门控、深度门控全都有），只是 2026-11-06
-        //   重构 CellGenerator 时把构造与注入一并丢掉了 ⇒ 全仓零实例化。
-        //
-        //   注入点选择：<b>必须在 B 层（本类）而非 CellGenerator</b>。
-        //   因为侵蚀（ProcessContext.sampleBase）读的是同一个 sampleE——
-        //   若只在 CellGenerator 里加，侵蚀会按"没有火山的地形"算，
-        //   最终产出出现"侵蚀按平地算、火山后期叠上去"的错位。
+        //   洋侧保留的理由：海山/洋中脊属于洋底几何（MorphOceanAssembler 的职责域），
+        //   且海洋内容已由用户裁定"够了"——用特征方式注入是既有已验收的做法。
         if (TECTONIC_FEATURES) {
-            this.landFeatures = new LandFeatures();
-            this.landFeatures.seed(seed);
-            // 弧门控：会聚带附近火山幅度 ×(1 + 0.9·gate)；只调幅度不调存在性
-            this.landFeatures.setArcVolcanismProvider(tectonic::arcVolcanism);
-            // 陆上判定：用大陆场直接判（基线教训：重采样 sampleCore 慢 8.75 倍，
-            // 曾把河网构建拖慢近 9 倍；而"火山中心是否在陆上"只需二值判定）
-            this.landFeatures.setLandFactorProvider(this::landFactorAt);
-
             this.oceanFeatures = new OceanFeatures();
             this.oceanFeatures.seed(seed);
             // 海山中心深度门控：中心必须够深（e ≤ −0.20）才生成，否则浅海会长疙瘩
             this.oceanFeatures.setSeamountDepthChecker((x, z) -> ocean.e(x, z));
         } else {
-            this.landFeatures = null;
             this.oceanFeatures = null;
         }
-    }
-
-    /**
-     * 「该点是否在陆上」的二值门控 ∈[0,1]（smoothstep 过渡带 ±0.01）。
-     *
-     * <p>仅供 {@link LandFeatures#setLandFactorProvider} 判断火山中心位置。
-     * 用 {@link ContinentField} 直接判——它与 {@code shellFromC} 同源，
-     * 是"海陆场"本身；不必经过类型场 Voronoi + 海岸线扭曲那套形态学管线
-     * （基线实测：那样做每次 78,568 ns，是 {@code terrainEQuick} 的 8.75 倍）。</p>
-     */
-    private double landFactorAt(double wx, double wz) {
-        double cBiased = continent.sample(wx, wz) - params.continentBias();
-        return smoothstep(-0.01, 0.01, cBiased);
     }
 
     /** 陆壳度 ∈[0,1]：由大陆场 c ∈[−1,1] 换算（0.5 = 海岸）。 */
@@ -303,57 +286,29 @@ public final class MorphTerrainSampler {
      */
     public double sampleE(double wuX, double wuZ) {
         double eBase = ocean.e(wuX, wuZ);
-        if (landFeatures == null) {
+        if (oceanFeatures == null) {
             return eBase;   // 关特征：逐位复现 schema135
         }
-        return composeWithFeatures(wuX, wuZ, eBase, null, null);
-    }
-
-    /**
-     * ★ 阶段六：把构造特征合成进 {@code eBase}（海床守护 + 陆侧不加权）。
-     *
-     * <p>与基线 {@code CellGenerator} 的同名逻辑等价，但放在 B 层
-     * （侵蚀读同一个 {@code sampleE} ⇒ 不会出现"侵蚀按无火山地形算"的错位）。</p>
-     *
-     * @param eBase   海陆装配器的输出（未含特征）
-     * @param lfOut    若非 null，回填陆侧 FeatureResult（供 {@code sampleColumn} 复用）
-     * @param ofOut    若非 null，回填洋侧 FeatureResult
-     */
-    private double composeWithFeatures(double wx, double wz, double eBase,
-                                      LandFeatures.FeatureResult[] lfOut,
-                                      OceanFeatures.FeatureResult[] ofOut) {
-        TectonicField.Sample ts = tectonic.sample(wx, wz);   // 每点一次，两个特征复用
-
-        // ---- 陆侧：特征内部已用 centerFactorOf 做"中心是否在陆"的二值门控，
-        //      绝不能在这里再乘逐点 landFactor（基线教训：会造成"斜切火山/火口被压平"）
-        LandFeatures.FeatureResult lf = landFeatures.compute(wx, wz, ts);
-
-        // ---- 洋侧：海山/洋中脊/弧沟
-        //      arcProf 由 oceanProfile 提供（>0 弧、<0 沟），已含软饱和
+        // 洋侧：海山/洋中脊/弧沟（陆侧火山在 MorphLandField 的火山覆盖层内）
+        TectonicField.Sample ts = tectonic.sample(wuX, wuZ);
         OceanFeatures.FeatureResult of = oceanFeatures.compute(
-                wx, wz, Math.min(eBase, 0.0), eBase, ts, tectonic.oceanProfile(ts));
-
+                wuX, wuZ, Math.min(eBase, 0.0), eBase, ts, tectonic.oceanProfile(ts));
         // 海床守护：洋侧累计抬升不得把地形推过海平面（软限，C¹）
-        double oceanFeatW = of.total * (1.0 - landFactorAt(wx, wz));
+        double oceanFeatW = of.total * (1.0 - oceanWeightAt(wuX, wuZ));
         if (oceanFeatW > 0.0) {
-            double cap = -eBase - SEABED_MARGIN;
-            oceanFeatW = cap <= 0.0 ? 0.0 : smoothMin(oceanFeatW, cap, SEABED_SOFT_SAT);
+            double cap = -eBase - 0.02;
+            oceanFeatW = cap <= 0.0 ? 0.0 : smoothMin(oceanFeatW, cap, 0.03);
         }
-
-        if (lfOut != null) {
-            lfOut[0] = lf;
-        }
-        if (ofOut != null) {
-            ofOut[0] = of;
-        }
-        // 最终 e 钳到 [−1, +1]（负向特征——如海沟窄槽——不得穿透世界底部）
-        return Math.max(-1.0, Math.min(1.0, eBase + lf.total + oceanFeatW));
+        return Math.max(-1.0, Math.min(1.0, eBase + oceanFeatW));
     }
 
-    /**
-     * 软最小值（C¹）：{@code a} 在接近 {@code b} 时平滑过渡，避免折痕。
-     * 与 {@code TectonicField.smoothMin} 同式。
-     */
+    /** 洋侧权重 ∈[0,1]：海陆过渡处特征自然淡出（基线同款 smoothstep）。 */
+    private double oceanWeightAt(double wx, double wz) {
+        double cBiased = continent.sample(wx, wz) - params.continentBias();
+        return 1.0 - smoothstep(-0.01, 0.01, cBiased);
+    }
+
+    /** 软最小值（C¹）：与 {@code TectonicField.smoothMin} 同式。 */
     private static double smoothMin(double a, double b, double k) {
         if (k <= 1e-9) {
             return Math.min(a, b);
@@ -405,17 +360,9 @@ public final class MorphTerrainSampler {
     /** 基础地貌列，分类只提供语义，绝不反馈高度。坐标仍是wu。 */
     public com.geogenesis.worldgen.core.BaseColumn sampleColumn(double x, double z) {
         var c = new com.geogenesis.worldgen.core.BaseColumn();
-        // ★ 阶段六：特征只算一次，同时供 e 合成与 BaseColumn 携带
-        if (landFeatures == null) {
-            c.e = sampleE(x, z);
-        } else {
-            double eBase = ocean.e(x, z);
-            LandFeatures.FeatureResult[] lf = new LandFeatures.FeatureResult[1];
-            OceanFeatures.FeatureResult[] of = new OceanFeatures.FeatureResult[1];
-            c.e = composeWithFeatures(x, z, eBase, lf, of);
-            c.landFeat = lf[0];
-            c.oceanFeat = of[0];
-        }
+        // ★ 阶段六修正（2026-11-17）：e 直接走 sampleE（洋侧特征在 sampleE 内合成；
+        //   陆侧火山在类型层 MorphLandField 的火山覆盖族内，随 land.e 一起产出）
+        c.e = sampleE(x, z);
         c.height = curve.heightFromE(c.e);
         c.continent = continentality(x, z);
         c.landE = landE(x, z);
@@ -438,8 +385,12 @@ public final class MorphTerrainSampler {
                 addType(c.typeWeights, catalog.entry(i), x, z, s.weight()[i] * (1.0 - s.alpha()));
             }
             c.typeWeights[com.geogenesis.worldgen.terrain.TerrainClass.PLATEAU.ordinal()] += s.alpha();
-            // ★ 阶段六：陆侧火山/熔岩台地优先于票槽 argmax（与 CellGenerator.volcanoClass 同阈值）
-            var vol = volcanoClassOf(c.landFeat);
+            // ★ 阶段六修正（2026-11-17）：陆侧火山由<b>类型层的火山覆盖强度</b>判定
+            //   （{@code MorphLandField.Sample.volcanoGate} ← VolcanoRecipe——
+            //   不再是外挂 LandFeatures 的 edifice）。
+            //   阈值 0.10：锥体靠外（半径 ~92% 处，剖面 (1−q)^1.6 的对应点）。
+            var vol = s.volcanoGate() > 0.10
+                    ? com.geogenesis.worldgen.terrain.TerrainClass.VOLCANO : null;
             if (vol != null) {
                 c.terrainType = vol;
             } else {
@@ -452,25 +403,6 @@ public final class MorphTerrainSampler {
         }
         c.variantTerrain = c.terrainType;
         return c;
-    }
-
-    /**
-     * 火山类判定（阈值 0.010e ≈ 2.4 格，与 {@code CellGenerator.volcanoClass} 同口径）。
-     * 用 {@code singleEdifice}/{@code fieldEdifice}（<b>未扣火口</b>）——
-     * 火口中心本身是下凹的，用净抬升会把中心漏判成"非火山"。
-     */
-    private static com.geogenesis.worldgen.terrain.TerrainClass volcanoClassOf(
-            LandFeatures.FeatureResult lf) {
-        if (lf == null) {
-            return null;
-        }
-        if (lf.singleEdifice > 0.010) {
-            return com.geogenesis.worldgen.terrain.TerrainClass.VOLCANO;
-        }
-        if (lf.fieldEdifice > 0.010) {
-            return com.geogenesis.worldgen.terrain.TerrainClass.VOLCANIC_FIELD;
-        }
-        return null;
     }
 
     /**

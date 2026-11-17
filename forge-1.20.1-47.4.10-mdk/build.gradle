@@ -1651,6 +1651,8 @@ task runSegmentBucketsCheck(type: JavaExec) {
 task runP1CellRenderProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.geogenesis.worldgen.terrain.P1CellRenderProbe'
+    // ★ 透传 -D 开关（geogenesis.tectonicTrend / geogenesis.tectonicFeatures 的回退对拍用）
+    systemProperties System.getProperties().findAll { it.key.startsWith('geogenesis.') }
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
@@ -1678,16 +1680,30 @@ task runQuickContinentDiag(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.QuickContinentDiag'
 }
 
-// 构造特征验收（2026-11-17 阶段六）：火山/海山/洋中脊存在 + 分类正确 + 不新增海岸线 + 火口。
-//   判据型探针（FAIL 时 exit 1）。
-//   gradlew runTectonicFeaturesProbe [-PprobeArgs="<size> <step> <cx> <cz>"]
-task runTectonicFeaturesProbe(type: JavaExec) {
+// 火山形态判据门禁（2026-11-17 阶段六修正）：类型层覆盖族（VolcanoRecipe）的实际形态。
+//   锁死用户目检定稿：R=120wu / amp=0.24e / 火口凹 ≥0.03e / 独立不连带 / 覆盖 <3%。
+//   判据型探针（FAIL 时 exit 1）。取代已删除的 runTectonicFeaturesProbe 陆侧部分。
+//   gradlew runVolcanoShapeProbe [-PprobeArgs="<scanSpan> <step>"]
+task runVolcanoShapeProbe(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.geogenesis.worldgen.terrain.TectonicFeaturesProbe'
+    mainClass = 'com.geogenesis.worldgen.terrain.morph.VolcanoShapeProbe'
     if (project.hasProperty('probeArgs')) {
         setArgs(probeArgs.split(' ') as List)
     } else {
-        args = ['200', '40']
+        args = ['8000', '50']
+    }
+}
+
+// 构造特征局部特写图（2026-11-17 阶段六）：R=600wu ≈ 1.7wu/px，单座火山占数百像素，
+//   锥体/火口/裙摆可辨。自动定位窗内最强特征（火山 gate / 海山 / 洋中脊）。
+//   gradlew runFeatureCloseupProbe [-PprobeArgs="<n> <radiusWu> <cx> <cz>"]
+task runFeatureCloseupProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.FeatureCloseupProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    } else {
+        args = ['700', '600']
     }
 }
 
@@ -1739,6 +1755,14 @@ task runCoastShapeCompareProbe(type: JavaExec) {
     } else {
         args = ['256', '20', '2000', '-16000']
     }
+}
+
+// 火山形态沙箱（2026-11-17 阶段六重启）：独立评估火山形状，不接生产。
+//   用户裁定：先把形态做好，再接入类型库。
+//   gradlew runVolcanoFormProbe
+task runVolcanoFormProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.tectonicsand.VolcanoFormProbe'
 }
 
 // LEM 离线实验（2026-11-16 阶段四预研）：生产地形上跑沙箱 LEM，量化谷形/海岸分形D/耗时。
@@ -1854,6 +1878,10 @@ task runWorldgenGate {
     // 为什么必须纳入：CellGenerator 删死代码/任何地形改动都可能静默改变产出，
     // 而此前 P1CellRenderProbe 没有 gradle task、从未被门禁跑过。
     dependsOn 'runP1CellRenderProbe'
+    // 火山形态（2026-11-17 阶段六修正）：类型层覆盖族的锥体几何 + 生产集成判据。
+    //   不加会退化：双重缩放（57 格→12 格）/ 门控缺位（~90% 锥顶被淹）/ 类型断源
+    //   都只表现为"图上看不到火山"，没有判据就会静默回归。
+    dependsOn 'runVolcanoShapeProbe'
 }
 
 // 矿物过滤【行为】门禁（2026-09-18）：两模式各剔什�?+ 多模组零误删 + 开关真生效:

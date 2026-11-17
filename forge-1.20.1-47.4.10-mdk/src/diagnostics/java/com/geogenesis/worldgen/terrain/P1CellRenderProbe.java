@@ -29,16 +29,26 @@ public final class P1CellRenderProbe {
      * ② 阶段五构造趋势（会聚 0.17e 宽带隆起 + 票槽偏置）。
      * 两者都已并入本基准。关趋势（-Dgeogenesis.tectonicTrend=false）产出为
      * 47fe6869…/61bd91f9…，即「仅有 FBM 融合、无趋势」的中间态。</p>
+     *
+     * <p>★ 阶段六修正重立（2026-11-17，schema137）并入三笔：
+     * ① FBM 融合补账（shapedShell 恢复 amp 1.6 + 第 5 次全域锚 {-3.327,…,2.342}）；
+     * ② 火山归位类型层覆盖族（VolcanoRecipe：R=120wu / amp=0.24e / 火口 / 裙摆 /
+     *    冲沟——用户目检定稿），修掉初版 {@code edifice()} 双重缩放（57 格被压成 12 格）；
+     * ③ 陆上门控接线（ContinentField 原始 c &gt; 0.004 = 全可见线；缺位时 ~90% 锥顶
+     *    被海岸混合带淹没）。关火山（-Dgeogenesis.tectonicFeatures=false）逐位复现
+     *    schema136 中间态 4a1c19ed…/0f04e118…（landCells 585430；实测已验证——
+     *    与阶段五差两笔：第 5 次锚重标 + FBM amp 1.6，不属火山开关的回退范围）。</p>
      */
     private static final String EXPECTED =
-            "5490eb62d6096012eb97439857615959747c181755ea103798980719af115dbe";
+            "d7ead4d1359ff09ebadc813022345fbe029e51ff9847b654a9838226c33c322d";
 
     /**
-     * ★ 阶段五重立（2026-11-16）：landCells 503823→586223。
-     * 全域陆占比由 ContinentAnchorProbe（0.3385）与 OceanFloorProbe 守护。
+     * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441
+     * （第 5 次锚把陆占比 0.3385→0.3227；火山覆盖只影响局部 ±，净变化不大）。
+     * 全域陆占比由 ContinentAnchorProbe（0.3227±0.02）与 OceanFloorProbe 守护。
      * 标定协议见 {@link #render}。
      */
-    private static final String EXPECTED_LAND = "1f9d9065d4cbbc447a454751b43d641cf88a717613b270740be78ca9a61f3a11";
+    private static final String EXPECTED_LAND = "63b4e7a71b451d74bb67f94ad8115abf4565108ef7ec7da82b6ef7f8df6700ab";
 
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args[1]);

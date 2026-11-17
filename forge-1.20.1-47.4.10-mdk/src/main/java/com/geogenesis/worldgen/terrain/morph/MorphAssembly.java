@@ -67,18 +67,30 @@ final class MorphAssembly {
     private final int[] slotTable;
     private final MorphNoise.Node mask;
     private final Family coverage;
+    /**
+     * ★ 2026-11-17（阶段六修正）：火山覆盖族——与台地同级的「类型层独立几何覆盖」。
+     *
+     * <p>用户裁定：火山属于「地形类型 = 局部具体化」，不是外挂到地形上的特征。
+     * 与 {@link #coverage} 同机制（jittered 撒点 + 锥体剖面 + overlay 混合），
+     * 尺度按类型层标定（{@code VolcanoRecipe} 对比表）。</p>
+     *
+     * <p>{@code null} = 关闭（{@code geogenesis.tectonicFeatures=false}）⇒ 逐位复现旧产出。</p>
+     */
+    private final VolcanoRecipe volcano;
 
     /**
      * @param seed     世界种子（分区/遮罩/台地覆盖全部由它派生）
-     * @param coverage 覆盖层族（共享台地 {@code height01}）；由 {@link #canonical} 统一构造
+     * @param coverage 覆盖层族（共享台地 {@code height01}）；由 {@link #of} 统一构造
+     * @param volcano  火山覆盖族；{@code null} = 关闭
      */
     private MorphAssembly(long seed, MorphRegionPartition partition, int[] slotTable,
-                          MorphNoise.Node mask, Family coverage) {
+                          MorphNoise.Node mask, Family coverage, VolcanoRecipe volcano) {
         this.seed = seed;
         this.partition = partition;
         this.slotTable = slotTable;
         this.mask = mask;
         this.coverage = coverage;
+        this.volcano = volcano;
     }
 
     /**
@@ -115,9 +127,26 @@ final class MorphAssembly {
         plateau.seed(seed + MorphCatalog.OFF_PLATEAU);
         MorphNoise.Node coverageNode = plateau.heightNode();
 
+        // ---- 火山覆盖族（2026-11-17 阶段六修正）----
+        // 与台地同级：类型层的独立几何覆盖，走 overlay 混合而非外挂叠加。
+        // 开关关闭时传 null（MorphLandField 走原路径 ⇒ 逐位复现旧产出）。
+        VolcanoRecipe volcano = null;
+        if (TECTONIC_FEATURES) {
+            volcano = new VolcanoRecipe();
+            volcano.seed(seed + OFF_VOLCANO);
+        }
+
         return new MorphAssembly(seed, partition, slots, mask,
-                (x, z) -> MorphNoiseEval.eval(coverageNode, x, z));
+                (x, z) -> MorphNoiseEval.eval(coverageNode, x, z), volcano);
     }
+
+    /** 开关——直接引用 {@link MorphTerrainSampler#TECTONIC_FEATURES}（唯一读取点，
+     *  开关四铁律①：同一属性绝不重复读取）。 */
+    private static final boolean TECTONIC_FEATURES = MorphTerrainSampler.TECTONIC_FEATURES;
+
+    /** 火山覆盖族的种子偏移（避开 FBM 7000/7100、气候 501-504、ContinentField 的盐）。
+     *  包私有：{@code VolcanoShapeProbe} 用同偏移构造对拍 recipe。 */
+    static final int OFF_VOLCANO = 61;
 
     /**
      * 空转参考为 10 个低地复合对消费的 20 个种子。
@@ -230,6 +259,9 @@ final class MorphAssembly {
 
     /** 覆盖族（共享台地 {@code height01}，Terrace 值域 1.05）。 */
     Family coverage() { return coverage; }
+
+    /** ★ 阶段六：火山覆盖族；{@code null} = 关闭。 */
+    VolcanoRecipe volcano() { return volcano; }
 
     /**
      * 覆盖层 select 的下阈值。

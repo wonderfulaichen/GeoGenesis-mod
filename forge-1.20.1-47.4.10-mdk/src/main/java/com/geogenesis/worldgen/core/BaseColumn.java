@@ -1,7 +1,6 @@
 package com.geogenesis.worldgen.core;
 
 import com.geogenesis.worldgen.climate.WhittakerType;
-import com.geogenesis.worldgen.terrain.LandFeatures;
 import com.geogenesis.worldgen.terrain.OceanFeatures;
 import com.geogenesis.worldgen.terrain.TerrainClass;
 
@@ -21,6 +20,5 @@ public final class BaseColumn {
      * <p>下游 {@code Cell.landFeat}/{@code oceanFeat} 由 {@code MorphCellAdapter} 拷贝，
      * 供 {@code CellGenerator.classifyTerrain} 的火山/海洋亚型分支使用。</p>
      */
-    public LandFeatures.FeatureResult landFeat;
     public OceanFeatures.FeatureResult oceanFeat;
 }

@@ -28,8 +28,11 @@ import java.util.Locale;
 public final class ContinentAnchorProbe {
 
     /** 生产锚（与 ContinentField.A0..A4 一致；此处独立复制以对拍实现漂移）。
-     *  A3 是水面校准锚，其分位含剖面噪声偏移，见 QUANTILES 注释。 */
-    private static final double[] ANCHORS = {-2.018, -0.240, -0.149, -0.041, 0.966};
+     *  A3 是水面校准锚，其分位含剖面噪声偏移，见 QUANTILES 注释。
+     *  ★ 第 5 次标定（2026-11-17）：shapedShell（核骨架 + FBM 塑形 amp 1.6）
+     *  的 productionShell 分布重标——第 4 次 {-2.018,…,0.966} 在 FBM 塑形下
+     *  shell[4] 分位漂到 0.905（目标 0.999）。 */
+    private static final double[] ANCHORS = {-3.327, -0.243, -0.145, -0.025, 2.342};
     /** 各锚目标分位。A3 是水面校准锚：理想岸线分位 0.661，但剖面叠加
      *  ocean/shallowDetail 噪声后实际水面偏深 ~2% ⇒ A3 左移后实测分位
      *  0.6430（陆占比断言 0.339 守护校准，分位这里如实记录）。 */
@@ -66,10 +69,12 @@ public final class ContinentAnchorProbe {
                 + "  未占据率 " + String.format(Locale.ROOT, "%.4f", emptyCells / (double) occTotal));
 
         // ---- 1) 壳值分位对拍 ----
+        // ★ 2026-11-17：改用 productionShell（核骨架 + FBM 塑形）——
+        //   锚必须标定「实际生产壳值」的分布，纯核壳值只是它的低频骨架。
         List<Double> shells = new ArrayList<>();
         for (double z = -range; z <= range; z += stepShell) {
             for (double x = -range; x <= range; x += stepShell) {
-                shells.add(field.shellValue(x, z));
+                shells.add(field.productionShell(x, z));
             }
         }
         Collections.sort(shells);
