@@ -196,8 +196,11 @@ public final class FeatureCloseupProbe {
                 double bpe = e[j][i] >= 0 ? 236.0 : 127.0;
                 int i0 = Math.max(0, i - 2), i1 = Math.min(n - 1, i + 2);
                 int j0 = Math.max(0, j - 2), j1 = Math.min(n - 1, j + 2);
-                double gx = (e[j][i1] - e[j][i0]) * bpe / Math.max(1, i1 - i0);
-                double gy = (e[j1][i] - e[j0][i]) * bpe / Math.max(1, j1 - j0);
+                // ★ 视觉放大 3×：海底坡度太缓（0.1e/200wu ⇒ 0.1 格/px），
+                //   原样光照 dd≈0.75（与平地 0.707 几乎无差）⇒ 图上什么都看不出来。
+                //   放大只影响渲染，不改世界数据。
+                double gx = (e[j][i1] - e[j][i0]) * bpe / Math.max(1, i1 - i0) * 3.0;
+                double gy = (e[j1][i] - e[j0][i]) * bpe / Math.max(1, j1 - j0) * 3.0;
                 double nx = -gx, ny = -gy, nz = 1.0;
                 double len = Math.sqrt(nx * nx + ny * ny + nz * nz);
                 double dd = (-nx * 0.5 - ny * 0.5 + nz * 0.7071) / len;

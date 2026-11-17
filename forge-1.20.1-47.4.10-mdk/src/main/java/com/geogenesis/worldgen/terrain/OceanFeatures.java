@@ -260,7 +260,12 @@ public final class OceanFeatures {
     }
 
     /**
-     * 洋中脊幅度（e 单位）——<b>轴部额外凸起</b>，约 500m ≈ 0.05e。
+     * 洋中脊幅度（e 单位）——<b>轴部额外凸起</b>，约 900m ≈ 0.09e（≈11 格）。
+     *
+     * <p>⚠ 2026-11-17 二次定标：先取 0.05（"轴部凸起 500m"）——实测特写图上
+     * 脊轴与两侧只有 ~6 格落差、8 级色带不换色、光照算不出坡 ⇒ 用户反馈
+     * 「明显看不到，山脊都没一点痕迹」。回 0.09 + 收窄 σ（320→200）做陡坡，
+     * 配合探针光照的视觉放大，脊梁在图上与实机都能看出来。</p>
      *
      * <p>⚠ 定标修正（2026-11-17 阶段七 A）：旧值 0.18 是「脊轴相对深海平原的
      * <b>总</b>抬升」，但<b>年龄律已经提供这部分</b>（CrustField 平台模型
@@ -270,7 +275,7 @@ public final class OceanFeatures {
      * 现在只保留「轴部高地/脊肩」的额外起伏（~500m），总脊带落差由年龄律
      * 提供（深海 −0.40 → 轴部 −0.175 ≈ 24 格水下，视觉上仍是明显的宽脊）。</p>
      */
-    private static final double RIDGE_AMPLITUDE = 0.05;
+    private static final double RIDGE_AMPLITUDE = 0.09;
     /**
      * 洋中脊带的半宽（wu）：{@code gaussian(dist, σ)} 的 σ。
      *
@@ -291,9 +296,11 @@ public final class OceanFeatures {
      * 噪声只应负责表面粗糙度。</p>
      *
      * <p>尺度：320wu 半宽 ⇒ 脊翼总宽 ~1280wu（板块间距 2000+wu 的 64%），
-     * 轴部 0.18e≈23 格、320wu 处 61%、640wu 处 14%、远处并入热沉降。</p>
+     * 轴部 0.09e≈11 格、200wu 处 61%、400wu 处 14%、远处并入热沉降。
+     * σ 从 320 收到 200：更陡的轴部高地（真实 MOR 的 axial high 比整个
+     * 热沉降翼窄得多）。</p>
      */
-    private static final double RIDGE_WING_SIGMA = 320.0;
+    private static final double RIDGE_WING_SIGMA = 200.0;
     /** 脊带中心沿轴蜿蜒幅度（wu）——定义已上移到共享 {@link RidgeWander#AMP_WU}。 */
 
     // ===== ★ 2026-09-13 Phase T6：火山弧"永不露头"的软天花板 =====

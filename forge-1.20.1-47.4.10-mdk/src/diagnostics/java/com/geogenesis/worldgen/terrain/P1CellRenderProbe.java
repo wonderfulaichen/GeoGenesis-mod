@@ -59,9 +59,13 @@ public final class P1CellRenderProbe {
      * 脊带+裂谷同偏移）+ 轴向高度分段（1100wu/−40%~+40%）。
      * 全图 SHA 变，陆侧 SHA 仍与 140 逐位一致（585461 / 5dd95cec…）。
      * 140 基准留档 f91c4f39…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 B 修正（2026-11-17，schema142）：脊轴隆起 0.05→0.09e、σ 320→200
+     * （「山脊都没一点痕迹」）。全图 SHA 变，陆侧仍与 141 逐位一致。
+     * 141 基准留档 8b1a42ba…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "8b1a42ba941180d06214c5d5add699f5e06fdc11bd3c0f755a9235c81cef59ac";
+            "fca9d3466cd70df83ac2850a6ca565df2682f42b3247979b894e766c64e3eeee";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

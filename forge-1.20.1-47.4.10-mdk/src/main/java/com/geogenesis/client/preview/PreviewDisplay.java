@@ -722,7 +722,11 @@ public class PreviewDisplay extends AbstractWidget {
     //          同一函数/种子——裂谷跟着轴心走，不会「裂谷不在脊带中间」）；
     //       ② 轴向高度分段（波长 1100wu，段间 ±40%）——真实 MOR 的分段性。
     //       140 基准留档：P1 EXPECTED f91c4f39 / 5dd95cec（landCells 585461）。
-    static final int CACHE_SCHEMA_VERSION = 141;
+    // 142 = 2026-11-17 阶段七 B 修正（用户："没看到山啊，明显看不到，
+    //       山脊都没一点痕迹"）：脊轴隆起 0.05→0.09e（≈11 格），脊翼 σ 320→200
+    //       （更陡的轴部高地）。0.05 时脊轴与两侧只有 ~6 格落差、8 级色带不换色、
+    //       光照算不出坡 ⇒ 图上无脊形。141 基准留档：8b1a42ba / 5dd95cec。
+    static final int CACHE_SCHEMA_VERSION = 142;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();
