@@ -49,9 +49,14 @@ public final class P1CellRenderProbe {
      * （特征增量并入 crustProfile 的 deep 锚）。全图 SHA 变，<b>陆侧 SHA 与 138
      * 逐位一致</b>（585461 / 5dd95cec…）——证明归位只动海洋、陆侧零扰动。
      * 138 基准留档 1f28553a…/5dd95cec…。</p>
+     *
+     * <p>★ 阶段七 A+C1 重立（2026-11-17，schema140）：洋中脊体形构造化（幅度
+     * 0.18→0.05，脊带落差交给年龄律）+ 沉积平滑（丘陵振幅随 age 衰减）。
+     * 全图 SHA 变，陆侧 SHA 仍与 139 逐位一致（585461 / 5dd95cec…）。
+     * 139 基准留档 5032f9a5…/5dd95cec…。</p>
      */
     private static final String EXPECTED =
-            "5032f9a51d5e5d1e474bf5e4e1e3fb1f30a9df3d971bb5a0a9f8293dd750b3e0";
+            "f91c4f39c4ae21e5fb747916c736bee0ae12d219c26a7472fc3e06cdf1ec4f6b";
 
     /**
      * ★ 阶段六修正重立（2026-11-17）：landCells 586223→585441

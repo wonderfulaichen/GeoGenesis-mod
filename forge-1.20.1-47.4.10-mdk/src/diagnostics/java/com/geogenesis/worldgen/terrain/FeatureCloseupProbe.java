@@ -83,7 +83,9 @@ public final class FeatureCloseupProbe {
                 if (col.oceanFeat != null && col.oceanFeat.seamount > 0.02) {
                     seamt++;
                     mask[j][i] = 3;
-                } else if (col.oceanFeat != null && col.oceanFeat.ridge > 0.05) {
+                } else if (col.oceanFeat != null && col.oceanFeat.ridge > 0.02) {
+                    // 阈值 0.02 = 新量程（阶段七 A 幅度 0.05）的 40%；
+                    // 旧阈值 0.05 贴着峰值 ⇒ 噪声起伏反复过线 ⇒ 图上又出现闭合圈
                     ridge++;
                     mask[j][i] = 4;
                 }

@@ -163,16 +163,22 @@ public final class OceanFeatures {
             //         11.29%，远超 P∩D 边界带面积）—— 因为应力场是区域量、不是边界量。
             //       注：此处用 dist 做**单调包络**是安全的；被否决的是用 dist 当**噪声坐标**
             //       （会产生同心波纹，见 TectonicField.CHAIN_SCALE 的硬约束）。
-            double gate = 1.0;
+            // ★ 阶段七 A（2026-11-17）：body = 构造资格 × 确定性脊翼剖面。
+            //   constitution：这片海域是否离散体制（区域应力场，σ=1000wu，连续）。
+            //   shape：离轴距离的高斯剖面（对称、轴部最高、两翼热沉降）。
+            //   ⇒ 等深线天然平行脊轴（磁条带几何），不会是噪声闭合圈。
+            double constitution = 1.0;
+            double shape = 1.0;
             if (tect != null) {
-                gate = TectonicField.smoothPos(-tect.stress(), TectonicField.STRESS_POS_EPS)
-                     * Math.exp(-(tect.dist() * tect.dist())
-                                / (2.0 * RIDGE_BAND_SIGMA * RIDGE_BAND_SIGMA));
+                constitution = TectonicField.smoothPos(-tect.stress(), TectonicField.STRESS_POS_EPS);
+                double dn = tect.dist() / RIDGE_WING_SIGMA;
+                shape = Math.exp(-0.5 * dn * dn);
             }
-            if (gate > 0.0) {
-                // 轴向细节：Ridge(1/600)+Warp(200)，提供脊线蜿蜒与轴谷起伏（[0,1]）
-                double detail = ridgeNoise.compute(wx, wz);
-                ridgeDelta = RIDGE_AMPLITUDE * gate * detail * ridgeFade;
+            if (constitution > 0.0 && shape > 0.0) {
+                // 噪声只做表面粗糙度（±20%）：沿轴/横向的碎裂感由 Ridge(1/600)
+                // 提供；它不再决定体形（旧实现 detail 直接乘幅度 ⇒ 噪声脊）。
+                double rough = 0.8 + 0.4 * ridgeNoise.compute(wx, wz);
+                ridgeDelta = RIDGE_AMPLITUDE * constitution * shape * rough * ridgeFade;
             }
         }
 
@@ -231,13 +237,17 @@ public final class OceanFeatures {
     }
 
     /**
-     * 洋中脊幅度（e 单位）。
+     * 洋中脊幅度（e 单位）——<b>轴部额外凸起</b>，约 500m ≈ 0.05e。
      *
-     * <p>原为硬编码 {@code 0.18}，语义上它正是"深海脊轴相对深海平原的抬升"
-     * （真实大洋中脊轴部水深 ~2500m vs 深海平原 ~5000m ⇒ 约 +2500m ≈ +0.18 e）。
-     * 提取为常量以便门控改造后仍保留原标定（本次<b>不改幅度</b>，只改位置来源）。</p>
+     * <p>⚠ 定标修正（2026-11-17 阶段七 A）：旧值 0.18 是「脊轴相对深海平原的
+     * <b>总</b>抬升」，但<b>年龄律已经提供这部分</b>（CrustField 平台模型
+     * D0=2500m → D∞=5700m：age=0 的洋壳本身就是最浅的）。归位到洋底层后
+     * 再叠 0.18 等于重复叠加：实测轴部 eBase(−0.225) + ridge(0.19) = −0.034，
+     * 直接顶穿浅水锚（−7 格）并叠上海床细节 ⇒ 轴部离水面只剩 3.4 格。
+     * 现在只保留「轴部高地/脊肩」的额外起伏（~500m），总脊带落差由年龄律
+     * 提供（深海 −0.40 → 轴部 −0.175 ≈ 24 格水下，视觉上仍是明显的宽脊）。</p>
      */
-    private static final double RIDGE_AMPLITUDE = 0.18;
+    private static final double RIDGE_AMPLITUDE = 0.05;
     /**
      * 洋中脊带的半宽（wu）：{@code gaussian(dist, σ)} 的 σ。
      *
@@ -247,6 +257,20 @@ public final class OceanFeatures {
      * （折痕被抹圆 ⇒ 有效带宽略涨）。</p>
      */
     private static final double RIDGE_BAND_SIGMA = 130.0;
+
+    /**
+     * ★ 阶段七 A（2026-11-17）：洋中脊脊翼半宽（wu）——高斯剖面的 σ。
+     *
+     * <p>用户观察：「你这个洋山脊好像是单噪声山脊？」——旧实现把体形交给
+     * {@code Ridge(1/600)} 单频噪声（等值线是噪声网络：闭合圈、分叉），
+     * 位置虽是构造的，形态却是「噪声鼓包」。真实洋中脊是<b>离轴距离的
+     * 确定性剖面</b>：轴部最高、两翼对称热沉降（等深线天然平行脊轴），
+     * 噪声只应负责表面粗糙度。</p>
+     *
+     * <p>尺度：320wu 半宽 ⇒ 脊翼总宽 ~1280wu（板块间距 2000+wu 的 64%），
+     * 轴部 0.18e≈23 格、320wu 处 61%、640wu 处 14%、远处并入热沉降。</p>
+     */
+    private static final double RIDGE_WING_SIGMA = 320.0;
 
     // ===== ★ 2026-09-13 Phase T6：火山弧"永不露头"的软天花板 =====
     /** 弧顶与海平面之间的最小余量（e 单位，≈3.8 块）。 */

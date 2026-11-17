@@ -261,7 +261,13 @@ public final class CrustField {
                             wz / (ABYSS_HILL_SCALE * 2.1), seed ^ (SALT_HILLS + 7919L))
                     + 0.25 * valueNoise(wx / (ABYSS_HILL_SCALE * 4.4),
                             wz / (ABYSS_HILL_SCALE * 4.4), seed ^ (SALT_HILLS + 15811L));
-            e += (ABYSS_HILLS_M / METERS_PER_E) * (hs / 1.75);
+            // ★ 阶段七 C1（2026-11-17，用户："没有被冲刷过的样子"）：
+            //   沉积平滑——粗糙度随洋壳年龄衰减。真实洋底：脊轴附近（新洋壳）
+            //   崎岖（火山/断裂），深海平原（老洋壳）被沉积物抹平；旧实现
+            //   全洋底同振幅 ⇒ 哪里都一样糙的「塑料感」。
+            //   age→0（脊轴）：全幅；age→1（深海平原）：30%。
+            double sediment = 1.0 - 0.7 * smoothstep(0.15, 0.75, age);
+            e += (ABYSS_HILLS_M / METERS_PER_E) * (hs / 1.75) * sediment;
 
             // 轴部裂谷：离散边界轴上的窄槽（distRaw 未平滑，blur 会抹掉它）
             e -= (RIFT_AXIAL_M / METERS_PER_E)

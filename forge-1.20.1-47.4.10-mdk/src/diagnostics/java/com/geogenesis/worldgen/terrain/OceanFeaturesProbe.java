@@ -129,7 +129,38 @@ public final class OceanFeaturesProbe {
                 "[平滑] SEAMOUNT 过渡格（权重<0.90）%d  [不露头] 违规格 %d%n",
                 smoothCells, dryViolations);
 
+        // ---- 洋中脊体形（阶段七 A）：沿轴连续 + 横向落差 ----
+        //   在最强脊点，8 方向 × ±400wu 采样：轴向=两侧 e 最接近的方向（脊带沿轴延伸），
+        //   垂直方向必须有明显落差（脊翼坡度）。旧「单噪声山脊」在轴向上 e 差也大
+        //   （噪声鼓包没有沿轴恒定性）。
+        boolean shapeOk = true;
+        if (peakRidge > 0.02) {
+            double bestPars = 1e9;
+            double axisAng = 0;
+            for (int k = 0; k < 8; k++) {
+                double ang = Math.PI * k / 8;
+                double dx = Math.cos(ang) * 400, dz = Math.sin(ang) * 400;
+                double ep = smp.sampleColumn(bestRx + dx, bestRz + dz).e;
+                double em = smp.sampleColumn(bestRx - dx, bestRz - dz).e;
+                double diff = Math.abs(ep - em);
+                if (diff < bestPars) {
+                    bestPars = diff;
+                    axisAng = ang;
+                }
+            }
+            double pa = axisAng + Math.PI / 2;
+            double px = Math.cos(pa) * 400, pz = Math.sin(pa) * 400;
+            double perpDiff = Math.abs(smp.sampleColumn(bestRx + px, bestRz + pz).e
+                    - smp.sampleColumn(bestRx - px, bestRz - pz).e);
+            shapeOk = bestPars < 0.06 && perpDiff > 0.04;
+            System.out.printf(Locale.ROOT,
+                    "[体形] 沿轴 400wu 两侧 e 差 %.3f（判据 <0.06 = 沿轴恒定）"
+                    + "  横向 e 差 %.3f（判据 >0.04 = 脊翼坡度）  %s%n",
+                    bestPars, perpDiff, shapeOk ? "ok" : "✗");
+        }
+
         boolean ok = seamountCells >= MIN_SEAMOUNT_CELLS
+                && shapeOk
                 && ridgeCells >= MIN_RIDGE_CELLS
                 && peakSeamount >= SEAMOUNT_AMP_MIN && peakSeamount <= SEAMOUNT_AMP_MAX
                 && seamountTypeCells > 0

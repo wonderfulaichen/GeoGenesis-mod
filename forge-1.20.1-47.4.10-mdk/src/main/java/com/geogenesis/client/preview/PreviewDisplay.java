@@ -710,7 +710,14 @@ public class PreviewDisplay extends AbstractWidget {
     //       ② 海洋亚型进 typeWeights 加权竞争（smoothstep·1.5，与火山同模式）；
     //       ③ 海山深度门控改用 CrustField 裸 eBase（原 ocean.e 在归位后会递归）。
     //       138 基准留档：P1 EXPECTED 1f28553a / 5dd95cec（landCells 585461）。
-    static final int CACHE_SCHEMA_VERSION = 139;
+    // 140 = 2026-11-17 阶段七 A+C1（用户："洋山脊好像是单噪声山脊？并且没有被冲刷过"）：
+    //       A 脊翼体形：ridge 从「噪声鼓包」改为「构造资格 × 离轴距离确定性剖面」
+    //         （高斯 σ=320wu，轴部额外凸起 0.05e≈500m；脊带总落差由年龄律提供），
+    //         噪声降级为 ±20% 表面粗糙度；幅度从 0.18 修正为 0.05（0.18 与年龄律
+    //         重复叠加，实测轴部顶到浅水锚、离水面仅 3.4 格）。
+    //       C1 沉积平滑：深海丘陵振幅随洋壳年龄衰减（脊轴全幅 → 深海平原 30%）。
+    //       139 基准留档：P1 EXPECTED 5032f9a5 / 5dd95cec（landCells 585461）。
+    static final int CACHE_SCHEMA_VERSION = 140;
     /** 参数、配置、算法与水文策略共同隔离磁盘缓存。 */
     private long cacheSchemaHash(com.geogenesis.worldgen.terrain.TerrainParams params) {
         long cfg = com.geogenesis.config.GeoGenesisConfig.configFingerprint();

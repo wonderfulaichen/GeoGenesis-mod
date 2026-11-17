@@ -1680,6 +1680,16 @@ task runQuickContinentDiag(type: JavaExec) {
     mainClass = 'com.geogenesis.worldgen.terrain.QuickContinentDiag'
 }
 
+// 洋中脊剖面诊断（2026-11-17）：判定「深→浅边界」是 edge（大陆距离）还是年龄律产物。
+//   gradlew runRidgeProfileProbe
+task runRidgeProfileProbe(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.geogenesis.worldgen.terrain.RidgeProfileProbe'
+    if (project.hasProperty('probeArgs')) {
+        setArgs(probeArgs.split(' ') as List)
+    }
+}
+
 // 海洋特征判据门禁（2026-11-17 阶段六修正三）：海山/洋中脊归位到洋底几何层后。
 //   判据：存在 / 幅度量程 / 不露头 / 类型可达（修正前恒 0）/ 平滑过渡。
 //   gradlew runOceanFeaturesProbe [-PprobeArgs="<span> <step>"]

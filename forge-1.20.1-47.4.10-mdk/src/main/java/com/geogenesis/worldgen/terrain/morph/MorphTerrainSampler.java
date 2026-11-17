@@ -392,8 +392,10 @@ public final class MorphTerrainSampler {
             c.typeWeights[depthType.ordinal()] = 1.0;
             double seamountW = of == null ? 0.0
                     : 1.5 * smoothstep(0.01, 0.06, of.seamount);
+            // ridge 量程：阶段七 A 把 RIDGE_AMPLITUDE 定为 0.05（轴部额外凸起；
+            // 脊带总落差由年龄律提供）⇒ 类型门控同步到平滑新的 0.01~0.04 区间。
             double ridgeW = of == null ? 0.0
-                    : 1.5 * smoothstep(0.02, 0.08, of.ridge);
+                    : 1.5 * smoothstep(0.01, 0.04, of.ridge);
             if (seamountW > 0.0) {
                 c.typeWeights[com.geogenesis.worldgen.terrain.TerrainClass.SEAMOUNT.ordinal()] += seamountW;
             }
